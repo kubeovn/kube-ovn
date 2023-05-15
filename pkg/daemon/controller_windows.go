@@ -5,6 +5,7 @@ import (
 	"net"
 	"strings"
 
+	"github.com/scylladb/go-set/strset"
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
@@ -17,8 +18,7 @@ import (
 )
 
 // ControllerRuntime represents runtime specific controller members
-type ControllerRuntime struct {
-}
+type ControllerRuntime struct{}
 
 func (c *Controller) initRuntime() error {
 	return nil
@@ -54,7 +54,7 @@ func (c *Controller) reconcileRouters(_ subnetEvent) error {
 	v4Cidrs, v6Cidrs := make([]string, 0, len(subnets)), make([]string, 0, len(subnets))
 	for _, subnet := range subnets {
 		if (subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway) ||
-			subnet.Spec.Vpc != util.DefaultVpc ||
+			subnet.Spec.Vpc != c.config.ClusterRouter ||
 			!subnet.Status.IsReady() {
 			continue
 		}
@@ -124,35 +124,13 @@ func (c *Controller) reconcileRouters(_ subnetEvent) error {
 }
 
 func routeDiff(existingRoutes, v4Cidrs, v6Cidrs []string) (toAddV4, toAddV6, toDel []string) {
-	existing := make(map[string]struct{}, len(existingRoutes))
-	expectedV4 := make(map[string]struct{}, len(v4Cidrs))
-	expectedV6 := make(map[string]struct{}, len(v6Cidrs))
-	for _, r := range existingRoutes {
-		existing[r] = struct{}{}
-	}
+	existing := strset.New(existingRoutes...)
+	expectedV4 := strset.New(v4Cidrs...)
+	expectedV6 := strset.New(v6Cidrs...)
 
-	var ok bool
-	for _, r := range v4Cidrs {
-		expectedV4[r] = struct{}{}
-		if _, ok = existing[r]; !ok {
-			toAddV4 = append(toAddV4, r)
-		}
-	}
-	for _, r := range v6Cidrs {
-		expectedV6[r] = struct{}{}
-		if _, ok = existing[r]; !ok {
-			toAddV6 = append(toAddV6, r)
-		}
-	}
-	for _, r := range existingRoutes {
-		if _, ok = expectedV4[r]; ok {
-			continue
-		}
-		if _, ok = expectedV6[r]; ok {
-			continue
-		}
-		toDel = append(toDel, r)
-	}
+	toAddV4 = strset.Difference(expectedV4, existing).List()
+	toAddV6 = strset.Difference(expectedV6, existing).List()
+	toDel = strset.Difference(existing, expectedV4, expectedV6).List()
 
 	return
 }
@@ -186,7 +164,7 @@ func (c *Controller) handlePod(key string) error {
 
 	// set default nic bandwidth
 	ifaceID := ovs.PodNameToPortName(podName, pod.Namespace, util.OvnProvider)
-	err = ovs.SetInterfaceBandwidth(podName, pod.Namespace, ifaceID, pod.Annotations[util.EgressRateAnnotation], pod.Annotations[util.IngressRateAnnotation], pod.Annotations[util.PriorityAnnotation])
+	err = ovs.SetInterfaceBandwidth(podName, pod.Namespace, ifaceID, pod.Annotations[util.EgressRateAnnotation], pod.Annotations[util.IngressRateAnnotation])
 	if err != nil {
 		return err
 	}
@@ -207,7 +185,7 @@ func (c *Controller) handlePod(key string) error {
 		}
 		if pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, provider)] == "true" {
 			ifaceID = ovs.PodNameToPortName(podName, pod.Namespace, provider)
-			err = ovs.SetInterfaceBandwidth(podName, pod.Namespace, ifaceID, pod.Annotations[fmt.Sprintf(util.EgressRateAnnotationTemplate, provider)], pod.Annotations[fmt.Sprintf(util.IngressRateAnnotationTemplate, provider)], pod.Annotations[fmt.Sprintf(util.PriorityAnnotationTemplate, provider)])
+			err = ovs.SetInterfaceBandwidth(podName, pod.Namespace, ifaceID, pod.Annotations[fmt.Sprintf(util.EgressRateAnnotationTemplate, provider)], pod.Annotations[fmt.Sprintf(util.IngressRateAnnotationTemplate, provider)])
 			if err != nil {
 				return err
 			}
@@ -215,7 +193,7 @@ func (c *Controller) handlePod(key string) error {
 			if err != nil {
 				return err
 			}
-			err = ovs.SetNetemQos(podName, pod.Namespace, ifaceID, pod.Annotations[fmt.Sprintf(util.NetemQosLatencyAnnotationTemplate, provider)], pod.Annotations[fmt.Sprintf(util.NetemQosLimitAnnotationTemplate, provider)], pod.Annotations[fmt.Sprintf(util.NetemQosLossAnnotationTemplate, provider)])
+			err = ovs.SetNetemQos(podName, pod.Namespace, ifaceID, pod.Annotations[fmt.Sprintf(util.NetemQosLatencyAnnotationTemplate, provider)], pod.Annotations[fmt.Sprintf(util.NetemQosLimitAnnotationTemplate, provider)], pod.Annotations[fmt.Sprintf(util.NetemQosLossAnnotationTemplate, provider)], pod.Annotations[fmt.Sprintf(util.NetemQosJitterAnnotationTemplate, provider)])
 			if err != nil {
 				return err
 			}
@@ -228,12 +206,11 @@ func (c *Controller) loopEncapIpCheck() {
 	// TODO
 }
 
-func (c *Controller) clearQos(podName, podNamespace, ifaceID string) error {
+func rotateLog() {
 	// TODO
-	return nil
 }
 
-func rotateLog() {
+func (c *Controller) ovnMetricsUpdate() {
 	// TODO
 }
 

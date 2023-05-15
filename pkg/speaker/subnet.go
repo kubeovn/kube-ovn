@@ -4,6 +4,10 @@ package speaker
 import (
 	"context"
 	"fmt"
+
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+
+	"golang.org/x/sys/unix"
 	"net"
 	"strconv"
 	"strings"
@@ -43,7 +47,9 @@ func isClusterIPService(svc *v1.Service) bool {
 
 // TODO: ipv4 only, need ipv6/dual-stack support later
 func (c *Controller) syncSubnetRoutes() {
-	bgpExpected, bgpExists := []string{}, []string{}
+	maskMap := map[string]int{kubeovnv1.ProtocolIPv4: 32, kubeovnv1.ProtocolIPv6: 128}
+	bgpExpected, bgpExists := make(map[string][]string), make(map[string][]string)
+
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list subnets, %v", err)
@@ -63,24 +69,36 @@ func (c *Controller) syncSubnetRoutes() {
 		}
 		for _, svc := range services {
 			if svc.Annotations != nil && svc.Annotations[util.BgpAnnotation] == "true" && isClusterIPService(svc) {
-				bgpExpected = append(bgpExpected, fmt.Sprintf("%s/32", svc.Spec.ClusterIP))
+				for _, clusterIp := range svc.Spec.ClusterIPs {
+					ipFamily := util.CheckProtocol(clusterIp)
+					bgpExpected[ipFamily] = append(bgpExpected[ipFamily], fmt.Sprintf("%s/%d", clusterIp, maskMap[ipFamily]))
+				}
+				//bgpExpected = append(bgpExpected, fmt.Sprintf("%s/32", svc.Spec.ClusterIP))
 			}
 		}
 	}
 
 	for _, subnet := range subnets {
 		if subnet.Status.IsReady() && subnet.Annotations != nil && subnet.Annotations[util.BgpAnnotation] == "true" {
-			bgpExpected = append(bgpExpected, subnet.Spec.CIDRBlock)
+			ips := strings.Split(subnet.Spec.CIDRBlock, ",")
+			for _, cidr := range ips {
+				ipFamily := util.CheckProtocol(cidr)
+				bgpExpected[ipFamily] = append(bgpExpected[ipFamily], cidr)
+			}
 		}
 	}
 
 	for _, pod := range pods {
 		if isPodAlive(pod) && !pod.Spec.HostNetwork && pod.Annotations[util.BgpAnnotation] == "true" && pod.Status.PodIP != "" {
-			bgpExpected = append(bgpExpected, fmt.Sprintf("%s/32", pod.Status.PodIP))
+			podIps := pod.Status.PodIPs
+			for _, podIp := range podIps {
+				ipFamily := util.CheckProtocol(podIp.IP)
+				bgpExpected[ipFamily] = append(bgpExpected[ipFamily], fmt.Sprintf("%s/%d", podIp.IP, maskMap[ipFamily]))
+			}
 		}
 	}
 
-	klog.V(5).Infof("expected routes %v", bgpExpected)
+	klog.V(5).Infof("expected ipv4 routes %v,ipv6 route %v", bgpExpected[kubeovnv1.ProtocolIPv4], bgpExpected[kubeovnv1.ProtocolIPv6])
 	listPathRequest := &bgpapi.ListPathRequest{
 		TableType: bgpapi.TableType_GLOBAL,
 		Family:    &bgpapi.Family{Afi: bgpapi.Family_AFI_IP, Safi: bgpapi.Family_SAFI_UNICAST},
@@ -90,30 +108,66 @@ func (c *Controller) syncSubnetRoutes() {
 			attrInterfaces, _ := bgpapiutil.UnmarshalPathAttributes(path.Pattrs)
 			nextHop := getNextHopFromPathAttributes(attrInterfaces)
 			klog.V(5).Infof("nexthop is %s, routerID is %s", nextHop.String(), c.config.RouterId)
-			if nextHop.String() == c.config.RouterId {
-				bgpExists = append(bgpExists, d.Prefix)
+			ipFamily := util.CheckProtocol(nextHop.String())
+			route, _ := netlink.RouteGet(nextHop)
+			if len(route) == 1 && route[0].Type == unix.RTN_LOCAL || nextHop.String() == c.config.RouterId {
+				bgpExists[ipFamily] = append(bgpExists[ipFamily], d.Prefix)
 				return
 			}
 		}
 	}
-	if err := c.config.BgpServer.ListPath(context.Background(), listPathRequest, fn); err != nil {
-		klog.Errorf("failed to list exist route, %v", err)
-		return
+
+	if c.config.NeighborAddress != "" {
+		if err := c.config.BgpServer.ListPath(context.Background(), listPathRequest, fn); err != nil {
+			klog.Errorf("failed to list exist route, %v", err)
+			return
+		}
+
+		klog.V(5).Infof("exists ipv4 routes %v", bgpExists[kubeovnv1.ProtocolIPv4])
+		toAdd, toDel := routeDiff(bgpExpected[kubeovnv1.ProtocolIPv4], bgpExists[kubeovnv1.ProtocolIPv4])
+		klog.V(5).Infof("toAdd ipv4 routes %v", toAdd)
+		for _, route := range toAdd {
+			if err := c.addRoute(route); err != nil {
+				klog.Error(err)
+			}
+		}
+
+		klog.V(5).Infof("toDel ipv4 routes %v", toDel)
+		for _, route := range toDel {
+			if err := c.delRoute(route); err != nil {
+				klog.Error(err)
+			}
+		}
 	}
 
-	klog.V(5).Infof("exists routes %v", bgpExists)
-	toAdd, toDel := routeDiff(bgpExpected, bgpExists)
-	klog.V(5).Infof("toAdd routes %v", toAdd)
-	for _, route := range toAdd {
-		if err := c.addRoute(route); err != nil {
-			klog.Error(err)
+	if c.config.NeighborIPv6Address != "" {
+
+		listIPv6PathRequest := &bgpapi.ListPathRequest{
+			TableType: bgpapi.TableType_GLOBAL,
+			Family:    &bgpapi.Family{Afi: bgpapi.Family_AFI_IP6, Safi: bgpapi.Family_SAFI_UNICAST},
 		}
-	}
-	klog.V(5).Infof("toDel routes %v", toDel)
-	for _, route := range toDel {
-		if err := c.delRoute(route); err != nil {
-			klog.Error(err)
+
+		if err := c.config.BgpServer.ListPath(context.Background(), listIPv6PathRequest, fn); err != nil {
+			klog.Errorf("failed to list exist route, %v", err)
+			return
 		}
+
+		klog.V(5).Infof("exists ipv6 routes %v", bgpExists[kubeovnv1.ProtocolIPv6])
+		toAdd, toDel := routeDiff(bgpExpected[kubeovnv1.ProtocolIPv6], bgpExists[kubeovnv1.ProtocolIPv6])
+		klog.V(5).Infof("toAdd ipv6 routes %v", toAdd)
+
+		for _, route := range toAdd {
+			if err := c.addRoute(route); err != nil {
+				klog.Error(err)
+			}
+		}
+		klog.V(5).Infof("toDel ipv6 routes %v", toDel)
+		for _, route := range toDel {
+			if err := c.delRoute(route); err != nil {
+				klog.Error(err)
+			}
+		}
+
 	}
 }
 
@@ -156,13 +210,18 @@ func parseRoute(route string) (string, uint32, error) {
 }
 
 func (c *Controller) addRoute(route string) error {
+	routeAfi := bgpapi.Family_AFI_IP
+	if util.CheckProtocol(route) == kubeovnv1.ProtocolIPv6 {
+		routeAfi = bgpapi.Family_AFI_IP6
+	}
+
 	nlri, attrs, err := c.getNlriAndAttrs(route)
 	if err != nil {
 		return err
 	}
 	_, err = c.config.BgpServer.AddPath(context.Background(), &bgpapi.AddPathRequest{
 		Path: &bgpapi.Path{
-			Family: &bgpapi.Family{Afi: bgpapi.Family_AFI_IP, Safi: bgpapi.Family_SAFI_UNICAST},
+			Family: &bgpapi.Family{Afi: routeAfi, Safi: bgpapi.Family_SAFI_UNICAST},
 			Nlri:   nlri,
 			Pattrs: attrs,
 		},
@@ -175,6 +234,11 @@ func (c *Controller) addRoute(route string) error {
 }
 
 func (c *Controller) getNlriAndAttrs(route string) (*anypb.Any, []*anypb.Any, error) {
+	neighborAddr := c.config.NeighborAddress
+	if util.CheckProtocol(route) == kubeovnv1.ProtocolIPv6 {
+		neighborAddr = c.config.NeighborIPv6Address
+	}
+
 	prefix, prefixLen, err := parseRoute(route)
 	if err != nil {
 		return nil, nil, err
@@ -187,20 +251,25 @@ func (c *Controller) getNlriAndAttrs(route string) (*anypb.Any, []*anypb.Any, er
 		Origin: 0,
 	})
 	a2, _ := anypb.New(&bgpapi.NextHopAttribute{
-		NextHop: getNextHopAttribute(c.config.NeighborAddress, c.config.RouterId),
+		NextHop: getNextHopAttribute(neighborAddr, c.config.RouterId),
 	})
 	attrs := []*anypb.Any{a1, a2}
 	return nlri, attrs, err
 }
 
 func (c *Controller) delRoute(route string) error {
+	routeAfi := bgpapi.Family_AFI_IP
+	if util.CheckProtocol(route) == kubeovnv1.ProtocolIPv6 {
+		routeAfi = bgpapi.Family_AFI_IP6
+	}
+
 	nlri, attrs, err := c.getNlriAndAttrs(route)
 	if err != nil {
 		return err
 	}
 	err = c.config.BgpServer.DeletePath(context.Background(), &bgpapi.DeletePathRequest{
 		Path: &bgpapi.Path{
-			Family: &bgpapi.Family{Afi: bgpapi.Family_AFI_IP, Safi: bgpapi.Family_SAFI_UNICAST},
+			Family: &bgpapi.Family{Afi: routeAfi, Safi: bgpapi.Family_SAFI_UNICAST},
 			Nlri:   nlri,
 			Pattrs: attrs,
 		},

@@ -65,6 +65,13 @@ func ValidateSubnet(subnet kubeovnv1.Subnet) error {
 		return fmt.Errorf("%s is not a valid gateway type", gwType)
 	}
 
+	protocol := subnet.Spec.Protocol
+	if protocol != "" && protocol != kubeovnv1.ProtocolIPv4 &&
+		protocol != kubeovnv1.ProtocolIPv6 &&
+		protocol != kubeovnv1.ProtocolDual {
+		return fmt.Errorf("%s is not a valid protocol type", protocol)
+	}
+
 	if subnet.Spec.Vpc == DefaultVpc {
 		k8sApiServer := os.Getenv("KUBERNETES_SERVICE_HOST")
 		if k8sApiServer != "" && CIDRContainIP(subnet.Spec.CIDRBlock, k8sApiServer) {
@@ -143,6 +150,13 @@ func ValidatePodNetwork(annotations map[string]string) error {
 	ipPool := annotations[IpPoolAnnotation]
 	if ipPool != "" {
 		for _, ips := range strings.Split(ipPool, ";") {
+			if cidrStr := annotations[CidrAnnotation]; cidrStr != "" {
+				if !CIDRContainIP(cidrStr, ips) {
+					errors = append(errors, fmt.Errorf("%s not in cidr %s", ips, cidrStr))
+					continue
+				}
+			}
+
 			for _, ip := range strings.Split(ips, ",") {
 				if net.ParseIP(strings.TrimSpace(ip)) == nil {
 					errors = append(errors, fmt.Errorf("%s in %s is not a valid address", ip, IpPoolAnnotation))
@@ -204,5 +218,47 @@ func ValidateCidrConflict(subnet kubeovnv1.Subnet, subnetList []kubeovnv1.Subnet
 			return err
 		}
 	}
+	return nil
+}
+
+func ValidateVpc(vpc *kubeovnv1.Vpc) error {
+	for _, item := range vpc.Spec.StaticRoutes {
+		if item.Policy != "" && item.Policy != kubeovnv1.PolicyDst && item.Policy != kubeovnv1.PolicySrc {
+			return fmt.Errorf("unknown policy type: %s", item.Policy)
+		}
+
+		if strings.Contains(item.CIDR, "/") {
+			if _, _, err := net.ParseCIDR(item.CIDR); err != nil {
+				return fmt.Errorf("invalid cidr %s: %w", item.CIDR, err)
+			}
+		} else if ip := net.ParseIP(item.CIDR); ip == nil {
+			return fmt.Errorf("invalid IP %s", item.CIDR)
+		}
+
+		if ip := net.ParseIP(item.NextHopIP); ip == nil {
+			return fmt.Errorf("invalid next hop IP %s", item.NextHopIP)
+		}
+	}
+
+	for _, item := range vpc.Spec.PolicyRoutes {
+		if item.Action != kubeovnv1.PolicyRouteActionReroute &&
+			item.Action != kubeovnv1.PolicyRouteActionAllow &&
+			item.Action != kubeovnv1.PolicyRouteActionDrop {
+			return fmt.Errorf("unknown policy action: %s", item.Action)
+		}
+
+		if item.Action == kubeovnv1.PolicyRouteActionReroute {
+			if ip := net.ParseIP(item.NextHopIP); ip == nil {
+				return fmt.Errorf("bad next hop ip: %s", item.NextHopIP)
+			}
+		}
+	}
+
+	for _, item := range vpc.Spec.VpcPeerings {
+		if err := CheckCidrs(item.LocalConnectIP); err != nil {
+			return fmt.Errorf("invalid cidr %s", item.LocalConnectIP)
+		}
+	}
+
 	return nil
 }

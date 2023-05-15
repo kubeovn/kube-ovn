@@ -168,12 +168,15 @@ func (c *Controller) processNextDelVlanWorkItem() bool {
 }
 
 func (c *Controller) handleAddVlan(key string) error {
+	c.vlanKeyMutex.LockKey(key)
+	defer func() { _ = c.vlanKeyMutex.UnlockKey(key) }()
+	klog.Infof("handle add vlan %s", key)
+
 	cachedVlan, err := c.vlansLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
-
 		return err
 	}
 
@@ -229,6 +232,10 @@ func (c *Controller) handleAddVlan(key string) error {
 }
 
 func (c *Controller) handleUpdateVlan(key string) error {
+	c.vlanKeyMutex.LockKey(key)
+	defer func() { _ = c.vlanKeyMutex.UnlockKey(key) }()
+	klog.Infof("handle update vlan %s", key)
+
 	vlan, err := c.vlansLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -263,6 +270,10 @@ func (c *Controller) handleUpdateVlan(key string) error {
 }
 
 func (c *Controller) handleDelVlan(key string) error {
+	c.vlanKeyMutex.LockKey(key)
+	defer func() { _ = c.vlanKeyMutex.UnlockKey(key) }()
+	klog.Infof("handle delete vlan %s", key)
+
 	subnet, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list subnets: %v", err)
@@ -302,14 +313,13 @@ func (c *Controller) updateProviderNetworkStatusForVlanDeletion(pn *kubeovnv1.Pr
 		klog.Errorf("failed to update status of provider network %s: %v", pn.Name, err)
 		return err
 	}
-
 	return nil
 }
 
 func (c *Controller) setLocalnetTag(subnet string, vlanID int) error {
 	localnetPort := ovs.GetLocalnetName(subnet)
-	if err := c.ovnLegacyClient.SetPortTag(localnetPort, vlanID); err != nil {
-		klog.Errorf("failed to set vlan tag of localnet port %s: %v", localnetPort, err)
+	if err := c.ovnClient.SetLogicalSwitchPortVlanTag(localnetPort, vlanID); err != nil {
+		klog.Errorf("set localnet port %s vlan tag %d: %v", localnetPort, vlanID, err)
 		return err
 	}
 
@@ -318,9 +328,8 @@ func (c *Controller) setLocalnetTag(subnet string, vlanID int) error {
 
 func (c *Controller) delLocalnet(subnet string) error {
 	localnetPort := ovs.GetLocalnetName(subnet)
-	klog.Infof("delete logical switch port %s", localnetPort)
-	if err := c.ovnLegacyClient.DeleteLogicalSwitchPort(localnetPort); err != nil {
-		klog.Errorf("failed to delete localnet port %s: %v", localnetPort, err)
+	if err := c.ovnClient.DeleteLogicalSwitchPort(localnetPort); err != nil {
+		klog.Errorf("delete localnet port %s: %v", localnetPort, err)
 		return err
 	}
 

@@ -2,13 +2,13 @@ package controller
 
 import (
 	"context"
-	"fmt"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog/v2"
 
 	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -83,7 +83,9 @@ func (c *Controller) syncExternalVpc() {
 
 func (c *Controller) getRouterStatus() (logicalRouters map[string]util.LogicalRouter, err error) {
 	logicalRouters = make(map[string]util.LogicalRouter)
-	externalOvnRouters, err := c.ovnLegacyClient.CustomFindEntity("logical_router", []string{"name", "port"}, fmt.Sprintf("external_ids{!=}vendor=%s", util.CniTypeName))
+	externalOvnRouters, err := c.ovnClient.ListLogicalRouter(false, func(lr *ovnnb.LogicalRouter) bool {
+		return len(lr.ExternalIDs) == 0 || lr.ExternalIDs["vendor"] != util.CniTypeName
+	})
 	if err != nil {
 		klog.Errorf("failed to list external logical router, %v", err)
 		return logicalRouters, err
@@ -93,30 +95,27 @@ func (c *Controller) getRouterStatus() (logicalRouters map[string]util.LogicalRo
 		return logicalRouters, nil
 	}
 
-	for _, aExternalRouter := range externalOvnRouters {
-		var aLogicalRouter util.LogicalRouter
-		aLogicalRouter.Name = aExternalRouter["name"][0]
-		var ports []util.Port
-		for _, portUUId := range aExternalRouter["port"] {
-			portName, err := c.ovnLegacyClient.GetEntityInfo("logical_router_port", portUUId, []string{"name"})
+	for _, externalLR := range externalOvnRouters {
+		lr := util.LogicalRouter{
+			Name:  externalLR.Name,
+			Ports: make([]util.Port, 0, len(externalLR.Ports)),
+		}
+		for _, uuid := range externalLR.Ports {
+			lrp, err := c.ovnClient.GetLogicalRouterPortByUUID(uuid)
 			if err != nil {
-				klog.Info("get port error")
+				klog.Warningf("failed to get LRP by UUID %s: %v", uuid, err)
 				continue
 			}
-			aPort := util.Port{
-				Name:   portName["name"],
-				Subnet: "",
-			}
-			ports = append(ports, aPort)
+			lr.Ports = append(lr.Ports, util.Port{Name: lrp.Name})
 		}
-		aLogicalRouter.Ports = ports
-		logicalRouters[aLogicalRouter.Name] = aLogicalRouter
+		logicalRouters[lr.Name] = lr
 	}
-	UUID := "_uuid"
 	for routerName, logicalRouter := range logicalRouters {
 		tmpRouter := logicalRouter
 		for _, port := range logicalRouter.Ports {
-			peerPorts, err := c.ovnLegacyClient.CustomFindEntity("logical_switch_port", []string{UUID}, fmt.Sprintf("options:router-port=%s", port.Name))
+			peerPorts, err := c.ovnClient.ListLogicalSwitchPorts(false, nil, func(lsp *ovnnb.LogicalSwitchPort) bool {
+				return len(lsp.Options) != 0 && lsp.Options["router-port"] == port.Name
+			})
 			if err != nil || len(peerPorts) > 1 {
 				klog.Errorf("failed to list peer port of %s, %v", port, err)
 				continue
@@ -124,13 +123,16 @@ func (c *Controller) getRouterStatus() (logicalRouters map[string]util.LogicalRo
 			if len(peerPorts) == 0 {
 				continue
 			}
-			switches, err := c.ovnLegacyClient.CustomFindEntity("logical_switch", []string{"name"}, fmt.Sprintf("ports{>=}%s", peerPorts[0][UUID][0]))
+			lsp := peerPorts[0]
+			switches, err := c.ovnClient.ListLogicalSwitch(false, func(ls *ovnnb.LogicalSwitch) bool {
+				return util.ContainsString(ls.Ports, lsp.UUID)
+			})
 			if err != nil || len(switches) > 1 {
-				klog.Errorf("failed to list peer switch of %s, %v", peerPorts, err)
+				klog.Errorf("failed to get logical switch of LSP %s: %v", lsp.Name, err)
 				continue
 			}
 			var aLogicalSwitch util.LogicalSwitch
-			aLogicalSwitch.Name = switches[0]["name"][0]
+			aLogicalSwitch.Name = switches[0].Name
 			tmpRouter.LogicalSwitches = append(tmpRouter.LogicalSwitches, aLogicalSwitch)
 		}
 		logicalRouters[routerName] = tmpRouter

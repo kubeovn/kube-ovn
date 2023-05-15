@@ -1,6 +1,8 @@
 name: Build Windows
 
 on:
+  workflow_dispatch:
+  release:
   pull_request:
     branches:
     - master
@@ -20,13 +22,54 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  GO_VERSION: '1.19'
-  GOSEC_VERSION: '2.13.1'
+  GOSEC_VERSION: '2.15.0'
 
 jobs:
+  filter:
+    name: Path Filter
+    runs-on: ubuntu-22.04
+    outputs:
+      build-ovs-ovn: ${{ steps.filter.outputs.windows-ovs-ovn }}
+      build-kube-ovn: ${{ steps.filter.outputs.windows-kube-ovn }}
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-go@v4
+        with:
+          go-version-file: go.mod
+          check-latest: true
+          cache: false
+
+      - name: Generate path filter
+        env:
+          GOOS: windows
+        run: |
+          filter=".github/path-filters.yaml"
+          workflow=$(echo ${{ github.workflow_ref }} | awk -F@ '{print $1}' | sed 's@^${{ github.repository }}/@@')
+          cat > $filter <<EOF
+          windows-ovs-ovn:
+          - $workflow
+          windows-kube-ovn:
+          - $workflow
+          - go.mod
+          - go.sum
+          EOF
+
+          sh hack/go-list.sh cmd/windows | while read f; do
+            echo "- $f" | tee -a $filter
+          done
+
+      - uses: dorny/paths-filter@v2
+        id: filter
+        with:
+          base: ${{ github.base_ref || github.ref_name }}
+          filters: .github/path-filters.yaml
+          list-files: csv
+
   build-ovs-and-ovn:
     name: Build OVS and OVN
+    needs: filter
     runs-on: windows-2019
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch' || needs.filter.outputs.build-ovs-ovn == 'true'
     steps:
       - name: Check out PTHREADS4W
         run: |
@@ -37,41 +80,38 @@ jobs:
         uses: actions/checkout@v3
         with:
           repository: openvswitch/ovs
-          ref: branch-2.17
+          ref: branch-3.1
           path: ovs
 
       - name: Check out OVN
         uses: actions/checkout@v3
         with:
           repository: ovn-org/ovn
-          ref: branch-22.03
+          ref: branch-22.12
           path: ovn
 
       - name: Apply OVS patches
         working-directory: ovs
         run: |
-          # ovsdb-idl: Support write-only-changed IDL monitor mode
-          Invoke-WebRequest -Uri "https://github.com/kubeovn/ovs/commit/03ce8faf7d0eb79d7dd99f4310dc15be160e92fc.patch" -OutFile ..\ovs-01.patch
           # fix kernel crash
-          Invoke-WebRequest -Uri "https://github.com/kubeovn/ovs/commit/64383c14a9c25e9e0ca53c6758d9499c60132536.patch" -OutFile ..\ovs-02.patch
+          Invoke-WebRequest -Uri "https://github.com/kubeovn/ovs/commit/64383c14a9c25e9e0ca53c6758d9499c60132536.patch" -OutFile ..\ovs-01.patch
           # support for building in github actions
-          Invoke-WebRequest -Uri "https://github.com/kubeovn/ovs/commit/08a95db2ca506fce4d89fdf4fafab74607b2bb9f.patch" -OutFile ..\ovs-03.patch
+          Invoke-WebRequest -Uri "https://github.com/kubeovn/ovs/commit/08a95db2ca506fce4d89fdf4fafab74607b2bb9f.patch" -OutFile ..\ovs-02.patch
           # listen on tcp 127.0.0.1:6643 by default
-          Invoke-WebRequest -Uri "https://github.com/kubeovn/ovs/commit/680e77a190ae7df3086bc35bb6150238e97f9020.patch" -OutFile ..\ovs-04.patch
+          Invoke-WebRequest -Uri "https://github.com/kubeovn/ovs/commit/680e77a190ae7df3086bc35bb6150238e97f9020.patch" -OutFile ..\ovs-03.patch
           git apply ..\ovs-01.patch
           git apply ..\ovs-02.patch
           git apply ..\ovs-03.patch
-          git apply ..\ovs-04.patch
 
       - name: Apply OVN patches
         working-directory: ovn
         run: |
           # change hash type from dp_hash to hash with field src_ip
-          Invoke-WebRequest -Uri "https://github.com/kubeovn/ovn/commit/ab923b252271cbbcccc8091e338ee7efe75e5fcd.patch" -OutFile ..\ovn-01.patch
+          Invoke-WebRequest -Uri "https://github.com/kubeovn/ovn/commit/ae04d5e75d443500d537084d7db466513f63a7af.patch" -OutFile ..\ovn-01.patch
           # add support for windows
-          Invoke-WebRequest -Uri "https://github.com/kubeovn/ovn/commit/700870525ffbbccb70c6b00ca0f807b2a387e6ee.patch" -OutFile ..\ovn-02.patch
+          Invoke-WebRequest -Uri "https://github.com/kubeovn/ovn/commit/05e57b322758461c54d5cad030486c3d25942c73.patch" -OutFile ..\ovn-02.patch
           # set br-int controller to TCP 127.0.0.1:6653
-          Invoke-WebRequest -Uri "https://github.com/kubeovn/ovn/commit/e498c03eda80248dd786775d8f7779d9b895e3ff.patch" -OutFile ..\ovn-03.patch
+          Invoke-WebRequest -Uri "https://github.com/kubeovn/ovn/commit/0181b68be18e96bc4ca68a0c3e5082da34c9dcdd.patch" -OutFile ..\ovn-03.patch
           git apply ..\ovn-01.patch
           git apply ..\ovn-02.patch
           git apply ..\ovn-03.patch
@@ -130,14 +170,16 @@ jobs:
 
   build-kube-ovn:
     name: Build Kube-OVN
+    needs: filter
     runs-on: windows-2019
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch' || needs.filter.outputs.build-kube-ovn == 'true'
     steps:
       - uses: actions/checkout@v3
-      - uses: actions/setup-go@v3
+      - uses: actions/setup-go@v4
         with:
-          go-version: '${{ env.GO_VERSION }}'
+          go-version-file: go.mod
           check-latest: true
-        id: go
+          cache: false
 
       - name: Export Go full version
         run: |
@@ -152,8 +194,7 @@ jobs:
             ~\AppData\Local\go-build
             ~\go\pkg\mod
           key: ${{ runner.os }}-${{ env.GO_FULL_VER }}-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ env.GO_FULL_VER }}-
+          restore-keys: ${{ runner.os }}-${{ env.GO_FULL_VER }}-
 
       - name: Install gosec
         run: |

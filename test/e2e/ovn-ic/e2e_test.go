@@ -42,9 +42,9 @@ func init() {
 	config.CopyFlags(config.Flags, flag.CommandLine)
 	k8sframework.RegisterCommonFlags(flag.CommandLine)
 	k8sframework.RegisterClusterFlags(flag.CommandLine)
+}
 
-	// Parse all the flags
-	flag.Parse()
+func TestE2E(t *testing.T) {
 	if k8sframework.TestContext.KubeConfig == "" {
 		k8sframework.TestContext.KubeConfig = filepath.Join(os.Getenv("HOME"), ".kube", "config")
 	}
@@ -52,14 +52,12 @@ func init() {
 
 	var err error
 	if clusters, err = kind.ListClusters(); err != nil {
-		panic(fmt.Sprintf("failed to list kind clusters: %v", err))
+		t.Fatalf("failed to list kind clusters: %v", err)
 	}
 	if len(clusters) < 2 {
-		panic("no enough kind clusters to run ovn-ic e2e testing")
+		t.Fatal("no enough kind clusters to run ovn-ic e2e testing")
 	}
-}
 
-func TestE2E(t *testing.T) {
 	e2e.RunE2ETests(t)
 }
 
@@ -171,6 +169,8 @@ var _ = framework.OrderedDescribe("[group:ovn-ic]", func() {
 	})
 
 	framework.ConformanceIt("should be able to update az name", func() {
+		frameworks[0].SkipVersionPriorTo(1, 11, "This feature was introduced in v1.11")
+
 		azNames := make([]string, len(clusters))
 		for i := range clusters {
 			ginkgo.By("fetching the ConfigMap in cluster " + clusters[i])
@@ -194,11 +194,11 @@ var _ = framework.OrderedDescribe("[group:ovn-ic]", func() {
 		ginkgo.By("Waiting for new az names to be applied")
 		time.Sleep(10 * time.Second)
 
-		pods, err := clientSets[0].CoreV1().Pods("kube-system").List(context.TODO(), metav1.ListOptions{LabelSelector: "app=ovs"})
+		pods, err := clientSets[0].CoreV1().Pods(framework.KubeOvnNamespace).List(context.TODO(), metav1.ListOptions{LabelSelector: "app=ovs"})
 		framework.ExpectNoError(err, "failed to get ovs-ovn pods")
 		cmd := "ovn-appctl -t ovn-controller inc-engine/recompute"
 		for _, pod := range pods.Items {
-			execPodOrDie(frameworks[0].KubeContext, "kube-system", pod.Name, cmd)
+			execPodOrDie(frameworks[0].KubeContext, pod.Namespace, pod.Name, cmd)
 		}
 		time.Sleep(2 * time.Second)
 

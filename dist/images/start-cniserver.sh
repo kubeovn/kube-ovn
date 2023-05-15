@@ -30,16 +30,16 @@ then
   rm ${CNI_SOCK}
 fi
 
-while true
-do
-  sleep 1
-  if [[ -e "$OVS_SOCK" ]]
-  then
-    break
-  else
-    echo "waiting for ovs ready"
+while true; do
+  if [[ -e "$OVS_SOCK" ]]; then
+    /usr/share/openvswitch/scripts/ovs-ctl status && break
   fi
+  echo "waiting for ovs ready"
+  sleep 1
 done
+
+# update links to point to the iptables binaries
+iptables -V
 
 # If nftables not exist do not exit
 set +e

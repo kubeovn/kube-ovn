@@ -14,12 +14,9 @@ on:
     - 'docs/**'
     - '**.md'
 
-concurrency: 
+concurrency:
   group: "${{ github.workflow }}-${{ github.ref }}"
   cancel-in-progress: true
-
-env:
-  GO_VERSION: '1.19'
 
 jobs:
   build:
@@ -32,15 +29,14 @@ jobs:
         with:
           platforms: arm64
 
-      - uses: actions/setup-go@v3
+      - uses: actions/setup-go@v4
         with:
-          go-version: '${{ env.GO_VERSION }}'
+          go-version-file: go.mod
           check-latest: true
-        id: go
+          cache: false
 
       - name: Export Go full version
-        run: |
-          echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
+        run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
 
       - name: Go Cache
         uses: actions/cache@v3
@@ -49,15 +45,13 @@ jobs:
             ~/.cache/go-build
             ~/go/pkg/mod
           key: ${{ runner.os }}-${{ env.GO_FULL_VER }}-arm64-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ env.GO_FULL_VER }}-arm64-
+          restore-keys: ${{ runner.os }}-${{ env.GO_FULL_VER }}-arm64-
 
       - name: Build
-        run: |
-          make release-arm || make release-arm
+        run: make release-arm || make release-arm
 
       - name: Push
-        if: ${{ github.ref == 'refs/heads/master' || contains(github.ref, 'release') }}
+        if: github.ref_name == github.event.repository.default_branch || startsWith(github.ref_name, 'release-')
         env:
           DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
           DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}

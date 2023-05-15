@@ -1,0 +1,140 @@
+kind: DaemonSet
+apiVersion: apps/v1
+metadata:
+  name: kube-ovn-pinger
+  namespace: {{ .Values.namespace }}
+  annotations:
+    kubernetes.io/description: |
+      This daemon set launches the openvswitch daemon.
+spec:
+  selector:
+    matchLabels:
+      app: kube-ovn-pinger
+  updateStrategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: kube-ovn-pinger
+        component: network
+        type: infra
+    spec:
+      priorityClassName: system-node-critical
+      serviceAccountName: ovn
+      hostPID: true
+      containers:
+        - name: pinger
+          image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}
+          command:
+          - /kube-ovn/kube-ovn-pinger
+          args:
+          - --external-address=
+          {{- if eq .Values.networking.NET_STACK "dual_stack" -}}
+          {{ .Values.dual_stack.PINGER_EXTERNAL_ADDRESS }} 
+          {{- else if eq .Values.networking.NET_STACK "ipv4" -}}
+          {{ .Values.ipv4.PINGER_EXTERNAL_ADDRESS }}
+          {{- else if eq .Values.networking.NET_STACK "ipv6" -}}
+          {{ .Values.ipv6.PINGER_EXTERNAL_ADDRESS }}
+          {{- end }}
+          - --external-dns=
+          {{- if eq .Values.networking.NET_STACK "dual_stack" -}}
+          {{ .Values.dual_stack.PINGER_EXTERNAL_DOMAIN }}
+          {{- else if eq .Values.networking.NET_STACK "ipv4" -}}
+          {{ .Values.ipv4.PINGER_EXTERNAL_DOMAIN }}
+          {{- else if eq .Values.networking.NET_STACK "ipv6" -}}
+          {{ .Values.ipv6.PINGER_EXTERNAL_DOMAIN }}
+          {{- end }}
+          - --logtostderr=false
+          - --alsologtostderr=true
+          - --log_file=/var/log/kube-ovn/kube-ovn-pinger.log
+          - --log_file_max_size=0
+          - --enable-metrics={{- .Values.networking.ENABLE_METRICS }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            runAsUser: 0
+            privileged: false
+          env:
+            - name: ENABLE_SSL
+              value: "{{ .Values.networking.ENABLE_SSL }}"
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: HOST_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          volumeMounts:
+            - mountPath: /lib/modules
+              name: host-modules
+              readOnly: true
+            - mountPath: /run/openvswitch
+              name: host-run-ovs
+            - mountPath: /var/run/openvswitch
+              name: host-run-ovs
+            - mountPath: /var/run/ovn
+              name: host-run-ovn
+            - mountPath: /sys
+              name: host-sys
+              readOnly: true
+            - mountPath: /etc/openvswitch
+              name: host-config-openvswitch
+            - mountPath: /var/log/openvswitch
+              name: host-log-ovs
+            - mountPath: /var/log/ovn
+              name: host-log-ovn
+            - mountPath: /var/log/kube-ovn
+              name: kube-ovn-log
+            - mountPath: /etc/localtime
+              name: localtime
+            - mountPath: /var/run/tls
+              name: kube-ovn-tls
+          resources:
+            requests:
+              cpu: {{ index .Values "kube-ovn-pinger" "requests" "cpu" }}
+              memory: {{ index .Values "kube-ovn-pinger" "requests" "memory" }}
+            limits:
+              cpu: {{ index .Values "kube-ovn-pinger" "limits" "cpu" }}
+              memory: {{ index .Values "kube-ovn-pinger" "limits" "memory" }}
+      nodeSelector:
+        kubernetes.io/os: "linux"
+      volumes:
+        - name: host-modules
+          hostPath:
+            path: /lib/modules
+        - name: host-run-ovs
+          hostPath:
+            path: /run/openvswitch
+        - name: host-run-ovn
+          hostPath:
+            path: /run/ovn
+        - name: host-sys
+          hostPath:
+            path: /sys
+        - name: host-config-openvswitch
+          hostPath:
+            path: /etc/origin/openvswitch
+        - name: host-log-ovs
+          hostPath:
+            path: /var/log/openvswitch
+        - name: kube-ovn-log
+          hostPath:
+            path: /var/log/kube-ovn
+        - name: host-log-ovn
+          hostPath:
+            path: /var/log/ovn
+        - name: localtime
+          hostPath:
+            path: /etc/localtime
+        - name: kube-ovn-tls
+          secret:
+            optional: true
+            secretName: kube-ovn-tls

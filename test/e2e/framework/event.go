@@ -16,9 +16,13 @@ type EventClient struct {
 }
 
 func (f *Framework) EventClient() *EventClient {
+	return f.EventClientNS(f.Namespace.Name)
+}
+
+func (f *Framework) EventClientNS(namespace string) *EventClient {
 	return &EventClient{
 		f:              f,
-		EventInterface: f.ClientSet.CoreV1().Events(f.Namespace.Name),
+		EventInterface: f.ClientSet.CoreV1().Events(namespace),
 	}
 }
 

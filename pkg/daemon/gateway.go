@@ -2,7 +2,6 @@ package daemon
 
 import (
 	"fmt"
-	"net"
 	"os/exec"
 	"strings"
 
@@ -45,14 +44,14 @@ func (c *Controller) setGatewayBandwidth() error {
 		klog.Errorf("failed to get node, %v", err)
 		return err
 	}
-	ingress, egress, priority := node.Annotations[util.IngressRateAnnotation], node.Annotations[util.EgressRateAnnotation], node.Annotations[util.PriorityAnnotation]
+	ingress, egress := node.Annotations[util.IngressRateAnnotation], node.Annotations[util.EgressRateAnnotation]
 	ifaceId := fmt.Sprintf("node-%s", c.config.NodeName)
-	if ingress == "" && egress == "" && priority == "" {
+	if ingress == "" && egress == "" {
 		if htbQos, _ := ovs.IsHtbQos(ifaceId); !htbQos {
 			return nil
 		}
 	}
-	return ovs.SetInterfaceBandwidth("", "", ifaceId, egress, ingress, priority)
+	return ovs.SetInterfaceBandwidth("", "", ifaceId, egress, ingress)
 }
 
 func (c *Controller) setICGateway() error {
@@ -96,7 +95,7 @@ func (c *Controller) getSubnetsNeedNAT(protocol string) ([]string, error) {
 		if subnet.DeletionTimestamp == nil &&
 			subnet.Spec.NatOutgoing &&
 			(subnet.Spec.Vlan == "" || subnet.Spec.LogicalGateway) &&
-			subnet.Spec.Vpc == util.DefaultVpc &&
+			subnet.Spec.Vpc == c.config.ClusterRouter &&
 			subnet.Spec.CIDRBlock != "" &&
 			(subnet.Spec.Protocol == kubeovnv1.ProtocolDual || subnet.Spec.Protocol == protocol) {
 			cidrBlock := getCidrByProtocol(subnet.Spec.CIDRBlock, protocol)
@@ -117,7 +116,7 @@ func (c *Controller) getSubnetsDistributedGateway(protocol string) ([]string, er
 	for _, subnet := range subnets {
 		if subnet.DeletionTimestamp == nil &&
 			(subnet.Spec.Vlan == "" || subnet.Spec.LogicalGateway) &&
-			subnet.Spec.Vpc == util.DefaultVpc &&
+			subnet.Spec.Vpc == c.config.ClusterRouter &&
 			subnet.Spec.CIDRBlock != "" &&
 			subnet.Spec.GatewayType == kubeovnv1.GWDistributedType &&
 			(subnet.Spec.Protocol == kubeovnv1.ProtocolDual || subnet.Spec.Protocol == protocol) {
@@ -138,24 +137,24 @@ func (c *Controller) getServicesCIDR(protocol string) []string {
 	return ret
 }
 
-func (c *Controller) getDefaultVpcSubnetsCIDR(protocol string) ([]string, error) {
+func (c *Controller) getDefaultVpcSubnetsCIDR(protocol string) ([]string, map[string]string, error) {
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
 		klog.Error("failed to list subnets")
-		return nil, err
+		return nil, nil, err
 	}
 
 	ret := make([]string, 0, len(subnets)+1)
-	if c.config.NodeLocalDnsIP != "" && net.ParseIP(c.config.NodeLocalDnsIP) != nil && util.CheckProtocol(c.config.NodeLocalDnsIP) == protocol {
-		ret = append(ret, c.config.NodeLocalDnsIP)
-	}
+	subnetMap := make(map[string]string, len(subnets)+1)
+
 	for _, subnet := range subnets {
-		if subnet.Spec.Vpc == util.DefaultVpc && (subnet.Spec.Vlan == "" || subnet.Spec.LogicalGateway) && subnet.Spec.CIDRBlock != "" {
+		if subnet.Spec.Vpc == c.config.ClusterRouter && (subnet.Spec.Vlan == "" || subnet.Spec.LogicalGateway) && subnet.Spec.CIDRBlock != "" {
 			cidrBlock := getCidrByProtocol(subnet.Spec.CIDRBlock, protocol)
 			ret = append(ret, cidrBlock)
+			subnetMap[subnet.Name] = cidrBlock
 		}
 	}
-	return ret, nil
+	return ret, subnetMap, nil
 }
 
 func (c *Controller) getOtherNodes(protocol string) ([]string, error) {
@@ -208,7 +207,7 @@ func (c *Controller) getEgressNatIpByNode(nodeName string) (map[string]string, e
 			(subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway) ||
 			subnet.Spec.GatewayType != kubeovnv1.GWCentralizedType ||
 			!util.GatewayContains(subnet.Spec.GatewayNode, nodeName) ||
-			subnet.Spec.Vpc != util.DefaultVpc {
+			subnet.Spec.Vpc != c.config.ClusterRouter {
 			continue
 		}
 

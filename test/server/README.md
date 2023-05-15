@@ -13,13 +13,14 @@ make kind-init kind-install
 
 # Build and deploy test-server
 make image-test
-kind load docker-image --name kube-ovn kubeovn/test:v1.11.0
+kind load docker-image --name kube-ovn kubeovn/test:v1.12.0
 kubectl apply -f test/server/test-server.yaml
-docker run -d --net=kind kubeovn/test:v1.11.0
+docker run --name kube-ovn-test -d --net=kind kubeovn/test:v1.12.0
+docker inspect kube-ovn-test -f '{{.NetworkSettings.Networks.kind.IPAddress}}'
 
 # Run test-server analysis tool in one terminal and reload kube-ovn in another terminal
-# terminal 1
-kubectl exec -it test-client -- ./test-server --remote-address=172.18.0.5 --output=json --duration-seconds=60
+# terminal 1 (replace 172.18.0.5/80 with the address/port you want to test)
+kubectl exec -it test-client -- ./test-server --remote-address=172.18.0.5 --remote-port=80 --output=json --duration-seconds=60
  
 # terminal 2
 kubectl ko reload
@@ -32,27 +33,25 @@ kubectl ko reload
 ICMP test result:
 
 | Scenario                          | Lost |
-|-----------------------------------|------|
+| --------------------------------- | ---- |
 | Pod address within same node      | 0    |
-| ovn0 address with in same node    | 13   |
-| Node address the Pod runs on      | 15   |
-| Pod address in another node       | 4    |
-| ovn0 address with in another node | 21   |
-| Node address of anther node       | 16   |
-| Address outside the cluster       | 32   |
+| ovn0 address with in same node    | 0    |
+| Node address the Pod runs on      | 1    |
+| Pod address in another node       | 0    |
+| ovn0 address with in another node | 0    |
+| Node address of another node      | 0    |
+| Address outside the cluster       | 0    |
 
 TCP test result:
 
-| Scenario                        | Retransmit | Connection Failure | Note             |
-|---------------------------------|------------|--------------------|------------------|
-| Pod address in another node     | 38         | 1                  |                  |
-| Service address                 | 86         | 0                  |                  |
-| Address outside the cluster     | 4          | 1                  |                  |
-| External visit NodePort address |            |                    | Connection Reset |
+| Scenario                        | Retransmit | Connection Failure | Note |
+| ------------------------------- | ---------- | ------------------ | ---- |
+| Pod address in another node     | 8          | 0                  |      |
+| Service address                 | 16         | 0                  |      |
+| Address outside the cluster     | 5          | 0                  |      |
+| External visit NodePort address | 0          | 0                  |      |
 
 ## TODO
 
-1. NodePort long connection will be reset which need further investigation.
-2. Traffic that go through ovn0 suffers higher lost, and it may be related to internal type port.
-3. Replace curl with ab to test high connection concurrency.
-4. Need to be tested in large scale cluster where kube-ovn reload might take much longer time.
+1. Replace curl with ab to test high connection concurrency.
+2. Need to be tested in large scale cluster where kube-ovn reload might take much longer time.

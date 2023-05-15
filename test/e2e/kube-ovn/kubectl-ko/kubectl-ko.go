@@ -2,6 +2,7 @@ package kubectl_ko
 
 import (
 	"fmt"
+	"math/rand"
 	"strings"
 
 	clientset "k8s.io/client-go/kubernetes"
@@ -31,27 +32,31 @@ var _ = framework.Describe("[group:kubectl-ko]", func() {
 
 	var cs clientset.Interface
 	var podClient *framework.PodClient
-	var namespaceName, kubectlConfig string
+	var namespaceName, podName, kubectlConfig string
 	ginkgo.BeforeEach(func() {
 		cs = f.ClientSet
 		podClient = f.PodClient()
 		namespaceName = f.Namespace.Name
+		podName = "pod-" + framework.RandomSuffix()
 		kubectlConfig = k8sframework.TestContext.KubeConfig
 		k8sframework.TestContext.KubeConfig = ""
 	})
 	ginkgo.AfterEach(func() {
 		k8sframework.TestContext.KubeConfig = kubectlConfig
+
+		ginkgo.By("Deleting pod " + podName)
+		podClient.DeleteSync(podName)
 	})
 
-	framework.ConformanceIt(`should succeed to execute "kubectl ko nbctl show"`, func() {
+	framework.ConformanceIt(`should support "kubectl ko nbctl show"`, func() {
 		execOrDie("ko nbctl show")
 	})
 
-	framework.ConformanceIt(`should succeed to execute "kubectl ko sbctl show"`, func() {
+	framework.ConformanceIt(`should support "kubectl ko sbctl show"`, func() {
 		execOrDie("ko sbctl show")
 	})
 
-	framework.ConformanceIt(`should succeed to execute "kubectl ko vsctl <node> show"`, func() {
+	framework.ConformanceIt(`should support "kubectl ko vsctl <node> show"`, func() {
 		ginkgo.By("Getting nodes")
 		nodeList, err := e2enode.GetReadySchedulableNodes(cs)
 		framework.ExpectNoError(err)
@@ -61,7 +66,7 @@ var _ = framework.Describe("[group:kubectl-ko]", func() {
 		}
 	})
 
-	framework.ConformanceIt(`should succeed to execute "kubectl ko ofctl <node> show br-int"`, func() {
+	framework.ConformanceIt(`should support "kubectl ko ofctl <node> show br-int"`, func() {
 		ginkgo.By("Getting nodes")
 		nodeList, err := e2enode.GetReadySchedulableNodes(cs)
 		framework.ExpectNoError(err)
@@ -71,7 +76,7 @@ var _ = framework.Describe("[group:kubectl-ko]", func() {
 		}
 	})
 
-	framework.ConformanceIt(`should succeed to execute "kubectl ko dpctl <node> show"`, func() {
+	framework.ConformanceIt(`should support "kubectl ko dpctl <node> show"`, func() {
 		ginkgo.By("Getting nodes")
 		nodeList, err := e2enode.GetReadySchedulableNodes(cs)
 		framework.ExpectNoError(err)
@@ -81,7 +86,7 @@ var _ = framework.Describe("[group:kubectl-ko]", func() {
 		}
 	})
 
-	framework.ConformanceIt(`should succeed to execute "kubectl ko appctl <node> list-commands"`, func() {
+	framework.ConformanceIt(`should support "kubectl ko appctl <node> list-commands"`, func() {
 		ginkgo.By("Getting nodes")
 		nodeList, err := e2enode.GetReadySchedulableNodes(cs)
 		framework.ExpectNoError(err)
@@ -91,7 +96,7 @@ var _ = framework.Describe("[group:kubectl-ko]", func() {
 		}
 	})
 
-	framework.ConformanceIt(`should succeed to execute "kubectl ko nb/sb status/backup"`, func() {
+	framework.ConformanceIt(`should support "kubectl ko nb/sb status/backup"`, func() {
 		databases := [...]string{"nb", "sb"}
 		actions := [...]string{"status", "backup"}
 		for _, db := range databases {
@@ -102,44 +107,140 @@ var _ = framework.Describe("[group:kubectl-ko]", func() {
 		}
 	})
 
-	framework.ConformanceIt(`should succeed to execute "kubectl ko tcpdump <pod> -c1"`, func() {
-		name := "pod-" + framework.RandomSuffix()
-		ginkgo.By("Creating pod " + name)
+	framework.ConformanceIt(`should support "kubectl ko tcpdump <pod> -c1"`, func() {
 		ping, target := "ping", targetIPv4
 		if f.IPv6() {
 			ping, target = "ping6", targetIPv6
 		}
 
+		ginkgo.By("Creating pod " + podName)
 		cmd := []string{"sh", "-c", fmt.Sprintf(`while true; do %s -c1 -w1 %s; sleep 1; done`, ping, target)}
-		pod := framework.MakePod(namespaceName, name, nil, nil, framework.BusyBoxImage, cmd, nil)
+		pod := framework.MakePod(namespaceName, podName, nil, nil, framework.BusyBoxImage, cmd, nil)
 		pod.Spec.TerminationGracePeriodSeconds = new(int64)
 		pod = podClient.CreateSync(pod)
 
 		execOrDie(fmt.Sprintf("ko tcpdump %s/%s -c1", pod.Namespace, pod.Name))
-
-		ginkgo.By("Deleting pod " + name)
-		podClient.DeleteSync(pod.Name)
 	})
 
-	framework.ConformanceIt(`should succeed to execute "kubectl ko trace <pod> <args...>"`, func() {
-		name := "pod-" + framework.RandomSuffix()
-		ginkgo.By("Creating pod " + name)
-		pod := framework.MakePod(namespaceName, name, nil, nil, "", nil, nil)
+	framework.ConformanceIt(`should support "kubectl ko trace <pod> <args...>"`, func() {
+		ginkgo.By("Creating pod " + podName)
+		pod := framework.MakePod(namespaceName, podName, nil, nil, "", nil, nil)
+		pod = podClient.CreateSync(pod)
+
+		supportARP := !f.VersionPriorTo(1, 11)
+		supportDstMAC := !f.VersionPriorTo(1, 10)
+		if !supportARP {
+			framework.Logf("Support for ARP was introduce in v1.11")
+		}
+		if !supportDstMAC {
+			framework.Logf("Support for destination MAC was introduce in v1.10")
+		}
+
+		for _, ip := range pod.Status.PodIPs {
+			target, testARP := targetIPv4, supportARP
+			if util.CheckProtocol(ip.IP) == apiv1.ProtocolIPv6 {
+				target, testARP = targetIPv6, false
+			}
+
+			targetMAC := util.GenerateMac()
+			prefix := fmt.Sprintf("ko trace %s/%s %s", pod.Namespace, pod.Name, target)
+			if testARP {
+				execOrDie(fmt.Sprintf("%s %s arp reply", prefix, targetMAC))
+			}
+
+			targetMACs := []string{"", targetMAC}
+			for _, mac := range targetMACs {
+				if mac != "" && !supportDstMAC {
+					continue
+				}
+				if testARP {
+					execOrDie(fmt.Sprintf("%s %s arp", prefix, mac))
+					execOrDie(fmt.Sprintf("%s %s arp request", prefix, mac))
+				}
+				execOrDie(fmt.Sprintf("%s %s icmp", prefix, mac))
+				execOrDie(fmt.Sprintf("%s %s tcp 80", prefix, mac))
+				execOrDie(fmt.Sprintf("%s %s udp 53", prefix, mac))
+			}
+		}
+	})
+
+	framework.ConformanceIt(`should support "kubectl ko trace <pod> <args...>" for pod with host network`, func() {
+		f.SkipVersionPriorTo(1, 12, "This feature was introduce in v1.12")
+
+		ginkgo.By("Creating pod " + podName + " with host network")
+		pod := framework.MakePod(namespaceName, podName, nil, nil, "", nil, nil)
+		pod.Spec.HostNetwork = true
 		pod = podClient.CreateSync(pod)
 
 		for _, ip := range pod.Status.PodIPs {
-			target := targetIPv4
+			target, testARP := targetIPv4, true
 			if util.CheckProtocol(ip.IP) == apiv1.ProtocolIPv6 {
-				target = targetIPv6
+				target, testARP = targetIPv6, false
 			}
 
+			targetMAC := util.GenerateMac()
 			prefix := fmt.Sprintf("ko trace %s/%s %s", pod.Namespace, pod.Name, target)
-			execOrDie(fmt.Sprintf("%s icmp", prefix))
-			execOrDie(fmt.Sprintf("%s tcp 80", prefix))
-			execOrDie(fmt.Sprintf("%s udp 53", prefix))
-		}
+			if testARP {
+				execOrDie(fmt.Sprintf("%s %s arp reply", prefix, targetMAC))
+			}
 
-		ginkgo.By("Deleting pod " + name)
-		podClient.DeleteSync(pod.Name)
+			targetMACs := []string{"", targetMAC}
+			for _, mac := range targetMACs {
+				if testARP {
+					execOrDie(fmt.Sprintf("%s %s arp", prefix, mac))
+					execOrDie(fmt.Sprintf("%s %s arp request", prefix, mac))
+				}
+				execOrDie(fmt.Sprintf("%s %s icmp", prefix, mac))
+				execOrDie(fmt.Sprintf("%s %s tcp 80", prefix, mac))
+				execOrDie(fmt.Sprintf("%s %s udp 53", prefix, mac))
+			}
+		}
+	})
+
+	framework.ConformanceIt(`should support "kubectl ko trace <node> <args...>"`, func() {
+		f.SkipVersionPriorTo(1, 12, "This feature was introduce in v1.12")
+
+		ginkgo.By("Getting nodes")
+		nodeList, err := e2enode.GetReadySchedulableNodes(cs)
+		framework.ExpectNoError(err)
+		framework.ExpectNotNil(nodeList)
+		framework.ExpectNotEmpty(nodeList.Items)
+		node := nodeList.Items[rand.Intn(len(nodeList.Items))]
+
+		nodeIPv4, nodeIPv6 := util.GetNodeInternalIP(node)
+		for _, ip := range []string{nodeIPv4, nodeIPv6} {
+			if ip == "" {
+				continue
+			}
+			target, testARP := targetIPv4, true
+			if util.CheckProtocol(ip) == apiv1.ProtocolIPv6 {
+				target, testARP = targetIPv6, false
+			}
+
+			targetMAC := util.GenerateMac()
+			prefix := fmt.Sprintf("ko trace node//%s %s", node.Name, target)
+			if testARP {
+				execOrDie(fmt.Sprintf("%s %s arp reply", prefix, targetMAC))
+			}
+
+			targetMACs := []string{"", targetMAC}
+			for _, mac := range targetMACs {
+				if testARP {
+					execOrDie(fmt.Sprintf("%s %s arp", prefix, mac))
+					execOrDie(fmt.Sprintf("%s %s arp request", prefix, mac))
+				}
+				execOrDie(fmt.Sprintf("%s %s icmp", prefix, mac))
+				execOrDie(fmt.Sprintf("%s %s tcp 80", prefix, mac))
+				execOrDie(fmt.Sprintf("%s %s udp 53", prefix, mac))
+			}
+		}
+	})
+
+	framework.ConformanceIt(`should support "kubectl ko log kube-ovn all"`, func() {
+		f.SkipVersionPriorTo(1, 12, "This feature was introduce in v1.12")
+		components := [...]string{"kube-ovn", "ovn", "ovs", "linux", "all"}
+		for _, component := range components {
+			execOrDie(fmt.Sprintf("ko log %s", component))
+		}
 	})
 })

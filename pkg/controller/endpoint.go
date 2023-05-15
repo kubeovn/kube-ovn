@@ -3,7 +3,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -91,7 +90,10 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
 		return nil
 	}
-	klog.Infof("update endpoint %s/%s", namespace, name)
+
+	c.epKeyMutex.LockKey(key)
+	defer func() { _ = c.epKeyMutex.UnlockKey(key) }()
+	klog.Infof("update add/update endpoint %s/%s", namespace, name)
 
 	ep, err := c.endpointsLister.Endpoints(namespace).Get(name)
 	if err != nil {
@@ -113,14 +115,8 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 	var LbIPs []string
 	if vip, ok := svc.Annotations[util.SwitchLBRuleVipsAnnotation]; ok {
 		LbIPs = []string{vip}
-	} else {
-		LbIPs = svc.Spec.ClusterIPs
-		if len(LbIPs) == 0 && svc.Spec.ClusterIP != "" && svc.Spec.ClusterIP != v1.ClusterIPNone {
-			LbIPs = []string{svc.Spec.ClusterIP}
-		}
-		if len(LbIPs) == 0 || LbIPs[0] == v1.ClusterIPNone {
-			return nil
-		}
+	} else if LbIPs = util.ServiceClusterIPs(*svc); len(LbIPs) == 0 {
+		return nil
 	}
 
 	pods, err := c.podsLister.Pods(namespace).List(labels.Set(svc.Spec.Selector).AsSelector())
@@ -154,7 +150,7 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 
 	if vpcName == "" {
 		if vpcName = svc.Annotations[util.VpcAnnotation]; vpcName == "" {
-			vpcName = util.DefaultVpc
+			vpcName = c.config.ClusterRouter
 		}
 	}
 
@@ -175,43 +171,42 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 		}
 	}
 
-	tcpLb, udpLb := vpc.Status.TcpLoadBalancer, vpc.Status.UdpLoadBalancer
+	tcpLb, udpLb, sctpLb := vpc.Status.TcpLoadBalancer, vpc.Status.UdpLoadBalancer, vpc.Status.SctpLoadBalancer
+	oldTcpLb, oldUdpLb, oldSctpLb := vpc.Status.TcpSessionLoadBalancer, vpc.Status.UdpSessionLoadBalancer, vpc.Status.SctpSessionLoadBalancer
 	if svc.Spec.SessionAffinity == v1.ServiceAffinityClientIP {
-		tcpLb, udpLb = vpc.Status.TcpSessionLoadBalancer, vpc.Status.UdpSessionLoadBalancer
+		tcpLb, udpLb, sctpLb, oldTcpLb, oldUdpLb, oldSctpLb = oldTcpLb, oldUdpLb, oldSctpLb, tcpLb, udpLb, sctpLb
 	}
 
 	for _, settingIP := range LbIPs {
 		for _, port := range svc.Spec.Ports {
+			var lb, oldLb string
+			switch port.Protocol {
+			case v1.ProtocolTCP:
+				lb, oldLb = tcpLb, oldTcpLb
+			case v1.ProtocolUDP:
+				lb, oldLb = udpLb, oldUdpLb
+			case v1.ProtocolSCTP:
+				lb, oldLb = sctpLb, oldSctpLb
+			}
+
 			vip := util.JoinHostPort(settingIP, port.Port)
 			backends := getServicePortBackends(ep, pods, port, settingIP)
-			if port.Protocol == v1.ProtocolTCP {
-				// for performance reason delete lb with no backends
-				if len(backends) != 0 {
-					err = c.ovnLegacyClient.CreateLoadBalancerRule(tcpLb, vip, backends, string(port.Protocol))
-					if err != nil {
-						klog.Errorf("failed to update vip %s to tcp lb, %v", vip, err)
-						return err
-					}
-				} else {
-					err = c.ovnLegacyClient.DeleteLoadBalancerVip(vip, tcpLb)
-					if err != nil {
-						klog.Errorf("failed to delete vip %s at tcp lb, %v", vip, err)
-						return err
-					}
+
+			// for performance reason delete lb with no backends
+			if len(backends) != 0 {
+				if err = c.ovnClient.LoadBalancerAddVip(lb, vip, backends...); err != nil {
+					klog.Errorf("failed to add vip %s with backends %s to LB %s: %v", vip, backends, lb, err)
+					return err
 				}
 			} else {
-				if len(backends) != 0 {
-					err = c.ovnLegacyClient.CreateLoadBalancerRule(udpLb, vip, backends, string(port.Protocol))
-					if err != nil {
-						klog.Errorf("failed to update vip %s to udp lb, %v", vip, err)
-						return err
-					}
-				} else {
-					err = c.ovnLegacyClient.DeleteLoadBalancerVip(vip, udpLb)
-					if err != nil {
-						klog.Errorf("failed to delete vip %s at udp lb, %v", vip, err)
-						return err
-					}
+				if err := c.ovnClient.LoadBalancerDeleteVip(lb, vip); err != nil {
+					klog.Errorf("failed to delete vip %s from LB %s: %v", vip, lb, err)
+					return err
+				}
+
+				if err := c.ovnClient.LoadBalancerDeleteVip(oldLb, vip); err != nil {
+					klog.Errorf("failed to delete vip %s from LB %s: %v", vip, lb, err)
+					return err
 				}
 			}
 		}
@@ -220,7 +215,7 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 	return nil
 }
 
-func getServicePortBackends(endpoints *v1.Endpoints, pods []*v1.Pod, servicePort v1.ServicePort, serviceIP string) string {
+func getServicePortBackends(endpoints *v1.Endpoints, pods []*v1.Pod, servicePort v1.ServicePort, serviceIP string) []string {
 	backends := []string{}
 	protocol := util.CheckProtocol(serviceIP)
 	for _, subset := range endpoints.Subsets {
@@ -237,7 +232,9 @@ func getServicePortBackends(endpoints *v1.Endpoints, pods []*v1.Pod, servicePort
 
 		for _, address := range subset.Addresses {
 			if address.TargetRef == nil || address.TargetRef.Kind != "Pod" {
-				backends = append(backends, util.JoinHostPort(address.IP, targetPort))
+				if util.CheckProtocol(address.IP) == protocol {
+					backends = append(backends, util.JoinHostPort(address.IP, targetPort))
+				}
 				continue
 			}
 
@@ -257,7 +254,7 @@ func getServicePortBackends(endpoints *v1.Endpoints, pods []*v1.Pod, servicePort
 					break
 				}
 			}
-			if ip == "" {
+			if ip == "" && util.CheckProtocol(address.IP) == protocol {
 				ip = address.IP
 			}
 			if ip != "" {
@@ -266,5 +263,5 @@ func getServicePortBackends(endpoints *v1.Endpoints, pods []*v1.Pod, servicePort
 		}
 	}
 
-	return strings.Join(backends, ",")
+	return backends
 }

@@ -1,5 +1,5 @@
 {%- if k8s_version is not defined -%}
-  {%- set k8s_version = "v1.26.0" -%}
+  {%- set k8s_version = "v1.26.3" -%}
 {%- endif -%}
 {%- if kube_proxy_mode is not defined -%}
   {%- set kube_proxy_mode = "ipvs" -%}
@@ -19,6 +19,12 @@
 {%- if api_server_port is not defined -%}
   {%- set api_server_port = 0 -%}
 {%- endif -%}
+{%- if pod_cidr_v4 is not defined -%}
+  {%- set pod_cidr_v4 = "10.16.0.0/16" -%}
+{%- endif -%}
+{%- if svc_cidr_v4 is not defined -%}
+  {%- set svc_cidr_v4 = "10.96.0.0/12" -%}
+{%- endif -%}
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 networking:
@@ -28,8 +34,8 @@ networking:
   apiServerAddress: {{ api_server_address }}
   apiServerPort: {{ api_server_port }}
 {%- if ip_family is equalto "ipv4" %}
-  podSubnet: "10.16.0.0/16"
-  serviceSubnet: "10.96.0.0/12"
+  podSubnet: {{ pod_cidr_v4 }}
+  serviceSubnet: {{ svc_cidr_v4 }}
 {%- elif ip_family is equalto "ipv6" %}
   podSubnet: "fd00:10:16::/64"
   serviceSubnet: "fd00:10:96::/112"

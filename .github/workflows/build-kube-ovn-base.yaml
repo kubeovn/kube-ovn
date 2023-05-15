@@ -1,5 +1,8 @@
 name: Build Base
-on: workflow_dispatch
+on:
+  workflow_dispatch:
+  schedule:
+  - cron: "20 19 * * *"
 
 jobs:
   build-amd64:

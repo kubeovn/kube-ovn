@@ -97,3 +97,13 @@ func shouldRetry(err error) (retry bool, retryAfter time.Duration) {
 
 	return false, 0
 }
+
+// WaitUntil waits the condition to be met
+func WaitUntil(cond func() (bool, error), condDesc string) {
+	if err := wait.PollImmediate(2*time.Second, timeout, cond); err != nil {
+		if IsTimeout(err) {
+			Failf("timed out while waiting for the condition to be met: %s", condDesc)
+		}
+		Fail(maybeTimeoutError(err, "waiting for the condition %q to be met", condDesc).Error())
+	}
+}

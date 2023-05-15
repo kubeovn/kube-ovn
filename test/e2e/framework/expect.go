@@ -67,7 +67,7 @@ func ExpectNoErrorWithOffset(offset int, err error, explain ...interface{}) {
 		}
 	}
 
-	// This intentionally doesn't use gomega.Expect. Instead we take
+	// This intentionally doesn't use gomega.Expect. Instead，we take
 	// full control over what information is presented where:
 	// - The complete error object is logged because it may contain
 	//   additional information that isn't included in its error
@@ -148,7 +148,7 @@ func ExpectFalse(actual interface{}, explain ...interface{}) {
 	gomega.ExpectWithOffset(1, actual).NotTo(gomega.BeTrue(), explain...)
 }
 
-// ExpectZero expects actual actual is the zero value for its type or actual is nil.
+// ExpectZero expects actual is the zero value for its type or actual is nil.
 func ExpectZero(actual interface{}, explain ...interface{}) {
 	gomega.ExpectWithOffset(1, actual).To(gomega.BeZero(), explain...)
 }
@@ -158,7 +158,7 @@ func ExpectNotZero(actual interface{}, explain ...interface{}) {
 	gomega.ExpectWithOffset(1, actual).NotTo(gomega.BeZero(), explain...)
 }
 
-// ExpectUUID expects that the given string is an UUID.
+// ExpectUUID expects that the given string is a UUID.
 func ExpectUUID(s string) {
 	ginkgo.By("verifying the string " + s + " is an UUID")
 	ExpectTrue(uuidRegex.MatchString(s))

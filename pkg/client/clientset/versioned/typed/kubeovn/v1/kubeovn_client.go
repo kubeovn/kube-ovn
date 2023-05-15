@@ -28,16 +28,17 @@ import (
 
 type KubeovnV1Interface interface {
 	RESTClient() rest.Interface
-	HtbQosesGetter
 	IPsGetter
 	IptablesDnatRulesGetter
 	IptablesEIPsGetter
 	IptablesFIPRulesGetter
 	IptablesSnatRulesGetter
+	OvnDnatRulesGetter
 	OvnEipsGetter
 	OvnFipsGetter
 	OvnSnatRulesGetter
 	ProviderNetworksGetter
+	QoSPoliciesGetter
 	SecurityGroupsGetter
 	SubnetsGetter
 	SwitchLBRulesGetter
@@ -51,10 +52,6 @@ type KubeovnV1Interface interface {
 // KubeovnV1Client is used to interact with features provided by the kubeovn.io group.
 type KubeovnV1Client struct {
 	restClient rest.Interface
-}
-
-func (c *KubeovnV1Client) HtbQoses() HtbQosInterface {
-	return newHtbQoses(c)
 }
 
 func (c *KubeovnV1Client) IPs() IPInterface {
@@ -77,6 +74,10 @@ func (c *KubeovnV1Client) IptablesSnatRules() IptablesSnatRuleInterface {
 	return newIptablesSnatRules(c)
 }
 
+func (c *KubeovnV1Client) OvnDnatRules() OvnDnatRuleInterface {
+	return newOvnDnatRules(c)
+}
+
 func (c *KubeovnV1Client) OvnEips() OvnEipInterface {
 	return newOvnEips(c)
 }
@@ -91,6 +92,10 @@ func (c *KubeovnV1Client) OvnSnatRules() OvnSnatRuleInterface {
 
 func (c *KubeovnV1Client) ProviderNetworks() ProviderNetworkInterface {
 	return newProviderNetworks(c)
+}
+
+func (c *KubeovnV1Client) QoSPolicies() QoSPolicyInterface {
+	return newQoSPolicies(c)
 }
 
 func (c *KubeovnV1Client) SecurityGroups() SecurityGroupInterface {

@@ -67,6 +67,10 @@ func (c *Controller) checkAttachNetwork(svc *corev1.Service) error {
 }
 
 func (c *Controller) genLbSvcDeployment(svc *corev1.Service) (dp *v1.Deployment) {
+	if err := c.resyncVpcNatImage(); err != nil {
+		klog.Errorf("failed to resync vpc nat config, err: %v", err)
+		return nil
+	}
 	replicas := int32(1)
 	name := genLbSvcDpName(svc.Name)
 	allowPrivilegeEscalation := true
@@ -75,11 +79,6 @@ func (c *Controller) genLbSvcDeployment(svc *corev1.Service) (dp *v1.Deployment)
 		"app":       name,
 		"namespace": svc.Namespace,
 		"service":   svc.Name,
-	}
-
-	image := "kubeovn/vpc-nat-gateway:v1.11.0"
-	if svc.Annotations[util.LbSvcPodImg] != "" {
-		image = svc.Annotations[util.LbSvcPodImg]
 	}
 
 	attachmentName, attachmentNs := parseAttachNetworkProvider(svc)
@@ -115,7 +114,7 @@ func (c *Controller) genLbSvcDeployment(svc *corev1.Service) (dp *v1.Deployment)
 					Containers: []corev1.Container{
 						{
 							Name:            "lb-svc",
-							Image:           image,
+							Image:           vpcNatImage,
 							Command:         []string{"bash"},
 							Args:            []string{"-c", "while true; do sleep 10000; done"},
 							ImagePullPolicy: corev1.PullIfNotPresent,
@@ -315,7 +314,7 @@ func (c *Controller) updatePodAttachNets(pod *corev1.Pod, svc *corev1.Service) e
 		case corev1.ProtocolTCP:
 			protocol = util.ProtocolTCP
 		case corev1.ProtocolUDP:
-			protocol = util.ProtocolTCP
+			protocol = util.ProtocolUDP
 		case corev1.ProtocolSCTP:
 			protocol = util.ProtocolSCTP
 		}

@@ -34,21 +34,33 @@ cat /proc/cmdline"
     exit 1
 fi
 
+function cgroup_match {
+  hash1=$(md5sum /proc/$1/cgroup | awk '{print $1}')
+  hash2=$(md5sum /proc/$2/cgroup | awk '{print $1}')
+  test -n "$hash1" -a "x$hash1" = "x$hash2"
+}
+
 function quit {
-  set +e
-  for netns in /var/run/netns/*; do
-    nsenter --net=$netns sysctl -w net.ipv4.neigh.eth0.base_reachable_time_ms=180000;
-    nsenter --net=$netns sysctl -w net.ipv4.neigh.eth0.gc_stale_time=180;
-  done
-  # If the arp is in stale or delay status, stop vswitchd will lead prob failed.
-  # Wait a while for prob ready.
-  # As the timeout has been increased existing entry will not change to stale or delay at the moment
-  sleep 5
-  /usr/share/ovn/scripts/grace_stop_ovn_controller
-  /usr/share/openvswitch/scripts/ovs-ctl stop
+  gen_name=$(kubectl -n $POD_NAMESPACE get pod $POD_NAME -o jsonpath='{.metadata.generateName}')
+  revision_hash=$(kubectl -n $POD_NAMESPACE get pod $POD_NAME -o jsonpath='{.metadata.labels.controller-revision-hash}')
+  revision=$(kubectl -n $POD_NAMESPACE get controllerrevision $gen_name$revision_hash -o jsonpath='{.revision}')
+  ds_name=${gen_name%-}
+  latest_revision=$(kubectl -n kube-system get controllerrevision --no-headers | awk '$2 == "daemonset.apps/'$ds_name'" {print $3}' | sort -nr | head -n1)
+  if [ "x$latest_revision" = "x$revision" ]; then
+    # stop ovn-controller/ovs only when the processes are in the same cgroup
+    pid=$(/usr/share/ovn/scripts/ovn-ctl status_controller | awk '{print $NF}')
+    if cgroup_match $pid self; then
+      /usr/share/ovn/scripts/grace_stop_ovn_controller
+      /usr/share/openvswitch/scripts/ovs-ctl stop
+    fi
+  fi
+
   exit 0
 }
 trap quit EXIT
+
+# update links to point to the iptables binaries
+iptables -V
 
 # Start ovsdb
 /usr/share/openvswitch/scripts/ovs-ctl restart --no-ovs-vswitchd --system-id=random
@@ -72,193 +84,31 @@ ovsdb_server_ctl="/var/run/openvswitch/ovsdb-server.$(cat /var/run/openvswitch/o
 ovs-appctl -t "$ovsdb_server_ctl" vlog/set jsonrpc:file:err
 ovs-appctl -t "$ovsdb_server_ctl" vlog/set reconnect:file:err
 
-function exchange_link_names() {
-  mappings=($(ovs-vsctl --if-exists get open . external-ids:ovn-bridge-mappings | tr -d '"' | tr ',' ' '))
-  bridges=($(ovs-vsctl --no-heading --columns=name find bridge external-ids:vendor=kube-ovn external-ids:exchange-link-name=true))
-  for br in ${bridges[@]}; do
-    provider=""
-    for m in ${mappings[*]}; do
-      if echo $m | grep -q ":$br"'$'; then
-        provider=${m%:$br}
-        break
-      fi
-    done
-    if [ "x$provider" = "x" ]; then
-      echo "error: failed to get provider name for bridge $br"
-      continue
-    fi
-
-    port="br-$provider"
-    if ip link show $port 2>/dev/null; then
-      echo "link $port already exists"
-      continue
-    fi
-    if ! ip link show $br 2>/dev/null; then
-      echo "link $br does not exists"
-      continue
-    fi
-
-    echo "change link name from $br to $port"
-    ipv4_routes=($(ip -4 route show dev $br | tr ' ' '#'))
-    ipv6_routes=($(ip -6 route show dev $br | tr ' ' '#'))
-    ip link set $br down
-    ip link set $br name $port
-    ip link set $port up
-
-    # transfer IPv4 routes
-    default_ipv4_routes=()
-    for route in ${ipv4_routes[@]}; do
-      r=$(echo $route | tr '#' ' ')
-      if echo $r | grep -q -w 'scope link'; then
-        printf "add/replace IPv4 route $r to $port\n"
-        ip -4 route replace $r dev $port
-      else
-        default_ipv4_routes=(${default_ipv4_routes[@]} $route)
-      fi
-    done
-    for route in ${default_ipv4_routes[@]}; do
-      r=$(echo $route | tr '#' ' ')
-      printf "add/replace IPv4 route $r to $port\n"
-      ip -4 route replace $r dev $port
-    done
-
-    # transfer IPv6 routes
-    default_ipv6_routes=()
-    for route in ${ipv6_routes[@]}; do
-      r=$(echo $route | tr '#' ' ')
-      if echo $r | grep -q -w 'scope link'; then
-        printf "add/replace IPv6 route $r to $port\n"
-        ip -6 route replace $r dev $port
-      else
-        default_ipv6_routes=(${default_ipv6_routes[@]} $route)
-      fi
-    done
-    for route in ${default_ipv6_routes[@]}; do
-      r=$(echo $route | tr '#' ' ')
-      printf "add/replace IPv6 route $r to $port\n"
-      ip -6 route replace $r dev $port
-    done
-  done
-}
-
-exchange_link_names
-
-function wait_flows_pre_check() {
-  local devices=""
-  local ips=($(echo $OVN_DB_IPS | sed 's/,/ /g'))
-  for ip in ${ips[*]}; do
-    devices="$devices $(ip route get $ip | grep -oE 'dev .+' | awk '{print $2}')"
-  done
-
+function handle_underlay_bridges() {
   bridges=($(ovs-vsctl --no-heading --columns=name find bridge external-ids:vendor=kube-ovn))
   for br in ${bridges[@]}; do
-    ports=($(ovs-vsctl list-ports $br))
-    for port in ${ports[@]}; do
-      if ! echo $devices | grep -qw "$port"; then
-        continue
-      fi
-
-      port_type=$(ovs-vsctl --no-heading --columns=type find interface name=$port)
-      if [ ! "x$port_type" = 'x""' ]; then
-        continue
-      fi
-
-      if ! ip link show $port | grep -qw "master ovs-system"; then
-        return 1
-      fi
-    done
+    if ! ip link show $br >/dev/null; then
+      # the bridge does not exist, leave it to be handled by kube-ovn-cni
+      echo "deleting ovs bridge $br"
+      ovs-vsctl --no-wait del-br $br
+    fi
   done
 
-  return 0
-}
-
-skip_wait_flows=0
-if ! wait_flows_pre_check; then
-  skip_wait_flows=1
-fi
-
-if [ $skip_wait_flows -eq 0 ]; then
-  # When ovs-vswitchd starts with this value set as true, it will neither flush or
-  # expire previously set datapath flows nor will it send and receive any
-  # packets to or from the datapath. Please check ovs-vswitchd.conf.db.5.txt
-  ovs-vsctl --no-wait set open_vswitch . other_config:flow-restore-wait="true"
-else
-  ovs-vsctl --no-wait set open_vswitch . other_config:flow-restore-wait="false"
-fi
-
-# Start vswitchd. restart will automatically set/unset flow-restore-wait which is not what we want
-/usr/share/openvswitch/scripts/ovs-ctl start --no-ovsdb-server --system-id=random --no-mlockall
-/usr/share/openvswitch/scripts/ovs-ctl --protocol=udp --dport=6081 enable-protocol
-
-sleep 1
-
-function handle_underlay_bridges() {
-    bridges=($(ovs-vsctl --no-heading --columns=name find bridge external-ids:vendor=kube-ovn))
-    for br in ${bridges[@]}; do
-        echo "handle bridge $br"
-        ip link set $br up
-
-        ports=($(ovs-vsctl list-ports $br))
-        for port in ${ports[@]}; do
-            port_type=$(ovs-vsctl --no-heading --columns=type find interface name=$port)
-            if [ ! "x$port_type" = 'x""' ]; then
-              continue
-            fi
-
-            echo "handle port $port on bridge $br"
-            ipv4_routes=($(ip -4 route show dev $port | tr ' ' '#'))
-            ipv6_routes=($(ip -6 route show dev $port | tr ' ' '#'))
-
-            set +o pipefail
-            addresses=($(ip addr show dev $port | grep -E '^\s*inet[6]?\s+' | grep -w global | awk '{print $2}'))
-            set -o pipefail
-
-            # transfer IP addresses
-            for addr in ${addresses[@]}; do
-                printf "delete address $addr on $port\n"
-                ip addr del $addr dev $port || true
-                printf "add/replace address $addr to $br\n"
-                ip addr replace $addr dev $br
-            done
-
-            # transfer IPv4 routes
-            default_ipv4_routes=()
-            for route in ${ipv4_routes[@]}; do
-                r=$(echo $route | tr '#' ' ')
-                if echo $r | grep -q -w 'scope link'; then
-                    printf "add/replace IPv4 route $r to $br\n"
-                    ip -4 route replace $r dev $br
-                else
-                    default_ipv4_routes=(${default_ipv4_routes[@]} $route)
-                fi
-            done
-            for route in ${default_ipv4_routes[@]}; do
-                r=$(echo $route | tr '#' ' ')
-                printf "add/replace IPv4 route $r to $br\n"
-                ip -4 route replace $r dev $br
-            done
-
-            # transfer IPv6 routes
-            default_ipv6_routes=()
-            for route in ${ipv6_routes[@]}; do
-                r=$(echo $route | tr '#' ' ')
-                if echo $r | grep -q -w 'scope link'; then
-                    printf "add/replace IPv6 route $r to $br\n"
-                    ip -6 route replace $r dev $br
-                else
-                    default_ipv6_routes=(${default_ipv6_routes[@]} $route)
-                fi
-            done
-            for route in ${default_ipv6_routes[@]}; do
-                r=$(echo $route | tr '#' ' ')
-                printf "add/replace IPv6 route $r to $br\n"
-                ip -6 route replace $r dev $br
-            done
-        done
-    done
+  bridges=($(ovs-vsctl --no-heading --columns=name find bridge external-ids:vendor=kube-ovn external-ids:exchange-link-name=true))
+  for br in ${bridges[@]}; do
+    if [ -z $(ip link show $br type openvswitch 2>/dev/null || true) ]; then
+      # the bridge does not exist, leave it to be handled by kube-ovn-cni
+      echo "deleting ovs bridge $br"
+      ovs-vsctl --no-wait del-br $br
+    fi
+  done
 }
 
 handle_underlay_bridges
+
+# Start vswitchd. restart will automatically set/unset flow-restore-wait which is not what we want
+/usr/share/openvswitch/scripts/ovs-ctl restart --no-ovsdb-server --system-id=random --no-mlockall
+/usr/share/openvswitch/scripts/ovs-ctl --protocol=udp --dport=6081 enable-protocol
 
 function gen_conn_str {
   if [[ -z "${OVN_DB_IPS}" ]]; then
@@ -290,29 +140,6 @@ if [[ "$ENABLE_SSL" == "false" ]]; then
 else
   /usr/share/ovn/scripts/ovn-ctl --ovn-controller-ssl-key=/var/run/tls/key --ovn-controller-ssl-cert=/var/run/tls/cert --ovn-controller-ssl-ca-cert=/var/run/tls/cacert restart_controller
 fi
-
-if [ $skip_wait_flows -eq 0 ]; then
-  # Wait ovn-controller finish init flow compute and update it to vswitchd,
-  # then update flow-restore-wait to indicate vswitchd to process flows
-  set +e
-  flow_num=$(ovs-ofctl dump-flows br-int | wc -l)
-  while [ $flow_num -le $FLOW_LIMIT ]
-  do
-    echo "$flow_num flows now, waiting for ovs-vswitchd flow ready"
-    sleep 1
-    flow_num=$(ovs-ofctl dump-flows br-int | wc -l)
-  done
-  set -e
-
-  ovs-vsctl --no-wait set open_vswitch . other_config:flow-restore-wait="false"
-fi
-
-set +e
-for netns in /var/run/netns/*; do
-  nsenter --net=$netns sysctl -w net.ipv4.neigh.eth0.base_reachable_time_ms=30000;
-  nsenter --net=$netns sysctl -w net.ipv4.neigh.eth0.gc_stale_time=60;
-done
-set -e
 
 chmod 600 /etc/openvswitch/*
 tail --follow=name --retry /var/log/ovn/ovn-controller.log

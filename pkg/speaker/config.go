@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"net"
 	"os"
 	"time"
 
@@ -39,6 +40,7 @@ type Configuration struct {
 	ClusterAs                   uint32
 	RouterId                    string
 	NeighborAddress             string
+	NeighborIPv6Address         string
 	NeighborAs                  uint32
 	AuthPassword                string
 	HoldTime                    float64
@@ -68,6 +70,7 @@ func ParseFlags() (*Configuration, error) {
 		argClusterAs                   = pflag.Uint32("cluster-as", DefaultBGPClusterAs, "The as number of container network, default 65000")
 		argRouterId                    = pflag.String("router-id", "", "The address for the speaker to use as router id, default the node ip")
 		argNeighborAddress             = pflag.String("neighbor-address", "", "The router address the speaker connects to.")
+		argNeighborIPv6Address         = pflag.String("neighbor-ipv6-address", "", "The router address the speaker connects to.")
 		argNeighborAs                  = pflag.Uint32("neighbor-as", DefaultBGPNeighborAs, "The router as number, default 65001")
 		argAuthPassword                = pflag.String("auth-password", "", "bgp peer auth password")
 		argHoldTime                    = pflag.Duration("holdtime", DefaultBGPHoldtime, "ovn-speaker goes down abnormally, the local saving time of BGP route will be affected.Holdtime must be in the range 3s to 65536s. (default 90s)")
@@ -98,6 +101,15 @@ func ParseFlags() (*Configuration, error) {
 	if ht > 65536 || ht < 3 {
 		return nil, errors.New("the bgp holdtime must be in the range 3s to 65536s")
 	}
+	if *argRouterId != "" && net.ParseIP(*argRouterId) == nil {
+		return nil, fmt.Errorf("invalid router-id format: %s", *argRouterId)
+	}
+	if *argNeighborAddress != "" && net.ParseIP(*argNeighborAddress).To4() == nil {
+		return nil, fmt.Errorf("invalid neighbor-address format: %s", *argNeighborAddress)
+	}
+	if *argNeighborIPv6Address != "" && net.ParseIP(*argNeighborIPv6Address).To16() == nil {
+		return nil, fmt.Errorf("invalid neighbor-ipv6-address format: %s", *argNeighborIPv6Address)
+	}
 
 	config := &Configuration{
 		AnnounceClusterIP:           *argAnnounceClusterIP,
@@ -106,6 +118,7 @@ func ParseFlags() (*Configuration, error) {
 		ClusterAs:                   *argClusterAs,
 		RouterId:                    *argRouterId,
 		NeighborAddress:             *argNeighborAddress,
+		NeighborIPv6Address:         *argNeighborIPv6Address,
 		NeighborAs:                  *argNeighborAs,
 		AuthPassword:                *argAuthPassword,
 		HoldTime:                    ht,
@@ -187,12 +200,20 @@ func (config *Configuration) checkGracefulRestartOptions() error {
 
 func (config *Configuration) initBgpServer() error {
 	maxSize := 256 << 20
+	peersMap := make(map[api.Family_Afi]string)
 	var listenPort int32 = -1
 	grpcOpts := []grpc.ServerOption{grpc.MaxRecvMsgSize(maxSize), grpc.MaxSendMsgSize(maxSize)}
 	s := gobgp.NewBgpServer(
 		gobgp.GrpcListenAddress(fmt.Sprintf("%s:%d", config.GrpcHost, config.GrpcPort)),
 		gobgp.GrpcOption(grpcOpts))
 	go s.Serve()
+
+	if config.NeighborAddress != "" {
+		peersMap[api.Family_AFI_IP] = config.NeighborAddress
+	}
+	if config.NeighborIPv6Address != "" {
+		peersMap[api.Family_AFI_IP6] = config.NeighborIPv6Address
+	}
 
 	if config.PassiveMode {
 		listenPort = bgp.BGP_PORT
@@ -207,57 +228,59 @@ func (config *Configuration) initBgpServer() error {
 	}); err != nil {
 		return err
 	}
-
-	peer := &api.Peer{
-		Timers: &api.Timers{Config: &api.TimersConfig{HoldTime: uint64(config.HoldTime)}},
-		Conf: &api.PeerConf{
-			NeighborAddress: config.NeighborAddress,
-			PeerAsn:         config.NeighborAs,
-		},
-		Transport: &api.Transport{
-			PassiveMode: config.PassiveMode,
-		},
-	}
-	if config.EbgpMultihopTtl != DefaultEbgpMultiHop {
-		peer.EbgpMultihop = &api.EbgpMultihop{
-			Enabled:     true,
-			MultihopTtl: uint32(config.EbgpMultihopTtl),
-		}
-	}
-	if config.AuthPassword != "" {
-		peer.Conf.AuthPassword = config.AuthPassword
-	}
-	if config.GracefulRestart {
-
-		if err := config.checkGracefulRestartOptions(); err != nil {
-			return err
-		}
-		peer.GracefulRestart = &api.GracefulRestart{
-			Enabled:         true,
-			RestartTime:     uint32(config.GracefulRestartTime.Seconds()),
-			DeferralTime:    uint32(config.GracefulRestartDeferralTime.Seconds()),
-			LocalRestarting: true,
-		}
-		peer.AfiSafis = []*api.AfiSafi{
-			{
-				Config: &api.AfiSafiConfig{
-					Family:  &api.Family{Afi: api.Family_AFI_IP, Safi: api.Family_SAFI_UNICAST},
-					Enabled: true,
-				},
-				MpGracefulRestart: &api.MpGracefulRestart{
-					Config: &api.MpGracefulRestartConfig{
-						Enabled: true,
-					},
-				},
+	for ipFamily, address := range peersMap {
+		peer := &api.Peer{
+			Timers: &api.Timers{Config: &api.TimersConfig{HoldTime: uint64(config.HoldTime)}},
+			Conf: &api.PeerConf{
+				NeighborAddress: address,
+				PeerAsn:         config.NeighborAs,
+			},
+			Transport: &api.Transport{
+				PassiveMode: config.PassiveMode,
 			},
 		}
+		if config.EbgpMultihopTtl != DefaultEbgpMultiHop {
+			peer.EbgpMultihop = &api.EbgpMultihop{
+				Enabled:     true,
+				MultihopTtl: uint32(config.EbgpMultihopTtl),
+			}
+		}
+		if config.AuthPassword != "" {
+			peer.Conf.AuthPassword = config.AuthPassword
+		}
+		if config.GracefulRestart {
+
+			if err := config.checkGracefulRestartOptions(); err != nil {
+				return err
+			}
+			peer.GracefulRestart = &api.GracefulRestart{
+				Enabled:         true,
+				RestartTime:     uint32(config.GracefulRestartTime.Seconds()),
+				DeferralTime:    uint32(config.GracefulRestartDeferralTime.Seconds()),
+				LocalRestarting: true,
+			}
+			peer.AfiSafis = []*api.AfiSafi{
+				{
+					Config: &api.AfiSafiConfig{
+						Family:  &api.Family{Afi: ipFamily, Safi: api.Family_SAFI_UNICAST},
+						Enabled: true,
+					},
+					MpGracefulRestart: &api.MpGracefulRestart{
+						Config: &api.MpGracefulRestartConfig{
+							Enabled: true,
+						},
+					},
+				},
+			}
+		}
+
+		if err := s.AddPeer(context.Background(), &api.AddPeerRequest{
+			Peer: peer,
+		}); err != nil {
+			return err
+		}
 	}
 
-	if err := s.AddPeer(context.Background(), &api.AddPeerRequest{
-		Peer: peer,
-	}); err != nil {
-		return err
-	}
 	config.BgpServer = s
 	return nil
 }

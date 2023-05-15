@@ -18,7 +18,10 @@ LS_DNAT_MOD_DL_DST=${LS_DNAT_MOD_DL_DST:-true}
 ENABLE_EXTERNAL_VPC=${ENABLE_EXTERNAL_VPC:-true}
 CNI_CONFIG_PRIORITY=${CNI_CONFIG_PRIORITY:-01}
 ENABLE_LB_SVC=${ENABLE_LB_SVC:-false}
+ENABLE_NAT_GW=${ENABLE_NAT_GW:-false}
 ENABLE_KEEP_VM_IP=${ENABLE_KEEP_VM_IP:-true}
+ENABLE_ARP_DETECT_IP_CONFLICT=${ENABLE_ARP_DETECT_IP_CONFLICT:-true}
+NODE_LOCAL_DNS_IP=${NODE_LOCAL_DNS_IP:-}
 # exchange link names of OVS bridge and the provider nic
 # in the default provider-network
 EXCHANGE_LINK_NAME=${EXCHANGE_LINK_NAME:-false}
@@ -26,14 +29,17 @@ EXCHANGE_LINK_NAME=${EXCHANGE_LINK_NAME:-false}
 # separated by comma, if empty will use the nic that the default route use
 IFACE=${IFACE:-}
 # Specifies the name of the dpdk tunnel iface.
-# Note that the dpdk tunnel iface and tunnel ip cidr should be diffierent with Kubernetes api cidr,otherwise the route will be a problem.
+# Note that the dpdk tunnel iface and tunnel ip cidr should be diffierent with Kubernetes api cidr, otherwise the route will be a problem.
 DPDK_TUNNEL_IFACE=${DPDK_TUNNEL_IFACE:-br-phy}
 ENABLE_BIND_LOCAL_IP=${ENABLE_BIND_LOCAL_IP:-true}
+
+KUBELET_DIR=${KUBELET_DIR:-/var/lib/kubelet}
 
 CNI_CONF_DIR="/etc/cni/net.d"
 CNI_BIN_DIR="/opt/cni/bin"
 
-REGISTRY="kubeovn"
+REGISTRY="docker.io/kubeovn"
+VPC_NAT_IMAGE="vpc-nat-gateway"
 VERSION="v1.12.0"
 IMAGE_PULL_POLICY="IfNotPresent"
 POD_CIDR="10.16.0.0/16"                # Do NOT overlap with NODE/SVC/JOIN CIDR
@@ -44,18 +50,18 @@ PINGER_EXTERNAL_ADDRESS="114.114.114.114"  # Pinger check external ip probe
 PINGER_EXTERNAL_DOMAIN="alauda.cn"         # Pinger check external domain probe
 SVC_YAML_IPFAMILYPOLICY=""
 if [ "$IPV6" = "true" ]; then
-  POD_CIDR="fd00:10:16::/64"                # Do NOT overlap with NODE/SVC/JOIN CIDR
+  POD_CIDR="fd00:10:16::/112"                # Do NOT overlap with NODE/SVC/JOIN CIDR
   POD_GATEWAY="fd00:10:16::1"
   SVC_CIDR="fd00:10:96::/112"               # Do NOT overlap with NODE/POD/JOIN CIDR
-  JOIN_CIDR="fd00:100:64::/64"              # Do NOT overlap with NODE/POD/SVC CIDR
+  JOIN_CIDR="fd00:100:64::/112"              # Do NOT overlap with NODE/POD/SVC CIDR
   PINGER_EXTERNAL_ADDRESS="2400:3200::1"
   PINGER_EXTERNAL_DOMAIN="google.com"
 fi
 if [ "$DUAL_STACK" = "true" ]; then
-  POD_CIDR="10.16.0.0/16,fd00:10:16::/64"                # Do NOT overlap with NODE/SVC/JOIN CIDR
+  POD_CIDR="10.16.0.0/16,fd00:10:16::/112"                # Do NOT overlap with NODE/SVC/JOIN CIDR
   POD_GATEWAY="10.16.0.1,fd00:10:16::1"
   SVC_CIDR="10.96.0.0/12,fd00:10:96::/112"               # Do NOT overlap with NODE/POD/JOIN CIDR
-  JOIN_CIDR="100.64.0.0/16,fd00:100:64::/64"             # Do NOT overlap with NODE/POD/SVC CIDR
+  JOIN_CIDR="100.64.0.0/16,fd00:100:64::/112"             # Do NOT overlap with NODE/POD/SVC CIDR
   PINGER_EXTERNAL_ADDRESS="114.114.114.114,2400:3200::1"
   PINGER_EXTERNAL_DOMAIN="google.com"
   SVC_YAML_IPFAMILYPOLICY="ipFamilyPolicy: PreferDualStack"
@@ -209,7 +215,7 @@ echo "-------------------------------"
 echo ""
 
 echo "[Step 2/6] Install OVN components"
-addresses=$(kubectl get no -lkube-ovn/role=master --no-headers -o wide | awk '{print $6}' | tr \\n ',')
+addresses=$(kubectl get no -lkube-ovn/role=master --no-headers -o wide | awk '{print $6}' | tr \\n ',' | sed 's/,$//')
 count=$(kubectl get no -lkube-ovn/role=master --no-headers | wc -l)
 echo "Install OVN DB in $addresses"
 
@@ -381,23 +387,25 @@ spec:
       name: v1
       served: true
       storage: true
+      subresources:
+        status: {}
       schema:
         openAPIV3Schema:
           type: object
           properties:
-            spec:
+            status:
               type: object
               properties:
-                lanIp:
-                  type: string
-                subnet:
-                  type: string
-                vpc:
-                  type: string
+                externalSubnets:
+                  items:
+                    type: string
+                  type: array
                 selector:
                   type: array
                   items:
                     type: string
+                qosPolicy:
+                  type: string
                 tolerations:
                   type: array
                   items:
@@ -407,12 +415,600 @@ spec:
                         type: string
                       operator:
                         type: string
+                        enum:
+                          - Equal
+                          - Exists
                       value:
                         type: string
                       effect:
                         type: string
+                        enum:
+                          - NoExecute
+                          - NoSchedule
+                          - PreferNoSchedule
                       tolerationSeconds:
                         type: integer
+                affinity:
+                  properties:
+                    nodeAffinity:
+                      properties:
+                        preferredDuringSchedulingIgnoredDuringExecution:
+                          items:
+                            properties:
+                              preference:
+                                properties:
+                                  matchExpressions:
+                                    items:
+                                      properties:
+                                        key:
+                                          type: string
+                                        operator:
+                                          type: string
+                                        values:
+                                          items:
+                                            type: string
+                                          type: array
+                                      required:
+                                        - key
+                                        - operator
+                                      type: object
+                                    type: array
+                                  matchFields:
+                                    items:
+                                      properties:
+                                        key:
+                                          type: string
+                                        operator:
+                                          type: string
+                                        values:
+                                          items:
+                                            type: string
+                                          type: array
+                                      required:
+                                        - key
+                                        - operator
+                                      type: object
+                                    type: array
+                                type: object
+                              weight:
+                                format: int32
+                                type: integer
+                            required:
+                              - preference
+                              - weight
+                            type: object
+                          type: array
+                        requiredDuringSchedulingIgnoredDuringExecution:
+                          properties:
+                            nodeSelectorTerms:
+                              items:
+                                properties:
+                                  matchExpressions:
+                                    items:
+                                      properties:
+                                        key:
+                                          type: string
+                                        operator:
+                                          type: string
+                                        values:
+                                          items:
+                                            type: string
+                                          type: array
+                                      required:
+                                        - key
+                                        - operator
+                                      type: object
+                                    type: array
+                                  matchFields:
+                                    items:
+                                      properties:
+                                        key:
+                                          type: string
+                                        operator:
+                                          type: string
+                                        values:
+                                          items:
+                                            type: string
+                                          type: array
+                                      required:
+                                        - key
+                                        - operator
+                                      type: object
+                                    type: array
+                                type: object
+                              type: array
+                          required:
+                            - nodeSelectorTerms
+                          type: object
+                      type: object
+                    podAffinity:
+                      properties:
+                        preferredDuringSchedulingIgnoredDuringExecution:
+                          items:
+                            properties:
+                              podAffinityTerm:
+                                properties:
+                                  labelSelector:
+                                    properties:
+                                      matchExpressions:
+                                        items:
+                                          properties:
+                                            key:
+                                              type: string
+                                              x-kubernetes-patch-strategy: merge
+                                              x-kubernetes-patch-merge-key: key
+                                            operator:
+                                              type: string
+                                            values:
+                                              items:
+                                                type: string
+                                              type: array
+                                          required:
+                                            - key
+                                            - operator
+                                          type: object
+                                        type: array
+                                      matchLabels:
+                                        additionalProperties:
+                                          type: string
+                                        type: object
+                                    type: object
+                                  namespaces:
+                                    items:
+                                      type: string
+                                    type: array
+                                  topologyKey:
+                                    type: string
+                                required:
+                                  - topologyKey
+                                type: object
+                              weight:
+                                format: int32
+                                type: integer
+                            required:
+                              - podAffinityTerm
+                              - weight
+                            type: object
+                          type: array
+                        requiredDuringSchedulingIgnoredDuringExecution:
+                          items:
+                            properties:
+                              labelSelector:
+                                properties:
+                                  matchExpressions:
+                                    items:
+                                      properties:
+                                        key:
+                                          type: string
+                                          x-kubernetes-patch-strategy: merge
+                                          x-kubernetes-patch-merge-key: key
+                                        operator:
+                                          type: string
+                                        values:
+                                          items:
+                                            type: string
+                                          type: array
+                                      required:
+                                        - key
+                                        - operator
+                                      type: object
+                                    type: array
+                                  matchLabels:
+                                    additionalProperties:
+                                      type: string
+                                    type: object
+                                type: object
+                              namespaces:
+                                items:
+                                  type: string
+                                type: array
+                              topologyKey:
+                                type: string
+                            required:
+                              - topologyKey
+                            type: object
+                          type: array
+                      type: object
+                    podAntiAffinity:
+                      properties:
+                        preferredDuringSchedulingIgnoredDuringExecution:
+                          items:
+                            properties:
+                              podAffinityTerm:
+                                properties:
+                                  labelSelector:
+                                    properties:
+                                      matchExpressions:
+                                        items:
+                                          properties:
+                                            key:
+                                              type: string
+                                              x-kubernetes-patch-strategy: merge
+                                              x-kubernetes-patch-merge-key: key
+                                            operator:
+                                              type: string
+                                            values:
+                                              items:
+                                                type: string
+                                              type: array
+                                          required:
+                                            - key
+                                            - operator
+                                          type: object
+                                        type: array
+                                      matchLabels:
+                                        additionalProperties:
+                                          type: string
+                                        type: object
+                                    type: object
+                                  namespaces:
+                                    items:
+                                      type: string
+                                    type: array
+                                  topologyKey:
+                                    type: string
+                                required:
+                                  - topologyKey
+                                type: object
+                              weight:
+                                format: int32
+                                type: integer
+                            required:
+                              - podAffinityTerm
+                              - weight
+                            type: object
+                          type: array
+                        requiredDuringSchedulingIgnoredDuringExecution:
+                          items:
+                            properties:
+                              labelSelector:
+                                properties:
+                                  matchExpressions:
+                                    items:
+                                      properties:
+                                        key:
+                                          type: string
+                                          x-kubernetes-patch-strategy: merge
+                                          x-kubernetes-patch-merge-key: key
+                                        operator:
+                                          type: string
+                                        values:
+                                          items:
+                                            type: string
+                                          type: array
+                                      required:
+                                        - key
+                                        - operator
+                                      type: object
+                                    type: array
+                                  matchLabels:
+                                    additionalProperties:
+                                      type: string
+                                    type: object
+                                type: object
+                              namespaces:
+                                items:
+                                  type: string
+                                type: array
+                              topologyKey:
+                                type: string
+                            required:
+                              - topologyKey
+                            type: object
+                          type: array
+                      type: object
+                  type: object
+            spec:
+              type: object
+              properties:
+                lanIp:
+                  type: string
+                subnet:
+                  type: string
+                externalSubnets:
+                  items:
+                    type: string
+                  type: array
+                vpc:
+                  type: string
+                selector:
+                  type: array
+                  items:
+                    type: string
+                qosPolicy:
+                  type: string
+                tolerations:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      key:
+                        type: string
+                      operator:
+                        type: string
+                        enum:
+                          - Equal
+                          - Exists
+                      value:
+                        type: string
+                      effect:
+                        type: string
+                        enum:
+                          - NoExecute
+                          - NoSchedule
+                          - PreferNoSchedule
+                      tolerationSeconds:
+                        type: integer
+                affinity:
+                  properties:
+                    nodeAffinity:
+                      properties:
+                        preferredDuringSchedulingIgnoredDuringExecution:
+                          items:
+                            properties:
+                              preference:
+                                properties:
+                                  matchExpressions:
+                                    items:
+                                      properties:
+                                        key:
+                                          type: string
+                                        operator:
+                                          type: string
+                                        values:
+                                          items:
+                                            type: string
+                                          type: array
+                                      required:
+                                        - key
+                                        - operator
+                                      type: object
+                                    type: array
+                                  matchFields:
+                                    items:
+                                      properties:
+                                        key:
+                                          type: string
+                                        operator:
+                                          type: string
+                                        values:
+                                          items:
+                                            type: string
+                                          type: array
+                                      required:
+                                        - key
+                                        - operator
+                                      type: object
+                                    type: array
+                                type: object
+                              weight:
+                                format: int32
+                                type: integer
+                            required:
+                              - preference
+                              - weight
+                            type: object
+                          type: array
+                        requiredDuringSchedulingIgnoredDuringExecution:
+                          properties:
+                            nodeSelectorTerms:
+                              items:
+                                properties:
+                                  matchExpressions:
+                                    items:
+                                      properties:
+                                        key:
+                                          type: string
+                                        operator:
+                                          type: string
+                                        values:
+                                          items:
+                                            type: string
+                                          type: array
+                                      required:
+                                        - key
+                                        - operator
+                                      type: object
+                                    type: array
+                                  matchFields:
+                                    items:
+                                      properties:
+                                        key:
+                                          type: string
+                                        operator:
+                                          type: string
+                                        values:
+                                          items:
+                                            type: string
+                                          type: array
+                                      required:
+                                        - key
+                                        - operator
+                                      type: object
+                                    type: array
+                                type: object
+                              type: array
+                          required:
+                            - nodeSelectorTerms
+                          type: object
+                      type: object
+                    podAffinity:
+                      properties:
+                        preferredDuringSchedulingIgnoredDuringExecution:
+                          items:
+                            properties:
+                              podAffinityTerm:
+                                properties:
+                                  labelSelector:
+                                    properties:
+                                      matchExpressions:
+                                        items:
+                                          properties:
+                                            key:
+                                              type: string
+                                              x-kubernetes-patch-strategy: merge
+                                              x-kubernetes-patch-merge-key: key
+                                            operator:
+                                              type: string
+                                            values:
+                                              items:
+                                                type: string
+                                              type: array
+                                          required:
+                                            - key
+                                            - operator
+                                          type: object
+                                        type: array
+                                      matchLabels:
+                                        additionalProperties:
+                                          type: string
+                                        type: object
+                                    type: object
+                                  namespaces:
+                                    items:
+                                      type: string
+                                    type: array
+                                  topologyKey:
+                                    type: string
+                                required:
+                                  - topologyKey
+                                type: object
+                              weight:
+                                format: int32
+                                type: integer
+                            required:
+                              - podAffinityTerm
+                              - weight
+                            type: object
+                          type: array
+                        requiredDuringSchedulingIgnoredDuringExecution:
+                          items:
+                            properties:
+                              labelSelector:
+                                properties:
+                                  matchExpressions:
+                                    items:
+                                      properties:
+                                        key:
+                                          type: string
+                                          x-kubernetes-patch-strategy: merge
+                                          x-kubernetes-patch-merge-key: key
+                                        operator:
+                                          type: string
+                                        values:
+                                          items:
+                                            type: string
+                                          type: array
+                                      required:
+                                        - key
+                                        - operator
+                                      type: object
+                                    type: array
+                                  matchLabels:
+                                    additionalProperties:
+                                      type: string
+                                    type: object
+                                type: object
+                              namespaces:
+                                items:
+                                  type: string
+                                type: array
+                              topologyKey:
+                                type: string
+                            required:
+                              - topologyKey
+                            type: object
+                          type: array
+                      type: object
+                    podAntiAffinity:
+                      properties:
+                        preferredDuringSchedulingIgnoredDuringExecution:
+                          items:
+                            properties:
+                              podAffinityTerm:
+                                properties:
+                                  labelSelector:
+                                    properties:
+                                      matchExpressions:
+                                        items:
+                                          properties:
+                                            key:
+                                              type: string
+                                              x-kubernetes-patch-strategy: merge
+                                              x-kubernetes-patch-merge-key: key
+                                            operator:
+                                              type: string
+                                            values:
+                                              items:
+                                                type: string
+                                              type: array
+                                          required:
+                                            - key
+                                            - operator
+                                          type: object
+                                        type: array
+                                      matchLabels:
+                                        additionalProperties:
+                                          type: string
+                                        type: object
+                                    type: object
+                                  namespaces:
+                                    items:
+                                      type: string
+                                    type: array
+                                  topologyKey:
+                                    type: string
+                                required:
+                                  - topologyKey
+                                type: object
+                              weight:
+                                format: int32
+                                type: integer
+                            required:
+                              - podAffinityTerm
+                              - weight
+                            type: object
+                          type: array
+                        requiredDuringSchedulingIgnoredDuringExecution:
+                          items:
+                            properties:
+                              labelSelector:
+                                properties:
+                                  matchExpressions:
+                                    items:
+                                      properties:
+                                        key:
+                                          type: string
+                                          x-kubernetes-patch-strategy: merge
+                                          x-kubernetes-patch-merge-key: key
+                                        operator:
+                                          type: string
+                                        values:
+                                          items:
+                                            type: string
+                                          type: array
+                                      required:
+                                        - key
+                                        - operator
+                                      type: object
+                                    type: array
+                                  matchLabels:
+                                    additionalProperties:
+                                      type: string
+                                    type: object
+                                type: object
+                              namespaces:
+                                items:
+                                  type: string
+                                type: array
+                              topologyKey:
+                                type: string
+                            required:
+                              - topologyKey
+                            type: object
+                          type: array
+                      type: object
+                  type: object
 ---
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
@@ -465,6 +1061,8 @@ spec:
                   type: string
                 redo:
                   type: string
+                qosPolicy:
+                  type: string
                 conditions:
                   type: array
                   items:
@@ -492,6 +1090,10 @@ spec:
                 macAddress:
                   type: string
                 natGwDp:
+                  type: string
+                qosPolicy:
+                  type: string
+                externalSubnet:
                   type: string
 ---
 apiVersion: apiextensions.k8s.io/v1
@@ -549,6 +1151,8 @@ spec:
                 natGwDp:
                   type: string
                 redo:
+                  type: string
+                internalIp:
                   type: string
                 conditions:
                   type: array
@@ -640,6 +1244,14 @@ spec:
                   type: string
                 redo:
                   type: string
+                protocol:
+                  type: string
+                internalIp:
+                  type: string
+                internalPort:
+                  type: string
+                externalPort:
+                  type: string
                 conditions:
                   type: array
                   items:
@@ -727,6 +1339,8 @@ spec:
                   type: string
                 redo:
                   type: string
+                internalCIDR:
+                  type: string
                 conditions:
                   type: array
                   items:
@@ -773,15 +1387,21 @@ spec:
       subresources:
         status: {}
       additionalPrinterColumns:
-      - jsonPath: .spec.v4ip
-        name: IP
+      - jsonPath: .status.v4Ip
+        name: V4IP
         type: string
-      - jsonPath: .spec.macAddress
+      - jsonPath: .status.v6Ip
+        name: V6IP
+        type: string
+      - jsonPath: .status.macAddress
         name: Mac
         type: string
-      - jsonPath: .spec.type
+      - jsonPath: .status.type
         name: Type
         type: string
+      - jsonPath: .status.ready
+        name: Ready
+        type: boolean
       schema:
         openAPIV3Schema:
           type: object
@@ -789,7 +1409,13 @@ spec:
             status:
               type: object
               properties:
+                type:
+                  type: string
+                ready:
+                  type: boolean
                 v4Ip:
+                  type: string
+                v6Ip:
                   type: string
                 macAddress:
                   type: string
@@ -817,7 +1443,9 @@ spec:
                   type: string
                 type:
                   type: string
-                v4ip:
+                v4Ip:
+                  type: string
+                v6Ip:
                   type: string
                 macAddress:
                   type: string
@@ -855,6 +1483,12 @@ spec:
       - jsonPath: .status.ready
         name: Ready
         type: boolean
+      - jsonPath: .spec.ipType
+        name: IpType
+        type: string
+      - jsonPath: .spec.ipName
+        name: IpName
+        type: string
       schema:
         openAPIV3Schema:
           type: object
@@ -893,6 +1527,8 @@ spec:
               type: object
               properties:
                 ovnEip:
+                  type: string
+                ipType:
                   type: string
                 ipName:
                   type: string
@@ -975,6 +1611,109 @@ spec:
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
+  name: ovn-dnat-rules.kubeovn.io
+spec:
+  group: kubeovn.io
+  names:
+    plural: ovn-dnat-rules
+    singular: ovn-dnat-rule
+    shortNames:
+      - odnat
+    kind: OvnDnatRule
+    listKind: OvnDnatRuleList
+  scope: Cluster
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - jsonPath: .spec.ovnEip
+          name: Eip
+          type: string
+        - jsonPath: .status.protocol
+          name: Protocol
+          type: string
+        - jsonPath: .status.v4Eip
+          name: V4Eip
+          type: string
+        - jsonPath: .status.v4Ip
+          name: V4Ip
+          type: string
+        - jsonPath: .status.internalPort
+          name: InternalPort
+          type: string
+        - jsonPath: .status.externalPort
+          name: ExternalPort
+          type: string
+        - jsonPath: .spec.ipName
+          name: IpName
+          type: string
+        - jsonPath: .status.ready
+          name: Ready
+          type: boolean
+      schema:
+          openAPIV3Schema:
+            type: object
+            properties:
+              status:
+                type: object
+                properties:
+                  ready:
+                    type: boolean
+                  v4Eip:
+                    type: string
+                  v4Ip:
+                    type: string
+                  macAddress:
+                    type: string
+                  vpc:
+                    type: string
+                  externalPort:
+                    type: string
+                  internalPort:
+                    type: string
+                  protocol:
+                    type: string
+                  ipName:
+                    type: string
+                  conditions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        type:
+                          type: string
+                        status:
+                          type: string
+                        reason:
+                          type: string
+                        message:
+                          type: string
+                        lastUpdateTime:
+                          type: string
+                        lastTransitionTime:
+                          type: string
+              spec:
+                type: object
+                properties:
+                  ovnEip:
+                    type: string
+                  ipType:
+                    type: string
+                  ipName:
+                    type: string
+                  externalPort:
+                    type: string
+                  internalPort:
+                    type: string
+                  protocol:
+                    type: string
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
   name: vpcs.kubeovn.io
 spec:
   group: kubeovn.io
@@ -982,6 +1721,9 @@ spec:
     - additionalPrinterColumns:
         - jsonPath: .status.enableExternal
           name: EnableExternal
+          type: boolean
+        - jsonPath: .status.enableBfd
+          name: EnableBfd
           type: boolean
         - jsonPath: .status.standby
           name: Standby
@@ -1000,6 +1742,8 @@ spec:
               properties:
                 enableExternal:
                   type: boolean
+                enableBfd:
+                  type: boolean
                 namespaces:
                   items:
                     type: string
@@ -1012,6 +1756,12 @@ spec:
                       cidr:
                         type: string
                       nextHopIP:
+                        type: string
+                      ecmpMode:
+                        type: string
+                      bfdId:
+                        type: string
+                      routeTable:
                         type: string
                     type: object
                   type: array
@@ -1067,6 +1817,8 @@ spec:
                   type: boolean
                 enableExternal:
                   type: boolean
+                enableBfd:
+                  type: boolean
                 subnets:
                   items:
                     type: string
@@ -1082,6 +1834,10 @@ spec:
                 udpLoadBalancer:
                   type: string
                 udpSessionLoadBalancer:
+                  type: string
+                sctpLoadBalancer:
+                  type: string
+                sctpSessionLoadBalancer:
                   type: string
               type: object
           type: object
@@ -1354,6 +2110,14 @@ spec:
                   type: string
                 u2oInterconnectionIP:
                   type: string
+                v4usingIPrange:
+                  type: string
+                v4availableIPrange:
+                  type: string
+                v6usingIPrange:
+                  type: string
+                v6availableIPrange:
+                  type: string
                 conditions:
                   type: array
                   items:
@@ -1412,8 +2176,6 @@ spec:
                   type: string
                 natOutgoing:
                   type: boolean
-                u2oRouting:
-                  type: boolean
                 externalEgressGateway:
                   type: string
                 policyRoutingPriority:
@@ -1440,8 +2202,6 @@ spec:
                   type: boolean
                 disableInterConnection:
                   type: boolean
-                htbqos:
-                  type: string
                 enableDHCP:
                   type: boolean
                 dhcpV4Options:
@@ -1478,6 +2238,12 @@ spec:
                           - reject
                 u2oInterconnection:
                   type: boolean
+                enableLb:
+                  type: boolean
+                enableEcmp:
+                  type: boolean
+                routeTable:
+                  type: string
   scope: Cluster
   names:
     plural: subnets
@@ -1566,7 +2332,6 @@ spec:
                   not:
                     enum:
                       - int
-                      - external
             spec:
               type: object
               properties:
@@ -1741,33 +2506,112 @@ spec:
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
-  name: htbqoses.kubeovn.io
+  name: qos-policies.kubeovn.io
 spec:
   group: kubeovn.io
+  names:
+    plural: qos-policies
+    singular: qos-policy
+    shortNames:
+      - qos
+    kind: QoSPolicy
+    listKind: QoSPolicyList
+  scope: Cluster
   versions:
     - name: v1
       served: true
       storage: true
+      subresources:
+        status: {}
       additionalPrinterColumns:
-      - name: PRIORITY
+      - jsonPath: .spec.shared
+        name: Shared
         type: string
-        jsonPath: .spec.priority
+      - jsonPath: .spec.bindingType
+        name: BindingType
+        type: string
       schema:
         openAPIV3Schema:
           type: object
           properties:
+            status:
+              type: object
+              properties:
+                shared:
+                  type: boolean
+                bindingType:
+                  type: string
+                bandwidthLimitRules:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                      interface:
+                        type: string
+                      rateMax:
+                        type: string
+                      burstMax:
+                        type: string
+                      priority:
+                        type: integer
+                      direction:
+                        type: string
+                      matchType:
+                        type: string
+                      matchValue:
+                        type: string
+                conditions:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                      status:
+                        type: string
+                      reason:
+                        type: string
+                      message:
+                        type: string
+                      lastUpdateTime:
+                        type: string
+                      lastTransitionTime:
+                        type: string
             spec:
               type: object
               properties:
-                priority:
-                  type: string					# Value in range 0 to 4,294,967,295.
-  scope: Cluster
-  names:
-    plural: htbqoses
-    singular: htbqos
-    kind: HtbQos
-    shortNames:
-      - htbqos
+                shared:
+                  type: boolean
+                bindingType:
+                  type: string
+                bandwidthLimitRules:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                      interface:
+                        type: string
+                      rateMax:
+                        type: string
+                      burstMax:
+                        type: string
+                      priority:
+                        type: integer
+                      direction:
+                        type: string
+                      matchType:
+                        type: string
+                      matchValue:
+                        type: string
+                    required:
+                      - name
+                  x-kubernetes-list-map-keys:
+                    - name
+                  x-kubernetes-list-type: map
 EOF
 
 if $DPDK; then
@@ -1793,6 +2637,7 @@ rules:
       - vpcs
       - vpcs/status
       - vpc-nat-gateways
+      - vpc-nat-gateways/status
       - subnets
       - subnets/status
       - ips
@@ -1804,7 +2649,6 @@ rules:
       - provider-networks/status
       - security-groups
       - security-groups/status
-      - htbqoses
       - iptables-eips
       - iptables-fip-rules
       - iptables-dnat-rules
@@ -1819,10 +2663,14 @@ rules:
       - ovn-eips/status
       - ovn-fips/status
       - ovn-snat-rules/status
+      - ovn-dnat-rules
+      - ovn-dnat-rules/status
       - switch-lb-rules
       - switch-lb-rules/status
       - vpc-dnses
       - vpc-dnses/status
+      - qos-policies
+      - qos-policies/status
     verbs:
       - "*"
   - apiGroups:
@@ -1880,6 +2728,13 @@ rules:
       - create
       - patch
       - update
+  - apiGroups:
+      - apps
+    resources:
+      - controllerrevisions
+    verbs:
+      - get
+      - list
   - apiGroups:
       - coordination.k8s.io
     resources:
@@ -2032,6 +2887,12 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+            - name: POD_IPS
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIPs
+            - name: ENABLE_BIND_LOCAL_IP
+              value: "$ENABLE_BIND_LOCAL_IP"
           resources:
             requests:
               cpu: 300m
@@ -2290,6 +3151,7 @@ rules:
       - vpcs
       - vpcs/status
       - vpc-nat-gateways
+      - vpc-nat-gateways/status
       - subnets
       - subnets/status
       - ips
@@ -2301,7 +3163,6 @@ rules:
       - provider-networks/status
       - security-groups
       - security-groups/status
-      - htbqoses
       - iptables-eips
       - iptables-fip-rules
       - iptables-dnat-rules
@@ -2316,10 +3177,14 @@ rules:
       - ovn-eips/status
       - ovn-fips/status
       - ovn-snat-rules/status
+      - ovn-dnat-rules
+      - ovn-dnat-rules/status
       - vpc-dnses
       - vpc-dnses/status
       - switch-lb-rules
       - switch-lb-rules/status
+      - qos-policies
+      - qos-policies/status
     verbs:
       - "*"
   - apiGroups:
@@ -2367,6 +3232,13 @@ rules:
       - create
       - patch
       - update
+  - apiGroups:
+      - apps
+    resources:
+      - controllerrevisions
+    verbs:
+      - get
+      - list
   - apiGroups:
       - coordination.k8s.io
     resources:
@@ -2526,6 +3398,12 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+            - name: POD_IPS
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIPs
+            - name: ENABLE_BIND_LOCAL_IP
+              value: "$ENABLE_BIND_LOCAL_IP"
           resources:
             requests:
               cpu: 300m
@@ -2615,7 +3493,10 @@ spec:
     matchLabels:
       app: ovs
   updateStrategy:
-    type: OnDelete
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 100%
+      maxUnavailable: 0
   template:
     metadata:
       labels:
@@ -2649,6 +3530,14 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: status.podIP
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
             - name: HW_OFFLOAD
               value: "$HW_OFFLOAD"
             - name: TUNNEL_TYPE
@@ -2695,6 +3584,7 @@ spec:
                 - bash
                 - -c
                 - LOG_ROTATE=true /kube-ovn/ovs-healthcheck.sh
+            initialDelaySeconds: 10
             periodSeconds: 5
             timeoutSeconds: 45
           livenessProbe:
@@ -2886,7 +3776,7 @@ spec:
             type: DirectoryOrCreate
         - name: shareddir
           hostPath:
-            path: /var/lib/kubelet/pods
+            path: $KUBELET_DIR/pods
             type: ''
         - name: hugepage
           emptyDir:
@@ -2929,12 +3819,32 @@ EOF
 kubectl apply -f ovn-dpdk.yaml
 fi
 kubectl rollout status deployment/ovn-central -n kube-system --timeout 300s
+kubectl rollout status daemonset/ovs-ovn -n kube-system --timeout 120s
 echo "-------------------------------"
 echo ""
 
 echo "[Step 3/6] Install Kube-OVN"
 
 cat <<EOF > kube-ovn.yaml
+---
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: ovn-vpc-nat-config
+  namespace: kube-system
+  annotations:
+    kubernetes.io/description: |
+      kube-ovn vpc-nat common config
+data:
+  image: $REGISTRY/$VPC_NAT_IMAGE:$VERSION
+---
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: ovn-vpc-nat-gw-config
+  namespace: kube-system
+data:
+  enable-vpc-nat-gw: "$ENABLE_NAT_GW"
 ---
 kind: Deployment
 apiVersion: apps/v1
@@ -3009,6 +3919,7 @@ spec:
           - --enable-lb-svc=$ENABLE_LB_SVC
           - --keep-vm-ip=$ENABLE_KEEP_VM_IP
           - --pod-default-fip-type=$POD_DEFAULT_FIP_TYPE
+          - --node-local-dns-ip=$NODE_LOCAL_DNS_IP
           env:
             - name: ENABLE_SSL
               value: "$ENABLE_SSL"
@@ -3127,6 +4038,7 @@ spec:
           - /kube-ovn/start-cniserver.sh
         args:
           - --enable-mirror=$ENABLE_MIRROR
+          - --enable-arp-detect-ip-conflict=$ENABLE_ARP_DETECT_IP_CONFLICT
           - --encap-checksum=true
           - --service-cluster-ip-range=$SVC_CIDR
           - --iface=${IFACE}
@@ -3162,6 +4074,8 @@ spec:
                 fieldPath: status.podIPs
           - name: ENABLE_BIND_LOCAL_IP
             value: "$ENABLE_BIND_LOCAL_IP"
+          - name: DBUS_SYSTEM_BUS_ADDRESS
+            value: "unix:path=/host/var/run/dbus/system_bus_socket"
         volumeMounts:
           - name: host-modules
             mountPath: /lib/modules
@@ -3177,9 +4091,12 @@ spec:
             mountPropagation: Bidirectional
           - mountPath: /run/ovn
             name: host-run-ovn
+          - mountPath: /host/var/run/dbus
+            name: host-dbus
+            mountPropagation: HostToContainer
           - mountPath: /var/run/netns
             name: host-ns
-            mountPropagation: HostToContainer
+            mountPropagation: Bidirectional
           - mountPath: /var/log/kube-ovn
             name: kube-ovn-log
           - mountPath: /var/log/openvswitch
@@ -3200,7 +4117,6 @@ spec:
           timeoutSeconds: 3
         readinessProbe:
           failureThreshold: 3
-          initialDelaySeconds: 30
           periodSeconds: 7
           successThreshold: 1
           tcpSocket:
@@ -3221,7 +4137,7 @@ spec:
             path: /lib/modules
         - name: shared-dir
           hostPath:
-            path: /var/lib/kubelet/pods
+            path: $KUBELET_DIR/pods
         - name: systemid
           hostPath:
             path: /etc/origin/openvswitch
@@ -3240,6 +4156,9 @@ spec:
         - name: host-ns
           hostPath:
             path: /var/run/netns
+        - name: host-dbus
+          hostPath:
+            path: /var/run/dbus
         - name: host-log-ovs
           hostPath:
             path: /var/log/openvswitch
@@ -3267,7 +4186,7 @@ metadata:
   namespace: kube-system
   annotations:
     kubernetes.io/description: |
-      This daemon set launches the openvswitch daemon.
+      This daemon set launches the pinger daemon.
 spec:
   selector:
     matchLabels:
@@ -3431,6 +4350,11 @@ spec:
           image: "$REGISTRY/kube-ovn:$VERSION"
           imagePullPolicy: $IMAGE_PULL_POLICY
           command: ["/kube-ovn/start-ovn-monitor.sh"]
+          args:
+          - --log_file=/var/log/kube-ovn/kube-ovn-monitor.log
+          - --logtostderr=false
+          - --alsologtostderr=true
+          - --log_file_max_size=0
           securityContext:
             runAsUser: 0
             privileged: false
@@ -3471,6 +4395,8 @@ spec:
               name: localtime
             - mountPath: /var/run/tls
               name: kube-ovn-tls
+            - mountPath: /var/log/kube-ovn
+              name: kube-ovn-log
           readinessProbe:
             exec:
               command:
@@ -3516,6 +4442,9 @@ spec:
           secret:
             optional: true
             secretName: kube-ovn-tls
+        - name: kube-ovn-log
+          hostPath:
+            path: /var/log/kube-ovn
 ---
 kind: Service
 apiVersion: v1
@@ -3589,11 +4518,10 @@ echo ""
 echo "[Step 4/6] Delete pod that not in host network mode"
 for ns in $(kubectl get ns --no-headers -o custom-columns=NAME:.metadata.name); do
   for pod in $(kubectl get pod --no-headers -n "$ns" --field-selector spec.restartPolicy=Always -o custom-columns=NAME:.metadata.name,HOST:spec.hostNetwork | awk '{if ($2!="true") print $1}'); do
-    kubectl delete pod "$pod" -n "$ns" --ignore-not-found
+    kubectl delete pod "$pod" -n "$ns" --ignore-not-found --wait=false
   done
 done
 
-sleep 5
 kubectl rollout status daemonset/kube-ovn-pinger -n kube-system --timeout 300s
 kubectl rollout status deployment/coredns -n kube-system --timeout 600s
 echo "-------------------------------"

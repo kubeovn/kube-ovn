@@ -15,10 +15,6 @@ import (
 	"k8s.io/klog/v2"
 )
 
-func init() {
-	rand.Seed(int64(time.Now().Nanosecond()))
-}
-
 func ArpResolve(nic, srcIP, dstIP string, timeout time.Duration, maxRetry int) (net.HardwareAddr, int, error) {
 	target, err := netip.ParseAddr(dstIP)
 	if err != nil {
@@ -203,17 +199,45 @@ func ArpDetectIPConflict(nic, ip string, mac net.HardwareAddr) (net.HardwareAddr
 	// Announcement is identical to the ARP Probe described above,
 	// except that now the sender and target IP addresses are both
 	// set to the host's newly selected IPv4 address.
-	if pkt, err = arp.NewPacket(arp.OperationRequest, mac, tpa, tha, tpa); err != nil {
+	if err = AnnounceArpAddress(nic, ip, mac, announceNum, announceInterval); err != nil {
 		return nil, err
 	}
 
+	return nil, nil
+}
+
+func AnnounceArpAddress(nic, ip string, mac net.HardwareAddr, announceNum int, announceInterval time.Duration) error {
+	klog.Infof("announce arp address nic %s , ip %s, with mac %v ", nic, ip, mac)
+	netInterface, err := net.InterfaceByName(nic)
+	if err != nil {
+		return err
+	}
+
+	client, err := arp.Dial(netInterface)
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+
+	tpa, err := netip.ParseAddr(ip)
+	if err != nil {
+		klog.Errorf("failed to parse IP address %s: %v ", ip, err)
+		return err
+	}
+	tha := net.HardwareAddr{0, 0, 0, 0, 0, 0}
+	pkt, err := arp.NewPacket(arp.OperationRequest, mac, tpa, tha, tpa)
+	if err != nil {
+		return err
+	}
+
+	dstMac := net.HardwareAddr{0xff, 0xff, 0xff, 0xff, 0xff, 0xff}
 	for i := 0; i < announceNum; i++ {
 		c := time.NewTimer(announceInterval)
 		if err = client.SetDeadline(time.Now().Add(announceInterval)); err != nil {
-			return nil, err
+			return err
 		}
 		if err = client.WriteTo(pkt, dstMac); err != nil {
-			return nil, err
+			return err
 		}
 		if i == announceNum-1 {
 			// the last one, no need to wait
@@ -223,5 +247,5 @@ func ArpDetectIPConflict(nic, ip string, mac net.HardwareAddr) (net.HardwareAddr
 		}
 	}
 
-	return nil, nil
+	return nil
 }

@@ -54,7 +54,7 @@ func CmdMain() {
 	if err = daemon.InitMirror(config); err != nil {
 		util.LogFatalAndExit(err, "failed to initialize ovs mirror")
 	}
-
+	klog.Info("init node gw")
 	if err = daemon.InitNodeGateway(config); err != nil {
 		util.LogFatalAndExit(err, "failed to initialize node gateway")
 	}
@@ -73,13 +73,11 @@ func CmdMain() {
 		kubeovninformer.WithTweakListOptions(func(listOption *v1.ListOptions) {
 			listOption.AllowWatchBookmarks = true
 		}))
-	ctl, err := daemon.NewController(config, podInformerFactory, nodeInformerFactory, kubeovnInformerFactory)
+	ctl, err := daemon.NewController(config, stopCh, podInformerFactory, nodeInformerFactory, kubeovnInformerFactory)
 	if err != nil {
 		util.LogFatalAndExit(err, "failed to create controller")
 	}
-	podInformerFactory.Start(stopCh)
-	nodeInformerFactory.Start(stopCh)
-	kubeovnInformerFactory.Start(stopCh)
+	klog.Info("start daemon controller")
 	go ctl.Run(stopCh)
 	go daemon.RunServer(config, ctl)
 	if err := mvCNIConf(config.CniConfDir, config.CniConfFile, config.CniConfName); err != nil {

@@ -8,7 +8,6 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
-	clientset "k8s.io/client-go/kubernetes"
 	e2epodoutput "k8s.io/kubernetes/test/e2e/framework/pod/output"
 
 	"github.com/onsi/ginkgo/v2"
@@ -31,15 +30,23 @@ func parseConfig(table, config string) map[string]string {
 	return kvs
 }
 
-func getOvsQosForPod(cs clientset.Interface, table string, pod *corev1.Pod) map[string]string {
-	ovsPod := framework.GetOvsPodOnNode(cs, pod.Spec.NodeName)
+func getOvsPodOnNode(f *framework.Framework, node string) *corev1.Pod {
+	daemonSetClient := f.DaemonSetClientNS(framework.KubeOvnNamespace)
+	ds := daemonSetClient.Get("ovs-ovn")
+	pod, err := daemonSetClient.GetPodOnNode(ds, node)
+	framework.ExpectNoError(err)
+	return pod
+}
+
+func getOvsQosForPod(f *framework.Framework, table string, pod *corev1.Pod) map[string]string {
+	ovsPod := getOvsPodOnNode(f, pod.Spec.NodeName)
 	cmd := fmt.Sprintf(`ovs-vsctl --no-heading --columns=other_config --bare find %s external_ids:pod="%s/%s"`, table, pod.Namespace, pod.Name)
 	output := e2epodoutput.RunHostCmdOrDie(ovsPod.Namespace, ovsPod.Name, cmd)
 	return parseConfig(table, output)
 }
 
-func getOvsQosForPodRetry(cs clientset.Interface, table string, pod *corev1.Pod, expected map[string]string) map[string]string {
-	ovsPod := framework.GetOvsPodOnNode(cs, pod.Spec.NodeName)
+func waitOvsQosForPod(f *framework.Framework, table string, pod *corev1.Pod, expected map[string]string) map[string]string {
+	ovsPod := getOvsPodOnNode(f, pod.Spec.NodeName)
 	cmd := fmt.Sprintf(`ovs-vsctl --no-heading --columns=other_config --bare find %s external_ids:pod="%s/%s"`, table, pod.Namespace, pod.Name)
 
 	var config map[string]string
@@ -70,12 +77,10 @@ var _ = framework.Describe("[group:qos]", func() {
 	f := framework.NewDefaultFramework("qos")
 
 	var subnetName, namespaceName string
-	var cs clientset.Interface
 	var podClient *framework.PodClient
 	var subnetClient *framework.SubnetClient
 
 	ginkgo.BeforeEach(func() {
-		cs = f.ClientSet
 		podClient = f.PodClient()
 		subnetClient = f.SubnetClient()
 		namespaceName = f.Namespace.Name
@@ -92,11 +97,14 @@ var _ = framework.Describe("[group:qos]", func() {
 
 		name := "pod-" + framework.RandomSuffix()
 		ginkgo.By("Creating pod " + name)
-		latency, limit, loss := 600, 2000, 10
+		latency, jitter, limit, loss := 600, 400, 2000, 10
 		annotations := map[string]string{
 			util.NetemQosLatencyAnnotation: strconv.Itoa(latency),
 			util.NetemQosLimitAnnotation:   strconv.Itoa(limit),
 			util.NetemQosLossAnnotation:    strconv.Itoa(loss),
+		}
+		if !f.VersionPriorTo(1, 12) {
+			annotations[util.NetemQosJitterAnnotation] = strconv.Itoa(jitter)
 		}
 		pod := framework.MakePod(namespaceName, name, nil, annotations, "", nil, nil)
 		pod = podClient.CreateSync(pod)
@@ -105,12 +113,18 @@ var _ = framework.Describe("[group:qos]", func() {
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.NetemQosLatencyAnnotation, strconv.Itoa(latency))
+		if !f.VersionPriorTo(1, 12) {
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.NetemQosJitterAnnotation, strconv.Itoa(jitter))
+		}
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.NetemQosLimitAnnotation, strconv.Itoa(limit))
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.NetemQosLossAnnotation, strconv.Itoa(loss))
 
 		ginkgo.By("Validating OVS QoS")
-		qos := getOvsQosForPod(cs, "qos", pod)
+		qos := getOvsQosForPod(f, "qos", pod)
 		framework.ExpectHaveKeyWithValue(qos, "latency", strconv.Itoa(latency*1000))
+		if !f.VersionPriorTo(1, 12) {
+			framework.ExpectHaveKeyWithValue(qos, "jitter", strconv.Itoa(jitter*1000))
+		}
 		framework.ExpectHaveKeyWithValue(qos, "limit", strconv.Itoa(limit))
 		framework.ExpectHaveKeyWithValue(qos, "loss", strconv.Itoa(loss))
 
@@ -130,13 +144,17 @@ var _ = framework.Describe("[group:qos]", func() {
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
 		framework.ExpectNotHaveKey(pod.Annotations, util.NetemQosLatencyAnnotation)
+		framework.ExpectNotHaveKey(pod.Annotations, util.NetemQosJitterAnnotation)
 		framework.ExpectNotHaveKey(pod.Annotations, util.NetemQosLimitAnnotation)
 		framework.ExpectNotHaveKey(pod.Annotations, util.NetemQosLossAnnotation)
 
 		ginkgo.By("Adding netem QoS to pod annotations")
-		latency, limit, loss := 600, 2000, 10
+		latency, jitter, limit, loss := 600, 400, 2000, 10
 		modifiedPod := pod.DeepCopy()
 		modifiedPod.Annotations[util.NetemQosLatencyAnnotation] = strconv.Itoa(latency)
+		if !f.VersionPriorTo(1, 12) {
+			modifiedPod.Annotations[util.NetemQosJitterAnnotation] = strconv.Itoa(jitter)
+		}
 		modifiedPod.Annotations[util.NetemQosLimitAnnotation] = strconv.Itoa(limit)
 		modifiedPod.Annotations[util.NetemQosLossAnnotation] = strconv.Itoa(loss)
 		pod = podClient.PatchPod(pod, modifiedPod)
@@ -145,12 +163,18 @@ var _ = framework.Describe("[group:qos]", func() {
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.NetemQosLatencyAnnotation, strconv.Itoa(latency))
+		if !f.VersionPriorTo(1, 12) {
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.NetemQosJitterAnnotation, strconv.Itoa(jitter))
+		}
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.NetemQosLimitAnnotation, strconv.Itoa(limit))
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.NetemQosLossAnnotation, strconv.Itoa(loss))
 
 		ginkgo.By("Validating OVS QoS")
-		qos := getOvsQosForPodRetry(cs, "qos", pod, nil)
+		qos := waitOvsQosForPod(f, "qos", pod, nil)
 		framework.ExpectHaveKeyWithValue(qos, "latency", strconv.Itoa(latency*1000))
+		if !f.VersionPriorTo(1, 12) {
+			framework.ExpectHaveKeyWithValue(qos, "jitter", strconv.Itoa(jitter*1000))
+		}
 		framework.ExpectHaveKeyWithValue(qos, "limit", strconv.Itoa(limit))
 		framework.ExpectHaveKeyWithValue(qos, "loss", strconv.Itoa(loss))
 
@@ -163,9 +187,8 @@ var _ = framework.Describe("[group:qos]", func() {
 
 		name := "pod-" + framework.RandomSuffix()
 		ginkgo.By("Creating pod " + name)
-		priority, ingressRate := 50, 300
+		ingressRate := 300
 		annotations := map[string]string{
-			util.PriorityAnnotation:    strconv.Itoa(priority),
 			util.IngressRateAnnotation: strconv.Itoa(ingressRate),
 		}
 		pod := framework.MakePod(namespaceName, name, nil, annotations, "", nil, nil)
@@ -174,77 +197,11 @@ var _ = framework.Describe("[group:qos]", func() {
 		ginkgo.By("Validating pod annotations")
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
-		framework.ExpectHaveKeyWithValue(pod.Annotations, util.PriorityAnnotation, strconv.Itoa(priority))
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.IngressRateAnnotation, strconv.Itoa(ingressRate))
 
 		ginkgo.By("Validating OVS Queue")
-		queue := getOvsQosForPod(cs, "queue", pod)
+		queue := getOvsQosForPod(f, "queue", pod)
 		framework.ExpectHaveKeyWithValue(queue, "max-rate", strconv.Itoa(ingressRate*1000*1000))
-		framework.ExpectHaveKeyWithValue(queue, "priority", strconv.Itoa(priority))
-
-		ginkgo.By("Deleting pod " + name)
-		podClient.DeleteSync(pod.Name)
-	})
-
-	framework.ConformanceIt("should be able to update htb QoS", func() {
-		f.SkipVersionPriorTo(1, 9, "Support for htb QoS with priority was introduced in v1.9")
-
-		subnetName = f.Namespace.Name
-		ginkgo.By("Creating subnet " + subnetName + " with htb QoS")
-		cidr := framework.RandomCIDR(f.ClusterIpFamily)
-		subnet := framework.MakeSubnet(subnetName, "", cidr, "", nil, nil, []string{namespaceName})
-		subnet.Spec.HtbQos = util.HtbQosLow
-		subnetClient.CreateSync(subnet)
-
-		ginkgo.By("Validating subnet .spec.htbqos field")
-		framework.ExpectEqual(subnet.Spec.HtbQos, util.HtbQosLow)
-
-		name := "pod-" + framework.RandomSuffix()
-		ginkgo.By("Creating pod " + name)
-		pod := framework.MakePod(namespaceName, name, nil, nil, "", nil, nil)
-		pod = podClient.CreateSync(pod)
-
-		ginkgo.By("Validating pod annotations")
-		framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
-		framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
-		framework.ExpectNotHaveKey(pod.Annotations, util.PriorityAnnotation)
-		framework.ExpectNotHaveKey(pod.Annotations, util.IngressRateAnnotation)
-
-		ginkgo.By("Validating OVS Queue")
-		defaultPriority := 5
-		queue := getOvsQosForPod(cs, "queue", pod)
-		framework.ExpectHaveKeyWithValue(queue, "priority", strconv.Itoa(defaultPriority))
-
-		ginkgo.By("Update htb priority by adding pod annotation")
-		priority := 2
-		modifiedPod := pod.DeepCopy()
-		modifiedPod.Annotations[util.PriorityAnnotation] = strconv.Itoa(priority)
-		pod = podClient.PatchPod(pod, modifiedPod)
-
-		ginkgo.By("Validating pod annotations")
-		framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
-		framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
-		framework.ExpectHaveKeyWithValue(pod.Annotations, util.PriorityAnnotation, strconv.Itoa(priority))
-		framework.ExpectNotHaveKey(pod.Annotations, util.IngressRateAnnotation)
-
-		ginkgo.By("Validating OVS Queue")
-		expected := map[string]string{"priority": strconv.Itoa(priority)}
-		_ = getOvsQosForPodRetry(cs, "queue", pod, expected)
-
-		ginkgo.By("Update htb priority by deleting pod annotation")
-		modifiedPod = pod.DeepCopy()
-		delete(modifiedPod.Annotations, util.PriorityAnnotation)
-		pod = podClient.PatchPod(pod, modifiedPod)
-
-		ginkgo.By("Validating pod annotations")
-		framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
-		framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
-		framework.ExpectNotHaveKey(pod.Annotations, util.PriorityAnnotation)
-		framework.ExpectNotHaveKey(pod.Annotations, util.IngressRateAnnotation)
-
-		ginkgo.By("Validating OVS Queue")
-		expected = map[string]string{"priority": strconv.Itoa(defaultPriority)}
-		_ = getOvsQosForPodRetry(cs, "queue", pod, expected)
 
 		ginkgo.By("Deleting pod " + name)
 		podClient.DeleteSync(pod.Name)

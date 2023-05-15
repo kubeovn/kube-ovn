@@ -18,10 +18,6 @@ limitations under the License.
 
 package v1
 
-// HtbQosListerExpansion allows custom methods to be added to
-// HtbQosLister.
-type HtbQosListerExpansion interface{}
-
 // IPListerExpansion allows custom methods to be added to
 // IPLister.
 type IPListerExpansion interface{}
@@ -42,6 +38,10 @@ type IptablesFIPRuleListerExpansion interface{}
 // IptablesSnatRuleLister.
 type IptablesSnatRuleListerExpansion interface{}
 
+// OvnDnatRuleListerExpansion allows custom methods to be added to
+// OvnDnatRuleLister.
+type OvnDnatRuleListerExpansion interface{}
+
 // OvnEipListerExpansion allows custom methods to be added to
 // OvnEipLister.
 type OvnEipListerExpansion interface{}
@@ -57,6 +57,10 @@ type OvnSnatRuleListerExpansion interface{}
 // ProviderNetworkListerExpansion allows custom methods to be added to
 // ProviderNetworkLister.
 type ProviderNetworkListerExpansion interface{}
+
+// QoSPolicyListerExpansion allows custom methods to be added to
+// QoSPolicyLister.
+type QoSPolicyListerExpansion interface{}
 
 // SecurityGroupListerExpansion allows custom methods to be added to
 // SecurityGroupLister.

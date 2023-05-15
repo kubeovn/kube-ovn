@@ -8,7 +8,7 @@ import (
 )
 
 func (ss *SubnetStatus) Bytes() ([]byte, error) {
-	//{"availableIPs":65527,"usingIPs":9} => {"status": {"availableIPs":65527,"usingIPs":9}}
+	// {"availableIPs":65527,"usingIPs":9} => {"status": {"availableIPs":65527,"usingIPs":9}}
 	bytes, err := json.Marshal(ss)
 	if err != nil {
 		return nil, err
@@ -110,6 +110,36 @@ func (ofs *OvnFipStatus) Bytes() ([]byte, error) {
 
 func (osrs *OvnSnatRuleStatus) Bytes() ([]byte, error) {
 	bytes, err := json.Marshal(osrs)
+	if err != nil {
+		return nil, err
+	}
+	newStr := fmt.Sprintf(`{"status": %s}`, string(bytes))
+	klog.V(5).Info("status body", newStr)
+	return []byte(newStr), nil
+}
+
+func (odrs *OvnDnatRuleStatus) Bytes() ([]byte, error) {
+	bytes, err := json.Marshal(odrs)
+	if err != nil {
+		return nil, err
+	}
+	newStr := fmt.Sprintf(`{"status": %s}`, string(bytes))
+	klog.V(5).Info("status body", newStr)
+	return []byte(newStr), nil
+}
+
+func (qoss *QoSPolicyStatus) Bytes() ([]byte, error) {
+	bytes, err := json.Marshal(qoss)
+	if err != nil {
+		return nil, err
+	}
+	newStr := fmt.Sprintf(`{"status": %s}`, string(bytes))
+	klog.V(5).Info("status body", newStr)
+	return []byte(newStr), nil
+}
+
+func (vns *VpcNatStatus) Bytes() ([]byte, error) {
+	bytes, err := json.Marshal(vns)
 	if err != nil {
 		return nil, err
 	}

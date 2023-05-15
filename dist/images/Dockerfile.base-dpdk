@@ -25,13 +25,14 @@ RUN cd /usr/src/ && \
     ninja -C build install && \
     ldconfig
 
-
 RUN cd /usr/src/ && \
     git clone https://github.com/openvswitch/ovs.git && \
     cd ovs && \
     git checkout 1570924c3f83851f39f56e3363050b70ba1aafb0 && \
     curl -s https://github.com/kubeovn/ovs/commit/22ea22c40b46ee5adeae977ff6cfca81b3ff25d7.patch | git apply && \
     curl -s https://github.com/openvswitch/ovs/commit/a432b1eb496cc1606873068c26716977a02029e2.patch | git apply && \
+	# Add jitter parameter patch
+    curl -s https://github.com/openvswitch/ovs/commit/a6195e2c4236cbe16b3649940fac3b08493eabb2.patch | git apply --whitespace=fix --exclude=NEWS && \
     # compile without avx512
     if [ "$ARCH" = "amd64" -a "$NO_AVX512" = "true" ]; then curl -s https://github.com/kubeovn/ovs/commit/38c59e078d69b343f56ab0f380fb9f42b94b7c02.patch | git apply; fi && \
     ./boot.sh && \
@@ -86,7 +87,7 @@ RUN mkdir -p /var/run/openvswitch && \
     mkdir -p /opt/cni/bin
 
 ARG ARCH
-ENV CNI_VERSION=v1.0.1
+ENV CNI_VERSION=v1.2.0
 RUN curl -sSf -L --retry 5 https://github.com/containernetworking/plugins/releases/download/${CNI_VERSION}/cni-plugins-linux-${ARCH}-${CNI_VERSION}.tgz | tar -xz -C . ./loopback ./portmap ./macvlan
 
 RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages  \

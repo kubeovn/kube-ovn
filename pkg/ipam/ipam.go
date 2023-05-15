@@ -155,7 +155,8 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr, gw string, excludeIps []strin
 
 	if subnet, ok := ipam.Subnets[name]; ok {
 		subnet.Protocol = protocol
-		if protocol == kubeovnv1.ProtocolDual || protocol == kubeovnv1.ProtocolIPv4 {
+		if protocol == kubeovnv1.ProtocolDual || protocol == kubeovnv1.ProtocolIPv4 &&
+			(subnet.V4CIDR.String() != v4cidrStr || subnet.V4Gw != v4Gw || !subnet.V4ReservedIPList.Equal(convertExcludeIps(v4ExcludeIps))) {
 			_, cidr, _ := net.ParseCIDR(v4cidrStr)
 			subnet.V4CIDR = cidr
 			subnet.V4ReservedIPList = convertExcludeIps(v4ExcludeIps)
@@ -164,6 +165,7 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr, gw string, excludeIps []strin
 			subnet.V4FreeIPList = IPRangeList{&IPRange{Start: IP(firstIP), End: IP(lastIP)}}
 			subnet.joinFreeWithReserve()
 			subnet.V4ReleasedIPList = IPRangeList{}
+			subnet.V4Gw = v4Gw
 			for nicName, ip := range subnet.V4NicToIP {
 				mac := subnet.NicToMac[nicName]
 				podName := subnet.V4IPToPod[ip]
@@ -172,7 +174,9 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr, gw string, excludeIps []strin
 				}
 			}
 		}
-		if protocol == kubeovnv1.ProtocolDual || protocol == kubeovnv1.ProtocolIPv6 {
+		if protocol == kubeovnv1.ProtocolDual || protocol == kubeovnv1.ProtocolIPv6 &&
+			(subnet.V6CIDR.String() != v6cidrStr || subnet.V6Gw != v6Gw || !subnet.V6ReservedIPList.Equal(convertExcludeIps(v6ExcludeIps))) {
+
 			_, cidr, _ := net.ParseCIDR(v6cidrStr)
 			subnet.V6CIDR = cidr
 			subnet.V6ReservedIPList = convertExcludeIps(v6ExcludeIps)
@@ -181,6 +185,7 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr, gw string, excludeIps []strin
 			subnet.V6FreeIPList = IPRangeList{&IPRange{Start: IP(firstIP), End: IP(lastIP)}}
 			subnet.joinFreeWithReserve()
 			subnet.V6ReleasedIPList = IPRangeList{}
+			subnet.V6Gw = v6Gw
 			for nicName, ip := range subnet.V6NicToIP {
 				mac := subnet.NicToMac[nicName]
 				podName := subnet.V6IPToPod[ip]
@@ -215,6 +220,7 @@ func (ipam *IPAM) GetPodAddress(podName string) []*SubnetAddress {
 	defer ipam.mutex.RUnlock()
 	addresses := []*SubnetAddress{}
 	for _, subnet := range ipam.Subnets {
+		subnet.mutex.RLock()
 		for _, nicName := range subnet.PodToNicList[podName] {
 			v4IP, v6IP, mac, protocol := subnet.GetPodAddress(podName, nicName)
 			switch protocol {
@@ -227,6 +233,7 @@ func (ipam *IPAM) GetPodAddress(podName string) []*SubnetAddress {
 				addresses = append(addresses, &SubnetAddress{Subnet: subnet, Ip: string(v6IP), Mac: mac})
 			}
 		}
+		subnet.mutex.RUnlock()
 	}
 	return addresses
 }
@@ -260,4 +267,21 @@ func (ipam *IPAM) GetSubnetV4Mask(subnetName string) (string, error) {
 	} else {
 		return "", ErrNoAvailable
 	}
+}
+
+func (ipam *IPAM) GetSubnetIPRangeString(subnetName string) (string, string, string, string) {
+	ipam.mutex.RLock()
+	defer ipam.mutex.RUnlock()
+
+	var v4UsingIPStr, v6UsingIPStr, v4AvailableIPStr, v6AvailableIPStr string
+
+	if subnet, ok := ipam.Subnets[subnetName]; ok {
+
+		v4UsingIPStr = subnet.V4UsingIPList.IpRangetoString()
+		v6UsingIPStr = subnet.V6UsingIPList.IpRangetoString()
+		v4AvailableIPStr = subnet.V4AvailIPList.IpRangetoString()
+		v6AvailableIPStr = subnet.V6AvailIPList.IpRangetoString()
+	}
+
+	return v4UsingIPStr, v6UsingIPStr, v4AvailableIPStr, v6AvailableIPStr
 }

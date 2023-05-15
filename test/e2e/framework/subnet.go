@@ -172,8 +172,10 @@ func (c *SubnetClient) WaitConditionToBe(name string, conditionType apiv1.Condit
 	for start := time.Now(); time.Since(start) < timeout; time.Sleep(poll) {
 		subnet := c.Get(name)
 		if IsSubnetConditionSetAsExpected(subnet, conditionType, wantTrue) {
+			Logf("Subnet %s reach desired %t condition status", name, wantTrue)
 			return true
 		}
+		Logf("Subnet %s still not reach desired %t condition status", name, wantTrue)
 	}
 	Logf("Subnet %s didn't reach desired %s condition status (%t) within %v", name, conditionType, wantTrue, timeout)
 	return false
@@ -191,11 +193,35 @@ func (c *SubnetClient) WaitToBeUpdated(subnet *apiv1.Subnet, timeout time.Durati
 	for start := time.Now(); time.Since(start) < timeout; time.Sleep(poll) {
 		s := c.Get(subnet.Name)
 		if current, _ := big.NewInt(0).SetString(s.ResourceVersion, 10); current.Cmp(rv) > 0 {
+			Logf("Subnet %s updated", subnet.Name)
 			return true
 		}
+		Logf("Subnet %s still not updated", subnet.Name)
 	}
 	Logf("Subnet %s was not updated within %v", subnet.Name, timeout)
 	return false
+}
+
+// WaitUntil waits the given timeout duration for the specified condition to be met.
+func (c *SubnetClient) WaitUntil(name string, cond func(s *apiv1.Subnet) (bool, error), condDesc string, interval, timeout time.Duration) *apiv1.Subnet {
+	var subnet *apiv1.Subnet
+	err := wait.PollImmediate(interval, timeout, func() (bool, error) {
+		Logf("Waiting for subnet %s to meet condition %q", name, condDesc)
+		subnet = c.Get(name).DeepCopy()
+		met, err := cond(subnet)
+		if err != nil {
+			return false, fmt.Errorf("failed to check condition for subnet %s: %v", name, err)
+		}
+		return met, nil
+	})
+	if err == nil {
+		return subnet
+	}
+	if IsTimeout(err) {
+		Failf("timed out while waiting for subnet %s to meet condition %q", name, condDesc)
+	}
+	Fail(maybeTimeoutError(err, "waiting for subnet %s to meet condition %q", name, condDesc).Error())
+	return nil
 }
 
 // WaitToDisappear waits the given timeout duration for the specified subnet to disappear.
@@ -233,26 +259,29 @@ func (c *SubnetClient) WaitToDisappear(name string, interval, timeout time.Durat
 	return maybeTimeoutError(err, "waiting for subnet %s to disappear", name)
 }
 
-func MakeSubnet(name, vlan, cidr, gateway string, excludeIPs, gatewayNodes, namespaces []string) *apiv1.Subnet {
+func MakeSubnet(name, vlan, cidr, gateway, vpc, provider string, excludeIPs, gatewayNodes, namespaces []string) *apiv1.Subnet {
 	subnet := &apiv1.Subnet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
 		},
 		Spec: apiv1.SubnetSpec{
+			Vpc:         vpc,
 			Vlan:        vlan,
 			CIDRBlock:   cidr,
 			Gateway:     gateway,
 			Protocol:    util.CheckProtocol(cidr),
+			Provider:    provider,
 			ExcludeIps:  excludeIPs,
 			GatewayNode: strings.Join(gatewayNodes, ","),
 			Namespaces:  namespaces,
 		},
 	}
-	if len(gatewayNodes) != 0 {
-		subnet.Spec.GatewayType = apiv1.GWCentralizedType
-	} else {
-		subnet.Spec.GatewayType = apiv1.GWDistributedType
+	if provider == "" || strings.HasSuffix(provider, util.OvnProvider) {
+		if len(gatewayNodes) != 0 {
+			subnet.Spec.GatewayType = apiv1.GWCentralizedType
+		} else {
+			subnet.Spec.GatewayType = apiv1.GWDistributedType
+		}
 	}
-
 	return subnet
 }

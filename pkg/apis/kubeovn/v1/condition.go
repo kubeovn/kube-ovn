@@ -160,12 +160,12 @@ func (m *SubnetStatus) ClearAllConditions() {
 	}
 }
 
-// SetError - shortcut to set error condition
+// SetVlanError - shortcut to set error condition
 func (v *VlanStatus) SetVlanError(reason, message string) {
 	v.SetVlanCondition(Error, reason, message)
 }
 
-// SetCondition updates or creates a new condition
+// SetVlanCondition updates or creates a new condition
 func (v *VlanStatus) SetVlanCondition(ctype ConditionType, reason, message string) {
 	v.setVlanConditionValue(ctype, corev1.ConditionTrue, reason, message)
 }
@@ -250,7 +250,7 @@ func (s *ProviderNetworkStatus) setNodeConditionValue(node string, ctype Conditi
 	return true
 }
 
-// RemoveCondition removes the condition with the provided type.
+// RemoveNodeCondition removes the condition with the provided type.
 func (s *ProviderNetworkStatus) RemoveNodeCondition(node string, ctype ConditionType) {
 	for i, c := range s.Conditions {
 		if c.Node == node && c.Type == ctype {
@@ -261,7 +261,7 @@ func (s *ProviderNetworkStatus) RemoveNodeCondition(node string, ctype Condition
 	}
 }
 
-// GetCondition get existing condition
+// GetNodeCondition get existing condition
 func (s *ProviderNetworkStatus) GetNodeCondition(node string, ctype ConditionType) *ProviderNetworkCondition {
 	for i := range s.Conditions {
 		if s.Conditions[i].Node == node && s.Conditions[i].Type == ctype {
@@ -307,12 +307,12 @@ func (s *ProviderNetworkStatus) ConditionReason(node string, ctype ConditionType
 	return ""
 }
 
-// NodeReady - shortcut to set ready condition to true
+// SetNodeReady - shortcut to set ready condition to true
 func (s *ProviderNetworkStatus) SetNodeReady(node, reason, message string) bool {
 	return s.SetNodeCondition(node, Ready, reason, message)
 }
 
-// NodeNotReady - shortcut to set ready condition to false
+// SetNodeNotReady - shortcut to set ready condition to false
 func (s *ProviderNetworkStatus) SetNodeNotReady(node, reason, message string) bool {
 	return s.ClearNodeCondition(node, Ready, reason, message)
 }
@@ -326,7 +326,7 @@ func (s *ProviderNetworkStatus) EnsureNodeCondition(node string, ctype Condition
 	return true
 }
 
-// EnsureStandardConditions - helper to inject standard conditions
+// EnsureNodeStandardConditions - helper to inject standard conditions
 func (s *ProviderNetworkStatus) EnsureNodeStandardConditions(node string) bool {
 	return s.EnsureNodeCondition(node, Ready)
 }

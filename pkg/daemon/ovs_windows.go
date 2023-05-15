@@ -18,15 +18,15 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-func (csh cniServerHandler) configureDpdkNic(podName, podNamespace, provider, netns, containerID, ifName, mac string, mtu int, ip, gateway, ingress, egress, priority, sharedDir, socketName string) error {
+func (csh cniServerHandler) configureDpdkNic(podName, podNamespace, provider, netns, containerID, ifName, mac string, mtu int, ip, gateway, ingress, egress, sharedDir, socketName string) error {
 	return errors.New("DPDK is not supported on Windows")
 }
 
-func (csh cniServerHandler) configureNicWithInternalPort(podName, podNamespace, provider, netns, containerID, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute, detectIPConflict bool, routes []request.Route, dnsServer, dnsSuffix []string, ingress, egress, priority, DeviceID, nicType, latency, limit, loss string, gwCheckMode int, u2oInterconnectionIP string) (string, error) {
-	return ifName, csh.configureNic(podName, podNamespace, provider, netns, containerID, "", ifName, mac, mtu, ip, gateway, isDefaultRoute, detectIPConflict, routes, dnsServer, dnsSuffix, ingress, egress, priority, DeviceID, nicType, latency, limit, loss, gwCheckMode, u2oInterconnectionIP)
+func (csh cniServerHandler) configureNicWithInternalPort(podName, podNamespace, provider, netns, containerID, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute, detectIPConflict bool, routes []request.Route, dnsServer, dnsSuffix []string, ingress, egress, DeviceID, nicType, latency, limit, loss, jitter string, gwCheckMode int, u2oInterconnectionIP string) (string, error) {
+	return ifName, csh.configureNic(podName, podNamespace, provider, netns, containerID, "", ifName, mac, mtu, ip, gateway, isDefaultRoute, detectIPConflict, routes, dnsServer, dnsSuffix, ingress, egress, DeviceID, nicType, latency, limit, loss, jitter, gwCheckMode, u2oInterconnectionIP)
 }
 
-func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns, containerID, vfDriver, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute, detectIPConflict bool, routes []request.Route, dnsServer, dnsSuffix []string, ingress, egress, priority, DeviceID, nicType, latency, limit, loss string, gwCheckMode int, u2oInterconnectionIP string) error {
+func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns, containerID, vfDriver, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute, detectIPConflict bool, routes []request.Route, dnsServer, dnsSuffix []string, ingress, egress, DeviceID, nicType, latency, limit, loss, jitter string, gwCheckMode int, u2oInterconnectionIP string) error {
 	if DeviceID != "" {
 		return errors.New("SR-IOV is not supported on Windows")
 	}
@@ -124,7 +124,7 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 			return fmt.Errorf("failed to add OVS port %s, %v: %q", epName, err, output)
 		}
 
-		if err = ovs.SetInterfaceBandwidth(podName, podNamespace, ifaceID, egress, ingress, priority); err != nil {
+		if err = ovs.SetInterfaceBandwidth(podName, podNamespace, ifaceID, egress, ingress); err != nil {
 			return err
 		}
 
@@ -237,12 +237,12 @@ func generateNicName(containerID, ifname string) (string, string) {
 	return fmt.Sprintf("%s_%s_h", containerID[0:12-len(ifname)], ifname), fmt.Sprintf("%s_%s_c", containerID[0:12-len(ifname)], ifname)
 }
 
-func waitNetworkReady(nic, ipAddr, gateway string, underlayGateway, verbose bool) error {
+func waitNetworkReady(nic, ipAddr, gateway string, underlayGateway, verbose bool, maxRetry int) error {
 	ips := strings.Split(ipAddr, ",")
 	for i, gw := range strings.Split(gateway, ",") {
 		src := strings.Split(ips[i], "/")[0]
 		if !underlayGateway || util.CheckProtocol(gw) == kubeovnv1.ProtocolIPv6 {
-			if err := pingGateway(gw, src, verbose); err != nil {
+			if err := pingGateway(gw, src, verbose, maxRetry); err != nil {
 				return err
 			}
 		}
@@ -267,7 +267,7 @@ func configureNodeNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu int
 
 	// ping ovn0 gw to activate the flow
 	klog.Infof("wait ovn0 gw ready")
-	if err := waitNetworkReady(util.NodeNic, ip, gw, false, true); err != nil {
+	if err := waitNetworkReady(util.NodeNic, ip, gw, false, true, gatewayCheckMaxRetry); err != nil {
 		klog.Errorf("failed to init ovn0 check: %v", err)
 		return err
 	}
@@ -278,6 +278,10 @@ func configureNodeNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu int
 // Restart the kube-ovn-cni when this happens
 func (c *Controller) loopOvn0Check() {
 	// no need to check ovn0 on Windows
+}
+
+func (c *Controller) loopOvnExt0Check() {
+	// no need to check ovnext0 on Windows
 }
 
 func configureMirrorLink(portName string, mtu int) error {

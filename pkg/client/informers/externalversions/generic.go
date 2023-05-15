@@ -53,8 +53,6 @@ func (f *genericInformer) Lister() cache.GenericLister {
 func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource) (GenericInformer, error) {
 	switch resource {
 	// Group=kubeovn.io, Version=v1
-	case v1.SchemeGroupVersion.WithResource("htbqoses"):
-		return &genericInformer{resource: resource.GroupResource(), informer: f.Kubeovn().V1().HtbQoses().Informer()}, nil
 	case v1.SchemeGroupVersion.WithResource("ips"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Kubeovn().V1().IPs().Informer()}, nil
 	case v1.SchemeGroupVersion.WithResource("iptables-dnat-rules"):
@@ -65,6 +63,8 @@ func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Kubeovn().V1().IptablesFIPRules().Informer()}, nil
 	case v1.SchemeGroupVersion.WithResource("iptables-snat-rules"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Kubeovn().V1().IptablesSnatRules().Informer()}, nil
+	case v1.SchemeGroupVersion.WithResource("ovn-dnat-rules"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Kubeovn().V1().OvnDnatRules().Informer()}, nil
 	case v1.SchemeGroupVersion.WithResource("ovn-eips"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Kubeovn().V1().OvnEips().Informer()}, nil
 	case v1.SchemeGroupVersion.WithResource("ovn-fips"):
@@ -73,6 +73,8 @@ func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Kubeovn().V1().OvnSnatRules().Informer()}, nil
 	case v1.SchemeGroupVersion.WithResource("provider-networks"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Kubeovn().V1().ProviderNetworks().Informer()}, nil
+	case v1.SchemeGroupVersion.WithResource("qos-policies"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Kubeovn().V1().QoSPolicies().Informer()}, nil
 	case v1.SchemeGroupVersion.WithResource("security-groups"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Kubeovn().V1().SecurityGroups().Informer()}, nil
 	case v1.SchemeGroupVersion.WithResource("subnets"):

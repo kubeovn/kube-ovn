@@ -1,0 +1,238 @@
+kind: DaemonSet
+apiVersion: apps/v1
+metadata:
+  name: ovs-ovn
+  namespace: {{ .Values.namespace }}
+  annotations:
+    kubernetes.io/description: |
+      This daemon set launches the openvswitch daemon.
+spec:
+  selector:
+    matchLabels:
+      app: ovs
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: ovs
+        component: network
+        type: infra
+    spec:
+      tolerations:
+        - effect: NoSchedule
+          operator: Exists
+        - effect: NoExecute
+          operator: Exists
+        - key: CriticalAddonsOnly
+          operator: Exists
+      priorityClassName: system-node-critical
+      serviceAccountName: ovn
+      hostNetwork: true
+      hostPID: true
+      containers:
+        - name: openvswitch
+          {{- if .Values.DPDK }}
+          image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.dpdkRepository }}:{{ .Values.DPDK_VERSION }}-{{ .Values.global.images.kubeovn.tag }}
+          {{- else if .Values.HYBRID_DPDK }}
+          image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}-dpdk
+          {{- else }}
+          image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}
+          {{- end }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- if .Values.DPDK }}
+          command: ["/kube-ovn/start-ovs-dpdk.sh"]
+          {{- else if .Values.HYBRID_DPDK }}
+          command: ["/kube-ovn/start-ovs-dpdk-v2.sh"]
+          {{- else }}
+          command: ["/kube-ovn/start-ovs.sh"]
+          {{- end }}
+          securityContext:
+            runAsUser: 0
+            privileged: true
+          env:
+            - name: ENABLE_SSL
+              value: "{{ .Values.networking.ENABLE_SSL }}"
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: HW_OFFLOAD
+              value: "{{- .Values.func.HW_OFFLOAD }}"
+            - name: TUNNEL_TYPE
+              value: "{{- .Values.networking.TUNNEL_TYPE }}"
+            - name: KUBE_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: OVN_DB_IPS
+              value: "{{ .Values.MASTER_NODES }}"
+            {{- if .Values.HYBRID_DPDK }}
+            - name: DPDK_TUNNEL_IFACE
+              value: "{{- .Values.networking.DPDK_TUNNEL_IFACE }}"
+            {{- end }}
+          volumeMounts:
+            - mountPath: /var/run/netns
+              name: host-ns
+              mountPropagation: HostToContainer
+            - mountPath: /lib/modules
+              name: host-modules
+              readOnly: true
+            - mountPath: /var/run/openvswitch
+              name: host-run-ovs
+            - mountPath: /var/run/ovn
+              name: host-run-ovn
+            - mountPath: /sys
+              name: host-sys
+              readOnly: true
+            - mountPath: /etc/cni/net.d
+              name: cni-conf
+            - mountPath: /etc/openvswitch
+              name: host-config-openvswitch
+            - mountPath: /etc/ovn
+              name: host-config-ovn
+            - mountPath: /var/log/openvswitch
+              name: host-log-ovs
+            - mountPath: /var/log/ovn
+              name: host-log-ovn
+            - mountPath: /etc/localtime
+              name: localtime
+            - mountPath: /var/run/tls
+              name: kube-ovn-tls
+            - mountPath: /var/run/containerd
+              name: cruntime
+            {{- if or .Values.DPDK .Values.HYBRID_DPDK }}
+            - mountPath: /opt/ovs-config
+              name: host-config-ovs
+            - mountPath: /dev/hugepages
+              name: hugepage
+            {{- end }}
+            {{- if .Values.HYBRID_DPDK }}
+            - name: shareddir
+              mountPath: /var/lib/kubelet/pods
+            {{- end }}
+          readinessProbe:
+            exec:
+              {{- if .Values.DPDK }}
+              command:
+                - bash
+                - /kube-ovn/ovs-dpdk-healthcheck.sh
+              {{- else }}
+              command:
+                - bash
+                - -c
+                - LOG_ROTATE=true /kube-ovn/ovs-healthcheck.sh
+              {{- end }}
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 45
+          livenessProbe:
+            exec:
+              {{- if .Values.DPDK }}
+              command:
+                - bash
+                - /kube-ovn/ovs-dpdk-healthcheck.sh
+              {{- else }}
+              command:
+                - bash
+                - /kube-ovn/ovs-healthcheck.sh
+              {{- end }}
+            initialDelaySeconds: 60
+            periodSeconds: 5
+            failureThreshold: 5
+            timeoutSeconds: 45
+          resources:
+            requests:
+              {{- if .Values.DPDK }}
+              cpu: {{ .Values.DPDK_CPU }}
+              memory: {{ .Values.DPDK_MEMORY }}
+              {{- else if .Values.HYBRID_DPDK }}
+              cpu: {{ .Values.DPDK_CPU }}
+              memory: {{ .Values.DPDK_MEMORY }}
+              hugepages-2Mi: 1Gi
+              {{- else }}
+              cpu: {{ index .Values "ovs-ovn" "requests" "cpu" }}
+              memory: {{ index .Values "ovs-ovn" "requests" "memory" }}
+              {{- end }}
+            limits:
+              {{- if .Values.DPDK }}
+              cpu: {{ .Values.DPDK_CPU }}
+              memory: {{ .Values.DPDK_MEMORY }}
+              hugepages-1Gi: 1Gi
+              {{- else if .Values.HYBRID_DPDK }}
+              cpu: {{ .Values.DPDK_CPU }}
+              memory: {{ .Values.DPDK_MEMORY }}
+              hugepages-2Mi: 1Gi
+              {{- else }}
+              cpu: {{ index .Values "ovs-ovn" "limits" "cpu" }}
+              memory: {{ index .Values "ovs-ovn" "limits" "memory" }}
+              {{- end }}
+      nodeSelector:
+        kubernetes.io/os: "linux"
+      volumes:
+        - name: host-modules
+          hostPath:
+            path: /lib/modules
+        - name: host-run-ovs
+          hostPath:
+            path: /run/openvswitch
+        - name: host-run-ovn
+          hostPath:
+            path: /run/ovn
+        - name: host-sys
+          hostPath:
+            path: /sys
+        - name: cni-conf
+          hostPath:
+            path: /etc/cni/net.d
+        - name: host-config-openvswitch
+          hostPath:
+            path: /etc/origin/openvswitch
+        - name: host-config-ovn
+          hostPath:
+            path: /etc/origin/ovn
+        - name: host-log-ovs
+          hostPath:
+            path: /var/log/openvswitch
+        - name: host-log-ovn
+          hostPath:
+            path: /var/log/ovn
+        - name: localtime
+          hostPath:
+            path: /etc/localtime
+        - name: kube-ovn-tls
+          secret:
+            optional: true
+            secretName: kube-ovn-tls
+        - name: host-ns
+          hostPath:
+            path: /var/run/netns
+        - hostPath:
+            path: /var/run/containerd
+          name: cruntime
+        {{- if or .Values.DPDK .Values.HYBRID_DPDK }}
+        - name: host-config-ovs
+          hostPath:
+            path: /opt/ovs-config
+            type: DirectoryOrCreate
+        - name: hugepage
+          emptyDir:
+            medium: HugePages
+        {{- end }}
+        {{- if .Values.HYBRID_DPDK }}
+        - name: shareddir
+          hostPath:
+            path: /pods
+            type: ''
+        {{- end }}

@@ -22,10 +22,13 @@ showHelp(){
   echo "  trace ...    trace ovn microflow of specific packet"
   echo "    trace {namespace/podname} {target ip address} [target mac address] {icmp|tcp|udp} [target tcp/udp port]    trace ICMP/TCP/UDP"
   echo "    trace {namespace/podname} {target ip address} [target mac address] arp {request|reply}                     trace ARP request/reply"
+  echo "    trace {node//nodename} {target ip address} [target mac address] {icmp|tcp|udp} [target tcp/udp port]       trace ICMP/TCP/UDP"
+  echo "    trace {node//nodename} {target ip address} [target mac address] arp {request|reply}                        trace ARP request/reply"
   echo "  diagnose {all|node} [nodename]    diagnose connectivity of all nodes or a specific node"
   echo "  env-check    check the environment configuration"
   echo "  tuning {install-fastpath|local-install-fastpath|remove-fastpath|install-stt|local-install-stt|remove-stt} {centos7|centos8}} [kernel-devel-version]    deploy kernel optimisation components to the system"
   echo "  reload    restart all kube-ovn components"
+  echo "  log {kube-ovn|ovn|ovs|linux|all}    save log to ./kubectl-ko-log/"
 }
 
 # usage: ipv4_to_hex 192.168.0.1
@@ -171,47 +174,59 @@ tcpdump(){
 
 trace(){
   set +u
-  namespacedPod="$1"
-  namespace=$(echo "$namespacedPod" | cut -d "/" -f1)
-  podName=$(echo "$namespacedPod" | cut -d "/" -f2)
-  if [ "$podName" = "$namespacedPod" ]; then
-    namespace="default"
+  local lsp= namespace= node= typedName= optNamespace=
+  if [[ "$1" =~ .*//.* ]]; then
+    node=${1##*/}
+    typedName="node/$node"
+    lsp=$(kubectl get $typedName -o jsonpath={.metadata.annotations.ovn\\.kubernetes\\.io/port_name})
+  else
+    local namespacedPod="$1"
+    namespace=$(echo "$namespacedPod" | cut -d "/" -f1)
+    local podName=$(echo "$namespacedPod" | cut -d "/" -f2)
+    if [ "$podName" = "$namespacedPod" ]; then
+      namespace="default"
+    fi
+    node=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.spec.nodeName})
+    typedName="pod/$podName"
+    local hostNetwork=$(kubectl get "$typedName" -n "$namespace" -o jsonpath={.spec.hostNetwork})
+    if [ "$hostNetwork" = "true" ]; then
+      namespace=""
+      typedName="node/$node"
+      lsp=$(kubectl get $typedName -o jsonpath={.metadata.annotations.ovn\\.kubernetes\\.io/port_name})
+    else
+      optNamespace="-n $namespace"
+      lsp="$podName.$namespace"
+    fi
   fi
 
-  dst="$2"
+  local dst="$2"
   if [ -z "$dst" ]; then
     echo "Error: missing target IP address"
     exit 1
   fi
 
-  hostNetwork=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.spec.hostNetwork})
-  if [ "$hostNetwork" = "true" ]; then
-    echo "Can not trace host network pod"
-    exit 1
-  fi
-
-  af="4"
-  nw="nw"
-  proto=""
-  if [[ "$dst" =~ .*:.* ]]; then
-    af="6"
-    nw="ipv6"
-    proto="6"
-  fi
-
-  dstMac=""
+  local dstMac=
   if echo "$3" | grep -qE '^([[:xdigit:]]{1,2}:){5}[[:xdigit:]]{1,2}$'; then
     dstMac=$3
     shift
   fi
 
-  type="$3"
+  local type="$3"
   if [ -z "$type" ]; then
     echo "Error: missing protocol"
     echo "Usage:"
     echo "  kubectl ko trace {namespace/podname} {target ip address} [target mac address] {icmp|tcp|udp} [target tcp/udp port]"
     echo "  kubectl ko trace {namespace/podname} {target ip address} [target mac address] arp {request|reply}"
+    echo "  kubectl ko trace {node//nodename} {target ip address} [target mac address] {icmp|tcp|udp} [target tcp/udp port]"
+    echo "  kubectl ko trace {node//nodename} {target ip address} [target mac address] arp {request|reply}"
     exit 1
+  fi
+
+  local af="4" nw="nw" proto=
+  if [[ "$dst" =~ .*:.* ]]; then
+    af="6"
+    nw="ipv6"
+    proto="6"
   fi
 
   if [ "$type" = "arp" ]; then
@@ -221,52 +236,51 @@ trace(){
     fi
   fi
 
-  podIPs=($(kubectl get pod "$podName" -n "$namespace" -o jsonpath="{.status.podIPs[*].ip}"))
-  if [ ${#podIPs[@]} -eq 0 ]; then
-    podIPs=($(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.metadata.annotations.ovn\\.kubernetes\\.io/ip_address} | sed 's/,/ /g'))
-    if [ ${#podIPs[@]} -eq 0 ]; then
-      echo "Error: Pod address not ready"
-      exit 1
-    fi
+  local ips=($(kubectl get "$typedName" $optNamespace -o jsonpath={.metadata.annotations.ovn\\.kubernetes\\.io/ip_address} | sed 's/,/ /g'))
+  if [ ${#ips[@]} -eq 0 ]; then
+    echo "Error: $typedName address not ready"
+    exit 1
+  fi
+  if [ ! -n "$namespace" -a "$type" != "arp" ]; then
+    ips=($(kubectl get $typedName -o jsonpath='{.status.addresses[?(@.type=="InternalIP")].address}') ${ips[@]})
   fi
 
-  podIP=""
-  for ip in ${podIPs[@]}; do
+  local srcIP=""
+  for ip in ${ips[@]}; do
     if [ "$af" = "4" ]; then
       if [[ ! "$ip" =~ .*:.* ]]; then
-        podIP=$ip
+        srcIP=$ip
         break
       fi
     elif [[ "$ip" =~ .*:.* ]]; then
-      podIP=$ip
+      srcIP=$ip
       break
     fi
   done
 
-  if [ -z "$podIP" ]; then
-    echo "Error: Pod $namespacedPod has no IPv$af address"
+  if [ -z "$srcIP" ]; then
+    echo "Error: $typedName has no IPv$af address"
     exit 1
   fi
 
-  nodeName=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.spec.nodeName})
-  ovnCni=$(kubectl get pod -n $KUBE_OVN_NS -l app=kube-ovn-cni -o 'jsonpath={.items[?(@.spec.nodeName=="'$nodeName'")].metadata.name}')
+  local ovnCni=$(kubectl get pod -n $KUBE_OVN_NS -l app=kube-ovn-cni -o 'jsonpath={.items[?(@.spec.nodeName=="'$node'")].metadata.name}')
   if [ -z "$ovnCni" ]; then
     echo "Error: no kube-ovn-cni Pod running on node $nodeName"
     exit 1
   fi
 
-  ls=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.metadata.annotations.ovn\\.kubernetes\\.io/logical_switch})
+  local ls=$(kubectl get "$typedName" $optNamespace -o jsonpath={.metadata.annotations.ovn\\.kubernetes\\.io/logical_switch})
   if [ -z "$ls" ]; then
-    echo "Error: Pod address not ready"
+    echo "Error: $typedName address not ready"
     exit 1
   fi
 
-  local cidr=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.metadata.annotations.ovn\\.kubernetes\\.io/cidr})
-  mac=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.metadata.annotations.ovn\\.kubernetes\\.io/mac_address})
+  local cidr=$(kubectl get "$typedName" $optNamespace -o jsonpath={.metadata.annotations.ovn\\.kubernetes\\.io/cidr})
+  local mac=$(kubectl get "$typedName" $optNamespace -o jsonpath={.metadata.annotations.ovn\\.kubernetes\\.io/mac_address})
 
   if [ "$type" != "arp" -o "$4" = "reply" ]; then
     # need destination mac
-    if [ -z "dstMac" ]; then
+    if [ -z "$dstMac" ]; then
       if ipIsInCidr $dst $cidr; then
         set +o pipefail
         if [ $af -eq 4 ]; then
@@ -285,8 +299,8 @@ trace(){
         exit 1
       fi
 
-      vlan=$(kubectl get subnet "$ls" -o jsonpath={.spec.vlan})
-      logicalGateway=$(kubectl get subnet "$ls" -o jsonpath={.spec.logicalGateway})
+      local vlan=$(kubectl get subnet "$ls" -o jsonpath={.spec.vlan})
+      local logicalGateway=$(kubectl get subnet "$ls" -o jsonpath={.spec.logicalGateway})
       if [ ! -z "$vlan" -a "$logicalGateway" != "true" ]; then
         gateway=$(kubectl get subnet "$ls" -o jsonpath={.spec.gateway})
         if [[ "$gateway" =~ .*,.* ]]; then
@@ -297,40 +311,45 @@ trace(){
           fi
         fi
 
-        nicName=$(kubectl exec "$ovnCni" -c cni-server -n $KUBE_OVN_NS -- ovs-vsctl --data=bare --no-heading --columns=name find interface external-ids:iface-id="$podName"."$namespace" | tr -d '\r')
+        local nicName=$(kubectl exec "$ovnCni" -c cni-server -n $KUBE_OVN_NS -- ovs-vsctl --data=bare --no-heading --columns=name find interface external-ids:iface-id="$lsp" | tr -d '\r')
         if [ -z "$nicName" ]; then
-          echo "Error: failed to find ovs interface for Pod namespacedPod on node $nodeName"
+          echo "Error: failed to find ovs interface for LSP $lsp"
           exit 1
         fi
 
-        podNicType=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.metadata.annotations.ovn\\.kubernetes\\.io/pod_nic_type})
-        podNetNs=$(kubectl exec "$ovnCni" -c cni-server -n $KUBE_OVN_NS -- ovs-vsctl --data=bare --no-heading get interface "$nicName" external-ids:pod_netns | tr -d '\r' | sed -e 's/^"//' -e 's/"$//')
+        local podNicType=$(kubectl get "$typedName" $optNamespace -o jsonpath={.metadata.annotations.ovn\\.kubernetes\\.io/pod_nic_type})
+        local podNetNs=$(kubectl exec "$ovnCni" -c cni-server -n $KUBE_OVN_NS -- ovs-vsctl --data=bare --no-heading get interface "$nicName" external-ids:pod_netns | tr -d '\r' | sed -e 's/^"//' -e 's/"$//')
+        local nicName= nsenterCmd=
+        if [ ! -z $podNetNs ]; then
+          nsenterCmd="nsenter --net='$podNetNs'"
+        fi
         if [ "$podNicType" != "internal-port" ]; then
-          interface=$(kubectl exec "$ovnCni" -c cni-server -n $KUBE_OVN_NS -- ovs-vsctl --format=csv --data=bare --no-heading --columns=name find interface external_id:iface-id="$podName"."$namespace")
-          peer=$(kubectl exec "$ovnCni" -c cni-server -n $KUBE_OVN_NS -- ip link show $interface | grep -oE "^[0-9]+:\\s$interface@if[0-9]+" | awk -F @ '{print $2}')
-          peerIndex=${peer//if/}
-          peer=$(kubectl exec "$ovnCni" -c cni-server -n $KUBE_OVN_NS -- nsenter --net="$podNetNs" ip link show type veth | grep "^$peerIndex:" | awk -F @ '{print $1}')
+          local interface=$(kubectl exec "$ovnCni" -c cni-server -n $KUBE_OVN_NS -- ovs-vsctl --format=csv --data=bare --no-heading --columns=name find interface external_id:iface-id="$lsp")
+          local peer=$(kubectl exec "$ovnCni" -c cni-server -n $KUBE_OVN_NS -- ip link show $interface | grep -oE "^[0-9]+:\\s$interface@if[0-9]+" | awk -F @ '{print $2}')
+          local peerIndex=${peer//if/}
+          local peer=$(kubectl exec "$ovnCni" -c cni-server -n $KUBE_OVN_NS -- sh -c "$nsenterCmd ip link show type veth" | grep "^$peerIndex:" | awk -F @ '{print $1}')
           nicName=$(echo $peer | awk '{print $2}')
         fi
 
         set +o pipefail
-        master=$(kubectl exec "$ovnCni" -c cni-server -n $KUBE_OVN_NS -- nsenter --net="$podNetNs" ip link show $nicName | grep -Eo '\smaster\s\w+\s' | awk '{print $2}')
+        local master=$(kubectl exec "$ovnCni" -c cni-server -n $KUBE_OVN_NS -- sh -c "$nsenterCmd ip link show $nicName" | grep -Eo '\smaster\s\w+\s' | awk '{print $2}')
         set -o pipefail
         if [ ! -z "$master" ]; then
           echo "Error: Pod nic $nicName is a slave of $master, please set the destination mac address."
           exit 1
         fi
 
+        local cmd= output=
         if [[ "$gateway" =~ .*:.* ]]; then
           cmd="ndisc6 -q $gateway $nicName"
-          output=$(kubectl exec "$ovnCni" -c cni-server -n $KUBE_OVN_NS -- nsenter --net="$podNetNs" ndisc6 -q "$gateway" "$nicName")
+          output=$(kubectl exec "$ovnCni" -c cni-server -n $KUBE_OVN_NS -- sh -c "$nsenterCmd ndisc6 -q $gateway $nicName")
         else
           cmd="arping -c3 -C1 -i1 -I $nicName $gateway"
-          output=$(kubectl exec "$ovnCni" -c cni-server -n $KUBE_OVN_NS -- nsenter --net="$podNetNs" arping -c3 -C1 -i1 -I "$nicName" "$gateway")
+          output=$(kubectl exec "$ovnCni" -c cni-server -n $KUBE_OVN_NS -- sh -c "$nsenterCmd arping -c3 -C1 -i1 -I $nicName $gateway")
         fi
 
         if [ $? -ne 0 ]; then
-          echo "Error: failed to execute '$cmd' in Pod's netns"
+          echo "Error: failed to execute '$cmd' in $typedName"
           exit 1
         fi
 
@@ -340,7 +359,7 @@ trace(){
 
     if [ -z "$dstMac" ]; then
       echo "Using the gateway mac address as destination"
-      lr=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.metadata.annotations.ovn\\.kubernetes\\.io/logical_router})
+      local lr=$(kubectl get "$typedName" $optNamespace -o jsonpath={.metadata.annotations.ovn\\.kubernetes\\.io/logical_router})
       if [ -z "$lr" ]; then
         lr=$(kubectl get subnet "$ls" -o jsonpath={.spec.vpc})
       fi
@@ -358,44 +377,44 @@ trace(){
     dstMac="ff:ff:ff:ff:ff:ff"
   fi
 
-  lsp="$podName.$namespace"
-  lspUUID=$(kubectl exec $OVN_NB_POD -n $KUBE_OVN_NS -c ovn-central -- ovn-nbctl --data=bare --no-heading --columns=_uuid find logical_switch_port name="$lsp")
+  local lspUUID=$(kubectl exec $OVN_NB_POD -n $KUBE_OVN_NS -c ovn-central -- ovn-nbctl --data=bare --no-heading --columns=_uuid find logical_switch_port name="$lsp")
   if [ -z "$lspUUID" ]; then
     echo "Notice: LSP $lsp does not exist"
   fi
-  vmOwner=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath='{.metadata.ownerReferences[?(@.kind=="VirtualMachineInstance")].name}')
+  local vmOwner=$(kubectl get "$typedName" $optNamespace -o jsonpath='{.metadata.ownerReferences[?(@.kind=="VirtualMachineInstance")].name}')
   if [ ! -z "$vmOwner" ]; then
     lsp="$vmOwner.$namespace"
   fi
 
   if [ -z "$lsp" ]; then
-    echo "Error: failed to get LSP of Pod $namespace/$podName"
+    echo "Error: failed to get LSP of $typedName"
     exit 1
   fi
 
   case $type in
     icmp)
       set -x
-      kubectl exec "$OVN_SB_POD" -n $KUBE_OVN_NS -c ovn-central -- ovn-trace --ct=new "$ls" "inport == \"$lsp\" && ip.ttl == 64 && icmp && eth.src == $mac && ip$af.src == $podIP && eth.dst == $dstMac && ip$af.dst == $dst"
+      kubectl exec "$OVN_SB_POD" -n $KUBE_OVN_NS -c ovn-central -- ovn-trace "$ls" "inport == \"$lsp\" && ip.ttl == 64 && icmp && eth.src == $mac && ip$af.src == $srcIP && eth.dst == $dstMac && ip$af.dst == $dst && ct.new"
       ;;
     tcp|udp)
       set -x
-      kubectl exec "$OVN_SB_POD" -n $KUBE_OVN_NS -c ovn-central -- ovn-trace --ct=new "$ls" "inport == \"$lsp\" && ip.ttl == 64 && eth.src == $mac && ip$af.src == $podIP && eth.dst == $dstMac && ip$af.dst == $dst && $type.src == 10000 && $type.dst == $4"
+      kubectl exec "$OVN_SB_POD" -n $KUBE_OVN_NS -c ovn-central -- ovn-trace "$ls" "inport == \"$lsp\" && ip.ttl == 64 && eth.src == $mac && ip$af.src == $srcIP && eth.dst == $dstMac && ip$af.dst == $dst && $type.src == 10000 && $type.dst == $4 && ct.new"
       ;;
     arp)
       case "$4" in
         ""|request)
           set -x
-          kubectl exec "$OVN_SB_POD" -n $KUBE_OVN_NS -c ovn-central -- ovn-trace "$ls" "inport == \"$lsp\" && eth.src == $mac && eth.dst == $dstMac && arp.op == 1 && arp.sha == $mac && arp.tha == 00:00:00:00:00:00 && arp.spa == $podIP && arp.tpa == $dst"
+          kubectl exec "$OVN_SB_POD" -n $KUBE_OVN_NS -c ovn-central -- ovn-trace "$ls" "inport == \"$lsp\" && eth.src == $mac && eth.dst == $dstMac && arp.op == 1 && arp.sha == $mac && arp.tha == 00:00:00:00:00:00 && arp.spa == $srcIP && arp.tpa == $dst"
           ;;
         reply)
           set -x
-          kubectl exec "$OVN_SB_POD" -n $KUBE_OVN_NS -c ovn-central -- ovn-trace "$ls" "inport == \"$lsp\" && eth.src == $mac && eth.dst == $dstMac && arp.op == 2 && arp.sha == $mac && arp.tha == $dstMac && arp.spa == $podIP && arp.tpa == $dst"
+          kubectl exec "$OVN_SB_POD" -n $KUBE_OVN_NS -c ovn-central -- ovn-trace "$ls" "inport == \"$lsp\" && eth.src == $mac && eth.dst == $dstMac && arp.op == 2 && arp.sha == $mac && arp.tha == $dstMac && arp.spa == $srcIP && arp.tpa == $dst"
           ;;
         *)
           echo "Error: invalid ARP type $4"
           echo "Usage:"
           echo "  kubectl ko trace {namespace/podname} {target ip address} [target mac address] arp {request|reply}"
+          echo "  kubectl ko trace {node//nodename} {target ip address} [target mac address] arp {request|reply}"
           exit 1
           ;;
       esac
@@ -405,6 +424,8 @@ trace(){
       echo "Usage:"
       echo "  kubectl ko trace {namespace/podname} {target ip address} [target mac address] {icmp|tcp|udp} [target tcp/udp port]"
       echo "  kubectl ko trace {namespace/podname} {target ip address} [target mac address] arp {request|reply}"
+      echo "  kubectl ko trace {node//nodename} {target ip address} [target mac address] {icmp|tcp|udp} [target tcp/udp port]"
+      echo "  kubectl ko trace {node//nodename} {target ip address} [target mac address] arp {request|reply}"
       exit 1
       ;;
   esac
@@ -415,25 +436,25 @@ trace(){
   echo ""
   echo ""
 
-  inPort=$(kubectl exec "$ovnCni" -c cni-server -n $KUBE_OVN_NS -- ovs-vsctl --format=csv --data=bare --no-heading --columns=ofport find interface external_id:iface-id="$podName"."$namespace")
+  local inPort=$(kubectl exec "$ovnCni" -c cni-server -n $KUBE_OVN_NS -- ovs-vsctl --format=csv --data=bare --no-heading --columns=ofport find interface external_id:iface-id="$lsp")
   case $type in
     icmp)
       set -x
-      kubectl exec "$ovnCni" -c cni-server -n $KUBE_OVN_NS -- ovs-appctl ofproto/trace br-int "in_port=$inPort,icmp$proto,nw_ttl=64,${nw}_src=$podIP,${nw}_dst=$dst,dl_src=$mac,dl_dst=$dstMac"
+      kubectl exec "$ovnCni" -c cni-server -n $KUBE_OVN_NS -- ovs-appctl ofproto/trace br-int "in_port=$inPort,icmp$proto,nw_ttl=64,${nw}_src=$srcIP,${nw}_dst=$dst,dl_src=$mac,dl_dst=$dstMac"
       ;;
     tcp|udp)
       set -x
-      kubectl exec "$ovnCni" -c cni-server -n $KUBE_OVN_NS -- ovs-appctl ofproto/trace br-int "in_port=$inPort,$type$proto,nw_ttl=64,${nw}_src=$podIP,${nw}_dst=$dst,dl_src=$mac,dl_dst=$dstMac,${type}_src=1000,${type}_dst=$4"
+      kubectl exec "$ovnCni" -c cni-server -n $KUBE_OVN_NS -- ovs-appctl ofproto/trace br-int "in_port=$inPort,$type$proto,nw_ttl=64,${nw}_src=$srcIP,${nw}_dst=$dst,dl_src=$mac,dl_dst=$dstMac,${type}_src=1000,${type}_dst=$4"
       ;;
     arp)
       case "$4" in
         ""|request)
           set -x
-          kubectl exec "$ovnCni" -c cni-server -n $KUBE_OVN_NS -- ovs-appctl ofproto/trace br-int "in_port=$inPort,arp,arp_op=1,dl_src=$mac,dl_dst=$dstMac,arp_spa=$podIP,arp_tpa=$dst,arp_sha=$mac,arp_tha=00:00:00:00:00:00"
+          kubectl exec "$ovnCni" -c cni-server -n $KUBE_OVN_NS -- ovs-appctl ofproto/trace br-int "in_port=$inPort,arp,arp_op=1,dl_src=$mac,dl_dst=$dstMac,arp_spa=$srcIP,arp_tpa=$dst,arp_sha=$mac,arp_tha=00:00:00:00:00:00"
           ;;
         reply)
           set -x
-          kubectl exec "$ovnCni" -c cni-server -n $KUBE_OVN_NS -- ovs-appctl ofproto/trace br-int "in_port=$inPort,arp,arp_op=2,dl_src=$mac,dl_dst=$dstMac,arp_spa=$podIP,arp_tpa=$dst,arp_sha=$mac,arp_tha=$dstMac"
+          kubectl exec "$ovnCni" -c cni-server -n $KUBE_OVN_NS -- ovs-appctl ofproto/trace br-int "in_port=$inPort,arp,arp_op=2,dl_src=$mac,dl_dst=$dstMac,arp_spa=$srcIP,arp_tpa=$dst,arp_sha=$mac,arp_tha=$dstMac"
           ;;
       esac
       ;;
@@ -565,15 +586,15 @@ diagnose(){
 }
 
 getOvnCentralPod(){
-    NB_POD=$(kubectl get pod -n $KUBE_OVN_NS -l ovn-nb-leader=true | grep ovn-central | head -n 1 | awk '{print $1}')
+    NB_POD=$(kubectl get pod -n $KUBE_OVN_NS -l ovn-nb-leader=true | grep ovn-central | awk '{if($2=="1/1" && $3=="Running") print $1}' | head -n 1 )
     if [ -z "$NB_POD" ]; then
       echo "nb leader not exists"
       exit 1
     fi
     OVN_NB_POD=$NB_POD
-    SB_POD=$(kubectl get pod -n $KUBE_OVN_NS -l ovn-sb-leader=true | grep ovn-central | head -n 1 | awk '{print $1}')
+    SB_POD=$(kubectl get pod -n $KUBE_OVN_NS -l ovn-sb-leader=true | grep ovn-central | awk '{if($2=="1/1" && $3=="Running") print $1}' | head -n 1 )
     if [ -z "$SB_POD" ]; then
-      echo "nb leader not exists"
+      echo "sb leader not exists"
       exit 1
     fi
     OVN_SB_POD=$SB_POD
@@ -740,8 +761,8 @@ dbtool(){
           done
           echo "finish restore nb db file and ovn-central replicas"
 
-          echo "recreate ovs-ovn pods"
-          kubectl delete pod -n $KUBE_OVN_NS -l app=ovs
+          echo "restart ovs-ovn"
+          kubectl -n $KUBE_OVN_NS rollout restart ds ovs-ovn
           ;;
         *)
           echo "unknown action $action"
@@ -915,7 +936,7 @@ tuning(){
 reload(){
   kubectl delete pod -n kube-system -l app=ovn-central
   kubectl rollout status deployment/ovn-central -n kube-system
-  kubectl delete pod -n kube-system -l app=ovs
+  kubectl rollout restart daemonset/ovs-ovn -n kube-system
   kubectl delete pod -n kube-system -l app=kube-ovn-controller
   kubectl rollout status deployment/kube-ovn-controller -n kube-system
   kubectl delete pod -n kube-system -l app=kube-ovn-cni
@@ -938,6 +959,126 @@ env-check(){
     echo "************************************************"
     kubectl exec -it -n $KUBE_OVN_NS $pod -c cni-server -- bash /kube-ovn/env-check.sh
   done
+}
+
+init_dir() {
+    mkdir -p kubectl-ko-log
+    podNames=`kubectl get pod -n kube-system -l app=kube-ovn-cni -o 'jsonpath={.items[*].metadata.name}'`
+    for pod in $podNames; do
+      nodeName=$(kubectl get pod "$pod" -n kube-system -o jsonpath={.spec.nodeName})
+      mkdir -p ./kubectl-ko-log/$nodeName/
+    done
+}
+
+log_kube_ovn(){
+  echo "Collecting kube-ovn logging files"
+  podNames=`kubectl get pod -n kube-system -l app=kube-ovn-cni -o 'jsonpath={.items[*].metadata.name}'`
+  for pod in $podNames; do
+    nodeName=$(kubectl get pod "$pod" -n kube-system -o jsonpath={.spec.nodeName})
+    mkdir -p ./kubectl-ko-log/$nodeName/kube-ovn
+    kubectl cp $pod:/var/log/kube-ovn ./kubectl-ko-log/$nodeName/kube-ovn -n kube-system -c cni-server > /dev/null || :
+  done
+}
+
+log_ovn_ovs(){
+  component_param=$1
+  echo "Collecting $component_param logging files"
+  podNames=`kubectl get pod -n kube-system -l app=ovs -o 'jsonpath={.items[*].metadata.name}'`
+  for pod in $podNames; do
+    nodeName=$(kubectl get pod "$pod" -n kube-system -o jsonpath={.spec.nodeName})
+    mkdir -p ./kubectl-ko-log/$nodeName/$component_param
+    kubectl cp $pod:/var/log/$component_param ./kubectl-ko-log/$nodeName/$component_param -n kube-system > /dev/null || :
+  done
+}
+
+log_linux(){
+  component_param=$1
+  sub_component_param=$2
+  echo "Collecting $component_param $sub_component_param files"
+  podNames=`kubectl get pod -n kube-system -l app=ovs -o 'jsonpath={.items[*].metadata.name}'`
+  for pod in $podNames; do
+    nodeName=$(kubectl get pod "$pod" -n kube-system -o jsonpath={.spec.nodeName})
+    mkdir -p ./kubectl-ko-log/$nodeName/$component_param
+    if [[ "$sub_component_param" == "dmesg" ]]; then
+      kubectl exec $pod -n kube-system -- dmesg -T > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+    elif [[ "$sub_component_param" == "iptables-legacy" ]]; then
+      kubectl exec $pod -n kube-system -- /usr/sbin/iptables-legacy -V > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+      echo "******************legacy filter v4 ************************" >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log
+      kubectl exec $pod -n kube-system -- /usr/sbin/iptables-legacy -S >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+      echo "****************** legacy nat v4 ************************" >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log
+      kubectl exec $pod -n kube-system -- /usr/sbin/iptables-legacy -S -t nat >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+      echo "******************legacy filter v6 ************************" >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log
+      kubectl exec $pod -n kube-system -- /usr/sbin/ip6tables-legacy -S >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+      echo "****************** legacy nat v6 ************************" >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log
+      kubectl exec $pod -n kube-system -- /usr/sbin/ip6tables-legacy -S -t nat >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+    elif [[ "$sub_component_param" == "iptables-nft" ]]; then
+      kubectl exec $pod -n kube-system -- /usr/sbin/iptables-nft -V > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log 2>/dev/null || :
+      echo "*********************nft filter v4 ************************" >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log
+      kubectl exec $pod -n kube-system -- /usr/sbin/iptables-nft -S >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log 2>/dev/null || :
+      echo "********************* nft nat v4 ************************" >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log
+      kubectl exec $pod -n kube-system -- /usr/sbin/iptables-nft -S -t nat >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log 2>/dev/null || :
+      echo "*********************nft filter v6 ************************" >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log
+      kubectl exec $pod -n kube-system -- /usr/sbin/ip6tables-nft -S >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log 2>/dev/null || :
+      echo "********************* nft nat v6 ************************" >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log
+      kubectl exec $pod -n kube-system -- /usr/sbin/ip6tables-nft -S -t nat >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log 2>/dev/null || :
+    elif [[ "$sub_component_param" == "route" ]]; then
+      kubectl exec $pod -n kube-system -- ip route show > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+      kubectl exec $pod -n kube-system -- ip -6 route show >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+    elif [[ "$sub_component_param" == "link" ]]; then
+      kubectl exec $pod -n kube-system -- ip -d link show > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+    elif [[ "$sub_component_param" == "neigh" ]]; then
+      kubectl exec $pod -n kube-system -- ip n > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+      kubectl exec $pod -n kube-system -- ip -6 n >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+    elif [[ "$sub_component_param" == "memory" ]]; then
+      kubectl exec $pod -n kube-system -- free -m > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+    elif [[ "$sub_component_param" == "top" ]]; then
+      kubectl exec $pod -n kube-system -- top -b -n 1 > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+    elif [[ "$sub_component_param" == "sysctl" ]]; then
+      kubectl exec $pod -n kube-system -- sysctl -a > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+    elif [[ "$sub_component_param" == "netstat" ]]; then
+      kubectl exec $pod -n kube-system -- netstat -tunlp > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+    elif [[ "$sub_component_param" == "addr" ]]; then
+      kubectl exec $pod -n kube-system -- ip addr show > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+    elif [[ "$sub_component_param" == "ipset" ]]; then
+      kubectl exec $pod -n kube-system -- ipset list > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+    elif [[ "$sub_component_param" == "tcp" ]]; then
+      kubectl exec $pod -n kube-system -- cat /proc/net/sockstat > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+    fi
+  done
+}
+
+
+log(){
+  component="$1"
+  components=("kube-ovn" "ovs" "ovn" "linux" "all")
+  linux_sub_components=("dmesg" "iptables-legacy" "iptables-nft" "route" "link" "neigh" "memory" "top" "sysctl" "netstat" "addr" "ipset" "tcp")
+
+  if [[ ! " ${components[@]} " =~ " $component " ]]; then
+      echo "invalid component $component"
+      exit 1
+  fi
+
+  init_dir
+
+  if [[ "$component" == "kube-ovn" || "$component" == "all" ]]; then
+    log_kube_ovn
+  fi
+
+  if [[ "$component" == "ovn" || "$component" == "all" ]]; then
+    log_ovn_ovs "ovn"
+  fi
+
+  if [[ "$component" == "ovs" || "$component" == "all" ]]; then
+    log_ovn_ovs "openvswitch"
+  fi
+
+  if [[ "$component" == "linux" || "$component" == "all" ]]; then
+      for linux_sub_component in ${linux_sub_components[@]}; do
+        log_linux "linux" "$linux_sub_component"
+      done
+  fi
+
+  echo "Collected files have been saved in the directory $PWD/kubectl-ko-log "
 }
 
 if [ $# -lt 1 ]; then
@@ -979,6 +1120,9 @@ case $subcommand in
     ;;
   env-check)
     env-check
+    ;;
+  log)
+    log "$@"
     ;;
   *)
     showHelp

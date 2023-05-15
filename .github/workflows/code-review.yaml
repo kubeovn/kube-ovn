@@ -1,0 +1,26 @@
+name: Code Review
+
+permissions:
+  contents: read
+  pull-requests: write
+
+on:
+  pull_request_target:
+    branches:
+      - master
+      - release-*
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
+      - 'go.mod'
+      - 'go.sum'
+
+jobs:
+  review-code:
+    runs-on: ubuntu-latest
+    steps:
+      - name: test review
+        uses: oilbeater/smart-review@main
+        with:
+          apiKey: ${{ secrets.OPENAI_API_KEY }}
+          githubToken: ${{ secrets.GITHUB_TOKEN }}

@@ -12,10 +12,10 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
+	"kubevirt.io/client-go/kubecli"
 
 	clientset "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
 	"github.com/kubeovn/kube-ovn/pkg/util"
-	"kubevirt.io/client-go/kubecli"
 )
 
 // Configuration is the controller conf
@@ -53,10 +53,12 @@ type Configuration struct {
 
 	ServiceClusterIPRange string
 
-	ClusterTcpLoadBalancer        string
-	ClusterUdpLoadBalancer        string
-	ClusterTcpSessionLoadBalancer string
-	ClusterUdpSessionLoadBalancer string
+	ClusterTcpLoadBalancer         string
+	ClusterUdpLoadBalancer         string
+	ClusterSctpLoadBalancer        string
+	ClusterTcpSessionLoadBalancer  string
+	ClusterUdpSessionLoadBalancer  string
+	ClusterSctpSessionLoadBalancer string
 
 	PodName      string
 	PodNamespace string
@@ -93,6 +95,12 @@ type Configuration struct {
 
 	GCInterval      int
 	InspectInterval int
+
+	BfdMinTx      int
+	BfdMinRx      int
+	BfdDetectMult int
+
+	NodeLocalDnsIP string
 }
 
 // ParseFlags parses cmd args then init kubeclient and conf
@@ -122,10 +130,12 @@ func ParseFlags() (*Configuration, error) {
 
 		argServiceClusterIPRange = pflag.String("service-cluster-ip-range", "10.96.0.0/12", "The kubernetes service cluster ip range")
 
-		argClusterTcpLoadBalancer        = pflag.String("cluster-tcp-loadbalancer", "cluster-tcp-loadbalancer", "The name for cluster tcp loadbalancer")
-		argClusterUdpLoadBalancer        = pflag.String("cluster-udp-loadbalancer", "cluster-udp-loadbalancer", "The name for cluster udp loadbalancer")
-		argClusterTcpSessionLoadBalancer = pflag.String("cluster-tcp-session-loadbalancer", "cluster-tcp-session-loadbalancer", "The name for cluster tcp session loadbalancer")
-		argClusterUdpSessionLoadBalancer = pflag.String("cluster-udp-session-loadbalancer", "cluster-udp-session-loadbalancer", "The name for cluster udp session loadbalancer")
+		argClusterTcpLoadBalancer         = pflag.String("cluster-tcp-loadbalancer", "cluster-tcp-loadbalancer", "The name for cluster tcp loadbalancer")
+		argClusterUdpLoadBalancer         = pflag.String("cluster-udp-loadbalancer", "cluster-udp-loadbalancer", "The name for cluster udp loadbalancer")
+		argClusterSctpLoadBalancer        = pflag.String("cluster-sctp-loadbalancer", "cluster-sctp-loadbalancer", "The name for cluster sctp loadbalancer")
+		argClusterTcpSessionLoadBalancer  = pflag.String("cluster-tcp-session-loadbalancer", "cluster-tcp-session-loadbalancer", "The name for cluster tcp session loadbalancer")
+		argClusterUdpSessionLoadBalancer  = pflag.String("cluster-udp-session-loadbalancer", "cluster-udp-session-loadbalancer", "The name for cluster udp session loadbalancer")
+		argClusterSctpSessionLoadBalancer = pflag.String("cluster-sctp-session-loadbalancer", "cluster-sctp-session-loadbalancer", "The name for cluster sctp session loadbalancer")
 
 		argWorkerNum       = pflag.Int("worker-num", 3, "The parallelism of each worker")
 		argEnablePprof     = pflag.Bool("enable-pprof", false, "Enable pprof")
@@ -146,7 +156,7 @@ func ParseFlags() (*Configuration, error) {
 		argEnableEipSnat           = pflag.Bool("enable-eip-snat", true, "Enable EIP and SNAT")
 		argEnableExternalVpc       = pflag.Bool("enable-external-vpc", true, "Enable external vpc support")
 		argEnableEcmp              = pflag.Bool("enable-ecmp", false, "Enable ecmp route for centralized subnet")
-		argKeepVmIP                = pflag.Bool("keep-vm-ip", false, "Whether to keep ip for kubevirt pod when pod is rebuild")
+		argKeepVmIP                = pflag.Bool("keep-vm-ip", true, "Whether to keep ip for kubevirt pod when pod is rebuild")
 		argEnableLbSvc             = pflag.Bool("enable-lb-svc", false, "Whether to support loadbalancer service")
 		argEnableMetrics           = pflag.Bool("enable-metrics", true, "Whether to support metrics query")
 
@@ -154,9 +164,14 @@ func ParseFlags() (*Configuration, error) {
 		argExternalGatewaySwitch   = pflag.String("external-gateway-switch", "external", "The name of the external gateway switch which is a ovs bridge to provide external network, default: external")
 		argExternalGatewayNet      = pflag.String("external-gateway-net", "external", "The name of the external network which mappings with an ovs bridge, default: external")
 		argExternalGatewayVlanID   = pflag.Int("external-gateway-vlanid", 0, "The vlanId of port ln-ovn-external, default: 0")
+		argNodeLocalDnsIP          = pflag.String("node-local-dns-ip", "", "The node local dns ip , this feature is using the local dns cache in k8s")
 
 		argGCInterval      = pflag.Int("gc-interval", 360, "The interval between GC processes, default 360 seconds")
 		argInspectInterval = pflag.Int("inspect-interval", 20, "The interval between inspect processes, default 20 seconds")
+
+		argBfdMinTx      = pflag.Int("bfd-min-tx", 100, "This is the minimum interval, in milliseconds, ovn would like to use when transmitting BFD Control packets")
+		argBfdMinRx      = pflag.Int("bfd-min-rx", 100, "This is the minimum interval, in milliseconds, between received BFD Control packets")
+		argBfdDetectMult = pflag.Int("detect-mult", 3, "The negotiated transmit interval, multiplied by this value, provides the Detection Time for the receiving system in Asynchronous mode.")
 	)
 
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
@@ -178,57 +193,63 @@ func ParseFlags() (*Configuration, error) {
 	pflag.Parse()
 
 	config := &Configuration{
-		OvnNbAddr:                     *argOvnNbAddr,
-		OvnSbAddr:                     *argOvnSbAddr,
-		OvnTimeout:                    *argOvnTimeout,
-		CustCrdRetryMinDelay:          *argCustCrdRetryMinDelay,
-		CustCrdRetryMaxDelay:          *argCustCrdRetryMaxDelay,
-		KubeConfigFile:                *argKubeConfigFile,
-		DefaultLogicalSwitch:          *argDefaultLogicalSwitch,
-		DefaultCIDR:                   *argDefaultCIDR,
-		DefaultGateway:                *argDefaultGateway,
-		DefaultGatewayCheck:           *argDefaultGatewayCheck,
-		DefaultLogicalGateway:         *argDefaultLogicalGateway,
-		DefaultU2OInterconnection:     *argDefaultU2OInterconnection,
-		DefaultExcludeIps:             *argDefaultExcludeIps,
-		ClusterRouter:                 *argClusterRouter,
-		NodeSwitch:                    *argNodeSwitch,
-		NodeSwitchCIDR:                *argNodeSwitchCIDR,
-		NodeSwitchGateway:             *argNodeSwitchGateway,
-		ServiceClusterIPRange:         *argServiceClusterIPRange,
-		ClusterTcpLoadBalancer:        *argClusterTcpLoadBalancer,
-		ClusterUdpLoadBalancer:        *argClusterUdpLoadBalancer,
-		ClusterTcpSessionLoadBalancer: *argClusterTcpSessionLoadBalancer,
-		ClusterUdpSessionLoadBalancer: *argClusterUdpSessionLoadBalancer,
-		WorkerNum:                     *argWorkerNum,
-		EnablePprof:                   *argEnablePprof,
-		PprofPort:                     *argPprofPort,
-		NetworkType:                   *argNetworkType,
-		DefaultVlanID:                 *argDefaultVlanID,
-		LsDnatModDlDst:                *argLsDnatModDlDst,
-		DefaultProviderName:           *argDefaultProviderName,
-		DefaultHostInterface:          *argDefaultInterfaceName,
-		DefaultExchangeLinkName:       *argDefaultExchangeLinkName,
-		DefaultVlanName:               *argDefaultVlanName,
-		PodName:                       os.Getenv("POD_NAME"),
-		PodNamespace:                  os.Getenv("KUBE_NAMESPACE"),
-		PodNicType:                    *argPodNicType,
-		PodDefaultFipType:             *argPodDefaultFipType,
-		EnableLb:                      *argEnableLb,
-		EnableNP:                      *argEnableNP,
-		EnableEipSnat:                 *argEnableEipSnat,
-		EnableExternalVpc:             *argEnableExternalVpc,
-		ExternalGatewayConfigNS:       *argExternalGatewayConfigNS,
-		ExternalGatewaySwitch:         *argExternalGatewaySwitch,
-		ExternalGatewayNet:            *argExternalGatewayNet,
-		ExternalGatewayVlanID:         *argExternalGatewayVlanID,
-		EnableEcmp:                    *argEnableEcmp,
-		EnableKeepVmIP:                *argKeepVmIP,
-		NodePgProbeTime:               *argNodePgProbeTime,
-		GCInterval:                    *argGCInterval,
-		InspectInterval:               *argInspectInterval,
-		EnableLbSvc:                   *argEnableLbSvc,
-		EnableMetrics:                 *argEnableMetrics,
+		OvnNbAddr:                      *argOvnNbAddr,
+		OvnSbAddr:                      *argOvnSbAddr,
+		OvnTimeout:                     *argOvnTimeout,
+		CustCrdRetryMinDelay:           *argCustCrdRetryMinDelay,
+		CustCrdRetryMaxDelay:           *argCustCrdRetryMaxDelay,
+		KubeConfigFile:                 *argKubeConfigFile,
+		DefaultLogicalSwitch:           *argDefaultLogicalSwitch,
+		DefaultCIDR:                    *argDefaultCIDR,
+		DefaultGateway:                 *argDefaultGateway,
+		DefaultGatewayCheck:            *argDefaultGatewayCheck,
+		DefaultLogicalGateway:          *argDefaultLogicalGateway,
+		DefaultU2OInterconnection:      *argDefaultU2OInterconnection,
+		DefaultExcludeIps:              *argDefaultExcludeIps,
+		ClusterRouter:                  *argClusterRouter,
+		NodeSwitch:                     *argNodeSwitch,
+		NodeSwitchCIDR:                 *argNodeSwitchCIDR,
+		NodeSwitchGateway:              *argNodeSwitchGateway,
+		ServiceClusterIPRange:          *argServiceClusterIPRange,
+		ClusterTcpLoadBalancer:         *argClusterTcpLoadBalancer,
+		ClusterUdpLoadBalancer:         *argClusterUdpLoadBalancer,
+		ClusterSctpLoadBalancer:        *argClusterSctpLoadBalancer,
+		ClusterTcpSessionLoadBalancer:  *argClusterTcpSessionLoadBalancer,
+		ClusterUdpSessionLoadBalancer:  *argClusterUdpSessionLoadBalancer,
+		ClusterSctpSessionLoadBalancer: *argClusterSctpSessionLoadBalancer,
+		WorkerNum:                      *argWorkerNum,
+		EnablePprof:                    *argEnablePprof,
+		PprofPort:                      *argPprofPort,
+		NetworkType:                    *argNetworkType,
+		DefaultVlanID:                  *argDefaultVlanID,
+		LsDnatModDlDst:                 *argLsDnatModDlDst,
+		DefaultProviderName:            *argDefaultProviderName,
+		DefaultHostInterface:           *argDefaultInterfaceName,
+		DefaultExchangeLinkName:        *argDefaultExchangeLinkName,
+		DefaultVlanName:                *argDefaultVlanName,
+		PodName:                        os.Getenv("POD_NAME"),
+		PodNamespace:                   os.Getenv("KUBE_NAMESPACE"),
+		PodNicType:                     *argPodNicType,
+		PodDefaultFipType:              *argPodDefaultFipType,
+		EnableLb:                       *argEnableLb,
+		EnableNP:                       *argEnableNP,
+		EnableEipSnat:                  *argEnableEipSnat,
+		EnableExternalVpc:              *argEnableExternalVpc,
+		ExternalGatewayConfigNS:        *argExternalGatewayConfigNS,
+		ExternalGatewaySwitch:          *argExternalGatewaySwitch,
+		ExternalGatewayNet:             *argExternalGatewayNet,
+		ExternalGatewayVlanID:          *argExternalGatewayVlanID,
+		EnableEcmp:                     *argEnableEcmp,
+		EnableKeepVmIP:                 *argKeepVmIP,
+		NodePgProbeTime:                *argNodePgProbeTime,
+		GCInterval:                     *argGCInterval,
+		InspectInterval:                *argInspectInterval,
+		EnableLbSvc:                    *argEnableLbSvc,
+		EnableMetrics:                  *argEnableMetrics,
+		BfdMinTx:                       *argBfdMinTx,
+		BfdMinRx:                       *argBfdMinRx,
+		BfdDetectMult:                  *argBfdDetectMult,
+		NodeLocalDnsIP:                 *argNodeLocalDnsIP,
 	}
 
 	if config.NetworkType == util.NetworkTypeVlan && config.DefaultHostInterface == "" {
@@ -284,6 +305,13 @@ func (config *Configuration) initKubeClient() error {
 		klog.Errorf("failed to build kubeconfig %v", err)
 		return err
 	}
+
+	// try to connect to apiserver's tcp port
+	if err = util.DialApiServer(cfg.Host); err != nil {
+		klog.Errorf("failed to dial apiserver: %v", err)
+		return err
+	}
+
 	cfg.QPS = 1000
 	cfg.Burst = 2000
 	// use cmd arg to modify timeout later

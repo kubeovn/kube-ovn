@@ -1,0 +1,8 @@
+pull_request_rules:
+  - name: automatic merge for Dependabot pull requests
+    conditions:
+      - author=dependabot[bot]
+      - check-success=Push Images
+    actions:
+      merge:
+        method: squash

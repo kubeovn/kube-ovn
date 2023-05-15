@@ -1,12 +1,13 @@
 package daemon
 
 import (
-	"syscall"
+	"time"
 
+	"github.com/kubeovn/gonetworkmanager/v2"
+	"github.com/vishvananda/netlink"
 	"k8s.io/klog/v2"
 
-	"github.com/Wifx/gonetworkmanager"
-	"github.com/vishvananda/netlink"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 var routeScopeOrders = [...]netlink.Scope{
@@ -20,6 +21,16 @@ func nmSetManaged(device string, managed bool) error {
 	nm, err := gonetworkmanager.NewNetworkManager()
 	if err != nil {
 		klog.V(5).Infof("failed to connect to NetworkManager: %v", err)
+		return nil
+	}
+
+	running, err := nm.Running()
+	if err != nil {
+		klog.Warningf("failed to check NetworkManager running state: %v", err)
+		return nil
+	}
+	if !running {
+		klog.V(5).Info("NetworkManager is not running, ignore")
 		return nil
 	}
 
@@ -37,12 +48,46 @@ func nmSetManaged(device string, managed bool) error {
 		return nil
 	}
 
+	klog.Infof(`setting device %s NetworkManager property "managed" to %v`, device, managed)
 	if err = d.SetPropertyManaged(managed); err != nil {
 		klog.Errorf("failed to set device property managed to %v: %v", managed, err)
 		return err
 	}
 
 	return nil
+}
+
+// wait systemd-networkd to finish interface configuration
+func waitNetworkdConfiguration(linkIndex int) {
+	done := make(chan struct{})
+	ch := make(chan netlink.RouteUpdate)
+	if err := netlink.RouteSubscribe(ch, done); err != nil {
+		klog.Warningf("failed to subscribe route update events: %v", err)
+		klog.Info("Waiting 100ms ...")
+		time.Sleep(100 * time.Millisecond)
+		return
+	}
+
+	// wait route event on the link for 50ms
+	timer := time.NewTimer(50 * time.Millisecond)
+	for {
+		select {
+		case <-timer.C:
+			// timeout, interface configuration is expected to be completed
+			done <- struct{}{}
+			return
+		case event := <-ch:
+			if event.LinkIndex == linkIndex {
+				// received a route event on the link
+				// stop the timer
+				if !timer.Stop() {
+					<-timer.C
+				}
+				// reset the timer, wait for another 50ms
+				timer.Reset(50 * time.Millisecond)
+			}
+		}
+	}
 }
 
 func changeProvideNicName(current, target string) (bool, error) {
@@ -56,17 +101,10 @@ func changeProvideNicName(current, target string) (bool, error) {
 		return false, err
 	}
 	if link.Type() == "openvswitch" {
-		klog.Infof("%s is an openvswitch interface, skip", current)
+		klog.V(3).Infof("%s is an openvswitch interface, skip", current)
 		return true, nil
 	}
 
-	// set link unmanaged by NetworkManager to avoid getting new IP by DHCP
-	if err = nmSetManaged(current, false); err != nil {
-		klog.Errorf("failed set device %s to unmanaged by NetworkManager: %v", current, err)
-		return false, err
-	}
-
-	klog.Infof("change nic name from %s to %s", current, target)
 	addresses, err := netlink.AddrList(link, netlink.FAMILY_ALL)
 	if err != nil {
 		klog.Errorf("failed to list addresses of link %s: %v", current, err)
@@ -78,6 +116,13 @@ func changeProvideNicName(current, target string) (bool, error) {
 		return false, err
 	}
 
+	// set link unmanaged by NetworkManager
+	if err = nmSetManaged(current, false); err != nil {
+		klog.Errorf("failed set device %s unmanaged by NetworkManager: %v", current, err)
+		return false, err
+	}
+
+	klog.Infof("renaming link %s as %s", current, target)
 	if err = netlink.LinkSetDown(link); err != nil {
 		klog.Errorf("failed to set link %s down: %v", current, err)
 		return false, err
@@ -90,15 +135,20 @@ func changeProvideNicName(current, target string) (bool, error) {
 		klog.Errorf("failed to set link %s up: %v", target, err)
 		return false, err
 	}
+	klog.Infof("link %s has been renamed as %s", current, target)
+
+	waitNetworkdConfiguration(link.Attrs().Index)
 
 	for _, addr := range addresses {
 		if addr.IP.IsLinkLocalUnicast() {
 			continue
 		}
+		addr.Label = ""
 		if err = netlink.AddrReplace(link, &addr); err != nil {
-			klog.Errorf("failed to replace address %s: %v", addr.String(), err)
+			klog.Errorf("failed to replace address %q: %v", addr.String(), err)
 			return false, err
 		}
+		klog.Infof("address %q has been added/replaced to link %s", addr.String(), target)
 	}
 
 	for _, scope := range routeScopeOrders {
@@ -107,11 +157,25 @@ func changeProvideNicName(current, target string) (bool, error) {
 				continue
 			}
 			if route.Scope == scope {
-				if err = netlink.RouteReplace(&route); err != nil && err != syscall.EEXIST {
-					klog.Errorf("failed to replace route %s: %v", route.String(), err)
+				if err = netlink.RouteReplace(&route); err != nil {
+					klog.Errorf("failed to replace route %q to %s: %v", route.String(), target, err)
 					return false, err
 				}
+				klog.Infof("route %q has been added/replaced to link %s", route.String(), target)
 			}
+		}
+	}
+
+	index := link.Attrs().Index
+	if link, err = netlink.LinkByIndex(index); err != nil {
+		klog.Errorf("failed to get link %s by index %d: %v", target, index, err)
+		return false, err
+	}
+
+	if util.ContainsString(link.Attrs().Properties.AlternativeIfnames, current) {
+		if err = netlink.LinkDelAltName(link, current); err != nil {
+			klog.Errorf("failed to delete alternative name %s from link %s: %v", current, link.Attrs().Name, err)
+			return false, err
 		}
 	}
 

@@ -5,14 +5,16 @@ import (
 	"flag"
 	"fmt"
 	"math/big"
+	"math/rand"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	dockertypes "github.com/docker/docker/api/types"
 	corev1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	clientset "k8s.io/client-go/kubernetes"
@@ -20,7 +22,6 @@ import (
 	"k8s.io/kubernetes/test/e2e"
 	k8sframework "k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/kubernetes/test/e2e/framework/config"
-	"k8s.io/kubernetes/test/e2e/framework/deployment"
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
 
 	"github.com/onsi/ginkgo/v2"
@@ -40,16 +41,14 @@ func init() {
 	config.CopyFlags(config.Flags, flag.CommandLine)
 	k8sframework.RegisterCommonFlags(flag.CommandLine)
 	k8sframework.RegisterClusterFlags(flag.CommandLine)
+}
 
-	// Parse all the flags
-	flag.Parse()
+func TestE2E(t *testing.T) {
 	if k8sframework.TestContext.KubeConfig == "" {
 		k8sframework.TestContext.KubeConfig = filepath.Join(os.Getenv("HOME"), ".kube", "config")
 	}
 	k8sframework.AfterReadingAllFlags(&k8sframework.TestContext)
-}
 
-func TestE2E(t *testing.T) {
 	e2e.RunE2ETests(t)
 }
 
@@ -57,26 +56,29 @@ func lbSvcDeploymentName(serviceName string) string {
 	return "lb-svc-" + serviceName
 }
 
-var _ = framework.Describe("[group:lb-svc]", func() {
+var _ = framework.SerialDescribe("[group:lb-svc]", func() {
 	f := framework.NewDefaultFramework("lb-svc")
 
 	var skip bool
 	var cs clientset.Interface
 	var subnetClient *framework.SubnetClient
 	var serviceClient *framework.ServiceClient
-	var clusterName, subnetName, namespaceName, serviceName string
+	var deploymentClient *framework.DeploymentClient
+	var clusterName, subnetName, namespaceName, serviceName, deploymentName string
 	var dockerNetwork *dockertypes.NetworkResource
 	var cidr, gateway string
 	ginkgo.BeforeEach(func() {
 		cs = f.ClientSet
 		subnetClient = f.SubnetClient()
 		serviceClient = f.ServiceClient()
+		deploymentClient = f.DeploymentClient()
 		namespaceName = f.Namespace.Name
 		subnetName = "subnet-" + framework.RandomSuffix()
 		serviceName = "service-" + framework.RandomSuffix()
+		deploymentName = lbSvcDeploymentName(serviceName)
 
 		if skip {
-			ginkgo.Skip("underlay spec only runs on kind clusters")
+			ginkgo.Skip("lb svc spec only runs on kind clusters")
 		}
 
 		if clusterName == "" {
@@ -87,7 +89,7 @@ var _ = framework.Describe("[group:lb-svc]", func() {
 			cluster, ok := kind.IsKindProvided(k8sNodes.Items[0].Spec.ProviderID)
 			if !ok {
 				skip = true
-				ginkgo.Skip("underlay spec only runs on kind clusters")
+				ginkgo.Skip("lb svc spec only runs on kind clusters")
 			}
 			clusterName = cluster
 		}
@@ -110,14 +112,18 @@ var _ = framework.Describe("[group:lb-svc]", func() {
 		excludeIPs := make([]string, 0, len(dockerNetwork.Containers))
 		for _, container := range dockerNetwork.Containers {
 			if container.IPv4Address != "" {
-				excludeIPs = append(excludeIPs, container.IPv4Address)
+				ip, _, _ := net.ParseCIDR(container.IPv4Address)
+				excludeIPs = append(excludeIPs, ip.String())
 			}
 		}
-		subnet := framework.MakeSubnet(subnetName, "", cidr, gateway, excludeIPs, nil, []string{namespaceName})
+		subnet := framework.MakeSubnet(subnetName, "", cidr, gateway, "", "", excludeIPs, nil, []string{namespaceName})
 		subnet.Spec.Provider = subnetProvider
 		_ = subnetClient.Create(subnet)
 	})
 	ginkgo.AfterEach(func() {
+		ginkgo.By("Deleting deployment " + deploymentName)
+		deploymentClient.DeleteSync(deploymentName)
+
 		ginkgo.By("Deleting service " + serviceName)
 		serviceClient.DeleteSync(serviceName)
 
@@ -138,23 +144,28 @@ var _ = framework.Describe("[group:lb-svc]", func() {
 		}
 		selector := map[string]string{"app": "lb-svc-dynamic"}
 		service := framework.MakeService(serviceName, corev1.ServiceTypeLoadBalancer, annotations, selector, ports, corev1.ServiceAffinityNone)
-		_ = serviceClient.CreateSync(service)
-
-		ginkgo.By("Waiting for 5 seconds")
-		time.Sleep(5 * time.Second)
-
-		deploymentName := lbSvcDeploymentName(serviceName)
-		ginkgo.By("Getting deployment " + deploymentName)
-		deploy, err := cs.AppsV1().Deployments(namespaceName).Get(context.Background(), deploymentName, metav1.GetOptions{})
-		framework.ExpectNoError(err, "failed to get deployment")
-		framework.ExpectEqual(deploy.Status.AvailableReplicas, int32(1))
+		_ = serviceClient.CreateSync(service, func(s *corev1.Service) (bool, error) {
+			return len(s.Spec.ClusterIPs) != 0, nil
+		}, "cluster ips are not empty")
 
 		ginkgo.By("Waiting for deployment " + deploymentName + " to be ready")
-		err = deployment.WaitForDeploymentComplete(cs, deploy)
+		framework.WaitUntil(func() (bool, error) {
+			_, err := deploymentClient.DeploymentInterface.Get(context.TODO(), deploymentName, metav1.GetOptions{})
+			if err == nil {
+				return true, nil
+			}
+			ginkgo.By("deployment " + deploymentName + " still not ready")
+			if k8serrors.IsNotFound(err) {
+				return false, nil
+			}
+			return false, err
+		}, fmt.Sprintf("deployment %s is created", deploymentName))
+		deployment := deploymentClient.Get(deploymentName)
+		err := deploymentClient.WaitToComplete(deployment)
 		framework.ExpectNoError(err, "deployment failed to complete")
 
 		ginkgo.By("Getting pods for deployment " + deploymentName)
-		pods, err := deployment.GetPodsForDeployment(cs, deploy)
+		pods, err := deploymentClient.GetPods(deployment)
 		framework.ExpectNoError(err)
 		framework.ExpectHaveLen(pods.Items, 1)
 
@@ -170,15 +181,17 @@ var _ = framework.Describe("[group:lb-svc]", func() {
 		framework.ExpectTrue(util.CIDRContainIP(cidr, ip))
 
 		ginkgo.By("Checking service external IP")
-		service = serviceClient.Get(serviceName)
-		framework.ExpectNotEmpty(service.Status.LoadBalancer.Ingress)
+		framework.WaitUntil(func() (bool, error) {
+			service = serviceClient.Get(serviceName)
+			return len(service.Status.LoadBalancer.Ingress) != 0, nil
+		}, ".status.loadBalancer.ingress is not empty")
 		framework.ExpectEqual(service.Status.LoadBalancer.Ingress[0].IP, ip)
 	})
 
 	framework.ConformanceIt("should allocate static external IP for service", func() {
 		ginkgo.By("Creating service " + serviceName)
 		base := util.Ip2BigInt(gateway)
-		lbIP := util.BigInt2Ip(base.Add(base, big.NewInt(100)))
+		lbIP := util.BigInt2Ip(base.Add(base, big.NewInt(50+rand.Int63n(50))))
 		ports := []corev1.ServicePort{{
 			Name:       "tcp",
 			Protocol:   corev1.ProtocolTCP,
@@ -193,21 +206,23 @@ var _ = framework.Describe("[group:lb-svc]", func() {
 		service.Spec.LoadBalancerIP = lbIP
 		_ = serviceClient.Create(service)
 
-		ginkgo.By("Waiting for 10 seconds")
-		time.Sleep(10 * time.Second)
-
-		deploymentName := lbSvcDeploymentName(serviceName)
-		ginkgo.By("Getting deployment " + deploymentName)
-		deploy, err := cs.AppsV1().Deployments(namespaceName).Get(context.Background(), deploymentName, metav1.GetOptions{})
-		framework.ExpectNoError(err, "failed to get deployment")
-		framework.ExpectEqual(deploy.Status.AvailableReplicas, int32(1))
-
 		ginkgo.By("Waiting for deployment " + deploymentName + " to be ready")
-		err = deployment.WaitForDeploymentComplete(cs, deploy)
+		framework.WaitUntil(func() (bool, error) {
+			_, err := deploymentClient.DeploymentInterface.Get(context.TODO(), deploymentName, metav1.GetOptions{})
+			if err == nil {
+				return true, nil
+			}
+			if k8serrors.IsNotFound(err) {
+				return false, nil
+			}
+			return false, err
+		}, fmt.Sprintf("deployment %s is created", deploymentName))
+		deployment := deploymentClient.Get(deploymentName)
+		err := deploymentClient.WaitToComplete(deployment)
 		framework.ExpectNoError(err, "deployment failed to complete")
 
 		ginkgo.By("Getting pods for deployment " + deploymentName)
-		pods, err := deployment.GetPodsForDeployment(cs, deploy)
+		pods, err := deploymentClient.GetPods(deployment)
 		framework.ExpectNoError(err)
 		framework.ExpectHaveLen(pods.Items, 1)
 
@@ -220,8 +235,10 @@ var _ = framework.Describe("[group:lb-svc]", func() {
 		framework.ExpectTrue(util.CIDRContainIP(cidr, lbIP))
 
 		ginkgo.By("Checking service external IP")
-		service = serviceClient.Get(serviceName)
-		framework.ExpectNotEmpty(service.Status.LoadBalancer.Ingress)
+		framework.WaitUntil(func() (bool, error) {
+			service = serviceClient.Get(serviceName)
+			return len(service.Status.LoadBalancer.Ingress) != 0, nil
+		}, ".status.loadBalancer.ingress is not empty")
 		framework.ExpectEqual(service.Status.LoadBalancer.Ingress[0].IP, lbIP)
 	})
 })

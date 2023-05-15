@@ -2,7 +2,7 @@ package ovs
 
 // SetInterfaceBandwidth set ingress/egress qos for given pod, annotation values are for node/pod
 // but ingress/egress parameters here are from the point of ovs port/interface view, so reverse input parameters when call func SetInterfaceBandwidth
-func SetInterfaceBandwidth(podName, podNamespace, iface, ingress, egress, podPriority string) error {
+func SetInterfaceBandwidth(podName, podNamespace, iface, ingress, egress string) error {
 	// TODO
 	return nil
 }
@@ -22,12 +22,6 @@ func SetHtbQosQueueRecord(podName, podNamespace, iface, priority string, maxRate
 	return "", nil
 }
 
-// SetPodQosPriority set qos to this pod port.
-func SetPodQosPriority(podName, podNamespace, ifaceID, priority string, qosIfaceUidMap, queueIfaceUidMap map[string]string) error {
-	//TODO
-	return nil
-}
-
 // SetQosQueueBinding set qos related to queue record.
 func SetQosQueueBinding(podName, podNamespace, ifName, iface, queueUid string, qosIfaceUidMap map[string]string) error {
 	// TODO
@@ -35,7 +29,7 @@ func SetQosQueueBinding(podName, podNamespace, ifName, iface, queueUid string, q
 }
 
 // The latency value expressed in us.
-func SetNetemQos(podName, podNamespace, iface, latency, limit, loss string) error {
+func SetNetemQos(podName, podNamespace, iface, latency, limit, loss, jitter string) error {
 	// TODO
 	return nil
 }

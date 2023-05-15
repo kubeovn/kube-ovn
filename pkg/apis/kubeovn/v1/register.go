@@ -59,14 +59,16 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&OvnFipList{},
 		&OvnSnatRule{},
 		&OvnSnatRuleList{},
+		&OvnDnatRule{},
+		&OvnDnatRuleList{},
 		&SecurityGroup{},
 		&SecurityGroupList{},
-		&HtbQos{},
-		&HtbQosList{},
 		&SwitchLBRule{},
 		&SwitchLBRuleList{},
 		&VpcDns{},
 		&VpcDnsList{},
+		&QoSPolicy{},
+		&QoSPolicyList{},
 	)
 	metav1.AddToGroupVersion(scheme, SchemeGroupVersion)
 	return nil

@@ -7,9 +7,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
-	"k8s.io/kubernetes/test/e2e/framework/deployment"
 	e2epod "k8s.io/kubernetes/test/e2e/framework/pod"
-	"k8s.io/kubernetes/test/e2e/framework/statefulset"
 
 	"github.com/onsi/ginkgo/v2"
 
@@ -23,39 +21,54 @@ var _ = framework.Describe("[group:ipam]", func() {
 
 	var cs clientset.Interface
 	var podClient *framework.PodClient
+	var deployClient *framework.DeploymentClient
+	var stsClient *framework.StatefulSetClient
 	var subnetClient *framework.SubnetClient
-	var namespaceName, subnetName string
+	var namespaceName, subnetName, podName, deployName, stsName string
 	var subnet *apiv1.Subnet
 	var cidr string
 
 	ginkgo.BeforeEach(func() {
 		cs = f.ClientSet
 		podClient = f.PodClient()
+		deployClient = f.DeploymentClient()
+		stsClient = f.StatefulSetClient()
 		subnetClient = f.SubnetClient()
 		namespaceName = f.Namespace.Name
-		subnetName = namespaceName
+		subnetName = "subnet-" + framework.RandomSuffix()
+		podName = "pod-" + framework.RandomSuffix()
+		deployName = "deploy-" + framework.RandomSuffix()
+		stsName = "sts-" + framework.RandomSuffix()
 		cidr = framework.RandomCIDR(f.ClusterIpFamily)
 
 		ginkgo.By("Creating subnet " + subnetName)
-		subnet = framework.MakeSubnet(subnetName, "", cidr, "", nil, nil, []string{namespaceName})
+		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, []string{namespaceName})
 		subnet = subnetClient.CreateSync(subnet)
 	})
 	ginkgo.AfterEach(func() {
+		ginkgo.By("Deleting pod " + podName)
+		podClient.DeleteSync(podName)
+
+		ginkgo.By("Deleting deployment " + deployName)
+		deployClient.DeleteSync(deployName)
+
+		ginkgo.By("Deleting statefulset " + stsName)
+		stsClient.DeleteSync(stsName)
+
 		ginkgo.By("Deleting subnet " + subnetName)
 		subnetClient.DeleteSync(subnetName)
 	})
 
 	framework.ConformanceIt("should allocate static ipv4 and mac for pod", func() {
-		name := "pod-" + framework.RandomSuffix()
 		mac := util.GenerateMac()
 		ip := framework.RandomIPPool(cidr, ";", 1)
 
-		ginkgo.By("Creating pod " + name + " with ip " + ip + " and mac " + mac)
+		ginkgo.By("Creating pod " + podName + " with ip " + ip + " and mac " + mac)
 		annotations := map[string]string{
 			util.IpAddressAnnotation:  ip,
 			util.MacAddressAnnotation: mac,
 		}
-		pod := framework.MakePod(namespaceName, name, nil, annotations, "", nil, nil)
+		pod := framework.MakePod(namespaceName, podName, nil, annotations, "", nil, nil)
 		pod = podClient.CreateSync(pod)
 
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
@@ -71,9 +84,6 @@ var _ = framework.Describe("[group:ipam]", func() {
 			podIPs = append(podIPs, podIP.IP)
 		}
 		framework.ExpectConsistOf(podIPs, strings.Split(ip, ","))
-
-		ginkgo.By("Deleting pod " + name)
-		podClient.DeleteSync(pod.Name)
 	})
 
 	framework.ConformanceIt("should allocate static ip for pod with comma separated ippool", func() {
@@ -81,12 +91,10 @@ var _ = framework.Describe("[group:ipam]", func() {
 			ginkgo.Skip("Comma separated ippool is not supported for dual stack")
 		}
 
-		name := "pod-" + framework.RandomSuffix()
 		pool := framework.RandomIPPool(cidr, ",", 3)
-
-		ginkgo.By("Creating pod " + name + " with ippool " + pool)
+		ginkgo.By("Creating pod " + podName + " with ippool " + pool)
 		annotations := map[string]string{util.IpPoolAnnotation: pool}
-		pod := framework.MakePod(namespaceName, name, nil, annotations, "", nil, nil)
+		pod := framework.MakePod(namespaceName, podName, nil, annotations, "", nil, nil)
 		pod = podClient.CreateSync(pod)
 
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
@@ -97,16 +105,13 @@ var _ = framework.Describe("[group:ipam]", func() {
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.LogicalSwitchAnnotation, subnet.Name)
 		framework.ExpectMAC(pod.Annotations[util.MacAddressAnnotation])
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
-
 		framework.ExpectContainElement(strings.Split(pool, ","), pod.Status.PodIP)
-
-		ginkgo.By("Deleting pod " + name)
-		podClient.DeleteSync(pod.Name)
 	})
 
 	framework.ConformanceIt("should allocate static ip for deployment with ippool", func() {
 		ippoolSep := ";"
-		if f.ClusterVersionMajor <= 1 && f.ClusterVersionMinor < 11 {
+		if f.ClusterVersionMajor < 1 ||
+			(f.ClusterVersionMajor == 1 && f.ClusterVersionMinor < 11) {
 			if f.ClusterIpFamily == "dual" {
 				ginkgo.Skip("Support for dual stack ippool was introduced in v1.11")
 			}
@@ -114,21 +119,17 @@ var _ = framework.Describe("[group:ipam]", func() {
 		}
 
 		replicas := 3
-		name := "deployment-" + framework.RandomSuffix()
 		ippool := framework.RandomIPPool(cidr, ippoolSep, replicas)
-		labels := map[string]string{"app": name}
 
-		ginkgo.By("Creating deployment " + name + " with ippool " + ippool)
-		deploy := deployment.NewDeployment(name, int32(replicas), labels, "pause", framework.PauseImage, "")
-		deploy.Spec.Template.Annotations = map[string]string{util.IpPoolAnnotation: ippool}
-		deploy, err := cs.AppsV1().Deployments(namespaceName).Create(context.TODO(), deploy, metav1.CreateOptions{})
-		framework.ExpectNoError(err, "failed to to create deployment")
-		err = deployment.WaitForDeploymentComplete(cs, deploy)
-		framework.ExpectNoError(err, "deployment failed to complete")
+		ginkgo.By("Creating deployment " + deployName + " with ippool " + ippool)
+		labels := map[string]string{"app": deployName}
+		annotations := map[string]string{util.IpPoolAnnotation: ippool}
+		deploy := framework.MakeDeployment(deployName, int32(replicas), labels, annotations, "pause", framework.PauseImage, "")
+		deploy = deployClient.CreateSync(deploy)
 
-		ginkgo.By("Getting pods for deployment " + name)
-		pods, err := deployment.GetPodsForDeployment(cs, deploy)
-		framework.ExpectNoError(err, "failed to get pods for deployment "+name)
+		ginkgo.By("Getting pods for deployment " + deployName)
+		pods, err := deployClient.GetPods(deploy)
+		framework.ExpectNoError(err, "failed to get pods for deployment "+deployName)
 		framework.ExpectHaveLen(pods.Items, replicas)
 
 		ips := strings.Split(ippool, ippoolSep)
@@ -149,21 +150,21 @@ var _ = framework.Describe("[group:ipam]", func() {
 			framework.ExpectConsistOf(podIPs, strings.Split(pod.Annotations[util.IpAddressAnnotation], ","))
 		}
 
-		ginkgo.By("Deleting pods for deployment " + name)
+		ginkgo.By("Deleting pods for deployment " + deployName)
 		for _, pod := range pods.Items {
 			err = podClient.Delete(context.TODO(), pod.Name, metav1.DeleteOptions{})
 			framework.ExpectNoError(err, "failed to delete pod "+pod.Name)
 		}
-		err = deployment.WaitForDeploymentComplete(cs, deploy)
-		framework.ExpectNoError(err, "deployment failed to complete")
+		err = deployClient.WaitToComplete(deploy)
+		framework.ExpectNoError(err)
 
 		ginkgo.By("Waiting for new pods to be ready")
 		err = e2epod.WaitForPodsRunningReady(cs, namespaceName, *deploy.Spec.Replicas, 0, time.Minute, nil)
 		framework.ExpectNoError(err, "timed out waiting for pods to be ready")
 
-		ginkgo.By("Getting pods for deployment " + name + " after deletion")
-		pods, err = deployment.GetPodsForDeployment(cs, deploy)
-		framework.ExpectNoError(err, "failed to get pods for deployment "+name)
+		ginkgo.By("Getting pods for deployment " + deployName + " after deletion")
+		pods, err = deployClient.GetPods(deploy)
+		framework.ExpectNoError(err, "failed to get pods for deployment "+deployName)
 		framework.ExpectHaveLen(pods.Items, replicas)
 		for _, pod := range pods.Items {
 			framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
@@ -181,28 +182,19 @@ var _ = framework.Describe("[group:ipam]", func() {
 			}
 			framework.ExpectConsistOf(podIPs, strings.Split(pod.Annotations[util.IpAddressAnnotation], ","))
 		}
-
-		ginkgo.By("Deleting deployment " + name)
-		err = cs.AppsV1().Deployments(namespaceName).Delete(context.TODO(), name, metav1.DeleteOptions{})
-		framework.ExpectNoError(err, "failed to delete deployment "+name)
 	})
 
 	framework.ConformanceIt("should allocate static ip for statefulset", func() {
 		replicas := 3
-		name := "statefulset-" + framework.RandomSuffix()
-		labels := map[string]string{"app": name}
+		labels := map[string]string{"app": stsName}
 
-		ginkgo.By("Creating statefulset " + name)
-		sts := statefulset.NewStatefulSet(name, namespaceName, name, int32(replicas), nil, nil, labels)
-		sts.Spec.Template.Spec.Containers[0].Image = framework.PauseImage
-		sts, err := cs.AppsV1().StatefulSets(namespaceName).Create(context.TODO(), sts, metav1.CreateOptions{})
-		framework.ExpectNoError(err, "failed to to create statefulset")
-		statefulset.WaitForRunningAndReady(cs, int32(replicas), sts)
+		ginkgo.By("Creating statefulset " + stsName)
+		sts := framework.MakeStatefulSet(stsName, stsName, int32(replicas), labels, framework.PauseImage)
+		sts = stsClient.CreateSync(sts)
 
-		ginkgo.By("Getting pods for statefulset " + name)
-		pods := statefulset.GetPodList(cs, sts)
+		ginkgo.By("Getting pods for statefulset " + stsName)
+		pods := stsClient.GetPods(sts)
 		framework.ExpectHaveLen(pods.Items, replicas)
-		statefulset.SortStatefulPods(pods)
 
 		ips := make([]string, 0, replicas)
 		for _, pod := range pods.Items {
@@ -221,17 +213,16 @@ var _ = framework.Describe("[group:ipam]", func() {
 			ips = append(ips, pod.Annotations[util.IpAddressAnnotation])
 		}
 
-		ginkgo.By("Deleting pods for statefulset " + name)
+		ginkgo.By("Deleting pods for statefulset " + stsName)
 		for _, pod := range pods.Items {
-			err = podClient.Delete(context.TODO(), pod.Name, metav1.DeleteOptions{})
+			err := podClient.Delete(context.TODO(), pod.Name, metav1.DeleteOptions{})
 			framework.ExpectNoError(err, "failed to delete pod "+pod.Name)
 		}
-		statefulset.WaitForRunningAndReady(cs, int32(replicas), sts)
+		stsClient.WaitForRunningAndReady(sts)
 
-		ginkgo.By("Getting pods for statefulset " + name)
-		pods = statefulset.GetPodList(cs, sts)
+		ginkgo.By("Getting pods for statefulset " + stsName)
+		pods = stsClient.GetPods(sts)
 		framework.ExpectHaveLen(pods.Items, replicas)
-		statefulset.SortStatefulPods(pods)
 
 		for i, pod := range pods.Items {
 			framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
@@ -242,10 +233,6 @@ var _ = framework.Describe("[group:ipam]", func() {
 			framework.ExpectMAC(pod.Annotations[util.MacAddressAnnotation])
 			framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
 		}
-
-		ginkgo.By("Deleting statefulset " + name)
-		err = cs.AppsV1().StatefulSets(namespaceName).Delete(context.TODO(), name, metav1.DeleteOptions{})
-		framework.ExpectNoError(err, "failed to delete statefulset "+name)
 	})
 
 	framework.ConformanceIt("should allocate static ip for statefulset with ippool", func() {
@@ -258,22 +245,17 @@ var _ = framework.Describe("[group:ipam]", func() {
 		}
 
 		replicas := 3
-		name := "statefulset-" + framework.RandomSuffix()
 		ippool := framework.RandomIPPool(cidr, ippoolSep, replicas)
-		labels := map[string]string{"app": name}
+		labels := map[string]string{"app": stsName}
 
-		ginkgo.By("Creating statefulset " + name + " with ippool " + ippool)
-		sts := statefulset.NewStatefulSet(name, namespaceName, name, int32(replicas), nil, nil, labels)
-		sts.Spec.Template.Spec.Containers[0].Image = framework.PauseImage
+		ginkgo.By("Creating statefulset " + stsName + " with ippool " + ippool)
+		sts := framework.MakeStatefulSet(stsName, stsName, int32(replicas), labels, framework.PauseImage)
 		sts.Spec.Template.Annotations = map[string]string{util.IpPoolAnnotation: ippool}
-		sts, err := cs.AppsV1().StatefulSets(namespaceName).Create(context.TODO(), sts, metav1.CreateOptions{})
-		framework.ExpectNoError(err, "failed to to create statefulset")
-		statefulset.WaitForRunningAndReady(cs, int32(replicas), sts)
+		sts = stsClient.CreateSync(sts)
 
-		ginkgo.By("Getting pods for statefulset " + name)
-		pods := statefulset.GetPodList(cs, sts)
+		ginkgo.By("Getting pods for statefulset " + stsName)
+		pods := stsClient.GetPods(sts)
 		framework.ExpectHaveLen(pods.Items, replicas)
-		statefulset.SortStatefulPods(pods)
 
 		ips := make([]string, 0, replicas)
 		for _, pod := range pods.Items {
@@ -294,17 +276,16 @@ var _ = framework.Describe("[group:ipam]", func() {
 		}
 		framework.ExpectConsistOf(ips, strings.Split(ippool, ippoolSep))
 
-		ginkgo.By("Deleting pods for statefulset " + name)
+		ginkgo.By("Deleting pods for statefulset " + stsName)
 		for _, pod := range pods.Items {
-			err = podClient.Delete(context.TODO(), pod.Name, metav1.DeleteOptions{})
+			err := podClient.Delete(context.TODO(), pod.Name, metav1.DeleteOptions{})
 			framework.ExpectNoError(err, "failed to delete pod "+pod.Name)
 		}
-		statefulset.WaitForRunningAndReady(cs, int32(replicas), sts)
+		stsClient.WaitForRunningAndReady(sts)
 
-		ginkgo.By("Getting pods for statefulset " + name)
-		pods = statefulset.GetPodList(cs, sts)
+		ginkgo.By("Getting pods for statefulset " + stsName)
+		pods = stsClient.GetPods(sts)
 		framework.ExpectHaveLen(pods.Items, replicas)
-		statefulset.SortStatefulPods(pods)
 
 		for i, pod := range pods.Items {
 			framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
@@ -322,9 +303,73 @@ var _ = framework.Describe("[group:ipam]", func() {
 			}
 			framework.ExpectConsistOf(podIPs, strings.Split(pod.Annotations[util.IpAddressAnnotation], ","))
 		}
+	})
 
-		ginkgo.By("Deleting statefulset " + name)
-		err = cs.AppsV1().StatefulSets(namespaceName).Delete(context.TODO(), name, metav1.DeleteOptions{})
-		framework.ExpectNoError(err, "failed to delete statefulset "+name)
+	// separate ippool annotation by comma
+	framework.ConformanceIt("should allocate static ip for statefulset with ippool separated by comma", func() {
+		if f.ClusterIpFamily == "dual" {
+			ginkgo.Skip("Comma separated ippool is not supported for dual stack")
+		}
+
+		ippoolSep := ","
+		replicas := 3
+		ippool := framework.RandomIPPool(cidr, ippoolSep, replicas)
+		labels := map[string]string{"app": stsName}
+
+		ginkgo.By("Creating statefulset " + stsName + " with ippool " + ippool)
+		sts := framework.MakeStatefulSet(stsName, stsName, int32(replicas), labels, framework.PauseImage)
+		sts.Spec.Template.Annotations = map[string]string{util.IpPoolAnnotation: ippool}
+		sts = stsClient.CreateSync(sts)
+
+		ginkgo.By("Getting pods for statefulset " + stsName)
+		pods := stsClient.GetPods(sts)
+		framework.ExpectHaveLen(pods.Items, replicas)
+
+		ips := make([]string, 0, replicas)
+		for _, pod := range pods.Items {
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.CidrAnnotation, subnet.Spec.CIDRBlock)
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.GatewayAnnotation, subnet.Spec.Gateway)
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.IpPoolAnnotation, ippool)
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.LogicalSwitchAnnotation, subnet.Name)
+			framework.ExpectMAC(pod.Annotations[util.MacAddressAnnotation])
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
+
+			podIPs := make([]string, 0, len(pod.Status.PodIPs))
+			for _, podIP := range pod.Status.PodIPs {
+				podIPs = append(podIPs, podIP.IP)
+			}
+			framework.ExpectConsistOf(podIPs, strings.Split(pod.Annotations[util.IpAddressAnnotation], ","))
+			ips = append(ips, pod.Annotations[util.IpAddressAnnotation])
+		}
+		framework.ExpectConsistOf(ips, strings.Split(ippool, ippoolSep))
+
+		ginkgo.By("Deleting pods for statefulset " + stsName)
+		for _, pod := range pods.Items {
+			err := podClient.Delete(context.TODO(), pod.Name, metav1.DeleteOptions{})
+			framework.ExpectNoError(err, "failed to delete pod "+pod.Name)
+		}
+		stsClient.WaitForRunningAndReady(sts)
+
+		ginkgo.By("Getting pods for statefulset " + stsName)
+		pods = stsClient.GetPods(sts)
+		framework.ExpectHaveLen(pods.Items, replicas)
+
+		for i, pod := range pods.Items {
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.CidrAnnotation, subnet.Spec.CIDRBlock)
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.GatewayAnnotation, subnet.Spec.Gateway)
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.IpPoolAnnotation, ippool)
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.IpAddressAnnotation, ips[i])
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.LogicalSwitchAnnotation, subnet.Name)
+			framework.ExpectMAC(pod.Annotations[util.MacAddressAnnotation])
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
+
+			podIPs := make([]string, 0, len(pod.Status.PodIPs))
+			for _, podIP := range pod.Status.PodIPs {
+				podIPs = append(podIPs, podIP.IP)
+			}
+			framework.ExpectConsistOf(podIPs, strings.Split(pod.Annotations[util.IpAddressAnnotation], ","))
+		}
 	})
 })

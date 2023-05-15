@@ -20,12 +20,16 @@ type Subnet struct {
 	V4FreeIPList     IPRangeList
 	V4ReleasedIPList IPRangeList
 	V4ReservedIPList IPRangeList
+	V4AvailIPList    IPRangeList
+	V4UsingIPList    IPRangeList
 	V4NicToIP        map[string]IP
 	V4IPToPod        map[IP]string
 	V6CIDR           *net.IPNet
 	V6FreeIPList     IPRangeList
 	V6ReleasedIPList IPRangeList
 	V6ReservedIPList IPRangeList
+	V6AvailIPList    IPRangeList
+	V6UsingIPList    IPRangeList
 	V6NicToIP        map[string]IP
 	V6IPToPod        map[IP]string
 	NicToMac         map[string]string
@@ -64,6 +68,8 @@ func NewSubnet(name, cidrStr string, excludeIps []string) (*Subnet, error) {
 			V4FreeIPList:     IPRangeList{&IPRange{Start: IP(firstIP), End: IP(lastIP)}},
 			V4ReleasedIPList: IPRangeList{},
 			V4ReservedIPList: convertExcludeIps(v4ExcludeIps),
+			V4AvailIPList:    IPRangeList{&IPRange{Start: IP(firstIP), End: IP(lastIP)}},
+			V4UsingIPList:    IPRangeList{},
 			V4NicToIP:        map[string]IP{},
 			V4IPToPod:        map[IP]string{},
 			V6NicToIP:        map[string]IP{},
@@ -85,6 +91,8 @@ func NewSubnet(name, cidrStr string, excludeIps []string) (*Subnet, error) {
 			V6FreeIPList:     IPRangeList{&IPRange{Start: IP(firstIP), End: IP(lastIP)}},
 			V6ReleasedIPList: IPRangeList{},
 			V6ReservedIPList: convertExcludeIps(v6ExcludeIps),
+			V6AvailIPList:    IPRangeList{&IPRange{Start: IP(firstIP), End: IP(lastIP)}},
+			V6UsingIPList:    IPRangeList{},
 			V4NicToIP:        map[string]IP{},
 			V4IPToPod:        map[IP]string{},
 			V6NicToIP:        map[string]IP{},
@@ -109,12 +117,16 @@ func NewSubnet(name, cidrStr string, excludeIps []string) (*Subnet, error) {
 			V4FreeIPList:     IPRangeList{&IPRange{Start: IP(v4FirstIP), End: IP(v4LastIP)}},
 			V4ReleasedIPList: IPRangeList{},
 			V4ReservedIPList: convertExcludeIps(v4ExcludeIps),
+			V4AvailIPList:    IPRangeList{&IPRange{Start: IP(v4FirstIP), End: IP(v4LastIP)}},
+			V4UsingIPList:    IPRangeList{},
 			V4NicToIP:        map[string]IP{},
 			V4IPToPod:        map[IP]string{},
 			V6CIDR:           cidrs[1],
 			V6FreeIPList:     IPRangeList{&IPRange{Start: IP(v6FirstIP), End: IP(v6LastIP)}},
 			V6ReleasedIPList: IPRangeList{},
 			V6ReservedIPList: convertExcludeIps(v6ExcludeIps),
+			V6AvailIPList:    IPRangeList{&IPRange{Start: IP(v6FirstIP), End: IP(v6LastIP)}},
+			V6UsingIPList:    IPRangeList{},
 			V6NicToIP:        map[string]IP{},
 			V6IPToPod:        map[IP]string{},
 			MacToPod:         map[string]string{},
@@ -159,6 +171,9 @@ func (subnet *Subnet) pushPodNic(podName, nicName string) {
 
 func (subnet *Subnet) popPodNic(podName, nicName string) {
 	subnet.PodToNicList[podName] = util.RemoveString(subnet.PodToNicList[podName], nicName)
+	if subnet.PodToNicList[podName] == nil {
+		delete(subnet.PodToNicList, podName)
+	}
 }
 
 func (subnet *Subnet) GetRandomAddress(podName, nicName string, mac string, skippedAddrs []string, checkConflict bool) (IP, IP, string, error) {
@@ -241,6 +256,13 @@ func (subnet *Subnet) getV4RandomAddress(podName, nicName string, mac string, sk
 	if !part2.Start.GreaterThan(part2.End) {
 		subnet.V4FreeIPList = append(subnet.V4FreeIPList, part2)
 	}
+	if split, NewV4AvailIPRangeList := splitIPRangeList(subnet.V4AvailIPList, ip); split {
+		subnet.V4AvailIPList = NewV4AvailIPRangeList
+	}
+
+	if merged, NewV4UsingIPRangeList := mergeIPRangeList(subnet.V4UsingIPList, ip); merged {
+		subnet.V4UsingIPList = NewV4UsingIPRangeList
+	}
 
 	subnet.V4NicToIP[nicName] = ip
 	subnet.V4IPToPod[ip] = podName
@@ -302,6 +324,13 @@ func (subnet *Subnet) getV6RandomAddress(podName, nicName string, mac string, sk
 	if !part2.Start.GreaterThan(part2.End) {
 		subnet.V6FreeIPList = append(subnet.V6FreeIPList, part2)
 	}
+	if split, NewV6AvailIPRangeList := splitIPRangeList(subnet.V6AvailIPList, ip); split {
+		subnet.V6AvailIPList = NewV6AvailIPRangeList
+	}
+
+	if merged, NewV6UsingIPRangeList := mergeIPRangeList(subnet.V6UsingIPList, ip); merged {
+		subnet.V6UsingIPList = NewV6UsingIPRangeList
+	}
 
 	subnet.V6NicToIP[nicName] = ip
 	subnet.V6IPToPod[ip] = podName
@@ -317,13 +346,35 @@ func (subnet *Subnet) getV6RandomAddress(podName, nicName string, mac string, sk
 }
 
 func (subnet *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac string, force bool, checkConflict bool) (IP, string, error) {
+	var v4, v6 bool
+	isAllocated := false
 	subnet.mutex.Lock()
 	defer func() {
 		subnet.pushPodNic(podName, nicName)
+		if isAllocated {
+			if v4 {
+				if split, NewV4AvailIPRangeList := splitIPRangeList(subnet.V4AvailIPList, ip); split {
+					subnet.V4AvailIPList = NewV4AvailIPRangeList
+				}
+
+				if merged, NewV4UsingIPRangeList := mergeIPRangeList(subnet.V4UsingIPList, ip); merged {
+					subnet.V4UsingIPList = NewV4UsingIPRangeList
+				}
+			}
+
+			if v6 {
+				if split, NewV6AvailIPRangeList := splitIPRangeList(subnet.V6AvailIPList, ip); split {
+					subnet.V6AvailIPList = NewV6AvailIPRangeList
+				}
+
+				if merged, NewV6UsingIPRangeList := mergeIPRangeList(subnet.V6UsingIPList, ip); merged {
+					subnet.V6UsingIPList = NewV6UsingIPRangeList
+				}
+			}
+		}
 		subnet.mutex.Unlock()
 	}()
 
-	var v4, v6 bool
 	if net.ParseIP(string(ip)).To4() != nil {
 		v4 = subnet.V4CIDR != nil
 	} else {
@@ -379,12 +430,14 @@ func (subnet *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac strin
 			subnet.V4FreeIPList = newFreeList
 			subnet.V4NicToIP[nicName] = ip
 			subnet.V4IPToPod[ip] = podName
+			isAllocated = true
 			return ip, mac, nil
 		} else {
 			if split, newReleasedList := splitIPRangeList(subnet.V4ReleasedIPList, ip); split {
 				subnet.V4ReleasedIPList = newReleasedList
 				subnet.V4NicToIP[nicName] = ip
 				subnet.V4IPToPod[ip] = podName
+				isAllocated = true
 				return ip, mac, nil
 			}
 		}
@@ -414,12 +467,14 @@ func (subnet *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac strin
 			subnet.V6FreeIPList = newFreeList
 			subnet.V6NicToIP[nicName] = ip
 			subnet.V6IPToPod[ip] = podName
+			isAllocated = true
 			return ip, mac, nil
 		} else {
 			if split, newReleasedList := splitIPRangeList(subnet.V6ReleasedIPList, ip); split {
 				subnet.V6ReleasedIPList = newReleasedList
 				subnet.V6NicToIP[nicName] = ip
 				subnet.V6IPToPod[ip] = podName
+				isAllocated = true
 				return ip, mac, nil
 			}
 		}
@@ -459,6 +514,14 @@ func (subnet *Subnet) releaseAddr(podName, nicName string) {
 				subnet.V4ReleasedIPList = newReleasedList
 				klog.Infof("release v4 %s mac %s for %s, add ip to released list", ip, mac, podName)
 			}
+
+			if merged, NewV4AvailIPRangeList := mergeIPRangeList(subnet.V4AvailIPList, ip); merged {
+				subnet.V4AvailIPList = NewV4AvailIPRangeList
+			}
+
+			if split, NewV4UsingIPList := splitIPRangeList(subnet.V4UsingIPList, ip); split {
+				subnet.V4UsingIPList = NewV4UsingIPList
+			}
 		}
 	}
 	if ip, ok = subnet.V6NicToIP[nicName]; ok {
@@ -489,6 +552,14 @@ func (subnet *Subnet) releaseAddr(podName, nicName string) {
 				subnet.V6ReleasedIPList = newReleasedList
 				klog.Infof("release v6 %s mac %s for %s, add ip to released list", ip, mac, podName)
 			}
+
+			if merged, NewV6AvailIPRangeList := mergeIPRangeList(subnet.V6AvailIPList, ip); merged {
+				subnet.V6AvailIPList = NewV6AvailIPRangeList
+			}
+
+			if split, NewV6UsingIPList := splitIPRangeList(subnet.V6UsingIPList, ip); split {
+				subnet.V6UsingIPList = NewV6UsingIPList
+			}
 		}
 	}
 }
@@ -500,6 +571,14 @@ func (subnet *Subnet) ReleaseAddress(podName string) {
 		subnet.releaseAddr(podName, nicName)
 		subnet.popPodNic(podName, nicName)
 	}
+}
+
+func (subnet *Subnet) ReleaseAddressWithNicName(podName, nicName string) {
+	subnet.mutex.Lock()
+	defer subnet.mutex.Unlock()
+
+	subnet.releaseAddr(podName, nicName)
+	subnet.popPodNic(podName, nicName)
 }
 
 func (subnet *Subnet) ContainAddress(address IP) bool {
@@ -525,6 +604,14 @@ func (subnet *Subnet) joinFreeWithReserve() {
 				}
 			}
 			subnet.V4FreeIPList = newFreeList
+
+			newAvailableList := IPRangeList{}
+			for _, availIpr := range subnet.V4AvailIPList {
+				if iprl := splitRange(availIpr, reserveIpr); iprl != nil {
+					newAvailableList = append(newAvailableList, iprl...)
+				}
+			}
+			subnet.V4AvailIPList = newAvailableList
 		}
 	}
 	if protocol == kubeovnv1.ProtocolDual || protocol == kubeovnv1.ProtocolIPv6 {
@@ -536,14 +623,20 @@ func (subnet *Subnet) joinFreeWithReserve() {
 				}
 			}
 			subnet.V6FreeIPList = newFreeList
+
+			newAvailableList := IPRangeList{}
+			for _, availIpr := range subnet.V6AvailIPList {
+				if iprl := splitRange(availIpr, reserveIpr); iprl != nil {
+					newAvailableList = append(newAvailableList, iprl...)
+				}
+			}
+			subnet.V6AvailIPList = newAvailableList
 		}
 	}
 }
 
+// This func is only called in ipam.GetPodAddress, move mutex to caller
 func (subnet *Subnet) GetPodAddress(podName, nicName string) (IP, IP, string, string) {
-	subnet.mutex.RLock()
-	defer subnet.mutex.RUnlock()
-
 	if subnet.Protocol == kubeovnv1.ProtocolIPv4 {
 		ip, mac := subnet.V4NicToIP[nicName], subnet.NicToMac[nicName]
 		return ip, "", mac, kubeovnv1.ProtocolIPv4

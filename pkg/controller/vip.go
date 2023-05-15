@@ -7,9 +7,6 @@ import (
 	"net"
 	"strings"
 
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	"github.com/kubeovn/kube-ovn/pkg/ovs"
-	"github.com/kubeovn/kube-ovn/pkg/util"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -17,6 +14,10 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func (c *Controller) enqueueAddVirtualIp(obj interface{}) {
@@ -27,6 +28,7 @@ func (c *Controller) enqueueAddVirtualIp(obj interface{}) {
 		utilruntime.HandleError(err)
 		return
 	}
+	klog.V(3).Infof("enqueue add vip %s", key)
 	c.addVirtualIpQueue.Add(key)
 }
 
@@ -44,6 +46,7 @@ func (c *Controller) enqueueUpdateVirtualIp(old, new interface{}) {
 		oldVip.Spec.ParentMac != newVip.Spec.ParentMac ||
 		oldVip.Spec.ParentV4ip != newVip.Spec.ParentV4ip ||
 		oldVip.Spec.V4ip != newVip.Spec.V4ip {
+		klog.V(3).Infof("enqueue update vip %s", key)
 		c.updateVirtualIpQueue.Add(key)
 	}
 }
@@ -55,9 +58,9 @@ func (c *Controller) enqueueDelVirtualIp(obj interface{}) {
 		utilruntime.HandleError(err)
 		return
 	}
-	c.delVirtualIpQueue.Add(key)
-	vipObj := obj.(*kubeovnv1.Vip)
-	c.updateSubnetStatusQueue.Add(vipObj.Spec.Subnet)
+	klog.V(3).Infof("enqueue del vip %s", key)
+	vip := obj.(*kubeovnv1.Vip)
+	c.delVirtualIpQueue.Add(vip)
 }
 
 func (c *Controller) runAddVirtualIpWorker() {
@@ -141,16 +144,16 @@ func (c *Controller) processNextDeleteVirtualIpWorkItem() bool {
 
 	err := func(obj interface{}) error {
 		defer c.delVirtualIpQueue.Done(obj)
-		var key string
+		var vip *kubeovnv1.Vip
 		var ok bool
-		if key, ok = obj.(string); !ok {
+		if vip, ok = obj.(*kubeovnv1.Vip); !ok {
 			c.delVirtualIpQueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
+			utilruntime.HandleError(fmt.Errorf("expected vip in workqueue but got %#v", obj))
 			return nil
 		}
-		if err := c.handleDelVirtualIp(key); err != nil {
-			c.delVirtualIpQueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
+		if err := c.handleDelVirtualIp(vip); err != nil {
+			c.delVirtualIpQueue.AddRateLimited(obj)
+			return fmt.Errorf("error syncing '%s': %s, requeuing", vip.Name, err.Error())
 		}
 		c.delVirtualIpQueue.Forget(obj)
 		return nil
@@ -241,10 +244,10 @@ func (c *Controller) handleUpdateVirtualIp(key string) error {
 		return err
 	}
 	// should update
-	if vip.Status.Mac == "" && vip.Spec.MacAddress == "" {
+	if vip.Status.Mac == "" {
 		// TODO:// add vip in its parent port aap list
 		if err = c.createOrUpdateCrdVip(key, vip.Namespace, vip.Spec.Subnet,
-			vip.Spec.V6ip, vip.Spec.V6ip, vip.Spec.MacAddress,
+			vip.Spec.V4ip, vip.Spec.V6ip, vip.Spec.MacAddress,
 			vip.Spec.ParentV4ip, vip.Spec.ParentV6ip, vip.Spec.MacAddress); err != nil {
 			return err
 		}
@@ -260,9 +263,10 @@ func (c *Controller) handleUpdateVirtualIp(key string) error {
 	return nil
 }
 
-func (c *Controller) handleDelVirtualIp(key string) error {
-	klog.V(3).Infof("release vip %s", key)
-	c.ipam.ReleaseAddressByPod(key)
+func (c *Controller) handleDelVirtualIp(vip *kubeovnv1.Vip) error {
+	klog.V(3).Infof("delete vip %s", vip.Name)
+	c.ipam.ReleaseAddressByPod(vip.Name)
+	c.updateSubnetStatusQueue.Add(vip.Spec.Subnet)
 	return nil
 }
 
@@ -323,7 +327,7 @@ func (c *Controller) subnetCountIp(subnet *kubeovnv1.Subnet) error {
 }
 
 func (c *Controller) createOrUpdateCrdVip(key, ns, subnet, v4ip, v6ip, mac, pV4ip, pV6ip, pmac string) error {
-	vipCr, err := c.config.KubeOvnClient.KubeovnV1().Vips().Get(context.Background(), key, metav1.GetOptions{})
+	vipCr, err := c.virtualIpsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			if _, err := c.config.KubeOvnClient.KubeovnV1().Vips().Create(context.Background(), &kubeovnv1.Vip{
@@ -357,7 +361,7 @@ func (c *Controller) createOrUpdateCrdVip(key, ns, subnet, v4ip, v6ip, mac, pV4i
 		}
 	} else {
 		vip := vipCr.DeepCopy()
-		if vip.Spec.MacAddress == "" && mac != "" {
+		if vip.Status.Mac == "" && mac != "" {
 			// vip not support to update, just delete and create
 			vip.Spec.Namespace = ns
 			vip.Spec.V4ip = v4ip

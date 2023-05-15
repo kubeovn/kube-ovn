@@ -14,7 +14,7 @@ import (
 	"syscall"
 
 	"github.com/alauda/felix/ipsets"
-	"github.com/coreos/go-iptables/iptables"
+	"github.com/kubeovn/go-iptables/iptables"
 	"github.com/vishvananda/netlink"
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -22,6 +22,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
+	k8siptables "k8s.io/kubernetes/pkg/util/iptables"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
@@ -30,29 +31,83 @@ import (
 
 // ControllerRuntime represents runtime specific controller members
 type ControllerRuntime struct {
-	iptables map[string]*iptables.IPTables
-	ipsets   map[string]*ipsets.IPSets
+	iptables         map[string]*iptables.IPTables
+	iptablesObsolete map[string]*iptables.IPTables
+	k8siptables      map[string]k8siptables.Interface
+	ipsets           map[string]*ipsets.IPSets
+	gwCounters       map[string]*util.GwIPtableCounters
+}
+
+func evalCommandSymlinks(cmd string) (string, error) {
+	path, err := exec.LookPath(cmd)
+	if err != nil {
+		return "", fmt.Errorf("failed to search for command %q: %v", cmd, err)
+	}
+	file, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return "", fmt.Errorf("failed to read evaluate symbolic links for file %q: %v", path, err)
+	}
+
+	return file, nil
+}
+
+func isLegacyIptablesMode() (bool, error) {
+	path, err := evalCommandSymlinks("iptables")
+	if err != nil {
+		return false, err
+	}
+	pathLegacy, err := evalCommandSymlinks("iptables-legacy")
+	if err != nil {
+		return false, err
+	}
+	return path == pathLegacy, nil
 }
 
 func (c *Controller) initRuntime() error {
-	c.ControllerRuntime.iptables = make(map[string]*iptables.IPTables)
-	c.ControllerRuntime.ipsets = make(map[string]*ipsets.IPSets)
+	ok, err := isLegacyIptablesMode()
+	if err != nil {
+		klog.Errorf("failed to check iptables mode: %v", err)
+		return err
+	}
+	if !ok {
+		// iptables works in nft mode, we should migrate iptables rules
+		c.iptablesObsolete = make(map[string]*iptables.IPTables, 2)
+	}
+
+	c.iptables = make(map[string]*iptables.IPTables)
+	c.ipsets = make(map[string]*ipsets.IPSets)
+	c.gwCounters = make(map[string]*util.GwIPtableCounters)
+	c.k8siptables = make(map[string]k8siptables.Interface)
 
 	if c.protocol == kubeovnv1.ProtocolIPv4 || c.protocol == kubeovnv1.ProtocolDual {
-		iptables, err := iptables.NewWithProtocol(iptables.ProtocolIPv4)
+		ipt, err := iptables.NewWithProtocol(iptables.ProtocolIPv4)
 		if err != nil {
 			return err
 		}
-		c.ControllerRuntime.iptables[kubeovnv1.ProtocolIPv4] = iptables
-		c.ControllerRuntime.ipsets[kubeovnv1.ProtocolIPv4] = ipsets.NewIPSets(ipsets.NewIPVersionConfig(ipsets.IPFamilyV4, IPSetPrefix, nil, nil))
+		c.iptables[kubeovnv1.ProtocolIPv4] = ipt
+		if c.iptablesObsolete != nil {
+			if ipt, err = iptables.NewWithProtocolAndMode(iptables.ProtocolIPv4, "legacy"); err != nil {
+				return err
+			}
+			c.iptablesObsolete[kubeovnv1.ProtocolIPv4] = ipt
+		}
+		c.ipsets[kubeovnv1.ProtocolIPv4] = ipsets.NewIPSets(ipsets.NewIPVersionConfig(ipsets.IPFamilyV4, IPSetPrefix, nil, nil))
+		c.k8siptables[kubeovnv1.ProtocolIPv4] = k8siptables.New(c.k8sExec, k8siptables.ProtocolIPv4)
 	}
 	if c.protocol == kubeovnv1.ProtocolIPv6 || c.protocol == kubeovnv1.ProtocolDual {
-		iptables, err := iptables.NewWithProtocol(iptables.ProtocolIPv6)
+		ipt, err := iptables.NewWithProtocol(iptables.ProtocolIPv6)
 		if err != nil {
 			return err
 		}
-		c.ControllerRuntime.iptables[kubeovnv1.ProtocolIPv6] = iptables
-		c.ControllerRuntime.ipsets[kubeovnv1.ProtocolIPv6] = ipsets.NewIPSets(ipsets.NewIPVersionConfig(ipsets.IPFamilyV6, IPSetPrefix, nil, nil))
+		c.iptables[kubeovnv1.ProtocolIPv6] = ipt
+		if c.iptablesObsolete != nil {
+			if ipt, err = iptables.NewWithProtocolAndMode(iptables.ProtocolIPv6, "legacy"); err != nil {
+				return err
+			}
+			c.iptablesObsolete[kubeovnv1.ProtocolIPv6] = ipt
+		}
+		c.ipsets[kubeovnv1.ProtocolIPv6] = ipsets.NewIPSets(ipsets.NewIPVersionConfig(ipsets.IPFamilyV6, IPSetPrefix, nil, nil))
+		c.k8siptables[kubeovnv1.ProtocolIPv6] = k8siptables.New(c.k8sExec, k8siptables.ProtocolIPv6)
 	}
 
 	return nil
@@ -128,9 +183,10 @@ func (c *Controller) reconcileRouters(event subnetEvent) error {
 	}
 	nodeIPv4, nodeIPv6 := util.GetNodeInternalIP(*node)
 
+	joinCIDR := make([]string, 0, 2)
 	cidrs := make([]string, 0, len(subnets)*2)
 	for _, subnet := range subnets {
-		if (subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway) || subnet.Spec.Vpc != util.DefaultVpc || !subnet.Status.IsReady() {
+		if (subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway) || subnet.Spec.Vpc != c.config.ClusterRouter || !subnet.Status.IsReady() {
 			continue
 		}
 
@@ -145,6 +201,9 @@ func (c *Controller) reconcileRouters(event subnetEvent) error {
 					continue
 				}
 				cidrs = append(cidrs, ipNet.String())
+				if subnet.Name == c.config.NodeSwitch {
+					joinCIDR = append(joinCIDR, ipNet.String())
+				}
 			}
 		}
 	}
@@ -165,37 +224,20 @@ func (c *Controller) reconcileRouters(event subnetEvent) error {
 		return err
 	}
 
-	toAdd, toDel := routeDiff(existRoutes, cidrs)
+	toAdd, toDel := routeDiff(existRoutes, cidrs, joinCIDR, gateway, net.ParseIP(nodeIPv4), net.ParseIP(nodeIPv6))
 	for _, r := range toDel {
-		_, cidr, _ := net.ParseCIDR(r)
-		if err = netlink.RouteDel(&netlink.Route{Dst: cidr}); err != nil {
+		if err = netlink.RouteDel(&netlink.Route{Dst: r.Dst}); err != nil {
 			klog.Errorf("failed to del route %v", err)
 		}
 	}
 
 	for _, r := range toAdd {
-		_, cidr, _ := net.ParseCIDR(r)
-		for _, gw := range strings.Split(gateway, ",") {
-			if util.CheckProtocol(gw) != util.CheckProtocol(r) {
-				continue
-			}
-			if err = netlink.RouteReplace(&netlink.Route{Dst: cidr, LinkIndex: nic.Attrs().Index, Scope: netlink.SCOPE_UNIVERSE, Gw: net.ParseIP(gw)}); err != nil {
-				klog.Errorf("failed to add route %v", err)
-			}
+		r.LinkIndex = nic.Attrs().Index
+		if err = netlink.RouteReplace(&r); err != nil {
+			klog.Errorf("failed to replace route %v: %v", r, err)
 		}
 	}
 
-	if oldSubnet != nil && newSubnet != nil && oldSubnet.Spec.HtbQos != "" && newSubnet.Spec.HtbQos == "" {
-		if err := c.deleteSubnetQos(newSubnet); err != nil {
-			klog.Errorf("failed to delete htb qos for subnet %s: %v", newSubnet.Name, err)
-			return err
-		}
-	} else if newSubnet != nil && newSubnet.Spec.HtbQos != "" {
-		if err := c.setSubnetQosPriority(newSubnet); err != nil {
-			klog.Errorf("failed to set htb qos priority for subnet %s: %v", newSubnet.Name, err)
-			return err
-		}
-	}
 	return nil
 }
 
@@ -216,9 +258,9 @@ func getNicExistRoutes(nic netlink.Link, gateway string) ([]netlink.Route, error
 	return existRoutes, nil
 }
 
-func routeDiff(existRoutes []netlink.Route, cidrs []string) (toAdd []string, toDel []string) {
+func routeDiff(existRoutes []netlink.Route, cidrs, joinCIDR []string, gateway string, srcIPv4, srcIPv6 net.IP) (toAdd, toDel []netlink.Route) {
 	for _, route := range existRoutes {
-		if route.Scope == netlink.SCOPE_LINK {
+		if route.Scope == netlink.SCOPE_LINK || route.Dst == nil || route.Dst.IP.IsLinkLocalUnicast() {
 			continue
 		}
 
@@ -230,23 +272,51 @@ func routeDiff(existRoutes []netlink.Route, cidrs []string) (toAdd []string, toD
 			}
 		}
 		if !found {
-			toDel = append(toDel, route.Dst.String())
+			toDel = append(toDel, route)
 		}
 	}
 	if len(toDel) > 0 {
 		klog.Infof("route to del %v", toDel)
 	}
 
+	ipv4, ipv6 := util.SplitStringIP(gateway)
+	gwV4, gwV6 := net.ParseIP(ipv4), net.ParseIP(ipv6)
 	for _, c := range cidrs {
+		if util.ContainsString(joinCIDR, c) {
+			continue
+		}
+
+		var src, gw net.IP
+		switch util.CheckProtocol(c) {
+		case kubeovnv1.ProtocolIPv4:
+			src, gw = srcIPv4, gwV4
+		case kubeovnv1.ProtocolIPv6:
+			src, gw = srcIPv6, gwV6
+		}
+
 		found := false
 		for _, r := range existRoutes {
-			if r.Dst.String() == c {
+			if r.Dst == nil || r.Dst.String() != c {
+				continue
+			}
+			if src == nil {
+				if r.Src == nil {
+					found = true
+					break
+				}
+			} else if src.Equal(r.Src) {
 				found = true
 				break
 			}
 		}
 		if !found {
-			toAdd = append(toAdd, c)
+			_, cidr, _ := net.ParseCIDR(c)
+			toAdd = append(toAdd, netlink.Route{
+				Dst:   cidr,
+				Src:   src,
+				Gw:    gw,
+				Scope: netlink.SCOPE_UNIVERSE,
+			})
 		}
 	}
 	if len(toAdd) > 0 {
@@ -314,7 +384,7 @@ func (c *Controller) diffPolicyRouting(oldSubnet, newSubnet *kubeovnv1.Subnet) (
 }
 
 func (c *Controller) getPolicyRouting(subnet *kubeovnv1.Subnet) ([]netlink.Rule, []netlink.Route, error) {
-	if subnet == nil || subnet.Spec.ExternalEgressGateway == "" || subnet.Spec.Vpc != util.DefaultVpc {
+	if subnet == nil || subnet.Spec.ExternalEgressGateway == "" || subnet.Spec.Vpc != c.config.ClusterRouter {
 		return nil, nil, nil
 	}
 	if subnet.Spec.GatewayType == kubeovnv1.GWCentralizedType && !util.GatewayContains(subnet.Spec.GatewayNode, c.config.NodeName) {
@@ -396,6 +466,7 @@ func (c *Controller) getPolicyRouting(subnet *kubeovnv1.Subnet) ([]netlink.Rule,
 
 	return rules, routes, nil
 }
+
 func (c *Controller) handlePod(key string) error {
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
@@ -423,16 +494,9 @@ func (c *Controller) handlePod(key string) error {
 		podName = pod.Annotations[fmt.Sprintf(util.VmTemplate, util.OvnProvider)]
 	}
 
-	priority := pod.Annotations[util.PriorityAnnotation]
-	subnetName := pod.Annotations[util.LogicalSwitchAnnotation]
-	subnetPriority := c.getSubnetQosPriority(subnetName)
-	if priority == "" && subnetPriority != "" {
-		priority = subnetPriority
-	}
-
 	// set default nic bandwidth
 	ifaceID := ovs.PodNameToPortName(podName, pod.Namespace, util.OvnProvider)
-	err = ovs.SetInterfaceBandwidth(podName, pod.Namespace, ifaceID, pod.Annotations[util.EgressRateAnnotation], pod.Annotations[util.IngressRateAnnotation], priority)
+	err = ovs.SetInterfaceBandwidth(podName, pod.Namespace, ifaceID, pod.Annotations[util.EgressRateAnnotation], pod.Annotations[util.IngressRateAnnotation])
 	if err != nil {
 		return err
 	}
@@ -441,7 +505,7 @@ func (c *Controller) handlePod(key string) error {
 		return err
 	}
 	// set linux-netem qos
-	err = ovs.SetNetemQos(podName, pod.Namespace, ifaceID, pod.Annotations[util.NetemQosLatencyAnnotation], pod.Annotations[util.NetemQosLimitAnnotation], pod.Annotations[util.NetemQosLossAnnotation])
+	err = ovs.SetNetemQos(podName, pod.Namespace, ifaceID, pod.Annotations[util.NetemQosLatencyAnnotation], pod.Annotations[util.NetemQosLimitAnnotation], pod.Annotations[util.NetemQosLossAnnotation], pod.Annotations[util.NetemQosJitterAnnotation])
 	if err != nil {
 		return err
 	}
@@ -458,14 +522,8 @@ func (c *Controller) handlePod(key string) error {
 		}
 		if pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, provider)] == "true" {
 			ifaceID = ovs.PodNameToPortName(podName, pod.Namespace, provider)
-			priority := pod.Annotations[fmt.Sprintf(util.PriorityAnnotationTemplate, provider)]
-			subnetName := pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, provider)]
-			subnetPriority := c.getSubnetQosPriority(subnetName)
-			if priority == "" && subnetPriority != "" {
-				priority = subnetPriority
-			}
 
-			err = ovs.SetInterfaceBandwidth(podName, pod.Namespace, ifaceID, pod.Annotations[fmt.Sprintf(util.EgressRateAnnotationTemplate, provider)], pod.Annotations[fmt.Sprintf(util.IngressRateAnnotationTemplate, provider)], priority)
+			err = ovs.SetInterfaceBandwidth(podName, pod.Namespace, ifaceID, pod.Annotations[fmt.Sprintf(util.EgressRateAnnotationTemplate, provider)], pod.Annotations[fmt.Sprintf(util.IngressRateAnnotationTemplate, provider)])
 			if err != nil {
 				return err
 			}
@@ -473,7 +531,7 @@ func (c *Controller) handlePod(key string) error {
 			if err != nil {
 				return err
 			}
-			err = ovs.SetNetemQos(podName, pod.Namespace, ifaceID, pod.Annotations[fmt.Sprintf(util.NetemQosLatencyAnnotationTemplate, provider)], pod.Annotations[fmt.Sprintf(util.NetemQosLimitAnnotationTemplate, provider)], pod.Annotations[fmt.Sprintf(util.NetemQosLossAnnotationTemplate, provider)])
+			err = ovs.SetNetemQos(podName, pod.Namespace, ifaceID, pod.Annotations[fmt.Sprintf(util.NetemQosLatencyAnnotationTemplate, provider)], pod.Annotations[fmt.Sprintf(util.NetemQosLimitAnnotationTemplate, provider)], pod.Annotations[fmt.Sprintf(util.NetemQosLossAnnotationTemplate, provider)], pod.Annotations[fmt.Sprintf(util.NetemQosJitterAnnotationTemplate, provider)])
 			if err != nil {
 				return err
 			}
@@ -529,104 +587,10 @@ func (c *Controller) loopEncapIpCheck() {
 	}
 }
 
-func (c *Controller) setSubnetQosPriority(subnet *kubeovnv1.Subnet) error {
-	htbQos, err := c.htbQosLister.Get(subnet.Spec.HtbQos)
-	if err != nil {
-		klog.Errorf("failed to get htbqos %s: %v", subnet.Spec.HtbQos, err)
-		return err
-	}
-
-	pods, err := c.podsLister.List(labels.Everything())
-	if err != nil {
-		klog.Errorf("failed to list pods, %v", err)
-		return err
-	}
-
-	qosIfaceUidMap, err := ovs.ListExternalIds("qos")
-	if err != nil {
-		return err
-	}
-	queueIfaceUidMap, err := ovs.ListExternalIds("queue")
-	if err != nil {
-		return err
-	}
-
-	for _, pod := range pods {
-		if pod.Spec.HostNetwork ||
-			pod.DeletionTimestamp != nil ||
-			pod.Status.PodIP == "" {
-			continue
-		}
-		podName := pod.Name
-		if pod.Annotations[fmt.Sprintf(util.VmTemplate, util.OvnProvider)] != "" {
-			podName = pod.Annotations[fmt.Sprintf(util.VmTemplate, util.OvnProvider)]
-		}
-
-		// set priority for eth0 interface in pod
-		if pod.Annotations[util.LogicalSwitchAnnotation] == subnet.Name {
-			ifaceID := ovs.PodNameToPortName(podName, pod.Namespace, util.OvnProvider)
-			priority := htbQos.Spec.Priority
-			if pod.Annotations[util.PriorityAnnotation] != "" {
-				priority = pod.Annotations[util.PriorityAnnotation]
-			}
-			if err = ovs.SetPodQosPriority(podName, pod.Namespace, ifaceID, priority, qosIfaceUidMap, queueIfaceUidMap); err != nil {
-				klog.Errorf("failed to set htbqos priority for pod %s/%s, iface %v: %v", pod.Namespace, pod.Name, ifaceID, err)
-				return err
-			}
-		}
-
-		// set priority for attach interface provided by kube-ovn in pod
-		attachNets, err := util.ParsePodNetworkAnnotation(pod.Annotations[util.AttachmentNetworkAnnotation], pod.Namespace)
-		if err != nil {
-			return err
-		}
-		for _, multiNet := range attachNets {
-			provider := fmt.Sprintf("%s.%s.ovn", multiNet.Name, multiNet.Namespace)
-			if subnet.Spec.Provider != provider {
-				continue
-			}
-			if pod.Annotations[fmt.Sprintf(util.VmTemplate, provider)] != "" {
-				podName = pod.Annotations[fmt.Sprintf(util.VmTemplate, provider)]
-			}
-
-			if pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, provider)] == "true" {
-				ifaceID := ovs.PodNameToPortName(podName, pod.Namespace, provider)
-				priority := htbQos.Spec.Priority
-				if pod.Annotations[fmt.Sprintf(util.PriorityAnnotationTemplate, provider)] != "" {
-					priority = pod.Annotations[fmt.Sprintf(util.PriorityAnnotationTemplate, provider)]
-				}
-
-				if err = ovs.SetPodQosPriority(podName, pod.Namespace, ifaceID, priority, qosIfaceUidMap, queueIfaceUidMap); err != nil {
-					klog.Errorf("failed to set htbqos priority for pod %s/%s, iface %v: %v", pod.Namespace, pod.Name, ifaceID, err)
-					return err
-				}
-			}
-		}
-	}
-	return nil
+func (c *Controller) ovnMetricsUpdate() {
+	c.setOvnSubnetGatewayMetric()
 }
 
-func (c *Controller) clearQos(podName, podNamespace, ifaceID string) error {
-	if htbQos, _ := ovs.IsHtbQos(ifaceID); !htbQos {
-		return nil
-	}
-
-	if err := ovs.ClearPortQosBinding(ifaceID); err != nil {
-		klog.Errorf("failed to delete qos binding info for interface %s: %v", ifaceID, err)
-		return err
-	}
-
-	if err := ovs.ClearPodBandwidth(podName, podNamespace, ifaceID); err != nil {
-		klog.Errorf("failed to delete htbqos record for pod %s/%s, iface %v: %v", podNamespace, podName, ifaceID, err)
-		return err
-	}
-
-	if err := ovs.ClearHtbQosQueue(podName, podNamespace, ifaceID); err != nil {
-		klog.Errorf("failed to delete htbqos queue for pod %s/%s, iface %v: %v", podNamespace, podName, ifaceID, err)
-		return err
-	}
-	return nil
-}
 func (c *Controller) operateMod() {
 	modules, ok := os.LookupEnv(util.KoENV)
 	if !ok || modules == "" {

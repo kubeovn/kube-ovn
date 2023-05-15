@@ -27,13 +27,15 @@ spec:
         kubernetes.io/os: linux
       affinity:
          podAntiAffinity:
-           requiredDuringSchedulingIgnoredDuringExecution:
-           - labelSelector:
-               matchExpressions:
-               - key: k8s-app
-                 operator: In
-                 values: ["{{ .DeployName }}"]
-             topologyKey: kubernetes.io/hostname
+           preferredDuringSchedulingIgnoredDuringExecution:
+             - weight: 100
+               podAffinityTerm:
+                 labelSelector:
+                  matchExpressions:
+                  - key: k8s-app
+                    operator: In
+                    values: ["{{ .DeployName }}"]
+                 topologyKey: kubernetes.io/hostname
       containers:
       - name: coredns
         image: {{ .CorednsImage }}

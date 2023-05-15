@@ -1,6 +1,7 @@
 package ipam
 
 import (
+	"fmt"
 	"math/big"
 	"strings"
 
@@ -48,6 +49,33 @@ func (iprl IPRangeList) Contains(ip IP) bool {
 		}
 	}
 	return false
+}
+
+func (iprl IPRangeList) Equal(iprl2 IPRangeList) bool {
+	if len(iprl) != len(iprl2) {
+		return false
+	}
+
+	for i, range1 := range iprl {
+		range2 := iprl2[i]
+		if !range1.Start.Equal(range2.Start) || !range1.End.Equal(range2.End) {
+			return false
+		}
+	}
+
+	return true
+}
+
+func (iprl IPRangeList) IpRangetoString() string {
+	var ipRangeString []string
+	for _, ipr := range iprl {
+		if ipr.Start.Equal(ipr.End) {
+			ipRangeString = append(ipRangeString, string(ipr.Start))
+		} else {
+			ipRangeString = append(ipRangeString, fmt.Sprintf("%s-%s", ipr.Start, ipr.End))
+		}
+	}
+	return strings.Join(ipRangeString, ",")
 }
 
 func splitIPRangeList(iprl IPRangeList, ip IP) (bool, IPRangeList) {

@@ -10,6 +10,8 @@ import (
 	"k8s.io/kubernetes/test/e2e/framework"
 	admissionapi "k8s.io/pod-security-admission/api"
 
+	attachnetclientset "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/client/clientset/versioned"
+
 	"github.com/onsi/ginkgo/v2"
 
 	kubeovncs "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
@@ -26,7 +28,7 @@ type Framework struct {
 	KubeContext string
 	*framework.Framework
 	KubeOVNClientSet kubeovncs.Interface
-
+	AttachNetClient  attachnetclientset.Interface
 	// master/release-1.10/...
 	ClusterVersion string
 	// 999.999 for master
@@ -122,18 +124,36 @@ func (f *Framework) BeforeEach() {
 		ExpectNoError(err)
 	}
 
+	if f.AttachNetClient == nil {
+		ginkgo.By("Creating a nad client")
+		config, err := framework.LoadConfig()
+		ExpectNoError(err)
+
+		config.QPS = f.Options.ClientQPS
+		config.Burst = f.Options.ClientBurst
+		f.AttachNetClient, err = attachnetclientset.NewForConfig(config)
+		ExpectNoError(err)
+	}
+
 	framework.TestContext.Host = ""
 }
 
-func (f *Framework) SkipVersionPriorTo(major, minor uint, message string) {
-	if f.ClusterVersionMajor < major ||
-		(f.ClusterVersionMajor == major && f.ClusterVersionMinor < minor) {
-		ginkgo.Skip(message)
+func (f *Framework) VersionPriorTo(major, minor uint) bool {
+	return f.ClusterVersionMajor < major || (f.ClusterVersionMajor == major && f.ClusterVersionMinor < minor)
+}
+
+func (f *Framework) SkipVersionPriorTo(major, minor uint, reason string) {
+	if f.VersionPriorTo(major, minor) {
+		ginkgo.Skip(reason)
 	}
 }
 
 func Describe(text string, body func()) bool {
 	return ginkgo.Describe("[CNI:Kube-OVN] "+text, body)
+}
+
+func SerialDescribe(text string, body func()) bool {
+	return ginkgo.Describe("[CNI:Kube-OVN] "+text, ginkgo.Serial, body)
 }
 
 func OrderedDescribe(text string, body func()) bool {

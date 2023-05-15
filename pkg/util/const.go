@@ -7,6 +7,7 @@ const (
 
 	AllocatedAnnotation  = "ovn.kubernetes.io/allocated"
 	RoutedAnnotation     = "ovn.kubernetes.io/routed"
+	RoutesAnnotation     = "ovn.kubernetes.io/routes"
 	MacAddressAnnotation = "ovn.kubernetes.io/mac_address"
 	IpAddressAnnotation  = "ovn.kubernetes.io/ip_address"
 	CidrAnnotation       = "ovn.kubernetes.io/cidr"
@@ -22,6 +23,18 @@ const (
 	VipAnnotation        = "ovn.kubernetes.io/vip"
 	ChassisAnnotation    = "ovn.kubernetes.io/chassis"
 
+	OvnFipUseEipFinalizer  = "ovn.kubernetes.io/ovn_fip"
+	OvnSnatUseEipFinalizer = "ovn.kubernetes.io/ovn_snat"
+	OvnDnatUseEipFinalizer = "ovn.kubernetes.io/ovn_dnat"
+	OvnLrpUseEipFinalizer  = "ovn.kubernetes.io/ovn_lrp"
+
+	ExternalIpAnnotation         = "ovn.kubernetes.io/external_ip"
+	ExternalMacAnnotation        = "ovn.kubernetes.io/external_mac"
+	ExternalCidrAnnotation       = "ovn.kubernetes.io/external_cidr"
+	ExternalSwitchAnnotation     = "ovn.kubernetes.io/external_switch"
+	ExternalGatewayAnnotation    = "ovn.kubernetes.io/external_gateway"
+	ExternalGwPortNameAnnotation = "ovn.kubernetes.io/external_gw_port_name"
+
 	VpcNatGatewayAnnotation     = "ovn.kubernetes.io/vpc_nat_gw"
 	VpcNatGatewayInitAnnotation = "ovn.kubernetes.io/vpc_nat_gw_init"
 	VpcEipsAnnotation           = "ovn.kubernetes.io/vpc_eips"
@@ -31,9 +44,12 @@ const (
 	VpcCIDRsAnnotation          = "ovn.kubernetes.io/vpc_cidrs"
 	VpcLbAnnotation             = "ovn.kubernetes.io/vpc_lb"
 	VpcExternalLabel            = "ovn.kubernetes.io/vpc_external"
-	VpcEipLabel                 = "ovn.kubernetes.io/vpc_eip"
+	VpcEipAnnotation            = "ovn.kubernetes.io/vpc_eip"
 	VpcDnatEPortLabel           = "ovn.kubernetes.io/vpc_dnat_eport"
-	VpcNatLabel                 = "ovn.kubernetes.io/vpc_nat"
+	VpcNatAnnotation            = "ovn.kubernetes.io/vpc_nat"
+
+	OvnEipUsageLabel        = "ovn.kubernetes.io/ovn_eip_usage"
+	OvnLrpEipEnableBfdLabel = "ovn.kubernetes.io/ovn_lrp_eip_enable_bfd"
 
 	SwitchLBRuleVipsAnnotation = "ovn.kubernetes.io/switch_lb_vip"
 
@@ -49,6 +65,7 @@ const (
 	AllocatedAnnotationSuffix       = ".kubernetes.io/allocated"
 	AllocatedAnnotationTemplate     = "%s.kubernetes.io/allocated"
 	RoutedAnnotationTemplate        = "%s.kubernetes.io/routed"
+	RoutesAnnotationTemplate        = "%s.kubernetes.io/routes"
 	MacAddressAnnotationTemplate    = "%s.kubernetes.io/mac_address"
 	IpAddressAnnotationTemplate     = "%s.kubernetes.io/ip_address"
 	CidrAnnotationTemplate          = "%s.kubernetes.io/cidr"
@@ -89,11 +106,14 @@ const (
 	SubnetNameLabel            = "ovn.kubernetes.io/subnet"
 	ICGatewayLabel             = "ovn.kubernetes.io/ic-gw"
 	ExGatewayLabel             = "ovn.kubernetes.io/external-gw"
+	NodeExtGwLabel             = "ovn.kubernetes.io/node-ext-gw"
 	VpcNatGatewayLabel         = "ovn.kubernetes.io/vpc-nat-gw"
 	IpReservedLabel            = "ovn.kubernetes.io/ip_reserved"
 	VpcNatGatewayNameLabel     = "ovn.kubernetes.io/vpc-nat-gw-name"
 	VpcLbLabel                 = "ovn.kubernetes.io/vpc_lb"
 	VpcDnsNameLabel            = "ovn.kubernetes.io/vpc-dns"
+	QoSLabel                   = "ovn.kubernetes.io/qos"
+	NodeNameLabel              = "ovn.kubernetes.io/node-name"
 	NetworkPolicyLogAnnotation = "ovn.kubernetes.io/enable_log"
 
 	ProtocolTCP  = "tcp"
@@ -105,10 +125,17 @@ const (
 	NetworkTypeVxlan  = "vxlan"
 	NetworkTypeStt    = "stt"
 
+	LoNic         = "lo"
+	NodeGwNic     = "ovnext0"
+	NodeGwNs      = "ovnext"
+	NodeGwNsPath  = "/var/run/netns/ovnext"
+	BindMountPath = "/run/netns"
+
 	NodeNic           = "ovn0"
 	NodeAllowPriority = "3000"
 
 	SecurityGroupHighestPriority = "2300"
+	SecurityGroupBasePriority    = "2005"
 	SecurityGroupAllowPriority   = "2004"
 	SecurityGroupDropPriority    = "2003"
 
@@ -137,10 +164,12 @@ const (
 	InterconnectionSwitch  = "ts"
 	ExternalGatewaySwitch  = "ovn-external"
 	VpcNatGatewayConfig    = "ovn-vpc-nat-gw-config"
-	VpcExternalNet         = "ovn-vpc-external-network"
 	VpcLbNetworkAttachment = "ovn-vpc-lb"
 	VpcDnsConfig           = "vpc-dns-config"
 	VpcDnsDepTemplate      = "vpc-dns-dep"
+	VpcNatConfig           = "ovn-vpc-nat-config"
+
+	DefaultSecurityGroupName = "default-securitygroup"
 
 	DefaultVpc    = "ovn-cluster"
 	DefaultSubnet = "ovn-default"
@@ -148,18 +177,22 @@ const (
 	EcmpRouteType   = "ecmp"
 	NormalRouteType = "normal"
 
-	LrpUsingEip  = "lrp"
-	FipUsingEip  = "fip"
-	SnatUsingEip = "snat"
-	DnatUsingEip = "dnat"
+	LrpUsingEip       = "lrp"
+	FipUsingEip       = "fip"
+	NatUsingVip       = "vip"
+	SnatUsingEip      = "snat"
+	DnatUsingEip      = "dnat"
+	NodeExtGwUsingEip = "node-ext-gw"
+	StaicRouteBfdEcmp = "ecmp-symmetric-reply"
 
 	OvnFip      = "ovn"
 	IptablesFip = "iptables"
 
 	GatewayRouterPolicyPriority = 29000
-	NodeRouterPolicyPriority    = 30000
-	SubnetRouterPolicyPriority  = 31000
 	OvnICPolicyPriority         = 29500
+	NodeRouterPolicyPriority    = 30000
+	NodeLocalDnsPolicyPriority  = 30100
+	SubnetRouterPolicyPriority  = 31000
 
 	OffloadType  = "offload-port"
 	InternalType = "internal-port"
@@ -176,19 +209,15 @@ const (
 
 	DenyAllSecurityGroup = "kubeovn_deny_all"
 
-	HtbQosHigh   = "htbqos-high"
-	HtbQosMedium = "htbqos-medium"
-	HtbQosLow    = "htbqos-low"
-
-	PriorityAnnotation        = "ovn.kubernetes.io/priority"
 	NetemQosLatencyAnnotation = "ovn.kubernetes.io/latency"
 	NetemQosLimitAnnotation   = "ovn.kubernetes.io/limit"
 	NetemQosLossAnnotation    = "ovn.kubernetes.io/loss"
+	NetemQosJitterAnnotation  = "ovn.kubernetes.io/jitter"
 
-	PriorityAnnotationTemplate        = "%s.kubernetes.io/priority"
 	NetemQosLatencyAnnotationTemplate = "%s.kubernetes.io/latency"
 	NetemQosLimitAnnotationTemplate   = "%s.kubernetes.io/limit"
 	NetemQosLossAnnotationTemplate    = "%s.kubernetes.io/loss"
+	NetemQosJitterAnnotationTemplate  = "%s.kubernetes.io/jitter"
 
 	POD_IP             = "POD_IP"
 	ContentType        = "application/vnd.kubernetes.protobuf"
@@ -206,4 +235,13 @@ const (
 
 	U2OInterconnName = "u2o-interconnection.%s.%s"
 	U2OExcludeIPAg   = "%s.u2o_exclude_ip.%s"
+
+	DefaultServiceSessionStickinessTimeout = 10800
+
+	OvnSubnetGatewayIptables = "ovn-subnet-gateway"
+
+	QoSDirectionIngress = "ingress"
+	QoSDirectionEgress  = "egress"
+
+	MainRouteTable = ""
 )

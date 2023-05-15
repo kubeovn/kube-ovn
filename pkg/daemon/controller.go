@@ -11,7 +11,6 @@ import (
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -23,6 +22,7 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
+	k8sexec "k8s.io/utils/exec"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	kubeovninformer "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions"
@@ -44,15 +44,15 @@ type Controller struct {
 	subnetsSynced cache.InformerSynced
 	subnetQueue   workqueue.RateLimitingInterface
 
+	ovnEipsLister kubeovnlister.OvnEipLister
+	ovnEipsSynced cache.InformerSynced
+
 	podsLister listerv1.PodLister
 	podsSynced cache.InformerSynced
 	podQueue   workqueue.RateLimitingInterface
 
 	nodesLister listerv1.NodeLister
 	nodesSynced cache.InformerSynced
-
-	htbQosLister kubeovnlister.HtbQosLister
-	htbQosSynced cache.InformerSynced
 
 	recorder record.EventRecorder
 
@@ -61,10 +61,12 @@ type Controller struct {
 	ControllerRuntime
 	localPodName   string
 	localNamespace string
+
+	k8sExec k8sexec.Interface
 }
 
 // NewController init a daemon controller
-func NewController(config *Configuration, podInformerFactory informers.SharedInformerFactory, nodeInformerFactory informers.SharedInformerFactory, kubeovnInformerFactory kubeovninformer.SharedInformerFactory) (*Controller, error) {
+func NewController(config *Configuration, stopCh <-chan struct{}, podInformerFactory informers.SharedInformerFactory, nodeInformerFactory informers.SharedInformerFactory, kubeovnInformerFactory kubeovninformer.SharedInformerFactory) (*Controller, error) {
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(klog.Infof)
 	eventBroadcaster.StartRecordingToSink(&typedcorev1.EventSinkImpl{Interface: config.KubeClient.CoreV1().Events("")})
@@ -72,9 +74,9 @@ func NewController(config *Configuration, podInformerFactory informers.SharedInf
 
 	providerNetworkInformer := kubeovnInformerFactory.Kubeovn().V1().ProviderNetworks()
 	subnetInformer := kubeovnInformerFactory.Kubeovn().V1().Subnets()
+	ovnEipInformer := kubeovnInformerFactory.Kubeovn().V1().OvnEips()
 	podInformer := podInformerFactory.Core().V1().Pods()
 	nodeInformer := nodeInformerFactory.Core().V1().Nodes()
-	htbQosInformer := kubeovnInformerFactory.Kubeovn().V1().HtbQoses()
 
 	controller := &Controller{
 		config: config,
@@ -88,6 +90,9 @@ func NewController(config *Configuration, podInformerFactory informers.SharedInf
 		subnetsSynced: subnetInformer.Informer().HasSynced,
 		subnetQueue:   workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "Subnet"),
 
+		ovnEipsLister: ovnEipInformer.Lister(),
+		ovnEipsSynced: ovnEipInformer.Informer().HasSynced,
+
 		podsLister: podInformer.Lister(),
 		podsSynced: podInformer.Informer().HasSynced,
 		podQueue:   workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "Pod"),
@@ -95,10 +100,8 @@ func NewController(config *Configuration, podInformerFactory informers.SharedInf
 		nodesLister: nodeInformer.Lister(),
 		nodesSynced: nodeInformer.Informer().HasSynced,
 
-		htbQosLister: htbQosInformer.Lister(),
-		htbQosSynced: htbQosInformer.Informer().HasSynced,
-
 		recorder: recorder,
+		k8sExec:  k8sexec.New(),
 	}
 
 	node, err := config.KubeClient.CoreV1().Nodes().Get(context.Background(), config.NodeName, metav1.GetOptions{})
@@ -109,6 +112,16 @@ func NewController(config *Configuration, podInformerFactory informers.SharedInf
 
 	if err = controller.initRuntime(); err != nil {
 		return nil, err
+	}
+
+	podInformerFactory.Start(stopCh)
+	nodeInformerFactory.Start(stopCh)
+	kubeovnInformerFactory.Start(stopCh)
+
+	if !cache.WaitForCacheSync(stopCh,
+		controller.providerNetworksSynced, controller.subnetsSynced,
+		controller.podsSynced, controller.nodesSynced) {
+		util.LogFatalAndExit(nil, "failed to wait for caches to sync")
 	}
 
 	if _, err = providerNetworkInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -232,6 +245,7 @@ func (c *Controller) processNextDeleteProviderNetworkWorkItem() bool {
 }
 
 func (c *Controller) handleAddOrUpdateProviderNetwork(key string) error {
+	klog.V(3).Infof("handle update provider network %s", key)
 	node, err := c.nodesLister.Get(c.config.NodeName)
 	if err != nil {
 		return err
@@ -262,6 +276,7 @@ func (c *Controller) initProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v1
 
 	var mtu int
 	var err error
+	klog.V(3).Infof("ovs init provider network %s", pn.Name)
 	if mtu, err = ovsInitProviderNetwork(pn.Name, nic, pn.Spec.ExchangeLinkName, c.config.MacLearningFallback); err != nil {
 		if oldLen := len(node.Labels); oldLen != 0 {
 			delete(node.Labels, fmt.Sprintf(util.ProviderNetworkReadyTemplate, pn.Name))
@@ -322,8 +337,12 @@ func (c *Controller) recordProviderNetworkErr(providerNetwork string, errMsg str
 				break
 			}
 		}
+		if currentPod == nil {
+			klog.Warning("failed to get self pod")
+			return
+		}
 	} else {
-		if currentPod, err = c.config.KubeClient.CoreV1().Pods(c.localNamespace).Get(context.Background(), c.localPodName, metav1.GetOptions{}); err != nil {
+		if currentPod, err = c.podsLister.Pods(c.localNamespace).Get(c.localPodName); err != nil {
 			klog.Errorf("failed to get pod %s, %v", c.localPodName, err)
 			return
 		}
@@ -465,8 +484,8 @@ func (c *Controller) enqueuePod(old, new interface{}) {
 
 	if oldPod.Annotations[util.IngressRateAnnotation] != newPod.Annotations[util.IngressRateAnnotation] ||
 		oldPod.Annotations[util.EgressRateAnnotation] != newPod.Annotations[util.EgressRateAnnotation] ||
-		oldPod.Annotations[util.PriorityAnnotation] != newPod.Annotations[util.PriorityAnnotation] ||
 		oldPod.Annotations[util.NetemQosLatencyAnnotation] != newPod.Annotations[util.NetemQosLatencyAnnotation] ||
+		oldPod.Annotations[util.NetemQosJitterAnnotation] != newPod.Annotations[util.NetemQosJitterAnnotation] ||
 		oldPod.Annotations[util.NetemQosLimitAnnotation] != newPod.Annotations[util.NetemQosLimitAnnotation] ||
 		oldPod.Annotations[util.NetemQosLossAnnotation] != newPod.Annotations[util.NetemQosLossAnnotation] ||
 		oldPod.Annotations[util.MirrorControlAnnotation] != newPod.Annotations[util.MirrorControlAnnotation] {
@@ -488,8 +507,8 @@ func (c *Controller) enqueuePod(old, new interface{}) {
 		if newPod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, provider)] == "true" {
 			if oldPod.Annotations[fmt.Sprintf(util.IngressRateAnnotationTemplate, provider)] != newPod.Annotations[fmt.Sprintf(util.IngressRateAnnotationTemplate, provider)] ||
 				oldPod.Annotations[fmt.Sprintf(util.EgressRateAnnotationTemplate, provider)] != newPod.Annotations[fmt.Sprintf(util.EgressRateAnnotationTemplate, provider)] ||
-				oldPod.Annotations[fmt.Sprintf(util.PriorityAnnotationTemplate, provider)] != newPod.Annotations[fmt.Sprintf(util.PriorityAnnotationTemplate, provider)] ||
 				oldPod.Annotations[fmt.Sprintf(util.NetemQosLatencyAnnotationTemplate, provider)] != newPod.Annotations[fmt.Sprintf(util.NetemQosLatencyAnnotationTemplate, provider)] ||
+				oldPod.Annotations[fmt.Sprintf(util.NetemQosJitterAnnotationTemplate, provider)] != newPod.Annotations[fmt.Sprintf(util.NetemQosJitterAnnotationTemplate, provider)] ||
 				oldPod.Annotations[fmt.Sprintf(util.NetemQosLimitAnnotationTemplate, provider)] != newPod.Annotations[fmt.Sprintf(util.NetemQosLimitAnnotationTemplate, provider)] ||
 				oldPod.Annotations[fmt.Sprintf(util.NetemQosLossAnnotationTemplate, provider)] != newPod.Annotations[fmt.Sprintf(util.NetemQosLossAnnotationTemplate, provider)] ||
 				oldPod.Annotations[fmt.Sprintf(util.MirrorControlAnnotationTemplate, provider)] != newPod.Annotations[fmt.Sprintf(util.MirrorControlAnnotationTemplate, provider)] {
@@ -568,78 +587,6 @@ func (c *Controller) markAndCleanInternalPort() error {
 	return nil
 }
 
-func (c *Controller) deleteSubnetQos(subnet *kubeovnv1.Subnet) error {
-	pods, err := c.podsLister.List(labels.Everything())
-	if err != nil {
-		klog.Errorf("failed to list pods, %v", err)
-		return err
-	}
-
-	for _, pod := range pods {
-		if pod.Spec.HostNetwork ||
-			pod.DeletionTimestamp != nil {
-			continue
-		}
-		podName := pod.Name
-
-		if pod.Annotations[util.LogicalSwitchAnnotation] == subnet.Name {
-			// if pod's annotation for ingress-rate or priority exists, should keep qos for pod
-			if pod.Annotations[util.IngressRateAnnotation] != "" ||
-				pod.Annotations[util.PriorityAnnotation] != "" {
-				continue
-			}
-			if pod.Annotations[fmt.Sprintf(util.VmTemplate, util.OvnProvider)] != "" {
-				podName = pod.Annotations[fmt.Sprintf(util.VmTemplate, util.OvnProvider)]
-			}
-			ifaceID := ovs.PodNameToPortName(podName, pod.Namespace, util.OvnProvider)
-			if err := c.clearQos(podName, pod.Namespace, ifaceID); err != nil {
-				return err
-			}
-		}
-
-		// clear priority for attach interface provided by kube-ovn in pod
-		attachNets, err := util.ParsePodNetworkAnnotation(pod.Annotations[util.AttachmentNetworkAnnotation], pod.Namespace)
-		if err != nil {
-			return err
-		}
-		for _, multiNet := range attachNets {
-			provider := fmt.Sprintf("%s.%s.ovn", multiNet.Name, multiNet.Namespace)
-			if subnet.Spec.Provider != provider ||
-				pod.Annotations[fmt.Sprintf(util.IngressRateAnnotationTemplate, provider)] != "" ||
-				pod.Annotations[fmt.Sprintf(util.PriorityAnnotationTemplate, provider)] != "" {
-				continue
-			}
-			if pod.Annotations[fmt.Sprintf(util.VmTemplate, provider)] != "" {
-				podName = pod.Annotations[fmt.Sprintf(util.VmTemplate, provider)]
-			}
-
-			if pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, provider)] == "true" {
-				ifaceID := ovs.PodNameToPortName(podName, pod.Namespace, provider)
-				if err := c.clearQos(podName, pod.Namespace, ifaceID); err != nil {
-					return err
-				}
-			}
-		}
-	}
-	return nil
-}
-
-func (c *Controller) getSubnetQosPriority(subnetName string) string {
-	var priority string
-	subnet, err := c.subnetsLister.Get(subnetName)
-	if err != nil {
-		klog.Errorf("failed to get subnet %s: %v", subnet, err)
-	} else if subnet.Spec.HtbQos != "" {
-		htbQos, err := c.htbQosLister.Get(subnet.Spec.HtbQos)
-		if err != nil {
-			klog.Errorf("failed to get htbqos %s: %v", subnet.Spec.HtbQos, err)
-		} else {
-			priority = htbQos.Spec.Priority
-		}
-	}
-	return priority
-}
-
 // Run starts controller
 func (c *Controller) Run(stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
@@ -653,22 +600,20 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	go wait.Until(rotateLog, 1*time.Hour, stopCh)
 	go wait.Until(c.operateMod, 10*time.Second, stopCh)
 
-	if ok := cache.WaitForCacheSync(stopCh, c.providerNetworksSynced, c.subnetsSynced, c.podsSynced, c.nodesSynced, c.htbQosSynced); !ok {
-		util.LogFatalAndExit(nil, "failed to wait for caches to sync")
-	}
-
 	if err := c.setIPSet(); err != nil {
 		util.LogFatalAndExit(err, "failed to set ipsets")
 	}
 
 	klog.Info("Started workers")
 	go wait.Until(c.loopOvn0Check, 5*time.Second, stopCh)
+	go wait.Until(c.loopOvnExt0Check, 5*time.Second, stopCh)
 	go wait.Until(c.runAddOrUpdateProviderNetworkWorker, time.Second, stopCh)
 	go wait.Until(c.runDeleteProviderNetworkWorker, time.Second, stopCh)
 	go wait.Until(c.runSubnetWorker, time.Second, stopCh)
 	go wait.Until(c.runPodWorker, time.Second, stopCh)
 	go wait.Until(c.runGateway, 3*time.Second, stopCh)
 	go wait.Until(c.loopEncapIpCheck, 3*time.Second, stopCh)
+	go wait.Until(c.ovnMetricsUpdate, 3*time.Second, stopCh)
 	go wait.Until(func() {
 		if err := c.markAndCleanInternalPort(); err != nil {
 			klog.Errorf("gc ovs port error: %v", err)

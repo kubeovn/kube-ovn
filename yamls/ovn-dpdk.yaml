@@ -18,6 +18,7 @@ rules:
       - vpcs
       - vpcs/status
       - vpc-nat-gateways
+      - vpc-nat-gateways/status
       - subnets
       - subnets/status
       - ips
@@ -29,7 +30,6 @@ rules:
       - provider-networks/status
       - security-groups
       - security-groups/status
-      - htbqoses
       - iptables-eips
       - iptables-fip-rules
       - iptables-dnat-rules
@@ -42,6 +42,8 @@ rules:
       - switch-lb-rules/status
       - vpc-dnses
       - vpc-dnses/status
+      - qos-policies
+      - qos-policies/status
     verbs:
       - "*"
   - apiGroups:
@@ -225,6 +227,10 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+            - name: POD_IPS
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIPs
           resources:
             requests:
               cpu: 500m

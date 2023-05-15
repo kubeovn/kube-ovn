@@ -9,7 +9,13 @@ updates:
     directory: "/"
     schedule:
       interval: "daily"
+      time: "15:00"
+    ignore:
+      - dependency-name: "k8s.io/*"
+      - dependency-name: "sigs.k8s.io/*"
+      - dependency-name: "github.com/google/cadvisor"
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "daily"
+      time: "15:00"

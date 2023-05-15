@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -26,6 +27,8 @@ const (
 	gatewayModeDisabled = iota
 	gatewayCheckModePing
 	gatewayCheckModeArping
+	gatewayCheckModePingNotConcerned
+	gatewayCheckModeArpingNotConcerned
 )
 
 type cniServerHandler struct {
@@ -83,7 +86,8 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 	}
 
 	var gatewayCheckMode int
-	var macAddr, ip, ipAddr, cidr, gw, subnet, ingress, egress, providerNetwork, ifName, nicType, podNicName, priority, vmName, latency, limit, loss, u2oInterconnectionIP string
+	var macAddr, ip, ipAddr, cidr, gw, subnet, ingress, egress, providerNetwork, ifName, nicType, podNicName, vmName, latency, limit, loss, jitter, u2oInterconnectionIP string
+	var routes []request.Route
 	var isDefaultRoute bool
 	var pod *v1.Pod
 	var err error
@@ -118,13 +122,23 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		subnet = pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, podRequest.Provider)]
 		ingress = pod.Annotations[fmt.Sprintf(util.IngressRateAnnotationTemplate, podRequest.Provider)]
 		egress = pod.Annotations[fmt.Sprintf(util.EgressRateAnnotationTemplate, podRequest.Provider)]
-		priority = pod.Annotations[fmt.Sprintf(util.PriorityAnnotationTemplate, podRequest.Provider)]
 		latency = pod.Annotations[fmt.Sprintf(util.NetemQosLatencyAnnotationTemplate, podRequest.Provider)]
 		limit = pod.Annotations[fmt.Sprintf(util.NetemQosLimitAnnotationTemplate, podRequest.Provider)]
 		loss = pod.Annotations[fmt.Sprintf(util.NetemQosLossAnnotationTemplate, podRequest.Provider)]
+		jitter = pod.Annotations[fmt.Sprintf(util.NetemQosJitterAnnotationTemplate, podRequest.Provider)]
 		providerNetwork = pod.Annotations[fmt.Sprintf(util.ProviderNetworkTemplate, podRequest.Provider)]
 		vmName = pod.Annotations[fmt.Sprintf(util.VmTemplate, podRequest.Provider)]
 		ipAddr = util.GetIpAddrWithMask(ip, cidr)
+		if s := pod.Annotations[fmt.Sprintf(util.RoutesAnnotationTemplate, podRequest.Provider)]; s != "" {
+			if err = json.Unmarshal([]byte(s), &routes); err != nil {
+				errMsg := fmt.Errorf("invalid routes for pod %s/%s: %v", pod.Namespace, pod.Name, err)
+				klog.Error(errMsg)
+				if err = resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()}); err != nil {
+					klog.Errorf("failed to write response: %v", err)
+				}
+				return
+			}
+		}
 		if ifName = podRequest.IfName; ifName == "" {
 			ifName = "eth0"
 		}
@@ -208,30 +222,36 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 			return
 		}
 
-		subnetPriority := csh.Controller.getSubnetQosPriority(subnet)
-		if priority == "" && subnetPriority != "" {
-			priority = subnetPriority
-		}
-
 		if podSubnet.Status.U2OInterconnectionIP != "" && podSubnet.Spec.U2OInterconnection {
 			u2oInterconnectionIP = podSubnet.Status.U2OInterconnectionIP
 		}
 
-		//skip ping check gateway for pods during live migration
+		subnetHasVlan := podSubnet.Spec.Vlan != ""
+		detectIPConflict := csh.Config.EnableArpDetectIPConflict && subnetHasVlan
+		// skip ping check gateway for pods during live migration
 		if pod.Annotations[fmt.Sprintf(util.LiveMigrationAnnotationTemplate, podRequest.Provider)] != "true" {
-			if !podSubnet.Spec.DisableGatewayCheck {
-				if podSubnet.Spec.Vlan != "" && !podSubnet.Spec.LogicalGateway {
+			if subnetHasVlan && !podSubnet.Spec.LogicalGateway {
+				if podSubnet.Spec.DisableGatewayCheck {
+					gatewayCheckMode = gatewayCheckModeArpingNotConcerned
+				} else {
 					gatewayCheckMode = gatewayCheckModeArping
+				}
+			} else {
+				if podSubnet.Spec.DisableGatewayCheck {
+					gatewayCheckMode = gatewayCheckModePingNotConcerned
 				} else {
 					gatewayCheckMode = gatewayCheckModePing
 				}
 			}
+		} else {
+			// do not perform ipv4 conflict detection during VM live migration
+			detectIPConflict = false
 		}
 
 		var mtu int
-		var node *v1.Node
 		if providerNetwork != "" {
-			if node, err = csh.Controller.nodesLister.Get(csh.Config.NodeName); err != nil {
+			node, err := csh.Controller.nodesLister.Get(csh.Config.NodeName)
+			if err != nil {
 				errMsg := fmt.Errorf("failed to get node %s: %v", csh.Config.NodeName, err)
 				klog.Error(errMsg)
 				if err = resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()}); err != nil {
@@ -254,63 +274,15 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 			mtu = csh.Config.MTU
 		}
 
-		// routes used for access from underlay to overlay
-		var u2oRoutes []request.Route
-		if podSubnet.Spec.U2oRouting && podSubnet.Spec.Vlan != "" &&
-			!podSubnet.Spec.LogicalGateway && podSubnet.Spec.Vpc == util.DefaultVpc {
-			subnets, err := csh.Controller.subnetsLister.List(labels.Everything())
-			if err != nil {
-				errMsg := fmt.Errorf("failed to list subnets: %v", err)
-				klog.Error(errMsg)
-				if err = resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()}); err != nil {
-					klog.Errorf("failed to write response: %v", err)
-				}
-				return
-			}
-
-			if node == nil {
-				if node, err = csh.Controller.nodesLister.Get(csh.Config.NodeName); err != nil {
-					errMsg := fmt.Errorf("failed to get node %s: %v", csh.Config.NodeName, err)
-					klog.Error(errMsg)
-					if err = resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()}); err != nil {
-						klog.Errorf("failed to write response: %v", err)
-					}
-					return
-				}
-			}
-
-			podCidrV4, podCidrV6 := util.SplitStringIP(cidr)
-			nodeIPv4, nodeIPv6 := util.GetNodeInternalIP(*node)
-			v4Routing := util.CIDRContainIP(podCidrV4, nodeIPv4)
-			v6Routing := util.CIDRContainIP(podCidrV6, nodeIPv6)
-			for _, subnet := range subnets {
-				if subnet.Spec.Vpc == util.DefaultVpc && (subnet.Spec.Vlan == "" || subnet.Spec.LogicalGateway) {
-					if !subnet.Status.IsReady() {
-						klog.V(5).Infof("subnet %s is not ready, skip", subnet.Name)
-						continue
-					}
-
-					cidrV4, cidrV6 := util.SplitStringIP(subnet.Spec.CIDRBlock)
-					if v4Routing && cidrV4 != "" {
-						u2oRoutes = append(u2oRoutes, request.Route{Destination: cidrV4, Gateway: nodeIPv4})
-					}
-					if v6Routing && cidrV6 != "" {
-						u2oRoutes = append(u2oRoutes, request.Route{Destination: cidrV6, Gateway: nodeIPv6})
-					}
-				}
-			}
-		}
-
-		klog.Infof("create container interface %s mac %s, ip %s, cidr %s, gw %s, u2o routes %v, custom routes %v", ifName, macAddr, ipAddr, cidr, gw, u2oRoutes, podRequest.Routes)
-		detectIPConflict := podSubnet.Spec.Vlan != ""
-		allRoutes := append(u2oRoutes, podRequest.Routes...)
+		routes = append(podRequest.Routes, routes...)
+		klog.Infof("create container interface %s mac %s, ip %s, cidr %s, gw %s, custom routes %v", ifName, macAddr, ipAddr, cidr, gw, routes)
 		if nicType == util.InternalType {
-			podNicName, err = csh.configureNicWithInternalPort(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, ifName, macAddr, mtu, ipAddr, gw, isDefaultRoute, detectIPConflict, allRoutes, podRequest.DNS.Nameservers, podRequest.DNS.Search, ingress, egress, priority, podRequest.DeviceID, nicType, latency, limit, loss, gatewayCheckMode, u2oInterconnectionIP)
+			podNicName, err = csh.configureNicWithInternalPort(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, ifName, macAddr, mtu, ipAddr, gw, isDefaultRoute, detectIPConflict, routes, podRequest.DNS.Nameservers, podRequest.DNS.Search, ingress, egress, podRequest.DeviceID, nicType, latency, limit, loss, jitter, gatewayCheckMode, u2oInterconnectionIP)
 		} else if nicType == util.DpdkType {
-			err = csh.configureDpdkNic(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, ifName, macAddr, mtu, ipAddr, gw, ingress, egress, priority, getShortSharedDir(pod.UID, podRequest.VhostUserSocketVolumeName), podRequest.VhostUserSocketName)
+			err = csh.configureDpdkNic(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, ifName, macAddr, mtu, ipAddr, gw, ingress, egress, getShortSharedDir(pod.UID, podRequest.VhostUserSocketVolumeName), podRequest.VhostUserSocketName)
 		} else {
 			podNicName = ifName
-			err = csh.configureNic(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, podRequest.VfDriver, ifName, macAddr, mtu, ipAddr, gw, isDefaultRoute, detectIPConflict, allRoutes, podRequest.DNS.Nameservers, podRequest.DNS.Search, ingress, egress, priority, podRequest.DeviceID, nicType, latency, limit, loss, gatewayCheckMode, u2oInterconnectionIP)
+			err = csh.configureNic(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, podRequest.VfDriver, ifName, macAddr, mtu, ipAddr, gw, isDefaultRoute, detectIPConflict, routes, podRequest.DNS.Nameservers, podRequest.DNS.Search, ingress, egress, podRequest.DeviceID, nicType, latency, limit, loss, jitter, gatewayCheckMode, u2oInterconnectionIP)
 		}
 		if err != nil {
 			errMsg := fmt.Errorf("configure nic failed %v", err)

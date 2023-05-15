@@ -116,8 +116,7 @@ func CmdMain() {
 		RetryPeriod:   6 * time.Second,
 		Callbacks: leaderelection.LeaderCallbacks{
 			OnStartedLeading: func(ctx context.Context) {
-				ctl := controller.NewController(config)
-				ctl.Run(ctx)
+				controller.Run(ctx, config)
 			},
 			OnStoppedLeading: func() {
 				select {

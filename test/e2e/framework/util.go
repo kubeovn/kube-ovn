@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/onsi/ginkgo/v2"
+
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -17,21 +19,18 @@ const (
 	DaemonSetOvsOvn  = "ovs-ovn"
 )
 
-func init() {
-	rand.Seed(time.Now().UnixNano())
-}
-
 // RandomSuffix provides a random sequence to append to resources.
 func RandomSuffix() string {
-	return fmt.Sprintf("%04d", rand.Intn(10000))
+	return fmt.Sprintf("%d%04d", ginkgo.GinkgoParallelProcess(), rand.Intn(10000))
 }
 
 func RandomCIDR(family string) string {
 	fnIPv4 := func() string {
 		cidr := net.IPNet{
-			IP:   net.ParseIP("10.99.0.0").To4(),
+			IP:   net.ParseIP("10.0.0.0").To4(),
 			Mask: net.CIDRMask(24, 32),
 		}
+		cidr.IP[1] = 0xf0 | byte(ginkgo.GinkgoParallelProcess())
 		cidr.IP[2] = byte(rand.Intn(0xff + 1))
 		return cidr.String()
 	}
@@ -41,6 +40,7 @@ func RandomCIDR(family string) string {
 			IP:   net.ParseIP("fc00:10:ff::").To16(),
 			Mask: net.CIDRMask(96, 128),
 		}
+		cidr.IP[9] = byte(ginkgo.GinkgoParallelProcess())
 		cidr.IP[10] = byte(rand.Intn(0xff + 1))
 		cidr.IP[11] = byte(rand.Intn(0xff + 1))
 		return cidr.String()
@@ -134,4 +134,14 @@ func RandomIPPool(cidr, sep string, count int) string {
 	}
 
 	return strings.Join(dual, sep)
+}
+
+func PrevIP(ip string) string {
+	n := util.Ip2BigInt(ip)
+	return util.BigInt2Ip(n.Add(n, big.NewInt(-1)))
+}
+
+func NextIP(ip string) string {
+	n := util.Ip2BigInt(ip)
+	return util.BigInt2Ip(n.Add(n, big.NewInt(1)))
 }
