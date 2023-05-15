@@ -32,7 +32,6 @@ const dockerNetworkName = "kube-ovn-vlan"
 const vpcNatGWConfigMapName = "ovn-vpc-nat-gw-config"
 const networkAttachDefName = "ovn-vpc-external-network"
 const externalSubnetProvider = "ovn-vpc-external-network.kube-system"
-const sharedEipStatusNat = "dnat,fip,snat"
 
 var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 	f := framework.NewDefaultFramework("iptables-vpc-nat-gw")
@@ -76,7 +75,6 @@ var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 	sharedEipSnatName = "shared-eip-snat-" + framework.RandomSuffix()
 	sharedEipFipShoudOkName = "shared-eip-fip-should-ok-" + framework.RandomSuffix()
 	sharedEipFipShoudFailName = "shared-eip-fip-should-fail-" + framework.RandomSuffix()
-	dnatName = "dnat-" + framework.RandomSuffix()
 
 	snatEipName = "snat-eip-" + framework.RandomSuffix()
 	snatName = "snat-" + framework.RandomSuffix()
@@ -283,29 +281,41 @@ var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 		ginkgo.By("Creating share iptables eip")
 		shareEip := framework.MakeIptablesEIP(sharedEipName, "", "", "", vpcNatGwName)
 		_ = iptablesEIPClient.CreateSync(shareEip)
+		ginkgo.By("Creating the first iptables fip with share eip vip should be ok")
+		shareFipShouldOk := framework.MakeIptablesFIPRule(sharedEipFipShoudOkName, sharedEipName, fipVip.Status.V4ip)
+		_ = iptablesFIPClient.CreateSync(shareFipShouldOk)
+		ginkgo.By("Creating the second iptables fip with share eip vip should be failed")
+		shareFipShouldFail := framework.MakeIptablesFIPRule(sharedEipFipShoudFailName, sharedEipName, fipVip.Status.V4ip)
+		_ = iptablesFIPClient.Create(shareFipShouldFail)
 		ginkgo.By("Creating iptables dnat for dnat with share eip vip")
 		shareDnat := framework.MakeIptablesDnatRule(sharedEipDnatName, sharedEipName, "80", "tcp", fipVip.Status.V4ip, "8080")
 		_ = iptablesDnatRuleClient.CreateSync(shareDnat)
 		ginkgo.By("Creating iptables snat with share eip vip")
 		shareSnat := framework.MakeIptablesSnatRule(sharedEipSnatName, sharedEipName, overlaySubnetV4Cidr)
 		_ = iptablesSnatRuleClient.CreateSync(shareSnat)
-		ginkgo.By("Creating the first iptables fip with share eip vip should be ok")
-		shareFipShouldOk := framework.MakeIptablesFIPRule(sharedEipFipShoudOkName, sharedEipName, fipVip.Status.V4ip)
-		_ = iptablesFIPClient.CreateSync(shareFipShouldOk)
-		ginkgo.By("Creating the second iptables fip with share eip vip should be failed")
-		shareFipShouldFail := framework.MakeIptablesFIPRule(sharedEipFipShoudFailName, sharedEipName, fipVip.Status.V4ip)
-		_ = iptablesFIPClient.CreateSync(shareFipShouldFail)
 
+		ginkgo.By("Get share eip")
 		shareEip = iptablesEIPClient.Get(sharedEipName)
-		shareDnat = iptablesDnatRuleClient.Get(sharedEipName)
-		shareSnat = iptablesSnatRuleClient.Get(sharedEipName)
+		ginkgo.By("Get share dnat")
+		shareDnat = iptablesDnatRuleClient.Get(sharedEipDnatName)
+		ginkgo.By("Get share snat")
+		shareSnat = iptablesSnatRuleClient.Get(sharedEipSnatName)
+		ginkgo.By("Get share fip should ok")
 		shareFipShouldOk = iptablesFIPClient.Get(sharedEipFipShoudOkName)
+		ginkgo.By("Get share fip should fail")
 		shareFipShouldFail = iptablesFIPClient.Get(sharedEipFipShoudFailName)
 
+		ginkgo.By("Check share eip should has the external ip label")
 		framework.ExpectHaveKeyWithValue(shareEip.Labels, util.IptablesEipV4IPLabel, shareEip.Spec.V4ip)
+		ginkgo.By("Check share dnat should has the external ip label")
 		framework.ExpectHaveKeyWithValue(shareDnat.Labels, util.IptablesEipV4IPLabel, shareEip.Spec.V4ip)
+		ginkgo.By("Check share snat should has the external ip label")
 		framework.ExpectHaveKeyWithValue(shareSnat.Labels, util.IptablesEipV4IPLabel, shareEip.Spec.V4ip)
+		ginkgo.By("Check share fip should ok should has the external ip label")
 		framework.ExpectHaveKeyWithValue(shareFipShouldOk.Labels, util.IptablesEipV4IPLabel, shareEip.Spec.V4ip)
+		ginkgo.By("Check share fip should fail should not be ready")
+		framework.ExpectEqual(shareFipShouldFail.Status.Ready, false)
+
 		// define a list and strings join
 		nats := []string{util.DnatUsingEip, util.FipUsingEip, util.SnatUsingEip}
 		framework.ExpectEqual(shareEip.Status.Nat, strings.Join(nats, ","))
@@ -332,6 +342,8 @@ var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 		iptablesEIPClient.DeleteSync(dnatEipName)
 		ginkgo.By("Deleting iptables eip " + snatEipName)
 		iptablesEIPClient.DeleteSync(snatEipName)
+		ginkgo.By("Deleting iptables share eip " + sharedEipName)
+		iptablesEIPClient.DeleteSync(sharedEipName)
 
 		ginkgo.By("Deleting vip " + fipVipName)
 		vipClient.DeleteSync(fipVipName)

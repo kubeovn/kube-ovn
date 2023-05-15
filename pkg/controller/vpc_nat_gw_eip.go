@@ -836,13 +836,13 @@ func (c *Controller) getIptablesEipNat(eipV4IP string) (string, error) {
 	}
 	fips, err := c.iptablesFipsLister.List(selector)
 	if err != nil {
-		klog.Errorf("failed to get dnats, %v", err)
+		klog.Errorf("failed to get fips, %v", err)
 		return "", err
 	}
 	if len(fips) != 0 {
 		nats = append(nats, util.FipUsingEip)
 	}
-	snats, err := c.iptablesDnatRulesLister.List(selector)
+	snats, err := c.iptablesSnatRulesLister.List(selector)
 	if err != nil {
 		klog.Errorf("failed to get snats, %v", err)
 		return "", err
@@ -885,7 +885,8 @@ func (c *Controller) patchEipStatus(key, v4ip, redo, qos string, ready bool) err
 		klog.Error(err)
 		return err
 	}
-	if ready && nat != "" && eip.Status.Nat != nat {
+	// nat record all kinds of nat rules using this eip
+	if nat != "" && eip.Status.Nat != nat {
 		eip.Status.Nat = nat
 		changed = true
 	}
