@@ -27,6 +27,7 @@ import (
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ipam"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -769,9 +770,9 @@ func (c *Controller) reconcileRouteSubnets(cachedPod, pod *v1.Pod, needRoutePodN
 					nextHop = strings.Split(nextHop, "/")[0]
 				}
 
-				if err := c.ovnLegacyClient.AddStaticRoute(
-					ovs.PolicySrcIP, podIP, nextHop, "", "",
-					c.config.ClusterRouter, subnet.Spec.RouteTable, util.NormalRouteType); err != nil {
+				if err := c.ovnClient.AddLogicalRouterStaticRoute(
+					c.config.ClusterRouter, subnet.Spec.RouteTable, ovnnb.LogicalRouterStaticRoutePolicySrcIP, podIP, nextHop,
+				); err != nil {
 					klog.Errorf("failed to add static route, %v", err)
 					return err
 				}
@@ -812,15 +813,16 @@ func (c *Controller) reconcileRouteSubnets(cachedPod, pod *v1.Pod, needRoutePodN
 				}
 
 				if pod.Annotations[util.NorthGatewayAnnotation] != "" {
-					if err := c.ovnLegacyClient.AddStaticRoute(
-						ovs.PolicySrcIP, podIP, pod.Annotations[util.NorthGatewayAnnotation], "", "",
-						c.config.ClusterRouter, subnet.Spec.RouteTable, util.NormalRouteType); err != nil {
+					if err := c.ovnClient.AddLogicalRouterStaticRoute(
+						c.config.ClusterRouter, subnet.Spec.RouteTable, ovnnb.LogicalRouterStaticRoutePolicySrcIP, podIP, pod.Annotations[util.NorthGatewayAnnotation],
+					); err != nil {
 						klog.Errorf("failed to add static route, %v", err)
 						return err
 					}
 				} else if c.config.EnableEipSnat {
-					if err := c.ovnLegacyClient.DeleteStaticRoute(
-						podIP, c.config.ClusterRouter, subnet.Spec.RouteTable); err != nil {
+					if err = c.ovnClient.DeleteLogicalRouterStaticRoute(
+						c.config.ClusterRouter, &subnet.Spec.RouteTable, nil, podIP, "",
+					); err != nil {
 						return err
 					}
 				}
@@ -903,8 +905,7 @@ func (c *Controller) handleDeletePod(key string) error {
 			}
 			// If pod has snat or eip, also need delete staticRoute when delete pod
 			if vpc.Name == c.config.ClusterRouter {
-				if err := c.ovnLegacyClient.DeleteStaticRoute(
-					address.Ip, vpc.Name, subnet.Spec.RouteTable); err != nil {
+				if err = c.ovnClient.DeleteLogicalRouterStaticRoute(vpc.Name, &subnet.Spec.RouteTable, nil, address.Ip, ""); err != nil {
 					return err
 				}
 			}

@@ -1437,25 +1437,10 @@ func (c *Controller) reconcileOvnDefaultVpcRoute(subnet *kubeovnv1.Subnet) error
 
 					if pod.Annotations[util.NorthGatewayAnnotation] != "" {
 						nextHop := pod.Annotations[util.NorthGatewayAnnotation]
-						exist, err := c.checkRouteExist(
-							nextHop,
-							pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)],
-							ovs.PolicySrcIP,
-							subnet.Spec.RouteTable,
-						)
-						if err != nil {
-							klog.Errorf("failed to get static route for subnet %v, error %v", subnet.Name, err)
-							return err
-						}
-						if exist {
-							continue
-						}
-
-						if err := c.ovnLegacyClient.AddStaticRoute(
-							ovs.PolicySrcIP,
-							pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)],
-							nextHop, "", "", c.config.ClusterRouter,
-							subnet.Spec.RouteTable, util.NormalRouteType); err != nil {
+						if err := c.ovnClient.AddLogicalRouterStaticRoute(
+							c.config.ClusterRouter, util.MainRouteTable, ovnnb.LogicalRouterStaticRoutePolicySrcIP,
+							pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)], nextHop,
+						); err != nil {
 							klog.Errorf("add static route failed, %v", err)
 							return err
 						}
@@ -1687,7 +1672,7 @@ func (c *Controller) reconcileOvnCustomVpcRoute(subnet *kubeovnv1.Subnet) error 
 
 func (c *Controller) deleteStaticRoute(ip, router, routeTable string) error {
 	for _, ipStr := range strings.Split(ip, ",") {
-		if err := c.ovnLegacyClient.DeleteStaticRoute(ipStr, router, routeTable); err != nil {
+		if err := c.ovnClient.DeleteLogicalRouterStaticRoute(router, &routeTable, nil, ipStr, ""); err != nil {
 			klog.Errorf("failed to delete static route %s, %v", ipStr, err)
 			return err
 		}

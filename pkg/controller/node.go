@@ -23,6 +23,7 @@ import (
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -858,26 +859,6 @@ func (c *Controller) checkGatewayReady() error {
 	return nil
 }
 
-func (c *Controller) checkRouteExist(nextHop, cidrBlock, routePolicy, routeTable string) (bool, error) {
-	routes, err := c.ovnLegacyClient.GetStaticRouteList(c.config.ClusterRouter)
-	if err != nil {
-		klog.Errorf("failed to list static route %v", err)
-		return false, err
-	}
-
-	for _, route := range routes {
-		if route.Policy != routePolicy {
-			continue
-		}
-
-		if route.CIDR == cidrBlock && route.NextHop == nextHop && route.RouteTable == routeTable {
-			klog.V(3).Infof("static route exists for cidr %s, nexthop %v", cidrBlock, nextHop)
-			return true, nil
-		}
-	}
-	return false, nil
-}
-
 func (c *Controller) checkChassisDupl(node *v1.Node) error {
 	// notice that multiple chassises may arise and we are not prepared
 	chassisAdd, err := c.ovnLegacyClient.GetChassis(node.Name)
@@ -1049,7 +1030,7 @@ func (c *Controller) validateChassis(node *v1.Node) error {
 func (c *Controller) addNodeGwStaticRoute() error {
 	// If user not manage static route for default vpc, just add route about ovn-default to join
 	if vpc, err := c.vpcsLister.Get(c.config.ClusterRouter); err != nil || vpc.Spec.StaticRoutes != nil {
-		existRoute, err := c.ovnLegacyClient.GetStaticRouteList(c.config.ClusterRouter)
+		existRoute, err := c.ovnClient.ListLogicalRouterStaticRoutes(c.config.ClusterRouter, nil, nil, "", nil)
 		if err != nil {
 			klog.Errorf("failed to get vpc %s static route list, %v", c.config.ClusterRouter, err)
 		}
@@ -1064,20 +1045,9 @@ func (c *Controller) addNodeGwStaticRoute() error {
 			if util.CheckProtocol(cidrBlock) != util.CheckProtocol(nextHop) {
 				continue
 			}
-			exist, err := c.checkRouteExist(nextHop, cidrBlock, ovs.PolicyDstIP, util.MainRouteTable)
-			if err != nil {
-				klog.Errorf("get static route for node gw error %v", err)
+			if err := c.ovnClient.AddLogicalRouterStaticRoute(c.config.ClusterRouter, util.MainRouteTable, ovnnb.LogicalRouterStaticRoutePolicyDstIP, cidrBlock, nextHop); err != nil {
+				klog.Errorf("failed to add static route for node gw: %v", err)
 				return err
-			}
-
-			if !exist {
-				klog.Infof("add static route for node gw")
-				if err := c.ovnLegacyClient.AddStaticRoute(
-					"", cidrBlock, nextHop, "", "",
-					c.config.ClusterRouter, util.MainRouteTable, util.NormalRouteType); err != nil {
-					klog.Errorf("failed to add static route for node gw: %v", err)
-					return err
-				}
 			}
 		}
 	}

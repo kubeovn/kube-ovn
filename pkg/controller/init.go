@@ -756,16 +756,10 @@ func (c *Controller) migrateNodeRoute(af int, node, ip, nexthop string) error {
 		return err
 	}
 
-	routeTables, err := c.ovnLegacyClient.GetRouteTables(c.config.ClusterRouter)
-	if err != nil {
+	routeTable := util.MainRouteTable
+	if err := c.ovnClient.DeleteLogicalRouterStaticRoute(c.config.ClusterRouter, &routeTable, nil, ip, ""); err != nil {
+		klog.Errorf("failed to delete obsolete static route for node %s: %v", node, err)
 		return err
-	}
-
-	for rtb := range routeTables {
-		if err := c.ovnLegacyClient.DeleteStaticRoute(ip, c.config.ClusterRouter, rtb); err != nil {
-			klog.Errorf("failed to delete obsolete static route for node %s: %v", node, err)
-			return err
-		}
 	}
 
 	asName := nodeUnderlayAddressSetName(node, af)
