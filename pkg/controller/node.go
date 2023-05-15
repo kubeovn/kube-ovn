@@ -273,13 +273,14 @@ func (c *Controller) handleAddNode(key string) error {
 		}
 		if nodeIP != "" {
 			match := fmt.Sprintf("ip%d.dst == %s", af, nodeIP)
+			action := ovnnb.LogicalRouterPolicyActionReroute
 			externalIDs := map[string]string{
 				"vendor":         util.CniTypeName,
 				"node":           node.Name,
 				"address-family": strconv.Itoa(af),
 			}
-			klog.Infof("add policy route for router: %s, match %s, action %s, nexthop %s, externalID %v", c.config.ClusterRouter, match, "reroute", ip, externalIDs)
-			if err = c.ovnClient.AddLogicalRouterPolicy(c.config.ClusterRouter, util.NodeRouterPolicyPriority, match, "reroute", []string{ip}, externalIDs); err != nil {
+			klog.Infof("add policy route for router: %s, match %s, action %s, nexthop %s, externalID %v", c.config.ClusterRouter, match, action, ip, externalIDs)
+			if err = c.ovnClient.AddLogicalRouterPolicy(c.config.ClusterRouter, util.NodeRouterPolicyPriority, match, action, []string{ip}, externalIDs); err != nil {
 				klog.Errorf("failed to add logical router policy for node %s: %v", node.Name, err)
 				return err
 			}
@@ -1226,8 +1227,9 @@ func (c *Controller) addPolicyRouteForLocalDnsCacheOnNode(nodePortName, nodeIP, 
 
 	pgAs := strings.Replace(fmt.Sprintf("%s_ip%d", nodePortName, af), "-", ".", -1)
 	match := fmt.Sprintf("ip%d.src == $%s && ip%d.dst == %s", af, pgAs, af, c.config.NodeLocalDnsIP)
-	klog.Infof("add node local dns cache policy route for router: %s, match %s, action %s, nexthop %s, externalID %v", c.config.ClusterRouter, match, "reroute", nodeIP, externalIDs)
-	if err := c.ovnClient.AddLogicalRouterPolicy(c.config.ClusterRouter, util.NodeLocalDnsPolicyPriority, match, "reroute", []string{nodeIP}, externalIDs); err != nil {
+	action := ovnnb.LogicalRouterPolicyActionReroute
+	klog.Infof("add node local dns cache policy route for router: %s, match %s, action %s, nexthop %s, externalID %v", c.config.ClusterRouter, match, action, nodeIP, externalIDs)
+	if err := c.ovnClient.AddLogicalRouterPolicy(c.config.ClusterRouter, util.NodeLocalDnsPolicyPriority, match, action, []string{nodeIP}, externalIDs); err != nil {
 		klog.Errorf("failed to add logical router policy for node %s: %v", nodeName, err)
 		return err
 	}

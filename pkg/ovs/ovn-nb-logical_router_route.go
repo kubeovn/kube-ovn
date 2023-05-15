@@ -245,8 +245,14 @@ func (c *ovnClient) ListLogicalRouterStaticRoutes(lrName string, routeTable, pol
 		if routeTable != nil && route.RouteTable != *routeTable {
 			return false
 		}
-		if policy != nil && (route.Policy == nil || *route.Policy != *policy) {
-			return false
+		if policy != nil {
+			if route.Policy != nil {
+				if *route.Policy != *policy {
+					return false
+				}
+			} else if *policy != ovnnb.LogicalRouterStaticRoutePolicyDstIP {
+				return false
+			}
 		}
 		if ipPrefix != "" && route.IPPrefix != ipPrefix {
 			return false
