@@ -17,7 +17,6 @@ import (
 	"k8s.io/klog/v2"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -277,7 +276,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 	}
 
 	// handle static route
-	existRoute, err := c.ovnLegacyClient.GetStaticRouteList(vpc.Name)
+	existRoute, err := c.ovnClient.ListLogicalRouterStaticRoutes(vpc.Name, nil, nil, "", nil)
 	if err != nil {
 		klog.Errorf("failed to get vpc %s static route list, %v", vpc.Name, err)
 		return err
@@ -364,25 +363,19 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		return err
 	}
 	for _, item := range routeNeedDel {
-		if err = c.ovnLegacyClient.DeleteStaticRoute(item.CIDR, vpc.Name, item.RouteTable); err != nil {
+		policy := convertPolicy(item.Policy)
+		if err = c.ovnClient.DeleteLogicalRouterStaticRoute(vpc.Name, &item.RouteTable, &policy, item.CIDR, item.NextHopIP); err != nil {
 			klog.Errorf("del vpc %s static route failed, %v", vpc.Name, err)
 			return err
 		}
 	}
 
 	for _, item := range routeNeedAdd {
-		if item.ECMPMode == "" {
-			if err = c.ovnLegacyClient.AddStaticRoute(convertPolicy(item.Policy), item.CIDR, item.NextHopIP,
-				"", "", vpc.Name, item.RouteTable, util.NormalRouteType); err != nil {
-				klog.Errorf("add normal static route to vpc %s failed, %v", vpc.Name, err)
-				return err
-			}
-		} else {
-			if err = c.ovnLegacyClient.AddStaticRoute(convertPolicy(item.Policy), item.CIDR, item.NextHopIP,
-				item.ECMPMode, item.BfdId, vpc.Name, item.RouteTable, util.EcmpRouteType); err != nil {
-				klog.Errorf("add ecmp static route to vpc %s failed, %v", vpc.Name, err)
-				return err
-			}
+		if err = c.ovnClient.AddLogicalRouterStaticRoute(
+			vpc.Name, item.RouteTable, convertPolicy(item.Policy), item.CIDR, item.NextHopIP,
+		); err != nil {
+			klog.Errorf("add static route to vpc %s failed, %v", vpc.Name, err)
+			return err
 		}
 	}
 
@@ -549,26 +542,23 @@ func getPolicyRouteItemKey(item *kubeovnv1.PolicyRoute) (key string) {
 	return fmt.Sprintf("%d:%s:%s:%s", item.Priority, item.Match, item.Action, item.NextHopIP)
 }
 
-func diffStaticRoute(exist []*ovs.StaticRoute, target []*kubeovnv1.StaticRoute) (routeNeedDel []*kubeovnv1.StaticRoute, routeNeedAdd []*kubeovnv1.StaticRoute, err error) {
-	existV1 := make([]*kubeovnv1.StaticRoute, 0, len(exist))
+func diffStaticRoute(exist []*ovnnb.LogicalRouterStaticRoute, target []*kubeovnv1.StaticRoute) (routeNeedDel, routeNeedAdd []*kubeovnv1.StaticRoute, err error) {
+	existRouteMap := make(map[string]*kubeovnv1.StaticRoute, len(exist))
 	for _, item := range exist {
 		policy := kubeovnv1.PolicyDst
-		if item.Policy == ovs.PolicySrcIP {
+		if item.Policy != nil && *item.Policy == ovnnb.LogicalRouterStaticRoutePolicySrcIP {
 			policy = kubeovnv1.PolicySrc
 		}
-		existV1 = append(existV1, &kubeovnv1.StaticRoute{
+		route := &kubeovnv1.StaticRoute{
 			Policy:     policy,
-			CIDR:       item.CIDR,
-			NextHopIP:  item.NextHop,
-			ECMPMode:   item.ECMPMode,
-			BfdId:      item.BfdId,
+			CIDR:       item.IPPrefix,
+			NextHopIP:  item.Nexthop,
 			RouteTable: item.RouteTable,
-		})
-	}
-
-	existRouteMap := make(map[string]*kubeovnv1.StaticRoute, len(exist))
-	for _, item := range existV1 {
-		existRouteMap[getStaticRouteItemKey(item)] = item
+		}
+		if item.BFD != nil {
+			route.BfdId = *item.BFD
+		}
+		existRouteMap[getStaticRouteItemKey(route)] = route
 	}
 
 	for _, item := range target {
@@ -648,10 +638,9 @@ func formatVpc(vpc *kubeovnv1.Vpc, c *Controller) error {
 
 func convertPolicy(origin kubeovnv1.RoutePolicy) string {
 	if origin == kubeovnv1.PolicyDst {
-		return ovs.PolicyDstIP
-	} else {
-		return ovs.PolicySrcIP
+		return ovnnb.LogicalRouterStaticRoutePolicyDstIP
 	}
+	return ovnnb.LogicalRouterStaticRoutePolicySrcIP
 }
 
 func (c *Controller) processNextUpdateStatusVpcWorkItem() bool {
