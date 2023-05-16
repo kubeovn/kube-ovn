@@ -5,7 +5,7 @@ From v1.1, the IPAM part of Kube-OVN can provide subnet and static ip allocation
 ## How it works
 
 By using [Intel Multus CNI](https://github.com/intel/multus-cni), we can attach multiple network interfaces into a Kubernetes Pod.
-However, we still need some cluster-wide IPAM utilities to manage IP addresses for multi network to better mange other CNI plugins.
+However, we still need some cluster-wide IPAM utilities to manage IP addresses for multi network to better manage other CNI plugins.
 In Kube-OVN, we already have CRDs like Subnet and IP and functions for advanced IPAM like ip reservation, random allocation, static allocation and so on.
 We extend the Subnet to network providers other than ovn, so other CNI plugins can take use all the IPAM functions already exist in Kube-OVN.
 
