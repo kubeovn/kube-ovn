@@ -153,6 +153,9 @@ func (subnet *Subnet) GetRandomMac(podName, nicName string) string {
 }
 
 func (subnet *Subnet) GetStaticMac(podName, nicName, mac string, checkConflict bool) error {
+	if mac == "" {
+		return nil
+	}
 	if checkConflict {
 		if p, ok := subnet.MacToPod[mac]; ok && p != podName {
 			return ErrConflict
@@ -176,7 +179,7 @@ func (subnet *Subnet) popPodNic(podName, nicName string) {
 	}
 }
 
-func (subnet *Subnet) GetRandomAddress(podName, nicName string, mac string, skippedAddrs []string, checkConflict bool) (IP, IP, string, error) {
+func (subnet *Subnet) GetRandomAddress(podName, nicName string, mac *string, skippedAddrs []string, checkConflict bool) (IP, IP, string, error) {
 	subnet.mutex.Lock()
 	defer func() {
 		subnet.pushPodNic(podName, nicName)
@@ -192,12 +195,12 @@ func (subnet *Subnet) GetRandomAddress(podName, nicName string, mac string, skip
 	}
 }
 
-func (subnet *Subnet) getDualRandomAddress(podName, nicName string, mac string, skippedAddrs []string, checkConflict bool) (IP, IP, string, error) {
+func (subnet *Subnet) getDualRandomAddress(podName, nicName string, mac *string, skippedAddrs []string, checkConflict bool) (IP, IP, string, error) {
 	v4IP, _, _, err := subnet.getV4RandomAddress(podName, nicName, mac, skippedAddrs, checkConflict)
 	if err != nil {
 		return "", "", "", err
 	}
-	_, v6IP, mac, err := subnet.getV6RandomAddress(podName, nicName, mac, skippedAddrs, checkConflict)
+	_, v6IP, macStr, err := subnet.getV6RandomAddress(podName, nicName, mac, skippedAddrs, checkConflict)
 	if err != nil {
 		return "", "", "", err
 	}
@@ -207,10 +210,10 @@ func (subnet *Subnet) getDualRandomAddress(podName, nicName string, mac string, 
 		v4IP, _, _, _ = subnet.getV4RandomAddress(podName, nicName, mac, skippedAddrs, checkConflict)
 	}
 
-	return v4IP, v6IP, mac, nil
+	return v4IP, v6IP, macStr, nil
 }
 
-func (subnet *Subnet) getV4RandomAddress(podName, nicName string, mac string, skippedAddrs []string, checkConflict bool) (IP, IP, string, error) {
+func (subnet *Subnet) getV4RandomAddress(podName, nicName string, mac *string, skippedAddrs []string, checkConflict bool) (IP, IP, string, error) {
 	// After 'macAdd' introduced to support only static mac address, pod restart will run into error mac AddressConflict
 	// controller will re-enqueue the new pod then wait for old pod deleted and address released.
 	// here will return only if both ip and mac exist, otherwise only ip without mac returned will trigger CreatePort error.
@@ -267,17 +270,17 @@ func (subnet *Subnet) getV4RandomAddress(podName, nicName string, mac string, sk
 	subnet.V4NicToIP[nicName] = ip
 	subnet.V4IPToPod[ip] = podName
 	subnet.pushPodNic(podName, nicName)
-	if mac == "" {
+	if mac == nil {
 		return ip, "", subnet.GetRandomMac(podName, nicName), nil
 	} else {
-		if err := subnet.GetStaticMac(podName, nicName, mac, checkConflict); err != nil {
+		if err := subnet.GetStaticMac(podName, nicName, *mac, checkConflict); err != nil {
 			return "", "", "", err
 		}
-		return ip, "", mac, nil
+		return ip, "", *mac, nil
 	}
 }
 
-func (subnet *Subnet) getV6RandomAddress(podName, nicName string, mac string, skippedAddrs []string, checkConflict bool) (IP, IP, string, error) {
+func (subnet *Subnet) getV6RandomAddress(podName, nicName string, mac *string, skippedAddrs []string, checkConflict bool) (IP, IP, string, error) {
 	// After 'macAdd' introduced to support only static mac address, pod restart will run into error mac AddressConflict
 	// controller will re-enqueue the new pod then wait for old pod deleted and address released.
 	// here will return only if both ip and mac exist, otherwise only ip without mac returned will trigger CreatePort error.
@@ -335,17 +338,17 @@ func (subnet *Subnet) getV6RandomAddress(podName, nicName string, mac string, sk
 	subnet.V6NicToIP[nicName] = ip
 	subnet.V6IPToPod[ip] = podName
 	subnet.pushPodNic(podName, nicName)
-	if mac == "" {
+	if mac == nil {
 		return "", ip, subnet.GetRandomMac(podName, nicName), nil
 	} else {
-		if err := subnet.GetStaticMac(podName, nicName, mac, checkConflict); err != nil {
+		if err := subnet.GetStaticMac(podName, nicName, *mac, checkConflict); err != nil {
 			return "", "", "", err
 		}
-		return "", ip, mac, nil
+		return "", ip, *mac, nil
 	}
 }
 
-func (subnet *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac string, force bool, checkConflict bool) (IP, string, error) {
+func (subnet *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac *string, force bool, checkConflict bool) (IP, string, error) {
 	var v4, v6 bool
 	isAllocated := false
 	subnet.mutex.Lock()
@@ -381,7 +384,7 @@ func (subnet *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac strin
 		v6 = subnet.V6CIDR != nil
 	}
 	if v4 && !subnet.V4CIDR.Contains(net.ParseIP(string(ip))) {
-		return ip, mac, ErrOutOfRange
+		return ip, "", ErrOutOfRange
 	}
 
 	if v6 {
@@ -389,19 +392,21 @@ func (subnet *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac strin
 	}
 
 	if v6 && !subnet.V6CIDR.Contains(net.ParseIP(string(ip))) {
-		return ip, mac, ErrOutOfRange
+		return ip, "", ErrOutOfRange
 	}
 
-	if mac == "" {
+	var macStr string
+	if mac == nil {
 		if m, ok := subnet.NicToMac[nicName]; ok {
-			mac = m
+			macStr = m
 		} else {
-			mac = subnet.GetRandomMac(podName, nicName)
+			macStr = subnet.GetRandomMac(podName, nicName)
 		}
 	} else {
-		if err := subnet.GetStaticMac(podName, nicName, mac, checkConflict); err != nil {
-			return ip, mac, err
+		if err := subnet.GetStaticMac(podName, nicName, *mac, checkConflict); err != nil {
+			return ip, macStr, err
 		}
+		macStr = *mac
 	}
 
 	if v4 {
@@ -411,19 +416,19 @@ func (subnet *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac strin
 				if !checkConflict {
 					subnet.V4NicToIP[nicName] = ip
 					subnet.V4IPToPod[ip] = fmt.Sprintf("%s,%s", subnet.V4IPToPod[ip], podName)
-					return ip, mac, nil
+					return ip, macStr, nil
 				}
-				return ip, mac, ErrConflict
+				return ip, macStr, ErrConflict
 			}
 			if !force {
-				return ip, mac, nil
+				return ip, macStr, nil
 			}
 		}
 
 		if subnet.V4ReservedIPList.Contains(ip) {
 			subnet.V4NicToIP[nicName] = ip
 			subnet.V4IPToPod[ip] = podName
-			return ip, mac, nil
+			return ip, macStr, nil
 		}
 
 		if split, newFreeList := splitIPRangeList(subnet.V4FreeIPList, ip); split {
@@ -431,14 +436,14 @@ func (subnet *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac strin
 			subnet.V4NicToIP[nicName] = ip
 			subnet.V4IPToPod[ip] = podName
 			isAllocated = true
-			return ip, mac, nil
+			return ip, macStr, nil
 		} else {
 			if split, newReleasedList := splitIPRangeList(subnet.V4ReleasedIPList, ip); split {
 				subnet.V4ReleasedIPList = newReleasedList
 				subnet.V4NicToIP[nicName] = ip
 				subnet.V4IPToPod[ip] = podName
 				isAllocated = true
-				return ip, mac, nil
+				return ip, macStr, nil
 			}
 		}
 	} else if v6 {
@@ -448,19 +453,19 @@ func (subnet *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac strin
 				if !checkConflict {
 					subnet.V6NicToIP[nicName] = ip
 					subnet.V6IPToPod[ip] = fmt.Sprintf("%s,%s", subnet.V6IPToPod[ip], podName)
-					return ip, mac, nil
+					return ip, macStr, nil
 				}
-				return ip, mac, ErrConflict
+				return ip, macStr, ErrConflict
 			}
 			if !force {
-				return ip, mac, nil
+				return ip, macStr, nil
 			}
 		}
 
 		if subnet.V6ReservedIPList.Contains(ip) {
 			subnet.V6NicToIP[nicName] = ip
 			subnet.V6IPToPod[ip] = podName
-			return ip, mac, nil
+			return ip, macStr, nil
 		}
 
 		if split, newFreeList := splitIPRangeList(subnet.V6FreeIPList, ip); split {
@@ -468,18 +473,18 @@ func (subnet *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac strin
 			subnet.V6NicToIP[nicName] = ip
 			subnet.V6IPToPod[ip] = podName
 			isAllocated = true
-			return ip, mac, nil
+			return ip, macStr, nil
 		} else {
 			if split, newReleasedList := splitIPRangeList(subnet.V6ReleasedIPList, ip); split {
 				subnet.V6ReleasedIPList = newReleasedList
 				subnet.V6NicToIP[nicName] = ip
 				subnet.V6IPToPod[ip] = podName
 				isAllocated = true
-				return ip, mac, nil
+				return ip, macStr, nil
 			}
 		}
 	}
-	return ip, mac, ErrNoAvailable
+	return ip, macStr, ErrNoAvailable
 }
 
 func (subnet *Subnet) releaseAddr(podName, nicName string) {
