@@ -47,17 +47,13 @@ type ovnNbClient struct {
 }
 
 const (
-	OvnNbCtl    = "ovn-nbctl"
-	OvnSbCtl    = "ovn-sbctl"
-	OVNIcNbCtl  = "ovn-ic-nbctl"
-	OVNIcSbCtl  = "ovn-ic-sbctl"
-	OvsVsCtl    = "ovs-vsctl"
-	MayExist    = "--may-exist"
-	IfExists    = "--if-exists"
-	Policy      = "--policy"
-	PolicyDstIP = "dst-ip"
-	PolicySrcIP = "src-ip"
-	RouteTable  = "--route-table"
+	OvnNbCtl   = "ovn-nbctl"
+	OvnSbCtl   = "ovn-sbctl"
+	OVNIcNbCtl = "ovn-ic-nbctl"
+	OVNIcSbCtl = "ovn-ic-sbctl"
+	OvsVsCtl   = "ovs-vsctl"
+	MayExist   = "--may-exist"
+	IfExists   = "--if-exists"
 
 	OVSDBWaitTimeout = 0
 )

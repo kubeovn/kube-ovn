@@ -615,7 +615,7 @@ func (c *Controller) gcPortGroup() error {
 
 func (c *Controller) gcStaticRoute() error {
 	klog.Infof("start to gc static routes")
-	routes, err := c.ovnLegacyClient.GetStaticRouteList(c.config.ClusterRouter)
+	routes, err := c.ovnClient.ListLogicalRouterStaticRoutes(c.config.ClusterRouter, nil, nil, "", nil)
 	if err != nil {
 		klog.Errorf("failed to list static route %v", err)
 		return err
@@ -629,7 +629,7 @@ func (c *Controller) gcStaticRoute() error {
 	for _, route := range routes {
 		keepStaticRoute = false
 		for _, item := range defaultVpc.Spec.StaticRoutes {
-			if route.CIDR == item.CIDR && route.NextHop == item.NextHopIP && route.RouteTable == item.RouteTable {
+			if route.IPPrefix == item.CIDR && route.Nexthop == item.NextHopIP && route.RouteTable == item.RouteTable {
 				keepStaticRoute = true
 				break
 			}
@@ -637,15 +637,15 @@ func (c *Controller) gcStaticRoute() error {
 		if keepStaticRoute {
 			continue
 		}
-		if route.CIDR != "0.0.0.0/0" && route.CIDR != "::/0" && c.ipam.ContainAddress(route.CIDR) {
-			exist, err := c.ovnLegacyClient.NatRuleExists(route.CIDR)
+		if route.IPPrefix != "0.0.0.0/0" && route.IPPrefix != "::/0" && c.ipam.ContainAddress(route.IPPrefix) {
+			exist, err := c.ovnLegacyClient.NatRuleExists(route.IPPrefix)
 			if exist || err != nil {
-				klog.Errorf("failed to get NatRule by LogicalIP %s, %v", route.CIDR, err)
+				klog.Errorf("failed to get NatRule by LogicalIP %s, %v", route.IPPrefix, err)
 				continue
 			}
-			klog.Infof("gc static route %s %s %s %s", route.RouteTable, route.Policy, route.CIDR, route.NextHop)
-			if err := c.ovnLegacyClient.DeleteStaticRoute(route.CIDR, c.config.ClusterRouter, route.RouteTable); err != nil {
-				klog.Errorf("failed to delete stale route %s, %v", route.NextHop, err)
+			klog.Infof("gc static route %s %v %s %s", route.RouteTable, route.Policy, route.IPPrefix, route.Nexthop)
+			if err = c.ovnClient.DeleteLogicalRouterStaticRoute(c.config.ClusterRouter, &route.RouteTable, route.Policy, route.IPPrefix, route.Nexthop); err != nil {
+				klog.Errorf("failed to delete stale route %s %v %s %s: %v", route.RouteTable, route.Policy, route.IPPrefix, route.Nexthop, err)
 			}
 		}
 	}

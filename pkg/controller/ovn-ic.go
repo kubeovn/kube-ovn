@@ -347,54 +347,26 @@ func (c *Controller) waitTsReady() error {
 }
 
 func (c *Controller) delLearnedRoute() error {
-	originalPorts, err := c.ovnLegacyClient.CustomFindEntity("Logical_Router_Static_Route", []string{"_uuid", "ip_prefix"})
+	lrList, err := c.ovnClient.ListLogicalRouter(false, nil)
 	if err != nil {
-		klog.Errorf("failed to list static routes of logical router, %v", err)
+		klog.Errorf("failed to list logical routers: %v", err)
 		return err
 	}
-	filteredPorts, err := c.ovnLegacyClient.CustomFindEntity("Logical_Router_Static_Route", []string{"_uuid", "ip_prefix"}, "external_ids:ic-learned-route{<=}1")
-	if err != nil {
-		klog.Errorf("failed to filter static routes of logical router, %v", err)
-		return err
-	}
-	learnedPorts := []map[string][]string{}
-	for _, aOriPort := range originalPorts {
-		isFiltered := false
-		for _, aFtPort := range filteredPorts {
-			if aFtPort["_uuid"][0] == aOriPort["_uuid"][0] {
-				isFiltered = true
-			}
+	for _, lr := range lrList {
+		routeList, err := c.ovnClient.ListLogicalRouterStaticRoutes(lr.Name, nil, nil, "", map[string]string{"ic-learned-route": ""})
+		if err != nil {
+			klog.Errorf("failed to list learned static routes on logical router %s: %v", lr.Name, err)
+			return err
 		}
-		if !isFiltered {
-			learnedPorts = append(learnedPorts, aOriPort)
-		}
-	}
-	if len(learnedPorts) != 0 {
-		for _, aLdPort := range learnedPorts {
-			itsRouter, err := c.ovnLegacyClient.CustomFindEntity("Logical_Router", []string{"name"}, fmt.Sprintf("static_routes{>}%s", aLdPort["_uuid"][0]))
-			if err != nil {
-				klog.Errorf("failed to list logical router of static route %s, %v", aLdPort["_uuid"][0], err)
-				return err
-			} else if len(itsRouter) != 1 {
-				klog.Errorf("number wrong of logical router for static route %s, %v", aLdPort["_uuid"][0], itsRouter)
-				return nil
-			}
-
-			rtbs, err := c.ovnLegacyClient.GetRouteTables(itsRouter[0]["name"][0])
-			if err != nil {
-				klog.Errorf("failed to list route tables of logical router %s, %v", itsRouter[0]["name"][0], err)
+		for _, r := range routeList {
+			if err = c.ovnClient.DeleteLogicalRouterStaticRoute(lr.Name, &r.RouteTable, r.Policy, r.IPPrefix, r.Nexthop); err != nil {
+				klog.Errorf("failed to delete learned static route %#v on logical router %s: %v", r, lr.Name, err)
 				return err
 			}
-
-			for rtb := range rtbs {
-				if err := c.ovnLegacyClient.DeleteStaticRoute(aLdPort["ip_prefix"][0], itsRouter[0]["name"][0], rtb); err != nil {
-					klog.Errorf("failed to delete static route %s, %v", aLdPort["ip_prefix"][0], err)
-					return err
-				}
-			}
 		}
-		klog.V(5).Infof("finish removing learned routes")
 	}
+
+	klog.V(5).Infof("finish removing learned routes")
 	return nil
 }
 
@@ -459,7 +431,7 @@ func (c *Controller) syncOneRouteToPolicy(key, value string) {
 		klog.Errorf("logical router does not exist %v at %v", err, time.Now())
 		return
 	}
-	lrRouteList, err := c.ovnClient.ListLogicalRouterStaticRoutesByOption(lr.Name, key, value)
+	lrRouteList, err := c.ovnClient.ListLogicalRouterStaticRoutesByOption(lr.Name, util.MainRouteTable, key, value)
 	if err != nil {
 		klog.Errorf("failed to list lr ovn-ic route %v", err)
 		return

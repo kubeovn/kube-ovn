@@ -1437,25 +1437,10 @@ func (c *Controller) reconcileOvnDefaultVpcRoute(subnet *kubeovnv1.Subnet) error
 
 					if pod.Annotations[util.NorthGatewayAnnotation] != "" {
 						nextHop := pod.Annotations[util.NorthGatewayAnnotation]
-						exist, err := c.checkRouteExist(
-							nextHop,
-							pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)],
-							ovs.PolicySrcIP,
-							subnet.Spec.RouteTable,
-						)
-						if err != nil {
-							klog.Errorf("failed to get static route for subnet %v, error %v", subnet.Name, err)
-							return err
-						}
-						if exist {
-							continue
-						}
-
-						if err := c.ovnLegacyClient.AddStaticRoute(
-							ovs.PolicySrcIP,
-							pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)],
-							nextHop, "", "", c.config.ClusterRouter,
-							subnet.Spec.RouteTable, util.NormalRouteType); err != nil {
+						if err := c.ovnClient.AddLogicalRouterStaticRoute(
+							c.config.ClusterRouter, util.MainRouteTable, ovnnb.LogicalRouterStaticRoutePolicySrcIP,
+							pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)], nextHop,
+						); err != nil {
 							klog.Errorf("add static route failed, %v", err)
 							return err
 						}
@@ -1687,7 +1672,7 @@ func (c *Controller) reconcileOvnCustomVpcRoute(subnet *kubeovnv1.Subnet) error 
 
 func (c *Controller) deleteStaticRoute(ip, router, routeTable string) error {
 	for _, ipStr := range strings.Split(ip, ",") {
-		if err := c.ovnLegacyClient.DeleteStaticRoute(ipStr, router, routeTable); err != nil {
+		if err := c.ovnClient.DeleteLogicalRouterStaticRoute(router, &routeTable, nil, ipStr, ""); err != nil {
 			klog.Errorf("failed to delete static route %s, %v", ipStr, err)
 			return err
 		}
@@ -2087,9 +2072,10 @@ func (c *Controller) addCommonRoutesForSubnet(subnet *kubeovnv1.Subnet) error {
 			af = 6
 		}
 		match := fmt.Sprintf("ip%d.dst == %s", af, cidr)
+		action := ovnnb.LogicalRouterPolicyActionAllow
 		externalIDs := map[string]string{"vendor": util.CniTypeName, "subnet": subnet.Name}
-		klog.V(3).Infof("add policy route for router: %s, match %s, action %s, extrenalID %v", c.config.ClusterRouter, match, "allow", externalIDs)
-		if err := c.ovnClient.AddLogicalRouterPolicy(c.config.ClusterRouter, util.SubnetRouterPolicyPriority, match, "allow", nil, externalIDs); err != nil {
+		klog.V(3).Infof("add policy route for router: %s, match %s, action %s, extrenalID %v", c.config.ClusterRouter, match, action, externalIDs)
+		if err := c.ovnClient.AddLogicalRouterPolicy(c.config.ClusterRouter, util.SubnetRouterPolicyPriority, match, action, nil, externalIDs); err != nil {
 			klog.Errorf("failed to add logical router policy for CIDR %s of subnet %s: %v", cidr, subnet.Name, err)
 			return err
 		}
@@ -2124,6 +2110,7 @@ func (c *Controller) updatePolicyRouteForCentralizedSubnet(subnetName, cidr stri
 		ipSuffix = "ip6"
 	}
 	match := fmt.Sprintf("%s.src == %s", ipSuffix, cidr)
+	action := ovnnb.LogicalRouterPolicyActionReroute
 
 	// there's no way to update policy route when gatewayNode changed for subnet, so delete and readd policy route
 	// The delete operation is processed in AddPolicyRoute if the policy route is inconsistent, so no need delete here
@@ -2137,8 +2124,8 @@ func (c *Controller) updatePolicyRouteForCentralizedSubnet(subnetName, cidr stri
 	for node, ip := range nameIpMap {
 		externalIDs[node] = ip
 	}
-	klog.Infof("add ecmp policy route for router: %s, match %s, action %s, nexthops %v, extrenalID %s", c.config.ClusterRouter, match, "allow", nextHops, externalIDs)
-	if err := c.ovnClient.AddLogicalRouterPolicy(c.config.ClusterRouter, util.GatewayRouterPolicyPriority, match, "reroute", nextHops, externalIDs); err != nil {
+	klog.Infof("add ecmp policy route for router: %s, match %s, action %s, nexthops %v, extrenalID %s", c.config.ClusterRouter, match, action, nextHops, externalIDs)
+	if err := c.ovnClient.AddLogicalRouterPolicy(c.config.ClusterRouter, util.GatewayRouterPolicyPriority, match, action, nextHops, externalIDs); err != nil {
 		klog.Errorf("failed to add policy route for centralized subnet %s: %v", subnetName, err)
 		return err
 	}
@@ -2206,13 +2193,14 @@ func (c *Controller) addPolicyRouteForDistributedSubnet(subnet *kubeovnv1.Subnet
 
 		pgAs := fmt.Sprintf("%s_%s", pgName, ipSuffix)
 		match := fmt.Sprintf("%s.src == $%s", ipSuffix, pgAs)
+		action := ovnnb.LogicalRouterPolicyActionReroute
 		externalIDs := map[string]string{
 			"vendor": util.CniTypeName,
 			"subnet": subnet.Name,
 			"node":   nodeName,
 		}
-		klog.V(3).Infof("add policy route for router: %s, match %s, action %s, extrenalID %v", c.config.ClusterRouter, match, "allow", externalIDs)
-		if err := c.ovnClient.AddLogicalRouterPolicy(c.config.ClusterRouter, util.GatewayRouterPolicyPriority, match, "reroute", []string{nodeIP}, externalIDs); err != nil {
+		klog.V(3).Infof("add policy route for router: %s, match %s, action %s, extrenalID %v", c.config.ClusterRouter, match, action, externalIDs)
+		if err := c.ovnClient.AddLogicalRouterPolicy(c.config.ClusterRouter, util.GatewayRouterPolicyPriority, match, action, []string{nodeIP}, externalIDs); err != nil {
 			klog.Errorf("failed to add logical router policy for port-group address-set %s: %v", pgAs, err)
 			return err
 		}
@@ -2385,20 +2373,22 @@ func (c *Controller) addPolicyRouteForU2OInterconn(subnet *kubeovnv1.Subnet) err
 			policy1 and policy2 allow overlay pod access underlay but when overlay pod access node ip, it should go join subnet,
 			policy3: underlay pod first access u2o interconnection lrp and then reoute to physical gw
 		*/
-		klog.Infof("add u2o interconnection policy for router: %s, match %s, action %s", subnet.Spec.Vpc, match1, "allow")
-		if err := c.ovnClient.AddLogicalRouterPolicy(subnet.Spec.Vpc, util.SubnetRouterPolicyPriority, match1, "allow", nil, externalIDs); err != nil {
+		action := ovnnb.LogicalRouterPolicyActionAllow
+		klog.Infof("add u2o interconnection policy for router: %s, match %s, action %s", subnet.Spec.Vpc, match1, action)
+		if err := c.ovnClient.AddLogicalRouterPolicy(subnet.Spec.Vpc, util.SubnetRouterPolicyPriority, match1, action, nil, externalIDs); err != nil {
 			klog.Errorf("failed to add u2o interconnection policy1 for subnet %s %v", subnet.Name, err)
 			return err
 		}
 
-		klog.Infof("add u2o interconnection policy for router: %s, match %s, action %s", subnet.Spec.Vpc, match2, "allow")
-		if err := c.ovnClient.AddLogicalRouterPolicy(subnet.Spec.Vpc, util.SubnetRouterPolicyPriority, match2, "allow", nil, externalIDs); err != nil {
+		klog.Infof("add u2o interconnection policy for router: %s, match %s, action %s", subnet.Spec.Vpc, match2, action)
+		if err := c.ovnClient.AddLogicalRouterPolicy(subnet.Spec.Vpc, util.SubnetRouterPolicyPriority, match2, action, nil, externalIDs); err != nil {
 			klog.Errorf("failed to add u2o interconnection policy2 for subnet %s %v", subnet.Name, err)
 			return err
 		}
 
-		klog.Infof("add u2o interconnection policy for router: %s, match %s, action %s, nexthop %s", subnet.Spec.Vpc, match3, "reroute", nextHop)
-		if err := c.ovnClient.AddLogicalRouterPolicy(subnet.Spec.Vpc, util.GatewayRouterPolicyPriority, match3, "reroute", []string{nextHop}, externalIDs); err != nil {
+		action = ovnnb.LogicalRouterPolicyActionReroute
+		klog.Infof("add u2o interconnection policy for router: %s, match %s, action %s, nexthop %s", subnet.Spec.Vpc, match3, action, nextHop)
+		if err := c.ovnClient.AddLogicalRouterPolicy(subnet.Spec.Vpc, util.GatewayRouterPolicyPriority, match3, action, []string{nextHop}, externalIDs); err != nil {
 			klog.Errorf("failed to add u2o interconnection policy3 for subnet %s %v", subnet.Name, err)
 			return err
 		}
