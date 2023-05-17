@@ -7,8 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"reflect"
 	"strconv"
@@ -28,11 +26,10 @@ import (
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
-	"github.com/kubeovn/kube-ovn/versions"
+	kubeovnyaml "github.com/kubeovn/kube-ovn/yamls"
 )
 
 var (
-	corednsYamlUrl  = ""
 	corednsImage    = ""
 	corednsVip      = ""
 	nadName         = ""
@@ -42,6 +39,8 @@ var (
 	k8sServicePort  = ""
 	enableCoredns   = false
 	hostNameservers []string
+
+	corednsTemplateContent = kubeovnyaml.CorednsTemplateContent
 )
 
 const (
@@ -340,14 +339,13 @@ func (c *Controller) createOrUpdateVpcDnsSlr(vpcDns *kubeovnv1.VpcDns) error {
 
 func (c *Controller) genVpcDnsDeployment(vpcDns *kubeovnv1.VpcDns, oldDeploy *v1.Deployment) (*v1.Deployment, error) {
 	if _, err := os.Stat(CorednsTemplateDep); errors.Is(err, os.ErrNotExist) {
-		if err := getCoreDnsTemplateFile(corednsYamlUrl); err != nil {
-			klog.Errorf("failed to get coredns template file, %v", err)
-			return nil, err
-		}
+		klog.Errorf("failed to get coredns template file, %v", err)
+		return nil, err
 	}
 
 	tmp, err := template.ParseFiles(CorednsTemplateDep)
 	if err != nil {
+		klog.Errorf("failed to parse coredns template file, %v", err)
 		return nil, err
 	}
 
@@ -456,7 +454,7 @@ func setCoreDnsEnv(dp *v1.Deployment) {
 func setVpcDnsRoute(dp *v1.Deployment, subnetGw string) {
 	var serviceHost string
 	if len(k8sServiceHost) == 0 {
-		serviceHost = "${KUBERNETES_SERVICE_HOST}"
+		serviceHost = os.Getenv("KUBERNETES_SERVICE_HOST")
 	} else {
 		serviceHost = k8sServiceHost
 	}
@@ -552,12 +550,9 @@ func (c *Controller) resyncVpcDnsConfig() {
 		klog.V(3).Infof("use the cluster default coredns image version, %s", corednsImage)
 	}
 
-	newTemplateUrl := getValue("coredns-template")
-	if len(newTemplateUrl) != 0 && newTemplateUrl != corednsYamlUrl {
-		if err := getCoreDnsTemplateFile(newTemplateUrl); err != nil {
-			klog.Errorf("failed to get coredns template file, %v", err)
-		}
-		corednsYamlUrl = newTemplateUrl
+	if err := os.WriteFile(CorednsTemplateDep, corednsTemplateContent, 0644); err != nil {
+		klog.Errorf("failed to wirite local coredns-template.yaml file, %v", err)
+		return
 	}
 
 	nadName = getValue("nad-name")
@@ -607,9 +602,6 @@ func (c *Controller) getDefaultCoreDnsImage() (string, error) {
 }
 
 func (c *Controller) initVpcDnsConfig() error {
-	url := "https://raw.githubusercontent.com/kubeovn/kube-ovn/%s/yamls/coredns-template.yaml"
-	corednsYamlUrl = fmt.Sprintf(url, versions.VERSION)
-
 	if err := hostConfigFromReader(); err != nil {
 		klog.Errorf("failed to get get host nameserver, %v", err)
 		return err
@@ -641,38 +633,5 @@ func (c *Controller) updateVpcDns() error {
 	for _, vd := range list {
 		c.addOrUpdateVpcDnsQueue.Add(vd.Name)
 	}
-	return nil
-}
-
-func getCoreDnsTemplateFile(url string) error {
-	client := http.Client{
-		Timeout: 5 * time.Second,
-	}
-
-	resp, err := client.Get(url)
-	if err != nil {
-		return err
-	}
-	defer func(Body io.ReadCloser) {
-		err := Body.Close()
-		if err != nil {
-			klog.Errorf("failed to close http, %s", err)
-		}
-	}(resp.Body)
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("access errors, return code:%d", resp.StatusCode)
-	}
-
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return err
-	}
-
-	err = os.WriteFile(CorednsTemplateDep, data, 0644)
-	if err != nil {
-		return err
-	}
-
 	return nil
 }
