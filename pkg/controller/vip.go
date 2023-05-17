@@ -264,7 +264,7 @@ func (c *Controller) handleUpdateVirtualIp(key string) error {
 		// TODO:// clean vip in its parent port aap list
 		if vip.Spec.Type == util.SwitchLBRuleVip {
 			if err := c.ovnClient.DeleteLogicalSwitchPort(vip.Name); err != nil {
-				err = fmt.Errorf("failed to create lsp %s: %v", vip.Name, err)
+				err = fmt.Errorf("failed to delete lsp %s: %v", vip.Name, err)
 				klog.Error(err)
 				return err
 			}

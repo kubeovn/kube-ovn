@@ -275,7 +275,7 @@ var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 
 		// share eip case
 		ginkgo.By("Creating share vip")
-		shareVip := framework.MakeVip(sharedVipName, overlaySubnetName, "", "")
+		shareVip := framework.MakeVip(sharedVipName, overlaySubnetName, "", "", "")
 		_ = vipClient.CreateSync(shareVip)
 		fipVip = vipClient.Get(fipVipName)
 		ginkgo.By("Creating share iptables eip")
