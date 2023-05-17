@@ -444,7 +444,7 @@ func setCoreDnsEnv(dp *v1.Deployment) {
 func setVpcDnsRoute(dp *v1.Deployment, subnetGw string) {
 	var serviceHost string
 	if len(k8sServiceHost) == 0 {
-		serviceHost = "${KUBERNETES_SERVICE_HOST}"
+		serviceHost = os.Getenv("KUBERNETES_SERVICE_HOST")
 	} else {
 		serviceHost = k8sServiceHost
 	}
