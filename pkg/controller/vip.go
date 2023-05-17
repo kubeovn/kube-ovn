@@ -280,7 +280,7 @@ func (c *Controller) acquireStaticIpAddress(subnetName, name, nicName, ip string
 		}
 	}
 
-	if v4ip, v6ip, mac, err = c.ipam.GetStaticAddress(name, nicName, ip, mac, subnetName, checkConflict); err != nil {
+	if v4ip, v6ip, mac, err = c.ipam.GetStaticAddress(name, nicName, ip, nil, subnetName, checkConflict); err != nil {
 		klog.Errorf("failed to get static virtual ip '%s', mac '%s', subnet '%s', %v", ip, mac, subnetName, err)
 		return "", "", "", err
 	}
@@ -293,7 +293,7 @@ func (c *Controller) acquireIpAddress(subnetName, name, nicName string) (string,
 	checkConflict := true
 	var err error
 	for {
-		v4ip, v6ip, mac, err = c.ipam.GetRandomAddress(name, nicName, mac, subnetName, skippedAddrs, checkConflict)
+		v4ip, v6ip, mac, err = c.ipam.GetRandomAddress(name, nicName, nil, subnetName, skippedAddrs, checkConflict)
 		if err != nil {
 			return "", "", "", err
 		}
@@ -507,7 +507,11 @@ func (c *Controller) releaseVip(key string) error {
 			klog.Errorf("failed to patch label for vip '%s', %v", vip.Name, err)
 			return err
 		}
-		if _, _, _, err = c.ipam.GetStaticAddress(key, vip.Name, vip.Status.V4ip, vip.Status.Mac, vip.Spec.Subnet, false); err != nil {
+		mac := &vip.Status.Mac
+		if vip.Status.Mac == "" {
+			mac = nil
+		}
+		if _, _, _, err = c.ipam.GetStaticAddress(key, vip.Name, vip.Status.V4ip, mac, vip.Spec.Subnet, false); err != nil {
 			klog.Errorf("failed to recover IPAM from VIP CR %s: %v", vip.Name, err)
 		}
 		c.updateSubnetStatusQueue.Add(vip.Spec.Subnet)

@@ -17,6 +17,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	clientset "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/request"
@@ -43,17 +44,17 @@ func createCniServerHandler(config *Configuration, controller *Controller) *cniS
 	return csh
 }
 
-func (csh cniServerHandler) providerExists(provider string) bool {
+func (csh cniServerHandler) providerExists(provider string) (*kubeovnv1.Subnet, bool) {
 	if provider == "" || strings.HasSuffix(provider, util.OvnProvider) {
-		return true
+		return nil, true
 	}
 	subnets, _ := csh.Controller.subnetsLister.List(labels.Everything())
 	for _, subnet := range subnets {
 		if subnet.Spec.Provider == provider {
-			return true
+			return subnet.DeepCopy(), true
 		}
 	}
-	return false
+	return nil, false
 }
 
 func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Response) {
@@ -67,7 +68,8 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		return
 	}
 	klog.V(5).Infof("request body is %v", podRequest)
-	if exist := csh.providerExists(podRequest.Provider); !exist {
+	podSubnet, exist := csh.providerExists(podRequest.Provider)
+	if !exist {
 		errMsg := fmt.Errorf("provider %s not bind to any subnet", podRequest.Provider)
 		klog.Error(errMsg)
 		if err := resp.WriteHeaderAndEntity(http.StatusBadRequest, request.CniResponse{Err: errMsg.Error()}); err != nil {
@@ -115,7 +117,6 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 			time.Sleep(1 * time.Second)
 			continue
 		}
-		macAddr = pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, podRequest.Provider)]
 		ip = pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podRequest.Provider)]
 		cidr = pod.Annotations[fmt.Sprintf(util.CidrAnnotationTemplate, podRequest.Provider)]
 		gw = pod.Annotations[fmt.Sprintf(util.GatewayAnnotationTemplate, podRequest.Provider)]
@@ -189,7 +190,10 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		return
 	}
 
-	if err := csh.UpdateIPCr(podRequest, subnet, ip, macAddr); err != nil {
+	if subnet == "" && podSubnet != nil {
+		subnet = podSubnet.Name
+	}
+	if err := csh.UpdateIPCr(podRequest, subnet, ip); err != nil {
 		if err := resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: err.Error()}); err != nil {
 			klog.Errorf("failed to write response, %v", err)
 		}
@@ -275,6 +279,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		}
 
 		routes = append(podRequest.Routes, routes...)
+		macAddr = pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, podRequest.Provider)]
 		klog.Infof("create container interface %s mac %s, ip %s, cidr %s, gw %s, custom routes %v", ifName, macAddr, ipAddr, cidr, gw, routes)
 		if nicType == util.InternalType {
 			podNicName, err = csh.configureNicWithInternalPort(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, ifName, macAddr, mtu, ipAddr, gw, isDefaultRoute, detectIPConflict, routes, podRequest.DNS.Nameservers, podRequest.DNS.Search, ingress, egress, podRequest.DeviceID, nicType, latency, limit, loss, jitter, gatewayCheckMode, u2oInterconnectionIP)
@@ -324,7 +329,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 	}
 }
 
-func (csh cniServerHandler) UpdateIPCr(podRequest request.CniRequest, subnet, ip, macAddr string) error {
+func (csh cniServerHandler) UpdateIPCr(podRequest request.CniRequest, subnet, ip string) error {
 	ipCrName := ovs.PodNameToPortName(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider)
 	oriIpCr, err := csh.KubeOvnClient.KubeovnV1().IPs().Get(context.Background(), ipCrName, metav1.GetOptions{})
 	if err != nil {
