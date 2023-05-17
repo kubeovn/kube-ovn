@@ -289,12 +289,7 @@ func (c *Controller) handleInitVpcNatGw(key string) error {
 		}
 		return err
 	}
-	var v4Cidr string
-	if subnet, ok := c.ipam.Subnets[gw.Spec.Subnet]; ok {
-		v4Cidr = subnet.V4CIDR.String()
-	} else {
-		return fmt.Errorf("failed to get subnet %s", gw.Spec.Subnet)
-	}
+	// subnet for vpc-nat-gw has been checked when create vpc-nat-gw
 
 	if err := c.updateCrdNatGw(gw.Name); err != nil {
 		klog.Errorf("failed to update nat gw: %v", gw.Name, err)
@@ -317,8 +312,10 @@ func (c *Controller) handleInitVpcNatGw(key string) error {
 	}
 	NAT_GW_CREATED_AT = pod.CreationTimestamp.Format("2006-01-02T15:04:05")
 	klog.V(3).Infof("nat gw pod '%s' inited at %s", key, NAT_GW_CREATED_AT)
-	if err = c.execNatGwRules(pod, natGwInit, []string{v4Cidr}); err != nil {
-		klog.Errorf("failed to init vpc nat gateway, %v", err)
+
+	if err = c.execNatGwRules(pod, natGwInit, []string{fmt.Sprintf("%s,%s", c.config.ServiceClusterIPRange, pod.Annotations[util.GatewayAnnotation])}); err != nil {
+		err = fmt.Errorf("failed to init vpc nat gateway, %v", err)
+		klog.Error(err)
 		return err
 	}
 	c.updateVpcFloatingIpQueue.Add(key)
