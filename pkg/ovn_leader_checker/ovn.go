@@ -31,8 +31,12 @@ const (
 	EnvPodName           = "POD_NAME"
 	EnvPodNameSpace      = "POD_NAMESPACE"
 	OvnNorthdPid         = "/var/run/ovn/ovn-northd.pid"
-	DefaultProbeInterval = 15
+	DefaultProbeInterval = 5
+	OvnNorthdPort        = "6643"
+	MaxFailCount         = 3
 )
+
+var failCount int
 
 // Configuration is the controller conf
 type Configuration struct {
@@ -205,6 +209,8 @@ func checkNorthdActive() bool {
 }
 
 func stealLock() {
+	podIP := os.Getenv("POD_IP")
+
 	var command []string
 	if os.Getenv(EnvSSL) == "false" {
 		command = []string{
@@ -212,7 +218,7 @@ func stealLock() {
 			"-t",
 			"1",
 			"steal",
-			"tcp:127.0.0.1:6642",
+			fmt.Sprintf("tcp:%s:6642", podIP),
 			"ovn_northd",
 		}
 	} else {
@@ -227,7 +233,7 @@ func stealLock() {
 			"-C",
 			"/var/run/tls/cacert",
 			"steal",
-			"ssl:127.0.0.1:6642",
+			fmt.Sprintf("ssl:%s:6642", podIP),
 			"ovn_northd",
 		}
 	}
@@ -268,7 +274,24 @@ func checkNorthdSvcExist(cfg *Configuration, namespace, svcName string) bool {
 	return true
 }
 
-func checkNorthdSvcValidIP(cfg *Configuration, namespace, epName string) bool {
+func checkNorthdEpAvailable(ip string) bool {
+	address := net.JoinHostPort(ip, OvnNorthdPort)
+	conn, err := net.DialTimeout("tcp", address, 3*time.Second)
+	if err != nil {
+		klog.Errorf("failed to connect to northd leader %s, err: %v", ip, err)
+		failCount++
+		if failCount >= MaxFailCount {
+			return false
+		}
+	} else {
+		failCount = 0
+		klog.V(5).Infof("succeed to connect to northd leader %s", ip)
+		_ = conn.Close()
+	}
+	return true
+}
+
+func checkNorthdEpAlive(cfg *Configuration, namespace, epName string) bool {
 	eps, err := cfg.KubeClient.CoreV1().Endpoints(namespace).Get(context.Background(), epName, metav1.GetOptions{})
 	if err != nil {
 		klog.Errorf("get ep %v namespace %v error %v", epName, namespace, err)
@@ -284,9 +307,9 @@ func checkNorthdSvcValidIP(cfg *Configuration, namespace, epName string) bool {
 		klog.V(5).Infof("epName %v has no address assigned", epName)
 		return false
 	}
-
 	klog.V(5).Infof("epName %v address assigned %+v", epName, eps.Subsets[0].Addresses[0].IP)
-	return true
+
+	return checkNorthdEpAvailable(eps.Subsets[0].Addresses[0].IP)
 }
 
 func updatePodLabels(labels map[string]string, key string, isLeader bool) {
@@ -351,7 +374,7 @@ func doOvnLeaderCheck(cfg *Configuration, podName string, podNamespace string) {
 		return
 	}
 	if sbLeader && checkNorthdSvcExist(cfg, podNamespace, "ovn-northd") {
-		if !checkNorthdSvcValidIP(cfg, podNamespace, "ovn-northd") {
+		if !checkNorthdEpAlive(cfg, podNamespace, "ovn-northd") {
 			klog.Warning("no available northd leader, try to release the lock")
 			stealLock()
 		}

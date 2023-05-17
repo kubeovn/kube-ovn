@@ -351,6 +351,10 @@ spec:
                   items:
                     type: string
                   type: array
+                endpoints:
+                  items:
+                    type: string
+                  type: array
             status:
               type: object
               properties:

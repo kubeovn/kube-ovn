@@ -745,27 +745,22 @@ func (c *Controller) initSyncCrdVlans() error {
 
 func (c *Controller) migrateNodeRoute(af int, node, ip, nexthop string) error {
 	match := fmt.Sprintf("ip%d.dst == %s", af, ip)
+	action := ovnnb.LogicalRouterPolicyActionReroute
 	externalIDs := map[string]string{
 		"vendor": util.CniTypeName,
 		"node":   node,
 	}
 	klog.V(3).Infof("add policy route for router: %s, priority: %d, match %s, action %s, nexthop %s, extrenalID %v",
-		c.config.ClusterRouter, util.NodeRouterPolicyPriority, match, "reroute", nexthop, externalIDs)
-	if err := c.ovnClient.AddLogicalRouterPolicy(c.config.ClusterRouter, util.NodeRouterPolicyPriority, match, "reroute", []string{nexthop}, externalIDs); err != nil {
+		c.config.ClusterRouter, util.NodeRouterPolicyPriority, match, action, nexthop, externalIDs)
+	if err := c.ovnClient.AddLogicalRouterPolicy(c.config.ClusterRouter, util.NodeRouterPolicyPriority, match, action, []string{nexthop}, externalIDs); err != nil {
 		klog.Errorf("failed to add logical router policy for node %s: %v", node, err)
 		return err
 	}
 
-	routeTables, err := c.ovnLegacyClient.GetRouteTables(c.config.ClusterRouter)
-	if err != nil {
+	routeTable := util.MainRouteTable
+	if err := c.ovnClient.DeleteLogicalRouterStaticRoute(c.config.ClusterRouter, &routeTable, nil, ip, ""); err != nil {
+		klog.Errorf("failed to delete obsolete static route for node %s: %v", node, err)
 		return err
-	}
-
-	for rtb := range routeTables {
-		if err := c.ovnLegacyClient.DeleteStaticRoute(ip, c.config.ClusterRouter, rtb); err != nil {
-			klog.Errorf("failed to delete obsolete static route for node %s: %v", node, err)
-			return err
-		}
 	}
 
 	asName := nodeUnderlayAddressSetName(node, af)

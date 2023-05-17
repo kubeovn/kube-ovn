@@ -969,6 +969,7 @@ type SwitchLBRuleSpec struct {
 	Vip             string    `json:"vip"`
 	Namespace       string    `json:"namespace"`
 	Selector        []string  `json:"selector"`
+	Endpoints       []string  `json:"endpoints"`
 	SessionAffinity string    `json:"sessionAffinity,omitempty"`
 	Ports           []SlrPort `json:"ports"`
 }

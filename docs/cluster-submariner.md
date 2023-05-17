@@ -99,7 +99,7 @@ ports:
   protocol: TCP
 ```
 
-`11.16.0.12`  is the IP address of the pod for this service `nginx` in another cluster. When this pod from another cluster is rebuilt, the new pod IP should be passed to this cluster, So that the new correct data path could be established. This whole process may takes some time, depending on your network and load.
+`11.16.0.12`  is the IP address of the pod for this service `nginx` in another cluster. When this pod from another cluster is rebuilt, the new pod IP should be passed to this cluster, so that the new correct data path could be established. This whole process may takes some time, depending on your network and load.
 
 Besides, submariner now **do not** support the existence of multiple service CIDR or pod CIDR in a cluster.
 
@@ -107,7 +107,7 @@ Besides, submariner now **do not** support the existence of multiple service CID
 
 Submariner supports custom build handlers for different CNIs. 
 
-Currently the default data path is is used in this doc. Between the gateway nodes of clusters, traffic is encapsulated in a IPsec tunnel.  For a work node, the traffic destined to a remote cluster will be transited through VXLAN tunnel(if `vx-submarine`) to the gateway node first.
+Currently the default data path is used in this doc. Between the gateway nodes of clusters, traffic is encapsulated in a IPsec tunnel.  For a work node, the traffic destined to a remote cluster will be transited through VXLAN tunnel(if `vx-submarine`) to the gateway node first.
 
 #### operations:
 

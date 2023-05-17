@@ -32,7 +32,7 @@ func (c *Controller) enqueueAddQoSPolicy(obj interface{}) {
 	c.addQoSPolicyQueue.Add(key)
 }
 
-func compareQoSPolicyBandwithLimitRules(old, new kubeovnv1.QoSPolicyBandwidthLimitRules) bool {
+func compareQoSPolicyBandwidthLimitRules(old, new kubeovnv1.QoSPolicyBandwidthLimitRules) bool {
 	if len(old) != len(new) {
 		return false
 	}
@@ -59,7 +59,7 @@ func (c *Controller) enqueueUpdateQoSPolicy(old, new interface{}) {
 	}
 	if oldQos.Status.Shared != newQos.Spec.Shared ||
 		oldQos.Status.BindingType != newQos.Spec.BindingType ||
-		!compareQoSPolicyBandwithLimitRules(oldQos.Status.BandwidthLimitRules,
+		!compareQoSPolicyBandwidthLimitRules(oldQos.Status.BandwidthLimitRules,
 			newQos.Spec.BandwidthLimitRules) {
 		klog.V(3).Infof("enqueue update qos %s", key)
 		c.updateQoSPolicyQueue.Add(key)
@@ -223,7 +223,7 @@ func (c *Controller) handleAddQoSPolicy(key string) error {
 }
 
 func (c *Controller) patchQoSStatus(
-	key string, shared bool, qosType kubeovnv1.QoSPolicyBindingType, bandwithRules kubeovnv1.QoSPolicyBandwidthLimitRules) error {
+	key string, shared bool, qosType kubeovnv1.QoSPolicyBindingType, bandwidthRules kubeovnv1.QoSPolicyBandwidthLimitRules) error {
 	oriQoS, err := c.qosPoliciesLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -234,7 +234,7 @@ func (c *Controller) patchQoSStatus(
 	qos := oriQoS.DeepCopy()
 	qos.Status.Shared = shared
 	qos.Status.BindingType = qosType
-	qos.Status.BandwidthLimitRules = bandwithRules
+	qos.Status.BandwidthLimitRules = bandwidthRules
 	bytes, err := qos.Status.Bytes()
 	if err != nil {
 		return err
@@ -279,7 +279,7 @@ func (c *Controller) handleDelQoSPoliciesFinalizer(key string) error {
 	return nil
 }
 
-func diffQoSPolicyBandwithLimitRules(oldList, newList kubeovnv1.QoSPolicyBandwidthLimitRules) (added, deleted, updated kubeovnv1.QoSPolicyBandwidthLimitRules) {
+func diffQoSPolicyBandwidthLimitRules(oldList, newList kubeovnv1.QoSPolicyBandwidthLimitRules) (added, deleted, updated kubeovnv1.QoSPolicyBandwidthLimitRules) {
 	added = kubeovnv1.QoSPolicyBandwidthLimitRules{}
 	deleted = kubeovnv1.QoSPolicyBandwidthLimitRules{}
 	updated = kubeovnv1.QoSPolicyBandwidthLimitRules{}
@@ -448,10 +448,10 @@ func (c *Controller) handleUpdateQoSPolicy(key string) error {
 		return err
 	}
 
-	added, deleted, updated := diffQoSPolicyBandwithLimitRules(cachedQos.Status.BandwidthLimitRules, cachedQos.Spec.BandwidthLimitRules)
-	bandwithRulesChanged := len(added) > 0 || len(deleted) > 0 || len(updated) > 0
+	added, deleted, updated := diffQoSPolicyBandwidthLimitRules(cachedQos.Status.BandwidthLimitRules, cachedQos.Spec.BandwidthLimitRules)
+	bandwidthRulesChanged := len(added) > 0 || len(deleted) > 0 || len(updated) > 0
 
-	if bandwithRulesChanged {
+	if bandwidthRulesChanged {
 		klog.V(3).Infof(
 			"bandwidth limit rules is changed for qos %s, added: %s, deleted: %s, updated: %s",
 			key, added.Strings(), deleted.Strings(), updated.Strings())

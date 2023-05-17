@@ -9,7 +9,6 @@ import (
 
 	"golang.org/x/time/rate"
 	corev1 "k8s.io/api/core/v1"
-	k8sv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -64,7 +63,7 @@ type Controller struct {
 	podsSynced             cache.InformerSynced
 	addOrUpdatePodQueue    workqueue.RateLimitingInterface
 	deletePodQueue         workqueue.RateLimitingInterface
-	deletingPodObjMap      map[string]*k8sv1.Pod
+	deletingPodObjMap      map[string]*corev1.Pod
 	updatePodSecurityQueue workqueue.RateLimitingInterface
 	podKeyMutex            keymutex.KeyMutex
 
@@ -396,7 +395,7 @@ func Run(ctx context.Context, config *Configuration) {
 			workqueue.NewNamedDelayingQueue("DeletePod"),
 			workqueue.DefaultControllerRateLimiter(),
 		),
-		deletingPodObjMap:      make(map[string]*k8sv1.Pod),
+		deletingPodObjMap:      make(map[string]*corev1.Pod),
 		updatePodSecurityQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdatePodSecurity"),
 		podKeyMutex:            keymutex.NewHashed(numKeyLocks),
 

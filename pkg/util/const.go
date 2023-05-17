@@ -47,6 +47,7 @@ const (
 	VpcEipAnnotation            = "ovn.kubernetes.io/vpc_eip"
 	VpcDnatEPortLabel           = "ovn.kubernetes.io/vpc_dnat_eport"
 	VpcNatAnnotation            = "ovn.kubernetes.io/vpc_nat"
+	IptablesEipV4IPLabel        = "ovn.kubernetes.io/iptables_eip_v4_ip"
 
 	OvnEipUsageLabel        = "ovn.kubernetes.io/ovn_eip_usage"
 	OvnLrpEipEnableBfdLabel = "ovn.kubernetes.io/ovn_lrp_eip_enable_bfd"
