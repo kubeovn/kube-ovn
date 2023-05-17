@@ -33,6 +33,15 @@ function init() {
     iptables -t nat -A POSTROUTING -j SNAT_FILTER
     iptables -t nat -A SNAT_FILTER -j EXCLUSIVE_SNAT
     iptables -t nat -A SNAT_FILTER -j SHARED_SNAT
+
+    for rule in $@
+    do
+        arr=(${rule//,/ })
+        cidr=${arr[0]}
+        nextHop=${arr[1]}
+
+        exec_cmd "ip route replace $cidr via $nextHop dev eth0"
+    done
 }
 
 
