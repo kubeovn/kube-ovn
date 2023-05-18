@@ -56,8 +56,8 @@ func makeOvnEip(name, subnet, v4ip, v6ip, mac, usage string) *apiv1.OvnEip {
 	return framework.MakeOvnEip(name, subnet, v4ip, v6ip, mac, usage)
 }
 
-func makeOvnVip(name, subnet, v4ip, v6ip string) *apiv1.Vip {
-	return framework.MakeVip(name, subnet, v4ip, v6ip)
+func makeOvnVip(name, subnet, v4ip, v6ip, vipType string) *apiv1.Vip {
+	return framework.MakeVip(name, subnet, v4ip, v6ip, vipType)
 }
 
 func makeOvnFip(name, ovnEip, ipType, ipName string) *apiv1.OvnFip {
@@ -92,6 +92,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 	var ovnFipClient *framework.OvnFipClient
 	var ovnSnatRuleClient *framework.OvnSnatRuleClient
 	var ovnDnatRuleClient *framework.OvnDnatRuleClient
+	var arpProxyVip1Name, arpProxyVip2Name string
 
 	var podClient *framework.PodClient
 
@@ -117,6 +118,12 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		namespaceName = f.Namespace.Name
 		vpcName = "vpc-" + framework.RandomSuffix()
 
+		// test arp proxy vip
+		// should have the same mac, which is vpc overlay subnet gw mac
+		arpProxyVip1Name = "arp-proxy-vip1-" + framework.RandomSuffix()
+		arpProxyVip2Name = "arp-proxy-vip2-" + framework.RandomSuffix()
+
+		// test allow address pair vip
 		fipVipName = "fip-vip-" + framework.RandomSuffix()
 		fipEipName = "fip-eip-" + framework.RandomSuffix()
 		fipName = "fip-" + framework.RandomSuffix()
@@ -274,14 +281,14 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 			framework.ExpectNoError(err)
 		}
 
-		ginkgo.By("Deleting custom vpc " + vpcName)
-		vpcClient.DeleteSync(vpcName)
-
 		ginkgo.By("Deleting subnet " + overlaySubnetName)
 		subnetClient.DeleteSync(overlaySubnetName)
 
 		ginkgo.By("Deleting underlay subnet " + underlaySubnetName)
 		subnetClient.DeleteSync(underlaySubnetName)
+
+		ginkgo.By("Deleting custom vpc " + vpcName)
+		vpcClient.DeleteSync(vpcName)
 
 		ginkgo.By("Deleting vlan " + vlanName)
 		vlanClient.Delete(vlanName, metav1.DeleteOptions{})
@@ -385,10 +392,24 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 			eip := makeOvnEip(nodeName, underlaySubnetName, "", "", "", util.NodeExtGwUsingEip)
 			_ = ovnEipClient.CreateSync(eip)
 		}
+		// arp proxy vip test case
+		ginkgo.By("Creating two arp proxy vips, should have the same mac which is from gw subnet mac")
+		ginkgo.By("Creating arp proxy vip " + arpProxyVip1Name)
+		arpProxyVip1 := makeOvnVip(arpProxyVip1Name, overlaySubnetName, "", "", util.SwitchLBRuleVip)
+		_ = vipClient.CreateSync(arpProxyVip1)
+		ginkgo.By("Creating arp proxy vip " + arpProxyVip2Name)
+		arpProxyVip2 := makeOvnVip(arpProxyVip2Name, overlaySubnetName, "", "", util.SwitchLBRuleVip)
+		_ = vipClient.CreateSync(arpProxyVip2)
+
+		arpProxyVip1 = vipClient.Get(arpProxyVip1Name)
+		arpProxyVip2 = vipClient.Get(arpProxyVip2Name)
+		framework.ExpectEqual(arpProxyVip1.Status.Mac, arpProxyVip2.Status.Mac)
+
+		// allowed address pair vip test case
 		ginkgo.By("Creating crd in centralized case")
 		// for now, vip do not have parent ip can be used in centralized external gw case
 		ginkgo.By("Creating ovn vip " + fipVipName)
-		fipVip := makeOvnVip(fipVipName, overlaySubnetName, "", "")
+		fipVip := makeOvnVip(fipVipName, overlaySubnetName, "", "", "")
 		_ = vipClient.CreateSync(fipVip)
 		ginkgo.By("Creating ovn eip " + fipEipName)
 		eip := makeOvnEip(fipEipName, underlaySubnetName, "", "", "", util.FipUsingEip)
@@ -405,7 +426,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		_ = ovnSnatRuleClient.CreateSync(snat)
 
 		ginkgo.By("Creating ovn vip " + dnatVipName)
-		dnatVip := makeOvnVip(dnatVipName, overlaySubnetName, "", "")
+		dnatVip := makeOvnVip(dnatVipName, overlaySubnetName, "", "", "")
 		_ = vipClient.CreateSync(dnatVip)
 		ginkgo.By("Creating ovn eip " + dnatEipName)
 		dnatEip := makeOvnEip(dnatEipName, underlaySubnetName, "", "", "", util.DnatUsingEip)
@@ -441,6 +462,10 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		vipClient.DeleteSync(fipVipName)
 		ginkgo.By("Deleting ovn vip " + dnatVipName)
 		vipClient.DeleteSync(dnatVipName)
+		ginkgo.By("Deleting ovn vip " + arpProxyVip1Name)
+		vipClient.DeleteSync(arpProxyVip1Name)
+		ginkgo.By("Deleting ovn vip " + arpProxyVip2Name)
+		vipClient.DeleteSync(arpProxyVip2Name)
 
 		ginkgo.By("Deleting ovn eip " + fipEipName)
 		ovnEipClient.DeleteSync(fipEipName)

@@ -3,6 +3,7 @@ package ovs
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/ovn-org/libovsdb/client"
@@ -243,6 +244,29 @@ func (c *ovnClient) SetLogicalSwitchPortVirtualParents(lsName, parents string, i
 	return nil
 }
 
+func (c *ovnClient) SetLogicalSwitchPortArpProxy(lspName string, enableArpProxy bool) error {
+	lsp, err := c.GetLogicalSwitchPort(lspName, false)
+	if err != nil {
+		return fmt.Errorf("get logical switch port %s: %v", lspName, err)
+	}
+	if lsp.Options == nil {
+		lsp.Options = make(map[string]string)
+	}
+	lsp.Options["arp_proxy"] = strconv.FormatBool(enableArpProxy)
+	if !enableArpProxy {
+		delete(lsp.Options, "arp_proxy")
+	}
+
+	op, err := c.UpdateLogicalSwitchPortOp(lsp, &lsp.Options)
+	if err != nil {
+		return err
+	}
+	if err := c.Transact("lsp-update", op); err != nil {
+		return fmt.Errorf("failed to set logical switch port option arp_proxy %v", err)
+	}
+	return nil
+}
+
 // SetLogicalSwitchPortSecurity set logical switch port port_security
 func (c *ovnClient) SetLogicalSwitchPortSecurity(portSecurity bool, lspName, mac, ips, vips string) error {
 	lsp, err := c.GetLogicalSwitchPort(lspName, false)
@@ -465,7 +489,6 @@ func (c *ovnClient) DeleteLogicalSwitchPort(lspName string) error {
 func (c *ovnClient) GetLogicalSwitchPort(lspName string, ignoreNotFound bool) (*ovnnb.LogicalSwitchPort, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
 	defer cancel()
-
 	lsp := &ovnnb.LogicalSwitchPort{Name: lspName}
 	if err := c.Get(ctx, lsp); err != nil {
 		if ignoreNotFound && err == client.ErrNotFound {
