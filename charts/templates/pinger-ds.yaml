@@ -20,7 +20,7 @@ spec:
         type: infra
     spec:
       priorityClassName: system-node-critical
-      serviceAccountName: ovn
+      serviceAccountName: kube-ovn-app
       hostPID: true
       containers:
         - name: pinger
