@@ -49,6 +49,11 @@ const (
 	VpcNatAnnotation            = "ovn.kubernetes.io/vpc_nat"
 	IptablesEipV4IPLabel        = "ovn.kubernetes.io/iptables_eip_v4_ip"
 
+	VpcSslVpnGatewayAnnotation     = "ovn.kubernetes.io/vpc_ssl_vpn_gw"
+	VpcSslVpnGatewayInitAnnotation = "ovn.kubernetes.io/vpc_ssl_vpn_gw_init"
+
+	VpcSslVpnGatewayLabel = "ovn.kubernetes.io/vpc-ssl-vpn-gw"
+
 	OvnEipUsageLabel        = "ovn.kubernetes.io/ovn_eip_usage"
 	OvnLrpEipEnableBfdLabel = "ovn.kubernetes.io/ovn_lrp_eip_enable_bfd"
 
@@ -166,6 +171,7 @@ const (
 	InterconnectionSwitch  = "ts"
 	ExternalGatewaySwitch  = "ovn-external"
 	VpcNatGatewayConfig    = "ovn-vpc-nat-gw-config"
+	VpcSslVpnGatewayConfig = "ovn-vpc-ssl-vpn-gw-config"
 	VpcLbNetworkAttachment = "ovn-vpc-lb"
 	VpcDnsConfig           = "vpc-dns-config"
 	VpcDnsDepTemplate      = "vpc-dns-dep"

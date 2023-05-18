@@ -86,6 +86,13 @@ type Controller struct {
 	updateVpcSubnetQueue          workqueue.RateLimitingInterface
 	vpcNatGwKeyMutex              keymutex.KeyMutex
 
+	vpcSslVpnGatewayLister           kubeovnlister.VpcSslVpnGatewayLister
+	vpcSslVpnGatewaySynced           cache.InformerSynced
+	addOrUpdateVpcSslVpnGatewayQueue workqueue.RateLimitingInterface
+	delVpcSslVpnGatewayQueue         workqueue.RateLimitingInterface
+	initVpcSslVpnGatewayQueue        workqueue.RateLimitingInterface
+	vpcSslVpnGatewayKeyMutex         keymutex.KeyMutex
+
 	switchLBRuleLister      kubeovnlister.SwitchLBRuleLister
 	switchLBRuleSynced      cache.InformerSynced
 	addSwitchLBRuleQueue    workqueue.RateLimitingInterface
@@ -266,6 +273,7 @@ func Run(ctx context.Context, config *Configuration) {
 
 	vpcInformer := kubeovnInformerFactory.Kubeovn().V1().Vpcs()
 	vpcNatGatewayInformer := kubeovnInformerFactory.Kubeovn().V1().VpcNatGateways()
+	vpcSslVpnGatewayInformer := kubeovnInformerFactory.Kubeovn().V1().VpcSslVpnGateways()
 	subnetInformer := kubeovnInformerFactory.Kubeovn().V1().Subnets()
 	ipInformer := kubeovnInformerFactory.Kubeovn().V1().IPs()
 	virtualIpInformer := kubeovnInformerFactory.Kubeovn().V1().Vips()
@@ -323,6 +331,13 @@ func Run(ctx context.Context, config *Configuration) {
 		updateVpcSnatQueue:            workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "UpdateVpcSnat"),
 		updateVpcSubnetQueue:          workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "UpdateVpcSubnet"),
 		vpcNatGwKeyMutex:              keymutex.NewHashed(numKeyLocks),
+
+		vpcSslVpnGatewayLister:           vpcSslVpnGatewayInformer.Lister(),
+		vpcSslVpnGatewaySynced:           vpcSslVpnGatewayInformer.Informer().HasSynced,
+		initVpcSslVpnGatewayQueue:        workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "InitVpcSslVpnGateway"),
+		addOrUpdateVpcSslVpnGatewayQueue: workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "AddOrUpdateSslVpnGateway"),
+		delVpcSslVpnGatewayQueue:         workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "DeleteSslVpnGateway"),
+		vpcSslVpnGatewayKeyMutex:         keymutex.NewHashed(numKeyLocks),
 
 		subnetsLister:           subnetInformer.Lister(),
 		subnetSynced:            subnetInformer.Informer().HasSynced,
@@ -513,7 +528,7 @@ func Run(ctx context.Context, config *Configuration) {
 		controller.vlanSynced, controller.podsSynced, controller.namespacesSynced, controller.nodesSynced,
 		controller.serviceSynced, controller.endpointsSynced, controller.configMapsSynced,
 		controller.ovnEipSynced, controller.ovnFipSynced, controller.ovnSnatRuleSynced,
-		controller.ovnDnatRuleSynced,
+		controller.ovnDnatRuleSynced, controller.vpcSslVpnGatewaySynced,
 	}
 	if controller.config.EnableLb {
 		cacheSyncs = append(cacheSyncs, controller.switchLBRuleSynced, controller.vpcDnsSynced)
@@ -578,6 +593,14 @@ func Run(ctx context.Context, config *Configuration) {
 		DeleteFunc: controller.enqueueDeleteVpcNatGw,
 	}); err != nil {
 		util.LogFatalAndExit(err, "failed to add vpc nat gateway event handler")
+	}
+
+	if _, err = vpcSslVpnGatewayInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    controller.enqueueAddVpcSslVpnGateway,
+		UpdateFunc: controller.enqueueUpdateVpcSslVpnGateway,
+		DeleteFunc: controller.enqueueDeleteVpcSslVpnGateway,
+	}); err != nil {
+		util.LogFatalAndExit(err, "failed to add vpc ssl vpn gateway event handler")
 	}
 
 	if _, err = subnetInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -855,6 +878,10 @@ func (c *Controller) shutdown() {
 	c.updateVpcSnatQueue.ShutDown()
 	c.updateVpcSubnetQueue.ShutDown()
 
+	c.initVpcSslVpnGatewayQueue.ShutDown()
+	c.addOrUpdateVpcSslVpnGatewayQueue.ShutDown()
+	c.delVpcSslVpnGatewayQueue.ShutDown()
+
 	if c.config.EnableLb {
 		c.addSwitchLBRuleQueue.ShutDown()
 		c.delSwitchLBRuleQueue.ShutDown()
@@ -937,6 +964,10 @@ func (c *Controller) startWorkers(ctx context.Context) {
 	go wait.Until(c.runUpdateVpcDnatWorker, time.Second, ctx.Done())
 	go wait.Until(c.runUpdateVpcSnatWorker, time.Second, ctx.Done())
 	go wait.Until(c.runUpdateVpcSubnetWorker, time.Second, ctx.Done())
+
+	go wait.Until(c.runInitVpcSslVpnGatewayWorker, time.Second, ctx.Done())
+	go wait.Until(c.runAddOrUpdateVpcSslVpnGatewayWorker, time.Second, ctx.Done())
+	go wait.Until(c.runDelVpcSslVpnGatewayWorker, time.Second, ctx.Done())
 
 	// add default/join subnet and wait them ready
 	go wait.Until(c.runAddSubnetWorker, time.Second, ctx.Done())
@@ -1037,6 +1068,10 @@ func (c *Controller) startWorkers(ctx context.Context) {
 
 	go wait.Until(func() {
 		c.resyncVpcNatGwConfig()
+	}, time.Second, ctx.Done())
+
+	go wait.Until(func() {
+		c.resyncVpcSslVpnGatewayConfig()
 	}, time.Second, ctx.Done())
 
 	go wait.Until(func() {

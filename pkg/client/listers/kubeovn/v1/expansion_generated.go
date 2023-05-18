@@ -93,3 +93,7 @@ type VpcDnsListerExpansion interface{}
 // VpcNatGatewayListerExpansion allows custom methods to be added to
 // VpcNatGatewayLister.
 type VpcNatGatewayListerExpansion interface{}
+
+// VpcSslVpnGatewayListerExpansion allows custom methods to be added to
+// VpcSslVpnGatewayLister.
+type VpcSslVpnGatewayListerExpansion interface{}

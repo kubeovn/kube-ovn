@@ -55,3 +55,5 @@ type VpcExpansion interface{}
 type VpcDnsExpansion interface{}
 
 type VpcNatGatewayExpansion interface{}
+
+type VpcSslVpnGatewayExpansion interface{}

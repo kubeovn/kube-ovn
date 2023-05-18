@@ -104,6 +104,10 @@ func (c *FakeKubeovnV1) VpcNatGateways() v1.VpcNatGatewayInterface {
 	return &FakeVpcNatGateways{c}
 }
 
+func (c *FakeKubeovnV1) VpcSslVpnGateways() v1.VpcSslVpnGatewayInterface {
+	return &FakeVpcSslVpnGateways{c}
+}
+
 // RESTClient returns a RESTClient that is used to communicate
 // with API server by this client implementation.
 func (c *FakeKubeovnV1) RESTClient() rest.Interface {

@@ -43,6 +43,8 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&VpcList{},
 		&VpcNatGateway{},
 		&VpcNatGatewayList{},
+		&VpcSslVpnGateway{},
+		&VpcSslVpnGatewayList{},
 		&Vip{},
 		&VipList{},
 		&IptablesEIP{},

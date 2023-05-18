@@ -62,6 +62,8 @@ type Interface interface {
 	VpcDnses() VpcDnsInformer
 	// VpcNatGateways returns a VpcNatGatewayInformer.
 	VpcNatGateways() VpcNatGatewayInformer
+	// VpcSslVpnGateways returns a VpcSslVpnGatewayInformer.
+	VpcSslVpnGateways() VpcSslVpnGatewayInformer
 }
 
 type version struct {
@@ -168,4 +170,9 @@ func (v *version) VpcDnses() VpcDnsInformer {
 // VpcNatGateways returns a VpcNatGatewayInformer.
 func (v *version) VpcNatGateways() VpcNatGatewayInformer {
 	return &vpcNatGatewayInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
+}
+
+// VpcSslVpnGateways returns a VpcSslVpnGatewayInformer.
+func (v *version) VpcSslVpnGateways() VpcSslVpnGatewayInformer {
+	return &vpcSslVpnGatewayInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
 }

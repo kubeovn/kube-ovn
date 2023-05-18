@@ -506,6 +506,53 @@ type VpcNatStatus struct {
 	Affinity        corev1.Affinity     `json:"affinity" patchStrategy:"merge"`
 }
 
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+type VpcNatGatewayList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata"`
+
+	Items []VpcNatGateway `json:"items"`
+}
+
+// +genclient
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +genclient:nonNamespaced
+// +resourceName=vpc-ssl-vpn-gateways
+
+type VpcSslVpnGateway struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec   VpcSslVpnSpec   `json:"spec"`
+	Status VpcSslVpnStatus `json:"status,omitempty"`
+}
+
+type VpcSslVpnSpec struct {
+	Subnet      string              `json:"subnet"`
+	Ip          string              `json:"ip"`
+	Selector    []string            `json:"selector"`
+	Tolerations []corev1.Toleration `json:"tolerations"`
+	Affinity    corev1.Affinity     `json:"affinity"`
+}
+
+type VpcSslVpnStatus struct {
+	Subnet      string              `json:"subnet"`
+	Ip          string              `json:"ip"`
+	Selector    []string            `json:"selector" patchStrategy:"merge"`
+	Tolerations []corev1.Toleration `json:"tolerations" patchStrategy:"merge"`
+	Affinity    corev1.Affinity     `json:"affinity" patchStrategy:"merge"`
+}
+
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+type VpcSslVpnGatewayList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata"`
+
+	Items []VpcSslVpnGateway `json:"items"`
+}
+
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +genclient:nonNamespaced
@@ -768,15 +815,6 @@ type IptablesDnatRuleList struct {
 	metav1.ListMeta `json:"metadata"`
 
 	Items []IptablesDnatRule `json:"items"`
-}
-
-// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-
-type VpcNatGatewayList struct {
-	metav1.TypeMeta `json:",inline"`
-	metav1.ListMeta `json:"metadata"`
-
-	Items []VpcNatGateway `json:"items"`
 }
 
 // +genclient

@@ -10,6 +10,7 @@ import (
 
 var (
 	vpcNatImage = ""
+	sslVpnImage = ""
 )
 
 func (c *Controller) resyncVpcNatImage() error {
@@ -26,5 +27,9 @@ func (c *Controller) resyncVpcNatImage() error {
 		return err
 	}
 	vpcNatImage = image
+	sslVpnImage, exist = cm.Data["ssl-vpn-image"]
+	if exist {
+		klog.Infof("ssl vpn server image: %s", sslVpnImage)
+	}
 	return nil
 }
