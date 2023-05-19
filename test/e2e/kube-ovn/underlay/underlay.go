@@ -599,7 +599,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		u2oOverlaySubnetNameCustomVPC = "subnet-" + framework.RandomSuffix()
 		cidr = framework.RandomCIDR(f.ClusterIpFamily)
 		overlaySubnetCustomVpc := framework.MakeSubnet(u2oOverlaySubnetNameCustomVPC, "", cidr, "", vpcName, "", nil, nil, []string{namespaceName})
-		overlaySubnetCustomVpc = subnetClient.CreateSync(overlaySubnetCustomVpc)
+		_ = subnetClient.CreateSync(overlaySubnetCustomVpc)
 
 		args = []string{"netexec", "--http-port", strconv.Itoa(curlListenPort)}
 		u2oPodOverlayCustomVPCAnnotations := map[string]string{
