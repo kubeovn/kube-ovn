@@ -216,7 +216,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		}
 
 		var mtu int
-		if providerNetwork != "" {
+		if providerNetwork != "" && !podSubnet.Spec.LogicalGateway && !podSubnet.Spec.U2OInterconnection {
 			node, err := csh.Controller.nodesLister.Get(csh.Config.NodeName)
 			if err != nil {
 				errMsg := fmt.Errorf("failed to get node %s: %v", csh.Config.NodeName, err)
