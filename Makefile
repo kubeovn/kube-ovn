@@ -722,7 +722,7 @@ scan:
 
 .PHONY: ut
 ut:
-	ginkgo -mod=mod -progress --always-emit-ginkgo-writer --slow-spec-threshold=60s test/unittest
+	ginkgo -mod=mod --show-node-events --poll-progress-after=60s -v test/unittest
 	go test ./pkg/...
 
 .PHONY: ipam-bench

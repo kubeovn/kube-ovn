@@ -1,13 +1,13 @@
 package qos
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/util/wait"
 	e2epodoutput "k8s.io/kubernetes/test/e2e/framework/pod/output"
 
 	"github.com/onsi/ginkgo/v2"
@@ -50,7 +50,7 @@ func waitOvsQosForPod(f *framework.Framework, table string, pod *corev1.Pod, exp
 	cmd := fmt.Sprintf(`ovs-vsctl --no-heading --columns=other_config --bare find %s external_ids:pod="%s/%s"`, table, pod.Namespace, pod.Name)
 
 	var config map[string]string
-	err := wait.PollImmediate(2*time.Second, 2*time.Minute, func() (bool, error) {
+	framework.WaitUntil(2*time.Second, 2*time.Minute, func(_ context.Context) (bool, error) {
 		output, err := e2epodoutput.RunHostCmd(ovsPod.Namespace, ovsPod.Name, cmd)
 		if err != nil {
 			return false, err
@@ -67,8 +67,7 @@ func waitOvsQosForPod(f *framework.Framework, table string, pod *corev1.Pod, exp
 
 		config = kvs
 		return true, nil
-	})
-	framework.ExpectNoError(err, "timed out getting ovs %s config for pod %s/%s", table, pod.Namespace, pod.Name)
+	}, "")
 
 	return config
 }

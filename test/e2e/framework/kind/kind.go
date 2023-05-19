@@ -1,7 +1,8 @@
 package kind
 
 import (
-	"fmt"
+	"context"
+	"errors"
 	"net"
 	"net/url"
 	"strings"
@@ -80,7 +81,7 @@ func (n *Node) ListRoutes(nonLinkLocalUnicast bool) ([]iproute.Route, error) {
 }
 
 func (n *Node) WaitLinkToDisappear(linkName string, interval time.Duration, deadline time.Time) error {
-	err := wait.PollImmediate(interval, time.Until(deadline), func() (bool, error) {
+	err := wait.PollUntilContextTimeout(context.Background(), interval, time.Until(deadline), false, func(_ context.Context) (bool, error) {
 		framework.Logf("Waiting for link %s in node %s to disappear", linkName, n.Name())
 		links, err := n.ListLinks()
 		if err != nil {
@@ -98,9 +99,11 @@ func (n *Node) WaitLinkToDisappear(linkName string, interval time.Duration, dead
 	if err == nil {
 		return nil
 	}
-	if framework.IsTimeout(err) {
-		return framework.TimeoutError(fmt.Sprintf("timed out while waiting for link %s in node %s to disappear", linkName, n.Name()))
+
+	if errors.Is(err, context.DeadlineExceeded) {
+		framework.Failf("timed out while waiting for link %s in node %s to disappear", linkName, n.Name())
 	}
+	framework.Failf("error occurred while waiting for link %s in node %s to disappear: %v", linkName, n.Name(), err)
 
 	return err
 }

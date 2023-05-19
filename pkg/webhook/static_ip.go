@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 
+	multustypes "gopkg.in/k8snetworkplumbingwg/multus-cni.v4/pkg/types"
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -17,7 +18,6 @@ import (
 
 	ovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
-	multustypes "gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/types"
 )
 
 var (

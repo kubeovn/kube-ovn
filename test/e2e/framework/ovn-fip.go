@@ -2,6 +2,7 @@ package framework
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/big"
 	"time"
@@ -10,6 +11,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/kubernetes/test/e2e/framework"
 
 	"github.com/onsi/gomega"
 
@@ -58,8 +60,8 @@ func (c *OvnFipClient) Patch(original, modified *apiv1.OvnFip) *apiv1.OvnFip {
 	ExpectNoError(err)
 
 	var patchedOvnFip *apiv1.OvnFip
-	err = wait.PollImmediate(2*time.Second, timeout, func() (bool, error) {
-		fip, err := c.OvnFipInterface.Patch(context.TODO(), original.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
+	err = wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+		fip, err := c.OvnFipInterface.Patch(ctx, original.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
 		if err != nil {
 			return handleWaitingAPIError(err, false, "patch ovn fip %q", original.Name)
 		}
@@ -70,10 +72,10 @@ func (c *OvnFipClient) Patch(original, modified *apiv1.OvnFip) *apiv1.OvnFip {
 		return patchedOvnFip.DeepCopy()
 	}
 
-	if IsTimeout(err) {
-		Failf("timed out while retrying to patch ovn fip %s", original.Name)
+	if errors.Is(err, context.DeadlineExceeded) {
+		Failf("timed out while retrying to patch OVN FIP %s", original.Name)
 	}
-	ExpectNoError(maybeTimeoutError(err, "patching ovn fip %s", original.Name))
+	Failf("error occurred while retrying to patch OVN FIP %s: %v", original.Name, err)
 
 	return nil
 }
@@ -133,22 +135,17 @@ func (c *OvnFipClient) WaitToBeUpdated(fip *apiv1.OvnFip, timeout time.Duration)
 
 // WaitToDisappear waits the given timeout duration for the specified ovn fip to disappear.
 func (c *OvnFipClient) WaitToDisappear(name string, interval, timeout time.Duration) error {
-	var lastOvnFip *apiv1.OvnFip
-	err := wait.PollImmediate(interval, timeout, func() (bool, error) {
-		Logf("Waiting for ovn fip %s to disappear", name)
-		_, err := c.OvnFipInterface.Get(context.TODO(), name, metav1.GetOptions{})
+	err := framework.Gomega().Eventually(context.Background(), framework.HandleRetry(func(ctx context.Context) (*apiv1.OvnFip, error) {
+		fip, err := c.OvnFipInterface.Get(ctx, name, metav1.GetOptions{})
 		if apierrors.IsNotFound(err) {
-			Logf("ovn fip %s no longer exists", name)
-			return true, nil
+			return nil, nil
 		}
-		return false, nil
-	})
-	if IsTimeout(err) {
-		return TimeoutError(fmt.Sprintf("timed out while waiting for ovn fip %s to disappear", name),
-			lastOvnFip,
-		)
+		return fip, err
+	})).WithTimeout(timeout).Should(gomega.BeNil())
+	if err != nil {
+		return fmt.Errorf("expected OVN FIP %s to not be found: %w", name, err)
 	}
-	return maybeTimeoutError(err, "waiting for ovn fip %s to disappear", name)
+	return nil
 }
 
 func MakeOvnFip(name, ovnEip, ipType, ipName string) *apiv1.OvnFip {

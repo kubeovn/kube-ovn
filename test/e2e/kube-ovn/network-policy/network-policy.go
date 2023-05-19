@@ -1,6 +1,7 @@
 package network_policy
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
 	"net"
@@ -11,7 +12,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	netv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
 	e2epodoutput "k8s.io/kubernetes/test/e2e/framework/pod/output"
@@ -86,7 +86,7 @@ var _ = framework.Describe("[group:network-policy]", func() {
 		pod = podClient.CreateSync(pod)
 
 		ginkgo.By("Getting nodes")
-		nodeList, err := e2enode.GetReadySchedulableNodes(cs)
+		nodeList, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
 		framework.ExpectNoError(err)
 		framework.ExpectNotEmpty(nodeList.Items)
 
@@ -116,19 +116,19 @@ var _ = framework.Describe("[group:network-policy]", func() {
 
 				ginkgo.By("Checking connection from node " + nodeName + " to " + podName + " via " + protocol)
 				ginkgo.By(fmt.Sprintf(`Executing %q in pod %s/%s`, cmd, hostPod.Namespace, hostPod.Name))
-				err := wait.PollImmediate(2*time.Second, time.Minute, func() (bool, error) {
+				framework.WaitUntil(2*time.Second, time.Minute, func(_ context.Context) (bool, error) {
 					_, err := e2epodoutput.RunHostCmd(hostPod.Namespace, hostPod.Name, cmd)
 					return err != nil, nil
-				})
+				}, "")
 				framework.ExpectNoError(err)
 			}
 
 			ginkgo.By("Checking connection from node " + podSameNode.Spec.NodeName + " to " + podName + " via " + protocol)
 			ginkgo.By(fmt.Sprintf(`Executing %q in pod %s/%s`, cmd, podSameNode.Namespace, podSameNode.Name))
-			err := wait.PollImmediate(2*time.Second, time.Minute, func() (bool, error) {
+			framework.WaitUntil(2*time.Second, time.Minute, func(_ context.Context) (bool, error) {
 				_, err := e2epodoutput.RunHostCmd(podSameNode.Namespace, podSameNode.Name, cmd)
 				return err == nil, nil
-			})
+			}, "")
 			framework.ExpectNoError(err)
 
 			// check one more time

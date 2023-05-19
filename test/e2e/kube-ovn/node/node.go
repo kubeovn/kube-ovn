@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	clientset "k8s.io/client-go/kubernetes"
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
@@ -68,7 +67,7 @@ var _ = framework.OrderedDescribe("[group:node]", func() {
 		join := subnetClient.Get("join")
 
 		ginkgo.By("Getting nodes")
-		nodeList, err := e2enode.GetReadySchedulableNodes(cs)
+		nodeList, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
 		framework.ExpectNoError(err)
 
 		ginkgo.By("Validating node annotations")
@@ -100,7 +99,7 @@ var _ = framework.OrderedDescribe("[group:node]", func() {
 			ips := strings.Split(util.GetIpAddrWithMask(node.Annotations[util.IpAddressAnnotation], join.Spec.CIDRBlock), ",")
 			framework.ExpectConsistOf(links[0].NonLinkLocalAddresses(), ips)
 
-			err = podClient.Delete(context.Background(), podName, metav1.DeleteOptions{})
+			err = podClient.Delete(podName)
 			framework.ExpectNoError(err)
 		}
 	})

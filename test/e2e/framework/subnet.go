@@ -2,6 +2,7 @@ package framework
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/big"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/kubernetes/test/e2e/framework"
 
 	"github.com/onsi/gomega"
 
@@ -57,8 +59,8 @@ func (c *SubnetClient) CreateSync(subnet *apiv1.Subnet) *apiv1.Subnet {
 // Update updates the subnet
 func (c *SubnetClient) Update(subnet *apiv1.Subnet, options metav1.UpdateOptions, timeout time.Duration) *apiv1.Subnet {
 	var updatedSubnet *apiv1.Subnet
-	err := wait.PollImmediate(2*time.Second, timeout, func() (bool, error) {
-		s, err := c.SubnetInterface.Update(context.TODO(), subnet, options)
+	err := wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+		s, err := c.SubnetInterface.Update(ctx, subnet, options)
 		if err != nil {
 			return handleWaitingAPIError(err, false, "update subnet %q", subnet.Name)
 		}
@@ -69,10 +71,10 @@ func (c *SubnetClient) Update(subnet *apiv1.Subnet, options metav1.UpdateOptions
 		return updatedSubnet.DeepCopy()
 	}
 
-	if IsTimeout(err) {
+	if errors.Is(err, context.DeadlineExceeded) {
 		Failf("timed out while retrying to update subnet %s", subnet.Name)
 	}
-	ExpectNoError(maybeTimeoutError(err, "updating subnet %s", subnet.Name))
+	Failf("error occurred while retrying to update subnet %s: %v", subnet.Name, err)
 
 	return nil
 }
@@ -93,8 +95,8 @@ func (c *SubnetClient) Patch(original, modified *apiv1.Subnet, timeout time.Dura
 	ExpectNoError(err)
 
 	var patchedSubnet *apiv1.Subnet
-	err = wait.PollImmediate(2*time.Second, timeout, func() (bool, error) {
-		s, err := c.SubnetInterface.Patch(context.TODO(), original.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
+	err = wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+		s, err := c.SubnetInterface.Patch(ctx, original.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
 		if err != nil {
 			return handleWaitingAPIError(err, false, "patch subnet %q", original.Name)
 		}
@@ -105,10 +107,10 @@ func (c *SubnetClient) Patch(original, modified *apiv1.Subnet, timeout time.Dura
 		return patchedSubnet.DeepCopy()
 	}
 
-	if IsTimeout(err) {
+	if errors.Is(err, context.DeadlineExceeded) {
 		Failf("timed out while retrying to patch subnet %s", original.Name)
 	}
-	ExpectNoError(maybeTimeoutError(err, "patching subnet %s", original.Name))
+	Failf("error occurred while retrying to patch subnet %s: %v", original.Name, err)
 
 	return nil
 }
@@ -205,7 +207,7 @@ func (c *SubnetClient) WaitToBeUpdated(subnet *apiv1.Subnet, timeout time.Durati
 // WaitUntil waits the given timeout duration for the specified condition to be met.
 func (c *SubnetClient) WaitUntil(name string, cond func(s *apiv1.Subnet) (bool, error), condDesc string, interval, timeout time.Duration) *apiv1.Subnet {
 	var subnet *apiv1.Subnet
-	err := wait.PollImmediate(interval, timeout, func() (bool, error) {
+	err := wait.PollUntilContextTimeout(context.Background(), interval, timeout, true, func(_ context.Context) (bool, error) {
 		Logf("Waiting for subnet %s to meet condition %q", name, condDesc)
 		subnet = c.Get(name).DeepCopy()
 		met, err := cond(subnet)
@@ -217,46 +219,28 @@ func (c *SubnetClient) WaitUntil(name string, cond func(s *apiv1.Subnet) (bool, 
 	if err == nil {
 		return subnet
 	}
-	if IsTimeout(err) {
+
+	if errors.Is(err, context.DeadlineExceeded) {
 		Failf("timed out while waiting for subnet %s to meet condition %q", name, condDesc)
 	}
-	Fail(maybeTimeoutError(err, "waiting for subnet %s to meet condition %q", name, condDesc).Error())
+	Failf("error occurred while waiting for subnet %s to meet condition %q: %v", name, condDesc, err)
+
 	return nil
 }
 
 // WaitToDisappear waits the given timeout duration for the specified subnet to disappear.
 func (c *SubnetClient) WaitToDisappear(name string, interval, timeout time.Duration) error {
-	var lastSubnet *apiv1.Subnet
-	err := wait.PollImmediate(interval, timeout, func() (bool, error) {
-		Logf("Waiting for subnet %s to disappear", name)
-		subnets, err := c.List(context.TODO(), metav1.ListOptions{})
-		if err != nil {
-			return handleWaitingAPIError(err, true, "listing subnets")
+	err := framework.Gomega().Eventually(context.Background(), framework.HandleRetry(func(ctx context.Context) (*apiv1.Subnet, error) {
+		subnet, err := c.SubnetInterface.Get(ctx, name, metav1.GetOptions{})
+		if apierrors.IsNotFound(err) {
+			return nil, nil
 		}
-		found := false
-		for i, subnet := range subnets.Items {
-			if subnet.Name == name {
-				Logf("Subnet %s still exists", name)
-				found = true
-				lastSubnet = &(subnets.Items[i])
-				break
-			}
-		}
-		if !found {
-			Logf("Subnet %s no longer exists", name)
-			return true, nil
-		}
-		return false, nil
-	})
-	if err == nil {
-		return nil
+		return subnet, err
+	})).WithTimeout(timeout).Should(gomega.BeNil())
+	if err != nil {
+		return fmt.Errorf("expected subnet %s to not be found: %w", name, err)
 	}
-	if IsTimeout(err) {
-		return TimeoutError(fmt.Sprintf("timed out while waiting for subnet %s to disappear", name),
-			lastSubnet,
-		)
-	}
-	return maybeTimeoutError(err, "waiting for subnet %s to disappear", name)
+	return nil
 }
 
 func MakeSubnet(name, vlan, cidr, gateway, vpc, provider string, excludeIPs, gatewayNodes, namespaces []string) *apiv1.Subnet {

@@ -1,6 +1,7 @@
 package kubectl_ko
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
 	"strings"
@@ -58,7 +59,7 @@ var _ = framework.Describe("[group:kubectl-ko]", func() {
 
 	framework.ConformanceIt(`should support "kubectl ko vsctl <node> show"`, func() {
 		ginkgo.By("Getting nodes")
-		nodeList, err := e2enode.GetReadySchedulableNodes(cs)
+		nodeList, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
 		framework.ExpectNoError(err)
 
 		for _, node := range nodeList.Items {
@@ -68,7 +69,7 @@ var _ = framework.Describe("[group:kubectl-ko]", func() {
 
 	framework.ConformanceIt(`should support "kubectl ko ofctl <node> show br-int"`, func() {
 		ginkgo.By("Getting nodes")
-		nodeList, err := e2enode.GetReadySchedulableNodes(cs)
+		nodeList, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
 		framework.ExpectNoError(err)
 
 		for _, node := range nodeList.Items {
@@ -78,7 +79,7 @@ var _ = framework.Describe("[group:kubectl-ko]", func() {
 
 	framework.ConformanceIt(`should support "kubectl ko dpctl <node> show"`, func() {
 		ginkgo.By("Getting nodes")
-		nodeList, err := e2enode.GetReadySchedulableNodes(cs)
+		nodeList, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
 		framework.ExpectNoError(err)
 
 		for _, node := range nodeList.Items {
@@ -88,7 +89,7 @@ var _ = framework.Describe("[group:kubectl-ko]", func() {
 
 	framework.ConformanceIt(`should support "kubectl ko appctl <node> list-commands"`, func() {
 		ginkgo.By("Getting nodes")
-		nodeList, err := e2enode.GetReadySchedulableNodes(cs)
+		nodeList, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
 		framework.ExpectNoError(err)
 
 		for _, node := range nodeList.Items {
@@ -201,7 +202,7 @@ var _ = framework.Describe("[group:kubectl-ko]", func() {
 		f.SkipVersionPriorTo(1, 12, "This feature was introduce in v1.12")
 
 		ginkgo.By("Getting nodes")
-		nodeList, err := e2enode.GetReadySchedulableNodes(cs)
+		nodeList, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
 		framework.ExpectNoError(err)
 		framework.ExpectNotNil(nodeList)
 		framework.ExpectNotEmpty(nodeList.Items)

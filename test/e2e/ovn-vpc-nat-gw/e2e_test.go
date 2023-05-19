@@ -149,7 +149,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 
 		if clusterName == "" {
 			ginkgo.By("Getting k8s nodes")
-			k8sNodes, err := e2enode.GetReadySchedulableNodes(cs)
+			k8sNodes, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
 			framework.ExpectNoError(err)
 
 			cluster, ok := kind.IsKindProvided(k8sNodes.Items[0].Spec.ProviderID)
@@ -205,7 +205,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 			pn = providerNetworkClient.CreateSync(pn)
 
 			ginkgo.By("Getting k8s nodes")
-			k8sNodes, err := e2enode.GetReadySchedulableNodes(cs)
+			k8sNodes, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
 			framework.ExpectNoError(err)
 
 			ginkgo.By("Validating node labels")
@@ -435,7 +435,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		dnat := makeOvnDnat(dnatName, dnatEipName, util.NatUsingVip, dnatVipName, "80", "8080", "tcp")
 		_ = ovnDnatRuleClient.CreateSync(dnat)
 
-		k8sNodes, err := e2enode.GetReadySchedulableNodes(cs)
+		k8sNodes, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
 		framework.ExpectNoError(err)
 		for _, node := range k8sNodes.Items {
 			// label should be true after setup node external gw
@@ -451,7 +451,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		ginkgo.By("Deleting ovn snat " + snatName)
 		ovnSnatRuleClient.DeleteSync(snatName)
 
-		k8sNodes, err = e2enode.GetReadySchedulableNodes(cs)
+		k8sNodes, err = e2enode.GetReadySchedulableNodes(context.Background(), cs)
 		framework.ExpectNoError(err)
 		for _, node := range k8sNodes.Items {
 			ginkgo.By("Deleting ovn eip " + node.Name)
@@ -553,7 +553,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		ginkgo.By("Deleting ovn eip " + defaultVpcLrpEipName)
 		ovnEipClient.DeleteSync(defaultVpcLrpEipName)
 
-		k8sNodes, err = e2enode.GetReadySchedulableNodes(cs)
+		k8sNodes, err = e2enode.GetReadySchedulableNodes(context.Background(), cs)
 		framework.ExpectNoError(err)
 		for _, node := range k8sNodes.Items {
 			// label should be false after remove node external gw

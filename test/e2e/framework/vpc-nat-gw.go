@@ -2,6 +2,7 @@ package framework
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/big"
 	"time"
@@ -10,6 +11,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/kubernetes/test/e2e/framework"
 
 	"github.com/onsi/gomega"
 
@@ -58,8 +60,8 @@ func (c *VpcNatGatewayClient) Patch(original, modified *apiv1.VpcNatGateway) *ap
 	ExpectNoError(err)
 
 	var patchedVpcNatGateway *apiv1.VpcNatGateway
-	err = wait.PollImmediate(2*time.Second, timeout, func() (bool, error) {
-		vpcNatGw, err := c.VpcNatGatewayInterface.Patch(context.TODO(), original.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
+	err = wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+		vpcNatGw, err := c.VpcNatGatewayInterface.Patch(ctx, original.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
 		if err != nil {
 			return handleWaitingAPIError(err, false, "patch vpc nat gw %q", original.Name)
 		}
@@ -70,10 +72,10 @@ func (c *VpcNatGatewayClient) Patch(original, modified *apiv1.VpcNatGateway) *ap
 		return patchedVpcNatGateway.DeepCopy()
 	}
 
-	if IsTimeout(err) {
-		Failf("timed out while retrying to patch vpc nat gw %s", original.Name)
+	if errors.Is(err, context.DeadlineExceeded) {
+		Failf("timed out while retrying to patch VPC NAT gateway %s", original.Name)
 	}
-	ExpectNoError(maybeTimeoutError(err, "patching vpc nat gw %s", original.Name))
+	Failf("error occurred while retrying to patch VPC NAT gateway %s: %v", original.Name, err)
 
 	return nil
 }
@@ -127,24 +129,19 @@ func (c *VpcNatGatewayClient) WaitToBeUpdated(vpcNatGw *apiv1.VpcNatGateway, tim
 	return false
 }
 
-// WaitToDisappear waits the given timeout duration for the specified vpc nat gw to disappear.
+// WaitToDisappear waits the given timeout duration for the specified VPC NAT gateway to disappear.
 func (c *VpcNatGatewayClient) WaitToDisappear(name string, interval, timeout time.Duration) error {
-	var lastVpcNatGateway *apiv1.VpcNatGateway
-	err := wait.PollImmediate(interval, timeout, func() (bool, error) {
-		Logf("Waiting for vpc nat gw %s to disappear", name)
-		_, err := c.VpcNatGatewayInterface.Get(context.TODO(), name, metav1.GetOptions{})
+	err := framework.Gomega().Eventually(context.Background(), framework.HandleRetry(func(ctx context.Context) (*apiv1.VpcNatGateway, error) {
+		gw, err := c.VpcNatGatewayInterface.Get(ctx, name, metav1.GetOptions{})
 		if apierrors.IsNotFound(err) {
-			Logf("vpc nat gw %s no longer exists", name)
-			return true, nil
+			return nil, nil
 		}
-		return false, nil
-	})
-	if IsTimeout(err) {
-		return TimeoutError(fmt.Sprintf("timed out while waiting for vpc nat gw %s to disappear", name),
-			lastVpcNatGateway,
-		)
+		return gw, err
+	})).WithTimeout(timeout).Should(gomega.BeNil())
+	if err != nil {
+		return fmt.Errorf("expected VPC NAT gateway %s to not be found: %w", name, err)
 	}
-	return maybeTimeoutError(err, "waiting for vpc nat gw %s to disappear", name)
+	return nil
 }
 
 func MakeVpcNatGateway(name, vpc, subnet, lanIp string) *apiv1.VpcNatGateway {

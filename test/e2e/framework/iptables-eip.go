@@ -2,6 +2,7 @@ package framework
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/big"
 	"time"
@@ -10,6 +11,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/kubernetes/test/e2e/framework"
 
 	"github.com/onsi/gomega"
 
@@ -58,8 +60,8 @@ func (c *IptablesEIPClient) Patch(original, modified *apiv1.IptablesEIP) *apiv1.
 	ExpectNoError(err)
 
 	var patchedIptablesEIP *apiv1.IptablesEIP
-	err = wait.PollImmediate(2*time.Second, timeout, func() (bool, error) {
-		eip, err := c.IptablesEIPInterface.Patch(context.TODO(), original.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
+	err = wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+		eip, err := c.IptablesEIPInterface.Patch(ctx, original.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
 		if err != nil {
 			return handleWaitingAPIError(err, false, "patch iptables eip %q", original.Name)
 		}
@@ -70,10 +72,10 @@ func (c *IptablesEIPClient) Patch(original, modified *apiv1.IptablesEIP) *apiv1.
 		return patchedIptablesEIP.DeepCopy()
 	}
 
-	if IsTimeout(err) {
-		Failf("timed out while retrying to patch iptables eip %s", original.Name)
+	if errors.Is(err, context.DeadlineExceeded) {
+		Failf("timed out while retrying to patch iptables EIP %s", original.Name)
 	}
-	ExpectNoError(maybeTimeoutError(err, "patching iptables eip %s", original.Name))
+	Failf("error occurred while retrying to patch iptables EIP %s: %v", original.Name, err)
 
 	return nil
 }
@@ -132,22 +134,17 @@ func (c *IptablesEIPClient) WaitToBeUpdated(eip *apiv1.IptablesEIP, timeout time
 
 // WaitToDisappear waits the given timeout duration for the specified iptables eip to disappear.
 func (c *IptablesEIPClient) WaitToDisappear(name string, interval, timeout time.Duration) error {
-	var lastIptablesEIP *apiv1.IptablesEIP
-	err := wait.PollImmediate(interval, timeout, func() (bool, error) {
-		Logf("Waiting for iptables eip %s to disappear", name)
-		_, err := c.IptablesEIPInterface.Get(context.TODO(), name, metav1.GetOptions{})
+	err := framework.Gomega().Eventually(context.Background(), framework.HandleRetry(func(ctx context.Context) (*apiv1.IptablesEIP, error) {
+		eip, err := c.IptablesEIPInterface.Get(ctx, name, metav1.GetOptions{})
 		if apierrors.IsNotFound(err) {
-			Logf("iptables eip %s no longer exists", name)
-			return true, nil
+			return nil, nil
 		}
-		return false, nil
-	})
-	if IsTimeout(err) {
-		return TimeoutError(fmt.Sprintf("timed out while waiting for iptables eip %s to disappear", name),
-			lastIptablesEIP,
-		)
+		return eip, err
+	})).WithTimeout(timeout).Should(gomega.BeNil())
+	if err != nil {
+		return fmt.Errorf("expected iptables EIP %s to not be found: %w", name, err)
 	}
-	return maybeTimeoutError(err, "waiting for iptables eip %s to disappear", name)
+	return nil
 }
 
 func MakeIptablesEIP(name, v4ip, v6ip, mac, natGwDp string) *apiv1.IptablesEIP {

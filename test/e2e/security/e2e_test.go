@@ -53,7 +53,7 @@ func checkDeployment(f *framework.Framework, name, process string, ports ...stri
 	framework.ExpectNoError(err, "deployment failed to complete")
 
 	ginkgo.By("Getting pods")
-	pods, err := deployment.GetPodsForDeployment(f.ClientSet, deploy)
+	pods, err := deployment.GetPodsForDeployment(context.Background(), f.ClientSet, deploy)
 	framework.ExpectNoError(err, "failed to get pods")
 	framework.ExpectNotEmpty(pods.Items)
 
@@ -139,7 +139,7 @@ var _ = framework.Describe("[group:security]", func() {
 
 	framework.ConformanceIt("kube-ovn-cni should listen on specified addresses", func() {
 		ginkgo.By("Getting nodes")
-		nodeList, err := e2enode.GetReadySchedulableNodes(cs)
+		nodeList, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
 		framework.ExpectNoError(err)
 		framework.ExpectNotEmpty(nodeList.Items)
 

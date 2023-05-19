@@ -29,7 +29,7 @@ func (f *Framework) EventClientNS(namespace string) *EventClient {
 // WaitToHaveEvent waits the provided resource to have the specified event(s)
 func (c *EventClient) WaitToHaveEvent(kind, name, eventType, reason, sourceComponent, sourceHost string) []corev1.Event {
 	var result []corev1.Event
-	err := wait.Poll(poll, timeout, func() (bool, error) {
+	err := wait.PollUntilContextTimeout(context.Background(), poll, timeout, false, func(ctx context.Context) (bool, error) {
 		Logf("Waiting for %s %s/%s to have event %s/%s", kind, c.f.Namespace.Name, name, eventType, reason)
 		selector := fields.Set{
 			"involvedObject.kind": kind,
@@ -38,7 +38,7 @@ func (c *EventClient) WaitToHaveEvent(kind, name, eventType, reason, sourceCompo
 			"reason":              reason,
 		}
 
-		events, err := c.List(context.TODO(), metav1.ListOptions{FieldSelector: selector.AsSelector().String()})
+		events, err := c.List(ctx, metav1.ListOptions{FieldSelector: selector.AsSelector().String()})
 		if err != nil {
 			return handleWaitingAPIError(err, true, "listing events")
 		}

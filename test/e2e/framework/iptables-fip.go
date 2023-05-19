@@ -2,6 +2,7 @@ package framework
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/big"
 	"time"
@@ -10,6 +11,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/kubernetes/test/e2e/framework"
 
 	"github.com/onsi/gomega"
 
@@ -58,8 +60,8 @@ func (c *IptablesFIPClient) Patch(original, modified *apiv1.IptablesFIPRule) *ap
 	ExpectNoError(err)
 
 	var patchedIptablesFIPRule *apiv1.IptablesFIPRule
-	err = wait.PollImmediate(2*time.Second, timeout, func() (bool, error) {
-		fip, err := c.IptablesFIPRuleInterface.Patch(context.TODO(), original.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
+	err = wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+		fip, err := c.IptablesFIPRuleInterface.Patch(ctx, original.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
 		if err != nil {
 			return handleWaitingAPIError(err, false, "patch iptables fip %q", original.Name)
 		}
@@ -70,10 +72,10 @@ func (c *IptablesFIPClient) Patch(original, modified *apiv1.IptablesFIPRule) *ap
 		return patchedIptablesFIPRule.DeepCopy()
 	}
 
-	if IsTimeout(err) {
-		Failf("timed out while retrying to patch iptables fip %s", original.Name)
+	if errors.Is(err, context.DeadlineExceeded) {
+		Failf("timed out while retrying to patch iptables FIP rule %s", original.Name)
 	}
-	ExpectNoError(maybeTimeoutError(err, "patching iptables fip %s", original.Name))
+	Failf("error occurred while retrying to patch iptables FIP rule %s: %v", original.Name, err)
 
 	return nil
 }
@@ -129,24 +131,19 @@ func (c *IptablesFIPClient) WaitToBeUpdated(fip *apiv1.IptablesFIPRule, timeout 
 	return false
 }
 
-// WaitToDisappear waits the given timeout duration for the specified iptables fip to disappear.
+// WaitToDisappear waits the given timeout duration for the specified iptables FIP rule to disappear.
 func (c *IptablesFIPClient) WaitToDisappear(name string, interval, timeout time.Duration) error {
-	var lastIptablesFIPRule *apiv1.IptablesFIPRule
-	err := wait.PollImmediate(interval, timeout, func() (bool, error) {
-		Logf("Waiting for iptables fip %s to disappear", name)
-		_, err := c.IptablesFIPRuleInterface.Get(context.TODO(), name, metav1.GetOptions{})
+	err := framework.Gomega().Eventually(context.Background(), framework.HandleRetry(func(ctx context.Context) (*apiv1.IptablesFIPRule, error) {
+		rule, err := c.IptablesFIPRuleInterface.Get(ctx, name, metav1.GetOptions{})
 		if apierrors.IsNotFound(err) {
-			Logf("iptables fip %s no longer exists", name)
-			return true, nil
+			return nil, nil
 		}
-		return false, nil
-	})
-	if IsTimeout(err) {
-		return TimeoutError(fmt.Sprintf("timed out while waiting for iptables fip %s to disappear", name),
-			lastIptablesFIPRule,
-		)
+		return rule, err
+	})).WithTimeout(timeout).Should(gomega.BeNil())
+	if err != nil {
+		return fmt.Errorf("expected iptables FIP rule %s to not be found: %w", name, err)
 	}
-	return maybeTimeoutError(err, "waiting for iptables fip %s to disappear", name)
+	return nil
 }
 
 func MakeIptablesFIPRule(name, eip, internalIp string) *apiv1.IptablesFIPRule {

@@ -2,6 +2,7 @@ package framework
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/big"
 	"time"
@@ -10,6 +11,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/kubernetes/test/e2e/framework"
 
 	"github.com/onsi/gomega"
 
@@ -58,8 +60,8 @@ func (c *VpcClient) Patch(original, modified *kubeovnv1.Vpc) *kubeovnv1.Vpc {
 	ExpectNoError(err)
 
 	var patchedVpc *kubeovnv1.Vpc
-	err = wait.PollImmediate(2*time.Second, timeout, func() (bool, error) {
-		vpc, err := c.VpcInterface.Patch(context.TODO(), original.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
+	err = wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+		vpc, err := c.VpcInterface.Patch(ctx, original.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
 		if err != nil {
 			return handleWaitingAPIError(err, false, "patch vpc %q", original.Name)
 		}
@@ -70,10 +72,10 @@ func (c *VpcClient) Patch(original, modified *kubeovnv1.Vpc) *kubeovnv1.Vpc {
 		return patchedVpc.DeepCopy()
 	}
 
-	if IsTimeout(err) {
-		Failf("timed out while retrying to patch vpc %s", original.Name)
+	if errors.Is(err, context.DeadlineExceeded) {
+		Failf("timed out while retrying to patch VPC %s", original.Name)
 	}
-	ExpectNoError(maybeTimeoutError(err, "patching vpc %s", original.Name))
+	Failf("error occurred while retrying to patch VPC %s: %v", original.Name, err)
 
 	return nil
 }
@@ -128,39 +130,19 @@ func (c *VpcClient) WaitToBeUpdated(vpc *kubeovnv1.Vpc, timeout time.Duration) b
 	return false
 }
 
-// WaitToDisappear waits the given timeout duration for the specified vpc to disappear.
+// WaitToDisappear waits the given timeout duration for the specified VPC to disappear.
 func (c *VpcClient) WaitToDisappear(name string, interval, timeout time.Duration) error {
-	var lastVpc *kubeovnv1.Vpc
-	err := wait.PollImmediate(interval, timeout, func() (bool, error) {
-		Logf("Waiting for vpc %s to disappear", name)
-		subnets, err := c.List(context.TODO(), metav1.ListOptions{})
-		if err != nil {
-			return handleWaitingAPIError(err, true, "listing subnets")
+	err := framework.Gomega().Eventually(context.Background(), framework.HandleRetry(func(ctx context.Context) (*kubeovnv1.Vpc, error) {
+		vpc, err := c.VpcInterface.Get(ctx, name, metav1.GetOptions{})
+		if apierrors.IsNotFound(err) {
+			return nil, nil
 		}
-		found := false
-		for i, subnet := range subnets.Items {
-			if subnet.Name == name {
-				Logf("vpc %s still exists", name)
-				found = true
-				lastVpc = &(subnets.Items[i])
-				break
-			}
-		}
-		if !found {
-			Logf("vpc %s no longer exists", name)
-			return true, nil
-		}
-		return false, nil
-	})
-	if err == nil {
-		return nil
+		return vpc, err
+	})).WithTimeout(timeout).Should(gomega.BeNil())
+	if err != nil {
+		return fmt.Errorf("expected VPC %s to not be found: %w", name, err)
 	}
-	if IsTimeout(err) {
-		return TimeoutError(fmt.Sprintf("timed out while waiting for subnet %s to disappear", name),
-			lastVpc,
-		)
-	}
-	return maybeTimeoutError(err, "waiting for subnet %s to disappear", name)
+	return nil
 }
 
 func MakeVpc(name, gatewayV4 string, enableExternal, enableBfd bool) *kubeovnv1.Vpc {

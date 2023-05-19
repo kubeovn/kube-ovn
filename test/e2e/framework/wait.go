@@ -17,51 +17,14 @@ limitations under the License.
 package framework
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/util/wait"
 )
-
-type timeoutError struct {
-	msg             string
-	observedObjects []interface{}
-}
-
-func (e *timeoutError) Error() string {
-	return e.msg
-}
-
-func TimeoutError(msg string, observedObjects ...interface{}) *timeoutError {
-	return &timeoutError{
-		msg:             msg,
-		observedObjects: observedObjects,
-	}
-}
-
-// maybeTimeoutError returns a TimeoutError if err is a timeout. Otherwise, wrap err.
-// taskFormat and taskArgs should be the task being performed when the error occurred,
-// e.g. "waiting for pod to be running".
-func maybeTimeoutError(err error, taskFormat string, taskArgs ...interface{}) error {
-	if IsTimeout(err) {
-		return TimeoutError(fmt.Sprintf("timed out while "+taskFormat, taskArgs...))
-	} else if err != nil {
-		return fmt.Errorf("error while %s: %w", fmt.Sprintf(taskFormat, taskArgs...), err)
-	} else {
-		return nil
-	}
-}
-
-func IsTimeout(err error) bool {
-	if err == wait.ErrWaitTimeout {
-		return true
-	}
-	if _, ok := err.(*timeoutError); ok {
-		return true
-	}
-	return false
-}
 
 // handleWaitingAPIErrror handles an error from an API request in the context of a Wait function.
 // If the error is retryable, sleep the recommended delay and ignore the error.
@@ -99,11 +62,11 @@ func shouldRetry(err error) (retry bool, retryAfter time.Duration) {
 }
 
 // WaitUntil waits the condition to be met
-func WaitUntil(cond func() (bool, error), condDesc string) {
-	if err := wait.PollImmediate(2*time.Second, timeout, cond); err != nil {
-		if IsTimeout(err) {
+func WaitUntil(interval, timeout time.Duration, cond func(context.Context) (bool, error), condDesc string) {
+	if err := wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, false, cond); err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
 			Failf("timed out while waiting for the condition to be met: %s", condDesc)
 		}
-		Fail(maybeTimeoutError(err, "waiting for the condition %q to be met", condDesc).Error())
+		Failf("error occurred while waiting for the condition %q to be met", condDesc)
 	}
 }

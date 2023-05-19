@@ -10,7 +10,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/wait"
 	v1apps "k8s.io/client-go/kubernetes/typed/apps/v1"
 	"k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/kubernetes/test/e2e/framework/deployment"
@@ -41,7 +40,7 @@ func (c *DeploymentClient) Get(name string) *appsv1.Deployment {
 }
 
 func (c *DeploymentClient) GetPods(deploy *appsv1.Deployment) (*corev1.PodList, error) {
-	return deployment.GetPodsForDeployment(c.f.ClientSet, deploy)
+	return deployment.GetPodsForDeployment(context.Background(), c.f.ClientSet, deploy)
 }
 
 // Create creates a new deployment according to the framework specifications
@@ -81,37 +80,17 @@ func (c *DeploymentClient) WaitToComplete(deploy *appsv1.Deployment) error {
 
 // WaitToDisappear waits the given timeout duration for the specified deployment to disappear.
 func (c *DeploymentClient) WaitToDisappear(name string, interval, timeout time.Duration) error {
-	var lastDeployment *appsv1.Deployment
-	err := wait.PollImmediate(interval, timeout, func() (bool, error) {
-		Logf("Waiting for deployment %s to disappear", name)
-		deployments, err := c.List(context.TODO(), metav1.ListOptions{})
-		if err != nil {
-			return handleWaitingAPIError(err, true, "listing deployments")
+	err := framework.Gomega().Eventually(context.Background(), framework.HandleRetry(func(ctx context.Context) (*appsv1.Deployment, error) {
+		deploy, err := c.DeploymentInterface.Get(ctx, name, metav1.GetOptions{})
+		if apierrors.IsNotFound(err) {
+			return nil, nil
 		}
-		found := false
-		for i, deploy := range deployments.Items {
-			if deploy.Name == name {
-				Logf("Deployment %s still exists", name)
-				found = true
-				lastDeployment = &(deployments.Items[i])
-				break
-			}
-		}
-		if !found {
-			Logf("Deployment %s no longer exists", name)
-			return true, nil
-		}
-		return false, nil
-	})
-	if err == nil {
-		return nil
+		return deploy, err
+	})).WithTimeout(timeout).Should(gomega.BeNil())
+	if err != nil {
+		return fmt.Errorf("expected deployment %s to not be found: %w", name, err)
 	}
-	if IsTimeout(err) {
-		return TimeoutError(fmt.Sprintf("timed out while waiting for deployment %s to disappear", name),
-			lastDeployment,
-		)
-	}
-	return maybeTimeoutError(err, "waiting for deployment %s to disappear", name)
+	return nil
 }
 
 func MakeDeployment(name string, replicas int32, podLabels, podAnnotations map[string]string, containerName, image string, strategyType appsv1.DeploymentStrategyType) *appsv1.Deployment {

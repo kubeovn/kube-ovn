@@ -942,12 +942,12 @@ func (c *Controller) startWorkers(ctx context.Context) {
 	go wait.Until(c.runAddSubnetWorker, time.Second, ctx.Done())
 	go wait.Until(c.runAddVlanWorker, time.Second, ctx.Done())
 	go wait.Until(c.runAddNamespaceWorker, time.Second, ctx.Done())
-	err := wait.PollUntil(3*time.Second, func() (done bool, err error) {
+	err := wait.PollUntilContextCancel(ctx, 3*time.Second, true, func(_ context.Context) (done bool, err error) {
 		subnets := []string{c.config.DefaultLogicalSwitch, c.config.NodeSwitch}
 		klog.Infof("wait for subnets %v ready", subnets)
 
 		return c.allSubnetReady(subnets...)
-	}, ctx.Done())
+	})
 	if err != nil {
 		klog.Fatalf("wait default/join subnet ready error: %v", err)
 	}

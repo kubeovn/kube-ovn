@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 
+	"github.com/spf13/pflag"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -15,16 +16,11 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	ovnwebhook "github.com/kubeovn/kube-ovn/pkg/webhook"
 	"github.com/kubeovn/kube-ovn/versions"
-	"github.com/spf13/pflag"
 )
 
-const (
-	hookServerCertDir = "/tmp/k8s-webhook-server/serving-certs"
-)
+const hookServerCertDir = "/tmp/k8s-webhook-server/serving-certs"
 
-var (
-	scheme = runtime.NewScheme()
-)
+var scheme = runtime.NewScheme()
 
 func init() {
 	if err := corev1.AddToScheme(scheme); err != nil {
@@ -65,10 +61,10 @@ func main() {
 	ctrl.SetLogger(klogr.New())
 
 	// Create a webhook server.
-	hookServer := &ctrlwebhook.Server{
+	hookServer := ctrlwebhook.NewServer(ctrlwebhook.Options{
 		Port:    *port,
 		CertDir: hookServerCertDir,
-	}
+	})
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme: scheme,
@@ -79,14 +75,14 @@ func main() {
 		panic(err)
 	}
 
-	validatingHook, err := ovnwebhook.NewValidatingHook(mgr.GetCache())
+	validatingHook, err := ovnwebhook.NewValidatingHook(mgr.GetClient(), mgr.GetScheme(), mgr.GetCache())
 	if err != nil {
 		panic(err)
 	}
 
-	klog.Infof("register path /validate-ip")
+	klog.Infof("register path /validating")
 	// Register the webhooks in the server.
-	hookServer.Register("/validate-ip", &ctrlwebhook.Admission{Handler: validatingHook})
+	hookServer.Register("/validating", &ctrlwebhook.Admission{Handler: validatingHook})
 
 	if err := mgr.Add(hookServer); err != nil {
 		panic(err)

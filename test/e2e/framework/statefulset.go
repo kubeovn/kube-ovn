@@ -9,8 +9,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/wait"
 	v1apps "k8s.io/client-go/kubernetes/typed/apps/v1"
+	"k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/kubernetes/test/e2e/framework/statefulset"
 
 	"github.com/onsi/gomega"
@@ -39,7 +39,7 @@ func (c *StatefulSetClient) Get(name string) *appsv1.StatefulSet {
 }
 
 func (c *StatefulSetClient) GetPods(sts *appsv1.StatefulSet) *corev1.PodList {
-	pods := statefulset.GetPodList(c.f.ClientSet, sts)
+	pods := statefulset.GetPodList(context.Background(), c.f.ClientSet, sts)
 	statefulset.SortStatefulPods(pods)
 	return pods
 }
@@ -76,42 +76,22 @@ func (c *StatefulSetClient) DeleteSync(name string) {
 
 func (c *StatefulSetClient) WaitForRunningAndReady(sts *appsv1.StatefulSet) {
 	Logf("Waiting up to %v for statefulset %s to be running and ready", timeout, sts.Name)
-	statefulset.WaitForRunningAndReady(c.f.ClientSet, *sts.Spec.Replicas, sts)
+	statefulset.WaitForRunningAndReady(context.Background(), c.f.ClientSet, *sts.Spec.Replicas, sts)
 }
 
 // WaitToDisappear waits the given timeout duration for the specified statefulset to disappear.
 func (c *StatefulSetClient) WaitToDisappear(name string, interval, timeout time.Duration) error {
-	var lastStatefulSet *appsv1.StatefulSet
-	err := wait.PollImmediate(interval, timeout, func() (bool, error) {
-		Logf("Waiting for statefulset %s to disappear", name)
-		statefulsets, err := c.List(context.TODO(), metav1.ListOptions{})
-		if err != nil {
-			return handleWaitingAPIError(err, true, "listing statefulsets")
+	err := framework.Gomega().Eventually(context.Background(), framework.HandleRetry(func(ctx context.Context) (*appsv1.StatefulSet, error) {
+		sts, err := c.StatefulSetInterface.Get(ctx, name, metav1.GetOptions{})
+		if apierrors.IsNotFound(err) {
+			return nil, nil
 		}
-		found := false
-		for i, sts := range statefulsets.Items {
-			if sts.Name == name {
-				Logf("StatefulSet %s still exists", name)
-				found = true
-				lastStatefulSet = &(statefulsets.Items[i])
-				break
-			}
-		}
-		if !found {
-			Logf("StatefulSet %s no longer exists", name)
-			return true, nil
-		}
-		return false, nil
-	})
-	if err == nil {
-		return nil
+		return sts, err
+	})).WithTimeout(timeout).Should(gomega.BeNil())
+	if err != nil {
+		return fmt.Errorf("expected statefulset %s to not be found: %w", name, err)
 	}
-	if IsTimeout(err) {
-		return TimeoutError(fmt.Sprintf("timed out while waiting for statefulset %s to disappear", name),
-			lastStatefulSet,
-		)
-	}
-	return maybeTimeoutError(err, "waiting for statefulset %s to disappear", name)
+	return nil
 }
 
 func MakeStatefulSet(name, svcName string, replicas int32, labels map[string]string, image string) *appsv1.StatefulSet {

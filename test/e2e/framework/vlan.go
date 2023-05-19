@@ -2,6 +2,7 @@ package framework
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -46,8 +47,8 @@ func (c *VlanClient) Patch(original, modified *apiv1.Vlan, timeout time.Duration
 	ExpectNoError(err)
 
 	var patchedVlan *apiv1.Vlan
-	err = wait.PollImmediate(2*time.Second, timeout, func() (bool, error) {
-		pn, err := c.VlanInterface.Patch(context.TODO(), original.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
+	err = wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+		pn, err := c.VlanInterface.Patch(ctx, original.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
 		if err != nil {
 			return handleWaitingAPIError(err, false, "patch vlan %q", original.Name)
 		}
@@ -58,10 +59,10 @@ func (c *VlanClient) Patch(original, modified *apiv1.Vlan, timeout time.Duration
 		return patchedVlan.DeepCopy()
 	}
 
-	if IsTimeout(err) {
-		Failf("timed out while retrying to patch vlan %s", original.Name)
+	if errors.Is(err, context.DeadlineExceeded) {
+		Failf("timed out while retrying to patch VLAN %s", original.Name)
 	}
-	ExpectNoError(maybeTimeoutError(err, "patching vlan %s", original.Name))
+	Failf("error occurred while retrying to patch VLAN %s: %v", original.Name, err)
 
 	return nil
 }

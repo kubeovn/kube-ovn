@@ -2,14 +2,13 @@ package vip
 
 import (
 	"context"
-	"fmt"
 	"math/big"
 
-	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/onsi/ginkgo/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 )
 
@@ -59,29 +58,29 @@ var _ = framework.Describe("[group:webhook-vip]", func() {
 		ginkgo.By("validating subnet")
 		vip.Spec.Subnet = ""
 		_, err := vipClient.VipInterface.Create(context.TODO(), vip, metav1.CreateOptions{})
-		framework.ExpectError(err, fmt.Errorf("subnet parameter cannot be empty"))
+		framework.ExpectError(err, "subnet parameter cannot be empty")
 
 		ginkgo.By("validating wrong subnet")
 		vip.Spec.Subnet = "abc"
 		_, err = vipClient.VipInterface.Create(context.TODO(), vip, metav1.CreateOptions{})
-		framework.ExpectError(err, fmt.Errorf("Subnet.kubeovn.io \"%s\" not found", vip.Spec.Subnet))
+		framework.ExpectError(err, `Subnet.kubeovn.io "%s" not found`, vip.Spec.Subnet)
 
 		ginkgo.By("Validating vip usage with wrong v4ip")
 		vip.Spec.Subnet = subnetName
 		vip.Spec.V4ip = "10.10.10.10.10"
 		_, err = vipClient.VipInterface.Create(context.TODO(), vip, metav1.CreateOptions{})
-		framework.ExpectError(err, fmt.Errorf("%s is not a valid ip", vip.Spec.V4ip))
+		framework.ExpectError(err, "%s is not a valid ip", vip.Spec.V4ip)
 
 		ginkgo.By("Validating vip usage with wrong v6ip")
 		vip.Spec.V4ip = ""
 		vip.Spec.V6ip = "2001:250:207::eff2::2"
 		_, err = vipClient.VipInterface.Create(context.TODO(), vip, metav1.CreateOptions{})
-		framework.ExpectError(err, fmt.Errorf("%s is not a valid ip", vip.Spec.V6ip))
+		framework.ExpectError(err, "%s is not a valid ip", vip.Spec.V6ip)
 
 		ginkgo.By("validate ip not in subnet cidr")
 		vip.Spec.V6ip = ""
 		vip.Spec.V4ip = util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(lastIPv4), big.NewInt(10)))
 		_, err = vipClient.VipInterface.Create(context.TODO(), vip, metav1.CreateOptions{})
-		framework.ExpectError(err, fmt.Errorf("%s is not in the range of subnet %s", vip.Spec.V4ip, vip.Spec.Subnet))
+		framework.ExpectError(err, "%s is not in the range of subnet %s", vip.Spec.V4ip, vip.Spec.Subnet)
 	})
 })
