@@ -70,7 +70,7 @@ e2e-build:
 .PHONY: k8s-conformance-e2e
 k8s-conformance-e2e:
 	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/k8s-network
-	ginkgo $(GINKGO_PARALLEL_OPT) --randomize-all --always-emit-ginkgo-writer --timeout=1h \
+	ginkgo $(GINKGO_PARALLEL_OPT) --randomize-all -v --timeout=1h \
 		$(call ginkgo_option,focus,$(K8S_CONFORMANCE_E2E_FOCUS)) \
 		$(call ginkgo_option,skip,$(K8S_CONFORMANCE_E2E_SKIP)) \
 		./test/e2e/k8s-network/k8s-network.test
@@ -78,14 +78,14 @@ k8s-conformance-e2e:
 .PHONY: k8s-netpol-legacy-e2e
 k8s-netpol-legacy-e2e:
 	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/k8s-network
-	ginkgo -p --randomize-all --always-emit-ginkgo-writer --timeout=2h \
+	ginkgo $(GINKGO_PARALLEL_OPT) --randomize-all -v --timeout=2h \
 		$(call ginkgo_option,focus,$(K8S_NETPOL_LEGACY_E2E_FOCUS)) \
 		./test/e2e/k8s-network/k8s-network.test
 
 .PHONY: k8s-netpol-e2e
 k8s-netpol-e2e:
 	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/k8s-network
-	ginkgo -p --randomize-all --always-emit-ginkgo-writer --timeout=2h \
+	ginkgo -p --randomize-all -v --timeout=2h \
 		$(call ginkgo_option,focus,$(K8S_NETPOL_E2E_FOCUS)) \
 		$(call ginkgo_option,skip,$(K8S_NETPOL_E2E_SKIP)) \
 		./test/e2e/k8s-network/k8s-network.test
@@ -110,7 +110,7 @@ kube-ovn-conformance-e2e:
 	E2E_BRANCH=$(E2E_BRANCH) \
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
-	ginkgo $(GINKGO_PARALLEL_OPT) --randomize-all --always-emit-ginkgo-writer \
+	ginkgo $(GINKGO_PARALLEL_OPT) --randomize-all -v \
 		--focus=CNI:Kube-OVN ./test/e2e/kube-ovn/kube-ovn.test
 
 .PHONY: kube-ovn-ic-conformance-e2e
@@ -119,7 +119,7 @@ kube-ovn-ic-conformance-e2e:
 	E2E_BRANCH=$(E2E_BRANCH) \
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
-	ginkgo $(GINKGO_PARALLEL_OPT) --randomize-all --always-emit-ginkgo-writer \
+	ginkgo $(GINKGO_PARALLEL_OPT) --randomize-all -v \
 		--focus=CNI:Kube-OVN ./test/e2e/ovn-ic/ovn-ic.test
 
 .PHONY: kube-ovn-submariner-conformance-e2e
@@ -134,7 +134,7 @@ kube-ovn-lb-svc-conformance-e2e:
 	E2E_BRANCH=$(E2E_BRANCH) \
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
-	ginkgo $(GINKGO_PARALLEL_OPT) --randomize-all --always-emit-ginkgo-writer \
+	ginkgo $(GINKGO_PARALLEL_OPT) --randomize-all -v \
 		--focus=CNI:Kube-OVN ./test/e2e/lb-svc/lb-svc.test
 
 .PHONY: iptables-vpc-nat-gw-conformance-e2e
@@ -143,7 +143,7 @@ iptables-vpc-nat-gw-conformance-e2e:
 	E2E_BRANCH=$(E2E_BRANCH) \
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
-	ginkgo $(GINKGO_PARALLEL_OPT) --randomize-all --always-emit-ginkgo-writer \
+	ginkgo $(GINKGO_PARALLEL_OPT) --randomize-all -v \
 		--focus=CNI:Kube-OVN ./test/e2e/iptables-vpc-nat-gw/iptables-vpc-nat-gw.test
 
 .PHONY: ovn-vpc-nat-gw-conformance-e2e
@@ -152,7 +152,7 @@ ovn-vpc-nat-gw-conformance-e2e:
 	E2E_BRANCH=$(E2E_BRANCH) \
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
-	ginkgo $(GINKGO_PARALLEL_OPT) --randomize-all --always-emit-ginkgo-writer \
+	ginkgo $(GINKGO_PARALLEL_OPT) --randomize-all -v \
 		--focus=CNI:Kube-OVN ./test/e2e/ovn-vpc-nat-gw/ovn-vpc-nat-gw.test
 
 .PHONY: kube-ovn-security-e2e
@@ -161,7 +161,7 @@ kube-ovn-security-e2e:
 	E2E_BRANCH=$(E2E_BRANCH) \
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
-	ginkgo $(GINKGO_PARALLEL_OPT) --randomize-all --always-emit-ginkgo-writer \
+	ginkgo $(GINKGO_PARALLEL_OPT) --randomize-all -v \
 		--focus=CNI:Kube-OVN ./test/e2e/security/security.test
 
 .PHONY: kube-ovn-kubevirt-e2e
@@ -170,7 +170,7 @@ kube-ovn-kubevirt-e2e:
 	E2E_BRANCH=$(E2E_BRANCH) \
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
-	ginkgo $(GINKGO_PARALLEL_OPT) --randomize-all --always-emit-ginkgo-writer \
+	ginkgo $(GINKGO_PARALLEL_OPT) --randomize-all -v \
 		--focus=CNI:Kube-OVN ./test/e2e/kubevirt/kubevirt.test
 
 .PHONY: kube-ovn-webhook-e2e
@@ -179,7 +179,7 @@ kube-ovn-webhook-e2e:
 	E2E_BRANCH=$(E2E_BRANCH) \
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
-	ginkgo $(GINKGO_PARALLEL_OPT) --randomize-all --always-emit-ginkgo-writer \
+	ginkgo $(GINKGO_PARALLEL_OPT) --randomize-all -v \
 		--focus=CNI:Kube-OVN ./test/e2e/webhook/webhook.test
 
 .PHONY: kubectl-ko-log

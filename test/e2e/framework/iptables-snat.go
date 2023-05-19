@@ -2,6 +2,7 @@ package framework
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/big"
 	"time"
@@ -10,6 +11,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/kubernetes/test/e2e/framework"
 
 	"github.com/onsi/gomega"
 
@@ -58,8 +60,8 @@ func (c *IptablesSnatClient) Patch(original, modified *apiv1.IptablesSnatRule) *
 	ExpectNoError(err)
 
 	var patchedIptablesSnatRule *apiv1.IptablesSnatRule
-	err = wait.PollImmediate(2*time.Second, timeout, func() (bool, error) {
-		snat, err := c.IptablesSnatRuleInterface.Patch(context.TODO(), original.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
+	err = wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+		snat, err := c.IptablesSnatRuleInterface.Patch(ctx, original.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
 		if err != nil {
 			return handleWaitingAPIError(err, false, "patch iptables snat %q", original.Name)
 		}
@@ -70,10 +72,10 @@ func (c *IptablesSnatClient) Patch(original, modified *apiv1.IptablesSnatRule) *
 		return patchedIptablesSnatRule.DeepCopy()
 	}
 
-	if IsTimeout(err) {
-		Failf("timed out while retrying to patch iptables snat %s", original.Name)
+	if errors.Is(err, context.DeadlineExceeded) {
+		Failf("timed out while retrying to patch iptables SNAT rule %s", original.Name)
 	}
-	ExpectNoError(maybeTimeoutError(err, "patching iptables snat %s", original.Name))
+	Failf("error occurred while retrying to patch iptables SNAT rule %s: %v", original.Name, err)
 
 	return nil
 }
@@ -129,24 +131,19 @@ func (c *IptablesSnatClient) WaitToBeUpdated(snat *apiv1.IptablesSnatRule, timeo
 	return false
 }
 
-// WaitToDisappear waits the given timeout duration for the specified iptables snat to disappear.
+// WaitToDisappear waits the given timeout duration for the specified iptables SNAT rule to disappear.
 func (c *IptablesSnatClient) WaitToDisappear(name string, interval, timeout time.Duration) error {
-	var lastIptablesSnatRule *apiv1.IptablesSnatRule
-	err := wait.PollImmediate(interval, timeout, func() (bool, error) {
-		Logf("Waiting for iptables snat %s to disappear", name)
-		_, err := c.IptablesSnatRuleInterface.Get(context.TODO(), name, metav1.GetOptions{})
+	err := framework.Gomega().Eventually(context.Background(), framework.HandleRetry(func(ctx context.Context) (*apiv1.IptablesSnatRule, error) {
+		rule, err := c.IptablesSnatRuleInterface.Get(ctx, name, metav1.GetOptions{})
 		if apierrors.IsNotFound(err) {
-			Logf("iptables snat %s no longer exists", name)
-			return true, nil
+			return nil, nil
 		}
-		return false, nil
-	})
-	if IsTimeout(err) {
-		return TimeoutError(fmt.Sprintf("timed out while waiting for iptables snat %s to disappear", name),
-			lastIptablesSnatRule,
-		)
+		return rule, err
+	})).WithTimeout(timeout).Should(gomega.BeNil())
+	if err != nil {
+		return fmt.Errorf("expected iptables SNAT rule %s to not be found: %w", name, err)
 	}
-	return maybeTimeoutError(err, "waiting for iptables snat %s to disappear", name)
+	return nil
 }
 
 func MakeIptablesSnatRule(name, eip, internalCIDR string) *apiv1.IptablesSnatRule {

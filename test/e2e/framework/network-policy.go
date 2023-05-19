@@ -8,8 +8,8 @@ import (
 	netv1 "k8s.io/api/networking/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/wait"
 	v1net "k8s.io/client-go/kubernetes/typed/networking/v1"
+	"k8s.io/kubernetes/test/e2e/framework"
 
 	"github.com/onsi/gomega"
 )
@@ -61,35 +61,15 @@ func (c *NetworkPolicyClient) DeleteSync(name string) {
 
 // WaitToDisappear waits the given timeout duration for the specified network policy to disappear.
 func (c *NetworkPolicyClient) WaitToDisappear(name string, interval, timeout time.Duration) error {
-	var lastNetpol *netv1.NetworkPolicy
-	err := wait.PollImmediate(interval, timeout, func() (bool, error) {
-		Logf("Waiting for network policy %s to disappear", name)
-		policies, err := c.List(context.TODO(), metav1.ListOptions{})
-		if err != nil {
-			return handleWaitingAPIError(err, true, "listing network policies")
+	err := framework.Gomega().Eventually(context.Background(), framework.HandleRetry(func(ctx context.Context) (*netv1.NetworkPolicy, error) {
+		policy, err := c.NetworkPolicyInterface.Get(ctx, name, metav1.GetOptions{})
+		if apierrors.IsNotFound(err) {
+			return nil, nil
 		}
-		found := false
-		for i, netpol := range policies.Items {
-			if netpol.Name == name {
-				Logf("Network policy %s still exists", name)
-				found = true
-				lastNetpol = &(policies.Items[i])
-				break
-			}
-		}
-		if !found {
-			Logf("Network policy %s no longer exists", name)
-			return true, nil
-		}
-		return false, nil
-	})
-	if err == nil {
-		return nil
+		return policy, err
+	})).WithTimeout(timeout).Should(gomega.BeNil())
+	if err != nil {
+		return fmt.Errorf("expected network policy %s to not be found: %w", name, err)
 	}
-	if IsTimeout(err) {
-		return TimeoutError(fmt.Sprintf("timed out while waiting for network policy %s to disappear", name),
-			lastNetpol,
-		)
-	}
-	return maybeTimeoutError(err, "waiting for network policy %s to disappear", name)
+	return nil
 }

@@ -2,17 +2,21 @@ package framework
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
-	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	v1 "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/typed/kubeovn/v1"
-	"github.com/kubeovn/kube-ovn/pkg/util"
-	"github.com/onsi/gomega"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/kubernetes/test/e2e/framework"
+
+	"github.com/onsi/gomega"
+
+	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	v1 "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/typed/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 // IpClient is a struct for Ip client.
@@ -70,8 +74,8 @@ func (c *IpClient) Patch(original, modified *apiv1.IP, timeout time.Duration) *a
 	ExpectNoError(err)
 
 	var patchedIp *apiv1.IP
-	err = wait.PollImmediate(2*time.Second, timeout, func() (bool, error) {
-		p, err := c.IPInterface.Patch(context.TODO(), original.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
+	err = wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+		p, err := c.IPInterface.Patch(ctx, original.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
 		if err != nil {
 			return handleWaitingAPIError(err, false, "patch Ip %q", original.Name)
 		}
@@ -82,10 +86,10 @@ func (c *IpClient) Patch(original, modified *apiv1.IP, timeout time.Duration) *a
 		return patchedIp.DeepCopy()
 	}
 
-	if IsTimeout(err) {
-		Failf("timed out while retrying to patch Ip %s", original.Name)
+	if errors.Is(err, context.DeadlineExceeded) {
+		Failf("timed out while retrying to patch IP %s", original.Name)
 	}
-	ExpectNoError(maybeTimeoutError(err, "patching Ip %s", original.Name))
+	Failf("error occurred while retrying to patch IP %s: %v", original.Name, err)
 
 	return nil
 }
@@ -107,22 +111,17 @@ func (c *IpClient) DeleteSync(name string) {
 
 // WaitToDisappear waits the given timeout duration for the specified IP to disappear.
 func (c *IpClient) WaitToDisappear(name string, interval, timeout time.Duration) error {
-	var lastIp *apiv1.IP
-	err := wait.PollImmediate(interval, timeout, func() (bool, error) {
-		Logf("Waiting for Ip %s to disappear", name)
-		_, err := c.IPInterface.Get(context.TODO(), name, metav1.GetOptions{})
+	err := framework.Gomega().Eventually(context.Background(), framework.HandleRetry(func(ctx context.Context) (*apiv1.IP, error) {
+		ip, err := c.IPInterface.Get(ctx, name, metav1.GetOptions{})
 		if apierrors.IsNotFound(err) {
-			Logf("Ip %s no longer exists", name)
-			return true, nil
+			return nil, nil
 		}
-		return false, nil
-	})
-	if IsTimeout(err) {
-		return TimeoutError(fmt.Sprintf("timed out while waiting for IP %s to disappear", name),
-			lastIp,
-		)
+		return ip, err
+	})).WithTimeout(timeout).Should(gomega.BeNil())
+	if err != nil {
+		return fmt.Errorf("expected IP %s to not be found: %w", name, err)
 	}
-	return maybeTimeoutError(err, "waiting for IP %s to disappear", name)
+	return nil
 }
 
 func MakeIp(name, ns, subnet string) *apiv1.IP {

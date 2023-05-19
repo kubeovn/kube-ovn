@@ -5,7 +5,6 @@ import (
 	"strings"
 	"time"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	e2epod "k8s.io/kubernetes/test/e2e/framework/pod"
 
@@ -152,14 +151,14 @@ var _ = framework.Describe("[group:ipam]", func() {
 
 		ginkgo.By("Deleting pods for deployment " + deployName)
 		for _, pod := range pods.Items {
-			err = podClient.Delete(context.TODO(), pod.Name, metav1.DeleteOptions{})
+			err = podClient.Delete(pod.Name)
 			framework.ExpectNoError(err, "failed to delete pod "+pod.Name)
 		}
 		err = deployClient.WaitToComplete(deploy)
 		framework.ExpectNoError(err)
 
 		ginkgo.By("Waiting for new pods to be ready")
-		err = e2epod.WaitForPodsRunningReady(cs, namespaceName, *deploy.Spec.Replicas, 0, time.Minute, nil)
+		err = e2epod.WaitForPodsRunningReady(context.Background(), cs, namespaceName, *deploy.Spec.Replicas, 0, time.Minute)
 		framework.ExpectNoError(err, "timed out waiting for pods to be ready")
 
 		ginkgo.By("Getting pods for deployment " + deployName + " after deletion")
@@ -215,7 +214,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 
 		ginkgo.By("Deleting pods for statefulset " + stsName)
 		for _, pod := range pods.Items {
-			err := podClient.Delete(context.TODO(), pod.Name, metav1.DeleteOptions{})
+			err := podClient.Delete(pod.Name)
 			framework.ExpectNoError(err, "failed to delete pod "+pod.Name)
 		}
 		stsClient.WaitForRunningAndReady(sts)
@@ -278,7 +277,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 
 		ginkgo.By("Deleting pods for statefulset " + stsName)
 		for _, pod := range pods.Items {
-			err := podClient.Delete(context.TODO(), pod.Name, metav1.DeleteOptions{})
+			err := podClient.Delete(pod.Name)
 			framework.ExpectNoError(err, "failed to delete pod "+pod.Name)
 		}
 		stsClient.WaitForRunningAndReady(sts)
@@ -346,7 +345,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 
 		ginkgo.By("Deleting pods for statefulset " + stsName)
 		for _, pod := range pods.Items {
-			err := podClient.Delete(context.TODO(), pod.Name, metav1.DeleteOptions{})
+			err := podClient.Delete(pod.Name)
 			framework.ExpectNoError(err, "failed to delete pod "+pod.Name)
 		}
 		stsClient.WaitForRunningAndReady(sts)

@@ -1,13 +1,13 @@
 package service
 
 import (
+	"context"
 	"os/exec"
 	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/apimachinery/pkg/util/wait"
 
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 	"github.com/onsi/ginkgo/v2"
@@ -64,7 +64,7 @@ var _ = framework.Describe("[group:service]", func() {
 
 		checkContainsClusterIP := func(v6ClusterIp string, isContain bool) {
 			execCmd := "kubectl ko nbctl --format=csv --data=bare --no-heading --columns=vips find Load_Balancer name=cluster-tcp-loadbalancer"
-			_ = wait.PollImmediate(time.Second, 30*time.Second, func() (bool, error) {
+			framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 				output, err := exec.Command("bash", "-c", execCmd).CombinedOutput()
 				framework.Logf("output is %s ", output)
 				framework.Logf("v6ClusterIp is %s ", v6ClusterIp)
@@ -74,7 +74,7 @@ var _ = framework.Describe("[group:service]", func() {
 					return true, nil
 				}
 				return false, nil
-			})
+			}, "")
 
 			output, err := exec.Command("bash", "-c", execCmd).CombinedOutput()
 			framework.ExpectNoError(err)

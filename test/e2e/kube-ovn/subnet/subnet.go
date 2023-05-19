@@ -13,7 +13,6 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework/deployment"
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
@@ -54,7 +53,7 @@ func checkIptablesRulesOnNode(f *framework.Framework, node, table, chain, subnet
 		fmt.Sprintf(`-A %s -d %s -m comment --comment "%s,%s"`, chain, cidr, util.OvnSubnetGatewayIptables, subnet),
 		fmt.Sprintf(`-A %s -s %s -m comment --comment "%s,%s"`, chain, cidr, util.OvnSubnetGatewayIptables, subnet),
 	}
-	framework.WaitUntil(func() (bool, error) {
+	framework.WaitUntil(2*time.Second, time.Minute, func(_ context.Context) (bool, error) {
 		output := e2epodoutput.RunHostCmdOrDie(ovsPod.Namespace, ovsPod.Name, cmd)
 		rules := strings.Split(output, "\n")
 		for _, r := range expectedRules {
@@ -274,7 +273,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 
 	framework.ConformanceIt("should create subnet with centralized gateway", func() {
 		ginkgo.By("Getting nodes")
-		nodes, err := e2enode.GetReadySchedulableNodes(cs)
+		nodes, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
 		framework.ExpectNoError(err)
 		framework.ExpectNotEmpty(nodes.Items)
 
@@ -322,7 +321,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 
 	framework.ConformanceIt("should be able to switch gateway mode to centralized", func() {
 		ginkgo.By("Getting nodes")
-		nodes, err := e2enode.GetReadySchedulableNodes(cs)
+		nodes, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
 		framework.ExpectNoError(err)
 		framework.ExpectNotEmpty(nodes.Items)
 
@@ -415,7 +414,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		f.SkipVersionPriorTo(1, 12, "Support for enableEcmp in subnet is introduced in v1.12")
 
 		ginkgo.By("Getting nodes")
-		nodes, err := e2enode.GetReadySchedulableNodes(cs)
+		nodes, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
 		framework.ExpectNoError(err)
 		framework.ExpectNotEmpty(nodes.Items)
 
@@ -479,7 +478,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 
 	framework.ConformanceIt("should support distributed external egress gateway", func() {
 		ginkgo.By("Getting nodes")
-		nodes, err := e2enode.GetReadySchedulableNodes(cs)
+		nodes, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
 		framework.ExpectNoError(err)
 		framework.ExpectNotEmpty(nodes.Items)
 
@@ -572,7 +571,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 
 	framework.ConformanceIt("should support centralized external egress gateway", func() {
 		ginkgo.By("Getting nodes")
-		nodes, err := e2enode.GetReadySchedulableNodes(cs)
+		nodes, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
 		framework.ExpectNoError(err)
 		framework.ExpectNotEmpty(nodes.Items)
 
@@ -708,7 +707,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 			podClient.DeleteSync(fmt.Sprintf("%s%d", podNamePre, i))
 		}
 
-		_ = wait.PollImmediate(time.Second, 30*time.Second, func() (bool, error) {
+		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 			subnet = subnetClient.Get(subnetName)
 			if cidrV4 != "" {
 				if subnet.Status.V4UsingIPRange != "" || subnet.Status.V4AvailableIPRange != fmt.Sprintf("%s-%s", startIPv4, lastIPv4) {
@@ -721,7 +720,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 				}
 			}
 			return true, nil
-		})
+		}, "")
 
 		if cidrV4 != "" {
 			framework.ExpectEqual(subnet.Status.V4UsingIPRange, "")
@@ -770,7 +769,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		for i := 1; i <= podCount; i++ {
 			podClient.DeleteSync(fmt.Sprintf("%s%d", podNamePre, i))
 		}
-		_ = wait.PollImmediate(time.Second, 30*time.Second, func() (bool, error) {
+		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 			subnet = subnetClient.Get(subnetName)
 			if cidrV4 != "" {
 				if subnet.Status.V4UsingIPRange != "" || subnet.Status.V4AvailableIPRange != fmt.Sprintf("%s-%s", startIPv4, lastIPv4) {
@@ -783,7 +782,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 				}
 			}
 			return true, nil
-		})
+		}, "")
 
 		if cidrV4 != "" {
 			framework.ExpectEqual(subnet.Status.V4UsingIPRange, "")
@@ -836,7 +835,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		}
 
 		isSuccess := false
-		_ = wait.PollImmediate(time.Second, 30*time.Second, func() (bool, error) {
+		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 			subnet = subnetClient.Get(subnetName)
 			framework.Logf("subnet status usingips %d availableIPs %d ", subnet.Status.V4UsingIPs, subnet.Status.V4AvailableIPs)
 			if cidrV4 != "" {
@@ -849,7 +848,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 				isSuccess = checkFunc(subnet.Status.V6UsingIPRange, subnet.Status.V6AvailableIPRange, startIPv6, lastIPv6, replicas, false)
 			}
 			return isSuccess, nil
-		})
+		}, "")
 		if cidrV4 != "" {
 			checkFunc(subnet.Status.V4UsingIPRange, subnet.Status.V4AvailableIPRange, startIPv4, lastIPv4, replicas, true)
 		}
@@ -891,7 +890,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		}
 
 		isSuccess = false
-		_ = wait.PollImmediate(time.Second, 30*time.Second, func() (bool, error) {
+		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 			subnet = subnetClient.Get(subnetName)
 			if cidrV4 != "" {
 				isSuccess = checkFunc2(subnet.Status.V4UsingIPRange, subnet.Status.V4AvailableIPRange, startIPv4, lastIPv4, replicas, false)
@@ -905,7 +904,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 			}
 
 			return isSuccess, nil
-		})
+		}, "")
 
 		if cidrV4 != "" {
 			checkFunc2(subnet.Status.V4UsingIPRange, subnet.Status.V4AvailableIPRange, startIPv4, lastIPv4, replicas, true)
@@ -937,7 +936,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		modifiedSubnet := subnet.DeepCopy()
 		modifiedSubnet.Spec.EnableLb = &enableLb
 		subnet = subnetClient.PatchSync(subnet, modifiedSubnet)
-		err = wait.PollImmediate(2*time.Second, 1*time.Minute, func() (bool, error) {
+		framework.WaitUntil(2*time.Second, time.Minute, func(_ context.Context) (bool, error) {
 			execCmd = "kubectl ko nbctl --format=csv --data=bare --no-heading --columns=load_balancer find logical-switch " + fmt.Sprintf("name=%s", subnetName)
 			output, err = exec.Command("bash", "-c", execCmd).CombinedOutput()
 			if err != nil {
@@ -947,17 +946,13 @@ var _ = framework.Describe("[group:subnet]", func() {
 				return true, nil
 			}
 			return false, nil
-		})
-		if framework.IsTimeout(err) {
-			framework.Failf("timed out while wait lb record of subnet %s to clear", subnet.Name)
-		}
-		framework.ExpectNoError(err)
+		}, fmt.Sprintf("OVN LB record for subnet %s to be empty", subnet.Name))
 
 		ginkgo.By("Validating empty subnet spec enableLb field, should keep same value as args enableLb")
 		modifiedSubnet = subnet.DeepCopy()
 		modifiedSubnet.Spec.EnableLb = nil
 		subnet = subnetClient.PatchSync(subnet, modifiedSubnet)
-		err = wait.PollImmediate(2*time.Second, 1*time.Minute, func() (bool, error) {
+		framework.WaitUntil(2*time.Second, time.Minute, func(_ context.Context) (bool, error) {
 			execCmd = "kubectl ko nbctl --format=csv --data=bare --no-heading --columns=load_balancer find logical-switch " + fmt.Sprintf("name=%s", subnetName)
 			output, err = exec.Command("bash", "-c", execCmd).CombinedOutput()
 			if err != nil {
@@ -967,11 +962,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 				return true, nil
 			}
 			return false, nil
-		})
-		if framework.IsTimeout(err) {
-			framework.Failf("timed out while wait lb record of subnet %s to sync", subnet.Name)
-		}
-		framework.ExpectNoError(err)
+		}, fmt.Sprintf("OVN LB record for subnet %s to sync", subnet.Name))
 	})
 
 	framework.ConformanceIt("should support subnet add gateway event and metrics", func() {
@@ -982,7 +973,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		subnet = subnetClient.CreateSync(subnet)
 
 		ginkgo.By("Getting nodes")
-		nodes, err := e2enode.GetReadySchedulableNodes(cs)
+		nodes, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
 		framework.ExpectNoError(err)
 		framework.ExpectNotEmpty(nodes.Items)
 

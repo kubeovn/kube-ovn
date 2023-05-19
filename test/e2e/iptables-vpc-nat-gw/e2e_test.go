@@ -104,7 +104,7 @@ var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 
 		if clusterName == "" {
 			ginkgo.By("Getting k8s nodes")
-			k8sNodes, err := e2enode.GetReadySchedulableNodes(cs)
+			k8sNodes, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
 			framework.ExpectNoError(err)
 
 			cluster, ok := kind.IsKindProvided(k8sNodes.Items[0].Spec.ProviderID)
@@ -187,7 +187,7 @@ var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 		framework.ExpectNoError(err, "getting docker network "+dockerNetworkName)
 
 		ginkgo.By("Getting k8s nodes")
-		_, err = e2enode.GetReadySchedulableNodes(cs)
+		_, err = e2enode.GetReadySchedulableNodes(context.Background(), cs)
 		framework.ExpectNoError(err)
 
 		ginkgo.By("Getting network attachment fefinition " + networkAttachDefName)

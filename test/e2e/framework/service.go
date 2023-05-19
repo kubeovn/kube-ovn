@@ -2,6 +2,7 @@ package framework
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -11,9 +12,11 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
+	"k8s.io/kubernetes/test/e2e/framework"
+
+	"github.com/onsi/gomega"
 
 	"github.com/kubeovn/kube-ovn/pkg/util"
-	"github.com/onsi/gomega"
 )
 
 // ServiceClient is a struct for service client.
@@ -58,8 +61,8 @@ func (c *ServiceClient) Patch(original, modified *corev1.Service) *corev1.Servic
 	ExpectNoError(err)
 
 	var patchedService *corev1.Service
-	err = wait.PollImmediate(2*time.Second, timeout, func() (bool, error) {
-		s, err := c.ServiceInterface.Patch(context.TODO(), original.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
+	err = wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+		s, err := c.ServiceInterface.Patch(ctx, original.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
 		if err != nil {
 			return handleWaitingAPIError(err, false, "patch service %q", original.Name)
 		}
@@ -70,10 +73,10 @@ func (c *ServiceClient) Patch(original, modified *corev1.Service) *corev1.Servic
 		return patchedService.DeepCopy()
 	}
 
-	if IsTimeout(err) {
+	if errors.Is(err, context.DeadlineExceeded) {
 		Failf("timed out while retrying to patch service %s", original.Name)
 	}
-	ExpectNoError(maybeTimeoutError(err, "patching service %s", original.Name))
+	Failf("error occurred while retrying to patch service %s: %v", original.Name, err)
 
 	return nil
 }
@@ -102,7 +105,7 @@ func (c *ServiceClient) DeleteSync(name string) {
 // WaitUntil waits the given timeout duration for the specified condition to be met.
 func (c *ServiceClient) WaitUntil(name string, cond func(s *corev1.Service) (bool, error), condDesc string, interval, timeout time.Duration) *corev1.Service {
 	var service *corev1.Service
-	err := wait.PollImmediate(interval, timeout, func() (bool, error) {
+	err := wait.PollUntilContextTimeout(context.Background(), interval, timeout, false, func(_ context.Context) (bool, error) {
 		Logf("Waiting for service %s to meet condition %q", name, condDesc)
 		service = c.Get(name).DeepCopy()
 		met, err := cond(service)
@@ -119,46 +122,28 @@ func (c *ServiceClient) WaitUntil(name string, cond func(s *corev1.Service) (boo
 	if err == nil {
 		return service
 	}
-	if IsTimeout(err) {
+
+	if errors.Is(err, context.DeadlineExceeded) {
 		Failf("timed out while waiting for service %s to meet condition %q", name, condDesc)
 	}
-	Fail(maybeTimeoutError(err, "waiting for service %s to meet condition %q", name, condDesc).Error())
+	Failf("error occurred while waiting for service %s to meet condition %q: %v", name, condDesc, err)
+
 	return nil
 }
 
 // WaitToDisappear waits the given timeout duration for the specified service to disappear.
 func (c *ServiceClient) WaitToDisappear(name string, interval, timeout time.Duration) error {
-	var lastService *corev1.Service
-	err := wait.PollImmediate(interval, timeout, func() (bool, error) {
-		Logf("Waiting for service %s to disappear", name)
-		services, err := c.List(context.TODO(), metav1.ListOptions{})
-		if err != nil {
-			return handleWaitingAPIError(err, true, "listing services")
+	err := framework.Gomega().Eventually(context.Background(), framework.HandleRetry(func(ctx context.Context) (*corev1.Service, error) {
+		svc, err := c.ServiceInterface.Get(ctx, name, metav1.GetOptions{})
+		if apierrors.IsNotFound(err) {
+			return nil, nil
 		}
-		found := false
-		for i, service := range services.Items {
-			if service.Name == name {
-				Logf("Service %s still exists", name)
-				found = true
-				lastService = &(services.Items[i])
-				break
-			}
-		}
-		if !found {
-			Logf("Service %s no longer exists", name)
-			return true, nil
-		}
-		return false, nil
-	})
-	if err == nil {
-		return nil
+		return svc, err
+	})).WithTimeout(timeout).Should(gomega.BeNil())
+	if err != nil {
+		return fmt.Errorf("expected service %s to not be found: %w", name, err)
 	}
-	if IsTimeout(err) {
-		return TimeoutError(fmt.Sprintf("timed out while waiting for service %s to disappear", name),
-			lastService,
-		)
-	}
-	return maybeTimeoutError(err, "waiting for service %s to disappear", name)
+	return nil
 }
 
 func MakeService(name string, svcType corev1.ServiceType, annotations, selector map[string]string, ports []corev1.ServicePort, affinity corev1.ServiceAffinity) *corev1.Service {

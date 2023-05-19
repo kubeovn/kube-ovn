@@ -14,10 +14,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Mellanox/sriovnet"
-	sriovutilfs "github.com/Mellanox/sriovnet/pkg/utils/filesystem"
 	"github.com/containernetworking/plugins/pkg/ns"
 	"github.com/containernetworking/plugins/pkg/utils/sysctl"
+	"github.com/k8snetworkplumbingwg/sriovnet"
+	sriovutilfs "github.com/k8snetworkplumbingwg/sriovnet/pkg/utils/filesystem"
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"

@@ -2,6 +2,7 @@ package framework
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/big"
 	"time"
@@ -10,6 +11,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/kubernetes/test/e2e/framework"
 
 	"github.com/onsi/gomega"
 
@@ -58,8 +60,8 @@ func (c *OvnSnatRuleClient) Patch(original, modified *apiv1.OvnSnatRule) *apiv1.
 	ExpectNoError(err)
 
 	var patchedOvnSnatRule *apiv1.OvnSnatRule
-	err = wait.PollImmediate(2*time.Second, timeout, func() (bool, error) {
-		snat, err := c.OvnSnatRuleInterface.Patch(context.TODO(), original.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
+	err = wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+		snat, err := c.OvnSnatRuleInterface.Patch(ctx, original.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
 		if err != nil {
 			return handleWaitingAPIError(err, false, "patch ovn snat %q", original.Name)
 		}
@@ -70,10 +72,10 @@ func (c *OvnSnatRuleClient) Patch(original, modified *apiv1.OvnSnatRule) *apiv1.
 		return patchedOvnSnatRule.DeepCopy()
 	}
 
-	if IsTimeout(err) {
-		Failf("timed out while retrying to patch ovn snat %s", original.Name)
+	if errors.Is(err, context.DeadlineExceeded) {
+		Failf("timed out while retrying to patch OVN SNAT rule %s", original.Name)
 	}
-	ExpectNoError(maybeTimeoutError(err, "patching ovn snat %s", original.Name))
+	Failf("error occurred while retrying to patch OVN SNAT rule %s: %v", original.Name, err)
 
 	return nil
 }
@@ -131,24 +133,19 @@ func (c *OvnSnatRuleClient) WaitToBeUpdated(snat *apiv1.OvnSnatRule, timeout tim
 	return false
 }
 
-// WaitToDisappear waits the given timeout duration for the specified ovn snat to disappear.
+// WaitToDisappear waits the given timeout duration for the specified OVN SNAT rule to disappear.
 func (c *OvnSnatRuleClient) WaitToDisappear(name string, interval, timeout time.Duration) error {
-	var lastOvnSnatRule *apiv1.OvnSnatRule
-	err := wait.PollImmediate(interval, timeout, func() (bool, error) {
-		Logf("Waiting for ovn snat %s to disappear", name)
-		_, err := c.OvnSnatRuleInterface.Get(context.TODO(), name, metav1.GetOptions{})
+	err := framework.Gomega().Eventually(context.Background(), framework.HandleRetry(func(ctx context.Context) (*apiv1.OvnSnatRule, error) {
+		rule, err := c.OvnSnatRuleInterface.Get(ctx, name, metav1.GetOptions{})
 		if apierrors.IsNotFound(err) {
-			Logf("ovn snat %s no longer exists", name)
-			return true, nil
+			return nil, nil
 		}
-		return false, nil
-	})
-	if IsTimeout(err) {
-		return TimeoutError(fmt.Sprintf("timed out while waiting for ovn snat %s to disappear", name),
-			lastOvnSnatRule,
-		)
+		return rule, err
+	})).WithTimeout(timeout).Should(gomega.BeNil())
+	if err != nil {
+		return fmt.Errorf("expected OVN SNAT rule %s to not be found: %w", name, err)
 	}
-	return maybeTimeoutError(err, "waiting for ovn snat %s to disappear", name)
+	return nil
 }
 
 func MakeOvnSnatRule(name, ovnEip, vpcSubnet, ipName string) *apiv1.OvnSnatRule {

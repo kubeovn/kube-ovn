@@ -1,6 +1,7 @@
 package underlay
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"os/exec"
@@ -11,7 +12,6 @@ import (
 	dockertypes "github.com/docker/docker/api/types"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
 
@@ -91,7 +91,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 
 		if clusterName == "" {
 			ginkgo.By("Getting k8s nodes")
-			k8sNodes, err := e2enode.GetReadySchedulableNodes(cs)
+			k8sNodes, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
 			framework.ExpectNoError(err)
 
 			cluster, ok := kind.IsKindProvided(k8sNodes.Items[0].Spec.ProviderID)
@@ -164,7 +164,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 			pn = providerNetworkClient.CreateSync(pn)
 
 			ginkgo.By("Getting k8s nodes")
-			k8sNodes, err := e2enode.GetReadySchedulableNodes(cs)
+			k8sNodes, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
 			framework.ExpectNoError(err)
 
 			ginkgo.By("Validating node labels")
@@ -527,7 +527,6 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		modifiedSubnet := subnet.DeepCopy()
 		modifiedSubnet.Spec.U2OInterconnection = false
 		subnetClient.PatchSync(subnet, modifiedSubnet)
-		time.Sleep(5 * time.Second)
 
 		underlayPod = podClient.CreateSync(originUnderlayPod)
 		subnet = subnetClient.Get(subnetName)
@@ -609,13 +608,13 @@ func checkU2OItems(isEnableU2O bool, subnet *apiv1.Subnet, underlayPod, overlayP
 				framework.ExpectEqual(int(subnet.Status.V6UsingIPs), 1)
 			}
 		}
-		agName := strings.Replace(fmt.Sprintf("%s.u2o_exclude_ip.%s", subnet.Name, protocolStr), "-", ".", -1)
+		asName := strings.Replace(fmt.Sprintf("%s.u2o_exclude_ip.%s", subnet.Name, protocolStr), "-", ".", -1)
 		ginkgo.By(fmt.Sprintf("checking underlay subnet's policy1 route %s", protocolStr))
-		hitPolicyStr := fmt.Sprintf("%d %s.dst == $%s && %s.src == %s allow", util.SubnetRouterPolicyPriority, protocolStr, agName, protocolStr, cidr)
+		hitPolicyStr := fmt.Sprintf("%d %s.dst == $%s && %s.src == %s allow", util.SubnetRouterPolicyPriority, protocolStr, asName, protocolStr, cidr)
 		checkPolicy(hitPolicyStr, isEnableU2O)
 
 		ginkgo.By(fmt.Sprintf("checking underlay subnet's policy2 route %s", protocolStr))
-		hitPolicyStr = fmt.Sprintf("%d %s.dst == %s && %s.dst != $%s allow", util.SubnetRouterPolicyPriority, protocolStr, cidr, protocolStr, agName)
+		hitPolicyStr = fmt.Sprintf("%d %s.dst == %s && %s.dst != $%s allow", util.SubnetRouterPolicyPriority, protocolStr, cidr, protocolStr, asName)
 		checkPolicy(hitPolicyStr, isEnableU2O)
 
 		ginkgo.By(fmt.Sprintf("checking underlay subnet's policy3 route %s", protocolStr))
@@ -715,18 +714,17 @@ func checkReachable(podName, podNamespace, sourceIP, targetIP, targetPort string
 }
 
 func checkPolicy(hitPolicyStr string, expectPolicyExist bool) {
-	policyExist := false
-	_ = wait.PollImmediate(time.Second, 10*time.Second, func() (bool, error) {
-		output, _ := exec.Command("bash", "-c", "kubectl ko nbctl lr-policy-list ovn-cluster").CombinedOutput()
+	framework.WaitUntil(time.Second, 10*time.Second, func(_ context.Context) (bool, error) {
+		output, err := exec.Command("bash", "-c", "kubectl ko nbctl lr-policy-list ovn-cluster").CombinedOutput()
+		if err != nil {
+			return false, err
+		}
 		outputStr := string(output)
-		lines := strings.Split(outputStr, "\n")
-		for _, line := range lines {
-			if strings.Contains(strings.Join(strings.Fields(line), " "), hitPolicyStr) {
-				policyExist = true
+		for _, line := range strings.Split(outputStr, "\n") {
+			if strings.Contains(strings.Join(strings.Fields(line), " "), hitPolicyStr) == expectPolicyExist {
 				return true, nil
 			}
 		}
 		return false, nil
-	})
-	framework.ExpectEqual(policyExist, expectPolicyExist)
+	}, "")
 }

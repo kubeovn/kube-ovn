@@ -131,7 +131,7 @@ webhooks:
     service:
       namespace: kube-system
       name: kube-ovn-webhook
-      path: /validate-ip
+      path: /validating
       port: 443
 ---
 apiVersion: cert-manager.io/v1
