@@ -1,6 +1,9 @@
 #!/bin/bash
 set -eo pipefail
 
+DEBUG_WRAPPER=${DEBUG_WRAPPER:-}
+DEBUG_OPT="--ovn-northd-wrapper=$DEBUG_WRAPPER --ovsdb-nb-wrapper=$DEBUG_WRAPPER --ovsdb-sb-wrapper=$DEBUG_WRAPPER"
+
 # https://bugs.launchpad.net/neutron/+bug/1776778
 if grep -q "3.10.0-862" /proc/version
 then
@@ -229,7 +232,8 @@ if [[ "$ENABLE_SSL" == "false" ]]; then
         set -eo pipefail
         # leader up only when no cluster and on first node
         if [[ ${result} -eq 1 && "$nb_leader_ip" == "$DB_CLUSTER_ADDR" ]]; then
-            ovn_ctl_args="--db-nb-create-insecure-remote=yes \
+            ovn_ctl_args="$DEBUG_OPT \
+                --db-nb-create-insecure-remote=yes \
                 --db-sb-create-insecure-remote=yes \
                 --db-nb-cluster-local-addr=[$DB_CLUSTER_ADDR] \
                 --db-sb-cluster-local-addr=[$DB_CLUSTER_ADDR] \
@@ -242,7 +246,7 @@ if [[ "$ENABLE_SSL" == "false" ]]; then
                 --db-nb-use-remote-in-db=no \
                 --db-sb-use-remote-in-db=no \
                 --ovn-northd-nb-db=$(gen_conn_str 6641) \
-                --ovn-northd-sb-db=$(gen_conn_str 6642)"
+                --ovn-northd-sb-db=$(gen_conn_str 6642) "
             # Start ovn-northd, ovn-nb and ovn-sb
             /usr/share/ovn/scripts/ovn-ctl $ovn_ctl_args \
                 start_nb_ovsdb -- \
@@ -282,7 +286,8 @@ if [[ "$ENABLE_SSL" == "false" ]]; then
             fi
             set -eo pipefail
             # otherwise go to first node
-            ovn_ctl_args="--db-nb-create-insecure-remote=yes \
+            ovn_ctl_args="$DEBUG_OPT \
+                --db-nb-create-insecure-remote=yes \
                 --db-sb-create-insecure-remote=yes \
                 --db-nb-cluster-local-addr=[$DB_CLUSTER_ADDR] \
                 --db-sb-cluster-local-addr=[$DB_CLUSTER_ADDR] \
@@ -354,7 +359,8 @@ else
         result=$?
         set -eo pipefail
         if [[ ${result} -eq 1  &&  "$nb_leader_ip" == "${DB_CLUSTER_ADDR}" ]]; then
-            ovn_ctl_args="--ovn-nb-db-ssl-key=/var/run/tls/key \
+            ovn_ctl_args="$DEBUG_OPT
+                --ovn-nb-db-ssl-key=/var/run/tls/key \
                 --ovn-nb-db-ssl-cert=/var/run/tls/cert \
                 --ovn-nb-db-ssl-ca-cert=/var/run/tls/cacert \
                 --ovn-sb-db-ssl-key=/var/run/tls/key \
@@ -411,7 +417,8 @@ else
                 done
             fi
             set -eo pipefail
-            ovn_ctl_args="--ovn-nb-db-ssl-key=/var/run/tls/key \
+            ovn_ctl_args="$DEBUG_OPT
+                --ovn-nb-db-ssl-key=/var/run/tls/key \
                 --ovn-nb-db-ssl-cert=/var/run/tls/cert \
                 --ovn-nb-db-ssl-ca-cert=/var/run/tls/cacert \
                 --ovn-sb-db-ssl-key=/var/run/tls/key \

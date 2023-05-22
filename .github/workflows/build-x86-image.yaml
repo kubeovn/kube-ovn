@@ -345,6 +345,9 @@ jobs:
       - name: Load image
         run: docker load --input kube-ovn.tar
 
+      - name: Export debug image tag
+        run: echo "DEBUG_TAG='$(cat VERSION)-debug'" >> "$GITHUB_ENV"
+
       - name: Create kind cluster
         run: |
           sudo pip3 install j2cli
@@ -354,6 +357,9 @@ jobs:
           sudo chown -R $(id -un). ~/.kube/
 
       - name: Install Kube-OVN
+        env:
+          VERSION: ${{ env.DEBUG_TAG }}
+          DEBUG_WRAPPER: valgrind
         run: make kind-install-${{ matrix.mode }}-${{ matrix.ip-family }}
 
       - name: Run E2E
@@ -376,6 +382,25 @@ jobs:
         with:
           name: k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-ko-log
           path: k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-ko-log.tar.gz
+
+      - name: Check valgrind result
+        run: |
+          kubectl -n kube-system rollout restart deploy ovn-central
+          kubectl -n kube-system rollout restart ds ovs-ovn
+          kubectl -n kube-system rollout status deploy ovn-central
+          kubectl -n kube-system rollout status ds ovs-ovn
+          kubectl ko log ovn
+          kubectl ko log ovs
+
+          exit_code=0
+          find kubectl-ko-log -type f -name '*.valgrind.*' | while read f; do
+            if grep -qw 'definitely lost' "$f"; then
+              exit_code=1
+              echo $f; cat "$f";
+            fi;
+          done
+
+          exit $exit_code
 
   k8s-netpol-e2e:
     name: Kubernetes Network Policy E2E
@@ -755,6 +780,9 @@ jobs:
       - name: Load image
         run: docker load --input kube-ovn.tar
 
+      - name: Export debug image tag
+        run: echo "DEBUG_TAG='$(cat VERSION)-debug'" >> "$GITHUB_ENV"
+
       - name: Create kind cluster
         run: |
           sudo pip3 install j2cli
@@ -764,6 +792,9 @@ jobs:
           sudo chown -R $(id -un). ~/.kube/
 
       - name: Install Kube-OVN
+        env:
+          VERSION: ${{ env.DEBUG_TAG }}
+          DEBUG_WRAPPER: valgrind
         run: make kind-install-${{ matrix.mode }}-${{ matrix.ip-family }}
 
       - name: Run E2E
@@ -786,6 +817,25 @@ jobs:
         with:
           name: kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log
           path: kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log.tar.gz
+
+      - name: Check valgrind result
+        run: |
+          kubectl -n kube-system rollout restart deploy ovn-central
+          kubectl -n kube-system rollout restart ds ovs-ovn
+          kubectl -n kube-system rollout status deploy ovn-central
+          kubectl -n kube-system rollout status ds ovs-ovn
+          kubectl ko log ovn
+          kubectl ko log ovs
+
+          exit_code=0
+          find kubectl-ko-log -type f -name '*.valgrind.*' | while read f; do
+            if grep -qw 'definitely lost' "$f"; then
+              exit_code=1
+              echo $f; cat "$f";
+            fi;
+          done
+
+          exit $exit_code
 
       - name: Cleanup
         run: sh dist/images/cleanup.sh

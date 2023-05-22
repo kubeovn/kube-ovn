@@ -6,6 +6,7 @@ ENABLE_SSL=${ENABLE_SSL:-false}
 OVN_DB_IPS=${OVN_DB_IPS:-}
 TUNNEL_TYPE=${TUNNEL_TYPE:-geneve}
 FLOW_LIMIT=${FLOW_LIMIT:-10}
+DEBUG_WRAPPER=${DEBUG_WRAPPER:-}
 
 # Check required kernel module
 modinfo openvswitch
@@ -63,7 +64,7 @@ trap quit EXIT
 iptables -V
 
 # Start ovsdb
-/usr/share/openvswitch/scripts/ovs-ctl restart --no-ovs-vswitchd --system-id=random
+/usr/share/openvswitch/scripts/ovs-ctl restart --no-ovs-vswitchd --system-id=random --ovsdb-server-wrapper=$DEBUG_WRAPPER
 # Restrict the number of pthreads ovs-vswitchd creates to reduce the
 # amount of RSS it uses on hosts with many cores
 # https://bugzilla.redhat.com/show_bug.cgi?id=1571379
@@ -107,7 +108,7 @@ function handle_underlay_bridges() {
 handle_underlay_bridges
 
 # Start vswitchd. restart will automatically set/unset flow-restore-wait which is not what we want
-/usr/share/openvswitch/scripts/ovs-ctl restart --no-ovsdb-server --system-id=random --no-mlockall
+/usr/share/openvswitch/scripts/ovs-ctl restart --no-ovsdb-server --system-id=random --no-mlockall --ovs-vswitchd-wrapper=$DEBUG_WRAPPER
 /usr/share/openvswitch/scripts/ovs-ctl --protocol=udp --dport=6081 enable-protocol
 
 function gen_conn_str {
@@ -136,9 +137,9 @@ ovs-vsctl set open . external-ids:hostname="${KUBE_NODE_NAME}"
 
 # Start ovn-controller
 if [[ "$ENABLE_SSL" == "false" ]]; then
-  /usr/share/ovn/scripts/ovn-ctl restart_controller
+  /usr/share/ovn/scripts/ovn-ctl --ovn-controller-wrapper=$DEBUG_WRAPPER restart_controller
 else
-  /usr/share/ovn/scripts/ovn-ctl --ovn-controller-ssl-key=/var/run/tls/key --ovn-controller-ssl-cert=/var/run/tls/cert --ovn-controller-ssl-ca-cert=/var/run/tls/cacert restart_controller
+  /usr/share/ovn/scripts/ovn-ctl --ovn-controller-ssl-key=/var/run/tls/key --ovn-controller-ssl-cert=/var/run/tls/cert --ovn-controller-ssl-ca-cert=/var/run/tls/cacert --ovn-controller-wrapper=$DEBUG_WRAPPER restart_controller
 fi
 
 chmod 600 /etc/openvswitch/*
