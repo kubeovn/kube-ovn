@@ -23,6 +23,7 @@ import (
 	_ "github.com/kubeovn/kube-ovn/test/e2e/kube-ovn/service"
 	_ "github.com/kubeovn/kube-ovn/test/e2e/kube-ovn/subnet"
 	_ "github.com/kubeovn/kube-ovn/test/e2e/kube-ovn/underlay"
+	_ "github.com/kubeovn/kube-ovn/test/e2e/kube-ovn/vpc-internal-lb"
 )
 
 func init() {
