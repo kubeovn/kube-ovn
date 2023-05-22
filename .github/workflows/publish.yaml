@@ -23,8 +23,12 @@ jobs:
           echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
           docker pull kubeovn/kube-ovn:$TAG-x86
           docker pull kubeovn/kube-ovn:$TAG-arm
+          docker pull kubeovn/kube-ovn:$TAG-debug-x86
+          docker pull kubeovn/kube-ovn:$TAG-debug-arm
           docker manifest create kubeovn/kube-ovn:$TAG kubeovn/kube-ovn:$TAG-x86 kubeovn/kube-ovn:$TAG-arm
+          docker manifest create kubeovn/kube-ovn:$TAG-debug kubeovn/kube-ovn:$TAG-debug-x86 kubeovn/kube-ovn:$TAG-debug-arm
           docker manifest push kubeovn/kube-ovn:$TAG
+          docker manifest push kubeovn/kube-ovn:$TAG-debug
 
           docker pull kubeovn/vpc-nat-gateway:$TAG-x86
           docker pull kubeovn/vpc-nat-gateway:$TAG-arm
