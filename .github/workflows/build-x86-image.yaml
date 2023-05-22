@@ -32,29 +32,31 @@ jobs:
       - uses: actions/checkout@v3
         with:
           fetch-depth: 2
-      - uses: docker/setup-buildx-action@v2
-        if: github.base_ref != null
-      - name: Build
+
+      - id: check
         run: |
-          touch .CI_PASSED_VAR
+          if [ ${{ github.event_name }} != 'pull_request' ]; then
+            exit
+          fi
+          if git diff --name-only HEAD^ HEAD | grep -q ^dist/images/Dockerfile.base; then
+            echo buildx=1 >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: docker/setup-buildx-action@v2
+        if: steps.check.outputs.buildx == 1
+
+      - name: Build
+        id: build
+        if: steps.check.outputs.buildx == 1
+        run: |
           if git diff --name-only HEAD^ HEAD | grep -q ^dist/images/Dockerfile.base$; then
-            echo "BUILD_BASE=1" > .CI_PASSED_VAR
-            echo "BUILD_BASE=1" >> "$GITHUB_ENV"
             make base-amd64
             make base-tar-amd64
+            echo build-base=1 >> "$GITHUB_OUTPUT"
           fi
-          if git diff --name-only HEAD^ HEAD | grep -q ^dist/images/Dockerfile.base-dpdk$; then
-            make base-amd64-dpdk
-          fi
-
-      - name: Upload variable file to artifact
-        uses: actions/upload-artifact@v3
-        with:
-          name: variables
-          path: .CI_PASSED_VAR
 
       - name: Upload base images to artifact
-        if: env.BUILD_BASE == 1
+        if: steps.build.outputs.build-base == 1
         uses: actions/upload-artifact@v3
         with:
           name: kube-ovn-base
@@ -99,22 +101,14 @@ jobs:
           install "$tmp/gosec" /usr/local/bin
           rm -rf $tmp
 
-      - name: Download variable file
-        uses: actions/download-artifact@v3
-        with:
-          name: variables
-
-      - name: Export passed variables
-        run: cat .CI_PASSED_VAR >> "$GITHUB_ENV"
-
       - name: Download base images
-        if: env.BUILD_BASE == 1
+        if: needs.build-kube-ovn-base.outputs.build-base == 1
         uses: actions/download-artifact@v3
         with:
           name: kube-ovn-base
 
       - name: Load base images
-        if: env.BUILD_BASE == 1
+        if: needs.build-kube-ovn-base.outputs.build-base == 1
         run: docker load --input image-amd64.tar
 
       - name: Build
