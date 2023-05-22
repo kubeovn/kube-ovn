@@ -16,31 +16,31 @@ import (
 	v10 "k8s.io/api/networking/v1"
 )
 
-// MockNbGlobal is a mock of NbGlobal interface.
-type MockNbGlobal struct {
+// MockNBGlobal is a mock of NBGlobal interface.
+type MockNBGlobal struct {
 	ctrl     *gomock.Controller
-	recorder *MockNbGlobalMockRecorder
+	recorder *MockNBGlobalMockRecorder
 }
 
-// MockNbGlobalMockRecorder is the mock recorder for MockNbGlobal.
-type MockNbGlobalMockRecorder struct {
-	mock *MockNbGlobal
+// MockNBGlobalMockRecorder is the mock recorder for MockNBGlobal.
+type MockNBGlobalMockRecorder struct {
+	mock *MockNBGlobal
 }
 
-// NewMockNbGlobal creates a new mock instance.
-func NewMockNbGlobal(ctrl *gomock.Controller) *MockNbGlobal {
-	mock := &MockNbGlobal{ctrl: ctrl}
-	mock.recorder = &MockNbGlobalMockRecorder{mock}
+// NewMockNBGlobal creates a new mock instance.
+func NewMockNBGlobal(ctrl *gomock.Controller) *MockNBGlobal {
+	mock := &MockNBGlobal{ctrl: ctrl}
+	mock.recorder = &MockNBGlobalMockRecorder{mock}
 	return mock
 }
 
 // EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockNbGlobal) EXPECT() *MockNbGlobalMockRecorder {
+func (m *MockNBGlobal) EXPECT() *MockNBGlobalMockRecorder {
 	return m.recorder
 }
 
 // GetNbGlobal mocks base method.
-func (m *MockNbGlobal) GetNbGlobal() (*ovnnb.NBGlobal, error) {
+func (m *MockNBGlobal) GetNbGlobal() (*ovnnb.NBGlobal, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetNbGlobal")
 	ret0, _ := ret[0].(*ovnnb.NBGlobal)
@@ -49,13 +49,13 @@ func (m *MockNbGlobal) GetNbGlobal() (*ovnnb.NBGlobal, error) {
 }
 
 // GetNbGlobal indicates an expected call of GetNbGlobal.
-func (mr *MockNbGlobalMockRecorder) GetNbGlobal() *gomock.Call {
+func (mr *MockNBGlobalMockRecorder) GetNbGlobal() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetNbGlobal", reflect.TypeOf((*MockNbGlobal)(nil).GetNbGlobal))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetNbGlobal", reflect.TypeOf((*MockNBGlobal)(nil).GetNbGlobal))
 }
 
 // SetAzName mocks base method.
-func (m *MockNbGlobal) SetAzName(azName string) error {
+func (m *MockNBGlobal) SetAzName(azName string) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "SetAzName", azName)
 	ret0, _ := ret[0].(error)
@@ -63,13 +63,13 @@ func (m *MockNbGlobal) SetAzName(azName string) error {
 }
 
 // SetAzName indicates an expected call of SetAzName.
-func (mr *MockNbGlobalMockRecorder) SetAzName(azName interface{}) *gomock.Call {
+func (mr *MockNBGlobalMockRecorder) SetAzName(azName interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetAzName", reflect.TypeOf((*MockNbGlobal)(nil).SetAzName), azName)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetAzName", reflect.TypeOf((*MockNBGlobal)(nil).SetAzName), azName)
 }
 
 // SetICAutoRoute mocks base method.
-func (m *MockNbGlobal) SetICAutoRoute(enable bool, blackList []string) error {
+func (m *MockNBGlobal) SetICAutoRoute(enable bool, blackList []string) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "SetICAutoRoute", enable, blackList)
 	ret0, _ := ret[0].(error)
@@ -77,13 +77,13 @@ func (m *MockNbGlobal) SetICAutoRoute(enable bool, blackList []string) error {
 }
 
 // SetICAutoRoute indicates an expected call of SetICAutoRoute.
-func (mr *MockNbGlobalMockRecorder) SetICAutoRoute(enable, blackList interface{}) *gomock.Call {
+func (mr *MockNBGlobalMockRecorder) SetICAutoRoute(enable, blackList interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetICAutoRoute", reflect.TypeOf((*MockNbGlobal)(nil).SetICAutoRoute), enable, blackList)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetICAutoRoute", reflect.TypeOf((*MockNBGlobal)(nil).SetICAutoRoute), enable, blackList)
 }
 
 // SetLBCIDR mocks base method.
-func (m *MockNbGlobal) SetLBCIDR(serviceCIDR string) error {
+func (m *MockNBGlobal) SetLBCIDR(serviceCIDR string) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "SetLBCIDR", serviceCIDR)
 	ret0, _ := ret[0].(error)
@@ -91,13 +91,13 @@ func (m *MockNbGlobal) SetLBCIDR(serviceCIDR string) error {
 }
 
 // SetLBCIDR indicates an expected call of SetLBCIDR.
-func (mr *MockNbGlobalMockRecorder) SetLBCIDR(serviceCIDR interface{}) *gomock.Call {
+func (mr *MockNBGlobalMockRecorder) SetLBCIDR(serviceCIDR interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLBCIDR", reflect.TypeOf((*MockNbGlobal)(nil).SetLBCIDR), serviceCIDR)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLBCIDR", reflect.TypeOf((*MockNBGlobal)(nil).SetLBCIDR), serviceCIDR)
 }
 
 // SetLsDnatModDlDst mocks base method.
-func (m *MockNbGlobal) SetLsDnatModDlDst(enabled bool) error {
+func (m *MockNBGlobal) SetLsDnatModDlDst(enabled bool) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "SetLsDnatModDlDst", enabled)
 	ret0, _ := ret[0].(error)
@@ -105,13 +105,13 @@ func (m *MockNbGlobal) SetLsDnatModDlDst(enabled bool) error {
 }
 
 // SetLsDnatModDlDst indicates an expected call of SetLsDnatModDlDst.
-func (mr *MockNbGlobalMockRecorder) SetLsDnatModDlDst(enabled interface{}) *gomock.Call {
+func (mr *MockNBGlobalMockRecorder) SetLsDnatModDlDst(enabled interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLsDnatModDlDst", reflect.TypeOf((*MockNbGlobal)(nil).SetLsDnatModDlDst), enabled)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLsDnatModDlDst", reflect.TypeOf((*MockNBGlobal)(nil).SetLsDnatModDlDst), enabled)
 }
 
 // SetUseCtInvMatch mocks base method.
-func (m *MockNbGlobal) SetUseCtInvMatch() error {
+func (m *MockNBGlobal) SetUseCtInvMatch() error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "SetUseCtInvMatch")
 	ret0, _ := ret[0].(error)
@@ -119,13 +119,13 @@ func (m *MockNbGlobal) SetUseCtInvMatch() error {
 }
 
 // SetUseCtInvMatch indicates an expected call of SetUseCtInvMatch.
-func (mr *MockNbGlobalMockRecorder) SetUseCtInvMatch() *gomock.Call {
+func (mr *MockNBGlobalMockRecorder) SetUseCtInvMatch() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetUseCtInvMatch", reflect.TypeOf((*MockNbGlobal)(nil).SetUseCtInvMatch))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetUseCtInvMatch", reflect.TypeOf((*MockNBGlobal)(nil).SetUseCtInvMatch))
 }
 
 // UpdateNbGlobal mocks base method.
-func (m *MockNbGlobal) UpdateNbGlobal(nbGlobal *ovnnb.NBGlobal, fields ...interface{}) error {
+func (m *MockNBGlobal) UpdateNbGlobal(nbGlobal *ovnnb.NBGlobal, fields ...interface{}) error {
 	m.ctrl.T.Helper()
 	varargs := []interface{}{nbGlobal}
 	for _, a := range fields {
@@ -137,10 +137,10 @@ func (m *MockNbGlobal) UpdateNbGlobal(nbGlobal *ovnnb.NBGlobal, fields ...interf
 }
 
 // UpdateNbGlobal indicates an expected call of UpdateNbGlobal.
-func (mr *MockNbGlobalMockRecorder) UpdateNbGlobal(nbGlobal interface{}, fields ...interface{}) *gomock.Call {
+func (mr *MockNBGlobalMockRecorder) UpdateNbGlobal(nbGlobal interface{}, fields ...interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	varargs := append([]interface{}{nbGlobal}, fields...)
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateNbGlobal", reflect.TypeOf((*MockNbGlobal)(nil).UpdateNbGlobal), varargs...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateNbGlobal", reflect.TypeOf((*MockNBGlobal)(nil).UpdateNbGlobal), varargs...)
 }
 
 // MockLogicalRouter is a mock of LogicalRouter interface.
@@ -397,6 +397,20 @@ func (mr *MockLogicalRouterPortMockRecorder) LogicalRouterPortExists(lrpName int
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LogicalRouterPortExists", reflect.TypeOf((*MockLogicalRouterPort)(nil).LogicalRouterPortExists), lrpName)
 }
 
+// UpdateLogicalRouterPortOptions mocks base method.
+func (m *MockLogicalRouterPort) UpdateLogicalRouterPortOptions(lrpName string, options map[string]string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateLogicalRouterPortOptions", lrpName, options)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateLogicalRouterPortOptions indicates an expected call of UpdateLogicalRouterPortOptions.
+func (mr *MockLogicalRouterPortMockRecorder) UpdateLogicalRouterPortOptions(lrpName, options interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateLogicalRouterPortOptions", reflect.TypeOf((*MockLogicalRouterPort)(nil).UpdateLogicalRouterPortOptions), lrpName, options)
+}
+
 // UpdateLogicalRouterPortRA mocks base method.
 func (m *MockLogicalRouterPort) UpdateLogicalRouterPortRA(lrpName, ipv6RAConfigsStr string, enableIPv6RA bool) error {
 	m.ctrl.T.Helper()
@@ -409,6 +423,58 @@ func (m *MockLogicalRouterPort) UpdateLogicalRouterPortRA(lrpName, ipv6RAConfigs
 func (mr *MockLogicalRouterPortMockRecorder) UpdateLogicalRouterPortRA(lrpName, ipv6RAConfigsStr, enableIPv6RA interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateLogicalRouterPortRA", reflect.TypeOf((*MockLogicalRouterPort)(nil).UpdateLogicalRouterPortRA), lrpName, ipv6RAConfigsStr, enableIPv6RA)
+}
+
+// MockBFD is a mock of BFD interface.
+type MockBFD struct {
+	ctrl     *gomock.Controller
+	recorder *MockBFDMockRecorder
+}
+
+// MockBFDMockRecorder is the mock recorder for MockBFD.
+type MockBFDMockRecorder struct {
+	mock *MockBFD
+}
+
+// NewMockBFD creates a new mock instance.
+func NewMockBFD(ctrl *gomock.Controller) *MockBFD {
+	mock := &MockBFD{ctrl: ctrl}
+	mock.recorder = &MockBFDMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockBFD) EXPECT() *MockBFDMockRecorder {
+	return m.recorder
+}
+
+// CreateBFD mocks base method.
+func (m *MockBFD) CreateBFD(lrpName, dstIP string, minRx, minTx, detectMult int) (*ovnnb.BFD, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateBFD", lrpName, dstIP, minRx, minTx, detectMult)
+	ret0, _ := ret[0].(*ovnnb.BFD)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreateBFD indicates an expected call of CreateBFD.
+func (mr *MockBFDMockRecorder) CreateBFD(lrpName, dstIP, minRx, minTx, detectMult interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateBFD", reflect.TypeOf((*MockBFD)(nil).CreateBFD), lrpName, dstIP, minRx, minTx, detectMult)
+}
+
+// DeleteBFD mocks base method.
+func (m *MockBFD) DeleteBFD(lrpName, dstIP string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteBFD", lrpName, dstIP)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteBFD indicates an expected call of DeleteBFD.
+func (mr *MockBFDMockRecorder) DeleteBFD(lrpName, dstIP interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteBFD", reflect.TypeOf((*MockBFD)(nil).DeleteBFD), lrpName, dstIP)
 }
 
 // MockLogicalSwitch is a mock of LogicalSwitch interface.
@@ -1948,6 +2014,21 @@ func (mr *MockOvnClientMockRecorder) CreateAddressSet(asName, externalIDs interf
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateAddressSet", reflect.TypeOf((*MockOvnClient)(nil).CreateAddressSet), asName, externalIDs)
 }
 
+// CreateBFD mocks base method.
+func (m *MockOvnClient) CreateBFD(lrpName, dstIP string, minRx, minTx, detectMult int) (*ovnnb.BFD, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateBFD", lrpName, dstIP, minRx, minTx, detectMult)
+	ret0, _ := ret[0].(*ovnnb.BFD)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreateBFD indicates an expected call of CreateBFD.
+func (mr *MockOvnClientMockRecorder) CreateBFD(lrpName, dstIP, minRx, minTx, detectMult interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateBFD", reflect.TypeOf((*MockOvnClient)(nil).CreateBFD), lrpName, dstIP, minRx, minTx, detectMult)
+}
+
 // CreateBareLogicalSwitch mocks base method.
 func (m *MockOvnClient) CreateBareLogicalSwitch(lsName string) error {
 	m.ctrl.T.Helper()
@@ -2256,6 +2337,20 @@ func (m *MockOvnClient) DeleteAddressSets(externalIDs map[string]string) error {
 func (mr *MockOvnClientMockRecorder) DeleteAddressSets(externalIDs interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteAddressSets", reflect.TypeOf((*MockOvnClient)(nil).DeleteAddressSets), externalIDs)
+}
+
+// DeleteBFD mocks base method.
+func (m *MockOvnClient) DeleteBFD(lrpName, dstIP string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteBFD", lrpName, dstIP)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteBFD indicates an expected call of DeleteBFD.
+func (mr *MockOvnClientMockRecorder) DeleteBFD(lrpName, dstIP interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteBFD", reflect.TypeOf((*MockOvnClient)(nil).DeleteBFD), lrpName, dstIP)
 }
 
 // DeleteDHCPOptions mocks base method.
@@ -3401,6 +3496,20 @@ func (m *MockOvnClient) UpdateIngressAclOps(pgName, asIngressName, asExceptName,
 func (mr *MockOvnClientMockRecorder) UpdateIngressAclOps(pgName, asIngressName, asExceptName, protocol, npp, logEnable, namedPortMap interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateIngressAclOps", reflect.TypeOf((*MockOvnClient)(nil).UpdateIngressAclOps), pgName, asIngressName, asExceptName, protocol, npp, logEnable, namedPortMap)
+}
+
+// UpdateLogicalRouterPortOptions mocks base method.
+func (m *MockOvnClient) UpdateLogicalRouterPortOptions(lrpName string, options map[string]string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateLogicalRouterPortOptions", lrpName, options)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateLogicalRouterPortOptions indicates an expected call of UpdateLogicalRouterPortOptions.
+func (mr *MockOvnClientMockRecorder) UpdateLogicalRouterPortOptions(lrpName, options interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateLogicalRouterPortOptions", reflect.TypeOf((*MockOvnClient)(nil).UpdateLogicalRouterPortOptions), lrpName, options)
 }
 
 // UpdateLogicalRouterPortRA mocks base method.

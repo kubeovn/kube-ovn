@@ -28,8 +28,8 @@ func (c *ovnClient) CreateDHCPOptions(lsName, cidr, options string) error {
 		return fmt.Errorf("generate operations for creating dhcp options 'cidr %s options %s': %v", cidr, options, err)
 	}
 
-	if err = c.Transact("acl-create", op); err != nil {
-		return fmt.Errorf("create dhcp options 'cidr %s options %s': %v", cidr, options, err)
+	if err = c.Transact("dhcp-create", op); err != nil {
+		return fmt.Errorf("create dhcp options with cidr %q options %q: %v", cidr, options, err)
 	}
 
 	return nil

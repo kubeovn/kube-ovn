@@ -114,7 +114,7 @@ func (c *Controller) handleDelVpc(vpc *kubeovnv1.Vpc) error {
 	}
 	if vpc.Spec.EnableBfd || vpc.Status.EnableBfd {
 		lrpEipName := fmt.Sprintf("%s-%s", vpc.Name, c.config.ExternalGatewaySwitch)
-		if err := c.ovnLegacyClient.DeleteBfd(lrpEipName, ""); err != nil {
+		if err := c.ovnClient.DeleteBFD(lrpEipName, ""); err != nil {
 			klog.Error(err)
 			return err
 		}
@@ -488,7 +488,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 
 	if !cachedVpc.Spec.EnableBfd && cachedVpc.Status.EnableBfd {
 		lrpEipName := fmt.Sprintf("%s-%s", key, c.config.ExternalGatewaySwitch)
-		if err := c.ovnLegacyClient.DeleteBfd(lrpEipName, ""); err != nil {
+		if err := c.ovnClient.DeleteBFD(lrpEipName, ""); err != nil {
 			klog.Error(err)
 			return err
 		}
@@ -924,7 +924,7 @@ func (c *Controller) handleDelVpcExternal(key string) error {
 	}
 
 	// del all vpc bfds
-	if err := c.ovnLegacyClient.DeleteBfd(lrpName, ""); err != nil {
+	if err := c.ovnClient.DeleteBFD(lrpName, ""); err != nil {
 		klog.Error(err)
 		return err
 	}

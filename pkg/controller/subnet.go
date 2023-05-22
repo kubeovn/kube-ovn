@@ -1118,7 +1118,7 @@ func (c *Controller) reconcileVpcUseBfdStaticRoute(vpcName, subnetName string) e
 			klog.Error(err)
 			return err
 		}
-		bfdId, err := c.ovnLegacyClient.CreateBfd(lrpEipName, eip.Status.V4Ip, c.config.BfdMinTx, c.config.BfdMinRx, c.config.BfdDetectMult)
+		bfd, err := c.ovnClient.CreateBFD(lrpEipName, eip.Status.V4Ip, c.config.BfdMinRx, c.config.BfdMinTx, c.config.BfdDetectMult)
 		if err != nil {
 			klog.Error(err)
 			return err
@@ -1142,7 +1142,7 @@ func (c *Controller) reconcileVpcUseBfdStaticRoute(vpcName, subnetName string) e
 				CIDR:       subnet.Spec.CIDRBlock,
 				NextHopIP:  eip.Status.V4Ip,
 				ECMPMode:   util.StaicRouteBfdEcmp,
-				BfdId:      bfdId,
+				BfdId:      bfd.UUID,
 				RouteTable: subnet.Spec.RouteTable,
 			}
 			klog.V(3).Infof("add ecmp bfd static route %v", route)
@@ -2454,10 +2454,9 @@ func (c *Controller) reconcileRouteTableForSubnet(subnet *kubeovnv1.Subnet) erro
 		return nil
 	}
 
-	if err := c.ovnLegacyClient.UpdateRouterPortRouteTable(
-		subnet.Name, subnet.Spec.Vpc, subnet.Spec.RouteTable); err != nil {
-		klog.Errorf("failed to update route table %s for router port %s-%s, %v",
-			subnet.Spec.RouteTable, subnet.Spec.Vpc, subnet.Name, err)
+	opt := map[string]string{"route_table": subnet.Spec.RouteTable}
+	if err = c.ovnClient.UpdateLogicalRouterPortOptions(routerPortName, opt); err != nil {
+		klog.Errorf("failed to set route table of logical router port %s to %s: %v", routerPortName, subnet.Spec.RouteTable, err)
 		return err
 	}
 
