@@ -185,7 +185,16 @@ func (c *Controller) handleAddOrUpdateVpcSslVpnGateway(key string) error {
 		}
 		return err
 	}
-
+	if gw.Spec.ConfigMap == "" {
+		err := fmt.Errorf("vpc ssl vpn gw configmap is required")
+		klog.Error(err)
+		return err
+	}
+	if _, err := c.configMapsLister.ConfigMaps(c.config.PodNamespace).Get(gw.Spec.ConfigMap); err != nil {
+		err = fmt.Errorf("failed to get configmap '%s/%s', err: %v", c.config.PodNamespace, gw.Spec.ConfigMap, err)
+		klog.Error(err)
+		return err
+	}
 	subnet, err := c.subnetsLister.Get(gw.Spec.Subnet)
 	if err != nil {
 		err = fmt.Errorf("failed to get subnet '%s', err: %v", gw.Spec.Subnet, err)
@@ -210,6 +219,10 @@ func (c *Controller) handleAddOrUpdateVpcSslVpnGateway(key string) error {
 		} else {
 			return err
 		}
+	}
+	if err := c.resyncVpcNatImage(); err != nil {
+		klog.Errorf("failed to sync vpc ssl vpn image, err: %v", err)
+		return nil
 	}
 	newSts := c.genSslVpnGatewayStatefulSet(gw, oldSts.DeepCopy())
 	if !needToCreate && isVpcSslVpnGatewayChanged(gw) {
@@ -386,6 +399,7 @@ func (c *Controller) genSslVpnGatewayStatefulSet(gw *kubeovnv1.VpcSslVpnGateway,
 							Image:           sslVpnImage,
 							Command:         []string{"bash"},
 							Args:            []string{"-c", "sleep infinity"},
+							EnvFrom:         []corev1.EnvFromSource{{ConfigMapRef: &corev1.ConfigMapEnvSource{LocalObjectReference: corev1.LocalObjectReference{Name: gw.Spec.ConfigMap}}}},
 							ImagePullPolicy: corev1.PullIfNotPresent,
 							SecurityContext: &corev1.SecurityContext{
 								Privileged:               &privileged,
@@ -499,8 +513,8 @@ func (c *Controller) updateCrdSslVpnGatewayLabels(key string) error {
 	return nil
 }
 
-func (c *Controller) getSslVpnGateway(router, subnet string) (string, error) {
-	selectors := labels.Set{util.VpcNameLabel: router, util.SubnetNameLabel: subnet}.AsSelector()
+func (c *Controller) getSslVpnGateway(vpc, subnet string) (string, error) {
+	selectors := labels.Set{util.VpcNameLabel: vpc, util.SubnetNameLabel: subnet}.AsSelector()
 	gws, err := c.vpcSslVpnGatewayLister.List(selectors)
 	if err != nil {
 		return "", err
@@ -532,6 +546,10 @@ func (c *Controller) patchSslVpnGatewayStatus(key string) error {
 	}
 	if gw.Status.Ip != gw.Spec.Ip {
 		gw.Status.Ip = gw.Spec.Ip
+		changed = true
+	}
+	if gw.Status.ConfigMap != gw.Spec.ConfigMap {
+		gw.Status.ConfigMap = gw.Spec.ConfigMap
 		changed = true
 	}
 	if !reflect.DeepEqual(gw.Spec.Selector, gw.Status.Selector) {

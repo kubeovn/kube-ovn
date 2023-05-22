@@ -531,6 +531,7 @@ type VpcSslVpnGateway struct {
 type VpcSslVpnSpec struct {
 	Subnet      string              `json:"subnet"`
 	Ip          string              `json:"ip"`
+	ConfigMap   string              `json:"configMap"`
 	Selector    []string            `json:"selector"`
 	Tolerations []corev1.Toleration `json:"tolerations"`
 	Affinity    corev1.Affinity     `json:"affinity"`
@@ -539,6 +540,7 @@ type VpcSslVpnSpec struct {
 type VpcSslVpnStatus struct {
 	Subnet      string              `json:"subnet"`
 	Ip          string              `json:"ip"`
+	ConfigMap   string              `json:"configMap" patchStrategy:"merge"`
 	Selector    []string            `json:"selector" patchStrategy:"merge"`
 	Tolerations []corev1.Toleration `json:"tolerations" patchStrategy:"merge"`
 	Affinity    corev1.Affinity     `json:"affinity" patchStrategy:"merge"`
