@@ -1,5 +1,7 @@
 # syntax = docker/dockerfile:experimental
-FROM kubeovn/kube-ovn-base:v1.11.4
+ARG VERSION
+ARG BASE_TAG=$VERSION
+FROM kubeovn/kube-ovn-base:$BASE_TAG
 
 COPY *.sh /kube-ovn/
 COPY kubectl-ko /kube-ovn/kubectl-ko
