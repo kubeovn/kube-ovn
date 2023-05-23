@@ -486,14 +486,14 @@ func (c *Controller) setIptables() error {
 			continue
 		}
 
-		var kubeProxyIpsetProtocol, matchset string
+		var kubeProxyIpsetProtocol, matchset, nodeMatchSet string
 		var obsoleteRules, iptablesRules []util.IPTableRule
 		if protocol == kubeovnv1.ProtocolIPv4 {
 			iptablesRules = v4Rules
-			matchset = "ovn40subnets"
+			matchset, nodeMatchSet = "ovn40subnets", "ovn40"+OtherNodeSet
 		} else {
 			iptablesRules = v6Rules
-			kubeProxyIpsetProtocol, matchset = "6-", "ovn60subnets"
+			kubeProxyIpsetProtocol, matchset, nodeMatchSet = "6-", "ovn60subnets", "ovn60"+OtherNodeSet
 		}
 
 		if nodeIP := nodeIPs[protocol]; nodeIP != "" {
@@ -515,8 +515,12 @@ func (c *Controller) setIptables() error {
 					continue
 				}
 				rule := fmt.Sprintf("-p %s -m addrtype --dst-type LOCAL -m set --match-set %s dst -j MARK --set-xmark 0x80000/0x80000", p, ipset)
+				rule2 := fmt.Sprintf("-p %s -m set --match-set %s src -m set --match-set %s dst -j MARK --set-xmark 0x4000/0x4000", p, nodeMatchSet, ipset)
 				obsoleteRules = append(obsoleteRules, util.IPTableRule{Table: NAT, Chain: Prerouting, Rule: strings.Fields(rule)})
-				iptablesRules = append(iptablesRules, util.IPTableRule{Table: NAT, Chain: OvnPrerouting, Rule: strings.Fields(rule)})
+				iptablesRules = append(iptablesRules,
+					util.IPTableRule{Table: NAT, Chain: OvnPrerouting, Rule: strings.Fields(rule)},
+					util.IPTableRule{Table: NAT, Chain: OvnPrerouting, Rule: strings.Fields(rule2)},
+				)
 			}
 		}
 
