@@ -610,11 +610,11 @@ func checkU2OItems(isEnableU2O bool, subnet *apiv1.Subnet, underlayPod, overlayP
 		}
 		asName := strings.Replace(fmt.Sprintf("%s.u2o_exclude_ip.%s", subnet.Name, protocolStr), "-", ".", -1)
 		ginkgo.By(fmt.Sprintf("checking underlay subnet's policy1 route %s", protocolStr))
-		hitPolicyStr := fmt.Sprintf("%d %s.dst == $%s && %s.src == %s allow", util.SubnetRouterPolicyPriority, protocolStr, asName, protocolStr, cidr)
+		hitPolicyStr := fmt.Sprintf("%d %s.dst == %s && %s.dst != $%s allow", util.SubnetRouterPolicyPriority, protocolStr, cidr, protocolStr, asName)
 		checkPolicy(hitPolicyStr, isEnableU2O)
 
 		ginkgo.By(fmt.Sprintf("checking underlay subnet's policy2 route %s", protocolStr))
-		hitPolicyStr = fmt.Sprintf("%d %s.dst == %s && %s.dst != $%s allow", util.SubnetRouterPolicyPriority, protocolStr, cidr, protocolStr, asName)
+		hitPolicyStr = fmt.Sprintf("%d %s.dst == $%s && %s.src == %s reroute %s", util.SubnetRouterPolicyPriority, protocolStr, asName, protocolStr, cidr, gw)
 		checkPolicy(hitPolicyStr, isEnableU2O)
 
 		ginkgo.By(fmt.Sprintf("checking underlay subnet's policy3 route %s", protocolStr))
