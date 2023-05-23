@@ -1031,6 +1031,9 @@ spec:
   scope: Cluster
   versions:
     - additionalPrinterColumns:
+        - jsonPath: .status.namespace
+          name: Namespace
+          type: string
         - jsonPath: .status.subnet
           name: Subnet
           type: string
@@ -1052,6 +1055,8 @@ spec:
             status:
               type: object
               properties:
+                namespace:
+                  type: string
                 subnet:
                   type: string
                 ip:
@@ -1357,6 +1362,10 @@ spec:
             spec:
               type: object
               properties:
+                namespace:
+                  type: string
+                subnet:
+                  type: string
                 subnet:
                   type: string
                 ip:
@@ -4492,7 +4501,7 @@ metadata:
       kube-ovn vpc-nat common config
 data:
   image: $REGISTRY/$VPC_NAT_IMAGE:$VERSION
-  ssl-vpn-image: "registry.cn-hangzhou.aliyuncs.com/bobz/openvpn:v0.0.2"
+  ssl-vpn-image: "registry.cn-hangzhou.aliyuncs.com/bobz/openvpn:v0.0.4"
 ---
 kind: ConfigMap
 apiVersion: v1

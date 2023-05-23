@@ -3,11 +3,9 @@ package controller
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"reflect"
 	"strings"
-	"time"
 
 	v1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -26,12 +24,7 @@ import (
 var (
 	VpcSslVpnGatewayEnabled   = "unknown"
 	VpcSslVpnGatewayCmVersion = ""
-	VpcSslVpnGatewayCreatedAt = ""
-	vpcSslVpnGatewayInit      = "init"
-)
-
-const (
-	SslVpnGatewayInit = "init"
+	SslVpnGatewayStartUpCMD   = "/etc/openvpn/setup/configure.sh"
 )
 
 func genSslVpnGatewayStsName(name string) string {
@@ -68,12 +61,7 @@ func (c *Controller) enqueueDeleteVpcSslVpnGateway(obj interface{}) {
 		return
 	}
 	klog.V(3).Infof("enqueue del vpc-ssl-vpn-gw %s", key)
-	c.delVpcSslVpnGatewayQueue.Add(key)
-}
-
-func (c *Controller) runInitVpcSslVpnGatewayWorker() {
-	for c.processNextWorkItem("initVpcSslVpnGateway", c.initVpcSslVpnGatewayQueue, c.handleInitVpcSslVpnGateway) {
-	}
+	c.delVpcSslVpnGatewayQueue.Add(obj)
 }
 
 func (c *Controller) runAddOrUpdateVpcSslVpnGatewayWorker() {
@@ -82,8 +70,38 @@ func (c *Controller) runAddOrUpdateVpcSslVpnGatewayWorker() {
 }
 
 func (c *Controller) runDelVpcSslVpnGatewayWorker() {
-	for c.processNextWorkItem("delVpcSslVpnGateway", c.delVpcSslVpnGatewayQueue, c.handleDelVpcSslVpnGateway) {
+	for c.processNextDeleteSslVpnGatewayWorkItem() {
 	}
+}
+
+func (c *Controller) processNextDeleteSslVpnGatewayWorkItem() bool {
+	obj, shutdown := c.delVpcSslVpnGatewayQueue.Get()
+	if shutdown {
+		return false
+	}
+
+	err := func(obj interface{}) error {
+		defer c.delVpcSslVpnGatewayQueue.Done(obj)
+		var gw *kubeovnv1.VpcSslVpnGateway
+		var ok bool
+		if gw, ok = obj.(*kubeovnv1.VpcSslVpnGateway); !ok {
+			c.delVpcSslVpnGatewayQueue.Forget(obj)
+			utilruntime.HandleError(fmt.Errorf("expected subnet in workqueue but got %#v", obj))
+			return nil
+		}
+		if err := c.handleDelVpcSslVpnGateway(gw); err != nil {
+			c.delVpcSslVpnGatewayQueue.AddRateLimited(obj)
+			return fmt.Errorf("error syncing '%s': %s, requeuing", gw.Name, err.Error())
+		}
+		c.delVpcSslVpnGatewayQueue.Forget(obj)
+		return nil
+	}(obj)
+
+	if err != nil {
+		utilruntime.HandleError(err)
+		return true
+	}
+	return true
 }
 
 func (c *Controller) resyncVpcSslVpnGatewayConfig() {
@@ -115,10 +133,6 @@ func (c *Controller) resyncVpcSslVpnGatewayConfig() {
 			klog.Errorf("failed to get ssl vpn gw, %v", err)
 			return
 		}
-		if err = c.resyncVpcNatImage(); err != nil {
-			klog.Errorf("failed to resync vpc nat image config, err: %v", err)
-			return
-		}
 		VpcSslVpnGatewayEnabled = "true"
 		VpcSslVpnGatewayCmVersion = cm.ResourceVersion
 		for _, gw := range gws {
@@ -129,12 +143,13 @@ func (c *Controller) resyncVpcSslVpnGatewayConfig() {
 	}
 }
 
-func (c *Controller) handleDelVpcSslVpnGateway(key string) error {
+func (c *Controller) handleDelVpcSslVpnGateway(gw *kubeovnv1.VpcSslVpnGateway) error {
+	key := gw.Name
 	c.vpcSslVpnGatewayKeyMutex.LockKey(key)
 	defer func() { _ = c.vpcSslVpnGatewayKeyMutex.UnlockKey(key) }()
 	name := genSslVpnGatewayStsName(key)
-	klog.Infof("delete ssl vpn gw %s", name)
-	if err := c.config.KubeClient.AppsV1().StatefulSets(c.config.PodNamespace).Delete(context.Background(),
+	klog.Infof("delete ssl vpn gw %s/%s", gw.Spec.Namespace, name)
+	if err := c.config.KubeClient.AppsV1().StatefulSets(gw.Spec.Namespace).Delete(context.Background(),
 		name, metav1.DeleteOptions{}); err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
@@ -185,13 +200,23 @@ func (c *Controller) handleAddOrUpdateVpcSslVpnGateway(key string) error {
 		}
 		return err
 	}
+	if gw.Spec.Namespace == "" {
+		err := fmt.Errorf("vpc ssl vpn gw namespace is required")
+		klog.Error(err)
+		return err
+	}
+	if gw.Spec.Subnet == "" {
+		err := fmt.Errorf("vpc ssl vpn gw subnet is required")
+		klog.Error(err)
+		return err
+	}
 	if gw.Spec.ConfigMap == "" {
 		err := fmt.Errorf("vpc ssl vpn gw configmap is required")
 		klog.Error(err)
 		return err
 	}
-	if _, err := c.configMapsLister.ConfigMaps(c.config.PodNamespace).Get(gw.Spec.ConfigMap); err != nil {
-		err = fmt.Errorf("failed to get configmap '%s/%s', err: %v", c.config.PodNamespace, gw.Spec.ConfigMap, err)
+	if _, err := c.configMapsLister.ConfigMaps(gw.Spec.Namespace).Get(gw.Spec.ConfigMap); err != nil {
+		err = fmt.Errorf("failed to get configmap '%s/%s', err: %v", gw.Spec.Namespace, gw.Spec.ConfigMap, err)
 		klog.Error(err)
 		return err
 	}
@@ -207,10 +232,10 @@ func (c *Controller) handleAddOrUpdateVpcSslVpnGateway(key string) error {
 		klog.Error(err)
 		return err
 	}
-	// check or create statefulset
+	// create or update statefulset
 	needToCreate := false
 	needToUpdate := false
-	oldSts, err := c.config.KubeClient.AppsV1().StatefulSets(c.config.PodNamespace).
+	oldSts, err := c.config.KubeClient.AppsV1().StatefulSets(gw.Spec.Namespace).
 		Get(context.Background(), genSslVpnGatewayStsName(gw.Name), metav1.GetOptions{})
 
 	if err != nil {
@@ -230,117 +255,28 @@ func (c *Controller) handleAddOrUpdateVpcSslVpnGateway(key string) error {
 	}
 
 	if needToCreate {
-		if _, err := c.config.KubeClient.AppsV1().StatefulSets(c.config.PodNamespace).
+		if _, err := c.config.KubeClient.AppsV1().StatefulSets(gw.Spec.Namespace).
 			Create(context.Background(), newSts, metav1.CreateOptions{}); err != nil {
 			err := fmt.Errorf("failed to create statefulset '%s', err: %v", newSts.Name, err)
 			klog.Error(err)
 			return err
 		}
-		if err = c.patchSslVpnGatewayStatus(key); err != nil {
-			klog.Errorf("failed to patch ssl vpn gw sts status for ssl vpn gw %s, %v", key, err)
-			return err
-		}
-		return nil
 	}
 	if needToUpdate {
-		if _, err := c.config.KubeClient.AppsV1().StatefulSets(c.config.PodNamespace).
+		if _, err := c.config.KubeClient.AppsV1().StatefulSets(gw.Spec.Namespace).
 			Update(context.Background(), newSts, metav1.UpdateOptions{}); err != nil {
 			err := fmt.Errorf("failed to update statefulset '%s', err: %v", newSts.Name, err)
 			klog.Error(err)
 			return err
 		}
-		if err = c.patchSslVpnGatewayStatus(key); err != nil {
-			klog.Errorf("failed to patch ssl vpn gw sts status for ssl vpn gw %s, %v", key, err)
-			return err
-		}
 	}
-	return nil
-}
-
-func (c *Controller) handleInitVpcSslVpnGateway(key string) error {
-	if VpcSslVpnGatewayEnabled != "true" {
-		return fmt.Errorf("ssl vpn gw not enable")
-	}
-
-	c.vpcSslVpnGatewayKeyMutex.LockKey(key)
-	defer func() { _ = c.vpcSslVpnGatewayKeyMutex.UnlockKey(key) }()
-
-	klog.Infof("handle init ssl vpn gw %s", key)
-	gw, err := c.vpcSslVpnGatewayLister.Get(key)
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
+	if err = c.patchSslVpnGatewayStatus(key); err != nil {
+		klog.Errorf("failed to patch ssl vpn gw sts status for ssl vpn gw %s, %v", key, err)
 		return err
 	}
-	// subnet for vpc-ssl-vpn-gw has been checked when create vpc-ssl-vpn-gw
-	oriPod, err := c.getSslVpnGatewayPod(key)
-	if err != nil {
-		err := fmt.Errorf("failed to get ssl vpn gw %s pod: %v", gw.Name, err)
-		klog.Error(err)
+	if err = c.updateCrdSslVpnGatewayLabels(key); err != nil {
+		klog.Errorf("failed to update ssl vpn gw labels for ssl vpn gw %s, %v", key, err)
 		return err
-	}
-	pod := oriPod.DeepCopy()
-	if pod.Status.Phase != corev1.PodRunning {
-		time.Sleep(10 * time.Second)
-		return fmt.Errorf("failed to init ssl vpn gw, pod is not ready")
-	}
-
-	if _, hasInit := pod.Annotations[util.VpcSslVpnGatewayInitAnnotation]; hasInit {
-		return nil
-	}
-	VpcSslVpnGatewayCreatedAt = pod.CreationTimestamp.Format("2006-01-02T15:04:05")
-	klog.V(3).Infof("ssl vpn gw pod '%s' inited at %s", key, VpcSslVpnGatewayCreatedAt)
-	if err = c.execInSslVpnGateway(pod, SslVpnGatewayInit, []string{fmt.Sprintf("%s,%s", c.config.ServiceClusterIPRange, pod.Annotations[util.GatewayAnnotation])}); err != nil {
-		err = fmt.Errorf("failed to init ssl vpn gw, %v", err)
-		klog.Error(err)
-		return err
-	}
-
-	if err := c.updateCrdSslVpnGatewayLabels(gw.Name); err != nil {
-		err := fmt.Errorf("failed to update ssl vpn gw %s: %v", gw.Name, err)
-		klog.Error(err)
-		return err
-	}
-
-	c.updateVpcEipQueue.Add(key)
-	pod.Annotations[util.VpcSslVpnGatewayInitAnnotation] = "true"
-	patch, err := util.GenerateStrategicMergePatchPayload(oriPod, pod)
-	if err != nil {
-		return err
-	}
-	if _, err := c.config.KubeClient.CoreV1().Pods(pod.Namespace).Patch(context.Background(), pod.Name,
-		types.StrategicMergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
-		err := fmt.Errorf("patch pod %s/%s failed %v", pod.Name, pod.Namespace, err)
-		klog.Error(err)
-		return err
-	}
-	return nil
-}
-
-func (c *Controller) execInSslVpnGateway(pod *corev1.Pod, operation string, rules []string) error {
-	// cmd := fmt.Sprintf("bash /kube-ovn/vpc-ssl-vpn-gateway.sh %s %s", operation, strings.Join(rules, " "))
-	cmd := fmt.Sprintf("bash ls -l")
-	klog.V(3).Infof(cmd)
-	stdOutput, errOutput, err := util.ExecuteCommandInContainer(c.config.KubeClient, c.config.KubeRestConfig, pod.Namespace, pod.Name, "vpc-ssl-vpn-gw", []string{"/bin/bash", "-c", cmd}...)
-
-	if err != nil {
-		if len(errOutput) > 0 {
-			klog.Errorf("failed to ExecuteCommandInContainer, errOutput: %v", errOutput)
-		}
-		if len(stdOutput) > 0 {
-			klog.V(3).Infof("failed to ExecuteCommandInContainer, stdOutput: %v", stdOutput)
-		}
-		return err
-	}
-
-	if len(stdOutput) > 0 {
-		klog.V(3).Infof("ExecuteCommandInContainer stdOutput: %v", stdOutput)
-	}
-
-	if len(errOutput) > 0 {
-		klog.Errorf("failed to ExecuteCommandInContainer errOutput: %v", errOutput)
-		return errors.New(errOutput)
 	}
 	return nil
 }
@@ -397,8 +333,7 @@ func (c *Controller) genSslVpnGatewayStatefulSet(gw *kubeovnv1.VpcSslVpnGateway,
 						{
 							Name:            "vpc-ssl-vpn-gw",
 							Image:           sslVpnImage,
-							Command:         []string{"bash"},
-							Args:            []string{"-c", "sleep infinity"},
+							Command:         []string{SslVpnGatewayStartUpCMD},
 							EnvFrom:         []corev1.EnvFromSource{{ConfigMapRef: &corev1.ConfigMapEnvSource{LocalObjectReference: corev1.LocalObjectReference{Name: gw.Spec.ConfigMap}}}},
 							ImagePullPolicy: corev1.PullIfNotPresent,
 							SecurityContext: &corev1.SecurityContext{
@@ -429,39 +364,6 @@ func (c *Controller) cleanUpVpcSslVpnGateway() error {
 	for _, gw := range gws {
 		c.delVpcSslVpnGatewayQueue.Add(gw.Name)
 	}
-	return nil
-}
-
-func (c *Controller) getSslVpnGatewayPod(name string) (*corev1.Pod, error) {
-	sel, _ := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
-		MatchLabels: map[string]string{"app": genSslVpnGatewayStsName(name), util.VpcSslVpnGatewayLabel: "true"},
-	})
-
-	pods, err := c.podsLister.Pods(c.config.PodNamespace).List(sel)
-	if err != nil {
-		return nil, err
-	} else if len(pods) == 0 {
-		return nil, k8serrors.NewNotFound(v1.Resource("pod"), name)
-	} else if len(pods) != 1 {
-		time.Sleep(5 * time.Second)
-		return nil, fmt.Errorf("too many pod")
-	} else if pods[0].Status.Phase != "Running" {
-		time.Sleep(5 * time.Second)
-		return nil, fmt.Errorf("pod is not active now")
-	}
-
-	return pods[0], nil
-}
-
-func (c *Controller) initSslVpnGatewayCreateAt(key string) (err error) {
-	if VpcSslVpnGatewayCreatedAt != "" {
-		return nil
-	}
-	pod, err := c.getSslVpnGatewayPod(key)
-	if err != nil {
-		return err
-	}
-	VpcSslVpnGatewayCreatedAt = pod.CreationTimestamp.Format("2006-01-02T15:04:05")
 	return nil
 }
 
@@ -511,21 +413,6 @@ func (c *Controller) updateCrdSslVpnGatewayLabels(key string) error {
 		}
 	}
 	return nil
-}
-
-func (c *Controller) getSslVpnGateway(vpc, subnet string) (string, error) {
-	selectors := labels.Set{util.VpcNameLabel: vpc, util.SubnetNameLabel: subnet}.AsSelector()
-	gws, err := c.vpcSslVpnGatewayLister.List(selectors)
-	if err != nil {
-		return "", err
-	}
-	if len(gws) == 1 {
-		return gws[0].Name, nil
-	}
-	if len(gws) == 0 {
-		return "", fmt.Errorf("no ssl vpn gw found by selector %v", selectors)
-	}
-	return "", fmt.Errorf("too many ssl vpn gw")
 }
 
 func (c *Controller) patchSslVpnGatewayStatus(key string) error {

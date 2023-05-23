@@ -90,7 +90,6 @@ type Controller struct {
 	vpcSslVpnGatewaySynced           cache.InformerSynced
 	addOrUpdateVpcSslVpnGatewayQueue workqueue.RateLimitingInterface
 	delVpcSslVpnGatewayQueue         workqueue.RateLimitingInterface
-	initVpcSslVpnGatewayQueue        workqueue.RateLimitingInterface
 	vpcSslVpnGatewayKeyMutex         keymutex.KeyMutex
 
 	switchLBRuleLister      kubeovnlister.SwitchLBRuleLister
@@ -334,7 +333,6 @@ func Run(ctx context.Context, config *Configuration) {
 
 		vpcSslVpnGatewayLister:           vpcSslVpnGatewayInformer.Lister(),
 		vpcSslVpnGatewaySynced:           vpcSslVpnGatewayInformer.Informer().HasSynced,
-		initVpcSslVpnGatewayQueue:        workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "InitVpcSslVpnGateway"),
 		addOrUpdateVpcSslVpnGatewayQueue: workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "AddOrUpdateSslVpnGateway"),
 		delVpcSslVpnGatewayQueue:         workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "DeleteSslVpnGateway"),
 		vpcSslVpnGatewayKeyMutex:         keymutex.NewHashed(numKeyLocks),
@@ -878,7 +876,6 @@ func (c *Controller) shutdown() {
 	c.updateVpcSnatQueue.ShutDown()
 	c.updateVpcSubnetQueue.ShutDown()
 
-	c.initVpcSslVpnGatewayQueue.ShutDown()
 	c.addOrUpdateVpcSslVpnGatewayQueue.ShutDown()
 	c.delVpcSslVpnGatewayQueue.ShutDown()
 
@@ -965,7 +962,6 @@ func (c *Controller) startWorkers(ctx context.Context) {
 	go wait.Until(c.runUpdateVpcSnatWorker, time.Second, ctx.Done())
 	go wait.Until(c.runUpdateVpcSubnetWorker, time.Second, ctx.Done())
 
-	go wait.Until(c.runInitVpcSslVpnGatewayWorker, time.Second, ctx.Done())
 	go wait.Until(c.runAddOrUpdateVpcSslVpnGatewayWorker, time.Second, ctx.Done())
 	go wait.Until(c.runDelVpcSslVpnGatewayWorker, time.Second, ctx.Done())
 
