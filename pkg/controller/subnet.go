@@ -2064,7 +2064,7 @@ func (c *Controller) addPolicyRouteForU2OInterconn(subnet *kubeovnv1.Subnet) err
 			prio 31000 match: "ip4.dst == underlay subnet cidr && ip4.dst != node ips"  action: allow
 
 			policy2:
-			prio 31000 match: "ip4.dst == node ips && ip4.src == underlay subnet cidr"  action: allow
+			prio 31000 match: "ip4.dst == node ips && ip4.src == underlay subnet cidr"  action: reoute physical gw
 
 			policy3:
 			prio 29000 match: "ip4.src == underlay subnet cidr"                         action: reroute physical gw
@@ -2079,8 +2079,8 @@ func (c *Controller) addPolicyRouteForU2OInterconn(subnet *kubeovnv1.Subnet) err
 			return err
 		}
 
-		klog.Infof("add u2o interconnection policy for router: %s, match %s, action %s", subnet.Spec.Vpc, match2, "allow")
-		if err := c.ovnLegacyClient.AddPolicyRoute(subnet.Spec.Vpc, util.SubnetRouterPolicyPriority, match2, "allow", "", externalIDs); err != nil {
+		klog.Infof("add u2o interconnection policy for router: %s, match %s, action %s, nexthop %s ", subnet.Spec.Vpc, match2, "reroute", nextHop)
+		if err := c.ovnLegacyClient.AddPolicyRoute(subnet.Spec.Vpc, util.SubnetRouterPolicyPriority, match2, "reroute", nextHop, externalIDs); err != nil {
 			klog.Errorf("failed to add u2o interconnection policy2 for subnet %s %v", subnet.Name, err)
 			return err
 		}
