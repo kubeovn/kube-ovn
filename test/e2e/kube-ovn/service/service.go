@@ -2,37 +2,120 @@ package service
 
 import (
 	"context"
+	"fmt"
+	"math/rand"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	clientset "k8s.io/client-go/kubernetes"
+	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
+	e2epodoutput "k8s.io/kubernetes/test/e2e/framework/pod/output"
 
-	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 	"github.com/onsi/ginkgo/v2"
+
+	"github.com/kubeovn/kube-ovn/pkg/util"
+	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 )
 
 var _ = framework.Describe("[group:service]", func() {
 	f := framework.NewDefaultFramework("service")
 
+	var cs clientset.Interface
 	var serviceClient *framework.ServiceClient
 	var podClient *framework.PodClient
-	var namespaceName, serviceName, podName string
+	var subnetClient *framework.SubnetClient
+	var namespaceName, serviceName, podName, hostPodName, subnetName, cidr, image string
 
 	ginkgo.BeforeEach(func() {
+		cs = f.ClientSet
 		serviceClient = f.ServiceClient()
 		podClient = f.PodClient()
+		subnetClient = f.SubnetClient()
 		namespaceName = f.Namespace.Name
 		serviceName = "service-" + framework.RandomSuffix()
 		podName = "pod-" + framework.RandomSuffix()
+		hostPodName = "pod-" + framework.RandomSuffix()
+		subnetName = "subnet-" + framework.RandomSuffix()
+		cidr = framework.RandomCIDR(f.ClusterIpFamily)
+		if image == "" {
+			image = framework.GetKubeOvnImage(cs)
+		}
 	})
 	ginkgo.AfterEach(func() {
+		ginkgo.By("Deleting service " + serviceName)
+		serviceClient.DeleteSync(serviceName)
+
 		ginkgo.By("Deleting pod " + podName)
 		podClient.DeleteSync(podName)
 
-		ginkgo.By("Deleting service " + serviceName)
-		serviceClient.DeleteSync(serviceName)
+		ginkgo.By("Deleting pod " + hostPodName)
+		podClient.DeleteSync(hostPodName)
+
+		ginkgo.By("Deleting subnet " + subnetName)
+		subnetClient.DeleteSync(subnetName)
+	})
+
+	framework.ConformanceIt("should be able to connect to NodePort service with external traffic policy set to Local from other nodes", func() {
+		ginkgo.By("Creating subnet " + subnetName)
+		subnet := framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, nil)
+		_ = subnetClient.CreateSync(subnet)
+
+		ginkgo.By("Creating pod " + podName)
+		podLabels := map[string]string{"app": podName}
+		annotations := map[string]string{
+			util.LogicalSwitchAnnotation: subnetName,
+		}
+		port := 8000 + rand.Intn(1000)
+		portStr := strconv.Itoa(port)
+		args := []string{"netexec", "--http-port", portStr}
+		pod := framework.MakePod(namespaceName, podName, podLabels, annotations, framework.AgnhostImage, nil, args)
+		_ = podClient.CreateSync(pod)
+
+		ginkgo.By("Creating service " + serviceName)
+		ports := []corev1.ServicePort{{
+			Name:       "tcp",
+			Protocol:   corev1.ProtocolTCP,
+			Port:       int32(port),
+			TargetPort: intstr.FromInt(port),
+		}}
+		service := framework.MakeService(serviceName, corev1.ServiceTypeNodePort, nil, podLabels, ports, "")
+		service.Spec.IPFamilyPolicy = new(corev1.IPFamilyPolicy)
+		*service.Spec.IPFamilyPolicy = corev1.IPFamilyPolicyPreferDualStack
+		service.Spec.ExternalTrafficPolicy = corev1.ServiceExternalTrafficPolicyLocal
+		service = serviceClient.CreateSync(service, func(s *corev1.Service) (bool, error) {
+			return len(s.Spec.Ports) != 0 && s.Spec.Ports[0].NodePort != 0, nil
+		}, "node port is allocated")
+
+		ginkgo.By("Creating pod " + hostPodName + " with host network")
+		cmd := []string{"sh", "-c", "sleep infinity"}
+		hostPod := framework.MakePod(namespaceName, hostPodName, nil, nil, image, cmd, nil)
+		hostPod.Spec.HostNetwork = true
+		_ = podClient.CreateSync(hostPod)
+
+		ginkgo.By("Getting nodes")
+		nodeList, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
+		framework.ExpectNoError(err)
+
+		nodePort := service.Spec.Ports[0].NodePort
+		fnCheck := func(nodeName, nodeIP string, nodePort int32) {
+			if nodeIP == "" {
+				return
+			}
+			protocol := strings.ToLower(util.CheckProtocol(nodeIP))
+			ginkgo.By("Checking " + protocol + " connection via node " + nodeName)
+			cmd := fmt.Sprintf("curl -q -s --connect-timeout 5 %s/clientip", util.JoinHostPort(nodeIP, nodePort))
+			ginkgo.By(fmt.Sprintf(`Executing %q in pod %s/%s`, cmd, namespaceName, hostPodName))
+			_ = e2epodoutput.RunHostCmdOrDie(namespaceName, hostPodName, cmd)
+		}
+		for _, node := range nodeList.Items {
+			ipv4, ipv6 := util.GetNodeInternalIP(node)
+			fnCheck(node.Name, ipv4, nodePort)
+			fnCheck(node.Name, ipv6, nodePort)
+		}
 	})
 
 	framework.ConformanceIt("should ovn nb change vip when dual-stack service removes the cluster ip ", func() {
