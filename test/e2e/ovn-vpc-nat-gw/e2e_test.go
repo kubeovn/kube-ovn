@@ -380,7 +380,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		overlaySubnetV4Gw := "192.168.0.1"
 		enableExternal := true
 		enableBfd := true
-		vpc := framework.MakeVpc(vpcName, overlaySubnetV4Gw, enableExternal, enableBfd)
+		vpc := framework.MakeVpc(vpcName, overlaySubnetV4Gw, enableExternal, enableBfd, nil)
 		_ = vpcClient.CreateSync(vpc)
 
 		ginkgo.By("Creating overlay subnet enable ecmp")

@@ -145,7 +145,7 @@ func (c *VpcClient) WaitToDisappear(name string, interval, timeout time.Duration
 	return nil
 }
 
-func MakeVpc(name, gatewayV4 string, enableExternal, enableBfd bool) *kubeovnv1.Vpc {
+func MakeVpc(name, gatewayV4 string, enableExternal, enableBfd bool, namespaces []string) *kubeovnv1.Vpc {
 	routes := make([]*kubeovnv1.StaticRoute, 0, 1)
 	if gatewayV4 != "" {
 		routes = append(routes, &kubeovnv1.StaticRoute{
@@ -162,6 +162,7 @@ func MakeVpc(name, gatewayV4 string, enableExternal, enableBfd bool) *kubeovnv1.
 			StaticRoutes:   routes,
 			EnableExternal: enableExternal,
 			EnableBfd:      enableBfd,
+			Namespaces:     namespaces,
 		},
 	}
 	return vpc
