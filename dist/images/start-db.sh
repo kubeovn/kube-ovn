@@ -1,6 +1,9 @@
 #!/bin/bash
 set -eo pipefail
 
+DEBUG_WRAPPER=${DEBUG_WRAPPER:-}
+DEBUG_OPT="--ovn-northd-wrapper=$DEBUG_WRAPPER --ovsdb-nb-wrapper=$DEBUG_WRAPPER --ovsdb-sb-wrapper=$DEBUG_WRAPPER"
+
 # https://bugs.launchpad.net/neutron/+bug/1776778
 if grep -q "3.10.0-862" /proc/version
 then
@@ -181,7 +184,7 @@ if [[ "$ENABLE_SSL" == "false" ]]; then
         # leader up only when no cluster and on first node
         if [[ ${result} -eq 1 &&  "$nb_leader_ip" == "${POD_IP}" ]]; then
             # Start ovn-northd, ovn-nb and ovn-sb
-            /usr/share/ovn/scripts/ovn-ctl \
+            /usr/share/ovn/scripts/ovn-ctl $DEBUG_OPT \
                 --db-nb-create-insecure-remote=yes \
                 --db-sb-create-insecure-remote=yes \
                 --db-nb-cluster-local-addr="[${POD_IP}]" \
@@ -224,7 +227,7 @@ if [[ "$ENABLE_SSL" == "false" ]]; then
             set -eo pipefail
             # otherwise go to first node
             # Start ovn-northd, ovn-nb and ovn-sb
-            /usr/share/ovn/scripts/ovn-ctl \
+            /usr/share/ovn/scripts/ovn-ctl $DEBUG_OPT \
                 --db-nb-create-insecure-remote=yes \
                 --db-sb-create-insecure-remote=yes \
                 --db-nb-cluster-local-addr="[${POD_IP}]" \
@@ -278,7 +281,7 @@ else
         set -eo pipefail
         if [[ ${result} -eq 1  &&  "$nb_leader_ip" == "${POD_IP}" ]]; then
             # Start ovn-northd, ovn-nb and ovn-sb
-            /usr/share/ovn/scripts/ovn-ctl \
+            /usr/share/ovn/scripts/ovn-ctl $DEBUG_OPT \
                 --ovn-nb-db-ssl-key=/var/run/tls/key \
                 --ovn-nb-db-ssl-cert=/var/run/tls/cert \
                 --ovn-nb-db-ssl-ca-cert=/var/run/tls/cacert \
@@ -327,7 +330,7 @@ else
             fi
             set -eo pipefail
             # Start ovn-northd, ovn-nb and ovn-sb
-            /usr/share/ovn/scripts/ovn-ctl \
+            /usr/share/ovn/scripts/ovn-ctl $DEBUG_OPT \
                 --ovn-nb-db-ssl-key=/var/run/tls/key \
                 --ovn-nb-db-ssl-cert=/var/run/tls/cert \
                 --ovn-nb-db-ssl-ca-cert=/var/run/tls/cacert \

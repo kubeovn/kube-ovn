@@ -31,6 +31,9 @@ IFACE=${IFACE:-}
 DPDK_TUNNEL_IFACE=${DPDK_TUNNEL_IFACE:-br-phy}
 ENABLE_BIND_LOCAL_IP=${ENABLE_BIND_LOCAL_IP:-true}
 
+# debug
+DEBUG_WRAPPER=${DEBUG_WRAPPER:-}
+
 CNI_CONF_DIR="/etc/cni/net.d"
 CNI_BIN_DIR="/opt/cni/bin"
 
@@ -2017,6 +2020,8 @@ spec:
                   fieldPath: status.podIPs
             - name: ENABLE_BIND_LOCAL_IP
               value: "$ENABLE_BIND_LOCAL_IP"
+            - name: DEBUG_WRAPPER
+              value: "$DEBUG_WRAPPER"
           resources:
             requests:
               cpu: 300m
@@ -2516,6 +2521,8 @@ spec:
                   fieldPath: status.podIPs
             - name: ENABLE_BIND_LOCAL_IP
               value: "$ENABLE_BIND_LOCAL_IP"
+            - name: DEBUG_WRAPPER
+              value: "$DEBUG_WRAPPER"
           resources:
             requests:
               cpu: 300m
@@ -2649,6 +2656,8 @@ spec:
                   fieldPath: spec.nodeName
             - name: OVN_DB_IPS
               value: $addresses
+            - name: DEBUG_WRAPPER
+              value: "$DEBUG_WRAPPER"
           volumeMounts:
             - mountPath: /var/run/netns
               name: host-ns
