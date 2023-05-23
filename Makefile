@@ -428,6 +428,10 @@ kind-install-dev:
 kind-install-debug:
 	@VERSION=$(DEBUG_TAG) $(MAKE) kind-install
 
+.PHONY: kind-install-debug-valgrind
+kind-install-debug-valgrind:
+	@DEBUG_WRAPPER=valgrind $(MAKE) kind-install-debug
+
 .PHONY: kind-install-ipv4
 kind-install-ipv4: kind-install-overlay-ipv4
 
