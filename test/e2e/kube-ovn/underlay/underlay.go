@@ -697,7 +697,7 @@ func checkU2OItems(isEnableU2O bool, subnet *apiv1.Subnet, underlayPod, overlayP
 		}
 
 		ginkgo.By(fmt.Sprintf("checking underlay subnet's policy3 route %s", protocolStr))
-		hitPolicyStr = fmt.Sprintf("%d %s.src == %s reroute %s", util.GatewayRouterPolicyPriority, protocolStr, cidr, gw)
+		hitPolicyStr := fmt.Sprintf("%d %s.src == %s reroute %s", util.GatewayRouterPolicyPriority, protocolStr, cidr, gw)
 		checkPolicy(hitPolicyStr, isEnableU2O, subnet.Spec.Vpc)
 	}
 
