@@ -588,7 +588,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		subnet = subnetClient.Get(subnetName)
 		checkU2OItems(true, subnet, underlayPod, overlayPod, false)
 
-		f.SkipVersionPriorTo(1, 12, "This feature was introduce in v1.12 ")
+		f.SkipVersionPriorTo(1, 11, "This feature was introduce in v1.11 ")
 		ginkgo.By("step7: Change underlay subnet interconnection to overlay subnet in custom vpc")
 		podClient.DeleteSync(u2oPodNameUnderlay)
 
