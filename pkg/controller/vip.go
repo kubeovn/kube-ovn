@@ -187,6 +187,7 @@ func (c *Controller) handleAddVirtualIp(key string) error {
 	}
 	subnet, err := c.subnetsLister.Get(subnetName)
 	if err != nil {
+		klog.Errorf("failed to get subnet %s: %v", subnetName, err)
 		return err
 	}
 	portName := ovs.PodNameToPortName(vip.Name, vip.Namespace, subnet.Spec.Provider)
@@ -263,7 +264,13 @@ func (c *Controller) handleUpdateVirtualIp(key string) error {
 	if !vip.DeletionTimestamp.IsZero() {
 		// TODO:// clean vip in its parent port aap list
 		if vip.Spec.Type == util.SwitchLBRuleVip {
-			if err := c.ovnClient.DeleteLogicalSwitchPort(vip.Name); err != nil {
+			subnet, err := c.subnetsLister.Get(vip.Spec.Subnet)
+			if err != nil {
+				klog.Errorf("failed to get subnet %s: %v", vip.Spec.Subnet, err)
+				return err
+			}
+			portName := ovs.PodNameToPortName(vip.Name, vip.Namespace, subnet.Spec.Provider)
+			if err := c.ovnClient.DeleteLogicalSwitchPort(portName); err != nil {
 				err = fmt.Errorf("failed to delete lsp %s: %v", vip.Name, err)
 				klog.Error(err)
 				return err
