@@ -80,12 +80,12 @@ spec:
               name: host-config-openvswitch
             - mountPath: /etc/ovn
               name: host-config-ovn
-            - mountPath: /var/log/openvswitch
-              name: host-log-ovs
             - mountPath: /var/log/ovn
               name: host-log-ovn
+              readOnly: true
             - mountPath: /etc/localtime
               name: localtime
+              readOnly: true
             - mountPath: /var/run/tls
               name: kube-ovn-tls
             - mountPath: /var/log/kube-ovn
@@ -122,9 +122,6 @@ spec:
         - name: host-config-ovn
           hostPath:
             path: /etc/origin/ovn
-        - name: host-log-ovs
-          hostPath:
-            path: /var/log/openvswitch
         - name: host-log-ovn
           hostPath:
             path: /var/log/ovn

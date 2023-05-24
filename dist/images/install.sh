@@ -2930,6 +2930,7 @@ spec:
               name: host-log-ovn
             - mountPath: /etc/localtime
               name: localtime
+              readOnly: true
             - mountPath: /var/run/tls
               name: kube-ovn-tls
           readinessProbe:
@@ -3049,8 +3050,6 @@ spec:
             - mountPath: /sys
               name: host-sys
               readOnly: true
-            - mountPath: /etc/cni/net.d
-              name: cni-conf
             - mountPath: /etc/openvswitch
               name: host-config-openvswitch
             - mountPath: /etc/ovn
@@ -3065,6 +3064,7 @@ spec:
               name: hugepage
             - mountPath: /etc/localtime
               name: localtime
+              readOnly: true
             - mountPath: /var/run/tls
               name: kube-ovn-tls
           readinessProbe:
@@ -3110,9 +3110,6 @@ spec:
         - name: host-ns
           hostPath:
             path: /var/run/netns
-        - name: cni-conf
-          hostPath:
-            path: /etc/cni/net.d
         - name: host-config-openvswitch
           hostPath:
             path: /etc/origin/openvswitch
@@ -3443,6 +3440,7 @@ spec:
               name: host-log-ovn
             - mountPath: /etc/localtime
               name: localtime
+              readOnly: true
             - mountPath: /var/run/tls
               name: kube-ovn-tls
           readinessProbe:
@@ -3578,8 +3576,6 @@ spec:
             - mountPath: /sys
               name: host-sys
               readOnly: true
-            - mountPath: /etc/cni/net.d
-              name: cni-conf
             - mountPath: /etc/openvswitch
               name: host-config-openvswitch
             - mountPath: /etc/ovn
@@ -3590,10 +3586,12 @@ spec:
               name: host-log-ovn
             - mountPath: /etc/localtime
               name: localtime
+              readOnly: true
             - mountPath: /var/run/tls
               name: kube-ovn-tls
             - mountPath: /var/run/containerd
               name: cruntime
+              readOnly: true
           readinessProbe:
             exec:
               command:
@@ -3637,9 +3635,6 @@ spec:
         - name: host-ns
           hostPath:
             path: /var/run/netns
-        - name: cni-conf
-          hostPath:
-            path: /etc/cni/net.d
         - name: host-config-openvswitch
           hostPath:
             path: /etc/origin/openvswitch
@@ -3742,8 +3737,6 @@ spec:
               name: host-run-ovn
             - mountPath: /sys
               name: host-sys
-            - mountPath: /etc/cni/net.d
-              name: cni-conf
             - mountPath: /etc/openvswitch
               name: host-config-openvswitch
             - mountPath: /etc/ovn
@@ -3754,6 +3747,7 @@ spec:
               name: host-log-ovn
             - mountPath: /etc/localtime
               name: localtime
+              readOnly: true
             - mountPath: /var/run/tls
               name: kube-ovn-tls
           readinessProbe:
@@ -3809,9 +3803,6 @@ spec:
         - name: host-sys
           hostPath:
             path: /sys
-        - name: cni-conf
-          hostPath:
-            path: /etc/cni/net.d
         - name: host-config-openvswitch
           hostPath:
             path: /etc/origin/openvswitch
@@ -3962,6 +3953,7 @@ spec:
           volumeMounts:
             - mountPath: /etc/localtime
               name: localtime
+              readOnly: true
             - mountPath: /var/log/kube-ovn
               name: kube-ovn-log
             - mountPath: /var/run/tls
@@ -4100,6 +4092,7 @@ spec:
             mountPath: /var/lib/kubelet/pods
           - mountPath: /etc/openvswitch
             name: systemid
+            readOnly: true
           - mountPath: /etc/cni/net.d
             name: cni-conf
           - mountPath: /run/openvswitch
@@ -4121,6 +4114,7 @@ spec:
             name: host-log-ovn
           - mountPath: /etc/localtime
             name: localtime
+            readOnly: true
           - mountPath: /tmp
             name: tmp
         livenessProbe:
@@ -4255,28 +4249,23 @@ spec:
                 fieldRef:
                   fieldPath: spec.nodeName
           volumeMounts:
-            - mountPath: /lib/modules
-              name: host-modules
-              readOnly: true
-            - mountPath: /run/openvswitch
-              name: host-run-ovs
             - mountPath: /var/run/openvswitch
               name: host-run-ovs
             - mountPath: /var/run/ovn
               name: host-run-ovn
-            - mountPath: /sys
-              name: host-sys
-              readOnly: true
             - mountPath: /etc/openvswitch
               name: host-config-openvswitch
             - mountPath: /var/log/openvswitch
               name: host-log-ovs
+              readOnly: true
             - mountPath: /var/log/ovn
               name: host-log-ovn
+              readOnly: true
             - mountPath: /var/log/kube-ovn
               name: kube-ovn-log
             - mountPath: /etc/localtime
               name: localtime
+              readOnly: true
             - mountPath: /var/run/tls
               name: kube-ovn-tls
           resources:
@@ -4289,18 +4278,12 @@ spec:
       nodeSelector:
         kubernetes.io/os: "linux"
       volumes:
-        - name: host-modules
-          hostPath:
-            path: /lib/modules
         - name: host-run-ovs
           hostPath:
             path: /run/openvswitch
         - name: host-run-ovn
           hostPath:
             path: /run/ovn
-        - name: host-sys
-          hostPath:
-            path: /sys
         - name: host-config-openvswitch
           hostPath:
             path: /etc/origin/openvswitch
@@ -4403,12 +4386,12 @@ spec:
               name: host-config-openvswitch
             - mountPath: /etc/ovn
               name: host-config-ovn
-            - mountPath: /var/log/openvswitch
-              name: host-log-ovs
             - mountPath: /var/log/ovn
               name: host-log-ovn
+              readOnly: true
             - mountPath: /etc/localtime
               name: localtime
+              readOnly: true
             - mountPath: /var/run/tls
               name: kube-ovn-tls
             - mountPath: /var/log/kube-ovn
@@ -4445,9 +4428,6 @@ spec:
         - name: host-config-ovn
           hostPath:
             path: /etc/origin/ovn
-        - name: host-log-ovs
-          hostPath:
-            path: /var/log/openvswitch
         - name: host-log-ovn
           hostPath:
             path: /var/log/ovn
