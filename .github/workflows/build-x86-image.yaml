@@ -389,18 +389,28 @@ jobs:
           kubectl -n kube-system rollout restart ds ovs-ovn
           kubectl -n kube-system rollout status deploy ovn-central
           kubectl -n kube-system rollout status ds ovs-ovn
+          while true; do
+            if [ ! -z "$(kubectl -n kube-system get ep ovn-nb -o jsonpath='{.subsets}')" ]; then
+              break
+            fi
+            sleep 1
+          done
           kubectl ko log ovn
           kubectl ko log ovs
 
-          exit_code=0
-          find kubectl-ko-log -type f -name '*.valgrind.*' | while read f; do
-            if grep -qw 'definitely lost' "$f"; then
-              exit_code=1
-              echo $f; cat "$f";
-            fi;
+          for daemon in ovsdb-nb ovsdb-sb ovn-northd ovn-controller ovsdb-server ovs-vswitchd; do
+            echo "Checking if valgrind log file for $daemon exists..."
+            find kubectl-ko-log -type f -name "$daemon.valgrind.log.[[:digit:]]*" -exec false {} + && exit 1
           done
 
-          exit $exit_code
+          find kubectl-ko-log -type f -name '*.valgrind.log.*' | while read f; do
+            if grep -qw 'definitely lost' "$f"; then
+              echo "Memory leak detected in $(basename $f | awk -F. '{print $1}')."
+              echo $f
+              cat "$f"
+              exit 1
+            fi;
+          done
 
   k8s-netpol-e2e:
     name: Kubernetes Network Policy E2E
@@ -824,18 +834,28 @@ jobs:
           kubectl -n kube-system rollout restart ds ovs-ovn
           kubectl -n kube-system rollout status deploy ovn-central
           kubectl -n kube-system rollout status ds ovs-ovn
+          while true; do
+            if [ ! -z "$(kubectl -n kube-system get ep ovn-nb -o jsonpath='{.subsets}')" ]; then
+              break
+            fi
+            sleep 1
+          done
           kubectl ko log ovn
           kubectl ko log ovs
 
-          exit_code=0
-          find kubectl-ko-log -type f -name '*.valgrind.*' | while read f; do
-            if grep -qw 'definitely lost' "$f"; then
-              exit_code=1
-              echo $f; cat "$f";
-            fi;
+          for daemon in ovsdb-nb ovsdb-sb ovn-northd ovn-controller ovsdb-server ovs-vswitchd; do
+            echo "Checking if valgrind log file for $daemon exists..."
+            find kubectl-ko-log -type f -name "$daemon.valgrind.log.[[:digit:]]*" -exec false {} + && exit 1
           done
 
-          exit $exit_code
+          find kubectl-ko-log -type f -name '*.valgrind.log.*' | while read f; do
+            if grep -qw 'definitely lost' "$f"; then
+              echo "Memory leak detected in $(basename $f | awk -F. '{print $1}')."
+              echo $f
+              cat "$f"
+              exit 1
+            fi;
+          done
 
       - name: Cleanup
         run: sh dist/images/cleanup.sh
