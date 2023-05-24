@@ -233,7 +233,7 @@ var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 		overlaySubnetV4Cidr := "192.168.0.0/24"
 		overlaySubnetV4Gw := "192.168.0.1"
 		lanIp := "192.168.0.254"
-		vpc := framework.MakeVpc(vpcName, lanIp, false, false)
+		vpc := framework.MakeVpc(vpcName, lanIp, false, false, nil)
 		_ = vpcClient.CreateSync(vpc)
 
 		ginkgo.By("Creating custom overlay subnet")
