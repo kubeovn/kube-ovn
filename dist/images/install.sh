@@ -1370,6 +1370,8 @@ spec:
                   type: string
                 u2oInterconnectionIP:
                   type: string
+                u2oInterconnectionVPC:
+                  type: string
                 conditions:
                   type: array
                   items:
