@@ -287,7 +287,8 @@ trace(){
 
       vlan=$(kubectl get subnet "$ls" -o jsonpath={.spec.vlan})
       logicalGateway=$(kubectl get subnet "$ls" -o jsonpath={.spec.logicalGateway})
-      if [ ! -z "$vlan" -a "$logicalGateway" != "true" ]; then
+      u2oIC=$(kubectl get subnet "$ls" -o jsonpath={.spec.u2oInterconnection})
+      if [ ! -z "$vlan" -a "$logicalGateway" != "true" -a "$u2oIC" != "true" ]; then
         gateway=$(kubectl get subnet "$ls" -o jsonpath={.spec.gateway})
         if [[ "$gateway" =~ .*,.* ]]; then
           if [ "$af" = "4" ]; then
@@ -339,12 +340,12 @@ trace(){
     fi
 
     if [ -z "$dstMac" ]; then
-      echo "Using the gateway mac address as destination"
+      echo "Using the logical gateway mac address as destination"
       lr=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.metadata.annotations.ovn\\.kubernetes\\.io/logical_router})
       if [ -z "$lr" ]; then
         lr=$(kubectl get subnet "$ls" -o jsonpath={.spec.vpc})
       fi
-      dstMac=$(kubectl exec $OVN_NB_POD -n $KUBE_OVN_NS -c ovn-central -- ovn-nbctl --data=bare --no-heading --columns=mac find logical_router_port name="$lr"-"$ls" | tr -d '\r')
+      dstMac=$(kubectl exec $OVN_NB_POD -n $KUBE_OVN_NS -c ovn-central -- ovn-nbctl --data=bare --no-heading --columns=mac find logical_router_port name="$lr-$ls" | tr -d '\r')
     fi
 
     if [ -z "$dstMac" ]; then
