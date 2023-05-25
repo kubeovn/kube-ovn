@@ -77,6 +77,30 @@ func (c *ovnClient) UpdateLogicalRouterPortRA(lrpName, ipv6RAConfigsStr string, 
 	return c.UpdateLogicalRouterPort(lrp, &lrp.Ipv6Prefix, &lrp.Ipv6RaConfigs)
 }
 
+func (c *ovnClient) UpdateLogicalRouterPortOptions(lrpName string, options map[string]string) error {
+	if len(options) == 0 {
+		return nil
+	}
+
+	lrp, err := c.GetLogicalRouterPort(lrpName, false)
+	if err != nil {
+		return err
+	}
+
+	for k, v := range options {
+		if len(v) == 0 {
+			delete(lrp.Options, k)
+		} else {
+			if len(lrp.Options) == 0 {
+				lrp.Options = make(map[string]string)
+			}
+			lrp.Options[k] = v
+		}
+	}
+
+	return c.UpdateLogicalRouterPort(lrp, &lrp.Options)
+}
+
 // UpdateLogicalRouterPort update logical router port
 func (c *ovnClient) UpdateLogicalRouterPort(lrp *ovnnb.LogicalRouterPort, fields ...interface{}) error {
 	if lrp == nil {

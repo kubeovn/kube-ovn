@@ -96,6 +96,7 @@ func NewNbClient(addr string) (client.Client, error) {
 	monitor := c.NewMonitor(
 		client.WithTable(&ovnnb.ACL{}),
 		client.WithTable(&ovnnb.AddressSet{}),
+		client.WithTable(&ovnnb.BFD{}),
 		client.WithTable(&ovnnb.DHCPOptions{}),
 		client.WithTable(&ovnnb.GatewayChassis{}),
 		client.WithTable(&ovnnb.LoadBalancer{}),

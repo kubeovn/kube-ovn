@@ -10,7 +10,7 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-type NbGlobal interface {
+type NBGlobal interface {
 	UpdateNbGlobal(nbGlobal *ovnnb.NBGlobal, fields ...interface{}) error
 	SetAzName(azName string) error
 	SetUseCtInvMatch() error
@@ -33,12 +33,18 @@ type LogicalRouterPort interface {
 	CreatePeerRouterPort(localRouter, remoteRouter, localRouterPortIP string) error
 	CreateLogicalRouterPort(lrName string, lrpName, mac string, networks []string) error
 	UpdateLogicalRouterPortRA(lrpName, ipv6RAConfigsStr string, enableIPv6RA bool) error
+	UpdateLogicalRouterPortOptions(lrpName string, options map[string]string) error
 	DeleteLogicalRouterPort(lrpName string) error
 	DeleteLogicalRouterPorts(externalIDs map[string]string, filter func(lrp *ovnnb.LogicalRouterPort) bool) error
 	GetLogicalRouterPort(lrpName string, ignoreNotFound bool) (*ovnnb.LogicalRouterPort, error)
 	GetLogicalRouterPortByUUID(uuid string) (*ovnnb.LogicalRouterPort, error)
 	ListLogicalRouterPorts(externalIDs map[string]string, filter func(lrp *ovnnb.LogicalRouterPort) bool) ([]ovnnb.LogicalRouterPort, error)
 	LogicalRouterPortExists(lrpName string) (bool, error)
+}
+
+type BFD interface {
+	CreateBFD(lrpName, dstIP string, minRx, minTx, detectMult int) (*ovnnb.BFD, error)
+	DeleteBFD(lrpName, dstIP string) error
 }
 
 type LogicalSwitch interface {
@@ -152,19 +158,21 @@ type DHCPOptions interface {
 }
 
 type OvnClient interface {
-	NbGlobal
-	LogicalRouter
-	LogicalRouterPort
-	LogicalSwitch
-	LogicalSwitchPort
-	LoadBalancer
-	PortGroup
 	ACL
 	AddressSet
-	LogicalRouterStaticRoute
-	LogicalRouterPolicy
-	NAT
+	BFD
 	DHCPOptions
+	// GatewayChassis
+	LoadBalancer
+	LogicalRouterPolicy
+	LogicalRouterPort
+	LogicalRouterStaticRoute
+	LogicalRouter
+	LogicalSwitchPort
+	LogicalSwitch
+	NAT
+	NBGlobal
+	PortGroup
 	CreateGatewayLogicalSwitch(lsName, lrName, provider, ip, mac string, vlanID int, chassises ...string) error
 	CreateLogicalPatchPort(lsName, lrName, lspName, lrpName, ip, mac string, chassises ...string) error
 	RemoveLogicalPatchPort(lspName, lrpName string) error
