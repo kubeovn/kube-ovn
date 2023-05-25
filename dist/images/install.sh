@@ -2624,15 +2624,66 @@ spec:
                   x-kubernetes-list-type: map
 EOF
 
-if $DPDK; then
-  cat <<EOF > ovn.yaml
+cat <<EOF > ovn-ovs-sa.yaml
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ovn-ovs
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  annotations:
+    rbac.authorization.k8s.io/system-only: "true"
+  name: system:ovn-ovs
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - pods
+    verbs:
+      - get
+      - patch
+  - apiGroups:
+      - ""
+      - networking.k8s.io
+      - apps
+    resources:
+      - services
+      - endpoints
+    verbs:
+      - get
+  - apiGroups:
+      - apps
+    resources:
+      - controllerrevisions
+    verbs:
+      - get
+      - list
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: ovn-ovs
+roleRef:
+  name: system:ovn-ovs
+  kind: ClusterRole
+  apiGroup: rbac.authorization.k8s.io
+subjects:
+  - kind: ServiceAccount
+    name: ovn-ovs
+    namespace: kube-system
+EOF
+
+cat <<EOF > kube-ovn-sa.yaml
 ---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: ovn
   namespace: kube-system
-
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -2703,10 +2754,24 @@ rules:
     resources:
       - network-attachment-definitions
     verbs:
-      - create
-      - delete
+      - get
+  - apiGroups:
+      - ""
+      - networking.k8s.io
+      - apps
+    resources:
+      - networkpolicies
+      - daemonsets
+    verbs:
       - get
       - list
+      - watch
+  - apiGroups:
+      - ""
+      - apps
+    resources:
+      - services/status
+    verbs:
       - update
   - apiGroups:
       - ""
@@ -2714,12 +2779,9 @@ rules:
       - apps
       - extensions
     resources:
-      - networkpolicies
       - services
-      - services/status
       - endpoints
       - statefulsets
-      - daemonsets
       - deployments
       - deployments/scale
     verbs:
@@ -2738,13 +2800,6 @@ rules:
       - create
       - patch
       - update
-  - apiGroups:
-      - apps
-    resources:
-      - controllerrevisions
-    verbs:
-      - get
-      - list
   - apiGroups:
       - coordination.k8s.io
     resources:
@@ -3138,13 +3193,12 @@ spec:
             secretName: kube-ovn-tls
 EOF
 
-else
-  cat <<EOF > ovn.yaml
+cat <<EOF > kube-ovn-cni-sa.yaml
 ---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: ovn
+  name: kube-ovn-cni
   namespace: kube-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -3152,86 +3206,32 @@ kind: ClusterRole
 metadata:
   annotations:
     rbac.authorization.k8s.io/system-only: "true"
-  name: system:ovn
+  name: system:kube-ovn-cni
 rules:
   - apiGroups:
       - "kubeovn.io"
     resources:
-      - vpcs
-      - vpcs/status
-      - vpc-nat-gateways
-      - vpc-nat-gateways/status
       - subnets
-      - subnets/status
-      - ips
-      - vips
-      - vips/status
-      - vlans
-      - vlans/status
       - provider-networks
-      - provider-networks/status
-      - security-groups
-      - security-groups/status
-      - iptables-eips
-      - iptables-fip-rules
-      - iptables-dnat-rules
-      - iptables-snat-rules
-      - iptables-eips/status
-      - iptables-fip-rules/status
-      - iptables-dnat-rules/status
-      - iptables-snat-rules/status
       - ovn-eips
-      - ovn-fips
-      - ovn-snat-rules
       - ovn-eips/status
-      - ovn-fips/status
-      - ovn-snat-rules/status
-      - ovn-dnat-rules
-      - ovn-dnat-rules/status
-      - vpc-dnses
-      - vpc-dnses/status
-      - switch-lb-rules
-      - switch-lb-rules/status
-      - qos-policies
-      - qos-policies/status
+      - ips
     verbs:
-      - "*"
+      - get
+      - list
+      - patch
+      - update
+      - watch
   - apiGroups:
       - ""
     resources:
       - pods
-      - pods/exec
-      - namespaces
       - nodes
       - configmaps
     verbs:
-      - create
       - get
       - list
-      - watch
       - patch
-      - update
-  - apiGroups:
-      - ""
-      - networking.k8s.io
-      - apps
-      - extensions
-    resources:
-      - networkpolicies
-      - services
-      - services/status
-      - endpoints
-      - statefulsets
-      - daemonsets
-      - deployments
-      - deployments/scale
-    verbs:
-      - create
-      - delete
-      - update
-      - patch
-      - get
-      - list
       - watch
   - apiGroups:
       - ""
@@ -3241,50 +3241,74 @@ rules:
       - create
       - patch
       - update
-  - apiGroups:
-      - apps
-    resources:
-      - controllerrevisions
-    verbs:
-      - get
-      - list
-  - apiGroups:
-      - coordination.k8s.io
-    resources:
-      - leases
-    verbs:
-      - "*"
-  - apiGroups:
-      - "k8s.cni.cncf.io"
-    resources:
-      - network-attachment-definitions
-    verbs:
-      - create
-      - delete
-      - get
-      - list
-      - update
-  - apiGroups:
-      - "kubevirt.io"
-    resources:
-      - virtualmachines
-      - virtualmachineinstances
-    verbs:
-      - get
-      - list
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: ovn
+  name: kube-ovn-cni
 roleRef:
-  name: system:ovn
+  name: system:kube-ovn-cni
   kind: ClusterRole
   apiGroup: rbac.authorization.k8s.io
 subjects:
   - kind: ServiceAccount
-    name: ovn
+    name: kube-ovn-cni
     namespace: kube-system
+EOF
+
+cat <<EOF > kube-ovn-app-sa.yaml
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kube-ovn-app
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  annotations:
+    rbac.authorization.k8s.io/system-only: "true"
+  name: system:kube-ovn-app
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - pods
+      - nodes
+    verbs:
+      - get
+      - list
+  - apiGroups:
+      - ""
+      - networking.k8s.io
+      - apps
+    resources:
+      - daemonsets
+    verbs:
+      - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kube-ovn-app
+roleRef:
+  name: system:kube-ovn-app
+  kind: ClusterRole
+  apiGroup: rbac.authorization.k8s.io
+subjects:
+  - kind: ServiceAccount
+    name: kube-ovn-app
+    namespace: kube-system
+EOF
+
+kubectl apply -f kube-ovn-crd.yaml
+kubectl apply -f ovn-ovs-sa.yaml
+kubectl apply -f kube-ovn-sa.yaml
+kubectl apply -f kube-ovn-cni-sa.yaml
+kubectl apply -f kube-ovn-app-sa.yaml
+
+cat <<EOF > ovn.yaml
 ---
 kind: Service
 apiVersion: v1
@@ -3303,6 +3327,7 @@ spec:
     app: ovn-central
     ovn-nb-leader: "true"
   sessionAffinity: None
+
 ---
 kind: Service
 apiVersion: v1
@@ -3321,6 +3346,7 @@ spec:
     app: ovn-central
     ovn-sb-leader: "true"
   sessionAffinity: None
+
 ---
 kind: Service
 apiVersion: v1
@@ -3380,7 +3406,7 @@ spec:
                   app: ovn-central
               topologyKey: kubernetes.io/hostname
       priorityClassName: system-cluster-critical
-      serviceAccountName: ovn
+      serviceAccountName: ovn-ovs
       hostNetwork: true
       containers:
         - name: ovn-central
@@ -3418,7 +3444,7 @@ spec:
           resources:
             requests:
               cpu: 300m
-              memory: 200Mi
+              memory: 300Mi
             limits:
               cpu: 3
               memory: 4Gi
@@ -3491,6 +3517,173 @@ spec:
           secret:
             optional: true
             secretName: kube-ovn-tls
+EOF
+
+kubectl apply -f ovn.yaml
+
+if $DPDK; then
+  cat <<EOF > ovs-ovn-ds.yaml
+kind: DaemonSet
+apiVersion: apps/v1
+metadata:
+  name: ovs-ovn
+  namespace: kube-system
+  annotations:
+    kubernetes.io/description: |
+      This daemon set launches the openvswitch daemon.
+spec:
+  selector:
+    matchLabels:
+      app: ovs
+  updateStrategy:
+    type: OnDelete
+  template:
+    metadata:
+      labels:
+        app: ovs
+        component: network
+        type: infra
+    spec:
+      tolerations:
+        - effect: NoSchedule
+          operator: Exists
+        - effect: NoExecute
+          operator: Exists
+        - key: CriticalAddonsOnly
+          operator: Exists
+      priorityClassName: system-node-critical
+      serviceAccountName: ovn-ovs
+      hostNetwork: true
+      hostPID: true
+      containers:
+        - name: openvswitch
+          image: "$REGISTRY/kube-ovn-dpdk:$DPDK_VERSION-$VERSION"
+          imagePullPolicy: $IMAGE_PULL_POLICY
+          command: ["/kube-ovn/start-ovs-dpdk.sh"]
+          securityContext:
+            runAsUser: 0
+            privileged: true
+          env:
+            - name: ENABLE_SSL
+              value: "$ENABLE_SSL"
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: KUBE_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: OVN_DB_IPS
+              value: $addresses
+          volumeMounts:
+            - mountPath: /var/run/netns
+              name: host-ns
+              mountPropagation: HostToContainer
+            - mountPath: /lib/modules
+              name: host-modules
+              readOnly: true
+            - mountPath: /var/run/openvswitch
+              name: host-run-ovs
+            - mountPath: /var/run/ovn
+              name: host-run-ovn
+            - mountPath: /sys
+              name: host-sys
+              readOnly: true
+            - mountPath: /etc/cni/net.d
+              name: cni-conf
+            - mountPath: /etc/openvswitch
+              name: host-config-openvswitch
+            - mountPath: /etc/ovn
+              name: host-config-ovn
+            - mountPath: /var/log/openvswitch
+              name: host-log-ovs
+            - mountPath: /var/log/ovn
+              name: host-log-ovn
+            - mountPath: /opt/ovs-config
+              name: host-config-ovs
+            - mountPath: /dev/hugepages
+              name: hugepage
+            - mountPath: /etc/localtime
+              name: localtime
+            - mountPath: /var/run/tls
+              name: kube-ovn-tls
+          readinessProbe:
+            exec:
+              command:
+                - bash
+                - /kube-ovn/ovs-dpdk-healthcheck.sh
+            periodSeconds: 5
+            timeoutSeconds: 45
+          livenessProbe:
+            exec:
+              command:
+                - bash
+                - /kube-ovn/ovs-dpdk-healthcheck.sh
+            initialDelaySeconds: 60
+            periodSeconds: 5
+            failureThreshold: 5
+            timeoutSeconds: 45
+          resources:
+            requests:
+              cpu: $DPDK_CPU
+              memory: $DPDK_MEMORY
+            limits:
+              cpu: $DPDK_CPU
+              memory: $DPDK_MEMORY
+              hugepages-1Gi: 1Gi
+      nodeSelector:
+        kubernetes.io/os: "linux"
+        ovn.kubernetes.io/ovs_dp_type: "kernel"
+      volumes:
+        - name: host-modules
+          hostPath:
+            path: /lib/modules
+        - name: host-run-ovs
+          hostPath:
+            path: /run/openvswitch
+        - name: host-run-ovn
+          hostPath:
+            path: /run/ovn
+        - name: host-sys
+          hostPath:
+            path: /sys
+        - name: host-ns
+          hostPath:
+            path: /var/run/netns
+        - name: cni-conf
+          hostPath:
+            path: /etc/cni/net.d
+        - name: host-config-openvswitch
+          hostPath:
+            path: /etc/origin/openvswitch
+        - name: host-config-ovn
+          hostPath:
+            path: /etc/origin/ovn
+        - name: host-log-ovs
+          hostPath:
+            path: /var/log/openvswitch
+        - name: host-log-ovn
+          hostPath:
+            path: /var/log/ovn
+        - name: host-config-ovs
+          hostPath:
+            path: /opt/ovs-config
+            type: DirectoryOrCreate
+        - name: hugepage
+          emptyDir:
+            medium: HugePages
+        - name: localtime
+          hostPath:
+            path: /etc/localtime
+        - name: kube-ovn-tls
+          secret:
+            optional: true
+            secretName: kube-ovn-tls
+EOF
+
+else
+  cat <<EOF > ovs-ovn-ds.yaml
 ---
 kind: DaemonSet
 apiVersion: apps/v1
@@ -3524,7 +3717,7 @@ spec:
         - key: CriticalAddonsOnly
           operator: Exists
       priorityClassName: system-node-critical
-      serviceAccountName: ovn
+      serviceAccountName: ovn-ovs
       hostNetwork: true
       hostPID: true
       containers:
@@ -3660,8 +3853,7 @@ spec:
 EOF
 fi
 
-kubectl apply -f kube-ovn-crd.yaml
-kubectl apply -f ovn.yaml
+kubectl apply -f ovs-ovn-ds.yaml
 
 if $HYBRID_DPDK; then
 
@@ -3690,7 +3882,7 @@ spec:
       tolerations:
       - operator: Exists
       priorityClassName: system-node-critical
-      serviceAccountName: ovn
+      serviceAccountName: ovn-ovs
       hostNetwork: true
       hostPID: true
       containers:
@@ -4021,7 +4213,7 @@ spec:
         - key: CriticalAddonsOnly
           operator: Exists
       priorityClassName: system-node-critical
-      serviceAccountName: ovn
+      serviceAccountName: kube-ovn-cni
       hostNetwork: true
       hostPID: true
       initContainers:
@@ -4211,7 +4403,7 @@ spec:
         type: infra
     spec:
       priorityClassName: system-node-critical
-      serviceAccountName: ovn
+      serviceAccountName: kube-ovn-app
       hostPID: true
       containers:
         - name: pinger
@@ -4342,7 +4534,7 @@ spec:
                   app: kube-ovn-monitor
               topologyKey: kubernetes.io/hostname
       priorityClassName: system-cluster-critical
-      serviceAccountName: ovn
+      serviceAccountName: kube-ovn-app
       hostNetwork: true
       containers:
         - name: kube-ovn-monitor
@@ -4570,14 +4762,3 @@ echo "
 echo "Thanks for choosing Kube-OVN!
 For more advanced features, please read https://kubeovn.github.io/docs/stable/en/
 If you have any question, please file an issue https://github.com/kubeovn/kube-ovn/issues/new/choose"
-
-
-
-
-
-
-
-
-
-
-

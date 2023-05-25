@@ -30,7 +30,7 @@ spec:
         - key: CriticalAddonsOnly
           operator: Exists
       priorityClassName: system-node-critical
-      serviceAccountName: ovn
+      serviceAccountName: ovn-ovs
       hostNetwork: true
       hostPID: true
       containers:

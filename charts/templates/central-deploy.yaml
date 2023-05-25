@@ -38,7 +38,7 @@ spec:
                   app: ovn-central
               topologyKey: kubernetes.io/hostname
       priorityClassName: system-cluster-critical
-      serviceAccountName: ovn
+      serviceAccountName: ovn-ovs
       hostNetwork: true
       containers:
         - name: ovn-central

@@ -23,3 +23,8 @@ vpc-nat-gateway.tar
 image-amd64.tar
 image-arm64.tar
 test/**/*.test
+kube-ovn-app-sa.yaml
+kube-ovn-cni-sa.yaml
+kube-ovn-sa.yaml
+ovn-ovs-sa.yaml
+ovs-ovn-ds.yaml
