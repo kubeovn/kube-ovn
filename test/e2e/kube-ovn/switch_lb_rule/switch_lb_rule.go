@@ -1,19 +1,14 @@
-package vpc_internal_lb
+package switch_lb_rule
 
 import (
 	"context"
 	"fmt"
-	"os"
-	"path/filepath"
-	"testing"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
-	"k8s.io/kubernetes/test/e2e"
-	k8sframework "k8s.io/kubernetes/test/e2e/framework"
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
@@ -30,15 +25,6 @@ func generateServiceName(slrName string) string {
 
 func generatePodName(name string) string {
 	return "pod-" + name
-}
-
-func TestE2E(t *testing.T) {
-	if k8sframework.TestContext.KubeConfig == "" {
-		k8sframework.TestContext.KubeConfig = filepath.Join(os.Getenv("HOME"), ".kube", "config")
-	}
-	k8sframework.AfterReadingAllFlags(&k8sframework.TestContext)
-
-	e2e.RunE2ETests(t)
 }
 
 var _ = framework.Describe("[group:vpc-internal-lb]", func() {
@@ -93,13 +79,15 @@ var _ = framework.Describe("[group:vpc-internal-lb]", func() {
 	})
 
 	framework.ConformanceIt("should create switch-lb-rule with selector for vpc-internal-lb", func() {
+		f.SkipVersionPriorTo(1, 12, "This feature was introduce in v1.12")
+
 		var (
 			pod *corev1.Pod
 			err error
 		)
 
 		ginkgo.By("Get pod " + podName)
-		pod, err = podClient.PodInterface.Get(context.TODO(), podName, metav1.GetOptions{})
+		pod, err = podClient.Get(context.TODO(), podName, metav1.GetOptions{})
 		framework.ExpectNil(err)
 		framework.ExpectNotNil(pod)
 
@@ -198,6 +186,8 @@ var _ = framework.Describe("[group:vpc-internal-lb]", func() {
 	})
 
 	framework.ConformanceIt("should create switch-lb-rule with endpoints for vpc-internal-lb", func() {
+		f.SkipVersionPriorTo(1, 12, "This feature was introduce in v1.12")
+
 		var (
 			pod *corev1.Pod
 			err error
