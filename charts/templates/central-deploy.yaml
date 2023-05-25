@@ -96,6 +96,7 @@ spec:
               name: host-log-ovn
             - mountPath: /etc/localtime
               name: localtime
+              readOnly: true
             - mountPath: /var/run/tls
               name: kube-ovn-tls
           readinessProbe:

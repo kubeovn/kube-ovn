@@ -111,6 +111,7 @@ spec:
             mountPath: /var/lib/kubelet/pods
           - mountPath: /etc/openvswitch
             name: systemid
+            readOnly: true
           - mountPath: /etc/cni/net.d
             name: cni-conf
           - mountPath: /run/openvswitch
@@ -132,6 +133,7 @@ spec:
             name: host-log-ovn
           - mountPath: /etc/localtime
             name: localtime
+            readOnly: true
           - mountPath: /tmp
             name: tmp
         readinessProbe:

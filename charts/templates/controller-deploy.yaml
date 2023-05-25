@@ -133,6 +133,7 @@ spec:
           volumeMounts:
             - mountPath: /etc/localtime
               name: localtime
+              readOnly: true
             - mountPath: /var/log/kube-ovn
               name: kube-ovn-log
             - mountPath: /var/run/tls
