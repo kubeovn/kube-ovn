@@ -91,6 +91,8 @@ func MakePod(ns, name string, labels, annotations map[string]string, image strin
 			},
 		},
 	}
+	pod.Spec.TerminationGracePeriodSeconds = new(int64)
+	*pod.Spec.TerminationGracePeriodSeconds = 3
 
 	return pod
 }

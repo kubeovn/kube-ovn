@@ -438,6 +438,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		ginkgo.By("Creating pod " + podName + " with IP address " + ip)
 		annotations := map[string]string{util.IpAddressAnnotation: ip}
 		pod := framework.MakePod(namespaceName, podName, nil, annotations, image, cmd, nil)
+		pod.Spec.TerminationGracePeriodSeconds = nil
 		_ = podClient.Create(pod)
 
 		ginkgo.By("Waiting for pod events")

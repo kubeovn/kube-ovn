@@ -170,8 +170,6 @@ var _ = framework.OrderedDescribe("[group:node]", func() {
 			TargetPort: intstr.FromInt(port),
 		}}
 		service := framework.MakeService(serviceName, "", nil, podLabels, ports, "")
-		service.Spec.IPFamilyPolicy = new(corev1.IPFamilyPolicy)
-		*service.Spec.IPFamilyPolicy = corev1.IPFamilyPolicyPreferDualStack
 		_ = serviceClient.CreateSync(service, func(s *corev1.Service) (bool, error) {
 			return len(s.Spec.ClusterIPs) != 0, nil
 		}, "cluster ips are not empty")
