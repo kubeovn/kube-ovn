@@ -83,8 +83,6 @@ var _ = framework.Describe("[group:service]", func() {
 			TargetPort: intstr.FromInt(port),
 		}}
 		service := framework.MakeService(serviceName, corev1.ServiceTypeNodePort, nil, podLabels, ports, "")
-		service.Spec.IPFamilyPolicy = new(corev1.IPFamilyPolicy)
-		*service.Spec.IPFamilyPolicy = corev1.IPFamilyPolicyPreferDualStack
 		service.Spec.ExternalTrafficPolicy = corev1.ServiceExternalTrafficPolicyLocal
 		service = serviceClient.CreateSync(service, func(s *corev1.Service) (bool, error) {
 			return len(s.Spec.Ports) != 0 && s.Spec.Ports[0].NodePort != 0, nil
@@ -108,8 +106,11 @@ var _ = framework.Describe("[group:service]", func() {
 			protocol := strings.ToLower(util.CheckProtocol(nodeIP))
 			ginkgo.By("Checking " + protocol + " connection via node " + nodeName)
 			cmd := fmt.Sprintf("curl -q -s --connect-timeout 5 %s/clientip", util.JoinHostPort(nodeIP, nodePort))
-			ginkgo.By(fmt.Sprintf(`Executing %q in pod %s/%s`, cmd, namespaceName, hostPodName))
-			_ = e2epodoutput.RunHostCmdOrDie(namespaceName, hostPodName, cmd)
+			framework.WaitUntil(2*time.Second, 30*time.Second, func(ctx context.Context) (bool, error) {
+				ginkgo.By(fmt.Sprintf(`Executing %q in pod %s/%s`, cmd, namespaceName, hostPodName))
+				_, err := e2epodoutput.RunHostCmd(namespaceName, hostPodName, cmd)
+				return err == nil, nil
+			}, "")
 		}
 		for _, node := range nodeList.Items {
 			ipv4, ipv6 := util.GetNodeInternalIP(node)
@@ -134,8 +135,6 @@ var _ = framework.Describe("[group:service]", func() {
 		selector := map[string]string{"app": "svc-dual"}
 		service := framework.MakeService(serviceName, corev1.ServiceTypeClusterIP, nil, selector, ports, corev1.ServiceAffinityNone)
 		service.Namespace = namespaceName
-		service.Spec.IPFamilyPolicy = new(corev1.IPFamilyPolicy)
-		*service.Spec.IPFamilyPolicy = corev1.IPFamilyPolicyPreferDualStack
 		service = serviceClient.CreateSync(service, func(s *corev1.Service) (bool, error) {
 			return len(s.Spec.ClusterIPs) != 0, nil
 		}, "cluster ips are not empty")

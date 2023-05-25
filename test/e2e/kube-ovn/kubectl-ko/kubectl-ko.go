@@ -117,7 +117,6 @@ var _ = framework.Describe("[group:kubectl-ko]", func() {
 		ginkgo.By("Creating pod " + podName)
 		cmd := []string{"sh", "-c", fmt.Sprintf(`while true; do %s -c1 -w1 %s; sleep 1; done`, ping, target)}
 		pod := framework.MakePod(namespaceName, podName, nil, nil, framework.BusyBoxImage, cmd, nil)
-		pod.Spec.TerminationGracePeriodSeconds = new(int64)
 		pod = podClient.CreateSync(pod)
 
 		execOrDie(fmt.Sprintf("ko tcpdump %s/%s -c1", pod.Namespace, pod.Name))

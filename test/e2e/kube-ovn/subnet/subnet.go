@@ -837,7 +837,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		isSuccess := false
 		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 			subnet = subnetClient.Get(subnetName)
-			framework.Logf("subnet status usingips %d availableIPs %d ", subnet.Status.V4UsingIPs, subnet.Status.V4AvailableIPs)
+			framework.Logf("subnet status usingips %d availableIPs %d", int64(subnet.Status.V4UsingIPs), int64(subnet.Status.V4AvailableIPs))
 			if cidrV4 != "" {
 				isSuccess = checkFunc(subnet.Status.V4UsingIPRange, subnet.Status.V4AvailableIPRange, startIPv4, lastIPv4, replicas, false)
 				if !isSuccess {

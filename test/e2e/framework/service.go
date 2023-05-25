@@ -159,6 +159,8 @@ func MakeService(name string, svcType corev1.ServiceType, annotations, selector 
 			Type:            svcType,
 		},
 	}
+	service.Spec.IPFamilyPolicy = new(corev1.IPFamilyPolicy)
+	*service.Spec.IPFamilyPolicy = corev1.IPFamilyPolicyPreferDualStack
 
 	return service
 }
