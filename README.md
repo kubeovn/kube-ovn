@@ -60,7 +60,7 @@ Kube-OVN offers prometheus integration with grafana dashboards to visualize netw
 ![dashboard](docs/pinger-grafana.png)
 
 ## Quick Start
-Kube-OVN is easy to install with all necessary components/dependencies included. If you already have a Kubernetes cluster without any cni plugin, please refer to the [Installation Guide](docs/install.md).
+Kube-OVN is easy to install with all necessary components/dependencies included. If you already have a Kubernetes cluster without any cni plugin, please refer to the [Installation Guide](https://kubeovn.github.io/docs/stable/en/start/one-step-install/).
 
 If you want to install Kubernetes from scratch, you can try [kubespray](https://github.com/kubernetes-sigs/kubespray/blob/master/docs/kube-ovn.md) or for Chinese users try [kubeasz](https://github.com/easzlab/kubeasz/blob/master/docs/setup/network-plugin/kube-ovn.md) to deploy a production ready Kubernetes cluster with Kube-OVN embedded.
 
