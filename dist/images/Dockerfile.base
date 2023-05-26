@@ -21,7 +21,9 @@ RUN cd /usr/src/ && \
     # ovsdb-tool: add optional server id parameter for "join-cluster" command
     curl -s https://github.com/kubeovn/ovs/commit/ebf61515da71fa2e23125a92859fbdb96dcbffe7.patch | git apply && \
     # Add jitter parameter patch for netem qos
-    curl -s https://github.com/kubeovn/ovs/commit/2eaaf89fbf3ee2172719ed10d045fd79900edc8e.patch | git apply
+    curl -s https://github.com/kubeovn/ovs/commit/2eaaf89fbf3ee2172719ed10d045fd79900edc8e.patch | git apply && \
+    # fix memory leak in qos
+    curl -s https://github.com/kubeovn/ovs/commit/6a4dd2f4b9311a227cc26fef7c398ae9b241311b.patch | git apply
 
 RUN cd /usr/src/ && git clone -b branch-22.12 --depth=1 https://github.com/ovn-org/ovn.git && \
     cd ovn && \
@@ -69,14 +71,12 @@ RUN mkdir /packages/ && \
 
 FROM ubuntu:22.04
 
-ARG DEBUG=false
 ARG DEBIAN_FRONTEND=noninteractive
 RUN apt update && apt upgrade -y && apt install ca-certificates python3 hostname libunwind8 netbase \
         ethtool iproute2 ncat libunbound-dev procps libatomic1 kmod iptables python3-netifaces python3-sortedcontainers \
         tcpdump ipset curl uuid-runtime openssl inetutils-ping arping ndisc6 \
         logrotate dnsutils net-tools strongswan strongswan-pki libcharon-extra-plugins \
         libcharon-extauth-plugins libstrongswan-extra-plugins libstrongswan-standard-plugins -y --no-install-recommends && \
-        if [ "${DEBUG}" = "true" ]; then apt install -y --no-install-recommends valgrind; fi && \
         rm -rf /var/lib/apt/lists/* && \
         rm -rf /etc/localtime
 
@@ -94,12 +94,6 @@ ENV KUBE_VERSION="v1.27.2"
 RUN curl -L https://dl.k8s.io/${KUBE_VERSION}/kubernetes-client-linux-${ARCH}.tar.gz | tar -xz -C . && cp ./kubernetes/client/bin/kubectl /usr/bin/kubectl \
  && chmod +x /usr/bin/kubectl && rm -rf ./kubernetes
 
-RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages  \
-    dpkg -i /packages/openvswitch-*.deb /packages/python3-openvswitch*.deb && \
-    dpkg -i --ignore-depends=openvswitch-switch,openvswitch-common /packages/ovn-*.deb && \
-    if [ "${DEBUG}" = "true" ]; then dpkg -i --ignore-depends=openvswitch-switch,openvswitch-common /packages/*.ddeb; fi && \
-    rm -rf /var/lib/openvswitch/pki/
-
 ENV BFDD_VERSION="v0.5.4"
 RUN curl -sSf -L --retry 3 -o /usr/local/bin/bfdd-control https://github.com/bobz965/bfd-binary-for-kube-ovn-cni/releases/download/${BFDD_VERSION}/bfdd-control && \
     curl -sSf -L --retry 3 -o /usr/local/bin/bfdd-beacon https://github.com/bobz965/bfd-binary-for-kube-ovn-cni/releases/download/${BFDD_VERSION}/bfdd-beacon && \
@@ -110,5 +104,18 @@ RUN dumb_init_arch="x86_64"; \
     if [ "$ARCH" = "arm64" ]; then dumb_init_arch="aarch64"; fi; \
     curl -sSf -L --retry 5 -o /usr/bin/dumb-init https://github.com/Yelp/dumb-init/releases/download/v${DUMB_INIT_VERSION}/dumb-init_${DUMB_INIT_VERSION}_${dumb_init_arch} && \
     chmod +x /usr/bin/dumb-init
+
+RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages  \
+    dpkg -i /packages/openvswitch-*.deb /packages/python3-openvswitch*.deb && \
+    dpkg -i --ignore-depends=openvswitch-switch,openvswitch-common /packages/ovn-*.deb && \
+    rm -rf /var/lib/openvswitch/pki/
+
+ARG DEBUG=false
+RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages \
+    if [ "${DEBUG}" = "true" ]; then \
+        apt update && apt install -y --no-install-recommends valgrind && \
+        rm -rf /var/lib/apt/lists/* && \
+        dpkg -i --ignore-depends=openvswitch-switch,openvswitch-common /packages/*.ddeb; \
+    fi
 
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]
