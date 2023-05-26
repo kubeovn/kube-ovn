@@ -562,7 +562,7 @@ func (c *LegacyClient) DeleteDHCPOptionsByUUIDs(uuidList []string) (err error) {
 }
 
 func (c *LegacyClient) DeleteDHCPOptions(ls string, protocol string) error {
-	klog.Infof("delete dhcp options for switch %s protocol %s", ls, protocol)
+	klog.V(4).Infof("delete dhcp options for switch %s protocol %s", ls, protocol)
 	dhcpOptionsList, err := c.ListDHCPOptions(true, ls, protocol)
 	if err != nil {
 		klog.Errorf("find dhcp options failed, %v", err)
