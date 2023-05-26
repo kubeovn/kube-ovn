@@ -591,29 +591,27 @@ func (c *Controller) gcPortGroup() error {
 				npNames.Add(fmt.Sprintf("%s/%s", subnet.Name, node.Name))
 			}
 		}
-	}
 
-	// list all np port groups which externalIDs[np]!=""
-	pgs, err := c.ovnClient.ListPortGroups(map[string]string{networkPolicyKey: ""})
-	if err != nil {
-		klog.Errorf("list np port group: %v", err)
-		return err
-	}
+		// list all np port groups which externalIDs[np]!=""
+		pgs, err := c.ovnClient.ListPortGroups(map[string]string{networkPolicyKey: ""})
+		if err != nil {
+			klog.Errorf("list np port group: %v", err)
+			return err
+		}
 
-	for _, pg := range pgs {
-		np := strings.Split(pg.ExternalIDs[networkPolicyKey], "/")
-		npNamespace := np[0]
-		npName := np[1]
-
-		if !c.config.EnableNP || !npNames.Has(fmt.Sprintf("%s/%s", npNamespace, npName)) {
-			klog.Infof("gc port group %s", pg.Name)
-
-			if err := c.handleDeleteNp(fmt.Sprintf("%s/%s", npNamespace, npName)); err != nil {
-				klog.Errorf("gc np %s/%s, %v", npNamespace, npName, err)
-				return err
+		for _, pg := range pgs {
+			np := strings.Split(pg.ExternalIDs[networkPolicyKey], "/")
+			if len(np) != 2 {
+				// not np port group
+				continue
+			}
+			if !npNames.Has(pg.ExternalIDs[networkPolicyKey]) {
+				klog.Infof("gc port group '%s' network policy '%s'", pg.Name, pg.ExternalIDs[networkPolicyKey])
+				c.deleteNpQueue.Add(pg.ExternalIDs[networkPolicyKey])
 			}
 		}
 	}
+
 	return nil
 }
 
