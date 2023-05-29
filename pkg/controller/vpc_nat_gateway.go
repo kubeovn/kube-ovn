@@ -479,7 +479,7 @@ func (c *Controller) handleUpdateVpcEip(natGwKey string) error {
 		return err
 	}
 	for _, eip := range eips {
-		if eip.Spec.NatGwDp == natGwKey && eip.Status.Redo != NAT_GW_CREATED_AT && eip.Annotations[util.VpcNatAnnotation] == "" {
+		if eip.Spec.NatGwDp == natGwKey && eip.Status.Redo != NAT_GW_CREATED_AT {
 			klog.V(3).Infof("redo eip %s", eip.Name)
 			if err = c.patchEipStatus(eip.Name, "", NAT_GW_CREATED_AT, "", false); err != nil {
 				klog.Errorf("failed to update eip '%s' to re-apply, %v", eip.Name, err)

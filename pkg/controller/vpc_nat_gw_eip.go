@@ -886,7 +886,8 @@ func (c *Controller) patchEipStatus(key, v4ip, redo, qos string, ready bool) err
 		return err
 	}
 	// nat record all kinds of nat rules using this eip
-	if nat != "" && eip.Status.Nat != nat {
+	klog.V(3).Infof("nat of eip %s is %s", eip.Name, nat)
+	if eip.Status.Nat != nat {
 		eip.Status.Nat = nat
 		changed = true
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -593,7 +594,7 @@ func (c *Controller) handleUpdateIptablesFip(key string) error {
 			return err
 		}
 		//  reset eip
-		c.resetIptablesEipQueue.Add(cachedFip.Spec.EIP)
+		c.resetIptablesEipQueue.AddAfter(cachedFip.Spec.EIP, 3*time.Second)
 		return nil
 	}
 	klog.V(3).Infof("handle update fip %s", key)
@@ -761,7 +762,7 @@ func (c *Controller) handleUpdateIptablesDnatRule(key string) error {
 			return err
 		}
 		//  reset eip
-		c.resetIptablesEipQueue.Add(cachedDnat.Spec.EIP)
+		c.resetIptablesEipQueue.AddAfter(cachedDnat.Spec.EIP, 3*time.Second)
 		return nil
 	}
 	klog.V(3).Infof("handle update dnat %s", key)
@@ -940,7 +941,7 @@ func (c *Controller) handleUpdateIptablesSnatRule(key string) error {
 			return err
 		}
 		//  reset eip
-		c.resetIptablesEipQueue.Add(cachedSnat.Spec.EIP)
+		c.resetIptablesEipQueue.AddAfter(cachedSnat.Spec.EIP, 3*time.Second)
 		return nil
 	}
 	klog.V(3).Infof("handle update snat %s", key)

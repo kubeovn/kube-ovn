@@ -248,8 +248,11 @@ func ValidateVpc(vpc *kubeovnv1.Vpc) error {
 		}
 
 		if item.Action == kubeovnv1.PolicyRouteActionReroute {
-			if ip := net.ParseIP(item.NextHopIP); ip == nil {
-				return fmt.Errorf("bad next hop ip: %s", item.NextHopIP)
+			// ecmp policy route may reroute to multiple next hop ips
+			for _, ipStr := range strings.Split(item.NextHopIP, ",") {
+				if ip := net.ParseIP(ipStr); ip == nil {
+					return fmt.Errorf("invalid next hop ips: %s", item.NextHopIP)
+				}
 			}
 		}
 	}
