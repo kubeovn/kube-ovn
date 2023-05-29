@@ -28,6 +28,8 @@ RUN cd /usr/src/ && \
     curl -s https://github.com/kubeovn/ovs/commit/b721a251dadfb0857a2aebe32611d18ca935421f.patch | git apply && \
     # ovsdb-tool: add optional server id parameter for "join-cluster" command
     curl -s https://github.com/kubeovn/ovs/commit/0664cbe47d1684ca5b7147e3449779635454970e.patch | git apply && \
+    # fix memory leak in qos
+    curl -s https://github.com/kubeovn/ovs/commit/6a4dd2f4b9311a227cc26fef7c398ae9b241311b.patch | git apply && \
     # compile without avx512
     if [ "$ARCH" = "amd64" -a "$NO_AVX512" = "true" ]; then curl -s https://github.com/kubeovn/ovs/commit/f61283c8934589fe6de2b1e86041204dfc31a3e3.patch | git apply; fi && \
     ./boot.sh && \
@@ -76,14 +78,12 @@ RUN mkdir /packages/ && \
 
 FROM ubuntu:22.04
 
-ARG DEBUG=false
 ARG DEBIAN_FRONTEND=noninteractive
 RUN apt update && apt upgrade -y && apt install ca-certificates python3 hostname libunwind8 netbase \
         ethtool iproute2 ncat libunbound-dev procps libatomic1 kmod iptables \
         tcpdump ipset curl uuid-runtime openssl inetutils-ping arping ndisc6 \
         logrotate dnsutils net-tools strongswan strongswan-pki libcharon-extra-plugins \
         libcharon-extauth-plugins libstrongswan-extra-plugins libstrongswan-standard-plugins -y --no-install-recommends && \
-        if [ "${DEBUG}" = "true" ]; then apt install -y --no-install-recommends valgrind; fi && \
         rm -rf /var/lib/apt/lists/* && \
         rm -rf /etc/localtime
 
@@ -106,7 +106,6 @@ RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages  \
     dpkg -i /packages/python3-openvswitch*.deb && \
     dpkg -i /packages/openvswitch-*.deb && \
     dpkg -i --ignore-depends=openvswitch-switch,openvswitch-common /packages/ovn-*.deb && \
-    if [ "${DEBUG}" = "true" ]; then dpkg -i --ignore-depends=openvswitch-switch,openvswitch-common /packages/*.ddeb; fi && \
     mv /usr/lib/python3.7/dist-packages/ovs /usr/lib/python3/dist-packages/ && \
     rm -rf /var/lib/openvswitch/pki/
 
@@ -115,5 +114,18 @@ RUN dump_arch="x86_64"; \
     if [ "$ARCH" = "arm64" ]; then dump_arch="aarch64"; fi; \
     curl -sSf -L --retry 5 -o /usr/bin/dumb-init https://github.com/Yelp/dumb-init/releases/download/v${DUMB_INIT_VERSION}/dumb-init_${DUMB_INIT_VERSION}_${dump_arch} && \
     chmod +x /usr/bin/dumb-init
+
+RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages  \
+    dpkg -i /packages/openvswitch-*.deb /packages/python3-openvswitch*.deb && \
+    dpkg -i --ignore-depends=openvswitch-switch,openvswitch-common /packages/ovn-*.deb && \
+    rm -rf /var/lib/openvswitch/pki/
+
+ARG DEBUG=false
+RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages \
+    if [ "${DEBUG}" = "true" ]; then \
+        apt update && apt install -y --no-install-recommends valgrind && \
+        rm -rf /var/lib/apt/lists/* && \
+        dpkg -i --ignore-depends=openvswitch-switch,openvswitch-common /packages/*.ddeb; \
+    fi
 
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]
