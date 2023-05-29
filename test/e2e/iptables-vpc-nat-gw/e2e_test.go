@@ -3,13 +3,13 @@ package ovn_eip
 import (
 	"context"
 	"flag"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	dockertypes "github.com/docker/docker/api/types"
-	attachnetclientset "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/client/clientset/versioned"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
@@ -28,7 +28,7 @@ import (
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/kind"
 )
 
-const dockerNetworkName = "kube-ovn-vlan"
+const dockerExtNet1Name = "kube-ovn-ext-net1"
 const vpcNatGWConfigMapName = "ovn-vpc-nat-gw-config"
 const networkAttachDefName = "ovn-vpc-external-network"
 const externalSubnetProvider = "ovn-vpc-external-network.kube-system"
@@ -38,7 +38,7 @@ var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 
 	var skip bool
 	var cs clientset.Interface
-	var attachNetClient attachnetclientset.Interface
+	var attachNetClient *framework.NetworkAttachmentDefinitionClient
 	var clusterName, vpcName, vpcNatGwName, overlaySubnetName string
 	var vpcClient *framework.VpcClient
 	var vpcNatGwClient *framework.VpcNatGatewayClient
@@ -53,9 +53,10 @@ var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 	var iptablesSnatRuleClient *framework.IptablesSnatClient
 	var iptablesDnatRuleClient *framework.IptablesDnatClient
 
-	var dockerNetwork *dockertypes.NetworkResource
+	var dockerExtNet1Network *dockertypes.NetworkResource
 	var containerID string
 	var image string
+	var net1NicName string
 
 	vpcName = "vpc-" + framework.RandomSuffix()
 	vpcNatGwName = "gw-" + framework.RandomSuffix()
@@ -83,7 +84,7 @@ var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 	ginkgo.BeforeEach(func() {
 		containerID = ""
 		cs = f.ClientSet
-		attachNetClient = f.AttachNetClient
+		attachNetClient = f.NetworkAttachmentDefinitionClient(framework.KubeOvnNamespace)
 		subnetClient = f.SubnetClient()
 		vpcClient = f.VpcClient()
 		vpcNatGwClient = f.VpcNatGatewayClient()
@@ -115,11 +116,11 @@ var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 			clusterName = cluster
 		}
 
-		if dockerNetwork == nil {
-			ginkgo.By("Ensuring docker network " + dockerNetworkName + " exists")
-			network, err := docker.NetworkCreate(dockerNetworkName, true, true)
-			framework.ExpectNoError(err, "creating docker network "+dockerNetworkName)
-			dockerNetwork = network
+		if dockerExtNet1Network == nil {
+			ginkgo.By("Ensuring docker network " + dockerExtNet1Name + " exists")
+			network, err := docker.NetworkCreate(dockerExtNet1Name, true, true)
+			framework.ExpectNoError(err, "creating docker network "+dockerExtNet1Name)
+			dockerExtNet1Network = network
 		}
 
 		ginkgo.By("Getting kind nodes")
@@ -128,32 +129,33 @@ var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 		framework.ExpectNotEmpty(nodes)
 
 		ginkgo.By("Connecting nodes to the docker network")
-		err = kind.NetworkConnect(dockerNetwork.ID, nodes)
-		framework.ExpectNoError(err, "connecting nodes to network "+dockerNetworkName)
+		err = kind.NetworkConnect(dockerExtNet1Network.ID, nodes)
+		framework.ExpectNoError(err, "connecting nodes to network "+dockerExtNet1Name)
 
 		ginkgo.By("Getting node links that belong to the docker network")
 		nodes, err = kind.ListNodes(clusterName, "")
 		framework.ExpectNoError(err, "getting nodes in kind cluster")
 
 		ginkgo.By("Validating node links")
-		var eth0Exist, eth1Exist bool
+		network, err := docker.NetworkInspect(dockerExtNet1Name)
+		framework.ExpectNoError(err)
+		var eth0Exist, net1Exist bool
 		for _, node := range nodes {
 			links, err := node.ListLinks()
 			framework.ExpectNoError(err, "failed to list links on node %s: %v", node.Name(), err)
-
+			nicMac := network.Containers[node.ID].MacAddress
 			for _, link := range links {
 				ginkgo.By("exist node nic " + link.IfName)
 				if link.IfName == "eth0" {
 					eth0Exist = true
 				}
-				if link.IfName == "eth1" {
-					eth1Exist = true
+				if link.Address == nicMac {
+					net1NicName = link.IfName
+					net1Exist = true
 				}
 			}
 			framework.ExpectTrue(eth0Exist)
-			// nat gw pod use eth1 in this case
-			// retest this case should rebuild kind cluster
-			framework.ExpectTrue(eth1Exist)
+			framework.ExpectTrue(net1Exist)
 		}
 	})
 
@@ -174,32 +176,35 @@ var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 		nodes, err := kind.ListNodes(clusterName, "")
 		framework.ExpectNoError(err, "getting nodes in cluster")
 
-		if dockerNetwork != nil {
+		if dockerExtNet1Network != nil {
 			ginkgo.By("Disconnecting nodes from the docker network")
-			err = kind.NetworkDisconnect(dockerNetwork.ID, nodes)
-			framework.ExpectNoError(err, "disconnecting nodes from network "+dockerNetworkName)
+			err = kind.NetworkDisconnect(dockerExtNet1Network.ID, nodes)
+			framework.ExpectNoError(err, "disconnecting nodes from network "+dockerExtNet1Name)
 		}
 	})
 
 	framework.ConformanceIt("iptables eip fip snat dnat", func() {
-		ginkgo.By("Getting docker network " + dockerNetworkName)
-		network, err := docker.NetworkInspect(dockerNetworkName)
-		framework.ExpectNoError(err, "getting docker network "+dockerNetworkName)
+		ginkgo.By("Getting docker network " + dockerExtNet1Name)
+		network, err := docker.NetworkInspect(dockerExtNet1Name)
+		framework.ExpectNoError(err, "getting docker network "+dockerExtNet1Name)
 
 		ginkgo.By("Getting k8s nodes")
 		_, err = e2enode.GetReadySchedulableNodes(context.Background(), cs)
 		framework.ExpectNoError(err)
 
-		ginkgo.By("Getting network attachment fefinition " + networkAttachDefName)
-		networkClient := attachNetClient.K8sCniCncfIoV1().NetworkAttachmentDefinitions(framework.KubeOvnNamespace)
-		nad, err := networkClient.Get(context.Background(), networkAttachDefName, metav1.GetOptions{})
+		ginkgo.By("Getting network attachment definition " + networkAttachDefName)
+		attachConf := fmt.Sprintf(`{"cniVersion": "0.3.0","type": "macvlan","master": "%s","mode": "bridge"}`, net1NicName)
+		attachNet := framework.MakeNetworkAttachmentDefinition(networkAttachDefName, framework.KubeOvnNamespace, attachConf)
+		attachNetClient.Create(attachNet)
+
+		nad := attachNetClient.Get(networkAttachDefName)
 		framework.ExpectNoError(err, "failed to get")
 		ginkgo.By("Got network attachment definition " + nad.Name)
 
 		ginkgo.By("Creating underlay macvlan subnet " + networkAttachDefName)
 		cidr := make([]string, 0, 2)
 		gateway := make([]string, 0, 2)
-		for _, config := range dockerNetwork.IPAM.Config {
+		for _, config := range dockerExtNet1Network.IPAM.Config {
 			switch util.CheckProtocol(config.Subnet) {
 			case apiv1.ProtocolIPv4:
 				if f.ClusterIpFamily != "ipv6" {
@@ -358,10 +363,6 @@ var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 		ginkgo.By("Deleting custom vpc nat gw")
 		vpcNatGwClient.DeleteSync(vpcNatGwName)
 
-		ginkgo.By("Deleting configmap " + vpcNatGWConfigMapName)
-		err = cs.CoreV1().ConfigMaps(framework.KubeOvnNamespace).Delete(context.Background(), vpcNatGWConfigMapName, metav1.DeleteOptions{})
-		framework.ExpectNoError(err, "failed to delete ConfigMap")
-
 		// the only pod for vpc nat gateway
 		vpcNatGwPodName := "vpc-nat-gw-" + vpcNatGwName + "-0"
 
@@ -374,9 +375,8 @@ var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 		ipClient.DeleteSync(eth0IpName)
 		ginkgo.By("Deleting vpc nat gw net1 ip " + net1IpName)
 		ipClient.DeleteSync(net1IpName)
-
-		err = networkClient.Delete(context.Background(), networkAttachDefName, metav1.DeleteOptions{})
-		framework.ExpectNoError(err, "failed to delete")
+		ginkgo.By("Deleting nad " + networkAttachDefName)
+		attachNetClient.Delete(networkAttachDefName)
 	})
 })
 
