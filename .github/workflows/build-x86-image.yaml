@@ -28,6 +28,8 @@ jobs:
   build-kube-ovn-base:
     name: Build kube-ovn-base
     runs-on: ubuntu-22.04
+    outputs:
+      build-base: ${{ steps.build.outputs.build-base }}
     steps:
       - uses: actions/checkout@v3
         with:
@@ -116,7 +118,7 @@ jobs:
           go mod tidy
           git diff --exit-code
           make lint
-          if [ "x${{ env.BUILD_BASE }}" = "x1" ]; then
+          if [ ${{ needs.build-kube-ovn-base.outputs.build-base || 0 }} = 1 ]; then
             TAG=$(cat VERSION)
             docker tag kubeovn/kube-ovn-base:$TAG-amd64 kubeovn/kube-ovn-base:$TAG
             docker tag kubeovn/kube-ovn-base:$TAG-amd64-no-avx512 kubeovn/kube-ovn-base:$TAG-no-avx512
@@ -369,18 +371,28 @@ jobs:
           kubectl -n kube-system rollout status deploy ovn-central
           kubectl -n kube-system delete po -l app=ovs
           kubectl -n kube-system wait pod -l app=ovs --for condition=Ready --timeout=90s
+          while true; do
+            if [ ! -z "$(kubectl -n kube-system get ep ovn-nb -o jsonpath='{.subsets}')" ]; then
+              break
+            fi
+            sleep 1
+          done
           bash ${{ env.E2E_DIR }}/dist/images/kubectl-ko log ovn
           bash ${{ env.E2E_DIR }}/dist/images/kubectl-ko log ovs
 
-          exit_code=0
-          find kubectl-ko-log -type f -name '*.valgrind.*' | while read f; do
-            if grep -qw 'definitely lost' "$f"; then
-              exit_code=1
-              echo $f; cat "$f";
-            fi;
+          for daemon in ovsdb-nb ovsdb-sb ovn-northd ovn-controller ovsdb-server ovs-vswitchd; do
+            echo "Checking if valgrind log file for $daemon exists..."
+            find kubectl-ko-log -type f -name "$daemon.valgrind.log.[[:digit:]]*" -exec false {} + && exit 1
           done
 
-          exit $exit_code
+          find kubectl-ko-log -type f -name '*.valgrind.log.*' | while read f; do
+            if grep -qw 'definitely lost' "$f"; then
+              echo "Memory leak detected in $(basename $f | awk -F. '{print $1}')."
+              echo $f
+              cat "$f"
+              exit 1
+            fi;
+          done
 
   k8s-netpol-e2e:
     name: Kubernetes Network Policy E2E
@@ -462,6 +474,9 @@ jobs:
       - name: Load image
         run: docker load --input kube-ovn.tar
 
+      - name: Export debug image tag
+        run: echo "DEBUG_TAG='$(cat VERSION)-debug'" >> "$GITHUB_ENV"
+
       - name: Create kind cluster
         run: |
           sudo pip3 install j2cli
@@ -471,11 +486,56 @@ jobs:
           sudo chown -R $(id -un). ~/.kube/
 
       - name: Install Kube-OVN
+        env:
+          VERSION: ${{ env.DEBUG_TAG }}
+          DEBUG_WRAPPER: valgrind
         run: make kind-install-${{ matrix.ip-family }}
 
       - name: Run E2E
         working-directory: ${{ env.E2E_DIR }}
         run: make k8s-netpol-e2e
+
+      - name: kubectl ko log
+        if: failure()
+        run: |
+          bash ${{ env.E2E_DIR }}/dist/images/kubectl-ko log all
+          mv kubectl-ko-log.tar.gz k8s-netpol-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
+
+      - name: upload kubectl ko log
+        uses: actions/upload-artifact@v3
+        if: failure()
+        with:
+          name: k8s-netpol-e2e-${{ matrix.ip-family }}-ko-log
+          path: k8s-netpol-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
+
+      - name: Check valgrind result
+        run: |
+          kubectl -n kube-system rollout restart deploy ovn-central
+          kubectl -n kube-system rollout status deploy ovn-central
+          kubectl -n kube-system delete po -l app=ovs
+          kubectl -n kube-system wait pod -l app=ovs --for condition=Ready --timeout=90s
+          while true; do
+            if [ ! -z "$(kubectl -n kube-system get ep ovn-nb -o jsonpath='{.subsets}')" ]; then
+              break
+            fi
+            sleep 1
+          done
+          bash ${{ env.E2E_DIR }}/dist/images/kubectl-ko log ovn
+          bash ${{ env.E2E_DIR }}/dist/images/kubectl-ko log ovs
+
+          for daemon in ovsdb-nb ovsdb-sb ovn-northd ovn-controller ovsdb-server ovs-vswitchd; do
+            echo "Checking if valgrind log file for $daemon exists..."
+            find kubectl-ko-log -type f -name "$daemon.valgrind.log.[[:digit:]]*" -exec false {} + && exit 1
+          done
+
+          find kubectl-ko-log -type f -name '*.valgrind.log.*' | while read f; do
+            if grep -qw 'definitely lost' "$f"; then
+              echo "Memory leak detected in $(basename $f | awk -F. '{print $1}')."
+              echo $f
+              cat "$f"
+              exit 1
+            fi;
+          done
 
   k8s-netpol-legacy-e2e:
     name: Kubernetes Network Policy Legacy E2E
@@ -557,6 +617,9 @@ jobs:
       - name: Load image
         run: docker load --input kube-ovn.tar
 
+      - name: Export debug image tag
+        run: echo "DEBUG_TAG='$(cat VERSION)-debug'" >> "$GITHUB_ENV"
+
       - name: Create kind cluster
         run: |
           sudo pip3 install j2cli
@@ -566,11 +629,56 @@ jobs:
           sudo chown -R $(id -un). ~/.kube/
 
       - name: Install Kube-OVN
+        env:
+          VERSION: ${{ env.DEBUG_TAG }}
+          DEBUG_WRAPPER: valgrind
         run: make kind-install-${{ matrix.ip-family }}
 
       - name: Run E2E
         working-directory: ${{ env.E2E_DIR }}
         run: make k8s-netpol-legacy-e2e
+
+      - name: kubectl ko log
+        if: failure()
+        run: |
+          bash ${{ env.E2E_DIR }}/dist/images/kubectl-ko log all
+          mv kubectl-ko-log.tar.gz k8s-netpol-legacy-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
+
+      - name: upload kubectl ko log
+        uses: actions/upload-artifact@v3
+        if: failure()
+        with:
+          name: k8s-netpol-legacy-e2e-${{ matrix.ip-family }}-ko-log
+          path: k8s-netpol-legacy-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
+
+      - name: Check valgrind result
+        run: |
+          kubectl -n kube-system rollout restart deploy ovn-central
+          kubectl -n kube-system rollout status deploy ovn-central
+          kubectl -n kube-system delete po -l app=ovs
+          kubectl -n kube-system wait pod -l app=ovs --for condition=Ready --timeout=90s
+          while true; do
+            if [ ! -z "$(kubectl -n kube-system get ep ovn-nb -o jsonpath='{.subsets}')" ]; then
+              break
+            fi
+            sleep 1
+          done
+          bash ${{ env.E2E_DIR }}/dist/images/kubectl-ko log ovn
+          bash ${{ env.E2E_DIR }}/dist/images/kubectl-ko log ovs
+
+          for daemon in ovsdb-nb ovsdb-sb ovn-northd ovn-controller ovsdb-server ovs-vswitchd; do
+            echo "Checking if valgrind log file for $daemon exists..."
+            find kubectl-ko-log -type f -name "$daemon.valgrind.log.[[:digit:]]*" -exec false {} + && exit 1
+          done
+
+          find kubectl-ko-log -type f -name '*.valgrind.log.*' | while read f; do
+            if grep -qw 'definitely lost' "$f"; then
+              echo "Memory leak detected in $(basename $f | awk -F. '{print $1}')."
+              echo $f
+              cat "$f"
+              exit 1
+            fi;
+          done
 
   cyclonus-netpol-e2e:
     name: Cyclonus Network Policy E2E
@@ -629,6 +737,9 @@ jobs:
       - name: Load image
         run: docker load --input kube-ovn.tar
 
+      - name: Export debug image tag
+        run: echo "DEBUG_TAG='$(cat VERSION)-debug'" >> "$GITHUB_ENV"
+
       - name: Create kind cluster
         run: |
           sudo pip3 install j2cli
@@ -638,11 +749,56 @@ jobs:
           sudo chown -R $(id -un). ~/.kube/
 
       - name: Install Kube-OVN
+        env:
+          VERSION: ${{ env.DEBUG_TAG }}
+          DEBUG_WRAPPER: valgrind
         run: make kind-install-${{ matrix.ip-family }}
 
       - name: Run E2E
         working-directory: ${{ env.E2E_DIR }}
         run: make cyclonus-netpol-e2e
+
+      - name: kubectl ko log
+        if: failure()
+        run: |
+          bash ${{ env.E2E_DIR }}/dist/images/kubectl-ko log all
+          mv kubectl-ko-log.tar.gz cyclonus-netpol-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
+
+      - name: upload kubectl ko log
+        uses: actions/upload-artifact@v3
+        if: failure()
+        with:
+          name: cyclonus-netpol-e2e-${{ matrix.ip-family }}-ko-log
+          path: cyclonus-netpol-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
+
+      - name: Check valgrind result
+        run: |
+          kubectl -n kube-system rollout restart deploy ovn-central
+          kubectl -n kube-system rollout status deploy ovn-central
+          kubectl -n kube-system delete po -l app=ovs
+          kubectl -n kube-system wait pod -l app=ovs --for condition=Ready --timeout=90s
+          while true; do
+            if [ ! -z "$(kubectl -n kube-system get ep ovn-nb -o jsonpath='{.subsets}')" ]; then
+              break
+            fi
+            sleep 1
+          done
+          bash ${{ env.E2E_DIR }}/dist/images/kubectl-ko log ovn
+          bash ${{ env.E2E_DIR }}/dist/images/kubectl-ko log ovs
+
+          for daemon in ovsdb-nb ovsdb-sb ovn-northd ovn-controller ovsdb-server ovs-vswitchd; do
+            echo "Checking if valgrind log file for $daemon exists..."
+            find kubectl-ko-log -type f -name "$daemon.valgrind.log.[[:digit:]]*" -exec false {} + && exit 1
+          done
+
+          find kubectl-ko-log -type f -name '*.valgrind.log.*' | while read f; do
+            if grep -qw 'definitely lost' "$f"; then
+              echo "Memory leak detected in $(basename $f | awk -F. '{print $1}')."
+              echo $f
+              cat "$f"
+              exit 1
+            fi;
+          done
 
   kube-ovn-conformance-e2e:
     name: Kube-OVN Conformance E2E
@@ -749,18 +905,28 @@ jobs:
           kubectl -n kube-system rollout status deploy ovn-central
           kubectl -n kube-system delete po -l app=ovs
           kubectl -n kube-system wait pod -l app=ovs --for condition=Ready --timeout=90s
+          while true; do
+            if [ ! -z "$(kubectl -n kube-system get ep ovn-nb -o jsonpath='{.subsets}')" ]; then
+              break
+            fi
+            sleep 1
+          done
           bash ${{ env.E2E_DIR }}/dist/images/kubectl-ko log ovn
           bash ${{ env.E2E_DIR }}/dist/images/kubectl-ko log ovs
 
-          exit_code=0
-          find kubectl-ko-log -type f -name '*.valgrind.*' | while read f; do
-            if grep -qw 'definitely lost' "$f"; then
-              exit_code=1
-              echo $f; cat "$f";
-            fi;
+          for daemon in ovsdb-nb ovsdb-sb ovn-northd ovn-controller ovsdb-server ovs-vswitchd; do
+            echo "Checking if valgrind log file for $daemon exists..."
+            find kubectl-ko-log -type f -name "$daemon.valgrind.log.[[:digit:]]*" -exec false {} + && exit 1
           done
 
-          exit $exit_code
+          find kubectl-ko-log -type f -name '*.valgrind.log.*' | while read f; do
+            if grep -qw 'definitely lost' "$f"; then
+              echo "Memory leak detected in $(basename $f | awk -F. '{print $1}')."
+              echo $f
+              cat "$f"
+              exit 1
+            fi;
+          done
 
       - name: Cleanup
         run: sh dist/images/cleanup.sh
