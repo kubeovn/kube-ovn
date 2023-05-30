@@ -331,7 +331,7 @@ func genNatOutgoingPolicyRulesStatus(subnet *kubeovnv1.Subnet) error {
 			if err != nil {
 				return err
 			}
-			priority := string(index)
+			priority := fmt.Sprintf("%d", index)
 			// hash code generate by subnetName, rule and priority
 			var retBytes []byte
 			retBytes = append(retBytes, []byte(subnet.Name)...)

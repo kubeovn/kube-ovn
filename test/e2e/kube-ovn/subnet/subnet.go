@@ -51,7 +51,7 @@ func checkIptablesRulesOnNode(f *framework.Framework, node, table, chain, cidr s
 
 	cmd := fmt.Sprintf(`%s -t %s -S `, iptBin, table)
 	if chain != "" {
-		cmd += fmt.Sprintf(`%s`, chain)
+		cmd += chain
 	}
 	framework.WaitUntil(2*time.Second, time.Minute, func(_ context.Context) (bool, error) {
 		output := e2epodoutput.RunHostCmdOrDie(ovsPod.Namespace, ovsPod.Name, cmd)
@@ -989,8 +989,8 @@ var _ = framework.Describe("[group:subnet]", func() {
 		for _, node := range nodes.Items {
 			ginkgo.By("Checking iptables rules on node " + node.Name + " for subnet " + subnetName)
 			expectedRules := []string{
-				fmt.Sprintf(`-A %s -d %s -m comment --comment "%s,%s"`, "FORWARD", cidr, util.OvnSubnetGatewayIptables, subnet),
-				fmt.Sprintf(`-A %s -s %s -m comment --comment "%s,%s"`, "FORWARD", cidr, util.OvnSubnetGatewayIptables, subnet),
+				fmt.Sprintf(`-A %s -d %s -m comment --comment "%s,%s"`, "FORWARD", cidr, util.OvnSubnetGatewayIptables, subnetName),
+				fmt.Sprintf(`-A %s -s %s -m comment --comment "%s,%s"`, "FORWARD", cidr, util.OvnSubnetGatewayIptables, subnetName),
 			}
 
 			checkIptablesRulesOnNode(f, node.Name, "filter", "FORWARD", cidrV4, expectedRules, true)
@@ -1036,8 +1036,8 @@ var _ = framework.Describe("[group:subnet]", func() {
 		for _, node := range nodes.Items {
 			ginkgo.By("Checking iptables rules on node " + node.Name + " for subnet " + subnetName)
 			expectedRules := []string{
-				fmt.Sprintf(`-A %s -d %s -m comment --comment "%s,%s"`, "FORWARD", cidr, util.OvnSubnetGatewayIptables, subnet),
-				fmt.Sprintf(`-A %s -s %s -m comment --comment "%s,%s"`, "FORWARD", cidr, util.OvnSubnetGatewayIptables, subnet),
+				fmt.Sprintf(`-A %s -d %s -m comment --comment "%s,%s"`, "FORWARD", cidr, util.OvnSubnetGatewayIptables, subnetName),
+				fmt.Sprintf(`-A %s -s %s -m comment --comment "%s,%s"`, "FORWARD", cidr, util.OvnSubnetGatewayIptables, subnetName),
 			}
 
 			checkIptablesRulesOnNode(f, node.Name, "filter", "FORWARD", cidrV4, expectedRules, false)
@@ -1127,7 +1127,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		fakeSubnet := framework.MakeSubnet(fakeSubnetName, "", framework.RandomCIDR(f.ClusterIpFamily), "", "", "", nil, nil, nil)
 		fakeSubnet.Spec.NatOutgoingPolicyRules = rules
 		fakeSubnet.Spec.NatOutgoing = true
-		fakeSubnet = subnetClient.CreateSync(fakeSubnet)
+		_ = subnetClient.CreateSync(fakeSubnet)
 
 		ginkgo.By("Checking nat policy rule existed")
 		subnet = subnetClient.Get(subnetName)
@@ -1209,12 +1209,12 @@ func checkNatPolicyRules(f *framework.Framework, cs clientset.Interface, subnet 
 	for _, node := range nodes.Items {
 		var expectV4Rules, expectV6Rules, staticV4Rules, staticV6Rules []string
 		if cidrV4 != "" {
-			staticV4Rules = append(staticV4Rules, fmt.Sprintf("-A OVN-POSTROUTING -m set --match-set ovn40subnets-nat-policy src -m set ! --match-set ovn40subnets dst -j OVN-NAT-POLICY"))
+			staticV4Rules = append(staticV4Rules, "-A OVN-POSTROUTING -m set --match-set ovn40subnets-nat-policy src -m set ! --match-set ovn40subnets dst -j OVN-NAT-POLICY")
 			expectV4Rules = append(expectV4Rules, fmt.Sprintf("-A OVN-NAT-POLICY -s %s -m comment --comment natPolicySubnet-%s -j OVN-NAT-PSUBNET-%s", cidrV4, subnetName, subnet.UID[len(subnet.UID)-12:]))
 		}
 
 		if cidrV6 != "" {
-			staticV6Rules = append(staticV6Rules, fmt.Sprintf("-A OVN-POSTROUTING -m set --match-set ovn60subnets-nat-policy src -m set ! --match-set ovn60subnets dst -j OVN-NAT-POLICY"))
+			staticV6Rules = append(staticV6Rules, "-A OVN-POSTROUTING -m set --match-set ovn60subnets-nat-policy src -m set ! --match-set ovn60subnets dst -j OVN-NAT-POLICY")
 			expectV6Rules = append(expectV6Rules, fmt.Sprintf("-A OVN-NAT-POLICY -s %s -m comment --comment natPolicySubnet-%s -j OVN-NAT-PSUBNET-%s", cidrV6, subnetName, subnet.UID[len(subnet.UID)-12:]))
 		}
 
