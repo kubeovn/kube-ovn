@@ -144,7 +144,7 @@ func (c *VpcNatGatewayClient) WaitToDisappear(name string, interval, timeout tim
 	return nil
 }
 
-func MakeVpcNatGateway(name, vpc, subnet, lanIp string) *apiv1.VpcNatGateway {
+func MakeVpcNatGateway(name, vpc, subnet, lanIp, externalSubnet string) *apiv1.VpcNatGateway {
 	vpcNatGw := &apiv1.VpcNatGateway{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
@@ -154,6 +154,9 @@ func MakeVpcNatGateway(name, vpc, subnet, lanIp string) *apiv1.VpcNatGateway {
 			Subnet: subnet,
 			LanIp:  lanIp,
 		},
+	}
+	if externalSubnet != "" {
+		vpcNatGw.Spec.ExternalSubnets = []string{externalSubnet}
 	}
 	return vpcNatGw
 }
