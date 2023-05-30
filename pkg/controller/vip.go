@@ -190,7 +190,7 @@ func (c *Controller) handleAddVirtualIp(key string) error {
 		klog.Errorf("failed to get subnet %s: %v", subnetName, err)
 		return err
 	}
-	portName := ovs.PodNameToPortName(vip.Name, vip.Namespace, subnet.Spec.Provider)
+	portName := ovs.PodNameToPortName(vip.Name, vip.Spec.Namespace, subnet.Spec.Provider)
 	sourceV4Ip = vip.Spec.V4ip
 	if sourceV4Ip != "" {
 		v4ip, v6ip, mac, err = c.acquireStaticIpAddress(subnet.Name, vip.Name, portName, sourceV4Ip)
@@ -217,9 +217,8 @@ func (c *Controller) handleAddVirtualIp(key string) error {
 			return err
 		}
 		mac = lrp.MAC
-		ips := []string{v4ip, v6ip}
-		ipStr := strings.Join(ips, ",")
-		if err := c.ovnClient.CreateLogicalSwitchPort(subnet.Name, portName, ipStr, mac, vip.Name, vip.Namespace, false, "", "", false, nil, subnet.Spec.Vpc); err != nil {
+		ipStr := util.GetStringIP(v4ip, v6ip)
+		if err := c.ovnClient.CreateLogicalSwitchPort(subnet.Name, portName, ipStr, mac, vip.Name, vip.Spec.Namespace, false, "", "", false, nil, subnet.Spec.Vpc); err != nil {
 			err = fmt.Errorf("failed to create lsp %s: %v", portName, err)
 			klog.Error(err)
 			return err
@@ -240,7 +239,7 @@ func (c *Controller) handleAddVirtualIp(key string) error {
 		parentV6ip = vip.Spec.ParentV6ip
 		parentMac = vip.Spec.ParentMac
 	}
-	if err = c.createOrUpdateCrdVip(key, vip.Namespace, subnet.Name, v4ip, v6ip, mac, parentV4ip, parentV6ip, parentMac); err != nil {
+	if err = c.createOrUpdateCrdVip(key, vip.Spec.Namespace, subnet.Name, v4ip, v6ip, mac, parentV4ip, parentV6ip, parentMac); err != nil {
 		klog.Errorf("failed to create or update vip '%s', %v", vip.Name, err)
 		return err
 	}
@@ -262,20 +261,6 @@ func (c *Controller) handleUpdateVirtualIp(key string) error {
 	vip := cachedVip.DeepCopy()
 	// should delete
 	if !vip.DeletionTimestamp.IsZero() {
-		// TODO:// clean vip in its parent port aap list
-		if vip.Spec.Type == util.SwitchLBRuleVip {
-			subnet, err := c.subnetsLister.Get(vip.Spec.Subnet)
-			if err != nil {
-				klog.Errorf("failed to get subnet %s: %v", vip.Spec.Subnet, err)
-				return err
-			}
-			portName := ovs.PodNameToPortName(vip.Name, vip.Namespace, subnet.Spec.Provider)
-			if err := c.ovnClient.DeleteLogicalSwitchPort(portName); err != nil {
-				err = fmt.Errorf("failed to delete lsp %s: %v", vip.Name, err)
-				klog.Error(err)
-				return err
-			}
-		}
 		if err = c.handleDelVipFinalizer(key); err != nil {
 			klog.Errorf("failed to handle vip finalizer %v", err)
 			return err
@@ -293,7 +278,7 @@ func (c *Controller) handleUpdateVirtualIp(key string) error {
 	// should update
 	if vip.Status.Mac == "" {
 		// TODO:// add vip in its parent port aap list
-		if err = c.createOrUpdateCrdVip(key, vip.Namespace, vip.Spec.Subnet,
+		if err = c.createOrUpdateCrdVip(key, vip.Spec.Namespace, vip.Spec.Subnet,
 			vip.Spec.V4ip, vip.Spec.V6ip, vip.Spec.MacAddress,
 			vip.Spec.ParentV4ip, vip.Spec.ParentV6ip, vip.Spec.MacAddress); err != nil {
 			return err
@@ -311,7 +296,22 @@ func (c *Controller) handleUpdateVirtualIp(key string) error {
 }
 
 func (c *Controller) handleDelVirtualIp(vip *kubeovnv1.Vip) error {
-	klog.V(3).Infof("delete vip %s", vip.Name)
+	klog.Infof("delete vip %s", vip.Name)
+	// TODO:// clean vip in its parent port aap list
+	if vip.Spec.Type == util.SwitchLBRuleVip {
+		subnet, err := c.subnetsLister.Get(vip.Spec.Subnet)
+		if err != nil {
+			klog.Errorf("failed to get subnet %s: %v", vip.Spec.Subnet, err)
+			return err
+		}
+		portName := ovs.PodNameToPortName(vip.Name, vip.Spec.Namespace, subnet.Spec.Provider)
+		klog.Infof("delete vip arp proxy lsp %s", portName)
+		if err := c.ovnClient.DeleteLogicalSwitchPort(portName); err != nil {
+			err = fmt.Errorf("failed to delete lsp %s: %v", vip.Name, err)
+			klog.Error(err)
+			return err
+		}
+	}
 	c.ipam.ReleaseAddressByPod(vip.Name)
 	c.updateSubnetStatusQueue.Add(vip.Spec.Subnet)
 	return nil
