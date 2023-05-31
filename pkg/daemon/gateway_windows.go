@@ -25,6 +25,10 @@ func (c *Controller) setIptables() error {
 	return nil
 }
 
+func (c *Controller) gcIPSet() error {
+	return nil
+}
+
 func (c *Controller) addEgressConfig(subnet *kubeovnv1.Subnet, ip string) error {
 	// nothing to do on Windows
 	return nil
