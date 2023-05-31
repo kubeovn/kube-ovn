@@ -44,9 +44,8 @@ func checkIPSetOnNode(f *framework.Framework, node string, expectetIPsets []stri
 	framework.WaitUntil(2*time.Second, time.Minute, func(_ context.Context) (bool, error) {
 		output := e2epodoutput.RunHostCmdOrDie(ovsPod.Namespace, ovsPod.Name, cmd)
 		exitIPsets := strings.Split(output, "\n")
-		fmt.Printf("exitIPsets is %v ", exitIPsets)
 		for _, r := range expectetIPsets {
-			fmt.Printf("checking ipset %s ", r)
+			framework.Logf("checking ipset %s ", r)
 			ok, err := gomega.ContainElement(gomega.HavePrefix(r)).Match(exitIPsets)
 			if err != nil || ok != shouldExist {
 				return false, err
@@ -76,7 +75,7 @@ func checkIptablesRulesOnNode(f *framework.Framework, node, table, chain, cidr s
 		output := e2epodoutput.RunHostCmdOrDie(ovsPod.Namespace, ovsPod.Name, cmd)
 		rules := strings.Split(output, "\n")
 		for _, r := range expectedRules {
-			fmt.Printf("checking rule %s \n ", r)
+			framework.Logf("checking rule %s \n ", r)
 			ok, err := gomega.ContainElement(gomega.HavePrefix(r)).Match(rules)
 			if err != nil || ok != shouldExist {
 				return false, err
