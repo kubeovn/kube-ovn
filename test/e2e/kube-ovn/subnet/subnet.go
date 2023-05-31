@@ -57,6 +57,7 @@ func checkIptablesRulesOnNode(f *framework.Framework, node, table, chain, cidr s
 		output := e2epodoutput.RunHostCmdOrDie(ovsPod.Namespace, ovsPod.Name, cmd)
 		rules := strings.Split(output, "\n")
 		for _, r := range expectedRules {
+			fmt.Printf("checking rule %s \n ", r)
 			ok, err := gomega.ContainElement(gomega.HavePrefix(r)).Match(rules)
 			if err != nil || ok != shouldExist {
 				return false, err
@@ -988,13 +989,22 @@ var _ = framework.Describe("[group:subnet]", func() {
 
 		for _, node := range nodes.Items {
 			ginkgo.By("Checking iptables rules on node " + node.Name + " for subnet " + subnetName)
-			expectedRules := []string{
-				fmt.Sprintf(`-A %s -d %s -m comment --comment "%s,%s"`, "FORWARD", cidr, util.OvnSubnetGatewayIptables, subnetName),
-				fmt.Sprintf(`-A %s -s %s -m comment --comment "%s,%s"`, "FORWARD", cidr, util.OvnSubnetGatewayIptables, subnetName),
-			}
 
-			checkIptablesRulesOnNode(f, node.Name, "filter", "FORWARD", cidrV4, expectedRules, true)
-			checkIptablesRulesOnNode(f, node.Name, "filter", "FORWARD", cidrV6, expectedRules, true)
+			if cidrV4 != "" {
+				expectedRules := []string{
+					fmt.Sprintf(`-A %s -d %s -m comment --comment "%s,%s"`, "FORWARD", cidrV4, util.OvnSubnetGatewayIptables, subnetName),
+					fmt.Sprintf(`-A %s -s %s -m comment --comment "%s,%s"`, "FORWARD", cidrV4, util.OvnSubnetGatewayIptables, subnetName),
+				}
+
+				checkIptablesRulesOnNode(f, node.Name, "filter", "FORWARD", cidrV4, expectedRules, true)
+			}
+			if cidrV6 != "" {
+				expectedRules := []string{
+					fmt.Sprintf(`-A %s -d %s -m comment --comment "%s,%s"`, "FORWARD", cidrV6, util.OvnSubnetGatewayIptables, subnetName),
+					fmt.Sprintf(`-A %s -s %s -m comment --comment "%s,%s"`, "FORWARD", cidrV6, util.OvnSubnetGatewayIptables, subnetName),
+				}
+				checkIptablesRulesOnNode(f, node.Name, "filter", "FORWARD", cidrV6, expectedRules, true)
+			}
 		}
 
 		ginkgo.By("Checking subnet gateway type/node change " + subnetName)
@@ -1035,13 +1045,21 @@ var _ = framework.Describe("[group:subnet]", func() {
 
 		for _, node := range nodes.Items {
 			ginkgo.By("Checking iptables rules on node " + node.Name + " for subnet " + subnetName)
-			expectedRules := []string{
-				fmt.Sprintf(`-A %s -d %s -m comment --comment "%s,%s"`, "FORWARD", cidr, util.OvnSubnetGatewayIptables, subnetName),
-				fmt.Sprintf(`-A %s -s %s -m comment --comment "%s,%s"`, "FORWARD", cidr, util.OvnSubnetGatewayIptables, subnetName),
-			}
+			if cidrV4 != "" {
+				expectedRules := []string{
+					fmt.Sprintf(`-A %s -d %s -m comment --comment "%s,%s"`, "FORWARD", cidrV4, util.OvnSubnetGatewayIptables, subnetName),
+					fmt.Sprintf(`-A %s -s %s -m comment --comment "%s,%s"`, "FORWARD", cidrV4, util.OvnSubnetGatewayIptables, subnetName),
+				}
 
-			checkIptablesRulesOnNode(f, node.Name, "filter", "FORWARD", cidrV4, expectedRules, false)
-			checkIptablesRulesOnNode(f, node.Name, "filter", "FORWARD", cidrV6, expectedRules, false)
+				checkIptablesRulesOnNode(f, node.Name, "filter", "FORWARD", cidrV4, expectedRules, false)
+			}
+			if cidrV6 != "" {
+				expectedRules := []string{
+					fmt.Sprintf(`-A %s -d %s -m comment --comment "%s,%s"`, "FORWARD", cidrV6, util.OvnSubnetGatewayIptables, subnetName),
+					fmt.Sprintf(`-A %s -s %s -m comment --comment "%s,%s"`, "FORWARD", cidrV6, util.OvnSubnetGatewayIptables, subnetName),
+				}
+				checkIptablesRulesOnNode(f, node.Name, "filter", "FORWARD", cidrV6, expectedRules, false)
+			}
 		}
 	})
 	framework.ConformanceIt("should support subnet add nat outgoing policy rules ", func() {
@@ -1124,7 +1142,8 @@ var _ = framework.Describe("[group:subnet]", func() {
 		subnetClient.PatchSync(subnet, modifiedSubnet)
 
 		ginkgo.By("Creating another subnet with the same rules" + fakeSubnetName)
-		fakeSubnet := framework.MakeSubnet(fakeSubnetName, "", framework.RandomCIDR(f.ClusterIpFamily), "", "", "", nil, nil, nil)
+		fakeCidr := framework.RandomCIDR(f.ClusterIpFamily)
+		fakeSubnet := framework.MakeSubnet(fakeSubnetName, "", fakeCidr, "", "", "", nil, nil, nil)
 		fakeSubnet.Spec.NatOutgoingPolicyRules = rules
 		fakeSubnet.Spec.NatOutgoing = true
 		_ = subnetClient.CreateSync(fakeSubnet)
@@ -1132,6 +1151,10 @@ var _ = framework.Describe("[group:subnet]", func() {
 		ginkgo.By("Checking nat policy rule existed")
 		subnet = subnetClient.Get(subnetName)
 		checkNatPolicyRules(f, cs, subnet, cidrV4, cidrV6, true)
+
+		fakeSubnet = subnetClient.Get(fakeSubnetName)
+		fakeCidrV4, fakeCidrV6 := util.SplitStringIP(fakeCidr)
+		checkNatPolicyRules(f, cs, fakeSubnet, fakeCidrV4, fakeCidrV6, true)
 
 		ginkgo.By("Checking accessible to external")
 		checkAccessExternal(podName, namespaceName, subnet.Spec.Protocol, false)
@@ -1169,6 +1192,9 @@ var _ = framework.Describe("[group:subnet]", func() {
 		subnet = subnetClient.Get(subnetName)
 		checkNatPolicyRules(f, cs, subnet, cidrV4, cidrV6, true)
 
+		fakeSubnet = subnetClient.Get(fakeSubnetName)
+		checkNatPolicyRules(f, cs, fakeSubnet, fakeCidrV4, fakeCidrV6, true)
+
 		ginkgo.By("Checking accessible to external")
 		checkAccessExternal(podName, namespaceName, subnet.Spec.Protocol, true)
 
@@ -1180,6 +1206,9 @@ var _ = framework.Describe("[group:subnet]", func() {
 		ginkgo.By("Checking nat policy rule no existed")
 		subnet = subnetClient.Get(subnetName)
 		checkNatPolicyRules(f, cs, subnet, cidrV4, cidrV6, false)
+
+		fakeSubnet = subnetClient.Get(fakeSubnetName)
+		checkNatPolicyRules(f, cs, fakeSubnet, fakeCidrV4, fakeCidrV6, true)
 
 		ginkgo.By("Checking accessible to external")
 		checkAccessExternal(podName, namespaceName, subnet.Spec.Protocol, false)
@@ -1193,6 +1222,9 @@ var _ = framework.Describe("[group:subnet]", func() {
 		ginkgo.By("Checking nat policy rule no existed")
 		subnet = subnetClient.Get(subnetName)
 		checkNatPolicyRules(f, cs, subnet, cidrV4, cidrV6, false)
+
+		fakeSubnet = subnetClient.Get(fakeSubnetName)
+		checkNatPolicyRules(f, cs, fakeSubnet, fakeCidrV4, fakeCidrV6, true)
 
 		ginkgo.By("Checking accessible to external")
 		checkAccessExternal(podName, namespaceName, subnet.Spec.Protocol, true)
