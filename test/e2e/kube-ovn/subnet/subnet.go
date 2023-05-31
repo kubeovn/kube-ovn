@@ -75,7 +75,7 @@ func checkIptablesRulesOnNode(f *framework.Framework, node, table, chain, cidr s
 		output := e2epodoutput.RunHostCmdOrDie(ovsPod.Namespace, ovsPod.Name, cmd)
 		rules := strings.Split(output, "\n")
 		for _, r := range expectedRules {
-			framework.Logf("checking rule %s \n ", r)
+			framework.Logf("checking rule %s ", r)
 			ok, err := gomega.ContainElement(gomega.HavePrefix(r)).Match(rules)
 			if err != nil || ok != shouldExist {
 				return false, err
@@ -1165,7 +1165,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		fakeSubnet.Spec.NatOutgoingPolicyRules = rules
 		fakeSubnet.Spec.NatOutgoing = true
 		_ = subnetClient.CreateSync(fakeSubnet)
-
+		time.Sleep(4 * time.Second) // gateway update every 3 seconds
 		subnet = subnetClient.Get(subnetName)
 		checkNatPolicyRules(f, cs, subnet, cidrV4, cidrV6, true)
 		checkNatPolicyIPsets(f, cs, subnet, cidrV4, cidrV6, true)
@@ -1207,9 +1207,10 @@ var _ = framework.Describe("[group:subnet]", func() {
 		modifiedSubnet.Spec.NatOutgoingPolicyRules = rules
 		subnetClient.PatchSync(subnet, modifiedSubnet)
 
+		time.Sleep(4 * time.Second) // gateway update every 3 seconds
 		subnet = subnetClient.Get(subnetName)
 		checkNatPolicyRules(f, cs, subnet, cidrV4, cidrV6, true)
-		checkNatPolicyIPsets(f, cs, subnet, cidrV4, cidrV4, true)
+		checkNatPolicyIPsets(f, cs, subnet, cidrV4, cidrV6, true)
 
 		fakeSubnet = subnetClient.Get(fakeSubnetName)
 		checkNatPolicyRules(f, cs, fakeSubnet, fakeCidrV4, fakeCidrV6, true)
@@ -1223,9 +1224,10 @@ var _ = framework.Describe("[group:subnet]", func() {
 		modifiedSubnet.Spec.NatOutgoing = false
 		subnetClient.Patch(subnet, modifiedSubnet, 5*time.Second)
 
+		time.Sleep(4 * time.Second) // gateway update every 3 seconds
 		subnet = subnetClient.Get(subnetName)
 		checkNatPolicyRules(f, cs, subnet, cidrV4, cidrV6, false)
-		checkNatPolicyIPsets(f, cs, subnet, cidrV4, cidrV4, false)
+		checkNatPolicyIPsets(f, cs, subnet, cidrV4, cidrV6, false)
 
 		fakeSubnet = subnetClient.Get(fakeSubnetName)
 		checkNatPolicyRules(f, cs, fakeSubnet, fakeCidrV4, fakeCidrV6, true)
@@ -1239,7 +1241,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		modifiedSubnet.Spec.NatOutgoing = true
 		modifiedSubnet.Spec.NatOutgoingPolicyRules = nil
 		subnetClient.PatchSync(subnet, modifiedSubnet)
-
+		time.Sleep(4 * time.Second) // gateway update every 3 seconds
 		subnet = subnetClient.Get(subnetName)
 		checkNatPolicyRules(f, cs, subnet, cidrV4, cidrV6, false)
 		checkNatPolicyRules(f, cs, subnet, cidrV4, cidrV6, false)
