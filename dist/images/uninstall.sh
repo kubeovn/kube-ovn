@@ -28,6 +28,7 @@ ipset destroy ovn40subnets-distributed-gw
 ipset destroy ovn40local-pod-ip-nat
 ipset destroy ovn40other-node
 ipset destroy ovn40services
+ipset destroy ovn40subnets-nat-policy
 
 ip6tables -t nat -D PREROUTING -j OVN-PREROUTING -m comment --comment "kube-ovn prerouting rules"
 ip6tables -t nat -D POSTROUTING -j OVN-POSTROUTING -m comment --comment "kube-ovn postrouting rules"
@@ -55,6 +56,7 @@ ipset destroy ovn60subnets-distributed-gw
 ipset destroy ovn60local-pod-ip-nat
 ipset destroy ovn60other-node
 ipset destroy ovn60services
+ipset destroy ovn60subnets-nat-policy
 
 rm -rf /var/run/openvswitch/*
 rm -rf /var/run/ovn/*
