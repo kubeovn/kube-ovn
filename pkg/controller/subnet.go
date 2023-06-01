@@ -412,6 +412,7 @@ func (c Controller) patchSubnetStatus(subnet *kubeovnv1.Subnet, reason string, e
 		c.recorder.Eventf(subnet, v1.EventTypeWarning, reason, errStr)
 	} else {
 		subnet.Status.Validated(reason, "")
+		c.recorder.Eventf(subnet, v1.EventTypeNormal, reason, errStr)
 		if reason == "SetPrivateLogicalSwitchSuccess" || reason == "ResetLogicalSwitchAclSuccess" || reason == "ReconcileCentralizedGatewaySuccess" {
 			subnet.Status.Ready(reason, "")
 		}
@@ -826,21 +827,19 @@ func (c *Controller) reconcileGateway(subnet *kubeovnv1.Subnet) error {
 	} else {
 		// if gw is distributed remove activateGateway field
 		if subnet.Spec.GatewayType == kubeovnv1.GWDistributedType {
-			if subnet.Spec.GatewayNode == "" {
-				return nil
-			}
-			subnet.Spec.GatewayNode = ""
-			bytes, err := subnet.Status.Bytes()
-			if err != nil {
-				return err
-			}
-			_, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(context.Background(), subnet.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "")
-			if err != nil {
-				return err
+			if subnet.Spec.GatewayNode != "" || subnet.Status.ActivateGateway != "" {
+				klog.Infof("change subnet %s gatewayType from centralized to distributed", subnet.Name)
+				subnet.Spec.GatewayNode = ""
+				if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Update(context.Background(), subnet, metav1.UpdateOptions{}); err != nil {
+					klog.Errorf("failed to remove gatewayNode from subnet %s, %v", subnet.Name, err)
+					return err
+				}
+				subnet.Status.ActivateGateway = ""
+				c.patchSubnetStatus(subnet, "ChangeToDistributedGw", "")
 			}
 
 			for _, pod := range pods {
-				if !isPodAlive(pod) {
+				if !isPodAlive(pod) || pod.Annotations[util.IpAddressAnnotation] == "" || pod.Annotations[util.LogicalSwitchAnnotation] != subnet.Name {
 					continue
 				}
 				if c.config.EnableEipSnat && (pod.Annotations[util.EipAnnotation] != "" || pod.Annotations[util.SnatAnnotation] != "") {
