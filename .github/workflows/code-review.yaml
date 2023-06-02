@@ -5,15 +5,17 @@ permissions:
   pull-requests: write
 
 on:
-  pull_request_target:
-    branches:
-      - master
-      - release-*
-    paths-ignore:
-      - 'docs/**'
-      - '**.md'
-      - 'go.mod'
-      - 'go.sum'
+  workflow_dispatch:
+# on:
+#   pull_request_target:
+#     branches:
+#       - master
+#       - release-*
+#     paths-ignore:
+#       - 'docs/**'
+#       - '**.md'
+#       - 'go.mod'
+#       - 'go.sum'
 
 jobs:
   review-code:
