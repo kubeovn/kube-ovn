@@ -60,6 +60,7 @@ var _ = framework.Describe("[group:service]", func() {
 	})
 
 	framework.ConformanceIt("should be able to connect to NodePort service with external traffic policy set to Local from other nodes", func() {
+		f.SkipVersionPriorTo(1, 9, "This case is not adapted before v1.9")
 		ginkgo.By("Creating subnet " + subnetName)
 		subnet := framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, nil)
 		_ = subnetClient.CreateSync(subnet)
