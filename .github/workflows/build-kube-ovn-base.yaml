@@ -6,10 +6,15 @@ on:
 
 jobs:
   build-amd64:
+    strategy:
+        matrix:
+          branch: [master, release-1.11, release-1.9]
     name: Build AMD64
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v3
+        with:
+          ref: ${{ matrix.branch }}
       - uses: docker/setup-buildx-action@v2
 
       - name: Build
@@ -24,10 +29,15 @@ jobs:
           path: image-amd64.tar
 
   build-arm64:
+    strategy:
+      matrix:
+        branch: [master, release-1.11, release-1.9]
     name: Build ARM64
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v3
+        with:
+          ref: ${{ matrix.branch }}
       - uses: docker/setup-buildx-action@v2
       - uses: docker/setup-qemu-action@v2
         with:
@@ -45,6 +55,9 @@ jobs:
           path: image-arm64.tar
 
   push:
+    strategy:
+      matrix:
+        branch: [master, release-1.11, release-1.9]
     needs:
       - build-arm64
       - build-amd64
@@ -52,7 +65,8 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v3
-
+        with:
+          ref: ${{ matrix.branch }}
       - name: Download image
         uses: actions/download-artifact@v3
         with:
