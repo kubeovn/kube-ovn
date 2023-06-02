@@ -165,6 +165,13 @@ func ovsCleanProviderNetwork(provider string) error {
 	// remove host nic from the external bridge
 	if output != "" {
 		for _, port := range strings.Split(output, "\n") {
+			// patch port created by ovn-controller has an external ID ovn-localnet-port=localnet.<SUBNET>
+			if output, err = ovs.Exec("--data=bare", "--no-heading", "--columns=_uuid", "find", "port", "name="+port, `external-ids:ovn-localnet-port!=""`); err != nil {
+				return fmt.Errorf("failed to find ovs port %s, %v: %q", port, err, output)
+			}
+			if output != "" {
+				continue
+			}
 			klog.V(3).Infof("removing ovs port %s from bridge %s", port, brName)
 			if err = removeProviderNic(port, brName); err != nil {
 				errMsg := fmt.Errorf("failed to remove port %s from external bridge %s: %v", port, brName, err)

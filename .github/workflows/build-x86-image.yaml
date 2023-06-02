@@ -620,7 +620,10 @@ jobs:
         run: make kube-ovn-conformance-e2e
 
       - name: Cleanup
-        run: sh dist/images/cleanup.sh
+        run: |
+          if [ "${{ matrix.mode }}" != underlay ]; then
+            sh -x dist/images/cleanup.sh
+          fi
 
   kube-ovn-ic-conformance-e2e:
     name: Kube-OVN IC Conformance E2E
