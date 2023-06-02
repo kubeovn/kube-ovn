@@ -22,7 +22,7 @@ func (csh cniServerHandler) validatePodRequest(req *request.CniRequest) error {
 	return nil
 }
 
-func createShortSharedDir(pod *v1.Pod, volumeName string) (err error) {
+func createShortSharedDir(pod *v1.Pod, volumeName string, kubeletDir string) (err error) {
 	var volume *v1.Volume
 	for index, v := range pod.Spec.Volumes {
 		if v.Name == volumeName {
@@ -36,7 +36,7 @@ func createShortSharedDir(pod *v1.Pod, volumeName string) (err error) {
 	if volume.EmptyDir == nil {
 		return fmt.Errorf("volume %s is not empty dir", volume.Name)
 	}
-	originSharedDir := fmt.Sprintf("/var/lib/kubelet/pods/%s/volumes/kubernetes.io~empty-dir/%s", pod.UID, volumeName)
+	originSharedDir := fmt.Sprintf("%s/pods/%s/volumes/kubernetes.io~empty-dir/%s", kubeletDir, pod.UID, volumeName)
 	newSharedDir := getShortSharedDir(pod.UID, volumeName)
 	// set vhostuser dir 777 for qemu has the permission to create sock
 	mask := syscall.Umask(0)

@@ -59,6 +59,7 @@ type Configuration struct {
 	ExternalGatewaySwitch     string // provider network underlay vlan subnet
 	EnableMetrics             bool
 	EnableArpDetectIPConflict bool
+	KubeletDir                string
 }
 
 // ParseFlags will parse cmd args then init kubeClient and configuration
@@ -92,6 +93,7 @@ func ParseFlags() *Configuration {
 		argExternalGatewaySwitch     = pflag.String("external-gateway-switch", "external", "The name of the external gateway switch which is a ovs bridge to provide external network, default: external")
 		argEnableMetrics             = pflag.Bool("enable-metrics", true, "Whether to support metrics query")
 		argEnableArpDetectIPConflict = pflag.Bool("enable-arp-detect-ip-conflict", true, "Whether to support arp detect ip conflict in vlan network")
+		argKubeletDir                = pflag.String("kubelet-dir", "/var/lib/kubelet", "Path of the kubelet dir, default: /var/lib/kubelet")
 	)
 
 	// mute info log for ipset lib
@@ -142,6 +144,7 @@ func ParseFlags() *Configuration {
 		ExternalGatewaySwitch:     *argExternalGatewaySwitch,
 		EnableMetrics:             *argEnableMetrics,
 		EnableArpDetectIPConflict: *argEnableArpDetectIPConflict,
+		KubeletDir:                *argKubeletDir,
 	}
 	return config
 }

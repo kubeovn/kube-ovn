@@ -3919,7 +3919,7 @@ spec:
             - mountPath: /opt/ovs-config
               name: host-config-ovs
             - name: shareddir
-              mountPath: /var/lib/kubelet/pods
+              mountPath: $KUBELET_DIR/pods
             - name: hugepage
               mountPath: /dev/hugepages
             - mountPath: /lib/modules
@@ -4253,6 +4253,7 @@ spec:
           - --alsologtostderr=true
           - --log_file=/var/log/kube-ovn/kube-ovn-cni.log
           - --log_file_max_size=0
+          - --kubelet-dir=$KUBELET_DIR
         securityContext:
           runAsUser: 0
           privileged: true
@@ -4284,7 +4285,7 @@ spec:
             mountPath: /lib/modules
             readOnly: true
           - name: shared-dir
-            mountPath: /var/lib/kubelet/pods
+            mountPath: $KUBELET_DIR/pods
           - mountPath: /etc/openvswitch
             name: systemid
             readOnly: true

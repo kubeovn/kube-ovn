@@ -147,7 +147,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 			nicType = util.OffloadType
 		} else if podRequest.VhostUserSocketVolumeName != "" {
 			nicType = util.DpdkType
-			if err = createShortSharedDir(pod, podRequest.VhostUserSocketVolumeName); err != nil {
+			if err = createShortSharedDir(pod, podRequest.VhostUserSocketVolumeName, csh.Config.KubeletDir); err != nil {
 				klog.Error(err.Error())
 				if err = resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: err.Error()}); err != nil {
 					klog.Errorf("failed to write response: %v", err)
