@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -146,7 +147,7 @@ func (c *Controller) gcIPSet() {
 	}
 }
 
-func (c *Controller) addNatOutGoingPolicyRuleIPset(rule kubeovnv1.NatOutgoingPolicyRuleStatus, subnetName string, protocol string) {
+func (c *Controller) addNatOutGoingPolicyRuleIPset(rule kubeovnv1.NatOutgoingPolicyRuleStatus, protocol string) {
 	if rule.Match.SrcIPs != "" {
 		ipsetName := getNatOutGoingPolicyRuleIPSetName(rule.RuleID, "src", "", false)
 		c.ipsets[protocol].AddOrReplaceIPSet(ipsets.IPSetMetadata{
@@ -166,7 +167,7 @@ func (c *Controller) addNatOutGoingPolicyRuleIPset(rule kubeovnv1.NatOutgoingPol
 	}
 }
 
-func (c *Controller) gcNatOutGoingPolicyRuleIPset(protocol string, natPolicyRuleIDs []string) {
+func (c *Controller) removeNatOutGoingPolicyRuleIPset(protocol string, natPolicyRuleIDs []string) {
 	sets, err := c.k8sipsets.ListSets()
 	if err != nil {
 		klog.Error("failed to list IP sets")
@@ -177,7 +178,7 @@ func (c *Controller) gcNatOutGoingPolicyRuleIPset(protocol string, natPolicyRule
 			if isNatOutGoingPolicyRuleIPSet(set) {
 				ruleID, _ := getNatOutGoingPolicyRuleIPSetItem(set)
 				if !util.ContainsString(natPolicyRuleIDs, ruleID) {
-					c.ipsets[protocol].RemoveIPSet(formatUnPrefix(set))
+					c.ipsets[protocol].RemoveIPSet(formatIPsetUnPrefix(set))
 				}
 			}
 		}
@@ -203,7 +204,7 @@ func (c *Controller) reconcileNatOutGoingPolicyIPset(protocol string) {
 				if rule.RuleID == "" {
 					continue
 				}
-				c.addNatOutGoingPolicyRuleIPset(rule, subnet.GetName(), protocol)
+				c.addNatOutGoingPolicyRuleIPset(rule, protocol)
 			}
 		}
 	}
@@ -214,7 +215,7 @@ func (c *Controller) reconcileNatOutGoingPolicyIPset(protocol string) {
 		Type:    ipsets.IPSetTypeHashNet,
 	}, subnetCidrs)
 
-	c.gcNatOutGoingPolicyRuleIPset(protocol, natPolicyRuleIDs)
+	c.removeNatOutGoingPolicyRuleIPset(protocol, natPolicyRuleIDs)
 }
 
 func (c *Controller) setPolicyRouting() error {
@@ -767,7 +768,7 @@ func (c *Controller) reconcileNatOutgoingPolicyIptablesChain(protocol string) er
 	}
 
 	for _, gcNatPolicySubnetChain := range gcNatPolicySubnetChains {
-		if err = ipt.ClearAndDeleteChain("nat", gcNatPolicySubnetChain); err != nil {
+		if err = ipt.ClearAndDeleteChain(NAT, gcNatPolicySubnetChain); err != nil {
 			klog.Errorf("failed to delete iptables chain %q in table nat : %v", gcNatPolicySubnetChain, err)
 			return err
 		}
@@ -780,6 +781,8 @@ func (c *Controller) generateNatOutgoingPolicyChainRules(protocol string) ([]uti
 	natPolicyRuleIptablesMap := make(map[string][]util.IPTableRule)
 	natPolicySubnetUIDs := make([]string, 0)
 	gcNatPolicySubnetChains := make([]string, 0)
+	subnetNames := make([]string, 0)
+	subnetMap := make(map[string]*kubeovnv1.Subnet)
 
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
@@ -788,12 +791,26 @@ func (c *Controller) generateNatOutgoingPolicyChainRules(protocol string) ([]uti
 	}
 
 	for _, subnet := range subnets {
+		subnetNames = append(subnetNames, subnet.Name)
+		subnetMap[subnet.Name] = subnet
+	}
+
+	// To ensure the iptable rule order
+	sort.Strings(subnetNames)
+
+	getMatchProtocol := func(ips string) string {
+		ip := strings.Split(ips, ",")[0]
+		return util.CheckProtocol(ip)
+	}
+
+	for _, subnetName := range subnetNames {
+		subnet := subnetMap[subnetName]
 		if c.isSubnetNeedNat(subnet, protocol) && subnet.Status.NatOutgoingPolicyRules != nil {
 			var natPolicyRuleIptables []util.IPTableRule
-			natPolicySubnetUIDs = append(natPolicySubnetUIDs, getTruncatedUID(string(subnet.GetUID())))
+			natPolicySubnetUIDs = append(natPolicySubnetUIDs, util.GetTruncatedUID(string(subnet.GetUID())))
 			cidrBlock := getCidrByProtocol(subnet.Spec.CIDRBlock, protocol)
 
-			OvnNatPolicySubnetChainName := OvnNatOutGoingPolicySubnet + getTruncatedUID(string(subnet.GetUID()))
+			OvnNatPolicySubnetChainName := OvnNatOutGoingPolicySubnet + util.GetTruncatedUID(string(subnet.GetUID()))
 			natPolicySubnetIptables = append(natPolicySubnetIptables, util.IPTableRule{Table: NAT, Chain: OvnNatOutGoingPolicy, Rule: strings.Fields(fmt.Sprintf(`-s %s -m comment --comment natPolicySubnet-%s -j %s`, cidrBlock, subnet.Name, OvnNatPolicySubnetChainName))})
 			for _, rule := range subnet.Status.NatOutgoingPolicyRules {
 				var markCode string
@@ -807,6 +824,14 @@ func (c *Controller) generateNatOutgoingPolicyChainRules(protocol string) ([]uti
 					continue
 				}
 
+				if rule.Match.SrcIPs != "" && getMatchProtocol(rule.Match.SrcIPs) != protocol {
+					continue
+				}
+
+				if rule.Match.DstIPs != "" && getMatchProtocol(rule.Match.DstIPs) != protocol {
+					continue
+				}
+
 				srcMatch := getNatOutGoingPolicyRuleIPSetName(rule.RuleID, "src", protocol, true)
 				dstMatch := getNatOutGoingPolicyRuleIPSetName(rule.RuleID, "dst", protocol, true)
 
@@ -814,8 +839,10 @@ func (c *Controller) generateNatOutgoingPolicyChainRules(protocol string) ([]uti
 				if rule.Match.DstIPs != "" && rule.Match.SrcIPs != "" {
 					OvnNatoutGoingPolicyRule = util.IPTableRule{Table: NAT, Chain: OvnNatPolicySubnetChainName, Rule: strings.Fields(fmt.Sprintf(`-m set --match-set %s src -m set --match-set %s dst -j MARK --set-xmark %s`, srcMatch, dstMatch, markCode))}
 				} else if rule.Match.SrcIPs != "" {
+					protocol = getMatchProtocol(rule.Match.SrcIPs)
 					OvnNatoutGoingPolicyRule = util.IPTableRule{Table: NAT, Chain: OvnNatPolicySubnetChainName, Rule: strings.Fields(fmt.Sprintf(`-m set --match-set %s src -j MARK --set-xmark %s`, srcMatch, markCode))}
 				} else if rule.Match.DstIPs != "" {
+					protocol = getMatchProtocol(rule.Match.DstIPs)
 					OvnNatoutGoingPolicyRule = util.IPTableRule{Table: NAT, Chain: OvnNatPolicySubnetChainName, Rule: strings.Fields(fmt.Sprintf(`-m set --match-set %s dst -j MARK --set-xmark %s`, dstMatch, markCode))}
 				} else {
 					continue
@@ -826,7 +853,7 @@ func (c *Controller) generateNatOutgoingPolicyChainRules(protocol string) ([]uti
 		}
 	}
 
-	existNatChains, err := c.iptables[protocol].ListChains("nat")
+	existNatChains, err := c.iptables[protocol].ListChains(NAT)
 	if err != nil {
 		klog.Errorf("list chains in table nat failed")
 		return nil, nil, nil, err
@@ -1463,10 +1490,6 @@ func (c *Controller) ipsetExists(name string) (bool, error) {
 	return util.ContainsString(sets, name), nil
 }
 
-func getTruncatedUID(uid string) string {
-	return uid[len(uid)-12:]
-}
-
 func getNatOutGoingPolicyRuleIPSetName(ruleID, srcOrDst, protocol string, hasPrefix bool) string {
 	prefix := ""
 
@@ -1496,6 +1519,6 @@ func getNatPolicySubnetChainUID(chainName string) string {
 	return chainName[len(OvnNatOutGoingPolicySubnet):]
 }
 
-func formatUnPrefix(ipsetName string) string {
+func formatIPsetUnPrefix(ipsetName string) string {
 	return ipsetName[len("ovn40"):]
 }

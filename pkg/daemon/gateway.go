@@ -119,13 +119,13 @@ func (c *Controller) getSubnetsNatOutGoingPolicy(protocol string) ([]*kubeovnv1.
 		return nil, err
 	}
 
-	var subnetsWithPolicy []*kubeovnv1.Subnet
+	var subnetsWithNatPolicy []*kubeovnv1.Subnet
 	for _, subnet := range subnets {
 		if c.isSubnetNeedNat(subnet, protocol) && len(subnet.Spec.NatOutgoingPolicyRules) != 0 {
-			subnetsWithPolicy = append(subnetsWithPolicy, subnet)
+			subnetsWithNatPolicy = append(subnetsWithNatPolicy, subnet)
 		}
 	}
-	return subnetsWithPolicy, nil
+	return subnetsWithNatPolicy, nil
 }
 
 func (c *Controller) getSubnetsDistributedGateway(protocol string) ([]string, error) {

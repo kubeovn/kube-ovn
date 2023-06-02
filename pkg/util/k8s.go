@@ -66,3 +66,7 @@ func LabelSelectorNotEquals(key, value string) (labels.Selector, error) {
 func LabelSelectorNotEmpty(key string) (labels.Selector, error) {
 	return LabelSelectorNotEquals(key, "")
 }
+
+func GetTruncatedUID(uid string) string {
+	return uid[len(uid)-12:]
+}

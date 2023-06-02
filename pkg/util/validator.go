@@ -110,7 +110,7 @@ func ValidateSubnet(subnet kubeovnv1.Subnet) error {
 		return fmt.Errorf("logicalGateway and u2oInterconnection can't be opened at the same time")
 	}
 
-	if subnet.Spec.NatOutgoingPolicyRules != nil {
+	if len(subnet.Spec.NatOutgoingPolicyRules) != 0 {
 		err := validateNatOutgoingPolicyRules(subnet)
 		if err != nil {
 			return err
@@ -121,37 +121,64 @@ func ValidateSubnet(subnet kubeovnv1.Subnet) error {
 
 func validateNatOutgoingPolicyRules(subnet kubeovnv1.Subnet) error {
 	for _, rule := range subnet.Spec.NatOutgoingPolicyRules {
-		if rule.Match.SrcIPs != "" && !validateNatOutGoingPolicyRuleIPs(rule.Match.SrcIPs) {
-			err := fmt.Errorf("validate nat policy rules src ips %s failed", rule.Match.SrcIPs)
-			return err
+		var srcProtocol, dstProtocol string
+		var err error
+
+		if rule.Match.SrcIPs != "" {
+			if srcProtocol, err = validateNatOutGoingPolicyRuleIPs(rule.Match.SrcIPs); err != nil {
+				err := fmt.Errorf("validate nat policy rules src ips %s failed with err %v ", rule.Match.SrcIPs, err)
+				return err
+			}
 		}
-		if rule.Match.DstIPs != "" && !validateNatOutGoingPolicyRuleIPs(rule.Match.DstIPs) {
-			err := fmt.Errorf("validate nat policy rules dst ips %s failed", rule.Match.DstIPs)
+		if rule.Match.DstIPs != "" {
+			if dstProtocol, err = validateNatOutGoingPolicyRuleIPs(rule.Match.DstIPs); err != nil {
+				err := fmt.Errorf("validate nat policy rules dst ips %s failed with err %v ", rule.Match.DstIPs, err)
+				return err
+			}
+		}
+
+		if srcProtocol != "" && dstProtocol != "" && srcProtocol != dstProtocol {
+			err := fmt.Errorf("Match.SrcIPS protocol %s not equal to Match.DstIPs protocol %s ", srcProtocol, dstProtocol)
 			return err
 		}
 	}
 	return nil
 }
 
-func validateNatOutGoingPolicyRuleIPs(matchIPStr string) bool {
+func validateNatOutGoingPolicyRuleIPs(matchIPStr string) (string, error) {
 	ipItems := strings.Split(matchIPStr, ",")
 	if len(ipItems) == 0 {
-		return false
+		return "", fmt.Errorf("MatchIPStr format error")
+	}
+	lastProtocol := ""
+	checkProtocolConsistent := func(ipCidr string) bool {
+		currentProtocol := CheckProtocol(ipCidr)
+		if lastProtocol != "" && lastProtocol != currentProtocol {
+			return false
+		}
+		lastProtocol = currentProtocol
+		return true
 	}
 
 	for _, ipItem := range ipItems {
-		_, _, err := net.ParseCIDR(ipItem)
+		_, ipCidr, err := net.ParseCIDR(ipItem)
 		if err == nil {
+			if !checkProtocolConsistent(ipCidr.String()) {
+				return "", fmt.Errorf("match ips %s protocol is not consistent", matchIPStr)
+			}
 			continue
 		}
 
 		if IsValidIP(ipItem) {
+			if !checkProtocolConsistent(ipItem) {
+				return "", fmt.Errorf("match ips %s protocol is not consistent", matchIPStr)
+			}
 			continue
 		}
 
-		return false
+		return "", fmt.Errorf("match ips %s is not ip or ipcidr ", matchIPStr)
 	}
-	return true
+	return lastProtocol, nil
 }
 
 func ValidatePodNetwork(annotations map[string]string) error {

@@ -324,19 +324,29 @@ func formatSubnet(subnet *kubeovnv1.Subnet, c *Controller) error {
 
 func genNatOutgoingPolicyRulesStatus(subnet *kubeovnv1.Subnet) error {
 	subnet.Status.NatOutgoingPolicyRules = make([]kubeovnv1.NatOutgoingPolicyRuleStatus, len(subnet.Spec.NatOutgoingPolicyRules))
-	for index, rule := range subnet.Spec.NatOutgoingPolicyRules {
-		jsonRule, err := json.Marshal(rule)
-		if err != nil {
-			return err
-		}
-		priority := string(index)
-		retBytes := append(jsonRule, []byte(priority)...)
-		result := util.Sha256ByteToString(retBytes)
 
-		subnet.Status.NatOutgoingPolicyRules[index].RuleID = result[:util.NatPolicyRuleIDLength]
-		subnet.Status.NatOutgoingPolicyRules[index].Match = rule.Match
-		subnet.Status.NatOutgoingPolicyRules[index].Action = rule.Action
+	if len(subnet.Spec.NatOutgoingPolicyRules) != 0 {
+		for index, rule := range subnet.Spec.NatOutgoingPolicyRules {
+			jsonRule, err := json.Marshal(rule)
+			if err != nil {
+				return err
+			}
+			priority := string(index)
+			// hash code generate by subnetName, rule and priority
+			var retBytes []byte
+			retBytes = append(retBytes, []byte(subnet.Name)...)
+			retBytes = append(retBytes, []byte(priority)...)
+			retBytes = append(retBytes, jsonRule...)
+			result := util.Sha256ByteToString(retBytes)
+
+			subnet.Status.NatOutgoingPolicyRules[index].RuleID = result[:util.NatPolicyRuleIDLength]
+			subnet.Status.NatOutgoingPolicyRules[index].Match = rule.Match
+			subnet.Status.NatOutgoingPolicyRules[index].Action = rule.Action
+		}
+	} else {
+		subnet.Status.NatOutgoingPolicyRules = nil
 	}
+
 	return nil
 }
 
@@ -663,11 +673,9 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		c.patchSubnetStatus(subnet, "ValidateLogicalSwitchSuccess", "")
 	}
 
-	if subnet.Spec.NatOutgoingPolicyRules != nil {
-		if err := genNatOutgoingPolicyRulesStatus(subnet); err != nil {
-			klog.Error(err)
-			return err
-		}
+	if err := genNatOutgoingPolicyRulesStatus(subnet); err != nil {
+		klog.Error(err)
+		return err
 	}
 
 	if subnet.Spec.Protocol == kubeovnv1.ProtocolDual {
