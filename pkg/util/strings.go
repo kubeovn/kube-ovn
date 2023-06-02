@@ -1,6 +1,10 @@
 package util
 
-import "strings"
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"strings"
+)
 
 func DoubleQuotedFields(s string) []string {
 	var quoted bool
@@ -21,4 +25,11 @@ func DoubleQuotedFields(s string) []string {
 	}
 
 	return fields
+}
+
+func Sha256ByteToString(input []byte) string {
+	hasher := sha256.New()
+	hasher.Write(input)
+	hashedBytes := hasher.Sum(nil)
+	return hex.EncodeToString(hashedBytes)
 }

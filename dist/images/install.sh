@@ -2131,6 +2131,25 @@ spec:
                   type: string
                 v6availableIPrange:
                   type: string
+                natOutgoingPolicyRules:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      ruleID:
+                        type: string
+                      action:
+                        type: string
+                        enum:
+                          - nat
+                          - forward
+                      match:
+                        type: object
+                        properties:
+                          srcIPs:
+                            type: string
+                          dstIPs:
+                            type: string
                 conditions:
                   type: array
                   items:
@@ -2249,6 +2268,23 @@ spec:
                           - allow
                           - drop
                           - reject
+                natOutgoingPolicyRules:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      action:
+                        type: string
+                        enum:
+                          - nat
+                          - forward
+                      match:
+                        type: object
+                        properties:
+                          srcIPs:
+                            type: string
+                          dstIPs:
+                            type: string
                 u2oInterconnection:
                   type: boolean
                 enableLb:

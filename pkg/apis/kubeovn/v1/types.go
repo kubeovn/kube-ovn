@@ -159,6 +159,8 @@ type SubnetSpec struct {
 
 	Acls []Acl `json:"acls,omitempty"`
 
+	NatOutgoingPolicyRules []NatOutgoingPolicyRule `json:"natOutgoingPolicyRules,omitempty"`
+
 	U2OInterconnection bool  `json:"u2oInterconnection,omitempty"`
 	EnableLb           *bool `json:"enableLb,omitempty"`
 	EnableEcmp         bool  `json:"enableEcmp,omitempty"`
@@ -171,6 +173,21 @@ type Acl struct {
 	Priority  int    `json:"priority,omitempty"`
 	Match     string `json:"match,omitempty"`
 	Action    string `json:"action,omitempty"`
+}
+
+type NatOutgoingPolicyRule struct {
+	Match  natOutGoingPolicyMatch `json:"match"`
+	Action string                 `json:"action"`
+}
+
+type NatOutgoingPolicyRuleStatus struct {
+	RuleID string `json:"ruleID"`
+	NatOutgoingPolicyRule
+}
+
+type natOutGoingPolicyMatch struct {
+	SrcIPs string `json:"srcIPs,omitempty"`
+	DstIPs string `json:"dstIPs,omitempty"`
 }
 
 // ConditionType encodes information on the condition
@@ -204,19 +221,20 @@ type SubnetStatus struct {
 	// +patchStrategy=merge
 	Conditions []SubnetCondition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 
-	V4AvailableIPs        float64 `json:"v4availableIPs"`
-	V4AvailableIPRange    string  `json:"v4availableIPrange"`
-	V4UsingIPs            float64 `json:"v4usingIPs"`
-	V4UsingIPRange        string  `json:"v4usingIPrange"`
-	V6AvailableIPs        float64 `json:"v6availableIPs"`
-	V6AvailableIPRange    string  `json:"v6availableIPrange"`
-	V6UsingIPs            float64 `json:"v6usingIPs"`
-	V6UsingIPRange        string  `json:"v6usingIPrange"`
-	ActivateGateway       string  `json:"activateGateway"`
-	DHCPv4OptionsUUID     string  `json:"dhcpV4OptionsUUID"`
-	DHCPv6OptionsUUID     string  `json:"dhcpV6OptionsUUID"`
-	U2OInterconnectionIP  string  `json:"u2oInterconnectionIP"`
-	U2OInterconnectionVPC string  `json:"u2oInterconnectionVPC"`
+	V4AvailableIPs         float64                       `json:"v4availableIPs"`
+	V4AvailableIPRange     string                        `json:"v4availableIPrange"`
+	V4UsingIPs             float64                       `json:"v4usingIPs"`
+	V4UsingIPRange         string                        `json:"v4usingIPrange"`
+	V6AvailableIPs         float64                       `json:"v6availableIPs"`
+	V6AvailableIPRange     string                        `json:"v6availableIPrange"`
+	V6UsingIPs             float64                       `json:"v6usingIPs"`
+	V6UsingIPRange         string                        `json:"v6usingIPrange"`
+	ActivateGateway        string                        `json:"activateGateway"`
+	DHCPv4OptionsUUID      string                        `json:"dhcpV4OptionsUUID"`
+	DHCPv6OptionsUUID      string                        `json:"dhcpV6OptionsUUID"`
+	U2OInterconnectionIP   string                        `json:"u2oInterconnectionIP"`
+	U2OInterconnectionVPC  string                        `json:"u2oInterconnectionVPC"`
+	NatOutgoingPolicyRules []NatOutgoingPolicyRuleStatus `json:"natOutgoingPolicyRules"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

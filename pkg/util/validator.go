@@ -110,7 +110,48 @@ func ValidateSubnet(subnet kubeovnv1.Subnet) error {
 		return fmt.Errorf("logicalGateway and u2oInterconnection can't be opened at the same time")
 	}
 
+	if subnet.Spec.NatOutgoingPolicyRules != nil {
+		err := validateNatOutgoingPolicyRules(subnet)
+		if err != nil {
+			return err
+		}
+	}
 	return nil
+}
+
+func validateNatOutgoingPolicyRules(subnet kubeovnv1.Subnet) error {
+	for _, rule := range subnet.Spec.NatOutgoingPolicyRules {
+		if rule.Match.SrcIPs != "" && !validateNatOutGoingPolicyRuleIPs(rule.Match.SrcIPs) {
+			err := fmt.Errorf("validate nat policy rules src ips %s failed", rule.Match.SrcIPs)
+			return err
+		}
+		if rule.Match.DstIPs != "" && !validateNatOutGoingPolicyRuleIPs(rule.Match.DstIPs) {
+			err := fmt.Errorf("validate nat policy rules dst ips %s failed", rule.Match.DstIPs)
+			return err
+		}
+	}
+	return nil
+}
+
+func validateNatOutGoingPolicyRuleIPs(matchIPStr string) bool {
+	ipItems := strings.Split(matchIPStr, ",")
+	if len(ipItems) == 0 {
+		return false
+	}
+
+	for _, ipItem := range ipItems {
+		_, _, err := net.ParseCIDR(ipItem)
+		if err == nil {
+			continue
+		}
+
+		if IsValidIP(ipItem) {
+			continue
+		}
+
+		return false
+	}
+	return true
 }
 
 func ValidatePodNetwork(annotations map[string]string) error {

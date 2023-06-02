@@ -22,6 +22,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
+	k8sipset "k8s.io/kubernetes/pkg/util/ipset"
 	k8siptables "k8s.io/kubernetes/pkg/util/iptables"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -34,6 +35,7 @@ type ControllerRuntime struct {
 	iptables         map[string]*iptables.IPTables
 	iptablesObsolete map[string]*iptables.IPTables
 	k8siptables      map[string]k8siptables.Interface
+	k8sipsets        k8sipset.Interface
 	ipsets           map[string]*ipsets.IPSets
 	gwCounters       map[string]*util.GwIPtableCounters
 }
@@ -78,6 +80,7 @@ func (c *Controller) initRuntime() error {
 	c.ipsets = make(map[string]*ipsets.IPSets)
 	c.gwCounters = make(map[string]*util.GwIPtableCounters)
 	c.k8siptables = make(map[string]k8siptables.Interface)
+	c.k8sipsets = k8sipset.New(c.k8sExec)
 
 	if c.protocol == kubeovnv1.ProtocolIPv4 || c.protocol == kubeovnv1.ProtocolDual {
 		ipt, err := iptables.NewWithProtocol(iptables.ProtocolIPv4)
