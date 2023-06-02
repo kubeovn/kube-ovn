@@ -105,6 +105,11 @@ func ValidateSubnet(subnet kubeovnv1.Subnet) error {
 			}
 		}
 	}
+
+	if subnet.Spec.LogicalGateway && subnet.Spec.U2OInterconnection {
+		return fmt.Errorf("logicalGateway and u2oInterconnection can't be opened at the same time")
+	}
+
 	return nil
 }
 
