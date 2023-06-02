@@ -663,6 +663,13 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		c.patchSubnetStatus(subnet, "ValidateLogicalSwitchSuccess", "")
 	}
 
+	if subnet.Spec.NatOutgoingPolicyRules != nil {
+		if err := genNatOutgoingPolicyRulesStatus(subnet); err != nil {
+			klog.Error(err)
+			return err
+		}
+	}
+
 	if subnet.Spec.Protocol == kubeovnv1.ProtocolDual {
 		err = calcDualSubnetStatusIP(subnet, c)
 	} else {
@@ -782,13 +789,6 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		}
 
 		c.patchSubnetStatus(subnet, "ResetLogicalSwitchAclSuccess", "")
-	}
-
-	if subnet.Spec.NatOutgoingPolicyRules != nil {
-		if err := genNatOutgoingPolicyRulesStatus(subnet); err != nil {
-			klog.Error(err)
-			return err
-		}
 	}
 
 	if err := c.ovnClient.CreateGatewayAcl(subnet.Name, "", subnet.Spec.Gateway); err != nil {

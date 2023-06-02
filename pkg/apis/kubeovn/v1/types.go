@@ -176,7 +176,7 @@ type Acl struct {
 }
 
 type NatOutgoingPolicyRule struct {
-	Match  natOutGoingPolicyMatch `json:"match"`
+	Match  NatOutGoingPolicyMatch `json:"match"`
 	Action string                 `json:"action"`
 }
 
@@ -185,7 +185,7 @@ type NatOutgoingPolicyRuleStatus struct {
 	NatOutgoingPolicyRule
 }
 
-type natOutGoingPolicyMatch struct {
+type NatOutGoingPolicyMatch struct {
 	SrcIPs string `json:"srcIPs,omitempty"`
 	DstIPs string `json:"dstIPs,omitempty"`
 }

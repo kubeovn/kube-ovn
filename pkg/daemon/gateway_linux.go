@@ -47,8 +47,8 @@ const (
 )
 
 const (
-	OnOutGoingNatMark     = "0x4001/0x4001"
-	OnOutGoingForwardMark = "0x4002/0x4002"
+	OnOutGoingNatMark     = "0x90001/0x90001"
+	OnOutGoingForwardMark = "0x90002/0x90002"
 )
 
 type policyRouteMeta struct {
@@ -560,7 +560,7 @@ func (c *Controller) setIptables() error {
 			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields(`-m set ! --match-set ovn60subnets src -m set ! --match-set ovn60other-node src -m set --match-set ovn60subnets-nat dst -j RETURN`)},
 			// nat outgoing
 			// nat outgoing policy rules
-			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields(`-m set --match-set ovn60subnets-nat-policy src -m set ! --match-set ovn60subnets dst -j MASQUERADE`)},
+			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields(fmt.Sprintf(`-m set --match-set ovn60subnets-nat-policy src -m set ! --match-set ovn60subnets dst -j %s`, OvnNatOutGoingPolicy))},
 			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields(fmt.Sprintf(`-m mark --mark %s -j MASQUERADE`, OnOutGoingNatMark))},
 			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields(fmt.Sprintf(`-m mark --mark %s -j RETURN`, OnOutGoingForwardMark))},
 			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields(`-m set --match-set ovn60subnets-nat src -m set ! --match-set ovn60subnets dst -j MASQUERADE`)},
@@ -1464,8 +1464,7 @@ func (c *Controller) ipsetExists(name string) (bool, error) {
 }
 
 func getTruncatedUID(uid string) string {
-	uidLen := len(uid)
-	return uid[uidLen-12:]
+	return uid[len(uid)-12:]
 }
 
 func getNatOutGoingPolicyRuleIPSetName(ruleID, srcOrDst, protocol string, hasPrefix bool) string {
