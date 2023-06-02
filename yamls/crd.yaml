@@ -2046,8 +2046,6 @@ spec:
                   items:
                     type: object
                     properties:
-                      ruleID:
-                        type: string
                       action:
                         type: string
                         enum:
