@@ -34,7 +34,7 @@ func (c *Controller) runGateway() {
 	if err := c.setExGateway(); err != nil {
 		klog.Errorf("failed to set ex gateway, %v", err)
 	}
-
+	c.gcIPSet()
 	c.appendMssRule()
 }
 
@@ -83,6 +83,18 @@ func (c *Controller) setICGateway() error {
 	return nil
 }
 
+func (c *Controller) isSubnetNeedNat(subnet *kubeovnv1.Subnet, protocol string) bool {
+	if subnet.DeletionTimestamp == nil &&
+		subnet.Spec.NatOutgoing &&
+		(subnet.Spec.Vlan == "" || subnet.Spec.LogicalGateway) &&
+		subnet.Spec.Vpc == c.config.ClusterRouter &&
+		subnet.Spec.CIDRBlock != "" &&
+		(subnet.Spec.Protocol == kubeovnv1.ProtocolDual || subnet.Spec.Protocol == protocol) {
+		return true
+	}
+	return false
+}
+
 func (c *Controller) getSubnetsNeedNAT(protocol string) ([]string, error) {
 	var subnetsNeedNat []string
 	subnets, err := c.subnetsLister.List(labels.Everything())
@@ -92,17 +104,28 @@ func (c *Controller) getSubnetsNeedNAT(protocol string) ([]string, error) {
 	}
 
 	for _, subnet := range subnets {
-		if subnet.DeletionTimestamp == nil &&
-			subnet.Spec.NatOutgoing &&
-			(subnet.Spec.Vlan == "" || subnet.Spec.LogicalGateway) &&
-			subnet.Spec.Vpc == c.config.ClusterRouter &&
-			subnet.Spec.CIDRBlock != "" &&
-			(subnet.Spec.Protocol == kubeovnv1.ProtocolDual || subnet.Spec.Protocol == protocol) {
+		if c.isSubnetNeedNat(subnet, protocol) {
 			cidrBlock := getCidrByProtocol(subnet.Spec.CIDRBlock, protocol)
 			subnetsNeedNat = append(subnetsNeedNat, cidrBlock)
 		}
 	}
 	return subnetsNeedNat, nil
+}
+
+func (c *Controller) getSubnetsNatOutGoingPolicy(protocol string) ([]*kubeovnv1.Subnet, error) {
+	subnets, err := c.subnetsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("list subnets failed, %v", err)
+		return nil, err
+	}
+
+	var subnetsWithNatPolicy []*kubeovnv1.Subnet
+	for _, subnet := range subnets {
+		if c.isSubnetNeedNat(subnet, protocol) && len(subnet.Spec.NatOutgoingPolicyRules) != 0 {
+			subnetsWithNatPolicy = append(subnetsWithNatPolicy, subnet)
+		}
+	}
+	return subnetsWithNatPolicy, nil
 }
 
 func (c *Controller) getSubnetsDistributedGateway(protocol string) ([]string, error) {

@@ -8,6 +8,8 @@ iptables -t nat -F OVN-PREROUTING
 iptables -t nat -X OVN-PREROUTING
 iptables -t nat -F OVN-POSTROUTING
 iptables -t nat -X OVN-POSTROUTING
+iptables -t nat -F OVN-NAT-POLICY
+iptables -t nat -X OVN-NAT-POLICY
 iptables -t filter -D INPUT -m set --match-set ovn40subnets dst -j ACCEPT
 iptables -t filter -D INPUT -m set --match-set ovn40subnets src -j ACCEPT
 iptables -t filter -D INPUT -m set --match-set ovn40services dst -j ACCEPT
@@ -26,6 +28,7 @@ ipset destroy ovn40subnets-distributed-gw
 ipset destroy ovn40local-pod-ip-nat
 ipset destroy ovn40other-node
 ipset destroy ovn40services
+ipset destroy ovn40subnets-nat-policy
 
 ip6tables -t nat -D PREROUTING -j OVN-PREROUTING -m comment --comment "kube-ovn prerouting rules"
 ip6tables -t nat -D POSTROUTING -j OVN-POSTROUTING -m comment --comment "kube-ovn postrouting rules"
@@ -33,6 +36,8 @@ ip6tables -t nat -F OVN-PREROUTING
 ip6tables -t nat -X OVN-PREROUTING
 ip6tables -t nat -F OVN-POSTROUTING
 ip6tables -t nat -X OVN-POSTROUTING
+ip6tables -t nat -F OVN-NAT-POLICY
+ip6tables -t nat -X OVN-NAT-POLICY
 ip6tables -t filter -D INPUT -m set --match-set ovn60subnets dst -j ACCEPT
 ip6tables -t filter -D INPUT -m set --match-set ovn60subnets src -j ACCEPT
 ip6tables -t filter -D INPUT -m set --match-set ovn60services dst -j ACCEPT
@@ -51,6 +56,7 @@ ipset destroy ovn60subnets-distributed-gw
 ipset destroy ovn60local-pod-ip-nat
 ipset destroy ovn60other-node
 ipset destroy ovn60services
+ipset destroy ovn60subnets-nat-policy
 
 rm -rf /var/run/openvswitch/*
 rm -rf /var/run/ovn/*

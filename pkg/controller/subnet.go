@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 	"reflect"
@@ -101,7 +102,8 @@ func (c *Controller) enqueueUpdateSubnet(old, new interface{}) {
 		!reflect.DeepEqual(oldSubnet.Spec.Acls, newSubnet.Spec.Acls) ||
 		oldSubnet.Spec.U2OInterconnection != newSubnet.Spec.U2OInterconnection ||
 		oldSubnet.Spec.RouteTable != newSubnet.Spec.RouteTable ||
-		oldSubnet.Spec.Vpc != newSubnet.Spec.Vpc {
+		oldSubnet.Spec.Vpc != newSubnet.Spec.Vpc ||
+		!reflect.DeepEqual(oldSubnet.Spec.NatOutgoingPolicyRules, newSubnet.Spec.NatOutgoingPolicyRules) {
 		klog.V(3).Infof("enqueue update subnet %s", key)
 
 		if oldSubnet.Spec.GatewayType != newSubnet.Spec.GatewayType {
@@ -317,6 +319,34 @@ func formatSubnet(subnet *kubeovnv1.Subnet, c *Controller) error {
 			return err
 		}
 	}
+	return nil
+}
+
+func genNatOutgoingPolicyRulesStatus(subnet *kubeovnv1.Subnet) error {
+	subnet.Status.NatOutgoingPolicyRules = make([]kubeovnv1.NatOutgoingPolicyRuleStatus, len(subnet.Spec.NatOutgoingPolicyRules))
+
+	if len(subnet.Spec.NatOutgoingPolicyRules) != 0 {
+		for index, rule := range subnet.Spec.NatOutgoingPolicyRules {
+			jsonRule, err := json.Marshal(rule)
+			if err != nil {
+				return err
+			}
+			priority := fmt.Sprintf("%d", index)
+			// hash code generate by subnetName, rule and priority
+			var retBytes []byte
+			retBytes = append(retBytes, []byte(subnet.Name)...)
+			retBytes = append(retBytes, []byte(priority)...)
+			retBytes = append(retBytes, jsonRule...)
+			result := util.Sha256ByteToString(retBytes)
+
+			subnet.Status.NatOutgoingPolicyRules[index].RuleID = result[:util.NatPolicyRuleIDLength]
+			subnet.Status.NatOutgoingPolicyRules[index].Match = rule.Match
+			subnet.Status.NatOutgoingPolicyRules[index].Action = rule.Action
+		}
+	} else {
+		subnet.Status.NatOutgoingPolicyRules = nil
+	}
+
 	return nil
 }
 
@@ -641,6 +671,11 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		return err
 	} else {
 		c.patchSubnetStatus(subnet, "ValidateLogicalSwitchSuccess", "")
+	}
+
+	if err := genNatOutgoingPolicyRulesStatus(subnet); err != nil {
+		klog.Error(err)
+		return err
 	}
 
 	if subnet.Spec.Protocol == kubeovnv1.ProtocolDual {

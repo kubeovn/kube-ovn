@@ -246,4 +246,8 @@ const (
 	QoSDirectionEgress  = "egress"
 
 	MainRouteTable = ""
+
+	NatPolicyRuleActionNat     = "nat"
+	NatPolicyRuleActionForward = "forward"
+	NatPolicyRuleIDLength      = 12
 )
