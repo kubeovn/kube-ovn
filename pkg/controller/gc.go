@@ -351,12 +351,13 @@ func (c *Controller) markAndCleanLSP() error {
 		if ipMap.Has(lsp.Name) {
 			continue
 		}
-		if !lastNoPodLSP.Has(lsp.Name) {
-			noPodLSP.Add(lsp.Name)
-			continue
-		}
+
 		if lsp.Options != nil && lsp.Options["arp_proxy"] == "true" {
 			// arp_proxy lsp is a type of vip crd which should not gc
+			continue
+		}
+		if !lastNoPodLSP.Has(lsp.Name) {
+			noPodLSP.Add(lsp.Name)
 			continue
 		}
 
@@ -684,16 +685,18 @@ func (c *Controller) gcChassis() error {
 }
 
 func (c *Controller) isOVNProvided(providerName string, pod *corev1.Pod) (bool, error) {
-	ls := pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, providerName)]
-	subnet, err := c.subnetsLister.Get(ls)
-	if err != nil {
-		klog.Errorf("parse annotation logical switch %s error %v", ls, err)
-		return false, err
+	if ls, ok := pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, providerName)]; ok {
+		subnet, err := c.subnetsLister.Get(ls)
+		if err != nil {
+			klog.Errorf("parse annotation logical switch %s error %v", ls, err)
+			return false, err
+		}
+		if !strings.HasSuffix(subnet.Spec.Provider, util.OvnProvider) {
+			return false, nil
+		}
+		return true, nil
 	}
-	if !strings.HasSuffix(subnet.Spec.Provider, util.OvnProvider) {
-		return false, nil
-	}
-	return true, nil
+	return false, nil
 }
 
 func (c *Controller) getVmLsps() []string {

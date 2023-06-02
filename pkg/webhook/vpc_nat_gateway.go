@@ -129,22 +129,21 @@ func (v *ValidatingHook) iptablesEIPDeleteHook(ctx context.Context, req admissio
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 
-	if eip.Status.Ready && eip.Annotations[util.VpcNatAnnotation] != "" {
+	if eip.Status.Ready {
 		var err error
-		natName := eip.Annotations[util.VpcNatAnnotation]
-		natType := eip.Status.Nat
+		fipList := ovnv1.IptablesFIPRuleList{}
+		snatList := ovnv1.IptablesSnatRuleList{}
+		dnatList := ovnv1.IptablesDnatRuleList{}
 
-		key := types.NamespacedName{Name: natName}
-		switch natType {
-		case util.FipUsingEip:
-			fip := ovnv1.IptablesFIPRule{}
-			err = v.cache.Get(ctx, key, &fip)
-		case util.SnatUsingEip:
-			snat := ovnv1.IptablesSnatRule{}
-			err = v.cache.Get(ctx, key, &snat)
-		case util.DnatUsingEip:
-			dnat := ovnv1.IptablesDnatRule{}
-			err = v.cache.Get(ctx, key, &dnat)
+		for _, natType := range strings.Split(eip.Status.Nat, ",") {
+			switch natType {
+			case util.FipUsingEip:
+				err = v.cache.List(ctx, &fipList, cli.MatchingLabels{util.IptablesEipV4IPLabel: eip.Status.IP})
+			case util.SnatUsingEip:
+				err = v.cache.List(ctx, &snatList, cli.MatchingLabels{util.IptablesEipV4IPLabel: eip.Status.IP})
+			case util.DnatUsingEip:
+				err = v.cache.List(ctx, &dnatList, cli.MatchingLabels{util.IptablesEipV4IPLabel: eip.Status.IP})
+			}
 		}
 
 		if err != nil {
@@ -153,8 +152,10 @@ func (v *ValidatingHook) iptablesEIPDeleteHook(ctx context.Context, req admissio
 			}
 		}
 
-		err = fmt.Errorf("eip \"%s\" is still in use,you need to delete the %s \"%s\" first", eip.Name, natType, natName)
-		return ctrlwebhook.Errored(http.StatusBadRequest, err)
+		if len(fipList.Items) != 0 || len(snatList.Items) != 0 || len(dnatList.Items) != 0 {
+			err = fmt.Errorf("eip \"%s\" is still in use,you need to delete the %s of eip first", eip.Name, eip.Status.Nat)
+			return ctrlwebhook.Errored(http.StatusBadRequest, err)
+		}
 	}
 
 	return ctrlwebhook.Allowed("by pass")
@@ -174,7 +175,7 @@ func (v *ValidatingHook) iptablesDnatCreateHook(ctx context.Context, req admissi
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 
-	if err := v.ValidateIptablesDnat(&dnat); err != nil {
+	if err := v.ValidateIptablesDnat(ctx, &dnat); err != nil {
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 
@@ -205,7 +206,7 @@ func (v *ValidatingHook) iptablesDnatUpdateHook(ctx context.Context, req admissi
 				return ctrlwebhook.Errored(http.StatusBadRequest, err)
 			}
 
-			if err := v.ValidateIptablesDnat(&dnatNew); err != nil {
+			if err := v.ValidateIptablesDnat(ctx, &dnatNew); err != nil {
 				return ctrlwebhook.Errored(http.StatusBadRequest, err)
 			}
 		}
@@ -228,7 +229,7 @@ func (v *ValidatingHook) iptablesSnatCreateHook(ctx context.Context, req admissi
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 
-	if err := v.ValidateIptablesSnat(&snat); err != nil {
+	if err := v.ValidateIptablesSnat(ctx, &snat); err != nil {
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 
@@ -259,7 +260,7 @@ func (v *ValidatingHook) iptablesSnatUpdateHook(ctx context.Context, req admissi
 				return ctrlwebhook.Errored(http.StatusBadRequest, err)
 			}
 
-			if err := v.ValidateIptablesSnat(&snatNew); err != nil {
+			if err := v.ValidateIptablesSnat(ctx, &snatNew); err != nil {
 				return ctrlwebhook.Errored(http.StatusBadRequest, err)
 			}
 		}
@@ -282,7 +283,7 @@ func (v *ValidatingHook) iptablesFipCreateHook(ctx context.Context, req admissio
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 
-	if err := v.ValidateIptablesFip(&fip); err != nil {
+	if err := v.ValidateIptablesFip(ctx, &fip); err != nil {
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 
@@ -313,7 +314,7 @@ func (v *ValidatingHook) iptablesFipUpdateHook(ctx context.Context, req admissio
 				return ctrlwebhook.Errored(http.StatusBadRequest, err)
 			}
 
-			if err := v.ValidateIptablesFip(&fipNew); err != nil {
+			if err := v.ValidateIptablesFip(ctx, &fipNew); err != nil {
 				return ctrlwebhook.Errored(http.StatusBadRequest, err)
 			}
 		}
@@ -326,6 +327,11 @@ func (v *ValidatingHook) ValidateVpcNatGW(ctx context.Context, gw *ovnv1.VpcNatG
 		err := fmt.Errorf("parameter \"vpc\" cannot be empty")
 		return err
 	}
+	vpc := &ovnv1.Vpc{}
+	key := types.NamespacedName{Name: gw.Spec.Vpc}
+	if err := v.cache.Get(ctx, key, vpc); err != nil {
+		return err
+	}
 
 	if gw.Spec.Subnet == "" {
 		err := fmt.Errorf("parameter \"subnet\" cannot be empty")
@@ -333,7 +339,7 @@ func (v *ValidatingHook) ValidateVpcNatGW(ctx context.Context, gw *ovnv1.VpcNatG
 	}
 
 	subnet := &ovnv1.Subnet{}
-	key := types.NamespacedName{Name: gw.Spec.Subnet}
+	key = types.NamespacedName{Name: gw.Spec.Subnet}
 	if err := v.cache.Get(ctx, key, subnet); err != nil {
 		return err
 	}
@@ -360,6 +366,14 @@ func (v *ValidatingHook) ValidateVpcNatGW(ctx context.Context, gw *ovnv1.VpcNatG
 			corev1.TaintEffect(t.Effect) != corev1.TaintEffectNoExecute &&
 			corev1.TaintEffect(t.Effect) != corev1.TaintEffectPreferNoSchedule {
 			err := fmt.Errorf("invaild taint effect: %s, supported params: \"NoSchedule\", \"PreferNoSchedule\", \"NoExecute\"", t.Effect)
+			return err
+		}
+	}
+
+	if gw.Spec.QoSPolicy != "" {
+		qos := &ovnv1.QoSPolicy{}
+		key = types.NamespacedName{Name: gw.Spec.QoSPolicy}
+		if err := v.cache.Get(ctx, key, qos); err != nil {
 			return err
 		}
 	}
@@ -427,9 +441,14 @@ func (v *ValidatingHook) ValidateIptablesEIP(ctx context.Context, eip *ovnv1.Ipt
 	return nil
 }
 
-func (v *ValidatingHook) ValidateIptablesDnat(dnat *ovnv1.IptablesDnatRule) error {
+func (v *ValidatingHook) ValidateIptablesDnat(ctx context.Context, dnat *ovnv1.IptablesDnatRule) error {
 	if dnat.Spec.EIP == "" {
 		err := fmt.Errorf("parameter \"eip\" cannot be empty")
+		return err
+	}
+	eip := &ovnv1.IptablesEIP{}
+	key := types.NamespacedName{Name: dnat.Spec.EIP}
+	if err := v.cache.Get(ctx, key, eip); err != nil {
 		return err
 	}
 
@@ -473,9 +492,14 @@ func (v *ValidatingHook) ValidateIptablesDnat(dnat *ovnv1.IptablesDnatRule) erro
 	return nil
 }
 
-func (v *ValidatingHook) ValidateIptablesSnat(snat *ovnv1.IptablesSnatRule) error {
+func (v *ValidatingHook) ValidateIptablesSnat(ctx context.Context, snat *ovnv1.IptablesSnatRule) error {
 	if snat.Spec.EIP == "" {
 		err := fmt.Errorf("parameter \"eip\" cannot be empty")
+		return err
+	}
+	eip := &ovnv1.IptablesEIP{}
+	key := types.NamespacedName{Name: snat.Spec.EIP}
+	if err := v.cache.Get(ctx, key, eip); err != nil {
 		return err
 	}
 
@@ -486,9 +510,14 @@ func (v *ValidatingHook) ValidateIptablesSnat(snat *ovnv1.IptablesSnatRule) erro
 	return nil
 }
 
-func (v *ValidatingHook) ValidateIptablesFip(fip *ovnv1.IptablesFIPRule) error {
+func (v *ValidatingHook) ValidateIptablesFip(ctx context.Context, fip *ovnv1.IptablesFIPRule) error {
 	if fip.Spec.EIP == "" {
 		err := fmt.Errorf("parameter \"eip\" cannot be empty")
+		return err
+	}
+	eip := &ovnv1.IptablesEIP{}
+	key := types.NamespacedName{Name: fip.Spec.EIP}
+	if err := v.cache.Get(ctx, key, eip); err != nil {
 		return err
 	}
 
