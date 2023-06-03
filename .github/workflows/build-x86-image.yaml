@@ -28,6 +28,8 @@ jobs:
   build-kube-ovn-base:
     name: Build kube-ovn-base
     runs-on: ubuntu-22.04
+    outputs:
+      build-base: ${{ steps.build.outputs.build-base }}
     steps:
       - uses: actions/checkout@v3
         with:
@@ -116,7 +118,7 @@ jobs:
           go mod tidy
           git diff --exit-code
           make lint
-          if [ "x${{ env.BUILD_BASE }}" = "x1" ]; then
+          if [ ${{ needs.build-kube-ovn-base.outputs.build-base || 0 }} = 1 ]; then
             TAG=$(cat VERSION)
             docker tag kubeovn/kube-ovn-base:$TAG-amd64 kubeovn/kube-ovn-base:$TAG
             docker tag kubeovn/kube-ovn-base:$TAG-amd64-no-avx512 kubeovn/kube-ovn-base:$TAG-no-avx512
