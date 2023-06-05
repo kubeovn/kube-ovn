@@ -104,7 +104,7 @@ func (c *Controller) initDefaultLogicalSwitch() error {
 			if util.CheckProtocol(c.config.DefaultCIDR) == kubeovnv1.ProtocolDual {
 				subnet := subnet.DeepCopy()
 				subnet.Spec.CIDRBlock = c.config.DefaultCIDR
-				if err := formatSubnet(subnet, c); err != nil {
+				if _, err = formatSubnet(subnet, c); err != nil {
 					klog.Errorf("init format subnet %s failed: %v", c.config.DefaultLogicalSwitch, err)
 					return err
 				}
@@ -158,7 +158,7 @@ func (c *Controller) initNodeSwitch() error {
 			// single-stack upgrade to dual-stack
 			subnet := subnet.DeepCopy()
 			subnet.Spec.CIDRBlock = c.config.NodeSwitchCIDR
-			if err := formatSubnet(subnet, c); err != nil {
+			if _, err = formatSubnet(subnet, c); err != nil {
 				klog.Errorf("init format subnet %s failed: %v", c.config.NodeSwitch, err)
 				return err
 			}

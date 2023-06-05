@@ -260,13 +260,13 @@ func (c *Controller) processNextDeleteSubnetWorkItem() bool {
 	return true
 }
 
-func formatSubnet(subnet *kubeovnv1.Subnet, c *Controller) error {
+func formatSubnet(subnet *kubeovnv1.Subnet, c *Controller) (*kubeovnv1.Subnet, error) {
 	var err error
 	changed := false
 
 	changed, err = checkSubnetChanged(subnet)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if subnet.Spec.Provider == "" {
 		subnet.Spec.Provider = util.OvnProvider
@@ -296,7 +296,7 @@ func formatSubnet(subnet *kubeovnv1.Subnet, c *Controller) error {
 			if _, err := c.vlansLister.Get(subnet.Spec.Vlan); err != nil {
 				err = fmt.Errorf("failed to get vlan %s: %s", subnet.Spec.Vlan, err)
 				klog.Error(err)
-				return err
+				return nil, err
 			}
 		}
 	}
@@ -313,13 +313,13 @@ func formatSubnet(subnet *kubeovnv1.Subnet, c *Controller) error {
 
 	klog.Infof("format subnet %v, changed %v", subnet.Name, changed)
 	if changed {
-		_, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Update(context.Background(), subnet, metav1.UpdateOptions{})
+		subnet, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Update(context.Background(), subnet, metav1.UpdateOptions{})
 		if err != nil {
 			klog.Errorf("failed to update subnet %s, %v", subnet.Name, err)
-			return err
+			return nil, err
 		}
 	}
-	return nil
+	return subnet.DeepCopy(), nil
 }
 
 func genNatOutgoingPolicyRulesStatus(subnet *kubeovnv1.Subnet) error {
@@ -642,17 +642,8 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 	}
 	klog.V(4).Infof("handle add or update subnet %s", cachedSubnet.Name)
 
-	subnet := cachedSubnet.DeepCopy()
-	if err = formatSubnet(subnet, c); err != nil {
-		return err
-	}
-
-	subnet, err = c.subnetsLister.Get(key)
+	subnet, err := formatSubnet(cachedSubnet.DeepCopy(), c)
 	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
-		klog.Errorf("failed to get subnet %s error %v", key, err)
 		return err
 	}
 
