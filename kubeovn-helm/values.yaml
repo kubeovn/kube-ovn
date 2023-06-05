@@ -8,7 +8,7 @@ global:
   images:
     kubeovn:
       repository: kube-ovn
-      tag: v1.11.6
+      tag: v1.11.7
       support_arm: true
       thirdparty: true
 
