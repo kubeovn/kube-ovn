@@ -19,7 +19,7 @@ func (csh cniServerHandler) validatePodRequest(req *request.CniRequest) error {
 	return nil
 }
 
-func createShortSharedDir(pod *v1.Pod, volumeName string) error {
+func createShortSharedDir(pod *v1.Pod, volumeName string, kubeletDir string) error {
 	// nothing to do on Windows
 	return nil
 }

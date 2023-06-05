@@ -88,6 +88,16 @@ spec:
               name: kube-ovn-tls
             - mountPath: /var/run/containerd
               name: cruntime
+            {{- if or .Values.DPDK .Values.HYBRID_DPDK }}
+            - mountPath: /opt/ovs-config
+              name: host-config-ovs
+            - mountPath: /dev/hugepages
+              name: hugepage
+            {{- end }}
+            {{- if .Values.HYBRID_DPDK }}
+            - name: shareddir
+              mountPath: {{ .Values.kubelet_conf.KUBELET_DIR }}/pods
+            {{- end }}
           readinessProbe:
             exec:
               command:
