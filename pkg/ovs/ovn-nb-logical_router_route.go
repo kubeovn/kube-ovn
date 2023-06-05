@@ -2,8 +2,10 @@ package ovs
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
+	"github.com/ovn-org/libovsdb/client"
 	"github.com/ovn-org/libovsdb/model"
 	"github.com/ovn-org/libovsdb/ovsdb"
 	"github.com/scylladb/go-set/strset"
@@ -313,6 +315,9 @@ func (c *ovnClient) listLogicalRouterStaticRoutesByFilter(lrName string, filter 
 	for _, uuid := range lr.StaticRoutes {
 		route, err := c.GetLogicalRouterStaticRouteByUUID(uuid)
 		if err != nil {
+			if errors.Is(err, client.ErrNotFound) {
+				continue
+			}
 			return nil, err
 		}
 		if filter == nil || filter(route) {
