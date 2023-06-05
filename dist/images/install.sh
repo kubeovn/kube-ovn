@@ -3890,9 +3890,8 @@ spec:
             optional: true
             secretName: kube-ovn-tls
 EOF
-fi
-
 kubectl apply -f ovs-ovn-ds.yaml
+fi
 
 if $HYBRID_DPDK; then
 
