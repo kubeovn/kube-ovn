@@ -139,3 +139,12 @@ func NetworkDisconnect(networkID, containerID string) error {
 
 	return cli.NetworkDisconnect(context.Background(), networkID, containerID, false)
 }
+
+func NetworkRemove(networkID string) error {
+	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	if err != nil {
+		return err
+	}
+	defer cli.Close()
+	return cli.NetworkRemove(context.Background(), networkID)
+}

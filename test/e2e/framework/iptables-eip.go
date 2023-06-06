@@ -90,6 +90,17 @@ func (c *IptablesEIPClient) PatchSync(original, modified *apiv1.IptablesEIP, req
 	return c.Get(eip.Name).DeepCopy()
 }
 
+// PatchQoS patches the vpc nat gw and waits for the qos to be ready for `timeout`.
+// If the qos doesn't become ready before the timeout, it will fail the test.
+func (c *IptablesEIPClient) PatchQoSPolicySync(eipName string, qosPolicyName string) *apiv1.IptablesEIP {
+	eip := c.Get(eipName)
+	modifiedEIP := eip.DeepCopy()
+	modifiedEIP.Spec.QoSPolicy = qosPolicyName
+	_ = c.Patch(eip, modifiedEIP)
+	ExpectTrue(c.WaitToQoSReady(eipName))
+	return c.Get(eipName).DeepCopy()
+}
+
 // Delete deletes a iptables eip if the iptables eip exists
 func (c *IptablesEIPClient) Delete(name string) {
 	err := c.IptablesEIPInterface.Delete(context.TODO(), name, metav1.DeleteOptions{})
@@ -114,6 +125,19 @@ func (c *IptablesEIPClient) WaitToBeReady(name string, timeout time.Duration) bo
 			return true
 		}
 		Logf("eip %s is not ready ", name)
+	}
+	return false
+}
+
+// WaitToQoSReady returns whether the qos is ready within timeout.
+func (c *IptablesEIPClient) WaitToQoSReady(name string) bool {
+	for start := time.Now(); time.Since(start) < timeout; time.Sleep(poll) {
+		eip := c.Get(name)
+		if eip.Status.QoSPolicy == eip.Spec.QoSPolicy {
+			Logf("qos %s is ready ", name)
+			return true
+		}
+		Logf("qos %s is not ready ", name)
 	}
 	return false
 }
@@ -147,7 +171,7 @@ func (c *IptablesEIPClient) WaitToDisappear(name string, interval, timeout time.
 	return nil
 }
 
-func MakeIptablesEIP(name, v4ip, v6ip, mac, natGwDp, externalSubnet string) *apiv1.IptablesEIP {
+func MakeIptablesEIP(name, v4ip, v6ip, mac, natGwDp, externalSubnet, qosPolicyName string) *apiv1.IptablesEIP {
 	eip := &apiv1.IptablesEIP{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
@@ -162,5 +186,6 @@ func MakeIptablesEIP(name, v4ip, v6ip, mac, natGwDp, externalSubnet string) *api
 	if externalSubnet != "" {
 		eip.Spec.ExternalSubnet = externalSubnet
 	}
+	eip.Spec.QoSPolicy = qosPolicyName
 	return eip
 }
