@@ -25,7 +25,7 @@ jobs:
       - name: Upload image to artifact
         uses: actions/upload-artifact@v3
         with:
-          name: image-amd64
+          name: image-amd64-${{ matrix.branch }}
           path: image-amd64.tar
 
   build-arm64:
@@ -75,7 +75,7 @@ jobs:
       - name: Download image
         uses: actions/download-artifact@v3
         with:
-          name: image-arm64
+          name: image-arm64-${{ matrix.branch }}
 
       - name: Load Image
         run: |
