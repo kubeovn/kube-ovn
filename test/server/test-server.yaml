@@ -9,6 +9,33 @@ spec:
     - name: test-server
       image: kubeovn/test:v1.12.0
       imagePullPolicy: IfNotPresent
+      command: ["sh", "-c"]
+      args:
+        - |
+          qperf &
+          ./test-server.sh
+  nodeSelector:
+    kubernetes.io/hostname: kube-ovn-control-plane
+
+---
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-host-server
+  labels:
+    env: test-host-server
+spec:
+  hostNetwork: true
+  containers:
+    - name: test-host-server
+      image: kubeovn/test:v1.12.0
+      imagePullPolicy: IfNotPresent
+      command: ["sh", "-c"]
+      args:
+        - |
+          qperf &
+          ./test-server.sh
   nodeSelector:
     kubernetes.io/hostname: kube-ovn-control-plane
 

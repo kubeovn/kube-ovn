@@ -50,11 +50,17 @@ type Configuration struct {
 	ServiceVswitchdFilePidPath      string
 	ServiceOvnControllerFileLogPath string
 	ServiceOvnControllerFilePidPath string
+	TCPConnCheckPort                int
+	UDPConnCheckPort                int
 }
 
 func ParseFlags() (*Configuration, error) {
 	var (
-		argPort               = pflag.Int("port", 8080, "metrics port")
+		argPort = pflag.Int("port", 8080, "metrics port")
+
+		argTCPConnectivityCheckPort = pflag.Int("tcp-conn-check-port", 8100, "TCP connectivity Check Port")
+		argUDPConnectivityCheckPort = pflag.Int("udp-conn-check-port", 8101, "UDP connectivity Check Port")
+
 		argKubeConfigFile     = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.")
 		argDaemonSetNameSpace = pflag.String("ds-namespace", "kube-system", "kube-ovn-pinger daemonset namespace")
 		argDaemonSetName      = pflag.String("ds-name", "kube-ovn-pinger", "kube-ovn-pinger daemonset name")
@@ -118,6 +124,8 @@ func ParseFlags() (*Configuration, error) {
 		ExternalAddress:    *argExternalAddress,
 		NetworkMode:        *argNetworkMode,
 		EnableMetrics:      *argEnableMetrics,
+		TCPConnCheckPort:   *argTCPConnectivityCheckPort,
+		UDPConnCheckPort:   *argUDPConnectivityCheckPort,
 
 		// OVS Monitor
 		PollTimeout:                     *argPollTimeout,

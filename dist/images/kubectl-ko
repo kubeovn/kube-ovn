@@ -5,6 +5,7 @@ KUBE_OVN_NS=kube-system
 WITHOUT_KUBE_PROXY=${WITHOUT_KUBE_PROXY:-false}
 OVN_NB_POD=
 OVN_SB_POD=
+OVN_NORTHD_POD=
 KUBE_OVN_VERSION=
 REGISTRY="kubeovn"
 
@@ -599,6 +600,12 @@ getOvnCentralPod(){
       exit 1
     fi
     OVN_SB_POD=$SB_POD
+    NORTHD_POD=$(kubectl get pod -n kube-system -l ovn-northd-leader=true | grep ovn-central | head -n 1 | awk '{print $1}')
+    if [ -z "$NORTHD_POD" ]; then
+      echo "ovn northd not exists"
+      exit 1
+    fi
+    OVN_NORTHD_POD=$NORTHD_POD
     image=$(kubectl  -n kube-system get pods -l app=kube-ovn-cni -o jsonpath='{.items[0].spec.containers[0].image}')
     if [ -z "$image" ]; then
           echo "cannot get kube-ovn image"
@@ -1082,6 +1089,171 @@ log(){
   echo "Collected files have been saved in the directory $PWD/kubectl-ko-log "
 }
 
+perfTimes=5
+
+perf(){
+  curl -O https://raw.githubusercontent.com/kubeovn/kube-ovn/master/test/server/test-server.yaml
+
+  nodes=($(kubectl get node --no-headers -o custom-columns=NAME:.metadata.name))
+  if [[ ${#nodes} = 1 ]]; then
+    sed -i "s/kube-ovn-control-plane/${nodes[0]}/g" test-server.yaml
+    sed -i "s/kube-ovn-worker/${nodes[0]}/g" test-server.yaml
+  elif [[ ${#nodes} -le 0 ]]; then
+    echo "can't find node in the cluster"
+    return
+  elif [[ ${#nodes} -ge 2 ]]; then
+    sed -i "s/kube-ovn-control-plane/${nodes[0]}/g" test-server.yaml
+    sed -i "s/kube-ovn-worker/${nodes[1]}/g" test-server.yaml
+  fi
+
+  kubectl apply -f test-server.yaml
+
+  isfailed=true
+  for i in {0..59}
+  do
+    clientPod=$(kubectl get pod test-client | awk '{if($2=="1/1" && $3=="Running") print $1}')
+    serverPod=$(kubectl get pod test-server | awk '{if($2=="1/1" && $3=="Running") print $1}')
+    hostServerPod=$(kubectl get pod test-host-server | awk '{if($2=="1/1" && $3=="Running") print $1}')
+
+    if [[ $clientPod = "test-client" ]] && [[ $serverPod = "test-server" ]] && [[ $hostServerPod = "test-host-server" ]] ; then
+      echo "test pods all ready"
+      isfailed=false
+      break
+    fi
+    sleep 1
+  done
+  if $isfailed; then
+    echo "Error test pod not ready"
+    return
+  fi
+
+  local serverIP=$(kubectl get pod test-server -o jsonpath={.status.podIP})
+  local hostserverIP=$(kubectl get pod test-host-server -o jsonpath={.status.podIP})
+
+  echo "Start doing pod network performance"
+  unicast_perf_test $serverIP
+
+  echo "Start doing host network performance"
+  unicast_perf_test $hostserverIP
+
+  echo "Start doing pod multicast network performance"
+  multicast_perf_test
+
+  echo "Start doing leader recover time test"
+  check_leader_recover
+
+  rm test-server.yaml
+
+}
+
+unicast_perf_test() {
+
+  serverIP=$1
+  echo "=================================== unicast perfromance test ============================================================="
+  printf "%-15s %-15s %-15s %-15s %-15s %-15s\n" "Size" "TCP Latency" "TCP Bandwidth" "UDP Latency" "UDP Lost Rate" "UDP Bandwidth"
+  for size in "64" "1k" "4k"
+  do
+    output=$(kubectl exec test-client -- qperf -t $perfTimes $serverIP -ub -oo msg_size:$size -vu tcp_lat udp_lat 2>&1)
+
+    tcp_lat="$(echo $output | grep -oP 'tcp_lat: latency = \K[\d.]+ us')"
+    udp_lat="$(echo $output | grep -oP 'udp_lat: latency = \K[\d.]+ us')"
+
+    kubectl exec test-client -- iperf3 -c $serverIP -u -t $perfTimes -i 1 -P 10 -b 1000G -l $size > temp_perf_result.log 2> /dev/null
+    udp_bw=$(cat temp_perf_result.log | grep -oP '\d+\.?\d* [KMG]bits/sec' | tail -n 1)
+    udp_lost_rate=$(cat temp_perf_result.log | grep -oP '\(\d+(\.\d+)?%\)' | tail -n 1)
+
+    kubectl exec test-client -- iperf3 -c $serverIP -t $perfTimes -i 1 -P 10 -l $size > temp_perf_result.log 2> /dev/null
+    tcp_bw=$(cat temp_perf_result.log | grep -oP '\d+\.?\d* [KMG]bits/sec' | tail -n 1)
+
+    printf "%-15s %-15s %-15s %-15s %-15s %-15s\n" "$size" "$tcp_lat" "$tcp_bw" "$udp_lat" "$udp_lost_rate" "$udp_bw"
+  done
+  echo "========================================================================================================================="
+  rm temp_perf_result.log
+}
+
+multicast_perf_test() {
+  clientNode=$(kubectl get pod test-client -o jsonpath={.spec.nodeName})
+  serverNode=$(kubectl get pod test-server -o jsonpath={.spec.nodeName})
+
+  clientNs=$(kubectl ko vsctl $clientNode --column=external_ids find interface external_ids:iface-id=test-client.default | awk -F 'pod_netns=' '{print $2}' | grep -o 'cni-[0-9a-f]\{8\}-[0-9a-f]\{4\}-[0-9a-f]\{4\}-[0-9a-f]\{4\}-[0-9a-f]\{12\}')
+  serverNs=$(kubectl ko vsctl $serverNode --column=external_ids find interface external_ids:iface-id=test-server.default | awk -F 'pod_netns=' '{print $2}' | grep -o 'cni-[0-9a-f]\{8\}-[0-9a-f]\{4\}-[0-9a-f]\{4\}-[0-9a-f]\{4\}-[0-9a-f]\{12\}')
+
+  clientovsPod=$(kubectl get pod -owide -A |grep ovs-ovn | grep $clientNode | awk '{print $2}')
+  kubectl exec $clientovsPod -n kube-system -- ip netns exec $clientNs ip maddr add 01:00:5e:00:00:64 dev eth0
+
+  serverovsPod=$(kubectl get pod -owide -A |grep ovs-ovn | grep $serverNode | awk '{print $2}')
+  kubectl exec $serverovsPod -n kube-system -- ip netns exec $serverNs ip maddr add 01:00:5e:00:00:64 dev eth0
+
+  gen_multicast_perf_result test-server
+
+  kubectl exec $clientovsPod -n kube-system -- ip netns exec $clientNs ip maddr del 01:00:5e:00:00:64 dev eth0
+  kubectl exec $serverovsPod -n kube-system -- ip netns exec $serverNs ip maddr del 01:00:5e:00:00:64 dev eth0
+}
+
+gen_multicast_perf_result() {
+  serverName=$1
+
+  start_server_cmd="iperf -s -B 224.0.0.100 -i 1 -u"
+  kubectl exec $serverName -- $start_server_cmd > $serverName.log &
+
+  echo "=================================== multicast perfromance test ========================================================="
+  printf "%-15s %-15s %-15s %-15s\n" "Size" "UDP Latency" "UDP Lost Rate" "UDP Bandwidth"
+  for size in "64" "1k" "4k"
+  do
+    kubectl exec test-client -- iperf -c 224.0.0.100 -u -T 32 -t $perfTimes -i 1 -b 1000G -l $size > /dev/null
+    udp_bw=$(cat $serverName.log | grep -oP '\d+\.?\d* [KMG]bits/sec' | tail -n 1)
+    udp_lost_rate=$(cat $serverName.log |grep -oP '\(\d+(\.\d+)?%\)' | tail -n 1)
+    kubectl exec test-client -- iperf -c 224.0.0.100 -u -T 32 -t $perfTimes -i 1 -l $size > /dev/null
+    udp_lat=$(cat  $serverName.log | grep -oP '\d+\.?\d* ms' | tail -n 1)
+    printf "%-15s %-15s %-15s %-15s\n" "$size" "$udp_lat" "$udp_lost_rate" "$udp_bw"
+  done
+
+  echo "========================================================================================================================="
+
+  pids=($(ps -ef | grep "$start_server_cmd" | grep -v grep | awk '{print $2}'))
+  kill ${pids[1]}
+
+  rm $serverName.log
+}
+
+check_leader_recover() {
+  getOvnCentralPod
+  getPodRecoverTime "nb"
+  sleep 5
+  getOvnCentralPod
+  getPodRecoverTime "sb"
+  sleep 5
+  getOvnCentralPod
+  getPodRecoverTime "northd"
+
+}
+
+getPodRecoverTime(){
+  component_name=$1
+  start_time=$(date +%s.%N)
+  echo "Delete ovn central $component_name pod"
+  if [[ $component_name == "nb" ]]; then
+    kubectl delete pod $OVN_NB_POD -n kube-system
+  elif [[ $component_name == "sb" ]]; then
+    kubectl delete pod $OVN_SB_POD -n kube-system
+  elif [[ $component_name == "northd" ]]; then
+    kubectl delete pod $OVN_NORTHD_POD -n kube-system
+  fi
+  echo "Waiting for ovn central $component_name pod running"
+  replicas=$(kubectl get deployment -n kube-system ovn-central -o jsonpath={.spec.replicas})
+  availableNum=$(kubectl get deployment -n kube-system | grep ovn-central | awk {'print $4'})
+  while [ $availableNum != $replicas ]
+  do
+    availableNum=$(kubectl get deployment -n kube-system | grep ovn-central | awk {'print $4'})
+    usleep 0.001
+  done
+
+  end_time=$(date +%s.%N)
+  elapsed_time=$(echo "$end_time - $start_time" | bc)
+  echo "================================  OVN $component_name recover takes $elapsed_time s =================================="
+}
+
+
 if [ $# -lt 1 ]; then
   showHelp
   exit 0
@@ -1124,6 +1296,9 @@ case $subcommand in
     ;;
   log)
     log "$@"
+    ;;
+  perf)
+    perf
     ;;
   *)
     showHelp

@@ -9,6 +9,7 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"time"
 
 	"k8s.io/klog/v2"
 
@@ -524,4 +525,92 @@ func GetNatGwExternalNetwork(externalNets []string) string {
 		return vpcExternalNet
 	}
 	return externalNets[0]
+}
+
+func TCPConnectivityCheck(address string) error {
+	conn, err := net.DialTimeout("tcp", address, 3*time.Second)
+	if err != nil {
+		return err
+	}
+
+	_ = conn.Close()
+
+	return nil
+}
+
+func TCPConnectivityListen(address string) error {
+	listener, err := net.Listen("tcp", address)
+	if err != nil {
+		return fmt.Errorf("listen failed with err %v", err)
+	}
+
+	defer listener.Close()
+
+	for {
+		conn, err := listener.Accept()
+		if err != nil {
+			continue
+		}
+		_ = conn.Close()
+	}
+}
+
+func UDPConnectivityCheck(address string) error {
+
+	udpAddr, err := net.ResolveUDPAddr("udp", address)
+	if err != nil {
+		return fmt.Errorf("resolve udp addr failed with err %v", err)
+	}
+
+	conn, err := net.DialUDP("udp", nil, udpAddr)
+	if err != nil {
+		return err
+	}
+
+	defer conn.Close()
+
+	if err := conn.SetReadDeadline(time.Now().Add(3 * time.Second)); err != nil {
+		return err
+	}
+
+	_, err = conn.Write([]byte("health check"))
+	if err != nil {
+		return fmt.Errorf("send udp packet failed with err %v", err)
+	}
+
+	buffer := make([]byte, 1024)
+	_, err = conn.Read(buffer)
+	if err != nil {
+		return fmt.Errorf("read udp packet from remote failed %v", err)
+	}
+
+	return nil
+}
+
+func UDPConnectivityListen(address string) error {
+	listenAddr, err := net.ResolveUDPAddr("udp", address)
+	if err != nil {
+		return fmt.Errorf("resolve udp addr failed with err %v", err)
+	}
+
+	conn, err := net.ListenUDP("udp", listenAddr)
+	if err != nil {
+		return fmt.Errorf("listen udp address failed with %v", err)
+	}
+
+	defer conn.Close()
+
+	buffer := make([]byte, 1024)
+
+	for {
+		_, clientAddr, err := conn.ReadFromUDP(buffer)
+		if err != nil {
+			continue
+		}
+
+		_, err = conn.WriteToUDP([]byte("health check"), clientAddr)
+		if err != nil {
+			continue
+		}
+	}
 }
