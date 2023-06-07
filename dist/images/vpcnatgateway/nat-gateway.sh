@@ -190,7 +190,7 @@ function add_snat() {
         randomFullyOption=${arr[2]}
         # check if already exist
         iptables-save  | grep "SHARED_SNAT" | grep "\-s $internalCIDR" | grep "source $eip" && exit 0
-        exec_cmd "iptables -t nat -A SHARED_SNAT -s $internalCIDR -j SNAT --to-source $eip $randomFullyOption"
+        exec_cmd "iptables -t nat -A SHARED_SNAT -o net1 -s $internalCIDR -j SNAT --to-source $eip $randomFullyOption"
     done
 }
 function del_snat() {
