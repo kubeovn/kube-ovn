@@ -413,7 +413,7 @@ func (c *Controller) GetEip(eipName string) (*kubeovnv1.IptablesEIP, error) {
 		klog.Errorf("failed to get eip %s, %v", eipName, err)
 		return nil, err
 	}
-	if cachedEip.Status.IP == "" || cachedEip.Spec.V4ip == "" {
+	if cachedEip.Status.IP == "" {
 		return nil, fmt.Errorf("eip '%s' is not ready, has no v4ip", eipName)
 	}
 	eip := cachedEip.DeepCopy()
@@ -601,7 +601,7 @@ func (c *Controller) acquireEip(name, namespace, nicName, externalSubnet string)
 }
 
 func (c *Controller) eipChangeIP(eip *kubeovnv1.IptablesEIP) bool {
-	if eip.Status.IP == "" || eip.Spec.V4ip == "" {
+	if eip.Status.IP == "" {
 		// eip created but not ready
 		return false
 	}
