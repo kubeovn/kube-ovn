@@ -2,8 +2,10 @@ package ovs
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
+	"github.com/ovn-org/libovsdb/client"
 	"github.com/ovn-org/libovsdb/model"
 	"github.com/ovn-org/libovsdb/ovsdb"
 	"github.com/scylladb/go-set/strset"
@@ -302,6 +304,9 @@ func (c *ovnClient) listLogicalRouterPoliciesByFilter(lrName string, filter func
 	for _, uuid := range lr.Policies {
 		policy, err := c.GetLogicalRouterPolicyByUUID(uuid)
 		if err != nil {
+			if errors.Is(err, client.ErrNotFound) {
+				continue
+			}
 			return nil, err
 		}
 		if filter == nil || filter(policy) {

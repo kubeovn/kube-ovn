@@ -2,8 +2,10 @@ package ovs
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
+	"github.com/ovn-org/libovsdb/client"
 	"github.com/ovn-org/libovsdb/model"
 	"github.com/ovn-org/libovsdb/ovsdb"
 
@@ -338,6 +340,9 @@ func (c *ovnClient) listLogicalRouterNatByFilter(lrName string, filter func(rout
 	for _, uuid := range lr.Nat {
 		nat, err := c.GetNATByUUID(uuid)
 		if err != nil {
+			if errors.Is(err, client.ErrNotFound) {
+				continue
+			}
 			return nil, err
 		}
 		if filter == nil || filter(nat) {
