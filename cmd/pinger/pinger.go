@@ -37,6 +37,20 @@ func CmdMain() {
 			util.LogFatalAndExit(server.ListenAndServe(), "failed to listen and serve on %s", server.Addr)
 		}()
 	}
+	go func() {
+		addr := fmt.Sprintf("0.0.0.0:%d", config.TCPConnCheckPort)
+		if err := util.TCPConnectivityListen(addr); err != nil {
+			util.LogFatalAndExit(err, "failed to start TCP listen on addr %s ", addr)
+		}
+	}()
+
+	go func() {
+		addr := fmt.Sprintf("0.0.0.0:%d", config.UDPConnCheckPort)
+		if err := util.UDPConnectivityListen(addr); err != nil {
+			util.LogFatalAndExit(err, "failed to start UDP listen on addr %s ", addr)
+		}
+	}()
+
 	e := pinger.NewExporter(config)
 	pinger.StartPinger(config, e)
 }
