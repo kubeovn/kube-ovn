@@ -734,6 +734,19 @@ func (c *Controller) getVmLsps() []string {
 					vmLsp := ovs.PodNameToPortName(vm.Name, ns.Name, provider)
 					vmLsps = append(vmLsps, vmLsp)
 				}
+
+				for _, network := range vm.Spec.Template.Spec.Networks {
+					if network.Multus != nil && network.Multus.NetworkName != "" {
+						items := strings.Split(network.Multus.NetworkName, "/")
+						if len(items) != 2 {
+							continue
+						}
+						provider := fmt.Sprintf("%s.%s.ovn", items[1], items[0])
+						vmLsp := ovs.PodNameToPortName(vm.Name, ns.Name, provider)
+						vmLsps = append(vmLsps, vmLsp)
+					}
+				}
+
 			}
 		}
 	}
