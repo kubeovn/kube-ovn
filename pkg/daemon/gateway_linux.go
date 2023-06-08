@@ -42,6 +42,7 @@ const (
 	Postrouting    = "POSTROUTING"
 	OvnPrerouting  = "OVN-PREROUTING"
 	OvnPostrouting = "OVN-POSTROUTING"
+	OvnMasquerade  = "OVN-MASQUERADE"
 )
 
 type policyRouteMeta struct {
@@ -337,15 +338,17 @@ func (c *Controller) updateIptablesChain(ipt *iptables.IPTables, table, chain, p
 		klog.Infof("created iptables chain %s in table %s", chain, table)
 	}
 
-	comment := fmt.Sprintf("kube-ovn %s rules", strings.ToLower(parent))
-	rule := util.IPTableRule{
-		Table: table,
-		Chain: parent,
-		Rule:  []string{"-m", "comment", "--comment", comment, "-j", chain},
-	}
-	if err = c.createIptablesRule(ipt, rule); err != nil {
-		klog.Errorf("failed to create iptables rule: %v", err)
-		return err
+	if parent != "" {
+		comment := fmt.Sprintf("kube-ovn %s rules", strings.ToLower(parent))
+		rule := util.IPTableRule{
+			Table: table,
+			Chain: parent,
+			Rule:  []string{"-m", "comment", "--comment", comment, "-j", chain},
+		}
+		if err = c.createIptablesRule(ipt, rule); err != nil {
+			klog.Errorf("failed to create iptables rule: %v", err)
+			return err
+		}
 	}
 
 	// list existing rules
@@ -415,19 +418,23 @@ func (c *Controller) setIptables() error {
 			// mark packets from pod to service
 			{Table: NAT, Chain: OvnPrerouting, Rule: strings.Fields(`-i ovn0 -m set --match-set ovn40subnets src -m set --match-set ovn40services dst -j MARK --set-xmark 0x4000/0x4000`)},
 			// nat packets marked by kube-proxy or kube-ovn
-			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields(`-m mark --mark 0x4000/0x4000 -j MASQUERADE`)},
+			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields(`-m mark --mark 0x4000/0x4000 -j ` + OvnMasquerade)},
 			// nat service traffic
-			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields(`-m set --match-set ovn40subnets src -m set --match-set ovn40subnets dst -j MASQUERADE`)},
+			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields(`-m set --match-set ovn40subnets src -m set --match-set ovn40subnets dst -j ` + OvnMasquerade)},
 			// do not nat node port service traffic with external traffic policy set to local
 			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields(`-m mark --mark 0x80000/0x80000 -m set --match-set ovn40subnets-distributed-gw dst -j RETURN`)},
 			// nat node port service traffic with external traffic policy set to local for subnets with centralized gateway
-			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields(`-m mark --mark 0x80000/0x80000 -j MASQUERADE`)},
+			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields(`-m mark --mark 0x80000/0x80000 -j ` + OvnMasquerade)},
 			// do not nat reply packets in direct routing
 			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields(`-p tcp -m tcp --tcp-flags SYN NONE -m conntrack --ctstate NEW -j RETURN`)},
 			// do not nat route traffic
 			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields(`-m set ! --match-set ovn40subnets src -m set ! --match-set ovn40other-node src -m set --match-set ovn40subnets-nat dst -j RETURN`)},
 			// nat outgoing
-			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields(`-m set --match-set ovn40subnets-nat src -m set ! --match-set ovn40subnets dst -j MASQUERADE`)},
+			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields(`-m set --match-set ovn40subnets-nat src -m set ! --match-set ovn40subnets dst -j ` + OvnMasquerade)},
+			// clear mark
+			{Table: NAT, Chain: OvnMasquerade, Rule: strings.Fields(`-j MARK --set-xmark 0x0/0xffffffff`)},
+			// do masquerade
+			{Table: NAT, Chain: OvnMasquerade, Rule: strings.Fields(`-j MASQUERADE`)},
 			// Input Accept
 			{Table: "filter", Chain: "INPUT", Rule: strings.Fields(`-m set --match-set ovn40subnets src -j ACCEPT`)},
 			{Table: "filter", Chain: "INPUT", Rule: strings.Fields(`-m set --match-set ovn40subnets dst -j ACCEPT`)},
@@ -445,19 +452,23 @@ func (c *Controller) setIptables() error {
 			// mark packets from pod to service
 			{Table: NAT, Chain: OvnPrerouting, Rule: strings.Fields(`-i ovn0 -m set --match-set ovn60subnets src -m set --match-set ovn60services dst -j MARK --set-xmark 0x4000/0x4000`)},
 			// nat packets marked by kube-proxy or kube-ovn
-			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields(`-m mark --mark 0x4000/0x4000 -j MASQUERADE`)},
+			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields(`-m mark --mark 0x4000/0x4000 -j ` + OvnMasquerade)},
 			// nat service traffic
-			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields(`-m set --match-set ovn60subnets src -m set --match-set ovn60subnets dst -j MASQUERADE`)},
+			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields(`-m set --match-set ovn60subnets src -m set --match-set ovn60subnets dst -j ` + OvnMasquerade)},
 			// do not nat node port service traffic with external traffic policy set to local
 			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields(`-m mark --mark 0x80000/0x80000 -m set --match-set ovn60subnets-distributed-gw dst -j RETURN`)},
 			// nat node port service traffic with external traffic policy set to local for subnets with centralized gateway
-			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields(`-m mark --mark 0x80000/0x80000 -j MASQUERADE`)},
+			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields(`-m mark --mark 0x80000/0x80000 -j ` + OvnMasquerade)},
 			// do not nat reply packets in direct routing
 			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields(`-p tcp -m tcp --tcp-flags SYN NONE -m conntrack --ctstate NEW -j RETURN`)},
 			// do not nat route traffic
 			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields(`-m set ! --match-set ovn60subnets src -m set ! --match-set ovn60other-node src -m set --match-set ovn60subnets-nat dst -j RETURN`)},
 			// nat outgoing
-			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields(`-m set --match-set ovn60subnets-nat src -m set ! --match-set ovn60subnets dst -j MASQUERADE`)},
+			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields(`-m set --match-set ovn60subnets-nat src -m set ! --match-set ovn60subnets dst -j ` + OvnMasquerade)},
+			// clear mark
+			{Table: NAT, Chain: OvnMasquerade, Rule: strings.Fields(`-j MARK --set-xmark 0x0/0xffffffff`)},
+			// do masquerade
+			{Table: NAT, Chain: OvnMasquerade, Rule: strings.Fields(`-j MASQUERADE`)},
 			// Input Accept
 			{Table: "filter", Chain: "INPUT", Rule: strings.Fields(`-m set --match-set ovn60subnets src -j ACCEPT`)},
 			{Table: "filter", Chain: "INPUT", Rule: strings.Fields(`-m set --match-set ovn60subnets dst -j ACCEPT`)},
@@ -524,7 +535,7 @@ func (c *Controller) setIptables() error {
 			}
 		}
 
-		var natPreroutingRules, natPostroutingRules []util.IPTableRule
+		var natPreroutingRules, natPostroutingRules, ovnMasqueradeRules []util.IPTableRule
 		for _, rule := range iptablesRules {
 			if rule.Table == NAT {
 				switch rule.Chain {
@@ -533,6 +544,9 @@ func (c *Controller) setIptables() error {
 					continue
 				case OvnPostrouting:
 					natPostroutingRules = append(natPostroutingRules, rule)
+					continue
+				case OvnMasquerade:
+					ovnMasqueradeRules = append(ovnMasqueradeRules, rule)
 					continue
 				}
 			}
@@ -562,6 +576,10 @@ func (c *Controller) setIptables() error {
 
 		if err = c.updateIptablesChain(ipt, NAT, OvnPrerouting, Prerouting, natPreroutingRules); err != nil {
 			klog.Errorf("failed to update chain %s/%s: %v", NAT, OvnPrerouting)
+			return err
+		}
+		if err = c.updateIptablesChain(ipt, NAT, OvnMasquerade, "", ovnMasqueradeRules); err != nil {
+			klog.Errorf("failed to update chain %s/%s: %v", NAT, OvnMasquerade)
 			return err
 		}
 		if err = c.updateIptablesChain(ipt, NAT, OvnPostrouting, Postrouting, natPostroutingRules); err != nil {
