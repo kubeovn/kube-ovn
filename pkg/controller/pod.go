@@ -199,17 +199,17 @@ func (c *Controller) enqueueAddPod(obj interface{}) {
 		if isStateful || (isVmPod && c.config.EnableKeepVmIP) {
 			if isStateful && isStatefulSetPodToDel(c.config.KubeClient, p, statefulSetName) {
 				klog.V(3).Infof("enqueue delete pod %s", key)
-				c.deletingPodObjMap[key] = p
+				c.deletingPodObjMap.Store(key, p)
 				c.deletePodQueue.Add(key)
 			}
 			if isVmPod && c.isVmPodToDel(p, vmName) {
 				klog.V(3).Infof("enqueue delete pod %s", key)
-				c.deletingPodObjMap[key] = p
+				c.deletingPodObjMap.Store(key, p)
 				c.deletePodQueue.Add(key)
 			}
 		} else {
 			klog.V(3).Infof("enqueue delete pod %s", key)
-			c.deletingPodObjMap[key] = p
+			c.deletingPodObjMap.Store(key, p)
 			c.deletePodQueue.Add(key)
 		}
 		return
@@ -240,7 +240,7 @@ func (c *Controller) enqueueDeletePod(obj interface{}) {
 	}
 
 	klog.V(3).Infof("enqueue delete pod %s", key)
-	c.deletingPodObjMap[key] = p
+	c.deletingPodObjMap.Store(key, p)
 	c.deletePodQueue.Add(key)
 }
 
@@ -294,7 +294,7 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 	isVmPod, vmName := isVmPod(newPod)
 	if !isPodStatusPhaseAlive(newPod) && !isStateful && !isVmPod {
 		klog.V(3).Infof("enqueue delete pod %s", key)
-		c.deletingPodObjMap[key] = newPod
+		c.deletingPodObjMap.Store(key, newPod)
 		c.deletePodQueue.Add(key)
 		return
 	}
@@ -314,7 +314,7 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 			// In case node get lost and pod can not be deleted,
 			// the ip address will not be recycled
 			klog.V(3).Infof("enqueue delete pod %s after %v", key, delay)
-			c.deletingPodObjMap[key] = newPod
+			c.deletingPodObjMap.Store(key, newPod)
 			c.deletePodQueue.AddAfter(key, delay)
 		}()
 		return
@@ -324,7 +324,7 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 	if isStateful && isStatefulSetPodToDel(c.config.KubeClient, newPod, statefulSetName) {
 		go func() {
 			klog.V(3).Infof("enqueue delete pod %s after %v", key, delay)
-			c.deletingPodObjMap[key] = newPod
+			c.deletingPodObjMap.Store(key, newPod)
 			c.deletePodQueue.AddAfter(key, delay)
 		}()
 		return
@@ -332,7 +332,7 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 	if isVmPod && c.isVmPodToDel(newPod, vmName) {
 		go func() {
 			klog.V(3).Infof("enqueue delete pod %s after %v", key, delay)
-			c.deletingPodObjMap[key] = newPod
+			c.deletingPodObjMap.Store(key, newPod)
 			c.deletePodQueue.AddAfter(key, delay)
 		}()
 		return
@@ -420,8 +420,7 @@ func (c *Controller) processNextDeletePodWorkItem() bool {
 			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
 			return nil
 		}
-		_, exist := c.deletingPodObjMap[key]
-		if !exist {
+		if _, ok := c.deletingPodObjMap.Load(key); !ok {
 			return nil
 		}
 
@@ -435,7 +434,7 @@ func (c *Controller) processNextDeletePodWorkItem() bool {
 		// gc pod obj in c.deletingPodObjMap
 		go func() {
 			time.Sleep(5 * time.Minute)
-			delete(c.deletingPodObjMap, key)
+			c.deletingPodObjMap.Delete(key)
 		}()
 		return nil
 	}(obj)
@@ -718,7 +717,7 @@ func (c *Controller) reconcileAllocateSubnets(cachedPod, pod *v1.Pod, needAlloca
 			// Sometimes pod is deleted between kube-ovn configure ovn-nb and patch pod.
 			// Then we need to recycle the resource again.
 			key := strings.Join([]string{namespace, name}, "/")
-			c.deletingPodObjMap[key] = pod
+			c.deletingPodObjMap.Store(key, pod)
 			c.deletePodQueue.AddRateLimited(key)
 			return nil, nil
 		}
@@ -865,7 +864,7 @@ func (c *Controller) reconcileRouteSubnets(cachedPod, pod *v1.Pod, needRoutePodN
 			// Sometimes pod is deleted between kube-ovn configure ovn-nb and patch pod.
 			// Then we need to recycle the resource again.
 			key := strings.Join([]string{namespace, name}, "/")
-			c.deletingPodObjMap[key] = pod
+			c.deletingPodObjMap.Store(key, pod)
 			c.deletePodQueue.AddRateLimited(key)
 			return nil
 		}
@@ -876,7 +875,11 @@ func (c *Controller) reconcileRouteSubnets(cachedPod, pod *v1.Pod, needRoutePodN
 }
 
 func (c *Controller) handleDeletePod(key string) error {
-	pod := c.deletingPodObjMap[key]
+	podObj, ok := c.deletingPodObjMap.Load(key)
+	if !ok {
+		return nil
+	}
+	pod := podObj.(*v1.Pod)
 	podName := c.getNameByPod(pod)
 	c.podKeyMutex.LockKey(key)
 	defer func() { _ = c.podKeyMutex.UnlockKey(key) }()

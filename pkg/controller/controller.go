@@ -63,7 +63,7 @@ type Controller struct {
 	podsSynced             cache.InformerSynced
 	addOrUpdatePodQueue    workqueue.RateLimitingInterface
 	deletePodQueue         workqueue.RateLimitingInterface
-	deletingPodObjMap      map[string]*corev1.Pod
+	deletingPodObjMap      sync.Map
 	updatePodSecurityQueue workqueue.RateLimitingInterface
 	podKeyMutex            keymutex.KeyMutex
 
@@ -395,7 +395,6 @@ func Run(ctx context.Context, config *Configuration) {
 			workqueue.NewNamedDelayingQueue("DeletePod"),
 			workqueue.DefaultControllerRateLimiter(),
 		),
-		deletingPodObjMap:      make(map[string]*corev1.Pod),
 		updatePodSecurityQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdatePodSecurity"),
 		podKeyMutex:            keymutex.NewHashed(numKeyLocks),
 
