@@ -61,6 +61,8 @@ RUN cd /usr/src/ && git clone -b branch-21.06 --depth=1 https://github.com/ovn-o
     curl -s https://github.com/kubeovn/ovn/commit/0f6fe4202001c0950dc689179e7a4ad9554a51fa.patch | git apply && \
     # ovn-controller: do not send GARP on localnet for Kube-OVN ports
     curl -s https://github.com/kubeovn/ovn/commit/60207f7a3d072848936221f1b767722984fd50ae.patch | git apply && \
+    # backport tos inherit from inner packet    
+    curl -s https://github.com/kubeovn/ovn/commit/89eaa68a006f29b2e766062e796d452fee12c3f2.patch | git apply && \
     sed -i 's/OVN/ovn/g' debian/changelog && \
     rm -rf .git && \
     ./boot.sh && \
