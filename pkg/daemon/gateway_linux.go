@@ -520,7 +520,7 @@ func (c *Controller) setIptables() error {
 			// do not nat node port service traffic with external traffic policy set to local
 			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields(`-m mark --mark 0x80000/0x80000 -m set --match-set ovn40subnets-distributed-gw dst -j RETURN`)},
 			// nat node port service traffic with external traffic policy set to local for subnets with centralized gateway
-			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields(`-m mark --mark 0x80000/0x80000 -j` + OvnMasquerade)},
+			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields(`-m mark --mark 0x80000/0x80000 -j ` + OvnMasquerade)},
 			// do not nat reply packets in direct routing
 			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields(`-p tcp -m tcp --tcp-flags SYN NONE -m conntrack --ctstate NEW -j RETURN`)},
 			// do not nat route traffic
