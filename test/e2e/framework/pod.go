@@ -15,6 +15,7 @@ import (
 )
 
 type PodClient struct {
+	f *Framework
 	*e2epod.PodClient
 }
 
@@ -23,7 +24,7 @@ func (f *Framework) PodClient() *PodClient {
 }
 
 func (f *Framework) PodClientNS(namespace string) *PodClient {
-	return &PodClient{e2epod.PodClientNS(f.Framework, namespace)}
+	return &PodClient{f, e2epod.PodClientNS(f.Framework, namespace)}
 }
 
 func (c *PodClient) Create(pod *corev1.Pod) *corev1.Pod {
@@ -65,6 +66,16 @@ func (c *PodClient) PatchPod(original, modified *corev1.Pod) *corev1.Pod {
 	Failf("error occurred while retrying to patch pod %s/%s: %v", original.Namespace, original.Name, err)
 
 	return nil
+}
+
+func (c *PodClient) WaitForRunning(name string) {
+	err := e2epod.WaitTimeoutForPodRunningInNamespace(context.TODO(), c.f.ClientSet, name, c.f.Namespace.Name, timeout)
+	ExpectNoError(err)
+}
+
+func (c *PodClient) WaitForNotFound(name string) {
+	err := e2epod.WaitForPodNotFoundInNamespace(context.TODO(), c.f.ClientSet, name, c.f.Namespace.Name, timeout)
+	ExpectNoError(err)
 }
 
 func MakePod(ns, name string, labels, annotations map[string]string, image string, command, args []string) *corev1.Pod {

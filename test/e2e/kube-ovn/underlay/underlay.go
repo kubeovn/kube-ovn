@@ -562,7 +562,9 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		checkU2OItems(f, true, subnet, underlayPod, overlayPod, false)
 
 		ginkgo.By("step4: Check if kube-ovn-controller restart")
-		framework.RestartSystemDeployment("kube-ovn-controller")
+		deployClient := f.DeploymentClientNS(framework.KubeOvnNamespace)
+		deploy := deployClient.Get("kube-ovn-controller")
+		deployClient.RestartSync(deploy)
 		checkU2OItems(f, true, subnet, underlayPod, overlayPod, false)
 
 		ginkgo.By("step5: Disable u2o check after restart kube-controller")
