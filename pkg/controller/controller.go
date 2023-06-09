@@ -63,7 +63,7 @@ type Controller struct {
 	podsSynced             cache.InformerSynced
 	addOrUpdatePodQueue    workqueue.RateLimitingInterface
 	deletePodQueue         workqueue.RateLimitingInterface
-	deletingPodObjMap      sync.Map
+	deletingPodObjMap      *sync.Map
 	updatePodSecurityQueue workqueue.RateLimitingInterface
 	podKeyMutex            keymutex.KeyMutex
 
@@ -298,12 +298,13 @@ func Run(ctx context.Context, config *Configuration) {
 		numKeyLocks = config.WorkerNum * 2
 	}
 	controller := &Controller{
-		config:          config,
-		vpcs:            &sync.Map{},
-		podSubnetMap:    &sync.Map{},
-		ovnLegacyClient: ovs.NewLegacyClient(config.OvnNbAddr, config.OvnTimeout, config.OvnSbAddr, config.ClusterRouter, config.ClusterTcpLoadBalancer, config.ClusterUdpLoadBalancer, config.ClusterTcpSessionLoadBalancer, config.ClusterUdpSessionLoadBalancer, config.NodeSwitch, config.NodeSwitchCIDR),
-		ipam:            ovnipam.NewIPAM(),
-		namedPort:       NewNamedPort(),
+		config:            config,
+		vpcs:              &sync.Map{},
+		podSubnetMap:      &sync.Map{},
+		deletingPodObjMap: &sync.Map{},
+		ovnLegacyClient:   ovs.NewLegacyClient(config.OvnNbAddr, config.OvnTimeout, config.OvnSbAddr, config.ClusterRouter, config.ClusterTcpLoadBalancer, config.ClusterUdpLoadBalancer, config.ClusterTcpSessionLoadBalancer, config.ClusterUdpSessionLoadBalancer, config.NodeSwitch, config.NodeSwitchCIDR),
+		ipam:              ovnipam.NewIPAM(),
+		namedPort:         NewNamedPort(),
 
 		vpcsLister:           vpcInformer.Lister(),
 		vpcSynced:            vpcInformer.Informer().HasSynced,
