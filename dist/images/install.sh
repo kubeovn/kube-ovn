@@ -2287,6 +2287,8 @@ spec:
                             type: string
                 u2oInterconnection:
                   type: boolean
+                u2oInterconnectionIP:
+                  type: string
                 enableLb:
                   type: boolean
                 enableEcmp:

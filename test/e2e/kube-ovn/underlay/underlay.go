@@ -279,19 +279,29 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		if u2oPodNameUnderlay != "" {
 			ginkgo.By("Deleting underlay pod " + u2oPodNameUnderlay)
 			podClient.DeleteSync(u2oPodNameUnderlay)
+		}
 
+		if u2oPodNameOverlay != "" {
 			ginkgo.By("Deleting overlay pod default subnet " + u2oPodNameOverlay)
 			podClient.DeleteSync(u2oPodNameOverlay)
+		}
 
+		if u2oPodOverlayCustomVPC != "" {
 			ginkgo.By("Deleting overlay pod custom vpc " + u2oPodOverlayCustomVPC)
 			podClient.DeleteSync(u2oPodOverlayCustomVPC)
+		}
 
+		if u2oOverlaySubnetNameCustomVPC != "" {
 			ginkgo.By("Deleting subnet in custom vpc" + u2oOverlaySubnetNameCustomVPC)
 			subnetClient.DeleteSync(u2oOverlaySubnetNameCustomVPC)
+		}
 
+		if u2oOverlaySubnetName != "" {
 			ginkgo.By("Deleting subnet " + u2oOverlaySubnetName)
 			subnetClient.DeleteSync(u2oOverlaySubnetName)
+		}
 
+		if vpcName != "" {
 			ginkgo.By("Deleting custom vpc " + vpcName)
 			vpcClient.DeleteSync(vpcName)
 		}
@@ -635,7 +645,39 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		subnet = subnetClient.Get(subnetName)
 		checkU2OItems(f, true, subnet, underlayPod, overlayPod, false)
 
-		ginkgo.By("step9: Disable u2o")
+		f.SkipVersionPriorTo(1, 12, "This feature was introduce in v1.12 ")
+		ginkgo.By("step9: Specify u2oInterconnectionIP ")
+
+		// change u2o interconnection ip twice
+		for i := 0; i < 2; i++ {
+			podClient.DeleteSync(u2oPodNameUnderlay)
+			getAvailableIPs := func(subnet *apiv1.Subnet) string {
+				var availIPs []string
+				if subnet.Status.V4AvailableIPRange != "" {
+					v4AvailIP := strings.Split(strings.Split(subnet.Status.V4AvailableIPRange, ",")[0], "-")[0]
+					availIPs = append(availIPs, v4AvailIP)
+				}
+
+				if subnet.Status.V6AvailableIPRange != "" {
+					v6AvailIP := strings.Split(strings.Split(subnet.Status.V6AvailableIPRange, ",")[0], "-")[0]
+					availIPs = append(availIPs, v6AvailIP)
+				}
+
+				return strings.Join(availIPs, ",")
+			}
+
+			subnet = subnetClient.Get(subnetName)
+			modifiedSubnet = subnet.DeepCopy()
+			modifiedSubnet.Spec.U2OInterconnectionIP = getAvailableIPs(subnet)
+			modifiedSubnet.Spec.U2OInterconnection = true
+			subnetClient.PatchSync(subnet, modifiedSubnet)
+			time.Sleep(5 * time.Second)
+			underlayPod = podClient.CreateSync(originUnderlayPod)
+			subnet = subnetClient.Get(subnetName)
+			checkU2OItems(f, true, subnet, underlayPod, overlayPod, false)
+		}
+
+		ginkgo.By("step10: Disable u2o")
 		podClient.DeleteSync(u2oPodNameUnderlay)
 
 		subnet = subnetClient.Get(subnetName)
@@ -660,11 +702,21 @@ func checkU2OItems(f *framework.Framework, isEnableU2O bool, subnet *apiv1.Subne
 			framework.ExpectEqual(subnet.Status.U2OInterconnectionVPC, subnet.Spec.Vpc)
 		}
 
+		if !f.VersionPriorTo(1, 12) {
+			if subnet.Spec.U2OInterconnectionIP != "" {
+				framework.ExpectEqual(subnet.Spec.U2OInterconnectionIP, subnet.Status.U2OInterconnectionIP)
+			}
+		}
+
 	} else {
 		framework.ExpectFalse(subnet.Spec.U2OInterconnection)
 		framework.ExpectEmpty(subnet.Status.U2OInterconnectionIP)
 		if !f.VersionPriorTo(1, 11) {
 			framework.ExpectEmpty(subnet.Status.U2OInterconnectionVPC)
+		}
+
+		if !f.VersionPriorTo(1, 12) {
+			framework.ExpectEmpty(subnet.Spec.U2OInterconnectionIP)
 		}
 	}
 
