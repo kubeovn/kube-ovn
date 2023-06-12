@@ -591,7 +591,23 @@ func (c *Controller) checkSubnetConflict(subnet *kubeovnv1.Subnet) error {
 func (c *Controller) updateSubnetDHCPOption(subnet *kubeovnv1.Subnet, needRouter bool) error {
 	var dhcpOptionsUUIDs *ovs.DHCPOptionsUUIDs
 	var err error
-	dhcpOptionsUUIDs, err = c.ovnLegacyClient.UpdateDHCPOptions(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.DHCPv4Options, subnet.Spec.DHCPv6Options, subnet.Spec.EnableDHCP)
+	var mtu int
+	if subnet.Spec.Vlan != "" {
+		mtu = 1500
+	} else {
+		switch c.config.NetworkType {
+		case util.NetworkTypeVxlan:
+			mtu = 1500 - util.VxlanHeaderLength
+		case util.NetworkTypeGeneve:
+			mtu = 1500 - util.GeneveHeaderLength
+		case util.NetworkTypeStt:
+			mtu = 1500 - util.SttHeaderLength
+		default:
+			return fmt.Errorf("invalid network type: %s", c.config.NetworkType)
+		}
+	}
+
+	dhcpOptionsUUIDs, err = c.ovnLegacyClient.UpdateDHCPOptions(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.DHCPv4Options, subnet.Spec.DHCPv6Options, subnet.Spec.EnableDHCP, mtu)
 	if err != nil {
 		klog.Errorf("failed to update dhcp options for switch %s, %v", subnet.Name, err)
 		return err
