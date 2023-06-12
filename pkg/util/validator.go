@@ -118,7 +118,7 @@ func ValidateSubnet(subnet kubeovnv1.Subnet) error {
 
 	if subnet.Spec.U2OInterconnectionIP != "" {
 		if !CIDRContainIP(subnet.Spec.CIDRBlock, subnet.Spec.U2OInterconnectionIP) {
-			return fmt.Errorf("u2oInterconnectionIP %s conflicts with subnet %s cidr %s",
+			return fmt.Errorf("u2oInterconnectionIP %s is not in subnet %s cidr %s",
 				subnet.Spec.U2OInterconnectionIP,
 				subnet.Name, subnet.Spec.CIDRBlock)
 		}
