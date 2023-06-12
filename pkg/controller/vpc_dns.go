@@ -48,7 +48,7 @@ const (
 	CorednsContainerName = "coredns"
 	CorednsLabelKey      = "k8s-app"
 	CorednsTemplateDep   = "coredns-template.yaml"
-	InitRouteImage       = "kubeovn/vpc-nat-gateway:v1.11.0"
+	InitRouteImage       = "kubeovn/vpc-nat-gateway:v1.11.8"
 )
 
 func genVpcDnsDpName(name string) string {
