@@ -361,18 +361,18 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		cmData := map[string]string{
 			"enable-external-gw": "true",
 			"external-gw-nodes":  externalGwNodes,
-			"type":               "centralized",
+			"type":               apiv1.GWCentralizedType,
 			"external-gw-nic":    "eth1",
 			"external-gw-addr":   strings.Join(cidr, ","),
 		}
 		configMap := &corev1.ConfigMap{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      "ovn-external-gw-config",
-				Namespace: "kube-system",
+				Name:      util.ExternalGatewayConfig,
+				Namespace: framework.KubeOvnNamespace,
 			},
 			Data: cmData,
 		}
-		_, err = cs.CoreV1().ConfigMaps("kube-system").Create(context.Background(), configMap, metav1.CreateOptions{})
+		_, err = cs.CoreV1().ConfigMaps(framework.KubeOvnNamespace).Create(context.Background(), configMap, metav1.CreateOptions{})
 		framework.ExpectNoError(err, "failed to create ConfigMap")
 
 		ginkgo.By("Creating custom vpc enable external and bfd")

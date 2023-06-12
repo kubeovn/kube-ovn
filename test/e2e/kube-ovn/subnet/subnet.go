@@ -12,9 +12,7 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
-	"k8s.io/kubernetes/test/e2e/framework/deployment"
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
 	e2epodoutput "k8s.io/kubernetes/test/e2e/framework/pod/output"
 
@@ -91,27 +89,29 @@ var _ = framework.Describe("[group:subnet]", func() {
 	var subnet *apiv1.Subnet
 	var cs clientset.Interface
 	var podClient *framework.PodClient
+	var deployClient *framework.DeploymentClient
 	var subnetClient *framework.SubnetClient
 	var eventClient *framework.EventClient
-	var namespaceName, subnetName, fakeSubnetName string
+	var namespaceName, subnetName, fakeSubnetName, podNamePrefix, deployName, podName string
 	var cidr, cidrV4, cidrV6, firstIPv4, lastIPv4, firstIPv6, lastIPv6 string
 	var gateways []string
 	var podCount int
-	var podNamePre, deployName, podName string
 
 	ginkgo.BeforeEach(func() {
 		cs = f.ClientSet
 		podClient = f.PodClient()
+		deployClient = f.DeploymentClient()
 		subnetClient = f.SubnetClient()
 		namespaceName = f.Namespace.Name
 		subnetName = "subnet-" + framework.RandomSuffix()
 		fakeSubnetName = "subnet-" + framework.RandomSuffix()
+		deployName = "deploy-" + framework.RandomSuffix()
+		podNamePrefix = "pod-" + framework.RandomSuffix()
+		podName = "pod-" + framework.RandomSuffix()
 		cidr = framework.RandomCIDR(f.ClusterIpFamily)
 		cidrV4, cidrV6 = util.SplitStringIP(cidr)
 		gateways = nil
 		podCount = 0
-		podNamePre = ""
-		deployName = ""
 		if cidrV4 == "" {
 			firstIPv4 = ""
 			lastIPv4 = ""
@@ -130,26 +130,22 @@ var _ = framework.Describe("[group:subnet]", func() {
 		}
 	})
 	ginkgo.AfterEach(func() {
-		ginkgo.By("Deleting deployment ")
 		if deployName != "" {
-			err := cs.AppsV1().Deployments(namespaceName).Delete(context.TODO(), deployName, metav1.DeleteOptions{})
-			fmt.Printf("delete deployment %s failed with err %v", deployName, err)
+			ginkgo.By("Deleting deployment " + deployName)
+			deployClient.DeleteSync(deployName)
 		}
 
-		ginkgo.By("Deleting pods ")
-		if podCount != 0 {
-			for i := 1; i <= podCount; i++ {
-				podClient.DeleteSync(fmt.Sprintf("%s%d", podNamePre, i))
-			}
-		}
-
-		if podName != "" {
+		for i := 1; i <= podCount; i++ {
+			podName := fmt.Sprintf("%s-%d", podNamePrefix, i)
+			ginkgo.By("Deleting pod " + podName)
 			podClient.DeleteSync(podName)
 		}
 
-		if fakeSubnetName != "" {
-			subnetClient.DeleteSync(fakeSubnetName)
-		}
+		ginkgo.By("Deleting pod " + podName)
+		podClient.DeleteSync(podName)
+
+		ginkgo.By("Deleting subnet " + fakeSubnetName)
+		subnetClient.DeleteSync(fakeSubnetName)
 
 		ginkgo.By("Deleting subnet " + subnetName)
 		subnetClient.DeleteSync(subnetName)
@@ -549,8 +545,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		subnet.Spec.PolicyRoutingTableID = uint32(prTable)
 		subnet = subnetClient.CreateSync(subnet)
 
-		ginkgo.By("Creating pod")
-		podName := "pod-" + framework.RandomSuffix()
+		ginkgo.By("Creating pod " + podName)
 		pod := framework.MakePod(namespaceName, podName, nil, nil, "", nil, nil)
 		pod = podClient.CreateSync(pod)
 
@@ -693,7 +688,6 @@ var _ = framework.Describe("[group:subnet]", func() {
 	framework.ConformanceIt("should support subnet AvailableIPRange and UsingIPRange creating pod no specify ip", func() {
 		f.SkipVersionPriorTo(1, 12, "Support for display AvailableIPRange and UsingIPRange in v1.12")
 		podCount = 5
-		podNamePre = "sample"
 		var startIPv4, startIPv6 string
 		if firstIPv4 != "" {
 			startIPv4 = util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(firstIPv4), big.NewInt(1)))
@@ -711,8 +705,15 @@ var _ = framework.Describe("[group:subnet]", func() {
 			util.LogicalSwitchAnnotation: subnetName,
 		}
 		for i := 1; i <= podCount; i++ {
-			pod := framework.MakePod("", fmt.Sprintf("%s%d", podNamePre, i), nil, annotations, "", nil, nil)
-			podClient.CreateSync(pod)
+			podName := fmt.Sprintf("%s-%d", podNamePrefix, i)
+			ginkgo.By("Creating pod " + podName)
+			pod := framework.MakePod("", podName, nil, annotations, "", nil, nil)
+			podClient.Create(pod)
+		}
+		for i := 1; i <= podCount; i++ {
+			podName := fmt.Sprintf("%s-%d", podNamePrefix, i)
+			ginkgo.By("Waiting pod " + podName + " to be running")
+			podClient.WaitForRunning(podName)
 		}
 
 		subnet = subnetClient.Get(subnetName)
@@ -730,9 +731,16 @@ var _ = framework.Describe("[group:subnet]", func() {
 			framework.ExpectEqual(subnet.Status.V6AvailableIPRange, fmt.Sprintf("%s-%s", v6AvailableIPStart, lastIPv6))
 		}
 
-		ginkgo.By("delete all pods")
 		for i := 1; i <= podCount; i++ {
-			podClient.DeleteSync(fmt.Sprintf("%s%d", podNamePre, i))
+			podName := fmt.Sprintf("%s-%d", podNamePrefix, i)
+			ginkgo.By("Deleting pod " + podName)
+			err := podClient.Delete(podName)
+			framework.ExpectNoError(err)
+		}
+		for i := 1; i <= podCount; i++ {
+			podName := fmt.Sprintf("%s-%d", podNamePrefix, i)
+			ginkgo.By("Waiting pod " + podName + " to be deleted")
+			podClient.WaitForNotFound(podName)
 		}
 
 		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
@@ -764,7 +772,6 @@ var _ = framework.Describe("[group:subnet]", func() {
 	framework.ConformanceIt("should support subnet AvailableIPRange and UsingIPRange creating pod specify ip", func() {
 		f.SkipVersionPriorTo(1, 12, "Support for display AvailableIPRange and UsingIPRange in v1.12")
 		podCount = 5
-		podNamePre = "sample"
 		var startIPv4, startIPv6, usingIPv4Str, availableIPv4Str, usingIPv6Str, availableIPv6Str string
 
 		if firstIPv4 != "" {
@@ -778,7 +785,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, nil)
 		subnet = subnetClient.CreateSync(subnet)
 		ginkgo.By("Creating pod with specify pod ip ")
-		podIPv4s, podIPv6s := createPodsByRandomIPs(podClient, subnetClient, subnetName, podNamePre, podCount, startIPv4, startIPv6)
+		podIPv4s, podIPv6s := createPodsByRandomIPs(podClient, subnetClient, subnetName, podNamePrefix, podCount, startIPv4, startIPv6)
 		subnet = subnetClient.Get(subnetName)
 
 		if podIPv4s != nil {
@@ -793,10 +800,18 @@ var _ = framework.Describe("[group:subnet]", func() {
 			framework.ExpectEqual(subnet.Status.V6AvailableIPRange, availableIPv6Str)
 		}
 
-		ginkgo.By("delete all pods")
 		for i := 1; i <= podCount; i++ {
-			podClient.DeleteSync(fmt.Sprintf("%s%d", podNamePre, i))
+			podName := fmt.Sprintf("%s-%d", podNamePrefix, i)
+			ginkgo.By("Deleting pod " + podName)
+			err := podClient.Delete(podName)
+			framework.ExpectNoError(err)
 		}
+		for i := 1; i <= podCount; i++ {
+			podName := fmt.Sprintf("%s-%d", podNamePrefix, i)
+			ginkgo.By("Waiting pod " + podName + " to be deleted")
+			podClient.WaitForNotFound(podName)
+		}
+
 		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 			subnet = subnetClient.Get(subnetName)
 			if cidrV4 != "" {
@@ -837,62 +852,42 @@ var _ = framework.Describe("[group:subnet]", func() {
 		ginkgo.By("Creating subnet " + subnetName)
 		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, nil)
 		subnet = subnetClient.CreateSync(subnet)
-		replicas := int64(5)
+
 		deployName = "deployment-" + framework.RandomSuffix()
+		ginkgo.By("Creating deployment " + deployName)
+		replicas := int64(5)
 		labels := map[string]string{"app": deployName}
-		deploy := deployment.NewDeployment(deployName, int32(replicas), labels, "pause", framework.PauseImage, "")
-		deploy.Spec.Template.Annotations = map[string]string{util.LogicalSwitchAnnotation: subnetName}
-		deploy, err := cs.AppsV1().Deployments(namespaceName).Create(context.TODO(), deploy, metav1.CreateOptions{})
-		framework.ExpectNoError(err, "failed to to create deployment")
-		err = deployment.WaitForDeploymentComplete(cs, deploy)
-		framework.ExpectNoError(err, "deployment failed to complete")
-		checkFunc := func(usingIPRange, availableIPRange, startIP, lastIP string, count int64, isFrameworkCheck bool) bool {
+		annotations := map[string]string{util.LogicalSwitchAnnotation: subnetName}
+		deploy := framework.MakeDeployment(deployName, int32(replicas), labels, annotations, "pause", framework.PauseImage, "")
+		deploy = deployClient.CreateSync(deploy)
+
+		checkFunc := func(usingIPRange, availableIPRange, startIP, lastIP string, count int64) {
+			if startIP == "" {
+				return
+			}
+
 			usingIPEnd := util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(startIP), big.NewInt(count-1)))
 			availableIPStart := util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(usingIPEnd), big.NewInt(1)))
 
-			framework.Logf("subnet status usingIPRange %s expect %s-%s ", usingIPRange, startIP, usingIPEnd)
-			framework.Logf("subnet status availableIPRange %s expect %s-%s ", availableIPRange, availableIPStart, lastIP)
-
-			if isFrameworkCheck {
-				framework.ExpectEqual(usingIPRange, fmt.Sprintf("%s-%s", startIP, usingIPEnd))
-				framework.ExpectEqual(availableIPRange, fmt.Sprintf("%s-%s", availableIPStart, lastIP))
-				return true
-			} else {
-				return usingIPRange == fmt.Sprintf("%s-%s", startIP, usingIPEnd) && availableIPRange == fmt.Sprintf("%s-%s", availableIPStart, lastIP)
-			}
+			framework.Logf(`subnet status usingIPRange %q expect "%s-%s"`, usingIPRange, startIP, usingIPEnd)
+			framework.ExpectEqual(usingIPRange, fmt.Sprintf("%s-%s", startIP, usingIPEnd))
+			framework.Logf(`subnet status availableIPRange %q expect "%s-%s"`, availableIPRange, availableIPStart, lastIP)
+			framework.ExpectEqual(availableIPRange, fmt.Sprintf("%s-%s", availableIPStart, lastIP))
 		}
 
-		isSuccess := false
-		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
-			subnet = subnetClient.Get(subnetName)
-			framework.Logf("subnet status usingips %d availableIPs %d", int64(subnet.Status.V4UsingIPs), int64(subnet.Status.V4AvailableIPs))
-			if cidrV4 != "" {
-				isSuccess = checkFunc(subnet.Status.V4UsingIPRange, subnet.Status.V4AvailableIPRange, startIPv4, lastIPv4, replicas, false)
-				if !isSuccess {
-					return false, nil
-				}
+		ginkgo.By("Checking subnet status")
+		subnet = subnetClient.Get(subnetName)
+		checkFunc(subnet.Status.V4UsingIPRange, subnet.Status.V4AvailableIPRange, startIPv4, lastIPv4, replicas)
+		checkFunc(subnet.Status.V6UsingIPRange, subnet.Status.V6AvailableIPRange, startIPv6, lastIPv6, replicas)
+
+		ginkgo.By("Restarting deployment " + deployName)
+		_ = deployClient.RestartSync(deploy)
+
+		checkFunc2 := func(usingIPRange, availableIPRange, startIP, lastIP string, count int64) {
+			if startIP == "" {
+				return
 			}
-			if cidrV6 != "" {
-				isSuccess = checkFunc(subnet.Status.V6UsingIPRange, subnet.Status.V6AvailableIPRange, startIPv6, lastIPv6, replicas, false)
-			}
-			return isSuccess, nil
-		}, "")
-		if cidrV4 != "" {
-			checkFunc(subnet.Status.V4UsingIPRange, subnet.Status.V4AvailableIPRange, startIPv4, lastIPv4, replicas, true)
-		}
 
-		if cidrV6 != "" {
-			checkFunc(subnet.Status.V6UsingIPRange, subnet.Status.V6AvailableIPRange, startIPv6, lastIPv6, replicas, true)
-		}
-
-		ginkgo.By("restart deployment ")
-		restartCmd := fmt.Sprintf("kubectl rollout restart deployment %s -n %s", deployName, namespaceName)
-		_, err = exec.Command("bash", "-c", restartCmd).CombinedOutput()
-		framework.ExpectNoError(err, "restart deployment failed")
-		err = deployment.WaitForDeploymentComplete(cs, deploy)
-		framework.ExpectNoError(err, "deployment failed to complete")
-
-		checkFunc2 := func(usingIPRange, availableIPRange, startIP, lastIP string, count int64, isFrameworkCheck bool) bool {
 			expectAvailIPRangeStr := fmt.Sprintf("%s-%s,%s-%s",
 				startIP,
 				util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(startIP), big.NewInt(count-1))),
@@ -905,42 +900,16 @@ var _ = framework.Describe("[group:subnet]", func() {
 				util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(startIP), big.NewInt(2*count-1))),
 			)
 
-			framework.Logf("subnet status usingIPRange %s expect %s ", usingIPRange, expectUsingIPRangeStr)
-			framework.Logf("subnet status availableIPRange %s expect %s ", availableIPRange, expectAvailIPRangeStr)
-
-			if isFrameworkCheck {
-				framework.ExpectEqual(usingIPRange, expectUsingIPRangeStr)
-				framework.ExpectEqual(availableIPRange, expectAvailIPRangeStr)
-				return false
-			} else {
-				return usingIPRange == expectUsingIPRangeStr && availableIPRange == expectAvailIPRangeStr
-			}
+			framework.Logf("subnet status usingIPRange %q expect %q", usingIPRange, expectUsingIPRangeStr)
+			framework.ExpectEqual(usingIPRange, expectUsingIPRangeStr)
+			framework.Logf("subnet status availableIPRange %q expect %q", availableIPRange, expectAvailIPRangeStr)
+			framework.ExpectEqual(availableIPRange, expectAvailIPRangeStr)
 		}
 
-		isSuccess = false
-		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
-			subnet = subnetClient.Get(subnetName)
-			if cidrV4 != "" {
-				isSuccess = checkFunc2(subnet.Status.V4UsingIPRange, subnet.Status.V4AvailableIPRange, startIPv4, lastIPv4, replicas, false)
-				if !isSuccess {
-					return false, nil
-				}
-			}
-
-			if cidrV6 != "" {
-				isSuccess = checkFunc2(subnet.Status.V6UsingIPRange, subnet.Status.V6AvailableIPRange, startIPv6, lastIPv6, replicas, false)
-			}
-
-			return isSuccess, nil
-		}, "")
-
-		if cidrV4 != "" {
-			checkFunc2(subnet.Status.V4UsingIPRange, subnet.Status.V4AvailableIPRange, startIPv4, lastIPv4, replicas, true)
-		}
-
-		if cidrV6 != "" {
-			checkFunc2(subnet.Status.V6UsingIPRange, subnet.Status.V6AvailableIPRange, startIPv6, lastIPv6, replicas, true)
-		}
+		ginkgo.By("Checking subnet status")
+		subnet = subnetClient.Get(subnetName)
+		checkFunc2(subnet.Status.V4UsingIPRange, subnet.Status.V4AvailableIPRange, startIPv4, lastIPv4, replicas)
+		checkFunc2(subnet.Status.V6UsingIPRange, subnet.Status.V6AvailableIPRange, startIPv6, lastIPv6, replicas)
 	})
 
 	framework.ConformanceIt("create subnet with enableLb option", func() {
@@ -1410,7 +1379,7 @@ func checkAccessExternal(podName, podNamespace, protocol string, expectReachable
 	}
 }
 
-func createPodsByRandomIPs(podClient *framework.PodClient, subnetClient *framework.SubnetClient, subnetName, podNamePre string, podCount int, startIPv4, startIPv6 string) ([]string, []string) {
+func createPodsByRandomIPs(podClient *framework.PodClient, subnetClient *framework.SubnetClient, subnetName, podNamePrefix string, podCount int, startIPv4, startIPv6 string) ([]string, []string) {
 	var allocIP string
 	var podIPv4s, podIPv6s []string
 	podv4IP := startIPv4
@@ -1436,7 +1405,7 @@ func createPodsByRandomIPs(podClient *framework.PodClient, subnetClient *framewo
 			fmt.Sprintf(util.IpAddressAnnotationTemplate, subnet.Spec.Provider): allocIP,
 		}
 
-		podName := fmt.Sprintf("%s%d", podNamePre, i)
+		podName := fmt.Sprintf("%s-%d", podNamePrefix, i)
 		pod := framework.MakePod("", podName, nil, annotations, "", nil, nil)
 		podClient.CreateSync(pod)
 
@@ -1479,7 +1448,7 @@ func calcuIPRangeListStr(podIPs []string, startIP, lastIP string) (string, strin
 
 	usingIPStr = strings.Join(usingIPs, ",")
 	availableIPStr = strings.Join(availableIPs, ",")
-	fmt.Printf("usingIPStr is %s ", usingIPStr)
-	fmt.Printf("availableIPStr is %s ", availableIPStr)
+	framework.Logf("usingIPs is %q", usingIPStr)
+	framework.Logf("availableIPs is %q", availableIPStr)
 	return usingIPStr, availableIPStr
 }

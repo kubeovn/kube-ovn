@@ -2,15 +2,19 @@ package framework
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
-	"os/exec"
+	"strings"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 	v1apps "k8s.io/client-go/kubernetes/typed/apps/v1"
+	"k8s.io/kubectl/pkg/polymorphichelpers"
 	"k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/kubernetes/test/e2e/framework/deployment"
 
@@ -54,9 +58,56 @@ func (c *DeploymentClient) Create(deploy *appsv1.Deployment) *appsv1.Deployment 
 func (c *DeploymentClient) CreateSync(deploy *appsv1.Deployment) *appsv1.Deployment {
 	d := c.Create(deploy)
 	err := c.WaitToComplete(d)
-	framework.ExpectNoError(err, "deployment failed to complete")
+	ExpectNoError(err, "deployment failed to complete")
 	// Get the newest deployment
 	return c.Get(d.Name).DeepCopy()
+}
+
+// Restart restarts the deployment as kubectl does
+func (c *DeploymentClient) Restart(deploy *appsv1.Deployment) *appsv1.Deployment {
+	buf, err := polymorphichelpers.ObjectRestarterFn(deploy)
+	ExpectNoError(err)
+
+	m := make(map[string]interface{})
+	err = json.Unmarshal(buf, &m)
+	ExpectNoError(err)
+
+	deploy = new(appsv1.Deployment)
+	err = runtime.DefaultUnstructuredConverter.FromUnstructured(m, deploy)
+	ExpectNoError(err)
+
+	deploy, err = c.DeploymentInterface.Update(context.TODO(), deploy, metav1.UpdateOptions{})
+	ExpectNoError(err)
+
+	return deploy.DeepCopy()
+}
+
+// RestartSync restarts the deployment and wait it to be ready
+func (c *DeploymentClient) RestartSync(deploy *appsv1.Deployment) *appsv1.Deployment {
+	_ = c.Restart(deploy)
+
+	WaitUntil(2*time.Second, timeout, func(_ context.Context) (bool, error) {
+		var err error
+		deploy = c.Get(deploy.Name)
+		unstructured := &unstructured.Unstructured{}
+		if unstructured.Object, err = runtime.DefaultUnstructuredConverter.ToUnstructured(deploy); err != nil {
+			return false, err
+		}
+
+		dsv := &polymorphichelpers.DeploymentStatusViewer{}
+		msg, done, err := dsv.Status(unstructured, 0)
+		if err != nil {
+			return false, err
+		}
+		if done {
+			return true, nil
+		}
+
+		Logf(strings.TrimSpace(msg))
+		return false, nil
+	}, "")
+
+	return deploy
 }
 
 // Delete deletes a deployment if the deployment exists
@@ -97,10 +148,4 @@ func MakeDeployment(name string, replicas int32, podLabels, podAnnotations map[s
 	deploy := deployment.NewDeployment(name, replicas, podLabels, containerName, image, strategyType)
 	deploy.Spec.Template.Annotations = podAnnotations
 	return deploy
-}
-
-func RestartSystemDeployment(name string) {
-	restartCmd := fmt.Sprintf("kubectl rollout restart deployment %s -n kube-system", name)
-	_, err := exec.Command("bash", "-c", restartCmd).CombinedOutput()
-	framework.ExpectNoError(err, fmt.Sprintf("restart %s failed", name))
 }
