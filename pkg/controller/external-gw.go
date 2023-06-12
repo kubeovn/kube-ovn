@@ -142,7 +142,17 @@ func (c *Controller) establishExternalGateway(config map[string]string) error {
 		return err
 	}
 	var lrpIp, lrpMac string
-	if config["nic-ip"] == "" {
+	lrpName := fmt.Sprintf("%s-%s", c.config.ClusterRouter, c.config.ExternalGatewaySwitch)
+	lrp, err := c.ovnClient.GetLogicalRouterPort(lrpName, true)
+	if err != nil {
+		klog.Errorf("failed to get lrp %s, %v", lrpName, err)
+		return err
+	}
+	if lrp != nil {
+		klog.Infof("lrp %s already exist", lrpName)
+		lrpMac = lrp.MAC
+		lrpIp = lrp.Networks[0]
+	} else if config["nic-ip"] == "" {
 		if lrpIp, lrpMac, err = c.createDefaultVpcLrpEip(config); err != nil {
 			klog.Errorf("failed to create ovn eip for default vpc lrp: %v", err)
 			return err
@@ -151,16 +161,6 @@ func (c *Controller) establishExternalGateway(config map[string]string) error {
 		lrpIp = config["nic-ip"]
 		lrpMac = config["nic-mac"]
 	}
-	lrpName := fmt.Sprintf("%s-%s", c.config.ClusterRouter, c.config.ExternalGatewaySwitch)
-	exist, err := c.ovnClient.LogicalRouterPortExists(lrpName)
-	if err != nil {
-		return err
-	}
-	if exist {
-		klog.Infof("lrp %s exist", lrpName)
-		return nil
-	}
-
 	if err := c.ovnClient.CreateGatewayLogicalSwitch(c.config.ExternalGatewaySwitch, c.config.ClusterRouter, c.config.ExternalGatewayNet, lrpIp, lrpMac, c.config.ExternalGatewayVlanID, chassises...); err != nil {
 		klog.Errorf("create external gateway switch %s: %v", c.config.ExternalGatewaySwitch, err)
 		return err
