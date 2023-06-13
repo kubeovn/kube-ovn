@@ -139,7 +139,8 @@ type SubnetSpec struct {
 
 	Acls []Acl `json:"acls,omitempty"`
 
-	U2OInterconnection bool `json:"u2oInterconnection,omitempty"`
+	U2OInterconnection   bool   `json:"u2oInterconnection,omitempty"`
+	U2OInterconnectionIP string `json:"u2oInterconnectionIP,omitempty"`
 }
 
 type Acl struct {

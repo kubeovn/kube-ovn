@@ -92,6 +92,18 @@ func ValidateSubnet(subnet kubeovnv1.Subnet) error {
 			}
 		}
 	}
+
+	if subnet.Spec.LogicalGateway && subnet.Spec.U2OInterconnection {
+		return fmt.Errorf("logicalGateway and u2oInterconnection can't be opened at the same time")
+	}
+
+	if subnet.Spec.U2OInterconnectionIP != "" {
+		if !CIDRContainIP(subnet.Spec.CIDRBlock, subnet.Spec.U2OInterconnectionIP) {
+			return fmt.Errorf("u2oInterconnectionIP %s is not in subnet %s cidr %s",
+				subnet.Spec.U2OInterconnectionIP,
+				subnet.Name, subnet.Spec.CIDRBlock)
+		}
+	}
 	return nil
 }
 
