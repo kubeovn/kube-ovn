@@ -412,7 +412,7 @@ func (c *Controller) createIptablesRule(ipt *iptables.IPTables, rule util.IPTabl
 		return nil
 	}
 
-	klog.Infof(`creating iptables rules: "%s"`, s)
+	klog.Infof("creating iptables rule in table %s chain %s at position %d: %q", rule.Table, rule.Chain, 1, s)
 	if err = ipt.Insert(rule.Table, rule.Chain, 1, rule.Rule...); err != nil {
 		klog.Errorf(`failed to insert iptables rule "%s": %v`, s, err)
 		return err
@@ -470,11 +470,11 @@ func (c *Controller) updateIptablesChain(ipt *iptables.IPTables, table, chain, p
 			klog.V(5).Infof("iptables rule %v already exists", rule.Rule)
 			continue
 		}
+		klog.Infof("creating iptables rule in table %s chain %s at position %d: %q", table, chain, i+1, strings.Join(rule.Rule, " "))
 		if err = ipt.Insert(table, chain, i+1, rule.Rule...); err != nil {
 			klog.Errorf(`failed to insert iptables rule %v: %v`, rule.Rule, err)
 			return err
 		}
-		klog.Infof(`created iptables rule %v`, rule.Rule)
 		added++
 	}
 	for i := len(existingRules) - 1; i >= len(rules)-added; i-- {

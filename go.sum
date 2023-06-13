@@ -1061,8 +1061,6 @@ github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e/go.mod h1:zD1mROLA
 github.com/nxadm/tail v1.4.4/go.mod h1:kenIhsEOeOJmVchQTgglprH7qJGnHDVpk1VPCcaMI8A=
 github.com/nxadm/tail v1.4.8 h1:nPr65rt6Y5JFSKQO7qToXr7pePgD6Gwiw05lkbyAQTE=
 github.com/nxadm/tail v1.4.8/go.mod h1:+ncqLTQzXmGhMZNUePPaPqPvBxHAIsmXswZKocGu+AU=
-github.com/oilbeater/go-ping v0.0.0-20200413021620-332b7197c5b5 h1:r2QP8IbxbQJeRsxlNEMjS48F5LajUp/g/LDlLhEtxQ0=
-github.com/oilbeater/go-ping v0.0.0-20200413021620-332b7197c5b5/go.mod h1:ZeD7oOS+O/ywjMQWgHqo1tUGfNzB6mNAmv/MYAWxmWg=
 github.com/oklog/run v1.0.0/go.mod h1:dlhp/R75TPv97u0XWUtDeV/lRKWPKSdTuV0TZvrmrQA=
 github.com/oklog/ulid v0.0.0-20170117200651-66bb6560562f/go.mod h1:CirwcVhetQ6Lv90oh/F+FBtV6XMibvdAFo93nm5qn4U=
 github.com/oklog/ulid v1.3.1/go.mod h1:CirwcVhetQ6Lv90oh/F+FBtV6XMibvdAFo93nm5qn4U=
@@ -1195,6 +1193,8 @@ github.com/projectcalico/go-yaml-wrapper v0.0.0-20191112210931-090425220c54 h1:J
 github.com/projectcalico/go-yaml-wrapper v0.0.0-20191112210931-090425220c54/go.mod h1:UgC0aTQ2KMDxlX3lU/stndk7DMUBJqzN40yFiILHgxc=
 github.com/projectcalico/libcalico-go v0.0.0-20190305235709-3d935c3b8b86 h1:YOg439Y4IiIFQrwaY3D6l/eB8fsXTBMtCE7TKCogROI=
 github.com/projectcalico/libcalico-go v0.0.0-20190305235709-3d935c3b8b86/go.mod h1:0b/n/rPzNXjhn4ywFcEJuQdA/5olt9UxFIATz57xkbc=
+github.com/prometheus-community/pro-bing v0.2.0 h1:hyK7yPFndU3LCDwEQJwPQUCjNkp1DGP/VxyzrWfXZUU=
+github.com/prometheus-community/pro-bing v0.2.0/go.mod h1:20arNb2S8rNG3EtmjHyZZU92cfbhQx7oCHZ9sulAV+I=
 github.com/prometheus/alertmanager v0.18.0/go.mod h1:WcxHBl40VSPuOaqWae6l6HpnEOVRIycEJ7i9iYkadEE=
 github.com/prometheus/alertmanager v0.20.0/go.mod h1:9g2i48FAyZW6BtbsnvHtMHQXl2aVtrORKwKVCQ+nbrg=
 github.com/prometheus/client_golang v0.0.0-20180209125602-c332b6f63c06/go.mod h1:7SWBe2y4D6OKWSNQJUaRYU/AaXPKyh/dDVn+NZz0KFw=
