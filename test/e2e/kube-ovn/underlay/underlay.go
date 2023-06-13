@@ -599,8 +599,38 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		subnet = subnetClient.Get(subnetName)
 		checkU2OItems(f, true, subnet, underlayPod, overlayPod, false)
 
+		ginkgo.By("step7: Specify u2oInterconnectionIP ")
+		// change u2o interconnection ip twice
+		for i := 0; i < 2; i++ {
+			podClient.DeleteSync(u2oPodNameUnderlay)
+			getAvailableIPs := func(subnet *apiv1.Subnet) string {
+				var availIPs []string
+				if subnet.Status.V4AvailableIPRange != "" {
+					v4AvailIP := strings.Split(strings.Split(subnet.Status.V4AvailableIPRange, ",")[0], "-")[0]
+					availIPs = append(availIPs, v4AvailIP)
+				}
+
+				if subnet.Status.V6AvailableIPRange != "" {
+					v6AvailIP := strings.Split(strings.Split(subnet.Status.V6AvailableIPRange, ",")[0], "-")[0]
+					availIPs = append(availIPs, v6AvailIP)
+				}
+
+				return strings.Join(availIPs, ",")
+			}
+
+			subnet = subnetClient.Get(subnetName)
+			modifiedSubnet = subnet.DeepCopy()
+			modifiedSubnet.Spec.U2OInterconnectionIP = getAvailableIPs(subnet)
+			modifiedSubnet.Spec.U2OInterconnection = true
+			subnetClient.PatchSync(subnet, modifiedSubnet)
+			time.Sleep(5 * time.Second)
+			underlayPod = podClient.CreateSync(originUnderlayPod)
+			subnet = subnetClient.Get(subnetName)
+			checkU2OItems(f, true, subnet, underlayPod, overlayPod, false)
+		}
+
 		f.SkipVersionPriorTo(1, 11, "This feature was introduce in v1.11 ")
-		ginkgo.By("step7: Change underlay subnet interconnection to overlay subnet in custom vpc")
+		ginkgo.By("step8: Change underlay subnet interconnection to overlay subnet in custom vpc")
 		podClient.DeleteSync(u2oPodNameUnderlay)
 
 		vpcName = "vpc-" + framework.RandomSuffix()
@@ -631,7 +661,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		subnet = subnetClient.Get(subnetName)
 		checkU2OItems(f, true, subnet, underlayPod, podOverlayCustomVPC, true)
 
-		ginkgo.By("step8: Change underlay subnet interconnection to overlay subnet in default vpc")
+		ginkgo.By("step9: Change underlay subnet interconnection to overlay subnet in default vpc")
 		podClient.DeleteSync(u2oPodNameUnderlay)
 
 		subnet = subnetClient.Get(subnetName)
@@ -644,38 +674,6 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		underlayPod = podClient.CreateSync(originUnderlayPod)
 		subnet = subnetClient.Get(subnetName)
 		checkU2OItems(f, true, subnet, underlayPod, overlayPod, false)
-
-		f.SkipVersionPriorTo(1, 12, "This feature was introduce in v1.12 ")
-		ginkgo.By("step9: Specify u2oInterconnectionIP ")
-
-		// change u2o interconnection ip twice
-		for i := 0; i < 2; i++ {
-			podClient.DeleteSync(u2oPodNameUnderlay)
-			getAvailableIPs := func(subnet *apiv1.Subnet) string {
-				var availIPs []string
-				if subnet.Status.V4AvailableIPRange != "" {
-					v4AvailIP := strings.Split(strings.Split(subnet.Status.V4AvailableIPRange, ",")[0], "-")[0]
-					availIPs = append(availIPs, v4AvailIP)
-				}
-
-				if subnet.Status.V6AvailableIPRange != "" {
-					v6AvailIP := strings.Split(strings.Split(subnet.Status.V6AvailableIPRange, ",")[0], "-")[0]
-					availIPs = append(availIPs, v6AvailIP)
-				}
-
-				return strings.Join(availIPs, ",")
-			}
-
-			subnet = subnetClient.Get(subnetName)
-			modifiedSubnet = subnet.DeepCopy()
-			modifiedSubnet.Spec.U2OInterconnectionIP = getAvailableIPs(subnet)
-			modifiedSubnet.Spec.U2OInterconnection = true
-			subnetClient.PatchSync(subnet, modifiedSubnet)
-			time.Sleep(5 * time.Second)
-			underlayPod = podClient.CreateSync(originUnderlayPod)
-			subnet = subnetClient.Get(subnetName)
-			checkU2OItems(f, true, subnet, underlayPod, overlayPod, false)
-		}
 
 		ginkgo.By("step10: Disable u2o")
 		podClient.DeleteSync(u2oPodNameUnderlay)
@@ -702,7 +700,7 @@ func checkU2OItems(f *framework.Framework, isEnableU2O bool, subnet *apiv1.Subne
 			framework.ExpectEqual(subnet.Status.U2OInterconnectionVPC, subnet.Spec.Vpc)
 		}
 
-		if !f.VersionPriorTo(1, 12) {
+		if !f.VersionPriorTo(1, 9) {
 			if subnet.Spec.U2OInterconnectionIP != "" {
 				framework.ExpectEqual(subnet.Spec.U2OInterconnectionIP, subnet.Status.U2OInterconnectionIP)
 			}
@@ -715,7 +713,7 @@ func checkU2OItems(f *framework.Framework, isEnableU2O bool, subnet *apiv1.Subne
 			framework.ExpectEmpty(subnet.Status.U2OInterconnectionVPC)
 		}
 
-		if !f.VersionPriorTo(1, 12) {
+		if !f.VersionPriorTo(1, 9) {
 			framework.ExpectEmpty(subnet.Spec.U2OInterconnectionIP)
 		}
 	}
