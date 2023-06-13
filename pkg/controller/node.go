@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	goping "github.com/oilbeater/go-ping"
+	goping "github.com/prometheus-community/pro-bing"
 	"github.com/scylladb/go-set/strset"
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -809,7 +809,10 @@ func (c *Controller) checkGatewayReady() error {
 							success = true
 							pinger.Stop()
 						}
-						pinger.Run()
+						if err = pinger.Run(); err != nil {
+							klog.Errorf("failed to run pinger for destination %s: %v", ip, err)
+							return err
+						}
 
 						if !nodeReady(node) {
 							success = false

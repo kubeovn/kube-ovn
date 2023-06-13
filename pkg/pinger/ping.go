@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	goping "github.com/oilbeater/go-ping"
+	goping "github.com/prometheus-community/pro-bing"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -103,7 +103,12 @@ func pingNodes(config *Configuration) error {
 					pinger.Count = 3
 					pinger.Interval = 100 * time.Millisecond
 					pinger.Debug = true
-					pinger.Run()
+					if err = pinger.Run(); err != nil {
+						klog.Errorf("failed to run pinger for destination %s: %v", nodeIP, err)
+						pingErr = err
+						return
+					}
+
 					stats := pinger.Statistics()
 					klog.Infof("ping node: %s %s, count: %d, loss count %d, average rtt %.2fms",
 						nodeName, nodeIP, pinger.Count, int(math.Abs(float64(stats.PacketsSent-stats.PacketsRecv))), float64(stats.AvgRtt)/float64(time.Millisecond))
@@ -154,7 +159,12 @@ func pingPods(config *Configuration) error {
 					pinger.Debug = true
 					pinger.Count = 3
 					pinger.Interval = 1 * time.Millisecond
-					pinger.Run()
+					if err = pinger.Run(); err != nil {
+						klog.Errorf("failed to run pinger for destination %s: %v", podIp, err)
+						pingErr = err
+						return
+					}
+
 					stats := pinger.Statistics()
 					klog.Infof("ping pod: %s %s, count: %d, loss count %d, average rtt %.2fms",
 						podName, podIp, pinger.Count, int(math.Abs(float64(stats.PacketsSent-stats.PacketsRecv))), float64(stats.AvgRtt)/float64(time.Millisecond))
@@ -200,7 +210,10 @@ func pingExternal(config *Configuration) error {
 		pinger.Debug = true
 		pinger.Count = 3
 		pinger.Interval = 1 * time.Millisecond
-		pinger.Run()
+		if err = pinger.Run(); err != nil {
+			klog.Errorf("failed to run pinger for destination %s: %v", addr, err)
+			return err
+		}
 		stats := pinger.Statistics()
 		klog.Infof("ping external address: %s, total count: %d, loss count %d, average rtt %.2fms",
 			addr, pinger.Count, int(math.Abs(float64(stats.PacketsSent-stats.PacketsRecv))), float64(stats.AvgRtt)/float64(time.Millisecond))

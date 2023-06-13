@@ -363,10 +363,13 @@ func waitNetworkReady(nic, ipAddr, gateway string, underlayGateway, verbose bool
 				klog.Infof("MAC addresses of gateway %s is %s", gw, mac.String())
 				klog.Infof("network %s with gateway %s is ready for interface %s after %d checks", ips[i], gw, nic, count)
 			}
+			maxRetry -= count
 		} else {
-			if err := pingGateway(gw, src, verbose, maxRetry); err != nil {
+			count, err := pingGateway(gw, src, verbose, maxRetry)
+			if err != nil {
 				return err
 			}
+			maxRetry -= count
 		}
 	}
 	return nil
