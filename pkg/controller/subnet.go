@@ -92,7 +92,9 @@ func (c *Controller) enqueueUpdateSubnet(old, new interface{}) {
 		oldSubnet.Spec.Gateway != newSubnet.Spec.Gateway ||
 		!reflect.DeepEqual(oldSubnet.Spec.ExcludeIps, newSubnet.Spec.ExcludeIps) ||
 		oldSubnet.Spec.Vlan != newSubnet.Spec.Vlan ||
-		oldSubnet.Spec.U2OInterconnection != newSubnet.Spec.U2OInterconnection {
+		oldSubnet.Spec.U2OInterconnection != newSubnet.Spec.U2OInterconnection ||
+		(newSubnet.Spec.U2OInterconnection && newSubnet.Spec.U2OInterconnectionIP != "" &&
+			oldSubnet.Spec.U2OInterconnectionIP != newSubnet.Spec.U2OInterconnectionIP) {
 		klog.V(3).Infof("enqueue update subnet %s", key)
 		c.addOrUpdateSubnetQueue.Add(key)
 	}
@@ -274,6 +276,11 @@ func formatSubnet(subnet *kubeovnv1.Subnet, c *Controller) error {
 			}
 		}
 	}
+	if subnet.Spec.U2OInterconnectionIP != "" && !subnet.Spec.U2OInterconnection {
+		subnet.Spec.U2OInterconnectionIP = ""
+		changed = true
+	}
+
 	klog.Infof("format subnet %v, changed %v", subnet.Name, changed)
 	if changed {
 		_, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Update(context.Background(), subnet, metav1.UpdateOptions{})
@@ -1219,14 +1226,29 @@ func (c *Controller) reconcileU2OInterconnectionIP(subnet *kubeovnv1.Subnet) err
 	klog.Infof("reconcile underlay subnet %s  to overlay interconnection with U2OInterconnection %v U2OInterconnectionIP %s ",
 		subnet.Name, subnet.Spec.U2OInterconnection, subnet.Status.U2OInterconnectionIP)
 	if subnet.Spec.U2OInterconnection {
-		if subnet.Status.U2OInterconnectionIP == "" {
-			u2oInterconnName := fmt.Sprintf(util.U2OInterconnName, subnet.Spec.Vpc, subnet.Name)
-			u2oInterconnLrpName := fmt.Sprintf("%s-%s", subnet.Spec.Vpc, subnet.Name)
-			v4ip, v6ip, _, err := c.acquireIpAddress(subnet.Name, u2oInterconnName, u2oInterconnLrpName)
+		u2oInterconnName := fmt.Sprintf(util.U2OInterconnName, subnet.Spec.Vpc, subnet.Name)
+		u2oInterconnLrpName := fmt.Sprintf("%s-%s", subnet.Spec.Vpc, subnet.Name)
+		var v4ip, v6ip string
+		var err error
+		if subnet.Spec.U2OInterconnectionIP == "" && subnet.Status.U2OInterconnectionIP == "" {
+			v4ip, v6ip, _, err = c.acquireIpAddress(subnet.Name, u2oInterconnName, u2oInterconnLrpName)
 			if err != nil {
 				klog.Errorf("failed to acquire underlay to overlay interconnection ip address for subnet %s, %v", subnet.Name, err)
 				return err
 			}
+		} else if subnet.Spec.U2OInterconnectionIP != "" && subnet.Status.U2OInterconnectionIP != subnet.Spec.U2OInterconnectionIP {
+			if subnet.Status.U2OInterconnectionIP != "" {
+				c.ipam.ReleaseAddressByPod(u2oInterconnName)
+			}
+
+			v4ip, v6ip, _, err = c.acquireStaticIpAddress(subnet.Name, u2oInterconnName, u2oInterconnLrpName, subnet.Spec.U2OInterconnectionIP)
+			if err != nil {
+				klog.Errorf("failed to acquire static underlay to overlay interconnection ip address for subnet %s, %v", subnet.Name, err)
+				return err
+			}
+		}
+
+		if v4ip != "" || v6ip != "" {
 			switch subnet.Spec.Protocol {
 			case kubeovnv1.ProtocolIPv4:
 				subnet.Status.U2OInterconnectionIP = v4ip

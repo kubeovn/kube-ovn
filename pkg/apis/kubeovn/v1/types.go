@@ -128,7 +128,7 @@ type SubnetSpec struct {
 	DisableGatewayCheck    bool `json:"disableGatewayCheck,omitempty"`
 	DisableInterConnection bool `json:"disableInterConnection,omitempty"`
 	U2OInterconnection     bool `json:"u2oInterconnection,omitempty"`
-}
+	U2OInterconnectionIP   string `json:"u2oInterconnectionIP,omitempty"`
 
 // ConditionType encodes information on the condition
 type ConditionType string
