@@ -161,9 +161,10 @@ type SubnetSpec struct {
 
 	NatOutgoingPolicyRules []NatOutgoingPolicyRule `json:"natOutgoingPolicyRules,omitempty"`
 
-	U2OInterconnection bool  `json:"u2oInterconnection,omitempty"`
-	EnableLb           *bool `json:"enableLb,omitempty"`
-	EnableEcmp         bool  `json:"enableEcmp,omitempty"`
+	U2OInterconnectionIP string `json:"u2oInterconnectionIP,omitempty"`
+	U2OInterconnection   bool   `json:"u2oInterconnection,omitempty"`
+	EnableLb             *bool  `json:"enableLb,omitempty"`
+	EnableEcmp           bool   `json:"enableEcmp,omitempty"`
 
 	RouteTable string `json:"routeTable,omitempty"`
 }
