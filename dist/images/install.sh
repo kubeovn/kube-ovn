@@ -1495,6 +1495,8 @@ spec:
                           - reject
                 u2oInterconnection:
                   type: boolean
+                u2oInterconnectionIP:
+                  type: string
   scope: Cluster
   names:
     plural: subnets
