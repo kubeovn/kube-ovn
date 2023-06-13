@@ -1965,3 +1965,20 @@ func (c *Controller) acquireIpAddress(subnetName, name, nicName string) (string,
 		}
 	}
 }
+
+func (c *Controller) acquireStaticIpAddress(subnetName, name, nicName, ip string) (string, string, string, error) {
+	checkConflict := true
+	var v4ip, v6ip, mac string
+	var err error
+	for _, ipStr := range strings.Split(ip, ",") {
+		if net.ParseIP(ipStr) == nil {
+			return "", "", "", fmt.Errorf("failed to parse vip ip %s", ipStr)
+		}
+	}
+
+	if v4ip, v6ip, mac, err = c.ipam.GetStaticAddress(name, nicName, ip, "", subnetName, checkConflict); err != nil {
+		klog.Errorf("failed to get static virtual ip '%s', mac '%s', subnet '%s', %v", ip, mac, subnetName, err)
+		return "", "", "", err
+	}
+	return v4ip, v6ip, mac, nil
+}

@@ -124,11 +124,12 @@ type SubnetSpec struct {
 	Vlan   string `json:"vlan,omitempty"`
 	HtbQos string `json:"htbqos,omitempty"`
 
-	LogicalGateway         bool `json:"logicalGateway,omitempty"`
-	DisableGatewayCheck    bool `json:"disableGatewayCheck,omitempty"`
-	DisableInterConnection bool `json:"disableInterConnection,omitempty"`
-	U2OInterconnection     bool `json:"u2oInterconnection,omitempty"`
+	LogicalGateway         bool   `json:"logicalGateway,omitempty"`
+	DisableGatewayCheck    bool   `json:"disableGatewayCheck,omitempty"`
+	DisableInterConnection bool   `json:"disableInterConnection,omitempty"`
+	U2OInterconnection     bool   `json:"u2oInterconnection,omitempty"`
 	U2OInterconnectionIP   string `json:"u2oInterconnectionIP,omitempty"`
+}
 
 // ConditionType encodes information on the condition
 type ConditionType string
