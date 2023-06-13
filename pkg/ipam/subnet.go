@@ -143,6 +143,7 @@ func (subnet *Subnet) GetRandomMac(podName, nicName string) string {
 func (subnet *Subnet) GetStaticMac(podName, nicName, mac string, checkConflict bool) error {
 	if checkConflict {
 		if p, ok := subnet.MacToPod[mac]; ok && p != podName {
+			klog.Errorf("mac %s has been allocated to pod %s", mac, p)
 			return ErrConflict
 		}
 	}
@@ -231,6 +232,7 @@ func (subnet *Subnet) getV4RandomAddress(podName, nicName string, mac string, sk
 		}
 	}
 	if ip == "" {
+		klog.Errorf("no available ip in subnet %s, v4 free ip list %v", subnet.Name, subnet.V4FreeIPList)
 		return "", "", "", ErrConflict
 	}
 
@@ -292,6 +294,7 @@ func (subnet *Subnet) getV6RandomAddress(podName, nicName string, mac string, sk
 		}
 	}
 	if ip == "" {
+		klog.Errorf("no available ip in subnet %s, v6 free ip list %v", subnet.Name, subnet.V6FreeIPList)
 		return "", "", "", ErrConflict
 	}
 
@@ -365,6 +368,7 @@ func (subnet *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac strin
 					subnet.V4IPToPod[ip] = fmt.Sprintf("%s,%s", subnet.V4IPToPod[ip], podName)
 					return ip, mac, nil
 				}
+				klog.Errorf("v4 ip %s has been allocated to %v", ip, pods)
 				return ip, mac, ErrConflict
 			}
 			if !force {
@@ -400,6 +404,7 @@ func (subnet *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac strin
 					subnet.V6IPToPod[ip] = fmt.Sprintf("%s,%s", subnet.V6IPToPod[ip], podName)
 					return ip, mac, nil
 				}
+				klog.Errorf("v6 ip %s has been allocated to %v", ip, pods)
 				return ip, mac, ErrConflict
 			}
 			if !force {
