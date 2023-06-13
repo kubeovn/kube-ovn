@@ -413,7 +413,7 @@ func (c *LegacyClient) createDHCPOptions(ls, cidr, optionsStr string) (dhcpOptio
 	return dhcpOptionsUuid, nil
 }
 
-func (c *LegacyClient) updateDHCPv4Options(ls, v4CIDR, v4Gateway, dhcpV4OptionsStr string) (dhcpV4OptionsUuid string, err error) {
+func (c *LegacyClient) updateDHCPv4Options(ls, v4CIDR, v4Gateway, dhcpV4OptionsStr string, mtu int) (dhcpV4OptionsUuid string, err error) {
 	dhcpV4OptionsStr = strings.ReplaceAll(dhcpV4OptionsStr, " ", "")
 	dhcpV4Options, err := c.ListDHCPOptions(true, ls, kubeovnv1.ProtocolIPv4)
 	if err != nil {
@@ -427,7 +427,7 @@ func (c *LegacyClient) updateDHCPv4Options(ls, v4CIDR, v4Gateway, dhcpV4OptionsS
 			mac := util.GenerateMac()
 			if len(dhcpV4OptionsStr) == 0 {
 				// default dhcp v4 options
-				dhcpV4OptionsStr = fmt.Sprintf("lease_time=%d,router=%s,server_id=%s,server_mac=%s", 3600, v4Gateway, "169.254.0.254", mac)
+				dhcpV4OptionsStr = fmt.Sprintf("lease_time=%d,router=%s,server_id=%s,server_mac=%s,mtu=%d", 3600, v4Gateway, "169.254.0.254", mac, mtu)
 			}
 			dhcpV4OptionsUuid, err = c.createDHCPOptions(ls, v4CIDR, dhcpV4OptionsStr)
 			if err != nil {
@@ -442,7 +442,7 @@ func (c *LegacyClient) updateDHCPv4Options(ls, v4CIDR, v4Gateway, dhcpV4OptionsS
 				if len(mac) == 0 {
 					mac = util.GenerateMac()
 				}
-				dhcpV4OptionsStr = fmt.Sprintf("lease_time=%d,router=%s,server_id=%s,server_mac=%s", 3600, v4Gateway, "169.254.0.254", mac)
+				dhcpV4OptionsStr = fmt.Sprintf("lease_time=%d,router=%s,server_id=%s,server_mac=%s,mtu=%d", 3600, v4Gateway, "169.254.0.254", mac, mtu)
 			}
 			_, err = c.ovnNbCommand("set", "dhcp_options", v4Options.UUID, fmt.Sprintf("cidr=%s", v4CIDR),
 				fmt.Sprintf("options=%s", strings.ReplaceAll(dhcpV4OptionsStr, ":", "\\:")))
@@ -512,7 +512,7 @@ func (c *LegacyClient) updateDHCPv6Options(ls, v6CIDR, dhcpV6OptionsStr string) 
 	return
 }
 
-func (c *LegacyClient) UpdateDHCPOptions(ls, cidrBlock, gateway, dhcpV4OptionsStr, dhcpV6OptionsStr string, enableDHCP bool) (dhcpOptionsUUIDs *DHCPOptionsUUIDs, err error) {
+func (c *LegacyClient) UpdateDHCPOptions(ls, cidrBlock, gateway, dhcpV4OptionsStr, dhcpV6OptionsStr string, enableDHCP bool, mtu int) (dhcpOptionsUUIDs *DHCPOptionsUUIDs, err error) {
 	dhcpOptionsUUIDs = &DHCPOptionsUUIDs{}
 	if enableDHCP {
 		var v4CIDR, v6CIDR string
@@ -530,7 +530,7 @@ func (c *LegacyClient) UpdateDHCPOptions(ls, cidrBlock, gateway, dhcpV4OptionsSt
 			v4Gateway = gateways[0]
 		}
 
-		dhcpOptionsUUIDs.DHCPv4OptionsUUID, err = c.updateDHCPv4Options(ls, v4CIDR, v4Gateway, dhcpV4OptionsStr)
+		dhcpOptionsUUIDs.DHCPv4OptionsUUID, err = c.updateDHCPv4Options(ls, v4CIDR, v4Gateway, dhcpV4OptionsStr, mtu)
 		if err != nil {
 			klog.Errorf("update dhcp options for switch %s failed: %v", ls, err)
 			return nil, err
