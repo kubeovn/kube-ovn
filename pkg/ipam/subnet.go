@@ -321,6 +321,7 @@ func (subnet *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac *stri
 					subnet.V4IPToPod[ip.String()] = fmt.Sprintf("%s,%s", subnet.V4IPToPod[ip.String()], podName)
 					return ip, macStr, nil
 				}
+				klog.Errorf("ip %s has been allocated to %v", ip.String(), pods)
 				return ip, macStr, ErrConflict
 			}
 			if !force {
@@ -354,6 +355,7 @@ func (subnet *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac *stri
 					subnet.V6IPToPod[ip.String()] = fmt.Sprintf("%s,%s", subnet.V6IPToPod[ip.String()], podName)
 					return ip, macStr, nil
 				}
+				klog.Errorf("ip %s has been allocated to %v", ip.String(), pods)
 				return ip, macStr, ErrConflict
 			}
 			if !force {
