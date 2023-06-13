@@ -321,7 +321,7 @@ func (c *Controller) updatePodAttachNets(pod *corev1.Pod, svc *corev1.Service) e
 		}
 
 		var rules []string
-		rules = append(rules, fmt.Sprintf("%s,%d,%s,%s,%d,%s", loadBalancerIP, port.Port, protocol, svc.Spec.ClusterIP, port.TargetPort.IntVal, defaultGateway))
+		rules = append(rules, fmt.Sprintf("%s,%d,%s,%s,%d,%s", loadBalancerIP, port.Port, protocol, svc.Spec.ClusterIP, port.Port, defaultGateway))
 		klog.Infof("add dnat rules for lb svc pod, %v", rules)
 		if err := c.execNatRules(pod, POD_DNAT_ADD, rules); err != nil {
 			klog.Errorf("failed to add dnat for pod, err: %v", err)
