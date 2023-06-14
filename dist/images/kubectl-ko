@@ -1313,6 +1313,8 @@ perf(){
 
   echo "Start doing leader recover time test"
   checkLeaderRecover
+
+  kubectl delete pods -l app=$PERF_LABEL -n $KUBE_OVN_NS
 }
 
 unicastPerfTest() {
