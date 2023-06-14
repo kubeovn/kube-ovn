@@ -50,6 +50,7 @@ type Configuration struct {
 	ServiceVswitchdFilePidPath      string
 	ServiceOvnControllerFileLogPath string
 	ServiceOvnControllerFilePidPath string
+	EnableVerboseConnCheck          bool
 	TCPConnCheckPort                int
 	UDPConnCheckPort                int
 }
@@ -58,6 +59,7 @@ func ParseFlags() (*Configuration, error) {
 	var (
 		argPort = pflag.Int("port", 8080, "metrics port")
 
+		argEnableVerboseConnCheck   = pflag.Bool("enable-verbose-conn-check", false, "enable TCP/UDP connectivity check")
 		argTCPConnectivityCheckPort = pflag.Int("tcp-conn-check-port", 8100, "TCP connectivity Check Port")
 		argUDPConnectivityCheckPort = pflag.Int("udp-conn-check-port", 8101, "UDP connectivity Check Port")
 
@@ -124,8 +126,10 @@ func ParseFlags() (*Configuration, error) {
 		ExternalAddress:    *argExternalAddress,
 		NetworkMode:        *argNetworkMode,
 		EnableMetrics:      *argEnableMetrics,
-		TCPConnCheckPort:   *argTCPConnectivityCheckPort,
-		UDPConnCheckPort:   *argUDPConnectivityCheckPort,
+
+		EnableVerboseConnCheck: *argEnableVerboseConnCheck,
+		TCPConnCheckPort:       *argTCPConnectivityCheckPort,
+		UDPConnCheckPort:       *argUDPConnectivityCheckPort,
 
 		// OVS Monitor
 		PollTimeout:                     *argPollTimeout,

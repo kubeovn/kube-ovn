@@ -92,18 +92,19 @@ func pingNodes(config *Configuration) error {
 		for _, addr := range no.Status.Addresses {
 			if addr.Type == v1.NodeInternalIP && util.ContainsString(config.PodProtocols, util.CheckProtocol(addr.Address)) {
 				func(nodeIP, nodeName string) {
-					if err := util.TCPConnectivityCheck(fmt.Sprintf("%s:%d", nodeIP, config.TCPConnCheckPort)); err != nil {
-						klog.Infof("TCP connnectivity to node %s %s failed", nodeName, nodeIP)
-						pingErr = err
-					} else {
-						klog.Infof("TCP connnectivity to node %s %s success", nodeName, nodeIP)
-					}
-
-					if err := util.UDPConnectivityCheck(fmt.Sprintf("%s:%d", nodeIP, config.UDPConnCheckPort)); err != nil {
-						klog.Infof("UDP connnectivity to node %s %s failed", nodeName, nodeIP)
-						pingErr = err
-					} else {
-						klog.Infof("UDP connnectivity to node %s %s success", nodeName, nodeIP)
+					if config.EnableVerboseConnCheck {
+						if err := util.TCPConnectivityCheck(fmt.Sprintf("%s:%d", nodeIP, config.TCPConnCheckPort)); err != nil {
+							klog.Infof("TCP connnectivity to node %s %s failed", nodeName, nodeIP)
+							pingErr = err
+						} else {
+							klog.Infof("TCP connnectivity to node %s %s success", nodeName, nodeIP)
+						}
+						if err := util.UDPConnectivityCheck(fmt.Sprintf("%s:%d", nodeIP, config.UDPConnCheckPort)); err != nil {
+							klog.Infof("UDP connnectivity to node %s %s failed", nodeName, nodeIP)
+							pingErr = err
+						} else {
+							klog.Infof("UDP connnectivity to node %s %s success", nodeName, nodeIP)
+						}
 					}
 
 					pinger, err := goping.NewPinger(nodeIP)
@@ -162,18 +163,20 @@ func pingPods(config *Configuration) error {
 		for _, podIP := range pod.Status.PodIPs {
 			if util.ContainsString(config.PodProtocols, util.CheckProtocol(podIP.IP)) {
 				func(podIp, podName, nodeIP, nodeName string) {
-					if err := util.TCPConnectivityCheck(fmt.Sprintf("%s:%d", podIp, config.TCPConnCheckPort)); err != nil {
-						klog.Infof("TCP connnectivity to pod %s %s failed", podName, podIp)
-						pingErr = err
-					} else {
-						klog.Infof("TCP connnectivity to pod %s %s success", podName, podIp)
-					}
+					if config.EnableVerboseConnCheck {
+						if err := util.TCPConnectivityCheck(fmt.Sprintf("%s:%d", podIp, config.TCPConnCheckPort)); err != nil {
+							klog.Infof("TCP connnectivity to pod %s %s failed", podName, podIp)
+							pingErr = err
+						} else {
+							klog.Infof("TCP connnectivity to pod %s %s success", podName, podIp)
+						}
 
-					if err := util.UDPConnectivityCheck(fmt.Sprintf("%s:%d", podIp, config.UDPConnCheckPort)); err != nil {
-						klog.Infof("UDP connnectivity to pod %s %s failed", podName, podIp)
-						pingErr = err
-					} else {
-						klog.Infof("UDP connnectivity to pod %s %s success", podName, podIp)
+						if err := util.UDPConnectivityCheck(fmt.Sprintf("%s:%d", podIp, config.UDPConnCheckPort)); err != nil {
+							klog.Infof("UDP connnectivity to pod %s %s failed", podName, podIp)
+							pingErr = err
+						} else {
+							klog.Infof("UDP connnectivity to pod %s %s success", podName, podIp)
+						}
 					}
 
 					pinger, err := goping.NewPinger(podIp)

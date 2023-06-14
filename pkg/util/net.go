@@ -544,8 +544,6 @@ func TCPConnectivityListen(address string) error {
 		return fmt.Errorf("listen failed with err %v", err)
 	}
 
-	defer listener.Close()
-
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
@@ -597,8 +595,6 @@ func UDPConnectivityListen(address string) error {
 	if err != nil {
 		return fmt.Errorf("listen udp address failed with %v", err)
 	}
-
-	defer conn.Close()
 
 	buffer := make([]byte, 1024)
 

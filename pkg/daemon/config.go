@@ -60,6 +60,7 @@ type Configuration struct {
 	EnableMetrics             bool
 	EnableArpDetectIPConflict bool
 	KubeletDir                string
+	EnableVerboseConnCheck    bool
 	TCPConnCheckPort          int
 	UDPConnCheckPort          int
 }
@@ -96,6 +97,7 @@ func ParseFlags() *Configuration {
 		argEnableMetrics             = pflag.Bool("enable-metrics", true, "Whether to support metrics query")
 		argEnableArpDetectIPConflict = pflag.Bool("enable-arp-detect-ip-conflict", true, "Whether to support arp detect ip conflict in vlan network")
 		argKubeletDir                = pflag.String("kubelet-dir", "/var/lib/kubelet", "Path of the kubelet dir, default: /var/lib/kubelet")
+		argEnableVerboseConnCheck    = pflag.Bool("enable-verbose-conn-check", false, "enable TCP/UDP connectivity check listen port")
 		argTCPConnectivityCheckPort  = pflag.Int("tcp-conn-check-port", 8100, "TCP connectivity Check Port")
 		argUDPConnectivityCheckPort  = pflag.Int("udp-conn-check-port", 8101, "UDP connectivity Check Port")
 	)
@@ -149,6 +151,7 @@ func ParseFlags() *Configuration {
 		EnableMetrics:             *argEnableMetrics,
 		EnableArpDetectIPConflict: *argEnableArpDetectIPConflict,
 		KubeletDir:                *argKubeletDir,
+		EnableVerboseConnCheck:    *argEnableVerboseConnCheck,
 		TCPConnCheckPort:          *argTCPConnectivityCheckPort,
 		UDPConnCheckPort:          *argUDPConnectivityCheckPort,
 	}
