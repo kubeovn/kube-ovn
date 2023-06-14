@@ -124,6 +124,8 @@ const (
 	SubnetAllowPriority = "1001"
 	DefaultDropPriority = "1000"
 
+	DefaultMTU = 1500
+
 	GeneveHeaderLength = 100
 	VxlanHeaderLength  = 50
 	SttHeaderLength    = 72

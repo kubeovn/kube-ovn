@@ -686,24 +686,24 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		}
 	}
 
-	var dhcpOptionsUUIDs *ovs.DHCPOptionsUUIDs
-	var mtu int
-	if subnet.Spec.Vlan != "" {
-		mtu = 1500
-	} else {
+	mtu := util.DefaultMTU
+	if subnet.Spec.Vlan == "" {
 		switch c.config.NetworkType {
-		case util.NetworkTypeVxlan:
-			mtu = 1500 - util.VxlanHeaderLength
+		case util.NetworkTypeVlan:
+			// default to geneve
+			fallthrough
 		case util.NetworkTypeGeneve:
-			mtu = 1500 - util.GeneveHeaderLength
+			mtu -= util.GeneveHeaderLength
+		case util.NetworkTypeVxlan:
+			mtu -= util.VxlanHeaderLength
 		case util.NetworkTypeStt:
-			mtu = 1500 - util.SttHeaderLength
+			mtu -= util.SttHeaderLength
 		default:
 			return fmt.Errorf("invalid network type: %s", c.config.NetworkType)
 		}
 	}
 
-	dhcpOptionsUUIDs, err = c.ovnLegacyClient.UpdateDHCPOptions(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.DHCPv4Options, subnet.Spec.DHCPv6Options, subnet.Spec.EnableDHCP, mtu)
+	dhcpOptionsUUIDs, err := c.ovnLegacyClient.UpdateDHCPOptions(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.DHCPv4Options, subnet.Spec.DHCPv6Options, subnet.Spec.EnableDHCP, mtu)
 	if err != nil {
 		klog.Errorf("failed to update dhcp options for switch %s, %v", subnet.Name, err)
 		return err
