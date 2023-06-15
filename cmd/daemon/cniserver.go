@@ -109,6 +109,23 @@ func CmdMain() {
 			}
 		}
 	}
+
+	if config.EnableVerboseConnCheck {
+		go func() {
+			connListenaddr := fmt.Sprintf("%s:%d", addr, config.TCPConnCheckPort)
+			if err := util.TCPConnectivityListen(connListenaddr); err != nil {
+				util.LogFatalAndExit(err, "failed to start TCP listen on addr %s ", addr)
+			}
+		}()
+
+		go func() {
+			connListenaddr := fmt.Sprintf("%s:%d", addr, config.UDPConnCheckPort)
+			if err := util.UDPConnectivityListen(connListenaddr); err != nil {
+				util.LogFatalAndExit(err, "failed to start UDP listen on addr %s ", addr)
+			}
+		}()
+	}
+
 	// conform to Gosec G114
 	// https://github.com/securego/gosec#available-rules
 	server := &http.Server{
