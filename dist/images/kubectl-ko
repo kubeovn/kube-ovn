@@ -1260,6 +1260,35 @@ spec:
     - name: $podName
       image: $imageID
       imagePullPolicy: IfNotPresent
+      command: ["sh", "-c", "sleep infinity"]
+  nodeSelector:
+    kubernetes.io/hostname: $nodeID
+EOF
+  kubectl apply -f $tmpFileName
+  rm $tmpFileName
+}
+
+applyTestHostClient() {
+  tmpFileName="test-host-client.yaml"
+  local podName="test-host-client"
+  local nodeID=$1
+  local imageID=$2
+  touch $tmpFileName
+  cat <<EOF > $tmpFileName
+apiVersion: v1
+kind: Pod
+metadata:
+  name: $podName
+  namespace: $KUBE_OVN_NS
+  labels:
+    app: $PERF_LABEL
+spec:
+  hostNetwork: true
+  containers:
+    - name: $podName
+      image: $imageID
+      imagePullPolicy: IfNotPresent
+      command: ["sh", "-c", "sleep infinity"]
   nodeSelector:
     kubernetes.io/hostname: $nodeID
 EOF
@@ -1273,19 +1302,21 @@ perf(){
   nodes=($(kubectl get node --no-headers -o custom-columns=NAME:.metadata.name))
   if [[ ${#nodes} -eq 1 ]]; then
     applyTestClient ${nodes[0]} $imageID
-    applyTestHostServer ${nodes[0]} $imageID
+    applyTestHostClient ${nodes[0]} $imageID
     applyTestServer ${nodes[0]} $imageID
+    applyTestHostServer ${nodes[0]} $imageID
   elif [[ ${#nodes} -le 0 ]]; then
     echo "can't find node in the cluster"
     return
   elif [[ ${#nodes} -ge 2 ]]; then
     applyTestClient ${nodes[1]} $imageID
-    applyTestHostServer ${nodes[0]} $imageID
+    applyTestHostClient ${nodes[1]} $imageID
     applyTestServer ${nodes[0]} $imageID
+    applyTestHostServer ${nodes[0]} $imageID
   fi
 
   isfailed=true
-  for i in {0..59}
+  for i in {0..300}
   do
     if kubectl wait pod --for=condition=Ready -l app=$PERF_LABEL -n kube-system ; then
       isfailed=false
@@ -1303,10 +1334,10 @@ perf(){
   local hostserverIP=$(kubectl get pod test-host-server -n $KUBE_OVN_NS -o jsonpath={.status.podIP})
 
   echo "Start doing pod network performance"
-  unicastPerfTest $serverIP
+  unicastPerfTest test-client $serverIP
 
   echo "Start doing host network performance"
-  unicastPerfTest $hostserverIP
+  unicastPerfTest test-host-client $hostserverIP
 
   echo "Start doing pod multicast network performance"
   multicastPerfTest
@@ -1318,19 +1349,20 @@ perf(){
 }
 
 unicastPerfTest() {
-  serverIP=$1
+  clientPodName=$1
+  serverIP=$2
   echo "=================================== unicast perfromance test ============================================================="
   printf "%-15s %-15s %-15s %-15s %-15s %-15s\n" "Size" "TCP Latency" "TCP Bandwidth" "UDP Latency" "UDP Lost Rate" "UDP Bandwidth"
   for size in "64" "128" "512" "1k" "4k"
   do
-    output=$(kubectl exec test-client -n $KUBE_OVN_NS -- qperf -t $PERF_TIMES $serverIP -ub -oo msg_size:$size -vu tcp_lat udp_lat 2>&1)
-    tcpLat="$(echo $output | grep -oP 'tcp_lat: latency = \K[\d.]+ us')"
-    udpLat="$(echo $output | grep -oP 'udp_lat: latency = \K[\d.]+ us')"
-    kubectl exec test-client -n $KUBE_OVN_NS -- iperf3 -c $serverIP -u -t $PERF_TIMES -i 1 -P 10 -b 1000G -l $size > temp_perf_result.log 2> /dev/null
+    output=$(kubectl exec $clientPodName -n $KUBE_OVN_NS -- qperf -t $PERF_TIMES $serverIP -ub -oo msg_size:$size -vu tcp_lat udp_lat 2>&1)
+    tcpLat="$(echo $output | grep -oP 'tcp_lat: latency = \K[\d.]+ (us|ms|sec)')"
+    udpLat="$(echo $output | grep -oP 'udp_lat: latency = \K[\d.]+ (us|ms|sec)')"
+    kubectl exec $clientPodName -n $KUBE_OVN_NS -- iperf3 -c $serverIP -u -t $PERF_TIMES -i 1 -P 10 -b 1000G -l $size > temp_perf_result.log 2> /dev/null
     udpBw=$(cat temp_perf_result.log | grep -oP '\d+\.?\d* [KMG]bits/sec' | tail -n 1)
     udpLostRate=$(cat temp_perf_result.log | grep -oP '\(\d+(\.\d+)?%\)' | tail -n 1)
 
-    kubectl exec test-client -n $KUBE_OVN_NS -- iperf3 -c $serverIP -t $PERF_TIMES -i 1 -P 10 -l $size > temp_perf_result.log 2> /dev/null
+    kubectl exec $clientPodName -n $KUBE_OVN_NS -- iperf3 -c $serverIP -t $PERF_TIMES -i 1 -P 10 -l $size > temp_perf_result.log 2> /dev/null
     tcpBw=$(cat temp_perf_result.log | grep -oP '\d+\.?\d* [KMG]bits/sec' | tail -n 1)
     printf "%-15s %-15s %-15s %-15s %-15s %-15s\n" "$size" "$tcpLat" "$tcpBw" "$udpLat" "$udpLostRate" "$udpBw"
   done
