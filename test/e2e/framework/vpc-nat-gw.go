@@ -11,6 +11,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
+	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework"
 
 	"github.com/onsi/gomega"
@@ -47,9 +48,11 @@ func (c *VpcNatGatewayClient) Create(vpcNatGw *apiv1.VpcNatGateway) *apiv1.VpcNa
 }
 
 // CreateSync creates a new vpc nat gw according to the framework specifications, and waits for it to be ready.
-func (c *VpcNatGatewayClient) CreateSync(vpcNatGw *apiv1.VpcNatGateway) *apiv1.VpcNatGateway {
+func (c *VpcNatGatewayClient) CreateSync(vpcNatGw *apiv1.VpcNatGateway, clietSet clientset.Interface) *apiv1.VpcNatGateway {
 	vpcNatGw = c.Create(vpcNatGw)
-	ExpectTrue(c.WaitToBeReady(vpcNatGw.Name, timeout))
+	// When multiple VPC NAT gateways are being created, it may require more time to wait.
+	timeout := 4 * time.Minute
+	ExpectTrue(c.WaitGwPodReady(vpcNatGw.Name, timeout, clietSet))
 	// Get the newest vpc nat gw after it becomes ready
 	return c.Get(vpcNatGw.Name).DeepCopy()
 }
@@ -122,6 +125,27 @@ func (c *VpcNatGatewayClient) WaitToBeReady(name string, timeout time.Duration) 
 		if c.Get(name).Spec.LanIp != "" {
 			return true
 		}
+	}
+	return false
+}
+
+// WaitGwPodReady returns whether the vpc nat gw pod is ready within timeout.
+func (c *VpcNatGatewayClient) WaitGwPodReady(name string, timeout time.Duration, clietSet clientset.Interface) bool {
+	podName := util.GenNatGwPodName(name)
+	for start := time.Now(); time.Since(start) < timeout; time.Sleep(poll) {
+		pod, err := clietSet.CoreV1().Pods("kube-system").Get(context.Background(), podName, metav1.GetOptions{})
+		if err != nil {
+			if apierrors.IsNotFound(err) {
+				Logf("natgw %s is not ready err: %s", name, err)
+				continue
+			}
+			framework.ExpectNoError(err, "failed to get pod %v", podName)
+		}
+		if len(pod.Annotations) != 0 && pod.Annotations[util.VpcNatGatewayInitAnnotation] == "true" {
+			Logf("natgw %s is ready ", name)
+			return true
+		}
+		Logf("natgw %s is not ready ", name)
 	}
 	return false
 }

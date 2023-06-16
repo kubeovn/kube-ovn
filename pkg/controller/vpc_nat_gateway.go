@@ -54,10 +54,6 @@ const (
 	getIptablesVersion = "get-iptables-version"
 )
 
-func genNatGwStsName(name string) string {
-	return fmt.Sprintf("vpc-nat-gw-%s", name)
-}
-
 func (c *Controller) resyncVpcNatGwConfig() {
 	cm, err := c.configMapsLister.ConfigMaps(c.config.PodNamespace).Get(util.VpcNatGatewayConfig)
 	if err != nil && !k8serrors.IsNotFound(err) {
@@ -208,7 +204,7 @@ func (c *Controller) processNextWorkItem(processName string, queue workqueue.Rat
 func (c *Controller) handleDelVpcNatGw(key string) error {
 	c.vpcNatGwKeyMutex.LockKey(key)
 	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(key) }()
-	name := genNatGwStsName(key)
+	name := util.GenNatGwStsName(key)
 	klog.Infof("delete vpc nat gw %s", name)
 	if err := c.config.KubeClient.AppsV1().StatefulSets(c.config.PodNamespace).Delete(context.Background(),
 		name, metav1.DeleteOptions{}); err != nil {
@@ -272,7 +268,7 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 	needToCreate := false
 	needToUpdate := false
 	oldSts, err := c.config.KubeClient.AppsV1().StatefulSets(c.config.PodNamespace).
-		Get(context.Background(), genNatGwStsName(gw.Name), metav1.GetOptions{})
+		Get(context.Background(), util.GenNatGwStsName(gw.Name), metav1.GetOptions{})
 
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -739,7 +735,7 @@ func (c *Controller) execNatGwRules(pod *corev1.Pod, operation string, rules []s
 
 func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1.StatefulSet) (newSts *v1.StatefulSet) {
 	replicas := int32(1)
-	name := genNatGwStsName(gw.Name)
+	name := util.GenNatGwStsName(gw.Name)
 	allowPrivilegeEscalation := true
 	privileged := true
 	labels := map[string]string{
@@ -827,7 +823,7 @@ func (c *Controller) cleanUpVpcNatGw() error {
 
 func (c *Controller) getNatGwPod(name string) (*corev1.Pod, error) {
 	sel, _ := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
-		MatchLabels: map[string]string{"app": genNatGwStsName(name), util.VpcNatGatewayLabel: "true"},
+		MatchLabels: map[string]string{"app": util.GenNatGwStsName(name), util.VpcNatGatewayLabel: "true"},
 	})
 
 	pods, err := c.podsLister.Pods(c.config.PodNamespace).List(sel)
