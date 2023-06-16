@@ -729,6 +729,12 @@ func configProviderNic(nicName, brName string) (int, error) {
 		return 0, fmt.Errorf("failed to get routes on nic %s: %v", nicName, err)
 	}
 
+	// set link unmanaged by NetworkManager
+	if err = nmSetManaged(nicName, false); err != nil {
+		klog.Errorf("failed set device %s unmanaged by NetworkManager: %v", nicName, err)
+		return 0, err
+	}
+
 	for _, addr := range addrs {
 		if addr.IP.IsLinkLocalUnicast() {
 			// skip 169.254.0.0/16 and fe80::/10
