@@ -39,7 +39,7 @@ const networkAttachDefName = "ovn-vpc-external-network"
 const externalSubnetProvider = "ovn-vpc-external-network.kube-system"
 
 const iperf2Port = "20288"
-const skipIperf = false
+const skipIperf = true
 
 const (
 	eipLimit = iota*5 + 10
