@@ -320,7 +320,7 @@ func configureMirrorLink(portName string, mtu int) error {
 	return nil
 }
 
-func configProviderNic(nicName, brName string) (int, error) {
+func (c *Controller) configProviderNic(nicName, brName string) (int, error) {
 	// nothing to do on Windows
 	return 0, nil
 }
