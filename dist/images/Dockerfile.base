@@ -42,8 +42,6 @@ RUN dpkg -i /usr/src/python3-openvswitch*.deb /usr/src/libopenvswitch*.deb
 
 RUN cd /usr/src/ && git clone -b branch-22.03 --depth=1 https://github.com/ovn-org/ovn.git && \
     cd ovn && \
-    # Revert "call ovsrcu_exit() before exit in ovn-northd and ovn-controller to make valgrind happy"
-    curl -s https://github.com/kubeovn/ovn/commit/7be7605993968c78853ce0072cc405f494a10ccd.patch | git apply && \
     # fix ssl listen address
     curl -s https://github.com/kubeovn/ovn/commit/7992d55af9ac356d3ad934764f473d1b6aa4cf64.patch | git apply && \
     # ovn-controller: Add a generic way to check if the daemon started recently.
