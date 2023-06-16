@@ -903,7 +903,7 @@ func (c *Controller) transferAddrsAndRoutes(nicName, brName string, delNonExiste
 
 	brAddrs, err := netlink.AddrList(bridge, netlink.FAMILY_ALL)
 	if err != nil {
-		return 0, fmt.Errorf("failed to get addresses on OVS brdige %s: %v", brName, err)
+		return 0, fmt.Errorf("failed to get addresses on OVS bridge %s: %v", brName, err)
 	}
 
 	var delAddrs []netlink.Addr
@@ -999,7 +999,7 @@ func (c *Controller) transferAddrsAndRoutes(nicName, brName string, delNonExiste
 
 	brRoutes, err := netlink.RouteList(bridge, netlink.FAMILY_ALL)
 	if err != nil {
-		return 0, fmt.Errorf("failed to get routes on OVS brdige %s: %v", brName, err)
+		return 0, fmt.Errorf("failed to get routes on OVS bridge %s: %v", brName, err)
 	}
 
 	var delRoutes []netlink.Route
