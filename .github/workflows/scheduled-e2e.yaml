@@ -71,8 +71,9 @@ jobs:
           path: test/e2e/k8s-network/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1
+        uses: helm/kind-action@v1.7.0
         with:
+          version: v0.20.0
           install_only: true
 
       - name: Install ginkgo
@@ -156,8 +157,9 @@ jobs:
           path: test/e2e/k8s-network/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1
+        uses: helm/kind-action@v1.7.0
         with:
+          version: v0.20.0
           install_only: true
 
       - name: Install ginkgo
@@ -237,8 +239,9 @@ jobs:
           path: test/e2e/k8s-network/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1
+        uses: helm/kind-action@v1.7.0
         with:
+          version: v0.20.0
           install_only: true
 
       - name: Install ginkgo
@@ -300,8 +303,9 @@ jobs:
           path: test/e2e/k8s-network/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1
+        uses: helm/kind-action@v1.7.0
         with:
+          version: v0.20.0
           install_only: true
 
       - name: Create kind cluster
@@ -374,8 +378,9 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1
+        uses: helm/kind-action@v1.7.0
         with:
+          version: v0.20.0
           install_only: true
 
       - name: Install ginkgo
@@ -448,8 +453,9 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1
+        uses: helm/kind-action@v1.7.0
         with:
+          version: v0.20.0
           install_only: true
 
       - name: Install ginkgo
@@ -500,8 +506,9 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1
+        uses: helm/kind-action@v1.7.0
         with:
+          version: v0.20.0
           install_only: true
 
       - name: Create kind cluster
@@ -550,8 +557,9 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1
+        uses: helm/kind-action@v1.7.0
         with:
+          version: v0.20.0
           install_only: true
 
       - name: Create kind cluster
@@ -601,8 +609,9 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1
+        uses: helm/kind-action@v1.7.0
         with:
+          version: v0.20.0
           install_only: true
 
       - name: Create kind cluster
@@ -654,8 +663,9 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1
+        uses: helm/kind-action@v1.7.0
         with:
+          version: v0.20.0
           install_only: true
 
       - name: Create kind cluster
@@ -722,8 +732,9 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1
+        uses: helm/kind-action@v1.7.0
         with:
+          version: v0.20.0
           install_only: true
 
       - name: Install ginkgo
@@ -791,8 +802,9 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1
+        uses: helm/kind-action@v1.7.0
         with:
+          version: v0.20.0
           install_only: true
 
       - name: Install ginkgo
@@ -859,8 +871,9 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1
+        uses: helm/kind-action@v1.7.0
         with:
+          version: v0.20.0
           install_only: true
 
       - name: Install ginkgo
@@ -913,8 +926,9 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1
+        uses: helm/kind-action@v1.7.0
         with:
+          version: v0.20.0
           install_only: true
 
       - name: Create kind cluster
@@ -989,8 +1003,9 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1
+        uses: helm/kind-action@v1.7.0
         with:
+          version: v0.20.0
           install_only: true
 
       - name: Install ginkgo
@@ -1075,8 +1090,9 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1
+        uses: helm/kind-action@v1.7.0
         with:
+          version: v0.20.0
           install_only: true
 
       - name: Install ginkgo
@@ -1168,8 +1184,9 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ env.VERSION_TO }}
 
       - name: Install kind
-        uses: helm/kind-action@v1
+        uses: helm/kind-action@v1.7.0
         with:
+          version: v0.20.0
           install_only: true
 
       - name: Install ginkgo
@@ -1239,8 +1256,9 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1
+        uses: helm/kind-action@v1.7.0
         with:
+          version: v0.20.0
           install_only: true
 
       - name: Install submariner subctl
@@ -1312,8 +1330,9 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1
+        uses: helm/kind-action@v1.7.0
         with:
+          version: v0.20.0
           install_only: true
 
       - name: Install ginkgo
@@ -1382,8 +1401,9 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1
+        uses: helm/kind-action@v1.7.0
         with:
+          version: v0.20.0
           install_only: true
 
       - name: Install ginkgo
