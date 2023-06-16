@@ -7,8 +7,9 @@ on:
 jobs:
   build-amd64:
     strategy:
-        matrix:
-          branch: [master, release-1.11, release-1.9]
+      fail-fast: false
+      matrix:
+        branch: [master, release-1.11, release-1.9]
     name: Build AMD64
     runs-on: ubuntu-22.04
     steps:
@@ -30,6 +31,7 @@ jobs:
 
   build-arm64:
     strategy:
+      fail-fast: false
       matrix:
         branch: [master, release-1.11, release-1.9]
     name: Build ARM64
@@ -56,6 +58,7 @@ jobs:
 
   push:
     strategy:
+      fail-fast: false
       matrix:
         branch: [master, release-1.11, release-1.9]
     needs:
