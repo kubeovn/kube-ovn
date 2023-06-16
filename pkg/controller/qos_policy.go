@@ -400,7 +400,8 @@ func (c *Controller) handleUpdateQoSPolicy(key string) error {
 		if cachedQos.Spec.BindingType == kubeovnv1.QoSBindingTypeEIP {
 			eips, err := c.iptablesEipsLister.List(
 				labels.SelectorFromSet(labels.Set{util.QoSLabel: key}))
-			if err != nil {
+			// when eip is not found, we should delete finalizer
+			if err != nil && !k8serrors.IsNotFound(err) {
 				klog.Errorf("failed to get eip list, %v", err)
 				return err
 			}
@@ -414,7 +415,8 @@ func (c *Controller) handleUpdateQoSPolicy(key string) error {
 		if cachedQos.Spec.BindingType == kubeovnv1.QoSBindingTypeNatGw {
 			gws, err := c.vpcNatGatewayLister.List(
 				labels.SelectorFromSet(labels.Set{util.QoSLabel: key}))
-			if err != nil {
+			// when nat gw is not found, we should delete finalizer
+			if err != nil && !k8serrors.IsNotFound(err) {
 				klog.Errorf("failed to get gw list, %v", err)
 				return err
 			}
