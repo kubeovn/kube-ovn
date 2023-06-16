@@ -1351,7 +1351,7 @@ perf(){
 unicastPerfTest() {
   clientPodName=$1
   serverIP=$2
-  echo "=================================== unicast perfromance test ============================================================="
+  echo "=================================== unicast performance test ============================================================="
   printf "%-15s %-15s %-15s %-15s %-15s %-15s\n" "Size" "TCP Latency" "TCP Bandwidth" "UDP Latency" "UDP Lost Rate" "UDP Bandwidth"
   for size in "64" "128" "512" "1k" "4k"
   do
@@ -1390,7 +1390,7 @@ genMulticastPerfResult() {
   start_server_cmd="iperf -s -B 224.0.0.100 -i 1 -u"
   kubectl exec $serverName -n $KUBE_OVN_NS -- $start_server_cmd > $serverName.log &
 
-  echo "=================================== multicast perfromance test ========================================================="
+  echo "=================================== multicast performance test ========================================================="
   printf "%-15s %-15s %-15s %-15s\n" "Size" "UDP Latency" "UDP Lost Rate" "UDP Bandwidth"
   for size in "64" "128" "512" "1k" "4k"
   do
@@ -1444,7 +1444,7 @@ getPodRecoverTime(){
 
   end_time=$(date +%s.%N)
   elapsed_time=$(echo "$end_time - $start_time" | bc)
-  echo "================================  OVN $component_name recover takes $elapsed_time s =================================="
+  echo "================================  OVN $component_name recovery takes $elapsed_time s =================================="
 }
 
 
