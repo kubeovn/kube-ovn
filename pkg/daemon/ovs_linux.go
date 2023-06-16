@@ -1028,7 +1028,6 @@ func (c *Controller) transferAddrsAndRoutes(nicName, brName string, delNonExiste
 	for i := len(routeScopeOrders) - 1; i >= 0; i-- {
 		for _, route := range delRoutes {
 			if route.Scope == routeScopeOrders[i] {
-				route.LinkIndex = bridge.Attrs().Index
 				if err = netlink.RouteDel(&route); err != nil {
 					return 0, fmt.Errorf("failed to delete route %s from OVS bridge %s: %v", route.String(), brName, err)
 				}
