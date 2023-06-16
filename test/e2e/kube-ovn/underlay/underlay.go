@@ -616,68 +616,11 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		subnet = subnetClient.Get(subnetName)
 		checkU2OItems(f, subnet, underlayPod, overlayPod, false)
 
-		if f.VersionPriorTo(1, 11) {
+		if f.VersionPriorTo(1, 9) {
 			return
 		}
 
-		ginkgo.By("step7: Change underlay subnet interconnection to overlay subnet in custom vpc")
-
-		ginkgo.By("Deleting underlay pod " + u2oPodNameUnderlay)
-		podClient.DeleteSync(u2oPodNameUnderlay)
-
-		ginkgo.By("Creating VPC " + vpcName)
-		customVPC := framework.MakeVpc(vpcName, "", false, false, []string{namespaceName})
-		vpcClient.CreateSync(customVPC)
-
-		ginkgo.By("Creating subnet " + u2oOverlaySubnetNameCustomVPC)
-		cidr = framework.RandomCIDR(f.ClusterIpFamily)
-		overlaySubnetCustomVpc := framework.MakeSubnet(u2oOverlaySubnetNameCustomVPC, "", cidr, "", vpcName, "", nil, nil, []string{namespaceName})
-		_ = subnetClient.CreateSync(overlaySubnetCustomVpc)
-
-		ginkgo.By("Creating overlay pod " + u2oPodOverlayCustomVPC)
-		args = []string{"netexec", "--http-port", strconv.Itoa(curlListenPort)}
-		u2oPodOverlayCustomVPCAnnotations := map[string]string{
-			util.LogicalSwitchAnnotation: u2oOverlaySubnetNameCustomVPC,
-		}
-		podOverlayCustomVPC := framework.MakePod(namespaceName, u2oPodOverlayCustomVPC, nil, u2oPodOverlayCustomVPCAnnotations, framework.AgnhostImage, nil, args)
-		podOverlayCustomVPC = podClient.CreateSync(podOverlayCustomVPC)
-
-		ginkgo.By("Turning on U2OInterconnection and set VPC to " + vpcName + " for subnet " + subnetName)
-		subnet = subnetClient.Get(subnetName)
-		modifiedSubnet = subnet.DeepCopy()
-		modifiedSubnet.Spec.Vpc = vpcName
-		modifiedSubnet.Spec.U2OInterconnection = true
-		subnetClient.PatchSync(subnet, modifiedSubnet)
-
-		ginkgo.By("Creating underlay pod " + u2oPodNameUnderlay)
-		underlayPod = podClient.CreateSync(originUnderlayPod)
-
-		subnet = subnetClient.Get(subnetName)
-		checkU2OItems(f, subnet, underlayPod, podOverlayCustomVPC, true)
-
-		ginkgo.By("step8: Change underlay subnet interconnection to overlay subnet in default vpc")
-
-		ginkgo.By("Deleting underlay pod " + u2oPodNameUnderlay)
-		podClient.DeleteSync(u2oPodNameUnderlay)
-
-		ginkgo.By("Setting VPC to " + util.DefaultVpc + " for subnet " + subnetName)
-		subnet = subnetClient.Get(subnetName)
-		modifiedSubnet = subnet.DeepCopy()
-		modifiedSubnet.Spec.Vpc = util.DefaultVpc
-		modifiedSubnet.Spec.Namespaces = nil
-		subnetClient.PatchSync(subnet, modifiedSubnet)
-
-		ginkgo.By("Creating underlay pod " + u2oPodNameUnderlay)
-		underlayPod = podClient.CreateSync(originUnderlayPod)
-
-		subnet = subnetClient.Get(subnetName)
-		checkU2OItems(f, subnet, underlayPod, overlayPod, false)
-
-		if f.VersionPriorTo(1, 12) {
-			return
-		}
-
-		ginkgo.By("step9: Specify u2oInterconnectionIP")
+		ginkgo.By("step7: Specify u2oInterconnectionIP")
 
 		// change u2o interconnection ip twice
 		for i := 0; i < 2; i++ {
@@ -713,6 +656,63 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 			checkU2OItems(f, subnet, underlayPod, overlayPod, false)
 		}
 
+		if f.VersionPriorTo(1, 11) {
+			return
+		}
+
+		ginkgo.By("step8: Change underlay subnet interconnection to overlay subnet in custom vpc")
+
+		ginkgo.By("Deleting underlay pod " + u2oPodNameUnderlay)
+		podClient.DeleteSync(u2oPodNameUnderlay)
+
+		ginkgo.By("Creating VPC " + vpcName)
+		customVPC := framework.MakeVpc(vpcName, "", false, false, []string{namespaceName})
+		vpcClient.CreateSync(customVPC)
+
+		ginkgo.By("Creating subnet " + u2oOverlaySubnetNameCustomVPC)
+		cidr = framework.RandomCIDR(f.ClusterIpFamily)
+		overlaySubnetCustomVpc := framework.MakeSubnet(u2oOverlaySubnetNameCustomVPC, "", cidr, "", vpcName, "", nil, nil, []string{namespaceName})
+		_ = subnetClient.CreateSync(overlaySubnetCustomVpc)
+
+		ginkgo.By("Creating overlay pod " + u2oPodOverlayCustomVPC)
+		args = []string{"netexec", "--http-port", strconv.Itoa(curlListenPort)}
+		u2oPodOverlayCustomVPCAnnotations := map[string]string{
+			util.LogicalSwitchAnnotation: u2oOverlaySubnetNameCustomVPC,
+		}
+		podOverlayCustomVPC := framework.MakePod(namespaceName, u2oPodOverlayCustomVPC, nil, u2oPodOverlayCustomVPCAnnotations, framework.AgnhostImage, nil, args)
+		podOverlayCustomVPC = podClient.CreateSync(podOverlayCustomVPC)
+
+		ginkgo.By("Turning on U2OInterconnection and set VPC to " + vpcName + " for subnet " + subnetName)
+		subnet = subnetClient.Get(subnetName)
+		modifiedSubnet = subnet.DeepCopy()
+		modifiedSubnet.Spec.Vpc = vpcName
+		modifiedSubnet.Spec.U2OInterconnection = true
+		subnetClient.PatchSync(subnet, modifiedSubnet)
+
+		ginkgo.By("Creating underlay pod " + u2oPodNameUnderlay)
+		underlayPod = podClient.CreateSync(originUnderlayPod)
+
+		subnet = subnetClient.Get(subnetName)
+		checkU2OItems(f, subnet, underlayPod, podOverlayCustomVPC, true)
+
+		ginkgo.By("step9: Change underlay subnet interconnection to overlay subnet in default vpc")
+
+		ginkgo.By("Deleting underlay pod " + u2oPodNameUnderlay)
+		podClient.DeleteSync(u2oPodNameUnderlay)
+
+		ginkgo.By("Setting VPC to " + util.DefaultVpc + " for subnet " + subnetName)
+		subnet = subnetClient.Get(subnetName)
+		modifiedSubnet = subnet.DeepCopy()
+		modifiedSubnet.Spec.Vpc = util.DefaultVpc
+		modifiedSubnet.Spec.Namespaces = nil
+		subnetClient.PatchSync(subnet, modifiedSubnet)
+
+		ginkgo.By("Creating underlay pod " + u2oPodNameUnderlay)
+		underlayPod = podClient.CreateSync(originUnderlayPod)
+
+		subnet = subnetClient.Get(subnetName)
+		checkU2OItems(f, subnet, underlayPod, overlayPod, false)
+
 		ginkgo.By("step10: Disable u2o")
 
 		ginkgo.By("Deleting underlay pod " + u2oPodNameUnderlay)
@@ -740,7 +740,7 @@ func checkU2OItems(f *framework.Framework, subnet *apiv1.Subnet, underlayPod, ov
 		if !f.VersionPriorTo(1, 11) {
 			framework.ExpectEqual(subnet.Status.U2OInterconnectionVPC, subnet.Spec.Vpc)
 		}
-		if !f.VersionPriorTo(1, 12) {
+		if !f.VersionPriorTo(1, 9) {
 			if subnet.Spec.U2OInterconnectionIP != "" {
 				framework.ExpectEqual(subnet.Spec.U2OInterconnectionIP, subnet.Status.U2OInterconnectionIP)
 			}
@@ -751,7 +751,7 @@ func checkU2OItems(f *framework.Framework, subnet *apiv1.Subnet, underlayPod, ov
 		if !f.VersionPriorTo(1, 11) {
 			framework.ExpectEmpty(subnet.Status.U2OInterconnectionVPC)
 		}
-		if !f.VersionPriorTo(1, 12) {
+		if !f.VersionPriorTo(1, 9) {
 			framework.ExpectEmpty(subnet.Spec.U2OInterconnectionIP)
 		}
 	}
