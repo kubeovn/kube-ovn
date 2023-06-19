@@ -111,66 +111,68 @@ func (c *Controller) initRuntime() error {
 	return nil
 }
 
-func (c *Controller) reconcileRouters(event subnetEvent) error {
+func (c *Controller) reconcileRouters(event *subnetEvent) error {
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list subnets %v", err)
 		return err
 	}
 
-	var ok bool
-	var oldSubnet, newSubnet *kubeovnv1.Subnet
-	if event.old != nil {
-		if oldSubnet, ok = event.old.(*kubeovnv1.Subnet); !ok {
-			klog.Errorf("expected old subnet in subnetEvent but got %#v", event.old)
-			return nil
-		}
-	}
-	if event.new != nil {
-		if newSubnet, ok = event.new.(*kubeovnv1.Subnet); !ok {
-			klog.Errorf("expected new subnet in subnetEvent but got %#v", event.new)
-			return nil
-		}
-	}
-
-	// handle policy routing
-	rulesToAdd, rulesToDel, routesToAdd, routesToDel, err := c.diffPolicyRouting(oldSubnet, newSubnet)
-	if err != nil {
-		klog.Errorf("failed to get policy routing difference: %v", err)
-		return err
-	}
-	// add new routes first
-	for _, r := range routesToAdd {
-		if err = netlink.RouteReplace(&r); err != nil && !errors.Is(err, syscall.EEXIST) {
-			klog.Errorf("failed to replace route for subnet %s: %v", newSubnet.Name, err)
-			return err
-		}
-	}
-	// next, add new rules
-	for _, r := range rulesToAdd {
-		if err = netlink.RuleAdd(&r); err != nil && !errors.Is(err, syscall.EEXIST) {
-			klog.Errorf("failed to add network rule for subnet %s: %v", newSubnet.Name, err)
-			return err
-		}
-	}
-	// then delete old network rules
-	for _, r := range rulesToDel {
-		// loop to delete all matched rules
-		for {
-			if err = netlink.RuleDel(&r); err != nil {
-				if !errors.Is(err, syscall.ENOENT) {
-					klog.Errorf("failed to delete network rule for subnet %s: %v", oldSubnet.Name, err)
-					return err
-				}
-				break
+	if event != nil {
+		var ok bool
+		var oldSubnet, newSubnet *kubeovnv1.Subnet
+		if event.old != nil {
+			if oldSubnet, ok = event.old.(*kubeovnv1.Subnet); !ok {
+				klog.Errorf("expected old subnet in subnetEvent but got %#v", event.old)
+				return nil
 			}
 		}
-	}
-	// last, delete old network routes
-	for _, r := range routesToDel {
-		if err = netlink.RouteDel(&r); err != nil && !errors.Is(err, syscall.ENOENT) {
-			klog.Errorf("failed to delete route for subnet %s: %v", oldSubnet.Name, err)
+		if event.new != nil {
+			if newSubnet, ok = event.new.(*kubeovnv1.Subnet); !ok {
+				klog.Errorf("expected new subnet in subnetEvent but got %#v", event.new)
+				return nil
+			}
+		}
+
+		// handle policy routing
+		rulesToAdd, rulesToDel, routesToAdd, routesToDel, err := c.diffPolicyRouting(oldSubnet, newSubnet)
+		if err != nil {
+			klog.Errorf("failed to get policy routing difference: %v", err)
 			return err
+		}
+		// add new routes first
+		for _, r := range routesToAdd {
+			if err = netlink.RouteReplace(&r); err != nil && !errors.Is(err, syscall.EEXIST) {
+				klog.Errorf("failed to replace route for subnet %s: %v", newSubnet.Name, err)
+				return err
+			}
+		}
+		// next, add new rules
+		for _, r := range rulesToAdd {
+			if err = netlink.RuleAdd(&r); err != nil && !errors.Is(err, syscall.EEXIST) {
+				klog.Errorf("failed to add network rule for subnet %s: %v", newSubnet.Name, err)
+				return err
+			}
+		}
+		// then delete old network rules
+		for _, r := range rulesToDel {
+			// loop to delete all matched rules
+			for {
+				if err = netlink.RuleDel(&r); err != nil {
+					if !errors.Is(err, syscall.ENOENT) {
+						klog.Errorf("failed to delete network rule for subnet %s: %v", oldSubnet.Name, err)
+						return err
+					}
+					break
+				}
+			}
+		}
+		// last, delete old network routes
+		for _, r := range routesToDel {
+			if err = netlink.RouteDel(&r); err != nil && !errors.Is(err, syscall.ENOENT) {
+				klog.Errorf("failed to delete route for subnet %s: %v", oldSubnet.Name, err)
+				return err
+			}
 		}
 	}
 

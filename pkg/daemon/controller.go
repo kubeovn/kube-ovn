@@ -440,7 +440,7 @@ func (c *Controller) processNextSubnetWorkItem() bool {
 			utilruntime.HandleError(fmt.Errorf("expected subnetEvent in workqueue but got %#v", obj))
 			return nil
 		}
-		if err := c.reconcileRouters(event); err != nil {
+		if err := c.reconcileRouters(&event); err != nil {
 			c.subnetQueue.AddRateLimited(event)
 			return fmt.Errorf("error syncing '%s': %s, requeuing", event, err.Error())
 		}
@@ -591,6 +591,11 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	go wait.Until(c.runPodWorker, time.Second, stopCh)
 	go wait.Until(c.runGateway, 3*time.Second, stopCh)
 	go wait.Until(c.loopEncapIpCheck, 3*time.Second, stopCh)
+	go wait.Until(func() {
+		if err := c.reconcileRouters(nil); err != nil {
+			klog.Errorf("failed to reconcile ovn0 routes: %v", err)
+		}
+	}, 3*time.Second, stopCh)
 	go wait.Until(func() {
 		if err := c.markAndCleanInternalPort(); err != nil {
 			klog.Errorf("gc ovs port error: %v", err)
