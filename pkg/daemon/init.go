@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kubeovn/gonetworkmanager/v2"
 	"github.com/vishvananda/netlink"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
@@ -52,10 +51,6 @@ func InitOVSBridges() (map[string]string, error) {
 					return nil, fmt.Errorf("failed to check vendor of port %s: %v", port, err)
 				}
 				if ok {
-					klog.Infof("config provider nic %s on bridge %s", port, brName)
-					if _, err = configProviderNic(port, brName); err != nil {
-						return nil, err
-					}
 					mappings[port] = brName
 				}
 			}
@@ -109,48 +104,6 @@ func InitMirror(config *Configuration) error {
 	return configureEmptyMirror(config.MirrorNic, config.MTU)
 }
 
-func nmSetManaged(device string, managed bool) error {
-	nm, err := gonetworkmanager.NewNetworkManager()
-	if err != nil {
-		klog.V(5).Infof("failed to connect to NetworkManager: %v", err)
-		return nil
-	}
-
-	running, err := nm.Running()
-	if err != nil {
-		if err != nil {
-			klog.Warningf("failed to check NetworkManager running state: %v", err)
-			return nil
-		}
-	}
-	if !running {
-		klog.V(5).Info("NetworkManager is not running, ignore")
-		return nil
-	}
-
-	d, err := nm.GetDeviceByIpIface(device)
-	if err != nil {
-		klog.Errorf("failed to get device by IP iface %s: %v", device, err)
-		return err
-	}
-	current, err := d.GetPropertyManaged()
-	if err != nil {
-		klog.Errorf("failed to get device property managed: %v", err)
-		return err
-	}
-	if current == managed {
-		return nil
-	}
-
-	klog.Infof(`setting device %s NetworkManager property "managed" to %v`, device, managed)
-	if err = d.SetPropertyManaged(managed); err != nil {
-		klog.Errorf("failed to set device property managed to %v: %v", managed, err)
-		return err
-	}
-
-	return nil
-}
-
 // wait systemd-networkd to finish interface configuration
 func waitNetworkdConfiguration(linkIndex int) {
 	done := make(chan struct{})
@@ -184,7 +137,7 @@ func waitNetworkdConfiguration(linkIndex int) {
 	}
 }
 
-func changeProvideNicName(current, target string) (bool, error) {
+func (c *Controller) changeProvideNicName(current, target string) (bool, error) {
 	link, err := netlink.LinkByName(current)
 	if err != nil {
 		if _, ok := err.(netlink.LinkNotFoundError); ok {
@@ -211,8 +164,8 @@ func changeProvideNicName(current, target string) (bool, error) {
 	}
 
 	// set link unmanaged by NetworkManager
-	if err = nmSetManaged(current, false); err != nil {
-		klog.Errorf("failed set device %s unmanaged by NetworkManager: %v", current, err)
+	if err = c.nmSyncer.SetManaged(current, false); err != nil {
+		klog.Errorf("failed to set device %s unmanaged by NetworkManager: %v", current, err)
 		return false, err
 	}
 
@@ -276,11 +229,11 @@ func changeProvideNicName(current, target string) (bool, error) {
 	return true, nil
 }
 
-func ovsInitProviderNetwork(provider, nic string, exchangeLinkName, macLearningFallback bool) (int, error) {
+func (c *Controller) ovsInitProviderNetwork(provider, nic string, exchangeLinkName, macLearningFallback bool) (int, error) {
 	// create and configure external bridge
 	brName := util.ExternalBridgeName(provider)
 	if exchangeLinkName {
-		exchanged, err := changeProvideNicName(nic, brName)
+		exchanged, err := c.changeProvideNicName(nic, brName)
 		if err != nil {
 			klog.Errorf("failed to change provider nic name from %s to %s: %v", nic, brName, err)
 			return 0, err
@@ -305,7 +258,7 @@ func ovsInitProviderNetwork(provider, nic string, exchangeLinkName, macLearningF
 
 	// add host nic to the external bridge
 	klog.Infof("config provider nic %s on bridge %s", nic, brName)
-	mtu, err := configProviderNic(nic, brName)
+	mtu, err := c.configProviderNic(nic, brName)
 	if err != nil {
 		errMsg := fmt.Errorf("failed to add nic %s to external bridge %s: %v", nic, brName, err)
 		klog.Error(errMsg)
@@ -315,7 +268,7 @@ func ovsInitProviderNetwork(provider, nic string, exchangeLinkName, macLearningF
 	return mtu, nil
 }
 
-func ovsCleanProviderNetwork(provider string) error {
+func (c *Controller) ovsCleanProviderNetwork(provider string) error {
 	mappings, err := getOvnMappings("ovn-bridge-mappings")
 	if err != nil {
 		return err
@@ -368,7 +321,7 @@ func ovsCleanProviderNetwork(provider string) error {
 	klog.V(3).Infof("ovs bridge %s has been deleted", brName)
 
 	if br := util.ExternalBridgeName(provider); br != brName {
-		if _, err = changeProvideNicName(br, brName); err != nil {
+		if _, err = c.changeProvideNicName(br, brName); err != nil {
 			klog.Errorf("failed to change provider nic name from %s to %s: %v", br, brName, err)
 			return err
 		}
