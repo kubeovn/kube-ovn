@@ -56,6 +56,9 @@ type Configuration struct {
 	DefaultInterfaceName    string
 	ExternalGatewayConfigNS string
 	EnableMetrics           bool
+	EnableVerboseConnCheck  bool
+	TCPConnCheckPort        int
+	UDPConnCheckPort        int
 }
 
 // ParseFlags will parse cmd args then init kubeClient and configuration
@@ -86,6 +89,10 @@ func ParseFlags() *Configuration {
 		argsDefaultInterfaceName   = pflag.String("default-interface-name", "", "The default host interface name in the vlan/vxlan type")
 		argExternalGatewayConfigNS = pflag.String("external-gateway-config-ns", "kube-system", "The namespace of configmap external-gateway-config, default: kube-system")
 		argEnableMetrics           = pflag.Bool("enable-metrics", true, "Whether to support metrics query")
+
+		argEnableVerboseConnCheck   = pflag.Bool("enable-verbose-conn-check", false, "enable TCP/UDP connectivity check listen port")
+		argTCPConnectivityCheckPort = pflag.Int("tcp-conn-check-port", 8100, "TCP connectivity Check Port")
+		argUDPConnectivityCheckPort = pflag.Int("udp-conn-check-port", 8101, "UDP connectivity Check Port")
 	)
 
 	// mute info log for ipset lib
@@ -133,6 +140,9 @@ func ParseFlags() *Configuration {
 		DefaultInterfaceName:    *argsDefaultInterfaceName,
 		ExternalGatewayConfigNS: *argExternalGatewayConfigNS,
 		EnableMetrics:           *argEnableMetrics,
+		EnableVerboseConnCheck:  *argEnableVerboseConnCheck,
+		TCPConnCheckPort:        *argTCPConnectivityCheckPort,
+		UDPConnCheckPort:        *argUDPConnectivityCheckPort,
 	}
 	return config
 }
