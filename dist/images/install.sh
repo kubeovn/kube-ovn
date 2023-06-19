@@ -2531,6 +2531,8 @@ OVN_SB_POD=
 OVN_NORTHD_POD=
 PERF_TIMES=5
 PERF_LABEL="PerfTest"
+CONN_CHECK_LABEL="conn-check"
+CONN_CHECK_SERVER="conn-check-server"
 
 showHelp(){
   echo "kubectl ko {subcommand} [option...]"
@@ -2902,6 +2904,67 @@ checkLeader(){
   echo "ovn-$component leader check ok"
 }
 
+applyConnServerDaemonset(){
+  subnetName=$1
+
+  if [ $(kubectl get subnet $subnetName | wc -l) -eq 0 ]; then
+    echo "no subnet $subnetName exists !!"
+    exit 1
+  fi
+
+  imageID=$(kubectl get ds -n $KUBE_OVN_NS kube-ovn-pinger -o jsonpath={.spec.template.spec.containers[0].image})
+  tmpFileName="conn-server.yaml"
+  cat <<INTER_EOF > $tmpFileName
+kind: DaemonSet
+apiVersion: apps/v1
+metadata:
+  name: $subnetName-$CONN_CHECK_SERVER
+  namespace: $KUBE_OVN_NS
+spec:
+  selector:
+    matchLabels:
+      app: $CONN_CHECK_LABEL
+  template:
+    metadata:
+      annotations:
+        ovn.kubernetes.io/logical_switch: $subnetName
+      labels:
+        app: $CONN_CHECK_LABEL
+    spec:
+      serviceAccountName: ovn
+      containers:
+        - name: $subnetName-$CONN_CHECK_SERVER
+          imagePullPolicy: IfNotPresent
+          image: $imageID
+          command:
+            - /kube-ovn/kube-ovn-pinger
+          args:
+            - --enable-verbose-conn-check=true
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+INTER_EOF
+  kubectl apply -f $tmpFileName
+  rm $tmpFileName
+
+  isfailed=true
+  for i in {0..59}
+  do
+    if kubectl wait pod --for=condition=Ready -l app=$CONN_CHECK_LABEL -n $KUBE_OVN_NS ; then
+      isfailed=false
+      break
+    fi
+    sleep 1; \
+  done
+
+  if $isfailed; then
+    echo "Error ds $subnetName-$CONN_CHECK_SERVER pod not ready"
+    return
+  fi
+}
+
 diagnose(){
   kubectl get crd vpcs.kubeovn.io
   kubectl get crd vpc-nat-gateways.kubeovn.io
@@ -3232,7 +3295,7 @@ applyTestServer() {
   nodeID=$1
   imageID=$2
 
-  cat <<EOF > $tmpFileName
+  cat <<INNER_EOF > $tmpFileName
 apiVersion: v1
 kind: Pod
 metadata:
@@ -3252,7 +3315,7 @@ spec:
           ./test-server.sh
   nodeSelector:
     kubernetes.io/hostname: $nodeID
-EOF
+INNER_EOF
 
   kubectl apply -f $tmpFileName
   rm $tmpFileName
@@ -3264,7 +3327,7 @@ applyTestHostServer() {
   nodeID=$1
   imageID=$2
 
-  cat <<EOF > $tmpFileName
+  cat <<INNER_EOF > $tmpFileName
 apiVersion: v1
 kind: Pod
 metadata:
@@ -3285,7 +3348,7 @@ spec:
           ./test-server.sh
   nodeSelector:
     kubernetes.io/hostname: $nodeID
-EOF
+INNER_EOF
 
   kubectl apply -f $tmpFileName
   rm $tmpFileName
@@ -3298,7 +3361,7 @@ applyTestClient() {
   local nodeID=$1
   local imageID=$2
   touch $tmpFileName
-  cat <<EOF > $tmpFileName
+  cat <<INNER_EOF > $tmpFileName
 apiVersion: v1
 kind: Pod
 metadata:
@@ -3314,7 +3377,7 @@ spec:
       command: ["sh", "-c", "sleep infinity"]
   nodeSelector:
     kubernetes.io/hostname: $nodeID
-EOF
+INNER_EOF
   kubectl apply -f $tmpFileName
   rm $tmpFileName
 }
@@ -3325,7 +3388,7 @@ applyTestHostClient() {
   local nodeID=$1
   local imageID=$2
   touch $tmpFileName
-  cat <<EOF > $tmpFileName
+  cat <<INNER_EOF > $tmpFileName
 apiVersion: v1
 kind: Pod
 metadata:
@@ -3342,7 +3405,7 @@ spec:
       command: ["sh", "-c", "sleep infinity"]
   nodeSelector:
     kubernetes.io/hostname: $nodeID
-EOF
+INNER_EOF
   kubectl apply -f $tmpFileName
   rm $tmpFileName
 }
