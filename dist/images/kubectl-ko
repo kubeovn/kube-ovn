@@ -1342,6 +1342,9 @@ perf(){
   echo "Start doing pod multicast network performance"
   multicastPerfTest
 
+  echo "Start doing host multicast network performance"
+  multicastHostPerfTest
+
   echo "Start doing leader recover time test"
   checkLeaderRecover
 
@@ -1370,6 +1373,34 @@ unicastPerfTest() {
   rm temp_perf_result.log
 }
 
+getAddressNic() {
+  podName=$1
+  ipAddress=$2
+
+  interface=$(kubectl exec $podName -n $KUBE_OVN_NS -- ip -o addr show | awk '{split($4, a, "/"); print $2, a[1]}' | awk -v ip="$ipAddress" '$0 ~ ip {print $1}')
+  echo "$interface"
+}
+
+multicastHostPerfTest() {
+  clientNode=$(kubectl get pod test-host-client -n $KUBE_OVN_NS -o jsonpath={.spec.nodeName})
+  serverNode=$(kubectl get pod test-host-server -n $KUBE_OVN_NS -o jsonpath={.spec.nodeName})
+
+  clientHostIP=$(kubectl get pod test-host-client -n $KUBE_OVN_NS -o jsonpath={.status.hostIP})
+  serverHostIP=$(kubectl get pod test-host-server -n $KUBE_OVN_NS -o jsonpath={.status.hostIP})
+
+  clientNic=$(getAddressNic test-host-client $clientHostIP)
+  serverNic=$(getAddressNic test-host-server $serverHostIP)
+
+  clientovsPod=$(kubectl get pod -owide -A |grep ovs-ovn | grep $clientNode | awk '{print $2}')
+  kubectl exec $clientovsPod -n kube-system -- ip maddr add 01:00:5e:00:00:64 dev $clientNic
+  serverovsPod=$(kubectl get pod -owide -A |grep ovs-ovn | grep $serverNode | awk '{print $2}')
+  kubectl exec $serverovsPod -n kube-system -- ip maddr add 01:00:5e:00:00:64 dev $serverNic
+  genMulticastPerfResult test-host-server test-host-client
+
+  kubectl exec $clientovsPod -n kube-system -- ip maddr del 01:00:5e:00:00:64 dev $clientNic
+  kubectl exec $serverovsPod -n kube-system -- ip maddr del 01:00:5e:00:00:64 dev $serverNic
+}
+
 multicastPerfTest() {
   clientNode=$(kubectl get pod test-client -n $KUBE_OVN_NS -o jsonpath={.spec.nodeName})
   serverNode=$(kubectl get pod test-server -n $KUBE_OVN_NS -o jsonpath={.spec.nodeName})
@@ -1379,13 +1410,14 @@ multicastPerfTest() {
   kubectl exec $clientovsPod -n kube-system -- ip netns exec $clientNs ip maddr add 01:00:5e:00:00:64 dev eth0
   serverovsPod=$(kubectl get pod -owide -A |grep ovs-ovn | grep $serverNode | awk '{print $2}')
   kubectl exec $serverovsPod -n kube-system -- ip netns exec $serverNs ip maddr add 01:00:5e:00:00:64 dev eth0
-  genMulticastPerfResult test-server
+  genMulticastPerfResult test-server test-client
   kubectl exec $clientovsPod -n kube-system -- ip netns exec $clientNs ip maddr del 01:00:5e:00:00:64 dev eth0
   kubectl exec $serverovsPod -n kube-system -- ip netns exec $serverNs ip maddr del 01:00:5e:00:00:64 dev eth0
 }
 
 genMulticastPerfResult() {
   serverName=$1
+  clientName=$2
 
   start_server_cmd="iperf -s -B 224.0.0.100 -i 1 -u"
   kubectl exec $serverName -n $KUBE_OVN_NS -- $start_server_cmd > $serverName.log &
@@ -1394,10 +1426,10 @@ genMulticastPerfResult() {
   printf "%-15s %-15s %-15s %-15s\n" "Size" "UDP Latency" "UDP Lost Rate" "UDP Bandwidth"
   for size in "64" "128" "512" "1k" "4k"
   do
-    kubectl exec test-client -n $KUBE_OVN_NS -- iperf -c 224.0.0.100 -u -T 32 -t $PERF_TIMES -i 1 -b 1000G -l $size > /dev/null
+    kubectl exec $clientName -n $KUBE_OVN_NS -- iperf -c 224.0.0.100 -u -T 32 -t $PERF_TIMES -i 1 -b 1000G -l $size > /dev/null
     udpBw=$(cat $serverName.log | grep -oP '\d+\.?\d* [KMG]bits/sec' | tail -n 1)
     udpLostRate=$(cat $serverName.log |grep -oP '\(\d+(\.\d+)?%\)' | tail -n 1)
-    kubectl exec test-client -n $KUBE_OVN_NS -- iperf -c 224.0.0.100 -u -T 32 -t $PERF_TIMES -i 1 -l $size > /dev/null
+    kubectl exec $clientName -n $KUBE_OVN_NS -- iperf -c 224.0.0.100 -u -T 32 -t $PERF_TIMES -i 1 -l $size > /dev/null
     udpLat=$(cat  $serverName.log | grep -oP '\d+\.?\d* ms' | tail -n 1)
     printf "%-15s %-15s %-15s %-15s\n" "$size" "$udpLat" "$udpLostRate" "$udpBw"
   done
@@ -1439,7 +1471,7 @@ getPodRecoverTime(){
   while [ $availableNum != $replicas ]
   do
     availableNum=$(kubectl get deployment -n kube-system | grep ovn-central | awk {'print $4'})
-    usleep 0.001
+    sleep 0.001
   done
 
   end_time=$(date +%s.%N)
