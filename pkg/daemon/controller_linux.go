@@ -38,6 +38,8 @@ type ControllerRuntime struct {
 	k8sipsets        k8sipset.Interface
 	ipsets           map[string]*ipsets.IPSets
 	gwCounters       map[string]*util.GwIPtableCounters
+
+	nmSyncer *networkManagerSyncer
 }
 
 func evalCommandSymlinks(cmd string) (string, error) {
@@ -112,6 +114,9 @@ func (c *Controller) initRuntime() error {
 		c.ipsets[kubeovnv1.ProtocolIPv6] = ipsets.NewIPSets(ipsets.NewIPVersionConfig(ipsets.IPFamilyV6, IPSetPrefix, nil, nil))
 		c.k8siptables[kubeovnv1.ProtocolIPv6] = k8siptables.New(c.k8sExec, k8siptables.ProtocolIPv6)
 	}
+
+	c.nmSyncer = newNetworkManagerSyncer()
+	c.nmSyncer.Run(c.transferAddrsAndRoutes)
 
 	return nil
 }

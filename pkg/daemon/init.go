@@ -40,10 +40,6 @@ func InitOVSBridges() (map[string]string, error) {
 					return nil, fmt.Errorf("failed to check vendor of port %s: %v", port, err)
 				}
 				if ok {
-					klog.Infof("config provider nic %s on bridge %s", port, brName)
-					if _, err = configProviderNic(port, brName); err != nil {
-						return nil, err
-					}
 					mappings[port] = brName
 				}
 			}
@@ -97,11 +93,11 @@ func InitMirror(config *Configuration) error {
 	return configureEmptyMirror(config.MirrorNic, config.MTU)
 }
 
-func ovsInitProviderNetwork(provider, nic string, exchangeLinkName, macLearningFallback bool) (int, error) {
+func (c *Controller) ovsInitProviderNetwork(provider, nic string, exchangeLinkName, macLearningFallback bool) (int, error) {
 	// create and configure external bridge
 	brName := util.ExternalBridgeName(provider)
 	if exchangeLinkName {
-		exchanged, err := changeProvideNicName(nic, brName)
+		exchanged, err := c.changeProvideNicName(nic, brName)
 		if err != nil {
 			klog.Errorf("failed to change provider nic name from %s to %s: %v", nic, brName, err)
 			return 0, err
@@ -127,7 +123,7 @@ func ovsInitProviderNetwork(provider, nic string, exchangeLinkName, macLearningF
 
 	// add host nic to the external bridge
 	klog.Infof("config provider nic %s on bridge %s", nic, brName)
-	mtu, err := configProviderNic(nic, brName)
+	mtu, err := c.configProviderNic(nic, brName)
 	if err != nil {
 		errMsg := fmt.Errorf("failed to add nic %s to external bridge %s: %v", nic, brName, err)
 		klog.Error(errMsg)
@@ -137,7 +133,7 @@ func ovsInitProviderNetwork(provider, nic string, exchangeLinkName, macLearningF
 	return mtu, nil
 }
 
-func ovsCleanProviderNetwork(provider string) error {
+func (c *Controller) ovsCleanProviderNetwork(provider string) error {
 	mappings, err := getOvnMappings("ovn-bridge-mappings")
 	if err != nil {
 		return err
@@ -191,7 +187,7 @@ func ovsCleanProviderNetwork(provider string) error {
 	klog.V(3).Infof("ovs bridge %s has been deleted", brName)
 
 	if br := util.ExternalBridgeName(provider); br != brName {
-		if _, err = changeProvideNicName(br, brName); err != nil {
+		if _, err = c.changeProvideNicName(br, brName); err != nil {
 			klog.Errorf("failed to change provider nic name from %s to %s: %v", br, brName, err)
 			return err
 		}
