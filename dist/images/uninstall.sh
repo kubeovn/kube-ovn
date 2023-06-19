@@ -8,6 +8,8 @@ iptables -t nat -F OVN-PREROUTING
 iptables -t nat -X OVN-PREROUTING
 iptables -t nat -F OVN-POSTROUTING
 iptables -t nat -X OVN-POSTROUTING
+iptables -t nat -F OVN-MASQUERADE
+iptables -t nat -X OVN-MASQUERADE
 iptables -t filter -D INPUT -m set --match-set ovn40subnets dst -j ACCEPT
 iptables -t filter -D INPUT -m set --match-set ovn40subnets src -j ACCEPT
 iptables -t filter -D INPUT -m set --match-set ovn40services dst -j ACCEPT
@@ -33,6 +35,8 @@ ip6tables -t nat -F OVN-PREROUTING
 ip6tables -t nat -X OVN-PREROUTING
 ip6tables -t nat -F OVN-POSTROUTING
 ip6tables -t nat -X OVN-POSTROUTING
+ip6tables -t nat -F OVN-MASQUERADE
+ip6tables -t nat -X OVN-MASQUERADE
 ip6tables -t filter -D INPUT -m set --match-set ovn60subnets dst -j ACCEPT
 ip6tables -t filter -D INPUT -m set --match-set ovn60subnets src -j ACCEPT
 ip6tables -t filter -D INPUT -m set --match-set ovn60services dst -j ACCEPT
