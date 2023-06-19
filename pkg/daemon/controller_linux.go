@@ -32,6 +32,8 @@ import (
 type ControllerRuntime struct {
 	iptables map[string]*iptables.IPTables
 	ipsets   map[string]*ipsets.IPSets
+
+	nmSyncer *networkManagerSyncer
 }
 
 func (c *Controller) initRuntime() error {
@@ -54,6 +56,9 @@ func (c *Controller) initRuntime() error {
 		c.ControllerRuntime.iptables[kubeovnv1.ProtocolIPv6] = iptables
 		c.ControllerRuntime.ipsets[kubeovnv1.ProtocolIPv6] = ipsets.NewIPSets(ipsets.NewIPVersionConfig(ipsets.IPFamilyV6, IPSetPrefix, nil, nil))
 	}
+
+	c.nmSyncer = newNetworkManagerSyncer()
+	c.nmSyncer.Run(c.transferAddrsAndRoutes)
 
 	return nil
 }

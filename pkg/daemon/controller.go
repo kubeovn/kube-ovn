@@ -256,7 +256,7 @@ func (c *Controller) initProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v1
 
 	var mtu int
 	var err error
-	if mtu, err = ovsInitProviderNetwork(pn.Name, nic, pn.Spec.ExchangeLinkName, c.config.MacLearningFallback); err != nil {
+	if mtu, err = c.ovsInitProviderNetwork(pn.Name, nic, pn.Spec.ExchangeLinkName, c.config.MacLearningFallback); err != nil {
 		if oldLen := len(node.Labels); oldLen != 0 {
 			delete(node.Labels, fmt.Sprintf(util.ProviderNetworkReadyTemplate, pn.Name))
 			delete(node.Labels, fmt.Sprintf(util.ProviderNetworkInterfaceTemplate, pn.Name))
@@ -370,7 +370,7 @@ func (c *Controller) cleanProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v
 		return err
 	}
 
-	if err = ovsCleanProviderNetwork(pn.Name); err != nil {
+	if err = c.ovsCleanProviderNetwork(pn.Name); err != nil {
 		return err
 	}
 
@@ -378,7 +378,7 @@ func (c *Controller) cleanProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v
 }
 
 func (c *Controller) handleDeleteProviderNetwork(pn *kubeovnv1.ProviderNetwork) error {
-	if err := ovsCleanProviderNetwork(pn.Name); err != nil {
+	if err := c.ovsCleanProviderNetwork(pn.Name); err != nil {
 		return err
 	}
 
