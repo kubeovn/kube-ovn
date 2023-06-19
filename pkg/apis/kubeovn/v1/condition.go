@@ -160,6 +160,110 @@ func (m *SubnetStatus) ClearAllConditions() {
 	}
 }
 
+func (m *IPPoolStatus) addCondition(ctype ConditionType, status corev1.ConditionStatus, reason, message string) {
+	now := metav1.Now()
+	c := &IPPoolCondition{
+		Type:               ctype,
+		LastUpdateTime:     now,
+		LastTransitionTime: now,
+		Status:             status,
+		Reason:             reason,
+		Message:            message,
+	}
+	m.Conditions = append(m.Conditions, *c)
+}
+
+// setConditionValue updates or creates a new condition
+func (m *IPPoolStatus) setConditionValue(ctype ConditionType, status corev1.ConditionStatus, reason, message string) {
+	var c *IPPoolCondition
+	for i := range m.Conditions {
+		if m.Conditions[i].Type == ctype {
+			c = &m.Conditions[i]
+		}
+	}
+	if c == nil {
+		m.addCondition(ctype, status, reason, message)
+	} else {
+		// check message ?
+		if c.Status == status && c.Reason == reason && c.Message == message {
+			return
+		}
+		now := metav1.Now()
+		c.LastUpdateTime = now
+		if c.Status != status {
+			c.LastTransitionTime = now
+		}
+		c.Status = status
+		c.Reason = reason
+		c.Message = message
+	}
+}
+
+// GetCondition get existing condition
+func (m *IPPoolStatus) GetCondition(ctype ConditionType) *IPPoolCondition {
+	for i := range m.Conditions {
+		if m.Conditions[i].Type == ctype {
+			return &m.Conditions[i]
+		}
+	}
+	return nil
+}
+
+// EnsureCondition useful for adding default conditions
+func (m *IPPoolStatus) EnsureCondition(ctype ConditionType) {
+	if c := m.GetCondition(ctype); c != nil {
+		return
+	}
+	m.addCondition(ctype, corev1.ConditionUnknown, ReasonInit, "Not Observed")
+}
+
+// EnsureStandardConditions - helper to inject standard conditions
+func (m *IPPoolStatus) EnsureStandardConditions() {
+	m.EnsureCondition(Ready)
+	m.EnsureCondition(Error)
+}
+
+// SetCondition updates or creates a new condition
+func (m *IPPoolStatus) SetCondition(ctype ConditionType, reason, message string) {
+	m.setConditionValue(ctype, corev1.ConditionTrue, reason, message)
+}
+
+// ClearCondition updates or creates a new condition
+func (m *IPPoolStatus) ClearCondition(ctype ConditionType, reason, message string) {
+	m.setConditionValue(ctype, corev1.ConditionFalse, reason, message)
+}
+
+// Ready - shortcut to set ready condition to true
+func (m *IPPoolStatus) Ready(reason, message string) {
+	m.SetCondition(Ready, reason, message)
+}
+
+// NotReady - shortcut to set ready condition to false
+func (m *IPPoolStatus) NotReady(reason, message string) {
+	m.ClearCondition(Ready, reason, message)
+}
+
+// SetError - shortcut to set error condition
+func (m *IPPoolStatus) SetError(reason, message string) {
+	m.SetCondition(Error, reason, message)
+}
+
+// ClearError - shortcut to set error condition
+func (m *IPPoolStatus) ClearError() {
+	m.ClearCondition(Error, "NoError", "No error seen")
+}
+
+// IsConditionTrue - if condition is true
+func (m *IPPoolStatus) IsConditionTrue(ctype ConditionType) bool {
+	if c := m.GetCondition(ctype); c != nil {
+		return c.Status == corev1.ConditionTrue
+	}
+	return false
+}
+
+// IsReady returns true if ready condition is set
+func (m *IPPoolStatus) IsReady() bool { return m.IsConditionTrue(Ready) }
+
 // SetVlanError - shortcut to set error condition
 func (v *VlanStatus) SetVlanError(reason, message string) {
 	v.SetVlanCondition(Error, reason, message)
@@ -211,13 +315,15 @@ func (v *VlanStatus) addVlanCondition(ctype ConditionType, status corev1.Conditi
 func (s *ProviderNetworkStatus) addNodeCondition(node string, ctype ConditionType, status corev1.ConditionStatus, reason, message string) {
 	now := metav1.Now()
 	c := &ProviderNetworkCondition{
-		Node:               node,
-		Type:               ctype,
-		LastUpdateTime:     now,
-		LastTransitionTime: now,
-		Status:             status,
-		Reason:             reason,
-		Message:            message,
+		Node: node,
+		Condition: Condition{
+			Type:               ctype,
+			LastUpdateTime:     now,
+			LastTransitionTime: now,
+			Status:             status,
+			Reason:             reason,
+			Message:            message,
+		},
 	}
 	s.Conditions = append(s.Conditions, *c)
 }

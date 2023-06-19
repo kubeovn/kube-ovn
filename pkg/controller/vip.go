@@ -340,7 +340,7 @@ func (c *Controller) acquireIpAddress(subnetName, name, nicName string) (string,
 	checkConflict := true
 	var err error
 	for {
-		v4ip, v6ip, mac, err = c.ipam.GetRandomAddress(name, nicName, nil, subnetName, skippedAddrs, checkConflict)
+		v4ip, v6ip, mac, err = c.ipam.GetRandomAddress(name, nicName, nil, subnetName, "", skippedAddrs, checkConflict)
 		if err != nil {
 			return "", "", "", err
 		}

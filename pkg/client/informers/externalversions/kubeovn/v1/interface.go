@@ -26,6 +26,8 @@ import (
 type Interface interface {
 	// IPs returns a IPInformer.
 	IPs() IPInformer
+	// IPPools returns a IPPoolInformer.
+	IPPools() IPPoolInformer
 	// IptablesDnatRules returns a IptablesDnatRuleInformer.
 	IptablesDnatRules() IptablesDnatRuleInformer
 	// IptablesEIPs returns a IptablesEIPInformer.
@@ -78,6 +80,11 @@ func New(f internalinterfaces.SharedInformerFactory, namespace string, tweakList
 // IPs returns a IPInformer.
 func (v *version) IPs() IPInformer {
 	return &iPInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
+}
+
+// IPPools returns a IPPoolInformer.
+func (v *version) IPPools() IPPoolInformer {
+	return &iPPoolInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
 }
 
 // IptablesDnatRules returns a IptablesDnatRuleInformer.

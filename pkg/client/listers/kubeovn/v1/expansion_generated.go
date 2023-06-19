@@ -22,6 +22,10 @@ package v1
 // IPLister.
 type IPListerExpansion interface{}
 
+// IPPoolListerExpansion allows custom methods to be added to
+// IPPoolLister.
+type IPPoolListerExpansion interface{}
+
 // IptablesDnatRuleListerExpansion allows custom methods to be added to
 // IptablesDnatRuleLister.
 type IptablesDnatRuleListerExpansion interface{}

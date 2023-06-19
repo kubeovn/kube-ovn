@@ -2,6 +2,8 @@ package ipam
 
 import (
 	"fmt"
+	"math/big"
+	"strconv"
 )
 
 // IPRange represents an IP range of [start, end]
@@ -31,6 +33,12 @@ func (r *IPRange) SetStart(ip IP) {
 
 func (r *IPRange) SetEnd(ip IP) {
 	r.end = ip
+}
+
+func (r *IPRange) Count() float64 {
+	n := big.NewInt(0).Sub(big.NewInt(0).SetBytes([]byte(r.end)), big.NewInt(0).SetBytes([]byte(r.start)))
+	count, _ := strconv.ParseFloat(n.Add(n, big.NewInt(1)).String(), 64)
+	return count
 }
 
 func (r *IPRange) Contains(ip IP) bool {

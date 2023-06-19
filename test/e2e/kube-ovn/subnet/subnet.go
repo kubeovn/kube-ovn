@@ -716,20 +716,42 @@ var _ = framework.Describe("[group:subnet]", func() {
 			podClient.WaitForRunning(podName)
 		}
 
-		subnet = subnetClient.Get(subnetName)
-		if cidrV4 != "" {
-			v4UsingIPEnd := util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(startIPv4), big.NewInt(int64(podCount-1))))
-			v4AvailableIPStart := util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(v4UsingIPEnd), big.NewInt(1)))
-			framework.ExpectEqual(subnet.Status.V4UsingIPRange, fmt.Sprintf("%s-%s", startIPv4, v4UsingIPEnd))
-			framework.ExpectEqual(subnet.Status.V4AvailableIPRange, fmt.Sprintf("%s-%s", v4AvailableIPStart, lastIPv4))
-		}
-
-		if cidrV6 != "" {
-			v6UsingIPEnd := util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(startIPv6), big.NewInt(int64(podCount-1))))
-			v6AvailableIPStart := util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(v6UsingIPEnd), big.NewInt(1)))
-			framework.ExpectEqual(subnet.Status.V6UsingIPRange, fmt.Sprintf("%s-%s", startIPv6, v6UsingIPEnd))
-			framework.ExpectEqual(subnet.Status.V6AvailableIPRange, fmt.Sprintf("%s-%s", v6AvailableIPStart, lastIPv6))
-		}
+		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+			subnet = subnetClient.Get(subnetName)
+			if cidrV4 != "" {
+				v4UsingIPEnd := util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(startIPv4), big.NewInt(int64(podCount-1))))
+				v4AvailableIPStart := util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(v4UsingIPEnd), big.NewInt(1)))
+				framework.Logf("V4UsingIPRange: expected %q, current %q",
+					fmt.Sprintf("%s-%s", startIPv4, v4UsingIPEnd),
+					subnet.Status.V4UsingIPRange,
+				)
+				framework.Logf("V4AvailableIPRange: expected %q, current %q",
+					fmt.Sprintf("%s-%s", v4AvailableIPStart, lastIPv4),
+					subnet.Status.V4AvailableIPRange,
+				)
+				if subnet.Status.V4UsingIPRange != fmt.Sprintf("%s-%s", startIPv4, v4UsingIPEnd) ||
+					subnet.Status.V4AvailableIPRange != fmt.Sprintf("%s-%s", v4AvailableIPStart, lastIPv4) {
+					return false, nil
+				}
+			}
+			if cidrV6 != "" {
+				v6UsingIPEnd := util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(startIPv6), big.NewInt(int64(podCount-1))))
+				v6AvailableIPStart := util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(v6UsingIPEnd), big.NewInt(1)))
+				framework.Logf("V6UsingIPRange: expected %q, current %q",
+					fmt.Sprintf("%s-%s", startIPv6, v6UsingIPEnd),
+					subnet.Status.V6UsingIPRange,
+				)
+				framework.Logf("V6AvailableIPRange: expected %q, current %q",
+					fmt.Sprintf("%s-%s", v6AvailableIPStart, lastIPv6),
+					subnet.Status.V6AvailableIPRange,
+				)
+				if subnet.Status.V6UsingIPRange != fmt.Sprintf("%s-%s", startIPv6, v6UsingIPEnd) ||
+					subnet.Status.V6AvailableIPRange != fmt.Sprintf("%s-%s", v6AvailableIPStart, lastIPv6) {
+					return false, nil
+				}
+			}
+			return true, nil
+		}, "")
 
 		for i := 1; i <= podCount; i++ {
 			podName := fmt.Sprintf("%s-%d", podNamePrefix, i)
@@ -861,24 +883,30 @@ var _ = framework.Describe("[group:subnet]", func() {
 		deploy := framework.MakeDeployment(deployName, int32(replicas), labels, annotations, "pause", framework.PauseImage, "")
 		deploy = deployClient.CreateSync(deploy)
 
-		checkFunc := func(usingIPRange, availableIPRange, startIP, lastIP string, count int64) {
+		checkFunc := func(usingIPRange, availableIPRange, startIP, lastIP string, count int64) bool {
 			if startIP == "" {
-				return
+				return true
 			}
 
 			usingIPEnd := util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(startIP), big.NewInt(count-1)))
 			availableIPStart := util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(usingIPEnd), big.NewInt(1)))
 
 			framework.Logf(`subnet status usingIPRange %q expect "%s-%s"`, usingIPRange, startIP, usingIPEnd)
-			framework.ExpectEqual(usingIPRange, fmt.Sprintf("%s-%s", startIP, usingIPEnd))
+			if usingIPRange != fmt.Sprintf("%s-%s", startIP, usingIPEnd) {
+				return false
+			}
 			framework.Logf(`subnet status availableIPRange %q expect "%s-%s"`, availableIPRange, availableIPStart, lastIP)
-			framework.ExpectEqual(availableIPRange, fmt.Sprintf("%s-%s", availableIPStart, lastIP))
+			return availableIPRange == fmt.Sprintf("%s-%s", availableIPStart, lastIP)
 		}
 
 		ginkgo.By("Checking subnet status")
-		subnet = subnetClient.Get(subnetName)
-		checkFunc(subnet.Status.V4UsingIPRange, subnet.Status.V4AvailableIPRange, startIPv4, lastIPv4, replicas)
-		checkFunc(subnet.Status.V6UsingIPRange, subnet.Status.V6AvailableIPRange, startIPv6, lastIPv6, replicas)
+		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+			subnet = subnetClient.Get(subnetName)
+			if !checkFunc(subnet.Status.V4UsingIPRange, subnet.Status.V4AvailableIPRange, startIPv4, lastIPv4, replicas) {
+				return false, nil
+			}
+			return checkFunc(subnet.Status.V6UsingIPRange, subnet.Status.V6AvailableIPRange, startIPv6, lastIPv6, replicas), nil
+		}, "")
 
 		ginkgo.By("Restarting deployment " + deployName)
 		_ = deployClient.RestartSync(deploy)

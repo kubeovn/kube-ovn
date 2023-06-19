@@ -227,17 +227,19 @@ func ValidatePodNetwork(annotations map[string]string) error {
 
 	ipPool := annotations[IpPoolAnnotation]
 	if ipPool != "" {
-		for _, ips := range strings.Split(ipPool, ";") {
-			if cidrStr := annotations[CidrAnnotation]; cidrStr != "" {
-				if !CIDRContainIP(cidrStr, ips) {
-					errors = append(errors, fmt.Errorf("%s not in cidr %s", ips, cidrStr))
-					continue
+		if strings.ContainsRune(ipPool, ';') || strings.ContainsRune(ipPool, ',') || net.ParseIP(ipPool) != nil {
+			for _, ips := range strings.Split(ipPool, ";") {
+				if cidrStr := annotations[CidrAnnotation]; cidrStr != "" {
+					if !CIDRContainIP(cidrStr, ips) {
+						errors = append(errors, fmt.Errorf("%s not in cidr %s", ips, cidrStr))
+						continue
+					}
 				}
-			}
 
-			for _, ip := range strings.Split(ips, ",") {
-				if net.ParseIP(strings.TrimSpace(ip)) == nil {
-					errors = append(errors, fmt.Errorf("%s in %s is not a valid address", ip, IpPoolAnnotation))
+				for _, ip := range strings.Split(ips, ",") {
+					if net.ParseIP(strings.TrimSpace(ip)) == nil {
+						errors = append(errors, fmt.Errorf("%s in %s is not a valid address", ip, IpPoolAnnotation))
+					}
 				}
 			}
 		}

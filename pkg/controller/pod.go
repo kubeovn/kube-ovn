@@ -1448,14 +1448,26 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 		*macStr = ""
 	}
 
+	ippoolStr := pod.Annotations[fmt.Sprintf(util.IpPoolAnnotationTemplate, podNet.ProviderName)]
+	if ippoolStr == "" {
+		ns, err := c.namespacesLister.Get(pod.Namespace)
+		if err != nil {
+			klog.Errorf("failed to get namespace %s: %v", pod.Namespace, err)
+			return "", "", "", podNet.Subnet, err
+		}
+		if len(ns.Annotations) != 0 {
+			ippoolStr = ns.Annotations[util.IpPoolAnnotation]
+		}
+	}
+
 	// Random allocate
 	if pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)] == "" &&
-		pod.Annotations[fmt.Sprintf(util.IpPoolAnnotationTemplate, podNet.ProviderName)] == "" {
+		ippoolStr == "" {
 		var skippedAddrs []string
 		for {
 			portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
 
-			ipv4, ipv6, mac, err := c.ipam.GetRandomAddress(key, portName, macStr, podNet.Subnet.Name, skippedAddrs, !podNet.AllowLiveMigration)
+			ipv4, ipv6, mac, err := c.ipam.GetRandomAddress(key, portName, macStr, podNet.Subnet.Name, "", skippedAddrs, !podNet.AllowLiveMigration)
 			if err != nil {
 				return "", "", "", podNet.Subnet, err
 			}
@@ -1497,15 +1509,40 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 	}
 
 	// IPPool allocate
-	if pod.Annotations[fmt.Sprintf(util.IpPoolAnnotationTemplate, podNet.ProviderName)] != "" {
+	if ippoolStr != "" {
 		var ipPool []string
-		if strings.Contains(pod.Annotations[fmt.Sprintf(util.IpPoolAnnotationTemplate, podNet.ProviderName)], ";") {
-			ipPool = strings.Split(pod.Annotations[fmt.Sprintf(util.IpPoolAnnotationTemplate, podNet.ProviderName)], ";")
+		if strings.ContainsRune(ippoolStr, ';') {
+			ipPool = strings.Split(ippoolStr, ";")
 		} else {
-			ipPool = strings.Split(pod.Annotations[fmt.Sprintf(util.IpPoolAnnotationTemplate, podNet.ProviderName)], ",")
+			ipPool = strings.Split(ippoolStr, ",")
 		}
 		for i, ip := range ipPool {
 			ipPool[i] = strings.TrimSpace(ip)
+		}
+
+		if len(ipPool) == 1 && net.ParseIP(ipPool[0]) == nil {
+			var skippedAddrs []string
+			for {
+				portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
+				ipv4, ipv6, mac, err := c.ipam.GetRandomAddress(key, portName, macStr, podNet.Subnet.Name, ipPool[0], skippedAddrs, !podNet.AllowLiveMigration)
+				if err != nil {
+					return "", "", "", podNet.Subnet, err
+				}
+				ipv4OK, ipv6OK, err := c.validatePodIP(pod.Name, podNet.Subnet.Name, ipv4, ipv6)
+				if err != nil {
+					return "", "", "", podNet.Subnet, err
+				}
+				if ipv4OK && ipv6OK {
+					return ipv4, ipv6, mac, podNet.Subnet, nil
+				}
+
+				if !ipv4OK {
+					skippedAddrs = append(skippedAddrs, ipv4)
+				}
+				if !ipv6OK {
+					skippedAddrs = append(skippedAddrs, ipv6)
+				}
+			}
 		}
 
 		if !isStsPod {
@@ -1530,7 +1567,7 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 					}
 				}
 			}
-			klog.Errorf("acquire address %s for %s failed, %v", pod.Annotations[fmt.Sprintf(util.IpPoolAnnotationTemplate, podNet.ProviderName)], key, err)
+			klog.Errorf("acquire address from ippool %s for %s failed, %v", ippoolStr, key, err)
 		} else {
 			tempStrs := strings.Split(pod.Name, "-")
 			numStr := tempStrs[len(tempStrs)-1]

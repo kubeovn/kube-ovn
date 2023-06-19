@@ -33,6 +33,8 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 	scheme.AddKnownTypes(SchemeGroupVersion,
 		&IP{},
 		&IPList{},
+		&IPPool{},
+		&IPPoolList{},
 		&Subnet{},
 		&SubnetList{},
 		&Vlan{},

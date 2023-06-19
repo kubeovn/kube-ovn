@@ -293,6 +293,17 @@ func (c *Controller) InitIPAM() error {
 		}
 	}
 
+	ippools, err := c.ippoolLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list ippool: %v", err)
+		return err
+	}
+	for _, ippool := range ippools {
+		if err = c.ipam.AddOrUpdateIPPool(ippool.Spec.Subnet, ippool.Name, ippool.Spec.IPs); err != nil {
+			klog.Errorf("failed to init ippool %s: %v", ippool.Name, err)
+		}
+	}
+
 	lsList, err := c.ovnClient.ListLogicalSwitch(false, nil)
 	if err != nil {
 		klog.Errorf("failed to list LS: %v", err)
@@ -375,13 +386,12 @@ func (c *Controller) InitIPAM() error {
 				portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
 				ip := pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)]
 				mac := pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, podNet.ProviderName)]
-				subnet := pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, podNet.ProviderName)]
-				_, _, _, err := c.ipam.GetStaticAddress(key, portName, ip, &mac, subnet, true)
+				_, _, _, err := c.ipam.GetStaticAddress(key, portName, ip, &mac, podNet.Subnet.Name, true)
 				if err != nil {
 					klog.Errorf("failed to init pod %s.%s address %s: %v", podName, pod.Namespace, pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)], err)
 				} else {
 					ipCR := ipsMap[portName]
-					err = c.createOrUpdateCrdIPs(podName, ip, mac, subnet, pod.Namespace, pod.Spec.NodeName, podNet.ProviderName, podType, &ipCR)
+					err = c.createOrUpdateCrdIPs(podName, ip, mac, podNet.Subnet.Name, pod.Namespace, pod.Spec.NodeName, podNet.ProviderName, podType, &ipCR)
 					if err != nil {
 						klog.Errorf("failed to create/update ips CR %s.%s with ip address %s: %v", podName, pod.Namespace, ip, err)
 					}

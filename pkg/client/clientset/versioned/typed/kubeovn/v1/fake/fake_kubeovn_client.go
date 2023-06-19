@@ -32,6 +32,10 @@ func (c *FakeKubeovnV1) IPs() v1.IPInterface {
 	return &FakeIPs{c}
 }
 
+func (c *FakeKubeovnV1) IPPools() v1.IPPoolInterface {
+	return &FakeIPPools{c}
+}
+
 func (c *FakeKubeovnV1) IptablesDnatRules() v1.IptablesDnatRuleInterface {
 	return &FakeIptablesDnatRules{c}
 }
