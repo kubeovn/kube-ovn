@@ -3,6 +3,7 @@ package underlay
 import (
 	"context"
 	"fmt"
+	"github.com/kubeovn/kube-ovn/pkg/ipam"
 	"net"
 	"os/exec"
 	"strconv"
@@ -623,19 +624,20 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		ginkgo.By("step7: Specify u2oInterconnectionIP")
 
 		// change u2o interconnection ip twice
-		for i := 0; i < 2; i++ {
+		for index := 0; index < 2; index++ {
 			getAvailableIPs := func(subnet *apiv1.Subnet) string {
 				var availIPs []string
-				if subnet.Status.V4AvailableIPRange != "" {
-					v4AvailIP := strings.Split(strings.Split(subnet.Status.V4AvailableIPRange, ",")[0], "-")[0]
-					availIPs = append(availIPs, v4AvailIP)
+
+				v4Cidr, v6Cidr := util.SplitStringIP(subnet.Spec.CIDRBlock)
+				if v4Cidr != "" {
+					startIP := strings.Split(v4Cidr, "/")[0]
+					availIPs = append(availIPs, ipam.NewIP(startIP).Add(100+int64(index)).String())
 				}
 
-				if subnet.Status.V6AvailableIPRange != "" {
-					v6AvailIP := strings.Split(strings.Split(subnet.Status.V6AvailableIPRange, ",")[0], "-")[0]
-					availIPs = append(availIPs, v6AvailIP)
+				if v6Cidr != "" {
+					startIP := strings.Split(v6Cidr, "/")[0]
+					availIPs = append(availIPs, ipam.NewIP(startIP).Add(100+int64(index)).String())
 				}
-
 				return strings.Join(availIPs, ",")
 			}
 
@@ -644,6 +646,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 			ginkgo.By("Setting U2OInterconnectionIP to " + u2oIP + " for subnet " + subnetName)
 			modifiedSubnet = subnet.DeepCopy()
 			modifiedSubnet.Spec.U2OInterconnectionIP = u2oIP
+			modifiedSubnet.Spec.U2OInterconnection = true
 			subnetClient.PatchSync(subnet, modifiedSubnet)
 
 			ginkgo.By("Deleting underlay pod " + u2oPodNameUnderlay)
