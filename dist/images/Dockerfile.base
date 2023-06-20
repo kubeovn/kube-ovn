@@ -43,25 +43,25 @@ RUN dpkg -i /usr/src/python3-openvswitch*.deb /usr/src/libopenvswitch*.deb
 RUN cd /usr/src/ && git clone -b branch-22.03 --depth=1 https://github.com/ovn-org/ovn.git && \
     cd ovn && \
     # fix ssl listen address
-    curl -s https://github.com/kubeovn/ovn/commit/7992d55af9ac356d3ad934764f473d1b6aa4cf64.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/dca043b2c35756fd370214fc40d61f755bd3a66f.patch | git apply && \
     # ovn-controller: Add a generic way to check if the daemon started recently.
-    curl -s https://github.com/kubeovn/ovn/commit/b60d6c60b3f78efb92ad2583a64821e618659344.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/54c478d38ec31c900d54d29c557bf414f5194baf.patch | git apply && \
     # patch.c: Avoid patch interface deletion & recreation during restart.
-    curl -s https://github.com/kubeovn/ovn/commit/d15464497a5e4737bf4122f134ebc006f1a6788f.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/03a46942b9e14d77a23313c193fe062ccafa4769.patch | git apply && \
     # do not send traffic that not designate to svc to conntrack
-    curl -s https://github.com/kubeovn/ovn/commit/7af1a269e5a52938be310108524365a6a75b73ef.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/44ee74998edfd85a40d4920045ae4c39e2ceff6e.patch | git apply && \
     # change hash type from dp_hash to hash with field src_ip
-    curl -s https://github.com/kubeovn/ovn/commit/2c36d523998a20bec95e36fee815a6a46bda80c1.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/168a3f20579b720370f137c82c04cf3b1a9811e2.patch | git apply && \
     # set ether dst addr for dnat on logical switch
-    curl -s https://github.com/kubeovn/ovn/commit/7d349c9d22a49b6be02d1f679dd771f7ce72c524.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/c1d265adc1b148a4c3fb07b9e1b172e1fdf99be4.patch | git apply && \
     # modify src route priority
-    curl -s https://github.com/kubeovn/ovn/commit/2b7226d936a60140574827a6a34560e0b332e876.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/ab0818fed95fa3633f8c52e4afb1f8c19ff5ef1f.patch | git apply && \
     # fix reaching resubmit limit in underlay
-    curl -s https://github.com/kubeovn/ovn/commit/44b44df9ceb37d526594126c6f8737fafb53269c.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/8b5084a55ca3f68f46530f43310ae2eae74322d2.patch | git apply && \
     # do not remove LB if vips is empty
-    curl -s https://github.com/kubeovn/ovn/commit/45a4a22161e42f17f21baee9106a45964dfd3a1b.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/472809ebc83588cf321935804f171b271fd81476.patch | git apply && \
     # ovn-controller: do not send GARP on localnet for Kube-OVN ports
-    curl -s https://github.com/kubeovn/ovn/commit/8af8751cdb55f582c675db921f2526b06fd3d8c0.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/1792621bf33a661d66ca47620871668267e3e521.patch | git apply && \
     sed -i 's/OVN/ovn/g' debian/changelog && \
     rm -rf .git && \
     ./boot.sh && \
