@@ -657,7 +657,7 @@ diagnose(){
       pingers=$(kubectl -n $KUBE_OVN_NS get po --no-headers -o custom-columns=NAME:.metadata.name -l app=kube-ovn-pinger)
       for pinger in $pingers
       do
-        echo "#### pinger diagnose results:"
+        echo "#### pinger $pinger on namespace $KUBE_OVN_NS diagnose results:"
         kubectl exec -n $KUBE_OVN_NS "$pinger" -- /kube-ovn/kube-ovn-pinger --mode=job --ds-name=$subnetName-$CONN_CHECK_SERVER --ds-namespace=$KUBE_OVN_NS --enable-verbose-conn-check=true
         echo ""
       done
