@@ -58,6 +58,9 @@ type Configuration struct {
 	ExternalGatewaySwitch     string // provider network underlay vlan subnet
 	EnableMetrics             bool
 	EnableArpDetectIPConflict bool
+	EnableVerboseConnCheck    bool
+	TCPConnCheckPort          int
+	UDPConnCheckPort          int
 }
 
 // ParseFlags will parse cmd args then init kubeClient and configuration
@@ -90,6 +93,10 @@ func ParseFlags() *Configuration {
 		argExternalGatewaySwitch     = pflag.String("external-gateway-switch", "external", "The name of the external gateway switch which is a ovs bridge to provide external network, default: external")
 		argEnableMetrics             = pflag.Bool("enable-metrics", true, "Whether to support metrics query")
 		argEnableArpDetectIPConflict = pflag.Bool("enable-arp-detect-ip-conflict", true, "Whether to support arp detect ip conflict in vlan network")
+
+		argEnableVerboseConnCheck   = pflag.Bool("enable-verbose-conn-check", false, "enable TCP/UDP connectivity check listen port")
+		argTCPConnectivityCheckPort = pflag.Int("tcp-conn-check-port", 8100, "TCP connectivity Check Port")
+		argUDPConnectivityCheckPort = pflag.Int("udp-conn-check-port", 8101, "UDP connectivity Check Port")
 	)
 
 	// mute info log for ipset lib
@@ -139,6 +146,9 @@ func ParseFlags() *Configuration {
 		ExternalGatewaySwitch:     *argExternalGatewaySwitch,
 		EnableMetrics:             *argEnableMetrics,
 		EnableArpDetectIPConflict: *argEnableArpDetectIPConflict,
+		EnableVerboseConnCheck:    *argEnableVerboseConnCheck,
+		TCPConnCheckPort:          *argTCPConnectivityCheckPort,
+		UDPConnCheckPort:          *argUDPConnectivityCheckPort,
 	}
 	return config
 }
