@@ -430,18 +430,14 @@ func stripPrefix(policyMatch string) (string, error) {
 	matches := strings.Split(policyMatch, "==")
 	if strings.Trim(matches[0], " ") == util.MatchV4Dst {
 		return strings.Trim(matches[1], " "), nil
+	} else if strings.Trim(matches[0], " ") == util.MatchV6Dst {
+		return strings.Trim(matches[1], " "), nil
 	} else {
 		return "", fmt.Errorf("policy %s is mismatched", policyMatch)
 	}
 }
 
 func (c *Controller) syncOneRouteToPolicy(key, value string) {
-	cidr, err := c.ovnLegacyClient.GetTsSubnet(util.InterconnectionSwitch)
-	if err != nil {
-		klog.Errorf("failed to get ts subnet: %v", err)
-		return
-	}
-
 	lr, err := c.ovnClient.GetLogicalRouter(c.config.ClusterRouter, false)
 	if err != nil {
 		klog.Errorf("logical router does not exist %v at %v", err, time.Now())
@@ -481,14 +477,14 @@ func (c *Controller) syncOneRouteToPolicy(key, value string) {
 			delete(policyMap, lrRoute.IPPrefix)
 		} else {
 			var matchFiled string
-			if util.CheckProtocol(cidr) == kubeovnv1.ProtocolIPv4 || util.CheckProtocol(cidr) == kubeovnv1.ProtocolDual {
+			if util.CheckProtocol(lrRoute.IPPrefix) == kubeovnv1.ProtocolIPv4 {
 				matchFiled = util.MatchV4Dst + " == " + lrRoute.IPPrefix
 				if err := c.ovnClient.AddLogicalRouterPolicy(lr.Name, util.OvnICPolicyPriority, matchFiled, ovnnb.LogicalRouterPolicyActionAllow, nil, map[string]string{key: value, "vendor": util.CniTypeName}); err != nil {
 					klog.Errorf("adding router policy failed %v", err)
 				}
 			}
 
-			if util.CheckProtocol(cidr) == kubeovnv1.ProtocolIPv6 || util.CheckProtocol(cidr) == kubeovnv1.ProtocolDual {
+			if util.CheckProtocol(lrRoute.IPPrefix) == kubeovnv1.ProtocolIPv6 {
 				matchFiled = util.MatchV6Dst + " == " + lrRoute.IPPrefix
 				if err := c.ovnClient.AddLogicalRouterPolicy(lr.Name, util.OvnICPolicyPriority, matchFiled, ovnnb.LogicalRouterPolicyActionAllow, nil, map[string]string{key: value, "vendor": util.CniTypeName}); err != nil {
 					klog.Errorf("adding router policy failed %v", err)
