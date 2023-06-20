@@ -979,6 +979,13 @@ jobs:
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        ip-family:
+          - ipv4
+          - ipv6
+          - dual
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v3
@@ -1043,12 +1050,12 @@ jobs:
         run: |
           sudo pip3 install j2cli
           sudo pip3 install "j2cli[yaml]"
-          sudo PATH=~/.local/bin:$PATH make kind-init-ovn-ic
+          sudo PATH=~/.local/bin:$PATH make kind-init-ovn-ic-${{ matrix.ip-family }}
           sudo cp -r /root/.kube/ ~/.kube/
           sudo chown -R $(id -un). ~/.kube/
 
       - name: Install Kube-OVN
-        run: make kind-install-ovn-ic
+        run: make kind-install-ovn-ic-${{ matrix.ip-family }}
 
       - name: Run E2E
         working-directory: ${{ env.E2E_DIR }}

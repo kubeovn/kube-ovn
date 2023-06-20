@@ -2,7 +2,14 @@
 set -eo pipefail
 
 TS_NAME=${TS_NAME:-ts}
-TS_CIDR=${TS_CIDR:-169.254.100.0/24}
+PROTOCOL=${PROTOCOL:-ipv4}
+if [ "$PROTOCOL" = "ipv4" ]; then
+  TS_CIDR=${TS_CIDR:-169.254.100.0/24}
+elif [ "$PROTOCOL" = "ipv6" ]; then
+  TS_CIDR=${TS_CIDR:-fe80:a9fe:64::/112}
+elif [ "$PROTOCOL" = "dual" ]; then
+  TS_CIDR=${TS_CIDR:-"169.254.100.0/24,fe80:a9fe:64::/112"}
+fi
 
 function quit {
     /usr/share/ovn/scripts/ovn-ctl stop_ic_ovsdb
@@ -17,7 +24,7 @@ function gen_conn_str {
 
 trap quit EXIT
 if [[ -z "$NODE_IPS" && -z "$LOCAL_IP" ]]; then
-    /usr/share/ovn/scripts/ovn-ctl --db-ic-nb-create-insecure-remote=yes --db-ic-sb-create-insecure-remote=yes start_ic_ovsdb
+    /usr/share/ovn/scripts/ovn-ctl --db-ic-nb-create-insecure-remote=yes --db-ic-sb-create-insecure-remote=yes --db-ic-nb-addr="[::]" --db-ic-sb-addr="[::]" start_ic_ovsdb
     /usr/share/ovn/scripts/ovn-ctl status_ic_ovsdb
     ovn-ic-nbctl --may-exist ts-add "$TS_NAME"
     ovn-ic-nbctl set Transit_Switch ts external_ids:subnet="$TS_CIDR"
