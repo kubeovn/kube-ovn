@@ -324,8 +324,9 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1
+        uses: helm/kind-action@v1.7.0
         with:
+          version: v0.20.0
           install_only: true
 
       - name: Install ginkgo
@@ -458,8 +459,9 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1
+        uses: helm/kind-action@v1.7.0
         with:
+          version: v0.20.0
           install_only: true
 
       - name: Install ginkgo
@@ -601,8 +603,9 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1
+        uses: helm/kind-action@v1.7.0
         with:
+          version: v0.20.0
           install_only: true
 
       - name: Install ginkgo
@@ -721,8 +724,9 @@ jobs:
           fi
 
       - name: Install kind
-        uses: helm/kind-action@v1
+        uses: helm/kind-action@v1.7.0
         with:
+          version: v0.20.0
           install_only: true
 
       - name: Install ginkgo
@@ -858,8 +862,9 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1
+        uses: helm/kind-action@v1.7.0
         with:
+          version: v0.20.0
           install_only: true
 
       - name: Install ginkgo
@@ -982,8 +987,9 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1
+        uses: helm/kind-action@v1.7.0
         with:
+          version: v0.20.0
           install_only: true
 
       - name: Install ginkgo
@@ -1022,8 +1028,9 @@ jobs:
       - uses: actions/checkout@v3
 
       - name: Install kind
-        uses: helm/kind-action@v1
+        uses: helm/kind-action@v1.7.0
         with:
+          version: v0.20.0
           install_only: true
 
       - name: Download image
@@ -1057,8 +1064,9 @@ jobs:
       - uses: actions/checkout@v3
 
       - name: Install kind
-        uses: helm/kind-action@v1
+        uses: helm/kind-action@v1.7.0
         with:
+          version: v0.20.0
           install_only: true
 
       - name: Download image
@@ -1092,8 +1100,9 @@ jobs:
       - uses: actions/checkout@v3
 
       - name: Install kind
-        uses: helm/kind-action@v1
+        uses: helm/kind-action@v1.7.0
         with:
+          version: v0.20.0
           install_only: true
 
       - name: Download image
@@ -1129,8 +1138,9 @@ jobs:
       - uses: actions/checkout@v3
 
       - name: Install kind
-        uses: helm/kind-action@v1
+        uses: helm/kind-action@v1.7.0
         with:
+          version: v0.20.0
           install_only: true
 
       - name: Download image
@@ -1206,8 +1216,9 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1
+        uses: helm/kind-action@v1.7.0
         with:
+          version: v0.20.0
           install_only: true
 
       - name: Install ginkgo
@@ -1253,8 +1264,9 @@ jobs:
       - uses: actions/checkout@v3
 
       - name: Install kind
-        uses: helm/kind-action@v1
+        uses: helm/kind-action@v1.7.0
         with:
+          version: v0.20.0
           install_only: true
 
       - name: Download image
@@ -1269,7 +1281,7 @@ jobs:
         run: |
           sudo pip3 install j2cli
           sudo pip3 install "j2cli[yaml]"
-          sudo PATH=~/.local/bin:$PATH k8s_version=v1.23.13 make kind-init
+          sudo PATH=~/.local/bin:$PATH k8s_version=v1.23.17 make kind-init
           sudo cp -r /root/.kube/ ~/.kube/
           sudo chown -R $(id -un). ~/.kube/
 
@@ -1335,8 +1347,9 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1
+        uses: helm/kind-action@v1.7.0
         with:
+          version: v0.20.0
           install_only: true
 
       - name: Install ginkgo
@@ -1432,8 +1445,9 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1
+        uses: helm/kind-action@v1.7.0
         with:
+          version: v0.20.0
           install_only: true
 
       - name: Install ginkgo
