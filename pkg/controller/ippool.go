@@ -174,7 +174,7 @@ func (c *Controller) handleAddOrUpdateIPPool(key string) error {
 	ippool.Status.EnsureStandardConditions()
 	if err = c.ipam.AddOrUpdateIPPool(ippool.Spec.Subnet, ippool.Name, ippool.Spec.IPs); err != nil {
 		klog.Errorf("failed to add/update ippool %s with IPs %v in subnet %s: %v", ippool.Name, ippool.Spec.IPs, ippool.Spec.Subnet, err)
-		if patchErr := c.patchIPPoolStatus(ippool, "UpdateIPAMFailed", err.Error()); patchErr != nil {
+		if patchErr := c.patchIPPoolStatusCondition(ippool, "UpdateIPAMFailed", err.Error()); patchErr != nil {
 			klog.Error(patchErr)
 		}
 		return err
@@ -190,7 +190,7 @@ func (c *Controller) handleAddOrUpdateIPPool(key string) error {
 	ippool.Status.V6AvailableIPRange = v6as
 	ippool.Status.V6UsingIPRange = v6us
 
-	if err = c.patchIPPoolStatus(ippool, "UpdateIPAMSucceeded", ""); err != nil {
+	if err = c.patchIPPoolStatusCondition(ippool, "UpdateIPAMSucceeded", ""); err != nil {
 		klog.Error(err)
 		return err
 	}
@@ -253,21 +253,10 @@ func (c *Controller) handleUpdateIPPoolStatus(key string) error {
 		return nil
 	}
 
-	bytes, err := ippool.Status.Bytes()
-	if err != nil {
-		klog.Errorf("failed to generate json representation for status of ippool %s: %v", ippool.Name, err)
-		return err
-	}
-	_, err = c.config.KubeOvnClient.KubeovnV1().IPPools().Patch(context.Background(), ippool.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status")
-	if err != nil {
-		klog.Errorf("failed to patch status of ippool %s: %v", ippool.Name, err)
-		return err
-	}
-
-	return nil
+	return c.patchIPPoolStatus(ippool)
 }
 
-func (c Controller) patchIPPoolStatus(ippool *kubeovnv1.IPPool, reason, errMsg string) error {
+func (c Controller) patchIPPoolStatusCondition(ippool *kubeovnv1.IPPool, reason, errMsg string) error {
 	if errMsg != "" {
 		ippool.Status.SetError(reason, errMsg)
 		ippool.Status.NotReady(reason, errMsg)
@@ -277,9 +266,13 @@ func (c Controller) patchIPPoolStatus(ippool *kubeovnv1.IPPool, reason, errMsg s
 		c.recorder.Eventf(ippool, corev1.EventTypeNormal, reason, errMsg)
 	}
 
+	return c.patchIPPoolStatus(ippool)
+}
+
+func (c Controller) patchIPPoolStatus(ippool *kubeovnv1.IPPool) error {
 	bytes, err := ippool.Status.Bytes()
 	if err != nil {
-		klog.Error(err)
+		klog.Errorf("failed to generate json representation for status of ippool %s: %v", ippool.Name, err)
 		return err
 	}
 	if _, err = c.config.KubeOvnClient.KubeovnV1().IPPools().Patch(context.Background(), ippool.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {

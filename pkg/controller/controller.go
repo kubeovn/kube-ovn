@@ -853,6 +853,7 @@ func (c *Controller) shutdown() {
 	c.syncVirtualPortsQueue.ShutDown()
 
 	c.addOrUpdateIPPoolQueue.ShutDown()
+	c.updateIPPoolStatusQueue.ShutDown()
 	c.deleteIPPoolQueue.ShutDown()
 
 	c.addNodeQueue.ShutDown()
