@@ -452,7 +452,10 @@ kind-install-ipv4: kind-install-overlay-ipv4
 kind-install-overlay-ipv4: kind-install
 
 .PHONY: kind-install-ovn-ic
-kind-install-ovn-ic: kind-install
+kind-install-ovn-ic: kind-install-ovn-ic-ipv4
+
+.PHONY: kind-install-ovn-ic-ipv4
+kind-install-ovn-ic-ipv4: kind-install
 	$(call kind_load_image,kube-ovn1,$(REGISTRY)/kube-ovn:$(VERSION))
 	kubectl config use-context kind-kube-ovn1
 	sed -e 's/10.16.0/10.18.0/g' \
