@@ -181,13 +181,24 @@ func AddressCount(network *net.IPNet) float64 {
 }
 
 func GenerateRandomV4IP(cidr string) string {
+	return genRandomIP(cidr, false)
+}
+
+func GenerateRandomV6IP(cidr string) string {
+	return genRandomIP(cidr, true)
+}
+
+func genRandomIP(cidr string, isIPv6 bool) string {
 	if len(strings.Split(cidr, "/")) != 2 {
 		return ""
 	}
 	ip := strings.Split(cidr, "/")[0]
 	netMask, _ := strconv.Atoi(strings.Split(cidr, "/")[1])
-	hostNum := 32 - netMask
-	add, err := rand.Int(rand.Reader, big.NewInt(1<<(uint(hostNum)-1)))
+	hostBits := 32 - netMask
+	if isIPv6 {
+		hostBits = 128 - netMask
+	}
+	add, err := rand.Int(rand.Reader, big.NewInt(1<<(uint(hostBits)-1)))
 	if err != nil {
 		LogFatalAndExit(err, "failed to generate random ip")
 	}

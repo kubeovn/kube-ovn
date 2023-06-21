@@ -236,6 +236,8 @@ const (
 
 	MatchV4Src = "ip4.src"
 	MatchV4Dst = "ip4.dst"
+	MatchV6Src = "ip6.src"
+	MatchV6Dst = "ip6.dst"
 
 	U2OInterconnName = "u2o-interconnection.%s.%s"
 	U2OExcludeIPAg   = "%s.u2o_exclude_ip.%s"
