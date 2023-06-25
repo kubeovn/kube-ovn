@@ -113,6 +113,8 @@ restart_ovs: false
 
 # hybrid dpdk
 HYBRID_DPDK: false
+HUGEPAGE_SIZE_TYPE: hugepages-2Mi # Default 
+HUGEPAGES: 1Gi
 
 # DPDK
 DPDK: false
