@@ -3,7 +3,8 @@ package ipam
 import (
 	"fmt"
 	"math/big"
-	"strconv"
+
+	"github.com/kubeovn/kube-ovn/pkg/internal"
 )
 
 // IPRange represents an IP range of [start, end]
@@ -35,10 +36,9 @@ func (r *IPRange) SetEnd(ip IP) {
 	r.end = ip
 }
 
-func (r *IPRange) Count() float64 {
+func (r *IPRange) Count() internal.BigInt {
 	n := big.NewInt(0).Sub(big.NewInt(0).SetBytes([]byte(r.end)), big.NewInt(0).SetBytes([]byte(r.start)))
-	count, _ := strconv.ParseFloat(n.Add(n, big.NewInt(1)).String(), 64)
-	return count
+	return internal.BigInt{Int: *n.Add(n, big.NewInt(1))}
 }
 
 func (r *IPRange) Contains(ip IP) bool {
