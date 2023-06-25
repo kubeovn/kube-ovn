@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -697,14 +698,27 @@ func (c *Controller) initSyncCrdSubnets() error {
 
 func (c *Controller) initSyncCrdVpcNatGw() error {
 	klog.Info("start to sync crd vpc nat gw")
+	// get vpc nat gateway enable state
 	cm, err := c.configMapsLister.ConfigMaps(c.config.PodNamespace).Get(util.VpcNatGatewayConfig)
 	if err != nil && !k8serrors.IsNotFound(err) {
-		klog.Errorf("failed to get ovn-vpc-nat-gw-config, %v", err)
+		klog.Errorf("failed to get %s, %v", util.VpcNatGatewayConfig, err)
 		return err
 	}
-	if k8serrors.IsNotFound(err) || cm.Data["enable-vpc-nat-gw"] == "false" || cm.Data["image"] == "" {
+	if k8serrors.IsNotFound(err) || cm.Data["enable-vpc-nat-gw"] == "false" {
 		return nil
 	}
+	// get vpc nat gateway image
+	cm, err = c.configMapsLister.ConfigMaps(c.config.PodNamespace).Get(util.VpcNatConfig)
+	if err != nil && !k8serrors.IsNotFound(err) {
+		klog.Errorf("failed to get %s, %v", util.VpcNatConfig, err)
+		return err
+	}
+	if k8serrors.IsNotFound(err) || cm.Data["image"] == "" {
+		err = errors.New("image of vpc-nat-gw not set")
+		klog.Error(err)
+		return err
+	}
+
 	gws, err := c.vpcNatGatewayLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list vpc nat gateway, %v", err)
