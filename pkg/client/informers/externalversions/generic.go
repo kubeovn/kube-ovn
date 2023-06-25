@@ -55,6 +55,8 @@ func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource
 	// Group=kubeovn.io, Version=v1
 	case v1.SchemeGroupVersion.WithResource("ips"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Kubeovn().V1().IPs().Informer()}, nil
+	case v1.SchemeGroupVersion.WithResource("ippools"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Kubeovn().V1().IPPools().Informer()}, nil
 	case v1.SchemeGroupVersion.WithResource("iptables-dnat-rules"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Kubeovn().V1().IptablesDnatRules().Informer()}, nil
 	case v1.SchemeGroupVersion.WithResource("iptables-eips"):

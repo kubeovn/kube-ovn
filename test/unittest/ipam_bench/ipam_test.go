@@ -186,7 +186,7 @@ func addSerailAddrCapacity(b *testing.B, im *ipam.IPAM, protocol string) {
 	for n := 0; n < b.N; n++ {
 		podName := fmt.Sprintf("pod%d", n)
 		nicName := fmt.Sprintf("nic%d", n)
-		if _, _, _, err := im.GetRandomAddress(podName, nicName, nil, subnetName, nil, true); err != nil {
+		if _, _, _, err := im.GetRandomAddress(podName, nicName, nil, subnetName, "", nil, true); err != nil {
 			b.Errorf("ERROR: allocate %s address failed with index %d with err %v ", protocol, n, err)
 			return
 		}
@@ -313,7 +313,7 @@ func benchmarkAllocFreeAddrParallel(b *testing.B, podNumber int, protocol string
 				podName := fmt.Sprintf("pod%d_%d", key, n)
 				nicName := fmt.Sprintf("nic%d_%d", key, n)
 				if key%2 == 1 {
-					if _, _, _, err := im.GetRandomAddress(podName, nicName, nil, subnetName, nil, true); err != nil {
+					if _, _, _, err := im.GetRandomAddress(podName, nicName, nil, subnetName, "", nil, true); err != nil {
 						b.Errorf("ERROR: allocate %s address failed with index %d err %v ", protocol, n, err)
 						return
 					}

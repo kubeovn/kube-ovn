@@ -29,6 +29,7 @@ import (
 type KubeovnV1Interface interface {
 	RESTClient() rest.Interface
 	IPsGetter
+	IPPoolsGetter
 	IptablesDnatRulesGetter
 	IptablesEIPsGetter
 	IptablesFIPRulesGetter
@@ -56,6 +57,10 @@ type KubeovnV1Client struct {
 
 func (c *KubeovnV1Client) IPs() IPInterface {
 	return newIPs(c)
+}
+
+func (c *KubeovnV1Client) IPPools() IPPoolInterface {
+	return newIPPools(c)
 }
 
 func (c *KubeovnV1Client) IptablesDnatRules() IptablesDnatRuleInterface {

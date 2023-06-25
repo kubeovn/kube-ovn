@@ -7,6 +7,16 @@ import (
 	"k8s.io/klog/v2"
 )
 
+func (s *IPPoolStatus) Bytes() ([]byte, error) {
+	bytes, err := json.Marshal(s)
+	if err != nil {
+		return nil, err
+	}
+	newStr := fmt.Sprintf(`{"status": %s}`, string(bytes))
+	klog.V(5).Info("status body", newStr)
+	return []byte(newStr), nil
+}
+
 func (ss *SubnetStatus) Bytes() ([]byte, error) {
 	// {"availableIPs":65527,"usingIPs":9} => {"status": {"availableIPs":65527,"usingIPs":9}}
 	bytes, err := json.Marshal(ss)

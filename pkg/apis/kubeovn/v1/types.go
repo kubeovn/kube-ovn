@@ -194,9 +194,9 @@ type NatOutGoingPolicyMatch struct {
 // ConditionType encodes information on the condition
 type ConditionType string
 
-// SubnetCondition describes the state of an object at a certain point.
+// Condition describes the state of an object at a certain point.
 // +k8s:deepcopy-gen=true
-type SubnetCondition struct {
+type Condition struct {
 	// Type of condition.
 	Type ConditionType `json:"type"`
 	// Status of the condition, one of True, False, Unknown.
@@ -214,6 +214,10 @@ type SubnetCondition struct {
 	// +optional
 	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty"`
 }
+
+// SubnetCondition describes the state of an object at a certain point.
+// +k8s:deepcopy-gen=true
+type SubnetCondition Condition
 
 type SubnetStatus struct {
 	// Conditions represents the latest state of the object
@@ -251,6 +255,53 @@ type SubnetList struct {
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +genclient:nonNamespaced
 
+type IPPool struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec   IPPoolSpec   `json:"spec"`
+	Status IPPoolStatus `json:"status,omitempty"`
+}
+
+type IPPoolSpec struct {
+	Subnet     string   `json:"subnet,omitempty"`
+	Protocol   string   `json:"protocol,omitempty"`
+	Namespaces []string `json:"namespaces,omitempty"`
+	IPs        []string `json:"ips,omitempty"`
+}
+
+// IPPoolCondition describes the state of an object at a certain point.
+// +k8s:deepcopy-gen=true
+type IPPoolCondition Condition
+
+type IPPoolStatus struct {
+	V4AvailableIPs     float64 `json:"v4AvailableIPs"`
+	V4AvailableIPRange string  `json:"v4AvailableIPRange"`
+	V4UsingIPs         float64 `json:"v4UsingIPs"`
+	V4UsingIPRange     string  `json:"v4UsingIPRange"`
+	V6AvailableIPs     float64 `json:"v6AvailableIPs"`
+	V6AvailableIPRange string  `json:"v6AvailableIPRange"`
+	V6UsingIPs         float64 `json:"v6UsingIPs"`
+	V6UsingIPRange     string  `json:"v6UsingIPRange"`
+
+	// Conditions represents the latest state of the object
+	// +optional
+	Conditions []IPPoolCondition `json:"conditions,omitempty"`
+}
+
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+type IPPoolList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata"`
+
+	Items []IPPool `json:"items"`
+}
+
+// +genclient
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +genclient:nonNamespaced
+
 type Vlan struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -280,24 +331,7 @@ type VlanStatus struct {
 
 // VlanCondition describes the state of an object at a certain point.
 // +k8s:deepcopy-gen=true
-type VlanCondition struct {
-	// Type of condition.
-	Type ConditionType `json:"type"`
-	// Status of the condition, one of True, False, Unknown.
-	Status corev1.ConditionStatus `json:"status"`
-	// The reason for the condition's last transition.
-	// +optional
-	Reason string `json:"reason,omitempty"`
-	// A human readable message indicating details about the transition.
-	// +optional
-	Message string `json:"message,omitempty"`
-	// Last time the condition was probed
-	// +optional
-	LastUpdateTime metav1.Time `json:"lastUpdateTime,omitempty"`
-	// Last time the condition transitioned from one status to another.
-	// +optional
-	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty"`
-}
+type VlanCondition Condition
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
@@ -355,22 +389,7 @@ type ProviderNetworkStatus struct {
 type ProviderNetworkCondition struct {
 	// Node name
 	Node string `json:"node"`
-	// Type of condition.
-	Type ConditionType `json:"type"`
-	// Status of the condition, one of True, False, Unknown.
-	Status corev1.ConditionStatus `json:"status"`
-	// The reason for the condition's last transition.
-	// +optional
-	Reason string `json:"reason,omitempty"`
-	// A human readable message indicating details about the transition.
-	// +optional
-	Message string `json:"message,omitempty"`
-	// Last time the condition was probed
-	// +optional
-	LastUpdateTime metav1.Time `json:"lastUpdateTime,omitempty"`
-	// Last time the condition transitioned from one status to another.
-	// +optional
-	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty"`
+	Condition
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
@@ -466,24 +485,7 @@ type VpcStatus struct {
 
 // VpcCondition describes the state of an object at a certain point.
 // +k8s:deepcopy-gen=true
-type VpcCondition struct {
-	// Type of condition.
-	Type ConditionType `json:"type"`
-	// Status of the condition, one of True, False, Unknown.
-	Status corev1.ConditionStatus `json:"status"`
-	// The reason for the condition's last transition.
-	// +optional
-	Reason string `json:"reason,omitempty"`
-	// A human readable message indicating details about the transition.
-	// +optional
-	Message string `json:"message,omitempty"`
-	// Last time the condition was probed
-	// +optional
-	LastUpdateTime metav1.Time `json:"lastUpdateTime,omitempty"`
-	// Last time the condition transitioned from one status to another.
-	// +optional
-	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty"`
-}
+type VpcCondition Condition
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
@@ -549,24 +551,7 @@ type IptablesEipSpec struct {
 
 // IptablesEIPCondition describes the state of an object at a certain point.
 // +k8s:deepcopy-gen=true
-type IptablesEIPCondition struct {
-	// Type of condition.
-	Type ConditionType `json:"type"`
-	// Status of the condition, one of True, False, Unknown.
-	Status corev1.ConditionStatus `json:"status"`
-	// The reason for the condition's last transition.
-	// +optional
-	Reason string `json:"reason,omitempty"`
-	// A human readable message indicating details about the transition.
-	// +optional
-	Message string `json:"message,omitempty"`
-	// Last time the condition was probed
-	// +optional
-	LastUpdateTime metav1.Time `json:"lastUpdateTime,omitempty"`
-	// Last time the condition transitioned from one status to another.
-	// +optional
-	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty"`
-}
+type IptablesEIPCondition Condition
 
 type IptablesEipStatus struct {
 	// +optional
@@ -611,24 +596,7 @@ type IptablesFIPRuleSpec struct {
 
 // IptablesFIPRuleCondition describes the state of an object at a certain point.
 // +k8s:deepcopy-gen=true
-type IptablesFIPRuleCondition struct {
-	// Type of condition.
-	Type ConditionType `json:"type"`
-	// Status of the condition, one of True, False, Unknown.
-	Status corev1.ConditionStatus `json:"status"`
-	// The reason for the condition's last transition.
-	// +optional
-	Reason string `json:"reason,omitempty"`
-	// A human readable message indicating details about the transition.
-	// +optional
-	Message string `json:"message,omitempty"`
-	// Last time the condition was probed
-	// +optional
-	LastUpdateTime metav1.Time `json:"lastUpdateTime,omitempty"`
-	// Last time the condition transitioned from one status to another.
-	// +optional
-	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty"`
-}
+type IptablesFIPRuleCondition Condition
 
 type IptablesFIPRuleStatus struct {
 	// +optional
@@ -675,24 +643,7 @@ type IptablesSnatRuleSpec struct {
 
 // IptablesSnatRuleCondition describes the state of an object at a certain point.
 // +k8s:deepcopy-gen=true
-type IptablesSnatRuleCondition struct {
-	// Type of condition.
-	Type ConditionType `json:"type"`
-	// Status of the condition, one of True, False, Unknown.
-	Status corev1.ConditionStatus `json:"status"`
-	// The reason for the condition's last transition.
-	// +optional
-	Reason string `json:"reason,omitempty"`
-	// A human readable message indicating details about the transition.
-	// +optional
-	Message string `json:"message,omitempty"`
-	// Last time the condition was probed
-	// +optional
-	LastUpdateTime metav1.Time `json:"lastUpdateTime,omitempty"`
-	// Last time the condition transitioned from one status to another.
-	// +optional
-	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty"`
-}
+type IptablesSnatRuleCondition Condition
 
 type IptablesSnatRuleStatus struct {
 	// +optional
@@ -742,24 +693,7 @@ type IptablesDnatRuleSpec struct {
 
 // IptablesDnatRuleCondition describes the state of an object at a certain point.
 // +k8s:deepcopy-gen=true
-type IptablesDnatRuleCondition struct {
-	// Type of condition.
-	Type ConditionType `json:"type"`
-	// Status of the condition, one of True, False, Unknown.
-	Status corev1.ConditionStatus `json:"status"`
-	// The reason for the condition's last transition.
-	// +optional
-	Reason string `json:"reason,omitempty"`
-	// A human readable message indicating details about the transition.
-	// +optional
-	Message string `json:"message,omitempty"`
-	// Last time the condition was probed
-	// +optional
-	LastUpdateTime metav1.Time `json:"lastUpdateTime,omitempty"`
-	// Last time the condition transitioned from one status to another.
-	// +optional
-	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty"`
-}
+type IptablesDnatRuleCondition Condition
 
 type IptablesDnatRuleStatus struct {
 	// +optional
@@ -876,24 +810,7 @@ type VipSpec struct {
 
 // VipCondition describes the state of an object at a certain point.
 // +k8s:deepcopy-gen=true
-type VipCondition struct {
-	// Type of condition.
-	Type ConditionType `json:"type"`
-	// Status of the condition, one of True, False, Unknown.
-	Status corev1.ConditionStatus `json:"status"`
-	// The reason for the condition's last transition.
-	// +optional
-	Reason string `json:"reason,omitempty"`
-	// A human readable message indicating details about the transition.
-	// +optional
-	Message string `json:"message,omitempty"`
-	// Last time the condition was probed
-	// +optional
-	LastUpdateTime metav1.Time `json:"lastUpdateTime,omitempty"`
-	// Last time the condition transitioned from one status to another.
-	// +optional
-	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty"`
-}
+type VipCondition Condition
 
 type VipStatus struct {
 	// Conditions represents the latest state of the object
@@ -959,24 +876,7 @@ type VpcDnsStatus struct {
 
 // VpcDnsCondition describes the state of an object at a certain point.
 // +k8s:deepcopy-gen=true
-type VpcDnsCondition struct {
-	// Type of condition.
-	Type ConditionType `json:"type"`
-	// Status of the condition, one of True, False, Unknown.
-	Status corev1.ConditionStatus `json:"status"`
-	// The reason for the condition's last transition.
-	// +optional
-	Reason string `json:"reason,omitempty"`
-	// A human readable message indicating details about the transition.
-	// +optional
-	Message string `json:"message,omitempty"`
-	// Last time the condition was probed
-	// +optional
-	LastUpdateTime metav1.Time `json:"lastUpdateTime,omitempty"`
-	// Last time the condition transitioned from one status to another.
-	// +optional
-	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty"`
-}
+type VpcDnsCondition Condition
 
 type SlrPort struct {
 	Name       string `json:"name"`
@@ -1029,24 +929,7 @@ type SwitchLBRuleList struct {
 
 // SwitchLBRuleCondition describes the state of an object at a certain point.
 // +k8s:deepcopy-gen=true
-type SwitchLBRuleCondition struct {
-	// Type of condition.
-	Type ConditionType `json:"type"`
-	// Status of the condition, one of True, False, Unknown.
-	Status corev1.ConditionStatus `json:"status"`
-	// The reason for the condition's last transition.
-	// +optional
-	Reason string `json:"reason,omitempty"`
-	// A human readable message indicating details about the transition.
-	// +optional
-	Message string `json:"message,omitempty"`
-	// Last time the condition was probed
-	// +optional
-	LastUpdateTime metav1.Time `json:"lastUpdateTime,omitempty"`
-	// Last time the condition transitioned from one status to another.
-	// +optional
-	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty"`
-}
+type SwitchLBRuleCondition Condition
 
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
@@ -1071,24 +954,7 @@ type OvnEipSpec struct {
 
 // OvnEipCondition describes the state of an object at a certain point.
 // +k8s:deepcopy-gen=true
-type OvnEipCondition struct {
-	// Type of condition.
-	Type ConditionType `json:"type"`
-	// Status of the condition, one of True, False, Unknown.
-	Status corev1.ConditionStatus `json:"status"`
-	// The reason for the condition's last transition.
-	// +optional
-	Reason string `json:"reason,omitempty"`
-	// A human readable message indicating details about the transition.
-	// +optional
-	Message string `json:"message,omitempty"`
-	// Last time the condition was probed
-	// +optional
-	LastUpdateTime metav1.Time `json:"lastUpdateTime,omitempty"`
-	// Last time the condition transitioned from one status to another.
-	// +optional
-	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty"`
-}
+type OvnEipCondition Condition
 
 type OvnEipStatus struct {
 	// Conditions represents the latest state of the object
@@ -1133,24 +999,7 @@ type OvnFipSpec struct {
 
 // OvnFipCondition describes the state of an object at a certain point.
 // +k8s:deepcopy-gen=true
-type OvnFipCondition struct {
-	// Type of condition.
-	Type ConditionType `json:"type"`
-	// Status of the condition, one of True, False, Unknown.
-	Status corev1.ConditionStatus `json:"status"`
-	// The reason for the condition's last transition.
-	// +optional
-	Reason string `json:"reason,omitempty"`
-	// A human readable message indicating details about the transition.
-	// +optional
-	Message string `json:"message,omitempty"`
-	// Last time the condition was probed
-	// +optional
-	LastUpdateTime metav1.Time `json:"lastUpdateTime,omitempty"`
-	// Last time the condition transitioned from one status to another.
-	// +optional
-	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty"`
-}
+type OvnFipCondition Condition
 
 type OvnFipStatus struct {
 	// +optional
@@ -1198,24 +1047,7 @@ type OvnSnatRuleSpec struct {
 
 // OvnSnatRuleCondition describes the state of an object at a certain point.
 // +k8s:deepcopy-gen=true
-type OvnSnatRuleCondition struct {
-	// Type of condition.
-	Type ConditionType `json:"type"`
-	// Status of the condition, one of True, False, Unknown.
-	Status corev1.ConditionStatus `json:"status"`
-	// The reason for the condition's last transition.
-	// +optional
-	Reason string `json:"reason,omitempty"`
-	// A human readable message indicating details about the transition.
-	// +optional
-	Message string `json:"message,omitempty"`
-	// Last time the condition was probed
-	// +optional
-	LastUpdateTime metav1.Time `json:"lastUpdateTime,omitempty"`
-	// Last time the condition transitioned from one status to another.
-	// +optional
-	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty"`
-}
+type OvnSnatRuleCondition Condition
 
 type OvnSnatRuleStatus struct {
 	// +optional
@@ -1265,24 +1097,7 @@ type OvnDnatRuleSpec struct {
 
 // OvnDnatRuleCondition describes the state of an object at a certain point.
 // +k8s:deepcopy-gen=true
-type OvnDnatRuleCondition struct {
-	// Type of condition.
-	Type ConditionType `json:"type"`
-	// Status of the condition, one of True, False, Unknown.
-	Status corev1.ConditionStatus `json:"status"`
-	// The reason for the condition's last transition.
-	// +optional
-	Reason string `json:"reason,omitempty"`
-	// A human readable message indicating details about the transition.
-	// +optional
-	Message string `json:"message,omitempty"`
-	// Last time the condition was probed
-	// +optional
-	LastUpdateTime metav1.Time `json:"lastUpdateTime,omitempty"`
-	// Last time the condition transitioned from one status to another.
-	// +optional
-	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty"`
-}
+type OvnDnatRuleCondition Condition
 
 // +k8s:deepcopy-gen=true
 type OvnDnatRuleStatus struct {
@@ -1334,24 +1149,7 @@ type QoSPolicySpec struct {
 
 // Condition describes the state of an object at a certain point.
 // +k8s:deepcopy-gen=true
-type QoSPolicyCondition struct {
-	// Type of condition.
-	Type ConditionType `json:"type"`
-	// Status of the condition, one of True, False, Unknown.
-	Status corev1.ConditionStatus `json:"status"`
-	// The reason for the condition's last transition.
-	// +optional
-	Reason string `json:"reason,omitempty"`
-	// A human readable message indicating details about the transition.
-	// +optional
-	Message string `json:"message,omitempty"`
-	// Last time the condition was probed
-	// +optional
-	LastUpdateTime metav1.Time `json:"lastUpdateTime,omitempty"`
-	// Last time the condition transitioned from one status to another.
-	// +optional
-	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty"`
-}
+type QoSPolicyCondition Condition
 
 // BandwidthLimitRule describes the rule of an bandwidth limit.
 type QoSPolicyBandwidthLimitRule struct {

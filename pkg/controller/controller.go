@@ -105,6 +105,13 @@ type Controller struct {
 	syncVirtualPortsQueue   workqueue.RateLimitingInterface
 	subnetKeyMutex          keymutex.KeyMutex
 
+	ippoolLister            kubeovnlister.IPPoolLister
+	ippoolSynced            cache.InformerSynced
+	addOrUpdateIPPoolQueue  workqueue.RateLimitingInterface
+	updateIPPoolStatusQueue workqueue.RateLimitingInterface
+	deleteIPPoolQueue       workqueue.RateLimitingInterface
+	ippoolKeyMutex          keymutex.KeyMutex
+
 	ipsLister kubeovnlister.IPLister
 	ipSynced  cache.InformerSynced
 
@@ -267,6 +274,7 @@ func Run(ctx context.Context, config *Configuration) {
 	vpcInformer := kubeovnInformerFactory.Kubeovn().V1().Vpcs()
 	vpcNatGatewayInformer := kubeovnInformerFactory.Kubeovn().V1().VpcNatGateways()
 	subnetInformer := kubeovnInformerFactory.Kubeovn().V1().Subnets()
+	ippoolInformer := kubeovnInformerFactory.Kubeovn().V1().IPPools()
 	ipInformer := kubeovnInformerFactory.Kubeovn().V1().IPs()
 	virtualIpInformer := kubeovnInformerFactory.Kubeovn().V1().Vips()
 	iptablesEipInformer := kubeovnInformerFactory.Kubeovn().V1().IptablesEIPs()
@@ -332,6 +340,13 @@ func Run(ctx context.Context, config *Configuration) {
 		updateSubnetStatusQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateSubnetStatus"),
 		syncVirtualPortsQueue:   workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "SyncVirtualPort"),
 		subnetKeyMutex:          keymutex.NewHashed(numKeyLocks),
+
+		ippoolLister:            ippoolInformer.Lister(),
+		ippoolSynced:            ippoolInformer.Informer().HasSynced,
+		addOrUpdateIPPoolQueue:  workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddIPPool"),
+		updateIPPoolStatusQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateIPPoolStatus"),
+		deleteIPPoolQueue:       workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteIPPool"),
+		ippoolKeyMutex:          keymutex.NewHashed(numKeyLocks),
 
 		ipsLister: ipInformer.Lister(),
 		ipSynced:  ipInformer.Informer().HasSynced,
@@ -493,7 +508,7 @@ func Run(ctx context.Context, config *Configuration) {
 		controller.npsSynced = npInformer.Informer().HasSynced
 		controller.updateNpQueue = workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateNp")
 		controller.deleteNpQueue = workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteNp")
-		controller.npKeyMutex = keymutex.NewHashed(128)
+		controller.npKeyMutex = keymutex.NewHashed(numKeyLocks)
 	}
 
 	defer controller.shutdown()
@@ -586,6 +601,14 @@ func Run(ctx context.Context, config *Configuration) {
 		DeleteFunc: controller.enqueueDeleteSubnet,
 	}); err != nil {
 		util.LogFatalAndExit(err, "failed to add subnet event handler")
+	}
+
+	if _, err = ippoolInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    controller.enqueueAddIPPool,
+		UpdateFunc: controller.enqueueUpdateIPPool,
+		DeleteFunc: controller.enqueueDeleteIPPool,
+	}); err != nil {
+		util.LogFatalAndExit(err, "failed to add ippool event handler")
 	}
 
 	if _, err = ipInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -829,6 +852,10 @@ func (c *Controller) shutdown() {
 	c.updateSubnetStatusQueue.ShutDown()
 	c.syncVirtualPortsQueue.ShutDown()
 
+	c.addOrUpdateIPPoolQueue.ShutDown()
+	c.updateIPPoolStatusQueue.ShutDown()
+	c.deleteIPPoolQueue.ShutDown()
+
 	c.addNodeQueue.ShutDown()
 	c.updateNodeQueue.ShutDown()
 	c.deleteNodeQueue.ShutDown()
@@ -940,6 +967,7 @@ func (c *Controller) startWorkers(ctx context.Context) {
 
 	// add default/join subnet and wait them ready
 	go wait.Until(c.runAddSubnetWorker, time.Second, ctx.Done())
+	go wait.Until(c.runAddIPPoolWorker, time.Second, ctx.Done())
 	go wait.Until(c.runAddVlanWorker, time.Second, ctx.Done())
 	go wait.Until(c.runAddNamespaceWorker, time.Second, ctx.Done())
 	err := wait.PollUntilContextCancel(ctx, 3*time.Second, true, func(_ context.Context) (done bool, err error) {
@@ -1006,7 +1034,9 @@ func (c *Controller) startWorkers(ctx context.Context) {
 		go wait.Until(c.runUpdatePodSecurityWorker, time.Second, ctx.Done())
 
 		go wait.Until(c.runDeleteSubnetWorker, time.Second, ctx.Done())
+		go wait.Until(c.runDeleteIPPoolWorker, time.Second, ctx.Done())
 		go wait.Until(c.runUpdateSubnetStatusWorker, time.Second, ctx.Done())
+		go wait.Until(c.runUpdateIPPoolStatusWorker, time.Second, ctx.Done())
 		go wait.Until(c.runSyncVirtualPortsWorker, time.Second, ctx.Done())
 
 		if c.config.EnableLb {

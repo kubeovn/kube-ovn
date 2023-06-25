@@ -54,6 +54,10 @@ for slr in $(kubectl get switch-lb-rule -o name); do
    kubectl delete --ignore-not-found $slr
 done
 
+for ippool in $(kubectl get ippool -o name); do
+  kubectl delete --ignore-not-found $ippool
+done
+
 set +e
 for subnet in $(kubectl get subnet -o name); do
   kubectl patch "$subnet" --type='json' -p '[{"op": "replace", "path": "/metadata/finalizers", "value": []}]'
@@ -108,12 +112,27 @@ kubectl delete --ignore-not-found clusterrolebinding vpc-dns
 kubectl delete --ignore-not-found sa vpc-dns -n kube-system
 
 # delete CRD
-kubectl delete --ignore-not-found crd htbqoses.kubeovn.io security-groups.kubeovn.io ips.kubeovn.io subnets.kubeovn.io \
-                                      vpc-nat-gateways.kubeovn.io vpcs.kubeovn.io vlans.kubeovn.io provider-networks.kubeovn.io \
-                                      iptables-dnat-rules.kubeovn.io  iptables-eips.kubeovn.io  iptables-fip-rules.kubeovn.io \
-                                      iptables-snat-rules.kubeovn.io vips.kubeovn.io switch-lb-rules.kubeovn.io vpc-dnses.kubeovn.io \
-                                      ovn-eips.kubeovn.io ovn-fips.kubeovn.io ovn-snat-rules.kubeovn.io ovn-dnat-rules.kubeovn.io \
-                                      qos-policies.kubeovn.io
+kubectl delete --ignore-not-found crd \
+  htbqoses.kubeovn.io \
+  security-groups.kubeovn.io \
+  ips.kubeovn.io \
+  ippools.kubeovn.io \
+  subnets.kubeovn.io \
+  vpc-nat-gateways.kubeovn.io \
+  vpcs.kubeovn.io \
+  vlans.kubeovn.io \
+  provider-networks.kubeovn.io \
+  iptables-dnat-rules.kubeovn.io \
+  iptables-eips.kubeovn.io \
+  iptables-fip-rules.kubeovn.io \
+  iptables-snat-rules.kubeovn.io \
+  vips.kubeovn.io \
+  switch-lb-rules.kubeovn.io \
+  vpc-dnses.kubeovn.io \
+  ovn-eips.kubeovn.io ovn-fips.kubeovn.io \
+  ovn-snat-rules.kubeovn.io \
+  ovn-dnat-rules.kubeovn.io \
+  qos-policies.kubeovn.io
 
 # Remove annotations/labels in namespaces and nodes
 kubectl annotate no --all ovn.kubernetes.io/cidr-

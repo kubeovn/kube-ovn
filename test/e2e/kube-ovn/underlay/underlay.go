@@ -3,7 +3,6 @@ package underlay
 import (
 	"context"
 	"fmt"
-	"github.com/kubeovn/kube-ovn/pkg/ipam"
 	"net"
 	"os/exec"
 	"strconv"
@@ -19,6 +18,7 @@ import (
 	"github.com/onsi/ginkgo/v2"
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ipam"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/docker"
@@ -627,16 +627,16 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		for index := 0; index < 2; index++ {
 			getAvailableIPs := func(subnet *apiv1.Subnet) string {
 				var availIPs []string
-
 				v4Cidr, v6Cidr := util.SplitStringIP(subnet.Spec.CIDRBlock)
 				if v4Cidr != "" {
 					startIP := strings.Split(v4Cidr, "/")[0]
-					availIPs = append(availIPs, ipam.NewIP(startIP).Add(100+int64(index)).String())
+					ip, _ := ipam.NewIP(startIP)
+					availIPs = append(availIPs, ip.Add(100+int64(index)).String())
 				}
-
 				if v6Cidr != "" {
 					startIP := strings.Split(v6Cidr, "/")[0]
-					availIPs = append(availIPs, ipam.NewIP(startIP).Add(100+int64(index)).String())
+					ip, _ := ipam.NewIP(startIP)
+					availIPs = append(availIPs, ip.Add(100+int64(index)).String())
 				}
 				return strings.Join(availIPs, ",")
 			}

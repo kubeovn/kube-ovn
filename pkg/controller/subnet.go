@@ -838,6 +838,18 @@ func (c *Controller) handleUpdateSubnetStatus(key string) error {
 		}
 		return err
 	}
+
+	ippools, err := c.ippoolLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list ippool: %v", err)
+		return err
+	}
+	for _, p := range ippools {
+		if p.Spec.Subnet == subnet.Name {
+			c.updateIPPoolStatusQueue.Add(p.Name)
+		}
+	}
+
 	if util.CheckProtocol(subnet.Spec.CIDRBlock) == kubeovnv1.ProtocolDual {
 		return calcDualSubnetStatusIP(subnet, c)
 	} else {
@@ -2071,11 +2083,12 @@ func checkAndFormatsExcludeIps(subnet *kubeovnv1.Subnet) bool {
 	for _, excludeIP := range subnet.Spec.ExcludeIps {
 		if _, ok := mapIps[excludeIP]; !ok {
 			ips := strings.Split(excludeIP, "..")
-			if len(ips) == 1 {
-				mapIps[excludeIP] = ipam.NewIPRange(ipam.NewIP(ips[0]), ipam.NewIP(ips[0]))
-			} else {
-				mapIps[excludeIP] = ipam.NewIPRange(ipam.NewIP(ips[0]), ipam.NewIP(ips[1]))
+			start, _ := ipam.NewIP(ips[0])
+			end := start
+			if len(ips) != 1 {
+				end, _ = ipam.NewIP(ips[1])
 			}
+			mapIps[excludeIP] = ipam.NewIPRange(start, end)
 		}
 	}
 	newMap := filterRepeatIPRange(mapIps)

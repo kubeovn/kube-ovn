@@ -71,6 +71,8 @@ rules:
       - vpc-nat-gateways/status
       - subnets
       - subnets/status
+      - ippools
+      - ippools/status
       - ips
       - vips
       - vips/status

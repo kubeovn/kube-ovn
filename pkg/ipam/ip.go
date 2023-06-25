@@ -1,20 +1,23 @@
 package ipam
 
 import (
+	"fmt"
 	"math/big"
 	"net"
 )
 
 type IP net.IP
 
-func NewIP(s string) IP {
+func NewIP(s string) (IP, error) {
 	ip := net.ParseIP(s)
-	if ip != nil {
-		if ip4 := ip.To4(); ip4 != nil {
-			ip = ip4
-		}
+	if ip == nil {
+		return nil, fmt.Errorf("invalid IP address %q", s)
 	}
-	return IP(ip)
+
+	if ip4 := ip.To4(); ip4 != nil {
+		ip = ip4
+	}
+	return IP(ip), nil
 }
 
 func (a IP) To4() net.IP {

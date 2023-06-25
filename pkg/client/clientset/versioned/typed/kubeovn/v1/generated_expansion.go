@@ -20,6 +20,8 @@ package v1
 
 type IPExpansion interface{}
 
+type IPPoolExpansion interface{}
+
 type IptablesDnatRuleExpansion interface{}
 
 type IptablesEIPExpansion interface{}

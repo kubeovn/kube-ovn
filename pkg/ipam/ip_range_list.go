@@ -1,6 +1,7 @@
 package ipam
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 )
@@ -13,15 +14,31 @@ func NewIPRangeList() *IPRangeList {
 	return &IPRangeList{}
 }
 
-func NewIPRangeListFrom(x ...string) *IPRangeList {
+func NewIPRangeListFrom(x ...string) (*IPRangeList, error) {
 	ret := &IPRangeList{make([]*IPRange, 0, len(x))}
 	for _, s := range x {
 		ips := strings.Split(s, "..")
 		if len(ips) == 1 {
-			ret.Add(NewIP(ips[0]))
+			ip, err := NewIP(ips[0])
+			if err != nil {
+				return nil, err
+			}
+			ret.Add(ip)
 		} else {
-			n1, found1 := ret.Find(NewIP(ips[0]))
-			n2, found2 := ret.Find(NewIP(ips[1]))
+			start, err := NewIP(ips[0])
+			if err != nil {
+				return nil, err
+			}
+			end, err := NewIP(ips[1])
+			if err != nil {
+				return nil, err
+			}
+			if end.LessThan(start) {
+				return nil, fmt.Errorf("invalid IP range %s: end %s must NOT be less than start %s", s, ips[1], ips[0])
+			}
+
+			n1, found1 := ret.Find(start)
+			n2, found2 := ret.Find(end)
 			if found1 {
 				if found2 {
 					if n1 != n2 {
@@ -29,29 +46,29 @@ func NewIPRangeListFrom(x ...string) *IPRangeList {
 						ret.ranges = append(ret.ranges[:n1+1], ret.ranges[n2+1:]...)
 					}
 				} else {
-					ret.ranges[n1].SetEnd(NewIP(ips[1]))
+					ret.ranges[n1].SetEnd(end)
 					ret.ranges = append(ret.ranges[:n1+1], ret.ranges[n2:]...)
 				}
 			} else {
 				if found2 {
-					ret.ranges[n2].SetStart(NewIP(ips[0]))
+					ret.ranges[n2].SetStart(start)
 					ret.ranges = append(ret.ranges[:n1], ret.ranges[n2:]...)
 				} else {
 					if n1 == n2 {
 						tmp := make([]*IPRange, ret.Len()+1)
 						copy(tmp, ret.ranges[:n1])
-						tmp[n1] = NewIPRange(NewIP(ips[0]), NewIP(ips[1]))
+						tmp[n1] = NewIPRange(start, end)
 						copy(tmp[n1+1:], ret.ranges[n1:])
 						ret.ranges = tmp
 					} else {
-						ret.ranges[n1] = NewIPRange(NewIP(ips[0]), NewIP(ips[1]))
+						ret.ranges[n1] = NewIPRange(start, end)
 						ret.ranges = append(ret.ranges[:n1+1], ret.ranges[n2+1:]...)
 					}
 				}
 			}
 		}
 	}
-	return ret
+	return ret, nil
 }
 
 func (r *IPRangeList) Clone() *IPRangeList {
@@ -62,6 +79,14 @@ func (r *IPRangeList) Clone() *IPRangeList {
 
 func (r *IPRangeList) Len() int {
 	return len(r.ranges)
+}
+
+func (r *IPRangeList) Count() float64 {
+	var sum float64
+	for _, v := range r.ranges {
+		sum += v.Count()
+	}
+	return sum
 }
 
 func (r *IPRangeList) At(i int) *IPRange {
@@ -151,7 +176,7 @@ func (r *IPRangeList) Allocate(skipped []IP) IP {
 		tmp.Add(ip)
 	}
 
-	filtered := r.Difference(tmp)
+	filtered := r.Separate(tmp)
 	if filtered.Len() == 0 {
 		return nil
 	}
@@ -175,8 +200,8 @@ func (r *IPRangeList) Equal(x *IPRangeList) bool {
 	return true
 }
 
-// Difference returns a new list which contains items which are in `r` but not in `x`
-func (r *IPRangeList) Difference(x *IPRangeList) *IPRangeList {
+// Separate returns a new list which contains items which are in `r` but not in `x`
+func (r *IPRangeList) Separate(x *IPRangeList) *IPRangeList {
 	if r.Len() == 0 {
 		return NewIPRangeList()
 	}
@@ -216,22 +241,23 @@ func (r *IPRangeList) Difference(x *IPRangeList) *IPRangeList {
 }
 
 func (r *IPRangeList) Merge(x *IPRangeList) *IPRangeList {
-	ret := &IPRangeList{make([]*IPRange, 0, r.Len()+x.Len())}
+	s := r.Separate(x)
+	ret := &IPRangeList{make([]*IPRange, 0, s.Len()+x.Len())}
 
 	var i, j int
-	for i != r.Len() || j != x.Len() {
-		if i == r.Len() {
+	for i != s.Len() || j != x.Len() {
+		if i == s.Len() {
 			ret.ranges = append(ret.ranges, x.ranges[j].Clone())
 			j++
 			continue
 		}
 		if j == x.Len() {
-			ret.ranges = append(ret.ranges, r.ranges[i].Clone())
+			ret.ranges = append(ret.ranges, s.ranges[i].Clone())
 			i++
 			continue
 		}
-		if r.ranges[i].Start().LessThan(x.ranges[j].Start()) {
-			ret.ranges = append(ret.ranges, r.ranges[i].Clone())
+		if s.ranges[i].Start().LessThan(x.ranges[j].Start()) {
+			ret.ranges = append(ret.ranges, s.ranges[i].Clone())
 			i++
 		} else {
 			ret.ranges = append(ret.ranges, x.ranges[j].Clone())
@@ -239,7 +265,20 @@ func (r *IPRangeList) Merge(x *IPRangeList) *IPRangeList {
 		}
 	}
 
-	return ret
+	for i := 0; i < ret.Len()-1; i++ {
+		if ret.ranges[i].End().Add(1).Equal(ret.ranges[i+1].Start()) {
+			ret.ranges[i].end = ret.ranges[i+1].end
+			ret.ranges = append(ret.ranges[:i+1], ret.ranges[i+2:]...)
+		}
+	}
+
+	return ret.Clone()
+}
+
+// Intersect returns a new list which contains items which are in both `r` and `x`
+func (r *IPRangeList) Intersect(x *IPRangeList) *IPRangeList {
+	r1, r2 := r.Separate(x), x.Separate(r)
+	return r.Merge(x).Separate(r1).Separate(r2)
 }
 
 func (r *IPRangeList) String() string {

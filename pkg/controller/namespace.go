@@ -120,13 +120,19 @@ func (c *Controller) handleAddNamespace(key string) error {
 	}
 	namespace := cachedNs.DeepCopy()
 
-	var ls string
+	var ls, ippool string
 	var lss, cidrs, excludeIps []string
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list subnets %v", err)
 		return err
 	}
+	ippools, err := c.ippoolLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list ippools: %v", err)
+		return err
+	}
+
 	// check if subnet bind ns
 	for _, s := range subnets {
 		for _, ns := range s.Spec.Namespaces {
@@ -136,6 +142,13 @@ func (c *Controller) handleAddNamespace(key string) error {
 				excludeIps = append(excludeIps, strings.Join(s.Spec.ExcludeIps, ","))
 				break
 			}
+		}
+	}
+
+	for _, p := range ippools {
+		if util.ContainsString(p.Spec.Namespaces, key) {
+			ippool = p.Name
+			break
 		}
 	}
 
@@ -178,13 +191,20 @@ func (c *Controller) handleAddNamespace(key string) error {
 	} else {
 		if namespace.Annotations[util.LogicalSwitchAnnotation] == strings.Join(lss, ",") &&
 			namespace.Annotations[util.CidrAnnotation] == strings.Join(cidrs, ";") &&
-			namespace.Annotations[util.ExcludeIpsAnnotation] == strings.Join(excludeIps, ";") {
+			namespace.Annotations[util.ExcludeIpsAnnotation] == strings.Join(excludeIps, ";") &&
+			namespace.Annotations[util.IpPoolAnnotation] == ippool {
 			return nil
 		}
 	}
 	namespace.Annotations[util.LogicalSwitchAnnotation] = strings.Join(lss, ",")
 	namespace.Annotations[util.CidrAnnotation] = strings.Join(cidrs, ";")
 	namespace.Annotations[util.ExcludeIpsAnnotation] = strings.Join(excludeIps, ";")
+
+	if ippool == "" {
+		delete(namespace.Annotations, util.IpPoolAnnotation)
+	} else {
+		namespace.Annotations[util.IpPoolAnnotation] = ippool
+	}
 
 	patch, err := util.GenerateStrategicMergePatchPayload(cachedNs, namespace)
 	if err != nil {
