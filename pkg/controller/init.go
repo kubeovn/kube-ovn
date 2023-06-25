@@ -709,12 +709,17 @@ func (c *Controller) initSyncCrdVpcNatGw() error {
 	}
 	// get vpc nat gateway image
 	cm, err = c.configMapsLister.ConfigMaps(c.config.PodNamespace).Get(util.VpcNatConfig)
-	if err != nil && !k8serrors.IsNotFound(err) {
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			klog.Errorf("configMap of %s not set, %v", util.VpcNatConfig, err)
+			return err
+		}
 		klog.Errorf("failed to get %s, %v", util.VpcNatConfig, err)
 		return err
 	}
-	if k8serrors.IsNotFound(err) || cm.Data["image"] == "" {
-		err = errors.New("image of vpc-nat-gw not set")
+
+	if cm.Data["image"] == "" {
+		err = errors.New("image of vpc-nat-gateway not set")
 		klog.Error(err)
 		return err
 	}
