@@ -314,6 +314,7 @@ func (subnet *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac *stri
 	var v4, v6 bool
 	isAllocated := false
 	subnet.mutex.Lock()
+	defer subnet.mutex.Unlock()
 
 	if ip.To4() != nil {
 		v4 = subnet.V4CIDR != nil
@@ -355,7 +356,6 @@ func (subnet *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac *stri
 				pool.V6Using.Add(ip)
 			}
 		}
-		subnet.mutex.Unlock()
 	}()
 
 	var macStr string
