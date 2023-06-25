@@ -3,6 +3,7 @@ package framework
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -13,12 +14,16 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/wait"
 	v1apps "k8s.io/client-go/kubernetes/typed/apps/v1"
 	"k8s.io/kubectl/pkg/polymorphichelpers"
 	"k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/kubernetes/test/e2e/framework/deployment"
 
 	"github.com/onsi/gomega"
+
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 type DeploymentClient struct {
@@ -63,6 +68,62 @@ func (c *DeploymentClient) CreateSync(deploy *appsv1.Deployment) *appsv1.Deploym
 	return c.Get(d.Name).DeepCopy()
 }
 
+func (c *DeploymentClient) RolloutStatus(name string) *appsv1.Deployment {
+	var deploy *appsv1.Deployment
+	WaitUntil(2*time.Second, timeout, func(_ context.Context) (bool, error) {
+		var err error
+		deploy = c.Get(name)
+		unstructured := &unstructured.Unstructured{}
+		if unstructured.Object, err = runtime.DefaultUnstructuredConverter.ToUnstructured(deploy); err != nil {
+			return false, err
+		}
+
+		dsv := &polymorphichelpers.DeploymentStatusViewer{}
+		msg, done, err := dsv.Status(unstructured, 0)
+		if err != nil {
+			return false, err
+		}
+		if done {
+			return true, nil
+		}
+
+		Logf(strings.TrimSpace(msg))
+		return false, nil
+	}, "")
+
+	return deploy
+}
+
+func (c *DeploymentClient) Patch(original, modified *appsv1.Deployment) *appsv1.Deployment {
+	patch, err := util.GenerateMergePatchPayload(original, modified)
+	ExpectNoError(err)
+
+	var patchedDeploy *appsv1.Deployment
+	err = wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+		deploy, err := c.DeploymentInterface.Patch(ctx, original.Name, types.StrategicMergePatchType, patch, metav1.PatchOptions{}, "")
+		if err != nil {
+			return handleWaitingAPIError(err, false, "patch deployment %s/%s", original.Namespace, original.Name)
+		}
+		patchedDeploy = deploy
+		return true, nil
+	})
+	if err == nil {
+		return patchedDeploy.DeepCopy()
+	}
+
+	if errors.Is(err, context.DeadlineExceeded) {
+		Failf("timed out while retrying to patch deployment %s/%s", original.Namespace, original.Name)
+	}
+	Failf("error occurred while retrying to patch deployment %s/%s: %v", original.Namespace, original.Name, err)
+
+	return nil
+}
+
+func (c *DeploymentClient) PatchSync(original, modified *appsv1.Deployment) *appsv1.Deployment {
+	deploy := c.Patch(original, modified)
+	return c.RolloutStatus(deploy.Name)
+}
+
 // Restart restarts the deployment as kubectl does
 func (c *DeploymentClient) Restart(deploy *appsv1.Deployment) *appsv1.Deployment {
 	buf, err := polymorphichelpers.ObjectRestarterFn(deploy)
@@ -85,29 +146,7 @@ func (c *DeploymentClient) Restart(deploy *appsv1.Deployment) *appsv1.Deployment
 // RestartSync restarts the deployment and wait it to be ready
 func (c *DeploymentClient) RestartSync(deploy *appsv1.Deployment) *appsv1.Deployment {
 	_ = c.Restart(deploy)
-
-	WaitUntil(2*time.Second, timeout, func(_ context.Context) (bool, error) {
-		var err error
-		deploy = c.Get(deploy.Name)
-		unstructured := &unstructured.Unstructured{}
-		if unstructured.Object, err = runtime.DefaultUnstructuredConverter.ToUnstructured(deploy); err != nil {
-			return false, err
-		}
-
-		dsv := &polymorphichelpers.DeploymentStatusViewer{}
-		msg, done, err := dsv.Status(unstructured, 0)
-		if err != nil {
-			return false, err
-		}
-		if done {
-			return true, nil
-		}
-
-		Logf(strings.TrimSpace(msg))
-		return false, nil
-	}, "")
-
-	return deploy
+	return c.RolloutStatus(deploy.Name)
 }
 
 // Delete deletes a deployment if the deployment exists

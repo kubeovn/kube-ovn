@@ -2,6 +2,8 @@ package ipam
 
 import (
 	"context"
+	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -11,6 +13,7 @@ import (
 	"github.com/onsi/ginkgo/v2"
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ipam"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 )
@@ -19,22 +22,27 @@ var _ = framework.Describe("[group:ipam]", func() {
 	f := framework.NewDefaultFramework("ipam")
 
 	var cs clientset.Interface
+	var nsClient *framework.NamespaceClient
 	var podClient *framework.PodClient
 	var deployClient *framework.DeploymentClient
 	var stsClient *framework.StatefulSetClient
 	var subnetClient *framework.SubnetClient
-	var namespaceName, subnetName, podName, deployName, stsName string
+	var ippoolClient *framework.IPPoolClient
+	var namespaceName, subnetName, ippoolName, podName, deployName, stsName string
 	var subnet *apiv1.Subnet
 	var cidr string
 
 	ginkgo.BeforeEach(func() {
 		cs = f.ClientSet
+		nsClient = f.NamespaceClient()
 		podClient = f.PodClient()
 		deployClient = f.DeploymentClient()
 		stsClient = f.StatefulSetClient()
 		subnetClient = f.SubnetClient()
+		ippoolClient = f.IPPoolClient()
 		namespaceName = f.Namespace.Name
 		subnetName = "subnet-" + framework.RandomSuffix()
+		ippoolName = "ippool-" + framework.RandomSuffix()
 		podName = "pod-" + framework.RandomSuffix()
 		deployName = "deploy-" + framework.RandomSuffix()
 		stsName = "sts-" + framework.RandomSuffix()
@@ -53,6 +61,9 @@ var _ = framework.Describe("[group:ipam]", func() {
 
 		ginkgo.By("Deleting statefulset " + stsName)
 		stsClient.DeleteSync(stsName)
+
+		ginkgo.By("Deleting ippool " + ippoolName)
+		ippoolClient.DeleteSync(ippoolName)
 
 		ginkgo.By("Deleting subnet " + subnetName)
 		subnetClient.DeleteSync(subnetName)
@@ -370,5 +381,155 @@ var _ = framework.Describe("[group:ipam]", func() {
 			}
 			framework.ExpectConsistOf(podIPs, strings.Split(pod.Annotations[util.IpAddressAnnotation], ","))
 		}
+	})
+
+	framework.ConformanceIt("should support IPPool feature", func() {
+		f.SkipVersionPriorTo(1, 12, "Support for IPPool feature was introduced in v1.12")
+
+		ipsCount := 3
+		randomIPs := strings.Split(framework.RandomIPPool(cidr, ";", ipsCount), ";")
+		ips := make([]string, 0, ipsCount*2)
+		for _, s := range randomIPs {
+			ips = append(ips, strings.Split(s, ",")...)
+		}
+		ipv4, ipv6 := util.SplitIpsByProtocol(ips)
+		if len(ipv4) != 0 {
+			framework.ExpectHaveLen(ipv4, ipsCount)
+		}
+		if len(ipv6) != 0 {
+			framework.ExpectHaveLen(ipv6, ipsCount)
+		}
+
+		sort.Slice(ipv4, func(i, j int) bool {
+			ip1, _ := ipam.NewIP(ipv4[i])
+			ip2, _ := ipam.NewIP(ipv4[j])
+			return ip1.LessThan(ip2)
+		})
+		sort.Slice(ipv6, func(i, j int) bool {
+			ip1, _ := ipam.NewIP(ipv6[i])
+			ip2, _ := ipam.NewIP(ipv6[j])
+			return ip1.LessThan(ip2)
+		})
+
+		var err error
+		ips = make([]string, 0, ipsCount*2)
+		ipv4Range, ipv6Range := ipam.NewEmptyIPRangeList(), ipam.NewEmptyIPRangeList()
+		if len(ipv4) != 0 {
+			tmp := []string{ipv4[0], fmt.Sprintf("%s..%s", ipv4[1], ipv4[2])}
+			ipv4Range, err = ipam.NewIPRangeListFrom(tmp...)
+			framework.ExpectNoError(err)
+			ips = append(ips, tmp...)
+		}
+		if len(ipv6) != 0 {
+			tmp := []string{ipv6[0], fmt.Sprintf("%s..%s", ipv6[1], ipv6[2])}
+			ipv6Range, err = ipam.NewIPRangeListFrom(tmp...)
+			framework.ExpectNoError(err)
+			ips = append(ips, tmp...)
+		}
+
+		ginkgo.By(fmt.Sprintf("Creating ippool %s with ips %v", ippoolName, ips))
+		ippool := framework.MakeIPPool(ippoolName, subnetName, ips, nil)
+		ippool = ippoolClient.CreateSync(ippool)
+
+		ginkgo.By("Validating ippool status")
+		framework.ExpectTrue(ippool.Status.V4UsingIPs.EqualInt64(0))
+		framework.ExpectTrue(ippool.Status.V6UsingIPs.EqualInt64(0))
+		framework.ExpectEmpty(ippool.Status.V4UsingIPRange)
+		framework.ExpectEmpty(ippool.Status.V6UsingIPRange)
+		framework.ExpectTrue(ippool.Status.V4AvailableIPs.Equal(ipv4Range.Count()))
+		framework.ExpectTrue(ippool.Status.V6AvailableIPs.Equal(ipv6Range.Count()))
+		framework.ExpectEqual(ippool.Status.V4AvailableIPRange, ipv4Range.String())
+		framework.ExpectEqual(ippool.Status.V6AvailableIPRange, ipv6Range.String())
+
+		ginkgo.By("Creating deployment " + deployName + " within ippool " + ippoolName)
+		replicas := 3
+		labels := map[string]string{"app": deployName}
+		annotations := map[string]string{util.IpPoolAnnotation: ippoolName}
+		deploy := framework.MakeDeployment(deployName, int32(replicas), labels, annotations, "pause", framework.PauseImage, "")
+		deploy = deployClient.CreateSync(deploy)
+
+		checkFn := func() {
+			ginkgo.By("Getting pods for deployment " + deployName)
+			pods, err := deployClient.GetPods(deploy)
+			framework.ExpectNoError(err, "failed to get pods for deployment "+deployName)
+			framework.ExpectHaveLen(pods.Items, replicas)
+
+			v4Using, v6Using := ipam.NewEmptyIPRangeList(), ipam.NewEmptyIPRangeList()
+			for _, pod := range pods.Items {
+				for _, podIP := range pod.Status.PodIPs {
+					ip, err := ipam.NewIP(podIP.IP)
+					framework.ExpectNoError(err)
+					if strings.ContainsRune(podIP.IP, ':') {
+						framework.ExpectTrue(ipv6Range.Contains(ip), "Pod IP %s should be contained by %v", ip.String(), ipv6Range.String())
+						v6Using.Add(ip)
+					} else {
+						framework.ExpectTrue(ipv4Range.Contains(ip), "Pod IP %s should be contained by %v", ip.String(), ipv4Range.String())
+						v4Using.Add(ip)
+					}
+				}
+			}
+
+			ginkgo.By("Validating ippool status")
+			framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+				ippool = ippoolClient.Get(ippoolName)
+				v4Available, v6Available := ipv4Range.Separate(v4Using), ipv6Range.Separate(v6Using)
+				if !ippool.Status.V4UsingIPs.Equal(v4Using.Count()) {
+					framework.Logf(".status.v4UsingIPs mismatch: expect %s, actual %s", v4Using.Count(), ippool.Status.V4UsingIPs)
+					return false, nil
+				}
+				if !ippool.Status.V6UsingIPs.Equal(v6Using.Count()) {
+					framework.Logf(".status.v6UsingIPs mismatch: expect %s, actual %s", v6Using.Count(), ippool.Status.V6UsingIPs)
+					return false, nil
+				}
+				if ippool.Status.V4UsingIPRange != v4Using.String() {
+					framework.Logf(".status.v4UsingIPRange mismatch: expect %s, actual %s", v4Using, ippool.Status.V4UsingIPRange)
+					return false, nil
+				}
+				if ippool.Status.V6UsingIPRange != v6Using.String() {
+					framework.Logf(".status.v6UsingIPRange mismatch: expect %s, actual %s", v6Using, ippool.Status.V6UsingIPRange)
+					return false, nil
+				}
+				if !ippool.Status.V4AvailableIPs.Equal(v4Available.Count()) {
+					framework.Logf(".status.v4AvailableIPs mismatch: expect %s, actual %s", v4Available.Count(), ippool.Status.V4AvailableIPs)
+					return false, nil
+				}
+				if !ippool.Status.V6AvailableIPs.Equal(v6Available.Count()) {
+					framework.Logf(".status.v6AvailableIPs mismatch: expect %s, actual %s", v6Available.Count(), ippool.Status.V6AvailableIPs)
+					return false, nil
+				}
+				if ippool.Status.V4AvailableIPRange != v4Available.String() {
+					framework.Logf(".status.v4AvailableIPRange mismatch: expect %s, actual %s", v4Available, ippool.Status.V4AvailableIPRange)
+					return false, nil
+				}
+				if ippool.Status.V6AvailableIPRange != v6Available.String() {
+					framework.Logf(".status.v6AvailableIPRange mismatch: expect %s, actual %s", v6Available, ippool.Status.V6AvailableIPRange)
+					return false, nil
+				}
+				return true, nil
+			}, "")
+		}
+		checkFn()
+
+		ginkgo.By("Restarting deployment " + deployName)
+		deploy = deployClient.RestartSync(deploy)
+		checkFn()
+
+		ginkgo.By("Adding namespace " + namespaceName + " to ippool " + ippoolName)
+		patchedIPPool := ippool.DeepCopy()
+		patchedIPPool.Spec.Namespaces = []string{namespaceName}
+		ippool = ippoolClient.Patch(ippool, patchedIPPool, 10*time.Second)
+
+		ginkgo.By("Validating namespace annotations")
+		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+			ns := nsClient.Get(namespaceName)
+			return len(ns.Annotations) != 0 && ns.Annotations[util.IpPoolAnnotation] == ippoolName, nil
+		}, "")
+
+		ginkgo.By("Patching deployment " + deployName)
+		deploy = deployClient.RestartSync(deploy)
+		patchedDeploy := deploy.DeepCopy()
+		patchedDeploy.Spec.Template.Annotations = nil
+		deploy = deployClient.PatchSync(deploy, patchedDeploy)
+		checkFn()
 	})
 })

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/onsi/ginkgo/v2"
+	"github.com/scylladb/go-set/strset"
 
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -108,14 +109,12 @@ func RandomIPPool(cidr, sep string, count int) string {
 		max := big.NewInt(0).Exp(big.NewInt(2), big.NewInt(int64(size-prefix)), nil)
 		max.Sub(max, big.NewInt(3))
 
-		ips := make([]string, 0, count)
-		for len(ips) != count {
+		ips := strset.NewWithSize(count)
+		for ips.Size() != count {
 			n := big.NewInt(0).Rand(rnd, max)
-			if ip := util.BigInt2Ip(n.Add(n, base)); !util.ContainsString(ips, ip) {
-				ips = append(ips, ip)
-			}
+			ips.Add(util.BigInt2Ip(n.Add(n, base)))
 		}
-		return ips
+		return ips.List()
 	}
 
 	cidrV4, cidrV6 := util.SplitStringIP(cidr)
