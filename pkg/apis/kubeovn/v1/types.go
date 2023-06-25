@@ -266,7 +266,6 @@ type IPPool struct {
 
 type IPPoolSpec struct {
 	Subnet     string   `json:"subnet,omitempty"`
-	Protocol   string   `json:"protocol,omitempty"`
 	Namespaces []string `json:"namespaces,omitempty"`
 	IPs        []string `json:"ips,omitempty"`
 }

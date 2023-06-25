@@ -2319,9 +2319,6 @@ spec:
       - name: Subnet
         type: string
         jsonPath: .spec.subnet
-      - name: Protocol
-        type: string
-        jsonPath: .spec.protocol
       - name: IPs
         type: string
         jsonPath: .spec.ips
@@ -2354,12 +2351,6 @@ spec:
                   x-kubernetes-list-type: set
                   items:
                     type: string
-                protocol:
-                  type: string
-                  enum:
-                    - IPv4
-                    - IPv6
-                    - Dual
                 ips:
                   type: array
                   minItems: 1

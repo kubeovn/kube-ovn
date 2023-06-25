@@ -48,8 +48,7 @@ func (c *Controller) enqueueUpdateIPPool(old, new interface{}) {
 	}
 
 	if !reflect.DeepEqual(oldIPPool.Spec.Namespaces, newIPPool.Spec.Namespaces) ||
-		!reflect.DeepEqual(oldIPPool.Spec.IPs, newIPPool.Spec.IPs) ||
-		oldIPPool.Spec.Protocol != newIPPool.Spec.Protocol {
+		!reflect.DeepEqual(oldIPPool.Spec.IPs, newIPPool.Spec.IPs) {
 		klog.V(3).Infof("enqueue update ippool %s", key)
 		c.addOrUpdateIPPoolQueue.Add(key)
 	}
