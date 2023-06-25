@@ -9,6 +9,7 @@ import (
 	"k8s.io/klog/v2"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/internal"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -67,12 +68,12 @@ func NewSubnet(name, cidrStr string, excludeIps []string) (*Subnet, error) {
 		Name:         name,
 		CIDR:         cidrStr,
 		Protocol:     protocol,
-		V4Free:       NewIPRangeList(),
-		V6Free:       NewIPRangeList(),
+		V4Free:       NewEmptyIPRangeList(),
+		V6Free:       NewEmptyIPRangeList(),
 		V4Reserved:   v4Reserved,
 		V6Reserved:   v6Reserved,
-		V4Using:      NewIPRangeList(),
-		V6Using:      NewIPRangeList(),
+		V4Using:      NewEmptyIPRangeList(),
+		V6Using:      NewEmptyIPRangeList(),
 		V4NicToIP:    map[string]IP{},
 		V6NicToIP:    map[string]IP{},
 		V4IPToPod:    map[string]string{},
@@ -107,10 +108,10 @@ func NewSubnet(name, cidrStr string, excludeIps []string) (*Subnet, error) {
 	pool := &IPPool{
 		V4IPs:      subnet.V4Free.Clone(),
 		V6IPs:      subnet.V6Free.Clone(),
-		V4Released: NewIPRangeList(),
-		V6Released: NewIPRangeList(),
-		V4Using:    NewIPRangeList(),
-		V6Using:    NewIPRangeList(),
+		V4Released: NewEmptyIPRangeList(),
+		V6Released: NewEmptyIPRangeList(),
+		V4Using:    NewEmptyIPRangeList(),
+		V6Using:    NewEmptyIPRangeList(),
 	}
 	subnet.V4Free = subnet.V4Free.Separate(subnet.V4Reserved)
 	subnet.V6Free = subnet.V6Free.Separate(subnet.V6Reserved)
@@ -223,7 +224,7 @@ func (subnet *Subnet) getV4RandomAddress(ippoolName, podName, nicName string, ma
 			return nil, nil, "", ErrNoAvailable
 		}
 		pool.V4Free = pool.V4Released
-		pool.V4Released = NewIPRangeList()
+		pool.V4Released = NewEmptyIPRangeList()
 	}
 
 	skipped := make([]IP, 0, len(skippedAddrs))
@@ -277,7 +278,7 @@ func (subnet *Subnet) getV6RandomAddress(ippoolName, podName, nicName string, ma
 			return nil, nil, "", ErrNoAvailable
 		}
 		pool.V6Free = pool.V6Released
-		pool.V6Released = NewIPRangeList()
+		pool.V6Released = NewEmptyIPRangeList()
 	}
 
 	skipped := make([]IP, 0, len(skippedAddrs))
@@ -597,18 +598,18 @@ func (s *Subnet) AddOrUpdateIPPool(name string, ips []string) error {
 	defer s.mutex.Unlock()
 
 	pool := &IPPool{
-		V4IPs:       NewIPRangeList(),
-		V6IPs:       NewIPRangeList(),
-		V4Free:      NewIPRangeList(),
-		V6Free:      NewIPRangeList(),
-		V4Available: NewIPRangeList(),
-		V6Available: NewIPRangeList(),
-		V4Reserved:  NewIPRangeList(),
-		V6Reserved:  NewIPRangeList(),
-		V4Released:  NewIPRangeList(),
-		V6Released:  NewIPRangeList(),
-		V4Using:     NewIPRangeList(),
-		V6Using:     NewIPRangeList(),
+		V4IPs:       NewEmptyIPRangeList(),
+		V6IPs:       NewEmptyIPRangeList(),
+		V4Free:      NewEmptyIPRangeList(),
+		V6Free:      NewEmptyIPRangeList(),
+		V4Available: NewEmptyIPRangeList(),
+		V6Available: NewEmptyIPRangeList(),
+		V4Reserved:  NewEmptyIPRangeList(),
+		V6Reserved:  NewEmptyIPRangeList(),
+		V4Released:  NewEmptyIPRangeList(),
+		V6Released:  NewEmptyIPRangeList(),
+		V4Using:     NewEmptyIPRangeList(),
+		V6Using:     NewEmptyIPRangeList(),
 	}
 
 	var err error
@@ -678,8 +679,8 @@ func (s *Subnet) AddOrUpdateIPPool(name string, ips []string) error {
 		defaultPool.V4Available = defaultPool.V4Free.Clone()
 		defaultPool.V6Available = defaultPool.V6Free.Clone()
 	}
-	defaultPool.V4Released = NewIPRangeList()
-	defaultPool.V6Released = NewIPRangeList()
+	defaultPool.V4Released = NewEmptyIPRangeList()
+	defaultPool.V6Released = NewEmptyIPRangeList()
 	pool.V4Available = pool.V4Free.Clone()
 	pool.V6Available = pool.V6Free.Clone()
 	s.IPPools[name] = pool
@@ -712,7 +713,7 @@ func (s *Subnet) RemoveIPPool(name string) {
 }
 
 func (s *Subnet) IPPoolStatistics(ippool string) (
-	v4Available, v4Using, v6Available, v6Using float64,
+	v4Available, v4Using, v6Available, v6Using internal.BigInt,
 	v4AvailableRange, v4UsingRange, v6AvailableRange, v6UsingRange string,
 ) {
 	s.mutex.Lock()

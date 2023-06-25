@@ -4,69 +4,49 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/kubeovn/kube-ovn/pkg/internal"
 )
 
 type IPRangeList struct {
 	ranges []*IPRange
 }
 
-func NewIPRangeList() *IPRangeList {
+func NewEmptyIPRangeList() *IPRangeList {
 	return &IPRangeList{}
 }
 
+func NewIPRangeList(ips ...IP) (*IPRangeList, error) {
+	if len(ips)%2 != 0 {
+		return nil, fmt.Errorf("length of ips must be an even number, but current is %d", len(ips))
+	}
+
+	ret := &IPRangeList{make([]*IPRange, len(ips)/2)}
+	for i := 0; i < len(ips)/2; i++ {
+		ret.ranges[i] = NewIPRange(ips[i*2], ips[i*2+1])
+	}
+	return ret, nil
+}
+
 func NewIPRangeListFrom(x ...string) (*IPRangeList, error) {
-	ret := &IPRangeList{make([]*IPRange, 0, len(x))}
+	ret := &IPRangeList{}
 	for _, s := range x {
 		ips := strings.Split(s, "..")
+		start, err := NewIP(ips[0])
+		if err != nil {
+			return nil, err
+		}
+		var r *IPRange
 		if len(ips) == 1 {
-			ip, err := NewIP(ips[0])
-			if err != nil {
-				return nil, err
-			}
-			ret.Add(ip)
+			r = NewIPRange(start, start)
 		} else {
-			start, err := NewIP(ips[0])
-			if err != nil {
-				return nil, err
-			}
 			end, err := NewIP(ips[1])
 			if err != nil {
 				return nil, err
 			}
-			if end.LessThan(start) {
-				return nil, fmt.Errorf("invalid IP range %s: end %s must NOT be less than start %s", s, ips[1], ips[0])
-			}
-
-			n1, found1 := ret.Find(start)
-			n2, found2 := ret.Find(end)
-			if found1 {
-				if found2 {
-					if n1 != n2 {
-						ret.ranges[n1].SetEnd(ret.ranges[n2].End())
-						ret.ranges = append(ret.ranges[:n1+1], ret.ranges[n2+1:]...)
-					}
-				} else {
-					ret.ranges[n1].SetEnd(end)
-					ret.ranges = append(ret.ranges[:n1+1], ret.ranges[n2:]...)
-				}
-			} else {
-				if found2 {
-					ret.ranges[n2].SetStart(start)
-					ret.ranges = append(ret.ranges[:n1], ret.ranges[n2:]...)
-				} else {
-					if n1 == n2 {
-						tmp := make([]*IPRange, ret.Len()+1)
-						copy(tmp, ret.ranges[:n1])
-						tmp[n1] = NewIPRange(start, end)
-						copy(tmp[n1+1:], ret.ranges[n1:])
-						ret.ranges = tmp
-					} else {
-						ret.ranges[n1] = NewIPRange(start, end)
-						ret.ranges = append(ret.ranges[:n1+1], ret.ranges[n2+1:]...)
-					}
-				}
-			}
+			r = NewIPRange(start, end)
 		}
+		ret = ret.Merge(&IPRangeList{[]*IPRange{r}})
 	}
 	return ret, nil
 }
@@ -81,12 +61,12 @@ func (r *IPRangeList) Len() int {
 	return len(r.ranges)
 }
 
-func (r *IPRangeList) Count() float64 {
-	var sum float64
+func (r *IPRangeList) Count() internal.BigInt {
+	var count internal.BigInt
 	for _, v := range r.ranges {
-		sum += v.Count()
+		count = count.Add(v.Count())
 	}
-	return sum
+	return count
 }
 
 func (r *IPRangeList) At(i int) *IPRange {
@@ -171,7 +151,7 @@ func (r *IPRangeList) Allocate(skipped []IP) IP {
 		return ret
 	}
 
-	tmp := NewIPRangeList()
+	tmp := NewEmptyIPRangeList()
 	for _, ip := range skipped {
 		tmp.Add(ip)
 	}
@@ -203,7 +183,7 @@ func (r *IPRangeList) Equal(x *IPRangeList) bool {
 // Separate returns a new list which contains items which are in `r` but not in `x`
 func (r *IPRangeList) Separate(x *IPRangeList) *IPRangeList {
 	if r.Len() == 0 {
-		return NewIPRangeList()
+		return NewEmptyIPRangeList()
 	}
 	if x.Len() == 0 {
 		return r.Clone()
@@ -269,6 +249,7 @@ func (r *IPRangeList) Merge(x *IPRangeList) *IPRangeList {
 		if ret.ranges[i].End().Add(1).Equal(ret.ranges[i+1].Start()) {
 			ret.ranges[i].end = ret.ranges[i+1].end
 			ret.ranges = append(ret.ranges[:i+1], ret.ranges[i+2:]...)
+			i--
 		}
 	}
 

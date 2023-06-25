@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/big"
 	"net"
+	"strings"
 )
 
 type IP net.IP
@@ -14,9 +15,10 @@ func NewIP(s string) (IP, error) {
 		return nil, fmt.Errorf("invalid IP address %q", s)
 	}
 
-	if ip4 := ip.To4(); ip4 != nil {
-		ip = ip4
+	if !strings.ContainsRune(s, ':') {
+		ip = ip.To4()
 	}
+
 	return IP(ip), nil
 }
 
@@ -41,11 +43,27 @@ func (a IP) GreaterThan(b IP) bool {
 }
 
 func (a IP) Add(n int64) IP {
-	return IP(big.NewInt(0).Add(big.NewInt(0).SetBytes([]byte(a)), big.NewInt(n)).Bytes())
+	buff := big.NewInt(0).Add(big.NewInt(0).SetBytes([]byte(a)), big.NewInt(n)).Bytes()
+	if len(buff) < len(a) {
+		tmp := make([]byte, len(a))
+		copy(tmp[len(tmp)-len(buff):], buff)
+		buff = tmp
+	} else if len(buff) > len(a) {
+		buff = buff[len(buff)-len(a):]
+	}
+	return IP(buff)
 }
 
 func (a IP) Sub(n int64) IP {
-	return IP(big.NewInt(0).Sub(big.NewInt(0).SetBytes([]byte(a)), big.NewInt(n)).Bytes())
+	buff := big.NewInt(0).Sub(big.NewInt(0).SetBytes([]byte(a)), big.NewInt(n)).Bytes()
+	if len(buff) < len(a) {
+		tmp := make([]byte, len(a))
+		copy(tmp[len(tmp)-len(buff):], buff)
+		buff = tmp
+	} else if len(buff) > len(a) {
+		buff = buff[len(buff)-len(a):]
+	}
+	return IP(buff)
 }
 
 func (a IP) String() string {

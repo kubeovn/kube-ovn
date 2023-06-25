@@ -6,6 +6,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/kubeovn/kube-ovn/pkg/internal"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 )
 
@@ -265,7 +266,6 @@ type IPPool struct {
 
 type IPPoolSpec struct {
 	Subnet     string   `json:"subnet,omitempty"`
-	Protocol   string   `json:"protocol,omitempty"`
 	Namespaces []string `json:"namespaces,omitempty"`
 	IPs        []string `json:"ips,omitempty"`
 }
@@ -275,14 +275,14 @@ type IPPoolSpec struct {
 type IPPoolCondition Condition
 
 type IPPoolStatus struct {
-	V4AvailableIPs     float64 `json:"v4AvailableIPs"`
-	V4AvailableIPRange string  `json:"v4AvailableIPRange"`
-	V4UsingIPs         float64 `json:"v4UsingIPs"`
-	V4UsingIPRange     string  `json:"v4UsingIPRange"`
-	V6AvailableIPs     float64 `json:"v6AvailableIPs"`
-	V6AvailableIPRange string  `json:"v6AvailableIPRange"`
-	V6UsingIPs         float64 `json:"v6UsingIPs"`
-	V6UsingIPRange     string  `json:"v6UsingIPRange"`
+	V4AvailableIPs     internal.BigInt `json:"v4AvailableIPs"`
+	V4AvailableIPRange string          `json:"v4AvailableIPRange"`
+	V4UsingIPs         internal.BigInt `json:"v4UsingIPs"`
+	V4UsingIPRange     string          `json:"v4UsingIPRange"`
+	V6AvailableIPs     internal.BigInt `json:"v6AvailableIPs"`
+	V6AvailableIPRange string          `json:"v6AvailableIPRange"`
+	V6UsingIPs         internal.BigInt `json:"v6UsingIPs"`
+	V6UsingIPRange     string          `json:"v6UsingIPRange"`
 
 	// Conditions represents the latest state of the object
 	// +optional

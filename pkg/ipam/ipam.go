@@ -11,6 +11,7 @@ import (
 	"k8s.io/klog/v2"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/internal"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -191,7 +192,7 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr, gw string, excludeIps []strin
 			pool.V4IPs = ips
 			pool.V4Free = subnet.V4Free.Clone()
 			pool.V4Reserved = subnet.V4Reserved.Clone()
-			pool.V4Released = NewIPRangeList()
+			pool.V4Released = NewEmptyIPRangeList()
 			pool.V4Using = subnet.V4Using.Clone()
 
 			for name, p := range subnet.IPPools {
@@ -201,7 +202,7 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr, gw string, excludeIps []strin
 				p.V4Free = ips.Intersect(p.V4IPs)
 				p.V4Reserved = subnet.V4Reserved.Intersect(p.V4IPs)
 				p.V4Available = p.V4Free.Clone()
-				p.V4Released = NewIPRangeList()
+				p.V4Released = NewEmptyIPRangeList()
 				pool.V4Free = pool.V4Free.Separate(p.V4IPs)
 				pool.V4Reserved = p.V4Reserved.Separate(p.V4Reserved)
 			}
@@ -234,7 +235,7 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr, gw string, excludeIps []strin
 			pool.V6IPs = ips
 			pool.V6Free = subnet.V6Free.Clone()
 			pool.V6Reserved = subnet.V6Reserved.Clone()
-			pool.V6Released = NewIPRangeList()
+			pool.V6Released = NewEmptyIPRangeList()
 			pool.V6Using = subnet.V6Using.Clone()
 
 			for name, p := range subnet.IPPools {
@@ -244,7 +245,7 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr, gw string, excludeIps []strin
 				p.V6Free = ips.Intersect(p.V6IPs)
 				p.V6Reserved = subnet.V6Reserved.Intersect(p.V6IPs)
 				p.V6Available = p.V6Free.Clone()
-				p.V6Released = NewIPRangeList()
+				p.V6Released = NewEmptyIPRangeList()
 				pool.V6Free = pool.V6Free.Separate(p.V6IPs)
 				pool.V6Reserved = p.V6Reserved.Separate(p.V6Reserved)
 			}
@@ -384,7 +385,7 @@ func (ipam *IPAM) RemoveIPPool(subnet, ippool string) {
 }
 
 func (ipam *IPAM) IPPoolStatistics(subnet, ippool string) (
-	v4Available, v4Using, v6Available, v6Using float64,
+	v4Available, v4Using, v6Available, v6Using internal.BigInt,
 	v4AvailableRange, v4UsingRange, v6AvailableRange, v6UsingRange string,
 ) {
 	ipam.mutex.RLock()
