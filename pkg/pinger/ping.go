@@ -15,6 +15,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog/v2"
 
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -285,8 +286,12 @@ func checkAccessTargetIPPorts(config *Configuration) error {
 		proto := items[0]
 		addr := items[1]
 		port := items[2]
+
 		if !util.ContainsString(config.PodProtocols, util.CheckProtocol(addr)) {
 			continue
+		}
+		if util.CheckProtocol(addr) == kubeovnv1.ProtocolIPv6 {
+			addr = fmt.Sprintf("[%s]", addr)
 		}
 
 		if proto == util.ProtocolTCP {
