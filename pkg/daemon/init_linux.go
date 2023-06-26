@@ -76,7 +76,7 @@ func (c *Controller) changeProvideNicName(current, target string) (bool, error) 
 	}
 
 	// set link unmanaged by NetworkManager
-	if err = c.nmSyncer.SetManaged(current, false); err != nil {
+	if err = c.nmSyncer.SetManaged(current, c.config.ManageNicByNetworkManager); err != nil {
 		klog.Errorf("failed to set device %s unmanaged by NetworkManager: %v", current, err)
 		return false, err
 	}

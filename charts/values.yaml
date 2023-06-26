@@ -47,6 +47,7 @@ networking:
   ENABLE_ECMP: false
   ENABLE_METRICS: true
   NODE_LOCAL_DNS_IP: ""
+  MANAGE_NIC_BY_NETWORK_MANAGER: false
 
 func:
   ENABLE_LB: true
