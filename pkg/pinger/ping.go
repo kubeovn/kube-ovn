@@ -278,6 +278,7 @@ func checkAccessTargetIPPorts(config *Configuration) error {
 	var checkErr error
 	targetIPPorts := strings.Split(config.TargetIPPorts, ",")
 	for _, targetIPPort := range targetIPPorts {
+		klog.Infof("checking targetIPPort %s ", targetIPPort)
 		items := strings.Split(targetIPPort, "-")
 		if len(items) != 3 {
 			klog.Infof("targetIPPort format failed")

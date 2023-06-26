@@ -31,7 +31,7 @@ showHelp(){
   echo "    trace {namespace/podname} {target ip address} [target mac address] arp {request|reply}                     trace ARP request/reply"
   echo "    trace {node//nodename} {target ip address} [target mac address] {icmp|tcp|udp} [target tcp/udp port]       trace ICMP/TCP/UDP"
   echo "    trace {node//nodename} {target ip address} [target mac address] arp {request|reply}                        trace ARP request/reply"
-  echo "  diagnose {all|node|subnet} [nodename|subnetName]    diagnose connectivity of all nodes or a specific node or specify subnet's ds pod"
+  echo "  diagnose {all|node|subnet|IPPorts} [nodename|subnetName|{proto1}-{IP1}-{Port1},{proto2}-{IP2}-{Port2}]    diagnose connectivity of all nodes or a specific node or specify subnet's ds pod or IPPorts like 'tcp-172.18.0.2-53,udp-172.18.0.3-53'"
   echo "  env-check    check the environment configuration"
   echo "  tuning {install-fastpath|local-install-fastpath|remove-fastpath|install-stt|local-install-stt|remove-stt} {centos7|centos8}} [kernel-devel-version]    deploy kernel optimisation components to the system"
   echo "  reload    restart all kube-ovn components"
@@ -589,7 +589,25 @@ EOF
   rm $tmpFileName
 }
 
+getTestNodePortServiceIPPorts() {
+
+  targetIPPorts=""
+  nodeIPs=($(kubectl get node -o wide | grep -v "INTERNAL-IP" | awk '{print $6}'))
+  nodePort=$(kubectl get svc test-node-port -n $KUBE_OVN_NS -o 'jsonpath={.spec.ports[0].nodePort}')
+  for nodeIP in "${nodeIPs[@]}"
+  do
+    if [ -z "$targetIPPorts" ]; then
+      targetIPPorts="tcp-$nodeIP-$nodePort"
+    else
+      targetIPPorts="$targetIPPorts,tcp-$nodeIP-$nodePort"
+    fi
+  done
+  echo "$targetIPPorts"
+}
+
+
 diagnose(){
+  gcCommands=()
   kubectl get crd vpcs.kubeovn.io
   kubectl get crd vpc-nat-gateways.kubeovn.io
   kubectl get crd subnets.kubeovn.io
@@ -630,26 +648,24 @@ diagnose(){
   checkLeader northd
 
   quitDiagnose() {
-    kubectl delete ds -l app=$CONN_CHECK_LABEL -n $KUBE_OVN_NS
-    kubectl delete svc -l app=$CONN_CHECK_LABEL -n $KUBE_OVN_NS
+    if [ ! ${#gcCommands[@]} -eq 0 ]; then
+      for item in "${gcCommands[@]}"
+      do
+          echo $item
+          eval "$item"
+      done
+    fi
   }
   trap quitDiagnose EXIT
 
-  applyTestNodePortService
-
-  targetIPPorts=""
-  nodeIPs=($(kubectl get node -o wide | grep -v "INTERNAL-IP" | awk '{print $6}'))
-  nodePort=$(kubectl get svc test-node-port -n $KUBE_OVN_NS -o 'jsonpath={.spec.ports[0].nodePort}')
-  for nodeIP in "${nodeIPs[@]}"
-  do
-    if [ -z "$targetIPPorts" ]; then
-      targetIPPorts="tcp-$nodeIP-$nodePort"
-    else
-      targetIPPorts="$targetIPPorts,tcp-$nodeIP-$nodePort"
-    fi
-  done
-
   type="$1"
+
+  if [[ $type != "IPPorts" ]]; then
+    applyTestNodePortService
+    targetIPPorts=$(getTestNodePortServiceIPPorts)
+    gcCommands+="kubectl delete svc -l app=$CONN_CHECK_LABEL -n $KUBE_OVN_NS"
+  fi
+
   case $type in
     all)
       echo "### kube-ovn-controller recent log"
@@ -699,6 +715,7 @@ diagnose(){
     subnet)
       subnetName="$2"
       applyConnServerDaemonset $subnetName
+      gcCommands+="kubectl delete ds -l app=$CONN_CHECK_LABEL -n $KUBE_OVN_NS"
 
       if [ $(kubectl get ds kube-ovn-cni -n $KUBE_OVN_NS -oyaml | grep enable-verbose-conn-check | wc -l) -eq 0 ]; then
         echo "Warning: kube-ovn-cni not have args enable-verbose-conn-check, it will fail when check node tcp/udp connectivity"
@@ -712,9 +729,20 @@ diagnose(){
         echo ""
       done
       ;;
+    IPPorts)
+      targetIPPorts="$2"
+
+      pingers=$(kubectl -n $KUBE_OVN_NS get po --no-headers -o custom-columns=NAME:.metadata.name -l app=kube-ovn-pinger)
+      for pinger in $pingers
+      do
+        echo "#### pinger $pinger on namespace $KUBE_OVN_NS diagnose results:"
+        kubectl exec -n $KUBE_OVN_NS "$pinger" -- /kube-ovn/kube-ovn-pinger --mode=job --target-ip-ports=$targetIPPorts
+        echo ""
+      done
+      ;;
     *)
       echo "type $type not supported"
-      echo "kubectl ko diagnose {all|node|subnet} [nodename|subnetName]"
+      echo "kubectl ko diagnose {all|node|subnet|IPPorts} [nodename|subnetName|{proto1}-{IP1}-{Port1},{proto2}-{IP2}-{Port2}]"
       ;;
     esac
 }
