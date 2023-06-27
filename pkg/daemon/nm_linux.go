@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"strings"
 	"sync"
 
 	"github.com/kubeovn/gonetworkmanager/v2"
@@ -11,12 +12,11 @@ import (
 )
 
 type networkManagerSyncer struct {
-	manager     gonetworkmanager.NetworkManager
-	workqueue   workqueue.Interface
-	devicePaths *strset.Set
-	pathMap     map[string]string
-	bridgeMap   map[string]string
-	lock        sync.Mutex
+	manager   gonetworkmanager.NetworkManager
+	workqueue workqueue.Interface
+	devices   *strset.Set
+	bridgeMap map[string]string
+	lock      sync.Mutex
 }
 
 func newNetworkManagerSyncer() *networkManagerSyncer {
@@ -40,8 +40,7 @@ func newNetworkManagerSyncer() *networkManagerSyncer {
 
 	syncer.manager = manager
 	syncer.workqueue = workqueue.NewNamed("NetworkManagerSyncer")
-	syncer.devicePaths = strset.New()
-	syncer.pathMap = make(map[string]string)
+	syncer.devices = strset.New()
 	syncer.bridgeMap = make(map[string]string)
 	return syncer
 }
@@ -60,17 +59,12 @@ func (n *networkManagerSyncer) Run(handler func(nic, bridge string, delNonExiste
 		ch := n.manager.Subscribe()
 		defer n.manager.Unsubscribe()
 
-		stateChange := gonetworkmanager.DeviceInterface + "." + gonetworkmanager.ActiveConnectionSignalStateChanged
+		suffix := "." + gonetworkmanager.ActiveConnectionSignalStateChanged
 		for {
 			event := <-ch
-
-			n.lock.Lock()
-			if len(event.Body) == 0 || event.Name != stateChange || !n.devicePaths.Has(string(event.Path)) {
-				n.lock.Unlock()
+			if len(event.Body) == 0 || !strings.HasSuffix(event.Name, suffix) {
 				continue
 			}
-			n.lock.Unlock()
-
 			state, ok := event.Body[0].(uint32)
 			if !ok {
 				klog.Warningf("failed to convert %#v to uint32", event.Body[0])
@@ -80,8 +74,39 @@ func (n *networkManagerSyncer) Run(handler func(nic, bridge string, delNonExiste
 				continue
 			}
 
-			klog.Infof("adding dbus object path %s to workqueue", event.Path)
-			n.workqueue.Add(string(event.Path))
+			devices, err := n.manager.GetDevices()
+			if err != nil {
+				klog.Errorf("failed to get NetworkManager devices: %v", err)
+				continue
+			}
+
+			var device gonetworkmanager.Device
+			for _, dev := range devices {
+				if dev.GetPath() == event.Path {
+					device = dev
+					break
+				}
+			}
+			if device == nil {
+				klog.Warningf("NetworkManager device %s not found", event.Path)
+				continue
+			}
+
+			name, err := device.GetPropertyIpInterface()
+			if err != nil {
+				klog.Errorf("failed to get IP interface of device %s: %v", device.GetPath(), err)
+				continue
+			}
+
+			n.lock.Lock()
+			if !n.devices.Has(name) {
+				n.lock.Unlock()
+				continue
+			}
+			n.lock.Unlock()
+
+			klog.Infof("adding device %s to workqueue", name)
+			n.workqueue.Add(name)
 		}
 	}()
 }
@@ -93,23 +118,18 @@ func (n *networkManagerSyncer) ProcessNextItem(handler func(nic, bridge string, 
 	}
 	defer n.workqueue.Done(item)
 
-	klog.Infof("process dbus object path %v", item)
-	path := item.(string)
+	klog.Infof("process device %v", item)
+
+	nic := item.(string)
+	var bridge string
 	n.lock.Lock()
-	if !n.devicePaths.Has(path) {
+	if !n.devices.Has(nic) {
 		n.lock.Unlock()
 		return true
 	}
-	var nic string
-	for k, v := range n.pathMap {
-		if v == path {
-			nic = k
-			break
-		}
-	}
+	bridge = n.bridgeMap[nic]
 	n.lock.Unlock()
 
-	bridge := n.bridgeMap[nic]
 	if _, err := handler(nic, bridge, true); err != nil {
 		klog.Errorf("failed to handle NetworkManager event for device %s with bridge %s: %v", nic, bridge, err)
 	}
@@ -123,23 +143,10 @@ func (n *networkManagerSyncer) AddDevice(nicName, bridge string) error {
 	}
 
 	n.lock.Lock()
-	defer n.lock.Unlock()
-
-	if _, ok := n.pathMap[nicName]; ok {
-		return nil
-	}
-
-	device, err := n.manager.GetDeviceByIpIface(nicName)
-	if err != nil {
-		klog.Errorf("failed to get device by IP iface %q: %v", nicName, err)
-		return err
-	}
-
-	path := string(device.GetPath())
-	klog.V(3).Infof("adding device %s with dbus object path %s and bridge %s", nicName, path, bridge)
-	n.devicePaths.Add(path)
-	n.pathMap[nicName] = path
+	klog.V(3).Infof("adding device %s with bridge %s", nicName, bridge)
+	n.devices.Add(nicName)
 	n.bridgeMap[nicName] = bridge
+	n.lock.Unlock()
 
 	return nil
 }
@@ -150,8 +157,7 @@ func (n *networkManagerSyncer) RemoveDevice(nicName string) error {
 	}
 
 	n.lock.Lock()
-	n.devicePaths.Remove(n.pathMap[nicName])
-	delete(n.pathMap, nicName)
+	n.devices.Remove(nicName)
 	delete(n.bridgeMap, nicName)
 	n.lock.Unlock()
 
