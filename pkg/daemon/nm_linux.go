@@ -5,6 +5,7 @@ import (
 
 	"github.com/kubeovn/gonetworkmanager/v2"
 	"github.com/scylladb/go-set/strset"
+	"github.com/vishvananda/netlink"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 )
@@ -162,6 +163,12 @@ func (n *networkManagerSyncer) SetManaged(name string, managed bool) error {
 		return nil
 	}
 
+	link, err := netlink.LinkByName(name)
+	if err != nil {
+		klog.Errorf("failed to get link %q: %v", name, err)
+		return err
+	}
+
 	device, err := n.manager.GetDeviceByIpIface(name)
 	if err != nil {
 		klog.Errorf("failed to get device by IP iface %q: %v", name, err)
@@ -174,6 +181,62 @@ func (n *networkManagerSyncer) SetManaged(name string, managed bool) error {
 	}
 	if current == managed {
 		return nil
+	}
+
+	if !managed {
+		devices, err := n.manager.GetAllDevices()
+		if err != nil {
+			klog.Errorf("failed to get all devices from NetworkManager: %v", err)
+			return err
+		}
+
+		var hasVlan bool
+		for _, dev := range devices {
+			managed, err := device.GetPropertyManaged()
+			if err != nil {
+				klog.Errorf("failed to get property managed of device %s: %v", dev.GetPath(), err)
+				continue
+			}
+			if !managed {
+				continue
+			}
+
+			devType, err := dev.GetPropertyDeviceType()
+			if err != nil {
+				klog.Errorf("failed to get type of device %s: %v", dev.GetPath(), err)
+				continue
+			}
+			if devType != gonetworkmanager.NmDeviceTypeVlan {
+				continue
+			}
+
+			vlanName, err := dev.GetPropertyIpInterface()
+			if err != nil {
+				klog.Errorf("failed to get IP interface of device %s: %v", dev.GetPath(), err)
+				continue
+			}
+
+			vlanLink, err := netlink.LinkByName(vlanName)
+			if err != nil {
+				klog.Errorf("failed to get link %s: %v", vlanName, err)
+				continue
+			}
+			if vlanLink.Type() != "vlan" {
+				klog.Errorf("unexpected link type: %s", vlanLink.Type())
+				continue
+			}
+
+			if vlanLink.Attrs().ParentIndex == link.Attrs().Index {
+				klog.Infof("device %s has a vlan interface %s managed by NetworkManager", name, vlanName)
+				hasVlan = true
+				break
+			}
+		}
+
+		if hasVlan {
+			klog.Infof(`will not set device %s NetworkManager property "managed" to %v`, name, managed)
+			return nil
+		}
 	}
 
 	klog.Infof(`setting device %s NetworkManager property "managed" to %v`, name, managed)
