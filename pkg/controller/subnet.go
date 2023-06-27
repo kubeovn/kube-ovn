@@ -812,11 +812,6 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		c.patchSubnetStatus(subnet, "ResetLogicalSwitchAclSuccess", "")
 	}
 
-	if err := c.ovnClient.CreateGatewayAcl(subnet.Name, "", subnet.Spec.Gateway); err != nil {
-		klog.Errorf("create gateway acl %s failed, %v", subnet.Name, err)
-		return err
-	}
-
 	if err := c.ovnClient.UpdateLogicalSwitchAcl(subnet.Name, subnet.Spec.Acls); err != nil {
 		c.patchSubnetStatus(subnet, "SetLogicalSwitchAclsFailed", err.Error())
 		return err
