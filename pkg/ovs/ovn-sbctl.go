@@ -52,19 +52,15 @@ func (c LegacyClient) ovnSbCommand(cmdArgs ...string) (string, error) {
 }
 
 func (c LegacyClient) DeleteChassisByNode(node string) error {
-	output, err := c.ovnSbCommand("--format=csv", "--no-heading", "--data=bare", "--columns=name", "find", "chassis", fmt.Sprintf("external_ids:node=%s", node))
+	chassis, err := c.GetChassis(node)
 	if err != nil {
 		return fmt.Errorf("failed to get node chassis %s, %v", node, err)
 	}
-	for _, chassis := range strings.Split(output, "\n") {
-		chassis = strings.TrimSpace(chassis)
-		if len(chassis) > 0 {
-			if err := c.DeleteChassisByName(chassis); err != nil {
-				return err
-			}
-		}
+	if chassis == "" {
+		return nil
 	}
-	return nil
+
+	return c.DeleteChassisByName(chassis)
 }
 
 func (c LegacyClient) DeleteChassisByName(chassisName string) error {
@@ -84,12 +80,12 @@ func (c LegacyClient) DeleteChassisByName(chassisName string) error {
 }
 
 func (c LegacyClient) GetChassis(node string) (string, error) {
-	output, err := c.ovnSbCommand("--format=csv", "--no-heading", "--data=bare", "--columns=name", "find", "chassis", fmt.Sprintf("hostname=%s", node))
+	output, err := c.ovnSbCommand("--format=csv", "--no-heading", "--data=bare", "--columns=name", "find", "chassis", fmt.Sprintf("external_ids:node=%s", node))
 	if err != nil {
 		return "", fmt.Errorf("failed to find node chassis %s, %v", node, err)
 	}
 	if len(output) == 0 {
-		output, err = c.ovnSbCommand("--format=csv", "--no-heading", "--data=bare", "--columns=name", "find", "chassis", fmt.Sprintf("external_ids:node=%s", node))
+		output, err = c.ovnSbCommand("--format=csv", "--no-heading", "--data=bare", "--columns=name", "find", "chassis", fmt.Sprintf("hostname=%s", node))
 		if err != nil {
 			return "", fmt.Errorf("failed to find node chassis %s, %v", node, err)
 		}
