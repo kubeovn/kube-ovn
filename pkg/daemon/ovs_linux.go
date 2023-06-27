@@ -928,7 +928,7 @@ func (c *Controller) transferAddrsAndRoutes(nicName, brName string, delNonExiste
 	}
 
 	// set link unmanaged by NetworkManager
-	if err = c.nmSyncer.SetManaged(nicName, c.config.ManageNicByNetworkManager); err != nil {
+	if err = c.nmSyncer.SetManaged(nicName, false); err != nil {
 		klog.Errorf("failed to set device %s unmanaged by NetworkManager: %v", nicName, err)
 		return 0, err
 	}

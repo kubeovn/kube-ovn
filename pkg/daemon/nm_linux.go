@@ -167,6 +167,17 @@ func (n *networkManagerSyncer) SetManaged(name string, managed bool) error {
 		klog.Errorf("failed to get device by IP iface %q: %v", name, err)
 		return err
 	}
+	// ignore if device type is bond
+	nmDeviceType, err := device.GetPropertyDeviceType()
+	if err != nil {
+		klog.Errorf("failed to get device type %q: %v", name, err)
+		return err
+	}
+
+	if nmDeviceType == gonetworkmanager.NmDeviceTypeBond {
+		return nil
+	}
+
 	current, err := device.GetPropertyManaged()
 	if err != nil {
 		klog.Errorf("failed to get device property managed: %v", err)

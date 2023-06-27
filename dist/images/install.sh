@@ -37,7 +37,6 @@ ENABLE_BIND_LOCAL_IP=${ENABLE_BIND_LOCAL_IP:-true}
 DEBUG_WRAPPER=${DEBUG_WRAPPER:-}
 
 KUBELET_DIR=${KUBELET_DIR:-/var/lib/kubelet}
-MANAGE_NIC_BY_NETWORK_MANAGER=${MANAGE_NIC_BY_NETWORK_MANAGER:-false}
 
 CNI_CONF_DIR="/etc/cni/net.d"
 CNI_BIN_DIR="/opt/cni/bin"
@@ -4402,7 +4401,6 @@ spec:
           - --log_file=/var/log/kube-ovn/kube-ovn-cni.log
           - --log_file_max_size=0
           - --kubelet-dir=$KUBELET_DIR
-          - --manage-nic-by-network-manager=$MANAGE_NIC_BY_NETWORK_MANAGER
         securityContext:
           runAsUser: 0
           privileged: true

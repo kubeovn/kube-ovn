@@ -63,7 +63,6 @@ type Configuration struct {
 	EnableVerboseConnCheck    bool
 	TCPConnCheckPort          int
 	UDPConnCheckPort          int
-	ManageNicByNetworkManager bool
 }
 
 // ParseFlags will parse cmd args then init kubeClient and configuration
@@ -101,7 +100,6 @@ func ParseFlags() *Configuration {
 		argEnableVerboseConnCheck    = pflag.Bool("enable-verbose-conn-check", false, "enable TCP/UDP connectivity check listen port")
 		argTCPConnectivityCheckPort  = pflag.Int("tcp-conn-check-port", 8100, "TCP connectivity Check Port")
 		argUDPConnectivityCheckPort  = pflag.Int("udp-conn-check-port", 8101, "UDP connectivity Check Port")
-		argManageNicByNetworkManager = pflag.Bool("manage-nic-by-network-manager", false, "set nic link managed by NetworkManager")
 	)
 
 	// mute info log for ipset lib
@@ -156,7 +154,6 @@ func ParseFlags() *Configuration {
 		EnableVerboseConnCheck:    *argEnableVerboseConnCheck,
 		TCPConnCheckPort:          *argTCPConnectivityCheckPort,
 		UDPConnCheckPort:          *argUDPConnectivityCheckPort,
-		ManageNicByNetworkManager: *argManageNicByNetworkManager,
 	}
 	return config
 }
