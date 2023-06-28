@@ -148,7 +148,7 @@ var _ = framework.Describe("[group:qos]", func() {
 		}
 		modifiedPod.Annotations[util.NetemQosLimitAnnotation] = strconv.Itoa(limit)
 		modifiedPod.Annotations[util.NetemQosLossAnnotation] = strconv.Itoa(loss)
-		pod = podClient.PatchPod(pod, modifiedPod)
+		pod = podClient.Patch(pod, modifiedPod)
 
 		ginkgo.By("Validating pod annotations")
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")

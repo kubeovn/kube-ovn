@@ -17,6 +17,10 @@ func (b BigInt) Equal(n BigInt) bool {
 	return b.Cmp(n) == 0
 }
 
+func (b BigInt) EqualInt64(n int64) bool {
+	return b.Int.Cmp(big.NewInt(n)) == 0
+}
+
 func (b BigInt) Cmp(n BigInt) int {
 	return b.Int.Cmp(&n.Int)
 }
@@ -27,6 +31,10 @@ func (b BigInt) Add(n BigInt) BigInt {
 
 func (b BigInt) Sub(n BigInt) BigInt {
 	return BigInt{*big.NewInt(0).Sub(&b.Int, &n.Int)}
+}
+
+func (b BigInt) String() string {
+	return b.Int.String()
 }
 
 func (b BigInt) MarshalJSON() ([]byte, error) {
