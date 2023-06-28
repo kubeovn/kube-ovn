@@ -612,11 +612,8 @@ func (c *Controller) handleUpdateNode(key string) error {
 		return err
 	}
 
-	if node.Annotations[util.ChassisAnnotation] != "" {
-		if err = c.ovnLegacyClient.InitChassisNodeTag(node.Annotations[util.ChassisAnnotation], node.Name); err != nil {
-			klog.Errorf("failed to set chassis nodeTag for node '%s', %v", node.Name, err)
-			return err
-		}
+	if err := c.validateChassis(node); err != nil {
+		return err
 	}
 	if err := c.retryDelDupChassis(util.ChasRetryTime, util.ChasRetryIntev+2, c.checkChassisDupl, node); err != nil {
 		return err
