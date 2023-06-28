@@ -15,6 +15,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog/v2"
 
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -68,6 +69,12 @@ func ping(config *Configuration) error {
 		}
 	}
 
+	if config.TargetIPPorts != "" {
+		if checkAccessTargetIPPorts(config) != nil {
+			errHappens = true
+		}
+	}
+
 	if config.ExternalAddress != "" {
 		if pingExternal(config) != nil {
 			errHappens = true
@@ -94,16 +101,16 @@ func pingNodes(config *Configuration) error {
 				func(nodeIP, nodeName string) {
 					if config.EnableVerboseConnCheck {
 						if err := util.TCPConnectivityCheck(fmt.Sprintf("%s:%d", nodeIP, config.TCPConnCheckPort)); err != nil {
-							klog.Infof("TCP connnectivity to node %s %s failed", nodeName, nodeIP)
+							klog.Infof("TCP connectivity to node %s %s failed", nodeName, nodeIP)
 							pingErr = err
 						} else {
-							klog.Infof("TCP connnectivity to node %s %s success", nodeName, nodeIP)
+							klog.Infof("TCP connectivity to node %s %s success", nodeName, nodeIP)
 						}
 						if err := util.UDPConnectivityCheck(fmt.Sprintf("%s:%d", nodeIP, config.UDPConnCheckPort)); err != nil {
-							klog.Infof("UDP connnectivity to node %s %s failed", nodeName, nodeIP)
+							klog.Infof("UDP connectivity to node %s %s failed", nodeName, nodeIP)
 							pingErr = err
 						} else {
-							klog.Infof("UDP connnectivity to node %s %s success", nodeName, nodeIP)
+							klog.Infof("UDP connectivity to node %s %s success", nodeName, nodeIP)
 						}
 					}
 
@@ -165,17 +172,17 @@ func pingPods(config *Configuration) error {
 				func(podIp, podName, nodeIP, nodeName string) {
 					if config.EnableVerboseConnCheck {
 						if err := util.TCPConnectivityCheck(fmt.Sprintf("%s:%d", podIp, config.TCPConnCheckPort)); err != nil {
-							klog.Infof("TCP connnectivity to pod %s %s failed", podName, podIp)
+							klog.Infof("TCP connectivity to pod %s %s failed", podName, podIp)
 							pingErr = err
 						} else {
-							klog.Infof("TCP connnectivity to pod %s %s success", podName, podIp)
+							klog.Infof("TCP connectivity to pod %s %s success", podName, podIp)
 						}
 
 						if err := util.UDPConnectivityCheck(fmt.Sprintf("%s:%d", podIp, config.UDPConnCheckPort)); err != nil {
-							klog.Infof("UDP connnectivity to pod %s %s failed", podName, podIp)
+							klog.Infof("UDP connectivity to pod %s %s failed", podName, podIp)
 							pingErr = err
 						} else {
-							klog.Infof("UDP connnectivity to pod %s %s success", podName, podIp)
+							klog.Infof("UDP connectivity to pod %s %s success", podName, podIp)
 						}
 					}
 
@@ -261,6 +268,54 @@ func pingExternal(config *Configuration) error {
 	}
 
 	return nil
+}
+
+func checkAccessTargetIPPorts(config *Configuration) error {
+	klog.Infof("start to check Service or externalIPPort connectivity")
+	if config.TargetIPPorts == "" {
+		return nil
+	}
+	var checkErr error
+	targetIPPorts := strings.Split(config.TargetIPPorts, ",")
+	for _, targetIPPort := range targetIPPorts {
+		klog.Infof("checking targetIPPort %s ", targetIPPort)
+		items := strings.Split(targetIPPort, "-")
+		if len(items) != 3 {
+			klog.Infof("targetIPPort format failed")
+			continue
+		}
+		proto := items[0]
+		addr := items[1]
+		port := items[2]
+
+		if !util.ContainsString(config.PodProtocols, util.CheckProtocol(addr)) {
+			continue
+		}
+		if util.CheckProtocol(addr) == kubeovnv1.ProtocolIPv6 {
+			addr = fmt.Sprintf("[%s]", addr)
+		}
+
+		if proto == util.ProtocolTCP {
+			if err := util.TCPConnectivityCheck(fmt.Sprintf("%s:%s", addr, port)); err != nil {
+				klog.Infof("TCP connectivity to targetIPPort %s:%s failed", addr, port)
+				checkErr = err
+			} else {
+				klog.Infof("TCP connectivity to targetIPPort %s:%s success", addr, port)
+			}
+		} else if proto == util.ProtocolUDP {
+			if err := util.UDPConnectivityCheck(fmt.Sprintf("%s:%s", addr, port)); err != nil {
+				klog.Infof("UDP connectivity to target %s:%s failed", addr, port)
+				checkErr = err
+			} else {
+				klog.Infof("UDP connectivity to target %s:%s success", addr, port)
+			}
+		} else {
+			klog.Infof("unrecognized protocol %s", proto)
+			continue
+		}
+	}
+	return checkErr
+
 }
 
 func internalNslookup(config *Configuration) error {
