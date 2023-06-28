@@ -1444,13 +1444,14 @@ quitPerfTest() {
   kubectl delete pods -l app=$PERF_LABEL -n $KUBE_OVN_NS
   kubectl delete svc -l app=$PERF_LABEL -n $KUBE_OVN_NS
 
-  pids=($(ps -ef | grep -v "kubectl exec" | grep "iperf -s -B 224.0.0.100 -i 1 -u" | grep -v grep | awk '{print $2}'))
+  local pids=($(ps -ef | grep -v "kubectl exec" | grep "iperf -s -B 224.0.0.100 -i 1 -u" | grep -v grep | awk '{print $2}'))
   if [ ! ${#pids[@]} -eq 0 ]; then
     for pid in "${pids[@]}"; do
       kill $pid
     done
   fi
   addEndDecoration
+  exit 0
 }
 
 perf(){

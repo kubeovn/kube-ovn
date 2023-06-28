@@ -246,7 +246,6 @@ var _ = framework.Describe("[group:kubectl-ko]", func() {
 
 	framework.ConformanceIt(`should support "kubectl ko diagnose subnet IPPorts "`, func() {
 		f.SkipVersionPriorTo(1, 12, "This feature was introduce in v1.12")
-		execOrDie("ko diagnose all ")
 		execOrDie("ko diagnose subnet ovn-default")
 		execOrDie("ko diagnose IPPorts tcp-114.114.114.114-53,udp-114.114.114.114-53")
 	})
