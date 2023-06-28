@@ -550,7 +550,7 @@ EOF
   isfailed=true
   for i in {0..59}
   do
-    if kubectl wait pod --for=condition=Ready -l app=$CONN_CHECK_LABEL -n $KUBE_OVN_NS 2 > /dev/null; then
+    if kubectl wait pod --for=condition=Ready -l app=$CONN_CHECK_LABEL -n $KUBE_OVN_NS 2> /dev/null; then
       isfailed=false
       break
     fi
@@ -661,9 +661,9 @@ diagnose(){
   type="$1"
 
   if [[ $type != "IPPorts" ]]; then
+    gcCommands+=("kubectl delete svc -l app=$CONN_CHECK_LABEL -n $KUBE_OVN_NS")
     applyTestNodePortService
     targetIPPorts=$(getTestNodePortServiceIPPorts)
-    gcCommands+="kubectl delete svc -l app=$CONN_CHECK_LABEL -n $KUBE_OVN_NS"
   fi
 
   case $type in
@@ -714,8 +714,8 @@ diagnose(){
       ;;
     subnet)
       subnetName="$2"
+      gcCommands+=("kubectl delete ds -l app=$CONN_CHECK_LABEL -n $KUBE_OVN_NS")
       applyConnServerDaemonset $subnetName
-      gcCommands+="kubectl delete ds -l app=$CONN_CHECK_LABEL -n $KUBE_OVN_NS"
 
       if [ $(kubectl get ds kube-ovn-cni -n $KUBE_OVN_NS -oyaml | grep enable-verbose-conn-check | wc -l) -eq 0 ]; then
         echo "Warning: kube-ovn-cni not have args enable-verbose-conn-check, it will fail when check node tcp/udp connectivity"
@@ -1532,9 +1532,9 @@ unicastPerfTest() {
 
   if [[ $backendIP != "" ]]; then
     # qperf use other random tcp/udp port not only 19765
+    PERF_GC_COMMAND+=("kubectl ko nbctl lb-del test-server")
     kubectl ko nbctl lb-add test-server $serverIP $backendIP
     kubectl ko nbctl ls-lb-add ovn-default test-server
-    PERF_GC_COMMAND+=("kubectl ko nbctl lb-del test-server")
   fi
 
   printf "%-15s %-15s %-15s %-15s %-15s %-15s\n" "Size" "TCP Latency" "TCP Bandwidth" "UDP Latency" "UDP Lost Rate" "UDP Bandwidth"
@@ -1574,11 +1574,11 @@ multicastHostPerfTest() {
   serverNic=$(getAddressNic test-host-server $serverHostIP)
 
   clientovsPod=$(kubectl get pod -owide -A |grep ovs-ovn | grep $clientNode | awk '{print $2}')
-  kubectl exec $clientovsPod -n kube-system -- ip maddr add 01:00:5e:00:00:64 dev $clientNic
   PERF_GC_COMMAND+=("kubectl exec $clientovsPod -n kube-system -- ip maddr del 01:00:5e:00:00:64 dev $clientNic")
+  kubectl exec $clientovsPod -n kube-system -- ip maddr add 01:00:5e:00:00:64 dev $clientNic
   serverovsPod=$(kubectl get pod -owide -A |grep ovs-ovn | grep $serverNode | awk '{print $2}')
-  kubectl exec $serverovsPod -n kube-system -- ip maddr add 01:00:5e:00:00:64 dev $serverNic
   PERF_GC_COMMAND+=("kubectl exec $serverovsPod -n kube-system -- ip maddr del 01:00:5e:00:00:64 dev $serverNic")
+  kubectl exec $serverovsPod -n kube-system -- ip maddr add 01:00:5e:00:00:64 dev $serverNic
   genMulticastPerfResult test-host-server test-host-client
 }
 
