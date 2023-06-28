@@ -130,7 +130,7 @@ image-centos-compile:
 
 .PHOONY: image-test
 image-test: build-go
-	docker buildx build --platform linux/amd64 -t $(REGISTRY)/test:$(RELEASE_TAG) -o type=docker -f dist/images/Dockerfile.test dist/images/
+	docker buildx build --platform linux/arm64 -t $(REGISTRY)/test:$(RELEASE_TAG) -o type=docker -f dist/images/Dockerfile.test dist/images/
 
 .PHONY: release
 release: lint image-kube-ovn image-vpc-nat-gateway image-centos-compile
