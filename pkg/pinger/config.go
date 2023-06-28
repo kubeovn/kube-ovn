@@ -53,6 +53,7 @@ type Configuration struct {
 	EnableVerboseConnCheck          bool
 	TCPConnCheckPort                int
 	UDPConnCheckPort                int
+	TargetIPPorts                   string
 }
 
 func ParseFlags() (*Configuration, error) {
@@ -72,6 +73,7 @@ func ParseFlags() (*Configuration, error) {
 		argInternalDns        = pflag.String("internal-dns", "kubernetes.default", "check dns from pod")
 		argExternalDns        = pflag.String("external-dns", "", "check external dns resolve from pod")
 		argExternalAddress    = pflag.String("external-address", "", "check ping connection to an external address, default: 114.114.114.114")
+		argTargetIPPorts      = pflag.String("target-ip-ports", "", "target protocol ip and port, eg: 'tcp-169.254.1.1-8080,udp-169.254.2.2-8081'")
 		argNetworkMode        = pflag.String("network-mode", "kube-ovn", "The cni plugin current cluster used, default: kube-ovn")
 		argEnableMetrics      = pflag.Bool("enable-metrics", true, "Whether to support metrics query")
 
@@ -130,6 +132,7 @@ func ParseFlags() (*Configuration, error) {
 		EnableVerboseConnCheck: *argEnableVerboseConnCheck,
 		TCPConnCheckPort:       *argTCPConnectivityCheckPort,
 		UDPConnCheckPort:       *argUDPConnectivityCheckPort,
+		TargetIPPorts:          *argTargetIPPorts,
 
 		// OVS Monitor
 		PollTimeout:                     *argPollTimeout,
