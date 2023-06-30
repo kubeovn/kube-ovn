@@ -87,18 +87,15 @@ func (c *ovnClient) CreateLogicalRouterPolicies(lrName string, policies ...*ovnn
 
 // DeleteLogicalRouterPolicy delete policy from logical router
 func (c *ovnClient) DeleteLogicalRouterPolicy(lrName string, priority int, match string) error {
-	policy, err := c.GetLogicalRouterPolicy(lrName, priority, match, true)
+	policyList, err := c.GetLogicalRouterPolicy(lrName, priority, match, true)
 	if err != nil {
 		return err
 	}
 
-	// not found, skip
-	if policy == nil {
-		return nil
-	}
-
-	if err := c.DeleteLogicalRouterPolicyByUUID(lrName, policy.UUID); err != nil {
-		return err
+	for _, p := range policyList {
+		if err := c.DeleteLogicalRouterPolicyByUUID(lrName, p.UUID); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -182,7 +179,7 @@ func (c *ovnClient) ClearLogicalRouterPolicy(lrName string) error {
 
 // GetLogicalRouterPolicy get logical router policy by priority and match,
 // be consistent with ovn-nbctl which priority and match determine one policy in logical router
-func (c *ovnClient) GetLogicalRouterPolicy(lrName string, priority int, match string, ignoreNotFound bool) (*ovnnb.LogicalRouterPolicy, error) {
+func (c *ovnClient) GetLogicalRouterPolicy(lrName string, priority int, match string, ignoreNotFound bool) ([]*ovnnb.LogicalRouterPolicy, error) {
 	// this is necessary because may exist same priority and match policy in different logical router
 	if len(lrName) == 0 {
 		return nil, fmt.Errorf("the logical router name is required")
@@ -204,11 +201,7 @@ func (c *ovnClient) GetLogicalRouterPolicy(lrName string, priority int, match st
 		return nil, fmt.Errorf("not found policy priority %d match %s in logical router %s", priority, match, lrName)
 	}
 
-	if len(policyList) > 1 {
-		return nil, fmt.Errorf("more than one policy with same priority %d match %s in logical router %s", priority, match, lrName)
-	}
-
-	return policyList[0], nil
+	return policyList, nil
 }
 
 // GetLogicalRouterPolicyByUUID get logical router policy by UUID
@@ -218,7 +211,7 @@ func (c *ovnClient) GetLogicalRouterPolicyByUUID(uuid string) (*ovnnb.LogicalRou
 
 	policy := &ovnnb.LogicalRouterPolicy{UUID: uuid}
 	if err := c.Get(ctx, policy); err != nil {
-		return nil, fmt.Errorf("get logical router policy by UUID %s: %v", uuid, err)
+		return nil, err
 	}
 
 	return policy, nil

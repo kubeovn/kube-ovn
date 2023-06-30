@@ -138,7 +138,7 @@ type LogicalRouterPolicy interface {
 	DeleteLogicalRouterPolicyByNexthop(lrName string, priority int, nexthop string) error
 	ClearLogicalRouterPolicy(lrName string) error
 	ListLogicalRouterPolicies(lrName string, priority int, externalIDs map[string]string) ([]*ovnnb.LogicalRouterPolicy, error)
-	GetLogicalRouterPolicy(lrName string, priority int, match string, ignoreNotFound bool) (*ovnnb.LogicalRouterPolicy, error)
+	GetLogicalRouterPolicy(lrName string, priority int, match string, ignoreNotFound bool) ([]*ovnnb.LogicalRouterPolicy, error)
 }
 
 type NAT interface {

@@ -183,7 +183,7 @@ func (c *ovnClient) GetLogicalRouterStaticRouteByUUID(uuid string) (*ovnnb.Logic
 
 	route := &ovnnb.LogicalRouterStaticRoute{UUID: uuid}
 	if err := c.Get(ctx, route); err != nil {
-		return nil, fmt.Errorf("get logical router static route by UUID %s: %v", uuid, err)
+		return nil, err
 	}
 
 	return route, nil

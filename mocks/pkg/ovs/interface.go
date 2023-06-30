@@ -1674,10 +1674,10 @@ func (mr *MockLogicalRouterPolicyMockRecorder) DeleteLogicalRouterPolicyByUUID(l
 }
 
 // GetLogicalRouterPolicy mocks base method.
-func (m *MockLogicalRouterPolicy) GetLogicalRouterPolicy(lrName string, priority int, match string, ignoreNotFound bool) (*ovnnb.LogicalRouterPolicy, error) {
+func (m *MockLogicalRouterPolicy) GetLogicalRouterPolicy(lrName string, priority int, match string, ignoreNotFound bool) ([]*ovnnb.LogicalRouterPolicy, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetLogicalRouterPolicy", lrName, priority, match, ignoreNotFound)
-	ret0, _ := ret[0].(*ovnnb.LogicalRouterPolicy)
+	ret0, _ := ret[0].([]*ovnnb.LogicalRouterPolicy)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -2668,10 +2668,10 @@ func (mr *MockOvnClientMockRecorder) GetLogicalRouter(lrName, ignoreNotFound int
 }
 
 // GetLogicalRouterPolicy mocks base method.
-func (m *MockOvnClient) GetLogicalRouterPolicy(lrName string, priority int, match string, ignoreNotFound bool) (*ovnnb.LogicalRouterPolicy, error) {
+func (m *MockOvnClient) GetLogicalRouterPolicy(lrName string, priority int, match string, ignoreNotFound bool) ([]*ovnnb.LogicalRouterPolicy, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetLogicalRouterPolicy", lrName, priority, match, ignoreNotFound)
-	ret0, _ := ret[0].(*ovnnb.LogicalRouterPolicy)
+	ret0, _ := ret[0].([]*ovnnb.LogicalRouterPolicy)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
