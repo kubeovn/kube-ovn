@@ -22,6 +22,12 @@ func NewIP(s string) (IP, error) {
 	return IP(ip), nil
 }
 
+func (a IP) Clone() IP {
+	v := make(IP, len(a))
+	copy(v, a)
+	return v
+}
+
 func (a IP) To4() net.IP {
 	return net.IP(a).To4()
 }
@@ -42,28 +48,23 @@ func (a IP) GreaterThan(b IP) bool {
 	return big.NewInt(0).SetBytes([]byte(a)).Cmp(big.NewInt(0).SetBytes([]byte(b))) > 0
 }
 
-func (a IP) Add(n int64) IP {
-	buff := big.NewInt(0).Add(big.NewInt(0).SetBytes([]byte(a)), big.NewInt(n)).Bytes()
-	if len(buff) < len(a) {
-		tmp := make([]byte, len(a))
+func bytes2IP(buff []byte, length int) IP {
+	if len(buff) < length {
+		tmp := make([]byte, length)
 		copy(tmp[len(tmp)-len(buff):], buff)
 		buff = tmp
-	} else if len(buff) > len(a) {
-		buff = buff[len(buff)-len(a):]
+	} else if len(buff) > length {
+		buff = buff[len(buff)-length:]
 	}
 	return IP(buff)
 }
 
+func (a IP) Add(n int64) IP {
+	return bytes2IP(big.NewInt(0).Add(big.NewInt(0).SetBytes([]byte(a)), big.NewInt(n)).Bytes(), len(a))
+}
+
 func (a IP) Sub(n int64) IP {
-	buff := big.NewInt(0).Sub(big.NewInt(0).SetBytes([]byte(a)), big.NewInt(n)).Bytes()
-	if len(buff) < len(a) {
-		tmp := make([]byte, len(a))
-		copy(tmp[len(tmp)-len(buff):], buff)
-		buff = tmp
-	} else if len(buff) > len(a) {
-		buff = buff[len(buff)-len(a):]
-	}
-	return IP(buff)
+	return bytes2IP(big.NewInt(0).Sub(big.NewInt(0).SetBytes([]byte(a)), big.NewInt(n)).Bytes(), len(a))
 }
 
 func (a IP) String() string {

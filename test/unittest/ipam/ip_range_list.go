@@ -3,6 +3,7 @@ package ipam
 import (
 	"fmt"
 	"math/rand"
+	"net"
 	"sort"
 	"strings"
 
@@ -201,53 +202,117 @@ var _ = ginkgo.Context("[group:IPAM]", func() {
 	})
 
 	ginkgo.It("NewIPRangeListFrom", func() {
-		n := 100 + rand.Intn(50)
-		set := u32set.NewWithSize(n)
-		for set.Size() != n {
-			set.Add(rand.Uint32())
+		n := 40 + rand.Intn(20)
+		cidrList := make([]*net.IPNet, 0, n)
+		cidrSet := u32set.NewWithSize(n * 2)
+		for len(cidrList) != cap(cidrList) {
+			_, cidr, err := net.ParseCIDR(fmt.Sprintf("%s/%d", uint32ToIPv4(rand.Uint32()), 16+rand.Intn(16)))
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
+			var invalid bool
+			for _, c := range cidrList {
+				if c.Contains(cidr.IP) || cidr.Contains(c.IP) {
+					invalid = true
+					break
+				}
+			}
+			if !invalid {
+				cidrList = append(cidrList, cidr)
+				cidrSet.Add(ipv4ToUint32(cidr.IP))
+				bcast := make(net.IP, len(cidr.IP))
+				for i := 0; i < len(bcast); i++ {
+					bcast[i] = cidr.IP[i] | ^cidr.Mask[i]
+				}
+				cidrSet.Add(ipv4ToUint32(bcast))
+			}
 		}
+
+		n = 80 + rand.Intn(40)
+		set := u32set.NewWithSize(cidrSet.Size() + n)
+		for set.Size() != n {
+			v := rand.Uint32()
+			ip := net.ParseIP(uint32ToIPv4(v))
+			var invalid bool
+			for _, cidr := range cidrList {
+				if cidr.Contains(ip) {
+					invalid = true
+					break
+				}
+			}
+			if !invalid {
+				set.Add(v)
+			}
+		}
+		set.Merge(cidrSet)
 
 		ints := set.List()
 		sort.Slice(ints, func(i, j int) bool { return ints[i] < ints[j] })
 
-		var ips, mergedIPs []string
+		ips := make([]string, 0, len(cidrList)+set.Size())
+		mergedInts := make([]uint32, 0, set.Size()*2)
 		var expectedCount uint32
 		for i := 0; i < len(ints); i++ {
-			start := uint32ToIPv4(ints[i])
-			var merged string
-			if rand.Int()%2 == 0 && i+1 != len(ints) {
-				end := uint32ToIPv4(ints[i+1])
-				ips = append(ips, fmt.Sprintf("%s..%s", start, end))
+			if cidrSet.Has(ints[i]) {
+				expectedCount += ints[i+1] - ints[i] + 1
 				if i != 0 && ints[i] == ints[i-1]+1 {
-					merged = fmt.Sprintf("%s..%s", strings.Split(mergedIPs[len(mergedIPs)-1], "..")[0], end)
+					mergedInts[len(mergedInts)-1] = ints[i+1]
+				} else {
+					mergedInts = append(mergedInts, ints[i], ints[i+1])
+				}
+				i++
+				continue
+			}
+
+			start := uint32ToIPv4(ints[i])
+			if cidrSet.Has(ints[i]) || (rand.Int()%2 == 0 && i+1 != len(ints) && !cidrSet.Has(ints[i+1])) {
+				if !cidrSet.Has(ints[i]) {
+					end := uint32ToIPv4(ints[i+1])
+					ips = append(ips, fmt.Sprintf("%s..%s", start, end))
+				}
+				if i != 0 && ints[i] == ints[i-1]+1 {
+					mergedInts[len(mergedInts)-1] = ints[i+1]
+				} else {
+					mergedInts = append(mergedInts, ints[i], ints[i+1])
 				}
 				expectedCount += ints[i+1] - ints[i] + 1
 				i++
 			} else {
+				if rand.Int()%8 == 0 {
+					start += "/32"
+				}
 				ips = append(ips, start)
 				if i != 0 && ints[i] == ints[i-1]+1 {
-					merged = fmt.Sprintf("%s..%s", strings.Split(mergedIPs[len(mergedIPs)-1], "..")[0], start)
+					mergedInts[len(mergedInts)-1] = ints[i]
+				} else {
+					mergedInts = append(mergedInts, ints[i], ints[i])
 				}
 				expectedCount++
 			}
+		}
 
-			if merged != "" {
-				mergedIPs[len(mergedIPs)-1] = merged
+		for _, cidr := range cidrList {
+			ips = append(ips, cidr.String())
+		}
+
+		mergedIPs := make([]string, len(mergedInts)/2)
+		for i := 0; i < len(mergedInts)/2; i++ {
+			if mergedInts[i*2] == mergedInts[i*2+1] {
+				mergedIPs[i] = uint32ToIPv4(mergedInts[i*2])
 			} else {
-				mergedIPs = append(mergedIPs, ips[len(ips)-1])
+				mergedIPs[i] = fmt.Sprintf("%s-%s", uint32ToIPv4(mergedInts[i*2]), uint32ToIPv4(mergedInts[i*2+1]))
 			}
 		}
 
 		list, err := ipam.NewIPRangeListFrom(strset.New(ips...).List()...)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		gomega.Expect(list.Len()).To(gomega.Equal(len(mergedIPs)))
-		gomega.Expect(list.String()).To(gomega.Equal(strings.ReplaceAll(strings.Join(mergedIPs, ","), "..", "-")))
+		gomega.Expect(list.String()).To(gomega.Equal(strings.Join(mergedIPs, ",")))
 
 		count := list.Count()
 		gomega.Expect(count.Int64()).To(gomega.Equal(int64(expectedCount)))
 
 		for _, s := range mergedIPs {
-			fields := strings.Split(s, "..")
+			fields := strings.Split(s, "-")
 			start, err := ipam.NewIP(fields[0])
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			gomega.Expect(list.Contains(start)).To(gomega.BeTrue())

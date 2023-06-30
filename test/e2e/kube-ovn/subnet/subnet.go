@@ -198,7 +198,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 				return ""
 			}
 			_, ipnet, _ := net.ParseCIDR(cidr)
-			ipnet.IP = net.ParseIP(framework.RandomIPPool(cidr, ";", 1))
+			ipnet.IP = net.ParseIP(framework.RandomIPs(cidr, ";", 1))
 			return ipnet.String()
 		}
 
@@ -911,9 +911,9 @@ var _ = framework.Describe("[group:subnet]", func() {
 		ginkgo.By("Restarting deployment " + deployName)
 		_ = deployClient.RestartSync(deploy)
 
-		checkFunc2 := func(usingIPRange, availableIPRange, startIP, lastIP string, count int64) {
+		checkFunc2 := func(usingIPRange, availableIPRange, startIP, lastIP string, count int64) bool {
 			if startIP == "" {
-				return
+				return true
 			}
 
 			expectAvailIPRangeStr := fmt.Sprintf("%s-%s,%s-%s",
@@ -922,22 +922,28 @@ var _ = framework.Describe("[group:subnet]", func() {
 				util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(startIP), big.NewInt(2*count))),
 				lastIP,
 			)
-
 			expectUsingIPRangeStr := fmt.Sprintf("%s-%s",
 				util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(startIP), big.NewInt(count))),
 				util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(startIP), big.NewInt(2*count-1))),
 			)
 
 			framework.Logf("subnet status usingIPRange %q expect %q", usingIPRange, expectUsingIPRangeStr)
-			framework.ExpectEqual(usingIPRange, expectUsingIPRangeStr)
+			if usingIPRange != expectUsingIPRangeStr {
+				return false
+			}
 			framework.Logf("subnet status availableIPRange %q expect %q", availableIPRange, expectAvailIPRangeStr)
-			framework.ExpectEqual(availableIPRange, expectAvailIPRangeStr)
+			return availableIPRange == expectAvailIPRangeStr
 		}
 
 		ginkgo.By("Checking subnet status")
 		subnet = subnetClient.Get(subnetName)
-		checkFunc2(subnet.Status.V4UsingIPRange, subnet.Status.V4AvailableIPRange, startIPv4, lastIPv4, replicas)
-		checkFunc2(subnet.Status.V6UsingIPRange, subnet.Status.V6AvailableIPRange, startIPv6, lastIPv6, replicas)
+		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+			subnet = subnetClient.Get(subnetName)
+			if !checkFunc2(subnet.Status.V4UsingIPRange, subnet.Status.V4AvailableIPRange, startIPv4, lastIPv4, replicas) {
+				return false, nil
+			}
+			return checkFunc2(subnet.Status.V6UsingIPRange, subnet.Status.V6AvailableIPRange, startIPv6, lastIPv6, replicas), nil
+		}, "")
 	})
 
 	framework.ConformanceIt("create subnet with enableLb option", func() {

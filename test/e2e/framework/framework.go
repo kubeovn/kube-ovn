@@ -17,6 +17,12 @@ import (
 )
 
 const (
+	IPv4 = "ipv4"
+	IPv6 = "ipv6"
+	Dual = "dual"
+)
+
+const (
 	// poll is how often to Poll resources.
 	poll = 2 * time.Second
 
@@ -103,8 +109,24 @@ func NewFrameworkWithContext(baseName, kubeContext string) *Framework {
 	return f
 }
 
-func (f *Framework) IPv6() bool {
-	return f.ClusterIpFamily == "ipv6"
+func (f *Framework) IsIPv4() bool {
+	return f.ClusterIpFamily == IPv4
+}
+
+func (f *Framework) IsIPv6() bool {
+	return f.ClusterIpFamily == IPv6
+}
+
+func (f *Framework) IsDual() bool {
+	return f.ClusterIpFamily == Dual
+}
+
+func (f *Framework) HasIPv4() bool {
+	return !f.IsIPv6()
+}
+
+func (f *Framework) HasIPv6() bool {
+	return !f.IsIPv4()
 }
 
 // BeforeEach gets a kube-ovn client

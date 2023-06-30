@@ -98,6 +98,16 @@ func ExpectNotContainElement(actual interface{}, extra interface{}, explain ...i
 	gomega.ExpectWithOffset(1, actual).NotTo(gomega.ContainElement(extra), explain...)
 }
 
+// ExpectContainSubstring expects actual contains the passed-in substring.
+func ExpectContainSubstring(actual, substr string, explain ...interface{}) {
+	gomega.ExpectWithOffset(1, actual).To(gomega.ContainSubstring(substr), explain...)
+}
+
+// ExpectNotContainSubstring expects actual does not contain the passed-in substring.
+func ExpectNotContainSubstring(actual, substr string, explain ...interface{}) {
+	gomega.ExpectWithOffset(1, actual).NotTo(gomega.ContainSubstring(substr), explain...)
+}
+
 // ExpectHaveKey expects the actual map has the key in the keyset
 func ExpectHaveKey(actual interface{}, key interface{}, explain ...interface{}) {
 	gomega.ExpectWithOffset(1, actual).To(gomega.HaveKey(key), explain...)

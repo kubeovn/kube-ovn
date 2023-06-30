@@ -274,7 +274,7 @@ func SplitIpsByProtocol(excludeIps []string) ([]string, []string) {
 	var v4ExcludeIps, v6ExcludeIps []string
 	for _, ex := range excludeIps {
 		ips := strings.Split(ex, "..")
-		if net.ParseIP(ips[0]).To4() != nil {
+		if CheckProtocol(ips[0]) == kubeovnv1.ProtocolIPv4 {
 			v4ExcludeIps = append(v4ExcludeIps, ex)
 		} else {
 			v6ExcludeIps = append(v6ExcludeIps, ex)

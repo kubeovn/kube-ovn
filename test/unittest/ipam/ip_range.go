@@ -2,6 +2,7 @@ package ipam
 
 import (
 	"fmt"
+	"math"
 	"math/big"
 	"math/rand"
 	"net"
@@ -53,6 +54,34 @@ var _ = ginkgo.Context("[group:IPAM]", func() {
 			if n1 != n2 {
 				gomega.Expect(r.Contains(start.Add(1))).To(gomega.BeTrue())
 				gomega.Expect(r.Contains(end.Sub(1))).To(gomega.BeTrue())
+			}
+
+			for i := uint32(0); i < 100 && i <= n2-n1; i++ {
+				gomega.Expect(r.Contains(r.Random())).To(gomega.BeTrue())
+			}
+
+			prefix := rand.Intn(net.IPv4len*8 + 1)
+			_, cidr, err := net.ParseCIDR(fmt.Sprintf("%s/%d", startStr, prefix))
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			gomega.Expect(cidr).NotTo(gomega.BeNil())
+
+			r = ipam.NewIPRangeFromCIDR(*cidr)
+			gomega.Expect(r.Contains(start)).To(gomega.BeTrue())
+
+			start, err = ipam.NewIP(cidr.IP.String())
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			gomega.Expect(r.Contains(start)).To(gomega.BeTrue())
+			if !cidr.IP.Equal(net.IPv4zero) {
+				gomega.Expect(r.Contains(start.Sub(1))).To(gomega.BeFalse())
+			}
+			if prefix != net.IPv4len*8 {
+				gomega.Expect(r.Contains(start.Add(1))).To(gomega.BeTrue())
+			}
+
+			c = r.Count()
+			gomega.Expect(c.Int.Cmp(big.NewInt(int64(math.Exp2(float64(net.IPv4len*8 - prefix)))))).To(gomega.Equal(0))
+			for i := int64(0); i < 100 && i <= c.Int64(); i++ {
+				gomega.Expect(r.Contains(r.Random())).To(gomega.BeTrue())
 			}
 		})
 
@@ -111,6 +140,36 @@ var _ = ginkgo.Context("[group:IPAM]", func() {
 				gomega.Expect(r.Contains(start.Add(1))).To(gomega.BeTrue())
 				gomega.Expect(r.Contains(end.Sub(1))).To(gomega.BeTrue())
 			}
+
+			for i := 0; i < 100; i++ {
+				gomega.Expect(r.Contains(r.Random())).To(gomega.BeTrue())
+			}
+
+			prefix := rand.Intn(net.IPv6len*8 + 1)
+			_, cidr, err := net.ParseCIDR(fmt.Sprintf("%s/%d", startStr, prefix))
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			gomega.Expect(cidr).NotTo(gomega.BeNil())
+
+			r = ipam.NewIPRangeFromCIDR(*cidr)
+			gomega.Expect(r.Contains(start)).To(gomega.BeTrue())
+
+			start, err = ipam.NewIP(cidr.IP.String())
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			gomega.Expect(r.Contains(start)).To(gomega.BeTrue())
+			if !cidr.IP.Equal(net.IPv6zero) {
+				gomega.Expect(r.Contains(start.Sub(1))).To(gomega.BeFalse())
+			}
+			if prefix != net.IPv6len*8 {
+				gomega.Expect(r.Contains(start.Add(1))).To(gomega.BeTrue())
+			}
+
+			for i := 0; i < 100; i++ {
+				gomega.Expect(r.Contains(r.Random())).To(gomega.BeTrue())
+			}
+
+			count = r.Count()
+			expectedCount = big.NewInt(0).Exp(big.NewInt(2), big.NewInt(int64(net.IPv6len*8-prefix)), nil)
+			gomega.Expect(count.Int.Cmp(expectedCount)).To(gomega.Equal(0))
 		})
 	})
 })

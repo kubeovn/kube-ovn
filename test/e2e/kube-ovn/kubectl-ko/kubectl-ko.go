@@ -110,7 +110,7 @@ var _ = framework.Describe("[group:kubectl-ko]", func() {
 
 	framework.ConformanceIt(`should support "kubectl ko tcpdump <pod> -c1"`, func() {
 		ping, target := "ping", targetIPv4
-		if f.IPv6() {
+		if f.IsIPv6() {
 			ping, target = "ping6", targetIPv6
 		}
 

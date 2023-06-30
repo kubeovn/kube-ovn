@@ -2,6 +2,7 @@ package ipam
 
 import (
 	"fmt"
+	"net"
 	"sort"
 	"strings"
 
@@ -31,21 +32,32 @@ func NewIPRangeList(ips ...IP) (*IPRangeList, error) {
 func NewIPRangeListFrom(x ...string) (*IPRangeList, error) {
 	ret := &IPRangeList{}
 	for _, s := range x {
-		ips := strings.Split(s, "..")
-		start, err := NewIP(ips[0])
-		if err != nil {
-			return nil, err
-		}
 		var r *IPRange
-		if len(ips) == 1 {
-			r = NewIPRange(start, start)
-		} else {
+		if strings.Contains(s, "..") {
+			ips := strings.Split(s, "..")
+			start, err := NewIP(ips[0])
+			if err != nil {
+				return nil, err
+			}
 			end, err := NewIP(ips[1])
 			if err != nil {
 				return nil, err
 			}
 			r = NewIPRange(start, end)
+		} else if strings.ContainsRune(s, '/') {
+			_, cidr, err := net.ParseCIDR(s)
+			if err != nil {
+				return nil, err
+			}
+			r = NewIPRangeFromCIDR(*cidr)
+		} else {
+			start, err := NewIP(s)
+			if err != nil {
+				return nil, err
+			}
+			r = NewIPRange(start, start.Clone())
 		}
+
 		ret = ret.Merge(&IPRangeList{[]*IPRange{r}})
 	}
 	return ret, nil
@@ -254,6 +266,10 @@ func (r *IPRangeList) Merge(x *IPRangeList) *IPRangeList {
 	}
 
 	return ret.Clone()
+}
+
+func (r *IPRangeList) MergeRange(x *IPRange) *IPRangeList {
+	return r.Merge(&IPRangeList{ranges: []*IPRange{x}}).Clone()
 }
 
 // Intersect returns a new list which contains items which are in both `r` and `x`

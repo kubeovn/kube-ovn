@@ -823,6 +823,19 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 	}
 
 	c.updateVpcStatusQueue.Add(subnet.Spec.Vpc)
+
+	ippools, err := c.ippoolLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list ippools: %v", err)
+		return err
+	}
+
+	for _, p := range ippools {
+		if p.Spec.Subnet == subnet.Name {
+			c.addOrUpdateIPPoolQueue.Add(p.Name)
+		}
+	}
+
 	return nil
 }
 

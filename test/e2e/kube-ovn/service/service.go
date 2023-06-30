@@ -121,7 +121,7 @@ var _ = framework.Describe("[group:service]", func() {
 	})
 
 	framework.ConformanceIt("should ovn nb change vip when dual-stack service removes the cluster ip ", func() {
-		if f.ClusterIpFamily != "dual" {
+		if !f.IsDual() {
 			ginkgo.Skip("this case only support dual mode")
 		}
 		f.SkipVersionPriorTo(1, 11, "This case is support in v1.11")

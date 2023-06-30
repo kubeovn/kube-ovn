@@ -103,12 +103,12 @@ func setupNetworkAttachmentDefinition(
 	for _, config := range dockerExtNetNetwork.IPAM.Config {
 		switch util.CheckProtocol(config.Subnet) {
 		case apiv1.ProtocolIPv4:
-			if f.ClusterIpFamily != "ipv6" {
+			if f.HasIPv4() {
 				cidr = append(cidr, config.Subnet)
 				gateway = append(gateway, config.Gateway)
 			}
 		case apiv1.ProtocolIPv6:
-			if f.ClusterIpFamily != "ipv4" {
+			if f.HasIPv6() {
 				cidr = append(cidr, config.Subnet)
 				gateway = append(gateway, config.Gateway)
 			}
@@ -116,10 +116,10 @@ func setupNetworkAttachmentDefinition(
 	}
 	excludeIPs := make([]string, 0, len(network.Containers)*2)
 	for _, container := range network.Containers {
-		if container.IPv4Address != "" && f.ClusterIpFamily != "ipv6" {
+		if container.IPv4Address != "" && f.HasIPv4() {
 			excludeIPs = append(excludeIPs, strings.Split(container.IPv4Address, "/")[0])
 		}
-		if container.IPv6Address != "" && f.ClusterIpFamily != "ipv4" {
+		if container.IPv6Address != "" && f.HasIPv6() {
 			excludeIPs = append(excludeIPs, strings.Split(container.IPv6Address, "/")[0])
 		}
 	}
