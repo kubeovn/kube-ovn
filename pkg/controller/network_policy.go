@@ -145,25 +145,6 @@ func (c *Controller) handleUpdateNp(key string) error {
 		}
 		return err
 	}
-	subnet, err := c.subnetsLister.Get(c.config.DefaultLogicalSwitch)
-	if err != nil {
-		klog.Errorf("failed to get default subnet %v", err)
-		return err
-	}
-	subnets, err := c.subnetsLister.List(labels.Everything())
-	if err != nil {
-		klog.Errorf("failed to list subnets %v", err)
-		return err
-	}
-
-	for _, s := range subnets {
-		for _, ns := range s.Spec.Namespaces {
-			if ns == np.Namespace {
-				subnet = s
-				break
-			}
-		}
-	}
 
 	defer func() {
 		if err != nil {
@@ -197,10 +178,20 @@ func (c *Controller) handleUpdateNp(key string) error {
 	}
 
 	namedPortMap := c.namedPort.GetNamedPortByNs(np.Namespace)
-	ports, err := c.fetchSelectedPorts(np.Namespace, &np.Spec.PodSelector)
+	ports, subnetNames, err := c.fetchSelectedPorts(np.Namespace, &np.Spec.PodSelector)
 	if err != nil {
 		klog.Errorf("failed to fetch ports, %v", err)
 		return err
+	}
+
+	var subnets []*kubeovnv1.Subnet
+	for _, subnetName := range subnetNames {
+		subnet, err := c.subnetsLister.Get(subnetName)
+		if err != nil {
+			klog.Errorf("failed to get pod's subnet %s, %v", subnetName, err)
+			return err
+		}
+		subnets = append(subnets, subnet)
 	}
 
 	err = c.ovnLegacyClient.SetPortsToPortGroup(pgName, ports)
@@ -217,21 +208,23 @@ func (c *Controller) handleUpdateNp(key string) error {
 		klog.Errorf("failed to fetchSelectedSvc svcIPs result  %v", err)
 		return err
 	}
-	for _, cidrBlock := range strings.Split(subnet.Spec.CIDRBlock, ",") {
-		protocol := util.CheckProtocol(cidrBlock)
-		svcAsName := svcAsNameIPv4
-		svcIPs := svcIpv4s
-		if protocol == kubeovnv1.ProtocolIPv6 {
-			svcAsName = svcAsNameIPv6
-			svcIPs = svcIpv6s
-		}
-		if err = c.ovnLegacyClient.CreateNpAddressSet(svcAsName, np.Namespace, npName, "service"); err != nil {
-			klog.Errorf("failed to create address_set %s, %v", svcAsNameIPv4, err)
-			return err
-		}
-		if err = c.ovnLegacyClient.SetAddressesToAddressSet(svcIPs, svcAsName); err != nil {
-			klog.Errorf("failed to set netpol svc, %v", err)
-			return err
+	for _, subnet := range subnets {
+		for _, cidrBlock := range strings.Split(subnet.Spec.CIDRBlock, ",") {
+			protocol := util.CheckProtocol(cidrBlock)
+			svcAsName := svcAsNameIPv4
+			svcIPs := svcIpv4s
+			if protocol == kubeovnv1.ProtocolIPv6 {
+				svcAsName = svcAsNameIPv6
+				svcIPs = svcIpv6s
+			}
+			if err = c.ovnLegacyClient.CreateNpAddressSet(svcAsName, np.Namespace, npName, "service"); err != nil {
+				klog.Errorf("failed to create address_set %s, %v", svcAsNameIPv4, err)
+				return err
+			}
+			if err = c.ovnLegacyClient.SetAddressesToAddressSet(svcIPs, svcAsName); err != nil {
+				klog.Errorf("failed to set netpol svc, %v", err)
+				return err
+			}
 		}
 	}
 
@@ -245,82 +238,84 @@ func (c *Controller) handleUpdateNp(key string) error {
 		ingressAclCmd = []string{"--type=port-group", "acl-del", pgName, "to-lport"}
 	}
 	if hasIngressRule(np) {
-		for _, cidrBlock := range strings.Split(subnet.Spec.CIDRBlock, ",") {
-			protocol := util.CheckProtocol(cidrBlock)
+		for _, subnet := range subnets {
+			for _, cidrBlock := range strings.Split(subnet.Spec.CIDRBlock, ",") {
+				protocol := util.CheckProtocol(cidrBlock)
 
-			for idx, npr := range np.Spec.Ingress {
-				// A single address set must contain addresses of the same type and the name must be unique within table, so IPv4 and IPv6 address set should be different
-				ingressAllowAsName := fmt.Sprintf("%s.%s.%d", ingressAllowAsNamePrefix, protocol, idx)
-				ingressExceptAsName := fmt.Sprintf("%s.%s.%d", ingressExceptAsNamePrefix, protocol, idx)
+				for idx, npr := range np.Spec.Ingress {
+					// A single address set must contain addresses of the same type and the name must be unique within table, so IPv4 and IPv6 address set should be different
+					ingressAllowAsName := fmt.Sprintf("%s.%s.%d", ingressAllowAsNamePrefix, protocol, idx)
+					ingressExceptAsName := fmt.Sprintf("%s.%s.%d", ingressExceptAsNamePrefix, protocol, idx)
 
-				var allows, excepts []string
-				if len(npr.From) == 0 {
-					if protocol == kubeovnv1.ProtocolIPv4 {
-						allows = []string{"0.0.0.0/0"}
-					} else {
-						allows = []string{"::/0"}
-					}
-				} else {
-					var allow, except []string
-					for _, npp := range npr.From {
-						if allow, except, err = c.fetchPolicySelectedAddresses(np.Namespace, protocol, npp); err != nil {
-							klog.Errorf("failed to fetch policy selected addresses, %v", err)
-							return err
+					var allows, excepts []string
+					if len(npr.From) == 0 {
+						if protocol == kubeovnv1.ProtocolIPv4 {
+							allows = []string{"0.0.0.0/0"}
+						} else {
+							allows = []string{"::/0"}
 						}
-						allows = append(allows, allow...)
-						excepts = append(excepts, except...)
+					} else {
+						var allow, except []string
+						for _, npp := range npr.From {
+							if allow, except, err = c.fetchPolicySelectedAddresses(np.Namespace, protocol, npp); err != nil {
+								klog.Errorf("failed to fetch policy selected addresses, %v", err)
+								return err
+							}
+							allows = append(allows, allow...)
+							excepts = append(excepts, except...)
+						}
+					}
+					klog.Infof("UpdateNp Ingress, allows is %v, excepts is %v, log %v", allows, excepts, logEnable)
+					if err = c.ovnLegacyClient.CreateNpAddressSet(ingressAllowAsName, np.Namespace, npName, "ingress"); err != nil {
+						klog.Errorf("failed to create address_set %s, %v", ingressAllowAsName, err)
+						return err
+					}
+					if err = c.ovnLegacyClient.SetAddressesToAddressSet(allows, ingressAllowAsName); err != nil {
+						klog.Errorf("failed to set ingress allow address_set, %v", err)
+						return err
+					}
+
+					if err = c.ovnLegacyClient.CreateNpAddressSet(ingressExceptAsName, np.Namespace, npName, "ingress"); err != nil {
+						klog.Errorf("failed to create address_set %s, %v", ingressExceptAsName, err)
+						return err
+					}
+					if err = c.ovnLegacyClient.SetAddressesToAddressSet(excepts, ingressExceptAsName); err != nil {
+						klog.Errorf("failed to set ingress except address_set, %v", err)
+						return err
+					}
+
+					if len(allows) != 0 || len(excepts) != 0 {
+						ingressAclCmd = c.ovnLegacyClient.CombineIngressACLCmd(pgName, ingressAllowAsName, ingressExceptAsName, protocol, npr.Ports, logEnable, ingressAclCmd, idx, namedPortMap)
+					} else {
+						ingressAclCmd = c.ovnLegacyClient.CombineIngressACLCmd(pgName, ingressAllowAsName, ingressExceptAsName, protocol, []netv1.NetworkPolicyPort{}, logEnable, ingressAclCmd, idx, namedPortMap)
 					}
 				}
-				klog.Infof("UpdateNp Ingress, allows is %v, excepts is %v, log %v", allows, excepts, logEnable)
-				if err = c.ovnLegacyClient.CreateNpAddressSet(ingressAllowAsName, np.Namespace, npName, "ingress"); err != nil {
-					klog.Errorf("failed to create address_set %s, %v", ingressAllowAsName, err)
-					return err
+				if len(np.Spec.Ingress) == 0 {
+					ingressAllowAsName := fmt.Sprintf("%s.%s.all", ingressAllowAsNamePrefix, protocol)
+					ingressExceptAsName := fmt.Sprintf("%s.%s.all", ingressExceptAsNamePrefix, protocol)
+					if err = c.ovnLegacyClient.CreateNpAddressSet(ingressAllowAsName, np.Namespace, npName, "ingress"); err != nil {
+						klog.Errorf("failed to create address_set %s, %v", ingressAllowAsName, err)
+						return err
+					}
+
+					if err = c.ovnLegacyClient.CreateNpAddressSet(ingressExceptAsName, np.Namespace, npName, "ingress"); err != nil {
+						klog.Errorf("failed to create address_set %s, %v", ingressExceptAsName, err)
+						return err
+					}
+					ingressPorts := []netv1.NetworkPolicyPort{}
+					ingressAclCmd = c.ovnLegacyClient.CombineIngressACLCmd(pgName, ingressAllowAsName, ingressExceptAsName, protocol, ingressPorts, logEnable, ingressAclCmd, 0, namedPortMap)
 				}
-				if err = c.ovnLegacyClient.SetAddressesToAddressSet(allows, ingressAllowAsName); err != nil {
-					klog.Errorf("failed to set ingress allow address_set, %v", err)
+
+				klog.Infof("create ingress acl cmd is: %v", ingressAclCmd)
+				if err = c.ovnLegacyClient.CreateACL(ingressAclCmd); err != nil {
+					klog.Errorf("failed to create ingress acls for np %s, %v", key, err)
 					return err
 				}
 
-				if err = c.ovnLegacyClient.CreateNpAddressSet(ingressExceptAsName, np.Namespace, npName, "ingress"); err != nil {
-					klog.Errorf("failed to create address_set %s, %v", ingressExceptAsName, err)
-					return err
+				if err = c.ovnLegacyClient.SetAclLog(pgName, logEnable, true); err != nil {
+					// just log and do not return err here
+					klog.Errorf("failed to set ingress acl log for np %s, %v", key, err)
 				}
-				if err = c.ovnLegacyClient.SetAddressesToAddressSet(excepts, ingressExceptAsName); err != nil {
-					klog.Errorf("failed to set ingress except address_set, %v", err)
-					return err
-				}
-
-				if len(allows) != 0 || len(excepts) != 0 {
-					ingressAclCmd = c.ovnLegacyClient.CombineIngressACLCmd(pgName, ingressAllowAsName, ingressExceptAsName, protocol, npr.Ports, logEnable, ingressAclCmd, idx, namedPortMap)
-				} else {
-					ingressAclCmd = c.ovnLegacyClient.CombineIngressACLCmd(pgName, ingressAllowAsName, ingressExceptAsName, protocol, []netv1.NetworkPolicyPort{}, logEnable, ingressAclCmd, idx, namedPortMap)
-				}
-			}
-			if len(np.Spec.Ingress) == 0 {
-				ingressAllowAsName := fmt.Sprintf("%s.%s.all", ingressAllowAsNamePrefix, protocol)
-				ingressExceptAsName := fmt.Sprintf("%s.%s.all", ingressExceptAsNamePrefix, protocol)
-				if err = c.ovnLegacyClient.CreateNpAddressSet(ingressAllowAsName, np.Namespace, npName, "ingress"); err != nil {
-					klog.Errorf("failed to create address_set %s, %v", ingressAllowAsName, err)
-					return err
-				}
-
-				if err = c.ovnLegacyClient.CreateNpAddressSet(ingressExceptAsName, np.Namespace, npName, "ingress"); err != nil {
-					klog.Errorf("failed to create address_set %s, %v", ingressExceptAsName, err)
-					return err
-				}
-				ingressPorts := []netv1.NetworkPolicyPort{}
-				ingressAclCmd = c.ovnLegacyClient.CombineIngressACLCmd(pgName, ingressAllowAsName, ingressExceptAsName, protocol, ingressPorts, logEnable, ingressAclCmd, 0, namedPortMap)
-			}
-
-			klog.Infof("create ingress acl cmd is: %v", ingressAclCmd)
-			if err = c.ovnLegacyClient.CreateACL(ingressAclCmd); err != nil {
-				klog.Errorf("failed to create ingress acls for np %s, %v", key, err)
-				return err
-			}
-
-			if err = c.ovnLegacyClient.SetAclLog(pgName, logEnable, true); err != nil {
-				// just log and do not return err here
-				klog.Errorf("failed to set ingress acl log for np %s, %v", key, err)
 			}
 		}
 
@@ -376,80 +371,82 @@ func (c *Controller) handleUpdateNp(key string) error {
 		egressAclCmd = []string{"--type=port-group", "acl-del", pgName, "from-lport"}
 	}
 	if hasEgressRule(np) {
-		for _, cidrBlock := range strings.Split(subnet.Spec.CIDRBlock, ",") {
-			protocol := util.CheckProtocol(cidrBlock)
+		for _, subnet := range subnets {
+			for _, cidrBlock := range strings.Split(subnet.Spec.CIDRBlock, ",") {
+				protocol := util.CheckProtocol(cidrBlock)
 
-			for idx, npr := range np.Spec.Egress {
-				// A single address set must contain addresses of the same type and the name must be unique within table, so IPv4 and IPv6 address set should be different
-				egressAllowAsName := fmt.Sprintf("%s.%s.%d", egressAllowAsNamePrefix, protocol, idx)
-				egressExceptAsName := fmt.Sprintf("%s.%s.%d", egressExceptAsNamePrefix, protocol, idx)
+				for idx, npr := range np.Spec.Egress {
+					// A single address set must contain addresses of the same type and the name must be unique within table, so IPv4 and IPv6 address set should be different
+					egressAllowAsName := fmt.Sprintf("%s.%s.%d", egressAllowAsNamePrefix, protocol, idx)
+					egressExceptAsName := fmt.Sprintf("%s.%s.%d", egressExceptAsNamePrefix, protocol, idx)
 
-				var allows, excepts []string
-				if len(npr.To) == 0 {
-					if protocol == kubeovnv1.ProtocolIPv4 {
-						allows = []string{"0.0.0.0/0"}
-					} else {
-						allows = []string{"::/0"}
-					}
-				} else {
-					var allow, except []string
-					for _, npp := range npr.To {
-						if allow, except, err = c.fetchPolicySelectedAddresses(np.Namespace, protocol, npp); err != nil {
-							klog.Errorf("failed to fetch policy selected addresses, %v", err)
-							return err
+					var allows, excepts []string
+					if len(npr.To) == 0 {
+						if protocol == kubeovnv1.ProtocolIPv4 {
+							allows = []string{"0.0.0.0/0"}
+						} else {
+							allows = []string{"::/0"}
 						}
-						allows = append(allows, allow...)
-						excepts = append(excepts, except...)
+					} else {
+						var allow, except []string
+						for _, npp := range npr.To {
+							if allow, except, err = c.fetchPolicySelectedAddresses(np.Namespace, protocol, npp); err != nil {
+								klog.Errorf("failed to fetch policy selected addresses, %v", err)
+								return err
+							}
+							allows = append(allows, allow...)
+							excepts = append(excepts, except...)
+						}
+					}
+					klog.Infof("UpdateNp Egress, allows is %v, excepts is %v, log %v", allows, excepts, logEnable)
+					if err = c.ovnLegacyClient.CreateNpAddressSet(egressAllowAsName, np.Namespace, npName, "egress"); err != nil {
+						klog.Errorf("failed to create address_set %s, %v", egressAllowAsName, err)
+						return err
+					}
+					if err = c.ovnLegacyClient.SetAddressesToAddressSet(allows, egressAllowAsName); err != nil {
+						klog.Errorf("failed to set egress allow address_set, %v", err)
+						return err
+					}
+
+					if err = c.ovnLegacyClient.CreateNpAddressSet(egressExceptAsName, np.Namespace, npName, "egress"); err != nil {
+						klog.Errorf("failed to create address_set %s, %v", egressExceptAsName, err)
+						return err
+					}
+					if err = c.ovnLegacyClient.SetAddressesToAddressSet(excepts, egressExceptAsName); err != nil {
+						klog.Errorf("failed to set egress except address_set, %v", err)
+						return err
+					}
+
+					if len(allows) != 0 || len(excepts) != 0 {
+						egressAclCmd = c.ovnLegacyClient.CombineEgressACLCmd(pgName, egressAllowAsName, egressExceptAsName, protocol, npr.Ports, logEnable, egressAclCmd, idx, namedPortMap)
 					}
 				}
-				klog.Infof("UpdateNp Egress, allows is %v, excepts is %v, log %v", allows, excepts, logEnable)
-				if err = c.ovnLegacyClient.CreateNpAddressSet(egressAllowAsName, np.Namespace, npName, "egress"); err != nil {
-					klog.Errorf("failed to create address_set %s, %v", egressAllowAsName, err)
-					return err
+				if len(np.Spec.Egress) == 0 {
+					egressAllowAsName := fmt.Sprintf("%s.%s.all", egressAllowAsNamePrefix, protocol)
+					egressExceptAsName := fmt.Sprintf("%s.%s.all", egressExceptAsNamePrefix, protocol)
+					if err = c.ovnLegacyClient.CreateNpAddressSet(egressAllowAsName, np.Namespace, npName, "egress"); err != nil {
+						klog.Errorf("failed to create address_set %s, %v", egressAllowAsName, err)
+						return err
+					}
+
+					if err = c.ovnLegacyClient.CreateNpAddressSet(egressExceptAsName, np.Namespace, npName, "egress"); err != nil {
+						klog.Errorf("failed to create address_set %s, %v", egressExceptAsName, err)
+						return err
+					}
+					egressPorts := []netv1.NetworkPolicyPort{}
+					egressAclCmd = c.ovnLegacyClient.CombineEgressACLCmd(pgName, egressAllowAsName, egressExceptAsName, protocol, egressPorts, logEnable, egressAclCmd, 0, namedPortMap)
 				}
-				if err = c.ovnLegacyClient.SetAddressesToAddressSet(allows, egressAllowAsName); err != nil {
-					klog.Errorf("failed to set egress allow address_set, %v", err)
+
+				klog.Infof("create egress acl cmd is: %v", egressAclCmd)
+				if err = c.ovnLegacyClient.CreateACL(egressAclCmd); err != nil {
+					klog.Errorf("failed to create egress acls for np %s, %v", key, err)
 					return err
 				}
 
-				if err = c.ovnLegacyClient.CreateNpAddressSet(egressExceptAsName, np.Namespace, npName, "egress"); err != nil {
-					klog.Errorf("failed to create address_set %s, %v", egressExceptAsName, err)
-					return err
+				if err = c.ovnLegacyClient.SetAclLog(pgName, logEnable, false); err != nil {
+					// just log and do not return err here
+					klog.Errorf("failed to set egress acl log for np %s, %v", key, err)
 				}
-				if err = c.ovnLegacyClient.SetAddressesToAddressSet(excepts, egressExceptAsName); err != nil {
-					klog.Errorf("failed to set egress except address_set, %v", err)
-					return err
-				}
-
-				if len(allows) != 0 || len(excepts) != 0 {
-					egressAclCmd = c.ovnLegacyClient.CombineEgressACLCmd(pgName, egressAllowAsName, egressExceptAsName, protocol, npr.Ports, logEnable, egressAclCmd, idx, namedPortMap)
-				}
-			}
-			if len(np.Spec.Egress) == 0 {
-				egressAllowAsName := fmt.Sprintf("%s.%s.all", egressAllowAsNamePrefix, protocol)
-				egressExceptAsName := fmt.Sprintf("%s.%s.all", egressExceptAsNamePrefix, protocol)
-				if err = c.ovnLegacyClient.CreateNpAddressSet(egressAllowAsName, np.Namespace, npName, "egress"); err != nil {
-					klog.Errorf("failed to create address_set %s, %v", egressAllowAsName, err)
-					return err
-				}
-
-				if err = c.ovnLegacyClient.CreateNpAddressSet(egressExceptAsName, np.Namespace, npName, "egress"); err != nil {
-					klog.Errorf("failed to create address_set %s, %v", egressExceptAsName, err)
-					return err
-				}
-				egressPorts := []netv1.NetworkPolicyPort{}
-				egressAclCmd = c.ovnLegacyClient.CombineEgressACLCmd(pgName, egressAllowAsName, egressExceptAsName, protocol, egressPorts, logEnable, egressAclCmd, 0, namedPortMap)
-			}
-
-			klog.Infof("create egress acl cmd is: %v", egressAclCmd)
-			if err = c.ovnLegacyClient.CreateACL(egressAclCmd); err != nil {
-				klog.Errorf("failed to create egress acls for np %s, %v", key, err)
-				return err
-			}
-
-			if err = c.ovnLegacyClient.SetAclLog(pgName, logEnable, false); err != nil {
-				// just log and do not return err here
-				klog.Errorf("failed to set egress acl log for np %s, %v", key, err)
 			}
 		}
 
@@ -496,9 +493,11 @@ func (c *Controller) handleUpdateNp(key string) error {
 		}
 	}
 
-	if err = c.ovnLegacyClient.CreateGatewayACL("", pgName, subnet.Spec.Gateway, subnet.Spec.CIDRBlock); err != nil {
-		klog.Errorf("failed to create gateway acl, %v", err)
-		return err
+	for _, subnet := range subnets {
+		if err = c.ovnLegacyClient.CreateGatewayACL("", pgName, subnet.Spec.Gateway, subnet.Spec.CIDRBlock); err != nil {
+			klog.Errorf("failed to create gateway acl, %v", err)
+			return err
+		}
 	}
 	return nil
 }
@@ -558,14 +557,15 @@ func (c *Controller) handleDeleteNp(key string) error {
 	return nil
 }
 
-func (c *Controller) fetchSelectedPorts(namespace string, selector *metav1.LabelSelector) ([]string, error) {
+func (c *Controller) fetchSelectedPorts(namespace string, selector *metav1.LabelSelector) ([]string, []string, error) {
+	var subnets []string
 	sel, err := metav1.LabelSelectorAsSelector(selector)
 	if err != nil {
-		return nil, fmt.Errorf("error creating label selector, %v", err)
+		return nil, nil, fmt.Errorf("error creating label selector, %v", err)
 	}
 	pods, err := c.podsLister.Pods(namespace).List(sel)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list pods, %v", err)
+		return nil, nil, fmt.Errorf("failed to list pods, %v", err)
 	}
 
 	ports := make([]string, 0, len(pods))
@@ -576,7 +576,7 @@ func (c *Controller) fetchSelectedPorts(namespace string, selector *metav1.Label
 		podName := c.getNameByPod(pod)
 		podNets, err := c.getPodKubeovnNets(pod)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get pod networks, %v", err)
+			return nil, nil, fmt.Errorf("failed to get pod networks, %v", err)
 		}
 
 		for _, podNet := range podNets {
@@ -586,10 +586,13 @@ func (c *Controller) fetchSelectedPorts(namespace string, selector *metav1.Label
 
 			if pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)] == "true" {
 				ports = append(ports, ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName))
+				// Pod selected by networkpolicy has its own subnet which is not the default subnet
+				subnets = append(subnets, podNet.Subnet.Name)
 			}
 		}
 	}
-	return ports, nil
+	subnets = util.UniqString(subnets)
+	return ports, subnets, nil
 }
 
 func (c *Controller) fetchSelectedSvc(namespace string, selector *metav1.LabelSelector) ([]string, []string, error) {
