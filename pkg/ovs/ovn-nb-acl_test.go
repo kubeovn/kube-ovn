@@ -224,7 +224,7 @@ func (suite *OvnClientTestSuite) testCreateGatewayAcl() {
 
 		acl, err := ovnClient.GetAcl(name, direction, priority, match, false)
 		require.NoError(t, err)
-		expect := newAcl(name, direction, priority, match, ovnnb.ACLActionAllowRelated)
+		expect := newAcl(name, direction, priority, match, ovnnb.ACLActionAllowStateless)
 		expect.UUID = acl.UUID
 		if len(options) != 0 {
 			expect.Options = options
@@ -362,7 +362,7 @@ func (suite *OvnClientTestSuite) testCreateNodeAcl() {
 	checkAcl := func(pg *ovnnb.PortGroup, direction, priority, match string, options map[string]string) {
 		acl, err := ovnClient.GetAcl(pg.Name, direction, priority, match, false)
 		require.NoError(t, err)
-		expect := newAcl(pg.Name, direction, priority, match, ovnnb.ACLActionAllowRelated)
+		expect := newAcl(pg.Name, direction, priority, match, ovnnb.ACLActionAllowStateless)
 		expect.UUID = acl.UUID
 		if len(options) != 0 {
 			expect.Options = options

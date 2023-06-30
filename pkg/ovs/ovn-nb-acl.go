@@ -142,7 +142,7 @@ func (c *ovnClient) CreateGatewayAcl(lsName, pgName, gateway string) error {
 			ipSuffix = "ip6"
 		}
 
-		allowIngressAcl, err := c.newAcl(parentName, ovnnb.ACLDirectionToLport, util.IngressAllowPriority, fmt.Sprintf("%s.src == %s", ipSuffix, gw), ovnnb.ACLActionAllowRelated)
+		allowIngressAcl, err := c.newAcl(parentName, ovnnb.ACLDirectionToLport, util.IngressAllowPriority, fmt.Sprintf("%s.src == %s", ipSuffix, gw), ovnnb.ACLActionAllowStateless)
 		if err != nil {
 			return fmt.Errorf("new allow ingress acl for %s: %v", parentName, err)
 		}
@@ -154,7 +154,7 @@ func (c *ovnClient) CreateGatewayAcl(lsName, pgName, gateway string) error {
 			acl.Options["apply-after-lb"] = "true"
 		}
 
-		allowEgressAcl, err := c.newAcl(parentName, ovnnb.ACLDirectionFromLport, util.EgressAllowPriority, fmt.Sprintf("%s.dst == %s", ipSuffix, gw), ovnnb.ACLActionAllowRelated, options)
+		allowEgressAcl, err := c.newAcl(parentName, ovnnb.ACLDirectionFromLport, util.EgressAllowPriority, fmt.Sprintf("%s.dst == %s", ipSuffix, gw), ovnnb.ACLActionAllowStateless, options)
 		if err != nil {
 			return fmt.Errorf("new allow egress acl for %s: %v", parentName, err)
 		}
@@ -162,7 +162,7 @@ func (c *ovnClient) CreateGatewayAcl(lsName, pgName, gateway string) error {
 		acls = append(acls, allowIngressAcl, allowEgressAcl)
 
 		if ipSuffix == "ip6" {
-			ndAcl, err := c.newAcl(parentName, ovnnb.ACLDirectionFromLport, util.EgressAllowPriority, "nd || nd_ra || nd_rs", ovnnb.ACLActionAllowRelated, options)
+			ndAcl, err := c.newAcl(parentName, ovnnb.ACLDirectionFromLport, util.EgressAllowPriority, "nd || nd_ra || nd_rs", ovnnb.ACLActionAllowStateless, options)
 			if err != nil {
 				return fmt.Errorf("new nd acl for %s: %v", parentName, err)
 			}
@@ -179,7 +179,7 @@ func (c *ovnClient) CreateGatewayAcl(lsName, pgName, gateway string) error {
 	return nil
 }
 
-// CreateGatewayACL create allow acl for node join ip
+// CreateNodeAcl create allow acl for node join ip
 func (c *ovnClient) CreateNodeAcl(pgName, nodeIpStr, joinIpStr string) error {
 	acls := make([]*ovnnb.ACL, 0)
 	nodeIPs := strings.Split(nodeIpStr, ",")
@@ -191,7 +191,7 @@ func (c *ovnClient) CreateNodeAcl(pgName, nodeIpStr, joinIpStr string) error {
 		}
 		pgAs := fmt.Sprintf("%s_%s", pgName, ipSuffix)
 
-		allowIngressAcl, err := c.newAcl(pgName, ovnnb.ACLDirectionToLport, util.NodeAllowPriority, fmt.Sprintf("%s.src == %s && %s.dst == $%s", ipSuffix, nodeIP, ipSuffix, pgAs), ovnnb.ACLActionAllowRelated)
+		allowIngressAcl, err := c.newAcl(pgName, ovnnb.ACLDirectionToLport, util.NodeAllowPriority, fmt.Sprintf("%s.src == %s && %s.dst == $%s", ipSuffix, nodeIP, ipSuffix, pgAs), ovnnb.ACLActionAllowStateless)
 		if err != nil {
 			return fmt.Errorf("new allow ingress acl for port group %s: %v", pgName, err)
 		}
@@ -203,7 +203,7 @@ func (c *ovnClient) CreateNodeAcl(pgName, nodeIpStr, joinIpStr string) error {
 			acl.Options["apply-after-lb"] = "true"
 		}
 
-		allowEgressAcl, err := c.newAcl(pgName, ovnnb.ACLDirectionFromLport, util.NodeAllowPriority, fmt.Sprintf("%s.dst == %s && %s.src == $%s", ipSuffix, nodeIP, ipSuffix, pgAs), ovnnb.ACLActionAllowRelated, options)
+		allowEgressAcl, err := c.newAcl(pgName, ovnnb.ACLDirectionFromLport, util.NodeAllowPriority, fmt.Sprintf("%s.dst == %s && %s.src == $%s", ipSuffix, nodeIP, ipSuffix, pgAs), ovnnb.ACLActionAllowStateless, options)
 		if err != nil {
 			return fmt.Errorf("new allow egress acl for port group %s: %v", pgName, err)
 		}
