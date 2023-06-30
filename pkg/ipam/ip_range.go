@@ -1,8 +1,10 @@
 package ipam
 
 import (
+	"crypto/rand"
 	"fmt"
 	"math/big"
+	"net"
 
 	"github.com/kubeovn/kube-ovn/pkg/internal"
 )
@@ -16,8 +18,18 @@ func NewIPRange(start, end IP) *IPRange {
 	return &IPRange{start, end}
 }
 
+func NewIPRangeFromCIDR(cidr net.IPNet) *IPRange {
+	start, _ := NewIP(cidr.IP.Mask(cidr.Mask).String())
+	end := make(IP, len(start))
+	for i := 0; i < len(end); i++ {
+		end[i] = start[i] | ^cidr.Mask[i]
+	}
+
+	return &IPRange{start, end}
+}
+
 func (r *IPRange) Clone() *IPRange {
-	return NewIPRange(r.start, r.end)
+	return NewIPRange(r.start.Clone(), r.end.Clone())
 }
 
 func (r *IPRange) Start() IP {
@@ -39,6 +51,13 @@ func (r *IPRange) SetEnd(ip IP) {
 func (r *IPRange) Count() internal.BigInt {
 	n := big.NewInt(0).Sub(big.NewInt(0).SetBytes([]byte(r.end)), big.NewInt(0).SetBytes([]byte(r.start)))
 	return internal.BigInt{Int: *n.Add(n, big.NewInt(1))}
+}
+
+func (r *IPRange) Random() IP {
+	x := big.NewInt(0).SetBytes([]byte(r.start))
+	y := big.NewInt(0).SetBytes([]byte(r.end))
+	n, _ := rand.Int(rand.Reader, big.NewInt(0).Add(big.NewInt(0).Sub(y, x), big.NewInt(1)))
+	return bytes2IP(big.NewInt(0).Add(x, n).Bytes(), len(r.start))
 }
 
 func (r *IPRange) Contains(ip IP) bool {

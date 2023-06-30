@@ -363,12 +363,12 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		for _, config := range dockerNetwork.IPAM.Config {
 			switch util.CheckProtocol(config.Subnet) {
 			case apiv1.ProtocolIPv4:
-				if f.ClusterIpFamily != "ipv6" {
+				if f.HasIPv4() {
 					cidr = append(cidr, config.Subnet)
 					gateway = append(gateway, config.Gateway)
 				}
 			case apiv1.ProtocolIPv6:
-				if f.ClusterIpFamily != "ipv4" {
+				if f.HasIPv6() {
 					cidr = append(cidr, config.Subnet)
 					gateway = append(gateway, config.Gateway)
 				}
@@ -376,10 +376,10 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		}
 		excludeIPs := make([]string, 0, len(network.Containers)*2)
 		for _, container := range network.Containers {
-			if container.IPv4Address != "" && f.ClusterIpFamily != "ipv6" {
+			if container.IPv4Address != "" && f.HasIPv4() {
 				excludeIPs = append(excludeIPs, strings.Split(container.IPv4Address, "/")[0])
 			}
-			if container.IPv6Address != "" && f.ClusterIpFamily != "ipv4" {
+			if container.IPv6Address != "" && f.HasIPv6() {
 				excludeIPs = append(excludeIPs, strings.Split(container.IPv6Address, "/")[0])
 			}
 		}
@@ -401,7 +401,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 	})
 
 	framework.ConformanceIt("should be able to detect IPv4 address conflict", func() {
-		if f.ClusterIpFamily != "ipv4" {
+		if !f.IsIPv4() {
 			ginkgo.Skip("Address conflict detection only supports IPv4")
 		}
 		f.SkipVersionPriorTo(1, 9, "Address conflict detection was introduced in v1.9")
@@ -487,12 +487,12 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		for _, config := range dockerNetwork.IPAM.Config {
 			switch util.CheckProtocol(config.Subnet) {
 			case apiv1.ProtocolIPv4:
-				if f.ClusterIpFamily != "ipv6" {
+				if f.HasIPv4() {
 					underlayCidr = append(underlayCidr, config.Subnet)
 					gateway = append(gateway, config.Gateway)
 				}
 			case apiv1.ProtocolIPv6:
-				if f.ClusterIpFamily != "ipv4" {
+				if f.HasIPv6() {
 					underlayCidr = append(underlayCidr, config.Subnet)
 					gateway = append(gateway, config.Gateway)
 				}
@@ -501,10 +501,10 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 
 		excludeIPs := make([]string, 0, len(network.Containers)*2)
 		for _, container := range network.Containers {
-			if container.IPv4Address != "" && f.ClusterIpFamily != "ipv6" {
+			if container.IPv4Address != "" && f.HasIPv4() {
 				excludeIPs = append(excludeIPs, strings.Split(container.IPv4Address, "/")[0])
 			}
-			if container.IPv6Address != "" && f.ClusterIpFamily != "ipv4" {
+			if container.IPv6Address != "" && f.HasIPv6() {
 				excludeIPs = append(excludeIPs, strings.Split(container.IPv6Address, "/")[0])
 			}
 		}

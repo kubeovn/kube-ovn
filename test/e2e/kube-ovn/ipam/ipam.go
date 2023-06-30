@@ -3,7 +3,6 @@ package ipam
 import (
 	"context"
 	"fmt"
-	"sort"
 	"strings"
 	"time"
 
@@ -71,7 +70,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 
 	framework.ConformanceIt("should allocate static ipv4 and mac for pod", func() {
 		mac := util.GenerateMac()
-		ip := framework.RandomIPPool(cidr, ";", 1)
+		ip := framework.RandomIPs(cidr, ";", 1)
 
 		ginkgo.By("Creating pod " + podName + " with ip " + ip + " and mac " + mac)
 		annotations := map[string]string{
@@ -97,11 +96,11 @@ var _ = framework.Describe("[group:ipam]", func() {
 	})
 
 	framework.ConformanceIt("should allocate static ip for pod with comma separated ippool", func() {
-		if f.ClusterIpFamily == "dual" {
+		if f.IsDual() {
 			ginkgo.Skip("Comma separated ippool is not supported for dual stack")
 		}
 
-		pool := framework.RandomIPPool(cidr, ",", 3)
+		pool := framework.RandomIPs(cidr, ",", 3)
 		ginkgo.By("Creating pod " + podName + " with ippool " + pool)
 		annotations := map[string]string{util.IpPoolAnnotation: pool}
 		pod := framework.MakePod(namespaceName, podName, nil, annotations, "", nil, nil)
@@ -120,16 +119,15 @@ var _ = framework.Describe("[group:ipam]", func() {
 
 	framework.ConformanceIt("should allocate static ip for deployment with ippool", func() {
 		ippoolSep := ";"
-		if f.ClusterVersionMajor < 1 ||
-			(f.ClusterVersionMajor == 1 && f.ClusterVersionMinor < 11) {
-			if f.ClusterIpFamily == "dual" {
+		if f.VersionPriorTo(1, 11) {
+			if f.IsDual() {
 				ginkgo.Skip("Support for dual stack ippool was introduced in v1.11")
 			}
 			ippoolSep = ","
 		}
 
 		replicas := 3
-		ippool := framework.RandomIPPool(cidr, ippoolSep, replicas)
+		ippool := framework.RandomIPs(cidr, ippoolSep, replicas)
 
 		ginkgo.By("Creating deployment " + deployName + " with ippool " + ippool)
 		labels := map[string]string{"app": deployName}
@@ -247,15 +245,15 @@ var _ = framework.Describe("[group:ipam]", func() {
 
 	framework.ConformanceIt("should allocate static ip for statefulset with ippool", func() {
 		ippoolSep := ";"
-		if f.ClusterVersionMajor <= 1 && f.ClusterVersionMinor < 11 {
-			if f.ClusterIpFamily == "dual" {
+		if f.VersionPriorTo(1, 11) {
+			if f.IsDual() {
 				ginkgo.Skip("Support for dual stack ippool was introduced in v1.11")
 			}
 			ippoolSep = ","
 		}
 
 		replicas := 3
-		ippool := framework.RandomIPPool(cidr, ippoolSep, replicas)
+		ippool := framework.RandomIPs(cidr, ippoolSep, replicas)
 		labels := map[string]string{"app": stsName}
 
 		ginkgo.By("Creating statefulset " + stsName + " with ippool " + ippool)
@@ -317,13 +315,13 @@ var _ = framework.Describe("[group:ipam]", func() {
 
 	// separate ippool annotation by comma
 	framework.ConformanceIt("should allocate static ip for statefulset with ippool separated by comma", func() {
-		if f.ClusterIpFamily == "dual" {
+		if f.IsDual() {
 			ginkgo.Skip("Comma separated ippool is not supported for dual stack")
 		}
 
 		ippoolSep := ","
 		replicas := 3
-		ippool := framework.RandomIPPool(cidr, ippoolSep, replicas)
+		ippool := framework.RandomIPs(cidr, ippoolSep, replicas)
 		labels := map[string]string{"app": stsName}
 
 		ginkgo.By("Creating statefulset " + stsName + " with ippool " + ippool)
@@ -386,60 +384,70 @@ var _ = framework.Describe("[group:ipam]", func() {
 	framework.ConformanceIt("should support IPPool feature", func() {
 		f.SkipVersionPriorTo(1, 12, "Support for IPPool feature was introduced in v1.12")
 
-		ipsCount := 3
-		randomIPs := strings.Split(framework.RandomIPPool(cidr, ";", ipsCount), ";")
-		ips := make([]string, 0, ipsCount*2)
-		for _, s := range randomIPs {
-			ips = append(ips, strings.Split(s, ",")...)
-		}
+		ipsCount := 12
+		ips := framework.RandomIPPool(cidr, ipsCount)
 		ipv4, ipv6 := util.SplitIpsByProtocol(ips)
-		if len(ipv4) != 0 {
+		if f.HasIPv4() {
 			framework.ExpectHaveLen(ipv4, ipsCount)
 		}
-		if len(ipv6) != 0 {
+		if f.HasIPv6() {
 			framework.ExpectHaveLen(ipv6, ipsCount)
 		}
 
-		sort.Slice(ipv4, func(i, j int) bool {
-			ip1, _ := ipam.NewIP(ipv4[i])
-			ip2, _ := ipam.NewIP(ipv4[j])
-			return ip1.LessThan(ip2)
-		})
-		sort.Slice(ipv6, func(i, j int) bool {
-			ip1, _ := ipam.NewIP(ipv6[i])
-			ip2, _ := ipam.NewIP(ipv6[j])
-			return ip1.LessThan(ip2)
-		})
+		ipv4Range, err := ipam.NewIPRangeListFrom(ipv4...)
+		framework.ExpectNoError(err)
+		ipv6Range, err := ipam.NewIPRangeListFrom(ipv6...)
+		framework.ExpectNoError(err)
 
-		var err error
-		ips = make([]string, 0, ipsCount*2)
-		ipv4Range, ipv6Range := ipam.NewEmptyIPRangeList(), ipam.NewEmptyIPRangeList()
-		if len(ipv4) != 0 {
-			tmp := []string{ipv4[0], fmt.Sprintf("%s..%s", ipv4[1], ipv4[2])}
-			ipv4Range, err = ipam.NewIPRangeListFrom(tmp...)
-			framework.ExpectNoError(err)
-			ips = append(ips, tmp...)
-		}
-		if len(ipv6) != 0 {
-			tmp := []string{ipv6[0], fmt.Sprintf("%s..%s", ipv6[1], ipv6[2])}
-			ipv6Range, err = ipam.NewIPRangeListFrom(tmp...)
-			framework.ExpectNoError(err)
-			ips = append(ips, tmp...)
-		}
+		excludeV4, excludeV6 := util.SplitIpsByProtocol(subnet.Spec.ExcludeIps)
+		excludeV4Range, err := ipam.NewIPRangeListFrom(excludeV4...)
+		framework.ExpectNoError(err)
+		excludeV6Range, err := ipam.NewIPRangeListFrom(excludeV6...)
+		framework.ExpectNoError(err)
+
+		ipv4Range = ipv4Range.Separate(excludeV4Range)
+		ipv6Range = ipv6Range.Separate(excludeV6Range)
 
 		ginkgo.By(fmt.Sprintf("Creating ippool %s with ips %v", ippoolName, ips))
 		ippool := framework.MakeIPPool(ippoolName, subnetName, ips, nil)
 		ippool = ippoolClient.CreateSync(ippool)
 
 		ginkgo.By("Validating ippool status")
-		framework.ExpectTrue(ippool.Status.V4UsingIPs.EqualInt64(0))
-		framework.ExpectTrue(ippool.Status.V6UsingIPs.EqualInt64(0))
-		framework.ExpectEmpty(ippool.Status.V4UsingIPRange)
-		framework.ExpectEmpty(ippool.Status.V6UsingIPRange)
-		framework.ExpectTrue(ippool.Status.V4AvailableIPs.Equal(ipv4Range.Count()))
-		framework.ExpectTrue(ippool.Status.V6AvailableIPs.Equal(ipv6Range.Count()))
-		framework.ExpectEqual(ippool.Status.V4AvailableIPRange, ipv4Range.String())
-		framework.ExpectEqual(ippool.Status.V6AvailableIPRange, ipv6Range.String())
+		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+			if !ippool.Status.V4UsingIPs.EqualInt64(0) {
+				framework.Logf("unexpected .status.v4UsingIPs: %s", ippool.Status.V4UsingIPs)
+				return false, nil
+			}
+			if !ippool.Status.V6UsingIPs.EqualInt64(0) {
+				framework.Logf("unexpected .status.v6UsingIPs: %s", ippool.Status.V6UsingIPs)
+				return false, nil
+			}
+			if ippool.Status.V4UsingIPRange != "" {
+				framework.Logf("unexpected .status.v4UsingIPRange: %s", ippool.Status.V4UsingIPRange)
+				return false, nil
+			}
+			if ippool.Status.V6UsingIPRange != "" {
+				framework.Logf("unexpected .status.v6UsingIPRange: %s", ippool.Status.V6UsingIPRange)
+				return false, nil
+			}
+			if !ippool.Status.V4AvailableIPs.Equal(ipv4Range.Count()) {
+				framework.Logf(".status.v4AvailableIPs mismatch: expect %s, actual %s", ipv4Range.Count(), ippool.Status.V4AvailableIPs)
+				return false, nil
+			}
+			if !ippool.Status.V6AvailableIPs.Equal(ipv6Range.Count()) {
+				framework.Logf(".status.v6AvailableIPs mismatch: expect %s, actual %s", ipv6Range.Count(), ippool.Status.V6AvailableIPs)
+				return false, nil
+			}
+			if ippool.Status.V4AvailableIPRange != ipv4Range.String() {
+				framework.Logf(".status.v4AvailableIPRange mismatch: expect %s, actual %s", ipv4Range, ippool.Status.V4AvailableIPRange)
+				return false, nil
+			}
+			if ippool.Status.V6AvailableIPRange != ipv6Range.String() {
+				framework.Logf(".status.v6AvailableIPRange mismatch: expect %s, actual %s", ipv6Range, ippool.Status.V6AvailableIPRange)
+				return false, nil
+			}
+			return true, nil
+		}, "")
 
 		ginkgo.By("Creating deployment " + deployName + " within ippool " + ippoolName)
 		replicas := 3
