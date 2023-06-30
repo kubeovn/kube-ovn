@@ -199,7 +199,7 @@ func (c *ovnClient) GetNATByUUID(uuid string) (*ovnnb.NAT, error) {
 
 	nat := &ovnnb.NAT{UUID: uuid}
 	if err := c.Get(ctx, nat); err != nil {
-		return nil, fmt.Errorf("get NAT by UUID %s: %v", uuid, err)
+		return nil, err
 	}
 
 	return nat, nil

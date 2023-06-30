@@ -1061,15 +1061,15 @@ func (c *Controller) getPolicyRouteParas(cidr string, priority int) (*strset.Set
 		ipSuffix = "ip6"
 	}
 	match := fmt.Sprintf("%s.src == %s", ipSuffix, cidr)
-	policy, err := c.ovnClient.GetLogicalRouterPolicy(c.config.ClusterRouter, priority, match, true)
+	policyList, err := c.ovnClient.GetLogicalRouterPolicy(c.config.ClusterRouter, priority, match, true)
 	if err != nil {
 		klog.Errorf("failed to get logical router policy: %v", err)
 		return nil, nil, err
 	}
-	if policy == nil {
-		return nil, nil, err
+	if len(policyList) == 0 {
+		return strset.New(), map[string]string{}, nil
 	}
-	return strset.New(policy.Nexthops...), policy.ExternalIDs, nil
+	return strset.New(policyList[0].Nexthops...), policyList[0].ExternalIDs, nil
 }
 
 func (c *Controller) checkPolicyRouteExistForNode(nodeName, cidr, nexthop string, priority int) (bool, error) {

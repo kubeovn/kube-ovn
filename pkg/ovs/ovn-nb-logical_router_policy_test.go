@@ -42,9 +42,10 @@ func (suite *OvnClientTestSuite) testAddLogicalRouterPolicy() {
 	lr, err := ovnClient.GetLogicalRouter(lrName, false)
 	require.NoError(t, err)
 
-	policy, err := ovnClient.GetLogicalRouterPolicy(lrName, priority, match, false)
+	policyList, err := ovnClient.GetLogicalRouterPolicy(lrName, priority, match, false)
 	require.NoError(t, err)
-	require.Contains(t, lr.Policies, policy.UUID)
+	require.Len(t, policyList, 1)
+	require.Contains(t, lr.Policies, policyList[0].UUID)
 
 	err = ovnClient.AddLogicalRouterPolicy(lrName, priority, match, action, nextHops, nil)
 	require.NoError(t, err)
@@ -80,11 +81,11 @@ func (suite *OvnClientTestSuite) testCreateLogicalRouterPolicies() {
 
 		for i := 0; i < 3; i++ {
 			match := fmt.Sprintf("%s && tcp.dst == %d", matchPrefix, basePort+i)
-			policy, err := ovnClient.GetLogicalRouterPolicy(lrName, priority, match, false)
+			policyList, err := ovnClient.GetLogicalRouterPolicy(lrName, priority, match, false)
 			require.NoError(t, err)
-			require.Equal(t, match, policy.Match)
-
-			require.Contains(t, lr.Policies, policy.UUID)
+			require.Len(t, policyList, 1)
+			require.Equal(t, match, policyList[0].Match)
+			require.Contains(t, lr.Policies, policyList[0].UUID)
 		}
 	})
 }
@@ -110,9 +111,10 @@ func (suite *OvnClientTestSuite) testDeleteLogicalRouterPolicy() {
 		lr, err := ovnClient.GetLogicalRouter(lrName, false)
 		require.NoError(t, err)
 
-		policy, err := ovnClient.GetLogicalRouterPolicy(lrName, priority, match, false)
+		policyList, err := ovnClient.GetLogicalRouterPolicy(lrName, priority, match, false)
 		require.NoError(t, err)
-		require.Contains(t, lr.Policies, policy.UUID)
+		require.Len(t, policyList, 1)
+		require.Contains(t, lr.Policies, policyList[0].UUID)
 
 		err = ovnClient.DeleteLogicalRouterPolicy(lrName, priority, match)
 		require.NoError(t, err)
@@ -122,7 +124,7 @@ func (suite *OvnClientTestSuite) testDeleteLogicalRouterPolicy() {
 
 		lr, err = ovnClient.GetLogicalRouter(lrName, false)
 		require.NoError(t, err)
-		require.NotContains(t, lr.Policies, policy.UUID)
+		require.NotContains(t, lr.Policies, policyList[0].UUID)
 	})
 }
 
@@ -255,11 +257,12 @@ func (suite *OvnClientTestSuite) testGetLogicalRouterPolicy() {
 
 	t.Run("priority and match are same", func(t *testing.T) {
 		t.Parallel()
-		policy, err := ovnClient.GetLogicalRouterPolicy(lrName, priority, match, false)
+		policyList, err := ovnClient.GetLogicalRouterPolicy(lrName, priority, match, false)
 		require.NoError(t, err)
-		require.Equal(t, priority, policy.Priority)
-		require.Equal(t, match, policy.Match)
-		require.Equal(t, ovnnb.LogicalRouterPolicyActionAllow, policy.Action)
+		require.Len(t, policyList, 1)
+		require.Equal(t, priority, policyList[0].Priority)
+		require.Equal(t, match, policyList[0].Match)
+		require.Equal(t, ovnnb.LogicalRouterPolicyActionAllow, policyList[0].Action)
 	})
 
 	t.Run("priority and match are not all same", func(t *testing.T) {
