@@ -197,7 +197,6 @@ spec:
         - hostPath:
             path: /var/run/containerd
           name: cruntime
-          readOnly: true
         {{- if .Values.DPDK }}
         - name: host-config-ovs
           hostPath:
