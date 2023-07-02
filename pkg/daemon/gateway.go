@@ -121,7 +121,7 @@ func (c *Controller) getSubnetsNatOutGoingPolicy(protocol string) ([]*kubeovnv1.
 
 	var subnetsWithNatPolicy []*kubeovnv1.Subnet
 	for _, subnet := range subnets {
-		if c.isSubnetNeedNat(subnet, protocol) && len(subnet.Spec.NatOutgoingPolicyRules) != 0 {
+		if c.isSubnetNeedNat(subnet, protocol) && len(subnet.Status.NatOutgoingPolicyRules) != 0 {
 			subnetsWithNatPolicy = append(subnetsWithNatPolicy, subnet)
 		}
 	}

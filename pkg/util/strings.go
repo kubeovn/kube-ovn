@@ -27,7 +27,7 @@ func DoubleQuotedFields(s string) []string {
 	return fields
 }
 
-func Sha256ByteToString(input []byte) string {
+func Sha256Hash(input []byte) string {
 	hasher := sha256.New()
 	hasher.Write(input)
 	hashedBytes := hasher.Sum(nil)

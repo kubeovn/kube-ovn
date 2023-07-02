@@ -103,6 +103,7 @@ func (c *Controller) enqueueUpdateSubnet(old, new interface{}) {
 		oldSubnet.Spec.U2OInterconnection != newSubnet.Spec.U2OInterconnection ||
 		oldSubnet.Spec.RouteTable != newSubnet.Spec.RouteTable ||
 		oldSubnet.Spec.Vpc != newSubnet.Spec.Vpc ||
+		oldSubnet.Spec.NatOutgoing != newSubnet.Spec.NatOutgoing ||
 		!reflect.DeepEqual(oldSubnet.Spec.NatOutgoingPolicyRules, newSubnet.Spec.NatOutgoingPolicyRules) ||
 		(newSubnet.Spec.U2OInterconnection && newSubnet.Spec.U2OInterconnectionIP != "" &&
 			oldSubnet.Spec.U2OInterconnectionIP != newSubnet.Spec.U2OInterconnectionIP) {
@@ -329,10 +330,9 @@ func formatSubnet(subnet *kubeovnv1.Subnet, c *Controller) (*kubeovnv1.Subnet, e
 	return subnet.DeepCopy(), nil
 }
 
-func genNatOutgoingPolicyRulesStatus(subnet *kubeovnv1.Subnet) error {
-	subnet.Status.NatOutgoingPolicyRules = make([]kubeovnv1.NatOutgoingPolicyRuleStatus, len(subnet.Spec.NatOutgoingPolicyRules))
-
-	if len(subnet.Spec.NatOutgoingPolicyRules) != 0 {
+func (c *Controller) updateNatOutgoingPolicyRulesStatus(subnet *kubeovnv1.Subnet) error {
+	if subnet.Spec.NatOutgoing {
+		subnet.Status.NatOutgoingPolicyRules = make([]kubeovnv1.NatOutgoingPolicyRuleStatus, len(subnet.Spec.NatOutgoingPolicyRules))
 		for index, rule := range subnet.Spec.NatOutgoingPolicyRules {
 			jsonRule, err := json.Marshal(rule)
 			if err != nil {
@@ -344,14 +344,14 @@ func genNatOutgoingPolicyRulesStatus(subnet *kubeovnv1.Subnet) error {
 			retBytes = append(retBytes, []byte(subnet.Name)...)
 			retBytes = append(retBytes, []byte(priority)...)
 			retBytes = append(retBytes, jsonRule...)
-			result := util.Sha256ByteToString(retBytes)
+			result := util.Sha256Hash(retBytes)
 
 			subnet.Status.NatOutgoingPolicyRules[index].RuleID = result[:util.NatPolicyRuleIDLength]
 			subnet.Status.NatOutgoingPolicyRules[index].Match = rule.Match
 			subnet.Status.NatOutgoingPolicyRules[index].Action = rule.Action
 		}
 	} else {
-		subnet.Status.NatOutgoingPolicyRules = nil
+		subnet.Status.NatOutgoingPolicyRules = []kubeovnv1.NatOutgoingPolicyRuleStatus{}
 	}
 
 	return nil
@@ -686,11 +686,6 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		c.patchSubnetStatus(subnet, "ValidateLogicalSwitchSuccess", "")
 	}
 
-	if err := genNatOutgoingPolicyRulesStatus(subnet); err != nil {
-		klog.Error(err)
-		return err
-	}
-
 	if subnet.Spec.Protocol == kubeovnv1.ProtocolDual {
 		err = calcDualSubnetStatusIP(subnet, c)
 	} else {
@@ -793,6 +788,11 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 	subnet.Status.U2OInterconnectionVPC = ""
 	if subnet.Spec.U2OInterconnection {
 		subnet.Status.U2OInterconnectionVPC = vpc.Status.Router
+	}
+
+	if err = c.updateNatOutgoingPolicyRulesStatus(subnet); err != nil {
+		klog.Errorf("failed to update NAT outgoing policy status for subnet %s: %v", subnet.Name, err)
+		return err
 	}
 
 	if subnet.Spec.Private {
