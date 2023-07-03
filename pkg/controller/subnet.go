@@ -471,7 +471,7 @@ func (c *Controller) handleSubnetFinalizer(subnet *kubeovnv1.Subnet) (bool, erro
 	}
 
 	u2oInterconnIP := subnet.Status.U2OInterconnectionIP
-	if !subnet.DeletionTimestamp.IsZero() && usingIps == 0 || (usingIps == 1 && u2oInterconnIP != "") {
+	if !subnet.DeletionTimestamp.IsZero() && (usingIps == 0 || (usingIps == 1 && u2oInterconnIP != "")) {
 		subnet.Finalizers = util.RemoveString(subnet.Finalizers, util.ControllerName)
 		if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Update(context.Background(), subnet, metav1.UpdateOptions{}); err != nil {
 			klog.Errorf("failed to remove finalizer from subnet %s, %v", subnet.Name, err)
