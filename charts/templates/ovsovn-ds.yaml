@@ -103,6 +103,7 @@ spec:
               name: kube-ovn-tls
             - mountPath: /var/run/containerd
               name: cruntime
+              readOnly: true
             {{- if .Values.DPDK }}
             - mountPath: /opt/ovs-config
               name: host-config-ovs
