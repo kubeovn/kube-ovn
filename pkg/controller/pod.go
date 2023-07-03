@@ -771,8 +771,16 @@ func (c *Controller) reconcileRouteSubnets(cachedPod, pod *v1.Pod, needRoutePodN
 				}
 				nextHop := cm.Data["external-gw-addr"]
 				if nextHop == "" {
-					klog.Errorf("no available gateway nic address")
-					return fmt.Errorf("no available gateway nic address")
+					externalSubnet, err := c.subnetsLister.Get(c.config.ExternalGatewaySwitch)
+					if err != nil {
+						klog.Errorf("failed to get subnet %s, %v", c.config.ExternalGatewaySwitch, err)
+						return err
+					}
+					nextHop = externalSubnet.Spec.Gateway
+					if nextHop == "" {
+						klog.Errorf("no available gateway address")
+						return fmt.Errorf("no available gateway address")
+					}
 				}
 				if strings.Contains(nextHop, "/") {
 					nextHop = strings.Split(nextHop, "/")[0]
