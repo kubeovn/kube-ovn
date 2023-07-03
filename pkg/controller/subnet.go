@@ -2532,6 +2532,11 @@ func (c *Controller) addPolicyRouteForU2OInterconn(subnet *kubeovnv1.Subnet) err
 }
 
 func (c *Controller) deletePolicyRouteForU2OInterconn(subnet *kubeovnv1.Subnet) error {
+	logicalRouter, err := c.ovnClient.GetLogicalRouter(subnet.Spec.Vpc, true)
+	if err == nil && logicalRouter == nil {
+		klog.Infof("logical router %s already deleted", subnet.Spec.Vpc)
+		return nil
+	}
 	policies, err := c.ovnClient.ListLogicalRouterPolicies(subnet.Spec.Vpc, -1, map[string]string{
 		"isU2ORoutePolicy": "true",
 		"vendor":           util.CniTypeName,
@@ -2608,7 +2613,11 @@ func (c *Controller) addCustomVPCPolicyRoutesForSubnet(subnet *kubeovnv1.Subnet)
 }
 
 func (c *Controller) deleteCustomVPCPolicyRoutesForSubnet(subnet *kubeovnv1.Subnet) error {
-
+	logicalRouter, err := c.ovnClient.GetLogicalRouter(subnet.Spec.Vpc, true)
+	if err == nil && logicalRouter == nil {
+		klog.Infof("logical router %s already deleted", subnet.Spec.Vpc)
+		return nil
+	}
 	for _, cidr := range strings.Split(subnet.Spec.CIDRBlock, ",") {
 		af := 4
 		if util.CheckProtocol(cidr) == kubeovnv1.ProtocolIPv6 {
