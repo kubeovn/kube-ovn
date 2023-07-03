@@ -968,10 +968,7 @@ jobs:
           done
 
       - name: Cleanup
-        run: |
-          if [ "${{ matrix.mode }}" != underlay ]; then
-            sh -x dist/images/cleanup.sh
-          fi
+        run: sh -x dist/images/cleanup.sh
 
   kube-ovn-ic-conformance-e2e:
     name: Kube-OVN IC Conformance E2E
@@ -1108,7 +1105,7 @@ jobs:
         run: make kind-install-chart
 
       - name: Cleanup
-        run: sh dist/images/cleanup.sh
+        run: sh -x dist/images/cleanup.sh
 
   underlay-logical-gateway-installation-test:
     name: Underlay Logical Gateway Installation Test
@@ -1144,7 +1141,7 @@ jobs:
         run: make kind-install-underlay-logical-gateway-dual
 
       - name: Cleanup
-        run: sh dist/images/cleanup.sh
+        run: sh -x dist/images/cleanup.sh
 
   no-ovn-lb-test:
     name: Disable OVN LB Test
@@ -1182,7 +1179,7 @@ jobs:
         run: make kind-install
 
       - name: Cleanup
-        run: sh dist/images/cleanup.sh
+        run: sh -x dist/images/cleanup.sh
 
   no-np-test:
     name: Disable Network Policy Test
@@ -1220,7 +1217,7 @@ jobs:
         run: make kind-install
 
       - name: Cleanup
-        run: sh dist/images/cleanup.sh
+        run: sh -x dist/images/cleanup.sh
 
   lb-svc-e2e:
     name: LB Service E2E
@@ -1535,7 +1532,7 @@ jobs:
           path: installation-compatibility-test-ko-log.tar.gz
 
       - name: Cleanup
-        run: sh dist/images/cleanup.sh
+        run: sh -x dist/images/cleanup.sh
 
   cilium-chaining-e2e:
     name: Cilium Chaining E2E
@@ -1642,7 +1639,7 @@ jobs:
           path: cilium-chaining-e2e-ko-log.tar.gz
 
       - name: Cleanup
-        run: sh dist/images/cleanup.sh
+        run: sh -x dist/images/cleanup.sh
 
   kube-ovn-security-e2e:
     name: Kube-OVN Security E2E
@@ -1757,7 +1754,7 @@ jobs:
           path: kube-ovn-security-e2e-${{ matrix.ssl }}-${{ matrix.bind-local }}-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: Cleanup
-        run: sh dist/images/cleanup.sh
+        run: sh -x dist/images/cleanup.sh
 
   push:
     name: Push Images
@@ -1930,7 +1927,7 @@ jobs:
           path: kube-ovn-submariner-conformance-e2e-ko-log.tar.gz
 
       - name: Cleanup
-        run: sh dist/images/cleanup.sh
+        run: sh -x dist/images/cleanup.sh
 
   iptables-vpc-nat-gw-conformance-e2e:
     name: Iptables VPC NAT Gateway E2E
