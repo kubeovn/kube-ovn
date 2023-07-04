@@ -14,6 +14,7 @@ import (
 
 	"github.com/alauda/felix/ipsets"
 	"github.com/kubeovn/go-iptables/iptables"
+	"github.com/scylladb/go-set/strset"
 	"github.com/vishvananda/netlink"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -168,19 +169,17 @@ func (c *Controller) addNatOutGoingPolicyRuleIPset(rule kubeovnv1.NatOutgoingPol
 	}
 }
 
-func (c *Controller) removeNatOutGoingPolicyRuleIPset(protocol string, natPolicyRuleIDs []string) {
+func (c *Controller) removeNatOutGoingPolicyRuleIPset(protocol string, natPolicyRuleIDs *strset.Set) {
 	sets, err := c.k8sipsets.ListSets()
 	if err != nil {
-		klog.Error("failed to list IP sets")
+		klog.Error("failed to list ipsets: %v", err)
 		return
 	}
-	if len(sets) != 0 {
-		for _, set := range sets {
-			if isNatOutGoingPolicyRuleIPSet(set) {
-				ruleID, _ := getNatOutGoingPolicyRuleIPSetItem(set)
-				if !util.ContainsString(natPolicyRuleIDs, ruleID) {
-					c.ipsets[protocol].RemoveIPSet(formatIPsetUnPrefix(set))
-				}
+	for _, set := range sets {
+		if isNatOutGoingPolicyRuleIPSet(set) {
+			ruleID, _ := getNatOutGoingPolicyRuleIPSetItem(set)
+			if !natPolicyRuleIDs.Has(ruleID) {
+				c.ipsets[protocol].RemoveIPSet(formatIPsetUnPrefix(set))
 			}
 		}
 	}
@@ -194,19 +193,17 @@ func (c *Controller) reconcileNatOutGoingPolicyIPset(protocol string) {
 	}
 
 	subnetCidrs := make([]string, 0)
-	natPolicyRuleIDs := make([]string, 0)
-
-	if len(subnets) != 0 {
-		for _, subnet := range subnets {
-			cidrBlock := getCidrByProtocol(subnet.Spec.CIDRBlock, protocol)
-			subnetCidrs = append(subnetCidrs, cidrBlock)
-			for _, rule := range subnet.Status.NatOutgoingPolicyRules {
-				natPolicyRuleIDs = append(natPolicyRuleIDs, rule.RuleID)
-				if rule.RuleID == "" {
-					continue
-				}
-				c.addNatOutGoingPolicyRuleIPset(rule, protocol)
+	natPolicyRuleIDs := strset.New()
+	for _, subnet := range subnets {
+		cidrBlock := getCidrByProtocol(subnet.Spec.CIDRBlock, protocol)
+		subnetCidrs = append(subnetCidrs, cidrBlock)
+		for _, rule := range subnet.Status.NatOutgoingPolicyRules {
+			if rule.RuleID == "" {
+				klog.Errorf("unexpected empty ID for NAT outgoing rule %q of subnet %s", rule.NatOutgoingPolicyRule, subnet.Name)
+				continue
 			}
+			natPolicyRuleIDs.Add(rule.RuleID)
+			c.addNatOutGoingPolicyRuleIPset(rule, protocol)
 		}
 	}
 
@@ -482,7 +479,7 @@ func (c *Controller) updateIptablesChain(ipt *iptables.IPTables, table, chain, p
 			klog.Errorf(`failed to delete iptables rule %v: %v`, existingRules[i], err)
 			return err
 		}
-		klog.Infof("deleted iptables rule %v", existingRules[i])
+		klog.Infof("deleted iptables rule in table %s chain %s: %q", table, chain, strings.Join(existingRules[i], " "))
 	}
 
 	return nil
@@ -780,9 +777,10 @@ func (c *Controller) reconcileNatOutgoingPolicyIptablesChain(protocol string) er
 
 	for _, gcNatPolicySubnetChain := range gcNatPolicySubnetChains {
 		if err = ipt.ClearAndDeleteChain(NAT, gcNatPolicySubnetChain); err != nil {
-			klog.Errorf("failed to delete iptables chain %q in table nat : %v", gcNatPolicySubnetChain, err)
+			klog.Errorf("failed to delete iptables chain %q in table %s: %v", gcNatPolicySubnetChain, NAT, err)
 			return err
 		}
+		klog.Infof("deleted iptables chain %s in table %s", gcNatPolicySubnetChain, NAT)
 	}
 	return nil
 }
@@ -790,14 +788,14 @@ func (c *Controller) reconcileNatOutgoingPolicyIptablesChain(protocol string) er
 func (c *Controller) generateNatOutgoingPolicyChainRules(protocol string) ([]util.IPTableRule, map[string][]util.IPTableRule, []string, error) {
 	natPolicySubnetIptables := make([]util.IPTableRule, 0)
 	natPolicyRuleIptablesMap := make(map[string][]util.IPTableRule)
-	natPolicySubnetUIDs := make([]string, 0)
+	natPolicySubnetUIDs := strset.New()
 	gcNatPolicySubnetChains := make([]string, 0)
 	subnetNames := make([]string, 0)
 	subnetMap := make(map[string]*kubeovnv1.Subnet)
 
-	subnets, err := c.subnetsLister.List(labels.Everything())
+	subnets, err := c.getSubnetsNatOutGoingPolicy(protocol)
 	if err != nil {
-		klog.Errorf("list subnets failed, %v", err)
+		klog.Errorf("failed to get subnets with NAT outgoing policy rule: %v", err)
 		return nil, nil, nil, err
 	}
 
@@ -816,52 +814,50 @@ func (c *Controller) generateNatOutgoingPolicyChainRules(protocol string) ([]uti
 
 	for _, subnetName := range subnetNames {
 		subnet := subnetMap[subnetName]
-		if c.isSubnetNeedNat(subnet, protocol) && subnet.Status.NatOutgoingPolicyRules != nil {
-			var natPolicyRuleIptables []util.IPTableRule
-			natPolicySubnetUIDs = append(natPolicySubnetUIDs, util.GetTruncatedUID(string(subnet.GetUID())))
-			cidrBlock := getCidrByProtocol(subnet.Spec.CIDRBlock, protocol)
+		var natPolicyRuleIptables []util.IPTableRule
+		natPolicySubnetUIDs.Add(util.GetTruncatedUID(string(subnet.GetUID())))
+		cidrBlock := getCidrByProtocol(subnet.Spec.CIDRBlock, protocol)
 
-			OvnNatPolicySubnetChainName := OvnNatOutGoingPolicySubnet + util.GetTruncatedUID(string(subnet.GetUID()))
-			natPolicySubnetIptables = append(natPolicySubnetIptables, util.IPTableRule{Table: NAT, Chain: OvnNatOutGoingPolicy, Rule: strings.Fields(fmt.Sprintf(`-s %s -m comment --comment natPolicySubnet-%s -j %s`, cidrBlock, subnet.Name, OvnNatPolicySubnetChainName))})
-			for _, rule := range subnet.Status.NatOutgoingPolicyRules {
-				var markCode string
-				if rule.Action == util.NatPolicyRuleActionNat {
-					markCode = OnOutGoingNatMark
-				} else if rule.Action == util.NatPolicyRuleActionForward {
-					markCode = OnOutGoingForwardMark
-				}
-
-				if rule.RuleID == "" {
-					continue
-				}
-
-				if rule.Match.SrcIPs != "" && getMatchProtocol(rule.Match.SrcIPs) != protocol {
-					continue
-				}
-
-				if rule.Match.DstIPs != "" && getMatchProtocol(rule.Match.DstIPs) != protocol {
-					continue
-				}
-
-				srcMatch := getNatOutGoingPolicyRuleIPSetName(rule.RuleID, "src", protocol, true)
-				dstMatch := getNatOutGoingPolicyRuleIPSetName(rule.RuleID, "dst", protocol, true)
-
-				var OvnNatoutGoingPolicyRule util.IPTableRule
-				if rule.Match.DstIPs != "" && rule.Match.SrcIPs != "" {
-					OvnNatoutGoingPolicyRule = util.IPTableRule{Table: NAT, Chain: OvnNatPolicySubnetChainName, Rule: strings.Fields(fmt.Sprintf(`-m set --match-set %s src -m set --match-set %s dst -j MARK --set-xmark %s`, srcMatch, dstMatch, markCode))}
-				} else if rule.Match.SrcIPs != "" {
-					protocol = getMatchProtocol(rule.Match.SrcIPs)
-					OvnNatoutGoingPolicyRule = util.IPTableRule{Table: NAT, Chain: OvnNatPolicySubnetChainName, Rule: strings.Fields(fmt.Sprintf(`-m set --match-set %s src -j MARK --set-xmark %s`, srcMatch, markCode))}
-				} else if rule.Match.DstIPs != "" {
-					protocol = getMatchProtocol(rule.Match.DstIPs)
-					OvnNatoutGoingPolicyRule = util.IPTableRule{Table: NAT, Chain: OvnNatPolicySubnetChainName, Rule: strings.Fields(fmt.Sprintf(`-m set --match-set %s dst -j MARK --set-xmark %s`, dstMatch, markCode))}
-				} else {
-					continue
-				}
-				natPolicyRuleIptables = append(natPolicyRuleIptables, OvnNatoutGoingPolicyRule)
+		OvnNatPolicySubnetChainName := OvnNatOutGoingPolicySubnet + util.GetTruncatedUID(string(subnet.GetUID()))
+		natPolicySubnetIptables = append(natPolicySubnetIptables, util.IPTableRule{Table: NAT, Chain: OvnNatOutGoingPolicy, Rule: strings.Fields(fmt.Sprintf(`-s %s -m comment --comment natPolicySubnet-%s -j %s`, cidrBlock, subnet.Name, OvnNatPolicySubnetChainName))})
+		for _, rule := range subnet.Status.NatOutgoingPolicyRules {
+			var markCode string
+			if rule.Action == util.NatPolicyRuleActionNat {
+				markCode = OnOutGoingNatMark
+			} else if rule.Action == util.NatPolicyRuleActionForward {
+				markCode = OnOutGoingForwardMark
 			}
-			natPolicyRuleIptablesMap[OvnNatPolicySubnetChainName] = natPolicyRuleIptables
+
+			if rule.RuleID == "" {
+				continue
+			}
+
+			if rule.Match.SrcIPs != "" && getMatchProtocol(rule.Match.SrcIPs) != protocol {
+				continue
+			}
+
+			if rule.Match.DstIPs != "" && getMatchProtocol(rule.Match.DstIPs) != protocol {
+				continue
+			}
+
+			srcMatch := getNatOutGoingPolicyRuleIPSetName(rule.RuleID, "src", protocol, true)
+			dstMatch := getNatOutGoingPolicyRuleIPSetName(rule.RuleID, "dst", protocol, true)
+
+			var OvnNatoutGoingPolicyRule util.IPTableRule
+			if rule.Match.DstIPs != "" && rule.Match.SrcIPs != "" {
+				OvnNatoutGoingPolicyRule = util.IPTableRule{Table: NAT, Chain: OvnNatPolicySubnetChainName, Rule: strings.Fields(fmt.Sprintf(`-m set --match-set %s src -m set --match-set %s dst -j MARK --set-xmark %s`, srcMatch, dstMatch, markCode))}
+			} else if rule.Match.SrcIPs != "" {
+				protocol = getMatchProtocol(rule.Match.SrcIPs)
+				OvnNatoutGoingPolicyRule = util.IPTableRule{Table: NAT, Chain: OvnNatPolicySubnetChainName, Rule: strings.Fields(fmt.Sprintf(`-m set --match-set %s src -j MARK --set-xmark %s`, srcMatch, markCode))}
+			} else if rule.Match.DstIPs != "" {
+				protocol = getMatchProtocol(rule.Match.DstIPs)
+				OvnNatoutGoingPolicyRule = util.IPTableRule{Table: NAT, Chain: OvnNatPolicySubnetChainName, Rule: strings.Fields(fmt.Sprintf(`-m set --match-set %s dst -j MARK --set-xmark %s`, dstMatch, markCode))}
+			} else {
+				continue
+			}
+			natPolicyRuleIptables = append(natPolicyRuleIptables, OvnNatoutGoingPolicyRule)
 		}
+		natPolicyRuleIptablesMap[OvnNatPolicySubnetChainName] = natPolicyRuleIptables
 	}
 
 	existNatChains, err := c.iptables[protocol].ListChains(NAT)
@@ -870,12 +866,10 @@ func (c *Controller) generateNatOutgoingPolicyChainRules(protocol string) ([]uti
 		return nil, nil, nil, err
 	}
 
-	if len(existNatChains) != 0 {
-		for _, existNatChain := range existNatChains {
-			if strings.HasPrefix(existNatChain, OvnNatOutGoingPolicySubnet) &&
-				!util.ContainsString(natPolicySubnetUIDs, getNatPolicySubnetChainUID(existNatChain)) {
-				gcNatPolicySubnetChains = append(gcNatPolicySubnetChains, existNatChain)
-			}
+	for _, existNatChain := range existNatChains {
+		if strings.HasPrefix(existNatChain, OvnNatOutGoingPolicySubnet) &&
+			!natPolicySubnetUIDs.Has(getNatPolicySubnetChainUID(existNatChain)) {
+			gcNatPolicySubnetChains = append(gcNatPolicySubnetChains, existNatChain)
 		}
 	}
 
