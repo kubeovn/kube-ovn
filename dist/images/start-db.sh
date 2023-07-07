@@ -369,6 +369,10 @@ else
                 --ovn-northd-ssl-key=/var/run/tls/key \
                 --ovn-northd-ssl-cert=/var/run/tls/cert \
                 --ovn-northd-ssl-ca-cert=/var/run/tls/cacert \
+                --db-nb-cluster-local-proto=ssl \
+                --db-sb-cluster-local-proto=ssl \
+                --db-nb-cluster-remote-proto=ssl \
+                --db-sb-cluster-remote-proto=ssl \
                 --db-nb-cluster-local-addr=[$DB_CLUSTER_ADDR] \
                 --db-sb-cluster-local-addr=[$DB_CLUSTER_ADDR] \
                 --db-nb-addr=[$DB_ADDR] \
@@ -427,6 +431,10 @@ else
                 --ovn-northd-ssl-key=/var/run/tls/key \
                 --ovn-northd-ssl-cert=/var/run/tls/cert \
                 --ovn-northd-ssl-ca-cert=/var/run/tls/cacert \
+                --db-nb-cluster-local-proto=ssl \
+                --db-sb-cluster-local-proto=ssl \
+                --db-nb-cluster-remote-proto=ssl \
+                --db-sb-cluster-remote-proto=ssl \
                 --db-nb-cluster-local-addr=[$DB_CLUSTER_ADDR] \
                 --db-sb-cluster-local-addr=[$DB_CLUSTER_ADDR] \
                 --db-nb-cluster-remote-addr=[$nb_leader_ip] \
