@@ -229,12 +229,15 @@ func (c *Controller) reconcileRouters(event *subnetEvent) error {
 		return fmt.Errorf("failed to get nic %s", util.NodeNic)
 	}
 
-	existRoutes, err := getNicExistRoutes(nic, gateway)
+	allRoutes, err := getNicExistRoutes(nil, gateway)
 	if err != nil {
 		return err
 	}
-
-	toAdd, toDel := routeDiff(existRoutes, cidrs, joinCIDR, gateway, net.ParseIP(nodeIPv4), net.ParseIP(nodeIPv6))
+	nodeNicRoutes, err := getNicExistRoutes(nic, gateway)
+	if err != nil {
+		return err
+	}
+	toAdd, toDel := routeDiff(nodeNicRoutes, allRoutes, cidrs, joinCIDR, gateway, net.ParseIP(nodeIPv4), net.ParseIP(nodeIPv6))
 	for _, r := range toDel {
 		if err = netlink.RouteDel(&netlink.Route{Dst: r.Dst}); err != nil {
 			klog.Errorf("failed to del route %v", err)
@@ -268,8 +271,8 @@ func getNicExistRoutes(nic netlink.Link, gateway string) ([]netlink.Route, error
 	return existRoutes, nil
 }
 
-func routeDiff(existRoutes []netlink.Route, cidrs, joinCIDR []string, gateway string, srcIPv4, srcIPv6 net.IP) (toAdd, toDel []netlink.Route) {
-	for _, route := range existRoutes {
+func routeDiff(nodeNicRoutes, allRoutes []netlink.Route, cidrs, joinCIDR []string, gateway string, srcIPv4, srcIPv6 net.IP) (toAdd, toDel []netlink.Route) {
+	for _, route := range nodeNicRoutes {
 		if route.Scope == netlink.SCOPE_LINK || route.Dst == nil || route.Dst.IP.IsLinkLocalUnicast() {
 			continue
 		}
@@ -282,6 +285,17 @@ func routeDiff(existRoutes []netlink.Route, cidrs, joinCIDR []string, gateway st
 			}
 		}
 		if !found {
+			toDel = append(toDel, route)
+		}
+		conflict := false
+		for _, ar := range allRoutes {
+			if ar.Dst != nil && ar.Dst.String() == route.Dst.String() && ar.LinkIndex != route.LinkIndex {
+				// route conflict
+				conflict = true
+				break
+			}
+		}
+		if conflict {
 			toDel = append(toDel, route)
 		}
 	}
@@ -305,7 +319,17 @@ func routeDiff(existRoutes []netlink.Route, cidrs, joinCIDR []string, gateway st
 		}
 
 		found := false
-		for _, r := range existRoutes {
+		for _, ar := range allRoutes {
+			if ar.Dst != nil && ar.Dst.String() == c {
+				// route already exist
+				found = true
+				break
+			}
+		}
+		if found {
+			continue
+		}
+		for _, r := range nodeNicRoutes {
 			if r.Dst == nil || r.Dst.String() != c {
 				continue
 			}
