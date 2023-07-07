@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"net"
 
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/ovn-org/libovsdb/ovsdb"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -16,6 +14,9 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func (c *Controller) enqueueAddOvnDnatRule(obj interface{}) {
