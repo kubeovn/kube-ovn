@@ -703,16 +703,6 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Create branch directory
-        run: mkdir -p test/e2e/kube-ovn/branches/${{ matrix.branch }}
-
-      - name: Check out branch
-        uses: actions/checkout@v3
-        with:
-          ref: ${{ matrix.branch }}
-          fetch-depth: 1
-          path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
-
       - uses: actions/setup-go@v4
         with:
           go-version-file: go.mod
@@ -730,6 +720,16 @@ jobs:
             ~/go/pkg/mod
           key: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-${{ hashFiles('**/go.sum') }}
           restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
+
+      - name: Create branch directory
+        run: mkdir -p test/e2e/kube-ovn/branches/${{ matrix.branch }}
+
+      - name: Check out branch
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ matrix.branch }}
+          fetch-depth: 1
+          path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
         uses: helm/kind-action@v1.7.0
@@ -773,16 +773,6 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Create branch directory
-        run: mkdir -p test/e2e/kube-ovn/branches/${{ matrix.branch }}
-
-      - name: Check out branch
-        uses: actions/checkout@v3
-        with:
-          ref: ${{ matrix.branch }}
-          fetch-depth: 1
-          path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
-
       - uses: actions/setup-go@v4
         with:
           go-version-file: go.mod
@@ -800,6 +790,16 @@ jobs:
             ~/go/pkg/mod
           key: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-${{ hashFiles('**/go.sum') }}
           restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
+
+      - name: Create branch directory
+        run: mkdir -p test/e2e/kube-ovn/branches/${{ matrix.branch }}
+
+      - name: Check out branch
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ matrix.branch }}
+          fetch-depth: 1
+          path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
         uses: helm/kind-action@v1.7.0
@@ -842,16 +842,6 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Create branch directory
-        run: mkdir -p test/e2e/kube-ovn/branches/${{ matrix.branch }}
-
-      - name: Check out branch
-        uses: actions/checkout@v3
-        with:
-          ref: ${{ matrix.branch }}
-          fetch-depth: 1
-          path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
-
       - uses: actions/setup-go@v4
         with:
           go-version-file: go.mod
@@ -869,6 +859,16 @@ jobs:
             ~/go/pkg/mod
           key: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-${{ hashFiles('**/go.sum') }}
           restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
+
+      - name: Create branch directory
+        run: mkdir -p test/e2e/kube-ovn/branches/${{ matrix.branch }}
+
+      - name: Check out branch
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ matrix.branch }}
+          fetch-depth: 1
+          path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
         uses: helm/kind-action@v1.7.0
