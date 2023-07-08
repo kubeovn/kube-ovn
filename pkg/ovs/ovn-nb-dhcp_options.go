@@ -35,7 +35,7 @@ func (c *ovnClient) CreateDHCPOptions(lsName, cidr, options string) error {
 	return nil
 }
 
-func (c *ovnClient) UpdateDHCPOptions(subnet *kubeovnv1.Subnet) (*DHCPOptionsUUIDs, error) {
+func (c *ovnClient) UpdateDHCPOptions(subnet *kubeovnv1.Subnet, mtu int) (*DHCPOptionsUUIDs, error) {
 	lsName := subnet.Name
 	cidrBlock := subnet.Spec.CIDRBlock
 	gateway := subnet.Spec.Gateway
@@ -65,7 +65,7 @@ func (c *ovnClient) UpdateDHCPOptions(subnet *kubeovnv1.Subnet) (*DHCPOptionsUUI
 		v4Gateway = gateways[0]
 	}
 
-	dhcpV4OptUUID, err := c.updateDHCPv4Options(lsName, v4CIDR, v4Gateway, subnet.Spec.DHCPv4Options)
+	dhcpV4OptUUID, err := c.updateDHCPv4Options(lsName, v4CIDR, v4Gateway, subnet.Spec.DHCPv4Options, mtu)
 	if err != nil {
 		return nil, fmt.Errorf("update IPv4 dhcp options for logical switch %s: %v", lsName, err)
 	}
@@ -81,7 +81,7 @@ func (c *ovnClient) UpdateDHCPOptions(subnet *kubeovnv1.Subnet) (*DHCPOptionsUUI
 	}, nil
 }
 
-func (c *ovnClient) updateDHCPv4Options(lsName, cidr, gateway, options string) (uuid string, err error) {
+func (c *ovnClient) updateDHCPv4Options(lsName, cidr, gateway, options string, mtu int) (uuid string, err error) {
 	protocol := util.CheckProtocol(cidr)
 	if protocol != kubeovnv1.ProtocolIPv4 {
 		return "", fmt.Errorf("cidr %s must be a valid ipv4 address", cidr)
@@ -98,7 +98,7 @@ func (c *ovnClient) updateDHCPv4Options(lsName, cidr, gateway, options string) (
 			mac = dhcpOpt.Options["server_mac"]
 		}
 
-		options = fmt.Sprintf("lease_time=%d,router=%s,server_id=%s,server_mac=%s", 3600, gateway, "169.254.0.254", mac)
+		options = fmt.Sprintf("lease_time=%d,router=%s,server_id=%s,server_mac=%s,mtu=%d", 3600, gateway, "169.254.0.254", mac, mtu)
 	}
 
 	/* update */

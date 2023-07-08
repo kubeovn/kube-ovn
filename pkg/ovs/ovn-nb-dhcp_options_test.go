@@ -35,7 +35,7 @@ func (suite *OvnClientTestSuite) testUpdateDHCPOptions() {
 	subnet := mockSubnet(lsName, true)
 
 	t.Run("update dhcp options", func(t *testing.T) {
-		uuid, err := ovnClient.UpdateDHCPOptions(subnet)
+		uuid, err := ovnClient.UpdateDHCPOptions(subnet, 1500)
 		require.NoError(t, err)
 
 		v4DHCPOpt, err := ovnClient.GetDHCPOptions(lsName, "IPv4", false)
@@ -51,7 +51,7 @@ func (suite *OvnClientTestSuite) testUpdateDHCPOptions() {
 	t.Run("delete dhcp options", func(t *testing.T) {
 		subnet.Spec.EnableDHCP = false
 
-		uuid, err := ovnClient.UpdateDHCPOptions(subnet)
+		uuid, err := ovnClient.UpdateDHCPOptions(subnet, 1500)
 		require.NoError(t, err)
 		require.Empty(t, uuid.DHCPv4OptionsUUID)
 		require.Empty(t, uuid.DHCPv6OptionsUUID)
@@ -76,7 +76,7 @@ func (suite *OvnClientTestSuite) test_updateDHCPv4Options() {
 
 	t.Run("create dhcp options", func(t *testing.T) {
 		t.Run("without options", func(t *testing.T) {
-			uuid, err := ovnClient.updateDHCPv4Options(lsName, cidr, gateway, "")
+			uuid, err := ovnClient.updateDHCPv4Options(lsName, cidr, gateway, "", 1500)
 			require.NoError(t, err)
 
 			dhcpOpt, err := ovnClient.GetDHCPOptions(lsName, "IPv4", false)
@@ -91,13 +91,14 @@ func (suite *OvnClientTestSuite) test_updateDHCPv4Options() {
 				"router":     "192.168.30.1",
 				"server_id":  "169.254.0.254",
 				"server_mac": serverMac,
+				"mtu":        "1500",
 			}, dhcpOpt.Options)
 		})
 
 		t.Run("with options", func(t *testing.T) {
 			lsName := "test-update-v4-dhcp-opt-ls-with-opt"
 			options := fmt.Sprintf("lease_time=%d,router=%s,server_id=%s,server_mac=%s", 7200, gateway, "169.254.0.1", "00:00:00:11:22:33")
-			uuid, err := ovnClient.updateDHCPv4Options(lsName, cidr, gateway, options)
+			uuid, err := ovnClient.updateDHCPv4Options(lsName, cidr, gateway, options, 1500)
 			require.NoError(t, err)
 
 			dhcpOpt, err := ovnClient.GetDHCPOptions(lsName, "IPv4", false)
@@ -115,7 +116,7 @@ func (suite *OvnClientTestSuite) test_updateDHCPv4Options() {
 	})
 
 	t.Run("update dhcp options", func(t *testing.T) {
-		uuid, err := ovnClient.updateDHCPv4Options(lsName, cidr, gateway, "")
+		uuid, err := ovnClient.updateDHCPv4Options(lsName, cidr, gateway, "", 1500)
 		require.NoError(t, err)
 
 		dhcpOpt, err := ovnClient.GetDHCPOptions(lsName, "IPv4", false)
@@ -128,6 +129,7 @@ func (suite *OvnClientTestSuite) test_updateDHCPv4Options() {
 			"router":     "192.168.30.1",
 			"server_id":  "169.254.0.254",
 			"server_mac": serverMac,
+			"mtu":        "1500",
 		}, dhcpOpt.Options)
 	})
 }

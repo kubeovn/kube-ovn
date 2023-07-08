@@ -19,7 +19,6 @@ var (
 
 // LegacyClient is the legacy ovn client
 type LegacyClient struct {
-	OvnNbAddress                  string
 	OvnTimeout                    int
 	OvnSbAddress                  string
 	OvnICNbAddress                string
@@ -31,7 +30,6 @@ type LegacyClient struct {
 	ClusterUdpSessionLoadBalancer string
 	NodeSwitch                    string
 	NodeSwitchCIDR                string
-	ExternalGatewayType           string
 	Version                       string
 }
 
@@ -59,11 +57,10 @@ const (
 )
 
 // NewLegacyClient init a legacy ovn client
-func NewLegacyClient(ovnNbAddr string, ovnNbTimeout int, ovnSbAddr, clusterRouter, clusterTcpLoadBalancer, clusterUdpLoadBalancer, clusterTcpSessionLoadBalancer, clusterUdpSessionLoadBalancer, nodeSwitch, nodeSwitchCIDR string) *LegacyClient {
+func NewLegacyClient(timeout int, ovnSbAddr, clusterRouter, clusterTcpLoadBalancer, clusterUdpLoadBalancer, clusterTcpSessionLoadBalancer, clusterUdpSessionLoadBalancer, nodeSwitch, nodeSwitchCIDR string) *LegacyClient {
 	return &LegacyClient{
-		OvnNbAddress:                  ovnNbAddr,
 		OvnSbAddress:                  ovnSbAddr,
-		OvnTimeout:                    ovnNbTimeout,
+		OvnTimeout:                    timeout,
 		ClusterRouter:                 clusterRouter,
 		ClusterTcpLoadBalancer:        clusterTcpLoadBalancer,
 		ClusterUdpLoadBalancer:        clusterUdpLoadBalancer,

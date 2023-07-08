@@ -345,16 +345,16 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 				}
 
 				for _, nat := range lr.Nat {
-					logicalIP, err := c.ovnLegacyClient.GetNatIPInfo(nat)
+					info, err := c.ovnClient.GetNATByUUID(nat)
 					if err != nil {
 						klog.Errorf("failed to get nat ip info for vpc %s, %v", vpc.Name, err)
 						return err
 					}
-					if logicalIP != "" {
+					if info.LogicalIP != "" {
 						for rtb := range rtbs {
 							targetRoutes = append(targetRoutes, &kubeovnv1.StaticRoute{
 								Policy:     kubeovnv1.PolicySrc,
-								CIDR:       logicalIP,
+								CIDR:       info.LogicalIP,
 								NextHopIP:  nextHop,
 								RouteTable: rtb,
 							})

@@ -101,12 +101,6 @@ RUN curl -sSf -L --retry 3 -o /usr/local/bin/bfdd-control https://github.com/bob
     curl -sSf -L --retry 3 -o /usr/local/bin/bfdd-beacon https://github.com/bobz965/bfd-binary-for-kube-ovn-cni/releases/download/${BFDD_VERSION}/bfdd-beacon && \
     chmod +x /usr/local/bin/bfdd-control /usr/local/bin/bfdd-beacon
 
-ENV DUMB_INIT_VERSION="1.2.5"
-RUN dumb_init_arch="x86_64"; \
-    if [ "$ARCH" = "arm64" ]; then dumb_init_arch="aarch64"; fi; \
-    curl -sSf -L --retry 5 -o /usr/bin/dumb-init https://github.com/Yelp/dumb-init/releases/download/v${DUMB_INIT_VERSION}/dumb-init_${DUMB_INIT_VERSION}_${dumb_init_arch} && \
-    chmod +x /usr/bin/dumb-init
-
 RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages  \
     dpkg -i /packages/openvswitch-*.deb /packages/python3-openvswitch*.deb && \
     dpkg -i --ignore-depends=openvswitch-switch,openvswitch-common /packages/ovn-*.deb && \
@@ -119,5 +113,3 @@ RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages \
         rm -rf /var/lib/apt/lists/* && \
         dpkg -i --ignore-depends=openvswitch-switch,openvswitch-common /packages/*.ddeb; \
     fi
-
-ENTRYPOINT ["/usr/bin/dumb-init", "--"]

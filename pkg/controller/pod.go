@@ -846,14 +846,25 @@ func (c *Controller) reconcileRouteSubnets(cachedPod, pod *v1.Pod, needRoutePodN
 
 			if c.config.EnableEipSnat {
 				for _, ipStr := range strings.Split(podIP, ",") {
-					if err := c.ovnLegacyClient.UpdateNatRule("dnat_and_snat", ipStr, pod.Annotations[util.EipAnnotation], c.config.ClusterRouter, pod.Annotations[util.MacAddressAnnotation], fmt.Sprintf("%s.%s", podName, pod.Namespace)); err != nil {
-						klog.Errorf("failed to add nat rules, %v", err)
-						return err
+					if eip := pod.Annotations[util.EipAnnotation]; eip == "" {
+						if err = c.ovnClient.DeleteNats(c.config.ClusterRouter, ovnnb.NATTypeDNATAndSNAT, ipStr); err != nil {
+							klog.Errorf("failed to delete nat rules: %v", err)
+						}
+					} else if util.CheckProtocol(eip) == util.CheckProtocol(ipStr) {
+						if err = c.ovnClient.UpdateDnatAndSnat(c.config.ClusterRouter, eip, ipStr, fmt.Sprintf("%s.%s", podName, pod.Namespace), pod.Annotations[util.MacAddressAnnotation], c.ExternalGatewayType); err != nil {
+							klog.Errorf("failed to add nat rules, %v", err)
+							return err
+						}
 					}
-
-					if err := c.ovnLegacyClient.UpdateNatRule("snat", ipStr, pod.Annotations[util.SnatAnnotation], c.config.ClusterRouter, "", ""); err != nil {
-						klog.Errorf("failed to add nat rules, %v", err)
-						return err
+					if eip := pod.Annotations[util.SnatAnnotation]; eip == "" {
+						if err = c.ovnClient.DeleteNats(c.config.ClusterRouter, ovnnb.NATTypeSNAT, ipStr); err != nil {
+							klog.Errorf("failed to delete nat rules: %v", err)
+						}
+					} else if util.CheckProtocol(eip) == util.CheckProtocol(ipStr) {
+						if err = c.ovnClient.UpdateSnat(c.config.ClusterRouter, eip, ipStr); err != nil {
+							klog.Errorf("failed to add nat rules, %v", err)
+							return err
+						}
 					}
 				}
 			}
@@ -930,7 +941,7 @@ func (c *Controller) handleDeletePod(key string) error {
 				}
 			}
 			if exGwEnabled == "true" {
-				if err := c.ovnLegacyClient.DeleteNatRule(address.Ip, vpc.Name); err != nil {
+				if err := c.ovnClient.DeleteNat(vpc.Name, "", "", address.Ip); err != nil {
 					return err
 				}
 			}

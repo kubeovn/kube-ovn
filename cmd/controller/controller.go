@@ -22,7 +22,6 @@ import (
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/controller"
-	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/versions"
 )
@@ -54,7 +53,6 @@ func CmdMain() {
 		util.LogFatalAndExit(err, "failed to check permission")
 	}
 
-	go loopOvnNbctlDaemon(config)
 	go func() {
 		mux := http.NewServeMux()
 		if config.EnableMetrics {
@@ -133,28 +131,6 @@ func CmdMain() {
 		ReleaseOnCancel: true,
 		Name:            ovnLeaderResource,
 	})
-}
-
-func loopOvnNbctlDaemon(config *controller.Configuration) {
-	for {
-		daemonSocket := os.Getenv("OVN_NB_DAEMON")
-		time.Sleep(5 * time.Second)
-
-		if _, err := os.Stat(daemonSocket); os.IsNotExist(err) || daemonSocket == "" {
-			if err := ovs.StartOvnNbctlDaemon(config.OvnNbAddr); err != nil {
-				klog.Errorf("failed to start ovn-nbctl daemon %v", err)
-			}
-		}
-
-		// ovn-nbctl daemon may hang and cannot process further request.
-		// In case of that, we need to start a new daemon.
-		if err := ovs.CheckAlive(); err != nil {
-			klog.Warningf("ovn-nbctl daemon doesn't return, start a new daemon")
-			if err := ovs.StartOvnNbctlDaemon(config.OvnNbAddr); err != nil {
-				klog.Errorf("failed to start ovn-nbctl daemon %v", err)
-			}
-		}
-	}
 }
 
 func checkPermission(config *controller.Configuration) error {

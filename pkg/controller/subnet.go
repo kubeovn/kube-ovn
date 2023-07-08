@@ -613,7 +613,7 @@ func (c *Controller) updateSubnetDHCPOption(subnet *kubeovnv1.Subnet, needRouter
 		}
 	}
 
-	dhcpOptionsUUIDs, err := c.ovnLegacyClient.UpdateDHCPOptions(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.DHCPv4Options, subnet.Spec.DHCPv6Options, subnet.Spec.EnableDHCP, mtu)
+	dhcpOptionsUUIDs, err := c.ovnClient.UpdateDHCPOptions(subnet, mtu)
 	if err != nil {
 		klog.Errorf("failed to update dhcp options for switch %s, %v", subnet.Name, err)
 		return err
@@ -885,7 +885,7 @@ func (c *Controller) handleDeleteLogicalSwitch(key string) (err error) {
 		return err
 	}
 
-	if err = c.ovnLegacyClient.DeleteDHCPOptions(key, kubeovnv1.ProtocolDual); err != nil {
+	if err = c.ovnClient.DeleteDHCPOptions(key, kubeovnv1.ProtocolDual); err != nil {
 		klog.Errorf("failed to delete dhcp options of logical switch %s %v", key, err)
 		return err
 	}

@@ -14,6 +14,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -241,7 +242,7 @@ func (c *Controller) handleAddOvnSnatRule(key string) error {
 		return err
 	}
 	// ovn add snat
-	if err = c.ovnLegacyClient.AddSnatRule(vpcName, cachedEip.Spec.V4Ip, v4IpCidr); err != nil {
+	if err = c.ovnClient.AddNat(vpcName, ovnnb.NATTypeSNAT, cachedEip.Spec.V4Ip, v4IpCidr, "", "", nil); err != nil {
 		klog.Errorf("failed to create snat, %v", err)
 		return err
 	}
@@ -287,7 +288,7 @@ func (c *Controller) handleUpdateOvnSnatRule(key string) error {
 		klog.V(3).Infof("ovn delete snat %s", key)
 		// ovn delete snat
 		if cachedSnat.Status.Vpc != "" && cachedSnat.Status.V4Eip != "" && cachedSnat.Status.V4IpCidr != "" {
-			if err = c.ovnLegacyClient.DeleteSnatRule(cachedSnat.Status.Vpc, cachedSnat.Status.V4Eip, cachedSnat.Status.V4IpCidr); err != nil {
+			if err = c.ovnClient.DeleteNat(cachedSnat.Status.Vpc, ovnnb.NATTypeSNAT, cachedSnat.Status.V4Eip, cachedSnat.Status.V4IpCidr); err != nil {
 				klog.Errorf("failed to delete snat, %v", err)
 				return err
 			}
@@ -343,12 +344,12 @@ func (c *Controller) handleUpdateOvnSnatRule(key string) error {
 	// snat change eip
 	if c.ovnSnatChangeEip(cachedSnat, cachedEip) {
 		klog.V(3).Infof("snat change ip, old ip %s, new ip %s", cachedEip.Status.V4Ip, cachedEip.Spec.V4Ip)
-		if err = c.ovnLegacyClient.DeleteSnatRule(vpcName, cachedEip.Status.V4Ip, v4IpCidr); err != nil {
+		if err = c.ovnClient.DeleteNat(vpcName, ovnnb.NATTypeSNAT, cachedEip.Status.V4Ip, v4IpCidr); err != nil {
 			klog.Errorf("failed to delte snat, %v", err)
 			return err
 		}
 		// ovn add snat with new eip
-		if err = c.ovnLegacyClient.AddSnatRule(vpcName, cachedEip.Spec.V4Ip, v4IpCidr); err != nil {
+		if err = c.ovnClient.AddNat(vpcName, ovnnb.NATTypeSNAT, cachedEip.Spec.V4Ip, v4IpCidr, "", "", nil); err != nil {
 			klog.Errorf("failed to create snat, %v", err)
 			return err
 		}
