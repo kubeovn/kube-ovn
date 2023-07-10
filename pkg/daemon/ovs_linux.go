@@ -191,6 +191,9 @@ func generateNicName(containerID, ifname string) (string, string) {
 	if ifname == "eth0" {
 		return fmt.Sprintf("%s_h", containerID[0:12]), fmt.Sprintf("%s_c", containerID[0:12])
 	}
+	if (len(ifname) >= 12 ) {
+		return fmt.Sprintf("%s_%s_h", containerID[0:6], ifname[11:len(ifname)]), fmt.Sprintf("%s_%s_c", containerID[0:6], ifname[11:len(ifname)])
+	}
 	return fmt.Sprintf("%s_%s_h", containerID[0:12-len(ifname)], ifname), fmt.Sprintf("%s_%s_c", containerID[0:12-len(ifname)], ifname)
 }
 
