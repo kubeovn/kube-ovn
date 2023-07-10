@@ -21,6 +21,12 @@ iptables -t filter -D FORWARD -m set --match-set ovn40subnets src -j ACCEPT
 iptables -t filter -D FORWARD -m set --match-set ovn40services dst -j ACCEPT
 iptables -t filter -D FORWARD -m set --match-set ovn40services src -j ACCEPT
 iptables -t filter -D OUTPUT -p udp -m udp --dport 6081 -j MARK --set-xmark 0x0
+iptables -t mangle -D PREROUTING -m comment --comment "kube-ovn prerouting rules" -j OVN-PREROUTING
+iptables -t mangle -D OUTPUT -m comment --comment "kube-ovn output rules" -j OVN-OUTPUT
+iptables -t mangle -F OVN-PREROUTING
+iptables -t mangle -X OVN-PREROUTING
+iptables -t mangle -F OVN-OUTPUT
+iptables -t mangle -X OVN-OUTPUT
 
 sleep 1
 

@@ -254,4 +254,7 @@ const (
 	NatPolicyRuleActionNat     = "nat"
 	NatPolicyRuleActionForward = "forward"
 	NatPolicyRuleIDLength      = 12
+
+	TProxyListenPort = 8102
+	TProxyRouteTable = 100
 )

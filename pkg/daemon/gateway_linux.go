@@ -40,10 +40,13 @@ const (
 
 const (
 	NAT                        = "nat"
+	MANGLE                     = "mangle"
 	Prerouting                 = "PREROUTING"
 	Postrouting                = "POSTROUTING"
+	Output                     = "OUTPUT"
 	OvnPrerouting              = "OVN-PREROUTING"
 	OvnPostrouting             = "OVN-POSTROUTING"
+	OvnOutput                  = "OVN-OUTPUT"
 	OvnMasquerade              = "OVN-MASQUERADE"
 	OvnNatOutGoingPolicy       = "OVN-NAT-POLICY"
 	OvnNatOutGoingPolicySubnet = "OVN-NAT-PSUBNET-"
@@ -52,6 +55,10 @@ const (
 const (
 	OnOutGoingNatMark     = "0x90001/0x90001"
 	OnOutGoingForwardMark = "0x90002/0x90002"
+	TProxyPostroutingMark = 0x90003
+	TProxyPostroutingMask = 0x90003
+	TProxyPreroutingMark  = 0x90004
+	TProxyPreroutingMask  = 0x90004
 )
 
 type policyRouteMeta struct {
@@ -733,6 +740,10 @@ func (c *Controller) setIptables() error {
 			return err
 		}
 
+		if err = c.reconcileTProxyIPTableRules(protocol); err != nil {
+			return err
+		}
+
 		if err = c.updateIptablesChain(ipt, NAT, OvnPrerouting, Prerouting, natPreroutingRules); err != nil {
 			klog.Errorf("failed to update chain %s/%s: %v", NAT, OvnPrerouting)
 			return err
@@ -752,6 +763,150 @@ func (c *Controller) setIptables() error {
 		}
 	}
 	return nil
+}
+
+func (c *Controller) reconcileTProxyIPTableRules(protocol string) error {
+	if !c.config.EnableTProxy {
+		return nil
+	}
+
+	ipt := c.iptables[protocol]
+	tproxyPreRoutingRules := make([]util.IPTableRule, 0)
+	tproxyOutputRules := make([]util.IPTableRule, 0)
+	var probePorts, podNames []string
+
+	pods, err := c.podsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("list pods failed, %v", err)
+		return err
+	}
+
+	for _, pod := range pods {
+		podNames = append(podNames, pod.Namespace+"/"+pod.Name)
+	}
+
+	sort.Strings(podNames)
+
+	for _, podName := range podNames {
+		items := strings.Split(podName, "/")
+		nsName := items[0]
+		name := items[1]
+		pod, err := c.podsLister.Pods(nsName).Get(name)
+		if err != nil {
+			klog.Errorf("get pod %s/%s failed, %v", nsName, name, err)
+			return err
+		}
+
+		subnetName, ok := pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, util.OvnProvider)]
+		if !ok {
+			continue
+		}
+
+		podIP, ok := pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, util.OvnProvider)]
+		if !ok {
+			continue
+		}
+
+		hostIP := pod.Status.HostIP
+
+		subnet, err := c.subnetsLister.Get(subnetName)
+		if err != nil {
+			err = fmt.Errorf("failed to get subnet '%s', err: %v", subnetName, err)
+			continue
+		}
+
+		if subnet.Spec.Vpc == c.config.ClusterRouter {
+			continue
+		}
+
+		for _, container := range pod.Spec.Containers {
+			if container.ReadinessProbe != nil {
+				if httpGet := container.ReadinessProbe.HTTPGet; httpGet != nil {
+					if port := httpGet.Port.String(); port != "" {
+						probePorts = append(probePorts, port)
+					}
+				}
+
+				if tcpSocket := container.ReadinessProbe.TCPSocket; tcpSocket != nil {
+					if port := tcpSocket.Port.String(); port != "" {
+						probePorts = append(probePorts, port)
+					}
+				}
+			}
+
+			if container.LivenessProbe != nil {
+				if httpGet := container.LivenessProbe.HTTPGet; httpGet != nil {
+					if port := httpGet.Port.String(); port != "" {
+						probePorts = append(probePorts, port)
+					}
+				}
+
+				if tcpSocket := container.LivenessProbe.TCPSocket; tcpSocket != nil {
+					if port := tcpSocket.Port.String(); port != "" {
+						probePorts = append(probePorts, port)
+					}
+				}
+			}
+		}
+
+		if len(probePorts) == 0 {
+			continue
+		}
+
+		probePorts = formatProbePorts(probePorts)
+		for _, probePort := range probePorts {
+			if isTCPProbePortReachable, ok := customVPCPodTCPProbeIPPort.Load(getIPPortString(podIP, probePort)); ok {
+				if !isTCPProbePortReachable.(bool) {
+					continue
+				}
+			}
+
+			tProxyPostroutingMarkMask := fmt.Sprintf("%#x/%#x", TProxyPostroutingMark, TProxyPostroutingMask)
+			tProxyPreRoutingMarkMask := fmt.Sprintf("%#x/%#x", TProxyPreroutingMark, TProxyPreroutingMask)
+			if protocol == kubeovnv1.ProtocolIPv4 {
+				tproxyOutputRules = append(tproxyOutputRules, util.IPTableRule{Table: MANGLE, Chain: OvnOutput, Rule: strings.Fields(fmt.Sprintf(`-d %s/32 -p tcp -m tcp --dport %s -j MARK --set-xmark %s`, podIP, probePort, tProxyPostroutingMarkMask))})
+				tproxyPreRoutingRules = append(tproxyPreRoutingRules, util.IPTableRule{Table: MANGLE, Chain: OvnPrerouting, Rule: strings.Fields(fmt.Sprintf(`-d %s/32 -p tcp -m tcp --dport %s -j TPROXY --on-port %d --on-ip %s --tproxy-mark %s`, podIP, probePort, util.TProxyListenPort, hostIP, tProxyPreRoutingMarkMask))})
+			}
+			if protocol == kubeovnv1.ProtocolIPv6 {
+				tproxyOutputRules = append(tproxyOutputRules, util.IPTableRule{Table: MANGLE, Chain: OvnOutput, Rule: strings.Fields(fmt.Sprintf(`-d %s/128 -p tcp -m tcp --dport %s -j MARK --set-xmark %s`, podIP, probePort, tProxyPostroutingMarkMask))})
+				tproxyPreRoutingRules = append(tproxyPreRoutingRules, util.IPTableRule{Table: MANGLE, Chain: OvnPrerouting, Rule: strings.Fields(fmt.Sprintf(`-d %s/128 -p tcp -m tcp --dport %s -j TPROXY --on-port %d --on-ip %s --tproxy-mark %s`, podIP, probePort, util.TProxyListenPort, hostIP, tProxyPreRoutingMarkMask))})
+			}
+		}
+	}
+
+	if err := c.updateIptablesChain(ipt, MANGLE, OvnPrerouting, Prerouting, tproxyPreRoutingRules); err != nil {
+		klog.Errorf("failed to update chain %s with rules %v: %v", OvnPrerouting, tproxyPreRoutingRules, err)
+		return err
+	}
+
+	if err := c.updateIptablesChain(ipt, MANGLE, OvnOutput, Output, tproxyOutputRules); err != nil {
+		klog.Errorf("failed to update chain %s with rules %v: %v", OvnOutput, tproxyOutputRules, err)
+		return err
+	}
+	return nil
+}
+
+func (c *Controller) cleanTProxyIPTableRules(protocol string) {
+	ipt := c.iptables[protocol]
+	for _, chain := range []string{OvnPrerouting, OvnOutput} {
+		rules, err := ipt.List(MANGLE, chain)
+		if err != nil {
+			klog.Errorf("failed to list iptables rules in table %v chain %v, %+v", MANGLE, chain, err)
+			return
+		}
+		for _, rule := range rules {
+			if !strings.Contains(rule, fmt.Sprintf("%#x", TProxyPostroutingMark)) &&
+				!strings.Contains(rule, fmt.Sprintf("%#x", TProxyPreroutingMark)) {
+				continue
+			}
+			rule := rule[4+len(chain):]
+			spec := util.DoubleQuotedFields(rule)
+			if err = ipt.Delete(MANGLE, chain, spec...); err != nil {
+				klog.Errorf(`failed to delete iptables rule "%s": %v`, rule, err)
+				return
+			}
+		}
+	}
 }
 
 func (c *Controller) reconcileNatOutgoingPolicyIptablesChain(protocol string) error {
@@ -1526,4 +1681,19 @@ func getNatPolicySubnetChainUID(chainName string) string {
 
 func formatIPsetUnPrefix(ipsetName string) string {
 	return ipsetName[len("ovn40"):]
+}
+
+func formatProbePorts(probePorts []string) []string {
+	// Deduplicate and sort
+	retProbePorts := make([]string, 0, len(probePorts))
+	portMap := make(map[string]interface{})
+	for _, port := range probePorts {
+		if _, exist := portMap[port]; !exist {
+			retProbePorts = append(retProbePorts, port)
+			portMap[port] = nil
+		}
+	}
+
+	sort.Strings(retProbePorts)
+	return retProbePorts
 }

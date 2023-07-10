@@ -3,6 +3,7 @@ package ovs
 import (
 	"fmt"
 	"os/exec"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -247,6 +248,26 @@ func SetPortTag(port, tag string) error {
 func ValidatePortVendor(port string) (bool, error) {
 	output, err := ovsFind("Port", "name", "external_ids:vendor="+util.CniTypeName)
 	return util.ContainsString(output, port), err
+}
+
+func GetInterfacePodNs(iface string) (string, error) {
+	ret, err := ovsFind("interface", "external-ids", fmt.Sprintf("external-ids:iface-id=%s", iface))
+	if err != nil {
+		return "", err
+	}
+
+	if len(ret) == 0 {
+		return "", nil
+	}
+
+	podNetNs := ""
+	re := regexp.MustCompile(`pod_netns="([^"]+)"`)
+	match := re.FindStringSubmatch(ret[0])
+	if len(match) > 1 {
+		podNetNs = match[1]
+	}
+
+	return podNetNs, nil
 }
 
 // config mirror for interface by pod annotations and install param
