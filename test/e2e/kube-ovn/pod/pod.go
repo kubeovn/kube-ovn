@@ -118,12 +118,12 @@ var _ = framework.Describe("[group:pod]", func() {
 
 		ginkgo.By("Create Custom Vpc subnet Pod")
 		vpcName = "vpc-" + framework.RandomSuffix()
-		customVPC := framework.MakeVpc(vpcName, "", false, false, []string{namespaceName})
+		customVPC := framework.MakeVpc(vpcName, "", false, false, nil)
 		vpcClient.CreateSync(customVPC)
 
 		ginkgo.By("Creating subnet " + subnetName)
 		cidr = framework.RandomCIDR(f.ClusterIpFamily)
-		subnet := framework.MakeSubnet(vpcName, "", cidr, "", vpcName, "", nil, nil, []string{namespaceName})
+		subnet := framework.MakeSubnet(vpcName, "", cidr, "", vpcName, "", nil, nil, nil)
 		_ = subnetClient.CreateSync(subnet)
 
 		ginkgo.By("Creating pod with HTTP liveness and readiness probe that port is accessible " + podName)
