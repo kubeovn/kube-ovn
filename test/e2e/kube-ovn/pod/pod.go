@@ -126,8 +126,7 @@ var _ = framework.Describe("[group:pod]", func() {
 		subnet := framework.MakeSubnet(vpcName, "", cidr, "", vpcName, "", nil, nil, []string{namespaceName})
 		_ = subnetClient.CreateSync(subnet)
 
-		ginkgo.By("Creating pod with HTTP liveness and readiness probe that port is accessible " + subnetName)
-
+		ginkgo.By("Creating pod with HTTP liveness and readiness probe that port is accessible " + podName)
 		pod := framework.MakePod(namespaceName, podName, nil, nil, framework.NginxImage, nil, nil)
 		pod.Spec.Containers[0].ReadinessProbe = &corev1.Probe{
 			ProbeHandler: corev1.ProbeHandler{
@@ -135,7 +134,6 @@ var _ = framework.Describe("[group:pod]", func() {
 					Port: intstr.FromInt(80),
 				},
 			},
-			InitialDelaySeconds: 15,
 		}
 		pod.Spec.Containers[0].LivenessProbe = &corev1.Probe{
 			ProbeHandler: corev1.ProbeHandler{
@@ -143,7 +141,6 @@ var _ = framework.Describe("[group:pod]", func() {
 					Port: intstr.FromInt(80),
 				},
 			},
-			InitialDelaySeconds: 10,
 		}
 
 		pod = podClient.CreateSync(pod)
@@ -152,7 +149,7 @@ var _ = framework.Describe("[group:pod]", func() {
 
 		podClient.DeleteSync(podName)
 
-		ginkgo.By("Creating pod with HTTP liveness and readiness probe that port is not accessible  " + subnetName)
+		ginkgo.By("Creating pod with HTTP liveness and readiness probe that port is not accessible  " + podName)
 		pod = framework.MakePod(namespaceName, podName, nil, nil, framework.NginxImage, nil, nil)
 		pod.Spec.Containers[0].ReadinessProbe = &corev1.Probe{
 			ProbeHandler: corev1.ProbeHandler{
@@ -160,7 +157,6 @@ var _ = framework.Describe("[group:pod]", func() {
 					Port: intstr.FromInt(81),
 				},
 			},
-			InitialDelaySeconds: 15,
 		}
 		pod.Spec.Containers[0].LivenessProbe = &corev1.Probe{
 			ProbeHandler: corev1.ProbeHandler{
@@ -168,7 +164,6 @@ var _ = framework.Describe("[group:pod]", func() {
 					Port: intstr.FromInt(81),
 				},
 			},
-			InitialDelaySeconds: 10,
 		}
 
 		_ = podClient.Create(pod)
@@ -179,7 +174,7 @@ var _ = framework.Describe("[group:pod]", func() {
 
 		podClient.DeleteSync(podName)
 
-		ginkgo.By("Creating pod with TCP probe liveness and readiness probe that port is accessible " + subnetName)
+		ginkgo.By("Creating pod with TCP probe liveness and readiness probe that port is accessible " + podName)
 		pod = framework.MakePod(namespaceName, podName, nil, nil, framework.NginxImage, nil, nil)
 		pod.Spec.Containers[0].ReadinessProbe = &corev1.Probe{
 			ProbeHandler: corev1.ProbeHandler{
@@ -187,7 +182,6 @@ var _ = framework.Describe("[group:pod]", func() {
 					Port: intstr.FromInt(80),
 				},
 			},
-			InitialDelaySeconds: 15,
 		}
 		pod.Spec.Containers[0].LivenessProbe = &corev1.Probe{
 			ProbeHandler: corev1.ProbeHandler{
@@ -195,7 +189,6 @@ var _ = framework.Describe("[group:pod]", func() {
 					Port: intstr.FromInt(80),
 				},
 			},
-			InitialDelaySeconds: 10,
 		}
 
 		pod = podClient.CreateSync(pod)
@@ -203,7 +196,7 @@ var _ = framework.Describe("[group:pod]", func() {
 
 		podClient.DeleteSync(podName)
 
-		ginkgo.By("Creating pod with TCP probe liveness and readiness probe that port is not accessible  " + subnetName)
+		ginkgo.By("Creating pod with TCP probe liveness and readiness probe that port is not accessible  " + podName)
 		pod = framework.MakePod(namespaceName, podName, nil, nil, framework.NginxImage, nil, nil)
 		pod.Spec.Containers[0].ReadinessProbe = &corev1.Probe{
 			ProbeHandler: corev1.ProbeHandler{
@@ -211,7 +204,6 @@ var _ = framework.Describe("[group:pod]", func() {
 					Port: intstr.FromInt(81),
 				},
 			},
-			InitialDelaySeconds: 15,
 		}
 		pod.Spec.Containers[0].LivenessProbe = &corev1.Probe{
 			ProbeHandler: corev1.ProbeHandler{
@@ -219,7 +211,6 @@ var _ = framework.Describe("[group:pod]", func() {
 					Port: intstr.FromInt(81),
 				},
 			},
-			InitialDelaySeconds: 10,
 		}
 
 		_ = podClient.Create(pod)
