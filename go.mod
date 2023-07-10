@@ -3,7 +3,6 @@ module github.com/kubeovn/kube-ovn
 go 1.20
 
 require (
-	github.com/Asphaltt/go-tproxy v0.0.0-20210424070945-9f75cc83f122
 	github.com/Microsoft/go-winio v0.6.1
 	github.com/Microsoft/hcsshim v0.9.9
 	github.com/alauda/felix v3.6.6-0.20201207121355-187332daf314+incompatible
@@ -44,7 +43,6 @@ require (
 	k8s.io/api v0.27.3
 	k8s.io/apimachinery v0.27.3
 	k8s.io/client-go v12.0.0+incompatible
-	k8s.io/klog v1.0.0
 	k8s.io/klog/v2 v2.100.1
 	k8s.io/kubectl v0.27.3
 	k8s.io/kubernetes v1.27.3
