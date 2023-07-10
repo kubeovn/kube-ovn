@@ -9,6 +9,8 @@ import (
 	"os"
 	"strings"
 	"syscall"
+
+	"k8s.io/klog/v2"
 )
 
 // Listener describes a TCP Listener
@@ -70,7 +72,12 @@ func listenTCP(device, network string, laddr *net.TCPAddr) (net.Listener, error)
 	if err != nil {
 		return nil, &net.OpError{Op: "listen", Net: network, Source: nil, Addr: laddr, Err: fmt.Errorf("get file descriptor: %s", err)}
 	}
-	defer fileDescriptorSource.Close()
+
+	defer func() {
+		if err := fileDescriptorSource.Close(); err != nil {
+			klog.Errorf("fileDescriptorSource %v Close err: %v ", fileDescriptorSource, err)
+		}
+	}()
 
 	if device != "" {
 		if err = syscall.BindToDevice(int(fileDescriptorSource.Fd()), device); err != nil {
@@ -167,38 +174,55 @@ func dialTCP(device string, laddr, raddr *net.TCPAddr, dontAssumeRemote bool, is
 	}
 
 	if err = syscall.SetsockoptInt(fileDescriptor, syscall.SOL_SOCKET, syscall.SO_REUSEADDR, 1); err != nil {
-		syscall.Close(fileDescriptor)
+		if err := syscall.Close(fileDescriptor); err != nil {
+			klog.Errorf("fileDescriptor %v Close err: %v ", fileDescriptor, err)
+		}
 		return nil, &net.OpError{Op: "dial", Err: fmt.Errorf("set socket option: SO_REUSEADDR: %s", err)}
 	}
 
 	if err = syscall.SetsockoptInt(fileDescriptor, syscall.SOL_IP, syscall.IP_TRANSPARENT, 1); err != nil {
-		syscall.Close(fileDescriptor)
+		if err := syscall.Close(fileDescriptor); err != nil {
+			klog.Errorf("fileDescriptor %v Close err: %v ", fileDescriptor, err)
+		}
 		return nil, &net.OpError{Op: "dial", Err: fmt.Errorf("set socket option: IP_TRANSPARENT: %s", err)}
 	}
 
 	if err = syscall.SetNonblock(fileDescriptor, isnonblocking); err != nil {
-		syscall.Close(fileDescriptor)
+		if err := syscall.Close(fileDescriptor); err != nil {
+			klog.Errorf("fileDescriptor %v Close err: %v ", fileDescriptor, err)
+		}
 		return nil, &net.OpError{Op: "dial", Err: fmt.Errorf("set socket option: SO_NONBLOCK: %s", err)}
 	}
 
 	if !dontAssumeRemote {
 		if err = syscall.Bind(fileDescriptor, localSocketAddress); err != nil {
-			syscall.Close(fileDescriptor)
+			if err := syscall.Close(fileDescriptor); err != nil {
+				klog.Errorf("fileDescriptor %v Close err: %v ", fileDescriptor, err)
+			}
 			return nil, &net.OpError{Op: "dial", Err: fmt.Errorf("socket bind: %s", err)}
 		}
 	}
 
 	if err = syscall.Connect(fileDescriptor, remoteSocketAddress); err != nil && !strings.Contains(err.Error(), "operation now in progress") {
-		syscall.Close(fileDescriptor)
+		if err := syscall.Close(fileDescriptor); err != nil {
+			klog.Errorf("fileDescriptor %v Close err: %v ", fileDescriptor, err)
+		}
 		return nil, &net.OpError{Op: "dial", Err: fmt.Errorf("socket connect: %s", err)}
 	}
 
 	fdFile := os.NewFile(uintptr(fileDescriptor), fmt.Sprintf("net-tcp-dial-%s", raddr.String()))
-	defer fdFile.Close()
+	defer func() {
+		if err := fdFile.Close(); err != nil {
+			klog.Errorf("fdFile %v Close err: %v ", fdFile, err)
+		}
+	}()
 
 	remoteConn, err := net.FileConn(fdFile)
 	if err != nil {
-		syscall.Close(fileDescriptor)
+		if err := syscall.Close(fileDescriptor); err != nil {
+			klog.Errorf("fileDescriptor %v Close err: %v ", fileDescriptor, err)
+		}
+
 		return nil, &net.OpError{Op: "dial", Err: fmt.Errorf("convert file descriptor to connection: %s", err)}
 	}
 

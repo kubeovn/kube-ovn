@@ -45,7 +45,12 @@ func (c *Controller) StartTProxyForwarding(stopCh <-chan struct{}) {
 		return
 	}
 
-	defer tcpListener.Close()
+	defer func() {
+		if err := tcpListener.Close(); err != nil {
+			klog.Errorf("Error tcpListener Close err: %v ", err)
+		}
+	}()
+
 	go listenTCP()
 
 	<-stopCh
@@ -298,7 +303,13 @@ func listenTCP() {
 func handleRedirectFlow(conn net.Conn) {
 
 	klog.V(5).Info("Accepting TCP connection from %v with destination of %v", conn.RemoteAddr().String(), conn.LocalAddr().String())
-	defer conn.Close()
+
+	defer func() {
+		if err := conn.Close(); err != nil {
+			klog.Errorf("conn Close err: %v ", err)
+		}
+	}()
+
 	podIPPort := conn.LocalAddr().String()
 	var podIP, probePort string
 	if strings.HasPrefix(podIPPort, "[") {
@@ -358,7 +369,11 @@ func probePortInNs(podIP, probePort string, transferHTTPMessage bool, conn net.C
 			customVPCPodTCPProbeIPPort.Store(getIPPortString(podIP, probePort), true)
 		}
 
-		defer remoteConn.Close()
+		defer func() {
+			if err := remoteConn.Close(); err != nil {
+				klog.Errorf("remoteConn %v Close err: %v ", remoteConn, err)
+			}
+		}()
 
 		if transferHTTPMessage {
 			var streamWait sync.WaitGroup
