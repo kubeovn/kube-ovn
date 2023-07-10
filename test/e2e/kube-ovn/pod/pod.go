@@ -171,7 +171,7 @@ var _ = framework.Describe("[group:pod]", func() {
 			InitialDelaySeconds: 10,
 		}
 
-		pod = podClient.Create(pod)
+		_ = podClient.Create(pod)
 		time.Sleep(11 * time.Second)
 
 		pod = podClient.GetPod(podName)
@@ -222,7 +222,7 @@ var _ = framework.Describe("[group:pod]", func() {
 			InitialDelaySeconds: 10,
 		}
 
-		pod = podClient.Create(pod)
+		_ = podClient.Create(pod)
 		time.Sleep(11 * time.Second)
 
 		pod = podClient.GetPod(podName)

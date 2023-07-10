@@ -79,7 +79,7 @@ func (c *Controller) StartTProxyTCPPortProbe() {
 
 			subnet, err := c.subnetsLister.Get(subnetName)
 			if err != nil {
-				err = fmt.Errorf("failed to get subnet '%s', err: %v", subnetName, err)
+				klog.Errorf("failed to get subnet '%s', err: %v", subnetName, err)
 				continue
 			}
 
@@ -284,7 +284,7 @@ func listenTCP() {
 	for {
 		conn, err := tcpListener.Accept()
 		if err != nil {
-			if netErr, ok := err.(net.Error); ok && netErr.Temporary() {
+			if netErr, ok := err.(net.Error); ok {
 				klog.Errorf("Temporary error while accepting connection: %s", netErr)
 			}
 			klog.Fatalf("Unrecoverable error while accepting connection: %s", err)
@@ -365,7 +365,10 @@ func probePortInNs(podIP, probePort string, transferHTTPMessage bool, conn net.C
 			streamWait.Add(2)
 
 			streamConn := func(dst io.Writer, src io.Reader) {
-				io.Copy(dst, src)
+				if _, err := io.Copy(dst, src); err != nil {
+					klog.Errorf("copy stream from dst %v to src %v failed err: %v ", dst, src, err)
+				}
+
 				streamWait.Done()
 			}
 
@@ -377,7 +380,6 @@ func probePortInNs(podIP, probePort string, transferHTTPMessage bool, conn net.C
 		}
 		return nil
 	})
-	return
 }
 
 func getIPPortString(podIP, port string) string {

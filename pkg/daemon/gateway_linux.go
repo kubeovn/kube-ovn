@@ -807,12 +807,10 @@ func (c *Controller) reconcileTProxyIPTableRules(protocol string) error {
 			continue
 		}
 
-		hostIP := pod.Status.HostIP
-
 		subnet, err := c.subnetsLister.Get(subnetName)
 		if err != nil {
 			err = fmt.Errorf("failed to get subnet '%s', err: %v", subnetName, err)
-			continue
+			return err
 		}
 
 		if subnet.Spec.Vpc == c.config.ClusterRouter {
@@ -865,11 +863,11 @@ func (c *Controller) reconcileTProxyIPTableRules(protocol string) error {
 			tProxyPreRoutingMarkMask := fmt.Sprintf("%#x/%#x", TProxyPreroutingMark, TProxyPreroutingMask)
 			if protocol == kubeovnv1.ProtocolIPv4 {
 				tproxyOutputRules = append(tproxyOutputRules, util.IPTableRule{Table: MANGLE, Chain: OvnOutput, Rule: strings.Fields(fmt.Sprintf(`-d %s/32 -p tcp -m tcp --dport %s -j MARK --set-xmark %s`, podIP, probePort, tProxyPostroutingMarkMask))})
-				tproxyPreRoutingRules = append(tproxyPreRoutingRules, util.IPTableRule{Table: MANGLE, Chain: OvnPrerouting, Rule: strings.Fields(fmt.Sprintf(`-d %s/32 -p tcp -m tcp --dport %s -j TPROXY --on-port %d --on-ip %s --tproxy-mark %s`, podIP, probePort, util.TProxyListenPort, hostIP, tProxyPreRoutingMarkMask))})
+				tproxyPreRoutingRules = append(tproxyPreRoutingRules, util.IPTableRule{Table: MANGLE, Chain: OvnPrerouting, Rule: strings.Fields(fmt.Sprintf(`-d %s/32 -p tcp -m tcp --dport %s -j TPROXY --on-port %d --on-ip %s --tproxy-mark %s`, podIP, probePort, util.TProxyListenPort, pod.Status.HostIP, tProxyPreRoutingMarkMask))})
 			}
 			if protocol == kubeovnv1.ProtocolIPv6 {
 				tproxyOutputRules = append(tproxyOutputRules, util.IPTableRule{Table: MANGLE, Chain: OvnOutput, Rule: strings.Fields(fmt.Sprintf(`-d %s/128 -p tcp -m tcp --dport %s -j MARK --set-xmark %s`, podIP, probePort, tProxyPostroutingMarkMask))})
-				tproxyPreRoutingRules = append(tproxyPreRoutingRules, util.IPTableRule{Table: MANGLE, Chain: OvnPrerouting, Rule: strings.Fields(fmt.Sprintf(`-d %s/128 -p tcp -m tcp --dport %s -j TPROXY --on-port %d --on-ip %s --tproxy-mark %s`, podIP, probePort, util.TProxyListenPort, hostIP, tProxyPreRoutingMarkMask))})
+				tproxyPreRoutingRules = append(tproxyPreRoutingRules, util.IPTableRule{Table: MANGLE, Chain: OvnPrerouting, Rule: strings.Fields(fmt.Sprintf(`-d %s/128 -p tcp -m tcp --dport %s -j TPROXY --on-port %d --on-ip %s --tproxy-mark %s`, podIP, probePort, util.TProxyListenPort, pod.Status.HostIP, tProxyPreRoutingMarkMask))})
 			}
 		}
 	}
