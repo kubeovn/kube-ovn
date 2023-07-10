@@ -65,7 +65,6 @@ func (c *Controller) resyncExternalGateway() {
 		}
 		exGwEnabled = "true"
 		lastExGwCM = cm.Data
-		c.ovnLegacyClient.ExternalGatewayType = cm.Data["type"]
 		c.ExternalGatewayType = cm.Data["type"]
 		if err := c.updateDefaultVpcExternal(true); err != nil {
 			klog.Error("failed to update default vpc, %v", err)

@@ -8,23 +8,10 @@ import (
 	"time"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func CmdMain() {
-	content, err := os.ReadFile("/var/run/ovn/ovn-nbctl.pid")
-	if err != nil {
-		util.LogFatalAndExit(err, "failed to get ovn-nbctl daemon pid")
-	}
-	daemonPid := strings.TrimSuffix(string(content), "\n")
-	if err := os.Setenv("OVN_NB_DAEMON", fmt.Sprintf("/var/run/ovn/ovn-nbctl.%s.ctl", daemonPid)); err != nil {
-		util.LogFatalAndExit(err, "failed to set env OVN_NB_DAEMON")
-	}
-	if err := ovs.CheckAlive(); err != nil {
-		os.Exit(1)
-	}
-
 	addr := "127.0.0.1:10660"
 	if os.Getenv("ENABLE_BIND_LOCAL_IP") == "true" {
 		podIpsEnv := os.Getenv("POD_IPS")

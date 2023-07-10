@@ -14,8 +14,18 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 )
 
-func (c *ovnClient) AddNat(lrName, natType, externalIP, logicalIP string) error {
-	nat, err := c.newNat(lrName, natType, externalIP, logicalIP)
+func (c *ovnClient) AddNat(lrName, natType, externalIP, logicalIP, logicalMac, port string, options map[string]string) error {
+	nat, err := c.newNat(lrName, natType, externalIP, logicalIP, logicalMac, port, func(nat *ovnnb.NAT) {
+		if len(options) == 0 {
+			return
+		}
+		if len(nat.Options) == 0 {
+			nat.Options = make(map[string]string, len(options))
+		}
+		for k, v := range options {
+			nat.Options[k] = v
+		}
+	})
 	if err != nil {
 		return err
 	}
@@ -75,7 +85,7 @@ func (c *ovnClient) UpdateSnat(lrName, externalIP, logicalIP string) error {
 	}
 
 	/* create nat */
-	if nat, err = c.newNat(lrName, natType, externalIP, logicalIP); err != nil {
+	if nat, err = c.newNat(lrName, natType, externalIP, logicalIP, "", ""); err != nil {
 		return fmt.Errorf("new logical router %s nat 'type %s external ip %s logical ip %s': %v", lrName, natType, externalIP, logicalIP, err)
 	}
 
@@ -111,16 +121,15 @@ func (c *ovnClient) UpdateDnatAndSnat(lrName, externalIP, logicalIP, lspName, ex
 			nat.LogicalPort = &lspName
 			nat.ExternalMAC = &externalMac
 
-			if nil == nat.Options {
-				nat.Options = make(map[string]string)
+			if nat.Options == nil {
+				nat.Options = make(map[string]string, 1)
 			}
-
 			nat.Options["stateless"] = "true"
 		}
 	}
 
 	/* create nat */
-	if nat, err = c.newNat(lrName, natType, externalIP, logicalIP, options); err != nil {
+	if nat, err = c.newNat(lrName, natType, externalIP, logicalIP, "", "", options); err != nil {
 		return fmt.Errorf("new logical router %s nat 'type %s external ip %s logical ip %s logical port %s external mac %s': %v", lrName, natType, externalIP, logicalIP, lspName, externalMac, err)
 	}
 
@@ -219,6 +228,9 @@ func (c *ovnClient) GetNat(lrName, natType, externalIP, logicalIP string, ignore
 	}
 
 	fnFilter := func(nat *ovnnb.NAT) bool {
+		if natType == "" {
+			return nat.LogicalIP == logicalIP
+		}
 		if natType == ovnnb.NATTypeSNAT {
 			return nat.Type == natType && nat.LogicalIP == logicalIP
 		}
@@ -255,7 +267,7 @@ func (c *ovnClient) NatExists(lrName, natType, externalIP, logicalIP string) (bo
 }
 
 // newNat return net with basic information
-func (c *ovnClient) newNat(lrName, natType, externalIP, logicalIP string, options ...func(nat *ovnnb.NAT)) (*ovnnb.NAT, error) {
+func (c *ovnClient) newNat(lrName, natType, externalIP, logicalIP, logicalMac, port string, options ...func(nat *ovnnb.NAT)) (*ovnnb.NAT, error) {
 	if len(lrName) == 0 {
 		return nil, fmt.Errorf("the logical router name is required")
 	}
@@ -283,6 +295,12 @@ func (c *ovnClient) newNat(lrName, natType, externalIP, logicalIP string, option
 		Type:       natType,
 		ExternalIP: externalIP,
 		LogicalIP:  logicalIP,
+	}
+	if logicalMac != "" {
+		nat.ExternalMAC = &logicalMac
+	}
+	if port != "" {
+		nat.LogicalPort = &port
 	}
 
 	for _, option := range options {

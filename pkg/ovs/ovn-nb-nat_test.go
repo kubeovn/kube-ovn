@@ -40,7 +40,7 @@ func (suite *OvnClientTestSuite) testCreateNats() {
 
 	// snat
 	for _, logicalIP := range logicalIPs {
-		nat, err := ovnClient.newNat(lrName, "snat", externalIPs[0], logicalIP)
+		nat, err := ovnClient.newNat(lrName, "snat", externalIPs[0], logicalIP, "", "")
 		require.NoError(t, err)
 
 		nats = append(nats, nat)
@@ -48,7 +48,7 @@ func (suite *OvnClientTestSuite) testCreateNats() {
 
 	// dnat_and_snat
 	for _, externalIP := range externalIPs {
-		nat, err := ovnClient.newNat(lrName, "dnat_and_snat", externalIP, logicalIPs[0])
+		nat, err := ovnClient.newNat(lrName, "dnat_and_snat", externalIP, logicalIPs[0], "", "")
 		require.NoError(t, err)
 
 		nats = append(nats, nat)
@@ -201,12 +201,12 @@ func (suite *OvnClientTestSuite) testDeleteNat() {
 		nats := make([]*ovnnb.NAT, 0)
 
 		// create snat rule
-		nat, err := ovnClient.newNat(lrName, "snat", externalIP, logicalIP)
+		nat, err := ovnClient.newNat(lrName, "snat", externalIP, logicalIP, "", "")
 		require.NoError(t, err)
 		nats = append(nats, nat)
 
 		// create dnat_and_snat rule
-		nat, err = ovnClient.newNat(lrName, "dnat_and_snat", externalIP, logicalIP)
+		nat, err = ovnClient.newNat(lrName, "dnat_and_snat", externalIP, logicalIP, "", "")
 		require.NoError(t, err)
 		nats = append(nats, nat)
 
@@ -256,14 +256,14 @@ func (suite *OvnClientTestSuite) testDeleteNats() {
 		nats := make([]*ovnnb.NAT, 0)
 		// create two snat rule
 		for _, logicalIP := range logicalIPs {
-			nat, err := ovnClient.newNat(lrName, "snat", externalIPs[0], logicalIP)
+			nat, err := ovnClient.newNat(lrName, "snat", externalIPs[0], logicalIP, "", "")
 			require.NoError(t, err)
 			nats = append(nats, nat)
 		}
 
 		// create two dnat_and_snat rule
 		for _, externalIP := range externalIPs {
-			nat, err := ovnClient.newNat(lrName, "dnat_and_snat", externalIP, logicalIPs[0])
+			nat, err := ovnClient.newNat(lrName, "dnat_and_snat", externalIP, logicalIPs[0], "", "")
 			require.NoError(t, err)
 			nats = append(nats, nat)
 		}
@@ -387,7 +387,7 @@ func (suite *OvnClientTestSuite) testGetNat() {
 		externalIP := "192.168.30.254"
 		logicalIP := "10.250.0.4"
 
-		err := ovnClient.AddNat(lrName, natType, externalIP, logicalIP)
+		err := ovnClient.AddNat(lrName, natType, externalIP, logicalIP, "", "", nil)
 		require.NoError(t, err)
 
 		t.Run("found nat", func(t *testing.T) {
@@ -412,7 +412,7 @@ func (suite *OvnClientTestSuite) testGetNat() {
 		externalIP := "192.168.30.254"
 		logicalIP := "10.250.0.4"
 
-		err := ovnClient.AddNat(lrName, natType, externalIP, logicalIP)
+		err := ovnClient.AddNat(lrName, natType, externalIP, logicalIP, "", "", nil)
 		require.NoError(t, err)
 
 		t.Run("found nat", func(t *testing.T) {
@@ -449,7 +449,7 @@ func (suite *OvnClientTestSuite) test_newNat() {
 			LogicalIP:  logicalIP,
 		}
 
-		nat, err := ovnClient.newNat(lrName, natType, externalIP, logicalIP)
+		nat, err := ovnClient.newNat(lrName, natType, externalIP, logicalIP, "", "")
 		require.NoError(t, err)
 		expect.UUID = nat.UUID
 		require.Equal(t, expect, nat)
@@ -475,7 +475,7 @@ func (suite *OvnClientTestSuite) test_newNat() {
 			nat.ExternalMAC = &externalMac
 		}
 
-		nat, err := ovnClient.newNat(lrName, natType, externalIP, logicalIP, options)
+		nat, err := ovnClient.newNat(lrName, natType, externalIP, logicalIP, "", "", options)
 		require.NoError(t, err)
 		expect.UUID = nat.UUID
 		require.Equal(t, expect, nat)

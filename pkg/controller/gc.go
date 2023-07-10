@@ -119,11 +119,11 @@ func (c *Controller) gcLogicalSwitch() error {
 		klog.Errorf("failed to list subnet, %v", err)
 		return err
 	}
-	subnetNames := make([]string, 0, len(subnets))
+	subnetNames := strset.NewWithSize(len(subnets))
 	subnetMap := make(map[string]*kubeovnv1.Subnet, len(subnets))
 	for _, s := range subnets {
 		subnetMap[s.Name] = s
-		subnetNames = append(subnetNames, s.Name)
+		subnetNames.Add(s.Name)
 	}
 
 	lss, err := c.ovnClient.ListLogicalSwitch(c.config.EnableExternalVpc, nil)
@@ -152,21 +152,20 @@ func (c *Controller) gcLogicalSwitch() error {
 	}
 
 	klog.Infof("start to gc dhcp options")
-	dhcpOptions, err := c.ovnLegacyClient.ListDHCPOptions(c.config.EnableExternalVpc, "", "")
+	dhcpOptions, err := c.ovnClient.ListDHCPOptions(c.config.EnableExternalVpc, nil)
 	if err != nil {
 		klog.Errorf("failed to list dhcp options, %v", err)
 		return err
 	}
 	var uuidToDeleteList = []string{}
 	for _, item := range dhcpOptions {
-		ls := item.ExternalIds["ls"]
-		if !util.IsStringIn(ls, subnetNames) {
+		if len(item.ExternalIDs) == 0 || !subnetNames.Has(item.ExternalIDs["ls"]) {
 			uuidToDeleteList = append(uuidToDeleteList, item.UUID)
 		}
 	}
 	klog.Infof("gc dhcp options %v", uuidToDeleteList)
 	if len(uuidToDeleteList) > 0 {
-		if err = c.ovnLegacyClient.DeleteDHCPOptionsByUUIDs(uuidToDeleteList); err != nil {
+		if err = c.ovnClient.DeleteDHCPOptionsByUUIDs(uuidToDeleteList...); err != nil {
 			klog.Errorf("failed to delete dhcp options by uuids, %v", err)
 			return err
 		}
@@ -641,9 +640,12 @@ func (c *Controller) gcStaticRoute() error {
 			continue
 		}
 		if route.IPPrefix != "0.0.0.0/0" && route.IPPrefix != "::/0" && c.ipam.ContainAddress(route.IPPrefix) {
-			exist, err := c.ovnLegacyClient.NatRuleExists(route.IPPrefix)
-			if exist || err != nil {
+			exist, err := c.ovnClient.NatExists(c.config.ClusterRouter, "", "", route.IPPrefix)
+			if err != nil {
 				klog.Errorf("failed to get NatRule by LogicalIP %s, %v", route.IPPrefix, err)
+				continue
+			}
+			if exist {
 				continue
 			}
 			klog.Infof("gc static route %s %v %s %s", route.RouteTable, route.Policy, route.IPPrefix, route.Nexthop)

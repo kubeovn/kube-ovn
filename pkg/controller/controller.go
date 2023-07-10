@@ -310,7 +310,7 @@ func Run(ctx context.Context, config *Configuration) {
 		vpcs:              &sync.Map{},
 		podSubnetMap:      &sync.Map{},
 		deletingPodObjMap: &sync.Map{},
-		ovnLegacyClient:   ovs.NewLegacyClient(config.OvnNbAddr, config.OvnTimeout, config.OvnSbAddr, config.ClusterRouter, config.ClusterTcpLoadBalancer, config.ClusterUdpLoadBalancer, config.ClusterTcpSessionLoadBalancer, config.ClusterUdpSessionLoadBalancer, config.NodeSwitch, config.NodeSwitchCIDR),
+		ovnLegacyClient:   ovs.NewLegacyClient(config.OvnTimeout, config.OvnSbAddr, config.ClusterRouter, config.ClusterTcpLoadBalancer, config.ClusterUdpLoadBalancer, config.ClusterTcpSessionLoadBalancer, config.ClusterUdpSessionLoadBalancer, config.NodeSwitch, config.NodeSwitchCIDR),
 		ipam:              ovnipam.NewIPAM(),
 		namedPort:         NewNamedPort(),
 

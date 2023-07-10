@@ -1726,6 +1726,20 @@ func (m *MockNAT) EXPECT() *MockNATMockRecorder {
 	return m.recorder
 }
 
+// AddNat mocks base method.
+func (m *MockNAT) AddNat(lrName, natType, externalIP, logicalIP, logicalMac, port string, options map[string]string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AddNat", lrName, natType, externalIP, logicalIP, logicalMac, port, options)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// AddNat indicates an expected call of AddNat.
+func (mr *MockNATMockRecorder) AddNat(lrName, natType, externalIP, logicalIP, logicalMac, port, options interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddNat", reflect.TypeOf((*MockNAT)(nil).AddNat), lrName, natType, externalIP, logicalIP, logicalMac, port, options)
+}
+
 // DeleteNat mocks base method.
 func (m *MockNAT) DeleteNat(lrName, natType, externalIP, logicalIP string) error {
 	m.ctrl.T.Helper()
@@ -1752,6 +1766,21 @@ func (m *MockNAT) DeleteNats(lrName, natType, logicalIP string) error {
 func (mr *MockNATMockRecorder) DeleteNats(lrName, natType, logicalIP interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteNats", reflect.TypeOf((*MockNAT)(nil).DeleteNats), lrName, natType, logicalIP)
+}
+
+// GetNATByUUID mocks base method.
+func (m *MockNAT) GetNATByUUID(uuid string) (*ovnnb.NAT, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetNATByUUID", uuid)
+	ret0, _ := ret[0].(*ovnnb.NAT)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetNATByUUID indicates an expected call of GetNATByUUID.
+func (mr *MockNATMockRecorder) GetNATByUUID(uuid interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetNATByUUID", reflect.TypeOf((*MockNAT)(nil).GetNATByUUID), uuid)
 }
 
 // ListNats mocks base method.
@@ -1883,18 +1912,18 @@ func (mr *MockDHCPOptionsMockRecorder) ListDHCPOptions(needVendorFilter, externa
 }
 
 // UpdateDHCPOptions mocks base method.
-func (m *MockDHCPOptions) UpdateDHCPOptions(subnet *v1.Subnet) (*ovs.DHCPOptionsUUIDs, error) {
+func (m *MockDHCPOptions) UpdateDHCPOptions(subnet *v1.Subnet, mtu int) (*ovs.DHCPOptionsUUIDs, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateDHCPOptions", subnet)
+	ret := m.ctrl.Call(m, "UpdateDHCPOptions", subnet, mtu)
 	ret0, _ := ret[0].(*ovs.DHCPOptionsUUIDs)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // UpdateDHCPOptions indicates an expected call of UpdateDHCPOptions.
-func (mr *MockDHCPOptionsMockRecorder) UpdateDHCPOptions(subnet interface{}) *gomock.Call {
+func (mr *MockDHCPOptionsMockRecorder) UpdateDHCPOptions(subnet, mtu interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateDHCPOptions", reflect.TypeOf((*MockDHCPOptions)(nil).UpdateDHCPOptions), subnet)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateDHCPOptions", reflect.TypeOf((*MockDHCPOptions)(nil).UpdateDHCPOptions), subnet, mtu)
 }
 
 // MockOvnClient is a mock of OvnClient interface.
@@ -1951,6 +1980,20 @@ func (mr *MockOvnClientMockRecorder) AddLogicalRouterStaticRoute(lrName, routeTa
 	mr.mock.ctrl.T.Helper()
 	varargs := append([]interface{}{lrName, routeTable, policy, ipPrefix}, nexthops...)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddLogicalRouterStaticRoute", reflect.TypeOf((*MockOvnClient)(nil).AddLogicalRouterStaticRoute), varargs...)
+}
+
+// AddNat mocks base method.
+func (m *MockOvnClient) AddNat(lrName, natType, externalIP, logicalIP, logicalMac, port string, options map[string]string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AddNat", lrName, natType, externalIP, logicalIP, logicalMac, port, options)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// AddNat indicates an expected call of AddNat.
+func (mr *MockOvnClientMockRecorder) AddNat(lrName, natType, externalIP, logicalIP, logicalMac, port, options interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddNat", reflect.TypeOf((*MockOvnClient)(nil).AddNat), lrName, natType, externalIP, logicalIP, logicalMac, port, options)
 }
 
 // AddressSetUpdateAddress mocks base method.
@@ -2727,6 +2770,21 @@ func (mr *MockOvnClientMockRecorder) GetLogicalSwitchPort(lspName, ignoreNotFoun
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLogicalSwitchPort", reflect.TypeOf((*MockOvnClient)(nil).GetLogicalSwitchPort), lspName, ignoreNotFound)
 }
 
+// GetNATByUUID mocks base method.
+func (m *MockOvnClient) GetNATByUUID(uuid string) (*ovnnb.NAT, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetNATByUUID", uuid)
+	ret0, _ := ret[0].(*ovnnb.NAT)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetNATByUUID indicates an expected call of GetNATByUUID.
+func (mr *MockOvnClientMockRecorder) GetNATByUUID(uuid interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetNATByUUID", reflect.TypeOf((*MockOvnClient)(nil).GetNATByUUID), uuid)
+}
+
 // GetNbGlobal mocks base method.
 func (m *MockOvnClient) GetNbGlobal() (*ovnnb.NBGlobal, error) {
 	m.ctrl.T.Helper()
@@ -3440,18 +3498,18 @@ func (mr *MockOvnClientMockRecorder) Transact(method, operations interface{}) *g
 }
 
 // UpdateDHCPOptions mocks base method.
-func (m *MockOvnClient) UpdateDHCPOptions(subnet *v1.Subnet) (*ovs.DHCPOptionsUUIDs, error) {
+func (m *MockOvnClient) UpdateDHCPOptions(subnet *v1.Subnet, mtu int) (*ovs.DHCPOptionsUUIDs, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateDHCPOptions", subnet)
+	ret := m.ctrl.Call(m, "UpdateDHCPOptions", subnet, mtu)
 	ret0, _ := ret[0].(*ovs.DHCPOptionsUUIDs)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // UpdateDHCPOptions indicates an expected call of UpdateDHCPOptions.
-func (mr *MockOvnClientMockRecorder) UpdateDHCPOptions(subnet interface{}) *gomock.Call {
+func (mr *MockOvnClientMockRecorder) UpdateDHCPOptions(subnet, mtu interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateDHCPOptions", reflect.TypeOf((*MockOvnClient)(nil).UpdateDHCPOptions), subnet)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateDHCPOptions", reflect.TypeOf((*MockOvnClient)(nil).UpdateDHCPOptions), subnet, mtu)
 }
 
 // UpdateDnatAndSnat mocks base method.

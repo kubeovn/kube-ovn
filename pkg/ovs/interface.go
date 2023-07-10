@@ -142,6 +142,8 @@ type LogicalRouterPolicy interface {
 }
 
 type NAT interface {
+	GetNATByUUID(uuid string) (*ovnnb.NAT, error)
+	AddNat(lrName, natType, externalIP, logicalIP, logicalMac, port string, options map[string]string) error
 	UpdateSnat(lrName, externalIP, logicalIP string) error
 	UpdateDnatAndSnat(lrName, externalIP, logicalIP, lspName, externalMac, gatewayType string) error
 	DeleteNats(lrName, natType, logicalIP string) error
@@ -151,7 +153,7 @@ type NAT interface {
 }
 
 type DHCPOptions interface {
-	UpdateDHCPOptions(subnet *kubeovnv1.Subnet) (*DHCPOptionsUUIDs, error)
+	UpdateDHCPOptions(subnet *kubeovnv1.Subnet, mtu int) (*DHCPOptionsUUIDs, error)
 	DeleteDHCPOptions(lsName string, protocol string) error
 	DeleteDHCPOptionsByUUIDs(uuidList ...string) error
 	ListDHCPOptions(needVendorFilter bool, externalIDs map[string]string) ([]ovnnb.DHCPOptions, error)

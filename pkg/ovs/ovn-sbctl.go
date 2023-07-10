@@ -51,6 +51,21 @@ func (c LegacyClient) ovnSbCommand(cmdArgs ...string) (string, error) {
 	return trimCommandOutput(raw), nil
 }
 
+func (c LegacyClient) GetVersion() (string, error) {
+	if c.Version != "" {
+		return c.Version, nil
+	}
+	output, err := c.ovnSbCommand("--version")
+	if err != nil {
+		return "", fmt.Errorf("failed to get version,%v", err)
+	}
+	lines := strings.Split(output, "\n")
+	if len(lines) > 0 {
+		c.Version = strings.Fields(lines[0])[1]
+	}
+	return c.Version, nil
+}
+
 func (c LegacyClient) DeleteChassisByNode(node string) error {
 	chassis, err := c.GetChassis(node)
 	if err != nil {
