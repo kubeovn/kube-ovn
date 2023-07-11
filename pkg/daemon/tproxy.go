@@ -337,6 +337,7 @@ func probePortInNs(podIP, probePort string, transferHTTPMessage bool, conn net.C
 
 	podNS, err := ns.GetNS(podNs.(string))
 	if err != nil {
+		customVPCPodIPToNs.Delete(podIP)
 		klog.Errorf("Can't get ns %s with err: %v", podNs, err)
 		return
 	}
