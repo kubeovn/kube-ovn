@@ -54,7 +54,7 @@ ip6tables -t filter -D OUTPUT -p udp -m udp --dport 6081 -j MARK --set-xmark 0x0
 
 sleep 1
 
-ipset destroy ovn6subnets-nat
+ipset destroy ovn60subnets-nat
 ipset destroy ovn60subnets
 ipset destroy ovn60subnets-distributed-gw
 ipset destroy ovn60local-pod-ip-nat
