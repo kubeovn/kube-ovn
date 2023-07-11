@@ -187,9 +187,7 @@ var _ = framework.Describe("[group:pod]", func() {
 		_ = podClient.Create(pod)
 		time.Sleep(15 * time.Second)
 		pod = podClient.GetPod(podName)
-		if pod.Status.ContainerStatuses[0].Ready == true {
-			os.Exit(1)
-		}
+
 		framework.ExpectEqual(pod.Status.ContainerStatuses[0].Ready, false)
 		checkTProxyRules(f, pod, 81, true)
 		podClient.DeleteSync(podName)
@@ -253,14 +251,23 @@ func checkTProxyRules(f *framework.Framework, pod *corev1.Pod, probePort int, ex
 	tProxyOutputMarkMask := fmt.Sprintf("%#x/%#x", daemon.TProxyOutputMark, daemon.TProxyOutputMask)
 	tProxyPreRoutingMarkMask := fmt.Sprintf("%#x/%#x", daemon.TProxyPreroutingMark, daemon.TProxyPreroutingMask)
 
+	isZeroIP := false
+	if len(pod.Status.PodIPs) == 2 {
+		isZeroIP = true
+	}
+
 	for _, podIP := range pod.Status.PodIPs {
 		if util.CheckProtocol(podIP.IP) == apiv1.ProtocolIPv4 {
 			expectedRules := []string{
 				fmt.Sprintf(`-A OVN-OUTPUT -d %s/32 -p tcp -m tcp --dport %d -j MARK --set-xmark %s`, podIP.IP, probePort, tProxyOutputMarkMask),
 			}
 			iptables.CheckIptablesRulesOnNode(f, nodeName, daemon.MANGLE, daemon.OvnOutput, apiv1.ProtocolIPv4, expectedRules, exist)
+			hostIP := pod.Status.HostIP
+			if isZeroIP {
+				hostIP = "0.0.0.0"
+			}
 			expectedRules = []string{
-				fmt.Sprintf(`-A OVN-PREROUTING -d %s/32 -p tcp -m tcp --dport %d -j TPROXY --on-port %d --on-ip 0.0.0.0 --tproxy-mark %s`, podIP.IP, probePort, util.TProxyListenPort, tProxyPreRoutingMarkMask),
+				fmt.Sprintf(`-A OVN-PREROUTING -d %s/32 -p tcp -m tcp --dport %d -j TPROXY --on-port %d --on-ip %s --tproxy-mark %s`, podIP.IP, probePort, util.TProxyListenPort, hostIP, tProxyPreRoutingMarkMask),
 			}
 			iptables.CheckIptablesRulesOnNode(f, nodeName, daemon.MANGLE, daemon.OvnPrerouting, apiv1.ProtocolIPv4, expectedRules, exist)
 		} else if util.CheckProtocol(podIP.IP) == apiv1.ProtocolIPv6 {
@@ -268,8 +275,13 @@ func checkTProxyRules(f *framework.Framework, pod *corev1.Pod, probePort int, ex
 				fmt.Sprintf(`-A OVN-OUTPUT -d %s/128 -p tcp -m tcp --dport %d -j MARK --set-xmark %s`, podIP.IP, probePort, tProxyOutputMarkMask),
 			}
 			iptables.CheckIptablesRulesOnNode(f, nodeName, daemon.MANGLE, daemon.OvnOutput, apiv1.ProtocolIPv6, expectedRules, exist)
+
+			hostIP := pod.Status.HostIP
+			if isLocalHost {
+				hostIP = "::"
+			}
 			expectedRules = []string{
-				fmt.Sprintf(`-A OVN-PREROUTING -d %s/128 -p tcp -m tcp --dport %d -j TPROXY --on-port %d --on-ip :: --tproxy-mark %s`, podIP.IP, probePort, util.TProxyListenPort, tProxyPreRoutingMarkMask),
+				fmt.Sprintf(`-A OVN-PREROUTING -d %s/128 -p tcp -m tcp --dport %d -j TPROXY --on-port %d --on-ip %s --tproxy-mark %s`, podIP.IP, probePort, util.TProxyListenPort, hostIP, tProxyPreRoutingMarkMask),
 			}
 			iptables.CheckIptablesRulesOnNode(f, nodeName, daemon.MANGLE, daemon.OvnPrerouting, apiv1.ProtocolIPv6, expectedRules, exist)
 		}

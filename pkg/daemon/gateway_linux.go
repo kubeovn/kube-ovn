@@ -591,9 +591,11 @@ func (c *Controller) setIptables() error {
 		}
 	)
 	protocols := make([]string, 2)
+	isDual := false
 	if c.protocol == kubeovnv1.ProtocolDual {
 		protocols[0] = kubeovnv1.ProtocolIPv4
 		protocols[1] = kubeovnv1.ProtocolIPv6
+		isDual = true
 	} else {
 		protocols[0] = c.protocol
 	}
@@ -740,7 +742,7 @@ func (c *Controller) setIptables() error {
 			return err
 		}
 
-		if err = c.reconcileTProxyIPTableRules(protocol); err != nil {
+		if err = c.reconcileTProxyIPTableRules(protocol, isDual); err != nil {
 			return err
 		}
 
@@ -765,7 +767,7 @@ func (c *Controller) setIptables() error {
 	return nil
 }
 
-func (c *Controller) reconcileTProxyIPTableRules(protocol string) error {
+func (c *Controller) reconcileTProxyIPTableRules(protocol string, isDual bool) error {
 	if !c.config.EnableTProxy {
 		return nil
 	}
@@ -874,14 +876,22 @@ func (c *Controller) reconcileTProxyIPTableRules(protocol string) error {
 		for _, probePort := range probePorts {
 			tProxyOutputMarkMask := fmt.Sprintf("%#x/%#x", TProxyOutputMark, TProxyOutputMask)
 			tProxyPreRoutingMarkMask := fmt.Sprintf("%#x/%#x", TProxyPreroutingMark, TProxyPreroutingMask)
-			if protocol == kubeovnv1.ProtocolIPv4 {
-				tproxyOutputRules = append(tproxyOutputRules, util.IPTableRule{Table: MANGLE, Chain: OvnOutput, Rule: strings.Fields(fmt.Sprintf(`-d %s/32 -p tcp -m tcp --dport %s -j MARK --set-xmark %s`, podIP, probePort, tProxyOutputMarkMask))})
-				tproxyPreRoutingRules = append(tproxyPreRoutingRules, util.IPTableRule{Table: MANGLE, Chain: OvnPrerouting, Rule: strings.Fields(fmt.Sprintf(`-d %s/32 -p tcp -m tcp --dport %s -j TPROXY --on-port %d --on-ip 0.0.0.0 --tproxy-mark %s`, podIP, probePort, util.TProxyListenPort, tProxyPreRoutingMarkMask))})
-			}
+
+			hostIP := pod.Status.HostIP
+			prefixLen := 32
 			if protocol == kubeovnv1.ProtocolIPv6 {
-				tproxyOutputRules = append(tproxyOutputRules, util.IPTableRule{Table: MANGLE, Chain: OvnOutput, Rule: strings.Fields(fmt.Sprintf(`-d %s/128 -p tcp -m tcp --dport %s -j MARK --set-xmark %s`, podIP, probePort, tProxyOutputMarkMask))})
-				tproxyPreRoutingRules = append(tproxyPreRoutingRules, util.IPTableRule{Table: MANGLE, Chain: OvnPrerouting, Rule: strings.Fields(fmt.Sprintf(`-d %s/128 -p tcp -m tcp --dport %s -j TPROXY --on-port %d --on-ip :: --tproxy-mark %s`, podIP, probePort, util.TProxyListenPort, tProxyPreRoutingMarkMask))})
+				prefixLen = 128
 			}
+
+			if isDual || os.Getenv("ENABLE_BIND_LOCAL_IP") == "false" {
+				if protocol == kubeovnv1.ProtocolIPv4 {
+					hostIP = "0.0.0.0"
+				} else if protocol == kubeovnv1.ProtocolIPv6 {
+					hostIP = "::"
+				}
+			}
+			tproxyOutputRules = append(tproxyOutputRules, util.IPTableRule{Table: MANGLE, Chain: OvnOutput, Rule: strings.Fields(fmt.Sprintf(`-d %s/%d -p tcp -m tcp --dport %s -j MARK --set-xmark %s`, podIP, prefixLen, probePort, tProxyOutputMarkMask))})
+			tproxyPreRoutingRules = append(tproxyPreRoutingRules, util.IPTableRule{Table: MANGLE, Chain: OvnPrerouting, Rule: strings.Fields(fmt.Sprintf(`-d %s/%d -p tcp -m tcp --dport %s -j TPROXY --on-port %d --on-ip %s --tproxy-mark %s`, podIP, prefixLen, probePort, util.TProxyListenPort, hostIP, tProxyPreRoutingMarkMask))})
 		}
 	}
 

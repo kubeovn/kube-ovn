@@ -1,6 +1,6 @@
 package daemon
 
-func (c *Controller) StartTProxyForwarding(stopCh <-chan struct{}) {
+func (c *Controller) StartTProxyForwarding() {
 	return nil
 }
 
@@ -9,5 +9,9 @@ func (c *Controller) StartTProxyTCPPortProbe() {
 }
 
 func (c *Controller) runTProxyConfigWorker() {
+	return nil
+}
+
+func (c *Controller) cleanTProxyConfig() {
 	return nil
 }
