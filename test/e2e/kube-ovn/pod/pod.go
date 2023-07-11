@@ -2,6 +2,8 @@ package pod
 
 import (
 	"encoding/json"
+	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -11,10 +13,12 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/daemon"
 	"github.com/kubeovn/kube-ovn/pkg/request"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/iproute"
+	"github.com/kubeovn/kube-ovn/test/e2e/framework/iptables"
 )
 
 var _ = framework.Describe("[group:pod]", func() {
@@ -27,6 +31,7 @@ var _ = framework.Describe("[group:pod]", func() {
 	var namespaceName, subnetName, podName, vpcName string
 	var subnet *apiv1.Subnet
 	var cidr, image string
+	var extraSubnetNames []string
 
 	ginkgo.BeforeEach(func() {
 		cs = f.ClientSet
@@ -55,6 +60,12 @@ var _ = framework.Describe("[group:pod]", func() {
 		if vpcName != "" {
 			ginkgo.By("Deleting custom vpc " + vpcName)
 			vpcClient.DeleteSync(vpcName)
+		}
+
+		if len(extraSubnetNames) != 0 {
+			for _, subnetName := range extraSubnetNames {
+				subnetClient.DeleteSync(subnetName)
+			}
 		}
 	})
 
@@ -116,24 +127,29 @@ var _ = framework.Describe("[group:pod]", func() {
 	framework.ConformanceIt("should support http and tcp liveness probe and readiness probe in custom vpc pod ", func() {
 		f.SkipVersionPriorTo(1, 12, "This feature was introduced in v1.12")
 
+		custVPCSubnetName := "subnet-" + framework.RandomSuffix()
+		extraSubnetNames = append(extraSubnetNames, custVPCSubnetName)
+
 		ginkgo.By("Create Custom Vpc subnet Pod")
 		vpcName = "vpc-" + framework.RandomSuffix()
 		customVPC := framework.MakeVpc(vpcName, "", false, false, nil)
 		vpcClient.CreateSync(customVPC)
 
-		ginkgo.By("Creating subnet " + subnetName)
+		ginkgo.By("Creating subnet " + custVPCSubnetName)
 		cidr = framework.RandomCIDR(f.ClusterIpFamily)
-		subnet := framework.MakeSubnet(vpcName, "", cidr, "", vpcName, "", nil, nil, nil)
+		subnet := framework.MakeSubnet(custVPCSubnetName, "", cidr, "", vpcName, "", nil, nil, nil)
 		_ = subnetClient.CreateSync(subnet)
 
 		ginkgo.By("Creating pod with HTTP liveness and readiness probe that port is accessible " + podName)
-		pod := framework.MakePod(namespaceName, podName, nil, nil, framework.NginxImage, nil, nil)
+		pod := framework.MakePod(namespaceName, podName, nil, map[string]string{util.LogicalSwitchAnnotation: custVPCSubnetName}, framework.NginxImage, nil, nil)
+
 		pod.Spec.Containers[0].ReadinessProbe = &corev1.Probe{
 			ProbeHandler: corev1.ProbeHandler{
 				HTTPGet: &corev1.HTTPGetAction{
 					Port: intstr.FromInt(80),
 				},
 			},
+			InitialDelaySeconds: 15,
 		}
 		pod.Spec.Containers[0].LivenessProbe = &corev1.Probe{
 			ProbeHandler: corev1.ProbeHandler{
@@ -141,47 +157,52 @@ var _ = framework.Describe("[group:pod]", func() {
 					Port: intstr.FromInt(80),
 				},
 			},
+			InitialDelaySeconds: 15,
 		}
 
 		pod = podClient.CreateSync(pod)
-
 		framework.ExpectEqual(pod.Status.ContainerStatuses[0].Ready, true)
-
+		checkTProxyRules(f, pod, 80, true)
 		podClient.DeleteSync(podName)
 
 		ginkgo.By("Creating pod with HTTP liveness and readiness probe that port is not accessible  " + podName)
-		pod = framework.MakePod(namespaceName, podName, nil, nil, framework.NginxImage, nil, nil)
+		pod = framework.MakePod(namespaceName, podName, nil, map[string]string{util.LogicalSwitchAnnotation: custVPCSubnetName}, framework.NginxImage, nil, nil)
 		pod.Spec.Containers[0].ReadinessProbe = &corev1.Probe{
 			ProbeHandler: corev1.ProbeHandler{
-				TCPSocket: &corev1.TCPSocketAction{
+				HTTPGet: &corev1.HTTPGetAction{
 					Port: intstr.FromInt(81),
 				},
 			},
+			InitialDelaySeconds: 10,
 		}
 		pod.Spec.Containers[0].LivenessProbe = &corev1.Probe{
 			ProbeHandler: corev1.ProbeHandler{
-				TCPSocket: &corev1.TCPSocketAction{
+				HTTPGet: &corev1.HTTPGetAction{
 					Port: intstr.FromInt(81),
 				},
 			},
+			InitialDelaySeconds: 10,
 		}
 
 		_ = podClient.Create(pod)
-		time.Sleep(11 * time.Second)
-
+		time.Sleep(15 * time.Second)
 		pod = podClient.GetPod(podName)
+		if pod.Status.ContainerStatuses[0].Ready == true {
+			os.Exit(1)
+		}
 		framework.ExpectEqual(pod.Status.ContainerStatuses[0].Ready, false)
-
+		checkTProxyRules(f, pod, 81, true)
 		podClient.DeleteSync(podName)
 
 		ginkgo.By("Creating pod with TCP probe liveness and readiness probe that port is accessible " + podName)
-		pod = framework.MakePod(namespaceName, podName, nil, nil, framework.NginxImage, nil, nil)
+		pod = framework.MakePod(namespaceName, podName, nil, map[string]string{util.LogicalSwitchAnnotation: custVPCSubnetName}, framework.NginxImage, nil, nil)
 		pod.Spec.Containers[0].ReadinessProbe = &corev1.Probe{
 			ProbeHandler: corev1.ProbeHandler{
 				TCPSocket: &corev1.TCPSocketAction{
 					Port: intstr.FromInt(80),
 				},
 			},
+			InitialDelaySeconds: 15,
 		}
 		pod.Spec.Containers[0].LivenessProbe = &corev1.Probe{
 			ProbeHandler: corev1.ProbeHandler{
@@ -189,21 +210,24 @@ var _ = framework.Describe("[group:pod]", func() {
 					Port: intstr.FromInt(80),
 				},
 			},
+			InitialDelaySeconds: 15,
 		}
 
 		pod = podClient.CreateSync(pod)
 		framework.ExpectEqual(pod.Status.ContainerStatuses[0].Ready, true)
 
+		checkTProxyRules(f, pod, 80, true)
 		podClient.DeleteSync(podName)
 
 		ginkgo.By("Creating pod with TCP probe liveness and readiness probe that port is not accessible  " + podName)
-		pod = framework.MakePod(namespaceName, podName, nil, nil, framework.NginxImage, nil, nil)
+		pod = framework.MakePod(namespaceName, podName, nil, map[string]string{util.LogicalSwitchAnnotation: custVPCSubnetName}, framework.NginxImage, nil, nil)
 		pod.Spec.Containers[0].ReadinessProbe = &corev1.Probe{
 			ProbeHandler: corev1.ProbeHandler{
 				TCPSocket: &corev1.TCPSocketAction{
 					Port: intstr.FromInt(81),
 				},
 			},
+			InitialDelaySeconds: 10,
 		}
 		pod.Spec.Containers[0].LivenessProbe = &corev1.Probe{
 			ProbeHandler: corev1.ProbeHandler{
@@ -211,12 +235,43 @@ var _ = framework.Describe("[group:pod]", func() {
 					Port: intstr.FromInt(81),
 				},
 			},
+			InitialDelaySeconds: 10,
 		}
 
 		_ = podClient.Create(pod)
-		time.Sleep(11 * time.Second)
+		time.Sleep(15 * time.Second)
 
 		pod = podClient.GetPod(podName)
 		framework.ExpectEqual(pod.Status.ContainerStatuses[0].Ready, false)
+		checkTProxyRules(f, pod, 81, false)
 	})
 })
+
+func checkTProxyRules(f *framework.Framework, pod *corev1.Pod, probePort int, exist bool) {
+
+	nodeName := pod.Spec.NodeName
+	tProxyOutputMarkMask := fmt.Sprintf("%#x/%#x", daemon.TProxyOutputMark, daemon.TProxyOutputMask)
+	tProxyPreRoutingMarkMask := fmt.Sprintf("%#x/%#x", daemon.TProxyPreroutingMark, daemon.TProxyPreroutingMask)
+
+	for _, podIP := range pod.Status.PodIPs {
+		if util.CheckProtocol(podIP.IP) == apiv1.ProtocolIPv4 {
+			expectedRules := []string{
+				fmt.Sprintf(`-A OVN-OUTPUT -d %s/32 -p tcp -m tcp --dport %d -j MARK --set-xmark %s`, podIP.IP, probePort, tProxyOutputMarkMask),
+			}
+			iptables.CheckIptablesRulesOnNode(f, nodeName, daemon.MANGLE, daemon.OvnOutput, apiv1.ProtocolIPv4, expectedRules, exist)
+			expectedRules = []string{
+				fmt.Sprintf(`-A OVN-PREROUTING -d %s/32 -p tcp -m tcp --dport %d -j TPROXY --on-port %d --on-ip 0.0.0.0 --tproxy-mark %s`, podIP.IP, probePort, util.TProxyListenPort, tProxyPreRoutingMarkMask),
+			}
+			iptables.CheckIptablesRulesOnNode(f, nodeName, daemon.MANGLE, daemon.OvnPrerouting, apiv1.ProtocolIPv4, expectedRules, exist)
+		} else if util.CheckProtocol(podIP.IP) == apiv1.ProtocolIPv6 {
+			expectedRules := []string{
+				fmt.Sprintf(`-A OVN-OUTPUT -d %s/128 -p tcp -m tcp --dport %d -j MARK --set-xmark %s`, podIP.IP, probePort, tProxyOutputMarkMask),
+			}
+			iptables.CheckIptablesRulesOnNode(f, nodeName, daemon.MANGLE, daemon.OvnOutput, apiv1.ProtocolIPv6, expectedRules, exist)
+			expectedRules = []string{
+				fmt.Sprintf(`-A OVN-PREROUTING -d %s/128 -p tcp -m tcp --dport %d -j TPROXY --on-port %d --on-ip :: --tproxy-mark %s`, podIP.IP, probePort, util.TProxyListenPort, tProxyPreRoutingMarkMask),
+			}
+			iptables.CheckIptablesRulesOnNode(f, nodeName, daemon.MANGLE, daemon.OvnPrerouting, apiv1.ProtocolIPv6, expectedRules, exist)
+		}
+	}
+}

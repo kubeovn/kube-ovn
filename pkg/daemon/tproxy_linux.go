@@ -29,7 +29,7 @@ var (
 	customVPCPodTCPProbeIPPort sync.Map
 )
 
-func (c *Controller) StartTProxyForwarding(stopCh <-chan struct{}) {
+func (c *Controller) StartTProxyForwarding() {
 	var err error
 	addr := GetDefaultListenPort()
 
@@ -51,60 +51,67 @@ func (c *Controller) StartTProxyForwarding(stopCh <-chan struct{}) {
 		}
 	}()
 
-	go listenTCP()
-
-	<-stopCh
+	for {
+		conn, err := tcpListener.Accept()
+		if err != nil {
+			if netErr, ok := err.(net.Error); ok {
+				klog.Errorf("Temporary error while accepting connection: %s", netErr)
+			}
+			klog.Fatalf("Unrecoverable error while accepting connection: %s", err)
+			return
+		}
+		go handleRedirectFlow(conn)
+	}
 }
 
 func (c *Controller) StartTProxyTCPPortProbe() {
 
-	for {
-		var probePorts []string
-		pods, err := c.podsLister.List(labels.Everything())
+	probePorts := map[string]interface{}{}
+	pods, err := c.podsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list pods: %v", err)
+		return
+	}
+
+	if len(pods) == 0 {
+		return
+	}
+
+	for _, pod := range pods {
+		podName := pod.Name
+
+		if pod.Spec.NodeName != c.config.NodeName {
+			continue
+		}
+
+		subnetName, ok := pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, util.OvnProvider)]
+		if !ok {
+			continue
+		}
+
+		subnet, err := c.subnetsLister.Get(subnetName)
 		if err != nil {
-			klog.Errorf("failed to list pods: %v", err)
-			return
+			klog.Errorf("failed to get subnet '%s', err: %v", subnetName, err)
+			continue
 		}
 
-		if len(pods) == 0 {
-			return
+		if subnet.Spec.Vpc == c.config.ClusterRouter {
+			continue
 		}
 
-		for _, pod := range pods {
-			podName := pod.Name
-			subnetName, ok := pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, util.OvnProvider)]
-			if !ok {
-				continue
-			}
+		iface := ovs.PodNameToPortName(podName, pod.Namespace, util.OvnProvider)
+		nsName, err := ovs.GetInterfacePodNs(iface)
+		if err != nil || nsName == "" {
+			continue
+		}
 
-			podIP, ok := pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, util.OvnProvider)]
-			if !ok {
-				continue
-			}
-
-			subnet, err := c.subnetsLister.Get(subnetName)
-			if err != nil {
-				klog.Errorf("failed to get subnet '%s', err: %v", subnetName, err)
-				continue
-			}
-
-			if subnet.Spec.Vpc == c.config.ClusterRouter {
-				continue
-			}
-
-			iface := ovs.PodNameToPortName(podName, pod.Namespace, util.OvnProvider)
-			nsName, err := ovs.GetInterfacePodNs(iface)
-			if err != nil || nsName == "" {
-				continue
-			}
-
-			customVPCPodIPToNs.Store(podIP, nsName)
-
+		for _, podIP := range pod.Status.PodIPs {
+			customVPCPodIPToNs.Store(podIP.IP, nsName)
 			for _, container := range pod.Spec.Containers {
 				if container.ReadinessProbe != nil {
 					if tcpSocket := container.ReadinessProbe.TCPSocket; tcpSocket != nil {
 						if port := tcpSocket.Port.String(); port != "" {
-							probePorts = append(probePorts, port)
+							probePorts[port] = nil
 						}
 					}
 				}
@@ -112,14 +119,14 @@ func (c *Controller) StartTProxyTCPPortProbe() {
 				if container.LivenessProbe != nil {
 					if tcpSocket := container.LivenessProbe.TCPSocket; tcpSocket != nil {
 						if port := tcpSocket.Port.String(); port != "" {
-							probePorts = append(probePorts, port)
+							probePorts[port] = nil
 						}
 					}
 				}
 			}
 
-			for _, port := range probePorts {
-				probePortInNs(podIP, port, false, nil)
+			for port := range probePorts {
+				probePortInNs(podIP.IP, port, true, nil)
 			}
 		}
 	}
@@ -134,7 +141,7 @@ func (c *Controller) runTProxyConfigWorker() {
 
 func (c *Controller) reconcileTProxyRoutes(protocol string) {
 	family := getFamily(protocol)
-	if err := addRuleIfNotExist(family, TProxyPostroutingMark, TProxyPostroutingMask, util.TProxyRouteTable); err != nil {
+	if err := addRuleIfNotExist(family, TProxyOutputMark, TProxyOutputMask, util.TProxyRouteTable); err != nil {
 		return
 	}
 
@@ -142,7 +149,7 @@ func (c *Controller) reconcileTProxyRoutes(protocol string) {
 		return
 	}
 
-	dst := getDefaultRouteDst(protocol)
+	dst := GetDefaultRouteDst(protocol)
 	if err := addRouteIfNotExist(family, util.TProxyRouteTable, &dst); err != nil {
 		return
 	}
@@ -158,15 +165,15 @@ func (c *Controller) cleanTProxyConfig() {
 
 func (c *Controller) cleanTProxyRoutes(protocol string) {
 	family := getFamily(protocol)
-	if err := deleteRuleIfExists(family, TProxyPostroutingMark); err != nil {
-		klog.Errorf("delete tproxy route rule mark %v failed err: %v ", TProxyPostroutingMark, err)
+	if err := deleteRuleIfExists(family, TProxyOutputMark); err != nil {
+		klog.Errorf("delete tproxy route rule mark %v failed err: %v ", TProxyOutputMark, err)
 	}
 
 	if err := deleteRuleIfExists(family, TProxyPreroutingMark); err != nil {
 		klog.Errorf("delete tproxy route rule mark %v failed err: %v ", TProxyPreroutingMark, err)
 	}
 
-	dst := getDefaultRouteDst(protocol)
+	dst := GetDefaultRouteDst(protocol)
 	if err := delRouteIfExist(family, util.TProxyRouteTable, &dst); err != nil {
 		klog.Errorf("delete tproxy route rule mark %v failed err: %v ", TProxyPreroutingMark, err)
 	}
@@ -285,24 +292,9 @@ func delRouteIfExist(family, table int, dst *net.IPNet) error {
 	return nil
 }
 
-func listenTCP() {
-	for {
-		conn, err := tcpListener.Accept()
-		if err != nil {
-			if netErr, ok := err.(net.Error); ok {
-				klog.Errorf("Temporary error while accepting connection: %s", netErr)
-			}
-			klog.Fatalf("Unrecoverable error while accepting connection: %s", err)
-			return
-		}
-
-		go handleRedirectFlow(conn)
-	}
-}
-
 func handleRedirectFlow(conn net.Conn) {
 
-	klog.V(5).Info("Accepting TCP connection from %v with destination of %v", conn.RemoteAddr().String(), conn.LocalAddr().String())
+	klog.V(5).Infof("Accepting TCP connection from %v with destination of %v", conn.RemoteAddr().String(), conn.LocalAddr().String())
 
 	defer func() {
 		if err := conn.Close(); err != nil {
@@ -321,10 +313,10 @@ func handleRedirectFlow(conn net.Conn) {
 		probePort = ret[1]
 	}
 
-	probePortInNs(podIP, probePort, true, conn)
+	probePortInNs(podIP, probePort, false, conn)
 }
 
-func probePortInNs(podIP, probePort string, transferHTTPMessage bool, conn net.Conn) {
+func probePortInNs(podIP, probePort string, isTProxyProbe bool, conn net.Conn) {
 	podNs, ok := customVPCPodIPToNs.Load(podIP)
 	if !ok {
 		return
@@ -338,7 +330,7 @@ func probePortInNs(podIP, probePort string, transferHTTPMessage bool, conn net.C
 	podNS, err := ns.GetNS(podNs.(string))
 	if err != nil {
 		customVPCPodIPToNs.Delete(podIP)
-		klog.Errorf("Can't get ns %s with err: %v", podNs, err)
+		klog.Infof("ns %s already deleted", podNs)
 		return
 	}
 
@@ -362,12 +354,17 @@ func probePortInNs(podIP, probePort string, transferHTTPMessage bool, conn net.C
 			remotepodTcpAddr = net.TCPAddr{IP: net.ParseIP(podIP), Port: iprobePort}
 		}
 
-		remoteConn, err := goTProxy.DialTCP(&localpodTcpAddr, &remotepodTcpAddr, transferHTTPMessage)
+		remoteConn, err := goTProxy.DialTCP(&localpodTcpAddr, &remotepodTcpAddr, !isTProxyProbe)
 		if err != nil {
-			customVPCPodTCPProbeIPPort.Store(getIPPortString(podIP, probePort), false)
+			if isTProxyProbe {
+				customVPCPodTCPProbeIPPort.Store(getIPPortString(podIP, probePort), false)
+			}
 			return nil
-		} else {
+		}
+
+		if isTProxyProbe {
 			customVPCPodTCPProbeIPPort.Store(getIPPortString(podIP, probePort), true)
+			return nil
 		}
 
 		defer func() {
@@ -376,24 +373,21 @@ func probePortInNs(podIP, probePort string, transferHTTPMessage bool, conn net.C
 			}
 		}()
 
-		if transferHTTPMessage {
-			var streamWait sync.WaitGroup
-			streamWait.Add(2)
+		var streamWait sync.WaitGroup
+		streamWait.Add(2)
 
-			streamConn := func(dst io.Writer, src io.Reader) {
-				if _, err := io.Copy(dst, src); err != nil {
-					klog.Errorf("copy stream from dst %v to src %v failed err: %v ", dst, src, err)
-				}
-
-				streamWait.Done()
+		streamConn := func(dst io.Writer, src io.Reader) {
+			if _, err := io.Copy(dst, src); err != nil {
+				klog.Errorf("copy stream from dst %v to src %v failed err: %v ", dst, src, err)
 			}
 
-			go streamConn(remoteConn, conn)
-			go streamConn(conn, remoteConn)
-
-			streamWait.Wait()
-			return nil
+			streamWait.Done()
 		}
+
+		go streamConn(remoteConn, conn)
+		go streamConn(conn, remoteConn)
+
+		streamWait.Wait()
 		return nil
 	})
 }
@@ -413,7 +407,7 @@ func getProtocols(protocol string) []string {
 	return protocols
 }
 
-func getDefaultRouteDst(protocol string) net.IPNet {
+func GetDefaultRouteDst(protocol string) net.IPNet {
 	var dst net.IPNet
 	if protocol == kubeovnv1.ProtocolIPv4 {
 		dst = net.IPNet{

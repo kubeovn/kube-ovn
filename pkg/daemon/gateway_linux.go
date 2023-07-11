@@ -55,8 +55,8 @@ const (
 const (
 	OnOutGoingNatMark     = "0x90001/0x90001"
 	OnOutGoingForwardMark = "0x90002/0x90002"
-	TProxyPostroutingMark = 0x90003
-	TProxyPostroutingMask = 0x90003
+	TProxyOutputMark      = 0x90003
+	TProxyOutputMask      = 0x90003
 	TProxyPreroutingMark  = 0x90004
 	TProxyPreroutingMask  = 0x90004
 )
@@ -788,6 +788,7 @@ func (c *Controller) reconcileTProxyIPTableRules(protocol string) error {
 	sort.Strings(podNames)
 
 	for _, podName := range podNames {
+		podIP := ""
 		items := strings.Split(podName, "/")
 		nsName := items[0]
 		name := items[1]
@@ -797,12 +798,11 @@ func (c *Controller) reconcileTProxyIPTableRules(protocol string) error {
 			return err
 		}
 
-		subnetName, ok := pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, util.OvnProvider)]
-		if !ok {
+		if pod.Spec.NodeName != c.config.NodeName {
 			continue
 		}
 
-		podIP, ok := pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, util.OvnProvider)]
+		subnetName, ok := pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, util.OvnProvider)]
 		if !ok {
 			continue
 		}
@@ -817,6 +817,17 @@ func (c *Controller) reconcileTProxyIPTableRules(protocol string) error {
 			continue
 		}
 
+		for _, ip := range pod.Status.PodIPs {
+			if util.CheckProtocol(ip.IP) == protocol {
+				podIP = ip.IP
+				break
+			}
+		}
+
+		if podIP == "" {
+			continue
+		}
+
 		for _, container := range pod.Spec.Containers {
 			if container.ReadinessProbe != nil {
 				if httpGet := container.ReadinessProbe.HTTPGet; httpGet != nil {
@@ -827,7 +838,11 @@ func (c *Controller) reconcileTProxyIPTableRules(protocol string) error {
 
 				if tcpSocket := container.ReadinessProbe.TCPSocket; tcpSocket != nil {
 					if port := tcpSocket.Port.String(); port != "" {
-						probePorts = append(probePorts, port)
+						if isTCPProbePortReachable, ok := customVPCPodTCPProbeIPPort.Load(getIPPortString(podIP, port)); ok {
+							if isTCPProbePortReachable.(bool) {
+								probePorts = append(probePorts, port)
+							}
+						}
 					}
 				}
 			}
@@ -841,7 +856,11 @@ func (c *Controller) reconcileTProxyIPTableRules(protocol string) error {
 
 				if tcpSocket := container.LivenessProbe.TCPSocket; tcpSocket != nil {
 					if port := tcpSocket.Port.String(); port != "" {
-						probePorts = append(probePorts, port)
+						if isTCPProbePortReachable, ok := customVPCPodTCPProbeIPPort.Load(getIPPortString(podIP, port)); ok {
+							if isTCPProbePortReachable.(bool) {
+								probePorts = append(probePorts, port)
+							}
+						}
 					}
 				}
 			}
@@ -853,21 +872,15 @@ func (c *Controller) reconcileTProxyIPTableRules(protocol string) error {
 
 		probePorts = formatProbePorts(probePorts)
 		for _, probePort := range probePorts {
-			if isTCPProbePortReachable, ok := customVPCPodTCPProbeIPPort.Load(getIPPortString(podIP, probePort)); ok {
-				if !isTCPProbePortReachable.(bool) {
-					continue
-				}
-			}
-
-			tProxyPostroutingMarkMask := fmt.Sprintf("%#x/%#x", TProxyPostroutingMark, TProxyPostroutingMask)
+			tProxyOutputMarkMask := fmt.Sprintf("%#x/%#x", TProxyOutputMark, TProxyOutputMask)
 			tProxyPreRoutingMarkMask := fmt.Sprintf("%#x/%#x", TProxyPreroutingMark, TProxyPreroutingMask)
 			if protocol == kubeovnv1.ProtocolIPv4 {
-				tproxyOutputRules = append(tproxyOutputRules, util.IPTableRule{Table: MANGLE, Chain: OvnOutput, Rule: strings.Fields(fmt.Sprintf(`-d %s/32 -p tcp -m tcp --dport %s -j MARK --set-xmark %s`, podIP, probePort, tProxyPostroutingMarkMask))})
-				tproxyPreRoutingRules = append(tproxyPreRoutingRules, util.IPTableRule{Table: MANGLE, Chain: OvnPrerouting, Rule: strings.Fields(fmt.Sprintf(`-d %s/32 -p tcp -m tcp --dport %s -j TPROXY --on-port %d --on-ip %s --tproxy-mark %s`, podIP, probePort, util.TProxyListenPort, pod.Status.HostIP, tProxyPreRoutingMarkMask))})
+				tproxyOutputRules = append(tproxyOutputRules, util.IPTableRule{Table: MANGLE, Chain: OvnOutput, Rule: strings.Fields(fmt.Sprintf(`-d %s/32 -p tcp -m tcp --dport %s -j MARK --set-xmark %s`, podIP, probePort, tProxyOutputMarkMask))})
+				tproxyPreRoutingRules = append(tproxyPreRoutingRules, util.IPTableRule{Table: MANGLE, Chain: OvnPrerouting, Rule: strings.Fields(fmt.Sprintf(`-d %s/32 -p tcp -m tcp --dport %s -j TPROXY --on-port %d --on-ip 0.0.0.0 --tproxy-mark %s`, podIP, probePort, util.TProxyListenPort, tProxyPreRoutingMarkMask))})
 			}
 			if protocol == kubeovnv1.ProtocolIPv6 {
-				tproxyOutputRules = append(tproxyOutputRules, util.IPTableRule{Table: MANGLE, Chain: OvnOutput, Rule: strings.Fields(fmt.Sprintf(`-d %s/128 -p tcp -m tcp --dport %s -j MARK --set-xmark %s`, podIP, probePort, tProxyPostroutingMarkMask))})
-				tproxyPreRoutingRules = append(tproxyPreRoutingRules, util.IPTableRule{Table: MANGLE, Chain: OvnPrerouting, Rule: strings.Fields(fmt.Sprintf(`-d %s/128 -p tcp -m tcp --dport %s -j TPROXY --on-port %d --on-ip %s --tproxy-mark %s`, podIP, probePort, util.TProxyListenPort, pod.Status.HostIP, tProxyPreRoutingMarkMask))})
+				tproxyOutputRules = append(tproxyOutputRules, util.IPTableRule{Table: MANGLE, Chain: OvnOutput, Rule: strings.Fields(fmt.Sprintf(`-d %s/128 -p tcp -m tcp --dport %s -j MARK --set-xmark %s`, podIP, probePort, tProxyOutputMarkMask))})
+				tproxyPreRoutingRules = append(tproxyPreRoutingRules, util.IPTableRule{Table: MANGLE, Chain: OvnPrerouting, Rule: strings.Fields(fmt.Sprintf(`-d %s/128 -p tcp -m tcp --dport %s -j TPROXY --on-port %d --on-ip :: --tproxy-mark %s`, podIP, probePort, util.TProxyListenPort, tProxyPreRoutingMarkMask))})
 			}
 		}
 	}
@@ -893,7 +906,7 @@ func (c *Controller) cleanTProxyIPTableRules(protocol string) {
 			return
 		}
 		for _, rule := range rules {
-			if !strings.Contains(rule, fmt.Sprintf("%#x", TProxyPostroutingMark)) &&
+			if !strings.Contains(rule, fmt.Sprintf("%#x", TProxyOutputMark)) &&
 				!strings.Contains(rule, fmt.Sprintf("%#x", TProxyPreroutingMark)) {
 				continue
 			}
