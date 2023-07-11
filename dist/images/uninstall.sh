@@ -69,7 +69,7 @@ fi
 
 sleep 1
 
-ipset destroy ovn6subnets-nat
+ipset destroy ovn60subnets-nat
 ipset destroy ovn60subnets
 ipset destroy ovn60local-pod-ip-nat
 ipset destroy ovn60other-node
