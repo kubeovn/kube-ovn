@@ -256,5 +256,5 @@ const (
 	NatPolicyRuleIDLength      = 12
 
 	TProxyListenPort = 8102
-	TProxyRouteTable = 100
+	TProxyRouteTable = 10001
 )
