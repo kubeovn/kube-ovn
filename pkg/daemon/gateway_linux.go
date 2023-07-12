@@ -775,50 +775,15 @@ func (c *Controller) reconcileTProxyIPTableRules(protocol string, isDual bool) e
 	ipt := c.iptables[protocol]
 	tproxyPreRoutingRules := make([]util.IPTableRule, 0)
 	tproxyOutputRules := make([]util.IPTableRule, 0)
-	var probePorts, podNames []string
+	var probePorts []string
 
-	pods, err := c.podsLister.List(labels.Everything())
+	pods, err := c.getTProxyConditionPod(true)
 	if err != nil {
-		klog.Errorf("list pods failed, %v", err)
 		return err
 	}
 
 	for _, pod := range pods {
-		podNames = append(podNames, pod.Namespace+"/"+pod.Name)
-	}
-
-	sort.Strings(podNames)
-
-	for _, podName := range podNames {
-		podIP := ""
-		items := strings.Split(podName, "/")
-		nsName := items[0]
-		name := items[1]
-		pod, err := c.podsLister.Pods(nsName).Get(name)
-		if err != nil {
-			klog.Errorf("get pod %s/%s failed, %v", nsName, name, err)
-			return err
-		}
-
-		if pod.Spec.NodeName != c.config.NodeName {
-			continue
-		}
-
-		subnetName, ok := pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, util.OvnProvider)]
-		if !ok {
-			continue
-		}
-
-		subnet, err := c.subnetsLister.Get(subnetName)
-		if err != nil {
-			err = fmt.Errorf("failed to get subnet '%s', err: %v", subnetName, err)
-			return err
-		}
-
-		if subnet.Spec.Vpc == c.config.ClusterRouter {
-			continue
-		}
-
+		var podIP string
 		for _, ip := range pod.Status.PodIPs {
 			if util.CheckProtocol(ip.IP) == protocol {
 				podIP = ip.IP

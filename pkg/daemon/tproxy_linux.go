@@ -13,7 +13,6 @@ import (
 	"github.com/containernetworking/plugins/pkg/ns"
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog/v2"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -64,36 +63,13 @@ func (c *Controller) StartTProxyForwarding() {
 func (c *Controller) StartTProxyTCPPortProbe() {
 
 	probePorts := map[string]interface{}{}
-	pods, err := c.podsLister.List(labels.Everything())
-	if err != nil {
-		klog.Errorf("failed to list pods: %v", err)
-		return
-	}
 
-	if len(pods) == 0 {
+	pods, err := c.getTProxyConditionPod(false)
+	if err != nil {
 		return
 	}
 
 	for _, pod := range pods {
-		if pod.Spec.NodeName != c.config.NodeName {
-			continue
-		}
-
-		subnetName, ok := pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, util.OvnProvider)]
-		if !ok {
-			continue
-		}
-
-		subnet, err := c.subnetsLister.Get(subnetName)
-		if err != nil {
-			klog.Errorf("failed to get subnet '%s', err: %v", subnetName, err)
-			continue
-		}
-
-		if subnet.Spec.Vpc == c.config.ClusterRouter {
-			continue
-		}
-
 		iface := ovs.PodNameToPortName(pod.Name, pod.Namespace, util.OvnProvider)
 		nsName, err := ovs.GetInterfacePodNs(iface)
 		if err != nil || nsName == "" {
