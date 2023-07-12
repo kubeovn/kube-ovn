@@ -1788,6 +1788,7 @@ func (c *Controller) getNameByPod(pod *v1.Pod) string {
 	return pod.Name
 }
 
+// When subnet's v4availableIPs is 0 but still there's available ip in exclude-ips, the static ip in exclude-ips can be allocated normal.
 func (c *Controller) getNsAvailableSubnets(pod *v1.Pod, podNet *kubeovnNet) ([]*kubeovnNet, error) {
 	var result []*kubeovnNet
 	// keep the annotation subnet of the pod in first position
@@ -1811,19 +1812,6 @@ func (c *Controller) getNsAvailableSubnets(pod *v1.Pod, podNet *kubeovnNet) ([]*
 		if err != nil {
 			klog.Errorf("failed to get subnet %v", err)
 			return nil, err
-		}
-
-		switch subnet.Spec.Protocol {
-		case kubeovnv1.ProtocolIPv4:
-			fallthrough
-		case kubeovnv1.ProtocolDual:
-			if subnet.Status.V4AvailableIPs == 0 {
-				continue
-			}
-		case kubeovnv1.ProtocolIPv6:
-			if subnet.Status.V6AvailableIPs == 0 {
-				continue
-			}
 		}
 
 		result = append(result, &kubeovnNet{
