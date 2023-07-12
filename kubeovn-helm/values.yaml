@@ -57,7 +57,7 @@ ipv4:
   SVC_CIDR: "10.96.0.0/12"
   JOIN_CIDR: "100.64.0.0/16"
   PINGER_EXTERNAL_ADDRESS: "114.114.114.114"
-  PINGER_EXTERNAL_DOMAIN: "alauda.cn"
+  PINGER_EXTERNAL_DOMAIN: "alauda.cn."
 
 ipv6:
   POD_CIDR: "fd00:10:16::/64"
@@ -65,7 +65,7 @@ ipv6:
   SVC_CIDR: "fd00:10:96::/112"
   JOIN_CIDR: "fd00:100:64::/64"
   PINGER_EXTERNAL_ADDRESS: "2400:3200::1"
-  PINGER_EXTERNAL_DOMAIN: "google.com"
+  PINGER_EXTERNAL_DOMAIN: "google.com."
 
 dual_stack:
   POD_CIDR: "10.16.0.0/16,fd00:10:16::/64"
@@ -73,7 +73,7 @@ dual_stack:
   SVC_CIDR: "10.96.0.0/12,fd00:10:96::/112"
   JOIN_CIDR: "100.64.0.0/16,fd00:100:64::/64"
   PINGER_EXTERNAL_ADDRESS: "114.114.114.114,2400:3200::1"
-  PINGER_EXTERNAL_DOMAIN: "google.com"
+  PINGER_EXTERNAL_DOMAIN: "google.com."
 
 performance:
   MODULES: "kube_ovn_fastpath.ko"

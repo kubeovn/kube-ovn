@@ -266,7 +266,7 @@ spec:
           command:
             - /kube-ovn/kube-ovn-pinger
             - --external-address=2400:3200::1
-            - --external-dns=alauda.cn
+            - --external-dns=google.com.
           imagePullPolicy: IfNotPresent
           securityContext:
             runAsUser: 0
