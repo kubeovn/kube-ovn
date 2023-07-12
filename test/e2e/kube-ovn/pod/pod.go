@@ -3,7 +3,6 @@ package pod
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -277,7 +276,7 @@ func checkTProxyRules(f *framework.Framework, pod *corev1.Pod, probePort int, ex
 			iptables.CheckIptablesRulesOnNode(f, nodeName, daemon.MANGLE, daemon.OvnOutput, apiv1.ProtocolIPv6, expectedRules, exist)
 
 			hostIP := pod.Status.HostIP
-			if isLocalHost {
+			if isZeroIP {
 				hostIP = "::"
 			}
 			expectedRules = []string{
