@@ -364,7 +364,7 @@ spec:
             - /kube-ovn/kube-ovn-pinger
           args:
             - --external-address=114.114.114.114
-            - --external-dns=alauda.cn
+            - --external-dns=alauda.cn.
             - --logtostderr=false
             - --alsologtostderr=true
             - --log_file=/var/log/kube-ovn/kube-ovn-pinger.log
