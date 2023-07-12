@@ -54,9 +54,6 @@ func (c *Controller) StartTProxyForwarding() {
 	for {
 		conn, err := tcpListener.Accept()
 		if err != nil {
-			if netErr, ok := err.(net.Error); ok {
-				klog.Errorf("Temporary error while accepting connection: %s", netErr)
-			}
 			klog.Fatalf("Unrecoverable error while accepting connection: %s", err)
 			return
 		}
@@ -78,8 +75,6 @@ func (c *Controller) StartTProxyTCPPortProbe() {
 	}
 
 	for _, pod := range pods {
-		podName := pod.Name
-
 		if pod.Spec.NodeName != c.config.NodeName {
 			continue
 		}
@@ -99,7 +94,7 @@ func (c *Controller) StartTProxyTCPPortProbe() {
 			continue
 		}
 
-		iface := ovs.PodNameToPortName(podName, pod.Namespace, util.OvnProvider)
+		iface := ovs.PodNameToPortName(pod.Name, pod.Namespace, util.OvnProvider)
 		nsName, err := ovs.GetInterfacePodNs(iface)
 		if err != nil || nsName == "" {
 			continue
@@ -295,7 +290,6 @@ func delRouteIfExist(family, table int, dst *net.IPNet) error {
 func handleRedirectFlow(conn net.Conn) {
 
 	klog.V(5).Infof("Accepting TCP connection from %v with destination of %v", conn.RemoteAddr().String(), conn.LocalAddr().String())
-
 	defer func() {
 		if err := conn.Close(); err != nil {
 			klog.Errorf("conn Close err: %v ", err)
@@ -334,25 +328,10 @@ func probePortInNs(podIP, probePort string, isTProxyProbe bool, conn net.Conn) {
 		return
 	}
 
-	protocol := util.CheckProtocol(podIP)
-
 	_ = ns.WithNetNSPath(podNS.Path(), func(_ ns.NetNS) error {
 		// Packet 's src and dst IP are both PodIP in netns
-		var localpodTcpAddr, remotepodTcpAddr net.TCPAddr
-		if protocol == kubeovnv1.ProtocolIPv6 {
-			link, err := netlink.LinkByName("lo")
-			if err != nil {
-				klog.Error("can't find device lo")
-				return err
-			}
-
-			ifIndex := fmt.Sprintf("%d", link.Attrs().Index)
-			localpodTcpAddr = net.TCPAddr{IP: net.ParseIP(podIP), Zone: ifIndex}
-			remotepodTcpAddr = net.TCPAddr{IP: net.ParseIP(podIP), Port: iprobePort, Zone: ifIndex}
-		} else {
-			localpodTcpAddr = net.TCPAddr{IP: net.ParseIP(podIP)}
-			remotepodTcpAddr = net.TCPAddr{IP: net.ParseIP(podIP), Port: iprobePort}
-		}
+		localpodTcpAddr := net.TCPAddr{IP: net.ParseIP(podIP)}
+		remotepodTcpAddr := net.TCPAddr{IP: net.ParseIP(podIP), Port: iprobePort}
 
 		remoteConn, err := goTProxy.DialTCP(&localpodTcpAddr, &remotepodTcpAddr, !isTProxyProbe)
 		if err != nil {

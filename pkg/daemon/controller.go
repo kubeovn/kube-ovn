@@ -632,7 +632,6 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 		// so tproxy itself probes the pod of the custom VPC, if probe failed remove the iptable rules from
 		// kubelet to tproxy, if probe success recover the iptable rules
 		go wait.Until(c.StartTProxyTCPPortProbe, 1*time.Second, stopCh)
-
 	} else {
 		c.cleanTProxyConfig()
 	}
