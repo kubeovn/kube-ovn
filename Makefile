@@ -53,6 +53,11 @@ SUBMARINER_LIGHTHOUSE_COREDNS = quay.io/submariner/lighthouse-coredns:$(SUBMARIN
 SUBMARINER_ROUTE_AGENT = quay.io/submariner/submariner-route-agent:$(SUBMARINER_VERSION)
 SUBMARINER_NETTEST = quay.io/submariner/nettest:$(SUBMARINER_VERSION)
 
+DEEPFLOW_CHART_VERSION = 6.2.6
+DEEPFLOW_CHART_REPO = https://deepflow-ce.oss-cn-beijing.aliyuncs.com/chart/stable
+DEEPFLOW_IMAGE_REPO = registry.cn-beijing.aliyuncs.com/deepflow-ce
+DEEPFLOW_GRAFANA_PORT = 30080
+
 VPC_NAT_GW_IMG = $(REGISTRY)/vpc-nat-gateway:$(VERSION)
 
 E2E_NETWORK = bridge
@@ -245,8 +250,10 @@ endef
 
 define kind_create_cluster
 	kind create cluster --config $(1) --name $(2)
-	kubectl delete --ignore-not-found sc standard
-	kubectl delete --ignore-not-found -n local-path-storage deploy local-path-provisioner
+	@if [ "x$(3)" = "x1" ]; then \
+		kubectl delete --ignore-not-found sc standard; \
+		kubectl delete --ignore-not-found -n local-path-storage deploy local-path-provisioner; \
+	fi
 	kubectl describe no
 endef
 
@@ -317,7 +324,7 @@ kind-enable-hairpin:
 
 .PHONY: kind-create
 kind-create:
-	$(call kind_create_cluster,yamls/kind.yaml,kube-ovn)
+	$(call kind_create_cluster,yamls/kind.yaml,kube-ovn,1)
 
 .PHONY: kind-init
 kind-init: kind-init-ipv4
@@ -333,22 +340,27 @@ kind-init-ovn-ic: kind-init-ovn-ic-ipv4
 .PHONY: kind-init-ovn-ic-ipv4
 kind-init-ovn-ic-ipv4: kind-clean-ovn-ic kind-init
 	@$(MAKE) kind-generate-config
-	$(call kind_create_cluster,yamls/kind.yaml,kube-ovn1)
+	$(call kind_create_cluster,yamls/kind.yaml,kube-ovn1,1)
 
 .PHONY: kind-init-ovn-ic-ipv6
 kind-init-ovn-ic-ipv6: kind-clean-ovn-ic kind-init-ipv6
 	@ip_family=ipv6 $(MAKE) kind-generate-config
-	$(call kind_create_cluster,yamls/kind.yaml,kube-ovn1)
+	$(call kind_create_cluster,yamls/kind.yaml,kube-ovn1,1)
 
 .PHONY: kind-init-ovn-ic-dual
 kind-init-ovn-ic-dual: kind-clean-ovn-ic kind-init-dual
 	@ip_family=dual $(MAKE) kind-generate-config
-	$(call kind_create_cluster,yamls/kind.yaml,kube-ovn1)
+	$(call kind_create_cluster,yamls/kind.yaml,kube-ovn1,1)
 
 .PHONY: kind-init-ovn-submariner
 kind-init-ovn-submariner: kind-clean-ovn-submariner kind-init
 	@pod_cidr_v4=10.18.0.0/16 svc_cidr_v4=10.112.0.0/12 $(MAKE) kind-generate-config
-	$(call kind_create_cluster,yamls/kind.yaml,kube-ovn1)
+	$(call kind_create_cluster,yamls/kind.yaml,kube-ovn1,1)
+
+.PHONY: kind-init-deepflow
+kind-init-deepflow: kind-clean
+	@port_mapping=$(DEEPFLOW_GRAFANA_PORT):$(DEEPFLOW_GRAFANA_PORT) $(MAKE) kind-generate-config
+	$(call kind_create_cluster,yamls/kind.yaml,kube-ovn,0)
 
 .PHONY: kind-init-iptables
 kind-init-iptables:
@@ -510,7 +522,7 @@ kind-install-ovn-ic-dual: kind-install-dual
 	sed -e 's/10.16.0/10.18.0/g' \
 		-e 's/10.96.0/10.98.0/g' \
 		-e 's/100.64.0/100.68.0/g' \
-	    -e 's/fd00:10:16:/fd00:10:18:/g' \
+		-e 's/fd00:10:16:/fd00:10:18:/g' \
 		-e 's/fd00:10:96:/fd00:10:98:/g' \
 		-e 's/fd00:100:64:/fd00:100:68:/g' \
 		-e 's/VERSION=.*/VERSION=$(VERSION)/' \
@@ -744,6 +756,22 @@ kind-install-cilium-chaining: kind-load-image kind-untaint-control-plane
 	sed 's/VERSION=.*/VERSION=$(VERSION)/' dist/images/install.sh | \
 		ENABLE_LB=false ENABLE_NP=false CNI_CONFIG_PRIORITY=10 bash
 	kubectl describe no
+
+.PHONY: kind-install-deepflow
+kind-install-deepflow:
+	helm repo add deepflow $(DEEPFLOW_CHART_REPO)
+	helm repo update deepflow
+	$(eval CLICKHOUSE_PERSISTENCE = $(shell helm show values --version $(DEEPFLOW_CHART_VERSION) --jsonpath '{.clickhouse.storageConfig.persistence}' deepflow/deepflow | sed 's/0Gi/Gi/g'))
+	helm install deepflow -n deepflow deepflow/deepflow \
+		--create-namespace --version $(DEEPFLOW_CHART_VERSION) \
+		--set global.image.repository=$(DEEPFLOW_IMAGE_REPO) \
+		--set grafana.image.repository=$(DEEPFLOW_IMAGE_REPO)/grafana \
+		--set deepflow-agent.sysctlInitContainer.enabled=false \
+		--set 'mysql.storageConfig.persistence.size=5Gi' \
+		--set-json 'clickhouse.storageConfig.persistence=$(CLICKHOUSE_PERSISTENCE)'
+	kubectl -n deepflow patch svc deepflow-grafana --type=json \
+		-p '[{"op": "replace", "path": "/spec/ports/0/nodePort", "value": $(DEEPFLOW_GRAFANA_PORT)}]'
+	echo -e "\nGrafana URL: http://127.0.0.1:$(DEEPFLOW_GRAFANA_PORT)\nGrafana auth: admin:deepflow\n"
 
 .PHONY: kind-reload
 kind-reload: kind-reload-ovs
