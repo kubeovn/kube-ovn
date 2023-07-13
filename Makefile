@@ -58,6 +58,9 @@ DEEPFLOW_CHART_REPO = https://deepflow-ce.oss-cn-beijing.aliyuncs.com/chart/stab
 DEEPFLOW_IMAGE_REPO = registry.cn-beijing.aliyuncs.com/deepflow-ce
 DEEPFLOW_GRAFANA_PORT = 30080
 
+KWOK_VERSION = v0.3.0
+KWOK_IMAGE = registry.k8s.io/kwok/kwok:$(KWOK_VERSION)
+
 VPC_NAT_GW_IMG = $(REGISTRY)/vpc-nat-gateway:$(VERSION)
 
 E2E_NETWORK = bridge
@@ -271,6 +274,10 @@ define kind_load_submariner_images
 	$(call kind_load_image,$(1),$(SUBMARINER_LIGHTHOUSE_COREDNS),1)
 	$(call kind_load_image,$(1),$(SUBMARINER_ROUTE_AGENT),1)
 	$(call kind_load_image,$(1),$(SUBMARINER_NETTEST),1)
+endef
+
+define kind_load_kwok_image
+	$(call kind_load_image,$(1),$(KWOK_IMAGE),1)
 endef
 
 define kubectl_wait_exist_and_ready
@@ -773,6 +780,21 @@ kind-install-deepflow:
 		-p '[{"op": "replace", "path": "/spec/ports/0/nodePort", "value": $(DEEPFLOW_GRAFANA_PORT)}]'
 	echo -e "\nGrafana URL: http://127.0.0.1:$(DEEPFLOW_GRAFANA_PORT)\nGrafana auth: admin:deepflow\n"
 
+.PHONY: kind-install-kwok
+kind-install-kwok:
+	kwok_version=$(KWOK_VERSION) j2 yamls/kwok-kustomization.yaml.j2 -o kustomization.yaml
+	kubectl kustomize ./ > kwok.yaml
+	$(call kind_load_kwok_image,kube-ovn)
+	kubectl apply -f kwok.yaml
+	kubectl -n kube-system rollout status deploy kwok-controller --timeout 60s
+
+.PHONY: kind-add-kwok-node
+kind-add-kwok-node:
+	for i in {1..20}; do \
+		kwok_node_name=fake-node-$$i j2 yamls/kwok-node.yaml.j2 -o kwok-node.yaml; \
+		kubectl apply -f kwok-node.yaml; \
+	done
+
 .PHONY: kind-reload
 kind-reload: kind-reload-ovs
 	kubectl delete pod -n kube-system -l app=kube-ovn-controller
@@ -837,6 +859,7 @@ clean:
 	$(RM) yamls/kind.yaml
 	$(RM) ovn.yaml kube-ovn.yaml kube-ovn-crd.yaml
 	$(RM) ovn-ic-0.yaml ovn-ic-1.yaml
+	$(RM) kustomization.yaml kwok.yaml kwok-node.yaml
 	$(RM) kube-ovn.tar vpc-nat-gateway.tar image-amd64.tar image-arm64.tar
 
 .PHONY: changelog
