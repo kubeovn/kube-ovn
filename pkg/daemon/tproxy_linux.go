@@ -273,14 +273,10 @@ func handleRedirectFlow(conn net.Conn) {
 	}()
 
 	podIPPort := conn.LocalAddr().String()
-	var podIP, probePort string
-	if strings.HasPrefix(podIPPort, "[") {
-		podIP = podIPPort[1:strings.Index(podIPPort, "]")]
-		probePort = podIPPort[strings.Index(podIPPort, "]:")+2:]
-	} else {
-		ret := strings.Split(podIPPort, ":")
-		podIP = ret[0]
-		probePort = ret[1]
+	podIP, probePort, err := net.SplitHostPort(podIPPort)
+	if err != nil {
+		klog.Errorf("Get %s Pod IP and Port failed err: %v", podIPPort, err)
+		return
 	}
 
 	probePortInNs(podIP, probePort, false, conn)

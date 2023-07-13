@@ -430,7 +430,7 @@ kind-upgrade-chart: kind-load-image
 kind-install: kind-load-image
 	kubectl config use-context kind-kube-ovn
 	@$(MAKE) kind-untaint-control-plane
-	sed 's/VERSION=.*/VERSION=$(VERSION)/' dist/images/install.sh | bash
+	sed 's/VERSION=.*/VERSION=$(VERSION)/' dist/images/install.sh | ENABLE_TPROXY=true bash
 	kubectl describe no
 
 .PHONY: kind-install-dev

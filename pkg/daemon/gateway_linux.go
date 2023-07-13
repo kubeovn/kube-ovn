@@ -775,7 +775,7 @@ func (c *Controller) reconcileTProxyIPTableRules(protocol string, isDual bool) e
 	ipt := c.iptables[protocol]
 	tproxyPreRoutingRules := make([]util.IPTableRule, 0)
 	tproxyOutputRules := make([]util.IPTableRule, 0)
-	var probePorts []string
+	var probePorts strset.Set
 
 	pods, err := c.getTProxyConditionPod(true)
 	if err != nil {
@@ -799,7 +799,7 @@ func (c *Controller) reconcileTProxyIPTableRules(protocol string, isDual bool) e
 			if container.ReadinessProbe != nil {
 				if httpGet := container.ReadinessProbe.HTTPGet; httpGet != nil {
 					if port := httpGet.Port.String(); port != "" {
-						probePorts = append(probePorts, port)
+						probePorts.Add(port)
 					}
 				}
 
@@ -807,7 +807,7 @@ func (c *Controller) reconcileTProxyIPTableRules(protocol string, isDual bool) e
 					if port := tcpSocket.Port.String(); port != "" {
 						if isTCPProbePortReachable, ok := customVPCPodTCPProbeIPPort.Load(getIPPortString(podIP, port)); ok {
 							if isTCPProbePortReachable.(bool) {
-								probePorts = append(probePorts, port)
+								probePorts.Add(port)
 							}
 						}
 					}
@@ -817,7 +817,7 @@ func (c *Controller) reconcileTProxyIPTableRules(protocol string, isDual bool) e
 			if container.LivenessProbe != nil {
 				if httpGet := container.LivenessProbe.HTTPGet; httpGet != nil {
 					if port := httpGet.Port.String(); port != "" {
-						probePorts = append(probePorts, port)
+						probePorts.Add(port)
 					}
 				}
 
@@ -825,7 +825,7 @@ func (c *Controller) reconcileTProxyIPTableRules(protocol string, isDual bool) e
 					if port := tcpSocket.Port.String(); port != "" {
 						if isTCPProbePortReachable, ok := customVPCPodTCPProbeIPPort.Load(getIPPortString(podIP, port)); ok {
 							if isTCPProbePortReachable.(bool) {
-								probePorts = append(probePorts, port)
+								probePorts.Add(port)
 							}
 						}
 					}
@@ -833,12 +833,13 @@ func (c *Controller) reconcileTProxyIPTableRules(protocol string, isDual bool) e
 			}
 		}
 
-		if len(probePorts) == 0 {
+		if probePorts.IsEmpty() {
 			continue
 		}
 
-		probePorts = formatProbePorts(probePorts)
-		for _, probePort := range probePorts {
+		probePortList := probePorts.List()
+		sort.Strings(probePortList)
+		for _, probePort := range probePortList {
 			tProxyOutputMarkMask := fmt.Sprintf("%#x/%#x", TProxyOutputMark, TProxyOutputMask)
 			tProxyPreRoutingMarkMask := fmt.Sprintf("%#x/%#x", TProxyPreroutingMark, TProxyPreroutingMask)
 
@@ -1667,19 +1668,4 @@ func getNatPolicySubnetChainUID(chainName string) string {
 
 func formatIPsetUnPrefix(ipsetName string) string {
 	return ipsetName[len("ovn40"):]
-}
-
-func formatProbePorts(probePorts []string) []string {
-	// Deduplicate and sort
-	retProbePorts := make([]string, 0, len(probePorts))
-	portMap := make(map[string]interface{})
-	for _, port := range probePorts {
-		if _, exist := portMap[port]; !exist {
-			retProbePorts = append(retProbePorts, port)
-			portMap[port] = nil
-		}
-	}
-
-	sort.Strings(retProbePorts)
-	return retProbePorts
 }
