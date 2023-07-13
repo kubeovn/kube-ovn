@@ -765,7 +765,7 @@ kind-install-cilium-chaining: kind-load-image kind-untaint-control-plane
 	kubectl describe no
 
 .PHONY: kind-install-deepflow
-kind-install-deepflow:
+kind-install-deepflow: kind-install
 	helm repo add deepflow $(DEEPFLOW_CHART_REPO)
 	helm repo update deepflow
 	$(eval CLICKHOUSE_PERSISTENCE = $(shell helm show values --version $(DEEPFLOW_CHART_VERSION) --jsonpath '{.clickhouse.storageConfig.persistence}' deepflow/deepflow | sed 's/0Gi/Gi/g'))
@@ -781,15 +781,12 @@ kind-install-deepflow:
 	echo -e "\nGrafana URL: http://127.0.0.1:$(DEEPFLOW_GRAFANA_PORT)\nGrafana auth: admin:deepflow\n"
 
 .PHONY: kind-install-kwok
-kind-install-kwok:
+kind-install-kwok: kind-install-underlay
 	kwok_version=$(KWOK_VERSION) j2 yamls/kwok-kustomization.yaml.j2 -o kustomization.yaml
 	kubectl kustomize ./ > kwok.yaml
 	$(call kind_load_kwok_image,kube-ovn)
 	kubectl apply -f kwok.yaml
 	kubectl -n kube-system rollout status deploy kwok-controller --timeout 60s
-
-.PHONY: kind-add-kwok-node
-kind-add-kwok-node:
 	for i in {1..20}; do \
 		kwok_node_name=fake-node-$$i j2 yamls/kwok-node.yaml.j2 -o kwok-node.yaml; \
 		kubectl apply -f kwok-node.yaml; \
