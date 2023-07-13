@@ -1405,19 +1405,6 @@ func (c *Controller) getNsAvailableSubnets(pod *v1.Pod) ([]*kubeovnNet, error) {
 			return nil, err
 		}
 
-		switch subnet.Spec.Protocol {
-		case kubeovnv1.ProtocolIPv4:
-			fallthrough
-		case kubeovnv1.ProtocolDual:
-			if subnet.Status.V4AvailableIPs == 0 {
-				continue
-			}
-		case kubeovnv1.ProtocolIPv6:
-			if subnet.Status.V6AvailableIPs == 0 {
-				continue
-			}
-		}
-
 		result = append(result, &kubeovnNet{
 			Type:         providerTypeOriginal,
 			ProviderName: subnet.Spec.Provider,
