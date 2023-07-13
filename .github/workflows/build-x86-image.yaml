@@ -21,6 +21,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
+  GO_VERSION: '1.20.5'
   GOSEC_VERSION: '2.15.0'
   HELM_VERSION: v3.11.3
   SUBMARINER_VERSION: '0.14.3'
@@ -77,6 +78,7 @@ jobs:
       - uses: docker/setup-buildx-action@v2
       - uses: actions/setup-go@v4
         with:
+          go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: go.mod
           check-latest: true
           cache: false
@@ -208,6 +210,7 @@ jobs:
 
       - uses: actions/setup-go@v4
         with:
+          go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
           cache: false
@@ -241,6 +244,7 @@ jobs:
       - uses: actions/checkout@v3
       - uses: actions/setup-go@v4
         with:
+          go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: go.mod
           check-latest: true
           cache: false
@@ -312,6 +316,7 @@ jobs:
 
       - uses: actions/setup-go@v4
         with:
+          go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
           cache: false
@@ -461,6 +466,7 @@ jobs:
 
       - uses: actions/setup-go@v4
         with:
+          go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
           cache: false
@@ -606,6 +612,7 @@ jobs:
 
       - uses: actions/setup-go@v4
         with:
+          go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
           cache: false
@@ -866,6 +873,7 @@ jobs:
 
       - uses: actions/setup-go@v4
         with:
+          go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
           cache: false
@@ -1009,6 +1017,7 @@ jobs:
 
       - uses: actions/setup-go@v4
         with:
+          go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
           cache: false
@@ -1252,6 +1261,7 @@ jobs:
 
       - uses: actions/setup-go@v4
         with:
+          go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
           cache: false
@@ -1340,6 +1350,7 @@ jobs:
 
       - uses: actions/setup-go@v4
         with:
+          go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
           cache: false
@@ -1422,6 +1433,7 @@ jobs:
 
       - uses: actions/setup-go@v4
         with:
+          go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
           cache: false
@@ -1574,6 +1586,7 @@ jobs:
 
       - uses: actions/setup-go@v4
         with:
+          go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
           cache: false
@@ -1686,6 +1699,7 @@ jobs:
 
       - uses: actions/setup-go@v4
         with:
+          go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
           cache: false
@@ -1962,6 +1976,7 @@ jobs:
 
       - uses: actions/setup-go@v4
         with:
+          go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
           cache: false
@@ -2053,6 +2068,7 @@ jobs:
 
       - uses: actions/setup-go@v4
         with:
+          go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
           cache: false
