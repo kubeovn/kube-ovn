@@ -109,14 +109,17 @@ jobs:
         working-directory: ovn
         run: |
           # change hash type from dp_hash to hash with field src_ip
-          Invoke-WebRequest -Uri "https://github.com/kubeovn/ovn/commit/ae04d5e75d443500d537084d7db466513f63a7af.patch" -OutFile ..\ovn-01.patch
+          Invoke-WebRequest -Uri "https://github.com/kubeovn/ovn/commit/5a04402c01df1463b9e1edcbc1c5634793687140.patch" -OutFile ..\ovn-01.patch
           # add support for windows
-          Invoke-WebRequest -Uri "https://github.com/kubeovn/ovn/commit/05e57b322758461c54d5cad030486c3d25942c73.patch" -OutFile ..\ovn-02.patch
+          Invoke-WebRequest -Uri "https://github.com/kubeovn/ovn/commit/2c85af7097e4c39d225c98dc68b55a964d0197d7.patch" -OutFile ..\ovn-02.patch
           # set br-int controller to TCP 127.0.0.1:6653
-          Invoke-WebRequest -Uri "https://github.com/kubeovn/ovn/commit/0181b68be18e96bc4ca68a0c3e5082da34c9dcdd.patch" -OutFile ..\ovn-03.patch
+          Invoke-WebRequest -Uri "https://github.com/kubeovn/ovn/commit/24dcd9485ebb0f6c962250684fae512850cd9210.patch" -OutFile ..\ovn-03.patch
+          # ovn-controller: do not send GARP on localnet for Kube-OVN ports
+          Invoke-WebRequest -Uri "https://github.com/kubeovn/ovn/commit/30ff0ba51745f5ea1b38ed63e8cd8e0479d0f916.patch" -OutFile ..\ovn-04.patch
           git apply ..\ovn-01.patch
           git apply ..\ovn-02.patch
           git apply ..\ovn-03.patch
+          git apply ..\ovn-04.patch
 
       - name: Build PTHREADS4W
         working-directory: pthreads4w\code
