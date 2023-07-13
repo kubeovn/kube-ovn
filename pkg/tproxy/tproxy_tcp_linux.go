@@ -1,3 +1,5 @@
+// This code below is referenced at https://github.com/Asphaltt/go-tproxy/blob/master/tproxy_tcp.go
+// Because the code needs to be customized somewhere, the project is not directly imported
 package tproxy
 
 import (

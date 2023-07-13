@@ -16,6 +16,8 @@ import (
 // Glory belongs to openvswitch/ovn-kubernetes
 // https://github.com/openvswitch/ovn-kubernetes/blob/master/go-controller/pkg/util/ovs.go
 
+var podNetNsRegexp = regexp.MustCompile(`pod_netns="([^"]+)"`)
+
 func Exec(args ...string) (string, error) {
 	start := time.Now()
 	args = append([]string{"--timeout=30"}, args...)
@@ -261,8 +263,7 @@ func GetInterfacePodNs(iface string) (string, error) {
 	}
 
 	podNetNs := ""
-	re := regexp.MustCompile(`pod_netns="([^"]+)"`)
-	match := re.FindStringSubmatch(ret[0])
+	match := podNetNsRegexp.FindStringSubmatch(ret[0])
 	if len(match) > 1 {
 		podNetNs = match[1]
 	}

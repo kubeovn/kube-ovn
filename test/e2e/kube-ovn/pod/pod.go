@@ -126,6 +126,21 @@ var _ = framework.Describe("[group:pod]", func() {
 	framework.ConformanceIt("should support http and tcp liveness probe and readiness probe in custom vpc pod ", func() {
 		f.SkipVersionPriorTo(1, 12, "This feature was introduced in v1.12")
 
+		daemonSetClient := f.DaemonSetClientNS(framework.KubeOvnNamespace)
+		originDs := daemonSetClient.Get("kube-ovn-cni")
+		modifyDs := originDs.DeepCopy()
+
+		newArgs := originDs.Spec.Template.Spec.Containers[0].Args
+		for index, arg := range newArgs {
+			if arg == "--enable-tproxy=false" {
+				newArgs = append(newArgs[:index], newArgs[index+1:]...)
+			}
+		}
+		newArgs = append(newArgs, "--enable-tproxy=true")
+		modifyDs.Spec.Template.Spec.Containers[0].Args = newArgs
+
+		daemonSetClient.PatchSync(modifyDs)
+
 		custVPCSubnetName := "subnet-" + framework.RandomSuffix()
 		extraSubnetNames = append(extraSubnetNames, custVPCSubnetName)
 
