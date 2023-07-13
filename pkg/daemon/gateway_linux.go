@@ -775,7 +775,7 @@ func (c *Controller) reconcileTProxyIPTableRules(protocol string, isDual bool) e
 	ipt := c.iptables[protocol]
 	tproxyPreRoutingRules := make([]util.IPTableRule, 0)
 	tproxyOutputRules := make([]util.IPTableRule, 0)
-	var probePorts strset.Set
+	probePorts := strset.New()
 
 	pods, err := c.getTProxyConditionPod(true)
 	if err != nil {
