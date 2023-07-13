@@ -19,16 +19,21 @@ concurrency:
   group: "${{ github.workflow }}-${{ github.ref }}"
   cancel-in-progress: true
 
+env:
+  GO_VERSION: '1.20.5'
+
 jobs:
   build:
     name: Build arm64
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v3
-      - uses: actions/setup-go@v3
+      - uses: actions/setup-go@v4
         with:
+          go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: go.mod
           check-latest: true
+          cache: false
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v2

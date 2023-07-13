@@ -14,6 +14,13 @@ on:
   schedule:
     - cron: '0 17 * * 2'
 
+concurrency:
+  group: "${{ github.workflow }}-${{ github.ref }}"
+  cancel-in-progress: true
+
+env:
+  GO_VERSION: ''
+
 jobs:
   analyze:
     name: Analyze
@@ -36,10 +43,12 @@ jobs:
         # a pull request then we can checkout the head.
         fetch-depth: 2
 
-    - uses: actions/setup-go@v3
+    - uses: actions/setup-go@v4
       with:
+        go-version: ${{ env.GO_VERSION || '' }}
         go-version-file: go.mod
         check-latest: true
+        cache: false
 
     # Initializes the CodeQL tools for scanning.
     - name: Initialize CodeQL
