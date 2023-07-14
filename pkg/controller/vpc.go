@@ -211,7 +211,7 @@ func (c *Controller) addLoadBalancer(vpc string) (*VpcLoadBalancer, error) {
 	if err := c.initLB(vpcLbConfig.TcpLoadBalancer, string(v1.ProtocolTCP), false); err != nil {
 		return nil, err
 	}
-	if err := c.initLB(vpcLbConfig.TcpSessLoadBalancer, string(v1.ProtocolTCP), false); err != nil {
+	if err := c.initLB(vpcLbConfig.TcpSessLoadBalancer, string(v1.ProtocolTCP), true); err != nil {
 		return nil, err
 	}
 	if err := c.initLB(vpcLbConfig.UdpLoadBalancer, string(v1.ProtocolUDP), false); err != nil {

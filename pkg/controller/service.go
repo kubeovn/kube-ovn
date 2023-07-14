@@ -56,7 +56,6 @@ func (c *Controller) enqueueAddService(obj interface{}) {
 
 func (c *Controller) enqueueDeleteService(obj interface{}) {
 	svc := obj.(*v1.Service)
-	//klog.V(3).Infof("enqueue delete service %s/%s", svc.Namespace, svc.Name)
 	klog.Infof("enqueue delete service %s/%s", svc.Namespace, svc.Name)
 
 	vip, ok := svc.Annotations[util.SwitchLBRuleVipsAnnotation]
