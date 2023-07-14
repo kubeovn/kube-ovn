@@ -19,6 +19,7 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	goTProxy "github.com/kubeovn/kube-ovn/pkg/tproxy"
 	"github.com/kubeovn/kube-ovn/pkg/util"
+	"github.com/scylladb/go-set/strset"
 )
 
 var (
@@ -62,7 +63,7 @@ func (c *Controller) StartTProxyForwarding() {
 
 func (c *Controller) StartTProxyTCPPortProbe() {
 
-	probePorts := map[string]interface{}{}
+	probePorts := strset.New()
 
 	pods, err := c.getTProxyConditionPod(false)
 	if err != nil {
@@ -73,6 +74,7 @@ func (c *Controller) StartTProxyTCPPortProbe() {
 		iface := ovs.PodNameToPortName(pod.Name, pod.Namespace, util.OvnProvider)
 		nsName, err := ovs.GetInterfacePodNs(iface)
 		if err != nil || nsName == "" {
+			klog.Infof("iface %s's namespace not found", iface)
 			continue
 		}
 
@@ -82,7 +84,7 @@ func (c *Controller) StartTProxyTCPPortProbe() {
 				if container.ReadinessProbe != nil {
 					if tcpSocket := container.ReadinessProbe.TCPSocket; tcpSocket != nil {
 						if port := tcpSocket.Port.String(); port != "" {
-							probePorts[port] = nil
+							probePorts.Add(port)
 						}
 					}
 				}
@@ -90,13 +92,14 @@ func (c *Controller) StartTProxyTCPPortProbe() {
 				if container.LivenessProbe != nil {
 					if tcpSocket := container.LivenessProbe.TCPSocket; tcpSocket != nil {
 						if port := tcpSocket.Port.String(); port != "" {
-							probePorts[port] = nil
+							probePorts.Add(port)
 						}
 					}
 				}
 			}
 
-			for port := range probePorts {
+			probePortsList := probePorts.List()
+			for _, port := range probePortsList {
 				probePortInNs(podIP.IP, port, true, nil)
 			}
 		}
@@ -111,17 +114,25 @@ func (c *Controller) runTProxyConfigWorker() {
 }
 
 func (c *Controller) reconcileTProxyRoutes(protocol string) {
-	family := getFamily(protocol)
+	family, err := util.ProtocolToFamily(protocol)
+	if err != nil {
+		klog.Errorf("get Protocol %s family failed", protocol)
+		return
+	}
+
 	if err := addRuleIfNotExist(family, TProxyOutputMark, TProxyOutputMask, util.TProxyRouteTable); err != nil {
+		klog.Error("add output rule failed err:%v ", err)
 		return
 	}
 
 	if err := addRuleIfNotExist(family, TProxyPreroutingMark, TProxyPreroutingMask, util.TProxyRouteTable); err != nil {
+		klog.Error("add prerouting rule failed err:%v ", err)
 		return
 	}
 
 	dst := GetDefaultRouteDst(protocol)
 	if err := addRouteIfNotExist(family, util.TProxyRouteTable, &dst); err != nil {
+		klog.Error("add tproxy route failed err:%v ", err)
 		return
 	}
 }
@@ -135,7 +146,12 @@ func (c *Controller) cleanTProxyConfig() {
 }
 
 func (c *Controller) cleanTProxyRoutes(protocol string) {
-	family := getFamily(protocol)
+	family, err := util.ProtocolToFamily(protocol)
+	if err != nil {
+		klog.Errorf("get Protocol %s family failed", protocol)
+		return
+	}
+
 	if err := deleteRuleIfExists(family, TProxyOutputMark); err != nil {
 		klog.Errorf("delete tproxy route rule mark %v failed err: %v ", TProxyOutputMark, err)
 	}
@@ -148,16 +164,6 @@ func (c *Controller) cleanTProxyRoutes(protocol string) {
 	if err := delRouteIfExist(family, util.TProxyRouteTable, &dst); err != nil {
 		klog.Errorf("delete tproxy route rule mark %v failed err: %v ", TProxyPreroutingMark, err)
 	}
-}
-
-func getFamily(protocol string) int {
-	family := netlink.FAMILY_ALL
-	if protocol == kubeovnv1.ProtocolIPv4 {
-		family = netlink.FAMILY_V4
-	} else if protocol == kubeovnv1.ProtocolIPv6 {
-		family = netlink.FAMILY_V6
-	}
-	return family
 }
 
 func addRuleIfNotExist(family, mark, mask, table int) error {

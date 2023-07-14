@@ -875,23 +875,13 @@ func (c *Controller) reconcileTProxyIPTableRules(protocol string, isDual bool) e
 
 func (c *Controller) cleanTProxyIPTableRules(protocol string) {
 	ipt := c.iptables[protocol]
-	for _, chain := range []string{OvnPrerouting, OvnOutput} {
-		rules, err := ipt.List(MANGLE, chain)
-		if err != nil {
-			klog.Errorf("failed to list iptables rules in table %v chain %v, %+v", MANGLE, chain, err)
+	if ipt == nil {
+		return
+	}
+	for _, chain := range [2]string{OvnPrerouting, OvnOutput} {
+		if err := ipt.ClearChain(MANGLE, chain); err != nil {
+			klog.Errorf("failed to clear iptables chain %v in table %v, %+v", chain, MANGLE, err)
 			return
-		}
-		for _, rule := range rules {
-			if !strings.Contains(rule, fmt.Sprintf("%#x", TProxyOutputMark)) &&
-				!strings.Contains(rule, fmt.Sprintf("%#x", TProxyPreroutingMark)) {
-				continue
-			}
-			rule := rule[4+len(chain):]
-			spec := util.DoubleQuotedFields(rule)
-			if err = ipt.Delete(MANGLE, chain, spec...); err != nil {
-				klog.Errorf(`failed to delete iptables rule "%s": %v`, rule, err)
-				return
-			}
 		}
 	}
 }
