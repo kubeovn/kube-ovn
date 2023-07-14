@@ -30,7 +30,7 @@ var (
 
 func (c *Controller) StartTProxyForwarding() {
 	var err error
-	addr := util.GetDefaultListenPort()
+	addr := util.GetDefaultListenAddr()
 
 	protocol := "tcp"
 	if strings.HasPrefix(addr, "[") && strings.HasSuffix(addr, "]") {

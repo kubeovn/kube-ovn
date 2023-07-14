@@ -623,7 +623,7 @@ func UDPConnectivityListen(address string) error {
 	}
 }
 
-func GetDefaultListenPort() string {
+func GetDefaultListenAddr() string {
 	addr := "0.0.0.0"
 	if os.Getenv("ENABLE_BIND_LOCAL_IP") == "true" {
 		podIpsEnv := os.Getenv("POD_IPS")

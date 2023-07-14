@@ -95,7 +95,7 @@ func CmdMain() {
 		mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
 	}
 
-	addr := util.GetDefaultListenPort()
+	addr := util.GetDefaultListenAddr()
 
 	if config.EnableVerboseConnCheck {
 		go func() {
