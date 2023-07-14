@@ -520,6 +520,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 	})
 
 	framework.ConformanceIt("should support distributed external egress gateway", func() {
+		f.SkipVersionPriorTo(1, 9, "Do not support before v1.9")
 		ginkgo.By("Getting nodes")
 		nodes, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
 		framework.ExpectNoError(err)
