@@ -55,6 +55,19 @@ kubeadmConfigPatches:
 nodes:
   - role: control-plane
     image: kindest/node:{{ k8s_version }}
+{%- if port_mapping is defined %}
+  {%- set container_port = port_mapping.split(':')[0] %}
+  {%- set host_port = port_mapping.split(':')[1] %}
+    extraPortMappings:
+      - containerPort: {{ container_port }}
+        hostPort: {{ host_port }}
+        # optional: set the bind address on the host
+        # 0.0.0.0 is the current default
+        listenAddress: "127.0.0.1"
+        # optional: set the protocol to one of TCP, UDP, SCTP.
+        # TCP is the default
+        protocol: TCP
+{%- endif %}
 {%- if single is equalto "false" %}
   - role: worker
     image: kindest/node:{{ k8s_version }}
