@@ -17,7 +17,7 @@ import (
 )
 
 var _ = framework.SerialDescribe("[group:pod]", func() {
-	f := framework.NewDefaultFramework("vpcPodProbe")
+	f := framework.NewDefaultFramework("vpc-pod-probe")
 
 	var cs clientset.Interface
 	var podClient *framework.PodClient
