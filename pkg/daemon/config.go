@@ -101,7 +101,7 @@ func ParseFlags() *Configuration {
 		argEnableVerboseConnCheck    = pflag.Bool("enable-verbose-conn-check", false, "enable TCP/UDP connectivity check listen port")
 		argTCPConnectivityCheckPort  = pflag.Int("tcp-conn-check-port", 8100, "TCP connectivity Check Port")
 		argUDPConnectivityCheckPort  = pflag.Int("udp-conn-check-port", 8101, "UDP connectivity Check Port")
-		argEnableTProxy              = pflag.Bool("enable-tproxy", true, "enable tproxy for vpc pod liveness or readiness probe")
+		argEnableTProxy              = pflag.Bool("enable-tproxy", false, "enable tproxy for vpc pod liveness or readiness probe")
 	)
 
 	// mute info log for ipset lib
