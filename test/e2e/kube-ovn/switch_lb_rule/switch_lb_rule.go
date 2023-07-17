@@ -40,7 +40,7 @@ func netcat(f *framework.Framework, clientPodName, endpoint string) string {
 		cmd := fmt.Sprintf("nc -vz %s", endpoint)
 		stdOutput, errOutput, err := framework.ExecShellInPod(context.Background(), f, clientPodName, cmd)
 		if err == nil {
-			framework.Logf("tcp netcat to svc %s successfully", stdOutput)
+			framework.Logf("tcp netcat to svc %s successfully", endpoint)
 			framework.Logf("output:\n%s", stdOutput)
 			return ""
 		} else {
@@ -75,8 +75,7 @@ var _ = framework.Describe("[group:slr]", func() {
 		stsName, stsSvcName                       string
 		selSlrName, selSvcName                    string
 		epSlrName, epSvcName                      string
-
-		overlaySubnetV4Cidr, overlaySubnetV4Gw string
+		overlaySubnetV4Cidr, overlaySubnetV4Gw    string
 
 		frontPort, selSlrFrontPort, epSlrFrontPort, backendPort int32
 	)
@@ -135,7 +134,6 @@ var _ = framework.Describe("[group:slr]", func() {
 		command = []string{"sh", "-c", "sleep infinity"}
 		clientPod = framework.MakePod(namespaceName, clientPodName, labels, annotations, podImg, command, nil)
 		podClient.CreateSync(clientPod)
-
 	})
 
 	ginkgo.AfterEach(func() {
@@ -143,6 +141,8 @@ var _ = framework.Describe("[group:slr]", func() {
 		podClient.DeleteSync(clientPodName)
 		ginkgo.By("Deleting statefulset " + stsName)
 		stsClient.DeleteSync(stsName)
+		ginkgo.By("Deleting service " + stsSvcName)
+		serviceClient.DeleteSync(stsSvcName)
 		ginkgo.By("Deleting switch-lb-rule " + selSlrName)
 		switchLBRuleClient.DeleteSync(selSlrName)
 		ginkgo.By("Deleting switch-lb-rule " + epSlrName)
@@ -211,7 +211,7 @@ var _ = framework.Describe("[group:slr]", func() {
 		ginkgo.By("Waiting for client pod " + clientPodName + " nc  " + frontEndpoint + " to be ok")
 		netcat(f, clientPodName, frontEndpoint)
 
-		ginkgo.By("2. Creating switch-lb-rule with selector for slr")
+		ginkgo.By("2. Creating switch-lb-rule with selector")
 		ginkgo.By("Creating selector SwitchLBRule " + epSlrName)
 		var (
 			selRule           *kubeovnv1.SwitchLBRule
@@ -301,7 +301,7 @@ var _ = framework.Describe("[group:slr]", func() {
 		ginkgo.By("Waiting for switch lb " + frontEndpoint + " to be available")
 		netcat(f, clientPod.Name, frontEndpoint)
 
-		ginkgo.By("3. Creating switch-lb-rule with endpoints for slr")
+		ginkgo.By("3. Creating switch-lb-rule with endpoints")
 		ginkgo.By("Creating endpoint SwitchLBRule " + epSlrName)
 		sessionAffinity = corev1.ServiceAffinityClientIP
 		epPorts = []kubeovnv1.SlrPort{
