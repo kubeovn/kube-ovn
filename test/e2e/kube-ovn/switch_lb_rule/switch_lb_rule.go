@@ -2,7 +2,6 @@ package switch_lb_rule
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -35,26 +34,18 @@ func generateSubnetName(name string) string {
 	return "subnet-" + name
 }
 
-func netcat(f *framework.Framework, clientPodName, endpoint string) string {
-	for i := 0; i < 3; i++ {
-		cmd := fmt.Sprintf("nc -vz %s", endpoint)
-		stdOutput, errOutput, err := framework.ExecShellInPod(context.Background(), f, clientPodName, cmd)
-		if err == nil {
-			framework.Logf("tcp netcat to svc %s successfully", endpoint)
-			framework.Logf("output:\n%s", stdOutput)
-			return ""
-		} else {
-			err = fmt.Errorf("failed to tcp netcat svc %s ", endpoint)
-			framework.Logf("output:\n%s", stdOutput)
-			framework.Logf("errOutput:\n%s", errOutput)
-			if i == 2 {
-				framework.Logf("exec %s failed err: %v, errOutput: %s, stdOutput: %s, retried %d times.", cmd, err, errOutput, stdOutput, i)
-				framework.ExpectNoError(errors.New("tcp netcat to svc %s failed"))
-			}
-			time.Sleep(6 * time.Second)
-		}
+func netcat(f *framework.Framework, clientPodName, cmd string) {
+	framework.Logf("testing %s", cmd)
+	stdOutput, errOutput, err := framework.ExecShellInPod(context.Background(), f, clientPodName, cmd)
+	if err == nil {
+		framework.Logf("tcp netcat %s successfully", cmd)
+		framework.Logf("output:\n%s", stdOutput)
+	} else {
+		err = fmt.Errorf("failed to tcp netcat %s ", cmd)
+		framework.Logf("output:\n%s", stdOutput)
+		framework.Logf("errOutput:\n%s", errOutput)
+		framework.ExpectNoError(err)
 	}
-	return ""
 }
 
 var _ = framework.Describe("[group:slr]", func() {
@@ -75,8 +66,8 @@ var _ = framework.Describe("[group:slr]", func() {
 		stsName, stsSvcName                       string
 		selSlrName, selSvcName                    string
 		epSlrName, epSvcName                      string
-		overlaySubnetV4Cidr, overlaySubnetV4Gw    string
-
+		overlaySubnetV4Cidr, vip                  string
+		// TODO:// slr support dual-stack
 		frontPort, selSlrFrontPort, epSlrFrontPort, backendPort int32
 	)
 
@@ -107,9 +98,8 @@ var _ = framework.Describe("[group:slr]", func() {
 		selSlrFrontPort = 8091
 		epSlrFrontPort = 8092
 		backendPort = 80
-		overlaySubnetV4Cidr = "10.0.0.0/24"
-		overlaySubnetV4Gw = "10.0.0.1"
-
+		vip = ""
+		overlaySubnetV4Cidr = framework.RandomCIDR(f.ClusterIpFamily)
 		var (
 			clientPod *corev1.Pod
 			command   []string
@@ -124,7 +114,7 @@ var _ = framework.Describe("[group:slr]", func() {
 		vpc := framework.MakeVpc(vpcName, "", false, false, []string{namespaceName})
 		_ = vpcClient.CreateSync(vpc)
 		ginkgo.By("Creating custom overlay subnet")
-		overlaySubnet := framework.MakeSubnet(subnetName, "", overlaySubnetV4Cidr, overlaySubnetV4Gw, vpcName, "", nil, nil, nil)
+		overlaySubnet := framework.MakeSubnet(subnetName, "", overlaySubnetV4Cidr, "", vpcName, "", nil, nil, nil)
 		_ = subnetClient.CreateSync(overlaySubnet)
 		labels = map[string]string{"app": "client"}
 		annotations := map[string]string{
@@ -169,6 +159,10 @@ var _ = framework.Describe("[group:slr]", func() {
 		sts := framework.MakeStatefulSet(stsName, stsSvcName, int32(replicas), labels, podImg)
 		sts.Spec.Template.Annotations = map[string]string{util.LogicalSwitchAnnotation: subnetName}
 		command := []string{"sh", "-c", "cd /tmp && python3 -m http.server 80"}
+		if f.IsIPv6() {
+			ginkgo.By("Waiting for tcp ipv6 sts " + stsSvcName + " to be ready")
+			command = []string{"sh", "-c", "cd /tmp && python3 -m http.server --bind :: 80"}
+		}
 		sts.Spec.Template.Spec.Containers[0].Command = command
 		_ = stsClient.CreateSync(sts)
 
@@ -205,11 +199,30 @@ var _ = framework.Describe("[group:slr]", func() {
 		clientPod, err = podClient.Get(context.TODO(), clientPodName, metav1.GetOptions{})
 		framework.ExpectNil(err)
 		framework.ExpectNotNil(clientPod)
-
-		stsVip := stsSvc.Spec.ClusterIPs[0]
-		frontEndpoint := fmt.Sprintf("%s %d", stsVip, frontPort)
-		ginkgo.By("Waiting for client pod " + clientPodName + " nc  " + frontEndpoint + " to be ok")
-		netcat(f, clientPodName, frontEndpoint)
+		var stsV4IP, stsV6IP, v4cmd, v6cmd string
+		if f.IsIPv6() {
+			stsV6IP = stsSvc.Spec.ClusterIPs[0]
+			vip = stsV6IP
+			v6cmd = fmt.Sprintf("nc -6nvz %s %d", stsV6IP, frontPort)
+			ginkgo.By("Waiting for client pod " + clientPodName + " nc  " + v6cmd + " to be ok")
+			netcat(f, clientPodName, v6cmd)
+		} else if f.IsIPv4() {
+			stsV4IP = stsSvc.Spec.ClusterIPs[0]
+			vip = stsV4IP
+			v4cmd = fmt.Sprintf("nc -nvz %s %d", stsV4IP, frontPort)
+			ginkgo.By("Waiting for client pod " + clientPodName + " nc  " + v4cmd + " to be ok")
+			netcat(f, clientPodName, v4cmd)
+		} else {
+			stsV4IP := stsSvc.Spec.ClusterIPs[0]
+			vip = stsV4IP
+			stsV6IP = stsSvc.Spec.ClusterIPs[1]
+			v4cmd = fmt.Sprintf("nc -nvz %s %d", stsV4IP, frontPort)
+			v6cmd = fmt.Sprintf("nc -6nvz %s %d", stsV6IP, frontPort)
+			ginkgo.By("Waiting for client pod " + clientPodName + " nc  " + v4cmd + " to be ok")
+			netcat(f, clientPodName, v4cmd)
+			ginkgo.By("Waiting for client pod " + clientPodName + " nc  " + v6cmd + " to be ok")
+			netcat(f, clientPodName, v6cmd)
+		}
 
 		ginkgo.By("2. Creating switch-lb-rule with selector")
 		ginkgo.By("Creating selector SwitchLBRule " + epSlrName)
@@ -229,7 +242,7 @@ var _ = framework.Describe("[group:slr]", func() {
 			},
 		}
 		slrSlector = []string{fmt.Sprintf("app:%s", label)}
-		selRule = framework.MakeSwitchLBRule(selSlrName, namespaceName, stsVip, sessionAffinity, nil, slrSlector, nil, slrPorts)
+		selRule = framework.MakeSwitchLBRule(selSlrName, namespaceName, vip, sessionAffinity, nil, slrSlector, nil, slrPorts)
 		_ = switchLBRuleClient.Create(selRule)
 
 		ginkgo.By("Waiting for switch-lb-rule " + selSlrName + " to be ready")
@@ -297,10 +310,27 @@ var _ = framework.Describe("[group:slr]", func() {
 			}
 		}
 
-		frontEndpoint = fmt.Sprintf("%s %d", stsVip, selSlrFrontPort)
-		ginkgo.By("Waiting for switch lb " + frontEndpoint + " to be available")
-		netcat(f, clientPod.Name, frontEndpoint)
-
+		ginkgo.By("Waiting for selector switch lb " + selSlrName + " to be available")
+		if f.IsIPv6() {
+			stsV6IP = stsSvc.Spec.ClusterIPs[0]
+			v6cmd = fmt.Sprintf("nc -6nvz %s %d", stsV6IP, selSlrFrontPort)
+			ginkgo.By("Waiting for client pod " + clientPodName + " nc  " + v6cmd + " to be ok")
+			netcat(f, clientPodName, v6cmd)
+		} else if f.IsIPv4() {
+			stsV4IP = stsSvc.Spec.ClusterIPs[0]
+			v4cmd = fmt.Sprintf("nc -nvz %s %d", stsV4IP, selSlrFrontPort)
+			ginkgo.By("Waiting for client pod " + clientPodName + " nc  " + v4cmd + " to be ok")
+			netcat(f, clientPodName, v4cmd)
+		} else {
+			stsV4IP := stsSvc.Spec.ClusterIPs[0]
+			stsV6IP = stsSvc.Spec.ClusterIPs[1]
+			v4cmd = fmt.Sprintf("nc -nvz %s %d", stsV4IP, selSlrFrontPort)
+			v6cmd = fmt.Sprintf("nc -6nvz %s %d", stsV6IP, selSlrFrontPort)
+			ginkgo.By("Waiting for client pod " + clientPodName + " nc  " + v4cmd + " to be ok")
+			netcat(f, clientPodName, v4cmd)
+			ginkgo.By("Waiting for client pod " + clientPodName + " nc  " + v6cmd + " to be ok")
+			netcat(f, clientPodName, v6cmd)
+		}
 		ginkgo.By("3. Creating switch-lb-rule with endpoints")
 		ginkgo.By("Creating endpoint SwitchLBRule " + epSlrName)
 		sessionAffinity = corev1.ServiceAffinityClientIP
@@ -316,7 +346,7 @@ var _ = framework.Describe("[group:slr]", func() {
 		for _, pod := range pods.Items {
 			presetEndpoints = append(presetEndpoints, pod.Status.PodIP)
 		}
-		epRule := framework.MakeSwitchLBRule(epSlrName, namespaceName, stsVip, sessionAffinity, annotations, nil, presetEndpoints, epPorts)
+		epRule := framework.MakeSwitchLBRule(epSlrName, namespaceName, vip, sessionAffinity, annotations, nil, presetEndpoints, epPorts)
 		_ = switchLBRuleClient.Create(epRule)
 
 		ginkgo.By("Waiting for switch-lb-rule " + epSlrName + " to be ready")
@@ -380,9 +410,26 @@ var _ = framework.Describe("[group:slr]", func() {
 				framework.ExpectEqual(protocols[port.TargetPort], port.Protocol)
 			}
 		}
-
-		frontEndpoint = fmt.Sprintf("%s %d", stsVip, epSlrFrontPort)
-		ginkgo.By("Waiting for switch lb  " + frontEndpoint + " to be available ")
-		netcat(f, clientPod.Name, frontEndpoint)
+		ginkgo.By("Waiting for endpoint switch lb " + selSlrName + " to be available")
+		if f.IsIPv6() {
+			stsV6IP = stsSvc.Spec.ClusterIPs[0]
+			v6cmd = fmt.Sprintf("nc -6nvz %s %d", stsV6IP, epSlrFrontPort)
+			ginkgo.By("Waiting for client pod " + clientPodName + " nc  " + v6cmd + " to be ok")
+			netcat(f, clientPodName, v6cmd)
+		} else if f.IsIPv4() {
+			stsV4IP = stsSvc.Spec.ClusterIPs[0]
+			v4cmd = fmt.Sprintf("nc -nvz %s %d", stsV4IP, epSlrFrontPort)
+			ginkgo.By("Waiting for client pod " + clientPodName + " nc  " + v4cmd + " to be ok")
+			netcat(f, clientPodName, v4cmd)
+		} else {
+			stsV4IP := stsSvc.Spec.ClusterIPs[0]
+			stsV6IP = stsSvc.Spec.ClusterIPs[1]
+			v4cmd = fmt.Sprintf("nc -nvz %s %d", stsV4IP, epSlrFrontPort)
+			v6cmd = fmt.Sprintf("nc -6nvz %s %d", stsV6IP, epSlrFrontPort)
+			ginkgo.By("Waiting for client pod " + clientPodName + " nc  " + v4cmd + " to be ok")
+			netcat(f, clientPodName, v4cmd)
+			ginkgo.By("Waiting for client pod " + clientPodName + " nc  " + v6cmd + " to be ok")
+			netcat(f, clientPodName, v6cmd)
+		}
 	})
 })
