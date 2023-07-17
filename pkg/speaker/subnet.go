@@ -44,7 +44,6 @@ func isClusterIPService(svc *v1.Service) bool {
 		len(svc.Spec.ClusterIP) != 0
 }
 
-// TODO: ipv4 only, need ipv6/dual-stack support later
 func (c *Controller) syncSubnetRoutes() {
 	maskMap := map[string]int{kubeovnv1.ProtocolIPv4: 32, kubeovnv1.ProtocolIPv6: 128}
 	bgpExpected, bgpExists := make(map[string][]string), make(map[string][]string)
