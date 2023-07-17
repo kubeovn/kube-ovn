@@ -204,7 +204,7 @@ spec:
       hostNetwork: true
       containers:
         - name: ovn-central
-          image: "kubeovn/kube-ovn:v1.10.0"
+          image: "docker.io/kubeovn/kube-ovn:v1.12.0"
           imagePullPolicy: IfNotPresent
           command: ["/kube-ovn/start-db.sh"]
           securityContext:
@@ -333,7 +333,7 @@ spec:
       hostPID: true
       containers:
         - name: openvswitch
-          image: "kubeovn/kube-ovn-dpdk:$DPDK_VERSION"
+          image: "docker.io/kubeovn/kube-ovn-dpdk:$DPDK_VERSION"
           imagePullPolicy: IfNotPresent
           command: ["/kube-ovn/start-ovs-dpdk.sh"]
           securityContext:

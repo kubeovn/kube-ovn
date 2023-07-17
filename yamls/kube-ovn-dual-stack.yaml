@@ -40,7 +40,7 @@ spec:
       hostNetwork: true
       containers:
         - name: kube-ovn-controller
-          image: "kubeovn/kube-ovn:v1.12.0"
+          image: "docker.io/kubeovn/kube-ovn:v1.12.0"
           imagePullPolicy: IfNotPresent
           args:
             - /kube-ovn/start-controller.sh
@@ -72,6 +72,12 @@ spec:
             - --keep-vm-ip=true
             - --pod-default-fip-type=
             - --node-local-dns-ip=
+          securityContext:
+            runAsUser: 0
+            privileged: false
+            capabilities:
+              add:
+                - NET_BIND_SERVICE
           env:
             - name: ENABLE_SSL
               value: "false"
@@ -169,7 +175,7 @@ spec:
       hostPID: true
       initContainers:
         - name: install-cni
-          image: "kubeovn/kube-ovn:v1.12.0"
+          image: "docker.io/kubeovn/kube-ovn:v1.12.0"
           imagePullPolicy: IfNotPresent
           command: ["/kube-ovn/install-cni.sh"]
           securityContext:
@@ -182,7 +188,7 @@ spec:
               name: local-bin
       containers:
         - name: cni-server
-          image: "kubeovn/kube-ovn:v1.12.0"
+          image: "docker.io/kubeovn/kube-ovn:v1.12.0"
           imagePullPolicy: IfNotPresent
           command:
             - bash
@@ -357,7 +363,7 @@ spec:
       hostPID: true
       containers:
         - name: pinger
-          image: "kubeovn/kube-ovn:v1.12.0"
+          image: "docker.io/kubeovn/kube-ovn:v1.12.0"
           command:
             - /kube-ovn/kube-ovn-pinger
           args:
@@ -488,7 +494,7 @@ spec:
       hostNetwork: true
       containers:
         - name: kube-ovn-monitor
-          image: "kubeovn/kube-ovn:v1.12.0"
+          image: "docker.io/kubeovn/kube-ovn:v1.12.0"
           imagePullPolicy: IfNotPresent
           command: ["/kube-ovn/start-ovn-monitor.sh"]
           args:
