@@ -31,6 +31,10 @@ func CmdMain() {
 	daemon.InitMetrics()
 	util.InitKlogMetrics()
 
+	if err := initForOS(); err != nil {
+		util.LogFatalAndExit(err, "failed to do the OS initialization")
+	}
+
 	nicBridgeMappings, err := daemon.InitOVSBridges()
 	if err != nil {
 		util.LogFatalAndExit(err, "failed to initialize OVS bridges")
