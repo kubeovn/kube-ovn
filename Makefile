@@ -54,6 +54,7 @@ SUBMARINER_ROUTE_AGENT = quay.io/submariner/submariner-route-agent:$(SUBMARINER_
 SUBMARINER_NETTEST = quay.io/submariner/nettest:$(SUBMARINER_VERSION)
 
 VPC_NAT_GW_IMG = $(REGISTRY)/vpc-nat-gateway:$(VERSION)
+KUBEOVN_BASE_IMG= $(REGISTRY)/kube-ovn-base:$(VERSION)
 
 E2E_NETWORK = bridge
 ifneq ($(VLAN_ID),)
@@ -428,6 +429,7 @@ kind-upgrade-chart: kind-load-image
 
 .PHONY: kind-install
 kind-install: kind-load-image
+	$(call kind_load_image,kube-ovn,$(KUBEOVN_BASE_IMG))
 	kubectl config use-context kind-kube-ovn
 	@$(MAKE) kind-untaint-control-plane
 	sed 's/VERSION=.*/VERSION=$(VERSION)/' dist/images/install.sh | bash

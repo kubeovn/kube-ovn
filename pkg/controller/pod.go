@@ -1467,6 +1467,7 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 		*macStr = ""
 	}
 
+	ipPoolNameStr := pod.Annotations[fmt.Sprintf(util.IpPoolNameAnnotationTemplate, podNet.ProviderName)]
 	ippoolStr := pod.Annotations[fmt.Sprintf(util.IpPoolAnnotationTemplate, podNet.ProviderName)]
 	if ippoolStr == "" {
 		ns, err := c.namespacesLister.Get(pod.Namespace)
@@ -1529,21 +1530,32 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 
 	// IPPool allocate
 	if ippoolStr != "" {
-		var ipPool []string
+		var ipPool, ipPoolNames []string
 		if strings.ContainsRune(ippoolStr, ';') {
 			ipPool = strings.Split(ippoolStr, ";")
 		} else {
-			ipPool = strings.Split(ippoolStr, ",")
+			if podNet.Subnet.Spec.Protocol == kubeovnv1.ProtocolDual && isStsPod {
+				klog.Infof("sts pod in dual stack subnet use ip pool: %s", ippoolStr)
+				ipPool = strings.Split(ippoolStr, ";")
+			} else {
+				ipPool = strings.Split(ippoolStr, ",")
+			}
+		}
+		if ipPoolNameStr != "" {
+			ipPoolNames = strings.Split(ipPoolNameStr, ",")
 		}
 		for i, ip := range ipPool {
 			ipPool[i] = strings.TrimSpace(ip)
 		}
-
-		if len(ipPool) == 1 && net.ParseIP(ipPool[0]) == nil {
+		for i, name := range ipPoolNames {
+			ipPoolNames[i] = strings.TrimSpace(name)
+		}
+		if len(ipPoolNames) == 1 && ipPoolNames[0] != "" {
+			klog.Infof("random allocate ip by ip pool %s from subnet %s", ipPoolNames[0], podNet.Subnet.Name)
 			var skippedAddrs []string
 			for {
 				portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
-				ipv4, ipv6, mac, err := c.ipam.GetRandomAddress(key, portName, macStr, podNet.Subnet.Name, ipPool[0], skippedAddrs, !podNet.AllowLiveMigration)
+				ipv4, ipv6, mac, err := c.ipam.GetRandomAddress(key, portName, macStr, podNet.Subnet.Name, ipPoolNames[0], skippedAddrs, !podNet.AllowLiveMigration)
 				if err != nil {
 					return "", "", "", podNet.Subnet, err
 				}
