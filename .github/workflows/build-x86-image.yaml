@@ -21,9 +21,10 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  GOSEC_VERSION: '2.15.0'
-  HELM_VERSION: v3.11.3
-  SUBMARINER_VERSION: '0.14.3'
+  GO_VERSION: '1.20.5'
+  GOSEC_VERSION: '2.16.0'
+  HELM_VERSION: v3.12.2
+  SUBMARINER_VERSION: '0.14.6'
 
 jobs:
   build-kube-ovn-base:
@@ -77,6 +78,7 @@ jobs:
       - uses: docker/setup-buildx-action@v2
       - uses: actions/setup-go@v4
         with:
+          go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: go.mod
           check-latest: true
           cache: false
@@ -208,6 +210,7 @@ jobs:
 
       - uses: actions/setup-go@v4
         with:
+          go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
           cache: false
@@ -241,6 +244,7 @@ jobs:
       - uses: actions/checkout@v3
       - uses: actions/setup-go@v4
         with:
+          go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: go.mod
           check-latest: true
           cache: false
@@ -312,6 +316,7 @@ jobs:
 
       - uses: actions/setup-go@v4
         with:
+          go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
           cache: false
@@ -329,7 +334,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.7.0
+        uses: helm/kind-action@v1.8.0
         with:
           version: v0.20.0
           install_only: true
@@ -461,6 +466,7 @@ jobs:
 
       - uses: actions/setup-go@v4
         with:
+          go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
           cache: false
@@ -478,7 +484,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.7.0
+        uses: helm/kind-action@v1.8.0
         with:
           version: v0.20.0
           install_only: true
@@ -606,6 +612,7 @@ jobs:
 
       - uses: actions/setup-go@v4
         with:
+          go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
           cache: false
@@ -623,7 +630,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.7.0
+        uses: helm/kind-action@v1.8.0
         with:
           version: v0.20.0
           install_only: true
@@ -744,7 +751,7 @@ jobs:
           fi
 
       - name: Install kind
-        uses: helm/kind-action@v1.7.0
+        uses: helm/kind-action@v1.8.0
         with:
           version: v0.20.0
           install_only: true
@@ -866,6 +873,7 @@ jobs:
 
       - uses: actions/setup-go@v4
         with:
+          go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
           cache: false
@@ -883,7 +891,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.7.0
+        uses: helm/kind-action@v1.8.0
         with:
           version: v0.20.0
           install_only: true
@@ -1009,6 +1017,7 @@ jobs:
 
       - uses: actions/setup-go@v4
         with:
+          go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
           cache: false
@@ -1026,7 +1035,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.7.0
+        uses: helm/kind-action@v1.8.0
         with:
           version: v0.20.0
           install_only: true
@@ -1080,7 +1089,7 @@ jobs:
       - uses: actions/checkout@v3
 
       - name: Install kind
-        uses: helm/kind-action@v1.7.0
+        uses: helm/kind-action@v1.8.0
         with:
           version: v0.20.0
           install_only: true
@@ -1116,7 +1125,7 @@ jobs:
       - uses: actions/checkout@v3
 
       - name: Install kind
-        uses: helm/kind-action@v1.7.0
+        uses: helm/kind-action@v1.8.0
         with:
           version: v0.20.0
           install_only: true
@@ -1152,7 +1161,7 @@ jobs:
       - uses: actions/checkout@v3
 
       - name: Install kind
-        uses: helm/kind-action@v1.7.0
+        uses: helm/kind-action@v1.8.0
         with:
           version: v0.20.0
           install_only: true
@@ -1190,7 +1199,7 @@ jobs:
       - uses: actions/checkout@v3
 
       - name: Install kind
-        uses: helm/kind-action@v1.7.0
+        uses: helm/kind-action@v1.8.0
         with:
           version: v0.20.0
           install_only: true
@@ -1252,6 +1261,7 @@ jobs:
 
       - uses: actions/setup-go@v4
         with:
+          go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
           cache: false
@@ -1269,7 +1279,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.7.0
+        uses: helm/kind-action@v1.8.0
         with:
           version: v0.20.0
           install_only: true
@@ -1340,6 +1350,7 @@ jobs:
 
       - uses: actions/setup-go@v4
         with:
+          go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
           cache: false
@@ -1357,7 +1368,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.7.0
+        uses: helm/kind-action@v1.8.0
         with:
           version: v0.20.0
           install_only: true
@@ -1422,6 +1433,7 @@ jobs:
 
       - uses: actions/setup-go@v4
         with:
+          go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
           cache: false
@@ -1439,7 +1451,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.7.0
+        uses: helm/kind-action@v1.8.0
         with:
           version: v0.20.0
           install_only: true
@@ -1494,7 +1506,7 @@ jobs:
       - uses: actions/checkout@v3
 
       - name: Install kind
-        uses: helm/kind-action@v1.7.0
+        uses: helm/kind-action@v1.8.0
         with:
           version: v0.20.0
           install_only: true
@@ -1574,6 +1586,7 @@ jobs:
 
       - uses: actions/setup-go@v4
         with:
+          go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
           cache: false
@@ -1591,7 +1604,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.7.0
+        uses: helm/kind-action@v1.8.0
         with:
           version: v0.20.0
           install_only: true
@@ -1686,6 +1699,7 @@ jobs:
 
       - uses: actions/setup-go@v4
         with:
+          go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
           cache: false
@@ -1703,7 +1717,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.7.0
+        uses: helm/kind-action@v1.8.0
         with:
           version: v0.20.0
           install_only: true
@@ -1879,7 +1893,7 @@ jobs:
           fi
 
       - name: Install kind
-        uses: helm/kind-action@v1.7.0
+        uses: helm/kind-action@v1.8.0
         with:
           version: v0.20.0
           install_only: true
@@ -1962,6 +1976,7 @@ jobs:
 
       - uses: actions/setup-go@v4
         with:
+          go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
           cache: false
@@ -1979,7 +1994,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.7.0
+        uses: helm/kind-action@v1.8.0
         with:
           version: v0.20.0
           install_only: true
@@ -2053,6 +2068,7 @@ jobs:
 
       - uses: actions/setup-go@v4
         with:
+          go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
           cache: false
@@ -2070,7 +2086,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.7.0
+        uses: helm/kind-action@v1.8.0
         with:
           version: v0.20.0
           install_only: true

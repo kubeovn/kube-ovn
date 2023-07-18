@@ -10,8 +10,9 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  HELM_VERSION: v3.11.3
-  SUBMARINER_VERSION: '0.14.3'
+  GO_VERSION: '1.20.5'
+  HELM_VERSION: v3.12.2
+  SUBMARINER_VERSION: '0.14.6'
 
 jobs:
   k8s-conformance-e2e:
@@ -44,6 +45,7 @@ jobs:
 
       - uses: actions/setup-go@v4
         with:
+          go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: go.mod
           check-latest: true
           cache: false
@@ -71,7 +73,7 @@ jobs:
           path: test/e2e/k8s-network/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.7.0
+        uses: helm/kind-action@v1.8.0
         with:
           version: v0.20.0
           install_only: true
@@ -130,6 +132,7 @@ jobs:
 
       - uses: actions/setup-go@v4
         with:
+          go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: go.mod
           check-latest: true
           cache: false
@@ -157,7 +160,7 @@ jobs:
           path: test/e2e/k8s-network/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.7.0
+        uses: helm/kind-action@v1.8.0
         with:
           version: v0.20.0
           install_only: true
@@ -212,6 +215,7 @@ jobs:
 
       - uses: actions/setup-go@v4
         with:
+          go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: go.mod
           check-latest: true
           cache: false
@@ -239,7 +243,7 @@ jobs:
           path: test/e2e/k8s-network/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.7.0
+        uses: helm/kind-action@v1.8.0
         with:
           version: v0.20.0
           install_only: true
@@ -303,7 +307,7 @@ jobs:
           path: test/e2e/k8s-network/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.7.0
+        uses: helm/kind-action@v1.8.0
         with:
           version: v0.20.0
           install_only: true
@@ -351,6 +355,7 @@ jobs:
       - uses: actions/checkout@v3
       - uses: actions/setup-go@v4
         with:
+          go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: go.mod
           check-latest: true
           cache: false
@@ -378,7 +383,7 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.7.0
+        uses: helm/kind-action@v1.8.0
         with:
           version: v0.20.0
           install_only: true
@@ -426,6 +431,7 @@ jobs:
       - uses: actions/checkout@v3
       - uses: actions/setup-go@v4
         with:
+          go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: go.mod
           check-latest: true
           cache: false
@@ -453,7 +459,7 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.7.0
+        uses: helm/kind-action@v1.8.0
         with:
           version: v0.20.0
           install_only: true
@@ -506,7 +512,7 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.7.0
+        uses: helm/kind-action@v1.8.0
         with:
           version: v0.20.0
           install_only: true
@@ -557,7 +563,7 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.7.0
+        uses: helm/kind-action@v1.8.0
         with:
           version: v0.20.0
           install_only: true
@@ -609,7 +615,7 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.7.0
+        uses: helm/kind-action@v1.8.0
         with:
           version: v0.20.0
           install_only: true
@@ -663,7 +669,7 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.7.0
+        uses: helm/kind-action@v1.8.0
         with:
           version: v0.20.0
           install_only: true
@@ -705,6 +711,7 @@ jobs:
 
       - uses: actions/setup-go@v4
         with:
+          go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: go.mod
           check-latest: true
           cache: false
@@ -732,7 +739,7 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.7.0
+        uses: helm/kind-action@v1.8.0
         with:
           version: v0.20.0
           install_only: true
@@ -775,6 +782,7 @@ jobs:
 
       - uses: actions/setup-go@v4
         with:
+          go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: go.mod
           check-latest: true
           cache: false
@@ -802,7 +810,7 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.7.0
+        uses: helm/kind-action@v1.8.0
         with:
           version: v0.20.0
           install_only: true
@@ -844,6 +852,7 @@ jobs:
 
       - uses: actions/setup-go@v4
         with:
+          go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: go.mod
           check-latest: true
           cache: false
@@ -871,7 +880,7 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.7.0
+        uses: helm/kind-action@v1.8.0
         with:
           version: v0.20.0
           install_only: true
@@ -926,7 +935,7 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.7.0
+        uses: helm/kind-action@v1.8.0
         with:
           version: v0.20.0
           install_only: true
@@ -976,6 +985,7 @@ jobs:
 
       - uses: actions/setup-go@v4
         with:
+          go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: go.mod
           check-latest: true
           cache: false
@@ -1003,7 +1013,7 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.7.0
+        uses: helm/kind-action@v1.8.0
         with:
           version: v0.20.0
           install_only: true
@@ -1063,6 +1073,7 @@ jobs:
       - uses: actions/checkout@v3
       - uses: actions/setup-go@v4
         with:
+          go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: go.mod
           check-latest: true
           cache: false
@@ -1090,7 +1101,7 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.7.0
+        uses: helm/kind-action@v1.8.0
         with:
           version: v0.20.0
           install_only: true
@@ -1145,6 +1156,7 @@ jobs:
 
       - uses: actions/setup-go@v4
         with:
+          go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: go.mod
           check-latest: true
           cache: false
@@ -1184,7 +1196,7 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ env.VERSION_TO }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.7.0
+        uses: helm/kind-action@v1.8.0
         with:
           version: v0.20.0
           install_only: true
@@ -1256,7 +1268,7 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.7.0
+        uses: helm/kind-action@v1.8.0
         with:
           version: v0.20.0
           install_only: true
@@ -1303,6 +1315,7 @@ jobs:
       - uses: actions/checkout@v3
       - uses: actions/setup-go@v4
         with:
+          go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: go.mod
           check-latest: true
           cache: false
@@ -1330,7 +1343,7 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.7.0
+        uses: helm/kind-action@v1.8.0
         with:
           version: v0.20.0
           install_only: true
@@ -1374,6 +1387,7 @@ jobs:
       - uses: actions/checkout@v3
       - uses: actions/setup-go@v4
         with:
+          go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: go.mod
           check-latest: true
           cache: false
@@ -1401,7 +1415,7 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.7.0
+        uses: helm/kind-action@v1.8.0
         with:
           version: v0.20.0
           install_only: true

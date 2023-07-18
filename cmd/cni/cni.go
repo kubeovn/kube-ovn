@@ -1,4 +1,4 @@
-package cni
+package main
 
 import (
 	"encoding/json"
@@ -18,7 +18,7 @@ import (
 	"github.com/kubeovn/kube-ovn/versions"
 )
 
-func CmdMain() {
+func main() {
 	// this ensures that main runs only on main thread (thread group leader).
 	// since namespace ops (unshare, setns) are done for a single thread, we
 	// must ensure that the goroutine does not jump from OS thread to thread

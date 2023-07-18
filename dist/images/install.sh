@@ -32,6 +32,7 @@ IFACE=${IFACE:-}
 # Note that the dpdk tunnel iface and tunnel ip cidr should be diffierent with Kubernetes api cidr, otherwise the route will be a problem.
 DPDK_TUNNEL_IFACE=${DPDK_TUNNEL_IFACE:-br-phy}
 ENABLE_BIND_LOCAL_IP=${ENABLE_BIND_LOCAL_IP:-true}
+ENABLE_TPROXY=${ENABLE_TPROXY:-false}
 
 # debug
 DEBUG_WRAPPER=${DEBUG_WRAPPER:-}
@@ -50,7 +51,7 @@ POD_GATEWAY="10.16.0.1"
 SVC_CIDR="10.96.0.0/12"                # Do NOT overlap with NODE/POD/JOIN CIDR
 JOIN_CIDR="100.64.0.0/16"              # Do NOT overlap with NODE/POD/SVC CIDR
 PINGER_EXTERNAL_ADDRESS="114.114.114.114"  # Pinger check external ip probe
-PINGER_EXTERNAL_DOMAIN="alauda.cn"         # Pinger check external domain probe
+PINGER_EXTERNAL_DOMAIN="alauda.cn."         # Pinger check external domain probe
 SVC_YAML_IPFAMILYPOLICY=""
 if [ "$IPV6" = "true" ]; then
   POD_CIDR="fd00:10:16::/112"                # Do NOT overlap with NODE/SVC/JOIN CIDR
@@ -58,7 +59,7 @@ if [ "$IPV6" = "true" ]; then
   SVC_CIDR="fd00:10:96::/112"               # Do NOT overlap with NODE/POD/JOIN CIDR
   JOIN_CIDR="fd00:100:64::/112"              # Do NOT overlap with NODE/POD/SVC CIDR
   PINGER_EXTERNAL_ADDRESS="2400:3200::1"
-  PINGER_EXTERNAL_DOMAIN="google.com"
+  PINGER_EXTERNAL_DOMAIN="google.com."
 fi
 if [ "$DUAL_STACK" = "true" ]; then
   POD_CIDR="10.16.0.0/16,fd00:10:16::/112"                # Do NOT overlap with NODE/SVC/JOIN CIDR
@@ -66,7 +67,7 @@ if [ "$DUAL_STACK" = "true" ]; then
   SVC_CIDR="10.96.0.0/12,fd00:10:96::/112"               # Do NOT overlap with NODE/POD/JOIN CIDR
   JOIN_CIDR="100.64.0.0/16,fd00:100:64::/112"             # Do NOT overlap with NODE/POD/SVC CIDR
   PINGER_EXTERNAL_ADDRESS="114.114.114.114,2400:3200::1"
-  PINGER_EXTERNAL_DOMAIN="google.com"
+  PINGER_EXTERNAL_DOMAIN="google.com."
   SVC_YAML_IPFAMILYPOLICY="ipFamilyPolicy: PreferDualStack"
 fi
 
@@ -4037,6 +4038,7 @@ spec:
           - --log_file=/var/log/kube-ovn/kube-ovn-cni.log
           - --log_file_max_size=0
           - --kubelet-dir=$KUBELET_DIR
+          - --enable-tproxy=$ENABLE_TPROXY
         securityContext:
           runAsUser: 0
           privileged: true

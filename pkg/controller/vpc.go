@@ -103,21 +103,14 @@ func (c *Controller) handleDelVpc(vpc *kubeovnv1.Vpc) error {
 		return err
 	}
 
-	err := c.deleteVpcRouter(vpc.Status.Router)
-	if err != nil {
-		return err
-	}
-
 	if err := c.handleDelVpcExternal(vpc.Name); err != nil {
 		klog.Errorf("failed to delete external connection for vpc %s, error %v", vpc.Name, err)
 		return err
 	}
-	if vpc.Spec.EnableBfd || vpc.Status.EnableBfd {
-		lrpEipName := fmt.Sprintf("%s-%s", vpc.Name, c.config.ExternalGatewaySwitch)
-		if err := c.ovnClient.DeleteBFD(lrpEipName, ""); err != nil {
-			klog.Error(err)
-			return err
-		}
+
+	err := c.deleteVpcRouter(vpc.Status.Router)
+	if err != nil {
+		return err
 	}
 	return nil
 }
@@ -897,43 +890,46 @@ func (c *Controller) handleDeleteVpcStaticRoute(key string) error {
 }
 
 func (c *Controller) handleDelVpcExternal(key string) error {
-	cachedVpc, err := c.vpcsLister.Get(key)
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
-		return err
-	}
-
 	lspName := fmt.Sprintf("%s-%s", c.config.ExternalGatewaySwitch, key)
 	lrpName := fmt.Sprintf("%s-%s", key, c.config.ExternalGatewaySwitch)
 	klog.V(3).Infof("delete vpc lrp %s", lrpName)
-
 	if err := c.ovnClient.RemoveLogicalPatchPort(lspName, lrpName); err != nil {
 		klog.Errorf("failed to disconnect router '%s' to external, %v", key, err)
 		return err
 	}
 
-	vpc := cachedVpc.DeepCopy()
-	vpc.Status.EnableExternal = cachedVpc.Spec.EnableExternal
-	bytes, err := vpc.Status.Bytes()
-	if err != nil {
-		return err
-	}
-	if _, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Patch(context.Background(),
-		vpc.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
-		return err
-	}
-	if err = c.config.KubeOvnClient.KubeovnV1().OvnEips().Delete(context.Background(), lrpName, metav1.DeleteOptions{}); err != nil {
+	if err := c.config.KubeOvnClient.KubeovnV1().OvnEips().Delete(context.Background(), lrpName, metav1.DeleteOptions{}); err != nil {
 		if !k8serrors.IsNotFound(err) {
 			klog.Errorf("failed to delete ovn eip %s, %v", lrpName, err)
 			return err
 		}
 	}
-
-	// del all vpc bfds
 	if err := c.ovnClient.DeleteBFD(lrpName, ""); err != nil {
 		klog.Error(err)
+		return err
+	}
+	cachedVpc, err := c.vpcsLister.Get(key)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		klog.Errorf("failed to get vpc %s, %v", key, err)
+		return err
+	}
+	vpc := cachedVpc.DeepCopy()
+	vpc.Status.EnableExternal = cachedVpc.Spec.EnableExternal
+	vpc.Status.EnableBfd = cachedVpc.Spec.EnableBfd
+	bytes, err := vpc.Status.Bytes()
+	if err != nil {
+		klog.Errorf("failed to marshal vpc status: %v", err)
+		return err
+	}
+	if _, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Patch(context.Background(),
+		vpc.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		klog.Errorf("failed to patch vpc %s, %v", key, err)
 		return err
 	}
 	return nil

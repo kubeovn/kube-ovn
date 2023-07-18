@@ -110,6 +110,9 @@ func ParseFlags() (*Configuration, error) {
 	if *argNeighborIPv6Address != "" && net.ParseIP(*argNeighborIPv6Address).To16() == nil {
 		return nil, fmt.Errorf("invalid neighbor-ipv6-address format: %s", *argNeighborIPv6Address)
 	}
+	if *argEbgpMultihopTtl < 1 || *argEbgpMultihopTtl > 255 {
+		return nil, errors.New("the bgp MultihopTtl must be in the range 1 to 255")
+	}
 
 	config := &Configuration{
 		AnnounceClusterIP:           *argAnnounceClusterIP,

@@ -24,6 +24,7 @@ import (
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/docker"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/iproute"
+	"github.com/kubeovn/kube-ovn/test/e2e/framework/iptables"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/kind"
 )
 
@@ -64,36 +65,6 @@ func checkIPSetOnNode(f *framework.Framework, node string, expectetIPsets []stri
 		for _, r := range expectetIPsets {
 			framework.Logf("checking ipset %s: %v", r, shouldExist)
 			ok, err := gomega.ContainElement(r).Match(exitIPsets)
-			if err != nil || ok != shouldExist {
-				return false, err
-			}
-		}
-		return true, nil
-	}, "")
-}
-
-func checkIptablesRulesOnNode(f *framework.Framework, node, table, chain, cidr string, expectedRules []string, shouldExist bool) {
-	if cidr == "" {
-		return
-	}
-
-	ovsPod := getOvsPodOnNode(f, node)
-
-	iptBin := "iptables"
-	if util.CheckProtocol(cidr) == apiv1.ProtocolIPv6 {
-		iptBin = "ip6tables"
-	}
-
-	cmd := fmt.Sprintf(`%s -t %s -S`, iptBin, table)
-	if chain != "" {
-		cmd += chain
-	}
-	framework.WaitUntil(3*time.Second, 10*time.Second, func(_ context.Context) (bool, error) {
-		output := e2epodoutput.RunHostCmdOrDie(ovsPod.Namespace, ovsPod.Name, cmd)
-		rules := strings.Split(output, "\n")
-		for _, r := range expectedRules {
-			framework.Logf("checking iptables rule %q in table %q chain %q: %v", r, table, chain, shouldExist)
-			ok, err := gomega.ContainElement(gomega.HavePrefix(r)).Match(rules)
 			if err != nil || ok != shouldExist {
 				return false, err
 			}
@@ -1036,14 +1007,14 @@ var _ = framework.Describe("[group:subnet]", func() {
 					fmt.Sprintf(`-A %s -s %s -m comment --comment "%s,%s"`, "FORWARD", cidrV4, util.OvnSubnetGatewayIptables, subnetName),
 				}
 
-				checkIptablesRulesOnNode(f, node.Name, "filter", "FORWARD", cidrV4, expectedRules, true)
+				iptables.CheckIptablesRulesOnNode(f, node.Name, "filter", "FORWARD", apiv1.ProtocolIPv4, expectedRules, true)
 			}
 			if cidrV6 != "" {
 				expectedRules := []string{
 					fmt.Sprintf(`-A %s -d %s -m comment --comment "%s,%s"`, "FORWARD", cidrV6, util.OvnSubnetGatewayIptables, subnetName),
 					fmt.Sprintf(`-A %s -s %s -m comment --comment "%s,%s"`, "FORWARD", cidrV6, util.OvnSubnetGatewayIptables, subnetName),
 				}
-				checkIptablesRulesOnNode(f, node.Name, "filter", "FORWARD", cidrV6, expectedRules, true)
+				iptables.CheckIptablesRulesOnNode(f, node.Name, "filter", "FORWARD", apiv1.ProtocolIPv6, expectedRules, true)
 			}
 		}
 
@@ -1091,14 +1062,14 @@ var _ = framework.Describe("[group:subnet]", func() {
 					fmt.Sprintf(`-A %s -s %s -m comment --comment "%s,%s"`, "FORWARD", cidrV4, util.OvnSubnetGatewayIptables, subnetName),
 				}
 
-				checkIptablesRulesOnNode(f, node.Name, "filter", "FORWARD", cidrV4, expectedRules, false)
+				iptables.CheckIptablesRulesOnNode(f, node.Name, "filter", "FORWARD", apiv1.ProtocolIPv4, expectedRules, false)
 			}
 			if cidrV6 != "" {
 				expectedRules := []string{
 					fmt.Sprintf(`-A %s -d %s -m comment --comment "%s,%s"`, "FORWARD", cidrV6, util.OvnSubnetGatewayIptables, subnetName),
 					fmt.Sprintf(`-A %s -s %s -m comment --comment "%s,%s"`, "FORWARD", cidrV6, util.OvnSubnetGatewayIptables, subnetName),
 				}
-				checkIptablesRulesOnNode(f, node.Name, "filter", "FORWARD", cidrV6, expectedRules, false)
+				iptables.CheckIptablesRulesOnNode(f, node.Name, "filter", "FORWARD", apiv1.ProtocolIPv6, expectedRules, false)
 			}
 		}
 	})
@@ -1378,12 +1349,12 @@ func checkNatPolicyRules(f *framework.Framework, cs clientset.Interface, subnet 
 		}
 
 		if cidrV4 != "" {
-			checkIptablesRulesOnNode(f, node.Name, "nat", "", cidrV4, staticV4Rules, true)
-			checkIptablesRulesOnNode(f, node.Name, "nat", "", cidrV4, expectV4Rules, shouldExist)
+			iptables.CheckIptablesRulesOnNode(f, node.Name, "nat", "", apiv1.ProtocolIPv4, staticV4Rules, true)
+			iptables.CheckIptablesRulesOnNode(f, node.Name, "nat", "", apiv1.ProtocolIPv4, expectV4Rules, shouldExist)
 		}
 		if cidrV6 != "" {
-			checkIptablesRulesOnNode(f, node.Name, "nat", "", cidrV6, staticV6Rules, true)
-			checkIptablesRulesOnNode(f, node.Name, "nat", "", cidrV6, expectV6Rules, shouldExist)
+			iptables.CheckIptablesRulesOnNode(f, node.Name, "nat", "", apiv1.ProtocolIPv6, staticV6Rules, true)
+			iptables.CheckIptablesRulesOnNode(f, node.Name, "nat", "", apiv1.ProtocolIPv6, expectV6Rules, shouldExist)
 		}
 	}
 }

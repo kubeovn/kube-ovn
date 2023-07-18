@@ -15,6 +15,9 @@ ovn.yaml
 ovn-ic-0.yaml
 ovn-ic-1.yaml
 kind.yaml
+kustomization.yaml
+kwok.yaml
+kwok-node.yaml
 broker-info.subm
 broker-info.subm.*
 broker-info-internal.subm

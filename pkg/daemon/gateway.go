@@ -3,6 +3,7 @@ package daemon
 import (
 	"fmt"
 	"os/exec"
+	"sort"
 	"strings"
 
 	v1 "k8s.io/api/core/v1"
@@ -245,4 +246,45 @@ func (c *Controller) getEgressNatIpByNode(nodeName string) (map[string]string, e
 		}
 	}
 	return subnetsNatIp, nil
+}
+
+func (c *Controller) getTProxyConditionPod(needSort bool) ([]*v1.Pod, error) {
+
+	var filteredPods []*v1.Pod
+	pods, err := c.podsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("list pods failed, %v", err)
+		return nil, err
+	}
+
+	for _, pod := range pods {
+		if pod.Spec.NodeName != c.config.NodeName {
+			continue
+		}
+
+		subnetName, ok := pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, util.OvnProvider)]
+		if !ok {
+			continue
+		}
+
+		subnet, err := c.subnetsLister.Get(subnetName)
+		if err != nil {
+			err = fmt.Errorf("failed to get subnet '%s', err: %v", subnetName, err)
+			return nil, err
+		}
+
+		if subnet.Spec.Vpc == c.config.ClusterRouter {
+			continue
+		}
+
+		filteredPods = append(filteredPods, pod)
+	}
+
+	if needSort {
+		sort.Slice(filteredPods, func(i, j int) bool {
+			return filteredPods[i].Namespace+"/"+filteredPods[i].Name < filteredPods[j].Namespace+"/"+filteredPods[j].Name
+		})
+	}
+
+	return filteredPods, nil
 }

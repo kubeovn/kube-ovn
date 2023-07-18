@@ -25,7 +25,7 @@ CHART_UPGRADE_RESTART_OVS=$(shell echo $${CHART_UPGRADE_RESTART_OVS:-false})
 MULTUS_IMAGE = ghcr.io/k8snetworkplumbingwg/multus-cni:snapshot-thick
 MULTUS_YAML = https://raw.githubusercontent.com/k8snetworkplumbingwg/multus-cni/master/deployments/multus-daemonset-thick.yml
 
-KUBEVIRT_VERSION = v0.58.1
+KUBEVIRT_VERSION = v0.59.2
 KUBEVIRT_OPERATOR_IMAGE = quay.io/kubevirt/virt-operator:$(KUBEVIRT_VERSION)
 KUBEVIRT_API_IMAGE = quay.io/kubevirt/virt-api:$(KUBEVIRT_VERSION)
 KUBEVIRT_CONTROLLER_IMAGE = quay.io/kubevirt/virt-controller:$(KUBEVIRT_VERSION)
@@ -36,22 +36,30 @@ KUBEVIRT_OPERATOR_YAML = https://github.com/kubevirt/kubevirt/releases/download/
 KUBEVIRT_CR_YAML = https://github.com/kubevirt/kubevirt/releases/download/$(KUBEVIRT_VERSION)/kubevirt-cr.yaml
 KUBEVIRT_TEST_YAML = https://kubevirt.io/labs/manifests/vm.yaml
 
-CILIUM_VERSION = 1.12.9
+CILIUM_VERSION = 1.13.4
 CILIUM_IMAGE_REPO = quay.io/cilium/cilium
 
-CERT_MANAGER_VERSION = v1.11.1
+CERT_MANAGER_VERSION = v1.12.2
 CERT_MANAGER_CONTROLLER = quay.io/jetstack/cert-manager-controller:$(CERT_MANAGER_VERSION)
 CERT_MANAGER_CAINJECTOR = quay.io/jetstack/cert-manager-cainjector:$(CERT_MANAGER_VERSION)
 CERT_MANAGER_WEBHOOK = quay.io/jetstack/cert-manager-webhook:$(CERT_MANAGER_VERSION)
 CERT_MANAGER_YAML = https://github.com/cert-manager/cert-manager/releases/download/$(CERT_MANAGER_VERSION)/cert-manager.yaml
 
-SUBMARINER_VERSION = $(shell echo $${SUBMARINER_VERSION:-0.14.3})
+SUBMARINER_VERSION = $(shell echo $${SUBMARINER_VERSION:-0.14.6})
 SUBMARINER_OPERATOR = quay.io/submariner/submariner-operator:$(SUBMARINER_VERSION)
 SUBMARINER_GATEWAY = quay.io/submariner/submariner-gateway:$(SUBMARINER_VERSION)
 SUBMARINER_LIGHTHOUSE_AGENT = quay.io/submariner/lighthouse-agent:$(SUBMARINER_VERSION)
 SUBMARINER_LIGHTHOUSE_COREDNS = quay.io/submariner/lighthouse-coredns:$(SUBMARINER_VERSION)
 SUBMARINER_ROUTE_AGENT = quay.io/submariner/submariner-route-agent:$(SUBMARINER_VERSION)
 SUBMARINER_NETTEST = quay.io/submariner/nettest:$(SUBMARINER_VERSION)
+
+DEEPFLOW_CHART_VERSION = 6.2.6
+DEEPFLOW_CHART_REPO = https://deepflow-ce.oss-cn-beijing.aliyuncs.com/chart/stable
+DEEPFLOW_IMAGE_REPO = registry.cn-beijing.aliyuncs.com/deepflow-ce
+DEEPFLOW_GRAFANA_PORT = 30080
+
+KWOK_VERSION = v0.3.0
+KWOK_IMAGE = registry.k8s.io/kwok/kwok:$(KWOK_VERSION)
 
 VPC_NAT_GW_IMG = $(REGISTRY)/vpc-nat-gateway:$(VERSION)
 KUBEOVN_BASE_IMG= $(REGISTRY)/kube-ovn-base:$(VERSION)
@@ -67,6 +75,7 @@ ARCH = amd64
 .PHONY: build-go
 build-go:
 	go mod tidy
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -buildmode=pie -o $(CURDIR)/dist/images/kube-ovn -ldflags $(GOLDFLAGS) -v ./cmd/cni
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -buildmode=pie -o $(CURDIR)/dist/images/kube-ovn-cmd -ldflags $(GOLDFLAGS) -v ./cmd
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -buildmode=pie -o $(CURDIR)/dist/images/kube-ovn-webhook -ldflags $(GOLDFLAGS) -v ./cmd/webhook
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o $(CURDIR)/dist/images/test-server -ldflags $(GOLDFLAGS) -v ./test/server
@@ -74,11 +83,12 @@ build-go:
 .PHONY: build-go-windows
 build-go-windows:
 	go mod tidy
-	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -buildmode=pie -o $(CURDIR)/dist/windows/kube-ovn.exe -ldflags $(GOLDFLAGS) -v ./cmd/windows/cni
+	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -buildmode=pie -o $(CURDIR)/dist/windows/kube-ovn.exe -ldflags $(GOLDFLAGS) -v ./cmd/cni
 	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -buildmode=pie -o $(CURDIR)/dist/windows/kube-ovn-daemon.exe -ldflags $(GOLDFLAGS) -v ./cmd/windows/daemon
 
 .PHONY: build-go-arm
 build-go-arm:
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -buildmode=pie -o $(CURDIR)/dist/images/kube-ovn -ldflags $(GOLDFLAGS) -v ./cmd/cni
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -buildmode=pie -o $(CURDIR)/dist/images/kube-ovn-cmd -ldflags $(GOLDFLAGS) -v ./cmd
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -buildmode=pie -o $(CURDIR)/dist/images/kube-ovn-webhook -ldflags $(GOLDFLAGS) -v ./cmd/webhook
 
@@ -246,8 +256,10 @@ endef
 
 define kind_create_cluster
 	kind create cluster --config $(1) --name $(2)
-	kubectl delete --ignore-not-found sc standard
-	kubectl delete --ignore-not-found -n local-path-storage deploy local-path-provisioner
+	@if [ "x$(3)" = "x1" ]; then \
+		kubectl delete --ignore-not-found sc standard; \
+		kubectl delete --ignore-not-found -n local-path-storage deploy local-path-provisioner; \
+	fi
 	kubectl describe no
 endef
 
@@ -265,6 +277,10 @@ define kind_load_submariner_images
 	$(call kind_load_image,$(1),$(SUBMARINER_LIGHTHOUSE_COREDNS),1)
 	$(call kind_load_image,$(1),$(SUBMARINER_ROUTE_AGENT),1)
 	$(call kind_load_image,$(1),$(SUBMARINER_NETTEST),1)
+endef
+
+define kind_load_kwok_image
+	$(call kind_load_image,$(1),$(KWOK_IMAGE),1)
 endef
 
 define kubectl_wait_exist_and_ready
@@ -318,7 +334,7 @@ kind-enable-hairpin:
 
 .PHONY: kind-create
 kind-create:
-	$(call kind_create_cluster,yamls/kind.yaml,kube-ovn)
+	$(call kind_create_cluster,yamls/kind.yaml,kube-ovn,1)
 
 .PHONY: kind-init
 kind-init: kind-init-ipv4
@@ -334,22 +350,27 @@ kind-init-ovn-ic: kind-init-ovn-ic-ipv4
 .PHONY: kind-init-ovn-ic-ipv4
 kind-init-ovn-ic-ipv4: kind-clean-ovn-ic kind-init
 	@$(MAKE) kind-generate-config
-	$(call kind_create_cluster,yamls/kind.yaml,kube-ovn1)
+	$(call kind_create_cluster,yamls/kind.yaml,kube-ovn1,1)
 
 .PHONY: kind-init-ovn-ic-ipv6
 kind-init-ovn-ic-ipv6: kind-clean-ovn-ic kind-init-ipv6
 	@ip_family=ipv6 $(MAKE) kind-generate-config
-	$(call kind_create_cluster,yamls/kind.yaml,kube-ovn1)
+	$(call kind_create_cluster,yamls/kind.yaml,kube-ovn1,1)
 
 .PHONY: kind-init-ovn-ic-dual
 kind-init-ovn-ic-dual: kind-clean-ovn-ic kind-init-dual
 	@ip_family=dual $(MAKE) kind-generate-config
-	$(call kind_create_cluster,yamls/kind.yaml,kube-ovn1)
+	$(call kind_create_cluster,yamls/kind.yaml,kube-ovn1,1)
 
 .PHONY: kind-init-ovn-submariner
 kind-init-ovn-submariner: kind-clean-ovn-submariner kind-init
 	@pod_cidr_v4=10.18.0.0/16 svc_cidr_v4=10.112.0.0/12 $(MAKE) kind-generate-config
-	$(call kind_create_cluster,yamls/kind.yaml,kube-ovn1)
+	$(call kind_create_cluster,yamls/kind.yaml,kube-ovn1,1)
+
+.PHONY: kind-init-deepflow
+kind-init-deepflow: kind-clean
+	@port_mapping=$(DEEPFLOW_GRAFANA_PORT):$(DEEPFLOW_GRAFANA_PORT) $(MAKE) kind-generate-config
+	$(call kind_create_cluster,yamls/kind.yaml,kube-ovn,0)
 
 .PHONY: kind-init-iptables
 kind-init-iptables:
@@ -512,7 +533,7 @@ kind-install-ovn-ic-dual: kind-install-dual
 	sed -e 's/10.16.0/10.18.0/g' \
 		-e 's/10.96.0/10.98.0/g' \
 		-e 's/100.64.0/100.68.0/g' \
-	    -e 's/fd00:10:16:/fd00:10:18:/g' \
+		-e 's/fd00:10:16:/fd00:10:18:/g' \
 		-e 's/fd00:10:96:/fd00:10:98:/g' \
 		-e 's/fd00:100:64:/fd00:100:68:/g' \
 		-e 's/VERSION=.*/VERSION=$(VERSION)/' \
@@ -747,6 +768,34 @@ kind-install-cilium-chaining: kind-load-image kind-untaint-control-plane
 		ENABLE_LB=false ENABLE_NP=false CNI_CONFIG_PRIORITY=10 bash
 	kubectl describe no
 
+.PHONY: kind-install-deepflow
+kind-install-deepflow: kind-install
+	helm repo add deepflow $(DEEPFLOW_CHART_REPO)
+	helm repo update deepflow
+	$(eval CLICKHOUSE_PERSISTENCE = $(shell helm show values --version $(DEEPFLOW_CHART_VERSION) --jsonpath '{.clickhouse.storageConfig.persistence}' deepflow/deepflow | sed 's/0Gi/Gi/g'))
+	helm install deepflow -n deepflow deepflow/deepflow \
+		--create-namespace --version $(DEEPFLOW_CHART_VERSION) \
+		--set global.image.repository=$(DEEPFLOW_IMAGE_REPO) \
+		--set grafana.image.repository=$(DEEPFLOW_IMAGE_REPO)/grafana \
+		--set deepflow-agent.sysctlInitContainer.enabled=false \
+		--set 'mysql.storageConfig.persistence.size=5Gi' \
+		--set-json 'clickhouse.storageConfig.persistence=$(CLICKHOUSE_PERSISTENCE)'
+	kubectl -n deepflow patch svc deepflow-grafana --type=json \
+		-p '[{"op": "replace", "path": "/spec/ports/0/nodePort", "value": $(DEEPFLOW_GRAFANA_PORT)}]'
+	echo -e "\nGrafana URL: http://127.0.0.1:$(DEEPFLOW_GRAFANA_PORT)\nGrafana auth: admin:deepflow\n"
+
+.PHONY: kind-install-kwok
+kind-install-kwok: kind-install-underlay
+	kwok_version=$(KWOK_VERSION) j2 yamls/kwok-kustomization.yaml.j2 -o kustomization.yaml
+	kubectl kustomize ./ > kwok.yaml
+	$(call kind_load_kwok_image,kube-ovn)
+	kubectl apply -f kwok.yaml
+	kubectl -n kube-system rollout status deploy kwok-controller --timeout 60s
+	for i in {1..20}; do \
+		kwok_node_name=fake-node-$$i j2 yamls/kwok-node.yaml.j2 -o kwok-node.yaml; \
+		kubectl apply -f kwok-node.yaml; \
+	done
+
 .PHONY: kind-reload
 kind-reload: kind-reload-ovs
 	kubectl delete pod -n kube-system -l app=kube-ovn-controller
@@ -811,6 +860,7 @@ clean:
 	$(RM) yamls/kind.yaml
 	$(RM) ovn.yaml kube-ovn.yaml kube-ovn-crd.yaml
 	$(RM) ovn-ic-0.yaml ovn-ic-1.yaml
+	$(RM) kustomization.yaml kwok.yaml kwok-node.yaml
 	$(RM) kube-ovn.tar vpc-nat-gateway.tar image-amd64.tar image-arm64.tar
 
 .PHONY: changelog
