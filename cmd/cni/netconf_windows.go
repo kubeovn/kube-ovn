@@ -1,4 +1,4 @@
-package cni
+package main
 
 import (
 	"github.com/containernetworking/plugins/pkg/hns"

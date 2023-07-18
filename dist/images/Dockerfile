@@ -16,10 +16,10 @@ RUN rm -f /usr/bin/nc &&\
     rm -f /usr/bin/netcat
 RUN deluser sync
 
+COPY kube-ovn /kube-ovn/kube-ovn
 COPY kube-ovn-cmd /kube-ovn/kube-ovn-cmd
 COPY kube-ovn-webhook /kube-ovn/kube-ovn-webhook
-RUN ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn && \
-    ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn-controller && \
+RUN ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn-controller && \
     ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn-daemon && \
     ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn-monitor && \
     ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn-pinger && \
