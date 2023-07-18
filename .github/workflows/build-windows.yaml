@@ -56,6 +56,10 @@ jobs:
           - go.sum
           EOF
 
+          sh hack/go-list.sh cmd/cni | while read f; do
+            echo "- $f" | tee -a $filter
+          done
+
           sh hack/go-list.sh cmd/windows | while read f; do
             echo "- $f" | tee -a $filter
           done

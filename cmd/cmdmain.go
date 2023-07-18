@@ -4,7 +4,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/kubeovn/kube-ovn/cmd/cni"
 	"github.com/kubeovn/kube-ovn/cmd/controller"
 	"github.com/kubeovn/kube-ovn/cmd/controller_health_check"
 	"github.com/kubeovn/kube-ovn/cmd/daemon"
@@ -16,7 +15,6 @@ import (
 )
 
 const (
-	CmdCNI                   = "kube-ovn"
 	CmdController            = "kube-ovn-controller"
 	CmdDaemon                = "kube-ovn-daemon"
 	CmdMonitor               = "kube-ovn-monitor"
@@ -29,8 +27,6 @@ const (
 func main() {
 	cmd := filepath.Base(os.Args[0])
 	switch cmd {
-	case CmdCNI:
-		cni.CmdMain()
 	case CmdController:
 		controller.CmdMain()
 	case CmdDaemon:

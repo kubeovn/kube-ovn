@@ -1,7 +1,7 @@
 //go:build !windows
 // +build !windows
 
-package cni
+package main
 
 import (
 	"github.com/containernetworking/cni/pkg/types"
