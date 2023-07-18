@@ -32,6 +32,7 @@ IFACE=${IFACE:-}
 # Note that the dpdk tunnel iface and tunnel ip cidr should be diffierent with Kubernetes api cidr, otherwise the route will be a problem.
 DPDK_TUNNEL_IFACE=${DPDK_TUNNEL_IFACE:-br-phy}
 ENABLE_BIND_LOCAL_IP=${ENABLE_BIND_LOCAL_IP:-true}
+ENABLE_TPROXY=${ENABLE_TPROXY:-false}
 
 # debug
 DEBUG_WRAPPER=${DEBUG_WRAPPER:-}
@@ -4037,6 +4038,7 @@ spec:
           - --log_file=/var/log/kube-ovn/kube-ovn-cni.log
           - --log_file_max_size=0
           - --kubelet-dir=$KUBELET_DIR
+          - --enable-tproxy=$ENABLE_TPROXY
         securityContext:
           runAsUser: 0
           privileged: true

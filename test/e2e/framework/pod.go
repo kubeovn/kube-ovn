@@ -27,6 +27,12 @@ func (f *Framework) PodClientNS(namespace string) *PodClient {
 	return &PodClient{f, e2epod.PodClientNS(f.Framework, namespace)}
 }
 
+func (c *PodClient) GetPod(name string) *corev1.Pod {
+	pod, err := c.PodInterface.Get(context.TODO(), name, metav1.GetOptions{})
+	ExpectNoError(err)
+	return pod
+}
+
 func (c *PodClient) Create(pod *corev1.Pod) *corev1.Pod {
 	return c.PodClient.Create(context.Background(), pod)
 }

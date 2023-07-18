@@ -2,12 +2,21 @@ package framework
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"strings"
+	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/wait"
 	v1apps "k8s.io/client-go/kubernetes/typed/apps/v1"
+	"k8s.io/kubectl/pkg/polymorphichelpers"
 )
 
 type DaemonSetClient struct {
@@ -66,4 +75,62 @@ func (c *DaemonSetClient) GetPodOnNode(ds *appsv1.DaemonSet, node string) (*core
 	}
 
 	return nil, fmt.Errorf("pod for daemonset %s/%s on node %s not found", ds.Namespace, ds.Name, node)
+}
+
+func (c *DaemonSetClient) Patch(daemonset *appsv1.DaemonSet) *appsv1.DaemonSet {
+	modifiedBytes, err := json.Marshal(daemonset)
+	if err != nil {
+		Failf("failed to marshal modified DaemonSet: %v", err)
+	}
+	ExpectNoError(err)
+	var patchedDaemonSet *appsv1.DaemonSet
+	err = wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+		daemonSet, err := c.DaemonSetInterface.Patch(ctx, daemonset.Name, types.MergePatchType, modifiedBytes, metav1.PatchOptions{}, "")
+		if err != nil {
+			return handleWaitingAPIError(err, false, "patch daemonset %s/%s", daemonset.Namespace, daemonset.Name)
+		}
+		patchedDaemonSet = daemonSet
+		return true, nil
+	})
+	if err == nil {
+		return patchedDaemonSet.DeepCopy()
+	}
+
+	if errors.Is(err, context.DeadlineExceeded) {
+		Failf("timed out while retrying to patch daemonset %s/%s", daemonset.Namespace, daemonset.Name)
+	}
+	Failf("error occurred while retrying to patch daemonset %s/%s: %v", daemonset.Namespace, daemonset.Name, err)
+
+	return nil
+}
+
+func (c *DaemonSetClient) PatchSync(modifiedDaemonset *appsv1.DaemonSet) *appsv1.DaemonSet {
+	daemonSet := c.Patch(modifiedDaemonset)
+	return c.RolloutStatus(daemonSet.Name)
+}
+
+func (c *DaemonSetClient) RolloutStatus(name string) *appsv1.DaemonSet {
+	var daemonSet *appsv1.DaemonSet
+	WaitUntil(2*time.Second, timeout, func(_ context.Context) (bool, error) {
+		var err error
+		daemonSet = c.Get(name)
+		unstructured := &unstructured.Unstructured{}
+		if unstructured.Object, err = runtime.DefaultUnstructuredConverter.ToUnstructured(daemonSet); err != nil {
+			return false, err
+		}
+
+		dsv := &polymorphichelpers.DaemonSetStatusViewer{}
+		msg, done, err := dsv.Status(unstructured, 0)
+		if err != nil {
+			return false, err
+		}
+		if done {
+			return true, nil
+		}
+
+		Logf(strings.TrimSpace(msg))
+		return false, nil
+	}, "")
+
+	return daemonSet
 }

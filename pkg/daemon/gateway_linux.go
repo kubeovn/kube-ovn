@@ -40,10 +40,13 @@ const (
 
 const (
 	NAT                        = "nat"
+	MANGLE                     = "mangle"
 	Prerouting                 = "PREROUTING"
 	Postrouting                = "POSTROUTING"
+	Output                     = "OUTPUT"
 	OvnPrerouting              = "OVN-PREROUTING"
 	OvnPostrouting             = "OVN-POSTROUTING"
+	OvnOutput                  = "OVN-OUTPUT"
 	OvnMasquerade              = "OVN-MASQUERADE"
 	OvnNatOutGoingPolicy       = "OVN-NAT-POLICY"
 	OvnNatOutGoingPolicySubnet = "OVN-NAT-PSUBNET-"
@@ -52,6 +55,10 @@ const (
 const (
 	OnOutGoingNatMark     = "0x90001/0x90001"
 	OnOutGoingForwardMark = "0x90002/0x90002"
+	TProxyOutputMark      = 0x90003
+	TProxyOutputMask      = 0x90003
+	TProxyPreroutingMark  = 0x90004
+	TProxyPreroutingMask  = 0x90004
 )
 
 type policyRouteMeta struct {
@@ -584,9 +591,11 @@ func (c *Controller) setIptables() error {
 		}
 	)
 	protocols := make([]string, 2)
+	isDual := false
 	if c.protocol == kubeovnv1.ProtocolDual {
 		protocols[0] = kubeovnv1.ProtocolIPv4
 		protocols[1] = kubeovnv1.ProtocolIPv6
+		isDual = true
 	} else {
 		protocols[0] = c.protocol
 	}
@@ -733,6 +742,10 @@ func (c *Controller) setIptables() error {
 			return err
 		}
 
+		if err = c.reconcileTProxyIPTableRules(protocol, isDual); err != nil {
+			return err
+		}
+
 		if err = c.updateIptablesChain(ipt, NAT, OvnPrerouting, Prerouting, natPreroutingRules); err != nil {
 			klog.Errorf("failed to update chain %s/%s: %v", NAT, OvnPrerouting)
 			return err
@@ -752,6 +765,125 @@ func (c *Controller) setIptables() error {
 		}
 	}
 	return nil
+}
+
+func (c *Controller) reconcileTProxyIPTableRules(protocol string, isDual bool) error {
+	if !c.config.EnableTProxy {
+		return nil
+	}
+
+	ipt := c.iptables[protocol]
+	tproxyPreRoutingRules := make([]util.IPTableRule, 0)
+	tproxyOutputRules := make([]util.IPTableRule, 0)
+	probePorts := strset.New()
+
+	pods, err := c.getTProxyConditionPod(true)
+	if err != nil {
+		return err
+	}
+
+	for _, pod := range pods {
+		var podIP string
+		for _, ip := range pod.Status.PodIPs {
+			if util.CheckProtocol(ip.IP) == protocol {
+				podIP = ip.IP
+				break
+			}
+		}
+
+		if podIP == "" {
+			continue
+		}
+
+		for _, container := range pod.Spec.Containers {
+			if container.ReadinessProbe != nil {
+				if httpGet := container.ReadinessProbe.HTTPGet; httpGet != nil {
+					if port := httpGet.Port.String(); port != "" {
+						probePorts.Add(port)
+					}
+				}
+
+				if tcpSocket := container.ReadinessProbe.TCPSocket; tcpSocket != nil {
+					if port := tcpSocket.Port.String(); port != "" {
+						if isTCPProbePortReachable, ok := customVPCPodTCPProbeIPPort.Load(getIPPortString(podIP, port)); ok {
+							if isTCPProbePortReachable.(bool) {
+								probePorts.Add(port)
+							}
+						}
+					}
+				}
+			}
+
+			if container.LivenessProbe != nil {
+				if httpGet := container.LivenessProbe.HTTPGet; httpGet != nil {
+					if port := httpGet.Port.String(); port != "" {
+						probePorts.Add(port)
+					}
+				}
+
+				if tcpSocket := container.LivenessProbe.TCPSocket; tcpSocket != nil {
+					if port := tcpSocket.Port.String(); port != "" {
+						if isTCPProbePortReachable, ok := customVPCPodTCPProbeIPPort.Load(getIPPortString(podIP, port)); ok {
+							if isTCPProbePortReachable.(bool) {
+								probePorts.Add(port)
+							}
+						}
+					}
+				}
+			}
+		}
+
+		if probePorts.IsEmpty() {
+			continue
+		}
+
+		probePortList := probePorts.List()
+		sort.Strings(probePortList)
+		for _, probePort := range probePortList {
+			tProxyOutputMarkMask := fmt.Sprintf("%#x/%#x", TProxyOutputMark, TProxyOutputMask)
+			tProxyPreRoutingMarkMask := fmt.Sprintf("%#x/%#x", TProxyPreroutingMark, TProxyPreroutingMask)
+
+			hostIP := pod.Status.HostIP
+			prefixLen := 32
+			if protocol == kubeovnv1.ProtocolIPv6 {
+				prefixLen = 128
+			}
+
+			if isDual || os.Getenv("ENABLE_BIND_LOCAL_IP") == "false" {
+				if protocol == kubeovnv1.ProtocolIPv4 {
+					hostIP = "0.0.0.0"
+				} else if protocol == kubeovnv1.ProtocolIPv6 {
+					hostIP = "::"
+				}
+			}
+			tproxyOutputRules = append(tproxyOutputRules, util.IPTableRule{Table: MANGLE, Chain: OvnOutput, Rule: strings.Fields(fmt.Sprintf(`-d %s/%d -p tcp -m tcp --dport %s -j MARK --set-xmark %s`, podIP, prefixLen, probePort, tProxyOutputMarkMask))})
+			tproxyPreRoutingRules = append(tproxyPreRoutingRules, util.IPTableRule{Table: MANGLE, Chain: OvnPrerouting, Rule: strings.Fields(fmt.Sprintf(`-d %s/%d -p tcp -m tcp --dport %s -j TPROXY --on-port %d --on-ip %s --tproxy-mark %s`, podIP, prefixLen, probePort, util.TProxyListenPort, hostIP, tProxyPreRoutingMarkMask))})
+		}
+	}
+
+	if err := c.updateIptablesChain(ipt, MANGLE, OvnPrerouting, Prerouting, tproxyPreRoutingRules); err != nil {
+		klog.Errorf("failed to update chain %s with rules %v: %v", OvnPrerouting, tproxyPreRoutingRules, err)
+		return err
+	}
+
+	if err := c.updateIptablesChain(ipt, MANGLE, OvnOutput, Output, tproxyOutputRules); err != nil {
+		klog.Errorf("failed to update chain %s with rules %v: %v", OvnOutput, tproxyOutputRules, err)
+		return err
+	}
+	return nil
+}
+
+func (c *Controller) cleanTProxyIPTableRules(protocol string) {
+	ipt := c.iptables[protocol]
+	if ipt == nil {
+		return
+	}
+	for _, chain := range [2]string{OvnPrerouting, OvnOutput} {
+		if err := ipt.ClearChain(MANGLE, chain); err != nil {
+			klog.Errorf("failed to clear iptables chain %v in table %v, %+v", chain, MANGLE, err)
+			return
+		}
+	}
 }
 
 func (c *Controller) reconcileNatOutgoingPolicyIptablesChain(protocol string) error {
