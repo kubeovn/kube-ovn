@@ -501,10 +501,14 @@ func (c *Controller) gcLoadBalancer() error {
 				return nil
 			}
 
-			lb, err := c.ovnClient.GetLoadBalancer(lbName, false)
+			lb, err := c.ovnClient.GetLoadBalancer(lbName, true)
 			if err != nil {
 				klog.Errorf("get LB %s: %v", lbName, err)
 				return err
+			}
+			if lb == nil {
+				klog.Infof("load balancer %q not found", lbName)
+				return nil
 			}
 
 			for vip := range lb.Vips {
