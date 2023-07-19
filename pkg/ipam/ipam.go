@@ -61,7 +61,7 @@ func (ipam *IPAM) GetRandomAddress(podName, nicName string, mac *string, subnetN
 func (ipam *IPAM) GetStaticAddress(podName, nicName, ip string, mac *string, subnetName string, checkConflict bool) (string, string, string, error) {
 	ipam.mutex.RLock()
 	defer ipam.mutex.RUnlock()
-
+	klog.Infof("allocating static ip %s from subnet %s", ip, subnetName)
 	if subnet, ok := ipam.Subnets[subnetName]; !ok {
 		return "", "", "", ErrNoAvailable
 	} else {
