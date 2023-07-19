@@ -1553,12 +1553,15 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 			ipPool = strings.Split(ippoolStr, ";")
 		} else {
 			ipPool = strings.Split(ippoolStr, ",")
+			if len(ipPool) == 2 && util.CheckProtocol(ipPool[0]) != util.CheckProtocol(ipPool[1]) {
+				ipPool = []string{ippoolStr}
+			}
 		}
 		for i, ip := range ipPool {
 			ipPool[i] = strings.TrimSpace(ip)
 		}
 
-		if len(ipPool) == 1 && net.ParseIP(ipPool[0]) == nil {
+		if len(ipPool) == 1 && (!strings.ContainsRune(ipPool[0], ',') && net.ParseIP(ipPool[0]) == nil) {
 			var skippedAddrs []string
 			for {
 				portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
