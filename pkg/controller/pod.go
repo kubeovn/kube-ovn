@@ -1452,6 +1452,7 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 	podName := c.getNameByPod(pod)
 	key := fmt.Sprintf("%s/%s", pod.Namespace, podName)
 
+	var isVMPod bool
 	isStsPod, _ := isStatefulSetPod(pod)
 	// if pod has static vip
 	vipName := pod.Annotations[util.VipAnnotation]
@@ -1462,7 +1463,10 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 			return "", "", "", podNet.Subnet, err
 		}
 		portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
-		if err = c.podReuseVip(vipName, portName, isStsPod); err != nil {
+		if c.config.EnableKeepVmIP {
+			isVMPod, _ = isVmPod(pod)
+		}
+		if err = c.podReuseVip(vipName, portName, isStsPod || isVMPod); err != nil {
 			return "", "", "", podNet.Subnet, err
 		}
 		return vip.Status.V4ip, vip.Status.V6ip, vip.Status.Mac, podNet.Subnet, nil
