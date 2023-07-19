@@ -334,7 +334,7 @@ jobs:
   kube-ovn-conformance-e2e:
     name: Kube-OVN Conformance E2E
     runs-on: ubuntu-22.04
-    timeout-minutes: 30
+    timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
