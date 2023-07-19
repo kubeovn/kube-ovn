@@ -439,7 +439,7 @@ func (c *Controller) patchVipStatus(key, v4ip string, ready bool) error {
 	return nil
 }
 
-func (c *Controller) podReuseVip(key, portName string, isStsPod bool) error {
+func (c *Controller) podReuseVip(key, portName string, keepVIP bool) error {
 	// when pod use static vip, label vip reserved for pod
 	oriVip, err := c.virtualIpsLister.Get(key)
 	if err != nil {
@@ -453,7 +453,7 @@ func (c *Controller) podReuseVip(key, portName string, isStsPod bool) error {
 	var op string
 
 	if vip.Labels[util.IpReservedLabel] != "" {
-		if isStsPod && vip.Labels[util.IpReservedLabel] == portName {
+		if keepVIP && vip.Labels[util.IpReservedLabel] == portName {
 			return nil
 		} else {
 			return fmt.Errorf("vip '%s' is in use by pod %s", vip.Name, vip.Labels[util.IpReservedLabel])
