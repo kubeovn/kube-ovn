@@ -452,7 +452,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 		ginkgo.By("Creating deployment " + deployName + " within ippool " + ippoolName)
 		replicas := 3
 		labels := map[string]string{"app": deployName}
-		annotations := map[string]string{util.IpPoolAnnotation: ippoolName}
+		annotations := map[string]string{util.IpPoolNameAnnotation: ippoolName}
 		deploy := framework.MakeDeployment(deployName, int32(replicas), labels, annotations, "pause", framework.PauseImage, "")
 		deploy = deployClient.CreateSync(deploy)
 
@@ -530,7 +530,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 		ginkgo.By("Validating namespace annotations")
 		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 			ns := nsClient.Get(namespaceName)
-			return len(ns.Annotations) != 0 && ns.Annotations[util.IpPoolAnnotation] == ippoolName, nil
+			return len(ns.Annotations) != 0 && ns.Annotations[util.IpPoolNameAnnotation] == ippoolName, nil
 		}, "")
 
 		ginkgo.By("Patching deployment " + deployName)

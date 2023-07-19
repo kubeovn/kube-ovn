@@ -192,7 +192,7 @@ func (c *Controller) handleAddNamespace(key string) error {
 		if namespace.Annotations[util.LogicalSwitchAnnotation] == strings.Join(lss, ",") &&
 			namespace.Annotations[util.CidrAnnotation] == strings.Join(cidrs, ";") &&
 			namespace.Annotations[util.ExcludeIpsAnnotation] == strings.Join(excludeIps, ";") &&
-			namespace.Annotations[util.IpPoolAnnotation] == ippool {
+			namespace.Annotations[util.IpPoolNameAnnotation] == ippool {
 			return nil
 		}
 	}
@@ -201,9 +201,9 @@ func (c *Controller) handleAddNamespace(key string) error {
 	namespace.Annotations[util.ExcludeIpsAnnotation] = strings.Join(excludeIps, ";")
 
 	if ippool == "" {
-		delete(namespace.Annotations, util.IpPoolAnnotation)
+		delete(namespace.Annotations, util.IpPoolNameAnnotation)
 	} else {
-		namespace.Annotations[util.IpPoolAnnotation] = ippool
+		namespace.Annotations[util.IpPoolNameAnnotation] = ippool
 	}
 
 	patch, err := util.GenerateStrategicMergePatchPayload(cachedNs, namespace)

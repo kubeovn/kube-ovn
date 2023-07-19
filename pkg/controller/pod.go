@@ -1482,6 +1482,33 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 		*macStr = ""
 	}
 
+	ipPoolName := pod.Annotations[fmt.Sprintf(util.IpPoolNameAnnotationTemplate, podNet.ProviderName)]
+	// IPPool allocate
+	if ipPoolName != "" {
+		klog.Infof("allocate ip whthin ip pool %s from subnet %s", ipPoolName, podNet.Subnet.Name)
+		var skippedAddrs []string
+		for {
+			portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
+			ipv4, ipv6, mac, err := c.ipam.GetRandomAddress(key, portName, macStr, podNet.Subnet.Name, ipPoolName, skippedAddrs, !podNet.AllowLiveMigration)
+			if err != nil {
+				return "", "", "", podNet.Subnet, err
+			}
+			ipv4OK, ipv6OK, err := c.validatePodIP(pod.Name, podNet.Subnet.Name, ipv4, ipv6)
+			if err != nil {
+				return "", "", "", podNet.Subnet, err
+			}
+			if ipv4OK && ipv6OK {
+				return ipv4, ipv6, mac, podNet.Subnet, nil
+			}
+
+			if !ipv4OK {
+				skippedAddrs = append(skippedAddrs, ipv4)
+			}
+			if !ipv6OK {
+				skippedAddrs = append(skippedAddrs, ipv6)
+			}
+		}
+	}
 	ippoolStr := pod.Annotations[fmt.Sprintf(util.IpPoolAnnotationTemplate, podNet.ProviderName)]
 	if ippoolStr == "" {
 		ns, err := c.namespacesLister.Get(pod.Namespace)
@@ -1490,7 +1517,7 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 			return "", "", "", podNet.Subnet, err
 		}
 		if len(ns.Annotations) != 0 {
-			ippoolStr = ns.Annotations[util.IpPoolAnnotation]
+			ippoolStr = ns.Annotations[util.IpPoolNameAnnotation]
 		}
 	}
 
@@ -1541,44 +1568,23 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 		}
 		return v4IP, v6IP, mac, podNet.Subnet, err
 	}
+	// IP Pool list allocate
 
-	// IPPool allocate
 	if ippoolStr != "" {
 		var ipPool []string
 		if strings.ContainsRune(ippoolStr, ';') {
 			ipPool = strings.Split(ippoolStr, ";")
 		} else {
-			ipPool = strings.Split(ippoolStr, ",")
+			if podNet.Subnet.Spec.Protocol == kubeovnv1.ProtocolDual {
+				klog.Infof("sts pod in dual stack subnet use ip pool: %s", ippoolStr)
+				ipPool = strings.Split(ippoolStr, ";")
+			} else {
+				ipPool = strings.Split(ippoolStr, ",")
+			}
 		}
 		for i, ip := range ipPool {
 			ipPool[i] = strings.TrimSpace(ip)
 		}
-
-		if len(ipPool) == 1 && net.ParseIP(ipPool[0]) == nil {
-			var skippedAddrs []string
-			for {
-				portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
-				ipv4, ipv6, mac, err := c.ipam.GetRandomAddress(key, portName, macStr, podNet.Subnet.Name, ipPool[0], skippedAddrs, !podNet.AllowLiveMigration)
-				if err != nil {
-					return "", "", "", podNet.Subnet, err
-				}
-				ipv4OK, ipv6OK, err := c.validatePodIP(pod.Name, podNet.Subnet.Name, ipv4, ipv6)
-				if err != nil {
-					return "", "", "", podNet.Subnet, err
-				}
-				if ipv4OK && ipv6OK {
-					return ipv4, ipv6, mac, podNet.Subnet, nil
-				}
-
-				if !ipv4OK {
-					skippedAddrs = append(skippedAddrs, ipv4)
-				}
-				if !ipv6OK {
-					skippedAddrs = append(skippedAddrs, ipv6)
-				}
-			}
-		}
-
 		if !isStsPod {
 			for _, net := range nsNets {
 				for _, staticIP := range ipPool {
