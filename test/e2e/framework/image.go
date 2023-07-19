@@ -1,12 +1,9 @@
 package framework
 
 const (
-	PauseImage   = "kubeovn/pause:3.2"
-	BusyBoxImage = "busybox:stable"
-	AgnhostImage = "kubeovn/agnhost:2.43"
-  
+	PauseImage    = "kubeovn/pause:3.2"
+	BusyBoxImage  = "busybox:stable"
+	AgnhostImage  = "kubeovn/agnhost:2.43"
+	NginxImage    = "nginx:latest"
 	BaseImageTemp = "kubeovn/kube-ovn-base:%s"
-
-	NginxImage   = "nginx:latest"
-
 )
