@@ -6,15 +6,15 @@ import (
 	"strconv"
 	"time"
 
-	corev1 "k8s.io/api/core/v1"
-	k8serrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/intstr"
-
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 	"github.com/onsi/ginkgo/v2"
+	corev1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
+	e2epodoutput "k8s.io/kubernetes/test/e2e/framework/pod/output"
 )
 
 func generateSwitchLBRuleName(ruleName string) string {
@@ -35,22 +35,8 @@ func generateSubnetName(name string) string {
 
 func curlSvc(f *framework.Framework, clientPodName, vip string, port int32) {
 	cmd := fmt.Sprintf("curl %s", util.JoinHostPort(vip, port))
-	ginkgo.By(fmt.Sprintf(`Executing %q in pod %s/%s`, cmd, namespaceName, clientPodName))
-	_ := e2epodoutput.RunHostCmdOrDie(namespaceName, clientPodName, cmd)
-}
-
-func podRun(f *framework.Framework, clientPodName, cmd string) {
-	framework.Logf("testing %s", cmd)
-	stdOutput, errOutput, err := framework.ExecShellInPod(context.Background(), f, clientPodName, cmd)
-	if err == nil {
-		framework.Logf("pod run %s successfully", cmd)
-		framework.Logf("output:\n%s", stdOutput)
-	} else {
-		err = fmt.Errorf("pod failed to run %s ", cmd)
-		framework.Logf("output:\n%s", stdOutput)
-		framework.Logf("errOutput:\n%s", errOutput)
-		framework.ExpectNoError(err)
-	}
+	ginkgo.By(fmt.Sprintf(`Executing %q in pod %s/%s`, cmd, f.Namespace.Name, clientPodName))
+	e2epodoutput.RunHostCmdOrDie(f.Namespace.Name, clientPodName, cmd)
 }
 
 var _ = framework.Describe("[group:slr]", func() {
@@ -103,22 +89,17 @@ var _ = framework.Describe("[group:slr]", func() {
 		backendPort = 80
 		vip = ""
 		overlaySubnetCidr = framework.RandomCIDR(f.ClusterIpFamily)
-		var (
-			clientPod *corev1.Pod
-			labels    map[string]string
-		)
 		ginkgo.By("Creating custom vpc")
 		vpc := framework.MakeVpc(vpcName, "", false, false, []string{namespaceName})
 		_ = vpcClient.CreateSync(vpc)
 		ginkgo.By("Creating custom overlay subnet")
 		overlaySubnet := framework.MakeSubnet(subnetName, "", overlaySubnetCidr, "", vpcName, "", nil, nil, nil)
 		_ = subnetClient.CreateSync(overlaySubnet)
-		labels = map[string]string{"app": "client"}
 		annotations := map[string]string{
 			util.LogicalSwitchAnnotation: subnetName,
 		}
 		ginkgo.By("Creating client pod " + clientPodName)
-		clientPod = framework.MakePod(namespaceName, clientPodName, labels, annotations, framework.AgnhostImage, nil, nil)
+		clientPod := framework.MakePod(namespaceName, clientPodName, nil, annotations, framework.AgnhostImage, nil, nil)
 		podClient.CreateSync(clientPod)
 	})
 
@@ -295,7 +276,7 @@ var _ = framework.Describe("[group:slr]", func() {
 		sessionAffinity = corev1.ServiceAffinityClientIP
 		epPorts = []kubeovnv1.SlrPort{
 			{
-				Name:       "netcat",
+				Name:       "http",
 				Port:       epSlrFrontPort,
 				TargetPort: backendPort,
 				Protocol:   "TCP",
@@ -366,7 +347,7 @@ var _ = framework.Describe("[group:slr]", func() {
 			}
 			for _, port := range epPorts {
 				framework.ExpectContainElement(tps, port.TargetPort)
-				framework.ExpectEqual(protocols[port.TargetPort], port.Protocol)
+				framework.ExpectHaveKeyWithValue(protocols, port.TargetPort, port.Protocol)
 			}
 		}
 		ginkgo.By("Checking endpoint switch lb service " + epSvc.Name)
