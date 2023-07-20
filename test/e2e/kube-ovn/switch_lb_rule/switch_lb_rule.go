@@ -164,7 +164,7 @@ var _ = framework.Describe("[group:slr]", func() {
 		_ = stsClient.CreateSync(sts)
 		ginkgo.By("Creating service " + stsSvcName)
 		ports := []corev1.ServicePort{{
-			Name:       "netcat",
+			Name:       "http",
 			Protocol:   corev1.ProtocolTCP,
 			Port:       frontPort,
 			TargetPort: intstr.FromInt(80),
