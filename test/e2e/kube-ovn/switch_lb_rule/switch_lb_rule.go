@@ -34,13 +34,7 @@ func generateSubnetName(name string) string {
 }
 
 func curlSvc(f *framework.Framework, clientPodName, vip string, port int32) {
-	var cmd string
-	protocal := util.CheckProtocol(vip)
-	if protocal == kubeovnv1.ProtocolIPv4 {
-		cmd = fmt.Sprintf("curl %s:%d", vip, port)
-	} else {
-		cmd = fmt.Sprintf("curl [%s]:%d", vip, port)
-	}
+	cmd := fmt.Sprintf("curl %s", util.JoinHostPort(vip, port))
 	ginkgo.By("Waiting for client pod " + clientPodName + " run " + cmd)
 	podRun(f, clientPodName, cmd)
 }
