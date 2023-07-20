@@ -283,7 +283,7 @@ var _ = framework.Describe("[group:slr]", func() {
 			}
 			for _, port := range slrPorts {
 				framework.ExpectContainElement(tps, port.TargetPort)
-				framework.ExpectEqual(protocols[port.TargetPort], port.Protocol)
+				framework.ExpectHaveKeyWithValue(protocols, port.TargetPort, port.Protocol)
 			}
 		}
 
