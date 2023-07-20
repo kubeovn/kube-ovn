@@ -3,123 +3,209 @@ package switch_lb_rule
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"time"
 
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/util"
+	"github.com/kubeovn/kube-ovn/test/e2e/framework"
+	"github.com/onsi/ginkgo/v2"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	clientset "k8s.io/client-go/kubernetes"
-
-	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	"github.com/kubeovn/kube-ovn/test/e2e/framework"
-	"github.com/onsi/ginkgo/v2"
+	"k8s.io/apimachinery/pkg/util/intstr"
+	e2epodoutput "k8s.io/kubernetes/test/e2e/framework/pod/output"
 )
 
 func generateSwitchLBRuleName(ruleName string) string {
-	return "lb-" + ruleName
+	return "lr-" + ruleName
 }
 
 func generateServiceName(slrName string) string {
 	return "slr-" + slrName
 }
 
-func generatePodName(name string) string {
-	return "pod-" + name
+func generateVpcName(name string) string {
+	return "vpc-" + name
 }
 
-var _ = framework.Describe("[group:vpc-internal-lb]", func() {
-	f := framework.NewDefaultFramework("vpc-internal-lb")
+func generateSubnetName(name string) string {
+	return "subnet-" + name
+}
+
+func curlSvc(f *framework.Framework, clientPodName, vip string, port int32) {
+	cmd := fmt.Sprintf("curl %s", util.JoinHostPort(vip, port))
+	ginkgo.By(fmt.Sprintf(`Executing %q in pod %s/%s`, cmd, f.Namespace.Name, clientPodName))
+	e2epodoutput.RunHostCmdOrDie(f.Namespace.Name, clientPodName, cmd)
+}
+
+var _ = framework.Describe("[group:slr]", func() {
+	f := framework.NewDefaultFramework("slr")
 
 	var (
-		slrName, svcName, podName, namespaceName, image, suffix string
-		switchLBRuleClient                                      *framework.SwitchLBRuleClient
-		endpointsClient                                         *framework.EndpointsClient
-		serviceClient                                           *framework.ServiceClient
-		podClient                                               *framework.PodClient
-		clientset                                               clientset.Interface
+		switchLBRuleClient *framework.SwitchLBRuleClient
+		endpointsClient    *framework.EndpointsClient
+		serviceClient      *framework.ServiceClient
+		stsClient          *framework.StatefulSetClient
+		podClient          *framework.PodClient
+		subnetClient       *framework.SubnetClient
+		vpcClient          *framework.VpcClient
+
+		namespaceName, suffix                     string
+		vpcName, subnetName, clientPodName, label string
+		stsName, stsSvcName                       string
+		selSlrName, selSvcName                    string
+		epSlrName, epSvcName                      string
+		overlaySubnetCidr, vip                    string
+		// TODO:// slr support dual-stack
+		frontPort, selSlrFrontPort, epSlrFrontPort, backendPort int32
 	)
 
 	ginkgo.BeforeEach(func() {
 		switchLBRuleClient = f.SwitchLBRuleClient()
 		endpointsClient = f.EndpointClient()
 		serviceClient = f.ServiceClient()
+		stsClient = f.StatefulSetClient()
 		podClient = f.PodClient()
-		clientset = f.ClientSet
+		subnetClient = f.SubnetClient()
+		vpcClient = f.VpcClient()
 
-		if image == "" {
-			image = framework.GetKubeOvnImage(clientset)
-		}
 		suffix = framework.RandomSuffix()
 
 		namespaceName = f.Namespace.Name
-		slrName = generateSwitchLBRuleName(suffix)
-		svcName = generateServiceName(slrName)
-		podName = generatePodName(suffix)
-
-		var (
-			pod     *corev1.Pod
-			command []string
-			labels  map[string]string
-		)
-		labels = map[string]string{"app": "test"}
-
-		ginkgo.By("Creating pod " + podName)
-		command = []string{"sh", "-c", "sleep infinity"}
-
-		pod = framework.MakePod(namespaceName, podName, labels, nil, image, command, nil)
-		podClient.CreateSync(pod)
+		selSlrName = "sel-" + generateSwitchLBRuleName(suffix)
+		selSvcName = generateServiceName(selSlrName)
+		epSlrName = "ep-" + generateSwitchLBRuleName(suffix)
+		epSvcName = generateServiceName(epSlrName)
+		stsName = "sts-" + suffix
+		stsSvcName = stsName
+		label = "slr"
+		clientPodName = "client-" + suffix
+		subnetName = generateSubnetName(suffix)
+		vpcName = generateVpcName(suffix)
+		frontPort = 8090
+		selSlrFrontPort = 8091
+		epSlrFrontPort = 8092
+		backendPort = 80
+		vip = ""
+		overlaySubnetCidr = framework.RandomCIDR(f.ClusterIpFamily)
+		ginkgo.By("Creating custom vpc")
+		vpc := framework.MakeVpc(vpcName, "", false, false, []string{namespaceName})
+		_ = vpcClient.CreateSync(vpc)
+		ginkgo.By("Creating custom overlay subnet")
+		overlaySubnet := framework.MakeSubnet(subnetName, "", overlaySubnetCidr, "", vpcName, "", nil, nil, nil)
+		_ = subnetClient.CreateSync(overlaySubnet)
+		annotations := map[string]string{
+			util.LogicalSwitchAnnotation: subnetName,
+		}
+		ginkgo.By("Creating client pod " + clientPodName)
+		clientPod := framework.MakePod(namespaceName, clientPodName, nil, annotations, framework.AgnhostImage, nil, nil)
+		podClient.CreateSync(clientPod)
 	})
 
 	ginkgo.AfterEach(func() {
-		ginkgo.By("Deleting pod " + podName)
-		podClient.DeleteSync(podName)
-
-		ginkgo.By("Deleting switch-lb-rule " + slrName)
-		switchLBRuleClient.DeleteSync(slrName)
+		ginkgo.By("Deleting client pod " + clientPodName)
+		podClient.DeleteSync(clientPodName)
+		ginkgo.By("Deleting statefulset " + stsName)
+		stsClient.DeleteSync(stsName)
+		ginkgo.By("Deleting service " + stsSvcName)
+		serviceClient.DeleteSync(stsSvcName)
+		ginkgo.By("Deleting switch-lb-rule " + selSlrName)
+		switchLBRuleClient.DeleteSync(selSlrName)
+		ginkgo.By("Deleting switch-lb-rule " + epSlrName)
+		switchLBRuleClient.DeleteSync(epSlrName)
+		ginkgo.By("Deleting subnet " + subnetName)
+		subnetClient.DeleteSync(subnetName)
+		ginkgo.By("Deleting vpc " + vpcName)
+		vpcClient.DeleteSync(vpcName)
 	})
 
-	framework.ConformanceIt("should create switch-lb-rule with selector for vpc-internal-lb", func() {
+	framework.ConformanceIt("should access sts and slr svc ok", func() {
 		f.SkipVersionPriorTo(1, 12, "This feature was introduce in v1.12")
-
+		ginkgo.By("1. Creating sts svc with slr")
 		var (
-			pod *corev1.Pod
-			err error
+			clientPod             *corev1.Pod
+			err                   error
+			stsSvc, selSvc, epSvc *corev1.Service
+			selSlrEps, epSlrEps   *corev1.Endpoints
 		)
+		replicas := 1
+		labels := map[string]string{"app": label}
+		ginkgo.By("Creating statefulset " + stsName + " with subnet " + subnetName)
+		sts := framework.MakeStatefulSet(stsName, stsSvcName, int32(replicas), labels, framework.AgnhostImage)
+		pool := framework.RandomIPs(overlaySubnetCidr, ";", replicas)
+		ginkgo.By("Creating sts " + stsName + " with ip pool " + pool)
+		sts.Spec.Template.Annotations = map[string]string{
+			util.LogicalSwitchAnnotation: subnetName,
+			util.IpPoolAnnotation:        pool,
+		}
+		portStr := strconv.Itoa(80)
+		webServerCmd := []string{"/agnhost", "netexec", "--http-port", portStr}
+		sts.Spec.Template.Spec.Containers[0].Command = webServerCmd
+		_ = stsClient.CreateSync(sts)
+		ginkgo.By("Creating service " + stsSvcName)
+		ports := []corev1.ServicePort{{
+			Name:       "http",
+			Protocol:   corev1.ProtocolTCP,
+			Port:       frontPort,
+			TargetPort: intstr.FromInt(80),
+		}}
+		selector := map[string]string{"app": label}
+		annotations := map[string]string{
+			util.LogicalSwitchAnnotation: subnetName,
+		}
+		stsSvc = framework.MakeService(stsSvcName, corev1.ServiceTypeClusterIP, annotations, selector, ports, corev1.ServiceAffinityNone)
+		stsSvc = serviceClient.CreateSync(stsSvc, func(s *corev1.Service) (bool, error) {
+			return len(s.Spec.ClusterIPs) != 0, nil
+		}, "cluster ips are not empty")
 
-		ginkgo.By("Get pod " + podName)
-		pod, err = podClient.Get(context.TODO(), podName, metav1.GetOptions{})
+		ginkgo.By("Waiting for sts service " + stsSvcName + " to be ready")
+		framework.WaitUntil(2*time.Second, time.Minute, func(_ context.Context) (bool, error) {
+			stsSvc, err = serviceClient.ServiceInterface.Get(context.TODO(), stsSvcName, metav1.GetOptions{})
+			if err == nil {
+				return true, nil
+			}
+			if k8serrors.IsNotFound(err) {
+				return false, nil
+			}
+			return false, err
+		}, fmt.Sprintf("service %s is created", stsSvcName))
+		framework.ExpectNotNil(stsSvc)
+
+		ginkgo.By("Get client pod " + clientPodName)
+		clientPod, err = podClient.Get(context.TODO(), clientPodName, metav1.GetOptions{})
 		framework.ExpectNil(err)
-		framework.ExpectNotNil(pod)
+		framework.ExpectNotNil(clientPod)
+		ginkgo.By("Checking sts service " + stsSvc.Name)
+		for _, ip := range stsSvc.Spec.ClusterIPs {
+			curlSvc(f, clientPodName, ip, frontPort)
+		}
+		vip = stsSvc.Spec.ClusterIP
 
-		ginkgo.By("Creating SwitchLBRule " + slrName)
+		ginkgo.By("2. Creating switch-lb-rule with selector with lb front vip " + vip)
+		ginkgo.By("Creating selector SwitchLBRule " + epSlrName)
 		var (
-			rule                *apiv1.SwitchLBRule
-			selector, endpoints []string
-			ports               []apiv1.SlrPort
-			sessionAffinity     corev1.ServiceAffinity
-			vip                 string
+			selRule           *kubeovnv1.SwitchLBRule
+			slrSlector        []string
+			slrPorts, epPorts []kubeovnv1.SlrPort
+			sessionAffinity   corev1.ServiceAffinity
 		)
-
-		vip = "1.1.1.1"
-		sessionAffinity = corev1.ServiceAffinityClientIP
-		ports = []apiv1.SlrPort{
+		sessionAffinity = corev1.ServiceAffinityNone
+		slrPorts = []kubeovnv1.SlrPort{
 			{
-				Name:       "dns",
-				Port:       8888,
-				TargetPort: 80,
+				Name:       "http",
+				Port:       selSlrFrontPort,
+				TargetPort: backendPort,
 				Protocol:   "TCP",
 			},
 		}
-		selector = []string{
-			"app:test",
-		}
+		slrSlector = []string{fmt.Sprintf("app:%s", label)}
+		selRule = framework.MakeSwitchLBRule(selSlrName, namespaceName, vip, sessionAffinity, nil, slrSlector, nil, slrPorts)
+		_ = switchLBRuleClient.Create(selRule)
 
-		rule = framework.MakeSwitchLBRule(slrName, namespaceName, vip, sessionAffinity, nil, selector, endpoints, ports)
-		_ = switchLBRuleClient.Create(rule)
-
-		ginkgo.By("Waiting for switch-lb-rule " + slrName + " to be ready")
+		ginkgo.By("Waiting for switch-lb-rule " + selSlrName + " to be ready")
 		framework.WaitUntil(2*time.Second, time.Minute, func(_ context.Context) (bool, error) {
-			_, err = switchLBRuleClient.SwitchLBRuleInterface.Get(context.TODO(), slrName, metav1.GetOptions{})
+			_, err = switchLBRuleClient.SwitchLBRuleInterface.Get(context.TODO(), selSlrName, metav1.GetOptions{})
 			if err == nil {
 				return true, nil
 			}
@@ -127,16 +213,11 @@ var _ = framework.Describe("[group:vpc-internal-lb]", func() {
 				return false, nil
 			}
 			return false, err
-		}, fmt.Sprintf("switch-lb-rule %s is created", slrName))
+		}, fmt.Sprintf("switch-lb-rule %s is created", selSlrName))
 
-		var (
-			svc *corev1.Service
-			eps *corev1.Endpoints
-		)
-
-		ginkgo.By("Waiting for headless service " + svcName + " to be ready")
+		ginkgo.By("Waiting for headless service " + selSvcName + " to be ready")
 		framework.WaitUntil(2*time.Second, time.Minute, func(_ context.Context) (bool, error) {
-			svc, err = serviceClient.ServiceInterface.Get(context.TODO(), svcName, metav1.GetOptions{})
+			selSvc, err = serviceClient.ServiceInterface.Get(context.TODO(), selSvcName, metav1.GetOptions{})
 			if err == nil {
 				return true, nil
 			}
@@ -144,12 +225,12 @@ var _ = framework.Describe("[group:vpc-internal-lb]", func() {
 				return false, nil
 			}
 			return false, err
-		}, fmt.Sprintf("service %s is created", svcName))
-		framework.ExpectNotNil(svc)
+		}, fmt.Sprintf("service %s is created", selSvcName))
+		framework.ExpectNotNil(selSvc)
 
-		ginkgo.By("Waiting for endpoints " + svcName + " to be ready")
+		ginkgo.By("Waiting for endpoints " + selSvcName + " to be ready")
 		framework.WaitUntil(2*time.Second, time.Minute, func(_ context.Context) (bool, error) {
-			eps, err = endpointsClient.EndpointsInterface.Get(context.TODO(), svcName, metav1.GetOptions{})
+			selSlrEps, err = endpointsClient.EndpointsInterface.Get(context.TODO(), selSvcName, metav1.GetOptions{})
 			if err == nil {
 				return true, nil
 			}
@@ -157,10 +238,13 @@ var _ = framework.Describe("[group:vpc-internal-lb]", func() {
 				return false, nil
 			}
 			return false, err
-		}, fmt.Sprintf("endpoints %s is created", svcName))
-		framework.ExpectNotNil(eps)
+		}, fmt.Sprintf("endpoints %s is created", selSvcName))
+		framework.ExpectNotNil(selSlrEps)
 
-		for _, subset := range eps.Subsets {
+		pods := stsClient.GetPods(sts)
+		framework.ExpectHaveLen(pods.Items, replicas)
+
+		for i, subset := range selSlrEps.Subsets {
 			var (
 				ips       []string
 				tps       []int32
@@ -171,63 +255,43 @@ var _ = framework.Describe("[group:vpc-internal-lb]", func() {
 			for _, address := range subset.Addresses {
 				ips = append(ips, address.IP)
 			}
-			framework.ExpectContainElement(ips, pod.Status.PodIP)
+			framework.ExpectContainElement(ips, pods.Items[i].Status.PodIP)
 
 			ginkgo.By("Checking endpoint ports")
 			for _, port := range subset.Ports {
 				tps = append(tps, port.Port)
 				protocols[port.Port] = string(port.Protocol)
 			}
-			for _, port := range ports {
+			for _, port := range slrPorts {
 				framework.ExpectContainElement(tps, port.TargetPort)
-				framework.ExpectEqual(protocols[port.TargetPort], port.Protocol)
+				framework.ExpectHaveKeyWithValue(protocols, port.TargetPort, port.Protocol)
 			}
 		}
-	})
 
-	framework.ConformanceIt("should create switch-lb-rule with endpoints for vpc-internal-lb", func() {
-		f.SkipVersionPriorTo(1, 12, "This feature was introduce in v1.12")
+		ginkgo.By("Checking selector switch lb service " + selSvc.Name)
+		curlSvc(f, clientPodName, vip, selSlrFrontPort)
 
-		var (
-			pod *corev1.Pod
-			err error
-		)
-
-		ginkgo.By("Get pod " + podName)
-		pod, err = podClient.PodInterface.Get(context.TODO(), podName, metav1.GetOptions{})
-		framework.ExpectNil(err)
-		framework.ExpectNotNil(pod)
-
-		ginkgo.By("Creating SwitchLBRule " + slrName)
-		var (
-			rule                *apiv1.SwitchLBRule
-			annotations         map[string]string
-			selector, endpoints []string
-			ports               []apiv1.SlrPort
-			sessionAffinity     corev1.ServiceAffinity
-			vip                 string
-		)
-
-		vip = "1.1.1.1"
+		ginkgo.By("3. Creating switch-lb-rule with endpoints with lb front vip " + vip)
+		ginkgo.By("Creating endpoint SwitchLBRule " + epSlrName)
 		sessionAffinity = corev1.ServiceAffinityClientIP
-		ports = []apiv1.SlrPort{
+		epPorts = []kubeovnv1.SlrPort{
 			{
-				Name:       "dns",
-				Port:       8888,
-				TargetPort: 80,
+				Name:       "http",
+				Port:       epSlrFrontPort,
+				TargetPort: backendPort,
 				Protocol:   "TCP",
 			},
 		}
-		endpoints = []string{
-			pod.Status.PodIP,
+		presetEndpoints := []string{}
+		for _, pod := range pods.Items {
+			presetEndpoints = append(presetEndpoints, pod.Status.PodIP)
 		}
+		epRule := framework.MakeSwitchLBRule(epSlrName, namespaceName, vip, sessionAffinity, annotations, nil, presetEndpoints, epPorts)
+		_ = switchLBRuleClient.Create(epRule)
 
-		rule = framework.MakeSwitchLBRule(slrName, namespaceName, vip, sessionAffinity, annotations, selector, endpoints, ports)
-		_ = switchLBRuleClient.Create(rule)
-
-		ginkgo.By("Waiting for switch-lb-rule " + slrName + " to be ready")
+		ginkgo.By("Waiting for switch-lb-rule " + epSlrName + " to be ready")
 		framework.WaitUntil(2*time.Second, time.Minute, func(_ context.Context) (bool, error) {
-			_, err := switchLBRuleClient.SwitchLBRuleInterface.Get(context.TODO(), slrName, metav1.GetOptions{})
+			_, err := switchLBRuleClient.SwitchLBRuleInterface.Get(context.TODO(), epSlrName, metav1.GetOptions{})
 			if err == nil {
 				return true, nil
 			}
@@ -235,16 +299,11 @@ var _ = framework.Describe("[group:vpc-internal-lb]", func() {
 				return false, nil
 			}
 			return false, err
-		}, fmt.Sprintf("switch-lb-rule %s is created", slrName))
+		}, fmt.Sprintf("switch-lb-rule %s is created", epSlrName))
 
-		var (
-			svc *corev1.Service
-			eps *corev1.Endpoints
-		)
-
-		ginkgo.By("Waiting for headless service " + svcName + " to be ready")
+		ginkgo.By("Waiting for headless service " + epSvcName + " to be ready")
 		framework.WaitUntil(2*time.Second, time.Minute, func(_ context.Context) (bool, error) {
-			svc, err = serviceClient.ServiceInterface.Get(context.TODO(), svcName, metav1.GetOptions{})
+			epSvc, err = serviceClient.ServiceInterface.Get(context.TODO(), epSvcName, metav1.GetOptions{})
 			if err == nil {
 				return true, nil
 			}
@@ -252,12 +311,12 @@ var _ = framework.Describe("[group:vpc-internal-lb]", func() {
 				return false, nil
 			}
 			return false, err
-		}, fmt.Sprintf("service %s is created", svcName))
-		framework.ExpectNotNil(svc)
+		}, fmt.Sprintf("service %s is created", epSvcName))
+		framework.ExpectNotNil(epSvc)
 
-		ginkgo.By("Waiting for endpoints " + svcName + " to be ready")
+		ginkgo.By("Waiting for endpoints " + epSvcName + " to be ready")
 		framework.WaitUntil(2*time.Second, time.Minute, func(_ context.Context) (bool, error) {
-			eps, err = endpointsClient.EndpointsInterface.Get(context.TODO(), svcName, metav1.GetOptions{})
+			epSlrEps, err = endpointsClient.EndpointsInterface.Get(context.TODO(), epSvcName, metav1.GetOptions{})
 			if err == nil {
 				return true, nil
 			}
@@ -265,10 +324,10 @@ var _ = framework.Describe("[group:vpc-internal-lb]", func() {
 				return false, nil
 			}
 			return false, err
-		}, fmt.Sprintf("endpoints %s is created", svcName))
-		framework.ExpectNotNil(eps)
+		}, fmt.Sprintf("endpoints %s is created", epSvcName))
+		framework.ExpectNotNil(epSlrEps)
 
-		for _, subset := range eps.Subsets {
+		for i, subset := range epSlrEps.Subsets {
 			var (
 				ips       []string
 				tps       []int32
@@ -279,17 +338,19 @@ var _ = framework.Describe("[group:vpc-internal-lb]", func() {
 			for _, address := range subset.Addresses {
 				ips = append(ips, address.IP)
 			}
-			framework.ExpectContainElement(ips, pod.Status.PodIP)
+			framework.ExpectContainElement(ips, pods.Items[i].Status.PodIP)
 
 			ginkgo.By("Checking endpoint ports")
 			for _, port := range subset.Ports {
 				tps = append(tps, port.Port)
 				protocols[port.Port] = string(port.Protocol)
 			}
-			for _, port := range ports {
+			for _, port := range epPorts {
 				framework.ExpectContainElement(tps, port.TargetPort)
-				framework.ExpectEqual(protocols[port.TargetPort], port.Protocol)
+				framework.ExpectHaveKeyWithValue(protocols, port.TargetPort, port.Protocol)
 			}
 		}
+		ginkgo.By("Checking endpoint switch lb service " + epSvc.Name)
+		curlSvc(f, clientPodName, vip, epSlrFrontPort)
 	})
 })
