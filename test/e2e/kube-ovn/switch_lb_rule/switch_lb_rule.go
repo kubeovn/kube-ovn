@@ -212,7 +212,7 @@ var _ = framework.Describe("[group:slr]", func() {
 		sessionAffinity = corev1.ServiceAffinityNone
 		slrPorts = []kubeovnv1.SlrPort{
 			{
-				Name:       "netcat",
+				Name:       "http",
 				Port:       selSlrFrontPort,
 				TargetPort: backendPort,
 				Protocol:   "TCP",
