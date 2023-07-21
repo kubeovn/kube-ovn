@@ -1120,7 +1120,7 @@ func (c *Controller) syncKubeOvnNet(pod *v1.Pod, podNets []*kubeovnNet) error {
 
 	for _, providerName := range annotationsNeedToDel {
 		for annotationKey := range pod.Annotations {
-			if strings.HasPrefix(key, providerName) {
+			if strings.HasPrefix(annotationKey, providerName) {
 				delete(pod.Annotations, annotationKey)
 			}
 		}
