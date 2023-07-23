@@ -50,6 +50,7 @@ const (
 	IptablesEipV4IPLabel        = "ovn.kubernetes.io/iptables_eip_v4_ip"
 
 	OvnEipUsageLabel        = "ovn.kubernetes.io/ovn_eip_usage"
+	OvnEipV4IPLabel         = "ovn.kubernetes.io/ovn_eip_v4_ip"
 	OvnLrpEipEnableBfdLabel = "ovn.kubernetes.io/ovn_lrp_eip_enable_bfd"
 
 	SwitchLBRuleVipsAnnotation = "ovn.kubernetes.io/switch_lb_vip"

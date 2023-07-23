@@ -258,7 +258,7 @@ func (c *Controller) handleAddOvnSnatRule(key string) error {
 		klog.Errorf("failed to update status for snat %s, %v", key, err)
 		return err
 	}
-	if err = c.patchOvnEipNat(eipName, util.SnatUsingEip); err != nil {
+	if err = c.patchOvnEipStatus(eipName, true); err != nil {
 		klog.Errorf("failed to patch status for eip %s, %v", key, err)
 		return err
 	}

@@ -964,6 +964,7 @@ type OvnEipStatus struct {
 	Conditions []OvnEipCondition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 
 	Type       string `json:"type" patchStrategy:"merge"`
+	Nat        string `json:"nat" patchStrategy:"merge"`
 	Ready      bool   `json:"ready" patchStrategy:"merge"`
 	V4Ip       string `json:"v4Ip" patchStrategy:"merge"`
 	V6Ip       string `json:"v6Ip" patchStrategy:"merge"`

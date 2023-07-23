@@ -287,7 +287,7 @@ func (c *Controller) handleAddOvnDnatRule(key string) error {
 		return err
 	}
 
-	if err = c.patchOvnEipNat(eipName, util.DnatUsingEip); err != nil {
+	if err = c.patchOvnEipStatus(eipName, true); err != nil {
 		klog.Errorf("failed to patch status for eip %s, %v", key, err)
 		return err
 	}

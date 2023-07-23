@@ -273,7 +273,7 @@ func (c *Controller) handleAddOvnFip(key string) error {
 		klog.Errorf("failed to patch status for fip %s, %v", key, err)
 		return err
 	}
-	if err = c.patchOvnEipNat(eipName, util.FipUsingEip); err != nil {
+	if err = c.patchOvnEipStatus(eipName, true); err != nil {
 		klog.Errorf("failed to patch status for eip %s, %v", key, err)
 		return err
 	}
