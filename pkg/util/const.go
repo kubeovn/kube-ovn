@@ -185,6 +185,7 @@ const (
 	LrpUsingEip       = "lrp"
 	FipUsingEip       = "fip"
 	NatUsingVip       = "vip"
+	NatUsingEip       = "eip"
 	SnatUsingEip      = "snat"
 	DnatUsingEip      = "dnat"
 	NodeExtGwUsingEip = "node-ext-gw"

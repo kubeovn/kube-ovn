@@ -249,9 +249,11 @@ func (c *Controller) handleAddOvnEip(key string) error {
 			klog.Error("failed to create lsp for ovn eip %s, %v", key, err)
 			return err
 		}
-
 	}
-
+	if cachedEip.Spec.Type == "" {
+		// the eip only used by nat: fip, dnat, snat
+		cachedEip.Spec.Type = util.NatUsingEip
+	}
 	if err = c.createOrUpdateCrdOvnEip(key, subnet.Name, v4ip, v6ip, mac, cachedEip.Spec.Type); err != nil {
 		klog.Errorf("failed to create or update ovn eip '%s', %v", cachedEip.Name, err)
 		return err
@@ -518,31 +520,6 @@ func (c *Controller) patchOvnEipStatus(key string, ready bool) error {
 		if _, err = c.config.KubeOvnClient.KubeovnV1().OvnEips().Patch(context.Background(), ovnEip.Name,
 			types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
 			klog.Errorf("failed to patch status for ovn eip '%s', %v", key, err)
-			return err
-		}
-	}
-	return nil
-}
-
-func (c *Controller) resetOvnEipSpec(key string) error {
-	cachedOvnEip, err := c.ovnEipsLister.Get(key)
-	if err != nil {
-		klog.Errorf("failed to get cached ovn eip '%s', %v", key, err)
-		return err
-	}
-	ovnEip := cachedOvnEip.DeepCopy()
-	changed := false
-	if ovnEip.Status.MacAddress != "" {
-		// not support change ip
-		ovnEip.Spec.V4Ip = ovnEip.Status.V4Ip
-		ovnEip.Spec.V6Ip = ovnEip.Status.V6Ip
-		ovnEip.Spec.MacAddress = ovnEip.Status.MacAddress
-		changed = true
-	}
-	if changed {
-		klog.V(3).Infof("reset spec for eip %s", key)
-		if _, err = c.config.KubeOvnClient.KubeovnV1().OvnEips().Update(context.Background(), ovnEip, metav1.UpdateOptions{}); err != nil {
-			klog.Errorf("failed to update spec for ovn eip '%s', %v", key, err)
 			return err
 		}
 	}
