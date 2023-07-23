@@ -334,6 +334,11 @@ func (c *Controller) handleDelOvnEip(eip *kubeovnv1.OvnEip) error {
 		return err
 	}
 
+	if err := c.handleDelOvnEipFinalizer(eip, util.OvnEipFinalizer); err != nil {
+		klog.Errorf("failed to handle remove ovn eip finalizer , %v", err)
+		return err
+	}
+
 	if eip.Spec.Type == util.NodeExtGwUsingEip {
 		if err := c.ovnClient.DeleteLogicalSwitchPort(eip.Name); err != nil {
 			klog.Errorf("failed to delete lsp %s, %v", eip.Name, err)

@@ -20,13 +20,9 @@ const (
 	FipNameAnnotation    = "ovn.kubernetes.io/fip_name"
 	FipEnableAnnotation  = "ovn.kubernetes.io/enable_fip"
 	FipFinalizer         = "ovn.kubernetes.io/fip"
+	OvnEipFinalizer      = "ovn.kubernetes.io/ovn_eip"
 	VipAnnotation        = "ovn.kubernetes.io/vip"
 	ChassisAnnotation    = "ovn.kubernetes.io/chassis"
-
-	OvnFipUseEipFinalizer  = "ovn.kubernetes.io/ovn_fip"
-	OvnSnatUseEipFinalizer = "ovn.kubernetes.io/ovn_snat"
-	OvnDnatUseEipFinalizer = "ovn.kubernetes.io/ovn_dnat"
-	OvnLrpUseEipFinalizer  = "ovn.kubernetes.io/ovn_lrp"
 
 	ExternalIpAnnotation         = "ovn.kubernetes.io/external_ip"
 	ExternalMacAnnotation        = "ovn.kubernetes.io/external_mac"

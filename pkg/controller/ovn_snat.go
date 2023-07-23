@@ -11,7 +11,6 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
@@ -233,11 +232,7 @@ func (c *Controller) handleAddOvnSnatRule(key string) error {
 	}
 
 	// create snat
-	if err = c.handleAddOvnSnatRuleFinalizer(cachedSnat); err != nil {
-		klog.Errorf("failed to add finalizer for ovn snat, %v", err)
-		return err
-	}
-	if err = c.handleAddOvnEipFinalizer(cachedEip, util.OvnSnatUseEipFinalizer); err != nil {
+	if err = c.handleAddOvnEipFinalizer(cachedEip, util.OvnEipFinalizer); err != nil {
 		klog.Errorf("failed to add finalizer for ovn eip, %v", err)
 		return err
 	}
@@ -293,17 +288,8 @@ func (c *Controller) handleUpdateOvnSnatRule(key string) error {
 				return err
 			}
 		}
-		if err = c.handleDelOvnEipFinalizer(cachedEip, util.OvnSnatUseEipFinalizer); err != nil {
-			klog.Errorf("failed to handle finalizer for eip %s, %v", key, err)
-			return err
-		}
 		//  reset eip
 		c.resetOvnEipQueue.Add(cachedSnat.Spec.OvnEip)
-
-		if err = c.handleDelOvnSnatRuleFinalizer(cachedSnat); err != nil {
-			klog.Errorf("failed to handle finalizer for snat %s, %v", key, err)
-			return err
-		}
 		return nil
 	}
 	if cachedEip.Spec.Type != "" && cachedEip.Spec.Type != util.SnatUsingEip {
@@ -372,52 +358,6 @@ func (c *Controller) handleUpdateOvnSnatRule(key string) error {
 
 func (c *Controller) handleDelOvnSnatRule(key string) error {
 	klog.V(3).Infof("deleted ovn snat %s", key)
-	return nil
-}
-
-func (c *Controller) handleAddOvnSnatRuleFinalizer(cachedSnat *kubeovnv1.OvnSnatRule) error {
-	if cachedSnat.DeletionTimestamp.IsZero() {
-		if util.ContainsString(cachedSnat.Finalizers, util.ControllerName) {
-			return nil
-		}
-	}
-	newSnat := cachedSnat.DeepCopy()
-	controllerutil.AddFinalizer(newSnat, util.ControllerName)
-	patch, err := util.GenerateMergePatchPayload(cachedSnat, newSnat)
-	if err != nil {
-		klog.Errorf("failed to generate patch for snat %s, %v", cachedSnat.Name, err)
-		return err
-	}
-	if _, err := c.config.KubeOvnClient.KubeovnV1().OvnSnatRules().Patch(context.Background(), cachedSnat.Name,
-		types.MergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
-		klog.Errorf("failed to add finalizer for ovn snat '%s', %v", cachedSnat.Name, err)
-		return err
-	}
-	return nil
-}
-
-func (c *Controller) handleDelOvnSnatRuleFinalizer(cachedSnat *kubeovnv1.OvnSnatRule) error {
-	if len(cachedSnat.Finalizers) == 0 {
-		return nil
-	}
-	newSnat := cachedSnat.DeepCopy()
-	controllerutil.RemoveFinalizer(newSnat, util.ControllerName)
-	patch, err := util.GenerateMergePatchPayload(cachedSnat, newSnat)
-	if err != nil {
-		klog.Errorf("failed to generate patch for snat %s, %v", cachedSnat.Name, err)
-		return err
-	}
-	if _, err := c.config.KubeOvnClient.KubeovnV1().OvnSnatRules().Patch(context.Background(), cachedSnat.Name,
-		types.MergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
-		klog.Errorf("failed to remove finalizer from ovn snat '%s', %v", cachedSnat.Name, err)
-		return err
-	}
 	return nil
 }
 
