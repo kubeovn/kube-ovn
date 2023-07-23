@@ -39,26 +39,26 @@ const (
 )
 
 const (
-	NAT                        = "nat"
-	MANGLE                     = "mangle"
-	Prerouting                 = "PREROUTING"
-	Postrouting                = "POSTROUTING"
-	Output                     = "OUTPUT"
-	OvnPrerouting              = "OVN-PREROUTING"
-	OvnPostrouting             = "OVN-POSTROUTING"
-	OvnOutput                  = "OVN-OUTPUT"
-	OvnMasquerade              = "OVN-MASQUERADE"
-	OvnNatOutGoingPolicy       = "OVN-NAT-POLICY"
-	OvnNatOutGoingPolicySubnet = "OVN-NAT-PSUBNET-"
+	NAT                        = util.NAT
+	MANGLE                     = util.Mangle
+	Prerouting                 = util.Prerouting
+	Postrouting                = util.Postrouting
+	Output                     = util.Output
+	OvnPrerouting              = util.OvnPrerouting
+	OvnPostrouting             = util.OvnPostrouting
+	OvnOutput                  = util.OvnOutput
+	OvnMasquerade              = util.OvnMasquerade
+	OvnNatOutGoingPolicy       = util.OvnNatOutGoingPolicy
+	OvnNatOutGoingPolicySubnet = util.OvnNatOutGoingPolicySubnet
 )
 
 const (
 	OnOutGoingNatMark     = "0x90001/0x90001"
 	OnOutGoingForwardMark = "0x90002/0x90002"
-	TProxyOutputMark      = 0x90003
-	TProxyOutputMask      = 0x90003
-	TProxyPreroutingMark  = 0x90004
-	TProxyPreroutingMask  = 0x90004
+	TProxyOutputMark      = util.TProxyOutputMark
+	TProxyOutputMask      = util.TProxyOutputMask
+	TProxyPreroutingMark  = util.TProxyPreroutingMark
+	TProxyPreroutingMask  = util.TProxyPreroutingMask
 )
 
 type policyRouteMeta struct {

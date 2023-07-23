@@ -10,7 +10,6 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	"github.com/kubeovn/kube-ovn/pkg/daemon"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/iptables"
@@ -194,8 +193,8 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 func checkTProxyRules(f *framework.Framework, pod *corev1.Pod, probePort int, exist bool) {
 
 	nodeName := pod.Spec.NodeName
-	tProxyOutputMarkMask := fmt.Sprintf("%#x/%#x", daemon.TProxyOutputMark, daemon.TProxyOutputMask)
-	tProxyPreRoutingMarkMask := fmt.Sprintf("%#x/%#x", daemon.TProxyPreroutingMark, daemon.TProxyPreroutingMask)
+	tProxyOutputMarkMask := fmt.Sprintf("%#x/%#x", util.TProxyOutputMark, util.TProxyOutputMask)
+	tProxyPreRoutingMarkMask := fmt.Sprintf("%#x/%#x", util.TProxyPreroutingMark, util.TProxyPreroutingMask)
 
 	isZeroIP := false
 	if len(pod.Status.PodIPs) == 2 {
@@ -207,7 +206,7 @@ func checkTProxyRules(f *framework.Framework, pod *corev1.Pod, probePort int, ex
 			expectedRules := []string{
 				fmt.Sprintf(`-A OVN-OUTPUT -d %s/32 -p tcp -m tcp --dport %d -j MARK --set-xmark %s`, podIP.IP, probePort, tProxyOutputMarkMask),
 			}
-			iptables.CheckIptablesRulesOnNode(f, nodeName, daemon.MANGLE, daemon.OvnOutput, apiv1.ProtocolIPv4, expectedRules, exist)
+			iptables.CheckIptablesRulesOnNode(f, nodeName, util.Mangle, util.OvnOutput, apiv1.ProtocolIPv4, expectedRules, exist)
 			hostIP := pod.Status.HostIP
 			if isZeroIP {
 				hostIP = "0.0.0.0"
@@ -215,12 +214,12 @@ func checkTProxyRules(f *framework.Framework, pod *corev1.Pod, probePort int, ex
 			expectedRules = []string{
 				fmt.Sprintf(`-A OVN-PREROUTING -d %s/32 -p tcp -m tcp --dport %d -j TPROXY --on-port %d --on-ip %s --tproxy-mark %s`, podIP.IP, probePort, util.TProxyListenPort, hostIP, tProxyPreRoutingMarkMask),
 			}
-			iptables.CheckIptablesRulesOnNode(f, nodeName, daemon.MANGLE, daemon.OvnPrerouting, apiv1.ProtocolIPv4, expectedRules, exist)
+			iptables.CheckIptablesRulesOnNode(f, nodeName, util.Mangle, util.OvnPrerouting, apiv1.ProtocolIPv4, expectedRules, exist)
 		} else if util.CheckProtocol(podIP.IP) == apiv1.ProtocolIPv6 {
 			expectedRules := []string{
 				fmt.Sprintf(`-A OVN-OUTPUT -d %s/128 -p tcp -m tcp --dport %d -j MARK --set-xmark %s`, podIP.IP, probePort, tProxyOutputMarkMask),
 			}
-			iptables.CheckIptablesRulesOnNode(f, nodeName, daemon.MANGLE, daemon.OvnOutput, apiv1.ProtocolIPv6, expectedRules, exist)
+			iptables.CheckIptablesRulesOnNode(f, nodeName, util.Mangle, util.OvnOutput, apiv1.ProtocolIPv6, expectedRules, exist)
 
 			hostIP := pod.Status.HostIP
 			if isZeroIP {
@@ -229,7 +228,7 @@ func checkTProxyRules(f *framework.Framework, pod *corev1.Pod, probePort int, ex
 			expectedRules = []string{
 				fmt.Sprintf(`-A OVN-PREROUTING -d %s/128 -p tcp -m tcp --dport %d -j TPROXY --on-port %d --on-ip %s --tproxy-mark %s`, podIP.IP, probePort, util.TProxyListenPort, hostIP, tProxyPreRoutingMarkMask),
 			}
-			iptables.CheckIptablesRulesOnNode(f, nodeName, daemon.MANGLE, daemon.OvnPrerouting, apiv1.ProtocolIPv6, expectedRules, exist)
+			iptables.CheckIptablesRulesOnNode(f, nodeName, util.Mangle, util.OvnPrerouting, apiv1.ProtocolIPv6, expectedRules, exist)
 		}
 	}
 }

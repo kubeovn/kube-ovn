@@ -255,6 +255,23 @@ const (
 	NatPolicyRuleActionForward = "forward"
 	NatPolicyRuleIDLength      = 12
 
+	NAT                        = "nat"
+	Mangle                     = "mangle"
+	Prerouting                 = "PREROUTING"
+	Postrouting                = "POSTROUTING"
+	Output                     = "OUTPUT"
+	OvnPrerouting              = "OVN-PREROUTING"
+	OvnPostrouting             = "OVN-POSTROUTING"
+	OvnOutput                  = "OVN-OUTPUT"
+	OvnMasquerade              = "OVN-MASQUERADE"
+	OvnNatOutGoingPolicy       = "OVN-NAT-POLICY"
+	OvnNatOutGoingPolicySubnet = "OVN-NAT-PSUBNET-"
+
 	TProxyListenPort = 8102
 	TProxyRouteTable = 10001
+
+	TProxyOutputMark     = 0x90003
+	TProxyOutputMask     = 0x90003
+	TProxyPreroutingMark = 0x90004
+	TProxyPreroutingMask = 0x90004
 )
