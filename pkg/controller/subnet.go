@@ -1210,10 +1210,9 @@ func (c *Controller) reconcileVpcUseBfdStaticRoute(vpcName, subnetName string) e
 	lrpEipName := fmt.Sprintf("%s-%s", vpcName, c.config.ExternalGatewaySwitch)
 	lrpEip, err := c.ovnEipsLister.Get(lrpEipName)
 	if err != nil {
-		if !k8serrors.IsNotFound(err) {
-			klog.Error(err)
-			return err
-		}
+		err := fmt.Errorf("failed to get lrp eip %s, %v", lrpEipName, err)
+		klog.Error(err)
+		return err
 	}
 	if !lrpEip.Status.Ready || lrpEip.Status.V4Ip == "" {
 		err := fmt.Errorf("lrp eip %q not ready", lrpEipName)
@@ -1236,7 +1235,7 @@ func (c *Controller) reconcileVpcUseBfdStaticRoute(vpcName, subnetName string) e
 		for _, route := range vpc.Spec.StaticRoutes {
 			if route.Policy == kubeovnv1.PolicySrc &&
 				route.NextHopIP == eip.Status.V4Ip &&
-				route.ECMPMode == util.StaicRouteBfdEcmp &&
+				route.ECMPMode == util.StaticRouteBfdEcmp &&
 				route.CIDR == subnet.Spec.CIDRBlock &&
 				route.RouteTable == subnet.Spec.RouteTable {
 				v4Exist = true
@@ -1249,7 +1248,7 @@ func (c *Controller) reconcileVpcUseBfdStaticRoute(vpcName, subnetName string) e
 				Policy:     kubeovnv1.PolicySrc,
 				CIDR:       subnet.Spec.CIDRBlock,
 				NextHopIP:  eip.Status.V4Ip,
-				ECMPMode:   util.StaicRouteBfdEcmp,
+				ECMPMode:   util.StaticRouteBfdEcmp,
 				BfdId:      bfd.UUID,
 				RouteTable: subnet.Spec.RouteTable,
 			}
@@ -1316,7 +1315,7 @@ func (c *Controller) reconcileVpcAddNormalStaticRoute(vpcName string) error {
 				v6Exist = true
 				continue
 			}
-			if route.ECMPMode != util.StaicRouteBfdEcmp {
+			if route.ECMPMode != util.StaticRouteBfdEcmp {
 				// filter ecmp bfd route
 				routes = append(routes, route)
 			}

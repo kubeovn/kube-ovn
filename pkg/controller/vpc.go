@@ -869,7 +869,7 @@ func (c *Controller) handleDeleteVpcStaticRoute(key string) error {
 	needUpdate := false
 	newStaticRoutes := make([]*kubeovnv1.StaticRoute, 0, len(vpc.Spec.StaticRoutes))
 	for _, route := range vpc.Spec.StaticRoutes {
-		if route.ECMPMode != util.StaicRouteBfdEcmp {
+		if route.ECMPMode != util.StaticRouteBfdEcmp {
 			newStaticRoutes = append(newStaticRoutes, route)
 			needUpdate = true
 		}
