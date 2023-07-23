@@ -100,6 +100,8 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 	var containerID string
 	var image string
 
+	var sharedVipName, sharedEipName, sharedEipDnatName, sharedEipSnatName, sharedEipFipShoudOkName, sharedEipFipShoudFailName string
+
 	ginkgo.BeforeEach(func() {
 		cs = f.ClientSet
 		subnetClient = f.SubnetClient()
@@ -138,6 +140,15 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		providerNetworkName = "external"
 		vlanName = "vlan-" + framework.RandomSuffix()
 		underlaySubnetName = "external"
+
+		// sharing case
+		sharedVipName = "shared-vip-" + framework.RandomSuffix()
+		sharedEipName = "shared-eip-" + framework.RandomSuffix()
+		sharedEipDnatName = "shared-eip-dnat-" + framework.RandomSuffix()
+		sharedEipSnatName = "shared-eip-snat-" + framework.RandomSuffix()
+		sharedEipFipShoudOkName = "shared-eip-fip-should-ok-" + framework.RandomSuffix()
+		sharedEipFipShoudFailName = "shared-eip-fip-should-fail-" + framework.RandomSuffix()
+
 		containerID = ""
 		if image == "" {
 			image = framework.GetKubeOvnImage(cs)
@@ -392,6 +403,73 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 			eip := makeOvnEip(nodeName, underlaySubnetName, "", "", "", util.NodeExtGwUsingEip)
 			_ = ovnEipClient.CreateSync(eip)
 		}
+
+		// share eip case
+		ginkgo.By("Creating share vip")
+		shareVip := framework.MakeVip(sharedVipName, overlaySubnetName, "", "", "")
+		_ = vipClient.CreateSync(shareVip)
+		ginkgo.By("Creating share ovn eip")
+		shareEip := framework.MakeOvnEip(sharedEipName, "", "", "", "", "")
+		_ = ovnEipClient.CreateSync(shareEip)
+		ginkgo.By("Creating the first ovn fip with share eip vip should be ok")
+		shareFipShouldOk := framework.MakeOvnFip(sharedEipFipShoudOkName, sharedEipName, util.NatUsingVip, sharedVipName)
+		_ = ovnFipClient.CreateSync(shareFipShouldOk)
+		ginkgo.By("Creating the second ovn fip with share eip vip should be failed")
+		shareFipShouldFail := framework.MakeOvnFip(sharedEipFipShoudFailName, sharedEipName, util.NatUsingVip, sharedVipName)
+		_ = ovnFipClient.Create(shareFipShouldFail)
+		ginkgo.By("Creating ovn dnat for dnat with share eip vip")
+		shareDnat := framework.MakeOvnDnatRule(sharedEipDnatName, sharedEipName, util.NatUsingVip, sharedVipName, "80", "8080", "tcp")
+		_ = ovnDnatRuleClient.CreateSync(shareDnat)
+		ginkgo.By("Creating ovn snat with share eip vip")
+		shareSnat := framework.MakeOvnSnatRule(sharedEipSnatName, sharedEipName, overlaySubnetName, "")
+		_ = ovnSnatRuleClient.CreateSync(shareSnat)
+
+		ginkgo.By("Get share eip")
+		shareEip = ovnEipClient.Get(sharedEipName)
+		ginkgo.By("Get share dnat")
+		shareDnat = ovnDnatRuleClient.Get(sharedEipDnatName)
+		ginkgo.By("Get share snat")
+		shareSnat = ovnSnatRuleClient.Get(sharedEipSnatName)
+		ginkgo.By("Get share fip should ok")
+		shareFipShouldOk = ovnFipClient.Get(sharedEipFipShoudOkName)
+		ginkgo.By("Get share fip should fail")
+		shareFipShouldFail = ovnFipClient.Get(sharedEipFipShoudFailName)
+
+		ginkgo.By("Check share eip should has the external ip label")
+		framework.ExpectHaveKeyWithValue(shareEip.Labels, util.IptablesEipV4IPLabel, shareEip.Spec.V4Ip)
+		ginkgo.By("Check share dnat should has the external ip label")
+		framework.ExpectHaveKeyWithValue(shareDnat.Labels, util.IptablesEipV4IPLabel, shareEip.Spec.V4Ip)
+		ginkgo.By("Check share snat should has the external ip label")
+		framework.ExpectHaveKeyWithValue(shareSnat.Labels, util.IptablesEipV4IPLabel, shareEip.Spec.V4Ip)
+		ginkgo.By("Check share fip should ok should has the external ip label")
+		framework.ExpectHaveKeyWithValue(shareFipShouldOk.Labels, util.IptablesEipV4IPLabel, shareEip.Spec.V4Ip)
+		ginkgo.By("Check share fip should fail should not be ready")
+		framework.ExpectEqual(shareFipShouldFail.Status.Ready, false)
+
+		// make sure eip is shared
+		nats := []string{util.DnatUsingEip, util.FipUsingEip, util.SnatUsingEip}
+		framework.ExpectEqual(shareEip.Status.Nat, strings.Join(nats, ","))
+
+		ginkgo.By("Deleting share ovn fip " + sharedEipFipShoudOkName)
+		ovnFipClient.DeleteSync(sharedEipFipShoudOkName)
+		ginkgo.By("Deleting share ovn fip " + sharedEipFipShoudFailName)
+		ovnFipClient.DeleteSync(sharedEipFipShoudFailName)
+		ginkgo.By("Deleting share ovn dnat " + dnatName)
+		ovnDnatRuleClient.DeleteSync(dnatName)
+		ginkgo.By("Deleting share ovn snat " + snatName)
+		ovnSnatRuleClient.DeleteSync(snatName)
+
+		ginkgo.By("Deleting ovn eip " + fipEipName)
+		ovnEipClient.DeleteSync(fipEipName)
+		ginkgo.By("Deleting ovn eip " + dnatEipName)
+		ovnEipClient.DeleteSync(dnatEipName)
+		ginkgo.By("Deleting ovn eip " + snatEipName)
+		ovnEipClient.DeleteSync(snatEipName)
+		ginkgo.By("Deleting ovn share eip " + sharedEipName)
+		ovnEipClient.DeleteSync(sharedEipName)
+		ginkgo.By("Deleting ovn share vip " + sharedEipName)
+		vipClient.DeleteSync(sharedVipName)
+
 		// arp proxy vip test case
 		ginkgo.By("Creating two arp proxy vips, should have the same mac which is from gw subnet mac")
 		ginkgo.By("Creating arp proxy vip " + arpProxyVip1Name)

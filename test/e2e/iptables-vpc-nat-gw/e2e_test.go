@@ -453,7 +453,7 @@ var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 		ginkgo.By("Check share fip should fail should not be ready")
 		framework.ExpectEqual(shareFipShouldFail.Status.Ready, false)
 
-		// define a list and strings join
+		// make sure eip is shared
 		nats := []string{util.DnatUsingEip, util.FipUsingEip, util.SnatUsingEip}
 		framework.ExpectEqual(shareEip.Status.Nat, strings.Join(nats, ","))
 
