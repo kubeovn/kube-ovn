@@ -2,6 +2,7 @@
 .vscode/*
 .DS_Store
 dist/images/test-server
+dist/images/kube-ovn
 dist/images/kube-ovn-cmd
 dist/images/kube-ovn-webhook
 dist/windows/kube-ovn.exe
