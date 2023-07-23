@@ -616,6 +616,21 @@ func (c *Controller) setIptables() error {
 			kubeProxyIpsetProtocol, matchset, svcMatchset, nodeMatchSet = "6-", "ovn60subnets", "ovn60services", "ovn60"+OtherNodeSet
 		}
 
+		ipset := fmt.Sprintf("KUBE-%sCLUSTER-IP", kubeProxyIpsetProtocol)
+		ipsetExists, err := c.ipsetExists(ipset)
+		if err != nil {
+			klog.Error("failed to check existence of ipset %s: %v", ipset, err)
+			return err
+		}
+		if ipsetExists {
+			iptablesRules[0].Rule = strings.Fields(fmt.Sprintf(`-i ovn0 -m set --match-set %s src -m set --match-set %s dst,dst -j MARK --set-xmark 0x4000/0x4000`, matchset, ipset))
+			rejectRule := strings.Fields(fmt.Sprintf(`-m mark ! --mark 0x4000/0x4000 -m set --match-set %s dst -m conntrack --ctstate NEW -j REJECT`, svcMatchset))
+			iptablesRules = append(iptablesRules,
+				util.IPTableRule{Table: "filter", Chain: "INPUT", Rule: rejectRule},
+				util.IPTableRule{Table: "filter", Chain: "OUTPUT", Rule: rejectRule},
+			)
+		}
+
 		if nodeIP := nodeIPs[protocol]; nodeIP != "" {
 			obsoleteRules = []util.IPTableRule{
 				{Table: NAT, Chain: Postrouting, Rule: strings.Fields(fmt.Sprintf(`! -s %s -m set --match-set %s dst -j MASQUERADE`, nodeIP, matchset))},
