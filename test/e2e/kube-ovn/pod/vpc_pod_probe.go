@@ -2,7 +2,10 @@ package pod
 
 import (
 	"fmt"
-	"time"
+	"math/rand"
+	"net"
+	"strconv"
+	"strings"
 
 	"github.com/onsi/ginkgo/v2"
 	corev1 "k8s.io/api/core/v1"
@@ -20,6 +23,7 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 
 	var cs clientset.Interface
 	var podClient *framework.PodClient
+	var eventClient *framework.EventClient
 	var subnetClient *framework.SubnetClient
 	var vpcClient *framework.VpcClient
 	var namespaceName, subnetName, podName, vpcName string
@@ -30,6 +34,7 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 	ginkgo.BeforeEach(func() {
 		cs = f.ClientSet
 		podClient = f.PodClient()
+		eventClient = f.EventClient()
 		subnetClient = f.SubnetClient()
 		namespaceName = f.Namespace.Name
 		subnetName = "subnet-" + framework.RandomSuffix()
@@ -63,7 +68,7 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 		}
 	})
 
-	framework.ConformanceIt("should support http and tcp liveness probe and readiness probe in custom vpc pod ", func() {
+	framework.ConformanceIt("should support http and tcp readiness probe in custom vpc pod", func() {
 		f.SkipVersionPriorTo(1, 12, "This feature was introduced in v1.12")
 		daemonSetClient := f.DaemonSetClientNS(framework.KubeOvnNamespace)
 		originDs := daemonSetClient.Get("kube-ovn-cni")
@@ -93,100 +98,94 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 		subnet := framework.MakeSubnet(custVPCSubnetName, "", cidr, "", vpcName, "", nil, nil, nil)
 		_ = subnetClient.CreateSync(subnet)
 
-		ginkgo.By("Creating pod with HTTP liveness and readiness probe that port is accessible " + podName)
-		pod := framework.MakePod(namespaceName, podName, nil, map[string]string{util.LogicalSwitchAnnotation: custVPCSubnetName}, framework.NginxImage, nil, nil)
-
+		ginkgo.By("Creating pod with HTTP readiness probe that port is accessible " + podName)
+		port := 8000 + rand.Intn(1000)
+		portStr := strconv.Itoa(port)
+		args := []string{"netexec", "--http-port", portStr}
+		pod := framework.MakePod(namespaceName, podName, nil, map[string]string{util.LogicalSwitchAnnotation: custVPCSubnetName}, framework.AgnhostImage, nil, args)
 		pod.Spec.Containers[0].ReadinessProbe = &corev1.Probe{
 			ProbeHandler: corev1.ProbeHandler{
 				HTTPGet: &corev1.HTTPGetAction{
-					Port: intstr.FromInt(80),
+					Port: intstr.FromInt(port),
 				},
 			},
 		}
-		pod.Spec.Containers[0].LivenessProbe = &corev1.Probe{
-			ProbeHandler: corev1.ProbeHandler{
-				HTTPGet: &corev1.HTTPGetAction{
-					Port: intstr.FromInt(80),
-				},
-			},
-		}
-
 		pod = podClient.CreateSync(pod)
-		framework.ExpectEqual(pod.Status.ContainerStatuses[0].Ready, true)
-		checkTProxyRules(f, pod, 80, true)
+		checkTProxyRules(f, pod, port, true)
+
+		ginkgo.By("Deleting pod " + podName)
 		podClient.DeleteSync(podName)
 
-		ginkgo.By("Creating pod with HTTP liveness and readiness probe that port is not accessible  " + podName)
-		pod = framework.MakePod(namespaceName, podName, nil, map[string]string{util.LogicalSwitchAnnotation: custVPCSubnetName}, framework.NginxImage, nil, nil)
+		ginkgo.By("Creating pod with HTTP readiness probe that port is not accessible " + podName)
+		pod = framework.MakePod(namespaceName, podName, nil, map[string]string{util.LogicalSwitchAnnotation: custVPCSubnetName}, framework.AgnhostImage, nil, args)
 		pod.Spec.Containers[0].ReadinessProbe = &corev1.Probe{
 			ProbeHandler: corev1.ProbeHandler{
 				HTTPGet: &corev1.HTTPGetAction{
-					Port: intstr.FromInt(81),
+					Port: intstr.FromInt(port + 1),
 				},
 			},
 		}
-		pod.Spec.Containers[0].LivenessProbe = &corev1.Probe{
-			ProbeHandler: corev1.ProbeHandler{
-				HTTPGet: &corev1.HTTPGetAction{
-					Port: intstr.FromInt(81),
-				},
-			},
-		}
-
 		_ = podClient.Create(pod)
-		time.Sleep(5 * time.Second)
-		pod = podClient.GetPod(podName)
 
-		framework.ExpectEqual(pod.Status.ContainerStatuses[0].Ready, false)
-		checkTProxyRules(f, pod, 81, true)
-		podClient.DeleteSync(podName)
-
-		ginkgo.By("Creating pod with TCP probe liveness and readiness probe that port is accessible " + podName)
-		pod = framework.MakePod(namespaceName, podName, nil, map[string]string{util.LogicalSwitchAnnotation: custVPCSubnetName}, framework.NginxImage, nil, nil)
-		pod.Spec.Containers[0].ReadinessProbe = &corev1.Probe{
-			ProbeHandler: corev1.ProbeHandler{
-				TCPSocket: &corev1.TCPSocketAction{
-					Port: intstr.FromInt(80),
-				},
-			},
+		ginkgo.By("Waiting for pod readiness probe failure")
+		events := eventClient.WaitToHaveEvent("Pod", podName, "Warning", "Unhealthy", "kubelet", "")
+		var found bool
+		for _, event := range events {
+			if strings.Contains(event.Message, "Readiness probe failed") {
+				found = true
+				framework.Logf("Found pod event: %s", event.Message)
+				break
+			}
 		}
-		pod.Spec.Containers[0].LivenessProbe = &corev1.Probe{
-			ProbeHandler: corev1.ProbeHandler{
-				TCPSocket: &corev1.TCPSocketAction{
-					Port: intstr.FromInt(80),
-				},
-			},
-		}
-
-		pod = podClient.CreateSync(pod)
-		framework.ExpectEqual(pod.Status.ContainerStatuses[0].Ready, true)
-
-		checkTProxyRules(f, pod, 80, true)
-		podClient.DeleteSync(podName)
-
-		ginkgo.By("Creating pod with TCP probe liveness and readiness probe that port is not accessible  " + podName)
-		pod = framework.MakePod(namespaceName, podName, nil, map[string]string{util.LogicalSwitchAnnotation: custVPCSubnetName}, framework.NginxImage, nil, nil)
-		pod.Spec.Containers[0].ReadinessProbe = &corev1.Probe{
-			ProbeHandler: corev1.ProbeHandler{
-				TCPSocket: &corev1.TCPSocketAction{
-					Port: intstr.FromInt(81),
-				},
-			},
-		}
-		pod.Spec.Containers[0].LivenessProbe = &corev1.Probe{
-			ProbeHandler: corev1.ProbeHandler{
-				TCPSocket: &corev1.TCPSocketAction{
-					Port: intstr.FromInt(81),
-				},
-			},
-		}
-
-		_ = podClient.Create(pod)
-		time.Sleep(5 * time.Second)
+		framework.ExpectTrue(found, "Pod readiness probe is expected to fail")
 
 		pod = podClient.GetPod(podName)
-		framework.ExpectEqual(pod.Status.ContainerStatuses[0].Ready, false)
-		checkTProxyRules(f, pod, 81, false)
+		checkTProxyRules(f, pod, port+1, true)
+
+		ginkgo.By("Deleting pod " + podName)
+		podClient.DeleteSync(podName)
+
+		ginkgo.By("Creating pod with TCP readiness probe that port is accessible " + podName)
+		pod = framework.MakePod(namespaceName, podName, nil, map[string]string{util.LogicalSwitchAnnotation: custVPCSubnetName}, framework.AgnhostImage, nil, args)
+		pod.Spec.Containers[0].ReadinessProbe = &corev1.Probe{
+			ProbeHandler: corev1.ProbeHandler{
+				TCPSocket: &corev1.TCPSocketAction{
+					Port: intstr.FromInt(port),
+				},
+			},
+		}
+		pod = podClient.CreateSync(pod)
+		checkTProxyRules(f, pod, port, true)
+
+		ginkgo.By("Deleting pod " + podName)
+		podClient.DeleteSync(podName)
+
+		ginkgo.By("Creating pod with TCP readiness probe that port is not accessible " + podName)
+		pod = framework.MakePod(namespaceName, podName, nil, map[string]string{util.LogicalSwitchAnnotation: custVPCSubnetName}, framework.AgnhostImage, nil, args)
+		pod.Spec.Containers[0].ReadinessProbe = &corev1.Probe{
+			ProbeHandler: corev1.ProbeHandler{
+				TCPSocket: &corev1.TCPSocketAction{
+					Port: intstr.FromInt(port - 1),
+				},
+			},
+		}
+		_ = podClient.Create(pod)
+		podClient.WaitForRunning(podName)
+
+		ginkgo.By("Waiting for pod readiness probe failure")
+		events = eventClient.WaitToHaveEvent("Pod", podName, "Warning", "Unhealthy", "kubelet", "")
+		found = false
+		for _, event := range events {
+			if strings.Contains(event.Message, "Readiness probe failed") {
+				found = true
+				framework.Logf("Found pod event: %s", event.Message)
+				break
+			}
+		}
+		framework.ExpectTrue(found, "Pod readiness probe is expected to fail")
+
+		pod = podClient.GetPod(podName)
+		checkTProxyRules(f, pod, port-1, false)
 	})
 })
 
@@ -209,7 +208,7 @@ func checkTProxyRules(f *framework.Framework, pod *corev1.Pod, probePort int, ex
 			iptables.CheckIptablesRulesOnNode(f, nodeName, util.Mangle, util.OvnOutput, apiv1.ProtocolIPv4, expectedRules, exist)
 			hostIP := pod.Status.HostIP
 			if isZeroIP {
-				hostIP = "0.0.0.0"
+				hostIP = net.IPv4zero.String()
 			}
 			expectedRules = []string{
 				fmt.Sprintf(`-A OVN-PREROUTING -d %s/32 -p tcp -m tcp --dport %d -j TPROXY --on-port %d --on-ip %s --tproxy-mark %s`, podIP.IP, probePort, util.TProxyListenPort, hostIP, tProxyPreRoutingMarkMask),
