@@ -11,8 +11,9 @@ GOLDFLAGS = "-w -s -extldflags '-z now' -X github.com/kubeovn/kube-ovn/versions.
 
 CONTROL_PLANE_TAINTS = node-role.kubernetes.io/master node-role.kubernetes.io/control-plane
 
-MULTUS_IMAGE = ghcr.io/k8snetworkplumbingwg/multus-cni:snapshot-thick
-MULTUS_YAML = https://raw.githubusercontent.com/k8snetworkplumbingwg/multus-cni/master/deployments/multus-daemonset-thick.yml
+MULTUS_VERSION = v4.0.2
+MULTUS_IMAGE = ghcr.io/k8snetworkplumbingwg/multus-cni:$(MULTUS_VERSION)-thick
+MULTUS_YAML = https://raw.githubusercontent.com/k8snetworkplumbingwg/multus-cni/$(MULTUS_VERSION)/deployments/multus-daemonset-thick.yml
 
 CILIUM_VERSION = 1.12.7
 CILIUM_IMAGE_REPO = quay.io/cilium/cilium
@@ -450,7 +451,7 @@ kind-install-underlay-logical-gateway-dual: kind-disable-hairpin kind-load-image
 .PHONY: kind-install-multus
 kind-install-multus:
 	$(call kind_load_image,kube-ovn,$(MULTUS_IMAGE),1)
-	kubectl apply -f "$(MULTUS_YAML)"
+	curl -s "$(MULTUS_YAML)" | sed 's/:snapshot-thick/:$(MULTUS_VERSION)-thick/g' | kubectl apply -f -
 	kubectl -n kube-system rollout status ds kube-multus-ds
 
 .PHONY: kind-install-cilium-chaining
