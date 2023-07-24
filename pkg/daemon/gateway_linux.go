@@ -616,22 +616,27 @@ func (c *Controller) setIptables() error {
 			kubeProxyIpsetProtocol, matchset, svcMatchset, nodeMatchSet = "6-", "ovn60subnets", "ovn60services", "ovn60"+OtherNodeSet
 		}
 
+		ipset := fmt.Sprintf("KUBE-%sCLUSTER-IP", kubeProxyIpsetProtocol)
+		ipsetExists, err := c.ipsetExists(ipset)
+		if err != nil {
+			klog.Error("failed to check existence of ipset %s: %v", ipset, err)
+			return err
+		}
+		if ipsetExists {
+			iptablesRules[0].Rule = strings.Fields(fmt.Sprintf(`-i ovn0 -m set --match-set %s src -m set --match-set %s dst,dst -j MARK --set-xmark 0x4000/0x4000`, matchset, ipset))
+			rejectRule := strings.Fields(fmt.Sprintf(`-m mark ! --mark 0x4000/0x4000 -m set --match-set %s dst -m conntrack --ctstate NEW -j REJECT`, svcMatchset))
+			iptablesRules = append(iptablesRules,
+				util.IPTableRule{Table: "filter", Chain: "INPUT", Rule: rejectRule},
+				util.IPTableRule{Table: "filter", Chain: "OUTPUT", Rule: rejectRule},
+			)
+		}
+
 		if nodeIP := nodeIPs[protocol]; nodeIP != "" {
 			obsoleteRules = []util.IPTableRule{
 				{Table: NAT, Chain: Postrouting, Rule: strings.Fields(fmt.Sprintf(`! -s %s -m set --match-set %s dst -j MASQUERADE`, nodeIP, matchset))},
 				{Table: NAT, Chain: Postrouting, Rule: strings.Fields(fmt.Sprintf(`! -s %s -m mark --mark 0x4000/0x4000 -j MASQUERADE`, nodeIP))},
 				{Table: NAT, Chain: Postrouting, Rule: strings.Fields(fmt.Sprintf(`! -s %s -m set ! --match-set %s src -m set --match-set %s dst -j MASQUERADE`, nodeIP, matchset, matchset))},
 			}
-
-			rules := make([]util.IPTableRule, len(iptablesRules)+1)
-			copy(rules, iptablesRules[:1])
-			copy(rules[2:], iptablesRules[1:])
-			rules[1] = util.IPTableRule{
-				Table: NAT,
-				Chain: OvnPostrouting,
-				Rule:  strings.Fields(fmt.Sprintf(`-m set --match-set %s src -m set --match-set %s dst -m mark --mark 0x4000/0x4000 -j SNAT --to-source %s`, svcMatchset, matchset, nodeIP)),
-			}
-			iptablesRules = rules
 
 			for _, p := range [...]string{"tcp", "udp"} {
 				ipset := fmt.Sprintf("KUBE-%sNODE-PORT-LOCAL-%s", kubeProxyIpsetProtocol, strings.ToUpper(p))
@@ -695,11 +700,17 @@ func (c *Controller) setIptables() error {
 			}
 		}
 
+		var randomFully string
+		if c.k8siptables[protocol].HasRandomFully() {
+			randomFully = "--random-fully"
+		}
+
 		var natPreroutingRules, natPostroutingRules, ovnMasqueradeRules []util.IPTableRule
 		for _, rule := range iptablesRules {
 			if rule.Table == NAT {
-				if c.k8siptables[protocol].HasRandomFully() && rule.Rule[len(rule.Rule)-1] == "MASQUERADE" {
-					rule.Rule = append(rule.Rule, "--random-fully")
+				if randomFully != "" &&
+					(rule.Rule[len(rule.Rule)-1] == "MASQUERADE" || util.ContainsString(rule.Rule, "SNAT")) {
+					rule.Rule = append(rule.Rule, randomFully)
 				}
 
 				switch rule.Chain {
@@ -727,7 +738,7 @@ func (c *Controller) setIptables() error {
 				continue
 			}
 
-			s := fmt.Sprintf("-s %s -m set ! --match-set %s dst -j SNAT --to-source %s", cidr, matchset, ip)
+			s := fmt.Sprintf("-s %s -m set ! --match-set %s dst -j SNAT --to-source %s %s", cidr, matchset, ip, randomFully)
 			rule := util.IPTableRule{
 				Table: NAT,
 				Chain: OvnPostrouting,
