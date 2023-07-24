@@ -4,7 +4,7 @@ go 1.20
 
 require (
 	github.com/Microsoft/go-winio v0.6.1
-	github.com/Microsoft/hcsshim v0.9.9
+	github.com/Microsoft/hcsshim v0.9.10
 	github.com/alauda/felix v3.6.6-0.20201207121355-187332daf314+incompatible
 	github.com/bhendo/go-powershell v0.0.0-20190719160123-219e7fb4e41e
 	github.com/cenkalti/backoff/v4 v4.2.1
@@ -45,7 +45,7 @@ require (
 	k8s.io/client-go v12.0.0+incompatible
 	k8s.io/klog/v2 v2.100.1
 	k8s.io/kubectl v0.27.3
-	k8s.io/kubernetes v1.27.3
+	k8s.io/kubernetes v1.27.4
 	k8s.io/pod-security-admission v0.27.3
 	k8s.io/sample-controller v0.27.3
 	k8s.io/utils v0.0.0-20230505201702-9f6742963106
@@ -124,7 +124,7 @@ require (
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/google/btree v1.0.1 // indirect
-	github.com/google/cadvisor v0.47.1 // indirect
+	github.com/google/cadvisor v0.47.2 // indirect
 	github.com/google/cel-go v0.13.0 // indirect
 	github.com/google/gnostic v0.6.9 // indirect
 	github.com/google/go-cmp v0.5.9 // indirect
