@@ -158,15 +158,15 @@ func setupVpcNatGwTestEnvironment(
 	_, err := f.ClientSet.CoreV1().ConfigMaps(framework.KubeOvnNamespace).Get(context.Background(), vpcNatGWConfigMapName, metav1.GetOptions{})
 	framework.ExpectNoError(err, "failed to get ConfigMap")
 
-	ginkgo.By("Creating custom vpc")
+	ginkgo.By("Creating custom vpc " + vpcName)
 	vpc := framework.MakeVpc(vpcName, lanIp, false, false, nil)
 	_ = vpcClient.CreateSync(vpc)
 
-	ginkgo.By("Creating custom overlay subnet")
+	ginkgo.By("Creating custom overlay subnet " + overlaySubnetName)
 	overlaySubnet := framework.MakeSubnet(overlaySubnetName, "", overlaySubnetV4Cidr, overlaySubnetV4Gw, vpcName, "", nil, nil, nil)
 	_ = subnetClient.CreateSync(overlaySubnet)
 
-	ginkgo.By("Creating custom vpc nat gw")
+	ginkgo.By("Creating custom vpc nat gw " + vpcNatGwName)
 	vpcNatGw := framework.MakeVpcNatGateway(vpcNatGwName, vpcName, overlaySubnetName, lanIp, externalNetworkName, natGwQosPolicy)
 	_ = vpcNatGwClient.CreateSync(vpcNatGw, f.ClientSet)
 }
@@ -230,7 +230,7 @@ var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 	overlaySubnetName = "overlay-subnet-" + framework.RandomSuffix()
 
 	net2AttachDefName = "net2-ovn-vpc-external-network-" + framework.RandomSuffix()
-	net2SubnetProvider = net2AttachDefName + ".kube-system"
+	net2SubnetProvider = fmt.Sprintf("%s.%s", net2AttachDefName, framework.KubeOvnNamespace)
 	net2OverlaySubnetName = "net2-overlay-subnet-" + framework.RandomSuffix()
 	net2VpcNatGwName = "net2-gw-" + framework.RandomSuffix()
 	net2VpcName = "net2-vpc-" + framework.RandomSuffix()
@@ -610,7 +610,7 @@ func newVPCQoSParamsInit() *qosParams {
 		vpc2PodName:    "qos-vpc2-pod-" + framework.RandomSuffix(),
 		attachDefName:  "qos-ovn-vpc-external-network-" + framework.RandomSuffix(),
 	}
-	qosParames.subnetProvider = qosParames.attachDefName + ".kube-system"
+	qosParames.subnetProvider = fmt.Sprintf("%s.%s", qosParames.attachDefName, framework.KubeOvnNamespace)
 	return qosParames
 }
 
@@ -1078,7 +1078,7 @@ var _ = framework.Describe("[group:qos-policy]", func() {
 		vpcQosParams.vpc2PodName = "qos-vpc2-pod-" + framework.RandomSuffix()
 
 		vpcQosParams.attachDefName = "qos-ovn-vpc-external-network-" + framework.RandomSuffix()
-		vpcQosParams.subnetProvider = vpcQosParams.attachDefName + ".kube-system"
+		vpcQosParams.subnetProvider = fmt.Sprintf("%s.%s", vpcQosParams.attachDefName, framework.KubeOvnNamespace)
 
 		containerID = ""
 		cs = f.ClientSet
@@ -1286,8 +1286,10 @@ var _ = framework.Describe("[group:qos-policy]", func() {
 			ginkgo.By("Deleting overlay subnet " + vpcQosParams.vpc1SubnetName)
 			subnetClient.DeleteSync(vpcQosParams.vpc1SubnetName)
 
-			vpcNatGw2PodName := util.GenNatGwPodName(vpcQosParams.vpcNat2GwName)
+			ginkgo.By("Getting overlay subnet " + vpcQosParams.vpc2SubnetName)
 			overlaySubnet2 := subnetClient.Get(vpcQosParams.vpc2SubnetName)
+
+			vpcNatGw2PodName := util.GenNatGwPodName(vpcQosParams.vpcNat2GwName)
 			eth0IpName = ovs.PodNameToPortName(vpcNatGw2PodName, framework.KubeOvnNamespace, overlaySubnet2.Spec.Provider)
 			net1IpName = ovs.PodNameToPortName(vpcNatGw2PodName, framework.KubeOvnNamespace, macvlanSubnet.Spec.Provider)
 			ginkgo.By("Deleting vpc nat gw eth0 ip " + eth0IpName)

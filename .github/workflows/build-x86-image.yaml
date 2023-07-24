@@ -2026,10 +2026,7 @@ jobs:
           sudo cp -r /root/.kube/ ~/.kube/
           sudo chown -R $(id -un). ~/.kube/
 
-      - name: Install Kube-OVN
-        run: make kind-install
-
-      - name: Install vpc-nat-gw
+      - name: Install Kube-OVN with VPC NAT gateway enabled
         run: make kind-install-vpc-nat-gw
 
       - name: Run E2E
