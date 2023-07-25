@@ -97,10 +97,7 @@ func (c *Controller) syncSubnetRoutes() {
 	}
 
 	klog.V(5).Infof("expected ipv4 routes %v,ipv6 route %v", bgpExpected[kubeovnv1.ProtocolIPv4], bgpExpected[kubeovnv1.ProtocolIPv6])
-	listPathRequest := &bgpapi.ListPathRequest{
-		TableType: bgpapi.TableType_GLOBAL,
-		Family:    &bgpapi.Family{Afi: bgpapi.Family_AFI_IP, Safi: bgpapi.Family_SAFI_UNICAST},
-	}
+
 	fn := func(d *bgpapi.Destination) {
 		for _, path := range d.Paths {
 			attrInterfaces, _ := bgpapiutil.UnmarshalPathAttributes(path.Pattrs)
@@ -116,6 +113,10 @@ func (c *Controller) syncSubnetRoutes() {
 	}
 
 	if c.config.NeighborAddress != "" {
+		listPathRequest := &bgpapi.ListPathRequest{
+			TableType: bgpapi.TableType_GLOBAL,
+			Family:    &bgpapi.Family{Afi: bgpapi.Family_AFI_IP, Safi: bgpapi.Family_SAFI_UNICAST},
+		}
 		if err := c.config.BgpServer.ListPath(context.Background(), listPathRequest, fn); err != nil {
 			klog.Errorf("failed to list exist route, %v", err)
 			return
