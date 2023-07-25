@@ -23,7 +23,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  GO_VERSION: '1.20.5'
+  GO_VERSION: ''
   GOSEC_VERSION: '2.15.0'
 
 jobs:
