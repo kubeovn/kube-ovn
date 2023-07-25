@@ -113,7 +113,7 @@ func (c LegacyClient) ChassisExist(chassisName string) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("failed to find node chassis %s, %v", chassisName, err)
 	}
-	if len(strings.Split(output, "\n")) == 0 {
+	if len(output) == 0 {
 		return false, nil
 	}
 	return true, nil
