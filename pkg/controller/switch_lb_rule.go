@@ -333,13 +333,19 @@ func generateEndpoints(slr *kubeovnv1.SwitchLBRule, oldEps *corev1.Endpoints) *c
 		)
 	}
 
-	for _, addr := range slr.Spec.Endpoints {
-		addrs = append(
-			addrs,
-			corev1.EndpointAddress{
-				IP: addr,
-			},
-		)
+	for _, endpoint := range slr.Spec.Endpoints {
+		if res := strings.Split(strings.TrimSpace(endpoint), ":"); len(res) == 2 {
+			addrs = append(
+				addrs,
+				corev1.EndpointAddress{
+					IP: res[1],
+					TargetRef: &corev1.ObjectReference{
+						Namespace: slr.Namespace,
+						Name:      res[0],
+					},
+				},
+			)
+		}
 	}
 
 	subsets = []corev1.EndpointSubset{

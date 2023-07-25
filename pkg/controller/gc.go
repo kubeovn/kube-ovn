@@ -390,7 +390,7 @@ func (c *Controller) markAndCleanLSP() error {
 }
 
 func (c *Controller) gcLoadBalancer() error {
-	klog.Infof("start to gc loadbalancers")
+	klog.Infof("start to gc load balancers")
 	if !c.config.EnableLb {
 		// remove lb from logical switch
 		vpcs, err := c.vpcsLister.List(labels.Everything())

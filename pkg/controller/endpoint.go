@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -171,6 +172,11 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 		}
 	}
 
+	gateways, err := c.getVpcSubnetGateways(vpc.Status.Subnets)
+	if err != nil {
+		return err
+	}
+
 	tcpLb, udpLb, sctpLb := vpc.Status.TcpLoadBalancer, vpc.Status.UdpLoadBalancer, vpc.Status.SctpLoadBalancer
 	oldTcpLb, oldUdpLb, oldSctpLb := vpc.Status.TcpSessionLoadBalancer, vpc.Status.UdpSessionLoadBalancer, vpc.Status.SctpSessionLoadBalancer
 	if svc.Spec.SessionAffinity == v1.ServiceAffinityClientIP {
@@ -190,23 +196,23 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 			}
 
 			vip := util.JoinHostPort(settingIP, port.Port)
-			backends := getServicePortBackends(ep, pods, port, settingIP)
-
+			// named backends
+			backends, mappings := getMappedServicePortBackends(ep, pods, port, settingIP, vpcName, gateways)
 			// for performance reason delete lb with no backends
 			if len(backends) != 0 {
 				klog.V(3).Infof("update vip %s with backends %s to LB %s", vip, backends, lb)
-				if err = c.ovnClient.LoadBalancerAddVip(lb, vip, backends...); err != nil {
+				if err = c.ovnClient.LoadBalancerAddVip(lb, vip, mappings, backends...); err != nil {
 					klog.Errorf("failed to add vip %s with backends %s to LB %s: %v", vip, backends, lb, err)
 					return err
 				}
 			} else {
 				klog.V(3).Infof("delete vip %s from LB %s", vip, lb)
-				if err := c.ovnClient.LoadBalancerDeleteVip(lb, vip); err != nil {
+				if err = c.ovnClient.LoadBalancerDeleteVip(lb, vip); err != nil {
 					klog.Errorf("failed to delete vip %s from LB %s: %v", vip, lb, err)
 					return err
 				}
 				klog.V(3).Infof("delete vip %s from old LB %s", vip, lb)
-				if err := c.ovnClient.LoadBalancerDeleteVip(oldLb, vip); err != nil {
+				if err = c.ovnClient.LoadBalancerDeleteVip(oldLb, vip); err != nil {
 					klog.Errorf("failed to delete vip %s from LB %s: %v", vip, lb, err)
 					return err
 				}
@@ -217,9 +223,45 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 	return nil
 }
 
-func getServicePortBackends(endpoints *v1.Endpoints, pods []*v1.Pod, servicePort v1.ServicePort, serviceIP string) []string {
-	backends := []string{}
-	protocol := util.CheckProtocol(serviceIP)
+func (c *Controller) getVpcSubnetGateways(subnets []string) (map[string]string, error) {
+	var (
+		gateways = make(map[string]string)
+	)
+
+	for _, subnetName := range subnets {
+		subnet, err := c.subnetsLister.Get(subnetName)
+		if err != nil {
+			klog.Errorf("failed to get subnet %s: %v", subnetName, err)
+			return nil, err
+		}
+
+		for _, cidrBlock := range strings.Split(subnet.Spec.CIDRBlock, ",") {
+			if cidrBlock = strings.Trim(cidrBlock, " "); strings.Compare(cidrBlock, "") == 0 {
+				continue
+			}
+
+			for _, gateway := range strings.Split(subnet.Spec.Gateway, ",") {
+				if gateway = strings.Trim(gateway, " "); strings.Compare(gateway, "") == 0 {
+					continue
+				}
+
+				if util.CIDRContainIP(cidrBlock, gateway) {
+					gateways[cidrBlock] = gateway
+				}
+			}
+		}
+	}
+
+	return gateways, nil
+}
+
+func getMappedServicePortBackends(endpoints *v1.Endpoints, pods []*v1.Pod, servicePort v1.ServicePort, serviceIP, vpcName string, gateways map[string]string) ([]string, map[string]string) {
+	var (
+		mappings = map[string]string{}
+		backends = []string{}
+		protocol = util.CheckProtocol(serviceIP)
+	)
+
 	for _, subset := range endpoints.Subsets {
 		var targetPort int32
 		for _, port := range subset.Ports {
@@ -236,6 +278,13 @@ func getServicePortBackends(endpoints *v1.Endpoints, pods []*v1.Pod, servicePort
 			if address.TargetRef == nil || address.TargetRef.Kind != "Pod" {
 				if util.CheckProtocol(address.IP) == protocol {
 					backends = append(backends, util.JoinHostPort(address.IP, targetPort))
+				}
+
+				for cidrBlock, gateway := range gateways {
+					if util.CIDRContainIP(cidrBlock, address.IP) {
+						mappings[address.IP] = address.TargetRef.Name + "." + vpcName + ":" + gateway
+						break
+					}
 				}
 				continue
 			}
@@ -262,8 +311,15 @@ func getServicePortBackends(endpoints *v1.Endpoints, pods []*v1.Pod, servicePort
 			if ip != "" {
 				backends = append(backends, util.JoinHostPort(ip, targetPort))
 			}
+
+			for cidrBlock, gateway := range gateways {
+				if util.CIDRContainIP(cidrBlock, ip) {
+					mappings[ip] = address.TargetRef.Name + "." + vpcName + ":" + gateway
+					break
+				}
+			}
 		}
 	}
 
-	return backends
+	return backends, mappings
 }

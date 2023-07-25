@@ -587,20 +587,40 @@ func (c *Controller) handleDelOvnDnatFinalizer(cachedDnat *kubeovnv1.OvnDnatRule
 }
 
 func (c *Controller) AddDnatRule(vpcName, dnatName, externalIp, internalIp, externalPort, internalPort, protocol string) error {
-	externalEndpoint := net.JoinHostPort(externalIp, externalPort)
-	internalEndpoint := net.JoinHostPort(internalIp, internalPort)
+	var (
+		externalEndpoint = net.JoinHostPort(externalIp, externalPort)
+		internalEndpoint = net.JoinHostPort(internalIp, internalPort)
+		mappings         = make(map[string]string)
+	)
 
-	if err := c.ovnClient.CreateLoadBalancer(dnatName, protocol, ""); err != nil {
+	vpc, err := c.vpcsLister.Get(vpcName)
+	if err != nil {
+		klog.Errorf("failed to get vpc %s of lb, %v", vpcName, err)
+		return err
+	}
+
+	gateways, err := c.getVpcSubnetGateways(vpc.Status.Subnets)
+	if err != nil {
+		return err
+	}
+
+	for cidrBlock, gateway := range gateways {
+		if util.CIDRContainIP(cidrBlock, internalIp) {
+			mappings[internalIp] = dnatName + "." + vpcName + ":" + gateway
+		}
+	}
+
+	if err = c.ovnClient.CreateLoadBalancer(dnatName, protocol, ""); err != nil {
 		klog.Errorf("create loadBalancer %s: %v", dnatName, err)
 		return err
 	}
 
-	if err := c.ovnClient.LoadBalancerAddVip(dnatName, externalEndpoint, internalEndpoint); err != nil {
+	if err = c.ovnClient.LoadBalancerAddVip(dnatName, externalEndpoint, mappings, internalEndpoint); err != nil {
 		klog.Errorf("add vip %s with backends %s to LB %s: %v", externalEndpoint, internalEndpoint, dnatName, err)
 		return err
 	}
 
-	if err := c.ovnClient.LogicalRouterUpdateLoadBalancers(vpcName, ovsdb.MutateOperationInsert, dnatName); err != nil {
+	if err = c.ovnClient.LogicalRouterUpdateLoadBalancers(vpcName, ovsdb.MutateOperationInsert, dnatName); err != nil {
 		klog.Errorf("add lb %s to vpc %s: %v", dnatName, vpcName, err)
 		return err
 	}

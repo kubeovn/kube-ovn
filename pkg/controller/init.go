@@ -22,36 +22,40 @@ import (
 )
 
 func (c *Controller) InitOVN() error {
-	if err := c.initClusterRouter(); err != nil {
+	var (
+		err error
+	)
+
+	if err = c.initClusterRouter(); err != nil {
 		klog.Errorf("init cluster router failed: %v", err)
 		return err
 	}
 
 	if c.config.EnableLb {
-		if err := c.initLoadBalancer(); err != nil {
+		if err = c.initLoadBalancer(); err != nil {
 			klog.Errorf("init load balancer failed: %v", err)
 			return err
 		}
 		v4Svc, _ := util.SplitStringIP(c.config.ServiceClusterIPRange)
 		if v4Svc != "" {
-			if err := c.ovnClient.SetLBCIDR(v4Svc); err != nil {
+			if err = c.ovnClient.SetLBCIDR(v4Svc); err != nil {
 				klog.Errorf("init load balancer svc cidr failed: %v", err)
 				return err
 			}
 		}
 	}
 
-	if err := c.initDefaultVlan(); err != nil {
+	if err = c.initDefaultVlan(); err != nil {
 		klog.Errorf("init default vlan failed: %v", err)
 		return err
 	}
 
-	if err := c.initNodeSwitch(); err != nil {
+	if err = c.initNodeSwitch(); err != nil {
 		klog.Errorf("init node switch failed: %v", err)
 		return err
 	}
 
-	if err := c.initDefaultLogicalSwitch(); err != nil {
+	if err = c.initDefaultLogicalSwitch(); err != nil {
 		klog.Errorf("init default switch failed: %v", err)
 		return err
 	}
@@ -205,18 +209,22 @@ func (c *Controller) initClusterRouter() error {
 func (c *Controller) initLB(name, protocol string, sessionAffinity bool) error {
 	protocol = strings.ToLower(protocol)
 
-	var selectFields string
+	var (
+		selectFields string
+		err          error
+	)
+
 	if sessionAffinity {
 		selectFields = string(ovnnb.LoadBalancerSelectionFieldsIPSrc)
 	}
 
-	if err := c.ovnClient.CreateLoadBalancer(name, protocol, selectFields); err != nil {
+	if err = c.ovnClient.CreateLoadBalancer(name, protocol, selectFields); err != nil {
 		klog.Errorf("create load balancer %s: %v", name, err)
 		return err
 	}
 
 	if sessionAffinity {
-		if err := c.ovnClient.SetLoadBalancerAffinityTimeout(name, util.DefaultServiceSessionStickinessTimeout); err != nil {
+		if err = c.ovnClient.SetLoadBalancerAffinityTimeout(name, util.DefaultServiceSessionStickinessTimeout); err != nil {
 			klog.Errorf("failed to set affinity timeout of %s load balancer %s: %v", protocol, name, err)
 			return err
 		}
