@@ -133,11 +133,9 @@ var _ = framework.Describe("[group:slr]", func() {
 		labels := map[string]string{"app": label}
 		ginkgo.By("Creating statefulset " + stsName + " with subnet " + subnetName)
 		sts := framework.MakeStatefulSet(stsName, stsSvcName, int32(replicas), labels, framework.AgnhostImage)
-		pool := framework.RandomIPs(overlaySubnetCidr, ";", replicas)
-		ginkgo.By("Creating sts " + stsName + " with ip pool " + pool)
+		ginkgo.By("Creating sts " + stsName)
 		sts.Spec.Template.Annotations = map[string]string{
 			util.LogicalSwitchAnnotation: subnetName,
-			util.IpPoolAnnotation:        pool,
 		}
 		portStr := strconv.Itoa(80)
 		webServerCmd := []string{"/agnhost", "netexec", "--http-port", portStr}
