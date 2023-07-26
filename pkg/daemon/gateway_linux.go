@@ -791,7 +791,7 @@ func (c *Controller) setExGateway() error {
 		return err
 	}
 	enable := node.Labels[util.ExGatewayLabel]
-	externalBride := fmt.Sprintf("br-%s", c.config.ExternalGatewaySwitch)
+	externalBridge := util.ExternalBridgeName(c.config.ExternalGatewaySwitch)
 	if enable == "true" {
 		cm, err := c.config.KubeClient.CoreV1().ConfigMaps(c.config.ExternalGatewayConfigNS).Get(context.Background(), util.ExternalGatewayConfig, metav1.GetOptions{})
 		if err != nil {
@@ -804,38 +804,29 @@ func (c *Controller) setExGateway() error {
 		if !exist || len(linkName) == 0 {
 			return nil
 		}
-		link, err := netlink.LinkByName(cm.Data["external-gw-nic"])
+		link, err := netlink.LinkByName(linkName)
 		if err != nil {
-			klog.Errorf("failed to get nic %s, %v", cm.Data["external-gw-nic"], err)
+			klog.Errorf("failed to get nic %s, %v", linkName, err)
 			return err
 		}
 		if err := netlink.LinkSetUp(link); err != nil {
-			klog.Errorf("failed to set gateway nic %s up, %v", cm.Data["external-gw-nic"], err)
+			klog.Errorf("failed to set gateway nic %s up, %v", linkName, err)
 			return err
 		}
 		if _, err := ovs.Exec(
-			ovs.MayExist, "add-br", externalBride, "--",
-			ovs.MayExist, "add-port", externalBride, cm.Data["external-gw-nic"],
+			ovs.MayExist, "add-br", externalBridge, "--",
+			ovs.MayExist, "add-port", externalBridge, cm.Data["external-gw-nic"],
 		); err != nil {
 			return fmt.Errorf("failed to enable external gateway, %v", err)
 		}
 
-		output, err := ovs.Exec(ovs.IfExists, "get", "open", ".", "external-ids:ovn-bridge-mappings")
-		if err != nil {
-			return fmt.Errorf("failed to get external-ids, %v", err)
-		}
-		bridgeMappings := fmt.Sprintf("external:%s", externalBride)
-		if output != "" && !util.IsStringIn(bridgeMappings, strings.Split(output, ",")) {
-			bridgeMappings = fmt.Sprintf("%s,%s", output, bridgeMappings)
-		}
-
-		output, err = ovs.Exec("set", "open", ".", fmt.Sprintf("external-ids:ovn-bridge-mappings=%s", bridgeMappings))
-		if err != nil {
-			return fmt.Errorf("failed to set bridge-mappings, %v: %q", err, output)
+		if err = addOvnMapping("ovn-bridge-mappings", c.config.ExternalGatewaySwitch, externalBridge, true); err != nil {
+			klog.Error(err)
+			return err
 		}
 	} else {
 		if _, err := ovs.Exec(
-			ovs.IfExists, "del-br", externalBride); err != nil {
+			ovs.IfExists, "del-br", externalBridge); err != nil {
 			return fmt.Errorf("failed to disable external gateway, %v", err)
 		}
 	}
