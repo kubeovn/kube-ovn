@@ -3,9 +3,10 @@ package daemon
 import (
 	"context"
 	"fmt"
-	"strings"
 
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog/v2"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -46,6 +47,7 @@ func (c *Controller) setExGateway() error {
 		return err
 	}
 	enable := node.Labels[util.ExGatewayLabel]
+	externalBridge := util.ExternalBridgeName(c.config.ExternalGatewaySwitch)
 	if enable == "true" {
 		cm, err := c.config.KubeClient.CoreV1().ConfigMaps(c.config.ExternalGatewayConfigNS).Get(context.Background(), util.ExternalGatewayConfig, metav1.GetOptions{})
 		if err != nil {
@@ -54,31 +56,84 @@ func (c *Controller) setExGateway() error {
 		}
 		// enable external-gw-config without 'external-gw-nic' configured
 		// to reuse existing physical network from arg 'external-gateway-net'
-		// TODO
-		if _, err := ovs.Exec(
-			ovs.MayExist, "add-br", "br-external", "--",
-			ovs.MayExist, "add-port", "br-external", cm.Data["external-gw-nic"],
-		); err != nil {
-			return fmt.Errorf("failed to enable external gateway, %v", err)
+		linkName, exist := cm.Data["external-gw-nic"]
+		if !exist || len(linkName) == 0 {
+			return nil
+		}
+		externalBrReady := false
+		// if external nic already attached into another bridge
+		if existBr, err := ovs.Exec("port-to-br", linkName); err == nil {
+			if existBr == externalBridge {
+				externalBrReady = true
+			} else {
+				klog.Infof("external bridge should change from %s to %s, delete external bridge %s", existBr, externalBridge, existBr)
+				if _, err := ovs.Exec(ovs.IfExists, "del-br", existBr); err != nil {
+					err = fmt.Errorf("failed to del external br %s, %v", existBr, err)
+					klog.Error(err)
+					return err
+				}
+			}
 		}
 
-		output, err := ovs.Exec(ovs.IfExists, "get", "open", ".", "external-ids:ovn-bridge-mappings")
-		if err != nil {
-			return fmt.Errorf("failed to get external-ids, %v", err)
+		if !externalBrReady {
+			if _, err := ovs.Exec(
+				ovs.MayExist, "add-br", externalBridge, "--",
+				ovs.MayExist, "add-port", externalBridge, linkName,
+			); err != nil {
+				err = fmt.Errorf("failed to enable external gateway, %v", err)
+				klog.Error(err)
+			}
 		}
-		bridgeMappings := "external:br-external"
-		if output != "" && !util.IsStringIn(bridgeMappings, strings.Split(output, ",")) {
-			bridgeMappings = fmt.Sprintf("%s,%s", output, bridgeMappings)
-		}
-
-		output, err = ovs.Exec("set", "open", ".", fmt.Sprintf("external-ids:ovn-bridge-mappings=%s", bridgeMappings))
-		if err != nil {
-			return fmt.Errorf("failed to set bridge-mappings, %v: %q", err, output)
+		if err = addOvnMapping("ovn-bridge-mappings", c.config.ExternalGatewaySwitch, externalBridge, true); err != nil {
+			klog.Error(err)
+			return err
 		}
 	} else {
-		if _, err := ovs.Exec(
-			ovs.IfExists, "del-br", "br-external"); err != nil {
-			return fmt.Errorf("failed to disable external gateway, %v", err)
+		brExists, err := ovs.BridgeExists(externalBridge)
+		if err != nil {
+			return fmt.Errorf("failed to check OVS bridge existence: %v", err)
+		}
+		if !brExists {
+			return nil
+		}
+
+		providerNetworks, err := c.providerNetworksLister.List(labels.Everything())
+		if err != nil && !k8serrors.IsNotFound(err) {
+			klog.Errorf("failed to list provider networks: %v", err)
+			return err
+		}
+
+		for _, pn := range providerNetworks {
+			// if external nic already attached into another bridge
+			if existBr, err := ovs.Exec("port-to-br", pn.Spec.DefaultInterface); err == nil {
+				if existBr == externalBridge {
+					// delete switch after related provider network not exist
+					return nil
+				}
+			}
+		}
+
+		keepExternalSubnet := false
+		externalSubnet, err := c.subnetsLister.Get(c.config.ExternalGatewaySwitch)
+		if err != nil {
+			if !k8serrors.IsNotFound(err) {
+				klog.Errorf("failed to get subnet %s, %v", c.config.ExternalGatewaySwitch, err)
+				return err
+			}
+		} else {
+			if externalSubnet.Spec.Vlan != "" {
+				keepExternalSubnet = true
+			}
+		}
+
+		if !keepExternalSubnet {
+			klog.Infof("delete external bridge %s", externalBridge)
+			if _, err := ovs.Exec(
+				ovs.IfExists, "del-br", externalBridge); err != nil {
+				err = fmt.Errorf("failed to disable external gateway, %v", err)
+				klog.Error(err)
+				return err
+			}
 		}
 	}
 	return nil
