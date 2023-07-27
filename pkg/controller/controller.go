@@ -782,6 +782,10 @@ func (c *Controller) Run(ctx context.Context) {
 		util.LogFatalAndExit(err, "failed to initialize ovn resources")
 	}
 
+	if err := c.initNodeChassis(); err != nil {
+		util.LogFatalAndExit(err, "failed to initialize node chassis")
+	}
+
 	// sync ip crd before initIPAM since ip crd will be used to restore vm and statefulset pod in initIPAM
 	if err := c.initSyncCrdIPs(); err != nil {
 		util.LogFatalAndExit(err, "failed to sync crd ips")
@@ -789,10 +793,6 @@ func (c *Controller) Run(ctx context.Context) {
 
 	if err := c.InitIPAM(); err != nil {
 		util.LogFatalAndExit(err, "failed to initialize ipam")
-	}
-
-	if err := c.initNodeChassis(); err != nil {
-		util.LogFatalAndExit(err, "failed to initialize node chassis")
 	}
 
 	if err := c.initNodeRoutes(); err != nil {
