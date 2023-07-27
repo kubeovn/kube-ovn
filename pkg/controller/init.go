@@ -853,6 +853,14 @@ func (c *Controller) initNodeChassis() error {
 	for _, node := range nodes {
 		chassisName := node.Annotations[util.ChassisAnnotation]
 		if chassisName != "" {
+			existChasisId, err := c.ovnLegacyClient.GetChassis(node.Name)
+			if err != nil {
+				klog.Errorf("failed to get chassis id: %v", err)
+				return err
+			}
+			if existChasisId == chassisName {
+				continue
+			}
 			exist, err := c.ovnLegacyClient.ChassisExist(chassisName)
 			if err != nil {
 				klog.Errorf("failed to check chassis exist: %v", err)
