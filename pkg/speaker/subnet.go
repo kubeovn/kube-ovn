@@ -96,7 +96,7 @@ func (c *Controller) syncSubnetRoutes() {
 		}
 	}
 
-	klog.V(5).Infof("expected ipv4 routes %v,ipv6 route %v", bgpExpected[kubeovnv1.ProtocolIPv4], bgpExpected[kubeovnv1.ProtocolIPv6])
+	klog.V(5).Infof("expected announce ipv4 routes %v\n,ipv6 route %v", bgpExpected[kubeovnv1.ProtocolIPv4], bgpExpected[kubeovnv1.ProtocolIPv6])
 
 	fn := func(d *bgpapi.Destination) {
 		for _, path := range d.Paths {
