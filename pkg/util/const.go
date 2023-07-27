@@ -186,7 +186,7 @@ const (
 	SnatUsingEip       = "snat"
 	DnatUsingEip       = "dnat"
 	NodeExtGwUsingEip  = "node-ext-gw"
-	StaticRouteBfdEcmp = "ecmp-symmetric-reply"
+	StaticRouteBfdEcmp = "ecmp_symmetric_reply"
 
 	OvnFip      = "ovn"
 	IptablesFip = "iptables"
