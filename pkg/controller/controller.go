@@ -484,12 +484,12 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 		util.LogFatalAndExit(err, "failed to set NB_Global option use_ct_inv_match")
 	}
 
-	if err := c.InitDefaultVpc(); err != nil {
-		util.LogFatalAndExit(err, "failed to initialize default vpc")
-	}
-
 	if err := c.InitOVN(); err != nil {
 		util.LogFatalAndExit(err, "failed to initialize ovn resources")
+	}
+
+	if err := c.InitDefaultVpc(); err != nil {
+		util.LogFatalAndExit(err, "failed to initialize default vpc")
 	}
 
 	// sync ip crd before initIPAM since ip crd will be used to restore vm and statefulset pod in initIPAM
