@@ -774,12 +774,12 @@ func (c *Controller) Run(ctx context.Context) {
 		util.LogFatalAndExit(err, "failed to set NB_Global option use_ct_inv_match to false")
 	}
 
-	if err := c.InitDefaultVpc(); err != nil {
-		util.LogFatalAndExit(err, "failed to initialize default vpc")
-	}
-
 	if err := c.InitOVN(); err != nil {
 		util.LogFatalAndExit(err, "failed to initialize ovn resources")
+	}
+
+	if err := c.InitDefaultVpc(); err != nil {
+		util.LogFatalAndExit(err, "failed to initialize default vpc")
 	}
 
 	if err := c.initNodeChassis(); err != nil {
