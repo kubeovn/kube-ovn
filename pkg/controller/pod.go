@@ -215,8 +215,15 @@ func (c *Controller) enqueueAddPod(obj interface{}) {
 		return
 	}
 
-	klog.V(3).Infof("enqueue add pod %s", key)
-	c.addOrUpdatePodQueue.Add(key)
+	exist, err := c.podHasNotRoutedSubnet(p)
+	if err != nil {
+		klog.Errorf("invalid pod net: %v", err)
+		return
+	}
+	if exist {
+		klog.Infof("enqueue add pod %s", key)
+		c.addOrUpdatePodQueue.Add(key)
+	}
 }
 
 func (c *Controller) enqueueDeletePod(obj interface{}) {
@@ -239,7 +246,7 @@ func (c *Controller) enqueueDeletePod(obj interface{}) {
 		return
 	}
 
-	klog.V(3).Infof("enqueue delete pod %s", key)
+	klog.Infof("enqueue delete pod %s", key)
 	c.deletingPodObjMap.Store(key, p)
 	c.deletePodQueue.Add(key)
 }
@@ -337,7 +344,7 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 		}()
 		return
 	}
-
+	klog.Infof("enqueue update pod %s", key)
 	c.addOrUpdatePodQueue.Add(key)
 
 	// security policy changed
@@ -1208,6 +1215,28 @@ func needAllocateSubnets(pod *v1.Pod, nets []*kubeovnNet) []*kubeovnNet {
 		}
 	}
 	return result
+}
+
+func (c *Controller) podHasNotRoutedSubnet(pod *v1.Pod) (bool, error) {
+	// 1. check annotations
+	if pod.Annotations == nil {
+		return true, nil
+	}
+	// 2. check annotation ovn subnet
+	if pod.Annotations[util.RoutedAnnotation] != "true" {
+		return true, nil
+	}
+	// 3. check multus subnet
+	attachmentNets, err := c.getPodAttachmentNet(pod)
+	if err != nil {
+		return false, err
+	}
+	for _, n := range attachmentNets {
+		if pod.Annotations[fmt.Sprintf(util.RoutedAnnotationTemplate, n.ProviderName)] != "true" {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func needRouteSubnets(pod *v1.Pod, nets []*kubeovnNet) []*kubeovnNet {
