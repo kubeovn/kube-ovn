@@ -191,7 +191,7 @@ func (c *ovnClient) CreateNodeAcl(pgName, nodeIpStr, joinIpStr string) error {
 		}
 		pgAs := fmt.Sprintf("%s_%s", pgName, ipSuffix)
 
-		allowIngressAcl, err := c.newAcl(pgName, ovnnb.ACLDirectionToLport, util.NodeAllowPriority, fmt.Sprintf("%s.src == %s && %s.dst == $%s", ipSuffix, nodeIP, ipSuffix, pgAs), ovnnb.ACLActionAllowStateless)
+		allowIngressAcl, err := c.newAcl(pgName, ovnnb.ACLDirectionToLport, util.NodeAllowPriority, fmt.Sprintf("%s.src == %s && %s.dst == $%s", ipSuffix, nodeIP, ipSuffix, pgAs), ovnnb.ACLActionAllow)
 		if err != nil {
 			return fmt.Errorf("new allow ingress acl for port group %s: %v", pgName, err)
 		}

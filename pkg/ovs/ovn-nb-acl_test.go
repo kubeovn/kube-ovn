@@ -359,10 +359,10 @@ func (suite *OvnClientTestSuite) testCreateNodeAcl() {
 	nodeIp := "192.168.20.3"
 	joinIp := "100.64.0.2,fd00:100:64::2"
 
-	checkAcl := func(pg *ovnnb.PortGroup, direction, priority, match string, options map[string]string) {
+	checkAcl := func(pg *ovnnb.PortGroup, direction, priority, match, action string, options map[string]string) {
 		acl, err := ovnClient.GetAcl(pg.Name, direction, priority, match, false)
 		require.NoError(t, err)
-		expect := newAcl(pg.Name, direction, priority, match, ovnnb.ACLActionAllowStateless)
+		expect := newAcl(pg.Name, direction, priority, match, action)
 		expect.UUID = acl.UUID
 		if len(options) != 0 {
 			expect.Options = options
@@ -382,10 +382,10 @@ func (suite *OvnClientTestSuite) testCreateNodeAcl() {
 			pgAs := fmt.Sprintf("%s_%s", pgName, ipSuffix)
 
 			match := fmt.Sprintf("%s.src == %s && %s.dst == $%s", ipSuffix, ip, ipSuffix, pgAs)
-			checkAcl(pg, ovnnb.ACLDirectionToLport, util.NodeAllowPriority, match, nil)
+			checkAcl(pg, ovnnb.ACLDirectionToLport, util.NodeAllowPriority, match, ovnnb.ACLActionAllow, nil)
 
 			match = fmt.Sprintf("%s.dst == %s && %s.src == $%s", ipSuffix, ip, ipSuffix, pgAs)
-			checkAcl(pg, ovnnb.ACLDirectionFromLport, util.NodeAllowPriority, match, map[string]string{
+			checkAcl(pg, ovnnb.ACLDirectionFromLport, util.NodeAllowPriority, match, ovnnb.ACLActionAllowStateless, map[string]string{
 				"apply-after-lb": "true",
 			})
 		}
