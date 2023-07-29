@@ -361,7 +361,8 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 		oldVips := oldPod.Annotations[fmt.Sprintf(util.PortVipAnnotationTemplate, podNet.ProviderName)]
 		newVips := newPod.Annotations[fmt.Sprintf(util.PortVipAnnotationTemplate, podNet.ProviderName)]
 		if oldSecurity != newSecurity || oldSg != newSg || oldVips != newVips {
-			c.updatePodSecurityQueue.Add(key)
+			klog.Infof("enqueue add pod %s", key)
+			c.addPodQueue.Add(key)
 			break
 		}
 	}
