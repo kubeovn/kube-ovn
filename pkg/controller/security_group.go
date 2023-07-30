@@ -427,9 +427,6 @@ func (c *Controller) syncSgLogicalPort(key string) error {
 		klog.Errorf("failed to find logical port, %v", err)
 		return err
 	}
-	if len(results) == 0 {
-		return nil
-	}
 
 	var ports, v4s, v6s []string
 	for _, lsp := range results {
