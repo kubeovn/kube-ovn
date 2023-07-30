@@ -200,7 +200,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		}
 
 		itFn = func(exchangeLinkName bool) {
-			ginkgo.By("Creating provider network")
+			ginkgo.By("Creating provider network " + providerNetworkName)
 			pn := makeProviderNetwork(providerNetworkName, exchangeLinkName, linkMap)
 			pn = providerNetworkClient.CreateSync(pn)
 
@@ -293,7 +293,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		ginkgo.By("Deleting vlan " + vlanName)
 		vlanClient.Delete(vlanName, metav1.DeleteOptions{})
 
-		ginkgo.By("Deleting provider network")
+		ginkgo.By("Deleting provider network " + providerNetworkName)
 		providerNetworkClient.DeleteSync(providerNetworkName)
 
 		ginkgo.By("Getting nodes")
