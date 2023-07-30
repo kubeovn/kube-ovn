@@ -1023,7 +1023,7 @@ func (c *Controller) reconcileSubnet(subnet *kubeovnv1.Subnet) error {
 	}
 
 	if subnet.Spec.Vpc != c.config.ClusterRouter {
-		if err := c.reconcileOvnCustomVpcRoute(subnet); err != nil {
+		if err := c.reconcileCustomVpcStaticRoute(subnet); err != nil {
 			klog.Errorf("reconcile custom vpc ovn route for subnet %s failed: %v", subnet.Name, err)
 			return err
 		}
@@ -1179,7 +1179,7 @@ func (c *Controller) reconcileNamespaces(subnet *kubeovnv1.Subnet) error {
 	return nil
 }
 
-func (c *Controller) reconcileVpcUseBfdStaticRoute(vpcName, subnetName string) error {
+func (c *Controller) reconcileCustomVpcBfdStaticRoute(vpcName, subnetName string) error {
 	// vpc enable bfd and subnet enable ecmp
 	// use static ecmp route with bfd
 	ovnEips, err := c.ovnEipsLister.List(labels.SelectorFromSet(labels.Set{util.OvnEipUsageLabel: util.NodeExtGwUsingEip}))
@@ -1210,10 +1210,9 @@ func (c *Controller) reconcileVpcUseBfdStaticRoute(vpcName, subnetName string) e
 	lrpEipName := fmt.Sprintf("%s-%s", vpcName, c.config.ExternalGatewaySwitch)
 	lrpEip, err := c.ovnEipsLister.Get(lrpEipName)
 	if err != nil {
-		if !k8serrors.IsNotFound(err) {
-			klog.Error(err)
-			return err
-		}
+		err := fmt.Errorf("failed to get lrp eip %s, %v", lrpEipName, err)
+		klog.Error(err)
+		return err
 	}
 	if !lrpEip.Status.Ready || lrpEip.Status.V4Ip == "" {
 		err := fmt.Errorf("lrp eip %q not ready", lrpEipName)
@@ -1236,7 +1235,7 @@ func (c *Controller) reconcileVpcUseBfdStaticRoute(vpcName, subnetName string) e
 		for _, route := range vpc.Spec.StaticRoutes {
 			if route.Policy == kubeovnv1.PolicySrc &&
 				route.NextHopIP == eip.Status.V4Ip &&
-				route.ECMPMode == util.StaicRouteBfdEcmp &&
+				route.ECMPMode == util.StaticRouteBfdEcmp &&
 				route.CIDR == subnet.Spec.CIDRBlock &&
 				route.RouteTable == subnet.Spec.RouteTable {
 				v4Exist = true
@@ -1249,7 +1248,7 @@ func (c *Controller) reconcileVpcUseBfdStaticRoute(vpcName, subnetName string) e
 				Policy:     kubeovnv1.PolicySrc,
 				CIDR:       subnet.Spec.CIDRBlock,
 				NextHopIP:  eip.Status.V4Ip,
-				ECMPMode:   util.StaicRouteBfdEcmp,
+				ECMPMode:   util.StaticRouteBfdEcmp,
 				BfdId:      bfd.UUID,
 				RouteTable: subnet.Spec.RouteTable,
 			}
@@ -1273,12 +1272,11 @@ func (c *Controller) reconcileVpcUseBfdStaticRoute(vpcName, subnetName string) e
 	return nil
 }
 
-func (c *Controller) reconcileVpcAddNormalStaticRoute(vpcName string) error {
+func (c *Controller) reconcileCustomVpcAddNormalStaticRoute(vpcName string) error {
 	// vpc disable bfd and subnet disable ecmp
 	// use normal type static route, not ecmp
-	// dst 0.0.0.0 nexthop external switch gw
-	// allow all subnet access external based snat
-	// also, this will not conflict with policy route
+	// dst 0.0.0.0 nexthop is external underlay switch gw
+	// let all subnetw access external network based snat
 
 	defualtExternalSubnet, err := c.subnetsLister.Get(c.config.ExternalGatewaySwitch)
 	if err != nil {
@@ -1316,7 +1314,7 @@ func (c *Controller) reconcileVpcAddNormalStaticRoute(vpcName string) error {
 				v6Exist = true
 				continue
 			}
-			if route.ECMPMode != util.StaicRouteBfdEcmp {
+			if route.ECMPMode != util.StaticRouteBfdEcmp {
 				// filter ecmp bfd route
 				routes = append(routes, route)
 			}
@@ -1359,7 +1357,7 @@ func (c *Controller) reconcileVpcAddNormalStaticRoute(vpcName string) error {
 	return nil
 }
 
-func (c *Controller) reconcileVpcDelNormalStaticRoute(vpcName string) error {
+func (c *Controller) reconcileCustomVpcDelNormalStaticRoute(vpcName string) error {
 	// normal static route is prior than ecmp bfd static route
 	// if use ecmp bfd static route, normal static route should not exist
 	defualtExternalSubnet, err := c.subnetsLister.Get(c.config.ExternalGatewaySwitch)
@@ -1389,6 +1387,7 @@ func (c *Controller) reconcileVpcDelNormalStaticRoute(vpcName string) error {
 			routes = append(routes, route)
 		}
 	}
+
 	if needUpdate {
 		vpc.Spec.StaticRoutes = routes
 		if _, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Update(context.Background(), vpc, metav1.UpdateOptions{}); err != nil {
@@ -1478,7 +1477,7 @@ func (c *Controller) reconcileDistributedSubnetRouteInDefaultVpc(subnet *kubeovn
 				nextHop := pod.Annotations[util.NorthGatewayAnnotation]
 				if err := c.ovnClient.AddLogicalRouterStaticRoute(
 					c.config.ClusterRouter, util.MainRouteTable, ovnnb.LogicalRouterStaticRoutePolicySrcIP,
-					pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)], nextHop,
+					pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)], nil, nextHop,
 				); err != nil {
 					klog.Errorf("add static route failed, %v", err)
 					return err
@@ -1753,17 +1752,18 @@ func (c *Controller) reconcileOvnDefaultVpcRoute(subnet *kubeovnv1.Subnet) error
 	return nil
 }
 
-func (c *Controller) reconcileOvnCustomVpcRoute(subnet *kubeovnv1.Subnet) error {
+func (c *Controller) reconcileCustomVpcStaticRoute(subnet *kubeovnv1.Subnet) error {
 	// in custom vpc, subnet gw type is unmeaning
 	// 1. vpc out to public network through vpc nat gw pod, the static route is auto managed by admin user
-	// 2. vpc out to public network through ovn snat, with bfd ecmp, the static route is auto managed here
-	// 3. vpc out to public network through ovn snat, without bfd ecmp, the static route is auto managed in vpc update process
+	// 2. vpc out to public network through ovn nat lrp, whose nexthop rely on bfd ecmp, the vpc spec bfd tatic route is auto managed here
+	// 3. vpc out to public network through ovn nat lrp, without bfd ecmp, the vpc spec static route is auto managed here
 
 	vpc, err := c.vpcsLister.Get(subnet.Spec.Vpc)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Errorf("failed to get vpc %s, %v", subnet.Spec.Vpc, err)
 		return err
 	}
 
@@ -1772,7 +1772,15 @@ func (c *Controller) reconcileOvnCustomVpcRoute(subnet *kubeovnv1.Subnet) error 
 		// handle vpc static route
 		// use static ecmp route with bfd
 		// bfd ecmp static route depend on subnet cidr
-		if err := c.reconcileVpcUseBfdStaticRoute(vpc.Name, subnet.Name); err != nil {
+		if err := c.reconcileCustomVpcBfdStaticRoute(vpc.Name, subnet.Name); err != nil {
+			klog.Errorf("failed to reconcile vpc %q bfd static route", vpc.Name)
+			return err
+		}
+	}
+
+	if vpc.Spec.EnableExternal && (!vpc.Spec.EnableBfd || !subnet.Spec.EnableEcmp) {
+		// add normal static route
+		if err := c.reconcileCustomVpcAddNormalStaticRoute(vpc.Name); err != nil {
 			klog.Errorf("failed to reconcile vpc %q bfd static route", vpc.Name)
 			return err
 		}

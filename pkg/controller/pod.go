@@ -787,7 +787,7 @@ func (c *Controller) reconcileRouteSubnets(cachedPod, pod *v1.Pod, needRoutePodN
 				}
 
 				if err := c.ovnClient.AddLogicalRouterStaticRoute(
-					c.config.ClusterRouter, subnet.Spec.RouteTable, ovnnb.LogicalRouterStaticRoutePolicySrcIP, podIP, nextHop,
+					c.config.ClusterRouter, subnet.Spec.RouteTable, ovnnb.LogicalRouterStaticRoutePolicySrcIP, podIP, nil, nextHop,
 				); err != nil {
 					klog.Errorf("failed to add static route, %v", err)
 					return err
@@ -830,7 +830,7 @@ func (c *Controller) reconcileRouteSubnets(cachedPod, pod *v1.Pod, needRoutePodN
 
 				if pod.Annotations[util.NorthGatewayAnnotation] != "" {
 					if err := c.ovnClient.AddLogicalRouterStaticRoute(
-						c.config.ClusterRouter, subnet.Spec.RouteTable, ovnnb.LogicalRouterStaticRoutePolicySrcIP, podIP, pod.Annotations[util.NorthGatewayAnnotation],
+						c.config.ClusterRouter, subnet.Spec.RouteTable, ovnnb.LogicalRouterStaticRoutePolicySrcIP, podIP, nil, pod.Annotations[util.NorthGatewayAnnotation],
 					); err != nil {
 						klog.Errorf("failed to add static route, %v", err)
 						return err

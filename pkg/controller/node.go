@@ -1046,7 +1046,7 @@ func (c *Controller) addNodeGwStaticRoute() error {
 			if util.CheckProtocol(cidrBlock) != util.CheckProtocol(nextHop) {
 				continue
 			}
-			if err := c.ovnClient.AddLogicalRouterStaticRoute(c.config.ClusterRouter, util.MainRouteTable, ovnnb.LogicalRouterStaticRoutePolicyDstIP, cidrBlock, nextHop); err != nil {
+			if err := c.ovnClient.AddLogicalRouterStaticRoute(c.config.ClusterRouter, util.MainRouteTable, ovnnb.LogicalRouterStaticRoutePolicyDstIP, cidrBlock, nil, nextHop); err != nil {
 				klog.Errorf("failed to add static route for node gw: %v", err)
 				return err
 			}
