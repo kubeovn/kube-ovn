@@ -1188,7 +1188,7 @@ func (c *Controller) reconcileCustomVpcBfdStaticRoute(vpcName, subnetName string
 		return err
 	}
 	if len(ovnEips) < 2 {
-		err := fmt.Errorf("ha ecmp route with bfd need two eips at least")
+		err := fmt.Errorf("ecmp route with bfd for HA, which need two %s type eips at least, has %d", util.NodeExtGwUsingEip, len(ovnEips))
 		klog.Error(err)
 		return err
 	}

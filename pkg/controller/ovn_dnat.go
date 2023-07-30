@@ -247,7 +247,7 @@ func (c *Controller) handleAddOvnDnatRule(key string) error {
 	}
 
 	if cachedEip.Status.Type != "" && cachedEip.Status.Type != util.NatUsingEip {
-		err = fmt.Errorf("ovn nat can only use type %s ovn eip", util.NatUsingEip)
+		err = fmt.Errorf("ovn eip %s type is not %s, can not use", cachedEip.Name, util.NatUsingEip)
 		return err
 	}
 
@@ -384,7 +384,7 @@ func (c *Controller) handleUpdateOvnDnatRule(key string) error {
 	}
 
 	if cachedEip.Status.Type != "" && cachedEip.Status.Type != util.NatUsingEip {
-		err = fmt.Errorf("ovn nat can only use type %s ovn eip", util.NatUsingEip)
+		err = fmt.Errorf("ovn eip %s type is not %s, can not use", cachedEip.Name, util.NatUsingEip)
 		return err
 	}
 

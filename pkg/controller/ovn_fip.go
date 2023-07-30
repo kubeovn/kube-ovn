@@ -254,13 +254,12 @@ func (c *Controller) handleAddOvnFip(key string) error {
 	}
 	vpcName := subnet.Spec.Vpc
 	if cachedEip.Status.Type != "" && cachedEip.Status.Type != util.NatUsingEip {
-		err = fmt.Errorf("ovn nat can only use type %s ovn eip", util.NatUsingEip)
+		err = fmt.Errorf("ovn eip %s type is not %s, can not use", cachedEip.Name, util.NatUsingEip)
 		return err
 	}
-	if cachedEip.Status.Type == util.FipUsingEip &&
-		cachedEip.Annotations[util.VpcNatAnnotation] != "" &&
-		cachedEip.Annotations[util.VpcNatAnnotation] != cachedFip.Name {
-		err = fmt.Errorf("failed to create fip %s, eip '%s' is using by other fip %s", key, eipName, cachedEip.Annotations[util.VpcNatAnnotation])
+	if err = c.ovnFipTryUseEip(key, cachedEip.Spec.V4Ip); err != nil {
+		err = fmt.Errorf("failed to update fip %s, %v", key, err)
+		klog.Error(err)
 		return err
 	}
 	if err = c.patchOvnFipStatus(key, vpcName, cachedEip.Status.V4Ip,
@@ -341,13 +340,15 @@ func (c *Controller) handleUpdateOvnFip(key string) error {
 		klog.Errorf("failed to get eip, %v", err)
 		return err
 	}
-
+	if cachedEip.Status.Type != "" && cachedEip.Status.Type != util.NatUsingEip {
+		err = fmt.Errorf("ovn eip %s type is not %s, can not use", cachedEip.Name, util.NatUsingEip)
+		return err
+	}
 	if err = c.ovnFipTryUseEip(key, cachedEip.Spec.V4Ip); err != nil {
 		err = fmt.Errorf("failed to update fip %s, %v", key, err)
 		klog.Error(err)
 		return err
 	}
-
 	subnet, err := c.subnetsLister.Get(subnetName)
 	if err != nil {
 		klog.Errorf("failed to get vpc subnet %s, %v", subnetName, err)
@@ -363,17 +364,6 @@ func (c *Controller) handleUpdateOvnFip(key string) error {
 		internalV4Ip, mac, cachedFip.Spec.IpName,
 		map[string]string{"staleless": strconv.FormatBool(c.ExternalGatewayType == kubeovnv1.GWDistributedType)}); err != nil {
 		klog.Errorf("failed to create v4 fip, %v", err)
-		return err
-	}
-	if cachedEip.Spec.Type != "" && cachedEip.Spec.Type != util.FipUsingEip {
-		// eip is in use by other nat
-		err = fmt.Errorf("failed to update fip %s, eip '%s' is using by %s", key, eipName, cachedEip.Spec.Type)
-		return err
-	}
-	if cachedEip.Spec.Type == util.FipUsingEip &&
-		cachedEip.Annotations[util.VpcNatAnnotation] != "" &&
-		cachedEip.Annotations[util.VpcNatAnnotation] != cachedFip.Name {
-		err = fmt.Errorf("failed to update fip %s, eip '%s' is using by other fip %s", key, eipName, cachedEip.Annotations[util.VpcNatAnnotation])
 		return err
 	}
 	fip := cachedFip.DeepCopy()
