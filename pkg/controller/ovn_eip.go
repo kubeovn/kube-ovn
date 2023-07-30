@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -59,8 +60,11 @@ func (c *Controller) enqueueUpdateOvnEip(old, new interface{}) {
 		c.resetOvnEipQueue.Add(key)
 		return
 	}
-	klog.Infof("enqueue update ovn eip %s", key)
-	c.updateOvnEipQueue.Add(key)
+	if !reflect.DeepEqual(oldEip.Spec.V4Ip, newEip.Spec.V4Ip) ||
+		!reflect.DeepEqual(oldEip.Spec.V6Ip, newEip.Spec.V6Ip) {
+		klog.Infof("enqueue update ovn eip %s", key)
+		c.updateOvnEipQueue.Add(key)
+	}
 }
 
 func (c *Controller) enqueueDelOvnEip(obj interface{}) {
@@ -366,8 +370,9 @@ func (c *Controller) createOrUpdateCrdOvnEip(key, subnet, v4ip, v6ip, mac, usage
 				ObjectMeta: metav1.ObjectMeta{
 					Name: key,
 					Labels: map[string]string{
-						util.SubnetNameLabel:  subnet,
-						util.OvnEipUsageLabel: usage,
+						util.SubnetNameLabel: subnet,
+						util.OvnEipTypeLabel: usage,
+						util.EipV4IpLabel:    v4ip,
 					},
 				},
 				Spec: kubeovnv1.OvnEipSpec{
@@ -428,8 +433,9 @@ func (c *Controller) createOrUpdateCrdOvnEip(key, subnet, v4ip, v6ip, mac, usage
 		if len(ovnEip.Labels) == 0 {
 			op = "add"
 			ovnEip.Labels = map[string]string{
-				util.SubnetNameLabel:  subnet,
-				util.OvnEipUsageLabel: usage,
+				util.SubnetNameLabel: subnet,
+				util.OvnEipTypeLabel: usage,
+				util.EipV4IpLabel:    v4ip,
 			}
 			needUpdateLabel = true
 		}
@@ -465,11 +471,11 @@ func (c *Controller) patchLrpOvnEipEnableBfdLabel(key string, enableBfd bool) er
 	}
 	ovnEip := cachedEip.DeepCopy()
 	expectValue := strconv.FormatBool(enableBfd)
-	if val, ok := ovnEip.Labels[util.OvnLrpEipEnableBfdLabel]; ok && (val == expectValue) {
+	if val, ok := ovnEip.Labels[util.OvnEipEnableBfdLabel]; ok && (val == expectValue) {
 		return nil
 	}
 	op := "replace"
-	ovnEip.Labels[util.OvnLrpEipEnableBfdLabel] = expectValue
+	ovnEip.Labels[util.OvnEipEnableBfdLabel] = expectValue
 	patchPayloadTemplate := `[{ "op": "%s", "path": "/metadata/labels", "value": %s }]`
 	raw, _ := json.Marshal(ovnEip.Labels)
 	patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)

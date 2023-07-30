@@ -9,6 +9,7 @@ import (
 	"github.com/ovn-org/libovsdb/ovsdb"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
@@ -40,7 +41,7 @@ func (c *Controller) enqueueUpdateOvnDnatRule(old, new interface{}) {
 	oldDnat := old.(*kubeovnv1.OvnDnatRule)
 	newDnat := new.(*kubeovnv1.OvnDnatRule)
 	if !newDnat.DeletionTimestamp.IsZero() {
-		klog.V(3).Infof("enqueue del ovn dnat %s", key)
+		klog.Infof("enqueue del ovn dnat %s", key)
 		c.delOvnDnatRuleQueue.Add(key)
 		return
 	}
@@ -54,7 +55,7 @@ func (c *Controller) enqueueUpdateOvnDnatRule(old, new interface{}) {
 		oldDnat.Spec.IpName != newDnat.Spec.IpName ||
 		oldDnat.Spec.InternalPort != newDnat.Spec.InternalPort ||
 		oldDnat.Spec.ExternalPort != newDnat.Spec.ExternalPort {
-		klog.V(3).Infof("enqueue update dnat %s", key)
+		klog.Infof("enqueue update dnat %s", key)
 		c.updateOvnDnatRuleQueue.Add(key)
 	}
 }
@@ -175,6 +176,27 @@ func (c *Controller) processNextDeleteOvnDnatRuleWorkItem() bool {
 	return true
 }
 
+func (c *Controller) isOvnDnatDuplicated(eipName, dnatName, externalPort string) (bool, error) {
+	// check if eip:external port already used
+	dnats, err := c.ovnDnatRulesLister.List(labels.SelectorFromSet(labels.Set{
+		util.VpcDnatEPortLabel: externalPort,
+	}))
+	if err != nil {
+		if !k8serrors.IsNotFound(err) {
+			return false, err
+		}
+	}
+	if len(dnats) != 0 {
+		for _, d := range dnats {
+			if d.Name != dnatName && d.Spec.OvnEip == eipName {
+				err = fmt.Errorf("failed to create dnat %s, duplicate, same eip %s, same external port '%s' is using by dnat %s", dnatName, eipName, externalPort, d.Name)
+				return true, err
+			}
+		}
+	}
+	return false, nil
+}
+
 func (c *Controller) handleAddOvnDnatRule(key string) error {
 	cachedDnat, err := c.ovnDnatRulesLister.Get(key)
 	if err != nil {
@@ -224,6 +246,16 @@ func (c *Controller) handleAddOvnDnatRule(key string) error {
 		return err
 	}
 
+	if cachedEip.Status.Type != "" && cachedEip.Status.Type != util.NatUsingEip {
+		err = fmt.Errorf("ovn nat can only use type %s ovn eip", util.NatUsingEip)
+		return err
+	}
+
+	if _, err := c.isOvnDnatDuplicated(eipName, key, cachedDnat.Spec.ExternalPort); err != nil {
+		klog.Error("failed to create dnat %s, %v", cachedDnat.Name, err)
+		return err
+	}
+
 	subnet, err := c.subnetsLister.Get(subnetName)
 	if err != nil {
 		klog.Errorf("failed to get vpc subnet %s, %v", subnetName, err)
@@ -237,11 +269,6 @@ func (c *Controller) handleAddOvnDnatRule(key string) error {
 	}
 
 	vpcName := subnet.Spec.Vpc
-	if cachedEip.Status.Type != "" && cachedEip.Status.Type != util.DnatUsingEip {
-		err = fmt.Errorf("failed to create ovn dnat %s, eip '%s' is using by %s", key, eipName, cachedEip.Spec.Type)
-		return err
-	}
-
 	if err = c.patchOvnDnatStatus(key, vpcName, cachedEip.Status.V4Ip,
 		internalV4Ip, mac, false); err != nil {
 		klog.Errorf("failed to patch status for dnat %s, %v", key, err)
@@ -296,7 +323,9 @@ func (c *Controller) handleDelOvnDnatRule(key string) error {
 
 	eipName := cachedDnat.Spec.OvnEip
 	if len(eipName) == 0 {
-		klog.Errorf("failed to delete ovn dnat, should set eip")
+		err := fmt.Errorf("failed to create fip rule, should set eip")
+		klog.Error(err)
+		return err
 	}
 
 	if cachedDnat.Status.Vpc != "" && cachedDnat.Status.V4Eip != "" && cachedDnat.Status.ExternalPort != "" {
@@ -351,6 +380,16 @@ func (c *Controller) handleUpdateOvnDnatRule(key string) error {
 	cachedEip, err := c.GetOvnEip(eipName)
 	if err != nil {
 		klog.Errorf("failed to get eip, %v", err)
+		return err
+	}
+
+	if cachedEip.Status.Type != "" && cachedEip.Status.Type != util.NatUsingEip {
+		err = fmt.Errorf("ovn nat can only use type %s ovn eip", util.NatUsingEip)
+		return err
+	}
+
+	if _, err := c.isOvnDnatDuplicated(eipName, key, cachedDnat.Spec.ExternalPort); err != nil {
+		klog.Error("failed to update dnat %s, %v", cachedDnat.Name, err)
 		return err
 	}
 
@@ -458,8 +497,31 @@ func (c *Controller) patchOvnDnatStatus(key, vpcName, v4Eip, podIp, podMac strin
 		}
 		return err
 	}
-
 	dnat := oriDnat.DeepCopy()
+	needUpdateLabel := false
+	var op string
+	if len(dnat.Labels) == 0 {
+		op = "add"
+		needUpdateLabel = true
+		dnat.Labels = map[string]string{
+			util.EipV4IpLabel: v4Eip,
+		}
+	} else if dnat.Labels[util.EipV4IpLabel] != v4Eip {
+		op = "replace"
+		needUpdateLabel = true
+		dnat.Labels[util.EipV4IpLabel] = v4Eip
+	}
+	if needUpdateLabel {
+		patchPayloadTemplate := `[{ "op": "%s", "path": "/metadata/labels", "value": %s }]`
+		raw, _ := json.Marshal(dnat.Labels)
+		patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
+		if _, err := c.config.KubeOvnClient.KubeovnV1().OvnDnatRules().Patch(context.Background(), dnat.Name,
+			types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{}); err != nil {
+			klog.Errorf("failed to patch label for ovn dnat %s, %v", dnat.Name, err)
+			return err
+		}
+	}
+
 	var changed bool
 	if dnat.Status.Ready != ready {
 		dnat.Status.Ready = ready

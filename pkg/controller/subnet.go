@@ -1182,7 +1182,7 @@ func (c *Controller) reconcileNamespaces(subnet *kubeovnv1.Subnet) error {
 func (c *Controller) reconcileCustomVpcBfdStaticRoute(vpcName, subnetName string) error {
 	// vpc enable bfd and subnet enable ecmp
 	// use static ecmp route with bfd
-	ovnEips, err := c.ovnEipsLister.List(labels.SelectorFromSet(labels.Set{util.OvnEipUsageLabel: util.NodeExtGwUsingEip}))
+	ovnEips, err := c.ovnEipsLister.List(labels.SelectorFromSet(labels.Set{util.OvnEipTypeLabel: util.NodeExtGwUsingEip}))
 	if err != nil {
 		klog.Errorf("failed to list node external ovn eip, %v", err)
 		return err
@@ -1252,7 +1252,7 @@ func (c *Controller) reconcileCustomVpcBfdStaticRoute(vpcName, subnetName string
 				BfdId:      bfd.UUID,
 				RouteTable: subnet.Spec.RouteTable,
 			}
-			klog.V(3).Infof("add ecmp bfd static route %v", route)
+			klog.Infof("add ecmp bfd static route %v", route)
 			vpc.Spec.StaticRoutes = append(vpc.Spec.StaticRoutes, route)
 			needUpdate = true
 		}
@@ -1276,7 +1276,7 @@ func (c *Controller) reconcileCustomVpcAddNormalStaticRoute(vpcName string) erro
 	// vpc disable bfd and subnet disable ecmp
 	// use normal type static route, not ecmp
 	// dst 0.0.0.0 nexthop is external underlay switch gw
-	// let all subnetw access external network based snat
+	// let all subnet access external network based snat
 
 	defualtExternalSubnet, err := c.subnetsLister.Get(c.config.ExternalGatewaySwitch)
 	if err != nil {
@@ -1284,7 +1284,6 @@ func (c *Controller) reconcileCustomVpcAddNormalStaticRoute(vpcName string) erro
 		return err
 	}
 	gatewayV4, gatewayV6 := util.SplitStringIP(defualtExternalSubnet.Spec.Gateway)
-	needUpdate := false
 	vpc, err := c.vpcsLister.Get(vpcName)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -1297,10 +1296,8 @@ func (c *Controller) reconcileCustomVpcAddNormalStaticRoute(vpcName string) erro
 	rtbs := c.getRouteTablesByVpc(vpc)
 	routeTotal := len(vpc.Spec.StaticRoutes) + len(rtbs)*2
 	routes := make([]*kubeovnv1.StaticRoute, 0, routeTotal)
-
-	for rtb, staticRoutes := range rtbs {
-		v4Exist, v6Exist := false, false
-
+	v4Exist, v6Exist := false, false
+	for _, staticRoutes := range rtbs {
 		for _, route := range staticRoutes {
 			if route.Policy == kubeovnv1.PolicyDst &&
 				route.NextHopIP == gatewayV4 &&
@@ -1314,31 +1311,34 @@ func (c *Controller) reconcileCustomVpcAddNormalStaticRoute(vpcName string) erro
 				v6Exist = true
 				continue
 			}
-			if route.ECMPMode != util.StaticRouteBfdEcmp {
+			if route.ECMPMode == "" {
 				// filter ecmp bfd route
+				klog.Infof("keep exist normal static route %v", route)
 				routes = append(routes, route)
 			}
 		}
-		if !v4Exist && gatewayV4 != "" {
-			klog.V(3).Infof("add normal static route v4 nexthop %s", gatewayV4)
-			routes = append(routes, &kubeovnv1.StaticRoute{
-				Policy:     kubeovnv1.PolicyDst,
-				CIDR:       "0.0.0.0/0",
-				NextHopIP:  gatewayV4,
-				RouteTable: rtb,
-			})
-			needUpdate = true
-		}
-		if !v6Exist && gatewayV6 != "" {
-			klog.V(3).Infof("add normal static route v6 nexthop %s", gatewayV6)
-			routes = append(routes, &kubeovnv1.StaticRoute{
-				Policy:     kubeovnv1.PolicyDst,
-				CIDR:       "::/0",
-				NextHopIP:  gatewayV6,
-				RouteTable: rtb,
-			})
-			needUpdate = true
-		}
+	}
+	needUpdate := false
+	if !v4Exist && gatewayV4 != "" {
+		klog.Infof("add normal static route v4 nexthop %s", gatewayV4)
+		routes = append(routes, &kubeovnv1.StaticRoute{
+			Policy:     kubeovnv1.PolicyDst,
+			CIDR:       "0.0.0.0/0",
+			NextHopIP:  gatewayV4,
+			RouteTable: util.MainRouteTable,
+		})
+		needUpdate = true
+	}
+
+	if !v6Exist && gatewayV6 != "" {
+		klog.Infof("add normal static route v6 nexthop %s", gatewayV6)
+		routes = append(routes, &kubeovnv1.StaticRoute{
+			Policy:     kubeovnv1.PolicyDst,
+			CIDR:       "::/0",
+			NextHopIP:  gatewayV6,
+			RouteTable: util.MainRouteTable,
+		})
+		needUpdate = true
 	}
 
 	if needUpdate {
@@ -1381,7 +1381,7 @@ func (c *Controller) reconcileCustomVpcDelNormalStaticRoute(vpcName string) erro
 		if route.Policy == kubeovnv1.PolicyDst &&
 			(route.NextHopIP == gatewayV4 || route.NextHopIP == gatewayV6) &&
 			(route.CIDR == "0.0.0.0/0" || route.CIDR == "::/0") {
-			klog.V(3).Infof("in order to use ecmp bfd route, need remove normal static route %v", route)
+			klog.Infof("in order to use ecmp bfd route, need remove normal static route %v", route)
 			needUpdate = true
 		} else {
 			routes = append(routes, route)
@@ -1629,24 +1629,24 @@ func (c *Controller) reconcileEcmpCentralizedSubnetRouteInDefaultVpc(subnet *kub
 
 	v4Cidr, v6Cidr := util.SplitStringIP(subnet.Spec.CIDRBlock)
 	if nodeV4Ips != nil && v4Cidr != "" {
-		klog.V(3).Infof("delete old distributed policy route for subnet %s", subnet.Name)
+		klog.Infof("delete old distributed policy route for subnet %s", subnet.Name)
 		if err := c.deletePolicyRouteByGatewayType(subnet, kubeovnv1.GWDistributedType, false); err != nil {
 			klog.Errorf("failed to delete policy route for overlay subnet %s, %v", subnet.Name, err)
 			return err
 		}
-		klog.V(3).Infof("subnet %s configure ecmp policy route, nexthops %v", subnet.Name, nodeV4Ips)
+		klog.Infof("subnet %s configure ecmp policy route, nexthops %v", subnet.Name, nodeV4Ips)
 		if err := c.updatePolicyRouteForCentralizedSubnet(subnet.Name, v4Cidr, nodeV4Ips, nameV4IpMap); err != nil {
 			klog.Errorf("failed to add v4 ecmp policy route for centralized subnet %s: %v", subnet.Name, err)
 			return err
 		}
 	}
 	if nodeV6Ips != nil && v6Cidr != "" {
-		klog.V(3).Infof("delete old distributed policy route for subnet %s", subnet.Name)
+		klog.Infof("delete old distributed policy route for subnet %s", subnet.Name)
 		if err := c.deletePolicyRouteByGatewayType(subnet, kubeovnv1.GWDistributedType, false); err != nil {
 			klog.Errorf("failed to delete policy route for overlay subnet %s, %v", subnet.Name, err)
 			return err
 		}
-		klog.V(3).Infof("subnet %s configure ecmp policy route, nexthops %v", subnet.Name, nodeV6Ips)
+		klog.Infof("subnet %s configure ecmp policy route, nexthops %v", subnet.Name, nodeV6Ips)
 		if err := c.updatePolicyRouteForCentralizedSubnet(subnet.Name, v6Cidr, nodeV6Ips, nameV6IpMap); err != nil {
 			klog.Errorf("failed to add v6 ecmp policy route for centralized subnet %s: %v", subnet.Name, err)
 			return err
@@ -1768,7 +1768,7 @@ func (c *Controller) reconcileCustomVpcStaticRoute(subnet *kubeovnv1.Subnet) err
 	}
 
 	if vpc.Spec.EnableExternal && vpc.Spec.EnableBfd && subnet.Spec.EnableEcmp {
-		klog.V(3).Infof("add bfd and external static ecmp route for vpc %s, subnet %s", vpc.Name, subnet.Name)
+		klog.Infof("add bfd and external static ecmp route for vpc %s, subnet %s", vpc.Name, subnet.Name)
 		// handle vpc static route
 		// use static ecmp route with bfd
 		// bfd ecmp static route depend on subnet cidr
@@ -1780,6 +1780,7 @@ func (c *Controller) reconcileCustomVpcStaticRoute(subnet *kubeovnv1.Subnet) err
 
 	if vpc.Spec.EnableExternal && (!vpc.Spec.EnableBfd || !subnet.Spec.EnableEcmp) {
 		// add normal static route
+		klog.Infof("add normal external static route for enable external vpc %s, subnet %s", vpc.Name, subnet.Name)
 		if err := c.reconcileCustomVpcAddNormalStaticRoute(vpc.Name); err != nil {
 			klog.Errorf("failed to reconcile vpc %q bfd static route", vpc.Name)
 			return err
@@ -2214,7 +2215,7 @@ func (c *Controller) addCommonRoutesForSubnet(subnet *kubeovnv1.Subnet) error {
 		match := fmt.Sprintf("ip%d.dst == %s", af, cidr)
 		action := ovnnb.LogicalRouterPolicyActionAllow
 		externalIDs := map[string]string{"vendor": util.CniTypeName, "subnet": subnet.Name}
-		klog.V(3).Infof("add policy route for router: %s, match %s, action %s, externalID %v", subnet.Spec.Vpc, match, action, externalIDs)
+		klog.Infof("add policy route for router: %s, match %s, action %s, externalID %v", subnet.Spec.Vpc, match, action, externalIDs)
 		if err := c.ovnClient.AddLogicalRouterPolicy(subnet.Spec.Vpc, util.SubnetRouterPolicyPriority, match, action, nil, externalIDs); err != nil {
 			klog.Errorf("failed to add logical router policy for CIDR %s of subnet %s: %v", cidr, subnet.Name, err)
 			return err
@@ -2339,7 +2340,7 @@ func (c *Controller) addPolicyRouteForDistributedSubnet(subnet *kubeovnv1.Subnet
 			"subnet": subnet.Name,
 			"node":   nodeName,
 		}
-		klog.V(3).Infof("add policy route for router: %s, match %s, action %s, extrenalID %v", c.config.ClusterRouter, match, action, externalIDs)
+		klog.Infof("add policy route for router: %s, match %s, action %s, extrenalID %v", c.config.ClusterRouter, match, action, externalIDs)
 		if err := c.ovnClient.AddLogicalRouterPolicy(c.config.ClusterRouter, util.GatewayRouterPolicyPriority, match, action, []string{nodeIP}, externalIDs); err != nil {
 			klog.Errorf("failed to add logical router policy for port-group address-set %s: %v", pgAs, err)
 			return err

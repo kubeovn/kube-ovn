@@ -443,7 +443,7 @@ func (c *Controller) checkNodeGwNicInNs(nodeExtIp, ip, gw string, gwNS ns.NetNS)
 		klog.Error(err)
 		return err
 	}
-	filters := labels.Set{util.OvnEipUsageLabel: util.LrpUsingEip, util.OvnLrpEipEnableBfdLabel: "true"}
+	filters := labels.Set{util.OvnEipTypeLabel: util.LrpUsingEip, util.OvnEipEnableBfdLabel: "true"}
 	ovnEips, err := c.ovnEipsLister.List(labels.SelectorFromSet(filters))
 	if err != nil {
 		klog.Errorf("failed to list node external ovn eip, %v", err)

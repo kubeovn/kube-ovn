@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"strconv"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
@@ -46,11 +48,12 @@ func (c *Controller) enqueueUpdateOvnFip(old, new interface{}) {
 	}
 	if oldFip.Spec.OvnEip != newFip.Spec.OvnEip {
 		// enqueue to reset eip to be clean
-		klog.V(3).Infof("enqueue reset old ovn eip %s", oldFip.Spec.OvnEip)
+		klog.Infof("enqueue reset old ovn eip %s", oldFip.Spec.OvnEip)
 		c.resetOvnEipQueue.Add(oldFip.Spec.OvnEip)
 	}
-	if oldFip.Spec.OvnEip != newFip.Spec.OvnEip {
-		klog.V(3).Infof("enqueue update fip %s", key)
+	if !reflect.DeepEqual(oldFip.Spec.IpName, newFip.Spec.IpName) ||
+		!reflect.DeepEqual(oldFip.Spec.IpType, newFip.Spec.IpType) {
+		klog.Infof("enqueue update fip %s", key)
 		c.updateOvnFipQueue.Add(key)
 		return
 	}
@@ -168,6 +171,24 @@ func (c *Controller) processNextDeleteOvnFipWorkItem() bool {
 	return true
 }
 
+func (c *Controller) ovnFipTryUseEip(fipName, eipV4IP string) error {
+	// check if has another fip using this eip already
+	selector := labels.SelectorFromSet(labels.Set{util.EipV4IpLabel: eipV4IP})
+	usingFips, err := c.ovnFipsLister.List(selector)
+	if err != nil {
+		klog.Errorf("failed to get fips, %v", err)
+		return err
+	}
+	for _, uf := range usingFips {
+		if uf.Name != fipName {
+			err = fmt.Errorf("%s is using by the other fip %s", eipV4IP, uf.Name)
+			klog.Error(err)
+			return err
+		}
+	}
+	return nil
+}
+
 func (c *Controller) handleAddOvnFip(key string) error {
 	cachedFip, err := c.ovnFipsLister.Get(key)
 	if err != nil {
@@ -205,13 +226,22 @@ func (c *Controller) handleAddOvnFip(key string) error {
 	// get eip
 	eipName := cachedFip.Spec.OvnEip
 	if len(eipName) == 0 {
-		klog.Errorf("failed to create fip rule, should set eip")
+		err := fmt.Errorf("failed to create fip rule, should set eip")
+		klog.Error(err)
+		return err
 	}
 	cachedEip, err := c.GetOvnEip(eipName)
 	if err != nil {
 		klog.Errorf("failed to get eip, %v", err)
 		return err
 	}
+
+	if err = c.ovnFipTryUseEip(key, cachedEip.Spec.V4Ip); err != nil {
+		err = fmt.Errorf("failed to add fip %s, %v", key, err)
+		klog.Error(err)
+		return err
+	}
+
 	subnet, err := c.subnetsLister.Get(subnetName)
 	if err != nil {
 		klog.Errorf("failed to get vpc subnet %s, %v", subnetName, err)
@@ -223,8 +253,8 @@ func (c *Controller) handleAddOvnFip(key string) error {
 		return err
 	}
 	vpcName := subnet.Spec.Vpc
-	if cachedEip.Status.Type != "" && cachedEip.Status.Type != util.FipUsingEip {
-		err = fmt.Errorf("failed to create ovn fip %s, eip '%s' is using by %s", key, eipName, cachedEip.Spec.Type)
+	if cachedEip.Status.Type != "" && cachedEip.Status.Type != util.NatUsingEip {
+		err = fmt.Errorf("ovn nat can only use type %s ovn eip", util.NatUsingEip)
 		return err
 	}
 	if cachedEip.Status.Type == util.FipUsingEip &&
@@ -302,13 +332,22 @@ func (c *Controller) handleUpdateOvnFip(key string) error {
 	// get eip
 	eipName := cachedFip.Spec.OvnEip
 	if len(eipName) == 0 {
-		klog.Errorf("failed to create fip rule, should set eip")
+		err := fmt.Errorf("failed to create fip rule, should set eip")
+		klog.Error(err)
+		return err
 	}
 	cachedEip, err := c.GetOvnEip(eipName)
 	if err != nil {
 		klog.Errorf("failed to get eip, %v", err)
 		return err
 	}
+
+	if err = c.ovnFipTryUseEip(key, cachedEip.Spec.V4Ip); err != nil {
+		err = fmt.Errorf("failed to update fip %s, %v", key, err)
+		klog.Error(err)
+		return err
+	}
+
 	subnet, err := c.subnetsLister.Get(subnetName)
 	if err != nil {
 		klog.Errorf("failed to get vpc subnet %s, %v", subnetName, err)
@@ -440,6 +479,29 @@ func (c *Controller) patchOvnFipStatus(key, vpcName, v4Eip, podIp, podMac string
 		return err
 	}
 	fip := oriFip.DeepCopy()
+	needUpdateLabel := false
+	var op string
+	if len(fip.Labels) == 0 {
+		op = "add"
+		needUpdateLabel = true
+		fip.Labels = map[string]string{
+			util.EipV4IpLabel: v4Eip,
+		}
+	} else if fip.Labels[util.EipV4IpLabel] != v4Eip {
+		op = "replace"
+		needUpdateLabel = true
+		fip.Labels[util.EipV4IpLabel] = v4Eip
+	}
+	if needUpdateLabel {
+		patchPayloadTemplate := `[{ "op": "%s", "path": "/metadata/labels", "value": %s }]`
+		raw, _ := json.Marshal(fip.Labels)
+		patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
+		if _, err := c.config.KubeOvnClient.KubeovnV1().OvnFips().Patch(context.Background(), fip.Name,
+			types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{}); err != nil {
+			klog.Errorf("failed to patch label for ovn fip %s, %v", fip.Name, err)
+			return err
+		}
+	}
 	var changed bool
 	if fip.Status.Ready != ready {
 		fip.Status.Ready = ready

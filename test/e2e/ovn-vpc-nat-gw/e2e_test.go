@@ -118,8 +118,8 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		podClient = f.PodClient()
 
 		namespaceName = f.Namespace.Name
-		noBfdVpcName = "vpc-" + framework.RandomSuffix()
-		bfdVpcName = "vpc-" + framework.RandomSuffix()
+		noBfdVpcName = "no-bfd-vpc-" + framework.RandomSuffix()
+		bfdVpcName = "bfd-vpc-" + framework.RandomSuffix()
 
 		// test arp proxy vip
 		// should have the same mac, which is vpc overlay subnet gw mac
@@ -334,13 +334,12 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 	})
 
 	framework.ConformanceIt("ovn eip fip snat dnat", func() {
-		ginkgo.By("create underlay provider network")
-		exchangeLinkName := false
-		itFn(exchangeLinkName)
-
 		ginkgo.By("Getting docker network " + dockerNetworkName)
 		network, err := docker.NetworkInspect(dockerNetworkName)
 		framework.ExpectNoError(err, "getting docker network "+dockerNetworkName)
+
+		exchangeLinkName := false
+		itFn(exchangeLinkName)
 
 		ginkgo.By("Creating underlay vlan " + vlanName)
 		vlan := framework.MakeVlan(vlanName, providerNetworkName, 0)
@@ -376,9 +375,13 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		vlanSubnetGw := strings.Join(gateway, ",")
 		underlaySubnet := framework.MakeSubnet(underlaySubnetName, vlanName, vlanSubnetCidr, vlanSubnetGw, "", "", excludeIPs, nil, nil)
 		_ = subnetClient.CreateSync(underlaySubnet)
+		vlanSubnet := subnetClient.Get(underlaySubnetName)
+		ginkgo.By("Checking underlay vlan " + vlanSubnet.Name)
+		framework.ExpectEqual(vlanSubnet.Spec.Vlan, vlanName)
+		framework.ExpectNotEqual(vlanSubnet.Spec.CIDRBlock, "")
 
 		externalGwNodes := strings.Join(nodeNames, ",")
-		ginkgo.By("1. Creating config map ovn-external-gw-config for centralized case")
+		ginkgo.By("Creating config map ovn-external-gw-config for centralized case")
 		cmData := map[string]string{
 			"enable-external-gw": "true",
 			"external-gw-nodes":  externalGwNodes,
@@ -394,14 +397,14 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 			Data: cmData,
 		}
 		_, err = cs.CoreV1().ConfigMaps(framework.KubeOvnNamespace).Create(context.Background(), configMap, metav1.CreateOptions{})
-		framework.ExpectNoError(err, "failed to create ConfigMap")
+		framework.ExpectNoError(err, "failed to create")
 
-		ginkgo.By("1.1 Creating custom vpc enable external and bfd")
+		ginkgo.By("1. Creating custom vpc enable external no bfd")
 		noBfdSubnetV4Cidr := "192.168.0.0/24"
 		noBfdSubnetV4Gw := "192.168.0.1"
 		enableExternal := true
-		enableBfd := false
-		noBfdVpc := framework.MakeVpc(noBfdVpcName, noBfdSubnetV4Gw, enableExternal, enableBfd, nil)
+		disableBfd := false
+		noBfdVpc := framework.MakeVpc(noBfdVpcName, "", enableExternal, disableBfd, nil)
 		_ = vpcClient.CreateSync(noBfdVpc)
 		ginkgo.By("Creating overlay subnet enable ecmp")
 		noBfdSubnet := framework.MakeSubnet(noBfdSubnetName, "", noBfdSubnetV4Cidr, noBfdSubnetV4Gw, noBfdVpcName, util.OvnProvider, nil, nil, nil)
@@ -412,7 +415,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		shareVip := framework.MakeVip(sharedVipName, noBfdSubnetName, "", "", "")
 		_ = vipClient.CreateSync(shareVip)
 		ginkgo.By("Creating share ovn eip")
-		shareEip := framework.MakeOvnEip(sharedEipName, "", "", "", "", "")
+		shareEip := framework.MakeOvnEip(sharedEipName, underlaySubnetName, "", "", "", "")
 		_ = ovnEipClient.CreateSync(shareEip)
 		ginkgo.By("Creating the first ovn fip with share eip vip should be ok")
 		shareFipShouldOk := framework.MakeOvnFip(sharedEipFipShoudOkName, sharedEipName, util.NatUsingVip, sharedVipName)
@@ -468,11 +471,11 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		ginkgo.By("Deleting share ovn snat " + snatName)
 		ovnSnatRuleClient.DeleteSync(snatName)
 
-		ginkgo.By("1.2 Creating custom vpc enable external and bfd")
+		ginkgo.By("2. Creating custom vpc enable external and bfd")
 		bfdSubnetV4Cidr := "192.168.1.0/24"
 		bfdSubnetV4Gw := "192.168.1.1"
-		enableBfd = true
-		bfdVpc := framework.MakeVpc(bfdVpcName, bfdSubnetV4Gw, enableExternal, enableBfd, nil)
+		enableBfd := true
+		bfdVpc := framework.MakeVpc(bfdVpcName, "", enableExternal, enableBfd, nil)
 		_ = vpcClient.CreateSync(bfdVpc)
 		ginkgo.By("Creating overlay subnet enable ecmp")
 		bfdSubnet := framework.MakeSubnet(bfdSubnetName, "", bfdSubnetV4Cidr, bfdSubnetV4Gw, bfdVpcName, util.OvnProvider, nil, nil, nil)

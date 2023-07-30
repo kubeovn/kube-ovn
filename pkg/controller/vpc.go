@@ -373,12 +373,21 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 	}
 
 	for _, item := range routeNeedAdd {
-		klog.Infof("vpc %s add static route: %v", vpc.Name, item)
-		if err = c.ovnClient.AddLogicalRouterStaticRoute(
-			vpc.Name, item.RouteTable, convertPolicy(item.Policy), item.CIDR, &item.BfdId, item.NextHopIP,
-		); err != nil {
-			klog.Errorf("add static route to vpc %s failed, %v", vpc.Name, err)
-			return err
+		klog.Infof("vpc %s add static route: %+v", vpc.Name, item)
+		if item.BfdId == "" {
+			if err = c.ovnClient.AddLogicalRouterStaticRoute(
+				vpc.Name, item.RouteTable, convertPolicy(item.Policy), item.CIDR, nil, item.NextHopIP,
+			); err != nil {
+				klog.Errorf("failed to add bfd static route to vpc %s , %v", vpc.Name, err)
+				return err
+			}
+		} else {
+			if err = c.ovnClient.AddLogicalRouterStaticRoute(
+				vpc.Name, item.RouteTable, convertPolicy(item.Policy), item.CIDR, &item.BfdId, item.NextHopIP,
+			); err != nil {
+				klog.Errorf("failed to add normal static route to vpc %s , %v", vpc.Name, err)
+				return err
+			}
 		}
 	}
 
@@ -480,8 +489,8 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 				}
 			}
 			if !vpc.Spec.EnableBfd {
-				klog.V(3).Infof("add normal static ecmp route for vpc %s", vpc.Name)
 				// auto add normal type static route, if not use ecmp based bfd
+				klog.Infof("add normal external static route for enable external vpc %s", vpc.Name)
 				if err := c.reconcileCustomVpcAddNormalStaticRoute(vpc.Name); err != nil {
 					klog.Errorf("failed to reconcile vpc %q bfd static route", vpc.Name)
 					return err
@@ -558,7 +567,6 @@ func diffStaticRoute(exist []*ovnnb.LogicalRouterStaticRoute, target []*kubeovnv
 			CIDR:       item.IPPrefix,
 			NextHopIP:  item.Nexthop,
 			RouteTable: item.RouteTable,
-			BfdId:      *item.BFD,
 			ECMPMode:   util.StaticRouteBfdEcmp,
 		}
 		if item.BFD != nil {

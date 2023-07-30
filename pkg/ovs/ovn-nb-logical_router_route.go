@@ -296,17 +296,17 @@ func (c *ovnClient) newLogicalRouterStaticRoute(lrName, routeTable, policy, ipPr
 		Policy:   &policy,
 		IPPrefix: ipPrefix,
 		Nexthop:  nexthop,
-		BFD:      bfdId,
 	}
-
-	if bfdId != nil {
-		route.Options[util.StaticRouteBfdEcmp] = "true"
-	}
-
 	for _, option := range options {
 		option(route)
 	}
-
+	if route.Options == nil {
+		route.Options = make(map[string]string)
+	}
+	if bfdId != nil {
+		route.BFD = bfdId
+		route.Options[util.StaticRouteBfdEcmp] = "true"
+	}
 	return route, nil
 }
 

@@ -46,8 +46,10 @@ func (c *Controller) enqueueUpdateOvnSnatRule(old, new interface{}) {
 		// enqueue to reset eip to be clean
 		c.resetOvnEipQueue.Add(oldSnat.Spec.OvnEip)
 	}
-	if oldSnat.Spec.OvnEip != newSnat.Spec.OvnEip {
-		klog.V(3).Infof("enqueue update snat %s", key)
+	if oldSnat.Spec.OvnEip != newSnat.Spec.OvnEip ||
+		oldSnat.Spec.VpcSubnet != newSnat.Spec.VpcSubnet ||
+		oldSnat.Spec.IpName != newSnat.Spec.IpName {
+		klog.Infof("enqueue update snat %s", key)
 		c.updateOvnSnatRuleQueue.Add(key)
 		return
 	}
@@ -184,17 +186,21 @@ func (c *Controller) handleAddOvnSnatRule(key string) error {
 	klog.V(3).Infof("handle add ovn snat %s", key)
 	eipName := cachedSnat.Spec.OvnEip
 	if len(eipName) == 0 {
-		klog.Errorf("failed to create snat rule, should set eip")
+		err := fmt.Errorf("failed to create fip rule, should set eip")
+		klog.Error(err)
+		return err
 	}
 	cachedEip, err := c.GetOvnEip(eipName)
 	if err != nil {
 		klog.Errorf("failed to get eip, %v", err)
 		return err
 	}
-	if cachedEip.Status.Type != "" && cachedEip.Status.Type != util.SnatUsingEip {
-		err = fmt.Errorf("failed to create snat %s, eip '%s' is using by '%s'", key, eipName, cachedEip.Spec.Type)
+
+	if cachedEip.Status.Type != "" && cachedEip.Status.Type != util.NatUsingEip {
+		err = fmt.Errorf("ovn nat can only use type %s ovn eip", util.NatUsingEip)
 		return err
 	}
+
 	var v4IpCidr, vpcName string
 	if cachedSnat.Spec.VpcSubnet != "" {
 		subnet, err := c.subnetsLister.Get(cachedSnat.Spec.VpcSubnet)
@@ -271,7 +277,9 @@ func (c *Controller) handleUpdateOvnSnatRule(key string) error {
 	klog.V(3).Infof("handle update ovn snat %s", key)
 	eipName := cachedSnat.Spec.OvnEip
 	if len(eipName) == 0 {
-		klog.Errorf("failed to create snat rule, should set eip")
+		err := fmt.Errorf("failed to create fip rule, should set eip")
+		klog.Error(err)
+		return err
 	}
 	cachedEip, err := c.GetOvnEip(eipName)
 	if err != nil {
@@ -292,11 +300,12 @@ func (c *Controller) handleUpdateOvnSnatRule(key string) error {
 		c.resetOvnEipQueue.Add(cachedSnat.Spec.OvnEip)
 		return nil
 	}
-	if cachedEip.Spec.Type != "" && cachedEip.Spec.Type != util.SnatUsingEip {
-		// eip is in use by other
-		err = fmt.Errorf("failed to create snat %s, eip '%s' is using by nat '%s'", key, eipName, cachedEip.Spec.Type)
+
+	if cachedEip.Status.Type != "" && cachedEip.Status.Type != util.NatUsingEip {
+		err = fmt.Errorf("ovn nat can only use type %s ovn eip", util.NatUsingEip)
 		return err
 	}
+
 	var v4IpCidr, vpcName string
 	if cachedSnat.Spec.VpcSubnet != "" {
 		subnet, err := c.subnetsLister.Get(cachedSnat.Spec.VpcSubnet)
@@ -370,6 +379,29 @@ func (c *Controller) patchOvnSnatStatus(key, vpc, v4Eip, v4IpCidr string, ready 
 		return err
 	}
 	snat := oriSnat.DeepCopy()
+	needUpdateLabel := false
+	var op string
+	if len(snat.Labels) == 0 {
+		op = "add"
+		needUpdateLabel = true
+		snat.Labels = map[string]string{
+			util.EipV4IpLabel: v4Eip,
+		}
+	} else if snat.Labels[util.EipV4IpLabel] != v4Eip {
+		op = "replace"
+		needUpdateLabel = true
+		snat.Labels[util.EipV4IpLabel] = v4Eip
+	}
+	if needUpdateLabel {
+		patchPayloadTemplate := `[{ "op": "%s", "path": "/metadata/labels", "value": %s }]`
+		raw, _ := json.Marshal(snat.Labels)
+		patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
+		if _, err := c.config.KubeOvnClient.KubeovnV1().OvnSnatRules().Patch(context.Background(), snat.Name,
+			types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{}); err != nil {
+			klog.Errorf("failed to patch label for ovn snat %s, %v", snat.Name, err)
+			return err
+		}
+	}
 	var changed bool
 	if snat.Status.Ready != ready {
 		snat.Status.Ready = ready
