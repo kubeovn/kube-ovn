@@ -640,7 +640,7 @@ func (c *Controller) createOrUpdateCrdEip(key, v4ip, v6ip, mac, natGwDp, qos, ex
 					Name: key,
 					Labels: map[string]string{
 						util.SubnetNameLabel:        externalNet,
-						util.IptablesEipV4IPLabel:   v4ip,
+						util.EipV4IpLabel:           v4ip,
 						util.VpcNatGatewayNameLabel: natGwDp,
 					},
 				},
@@ -702,7 +702,7 @@ func (c *Controller) createOrUpdateCrdEip(key, v4ip, v6ip, mac, natGwDp, qos, ex
 			eip.Labels = map[string]string{
 				util.SubnetNameLabel:        externalNetwork,
 				util.VpcNatGatewayNameLabel: natGwDp,
-				util.IptablesEipV4IPLabel:   v4ip,
+				util.EipV4IpLabel:           v4ip,
 			}
 			needUpdateLabel = true
 		} else if eip.Labels[util.SubnetNameLabel] != externalNetwork {
@@ -825,7 +825,7 @@ func (c *Controller) patchEipQoSStatus(key, qos string) error {
 
 func (c *Controller) getIptablesEipNat(eipV4IP string) (string, error) {
 	nats := make([]string, 0, 3)
-	selector := labels.SelectorFromSet(labels.Set{util.IptablesEipV4IPLabel: eipV4IP})
+	selector := labels.SelectorFromSet(labels.Set{util.EipV4IpLabel: eipV4IP})
 	dnats, err := c.iptablesDnatRulesLister.List(selector)
 	if err != nil {
 		klog.Errorf("failed to get dnats, %v", err)
@@ -934,7 +934,7 @@ func (c *Controller) patchEipLabel(eipName string) error {
 			util.SubnetNameLabel:        externalNetwork,
 			util.VpcNatGatewayNameLabel: eip.Spec.NatGwDp,
 			util.QoSLabel:               eip.Spec.QoSPolicy,
-			util.IptablesEipV4IPLabel:   eip.Spec.V4ip,
+			util.EipV4IpLabel:           eip.Spec.V4ip,
 		}
 	} else if eip.Labels[util.VpcNatGatewayNameLabel] != eip.Spec.NatGwDp || eip.Labels[util.QoSLabel] != eip.Spec.QoSPolicy {
 		op = "replace"
@@ -942,7 +942,7 @@ func (c *Controller) patchEipLabel(eipName string) error {
 		eip.Labels[util.SubnetNameLabel] = externalNetwork
 		eip.Labels[util.VpcNatGatewayNameLabel] = eip.Spec.NatGwDp
 		eip.Labels[util.QoSLabel] = eip.Spec.QoSPolicy
-		eip.Labels[util.IptablesEipV4IPLabel] = eip.Spec.V4ip
+		eip.Labels[util.EipV4IpLabel] = eip.Spec.V4ip
 	}
 	if needUpdateLabel {
 		if err := c.updateIptableLabels(eip.Name, op, "eip", eip.Labels); err != nil {

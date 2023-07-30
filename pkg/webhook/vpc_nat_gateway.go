@@ -138,11 +138,11 @@ func (v *ValidatingHook) iptablesEIPDeleteHook(ctx context.Context, req admissio
 		for _, natType := range strings.Split(eip.Status.Nat, ",") {
 			switch natType {
 			case util.FipUsingEip:
-				err = v.cache.List(ctx, &fipList, cli.MatchingLabels{util.IptablesEipV4IPLabel: eip.Status.IP})
+				err = v.cache.List(ctx, &fipList, cli.MatchingLabels{util.EipV4IpLabel: eip.Status.IP})
 			case util.SnatUsingEip:
-				err = v.cache.List(ctx, &snatList, cli.MatchingLabels{util.IptablesEipV4IPLabel: eip.Status.IP})
+				err = v.cache.List(ctx, &snatList, cli.MatchingLabels{util.EipV4IpLabel: eip.Status.IP})
 			case util.DnatUsingEip:
-				err = v.cache.List(ctx, &dnatList, cli.MatchingLabels{util.IptablesEipV4IPLabel: eip.Status.IP})
+				err = v.cache.List(ctx, &dnatList, cli.MatchingLabels{util.EipV4IpLabel: eip.Status.IP})
 			}
 		}
 

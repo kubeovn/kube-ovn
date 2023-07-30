@@ -68,7 +68,7 @@ func (v *ValidatingHook) isOvnEipInUse(ctx context.Context, eipV4IP string) (str
 	dnatList := ovnv1.OvnDnatRuleList{}
 	fipList := ovnv1.OvnFipList{}
 	snatList := ovnv1.OvnSnatRuleList{}
-	opts := cli.MatchingLabels{util.OvnEipV4IPLabel: eipV4IP}
+	opts := cli.MatchingLabels{util.EipV4IpLabel: eipV4IP}
 	err = v.cache.List(ctx, &dnatList, opts)
 	if err != nil {
 		klog.Errorf("failed to get ovn dnats, %v", err)

@@ -29,7 +29,6 @@ const (
 	ExternalCidrAnnotation       = "ovn.kubernetes.io/external_cidr"
 	ExternalSwitchAnnotation     = "ovn.kubernetes.io/external_switch"
 	ExternalGatewayAnnotation    = "ovn.kubernetes.io/external_gateway"
-	ExternalRoutedAnnotation     = "ovn.kubernetes.io/external_routed"
 	ExternalGwPortNameAnnotation = "ovn.kubernetes.io/external_gw_port_name"
 
 	VpcNatGatewayAnnotation     = "ovn.kubernetes.io/vpc_nat_gw"
@@ -44,10 +43,9 @@ const (
 	VpcEipAnnotation            = "ovn.kubernetes.io/vpc_eip"
 	VpcDnatEPortLabel           = "ovn.kubernetes.io/vpc_dnat_eport"
 	VpcNatAnnotation            = "ovn.kubernetes.io/vpc_nat"
-	IptablesEipV4IPLabel        = "ovn.kubernetes.io/iptables_eip_v4_ip"
+	EipV4IpLabel                = "ovn.kubernetes.io/eip_v4_ip"
 
 	OvnEipUsageLabel        = "ovn.kubernetes.io/ovn_eip_usage"
-	OvnEipV4IPLabel         = "ovn.kubernetes.io/ovn_eip_v4_ip"
 	OvnLrpEipEnableBfdLabel = "ovn.kubernetes.io/ovn_lrp_eip_enable_bfd"
 
 	SwitchLBRuleVipsAnnotation = "ovn.kubernetes.io/switch_lb_vip"

@@ -651,7 +651,7 @@ func (c *Controller) handleDelOvnEipFinalizer(cachedEip *kubeovnv1.OvnEip, final
 
 func (c *Controller) getOvnEipNat(eipV4IP string) (string, error) {
 	nats := make([]string, 0, 3)
-	selector := labels.SelectorFromSet(labels.Set{util.OvnEipV4IPLabel: eipV4IP})
+	selector := labels.SelectorFromSet(labels.Set{util.EipV4IpLabel: eipV4IP})
 	dnats, err := c.ovnDnatRulesLister.List(selector)
 	if err != nil {
 		klog.Errorf("failed to get ovn dnats, %v", err)
