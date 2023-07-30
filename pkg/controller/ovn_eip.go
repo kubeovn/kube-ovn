@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
-	"strconv"
 	"strings"
 	"time"
 
@@ -454,35 +453,6 @@ func (c *Controller) createOrUpdateCrdOvnEip(key, subnet, v4ip, v6ip, mac, usage
 				return err
 			}
 		}
-	}
-	return nil
-}
-
-func (c *Controller) patchLrpOvnEipEnableBfdLabel(key string, enableBfd bool) error {
-	cachedEip, err := c.ovnEipsLister.Get(key)
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		} else {
-			err := fmt.Errorf("failed to get ovn eip %s, %v", key, err)
-			klog.Error(err)
-			return err
-		}
-	}
-	ovnEip := cachedEip.DeepCopy()
-	expectValue := strconv.FormatBool(enableBfd)
-	if val, ok := ovnEip.Labels[util.OvnEipEnableBfdLabel]; ok && (val == expectValue) {
-		return nil
-	}
-	op := "replace"
-	ovnEip.Labels[util.OvnEipEnableBfdLabel] = expectValue
-	patchPayloadTemplate := `[{ "op": "%s", "path": "/metadata/labels", "value": %s }]`
-	raw, _ := json.Marshal(ovnEip.Labels)
-	patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
-	if _, err := c.config.KubeOvnClient.KubeovnV1().OvnEips().Patch(context.Background(), ovnEip.Name, types.JSONPatchType,
-		[]byte(patchPayload), metav1.PatchOptions{}); err != nil {
-		klog.Errorf("failed to patch label for ovn eip '%s', %v", ovnEip.Name, err)
-		return err
 	}
 	return nil
 }

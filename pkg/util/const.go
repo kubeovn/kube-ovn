@@ -43,10 +43,8 @@ const (
 	VpcEipAnnotation            = "ovn.kubernetes.io/vpc_eip"
 	VpcDnatEPortLabel           = "ovn.kubernetes.io/vpc_dnat_eport"
 	VpcNatAnnotation            = "ovn.kubernetes.io/vpc_nat"
+	OvnEipTypeLabel             = "ovn.kubernetes.io/ovn_eip_type"
 	EipV4IpLabel                = "ovn.kubernetes.io/eip_v4_ip"
-
-	OvnEipTypeLabel      = "ovn.kubernetes.io/ovn_eip_type"
-	OvnEipEnableBfdLabel = "ovn.kubernetes.io/ovn_eip_enable_bfd"
 
 	SwitchLBRuleVipsAnnotation = "ovn.kubernetes.io/switch_lb_vip"
 	SwitchLBRuleVip            = "switch_lb_vip"

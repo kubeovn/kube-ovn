@@ -858,13 +858,13 @@ func (c *Controller) handleAddVpcExternal(key string) error {
 	}
 	if _, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Patch(context.Background(),
 		vpc.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
+		err := fmt.Errorf("failed to patch vpc %s status, %v", vpc.Name, err)
+		klog.Error(err)
 		return err
 	}
 	if _, err = c.ovnEipsLister.Get(lrpEipName); err != nil {
-		return err
-	}
-	if err := c.patchLrpOvnEipEnableBfdLabel(lrpEipName, vpc.Spec.EnableBfd); err != nil {
-		klog.Errorf("failed to patch label for lrp %s, %v", lrpEipName, err)
+		err := fmt.Errorf("failed to get ovn eip %s, %v", lrpEipName, err)
+		klog.Error(err)
 		return err
 	}
 	return nil
