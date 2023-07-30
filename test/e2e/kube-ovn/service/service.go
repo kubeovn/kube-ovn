@@ -155,7 +155,7 @@ var _ = framework.Describe("[group:service]", func() {
 				framework.Logf("output is %q", output)
 				framework.Logf("v6ClusterIp is %q", v6ClusterIp)
 				vips := strings.Fields(string(output))
-				prefix := util.JoinHostPort(v6ClusterIp, port) + ":"
+				prefix := util.JoinHostPort(v6ClusterIp, port) + "="
 				var found bool
 				for _, vip := range vips {
 					if strings.HasPrefix(vip, prefix) {
