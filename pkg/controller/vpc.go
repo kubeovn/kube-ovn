@@ -374,16 +374,16 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 
 	for _, item := range routeNeedAdd {
 		klog.Infof("vpc %s add static route: %+v", vpc.Name, item)
-		if item.BfdId == "" {
+		if item.BfdId != "" {
 			if err = c.ovnClient.AddLogicalRouterStaticRoute(
-				vpc.Name, item.RouteTable, convertPolicy(item.Policy), item.CIDR, nil, item.NextHopIP,
+				vpc.Name, item.RouteTable, convertPolicy(item.Policy), item.CIDR, &item.BfdId, item.NextHopIP,
 			); err != nil {
 				klog.Errorf("failed to add bfd static route to vpc %s , %v", vpc.Name, err)
 				return err
 			}
 		} else {
 			if err = c.ovnClient.AddLogicalRouterStaticRoute(
-				vpc.Name, item.RouteTable, convertPolicy(item.Policy), item.CIDR, &item.BfdId, item.NextHopIP,
+				vpc.Name, item.RouteTable, convertPolicy(item.Policy), item.CIDR, nil, item.NextHopIP,
 			); err != nil {
 				klog.Errorf("failed to add normal static route to vpc %s , %v", vpc.Name, err)
 				return err
@@ -474,14 +474,14 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		if cachedVpc.Spec.EnableExternal {
 			if !cachedVpc.Status.EnableExternal {
 				// connect vpc to external
-				klog.V(3).Infof("connect external network with vpc %s", vpc.Name)
+				klog.Infof("connect external network with vpc %s", vpc.Name)
 				if err := c.handleAddVpcExternal(key); err != nil {
 					klog.Errorf("failed to add external connection for vpc %s, error %v", key, err)
 					return err
 				}
 			}
 			if vpc.Spec.EnableBfd {
-				klog.V(3).Infof("remove normal static ecmp route for vpc %s", vpc.Name)
+				klog.Infof("remove normal static ecmp route for vpc %s", vpc.Name)
 				// auto remove normal type static route, if using ecmp based bfd
 				if err := c.reconcileCustomVpcDelNormalStaticRoute(vpc.Name); err != nil {
 					klog.Errorf("failed to reconcile del vpc %q normal static route", vpc.Name)
