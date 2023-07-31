@@ -21,7 +21,7 @@ const (
 
 // RandomSuffix provides a random sequence to append to resources.
 func RandomSuffix() string {
-	return fmt.Sprintf("%d%04d", ginkgo.GinkgoParallelProcess(), rand.Intn(10000))
+	return fmt.Sprintf("%d%04d%04d", ginkgo.GinkgoParallelProcess(), rand.Intn(10000), rand.Intn(10000))
 }
 
 func RandomCIDR(family string) string {

@@ -167,7 +167,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		}
 
 		itFn = func(exchangeLinkName bool) {
-			ginkgo.By("Creating provider network")
+			ginkgo.By("Creating provider network " + providerNetworkName)
 			pn := makeProviderNetwork(providerNetworkName, exchangeLinkName, linkMap)
 			pn = providerNetworkClient.CreateSync(pn)
 
@@ -313,7 +313,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		ginkgo.By("Deleting vlan " + vlanName)
 		vlanClient.Delete(vlanName, metav1.DeleteOptions{})
 
-		ginkgo.By("Deleting provider network")
+		ginkgo.By("Deleting provider network " + providerNetworkName)
 		providerNetworkClient.DeleteSync(providerNetworkName)
 
 		ginkgo.By("Getting nodes")
@@ -345,7 +345,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 	})
 
 	framework.ConformanceIt("should keep pod mtu the same with node interface", func() {
-		ginkgo.By("Creating provider network")
+		ginkgo.By("Creating provider network " + providerNetworkName)
 		pn := makeProviderNetwork(providerNetworkName, false, linkMap)
 		_ = providerNetworkClient.CreateSync(pn)
 
@@ -406,7 +406,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		}
 		f.SkipVersionPriorTo(1, 9, "Address conflict detection was introduced in v1.9")
 
-		ginkgo.By("Creating provider network")
+		ginkgo.By("Creating provider network " + providerNetworkName)
 		pn := makeProviderNetwork(providerNetworkName, false, linkMap)
 		_ = providerNetworkClient.CreateSync(pn)
 
@@ -469,7 +469,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 	framework.ConformanceIt("should support underlay to overlay subnet interconnection", func() {
 		f.SkipVersionPriorTo(1, 9, "This feature was introduced in v1.9")
 
-		ginkgo.By("Creating provider network")
+		ginkgo.By("Creating provider network " + providerNetworkName)
 		pn := makeProviderNetwork(providerNetworkName, false, linkMap)
 		_ = providerNetworkClient.CreateSync(pn)
 

@@ -23,7 +23,7 @@ import (
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 )
 
-var _ = framework.Describe("[group:network-policy]", func() {
+var _ = framework.SerialDescribe("[group:network-policy]", func() {
 	f := framework.NewDefaultFramework("network-policy")
 
 	var subnet *apiv1.Subnet

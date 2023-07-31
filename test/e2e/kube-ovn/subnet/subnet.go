@@ -1085,7 +1085,6 @@ var _ = framework.Describe("[group:subnet]", func() {
 			util.LogicalSwitchAnnotation: subnetName,
 		}
 
-		podName = "pod-" + framework.RandomSuffix()
 		pod := framework.MakePod(namespaceName, podName, nil, annotations, framework.AgnhostImage, nil, nil)
 		_ = podClient.CreateSync(pod)
 
@@ -1099,7 +1098,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 			{
 				Match: apiv1.NatOutGoingPolicyMatch{
 					SrcIPs: "1.1.1.1",
-					DstIPs: "169.254.0.0/16",
+					DstIPs: "199.255.0.0/16",
 				},
 				Action: util.NatPolicyRuleActionNat,
 			},
