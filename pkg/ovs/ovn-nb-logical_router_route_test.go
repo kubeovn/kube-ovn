@@ -366,6 +366,7 @@ func (suite *OvnClientTestSuite) test_newLogicalRouterStaticRoute() {
 		Policy:   &policy,
 		IPPrefix: ipPrefix,
 		Nexthop:  nexthop,
+		BFD:      nil,
 	}
 
 	route, err := ovnClient.newLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nexthop, nil)

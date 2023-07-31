@@ -300,11 +300,12 @@ func (c *ovnClient) newLogicalRouterStaticRoute(lrName, routeTable, policy, ipPr
 	for _, option := range options {
 		option(route)
 	}
-	if route.Options == nil {
-		route.Options = make(map[string]string)
-	}
+
 	if bfdId != nil {
 		route.BFD = bfdId
+		if route.Options == nil {
+			route.Options = make(map[string]string)
+		}
 		route.Options[util.StaticRouteBfdEcmp] = "true"
 	}
 	return route, nil
