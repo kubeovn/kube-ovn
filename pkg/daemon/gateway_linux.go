@@ -616,6 +616,21 @@ func (c *Controller) setIptables() error {
 			kubeProxyIpsetProtocol, matchset, svcMatchset, nodeMatchSet = "6-", "ovn60subnets", "ovn60services", "ovn60"+OtherNodeSet
 		}
 
+		ipset := fmt.Sprintf("KUBE-%sCLUSTER-IP", kubeProxyIpsetProtocol)
+		ipsetExists, err := c.ipsetExists(ipset)
+		if err != nil {
+			klog.Error("failed to check existence of ipset %s: %v", ipset, err)
+			return err
+		}
+		if ipsetExists {
+			iptablesRules[0].Rule = strings.Fields(fmt.Sprintf(`-i ovn0 -m set --match-set %s src -m set --match-set %s dst,dst -j MARK --set-xmark 0x4000/0x4000`, matchset, ipset))
+			rejectRule := strings.Fields(fmt.Sprintf(`-m mark ! --mark 0x4000/0x4000 -m set --match-set %s dst -m conntrack --ctstate NEW -j REJECT`, svcMatchset))
+			iptablesRules = append(iptablesRules,
+				util.IPTableRule{Table: "filter", Chain: "INPUT", Rule: rejectRule},
+				util.IPTableRule{Table: "filter", Chain: "OUTPUT", Rule: rejectRule},
+			)
+		}
+
 		if nodeIP := nodeIPs[protocol]; nodeIP != "" {
 			obsoleteRules = []util.IPTableRule{
 				{Table: NAT, Chain: Postrouting, Rule: strings.Fields(fmt.Sprintf(`! -s %s -m set --match-set %s dst -j MASQUERADE`, nodeIP, matchset))},
@@ -956,8 +971,8 @@ func (c *Controller) generateNatOutgoingPolicyChainRules(protocol string) ([]uti
 		natPolicySubnetUIDs.Add(util.GetTruncatedUID(string(subnet.GetUID())))
 		cidrBlock := getCidrByProtocol(subnet.Spec.CIDRBlock, protocol)
 
-		OvnNatPolicySubnetChainName := OvnNatOutGoingPolicySubnet + util.GetTruncatedUID(string(subnet.GetUID()))
-		natPolicySubnetIptables = append(natPolicySubnetIptables, util.IPTableRule{Table: NAT, Chain: OvnNatOutGoingPolicy, Rule: strings.Fields(fmt.Sprintf(`-s %s -m comment --comment natPolicySubnet-%s -j %s`, cidrBlock, subnet.Name, OvnNatPolicySubnetChainName))})
+		ovnNatPolicySubnetChainName := OvnNatOutGoingPolicySubnet + util.GetTruncatedUID(string(subnet.GetUID()))
+		natPolicySubnetIptables = append(natPolicySubnetIptables, util.IPTableRule{Table: NAT, Chain: OvnNatOutGoingPolicy, Rule: strings.Fields(fmt.Sprintf(`-s %s -m comment --comment natPolicySubnet-%s -j %s`, cidrBlock, subnet.Name, ovnNatPolicySubnetChainName))})
 		for _, rule := range subnet.Status.NatOutgoingPolicyRules {
 			var markCode string
 			if rule.Action == util.NatPolicyRuleActionNat {
@@ -981,21 +996,21 @@ func (c *Controller) generateNatOutgoingPolicyChainRules(protocol string) ([]uti
 			srcMatch := getNatOutGoingPolicyRuleIPSetName(rule.RuleID, "src", protocol, true)
 			dstMatch := getNatOutGoingPolicyRuleIPSetName(rule.RuleID, "dst", protocol, true)
 
-			var OvnNatoutGoingPolicyRule util.IPTableRule
+			var ovnNatoutGoingPolicyRule util.IPTableRule
 			if rule.Match.DstIPs != "" && rule.Match.SrcIPs != "" {
-				OvnNatoutGoingPolicyRule = util.IPTableRule{Table: NAT, Chain: OvnNatPolicySubnetChainName, Rule: strings.Fields(fmt.Sprintf(`-m set --match-set %s src -m set --match-set %s dst -j MARK --set-xmark %s`, srcMatch, dstMatch, markCode))}
+				ovnNatoutGoingPolicyRule = util.IPTableRule{Table: NAT, Chain: ovnNatPolicySubnetChainName, Rule: strings.Fields(fmt.Sprintf(`-m set --match-set %s src -m set --match-set %s dst -j MARK --set-xmark %s`, srcMatch, dstMatch, markCode))}
 			} else if rule.Match.SrcIPs != "" {
 				protocol = getMatchProtocol(rule.Match.SrcIPs)
-				OvnNatoutGoingPolicyRule = util.IPTableRule{Table: NAT, Chain: OvnNatPolicySubnetChainName, Rule: strings.Fields(fmt.Sprintf(`-m set --match-set %s src -j MARK --set-xmark %s`, srcMatch, markCode))}
+				ovnNatoutGoingPolicyRule = util.IPTableRule{Table: NAT, Chain: ovnNatPolicySubnetChainName, Rule: strings.Fields(fmt.Sprintf(`-m set --match-set %s src -j MARK --set-xmark %s`, srcMatch, markCode))}
 			} else if rule.Match.DstIPs != "" {
 				protocol = getMatchProtocol(rule.Match.DstIPs)
-				OvnNatoutGoingPolicyRule = util.IPTableRule{Table: NAT, Chain: OvnNatPolicySubnetChainName, Rule: strings.Fields(fmt.Sprintf(`-m set --match-set %s dst -j MARK --set-xmark %s`, dstMatch, markCode))}
+				ovnNatoutGoingPolicyRule = util.IPTableRule{Table: NAT, Chain: ovnNatPolicySubnetChainName, Rule: strings.Fields(fmt.Sprintf(`-m set --match-set %s dst -j MARK --set-xmark %s`, dstMatch, markCode))}
 			} else {
 				continue
 			}
-			natPolicyRuleIptables = append(natPolicyRuleIptables, OvnNatoutGoingPolicyRule)
+			natPolicyRuleIptables = append(natPolicyRuleIptables, ovnNatoutGoingPolicyRule)
 		}
-		natPolicyRuleIptablesMap[OvnNatPolicySubnetChainName] = natPolicyRuleIptables
+		natPolicyRuleIptablesMap[ovnNatPolicySubnetChainName] = natPolicyRuleIptables
 	}
 
 	existNatChains, err := c.iptables[protocol].ListChains(NAT)
