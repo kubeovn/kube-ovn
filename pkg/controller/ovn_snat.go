@@ -11,7 +11,6 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
@@ -47,8 +46,10 @@ func (c *Controller) enqueueUpdateOvnSnatRule(old, new interface{}) {
 		// enqueue to reset eip to be clean
 		c.resetOvnEipQueue.Add(oldSnat.Spec.OvnEip)
 	}
-	if oldSnat.Spec.OvnEip != newSnat.Spec.OvnEip {
-		klog.V(3).Infof("enqueue update snat %s", key)
+	if oldSnat.Spec.OvnEip != newSnat.Spec.OvnEip ||
+		oldSnat.Spec.VpcSubnet != newSnat.Spec.VpcSubnet ||
+		oldSnat.Spec.IpName != newSnat.Spec.IpName {
+		klog.Infof("enqueue update snat %s", key)
 		c.updateOvnSnatRuleQueue.Add(key)
 		return
 	}
@@ -185,17 +186,21 @@ func (c *Controller) handleAddOvnSnatRule(key string) error {
 	klog.V(3).Infof("handle add ovn snat %s", key)
 	eipName := cachedSnat.Spec.OvnEip
 	if len(eipName) == 0 {
-		klog.Errorf("failed to create snat rule, should set eip")
+		err := fmt.Errorf("failed to create fip rule, should set eip")
+		klog.Error(err)
+		return err
 	}
 	cachedEip, err := c.GetOvnEip(eipName)
 	if err != nil {
 		klog.Errorf("failed to get eip, %v", err)
 		return err
 	}
-	if cachedEip.Status.Type != "" && cachedEip.Status.Type != util.SnatUsingEip {
-		err = fmt.Errorf("failed to create snat %s, eip '%s' is using by '%s'", key, eipName, cachedEip.Spec.Type)
+
+	if cachedEip.Status.Type != "" && cachedEip.Status.Type != util.NatUsingEip {
+		err = fmt.Errorf("ovn eip %s type is not %s, can not use", cachedEip.Name, util.NatUsingEip)
 		return err
 	}
+
 	var v4IpCidr, vpcName string
 	if cachedSnat.Spec.VpcSubnet != "" {
 		subnet, err := c.subnetsLister.Get(cachedSnat.Spec.VpcSubnet)
@@ -233,11 +238,7 @@ func (c *Controller) handleAddOvnSnatRule(key string) error {
 	}
 
 	// create snat
-	if err = c.handleAddOvnSnatRuleFinalizer(cachedSnat); err != nil {
-		klog.Errorf("failed to add finalizer for ovn snat, %v", err)
-		return err
-	}
-	if err = c.handleAddOvnEipFinalizer(cachedEip, util.OvnSnatUseEipFinalizer); err != nil {
+	if err = c.handleAddOvnEipFinalizer(cachedEip, util.OvnEipFinalizer); err != nil {
 		klog.Errorf("failed to add finalizer for ovn eip, %v", err)
 		return err
 	}
@@ -258,7 +259,7 @@ func (c *Controller) handleAddOvnSnatRule(key string) error {
 		klog.Errorf("failed to update status for snat %s, %v", key, err)
 		return err
 	}
-	if err = c.patchOvnEipNat(eipName, util.SnatUsingEip); err != nil {
+	if err = c.patchOvnEipStatus(eipName, true); err != nil {
 		klog.Errorf("failed to patch status for eip %s, %v", key, err)
 		return err
 	}
@@ -276,7 +277,9 @@ func (c *Controller) handleUpdateOvnSnatRule(key string) error {
 	klog.V(3).Infof("handle update ovn snat %s", key)
 	eipName := cachedSnat.Spec.OvnEip
 	if len(eipName) == 0 {
-		klog.Errorf("failed to create snat rule, should set eip")
+		err := fmt.Errorf("failed to create fip rule, should set eip")
+		klog.Error(err)
+		return err
 	}
 	cachedEip, err := c.GetOvnEip(eipName)
 	if err != nil {
@@ -293,24 +296,16 @@ func (c *Controller) handleUpdateOvnSnatRule(key string) error {
 				return err
 			}
 		}
-		if err = c.handleDelOvnEipFinalizer(cachedEip, util.OvnSnatUseEipFinalizer); err != nil {
-			klog.Errorf("failed to handle finalizer for eip %s, %v", key, err)
-			return err
-		}
 		//  reset eip
 		c.resetOvnEipQueue.Add(cachedSnat.Spec.OvnEip)
-
-		if err = c.handleDelOvnSnatRuleFinalizer(cachedSnat); err != nil {
-			klog.Errorf("failed to handle finalizer for snat %s, %v", key, err)
-			return err
-		}
 		return nil
 	}
-	if cachedEip.Spec.Type != "" && cachedEip.Spec.Type != util.SnatUsingEip {
-		// eip is in use by other
-		err = fmt.Errorf("failed to create snat %s, eip '%s' is using by nat '%s'", key, eipName, cachedEip.Spec.Type)
+
+	if cachedEip.Status.Type != "" && cachedEip.Status.Type != util.NatUsingEip {
+		err = fmt.Errorf("ovn eip %s type is not %s, can not use", cachedEip.Name, util.NatUsingEip)
 		return err
 	}
+
 	var v4IpCidr, vpcName string
 	if cachedSnat.Spec.VpcSubnet != "" {
 		subnet, err := c.subnetsLister.Get(cachedSnat.Spec.VpcSubnet)
@@ -375,52 +370,6 @@ func (c *Controller) handleDelOvnSnatRule(key string) error {
 	return nil
 }
 
-func (c *Controller) handleAddOvnSnatRuleFinalizer(cachedSnat *kubeovnv1.OvnSnatRule) error {
-	if cachedSnat.DeletionTimestamp.IsZero() {
-		if util.ContainsString(cachedSnat.Finalizers, util.ControllerName) {
-			return nil
-		}
-	}
-	newSnat := cachedSnat.DeepCopy()
-	controllerutil.AddFinalizer(newSnat, util.ControllerName)
-	patch, err := util.GenerateMergePatchPayload(cachedSnat, newSnat)
-	if err != nil {
-		klog.Errorf("failed to generate patch for snat %s, %v", cachedSnat.Name, err)
-		return err
-	}
-	if _, err := c.config.KubeOvnClient.KubeovnV1().OvnSnatRules().Patch(context.Background(), cachedSnat.Name,
-		types.MergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
-		klog.Errorf("failed to add finalizer for ovn snat '%s', %v", cachedSnat.Name, err)
-		return err
-	}
-	return nil
-}
-
-func (c *Controller) handleDelOvnSnatRuleFinalizer(cachedSnat *kubeovnv1.OvnSnatRule) error {
-	if len(cachedSnat.Finalizers) == 0 {
-		return nil
-	}
-	newSnat := cachedSnat.DeepCopy()
-	controllerutil.RemoveFinalizer(newSnat, util.ControllerName)
-	patch, err := util.GenerateMergePatchPayload(cachedSnat, newSnat)
-	if err != nil {
-		klog.Errorf("failed to generate patch for snat %s, %v", cachedSnat.Name, err)
-		return err
-	}
-	if _, err := c.config.KubeOvnClient.KubeovnV1().OvnSnatRules().Patch(context.Background(), cachedSnat.Name,
-		types.MergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
-		klog.Errorf("failed to remove finalizer from ovn snat '%s', %v", cachedSnat.Name, err)
-		return err
-	}
-	return nil
-}
-
 func (c *Controller) patchOvnSnatStatus(key, vpc, v4Eip, v4IpCidr string, ready bool) error {
 	oriSnat, err := c.ovnSnatRulesLister.Get(key)
 	if err != nil {
@@ -430,6 +379,29 @@ func (c *Controller) patchOvnSnatStatus(key, vpc, v4Eip, v4IpCidr string, ready 
 		return err
 	}
 	snat := oriSnat.DeepCopy()
+	needUpdateLabel := false
+	var op string
+	if len(snat.Labels) == 0 {
+		op = "add"
+		needUpdateLabel = true
+		snat.Labels = map[string]string{
+			util.EipV4IpLabel: v4Eip,
+		}
+	} else if snat.Labels[util.EipV4IpLabel] != v4Eip {
+		op = "replace"
+		needUpdateLabel = true
+		snat.Labels[util.EipV4IpLabel] = v4Eip
+	}
+	if needUpdateLabel {
+		patchPayloadTemplate := `[{ "op": "%s", "path": "/metadata/labels", "value": %s }]`
+		raw, _ := json.Marshal(snat.Labels)
+		patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
+		if _, err := c.config.KubeOvnClient.KubeovnV1().OvnSnatRules().Patch(context.Background(), snat.Name,
+			types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{}); err != nil {
+			klog.Errorf("failed to patch label for ovn snat %s, %v", snat.Name, err)
+			return err
+		}
+	}
 	var changed bool
 	if snat.Status.Ready != ready {
 		snat.Status.Ready = ready

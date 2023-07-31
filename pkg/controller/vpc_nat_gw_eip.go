@@ -28,6 +28,7 @@ func (c *Controller) enqueueAddIptablesEip(obj interface{}) {
 		utilruntime.HandleError(err)
 		return
 	}
+	klog.Infof("enqueue add iptables eip %s", key)
 	c.addIptablesEipQueue.Add(key)
 }
 
@@ -43,6 +44,7 @@ func (c *Controller) enqueueUpdateIptablesEip(old, new interface{}) {
 	if !newEip.DeletionTimestamp.IsZero() ||
 		oldEip.Status.Redo != newEip.Status.Redo ||
 		oldEip.Spec.QoSPolicy != newEip.Spec.QoSPolicy {
+		klog.Infof("enqueue update iptables eip %s", key)
 		c.updateIptablesEipQueue.Add(key)
 	}
 	externalNetwork := util.GetExternalNetwork(newEip.Spec.ExternalSubnet)
@@ -57,6 +59,7 @@ func (c *Controller) enqueueDelIptablesEip(obj interface{}) {
 		return
 	}
 	eip := obj.(*kubeovnv1.IptablesEIP)
+	klog.Infof("enqueue del iptables eip %s", key)
 	c.delIptablesEipQueue.Add(key)
 	externalNetwork := util.GetExternalNetwork(eip.Spec.ExternalSubnet)
 	c.updateSubnetStatusQueue.Add(externalNetwork)
@@ -207,7 +210,6 @@ func (c *Controller) handleAddIptablesEip(key string) error {
 	c.vpcNatGwKeyMutex.LockKey(key)
 	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(key) }()
 	klog.Infof("handle add iptables eip %s", key)
-
 	cachedEip, err := c.iptablesEipsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -219,7 +221,6 @@ func (c *Controller) handleAddIptablesEip(key string) error {
 		// already ok
 		return nil
 	}
-	klog.V(3).Infof("handle add eip %s", key)
 	var v4ip, v6ip, mac, eipV4Cidr, v4Gw string
 	externalNetwork := util.GetExternalNetwork(cachedEip.Spec.ExternalSubnet)
 	externalProvider := fmt.Sprintf("%s.%s", externalNetwork, ATTACHMENT_NS)
@@ -264,14 +265,13 @@ func (c *Controller) handleAddIptablesEip(key string) error {
 }
 
 func (c *Controller) handleResetIptablesEip(key string) error {
-	klog.V(3).Infof("handle reset eip %s", key)
 	if _, err := c.iptablesEipsLister.Get(key); err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
 		return err
 	}
-
+	klog.Infof("handle reset eip %s", key)
 	if err := c.patchEipLabel(key); err != nil {
 		klog.Errorf("failed to patch label for eip %s, %v", key, err)
 		return err
@@ -640,7 +640,7 @@ func (c *Controller) createOrUpdateCrdEip(key, v4ip, v6ip, mac, natGwDp, qos, ex
 					Name: key,
 					Labels: map[string]string{
 						util.SubnetNameLabel:        externalNet,
-						util.IptablesEipV4IPLabel:   v4ip,
+						util.EipV4IpLabel:           v4ip,
 						util.VpcNatGatewayNameLabel: natGwDp,
 					},
 				},
@@ -702,7 +702,7 @@ func (c *Controller) createOrUpdateCrdEip(key, v4ip, v6ip, mac, natGwDp, qos, ex
 			eip.Labels = map[string]string{
 				util.SubnetNameLabel:        externalNetwork,
 				util.VpcNatGatewayNameLabel: natGwDp,
-				util.IptablesEipV4IPLabel:   v4ip,
+				util.EipV4IpLabel:           v4ip,
 			}
 			needUpdateLabel = true
 		} else if eip.Labels[util.SubnetNameLabel] != externalNetwork {
@@ -825,7 +825,7 @@ func (c *Controller) patchEipQoSStatus(key, qos string) error {
 
 func (c *Controller) getIptablesEipNat(eipV4IP string) (string, error) {
 	nats := make([]string, 0, 3)
-	selector := labels.SelectorFromSet(labels.Set{util.IptablesEipV4IPLabel: eipV4IP})
+	selector := labels.SelectorFromSet(labels.Set{util.EipV4IpLabel: eipV4IP})
 	dnats, err := c.iptablesDnatRulesLister.List(selector)
 	if err != nil {
 		klog.Errorf("failed to get dnats, %v", err)
@@ -934,7 +934,7 @@ func (c *Controller) patchEipLabel(eipName string) error {
 			util.SubnetNameLabel:        externalNetwork,
 			util.VpcNatGatewayNameLabel: eip.Spec.NatGwDp,
 			util.QoSLabel:               eip.Spec.QoSPolicy,
-			util.IptablesEipV4IPLabel:   eip.Spec.V4ip,
+			util.EipV4IpLabel:           eip.Spec.V4ip,
 		}
 	} else if eip.Labels[util.VpcNatGatewayNameLabel] != eip.Spec.NatGwDp || eip.Labels[util.QoSLabel] != eip.Spec.QoSPolicy {
 		op = "replace"
@@ -942,7 +942,7 @@ func (c *Controller) patchEipLabel(eipName string) error {
 		eip.Labels[util.SubnetNameLabel] = externalNetwork
 		eip.Labels[util.VpcNatGatewayNameLabel] = eip.Spec.NatGwDp
 		eip.Labels[util.QoSLabel] = eip.Spec.QoSPolicy
-		eip.Labels[util.IptablesEipV4IPLabel] = eip.Spec.V4ip
+		eip.Labels[util.EipV4IpLabel] = eip.Spec.V4ip
 	}
 	if needUpdateLabel {
 		if err := c.updateIptableLabels(eip.Name, op, "eip", eip.Labels); err != nil {

@@ -949,7 +949,10 @@ type OvnEipSpec struct {
 	V6Ip           string `json:"v6Ip"`
 	MacAddress     string `json:"macAddress"`
 	Type           string `json:"type"`
-	// usage type: fip, snat, lrp, node external gw
+	// usage type: eip, lrp, node external gw
+	// eip: only used by nat, fip, snat, dnat, all the nat type will record int the eip status
+	// lrp: logical router port
+	// node external gw: is lsp, in the case of bfd session between lrp and lsp, the lsp is on the node as external gateway
 }
 
 // OvnEipCondition describes the state of an object at a certain point.
@@ -964,6 +967,7 @@ type OvnEipStatus struct {
 	Conditions []OvnEipCondition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 
 	Type       string `json:"type" patchStrategy:"merge"`
+	Nat        string `json:"nat" patchStrategy:"merge"`
 	Ready      bool   `json:"ready" patchStrategy:"merge"`
 	V4Ip       string `json:"v4Ip" patchStrategy:"merge"`
 	V6Ip       string `json:"v6Ip" patchStrategy:"merge"`

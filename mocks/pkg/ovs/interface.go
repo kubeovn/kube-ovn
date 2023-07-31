@@ -1475,9 +1475,9 @@ func (m *MockLogicalRouterStaticRoute) EXPECT() *MockLogicalRouterStaticRouteMoc
 }
 
 // AddLogicalRouterStaticRoute mocks base method.
-func (m *MockLogicalRouterStaticRoute) AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix string, nexthops ...string) error {
+func (m *MockLogicalRouterStaticRoute) AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix string, bfdId *string, nexthops ...string) error {
 	m.ctrl.T.Helper()
-	varargs := []interface{}{lrName, routeTable, policy, ipPrefix}
+	varargs := []interface{}{lrName, routeTable, policy, ipPrefix, bfdId}
 	for _, a := range nexthops {
 		varargs = append(varargs, a)
 	}
@@ -1487,9 +1487,9 @@ func (m *MockLogicalRouterStaticRoute) AddLogicalRouterStaticRoute(lrName, route
 }
 
 // AddLogicalRouterStaticRoute indicates an expected call of AddLogicalRouterStaticRoute.
-func (mr *MockLogicalRouterStaticRouteMockRecorder) AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix interface{}, nexthops ...interface{}) *gomock.Call {
+func (mr *MockLogicalRouterStaticRouteMockRecorder) AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, bfdId interface{}, nexthops ...interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	varargs := append([]interface{}{lrName, routeTable, policy, ipPrefix}, nexthops...)
+	varargs := append([]interface{}{lrName, routeTable, policy, ipPrefix, bfdId}, nexthops...)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddLogicalRouterStaticRoute", reflect.TypeOf((*MockLogicalRouterStaticRoute)(nil).AddLogicalRouterStaticRoute), varargs...)
 }
 
@@ -1964,9 +1964,9 @@ func (mr *MockOvnClientMockRecorder) AddLogicalRouterPolicy(lrName, priority, ma
 }
 
 // AddLogicalRouterStaticRoute mocks base method.
-func (m *MockOvnClient) AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix string, nexthops ...string) error {
+func (m *MockOvnClient) AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix string, bfdId *string, nexthops ...string) error {
 	m.ctrl.T.Helper()
-	varargs := []interface{}{lrName, routeTable, policy, ipPrefix}
+	varargs := []interface{}{lrName, routeTable, policy, ipPrefix, bfdId}
 	for _, a := range nexthops {
 		varargs = append(varargs, a)
 	}
@@ -1976,9 +1976,9 @@ func (m *MockOvnClient) AddLogicalRouterStaticRoute(lrName, routeTable, policy, 
 }
 
 // AddLogicalRouterStaticRoute indicates an expected call of AddLogicalRouterStaticRoute.
-func (mr *MockOvnClientMockRecorder) AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix interface{}, nexthops ...interface{}) *gomock.Call {
+func (mr *MockOvnClientMockRecorder) AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, bfdId interface{}, nexthops ...interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	varargs := append([]interface{}{lrName, routeTable, policy, ipPrefix}, nexthops...)
+	varargs := append([]interface{}{lrName, routeTable, policy, ipPrefix, bfdId}, nexthops...)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddLogicalRouterStaticRoute", reflect.TypeOf((*MockOvnClient)(nil).AddLogicalRouterStaticRoute), varargs...)
 }
 

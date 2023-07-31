@@ -59,7 +59,7 @@ func (c *ovnClient) CreateLogicalRouterStaticRoutes(lrName string, routes ...*ov
 }
 
 // AddLogicalRouterStaticRoute add a logical router static route
-func (c *ovnClient) AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix string, nexthops ...string) error {
+func (c *ovnClient) AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix string, bfdId *string, nexthops ...string) error {
 	if len(policy) == 0 {
 		policy = ovnnb.LogicalRouterStaticRoutePolicyDstIP
 	}
@@ -81,7 +81,7 @@ func (c *ovnClient) AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPr
 	var toAdd []*ovnnb.LogicalRouterStaticRoute
 	for _, nexthop := range nexthops {
 		if !existing.Has(nexthop) {
-			route, err := c.newLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nexthop)
+			route, err := c.newLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nexthop, bfdId)
 			if err != nil {
 				return err
 			}
@@ -272,7 +272,7 @@ func (c *ovnClient) LogicalRouterStaticRouteExists(lrName, routeTable, policy, i
 }
 
 // newLogicalRouterStaticRoute return logical router static route with basic information
-func (c *ovnClient) newLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nexthop string, options ...func(route *ovnnb.LogicalRouterStaticRoute)) (*ovnnb.LogicalRouterStaticRoute, error) {
+func (c *ovnClient) newLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nexthop string, bfdId *string, options ...func(route *ovnnb.LogicalRouterStaticRoute)) (*ovnnb.LogicalRouterStaticRoute, error) {
 	if len(lrName) == 0 {
 		return nil, fmt.Errorf("the logical router name is required")
 	}
@@ -297,11 +297,17 @@ func (c *ovnClient) newLogicalRouterStaticRoute(lrName, routeTable, policy, ipPr
 		IPPrefix: ipPrefix,
 		Nexthop:  nexthop,
 	}
-
 	for _, option := range options {
 		option(route)
 	}
 
+	if bfdId != nil {
+		route.BFD = bfdId
+		if route.Options == nil {
+			route.Options = make(map[string]string)
+		}
+		route.Options[util.StaticRouteBfdEcmp] = "true"
+	}
 	return route, nil
 }
 

@@ -26,7 +26,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalRouterStaticRoutes() {
 	require.NoError(t, err)
 
 	for i, ipPrefix := range ipPrefixes {
-		route, err := ovnClient.newLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nexthops[i])
+		route, err := ovnClient.newLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nexthops[i], nil)
 		require.NoError(t, err)
 
 		routes = append(routes, route)
@@ -70,7 +70,7 @@ func (suite *OvnClientTestSuite) testAddLogicalRouterStaticRoute() {
 
 		t.Run("create route", func(t *testing.T) {
 			for i := range ipPrefixes {
-				err = ovnClient.AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefixes[i], nexthops[i])
+				err = ovnClient.AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefixes[i], nil, nexthops[i])
 				require.NoError(t, err)
 			}
 
@@ -88,7 +88,7 @@ func (suite *OvnClientTestSuite) testAddLogicalRouterStaticRoute() {
 		t.Run("update route", func(t *testing.T) {
 			updatedNexthops := [...]string{"192.168.30.254", "fd00:100:64::fe"}
 			for i := range ipPrefixes {
-				err = ovnClient.AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefixes[i], updatedNexthops[i])
+				err = ovnClient.AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefixes[i], nil, updatedNexthops[i])
 				require.NoError(t, err)
 			}
 
@@ -112,7 +112,7 @@ func (suite *OvnClientTestSuite) testAddLogicalRouterStaticRoute() {
 		nexthops := []string{"192.168.50.1", "192.168.60.1"}
 
 		t.Run("create route", func(t *testing.T) {
-			err = ovnClient.AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nexthops...)
+			err = ovnClient.AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nil, nexthops...)
 			require.NoError(t, err)
 
 			lr, err := ovnClient.GetLogicalRouter(lrName, false)
@@ -126,7 +126,7 @@ func (suite *OvnClientTestSuite) testAddLogicalRouterStaticRoute() {
 		})
 
 		t.Run("update route", func(t *testing.T) {
-			err = ovnClient.AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nexthops...)
+			err = ovnClient.AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nil, nexthops...)
 			require.NoError(t, err)
 		})
 	})
@@ -148,7 +148,7 @@ func (suite *OvnClientTestSuite) testDeleteLogicalRouterStaticRoute() {
 		ipPrefix := "192.168.30.0/24"
 		nexthop := "192.168.30.1"
 
-		err = ovnClient.AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nexthop)
+		err = ovnClient.AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nil, nexthop)
 		require.NoError(t, err)
 
 		lr, err := ovnClient.GetLogicalRouter(lrName, false)
@@ -169,11 +169,11 @@ func (suite *OvnClientTestSuite) testDeleteLogicalRouterStaticRoute() {
 		require.ErrorContains(t, err, "not found")
 	})
 
-	t.Run("ecmp route", func(t *testing.T) {
+	t.Run("ecmp policy route", func(t *testing.T) {
 		ipPrefix := "192.168.40.0/24"
 		nexthops := []string{"192.168.50.1", "192.168.60.1"}
 
-		err = ovnClient.AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nexthops...)
+		err = ovnClient.AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nil, nexthops...)
 		require.NoError(t, err)
 
 		lr, err := ovnClient.GetLogicalRouter(lrName, false)
@@ -228,7 +228,7 @@ func (suite *OvnClientTestSuite) testClearLogicalRouterStaticRoute() {
 	require.NoError(t, err)
 
 	for i, ipPrefix := range ipPrefixes {
-		route, err := ovnClient.newLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nexthops[i])
+		route, err := ovnClient.newLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nexthops[i], nil)
 		require.NoError(t, err)
 
 		routes = append(routes, route)
@@ -271,7 +271,7 @@ func (suite *OvnClientTestSuite) testGetLogicalRouterStaticRoute() {
 		ipPrefix := "192.168.30.0/24"
 		nexthop := "192.168.30.1"
 
-		err := ovnClient.AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nexthop)
+		err := ovnClient.AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nil, nexthop)
 		require.NoError(t, err)
 
 		t.Run("found route", func(t *testing.T) {
@@ -301,7 +301,7 @@ func (suite *OvnClientTestSuite) testGetLogicalRouterStaticRoute() {
 		ipPrefix := "192.168.40.0/24"
 		nexthop := "192.168.40.1"
 
-		err := ovnClient.AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nexthop)
+		err := ovnClient.AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nil, nexthop)
 		require.NoError(t, err)
 
 		t.Run("found route", func(t *testing.T) {
@@ -332,7 +332,7 @@ func (suite *OvnClientTestSuite) testListLogicalRouterStaticRoutes() {
 	require.NoError(t, err)
 
 	for i, ipPrefix := range ipPrefixes {
-		route, err := ovnClient.newLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nexthops[i])
+		route, err := ovnClient.newLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nexthops[i], nil)
 		require.NoError(t, err)
 
 		routes = append(routes, route)
@@ -366,9 +366,10 @@ func (suite *OvnClientTestSuite) test_newLogicalRouterStaticRoute() {
 		Policy:   &policy,
 		IPPrefix: ipPrefix,
 		Nexthop:  nexthop,
+		BFD:      nil,
 	}
 
-	route, err := ovnClient.newLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nexthop)
+	route, err := ovnClient.newLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nexthop, nil)
 	require.NoError(t, err)
 	expect.UUID = route.UUID
 	require.Equal(t, expect, route)

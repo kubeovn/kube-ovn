@@ -5,7 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strconv"
+	"reflect"
+	"strings"
 	"time"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -29,7 +30,7 @@ func (c *Controller) enqueueAddOvnEip(obj interface{}) {
 		utilruntime.HandleError(err)
 		return
 	}
-	klog.V(3).Infof("enqueue add ovn eip %s", key)
+	klog.Infof("enqueue add ovn eip %s", key)
 	c.addOvnEipQueue.Add(key)
 }
 
@@ -47,7 +48,7 @@ func (c *Controller) enqueueUpdateOvnEip(old, new interface{}) {
 			// avoid delete eip twice
 			return
 		} else {
-			klog.V(3).Infof("enqueue del ovn eip %s", key)
+			klog.Infof("enqueue del ovn eip %s", key)
 			c.delOvnEipQueue.Add(newEip)
 			return
 		}
@@ -58,8 +59,11 @@ func (c *Controller) enqueueUpdateOvnEip(old, new interface{}) {
 		c.resetOvnEipQueue.Add(key)
 		return
 	}
-	klog.V(3).Infof("enqueue update ovn eip %s", key)
-	c.updateOvnEipQueue.Add(key)
+	if !reflect.DeepEqual(oldEip.Spec.V4Ip, newEip.Spec.V4Ip) ||
+		!reflect.DeepEqual(oldEip.Spec.V6Ip, newEip.Spec.V6Ip) {
+		klog.Infof("enqueue update ovn eip %s", key)
+		c.updateOvnEipQueue.Add(key)
+	}
 }
 
 func (c *Controller) enqueueDelOvnEip(obj interface{}) {
@@ -69,7 +73,7 @@ func (c *Controller) enqueueDelOvnEip(obj interface{}) {
 		utilruntime.HandleError(err)
 		return
 	}
-	klog.V(3).Infof("enqueue del ovn eip %s", key)
+	klog.Infof("enqueue del ovn eip %s", key)
 	eip := obj.(*kubeovnv1.OvnEip)
 	c.delOvnEipQueue.Add(eip)
 }
@@ -219,7 +223,7 @@ func (c *Controller) handleAddOvnEip(key string) error {
 		// already ok
 		return nil
 	}
-	klog.V(3).Infof("handle add ovn eip %s", cachedEip.Name)
+	klog.Infof("handle add ovn eip %s", cachedEip.Name)
 	var v4ip, v6ip, mac, subnetName string
 	subnetName = cachedEip.Spec.ExternalSubnet
 	if subnetName == "" {
@@ -248,9 +252,11 @@ func (c *Controller) handleAddOvnEip(key string) error {
 			klog.Error("failed to create lsp for ovn eip %s, %v", key, err)
 			return err
 		}
-
 	}
-
+	if cachedEip.Spec.Type == "" {
+		// the eip only used by nat: fip, dnat, snat
+		cachedEip.Spec.Type = util.NatUsingEip
+	}
 	if err = c.createOrUpdateCrdOvnEip(key, subnet.Name, v4ip, v6ip, mac, cachedEip.Spec.Type); err != nil {
 		klog.Errorf("failed to create or update ovn eip '%s', %v", cachedEip.Name, err)
 		return err
@@ -266,7 +272,6 @@ func (c *Controller) handleAddOvnEip(key string) error {
 		klog.Errorf("failed to count ovn eip '%s' in subnet, %v", cachedEip.Name, err)
 		return err
 	}
-
 	return nil
 }
 
@@ -316,33 +321,10 @@ func (c *Controller) handleResetOvnEip(key string) error {
 	if !cachedEip.DeletionTimestamp.IsZero() {
 		return nil
 	}
-
-	klog.V(3).Infof("handle reset ovn eip %s", cachedEip.Name)
-	var notUse bool
-	if notUse, err = c.isOvnEipNotUse(cachedEip); err != nil {
-		klog.Errorf("failed to check whether ovn eip '%s' is still in use, %v", cachedEip.Name, err)
+	klog.Infof("handle reset ovn eip %s", cachedEip.Name)
+	if err := c.patchOvnEipStatus(key, true); err != nil {
+		klog.Errorf("failed to reset nat for eip %s, %v", key, err)
 		return err
-	}
-
-	if notUse {
-		if cachedEip.Status.MacAddress != "" && cachedEip.Status.MacAddress != cachedEip.Spec.MacAddress {
-			// eip not support change ip, reset eip spec from its status
-			if err = c.resetOvnEipSpec(key); err != nil {
-				klog.Errorf("failed to reset ovn eip '%s', %v", cachedEip.Name, err)
-				return err
-			}
-			return nil
-		}
-		if cachedEip.Spec.Type == "" {
-			if err := c.patchOvnEipNat(key, ""); err != nil {
-				klog.Errorf("failed to reset ovn eip '%s', %v", cachedEip.Name, err)
-				return err
-			}
-		}
-		if err = c.natLabelAndAnnoOvnEip(cachedEip.Name, "", ""); err != nil {
-			klog.Errorf("failed to reset ovn eip %s, %v", cachedEip.Name, err)
-			return err
-		}
 	}
 	return nil
 }
@@ -352,6 +334,11 @@ func (c *Controller) handleDelOvnEip(eip *kubeovnv1.OvnEip) error {
 	if len(eip.Finalizers) > 1 {
 		err := errors.New("eip is referenced, it cannot be deleted directly")
 		klog.Errorf("failed to delete eip %s, %v", eip.Name, err)
+		return err
+	}
+
+	if err := c.handleDelOvnEipFinalizer(eip, util.OvnEipFinalizer); err != nil {
+		klog.Errorf("failed to handle remove ovn eip finalizer , %v", err)
 		return err
 	}
 
@@ -382,8 +369,9 @@ func (c *Controller) createOrUpdateCrdOvnEip(key, subnet, v4ip, v6ip, mac, usage
 				ObjectMeta: metav1.ObjectMeta{
 					Name: key,
 					Labels: map[string]string{
-						util.SubnetNameLabel:  subnet,
-						util.OvnEipUsageLabel: usage,
+						util.SubnetNameLabel: subnet,
+						util.OvnEipTypeLabel: usage,
+						util.EipV4IpLabel:    v4ip,
 					},
 				},
 				Spec: kubeovnv1.OvnEipSpec{
@@ -444,8 +432,9 @@ func (c *Controller) createOrUpdateCrdOvnEip(key, subnet, v4ip, v6ip, mac, usage
 		if len(ovnEip.Labels) == 0 {
 			op = "add"
 			ovnEip.Labels = map[string]string{
-				util.SubnetNameLabel:  subnet,
-				util.OvnEipUsageLabel: usage,
+				util.SubnetNameLabel: subnet,
+				util.OvnEipTypeLabel: usage,
+				util.EipV4IpLabel:    v4ip,
 			}
 			needUpdateLabel = true
 		}
@@ -464,35 +453,6 @@ func (c *Controller) createOrUpdateCrdOvnEip(key, subnet, v4ip, v6ip, mac, usage
 				return err
 			}
 		}
-	}
-	return nil
-}
-
-func (c *Controller) patchLrpOvnEipEnableBfdLabel(key string, enableBfd bool) error {
-	cachedEip, err := c.ovnEipsLister.Get(key)
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		} else {
-			err := fmt.Errorf("failed to get ovn eip %s, %v", key, err)
-			klog.Error(err)
-			return err
-		}
-	}
-	ovnEip := cachedEip.DeepCopy()
-	expectValue := strconv.FormatBool(enableBfd)
-	if val, ok := ovnEip.Labels[util.OvnLrpEipEnableBfdLabel]; ok && (val == expectValue) {
-		return nil
-	}
-	op := "replace"
-	ovnEip.Labels[util.OvnLrpEipEnableBfdLabel] = expectValue
-	patchPayloadTemplate := `[{ "op": "%s", "path": "/metadata/labels", "value": %s }]`
-	raw, _ := json.Marshal(ovnEip.Labels)
-	patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
-	if _, err := c.config.KubeOvnClient.KubeovnV1().OvnEips().Patch(context.Background(), ovnEip.Name, types.JSONPatchType,
-		[]byte(patchPayload), metav1.PatchOptions{}); err != nil {
-		klog.Errorf("failed to patch label for ovn eip '%s', %v", ovnEip.Name, err)
-		return err
 	}
 	return nil
 }
@@ -520,6 +480,18 @@ func (c *Controller) patchOvnEipStatus(key string, ready bool) error {
 		ovnEip.Status.Type = ovnEip.Spec.Type
 		changed = true
 	}
+	nat, err := c.getOvnEipNat(ovnEip.Spec.V4Ip)
+	if err != nil {
+		err := fmt.Errorf("failed to get ovn eip nat")
+		klog.Error(err)
+		return err
+	}
+	// nat record all kinds of nat rules using this eip
+	klog.V(3).Infof("nat of ovn eip %s is %s", ovnEip.Name, nat)
+	if ovnEip.Status.Nat != nat {
+		ovnEip.Status.Nat = nat
+		changed = true
+	}
 	if changed {
 		bytes, err := ovnEip.Status.Bytes()
 		if err != nil {
@@ -529,31 +501,6 @@ func (c *Controller) patchOvnEipStatus(key string, ready bool) error {
 		if _, err = c.config.KubeOvnClient.KubeovnV1().OvnEips().Patch(context.Background(), ovnEip.Name,
 			types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
 			klog.Errorf("failed to patch status for ovn eip '%s', %v", key, err)
-			return err
-		}
-	}
-	return nil
-}
-
-func (c *Controller) resetOvnEipSpec(key string) error {
-	cachedOvnEip, err := c.ovnEipsLister.Get(key)
-	if err != nil {
-		klog.Errorf("failed to get cached ovn eip '%s', %v", key, err)
-		return err
-	}
-	ovnEip := cachedOvnEip.DeepCopy()
-	changed := false
-	if ovnEip.Status.MacAddress != "" {
-		// not support change ip
-		ovnEip.Spec.V4Ip = ovnEip.Status.V4Ip
-		ovnEip.Spec.V6Ip = ovnEip.Status.V6Ip
-		ovnEip.Spec.MacAddress = ovnEip.Status.MacAddress
-		changed = true
-	}
-	if changed {
-		klog.V(3).Infof("reset spec for eip %s", key)
-		if _, err = c.config.KubeOvnClient.KubeovnV1().OvnEips().Update(context.Background(), ovnEip, metav1.UpdateOptions{}); err != nil {
-			klog.Errorf("failed to update spec for ovn eip '%s', %v", key, err)
 			return err
 		}
 	}
@@ -648,19 +595,18 @@ func (c *Controller) handleDelOvnEipFinalizer(cachedEip *kubeovnv1.OvnEip, final
 	if len(cachedEip.Finalizers) == 0 {
 		return nil
 	}
-
 	var err error
-	var notUse bool
-	if notUse, err = c.isOvnEipNotUse(cachedEip); err != nil {
-		klog.Errorf("failed to check whether ovn eip '%s' is still in use, %v", cachedEip.Name, err)
+	nat, err := c.getOvnEipNat(cachedEip.Spec.V4Ip)
+	if err != nil {
+		err := fmt.Errorf("failed to get ovn eip nat")
+		klog.Error(err)
 		return err
 	}
-
-	if !notUse {
-		klog.V(3).Infof("ovn eip '%s' is still in use, finalizer will not be removed", cachedEip.Name)
-		return nil
+	if nat != "" {
+		err = fmt.Errorf("ovn eip '%s' is still in use, finalizer will not be removed", cachedEip.Name)
+		klog.Error(err)
+		return err
 	}
-
 	newEip := cachedEip.DeepCopy()
 	controllerutil.RemoveFinalizer(newEip, finalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedEip, newEip)
@@ -679,66 +625,33 @@ func (c *Controller) handleDelOvnEipFinalizer(cachedEip *kubeovnv1.OvnEip, final
 	return nil
 }
 
-func (c *Controller) patchOvnEipNat(key, nat string) error {
-	cachedEip, err := c.ovnEipsLister.Get(key)
+func (c *Controller) getOvnEipNat(eipV4IP string) (string, error) {
+	nats := make([]string, 0, 3)
+	selector := labels.SelectorFromSet(labels.Set{util.EipV4IpLabel: eipV4IP})
+	dnats, err := c.ovnDnatRulesLister.List(selector)
 	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
-		return err
+		klog.Errorf("failed to get ovn dnats, %v", err)
+		return "", err
 	}
-	if cachedEip.Status.Type == nat {
-		return nil
+	if len(dnats) != 0 {
+		nats = append(nats, util.DnatUsingEip)
 	}
-	eip := cachedEip.DeepCopy()
-	eip.Status.Type = nat
-	bytes, err := eip.Status.Bytes()
+	fips, err := c.ovnFipsLister.List(selector)
 	if err != nil {
-		klog.Errorf("failed to marshal eip %s, %v", eip.Name, err)
-		return err
+		klog.Errorf("failed to get ovn fips, %v", err)
+		return "", err
 	}
-	if _, err = c.config.KubeOvnClient.KubeovnV1().OvnEips().Patch(context.Background(), key, types.MergePatchType,
-		bytes, metav1.PatchOptions{}, "status"); err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
-		klog.Errorf("failed to patch ovn eip %s, %v", eip.Name, err)
-		return err
+	if len(fips) != 0 {
+		nats = append(nats, util.FipUsingEip)
 	}
-	return nil
-}
-
-func (c *Controller) isOvnEipNotUse(cachedEip *kubeovnv1.OvnEip) (bool, error) {
-	switch cachedEip.Status.Type {
-	case util.DnatUsingEip:
-		// nat change eip not that fast
-		dnats, err := c.ovnDnatRulesLister.List(labels.Everything())
-		if err != nil {
-			klog.Errorf("failed to get ovn dnat list, %v", err)
-			return false, err
-		}
-		for _, item := range dnats {
-			if item.DeletionTimestamp.IsZero() && item.Annotations[util.VpcEipAnnotation] == cachedEip.Name {
-				klog.Infof("ovn dnat %s is using eip %s, %v", item.Name, cachedEip.Name, err)
-				return false, nil
-			}
-		}
-	case util.SnatUsingEip:
-		// nat change eip not that fast
-		snats, err := c.ovnSnatRulesLister.List(labels.Everything())
-		if err != nil {
-			klog.Errorf("failed to get ovn snat, %v", err)
-			return false, err
-		}
-		for _, item := range snats {
-			if item.DeletionTimestamp.IsZero() && item.Annotations[util.VpcEipAnnotation] == cachedEip.Name {
-				klog.Infof("ovn snat %s is using eip %s, %v", item.Name, cachedEip.Name, err)
-				return false, nil
-			}
-		}
-	case util.FipUsingEip:
-	default:
-		return true, nil
+	snats, err := c.ovnSnatRulesLister.List(selector)
+	if err != nil {
+		klog.Errorf("failed to get ovn snats, %v", err)
+		return "", err
 	}
-	return true, nil
+	if len(snats) != 0 {
+		nats = append(nats, util.SnatUsingEip)
+	}
+	nat := strings.Join(nats, ",")
+	return nat, nil
 }

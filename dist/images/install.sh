@@ -1407,6 +1407,9 @@ spec:
       - jsonPath: .status.type
         name: Type
         type: string
+      - jsonPath: .status.nat
+        name: Nat
+        type: string
       - jsonPath: .status.ready
         name: Ready
         type: boolean
@@ -1418,6 +1421,8 @@ spec:
               type: object
               properties:
                 type:
+                  type: string
+                nat:
                   type: string
                 ready:
                   type: boolean
