@@ -16,6 +16,7 @@ import (
 func (c *ovnClient) CreatePortGroup(pgName string, externalIDs map[string]string) error {
 	exist, err := c.PortGroupExists(pgName)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 
@@ -61,6 +62,7 @@ func (c *ovnClient) PortGroupSetPorts(pgName string, ports []string) error {
 	for _, port := range ports {
 		lsp, err := c.GetLogicalSwitchPort(port, true)
 		if err != nil {
+			klog.Error(err)
 			return err
 		}
 		if lsp != nil {
@@ -113,6 +115,7 @@ func (c *ovnClient) PortGroupUpdatePorts(pgName string, op ovsdb.Mutator, lspNam
 	for _, lspName := range lspNames {
 		lsp, err := c.GetLogicalSwitchPort(lspName, true)
 		if err != nil {
+			klog.Error(err)
 			return err
 		}
 
@@ -147,6 +150,7 @@ func (c *ovnClient) DeletePortGroup(pgName string) error {
 
 	op, err := c.Where(pg).Delete()
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 

@@ -306,6 +306,7 @@ func (c *Controller) createOrUpdateVpcDnsSlr(vpcDns *kubeovnv1.VpcDns) error {
 		if k8serrors.IsNotFound(err) {
 			needToCreateSlr = true
 		} else {
+			klog.Error(err)
 			return err
 		}
 	}
@@ -487,6 +488,7 @@ func (c *Controller) checkOvnNad() error {
 	_, err := c.config.AttachNetClient.K8sCniCncfIoV1().NetworkAttachmentDefinitions(corev1.NamespaceDefault).
 		Get(context.Background(), nadName, metav1.GetOptions{})
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 
@@ -496,6 +498,7 @@ func (c *Controller) checkOvnNad() error {
 func (c *Controller) checkOvnDefaultSpecProvider() error {
 	cachedSubnet, err := c.subnetsLister.Get(util.DefaultSubnet)
 	if err != nil {
+		klog.Error(err)
 		return fmt.Errorf("failed to get default subnet %v", err)
 	}
 
@@ -589,6 +592,7 @@ func (c *Controller) getDefaultCoreDnsImage() (string, error) {
 	dp, err := c.config.KubeClient.AppsV1().Deployments("kube-system").
 		Get(context.Background(), "coredns", metav1.GetOptions{})
 	if err != nil {
+		klog.Error(err)
 		return "", err
 	}
 

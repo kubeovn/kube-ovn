@@ -487,11 +487,13 @@ func (c *Controller) processNextUpdatePodSecurityWorkItem() bool {
 func (c *Controller) getPodKubeovnNets(pod *v1.Pod) ([]*kubeovnNet, error) {
 	defaultSubnet, err := c.getPodDefaultSubnet(pod)
 	if err != nil {
+		klog.Error(err)
 		return nil, err
 	}
 
 	attachmentNets, err := c.getPodAttachmentNet(pod)
 	if err != nil {
+		klog.Error(err)
 		return nil, err
 	}
 
@@ -557,6 +559,7 @@ func (c *Controller) handleAddOrUpdatePod(key string) (err error) {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	pod := cachedPod.DeepCopy()
@@ -612,6 +615,7 @@ func (c *Controller) reconcileAllocateSubnets(cachedPod, pod *v1.Pod, needAlloca
 		v4IP, v6IP, mac, subnet, err := c.acquireAddress(pod, podNet)
 		if err != nil {
 			c.recorder.Eventf(pod, v1.EventTypeWarning, "AcquireAddressFailed", err.Error())
+			klog.Error(err)
 			return nil, err
 		}
 		ipStr := util.GetStringIP(v4IP, v6IP)
@@ -663,6 +667,7 @@ func (c *Controller) reconcileAllocateSubnets(cachedPod, pod *v1.Pod, needAlloca
 			if subnet.Spec.Vlan != "" {
 				vlan, err := c.vlansLister.Get(subnet.Spec.Vlan)
 				if err != nil {
+					klog.Error(err)
 					c.recorder.Eventf(pod, v1.EventTypeWarning, "GetVlanInfoFailed", err.Error())
 					return nil, err
 				}
@@ -810,6 +815,7 @@ func (c *Controller) reconcileRouteSubnets(cachedPod, pod *v1.Pod, needRoutePodN
 				if subnet.Spec.GatewayType == kubeovnv1.GWDistributedType && pod.Annotations[util.NorthGatewayAnnotation] == "" {
 					nodeTunlIPAddr, err := getNodeTunlIP(node)
 					if err != nil {
+						klog.Error(err)
 						return err
 					}
 
@@ -933,12 +939,14 @@ func (c *Controller) handleDeletePod(key string) error {
 			if k8serrors.IsNotFound(err) {
 				continue
 			} else if err != nil {
+				klog.Error(err)
 				return err
 			}
 			vpc, err := c.vpcsLister.Get(subnet.Spec.Vpc)
 			if k8serrors.IsNotFound(err) {
 				continue
 			} else if err != nil {
+				klog.Error(err)
 				return err
 			}
 			// If pod has snat or eip, also need delete staticRoute when delete pod
@@ -1029,6 +1037,7 @@ func (c *Controller) handleUpdatePodSecurity(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	podName := c.getNameByPod(pod)
@@ -1229,6 +1238,7 @@ func (c *Controller) podNeedSync(pod *v1.Pod) (bool, error) {
 	// 3. check multus subnet
 	attachmentNets, err := c.getPodAttachmentNet(pod)
 	if err != nil {
+		klog.Error(err)
 		return false, err
 	}
 	for _, n := range attachmentNets {
@@ -1536,10 +1546,12 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 
 			ipv4, ipv6, mac, err := c.ipam.GetRandomAddress(key, portName, macStr, podNet.Subnet.Name, "", skippedAddrs, !podNet.AllowLiveMigration)
 			if err != nil {
+				klog.Error(err)
 				return "", "", "", podNet.Subnet, err
 			}
 			ipv4OK, ipv6OK, err := c.validatePodIP(pod.Name, podNet.Subnet.Name, ipv4, ipv6)
 			if err != nil {
+				klog.Error(err)
 				return "", "", "", podNet.Subnet, err
 			}
 			if ipv4OK && ipv6OK {

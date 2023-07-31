@@ -9,6 +9,7 @@ import (
 
 	"github.com/ovn-org/libovsdb/model"
 	"github.com/ovn-org/libovsdb/ovsdb"
+	"k8s.io/klog/v2"
 
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
@@ -18,6 +19,7 @@ import (
 func (c *ovnClient) CreateLoadBalancer(lbName, protocol, selectFields string) error {
 	exist, err := c.LoadBalancerExists(lbName)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 
@@ -126,6 +128,7 @@ func (c *ovnClient) LoadBalancerDeleteVip(lbName string, vip string) error {
 func (c *ovnClient) SetLoadBalancerAffinityTimeout(lbName string, timeout int) error {
 	lb, err := c.GetLoadBalancer(lbName, false)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 	value := strconv.Itoa(timeout)
@@ -171,10 +174,12 @@ func (c *ovnClient) DeleteLoadBalancers(filter func(lb *ovnnb.LoadBalancer) bool
 func (c *ovnClient) DeleteLoadBalancer(lbName string) error {
 	op, err := c.DeleteLoadBalancerOp(lbName)
 	if err != nil {
-		return nil
+		klog.Error(err)
+		return err
 	}
 
 	if err := c.Transact("lb-del", op); err != nil {
+		klog.Error(err)
 		return fmt.Errorf("delete load balancer %s: %v", lbName, err)
 	}
 
@@ -236,6 +241,7 @@ func (c *ovnClient) ListLoadBalancers(filter func(lb *ovnnb.LoadBalancer) bool) 
 func (c *ovnClient) LoadBalancerOp(lbName string, mutationsFunc ...func(lb *ovnnb.LoadBalancer) []model.Mutation) ([]ovsdb.Operation, error) {
 	lb, err := c.GetLoadBalancer(lbName, false)
 	if err != nil {
+		klog.Error(err)
 		return nil, err
 	}
 
@@ -255,6 +261,7 @@ func (c *ovnClient) LoadBalancerOp(lbName string, mutationsFunc ...func(lb *ovnn
 
 	ops, err := c.ovnNbClient.Where(lb).Mutate(lb, mutations...)
 	if err != nil {
+		klog.Error(err)
 		return nil, fmt.Errorf("generate operations for mutating load balancer %s: %v", lb.Name, err)
 	}
 
@@ -266,6 +273,7 @@ func (c *ovnClient) DeleteLoadBalancerOp(lbName string) ([]ovsdb.Operation, erro
 	lb, err := c.GetLoadBalancer(lbName, true)
 
 	if err != nil {
+		klog.Error(err)
 		return nil, err
 	}
 
@@ -276,6 +284,7 @@ func (c *ovnClient) DeleteLoadBalancerOp(lbName string) ([]ovsdb.Operation, erro
 
 	op, err := c.Where(lb).Delete()
 	if err != nil {
+		klog.Error(err)
 		return nil, err
 	}
 

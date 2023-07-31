@@ -75,6 +75,7 @@ func ovsFind(table, column string, conditions ...string) ([]string, error) {
 	copy(args[4:], conditions)
 	output, err := Exec(args...)
 	if err != nil {
+		klog.Error(err)
 		return nil, err
 	}
 	values := strings.Split(output, "\n\n")
@@ -121,6 +122,7 @@ func Bridges() ([]string, error) {
 func BridgeExists(name string) (bool, error) {
 	bridges, err := Bridges()
 	if err != nil {
+		klog.Error(err)
 		return false, err
 	}
 	return util.ContainsString(bridges, name), nil
@@ -143,11 +145,13 @@ func GetQosList(podName, podNamespace, ifaceID string) ([]string, error) {
 	if ifaceID != "" {
 		qosList, err = ovsFind("qos", "_uuid", fmt.Sprintf(`external-ids:iface-id="%s"`, ifaceID))
 		if err != nil {
+			klog.Error(err)
 			return qosList, err
 		}
 	} else {
 		qosList, err = ovsFind("qos", "_uuid", fmt.Sprintf(`external-ids:pod="%s/%s"`, podNamespace, podName))
 		if err != nil {
+			klog.Error(err)
 			return qosList, err
 		}
 	}
@@ -159,12 +163,14 @@ func GetQosList(podName, podNamespace, ifaceID string) ([]string, error) {
 func ClearPodBandwidth(podName, podNamespace, ifaceID string) error {
 	qosList, err := GetQosList(podName, podNamespace, ifaceID)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 
 	// https://github.com/kubeovn/kube-ovn/issues/1191
 	usedQosList, err := ovsFind("port", "qos", "qos!=[]")
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 
@@ -255,6 +261,7 @@ func ValidatePortVendor(port string) (bool, error) {
 func GetInterfacePodNs(iface string) (string, error) {
 	ret, err := ovsFind("interface", "external-ids", fmt.Sprintf("external-ids:iface-id=%s", iface))
 	if err != nil {
+		klog.Error(err)
 		return "", err
 	}
 
@@ -279,6 +286,7 @@ func ConfigInterfaceMirror(globalMirror bool, open string, iface string) error {
 	// find interface name for port
 	interfaceList, err := ovsFind("interface", "name", fmt.Sprintf("external-ids:iface-id=%s", iface))
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 	for _, ifName := range interfaceList {
@@ -286,6 +294,7 @@ func ConfigInterfaceMirror(globalMirror bool, open string, iface string) error {
 		// find port uuid by interface name
 		portUUIDs, err := ovsFind("port", "_uuid", fmt.Sprintf("name=%s", ifName))
 		if err != nil {
+			klog.Error(err)
 			return err
 		}
 		if len(portUUIDs) != 1 {
@@ -296,11 +305,13 @@ func ConfigInterfaceMirror(globalMirror bool, open string, iface string) error {
 			// add port to mirror
 			err = ovsAdd("mirror", util.MirrorDefaultName, "select_dst_port", portId)
 			if err != nil {
+				klog.Error(err)
 				return err
 			}
 		} else {
 			mirrorPorts, err := ovsFind("mirror", "select_dst_port", fmt.Sprintf("name=%s", util.MirrorDefaultName))
 			if err != nil {
+				klog.Error(err)
 				return err
 			}
 			if len(mirrorPorts) == 0 {
@@ -314,6 +325,7 @@ func ConfigInterfaceMirror(globalMirror bool, open string, iface string) error {
 					// remove port from mirror
 					_, err := Exec("remove", "mirror", util.MirrorDefaultName, "select_dst_port", portId)
 					if err != nil {
+						klog.Error(err)
 						return err
 					}
 				}
@@ -350,6 +362,7 @@ func GetResidualInternalPorts() []string {
 func ClearPortQosBinding(ifaceID string) error {
 	interfaceList, err := ovsFind("interface", "name", fmt.Sprintf(`external-ids:iface-id="%s"`, ifaceID))
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 

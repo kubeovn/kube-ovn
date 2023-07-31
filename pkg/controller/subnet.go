@@ -269,6 +269,7 @@ func formatSubnet(subnet *kubeovnv1.Subnet, c *Controller) (*kubeovnv1.Subnet, e
 
 	changed, err = checkSubnetChanged(subnet)
 	if err != nil {
+		klog.Error(err)
 		return nil, err
 	}
 	if subnet.Spec.Provider == "" {
@@ -336,6 +337,7 @@ func (c *Controller) updateNatOutgoingPolicyRulesStatus(subnet *kubeovnv1.Subnet
 		for index, rule := range subnet.Spec.NatOutgoingPolicyRules {
 			jsonRule, err := json.Marshal(rule)
 			if err != nil {
+				klog.Error(err)
 				return err
 			}
 			priority := fmt.Sprintf("%d", index)
@@ -365,6 +367,7 @@ func checkSubnetChanged(subnet *kubeovnv1.Subnet) (bool, error) {
 	// changed value may be overlapped, so use ret to record value
 	changed, err = checkAndUpdateCIDR(subnet)
 	if err != nil {
+		klog.Error(err)
 		return changed, err
 	}
 	if changed {
@@ -372,6 +375,7 @@ func checkSubnetChanged(subnet *kubeovnv1.Subnet) (bool, error) {
 	}
 	changed, err = checkAndUpdateGateway(subnet)
 	if err != nil {
+		klog.Error(err)
 		return changed, err
 	}
 	if changed {
@@ -390,6 +394,7 @@ func checkAndUpdateCIDR(subnet *kubeovnv1.Subnet) (bool, error) {
 	for _, cidr := range strings.Split(subnet.Spec.CIDRBlock, ",") {
 		_, ipNet, err := net.ParseCIDR(cidr)
 		if err != nil {
+			klog.Error(err)
 			return false, fmt.Errorf("subnet %s cidr %s is invalid", subnet.Name, cidr)
 		}
 		if ipNet.String() != cidr {
@@ -660,12 +665,14 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	klog.V(4).Infof("handle add or update subnet %s", cachedSubnet.Name)
 
 	subnet, err := formatSubnet(cachedSubnet.DeepCopy(), c)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 
@@ -844,6 +851,7 @@ func (c *Controller) handleUpdateSubnetStatus(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 
@@ -1498,6 +1506,7 @@ func (c *Controller) reconcileDistributedSubnetRouteInDefaultVpc(subnet *kubeovn
 		for _, port := range podPorts {
 			exist, err := c.ovnClient.LogicalSwitchPortExists(port)
 			if err != nil {
+				klog.Error(err)
 				return err
 			}
 
@@ -1554,6 +1563,7 @@ func (c *Controller) reconcileDefaultCentralizedSubnetRouteInDefaultVpc(subnet *
 			newActivateNode = node.Name
 			nodeTunlIPAddr, err = getNodeTunlIP(node)
 			if err != nil {
+				klog.Error(err)
 				return err
 			}
 			klog.Infof("subnet %s uses a new activate gw %s", subnet.Name, node.Name)
@@ -1932,6 +1942,7 @@ func calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 	// Get the number of pods, not ips. For one pod with two ip(v4 & v6) in dual-stack, num of Items is 1
 	podUsedIPs, err := c.ipsLister.List(labels.SelectorFromSet(labels.Set{subnet.Name: ""}))
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 
@@ -1953,6 +1964,7 @@ func calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 		util.IpReservedLabel: "",
 	}))
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 	usingIPs += float64(len(vips))
@@ -1961,6 +1973,7 @@ func calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 		eips, err := c.iptablesEipsLister.List(
 			labels.SelectorFromSet(labels.Set{util.SubnetNameLabel: subnet.Name}))
 		if err != nil {
+			klog.Error(err)
 			return err
 		}
 		usingIPs += float64(len(eips))
@@ -1998,6 +2011,7 @@ func calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 
 	bytes, err := subnet.Status.Bytes()
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 	_, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(context.Background(), subnet.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status")
@@ -2007,10 +2021,12 @@ func calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 func calcSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 	_, cidr, err := net.ParseCIDR(subnet.Spec.CIDRBlock)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 	podUsedIPs, err := c.ipsLister.List(labels.SelectorFromSet(labels.Set{subnet.Name: ""}))
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 	// gateway always in excludeIPs
@@ -2022,6 +2038,7 @@ func calcSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 		util.IpReservedLabel: "",
 	}))
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 	usingIPs += float64(len(vips))
@@ -2029,6 +2046,7 @@ func calcSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 		eips, err := c.iptablesEipsLister.List(
 			labels.SelectorFromSet(labels.Set{util.SubnetNameLabel: subnet.Name}))
 		if err != nil {
+			klog.Error(err)
 			return err
 		}
 		usingIPs += float64(len(eips))
@@ -2084,6 +2102,7 @@ func calcSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 
 	bytes, err := subnet.Status.Bytes()
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 	_, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(context.Background(), subnet.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status")
@@ -2597,6 +2616,7 @@ func (c *Controller) reconcileRouteTableForSubnet(subnet *kubeovnv1.Subnet) erro
 	routerPortName := ovs.LogicalRouterPortName(subnet.Spec.Vpc, subnet.Name)
 	lrp, err := c.ovnClient.GetLogicalRouterPort(routerPortName, false)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 

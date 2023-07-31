@@ -206,6 +206,7 @@ func (c *Controller) updateDenyAllSgPorts() error {
 		sgs := strings.Split(lsp.ExternalIDs[sgsKey], "/")
 		allNotExist, err := c.securityGroupAllNotExist(sgs)
 		if err != nil {
+			klog.Error(err)
 			return err
 		}
 
@@ -244,6 +245,7 @@ func (c *Controller) handleAddOrUpdateSg(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	sg := cachedSg.DeepCopy()
@@ -531,6 +533,7 @@ func (c *Controller) securityGroupAllNotExist(sgs []string) (bool, error) {
 	for _, sg := range sgs {
 		ok, err := c.ovnClient.PortGroupExists(ovs.GetSgPortGroupName(sg))
 		if err != nil {
+			klog.Error(err)
 			return true, err
 		}
 

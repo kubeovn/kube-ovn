@@ -187,6 +187,7 @@ func (c *Controller) getLbSvcPod(svcName, svcNamespace string) (*corev1.Pod, err
 
 	pods, err := c.podsLister.Pods(svcNamespace).List(sel)
 	if err != nil {
+		klog.Error(err)
 		return nil, err
 	} else if len(pods) == 0 {
 		time.Sleep(2 * time.Second)
@@ -267,6 +268,7 @@ func (c *Controller) execNatRules(pod *corev1.Pod, operation string, rules []str
 		if len(stdOutput) > 0 {
 			klog.V(3).Infof("failed to ExecuteCommandInContainer, stdOutput: %v", stdOutput)
 		}
+		klog.Error(err)
 		return err
 	}
 

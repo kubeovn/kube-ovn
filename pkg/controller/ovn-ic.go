@@ -323,6 +323,7 @@ func (c *Controller) startOvnIC(icHost, icNbPort, icSbPort string) error {
 	}
 	output, err := cmd.CombinedOutput()
 	if err != nil {
+		klog.Error(err)
 		return fmt.Errorf("%s", output)
 	}
 	return nil
@@ -332,6 +333,7 @@ func (c *Controller) stopOvnIC() error {
 	cmd := exec.Command("/usr/share/ovn/scripts/ovn-ctl", "stop_ic")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
+		klog.Error(err)
 		return fmt.Errorf("%s", output)
 	}
 	return nil
@@ -342,6 +344,7 @@ func (c *Controller) waitTsReady() error {
 	for retry > 0 {
 		ready, err := c.allSubnetReady(util.InterconnectionSwitch)
 		if err != nil {
+			klog.Error(err)
 			return err
 		}
 
@@ -406,16 +409,19 @@ func (c *Controller) RemoveOldChassisInSbDB(azName string) error {
 	azUUID, err := c.ovnLegacyClient.GetAzUUID(azName)
 	if err != nil {
 		klog.Errorf("failed to get UUID of AZ %s: %v", lastIcCm["az-name"], err)
+		return err
 	}
 
 	gateways, err := c.ovnLegacyClient.GetGatewayUUIDsInOneAZ(azUUID)
 	if err != nil {
 		klog.Errorf("failed to get gateway UUIDs in AZ %s: %v", azUUID, err)
+		return err
 	}
 
 	routes, err := c.ovnLegacyClient.GetRouteUUIDsInOneAZ(azUUID)
 	if err != nil {
 		klog.Errorf("failed to get route UUIDs in AZ %s: %v", azUUID, err)
+		return err
 	}
 
 	c.ovnLegacyClient.DestroyGateways(gateways)
@@ -504,6 +510,7 @@ func (c *Controller) listRemoteLogicalSwitchPortAddress() (*strset.Set, error) {
 		return lsp.Type == "remote"
 	})
 	if err != nil {
+		klog.Error(err)
 		return nil, fmt.Errorf("list remote logical switch ports: %v", err)
 	}
 

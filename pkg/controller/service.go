@@ -236,6 +236,7 @@ func (c *Controller) processNextUpdateServiceWorkItem() bool {
 func (c *Controller) handleDeleteService(service *vpcService) error {
 	key, err := cache.MetaNamespaceKeyFunc(service.Svc)
 	if err != nil {
+		klog.Error(err)
 		utilruntime.HandleError(fmt.Errorf("failed to get meta namespace key of %#v: %v", service.Svc, err))
 		return nil
 	}
@@ -303,6 +304,7 @@ func (c *Controller) handleUpdateService(key string) error {
 
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
+		klog.Error(err)
 		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
 		return nil
 	}
@@ -316,6 +318,7 @@ func (c *Controller) handleUpdateService(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 
@@ -437,6 +440,7 @@ func parseVipAddr(vip string) string {
 func (c *Controller) handleAddService(key string) error {
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
+		klog.Error(err)
 		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
 		return nil
 	}
@@ -450,6 +454,7 @@ func (c *Controller) handleAddService(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	if svc.Spec.Type != v1.ServiceTypeLoadBalancer || !c.config.EnableLbSvc {
@@ -489,6 +494,7 @@ func (c *Controller) handleAddService(key string) error {
 			if k8serrors.IsNotFound(err) {
 				return nil
 			}
+			klog.Error(err)
 			return err
 		}
 	}
@@ -504,6 +510,7 @@ func (c *Controller) handleAddService(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	var ingress v1.LoadBalancerIngress

@@ -574,6 +574,7 @@ func UDPConnectivityCheck(address string) error {
 
 	conn, err := net.DialUDP("udp", nil, udpAddr)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 

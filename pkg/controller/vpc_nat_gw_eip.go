@@ -215,6 +215,7 @@ func (c *Controller) handleAddIptablesEip(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	if cachedEip.Status.Ready && cachedEip.Status.IP != "" {
@@ -293,6 +294,7 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	externalNetwork := util.GetExternalNetwork(cachedEip.Spec.ExternalSubnet)
@@ -423,6 +425,7 @@ func (c *Controller) GetEip(eipName string) (*kubeovnv1.IptablesEIP, error) {
 func (c *Controller) createEipInPod(dp, gw, v4Cidr string) error {
 	gwPod, err := c.getNatGwPod(dp)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 	var addRules []string
@@ -440,12 +443,14 @@ func (c *Controller) deleteEipInPod(dp, v4Cidr string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	var delRules []string
 	rule := v4Cidr
 	delRules = append(delRules, rule)
 	if err = c.execNatGwRules(gwPod, natGwEipDel, delRules); err != nil {
+		klog.Error(err)
 		return err
 	}
 	return nil
@@ -518,6 +523,7 @@ func (c *Controller) addEipQoSInPod(
 	var operation string
 	gwPod, err := c.getNatGwPod(dp)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 	var addRules []string
@@ -541,6 +547,7 @@ func (c *Controller) delEipQoSInPod(dp string, v4ip string, direction kubeovnv1.
 	var operation string
 	gwPod, err := c.getNatGwPod(dp)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 	var delRules []string
@@ -581,11 +588,13 @@ func (c *Controller) acquireEip(name, namespace, nicName, externalSubnet string)
 	for {
 		ipv4, ipv6, mac, err := c.ipam.GetRandomAddress(name, nicName, nil, externalSubnet, "", skippedAddrs, true)
 		if err != nil {
+			klog.Error(err)
 			return "", "", "", err
 		}
 
 		ipv4OK, ipv6OK, err := c.validatePodIP(name, externalSubnet, ipv4, ipv6)
 		if err != nil {
+			klog.Error(err)
 			return "", "", "", err
 		}
 		if ipv4OK && ipv6OK {
@@ -684,6 +693,7 @@ func (c *Controller) createOrUpdateCrdEip(key, v4ip, v6ip, mac, natGwDp, qos, ex
 			eip.Status.QoSPolicy = qos
 			bytes, err := eip.Status.Bytes()
 			if err != nil {
+				klog.Error(err)
 				return err
 			}
 			if _, err = c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().Patch(context.Background(), key, types.MergePatchType,
@@ -735,6 +745,7 @@ func (c *Controller) handleAddIptablesEipFinalizer(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	if cachedIptablesEip.DeletionTimestamp.IsZero() {
@@ -766,6 +777,7 @@ func (c *Controller) handleDelIptablesEipFinalizer(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	if len(cachedIptablesEip.Finalizers) == 0 {
@@ -796,6 +808,7 @@ func (c *Controller) patchEipQoSStatus(key, qos string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	eip := oriEip.DeepCopy()
@@ -809,6 +822,7 @@ func (c *Controller) patchEipQoSStatus(key, qos string) error {
 	if changed {
 		bytes, err := eip.Status.Bytes()
 		if err != nil {
+			klog.Error(err)
 			return err
 		}
 		if _, err = c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().Patch(context.Background(), key, types.MergePatchType,
@@ -860,6 +874,7 @@ func (c *Controller) patchEipStatus(key, v4ip, redo, qos string, ready bool) err
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	eip := oriEip.DeepCopy()
@@ -900,6 +915,7 @@ func (c *Controller) patchEipStatus(key, v4ip, redo, qos string, ready bool) err
 	if changed {
 		bytes, err := eip.Status.Bytes()
 		if err != nil {
+			klog.Error(err)
 			return err
 		}
 		if _, err = c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().Patch(context.Background(), key, types.MergePatchType,
@@ -920,6 +936,7 @@ func (c *Controller) patchEipLabel(eipName string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	externalNetwork := util.GetExternalNetwork(oriEip.Spec.ExternalSubnet)

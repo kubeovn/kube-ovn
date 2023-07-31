@@ -72,10 +72,12 @@ func (ipam *IPAM) GetStaticAddress(podName, nicName, ip string, mac *string, sub
 		for _, ipStr := range strings.Split(ip, ",") {
 			ip, err := NewIP(ipStr)
 			if err != nil {
+				klog.Errorf("failed to parse ip %s", ipStr)
 				return "", "", "", err
 			}
 			ipAddr, macStr, err = subnet.GetStaticAddress(podName, nicName, ip, mac, false, checkConflict)
 			if err != nil {
+				klog.Errorf("failed to allocate static ip %s for %s", ipStr, podName)
 				return "", "", "", err
 			}
 			ips = append(ips, ipAddr)
@@ -169,10 +171,12 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr, gw string, excludeIps []strin
 		subnet.Protocol = protocol
 		v4Reserved, err := NewIPRangeListFrom(v4ExcludeIps...)
 		if err != nil {
+			klog.Errorf("failed to parse v4 exclude ips %v", v4ExcludeIps)
 			return err
 		}
 		v6Reserved, err := NewIPRangeListFrom(v6ExcludeIps...)
 		if err != nil {
+			klog.Errorf("failed to parse v6 exclude ips %v", v6ExcludeIps)
 			return err
 		}
 		if (protocol == kubeovnv1.ProtocolDual || protocol == kubeovnv1.ProtocolIPv4) &&
@@ -273,6 +277,7 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr, gw string, excludeIps []strin
 
 	subnet, err := NewSubnet(name, cidrStr, excludeIps)
 	if err != nil {
+		klog.Errorf("failed to create subnet %s, %v", name, err)
 		return err
 	}
 	subnet.V4Gw = v4Gw

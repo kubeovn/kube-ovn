@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"k8s.io/klog/v2"
 )
 
 func (c *ovnClient) CreateNbGlobal(nbGlobal *ovnnb.NBGlobal) error {
@@ -21,11 +22,13 @@ func (c *ovnClient) CreateNbGlobal(nbGlobal *ovnnb.NBGlobal) error {
 func (c *ovnClient) DeleteNbGlobal() error {
 	nbGlobal, err := c.GetNbGlobal()
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 
 	op, err := c.Where(nbGlobal).Delete()
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 
@@ -44,6 +47,7 @@ func (c *ovnClient) GetNbGlobal() (*ovnnb.NBGlobal, error) {
 	}).List(ctx, &nbGlobalList)
 
 	if err != nil {
+		klog.Error(err)
 		return nil, fmt.Errorf("list nbGlobal: %v", err)
 	}
 

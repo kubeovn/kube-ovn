@@ -86,6 +86,7 @@ func (c *Controller) InitDefaultVpc() error {
 
 	bytes, err := vpc.Status.Bytes()
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 	_, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Patch(context.Background(), vpc.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status")
@@ -263,10 +264,12 @@ func (c *Controller) initLoadBalancer() error {
 		vpc.Status.SctpSessionLoadBalancer = vpcLb.SctpSessLoadBalancer
 		bytes, err := vpc.Status.Bytes()
 		if err != nil {
+			klog.Error(err)
 			return err
 		}
 		_, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Patch(context.Background(), vpc.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status")
 		if err != nil {
+			klog.Error(err)
 			return err
 		}
 	}
@@ -588,6 +591,7 @@ func (c *Controller) initDefaultVlan() error {
 	}
 
 	if err := c.initDefaultProviderNetwork(); err != nil {
+		klog.Error(err)
 		return err
 	}
 
@@ -664,6 +668,7 @@ func (c *Controller) initSyncCrdSubnets() error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	for _, orisubnet := range subnets {
@@ -745,6 +750,7 @@ func (c *Controller) initSyncCrdVlans() error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 

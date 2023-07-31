@@ -500,6 +500,7 @@ func (c *Controller) handleAddIptablesFip(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	if fip.Status.Ready && fip.Status.V4ip != "" {
@@ -578,6 +579,7 @@ func (c *Controller) handleUpdateIptablesFip(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	// should delete
@@ -686,6 +688,7 @@ func (c *Controller) handleAddIptablesDnatRule(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	if dnat.Status.Ready && dnat.Status.V4ip != "" {
@@ -744,6 +747,7 @@ func (c *Controller) handleUpdateIptablesDnatRule(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	// should delete
@@ -857,6 +861,7 @@ func (c *Controller) handleAddIptablesSnatRule(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	if snat.Status.Ready && snat.Status.V4ip != "" {
@@ -915,6 +920,7 @@ func (c *Controller) handleUpdateIptablesSnatRule(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	v4Cidr, _ := util.SplitStringIP(cachedSnat.Status.InternalCIDR)
@@ -1017,6 +1023,7 @@ func (c *Controller) handleAddIptablesFipFinalizer(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	if cachedIptablesFip.DeletionTimestamp.IsZero() {
@@ -1048,6 +1055,7 @@ func (c *Controller) handleDelIptablesFipFinalizer(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	if len(cachedIptablesFip.Finalizers) == 0 {
@@ -1077,6 +1085,7 @@ func (c *Controller) handleAddIptablesDnatFinalizer(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	if cachedIptablesDnat.DeletionTimestamp.IsZero() {
@@ -1108,6 +1117,7 @@ func (c *Controller) handleDelIptablesDnatFinalizer(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	if len(cachedIptablesDnat.Finalizers) == 0 {
@@ -1137,6 +1147,7 @@ func (c *Controller) patchFipLabel(key string, eip *kubeovnv1.IptablesEIP) error
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	fip := oriFip.DeepCopy()
@@ -1187,6 +1198,7 @@ func (c *Controller) handleAddIptablesSnatFinalizer(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	if cachedIptablesSnat.DeletionTimestamp.IsZero() {
@@ -1218,6 +1230,7 @@ func (c *Controller) handleDelIptablesSnatFinalizer(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	if len(cachedIptablesSnat.Finalizers) == 0 {
@@ -1247,6 +1260,7 @@ func (c *Controller) patchFipStatus(key, v4ip, v6ip, natGwDp, redo string, ready
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	fip := oriFip.DeepCopy()
@@ -1274,6 +1288,7 @@ func (c *Controller) patchFipStatus(key, v4ip, v6ip, natGwDp, redo string, ready
 	if changed {
 		bytes, err := fip.Status.Bytes()
 		if err != nil {
+			klog.Error(err)
 			return err
 		}
 		if _, err = c.config.KubeOvnClient.KubeovnV1().IptablesFIPRules().Patch(context.Background(), fip.Name,
@@ -1325,6 +1340,7 @@ func (c *Controller) patchDnatLabel(key string, eip *kubeovnv1.IptablesEIP) erro
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	dnat := oriDnat.DeepCopy()
@@ -1377,6 +1393,7 @@ func (c *Controller) patchDnatStatus(key, v4ip, v6ip, natGwDp, redo string, read
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	var changed bool
@@ -1415,6 +1432,7 @@ func (c *Controller) patchDnatStatus(key, v4ip, v6ip, natGwDp, redo string, read
 	if changed {
 		bytes, err := dnat.Status.Bytes()
 		if err != nil {
+			klog.Error(err)
 			return err
 		}
 		if _, err = c.config.KubeOvnClient.KubeovnV1().IptablesDnatRules().Patch(context.Background(), dnat.Name,
@@ -1461,6 +1479,7 @@ func (c *Controller) patchSnatLabel(key string, eip *kubeovnv1.IptablesEIP) erro
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	snat := oriSnat.DeepCopy()
@@ -1482,6 +1501,7 @@ func (c *Controller) patchSnatLabel(key string, eip *kubeovnv1.IptablesEIP) erro
 	}
 	if needUpdateLabel {
 		if err := c.updateIptableLabels(snat.Name, op, util.SnatUsingEip, snat.Labels); err != nil {
+			klog.Error(err)
 			return err
 		}
 	}
@@ -1511,6 +1531,7 @@ func (c *Controller) patchSnatStatus(key, v4ip, v6ip, natGwDp, redo string, read
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	snat := oriSnat.DeepCopy()
@@ -1543,6 +1564,7 @@ func (c *Controller) patchSnatStatus(key, v4ip, v6ip, natGwDp, redo string, read
 	if changed {
 		bytes, err := snat.Status.Bytes()
 		if err != nil {
+			klog.Error(err)
 			return err
 		}
 		if _, err = c.config.KubeOvnClient.KubeovnV1().IptablesSnatRules().Patch(context.Background(), snat.Name,
@@ -1586,6 +1608,7 @@ func (c *Controller) redoSnat(key, redo string, eipReady bool) error {
 func (c *Controller) createFipInPod(dp, v4ip, internalIP string) error {
 	gwPod, err := c.getNatGwPod(dp)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 	var addRules []string
@@ -1604,6 +1627,7 @@ func (c *Controller) deleteFipInPod(dp, v4ip, internalIP string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	// del nat
@@ -1640,6 +1664,7 @@ func (c *Controller) deleteDnatInPod(dp, protocol, v4ip, internalIp, externalPor
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 
@@ -1686,6 +1711,7 @@ func (c *Controller) deleteSnatInPod(dp, v4ip, internalCIDR string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	// del nat
@@ -1843,6 +1869,7 @@ func (c *Controller) patchIptableInfo(name, natType, patchPayload string) error 
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	return nil

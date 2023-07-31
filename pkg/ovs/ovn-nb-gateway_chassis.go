@@ -7,6 +7,7 @@ import (
 	"github.com/ovn-org/libovsdb/client"
 	"github.com/ovn-org/libovsdb/model"
 	"github.com/ovn-org/libovsdb/ovsdb"
+	"k8s.io/klog/v2"
 
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
@@ -38,6 +39,7 @@ func (c *ovnClient) DeleteGatewayChassises(lrpName string, chassises []string) e
 		gwChassisName := lrpName + "-" + chassisName
 		op, err := c.DeleteGatewayChassisOp(gwChassisName)
 		if err != nil {
+			klog.Error(err)
 			return nil
 		}
 
@@ -82,6 +84,7 @@ func (c *ovnClient) GatewayChassisExist(name string) (bool, error) {
 func (c *ovnClient) newGatewayChassis(gwChassisName, chassisName string, priority int) (*ovnnb.GatewayChassis, error) {
 	exists, err := c.GatewayChassisExist(gwChassisName)
 	if err != nil {
+		klog.Error(err)
 		return nil, err
 	}
 
@@ -113,6 +116,7 @@ func (c *ovnClient) CreateGatewayChassisesOp(lrpName string, chassises []string)
 		gwChassisName := lrpName + "-" + chassisName
 		gwChassis, err := c.newGatewayChassis(gwChassisName, chassisName, 100-i)
 		if err != nil {
+			klog.Error(err)
 			return nil, err
 		}
 
@@ -125,12 +129,14 @@ func (c *ovnClient) CreateGatewayChassisesOp(lrpName string, chassises []string)
 
 	gwChassisCreateop, err := c.Create(models...)
 	if err != nil {
+		klog.Error(err)
 		return nil, fmt.Errorf("generate operations for creating gateway chassis %v", err)
 	}
 
 	/* add gateway chassis to logical router port */
 	gwChassisAddOp, err := c.LogicalRouterPortUpdateGatewayChassisOp(lrpName, uuids, ovsdb.MutateOperationInsert)
 	if err != nil {
+		klog.Error(err)
 		return nil, err
 	}
 
@@ -146,6 +152,7 @@ func (c *ovnClient) DeleteGatewayChassisOp(chassisName string) ([]ovsdb.Operatio
 	gwChassis, err := c.GetGatewayChassis(chassisName, true)
 
 	if err != nil {
+		klog.Error(err)
 		return nil, err
 	}
 
@@ -156,6 +163,7 @@ func (c *ovnClient) DeleteGatewayChassisOp(chassisName string) ([]ovsdb.Operatio
 
 	op, err := c.Where(gwChassis).Delete()
 	if err != nil {
+		klog.Error(err)
 		return nil, err
 	}
 

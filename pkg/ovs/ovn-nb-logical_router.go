@@ -32,6 +32,7 @@ func (c *ovnClient) CreateLogicalRouter(lrName string) error {
 
 	op, err := c.ovnNbClient.Create(lr)
 	if err != nil {
+		klog.Error(err)
 		return fmt.Errorf("generate operations for creating logical router %s: %v", lrName, err)
 	}
 
@@ -46,6 +47,7 @@ func (c *ovnClient) CreateLogicalRouter(lrName string) error {
 func (c *ovnClient) UpdateLogicalRouter(lr *ovnnb.LogicalRouter, fields ...interface{}) error {
 	op, err := c.UpdateLogicalRouterOp(lr, fields...)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 
@@ -60,6 +62,7 @@ func (c *ovnClient) UpdateLogicalRouter(lr *ovnnb.LogicalRouter, fields ...inter
 func (c *ovnClient) DeleteLogicalRouter(lrName string) error {
 	lr, err := c.GetLogicalRouter(lrName, true)
 	if err != nil {
+		klog.Error(err)
 		return fmt.Errorf("get logical router %s when delete: %v", lrName, err)
 	}
 
@@ -70,6 +73,7 @@ func (c *ovnClient) DeleteLogicalRouter(lrName string) error {
 
 	op, err := c.Where(lr).Delete()
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 
@@ -148,6 +152,7 @@ func (c *ovnClient) LogicalRouterUpdateLoadBalancers(lrName string, op ovsdb.Mut
 	for _, lbName := range lbNames {
 		lb, err := c.GetLoadBalancer(lbName, true)
 		if err != nil {
+			klog.Error(err)
 			return err
 		}
 
@@ -169,6 +174,7 @@ func (c *ovnClient) LogicalRouterUpdateLoadBalancers(lrName string, op ovsdb.Mut
 
 	ops, err := c.LogicalRouterOp(lrName, mutation)
 	if err != nil {
+		klog.Error(err)
 		return fmt.Errorf("generate operations for logical router %s update lbs %v: %v", lrName, lbNames, err)
 	}
 
@@ -188,6 +194,7 @@ func (c *ovnClient) UpdateLogicalRouterOp(lr *ovnnb.LogicalRouter, fields ...int
 
 	op, err := c.ovnNbClient.Where(lr).Update(lr, fields...)
 	if err != nil {
+		klog.Error(err)
 		return nil, fmt.Errorf("generate operations for updating logical router %s: %v", lr.Name, err)
 	}
 
@@ -299,6 +306,7 @@ func (c *ovnClient) LogicalRouterUpdateStaticRouteOp(lrName string, routeUUIDs [
 func (c *ovnClient) LogicalRouterOp(lrName string, mutationsFunc ...func(lr *ovnnb.LogicalRouter) *model.Mutation) ([]ovsdb.Operation, error) {
 	lr, err := c.GetLogicalRouter(lrName, false)
 	if err != nil {
+		klog.Error(err)
 		return nil, fmt.Errorf("get logical router %s: %v", lrName, err)
 	}
 
@@ -318,6 +326,7 @@ func (c *ovnClient) LogicalRouterOp(lrName string, mutationsFunc ...func(lr *ovn
 
 	ops, err := c.ovnNbClient.Where(lr).Mutate(lr, mutations...)
 	if err != nil {
+		klog.Error(err)
 		return nil, fmt.Errorf("generate operations for mutating logical router %s: %v", lrName, err)
 	}
 

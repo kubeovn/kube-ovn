@@ -127,6 +127,7 @@ func mvCNIConf(configDir, configFile, confName string) error {
 	// #nosec
 	data, err := os.ReadFile(configFile)
 	if err != nil {
+		klog.Errorf("failed to read cni config file %s, %v", configFile, err)
 		return err
 	}
 
