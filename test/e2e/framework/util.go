@@ -199,7 +199,7 @@ func randomPool(cidr string, count int) []string {
 			x, y := k%len(ips), (k+1)%len(ips)
 			n1, _ := rl.Find(ips[x])
 			n2, _ := rl.Find(ips[y])
-			if n1 == n2 {
+			if n1 == n2 && ips[x].LessThan(ips[y]) {
 				set.Add(fmt.Sprintf("%s..%s", ips[x].String(), ips[y].String()))
 				i, k = i+1, k+2
 				continue

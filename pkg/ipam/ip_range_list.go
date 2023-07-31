@@ -43,6 +43,9 @@ func NewIPRangeListFrom(x ...string) (*IPRangeList, error) {
 			if err != nil {
 				return nil, err
 			}
+			if start.GreaterThan(end) {
+				return nil, fmt.Errorf("invalid ip range %q: %s is greater than %s", s, start, end)
+			}
 			r = NewIPRange(start, end)
 		} else if strings.ContainsRune(s, '/') {
 			_, cidr, err := net.ParseCIDR(s)
