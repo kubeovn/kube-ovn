@@ -215,7 +215,7 @@ func (c *Controller) enqueueAddPod(obj interface{}) {
 		return
 	}
 
-	exist, err := c.podHasNotRoutedSubnet(p)
+	exist, err := c.podNeedSync(p)
 	if err != nil {
 		klog.Errorf("invalid pod net: %v", err)
 		return
@@ -1217,7 +1217,7 @@ func needAllocateSubnets(pod *v1.Pod, nets []*kubeovnNet) []*kubeovnNet {
 	return result
 }
 
-func (c *Controller) podHasNotRoutedSubnet(pod *v1.Pod) (bool, error) {
+func (c *Controller) podNeedSync(pod *v1.Pod) (bool, error) {
 	// 1. check annotations
 	if pod.Annotations == nil {
 		return true, nil
