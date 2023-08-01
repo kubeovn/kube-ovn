@@ -151,3 +151,23 @@ func (c LegacyClient) GetAllChassis() ([]string, error) {
 	}
 	return result, nil
 }
+
+// GetAllChassisMap return a map of chassis uuid : node name
+func (c LegacyClient) GetAllChassisMap() (map[string]string, error) {
+	output, err := c.ovnSbCommand("--format=csv", "--no-heading", "--data=bare", "--columns=name,hostname", "find", "chassis", fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName))
+	if err != nil {
+		return nil, fmt.Errorf("failed to find node chassis, %v", err)
+	}
+	lines := strings.Split(output, "\n")
+	result := make(map[string]string, len(lines))
+	for _, l := range lines {
+		if len(strings.TrimSpace(l)) == 0 {
+			continue
+		}
+		res := strings.Split(l, ",")
+		if len(res) == 2 {
+			result[res[0]] = res[1]
+		}
+	}
+	return result, nil
+}
