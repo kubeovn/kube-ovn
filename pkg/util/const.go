@@ -187,6 +187,7 @@ const (
 	OvnFip      = "ovn"
 	IptablesFip = "iptables"
 
+	U2OSubnetPolicyPriority     = 29400
 	GatewayRouterPolicyPriority = 29000
 	OvnICPolicyPriority         = 29500
 	NodeRouterPolicyPriority    = 30000
