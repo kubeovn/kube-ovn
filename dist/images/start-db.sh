@@ -142,6 +142,17 @@ function ovn_db_pre_start() {
     local db_file="/etc/ovn/ovn${1}_db.db"
     if [ -e "$db_file" ]; then
        if ovsdb-tool db-is-clustered "$db_file"; then
+            local msg=$(ovsdb-tool check-cluster "$db_file" 2>&1) || true
+            if echo $msg | grep -q 'has not joined the cluster'; then
+                local birth_time=$(stat --format=%W $db_file)
+                local now=$(date +%s)
+                if [ $(($now - $birth_time)) -ge 120 ]; then
+                    echo "ovn db file $db_file exists for more than 120s, removing it..."
+                    rm -f "$db_file" || return 1
+                fi
+                return
+            fi
+
           if ! ovsdb-tool check-cluster "$db_file"; then
               echo "detected database corruption for file $db_file, rebuild it."
               local sid=$(ovsdb-tool db-sid "$db_file")
@@ -164,12 +175,12 @@ function ovn_db_pre_start() {
               done
               echo "remote addresses: ${remote_addr[*]}"
 
-              local db_new="$db_file.init-$(random_str)"
+              local db_new="$db_file.init-$(date +%s)-$(random_str)"
               echo "generating new database file $db_new"
               if [ ${#remote_addr[*]} -ne 0 ]; then
                   ovsdb-tool --sid $sid join-cluster "$db_new" $db $local_addr ${remote_addr[*]} || return 1
 
-                  local db_bak="$db_file.backup-$(random_str)"
+                  local db_bak="$db_file.backup-$(date +%s)-$(random_str)"
                   echo "backup $db_file to $db_bak"
                   mv "$db_file" "$db_bak" || return 1
 
