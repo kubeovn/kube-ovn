@@ -258,6 +258,7 @@ func patchPodLabels(cfg *Configuration, cachedPod *corev1.Pod, labels map[string
 	pod.Labels = labels
 	patch, err := util.GenerateStrategicMergePatchPayload(cachedPod, pod)
 	if err != nil {
+		klog.Errorf("failed to generate patch payload, %v", err)
 		return err
 	}
 	_, err = cfg.KubeClient.CoreV1().Pods(pod.Namespace).Patch(context.Background(), pod.Name,

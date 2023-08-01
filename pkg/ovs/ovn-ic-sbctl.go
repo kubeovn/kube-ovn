@@ -41,7 +41,9 @@ func (c LegacyClient) FindUUIDWithAttrInTable(attribute, value, table string) ([
 	key := attribute + "=" + value
 	output, err := c.ovnIcSbCommand("--format=csv", "--no-heading", "--data=bare", "--columns=_uuid", "find", table, key)
 	if err != nil {
-		return nil, fmt.Errorf("failed to find ovn-ic-sb db, %v", err)
+		err := fmt.Errorf("failed to find ovn-ic-sb db, %v", err)
+		klog.Error(err)
+		return nil, err
 	}
 	lines := strings.Split(output, "\n")
 	result := make([]string, 0, len(lines))
@@ -57,6 +59,7 @@ func (c LegacyClient) FindUUIDWithAttrInTable(attribute, value, table string) ([
 func (c LegacyClient) DestroyTableWithUUID(uuid, table string) error {
 	_, err := c.ovnIcSbCommand("destroy", table, uuid)
 	if err != nil {
+		klog.Error(err)
 		return fmt.Errorf("failed to destroy record %s in table %s: %v", uuid, table, err)
 	}
 	return nil
@@ -65,6 +68,7 @@ func (c LegacyClient) DestroyTableWithUUID(uuid, table string) error {
 func (c LegacyClient) GetAzUUID(az string) (string, error) {
 	uuids, err := c.FindUUIDWithAttrInTable("name", az, "availability_zone")
 	if err != nil {
+		klog.Error(err)
 		return "", fmt.Errorf("failed to get ovn-ic-sb availability_zone uuid: %v", err)
 	}
 	if len(uuids) == 1 {
@@ -78,6 +82,7 @@ func (c LegacyClient) GetAzUUID(az string) (string, error) {
 func (c LegacyClient) GetGatewayUUIDsInOneAZ(uuid string) ([]string, error) {
 	gateways, err := c.FindUUIDWithAttrInTable("availability_zone", uuid, "gateway")
 	if err != nil {
+		klog.Error(err)
 		return nil, fmt.Errorf("failed to get ovn-ic-sb gateways with uuid %v: %v", uuid, err)
 	}
 	return gateways, nil
@@ -86,6 +91,7 @@ func (c LegacyClient) GetGatewayUUIDsInOneAZ(uuid string) ([]string, error) {
 func (c LegacyClient) GetRouteUUIDsInOneAZ(uuid string) ([]string, error) {
 	routes, err := c.FindUUIDWithAttrInTable("availability_zone", uuid, "route")
 	if err != nil {
+		klog.Error(err)
 		return nil, fmt.Errorf("failed to get ovn-ic-sb routes with uuid %v: %v", uuid, err)
 	}
 	return routes, nil
@@ -111,6 +117,7 @@ func (c LegacyClient) DestroyRoutes(uuids []string) {
 
 func (c LegacyClient) DestroyChassis(uuid string) error {
 	if err := c.DestroyTableWithUUID(uuid, "availability_zone"); err != nil {
+		klog.Error(err)
 		return fmt.Errorf("failed to delete chassis %v: %v", uuid, err)
 	}
 	return nil

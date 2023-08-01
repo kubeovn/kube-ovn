@@ -9,6 +9,7 @@ import (
 	"github.com/ovn-org/libovsdb/model"
 	"github.com/ovn-org/libovsdb/ovsdb"
 	"github.com/scylladb/go-set/strset"
+	"k8s.io/klog/v2"
 
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
@@ -66,6 +67,7 @@ func (c *ovnClient) AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPr
 
 	routes, err := c.ListLogicalRouterStaticRoutes(lrName, &routeTable, &policy, ipPrefix, nil)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 
@@ -83,6 +85,7 @@ func (c *ovnClient) AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPr
 		if !existing.Has(nexthop) {
 			route, err := c.newLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nexthop, bfdId)
 			if err != nil {
+				klog.Error(err)
 				return err
 			}
 			toAdd = append(toAdd, route)
@@ -94,9 +97,11 @@ func (c *ovnClient) AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPr
 	}
 	ops, err := c.LogicalRouterUpdateStaticRouteOp(lrName, toDel, ovsdb.MutateOperationDelete)
 	if err != nil {
+		klog.Error(err)
 		return fmt.Errorf("generate operations for removing static routes from logical router %s: %v", lrName, err)
 	}
 	if err = c.Transact("lr-route-del", ops); err != nil {
+		klog.Error(err)
 		return fmt.Errorf("failed to delete static routes from logical router %s: %v", lrName, err)
 	}
 
@@ -111,6 +116,7 @@ func (c *ovnClient) UpdateLogicalRouterStaticRoute(route *ovnnb.LogicalRouterSta
 
 	op, err := c.ovnNbClient.Where(route).Update(route, fields...)
 	if err != nil {
+		klog.Error(err)
 		return fmt.Errorf("generate operations for updating logical router static route 'policy %s ip_prefix %s': %v", *route.Policy, route.IPPrefix, err)
 	}
 
@@ -129,6 +135,7 @@ func (c *ovnClient) DeleteLogicalRouterStaticRoute(lrName string, routeTable, po
 
 	routes, err := c.ListLogicalRouterStaticRoutes(lrName, routeTable, policy, ipPrefix, nil)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 
@@ -147,9 +154,11 @@ func (c *ovnClient) DeleteLogicalRouterStaticRoute(lrName string, routeTable, po
 	// remove static route from logical router
 	ops, err := c.LogicalRouterUpdateStaticRouteOp(lrName, uuids, ovsdb.MutateOperationDelete)
 	if err != nil {
+		klog.Error(err)
 		return fmt.Errorf("generate operations for removing static routes %v from logical router %s: %v", uuids, lrName, err)
 	}
 	if err = c.Transact("lr-route-del", ops); err != nil {
+		klog.Error(err)
 		return fmt.Errorf("delete static routes %v from logical router %s: %v", uuids, lrName, err)
 	}
 
@@ -160,6 +169,7 @@ func (c *ovnClient) DeleteLogicalRouterStaticRoute(lrName string, routeTable, po
 func (c *ovnClient) ClearLogicalRouterStaticRoute(lrName string) error {
 	lr, err := c.GetLogicalRouter(lrName, false)
 	if err != nil {
+		klog.Error(err)
 		return fmt.Errorf("get logical router %s: %v", lrName, err)
 	}
 
@@ -167,9 +177,11 @@ func (c *ovnClient) ClearLogicalRouterStaticRoute(lrName string) error {
 	lr.StaticRoutes = nil
 	ops, err := c.UpdateLogicalRouterOp(lr, &lr.StaticRoutes)
 	if err != nil {
+		klog.Error(err)
 		return fmt.Errorf("generate operations for clear logical router %s static route: %v", lrName, err)
 	}
 	if err = c.Transact("lr-route-clear", ops); err != nil {
+		klog.Error(err)
 		return fmt.Errorf("clear logical router %s static routes: %v", lrName, err)
 	}
 
@@ -183,6 +195,7 @@ func (c *ovnClient) GetLogicalRouterStaticRouteByUUID(uuid string) (*ovnnb.Logic
 
 	route := &ovnnb.LogicalRouterStaticRoute{UUID: uuid}
 	if err := c.Get(ctx, route); err != nil {
+		klog.Error(err)
 		return nil, err
 	}
 
@@ -203,6 +216,7 @@ func (c *ovnClient) GetLogicalRouterStaticRoute(lrName, routeTable, policy, ipPr
 	}
 	routeList, err := c.listLogicalRouterStaticRoutesByFilter(lrName, fnFilter)
 	if err != nil {
+		klog.Error(err)
 		return nil, fmt.Errorf("get logical router %s static route 'policy %s ip_prefix %s nexthop %s': %v", lrName, policy, ipPrefix, nexthop, err)
 	}
 
@@ -283,6 +297,7 @@ func (c *ovnClient) newLogicalRouterStaticRoute(lrName, routeTable, policy, ipPr
 
 	exists, err := c.LogicalRouterStaticRouteExists(lrName, routeTable, policy, ipPrefix, nexthop)
 	if err != nil {
+		klog.Error(err)
 		return nil, fmt.Errorf("get logical router %s route: %v", lrName, err)
 	}
 
@@ -314,6 +329,7 @@ func (c *ovnClient) newLogicalRouterStaticRoute(lrName, routeTable, policy, ipPr
 func (c *ovnClient) listLogicalRouterStaticRoutesByFilter(lrName string, filter func(route *ovnnb.LogicalRouterStaticRoute) bool) ([]*ovnnb.LogicalRouterStaticRoute, error) {
 	lr, err := c.GetLogicalRouter(lrName, false)
 	if err != nil {
+		klog.Error(err)
 		return nil, err
 	}
 
@@ -324,6 +340,7 @@ func (c *ovnClient) listLogicalRouterStaticRoutesByFilter(lrName string, filter 
 			if errors.Is(err, client.ErrNotFound) {
 				continue
 			}
+			klog.Error(err)
 			return nil, err
 		}
 		if filter == nil || filter(route) {

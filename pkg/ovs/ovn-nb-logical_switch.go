@@ -65,6 +65,7 @@ func (c *ovnClient) CreateLogicalSwitch(lsName, lrName, cidrBlock, gateway strin
 func (c *ovnClient) CreateBareLogicalSwitch(lsName string) error {
 	exist, err := c.LogicalSwitchExists(lsName)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 
@@ -80,6 +81,7 @@ func (c *ovnClient) CreateBareLogicalSwitch(lsName string) error {
 
 	op, err := c.ovnNbClient.Create(ls)
 	if err != nil {
+		klog.Error(err)
 		return fmt.Errorf("generate operations for creating logical switch %s: %v", lsName, err)
 	}
 
@@ -94,15 +96,18 @@ func (c *ovnClient) CreateBareLogicalSwitch(lsName string) error {
 func (c *ovnClient) LogicalSwitchAddPort(lsName, lspName string) error {
 	lsp, err := c.GetLogicalSwitchPort(lspName, false)
 	if err != nil {
+		klog.Error(err)
 		return fmt.Errorf("get logical switch port %s when logical switch add port: %v", lspName, err)
 	}
 
 	ops, err := c.LogicalSwitchUpdatePortOp(lsName, lsp.UUID, ovsdb.MutateOperationInsert)
 	if err != nil {
+		klog.Error(err)
 		return fmt.Errorf("generate operations for logical switch %s add port %s: %v", lsName, lspName, err)
 	}
 
 	if err := c.Transact("lsp-add", ops); err != nil {
+		klog.Error(err)
 		return fmt.Errorf("add port %s to logical switch %s: %v", lspName, lsName, err)
 	}
 
@@ -113,11 +118,13 @@ func (c *ovnClient) LogicalSwitchAddPort(lsName, lspName string) error {
 func (c *ovnClient) LogicalSwitchDelPort(lsName, lspName string) error {
 	lsp, err := c.GetLogicalSwitchPort(lspName, false)
 	if err != nil {
+		klog.Error(err)
 		return fmt.Errorf("get logical switch port %s when logical switch del port: %v", lspName, err)
 	}
 
 	ops, err := c.LogicalSwitchUpdatePortOp(lsName, lsp.UUID, ovsdb.MutateOperationDelete)
 	if err != nil {
+		klog.Error(err)
 		return fmt.Errorf("generate operations for logical switch %s del port %s: %v", lsName, lspName, err)
 	}
 
@@ -139,6 +146,7 @@ func (c *ovnClient) LogicalSwitchUpdateLoadBalancers(lsName string, op ovsdb.Mut
 	for _, lbName := range lbNames {
 		lb, err := c.GetLoadBalancer(lbName, true)
 		if err != nil {
+			klog.Error(err)
 			return err
 		}
 
@@ -150,6 +158,7 @@ func (c *ovnClient) LogicalSwitchUpdateLoadBalancers(lsName string, op ovsdb.Mut
 
 	ops, err := c.LogicalSwitchUpdateLoadBalancerOp(lsName, lbUUIDs, op)
 	if err != nil {
+		klog.Error(err)
 		return fmt.Errorf("generate operations for logical switch %s update lbs %v: %v", lsName, lbNames, err)
 	}
 
@@ -165,6 +174,7 @@ func (c *ovnClient) LogicalSwitchUpdateLoadBalancers(lsName string, op ovsdb.Mut
 func (c *ovnClient) DeleteLogicalSwitch(lsName string) error {
 	op, err := c.DeleteLogicalSwitchOp(lsName)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 
@@ -318,6 +328,7 @@ func (c *ovnClient) logicalSwitchUpdateAclOp(lsName string, aclUUIDs []string, o
 func (c *ovnClient) LogicalSwitchOp(lsName string, mutationsFunc ...func(ls *ovnnb.LogicalSwitch) *model.Mutation) ([]ovsdb.Operation, error) {
 	ls, err := c.GetLogicalSwitch(lsName, false)
 	if err != nil {
+		klog.Error(err)
 		return nil, fmt.Errorf("get logical switch %s when generate mutate operations: %v", lsName, err)
 	}
 
@@ -337,6 +348,7 @@ func (c *ovnClient) LogicalSwitchOp(lsName string, mutationsFunc ...func(ls *ovn
 
 	ops, err := c.ovnNbClient.Where(ls).Mutate(ls, mutations...)
 	if err != nil {
+		klog.Error(err)
 		return nil, fmt.Errorf("generate operations for mutating logical switch %s: %v", lsName, err)
 	}
 
@@ -347,6 +359,7 @@ func (c *ovnClient) LogicalSwitchOp(lsName string, mutationsFunc ...func(ls *ovn
 func (c *ovnClient) DeleteLogicalSwitchOp(lsName string) ([]ovsdb.Operation, error) {
 	ls, err := c.GetLogicalSwitch(lsName, true)
 	if err != nil {
+		klog.Error(err)
 		return nil, fmt.Errorf("get logical switch %s: %v", lsName, err)
 	}
 
@@ -357,6 +370,7 @@ func (c *ovnClient) DeleteLogicalSwitchOp(lsName string) ([]ovsdb.Operation, err
 
 	op, err := c.Where(ls).Delete()
 	if err != nil {
+		klog.Error(err)
 		return nil, fmt.Errorf("generate operations for deleting logical switch %s: %v", lsName, err)
 	}
 

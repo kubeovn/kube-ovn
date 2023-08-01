@@ -36,7 +36,7 @@ func (c *Controller) syncExternalVpc() {
 			}
 			_, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().UpdateStatus(context.Background(), vpc, metav1.UpdateOptions{})
 			if err != nil {
-				klog.V(4).Infof("update vpc %s status failed", vpcName)
+				klog.Errorf("update vpc %s status failed: %v", vpcName, err)
 				continue
 			}
 			delete(logicalRouters, vpcName)
@@ -44,10 +44,10 @@ func (c *Controller) syncExternalVpc() {
 		} else {
 			err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Delete(context.Background(), vpcName, metav1.DeleteOptions{})
 			if err != nil {
-				klog.V(4).Infof("delete vpc %s failed", vpcName)
+				klog.Error("delete vpc %s failed: %v", vpcName, err)
 				continue
 			}
-			klog.V(4).Infof("delete vpc %s ", vpcName)
+			klog.Infof("deleted vpc %s ", vpcName)
 		}
 	}
 	if len(logicalRouters) != 0 {

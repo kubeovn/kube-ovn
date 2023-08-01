@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/ovn-org/libovsdb/ovsdb"
+	"k8s.io/klog/v2"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
@@ -20,15 +21,18 @@ type DHCPOptionsUUIDs struct {
 func (c *ovnClient) CreateDHCPOptions(lsName, cidr, options string) error {
 	dhcpOpt, err := newDHCPOptions(lsName, cidr, options)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 
 	op, err := c.ovnNbClient.Create(dhcpOpt)
 	if err != nil {
+		klog.Error(err)
 		return fmt.Errorf("generate operations for creating dhcp options 'cidr %s options %s': %v", cidr, options, err)
 	}
 
 	if err = c.Transact("dhcp-create", op); err != nil {
+		klog.Error(err)
 		return fmt.Errorf("create dhcp options with cidr %q options %q: %v", cidr, options, err)
 	}
 
@@ -67,11 +71,13 @@ func (c *ovnClient) UpdateDHCPOptions(subnet *kubeovnv1.Subnet, mtu int) (*DHCPO
 
 	dhcpV4OptUUID, err := c.updateDHCPv4Options(lsName, v4CIDR, v4Gateway, subnet.Spec.DHCPv4Options, mtu)
 	if err != nil {
+		klog.Error(err)
 		return nil, fmt.Errorf("update IPv4 dhcp options for logical switch %s: %v", lsName, err)
 	}
 
 	dhcpV6OptUUID, err := c.updateDHCPv6Options(lsName, v6CIDR, subnet.Spec.DHCPv6Options)
 	if err != nil {
+		klog.Error(err)
 		return nil, fmt.Errorf("update IPv6 dhcp options for logical switch %s: %v", lsName, err)
 	}
 
@@ -89,6 +95,7 @@ func (c *ovnClient) updateDHCPv4Options(lsName, cidr, gateway, options string, m
 
 	dhcpOpt, err := c.GetDHCPOptions(lsName, protocol, true)
 	if err != nil {
+		klog.Error(err)
 		return
 	}
 
@@ -115,6 +122,7 @@ func (c *ovnClient) updateDHCPv4Options(lsName, cidr, gateway, options string, m
 
 	dhcpOpt, err = c.GetDHCPOptions(lsName, protocol, false)
 	if err != nil {
+		klog.Error(err)
 		return "", err
 	}
 
@@ -129,6 +137,7 @@ func (c *ovnClient) updateDHCPv6Options(lsName, cidr, options string) (uuid stri
 
 	dhcpOpt, err := c.GetDHCPOptions(lsName, protocol, true)
 	if err != nil {
+		klog.Error(err)
 		return
 	}
 
@@ -155,6 +164,7 @@ func (c *ovnClient) updateDHCPv6Options(lsName, cidr, options string) (uuid stri
 
 	dhcpOpt, err = c.GetDHCPOptions(lsName, protocol, false)
 	if err != nil {
+		klog.Error(err)
 		return "", err
 	}
 
@@ -169,6 +179,7 @@ func (c *ovnClient) updateDHCPOptions(dhcpOpt *ovnnb.DHCPOptions, fields ...inte
 
 	op, err := c.ovnNbClient.Where(dhcpOpt).Update(dhcpOpt, fields...)
 	if err != nil {
+		klog.Error(err)
 		return fmt.Errorf("generate operations for updating dhcp options %s: %v", dhcpOpt.UUID, err)
 	}
 
@@ -189,6 +200,7 @@ func (c *ovnClient) DeleteDHCPOptionsByUUIDs(uuidList ...string) error {
 
 		op, err := c.Where(dhcpOptions).Delete()
 		if err != nil {
+			klog.Error(err)
 			return err
 		}
 		ops = append(ops, op...)
@@ -213,10 +225,12 @@ func (c *ovnClient) DeleteDHCPOptions(lsName string, protocol string) error {
 
 	op, err := c.WhereCache(dhcpOptionsFilter(true, externalIDs)).Delete()
 	if err != nil {
+		klog.Error(err)
 		return fmt.Errorf("generate operation for deleting dhcp options: %v", err)
 	}
 
 	if err = c.Transact("dhcp-options-del", op); err != nil {
+		klog.Error(err)
 		return fmt.Errorf("delete logical switch %s dhcp options: %v", lsName, err)
 	}
 
@@ -240,6 +254,7 @@ func (c *ovnClient) GetDHCPOptions(lsName, protocol string, ignoreNotFound bool)
 	})
 
 	if err != nil {
+		klog.Error(err)
 		return nil, fmt.Errorf("get logical switch %s %s dhcp options: %v", lsName, protocol, err)
 	}
 

@@ -183,6 +183,7 @@ func (c *Controller) isOvnDnatDuplicated(eipName, dnatName, externalPort string)
 	}))
 	if err != nil {
 		if !k8serrors.IsNotFound(err) {
+			klog.Error(err)
 			return false, err
 		}
 	}
@@ -203,6 +204,7 @@ func (c *Controller) handleAddOvnDnatRule(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 
@@ -318,6 +320,7 @@ func (c *Controller) handleDelOvnDnatRule(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 
@@ -345,6 +348,7 @@ func (c *Controller) handleUpdateOvnDnatRule(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 
@@ -458,6 +462,7 @@ func (c *Controller) patchOvnDnatAnnotations(key, eipName string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 
@@ -495,6 +500,7 @@ func (c *Controller) patchOvnDnatStatus(key, vpcName, v4Eip, podIp, podMac strin
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	dnat := oriDnat.DeepCopy()
@@ -562,6 +568,7 @@ func (c *Controller) patchOvnDnatStatus(key, vpcName, v4Eip, podIp, podMac strin
 	if changed {
 		bytes, err := dnat.Status.Bytes()
 		if err != nil {
+			klog.Error(err)
 			return err
 		}
 		if _, err = c.config.KubeOvnClient.KubeovnV1().OvnDnatRules().Patch(context.Background(), dnat.Name,

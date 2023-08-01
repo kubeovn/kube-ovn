@@ -22,6 +22,7 @@ func (c *ovnClient) CreateAddressSet(asName string, externalIDs map[string]strin
 
 	exists, err := c.AddressSetExists(asName)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 
@@ -37,6 +38,7 @@ func (c *ovnClient) CreateAddressSet(asName string, externalIDs map[string]strin
 
 	ops, err := c.ovnNbClient.Create(as)
 	if err != nil {
+		klog.Error(err)
 		return fmt.Errorf("generate operations for creating address set %s: %v", asName, err)
 	}
 
@@ -52,6 +54,7 @@ func (c *ovnClient) CreateAddressSet(asName string, externalIDs map[string]strin
 func (c *ovnClient) AddressSetUpdateAddress(asName string, addresses ...string) error {
 	as, err := c.GetAddressSet(asName, false)
 	if err != nil {
+		klog.Error(err)
 		return fmt.Errorf("get address set %s: %v", asName, err)
 	}
 
@@ -88,10 +91,12 @@ func (c *ovnClient) UpdateAddressSet(as *ovnnb.AddressSet, fields ...interface{}
 
 	op, err := c.Where(as).Update(as, fields...)
 	if err != nil {
+		klog.Error(err)
 		return fmt.Errorf("generate operations for updating address set %s: %v", as.Name, err)
 	}
 
 	if err = c.Transact("as-update", op); err != nil {
+		klog.Error(err)
 		return fmt.Errorf("update address set %s: %v", as.Name, err)
 	}
 
@@ -101,6 +106,7 @@ func (c *ovnClient) UpdateAddressSet(as *ovnnb.AddressSet, fields ...interface{}
 func (c *ovnClient) DeleteAddressSet(asName string) error {
 	as, err := c.GetAddressSet(asName, true)
 	if err != nil {
+		klog.Error(err)
 		return fmt.Errorf("get address set %s: %v", asName, err)
 	}
 
@@ -111,6 +117,7 @@ func (c *ovnClient) DeleteAddressSet(asName string) error {
 
 	op, err := c.Where(as).Delete()
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 
@@ -130,6 +137,7 @@ func (c *ovnClient) DeleteAddressSets(externalIDs map[string]string) error {
 
 	op, err := c.WhereCache(addressSetFilter(externalIDs)).Delete()
 	if err != nil {
+		klog.Error(err)
 		return fmt.Errorf("generate operation for deleting address sets with external IDs %v: %v", externalIDs, err)
 	}
 
@@ -150,6 +158,7 @@ func (c *ovnClient) GetAddressSet(asName string, ignoreNotFound bool) (*ovnnb.Ad
 		if ignoreNotFound && err == client.ErrNotFound {
 			return nil, nil
 		}
+		klog.Error(err)
 		return nil, fmt.Errorf("get address set %s: %v", asName, err)
 	}
 

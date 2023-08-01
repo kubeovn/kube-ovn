@@ -192,6 +192,7 @@ func (c *Controller) handleAddQoSPolicy(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 
@@ -229,6 +230,7 @@ func (c *Controller) patchQoSStatus(
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	qos := oriQoS.DeepCopy()
@@ -237,6 +239,7 @@ func (c *Controller) patchQoSStatus(
 	qos.Status.BandwidthLimitRules = bandwidthRules
 	bytes, err := qos.Status.Bytes()
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 	if _, err = c.config.KubeOvnClient.KubeovnV1().QoSPolicies().Patch(context.Background(), qos.Name,
@@ -256,6 +259,7 @@ func (c *Controller) handleDelQoSPoliciesFinalizer(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	if len(cachedQoSPolicies.Finalizers) == 0 {
@@ -393,6 +397,7 @@ func (c *Controller) handleUpdateQoSPolicy(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	// should delete
@@ -511,6 +516,7 @@ func (c *Controller) handleAddQoSPolicyFinalizer(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	if cachedQoSPolicy.DeletionTimestamp.IsZero() {

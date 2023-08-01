@@ -43,6 +43,7 @@ func (c *Controller) inspectPod() error {
 				portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
 				exists, err := c.ovnClient.LogicalSwitchPortExists(portName)
 				if err != nil {
+					klog.Errorf("failed to check port %s exists, %v", portName, err)
 					return err
 				}
 
@@ -51,6 +52,7 @@ func (c *Controller) inspectPod() error {
 					delete(pod.Annotations, fmt.Sprintf(util.RoutedAnnotationTemplate, podNet.ProviderName))
 					patch, err := util.GenerateStrategicMergePatchPayload(oriPod, pod)
 					if err != nil {
+						klog.Errorf("failed to generate patch payload, %v", err)
 						return err
 					}
 					if _, err := c.config.KubeClient.CoreV1().Pods(pod.Namespace).Patch(context.Background(), pod.Name,

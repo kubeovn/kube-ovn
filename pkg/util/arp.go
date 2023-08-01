@@ -93,16 +93,19 @@ func ArpDetectIPConflict(nic, ip string, mac net.HardwareAddr) (net.HardwareAddr
 	tha := net.HardwareAddr{0, 0, 0, 0, 0, 0}
 	pkt, err := arp.NewPacket(arp.OperationRequest, mac, spa, tha, tpa)
 	if err != nil {
+		klog.Error(err)
 		return nil, err
 	}
 
 	ifi, err := net.InterfaceByName(nic)
 	if err != nil {
+		klog.Error(err)
 		return nil, err
 	}
 
 	client, err := arp.Dial(ifi)
 	if err != nil {
+		klog.Error(err)
 		return nil, err
 	}
 	defer client.Close()
@@ -210,11 +213,13 @@ func AnnounceArpAddress(nic, ip string, mac net.HardwareAddr, announceNum int, a
 	klog.Infof("announce arp address nic %s , ip %s, with mac %v ", nic, ip, mac)
 	netInterface, err := net.InterfaceByName(nic)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 
 	client, err := arp.Dial(netInterface)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 	defer client.Close()
@@ -227,6 +232,7 @@ func AnnounceArpAddress(nic, ip string, mac net.HardwareAddr, announceNum int, a
 	tha := net.HardwareAddr{0, 0, 0, 0, 0, 0}
 	pkt, err := arp.NewPacket(arp.OperationRequest, mac, tpa, tha, tpa)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 

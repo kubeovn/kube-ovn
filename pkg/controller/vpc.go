@@ -110,6 +110,7 @@ func (c *Controller) handleDelVpc(vpc *kubeovnv1.Vpc) error {
 
 	err := c.deleteVpcRouter(vpc.Status.Router)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 	return nil
@@ -125,12 +126,14 @@ func (c *Controller) handleUpdateVpcStatus(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	vpc := cachedVpc.DeepCopy()
 
 	subnets, defaultSubnet, err := c.getVpcSubnets(vpc)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 
@@ -143,11 +146,13 @@ func (c *Controller) handleUpdateVpcStatus(key string) error {
 	vpc.Status.Subnets = subnets
 	bytes, err := vpc.Status.Bytes()
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 
 	vpc, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Patch(context.Background(), vpc.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status")
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 	if change {
@@ -158,6 +163,7 @@ func (c *Controller) handleUpdateVpcStatus(key string) error {
 
 	natGws, err := c.vpcNatGatewayLister.List(labels.Everything())
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 	for _, gw := range natGws {
@@ -234,6 +240,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	vpc := cachedVpc.DeepCopy()
@@ -434,6 +441,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 	if c.config.EnableLb {
 		vpcLb, err := c.addLoadBalancer(key)
 		if err != nil {
+			klog.Error(err)
 			return err
 		}
 		vpc.Status.TcpLoadBalancer = vpcLb.TcpLoadBalancer
@@ -445,10 +453,12 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 	}
 	bytes, err := vpc.Status.Bytes()
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 	vpc, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Patch(context.Background(), vpc.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status")
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 
@@ -462,6 +472,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 
@@ -752,6 +763,7 @@ func (c *Controller) getVpcSubnets(vpc *kubeovnv1.Vpc) (subnets []string, defaul
 	subnets = []string{}
 	allSubnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
+		klog.Error(err)
 		return nil, "", err
 	}
 
@@ -781,6 +793,7 @@ func (c *Controller) deleteVpcRouter(lr string) error {
 func (c *Controller) handleAddVpcExternal(key string) error {
 	cachedSubnet, err := c.subnetsLister.Get(c.config.ExternalGatewaySwitch)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 	lrpEipName := fmt.Sprintf("%s-%s", key, c.config.ExternalGatewaySwitch)

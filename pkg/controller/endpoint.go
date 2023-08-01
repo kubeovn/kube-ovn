@@ -100,6 +100,7 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 		if errors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 
@@ -108,6 +109,7 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 		if errors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	svc := cachedService.DeepCopy()

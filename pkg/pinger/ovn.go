@@ -39,11 +39,13 @@ func checkPortBindings(config *Configuration) error {
 	klog.Infof("start to check port binding")
 	ovsBindings, err := checkOvsBindings()
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 
 	sbBindings, err := checkSBBindings(config)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 	klog.Infof("port in sb is %v", sbBindings)

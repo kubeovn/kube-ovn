@@ -9,6 +9,7 @@ import (
 	"github.com/ovn-org/libovsdb/model"
 	"github.com/ovn-org/libovsdb/ovsdb"
 	"github.com/scylladb/go-set/strset"
+	"k8s.io/klog/v2"
 
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
@@ -66,11 +67,13 @@ func (c *ovnClient) CreateLogicalRouterPolicies(lrName string, policies ...*ovnn
 
 	createPoliciesOp, err := c.ovnNbClient.Create(models...)
 	if err != nil {
+		klog.Error(err)
 		return fmt.Errorf("generate operations for creating policies: %v", err)
 	}
 
 	policyAddOp, err := c.LogicalRouterUpdatePolicyOp(lrName, policyUUIDs, ovsdb.MutateOperationInsert)
 	if err != nil {
+		klog.Error(err)
 		return fmt.Errorf("generate operations for adding policies to logical router %s: %v", lrName, err)
 	}
 
@@ -89,11 +92,13 @@ func (c *ovnClient) CreateLogicalRouterPolicies(lrName string, policies ...*ovnn
 func (c *ovnClient) DeleteLogicalRouterPolicy(lrName string, priority int, match string) error {
 	policyList, err := c.GetLogicalRouterPolicy(lrName, priority, match, true)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 
 	for _, p := range policyList {
 		if err := c.DeleteLogicalRouterPolicyByUUID(lrName, p.UUID); err != nil {
+			klog.Error(err)
 			return err
 		}
 	}
@@ -106,6 +111,7 @@ func (c *ovnClient) DeleteLogicalRouterPolicies(lrName string, priority int, ext
 	// remove policies from logical router
 	policies, err := c.ListLogicalRouterPolicies(lrName, priority, externalIDs)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 	if len(policies) == 0 {
@@ -147,6 +153,7 @@ func (c *ovnClient) DeleteLogicalRouterPolicyByNexthop(lrName string, priority i
 		return (route.Nexthop != nil && *route.Nexthop == nexthop) || util.ContainsString(route.Nexthops, nexthop)
 	})
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 	for _, policy := range policyList {
@@ -290,6 +297,7 @@ func (c *ovnClient) DeleteRouterPolicy(lr *ovnnb.LogicalRouter, uuid string) err
 func (c *ovnClient) listLogicalRouterPoliciesByFilter(lrName string, filter func(route *ovnnb.LogicalRouterPolicy) bool) ([]*ovnnb.LogicalRouterPolicy, error) {
 	lr, err := c.GetLogicalRouter(lrName, false)
 	if err != nil {
+		klog.Error(err)
 		return nil, err
 	}
 

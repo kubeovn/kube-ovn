@@ -40,6 +40,7 @@ func NamedUUID() string {
 func NewNbClient(addr string) (client.Client, error) {
 	dbModel, err := ovnnb.FullDatabaseModel()
 	if err != nil {
+		klog.Error(err)
 		return nil, err
 	}
 
@@ -62,10 +63,12 @@ func NewNbClient(addr string) (client.Client, error) {
 	if ssl {
 		cert, err := tls.LoadX509KeyPair("/var/run/tls/cert", "/var/run/tls/key")
 		if err != nil {
+			klog.Error(err)
 			return nil, fmt.Errorf("failed to load x509 cert key pair: %v", err)
 		}
 		caCert, err := os.ReadFile("/var/run/tls/cacert")
 		if err != nil {
+			klog.Error(err)
 			return nil, fmt.Errorf("failed to read ca cert: %v", err)
 		}
 
@@ -83,6 +86,7 @@ func NewNbClient(addr string) (client.Client, error) {
 
 	c, err := client.NewOVSDBClient(dbModel, options...)
 	if err != nil {
+		klog.Error(err)
 		return nil, err
 	}
 

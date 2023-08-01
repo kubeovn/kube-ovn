@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"k8s.io/klog/v2"
 )
 
 func (c *ovnClient) ListBFD(lrpName, dstIP string) ([]ovnnb.BFD, error) {
@@ -27,6 +28,7 @@ func (c *ovnClient) ListBFD(lrpName, dstIP string) ([]ovnnb.BFD, error) {
 func (c *ovnClient) CreateBFD(lrpName, dstIP string, minRx, minTx, detectMult int) (*ovnnb.BFD, error) {
 	bfdList, err := c.ListBFD(lrpName, dstIP)
 	if err != nil {
+		klog.Error(err)
 		return nil, err
 	}
 	if len(bfdList) != 0 {
@@ -60,6 +62,7 @@ func (c *ovnClient) CreateBFD(lrpName, dstIP string, minRx, minTx, detectMult in
 func (c *ovnClient) DeleteBFD(lrpName, dstIP string) error {
 	bfdList, err := c.ListBFD(lrpName, dstIP)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 	if len(bfdList) == 0 {

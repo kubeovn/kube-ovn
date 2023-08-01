@@ -199,6 +199,7 @@ func (c *Controller) handleAddVirtualIp(key string) error {
 		v4ip, v6ip, mac, err = c.acquireIpAddress(subnet.Name, vip.Name, portName)
 	}
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 	var parentV4ip, parentV6ip, parentMac string
@@ -256,6 +257,7 @@ func (c *Controller) handleUpdateVirtualIp(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	vip := cachedVip.DeepCopy()
@@ -342,11 +344,13 @@ func (c *Controller) acquireIpAddress(subnetName, name, nicName string) (string,
 	for {
 		v4ip, v6ip, mac, err = c.ipam.GetRandomAddress(name, nicName, nil, subnetName, "", skippedAddrs, checkConflict)
 		if err != nil {
+			klog.Error(err)
 			return "", "", "", err
 		}
 
 		ipv4OK, ipv6OK, err := c.validatePodIP(name, subnetName, v4ip, v6ip)
 		if err != nil {
+			klog.Error(err)
 			return "", "", "", err
 		}
 
@@ -465,9 +469,9 @@ func (c *Controller) patchVipStatus(key, v4ip string, ready bool) error {
 	oriVip, err := c.virtualIpsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
-			klog.Errorf("failed to get cached vip '%s', %v", key, err)
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	vip := oriVip.DeepCopy()
@@ -496,9 +500,9 @@ func (c *Controller) podReuseVip(key, portName string, keepVIP bool) error {
 	oriVip, err := c.virtualIpsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
-			klog.Errorf("failed to get cached vip '%s', %v", key, err)
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	vip := oriVip.DeepCopy()
@@ -530,9 +534,9 @@ func (c *Controller) releaseVip(key string) error {
 	oriVip, err := c.virtualIpsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
-			klog.Errorf("failed to get cached vip '%s', %v", key, err)
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	vip := oriVip.DeepCopy()
@@ -573,6 +577,7 @@ func (c *Controller) handleAddVipFinalizer(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	if cachedVip.DeletionTimestamp.IsZero() {
@@ -604,6 +609,7 @@ func (c *Controller) handleDelVipFinalizer(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	if len(cachedVip.Finalizers) == 0 {

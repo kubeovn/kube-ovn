@@ -395,6 +395,7 @@ func (c *Controller) gcLoadBalancer() error {
 		// remove lb from logical switch
 		vpcs, err := c.vpcsLister.List(labels.Everything())
 		if err != nil {
+			klog.Error(err)
 			return err
 		}
 		for _, cachedVpc := range vpcs {
@@ -405,6 +406,7 @@ func (c *Controller) gcLoadBalancer() error {
 					if k8serrors.IsNotFound(err) {
 						continue
 					}
+					klog.Error(err)
 					return err
 				}
 				if !isOvnSubnet(subnet) {
@@ -425,10 +427,12 @@ func (c *Controller) gcLoadBalancer() error {
 			vpc.Status.SctpSessionLoadBalancer = ""
 			bytes, err := vpc.Status.Bytes()
 			if err != nil {
+				klog.Error(err)
 				return err
 			}
 			_, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Patch(context.Background(), vpc.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status")
 			if err != nil {
+				klog.Error(err)
 				return err
 			}
 		}

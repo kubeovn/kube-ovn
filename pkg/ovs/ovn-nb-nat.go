@@ -8,6 +8,7 @@ import (
 	"github.com/ovn-org/libovsdb/client"
 	"github.com/ovn-org/libovsdb/model"
 	"github.com/ovn-org/libovsdb/ovsdb"
+	"k8s.io/klog/v2"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
@@ -50,11 +51,13 @@ func (c *ovnClient) CreateNats(lrName string, nats ...*ovnnb.NAT) error {
 
 	createNatsOp, err := c.ovnNbClient.Create(models...)
 	if err != nil {
+		klog.Error(err)
 		return fmt.Errorf("generate operations for creating nats: %v", err)
 	}
 
 	natAddOp, err := c.LogicalRouterUpdateNatOp(lrName, natUUIDs, ovsdb.MutateOperationInsert)
 	if err != nil {
+		klog.Error(err)
 		return fmt.Errorf("generate operations for adding nats to logical router %s: %v", lrName, err)
 	}
 
@@ -75,6 +78,7 @@ func (c *ovnClient) UpdateSnat(lrName, externalIP, logicalIP string) error {
 
 	nat, err := c.GetNat(lrName, natType, "", logicalIP, true)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 
@@ -86,10 +90,12 @@ func (c *ovnClient) UpdateSnat(lrName, externalIP, logicalIP string) error {
 
 	/* create nat */
 	if nat, err = c.newNat(lrName, natType, externalIP, logicalIP, "", ""); err != nil {
+		klog.Error(err)
 		return fmt.Errorf("new logical router %s nat 'type %s external ip %s logical ip %s': %v", lrName, natType, externalIP, logicalIP, err)
 	}
 
 	if err := c.CreateNats(lrName, nat); err != nil {
+		klog.Error(err)
 		return fmt.Errorf("add nat 'type %s external ip %s logical ip %s' to logical router %s: %v", natType, externalIP, logicalIP, lrName, err)
 	}
 
@@ -102,6 +108,7 @@ func (c *ovnClient) UpdateDnatAndSnat(lrName, externalIP, logicalIP, lspName, ex
 
 	nat, err := c.GetNat(lrName, natType, externalIP, "", true)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 
@@ -130,10 +137,12 @@ func (c *ovnClient) UpdateDnatAndSnat(lrName, externalIP, logicalIP, lspName, ex
 
 	/* create nat */
 	if nat, err = c.newNat(lrName, natType, externalIP, logicalIP, "", "", options); err != nil {
+		klog.Error(err)
 		return fmt.Errorf("new logical router %s nat 'type %s external ip %s logical ip %s logical port %s external mac %s': %v", lrName, natType, externalIP, logicalIP, lspName, externalMac, err)
 	}
 
 	if err := c.CreateNats(lrName, nat); err != nil {
+		klog.Error(err)
 		return fmt.Errorf("add nat 'type %s external ip %s logical ip %s logical port %s external mac %s' to logical router %s: %v", natType, externalIP, logicalIP, lspName, externalMac, lrName, err)
 	}
 
@@ -148,10 +157,12 @@ func (c *ovnClient) UpdateNat(nat *ovnnb.NAT, fields ...interface{}) error {
 
 	op, err := c.ovnNbClient.Where(nat).Update(nat, fields...)
 	if err != nil {
+		klog.Error(err)
 		return fmt.Errorf("generate operations for updating nat 'type %s external ip %s logical ip %s': %v", nat.Type, nat.ExternalIP, nat.LogicalIP, err)
 	}
 
 	if err = c.Transact("net-update", op); err != nil {
+		klog.Error(err)
 		return fmt.Errorf("update nat 'type %s external ip %s logical ip %s': %v", nat.Type, nat.ExternalIP, nat.LogicalIP, err)
 	}
 
@@ -163,6 +174,7 @@ func (c *ovnClient) DeleteNats(lrName, natType, logicalIP string) error {
 	/* delete nats from logical router */
 	nats, err := c.ListNats(lrName, natType, logicalIP, nil)
 	if err != nil {
+		klog.Error(err)
 		return fmt.Errorf("list logical router %s nats 'type %s logical ip %s': %v", lrName, natType, logicalIP, err)
 	}
 
@@ -173,6 +185,7 @@ func (c *ovnClient) DeleteNats(lrName, natType, logicalIP string) error {
 
 	ops, err := c.LogicalRouterUpdateNatOp(lrName, natsUUIDs, ovsdb.MutateOperationDelete)
 	if err != nil {
+		klog.Error(err)
 		return fmt.Errorf("generate operations for deleting nats from logical router %s: %v", lrName, err)
 	}
 	if err = c.Transact("nats-del", ops); err != nil {
@@ -186,12 +199,14 @@ func (c *ovnClient) DeleteNats(lrName, natType, logicalIP string) error {
 func (c *ovnClient) DeleteNat(lrName, natType, externalIP, logicalIP string) error {
 	nat, err := c.GetNat(lrName, natType, externalIP, logicalIP, false)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 
 	// remove nat from logical router
 	ops, err := c.LogicalRouterUpdateNatOp(lrName, []string{nat.UUID}, ovsdb.MutateOperationDelete)
 	if err != nil {
+		klog.Error(err)
 		return fmt.Errorf("generate operations for deleting nat from logical router %s: %v", lrName, err)
 	}
 	if err = c.Transact("lr-nat-del", ops); err != nil {
@@ -238,6 +253,7 @@ func (c *ovnClient) GetNat(lrName, natType, externalIP, logicalIP string, ignore
 	}
 	natList, err := c.listLogicalRouterNatByFilter(lrName, fnFilter)
 	if err != nil {
+		klog.Error(err)
 		return nil, fmt.Errorf("get logical router %s nat 'type %s external ip %s logical ip %s': %v", lrName, natType, externalIP, logicalIP, err)
 	}
 
@@ -282,6 +298,7 @@ func (c *ovnClient) newNat(lrName, natType, externalIP, logicalIP, logicalMac, p
 
 	exists, err := c.NatExists(lrName, natType, externalIP, logicalIP)
 	if err != nil {
+		klog.Error(err)
 		return nil, fmt.Errorf("get logical router %s nat: %v", lrName, err)
 	}
 
@@ -351,6 +368,7 @@ func natFilter(natType, logicalIP string, externalIDs map[string]string) func(na
 func (c *ovnClient) listLogicalRouterNatByFilter(lrName string, filter func(route *ovnnb.NAT) bool) ([]*ovnnb.NAT, error) {
 	lr, err := c.GetLogicalRouter(lrName, false)
 	if err != nil {
+		klog.Error(err)
 		return nil, err
 	}
 
@@ -361,6 +379,7 @@ func (c *ovnClient) listLogicalRouterNatByFilter(lrName string, filter func(rout
 			if errors.Is(err, client.ErrNotFound) {
 				continue
 			}
+			klog.Error(err)
 			return nil, err
 		}
 		if filter == nil || filter(nat) {
