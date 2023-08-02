@@ -237,6 +237,13 @@ func (c *Controller) handleAddOvnFip(key string) error {
 		return err
 	}
 
+	if cachedEip.Spec.Type == util.Lsp {
+		// eip is using by ecmp nexthop lsp, nat can not use
+		err = fmt.Errorf("ovn nat %s can not use type %s eip %s", key, util.Lsp, eipName)
+		klog.Error(err)
+		return err
+	}
+
 	if err = c.ovnFipTryUseEip(key, cachedEip.Spec.V4Ip); err != nil {
 		err = fmt.Errorf("failed to add fip %s, %v", key, err)
 		klog.Error(err)
@@ -256,6 +263,12 @@ func (c *Controller) handleAddOvnFip(key string) error {
 	vpcName := subnet.Spec.Vpc
 	if cachedEip.Status.Type != "" && cachedEip.Status.Type != util.NatUsingEip {
 		err = fmt.Errorf("ovn eip %s type is not %s, can not use", cachedEip.Name, util.NatUsingEip)
+		return err
+	}
+	if cachedEip.Spec.Type == util.Lsp {
+		// eip is using by ecmp nexthop lsp, nat can not use
+		err = fmt.Errorf("ovn nat %s can not use type %s eip %s", key, util.Lsp, eipName)
+		klog.Error(err)
 		return err
 	}
 	if err = c.ovnFipTryUseEip(key, cachedEip.Spec.V4Ip); err != nil {
