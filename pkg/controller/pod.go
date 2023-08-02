@@ -1146,12 +1146,12 @@ func (c *Controller) syncKubeOvnNet(cachedPod, pod *v1.Pod, podNets []*kubeovnNe
 		klog.Errorf("failed to generate patch payload for pod '%s', %v", pod.Name, err)
 		return err
 	}
-	if _, err := c.config.KubeClient.CoreV1().Pods(pod.Namespace).Patch(context.Background(), pod.Name,
+	if pod, err := c.config.KubeClient.CoreV1().Pods(pod.Namespace).Patch(context.Background(), pod.Name,
 		types.MergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
-		klog.Errorf("failed to add iptables eip finalizer for pod %s: %v", pod.Name, err)
+		klog.Errorf("failed to delete useless annannotations for pod %s: %v", pod.Name, err)
 		return err
 	}
 
