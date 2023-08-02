@@ -579,7 +579,7 @@ func (c *Controller) handleAddOrUpdatePod(key string) (err error) {
 	}
 
 	// check and do hotnoplug nic
-	if err = c.syncKubeOvnNet(pod, podNets); err != nil {
+	if err = c.syncKubeOvnNet(cachedPod, pod, podNets); err != nil {
 		klog.Errorf("failed to sync pod nets %v", err)
 		return err
 	}
@@ -1080,7 +1080,7 @@ func (c *Controller) handleUpdatePodSecurity(key string) error {
 	}
 	return nil
 }
-func (c *Controller) syncKubeOvnNet(pod *v1.Pod, podNets []*kubeovnNet) error {
+func (c *Controller) syncKubeOvnNet(cachedPod, pod *v1.Pod, podNets []*kubeovnNet) error {
 	podName := c.getNameByPod(pod)
 	key := fmt.Sprintf("%s/%s", pod.Namespace, podName)
 	targetPortNameList := strset.NewWithSize(len(podNets))
@@ -1135,11 +1135,24 @@ func (c *Controller) syncKubeOvnNet(pod *v1.Pod, podNets []*kubeovnNet) error {
 	}
 
 	for _, providerName := range annotationsNeedToDel {
-		for annotationKey := range pod.Annotations {
-			if strings.HasPrefix(key, providerName) {
+		for annotationKey, _ := range pod.Annotations {
+			if strings.HasPrefix(annotationKey, providerName) {
 				delete(pod.Annotations, annotationKey)
 			}
 		}
+	}
+	patch, err := util.GenerateMergePatchPayload(cachedPod, pod)
+	if err != nil {
+		klog.Errorf("failed to generate patch payload for pod '%s', %v", pod.Name, err)
+		return err
+	}
+	if _, err := c.config.KubeClient.CoreV1().Pods(pod.Namespace).Patch(context.Background(), pod.Name,
+		types.MergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		klog.Errorf("failed to add iptables eip finalizer for pod %s: %v", pod.Name, err)
+		return err
 	}
 
 	return nil
