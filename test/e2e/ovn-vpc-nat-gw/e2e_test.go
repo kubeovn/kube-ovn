@@ -445,13 +445,13 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		shareEip := framework.MakeOvnEip(sharedEipName, underlaySubnetName, "", "", "", "")
 		_ = ovnEipClient.CreateSync(shareEip)
 		ginkgo.By("Creating the first ovn fip with share eip vip should be ok")
-		shareFipShouldOk := framework.MakeOvnFip(sharedEipFipShoudOkName, sharedEipName, util.NatUsingVip, sharedVipName)
+		shareFipShouldOk := framework.MakeOvnFip(sharedEipFipShoudOkName, sharedEipName, util.Vip, sharedVipName)
 		_ = ovnFipClient.CreateSync(shareFipShouldOk)
 		ginkgo.By("Creating the second ovn fip with share eip vip should be failed")
-		shareFipShouldFail := framework.MakeOvnFip(sharedEipFipShoudFailName, sharedEipName, util.NatUsingVip, sharedVipName)
+		shareFipShouldFail := framework.MakeOvnFip(sharedEipFipShoudFailName, sharedEipName, util.Vip, sharedVipName)
 		_ = ovnFipClient.Create(shareFipShouldFail)
 		ginkgo.By("Creating ovn dnat for dnat with share eip vip")
-		shareDnat := framework.MakeOvnDnatRule(sharedEipDnatName, sharedEipName, util.NatUsingVip, sharedVipName, "80", "8080", "tcp")
+		shareDnat := framework.MakeOvnDnatRule(sharedEipDnatName, sharedEipName, util.Vip, sharedVipName, "80", "8080", "tcp")
 		_ = ovnDnatRuleClient.CreateSync(shareDnat)
 		ginkgo.By("Creating ovn snat with share eip vip")
 		shareSnat := framework.MakeOvnSnatRule(sharedEipSnatName, sharedEipName, noBfdSubnetName, "")
@@ -502,7 +502,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		ginkgo.By("2. Creating custom vpc enable external and bfd")
 		for _, nodeName := range nodeNames {
 			ginkgo.By("Creating ovn node-ext-gw type eip on node " + nodeName)
-			eip := makeOvnEip(nodeName, underlaySubnetName, "", "", "", util.NodeExtGwUsingEip)
+			eip := makeOvnEip(nodeName, underlaySubnetName, "", "", "", util.Lsp)
 			_ = ovnEipClient.CreateSync(eip)
 		}
 		bfdSubnetV4Cidr := "192.168.1.0/24"
@@ -538,7 +538,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		eip := makeOvnEip(fipEipName, underlaySubnetName, "", "", "", "")
 		_ = ovnEipClient.CreateSync(eip)
 		ginkgo.By("Creating ovn fip " + fipName)
-		fip := makeOvnFip(fipName, fipEipName, util.NatUsingVip, fipVipName)
+		fip := makeOvnFip(fipName, fipEipName, util.Vip, fipVipName)
 		_ = ovnFipClient.CreateSync(fip)
 
 		ginkgo.By("Creating ovn eip " + snatEipName)
@@ -555,7 +555,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		dnatEip := makeOvnEip(dnatEipName, underlaySubnetName, "", "", "", "")
 		_ = ovnEipClient.CreateSync(dnatEip)
 		ginkgo.By("Creating ovn dnat " + dnatName)
-		dnat := makeOvnDnat(dnatName, dnatEipName, util.NatUsingVip, dnatVipName, "80", "8080", "tcp")
+		dnat := makeOvnDnat(dnatName, dnatEipName, util.Vip, dnatVipName, "80", "8080", "tcp")
 		_ = ovnDnatRuleClient.CreateSync(dnat)
 
 		k8sNodes, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)

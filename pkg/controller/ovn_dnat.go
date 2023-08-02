@@ -215,7 +215,7 @@ func (c *Controller) handleAddOvnDnatRule(key string) error {
 	klog.V(3).Infof("handle add dnat %s", key)
 
 	var internalV4Ip, mac, subnetName string
-	if cachedDnat.Spec.IpType == util.NatUsingVip {
+	if cachedDnat.Spec.IpType == util.Vip {
 		internalVip, err := c.virtualIpsLister.Get(cachedDnat.Spec.IpName)
 		if err != nil {
 			klog.Errorf("failed to get vip %s, %v", cachedDnat.Spec.IpName, err)
@@ -354,7 +354,7 @@ func (c *Controller) handleUpdateOvnDnatRule(key string) error {
 
 	klog.V(3).Infof("handle update dnat %s", key)
 	var internalV4Ip, mac, subnetName string
-	if cachedDnat.Spec.IpType == util.NatUsingVip {
+	if cachedDnat.Spec.IpType == util.Vip {
 		internalVip, err := c.virtualIpsLister.Get(cachedDnat.Spec.IpName)
 		if err != nil {
 			klog.Errorf("failed to get vip %s, %v", cachedDnat.Spec.IpName, err)

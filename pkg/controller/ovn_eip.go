@@ -247,7 +247,7 @@ func (c *Controller) handleAddOvnEip(key string) error {
 		return err
 	}
 
-	if cachedEip.Spec.Type == util.NodeExtGwUsingEip {
+	if cachedEip.Spec.Type == util.Lsp {
 		mergedIp := util.GetStringIP(v4ip, v6ip)
 		if err := c.ovnClient.CreateBareLogicalSwitchPort(subnet.Name, portName, mergedIp, mac); err != nil {
 			klog.Error("failed to create lsp for ovn eip %s, %v", key, err)
@@ -262,7 +262,7 @@ func (c *Controller) handleAddOvnEip(key string) error {
 		klog.Errorf("failed to create or update ovn eip '%s', %v", cachedEip.Name, err)
 		return err
 	}
-	if cachedEip.Spec.Type != util.NodeExtGwUsingEip {
+	if cachedEip.Spec.Type != util.Lsp {
 		// node ext gw eip has a nic on node, so left node to make it ready
 		if err = c.patchOvnEipStatus(key, true); err != nil {
 			klog.Errorf("failed to patch ovn eip %s: %v", key, err)
@@ -302,7 +302,7 @@ func (c *Controller) handleUpdateOvnEip(key string) error {
 		}
 		return nil
 	}
-	if cachedEip.Spec.Type != util.NodeExtGwUsingEip {
+	if cachedEip.Spec.Type != util.Lsp {
 		// node ext gw eip has a nic on node, so left node to make it ready
 		if err = c.patchOvnEipStatus(key, true); err != nil {
 			klog.Errorf("failed to patch ovn eip %s: %v", key, err)
@@ -345,14 +345,14 @@ func (c *Controller) handleDelOvnEip(eip *kubeovnv1.OvnEip) error {
 		return err
 	}
 
-	if eip.Spec.Type == util.NodeExtGwUsingEip {
+	if eip.Spec.Type == util.Lsp {
 		if err := c.ovnClient.DeleteLogicalSwitchPort(eip.Name); err != nil {
 			klog.Errorf("failed to delete lsp %s, %v", eip.Name, err)
 			return err
 		}
 	}
 
-	if eip.Spec.Type == util.LrpUsingEip {
+	if eip.Spec.Type == util.Lrp {
 		if err := c.ovnClient.DeleteLogicalRouterPort(eip.Name); err != nil {
 			klog.Errorf("failed to delete lrp %s, %v", eip.Name, err)
 			return err

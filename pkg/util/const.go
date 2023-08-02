@@ -175,13 +175,13 @@ const (
 	EcmpRouteType   = "ecmp"
 	NormalRouteType = "normal"
 
-	LrpUsingEip        = "lrp"
+	Vip                = "vip"
+	Lrp                = "lrp"
+	Lsp                = "lrp"
+	NatUsingEip        = "nat"
 	FipUsingEip        = "fip"
-	NatUsingVip        = "vip"
-	NatUsingEip        = "eip"
 	SnatUsingEip       = "snat"
 	DnatUsingEip       = "dnat"
-	NodeExtGwUsingEip  = "node-ext-gw"
 	StaticRouteBfdEcmp = "ecmp_symmetric_reply"
 
 	OvnFip      = "ovn"

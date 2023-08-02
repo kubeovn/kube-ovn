@@ -812,7 +812,7 @@ func (c *Controller) handleAddVpcExternal(key string) error {
 			klog.Errorf("failed to acquire ip address for lrp eip %s, %v", lrpEipName, err)
 			return err
 		}
-		if err := c.createOrUpdateCrdOvnEip(lrpEipName, c.config.ExternalGatewaySwitch, v4ip, v6ip, mac, util.LrpUsingEip); err != nil {
+		if err := c.createOrUpdateCrdOvnEip(lrpEipName, c.config.ExternalGatewaySwitch, v4ip, v6ip, mac, util.Lrp); err != nil {
 			klog.Errorf("failed to create ovn eip for lrp %s: %v", lrpEipName, err)
 			return err
 		}

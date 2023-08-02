@@ -204,7 +204,7 @@ func (c *Controller) handleAddOvnFip(key string) error {
 	}
 	klog.V(3).Infof("handle add fip %s", key)
 	var internalV4Ip, mac, subnetName string
-	if cachedFip.Spec.IpType == util.NatUsingVip {
+	if cachedFip.Spec.IpType == util.Vip {
 		internalVip, err := c.virtualIpsLister.Get(cachedFip.Spec.IpName)
 		if err != nil {
 			klog.Errorf("failed to get vip %s, %v", cachedFip.Spec.IpName, err)
@@ -310,7 +310,7 @@ func (c *Controller) handleUpdateOvnFip(key string) error {
 	}
 	klog.V(3).Infof("handle update fip %s", key)
 	var internalV4Ip, mac, subnetName string
-	if cachedFip.Spec.IpType == util.NatUsingVip {
+	if cachedFip.Spec.IpType == util.Vip {
 		internalVip, err := c.virtualIpsLister.Get(cachedFip.Spec.IpName)
 		if err != nil {
 			klog.Errorf("failed to get vip %s, %v", cachedFip.Spec.IpName, err)
