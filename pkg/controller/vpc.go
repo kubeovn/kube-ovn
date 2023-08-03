@@ -597,7 +597,7 @@ func diffStaticRoute(exist []*ovnnb.LogicalRouterStaticRoute, target []*kubeovnv
 	for _, item := range existRouteMap {
 		routeNeedDel = append(routeNeedDel, item)
 	}
-	return
+	return routeNeedDel, routeNeedAdd, nil
 }
 
 func getStaticRouteItemKey(item *kubeovnv1.StaticRoute) (key string) {
