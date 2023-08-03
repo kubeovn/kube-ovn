@@ -855,31 +855,28 @@ func (c *Controller) initNodeChassis() error {
 		klog.Errorf("failed to list nodes: %v", err)
 		return err
 	}
-
+	chssisNodes, err := c.ovnLegacyClient.GetAllChassisMap()
+	if err != nil {
+		klog.Errorf("failed to get chassis nodes: %v", err)
+		return err
+	}
 	for _, node := range nodes {
 		chassisName := node.Annotations[util.ChassisAnnotation]
 		if chassisName != "" {
-			existChasisId, err := c.ovnLegacyClient.GetChassis(node.Name)
-			if err != nil {
-				klog.Errorf("failed to get chassis id: %v", err)
-				return err
-			}
-			if existChasisId == chassisName {
-				continue
-			}
-			exist, err := c.ovnLegacyClient.ChassisExist(chassisName)
-			if err != nil {
-				klog.Errorf("failed to check chassis exist: %v", err)
-				return err
-			}
-			if exist {
-				err = c.ovnLegacyClient.InitChassisNodeTag(chassisName, node.Name)
-				if err != nil {
-					klog.Errorf("failed to set chassis nodeTag: %v", err)
-					return err
+			if hostname, exist := chssisNodes[chassisName]; exist {
+				if hostname == node.Name {
+					continue
+				} else {
+					klog.Infof("node %s sbdb chassis %s host name %s", node.Name, chassisName, hostname)
+					err = c.ovnLegacyClient.InitChassisNodeTag(chassisName, node.Name)
+					if err != nil {
+						klog.Errorf("failed to set chassis nodeTag: %v", err)
+						return err
+					}
 				}
 			}
 		}
 	}
+
 	return nil
 }
