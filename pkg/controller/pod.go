@@ -1141,6 +1141,9 @@ func (c *Controller) syncKubeOvnNet(cachedPod, pod *v1.Pod, podNets []*kubeovnNe
 			}
 		}
 	}
+	if reflect.DeepEqual(cachedPod.Annotations, pod.Annotations) {
+		return nil
+	}
 	patch, err := util.GenerateMergePatchPayload(cachedPod, pod)
 	if err != nil {
 		klog.Errorf("failed to generate patch payload for pod '%s', %v", pod.Name, err)
