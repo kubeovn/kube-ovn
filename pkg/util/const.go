@@ -172,17 +172,18 @@ const (
 	DefaultVpc    = "ovn-cluster"
 	DefaultSubnet = "ovn-default"
 
-	EcmpRouteType   = "ecmp"
-	NormalRouteType = "normal"
-
-	Vip                = "vip"
-	Lrp                = "lrp"
-	Lsp                = "lrp"
-	NatUsingEip        = "nat"
-	FipUsingEip        = "fip"
-	SnatUsingEip       = "snat"
-	DnatUsingEip       = "dnat"
+	NormalRouteType    = "normal"
+	EcmpRouteType      = "ecmp"
 	StaticRouteBfdEcmp = "ecmp_symmetric_reply"
+
+	Vip = "vip"
+	Lrp = "lrp"
+	Lsp = "lsp"
+
+	NatUsingEip  = "nat"
+	FipUsingEip  = "fip"
+	SnatUsingEip = "snat"
+	DnatUsingEip = "dnat"
 
 	OvnFip      = "ovn"
 	IptablesFip = "iptables"
