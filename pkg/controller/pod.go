@@ -1135,13 +1135,13 @@ func (c *Controller) syncKubeOvnNet(cachedPod, pod *v1.Pod, podNets []*kubeovnNe
 	}
 
 	for _, providerName := range annotationsNeedToDel {
-		for annotationKey, _ := range pod.Annotations {
+		for annotationKey := range pod.Annotations {
 			if strings.HasPrefix(annotationKey, providerName) {
 				delete(pod.Annotations, annotationKey)
 			}
 		}
 	}
-	if reflect.DeepEqual(cachedPod.Annotations, pod.Annotations) {
+	if len(cachedPod.Annotations) == len(pod.Annotations) {
 		return nil
 	}
 	patch, err := util.GenerateMergePatchPayload(cachedPod, pod)
@@ -1154,7 +1154,7 @@ func (c *Controller) syncKubeOvnNet(cachedPod, pod *v1.Pod, podNets []*kubeovnNe
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
-		klog.Errorf("failed to delete useless annannotations for pod %s: %v", pod.Name, err)
+		klog.Errorf("failed to delete useless annotations for pod %s: %v", pod.Name, err)
 		return err
 	}
 
