@@ -898,7 +898,9 @@ func (c *Controller) getEgressNatIpByNode(nodeName string) (map[string]string, e
 		for _, cidr := range strings.Split(subnet.Spec.CIDRBlock, ",") {
 			for _, gw := range strings.Split(subnet.Spec.GatewayNode, ",") {
 				if strings.Contains(gw, ":") && util.GatewayContains(gw, nodeName) && util.CheckProtocol(cidr) == util.CheckProtocol(strings.Split(gw, ":")[1]) {
-					subnetsNatIp[cidr] = strings.TrimSpace(strings.Split(gw, ":")[1])
+					if subnet.Status.ActivateGateway == nodeName {
+						subnetsNatIp[cidr] = strings.TrimSpace(strings.Split(gw, ":")[1])
+					}
 					break
 				}
 			}
