@@ -579,11 +579,15 @@ func (c *Controller) handleAddOrUpdatePod(key string) (err error) {
 	}
 
 	// check and do hotnoplug nic
-	if err = c.syncKubeOvnNet(cachedPod, pod, podNets); err != nil {
+	if cachedPod, err = c.syncKubeOvnNet(cachedPod, pod, podNets); err != nil {
 		klog.Errorf("failed to sync pod nets %v", err)
 		return err
 	}
-
+	if cachedPod == nil {
+		// pod has been deleted
+		return nil
+	}
+	pod = cachedPod.DeepCopy()
 	// check if allocate subnet is need. also allocate subnet when hotplug nic
 	needAllocatePodNets := needAllocateSubnets(pod, podNets)
 	if len(needAllocatePodNets) != 0 {
@@ -1080,7 +1084,7 @@ func (c *Controller) handleUpdatePodSecurity(key string) error {
 	}
 	return nil
 }
-func (c *Controller) syncKubeOvnNet(cachedPod, pod *v1.Pod, podNets []*kubeovnNet) error {
+func (c *Controller) syncKubeOvnNet(cachedPod, pod *v1.Pod, podNets []*kubeovnNet) (*v1.Pod, error) {
 	podName := c.getNameByPod(pod)
 	key := fmt.Sprintf("%s/%s", pod.Namespace, podName)
 	targetPortNameList := strset.NewWithSize(len(podNets))
@@ -1096,7 +1100,7 @@ func (c *Controller) syncKubeOvnNet(cachedPod, pod *v1.Pod, podNets []*kubeovnNe
 	ports, err := c.ovnClient.ListNormalLogicalSwitchPorts(true, map[string]string{"pod": key})
 	if err != nil {
 		klog.Errorf("failed to list lsps of pod '%s', %v", pod.Name, err)
-		return err
+		return nil, err
 	}
 
 	for _, port := range ports {
@@ -1113,7 +1117,7 @@ func (c *Controller) syncKubeOvnNet(cachedPod, pod *v1.Pod, podNets []*kubeovnNe
 	}
 
 	if len(portsNeedToDel) == 0 {
-		return nil
+		return pod, nil
 	}
 
 	for _, portNeedDel := range portsNeedToDel {
@@ -1124,12 +1128,12 @@ func (c *Controller) syncKubeOvnNet(cachedPod, pod *v1.Pod, podNets []*kubeovnNe
 
 		if err := c.ovnClient.DeleteLogicalSwitchPort(portNeedDel); err != nil {
 			klog.Errorf("failed to delete lsp %s, %v", portNeedDel, err)
-			return err
+			return nil, err
 		}
 		if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), portNeedDel, metav1.DeleteOptions{}); err != nil {
 			if !k8serrors.IsNotFound(err) {
 				klog.Errorf("failed to delete ip %s, %v", portNeedDel, err)
-				return err
+				return nil, err
 			}
 		}
 	}
@@ -1142,23 +1146,24 @@ func (c *Controller) syncKubeOvnNet(cachedPod, pod *v1.Pod, podNets []*kubeovnNe
 		}
 	}
 	if len(cachedPod.Annotations) == len(pod.Annotations) {
-		return nil
+		return pod, nil
 	}
 	patch, err := util.GenerateMergePatchPayload(cachedPod, pod)
 	if err != nil {
 		klog.Errorf("failed to generate patch payload for pod '%s', %v", pod.Name, err)
-		return err
+		return nil, err
 	}
-	if pod, err := c.config.KubeClient.CoreV1().Pods(pod.Namespace).Patch(context.Background(), pod.Name,
-		types.MergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
+	patchedPod, err := c.config.KubeClient.CoreV1().Pods(pod.Namespace).Patch(context.Background(), pod.Name,
+		types.MergePatchType, patch, metav1.PatchOptions{}, "")
+	if err != nil {
 		if k8serrors.IsNotFound(err) {
-			return nil
+			return nil, nil
 		}
 		klog.Errorf("failed to delete useless annotations for pod %s: %v", pod.Name, err)
-		return err
+		return nil, err
 	}
 
-	return nil
+	return patchedPod.DeepCopy(), nil
 }
 
 func isStatefulSetPod(pod *v1.Pod) (bool, string) {
