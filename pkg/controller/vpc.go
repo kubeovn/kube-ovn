@@ -46,20 +46,15 @@ func (c *Controller) enqueueUpdateVpc(old, new interface{}) {
 		utilruntime.HandleError(err)
 		return
 	}
-
-	_, oldOk := oldVpc.Labels[util.VpcExternalLabel]
-	_, newOk := newVpc.Labels[util.VpcExternalLabel]
-	if oldOk || newOk {
-		return
-	}
-
-	if !newVpc.DeletionTimestamp.IsZero() ||
+	if newVpc.DeletionTimestamp.IsZero() ||
 		!reflect.DeepEqual(oldVpc.Spec.Namespaces, newVpc.Spec.Namespaces) ||
 		!reflect.DeepEqual(oldVpc.Spec.StaticRoutes, newVpc.Spec.StaticRoutes) ||
 		!reflect.DeepEqual(oldVpc.Spec.PolicyRoutes, newVpc.Spec.PolicyRoutes) ||
 		!reflect.DeepEqual(oldVpc.Spec.VpcPeerings, newVpc.Spec.VpcPeerings) ||
-		!reflect.DeepEqual(oldVpc.Annotations, newVpc.Annotations) {
-		klog.V(3).Infof("enqueue update vpc %s", key)
+		!reflect.DeepEqual(oldVpc.Annotations, newVpc.Annotations) ||
+		oldVpc.Labels[util.VpcExternalLabel] != newVpc.Labels[util.VpcExternalLabel] {
+		// TODO:// label VpcExternalLabel replace with spec enable external
+		klog.Infof("enqueue update vpc %s", key)
 		c.addOrUpdateVpcQueue.Add(key)
 	}
 }
@@ -281,9 +276,10 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		klog.Errorf("failed to get vpc %s static route list, %v", vpc.Name, err)
 		return err
 	}
-
 	rtbs := c.getRouteTablesByVpc(vpc)
 	targetRoutes := vpc.Spec.StaticRoutes
+	klog.Infof("vpc %s spec static routes: %v", key, targetRoutes)
+	klog.Infof("vpc %s exist route: %v", key, existRoute)
 	if vpc.Name == c.config.ClusterRouter {
 		if _, ok := rtbs[util.MainRouteTable]; !ok {
 			rtbs[util.MainRouteTable] = nil
@@ -370,6 +366,8 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		klog.Errorf("failed to diff vpc %s static route, %v", vpc.Name, err)
 		return err
 	}
+	klog.Infof("vpc %s add routes: %v", key, routeNeedAdd)
+	klog.Infof("vpc %s del routes: %v", key, routeNeedDel)
 	for _, item := range routeNeedDel {
 		klog.Infof("vpc %s del static route: %v", vpc.Name, item)
 		policy := convertPolicy(item.Policy)
@@ -380,8 +378,8 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 	}
 
 	for _, item := range routeNeedAdd {
-		klog.Infof("vpc %s add static route: %+v", vpc.Name, item)
 		if item.BfdId != "" {
+			klog.Infof("vpc %s add static ecmp route: %+v", vpc.Name, item)
 			if err = c.ovnClient.AddLogicalRouterStaticRoute(
 				vpc.Name, item.RouteTable, convertPolicy(item.Policy), item.CIDR, &item.BfdId, item.NextHopIP,
 			); err != nil {
@@ -389,6 +387,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 				return err
 			}
 		} else {
+			klog.Infof("vpc %s add static route: %+v", vpc.Name, item)
 			if err = c.ovnClient.AddLogicalRouterStaticRoute(
 				vpc.Name, item.RouteTable, convertPolicy(item.Policy), item.CIDR, nil, item.NextHopIP,
 			); err != nil {
@@ -972,6 +971,7 @@ func (c *Controller) patchVpcBfdStatus(key string) error {
 	}
 	vpc := cachedVpc.DeepCopy()
 	if vpc.Status.EnableBfd != vpc.Spec.EnableBfd {
+		vpc.Status.EnableExternal = cachedVpc.Spec.EnableExternal
 		vpc.Status.EnableBfd = cachedVpc.Spec.EnableBfd
 		bytes, err := vpc.Status.Bytes()
 		if err != nil {

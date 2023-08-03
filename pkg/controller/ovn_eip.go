@@ -263,7 +263,7 @@ func (c *Controller) handleAddOvnEip(key string) error {
 		return err
 	}
 	if cachedEip.Spec.Type != util.Lsp {
-		// node ext gw eip has a nic on node, so left node to make it ready
+		// node ext gw use lsp eip, has a nic on gw node, so left node to make it ready
 		if err = c.patchOvnEipStatus(key, true); err != nil {
 			klog.Errorf("failed to patch ovn eip %s: %v", key, err)
 			return err
@@ -303,7 +303,7 @@ func (c *Controller) handleUpdateOvnEip(key string) error {
 		return nil
 	}
 	if cachedEip.Spec.Type != util.Lsp {
-		// node ext gw eip has a nic on node, so left node to make it ready
+		// node ext gw use lsp eip, has a nic on gw node, so left node to make it ready
 		if err = c.patchOvnEipStatus(key, true); err != nil {
 			klog.Errorf("failed to patch ovn eip %s: %v", key, err)
 			return err

@@ -572,7 +572,6 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 			framework.ExpectEqual(route.Policy, kubeovnv1.PolicySrc)
 			framework.ExpectNotEmpty(route.CIDR)
 		}
-
 		k8sNodes, err = e2enode.GetReadySchedulableNodes(context.Background(), cs)
 		framework.ExpectNoError(err)
 		for _, node := range k8sNodes.Items {
