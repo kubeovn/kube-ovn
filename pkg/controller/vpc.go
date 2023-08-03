@@ -278,8 +278,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 	}
 	rtbs := c.getRouteTablesByVpc(vpc)
 	targetRoutes := vpc.Spec.StaticRoutes
-	klog.Infof("vpc %s spec static routes: %v", key, targetRoutes)
-	klog.Infof("vpc %s exist route: %v", key, existRoute)
+	klog.Infof("vpc %s spec static routes: %v, exist route:", key, targetRoutes, existRoute)
 	if vpc.Name == c.config.ClusterRouter {
 		if _, ok := rtbs[util.MainRouteTable]; !ok {
 			rtbs[util.MainRouteTable] = nil
@@ -366,8 +365,6 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		klog.Errorf("failed to diff vpc %s static route, %v", vpc.Name, err)
 		return err
 	}
-	klog.Infof("vpc %s add routes: %v", key, routeNeedAdd)
-	klog.Infof("vpc %s del routes: %v", key, routeNeedDel)
 	for _, item := range routeNeedDel {
 		klog.Infof("vpc %s del static route: %v", vpc.Name, item)
 		policy := convertPolicy(item.Policy)
