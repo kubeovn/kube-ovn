@@ -366,6 +366,11 @@ func (c *Controller) markAndCleanLSP() error {
 			return err
 		}
 
+		var subnet string
+		if ipCR, err := c.ipsLister.Get(lsp.Name); err == nil {
+			subnet = ipCR.Spec.Subnet
+		}
+
 		if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), lsp.Name, metav1.DeleteOptions{}); err != nil {
 			if !k8serrors.IsNotFound(err) {
 				klog.Errorf("failed to delete ip %s, %v", lsp.Name, err)
@@ -375,6 +380,10 @@ func (c *Controller) markAndCleanLSP() error {
 
 		if key := lsp.ExternalIDs["pod"]; key != "" {
 			c.ipam.ReleaseAddressByPod(key)
+		}
+
+		if subnet != "" {
+			c.updateSubnetStatusQueue.Add(subnet)
 		}
 	}
 	lastNoPodLSP = noPodLSP

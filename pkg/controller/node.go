@@ -731,13 +731,20 @@ func (c *Controller) createOrUpdateCrdIPs(podName, ip, mac, subnetName, ns, node
 }
 
 func (c *Controller) deleteCrdIPs(podName, ns, providerName string) error {
+	var subnet string
 	portName := ovs.PodNameToPortName(podName, ns, providerName)
+	if ipCR, err := c.ipsLister.Get(portName); err == nil {
+		subnet = ipCR.Spec.Subnet
+	}
 	klog.Infof("delete cr ip '%s' for pod %s/%s", portName, ns, podName)
 	if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), portName, metav1.DeleteOptions{}); err != nil {
 		if !k8serrors.IsNotFound(err) {
 			klog.Errorf("failed to delete ip %s, %v", portName, err)
 			return err
 		}
+	}
+	if subnet != "" {
+		c.updateSubnetStatusQueue.Add(subnet)
 	}
 	return nil
 }

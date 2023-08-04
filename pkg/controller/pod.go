@@ -1122,7 +1122,8 @@ func (c *Controller) syncKubeOvnNet(cachedPod, pod *v1.Pod, podNets []*kubeovnNe
 
 	for _, portNeedDel := range portsNeedToDel {
 
-		if subnet, ok := c.ipam.Subnets[subnetUsedByPort[portNeedDel]]; ok {
+		subnet, ok := c.ipam.Subnets[subnetUsedByPort[portNeedDel]]
+		if ok {
 			subnet.ReleaseAddressWithNicName(podName, portNeedDel)
 		}
 
@@ -1135,6 +1136,9 @@ func (c *Controller) syncKubeOvnNet(cachedPod, pod *v1.Pod, podNets []*kubeovnNe
 				klog.Errorf("failed to delete ip %s, %v", portNeedDel, err)
 				return nil, err
 			}
+		}
+		if subnet != nil {
+			c.updateSubnetStatusQueue.Add(subnet.Name)
 		}
 	}
 
