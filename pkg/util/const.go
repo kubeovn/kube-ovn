@@ -127,6 +127,7 @@ const (
 	EcmpRouteType   = "ecmp"
 	NormalRouteType = "normal"
 
+	U2OSubnetPolicyPriority     = 29400
 	GatewayRouterPolicyPriority = 29000
 	NodeRouterPolicyPriority    = 30000
 	SubnetRouterPolicyPriority  = 31000
