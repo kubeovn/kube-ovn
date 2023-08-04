@@ -141,54 +141,57 @@ function ovn_db_pre_start() {
 
     local db_file="/etc/ovn/ovn${1}_db.db"
     if [ -e "$db_file" ]; then
-       if ovsdb-tool db-is-clustered "$db_file"; then
+        if ovsdb-tool db-is-clustered "$db_file"; then
             local msg=$(ovsdb-tool check-cluster "$db_file" 2>&1) || true
             if echo $msg | grep -q 'has not joined the cluster'; then
                 local birth_time=$(stat --format=%W $db_file)
                 local now=$(date +%s)
                 if [ $(($now - $birth_time)) -ge 120 ]; then
-                    echo "ovn db file $db_file exists for more than 120s, removing it..."
+                    echo "ovn db file $db_file exists for more than 120s, remove it."
                     rm -f "$db_file" || return 1
                 fi
                 return
             fi
 
-          if ! ovsdb-tool check-cluster "$db_file"; then
-              echo "detected database corruption for file $db_file, rebuild it."
-              local sid=$(ovsdb-tool db-sid "$db_file")
-              if ! echo -n "$sid" | grep -qE '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'; then
-                  echo "failed to get sid from $1 db file $db_file"
-                  return 1
-              fi
-              echo "get local server id $sid"
+            if ! ovsdb-tool check-cluster "$db_file"; then
+                local db_bak="$db_file.backup-$(date +%s)-$(random_str)"
+                echo "backup $db_file to $db_bak"
+                cp "$db_file" "$db_bak" || return 1
 
-              eval port="\$${db_eval}_CLUSTER_PORT"
-              local local_addr="$(gen_conn_addr $DB_CLUSTER_ADDR $port)"
-              echo "local address: $local_addr"
+                echo "detected database corruption for file $db_file, try to fix it."
+                if ! ovsdb-tool fix-cluster "$db_file"; then
+                    echo "failed to fix database file $db_file, rebuild it."
+                    local sid=$(ovsdb-tool db-sid "$db_file")
+                    if ! echo -n "$sid" | grep -qE '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'; then
+                        echo "failed to get sid from db file $db_file"
+                        return 1
+                    fi
+                    echo "get local server id $sid"
 
-              local remote_addr=()
-              local node_ips=$(echo -n "${NODE_IPS}" | sed 's/,/ /g')
-              for node_ip in ${node_ips[*]}; do
-                  if [ ! "$node_ip" = "$DB_CLUSTER_ADDR" ]; then
-                      remote_addr=(${remote_addr[*]} "$(gen_conn_addr $node_ip $port)")
-                  fi
-              done
-              echo "remote addresses: ${remote_addr[*]}"
+                    eval port="\$${db_eval}_CLUSTER_PORT"
+                    local local_addr="$(gen_conn_addr $DB_CLUSTER_ADDR $port)"
+                    echo "local address: $local_addr"
 
-              local db_new="$db_file.init-$(date +%s)-$(random_str)"
-              echo "generating new database file $db_new"
-              if [ ${#remote_addr[*]} -ne 0 ]; then
-                  ovsdb-tool --sid $sid join-cluster "$db_new" $db $local_addr ${remote_addr[*]} || return 1
+                    local remote_addr=()
+                    local node_ips=$(echo -n "${NODE_IPS}" | sed 's/,/ /g')
+                    for node_ip in ${node_ips[*]}; do
+                        if [ ! "$node_ip" = "$DB_CLUSTER_ADDR" ]; then
+                            remote_addr=(${remote_addr[*]} "$(gen_conn_addr $node_ip $port)")
+                        fi
+                    done
+                    echo "remote addresses: ${remote_addr[*]}"
 
-                  local db_bak="$db_file.backup-$(date +%s)-$(random_str)"
-                  echo "backup $db_file to $db_bak"
-                  mv "$db_file" "$db_bak" || return 1
+                    local db_new="$db_file.init-$(date +%s)-$(random_str)"
+                    echo "generating new database file $db_new"
+                    if [ ${#remote_addr[*]} -ne 0 ]; then
+                        ovsdb-tool --sid $sid join-cluster "$db_new" $db $local_addr ${remote_addr[*]} || return 1
 
-                  echo "use new database file $db_new"
-                  mv "$db_new" "$db_file"
-              fi
-          fi
-       fi
+                        echo "use new database file $db_new"
+                        mv "$db_new" "$db_file"
+                    fi
+                fi
+            fi
+        fi
     fi
 
     # create local config
