@@ -1190,13 +1190,13 @@ func (c *Controller) reconcileNamespaces(subnet *kubeovnv1.Subnet) error {
 func (c *Controller) reconcileCustomVpcBfdStaticRoute(vpcName, subnetName string) error {
 	// vpc enable bfd and subnet enable ecmp
 	// use static ecmp route with bfd
-	ovnEips, err := c.ovnEipsLister.List(labels.SelectorFromSet(labels.Set{util.OvnEipTypeLabel: util.NodeExtGwUsingEip}))
+	ovnEips, err := c.ovnEipsLister.List(labels.SelectorFromSet(labels.Set{util.OvnEipTypeLabel: util.Lsp}))
 	if err != nil {
 		klog.Errorf("failed to list node external ovn eip, %v", err)
 		return err
 	}
 	if len(ovnEips) < 2 {
-		err := fmt.Errorf("ecmp route with bfd for HA, which need two %s type eips at least, has %d", util.NodeExtGwUsingEip, len(ovnEips))
+		err := fmt.Errorf("ecmp route with bfd for HA, which need two %s type eips at least, has %d", util.Lsp, len(ovnEips))
 		klog.Error(err)
 		return err
 	}
@@ -1266,17 +1266,15 @@ func (c *Controller) reconcileCustomVpcBfdStaticRoute(vpcName, subnetName string
 		}
 	}
 	if needUpdate {
-		if _, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Update(context.Background(), vpc, metav1.UpdateOptions{}); err != nil {
+		if vpc, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Update(context.Background(), vpc, metav1.UpdateOptions{}); err != nil {
 			klog.Errorf("failed to update vpc spec static route %s, %v", vpc.Name, err)
 			return err
 		}
+		if err = c.patchVpcBfdStatus(vpc.Name); err != nil {
+			klog.Errorf("failed to patch vpc %s, %v", vpc.Name, err)
+			return err
+		}
 	}
-
-	if err = c.patchVpcBfdStatus(vpc.Name); err != nil {
-		klog.Errorf("failed to patch vpc %s, %v", vpc.Name, err)
-		return err
-	}
-
 	return nil
 }
 
@@ -1292,7 +1290,7 @@ func (c *Controller) reconcileCustomVpcAddNormalStaticRoute(vpcName string) erro
 		return err
 	}
 	gatewayV4, gatewayV6 := util.SplitStringIP(defualtExternalSubnet.Spec.Gateway)
-	vpc, err := c.vpcsLister.Get(vpcName)
+	cachedVpc, err := c.vpcsLister.Get(vpcName)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
@@ -1300,7 +1298,7 @@ func (c *Controller) reconcileCustomVpcAddNormalStaticRoute(vpcName string) erro
 		klog.Errorf("failed to get vpc %s, %v", vpcName, err)
 		return err
 	}
-
+	vpc := cachedVpc.DeepCopy()
 	rtbs := c.getRouteTablesByVpc(vpc)
 	routeTotal := len(vpc.Spec.StaticRoutes) + len(rtbs)*2
 	routes := make([]*kubeovnv1.StaticRoute, 0, routeTotal)
@@ -1351,17 +1349,15 @@ func (c *Controller) reconcileCustomVpcAddNormalStaticRoute(vpcName string) erro
 
 	if needUpdate {
 		vpc.Spec.StaticRoutes = routes
-		if _, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Update(context.Background(), vpc, metav1.UpdateOptions{}); err != nil {
+		if vpc, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Update(context.Background(), vpc, metav1.UpdateOptions{}); err != nil {
 			klog.Errorf("failed to update vpc spec static route %s, %v", vpc.Name, err)
 			return err
 		}
+		if err = c.patchVpcBfdStatus(vpc.Name); err != nil {
+			klog.Errorf("failed to patch vpc %s, %v", vpc.Name, err)
+			return err
+		}
 	}
-
-	if err = c.patchVpcBfdStatus(vpc.Name); err != nil {
-		klog.Errorf("failed to patch vpc %s, %v", vpc.Name, err)
-		return err
-	}
-
 	return nil
 }
 

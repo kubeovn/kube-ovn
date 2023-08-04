@@ -949,10 +949,10 @@ type OvnEipSpec struct {
 	V6Ip           string `json:"v6Ip"`
 	MacAddress     string `json:"macAddress"`
 	Type           string `json:"type"`
-	// usage type: eip, lrp, node external gw
-	// eip: only used by nat, fip, snat, dnat, all the nat type will record int the eip status
-	// lrp: logical router port
-	// node external gw: is lsp, in the case of bfd session between lrp and lsp, the lsp is on the node as external gateway
+	// usage type: lrp, lsp, nat
+	// nat: used by nat: dnat, snat, fip
+	// lrp: lrp created by vpc enable external, and also could be used by nat
+	// lsp: in the case of bfd session between lrp and lsp, the lsp is on the node as ecmp nexthop
 }
 
 // OvnEipCondition describes the state of an object at a certain point.

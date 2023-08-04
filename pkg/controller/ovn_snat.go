@@ -197,8 +197,10 @@ func (c *Controller) handleAddOvnSnatRule(key string) error {
 		return err
 	}
 
-	if cachedEip.Status.Type != "" && cachedEip.Status.Type != util.NatUsingEip {
-		err = fmt.Errorf("ovn eip %s type is not %s, can not use", cachedEip.Name, util.NatUsingEip)
+	if cachedEip.Spec.Type == util.Lsp {
+		// eip is using by ecmp nexthop lsp, nat can not use
+		err = fmt.Errorf("ovn nat %s can not use type %s eip %s", key, util.Lsp, eipName)
+		klog.Error(err)
 		return err
 	}
 
@@ -303,8 +305,10 @@ func (c *Controller) handleUpdateOvnSnatRule(key string) error {
 		return nil
 	}
 
-	if cachedEip.Status.Type != "" && cachedEip.Status.Type != util.NatUsingEip {
-		err = fmt.Errorf("ovn eip %s type is not %s, can not use", cachedEip.Name, util.NatUsingEip)
+	if cachedEip.Spec.Type == util.Lsp {
+		// eip is using by ecmp nexthop lsp, nat can not use
+		err = fmt.Errorf("ovn nat %s can not use type %s eip %s", key, util.Lsp, eipName)
+		klog.Error(err)
 		return err
 	}
 

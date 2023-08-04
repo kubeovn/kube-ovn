@@ -200,7 +200,7 @@ func (c *Controller) createDefaultVpcLrpEip(config map[string]string) (string, s
 			klog.Errorf("failed to acquire ip address for default vpc lrp %s, %v", lrpEipName, err)
 			return "", "", err
 		}
-		if err := c.createOrUpdateCrdOvnEip(lrpEipName, c.config.ExternalGatewaySwitch, v4ip, v6ip, mac, util.LrpUsingEip); err != nil {
+		if err := c.createOrUpdateCrdOvnEip(lrpEipName, c.config.ExternalGatewaySwitch, v4ip, v6ip, mac, util.Lrp); err != nil {
 			klog.Errorf("failed to create ovn eip cr for lrp %s, %v", lrpEipName, err)
 			return "", "", err
 		}

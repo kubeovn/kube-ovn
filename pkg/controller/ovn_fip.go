@@ -204,7 +204,7 @@ func (c *Controller) handleAddOvnFip(key string) error {
 	}
 	klog.V(3).Infof("handle add fip %s", key)
 	var internalV4Ip, mac, subnetName string
-	if cachedFip.Spec.IpType == util.NatUsingVip {
+	if cachedFip.Spec.IpType == util.Vip {
 		internalVip, err := c.virtualIpsLister.Get(cachedFip.Spec.IpName)
 		if err != nil {
 			klog.Errorf("failed to get vip %s, %v", cachedFip.Spec.IpName, err)
@@ -237,6 +237,13 @@ func (c *Controller) handleAddOvnFip(key string) error {
 		return err
 	}
 
+	if cachedEip.Spec.Type == util.Lsp {
+		// eip is using by ecmp nexthop lsp, nat can not use
+		err = fmt.Errorf("ovn nat %s can not use type %s eip %s", key, util.Lsp, eipName)
+		klog.Error(err)
+		return err
+	}
+
 	if err = c.ovnFipTryUseEip(key, cachedEip.Spec.V4Ip); err != nil {
 		err = fmt.Errorf("failed to add fip %s, %v", key, err)
 		klog.Error(err)
@@ -258,6 +265,7 @@ func (c *Controller) handleAddOvnFip(key string) error {
 		err = fmt.Errorf("ovn eip %s type is not %s, can not use", cachedEip.Name, util.NatUsingEip)
 		return err
 	}
+
 	if err = c.ovnFipTryUseEip(key, cachedEip.Spec.V4Ip); err != nil {
 		err = fmt.Errorf("failed to update fip %s, %v", key, err)
 		klog.Error(err)
@@ -310,7 +318,7 @@ func (c *Controller) handleUpdateOvnFip(key string) error {
 	}
 	klog.V(3).Infof("handle update fip %s", key)
 	var internalV4Ip, mac, subnetName string
-	if cachedFip.Spec.IpType == util.NatUsingVip {
+	if cachedFip.Spec.IpType == util.Vip {
 		internalVip, err := c.virtualIpsLister.Get(cachedFip.Spec.IpName)
 		if err != nil {
 			klog.Errorf("failed to get vip %s, %v", cachedFip.Spec.IpName, err)
@@ -341,8 +349,10 @@ func (c *Controller) handleUpdateOvnFip(key string) error {
 		klog.Errorf("failed to get eip, %v", err)
 		return err
 	}
-	if cachedEip.Status.Type != "" && cachedEip.Status.Type != util.NatUsingEip {
-		err = fmt.Errorf("ovn eip %s type is not %s, can not use", cachedEip.Name, util.NatUsingEip)
+	if cachedEip.Spec.Type == util.Lsp {
+		// eip is using by ecmp nexthop lsp, nat can not use
+		err = fmt.Errorf("ovn nat %s can not use type %s eip %s", key, util.Lsp, eipName)
+		klog.Error(err)
 		return err
 	}
 	if err = c.ovnFipTryUseEip(key, cachedEip.Spec.V4Ip); err != nil {

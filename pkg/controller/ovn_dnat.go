@@ -215,7 +215,7 @@ func (c *Controller) handleAddOvnDnatRule(key string) error {
 	klog.V(3).Infof("handle add dnat %s", key)
 
 	var internalV4Ip, mac, subnetName string
-	if cachedDnat.Spec.IpType == util.NatUsingVip {
+	if cachedDnat.Spec.IpType == util.Vip {
 		internalVip, err := c.virtualIpsLister.Get(cachedDnat.Spec.IpName)
 		if err != nil {
 			klog.Errorf("failed to get vip %s, %v", cachedDnat.Spec.IpName, err)
@@ -248,8 +248,10 @@ func (c *Controller) handleAddOvnDnatRule(key string) error {
 		return err
 	}
 
-	if cachedEip.Status.Type != "" && cachedEip.Status.Type != util.NatUsingEip {
-		err = fmt.Errorf("ovn eip %s type is not %s, can not use", cachedEip.Name, util.NatUsingEip)
+	if cachedEip.Spec.Type == util.Lsp {
+		// eip is using by ecmp nexthop lsp, nat can not use
+		err = fmt.Errorf("ovn nat %s can not use type %s eip %s", key, util.Lsp, eipName)
+		klog.Error(err)
 		return err
 	}
 
@@ -354,7 +356,7 @@ func (c *Controller) handleUpdateOvnDnatRule(key string) error {
 
 	klog.V(3).Infof("handle update dnat %s", key)
 	var internalV4Ip, mac, subnetName string
-	if cachedDnat.Spec.IpType == util.NatUsingVip {
+	if cachedDnat.Spec.IpType == util.Vip {
 		internalVip, err := c.virtualIpsLister.Get(cachedDnat.Spec.IpName)
 		if err != nil {
 			klog.Errorf("failed to get vip %s, %v", cachedDnat.Spec.IpName, err)
@@ -410,16 +412,10 @@ func (c *Controller) handleUpdateOvnDnatRule(key string) error {
 		return err
 	}
 
-	if cachedEip.Spec.Type != "" && cachedEip.Spec.Type != util.DnatUsingEip {
-		// eip is in use by other nat
-		err = fmt.Errorf("failed to update dnat %s, eip '%s' is using by %s", key, eipName, cachedEip.Spec.Type)
-		return err
-	}
-
-	if cachedEip.Spec.Type == util.DnatUsingEip &&
-		cachedEip.Annotations[util.VpcNatAnnotation] != "" &&
-		cachedEip.Annotations[util.VpcNatAnnotation] != cachedDnat.Name {
-		err = fmt.Errorf("failed to update dnat %s, eip '%s' is using by other dnat %s", key, eipName, cachedEip.Annotations[util.VpcNatAnnotation])
+	if cachedEip.Spec.Type == util.Lsp {
+		// eip is using by ecmp nexthop lsp, nat can not use
+		err = fmt.Errorf("ovn nat %s can not use type %s eip %s", key, util.Lsp, eipName)
+		klog.Error(err)
 		return err
 	}
 

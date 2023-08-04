@@ -77,6 +77,9 @@ func (c *ovnClient) AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPr
 		if util.ContainsString(nexthops, route.Nexthop) {
 			existing.Add(route.Nexthop)
 		} else {
+			if route.BFD != nil && bfdId != nil && *route.BFD != *bfdId {
+				continue
+			}
 			toDel = append(toDel, route.UUID)
 		}
 	}
@@ -91,10 +94,7 @@ func (c *ovnClient) AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPr
 			toAdd = append(toAdd, route)
 		}
 	}
-
-	if err = c.CreateLogicalRouterStaticRoutes(lrName, toAdd...); err != nil {
-		return fmt.Errorf("add static routes to logical router %s: %v", lrName, err)
-	}
+	klog.Infof("logical router %s del static routes: %v", lrName, toDel)
 	ops, err := c.LogicalRouterUpdateStaticRouteOp(lrName, toDel, ovsdb.MutateOperationDelete)
 	if err != nil {
 		klog.Error(err)
@@ -104,7 +104,10 @@ func (c *ovnClient) AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPr
 		klog.Error(err)
 		return fmt.Errorf("failed to delete static routes from logical router %s: %v", lrName, err)
 	}
-
+	klog.Infof("logical router %s add static routes: %v", lrName, toAdd)
+	if err = c.CreateLogicalRouterStaticRoutes(lrName, toAdd...); err != nil {
+		return fmt.Errorf("failed to add static routes to logical router %s: %v", lrName, err)
+	}
 	return nil
 }
 
