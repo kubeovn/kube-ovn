@@ -17,6 +17,7 @@ import (
 type PodClient struct {
 	f *Framework
 	*e2epod.PodClient
+	namespace string
 }
 
 func (f *Framework) PodClient() *PodClient {
@@ -24,7 +25,7 @@ func (f *Framework) PodClient() *PodClient {
 }
 
 func (f *Framework) PodClientNS(namespace string) *PodClient {
-	return &PodClient{f, e2epod.PodClientNS(f.Framework, namespace)}
+	return &PodClient{f, e2epod.PodClientNS(f.Framework, namespace), namespace}
 }
 
 func (c *PodClient) GetPod(name string) *corev1.Pod {
@@ -75,12 +76,12 @@ func (c *PodClient) Patch(original, modified *corev1.Pod) *corev1.Pod {
 }
 
 func (c *PodClient) WaitForRunning(name string) {
-	err := e2epod.WaitTimeoutForPodRunningInNamespace(context.TODO(), c.f.ClientSet, name, c.f.Namespace.Name, timeout)
+	err := e2epod.WaitTimeoutForPodRunningInNamespace(context.TODO(), c.f.ClientSet, name, c.namespace, timeout)
 	ExpectNoError(err)
 }
 
 func (c *PodClient) WaitForNotFound(name string) {
-	err := e2epod.WaitForPodNotFoundInNamespace(context.TODO(), c.f.ClientSet, name, c.f.Namespace.Name, timeout)
+	err := e2epod.WaitForPodNotFoundInNamespace(context.TODO(), c.f.ClientSet, name, c.namespace, timeout)
 	ExpectNoError(err)
 }
 

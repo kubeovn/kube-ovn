@@ -13,6 +13,7 @@ import (
 type EventClient struct {
 	f *Framework
 	typedcorev1.EventInterface
+	namespace string
 }
 
 func (f *Framework) EventClient() *EventClient {
@@ -23,6 +24,7 @@ func (f *Framework) EventClientNS(namespace string) *EventClient {
 	return &EventClient{
 		f:              f,
 		EventInterface: f.ClientSet.CoreV1().Events(namespace),
+		namespace:      namespace,
 	}
 }
 
@@ -30,7 +32,7 @@ func (f *Framework) EventClientNS(namespace string) *EventClient {
 func (c *EventClient) WaitToHaveEvent(kind, name, eventType, reason, sourceComponent, sourceHost string) []corev1.Event {
 	var result []corev1.Event
 	err := wait.PollUntilContextTimeout(context.Background(), poll, timeout, false, func(ctx context.Context) (bool, error) {
-		Logf("Waiting for %s %s/%s to have event %s/%s", kind, c.f.Namespace.Name, name, eventType, reason)
+		Logf("Waiting for %s %s/%s to have event %s/%s", kind, c.namespace, name, eventType, reason)
 		selector := fields.Set{
 			"involvedObject.kind": kind,
 			"involvedObject.name": name,

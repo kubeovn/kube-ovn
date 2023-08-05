@@ -1032,10 +1032,10 @@ var _ = framework.Describe("[group:subnet]", func() {
 		eventClient = f.EventClientNS("default")
 		events := eventClient.WaitToHaveEvent("Subnet", subnetName, "Normal", "SubnetGatewayTypeChanged", "kube-ovn-controller", "")
 
-		message := fmt.Sprintf("subnet gateway type changes from %s to %s ", apiv1.GWDistributedType, apiv1.GWCentralizedType)
+		message := fmt.Sprintf("subnet gateway type changes from %q to %q", apiv1.GWDistributedType, apiv1.GWCentralizedType)
 		found := false
 		for _, event := range events {
-			if strings.Contains(event.Message, message) {
+			if event.Message == message {
 				found = true
 				break
 			}
@@ -1043,9 +1043,9 @@ var _ = framework.Describe("[group:subnet]", func() {
 		framework.ExpectTrue(found, "no SubnetGatewayTypeChanged event")
 		found = false
 		events = eventClient.WaitToHaveEvent("Subnet", subnetName, "Normal", "SubnetGatewayNodeChanged", "kube-ovn-controller", "")
-		message = fmt.Sprintf("gateway node changes from %s to %s ", "", modifiedSubnet.Spec.GatewayNode)
+		message = fmt.Sprintf("gateway node changes from %q to %q", "", modifiedSubnet.Spec.GatewayNode)
 		for _, event := range events {
-			if strings.Contains(event.Message, message) {
+			if event.Message == message {
 				found = true
 				break
 			}
@@ -1073,6 +1073,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 			}
 		}
 	})
+
 	framework.ConformanceIt("should support subnet add nat outgoing policy rules ", func() {
 		f.SkipVersionPriorTo(1, 12, "Support for subnet add nat outgoing policy rules in v1.12")
 

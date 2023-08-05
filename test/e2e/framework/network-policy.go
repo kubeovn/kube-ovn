@@ -18,6 +18,7 @@ import (
 type NetworkPolicyClient struct {
 	f *Framework
 	v1net.NetworkPolicyInterface
+	namespace string
 }
 
 func (f *Framework) NetworkPolicyClient() *NetworkPolicyClient {
@@ -28,6 +29,7 @@ func (f *Framework) NetworkPolicyClientNS(namespace string) *NetworkPolicyClient
 	return &NetworkPolicyClient{
 		f:                      f,
 		NetworkPolicyInterface: f.ClientSet.NetworkingV1().NetworkPolicies(namespace),
+		namespace:              namespace,
 	}
 }
 

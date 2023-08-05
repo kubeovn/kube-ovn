@@ -21,6 +21,7 @@ import (
 type EndpointsClient struct {
 	f *Framework
 	v1core.EndpointsInterface
+	namespace string
 }
 
 func (f *Framework) EndpointClient() *EndpointsClient {
@@ -31,6 +32,7 @@ func (f *Framework) EndpointsClientNS(namespace string) *EndpointsClient {
 	return &EndpointsClient{
 		f:                  f,
 		EndpointsInterface: f.ClientSet.CoreV1().Endpoints(namespace),
+		namespace:          namespace,
 	}
 }
 
