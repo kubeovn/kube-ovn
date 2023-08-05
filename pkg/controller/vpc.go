@@ -278,7 +278,6 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 	}
 	rtbs := c.getRouteTablesByVpc(vpc)
 	targetRoutes := vpc.Spec.StaticRoutes
-	klog.Infof("vpc %s spec static routes: %v, exist route:", key, targetRoutes, existRoute)
 	if vpc.Name == c.config.ClusterRouter {
 		if _, ok := rtbs[util.MainRouteTable]; !ok {
 			rtbs[util.MainRouteTable] = nil
@@ -966,17 +965,18 @@ func (c *Controller) patchVpcBfdStatus(key string) error {
 		klog.Error("failed to get vpc %s, %v", key, err)
 		return err
 	}
-	vpc := cachedVpc.DeepCopy()
-	if vpc.Status.EnableBfd != vpc.Spec.EnableBfd {
-		vpc.Status.EnableExternal = cachedVpc.Spec.EnableExternal
-		vpc.Status.EnableBfd = cachedVpc.Spec.EnableBfd
-		bytes, err := vpc.Status.Bytes()
+
+	if cachedVpc.Status.EnableBfd != cachedVpc.Spec.EnableBfd {
+		status := cachedVpc.Status.DeepCopy()
+		status.EnableExternal = cachedVpc.Spec.EnableExternal
+		status.EnableBfd = cachedVpc.Spec.EnableBfd
+		bytes, err := status.Bytes()
 		if err != nil {
 			klog.Errorf("failed to marshal vpc status: %v", err)
 			return err
 		}
 		if _, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Patch(context.Background(),
-			vpc.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
+			cachedVpc.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
 			klog.Error(err)
 			return err
 		}

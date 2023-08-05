@@ -104,7 +104,6 @@ func (c *ovnClient) AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPr
 		klog.Error(err)
 		return fmt.Errorf("failed to delete static routes from logical router %s: %v", lrName, err)
 	}
-	klog.Infof("logical router %s add static routes: %v", lrName, toAdd)
 	if err = c.CreateLogicalRouterStaticRoutes(lrName, toAdd...); err != nil {
 		return fmt.Errorf("failed to add static routes to logical router %s: %v", lrName, err)
 	}
