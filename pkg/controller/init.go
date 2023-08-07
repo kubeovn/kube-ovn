@@ -855,10 +855,14 @@ func (c *Controller) initNodeChassis() error {
 		klog.Errorf("failed to list nodes: %v", err)
 		return err
 	}
-	chssisNodes, err := c.ovnLegacyClient.GetAllChassisMap()
+	chssises, err := c.ovnSbClient.GetKubeOvnChassisses()
 	if err != nil {
 		klog.Errorf("failed to get chassis nodes: %v", err)
 		return err
+	}
+	chssisNodes := make(map[string]string, len(*chssises))
+	for _, chssis := range *chssises {
+		chssisNodes[chssis.Name] = chssis.Hostname
 	}
 	for _, node := range nodes {
 		chassisName := node.Annotations[util.ChassisAnnotation]
@@ -868,7 +872,7 @@ func (c *Controller) initNodeChassis() error {
 					continue
 				} else {
 					klog.Infof("node %s sbdb chassis %s host name %s", node.Name, chassisName, hostname)
-					err = c.ovnLegacyClient.InitChassisNodeTag(chassisName, node.Name)
+					err = c.ovnSbClient.InitChassisNodeTag(chassisName, node.Name)
 					if err != nil {
 						klog.Errorf("failed to set chassis nodeTag: %v", err)
 						return err

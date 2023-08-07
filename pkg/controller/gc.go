@@ -667,7 +667,7 @@ func (c *Controller) gcStaticRoute() error {
 
 func (c *Controller) gcChassis() error {
 	klog.Infof("start to gc chassis")
-	chassises, err := c.ovnLegacyClient.GetAllChassis()
+	chassises, err := c.ovnSbClient.GetKubeOvnChassisses()
 	if err != nil {
 		klog.Errorf("failed to get all chassis, %v", err)
 	}
@@ -676,16 +676,16 @@ func (c *Controller) gcChassis() error {
 		klog.Errorf("failed to list nodes, %v", err)
 		return err
 	}
-	for _, chassis := range chassises {
+	for _, chassis := range *chassises {
 		matched := true
 		for _, node := range nodes {
-			if chassis == node.Annotations[util.ChassisAnnotation] {
+			if chassis.Name == node.Annotations[util.ChassisAnnotation] {
 				matched = false
 				break
 			}
 		}
 		if matched {
-			if err := c.ovnLegacyClient.DeleteChassisByName(chassis); err != nil {
+			if err := c.ovnSbClient.DeleteChassis(chassis.Name); err != nil {
 				klog.Errorf("failed to delete chassis %s %v", chassis, err)
 				return err
 			}

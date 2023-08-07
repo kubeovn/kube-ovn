@@ -7,6 +7,7 @@ import (
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -160,6 +161,7 @@ type DHCPOptions interface {
 }
 
 type OvnClient interface {
+	// OVN_Northbound start
 	ACL
 	AddressSet
 	BFD
@@ -180,6 +182,24 @@ type OvnClient interface {
 	RemoveLogicalPatchPort(lspName, lrpName string) error
 	DeleteLogicalGatewaySwitch(lsName, lrName string) error
 	DeleteSecurityGroup(sgName string) error
+	// OVN_Northbound end
+
+	// OVN_Southbound start
+	Chassis
+	// OVN_Southbound end
+
+	// common
 	GetEntityInfo(entity interface{}) error
+	GetVersion() (string, error)
 	Transact(method string, operations []ovsdb.Operation) error
+}
+
+type Chassis interface {
+	CreateChassis(chassisName, nodeName string) (*ovnsb.Chassis, error)
+	DeleteChassis(chassisName string) error
+	DeleteChassisByNode(node string) error
+	GetChssisByName(chassisName string, ignoreNotFound bool) (*ovnsb.Chassis, error)
+	GetChassisByNode(nodeName string) (*ovnsb.Chassis, error)
+	GetKubeOvnChassisses() (*[]ovnsb.Chassis, error)
+	InitChassisNodeTag(chassisName string, nodeName string) error
 }

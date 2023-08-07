@@ -186,21 +186,9 @@ func NewSbClient(addr string) (client.Client, error) {
 	}
 
 	monitor := c.NewMonitor(
-		client.WithTable(&ovnnb.ACL{}),
-		client.WithTable(&ovnnb.AddressSet{}),
-		client.WithTable(&ovnnb.BFD{}),
-		client.WithTable(&ovnnb.DHCPOptions{}),
-		client.WithTable(&ovnnb.GatewayChassis{}),
-		client.WithTable(&ovnnb.LoadBalancer{}),
-		client.WithTable(&ovnnb.LogicalRouterPolicy{}),
-		client.WithTable(&ovnnb.LogicalRouterPort{}),
-		client.WithTable(&ovnnb.LogicalRouterStaticRoute{}),
-		client.WithTable(&ovnnb.LogicalRouter{}),
-		client.WithTable(&ovnnb.LogicalSwitchPort{}),
-		client.WithTable(&ovnnb.LogicalSwitch{}),
-		client.WithTable(&ovnnb.NAT{}),
-		client.WithTable(&ovnnb.NBGlobal{}),
-		client.WithTable(&ovnnb.PortGroup{}),
+		client.WithTable(&ovnsb.Chassis{}),
+		// only monitor Chassis table for now
+		// TODO:// monitor other tables in ovsdb/ovnsb/model.go
 	)
 	monitor.Method = ovsdb.ConditionalMonitorRPC
 	if _, err = c.Monitor(context.TODO(), monitor); err != nil {

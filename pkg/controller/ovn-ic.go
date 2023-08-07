@@ -235,15 +235,15 @@ func (c *Controller) establishInterConnection(config map[string]string) error {
 			klog.Errorf("patch gw node %s failed %v", gw, err)
 			return err
 		}
-		chassisID, err := c.ovnLegacyClient.GetChassis(gw)
+		chassis, err := c.ovnSbClient.GetChassisByNode(gw)
 		if err != nil {
 			klog.Errorf("failed to get gw %s chassisID, %v", gw, err)
 			return err
 		}
-		if chassisID == "" {
+		if chassis.Name == "" {
 			return fmt.Errorf("no chassisID for gw %s", gw)
 		}
-		chassises = append(chassises, chassisID)
+		chassises = append(chassises, chassis.Name)
 	}
 	if len(chassises) == 0 {
 		klog.Error("no available ic gw")

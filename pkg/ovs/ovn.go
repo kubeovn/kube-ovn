@@ -3,6 +3,7 @@ package ovs
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/ovn-org/libovsdb/client"
@@ -167,4 +168,14 @@ func (c *ovnClient) Transact(method string, operations []ovsdb.Operation) error 
 	}
 
 	return nil
+}
+
+func (c *ovnClient) GetVersion() (string, error) {
+	if c.Schema().Version != "" {
+		return c.Schema().Version, nil
+	} else {
+		err := fmt.Errorf("failed to get version")
+		klog.Error(err)
+		return "", err
+	}
 }

@@ -249,15 +249,13 @@ func (c *Controller) getGatewayChassis(config map[string]string) ([]string, erro
 			klog.Errorf("patch external gw node %s failed %v", gw, err)
 			return chassises, err
 		}
-		chassisID, err := c.ovnLegacyClient.GetChassis(gw)
+		chassis, err := c.ovnSbClient.GetChassisByNode(gw)
 		if err != nil {
-			klog.Errorf("failed to get external gw %s chassisID, %v", gw, err)
+			klog.Errorf("failed to get chassis by node name: %s, %v", gw, err)
 			return chassises, err
 		}
-		if chassisID == "" {
-			return chassises, fmt.Errorf("no chassisID for external gw %s", gw)
-		}
-		chassises = append(chassises, chassisID)
+
+		chassises = append(chassises, chassis.UUID)
 	}
 	if len(chassises) == 0 {
 		klog.Error("no available external gw")
