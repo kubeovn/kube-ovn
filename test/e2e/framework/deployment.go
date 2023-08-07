@@ -29,6 +29,7 @@ import (
 type DeploymentClient struct {
 	f *Framework
 	v1apps.DeploymentInterface
+	namespace string
 }
 
 func (f *Framework) DeploymentClient() *DeploymentClient {
@@ -39,6 +40,7 @@ func (f *Framework) DeploymentClientNS(namespace string) *DeploymentClient {
 	return &DeploymentClient{
 		f:                   f,
 		DeploymentInterface: f.ClientSet.AppsV1().Deployments(namespace),
+		namespace:           namespace,
 	}
 }
 

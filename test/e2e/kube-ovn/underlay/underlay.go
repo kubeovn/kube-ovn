@@ -47,6 +47,18 @@ func makeProviderNetwork(providerNetworkName string, exchangeLinkName bool, link
 	return framework.MakeProviderNetwork(providerNetworkName, exchangeLinkName, defaultInterface, customInterfaces, nil)
 }
 
+func waitSubnetStatusUpdate(subnetName string, subnetClient *framework.SubnetClient, expectedUsingIPs float64) {
+	ginkgo.By("Waiting for status of subnet " + subnetName + " to be updated")
+	framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+		subnet := subnetClient.Get(subnetName)
+		if (subnet.Status.V4AvailableIPs != 0 && subnet.Status.V4UsingIPs != expectedUsingIPs) ||
+			(subnet.Status.V6AvailableIPs != 0 && subnet.Status.V6UsingIPs != expectedUsingIPs) {
+			return false, nil
+		}
+		return true, nil
+	}, "")
+}
+
 var _ = framework.SerialDescribe("[group:underlay]", func() {
 	f := framework.NewDefaultFramework("underlay")
 
@@ -521,6 +533,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		args := []string{"netexec", "--http-port", strconv.Itoa(curlListenPort)}
 		originUnderlayPod := framework.MakePod(namespaceName, u2oPodNameUnderlay, nil, annotations, framework.AgnhostImage, nil, args)
 		underlayPod := podClient.CreateSync(originUnderlayPod)
+		waitSubnetStatusUpdate(subnetName, subnetClient, 2)
 
 		ginkgo.By("Creating overlay subnet " + u2oOverlaySubnetName)
 		cidr := framework.RandomCIDR(f.ClusterIpFamily)
@@ -552,6 +565,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 
 		ginkgo.By("Creating underlay pod " + u2oPodNameUnderlay)
 		underlayPod = podClient.CreateSync(originUnderlayPod)
+		waitSubnetStatusUpdate(subnetName, subnetClient, 1)
 
 		subnet = subnetClient.Get(subnetName)
 		checkU2OItems(f, subnet, underlayPod, overlayPod, false)
@@ -569,6 +583,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 
 		ginkgo.By("Creating underlay pod " + u2oPodNameUnderlay)
 		underlayPod = podClient.CreateSync(originUnderlayPod)
+		waitSubnetStatusUpdate(subnetName, subnetClient, 2)
 
 		subnet = subnetClient.Get(subnetName)
 		checkU2OItems(f, subnet, underlayPod, overlayPod, false)
@@ -596,6 +611,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 
 		ginkgo.By("Creating underlay pod " + u2oPodNameUnderlay)
 		underlayPod = podClient.CreateSync(originUnderlayPod)
+		waitSubnetStatusUpdate(subnetName, subnetClient, 1)
 
 		subnet = subnetClient.Get(subnetName)
 		checkU2OItems(f, subnet, underlayPod, overlayPod, false)
@@ -613,6 +629,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 
 		ginkgo.By("Creating underlay pod " + u2oPodNameUnderlay)
 		underlayPod = podClient.CreateSync(originUnderlayPod)
+		waitSubnetStatusUpdate(subnetName, subnetClient, 2)
 
 		subnet = subnetClient.Get(subnetName)
 		checkU2OItems(f, subnet, underlayPod, overlayPod, false)
@@ -654,6 +671,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 
 			ginkgo.By("Creating underlay pod " + u2oPodNameUnderlay)
 			underlayPod = podClient.CreateSync(originUnderlayPod)
+			waitSubnetStatusUpdate(subnetName, subnetClient, 2)
 
 			subnet = subnetClient.Get(subnetName)
 			checkU2OItems(f, subnet, underlayPod, overlayPod, false)
@@ -694,6 +712,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 
 		ginkgo.By("Creating underlay pod " + u2oPodNameUnderlay)
 		underlayPod = podClient.CreateSync(originUnderlayPod)
+		waitSubnetStatusUpdate(subnetName, subnetClient, 2)
 
 		subnet = subnetClient.Get(subnetName)
 		checkU2OItems(f, subnet, underlayPod, podOverlayCustomVPC, true)
@@ -712,6 +731,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 
 		ginkgo.By("Creating underlay pod " + u2oPodNameUnderlay)
 		underlayPod = podClient.CreateSync(originUnderlayPod)
+		waitSubnetStatusUpdate(subnetName, subnetClient, 2)
 
 		subnet = subnetClient.Get(subnetName)
 		checkU2OItems(f, subnet, underlayPod, overlayPod, false)
@@ -729,6 +749,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 
 		ginkgo.By("Creating underlay pod " + u2oPodNameUnderlay)
 		underlayPod = podClient.CreateSync(originUnderlayPod)
+		waitSubnetStatusUpdate(subnetName, subnetClient, 1)
 
 		subnet = subnetClient.Get(subnetName)
 		checkU2OItems(f, subnet, underlayPod, overlayPod, false)

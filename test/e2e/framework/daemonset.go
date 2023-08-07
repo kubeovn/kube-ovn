@@ -22,6 +22,7 @@ import (
 type DaemonSetClient struct {
 	f *Framework
 	v1apps.DaemonSetInterface
+	namespace string
 }
 
 func (f *Framework) DaemonSetClient() *DaemonSetClient {
@@ -32,6 +33,7 @@ func (f *Framework) DaemonSetClientNS(namespace string) *DaemonSetClient {
 	return &DaemonSetClient{
 		f:                  f,
 		DaemonSetInterface: f.ClientSet.AppsV1().DaemonSets(namespace),
+		namespace:          namespace,
 	}
 }
 

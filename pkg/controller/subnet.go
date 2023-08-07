@@ -111,12 +111,12 @@ func (c *Controller) enqueueUpdateSubnet(old, new interface{}) {
 
 		if oldSubnet.Spec.GatewayType != newSubnet.Spec.GatewayType {
 			c.recorder.Eventf(newSubnet, v1.EventTypeNormal, "SubnetGatewayTypeChanged",
-				"subnet gateway type changes from %s to %s ", oldSubnet.Spec.GatewayType, newSubnet.Spec.GatewayType)
+				"subnet gateway type changes from %q to %q", oldSubnet.Spec.GatewayType, newSubnet.Spec.GatewayType)
 		}
 
 		if oldSubnet.Spec.GatewayNode != newSubnet.Spec.GatewayNode {
 			c.recorder.Eventf(newSubnet, v1.EventTypeNormal, "SubnetGatewayNodeChanged",
-				"gateway node changes from %s to %s ", oldSubnet.Spec.GatewayNode, newSubnet.Spec.GatewayNode)
+				"gateway node changes from %q to %q", oldSubnet.Spec.GatewayNode, newSubnet.Spec.GatewayNode)
 		}
 
 		c.addOrUpdateSubnetQueue.Add(key)
