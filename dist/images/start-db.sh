@@ -124,7 +124,14 @@ function ovn_db_pre_start() {
     ! ovsdb-tool db-is-clustered "$db_file" && return
     ovsdb-tool check-cluster "$db_file" && return
 
-    echo "detected database corruption for file $db_file, rebuild it."
+    local db_bak="$db_file.backup-$(date +%s)-$(random_str)"
+    echo "backup $db_file to $db_bak"
+    cp "$db_file" "$db_bak" || return 1
+
+    echo "detected database corruption for file $db_file, try to fix it."
+    ovsdb-tool fix-cluster "$db_file" && return
+
+    echo "failed to fix database file $db_file, rebuild it."
     local sid=$(ovsdb-tool db-sid "$db_file")
     if ! echo -n "$sid" | grep -qE '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'; then
         echo "failed to get sid from $1 db file $db_file"
@@ -147,10 +154,6 @@ function ovn_db_pre_start() {
     local db_new="$db_file.init-$(random_str)"
     echo "generating new database file $db_new"
     ovsdb-tool --sid $sid join-cluster "$db_new" $db $local_addr ${remote_addr[*]} || return 1
-
-    local db_bak="$db_file.backup-$(random_str)"
-    echo "backup $db_file to $db_bak"
-    mv "$db_file" "$db_bak" || return 1
 
     echo "use new database file $db_new"
     mv "$db_new" "$db_file"

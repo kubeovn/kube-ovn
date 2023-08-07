@@ -28,6 +28,8 @@ RUN cd /usr/src/ && \
     curl -s https://github.com/kubeovn/ovs/commit/b721a251dadfb0857a2aebe32611d18ca935421f.patch | git apply && \
     # ovsdb-tool: add optional server id parameter for "join-cluster" command
     curl -s https://github.com/kubeovn/ovs/commit/0664cbe47d1684ca5b7147e3449779635454970e.patch | git apply && \
+    # ovsdb-tool: add command fix-cluster
+    curl -s https://github.com/kubeovn/ovs/commit/f52c239f5ded40b503e4d217f916b46ca413da4c.patch | git apply && \
     # fix memory leak in qos
     curl -s https://github.com/kubeovn/ovs/commit/6a4dd2f4b9311a227cc26fef7c398ae9b241311b.patch | git apply && \
     # compile without avx512
