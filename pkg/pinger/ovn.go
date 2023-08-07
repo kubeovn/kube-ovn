@@ -125,7 +125,7 @@ func checkSBBindings(config *Configuration) ([]string, error) {
 	}
 	output, err := exec.Command("ovn-sbctl", command...).CombinedOutput()
 	if err != nil {
-		klog.Errorf("failed to find chassis %v", err)
+		klog.Errorf("failed to find chassis: %v, %s", err, string(output))
 		return nil, err
 	}
 	if len(output) == 0 {

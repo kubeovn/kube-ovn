@@ -1207,7 +1207,7 @@ func (c *Controller) reconcileCustomVpcBfdStaticRoute(vpcName, subnetName string
 		klog.Errorf("failed to get subnet %s, %v", subnetName, err)
 		return err
 	}
-	vpc, err := c.vpcsLister.Get(vpcName)
+	cachedVpc, err := c.vpcsLister.Get(vpcName)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
@@ -1227,6 +1227,7 @@ func (c *Controller) reconcileCustomVpcBfdStaticRoute(vpcName, subnetName string
 		klog.Error(err)
 		return err
 	}
+	vpc := cachedVpc.DeepCopy()
 	for _, eip := range ovnEips {
 		if !eip.Status.Ready || eip.Status.V4Ip == "" {
 			err := fmt.Errorf("ovn eip %q not ready", eip.Name)
@@ -1266,7 +1267,7 @@ func (c *Controller) reconcileCustomVpcBfdStaticRoute(vpcName, subnetName string
 		}
 	}
 	if needUpdate {
-		if vpc, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Update(context.Background(), vpc, metav1.UpdateOptions{}); err != nil {
+		if _, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Update(context.Background(), vpc, metav1.UpdateOptions{}); err != nil {
 			klog.Errorf("failed to update vpc spec static route %s, %v", vpc.Name, err)
 			return err
 		}
@@ -1298,9 +1299,9 @@ func (c *Controller) reconcileCustomVpcAddNormalStaticRoute(vpcName string) erro
 		klog.Errorf("failed to get vpc %s, %v", vpcName, err)
 		return err
 	}
-	vpc := cachedVpc.DeepCopy()
-	rtbs := c.getRouteTablesByVpc(vpc)
-	routeTotal := len(vpc.Spec.StaticRoutes) + len(rtbs)*2
+
+	rtbs := c.getRouteTablesByVpc(cachedVpc)
+	routeTotal := len(cachedVpc.Spec.StaticRoutes) + len(rtbs)*2
 	routes := make([]*kubeovnv1.StaticRoute, 0, routeTotal)
 	v4Exist, v6Exist := false, false
 	for _, staticRoutes := range rtbs {
@@ -1348,8 +1349,9 @@ func (c *Controller) reconcileCustomVpcAddNormalStaticRoute(vpcName string) erro
 	}
 
 	if needUpdate {
+		vpc := cachedVpc.DeepCopy()
 		vpc.Spec.StaticRoutes = routes
-		if vpc, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Update(context.Background(), vpc, metav1.UpdateOptions{}); err != nil {
+		if _, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Update(context.Background(), vpc, metav1.UpdateOptions{}); err != nil {
 			klog.Errorf("failed to update vpc spec static route %s, %v", vpc.Name, err)
 			return err
 		}
