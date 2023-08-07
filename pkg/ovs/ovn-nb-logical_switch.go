@@ -79,7 +79,7 @@ func (c *ovnClient) CreateBareLogicalSwitch(lsName string) error {
 		ExternalIDs: map[string]string{"vendor": util.CniTypeName},
 	}
 
-	op, err := c.ovnNbClient.Create(ls)
+	op, err := c.ovsDbClient.Create(ls)
 	if err != nil {
 		klog.Error(err)
 		return fmt.Errorf("generate operations for creating logical switch %s: %v", lsName, err)
@@ -192,7 +192,7 @@ func (c *ovnClient) GetLogicalSwitch(lsName string, ignoreNotFound bool) (*ovnnb
 	defer cancel()
 
 	lsList := make([]ovnnb.LogicalSwitch, 0)
-	if err := c.ovnNbClient.WhereCache(func(ls *ovnnb.LogicalSwitch) bool {
+	if err := c.ovsDbClient.WhereCache(func(ls *ovnnb.LogicalSwitch) bool {
 		return ls.Name == lsName
 	}).List(ctx, &lsList); err != nil {
 		return nil, fmt.Errorf("list switch switch %q: %v", lsName, err)
@@ -225,7 +225,7 @@ func (c *ovnClient) ListLogicalSwitch(needVendorFilter bool, filter func(ls *ovn
 
 	lsList := make([]ovnnb.LogicalSwitch, 0)
 
-	if err := c.ovnNbClient.WhereCache(func(ls *ovnnb.LogicalSwitch) bool {
+	if err := c.ovsDbClient.WhereCache(func(ls *ovnnb.LogicalSwitch) bool {
 		if needVendorFilter && (len(ls.ExternalIDs) == 0 || ls.ExternalIDs["vendor"] != util.CniTypeName) {
 			return false
 		}
@@ -346,7 +346,7 @@ func (c *ovnClient) LogicalSwitchOp(lsName string, mutationsFunc ...func(ls *ovn
 		}
 	}
 
-	ops, err := c.ovnNbClient.Where(ls).Mutate(ls, mutations...)
+	ops, err := c.ovsDbClient.Where(ls).Mutate(ls, mutations...)
 	if err != nil {
 		klog.Error(err)
 		return nil, fmt.Errorf("generate operations for mutating logical switch %s: %v", lsName, err)

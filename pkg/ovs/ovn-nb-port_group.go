@@ -30,7 +30,7 @@ func (c *ovnClient) CreatePortGroup(pgName string, externalIDs map[string]string
 		ExternalIDs: externalIDs,
 	}
 
-	ops, err := c.ovnNbClient.Create(pg)
+	ops, err := c.ovsDbClient.Create(pg)
 	if err != nil {
 		return fmt.Errorf("generate operations for creating port group %s: %v", pgName, err)
 	}
@@ -167,7 +167,7 @@ func (c *ovnClient) GetPortGroup(pgName string, ignoreNotFound bool) (*ovnnb.Por
 	defer cancel()
 
 	pg := &ovnnb.PortGroup{Name: pgName}
-	if err := c.ovnNbClient.Get(ctx, pg); err != nil {
+	if err := c.ovsDbClient.Get(ctx, pg); err != nil {
 		if ignoreNotFound && err == client.ErrNotFound {
 			return nil, nil
 		}
@@ -281,7 +281,7 @@ func (c *ovnClient) portGroupOp(pgName string, mutationsFunc ...func(pg *ovnnb.P
 		}
 	}
 
-	ops, err := c.ovnNbClient.Where(pg).Mutate(pg, mutations...)
+	ops, err := c.ovsDbClient.Where(pg).Mutate(pg, mutations...)
 	if err != nil {
 		return nil, fmt.Errorf("generate operations for mutating port group %s: %v", pgName, err)
 	}

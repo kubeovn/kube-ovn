@@ -344,7 +344,7 @@ func (c *ovnClient) LogicalRouterPortOp(lrpName string, mutationsFunc ...func(lr
 		}
 	}
 
-	ops, err := c.ovnNbClient.Where(lrp).Mutate(lrp, mutations...)
+	ops, err := c.ovsDbClient.Where(lrp).Mutate(lrp, mutations...)
 	if err != nil {
 		klog.Error(err)
 		return nil, fmt.Errorf("generate operations for mutating logical router port %s: %v", lrpName, err)
@@ -408,14 +408,14 @@ func (c *ovnClient) AddLogicalRouterPort(lr, name, mac, networks string) error {
 	waitOp := ConstructWaitForNameNotExistsOperation(name, "Logical_Router_Port")
 	ops := []ovsdb.Operation{waitOp}
 
-	createOps, err := c.ovnNbClient.Create(lrp)
+	createOps, err := c.ovsDbClient.Create(lrp)
 	if err != nil {
 		klog.Error(err)
 		return err
 	}
 	ops = append(ops, createOps...)
 
-	mutationOps, err := c.ovnNbClient.
+	mutationOps, err := c.ovsDbClient.
 		Where(router).
 		Mutate(router,
 			model.Mutation{

@@ -38,7 +38,7 @@ func (c *ovnClient) CreateLogicalRouterStaticRoutes(lrName string, routes ...*ov
 		}
 	}
 
-	createRoutesOp, err := c.ovnNbClient.Create(models...)
+	createRoutesOp, err := c.ovsDbClient.Create(models...)
 	if err != nil {
 		return fmt.Errorf("generate operations for creating static routes: %v", err)
 	}
@@ -116,7 +116,7 @@ func (c *ovnClient) UpdateLogicalRouterStaticRoute(route *ovnnb.LogicalRouterSta
 		return fmt.Errorf("route is nil")
 	}
 
-	op, err := c.ovnNbClient.Where(route).Update(route, fields...)
+	op, err := c.ovsDbClient.Where(route).Update(route, fields...)
 	if err != nil {
 		klog.Error(err)
 		return fmt.Errorf("generate operations for updating logical router static route 'policy %s ip_prefix %s': %v", *route.Policy, route.IPPrefix, err)

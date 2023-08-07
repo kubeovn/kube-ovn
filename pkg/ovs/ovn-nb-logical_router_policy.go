@@ -65,7 +65,7 @@ func (c *ovnClient) CreateLogicalRouterPolicies(lrName string, policies ...*ovnn
 		}
 	}
 
-	createPoliciesOp, err := c.ovnNbClient.Create(models...)
+	createPoliciesOp, err := c.ovsDbClient.Create(models...)
 	if err != nil {
 		klog.Error(err)
 		return fmt.Errorf("generate operations for creating policies: %v", err)
@@ -280,7 +280,7 @@ func policyFilter(priority int, externalIDs map[string]string) func(policy *ovnn
 }
 
 func (c *ovnClient) DeleteRouterPolicy(lr *ovnnb.LogicalRouter, uuid string) error {
-	ops, err := c.ovnNbClient.Where(lr).Mutate(lr, model.Mutation{
+	ops, err := c.ovsDbClient.Where(lr).Mutate(lr, model.Mutation{
 		Field:   &lr.Policies,
 		Mutator: ovsdb.MutateOperationDelete,
 		Value:   []string{uuid},

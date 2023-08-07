@@ -36,7 +36,7 @@ func (c *ovnClient) CreateAddressSet(asName string, externalIDs map[string]strin
 		ExternalIDs: externalIDs,
 	}
 
-	ops, err := c.ovnNbClient.Create(as)
+	ops, err := c.ovsDbClient.Create(as)
 	if err != nil {
 		klog.Error(err)
 		return fmt.Errorf("generate operations for creating address set %s: %v", asName, err)
@@ -154,7 +154,7 @@ func (c *ovnClient) GetAddressSet(asName string, ignoreNotFound bool) (*ovnnb.Ad
 	defer cancel()
 
 	as := &ovnnb.AddressSet{Name: asName}
-	if err := c.ovnNbClient.Get(ctx, as); err != nil {
+	if err := c.ovsDbClient.Get(ctx, as); err != nil {
 		if ignoreNotFound && err == client.ErrNotFound {
 			return nil, nil
 		}

@@ -13,7 +13,7 @@ func (c *ovnClient) ListBFD(lrpName, dstIP string) ([]ovnnb.BFD, error) {
 	defer cancel()
 
 	bfdList := make([]ovnnb.BFD, 0)
-	if err := c.ovnNbClient.WhereCache(func(bfd *ovnnb.BFD) bool {
+	if err := c.ovsDbClient.WhereCache(func(bfd *ovnnb.BFD) bool {
 		if bfd.LogicalPort != lrpName {
 			return false
 		}

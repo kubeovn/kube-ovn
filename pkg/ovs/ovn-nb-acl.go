@@ -637,7 +637,7 @@ func (c *ovnClient) CreateBareAcl(parentName, direction, priority, match, action
 		return fmt.Errorf("new acl direction %s priority %s match %s action %s: %v", direction, priority, match, action, err)
 	}
 
-	op, err := c.ovnNbClient.Create(acl)
+	op, err := c.ovsDbClient.Create(acl)
 	if err != nil {
 		klog.Error(err)
 		return fmt.Errorf("generate operations for creating acl direction %s priority %s match %s action %s: %v", direction, priority, match, action, err)
@@ -716,7 +716,7 @@ func (c *ovnClient) GetAcl(parent, direction, priority, match string, ignoreNotF
 	intPriority, _ := strconv.Atoi(priority)
 
 	aclList := make([]ovnnb.ACL, 0)
-	if err := c.ovnNbClient.WhereCache(func(acl *ovnnb.ACL) bool {
+	if err := c.ovsDbClient.WhereCache(func(acl *ovnnb.ACL) bool {
 		return len(acl.ExternalIDs) != 0 && acl.ExternalIDs[aclParentKey] == parent && acl.Direction == direction && acl.Priority == intPriority && acl.Match == match
 	}).List(ctx, &aclList); err != nil {
 		return nil, fmt.Errorf("get acl with 'parent %s direction %s priority %s match %s': %v", parent, direction, priority, match, err)
@@ -1062,7 +1062,7 @@ func (c *ovnClient) CreateAclsOps(parentName, parentType string, acls ...*ovnnb.
 		}
 	}
 
-	createAclsOp, err := c.ovnNbClient.Create(models...)
+	createAclsOp, err := c.ovsDbClient.Create(models...)
 	if err != nil {
 		klog.Error(err)
 		return nil, fmt.Errorf("generate operations for creating acls: %v", err)

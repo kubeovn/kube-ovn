@@ -49,7 +49,7 @@ func (c *ovnClient) CreateNats(lrName string, nats ...*ovnnb.NAT) error {
 		}
 	}
 
-	createNatsOp, err := c.ovnNbClient.Create(models...)
+	createNatsOp, err := c.ovsDbClient.Create(models...)
 	if err != nil {
 		klog.Error(err)
 		return fmt.Errorf("generate operations for creating nats: %v", err)
@@ -155,7 +155,7 @@ func (c *ovnClient) UpdateNat(nat *ovnnb.NAT, fields ...interface{}) error {
 		return fmt.Errorf("nat is nil")
 	}
 
-	op, err := c.ovnNbClient.Where(nat).Update(nat, fields...)
+	op, err := c.ovsDbClient.Where(nat).Update(nat, fields...)
 	if err != nil {
 		klog.Error(err)
 		return fmt.Errorf("generate operations for updating nat 'type %s external ip %s logical ip %s': %v", nat.Type, nat.ExternalIP, nat.LogicalIP, err)

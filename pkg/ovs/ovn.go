@@ -34,12 +34,12 @@ type LegacyClient struct {
 }
 
 type ovnClient struct {
-	ovnNbClient
+	ovsDbClient
 	ClusterRouter  string
 	NodeSwitchCIDR string
 }
 
-type ovnNbClient struct {
+type ovsDbClient struct {
 	client.Client
 	Timeout time.Duration
 }
@@ -71,8 +71,7 @@ func NewLegacyClient(timeout int, ovnSbAddr, clusterRouter, clusterTcpLoadBalanc
 	}
 }
 
-// TODO: support sb/ic-nb client
-func NewOvnClient(ovnNbAddr string, ovnNbTimeout int, nodeSwitchCIDR string) (*ovnClient, error) {
+func NewOvnNbClient(ovnNbAddr string, ovnNbTimeout int, nodeSwitchCIDR string) (*ovnClient, error) {
 	nbClient, err := ovsclient.NewNbClient(ovnNbAddr)
 	if err != nil {
 		klog.Errorf("failed to create OVN NB client: %v", err)
@@ -80,7 +79,7 @@ func NewOvnClient(ovnNbAddr string, ovnNbTimeout int, nodeSwitchCIDR string) (*o
 	}
 
 	c := &ovnClient{
-		ovnNbClient: ovnNbClient{
+		ovsDbClient: ovsDbClient{
 			Client:  nbClient,
 			Timeout: time.Duration(ovnNbTimeout) * time.Second,
 		},
@@ -88,6 +87,25 @@ func NewOvnClient(ovnNbAddr string, ovnNbTimeout int, nodeSwitchCIDR string) (*o
 	}
 	return c, nil
 }
+
+func NewOvnSbClient(ovnSbAddr string, ovnSbTimeout int, nodeSwitchCIDR string) (*ovnClient, error) {
+	sbClient, err := ovsclient.NewSbClient(ovnSbAddr)
+	if err != nil {
+		klog.Errorf("failed to create OVN SB client: %v", err)
+		return nil, err
+	}
+
+	c := &ovnClient{
+		ovsDbClient: ovsDbClient{
+			Client:  sbClient,
+			Timeout: time.Duration(ovnSbTimeout) * time.Second,
+		},
+		NodeSwitchCIDR: nodeSwitchCIDR,
+	}
+	return c, nil
+}
+
+// TODO: support ic-nb ic-sb client
 
 func ConstructWaitForNameNotExistsOperation(name string, table string) ovsdb.Operation {
 	return ConstructWaitForUniqueOperation(table, "name", name)
@@ -116,13 +134,15 @@ func (c *ovnClient) Transact(method string, operations []ovsdb.Operation) error 
 	defer cancel()
 
 	start := time.Now()
-	results, err := c.ovnNbClient.Transact(ctx, operations...)
+	results, err := c.ovsDbClient.Transact(ctx, operations...)
 	elapsed := float64((time.Since(start)) / time.Millisecond)
 
 	var dbType string
 	switch c.Schema().Name {
 	case "OVN_Northbound":
 		dbType = "ovn-nb"
+	case "OVN_Southbound":
+		dbType = "ovn-sb"
 	}
 
 	code := "0"

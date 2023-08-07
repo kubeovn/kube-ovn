@@ -25,7 +25,7 @@ func (c *ovnClient) CreateDHCPOptions(lsName, cidr, options string) error {
 		return err
 	}
 
-	op, err := c.ovnNbClient.Create(dhcpOpt)
+	op, err := c.ovsDbClient.Create(dhcpOpt)
 	if err != nil {
 		klog.Error(err)
 		return fmt.Errorf("generate operations for creating dhcp options 'cidr %s options %s': %v", cidr, options, err)
@@ -177,7 +177,7 @@ func (c *ovnClient) updateDHCPOptions(dhcpOpt *ovnnb.DHCPOptions, fields ...inte
 		return fmt.Errorf("dhcp_options is nil")
 	}
 
-	op, err := c.ovnNbClient.Where(dhcpOpt).Update(dhcpOpt, fields...)
+	op, err := c.ovsDbClient.Where(dhcpOpt).Update(dhcpOpt, fields...)
 	if err != nil {
 		klog.Error(err)
 		return fmt.Errorf("generate operations for updating dhcp options %s: %v", dhcpOpt.UUID, err)
