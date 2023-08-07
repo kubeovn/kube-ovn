@@ -525,7 +525,7 @@ func (c *Controller) changeVMSubnet(vmName, namespace, providerName, subnetName 
 	if ipCr != nil {
 		if ipCr.Spec.Subnet != subnetName {
 			key := fmt.Sprintf("%s/%s", pod.Namespace, vmName)
-			ports, err := c.ovnClient.ListNormalLogicalSwitchPorts(true, map[string]string{"pod": key})
+			ports, err := c.ovnNbClient.ListNormalLogicalSwitchPorts(true, map[string]string{"pod": key})
 			if err != nil {
 				klog.Errorf("failed to list lsps of pod '%s', %v", pod.Name, err)
 				return err
@@ -533,7 +533,7 @@ func (c *Controller) changeVMSubnet(vmName, namespace, providerName, subnetName 
 			for _, port := range ports {
 				// when lsp is deleted, the port of pod is deleted from any port-group automatically.
 				klog.Infof("gc logical switch port %s", port.Name)
-				if err := c.ovnClient.DeleteLogicalSwitchPort(port.Name); err != nil {
+				if err := c.ovnNbClient.DeleteLogicalSwitchPort(port.Name); err != nil {
 					klog.Errorf("failed to delete lsp %s, %v", port.Name, err)
 					return err
 				}
@@ -700,7 +700,7 @@ func (c *Controller) reconcileAllocateSubnets(cachedPod, pod *v1.Pod, needAlloca
 				DHCPv6OptionsUUID: subnet.Status.DHCPv6OptionsUUID,
 			}
 
-			if err := c.ovnClient.CreateLogicalSwitchPort(subnet.Name, portName, ipStr, mac, podName, pod.Namespace, portSecurity, securityGroupAnnotation, vips, podNet.Subnet.Spec.EnableDHCP, dhcpOptions, subnet.Spec.Vpc); err != nil {
+			if err := c.ovnNbClient.CreateLogicalSwitchPort(subnet.Name, portName, ipStr, mac, podName, pod.Namespace, portSecurity, securityGroupAnnotation, vips, podNet.Subnet.Spec.EnableDHCP, dhcpOptions, subnet.Spec.Vpc); err != nil {
 				c.recorder.Eventf(pod, v1.EventTypeWarning, "CreateOVNPortFailed", err.Error())
 				klog.Errorf("%v", err)
 				return nil, err
@@ -802,7 +802,7 @@ func (c *Controller) reconcileRouteSubnets(cachedPod, pod *v1.Pod, needRoutePodN
 					nextHop = strings.Split(nextHop, "/")[0]
 				}
 
-				if err := c.ovnClient.AddLogicalRouterStaticRoute(
+				if err := c.ovnNbClient.AddLogicalRouterStaticRoute(
 					c.config.ClusterRouter, subnet.Spec.RouteTable, ovnnb.LogicalRouterStaticRoutePolicySrcIP, podIP, nil, nextHop,
 				); err != nil {
 					klog.Errorf("failed to add static route, %v", err)
@@ -811,7 +811,7 @@ func (c *Controller) reconcileRouteSubnets(cachedPod, pod *v1.Pod, needRoutePodN
 
 				// remove lsp from port group to make EIP/SNAT work
 				portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
-				if err = c.ovnClient.PortGroupRemovePorts(pgName, portName); err != nil {
+				if err = c.ovnNbClient.PortGroupRemovePorts(pgName, portName); err != nil {
 					return err
 				}
 
@@ -831,7 +831,7 @@ func (c *Controller) reconcileRouteSubnets(cachedPod, pod *v1.Pod, needRoutePodN
 							}
 
 							portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
-							if err := c.ovnClient.PortGroupAddPorts(pgName, portName); err != nil {
+							if err := c.ovnNbClient.PortGroupAddPorts(pgName, portName); err != nil {
 								klog.Errorf("add port to port group %s: %v", pgName, err)
 								return err
 							}
@@ -846,14 +846,14 @@ func (c *Controller) reconcileRouteSubnets(cachedPod, pod *v1.Pod, needRoutePodN
 				}
 
 				if pod.Annotations[util.NorthGatewayAnnotation] != "" {
-					if err := c.ovnClient.AddLogicalRouterStaticRoute(
+					if err := c.ovnNbClient.AddLogicalRouterStaticRoute(
 						c.config.ClusterRouter, subnet.Spec.RouteTable, ovnnb.LogicalRouterStaticRoutePolicySrcIP, podIP, nil, pod.Annotations[util.NorthGatewayAnnotation],
 					); err != nil {
 						klog.Errorf("failed to add static route, %v", err)
 						return err
 					}
 				} else if c.config.EnableEipSnat {
-					if err = c.ovnClient.DeleteLogicalRouterStaticRoute(
+					if err = c.ovnNbClient.DeleteLogicalRouterStaticRoute(
 						c.config.ClusterRouter, &subnet.Spec.RouteTable, nil, podIP, "",
 					); err != nil {
 						return err
@@ -864,21 +864,21 @@ func (c *Controller) reconcileRouteSubnets(cachedPod, pod *v1.Pod, needRoutePodN
 			if c.config.EnableEipSnat {
 				for _, ipStr := range strings.Split(podIP, ",") {
 					if eip := pod.Annotations[util.EipAnnotation]; eip == "" {
-						if err = c.ovnClient.DeleteNats(c.config.ClusterRouter, ovnnb.NATTypeDNATAndSNAT, ipStr); err != nil {
+						if err = c.ovnNbClient.DeleteNats(c.config.ClusterRouter, ovnnb.NATTypeDNATAndSNAT, ipStr); err != nil {
 							klog.Errorf("failed to delete nat rules: %v", err)
 						}
 					} else if util.CheckProtocol(eip) == util.CheckProtocol(ipStr) {
-						if err = c.ovnClient.UpdateDnatAndSnat(c.config.ClusterRouter, eip, ipStr, fmt.Sprintf("%s.%s", podName, pod.Namespace), pod.Annotations[util.MacAddressAnnotation], c.ExternalGatewayType); err != nil {
+						if err = c.ovnNbClient.UpdateDnatAndSnat(c.config.ClusterRouter, eip, ipStr, fmt.Sprintf("%s.%s", podName, pod.Namespace), pod.Annotations[util.MacAddressAnnotation], c.ExternalGatewayType); err != nil {
 							klog.Errorf("failed to add nat rules, %v", err)
 							return err
 						}
 					}
 					if eip := pod.Annotations[util.SnatAnnotation]; eip == "" {
-						if err = c.ovnClient.DeleteNats(c.config.ClusterRouter, ovnnb.NATTypeSNAT, ipStr); err != nil {
+						if err = c.ovnNbClient.DeleteNats(c.config.ClusterRouter, ovnnb.NATTypeSNAT, ipStr); err != nil {
 							klog.Errorf("failed to delete nat rules: %v", err)
 						}
 					} else if util.CheckProtocol(eip) == util.CheckProtocol(ipStr) {
-						if err = c.ovnClient.UpdateSnat(c.config.ClusterRouter, eip, ipStr); err != nil {
+						if err = c.ovnNbClient.UpdateSnat(c.config.ClusterRouter, eip, ipStr); err != nil {
 							klog.Errorf("failed to add nat rules, %v", err)
 							return err
 						}
@@ -927,7 +927,7 @@ func (c *Controller) handleDeletePod(key string) error {
 		return nil
 	}
 
-	ports, err := c.ovnClient.ListNormalLogicalSwitchPorts(true, map[string]string{"pod": key})
+	ports, err := c.ovnNbClient.ListNormalLogicalSwitchPorts(true, map[string]string{"pod": key})
 	if err != nil {
 		klog.Errorf("failed to list lsps of pod '%s', %v", pod.Name, err)
 		return err
@@ -955,12 +955,12 @@ func (c *Controller) handleDeletePod(key string) error {
 			}
 			// If pod has snat or eip, also need delete staticRoute when delete pod
 			if vpc.Name == c.config.ClusterRouter {
-				if err = c.ovnClient.DeleteLogicalRouterStaticRoute(vpc.Name, &subnet.Spec.RouteTable, nil, address.Ip, ""); err != nil {
+				if err = c.ovnNbClient.DeleteLogicalRouterStaticRoute(vpc.Name, &subnet.Spec.RouteTable, nil, address.Ip, ""); err != nil {
 					return err
 				}
 			}
 			if exGwEnabled == "true" {
-				if err := c.ovnClient.DeleteNat(vpc.Name, "", "", address.Ip); err != nil {
+				if err := c.ovnNbClient.DeleteNat(vpc.Name, "", "", address.Ip); err != nil {
 					return err
 				}
 			}
@@ -995,7 +995,7 @@ func (c *Controller) handleDeletePod(key string) error {
 	for _, port := range ports {
 		// when lsp is deleted, the port of pod is deleted from any port-group automatically.
 		klog.Infof("gc logical switch port %s", port.Name)
-		if err := c.ovnClient.DeleteLogicalSwitchPort(port.Name); err != nil {
+		if err := c.ovnNbClient.DeleteLogicalSwitchPort(port.Name); err != nil {
 			klog.Errorf("failed to delete lsp %s, %v", port.Name, err)
 			return err
 		}
@@ -1065,7 +1065,7 @@ func (c *Controller) handleUpdatePodSecurity(key string) error {
 		ipStr := pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)]
 		vips := pod.Annotations[fmt.Sprintf(util.PortVipAnnotationTemplate, podNet.ProviderName)]
 
-		if err = c.ovnClient.SetLogicalSwitchPortSecurity(portSecurity, ovs.PodNameToPortName(podName, namespace, podNet.ProviderName), mac, ipStr, vips); err != nil {
+		if err = c.ovnNbClient.SetLogicalSwitchPortSecurity(portSecurity, ovs.PodNameToPortName(podName, namespace, podNet.ProviderName), mac, ipStr, vips); err != nil {
 			klog.Errorf("set logical switch port security: %v", err)
 			return err
 		}
@@ -1097,7 +1097,7 @@ func (c *Controller) syncKubeOvnNet(cachedPod, pod *v1.Pod, podNets []*kubeovnNe
 		targetPortNameList.Add(portName)
 	}
 
-	ports, err := c.ovnClient.ListNormalLogicalSwitchPorts(true, map[string]string{"pod": key})
+	ports, err := c.ovnNbClient.ListNormalLogicalSwitchPorts(true, map[string]string{"pod": key})
 	if err != nil {
 		klog.Errorf("failed to list lsps of pod '%s', %v", pod.Name, err)
 		return nil, err
@@ -1126,7 +1126,7 @@ func (c *Controller) syncKubeOvnNet(cachedPod, pod *v1.Pod, podNets []*kubeovnNe
 			subnet.ReleaseAddressWithNicName(podName, portNeedDel)
 		}
 
-		if err := c.ovnClient.DeleteLogicalSwitchPort(portNeedDel); err != nil {
+		if err := c.ovnNbClient.DeleteLogicalSwitchPort(portNeedDel); err != nil {
 			klog.Errorf("failed to delete lsp %s, %v", portNeedDel, err)
 			return nil, err
 		}

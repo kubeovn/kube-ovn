@@ -258,7 +258,7 @@ func (c *Controller) handleAddNode(key string) error {
 	}
 
 	ipStr := util.GetStringIP(v4IP, v6IP)
-	if err := c.ovnClient.CreateBareLogicalSwitchPort(c.config.NodeSwitch, portName, ipStr, mac); err != nil {
+	if err := c.ovnNbClient.CreateBareLogicalSwitchPort(c.config.NodeSwitch, portName, ipStr, mac); err != nil {
 		return err
 	}
 
@@ -280,7 +280,7 @@ func (c *Controller) handleAddNode(key string) error {
 				"address-family": strconv.Itoa(af),
 			}
 			klog.Infof("add policy route for router: %s, match %s, action %s, nexthop %s, externalID %v", c.config.ClusterRouter, match, action, ip, externalIDs)
-			if err = c.ovnClient.AddLogicalRouterPolicy(c.config.ClusterRouter, util.NodeRouterPolicyPriority, match, action, []string{ip}, externalIDs); err != nil {
+			if err = c.ovnNbClient.AddLogicalRouterPolicy(c.config.ClusterRouter, util.NodeRouterPolicyPriority, match, action, []string{ip}, externalIDs); err != nil {
 				klog.Errorf("failed to add logical router policy for node %s: %v", node.Name, err)
 				return err
 			}
@@ -352,7 +352,7 @@ func (c *Controller) handleAddNode(key string) error {
 
 	// ovn acl doesn't support address_set name with '-', so replace '-' by '.'
 	pgName := strings.Replace(node.Annotations[util.PortNameAnnotation], "-", ".", -1)
-	if err = c.ovnClient.CreatePortGroup(pgName, map[string]string{networkPolicyKey: "node" + "/" + key}); err != nil {
+	if err = c.ovnNbClient.CreatePortGroup(pgName, map[string]string{networkPolicyKey: "node" + "/" + key}); err != nil {
 		klog.Errorf("create port group %s for node %s: %v", pgName, key, err)
 		return err
 	}
@@ -466,7 +466,7 @@ func (c *Controller) handleDeleteNode(key string) error {
 
 	portName := fmt.Sprintf("node-%s", key)
 	klog.Infof("delete logical switch port %s", portName)
-	if err := c.ovnClient.DeleteLogicalSwitchPort(portName); err != nil {
+	if err := c.ovnNbClient.DeleteLogicalSwitchPort(portName); err != nil {
 		klog.Errorf("failed to delete node switch port node-%s: %v", key, err)
 		return err
 	}
@@ -488,7 +488,7 @@ func (c *Controller) handleDeleteNode(key string) error {
 
 	// ovn acl doesn't support address_set name with '-', so replace '-' by '.'
 	pgName := strings.Replace(portName, "-", ".", -1)
-	if err := c.ovnClient.DeletePortGroup(pgName); err != nil {
+	if err := c.ovnNbClient.DeletePortGroup(pgName); err != nil {
 		klog.Errorf("delete port group %s for node: %v", portName, err)
 		return err
 	}
@@ -503,16 +503,16 @@ func (c *Controller) handleDeleteNode(key string) error {
 		if addr.Ip == "" {
 			continue
 		}
-		if err := c.ovnClient.DeleteLogicalRouterPolicyByNexthop(c.config.ClusterRouter, util.NodeRouterPolicyPriority, addr.Ip); err != nil {
+		if err := c.ovnNbClient.DeleteLogicalRouterPolicyByNexthop(c.config.ClusterRouter, util.NodeRouterPolicyPriority, addr.Ip); err != nil {
 			klog.Errorf("failed to delete router policy for node %s: %v", key, err)
 			return err
 		}
 	}
-	if err := c.ovnClient.DeleteAddressSet(nodeUnderlayAddressSetName(key, 4)); err != nil {
+	if err := c.ovnNbClient.DeleteAddressSet(nodeUnderlayAddressSetName(key, 4)); err != nil {
 		klog.Errorf("failed to delete address set for node %s: %v", key, err)
 		return err
 	}
-	if err := c.ovnClient.DeleteAddressSet(nodeUnderlayAddressSetName(key, 6)); err != nil {
+	if err := c.ovnNbClient.DeleteAddressSet(nodeUnderlayAddressSetName(key, 6)); err != nil {
 		klog.Errorf("failed to delete address set for node %s: %v", key, err)
 		return err
 	}
@@ -977,18 +977,18 @@ func (c *Controller) checkAndUpdateNodePortGroup() error {
 			return err
 		}
 
-		if err = c.ovnClient.PortGroupSetPorts(pgName, nodePorts); err != nil {
+		if err = c.ovnNbClient.PortGroupSetPorts(pgName, nodePorts); err != nil {
 			klog.Errorf("add ports to port group %s: %v", pgName, err)
 			return err
 		}
 
 		if networkPolicyExists {
-			if err := c.ovnClient.CreateNodeAcl(pgName, nodeIP, joinIP); err != nil {
+			if err := c.ovnNbClient.CreateNodeAcl(pgName, nodeIP, joinIP); err != nil {
 				klog.Errorf("create node acl for node pg %s: %v", pgName, err)
 			}
 		} else {
 			// clear all acl
-			if err = c.ovnClient.DeleteAcls(pgName, portGroupKey, "", nil); err != nil {
+			if err = c.ovnNbClient.DeleteAcls(pgName, portGroupKey, "", nil); err != nil {
 				klog.Errorf("delete node acl for node pg %s: %v", pgName, err)
 			}
 		}
@@ -1031,7 +1031,7 @@ func (c *Controller) validateChassis(node *v1.Node) error {
 func (c *Controller) addNodeGwStaticRoute() error {
 	// If user not manage static route for default vpc, just add route about ovn-default to join
 	if vpc, err := c.vpcsLister.Get(c.config.ClusterRouter); err != nil || vpc.Spec.StaticRoutes != nil {
-		existRoute, err := c.ovnClient.ListLogicalRouterStaticRoutes(c.config.ClusterRouter, nil, nil, "", nil)
+		existRoute, err := c.ovnNbClient.ListLogicalRouterStaticRoutes(c.config.ClusterRouter, nil, nil, "", nil)
 		if err != nil {
 			klog.Errorf("failed to get vpc %s static route list, %v", c.config.ClusterRouter, err)
 		}
@@ -1046,7 +1046,7 @@ func (c *Controller) addNodeGwStaticRoute() error {
 			if util.CheckProtocol(cidrBlock) != util.CheckProtocol(nextHop) {
 				continue
 			}
-			if err := c.ovnClient.AddLogicalRouterStaticRoute(c.config.ClusterRouter, util.MainRouteTable, ovnnb.LogicalRouterStaticRoutePolicyDstIP, cidrBlock, nil, nextHop); err != nil {
+			if err := c.ovnNbClient.AddLogicalRouterStaticRoute(c.config.ClusterRouter, util.MainRouteTable, ovnnb.LogicalRouterStaticRoutePolicyDstIP, cidrBlock, nil, nextHop); err != nil {
 				klog.Errorf("failed to add static route for node gw: %v", err)
 				return err
 			}
@@ -1061,7 +1061,7 @@ func (c *Controller) getPolicyRouteParas(cidr string, priority int) (*strset.Set
 		ipSuffix = "ip6"
 	}
 	match := fmt.Sprintf("%s.src == %s", ipSuffix, cidr)
-	policyList, err := c.ovnClient.GetLogicalRouterPolicy(c.config.ClusterRouter, priority, match, true)
+	policyList, err := c.ovnNbClient.GetLogicalRouterPolicy(c.config.ClusterRouter, priority, match, true)
 	if err != nil {
 		klog.Errorf("failed to get logical router policy: %v", err)
 		return nil, nil, err
@@ -1098,7 +1098,7 @@ func (c *Controller) deletePolicyRouteForNode(nodeName string) error {
 
 		if subnet.Spec.GatewayType == kubeovnv1.GWDistributedType {
 			pgName := getOverlaySubnetsPortGroupName(subnet.Name, nodeName)
-			if err = c.ovnClient.DeletePortGroup(pgName); err != nil {
+			if err = c.ovnNbClient.DeletePortGroup(pgName); err != nil {
 				klog.Errorf("delete port group for subnet %s and node %s: %v", subnet.Name, nodeName, err)
 				return err
 			}
@@ -1229,7 +1229,7 @@ func (c *Controller) addPolicyRouteForLocalDnsCacheOnNode(nodePortName, nodeIP, 
 	match := fmt.Sprintf("ip%d.src == $%s && ip%d.dst == %s", af, pgAs, af, c.config.NodeLocalDnsIP)
 	action := ovnnb.LogicalRouterPolicyActionReroute
 	klog.Infof("add node local dns cache policy route for router: %s, match %s, action %s, nexthop %s, externalID %v", c.config.ClusterRouter, match, action, nodeIP, externalIDs)
-	if err := c.ovnClient.AddLogicalRouterPolicy(c.config.ClusterRouter, util.NodeLocalDnsPolicyPriority, match, action, []string{nodeIP}, externalIDs); err != nil {
+	if err := c.ovnNbClient.AddLogicalRouterPolicy(c.config.ClusterRouter, util.NodeLocalDnsPolicyPriority, match, action, []string{nodeIP}, externalIDs); err != nil {
 		klog.Errorf("failed to add logical router policy for node %s: %v", nodeName, err)
 		return err
 	}
@@ -1237,7 +1237,7 @@ func (c *Controller) addPolicyRouteForLocalDnsCacheOnNode(nodePortName, nodeIP, 
 }
 
 func (c *Controller) deletePolicyRouteForLocalDnsCacheOnNode(nodeName string, af int) error {
-	policies, err := c.ovnClient.ListLogicalRouterPolicies(c.config.ClusterRouter, -1, map[string]string{
+	policies, err := c.ovnNbClient.ListLogicalRouterPolicies(c.config.ClusterRouter, -1, map[string]string{
 		"vendor":          util.CniTypeName,
 		"node":            nodeName,
 		"address-family":  strconv.Itoa(af),
@@ -1254,7 +1254,7 @@ func (c *Controller) deletePolicyRouteForLocalDnsCacheOnNode(nodeName string, af
 	for _, policy := range policies {
 		klog.Infof("delete node local dns cache policy route for router %s with match %s", c.config.ClusterRouter, policy.Match)
 
-		if err := c.ovnClient.DeleteLogicalRouterPolicyByUUID(c.config.ClusterRouter, policy.UUID); err != nil {
+		if err := c.ovnNbClient.DeleteLogicalRouterPolicyByUUID(c.config.ClusterRouter, policy.UUID); err != nil {
 			klog.Errorf("failed to delete policy route for node local dns in router %s with match %s: %v", c.config.ClusterRouter, policy.Match, err)
 			return err
 		}

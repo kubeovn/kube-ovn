@@ -207,7 +207,7 @@ func (c *Controller) handleAddVirtualIp(key string) error {
 		// create a lsp use subnet gw mac, and set it option as arp_proxy
 		lrpName := fmt.Sprintf("%s-%s", subnet.Spec.Vpc, subnet.Name)
 		klog.Infof("get logical router port %s", lrpName)
-		lrp, err := c.ovnClient.GetLogicalRouterPort(lrpName, false)
+		lrp, err := c.ovnNbClient.GetLogicalRouterPort(lrpName, false)
 		if err != nil {
 			klog.Errorf("failed to get lrp %s: %v", lrpName, err)
 			return err
@@ -219,12 +219,12 @@ func (c *Controller) handleAddVirtualIp(key string) error {
 		}
 		mac = lrp.MAC
 		ipStr := util.GetStringIP(v4ip, v6ip)
-		if err := c.ovnClient.CreateLogicalSwitchPort(subnet.Name, portName, ipStr, mac, vip.Name, vip.Spec.Namespace, false, "", "", false, nil, subnet.Spec.Vpc); err != nil {
+		if err := c.ovnNbClient.CreateLogicalSwitchPort(subnet.Name, portName, ipStr, mac, vip.Name, vip.Spec.Namespace, false, "", "", false, nil, subnet.Spec.Vpc); err != nil {
 			err = fmt.Errorf("failed to create lsp %s: %v", portName, err)
 			klog.Error(err)
 			return err
 		}
-		if err := c.ovnClient.SetLogicalSwitchPortArpProxy(portName, true); err != nil {
+		if err := c.ovnNbClient.SetLogicalSwitchPortArpProxy(portName, true); err != nil {
 			err = fmt.Errorf("failed to enable lsp arp proxy for vip %s: %v", portName, err)
 			klog.Error(err)
 			return err
@@ -308,7 +308,7 @@ func (c *Controller) handleDelVirtualIp(vip *kubeovnv1.Vip) error {
 		}
 		portName := ovs.PodNameToPortName(vip.Name, vip.Spec.Namespace, subnet.Spec.Provider)
 		klog.Infof("delete vip arp proxy lsp %s", portName)
-		if err := c.ovnClient.DeleteLogicalSwitchPort(portName); err != nil {
+		if err := c.ovnNbClient.DeleteLogicalSwitchPort(portName); err != nil {
 			err = fmt.Errorf("failed to delete lsp %s: %v", vip.Name, err)
 			klog.Error(err)
 			return err

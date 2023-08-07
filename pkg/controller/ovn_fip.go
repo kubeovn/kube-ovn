@@ -281,7 +281,7 @@ func (c *Controller) handleAddOvnFip(key string) error {
 		return err
 	}
 	// ovn add fip
-	if err = c.ovnClient.AddNat(vpcName, ovnnb.NATTypeDNATAndSNAT, cachedEip.Status.V4Ip,
+	if err = c.ovnNbClient.AddNat(vpcName, ovnnb.NATTypeDNATAndSNAT, cachedEip.Status.V4Ip,
 		internalV4Ip, mac, cachedFip.Spec.IpName,
 		map[string]string{"staleless": strconv.FormatBool(c.ExternalGatewayType == kubeovnv1.GWDistributedType)}); err != nil {
 		klog.Errorf("failed to create v4 fip, %v", err)
@@ -371,7 +371,7 @@ func (c *Controller) handleUpdateOvnFip(key string) error {
 		return err
 	}
 	vpcName := subnet.Spec.Vpc
-	if err = c.ovnClient.AddNat(vpcName, ovnnb.NATTypeDNATAndSNAT, cachedEip.Status.V4Ip,
+	if err = c.ovnNbClient.AddNat(vpcName, ovnnb.NATTypeDNATAndSNAT, cachedEip.Status.V4Ip,
 		internalV4Ip, mac, cachedFip.Spec.IpName,
 		map[string]string{"staleless": strconv.FormatBool(c.ExternalGatewayType == kubeovnv1.GWDistributedType)}); err != nil {
 		klog.Errorf("failed to create v4 fip, %v", err)
@@ -381,12 +381,12 @@ func (c *Controller) handleUpdateOvnFip(key string) error {
 	// fip change eip
 	if c.ovnFipChangeEip(fip, cachedEip) {
 		klog.V(3).Infof("fip change ip, old ip '%s', new ip %s", fip.Status.V4Ip, cachedEip.Status.V4Ip)
-		if err = c.ovnClient.DeleteNat(vpcName, ovnnb.NATTypeDNATAndSNAT, fip.Status.V4Ip, internalV4Ip); err != nil {
+		if err = c.ovnNbClient.DeleteNat(vpcName, ovnnb.NATTypeDNATAndSNAT, fip.Status.V4Ip, internalV4Ip); err != nil {
 			klog.Errorf("failed to create fip, %v", err)
 			return err
 		}
 		// ovn add fip
-		if err = c.ovnClient.AddNat(vpcName, ovnnb.NATTypeDNATAndSNAT, cachedEip.Status.V4Ip,
+		if err = c.ovnNbClient.AddNat(vpcName, ovnnb.NATTypeDNATAndSNAT, cachedEip.Status.V4Ip,
 			internalV4Ip, mac, cachedFip.Spec.IpName,
 			map[string]string{"staleless": strconv.FormatBool(c.ExternalGatewayType == kubeovnv1.GWDistributedType)}); err != nil {
 			klog.Errorf("failed to create fip, %v", err)
@@ -426,7 +426,7 @@ func (c *Controller) handleDelOvnFip(key string) error {
 	}
 	// ovn delete fip
 	if cachedFip.Status.Vpc != "" && cachedFip.Status.V4Eip != "" && cachedFip.Status.V4Ip != "" {
-		if err = c.ovnClient.DeleteNat(cachedFip.Status.Vpc, ovnnb.NATTypeDNATAndSNAT, cachedFip.Status.V4Eip, cachedFip.Status.V4Ip); err != nil {
+		if err = c.ovnNbClient.DeleteNat(cachedFip.Status.Vpc, ovnnb.NATTypeDNATAndSNAT, cachedFip.Status.V4Eip, cachedFip.Status.V4Ip); err != nil {
 			klog.Errorf("failed to delete fip, %v", err)
 			return err
 		}

@@ -697,7 +697,7 @@ func newOvnClient(t *testing.T, ovnNbAddr string, ovnNbTimeout int, nodeSwitchCI
 	require.NoError(t, err)
 
 	return &ovnClient{
-		ovnNbClient: ovnNbClient{
+		ovsDbClient: ovsDbClient{
 			Client:  nbClient,
 			Timeout: time.Duration(ovnNbTimeout) * time.Second,
 		},

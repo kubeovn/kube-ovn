@@ -88,7 +88,7 @@ func (c *Controller) resyncInterConnection() {
 				blackList = append(blackList, ipv6)
 			}
 		}
-		if err := c.ovnClient.SetICAutoRoute(autoRoute, blackList); err != nil {
+		if err := c.ovnNbClient.SetICAutoRoute(autoRoute, blackList); err != nil {
 			klog.Errorf("failed to config auto route, %v", err)
 			return
 		}
@@ -170,7 +170,7 @@ func (c *Controller) removeInterConnection(azName string) error {
 	if azName != "" {
 		lspName := fmt.Sprintf("ts-%s", azName)
 		lrpName := fmt.Sprintf("%s-ts", azName)
-		if err := c.ovnClient.RemoveLogicalPatchPort(lspName, lrpName); err != nil {
+		if err := c.ovnNbClient.RemoveLogicalPatchPort(lspName, lrpName); err != nil {
 			klog.Errorf("delete ovn-ic logical port %s and %s: %v", lspName, lrpName, err)
 			return err
 		}
@@ -191,7 +191,7 @@ func (c *Controller) establishInterConnection(config map[string]string) error {
 	}
 
 	tsPort := fmt.Sprintf("ts-%s", config["az-name"])
-	exist, err := c.ovnClient.LogicalSwitchPortExists(tsPort)
+	exist, err := c.ovnNbClient.LogicalSwitchPortExists(tsPort)
 	if err != nil {
 		klog.Errorf("failed to list logical switch ports, %v", err)
 		return err
@@ -202,7 +202,7 @@ func (c *Controller) establishInterConnection(config map[string]string) error {
 		return nil
 	}
 
-	if err := c.ovnClient.SetAzName(config["az-name"]); err != nil {
+	if err := c.ovnNbClient.SetAzName(config["az-name"]); err != nil {
 		klog.Errorf("failed to set az name. %v", err)
 		return err
 	}
@@ -261,7 +261,7 @@ func (c *Controller) establishInterConnection(config map[string]string) error {
 	}
 
 	lrpName := fmt.Sprintf("%s-ts", config["az-name"])
-	if err := c.ovnClient.CreateLogicalPatchPort(util.InterconnectionSwitch, c.config.ClusterRouter, tsPort, lrpName, lrpIP, util.GenerateMac(), chassises...); err != nil {
+	if err := c.ovnNbClient.CreateLogicalPatchPort(util.InterconnectionSwitch, c.config.ClusterRouter, tsPort, lrpName, lrpIP, util.GenerateMac(), chassises...); err != nil {
 		klog.Errorf("failed to create ovn-ic lrp %v", err)
 		return err
 	}
@@ -360,19 +360,19 @@ func (c *Controller) waitTsReady() error {
 }
 
 func (c *Controller) delLearnedRoute() error {
-	lrList, err := c.ovnClient.ListLogicalRouter(false, nil)
+	lrList, err := c.ovnNbClient.ListLogicalRouter(false, nil)
 	if err != nil {
 		klog.Errorf("failed to list logical routers: %v", err)
 		return err
 	}
 	for _, lr := range lrList {
-		routeList, err := c.ovnClient.ListLogicalRouterStaticRoutes(lr.Name, nil, nil, "", map[string]string{"ic-learned-route": ""})
+		routeList, err := c.ovnNbClient.ListLogicalRouterStaticRoutes(lr.Name, nil, nil, "", map[string]string{"ic-learned-route": ""})
 		if err != nil {
 			klog.Errorf("failed to list learned static routes on logical router %s: %v", lr.Name, err)
 			return err
 		}
 		for _, r := range routeList {
-			if err = c.ovnClient.DeleteLogicalRouterStaticRoute(lr.Name, &r.RouteTable, r.Policy, r.IPPrefix, r.Nexthop); err != nil {
+			if err = c.ovnNbClient.DeleteLogicalRouterStaticRoute(lr.Name, &r.RouteTable, r.Policy, r.IPPrefix, r.Nexthop); err != nil {
 				klog.Errorf("failed to delete learned static route %#v on logical router %s: %v", r, lr.Name, err)
 				return err
 			}
@@ -444,19 +444,19 @@ func stripPrefix(policyMatch string) (string, error) {
 }
 
 func (c *Controller) syncOneRouteToPolicy(key, value string) {
-	lr, err := c.ovnClient.GetLogicalRouter(c.config.ClusterRouter, false)
+	lr, err := c.ovnNbClient.GetLogicalRouter(c.config.ClusterRouter, false)
 	if err != nil {
 		klog.Errorf("logical router does not exist %v at %v", err, time.Now())
 		return
 	}
-	lrRouteList, err := c.ovnClient.ListLogicalRouterStaticRoutesByOption(lr.Name, util.MainRouteTable, key, value)
+	lrRouteList, err := c.ovnNbClient.ListLogicalRouterStaticRoutesByOption(lr.Name, util.MainRouteTable, key, value)
 	if err != nil {
 		klog.Errorf("failed to list lr ovn-ic route %v", err)
 		return
 	}
 	if len(lrRouteList) == 0 {
 		klog.V(5).Info("lr ovn-ic route does not exist")
-		err := c.ovnClient.DeleteLogicalRouterPolicies(lr.Name, util.OvnICPolicyPriority, map[string]string{key: value})
+		err := c.ovnNbClient.DeleteLogicalRouterPolicies(lr.Name, util.OvnICPolicyPriority, map[string]string{key: value})
 		if err != nil {
 			klog.Errorf("failed to delete ovn-ic lr policy: %v", err)
 			return
@@ -465,7 +465,7 @@ func (c *Controller) syncOneRouteToPolicy(key, value string) {
 	}
 
 	policyMap := map[string]string{}
-	lrPolicyList, err := c.ovnClient.ListLogicalRouterPolicies(lr.Name, util.OvnICPolicyPriority, map[string]string{key: value})
+	lrPolicyList, err := c.ovnNbClient.ListLogicalRouterPolicies(lr.Name, util.OvnICPolicyPriority, map[string]string{key: value})
 	if err != nil {
 		klog.Errorf("failed to list ovn-ic lr policy ", err)
 		return
@@ -485,28 +485,28 @@ func (c *Controller) syncOneRouteToPolicy(key, value string) {
 			var matchFiled string
 			if util.CheckProtocol(lrRoute.IPPrefix) == kubeovnv1.ProtocolIPv4 {
 				matchFiled = util.MatchV4Dst + " == " + lrRoute.IPPrefix
-				if err := c.ovnClient.AddLogicalRouterPolicy(lr.Name, util.OvnICPolicyPriority, matchFiled, ovnnb.LogicalRouterPolicyActionAllow, nil, map[string]string{key: value, "vendor": util.CniTypeName}); err != nil {
+				if err := c.ovnNbClient.AddLogicalRouterPolicy(lr.Name, util.OvnICPolicyPriority, matchFiled, ovnnb.LogicalRouterPolicyActionAllow, nil, map[string]string{key: value, "vendor": util.CniTypeName}); err != nil {
 					klog.Errorf("adding router policy failed %v", err)
 				}
 			}
 
 			if util.CheckProtocol(lrRoute.IPPrefix) == kubeovnv1.ProtocolIPv6 {
 				matchFiled = util.MatchV6Dst + " == " + lrRoute.IPPrefix
-				if err := c.ovnClient.AddLogicalRouterPolicy(lr.Name, util.OvnICPolicyPriority, matchFiled, ovnnb.LogicalRouterPolicyActionAllow, nil, map[string]string{key: value, "vendor": util.CniTypeName}); err != nil {
+				if err := c.ovnNbClient.AddLogicalRouterPolicy(lr.Name, util.OvnICPolicyPriority, matchFiled, ovnnb.LogicalRouterPolicyActionAllow, nil, map[string]string{key: value, "vendor": util.CniTypeName}); err != nil {
 					klog.Errorf("adding router policy failed %v", err)
 				}
 			}
 		}
 	}
 	for _, uuid := range policyMap {
-		if err := c.ovnClient.DeleteLogicalRouterPolicyByUUID(lr.Name, uuid); err != nil {
+		if err := c.ovnNbClient.DeleteLogicalRouterPolicyByUUID(lr.Name, uuid); err != nil {
 			klog.Errorf("deleting router policy failed %v", err)
 		}
 	}
 }
 
 func (c *Controller) listRemoteLogicalSwitchPortAddress() (*strset.Set, error) {
-	lsps, err := c.ovnClient.ListLogicalSwitchPorts(true, nil, func(lsp *ovnnb.LogicalSwitchPort) bool {
+	lsps, err := c.ovnNbClient.ListLogicalSwitchPorts(true, nil, func(lsp *ovnnb.LogicalSwitchPort) bool {
 		return lsp.Type == "remote"
 	})
 	if err != nil {
