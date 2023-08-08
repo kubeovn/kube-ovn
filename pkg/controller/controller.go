@@ -488,10 +488,10 @@ func Run(ctx context.Context, config *Configuration) {
 	}
 
 	var err error
-	if controller.ovnNbClient, err = ovs.NewOvnNbClient(config.OvnNbAddr, config.OvnTimeout, config.NodeSwitchCIDR); err != nil {
+	if controller.ovnNbClient, err = ovs.NewOvnNbClient(config.OvnNbAddr, config.OvnTimeout, config.NodeSwitchCIDR, config.InsecureSkipVerify); err != nil {
 		util.LogFatalAndExit(err, "failed to create ovn nb client")
 	}
-	if controller.ovnSbClient, err = ovs.NewOvnSbClient(config.OvnSbAddr, config.OvnTimeout, config.NodeSwitchCIDR); err != nil {
+	if controller.ovnSbClient, err = ovs.NewOvnSbClient(config.OvnSbAddr, config.OvnTimeout, config.NodeSwitchCIDR, config.InsecureSkipVerify); err != nil {
 		util.LogFatalAndExit(err, "failed to create ovn sb client")
 	}
 	if config.EnableLb {

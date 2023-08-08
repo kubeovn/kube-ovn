@@ -38,7 +38,7 @@ func NamedUUID() string {
 }
 
 // NewNbClient creates a new OVN NB client
-func NewNbClient(addr string) (client.Client, error) {
+func NewNbClient(addr string, insecureSkipVerify bool) (client.Client, error) {
 	dbModel, err := ovnnb.FullDatabaseModel()
 	if err != nil {
 		klog.Error(err)
@@ -79,7 +79,7 @@ func NewNbClient(addr string) (client.Client, error) {
 		tlsConfig := &tls.Config{
 			Certificates:       []tls.Certificate{cert},
 			RootCAs:            certPool,
-			InsecureSkipVerify: true,
+			InsecureSkipVerify: insecureSkipVerify,
 		}
 
 		options = append(options, client.WithTLSConfig(tlsConfig))
@@ -125,7 +125,7 @@ func NewNbClient(addr string) (client.Client, error) {
 }
 
 // NewSbClient creates a new OVN SB client
-func NewSbClient(addr string) (client.Client, error) {
+func NewSbClient(addr string, insecureSkipVerify bool) (client.Client, error) {
 	dbModel, err := ovnsb.FullDatabaseModel()
 	if err != nil {
 		klog.Error(err)
@@ -166,7 +166,7 @@ func NewSbClient(addr string) (client.Client, error) {
 		tlsConfig := &tls.Config{
 			Certificates:       []tls.Certificate{cert},
 			RootCAs:            certPool,
-			InsecureSkipVerify: true,
+			InsecureSkipVerify: insecureSkipVerify,
 		}
 
 		options = append(options, client.WithTLSConfig(tlsConfig))

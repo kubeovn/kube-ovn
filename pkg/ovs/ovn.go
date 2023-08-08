@@ -72,8 +72,8 @@ func NewLegacyClient(timeout int, ovnSbAddr, clusterRouter, clusterTcpLoadBalanc
 	}
 }
 
-func NewOvnNbClient(ovnNbAddr string, ovnNbTimeout int, nodeSwitchCIDR string) (*ovnClient, error) {
-	nbClient, err := ovsclient.NewNbClient(ovnNbAddr)
+func NewOvnNbClient(ovnNbAddr string, ovnNbTimeout int, nodeSwitchCIDR string, insecureSkipVerify bool) (*ovnClient, error) {
+	nbClient, err := ovsclient.NewNbClient(ovnNbAddr, insecureSkipVerify)
 	if err != nil {
 		klog.Errorf("failed to create OVN NB client: %v", err)
 		return nil, err
@@ -89,8 +89,8 @@ func NewOvnNbClient(ovnNbAddr string, ovnNbTimeout int, nodeSwitchCIDR string) (
 	return c, nil
 }
 
-func NewOvnSbClient(ovnSbAddr string, ovnSbTimeout int, nodeSwitchCIDR string) (*ovnClient, error) {
-	sbClient, err := ovsclient.NewSbClient(ovnSbAddr)
+func NewOvnSbClient(ovnSbAddr string, ovnSbTimeout int, nodeSwitchCIDR string, insecureSkipVerify bool) (*ovnClient, error) {
+	sbClient, err := ovsclient.NewSbClient(ovnSbAddr, insecureSkipVerify)
 	if err != nil {
 		klog.Errorf("failed to create OVN SB client: %v", err)
 		return nil, err
