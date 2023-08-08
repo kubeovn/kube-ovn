@@ -1,5 +1,760 @@
 # Changelog
 
+## v1.12.0 (2023-08-07)
+
+ * [6cf53101](https://github.com/kubeovn/kube-ovn/commit/6cf53101f620caafd7d08b424e1408e967adaca3) build(deps): bump sigs.k8s.io/controller-runtime from 0.15.0 to 0.15.1 (#3120)
+ * [cd1202ca](https://github.com/kubeovn/kube-ovn/commit/cd1202ca400a64bb5c3d68784eeb23586444d405) ovn: fix corrupted database file on start (#3112)
+ * [02f8c630](https://github.com/kubeovn/kube-ovn/commit/02f8c630b076e9a97cd8788714813a5c1858f634) some fixes in e2e (#3116)
+ * [d8fa8395](https://github.com/kubeovn/kube-ovn/commit/d8fa8395e4150bb6c31ec0dce2b447d0b8461c6d) controller: fix vpc update (#3117)
+ * [b5b25ffd](https://github.com/kubeovn/kube-ovn/commit/b5b25ffd086eed2d2f72cc32b3a5684cf002e6ea) increase event burst size (#3115)
+ * [c8031f6e](https://github.com/kubeovn/kube-ovn/commit/c8031f6ef60d25095a7a54b532aa6f0871cc39c0) build(deps): bump golang.org/x/sys from 0.10.0 to 0.11.0 (#3114)
+ * [6ba997d2](https://github.com/kubeovn/kube-ovn/commit/6ba997d20b32555e02906a635ef00ce980cbb52b) 简化 ovn eip 类型 (#3107)
+ * [a0c5e389](https://github.com/kubeovn/kube-ovn/commit/a0c5e3895907bc9100a31d2d7d7039b2eed7a664) fix u2o policy route allocate too many openflows cause oom (#3099)
+ * [a9fdbf92](https://github.com/kubeovn/kube-ovn/commit/a9fdbf92ea09a2cfff184ecae4c72c632f0d213b) Fix relevant annotations are not deleted in hotnoplug nic process (#3108)
+ * [3c6d6bc0](https://github.com/kubeovn/kube-ovn/commit/3c6d6bc051bc9a88dd1c55bec14685d42e99cd11) ovn: delete the db file if the node with new empty db file cannot join cluster for more than 120s (#3101)
+ * [914bf613](https://github.com/kubeovn/kube-ovn/commit/914bf6130e4f65bc58458e9dd61d72aa495f85f8) get all chassis once (#3103)
+ * [42e0574c](https://github.com/kubeovn/kube-ovn/commit/42e0574c2eb820ea8b1265dd633687ab92de5941) distinguish nat ip for central subnet with ecmp and active-standby (#3100)
+ * [a27ce4c3](https://github.com/kubeovn/kube-ovn/commit/a27ce4c334db6d49d6c70dc8375667b5b9ead019) build(deps): bump github.com/osrg/gobgp/v3 from 3.16.0 to 3.17.0 (#3105)
+ * [68dc1c38](https://github.com/kubeovn/kube-ovn/commit/68dc1c38023e4967e9644c89e72e63c605df8591) add log near err (#3098)
+ * [c6c472a0](https://github.com/kubeovn/kube-ovn/commit/c6c472a0e295dfd4189df9fd8cd47a69827fdb04) iptables: reject access to invalid service port when kube-proxy works in IPVS mode (#3059)
+ * [f8835ef5](https://github.com/kubeovn/kube-ovn/commit/f8835ef5674af736136713e8867af9a59f173ff7) Ovn nat 1 (#3095)
+ * [5704dae0](https://github.com/kubeovn/kube-ovn/commit/5704dae0c7be8a86d70cd81f03602e7e5942b703) skip ok pod (#3090)
+ * [18580edf](https://github.com/kubeovn/kube-ovn/commit/18580edffa990a65b61e3e49d356e0a4c603721e) ipam: return error for invalid ip range (#3088)
+ * [a7e7a83d](https://github.com/kubeovn/kube-ovn/commit/a7e7a83d12542f23a42e8f48ceef4a7c6b8fd9c7) some fixes in e2e (#3094)
+ * [88218743](https://github.com/kubeovn/kube-ovn/commit/88218743189db426fd6d97272a670762b71ba1ae) bug_fix if only one port bind to the sg, then unbind the port to the sg ,it will not enforce in port_group (#3092)
+ * [4c1161e9](https://github.com/kubeovn/kube-ovn/commit/4c1161e92f5d2ee2aecc4b4f88a4f9fc49a1e7fe) fix .status.default when initializing the default vpc (#3086)
+ * [fa91428b](https://github.com/kubeovn/kube-ovn/commit/fa91428bc2882e9d9dd82b78f6eb3dcc91500cd4) fix repeate set chassis (#3083)
+ * [68a798f4](https://github.com/kubeovn/kube-ovn/commit/68a798f47aa4a9051a41dd7020d11ab1eda34910) build(deps): bump google.golang.org/grpc from 1.56.2 to 1.57.0 (#3085)
+ * [da1648cc](https://github.com/kubeovn/kube-ovn/commit/da1648ccd64c3436669d643e2d7a1b474d1d7cd9) fix go fmt
+ * [88b5912f](https://github.com/kubeovn/kube-ovn/commit/88b5912fce998957704fb689340911c213a8e902) fix kube-ovn-speaker log (#3081)
+ * [89544c35](https://github.com/kubeovn/kube-ovn/commit/89544c35233fadb34ce8e0236d712ccbd6127b81) remove FOSSA status card
+ * [ac648680](https://github.com/kubeovn/kube-ovn/commit/ac648680ebc6b2655903bae5cb50c09ae90b0c12) cni-server: fix ovn mappings for vpc nat gateway (#3075)
+ * [0fe9dcb2](https://github.com/kubeovn/kube-ovn/commit/0fe9dcb276e5dd9f7f0ca31b568cb40d3aabc49a) fix kube-ovn-speaker (#3076)
+ * [827a5a27](https://github.com/kubeovn/kube-ovn/commit/827a5a2730f969477b60ae466e5aa4ca175073c1) build(deps): bump github.com/Microsoft/hcsshim from 0.9.10 to 0.10.0 (#3079)
+ * [38cd9203](https://github.com/kubeovn/kube-ovn/commit/38cd9203a56bd65f3a596775fa0a4f3ca75173e7) ovn client: fix sb chassis existence check (#3072)
+ * [038ff7de](https://github.com/kubeovn/kube-ovn/commit/038ff7defef82eac3ab35fae55f034e0279d9e6c) e2e: fix switch lb rule test (#3071)
+ * [e14ebbd5](https://github.com/kubeovn/kube-ovn/commit/e14ebbd58af2ef0599b6bfaa3dd171d6cc0388d0) bump github.com/docker/docker to v24.0.5 (#3073)
+ * [90c83057](https://github.com/kubeovn/kube-ovn/commit/90c830574c9f7f6786201e4fb3ce2951accff7e9) iptables: add --random-fully to SNAT rules (#3066)
+ * [1350397e](https://github.com/kubeovn/kube-ovn/commit/1350397ec97c51f356be168f89f2fe49fd5511ab) update lint tmeout
+ * [ff6d03d0](https://github.com/kubeovn/kube-ovn/commit/ff6d03d0ec22260490a234b55bd775243a9c1f9d) build(deps): bump github.com/onsi/gomega from 1.27.9 to 1.27.10 (#3069)
+ * [76b01496](https://github.com/kubeovn/kube-ovn/commit/76b01496f3d5d4e03ee54b31a0ac1bf94ed3b6fa) bump k8s to v1.27.4 (#3063)
+ * [d8e59ab6](https://github.com/kubeovn/kube-ovn/commit/d8e59ab619ec097a25ef0fbe26122ede73d4fd91) e2e: do not import pkg/daemon (#3055)
+ * [20a6526c](https://github.com/kubeovn/kube-ovn/commit/20a6526c407b5dbd69330c119681efb2a66903ca) build(deps): bump github.com/onsi/gomega from 1.27.8 to 1.27.9 (#3065)
+ * [af335ba8](https://github.com/kubeovn/kube-ovn/commit/af335ba81a9789fde3fa9b7a4a41146ba00fd114) build(deps): bump github.com/Microsoft/hcsshim from 0.9.9 to 0.9.10 (#3061)
+ * [976a32b0](https://github.com/kubeovn/kube-ovn/commit/976a32b01a84824f615211ad20ae94833c5b576b) ci: fix multus installation (#3062)
+ * [0d1599ff](https://github.com/kubeovn/kube-ovn/commit/0d1599ffdcca1428647f63e44db396aabf8081e2) add srl connectivity test (#3056)
+ * [42f35a35](https://github.com/kubeovn/kube-ovn/commit/42f35a3588e90986668b0100d99424862d1c6ada) ipam: fix ippool with single dual-stack address (#3054)
+ * [2ba3b8e5](https://github.com/kubeovn/kube-ovn/commit/2ba3b8e54cd06bc3b66c029d31ba9a8744fd4f61) controller: skip VIP gc if LB not found (#3048)
+ * [52232b5e](https://github.com/kubeovn/kube-ovn/commit/52232b5e33f8bd678d516602d8ef81d364c9757b) keep vm vip when enableKeepVmIP is true (#3053)
+ * [ed58b210](https://github.com/kubeovn/kube-ovn/commit/ed58b210302269f2d09b27087001b74fe50cd131) cni: reduce memory usage (#3047)
+ * [3be1e84c](https://github.com/kubeovn/kube-ovn/commit/3be1e84c2142dd89412d13a4896b40a7f91c0296) set genev_sys_6081 tx checksum off (#3045)
+ * [4e761156](https://github.com/kubeovn/kube-ovn/commit/4e761156c1ede9e44e85dbf2a03aca4f816a8712) fix vpc lb init (#3046)
+ * [f4f80415](https://github.com/kubeovn/kube-ovn/commit/f4f80415a06fa73d030e1becfb1a9d479eafdca6) custom vpc pod support tcp http probe with tproxy method (#3024)
+ * [494209d3](https://github.com/kubeovn/kube-ovn/commit/494209d3cf3e9177c2d311d6b7c063e67810393a) change log (#3042)
+ * [b40c35b8](https://github.com/kubeovn/kube-ovn/commit/b40c35b8c4076622886f63c6dae344764cc2a05d) Makefile: add deepflow and kwok installation (#3036)
+ * [5a0686b2](https://github.com/kubeovn/kube-ovn/commit/5a0686b2700070d04fd31d50ffea1e3367202b50) windows: fix ovn patches (#3035)
+ * [e3b7439d](https://github.com/kubeovn/kube-ovn/commit/e3b7439d40c41b88525d87fb66a7cf1c03d2881a) ci: pin go version to 1.20.5 (#3034)
+ * [97a3e1bc](https://github.com/kubeovn/kube-ovn/commit/97a3e1bc9b192a76a11e338b609876d2d8c77165) static ip in exclude-ips can be allocated normally when subnet's availableIPs is 0 (#3031)
+ * [9d88e497](https://github.com/kubeovn/kube-ovn/commit/9d88e4970718cc377914470d9059a63c548ed900) pinger: use fully qualified domain name (#3032)
+ * [f3833f91](https://github.com/kubeovn/kube-ovn/commit/f3833f91b42d46692f618ec0b3f4976e95b85739) feat:  suport kubevirt nic hotplug (#3013)
+ * [62f33289](https://github.com/kubeovn/kube-ovn/commit/62f332897a26f014031f7dbab1a8566f6d28fd22) fix lrp eip not clean (#3026)
+ * [047af4a2](https://github.com/kubeovn/kube-ovn/commit/047af4a21607125b43b15a6f8ea6b213b931b1bf) build(deps): bump helm/kind-action from 1.7.0 to 1.8.0 (#3029)
+ * [e01e616e](https://github.com/kubeovn/kube-ovn/commit/e01e616ee0be12c54ab1ac54b03df9f002c55456) update maintainer
+ * [ea9c1f1e](https://github.com/kubeovn/kube-ovn/commit/ea9c1f1e5dad1d4342d851d37315631b696d6048) uninstall.sh: fix ipset name (#3028)
+ * [9e6dc636](https://github.com/kubeovn/kube-ovn/commit/9e6dc6366091c443bba60a0bc46fbedda29b0636) build(deps): bump github.com/docker/docker (#3027)
+ * [3dd7f4ab](https://github.com/kubeovn/kube-ovn/commit/3dd7f4ab788797831444148c4485869f61aca5b7) replace ovn legacy client with libovsdb (#3018)
+ * [c5bfdb46](https://github.com/kubeovn/kube-ovn/commit/c5bfdb4645a7e2899c8b38ae51d01ff5c87ce2b2) install.sh: fix duplicate resources apply (#3023)
+ * [2e4fb05c](https://github.com/kubeovn/kube-ovn/commit/2e4fb05cf015751439115426df38ca1d7bad06f0) build(deps): bump github.com/docker/docker (#3019)
+ * [aefaef5a](https://github.com/kubeovn/kube-ovn/commit/aefaef5abeb6d6120fc5948e3112532cfa305e54) build(deps): bump google.golang.org/grpc from 1.56.1 to 1.56.2 (#3020)
+ * [1f1fb82e](https://github.com/kubeovn/kube-ovn/commit/1f1fb82e4fcaa4dd22d65d54843c79f2e26b09bc) ovn: fix cluster connections when SSL is enabled (#3001)
+ * [18560c96](https://github.com/kubeovn/kube-ovn/commit/18560c964caf4b4a7f007f812c76f8a885665e34) cleanup.sh: wait for provier-networks to be deleted before deleting kube-ovn-cni (#3006)
+ * [9304ae5a](https://github.com/kubeovn/kube-ovn/commit/9304ae5a460f8dbff0e785aa703adef899de4109) kube-ovn-controller: fix workqueue metrics (#3011)
+ * [d4153885](https://github.com/kubeovn/kube-ovn/commit/d4153885e06248b42dbbab9c4b1e8aaf17dd4b0e) ci: fix go cache key (#3015)
+ * [5a5f66eb](https://github.com/kubeovn/kube-ovn/commit/5a5f66ebf55f38a0c4dfedf2de753dc6fe4300af) fix vlan subnet use logical gw can not access outside cluster node (#3007)
+ * [18fd55dd](https://github.com/kubeovn/kube-ovn/commit/18fd55ddf4a45c350a2561a4b2976999cc5b86c4) build(deps): bump github.com/prometheus-community/pro-bing (#3016)
+ * [269f460d](https://github.com/kubeovn/kube-ovn/commit/269f460d72167ba5018a94e95788ccac9588ba37) fix vpc already delete while delete policy route (#3005)
+ * [e744d76e](https://github.com/kubeovn/kube-ovn/commit/e744d76eac8d366b836abd0d7a39c4d5cbd127c2) make compatible with simplicified enable-eip-snat-cm (#3009)
+ * [2a652530](https://github.com/kubeovn/kube-ovn/commit/2a6525300c996afa2cdede47fc6f36398115244c) build(deps): bump golang.org/x/sys from 0.9.0 to 0.10.0 (#3012)
+ * [d5f89bce](https://github.com/kubeovn/kube-ovn/commit/d5f89bce73841b76993c43a94820e9c04fd0fe52) subnet: fix nat outgoing policy rule (#3003)
+ * [8358a91e](https://github.com/kubeovn/kube-ovn/commit/8358a91e8408c133adf20cfc4a889931a890184a) build(deps): bump github.com/osrg/gobgp/v3 from 3.15.0 to 3.16.0 (#3010)
+ * [fe924e9f](https://github.com/kubeovn/kube-ovn/commit/fe924e9f49cf00e419d943fa8453319d4d87d0ad) fix subnet finalizer (#3004)
+ * [12366937](https://github.com/kubeovn/kube-ovn/commit/12366937b1177496b2469d8e87bc67abe4daa4b2) chart: fix readOnly in volumes (#3002)
+ * [d5462b10](https://github.com/kubeovn/kube-ovn/commit/d5462b10c9d26dc99e287b5cc111e5c4f94cc57b) libovsdb: various bug fixes (#2998)
+ * [af04530e](https://github.com/kubeovn/kube-ovn/commit/af04530e9aa4db98ef25ac4f0a681dfcb3be0fd4) choose subnet by pod's annotation in networkpolicy (#2987)
+ * [5c455499](https://github.com/kubeovn/kube-ovn/commit/5c455499b35d91f2c976520927bc70822f727a65) IPPool: fix missing support for CIDR (#2982)
+ * [f2d063a8](https://github.com/kubeovn/kube-ovn/commit/f2d063a853938a81c5be8ab3ce762a6b4e35d99e) kubectl ko performance enhance (#2975)
+ * [d5d196e7](https://github.com/kubeovn/kube-ovn/commit/d5d196e7c1fdc39ab50ce0fd87c5c5340f00d5d3) fix deleting old sb chassis for a re-added node (#2989)
+ * [30cd09e6](https://github.com/kubeovn/kube-ovn/commit/30cd09e6e792ca0cf648614155fae423379c9644) add e2e for new ippool feature (#2981)
+ * [5fdf1f9e](https://github.com/kubeovn/kube-ovn/commit/5fdf1f9ee08955d1c29b1079c3cbb47c62ffbd8a) underlay: fix NetworkManager syncer for virtual interfaces (#2988)
+ * [1bb51239](https://github.com/kubeovn/kube-ovn/commit/1bb51239cf8e26055cf230315edb0e09f7bc7792) underlay: does not set a device managed to no if it has VLAN managed by NM (#2986)
+ * [3793e993](https://github.com/kubeovn/kube-ovn/commit/3793e99370206a410743e1c96839e11ad0647b4f) build(deps): bump google.golang.org/protobuf from 1.30.0 to 1.31.0 (#2985)
+ * [6a5bfe46](https://github.com/kubeovn/kube-ovn/commit/6a5bfe46dd6b2e9124e005386191672e4b82f3e6) support helm install  hybrid_dpdk ovs-ovn (#2980)
+ * [dc40a8cb](https://github.com/kubeovn/kube-ovn/commit/dc40a8cb6df0d3fbba171069c1484e3c87ae9157) add unittest for IPAM (#2977)
+ * [daa436d3](https://github.com/kubeovn/kube-ovn/commit/daa436d3c1d4ea099faff713be0affb34ff121cb) IPAM: fix subnet mutex not released when static IP is out of range (#2979)
+ * [65fd8a4a](https://github.com/kubeovn/kube-ovn/commit/65fd8a4aa4d596363131ba710a50bfbc052e4071) fix initialization check of vpc nat gateway configuration (#2978)
+ * [e558702d](https://github.com/kubeovn/kube-ovn/commit/e558702de597f99eb0591cb8e2bf31fd084cfd0b) refactor: make qos test cases parallel (#2957)
+ * [27685a17](https://github.com/kubeovn/kube-ovn/commit/27685a173a7f537e4ffd1539a3a655c8354ee59d) IPAM: add support for ippool (#2958)
+ * [41b4f266](https://github.com/kubeovn/kube-ovn/commit/41b4f266dc565538b1711e7dd876cfd34c8ab894) build(deps): bump google.golang.org/grpc from 1.56.0 to 1.56.1 (#2974)
+ * [57b01b4a](https://github.com/kubeovn/kube-ovn/commit/57b01b4ad210d1c3845867529c211ba1b2960e2b) ovn ic support dual (#2970)
+ * [7a14cf21](https://github.com/kubeovn/kube-ovn/commit/7a14cf21958a50e9c5b40fa1fe836294b64f7bee) base: fix ovn patches (#2971)
+ * [a5194e66](https://github.com/kubeovn/kube-ovn/commit/a5194e6682c9b2603b7857024193d4ea59efec87) build(deps): bump github.com/onsi/ginkgo/v2 from 2.10.0 to 2.11.0 (#2968)
+ * [a5e63c72](https://github.com/kubeovn/kube-ovn/commit/a5e63c7209c61491179d7b272e87e37592f0b3f4) add detail comment (#2969)
+ * [13256fab](https://github.com/kubeovn/kube-ovn/commit/13256fab7002db60de4f2df0c89bb986ef4f9dc8) 1. add host multicast perf (#2965)
+ * [33b6df12](https://github.com/kubeovn/kube-ovn/commit/33b6df1202ce53c02a8707895113f22beae2b1ca) cni-server: reconcile ovn0 routes periodically (#2963)
+ * [e4f68267](https://github.com/kubeovn/kube-ovn/commit/e4f682675319eb80289bbf68a008619278ff13f6) uninstall.sh: flush and delete iptables chain OVN-MASQUERADE (#2961)
+ * [9fbebd34](https://github.com/kubeovn/kube-ovn/commit/9fbebd3406cacf4f10c3afbfc55b25b407e84f90) fix e2e failed (#2960)
+ * [5de25172](https://github.com/kubeovn/kube-ovn/commit/5de251721684e01cf50511c9ea59faa4a0e6d60c) u2o specify u2oip from v1.9 (#2934)
+ * [30ea6d6c](https://github.com/kubeovn/kube-ovn/commit/30ea6d6c4679b1b206aec0a9e8bb55b1b25fe226) underlay: sync NetworkManager IP config to OVS bridge (#2949)
+ * [27a2f300](https://github.com/kubeovn/kube-ovn/commit/27a2f300c918fccc588728e6fe07b02253b4f5ca) chore: USERS.md (#2955)
+ * [1c29580e](https://github.com/kubeovn/kube-ovn/commit/1c29580e9ee1e52943956cd96ed746adcf51a07e) bump k8s version to v1.27.3 (#2953)
+ * [c0730acb](https://github.com/kubeovn/kube-ovn/commit/c0730acb7c998c8257714c8dd9253628d36bb92a) ci: fix build-base strategy (#2950)
+ * [f52b1509](https://github.com/kubeovn/kube-ovn/commit/f52b15091d21a18a0e1928c55788f035f206edf7) e2e: add qos policy test cases (#2924)
+ * [d8739d29](https://github.com/kubeovn/kube-ovn/commit/d8739d29bdead176da5d4594fdebc7a3f836ec53) typo (#2952)
+ * [de9c9603](https://github.com/kubeovn/kube-ovn/commit/de9c9603679bcb2957becaca1f78e54c3a006168) build(deps): bump google.golang.org/grpc from 1.55.0 to 1.56.0 (#2951)
+ * [f4b3c0fe](https://github.com/kubeovn/kube-ovn/commit/f4b3c0fe190676237d4ca3c6b484e4be6e91c783) build(deps): bump github.com/prometheus/client_golang (#2948)
+ * [e13c2005](https://github.com/kubeovn/kube-ovn/commit/e13c2005d65a8c7040fd873a640968daaf37c304) Revert "nm not managed only in the change provide nic name case (#2754)" (#2944)
+ * [765dc8d7](https://github.com/kubeovn/kube-ovn/commit/765dc8d7f74560e70d7b41c40576a4150b1fbffa) add permision for test-server.sh (#2942)
+ * [a9d0b4be](https://github.com/kubeovn/kube-ovn/commit/a9d0b4be58d631d5871d7df122d7fa27d8bc134a) Kubectl ko diagnose perf (#2915)
+ * [8f414f72](https://github.com/kubeovn/kube-ovn/commit/8f414f724911c00d4722c7ff7dc0e127540301cd) build(deps): bump golang.org/x/sys from 0.8.0 to 0.9.0 (#2940)
+ * [88f706e4](https://github.com/kubeovn/kube-ovn/commit/88f706e412dc0392224f9ef47a34e05a08061142) controller: fix DHCP MTU when the default network mode is underlay (#2941)
+ * [ea56b560](https://github.com/kubeovn/kube-ovn/commit/ea56b56034b2a3e9a5de150765e6e98f02c3b686) e2e: fix u2o case (#2931)
+ * [c1c716f1](https://github.com/kubeovn/kube-ovn/commit/c1c716f1834c8b174732136c438153cfe5ecc235) add err log to help find conflict ip owner (#2939)
+ * [1f27076f](https://github.com/kubeovn/kube-ovn/commit/1f27076f7c8bb1b6b1452dab4bd00438a5258d85) support set the mtu of  dhcpv4_options (#2930)
+ * [f1d2011a](https://github.com/kubeovn/kube-ovn/commit/f1d2011a9b95c4c94bb9993b967af4355df13084) modify lb-svc dnat port error (#2927)
+ * [d7edac78](https://github.com/kubeovn/kube-ovn/commit/d7edac78a115e6ec8505f3729e344c48845cd885) fix race condition in gateway check logs (#2928)
+ * [fc7c16ae](https://github.com/kubeovn/kube-ovn/commit/fc7c16ae7d006e6a951eb051cba3af4461598296) add subnet.spec.u2oInterconnectionIP (#2921)
+ * [6105d57b](https://github.com/kubeovn/kube-ovn/commit/6105d57b404555ad2a1345a6139221ed4d40cfe3) disable ai review
+ * [8773ea3d](https://github.com/kubeovn/kube-ovn/commit/8773ea3d460351eacadf5e6d70dba8cd815e48be) e2e: fix waiting deployment to be restarted (#2909)
+ * [56927913](https://github.com/kubeovn/kube-ovn/commit/56927913e2b227e1c5850cb6b3d83e1cbb0e4c4c) make conformance with underlay  pn vlan subnet has no gw (#2908)
+ * [0356a63f](https://github.com/kubeovn/kube-ovn/commit/0356a63fe092bb7a33bdabb4d92016d2076b7c49) fix: natgw init check command not work (#2923)
+ * [3a8e13ee](https://github.com/kubeovn/kube-ovn/commit/3a8e13ee3b137906d0a7430e88017ef772a1cced) fix issue 2916 (#2917)
+ * [517d3791](https://github.com/kubeovn/kube-ovn/commit/517d3791a9363dd3635ca37b40cbd0cdd2906931) add sync map to fix cocurrent write (#2918)
+ * [dff950b1](https://github.com/kubeovn/kube-ovn/commit/dff950b18c790820354f1b22c52aeda5d4cf8929) cni-server: clear iptables mark before doing masquerade (#2919)
+ * [d043a2d2](https://github.com/kubeovn/kube-ovn/commit/d043a2d2edfb18a874f5c73b2354c2e8dd40d539) build(deps): bump github.com/onsi/ginkgo/v2 from 2.9.7 to 2.10.0 (#2913)
+ * [525b0b76](https://github.com/kubeovn/kube-ovn/commit/525b0b76d4ddad8d248bda0b845ecbc21fb944a1) build(deps): bump github.com/onsi/gomega from 1.27.7 to 1.27.8 (#2914)
+ * [3616d3de](https://github.com/kubeovn/kube-ovn/commit/3616d3de045d9a812a89c43d6af7c18a83fe11c3) For eip created without spec.V4ip this field (#2912)
+ * [ace0b970](https://github.com/kubeovn/kube-ovn/commit/ace0b970b22c42a342b46d94d3bdd613dcb8e45f) match outgoing interface when perform snat (#2911)
+ * [d61a2ad6](https://github.com/kubeovn/kube-ovn/commit/d61a2ad64d8285ef3c68956facb047b8288b5529) libovsdb: ignore not found error when listing objects with a filter (#2900)
+ * [78f923a9](https://github.com/kubeovn/kube-ovn/commit/78f923a9f21301705a202580ecdd4090a2c02513) build(deps): bump github.com/sirupsen/logrus from 1.9.2 to 1.9.3 (#2903)
+ * [0e27e0ca](https://github.com/kubeovn/kube-ovn/commit/0e27e0caa26767e38b395baefe65b6e0dcf044a1) build(deps): bump github.com/osrg/gobgp/v3 from 3.14.0 to 3.15.0 (#2904)
+ * [fd92c2a8](https://github.com/kubeovn/kube-ovn/commit/fd92c2a87ec6979f306104d7bafb4ecf0643862e) fix base build
+ * [668287af](https://github.com/kubeovn/kube-ovn/commit/668287af888224a48438de9315b011d1010f465d) fix build base ci
+ * [a1746140](https://github.com/kubeovn/kube-ovn/commit/a1746140969f2fbe7d57b0f8a6fe0aff307fe5f0) fix build base ci
+ * [2f52d929](https://github.com/kubeovn/kube-ovn/commit/2f52d9297eef625e9a85fabd8a06642e13d99763) refactor IPAM (#2896)
+ * [db51370f](https://github.com/kubeovn/kube-ovn/commit/db51370fdc4ef8ee5a61732893878208b74a926c) add e2e u2o vpc version check (#2901)
+ * [6acecb60](https://github.com/kubeovn/kube-ovn/commit/6acecb6046b8ee929582c69831593f34f476bfff) kube-ovn-controller: fix subnet update (#2882)
+ * [35aa8b40](https://github.com/kubeovn/kube-ovn/commit/35aa8b4035800e620f7a699c1759bf8a09cdeb22) Supporting user-defined kubelet directory (#2893)
+ * [3883a744](https://github.com/kubeovn/kube-ovn/commit/3883a744c7f799b4c2f40abd260d4ff74854a96a) ci: use latest golangci-lint
+ * [efe3ee34](https://github.com/kubeovn/kube-ovn/commit/efe3ee34fc4ab30b01aa4349502f774ce6165bb1) underlay: do not delete patch ports created by ovn-controller (#2851)
+ * [04c64f0a](https://github.com/kubeovn/kube-ovn/commit/04c64f0aee60ed2d988460fe2986db03c61c7b61) update pr-review
+ * [aa1ffaa3](https://github.com/kubeovn/kube-ovn/commit/aa1ffaa3a5fc349c623e7e51ab9d0c5e1655ee3c) auto build base for release branches
+ * [fe4eec77](https://github.com/kubeovn/kube-ovn/commit/fe4eec7783655cc6da120a06eecf6bad194205d2) Add natoutgoing policy rules (#2883)
+ * [bbe04e89](https://github.com/kubeovn/kube-ovn/commit/bbe04e89dac9b69c452f95c3a036b9b94bae19ba) pin golangci-lint version
+ * [0c5f9055](https://github.com/kubeovn/kube-ovn/commit/0c5f90553f65aa083fe2cf0853ad8a4d54113c36) skip case 'connect to NodePort service with external traffic policy set to Local from other nodes' (#2895)
+ * [93f027f3](https://github.com/kubeovn/kube-ovn/commit/93f027f3e602b56db6934e1e344a3f8363a61110) refactor subnet gateway (#2872)
+ * [33c52623](https://github.com/kubeovn/kube-ovn/commit/33c52623700d0284a5701ee4b4f9446a3fef00bc) update webhook check (#2878)
+ * [a123be78](https://github.com/kubeovn/kube-ovn/commit/a123be78eb0f37ee686d41fa1a3ea8d67eff93ce) skip pr-review as run out openai quota
+ * [5c2c9487](https://github.com/kubeovn/kube-ovn/commit/5c2c948731b8cba961c95fa3f29d115bc8b1565e) skip kubectl cve
+ * [403c2dcd](https://github.com/kubeovn/kube-ovn/commit/403c2dcd7a70cc46d36dcf9dff6763b4d9701417) build(deps): bump github.com/onsi/ginkgo/v2 from 2.9.5 to 2.9.7 (#2890)
+ * [589d0b6f](https://github.com/kubeovn/kube-ovn/commit/589d0b6f8221953d9d3a4f749d6f4a6113cb831e) e2e: multiple external network (#2884)
+ * [79521c31](https://github.com/kubeovn/kube-ovn/commit/79521c3185b988892f0e2cc7aea360b8c59ba9af) build(deps): bump github.com/stretchr/testify from 1.8.3 to 1.8.4 (#2885)
+ * [71253fe5](https://github.com/kubeovn/kube-ovn/commit/71253fe5fa925aec2d280f76f5aab4307e5829a1) fix vip str format (#2879)
+ * [6b5345ff](https://github.com/kubeovn/kube-ovn/commit/6b5345ff2aae3a6c6072593d444674bb0752909b) ci: fix valgrind result analysis (#2853)
+ * [7c80a135](https://github.com/kubeovn/kube-ovn/commit/7c80a13580d845c3d7b43366156f19902e185e12) ovs: fix memory leak in qos (#2871)
+ * [9f39621a](https://github.com/kubeovn/kube-ovn/commit/9f39621a8d57627e4b45cba5058d91b79e7c61e7) feat: vpc nat gw e2e (#2866)
+ * [e68b983b](https://github.com/kubeovn/kube-ovn/commit/e68b983b1041f01dcdafa72184c8725fbab20ce6) build(deps): bump github.com/docker/docker (#2875)
+ * [056b4cf8](https://github.com/kubeovn/kube-ovn/commit/056b4cf83366a021da6fae13611b6969ef1fe40f) fix gc nil pointer (#2858)
+ * [32b85219](https://github.com/kubeovn/kube-ovn/commit/32b85219c3b55d33041551ac7d7bc2803a372f63) bump k8s to v1.27.2 (#2861)
+ * [a80b3754](https://github.com/kubeovn/kube-ovn/commit/a80b3754c39e02e01f42fe8c92eeba68a7ab29a7) add e2e test for slr (#2841)
+ * [20b20366](https://github.com/kubeovn/kube-ovn/commit/20b20366da888c15aa25730cb5eff205c5b63843) Move docs to new website (#2862)
+ * [24d9dfee](https://github.com/kubeovn/kube-ovn/commit/24d9dfeef0ceaf805326226b762ffa5407154b99) build(deps): bump gopkg.in/k8snetworkplumbingwg/multus-cni.v4 (#2860)
+ * [83a47a73](https://github.com/kubeovn/kube-ovn/commit/83a47a734ff0f92f741a644b2424de73573716ed) update dependabot
+ * [d6202bc7](https://github.com/kubeovn/kube-ovn/commit/d6202bc7addf94abb9b89e42d060dbd770b42e66) refactor clusterrole for kube-ovn (#2833)
+ * [b1c77ad7](https://github.com/kubeovn/kube-ovn/commit/b1c77ad737b3e2f94d92b97c13400b2b7863f164) some fixes in CI/e2e (#2856)
+ * [a94fb0b2](https://github.com/kubeovn/kube-ovn/commit/a94fb0b2177a1cfc7f5e34f18c68dfaf240f51df) manage ovn bfd with libovsdb (#2812)
+ * [d9a038ce](https://github.com/kubeovn/kube-ovn/commit/d9a038ce9d15f39ffad938e3a8905c9ac42bd9e6) update the volumeMounts premission (#2852)
+ * [d642f5b5](https://github.com/kubeovn/kube-ovn/commit/d642f5b583ba8225714c5c6533e3bb80a17b989d) fix vip lsp not clean (#2848)
+ * [a1cf2b39](https://github.com/kubeovn/kube-ovn/commit/a1cf2b39b894ceb09b36858563d2c1ba9ff814cf) U2o support custom vpc (#2831)
+ * [2068d879](https://github.com/kubeovn/kube-ovn/commit/2068d879c26f52b729f61e7e67cc89b7e2bfe309) kubectl-ko: fix trace when u2oInterconnection is enabled (#2836)
+ * [6ee56d08](https://github.com/kubeovn/kube-ovn/commit/6ee56d089e477057223cd0ce1bd28f82ddcb721e) ci: detect ovs/ovn memory leak (#2839)
+ * [77656773](https://github.com/kubeovn/kube-ovn/commit/776567739b40b057a5c244c4d3b192978d442f15) iptables: always do SNAT for access from other nodes to nodeport with external traffic policy set to Local (#2844)
+ * [175fb262](https://github.com/kubeovn/kube-ovn/commit/175fb262e9dc2a39879134e7304665f5ce3b71e2) fix underlay access to node through ovn0 (#2842)
+ * [98392b3a](https://github.com/kubeovn/kube-ovn/commit/98392b3a11fda41cb1229320dc9dcc45e1dd7a65) build(deps): bump github.com/docker/docker (#2843)
+ * [da944a3e](https://github.com/kubeovn/kube-ovn/commit/da944a3eabbc7144a991dbc2b5005acd296e1903) adapt vpc dns in master (#2822)
+ * [c7b7a0a5](https://github.com/kubeovn/kube-ovn/commit/c7b7a0a5f21f56d8849e8363381ebf8378c6c2f5) bump go dependencies (#2820)
+ * [94d7cc86](https://github.com/kubeovn/kube-ovn/commit/94d7cc867208e1f2b4d555d57ae56e23fb2bd7b6) fix MTU when subnet is using logical gateway (#2834)
+ * [486c61ae](https://github.com/kubeovn/kube-ovn/commit/486c61aefe221ca11f0d192470fd50f948d33623) refactor image builds (#2818)
+ * [a7fd9ddf](https://github.com/kubeovn/kube-ovn/commit/a7fd9ddf97480832480de202463bb0dbb13b5596) build(deps): bump github.com/stretchr/testify from 1.8.2 to 1.8.3 (#2832)
+ * [667f5a7c](https://github.com/kubeovn/kube-ovn/commit/667f5a7c6ef7c9858f6b082d7e5b8104363e2f25) build(deps): bump github.com/onsi/gomega from 1.27.6 to 1.27.7 (#2830)
+ * [853abd9d](https://github.com/kubeovn/kube-ovn/commit/853abd9d9d4270d46b5ee0456523f087970c68ba) vip support create arp proxy logical switch port (#2817)
+ * [46bdd01a](https://github.com/kubeovn/kube-ovn/commit/46bdd01abb0eeed0addd2b8656404235b72a6d91) build(deps): bump github.com/sirupsen/logrus from 1.9.0 to 1.9.2 (#2828)
+ * [e988089e](https://github.com/kubeovn/kube-ovn/commit/e988089ee95618a7915f25bea633887108174eae) build(deps): bump github.com/docker/docker (#2827)
+ * [3b8c9edc](https://github.com/kubeovn/kube-ovn/commit/3b8c9edc55e083468ed98217c1b688ce926ec2ff) add route for service ip range when init vpc-nat-gw (#2821)
+ * [4f015f6d](https://github.com/kubeovn/kube-ovn/commit/4f015f6d36f3d4a0a4b21cd5d971165cbff48f30) do not allocate MAC address when kube-ovn is called as an IPAM plugin (#2816)
+ * [a30daea4](https://github.com/kubeovn/kube-ovn/commit/a30daea4f0a571d0db4e1950a8744cf8476255d8) Iptables nat support share eip (#2805)
+ * [0466edce](https://github.com/kubeovn/kube-ovn/commit/0466edce660cb9ed041ac91e4ae96644bf0089fe) fix typos (#2815)
+ * [fca6c9d5](https://github.com/kubeovn/kube-ovn/commit/fca6c9d51151864acff266a03807ab1f3b884ff1) fix some typos (#2814)
+ * [630104d5](https://github.com/kubeovn/kube-ovn/commit/630104d55a570b99e98952217cec2d7766de3bd4) add iperf to test group multicast (#2796)
+ * [2ba3846b](https://github.com/kubeovn/kube-ovn/commit/2ba3846b097ec30e4b4bf257c12b4b038480197a) add available check for northd enpoint (#2799)
+ * [253358ea](https://github.com/kubeovn/kube-ovn/commit/253358ea83e4f3f01c2ec826a809f42743e58ea6) manage ovn lr static route with libovsdb (#2804)
+ * [781b47d9](https://github.com/kubeovn/kube-ovn/commit/781b47d916c3f1bcff9b4f27f10f8b2bd81714a1) add support of user-defined endpoints to SwitchLBRule (#2777)
+ * [74221a6e](https://github.com/kubeovn/kube-ovn/commit/74221a6e48179528a88b4b24496d375745b78cb2) e2e: fix test container not removed (#2800)
+ * [6ddd03bf](https://github.com/kubeovn/kube-ovn/commit/6ddd03bf2f62ab0c99bb68cf05d903ba3c9466d2) manage ovn lr policy with libovsdb (#2788)
+ * [7350db5f](https://github.com/kubeovn/kube-ovn/commit/7350db5fad4d6a1f185e0fb2a52d5f61f324a29b) build(deps): bump github.com/docker/distribution (#2797)
+ * [8f43028a](https://github.com/kubeovn/kube-ovn/commit/8f43028a24040af1d4d6e65ec528f6d5b9e5d2f3) fix handedeletePod repeat 4 times (#2789)
+ * [c8af3dd3](https://github.com/kubeovn/kube-ovn/commit/c8af3dd366d79ab6f9e6fc9c4ad3eb6261e6b604) fix cleanup order (#2792)
+ * [b9542ad3](https://github.com/kubeovn/kube-ovn/commit/b9542ad3509d92af8ca0989f37adedac37303587) fix missing main route table for the default vpc (#2785)
+ * [1511573d](https://github.com/kubeovn/kube-ovn/commit/1511573dc4a05a04289f7b6a287c350a1c57399f) add ovn DVR fip e2e (#2780)
+ * [0127e10a](https://github.com/kubeovn/kube-ovn/commit/0127e10a20c53fb665a327cbeb8990bad2f8e023) build(deps): bump github.com/containernetworking/plugins (#2784)
+ * [100227be](https://github.com/kubeovn/kube-ovn/commit/100227bee623dadbc9a9ff3f65992e7353b5cd43) add key lock for more resources (#2781)
+ * [16db5082](https://github.com/kubeovn/kube-ovn/commit/16db5082d54cdde6a1f793578d7d953fb620128e) bump cni plugins to v1.3.0 (#2786)
+ * [08e2e66f](https://github.com/kubeovn/kube-ovn/commit/08e2e66f2e9db182a40b55a8f31fbb561a4dd99f) replace util.DefaultVpc with c.config.ClusterRouter (#2782)
+ * [e1154acf](https://github.com/kubeovn/kube-ovn/commit/e1154acf679fb5bd58f9dbdfac4b84ae1649a995) fix static route recreation after kube-ovn-controller restarts (#2778)
+ * [e7190e6a](https://github.com/kubeovn/kube-ovn/commit/e7190e6ae383db35bffccc153dfe86041ec783b7) clean up code about static routes (#2779)
+ * [b1a339b7](https://github.com/kubeovn/kube-ovn/commit/b1a339b77b53ac4acc89c1b170a5396707cc8930) Reorder cleanup step by put subnet and vpc to the last to avoid conflict (#2776)
+ * [a2b789cc](https://github.com/kubeovn/kube-ovn/commit/a2b789cca2a8b2106b60d9782e122e989450aff3) optimize kube-ovn-controller logic (#2771)
+ * [3b2b0716](https://github.com/kubeovn/kube-ovn/commit/3b2b07166e99bf99f47b2f469f36f486c63551e1) use rate limiting queue with delaying for pod deletion events (#2774)
+ * [04e4d258](https://github.com/kubeovn/kube-ovn/commit/04e4d2582f9ae39df50b100b337ed057c66df571) fix underlay subnet kubectl ko trace error (#2773)
+ * [9b1de481](https://github.com/kubeovn/kube-ovn/commit/9b1de48169218d37d52941f8bf8280ff63f8aea1) feat: natgw qos (#2753)
+ * [11b171e1](https://github.com/kubeovn/kube-ovn/commit/11b171e146f0a5672e8e9064a2f60820dc715cac) build(deps): bump github.com/docker/docker (#2770)
+ * [62d8122c](https://github.com/kubeovn/kube-ovn/commit/62d8122c828ead3344c3e4faf91ad7b527bddb1d) fix ip statistics in subnet status (#2769)
+ * [d3d01762](https://github.com/kubeovn/kube-ovn/commit/d3d01762c1640d4e6469e88ee5d9c6a16b07fb45) informer: wait for cache sync before adding event handlers (#2768)
+ * [a23dd865](https://github.com/kubeovn/kube-ovn/commit/a23dd865aa7eec08e315d025850cdc231478639b) build(deps): bump github.com/scylladb/go-set (#2766)
+ * [e2bf60f7](https://github.com/kubeovn/kube-ovn/commit/e2bf60f767e9ce3e55f3f250f0479e2725bea64d) support disable arp check ip conflict in vlan provider network (#2760)
+ * [c55cbd6e](https://github.com/kubeovn/kube-ovn/commit/c55cbd6e0d1da7df3e69e5ac18b3f195edd7d3a6) replace string map with string set (#2765)
+ * [99be9cb0](https://github.com/kubeovn/kube-ovn/commit/99be9cb0effc22c1edf0e2ace3ba181279bf2bc1) cni-server: wait ovs-vswitchd to be running (#2759)
+ * [1933ed87](https://github.com/kubeovn/kube-ovn/commit/1933ed872c37b386a0c60cd7caa745b51b39464a) kubectl-ko: support trace for pod with host network (#2761)
+ * [bf1a3d7c](https://github.com/kubeovn/kube-ovn/commit/bf1a3d7c424927c97543c46e207f650ba8069809) libovsdb: fix potential duplicate addresses (#2763)
+ * [5585d447](https://github.com/kubeovn/kube-ovn/commit/5585d447a874f40ed3c4dcd458c929efa2a8d784) ci: run kube-ovn e2e for underlay (#2762)
+ * [cf1748c6](https://github.com/kubeovn/kube-ovn/commit/cf1748c64fdcf4d95ea4663191d42a1fe8e1cfc4) kubectl-ko: fix pod tracing in underlay (#2757)
+ * [6db99d53](https://github.com/kubeovn/kube-ovn/commit/6db99d531f77e9373bffe13c71213ac3ebd4ba82) When Subnet spec.vpc is updated, the status in VPC should also be updated. (#2756)
+ * [328a8911](https://github.com/kubeovn/kube-ovn/commit/328a8911d557cb5deb5c901f10a3630dd728b273) ovn-nbctl: remove unused functions (#2755)
+ * [86a07a30](https://github.com/kubeovn/kube-ovn/commit/86a07a30eeafc2621fd33105218bcbc81251d83d) add route table option in static route for subnet (#2748)
+ * [f6414ce1](https://github.com/kubeovn/kube-ovn/commit/f6414ce18e82ed140e636ee847b184ae0d8f1683) replace acl/address_set function call with ovnClient (#2648)
+ * [c77f3681](https://github.com/kubeovn/kube-ovn/commit/c77f368187b5be35fe27a97ef60a09375e8ca226) nm not managed only in the change provide nic name case (#2754)
+ * [cc1be3ee](https://github.com/kubeovn/kube-ovn/commit/cc1be3ee79c1e85564515be6ef0f998ad45c53ad) support node local dns cache (#2733)
+ * [d7fa2a49](https://github.com/kubeovn/kube-ovn/commit/d7fa2a491e3d1cffff20aa4d7ffb79ac924cb1a0) build(deps): bump google.golang.org/grpc from 1.54.0 to 1.55.0 (#2752)
+ * [faff1e62](https://github.com/kubeovn/kube-ovn/commit/faff1e627c94edfbf722633e9c64a17702236a08) build(deps): bump golang.org/x/sys from 0.7.0 to 0.8.0 (#2751)
+ * [bdd201b1](https://github.com/kubeovn/kube-ovn/commit/bdd201b16b24436ffa8947db5e8c8a222ba9564f) update eip qos procees, replace qosLabelEIP with natLabelEip (#2736)
+ * [d1711acd](https://github.com/kubeovn/kube-ovn/commit/d1711acd2d27b74815b2ef22a985c64b3f63d58f) refresh nat gw image before using it (#2743)
+ * [353df49a](https://github.com/kubeovn/kube-ovn/commit/353df49ac64134a483b1c258e8d64a886ad8820c) build(deps): bump github.com/prometheus/client_golang (#2745)
+ * [91400ecc](https://github.com/kubeovn/kube-ovn/commit/91400eccc6269de60ea7a1553e97e0dce4f8701d) Using full repo name to avoid short-name error in podman (#2746)
+ * [fa404a06](https://github.com/kubeovn/kube-ovn/commit/fa404a0614ac1bb1ad582818f2f364a8cddbe891) build(deps): bump github.com/osrg/gobgp/v3 from 3.13.0 to 3.14.0 (#2738)
+ * [7eed8341](https://github.com/kubeovn/kube-ovn/commit/7eed8341a7c96f182374d4e165df82c0c11a7225) add policy route when use old active gateway node for centralized subnet (#2722)
+ * [66615b6d](https://github.com/kubeovn/kube-ovn/commit/66615b6d86d50864650dd7e2f3dd988c3cd3933c) feat: support for multiple external network (#2725)
+ * [f8328bdb](https://github.com/kubeovn/kube-ovn/commit/f8328bdbf282b975999d964567e5d858f3a0e0ad) build(deps): bump github.com/docker/docker (#2732)
+ * [6198f691](https://github.com/kubeovn/kube-ovn/commit/6198f691b5102f51becbe21cdba397a28c8d2801) build(deps): bump github.com/Microsoft/hcsshim from 0.9.8 to 0.9.9 (#2731)
+ * [2a015e5c](https://github.com/kubeovn/kube-ovn/commit/2a015e5c461ef8178ecc24c2419949fee32fb00c) base: remove patch for fixing ofpbuf memory leak (#2715)
+ * [a01f9606](https://github.com/kubeovn/kube-ovn/commit/a01f9606da5121ae1fa1d4fee721ab6376bae5f7) fix recover db failed using method in (#2711)
+ * [a6d2a53c](https://github.com/kubeovn/kube-ovn/commit/a6d2a53cc53080b2e1324e13291e4858cc1db4f9) refactor: improve performance by using cache (#2713)
+ * [7dbfd2be](https://github.com/kubeovn/kube-ovn/commit/7dbfd2be0bc1ee06b4f52baa9871ef0e6b2367f0) For dualstack and ipv6 the default ipv6 range should be same with the ipv4 cidr. (#2708)
+ * [15780bfb](https://github.com/kubeovn/kube-ovn/commit/15780bfbb611bfef95c6f2ccfcc9858a4adf9bbd) feat: support dynamically changing qos for EIP (#2671)
+ * [d865b48d](https://github.com/kubeovn/kube-ovn/commit/d865b48d1ea8ae19e141c49799bff8f8487f3264) base: refactor dockerfile (#2696)
+ * [53bfcf44](https://github.com/kubeovn/kube-ovn/commit/53bfcf447140f6c02b406ca666466875b5fbb567) kubectl-ko: add support for tracing nodes (#2697)
+ * [f5fee4c9](https://github.com/kubeovn/kube-ovn/commit/f5fee4c936d3e398c08c791093f671a1b0c19c50) cni-server: do not perform ipv4 conflict detection during VM live migration (#2693)
+ * [942b87d1](https://github.com/kubeovn/kube-ovn/commit/942b87d13a21c60666ae1075f0bfaba95e28e9e3) fix: iptables nat gw e2e not clean sts eth0 net1 ip (#2698)
+ * [236574c7](https://github.com/kubeovn/kube-ovn/commit/236574c750edad001626c02170c21a280e50ca2c) Add random fully when nat (#2681)
+ * [9e3f70c1](https://github.com/kubeovn/kube-ovn/commit/9e3f70c1e2a69d1dbd5b924b00196b09d3592b12) replace StrategicMergePatchType with MergePatchType (#2694)
+ * [b59bfd33](https://github.com/kubeovn/kube-ovn/commit/b59bfd331dff52b1fbde28894d28f97e6d6d2a1d) ci: fix scheduled vpc nat gateway e2e (#2692)
+ * [d469235f](https://github.com/kubeovn/kube-ovn/commit/d469235f967a0d519d3d9cbc4e710bc042eb00aa) ovn-controller: do not send GARP on localnet for Kube-OVN ports (#2690)
+ * [7db85edd](https://github.com/kubeovn/kube-ovn/commit/7db85edd06e472f9629cb4a0a6a76029115929e5) netpol: fix enqueueing network policy after LSP creation (#2687)
+ * [aba72443](https://github.com/kubeovn/kube-ovn/commit/aba724431824034c8b712d03e3988d93e603523e) add tcp mem collector (#2683)
+ * [07a6d4ca](https://github.com/kubeovn/kube-ovn/commit/07a6d4cae2b9854e99c55b702a6bdf406bb99ce8) fix manifest yamls (#2689)
+ * [1d6a0fe4](https://github.com/kubeovn/kube-ovn/commit/1d6a0fe4b4546e44030748df1e2959f9c2662324) attach node name label in ip cr (#2680)
+ * [233dc61e](https://github.com/kubeovn/kube-ovn/commit/233dc61ec23e17daac29bb8b2820048eaeef8c56) adapt ippool annotation (#2678)
+ * [095dca26](https://github.com/kubeovn/kube-ovn/commit/095dca2682ae0e745eee4e6f0801c113818263b2) netpol: fix packet drop casued by incorrect address set deletion (#2677)
+ * [3dc36c8c](https://github.com/kubeovn/kube-ovn/commit/3dc36c8c3898aad19d15c005df0b3534ce17254c) fix kubectl ko using ovn-central pod that not in a good status (#2676)
+ * [9c5523f7](https://github.com/kubeovn/kube-ovn/commit/9c5523f7fb9c37e11bb9636ceb6c9f4e9d928183) add nat gw e2e (#2639)
+ * [a9993dac](https://github.com/kubeovn/kube-ovn/commit/a9993dac38dc1dc0d92065ae8149312e4d662ab7) add workflows for release chart (#2672)
+ * [4399963e](https://github.com/kubeovn/kube-ovn/commit/4399963e796744136f0dc96318bd0bddeaf3157e) build(deps): bump github.com/Microsoft/go-winio from 0.6.0 to 0.6.1 (#2663)
+ * [d6b0c28d](https://github.com/kubeovn/kube-ovn/commit/d6b0c28df328afc01f7dd2f0a7d933f295f2048c) remove auto update k8s and cadvisor
+ * [b57f36ff](https://github.com/kubeovn/kube-ovn/commit/b57f36ff3a64db751a8bdc5376ca8940da57f3de) build(deps): bump k8s.io/sample-controller from 0.26.3 to 0.26.4 (#2675)
+ * [a33adde2](https://github.com/kubeovn/kube-ovn/commit/a33adde2f2291cd82704c1a41b05fcb868dc7f5b) ignore k8s major and minor dependencies as they always break build.
+ * [68f813e0](https://github.com/kubeovn/kube-ovn/commit/68f813e0fb5617cd524c7ecb87be9bc080b796cf) rename charts (#2667)
+ * [933d76e3](https://github.com/kubeovn/kube-ovn/commit/933d76e3fa419c343e586cff16c2bc11903cf1e3) ipam update condition refactor (#2651)
+ * [05e72516](https://github.com/kubeovn/kube-ovn/commit/05e725160535b4e92efd442f69949d965806b639) fix LSP existence check (#2657)
+ * [f84343e8](https://github.com/kubeovn/kube-ovn/commit/f84343e84b1bcd7ac0abf874c29ee90ea716dd0d) fix network policy issues (#2652)
+ * [148f1bf4](https://github.com/kubeovn/kube-ovn/commit/148f1bf4a5ca19bfba1af6e627ecc864e029406a) Resolve SetLoadBalancerAffinityTimeout not being effective (#2647)
+ * [0b5fc5d3](https://github.com/kubeovn/kube-ovn/commit/0b5fc5d36ac7c52e38150934c1f91c03f12ee804) broadcast free arp when pod is setup (#2638)
+ * [dc31cbd2](https://github.com/kubeovn/kube-ovn/commit/dc31cbd2038fa4ca4947d465bc59040f62500676) delete sync user (#2629)
+ * [7e872fbe](https://github.com/kubeovn/kube-ovn/commit/7e872fbe53c7420f0a90a10c23a6f92033be098b) fix: eip qos (#2632)
+ * [ddf28fc2](https://github.com/kubeovn/kube-ovn/commit/ddf28fc2f020bffda95a9d206e42769b6888eaeb) fix: make webhook port configurable. (#2631)
+ * [c53d58da](https://github.com/kubeovn/kube-ovn/commit/c53d58dac3d240205add1de6e0f6d5d89a9842c1) support ovn ipsec  (#2616)
+ * [53bf75d2](https://github.com/kubeovn/kube-ovn/commit/53bf75d218a6c0cf994ee49adcdca8dc4d67baa0) feat: add support for EIP QoS (#2550)
+ * [1fc5d853](https://github.com/kubeovn/kube-ovn/commit/1fc5d85346a38593803fb0c7d8c344e4b5d6c4ed) libovsdb: fix race condition in OVN LB operations (#2625)
+ * [cfff2db3](https://github.com/kubeovn/kube-ovn/commit/cfff2db3ded9a5f5c3bce5fc7e4d19e116fe68f8) fix IPAM allocation caused by incorrect pod annotations patch (#2624)
+ * [3e67e893](https://github.com/kubeovn/kube-ovn/commit/3e67e89354ba62269bceaac08869bc2e4717f4f3) ci: deploy multus in thick mode (#2628)
+ * [1caaea2a](https://github.com/kubeovn/kube-ovn/commit/1caaea2ab5b04a5d8573da5b0dfb1a41ea2dd601) libovsdb: use monitor_cond as the monitor method (#2627)
+ * [c0ab8351](https://github.com/kubeovn/kube-ovn/commit/c0ab8351c9f5776553f7f10772531ba162b0e173) ci: fix multus installation (#2622)
+ * [84a910b0](https://github.com/kubeovn/kube-ovn/commit/84a910b0235ccecf24950222dfacb64fdfd3de37) ovs: fix dpif-netlink ofpbuf memory leak (#2620)
+ * [42a86869](https://github.com/kubeovn/kube-ovn/commit/42a86869e3fc3d12682f395c65c9b6a38a9a85de) Optimized tolerations code in vpc-nat-gw (#2613)
+ * [1e8e3828](https://github.com/kubeovn/kube-ovn/commit/1e8e38288c9accd275ab65168ec82d82962c0606) replace port_group function call with ovnClient (#2608)
+ * [9b577403](https://github.com/kubeovn/kube-ovn/commit/9b577403ba071c267d606affb9fcdd438b841e67) reduce test binary size and add missing webhook build (#2610)
+ * [949eb8b7](https://github.com/kubeovn/kube-ovn/commit/949eb8b73f5eb4d2a560ff9cae9cc75875fcb807) fix: ovneip print column and finalizer (#2593)
+ * [5babe8e6](https://github.com/kubeovn/kube-ovn/commit/5babe8e69fd31c114e844fc1da9a07ef96e2a9d8) add affinity to vpc-nat-gw (#2609)
+ * [6bf15d4a](https://github.com/kubeovn/kube-ovn/commit/6bf15d4a4cb3edc890501daf090ad4095b804e8e) ci: fix multus installation (#2604)
+ * [8629d634](https://github.com/kubeovn/kube-ovn/commit/8629d6340d7f100c2f0795c180ad342db94f61f8) update .gitignore (#2600)
+ * [254598fb](https://github.com/kubeovn/kube-ovn/commit/254598fbdca25920a5f72ade1e60722344f8a57b) bump go modules (#2603)
+ * [602b1605](https://github.com/kubeovn/kube-ovn/commit/602b16052ff139bd2bf32fbafe91164730e2b4cd) build(deps): bump peter-evans/create-pull-request from 4 to 5 (#2606)
+ * [787616f1](https://github.com/kubeovn/kube-ovn/commit/787616f1c2fde385b47ceca9f8f622b27287901e) build(deps): bump github.com/docker/docker (#2605)
+ * [62b8761d](https://github.com/kubeovn/kube-ovn/commit/62b8761d0031ed73279f92db1b7ee4d0f8861046) build(deps): bump golang.org/x/sys from 0.6.0 to 0.7.0 (#2607)
+ * [d2523f46](https://github.com/kubeovn/kube-ovn/commit/d2523f466a258a14e03766ec2b2c7a2204c0daaf) cut invalid OVN_NB_DAEMON to make log more readable (#2601)
+ * [4c7ddc68](https://github.com/kubeovn/kube-ovn/commit/4c7ddc68d952eedd44c58730ec8bf7cf514a3a30) unittest: fix length assertion (#2597)
+ * [7ba428d7](https://github.com/kubeovn/kube-ovn/commit/7ba428d7101cc2a25e196aa1c3e76a33ee65bf33) use copilot to generate pr content
+ * [1a474fd9](https://github.com/kubeovn/kube-ovn/commit/1a474fd988345e87ce5170d81c9570fc5df4f133) replace lb function call with ovnClient (#2598)
+ * [a73deb47](https://github.com/kubeovn/kube-ovn/commit/a73deb47a0b6799a9030912fbc58b6d8bc53f6af) build(deps): bump github.com/osrg/gobgp/v3 from 3.12.0 to 3.13.0 (#2596)
+ * [2fb1f95a](https://github.com/kubeovn/kube-ovn/commit/2fb1f95a9aa960f3991872b40f771bbfe9f551ce) Merge handleAddPod with handleUpdatePod. (#2563)
+ * [9399c1e1](https://github.com/kubeovn/kube-ovn/commit/9399c1e1f64e2ae9df9004e0135d154f43201c4c) fix log (#2586)
+ * [da323a52](https://github.com/kubeovn/kube-ovn/commit/da323a52d103ee1f6cc6c95bfa37c7bb02df9d29) fix: ovn snat and fip delete (#2584)
+ * [048e9315](https://github.com/kubeovn/kube-ovn/commit/048e9315fa58c1d2347aabba74e05c4633b28b0b) underlay: get address/route before setting nm managed to no (#2592)
+ * [5d036cd5](https://github.com/kubeovn/kube-ovn/commit/5d036cd560fa0671f13e72572592d182278b6682) update chart description (#2582)
+ * [6d50bdc3](https://github.com/kubeovn/kube-ovn/commit/6d50bdc36167737ebb655e8359aa004030dfde83) iptables: use the same mode with kube-proxy (#2535)
+ * [09477984](https://github.com/kubeovn/kube-ovn/commit/09477984f6f4ad8007a611035de12c6b96eacd6b) ci: bump kind image to v1.26.3 (#2581)
+ * [5b7bdccb](https://github.com/kubeovn/kube-ovn/commit/5b7bdccb0099d1dff46b68999acbef97c4838d75) fix: invalid memory address (#2585)
+ * [cba9c16e](https://github.com/kubeovn/kube-ovn/commit/cba9c16e652b8a4a1e398f12f9c0ac43633cfe1e) kubectl ko change solution to collect logs to path kubectl-ko-log (#2575)
+ * [bb268618](https://github.com/kubeovn/kube-ovn/commit/bb268618fa0485a817147f50c78d843d7b9e0b59) if one item is removed, do not requeue (#2578)
+ * [5aad7c53](https://github.com/kubeovn/kube-ovn/commit/5aad7c535da3c4bf87d3b7199d8ca15595e76ac1) build(deps): bump github.com/onsi/gomega from 1.27.5 to 1.27.6 (#2579)
+ * [a9d66220](https://github.com/kubeovn/kube-ovn/commit/a9d66220da1624d637d1d36235689111f3d7c396) fix vpc dns when ovn-default is dualstack (#2576)
+ * [279717ca](https://github.com/kubeovn/kube-ovn/commit/279717ca7d1a94d0a32974693be8226402556539) move the vpc-nat generic configurations into one single ConfigMap (#2574)
+ * [887df215](https://github.com/kubeovn/kube-ovn/commit/887df215a42a676782505895322a557ade855615) feat: add ovn dnat (#2565)
+ * [02a86873](https://github.com/kubeovn/kube-ovn/commit/02a868734adb662381bb3a6b0241cd7d64d2257d) Fix kubectl ko log loss when restart deployment or ds (#2531)
+ * [1d1f5fab](https://github.com/kubeovn/kube-ovn/commit/1d1f5fabbeccf8ce3523266b95d3780704f7da84) add wait until (#2569)
+ * [c0e843fd](https://github.com/kubeovn/kube-ovn/commit/c0e843fd42ff2eaffe0af0770056f9b8b5638089) do no review dependency update
+ * [a7ccd1ae](https://github.com/kubeovn/kube-ovn/commit/a7ccd1ae0c73fe45ec1f1559f141714845787096) build(deps): bump github.com/opencontainers/runc from 1.1.4 to 1.1.5 (#2572)
+ * [5dce9cd2](https://github.com/kubeovn/kube-ovn/commit/5dce9cd2c80fbd6b80093988216fd1672155ddc6) move ipam.subnet.mutex to caller (#2571)
+ * [9fba0b54](https://github.com/kubeovn/kube-ovn/commit/9fba0b548c5489ec183f9740c945ec7d7cec0aaf) build(deps): bump sigs.k8s.io/controller-runtime from 0.14.5 to 0.14.6 (#2568)
+ * [3f7997b3](https://github.com/kubeovn/kube-ovn/commit/3f7997b319083e1f0b87a1739804849f299a6c2a) fix: memory leak in IPAM caused by leftover map keys (#2566)
+ * [1e9f3529](https://github.com/kubeovn/kube-ovn/commit/1e9f3529980c6ab37f68dc00f5d812cc8e102d55) build(deps): bump github.com/docker/docker (#2567)
+ * [8e03e97b](https://github.com/kubeovn/kube-ovn/commit/8e03e97b84101c331d097236b22f444750850a18) fix ovn-bridge-mappings deletion (#2564)
+ * [e19620b0](https://github.com/kubeovn/kube-ovn/commit/e19620b0aad1abbb61b5046789aa6c406d590f5e) fix lrp deletion after upgrade (#2548)
+ * [ed928348](https://github.com/kubeovn/kube-ovn/commit/ed92834898238c7e9ee2696e5255d348311a6864) fix gw label for vpc update field (#2562)
+ * [642fa92a](https://github.com/kubeovn/kube-ovn/commit/642fa92a2420305db232e1d8db16f984ad630d29) update CRD in helm chart (#2560)
+ * [1a41369d](https://github.com/kubeovn/kube-ovn/commit/1a41369d64482dff27cff5acc87d0aa4015c3302) fix CRD indent in install.sh (#2559)
+ * [f955143f](https://github.com/kubeovn/kube-ovn/commit/f955143f7cad8cfc29ed5923117e138c9f326335) fix update snat rules not effect correctly (#2554)
+ * [fd6ec3d8](https://github.com/kubeovn/kube-ovn/commit/fd6ec3d8af336b13a11b1fe8edab04d90d224b74) fix go mod list (#2556)
+ * [b4e7e2e8](https://github.com/kubeovn/kube-ovn/commit/b4e7e2e87983a0ded5f796de5cc8f9e6bb396da1) do not set device unmanaged if NetworkManager is not running (#2549)
+ * [fe1b4ac6](https://github.com/kubeovn/kube-ovn/commit/fe1b4ac6242fe9ef5ea871d61de06b22e6ea7c0c) update review bot
+ * [f9eb0ca4](https://github.com/kubeovn/kube-ovn/commit/f9eb0ca41ecc0d31bbdeadf970cc01e91ba69db7) build(deps): bump github.com/onsi/gomega from 1.27.4 to 1.27.5 (#2551)
+ * [955cf0ff](https://github.com/kubeovn/kube-ovn/commit/955cf0ffba719f5bf9fc7a4184ebcb1ef4c3ef93) underlay: fix network manager operation (#2546)
+ * [b8fc9d9a](https://github.com/kubeovn/kube-ovn/commit/b8fc9d9a05bc4bd438f677bb644075b73f3c4aef) controller: fix apiserver connection timeout on startup (#2545)
+ * [2ae8a9af](https://github.com/kubeovn/kube-ovn/commit/2ae8a9afc1de5e9951f5715914747a8e0b468ef4) fix update fip rules not effect correctly (#2540)
+ * [98dc2f25](https://github.com/kubeovn/kube-ovn/commit/98dc2f251aafccf7c2791e88f3b626e6b41b3292) fix lsp deletion failure when external-ids:ls is empty (#2544)
+ * [6b9cdd33](https://github.com/kubeovn/kube-ovn/commit/6b9cdd33a1edf44a6f579eb4c895f9d829f96e41) sync parameters to charts from install script (#2526)
+ * [8c49fc01](https://github.com/kubeovn/kube-ovn/commit/8c49fc012f8506243acfcfdb8307c890d08f6576) underlay: delete altname after renaming the link (#2539)
+ * [2a81f404](https://github.com/kubeovn/kube-ovn/commit/2a81f40433e6b8c31eaff1d6789994fd3f1221f1) failed to delete ovn-fip or ovn-snat (#2534)
+ * [17807e55](https://github.com/kubeovn/kube-ovn/commit/17807e5553039141716543ba40cd7f8974dd573a) fix encap_ip will be lost when we restart the ovs-dpdk node (#2543)
+ * [829e74c2](https://github.com/kubeovn/kube-ovn/commit/829e74c2fce41510628b745fa8d09c3a804a49a0) fix service fail (#2537)
+ * [bd91f8b8](https://github.com/kubeovn/kube-ovn/commit/bd91f8b86c6ce1bd000692b91cb04da916770936) Add speaker param check (#2538)
+ * [7e6feabe](https://github.com/kubeovn/kube-ovn/commit/7e6feabe89ea87b4f95c1e376886cabd56024225) feat: support nic-hotplug to a running pod. (#2521)
+ * [bbe1f3e8](https://github.com/kubeovn/kube-ovn/commit/bbe1f3e884d5d8cb8b27215412e0d60cfa6ccf5c) build(deps): bump google.golang.org/grpc from 1.53.0 to 1.54.0 (#2541)
+ * [ae51a656](https://github.com/kubeovn/kube-ovn/commit/ae51a6561121195f7a6341885714514f4dc3e8a1) fix update dnat rules not effect correctly (#2518)
+ * [569b576a](https://github.com/kubeovn/kube-ovn/commit/569b576ac4e4c42890721909996071147ca0fcd9) underlay: fix link name exchange (#2516)
+ * [e9710959](https://github.com/kubeovn/kube-ovn/commit/e97109590322bcc1d035e53d9406965138960dc3) add vip to webhook e2e (#2525)
+ * [30d30bfe](https://github.com/kubeovn/kube-ovn/commit/30d30bfead7ab67242b00faa63bf62ced4f83710) fix submariner e2e (#2519)
+ * [9eda4859](https://github.com/kubeovn/kube-ovn/commit/9eda4859fda67897b429034441f59e365b6723d6) fix lsp gc after upgrade (#2513)
+ * [0b8964c9](https://github.com/kubeovn/kube-ovn/commit/0b8964c9e0a6106c3ad05e9d0ae8677cc5b9da26) fix: ovn-fip creation failure due to an excessively long label (#2529)
+ * [cc8a11d7](https://github.com/kubeovn/kube-ovn/commit/cc8a11d72021fab878b1be9302f0c46186ca5dc8) add sleep (#2523)
+ * [416cc772](https://github.com/kubeovn/kube-ovn/commit/416cc7727ff85ec01c1a4260d857ced651a4730c) when restart deployment kube-ovn-controller the kubectl ko log loss (#2508)
+ * [e7085dec](https://github.com/kubeovn/kube-ovn/commit/e7085dec79de60b83f25a85a9fa7a385ba192a72) optimize e2e framework (#2492)
+ * [4b59bdfc](https://github.com/kubeovn/kube-ovn/commit/4b59bdfc362e63e0a0ef9ce35819f63b48492ee4) fix ovs patches (#2506)
+ * [1138c2cf](https://github.com/kubeovn/kube-ovn/commit/1138c2cff7233be4b39ed3265923cb2236d75021) fix subnet iprange not correct (#2505)
+ * [0ebb6785](https://github.com/kubeovn/kube-ovn/commit/0ebb67853164682e5a7fc719c4bab325d4682730) bump k8s to v1.26.3 (#2514)
+ * [6fb79923](https://github.com/kubeovn/kube-ovn/commit/6fb7992326a8a844b0081fc2c3f8cfde596b3abd) add kubevirt multus nic lsp before gc process (#2504)
+ * [3fc6d8e3](https://github.com/kubeovn/kube-ovn/commit/3fc6d8e3495f9032f119773df02d672eafc3e417) update slack link
+ * [46d9edbd](https://github.com/kubeovn/kube-ovn/commit/46d9edbd28dbfa5f942c420e097f3870ed2305d3) docs: updated CHANGELOG.md (#2515)
+ * [36329d54](https://github.com/kubeovn/kube-ovn/commit/36329d54cb15a40885173526093e2631d29b9633) optimize ovs upgrade script (#2512)
+ * [f8aabdf5](https://github.com/kubeovn/kube-ovn/commit/f8aabdf583b80d7bef228265ee3f26a666cb975e) ci: change to pull_request_target
+ * [089d8cd2](https://github.com/kubeovn/kube-ovn/commit/089d8cd20b0ac734ddfcb2f60d1666411b9f400d) ci: add openai to review the code (#2511)
+ * [ee5e59a9](https://github.com/kubeovn/kube-ovn/commit/ee5e59a9436e85982aeb3fbe14040577a2f39302) add support of user-defined image name for vpc-dns (#2502)
+ * [20e70222](https://github.com/kubeovn/kube-ovn/commit/20e702226357cd15474e43ec14c8adee67c34e25) build(deps): bump google.golang.org/protobuf from 1.29.1 to 1.30.0 (#2500)
+ * [b6913c52](https://github.com/kubeovn/kube-ovn/commit/b6913c522c32749ef0559a2c61e6ad6840a30d9f) build(deps): bump github.com/Microsoft/hcsshim from 0.9.7 to 0.9.8 (#2499)
+ * [443dd58b](https://github.com/kubeovn/kube-ovn/commit/443dd58bf8fb51005cfacf9ec4f9f78a274cceef) replace lr/ls/lrp/lsp function call with ovnClient (#2477)
+ * [599ed234](https://github.com/kubeovn/kube-ovn/commit/599ed2349ec37b3765e1aa90f49e9f3eacda3847) ci: fix go cache (#2498)
+ * [0606f90d](https://github.com/kubeovn/kube-ovn/commit/0606f90df816fac12c81caaa9357a2f2822eceb3) add skip (#2491)
+ * [1aff1c4f](https://github.com/kubeovn/kube-ovn/commit/1aff1c4f5a9ba282e0aae1edef8a85182fab4792) ensure address label is correct before deleting it (#2487)
+ * [e9dd2892](https://github.com/kubeovn/kube-ovn/commit/e9dd28929a529d8cb73cea5bb7742b4c56c085e4) fix scheduled submariner e2e (#2469)
+ * [c66a93ac](https://github.com/kubeovn/kube-ovn/commit/c66a93ac71e44a30cf92ddaed7076f540e7f98e2) build(deps): bump actions/setup-go from 3 to 4 (#2490)
+ * [a8aede74](https://github.com/kubeovn/kube-ovn/commit/a8aede741c5c08763853a08e87101ab2f1f764a6) build(deps): bump github.com/onsi/gomega from 1.27.3 to 1.27.4 (#2489)
+ * [70a220a0](https://github.com/kubeovn/kube-ovn/commit/70a220a013c12f20559898f6f0b352dc56fc8769) add some sleep wait iptables clean (#2488)
+ * [0b8e5346](https://github.com/kubeovn/kube-ovn/commit/0b8e534639c7b504e2b2a203de44a930141b8cde) Add kubectl ko log (#2451)
+ * [c3620cd0](https://github.com/kubeovn/kube-ovn/commit/c3620cd09bcc43c874506476198b4f0371bc620c) fix: gw configmap may not exist (#2484)
+ * [a31235b1](https://github.com/kubeovn/kube-ovn/commit/a31235b114bafa1a08d655d942ac52aea4317d3e) fix ovs qos e2e for versions prior to v1.12 (#2483)
+ * [1470c10d](https://github.com/kubeovn/kube-ovn/commit/1470c10d30aea08f44b16733bdce5b9c27083536) add node to addNodeQueue if required annations are missing (#2481)
+ * [47a70557](https://github.com/kubeovn/kube-ovn/commit/47a705577c2cd3c08a5443a1d6f36d78c0f4748f) Add jitter support to netem qos parameters (#2476)
+ * [b15fc51b](https://github.com/kubeovn/kube-ovn/commit/b15fc51bbbdc20dbcfe61b76ce0856efa4f81ea5) build(deps): bump google.golang.org/protobuf from 1.29.0 to 1.29.1 (#2480)
+ * [d1cd3ddd](https://github.com/kubeovn/kube-ovn/commit/d1cd3dddfee6ff61e748eefbf987d1334f3364cd) fix ovs-ovn startup/restart (#2467)
+ * [b26784f1](https://github.com/kubeovn/kube-ovn/commit/b26784f1db1b5bdb230148f704b9e4cd78e66d67) fix changging the stopped vm's subnets, the vm cann't start normally (#2463)
+ * [7e2e437d](https://github.com/kubeovn/kube-ovn/commit/7e2e437d57341a80b157eddb0f7b6f1a13a0f11c) build(deps): bump github.com/onsi/gomega from 1.27.2 to 1.27.3 (#2475)
+ * [5b07ccbb](https://github.com/kubeovn/kube-ovn/commit/5b07ccbbc97504d4598ee4a0310b9eda4a32ed5b) when we delete the pod，it's no need to update the sgs assign to pod (#2465)
+ * [3fd564b7](https://github.com/kubeovn/kube-ovn/commit/3fd564b77208d9f0cb45a74e00ef0c4c0ab50017) fix libovsdb issues (#2462)
+ * [0689a729](https://github.com/kubeovn/kube-ovn/commit/0689a7293d6c993ef15db83d6c7a89f2bb36ac7f) fix ips CR not found due to etcd error (#2472)
+ * [e368a20e](https://github.com/kubeovn/kube-ovn/commit/e368a20ed1d0fa87a5992216a5228de85070576c) wait for subnet lb (#2471)
+ * [0ecd9aff](https://github.com/kubeovn/kube-ovn/commit/0ecd9aff989696c45b1b9faf57694843090072a0) chore: update base periodically to resolve security issues. (#2470)
+ * [5387acf4](https://github.com/kubeovn/kube-ovn/commit/5387acf40925bca7efba3d0f6571b4724bec330d) do not delete external switch if it is created by provider network vlan subnet (#2449)
+ * [282706d6](https://github.com/kubeovn/kube-ovn/commit/282706d67fa5d98a468dff48811fb21e939cdda1) add upgrade compatibility (#2468)
+ * [482167a9](https://github.com/kubeovn/kube-ovn/commit/482167a921b5670a56493efbfa8f39f708a7dff5) ci: fix ovn-ic installation (#2456)
+ * [2bce5080](https://github.com/kubeovn/kube-ovn/commit/2bce5080f355eaa2dbd5ea1fdc43eaad4c993f2d) Fixed：Prevents grep from prematurely exiting the shell script if it cannot find a pattern (#2466)
+ * [4d850e01](https://github.com/kubeovn/kube-ovn/commit/4d850e017c61ef8e515a45df221c026e0047a5f4) add install for webhook (#2460)
+ * [f17b4348](https://github.com/kubeovn/kube-ovn/commit/f17b4348bdbce1890faf2a17b392110fe9d5af7e) e2e add some debug info and sleep (#2439)
+ * [8df83cb1](https://github.com/kubeovn/kube-ovn/commit/8df83cb14469203ed1b27b46cefc2edea0fac968) do not set subnet's vlan empty on failure (#2445)
+ * [7ae8db6c](https://github.com/kubeovn/kube-ovn/commit/7ae8db6cf553797067628381050f69aba5b04b5a) wait subnet lb clear in set subnet EnableLb to false e2e (#2450)
+ * [674cc290](https://github.com/kubeovn/kube-ovn/commit/674cc2907dbfeced1c2fdefcd0009c71dd8e8c71) build(deps): bump github.com/emicklei/go-restful/v3 (#2458)
+ * [e4c089ab](https://github.com/kubeovn/kube-ovn/commit/e4c089abe1cdcd7ecb63015a5f3340fbafb40da4) ci(Mergify): configuration update (#2457)
+ * [0444a2b2](https://github.com/kubeovn/kube-ovn/commit/0444a2b20c1c89df7e4fcb94db1f521e3c395233) kube-ovn-speaker support IPv6/Dual (#2455)
+ * [790c7cc2](https://github.com/kubeovn/kube-ovn/commit/790c7cc296aea61d5e6b8a70ad65d628c0455414) replace nb_global function call with ovnClient (#2454)
+ * [0d129742](https://github.com/kubeovn/kube-ovn/commit/0d129742ff3e31f51dfd962e3eae915f1878cd32) build(deps): bump google.golang.org/protobuf from 1.28.1 to 1.29.0 (#2452)
+ * [b399cca6](https://github.com/kubeovn/kube-ovn/commit/b399cca68ddab0a2f331b614d14fb8af8ce0b396) fix parsing logical router static routes (#2443)
+ * [9df323d7](https://github.com/kubeovn/kube-ovn/commit/9df323d7ed65a781a7838cc5b2b4c010fb123962) base: fix ovn patches (#2444)
+ * [3259b912](https://github.com/kubeovn/kube-ovn/commit/3259b9120bfa26742245369e1bbad11d472535d7) prepare for libovsdb replacement (#1978)
+ * [d71a314d](https://github.com/kubeovn/kube-ovn/commit/d71a314d5dbd5199d134e4ef42ab6c4cbee312ad) support auto change external bridge (#2437)
+ * [f4bef89e](https://github.com/kubeovn/kube-ovn/commit/f4bef89e20859d4daab6264780c0c0b8186fe1f7) fix ovn-speaker router bug (#2433)
+ * [497260ef](https://github.com/kubeovn/kube-ovn/commit/497260efe4abfa2ceef95f9954b26dec57c9f7a3) ovs: change update strategy to RollingUpdate (#2422)
+ * [c84479be](https://github.com/kubeovn/kube-ovn/commit/c84479be2e0ad190fd4cfca4da1fcc25ffc6b914) add kubevirt install (#2430)
+ * [e9017e2a](https://github.com/kubeovn/kube-ovn/commit/e9017e2ab558fb03132ff2a67c0a48b1673fc46e) e2e: wait for subnet to meet specified condition (#2431)
+ * [810f7b99](https://github.com/kubeovn/kube-ovn/commit/810f7b994fb937d35534c2452f60e21caa3f4b9c) delete all  invalid ovn lb  strategy and prevent invalid multiple endpoint reconsile (#2419)
+ * [25fef7cc](https://github.com/kubeovn/kube-ovn/commit/25fef7cceea1a715369da5e97a61489a4e6099c4) add sumbarier case (#2416)
+ * [a99ceb20](https://github.com/kubeovn/kube-ovn/commit/a99ceb20dd67ed5ea52556f7f3b5adc15b6e8cd7) iptables-rules upgrade compatible (#2429)
+ * [57033847](https://github.com/kubeovn/kube-ovn/commit/570338473c3a48e51b0d9d1d2155e7b0724b09bd) add log (#2423)
+ * [824f2e0a](https://github.com/kubeovn/kube-ovn/commit/824f2e0ab9475ee40570659c3717e3026eaf478c) check subnet gateway after wait (#2428)
+ * [86c01e6b](https://github.com/kubeovn/kube-ovn/commit/86c01e6ba6c924393fb551f350733911c6f2de6f) fix chart install/upgrade e2e (#2426)
+ * [322eab3b](https://github.com/kubeovn/kube-ovn/commit/322eab3b927ea2cc47310fe056ef039bd976a866) ci: fix cilium chaining e2e (#2391)
+ * [79367647](https://github.com/kubeovn/kube-ovn/commit/79367647b84607ca531d03084fb19efc4552e614) build(deps): bump golang.org/x/sys from 0.5.0 to 0.6.0 (#2427)
+ * [dc5148bb](https://github.com/kubeovn/kube-ovn/commit/dc5148bb86f66ce9574152f0eacaf3f79714c182) resolve e2e error in v1.12.0 (#2425)
+ * [541b641f](https://github.com/kubeovn/kube-ovn/commit/541b641f431d1c57932c05b36df079e846d7e0a0) update test server and test results (#2421)
+ * [98050705](https://github.com/kubeovn/kube-ovn/commit/9805070534fc8496ca296b114f28029263d221e0) Modify the pod scheduling of vpcdns (#2420)
+ * [83ab70ff](https://github.com/kubeovn/kube-ovn/commit/83ab70ffb61241ef7b6467927de56ee96daf1334) e2e: double parallel test nodes in ci (#2411)
+ * [fd3bee6e](https://github.com/kubeovn/kube-ovn/commit/fd3bee6ee22780d1d5739ce2b7ec156daf6c938d) fix scheduled e2e (#2417)
+ * [5cd8649b](https://github.com/kubeovn/kube-ovn/commit/5cd8649bc6eefdccc255955f11a47de75b74d252) build(deps): bump sigs.k8s.io/controller-runtime from 0.14.4 to 0.14.5 (#2415)
+ * [68d2ebfa](https://github.com/kubeovn/kube-ovn/commit/68d2ebfa77f78f662ed29a41b87d21949a87ec04) build(deps): bump github.com/osrg/gobgp/v3 from 3.11.0 to 3.12.0 (#2414)
+ * [8f6c21ce](https://github.com/kubeovn/kube-ovn/commit/8f6c21ce18d06866acd3191238c6314c23842139) build(deps): bump k8s.io/klog/v2 from 2.90.0 to 2.90.1 (#2413)
+ * [d837d978](https://github.com/kubeovn/kube-ovn/commit/d837d978e951aad90d696052e843f811fd8adfe1) bump go modules (#2408)
+ * [8fbc5dd1](https://github.com/kubeovn/kube-ovn/commit/8fbc5dd17dee8e08a732e85a9290e38defd58c07) e2e: fix random conflict in parallel processes (#2410)
+ * [cedcbbc8](https://github.com/kubeovn/kube-ovn/commit/cedcbbc84efd5e14dacdb5726276b6e99059a51e) fix_base_sg_rule (#2401)
+ * [4a28cfb3](https://github.com/kubeovn/kube-ovn/commit/4a28cfb3df675b82a3dcd0c56d3062d2a7617770) build(deps): bump k8s.io/sample-controller from 0.26.1 to 0.26.2 (#2403)
+ * [d30935e0](https://github.com/kubeovn/kube-ovn/commit/d30935e0c2f2f48222afef44fd2253d2325545af) build(deps): bump github.com/onsi/gomega from 1.27.1 to 1.27.2 (#2396)
+ * [645908f6](https://github.com/kubeovn/kube-ovn/commit/645908f66fc276660c455a94d7956487dc15f52a) Support bfd management (#2382)
+ * [b1a09baf](https://github.com/kubeovn/kube-ovn/commit/b1a09bafc7b3df1fa0a3e0c06425f6e0679eacad) remove unused param (#2393)
+ * [d2445519](https://github.com/kubeovn/kube-ovn/commit/d244551962ea359dfc1055f2496958ce30519f17) update ipv6 security-group remote group name (#2389)
+ * [db435dcc](https://github.com/kubeovn/kube-ovn/commit/db435dcc320acadd1d578a98876a2bae7451c143) Fix routeregexp ipv6 (#2395)
+ * [8a63d280](https://github.com/kubeovn/kube-ovn/commit/8a63d2801411c82ab6d98c6ff05a7f615c6fb78e) ci: fix ref name check (#2390)
+ * [42e6a302](https://github.com/kubeovn/kube-ovn/commit/42e6a302267a3457fbb037212dae7292d38fbe10) add support of user-defined kubelet directory (#2388)
+ * [282644e9](https://github.com/kubeovn/kube-ovn/commit/282644e929dfeb340df6aab3b9277ce6fcd6f8d1) support 1.11 (#2387)
+ * [2d1c1252](https://github.com/kubeovn/kube-ovn/commit/2d1c12529ee194102d4e62a8639400299f34a772) ci: skip netpol e2e automatically for push events (#2379)
+ * [109704d0](https://github.com/kubeovn/kube-ovn/commit/109704d0a654749436935f312facebc2db4817f6) ci: make path filter more accurate (#2381)
+ * [77022437](https://github.com/kubeovn/kube-ovn/commit/77022437575d112f81002955a681509815dcff4f) build(deps): bump github.com/stretchr/testify from 1.8.1 to 1.8.2 (#2386)
+ * [9737c390](https://github.com/kubeovn/kube-ovn/commit/9737c3902fc6e13893fe35bbd5292502f9f6b423) Fix comment format (#2383)
+ * [01e55805](https://github.com/kubeovn/kube-ovn/commit/01e558052ee004e5e854e9b5f2b8c3e51b147bdd) fix: ovs-ovn should reboot now (#2297)
+ * [5e0c305f](https://github.com/kubeovn/kube-ovn/commit/5e0c305f6cd1cdd5db17e14c4a11c2c85db92b90) fix service dual stack add/del cluster ips not change ovn nb (#2367)
+ * [ff836116](https://github.com/kubeovn/kube-ovn/commit/ff83611654b5af8e0a4fd525b82c3f6c512dbaee) ci: fix path filter for windows build (#2378)
+ * [4f3f4e74](https://github.com/kubeovn/kube-ovn/commit/4f3f4e741219c4f0969f2ff008e264dd8053562b) e2e: run specs in parallel (#2375)
+ * [ffbb1524](https://github.com/kubeovn/kube-ovn/commit/ffbb15248045d512f1947a965cdd1c957c3392f5) add base sg rules for ports (#2365)
+ * [db9f9272](https://github.com/kubeovn/kube-ovn/commit/db9f9272af57f21f62914f7665d6b65bc24a805e) accelerate cleanup (#2376)
+ * [50df652c](https://github.com/kubeovn/kube-ovn/commit/50df652c26c7e95428ff80efb0bc432f963ff86d) update ovnnb model (#2371)
+ * [f68044bc](https://github.com/kubeovn/kube-ovn/commit/f68044bce43cca4359e9e3c046c13cf03d854260) docs: updated CHANGELOG.md (#2373)
+ * [8a1814a8](https://github.com/kubeovn/kube-ovn/commit/8a1814a83e652272249a0a14d5aa2456d913a02f) fix changelog workflow (#2372)
+ * [a1a528b7](https://github.com/kubeovn/kube-ovn/commit/a1a528b75978417d55c1f6431712a6bff9375c23) build(deps): bump github.com/Microsoft/hcsshim from 0.9.6 to 0.9.7 (#2370)
+ * [ee53dfe1](https://github.com/kubeovn/kube-ovn/commit/ee53dfe179aeb344b9964485a802c4ee734c22db) Add gateway monitor metrics and event (#2345)
+ * [c061ae18](https://github.com/kubeovn/kube-ovn/commit/c061ae182e6cf98783a20876bf1a451fed8ceb35) ci: fix default branch test (#2369)
+ * [4a0829a7](https://github.com/kubeovn/kube-ovn/commit/4a0829a71ef442bdf42b9aad5a74a26ce7d30fd5) fix github actions workflows (#2363)
+ * [62834eb1](https://github.com/kubeovn/kube-ovn/commit/62834eb1286c213ec0ec10293cadd8617522b58b) Fixed iptables creation failure due to an excessively long label (#2366)
+ * [c5d8ebac](https://github.com/kubeovn/kube-ovn/commit/c5d8ebacc6c4f468609802e6e570cc19744df5ec) use existing node switch cidr instead of the configured one (#2359)
+ * [092aa083](https://github.com/kubeovn/kube-ovn/commit/092aa083074fced40771da6135b10fb1e1090bd0) Do not wait pod deletion one by one to accelerate install (#2360)
+ * [1974f8b1](https://github.com/kubeovn/kube-ovn/commit/1974f8b1169e60e5b3cb5b7be789b8ac939eb951) Change log level (#2362)
+ * [13f345da](https://github.com/kubeovn/kube-ovn/commit/13f345da485ee22c2f61be80307189c14a1a68e6) change log level (#2356)
+ * [5bd51760](https://github.com/kubeovn/kube-ovn/commit/5bd51760d19e5cf662d14e88ad14efa0dd04fae3) build(deps): bump github.com/onsi/gomega from 1.27.0 to 1.27.1 (#2357)
+ * [3b466d2d](https://github.com/kubeovn/kube-ovn/commit/3b466d2de935101d5df42b564038a9f7c5c03cc7) simplify github actions workflows (#2338)
+ * [8fe8bc58](https://github.com/kubeovn/kube-ovn/commit/8fe8bc58cf008330a2fa9e5bb9e96092d4ee0622) update go version to v1.20 (#2312)
+ * [90f504c7](https://github.com/kubeovn/kube-ovn/commit/90f504c760d620b9b23918cb4f80975bda7ce5c1) build(deps): bump golang.org/x/net from 0.6.0 to 0.7.0 (#2353)
+ * [a9753c34](https://github.com/kubeovn/kube-ovn/commit/a9753c34b435ec73f08b0b1f50759b9fe6e91d66) build(deps): bump github.com/onsi/gomega from 1.26.0 to 1.27.0 (#2349)
+ * [6e21a93e](https://github.com/kubeovn/kube-ovn/commit/6e21a93e965b385006388fe918a4fdacef969ee9) chore: no need to wait 30 seconds before kube-ovn-cni get ready. (#2339)
+ * [f8b97e72](https://github.com/kubeovn/kube-ovn/commit/f8b97e72f550fc2af2cb661ae2cd665a108b42bf) do not remove link local route on ovn0 (#2341)
+ * [79584c43](https://github.com/kubeovn/kube-ovn/commit/79584c43b8d10c31550332855272dbfcfa109fcc) fix encap ip when the tunnel interface has multiple addresses (#2340)
+ * [156d5976](https://github.com/kubeovn/kube-ovn/commit/156d5976745d95709776be0eb1401e7b8aaf91d9) fix legacy network policy err (#2313)
+ * [9c51bd9e](https://github.com/kubeovn/kube-ovn/commit/9c51bd9ebcb16cb60e6941e93cb2016d6bae9bcb) enqueue endpoint when handling service add event (#2337)
+ * [cdf54997](https://github.com/kubeovn/kube-ovn/commit/cdf54997653b20e207dc3c4bad9c9e91e9057fff) Add neighbor-address format check for kube-ovn-speaker (#2335)
+ * [b0b46948](https://github.com/kubeovn/kube-ovn/commit/b0b46948e69f493a34df1806b96197370919b12c) add ovnext0 inside ns on gw node for ecmp static route with bfd (#2237)
+ * [4ca994bf](https://github.com/kubeovn/kube-ovn/commit/4ca994bf85670da0f7fdc839cd3c150fc9ec609b) OVN LB: add support for SCTP protocol (#2331)
+ * [ea14e91f](https://github.com/kubeovn/kube-ovn/commit/ea14e91fa79385f3401c55593735c7cf98914668) fix getting service backends in dual-stack clusters (#2323)
+ * [937d3ced](https://github.com/kubeovn/kube-ovn/commit/937d3ced4a55e4ecc0aa70743abdc1b79ab91692) e2e: skip case of switching session affinity (#2328)
+ * [eb2b36a5](https://github.com/kubeovn/kube-ovn/commit/eb2b36a52898bf6b8cbdd7f952be905d38b5ff1b) fix k8s networking dns e2e (#2325)
+ * [1c97f58a](https://github.com/kubeovn/kube-ovn/commit/1c97f58a327ff2e13105ae1e2aba0c913c30e49d) Add the bgp router-id format check (#2316)
+ * [f7f2375f](https://github.com/kubeovn/kube-ovn/commit/f7f2375fa83ac91e6c49d62da686d7e773e82f2a) perform the gateway check but ignore the result when the annotation of subnet is ‘disableGatewayCheck=true’ to make sure of the first network packet (#2290)
+ * [0bd7c7e5](https://github.com/kubeovn/kube-ovn/commit/0bd7c7e598761ed06f877cbe5d0cb0a46ad07f60) perf: use empty struct to reduce memory usage (#2327)
+ * [b2eaea00](https://github.com/kubeovn/kube-ovn/commit/b2eaea0064abd74e9a997984d743e085f9567868) split netpol cases (#2322)
+ * [40b5890a](https://github.com/kubeovn/kube-ovn/commit/40b5890aefc14376b5e18b471cbeccef94ee88e4) feat: support default service session stickiness timeout (#2311)
+ * [83685b5a](https://github.com/kubeovn/kube-ovn/commit/83685b5a9b4d5b98c69d01848104e5a4f51d4c55) feat: configure routes via pod annotation (#2307)
+ * [c8d443ef](https://github.com/kubeovn/kube-ovn/commit/c8d443ef46044fda8690e833ed508e10a24281b6) build(deps): bump github.com/docker/docker (#2320)
+ * [4e2fe310](https://github.com/kubeovn/kube-ovn/commit/4e2fe3103c709f5f78f669cdc1a151f78dbc21c2) e2e: do not test versions prior to 1.11 for ovn-ic update (#2319)
+ * [0d2aa03c](https://github.com/kubeovn/kube-ovn/commit/0d2aa03cd6ae536e0bf3e1bbe8d5f2ae5a06fe74) ovndb: use Local_Config to configure listen addresses (#2299)
+ * [87bacf5f](https://github.com/kubeovn/kube-ovn/commit/87bacf5ff55ebc3b0fec551ce4a8f957a43c5568) chore: improve the list style in Markdown (#2315)
+ * [8c1edc80](https://github.com/kubeovn/kube-ovn/commit/8c1edc807299f5e40f0ccd09b70aecf745045b84) fix egress node and gateway acl should apply after lb. (#2310)
+ * [22cc9337](https://github.com/kubeovn/kube-ovn/commit/22cc933708b09c8c5048f649715ea4ea3753e705) fix kube-ovn-controller crash on startup (#2305)
+ * [b6eb7ce2](https://github.com/kubeovn/kube-ovn/commit/b6eb7ce219651a6737bf5428d74c0b8f5ecc19ae) build(deps): bump google.golang.org/grpc from 1.52.3 to 1.53.0 (#2308)
+ * [5ca2a5c8](https://github.com/kubeovn/kube-ovn/commit/5ca2a5c89c7fa8d60b7abfc790656209421a8555) build(deps): bump golang.org/x/sys from 0.4.0 to 0.5.0 (#2309)
+ * [eb31a178](https://github.com/kubeovn/kube-ovn/commit/eb31a17833c033b30f26b6b78596d5894387239b) ignore e2e for subnet enableEcmp before v1.12.0 (#2306)
+ * [f81c43a1](https://github.com/kubeovn/kube-ovn/commit/f81c43a122b9a5328abca11c700c51297896aff5) fix u2o code err (#2300)
+ * [993fefaa](https://github.com/kubeovn/kube-ovn/commit/993fefaab49d048c0b110346d1b361abf1e11018) set join subnet.spec.enableLb to nil (#2304)
+ * [d1d10972](https://github.com/kubeovn/kube-ovn/commit/d1d109727641cda6c5b2d0bdff91342ecd515aeb) fix image tag in helm chart (#2302)
+ * [77cf5e9b](https://github.com/kubeovn/kube-ovn/commit/77cf5e9b22031d31ab56c8414ea3e2112c3bc77a) update trivy deprecated arg and the ignored CVE. (#2296)
+ * [9b85bbac](https://github.com/kubeovn/kube-ovn/commit/9b85bbac8668b2d1aac16cbcb90e2efe2837811b) move enableEcmp to subnet (#2284)
+ * [87eacf59](https://github.com/kubeovn/kube-ovn/commit/87eacf59362bbaf3ef323bd55652a6442c117593) build(deps): bump sigs.k8s.io/controller-runtime from 0.14.3 to 0.14.4 (#2301)
+ * [971add05](https://github.com/kubeovn/kube-ovn/commit/971add05a436600ef48b2d16d1eb18b6527463b9) fix gosec ci installation (#2295)
+ * [ac72f771](https://github.com/kubeovn/kube-ovn/commit/ac72f7717927022eb0fa288423d6394a4bc74163) delete htb qos priority (#2288)
+ * [36da29cb](https://github.com/kubeovn/kube-ovn/commit/36da29cb96cad0eccdbd65608057cf7fb908037b) build(deps): bump sigs.k8s.io/controller-runtime from 0.14.2 to 0.14.3 (#2292)
+ * [ea1df964](https://github.com/kubeovn/kube-ovn/commit/ea1df9641066a2f6102c566d76ae7553af3d8ae7) ovn northd: fix connection inactivity probe (#2286)
+ * [54984d67](https://github.com/kubeovn/kube-ovn/commit/54984d67a20404ec1b8ce14efb6f6d834711c292) fix ct new config error (#2289)
+ * [3f0a5008](https://github.com/kubeovn/kube-ovn/commit/3f0a500885ebadd1184924457f82e927effaee6f) fix wrong network interface name in gateway check (#2282)
+ * [74a7da88](https://github.com/kubeovn/kube-ovn/commit/74a7da88aebbad8302e07b650d56df83973db3c1) build(deps): bump github.com/docker/docker (#2287)
+ * [20e57699](https://github.com/kubeovn/kube-ovn/commit/20e5769912d0f0a9ee2fd758d5d9b9db6819573f) Improve webhook (#2278)
+ * [f0d91513](https://github.com/kubeovn/kube-ovn/commit/f0d915136b96bc14d5c646818da30d88eb44fb41) add named port support (#2273)
+ * [9985ee5c](https://github.com/kubeovn/kube-ovn/commit/9985ee5c6b95bc248fc141ce4e508511d91cd881) fix access from node to overlay pods when network policy ingress exists (#2279)
+ * [2b383400](https://github.com/kubeovn/kube-ovn/commit/2b38340091bbb64c8c622c06bcddcf08a5473053) move enableLb to subnet (#2276)
+ * [5712485d](https://github.com/kubeovn/kube-ovn/commit/5712485d7e94af72c95ec3716d374f4b63a76f83) build(deps): bump github.com/osrg/gobgp/v3 from 3.10.0 to 3.11.0 (#2280)
+ * [805f83ea](https://github.com/kubeovn/kube-ovn/commit/805f83ea026d71fa4104fa21a53132251f0d3a70) add V4/V6UsingIPRange and V4/V6AvailableIPRange in subnet status (#2268)
+ * [0c74034d](https://github.com/kubeovn/kube-ovn/commit/0c74034d056b0f90fc577dc3cb0079f147f0eca4) skip u2o test case before 1.9 (#2274)
+ * [eddf18d8](https://github.com/kubeovn/kube-ovn/commit/eddf18d8601a116b15d502f59a06d81fffd6b6e4) fix network break on kube-ovn-cni startup (#2272)
+ * [26c506d8](https://github.com/kubeovn/kube-ovn/commit/26c506d89b309dfa6cd7b3e18fb4a96f26bd6df8) bump go modules (#2267)
+ * [e10d076e](https://github.com/kubeovn/kube-ovn/commit/e10d076ef8a004ee4a5af83c3e58df3b084dd5b9) fix setting mtu for ovs internal port (#2247)
+ * [155768a3](https://github.com/kubeovn/kube-ovn/commit/155768a3e4d4215542af4896acbd59f6636cc067) bump ovs/ovn versions (#2254)
+ * [281242ef](https://github.com/kubeovn/kube-ovn/commit/281242ef3deed8d617aa469f6fe84e3ac5de9678) use node ip instead of ovn0 ip when accessing overlay pod/svc from host network (#2243)
+ * [ea8523c6](https://github.com/kubeovn/kube-ovn/commit/ea8523c6667bd04cebcb31f3b45970459aa147d8) build(deps): bump google.golang.org/grpc from 1.52.1 to 1.52.3 (#2265)
+ * [cb20b12e](https://github.com/kubeovn/kube-ovn/commit/cb20b12e36d45b36fbdbaf215ce97164a77b5042) build(deps): bump google.golang.org/grpc from 1.52.0 to 1.52.1 (#2264)
+ * [69546ffb](https://github.com/kubeovn/kube-ovn/commit/69546ffb819729f87bce228e9fc9b67114d55324) build(deps): bump k8s.io/klog/v2 from 2.80.1 to 2.90.0 (#2262)
+ * [4d9177f7](https://github.com/kubeovn/kube-ovn/commit/4d9177f7dc5975de9898387f8c280cc901ae52e7) build(deps): bump github.com/onsi/gomega from 1.25.0 to 1.26.0 (#2263)
+ * [cc4bfd54](https://github.com/kubeovn/kube-ovn/commit/cc4bfd5445f749da36cb84d97e3202a85b96f87d) build(deps): bump k8s.io/sample-controller from 0.26.0 to 0.26.1 (#2260)
+ * [8a6ac128](https://github.com/kubeovn/kube-ovn/commit/8a6ac128b60609638ce37edf57c5b0f75f2fc9c6) build(deps): bump github.com/docker/docker (#2259)
+ * [b33086f7](https://github.com/kubeovn/kube-ovn/commit/b33086f74cda2a3e39968bd613248ca29527ed3a) egress networkpolicy acl add option apply-after-lb (#2251)
+ * [625a6854](https://github.com/kubeovn/kube-ovn/commit/625a6854bc891f101abee55316c7d9ac546991a8) ovn db: add support for listening on pod ip (#2235)
+ * [6969dcd8](https://github.com/kubeovn/kube-ovn/commit/6969dcd80d7472a305d489ad7161bc081274038f) update cni plugin to 1.2.0 (#2255)
+ * [1f995709](https://github.com/kubeovn/kube-ovn/commit/1f99570994822c7f4ade37a637fda6a936847629) build(deps): bump github.com/onsi/gomega from 1.24.2 to 1.25.0 (#2257)
+ * [486e8ee2](https://github.com/kubeovn/kube-ovn/commit/486e8ee254dd2c33de63da318d044305615c865b) clean up legacy u2o implement (#2248)
+ * [5e684e9d](https://github.com/kubeovn/kube-ovn/commit/5e684e9d82ff759b93f9da848017d73625b2aee6) eip status状态切换缓慢 (#2256)
+ * [1049d245](https://github.com/kubeovn/kube-ovn/commit/1049d2459cf63a0a47573bea28207ce42f8d5eb6) build(deps): bump github.com/containernetworking/plugins (#2253)
+ * [9092956f](https://github.com/kubeovn/kube-ovn/commit/9092956fc0571f5dc9fe3a79b03cc3d4bb56cc71) fix vip create (#2245)
+ * [dc731efd](https://github.com/kubeovn/kube-ovn/commit/dc731efdc2e9f82bc9d870a70c44df851c6f4eec) improve webhook functions for vpc and subnet (#2241)
+ * [dfb1cc2b](https://github.com/kubeovn/kube-ovn/commit/dfb1cc2b8821aa7f2dfb1f71083310e964fd3be9) fix syntax errors (#2240)
+ * [e6549802](https://github.com/kubeovn/kube-ovn/commit/e65498020c2c9548f423bc11a01e3a89a65eb0d8) add release-1.11 to scheduled e2e (#2238)
+ * [6adf8267](https://github.com/kubeovn/kube-ovn/commit/6adf82678fd97c021d248481d177945bb4230dfe) fix webhook (#2236)
+ * [3f5bd39b](https://github.com/kubeovn/kube-ovn/commit/3f5bd39ba7e97fe8f77107e7fe9284ab705978d3) fix: ovnic del old AZ after establish the new as name (#2229)
+ * [b0c17afd](https://github.com/kubeovn/kube-ovn/commit/b0c17afdce512c2a878d36721a33afb755ebb4e3) prepare for next release
+ * [91db26f1](https://github.com/kubeovn/kube-ovn/commit/91db26f1a108ab3a8fcadb841635f44d89cf3237) build(deps): bump google.golang.org/grpc from 1.51.0 to 1.52.0 (#2234)
+
+### Contributors
+
+ * Alex Jones
+ * bobz965
+ * changluyi
+ * Daviddcc
+ * dependabot[bot]
+ * fsl
+ * github-actions[bot]
+ * gugu
+ * hzma
+ * jeffy
+ * jizhixiang
+ * KillMaster9
+ * lanyujie
+ * liuzhen21
+ * Longchuanzheng
+ * lut777
+ * Miika Petäjäniemi
+ * mingo
+ * Nico Wang
+ * qiutingjun
+ * Rick
+ * shane
+ * wangyd1988
+ * wujixin
+ * xujunjie-cover
+ * 夜微澜
+ * 张祖建
+ * 袁又袁
+
+## v1.11.10 (2023-08-07)
+
+ * [7f111db3](https://github.com/kubeovn/kube-ovn/commit/7f111db348957ca3a782d5b5f463ffb939146466) ovn: fix corrupted database file on start (#3112)
+ * [a11d7e92](https://github.com/kubeovn/kube-ovn/commit/a11d7e92d9d564de299618f81e882e4c5e499a38) update version to v1.11.10
+ * [4b56b637](https://github.com/kubeovn/kube-ovn/commit/4b56b637d2a8ece4701aa961127ef29250410123) fix u2o policy route generate too many flow tables cause oom
+ * [935fa927](https://github.com/kubeovn/kube-ovn/commit/935fa9279e88e3a564ced9e61bace6d23babbfb5) distinguish nat ip for central subnet with ecmp and active-standby (#3100)
+ * [460655c2](https://github.com/kubeovn/kube-ovn/commit/460655c22e164e6b2dc096e6cb6fdd8ccf5957aa) bug_fix if only one port bind to the sg, then unbind the port to the sg ,it will not enforce in port_group (#3092)
+ * [2bd75f0a](https://github.com/kubeovn/kube-ovn/commit/2bd75f0a1f1c2dd5940a04128a42d68186bfc82d) Revert "fix sg"
+ * [0400c454](https://github.com/kubeovn/kube-ovn/commit/0400c4545579d224db85d8448c4c179c391e54e9) fix sg
+ * [aca169d2](https://github.com/kubeovn/kube-ovn/commit/aca169d240bf6a59e68c071c43d9cf1429425d80) fix .status.default when initializing the default vpc (#3086)
+ * [b2b19014](https://github.com/kubeovn/kube-ovn/commit/b2b19014bbcacd060e989478812882f39fd633b1) cni-server: fix ovn mappings for vpc nat gateway (#3075)
+ * [da86070e](https://github.com/kubeovn/kube-ovn/commit/da86070e4eae090c3679855aff5d515da279294a) ovn client: fix sb chassis existence check (#3072)
+ * [998e857d](https://github.com/kubeovn/kube-ovn/commit/998e857df340597c04754802f7b045e0b29caaf8) ci: do not pin go version (#3073)
+ * [8597b902](https://github.com/kubeovn/kube-ovn/commit/8597b9028a4b4140bb0bb27f25321dbad9647f59) ci: fix multus installation (#3062)
+ * [b1717445](https://github.com/kubeovn/kube-ovn/commit/b171744553c0f05b8267ca9f22dd7cc9dc66e02c) ipam: fix ippool with single dual-stack address (#3054)
+ * [c1a8d92a](https://github.com/kubeovn/kube-ovn/commit/c1a8d92a38a4c1931f5f1277f9bd685dc89bd1dc) fix vpc lb init (#3046)
+ * [03f94a52](https://github.com/kubeovn/kube-ovn/commit/03f94a5279759d506a9d8397f6704d127e46aca0) Revert "prepare for next release"
+ * [28a4888d](https://github.com/kubeovn/kube-ovn/commit/28a4888d9eb9fc2ef5352b9c1bf7f43afdd829f5) set genev_sys_6081 tx checksum off (#3045)
+ * [6b0cc730](https://github.com/kubeovn/kube-ovn/commit/6b0cc730c9af992ff22598ef6194ff59eb2e1a35) prepare for next release
+ * [8ce77f85](https://github.com/kubeovn/kube-ovn/commit/8ce77f8508a4482d9b3582637cb465e736afadaf) fix ifname start with pod (#3038)
+ * [a29d00cc](https://github.com/kubeovn/kube-ovn/commit/a29d00cc178b7132e15422aa0f64ce2164c8aae5) static ip in exclude-ips can be allocated normally when subnet's availableIPs is 0 #3031
+ * [58eef01e](https://github.com/kubeovn/kube-ovn/commit/58eef01e45298ae109ebee4e5b97f28535dffd99) ci: pin go version to 1.20.5 (#3034)
+ * [0f3d599b](https://github.com/kubeovn/kube-ovn/commit/0f3d599bdfce9a4f5ed37c46429499e4e80d93e6) pinger: use fully qualified domain name (#3032)
+ * [5400c37d](https://github.com/kubeovn/kube-ovn/commit/5400c37d7fff4c3491f6d669f29c13328540e906) uninstall.sh: fix ipset name (#3028)
+ * [c7918415](https://github.com/kubeovn/kube-ovn/commit/c791841595c04a30ae050454100fe5d45845afd8) kube-ovn-controller: fix workqueue metrics (#3011)
+ * [54a0b1a6](https://github.com/kubeovn/kube-ovn/commit/54a0b1a69330eb60a28d8744d42ecdcac682f3cc) fix subnet finalizer (#3004)
+ * [f3be5d12](https://github.com/kubeovn/kube-ovn/commit/f3be5d12c493eb9630482797734f0d9d4d663550) choose subnet by pod's annotation in networkpolicy (#2987)
+ * [2279f621](https://github.com/kubeovn/kube-ovn/commit/2279f621d360df30f0de103f9e8f09f2bec43c1b) kubectl ko performance enhance (#2975) (#2994)
+ * [572a2e85](https://github.com/kubeovn/kube-ovn/commit/572a2e851d9321be31881e8ebc0138f2d4aa27cd) fix deleting old sb chassis for a re-added node (#2989)
+ * [abda1560](https://github.com/kubeovn/kube-ovn/commit/abda1560ce89cd51fca2662dacd2c24242695ce6) underlay: fix NetworkManager syncer for virtual interfaces (#2988)
+ * [ec17b735](https://github.com/kubeovn/kube-ovn/commit/ec17b7358e7f304681b8e71b9e9a30434109dd89) underlay: does not set a device managed to no if it has VLAN managed by NM (#2986)
+ * [7db9ff12](https://github.com/kubeovn/kube-ovn/commit/7db9ff12a4b5dfe86d838484adaf79ee08fccc2d) bump k8s version to v1.26.6 (#2973)
+ * [cc7768ba](https://github.com/kubeovn/kube-ovn/commit/cc7768baa2104ec4126e4de8f99dc6a44041ad93) base: fix ovn patches (#2972)
+ * [7829b873](https://github.com/kubeovn/kube-ovn/commit/7829b87377abae9893898f35e707b841d7eb0622) add detail comment
+ * [c84a9748](https://github.com/kubeovn/kube-ovn/commit/c84a9748b998a2eb3febce1394f9bd5f36da14d6) Kubectl ko diagnose perf release 1.11 (#2967)
+ * [6325c83e](https://github.com/kubeovn/kube-ovn/commit/6325c83eb44f95a2b6f6390692b6ae7eb39b199f) cni-server: reconcile ovn0 routes periodically (#2963)
+ * [6ea123a7](https://github.com/kubeovn/kube-ovn/commit/6ea123a7b1ec862a19def20a3964838c5d050ae3) uninstall.sh: flush and delete iptables chain OVN-MASQUERADE (#2961)
+ * [738c4078](https://github.com/kubeovn/kube-ovn/commit/738c40785605557b7f2b03860ff8da0addf82303) underlay: sync NetworkManager IP config to OVS bridge (#2949)
+ * [d9bab2e2](https://github.com/kubeovn/kube-ovn/commit/d9bab2e234dae8ae15d24773700c75396453b4cd) typo (#2952)
+ * [b931b5bf](https://github.com/kubeovn/kube-ovn/commit/b931b5bfd42792b0ebb8ba15f7a1c4448bea352c) Revert "base: fix ovn build failure (#2926)"
+ * [d15874e0](https://github.com/kubeovn/kube-ovn/commit/d15874e03a165fef2e7f37f647584c86652c7715) Revert "nm not managed only in the change provide nic name case (#2754)" (#2944)
+ * [168863cb](https://github.com/kubeovn/kube-ovn/commit/168863cbc7d316a95119dbf028aac15cd2aaab0d) kubectl ko perf on release-1.11 (#2945)
+ * [ea5f81a7](https://github.com/kubeovn/kube-ovn/commit/ea5f81a735ae1cb385d428ab4500c832f5a5f439) controller: fix DHCP MTU when the default network mode is underlay (#2941)
+ * [6d883dc9](https://github.com/kubeovn/kube-ovn/commit/6d883dc986d2f950ac563557f378253cfeb66830) support set the mtu of  dhcpv4_options (#2930)
+ * [effc1115](https://github.com/kubeovn/kube-ovn/commit/effc11156a089053bf3649ecb3c0947a617d8824) u2o support specify u2o ip on release-1.11 (#2937)
+ * [94859807](https://github.com/kubeovn/kube-ovn/commit/94859807c3106f1c48651de5892f830bb3128b11) modify lb-svc dnat port error (#2927)
+
+### Contributors
+
+ * bobz965
+ * changluyi
+ * hzma
+ * yichanglu
+ * 张祖建
+ * 袁又袁
+ * 马洪贞
+
+## v1.11.8 (2023-06-12)
+
+ * [d15f003a](https://github.com/kubeovn/kube-ovn/commit/d15f003a109aebcdf06fec2dd1c45ceb3561286a) prepare for next release
+ * [3796d1ef](https://github.com/kubeovn/kube-ovn/commit/3796d1efb813b85e54c2982116ca4f76e909762c) base: fix ovn build failure (#2926)
+ * [98748f6e](https://github.com/kubeovn/kube-ovn/commit/98748f6e9555cdffb57f14c6e7d7f9f26b6dab91) bump version number to v1.11.8
+ * [0a0d254d](https://github.com/kubeovn/kube-ovn/commit/0a0d254dd68bd23712eb6d155f3ceb966f3175f2) fix encap_ip will be lost when we restart the ovs-dpdk node (#2543)
+ * [919c8eeb](https://github.com/kubeovn/kube-ovn/commit/919c8eebf937834bbe234e58474dc42aff2eb28c) cni-server: clear iptables mark before doing masquerade (#2919)
+ * [91b383b0](https://github.com/kubeovn/kube-ovn/commit/91b383b0ac1cd78c1523569fc1a6505a954d9f11) For eip created without spec.V4ip this field (#2912)
+ * [b8523fc6](https://github.com/kubeovn/kube-ovn/commit/b8523fc6a917f8ccd0d8de75b5f9e67fcbbf6c10) match outgoing interface when perform snat (#2911)
+
+### Contributors
+
+ * 张祖建
+ * 袁又袁
+
+## v1.11.7 (2023-06-05)
+
+ * [0b27996b](https://github.com/kubeovn/kube-ovn/commit/0b27996b1dd4c58f2f8d6b53a094f5bbc8656ca8) prepare for release 1.11.7
+ * [b6b02458](https://github.com/kubeovn/kube-ovn/commit/b6b024587fe7b4c302fc6b4cb0a448f909316e23) underlay: do not delete patch ports created by ovn-controller (#2851)
+ * [bed82299](https://github.com/kubeovn/kube-ovn/commit/bed822993b2c6ded0a7b11ec29e6510a123b904c) fix gc report error #2886
+ * [42a5656c](https://github.com/kubeovn/kube-ovn/commit/42a5656c8f3590132a4412cc8d26a5691ce661fd) add support of user-defined kubelet directory (#2388)
+ * [4d1b12a8](https://github.com/kubeovn/kube-ovn/commit/4d1b12a8b4637606af6f7a111c396dad71f4a64f) ci: fix valgrind result analysis (#2853)
+ * [e1b79191](https://github.com/kubeovn/kube-ovn/commit/e1b79191cc2c2f93fdfef4624a628fe5cd07ce3f) ovs: fix memory leak in qos (#2871)
+ * [50cc00d0](https://github.com/kubeovn/kube-ovn/commit/50cc00d0b8d696100c6345d6e93056bed8df7af8) prepare for next release
+
+### Contributors
+
+ * zhangzujian
+ * 夜微澜
+ * 张祖建
+ * 马洪贞
+
+## v1.11.6 (2023-05-25)
+
+ * [f071a974](https://github.com/kubeovn/kube-ovn/commit/f071a974045b9fe9c92d6e0c89f7677e726ca091) prepare for next release
+ * [94644e12](https://github.com/kubeovn/kube-ovn/commit/94644e12939dd5878dc3cbabf251ed2eb12abde2) u2o support custom vpc release 1.11 (#2849)
+ * [30f4cc30](https://github.com/kubeovn/kube-ovn/commit/30f4cc3030c3879e0fd0b7dd26379b00311279ba) kubectl-ko: fix trace when u2oInterconnection is enabled (#2836)
+ * [e50687af](https://github.com/kubeovn/kube-ovn/commit/e50687af3a4752320f7681e840037eb6fcf3a4c0) ci: detect ovs/ovn memory leak (#2839)
+ * [767e102a](https://github.com/kubeovn/kube-ovn/commit/767e102ac547bd1e6836e7a79feb4259d51667ce) fix underlay access to node through ovn0 (#2846)
+ * [ae226e33](https://github.com/kubeovn/kube-ovn/commit/ae226e33c4a33d698e5b129cf9b4e5614cb636b6) iptables: always do SNAT for access from other nodes to nodeport with external traffic policy set to Local (#2844)
+ * [ef78fee1](https://github.com/kubeovn/kube-ovn/commit/ef78fee1d54b65d4c5030baf7f3c26eba5ae068e) delete user tss (#2838)
+ * [4dd164ac](https://github.com/kubeovn/kube-ovn/commit/4dd164acd252fd46fb36076d88ad0d439f211d0f) ci: fix no-avx512 image build
+ * [f4033e73](https://github.com/kubeovn/kube-ovn/commit/f4033e738e685012c5506d6e74476f34c7176a1d) ci: fix kube-ovn-base build
+ * [ea954770](https://github.com/kubeovn/kube-ovn/commit/ea9547700dab638d0d1d4a52f4ce5feda0433132) refactor image builds (#2818)
+ * [ddfedfa1](https://github.com/kubeovn/kube-ovn/commit/ddfedfa17924b243c694f3dee17a4286f1c3656a) fix MTU when subnet is using logical gateway (#2834)
+ * [1346b0e7](https://github.com/kubeovn/kube-ovn/commit/1346b0e7ec7ce94287fcc22c68274ea475a828f7) update vpc dns env value
+ * [5d8b106a](https://github.com/kubeovn/kube-ovn/commit/5d8b106a0096d4b104579f95eaad05009074bcb9) add route for service ip range when init vpc-nat-gw (#2821)
+ * [cd4ff4f6](https://github.com/kubeovn/kube-ovn/commit/cd4ff4f6e3dac0ade08da8a13dd1b07faf3af2ab) fix cleanup order (#2792)
+ * [94e7463e](https://github.com/kubeovn/kube-ovn/commit/94e7463e8aad160df64853003dd8117103d98c68) add available check for northd enpoint
+ * [f7a80c90](https://github.com/kubeovn/kube-ovn/commit/f7a80c9001abece8492b4576427e034a234d52c3) update release note
+
+### Contributors
+
+ * changluyi
+ * hzma
+ * zhangzujian
+ * 张祖建
+ * 马洪贞
+
+## v1.11.5 (2023-05-10)
+
+ * [632bad30](https://github.com/kubeovn/kube-ovn/commit/632bad30f4f93661c6cbb9625514d63faa58a929) prepare for release 1.11.5
+ * [bc4637c0](https://github.com/kubeovn/kube-ovn/commit/bc4637c0479b95bdac615d7cbccf5159a9ae6a29) reorder the deletion to avoid dependency conflict
+ * [a8539c57](https://github.com/kubeovn/kube-ovn/commit/a8539c579ae171e65e7777169b1d55181d4665ad) fix ip statistics in subnet status (#2769)
+ * [655d5ff2](https://github.com/kubeovn/kube-ovn/commit/655d5ff265627fba55f82f713d6661298c7b57eb) support disable arp check ip conflict in vlan provider network (#2760)
+ * [a5720d6f](https://github.com/kubeovn/kube-ovn/commit/a5720d6f63cdb8eb2a31bd4f55b9a372e0417eec) cni-server: wait ovs-vswitchd to be running (#2759)
+ * [8a4e97b5](https://github.com/kubeovn/kube-ovn/commit/8a4e97b54bf35b5bed68c5992ccbf052e28f8494) ci: run kube-ovn e2e for underlay (#2762)
+ * [87c68683](https://github.com/kubeovn/kube-ovn/commit/87c686831248f24b486b27cd8958c003e2e5c6be) iptables: use the same mode with kube-proxy (#2758)
+ * [944f3049](https://github.com/kubeovn/kube-ovn/commit/944f30491f679d6357b0b9f183919f33dd88873f) nm not managed only in the change provide nic name case (#2754)
+ * [a55db01d](https://github.com/kubeovn/kube-ovn/commit/a55db01d8122d7154dfd7665942bb6ed78bbb4a9) update policy route when change from ecmp to active-standby (#2717)
+ * [ba639824](https://github.com/kubeovn/kube-ovn/commit/ba63982478976e4bd7c61543100b50fee815dac8) fix recover db failed using offical doc (#2718)
+ * [81b60ac8](https://github.com/kubeovn/kube-ovn/commit/81b60ac84ef589c0d3ca3615f431e780839225f5) fix_base_sg_rule (#2401)
+ * [e80879c5](https://github.com/kubeovn/kube-ovn/commit/e80879c5e80e5120487df83eeae8905b14c53631) add base sg rules for ports (#2365)
+ * [f90aa398](https://github.com/kubeovn/kube-ovn/commit/f90aa3981d0967bdfd1b74fed1024d9eb56d1efd) bump base images
+ * [abaee01a](https://github.com/kubeovn/kube-ovn/commit/abaee01a4a1b36aa3ed23f4c131d894df6ef8c9e) base: remove patch for fixing ofpbuf memory leak (#2715)
+ * [2e800bf2](https://github.com/kubeovn/kube-ovn/commit/2e800bf244e5b0e93a45f842a0e357bfec5a4db9) prepare for release 1.11.4
+ * [22367be6](https://github.com/kubeovn/kube-ovn/commit/22367be6166eb45f5f1c1889895193fedcba8eb4) cni-server: do not perform ipv4 conflict detection during VM live migration (#2693)
+ * [49dfd39e](https://github.com/kubeovn/kube-ovn/commit/49dfd39eaa6e63b049a10f6929e8ed1b2c652858) fix can not clean the last abandoned snat table (#2701)
+ * [6ec1982a](https://github.com/kubeovn/kube-ovn/commit/6ec1982a69ccb5e006b875093312a420703b2aa8) replace StrategicMergePatchType with MergePatchType (#2694)
+ * [320f5670](https://github.com/kubeovn/kube-ovn/commit/320f5670e042a9238a089a4cd2b3899ae4f56e0d) fix build error by partially revert 951f89c5
+ * [d4eabab0](https://github.com/kubeovn/kube-ovn/commit/d4eabab03ad28eec2915da4c616a139274bae9b0) ovn-controller: do not send GARP on localnet for Kube-OVN ports (#2690)
+ * [951f89c5](https://github.com/kubeovn/kube-ovn/commit/951f89c54913747606251bf24acbe344cdc6b3e1) adapt ippool annotation (#2678)
+ * [96e8be6d](https://github.com/kubeovn/kube-ovn/commit/96e8be6d6f4d99f9a967fdf15aad28a627b4efa0) netpol: fix packet drop casued by incorrect address set deletion (#2677)
+ * [6b95cecd](https://github.com/kubeovn/kube-ovn/commit/6b95cecded7936cf36d5bc6fbb50ba5f3f6c19af) fix pg set port fail when lsp is already deleted (#2658)
+ * [5ad2bafe](https://github.com/kubeovn/kube-ovn/commit/5ad2bafe07d611a55059dcd15163fa889ce0020e) add subnetstatus lock for handleAddOrUpdateSubnet (#2669)
+ * [f314ab58](https://github.com/kubeovn/kube-ovn/commit/f314ab582f1e1eb75287305a8534b80bdb052a9c) broadcase free arp when pod setup
+ * [e29fdc96](https://github.com/kubeovn/kube-ovn/commit/e29fdc962d3a5d8f1a5e01f998a9baf938c9e1b1) delete sync user (#2629)
+ * [621423f7](https://github.com/kubeovn/kube-ovn/commit/621423f7d5dede2f335094a0972282cb26cfaedf) Add ipsec package to image release 1.11 (#2618)
+ * [9c80381b](https://github.com/kubeovn/kube-ovn/commit/9c80381ba44e78d05f3ea8b73c155e2c04e3c496) ci: deploy multus in thick mode (#2628)
+ * [2731e8e3](https://github.com/kubeovn/kube-ovn/commit/2731e8e3082480dc022b8d4ed5b666df910072c8) libovsdb: use monitor_cond as the monitor method (#2627)
+ * [71a8ffe3](https://github.com/kubeovn/kube-ovn/commit/71a8ffe36facf8693d5ce28f7bb8f60cdf3d1f33) ci: fix multus installation (#2622)
+ * [786fea90](https://github.com/kubeovn/kube-ovn/commit/786fea9010862f9daca54fec7de0653860240924) ovs: fix dpif-netlink ofpbuf memory leak (#2620)
+ * [d9647b4d](https://github.com/kubeovn/kube-ovn/commit/d9647b4d446f1841cc633b66a1f0dc5a42f7c471) update Dockerfile.debug
+ * [5b099ed2](https://github.com/kubeovn/kube-ovn/commit/5b099ed27272accd2e351be368fc8c442394c81d) ci: fix multus installation (#2604)
+ * [fdc2301b](https://github.com/kubeovn/kube-ovn/commit/fdc2301bdd4a1f12c36221adcde57890c049f0f5) cut invalid OVN_NB_DAEMON to make log more readable (#2601)
+ * [02b1e140](https://github.com/kubeovn/kube-ovn/commit/02b1e140b606261ba3faf215c85734fe05ce1ba8) unittest: fix length assertion (#2597)
+ * [209246bd](https://github.com/kubeovn/kube-ovn/commit/209246bd9fd8ef491166afe5507fa9d29d526610) bump base image
+ * [d2f1a801](https://github.com/kubeovn/kube-ovn/commit/d2f1a8012bfbfc12511cca9642e8763ac9303f50) security: remove CVE-2022-29526 from .trivyignore
+ * [7a69233f](https://github.com/kubeovn/kube-ovn/commit/7a69233f8cbd7c390b0962077b527816c9b1e55d) base: fix CVE-2022-3294 (#2594)
+ * [ea46479d](https://github.com/kubeovn/kube-ovn/commit/ea46479db33deb6bcbc7098f0be3b893a8ef11ac) underlay: get address/route before setting nm managed to no (#2592)
+ * [d67d40d3](https://github.com/kubeovn/kube-ovn/commit/d67d40d3918518ba4b48521988b9bbd1c21f5a31) base: fix ovs patches (#2590)
+ * [ed14bc2d](https://github.com/kubeovn/kube-ovn/commit/ed14bc2d062be74a210392869154ae5aabd130b6) ci: bump kind image to v1.26.3 (#2581)
+ * [9c01b1bd](https://github.com/kubeovn/kube-ovn/commit/9c01b1bd4c4d12dc9113c4bb9058bb86d7119a7f) move ipam.subnet.mutex to caller (#2571)
+ * [fb70f939](https://github.com/kubeovn/kube-ovn/commit/fb70f9393513908ee1b7267d24452ec2b9300b1c) fix: memory leak in IPAM caused by leftover map keys (#2566)
+ * [f4f990b3](https://github.com/kubeovn/kube-ovn/commit/f4f990b3812a6318eed4dd13622851c6a45d4ce7) fix ovn-bridge-mappings deletion (#2564)
+ * [e4242a01](https://github.com/kubeovn/kube-ovn/commit/e4242a01ee72c4156fb9c25254a741bda98e96ee) fix go mod list (#2556)
+ * [4c08bfe0](https://github.com/kubeovn/kube-ovn/commit/4c08bfe0908e3d78275c6ff705dc695e784dd300) do not set device unmanaged if NetworkManager is not running (#2549)
+ * [39c99c6e](https://github.com/kubeovn/kube-ovn/commit/39c99c6eaae1dc9e6b70a8f5ade65e089e45ce2f) fix update dnat rules not effect correctly (#2518)
+ * [7eb7ed6e](https://github.com/kubeovn/kube-ovn/commit/7eb7ed6ed04724396c3c7d490f69c5eb9bfe36e8) underlay: fix network manager operation (#2546)
+ * [8f67a324](https://github.com/kubeovn/kube-ovn/commit/8f67a3245910051926c309c4e31b5863938c78a5) controller: fix apiserver connection timeout on startup (#2545)
+ * [4b8654db](https://github.com/kubeovn/kube-ovn/commit/4b8654db81737fe54779bc9222156caf241e57f2) underlay: delete altname after renaming the link (#2539)
+ * [8d0d56ec](https://github.com/kubeovn/kube-ovn/commit/8d0d56ecba2b49829bc3976269105935f873c349) underlay: fix link name exchange (#2516)
+ * [f22535e3](https://github.com/kubeovn/kube-ovn/commit/f22535e36530a379b2889d6818867af2a6d6b5fa) fix changging the stopped vm's subnets, the vm cann't start normally (#2463)
+ * [5bd71ba8](https://github.com/kubeovn/kube-ovn/commit/5bd71ba8bf54d49a21f5ab08c141917ed0dbeea0) add kubevirt multus nic lsp before gc process (#2504)
+ * [d9ccaf7b](https://github.com/kubeovn/kube-ovn/commit/d9ccaf7b39d1446f691b775d93a07facca1df88c) update for release v1.11.3
+
+### Contributors
+
+ * bobz965
+ * changluyi
+ * hzma
+ * yichanglu
+ * zhangzujian
+ * 夜微澜
+ * 张祖建
+ * 袁又袁
+ * 马洪贞
+
 ## v1.11.3 (2023-03-18)
 
  * [9fe900fc](https://github.com/kubeovn/kube-ovn/commit/9fe900fce63ce684f6d8f440ac7a8154b0cccc69) prepare for release v1.11.3
@@ -26,11 +781,11 @@
 
 ### Contributors
 
- * Daviddcc
- * KillMaster9
  * changluyi
+ * Daviddcc
  * hzma
  * jeffy
+ * KillMaster9
  * yichanglu
  * zhangzujian
  * 张祖建
@@ -65,9 +820,9 @@
 
 ### Contributors
 
- * KillMaster9
  * changluyi
  * jeffy
+ * KillMaster9
  * lut777
  * qiutingjun
  * zhangzujian
@@ -478,19 +1233,10 @@
 ### Contributors
 
  * Alex Jones
- * Chris
- * Kaihang Zhang
- * KillMaster9
- * Mengxin Liu
- * Money Liu
- * Noah
- * ShaPoHun
- * Usman Malik
- * Wang Bo
- * Xiaobo Liu
  * bobz965
  * carezkh
  * changluyi
+ * Chris
  * dependabot[bot]
  * fanriming
  * gugu
@@ -498,12 +1244,21 @@
  * huangsq
  * hzma
  * jeffy
+ * Kaihang Zhang
+ * KillMaster9
  * long.wang
  * lut777
+ * Mengxin Liu
+ * Money Liu
+ * Noah
  * pengbinbin1
  * runzhliu
  * shane
+ * ShaPoHun
+ * Usman Malik
+ * Wang Bo
  * wangyd1988
+ * Xiaobo Liu
  * xujunjie-cover
  * zhouhui-Corigine
  * 刘睿华
@@ -568,10 +1323,10 @@
 
 ### Contributors
 
- * Daviddcc
- * KillMaster9
  * changluyi
+ * Daviddcc
  * hzma
+ * KillMaster9
  * zhangzujian
  * 张祖建
 
@@ -625,12 +1380,12 @@
 
 ### Contributors
 
- * Mengxin Liu
  * bobz965
  * changluyi
  * fanriming
  * hzma
  * lut777
+ * Mengxin Liu
  * wangyd1988
  * zhangzujian
  * 张祖建
@@ -702,14 +1457,14 @@
 
 ### Contributors
 
- * Kaihang Zhang
- * Mengxin Liu
- * Noah
  * bobz965
  * hzma
  * jeffy
+ * Kaihang Zhang
  * long.wang
  * lut777
+ * Mengxin Liu
+ * Noah
  * runzhliu
  * shane
  * zhangzujian
@@ -795,9 +1550,9 @@
 
 ### Contributors
 
- * Mengxin Liu
  * hzma
  * long.wang
+ * Mengxin Liu
  * xujunjie-cover
  * zhouhui-Corigine
  * 张祖建
@@ -815,10 +1570,10 @@
 
 ### Contributors
 
- * Mengxin Liu
- * Wang Bo
  * bobz965
  * hzma
+ * Mengxin Liu
+ * Wang Bo
  * xujunjie-cover
  * zhangzujian
 
@@ -843,12 +1598,12 @@
 
 ### Contributors
 
- * Mengxin Liu
- * Money Liu
- * Wang Bo
  * gugu
  * hzma
  * lut777
+ * Mengxin Liu
+ * Money Liu
+ * Wang Bo
  * wangyd1988
  * 刘睿华
  * 张祖建
@@ -875,10 +1630,10 @@
 
 ### Contributors
 
- * Mengxin Liu
- * ShaPoHun
  * halfcrazy
  * hzma
+ * Mengxin Liu
+ * ShaPoHun
  * xujunjie-cover
  * zhangzujian
  * 张祖建
@@ -1095,16 +1850,14 @@
 
 ### Contributors
 
- * Cookie Wang
- * Fudankenshin
- * Mengxin Liu
- * Samuel Liu
  * amoy-xuhao
  * bob199x
  * bobz965
  * caohuilong
  * chestack
+ * Cookie Wang
  * fanriming
+ * Fudankenshin
  * gongysh2004
  * hackeren
  * halfcrazy
@@ -1112,9 +1865,11 @@
  * jyjiangkai
  * long.wang
  * lut777
+ * Mengxin Liu
  * pengbinbin1
- * wang_yudong
+ * Samuel Liu
  * wangyd1988
+ * wang_yudong
  * xujunjie
  * xujunjie-cover
  * yi.luo
@@ -1123,6 +1878,115 @@
  * 张祖建
  * 罗云鹤
  * 范日明
+
+## v1.9.28 (2023-08-04)
+
+ * [b01d68e1](https://github.com/kubeovn/kube-ovn/commit/b01d68e1c14a3660b29b8f7fa4f74c9e6bde2172) update version to v1.9.28
+ * [7dcfd171](https://github.com/kubeovn/kube-ovn/commit/7dcfd1719ca7343804e216fca59a36f759eede40) fix u2o policy route generate too many flow tables cause oom
+ * [ca4b6c3e](https://github.com/kubeovn/kube-ovn/commit/ca4b6c3ecd2b32422c779b091b0e1b8a6c8a06b4) distinguish nat ip for central subnet with ecmp and active-standby (#3100)
+ * [a91f0a08](https://github.com/kubeovn/kube-ovn/commit/a91f0a08d00a8688492eaf827ba9aa2c4d27fc14) fix .status.default when initializing the default vpc (#3086)
+ * [fabbd4b8](https://github.com/kubeovn/kube-ovn/commit/fabbd4b84de7c7e1211882fb5b1a76ec7a6a1842) ci: do not pin go version (#3073)
+ * [a280123f](https://github.com/kubeovn/kube-ovn/commit/a280123f361a3aa70827665933f5e63601bc729e) ci: fix multus installation (#3062)
+ * [2cdf8fe4](https://github.com/kubeovn/kube-ovn/commit/2cdf8fe47474983c51a988a144feb25c194d76d2) Revert "prepare for release 1.9.28"
+ * [f347bcd0](https://github.com/kubeovn/kube-ovn/commit/f347bcd0e150949babb610f142216d82ab31fe45) set genev_sys_6081 tx checksum off (#3045)
+ * [77eb5694](https://github.com/kubeovn/kube-ovn/commit/77eb56944071e8ffd07aa85c50b3893d16e33e4d) prepare for release 1.9.28
+ * [25160ba1](https://github.com/kubeovn/kube-ovn/commit/25160ba1a15fc91958a3a4509c1c5af1bf6e3ff2) static ip in exclude-ips can be allocated normally when subnet's availableIPs is 0 #3031
+ * [96613529](https://github.com/kubeovn/kube-ovn/commit/96613529e8db1a186813dedf101ce1b597d93a67) ci: pin go version to 1.20.5 (#3034)
+ * [990d4a7c](https://github.com/kubeovn/kube-ovn/commit/990d4a7c59d3f07002e6eb0ae63d1925818207cf) pinger: use fully qualified domain name (#3032)
+ * [11ce268e](https://github.com/kubeovn/kube-ovn/commit/11ce268e46e025e6dca62ea80f074127e2a763c9) uninstall.sh: fix ipset name (#3028)
+ * [66d0e439](https://github.com/kubeovn/kube-ovn/commit/66d0e439d6bb6fe0147381315e19f7e88654687d) fix subnet finalizer (#3004)
+ * [1c9fc6af](https://github.com/kubeovn/kube-ovn/commit/1c9fc6afb2bb8e3289a4f988dfd44e9f8693372a)     kubectl ko performance enhance (#2975) (#2992)
+ * [5292a08c](https://github.com/kubeovn/kube-ovn/commit/5292a08c7db8377fe3348a380441f3745b77a466) underlay: fix NetworkManager syncer for virtual interfaces (#2988)
+ * [74c652ee](https://github.com/kubeovn/kube-ovn/commit/74c652ee312d89070a6db43589f30c4df3cd5026) underlay: does not set a device managed to no if it has VLAN managed by NM (#2986)
+
+### Contributors
+
+ * changluyi
+ * hzma
+ * 张祖建
+ * 马洪贞
+
+## v1.9.27 (2023-06-20)
+
+ * [48187e49](https://github.com/kubeovn/kube-ovn/commit/48187e49a4f499cda86381e4fc653f27c976061f) release 1.9.27
+ * [c41a03a8](https://github.com/kubeovn/kube-ovn/commit/c41a03a8fcfd59db0a1becf5fa119cb94119042e) add detail comment
+ * [dfe43f9d](https://github.com/kubeovn/kube-ovn/commit/dfe43f9da98375cf710fa91cde00543a2893d7a6) prepare for next release
+ * [b11c36e3](https://github.com/kubeovn/kube-ovn/commit/b11c36e37af385e6ea4978ed912b8a3bd7e1acf9) Kubectl ko diagnose perf release 1.9 (#2964)
+ * [5995cce9](https://github.com/kubeovn/kube-ovn/commit/5995cce94ce5f73134aed543e578df494d535323) underlay: sync NetworkManager IP config to OVS bridge (#2949)
+ * [2dc68307](https://github.com/kubeovn/kube-ovn/commit/2dc68307ef9e669ee84b867f33d2ec955e8794af) typo (#2952)
+ * [265392c4](https://github.com/kubeovn/kube-ovn/commit/265392c4761277c188ab0054f2eccb0bf78be46b) Revert "nm not managed only in the change provide nic name case (#2754)" (#2944)
+ * [6d87274e](https://github.com/kubeovn/kube-ovn/commit/6d87274e7065bee34ec4d5494c78bfdd7212226f) kubectl ko perf on release-1.9 (#2947)
+ * [110440f5](https://github.com/kubeovn/kube-ovn/commit/110440f581d24e756a80429cc95ff23a2cf95625) u2o support specify u2o ip on release-1.9 (#2935)
+ * [5c855cd6](https://github.com/kubeovn/kube-ovn/commit/5c855cd6a74de38ed351f5b5f7df8d18e9daff45) support tos inherit from inner packet
+ * [e5a13566](https://github.com/kubeovn/kube-ovn/commit/e5a13566ee73c54a23ed097d84119d537cc8cb0a) underlay: do not delete patch ports created by ovn-controller (#2851)
+ * [5bb5f45e](https://github.com/kubeovn/kube-ovn/commit/5bb5f45e3d4808ae8b5d9a444d4001c1f9a22f1a) kubectl-ko: fix trace when u2oInterconnection is enabled (#2836)
+ * [e45a2978](https://github.com/kubeovn/kube-ovn/commit/e45a29782204cb8068b9fe477a5b8a822187fa81) fix underlay access to node through ovn0 (#2847)
+ * [7e32e57d](https://github.com/kubeovn/kube-ovn/commit/7e32e57d222f1c0e43b51d185d2dbe901e6ea310) fix MTU when subnet is using logical gateway (#2834)
+ * [a5a97ce6](https://github.com/kubeovn/kube-ovn/commit/a5a97ce680290c93028a2a85faa24999aedd0617) prepare for v1.9.26
+ * [bce5b04d](https://github.com/kubeovn/kube-ovn/commit/bce5b04db57174e894e15f6717591ff124201ad1) fix ip statistics in subnet status (#2769)
+ * [6b4786b3](https://github.com/kubeovn/kube-ovn/commit/6b4786b3e7f3def75e230eeb064f94d6a30158d2) add EXCHANGE_LINK_NAME to installation script
+ * [2dd1bee1](https://github.com/kubeovn/kube-ovn/commit/2dd1bee1cfc4263359c8b30c40555b43528649c2) cni-server: wait ovs-vswitchd to be running (#2759)
+ * [8c158d72](https://github.com/kubeovn/kube-ovn/commit/8c158d72a20d6a927047b2e4728cc7cab9fa9e7b) ci: run kube-ovn e2e for underlay (#2762)
+ * [5eef52ac](https://github.com/kubeovn/kube-ovn/commit/5eef52ace29adfc0f5fbf59cab265ca2ff3848ad) nm not managed only in the change provide nic name case (#2754)
+ * [635c57b6](https://github.com/kubeovn/kube-ovn/commit/635c57b62058cd07614198ecb4d668c6257122cd) update policy route when change from ecmp to active-standby (#2716)
+ * [af16c760](https://github.com/kubeovn/kube-ovn/commit/af16c760b726fa36d2ffabdf0a3a882644067ecc) fix ovn lb gc (#2728)
+ * [4a4397c7](https://github.com/kubeovn/kube-ovn/commit/4a4397c7329ec7fd10650c97cc72d1ebddbabc18) fix recover db failed using offical doc (#2721)
+ * [786ec739](https://github.com/kubeovn/kube-ovn/commit/786ec739b81bedac884755c73be53d77f5254675) bump base image
+ * [9fe73bd2](https://github.com/kubeovn/kube-ovn/commit/9fe73bd29f0cfc131c777995a655f713d04e024e) base: remove patch for fixing ofpbuf memory leak (#2715)
+ * [42da9ddd](https://github.com/kubeovn/kube-ovn/commit/42da9dddeb6a950551539d35cea11f3b1465a55d) cni-server: do not perform ipv4 conflict detection during VM live migration (#2693)
+ * [e67cfd4c](https://github.com/kubeovn/kube-ovn/commit/e67cfd4c95fa2f7ff57485dc6beb9c2739c7340a) ovn-controller: do not send GARP on localnet for Kube-OVN ports (#2690)
+ * [a4cae607](https://github.com/kubeovn/kube-ovn/commit/a4cae607ff00a9618eee50df36e0dc6e2b20f384) netpol: fix packet drop casued by incorrect address set deletion (#2677)
+ * [96580be3](https://github.com/kubeovn/kube-ovn/commit/96580be38215f93e392d195301240dfa1c2c96b8) fix pg set port fail when lsp is already deleted
+ * [905b541d](https://github.com/kubeovn/kube-ovn/commit/905b541d7d596cd8eb8ec982d4eb5480ab8f9937) add subnetstatus lock for handleAddOrUpdateSubnet (#2668)
+ * [abed4718](https://github.com/kubeovn/kube-ovn/commit/abed4718652112de9e4adb594a749c6f543c2840) prepare for next release
+ * [b670e1c1](https://github.com/kubeovn/kube-ovn/commit/b670e1c1da3557fc149ad57e56b2673e654ece96) broadcast free arp when pod setup (#2643)
+ * [1c9e8eac](https://github.com/kubeovn/kube-ovn/commit/1c9e8eace250e659daa17401b4558ed1b873b09a) delete sync user (#2629)
+ * [da11ccdc](https://github.com/kubeovn/kube-ovn/commit/da11ccdc2b9102c25e523218aac557ede1596a77) prepare for next release
+ * [c99d9dda](https://github.com/kubeovn/kube-ovn/commit/c99d9ddaa092a6c09012e0d4fde514ce78263f22) ci: deploy multus in thick mode (#2628)
+ * [c8f55f9d](https://github.com/kubeovn/kube-ovn/commit/c8f55f9d458d45ee9edf339855a7bef055a875cb) libovsdb: use monitor_cond as the monitor method (#2627)
+ * [9f2e29e1](https://github.com/kubeovn/kube-ovn/commit/9f2e29e11a7a2e04a8ed154962e7075c7a25a3e2) ovs: fix dpif-netlink ofpbuf memory leak (#2620)
+ * [bd6f1bb2](https://github.com/kubeovn/kube-ovn/commit/bd6f1bb25b63f5130b0c719d248147d00fb52b60) add debug image
+ * [c3438b48](https://github.com/kubeovn/kube-ovn/commit/c3438b4852471082f5e9bf7ab36ba6c9253d2a50) ci: fix multus installation (#2604)
+ * [e77adbba](https://github.com/kubeovn/kube-ovn/commit/e77adbba9dd4dc827bf6d60d05bd1404a4ae28ae) cut invalid OVN_NB_DAEMON to make log more readable (#2601)
+ * [e54d9904](https://github.com/kubeovn/kube-ovn/commit/e54d99049b6e6e3da0c8ed44bf1fb2d17c19f62e) unittest: fix length assertion (#2597)
+ * [f731350d](https://github.com/kubeovn/kube-ovn/commit/f731350de20b569eb16a5a6787677679e892fbc1) bump base image
+ * [b95b3395](https://github.com/kubeovn/kube-ovn/commit/b95b3395745e0874fe9c19ffa23aa66a1c4be3fb) ci: bump actions/upload-artifact to v3
+ * [dd087cbf](https://github.com/kubeovn/kube-ovn/commit/dd087cbfcea697b7c712830d2dcae3c4dda3cdbd) security: clear .trivyignore
+ * [f44ec54d](https://github.com/kubeovn/kube-ovn/commit/f44ec54d360278c660bd2282c23ba8b5f4daa9bf) underlay: get address/route before setting nm managed to no (#2592)
+ * [250f3403](https://github.com/kubeovn/kube-ovn/commit/250f34030954254eaf2508ad8fd655c588d9fe6d) ci: bump kind image to v1.26.3 (#2581)
+
+### Contributors
+
+ * bobz965
+ * changluyi
+ * hzma
+ * yichanglu
+ * zhangzujian
+ * 张祖建
+
+## v1.9.23 (2023-03-29)
+
+ * [d698c73d](https://github.com/kubeovn/kube-ovn/commit/d698c73da1193dfc1c35f3aa0a28cb7bed7534c3) move ipam.subnet.mutex to caller (#2571)
+ * [b366ee82](https://github.com/kubeovn/kube-ovn/commit/b366ee82f934f1ee4ace88a31ec1815db7480ec9) fix: memory leak in IPAM caused by leftover map keys (#2566)
+ * [1cea97b9](https://github.com/kubeovn/kube-ovn/commit/1cea97b95e27532e87ce9b10b1a85a365e007886) fix ovn-bridge-mappings deletion (#2564)
+ * [4f45cdd9](https://github.com/kubeovn/kube-ovn/commit/4f45cdd9f3fc6e09855bfc476e3b84799e69c016) fix go mod list (#2556)
+ * [e85e1ff9](https://github.com/kubeovn/kube-ovn/commit/e85e1ff93a7480f80c4c1b92bdfd3cf7e84335c4) do not set device unmanaged if NetworkManager is not running (#2549)
+ * [8473f27e](https://github.com/kubeovn/kube-ovn/commit/8473f27ec967c70574818772a9b1480f3be25295) underlay: fix network manager operation (#2546)
+ * [0b0091c4](https://github.com/kubeovn/kube-ovn/commit/0b0091c4f3a43007e289b720693e70ef0ebd37a2) controller: fix apiserver connection timeout on startup (#2545)
+ * [ec81877b](https://github.com/kubeovn/kube-ovn/commit/ec81877b878101336bf4ed3e8296691ede7fe2bd) underlay: delete altname after renaming the link (#2539)
+ * [8f5c8088](https://github.com/kubeovn/kube-ovn/commit/8f5c8088b74861d8bd40ff1698e9bf2d67e8f10a) underlay: fix link name exchange (#2516)
+ * [90dcd008](https://github.com/kubeovn/kube-ovn/commit/90dcd0086edbe4bc771428995829feed8aa1a815) change version to v1.9.23
+ * [648c3c9f](https://github.com/kubeovn/kube-ovn/commit/648c3c9f2c0504904a31a6b72fb5624071ec4672) fix changging the stopped vm's subnets, the vm cann't start normally (#2463)
+ * [7df47d7d](https://github.com/kubeovn/kube-ovn/commit/7df47d7d12cc994ec2c516e86b3c4559fca7273a) add kubevirt multus nic lsp before gc process (#2504)
+ * [c8917969](https://github.com/kubeovn/kube-ovn/commit/c8917969807a51131eb9c017a11b925f3f6106ca) update for release v1.9.22
+
+### Contributors
+
+ * hzma
+ * zhangzujian
+ * 张祖建
+ * 袁又袁
+ * 马洪贞
 
 ## v1.9.22 (2023-03-16)
 
@@ -1149,9 +2013,9 @@
 
 ### Contributors
 
+ * changluyi
  * Daviddcc
  * KillMaster9
- * changluyi
  * zhangzujian
  * 张祖建
 
@@ -1219,10 +2083,10 @@
 
 ### Contributors
 
- * Mengxin Liu
  * changluyi
  * hzma
  * lut777
+ * Mengxin Liu
  * tonyleu
  * 马洪贞
 
@@ -1245,10 +2109,10 @@
 
 ### Contributors
 
- * Mengxin Liu
  * changluyi
  * fanriming
  * hzma
+ * Mengxin Liu
  * wangyd1988
  * zhangzujian
  * 张祖建
@@ -1287,11 +2151,11 @@
 
 ### Contributors
 
- * Mengxin Liu
  * bobz965
  * changluyi
  * hzma
  * lut777
+ * Mengxin Liu
  * zhangzujian
  * 张祖建
 
@@ -1311,9 +2175,9 @@
 
 ### Contributors
 
- * Noah
  * hzma
  * lut777
+ * Noah
  * zhangzujian
  * 张祖建
 
@@ -1341,9 +2205,9 @@
 
 ### Contributors
 
- * Mengxin Liu
  * hzma
  * lut777
+ * Mengxin Liu
  * runzhliu
  * zhangzujian
  * 张祖建
@@ -1397,9 +2261,9 @@
 
 ### Contributors
 
- * Mengxin Liu
  * hzma
  * lut777
+ * Mengxin Liu
  * zhangzujian
  * 尚墨
  * 张祖建
@@ -1434,10 +2298,10 @@
 
 ### Contributors
 
- * Mengxin Liu
  * bobz965
  * hzma
  * lut777
+ * Mengxin Liu
  * zhangzujian
  * 张祖建
 
@@ -1466,9 +2330,9 @@
 
 ### Contributors
 
- * Mengxin Liu
  * hzma
  * lut777
+ * Mengxin Liu
  * xujunjie-cover
  * zhangzujian
  * 张祖建
@@ -1483,9 +2347,9 @@
 
 ### Contributors
 
+ * hzma
  * Mengxin Liu
  * Wang Bo
- * hzma
 
 ## v1.9.6 (2022-07-13)
 
@@ -1507,12 +2371,12 @@
 
 ### Contributors
 
- * Mengxin Liu
- * Money Liu
- * Wang Bo
  * gugu
  * hzma
  * lut777
+ * Mengxin Liu
+ * Money Liu
+ * Wang Bo
  * wangyd1988
  * 刘睿华
  * 张祖建
@@ -1580,8 +2444,8 @@
 
 ### Contributors
 
- * Mengxin Liu
  * hzma
+ * Mengxin Liu
  * zhangzujian
 
 ## v1.9.2 (2022-04-25)
@@ -1628,9 +2492,9 @@
 
 ### Contributors
 
- * Mengxin Liu
  * hzma
  * lut777
+ * Mengxin Liu
  * wangyd1988
  * xujunjie-cover
  * zhangzujian
@@ -1674,10 +2538,10 @@
 
 ### Contributors
 
- * Mengxin Liu
  * chestack
  * hzma
  * lut777
+ * Mengxin Liu
  * xujunjie
  * xujunjie-cover
  * zhangzujian
@@ -1868,8 +2732,6 @@
 
 ### Contributors
 
- * Mengxin Liu
- * MengxinLiu
  * azee
  * chestack
  * feixiang43
@@ -1879,12 +2741,73 @@
  * liqd
  * luoyunhe
  * lut777
+ * Mengxin Liu
+ * MengxinLiu
  * pengbinbin1
  * vseeker
- * wang_yudong
  * wangchl01
+ * wang_yudong
  * zhangzujian
  * 范日明
+
+## v1.8.15 (2023-04-24)
+
+ * [f5af4306](https://github.com/kubeovn/kube-ovn/commit/f5af430619ddcbf92a7cd496b9fc8ced1beedb94) ci: add publish action
+ * [87deba9b](https://github.com/kubeovn/kube-ovn/commit/87deba9bd5e0109883da709a4f2252df253ed5f3) netpol: fix packet drop casued by incorrect address set deletion (#2677)
+ * [385a76aa](https://github.com/kubeovn/kube-ovn/commit/385a76aa75f5e7515ae8eb5d89e05c235860f9b5) do not set subnet's vlan empty on failure (#2445)
+ * [8177808e](https://github.com/kubeovn/kube-ovn/commit/8177808eb6b0e2cace640ec3c664447cad1c67ab) ci: fix cilium chaining e2e (#2391)
+ * [0c7a5018](https://github.com/kubeovn/kube-ovn/commit/0c7a5018b0fb83d9eec5b788c849659802a6388d) ci: fix ref name check (#2390)
+ * [7365a4c8](https://github.com/kubeovn/kube-ovn/commit/7365a4c8d51d234f56decc1184d1c2a194d2b6e0) ci: skip netpol e2e automatically for push events (#2379)
+ * [18ef2f28](https://github.com/kubeovn/kube-ovn/commit/18ef2f283f74f6695d445558a69ac01a8d465848) e2e: run specs in parallel (#2375)
+ * [6b5325d7](https://github.com/kubeovn/kube-ovn/commit/6b5325d71c77ace32457039882bc655e98dc8f8a) fix CVE-2022-28948
+ * [7a424dc8](https://github.com/kubeovn/kube-ovn/commit/7a424dc8e83b1f852b10ef26be79689fe984a056) fix CVE-2022-41723
+ * [1192be2c](https://github.com/kubeovn/kube-ovn/commit/1192be2c91aa954dbb3d2278a8523ae36c4e7bf3) ci: fix default branch test (#2369)
+ * [bb914568](https://github.com/kubeovn/kube-ovn/commit/bb9145688ef85eafd4056d2cb58da78830721820) fix github actions workflows (#2363)
+ * [6ac19b94](https://github.com/kubeovn/kube-ovn/commit/6ac19b943ea97011f3958908a8236b5ed79ea1d6) simplify github actions workflows (#2338)
+ * [9db146c0](https://github.com/kubeovn/kube-ovn/commit/9db146c0fbee8b1b52566f911bade23a918587df) do not remove link local route on ovn0 (#2341)
+ * [eb6d0bbd](https://github.com/kubeovn/kube-ovn/commit/eb6d0bbdba36895c30e368f46df2541156f193c8) fix encap ip when the tunnel interface has multiple addresses (#2340)
+ * [53df20f8](https://github.com/kubeovn/kube-ovn/commit/53df20f85b091682077c90ba394b461fb66c52a8) enqueue endpoint when handling service add event (#2337)
+ * [de289b74](https://github.com/kubeovn/kube-ovn/commit/de289b747188006544e751ca5c4ed0f87aba529a) fix getting service backends in dual-stack clusters (#2323)
+ * [0f20dea6](https://github.com/kubeovn/kube-ovn/commit/0f20dea6bff6760f78094aee20d64584097002fa) fix github actions workflow
+ * [544c229d](https://github.com/kubeovn/kube-ovn/commit/544c229def3ff1890c3298520adec483f7ad2822) An error occurred when netpol was added in double-stack mode (#2160)
+ * [1746f6cf](https://github.com/kubeovn/kube-ovn/commit/1746f6cf48a66562c15b11202f03dc125ea160dd) bump base image
+ * [f4efd0bc](https://github.com/kubeovn/kube-ovn/commit/f4efd0bc8577a3c55eb41afd07cb215ab8af0aed) fix gosec ci installation (#2295)
+ * [35b22bbc](https://github.com/kubeovn/kube-ovn/commit/35b22bbcdbaa6165678e00202215be2ca22d5158) fix CVE-2022-41721
+ * [ffd625f1](https://github.com/kubeovn/kube-ovn/commit/ffd625f1f607c195a59adfdbeb9730225df9033a) fix network break on kube-ovn-cni startup (#2272)
+ * [b42e9d15](https://github.com/kubeovn/kube-ovn/commit/b42e9d151067369067af6e7a1bf1dd0a06d84c4a) fix gosec installation
+ * [8f24823d](https://github.com/kubeovn/kube-ovn/commit/8f24823d30cff74b4da38737c67e0148c32314bc) add release-1.8/1.9/1.10 to scheduled e2e (#2224)
+ * [f1d5369b](https://github.com/kubeovn/kube-ovn/commit/f1d5369b717a15aa3b0989166d7e07d3c51423a0) release-1.8: refactor e2e (#2214)
+ * [ae99c07a](https://github.com/kubeovn/kube-ovn/commit/ae99c07a36a09e0e186ac9b628750b63404c2fd1) prepare for release 1.8.15
+ * [25e7f432](https://github.com/kubeovn/kube-ovn/commit/25e7f4324172e619ef1f88c8240893f49ffd3272) fix: ovs gc just for pod if (#2187)
+ * [a2e5e5db](https://github.com/kubeovn/kube-ovn/commit/a2e5e5db58256b3c896a3f43a80673f5babb4064) fix: change condition to conditions
+ * [d54c4481](https://github.com/kubeovn/kube-ovn/commit/d54c4481640de44456456cb1121b98ebb52b82e4) do not add subnet not processed by kube-ovn to vpc (#1735)
+ * [371f95c6](https://github.com/kubeovn/kube-ovn/commit/371f95c63f37b228512c6ba0e0c52d3d261e56f1) kind: support to specify api server address/port (#2134)
+ * [b46b103c](https://github.com/kubeovn/kube-ovn/commit/b46b103c4cd39742fa4ba67e64db6be0a860a700)  fix: sometimes alloc ipv6 address failed sometimes ipam.GetStaticAddress return NoAvailableAddress
+ * [7d6a162a](https://github.com/kubeovn/kube-ovn/commit/7d6a162aecaa3acb943c0baa1aa97c0be2c74cf9) fix lint
+ * [afcfbea9](https://github.com/kubeovn/kube-ovn/commit/afcfbea90d72a856934e0f6b956672927cb01f07) replace klog.Fatalf with klog.ErrorS and klog.FlushAndExit (#2093)
+ * [09f675cf](https://github.com/kubeovn/kube-ovn/commit/09f675cfecae9865dc3f5b5e2aadee5b939a165c) fix: del createIPS (#2087)
+ * [170a947d](https://github.com/kubeovn/kube-ovn/commit/170a947d104facf2e34179f634366c643f883b0f) fix ovs bridge not deleted cause by port link not found (#2084)
+ * [e132558d](https://github.com/kubeovn/kube-ovn/commit/e132558d5e16aa043c6b6380654f0d03608af1d1) fix: replace replace with add to override existing route (#2061)
+ * [73b037b2](https://github.com/kubeovn/kube-ovn/commit/73b037b2c95f47777f1ef14755b3851af44e088c) fix OVN LS/LB gc (#2069)
+ * [2b3c1f4f](https://github.com/kubeovn/kube-ovn/commit/2b3c1f4fd38b4b46ced8f24e6ca2971a08769199) perf: reduce controller init time (#2054)
+ * [ea80eb9a](https://github.com/kubeovn/kube-ovn/commit/ea80eb9ac3f69933e1674aeba8f8d1b0bb633790) ovs: fix reaching resubmit limit in underlay (#2038)
+ * [9c8ffcf6](https://github.com/kubeovn/kube-ovn/commit/9c8ffcf6ac2b5e0214746f7001ace4245214e702) fix pinger namespace error (#2034)
+ * [ea5b9313](https://github.com/kubeovn/kube-ovn/commit/ea5b93134f5523ba668343272d6df7fd9deabd6a) update np name with character prefix
+ * [ff3ac899](https://github.com/kubeovn/kube-ovn/commit/ff3ac89968292343312fb58171e6fecf62fd2f86) bump kind and node image versions (#2023)
+ * [97424b11](https://github.com/kubeovn/kube-ovn/commit/97424b11b9af638a85720de97bac5f2702e8b869) fix ovn nb/sb health check (#2019)
+ * [ce4861f2](https://github.com/kubeovn/kube-ovn/commit/ce4861f2ef64345c95d04d05b6f260359fcd35fe) fix ovs fdb for the local bridge port (#2014)
+
+### Contributors
+
+ * changluyi
+ * lut777
+ * Mengxin Liu
+ * Noah
+ * tonyleu
+ * wangyd1988
+ * zhangzujian
+ * 张祖建
+ * 马洪贞
 
 ## v1.8.14 (2022-11-04)
 
@@ -1921,9 +2844,9 @@
 
 ### Contributors
 
- * Mengxin Liu
  * hzma
  * lut777
+ * Mengxin Liu
  * runzhliu
  * zhangzujian
  * 尚墨
@@ -1947,8 +2870,8 @@
 
 ### Contributors
 
- * Mengxin Liu
  * lut777
+ * Mengxin Liu
  * zhangzujian
  * 尚墨
  * 张祖建
@@ -1993,10 +2916,10 @@
 
 ### Contributors
 
- * Mengxin Liu
- * Wang Bo
  * bobz965
  * hzma
+ * Mengxin Liu
+ * Wang Bo
  * xujunjie-cover
  * zhangzujian
  * 张祖建
@@ -2011,9 +2934,9 @@
 
 ### Contributors
 
+ * hzma
  * Mengxin Liu
  * Wang Bo
- * hzma
 
 ## v1.8.8 (2022-06-28)
 
@@ -2088,8 +3011,8 @@
 
 ### Contributors
 
- * Mengxin Liu
  * hzma
+ * Mengxin Liu
  * zhangzujian
 
 ## v1.8.4 (2022-03-29)
@@ -2228,9 +3151,9 @@
 
 ### Contributors
 
- * Mengxin Liu
  * hzma
  * lut777
+ * Mengxin Liu
  * wang_yudong
  * zhangzujian
  * 范日明
@@ -2258,9 +3181,9 @@
 
 ### Contributors
 
- * Mengxin Liu
  * hzma
  * lut777
+ * Mengxin Liu
  * zhangzujian
 
 ## v1.8.0 (2021-09-08)
@@ -2418,15 +3341,15 @@
 
 ### Contributors
 
- * Mengxin Liu
- * Ruijian Zhang
- * Tobias
  * feixiang43
  * hzma
  * lhalbert
  * lut777
+ * Mengxin Liu
  * pengbinbin
  * pengbinbin1
+ * Ruijian Zhang
+ * Tobias
  * wang_yudong
  * xieyanker
  * xuhao
@@ -2463,9 +3386,9 @@
 
 ### Contributors
 
- * Mengxin Liu
  * hzma
  * lut777
+ * Mengxin Liu
  * zhangzujian
 
 ## v1.7.2 (2021-09-08)
@@ -2519,11 +3442,11 @@
 
 ### Contributors
 
- * Mengxin Liu
- * Ruijian Zhang
  * feixiang43
  * hzma
  * lut777
+ * Mengxin Liu
+ * Ruijian Zhang
  * zhangzujian
  * 范日明
 
@@ -2567,10 +3490,10 @@
 
 ### Contributors
 
- * Mengxin Liu
- * Ruijian Zhang
  * hzma
  * lut777
+ * Mengxin Liu
+ * Ruijian Zhang
  * xuhao
  * zhangzujian
  * 范日明
@@ -2788,24 +3711,24 @@
 ### Contributors
 
  * Amye Scavarda Perrin
- * JinLin Fu
- * Mengxin Liu
- * Wan Junjie
- * Yan Wei
- * Yan Zhu
  * caoyingjun
  * chestack
  * cmj
  * danieldin95
  * halfcrazy
  * hzma
+ * JinLin Fu
  * luoyunhe1
  * lut777
+ * Mengxin Liu
  * pengbinbin1
  * sayicui
  * wangyudong
+ * Wan Junjie
  * withlin
  * xieyanker
+ * Yan Wei
+ * Yan Zhu
  * zhangzujian
  * 范日明
  * 马洪贞
@@ -2831,10 +3754,10 @@
 
 ### Contributors
 
- * Mengxin Liu
- * Yan Zhu
  * caoyingjun
  * chestack
+ * Mengxin Liu
+ * Yan Zhu
  * zhangzujian
  * 马洪贞
 
@@ -2861,11 +3784,11 @@
 
 ### Contributors
 
- * Mengxin Liu
  * danieldin95
  * halfcrazy
  * hzma
  * lut777
+ * Mengxin Liu
 
 ## v1.6.1 (2021-03-09)
 
@@ -2903,13 +3826,13 @@
 
 ### Contributors
 
- * Mengxin Liu
- * Wan Junjie
- * Yan Zhu
  * cmj
  * hzma
+ * Mengxin Liu
  * wangyudong
+ * Wan Junjie
  * xieyanker
+ * Yan Zhu
 
 ## v1.6.0 (2021-01-04)
 
@@ -3050,15 +3973,15 @@
 
 ### Contributors
 
- * Emma Kenny
- * Mengxin Liu
- * MengxinLiu
- * Wan Junjie
  * emmakenny
+ * Emma Kenny
  * feixiang
  * fossabot
  * hzma
  * luoyunhe1
+ * Mengxin Liu
+ * MengxinLiu
+ * Wan Junjie
  * wiwen
  * xieyanker
  * 范日明
@@ -3090,9 +4013,9 @@
 
 ### Contributors
 
- * Mengxin Liu
  * emmakenny
  * hzma
+ * Mengxin Liu
  * xieyanker
 
 ## v1.5.1 (2020-10-26)
@@ -3190,8 +4113,8 @@
 
 ### Contributors
 
- * Mengxin Liu
  * hzma
+ * Mengxin Liu
 
 ## v1.3.0 (2020-07-31)
 
@@ -3275,15 +4198,15 @@
 
 ### Contributors
 
+ * ckji
  * Gary
  * Haocheng Liu
+ * laik
+ * linruichao
  * Mengxin Liu
  * MengxinLiu
  * Patryk Strusiewicz-Surmacki
  * Xiang Dai
- * ckji
- * laik
- * linruichao
 
 ## v1.2.1 (2020-06-22)
 
@@ -3297,9 +4220,9 @@
 
 ### Contributors
 
+ * ckji
  * Mengxin Liu
  * MengxinLiu
- * ckji
 
 ## v1.2.0 (2020-05-30)
 
@@ -3373,12 +4296,12 @@
 
 ### Contributors
 
+ * fangtian
  * Gary
+ * linruichao
  * Mengxin Liu
  * MengxinLiu
  * Yan Zhu
- * fangtian
- * linruichao
 
 ## v1.1.1 (2020-04-27)
 
@@ -3696,11 +4619,11 @@
 
 ### Contributors
 
- * MengxinLiu
- * Yan Zhu
  * ftiannew
  * halfcrazy
+ * MengxinLiu
  * shuangyang.qian
+ * Yan Zhu
 
 ## v0.6.0 (2019-07-22)
 
@@ -3751,9 +4674,9 @@
 
 ### Contributors
 
+ * fanbin
  * MengxinLiu
  * Yan Zhu
- * fanbin
 
 ## v0.4.0 (2019-05-16)
 
