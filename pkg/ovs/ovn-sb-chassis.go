@@ -12,30 +12,30 @@ import (
 )
 
 func (c *ovnClient) InitChassisNodeTag(chassisName string, nodeName string) error {
-	chssis, err := c.GetChssisByName(chassisName, true)
+	chassis, err := c.GetChassis(chassisName, true)
 	if err != nil {
 		klog.Error(err)
 		return err
 	}
-	if chssis == nil {
-		err := fmt.Errorf("faile to get chssis by name=%s", chassisName)
+	if chassis == nil {
+		err := fmt.Errorf("faile to get chassis by name=%s", chassisName)
 		klog.Error(err)
 		return err
 	}
-	if chssis.ExternalIDs == nil || chssis.ExternalIDs["node"] != nodeName {
-		chssis.ExternalIDs = map[string]string{
+	if chassis.ExternalIDs == nil || chassis.ExternalIDs["node"] != nodeName {
+		chassis.ExternalIDs = map[string]string{
 			"vendor": util.CniTypeName,
 			"node":   nodeName,
 		}
 	}
-	ops, err := c.Create(chssis)
+	ops, err := c.Create(chassis)
 	if err != nil {
-		err := fmt.Errorf("failed to generate operations for Chssis creation with Hostname=%s and Name=%s: %v", nodeName, chassisName, err)
+		err := fmt.Errorf("failed to generate operations for Chassis creation with Hostname=%s and Name=%s: %v", nodeName, chassisName, err)
 		klog.Error(err)
 		return err
 	}
 	if err = c.Transact("chassis-add", ops); err != nil {
-		err := fmt.Errorf("failed to create Chssis with  Hostname=%s and Name=%s: %v", nodeName, chassisName, err)
+		err := fmt.Errorf("failed to create Chassis with  Hostname=%s and Name=%s: %v", nodeName, chassisName, err)
 		klog.Error(err)
 		return err
 	}
@@ -60,65 +60,65 @@ func (c *ovnClient) GetKubeOvnChassisses() (*[]ovnsb.Chassis, error) {
 }
 
 func (c *ovnClient) CreateChassis(chassisName, nodeName string) (*ovnsb.Chassis, error) {
-	chssis, err := c.GetChssisByName(chassisName, true)
+	chassis, err := c.GetChassis(chassisName, true)
 	if err != nil {
 		klog.Error(err)
 		return nil, err
 	}
-	if chssis != nil {
-		return chssis, nil
+	if chassis != nil {
+		return chassis, nil
 	}
 
-	chssis = &ovnsb.Chassis{
+	chassis = &ovnsb.Chassis{
 		Name:     chassisName,
 		Hostname: nodeName,
 		ExternalIDs: map[string]string{
 			"vendor": util.CniTypeName,
 		},
 	}
-	ops, err := c.Create(chssis)
+	ops, err := c.Create(chassis)
 	if err != nil {
-		return nil, fmt.Errorf("failed to generate operations for Chssis creation with Hostname=%s and Name=%s: %v", nodeName, chassisName, err)
+		return nil, fmt.Errorf("failed to generate operations for Chassis creation with Hostname=%s and Name=%s: %v", nodeName, chassisName, err)
 	}
 	if err = c.Transact("chassis-add", ops); err != nil {
-		return nil, fmt.Errorf("failed to create Chssis with  Hostname=%s and Name=%s: %v", nodeName, chassisName, err)
+		return nil, fmt.Errorf("failed to create Chassis with  Hostname=%s and Name=%s: %v", nodeName, chassisName, err)
 	}
 
-	chssis, err = c.GetChssisByName(chassisName, true)
+	chassis, err = c.GetChassis(chassisName, true)
 	if err != nil {
 		klog.Error(err)
 		return nil, err
 	}
-	if chssis == nil {
-		err := fmt.Errorf("faile to get chssis by name=%s", chassisName)
+	if chassis == nil {
+		err := fmt.Errorf("faile to get chassis by name=%s", chassisName)
 		klog.Error(err)
 		return nil, err
 	}
-	return chssis, nil
+	return chassis, nil
 }
 
+// DeleteChassis delete one chassis by name
 func (c *ovnClient) DeleteChassis(chassisName string) error {
-	chssis, err := c.GetChssisByName(chassisName, true)
+	chassis, err := c.GetChassis(chassisName, true)
 	if err != nil {
 		klog.Error(err)
 		return err
 	}
-	if chssis == nil {
+	if chassis == nil {
 		return nil
 	}
-
-	ops, err := c.Where(&chssis).Delete()
+	ops, err := c.Where(chassis).Delete()
 	if err != nil {
-		return fmt.Errorf("failed to generate delete operations for chssis %s: %v", chssis.UUID, err)
+		return fmt.Errorf("failed to generate delete operations for chassis %s: %v", chassis.UUID, err)
 	}
 	if err = c.Transact("chassis-del", ops); err != nil {
-		return fmt.Errorf("failed to delete chssis with with UUID %s: %v", chssis.UUID, err)
+		return fmt.Errorf("failed to delete chassis with with UUID %s: %v", chassis.UUID, err)
 	}
 	return nil
 }
 
-// GetChssisByName return south bound node chassis from cache
-func (c *ovnClient) GetChssisByName(chassisName string, ignoreNotFound bool) (*ovnsb.Chassis, error) {
+// GetChassis return south bound node chassis from cache
+func (c *ovnClient) GetChassis(chassisName string, ignoreNotFound bool) (*ovnsb.Chassis, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
 	defer cancel()
 	chassis := &ovnsb.Chassis{Name: chassisName}
@@ -131,13 +131,13 @@ func (c *ovnClient) GetChssisByName(chassisName string, ignoreNotFound bool) (*o
 	return chassis, nil
 }
 
-func (c *ovnClient) GetChassisByNode(nodeName string) (*ovnsb.Chassis, error) {
+func (c *ovnClient) GetChassisByHost(nodeName string) (*ovnsb.Chassis, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
 	defer cancel()
 
 	chassisList := make([]ovnsb.Chassis, 0)
 	if err := c.ovsDbClient.WhereCache(func(chassis *ovnsb.Chassis) bool {
-		return chassis.Hostname == nodeName || (chassis.ExternalIDs != nil && chassis.ExternalIDs["node"] == nodeName)
+		return chassis.Hostname == nodeName
 	}).List(ctx, &chassisList); err != nil {
 		return nil, fmt.Errorf("failed to list Chassis with host name=%s: %v", nodeName, err)
 	}
@@ -154,15 +154,47 @@ func (c *ovnClient) GetChassisByNode(nodeName string) (*ovnsb.Chassis, error) {
 	return &chassisList[0], nil
 }
 
-func (c *ovnClient) DeleteChassisByNode(node string) error {
-	chassis, err := c.GetChassisByNode(node)
-	if err != nil {
-		klog.Error(err)
-		return fmt.Errorf("failed to get node chassis %s, %v", node, err)
+func (c *ovnClient) GetChassisByTagNode(nodeName string) (*ovnsb.Chassis, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+
+	chassisList := make([]ovnsb.Chassis, 0)
+	if err := c.ovsDbClient.WhereCache(func(chassis *ovnsb.Chassis) bool {
+		return chassis.ExternalIDs != nil && chassis.ExternalIDs["node"] == nodeName
+	}).List(ctx, &chassisList); err != nil {
+		return nil, fmt.Errorf("failed to list Chassis with host name=%s: %v", nodeName, err)
 	}
-	if chassis == nil {
-		return nil
+	if len(chassisList) == 0 {
+		err := fmt.Errorf("failed to get Chassis with with host name=%s", nodeName)
+		klog.Error(err)
+		return nil, err
+	}
+	if len(chassisList) != 1 {
+		err := fmt.Errorf("found more than one Chassis with with host name=%s", nodeName)
+		klog.Error(err)
+		return nil, err
+	}
+	return &chassisList[0], nil
+}
+
+// DeleteChassisByNode delete all chassis by node name
+func (c *ovnClient) DeleteChassisByNode(nodeName string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+
+	chassisList := make([]ovnsb.Chassis, 0)
+	if err := c.ovsDbClient.WhereCache(func(chassis *ovnsb.Chassis) bool {
+		return chassis.Hostname == nodeName || (chassis.ExternalIDs != nil && chassis.ExternalIDs["node"] == nodeName)
+	}).List(ctx, &chassisList); err != nil {
+		return fmt.Errorf("failed to list Chassis with host name=%s: %v", nodeName, err)
 	}
 
-	return c.DeleteChassis(chassis.Name)
+	for _, chassis := range chassisList {
+		if err := c.DeleteChassis(chassis.Name); err != nil {
+			err := fmt.Errorf("failed to delete chassis %s, %v", chassis.Name, err)
+			klog.Error(err)
+			return err
+		}
+	}
+	return nil
 }

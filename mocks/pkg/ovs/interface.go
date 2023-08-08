@@ -2710,34 +2710,49 @@ func (mr *MockOvnClientMockRecorder) EnablePortLayer2forward(lspName interface{}
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EnablePortLayer2forward", reflect.TypeOf((*MockOvnClient)(nil).EnablePortLayer2forward), lspName)
 }
 
-// GetChassisByNode mocks base method.
-func (m *MockOvnClient) GetChassisByNode(nodeName string) (*ovnsb.Chassis, error) {
+// GetChassis mocks base method.
+func (m *MockOvnClient) GetChassis(chassisName string, ignoreNotFound bool) (*ovnsb.Chassis, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetChassisByNode", nodeName)
+	ret := m.ctrl.Call(m, "GetChassis", chassisName, ignoreNotFound)
 	ret0, _ := ret[0].(*ovnsb.Chassis)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// GetChassisByNode indicates an expected call of GetChassisByNode.
-func (mr *MockOvnClientMockRecorder) GetChassisByNode(nodeName interface{}) *gomock.Call {
+// GetChassis indicates an expected call of GetChassis.
+func (mr *MockOvnClientMockRecorder) GetChassis(chassisName, ignoreNotFound interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetChassisByNode", reflect.TypeOf((*MockOvnClient)(nil).GetChassisByNode), nodeName)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetChassis", reflect.TypeOf((*MockOvnClient)(nil).GetChassis), chassisName, ignoreNotFound)
 }
 
-// GetChssisByName mocks base method.
-func (m *MockOvnClient) GetChssisByName(chassisName string, ignoreNotFound bool) (*ovnsb.Chassis, error) {
+// GetChassisByHost mocks base method.
+func (m *MockOvnClient) GetChassisByHost(nodeName string) (*ovnsb.Chassis, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetChssisByName", chassisName, ignoreNotFound)
+	ret := m.ctrl.Call(m, "GetChassisByHost", nodeName)
 	ret0, _ := ret[0].(*ovnsb.Chassis)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// GetChssisByName indicates an expected call of GetChssisByName.
-func (mr *MockOvnClientMockRecorder) GetChssisByName(chassisName, ignoreNotFound interface{}) *gomock.Call {
+// GetChassisByHost indicates an expected call of GetChassisByHost.
+func (mr *MockOvnClientMockRecorder) GetChassisByHost(nodeName interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetChssisByName", reflect.TypeOf((*MockOvnClient)(nil).GetChssisByName), chassisName, ignoreNotFound)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetChassisByHost", reflect.TypeOf((*MockOvnClient)(nil).GetChassisByHost), nodeName)
+}
+
+// GetChassisByTagNode mocks base method.
+func (m *MockOvnClient) GetChassisByTagNode(nodeName string) (*ovnsb.Chassis, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetChassisByTagNode", nodeName)
+	ret0, _ := ret[0].(*ovnsb.Chassis)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetChassisByTagNode indicates an expected call of GetChassisByTagNode.
+func (mr *MockOvnClientMockRecorder) GetChassisByTagNode(nodeName interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetChassisByTagNode", reflect.TypeOf((*MockOvnClient)(nil).GetChassisByTagNode), nodeName)
 }
 
 // GetEntityInfo mocks base method.
@@ -3829,34 +3844,49 @@ func (mr *MockChassisMockRecorder) DeleteChassisByNode(node interface{}) *gomock
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteChassisByNode", reflect.TypeOf((*MockChassis)(nil).DeleteChassisByNode), node)
 }
 
-// GetChassisByNode mocks base method.
-func (m *MockChassis) GetChassisByNode(nodeName string) (*ovnsb.Chassis, error) {
+// GetChassis mocks base method.
+func (m *MockChassis) GetChassis(chassisName string, ignoreNotFound bool) (*ovnsb.Chassis, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetChassisByNode", nodeName)
+	ret := m.ctrl.Call(m, "GetChassis", chassisName, ignoreNotFound)
 	ret0, _ := ret[0].(*ovnsb.Chassis)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// GetChassisByNode indicates an expected call of GetChassisByNode.
-func (mr *MockChassisMockRecorder) GetChassisByNode(nodeName interface{}) *gomock.Call {
+// GetChassis indicates an expected call of GetChassis.
+func (mr *MockChassisMockRecorder) GetChassis(chassisName, ignoreNotFound interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetChassisByNode", reflect.TypeOf((*MockChassis)(nil).GetChassisByNode), nodeName)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetChassis", reflect.TypeOf((*MockChassis)(nil).GetChassis), chassisName, ignoreNotFound)
 }
 
-// GetChssisByName mocks base method.
-func (m *MockChassis) GetChssisByName(chassisName string, ignoreNotFound bool) (*ovnsb.Chassis, error) {
+// GetChassisByHost mocks base method.
+func (m *MockChassis) GetChassisByHost(nodeName string) (*ovnsb.Chassis, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetChssisByName", chassisName, ignoreNotFound)
+	ret := m.ctrl.Call(m, "GetChassisByHost", nodeName)
 	ret0, _ := ret[0].(*ovnsb.Chassis)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// GetChssisByName indicates an expected call of GetChssisByName.
-func (mr *MockChassisMockRecorder) GetChssisByName(chassisName, ignoreNotFound interface{}) *gomock.Call {
+// GetChassisByHost indicates an expected call of GetChassisByHost.
+func (mr *MockChassisMockRecorder) GetChassisByHost(nodeName interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetChssisByName", reflect.TypeOf((*MockChassis)(nil).GetChssisByName), chassisName, ignoreNotFound)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetChassisByHost", reflect.TypeOf((*MockChassis)(nil).GetChassisByHost), nodeName)
+}
+
+// GetChassisByTagNode mocks base method.
+func (m *MockChassis) GetChassisByTagNode(nodeName string) (*ovnsb.Chassis, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetChassisByTagNode", nodeName)
+	ret0, _ := ret[0].(*ovnsb.Chassis)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetChassisByTagNode indicates an expected call of GetChassisByTagNode.
+func (mr *MockChassisMockRecorder) GetChassisByTagNode(nodeName interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetChassisByTagNode", reflect.TypeOf((*MockChassis)(nil).GetChassisByTagNode), nodeName)
 }
 
 // GetKubeOvnChassisses mocks base method.

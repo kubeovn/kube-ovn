@@ -249,12 +249,17 @@ func (c *Controller) getGatewayChassis(config map[string]string) ([]string, erro
 			klog.Errorf("patch external gw node %s failed %v", gw, err)
 			return chassises, err
 		}
-		chassis, err := c.ovnSbClient.GetChassisByNode(gw)
-		if err != nil {
-			klog.Errorf("failed to get chassis by node name: %s, %v", gw, err)
+		annoChassisName := node.Annotations[util.ChassisAnnotation]
+		if annoChassisName == "" {
+			err := fmt.Errorf("node %s has no chassis annotation, kube-ovn-cni not ready", gw)
+			klog.Error(err)
 			return chassises, err
 		}
-
+		chassis, err := c.ovnSbClient.GetChassis(annoChassisName, false)
+		if err != nil {
+			klog.Errorf("failed to get node %s chassis: %s, %v", node.Name, annoChassisName, err)
+			return chassises, err
+		}
 		chassises = append(chassises, chassis.UUID)
 	}
 	if len(chassises) == 0 {

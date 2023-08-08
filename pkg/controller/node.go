@@ -861,21 +861,22 @@ func (c *Controller) checkGatewayReady() error {
 }
 
 func (c *Controller) checkChassisDupl(node *v1.Node) error {
+	// TODO:// check multi chassis has the same node name
 	// notice that multiple chassises may arise and we are not prepared
-	chassis, err := c.ovnSbClient.GetChassisByNode(node.Name)
+	annoChassisName := node.Annotations[util.ChassisAnnotation]
+	if annoChassisName == "" {
+		err := fmt.Errorf("node %s has no chassis annotation, kube-ovn-cni not ready", node.Name)
+		klog.Error(err)
+		return err
+	}
+	chassis, err := c.ovnSbClient.GetChassis(annoChassisName, false)
 	if err != nil {
-		klog.Errorf("failed to get node %s chassisID, %v", node.Name, err)
+		klog.Errorf("failed to get node %s chassis: %s, %v", node.Name, annoChassisName, err)
 		return err
 	}
-	if chassis.Name == "" {
-		klog.Errorf("chassis of node %s is empty", node.Name)
-		return err
-	}
-	chassisAnn := node.Annotations[util.ChassisAnnotation]
-	if chassisAnn == chassis.Name || chassisAnn == "" {
+	if chassis.Hostname == node.Name {
 		return nil
 	}
-
 	klog.Warningf("delete duplicate chassis for node %s and new chassis %s", node.Name, chassis.Name)
 	if err := c.ovnSbClient.DeleteChassisByNode(node.Name); err != nil {
 		klog.Errorf("failed to delete chassis for node %s %v", node.Name, err)
@@ -998,15 +999,18 @@ func (c *Controller) checkAndUpdateNodePortGroup() error {
 }
 
 func (c *Controller) validateChassis(node *v1.Node) error {
-	if node.Annotations[util.ChassisAnnotation] == "" {
+	annoChassisName := node.Annotations[util.ChassisAnnotation]
+	if annoChassisName == "" {
+		// kube-ovn-cni not ready to set chassis
 		return nil
 	}
-	chassis, err := c.ovnSbClient.GetChassisByNode(node.Name)
+	chassis, err := c.ovnSbClient.GetChassis(annoChassisName, false)
 	if err != nil {
-		klog.Errorf("failed to get node %s chassisID, %v", node.Name, err)
+		klog.Errorf("failed to get node %s chassis: %s, %v", node.Name, annoChassisName, err)
 		return err
 	}
-	if node.Annotations[util.ChassisAnnotation] == chassis.Name && chassis.ExternalIDs != nil && chassis.ExternalIDs[util.ExternalIDsNodeKey] != node.Name {
+	if annoChassisName == chassis.Name && chassis.ExternalIDs != nil && chassis.ExternalIDs[util.ExternalIDsNodeKey] != node.Name {
+		klog.Infof("init tag for node %s, chassis %s, host name %s", node.Name, annoChassisName, node.Name)
 		if err = c.ovnSbClient.InitChassisNodeTag(chassis.Name, node.Name); err != nil {
 			return fmt.Errorf("failed to init chassis tag, %v", err)
 		}

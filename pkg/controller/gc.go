@@ -671,23 +671,32 @@ func (c *Controller) gcChassis() error {
 	if err != nil {
 		klog.Errorf("failed to get all chassis, %v", err)
 	}
+	chassisNodes := make(map[string]string, len(*chassises))
+	for _, chassis := range *chassises {
+		chassisNodes[chassis.Name] = chassis.Hostname
+	}
 	nodes, err := c.nodesLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list nodes, %v", err)
 		return err
 	}
-	for _, chassis := range *chassises {
-		matched := true
-		for _, node := range nodes {
-			if chassis.Name == node.Annotations[util.ChassisAnnotation] {
-				matched = false
-				break
-			}
+	for _, node := range nodes {
+		chassisName := node.Annotations[util.ChassisAnnotation]
+		if chassisName == "" {
+			// kube-ovn-cni not ready to set chassis annotation
+			continue
 		}
-		if matched {
-			if err := c.ovnSbClient.DeleteChassis(chassis.Name); err != nil {
-				klog.Errorf("failed to delete chassis %s %v", chassis, err)
-				return err
+		if hostname, exist := chassisNodes[chassisName]; exist {
+			if hostname == node.Name {
+				// node is alive, matched chassis should be alive
+				continue
+			} else {
+				// maybe node name changed, delete chassis
+				klog.Infof("gc chassis %s", chassisName)
+				if err := c.ovnSbClient.DeleteChassis(chassisName); err != nil {
+					klog.Errorf("failed to delete node %s chassis %s %v", node.Name, chassisName, err)
+					return err
+				}
 			}
 		}
 	}

@@ -235,13 +235,16 @@ func (c *Controller) establishInterConnection(config map[string]string) error {
 			klog.Errorf("patch gw node %s failed %v", gw, err)
 			return err
 		}
-		chassis, err := c.ovnSbClient.GetChassisByNode(gw)
-		if err != nil {
-			klog.Errorf("failed to get gw %s chassisID, %v", gw, err)
+		annoChassisName := node.Annotations[util.ChassisAnnotation]
+		if annoChassisName == "" {
+			err := fmt.Errorf("node %s has no chassis annotation, kube-ovn-cni not ready", gw)
+			klog.Error(err)
 			return err
 		}
-		if chassis.Name == "" {
-			return fmt.Errorf("no chassisID for gw %s", gw)
+		chassis, err := c.ovnSbClient.GetChassis(annoChassisName, false)
+		if err != nil {
+			klog.Errorf("failed to get node chassis %s, %v", annoChassisName, err)
+			return err
 		}
 		chassises = append(chassises, chassis.Name)
 	}
