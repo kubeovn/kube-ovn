@@ -11,90 +11,19 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-func (c *ovnClient) InitChassisNodeTag(chassisName string, nodeName string) error {
-	chassis, err := c.GetChassis(chassisName, true)
+func (c *ovnClient) UpdateChassis(chassis *ovnsb.Chassis, fields ...interface{}) error {
+	op, err := c.ovsDbClient.Where(chassis).Update(chassis, fields...)
 	if err != nil {
+		err := fmt.Errorf("failed to generate update operations for chassis: %v", err)
 		klog.Error(err)
 		return err
 	}
-	if chassis == nil {
-		err := fmt.Errorf("faile to get chassis by name=%s", chassisName)
-		klog.Error(err)
-		return err
-	}
-	if chassis.ExternalIDs == nil || chassis.ExternalIDs["node"] != nodeName {
-		chassis.ExternalIDs = map[string]string{
-			"vendor": util.CniTypeName,
-			"node":   nodeName,
-		}
-	}
-	ops, err := c.Create(chassis)
-	if err != nil {
-		err := fmt.Errorf("failed to generate operations for Chassis creation with Hostname=%s and Name=%s: %v", nodeName, chassisName, err)
-		klog.Error(err)
-		return err
-	}
-	if err = c.Transact("chassis-add", ops); err != nil {
-		err := fmt.Errorf("failed to create Chassis with  Hostname=%s and Name=%s: %v", nodeName, chassisName, err)
+	if err = c.Transact("chassis-update", op); err != nil {
+		err := fmt.Errorf("failed to update chassis %s: %v", chassis.Name, err)
 		klog.Error(err)
 		return err
 	}
 	return nil
-}
-
-// GetKubeOvnChassisses return all chassis which vendor is kube-ovn
-func (c *ovnClient) GetKubeOvnChassisses() (*[]ovnsb.Chassis, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
-	defer cancel()
-
-	chassisList := make([]ovnsb.Chassis, 0)
-	if err := c.ovsDbClient.WhereCache(func(chassis *ovnsb.Chassis) bool {
-		if chassis.ExternalIDs != nil && chassis.ExternalIDs["vendor"] == util.CniTypeName {
-			return true
-		}
-		return false
-	}).List(ctx, &chassisList); err != nil {
-		return nil, fmt.Errorf("failed to list Chassis with vendor=%s: %v", util.CniTypeName, err)
-	}
-	return &chassisList, nil
-}
-
-func (c *ovnClient) CreateChassis(chassisName, nodeName string) (*ovnsb.Chassis, error) {
-	chassis, err := c.GetChassis(chassisName, true)
-	if err != nil {
-		klog.Error(err)
-		return nil, err
-	}
-	if chassis != nil {
-		return chassis, nil
-	}
-
-	chassis = &ovnsb.Chassis{
-		Name:     chassisName,
-		Hostname: nodeName,
-		ExternalIDs: map[string]string{
-			"vendor": util.CniTypeName,
-		},
-	}
-	ops, err := c.Create(chassis)
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate operations for Chassis creation with Hostname=%s and Name=%s: %v", nodeName, chassisName, err)
-	}
-	if err = c.Transact("chassis-add", ops); err != nil {
-		return nil, fmt.Errorf("failed to create Chassis with  Hostname=%s and Name=%s: %v", nodeName, chassisName, err)
-	}
-
-	chassis, err = c.GetChassis(chassisName, true)
-	if err != nil {
-		klog.Error(err)
-		return nil, err
-	}
-	if chassis == nil {
-		err := fmt.Errorf("faile to get chassis by name=%s", chassisName)
-		klog.Error(err)
-		return nil, err
-	}
-	return chassis, nil
 }
 
 // DeleteChassis delete one chassis by name
@@ -107,7 +36,7 @@ func (c *ovnClient) DeleteChassis(chassisName string) error {
 	if chassis == nil {
 		return nil
 	}
-	ops, err := c.Where(chassis).Delete()
+	ops, err := c.ovsDbClient.Where(chassis).Delete()
 	if err != nil {
 		return fmt.Errorf("failed to generate delete operations for chassis %s: %v", chassis.UUID, err)
 	}
@@ -117,18 +46,36 @@ func (c *ovnClient) DeleteChassis(chassisName string) error {
 	return nil
 }
 
-// GetChassis return south bound node chassis from cache
+// GetChassis return south bound db chassis from cache
 func (c *ovnClient) GetChassis(chassisName string, ignoreNotFound bool) (*ovnsb.Chassis, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
 	defer cancel()
+	if chassisName == "" {
+		err := fmt.Errorf("chassis name is empty")
+		klog.Error(err)
+		return nil, err
+	}
 	chassis := &ovnsb.Chassis{Name: chassisName}
-	if err := c.Get(ctx, chassis); err != nil {
+	if err := c.ovsDbClient.Get(ctx, chassis); err != nil {
 		if ignoreNotFound && err == client.ErrNotFound {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("failed to get south bound node chassis %s: %v", chassisName, err)
+		return nil, fmt.Errorf("failed to get chassis %s: %v", chassisName, err)
 	}
+	klog.V(3).Infof("get chassis: %+v", chassis)
 	return chassis, nil
+}
+
+// ListChassis return south bound db chassis from cache
+func (c *ovnClient) ListChassis() (*[]ovnsb.Chassis, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+
+	css := []ovnsb.Chassis{}
+	if err := c.ovsDbClient.List(ctx, &css); err != nil {
+		return nil, fmt.Errorf("failed to list Chassis: %v", err)
+	}
+	return &css, nil
 }
 
 func (c *ovnClient) GetChassisByHost(nodeName string) (*ovnsb.Chassis, error) {
@@ -197,4 +144,48 @@ func (c *ovnClient) DeleteChassisByNode(nodeName string) error {
 		}
 	}
 	return nil
+}
+
+func (c *ovnClient) InitChassisNodeTag(chassisName string, nodeName string) error {
+	chassis, err := c.GetChassis(chassisName, true)
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
+	if chassis == nil {
+		err := fmt.Errorf("faile to get chassis by name=%s", chassisName)
+		// restart kube-ovn-cni, chassis will be created
+		klog.Error(err)
+		return err
+	}
+	if chassis.ExternalIDs == nil || chassis.ExternalIDs["node"] != nodeName {
+		externalIDs := make(map[string]string, len(chassis.ExternalIDs)+2)
+		for k, v := range chassis.ExternalIDs {
+			externalIDs[k] = v
+		}
+		externalIDs["vendor"] = util.CniTypeName
+		externalIDs["node"] = nodeName
+		chassis.ExternalIDs = externalIDs
+		if err := c.UpdateChassis(chassis, &chassis.ExternalIDs); err != nil {
+			return fmt.Errorf("failed to init chassis node %s: %v", nodeName, err)
+		}
+	}
+	return nil
+}
+
+// GetKubeOvnChassisses return all chassis which vendor is kube-ovn
+func (c *ovnClient) GetKubeOvnChassisses() (*[]ovnsb.Chassis, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+
+	chassisList := make([]ovnsb.Chassis, 0)
+	if err := c.ovsDbClient.WhereCache(func(chassis *ovnsb.Chassis) bool {
+		if chassis.ExternalIDs != nil && chassis.ExternalIDs["vendor"] == util.CniTypeName {
+			return true
+		}
+		return false
+	}).List(ctx, &chassisList); err != nil {
+		return nil, fmt.Errorf("failed to list Chassis with vendor=%s: %v", util.CniTypeName, err)
+	}
+	return &chassisList, nil
 }

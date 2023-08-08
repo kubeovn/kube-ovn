@@ -241,6 +241,7 @@ func (c *Controller) establishInterConnection(config map[string]string) error {
 			klog.Error(err)
 			return err
 		}
+		klog.Infof("gw node %s chassis %s", gw, annoChassisName)
 		chassis, err := c.ovnSbClient.GetChassis(annoChassisName, false)
 		if err != nil {
 			klog.Errorf("failed to get node chassis %s, %v", annoChassisName, err)

@@ -195,7 +195,7 @@ type OvnClient interface {
 }
 
 type Chassis interface {
-	CreateChassis(chassisName, nodeName string) (*ovnsb.Chassis, error)
+	UpdateChassis(chassis *ovnsb.Chassis, fields ...interface{}) error
 	DeleteChassis(chassisName string) error
 	DeleteChassisByNode(node string) error
 	GetChassisByHost(nodeName string) (*ovnsb.Chassis, error)
@@ -203,4 +203,5 @@ type Chassis interface {
 	GetChassisByTagNode(nodeName string) (*ovnsb.Chassis, error)
 	GetKubeOvnChassisses() (*[]ovnsb.Chassis, error)
 	InitChassisNodeTag(chassisName string, nodeName string) error
+	ListChassis() (*[]ovnsb.Chassis, error)
 }

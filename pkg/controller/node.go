@@ -3,7 +3,6 @@ package controller
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"reflect"
 	"strconv"
@@ -861,26 +860,26 @@ func (c *Controller) checkGatewayReady() error {
 }
 
 func (c *Controller) checkChassisDupl(node *v1.Node) error {
-	// TODO:// check multi chassis has the same node name
-	// notice that multiple chassises may arise and we are not prepared
-	annoChassisName := node.Annotations[util.ChassisAnnotation]
-	if annoChassisName == "" {
-		err := fmt.Errorf("node %s has no chassis annotation, kube-ovn-cni not ready", node.Name)
-		klog.Error(err)
-		return err
-	}
-	chassis, err := c.ovnSbClient.GetChassis(annoChassisName, false)
+	// check multi chassis has the same node name
+	css, err := c.ovnSbClient.ListChassis()
 	if err != nil {
-		klog.Errorf("failed to get node %s chassis: %s, %v", node.Name, annoChassisName, err)
+		klog.Errorf("failed to list chassis %v", err)
 		return err
 	}
-	if chassis.Hostname == node.Name {
-		return nil
-	}
-	klog.Warningf("delete duplicate chassis for node %s and new chassis %s", node.Name, chassis.Name)
-	if err := c.ovnSbClient.DeleteChassisByNode(node.Name); err != nil {
-		klog.Errorf("failed to delete chassis for node %s %v", node.Name, err)
-		return err
+	var nodeChassisMap = make(map[string]string, len(*css))
+	for _, cs := range *css {
+		if nodeChassisMap[cs.Hostname] == "" {
+			nodeChassisMap[cs.Hostname] = cs.Name
+		} else {
+			klog.Warningf("node %s has multiple chassis %s and %s", cs.Hostname, nodeChassisMap[cs.Hostname], cs.Name)
+			if err := c.ovnSbClient.DeleteChassis(cs.Name); err != nil {
+				klog.Warningf("node %s chassis duplicated, delete all its chassises", node.Name)
+				if err := c.ovnSbClient.DeleteChassisByNode(node.Name); err != nil {
+					klog.Errorf("failed to delete chassis for node %s %v", node.Name, err)
+					return err
+				}
+			}
+		}
 	}
 	return nil
 }
@@ -1004,32 +1003,20 @@ func (c *Controller) validateChassis(node *v1.Node) error {
 		// kube-ovn-cni not ready to set chassis
 		return nil
 	}
+	klog.Infof("validate chassis for node %s, chassis %s", node.Name, annoChassisName)
 	chassis, err := c.ovnSbClient.GetChassis(annoChassisName, false)
 	if err != nil {
 		klog.Errorf("failed to get node %s chassis: %s, %v", node.Name, annoChassisName, err)
 		return err
 	}
-	if annoChassisName == chassis.Name && chassis.ExternalIDs != nil && chassis.ExternalIDs[util.ExternalIDsNodeKey] != node.Name {
+	if chassis.ExternalIDs == nil || chassis.ExternalIDs[util.ExternalIDsNodeKey] != node.Name {
 		klog.Infof("init tag for node %s, chassis %s, host name %s", node.Name, annoChassisName, node.Name)
 		if err = c.ovnSbClient.InitChassisNodeTag(chassis.Name, node.Name); err != nil {
 			return fmt.Errorf("failed to init chassis tag, %v", err)
 		}
 		return nil
 	}
-	if chassis.Name == "" {
-		// If no chassisID for this node is obtained, we need to perform GC in order for the chassis to be re-registered
-		if err = c.gcChassis(); err != nil {
-			return fmt.Errorf("failed to gc chassis, %v", err)
-		}
-	} else {
-		// When the ids are obtained but are inconsistent, it is usually because there are duplicate chassis records.
-		// All chassis related to Node need to be deleted so that the correct chassis can be registered again
-		if err := c.ovnSbClient.DeleteChassisByNode(node.Name); err != nil {
-			klog.Errorf("failed to delete chassis for node %s %v", node.Name, err)
-			return err
-		}
-	}
-	return errors.New("chassis reset, reboot ovs-ovn on this node: " + node.Name)
+	return nil
 }
 
 func (c *Controller) addNodeGwStaticRoute() error {

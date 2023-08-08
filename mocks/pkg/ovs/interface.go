@@ -2101,21 +2101,6 @@ func (mr *MockOvnClientMockRecorder) CreateBareLogicalSwitchPort(lsName, lspName
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateBareLogicalSwitchPort", reflect.TypeOf((*MockOvnClient)(nil).CreateBareLogicalSwitchPort), lsName, lspName, ip, mac)
 }
 
-// CreateChassis mocks base method.
-func (m *MockOvnClient) CreateChassis(chassisName, nodeName string) (*ovnsb.Chassis, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateChassis", chassisName, nodeName)
-	ret0, _ := ret[0].(*ovnsb.Chassis)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// CreateChassis indicates an expected call of CreateChassis.
-func (mr *MockOvnClientMockRecorder) CreateChassis(chassisName, nodeName interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateChassis", reflect.TypeOf((*MockOvnClient)(nil).CreateChassis), chassisName, nodeName)
-}
-
 // CreateGatewayAcl mocks base method.
 func (m *MockOvnClient) CreateGatewayAcl(lsName, pgName, gateway string) error {
 	m.ctrl.T.Helper()
@@ -2963,6 +2948,21 @@ func (mr *MockOvnClientMockRecorder) ListAddressSets(externalIDs interface{}) *g
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListAddressSets", reflect.TypeOf((*MockOvnClient)(nil).ListAddressSets), externalIDs)
 }
 
+// ListChassis mocks base method.
+func (m *MockOvnClient) ListChassis() (*[]ovnsb.Chassis, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListChassis")
+	ret0, _ := ret[0].(*[]ovnsb.Chassis)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListChassis indicates an expected call of ListChassis.
+func (mr *MockOvnClientMockRecorder) ListChassis() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListChassis", reflect.TypeOf((*MockOvnClient)(nil).ListChassis))
+}
+
 // ListDHCPOptions mocks base method.
 func (m *MockOvnClient) ListDHCPOptions(needVendorFilter bool, externalIDs map[string]string) ([]ovnnb.DHCPOptions, error) {
 	m.ctrl.T.Helper()
@@ -3630,6 +3630,25 @@ func (mr *MockOvnClientMockRecorder) Transact(method, operations interface{}) *g
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Transact", reflect.TypeOf((*MockOvnClient)(nil).Transact), method, operations)
 }
 
+// UpdateChassis mocks base method.
+func (m *MockOvnClient) UpdateChassis(chassis *ovnsb.Chassis, fields ...interface{}) error {
+	m.ctrl.T.Helper()
+	varargs := []interface{}{chassis}
+	for _, a := range fields {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "UpdateChassis", varargs...)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateChassis indicates an expected call of UpdateChassis.
+func (mr *MockOvnClientMockRecorder) UpdateChassis(chassis interface{}, fields ...interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]interface{}{chassis}, fields...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateChassis", reflect.TypeOf((*MockOvnClient)(nil).UpdateChassis), varargs...)
+}
+
 // UpdateDHCPOptions mocks base method.
 func (m *MockOvnClient) UpdateDHCPOptions(subnet *v1.Subnet, mtu int) (*ovs.DHCPOptionsUUIDs, error) {
 	m.ctrl.T.Helper()
@@ -3801,21 +3820,6 @@ func (m *MockChassis) EXPECT() *MockChassisMockRecorder {
 	return m.recorder
 }
 
-// CreateChassis mocks base method.
-func (m *MockChassis) CreateChassis(chassisName, nodeName string) (*ovnsb.Chassis, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateChassis", chassisName, nodeName)
-	ret0, _ := ret[0].(*ovnsb.Chassis)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// CreateChassis indicates an expected call of CreateChassis.
-func (mr *MockChassisMockRecorder) CreateChassis(chassisName, nodeName interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateChassis", reflect.TypeOf((*MockChassis)(nil).CreateChassis), chassisName, nodeName)
-}
-
 // DeleteChassis mocks base method.
 func (m *MockChassis) DeleteChassis(chassisName string) error {
 	m.ctrl.T.Helper()
@@ -3916,4 +3920,38 @@ func (m *MockChassis) InitChassisNodeTag(chassisName, nodeName string) error {
 func (mr *MockChassisMockRecorder) InitChassisNodeTag(chassisName, nodeName interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InitChassisNodeTag", reflect.TypeOf((*MockChassis)(nil).InitChassisNodeTag), chassisName, nodeName)
+}
+
+// ListChassis mocks base method.
+func (m *MockChassis) ListChassis() (*[]ovnsb.Chassis, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListChassis")
+	ret0, _ := ret[0].(*[]ovnsb.Chassis)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListChassis indicates an expected call of ListChassis.
+func (mr *MockChassisMockRecorder) ListChassis() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListChassis", reflect.TypeOf((*MockChassis)(nil).ListChassis))
+}
+
+// UpdateChassis mocks base method.
+func (m *MockChassis) UpdateChassis(chassis *ovnsb.Chassis, fields ...interface{}) error {
+	m.ctrl.T.Helper()
+	varargs := []interface{}{chassis}
+	for _, a := range fields {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "UpdateChassis", varargs...)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateChassis indicates an expected call of UpdateChassis.
+func (mr *MockChassisMockRecorder) UpdateChassis(chassis interface{}, fields ...interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]interface{}{chassis}, fields...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateChassis", reflect.TypeOf((*MockChassis)(nil).UpdateChassis), varargs...)
 }
