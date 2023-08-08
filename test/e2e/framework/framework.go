@@ -186,3 +186,7 @@ func OrderedDescribe(text string, body func()) bool {
 func ConformanceIt(text string, body interface{}) bool {
 	return ginkgo.It(text+" [Conformance]", ginkgo.Offset(1), body)
 }
+
+func CorruptiveIt(text string, body interface{}) bool {
+	return ginkgo.It(text+" [Corruptive]", ginkgo.Offset(1), body)
+}

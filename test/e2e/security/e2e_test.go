@@ -146,7 +146,6 @@ var _ = framework.Describe("[group:security]", func() {
 		ginkgo.By("Getting daemonset kube-ovn-cni")
 		daemonSetClient := f.DaemonSetClientNS(framework.KubeOvnNamespace)
 		ds := daemonSetClient.Get("kube-ovn-cni")
-		framework.ExpectNoError(err, "failed to to get daemonset kube-ovn-cni")
 
 		ginkgo.By("Getting kube-ovn-cni pods")
 		pods := make([]corev1.Pod, 0, len(nodeList.Items))

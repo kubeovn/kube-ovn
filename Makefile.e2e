@@ -63,6 +63,7 @@ e2e-build:
 	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/lb-svc
 	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/iptables-vpc-nat-gw
 	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/ovn-vpc-nat-gw
+	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/ha
 	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/security
 	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/kubevirt
 	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/webhook
@@ -154,6 +155,15 @@ ovn-vpc-nat-gw-conformance-e2e:
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
 	ginkgo $(GINKGO_PARALLEL_OPT) --randomize-all -v \
 		--focus=CNI:Kube-OVN ./test/e2e/ovn-vpc-nat-gw/ovn-vpc-nat-gw.test
+
+.PHONY: kube-ovn-ha-e2e
+kube-ovn-ha-e2e:
+	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/ha
+	E2E_BRANCH=$(E2E_BRANCH) \
+	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
+	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
+	ginkgo $(GINKGO_PARALLEL_OPT) --randomize-all -v \
+		--focus=CNI:Kube-OVN ./test/e2e/ha/ha.test
 
 .PHONY: kube-ovn-security-e2e
 kube-ovn-security-e2e:

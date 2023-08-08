@@ -563,7 +563,7 @@ var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 func iperf(f *framework.Framework, iperfClientPod *corev1.Pod, iperfServerEIP *apiv1.IptablesEIP) string {
 	for i := 0; i < 20; i++ {
 		command := fmt.Sprintf("iperf -e -p %s --reportstyle C -i 1 -c %s -t 10", iperf2Port, iperfServerEIP.Status.IP)
-		stdOutput, errOutput, err := framework.ExecShellInPod(context.Background(), f, iperfClientPod.Name, command)
+		stdOutput, errOutput, err := framework.ExecShellInPod(context.Background(), f, iperfClientPod.Namespace, iperfClientPod.Name, command)
 		framework.Logf("output from exec on client pod %s (eip %s)\n", iperfClientPod.Name, iperfServerEIP.Name)
 		if stdOutput != "" && err == nil {
 			framework.Logf("output:\n%s", stdOutput)
