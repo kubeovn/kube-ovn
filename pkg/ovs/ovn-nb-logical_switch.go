@@ -77,6 +77,7 @@ func (c *ovnClient) CreateBareLogicalSwitch(lsName string) error {
 	ls := &ovnnb.LogicalSwitch{
 		Name:        lsName,
 		ExternalIDs: map[string]string{"vendor": util.CniTypeName},
+		OtherConfig: map[string]string{"mcast_snoop": "true", "mcast_querier": "false"},
 	}
 
 	op, err := c.ovnNbClient.Create(ls)
