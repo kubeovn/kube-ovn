@@ -1,7 +1,8 @@
 # Changelog
 
-## v1.12.0 (2023-08-07)
+## v1.12.0 (2023-08-08)
 
+ * [15861418](https://github.com/kubeovn/kube-ovn/commit/15861418b017b9573d71d970882073c08aa0a391) update changelog
  * [6cf53101](https://github.com/kubeovn/kube-ovn/commit/6cf53101f620caafd7d08b424e1408e967adaca3) build(deps): bump sigs.k8s.io/controller-runtime from 0.15.0 to 0.15.1 (#3120)
  * [cd1202ca](https://github.com/kubeovn/kube-ovn/commit/cd1202ca400a64bb5c3d68784eeb23586444d405) ovn: fix corrupted database file on start (#3112)
  * [02f8c630](https://github.com/kubeovn/kube-ovn/commit/02f8c630b076e9a97cd8788714813a5c1858f634) some fixes in e2e (#3116)
@@ -542,9 +543,14 @@
 ### Contributors
 
  * Alex Jones
+ * Daviddcc
+ * KillMaster9
+ * Longchuanzheng
+ * Miika Petäjäniemi
+ * Nico Wang
+ * Rick
  * bobz965
  * changluyi
- * Daviddcc
  * dependabot[bot]
  * fsl
  * github-actions[bot]
@@ -552,16 +558,11 @@
  * hzma
  * jeffy
  * jizhixiang
- * KillMaster9
  * lanyujie
  * liuzhen21
- * Longchuanzheng
  * lut777
- * Miika Petäjäniemi
  * mingo
- * Nico Wang
  * qiutingjun
- * Rick
  * shane
  * wangyd1988
  * wujixin
@@ -781,11 +782,11 @@
 
 ### Contributors
 
- * changluyi
  * Daviddcc
+ * KillMaster9
+ * changluyi
  * hzma
  * jeffy
- * KillMaster9
  * yichanglu
  * zhangzujian
  * 张祖建
@@ -820,9 +821,9 @@
 
 ### Contributors
 
+ * KillMaster9
  * changluyi
  * jeffy
- * KillMaster9
  * lut777
  * qiutingjun
  * zhangzujian
@@ -1233,10 +1234,19 @@
 ### Contributors
 
  * Alex Jones
+ * Chris
+ * Kaihang Zhang
+ * KillMaster9
+ * Mengxin Liu
+ * Money Liu
+ * Noah
+ * ShaPoHun
+ * Usman Malik
+ * Wang Bo
+ * Xiaobo Liu
  * bobz965
  * carezkh
  * changluyi
- * Chris
  * dependabot[bot]
  * fanriming
  * gugu
@@ -1244,21 +1254,12 @@
  * huangsq
  * hzma
  * jeffy
- * Kaihang Zhang
- * KillMaster9
  * long.wang
  * lut777
- * Mengxin Liu
- * Money Liu
- * Noah
  * pengbinbin1
  * runzhliu
  * shane
- * ShaPoHun
- * Usman Malik
- * Wang Bo
  * wangyd1988
- * Xiaobo Liu
  * xujunjie-cover
  * zhouhui-Corigine
  * 刘睿华
@@ -1323,10 +1324,10 @@
 
 ### Contributors
 
- * changluyi
  * Daviddcc
- * hzma
  * KillMaster9
+ * changluyi
+ * hzma
  * zhangzujian
  * 张祖建
 
@@ -1380,12 +1381,12 @@
 
 ### Contributors
 
+ * Mengxin Liu
  * bobz965
  * changluyi
  * fanriming
  * hzma
  * lut777
- * Mengxin Liu
  * wangyd1988
  * zhangzujian
  * 张祖建
@@ -1457,14 +1458,14 @@
 
 ### Contributors
 
+ * Kaihang Zhang
+ * Mengxin Liu
+ * Noah
  * bobz965
  * hzma
  * jeffy
- * Kaihang Zhang
  * long.wang
  * lut777
- * Mengxin Liu
- * Noah
  * runzhliu
  * shane
  * zhangzujian
@@ -1550,9 +1551,9 @@
 
 ### Contributors
 
+ * Mengxin Liu
  * hzma
  * long.wang
- * Mengxin Liu
  * xujunjie-cover
  * zhouhui-Corigine
  * 张祖建
@@ -1570,10 +1571,10 @@
 
 ### Contributors
 
- * bobz965
- * hzma
  * Mengxin Liu
  * Wang Bo
+ * bobz965
+ * hzma
  * xujunjie-cover
  * zhangzujian
 
@@ -1598,12 +1599,12 @@
 
 ### Contributors
 
- * gugu
- * hzma
- * lut777
  * Mengxin Liu
  * Money Liu
  * Wang Bo
+ * gugu
+ * hzma
+ * lut777
  * wangyd1988
  * 刘睿华
  * 张祖建
@@ -1630,10 +1631,10 @@
 
 ### Contributors
 
- * halfcrazy
- * hzma
  * Mengxin Liu
  * ShaPoHun
+ * halfcrazy
+ * hzma
  * xujunjie-cover
  * zhangzujian
  * 张祖建
@@ -1850,14 +1851,16 @@
 
 ### Contributors
 
+ * Cookie Wang
+ * Fudankenshin
+ * Mengxin Liu
+ * Samuel Liu
  * amoy-xuhao
  * bob199x
  * bobz965
  * caohuilong
  * chestack
- * Cookie Wang
  * fanriming
- * Fudankenshin
  * gongysh2004
  * hackeren
  * halfcrazy
@@ -1865,11 +1868,9 @@
  * jyjiangkai
  * long.wang
  * lut777
- * Mengxin Liu
  * pengbinbin1
- * Samuel Liu
- * wangyd1988
  * wang_yudong
+ * wangyd1988
  * xujunjie
  * xujunjie-cover
  * yi.luo
@@ -2013,9 +2014,9 @@
 
 ### Contributors
 
- * changluyi
  * Daviddcc
  * KillMaster9
+ * changluyi
  * zhangzujian
  * 张祖建
 
@@ -2083,10 +2084,10 @@
 
 ### Contributors
 
+ * Mengxin Liu
  * changluyi
  * hzma
  * lut777
- * Mengxin Liu
  * tonyleu
  * 马洪贞
 
@@ -2109,10 +2110,10 @@
 
 ### Contributors
 
+ * Mengxin Liu
  * changluyi
  * fanriming
  * hzma
- * Mengxin Liu
  * wangyd1988
  * zhangzujian
  * 张祖建
@@ -2151,11 +2152,11 @@
 
 ### Contributors
 
+ * Mengxin Liu
  * bobz965
  * changluyi
  * hzma
  * lut777
- * Mengxin Liu
  * zhangzujian
  * 张祖建
 
@@ -2175,9 +2176,9 @@
 
 ### Contributors
 
+ * Noah
  * hzma
  * lut777
- * Noah
  * zhangzujian
  * 张祖建
 
@@ -2205,9 +2206,9 @@
 
 ### Contributors
 
+ * Mengxin Liu
  * hzma
  * lut777
- * Mengxin Liu
  * runzhliu
  * zhangzujian
  * 张祖建
@@ -2261,9 +2262,9 @@
 
 ### Contributors
 
+ * Mengxin Liu
  * hzma
  * lut777
- * Mengxin Liu
  * zhangzujian
  * 尚墨
  * 张祖建
@@ -2298,10 +2299,10 @@
 
 ### Contributors
 
+ * Mengxin Liu
  * bobz965
  * hzma
  * lut777
- * Mengxin Liu
  * zhangzujian
  * 张祖建
 
@@ -2330,9 +2331,9 @@
 
 ### Contributors
 
+ * Mengxin Liu
  * hzma
  * lut777
- * Mengxin Liu
  * xujunjie-cover
  * zhangzujian
  * 张祖建
@@ -2347,9 +2348,9 @@
 
 ### Contributors
 
- * hzma
  * Mengxin Liu
  * Wang Bo
+ * hzma
 
 ## v1.9.6 (2022-07-13)
 
@@ -2371,12 +2372,12 @@
 
 ### Contributors
 
- * gugu
- * hzma
- * lut777
  * Mengxin Liu
  * Money Liu
  * Wang Bo
+ * gugu
+ * hzma
+ * lut777
  * wangyd1988
  * 刘睿华
  * 张祖建
@@ -2444,8 +2445,8 @@
 
 ### Contributors
 
- * hzma
  * Mengxin Liu
+ * hzma
  * zhangzujian
 
 ## v1.9.2 (2022-04-25)
@@ -2492,9 +2493,9 @@
 
 ### Contributors
 
+ * Mengxin Liu
  * hzma
  * lut777
- * Mengxin Liu
  * wangyd1988
  * xujunjie-cover
  * zhangzujian
@@ -2538,10 +2539,10 @@
 
 ### Contributors
 
+ * Mengxin Liu
  * chestack
  * hzma
  * lut777
- * Mengxin Liu
  * xujunjie
  * xujunjie-cover
  * zhangzujian
@@ -2732,6 +2733,8 @@
 
 ### Contributors
 
+ * Mengxin Liu
+ * MengxinLiu
  * azee
  * chestack
  * feixiang43
@@ -2741,12 +2744,10 @@
  * liqd
  * luoyunhe
  * lut777
- * Mengxin Liu
- * MengxinLiu
  * pengbinbin1
  * vseeker
- * wangchl01
  * wang_yudong
+ * wangchl01
  * zhangzujian
  * 范日明
 
@@ -2799,10 +2800,10 @@
 
 ### Contributors
 
- * changluyi
- * lut777
  * Mengxin Liu
  * Noah
+ * changluyi
+ * lut777
  * tonyleu
  * wangyd1988
  * zhangzujian
@@ -2844,9 +2845,9 @@
 
 ### Contributors
 
+ * Mengxin Liu
  * hzma
  * lut777
- * Mengxin Liu
  * runzhliu
  * zhangzujian
  * 尚墨
@@ -2870,8 +2871,8 @@
 
 ### Contributors
 
- * lut777
  * Mengxin Liu
+ * lut777
  * zhangzujian
  * 尚墨
  * 张祖建
@@ -2916,10 +2917,10 @@
 
 ### Contributors
 
- * bobz965
- * hzma
  * Mengxin Liu
  * Wang Bo
+ * bobz965
+ * hzma
  * xujunjie-cover
  * zhangzujian
  * 张祖建
@@ -2934,9 +2935,9 @@
 
 ### Contributors
 
- * hzma
  * Mengxin Liu
  * Wang Bo
+ * hzma
 
 ## v1.8.8 (2022-06-28)
 
@@ -3011,8 +3012,8 @@
 
 ### Contributors
 
- * hzma
  * Mengxin Liu
+ * hzma
  * zhangzujian
 
 ## v1.8.4 (2022-03-29)
@@ -3151,9 +3152,9 @@
 
 ### Contributors
 
+ * Mengxin Liu
  * hzma
  * lut777
- * Mengxin Liu
  * wang_yudong
  * zhangzujian
  * 范日明
@@ -3181,9 +3182,9 @@
 
 ### Contributors
 
+ * Mengxin Liu
  * hzma
  * lut777
- * Mengxin Liu
  * zhangzujian
 
 ## v1.8.0 (2021-09-08)
@@ -3341,15 +3342,15 @@
 
 ### Contributors
 
+ * Mengxin Liu
+ * Ruijian Zhang
+ * Tobias
  * feixiang43
  * hzma
  * lhalbert
  * lut777
- * Mengxin Liu
  * pengbinbin
  * pengbinbin1
- * Ruijian Zhang
- * Tobias
  * wang_yudong
  * xieyanker
  * xuhao
@@ -3386,9 +3387,9 @@
 
 ### Contributors
 
+ * Mengxin Liu
  * hzma
  * lut777
- * Mengxin Liu
  * zhangzujian
 
 ## v1.7.2 (2021-09-08)
@@ -3442,11 +3443,11 @@
 
 ### Contributors
 
+ * Mengxin Liu
+ * Ruijian Zhang
  * feixiang43
  * hzma
  * lut777
- * Mengxin Liu
- * Ruijian Zhang
  * zhangzujian
  * 范日明
 
@@ -3490,10 +3491,10 @@
 
 ### Contributors
 
- * hzma
- * lut777
  * Mengxin Liu
  * Ruijian Zhang
+ * hzma
+ * lut777
  * xuhao
  * zhangzujian
  * 范日明
@@ -3711,24 +3712,24 @@
 ### Contributors
 
  * Amye Scavarda Perrin
+ * JinLin Fu
+ * Mengxin Liu
+ * Wan Junjie
+ * Yan Wei
+ * Yan Zhu
  * caoyingjun
  * chestack
  * cmj
  * danieldin95
  * halfcrazy
  * hzma
- * JinLin Fu
  * luoyunhe1
  * lut777
- * Mengxin Liu
  * pengbinbin1
  * sayicui
  * wangyudong
- * Wan Junjie
  * withlin
  * xieyanker
- * Yan Wei
- * Yan Zhu
  * zhangzujian
  * 范日明
  * 马洪贞
@@ -3754,10 +3755,10 @@
 
 ### Contributors
 
- * caoyingjun
- * chestack
  * Mengxin Liu
  * Yan Zhu
+ * caoyingjun
+ * chestack
  * zhangzujian
  * 马洪贞
 
@@ -3784,11 +3785,11 @@
 
 ### Contributors
 
+ * Mengxin Liu
  * danieldin95
  * halfcrazy
  * hzma
  * lut777
- * Mengxin Liu
 
 ## v1.6.1 (2021-03-09)
 
@@ -3826,13 +3827,13 @@
 
 ### Contributors
 
+ * Mengxin Liu
+ * Wan Junjie
+ * Yan Zhu
  * cmj
  * hzma
- * Mengxin Liu
  * wangyudong
- * Wan Junjie
  * xieyanker
- * Yan Zhu
 
 ## v1.6.0 (2021-01-04)
 
@@ -3973,15 +3974,15 @@
 
 ### Contributors
 
- * emmakenny
  * Emma Kenny
+ * Mengxin Liu
+ * MengxinLiu
+ * Wan Junjie
+ * emmakenny
  * feixiang
  * fossabot
  * hzma
  * luoyunhe1
- * Mengxin Liu
- * MengxinLiu
- * Wan Junjie
  * wiwen
  * xieyanker
  * 范日明
@@ -4013,9 +4014,9 @@
 
 ### Contributors
 
+ * Mengxin Liu
  * emmakenny
  * hzma
- * Mengxin Liu
  * xieyanker
 
 ## v1.5.1 (2020-10-26)
@@ -4113,8 +4114,8 @@
 
 ### Contributors
 
- * hzma
  * Mengxin Liu
+ * hzma
 
 ## v1.3.0 (2020-07-31)
 
@@ -4198,15 +4199,15 @@
 
 ### Contributors
 
- * ckji
  * Gary
  * Haocheng Liu
- * laik
- * linruichao
  * Mengxin Liu
  * MengxinLiu
  * Patryk Strusiewicz-Surmacki
  * Xiang Dai
+ * ckji
+ * laik
+ * linruichao
 
 ## v1.2.1 (2020-06-22)
 
@@ -4220,9 +4221,9 @@
 
 ### Contributors
 
- * ckji
  * Mengxin Liu
  * MengxinLiu
+ * ckji
 
 ## v1.2.0 (2020-05-30)
 
@@ -4296,12 +4297,12 @@
 
 ### Contributors
 
- * fangtian
  * Gary
- * linruichao
  * Mengxin Liu
  * MengxinLiu
  * Yan Zhu
+ * fangtian
+ * linruichao
 
 ## v1.1.1 (2020-04-27)
 
@@ -4619,11 +4620,11 @@
 
 ### Contributors
 
+ * MengxinLiu
+ * Yan Zhu
  * ftiannew
  * halfcrazy
- * MengxinLiu
  * shuangyang.qian
- * Yan Zhu
 
 ## v0.6.0 (2019-07-22)
 
@@ -4674,9 +4675,9 @@
 
 ### Contributors
 
- * fanbin
  * MengxinLiu
  * Yan Zhu
+ * fanbin
 
 ## v0.4.0 (2019-05-16)
 
