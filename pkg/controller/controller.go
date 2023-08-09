@@ -347,6 +347,8 @@ func NewController(config *Configuration) *Controller {
 // is closed, at which point it will shutdown the workqueue and wait for
 // workers to finish processing their current work items.
 func (c *Controller) Run(stopCh <-chan struct{}) {
+	// The init process can only be placed here if the init process do really affect the normal process of controller, such as Nodes/Pods/Subnets...
+	// Otherwise, the init process should be placed after all workers have already started working
 	defer c.shutdown()
 	klog.Info("Starting OVN controller")
 
@@ -396,30 +398,20 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 		util.LogFatalAndExit(err, "failed to initialize node routes")
 	}
 
-	if err := c.initDenyAllSecurityGroup(); err != nil {
-		util.LogFatalAndExit(err, "failed to initialize 'deny_all' security group")
-	}
-
-	// remove resources in ovndb that not exist any more in kubernetes resources
-	if err := c.gc(); err != nil {
-		util.LogFatalAndExit(err, "failed to run gc")
-	}
-
-	c.registerSubnetMetrics()
 	if err := c.initSyncCrdSubnets(); err != nil {
 		util.LogFatalAndExit(err, "failed to sync crd subnets")
 	}
 	if err := c.initSyncCrdVlans(); err != nil {
 		util.LogFatalAndExit(err, "failed to sync crd vlans")
 	}
-	// The static route for node gw can be deleted when gc static route, so add it after gc process
-	dstIp := "0.0.0.0/0,::/0"
-	if err := c.ovnLegacyClient.AddStaticRoute("", dstIp, c.config.NodeSwitchGateway, c.config.ClusterRouter, util.NormalRouteType, false); err != nil {
+
+	if err := c.addNodeGwStaticRoute(); err != nil {
 		util.LogFatalAndExit(err, "failed to add static route for node gateway")
 	}
 
 	// start workers to do all the network operations
 	c.startWorkers(stopCh)
+	c.initResourceOnce()
 	<-stopCh
 	klog.Info("Shutting down workers")
 }
@@ -608,4 +600,18 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 	}
 
 	go wait.Until(c.syncVmLiveMigrationPort, 15*time.Second, stopCh)
+}
+
+func (c *Controller) initResourceOnce() {
+	c.registerSubnetMetrics()
+
+	if err := c.initDenyAllSecurityGroup(); err != nil {
+		util.LogFatalAndExit(err, "failed to initialize 'deny_all' security group")
+	}
+
+	// remove resources in ovndb that not exist any more in kubernetes resources
+	// process gc at last in case of affecting other init process
+	if err := c.gc(); err != nil {
+		util.LogFatalAndExit(err, "failed to run gc")
+	}
 }
