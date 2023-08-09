@@ -78,6 +78,29 @@ func (c *ovnClient) ListChassis() (*[]ovnsb.Chassis, error) {
 	return &css, nil
 }
 
+func (c *ovnClient) GetAllChassisByHost(nodeName string) (*[]ovnsb.Chassis, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+
+	chassisList := make([]ovnsb.Chassis, 0)
+	if err := c.ovsDbClient.WhereCache(func(chassis *ovnsb.Chassis) bool {
+		return chassis.Hostname == nodeName
+	}).List(ctx, &chassisList); err != nil {
+		return nil, fmt.Errorf("failed to list Chassis with host name=%s: %v", nodeName, err)
+	}
+	if len(chassisList) == 0 {
+		err := fmt.Errorf("failed to get Chassis with with host name=%s", nodeName)
+		klog.Error(err)
+		return nil, err
+	}
+	if len(chassisList) != 1 {
+		err := fmt.Errorf("found more than one Chassis with with host name=%s", nodeName)
+		klog.Error(err)
+		return nil, err
+	}
+	return &chassisList, nil
+}
+
 func (c *ovnClient) GetChassisByHost(nodeName string) (*ovnsb.Chassis, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
 	defer cancel()
@@ -124,8 +147,8 @@ func (c *ovnClient) GetChassisByTagNode(nodeName string) (*ovnsb.Chassis, error)
 	return &chassisList[0], nil
 }
 
-// DeleteChassisByNode delete all chassis by node name
-func (c *ovnClient) DeleteChassisByNode(nodeName string) error {
+// DeleteChassisByHost delete all chassis by node name
+func (c *ovnClient) DeleteChassisByHost(nodeName string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
 	defer cancel()
 
@@ -137,6 +160,7 @@ func (c *ovnClient) DeleteChassisByNode(nodeName string) error {
 	}
 
 	for _, chassis := range chassisList {
+		klog.Infof("delete chassis: %+v", chassis)
 		if err := c.DeleteChassis(chassis.Name); err != nil {
 			err := fmt.Errorf("failed to delete chassis %s, %v", chassis.Name, err)
 			klog.Error(err)
@@ -146,7 +170,7 @@ func (c *ovnClient) DeleteChassisByNode(nodeName string) error {
 	return nil
 }
 
-func (c *ovnClient) InitChassisNodeTag(chassisName string, nodeName string) error {
+func (c *ovnClient) UpdateChassisNodeTag(chassisName string, nodeName string) error {
 	chassis, err := c.GetChassis(chassisName, true)
 	if err != nil {
 		klog.Error(err)

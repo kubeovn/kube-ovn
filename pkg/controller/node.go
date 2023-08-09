@@ -361,11 +361,11 @@ func (c *Controller) handleAddNode(key string) error {
 		return err
 	}
 
-	if err := c.validateChassis(node); err != nil {
+	if err := c.UpdateChassisNodeTag(node); err != nil {
 		return err
 	}
 
-	if err := c.retryDelDupChassis(util.ChasRetryTime, util.ChasRetryIntev+2, c.checkChassisDupl, node); err != nil {
+	if err := c.retryDelDupChassis(util.ChasRetryTime, util.ChasRetryIntev+2, c.cleanDuplicatedChassis, node); err != nil {
 		return err
 	}
 
@@ -469,7 +469,7 @@ func (c *Controller) handleDeleteNode(key string) error {
 		klog.Errorf("failed to delete node switch port node-%s: %v", key, err)
 		return err
 	}
-	if err := c.ovnSbClient.DeleteChassisByNode(key); err != nil {
+	if err := c.ovnSbClient.DeleteChassisByHost(key); err != nil {
 		klog.Errorf("failed to delete chassis for node %s: %v", key, err)
 		return err
 	}
@@ -611,10 +611,10 @@ func (c *Controller) handleUpdateNode(key string) error {
 		return err
 	}
 
-	if err := c.validateChassis(node); err != nil {
+	if err := c.UpdateChassisNodeTag(node); err != nil {
 		return err
 	}
-	if err := c.retryDelDupChassis(util.ChasRetryTime, util.ChasRetryIntev+2, c.checkChassisDupl, node); err != nil {
+	if err := c.retryDelDupChassis(util.ChasRetryTime, util.ChasRetryIntev+2, c.cleanDuplicatedChassis, node); err != nil {
 		return err
 	}
 
@@ -859,26 +859,18 @@ func (c *Controller) checkGatewayReady() error {
 	return nil
 }
 
-func (c *Controller) checkChassisDupl(node *v1.Node) error {
-	// check multi chassis has the same node name
-	css, err := c.ovnSbClient.ListChassis()
+func (c *Controller) cleanDuplicatedChassis(node *v1.Node) error {
+	// if multi chassis has the same node name, delete all of them
+	chassises, err := c.ovnSbClient.GetAllChassisByHost(node.Name)
 	if err != nil {
 		klog.Errorf("failed to list chassis %v", err)
 		return err
 	}
-	var nodeChassisMap = make(map[string]string, len(*css))
-	for _, cs := range *css {
-		if nodeChassisMap[cs.Hostname] == "" {
-			nodeChassisMap[cs.Hostname] = cs.Name
-		} else {
-			klog.Warningf("node %s has multiple chassis %s and %s", cs.Hostname, nodeChassisMap[cs.Hostname], cs.Name)
-			if err := c.ovnSbClient.DeleteChassis(cs.Name); err != nil {
-				klog.Warningf("node %s chassis duplicated, delete all its chassises", node.Name)
-				if err := c.ovnSbClient.DeleteChassisByNode(node.Name); err != nil {
-					klog.Errorf("failed to delete chassis for node %s %v", node.Name, err)
-					return err
-				}
-			}
+	if len(*chassises) > 1 {
+		klog.Warningf("node %s has multiple chassis", node.Name)
+		if err := c.ovnSbClient.DeleteChassisByHost(node.Name); err != nil {
+			klog.Errorf("failed to delete chassis for node %s %v", node.Name, err)
+			return err
 		}
 	}
 	return nil
@@ -997,7 +989,7 @@ func (c *Controller) checkAndUpdateNodePortGroup() error {
 	return nil
 }
 
-func (c *Controller) validateChassis(node *v1.Node) error {
+func (c *Controller) UpdateChassisNodeTag(node *v1.Node) error {
 	annoChassisName := node.Annotations[util.ChassisAnnotation]
 	if annoChassisName == "" {
 		// kube-ovn-cni not ready to set chassis
@@ -1011,7 +1003,7 @@ func (c *Controller) validateChassis(node *v1.Node) error {
 	}
 	if chassis.ExternalIDs == nil || chassis.ExternalIDs[util.ExternalIDsNodeKey] != node.Name {
 		klog.Infof("init tag for node %s, chassis %s, host name %s", node.Name, annoChassisName, node.Name)
-		if err = c.ovnSbClient.InitChassisNodeTag(chassis.Name, node.Name); err != nil {
+		if err = c.ovnSbClient.UpdateChassisNodeTag(chassis.Name, node.Name); err != nil {
 			return fmt.Errorf("failed to init chassis tag, %v", err)
 		}
 		return nil

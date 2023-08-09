@@ -865,22 +865,9 @@ func (c *Controller) initNodeChassis() error {
 		chassisNodes[chassis.Name] = chassis.Hostname
 	}
 	for _, node := range nodes {
-		chassisName := node.Annotations[util.ChassisAnnotation]
-		if chassisName != "" {
-			if hostname, exist := chassisNodes[chassisName]; exist {
-				if hostname == node.Name {
-					continue
-				} else {
-					klog.Infof("init tag for node %s, chassis %s, host name %s", node.Name, chassisName, hostname)
-					err = c.ovnSbClient.InitChassisNodeTag(chassisName, node.Name)
-					if err != nil {
-						klog.Errorf("failed to set chassis nodeTag: %v", err)
-						return err
-					}
-				}
-			}
+		if err := c.UpdateChassisNodeTag(node); err != nil {
+			return err
 		}
 	}
-
 	return nil
 }
