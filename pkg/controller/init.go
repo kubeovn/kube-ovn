@@ -451,6 +451,7 @@ func (c *Controller) InitIPAM() error {
 			klog.Errorf("failed to init ipam from iptables eip cr %s: %v", eip.Name, err)
 		}
 	}
+
 	oeips, err := c.ovnEipsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list ovn eips: %v", err)
@@ -461,6 +462,7 @@ func (c *Controller) InitIPAM() error {
 			klog.Errorf("failed to init ipam from ovn eip cr %s: %v", oeip.Name, err)
 		}
 	}
+
 	nodes, err := c.nodesLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list nodes: %v", err)
