@@ -361,7 +361,7 @@ func (c *Controller) handleAddNode(key string) error {
 		return err
 	}
 
-	if err := c.UpdateChassisNodeTag(node); err != nil {
+	if err := c.UpdateChassisTag(node); err != nil {
 		return err
 	}
 
@@ -611,7 +611,7 @@ func (c *Controller) handleUpdateNode(key string) error {
 		return err
 	}
 
-	if err := c.UpdateChassisNodeTag(node); err != nil {
+	if err := c.UpdateChassisTag(node); err != nil {
 		return err
 	}
 	if err := c.retryDelDupChassis(util.ChasRetryTime, util.ChasRetryIntev+2, c.cleanDuplicatedChassis, node); err != nil {
@@ -989,7 +989,7 @@ func (c *Controller) checkAndUpdateNodePortGroup() error {
 	return nil
 }
 
-func (c *Controller) UpdateChassisNodeTag(node *v1.Node) error {
+func (c *Controller) UpdateChassisTag(node *v1.Node) error {
 	annoChassisName := node.Annotations[util.ChassisAnnotation]
 	if annoChassisName == "" {
 		// kube-ovn-cni not ready to set chassis
@@ -1003,7 +1003,7 @@ func (c *Controller) UpdateChassisNodeTag(node *v1.Node) error {
 	}
 	if chassis.ExternalIDs == nil || chassis.ExternalIDs[util.ExternalIDsNodeKey] != node.Name {
 		klog.Infof("init tag for node %s, chassis %s, host name %s", node.Name, annoChassisName, node.Name)
-		if err = c.ovnSbClient.UpdateChassisNodeTag(chassis.Name, node.Name); err != nil {
+		if err = c.ovnSbClient.UpdateChassisTag(chassis.Name, node.Name); err != nil {
 			return fmt.Errorf("failed to init chassis tag, %v", err)
 		}
 		return nil

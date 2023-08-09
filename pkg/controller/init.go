@@ -865,7 +865,7 @@ func (c *Controller) initNodeChassis() error {
 		chassisNodes[chassis.Name] = chassis.Hostname
 	}
 	for _, node := range nodes {
-		if err := c.UpdateChassisNodeTag(node); err != nil {
+		if err := c.UpdateChassisTag(node); err != nil {
 			return err
 		}
 	}
