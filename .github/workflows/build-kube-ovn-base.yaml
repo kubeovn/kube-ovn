@@ -112,7 +112,7 @@ jobs:
           docker manifest create kubeovn/kube-ovn-base:$TAG kubeovn/kube-ovn-base:$TAG-amd64 kubeovn/kube-ovn-base:$TAG-arm64
           docker manifest push kubeovn/kube-ovn-base:$TAG
 
-          if [ "${{ matrix.branch }}" = "master" -o "${{ matrix.branch }}" = "release-1.11" ]; then
+          if [ "${{ matrix.branch }}" = "master" -o "`printf '${{ matrix.branch }}\nrelease-1.11' | sort -Vr | head -n1`" = "${{ matrix.branch }}" ]; then
             docker push kubeovn/kube-ovn-base:$TAG-debug-amd64
             docker push kubeovn/kube-ovn-base:$TAG-debug-arm64
             docker manifest create kubeovn/kube-ovn-base:$TAG-debug kubeovn/kube-ovn-base:$TAG-debug-amd64 kubeovn/kube-ovn-base:$TAG-debug-arm64
