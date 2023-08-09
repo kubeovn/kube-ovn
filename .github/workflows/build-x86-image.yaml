@@ -1405,8 +1405,8 @@ jobs:
       - name: Cleanup
         run: sh dist/images/cleanup.sh
 
-  kube-ovn-security-e2e:
-    name: Kube-OVN Security E2E
+  kube-ovn-ha-e2e:
+    name: Kube-OVN HA E2E
     needs:
       - build-kube-ovn
       - build-e2e-binaries
@@ -1503,7 +1503,9 @@ jobs:
         env:
           E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
           E2E_IP_FAMILY: ${{ matrix.ip-family }}
-        run: make kube-ovn-security-e2e
+        run: |
+          make kube-ovn-security-e2e
+          make kube-ovn-ha-e2e
 
       - name: Cleanup
         run: sh dist/images/cleanup.sh
@@ -1525,7 +1527,7 @@ jobs:
       - no-ovn-lb-test
       - no-np-test
       - cilium-chaining-e2e
-      - kube-ovn-security-e2e
+      - kube-ovn-ha-e2e
     if: always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
     runs-on: ubuntu-22.04
     steps:
