@@ -9,7 +9,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        branch: [master, release-1.11, release-1.9]
+        branch:
+        - master
+        - release-1.12
+        - release-1.11
+        - release-1.9
     name: Build AMD64
     runs-on: ubuntu-22.04
     steps:
@@ -33,7 +37,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        branch: [master, release-1.11, release-1.9]
+        branch:
+        - master
+        - release-1.12
+        - release-1.11
+        - release-1.9
     name: Build ARM64
     runs-on: ubuntu-22.04
     steps:
