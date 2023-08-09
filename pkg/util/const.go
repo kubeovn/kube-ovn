@@ -3,8 +3,6 @@ package util
 const (
 	CniTypeName = "kube-ovn"
 
-	ExternalIDsNodeKey = "node"
-
 	ControllerName = "kube-ovn-controller"
 
 	AllocatedAnnotation  = "ovn.kubernetes.io/allocated"

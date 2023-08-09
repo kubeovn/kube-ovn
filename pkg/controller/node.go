@@ -995,14 +995,13 @@ func (c *Controller) UpdateChassisTag(node *v1.Node) error {
 		// kube-ovn-cni not ready to set chassis
 		return nil
 	}
-	klog.Infof("validate chassis for node %s, chassis %s", node.Name, annoChassisName)
 	chassis, err := c.ovnSbClient.GetChassis(annoChassisName, false)
 	if err != nil {
 		klog.Errorf("failed to get node %s chassis: %s, %v", node.Name, annoChassisName, err)
 		return err
 	}
-	if chassis.ExternalIDs == nil || chassis.ExternalIDs[util.ExternalIDsNodeKey] != node.Name {
-		klog.Infof("init tag for node %s, chassis %s, host name %s", node.Name, annoChassisName, node.Name)
+	if chassis.ExternalIDs == nil || chassis.ExternalIDs["vendor"] != util.CniTypeName {
+		klog.Infof("init tag %s for node %s chassis", util.CniTypeName, node.Name)
 		if err = c.ovnSbClient.UpdateChassisTag(chassis.Name, node.Name); err != nil {
 			return fmt.Errorf("failed to init chassis tag, %v", err)
 		}
