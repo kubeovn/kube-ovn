@@ -633,6 +633,8 @@ func NewController(config *Configuration) *Controller {
 // is closed, at which point it will shutdown the workqueue and wait for
 // workers to finish processing their current work items.
 func (c *Controller) Run(ctx context.Context) {
+	// The init process can only be placed here if the init process do really affect the normal process of controller, such as Nodes/Pods/Subnets...
+	// Otherwise, the init process should be placed after all workers have already started working
 	defer c.shutdown()
 	klog.Info("Starting OVN controller")
 
@@ -691,41 +693,15 @@ func (c *Controller) Run(ctx context.Context) {
 		util.LogFatalAndExit(err, "failed to initialize ipam")
 	}
 
-	if err := c.initNodeChassis(); err != nil {
-		util.LogFatalAndExit(err, "failed to initialize node chassis")
-	}
-
 	if err := c.initNodeRoutes(); err != nil {
 		util.LogFatalAndExit(err, "failed to initialize node routes")
 	}
 
-	if err := c.initDenyAllSecurityGroup(); err != nil {
-		util.LogFatalAndExit(err, "failed to initialize 'deny_all' security group")
-	}
-
-	// remove resources in ovndb that not exist any more in kubernetes resources
-	if err := c.gc(); err != nil {
-		util.LogFatalAndExit(err, "failed to run gc")
-	}
-
-	c.registerSubnetMetrics()
 	if err := c.initSyncCrdSubnets(); err != nil {
 		util.LogFatalAndExit(err, "failed to sync crd subnets")
 	}
 	if err := c.initSyncCrdVlans(); err != nil {
 		util.LogFatalAndExit(err, "failed to sync crd vlans")
-	}
-
-	if c.config.PodDefaultFipType == util.IptablesFip {
-		if err := c.initSyncCrdVpcNatGw(); err != nil {
-			util.LogFatalAndExit(err, "failed to sync crd vpc nat gateways")
-		}
-	}
-
-	if c.config.EnableLb {
-		if err := c.initVpcDnsConfig(); err != nil {
-			util.LogFatalAndExit(err, "failed to initialize vpc-dns")
-		}
 	}
 
 	if err := c.addNodeGwStaticRoute(); err != nil {
@@ -734,6 +710,8 @@ func (c *Controller) Run(ctx context.Context) {
 
 	// start workers to do all the network operations
 	c.startWorkers(ctx)
+
+	c.initResourceOnce()
 	<-ctx.Done()
 	klog.Info("Shutting down workers")
 }
@@ -1033,5 +1011,35 @@ func (c *Controller) startWorkers(ctx context.Context) {
 
 		go wait.Until(c.runAddPodAnnotatedIptablesFipWorker, time.Second, ctx.Done())
 		go wait.Until(c.runDelPodAnnotatedIptablesFipWorker, time.Second, ctx.Done())
+	}
+}
+
+func (c *Controller) initResourceOnce() {
+	c.registerSubnetMetrics()
+
+	if err := c.initNodeChassis(); err != nil {
+		util.LogFatalAndExit(err, "failed to initialize node chassis")
+	}
+
+	if err := c.initDenyAllSecurityGroup(); err != nil {
+		util.LogFatalAndExit(err, "failed to initialize 'deny_all' security group")
+	}
+
+	if c.config.PodDefaultFipType == util.IptablesFip {
+		if err := c.initSyncCrdVpcNatGw(); err != nil {
+			util.LogFatalAndExit(err, "failed to sync crd vpc nat gateways")
+		}
+	}
+
+	if c.config.EnableLb {
+		if err := c.initVpcDnsConfig(); err != nil {
+			util.LogFatalAndExit(err, "failed to initialize vpc-dns")
+		}
+	}
+
+	// remove resources in ovndb that not exist any more in kubernetes resources
+	// process gc at last in case of affecting other init process
+	if err := c.gc(); err != nil {
+		util.LogFatalAndExit(err, "failed to run gc")
 	}
 }

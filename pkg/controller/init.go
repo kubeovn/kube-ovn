@@ -422,6 +422,7 @@ func (c *Controller) InitIPAM() error {
 			}
 		}
 	}
+
 	nodes, err := c.nodesLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list nodes: %v", err)

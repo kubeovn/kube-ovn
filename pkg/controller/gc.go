@@ -26,7 +26,7 @@ func (c *Controller) gc() error {
 		c.gcChassis,
 		c.gcLogicalSwitch,
 		c.gcCustomLogicalRouter,
-		c.gcLogicalSwitchPort,
+		// The lsp gc is processed periodically by markAndCleanLSP, will not gc lsp when init
 		c.gcLoadBalancer,
 		c.gcPortGroup,
 		c.gcStaticRoute,
@@ -275,14 +275,6 @@ func (c *Controller) gcVip() error {
 		}
 	}
 	return nil
-}
-
-func (c *Controller) gcLogicalSwitchPort() error {
-	klog.Info("start to gc logical switch port")
-	if err := c.markAndCleanLSP(); err != nil {
-		return err
-	}
-	return c.markAndCleanLSP()
 }
 
 func (c *Controller) markAndCleanLSP() error {
