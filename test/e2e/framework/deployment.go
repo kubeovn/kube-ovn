@@ -54,6 +54,15 @@ func (c *DeploymentClient) GetPods(deploy *appsv1.Deployment) (*corev1.PodList, 
 	return deployment.GetPodsForDeployment(context.Background(), c.f.ClientSet, deploy)
 }
 
+func (c *DeploymentClient) GetAllPods(deploy *appsv1.Deployment) (*corev1.PodList, error) {
+	podSelector, err := metav1.LabelSelectorAsSelector(deploy.Spec.Selector)
+	if err != nil {
+		return nil, err
+	}
+	podListOptions := metav1.ListOptions{LabelSelector: podSelector.String()}
+	return c.f.ClientSet.CoreV1().Pods(deploy.Namespace).List(context.TODO(), podListOptions)
+}
+
 // Create creates a new deployment according to the framework specifications
 func (c *DeploymentClient) Create(deploy *appsv1.Deployment) *appsv1.Deployment {
 	d, err := c.DeploymentInterface.Create(context.TODO(), deploy, metav1.CreateOptions{})
@@ -149,6 +158,19 @@ func (c *DeploymentClient) Restart(deploy *appsv1.Deployment) *appsv1.Deployment
 func (c *DeploymentClient) RestartSync(deploy *appsv1.Deployment) *appsv1.Deployment {
 	_ = c.Restart(deploy)
 	return c.RolloutStatus(deploy.Name)
+}
+
+func (c *DeploymentClient) SetScale(deployment string, replicas int32) {
+	scale, err := c.GetScale(context.Background(), deployment, metav1.GetOptions{})
+	framework.ExpectNoError(err)
+	if scale.Spec.Replicas == replicas {
+		Logf("repliacs of deployment %s/%s has already been set to %d", c.namespace, deployment, replicas)
+		return
+	}
+
+	scale.Spec.Replicas = replicas
+	_, err = c.UpdateScale(context.Background(), deployment, scale, metav1.UpdateOptions{})
+	framework.ExpectNoError(err)
 }
 
 // Delete deletes a deployment if the deployment exists
