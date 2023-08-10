@@ -168,6 +168,8 @@ const (
 	VpcNatConfig           = "ovn-vpc-nat-config"
 
 	DefaultSecurityGroupName = "default-securitygroup"
+	OvnBackendStoreConfig    = "ovn-backend-store-config"
+	OvnAssignedKey           = "ovn-assigned"
 
 	DefaultVpc    = "ovn-cluster"
 	DefaultSubnet = "ovn-default"

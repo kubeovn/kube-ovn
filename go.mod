@@ -28,6 +28,7 @@ require (
 	github.com/osrg/gobgp/v3 v3.17.0
 	github.com/ovn-org/libovsdb v0.0.0-20230207174348-7f620a35d7e8
 	github.com/parnurzeal/gorequest v0.2.16
+	github.com/pkg/errors v0.9.1
 	github.com/prometheus-community/pro-bing v0.3.0
 	github.com/prometheus/client_golang v1.16.0
 	github.com/scylladb/go-set v1.0.2
@@ -186,7 +187,6 @@ require (
 	github.com/pborman/uuid v1.2.1 // indirect
 	github.com/pelletier/go-toml/v2 v2.0.7 // indirect
 	github.com/peterbourgon/diskv v2.0.1+incompatible // indirect
-	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/projectcalico/go-json v0.0.0-20161128004156-6219dc7339ba // indirect
 	github.com/projectcalico/go-yaml-wrapper v0.0.0-20191112210931-090425220c54 // indirect

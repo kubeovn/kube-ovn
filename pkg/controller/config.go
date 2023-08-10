@@ -96,6 +96,9 @@ type Configuration struct {
 	GCInterval      int
 	InspectInterval int
 
+	EnableCmRestore  bool
+	SyncIpamInterval int
+
 	BfdMinTx      int
 	BfdMinRx      int
 	BfdDetectMult int
@@ -168,6 +171,9 @@ func ParseFlags() (*Configuration, error) {
 
 		argGCInterval      = pflag.Int("gc-interval", 360, "The interval between GC processes, default 360 seconds")
 		argInspectInterval = pflag.Int("inspect-interval", 20, "The interval between inspect processes, default 20 seconds")
+
+		argEnableCmRestore  = pflag.Bool("enable-cm-restore", false, "restore ipam info from configmap when start kube-ovn-controller, default false")
+		argSyncIpamInterval = pflag.Int("sync-interval", 30, "The interval to sync ipam assigned info to configmap, default 30 seconds")
 
 		argBfdMinTx      = pflag.Int("bfd-min-tx", 100, "This is the minimum interval, in milliseconds, ovn would like to use when transmitting BFD Control packets")
 		argBfdMinRx      = pflag.Int("bfd-min-rx", 100, "This is the minimum interval, in milliseconds, between received BFD Control packets")
@@ -250,6 +256,8 @@ func ParseFlags() (*Configuration, error) {
 		BfdMinRx:                       *argBfdMinRx,
 		BfdDetectMult:                  *argBfdDetectMult,
 		NodeLocalDnsIP:                 *argNodeLocalDnsIP,
+		EnableCmRestore:                *argEnableCmRestore,
+		SyncIpamInterval:               *argSyncIpamInterval,
 	}
 
 	if config.NetworkType == util.NetworkTypeVlan && config.DefaultHostInterface == "" {

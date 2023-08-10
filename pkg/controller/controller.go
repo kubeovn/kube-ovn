@@ -1122,6 +1122,11 @@ func (c *Controller) startWorkers(ctx context.Context) {
 		go wait.Until(c.runAddPodAnnotatedIptablesFipWorker, time.Second, ctx.Done())
 		go wait.Until(c.runDelPodAnnotatedIptablesFipWorker, time.Second, ctx.Done())
 	}
+	go wait.Until(func() {
+		if err := c.updateAssignedPodIPAddressRecord(); err != nil {
+			klog.Errorf("update ipam info to configmap error: %v", err)
+		}
+	}, time.Duration(c.config.SyncIpamInterval)*time.Second, ctx.Done())
 }
 
 func (c *Controller) allSubnetReady(subnets ...string) (bool, error) {
