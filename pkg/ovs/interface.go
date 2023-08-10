@@ -51,6 +51,7 @@ type LogicalSwitch interface {
 	CreateLogicalSwitch(lsName, lrName, cidrBlock, gateway string, needRouter, randomAllocateGW bool) error
 	CreateBareLogicalSwitch(lsName string) error
 	LogicalSwitchUpdateLoadBalancers(lsName string, op ovsdb.Mutator, lbNames ...string) error
+	LogicalSwitchUpdateOtherConfig(lsName string, op ovsdb.Mutator, otherConfig map[string]string) error
 	DeleteLogicalSwitch(lsName string) error
 	ListLogicalSwitch(needVendorFilter bool, filter func(ls *ovnnb.LogicalSwitch) bool) ([]ovnnb.LogicalSwitch, error)
 	LogicalSwitchExists(lsName string) (bool, error)
