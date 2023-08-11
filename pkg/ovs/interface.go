@@ -160,13 +160,11 @@ type DHCPOptions interface {
 	ListDHCPOptions(needVendorFilter bool, externalIDs map[string]string) ([]ovnnb.DHCPOptions, error)
 }
 
-type OvnClient interface {
-	// OVN_Northbound start
+type NbClient interface {
 	ACL
 	AddressSet
 	BFD
 	DHCPOptions
-	// GatewayChassis
 	LoadBalancer
 	LogicalRouterPolicy
 	LogicalRouterPort
@@ -182,16 +180,17 @@ type OvnClient interface {
 	RemoveLogicalPatchPort(lspName, lrpName string) error
 	DeleteLogicalGatewaySwitch(lsName, lrName string) error
 	DeleteSecurityGroup(sgName string) error
-	// OVN_Northbound end
+	Common
+}
 
-	// OVN_Southbound start
+type SbClient interface {
 	Chassis
-	// OVN_Southbound end
+	Common
+}
 
-	// common
-	GetEntityInfo(entity interface{}) error
-	GetVersion() (string, error)
+type Common interface {
 	Transact(method string, operations []ovsdb.Operation) error
+	GetEntityInfo(entity interface{}) error
 }
 
 type Chassis interface {

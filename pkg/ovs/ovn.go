@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"time"
 
 	"github.com/ovn-org/libovsdb/client"
@@ -34,10 +35,14 @@ type LegacyClient struct {
 	Version                       string
 }
 
-type ovnClient struct {
-	ovnNbClient ovsDbClient
-	ovnSbClient ovsDbClient
+type ovnNbClient struct {
+	ovsDbClient
 	ClusterRouter  string
+	NodeSwitchCIDR string
+}
+
+type ovnSbClient struct {
+	ovsDbClient
 	NodeSwitchCIDR string
 }
 
@@ -73,14 +78,14 @@ func NewLegacyClient(timeout int, ovnSbAddr, clusterRouter, clusterTcpLoadBalanc
 	}
 }
 
-func NewOvnNbClient(ovnNbAddr string, ovnNbTimeout int, nodeSwitchCIDR string, insecureSkipVerify bool) (*ovnClient, error) {
-	nbClient, err := ovsclient.NewNbClient(ovnNbAddr, insecureSkipVerify)
+func NewOvnNbClient(ovnNbAddr string, ovnNbTimeout int, nodeSwitchCIDR string) (*ovnNbClient, error) {
+	nbClient, err := ovsclient.NewOvsDbClient(ovsclient.NBDB, ovnNbAddr)
 	if err != nil {
 		klog.Errorf("failed to create OVN NB client: %v", err)
 		return nil, err
 	}
 
-	c := &ovnClient{
+	c := &ovnNbClient{
 		ovsDbClient: ovsDbClient{
 			Client:  nbClient,
 			Timeout: time.Duration(ovnNbTimeout) * time.Second,
@@ -90,14 +95,14 @@ func NewOvnNbClient(ovnNbAddr string, ovnNbTimeout int, nodeSwitchCIDR string, i
 	return c, nil
 }
 
-func NewOvnSbClient(ovnSbAddr string, ovnSbTimeout int, nodeSwitchCIDR string, insecureSkipVerify bool) (*ovnClient, error) {
-	sbClient, err := ovsclient.NewSbClient(ovnSbAddr, insecureSkipVerify)
+func NewOvnSbClient(ovnSbAddr string, ovnSbTimeout int, nodeSwitchCIDR string) (*ovnSbClient, error) {
+	sbClient, err := ovsclient.NewOvsDbClient(ovsclient.NBDB, ovnSbAddr)
 	if err != nil {
 		klog.Errorf("failed to create OVN SB client: %v", err)
 		return nil, err
 	}
 
-	c := &ovnClient{
+	c := &ovnSbClient{
 		ovsDbClient: ovsDbClient{
 			Client:  sbClient,
 			Timeout: time.Duration(ovnSbTimeout) * time.Second,
@@ -126,7 +131,7 @@ func ConstructWaitForUniqueOperation(table string, column string, value interfac
 	}
 }
 
-func (c *ovnClient) Transact(method string, operations []ovsdb.Operation) error {
+func (c *ovsDbClient) Transact(method string, operations []ovsdb.Operation) error {
 	if len(operations) == 0 {
 		klog.V(6).Info("operations should not be empty")
 		return nil
@@ -136,7 +141,7 @@ func (c *ovnClient) Transact(method string, operations []ovsdb.Operation) error 
 	defer cancel()
 
 	start := time.Now()
-	results, err := c.ovsDbClient.Transact(ctx, operations...)
+	results, err := c.Client.Transact(ctx, operations...)
 	elapsed := float64((time.Since(start)) / time.Millisecond)
 
 	var dbType string
@@ -171,12 +176,22 @@ func (c *ovnClient) Transact(method string, operations []ovsdb.Operation) error 
 	return nil
 }
 
-func (c *ovnClient) GetVersion() (string, error) {
-	if c.Schema().Version != "" {
-		return c.Schema().Version, nil
-	} else {
-		err := fmt.Errorf("failed to get version")
-		klog.Error(err)
-		return "", err
+// GetEntityInfo get entity info by column which is the index,
+// reference to ovn-nb.ovsschema(ovsdb-client get-schema unix:/var/run/ovn/ovnnb_db.sock OVN_Northbound) for more information,
+// UUID is index
+func (c *ovsDbClient) GetEntityInfo(entity interface{}) error {
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+
+	entityPtr := reflect.ValueOf(entity)
+	if entityPtr.Kind() != reflect.Pointer {
+		return fmt.Errorf("entity must be pointer")
 	}
+
+	err := c.Get(ctx, entity)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

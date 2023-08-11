@@ -11,7 +11,7 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-func (c *ovnClient) UpdateChassis(chassis *ovnsb.Chassis, fields ...interface{}) error {
+func (c *ovnSbClient) UpdateChassis(chassis *ovnsb.Chassis, fields ...interface{}) error {
 	op, err := c.ovsDbClient.Where(chassis).Update(chassis, fields...)
 	if err != nil {
 		err := fmt.Errorf("failed to generate update operations for chassis: %v", err)
@@ -27,7 +27,7 @@ func (c *ovnClient) UpdateChassis(chassis *ovnsb.Chassis, fields ...interface{})
 }
 
 // DeleteChassis delete one chassis by name
-func (c *ovnClient) DeleteChassis(chassisName string) error {
+func (c *ovnSbClient) DeleteChassis(chassisName string) error {
 	chassis, err := c.GetChassis(chassisName, true)
 	if err != nil {
 		klog.Error(err)
@@ -47,7 +47,7 @@ func (c *ovnClient) DeleteChassis(chassisName string) error {
 }
 
 // GetChassis return south bound db chassis from cache
-func (c *ovnClient) GetChassis(chassisName string, ignoreNotFound bool) (*ovnsb.Chassis, error) {
+func (c *ovnSbClient) GetChassis(chassisName string, ignoreNotFound bool) (*ovnsb.Chassis, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
 	defer cancel()
 	if chassisName == "" {
@@ -67,7 +67,7 @@ func (c *ovnClient) GetChassis(chassisName string, ignoreNotFound bool) (*ovnsb.
 }
 
 // ListChassis return south bound db chassis from cache
-func (c *ovnClient) ListChassis() (*[]ovnsb.Chassis, error) {
+func (c *ovnSbClient) ListChassis() (*[]ovnsb.Chassis, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
 	defer cancel()
 
@@ -78,7 +78,7 @@ func (c *ovnClient) ListChassis() (*[]ovnsb.Chassis, error) {
 	return &css, nil
 }
 
-func (c *ovnClient) GetAllChassisByHost(nodeName string) (*[]ovnsb.Chassis, error) {
+func (c *ovnSbClient) GetAllChassisByHost(nodeName string) (*[]ovnsb.Chassis, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
 	defer cancel()
 
@@ -101,7 +101,7 @@ func (c *ovnClient) GetAllChassisByHost(nodeName string) (*[]ovnsb.Chassis, erro
 	return &chassisList, nil
 }
 
-func (c *ovnClient) GetChassisByHost(nodeName string) (*ovnsb.Chassis, error) {
+func (c *ovnSbClient) GetChassisByHost(nodeName string) (*ovnsb.Chassis, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
 	defer cancel()
 
@@ -125,7 +125,7 @@ func (c *ovnClient) GetChassisByHost(nodeName string) (*ovnsb.Chassis, error) {
 }
 
 // DeleteChassisByHost delete all chassis by node name
-func (c *ovnClient) DeleteChassisByHost(nodeName string) error {
+func (c *ovnSbClient) DeleteChassisByHost(nodeName string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
 	defer cancel()
 
@@ -147,7 +147,7 @@ func (c *ovnClient) DeleteChassisByHost(nodeName string) error {
 	return nil
 }
 
-func (c *ovnClient) UpdateChassisTag(chassisName string, nodeName string) error {
+func (c *ovnSbClient) UpdateChassisTag(chassisName string, nodeName string) error {
 	chassis, err := c.GetChassis(chassisName, true)
 	if err != nil {
 		klog.Error(err)
@@ -176,7 +176,7 @@ func (c *ovnClient) UpdateChassisTag(chassisName string, nodeName string) error 
 }
 
 // GetKubeOvnChassisses return all chassis which vendor is kube-ovn
-func (c *ovnClient) GetKubeOvnChassisses() (*[]ovnsb.Chassis, error) {
+func (c *ovnSbClient) GetKubeOvnChassisses() (*[]ovnsb.Chassis, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
 	defer cancel()
 

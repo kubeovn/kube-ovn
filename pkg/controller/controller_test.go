@@ -26,7 +26,7 @@ type fakeControllerInformers struct {
 type fakeController struct {
 	fakeController *Controller
 	fakeinformers  *fakeControllerInformers
-	mockOvnClient  *mockovs.MockOvnClient
+	mockOvnClient  *mockovs.MockNbClient
 }
 
 func alwaysReady() bool { return true }
@@ -50,7 +50,7 @@ func newFakeController(t *testing.T) *fakeController {
 	}
 
 	/* ovn fake client */
-	mockOvnClient := mockovs.NewMockOvnClient(gomock.NewController(t))
+	mockOvnClient := mockovs.NewMockNbClient(gomock.NewController(t))
 
 	ctrl := &Controller{
 		servicesLister:        serviceInformer.Lister(),

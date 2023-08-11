@@ -10,7 +10,7 @@ import (
 	"k8s.io/klog/v2"
 )
 
-func (c *ovnClient) CreateNbGlobal(nbGlobal *ovnnb.NBGlobal) error {
+func (c *ovnNbClient) CreateNbGlobal(nbGlobal *ovnnb.NBGlobal) error {
 	op, err := c.ovsDbClient.Create(nbGlobal)
 	if err != nil {
 		return fmt.Errorf("generate operations for creating nb global: %v", err)
@@ -19,7 +19,7 @@ func (c *ovnClient) CreateNbGlobal(nbGlobal *ovnnb.NBGlobal) error {
 	return c.Transact("nb-global-create", op)
 }
 
-func (c *ovnClient) DeleteNbGlobal() error {
+func (c *ovnNbClient) DeleteNbGlobal() error {
 	nbGlobal, err := c.GetNbGlobal()
 	if err != nil {
 		klog.Error(err)
@@ -35,7 +35,7 @@ func (c *ovnClient) DeleteNbGlobal() error {
 	return c.Transact("nb-global-delete", op)
 }
 
-func (c *ovnClient) GetNbGlobal() (*ovnnb.NBGlobal, error) {
+func (c *ovnNbClient) GetNbGlobal() (*ovnnb.NBGlobal, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
 	defer cancel()
 
@@ -58,7 +58,7 @@ func (c *ovnClient) GetNbGlobal() (*ovnnb.NBGlobal, error) {
 	return &nbGlobalList[0], nil
 }
 
-func (c *ovnClient) UpdateNbGlobal(nbGlobal *ovnnb.NBGlobal, fields ...interface{}) error {
+func (c *ovnNbClient) UpdateNbGlobal(nbGlobal *ovnnb.NBGlobal, fields ...interface{}) error {
 	op, err := c.Where(nbGlobal).Update(nbGlobal, fields...)
 	if err != nil {
 		return fmt.Errorf("generate operations for updating nb global: %v", err)
@@ -71,7 +71,7 @@ func (c *ovnClient) UpdateNbGlobal(nbGlobal *ovnnb.NBGlobal, fields ...interface
 	return nil
 }
 
-func (c *ovnClient) SetAzName(azName string) error {
+func (c *ovnNbClient) SetAzName(azName string) error {
 	nbGlobal, err := c.GetNbGlobal()
 	if err != nil {
 		return fmt.Errorf("get nb global: %v", err)
@@ -88,7 +88,7 @@ func (c *ovnClient) SetAzName(azName string) error {
 	return nil
 }
 
-func (c *ovnClient) SetNbGlobalOptions(key string, value interface{}) error {
+func (c *ovnNbClient) SetNbGlobalOptions(key string, value interface{}) error {
 	nbGlobal, err := c.GetNbGlobal()
 	if err != nil {
 		return fmt.Errorf("failed to get nb global: %v", err)
@@ -111,11 +111,11 @@ func (c *ovnClient) SetNbGlobalOptions(key string, value interface{}) error {
 	return nil
 }
 
-func (c *ovnClient) SetUseCtInvMatch() error {
+func (c *ovnNbClient) SetUseCtInvMatch() error {
 	return c.SetNbGlobalOptions("use_ct_inv_match", false)
 }
 
-func (c *ovnClient) SetICAutoRoute(enable bool, blackList []string) error {
+func (c *ovnNbClient) SetICAutoRoute(enable bool, blackList []string) error {
 	nbGlobal, err := c.GetNbGlobal()
 	if err != nil {
 		return fmt.Errorf("get nb global: %v", err)
@@ -146,10 +146,10 @@ func (c *ovnClient) SetICAutoRoute(enable bool, blackList []string) error {
 	return nil
 }
 
-func (c *ovnClient) SetLBCIDR(serviceCIDR string) error {
+func (c *ovnNbClient) SetLBCIDR(serviceCIDR string) error {
 	return c.SetNbGlobalOptions("svc_ipv4_cidr", serviceCIDR)
 }
 
-func (c *ovnClient) SetLsDnatModDlDst(enabled bool) error {
+func (c *ovnNbClient) SetLsDnatModDlDst(enabled bool) error {
 	return c.SetNbGlobalOptions("ls_dnat_mod_dl_dst", enabled)
 }

@@ -42,7 +42,6 @@ type Configuration struct {
 	DefaultCIDR               string
 	DefaultGateway            string
 	DefaultExcludeIps         string
-	InsecureSkipVerify        bool
 	DefaultGatewayCheck       bool
 	DefaultLogicalGateway     bool
 	DefaultU2OInterconnection bool
@@ -118,7 +117,6 @@ func ParseFlags() (*Configuration, error) {
 		argDefaultLogicalSwitch  = pflag.String("default-ls", util.DefaultSubnet, "The default logical switch name")
 		argDefaultCIDR           = pflag.String("default-cidr", "10.16.0.0/16", "Default CIDR for namespace with no logical switch annotation")
 		argDefaultGateway        = pflag.String("default-gateway", "", "Default gateway for default-cidr (default the first ip in default-cidr)")
-		argInsecureSkipVerify    = pflag.Bool("insecure-skip-verify", true, "Use insecure skip verify in ovs client tls config")
 		argDefaultGatewayCheck   = pflag.Bool("default-gateway-check", true, "Check switch for the default subnet's gateway")
 		argDefaultLogicalGateway = pflag.Bool("default-logical-gateway", false, "Create a logical gateway for the default subnet instead of using underlay gateway. Take effect only when the default subnet is in underlay mode. (default false)")
 		argDefaultExcludeIps     = pflag.String("default-exclude-ips", "", "Exclude ips in default switch (default gateway address)")
@@ -206,7 +204,6 @@ func ParseFlags() (*Configuration, error) {
 		DefaultGateway:                 *argDefaultGateway,
 		DefaultGatewayCheck:            *argDefaultGatewayCheck,
 		DefaultLogicalGateway:          *argDefaultLogicalGateway,
-		InsecureSkipVerify:             *argInsecureSkipVerify,
 		DefaultU2OInterconnection:      *argDefaultU2OInterconnection,
 		DefaultExcludeIps:              *argDefaultExcludeIps,
 		ClusterRouter:                  *argClusterRouter,
