@@ -94,7 +94,7 @@ func NewOvnNbClient(ovnNbAddr string, ovnNbTimeout int, nodeSwitchCIDR string) (
 }
 
 func NewOvnSbClient(ovnSbAddr string, ovnSbTimeout int, nodeSwitchCIDR string) (*ovnSbClient, error) {
-	sbClient, err := ovsclient.NewOvsDbClient(ovsclient.NBDB, ovnSbAddr)
+	sbClient, err := ovsclient.NewOvsDbClient(ovsclient.SBDB, ovnSbAddr)
 	if err != nil {
 		klog.Errorf("failed to create OVN SB client: %v", err)
 		return nil, err

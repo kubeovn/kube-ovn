@@ -52,6 +52,7 @@ func NewOvsDbClient(db, addr string) (client.Client, error) {
 		client.WithLeaderOnly(true),
 		client.WithLogger(&logger),
 	}
+	klog.Infof("connecting to OVN %s server %s", db, addr)
 	var ssl bool
 	endpoints := strings.Split(addr, ",")
 	for _, ep := range endpoints {
