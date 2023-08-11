@@ -61,6 +61,8 @@ func NewOvsDbClient(db, addr string) (client.Client, error) {
 		}
 		options = append(options, client.WithEndpoint(ep))
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(len(endpoints)+1)*timeout)
+	defer cancel()
 	if ssl {
 		cert, err := tls.LoadX509KeyPair("/var/run/tls/cert", "/var/run/tls/key")
 		if err != nil {
@@ -81,6 +83,7 @@ func NewOvsDbClient(db, addr string) (client.Client, error) {
 		}
 		options = append(options, client.WithTLSConfig(tlsConfig))
 	}
+
 	switch db {
 	case NBDB:
 		dbModel, err := ovnnb.FullDatabaseModel()
@@ -93,8 +96,6 @@ func NewOvsDbClient(db, addr string) (client.Client, error) {
 			klog.Error(err)
 			return nil, err
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(len(endpoints)+1)*timeout)
-		defer cancel()
 		if err = c.Connect(ctx); err != nil {
 			klog.Errorf("failed to connect to OVN NB server %s: %v", addr, err)
 			return nil, err
@@ -133,8 +134,6 @@ func NewOvsDbClient(db, addr string) (client.Client, error) {
 			klog.Error(err)
 			return nil, err
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(len(endpoints)+1)*timeout)
-		defer cancel()
 		if err = c.Connect(ctx); err != nil {
 			klog.Errorf("failed to connect to OVN NB server %s: %v", addr, err)
 			return nil, err
