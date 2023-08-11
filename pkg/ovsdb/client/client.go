@@ -122,7 +122,7 @@ func NewOvsDbClient(db, addr string) (client.Client, error) {
 		}
 		return c, nil
 	case SBDB:
-		dbModel, err := ovnnb.FullDatabaseModel()
+		dbModel, err := ovnsb.FullDatabaseModel()
 		if err != nil {
 			klog.Error(err)
 			return nil, err
