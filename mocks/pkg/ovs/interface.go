@@ -82,20 +82,6 @@ func (mr *MockNBGlobalMockRecorder) SetICAutoRoute(enable, blackList interface{}
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetICAutoRoute", reflect.TypeOf((*MockNBGlobal)(nil).SetICAutoRoute), enable, blackList)
 }
 
-// SetLBCIDR mocks base method.
-func (m *MockNBGlobal) SetLBCIDR(serviceCIDR string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetLBCIDR", serviceCIDR)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// SetLBCIDR indicates an expected call of SetLBCIDR.
-func (mr *MockNBGlobalMockRecorder) SetLBCIDR(serviceCIDR interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLBCIDR", reflect.TypeOf((*MockNBGlobal)(nil).SetLBCIDR), serviceCIDR)
-}
-
 // SetLsDnatModDlDst mocks base method.
 func (m *MockNBGlobal) SetLsDnatModDlDst(enabled bool) error {
 	m.ctrl.T.Helper()
@@ -3322,20 +3308,6 @@ func (m *MockOvnClient) SetICAutoRoute(enable bool, blackList []string) error {
 func (mr *MockOvnClientMockRecorder) SetICAutoRoute(enable, blackList interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetICAutoRoute", reflect.TypeOf((*MockOvnClient)(nil).SetICAutoRoute), enable, blackList)
-}
-
-// SetLBCIDR mocks base method.
-func (m *MockOvnClient) SetLBCIDR(serviceCIDR string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetLBCIDR", serviceCIDR)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// SetLBCIDR indicates an expected call of SetLBCIDR.
-func (mr *MockOvnClientMockRecorder) SetLBCIDR(serviceCIDR interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLBCIDR", reflect.TypeOf((*MockOvnClient)(nil).SetLBCIDR), serviceCIDR)
 }
 
 // SetLoadBalancerAffinityTimeout mocks base method.
