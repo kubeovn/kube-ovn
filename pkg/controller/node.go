@@ -869,7 +869,7 @@ func (c *Controller) cleanDuplicatedChassis(node *v1.Node) error {
 	if len(*chassises) > 1 {
 		klog.Warningf("node %s has multiple chassis", node.Name)
 		if err := c.ovnSbClient.DeleteChassisByHost(node.Name); err != nil {
-			klog.Errorf("failed to delete chassis for node %s %v", node.Name, err)
+			klog.Errorf("failed to delete chassis for node %s: %v", node.Name, err)
 			return err
 		}
 	}

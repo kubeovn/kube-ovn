@@ -684,7 +684,7 @@ func (c *Controller) gcChassis() error {
 				continue
 			} else {
 				// maybe node name changed, delete chassis
-				klog.Infof("gc chassis %s", chassisName)
+				klog.Infof("gc node %s chassis %s", node.Name, chassisName)
 				if err := c.ovnSbClient.DeleteChassis(chassisName); err != nil {
 					klog.Errorf("failed to delete node %s chassis %s %v", node.Name, chassisName, err)
 					return err
