@@ -2071,6 +2071,8 @@ spec:
                   type: boolean
                 enableEcmp:
                   type: boolean
+                enableMulticastSnoop:
+                  type: boolean
   scope: Cluster
   names:
     plural: subnets

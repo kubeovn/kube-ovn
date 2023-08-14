@@ -577,6 +577,20 @@ func (mr *MockLogicalSwitchMockRecorder) LogicalSwitchUpdateLoadBalancers(lsName
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LogicalSwitchUpdateLoadBalancers", reflect.TypeOf((*MockLogicalSwitch)(nil).LogicalSwitchUpdateLoadBalancers), varargs...)
 }
 
+// LogicalSwitchUpdateOtherConfig mocks base method.
+func (m *MockLogicalSwitch) LogicalSwitchUpdateOtherConfig(lsName string, op ovsdb.Mutator, otherConfig map[string]string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "LogicalSwitchUpdateOtherConfig", lsName, op, otherConfig)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// LogicalSwitchUpdateOtherConfig indicates an expected call of LogicalSwitchUpdateOtherConfig.
+func (mr *MockLogicalSwitchMockRecorder) LogicalSwitchUpdateOtherConfig(lsName, op, otherConfig interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LogicalSwitchUpdateOtherConfig", reflect.TypeOf((*MockLogicalSwitch)(nil).LogicalSwitchUpdateOtherConfig), lsName, op, otherConfig)
+}
+
 // MockLogicalSwitchPort is a mock of LogicalSwitchPort interface.
 type MockLogicalSwitchPort struct {
 	ctrl     *gomock.Controller
@@ -3170,6 +3184,20 @@ func (mr *MockOvnClientMockRecorder) LogicalSwitchUpdateLoadBalancers(lsName, op
 	mr.mock.ctrl.T.Helper()
 	varargs := append([]interface{}{lsName, op}, lbNames...)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LogicalSwitchUpdateLoadBalancers", reflect.TypeOf((*MockOvnClient)(nil).LogicalSwitchUpdateLoadBalancers), varargs...)
+}
+
+// LogicalSwitchUpdateOtherConfig mocks base method.
+func (m *MockOvnClient) LogicalSwitchUpdateOtherConfig(lsName string, op ovsdb.Mutator, otherConfig map[string]string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "LogicalSwitchUpdateOtherConfig", lsName, op, otherConfig)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// LogicalSwitchUpdateOtherConfig indicates an expected call of LogicalSwitchUpdateOtherConfig.
+func (mr *MockOvnClientMockRecorder) LogicalSwitchUpdateOtherConfig(lsName, op, otherConfig interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LogicalSwitchUpdateOtherConfig", reflect.TypeOf((*MockOvnClient)(nil).LogicalSwitchUpdateOtherConfig), lsName, op, otherConfig)
 }
 
 // NatExists mocks base method.
