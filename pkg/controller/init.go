@@ -308,32 +308,6 @@ func (c *Controller) InitIPAM() error {
 		}
 	}
 
-	lsList, err := c.ovnClient.ListLogicalSwitch(false, nil)
-	if err != nil {
-		klog.Errorf("failed to list LS: %v", err)
-		return err
-	}
-	lsPortsMap := make(map[string]*strset.Set, len(lsList))
-	for _, ls := range lsList {
-		lsPortsMap[ls.Name] = strset.New(ls.Ports...)
-	}
-
-	lspList, err := c.ovnClient.ListLogicalSwitchPortsWithLegacyExternalIDs()
-	if err != nil {
-		klog.Errorf("failed to list LSP: %v", err)
-		return err
-	}
-	lspWithoutVendor := strset.NewWithSize(len(lspList))
-	lspWithoutLS := make(map[string]string, len(lspList))
-	for _, lsp := range lspList {
-		if len(lsp.ExternalIDs) == 0 || lsp.ExternalIDs["vendor"] == "" {
-			lspWithoutVendor.Add(lsp.Name)
-		}
-		if len(lsp.ExternalIDs) == 0 || lsp.ExternalIDs[logicalSwitchKey] == "" {
-			lspWithoutLS[lsp.Name] = lsp.UUID
-		}
-	}
-
 	pods, err := c.podsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list pods: %v", err)
@@ -400,25 +374,8 @@ func (c *Controller) InitIPAM() error {
 						klog.Errorf("failed to create/update ips CR %s.%s with ip address %s: %v", podName, pod.Namespace, ip, err)
 					}
 				}
-				if podNet.ProviderName == util.OvnProvider || strings.HasSuffix(podNet.ProviderName, util.OvnProvider) {
-					externalIDs := make(map[string]string, 3)
-					if lspWithoutVendor.Has(portName) {
-						externalIDs["vendor"] = util.CniTypeName
-						externalIDs["pod"] = fmt.Sprintf("%s/%s", pod.Namespace, pod.Name)
-					}
-					if uuid := lspWithoutLS[portName]; uuid != "" {
-						for ls, ports := range lsPortsMap {
-							if ports.Has(uuid) {
-								externalIDs[logicalSwitchKey] = ls
-								break
-							}
-						}
-					}
 
-					if err = c.initAppendLspExternalIds(portName, externalIDs); err != nil {
-						klog.Errorf("failed to append external-ids for logical switch port %s: %v", portName, err)
-					}
-				}
+				// Append ExternalIds is added in v1.7, used for upgrading from v1.6.3. It should be deleted now since v1.7 is not used anymore.
 			}
 		}
 	}
@@ -480,23 +437,6 @@ func (c *Controller) InitIPAM() error {
 			}
 			if v4IP != "" && v6IP != "" {
 				node.Annotations[util.IpAddressAnnotation] = util.GetStringIP(v4IP, v6IP)
-			}
-
-			externalIDs := make(map[string]string, 2)
-			if lspWithoutVendor.Has(portName) {
-				externalIDs["vendor"] = util.CniTypeName
-			}
-			if uuid := lspWithoutLS[portName]; uuid != "" {
-				for ls, ports := range lsPortsMap {
-					if ports.Has(uuid) {
-						externalIDs[logicalSwitchKey] = ls
-						break
-					}
-				}
-			}
-
-			if err = c.initAppendLspExternalIds(portName, externalIDs); err != nil {
-				klog.Errorf("failed to append external-ids for logical switch port %s: %v", portName, err)
 			}
 		}
 	}
@@ -840,14 +780,6 @@ func (c *Controller) initNodeRoutes() error {
 		}
 	}
 
-	return nil
-}
-
-func (c *Controller) initAppendLspExternalIds(portName string, externalIDs map[string]string) error {
-	if err := c.ovnClient.SetLogicalSwitchPortExternalIds(portName, externalIDs); err != nil {
-		klog.Errorf("set lsp external_ids for logical switch port %s: %v", portName, err)
-		return err
-	}
 	return nil
 }
 
