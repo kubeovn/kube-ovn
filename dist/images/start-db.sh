@@ -4,6 +4,19 @@ set -eo pipefail
 DEBUG_WRAPPER=${DEBUG_WRAPPER:-}
 DEBUG_OPT="--ovn-northd-wrapper=$DEBUG_WRAPPER --ovsdb-nb-wrapper=$DEBUG_WRAPPER --ovsdb-sb-wrapper=$DEBUG_WRAPPER"
 
+PROBE_INTERVAL=${PROBE_INTERVAL:-180000}
+OVN_LEADER_PROBE_INTERVAL=${OVN_LEADER_PROBE_INTERVAL:-5}
+# the first args is PROBE_INTERVAL
+if [ -n "$1" ]; then
+    PROBE_INTERVAL=$1
+    echo "PROBE_INTERVAL is set to $PROBE_INTERVAL"
+fi
+# the second args is OVN_LEADER_PROBE_INTERVAL
+if [ -n "$2" ]; then
+    OVN_LEADER_PROBE_INTERVAL=$2
+    echo "OVN_LEADER_PROBE_INTERVAL is set to $OVN_LEADER_PROBE_INTERVAL"
+fi
+
 # https://bugs.launchpad.net/neutron/+bug/1776778
 if grep -q "3.10.0-862" /proc/version
 then
@@ -224,11 +237,12 @@ if [[ "$ENABLE_SSL" == "false" ]]; then
     if [[ -z "$NODE_IPS" ]]; then
         /usr/share/ovn/scripts/ovn-ctl restart_northd
         ovn-nbctl --no-leader-only set-connection ptcp:"${NB_PORT}":["${DB_ADDR}"]
-        ovn-nbctl --no-leader-only set Connection . inactivity_probe=180000
+        ovn-nbctl --no-leader-only set Connection . inactivity_probe=${PROBE_INTERVAL}
+        ovn-nbctl --no-leader-only set NB_Global . options:northd_probe_interval=${PROBE_INTERVAL}
         ovn-nbctl --no-leader-only set NB_Global . options:use_logical_dp_groups=true
 
         ovn-sbctl --no-leader-only set-connection ptcp:"${SB_PORT}":["${DB_ADDR}"]
-        ovn-sbctl --no-leader-only set Connection . inactivity_probe=180000
+        ovn-sbctl --no-leader-only set Connection . inactivity_probe=${PROBE_INTERVAL}
     else
         if [[ ! "$NODE_IPS" =~ "$DB_CLUSTER_ADDR" ]]; then
             echo "ERROR! host ip $DB_CLUSTER_ADDR not in env NODE_IPS $NODE_IPS"
@@ -272,7 +286,9 @@ if [[ "$ENABLE_SSL" == "false" ]]; then
                 /etc/ovn/ovnsb_local_config.db
             /usr/share/ovn/scripts/ovn-ctl $ovn_ctl_args \
                 --ovn-manage-ovsdb=no start_northd
-            ovn-nbctl --no-leader-only set NB_Global . options:northd_probe_interval=180000
+            ovn-nbctl --no-leader-only set NB_Global . options:inactivity_probe=${PROBE_INTERVAL}
+            ovn-sbctl --no-leader-only set SB_Global . options:inactivity_probe=${PROBE_INTERVAL}
+            ovn-nbctl --no-leader-only set NB_Global . options:northd_probe_interval=${PROBE_INTERVAL}
             ovn-nbctl --no-leader-only set NB_Global . options:use_logical_dp_groups=true
         else
             # known leader always first
@@ -352,11 +368,11 @@ else
             --ovn-northd-ssl-ca-cert=/var/run/tls/cacert \
             restart_northd
         ovn-nbctl --no-leader-only -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert set-connection pssl:"${NB_PORT}":["${DB_ADDR}"]
-        ovn-nbctl --no-leader-only -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert set Connection . inactivity_probe=180000
+        ovn-nbctl --no-leader-only -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert set Connection . inactivity_probe=${PROBE_INTERVAL}
         ovn-nbctl --no-leader-only -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert set NB_Global . options:use_logical_dp_groups=true
 
         ovn-sbctl --no-leader-only -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert set-connection pssl:"${SB_PORT}":["${DB_ADDR}"]
-        ovn-sbctl --no-leader-only -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert set Connection . inactivity_probe=180000
+        ovn-sbctl --no-leader-only -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert set Connection . inactivity_probe=${PROBE_INTERVAL}
     else
         if [[ ! "$NODE_IPS" =~ "$DB_CLUSTER_ADDR" ]]; then
             echo "ERROR! host ip $DB_CLUSTER_ADDR not in env NODE_IPS $NODE_IPS"
@@ -408,7 +424,7 @@ else
                 /etc/ovn/ovnsb_local_config.db
             /usr/share/ovn/scripts/ovn-ctl $ovn_ctl_args \
                 --ovn-manage-ovsdb=no start_northd
-            ovn-nbctl --no-leader-only -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert set NB_Global . options:northd_probe_interval=180000
+            ovn-nbctl --no-leader-only -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert set NB_Global . options:northd_probe_interval=${PROBE_INTERVAL}
             ovn-nbctl --no-leader-only -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert set NB_Global . options:use_logical_dp_groups=true
         else
             # get leader if cluster exists
@@ -486,5 +502,4 @@ ovs-appctl -t /var/run/ovn/ovnnb_db.ctl ovsdb-server/memory-trim-on-compaction o
 ovs-appctl -t /var/run/ovn/ovnsb_db.ctl ovsdb-server/memory-trim-on-compaction on
 
 chmod 600 /etc/ovn/*
-/kube-ovn/kube-ovn-leader-checker
-
+/kube-ovn/kube-ovn-leader-checker --probeInterval=${OVN_LEADER_PROBE_INTERVAL}

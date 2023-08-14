@@ -44,7 +44,10 @@ spec:
         - name: ovn-central
           image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          command: ["/kube-ovn/start-db.sh"]
+          command: 
+          - /kube-ovn/start-db.sh
+          - 180000
+          - 5
           securityContext:
             capabilities:
               add: ["SYS_NICE"]

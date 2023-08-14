@@ -3206,7 +3206,10 @@ spec:
         - name: ovn-central
           image: "$REGISTRY/kube-ovn:$VERSION"
           imagePullPolicy: $IMAGE_PULL_POLICY
-          command: ["/kube-ovn/start-db.sh"]
+          command: 
+          - /kube-ovn/start-db.sh
+          - 180000
+          - 5
           securityContext:
             capabilities:
               add: ["SYS_NICE"]
@@ -3518,7 +3521,10 @@ spec:
         - name: openvswitch
           image: "$REGISTRY/kube-ovn:$VERSION"
           imagePullPolicy: $IMAGE_PULL_POLICY
-          command: ["/kube-ovn/start-ovs.sh"]
+          command: 
+          - /kube-ovn/start-ovs.sh
+          - 10000 
+          - 180
           securityContext:
             runAsUser: 0
             privileged: true
