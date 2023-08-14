@@ -15,7 +15,6 @@ type NBGlobal interface {
 	SetAzName(azName string) error
 	SetUseCtInvMatch() error
 	SetICAutoRoute(enable bool, blackList []string) error
-	SetLBCIDR(serviceCIDR string) error
 	SetLsDnatModDlDst(enabled bool) error
 	GetNbGlobal() (*ovnnb.NBGlobal, error)
 }
