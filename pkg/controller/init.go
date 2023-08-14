@@ -383,6 +383,7 @@ func (c *Controller) InitIPAM() error {
 						klog.Errorf("failed to append external-ids for logical switch port %s: %v", portName, err)
 					}
 				}
+				// Append ExternalIds is added in v1.7, used for upgrading from v1.6.3. It should be deleted now since v1.7 is not used anymore.
 			}
 		}
 	}
