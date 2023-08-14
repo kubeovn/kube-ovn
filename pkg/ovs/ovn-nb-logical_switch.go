@@ -171,7 +171,7 @@ func (c *ovnNbClient) LogicalSwitchUpdateLoadBalancers(lsName string, op ovsdb.M
 }
 
 // LogicalSwitchUpdateOtherConfig add other config to or from logical switch once
-func (c *ovnClient) LogicalSwitchUpdateOtherConfig(lsName string, op ovsdb.Mutator, otherConfig map[string]string) error {
+func (c *ovnNbClient) LogicalSwitchUpdateOtherConfig(lsName string, op ovsdb.Mutator, otherConfig map[string]string) error {
 	if len(otherConfig) == 0 {
 		return nil
 	}
@@ -306,7 +306,7 @@ func (c *ovnNbClient) LogicalSwitchUpdatePortOp(lsName string, lspUUID string, o
 }
 
 // LogicalSwitchUpdateOtherConfigOp create operations add otherConfig to or delete otherConfig from logical switch
-func (c *ovnClient) LogicalSwitchUpdateOtherConfigOp(lsName string, otherConfig map[string]string, op ovsdb.Mutator) ([]ovsdb.Operation, error) {
+func (c *ovnNbClient) LogicalSwitchUpdateOtherConfigOp(lsName string, otherConfig map[string]string, op ovsdb.Mutator) ([]ovsdb.Operation, error) {
 	if len(otherConfig) == 0 {
 		return nil, nil
 	}

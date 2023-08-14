@@ -3188,7 +3188,7 @@ func (mr *MockNbClientMockRecorder) LogicalSwitchUpdateLoadBalancers(lsName, op 
 }
 
 // LogicalSwitchUpdateOtherConfig mocks base method.
-func (m *MockOvnClient) LogicalSwitchUpdateOtherConfig(lsName string, op ovsdb.Mutator, otherConfig map[string]string) error {
+func (m *MockNbClient) LogicalSwitchUpdateOtherConfig(lsName string, op ovsdb.Mutator, otherConfig map[string]string) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "LogicalSwitchUpdateOtherConfig", lsName, op, otherConfig)
 	ret0, _ := ret[0].(error)
@@ -3196,9 +3196,9 @@ func (m *MockOvnClient) LogicalSwitchUpdateOtherConfig(lsName string, op ovsdb.M
 }
 
 // LogicalSwitchUpdateOtherConfig indicates an expected call of LogicalSwitchUpdateOtherConfig.
-func (mr *MockOvnClientMockRecorder) LogicalSwitchUpdateOtherConfig(lsName, op, otherConfig interface{}) *gomock.Call {
+func (mr *MockNbClientMockRecorder) LogicalSwitchUpdateOtherConfig(lsName, op, otherConfig interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LogicalSwitchUpdateOtherConfig", reflect.TypeOf((*MockOvnClient)(nil).LogicalSwitchUpdateOtherConfig), lsName, op, otherConfig)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LogicalSwitchUpdateOtherConfig", reflect.TypeOf((*MockNbClient)(nil).LogicalSwitchUpdateOtherConfig), lsName, op, otherConfig)
 }
 
 // NatExists mocks base method.
