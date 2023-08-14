@@ -170,6 +170,25 @@ func (c *ovnNbClient) LogicalSwitchUpdateLoadBalancers(lsName string, op ovsdb.M
 	return nil
 }
 
+// LogicalSwitchUpdateOtherConfig add other config to or from logical switch once
+func (c *ovnClient) LogicalSwitchUpdateOtherConfig(lsName string, op ovsdb.Mutator, otherConfig map[string]string) error {
+	if len(otherConfig) == 0 {
+		return nil
+	}
+
+	ops, err := c.LogicalSwitchUpdateOtherConfigOp(lsName, otherConfig, op)
+	if err != nil {
+		klog.Error(err)
+		return fmt.Errorf("generate operations for logical switch %s update other config %v: %v", lsName, otherConfig, err)
+	}
+
+	if err := c.Transact("ls-other-config-update", ops); err != nil {
+		return fmt.Errorf("logical switch %s update other config %v: %v", lsName, otherConfig, err)
+	}
+
+	return nil
+}
+
 // DeleteLogicalSwitch delete logical switch
 func (c *ovnNbClient) DeleteLogicalSwitch(lsName string) error {
 	op, err := c.DeleteLogicalSwitchOp(lsName)
@@ -277,6 +296,25 @@ func (c *ovnNbClient) LogicalSwitchUpdatePortOp(lsName string, lspUUID string, o
 		mutation := &model.Mutation{
 			Field:   &ls.Ports,
 			Value:   []string{lspUUID},
+			Mutator: op,
+		}
+
+		return mutation
+	}
+
+	return c.LogicalSwitchOp(lsName, mutation)
+}
+
+// LogicalSwitchUpdateOtherConfigOp create operations add otherConfig to or delete otherConfig from logical switch
+func (c *ovnClient) LogicalSwitchUpdateOtherConfigOp(lsName string, otherConfig map[string]string, op ovsdb.Mutator) ([]ovsdb.Operation, error) {
+	if len(otherConfig) == 0 {
+		return nil, nil
+	}
+
+	mutation := func(ls *ovnnb.LogicalSwitch) *model.Mutation {
+		mutation := &model.Mutation{
+			Field:   &ls.OtherConfig,
+			Value:   otherConfig,
 			Mutator: op,
 		}
 

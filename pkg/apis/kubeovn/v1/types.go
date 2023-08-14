@@ -166,6 +166,7 @@ type SubnetSpec struct {
 	U2OInterconnection   bool   `json:"u2oInterconnection,omitempty"`
 	EnableLb             *bool  `json:"enableLb,omitempty"`
 	EnableEcmp           bool   `json:"enableEcmp,omitempty"`
+	EnableMulicastSnoop  bool   `json:"enableMulticastSnoop,omitempty"`
 
 	RouteTable string `json:"routeTable,omitempty"`
 }

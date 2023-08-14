@@ -83,20 +83,6 @@ func (mr *MockNBGlobalMockRecorder) SetICAutoRoute(enable, blackList interface{}
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetICAutoRoute", reflect.TypeOf((*MockNBGlobal)(nil).SetICAutoRoute), enable, blackList)
 }
 
-// SetLBCIDR mocks base method.
-func (m *MockNBGlobal) SetLBCIDR(serviceCIDR string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetLBCIDR", serviceCIDR)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// SetLBCIDR indicates an expected call of SetLBCIDR.
-func (mr *MockNBGlobalMockRecorder) SetLBCIDR(serviceCIDR interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLBCIDR", reflect.TypeOf((*MockNBGlobal)(nil).SetLBCIDR), serviceCIDR)
-}
-
 // SetLsDnatModDlDst mocks base method.
 func (m *MockNBGlobal) SetLsDnatModDlDst(enabled bool) error {
 	m.ctrl.T.Helper()
@@ -590,6 +576,20 @@ func (mr *MockLogicalSwitchMockRecorder) LogicalSwitchUpdateLoadBalancers(lsName
 	mr.mock.ctrl.T.Helper()
 	varargs := append([]interface{}{lsName, op}, lbNames...)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LogicalSwitchUpdateLoadBalancers", reflect.TypeOf((*MockLogicalSwitch)(nil).LogicalSwitchUpdateLoadBalancers), varargs...)
+}
+
+// LogicalSwitchUpdateOtherConfig mocks base method.
+func (m *MockLogicalSwitch) LogicalSwitchUpdateOtherConfig(lsName string, op ovsdb.Mutator, otherConfig map[string]string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "LogicalSwitchUpdateOtherConfig", lsName, op, otherConfig)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// LogicalSwitchUpdateOtherConfig indicates an expected call of LogicalSwitchUpdateOtherConfig.
+func (mr *MockLogicalSwitchMockRecorder) LogicalSwitchUpdateOtherConfig(lsName, op, otherConfig interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LogicalSwitchUpdateOtherConfig", reflect.TypeOf((*MockLogicalSwitch)(nil).LogicalSwitchUpdateOtherConfig), lsName, op, otherConfig)
 }
 
 // MockLogicalSwitchPort is a mock of LogicalSwitchPort interface.
@@ -3187,6 +3187,20 @@ func (mr *MockNbClientMockRecorder) LogicalSwitchUpdateLoadBalancers(lsName, op 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LogicalSwitchUpdateLoadBalancers", reflect.TypeOf((*MockNbClient)(nil).LogicalSwitchUpdateLoadBalancers), varargs...)
 }
 
+// LogicalSwitchUpdateOtherConfig mocks base method.
+func (m *MockOvnClient) LogicalSwitchUpdateOtherConfig(lsName string, op ovsdb.Mutator, otherConfig map[string]string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "LogicalSwitchUpdateOtherConfig", lsName, op, otherConfig)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// LogicalSwitchUpdateOtherConfig indicates an expected call of LogicalSwitchUpdateOtherConfig.
+func (mr *MockOvnClientMockRecorder) LogicalSwitchUpdateOtherConfig(lsName, op, otherConfig interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LogicalSwitchUpdateOtherConfig", reflect.TypeOf((*MockOvnClient)(nil).LogicalSwitchUpdateOtherConfig), lsName, op, otherConfig)
+}
+
 // NatExists mocks base method.
 func (m *MockNbClient) NatExists(lrName, natType, externalIP, logicalIP string) (bool, error) {
 	m.ctrl.T.Helper()
@@ -3323,20 +3337,6 @@ func (m *MockNbClient) SetICAutoRoute(enable bool, blackList []string) error {
 func (mr *MockNbClientMockRecorder) SetICAutoRoute(enable, blackList interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetICAutoRoute", reflect.TypeOf((*MockNbClient)(nil).SetICAutoRoute), enable, blackList)
-}
-
-// SetLBCIDR mocks base method.
-func (m *MockNbClient) SetLBCIDR(serviceCIDR string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetLBCIDR", serviceCIDR)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// SetLBCIDR indicates an expected call of SetLBCIDR.
-func (mr *MockNbClientMockRecorder) SetLBCIDR(serviceCIDR interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLBCIDR", reflect.TypeOf((*MockNbClient)(nil).SetLBCIDR), serviceCIDR)
 }
 
 // SetLoadBalancerAffinityTimeout mocks base method.

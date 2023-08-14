@@ -104,6 +104,7 @@ func (c *Controller) enqueueUpdateSubnet(old, new interface{}) {
 		oldSubnet.Spec.RouteTable != newSubnet.Spec.RouteTable ||
 		oldSubnet.Spec.Vpc != newSubnet.Spec.Vpc ||
 		oldSubnet.Spec.NatOutgoing != newSubnet.Spec.NatOutgoing ||
+		oldSubnet.Spec.EnableMulicastSnoop != newSubnet.Spec.EnableMulicastSnoop ||
 		!reflect.DeepEqual(oldSubnet.Spec.NatOutgoingPolicyRules, newSubnet.Spec.NatOutgoingPolicyRules) ||
 		(newSubnet.Spec.U2OInterconnection && newSubnet.Spec.U2OInterconnectionIP != "" &&
 			oldSubnet.Spec.U2OInterconnectionIP != newSubnet.Spec.U2OInterconnectionIP) {
@@ -756,6 +757,19 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 	if err := c.ovnNbClient.CreateLogicalSwitch(subnet.Name, vpc.Status.Router, subnet.Spec.CIDRBlock, gateway, needRouter, randomAllocateGW); err != nil {
 		klog.Errorf("create logical switch %s: %v", subnet.Name, err)
 		return err
+	}
+
+	multicastSnoopFlag := map[string]string{"mcast_snoop": "true", "mcast_querier": "false"}
+	if subnet.Spec.EnableMulicastSnoop {
+		if err := c.ovnClient.LogicalSwitchUpdateOtherConfig(subnet.Name, ovsdb.MutateOperationInsert, multicastSnoopFlag); err != nil {
+			klog.Errorf("enable logical switch multicast snoop %s: %v", subnet.Name, err)
+			return err
+		}
+	} else {
+		if err := c.ovnClient.LogicalSwitchUpdateOtherConfig(subnet.Name, ovsdb.MutateOperationDelete, multicastSnoopFlag); err != nil {
+			klog.Errorf("disable logical switch multicast snoop  %s: %v", subnet.Name, err)
+			return err
+		}
 	}
 
 	subnet.Status.EnsureStandardConditions()
