@@ -28,7 +28,7 @@ func (c *Controller) enqueueAddOvnFip(obj interface{}) {
 		utilruntime.HandleError(err)
 		return
 	}
-	klog.V(3).Infof("enqueue add ovn fip %s", key)
+	klog.Infof("enqueue add ovn fip %s", key)
 	c.addOvnFipQueue.Add(key)
 }
 
@@ -41,11 +41,6 @@ func (c *Controller) enqueueUpdateOvnFip(old, new interface{}) {
 	}
 	oldFip := old.(*kubeovnv1.OvnFip)
 	newFip := new.(*kubeovnv1.OvnFip)
-	if !newFip.DeletionTimestamp.IsZero() {
-		klog.V(3).Infof("enqueue del ovn fip %s", key)
-		c.delOvnFipQueue.Add(key)
-		return
-	}
 	if oldFip.Spec.OvnEip != newFip.Spec.OvnEip {
 		// enqueue to reset eip to be clean
 		klog.Infof("enqueue reset old ovn eip %s", oldFip.Spec.OvnEip)
@@ -66,8 +61,9 @@ func (c *Controller) enqueueDelOvnFip(obj interface{}) {
 		utilruntime.HandleError(err)
 		return
 	}
-	klog.V(3).Infof("enqueue del ovn fip %s", key)
-	c.delOvnFipQueue.Add(key)
+	klog.Infof("enqueue del ovn fip %s", key)
+	fip := obj.(*kubeovnv1.OvnFip)
+	c.delOvnFipQueue.Add(fip)
 }
 
 func (c *Controller) runAddOvnFipWorker() {
@@ -150,16 +146,16 @@ func (c *Controller) processNextDeleteOvnFipWorkItem() bool {
 	}
 	err := func(obj interface{}) error {
 		defer c.delOvnFipQueue.Done(obj)
-		var key string
+		var fip *kubeovnv1.OvnFip
 		var ok bool
-		if key, ok = obj.(string); !ok {
+		if fip, ok = obj.(*kubeovnv1.OvnFip); !ok {
 			c.delOvnFipQueue.Forget(obj)
 			utilruntime.HandleError(fmt.Errorf("expected fip in workqueue but got %#v", obj))
 			return nil
 		}
-		if err := c.handleDelOvnFip(key); err != nil {
-			c.delOvnFipQueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
+		if err := c.handleDelOvnFip(fip); err != nil {
+			c.delOvnFipQueue.AddRateLimited(obj)
+			return fmt.Errorf("error syncing '%s': %s, requeuing", fip.Name, err.Error())
 		}
 		c.delOvnFipQueue.Forget(obj)
 		return nil
@@ -202,7 +198,7 @@ func (c *Controller) handleAddOvnFip(key string) error {
 		// already ok
 		return nil
 	}
-	klog.V(3).Infof("handle add fip %s", key)
+	klog.Infof("handle add fip %s", key)
 	var internalV4Ip, mac, subnetName string
 	if cachedFip.Spec.IpType == util.Vip {
 		internalVip, err := c.virtualIpsLister.Get(cachedFip.Spec.IpName)
@@ -316,7 +312,7 @@ func (c *Controller) handleUpdateOvnFip(key string) error {
 		}
 		return err
 	}
-	klog.V(3).Infof("handle update fip %s", key)
+	klog.Infof("handle update fip %s", key)
 	var internalV4Ip, mac, subnetName string
 	if cachedFip.Spec.IpType == util.Vip {
 		internalVip, err := c.virtualIpsLister.Get(cachedFip.Spec.IpName)
@@ -380,7 +376,7 @@ func (c *Controller) handleUpdateOvnFip(key string) error {
 	fip := cachedFip.DeepCopy()
 	// fip change eip
 	if c.ovnFipChangeEip(fip, cachedEip) {
-		klog.V(3).Infof("fip change ip, old ip '%s', new ip %s", fip.Status.V4Ip, cachedEip.Status.V4Ip)
+		klog.Infof("fip change ip, old ip '%s', new ip %s", fip.Status.V4Ip, cachedEip.Status.V4Ip)
 		if err = c.ovnClient.DeleteNat(vpcName, ovnnb.NATTypeDNATAndSNAT, fip.Status.V4Ip, internalV4Ip); err != nil {
 			klog.Errorf("failed to create fip, %v", err)
 			return err
@@ -410,29 +406,19 @@ func (c *Controller) handleUpdateOvnFip(key string) error {
 	return nil
 }
 
-func (c *Controller) handleDelOvnFip(key string) error {
-	klog.V(3).Infof("handle del ovn fip %s", key)
-	cachedFip, err := c.ovnFipsLister.Get(key)
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
-		klog.Error(err)
-		return err
-	}
-	eipName := cachedFip.Spec.OvnEip
-	if len(eipName) == 0 {
-		klog.Errorf("failed to delete ovn fip, should set eip")
-	}
+func (c *Controller) handleDelOvnFip(fip *kubeovnv1.OvnFip) error {
+	klog.Infof("handle del ovn fip %s", fip.Name)
 	// ovn delete fip
-	if cachedFip.Status.Vpc != "" && cachedFip.Status.V4Eip != "" && cachedFip.Status.V4Ip != "" {
-		if err = c.ovnClient.DeleteNat(cachedFip.Status.Vpc, ovnnb.NATTypeDNATAndSNAT, cachedFip.Status.V4Eip, cachedFip.Status.V4Ip); err != nil {
+	if fip.Status.Vpc != "" && fip.Status.V4Eip != "" && fip.Status.V4Ip != "" {
+		if err := c.ovnClient.DeleteNat(fip.Status.Vpc, ovnnb.NATTypeDNATAndSNAT, fip.Status.V4Eip, fip.Status.V4Ip); err != nil {
 			klog.Errorf("failed to delete fip, %v", err)
 			return err
 		}
 	}
 	//  reset eip
-	c.resetOvnEipQueue.Add(cachedFip.Spec.OvnEip)
+	if fip.Spec.OvnEip != "" {
+		c.resetOvnEipQueue.Add(fip.Spec.OvnEip)
+	}
 	return nil
 }
 

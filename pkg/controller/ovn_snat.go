@@ -37,11 +37,6 @@ func (c *Controller) enqueueUpdateOvnSnatRule(old, new interface{}) {
 	}
 	oldSnat := old.(*kubeovnv1.OvnSnatRule)
 	newSnat := new.(*kubeovnv1.OvnSnatRule)
-	if !newSnat.DeletionTimestamp.IsZero() {
-		klog.V(3).Infof("enqueue reset old ovn eip %s", oldSnat.Spec.OvnEip)
-		c.updateOvnSnatRuleQueue.Add(key)
-		return
-	}
 	if oldSnat.Spec.OvnEip != newSnat.Spec.OvnEip {
 		// enqueue to reset eip to be clean
 		c.resetOvnEipQueue.Add(oldSnat.Spec.OvnEip)
@@ -62,8 +57,9 @@ func (c *Controller) enqueueDelOvnSnatRule(obj interface{}) {
 		utilruntime.HandleError(err)
 		return
 	}
-	klog.V(3).Infof("enqueue del ovn snat %s", key)
-	c.delOvnSnatRuleQueue.Add(key)
+	klog.Infof("enqueue del ovn snat %s", key)
+	snat := obj.(*kubeovnv1.OvnSnatRule)
+	c.delOvnSnatRuleQueue.Add(snat)
 }
 
 func (c *Controller) runAddOvnSnatRuleWorker() {
@@ -149,16 +145,16 @@ func (c *Controller) processNextDeleteOvnSnatRuleWorkItem() bool {
 
 	err := func(obj interface{}) error {
 		defer c.delOvnSnatRuleQueue.Done(obj)
-		var key string
+		var snat *kubeovnv1.OvnSnatRule
 		var ok bool
-		if key, ok = obj.(string); !ok {
+		if snat, ok = obj.(*kubeovnv1.OvnSnatRule); !ok {
 			c.delOvnSnatRuleQueue.Forget(obj)
 			utilruntime.HandleError(fmt.Errorf("expected snat in workqueue but got %#v", obj))
 			return nil
 		}
-		if err := c.handleDelOvnSnatRule(key); err != nil {
-			c.delOvnSnatRuleQueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
+		if err := c.handleDelOvnSnatRule(snat); err != nil {
+			c.delOvnSnatRuleQueue.AddRateLimited(obj)
+			return fmt.Errorf("error syncing '%s': %s, requeuing", snat.Name, err.Error())
 		}
 		c.delOvnSnatRuleQueue.Forget(obj)
 		return nil
@@ -184,7 +180,7 @@ func (c *Controller) handleAddOvnSnatRule(key string) error {
 		// already ok
 		return nil
 	}
-	klog.V(3).Infof("handle add ovn snat %s", key)
+	klog.Infof("handle add ovn snat %s", key)
 	eipName := cachedSnat.Spec.OvnEip
 	if len(eipName) == 0 {
 		err := fmt.Errorf("failed to create fip rule, should set eip")
@@ -278,7 +274,7 @@ func (c *Controller) handleUpdateOvnSnatRule(key string) error {
 		klog.Error(err)
 		return err
 	}
-	klog.V(3).Infof("handle update ovn snat %s", key)
+	klog.Infof("handle update ovn snat %s", key)
 	eipName := cachedSnat.Spec.OvnEip
 	if len(eipName) == 0 {
 		err := fmt.Errorf("failed to create fip rule, should set eip")
@@ -289,20 +285,6 @@ func (c *Controller) handleUpdateOvnSnatRule(key string) error {
 	if err != nil {
 		klog.Errorf("failed to get eip, %v", err)
 		return err
-	}
-	// should delete
-	if !cachedSnat.DeletionTimestamp.IsZero() {
-		klog.V(3).Infof("ovn delete snat %s", key)
-		// ovn delete snat
-		if cachedSnat.Status.Vpc != "" && cachedSnat.Status.V4Eip != "" && cachedSnat.Status.V4IpCidr != "" {
-			if err = c.ovnClient.DeleteNat(cachedSnat.Status.Vpc, ovnnb.NATTypeSNAT, cachedSnat.Status.V4Eip, cachedSnat.Status.V4IpCidr); err != nil {
-				klog.Errorf("failed to delete snat, %v", err)
-				return err
-			}
-		}
-		//  reset eip
-		c.resetOvnEipQueue.Add(cachedSnat.Spec.OvnEip)
-		return nil
 	}
 
 	if cachedEip.Spec.Type == util.Lsp {
@@ -344,7 +326,7 @@ func (c *Controller) handleUpdateOvnSnatRule(key string) error {
 	}
 	// snat change eip
 	if c.ovnSnatChangeEip(cachedSnat, cachedEip) {
-		klog.V(3).Infof("snat change ip, old ip %s, new ip %s", cachedEip.Status.V4Ip, cachedEip.Spec.V4Ip)
+		klog.Infof("snat change ip, old ip %s, new ip %s", cachedEip.Status.V4Ip, cachedEip.Spec.V4Ip)
 		if err = c.ovnClient.DeleteNat(vpcName, ovnnb.NATTypeSNAT, cachedEip.Status.V4Ip, v4IpCidr); err != nil {
 			klog.Errorf("failed to delte snat, %v", err)
 			return err
@@ -371,8 +353,19 @@ func (c *Controller) handleUpdateOvnSnatRule(key string) error {
 	return nil
 }
 
-func (c *Controller) handleDelOvnSnatRule(key string) error {
-	klog.V(3).Infof("deleted ovn snat %s", key)
+func (c *Controller) handleDelOvnSnatRule(snat *kubeovnv1.OvnSnatRule) error {
+	klog.Infof("deleted ovn snat %s", snat.Name)
+	// ovn delete snat
+	if snat.Status.Vpc != "" && snat.Status.V4Eip != "" && snat.Status.V4IpCidr != "" {
+		if err := c.ovnClient.DeleteNat(snat.Status.Vpc, ovnnb.NATTypeSNAT, snat.Status.V4Eip, snat.Status.V4IpCidr); err != nil {
+			klog.Errorf("failed to delete snat, %v", err)
+			return err
+		}
+	}
+	//  reset eip
+	if snat.Spec.OvnEip != "" {
+		c.resetOvnEipQueue.Add(snat.Spec.OvnEip)
+	}
 	return nil
 }
 

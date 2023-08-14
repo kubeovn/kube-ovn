@@ -26,7 +26,7 @@ func (c *Controller) enqueueAddOvnDnatRule(obj interface{}) {
 		utilruntime.HandleError(err)
 		return
 	}
-	klog.V(3).Infof("enqueue add ovn dnat %s", key)
+	klog.Infof("enqueue add ovn dnat %s", key)
 	c.addOvnDnatRuleQueue.Add(key)
 }
 
@@ -40,11 +40,6 @@ func (c *Controller) enqueueUpdateOvnDnatRule(old, new interface{}) {
 
 	oldDnat := old.(*kubeovnv1.OvnDnatRule)
 	newDnat := new.(*kubeovnv1.OvnDnatRule)
-	if !newDnat.DeletionTimestamp.IsZero() {
-		klog.Infof("enqueue del ovn dnat %s", key)
-		c.delOvnDnatRuleQueue.Add(key)
-		return
-	}
 
 	if oldDnat.Spec.OvnEip != newDnat.Spec.OvnEip {
 		c.resetOvnEipQueue.Add(oldDnat.Spec.OvnEip)
@@ -67,8 +62,9 @@ func (c *Controller) enqueueDelOvnDnatRule(obj interface{}) {
 		utilruntime.HandleError(err)
 		return
 	}
-	klog.V(3).Infof("enqueue delete ovn dnat %s", key)
-	c.delOvnDnatRuleQueue.Add(key)
+	klog.Infof("enqueue delete ovn dnat %s", key)
+	dnat := obj.(*kubeovnv1.OvnDnatRule)
+	c.delOvnDnatRuleQueue.Add(dnat)
 }
 
 func (c *Controller) runAddOvnDnatRuleWorker() {
@@ -154,16 +150,16 @@ func (c *Controller) processNextDeleteOvnDnatRuleWorkItem() bool {
 
 	err := func(obj interface{}) error {
 		defer c.delOvnDnatRuleQueue.Done(obj)
-		var key string
+		var dnat *kubeovnv1.OvnDnatRule
 		var ok bool
-		if key, ok = obj.(string); !ok {
+		if dnat, ok = obj.(*kubeovnv1.OvnDnatRule); !ok {
 			c.delOvnDnatRuleQueue.Forget(obj)
 			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
 			return nil
 		}
-		if err := c.handleDelOvnDnatRule(key); err != nil {
-			c.delOvnDnatRuleQueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
+		if err := c.handleDelOvnDnatRule(dnat); err != nil {
+			c.delOvnDnatRuleQueue.AddRateLimited(obj)
+			return fmt.Errorf("error syncing '%s': %s, requeuing", dnat.Name, err.Error())
 		}
 		c.delOvnDnatRuleQueue.Forget(obj)
 		return nil
@@ -212,8 +208,7 @@ func (c *Controller) handleAddOvnDnatRule(key string) error {
 		// already ok
 		return nil
 	}
-	klog.V(3).Infof("handle add dnat %s", key)
-
+	klog.Infof("handle add dnat %s", key)
 	var internalV4Ip, mac, subnetName string
 	if cachedDnat.Spec.IpType == util.Vip {
 		internalVip, err := c.virtualIpsLister.Get(cachedDnat.Spec.IpName)
@@ -315,32 +310,17 @@ func (c *Controller) handleAddOvnDnatRule(key string) error {
 	return nil
 }
 
-func (c *Controller) handleDelOvnDnatRule(key string) error {
-	klog.V(3).Infof("handle del ovn dnat %s", key)
-	cachedDnat, err := c.ovnDnatRulesLister.Get(key)
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
-		klog.Error(err)
-		return err
-	}
-
-	eipName := cachedDnat.Spec.OvnEip
-	if len(eipName) == 0 {
-		err := fmt.Errorf("failed to create fip rule, should set eip")
-		klog.Error(err)
-		return err
-	}
-
-	if cachedDnat.Status.Vpc != "" && cachedDnat.Status.V4Eip != "" && cachedDnat.Status.ExternalPort != "" {
-		if err = c.DelDnatRule(cachedDnat.Status.Vpc, cachedDnat.Name,
-			cachedDnat.Status.V4Eip, cachedDnat.Status.ExternalPort); err != nil {
+func (c *Controller) handleDelOvnDnatRule(dnat *kubeovnv1.OvnDnatRule) error {
+	if dnat.Status.Vpc != "" && dnat.Status.V4Eip != "" && dnat.Status.ExternalPort != "" {
+		if err := c.DelDnatRule(dnat.Status.Vpc, dnat.Name,
+			dnat.Status.V4Eip, dnat.Status.ExternalPort); err != nil {
 			klog.Errorf("failed to delete dnat, %v", err)
 			return err
 		}
 	}
-	c.resetOvnEipQueue.Add(cachedDnat.Spec.OvnEip)
+	if dnat.Spec.OvnEip != "" {
+		c.resetOvnEipQueue.Add(dnat.Spec.OvnEip)
+	}
 	return nil
 }
 
@@ -354,7 +334,7 @@ func (c *Controller) handleUpdateOvnDnatRule(key string) error {
 		return err
 	}
 
-	klog.V(3).Infof("handle update dnat %s", key)
+	klog.Infof("handle update dnat %s", key)
 	var internalV4Ip, mac, subnetName string
 	if cachedDnat.Spec.IpType == util.Vip {
 		internalVip, err := c.virtualIpsLister.Get(cachedDnat.Spec.IpName)
@@ -421,7 +401,7 @@ func (c *Controller) handleUpdateOvnDnatRule(key string) error {
 
 	dnat := cachedDnat.DeepCopy()
 	if dnat.Status.Ready {
-		klog.V(3).Infof("dnat change ip, old ip '%s', new ip %s", dnat.Status.V4Ip, cachedEip.Status.V4Ip)
+		klog.Infof("dnat change ip, old ip '%s', new ip %s", dnat.Status.V4Ip, cachedEip.Status.V4Ip)
 		if err = c.DelDnatRule(dnat.Status.Vpc, dnat.Name, dnat.Status.V4Eip, dnat.Status.ExternalPort); err != nil {
 			klog.Errorf("failed to delete dnat, %v", err)
 			return err
