@@ -20,7 +20,6 @@ const (
 	FipNameAnnotation    = "ovn.kubernetes.io/fip_name"
 	FipEnableAnnotation  = "ovn.kubernetes.io/enable_fip"
 	FipFinalizer         = "ovn.kubernetes.io/fip"
-	OvnEipFinalizer      = "ovn.kubernetes.io/ovn_eip"
 	VipAnnotation        = "ovn.kubernetes.io/vip"
 	ChassisAnnotation    = "ovn.kubernetes.io/chassis"
 

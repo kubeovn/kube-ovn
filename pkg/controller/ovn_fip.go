@@ -14,6 +14,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
@@ -62,8 +63,7 @@ func (c *Controller) enqueueDelOvnFip(obj interface{}) {
 		return
 	}
 	klog.Infof("enqueue del ovn fip %s", key)
-	fip := obj.(*kubeovnv1.OvnFip)
-	c.delOvnFipQueue.Add(fip)
+	c.delOvnFipQueue.Add(key)
 }
 
 func (c *Controller) runAddOvnFipWorker() {
@@ -146,16 +146,16 @@ func (c *Controller) processNextDeleteOvnFipWorkItem() bool {
 	}
 	err := func(obj interface{}) error {
 		defer c.delOvnFipQueue.Done(obj)
-		var fip *kubeovnv1.OvnFip
+		var key string
 		var ok bool
-		if fip, ok = obj.(*kubeovnv1.OvnFip); !ok {
+		if key, ok = obj.(string); !ok {
 			c.delOvnFipQueue.Forget(obj)
 			utilruntime.HandleError(fmt.Errorf("expected fip in workqueue but got %#v", obj))
 			return nil
 		}
-		if err := c.handleDelOvnFip(fip); err != nil {
-			c.delOvnFipQueue.AddRateLimited(obj)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", fip.Name, err.Error())
+		if err := c.handleDelOvnFip(key); err != nil {
+			c.delOvnFipQueue.AddRateLimited(key)
+			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
 		}
 		c.delOvnFipQueue.Forget(obj)
 		return nil
@@ -272,7 +272,7 @@ func (c *Controller) handleAddOvnFip(key string) error {
 		klog.Errorf("failed to patch status for fip %s, %v", key, err)
 		return err
 	}
-	if err = c.handleAddOvnEipFinalizer(cachedEip, util.OvnEipFinalizer); err != nil {
+	if err = c.handleAddOvnEipFinalizer(cachedEip, util.ControllerName); err != nil {
 		klog.Errorf("failed to add finalizer for ovn eip, %v", err)
 		return err
 	}
@@ -283,6 +283,12 @@ func (c *Controller) handleAddOvnFip(key string) error {
 		klog.Errorf("failed to create v4 fip, %v", err)
 		return err
 	}
+
+	if err = c.handleAddOvnFipFinalizer(cachedFip, util.ControllerName); err != nil {
+		klog.Errorf("failed to add finalizer for ovn fip, %v", err)
+		return err
+	}
+
 	// patch fip eip relationship
 	if err = c.natLabelAndAnnoOvnEip(eipName, cachedFip.Name, vpcName); err != nil {
 		klog.Errorf("failed to label fip '%s' in eip %s, %v", cachedFip.Name, eipName, err)
@@ -406,18 +412,30 @@ func (c *Controller) handleUpdateOvnFip(key string) error {
 	return nil
 }
 
-func (c *Controller) handleDelOvnFip(fip *kubeovnv1.OvnFip) error {
-	klog.Infof("handle del ovn fip %s", fip.Name)
-	// ovn delete fip
-	if fip.Status.Vpc != "" && fip.Status.V4Eip != "" && fip.Status.V4Ip != "" {
-		if err := c.ovnClient.DeleteNat(fip.Status.Vpc, ovnnb.NATTypeDNATAndSNAT, fip.Status.V4Eip, fip.Status.V4Ip); err != nil {
-			klog.Errorf("failed to delete fip, %v", err)
+func (c *Controller) handleDelOvnFip(key string) error {
+	klog.Infof("handle del ovn fip %s", key)
+	cachedFip, err := c.ovnFipsLister.Get(key)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		klog.Error(err)
+		return err
+	}
+	// ovn delete fip nat
+	if cachedFip.Status.Vpc != "" && cachedFip.Status.V4Eip != "" && cachedFip.Status.V4Ip != "" {
+		if err = c.ovnClient.DeleteNat(cachedFip.Status.Vpc, ovnnb.NATTypeDNATAndSNAT, cachedFip.Status.V4Eip, cachedFip.Status.V4Ip); err != nil {
+			klog.Errorf("failed to delete fip %s, %v", key, err)
 			return err
 		}
 	}
+	if err = c.handleDelOvnFipFinalizer(cachedFip, util.ControllerName); err != nil {
+		klog.Errorf("failed to remove finalizer for ovn fip %s, %v", cachedFip.Name, err)
+		return err
+	}
 	//  reset eip
-	if fip.Spec.OvnEip != "" {
-		c.resetOvnEipQueue.Add(fip.Spec.OvnEip)
+	if cachedFip.Spec.OvnEip != "" {
+		c.resetOvnEipQueue.Add(cachedFip.Spec.OvnEip)
 	}
 	return nil
 }
@@ -543,4 +561,51 @@ func (c *Controller) GetOvnEip(eipName string) (*kubeovnv1.OvnEip, error) {
 		return nil, fmt.Errorf("eip '%s' is not ready, has no v4ip", eipName)
 	}
 	return cachedEip, nil
+}
+
+func (c *Controller) handleAddOvnFipFinalizer(cachedFip *kubeovnv1.OvnFip, finalizer string) error {
+	if cachedFip.DeletionTimestamp.IsZero() {
+		if util.ContainsString(cachedFip.Finalizers, finalizer) {
+			return nil
+		}
+	}
+	newFip := cachedFip.DeepCopy()
+	controllerutil.AddFinalizer(newFip, finalizer)
+	patch, err := util.GenerateMergePatchPayload(cachedFip, newFip)
+	if err != nil {
+		klog.Errorf("failed to generate patch payload for ovn fip '%s', %v", cachedFip.Name, err)
+		return err
+	}
+	if _, err := c.config.KubeOvnClient.KubeovnV1().OvnFips().Patch(context.Background(), cachedFip.Name,
+		types.MergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		klog.Errorf("failed to add finalizer for ovn fip '%s', %v", cachedFip.Name, err)
+		return err
+	}
+	return nil
+}
+
+func (c *Controller) handleDelOvnFipFinalizer(cachedFip *kubeovnv1.OvnFip, finalizer string) error {
+	if len(cachedFip.Finalizers) == 0 {
+		return nil
+	}
+	var err error
+	newFip := cachedFip.DeepCopy()
+	controllerutil.RemoveFinalizer(newFip, finalizer)
+	patch, err := util.GenerateMergePatchPayload(cachedFip, newFip)
+	if err != nil {
+		klog.Errorf("failed to generate patch payload for ovn fip '%s', %v", cachedFip.Name, err)
+		return err
+	}
+	if _, err := c.config.KubeOvnClient.KubeovnV1().OvnFips().Patch(context.Background(), cachedFip.Name,
+		types.MergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		klog.Errorf("failed to remove finalizer from ovn fip '%s', %v", cachedFip.Name, err)
+		return err
+	}
+	return nil
 }

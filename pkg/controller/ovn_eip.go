@@ -3,7 +3,6 @@ package controller
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -49,7 +48,7 @@ func (c *Controller) enqueueUpdateOvnEip(old, new interface{}) {
 			return
 		} else {
 			klog.Infof("enqueue del ovn eip %s", key)
-			c.delOvnEipQueue.Add(newEip)
+			c.delOvnEipQueue.Add(key)
 			return
 		}
 	}
@@ -74,8 +73,7 @@ func (c *Controller) enqueueDelOvnEip(obj interface{}) {
 		return
 	}
 	klog.Infof("enqueue del ovn eip %s", key)
-	eip := obj.(*kubeovnv1.OvnEip)
-	c.delOvnEipQueue.Add(eip)
+	c.delOvnEipQueue.Add(key)
 }
 
 func (c *Controller) runAddOvnEipWorker() {
@@ -189,16 +187,16 @@ func (c *Controller) processNextDeleteOvnEipWorkItem() bool {
 	}
 	err := func(obj interface{}) error {
 		defer c.delOvnEipQueue.Done(obj)
-		var eip *kubeovnv1.OvnEip
+		var key string
 		var ok bool
-		if eip, ok = obj.(*kubeovnv1.OvnEip); !ok {
+		if key, ok = obj.(string); !ok {
 			c.delOvnEipQueue.Forget(obj)
 			utilruntime.HandleError(fmt.Errorf("expected ovn eip in workqueue but got %#v", obj))
 			return nil
 		}
-		if err := c.handleDelOvnEip(eip); err != nil {
-			c.delOvnEipQueue.AddRateLimited(obj)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", eip.Name, err.Error())
+		if err := c.handleDelOvnEip(key); err != nil {
+			c.delOvnEipQueue.AddRateLimited(key)
+			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
 		}
 		c.delOvnEipQueue.Forget(obj)
 		return nil
@@ -285,7 +283,7 @@ func (c *Controller) handleUpdateOvnEip(key string) error {
 		klog.Error(err)
 		return err
 	}
-	klog.V(3).Infof("handle update ovn eip %s", cachedEip.Name)
+	klog.Infof("handle update ovn eip %s", cachedEip.Name)
 	if !cachedEip.DeletionTimestamp.IsZero() {
 		subnetName := cachedEip.Spec.ExternalSubnet
 		if subnetName == "" {
@@ -332,28 +330,30 @@ func (c *Controller) handleResetOvnEip(key string) error {
 	return nil
 }
 
-func (c *Controller) handleDelOvnEip(eip *kubeovnv1.OvnEip) error {
-	klog.V(3).Infof("handle del ovn eip %s", eip.Name)
-	if len(eip.Finalizers) > 1 {
-		err := errors.New("eip is referenced, it cannot be deleted directly")
-		klog.Errorf("failed to delete eip %s, %v", eip.Name, err)
+func (c *Controller) handleDelOvnEip(key string) error {
+	klog.Infof("handle del ovn eip %s", key)
+	eip, err := c.ovnEipsLister.Get(key)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		klog.Error(err)
 		return err
 	}
-
-	if err := c.handleDelOvnEipFinalizer(eip, util.OvnEipFinalizer); err != nil {
+	if err = c.handleDelOvnEipFinalizer(eip, util.ControllerName); err != nil {
 		klog.Errorf("failed to handle remove ovn eip finalizer , %v", err)
 		return err
 	}
 
 	if eip.Spec.Type == util.Lsp {
-		if err := c.ovnClient.DeleteLogicalSwitchPort(eip.Name); err != nil {
+		if err = c.ovnClient.DeleteLogicalSwitchPort(eip.Name); err != nil {
 			klog.Errorf("failed to delete lsp %s, %v", eip.Name, err)
 			return err
 		}
 	}
 
 	if eip.Spec.Type == util.Lrp {
-		if err := c.ovnClient.DeleteLogicalRouterPort(eip.Name); err != nil {
+		if err = c.ovnClient.DeleteLogicalRouterPort(eip.Name); err != nil {
 			klog.Errorf("failed to delete lrp %s, %v", eip.Name, err)
 			return err
 		}
