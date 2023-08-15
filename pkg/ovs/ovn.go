@@ -12,6 +12,8 @@ import (
 	"k8s.io/klog/v2"
 
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
 )
 
 var (
@@ -42,7 +44,6 @@ type ovnNbClient struct {
 
 type ovnSbClient struct {
 	ovsDbClient
-	NodeSwitchCIDR string
 }
 
 type ovsDbClient struct {
@@ -77,7 +78,30 @@ func NewLegacyClient(timeout int, ovnSbAddr, clusterRouter, clusterTcpLoadBalanc
 }
 
 func NewOvnNbClient(ovnNbAddr string, ovnNbTimeout int, nodeSwitchCIDR string) (*ovnNbClient, error) {
-	nbClient, err := ovsclient.NewOvsDbClient(ovsclient.NBDB, ovnNbAddr)
+	dbModel, err := ovnnb.FullDatabaseModel()
+	if err != nil {
+		klog.Error(err)
+		return nil, err
+	}
+
+	monitors := []client.MonitorOption{
+		client.WithTable(&ovnnb.ACL{}),
+		client.WithTable(&ovnnb.AddressSet{}),
+		client.WithTable(&ovnnb.BFD{}),
+		client.WithTable(&ovnnb.DHCPOptions{}),
+		client.WithTable(&ovnnb.GatewayChassis{}),
+		client.WithTable(&ovnnb.LoadBalancer{}),
+		client.WithTable(&ovnnb.LogicalRouterPolicy{}),
+		client.WithTable(&ovnnb.LogicalRouterPort{}),
+		client.WithTable(&ovnnb.LogicalRouterStaticRoute{}),
+		client.WithTable(&ovnnb.LogicalRouter{}),
+		client.WithTable(&ovnnb.LogicalSwitchPort{}),
+		client.WithTable(&ovnnb.LogicalSwitch{}),
+		client.WithTable(&ovnnb.NAT{}),
+		client.WithTable(&ovnnb.NBGlobal{}),
+		client.WithTable(&ovnnb.PortGroup{}),
+	}
+	nbClient, err := ovsclient.NewOvsDbClient(ovsclient.NBDB, ovnNbAddr, dbModel, monitors)
 	if err != nil {
 		klog.Errorf("failed to create OVN NB client: %v", err)
 		return nil, err
@@ -94,7 +118,17 @@ func NewOvnNbClient(ovnNbAddr string, ovnNbTimeout int, nodeSwitchCIDR string) (
 }
 
 func NewOvnSbClient(ovnSbAddr string, ovnSbTimeout int, nodeSwitchCIDR string) (*ovnSbClient, error) {
-	sbClient, err := ovsclient.NewOvsDbClient(ovsclient.SBDB, ovnSbAddr)
+	dbModel, err := ovnsb.FullDatabaseModel()
+	if err != nil {
+		klog.Error(err)
+		return nil, err
+	}
+
+	monitors := []client.MonitorOption{
+		client.WithTable(&ovnsb.Chassis{}),
+		// TODO:// monitor other neccessary tables in ovsdb/ovnsb/model.go
+	}
+	sbClient, err := ovsclient.NewOvsDbClient(ovsclient.SBDB, ovnSbAddr, dbModel, monitors)
 	if err != nil {
 		klog.Errorf("failed to create OVN SB client: %v", err)
 		return nil, err
@@ -105,7 +139,6 @@ func NewOvnSbClient(ovnSbAddr string, ovnSbTimeout int, nodeSwitchCIDR string) (
 			Client:  sbClient,
 			Timeout: time.Duration(ovnSbTimeout) * time.Second,
 		},
-		NodeSwitchCIDR: nodeSwitchCIDR,
 	}
 	return c, nil
 }
