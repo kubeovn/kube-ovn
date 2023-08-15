@@ -45,8 +45,7 @@ func NamedUUID() string {
 
 // NewOvsDbClient creates a new ovsdb client
 func NewOvsDbClient(db, addr string) (client.Client, error) {
-	logHeader := fmt.Sprintf("libovsdb %s", db)
-	logger := klog.NewKlogr().WithName(logHeader)
+	logger := klog.NewKlogr().WithName("libovsdb").WithValues("db", db)
 	options := []client.Option{
 		client.WithReconnect(timeout, &backoff.ConstantBackOff{Interval: time.Second}),
 		client.WithLeaderOnly(true),
