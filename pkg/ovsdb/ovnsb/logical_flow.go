@@ -10,8 +10,8 @@ type (
 )
 
 var (
-	LogicalFlowPipelineEgress  LogicalFlowPipeline = "egress"
 	LogicalFlowPipelineIngress LogicalFlowPipeline = "ingress"
+	LogicalFlowPipelineEgress  LogicalFlowPipeline = "egress"
 )
 
 // LogicalFlow defines an object in Logical_Flow table

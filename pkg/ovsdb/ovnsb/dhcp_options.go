@@ -11,14 +11,14 @@ type (
 
 var (
 	DHCPOptionsTypeBool         DHCPOptionsType = "bool"
-	DHCPOptionsTypeDomains      DHCPOptionsType = "domains"
-	DHCPOptionsTypeHostID       DHCPOptionsType = "host_id"
+	DHCPOptionsTypeUint8        DHCPOptionsType = "uint8"
+	DHCPOptionsTypeUint16       DHCPOptionsType = "uint16"
+	DHCPOptionsTypeUint32       DHCPOptionsType = "uint32"
 	DHCPOptionsTypeIpv4         DHCPOptionsType = "ipv4"
 	DHCPOptionsTypeStaticRoutes DHCPOptionsType = "static_routes"
 	DHCPOptionsTypeStr          DHCPOptionsType = "str"
-	DHCPOptionsTypeUint16       DHCPOptionsType = "uint16"
-	DHCPOptionsTypeUint32       DHCPOptionsType = "uint32"
-	DHCPOptionsTypeUint8        DHCPOptionsType = "uint8"
+	DHCPOptionsTypeHostID       DHCPOptionsType = "host_id"
+	DHCPOptionsTypeDomains      DHCPOptionsType = "domains"
 )
 
 // DHCPOptions defines an object in DHCP_Options table

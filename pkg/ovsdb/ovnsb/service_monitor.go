@@ -13,9 +13,9 @@ type (
 var (
 	ServiceMonitorProtocolTCP   ServiceMonitorProtocol = "tcp"
 	ServiceMonitorProtocolUDP   ServiceMonitorProtocol = "udp"
-	ServiceMonitorStatusError   ServiceMonitorStatus   = "error"
-	ServiceMonitorStatusOffline ServiceMonitorStatus   = "offline"
 	ServiceMonitorStatusOnline  ServiceMonitorStatus   = "online"
+	ServiceMonitorStatusOffline ServiceMonitorStatus   = "offline"
+	ServiceMonitorStatusError   ServiceMonitorStatus   = "error"
 )
 
 // ServiceMonitor defines an object in Service_Monitor table
