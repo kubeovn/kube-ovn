@@ -2,7 +2,6 @@ package ovs
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"reflect"
 	"time"
@@ -14,11 +13,6 @@ import (
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
-)
-
-var (
-	ErrNoAddr   = errors.New("no address")
-	ErrNotFound = errors.New("not found")
 )
 
 // LegacyClient is the legacy ovn client
@@ -52,8 +46,6 @@ type ovsDbClient struct {
 }
 
 const (
-	OvnNbCtl   = "ovn-nbctl"
-	OvnSbCtl   = "ovn-sbctl"
 	OVNIcNbCtl = "ovn-ic-nbctl"
 	OVNIcSbCtl = "ovn-ic-sbctl"
 	OvsVsCtl   = "ovs-vsctl"
