@@ -40,9 +40,14 @@ func (c *Controller) enqueueUpdateOvnDnatRule(old, new interface{}) {
 	}
 	newDnat := new.(*kubeovnv1.OvnDnatRule)
 	if !newDnat.DeletionTimestamp.IsZero() {
-		klog.Infof("enqueue del ovn dnat %s", key)
-		c.delOvnDnatRuleQueue.Add(key)
-		return
+		if len(newDnat.Finalizers) == 0 {
+			// avoid delete twice
+			return
+		} else {
+			klog.Infof("enqueue del ovn dnat %s", key)
+			c.delOvnDnatRuleQueue.Add(key)
+			return
+		}
 	}
 	oldDnat := old.(*kubeovnv1.OvnDnatRule)
 	if oldDnat.Spec.OvnEip != newDnat.Spec.OvnEip {

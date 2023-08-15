@@ -298,7 +298,7 @@ func (c *Controller) handleUpdateVirtualIp(key string) error {
 }
 
 func (c *Controller) handleDelVirtualIp(vip *kubeovnv1.Vip) error {
-	klog.Infof("delete vip %s", vip.Name)
+	klog.Infof("handle delete vip %s", vip.Name)
 	// TODO:// clean vip in its parent port aap list
 	if vip.Spec.Type == util.SwitchLBRuleVip {
 		subnet, err := c.subnetsLister.Get(vip.Spec.Subnet)

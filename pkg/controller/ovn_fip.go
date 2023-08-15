@@ -42,9 +42,14 @@ func (c *Controller) enqueueUpdateOvnFip(old, new interface{}) {
 	}
 	newFip := new.(*kubeovnv1.OvnFip)
 	if !newFip.DeletionTimestamp.IsZero() {
-		klog.Infof("enqueue del ovn fip %s", key)
-		c.delOvnFipQueue.Add(key)
-		return
+		if len(newFip.Finalizers) == 0 {
+			// avoid delete twice
+			return
+		} else {
+			klog.Infof("enqueue del ovn fip %s", key)
+			c.delOvnFipQueue.Add(key)
+			return
+		}
 	}
 	oldFip := old.(*kubeovnv1.OvnFip)
 	if oldFip.Spec.OvnEip != newFip.Spec.OvnEip {
