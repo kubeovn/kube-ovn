@@ -40,8 +40,13 @@ func (c *Controller) enqueueUpdateOvnFip(old, new interface{}) {
 		utilruntime.HandleError(err)
 		return
 	}
-	oldFip := old.(*kubeovnv1.OvnFip)
 	newFip := new.(*kubeovnv1.OvnFip)
+	if !newFip.DeletionTimestamp.IsZero() {
+		klog.Infof("enqueue del ovn fip %s", key)
+		c.delOvnFipQueue.Add(key)
+		return
+	}
+	oldFip := old.(*kubeovnv1.OvnFip)
 	if oldFip.Spec.OvnEip != newFip.Spec.OvnEip {
 		// enqueue to reset eip to be clean
 		klog.Infof("enqueue reset old ovn eip %s", oldFip.Spec.OvnEip)

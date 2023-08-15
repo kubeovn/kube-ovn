@@ -307,12 +307,21 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		ovnEipClient.DeleteSync(dnatEipName)
 		ginkgo.By("Deleting ovn eip " + snatEipName)
 		ovnEipClient.DeleteSync(snatEipName)
-		ginkgo.By("Deleting ovn share eip " + sharedEipName)
-		ovnEipClient.DeleteSync(sharedEipName)
 
-		ginkgo.By("Deleting ovn vip " + arpProxyVip1Name)
+		ginkgo.By("Deleting ovn arp proxy vip " + arpProxyVip1Name)
 		vipClient.DeleteSync(arpProxyVip1Name)
-		ginkgo.By("Deleting ovn vip " + arpProxyVip2Name)
+		ginkgo.By("Deleting ovn arp proxy vip " + arpProxyVip2Name)
+
+		// clean up share eip case resource
+		ginkgo.By("Deleting share ovn dnat " + sharedEipDnatName)
+		ovnDnatRuleClient.DeleteSync(sharedEipDnatName)
+		ginkgo.By("Deleting share ovn fip " + sharedEipFipShoudOkName)
+		ovnFipClient.DeleteSync(sharedEipFipShoudOkName)
+		ginkgo.By("Deleting share ovn fip " + sharedEipFipShoudFailName)
+		ovnFipClient.DeleteSync(sharedEipFipShoudFailName)
+		ginkgo.By("Deleting share ovn snat " + sharedEipSnatName)
+		ovnSnatRuleClient.DeleteSync(sharedEipSnatName)
+
 		vipClient.DeleteSync(arpProxyVip2Name)
 		ginkgo.By("Deleting ovn vip " + dnatVipName)
 		vipClient.DeleteSync(dnatVipName)
@@ -323,16 +332,13 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 
 		ginkgo.By("Deleting subnet " + noBfdSubnetName)
 		subnetClient.DeleteSync(noBfdSubnetName)
-
 		ginkgo.By("Deleting subnet " + bfdSubnetName)
 		subnetClient.DeleteSync(bfdSubnetName)
-
 		ginkgo.By("Deleting underlay subnet " + underlaySubnetName)
 		subnetClient.DeleteSync(underlaySubnetName)
 
 		ginkgo.By("Deleting no bfd custom vpc " + noBfdVpcName)
 		vpcClient.DeleteSync(noBfdVpcName)
-
 		ginkgo.By("Deleting bfd custom vpc " + bfdVpcName)
 		vpcClient.DeleteSync(bfdVpcName)
 
@@ -488,16 +494,6 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 			framework.ExpectEqual(route.Policy, kubeovnv1.PolicyDst)
 			framework.ExpectContainSubstring(vlanSubnetGw, route.NextHopIP)
 		}
-
-		// clean up share eip case resource
-		ginkgo.By("Deleting share ovn fip " + sharedEipFipShoudOkName)
-		ovnFipClient.DeleteSync(sharedEipFipShoudOkName)
-		ginkgo.By("Deleting share ovn fip " + sharedEipFipShoudFailName)
-		ovnFipClient.DeleteSync(sharedEipFipShoudFailName)
-		ginkgo.By("Deleting share ovn dnat " + sharedEipDnatName)
-		ovnDnatRuleClient.DeleteSync(sharedEipDnatName)
-		ginkgo.By("Deleting share ovn snat " + sharedEipSnatName)
-		ovnSnatRuleClient.DeleteSync(sharedEipSnatName)
 
 		ginkgo.By("2. Creating custom vpc enable external and bfd")
 		for _, nodeName := range nodeNames {

@@ -28,7 +28,7 @@ func (c *Controller) enqueueAddVirtualIp(obj interface{}) {
 		utilruntime.HandleError(err)
 		return
 	}
-	klog.V(3).Infof("enqueue add vip %s", key)
+	klog.Infof("enqueue add vip %s", key)
 	c.addVirtualIpQueue.Add(key)
 }
 
@@ -46,7 +46,7 @@ func (c *Controller) enqueueUpdateVirtualIp(old, new interface{}) {
 		oldVip.Spec.ParentMac != newVip.Spec.ParentMac ||
 		oldVip.Spec.ParentV4ip != newVip.Spec.ParentV4ip ||
 		oldVip.Spec.V4ip != newVip.Spec.V4ip {
-		klog.V(3).Infof("enqueue update vip %s", key)
+		klog.Infof("enqueue update vip %s", key)
 		c.updateVirtualIpQueue.Add(key)
 	}
 }
@@ -58,7 +58,7 @@ func (c *Controller) enqueueDelVirtualIp(obj interface{}) {
 		utilruntime.HandleError(err)
 		return
 	}
-	klog.V(3).Infof("enqueue del vip %s", key)
+	klog.Infof("enqueue del vip %s", key)
 	vip := obj.(*kubeovnv1.Vip)
 	c.delVirtualIpQueue.Add(vip)
 }

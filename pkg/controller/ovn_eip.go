@@ -40,7 +40,6 @@ func (c *Controller) enqueueUpdateOvnEip(old, new interface{}) {
 		utilruntime.HandleError(err)
 		return
 	}
-	oldEip := old.(*kubeovnv1.OvnEip)
 	newEip := new.(*kubeovnv1.OvnEip)
 	if newEip.DeletionTimestamp != nil {
 		if len(newEip.Finalizers) == 0 {
@@ -52,6 +51,7 @@ func (c *Controller) enqueueUpdateOvnEip(old, new interface{}) {
 			return
 		}
 	}
+	oldEip := old.(*kubeovnv1.OvnEip)
 	if oldEip.Spec.V4Ip != "" && oldEip.Spec.V4Ip != newEip.Spec.V4Ip ||
 		oldEip.Spec.MacAddress != "" && oldEip.Spec.MacAddress != newEip.Spec.MacAddress {
 		klog.Infof("not support change ip or mac for eip %s", key)

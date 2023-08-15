@@ -36,8 +36,13 @@ func (c *Controller) enqueueUpdateOvnSnatRule(old, new interface{}) {
 		utilruntime.HandleError(err)
 		return
 	}
-	oldSnat := old.(*kubeovnv1.OvnSnatRule)
 	newSnat := new.(*kubeovnv1.OvnSnatRule)
+	if !newSnat.DeletionTimestamp.IsZero() {
+		klog.Infof("enqueue del ovn snat %s", key)
+		c.delOvnSnatRuleQueue.Add(key)
+		return
+	}
+	oldSnat := old.(*kubeovnv1.OvnSnatRule)
 	if oldSnat.Spec.OvnEip != newSnat.Spec.OvnEip {
 		// enqueue to reset eip to be clean
 		c.resetOvnEipQueue.Add(oldSnat.Spec.OvnEip)
