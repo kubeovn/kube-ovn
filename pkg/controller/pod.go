@@ -215,12 +215,12 @@ func (c *Controller) enqueueAddPod(obj interface{}) {
 		return
 	}
 
-	exist, err := c.podNeedSync(p)
+	need, err := c.podNeedSync(p)
 	if err != nil {
 		klog.Errorf("invalid pod net: %v", err)
 		return
 	}
-	if exist {
+	if need {
 		klog.Infof("enqueue add pod %s", key)
 		c.addOrUpdatePodQueue.Add(key)
 	}
@@ -1264,6 +1264,13 @@ func (c *Controller) podNeedSync(pod *v1.Pod) (bool, error) {
 	}
 	for _, n := range attachmentNets {
 		if pod.Annotations[fmt.Sprintf(util.RoutedAnnotationTemplate, n.ProviderName)] != "true" {
+			return true, nil
+		}
+		ipName := ovs.PodNameToPortName(pod.Name, pod.Namespace, n.ProviderName)
+		if _, err = c.ipsLister.Get(ipName); err != nil {
+			err = fmt.Errorf("pod has no ip %s: %v", ipName, err)
+			// need to sync to create ip
+			klog.Error(err)
 			return true, nil
 		}
 	}
