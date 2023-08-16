@@ -3206,8 +3206,8 @@ spec:
           imagePullPolicy: $IMAGE_PULL_POLICY
           command: 
           - /kube-ovn/start-db.sh
-          - 180000
-          - 5
+          - "180000"
+          - "5"
           securityContext:
             capabilities:
               add: ["SYS_NICE"]
@@ -3521,8 +3521,8 @@ spec:
           imagePullPolicy: $IMAGE_PULL_POLICY
           command: 
           - /kube-ovn/start-ovs.sh
-          - 10000 
-          - 180
+          - "10000" 
+          - "180"
           securityContext:
             runAsUser: 0
             privileged: true

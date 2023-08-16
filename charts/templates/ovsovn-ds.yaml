@@ -46,8 +46,8 @@ spec:
           {{- else }}
           command: 
           - /kube-ovn/start-ovs.sh
-          - 10000 
-          - 180
+          - "10000" 
+          - "180"
           {{- end }}
           securityContext:
             runAsUser: 0
