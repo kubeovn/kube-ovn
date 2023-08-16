@@ -1266,6 +1266,12 @@ func (c *Controller) podNeedSync(pod *v1.Pod) (bool, error) {
 		if pod.Annotations[fmt.Sprintf(util.RoutedAnnotationTemplate, n.ProviderName)] != "true" {
 			return true, nil
 		}
+		ipName := ovs.PodNameToPortName(pod.Name, pod.Namespace, n.ProviderName)
+		if _, err = c.ipsLister.Get(ipName); err != nil {
+			errMsg := fmt.Errorf("failed to get ip CR %s: %v", ipName, err)
+			klog.Error(errMsg)
+			return true, errMsg
+		}
 	}
 	return false, nil
 }
