@@ -331,7 +331,6 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 
 func (csh cniServerHandler) UpdateIPCr(podRequest request.CniRequest, subnet, ip string) error {
 	ipCrName := ovs.PodNameToPortName(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider)
-	var err error
 	for i := 0; i < 20; i++ {
 		oriIpCr, err := csh.KubeOvnClient.KubeovnV1().IPs().Get(context.Background(), ipCrName, metav1.GetOptions{})
 		if err != nil {
@@ -339,25 +338,30 @@ func (csh cniServerHandler) UpdateIPCr(podRequest request.CniRequest, subnet, ip
 			// maybe create a backup pod with previous annotations
 			klog.Error(err)
 		} else {
-			ipCr := oriIpCr.DeepCopy()
-			ipCr.Spec.NodeName = csh.Config.NodeName
-			ipCr.Spec.AttachIPs = []string{}
-			ipCr.Labels[subnet] = ""
-			ipCr.Spec.AttachSubnets = []string{}
-			ipCr.Spec.AttachMacs = []string{}
-			if _, err := csh.KubeOvnClient.KubeovnV1().IPs().Update(context.Background(), ipCr, metav1.UpdateOptions{}); err != nil {
-				err = fmt.Errorf("failed to update ip crd for %s, %v", ip, err)
-				klog.Error(err)
-			} else {
-				return nil
+			if oriIpCr.Spec.NodeName != csh.Config.NodeName {
+				ipCr := oriIpCr.DeepCopy()
+				ipCr.Spec.NodeName = csh.Config.NodeName
+				ipCr.Spec.AttachIPs = []string{}
+				ipCr.Labels[subnet] = ""
+				ipCr.Spec.AttachSubnets = []string{}
+				ipCr.Spec.AttachMacs = []string{}
+				if _, err := csh.KubeOvnClient.KubeovnV1().IPs().Update(context.Background(), ipCr, metav1.UpdateOptions{}); err != nil {
+					err = fmt.Errorf("failed to update ip crd for %s, %v", ip, err)
+					klog.Error(err)
+				} else {
+					return nil
+				}
 			}
 		}
 		if err != nil {
 			klog.Warning("wait pod ip %s to be ready", ipCrName)
 			time.Sleep(1 * time.Second)
+		} else {
+			return nil
 		}
 	}
-	return err
+	// update ip spec node is not that necessary, so we just log the error
+	return nil
 }
 
 func (csh cniServerHandler) handleDel(req *restful.Request, resp *restful.Response) {
