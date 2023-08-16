@@ -80,9 +80,7 @@ POD_NIC_TYPE="veth-pair"                          # veth-pair or internal-port
 POD_DEFAULT_FIP_TYPE=""                           # iptables, pod can set iptables fip automatically by enable fip annotation
 
 # VLAN Config only take effect when NETWORK_TYPE is vlan
-PROVIDER_NAME="provider"
 VLAN_INTERFACE_NAME=""
-VLAN_NAME="ovn-vlan"
 VLAN_ID="100"
 
 if [ "$ENABLE_VLAN" = "true" ]; then
@@ -134,7 +132,7 @@ then
       --with-dpdk=*)
         DPDK=true
         DPDK_VERSION="${1#*=}"
-        if [[ ! "${DPDK_SUPPORTED_VERSIONS[@]}" = "${DPDK_VERSION}" ]] || [[ -z "${DPDK_VERSION}" ]]; then
+        if [[ ! "${DPDK_SUPPORTED_VERSIONS[*]}" = "${DPDK_VERSION}" ]] || [[ -z "${DPDK_VERSION}" ]]; then
           echo "Unsupported DPDK version: ${DPDK_VERSION}"
           echo "Supported DPDK versions: ${DPDK_SUPPORTED_VERSIONS[*]}"
           exit 1
@@ -201,17 +199,17 @@ fi
 echo "[Step 1/6] Label kube-ovn-master node and label datapath type"
 count=$(kubectl get no -l$LABEL --no-headers | wc -l)
 node_label="$LABEL"
-if [ $count -eq 0 ]; then
+if [ "${count}" -eq 0 ]; then
   count=$(kubectl get no -l$DEPRECATED_LABEL --no-headers | wc -l)
   node_label="$DEPRECATED_LABEL"
-  if [ $count -eq 0 ]; then
+  if [ "${count}" -eq 0 ]; then
     echo "ERROR: No node with label $LABEL or $DEPRECATED_LABEL found"
     exit 1
   fi
 fi
 kubectl label no -l$node_label kube-ovn/role=master --overwrite
 
-if [ "$DPDK" = "true" -o "$HYBRID_DPDK" = "true" ]; then
+if [ "$DPDK" = "true" ] || [ "$HYBRID_DPDK" = "true" ]; then
   kubectl label no -lovn.kubernetes.io/ovs_dp_type!=userspace ovn.kubernetes.io/ovs_dp_type=kernel --overwrite
 fi
 
@@ -4527,7 +4525,7 @@ if ! sh -c "echo \":$PATH:\" | grep -q \":/usr/local/bin:\""; then
 fi
 
 echo "[Step 6/6] Run network diagnose"
-kubectl cp kube-system/$(kubectl  -n kube-system get pods -o wide | grep cni | awk '{print $1}' | awk 'NR==1{print}'):/kube-ovn/kubectl-ko /usr/local/bin/kubectl-ko
+kubectl cp kube-system/"$(kubectl  -n kube-system get pods -o wide | grep cni | awk '{print $1}' | awk 'NR==1{print}')":/kube-ovn/kubectl-ko /usr/local/bin/kubectl-ko
 chmod +x /usr/local/bin/kubectl-ko
 kubectl ko diagnose all
 
