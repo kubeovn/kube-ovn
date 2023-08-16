@@ -1,0 +1,36 @@
+run:
+  timeout: 15m
+
+output:
+  sort-results: true
+
+linters:
+  enable:
+    - depguard
+    - gocritic
+    - gofumpt
+    - goimports
+    - misspell
+    - predeclared
+    - revive
+    - unconvert
+    - unused
+
+issues:
+  max-same-issues: 0
+  exclude-rules:
+    - linters:
+        - gocritic
+    - path: test/**
+      linters:
+        - errcheck
+
+linters-settings:
+  errcheck:
+    exclude-functions:
+      - io.Copy
+  goimports:
+    local-prefixes: github.com/kubeovn/kube-ovn
+  gofumpt:
+    extra-rules: true
+
