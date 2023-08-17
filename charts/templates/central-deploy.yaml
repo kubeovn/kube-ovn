@@ -46,8 +46,6 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           command: 
           - /kube-ovn/start-db.sh
-          - "180000"
-          - "5"
           securityContext:
             capabilities:
               add: ["SYS_NICE"]
@@ -74,6 +72,10 @@ spec:
                   fieldPath: status.podIPs
             - name: ENABLE_BIND_LOCAL_IP
               value: "{{- .Values.func.ENABLE_BIND_LOCAL_IP }}"
+            - name: PROBE_INTERVAL
+              value: "{{ .Values.networking.PROBE_INTERVAL }}"
+            - name: OVN_LEADER_PROBE_INTERVAL
+              value: "{{ .Values.networking.OVN_LEADER_PROBE_INTERVAL }}"
           resources:
             requests:
               cpu: {{ index .Values "ovn-central" "requests" "cpu" }}

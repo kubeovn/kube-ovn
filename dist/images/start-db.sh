@@ -4,18 +4,8 @@ set -eo pipefail
 DEBUG_WRAPPER=${DEBUG_WRAPPER:-}
 DEBUG_OPT="--ovn-northd-wrapper=$DEBUG_WRAPPER --ovsdb-nb-wrapper=$DEBUG_WRAPPER --ovsdb-sb-wrapper=$DEBUG_WRAPPER"
 
-PROBE_INTERVAL=${PROBE_INTERVAL:-180000}
-OVN_LEADER_PROBE_INTERVAL=${OVN_LEADER_PROBE_INTERVAL:-5}
-# the first args is PROBE_INTERVAL
-if [ -n "$1" ]; then
-    PROBE_INTERVAL=$1
-    echo "PROBE_INTERVAL is set to $PROBE_INTERVAL"
-fi
-# the second args is OVN_LEADER_PROBE_INTERVAL
-if [ -n "$2" ]; then
-    OVN_LEADER_PROBE_INTERVAL=$2
-    echo "OVN_LEADER_PROBE_INTERVAL is set to $OVN_LEADER_PROBE_INTERVAL"
-fi
+echo "PROBE_INTERVAL is set to $PROBE_INTERVAL"
+echo "OVN_LEADER_PROBE_INTERVAL is set to $OVN_LEADER_PROBE_INTERVAL"
 
 # https://bugs.launchpad.net/neutron/+bug/1776778
 if grep -q "3.10.0-862" /proc/version

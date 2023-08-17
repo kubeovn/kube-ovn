@@ -3206,8 +3206,6 @@ spec:
           imagePullPolicy: $IMAGE_PULL_POLICY
           command: 
           - /kube-ovn/start-db.sh
-          - "180000"
-          - "5"
           securityContext:
             capabilities:
               add: ["SYS_NICE"]
@@ -3236,6 +3234,10 @@ spec:
               value: "$ENABLE_BIND_LOCAL_IP"
             - name: DEBUG_WRAPPER
               value: "$DEBUG_WRAPPER"
+            - name: PROBE_INTERVAL
+              value: "180000"
+            - name: OVN_LEADER_PROBE_INTERVAL
+              value: "5"
           resources:
             requests:
               cpu: 300m
@@ -3521,8 +3523,6 @@ spec:
           imagePullPolicy: $IMAGE_PULL_POLICY
           command: 
           - /kube-ovn/start-ovs.sh
-          - "10000" 
-          - "180"
           securityContext:
             runAsUser: 0
             privileged: true
@@ -3553,6 +3553,10 @@ spec:
               value: $addresses
             - name: DEBUG_WRAPPER
               value: "$DEBUG_WRAPPER"
+            - name: OVN_REMOTE_PROBE_INTERVAL
+              value: "10000" 
+            - name: OVN_REMOTE_OPENFLOW_INTERVAL
+              value: "180"
           volumeMounts:
             - mountPath: /var/run/netns
               name: host-ns
