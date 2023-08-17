@@ -7,8 +7,6 @@ DEBUG_OPT="--ovn-northd-wrapper=$DEBUG_WRAPPER --ovsdb-nb-wrapper=$DEBUG_WRAPPER
 echo "PROBE_INTERVAL is set to $PROBE_INTERVAL"
 echo "OVN_LEADER_PROBE_INTERVAL is set to $OVN_LEADER_PROBE_INTERVAL"
 
-OVN_NORTHD_N_THREADS="4"
-echo "OVN_NORTHD_N_THREADS is set to $OVN_NORTHD_N_THREADS"
 # https://bugs.launchpad.net/neutron/+bug/1776778
 if grep -q "3.10.0-862" /proc/version
 then
@@ -277,7 +275,7 @@ if [[ "$ENABLE_SSL" == "false" ]]; then
                 --remote=db:Local_Config,Config,connections \
                 /etc/ovn/ovnsb_local_config.db
             /usr/share/ovn/scripts/ovn-ctl $ovn_ctl_args \
-                --ovn-manage-ovsdb=no --ovn-northd-n-threads="${OVN_NORTHD_N_THREADS}" start_northd
+                --ovn-manage-ovsdb=no start_northd
             ovn-nbctl --no-leader-only set NB_Global . options:inactivity_probe=${PROBE_INTERVAL}
             ovn-sbctl --no-leader-only set SB_Global . options:inactivity_probe=${PROBE_INTERVAL}
             ovn-nbctl --no-leader-only set NB_Global . options:northd_probe_interval=${PROBE_INTERVAL}
@@ -343,7 +341,6 @@ if [[ "$ENABLE_SSL" == "false" ]]; then
             /usr/share/ovn/scripts/ovn-ctl \
                 $ovn_ctl_args \
                 --ovn-manage-ovsdb=no \
-                --ovn-northd-n-threads="${OVN_NORTHD_N_THREADS}" \
                 start_northd
         fi
     fi
@@ -359,7 +356,6 @@ else
             --ovn-northd-ssl-key=/var/run/tls/key \
             --ovn-northd-ssl-cert=/var/run/tls/cert \
             --ovn-northd-ssl-ca-cert=/var/run/tls/cacert \
-            --ovn-northd-n-threads="${OVN_NORTHD_N_THREADS}" \
             restart_northd
         ovn-nbctl --no-leader-only -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert set-connection pssl:"${NB_PORT}":["${DB_ADDR}"]
         ovn-nbctl --no-leader-only -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert set Connection . inactivity_probe=${PROBE_INTERVAL}
@@ -417,7 +413,7 @@ else
                 --remote=db:Local_Config,Config,connections \
                 /etc/ovn/ovnsb_local_config.db
             /usr/share/ovn/scripts/ovn-ctl $ovn_ctl_args \
-                --ovn-manage-ovsdb=no --ovn-northd-n-threads="${OVN_NORTHD_N_THREADS}" start_northd
+                --ovn-manage-ovsdb=no start_northd
             ovn-nbctl --no-leader-only -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert set NB_Global . options:northd_probe_interval=${PROBE_INTERVAL}
             ovn-nbctl --no-leader-only -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert set NB_Global . options:use_logical_dp_groups=true
         else
@@ -485,7 +481,7 @@ else
                 --remote=db:Local_Config,Config,connections \
                 /etc/ovn/ovnsb_local_config.db
             /usr/share/ovn/scripts/ovn-ctl $ovn_ctl_args \
-                --ovn-manage-ovsdb=no --ovn-northd-n-threads="${OVN_NORTHD_N_THREADS}" start_northd
+                --ovn-manage-ovsdb=no start_northd
         fi
     fi
 fi
