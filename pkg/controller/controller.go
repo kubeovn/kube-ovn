@@ -312,7 +312,7 @@ func Run(ctx context.Context, config *Configuration) {
 		vpcs:              &sync.Map{},
 		podSubnetMap:      &sync.Map{},
 		deletingPodObjMap: &sync.Map{},
-		ovnLegacyClient:   ovs.NewLegacyClient(config.OvnTimeout, config.OvnSbAddr, config.ClusterRouter, config.ClusterTcpLoadBalancer, config.ClusterUdpLoadBalancer, config.ClusterTcpSessionLoadBalancer, config.ClusterUdpSessionLoadBalancer, config.NodeSwitch, config.NodeSwitchCIDR),
+		ovnLegacyClient:   ovs.NewLegacyClient(config.OvnTimeout),
 		ipam:              ovnipam.NewIPAM(),
 		namedPort:         NewNamedPort(),
 
@@ -488,10 +488,10 @@ func Run(ctx context.Context, config *Configuration) {
 	}
 
 	var err error
-	if controller.ovnNbClient, err = ovs.NewOvnNbClient(config.OvnNbAddr, config.OvnTimeout, config.NodeSwitchCIDR); err != nil {
+	if controller.ovnNbClient, err = ovs.NewOvnNbClient(config.OvnNbAddr, config.OvnTimeout); err != nil {
 		util.LogFatalAndExit(err, "failed to create ovn nb client")
 	}
-	if controller.ovnSbClient, err = ovs.NewOvnSbClient(config.OvnSbAddr, config.OvnTimeout, config.NodeSwitchCIDR); err != nil {
+	if controller.ovnSbClient, err = ovs.NewOvnSbClient(config.OvnSbAddr, config.OvnTimeout); err != nil {
 		util.LogFatalAndExit(err, "failed to create ovn sb client")
 	}
 	if config.EnableLb {

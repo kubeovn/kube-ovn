@@ -109,7 +109,7 @@ type ACL interface {
 	UpdateSgAcl(sg *kubeovnv1.SecurityGroup, direction string) error
 	UpdateLogicalSwitchAcl(lsName string, subnetAcls []kubeovnv1.Acl) error
 	SetAclLog(pgName, protocol string, logEnable, isIngress bool) error
-	SetLogicalSwitchPrivate(lsName, cidrBlock string, allowSubnets []string) error
+	SetLogicalSwitchPrivate(lsName, cidrBlock, nodeSwitchCIDR string, allowSubnets []string) error
 	DeleteAcls(parentName, parentType string, direction string, externalIDs map[string]string) error
 	DeleteAclsOps(parentName, parentType string, direction string, externalIDs map[string]string) ([]ovsdb.Operation, error)
 }

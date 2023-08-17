@@ -17,23 +17,14 @@ import (
 
 // LegacyClient is the legacy ovn client
 type LegacyClient struct {
-	OvnTimeout                    int
-	OvnICNbAddress                string
-	OvnICSbAddress                string
-	ClusterRouter                 string
-	ClusterTcpLoadBalancer        string
-	ClusterUdpLoadBalancer        string
-	ClusterTcpSessionLoadBalancer string
-	ClusterUdpSessionLoadBalancer string
-	NodeSwitch                    string
-	NodeSwitchCIDR                string
-	Version                       string
+	OvnTimeout     int
+	OvnICNbAddress string
+	OvnICSbAddress string
 }
 
 type ovnNbClient struct {
 	ovsDbClient
-	ClusterRouter  string
-	NodeSwitchCIDR string
+	ClusterRouter string
 }
 
 type ovnSbClient struct {
@@ -56,16 +47,9 @@ const (
 )
 
 // NewLegacyClient init a legacy ovn client
-func NewLegacyClient(timeout int, ovnSbAddr, clusterRouter, clusterTcpLoadBalancer, clusterUdpLoadBalancer, clusterTcpSessionLoadBalancer, clusterUdpSessionLoadBalancer, nodeSwitch, nodeSwitchCIDR string) *LegacyClient {
+func NewLegacyClient(timeout int) *LegacyClient {
 	return &LegacyClient{
-		OvnTimeout:                    timeout,
-		ClusterRouter:                 clusterRouter,
-		ClusterTcpLoadBalancer:        clusterTcpLoadBalancer,
-		ClusterUdpLoadBalancer:        clusterUdpLoadBalancer,
-		ClusterTcpSessionLoadBalancer: clusterTcpSessionLoadBalancer,
-		ClusterUdpSessionLoadBalancer: clusterUdpSessionLoadBalancer,
-		NodeSwitch:                    nodeSwitch,
-		NodeSwitchCIDR:                nodeSwitchCIDR,
+		OvnTimeout: timeout,
 	}
 }
 
@@ -104,12 +88,11 @@ func NewOvnNbClient(ovnNbAddr string, ovnNbTimeout int) (*ovnNbClient, error) {
 			Client:  nbClient,
 			Timeout: time.Duration(ovnNbTimeout) * time.Second,
 		},
-		NodeSwitchCIDR: nodeSwitchCIDR,
 	}
 	return c, nil
 }
 
-func NewOvnSbClient(ovnSbAddr string, ovnSbTimeout int, nodeSwitchCIDR string) (*ovnSbClient, error) {
+func NewOvnSbClient(ovnSbAddr string, ovnSbTimeout int) (*ovnSbClient, error) {
 	dbModel, err := ovnsb.FullDatabaseModel()
 	if err != nil {
 		klog.Error(err)

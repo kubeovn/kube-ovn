@@ -1282,17 +1282,17 @@ func (mr *MockACLMockRecorder) SetAclLog(pgName, protocol, logEnable, isIngress 
 }
 
 // SetLogicalSwitchPrivate mocks base method.
-func (m *MockACL) SetLogicalSwitchPrivate(lsName, cidrBlock string, allowSubnets []string) error {
+func (m *MockACL) SetLogicalSwitchPrivate(lsName, cidrBlock, nodeSwitchCIDR string, allowSubnets []string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetLogicalSwitchPrivate", lsName, cidrBlock, allowSubnets)
+	ret := m.ctrl.Call(m, "SetLogicalSwitchPrivate", lsName, cidrBlock, nodeSwitchCIDR, allowSubnets)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // SetLogicalSwitchPrivate indicates an expected call of SetLogicalSwitchPrivate.
-func (mr *MockACLMockRecorder) SetLogicalSwitchPrivate(lsName, cidrBlock, allowSubnets interface{}) *gomock.Call {
+func (mr *MockACLMockRecorder) SetLogicalSwitchPrivate(lsName, cidrBlock, nodeSwitchCIDR, allowSubnets interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLogicalSwitchPrivate", reflect.TypeOf((*MockACL)(nil).SetLogicalSwitchPrivate), lsName, cidrBlock, allowSubnets)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLogicalSwitchPrivate", reflect.TypeOf((*MockACL)(nil).SetLogicalSwitchPrivate), lsName, cidrBlock, nodeSwitchCIDR, allowSubnets)
 }
 
 // UpdateEgressAclOps mocks base method.
@@ -3443,17 +3443,17 @@ func (mr *MockNbClientMockRecorder) SetLogicalSwitchPortsSecurityGroup(sgName, o
 }
 
 // SetLogicalSwitchPrivate mocks base method.
-func (m *MockNbClient) SetLogicalSwitchPrivate(lsName, cidrBlock string, allowSubnets []string) error {
+func (m *MockNbClient) SetLogicalSwitchPrivate(lsName, cidrBlock, nodeSwitchCIDR string, allowSubnets []string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetLogicalSwitchPrivate", lsName, cidrBlock, allowSubnets)
+	ret := m.ctrl.Call(m, "SetLogicalSwitchPrivate", lsName, cidrBlock, nodeSwitchCIDR, allowSubnets)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // SetLogicalSwitchPrivate indicates an expected call of SetLogicalSwitchPrivate.
-func (mr *MockNbClientMockRecorder) SetLogicalSwitchPrivate(lsName, cidrBlock, allowSubnets interface{}) *gomock.Call {
+func (mr *MockNbClientMockRecorder) SetLogicalSwitchPrivate(lsName, cidrBlock, nodeSwitchCIDR, allowSubnets interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLogicalSwitchPrivate", reflect.TypeOf((*MockNbClient)(nil).SetLogicalSwitchPrivate), lsName, cidrBlock, allowSubnets)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLogicalSwitchPrivate", reflect.TypeOf((*MockNbClient)(nil).SetLogicalSwitchPrivate), lsName, cidrBlock, nodeSwitchCIDR, allowSubnets)
 }
 
 // SetLsDnatModDlDst mocks base method.

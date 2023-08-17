@@ -39,7 +39,7 @@ func (suite *OvnClientTestSuite) SetupSuite() {
 	endpoint := fmt.Sprintf("unix:%s", sock)
 	require.FileExists(suite.T(), sock)
 
-	ovnClient, err := newOvnNbClient(suite.T(), endpoint, 10, "100.64.0.0/16,fd00:100:64::/64")
+	ovnClient, err := newOvnNbClient(suite.T(), endpoint, 10)
 	require.NoError(suite.T(), err)
 
 	suite.ovnClient = ovnClient
@@ -649,7 +649,7 @@ func (suite *OvnClientTestSuite) Test_GetEntityInfo() {
 func Test_scratch(t *testing.T) {
 	t.SkipNow()
 	endpoint := "tcp:[172.20.149.35]:6641"
-	ovnClient, err := newOvnNbClient(t, endpoint, 10, "")
+	ovnClient, err := newOvnNbClient(t, endpoint, 10)
 	require.NoError(t, err)
 
 	err = ovnClient.DeleteAcls("test_pg", portGroupKey, ovnnb.ACLDirectionToLport, nil)
@@ -692,7 +692,7 @@ func newOVSDBServer(t *testing.T, dbModel model.ClientDBModel, schema ovsdb.Data
 	return server, tmpfile
 }
 
-func newOvnNbClient(t *testing.T, ovnNbAddr string, ovnNbTimeout int, nodeSwitchCIDR string) (*ovnNbClient, error) {
+func newOvnNbClient(t *testing.T, ovnNbAddr string, ovnNbTimeout int) (*ovnNbClient, error) {
 	nbClient, err := newNbClient(ovnNbAddr, ovnNbTimeout)
 	require.NoError(t, err)
 
@@ -701,7 +701,6 @@ func newOvnNbClient(t *testing.T, ovnNbAddr string, ovnNbTimeout int, nodeSwitch
 			Client:  nbClient,
 			Timeout: time.Duration(ovnNbTimeout) * time.Second,
 		},
-		NodeSwitchCIDR: nodeSwitchCIDR,
 	}, nil
 }
 

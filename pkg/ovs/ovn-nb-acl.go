@@ -450,7 +450,7 @@ func (c *ovnNbClient) UpdateAcl(acl *ovnnb.ACL, fields ...interface{}) error {
 }
 
 // SetLogicalSwitchPrivate will drop all ingress traffic except allow subnets, same subnet and node subnet
-func (c *ovnNbClient) SetLogicalSwitchPrivate(lsName, cidrBlock string, allowSubnets []string) error {
+func (c *ovnNbClient) SetLogicalSwitchPrivate(lsName, cidrBlock, nodeSwitchCIDR string, allowSubnets []string) error {
 	// clear acls
 	if err := c.DeleteAcls(lsName, logicalSwitchKey, "", nil); err != nil {
 		return fmt.Errorf("clear logical switch %s acls: %v", lsName, err)
@@ -476,7 +476,7 @@ func (c *ovnNbClient) SetLogicalSwitchPrivate(lsName, cidrBlock string, allowSub
 	acls = append(acls, defaultDropAcl)
 
 	nodeSubnetAclFunc := func(protocol, ipSuffix string) error {
-		for _, nodeCidr := range strings.Split(c.NodeSwitchCIDR, ",") {
+		for _, nodeCidr := range strings.Split(nodeSwitchCIDR, ",") {
 			// skip different address family
 			if protocol != util.CheckProtocol(nodeCidr) {
 				continue
