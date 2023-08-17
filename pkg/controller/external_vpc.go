@@ -83,7 +83,7 @@ func (c *Controller) syncExternalVpc() {
 
 func (c *Controller) getRouterStatus() (logicalRouters map[string]util.LogicalRouter, err error) {
 	logicalRouters = make(map[string]util.LogicalRouter)
-	externalOvnRouters, err := c.ovnClient.ListLogicalRouter(false, func(lr *ovnnb.LogicalRouter) bool {
+	externalOvnRouters, err := c.ovnNbClient.ListLogicalRouter(false, func(lr *ovnnb.LogicalRouter) bool {
 		return len(lr.ExternalIDs) == 0 || lr.ExternalIDs["vendor"] != util.CniTypeName
 	})
 	if err != nil {
@@ -101,7 +101,7 @@ func (c *Controller) getRouterStatus() (logicalRouters map[string]util.LogicalRo
 			Ports: make([]util.Port, 0, len(externalLR.Ports)),
 		}
 		for _, uuid := range externalLR.Ports {
-			lrp, err := c.ovnClient.GetLogicalRouterPortByUUID(uuid)
+			lrp, err := c.ovnNbClient.GetLogicalRouterPortByUUID(uuid)
 			if err != nil {
 				klog.Warningf("failed to get LRP by UUID %s: %v", uuid, err)
 				continue
@@ -113,7 +113,7 @@ func (c *Controller) getRouterStatus() (logicalRouters map[string]util.LogicalRo
 	for routerName, logicalRouter := range logicalRouters {
 		tmpRouter := logicalRouter
 		for _, port := range logicalRouter.Ports {
-			peerPorts, err := c.ovnClient.ListLogicalSwitchPorts(false, nil, func(lsp *ovnnb.LogicalSwitchPort) bool {
+			peerPorts, err := c.ovnNbClient.ListLogicalSwitchPorts(false, nil, func(lsp *ovnnb.LogicalSwitchPort) bool {
 				return len(lsp.Options) != 0 && lsp.Options["router-port"] == port.Name
 			})
 			if err != nil || len(peerPorts) > 1 {
@@ -124,7 +124,7 @@ func (c *Controller) getRouterStatus() (logicalRouters map[string]util.LogicalRo
 				continue
 			}
 			lsp := peerPorts[0]
-			switches, err := c.ovnClient.ListLogicalSwitch(false, func(ls *ovnnb.LogicalSwitch) bool {
+			switches, err := c.ovnNbClient.ListLogicalSwitch(false, func(ls *ovnnb.LogicalSwitch) bool {
 				return util.ContainsString(ls.Ports, lsp.UUID)
 			})
 			if err != nil || len(switches) > 1 {

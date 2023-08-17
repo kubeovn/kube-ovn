@@ -118,7 +118,7 @@ func (c *Controller) removeExternalGateway() error {
 
 	if !keepExternalSubnet {
 		klog.Infof("delete external gateway switch %s", c.config.ExternalGatewaySwitch)
-		if err := c.ovnClient.DeleteLogicalGatewaySwitch(util.ExternalGatewaySwitch, c.config.ClusterRouter); err != nil {
+		if err := c.ovnNbClient.DeleteLogicalGatewaySwitch(util.ExternalGatewaySwitch, c.config.ClusterRouter); err != nil {
 			klog.Errorf("delete external gateway switch %s: %v", util.ExternalGatewaySwitch, err)
 			return err
 		}
@@ -126,7 +126,7 @@ func (c *Controller) removeExternalGateway() error {
 		klog.Infof("should keep provider network vlan underlay external gateway switch %s", c.config.ExternalGatewaySwitch)
 		lrpName := fmt.Sprintf("%s-%s", c.config.ClusterRouter, c.config.ExternalGatewaySwitch)
 		klog.Infof("delete logical router port %s", lrpName)
-		if err := c.ovnClient.DeleteLogicalRouterPort(lrpName); err != nil {
+		if err := c.ovnNbClient.DeleteLogicalRouterPort(lrpName); err != nil {
 			klog.Errorf("failed to delete lrp %s, %v", lrpName, err)
 			return err
 		}
@@ -142,7 +142,7 @@ func (c *Controller) establishExternalGateway(config map[string]string) error {
 	}
 	var lrpIp, lrpMac string
 	lrpName := fmt.Sprintf("%s-%s", c.config.ClusterRouter, c.config.ExternalGatewaySwitch)
-	lrp, err := c.ovnClient.GetLogicalRouterPort(lrpName, true)
+	lrp, err := c.ovnNbClient.GetLogicalRouterPort(lrpName, true)
 	if err != nil {
 		klog.Errorf("failed to get lrp %s, %v", lrpName, err)
 		return err
@@ -160,7 +160,7 @@ func (c *Controller) establishExternalGateway(config map[string]string) error {
 		lrpIp = config["nic-ip"]
 		lrpMac = config["nic-mac"]
 	}
-	if err := c.ovnClient.CreateGatewayLogicalSwitch(c.config.ExternalGatewaySwitch, c.config.ClusterRouter, c.config.ExternalGatewayNet, lrpIp, lrpMac, c.config.ExternalGatewayVlanID, chassises...); err != nil {
+	if err := c.ovnNbClient.CreateGatewayLogicalSwitch(c.config.ExternalGatewaySwitch, c.config.ClusterRouter, c.config.ExternalGatewayNet, lrpIp, lrpMac, c.config.ExternalGatewayVlanID, chassises...); err != nil {
 		klog.Errorf("create external gateway switch %s: %v", c.config.ExternalGatewaySwitch, err)
 		return err
 	}
@@ -249,15 +249,19 @@ func (c *Controller) getGatewayChassis(config map[string]string) ([]string, erro
 			klog.Errorf("patch external gw node %s failed %v", gw, err)
 			return chassises, err
 		}
-		chassisID, err := c.ovnLegacyClient.GetChassis(gw)
-		if err != nil {
-			klog.Errorf("failed to get external gw %s chassisID, %v", gw, err)
+		annoChassisName := node.Annotations[util.ChassisAnnotation]
+		if annoChassisName == "" {
+			err := fmt.Errorf("node %s has no chassis annotation, kube-ovn-cni not ready", gw)
+			klog.Error(err)
 			return chassises, err
 		}
-		if chassisID == "" {
-			return chassises, fmt.Errorf("no chassisID for external gw %s", gw)
+		klog.Infof("get node %s chassis: %s", gw, annoChassisName)
+		chassis, err := c.ovnSbClient.GetChassis(annoChassisName, false)
+		if err != nil {
+			klog.Errorf("failed to get node %s chassis: %s, %v", node.Name, annoChassisName, err)
+			return chassises, err
 		}
-		chassises = append(chassises, chassisID)
+		chassises = append(chassises, chassis.UUID)
 	}
 	if len(chassises) == 0 {
 		klog.Error("no available external gw")

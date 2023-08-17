@@ -1,9 +1,7 @@
 package ovs
 
 import (
-	"context"
 	"fmt"
-	"reflect"
 	"strings"
 
 	"github.com/ovn-org/libovsdb/ovsdb"
@@ -24,7 +22,7 @@ const (
 )
 
 // CreateGatewayLogicalSwitch create gateway switch connect external networks
-func (c *ovnClient) CreateGatewayLogicalSwitch(lsName, lrName, provider, ip, mac string, vlanID int, chassises ...string) error {
+func (c *ovnNbClient) CreateGatewayLogicalSwitch(lsName, lrName, provider, ip, mac string, vlanID int, chassises ...string) error {
 	lspName := fmt.Sprintf("%s-%s", lsName, lrName)
 	lrpName := fmt.Sprintf("%s-%s", lrName, lsName)
 
@@ -51,7 +49,7 @@ func (c *ovnClient) CreateGatewayLogicalSwitch(lsName, lrName, provider, ip, mac
 }
 
 // CreateLogicalPatchPort create logical router port and associated logical switch port which type is router
-func (c *ovnClient) CreateLogicalPatchPort(lsName, lrName, lspName, lrpName, ip, mac string, chassises ...string) error {
+func (c *ovnNbClient) CreateLogicalPatchPort(lsName, lrName, lspName, lrpName, ip, mac string, chassises ...string) error {
 	if len(ip) != 0 {
 		// check ip format: 192.168.231.1/24,fc00::0af4:01/112
 		if err := util.CheckCidrs(ip); err != nil {
@@ -78,7 +76,7 @@ func (c *ovnClient) CreateLogicalPatchPort(lsName, lrName, lspName, lrpName, ip,
 }
 
 // DeleteLogicalGatewaySwitch delete gateway switch and corresponding port
-func (c *ovnClient) DeleteLogicalGatewaySwitch(lsName, lrName string) error {
+func (c *ovnNbClient) DeleteLogicalGatewaySwitch(lsName, lrName string) error {
 	lrpName := fmt.Sprintf("%s-%s", lrName, lsName)
 
 	// all corresponding logical switch port(e.g. localnet port and normal port) will be deleted when delete logical switch
@@ -103,7 +101,7 @@ func (c *ovnClient) DeleteLogicalGatewaySwitch(lsName, lrName string) error {
 	return nil
 }
 
-func (c *ovnClient) DeleteSecurityGroup(sgName string) error {
+func (c *ovnNbClient) DeleteSecurityGroup(sgName string) error {
 	pgName := GetSgPortGroupName(sgName)
 
 	// clear acl
@@ -130,7 +128,7 @@ func (c *ovnClient) DeleteSecurityGroup(sgName string) error {
 	return nil
 }
 
-func (c *ovnClient) CreateRouterPortOp(lsName, lrName, lspName, lrpName, ip, mac string) ([]ovsdb.Operation, error) {
+func (c *ovnNbClient) CreateRouterPortOp(lsName, lrName, lspName, lrpName, ip, mac string) ([]ovsdb.Operation, error) {
 	/* do nothing if logical switch port exist */
 	lspExist, err := c.LogicalSwitchPortExists(lspName)
 	if err != nil {
@@ -179,7 +177,7 @@ func (c *ovnClient) CreateRouterPortOp(lsName, lrName, lspName, lrpName, ip, mac
 }
 
 // RemoveLogicalPatchPort delete logical router port and associated logical switch port which type is router
-func (c *ovnClient) RemoveLogicalPatchPort(lspName, lrpName string) error {
+func (c *ovnNbClient) RemoveLogicalPatchPort(lspName, lrpName string) error {
 	/* delete logical switch port*/
 	lspDelOp, err := c.DeleteLogicalSwitchPortOp(lspName)
 	if err != nil {
@@ -198,26 +196,6 @@ func (c *ovnClient) RemoveLogicalPatchPort(lspName, lrpName string) error {
 
 	if err = c.Transact("lrp-lsp-del", ops); err != nil {
 		return fmt.Errorf("delete logical switch port %s and delete logical router port %s: %v", lspName, lrpName, err)
-	}
-
-	return nil
-}
-
-// GetEntityInfo get entity info by column which is the index,
-// reference to ovn-nb.ovsschema(ovsdb-client get-schema unix:/var/run/ovn/ovnnb_db.sock OVN_Northbound) for more information,
-// UUID is index
-func (c *ovnClient) GetEntityInfo(entity interface{}) error {
-	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
-	defer cancel()
-
-	entityPtr := reflect.ValueOf(entity)
-	if entityPtr.Kind() != reflect.Pointer {
-		return fmt.Errorf("entity must be pointer")
-	}
-
-	err := c.Get(ctx, entity)
-	if err != nil {
-		return err
 	}
 
 	return nil

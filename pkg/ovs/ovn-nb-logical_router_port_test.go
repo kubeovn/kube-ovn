@@ -25,7 +25,7 @@ func newLogicalRouterPort(lrName, lrpName, mac string, networks []string) *ovnnb
 	}
 }
 
-func createLogicalRouterPort(c *ovnClient, lrp *ovnnb.LogicalRouterPort) error {
+func createLogicalRouterPort(c *ovnNbClient, lrp *ovnnb.LogicalRouterPort) error {
 	op, err := c.Create(lrp)
 	if err != nil {
 		return fmt.Errorf("generate operations for creating logical router port %s: %v", lrp.Name, err)
