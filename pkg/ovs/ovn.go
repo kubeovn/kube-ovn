@@ -69,7 +69,7 @@ func NewLegacyClient(timeout int, ovnSbAddr, clusterRouter, clusterTcpLoadBalanc
 	}
 }
 
-func NewOvnNbClient(ovnNbAddr string, ovnNbTimeout int, nodeSwitchCIDR string) (*ovnNbClient, error) {
+func NewOvnNbClient(ovnNbAddr string, ovnNbTimeout int) (*ovnNbClient, error) {
 	dbModel, err := ovnnb.FullDatabaseModel()
 	if err != nil {
 		klog.Error(err)
