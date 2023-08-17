@@ -29,8 +29,6 @@ RUN cd /usr/src/ && \
 
 RUN cd /usr/src/ && git clone -b branch-22.12 --depth=1 https://github.com/ovn-org/ovn.git && \
     cd ovn && \
-    # do not send direct traffic between lports to conntrack
-    curl -s https://github.com/kubeovn/ovn/commit/4124fb623183541b80a577846ce145c7faf8eb5d.patch | git apply && \
     # change hash type from dp_hash to hash with field src_ip
     curl -s https://github.com/kubeovn/ovn/commit/daa09e380eec61620d4ee317e3265c44366d1147.patch | git apply && \
     # set ether dst addr for dnat on logical switch
@@ -111,7 +109,7 @@ RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages  \
 ARG DEBUG=false
 RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages \
     if [ "${DEBUG}" = "true" ]; then \
-        apt update && apt install -y --no-install-recommends valgrind && \
+        apt update && apt install -y --no-install-recommends gdb valgrind && \
         rm -rf /var/lib/apt/lists/* && \
         dpkg -i --ignore-depends=openvswitch-switch,openvswitch-common /packages/*.ddeb; \
     fi
