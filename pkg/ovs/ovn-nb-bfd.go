@@ -8,12 +8,12 @@ import (
 	"k8s.io/klog/v2"
 )
 
-func (c *ovnClient) ListBFD(lrpName, dstIP string) ([]ovnnb.BFD, error) {
+func (c *ovnNbClient) ListBFD(lrpName, dstIP string) ([]ovnnb.BFD, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
 	defer cancel()
 
 	bfdList := make([]ovnnb.BFD, 0)
-	if err := c.ovnNbClient.WhereCache(func(bfd *ovnnb.BFD) bool {
+	if err := c.ovsDbClient.WhereCache(func(bfd *ovnnb.BFD) bool {
 		if bfd.LogicalPort != lrpName {
 			return false
 		}
@@ -25,7 +25,7 @@ func (c *ovnClient) ListBFD(lrpName, dstIP string) ([]ovnnb.BFD, error) {
 	return bfdList, nil
 }
 
-func (c *ovnClient) CreateBFD(lrpName, dstIP string, minRx, minTx, detectMult int) (*ovnnb.BFD, error) {
+func (c *ovnNbClient) CreateBFD(lrpName, dstIP string, minRx, minTx, detectMult int) (*ovnnb.BFD, error) {
 	bfdList, err := c.ListBFD(lrpName, dstIP)
 	if err != nil {
 		klog.Error(err)
@@ -59,7 +59,7 @@ func (c *ovnClient) CreateBFD(lrpName, dstIP string, minRx, minTx, detectMult in
 	return &bfdList[0], nil
 }
 
-func (c *ovnClient) DeleteBFD(lrpName, dstIP string) error {
+func (c *ovnNbClient) DeleteBFD(lrpName, dstIP string) error {
 	bfdList, err := c.ListBFD(lrpName, dstIP)
 	if err != nil {
 		klog.Error(err)

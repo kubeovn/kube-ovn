@@ -14,7 +14,7 @@ import (
 )
 
 // CreateAddressSet create address set with external ids
-func (c *ovnClient) CreateAddressSet(asName string, externalIDs map[string]string) error {
+func (c *ovnNbClient) CreateAddressSet(asName string, externalIDs map[string]string) error {
 	// ovn acl doesn't support address_set name with '-'
 	if matched := matchAddressSetName(asName); !matched {
 		return fmt.Errorf("address set %s must match `[a-zA-Z_.][a-zA-Z_.0-9]*`", asName)
@@ -36,7 +36,7 @@ func (c *ovnClient) CreateAddressSet(asName string, externalIDs map[string]strin
 		ExternalIDs: externalIDs,
 	}
 
-	ops, err := c.ovnNbClient.Create(as)
+	ops, err := c.ovsDbClient.Create(as)
 	if err != nil {
 		klog.Error(err)
 		return fmt.Errorf("generate operations for creating address set %s: %v", asName, err)
@@ -51,7 +51,7 @@ func (c *ovnClient) CreateAddressSet(asName string, externalIDs map[string]strin
 
 // AddressSetUpdateAddress update addresses,
 // clear addresses when addresses is empty
-func (c *ovnClient) AddressSetUpdateAddress(asName string, addresses ...string) error {
+func (c *ovnNbClient) AddressSetUpdateAddress(asName string, addresses ...string) error {
 	as, err := c.GetAddressSet(asName, false)
 	if err != nil {
 		klog.Error(err)
@@ -84,7 +84,7 @@ func (c *ovnClient) AddressSetUpdateAddress(asName string, addresses ...string) 
 }
 
 // UpdateAddressSet update address set
-func (c *ovnClient) UpdateAddressSet(as *ovnnb.AddressSet, fields ...interface{}) error {
+func (c *ovnNbClient) UpdateAddressSet(as *ovnnb.AddressSet, fields ...interface{}) error {
 	if as == nil {
 		return fmt.Errorf("address_set is nil")
 	}
@@ -103,7 +103,7 @@ func (c *ovnClient) UpdateAddressSet(as *ovnnb.AddressSet, fields ...interface{}
 	return nil
 }
 
-func (c *ovnClient) DeleteAddressSet(asName string) error {
+func (c *ovnNbClient) DeleteAddressSet(asName string) error {
 	as, err := c.GetAddressSet(asName, true)
 	if err != nil {
 		klog.Error(err)
@@ -129,7 +129,7 @@ func (c *ovnClient) DeleteAddressSet(asName string) error {
 }
 
 // DeleteAddressSets delete several address set once
-func (c *ovnClient) DeleteAddressSets(externalIDs map[string]string) error {
+func (c *ovnNbClient) DeleteAddressSets(externalIDs map[string]string) error {
 	// it's dangerous when externalIDs is empty, it will delete all address set
 	if len(externalIDs) == 0 {
 		return nil
@@ -149,12 +149,12 @@ func (c *ovnClient) DeleteAddressSets(externalIDs map[string]string) error {
 }
 
 // GetAddressSet get address set by name
-func (c *ovnClient) GetAddressSet(asName string, ignoreNotFound bool) (*ovnnb.AddressSet, error) {
+func (c *ovnNbClient) GetAddressSet(asName string, ignoreNotFound bool) (*ovnnb.AddressSet, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
 	defer cancel()
 
 	as := &ovnnb.AddressSet{Name: asName}
-	if err := c.ovnNbClient.Get(ctx, as); err != nil {
+	if err := c.ovsDbClient.Get(ctx, as); err != nil {
 		if ignoreNotFound && err == client.ErrNotFound {
 			return nil, nil
 		}
@@ -165,13 +165,13 @@ func (c *ovnClient) GetAddressSet(asName string, ignoreNotFound bool) (*ovnnb.Ad
 	return as, nil
 }
 
-func (c *ovnClient) AddressSetExists(name string) (bool, error) {
+func (c *ovnNbClient) AddressSetExists(name string) (bool, error) {
 	as, err := c.GetAddressSet(name, true)
 	return as != nil, err
 }
 
 // ListAddressSets list address set by external_ids
-func (c *ovnClient) ListAddressSets(externalIDs map[string]string) ([]ovnnb.AddressSet, error) {
+func (c *ovnNbClient) ListAddressSets(externalIDs map[string]string) ([]ovnnb.AddressSet, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
 	defer cancel()
 

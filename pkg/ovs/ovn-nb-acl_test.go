@@ -741,6 +741,7 @@ func (suite *OvnClientTestSuite) testSetLogicalSwitchPrivate() {
 
 	ovnClient := suite.ovnClient
 
+	nodeSwitchCidrBlock := "100.64.0.0/16,fd00:100:64::/112"
 	cidrBlock := "10.244.0.0/16,fc00::af4:0/112"
 	allowSubnets := []string{
 		"10.230.0.0/16",
@@ -757,7 +758,7 @@ func (suite *OvnClientTestSuite) testSetLogicalSwitchPrivate() {
 		err := ovnClient.CreateBareLogicalSwitch(lsName)
 		require.NoError(t, err)
 
-		err = ovnClient.SetLogicalSwitchPrivate(lsName, cidrBlock, allowSubnets)
+		err = ovnClient.SetLogicalSwitchPrivate(lsName, cidrBlock, nodeSwitchCidrBlock, allowSubnets)
 		require.NoError(t, err)
 
 		ls, err := ovnClient.GetLogicalSwitch(lsName, false)
@@ -804,7 +805,7 @@ func (suite *OvnClientTestSuite) testSetLogicalSwitchPrivate() {
 		}
 
 		// node subnet acl
-		for _, cidr := range strings.Split(ovnClient.NodeSwitchCIDR, ",") {
+		for _, cidr := range strings.Split(nodeSwitchCidrBlock, ",") {
 			protocol := util.CheckProtocol(cidr)
 
 			match := fmt.Sprintf(`ip4.src == %s`, cidr)
@@ -826,7 +827,7 @@ func (suite *OvnClientTestSuite) testSetLogicalSwitchPrivate() {
 		require.NoError(t, err)
 
 		cidrBlock := "10.244.0.0/16"
-		err = ovnClient.SetLogicalSwitchPrivate(lsName, cidrBlock, allowSubnets)
+		err = ovnClient.SetLogicalSwitchPrivate(lsName, cidrBlock, nodeSwitchCidrBlock, allowSubnets)
 		require.NoError(t, err)
 
 		ls, err := ovnClient.GetLogicalSwitch(lsName, false)
@@ -873,7 +874,7 @@ func (suite *OvnClientTestSuite) testSetLogicalSwitchPrivate() {
 		}
 
 		// node subnet acl
-		for _, cidr := range strings.Split(ovnClient.NodeSwitchCIDR, ",") {
+		for _, cidr := range strings.Split(nodeSwitchCidrBlock, ",") {
 			protocol := util.CheckProtocol(cidr)
 
 			match := fmt.Sprintf(`ip4.src == %s`, cidr)

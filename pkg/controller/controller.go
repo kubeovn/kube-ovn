@@ -54,7 +54,9 @@ type Controller struct {
 	namedPort    *NamedPort
 
 	ovnLegacyClient *ovs.LegacyClient
-	ovnClient       ovs.OvnClient
+
+	ovnNbClient ovs.NbClient
+	ovnSbClient ovs.SbClient
 
 	// ExternalGatewayType define external gateway type, centralized
 	ExternalGatewayType string
@@ -310,7 +312,7 @@ func Run(ctx context.Context, config *Configuration) {
 		vpcs:              &sync.Map{},
 		podSubnetMap:      &sync.Map{},
 		deletingPodObjMap: &sync.Map{},
-		ovnLegacyClient:   ovs.NewLegacyClient(config.OvnTimeout, config.OvnSbAddr, config.ClusterRouter, config.ClusterTcpLoadBalancer, config.ClusterUdpLoadBalancer, config.ClusterTcpSessionLoadBalancer, config.ClusterUdpSessionLoadBalancer, config.NodeSwitch, config.NodeSwitchCIDR),
+		ovnLegacyClient:   ovs.NewLegacyClient(config.OvnTimeout),
 		ipam:              ovnipam.NewIPAM(),
 		namedPort:         NewNamedPort(),
 
@@ -486,10 +488,12 @@ func Run(ctx context.Context, config *Configuration) {
 	}
 
 	var err error
-	if controller.ovnClient, err = ovs.NewOvnClient(config.OvnNbAddr, config.OvnTimeout, config.NodeSwitchCIDR); err != nil {
-		util.LogFatalAndExit(err, "failed to create ovn client")
+	if controller.ovnNbClient, err = ovs.NewOvnNbClient(config.OvnNbAddr, config.OvnTimeout); err != nil {
+		util.LogFatalAndExit(err, "failed to create ovn nb client")
 	}
-
+	if controller.ovnSbClient, err = ovs.NewOvnSbClient(config.OvnSbAddr, config.OvnTimeout); err != nil {
+		util.LogFatalAndExit(err, "failed to create ovn sb client")
+	}
 	if config.EnableLb {
 		controller.switchLBRuleLister = switchLBRuleInformer.Lister()
 		controller.switchLBRuleSynced = switchLBRuleInformer.Informer().HasSynced
@@ -768,11 +772,11 @@ func Run(ctx context.Context, config *Configuration) {
 func (c *Controller) Run(ctx context.Context) {
 	// The init process can only be placed here if the init process do really affect the normal process of controller, such as Nodes/Pods/Subnets...
 	// Otherwise, the init process should be placed after all workers have already started working
-	if err := c.ovnClient.SetLsDnatModDlDst(c.config.LsDnatModDlDst); err != nil {
+	if err := c.ovnNbClient.SetLsDnatModDlDst(c.config.LsDnatModDlDst); err != nil {
 		util.LogFatalAndExit(err, "failed to set NB_Global option ls_dnat_mod_dl_dst")
 	}
 
-	if err := c.ovnClient.SetUseCtInvMatch(); err != nil {
+	if err := c.ovnNbClient.SetUseCtInvMatch(); err != nil {
 		util.LogFatalAndExit(err, "failed to set NB_Global option use_ct_inv_match to false")
 	}
 
@@ -1126,7 +1130,7 @@ func (c *Controller) startWorkers(ctx context.Context) {
 
 func (c *Controller) allSubnetReady(subnets ...string) (bool, error) {
 	for _, lsName := range subnets {
-		exist, err := c.ovnClient.LogicalSwitchExists(lsName)
+		exist, err := c.ovnNbClient.LogicalSwitchExists(lsName)
 		if err != nil {
 			return false, fmt.Errorf("check logical switch %s exist: %v", lsName, err)
 		}

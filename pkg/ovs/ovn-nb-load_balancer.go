@@ -16,7 +16,7 @@ import (
 )
 
 // CreateLoadBalancer create loadbalancer
-func (c *ovnClient) CreateLoadBalancer(lbName, protocol, selectFields string) error {
+func (c *ovnNbClient) CreateLoadBalancer(lbName, protocol, selectFields string) error {
 	exist, err := c.LoadBalancerExists(lbName)
 	if err != nil {
 		klog.Error(err)
@@ -38,7 +38,7 @@ func (c *ovnClient) CreateLoadBalancer(lbName, protocol, selectFields string) er
 		lb.SelectionFields = []string{selectFields}
 	}
 
-	op, err := c.ovnNbClient.Create(lb)
+	op, err := c.ovsDbClient.Create(lb)
 	if err != nil {
 		return fmt.Errorf("generate operations for creating load balancer %s: %v", lbName, err)
 	}
@@ -51,8 +51,8 @@ func (c *ovnClient) CreateLoadBalancer(lbName, protocol, selectFields string) er
 }
 
 // UpdateLoadBalancer update load balancer
-func (c *ovnClient) UpdateLoadBalancer(lb *ovnnb.LoadBalancer, fields ...interface{}) error {
-	op, err := c.ovnNbClient.Where(lb).Update(lb, fields...)
+func (c *ovnNbClient) UpdateLoadBalancer(lb *ovnnb.LoadBalancer, fields ...interface{}) error {
+	op, err := c.ovsDbClient.Where(lb).Update(lb, fields...)
 	if err != nil {
 		return fmt.Errorf("generate operations for updating load balancer %s: %v", lb.Name, err)
 	}
@@ -65,7 +65,7 @@ func (c *ovnClient) UpdateLoadBalancer(lb *ovnnb.LoadBalancer, fields ...interfa
 }
 
 // LoadBalancerAddVips adds or updates a vip
-func (c *ovnClient) LoadBalancerAddVip(lbName, vip string, backends ...string) error {
+func (c *ovnNbClient) LoadBalancerAddVip(lbName, vip string, backends ...string) error {
 	sort.Strings(backends)
 	ops, err := c.LoadBalancerOp(lbName, func(lb *ovnnb.LoadBalancer) []model.Mutation {
 		mutations := make([]model.Mutation, 0, 2)
@@ -97,7 +97,7 @@ func (c *ovnClient) LoadBalancerAddVip(lbName, vip string, backends ...string) e
 }
 
 // LoadBalancerDeleteVip deletes load balancer vip
-func (c *ovnClient) LoadBalancerDeleteVip(lbName string, vip string) error {
+func (c *ovnNbClient) LoadBalancerDeleteVip(lbName string, vip string) error {
 	ops, err := c.LoadBalancerOp(lbName, func(lb *ovnnb.LoadBalancer) []model.Mutation {
 		if len(lb.Vips) == 0 {
 			return nil
@@ -125,7 +125,7 @@ func (c *ovnClient) LoadBalancerDeleteVip(lbName string, vip string) error {
 }
 
 // SetLoadBalancerAffinityTimeout sets the LB's affinity timeout in seconds
-func (c *ovnClient) SetLoadBalancerAffinityTimeout(lbName string, timeout int) error {
+func (c *ovnNbClient) SetLoadBalancerAffinityTimeout(lbName string, timeout int) error {
 	lb, err := c.GetLoadBalancer(lbName, false)
 	if err != nil {
 		klog.Error(err)
@@ -150,8 +150,8 @@ func (c *ovnClient) SetLoadBalancerAffinityTimeout(lbName string, timeout int) e
 }
 
 // DeleteLoadBalancers delete several loadbalancer once
-func (c *ovnClient) DeleteLoadBalancers(filter func(lb *ovnnb.LoadBalancer) bool) error {
-	op, err := c.ovnNbClient.WhereCache(func(lb *ovnnb.LoadBalancer) bool {
+func (c *ovnNbClient) DeleteLoadBalancers(filter func(lb *ovnnb.LoadBalancer) bool) error {
+	op, err := c.ovsDbClient.WhereCache(func(lb *ovnnb.LoadBalancer) bool {
 		if filter != nil {
 			return filter(lb)
 		}
@@ -171,7 +171,7 @@ func (c *ovnClient) DeleteLoadBalancers(filter func(lb *ovnnb.LoadBalancer) bool
 }
 
 // DeleteLoadBalancer delete loadbalancer
-func (c *ovnClient) DeleteLoadBalancer(lbName string) error {
+func (c *ovnNbClient) DeleteLoadBalancer(lbName string) error {
 	op, err := c.DeleteLoadBalancerOp(lbName)
 	if err != nil {
 		klog.Error(err)
@@ -188,12 +188,12 @@ func (c *ovnClient) DeleteLoadBalancer(lbName string) error {
 
 // GetLoadBalancer get load balancer by name,
 // it is because of lack name index that does't use ovnNbClient.Get
-func (c *ovnClient) GetLoadBalancer(lbName string, ignoreNotFound bool) (*ovnnb.LoadBalancer, error) {
+func (c *ovnNbClient) GetLoadBalancer(lbName string, ignoreNotFound bool) (*ovnnb.LoadBalancer, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
 	defer cancel()
 
 	lbList := make([]ovnnb.LoadBalancer, 0)
-	if err := c.ovnNbClient.WhereCache(func(lb *ovnnb.LoadBalancer) bool {
+	if err := c.ovsDbClient.WhereCache(func(lb *ovnnb.LoadBalancer) bool {
 		return lb.Name == lbName
 	}).List(ctx, &lbList); err != nil {
 		return nil, fmt.Errorf("list load balancer %q: %v", lbName, err)
@@ -214,18 +214,18 @@ func (c *ovnClient) GetLoadBalancer(lbName string, ignoreNotFound bool) (*ovnnb.
 	return &lbList[0], nil
 }
 
-func (c *ovnClient) LoadBalancerExists(lbName string) (bool, error) {
+func (c *ovnNbClient) LoadBalancerExists(lbName string) (bool, error) {
 	lrp, err := c.GetLoadBalancer(lbName, true)
 	return lrp != nil, err
 }
 
 // ListLoadBalancers list all load balancers
-func (c *ovnClient) ListLoadBalancers(filter func(lb *ovnnb.LoadBalancer) bool) ([]ovnnb.LoadBalancer, error) {
+func (c *ovnNbClient) ListLoadBalancers(filter func(lb *ovnnb.LoadBalancer) bool) ([]ovnnb.LoadBalancer, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
 	defer cancel()
 
 	lbList := make([]ovnnb.LoadBalancer, 0)
-	if err := c.ovnNbClient.WhereCache(func(lb *ovnnb.LoadBalancer) bool {
+	if err := c.ovsDbClient.WhereCache(func(lb *ovnnb.LoadBalancer) bool {
 		if filter != nil {
 			return filter(lb)
 		}
@@ -238,7 +238,7 @@ func (c *ovnClient) ListLoadBalancers(filter func(lb *ovnnb.LoadBalancer) bool) 
 	return lbList, nil
 }
 
-func (c *ovnClient) LoadBalancerOp(lbName string, mutationsFunc ...func(lb *ovnnb.LoadBalancer) []model.Mutation) ([]ovsdb.Operation, error) {
+func (c *ovnNbClient) LoadBalancerOp(lbName string, mutationsFunc ...func(lb *ovnnb.LoadBalancer) []model.Mutation) ([]ovsdb.Operation, error) {
 	lb, err := c.GetLoadBalancer(lbName, false)
 	if err != nil {
 		klog.Error(err)
@@ -259,7 +259,7 @@ func (c *ovnClient) LoadBalancerOp(lbName string, mutationsFunc ...func(lb *ovnn
 		return nil, nil
 	}
 
-	ops, err := c.ovnNbClient.Where(lb).Mutate(lb, mutations...)
+	ops, err := c.ovsDbClient.Where(lb).Mutate(lb, mutations...)
 	if err != nil {
 		klog.Error(err)
 		return nil, fmt.Errorf("generate operations for mutating load balancer %s: %v", lb.Name, err)
@@ -269,7 +269,7 @@ func (c *ovnClient) LoadBalancerOp(lbName string, mutationsFunc ...func(lb *ovnn
 }
 
 // DeleteLoadBalancerOp create operation which delete load balancer
-func (c *ovnClient) DeleteLoadBalancerOp(lbName string) ([]ovsdb.Operation, error) {
+func (c *ovnNbClient) DeleteLoadBalancerOp(lbName string) ([]ovsdb.Operation, error) {
 	lb, err := c.GetLoadBalancer(lbName, true)
 
 	if err != nil {
