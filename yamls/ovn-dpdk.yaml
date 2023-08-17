@@ -204,9 +204,10 @@ spec:
       hostNetwork: true
       containers:
         - name: ovn-central
-          image: "kubeovn/kube-ovn:v1.10.0"
+          image: "kubeovn/kube-ovn:v1.12.0"
           imagePullPolicy: IfNotPresent
-          command: ["/kube-ovn/start-db.sh"]
+          command: 
+          - /kube-ovn/start-db.sh
           securityContext:
             capabilities:
               add: ["SYS_NICE"]
@@ -231,6 +232,10 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: status.podIPs
+            - name: PROBE_INTERVAL
+              value: "180000"
+            - name: OVN_LEADER_PROBE_INTERVAL
+              value: "5"
           resources:
             requests:
               cpu: 500m

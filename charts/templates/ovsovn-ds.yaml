@@ -44,7 +44,8 @@ spec:
           {{- if .Values.DPDK }}
           command: ["/kube-ovn/start-ovs-dpdk.sh"]
           {{- else }}
-          command: ["/kube-ovn/start-ovs.sh"]
+          command: 
+          - /kube-ovn/start-ovs.sh
           {{- end }}
           securityContext:
             runAsUser: 0
@@ -74,6 +75,10 @@ spec:
                   fieldPath: spec.nodeName
             - name: OVN_DB_IPS
               value: "{{ .Values.MASTER_NODES }}"
+            - name: OVN_REMOTE_PROBE_INTERVAL
+              value: "{{ .Values.networking.OVN_REMOTE_PROBE_INTERVAL }}"
+            - name: OVN_REMOTE_OPENFLOW_INTERVAL
+              value: "{{ .Values.networking.OVN_REMOTE_OPENFLOW_INTERVAL }}"
           volumeMounts:
             - mountPath: /var/run/netns
               name: host-ns
