@@ -3333,7 +3333,10 @@ spec:
     matchLabels:
       app: ovs
   updateStrategy:
-    type: OnDelete
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   template:
     metadata:
       labels:
