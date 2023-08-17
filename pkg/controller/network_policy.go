@@ -152,6 +152,11 @@ func (c *Controller) handleUpdateNp(key string) error {
 		return err
 	}
 
+	if err = c.checkAndUpdateNodePortGroup(false); err != nil {
+		klog.Errorf("failed to update node acl: %v", err)
+		return err
+	}
+
 	defer func() {
 		if err != nil {
 			c.recorder.Eventf(np, corev1.EventTypeWarning, "CreateACLFailed", err.Error())

@@ -925,15 +925,24 @@ func (c *Controller) fetchPodsOnNode(nodeName string, pods []*v1.Pod) ([]string,
 }
 
 func (c *Controller) CheckNodePortGroup() {
-	if err := c.checkAndUpdateNodePortGroup(); err != nil {
+	if err := c.checkAndUpdateNodePortGroup(true); err != nil {
 		klog.Errorf("check node port group status: %v", err)
 	}
 }
 
-func (c *Controller) checkAndUpdateNodePortGroup() error {
+var nodeAclExists bool
+
+func (c *Controller) checkAndUpdateNodePortGroup(updateIfNotExists bool) error {
+	c.npKeyMutex.LockKey("node_acl")
+	defer func() { _ = c.npKeyMutex.UnlockKey("node_acl") }()
+
 	klog.V(3).Infoln("start to check node port-group status")
 	np, _ := c.npsLister.List(labels.Everything())
 	networkPolicyExists := len(np) != 0
+
+	if !updateIfNotExists && networkPolicyExists == nodeAclExists {
+		return nil
+	}
 
 	nodes, err := c.nodesLister.List(labels.Everything())
 	if err != nil {
@@ -986,6 +995,7 @@ func (c *Controller) checkAndUpdateNodePortGroup() error {
 		}
 	}
 
+	nodeAclExists = networkPolicyExists
 	return nil
 }
 
