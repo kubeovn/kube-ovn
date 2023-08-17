@@ -50,8 +50,6 @@ RUN cd /usr/src/ && git clone -b branch-22.03 --depth=1 https://github.com/ovn-o
     curl -s https://github.com/kubeovn/ovn/commit/54c478d38ec31c900d54d29c557bf414f5194baf.patch | git apply && \
     # patch.c: Avoid patch interface deletion & recreation during restart.
     curl -s https://github.com/kubeovn/ovn/commit/03a46942b9e14d77a23313c193fe062ccafa4769.patch | git apply && \
-    # do not send traffic that not designate to svc to conntrack
-    curl -s https://github.com/kubeovn/ovn/commit/44ee74998edfd85a40d4920045ae4c39e2ceff6e.patch | git apply && \
     # change hash type from dp_hash to hash with field src_ip
     curl -s https://github.com/kubeovn/ovn/commit/168a3f20579b720370f137c82c04cf3b1a9811e2.patch | git apply && \
     # set ether dst addr for dnat on logical switch
@@ -125,7 +123,7 @@ RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages  \
 ARG DEBUG=false
 RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages \
     if [ "${DEBUG}" = "true" ]; then \
-        apt update && apt install -y --no-install-recommends valgrind && \
+        apt update && apt install -y --no-install-recommends gdb valgrind && \
         rm -rf /var/lib/apt/lists/* && \
         dpkg -i --ignore-depends=openvswitch-switch,openvswitch-common /packages/*.ddeb; \
     fi
