@@ -86,7 +86,7 @@ k8s-netpol-legacy-e2e:
 .PHONY: k8s-netpol-e2e
 k8s-netpol-e2e:
 	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/k8s-network
-	ginkgo -p --randomize-all -v --timeout=2h \
+	ginkgo --randomize-all -v --timeout=2h \
 		$(call ginkgo_option,focus,$(K8S_NETPOL_E2E_FOCUS)) \
 		$(call ginkgo_option,skip,$(K8S_NETPOL_E2E_SKIP)) \
 		./test/e2e/k8s-network/k8s-network.test
