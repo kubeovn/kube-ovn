@@ -925,14 +925,18 @@ func (c *Controller) fetchPodsOnNode(nodeName string, pods []*v1.Pod) ([]string,
 }
 
 func (c *Controller) CheckNodePortGroup() {
-	if err := c.checkAndUpdateNodePortGroup(true); err != nil {
+	if err := c.checkAndUpdateNodePortGroup(true, ""); err != nil {
 		klog.Errorf("check node port group status: %v", err)
 	}
 }
 
 var nodeAclExists bool
 
-func (c *Controller) checkAndUpdateNodePortGroup(updateIfNotExists bool) error {
+func (c *Controller) checkAndUpdateNodePortGroup(alwaysUpdate bool, nodeName string) error {
+	if !c.config.EnableNP {
+		return nil
+	}
+
 	c.npKeyMutex.LockKey("node_acl")
 	defer func() { _ = c.npKeyMutex.UnlockKey("node_acl") }()
 
@@ -940,19 +944,29 @@ func (c *Controller) checkAndUpdateNodePortGroup(updateIfNotExists bool) error {
 	np, _ := c.npsLister.List(labels.Everything())
 	networkPolicyExists := len(np) != 0
 
-	if !updateIfNotExists && networkPolicyExists == nodeAclExists {
+	if !alwaysUpdate && networkPolicyExists == nodeAclExists {
 		return nil
-	}
-
-	nodes, err := c.nodesLister.List(labels.Everything())
-	if err != nil {
-		klog.Errorf("list nodes: %v", err)
-		return err
 	}
 
 	pods, err := c.podsLister.List(labels.Everything())
 	if err != nil {
-		klog.Errorf("list pods, %v", err)
+		klog.Errorf("failed to list pods: %v", err)
+		return err
+	}
+
+	var nodes []*v1.Node
+	if nodeName != "" {
+		node, err := c.nodesLister.Get(nodeName)
+		if err != nil {
+			if k8serrors.IsNotFound(err) {
+				return nil
+			}
+			klog.Errorf("failed to get node %q: %v", err)
+			return err
+		}
+		nodes = []*v1.Node{node}
+	} else if nodes, err = c.nodesLister.List(labels.Everything()); err != nil {
+		klog.Errorf("failed to list nodes: %v", err)
 		return err
 	}
 
@@ -995,7 +1009,10 @@ func (c *Controller) checkAndUpdateNodePortGroup(updateIfNotExists bool) error {
 		}
 	}
 
-	nodeAclExists = networkPolicyExists
+	if nodeName == "" {
+		nodeAclExists = networkPolicyExists
+	}
+
 	return nil
 }
 

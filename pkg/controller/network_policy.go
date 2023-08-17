@@ -152,7 +152,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 		return err
 	}
 
-	if err = c.checkAndUpdateNodePortGroup(false); err != nil {
+	if err = c.checkAndUpdateNodePortGroup(false, ""); err != nil {
 		klog.Errorf("failed to update node acl: %v", err)
 		return err
 	}
@@ -570,6 +570,11 @@ func (c *Controller) handleDeleteNp(key string) error {
 	c.npKeyMutex.LockKey(key)
 	defer func() { _ = c.npKeyMutex.UnlockKey(key) }()
 	klog.Infof("handle delete network policy %s", key)
+
+	if err = c.checkAndUpdateNodePortGroup(false, ""); err != nil {
+		klog.Errorf("failed to update node acl: %v", err)
+		return err
+	}
 
 	npName := name
 	nameArray := []rune(name)

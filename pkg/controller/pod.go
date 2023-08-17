@@ -179,8 +179,12 @@ func (c *Controller) enqueueAddPod(obj interface{}) {
 	}
 
 	p := obj.(*v1.Pod)
+	workqueueKey := key
 	// TODO: we need to find a way to reduce duplicated np added to the queue
 	if c.config.EnableNP {
+		if p.Spec.NodeName != "" {
+			workqueueKey = fmt.Sprintf("%s@%s", key, p.Spec.NodeName)
+		}
 		c.namedPort.AddNamedPortByPod(p)
 		if p.Status.PodIP != "" {
 			for _, np := range c.podMatchNetworkPolicies(p) {
@@ -222,7 +226,7 @@ func (c *Controller) enqueueAddPod(obj interface{}) {
 	}
 	if need {
 		klog.Infof("enqueue add pod %s", key)
-		c.addOrUpdatePodQueue.Add(key)
+		c.addOrUpdatePodQueue.Add(workqueueKey)
 	}
 }
 
@@ -270,7 +274,12 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 		return
 	}
 
+	workqueueKey := key
 	if c.config.EnableNP {
+		if newPod.Spec.NodeName != oldPod.Spec.NodeName {
+			workqueueKey = fmt.Sprintf("%s@%s", key, newPod.Spec.NodeName)
+		}
+
 		c.namedPort.AddNamedPortByPod(newPod)
 		newNp := c.podMatchNetworkPolicies(newPod)
 		if !reflect.DeepEqual(oldPod.Labels, newPod.Labels) {
@@ -345,7 +354,7 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 		return
 	}
 	klog.Infof("enqueue update pod %s", key)
-	c.addOrUpdatePodQueue.Add(key)
+	c.addOrUpdatePodQueue.Add(workqueueKey)
 
 	// security policy changed
 	for _, podNet := range podNets {
@@ -544,15 +553,20 @@ func (c *Controller) changeVMSubnet(vmName, namespace, providerName, subnetName 
 }
 
 func (c *Controller) handleAddOrUpdatePod(key string) (err error) {
-	namespace, name, err := cache.SplitMetaNamespaceKey(key)
+	podKey := key
+	if idx := strings.IndexRune(key, '@'); idx >= 0 {
+		podKey = key[:idx]
+	}
+
+	namespace, name, err := cache.SplitMetaNamespaceKey(podKey)
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
+		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", podKey))
 		return nil
 	}
 
-	c.podKeyMutex.LockKey(key)
-	defer func() { _ = c.podKeyMutex.UnlockKey(key) }()
-	klog.Infof("handle add/update pod %s", key)
+	c.podKeyMutex.LockKey(podKey)
+	defer func() { _ = c.podKeyMutex.UnlockKey(podKey) }()
+	klog.Infof("handle add/update pod %s", podKey)
 
 	cachedPod, err := c.podsLister.Pods(namespace).Get(name)
 	if err != nil {
@@ -597,6 +611,13 @@ func (c *Controller) handleAddOrUpdatePod(key string) (err error) {
 		if cachedPod == nil {
 			// pod has been deleted
 			return nil
+		}
+	}
+
+	if len(podKey) != len(key) && pod.Spec.NodeName != "" {
+		if err = c.checkAndUpdateNodePortGroup(true, pod.Spec.NodeName); err != nil {
+			klog.Errorf("failed to sync node port group for pod %s on node %s: %v", podKey, pod.Spec.NodeName, err)
+			return err
 		}
 	}
 
