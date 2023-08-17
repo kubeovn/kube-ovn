@@ -14,6 +14,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -26,7 +27,7 @@ func (c *Controller) enqueueAddOvnDnatRule(obj interface{}) {
 		utilruntime.HandleError(err)
 		return
 	}
-	klog.V(3).Infof("enqueue add ovn dnat %s", key)
+	klog.Infof("enqueue add ovn dnat %s", key)
 	c.addOvnDnatRuleQueue.Add(key)
 }
 
@@ -37,15 +38,18 @@ func (c *Controller) enqueueUpdateOvnDnatRule(old, new interface{}) {
 		utilruntime.HandleError(err)
 		return
 	}
-
-	oldDnat := old.(*kubeovnv1.OvnDnatRule)
 	newDnat := new.(*kubeovnv1.OvnDnatRule)
 	if !newDnat.DeletionTimestamp.IsZero() {
-		klog.Infof("enqueue del ovn dnat %s", key)
-		c.delOvnDnatRuleQueue.Add(key)
-		return
+		if len(newDnat.Finalizers) == 0 {
+			// avoid delete twice
+			return
+		} else {
+			klog.Infof("enqueue del ovn dnat %s", key)
+			c.delOvnDnatRuleQueue.Add(key)
+			return
+		}
 	}
-
+	oldDnat := old.(*kubeovnv1.OvnDnatRule)
 	if oldDnat.Spec.OvnEip != newDnat.Spec.OvnEip {
 		c.resetOvnEipQueue.Add(oldDnat.Spec.OvnEip)
 	}
@@ -67,7 +71,7 @@ func (c *Controller) enqueueDelOvnDnatRule(obj interface{}) {
 		utilruntime.HandleError(err)
 		return
 	}
-	klog.V(3).Infof("enqueue delete ovn dnat %s", key)
+	klog.Infof("enqueue delete ovn dnat %s", key)
 	c.delOvnDnatRuleQueue.Add(key)
 }
 
@@ -212,8 +216,7 @@ func (c *Controller) handleAddOvnDnatRule(key string) error {
 		// already ok
 		return nil
 	}
-	klog.V(3).Infof("handle add dnat %s", key)
-
+	klog.Infof("handle add dnat %s", key)
 	var internalV4Ip, mac, subnetName string
 	if cachedDnat.Spec.IpType == util.Vip {
 		internalVip, err := c.virtualIpsLister.Get(cachedDnat.Spec.IpName)
@@ -279,7 +282,7 @@ func (c *Controller) handleAddOvnDnatRule(key string) error {
 		return err
 	}
 
-	if err = c.handleAddOvnEipFinalizer(cachedEip, util.OvnEipFinalizer); err != nil {
+	if err = c.handleAddOvnEipFinalizer(cachedEip, util.ControllerName); err != nil {
 		klog.Errorf("failed to add finalizer for ovn eip, %v", err)
 		return err
 	}
@@ -287,6 +290,11 @@ func (c *Controller) handleAddOvnDnatRule(key string) error {
 	if err = c.AddDnatRule(vpcName, cachedDnat.Name, cachedEip.Status.V4Ip, internalV4Ip,
 		cachedDnat.Spec.ExternalPort, cachedDnat.Spec.InternalPort, cachedDnat.Spec.Protocol); err != nil {
 		klog.Errorf("failed to create v4 dnat, %v", err)
+		return err
+	}
+
+	if err := c.handleAddOvnDnatFinalizer(cachedDnat, util.ControllerName); err != nil {
+		klog.Errorf("failed to add finalizer for ovn dnat %s, %v", cachedDnat.Name, err)
 		return err
 	}
 
@@ -316,7 +324,7 @@ func (c *Controller) handleAddOvnDnatRule(key string) error {
 }
 
 func (c *Controller) handleDelOvnDnatRule(key string) error {
-	klog.V(3).Infof("handle del ovn dnat %s", key)
+	klog.Infof("handle delete ovn dnat %s", key)
 	cachedDnat, err := c.ovnDnatRulesLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -325,22 +333,20 @@ func (c *Controller) handleDelOvnDnatRule(key string) error {
 		klog.Error(err)
 		return err
 	}
-
-	eipName := cachedDnat.Spec.OvnEip
-	if len(eipName) == 0 {
-		err := fmt.Errorf("failed to create fip rule, should set eip")
-		klog.Error(err)
-		return err
-	}
-
 	if cachedDnat.Status.Vpc != "" && cachedDnat.Status.V4Eip != "" && cachedDnat.Status.ExternalPort != "" {
 		if err = c.DelDnatRule(cachedDnat.Status.Vpc, cachedDnat.Name,
 			cachedDnat.Status.V4Eip, cachedDnat.Status.ExternalPort); err != nil {
-			klog.Errorf("failed to delete dnat, %v", err)
+			klog.Errorf("failed to delete dnat %s, %v", key, err)
 			return err
 		}
 	}
-	c.resetOvnEipQueue.Add(cachedDnat.Spec.OvnEip)
+	if err = c.handleDelOvnDnatFinalizer(cachedDnat, util.ControllerName); err != nil {
+		klog.Errorf("failed to remove finalizer for ovn dnat %s, %v", cachedDnat.Name, err)
+		return err
+	}
+	if cachedDnat.Spec.OvnEip != "" {
+		c.resetOvnEipQueue.Add(cachedDnat.Spec.OvnEip)
+	}
 	return nil
 }
 
@@ -354,7 +360,7 @@ func (c *Controller) handleUpdateOvnDnatRule(key string) error {
 		return err
 	}
 
-	klog.V(3).Infof("handle update dnat %s", key)
+	klog.Infof("handle update dnat %s", key)
 	var internalV4Ip, mac, subnetName string
 	if cachedDnat.Spec.IpType == util.Vip {
 		internalVip, err := c.virtualIpsLister.Get(cachedDnat.Spec.IpName)
@@ -421,7 +427,7 @@ func (c *Controller) handleUpdateOvnDnatRule(key string) error {
 
 	dnat := cachedDnat.DeepCopy()
 	if dnat.Status.Ready {
-		klog.V(3).Infof("dnat change ip, old ip '%s', new ip %s", dnat.Status.V4Ip, cachedEip.Status.V4Ip)
+		klog.Infof("dnat change ip, old ip '%s', new ip %s", dnat.Status.V4Ip, cachedEip.Status.V4Ip)
 		if err = c.DelDnatRule(dnat.Status.Vpc, dnat.Name, dnat.Status.V4Eip, dnat.Status.ExternalPort); err != nil {
 			klog.Errorf("failed to delete dnat, %v", err)
 			return err
@@ -610,5 +616,52 @@ func (c *Controller) DelDnatRule(vpcName, dnatName, externalIp, externalPort str
 		return err
 	}
 
+	return nil
+}
+
+func (c *Controller) handleAddOvnDnatFinalizer(cachedDnat *kubeovnv1.OvnDnatRule, finalizer string) error {
+	if cachedDnat.DeletionTimestamp.IsZero() {
+		if util.ContainsString(cachedDnat.Finalizers, finalizer) {
+			return nil
+		}
+	}
+	newDnat := cachedDnat.DeepCopy()
+	controllerutil.AddFinalizer(newDnat, finalizer)
+	patch, err := util.GenerateMergePatchPayload(cachedDnat, newDnat)
+	if err != nil {
+		klog.Errorf("failed to generate patch payload for ovn dnat '%s', %v", cachedDnat.Name, err)
+		return err
+	}
+	if _, err := c.config.KubeOvnClient.KubeovnV1().OvnDnatRules().Patch(context.Background(), cachedDnat.Name,
+		types.MergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		klog.Errorf("failed to add finalizer for ovn dnat '%s', %v", cachedDnat.Name, err)
+		return err
+	}
+	return nil
+}
+
+func (c *Controller) handleDelOvnDnatFinalizer(cachedDnat *kubeovnv1.OvnDnatRule, finalizer string) error {
+	if len(cachedDnat.Finalizers) == 0 {
+		return nil
+	}
+	var err error
+	newDnat := cachedDnat.DeepCopy()
+	controllerutil.RemoveFinalizer(newDnat, finalizer)
+	patch, err := util.GenerateMergePatchPayload(cachedDnat, newDnat)
+	if err != nil {
+		klog.Errorf("failed to generate patch payload for ovn dnat '%s', %v", cachedDnat.Name, err)
+		return err
+	}
+	if _, err := c.config.KubeOvnClient.KubeovnV1().OvnDnatRules().Patch(context.Background(), cachedDnat.Name,
+		types.MergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		klog.Errorf("failed to remove finalizer from ovn dnat '%s', %v", cachedDnat.Name, err)
+		return err
+	}
 	return nil
 }
