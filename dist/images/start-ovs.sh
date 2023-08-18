@@ -133,8 +133,8 @@ function gen_conn_str {
 }
 # Set remote ovn-sb for ovn-controller to connect to
 ovs-vsctl set open . external-ids:ovn-remote="$(gen_conn_str 6642)"
-ovs-vsctl set open . external-ids:ovn-remote-probe-interval=10000
-ovs-vsctl set open . external-ids:ovn-openflow-probe-interval=180
+ovs-vsctl set open . external-ids:ovn-remote-probe-interval="${OVN_REMOTE_PROBE_INTERVAL}"
+ovs-vsctl set open . external-ids:ovn-openflow-probe-interval="${OVN_REMOTE_OPENFLOW_INTERVAL}"
 ovs-vsctl set open . external-ids:ovn-encap-type="${TUNNEL_TYPE}"
 ovs-vsctl set open . external-ids:hostname="${KUBE_NODE_NAME}"
 

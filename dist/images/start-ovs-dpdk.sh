@@ -10,6 +10,9 @@ trap quit EXIT
 
 CONFIG_FILE=/opt/ovs-config/config.cfg
 
+echo "OVN_REMOTE_PROBE_INTERVAL is set to $OVN_REMOTE_PROBE_INTERVAL"
+echo "OVN_REMOTE_OPENFLOW_INTERVAL is set to $OVN_REMOTE_OPENFLOW_INTERVAL"
+
 # Check if config file exists, create default one if not
 if ! test -f "$CONFIG_FILE"; then
 	mkdir -p $(dirname ${CONFIG_FILE})
@@ -45,8 +48,8 @@ ovn-ctl restart_controller
 
 # Set remote ovn-sb for ovn-controller to connect to
 ovs-vsctl set open . external-ids:ovn-remote=tcp:"${OVN_SB_SERVICE_HOST}":"${OVN_SB_SERVICE_PORT}"
-ovs-vsctl set open . external-ids:ovn-remote-probe-interval=10000
-ovs-vsctl set open . external-ids:ovn-openflow-probe-interval=180
+ovs-vsctl set open . external-ids:ovn-remote-probe-interval="${OVN_REMOTE_PROBE_INTERVAL}"
+ovs-vsctl set open . external-ids:ovn-openflow-probe-interval="${OVN_REMOTE_OPENFLOW_INTERVAL}"
 ovs-vsctl set open . external-ids:ovn-encap-type=geneve
 
 tail --follow=name --retry /var/log/openvswitch/ovs-vswitchd.log
