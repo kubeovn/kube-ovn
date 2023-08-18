@@ -3331,13 +3331,16 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app: ovs
+      app: ovs-dpdk
   updateStrategy:
-    type: OnDelete
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   template:
     metadata:
       labels:
-        app: ovs
+        app: ovs-dpdk
         component: network
         type: infra
     spec:
@@ -3497,7 +3500,7 @@ spec:
   updateStrategy:
     type: RollingUpdate
     rollingUpdate:
-      maxSurge: 100%
+      maxSurge: 1
       maxUnavailable: 0
   template:
     metadata:
