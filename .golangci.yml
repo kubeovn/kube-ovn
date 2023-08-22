@@ -1,0 +1,37 @@
+run:
+  timeout: 15m
+
+output:
+  sort-results: true
+
+linters:
+  enable:
+    - gocritic
+    - gofumpt
+    - goimports
+    - misspell
+    - predeclared
+    - revive
+    - unconvert
+    - unused
+    - errcheck
+
+issues:
+  max-same-issues: 0
+  exclude-rules:
+    - linters:
+        - gocritic
+      text: "appendAssign"
+    - linters:
+        - revive
+      text: "underscore"
+#    - path: _test.go
+#      linters:
+#        - errcheck
+
+linters-settings:
+  goimports:
+    local-prefixes: github.com/kubeovn/kube-ovn
+  gofumpt:
+    extra-rules: true
+
