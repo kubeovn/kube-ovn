@@ -4,8 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"k8s.io/klog/v2"
+
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 )
 
 func (c *ovnNbClient) ListBFD(lrpName, dstIP string) ([]ovnnb.BFD, error) {

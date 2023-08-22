@@ -11,6 +11,7 @@ import (
 	"syscall"
 
 	"github.com/containernetworking/plugins/pkg/ns"
+	"github.com/scylladb/go-set/strset"
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 	"k8s.io/klog/v2"
@@ -19,7 +20,6 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	goTProxy "github.com/kubeovn/kube-ovn/pkg/tproxy"
 	"github.com/kubeovn/kube-ovn/pkg/util"
-	"github.com/scylladb/go-set/strset"
 )
 
 var (

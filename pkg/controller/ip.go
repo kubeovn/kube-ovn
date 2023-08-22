@@ -3,10 +3,10 @@ package controller
 import (
 	"strings"
 
-	"github.com/kubeovn/kube-ovn/pkg/util"
 	"k8s.io/klog/v2"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func (c *Controller) enqueueAddOrDelIP(obj interface{}) {

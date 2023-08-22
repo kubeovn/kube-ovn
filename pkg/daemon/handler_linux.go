@@ -8,13 +8,13 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/moby/sys/mountinfo"
 	"golang.org/x/sys/unix"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
 
 	"github.com/kubeovn/kube-ovn/pkg/request"
 	"github.com/kubeovn/kube-ovn/pkg/util"
-	"github.com/moby/sys/mountinfo"
 )
 
 func (csh cniServerHandler) validatePodRequest(req *request.CniRequest) error {

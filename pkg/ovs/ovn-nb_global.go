@@ -6,8 +6,9 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"k8s.io/klog/v2"
+
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 )
 
 func (c *ovnNbClient) CreateNbGlobal(nbGlobal *ovnnb.NBGlobal) error {
