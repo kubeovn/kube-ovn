@@ -84,7 +84,6 @@ func hostConfigFromReader() error {
 }
 
 func (c *Controller) enqueueAddVpcDns(obj interface{}) {
-
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -264,7 +263,6 @@ func (c *Controller) createOrUpdateVpcDnsDep(vpcDns *kubeovnv1.VpcDNS) error {
 	needToCreateDp := false
 	oldDp, err := c.config.KubeClient.AppsV1().Deployments(c.config.PodNamespace).
 		Get(context.Background(), genVpcDnsDpName(vpcDns.Name), metav1.GetOptions{})
-
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			needToCreateDp = true
@@ -282,7 +280,6 @@ func (c *Controller) createOrUpdateVpcDnsDep(vpcDns *kubeovnv1.VpcDNS) error {
 	if needToCreateDp {
 		_, err := c.config.KubeClient.AppsV1().Deployments(c.config.PodNamespace).
 			Create(context.Background(), newDp, metav1.CreateOptions{})
-
 		if err != nil {
 			klog.Errorf("failed to create deployment '%s', err: %s", newDp.Name, err)
 			return err
@@ -290,7 +287,6 @@ func (c *Controller) createOrUpdateVpcDnsDep(vpcDns *kubeovnv1.VpcDNS) error {
 	} else {
 		_, err := c.config.KubeClient.AppsV1().Deployments(c.config.PodNamespace).
 			Update(context.Background(), newDp, metav1.UpdateOptions{})
-
 		if err != nil {
 			klog.Errorf("failed to update deployment '%s', err: %v", newDp.Name, err)
 			return err
@@ -553,7 +549,7 @@ func (c *Controller) resyncVpcDnsConfig() {
 		klog.V(3).Infof("use the cluster default coredns image version, %s", corednsImage)
 	}
 
-	if err := os.WriteFile(CorednsTemplateDep, corednsTemplateContent, 0644); err != nil {
+	if err := os.WriteFile(CorednsTemplateDep, corednsTemplateContent, 0o644); err != nil {
 		klog.Errorf("failed to wirite local coredns-template.yaml file, %v", err)
 		return
 	}

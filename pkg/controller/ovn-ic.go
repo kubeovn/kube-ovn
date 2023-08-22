@@ -147,8 +147,7 @@ func (c *Controller) removeInterConnection(azName string) error {
 	}
 	for _, cachedNode := range nodes {
 		no := cachedNode.DeepCopy()
-		patchPayloadTemplate :=
-			`[{
+		patchPayloadTemplate := `[{
         "op": "%s",
         "path": "/metadata/labels",
         "value": %s
@@ -217,8 +216,7 @@ func (c *Controller) establishInterConnection(config map[string]string) error {
 			return err
 		}
 		node := cachedNode.DeepCopy()
-		patchPayloadTemplate :=
-			`[{
+		patchPayloadTemplate := `[{
         "op": "%s",
         "path": "/metadata/labels",
         "value": %s
@@ -387,7 +385,7 @@ func (c *Controller) delLearnedRoute() error {
 	return nil
 }
 
-func genHostAddress(host string, port string) (hostAddress string) {
+func genHostAddress(host, port string) (hostAddress string) {
 	hostList := strings.Split(host, ",")
 	if len(hostList) == 1 {
 		hostAddress = fmt.Sprintf("tcp:[%s]:%s", hostList[0], port)

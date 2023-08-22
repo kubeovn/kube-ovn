@@ -18,7 +18,6 @@ import (
 )
 
 func (c *Controller) enqueueAddPodAnnotatedIptablesEip(obj interface{}) {
-
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -182,7 +181,6 @@ func (c *Controller) processNextAddPodAnnotatedIptablesEipWorkItem() bool {
 		c.addPodAnnotatedIptablesEipQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -211,7 +209,6 @@ func (c *Controller) processNextDeletePodAnnotatedIptablesEipWorkItem() bool {
 		c.delPodAnnotatedIptablesEipQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true

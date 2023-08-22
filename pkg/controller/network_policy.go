@@ -23,7 +23,6 @@ import (
 )
 
 func (c *Controller) enqueueAddNp(obj interface{}) {
-
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -94,7 +93,6 @@ func (c *Controller) processNextUpdateNpWorkItem() bool {
 		c.updateNpQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -125,7 +123,6 @@ func (c *Controller) processNextDeleteNpWorkItem() bool {
 		c.deleteNpQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -793,6 +790,7 @@ func svcMatchPods(svcs []*corev1.Service, pod *corev1.Pod, protocol string) ([]s
 	}
 	return matchSvcs, nil
 }
+
 func getProtocolSvcIp(clusterIPs []string, protocol string) []string {
 	protocolClusterIPs := []string{}
 	for _, clusterIP := range clusterIPs {
@@ -802,6 +800,7 @@ func getProtocolSvcIp(clusterIPs []string, protocol string) []string {
 	}
 	return protocolClusterIPs
 }
+
 func isSvcMatchPod(svc *corev1.Service, pod *corev1.Pod) (bool, error) {
 	ss := metav1.SetAsLabelSelector(svc.Spec.Selector)
 	sel, err := metav1.LabelSelectorAsSelector(ss)
@@ -899,7 +898,6 @@ func isPodMatchPolicyPeer(pod *corev1.Pod, podNs corev1.Namespace, policyPeer ne
 		if policyNs != podNs.Name {
 			return false
 		}
-
 	} else {
 		nsSel, _ := metav1.LabelSelectorAsSelector(policyPeer.NamespaceSelector)
 		if podNs.Labels == nil {

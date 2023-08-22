@@ -112,7 +112,6 @@ func (c *Controller) processNextAddOvnDnatRuleWorkItem() bool {
 		c.addOvnDnatRuleQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -142,7 +141,6 @@ func (c *Controller) processNextUpdateOvnDnatRuleWorkItem() bool {
 		c.updateOvnDnatRuleQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -172,7 +170,6 @@ func (c *Controller) processNextDeleteOvnDnatRuleWorkItem() bool {
 		c.delOvnDnatRuleQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true

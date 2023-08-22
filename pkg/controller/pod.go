@@ -170,7 +170,6 @@ func isPodStatusPhaseAlive(p *v1.Pod) bool {
 }
 
 func (c *Controller) enqueueAddPod(obj interface{}) {
-
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -402,7 +401,6 @@ func (c *Controller) processNextAddOrUpdatePodWorkItem() bool {
 		c.addOrUpdatePodQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -445,7 +443,6 @@ func (c *Controller) processNextDeletePodWorkItem() bool {
 		}()
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -476,7 +473,6 @@ func (c *Controller) processNextUpdatePodSecurityWorkItem() bool {
 		c.updatePodSecurityQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -1084,6 +1080,7 @@ func (c *Controller) handleUpdatePodSecurity(key string) error {
 	}
 	return nil
 }
+
 func (c *Controller) syncKubeOvnNet(cachedPod, pod *v1.Pod, podNets []*kubeovnNet) (*v1.Pod, error) {
 	podName := c.getNameByPod(pod)
 	key := fmt.Sprintf("%s/%s", pod.Namespace, podName)

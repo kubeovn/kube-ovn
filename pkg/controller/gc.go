@@ -157,7 +157,7 @@ func (c *Controller) gcLogicalSwitch() error {
 		klog.Errorf("failed to list dhcp options, %v", err)
 		return err
 	}
-	var uuidToDeleteList = []string{}
+	uuidToDeleteList := []string{}
 	for _, item := range dhcpOptions {
 		if len(item.ExternalIDs) == 0 || !subnetNames.Has(item.ExternalIDs["ls"]) {
 			uuidToDeleteList = append(uuidToDeleteList, item.UUID)

@@ -114,7 +114,6 @@ func (c *Controller) processNextAddQoSPolicyWorkItem() bool {
 		c.addQoSPolicyQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -144,7 +143,6 @@ func (c *Controller) processNextUpdateQoSPolicyWorkItem() bool {
 		c.updateQoSPolicyQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -174,7 +172,6 @@ func (c *Controller) processNextDeleteQoSPolicyWorkItem() bool {
 		c.delQoSPolicyQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -224,7 +221,8 @@ func (c *Controller) handleAddQoSPolicy(key string) error {
 }
 
 func (c *Controller) patchQoSStatus(
-	key string, shared bool, qosType kubeovnv1.QoSPolicyBindingType, bandwidthRules kubeovnv1.QoSPolicyBandwidthLimitRules) error {
+	key string, shared bool, qosType kubeovnv1.QoSPolicyBindingType, bandwidthRules kubeovnv1.QoSPolicyBandwidthLimitRules,
+) error {
 	oriQoS, err := c.qosPoliciesLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -319,7 +317,8 @@ func (c *Controller) reconcileEIPBandtithLimitRules(
 	eip *kubeovnv1.IptablesEIP,
 	added kubeovnv1.QoSPolicyBandwidthLimitRules,
 	deleted kubeovnv1.QoSPolicyBandwidthLimitRules,
-	updated kubeovnv1.QoSPolicyBandwidthLimitRules) error {
+	updated kubeovnv1.QoSPolicyBandwidthLimitRules,
+) error {
 	var err error
 	// in this case, we must delete rules first, then add or update rules
 	if len(deleted) > 0 {

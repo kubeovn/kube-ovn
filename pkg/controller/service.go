@@ -26,7 +26,6 @@ type vpcService struct {
 }
 
 func (c *Controller) enqueueAddService(obj interface{}) {
-
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -163,7 +162,6 @@ func (c *Controller) processNextAddServiceWorkItem() bool {
 		c.addServiceQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -194,7 +192,6 @@ func (c *Controller) processNextDeleteServiceWorkItem() bool {
 		c.deleteServiceQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -225,7 +222,6 @@ func (c *Controller) processNextUpdateServiceWorkItem() bool {
 		c.updateServiceQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true

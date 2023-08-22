@@ -479,7 +479,6 @@ var _ = Describe("[IPAM]", func() {
 
 				_, _, _, err = im.GetRandomAddress(pod5, pod5Nic1, nil, "invalid_subnet", "", nil, true)
 				Expect(err).Should(MatchError(ipam.ErrNoAvailable))
-
 			})
 
 			It("change cidr", func() {

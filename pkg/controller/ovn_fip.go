@@ -22,7 +22,6 @@ import (
 )
 
 func (c *Controller) enqueueAddOvnFip(obj interface{}) {
-
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -141,7 +140,6 @@ func (c *Controller) processNextUpdateOvnFipWorkItem() bool {
 		c.updateOvnFipQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true

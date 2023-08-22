@@ -19,7 +19,6 @@ import (
 )
 
 func (c *Controller) enqueueAddNamespace(obj interface{}) {
-
 	if c.config.EnableNP {
 		for _, np := range c.namespaceMatchNetworkPolicies(obj.(*v1.Namespace)) {
 			c.updateNpQueue.Add(np)
@@ -35,7 +34,6 @@ func (c *Controller) enqueueAddNamespace(obj interface{}) {
 }
 
 func (c *Controller) enqueueDeleteNamespace(obj interface{}) {
-
 	if c.config.EnableNP {
 		for _, np := range c.namespaceMatchNetworkPolicies(obj.(*v1.Namespace)) {
 			c.updateNpQueue.Add(np)
@@ -97,7 +95,6 @@ func (c *Controller) processNextAddNamespaceWorkItem() bool {
 		c.addNamespaceQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true

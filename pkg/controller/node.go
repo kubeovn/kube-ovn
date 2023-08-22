@@ -27,7 +27,6 @@ import (
 )
 
 func (c *Controller) enqueueAddNode(obj interface{}) {
-
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -48,7 +47,6 @@ func nodeReady(node *v1.Node) bool {
 }
 
 func (c *Controller) enqueueUpdateNode(oldObj, newObj interface{}) {
-
 	oldNode := oldObj.(*v1.Node)
 	newNode := newObj.(*v1.Node)
 
@@ -118,7 +116,6 @@ func (c *Controller) processNextAddNodeWorkItem() bool {
 		c.addNodeQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -149,7 +146,6 @@ func (c *Controller) processNextUpdateNodeWorkItem() bool {
 		c.updateNodeQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -180,7 +176,6 @@ func (c *Controller) processNextDeleteNodeWorkItem() bool {
 		c.deleteNodeQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -301,8 +296,7 @@ func (c *Controller) handleAddNode(key string) error {
 		return err
 	}
 
-	patchPayloadTemplate :=
-		`[{
+	patchPayloadTemplate := `[{
         "op": "%s",
         "path": "/metadata/annotations",
         "value": %s
@@ -875,7 +869,7 @@ func (c *Controller) cleanDuplicatedChassis(node *v1.Node) error {
 	return nil
 }
 
-func (c *Controller) retryDelDupChassis(attempts int, sleep int, f func(node *v1.Node) error, node *v1.Node) (err error) {
+func (c *Controller) retryDelDupChassis(attempts, sleep int, f func(node *v1.Node) error, node *v1.Node) (err error) {
 	i := 0
 	for ; ; i++ {
 		err = f(node)

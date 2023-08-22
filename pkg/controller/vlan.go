@@ -17,7 +17,6 @@ import (
 )
 
 func (c *Controller) enqueueAddVlan(obj interface{}) {
-
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -29,7 +28,6 @@ func (c *Controller) enqueueAddVlan(obj interface{}) {
 }
 
 func (c *Controller) enqueueUpdateVlan(old, new interface{}) {
-
 	key, err := cache.MetaNamespaceKeyFunc(new)
 	if err != nil {
 		utilruntime.HandleError(err)
@@ -89,7 +87,6 @@ func (c *Controller) processNextAddVlanWorkItem() bool {
 		c.addVlanQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -123,7 +120,6 @@ func (c *Controller) processNextUpdateVlanWorkItem() bool {
 		c.updateVlanQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -158,7 +154,6 @@ func (c *Controller) processNextDelVlanWorkItem() bool {
 		c.delVlanQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true

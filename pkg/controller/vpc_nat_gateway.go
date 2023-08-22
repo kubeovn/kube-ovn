@@ -98,7 +98,6 @@ func (c *Controller) resyncVpcNatGwConfig() {
 }
 
 func (c *Controller) enqueueAddVpcNatGw(obj interface{}) {
-
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -192,7 +191,6 @@ func (c *Controller) processNextWorkItem(processName string, queue workqueue.Rat
 		queue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("process: %s. err: %v", processName, err))
 		queue.AddRateLimited(obj)
@@ -217,7 +215,6 @@ func (c *Controller) handleDelVpcNatGw(key string) error {
 }
 
 func isVpcNatGwChanged(gw *kubeovnv1.VpcNatGateway) bool {
-
 	if !reflect.DeepEqual(gw.Spec.ExternalSubnets, gw.Status.ExternalSubnets) {
 		gw.Status.ExternalSubnets = gw.Spec.ExternalSubnets
 		return true
@@ -270,7 +267,6 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 	needToUpdate := false
 	oldSts, err := c.config.KubeClient.AppsV1().StatefulSets(c.config.PodNamespace).
 		Get(context.Background(), util.GenNatGwStsName(gw.Name), metav1.GetOptions{})
-
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			needToCreate = true
@@ -564,7 +560,6 @@ func (c *Controller) getIptablesVersion(pod *corev1.Pod) (version string, err er
 	cmd := fmt.Sprintf("bash /kube-ovn/nat-gateway.sh %s", operation)
 	klog.V(3).Infof(cmd)
 	stdOutput, errOutput, err := util.ExecuteCommandInContainer(c.config.KubeClient, c.config.KubeRestConfig, pod.Namespace, pod.Name, "vpc-nat-gw", []string{"/bin/bash", "-c", cmd}...)
-
 	if err != nil {
 		if len(errOutput) > 0 {
 			klog.Errorf("failed to ExecuteCommandInContainer, errOutput: %v", errOutput)
@@ -718,7 +713,6 @@ func (c *Controller) execNatGwRules(pod *corev1.Pod, operation string, rules []s
 	cmd := fmt.Sprintf("bash /kube-ovn/nat-gateway.sh %s %s", operation, strings.Join(rules, " "))
 	klog.V(3).Infof(cmd)
 	stdOutput, errOutput, err := util.ExecuteCommandInContainer(c.config.KubeClient, c.config.KubeRestConfig, pod.Namespace, pod.Name, "vpc-nat-gw", []string{"/bin/bash", "-c", cmd}...)
-
 	if err != nil {
 		if len(errOutput) > 0 {
 			klog.Errorf("failed to ExecuteCommandInContainer, errOutput: %v", errOutput)
@@ -864,7 +858,7 @@ func (c *Controller) initCreateAt(key string) (err error) {
 	return nil
 }
 
-func (c *Controller) updateCrdNatGwLabels(key string, qos string) error {
+func (c *Controller) updateCrdNatGwLabels(key, qos string) error {
 	gw, err := c.vpcNatGatewayLister.Get(key)
 	if err != nil {
 		errMsg := fmt.Errorf("failed to get vpc nat gw '%s', %v", key, err)
@@ -1012,7 +1006,7 @@ func (c *Controller) patchNatGwStatus(key string) error {
 	return nil
 }
 
-func (c *Controller) execNatGwQoS(gw *kubeovnv1.VpcNatGateway, qos string, operation string) error {
+func (c *Controller) execNatGwQoS(gw *kubeovnv1.VpcNatGateway, qos, operation string) error {
 	qosPolicy, err := c.qosPoliciesLister.Get(qos)
 	if err != nil {
 		klog.Errorf("get qos policy %s failed: %v", qos, err)
@@ -1043,7 +1037,8 @@ func (c *Controller) execNatGwBandtithLimitRules(gw *kubeovnv1.VpcNatGateway, ru
 }
 
 func (c *Controller) execNatGwQoSInPod(
-	dp string, r *kubeovnv1.QoSPolicyBandwidthLimitRule, operation string) error {
+	dp string, r *kubeovnv1.QoSPolicyBandwidthLimitRule, operation string,
+) error {
 	gwPod, err := c.getNatGwPod(dp)
 	if err != nil {
 		klog.Errorf("failed to get nat gw pod, %v", err)

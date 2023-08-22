@@ -90,7 +90,6 @@ func (c *Controller) processNextAddIPPoolWorkItem() bool {
 		c.addOrUpdateIPPoolQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -119,7 +118,6 @@ func (c *Controller) processNextUpdateIPPoolStatusWorkItem() bool {
 		}
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -148,7 +146,6 @@ func (c *Controller) processNextDeleteIPPoolWorkItem() bool {
 		c.deleteIPPoolQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true

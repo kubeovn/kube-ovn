@@ -22,7 +22,6 @@ import (
 )
 
 func (c *Controller) enqueueAddOvnEip(obj interface{}) {
-
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -201,7 +200,6 @@ func (c *Controller) processNextDeleteOvnEipWorkItem() bool {
 		c.delOvnEipQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true

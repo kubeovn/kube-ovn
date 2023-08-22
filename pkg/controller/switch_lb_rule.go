@@ -38,7 +38,6 @@ func NewSlrInfo(slr *kubeovnv1.SwitchLBRule) *slrInfo {
 }
 
 func (c *Controller) enqueueAddSwitchLBRule(obj interface{}) {
-
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -101,7 +100,6 @@ func (c *Controller) processSwitchLBRuleWorkItem(processName string, queue workq
 		queue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("process: %s. err: %v", processName, err))
 		queue.AddRateLimited(obj)
@@ -308,7 +306,6 @@ func generateHeadlessService(slr *kubeovnv1.SwitchLBRule, oldSvc *corev1.Service
 				SessionAffinity: corev1.ServiceAffinity(slr.Spec.SessionAffinity),
 			},
 		}
-
 	}
 	return newSvc
 }

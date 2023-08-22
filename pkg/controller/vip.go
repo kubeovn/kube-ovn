@@ -21,7 +21,6 @@ import (
 )
 
 func (c *Controller) enqueueAddVirtualIp(obj interface{}) {
-
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -100,7 +99,6 @@ func (c *Controller) processNextAddVirtualIpWorkItem() bool {
 		c.addVirtualIpQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -158,7 +156,6 @@ func (c *Controller) processNextDeleteVirtualIpWorkItem() bool {
 		c.delVirtualIpQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true

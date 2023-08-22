@@ -21,7 +21,6 @@ import (
 )
 
 func (c *Controller) enqueueAddIptablesEip(obj interface{}) {
-
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -107,7 +106,6 @@ func (c *Controller) processNextAddIptablesEipWorkItem() bool {
 		c.addIptablesEipQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -137,7 +135,6 @@ func (c *Controller) processNextResetIptablesEipWorkItem() bool {
 		c.resetIptablesEipQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -194,7 +191,6 @@ func (c *Controller) processNextDeleteIptablesEipWorkItem() bool {
 		c.delIptablesEipQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -518,8 +514,9 @@ func (c *Controller) delEipQoS(eip *kubeovnv1.IptablesEIP, v4ip string) error {
 }
 
 func (c *Controller) addEipQoSInPod(
-	dp string, v4ip string, direction kubeovnv1.QoSPolicyRuleDirection, priority int, rate string,
-	burst string) error {
+	dp, v4ip string, direction kubeovnv1.QoSPolicyRuleDirection, priority int, rate string,
+	burst string,
+) error {
 	var operation string
 	gwPod, err := c.getNatGwPod(dp)
 	if err != nil {
@@ -543,7 +540,7 @@ func (c *Controller) addEipQoSInPod(
 	return nil
 }
 
-func (c *Controller) delEipQoSInPod(dp string, v4ip string, direction kubeovnv1.QoSPolicyRuleDirection) error {
+func (c *Controller) delEipQoSInPod(dp, v4ip string, direction kubeovnv1.QoSPolicyRuleDirection) error {
 	var operation string
 	gwPod, err := c.getNatGwPod(dp)
 	if err != nil {
@@ -660,7 +657,6 @@ func (c *Controller) createOrUpdateCrdEip(key, v4ip, v6ip, mac, natGwDp, qos, ex
 					NatGwDp:    natGwDp,
 				},
 			}, metav1.CreateOptions{})
-
 			if err != nil {
 				errMsg := fmt.Errorf("failed to create eip crd %s, %v", key, err)
 				klog.Error(errMsg)

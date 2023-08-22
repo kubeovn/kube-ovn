@@ -22,7 +22,6 @@ import (
 )
 
 func (c *Controller) enqueueAddVpc(obj interface{}) {
-
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -685,7 +684,6 @@ func (c *Controller) processNextUpdateStatusVpcWorkItem() bool {
 		c.updateVpcStatusQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -715,7 +713,6 @@ func (c *Controller) processNextAddVpcWorkItem() bool {
 		c.addOrUpdateVpcQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		c.addOrUpdateVpcQueue.AddRateLimited(obj)
@@ -746,7 +743,6 @@ func (c *Controller) processNextDeleteVpcWorkItem() bool {
 		c.delVpcQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true

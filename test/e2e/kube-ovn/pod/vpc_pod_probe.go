@@ -190,7 +190,6 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 })
 
 func checkTProxyRules(f *framework.Framework, pod *corev1.Pod, probePort int, exist bool) {
-
 	nodeName := pod.Spec.NodeName
 	tProxyOutputMarkMask := fmt.Sprintf("%#x/%#x", util.TProxyOutputMark, util.TProxyOutputMask)
 	tProxyPreRoutingMarkMask := fmt.Sprintf("%#x/%#x", util.TProxyPreroutingMark, util.TProxyPreroutingMask)

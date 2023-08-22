@@ -71,7 +71,6 @@ func (c *Controller) syncSubnetRoutes() {
 					ipFamily := util.CheckProtocol(clusterIp)
 					bgpExpected[ipFamily] = append(bgpExpected[ipFamily], fmt.Sprintf("%s/%d", clusterIp, maskMap[ipFamily]))
 				}
-				//bgpExpected = append(bgpExpected, fmt.Sprintf("%s/32", svc.Spec.ClusterIP))
 			}
 		}
 	}
