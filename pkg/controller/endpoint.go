@@ -173,8 +173,8 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 		}
 	}
 
-	tcpLb, udpLb, sctpLb := vpc.Status.TcpLoadBalancer, vpc.Status.UdpLoadBalancer, vpc.Status.SctpLoadBalancer
-	oldTcpLb, oldUdpLb, oldSctpLb := vpc.Status.TcpSessionLoadBalancer, vpc.Status.UdpSessionLoadBalancer, vpc.Status.SctpSessionLoadBalancer
+	tcpLb, udpLb, sctpLb := vpc.Status.TCPLoadBalancer, vpc.Status.UDPLoadBalancer, vpc.Status.SctpLoadBalancer
+	oldTcpLb, oldUdpLb, oldSctpLb := vpc.Status.TCPSessionLoadBalancer, vpc.Status.UDPSessionLoadBalancer, vpc.Status.SctpSessionLoadBalancer
 	if svc.Spec.SessionAffinity == v1.ServiceAffinityClientIP {
 		tcpLb, udpLb, sctpLb, oldTcpLb, oldUdpLb, oldSctpLb = oldTcpLb, oldUdpLb, oldSctpLb, tcpLb, udpLb, sctpLb
 	}

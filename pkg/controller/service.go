@@ -255,9 +255,9 @@ func (c *Controller) handleDeleteService(service *vpcService) error {
 	var vpcLB [2]string
 	switch service.Protocol {
 	case v1.ProtocolTCP:
-		vpcLB = [2]string{vpcLbConfig.TcpLoadBalancer, vpcLbConfig.TcpSessLoadBalancer}
+		vpcLB = [2]string{vpcLbConfig.TCPLoadBalancer, vpcLbConfig.TcpSessLoadBalancer}
 	case v1.ProtocolUDP:
-		vpcLB = [2]string{vpcLbConfig.UdpLoadBalancer, vpcLbConfig.UdpSessLoadBalancer}
+		vpcLB = [2]string{vpcLbConfig.UDPLoadBalancer, vpcLbConfig.UdpSessLoadBalancer}
 	case v1.ProtocolSCTP:
 		vpcLB = [2]string{vpcLbConfig.SctpLoadBalancer, vpcLbConfig.SctpSessLoadBalancer}
 	}
@@ -334,8 +334,8 @@ func (c *Controller) handleUpdateService(key string) error {
 		return err
 	}
 
-	tcpLb, udpLb, sctpLb := vpc.Status.TcpLoadBalancer, vpc.Status.UdpLoadBalancer, vpc.Status.SctpLoadBalancer
-	oTcpLb, oUdpLb, oSctpLb := vpc.Status.TcpSessionLoadBalancer, vpc.Status.UdpSessionLoadBalancer, vpc.Status.SctpSessionLoadBalancer
+	tcpLb, udpLb, sctpLb := vpc.Status.TCPLoadBalancer, vpc.Status.UDPLoadBalancer, vpc.Status.SctpLoadBalancer
+	oTcpLb, oUdpLb, oSctpLb := vpc.Status.TCPSessionLoadBalancer, vpc.Status.UDPSessionLoadBalancer, vpc.Status.SctpSessionLoadBalancer
 	if svc.Spec.SessionAffinity == v1.ServiceAffinityClientIP {
 		tcpLb, udpLb, sctpLb, oTcpLb, oUdpLb, oSctpLb = oTcpLb, oUdpLb, oSctpLb, tcpLb, udpLb, sctpLb
 	}

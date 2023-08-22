@@ -650,7 +650,7 @@ func (suite *OvnClientTestSuite) testUpdateLogicalSwitchAcl() {
 	ovnClient := suite.ovnClient
 	lsName := "test_update_acl_ls"
 
-	subnetAcls := []kubeovnv1.Acl{
+	subnetAcls := []kubeovnv1.ACL{
 		{
 			Direction: ovnnb.ACLDirectionToLport,
 			Priority:  1111,

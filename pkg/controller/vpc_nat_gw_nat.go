@@ -53,7 +53,7 @@ func (c *Controller) enqueueUpdateIptablesFip(old, new interface{}) {
 	if oldFip.Status.V4ip != newFip.Status.V4ip ||
 		oldFip.Spec.EIP != newFip.Spec.EIP ||
 		oldFip.Status.Redo != newFip.Status.Redo ||
-		oldFip.Spec.InternalIp != newFip.Spec.InternalIp {
+		oldFip.Spec.InternalIP != newFip.Spec.InternalIP {
 		klog.V(3).Infof("enqueue update fip %s", key)
 		c.updateIptablesFipQueue.Add(key)
 		return
@@ -105,7 +105,7 @@ func (c *Controller) enqueueUpdateIptablesDnatRule(old, new interface{}) {
 		oldDnat.Spec.EIP != newDnat.Spec.EIP ||
 		oldDnat.Status.Redo != newDnat.Status.Redo ||
 		oldDnat.Spec.Protocol != newDnat.Spec.Protocol ||
-		oldDnat.Spec.InternalIp != newDnat.Spec.InternalIp ||
+		oldDnat.Spec.InternalIP != newDnat.Spec.InternalIP ||
 		oldDnat.Spec.InternalPort != newDnat.Spec.InternalPort ||
 		oldDnat.Spec.ExternalPort != newDnat.Spec.ExternalPort {
 		klog.V(3).Infof("enqueue update dnat %s", key)
@@ -526,7 +526,7 @@ func (c *Controller) handleAddIptablesFip(key string) error {
 	}
 
 	// create fip nat
-	if err = c.createFipInPod(eip.Spec.NatGwDp, eip.Status.IP, fip.Spec.InternalIp); err != nil {
+	if err = c.createFipInPod(eip.Spec.NatGwDp, eip.Status.IP, fip.Spec.InternalIP); err != nil {
 		klog.Errorf("failed to create fip, %v", err)
 		return err
 	}
@@ -586,7 +586,7 @@ func (c *Controller) handleUpdateIptablesFip(key string) error {
 	if !cachedFip.DeletionTimestamp.IsZero() {
 		if vpcNatEnabled == "true" {
 			klog.V(3).Infof("clean fip '%s' in pod", key)
-			if err = c.deleteFipInPod(cachedFip.Status.NatGwDp, cachedFip.Status.V4ip, cachedFip.Status.InternalIp); err != nil {
+			if err = c.deleteFipInPod(cachedFip.Status.NatGwDp, cachedFip.Status.V4ip, cachedFip.Status.InternalIP); err != nil {
 				klog.Errorf("failed to delete fip %s, %v", key, err)
 				return err
 			}
@@ -621,11 +621,11 @@ func (c *Controller) handleUpdateIptablesFip(key string) error {
 	}
 
 	klog.V(3).Infof("fip change ip, old ip '%s', new ip %s", cachedFip.Status.V4ip, eip.Status.IP)
-	if err = c.deleteFipInPod(cachedFip.Status.NatGwDp, cachedFip.Status.V4ip, cachedFip.Status.InternalIp); err != nil {
+	if err = c.deleteFipInPod(cachedFip.Status.NatGwDp, cachedFip.Status.V4ip, cachedFip.Status.InternalIP); err != nil {
 		klog.Errorf("failed to delete old fip, %v", err)
 		return err
 	}
-	if err = c.createFipInPod(eip.Spec.NatGwDp, eip.Status.IP, cachedFip.Spec.InternalIp); err != nil {
+	if err = c.createFipInPod(eip.Spec.NatGwDp, eip.Status.IP, cachedFip.Spec.InternalIP); err != nil {
 		klog.Errorf("failed to create new fip, %v", err)
 		return err
 	}
@@ -653,7 +653,7 @@ func (c *Controller) handleUpdateIptablesFip(key string) error {
 		cachedFip.Status.V4ip != "" &&
 		cachedFip.DeletionTimestamp.IsZero() {
 		klog.V(3).Infof("reapply fip '%s' in pod ", key)
-		if err = c.createFipInPod(eip.Spec.NatGwDp, cachedFip.Status.V4ip, cachedFip.Spec.InternalIp); err != nil {
+		if err = c.createFipInPod(eip.Spec.NatGwDp, cachedFip.Status.V4ip, cachedFip.Spec.InternalIP); err != nil {
 			klog.Errorf("failed to create fip, %v", err)
 			return err
 		}
@@ -711,7 +711,7 @@ func (c *Controller) handleAddIptablesDnatRule(key string) error {
 	}
 	// create nat
 	if err = c.createDnatInPod(eip.Spec.NatGwDp, dnat.Spec.Protocol,
-		eip.Status.IP, dnat.Spec.InternalIp,
+		eip.Status.IP, dnat.Spec.InternalIP,
 		dnat.Spec.ExternalPort, dnat.Spec.InternalPort); err != nil {
 		klog.Errorf("failed to create dnat, %v", err)
 		return err
@@ -755,7 +755,7 @@ func (c *Controller) handleUpdateIptablesDnatRule(key string) error {
 		klog.V(3).Infof("clean dnat '%s' in pod", key)
 		if vpcNatEnabled == "true" {
 			if err = c.deleteDnatInPod(cachedDnat.Status.NatGwDp, cachedDnat.Status.Protocol,
-				cachedDnat.Status.V4ip, cachedDnat.Status.InternalIp,
+				cachedDnat.Status.V4ip, cachedDnat.Status.InternalIP,
 				cachedDnat.Status.ExternalPort, cachedDnat.Status.InternalPort); err != nil {
 				klog.Errorf("failed to delete dnat, %v", err)
 				return err
@@ -789,13 +789,13 @@ func (c *Controller) handleUpdateIptablesDnatRule(key string) error {
 	}
 
 	if err = c.deleteDnatInPod(cachedDnat.Status.NatGwDp, cachedDnat.Status.Protocol,
-		cachedDnat.Status.V4ip, cachedDnat.Status.InternalIp,
+		cachedDnat.Status.V4ip, cachedDnat.Status.InternalIP,
 		cachedDnat.Status.ExternalPort, cachedDnat.Status.InternalPort); err != nil {
 		klog.Errorf("failed to delete old dnat, %v", err)
 		return err
 	}
 	if err = c.createDnatInPod(eip.Spec.NatGwDp, cachedDnat.Spec.Protocol,
-		eip.Status.IP, cachedDnat.Spec.InternalIp,
+		eip.Status.IP, cachedDnat.Spec.InternalIP,
 		cachedDnat.Spec.ExternalPort, cachedDnat.Spec.InternalPort); err != nil {
 		klog.Errorf("failed to create new dnat %s, %v", key, err)
 		return err
@@ -825,7 +825,7 @@ func (c *Controller) handleUpdateIptablesDnatRule(key string) error {
 		cachedDnat.DeletionTimestamp.IsZero() {
 		klog.V(3).Infof("reapply dnat in pod for %s", key)
 		if err = c.createDnatInPod(eip.Spec.NatGwDp, cachedDnat.Spec.Protocol,
-			cachedDnat.Status.V4ip, cachedDnat.Spec.InternalIp,
+			cachedDnat.Status.V4ip, cachedDnat.Spec.InternalIP,
 			cachedDnat.Spec.ExternalPort, cachedDnat.Spec.InternalPort); err != nil {
 			klog.Errorf("failed to create dnat %s, %v", key, err)
 			return err
@@ -1280,8 +1280,8 @@ func (c *Controller) patchFipStatus(key, v4ip, v6ip, natGwDp, redo string, ready
 		fip.Status.NatGwDp = natGwDp
 		changed = true
 	}
-	if ready && fip.Spec.InternalIp != "" && fip.Status.InternalIp != fip.Spec.InternalIp {
-		fip.Status.InternalIp = fip.Spec.InternalIp
+	if ready && fip.Spec.InternalIP != "" && fip.Status.InternalIP != fip.Spec.InternalIP {
+		fip.Status.InternalIP = fip.Spec.InternalIP
 		changed = true
 	}
 
@@ -1416,8 +1416,8 @@ func (c *Controller) patchDnatStatus(key, v4ip, v6ip, natGwDp, redo string, read
 		dnat.Status.Protocol = dnat.Spec.Protocol
 		changed = true
 	}
-	if ready && dnat.Spec.InternalIp != "" && dnat.Status.InternalIp != dnat.Spec.InternalIp {
-		dnat.Status.InternalIp = dnat.Spec.InternalIp
+	if ready && dnat.Spec.InternalIP != "" && dnat.Status.InternalIP != dnat.Spec.InternalIP {
+		dnat.Status.InternalIP = dnat.Spec.InternalIP
 		changed = true
 	}
 	if ready && dnat.Spec.InternalPort != "" && dnat.Status.InternalPort != dnat.Spec.InternalPort {
@@ -1791,7 +1791,7 @@ func (c *Controller) createOrUpdateCrdFip(key, eipName, internalIp string) error
 				},
 				Spec: kubeovnv1.IptablesFIPRuleSpec{
 					EIP:        eipName,
-					InternalIp: internalIp,
+					InternalIP: internalIp,
 				},
 			}, metav1.CreateOptions{}); err != nil {
 				errMsg := fmt.Errorf("failed to create fip crd %s, %v", key, err)
@@ -1806,9 +1806,9 @@ func (c *Controller) createOrUpdateCrdFip(key, eipName, internalIp string) error
 	} else {
 		klog.V(3).Infof("update fip cr %s", key)
 		fip := cachedFip.DeepCopy()
-		if fip.Spec.EIP != eipName || fip.Spec.InternalIp != internalIp {
+		if fip.Spec.EIP != eipName || fip.Spec.InternalIP != internalIp {
 			fip.Spec.EIP = eipName
-			fip.Spec.InternalIp = internalIp
+			fip.Spec.InternalIP = internalIp
 			if _, err := c.config.KubeOvnClient.KubeovnV1().IptablesFIPRules().Update(context.Background(), fip, metav1.UpdateOptions{}); err != nil {
 				errMsg := fmt.Errorf("failed to update eip crd %s, %v", key, err)
 				klog.Error(errMsg)

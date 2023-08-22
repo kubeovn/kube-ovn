@@ -54,7 +54,7 @@ func (c *Controller) enqueueUpdateOvnSnatRule(old, new interface{}) {
 	}
 	if oldSnat.Spec.OvnEip != newSnat.Spec.OvnEip ||
 		oldSnat.Spec.VpcSubnet != newSnat.Spec.VpcSubnet ||
-		oldSnat.Spec.IpName != newSnat.Spec.IpName {
+		oldSnat.Spec.IPName != newSnat.Spec.IPName {
 		klog.Infof("enqueue update snat %s", key)
 		c.updateOvnSnatRuleQueue.Add(key)
 		return
@@ -220,10 +220,10 @@ func (c *Controller) handleAddOvnSnatRule(key string) error {
 		vpcName = subnet.Spec.Vpc
 		v4IpCidr = subnet.Spec.CIDRBlock
 	}
-	if cachedSnat.Spec.IpName != "" {
-		vpcPodIp, err := c.ipsLister.Get(cachedSnat.Spec.IpName)
+	if cachedSnat.Spec.IPName != "" {
+		vpcPodIp, err := c.ipsLister.Get(cachedSnat.Spec.IPName)
 		if err != nil {
-			klog.Errorf("failed to get pod ip %s, %v", cachedSnat.Spec.IpName, err)
+			klog.Errorf("failed to get pod ip %s, %v", cachedSnat.Spec.IPName, err)
 			return err
 		}
 		subnet, err := c.subnetsLister.Get(vpcPodIp.Spec.Subnet)
@@ -332,10 +332,10 @@ func (c *Controller) handleUpdateOvnSnatRule(key string) error {
 		vpcName = subnet.Spec.Vpc
 		v4IpCidr = subnet.Spec.CIDRBlock
 	}
-	if cachedSnat.Spec.IpName != "" {
-		vpcPodIp, err := c.ipsLister.Get(cachedSnat.Spec.IpName)
+	if cachedSnat.Spec.IPName != "" {
+		vpcPodIp, err := c.ipsLister.Get(cachedSnat.Spec.IPName)
 		if err != nil {
-			klog.Errorf("failed to get pod ip %s, %v", cachedSnat.Spec.IpName, err)
+			klog.Errorf("failed to get pod ip %s, %v", cachedSnat.Spec.IPName, err)
 			return err
 		}
 		subnet, err := c.subnetsLister.Get(vpcPodIp.Spec.Subnet)

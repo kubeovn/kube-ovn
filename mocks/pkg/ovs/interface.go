@@ -1326,7 +1326,7 @@ func (mr *MockACLMockRecorder) UpdateIngressAclOps(pgName, asIngressName, asExce
 }
 
 // UpdateLogicalSwitchAcl mocks base method.
-func (m *MockACL) UpdateLogicalSwitchAcl(lsName string, subnetAcls []v1.Acl) error {
+func (m *MockACL) UpdateLogicalSwitchAcl(lsName string, subnetAcls []v1.ACL) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "UpdateLogicalSwitchAcl", lsName, subnetAcls)
 	ret0, _ := ret[0].(error)
@@ -3586,7 +3586,7 @@ func (mr *MockNbClientMockRecorder) UpdateLogicalRouterPortRA(lrpName, ipv6RACon
 }
 
 // UpdateLogicalSwitchAcl mocks base method.
-func (m *MockNbClient) UpdateLogicalSwitchAcl(lsName string, subnetAcls []v1.Acl) error {
+func (m *MockNbClient) UpdateLogicalSwitchAcl(lsName string, subnetAcls []v1.ACL) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "UpdateLogicalSwitchAcl", lsName, subnetAcls)
 	ret0, _ := ret[0].(error)

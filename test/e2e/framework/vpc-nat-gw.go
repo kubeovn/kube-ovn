@@ -122,7 +122,7 @@ func (c *VpcNatGatewayClient) DeleteSync(name string) {
 // WaitToBeReady returns whether the vpc nat gw is ready within timeout.
 func (c *VpcNatGatewayClient) WaitToBeReady(name string, timeout time.Duration) bool {
 	for start := time.Now(); time.Since(start) < timeout; time.Sleep(poll) {
-		if c.Get(name).Spec.LanIp != "" {
+		if c.Get(name).Spec.LanIP != "" {
 			return true
 		}
 	}
@@ -200,7 +200,7 @@ func MakeVpcNatGateway(name, vpc, subnet, lanIp, externalSubnet, qosPolicyName s
 		Spec: apiv1.VpcNatSpec{
 			Vpc:    vpc,
 			Subnet: subnet,
-			LanIp:  lanIp,
+			LanIP:  lanIp,
 		},
 	}
 	if externalSubnet != "" {

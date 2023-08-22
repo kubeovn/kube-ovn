@@ -155,8 +155,8 @@ func MakeOvnDnatRule(name, ovnEip, ipType, ipName, internalPort, externalPort, p
 		},
 		Spec: apiv1.OvnDnatRuleSpec{
 			OvnEip:       ovnEip,
-			IpType:       ipType,
-			IpName:       ipName,
+			IPType:       ipType,
+			IPName:       ipName,
 			InternalPort: internalPort,
 			ExternalPort: externalPort,
 			Protocol:     protocol,

@@ -107,7 +107,7 @@ type ACL interface {
 	CreateSgDenyAllAcl(sgName string) error
 	CreateSgBaseACL(sgName string, direction string) error
 	UpdateSgAcl(sg *kubeovnv1.SecurityGroup, direction string) error
-	UpdateLogicalSwitchAcl(lsName string, subnetAcls []kubeovnv1.Acl) error
+	UpdateLogicalSwitchAcl(lsName string, subnetAcls []kubeovnv1.ACL) error
 	SetAclLog(pgName, protocol string, logEnable, isIngress bool) error
 	SetLogicalSwitchPrivate(lsName, cidrBlock, nodeSwitchCIDR string, allowSubnets []string) error
 	DeleteAcls(parentName, parentType string, direction string, externalIDs map[string]string) error

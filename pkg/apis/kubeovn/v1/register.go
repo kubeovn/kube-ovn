@@ -67,8 +67,8 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&SecurityGroupList{},
 		&SwitchLBRule{},
 		&SwitchLBRuleList{},
-		&VpcDns{},
-		&VpcDnsList{},
+		&VpcDNS{},
+		&VpcDNSList{},
 		&QoSPolicy{},
 		&QoSPolicyList{},
 	)

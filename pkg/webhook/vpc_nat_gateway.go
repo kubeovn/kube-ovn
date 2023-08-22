@@ -344,14 +344,14 @@ func (v *ValidatingHook) ValidateVpcNatGW(ctx context.Context, gw *ovnv1.VpcNatG
 		return err
 	}
 
-	if net.ParseIP(gw.Spec.LanIp) == nil {
-		err := fmt.Errorf("lanIp %s is not a valid", gw.Spec.LanIp)
+	if net.ParseIP(gw.Spec.LanIP) == nil {
+		err := fmt.Errorf("lanIp %s is not a valid", gw.Spec.LanIP)
 		return err
 	}
 
-	if !util.CIDRContainIP(subnet.Spec.CIDRBlock, gw.Spec.LanIp) {
+	if !util.CIDRContainIP(subnet.Spec.CIDRBlock, gw.Spec.LanIP) {
 		err := fmt.Errorf("lanIp %s is not in the range of subnet %s, cidr %v",
-			gw.Spec.LanIp, subnet.Name, subnet.Spec.CIDRBlock)
+			gw.Spec.LanIP, subnet.Name, subnet.Spec.CIDRBlock)
 		return err
 	}
 
@@ -478,8 +478,8 @@ func (v *ValidatingHook) ValidateIptablesDnat(ctx context.Context, dnat *ovnv1.I
 		return err
 	}
 
-	if net.ParseIP(dnat.Spec.InternalIp) == nil {
-		err := fmt.Errorf("internalIp %s is not a valid ip", dnat.Spec.InternalIp)
+	if net.ParseIP(dnat.Spec.InternalIP) == nil {
+		err := fmt.Errorf("internalIp %s is not a valid ip", dnat.Spec.InternalIP)
 		return err
 	}
 
@@ -521,8 +521,8 @@ func (v *ValidatingHook) ValidateIptablesFip(ctx context.Context, fip *ovnv1.Ipt
 		return err
 	}
 
-	if net.ParseIP(fip.Spec.InternalIp) == nil {
-		err := fmt.Errorf("internalIp %s is not a valid", fip.Spec.InternalIp)
+	if net.ParseIP(fip.Spec.InternalIP) == nil {
+		err := fmt.Errorf("internalIp %s is not a valid", fip.Spec.InternalIP)
 		return err
 	}
 

@@ -170,9 +170,9 @@ func (c *Controller) handleUpdateVpcStatus(key string) error {
 }
 
 type VpcLoadBalancer struct {
-	TcpLoadBalancer      string
+	TCPLoadBalancer      string
 	TcpSessLoadBalancer  string
-	UdpLoadBalancer      string
+	UDPLoadBalancer      string
 	UdpSessLoadBalancer  string
 	SctpLoadBalancer     string
 	SctpSessLoadBalancer string
@@ -181,18 +181,18 @@ type VpcLoadBalancer struct {
 func (c *Controller) GenVpcLoadBalancer(vpcKey string) *VpcLoadBalancer {
 	if vpcKey == c.config.ClusterRouter || vpcKey == "" {
 		return &VpcLoadBalancer{
-			TcpLoadBalancer:      c.config.ClusterTcpLoadBalancer,
+			TCPLoadBalancer:      c.config.ClusterTcpLoadBalancer,
 			TcpSessLoadBalancer:  c.config.ClusterTcpSessionLoadBalancer,
-			UdpLoadBalancer:      c.config.ClusterUdpLoadBalancer,
+			UDPLoadBalancer:      c.config.ClusterUdpLoadBalancer,
 			UdpSessLoadBalancer:  c.config.ClusterUdpSessionLoadBalancer,
 			SctpLoadBalancer:     c.config.ClusterSctpLoadBalancer,
 			SctpSessLoadBalancer: c.config.ClusterSctpSessionLoadBalancer,
 		}
 	} else {
 		return &VpcLoadBalancer{
-			TcpLoadBalancer:      fmt.Sprintf("vpc-%s-tcp-load", vpcKey),
+			TCPLoadBalancer:      fmt.Sprintf("vpc-%s-tcp-load", vpcKey),
 			TcpSessLoadBalancer:  fmt.Sprintf("vpc-%s-tcp-sess-load", vpcKey),
-			UdpLoadBalancer:      fmt.Sprintf("vpc-%s-udp-load", vpcKey),
+			UDPLoadBalancer:      fmt.Sprintf("vpc-%s-udp-load", vpcKey),
 			UdpSessLoadBalancer:  fmt.Sprintf("vpc-%s-udp-sess-load", vpcKey),
 			SctpLoadBalancer:     fmt.Sprintf("vpc-%s-sctp-load", vpcKey),
 			SctpSessLoadBalancer: fmt.Sprintf("vpc-%s-sctp-sess-load", vpcKey),
@@ -202,13 +202,13 @@ func (c *Controller) GenVpcLoadBalancer(vpcKey string) *VpcLoadBalancer {
 
 func (c *Controller) addLoadBalancer(vpc string) (*VpcLoadBalancer, error) {
 	vpcLbConfig := c.GenVpcLoadBalancer(vpc)
-	if err := c.initLB(vpcLbConfig.TcpLoadBalancer, string(v1.ProtocolTCP), false); err != nil {
+	if err := c.initLB(vpcLbConfig.TCPLoadBalancer, string(v1.ProtocolTCP), false); err != nil {
 		return nil, err
 	}
 	if err := c.initLB(vpcLbConfig.TcpSessLoadBalancer, string(v1.ProtocolTCP), true); err != nil {
 		return nil, err
 	}
-	if err := c.initLB(vpcLbConfig.UdpLoadBalancer, string(v1.ProtocolUDP), false); err != nil {
+	if err := c.initLB(vpcLbConfig.UDPLoadBalancer, string(v1.ProtocolUDP), false); err != nil {
 		return nil, err
 	}
 	if err := c.initLB(vpcLbConfig.UdpSessLoadBalancer, string(v1.ProtocolUDP), true); err != nil {
@@ -374,10 +374,10 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 	}
 
 	for _, item := range routeNeedAdd {
-		if item.BfdId != "" {
+		if item.BfdID != "" {
 			klog.Infof("vpc %s add static ecmp route: %+v", vpc.Name, item)
 			if err = c.ovnNbClient.AddLogicalRouterStaticRoute(
-				vpc.Name, item.RouteTable, convertPolicy(item.Policy), item.CIDR, &item.BfdId, item.NextHopIP,
+				vpc.Name, item.RouteTable, convertPolicy(item.Policy), item.CIDR, &item.BfdID, item.NextHopIP,
 			); err != nil {
 				klog.Errorf("failed to add bfd static route to vpc %s , %v", vpc.Name, err)
 				return err
@@ -439,10 +439,10 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 			klog.Error(err)
 			return err
 		}
-		vpc.Status.TcpLoadBalancer = vpcLb.TcpLoadBalancer
-		vpc.Status.TcpSessionLoadBalancer = vpcLb.TcpSessLoadBalancer
-		vpc.Status.UdpLoadBalancer = vpcLb.UdpLoadBalancer
-		vpc.Status.UdpSessionLoadBalancer = vpcLb.UdpSessLoadBalancer
+		vpc.Status.TCPLoadBalancer = vpcLb.TCPLoadBalancer
+		vpc.Status.TCPSessionLoadBalancer = vpcLb.TcpSessLoadBalancer
+		vpc.Status.UDPLoadBalancer = vpcLb.UDPLoadBalancer
+		vpc.Status.UDPSessionLoadBalancer = vpcLb.UdpSessLoadBalancer
 		vpc.Status.SctpLoadBalancer = vpcLb.SctpLoadBalancer
 		vpc.Status.SctpSessionLoadBalancer = vpcLb.SctpSessLoadBalancer
 	}
@@ -576,7 +576,7 @@ func diffStaticRoute(exist []*ovnnb.LogicalRouterStaticRoute, target []*kubeovnv
 			ECMPMode:   util.StaticRouteBfdEcmp,
 		}
 		if item.BFD != nil {
-			route.BfdId = *item.BFD
+			route.BfdID = *item.BFD
 		}
 		existRouteMap[getStaticRouteItemKey(route)] = route
 	}

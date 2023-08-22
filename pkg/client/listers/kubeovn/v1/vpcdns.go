@@ -30,10 +30,10 @@ import (
 type VpcDnsLister interface {
 	// List lists all VpcDnses in the indexer.
 	// Objects returned here must be treated as read-only.
-	List(selector labels.Selector) (ret []*v1.VpcDns, err error)
-	// Get retrieves the VpcDns from the index for a given name.
+	List(selector labels.Selector) (ret []*v1.VpcDNS, err error)
+	// Get retrieves the VpcDNS from the index for a given name.
 	// Objects returned here must be treated as read-only.
-	Get(name string) (*v1.VpcDns, error)
+	Get(name string) (*v1.VpcDNS, error)
 	VpcDnsListerExpansion
 }
 
@@ -48,15 +48,15 @@ func NewVpcDnsLister(indexer cache.Indexer) VpcDnsLister {
 }
 
 // List lists all VpcDnses in the indexer.
-func (s *vpcDnsLister) List(selector labels.Selector) (ret []*v1.VpcDns, err error) {
+func (s *vpcDnsLister) List(selector labels.Selector) (ret []*v1.VpcDNS, err error) {
 	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
-		ret = append(ret, m.(*v1.VpcDns))
+		ret = append(ret, m.(*v1.VpcDNS))
 	})
 	return ret, err
 }
 
-// Get retrieves the VpcDns from the index for a given name.
-func (s *vpcDnsLister) Get(name string) (*v1.VpcDns, error) {
+// Get retrieves the VpcDNS from the index for a given name.
+func (s *vpcDnsLister) Get(name string) (*v1.VpcDNS, error) {
 	obj, exists, err := s.indexer.GetByKey(name)
 	if err != nil {
 		return nil, err
@@ -64,5 +64,5 @@ func (s *vpcDnsLister) Get(name string) (*v1.VpcDns, error) {
 	if !exists {
 		return nil, errors.NewNotFound(v1.Resource("vpcdns"), name)
 	}
-	return obj.(*v1.VpcDns), nil
+	return obj.(*v1.VpcDNS), nil
 }

@@ -103,8 +103,8 @@ func (c *Controller) enqueueUpdateVpcDns(old, new interface{}) {
 		return
 	}
 
-	oldVpcDns := old.(*kubeovnv1.VpcDns)
-	newVpcDns := new.(*kubeovnv1.VpcDns)
+	oldVpcDns := old.(*kubeovnv1.VpcDNS)
+	newVpcDns := new.(*kubeovnv1.VpcDNS)
 	if oldVpcDns.ResourceVersion != newVpcDns.ResourceVersion &&
 		!reflect.DeepEqual(oldVpcDns.Spec, newVpcDns.Spec) {
 		klog.V(3).Infof("enqueue update vpc-dns %s", key)
@@ -240,7 +240,7 @@ func (c *Controller) handleDelVpcDns(key string) error {
 	return nil
 }
 
-func (c *Controller) checkVpcDnsDuplicated(vpcDns *kubeovnv1.VpcDns) error {
+func (c *Controller) checkVpcDnsDuplicated(vpcDns *kubeovnv1.VpcDNS) error {
 	vpcDnsList, err := c.vpcDnsLister.List(labels.Everything())
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -260,7 +260,7 @@ func (c *Controller) checkVpcDnsDuplicated(vpcDns *kubeovnv1.VpcDns) error {
 	return nil
 }
 
-func (c *Controller) createOrUpdateVpcDnsDep(vpcDns *kubeovnv1.VpcDns) error {
+func (c *Controller) createOrUpdateVpcDnsDep(vpcDns *kubeovnv1.VpcDNS) error {
 	needToCreateDp := false
 	oldDp, err := c.config.KubeClient.AppsV1().Deployments(c.config.PodNamespace).
 		Get(context.Background(), genVpcDnsDpName(vpcDns.Name), metav1.GetOptions{})
@@ -299,7 +299,7 @@ func (c *Controller) createOrUpdateVpcDnsDep(vpcDns *kubeovnv1.VpcDns) error {
 	return nil
 }
 
-func (c *Controller) createOrUpdateVpcDnsSlr(vpcDns *kubeovnv1.VpcDns) error {
+func (c *Controller) createOrUpdateVpcDnsSlr(vpcDns *kubeovnv1.VpcDNS) error {
 	needToCreateSlr := false
 	oldSlr, err := c.switchLBRuleLister.Get(genVpcDnsDpName(vpcDns.Name))
 	if err != nil {
@@ -338,7 +338,7 @@ func (c *Controller) createOrUpdateVpcDnsSlr(vpcDns *kubeovnv1.VpcDns) error {
 	return nil
 }
 
-func (c *Controller) genVpcDnsDeployment(vpcDns *kubeovnv1.VpcDns, oldDeploy *v1.Deployment) (*v1.Deployment, error) {
+func (c *Controller) genVpcDnsDeployment(vpcDns *kubeovnv1.VpcDNS, oldDeploy *v1.Deployment) (*v1.Deployment, error) {
 	if _, err := os.Stat(CorednsTemplateDep); errors.Is(err, os.ErrNotExist) {
 		klog.Errorf("failed to get coredns template file, %v", err)
 		return nil, err

@@ -272,8 +272,8 @@ func (v *ValidatingHook) ValidateOvnDnat(ctx context.Context, dnat *ovnv1.OvnDna
 		err := fmt.Errorf("parameter \"OvnEip\" cannot be empty")
 		return err
 	}
-	if dnat.Spec.IpName == "" {
-		err := fmt.Errorf("parameter \"IpName\" cannot be empty")
+	if dnat.Spec.IPName == "" {
+		err := fmt.Errorf("parameter \"IPName\" cannot be empty")
 		return err
 	}
 	eip := &ovnv1.OvnEip{}
@@ -322,8 +322,8 @@ func (v *ValidatingHook) ValidateOvnSnat(ctx context.Context, snat *ovnv1.OvnSna
 		err := fmt.Errorf("parameter \"eip\" cannot be empty")
 		return err
 	}
-	if snat.Spec.VpcSubnet == "" && snat.Spec.IpName == "" {
-		err := fmt.Errorf("should set parameter \"VpcSubnet\" or \"IpName\" at least")
+	if snat.Spec.VpcSubnet == "" && snat.Spec.IPName == "" {
+		err := fmt.Errorf("should set parameter \"VpcSubnet\" or \"IPName\" at least")
 		return err
 	}
 	eip := &ovnv1.OvnEip{}
@@ -340,8 +340,8 @@ func (v *ValidatingHook) ValidateOvnFip(ctx context.Context, fip *ovnv1.OvnFip) 
 		err := fmt.Errorf("parameter \"OvnEip\" cannot be empty")
 		return err
 	}
-	if fip.Spec.IpName == "" {
-		err := fmt.Errorf("parameter \"IpName\" cannot be empty")
+	if fip.Spec.IPName == "" {
+		err := fmt.Errorf("parameter \"IPName\" cannot be empty")
 		return err
 	}
 	eip := &ovnv1.OvnEip{}

@@ -396,7 +396,7 @@ func (c *ovnNbClient) UpdateSgAcl(sg *kubeovnv1.SecurityGroup, direction string)
 	return nil
 }
 
-func (c *ovnNbClient) UpdateLogicalSwitchAcl(lsName string, subnetAcls []kubeovnv1.Acl) error {
+func (c *ovnNbClient) UpdateLogicalSwitchAcl(lsName string, subnetAcls []kubeovnv1.ACL) error {
 	if err := c.DeleteAcls(lsName, logicalSwitchKey, "", map[string]string{"subnet": lsName}); err != nil {
 		return fmt.Errorf("delete subnet acls from %s: %v", lsName, err)
 	}

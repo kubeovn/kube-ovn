@@ -156,7 +156,7 @@ func MakeOvnSnatRule(name, ovnEip, vpcSubnet, ipName string) *apiv1.OvnSnatRule 
 		Spec: apiv1.OvnSnatRuleSpec{
 			OvnEip:    ovnEip,
 			VpcSubnet: vpcSubnet,
-			IpName:    ipName,
+			IPName:    ipName,
 		},
 	}
 	return snat

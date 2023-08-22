@@ -153,7 +153,7 @@ func MakeIptablesFIPRule(name, eip, internalIp string) *apiv1.IptablesFIPRule {
 		},
 		Spec: apiv1.IptablesFIPRuleSpec{
 			EIP:        eip,
-			InternalIp: internalIp,
+			InternalIP: internalIp,
 		},
 	}
 	return fip

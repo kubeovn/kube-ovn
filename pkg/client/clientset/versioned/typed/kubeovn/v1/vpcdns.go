@@ -36,17 +36,17 @@ type VpcDnsesGetter interface {
 	VpcDnses() VpcDnsInterface
 }
 
-// VpcDnsInterface has methods to work with VpcDns resources.
+// VpcDnsInterface has methods to work with VpcDNS resources.
 type VpcDnsInterface interface {
-	Create(ctx context.Context, vpcDns *v1.VpcDns, opts metav1.CreateOptions) (*v1.VpcDns, error)
-	Update(ctx context.Context, vpcDns *v1.VpcDns, opts metav1.UpdateOptions) (*v1.VpcDns, error)
-	UpdateStatus(ctx context.Context, vpcDns *v1.VpcDns, opts metav1.UpdateOptions) (*v1.VpcDns, error)
+	Create(ctx context.Context, vpcDns *v1.VpcDNS, opts metav1.CreateOptions) (*v1.VpcDNS, error)
+	Update(ctx context.Context, vpcDns *v1.VpcDNS, opts metav1.UpdateOptions) (*v1.VpcDNS, error)
+	UpdateStatus(ctx context.Context, vpcDns *v1.VpcDNS, opts metav1.UpdateOptions) (*v1.VpcDNS, error)
 	Delete(ctx context.Context, name string, opts metav1.DeleteOptions) error
 	DeleteCollection(ctx context.Context, opts metav1.DeleteOptions, listOpts metav1.ListOptions) error
-	Get(ctx context.Context, name string, opts metav1.GetOptions) (*v1.VpcDns, error)
-	List(ctx context.Context, opts metav1.ListOptions) (*v1.VpcDnsList, error)
+	Get(ctx context.Context, name string, opts metav1.GetOptions) (*v1.VpcDNS, error)
+	List(ctx context.Context, opts metav1.ListOptions) (*v1.VpcDNSList, error)
 	Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error)
-	Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *v1.VpcDns, err error)
+	Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *v1.VpcDNS, err error)
 	VpcDnsExpansion
 }
 
@@ -63,8 +63,8 @@ func newVpcDnses(c *KubeovnV1Client) *vpcDnses {
 }
 
 // Get takes name of the vpcDns, and returns the corresponding vpcDns object, and an error if there is any.
-func (c *vpcDnses) Get(ctx context.Context, name string, options metav1.GetOptions) (result *v1.VpcDns, err error) {
-	result = &v1.VpcDns{}
+func (c *vpcDnses) Get(ctx context.Context, name string, options metav1.GetOptions) (result *v1.VpcDNS, err error) {
+	result = &v1.VpcDNS{}
 	err = c.client.Get().
 		Resource("vpc-dnses").
 		Name(name).
@@ -75,12 +75,12 @@ func (c *vpcDnses) Get(ctx context.Context, name string, options metav1.GetOptio
 }
 
 // List takes label and field selectors, and returns the list of VpcDnses that match those selectors.
-func (c *vpcDnses) List(ctx context.Context, opts metav1.ListOptions) (result *v1.VpcDnsList, err error) {
+func (c *vpcDnses) List(ctx context.Context, opts metav1.ListOptions) (result *v1.VpcDNSList, err error) {
 	var timeout time.Duration
 	if opts.TimeoutSeconds != nil {
 		timeout = time.Duration(*opts.TimeoutSeconds) * time.Second
 	}
-	result = &v1.VpcDnsList{}
+	result = &v1.VpcDNSList{}
 	err = c.client.Get().
 		Resource("vpc-dnses").
 		VersionedParams(&opts, scheme.ParameterCodec).
@@ -105,8 +105,8 @@ func (c *vpcDnses) Watch(ctx context.Context, opts metav1.ListOptions) (watch.In
 }
 
 // Create takes the representation of a vpcDns and creates it.  Returns the server's representation of the vpcDns, and an error, if there is any.
-func (c *vpcDnses) Create(ctx context.Context, vpcDns *v1.VpcDns, opts metav1.CreateOptions) (result *v1.VpcDns, err error) {
-	result = &v1.VpcDns{}
+func (c *vpcDnses) Create(ctx context.Context, vpcDns *v1.VpcDNS, opts metav1.CreateOptions) (result *v1.VpcDNS, err error) {
+	result = &v1.VpcDNS{}
 	err = c.client.Post().
 		Resource("vpc-dnses").
 		VersionedParams(&opts, scheme.ParameterCodec).
@@ -117,8 +117,8 @@ func (c *vpcDnses) Create(ctx context.Context, vpcDns *v1.VpcDns, opts metav1.Cr
 }
 
 // Update takes the representation of a vpcDns and updates it. Returns the server's representation of the vpcDns, and an error, if there is any.
-func (c *vpcDnses) Update(ctx context.Context, vpcDns *v1.VpcDns, opts metav1.UpdateOptions) (result *v1.VpcDns, err error) {
-	result = &v1.VpcDns{}
+func (c *vpcDnses) Update(ctx context.Context, vpcDns *v1.VpcDNS, opts metav1.UpdateOptions) (result *v1.VpcDNS, err error) {
+	result = &v1.VpcDNS{}
 	err = c.client.Put().
 		Resource("vpc-dnses").
 		Name(vpcDns.Name).
@@ -131,8 +131,8 @@ func (c *vpcDnses) Update(ctx context.Context, vpcDns *v1.VpcDns, opts metav1.Up
 
 // UpdateStatus was generated because the type contains a Status member.
 // Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-func (c *vpcDnses) UpdateStatus(ctx context.Context, vpcDns *v1.VpcDns, opts metav1.UpdateOptions) (result *v1.VpcDns, err error) {
-	result = &v1.VpcDns{}
+func (c *vpcDnses) UpdateStatus(ctx context.Context, vpcDns *v1.VpcDNS, opts metav1.UpdateOptions) (result *v1.VpcDNS, err error) {
+	result = &v1.VpcDNS{}
 	err = c.client.Put().
 		Resource("vpc-dnses").
 		Name(vpcDns.Name).
@@ -170,8 +170,8 @@ func (c *vpcDnses) DeleteCollection(ctx context.Context, opts metav1.DeleteOptio
 }
 
 // Patch applies the patch and returns the patched vpcDns.
-func (c *vpcDnses) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *v1.VpcDns, err error) {
-	result = &v1.VpcDns{}
+func (c *vpcDnses) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *v1.VpcDNS, err error) {
+	result = &v1.VpcDNS{}
 	err = c.client.Patch(pt).
 		Resource("vpc-dnses").
 		Name(name).

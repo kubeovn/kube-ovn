@@ -56,7 +56,7 @@ func (c *Controller) enqueueUpdateOvnDnatRule(old, new interface{}) {
 
 	if oldDnat.Spec.OvnEip != newDnat.Spec.OvnEip ||
 		oldDnat.Spec.Protocol != newDnat.Spec.Protocol ||
-		oldDnat.Spec.IpName != newDnat.Spec.IpName ||
+		oldDnat.Spec.IPName != newDnat.Spec.IPName ||
 		oldDnat.Spec.InternalPort != newDnat.Spec.InternalPort ||
 		oldDnat.Spec.ExternalPort != newDnat.Spec.ExternalPort {
 		klog.Infof("enqueue update dnat %s", key)
@@ -218,19 +218,19 @@ func (c *Controller) handleAddOvnDnatRule(key string) error {
 	}
 	klog.Infof("handle add dnat %s", key)
 	var internalV4Ip, mac, subnetName string
-	if cachedDnat.Spec.IpType == util.Vip {
-		internalVip, err := c.virtualIpsLister.Get(cachedDnat.Spec.IpName)
+	if cachedDnat.Spec.IPType == util.Vip {
+		internalVip, err := c.virtualIpsLister.Get(cachedDnat.Spec.IPName)
 		if err != nil {
-			klog.Errorf("failed to get vip %s, %v", cachedDnat.Spec.IpName, err)
+			klog.Errorf("failed to get vip %s, %v", cachedDnat.Spec.IPName, err)
 			return err
 		}
 		internalV4Ip = internalVip.Status.V4ip
 		mac = internalVip.Status.Mac
 		subnetName = internalVip.Spec.Subnet
 	} else {
-		internalIp, err := c.ipsLister.Get(cachedDnat.Spec.IpName)
+		internalIp, err := c.ipsLister.Get(cachedDnat.Spec.IPName)
 		if err != nil {
-			klog.Errorf("failed to get ip %s, %v", cachedDnat.Spec.IpName, err)
+			klog.Errorf("failed to get ip %s, %v", cachedDnat.Spec.IPName, err)
 			return err
 		}
 		internalV4Ip = internalIp.Spec.V4IPAddress
@@ -362,19 +362,19 @@ func (c *Controller) handleUpdateOvnDnatRule(key string) error {
 
 	klog.Infof("handle update dnat %s", key)
 	var internalV4Ip, mac, subnetName string
-	if cachedDnat.Spec.IpType == util.Vip {
-		internalVip, err := c.virtualIpsLister.Get(cachedDnat.Spec.IpName)
+	if cachedDnat.Spec.IPType == util.Vip {
+		internalVip, err := c.virtualIpsLister.Get(cachedDnat.Spec.IPName)
 		if err != nil {
-			klog.Errorf("failed to get vip %s, %v", cachedDnat.Spec.IpName, err)
+			klog.Errorf("failed to get vip %s, %v", cachedDnat.Spec.IPName, err)
 			return err
 		}
 		internalV4Ip = internalVip.Status.V4ip
 		mac = internalVip.Status.Mac
 		subnetName = internalVip.Spec.Subnet
 	} else {
-		internalIp, err := c.ipsLister.Get(cachedDnat.Spec.IpName)
+		internalIp, err := c.ipsLister.Get(cachedDnat.Spec.IPName)
 		if err != nil {
-			klog.Errorf("failed to get ip %s, %v", cachedDnat.Spec.IpName, err)
+			klog.Errorf("failed to get ip %s, %v", cachedDnat.Spec.IPName, err)
 			return err
 		}
 		internalV4Ip = internalIp.Spec.V4IPAddress
@@ -552,8 +552,8 @@ func (c *Controller) patchOvnDnatStatus(key, vpcName, v4Eip, podIp, podMac strin
 		changed = true
 	}
 
-	if ready && dnat.Spec.IpName != "" && dnat.Spec.IpName != dnat.Status.IpName {
-		dnat.Status.IpName = dnat.Spec.IpName
+	if ready && dnat.Spec.IPName != "" && dnat.Spec.IPName != dnat.Status.IPName {
+		dnat.Status.IPName = dnat.Spec.IPName
 		changed = true
 	}
 

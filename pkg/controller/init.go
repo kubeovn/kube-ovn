@@ -67,10 +67,10 @@ func (c *Controller) InitDefaultVpc() error {
 	vpc.Status.DefaultLogicalSwitch = c.config.DefaultLogicalSwitch
 	vpc.Status.Router = c.config.ClusterRouter
 	if c.config.EnableLb {
-		vpc.Status.TcpLoadBalancer = c.config.ClusterTcpLoadBalancer
-		vpc.Status.TcpSessionLoadBalancer = c.config.ClusterTcpSessionLoadBalancer
-		vpc.Status.UdpLoadBalancer = c.config.ClusterUdpLoadBalancer
-		vpc.Status.UdpSessionLoadBalancer = c.config.ClusterUdpSessionLoadBalancer
+		vpc.Status.TCPLoadBalancer = c.config.ClusterTcpLoadBalancer
+		vpc.Status.TCPSessionLoadBalancer = c.config.ClusterTcpSessionLoadBalancer
+		vpc.Status.UDPLoadBalancer = c.config.ClusterUdpLoadBalancer
+		vpc.Status.UDPSessionLoadBalancer = c.config.ClusterUdpSessionLoadBalancer
 		vpc.Status.SctpLoadBalancer = c.config.ClusterSctpLoadBalancer
 		vpc.Status.SctpSessionLoadBalancer = c.config.ClusterSctpSessionLoadBalancer
 	}
@@ -230,13 +230,13 @@ func (c *Controller) initLoadBalancer() error {
 	for _, cachedVpc := range vpcs {
 		vpc := cachedVpc.DeepCopy()
 		vpcLb := c.GenVpcLoadBalancer(vpc.Name)
-		if err = c.initLB(vpcLb.TcpLoadBalancer, string(v1.ProtocolTCP), false); err != nil {
+		if err = c.initLB(vpcLb.TCPLoadBalancer, string(v1.ProtocolTCP), false); err != nil {
 			return err
 		}
 		if err = c.initLB(vpcLb.TcpSessLoadBalancer, string(v1.ProtocolTCP), true); err != nil {
 			return err
 		}
-		if err = c.initLB(vpcLb.UdpLoadBalancer, string(v1.ProtocolUDP), false); err != nil {
+		if err = c.initLB(vpcLb.UDPLoadBalancer, string(v1.ProtocolUDP), false); err != nil {
 			return err
 		}
 		if err = c.initLB(vpcLb.UdpSessLoadBalancer, string(v1.ProtocolUDP), true); err != nil {
@@ -249,10 +249,10 @@ func (c *Controller) initLoadBalancer() error {
 			return err
 		}
 
-		vpc.Status.TcpLoadBalancer = vpcLb.TcpLoadBalancer
-		vpc.Status.TcpSessionLoadBalancer = vpcLb.TcpSessLoadBalancer
-		vpc.Status.UdpLoadBalancer = vpcLb.UdpLoadBalancer
-		vpc.Status.UdpSessionLoadBalancer = vpcLb.UdpSessLoadBalancer
+		vpc.Status.TCPLoadBalancer = vpcLb.TCPLoadBalancer
+		vpc.Status.TCPSessionLoadBalancer = vpcLb.TcpSessLoadBalancer
+		vpc.Status.UDPLoadBalancer = vpcLb.UDPLoadBalancer
+		vpc.Status.UDPSessionLoadBalancer = vpcLb.UdpSessLoadBalancer
 		vpc.Status.SctpLoadBalancer = vpcLb.SctpLoadBalancer
 		vpc.Status.SctpSessionLoadBalancer = vpcLb.SctpSessLoadBalancer
 		bytes, err := vpc.Status.Bytes()
@@ -692,9 +692,9 @@ func (c *Controller) initSyncCrdVlans() error {
 	for _, vlan := range vlans {
 		var needUpdate bool
 		newVlan := vlan.DeepCopy()
-		if newVlan.Spec.VlanId != 0 && newVlan.Spec.ID == 0 {
-			newVlan.Spec.ID = newVlan.Spec.VlanId
-			newVlan.Spec.VlanId = 0
+		if newVlan.Spec.VlanID != 0 && newVlan.Spec.ID == 0 {
+			newVlan.Spec.ID = newVlan.Spec.VlanID
+			newVlan.Spec.VlanID = 0
 			needUpdate = true
 		}
 		if newVlan.Spec.ProviderInterfaceName != "" && newVlan.Spec.Provider == "" {

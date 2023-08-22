@@ -404,17 +404,16 @@ func (c *Controller) gcLoadBalancer() error {
 				if !isOvnSubnet(subnet) {
 					continue
 				}
-
-				lbs := []string{vpc.Status.TcpLoadBalancer, vpc.Status.TcpSessionLoadBalancer, vpc.Status.UdpLoadBalancer, vpc.Status.UdpSessionLoadBalancer, vpc.Status.SctpLoadBalancer, vpc.Status.SctpSessionLoadBalancer}
+				lbs := []string{vpc.Status.TCPLoadBalancer, vpc.Status.TCPSessionLoadBalancer, vpc.Status.UDPLoadBalancer, vpc.Status.UDPSessionLoadBalancer, vpc.Status.SctpLoadBalancer, vpc.Status.SctpSessionLoadBalancer}
 				if err := c.ovnNbClient.LogicalSwitchUpdateLoadBalancers(subnetName, ovsdb.MutateOperationDelete, lbs...); err != nil {
 					return err
 				}
 			}
 
-			vpc.Status.TcpLoadBalancer = ""
-			vpc.Status.TcpSessionLoadBalancer = ""
-			vpc.Status.UdpLoadBalancer = ""
-			vpc.Status.UdpSessionLoadBalancer = ""
+			vpc.Status.TCPLoadBalancer = ""
+			vpc.Status.TCPSessionLoadBalancer = ""
+			vpc.Status.UDPLoadBalancer = ""
+			vpc.Status.UDPSessionLoadBalancer = ""
 			vpc.Status.SctpLoadBalancer = ""
 			vpc.Status.SctpSessionLoadBalancer = ""
 			bytes, err := vpc.Status.Bytes()
@@ -488,8 +487,8 @@ func (c *Controller) gcLoadBalancer() error {
 	}
 	var vpcLbs []string
 	for _, vpc := range vpcs {
-		tcpLb, udpLb, sctpLb := vpc.Status.TcpLoadBalancer, vpc.Status.UdpLoadBalancer, vpc.Status.SctpLoadBalancer
-		tcpSessLb, udpSessLb, sctpSessLb := vpc.Status.TcpSessionLoadBalancer, vpc.Status.UdpSessionLoadBalancer, vpc.Status.SctpSessionLoadBalancer
+		tcpLb, udpLb, sctpLb := vpc.Status.TCPLoadBalancer, vpc.Status.UDPLoadBalancer, vpc.Status.SctpLoadBalancer
+		tcpSessLb, udpSessLb, sctpSessLb := vpc.Status.TCPSessionLoadBalancer, vpc.Status.UDPSessionLoadBalancer, vpc.Status.SctpSessionLoadBalancer
 		vpcLbs = append(vpcLbs, tcpLb, udpLb, sctpLb, tcpSessLb, udpSessLb, sctpSessLb)
 
 		removeVIP := func(lbName string, svcVips *strset.Set) error {

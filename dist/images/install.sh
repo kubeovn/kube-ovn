@@ -233,8 +233,8 @@ spec:
     singular: vpc-dns
     shortNames:
       - vpc-dns
-    kind: VpcDns
-    listKind: VpcDnsList
+    kind: VpcDNS
+    listKind: VpcDNSList
   scope: Cluster
   versions:
     - additionalPrinterColumns:
@@ -1130,7 +1130,7 @@ spec:
         name: V4ip
         type: string
       - jsonPath: .spec.internalIp
-        name: InternalIp
+        name: InternalIP
         type: string
       - jsonPath: .status.v6ip
         name: V6ip
@@ -1219,7 +1219,7 @@ spec:
         name: V6ip
         type: string
       - jsonPath: .spec.internalIp
-        name: InternalIp
+        name: InternalIP
         type: string
       - jsonPath: .spec.externalPort
         name: ExternalPort
@@ -1495,10 +1495,10 @@ spec:
         name: Ready
         type: boolean
       - jsonPath: .spec.ipType
-        name: IpType
+        name: IPType
         type: string
       - jsonPath: .spec.ipName
-        name: IpName
+        name: IPName
         type: string
       schema:
         openAPIV3Schema:
@@ -1659,7 +1659,7 @@ spec:
           name: ExternalPort
           type: string
         - jsonPath: .spec.ipName
-          name: IpName
+          name: IPName
           type: string
         - jsonPath: .status.ready
           name: Ready

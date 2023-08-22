@@ -155,8 +155,8 @@ func MakeOvnFip(name, ovnEip, ipType, ipName string) *apiv1.OvnFip {
 		},
 		Spec: apiv1.OvnFipSpec{
 			OvnEip: ovnEip,
-			IpType: ipType,
-			IpName: ipName,
+			IPType: ipType,
+			IPName: ipName,
 		},
 	}
 	return fip

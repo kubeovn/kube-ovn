@@ -155,7 +155,7 @@ func MakeIptablesDnatRule(name, eip, externalPort, protocol, internalIP, interna
 			EIP:          eip,
 			ExternalPort: externalPort,
 			Protocol:     protocol,
-			InternalIp:   internalIP,
+			InternalIP:   internalIP,
 			InternalPort: internalPort,
 		},
 	}

@@ -759,7 +759,7 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 		util.VpcNatGatewayAnnotation:     gw.Name,
 		util.AttachmentNetworkAnnotation: fmt.Sprintf("%s/%s", c.config.PodNamespace, externalNetwork),
 		util.LogicalSwitchAnnotation:     gw.Spec.Subnet,
-		util.IpAddressAnnotation:         gw.Spec.LanIp,
+		util.IpAddressAnnotation:         gw.Spec.LanIP,
 	}
 	for key, value := range podAnnotations {
 		newPodAnnotations[key] = value

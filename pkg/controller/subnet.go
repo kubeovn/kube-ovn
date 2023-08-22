@@ -781,10 +781,10 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 
 	if c.config.EnableLb && subnet.Name != c.config.NodeSwitch {
 		lbs := []string{
-			vpc.Status.TcpLoadBalancer,
-			vpc.Status.TcpSessionLoadBalancer,
-			vpc.Status.UdpLoadBalancer,
-			vpc.Status.UdpSessionLoadBalancer,
+			vpc.Status.TCPLoadBalancer,
+			vpc.Status.TCPSessionLoadBalancer,
+			vpc.Status.UDPLoadBalancer,
+			vpc.Status.UDPSessionLoadBalancer,
 			vpc.Status.SctpLoadBalancer,
 			vpc.Status.SctpSessionLoadBalancer,
 		}
@@ -1272,7 +1272,7 @@ func (c *Controller) reconcileCustomVpcBfdStaticRoute(vpcName, subnetName string
 				CIDR:       subnet.Spec.CIDRBlock,
 				NextHopIP:  eip.Status.V4Ip,
 				ECMPMode:   util.StaticRouteBfdEcmp,
-				BfdId:      bfd.UUID,
+				BfdID:      bfd.UUID,
 				RouteTable: subnet.Spec.RouteTable,
 			}
 			klog.Infof("add ecmp bfd static route %v", route)
