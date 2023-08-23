@@ -955,6 +955,7 @@ func (c *Controller) transferAddrsAndRoutes(nicName, brName string, delNonExiste
 		klog.Infof("address %q has been removed from link %s", addr.String(), nicName)
 
 		addr.Label = ""
+		addr.PreferedLft, addr.ValidLft = 0, 0
 		if err = netlink.AddrReplace(bridge, &addr); err != nil {
 			return 0, fmt.Errorf("failed to replace address %q on OVS bridge %s: %v", addr.String(), brName, err)
 		}
