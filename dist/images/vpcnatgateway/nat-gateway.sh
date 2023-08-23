@@ -42,16 +42,35 @@ function init() {
     iptables -t nat -A SNAT_FILTER -j EXCLUSIVE_SNAT
     iptables -t nat -A SNAT_FILTER -j SHARED_SNAT
 
+    # add ipv6 static chain
+    ip6tables -t nat -N DNAT_FILTER
+    ip6tables -t nat -N SNAT_FILTER
+    ip6tables -t nat -N EXCLUSIVE_DNAT # floatingIp DNAT
+    ip6tables -t nat -N EXCLUSIVE_SNAT # floatingIp SNAT
+    ip6tables -t nat -N SHARED_DNAT
+    ip6tables -t nat -N SHARED_SNAT
+
+    ip6tables -t nat -A PREROUTING -j DNAT_FILTER
+    ip6tables -t nat -A DNAT_FILTER -j EXCLUSIVE_DNAT
+    ip6tables -t nat -A DNAT_FILTER -j SHARED_DNAT
+
+    ip6tables -t nat -A POSTROUTING -j SNAT_FILTER
+    ip6tables -t nat -A SNAT_FILTER -j EXCLUSIVE_SNAT
+    ip6tables -t nat -A SNAT_FILTER -j SHARED_SNAT
+
     for rule in $@
     do
         arr=(${rule//,/ })
         cidr=${arr[0]}
         nextHop=${arr[1]}
 
-        exec_cmd "ip route replace $cidr via $nextHop dev eth0"
+        if [[ $cidr =~ "." ]]; then
+          exec_cmd "ip route replace $cidr via $nextHop dev eth0"
+        else
+          exec_cmd "ip -6 route replace $cidr via $nextHop dev eth0"
+        fi
     done
 }
-
 
 function get_iptables_version() {
   exec_cmd "iptables --version"
@@ -66,7 +85,11 @@ function add_vpc_internal_route() {
         cidr=${arr[0]}
         nextHop=${arr[1]}
 
-        exec_cmd "ip route replace $cidr via $nextHop dev eth0"
+        if [[ $cidr =~ "." ]]; then
+          exec_cmd "ip route replace $cidr via $nextHop dev eth0"
+        else
+          exec_cmd "ip -6 route replace $cidr via $nextHop dev eth0"
+        fi
     done
 }
 
@@ -78,7 +101,11 @@ function del_vpc_internal_route() {
         arr=(${rule//,/ })
         cidr=${arr[0]}
 
-        exec_cmd "ip route del $cidr dev eth0"
+        if [[ $cidr =~ "." ]]; then
+          exec_cmd "ip route del $cidr dev eth0"
+        else
+          exec_cmd "ip -6 route del $cidr dev eth0"
+        fi
     done
 }
 
@@ -91,6 +118,7 @@ function add_vpc_external_route() {
         cidr=${arr[0]}
         nextHop=${arr[1]}
 
+      if [[ $cidr =~ "." ]]; then
         exec_cmd "ip route replace default via $nextHop dev net1"
         # replace default route to dev net1 to access public network
         # TODO: use multus macvlan to provider eth0 to skip this external route
@@ -99,6 +127,11 @@ function add_vpc_external_route() {
         # make sure route is added
         # gw lost probably occured when you create >10 nat gw pod at the same time
         # so add the same logic again in every eip add process
+      else
+        exec_cmd "ip -6 route replace default via $nextHop dev net1"
+        sleep 1
+        ip -6 route | grep "default via $nextHop dev net1"
+      fi
 
     done
 }
@@ -126,16 +159,22 @@ function add_eip() {
         arr=(${rule//,/ })
         eip=${arr[0]}
         eip_without_prefix=(${eip//\// })
-        eip_network=$(ipcalc -n $eip | awk -F '=' '{print $2}')
-        eip_prefix=$(ipcalc -p $eip | awk -F '=' '{print $2}')
+        # eip_network=$(ipcalc -n $eip | awk -F '=' '{print $2}')
+        # eip_prefix=$(ipcalc -p $eip | awk -F '=' '{print $2}')
         gateway=${arr[1]}
 
         exec_cmd "ip addr replace $eip dev net1"
         ip link set dev net1 arp on
-        # gw may lost, even if add_vpc_external_route add route successfully
-        exec_cmd "ip route replace default via $gateway dev net1"
-        ip route | grep "default via $gateway dev net1"
-        exec_cmd "arping -I net1 -c 3 -D $eip_without_prefix"
+
+        if [[ $eip =~ "." ]]; then
+          # gw may lost, even if add_vpc_external_route add route successfully
+          exec_cmd "ip route replace default via $gateway dev net1"
+          ip route | grep "default via $gateway dev net1"
+          exec_cmd "arping -I net1 -c 3 -D $eip_without_prefix"
+        else
+          exec_cmd "ip -6 route replace default via $gateway dev net1"
+          ip -6 route | grep "default via $gateway dev net1"
+        fi
     done
 }
 
@@ -161,10 +200,17 @@ function add_floating_ip() {
         arr=(${rule//,/ })
         eip=(${arr[0]//\// })
         internalIp=${arr[1]}
-        # check if already exist
-        iptables-save  | grep "EXCLUSIVE_DNAT" | grep -w "\-d $eip/32" | grep  "destination" && exit 0
-        exec_cmd "iptables -t nat -A EXCLUSIVE_DNAT -d $eip -j DNAT --to-destination $internalIp"
-        exec_cmd "iptables -t nat -A EXCLUSIVE_SNAT -s $internalIp -j SNAT --to-source $eip"
+
+        if [[ $eip =~ "." ]]; then
+            # check if already exist
+            iptables-save  | grep "EXCLUSIVE_DNAT" | grep -w "\-d $eip/32" | grep  "destination" && exit 0
+            exec_cmd "iptables -t nat -A EXCLUSIVE_DNAT -d $eip -j DNAT --to-destination $internalIp"
+            exec_cmd "iptables -t nat -A EXCLUSIVE_SNAT -s $internalIp -j SNAT --to-source $eip"
+        else
+            ip6tables-save  | grep "EXCLUSIVE_DNAT" | grep -w "\-d $eip/128" | grep  "destination" && exit 0
+            exec_cmd "ip6tables -t nat -A EXCLUSIVE_DNAT -d $eip -j DNAT --to-destination $internalIp"
+            exec_cmd "ip6tables -t nat -A EXCLUSIVE_SNAT -s $internalIp -j SNAT --to-source $eip"
+        fi
     done
 }
 
@@ -176,12 +222,22 @@ function del_floating_ip() {
         arr=(${rule//,/ })
         eip=(${arr[0]//\// })
         internalIp=${arr[1]}
-        # check if already exist
-        iptables-save  | grep "EXCLUSIVE_DNAT" | grep -w "\-d $eip/32" | grep  "destination"
-        if [ "$?" -eq 0 ];then
-            exec_cmd "iptables -t nat -D EXCLUSIVE_DNAT -d $eip -j DNAT --to-destination $internalIp"
-            exec_cmd "iptables -t nat -D EXCLUSIVE_SNAT -s $internalIp -j SNAT --to-source $eip"
-            conntrack -D -d $eip 2>/dev/nul || true
+
+        if [[ $eip =~ "." ]]; then
+            # check if already exist
+            iptables-save  | grep "EXCLUSIVE_DNAT" | grep -w "\-d $eip/32" | grep  "destination"
+            if [ "$?" -eq 0 ];then
+                exec_cmd "iptables -t nat -D EXCLUSIVE_DNAT -d $eip -j DNAT --to-destination $internalIp"
+                exec_cmd "iptables -t nat -D EXCLUSIVE_SNAT -s $internalIp -j SNAT --to-source $eip"
+                conntrack -D -d $eip 2>/dev/nul || true
+            fi
+        else
+            ip6tables-save  | grep "EXCLUSIVE_DNAT" | grep -w "\-d $eip/128" | grep  "destination"
+            if [ "$?" -eq 0 ];then
+                exec_cmd "ip6tables -t nat -D EXCLUSIVE_DNAT -d $eip -j DNAT --to-destination $internalIp"
+                exec_cmd "ip6tables -t nat -D EXCLUSIVE_SNAT -s $internalIp -j SNAT --to-source $eip"
+                conntrack -D -d $eip 2>/dev/nul || true
+            fi
         fi
     done
 }
@@ -196,9 +252,15 @@ function add_snat() {
         eip=(${arr[0]//\// })
         internalCIDR=${arr[1]}
         randomFullyOption=${arr[2]}
-        # check if already exist
-        iptables-save  | grep "SHARED_SNAT" | grep "\-s $internalCIDR" | grep "source $eip" && exit 0
-        exec_cmd "iptables -t nat -A SHARED_SNAT -o net1 -s $internalCIDR -j SNAT --to-source $eip $randomFullyOption"
+
+        if [[ $eip =~ "." ]]; then
+            # check if already exist
+            iptables-save  | grep "SHARED_SNAT" | grep "\-s $internalCIDR" | grep "source $eip" && exit 0
+            exec_cmd "iptables -t nat -A SHARED_SNAT -o net1 -s $internalCIDR -j SNAT --to-source $eip $randomFullyOption"
+        else
+            ip6tables-save  | grep "SHARED_SNAT" | grep "\-s $internalCIDR" | grep "source $eip" && exit 0
+            exec_cmd "ip6tables -t nat -A SHARED_SNAT -o net1 -s $internalCIDR -j SNAT --to-source $eip $randomFullyOption"
+        fi
     done
 }
 function del_snat() {
@@ -210,11 +272,20 @@ function del_snat() {
         arr=(${rule//,/ })
         eip=(${arr[0]//\// })
         internalCIDR=${arr[1]}
-        # check if already exist
-        ruleMatch=$(iptables-save  | grep "SHARED_SNAT" | grep "\-s $internalCIDR" | grep "source $eip")
-        if [ "$?" -eq 0 ];then
-          ruleMatch=$(echo $ruleMatch | sed 's/-A //')
-          exec_cmd "iptables -t nat -D $ruleMatch"
+
+        if [[ $eip =~ "." ]]; then
+            # check if already exist
+            ruleMatch=$(iptables-save  | grep "SHARED_SNAT" | grep "\-s $internalCIDR" | grep "source $eip")
+            if [ "$?" -eq 0 ];then
+                ruleMatch=$(echo $ruleMatch | sed 's/-A //')
+                exec_cmd "iptables -t nat -D $ruleMatch"
+            fi
+        else
+            ruleMatch=$(ip6tables-save  | grep "SHARED_SNAT" | grep "\-s $internalCIDR" | grep "source $eip")
+            if [ "$?" -eq 0 ];then
+                ruleMatch=$(echo $ruleMatch | sed 's/-A //')
+                exec_cmd "ip6tables -t nat -D $ruleMatch"
+            fi
         fi
     done
 }
@@ -231,9 +302,15 @@ function add_dnat() {
         protocol=${arr[2]}
         internalIp=${arr[3]}
         internalPort=${arr[4]}
-        # check if already exist
-        iptables-save  | grep "SHARED_DNAT" | grep -w "\-d $eip/32" | grep "p $protocol" | grep -w "dport $dport"| grep  -w "destination $internalIp:$internalPort"  && exit 0
-        exec_cmd "iptables -t nat -A SHARED_DNAT -p $protocol -d $eip --dport $dport -j DNAT --to-destination $internalIp:$internalPort"
+
+        if [[ $eip =~ "." ]]; then
+            # check if already exist
+            iptables-save  | grep "SHARED_DNAT" | grep -w "\-d $eip/32" | grep "p $protocol" | grep -w "dport $dport"| grep  -w "destination $internalIp:$internalPort"  && exit 0
+            exec_cmd "iptables -t nat -A SHARED_DNAT -p $protocol -d $eip --dport $dport -j DNAT --to-destination $internalIp:$internalPort"
+        else
+            ip6tables-save  | grep "SHARED_DNAT" | grep -w "\-d $eip/128" | grep "p $protocol" | grep -w "dport $dport"| grep  -w "destination \[$internalIp\]:$internalPort"  && exit 0
+            exec_cmd "ip6tables -t nat -A SHARED_DNAT -p $protocol -d $eip --dport $dport -j DNAT --to-destination '[$internalIp]':$internalPort"
+        fi
     done
 }
 
@@ -249,10 +326,17 @@ function del_dnat() {
         protocol=${arr[2]}
         internalIp=${arr[3]}
         internalPort=${arr[4]}
-        # check if already exist
-        iptables-save  | grep "SHARED_DNAT" | grep -w "\-d $eip/32" | grep "p $protocol" | grep -w "dport $dport"| grep  -w "destination $internalIp:$internalPort"
-        if [ "$?" -eq 0 ];then
-          exec_cmd "iptables -t nat -D SHARED_DNAT -p $protocol -d $eip --dport $dport -j DNAT --to-destination $internalIp:$internalPort"
+        if [[ $eip =~ "." ]]; then
+            # check if already exist
+            iptables-save  | grep "SHARED_DNAT" | grep -w "\-d $eip/32" | grep "p $protocol" | grep -w "dport $dport"| grep  -w "destination $internalIp:$internalPort"
+            if [ "$?" -eq 0 ];then
+                exec_cmd "iptables -t nat -D SHARED_DNAT -p $protocol -d $eip --dport $dport -j DNAT --to-destination $internalIp:$internalPort"
+            fi
+        else
+            ip6tables-save  | grep "SHARED_DNAT" | grep -w "\-d $eip/128" | grep "p $protocol" | grep -w "dport $dport"| grep  -w "destination \[$internalIp\]:$internalPort"
+            if [ "$?" -eq 0 ];then
+                exec_cmd "ip6tables -t nat -D SHARED_DNAT -p $protocol -d $eip --dport $dport -j DNAT --to-destination '[$internalIp]':$internalPort"
+            fi
         fi
     done
 }

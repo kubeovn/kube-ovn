@@ -345,12 +345,17 @@ func (ipam *IPAM) IsIPAssignedToOtherPod(ip, subnetName, podName string) (string
 	}
 }
 
-func (ipam *IPAM) GetSubnetV4Mask(subnetName string) (string, error) {
+func (ipam *IPAM) GetSubnetMask(subnetName string) (string, string, error) {
 	if subnet, ok := ipam.Subnets[subnetName]; ok {
-		mask, _ := subnet.V4CIDR.Mask.Size()
-		return strconv.Itoa(mask), nil
+		v4Mask, _ := subnet.V4CIDR.Mask.Size()
+		if subnet.V6CIDR != nil {
+			v6Mask, _ := subnet.V6CIDR.Mask.Size()
+			return strconv.Itoa(v4Mask), strconv.Itoa(v6Mask), nil
+		} else {
+			return strconv.Itoa(v4Mask), "", nil
+		}
 	} else {
-		return "", ErrNoAvailable
+		return "", "", ErrNoAvailable
 	}
 }
 

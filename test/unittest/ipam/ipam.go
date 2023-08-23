@@ -58,7 +58,7 @@ var _ = Describe("[IPAM]", func() {
 				im := ipam.NewIPAM()
 				err := im.AddOrUpdateSubnet(subnetName, ipv4CIDR, v4Gw, ipv4ExcludeIPs)
 				Expect(err).ShouldNot(HaveOccurred())
-				Expect(im.GetSubnetV4Mask(subnetName)).To(Equal(strings.Split(ipv4CIDR, "/")[1]))
+				Expect(im.GetSubnetMask(subnetName)).To(Equal(strings.Split(ipv4CIDR, "/")[1]))
 				Expect(im.Subnets[subnetName].V4Gw).To(Equal(v4Gw))
 
 				pod1 := "pod1.ns"

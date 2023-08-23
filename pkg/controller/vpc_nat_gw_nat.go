@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -32,7 +33,6 @@ func (c *Controller) enqueueAddIptablesFip(obj interface{}) {
 }
 
 func (c *Controller) enqueueUpdateIptablesFip(old, new interface{}) {
-
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(new); err != nil {
@@ -526,7 +526,7 @@ func (c *Controller) handleAddIptablesFip(key string) error {
 	}
 
 	// create fip nat
-	if err = c.createFipInPod(eip.Spec.NatGwDp, eip.Status.IP, fip.Spec.InternalIp); err != nil {
+	if err = c.createFipInPod(eip.Spec.NatGwDp, eip.Status.IP, eip.Spec.V6ip, fip.Spec.InternalIp); err != nil {
 		klog.Errorf("failed to create fip, %v", err)
 		return err
 	}
@@ -585,8 +585,8 @@ func (c *Controller) handleUpdateIptablesFip(key string) error {
 	// should delete
 	if !cachedFip.DeletionTimestamp.IsZero() {
 		if vpcNatEnabled == "true" {
-			klog.V(3).Infof("clean fip '%s' in pod", key)
-			if err = c.deleteFipInPod(cachedFip.Status.NatGwDp, cachedFip.Status.V4ip, cachedFip.Status.InternalIp); err != nil {
+			klog.Infof("clean fip '%s' in pod", key)
+			if err = c.deleteFipInPod(cachedFip.Status.NatGwDp, cachedFip.Status.V4ip, cachedFip.Status.V6ip, cachedFip.Status.InternalIp); err != nil {
 				klog.Errorf("failed to delete fip %s, %v", key, err)
 				return err
 			}
@@ -599,7 +599,7 @@ func (c *Controller) handleUpdateIptablesFip(key string) error {
 		c.resetIptablesEipQueue.AddAfter(cachedFip.Spec.EIP, 3*time.Second)
 		return nil
 	}
-	klog.V(3).Infof("handle update fip %s", key)
+
 	// add or update should make sure vpc nat enabled
 	if vpcNatEnabled != "true" {
 		return fmt.Errorf("iptables nat gw not enable")
@@ -621,11 +621,11 @@ func (c *Controller) handleUpdateIptablesFip(key string) error {
 	}
 
 	klog.V(3).Infof("fip change ip, old ip '%s', new ip %s", cachedFip.Status.V4ip, eip.Status.IP)
-	if err = c.deleteFipInPod(cachedFip.Status.NatGwDp, cachedFip.Status.V4ip, cachedFip.Status.InternalIp); err != nil {
+	if err = c.deleteFipInPod(cachedFip.Status.NatGwDp, cachedFip.Status.V4ip, cachedFip.Status.V6ip, cachedFip.Status.InternalIp); err != nil {
 		klog.Errorf("failed to delete old fip, %v", err)
 		return err
 	}
-	if err = c.createFipInPod(eip.Spec.NatGwDp, eip.Status.IP, cachedFip.Spec.InternalIp); err != nil {
+	if err = c.createFipInPod(eip.Spec.NatGwDp, eip.Status.IP, eip.Spec.V6ip, cachedFip.Spec.InternalIp); err != nil {
 		klog.Errorf("failed to create new fip, %v", err)
 		return err
 	}
@@ -653,7 +653,7 @@ func (c *Controller) handleUpdateIptablesFip(key string) error {
 		cachedFip.Status.V4ip != "" &&
 		cachedFip.DeletionTimestamp.IsZero() {
 		klog.V(3).Infof("reapply fip '%s' in pod ", key)
-		if err = c.createFipInPod(eip.Spec.NatGwDp, cachedFip.Status.V4ip, cachedFip.Spec.InternalIp); err != nil {
+		if err = c.createFipInPod(eip.Spec.NatGwDp, cachedFip.Status.V4ip, eip.Spec.V6ip, cachedFip.Spec.InternalIp); err != nil {
 			klog.Errorf("failed to create fip, %v", err)
 			return err
 		}
@@ -695,7 +695,7 @@ func (c *Controller) handleAddIptablesDnatRule(key string) error {
 		// already ok
 		return nil
 	}
-	klog.V(3).Infof("handle add iptables dnat %s", key)
+
 	eipName := dnat.Spec.EIP
 	if eipName == "" {
 		return fmt.Errorf("failed to create dnat rule, should set eip")
@@ -711,7 +711,7 @@ func (c *Controller) handleAddIptablesDnatRule(key string) error {
 	}
 	// create nat
 	if err = c.createDnatInPod(eip.Spec.NatGwDp, dnat.Spec.Protocol,
-		eip.Status.IP, dnat.Spec.InternalIp,
+		eip.Status.IP, eip.Spec.V6ip, dnat.Spec.InternalIp,
 		dnat.Spec.ExternalPort, dnat.Spec.InternalPort); err != nil {
 		klog.Errorf("failed to create dnat, %v", err)
 		return err
@@ -740,7 +740,7 @@ func (c *Controller) handleAddIptablesDnatRule(key string) error {
 func (c *Controller) handleUpdateIptablesDnatRule(key string) error {
 	c.vpcNatGwKeyMutex.LockKey(key)
 	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(key) }()
-	klog.Infof("handle update iptables fip %s", key)
+	klog.Infof("handle update iptables dnat rule %s", key)
 
 	cachedDnat, err := c.iptablesDnatRulesLister.Get(key)
 	if err != nil {
@@ -752,10 +752,10 @@ func (c *Controller) handleUpdateIptablesDnatRule(key string) error {
 	}
 	// should delete
 	if !cachedDnat.DeletionTimestamp.IsZero() {
-		klog.V(3).Infof("clean dnat '%s' in pod", key)
+		klog.Infof("clean dnat '%s' in pod", key)
 		if vpcNatEnabled == "true" {
 			if err = c.deleteDnatInPod(cachedDnat.Status.NatGwDp, cachedDnat.Status.Protocol,
-				cachedDnat.Status.V4ip, cachedDnat.Status.InternalIp,
+				cachedDnat.Status.V4ip, cachedDnat.Status.V6ip, cachedDnat.Status.InternalIp,
 				cachedDnat.Status.ExternalPort, cachedDnat.Status.InternalPort); err != nil {
 				klog.Errorf("failed to delete dnat, %v", err)
 				return err
@@ -769,7 +769,7 @@ func (c *Controller) handleUpdateIptablesDnatRule(key string) error {
 		c.resetIptablesEipQueue.AddAfter(cachedDnat.Spec.EIP, 3*time.Second)
 		return nil
 	}
-	klog.V(3).Infof("handle update dnat %s", key)
+
 	eipName := cachedDnat.Spec.EIP
 	if eipName == "" {
 		return fmt.Errorf("failed to update fip rule, should set eip")
@@ -789,13 +789,13 @@ func (c *Controller) handleUpdateIptablesDnatRule(key string) error {
 	}
 
 	if err = c.deleteDnatInPod(cachedDnat.Status.NatGwDp, cachedDnat.Status.Protocol,
-		cachedDnat.Status.V4ip, cachedDnat.Status.InternalIp,
+		cachedDnat.Status.V4ip, cachedDnat.Status.V6ip, cachedDnat.Status.InternalIp,
 		cachedDnat.Status.ExternalPort, cachedDnat.Status.InternalPort); err != nil {
 		klog.Errorf("failed to delete old dnat, %v", err)
 		return err
 	}
 	if err = c.createDnatInPod(eip.Spec.NatGwDp, cachedDnat.Spec.Protocol,
-		eip.Status.IP, cachedDnat.Spec.InternalIp,
+		eip.Status.IP, eip.Spec.V6ip, cachedDnat.Spec.InternalIp,
 		cachedDnat.Spec.ExternalPort, cachedDnat.Spec.InternalPort); err != nil {
 		klog.Errorf("failed to create new dnat %s, %v", key, err)
 		return err
@@ -825,7 +825,7 @@ func (c *Controller) handleUpdateIptablesDnatRule(key string) error {
 		cachedDnat.DeletionTimestamp.IsZero() {
 		klog.V(3).Infof("reapply dnat in pod for %s", key)
 		if err = c.createDnatInPod(eip.Spec.NatGwDp, cachedDnat.Spec.Protocol,
-			cachedDnat.Status.V4ip, cachedDnat.Spec.InternalIp,
+			cachedDnat.Status.V4ip, cachedDnat.Status.V6ip, cachedDnat.Spec.InternalIp,
 			cachedDnat.Spec.ExternalPort, cachedDnat.Spec.InternalPort); err != nil {
 			klog.Errorf("failed to create dnat %s, %v", key, err)
 			return err
@@ -868,7 +868,7 @@ func (c *Controller) handleAddIptablesSnatRule(key string) error {
 		// already ok
 		return nil
 	}
-	klog.V(3).Infof("handle add iptables snat %s", key)
+
 	eipName := snat.Spec.EIP
 	if eipName == "" {
 		return fmt.Errorf("failed to create snat rule, should set eip")
@@ -880,13 +880,7 @@ func (c *Controller) handleAddIptablesSnatRule(key string) error {
 		return err
 	}
 	// create snat
-	v4Cidr, _ := util.SplitStringIP(snat.Spec.InternalCIDR)
-	if v4Cidr == "" {
-		// only support IPv4 snat
-		err = fmt.Errorf("failed to get snat v4 internal cidr, original cidr is %s", snat.Spec.InternalCIDR)
-		return err
-	}
-	if err = c.createSnatInPod(eip.Spec.NatGwDp, eip.Status.IP, v4Cidr); err != nil {
+	if err = c.createSnatInPod(eip.Spec.NatGwDp, eip.Status.IP, eip.Spec.V6ip, snat.Spec.InternalCIDR); err != nil {
 		klog.Errorf("failed to create snat, %v", err)
 		return err
 	}
@@ -923,21 +917,12 @@ func (c *Controller) handleUpdateIptablesSnatRule(key string) error {
 		klog.Error(err)
 		return err
 	}
-	v4Cidr, _ := util.SplitStringIP(cachedSnat.Status.InternalCIDR)
-	if v4Cidr == "" {
-		err = fmt.Errorf("failed to get snat v4 internal cidr, original cidr is %s", cachedSnat.Status.InternalCIDR)
-		return err
-	}
-	v4CidrSpec, _ := util.SplitStringIP(cachedSnat.Spec.InternalCIDR)
-	if v4CidrSpec == "" {
-		err = fmt.Errorf("failed to get snat v4 internal cidr, original cidr is %s", cachedSnat.Spec.InternalCIDR)
-		return err
-	}
+
 	// should delete
 	if !cachedSnat.DeletionTimestamp.IsZero() {
-		klog.V(3).Infof("clean snat '%s' in pod", key)
+		klog.Infof("clean snat '%s' in pod", key)
 		if vpcNatEnabled == "true" {
-			if err = c.deleteSnatInPod(cachedSnat.Status.NatGwDp, cachedSnat.Status.V4ip, v4Cidr); err != nil {
+			if err = c.deleteSnatInPod(cachedSnat.Status.NatGwDp, cachedSnat.Status.V4ip, cachedSnat.Status.V6ip, cachedSnat.Status.InternalCIDR); err != nil {
 				klog.Errorf("failed to delete snat, %v", err)
 				return err
 			}
@@ -950,7 +935,7 @@ func (c *Controller) handleUpdateIptablesSnatRule(key string) error {
 		c.resetIptablesEipQueue.AddAfter(cachedSnat.Spec.EIP, 3*time.Second)
 		return nil
 	}
-	klog.V(3).Infof("handle update snat %s", key)
+
 	eipName := cachedSnat.Spec.EIP
 	if eipName == "" {
 		return fmt.Errorf("failed to update fip rule, should set eip")
@@ -967,11 +952,11 @@ func (c *Controller) handleUpdateIptablesSnatRule(key string) error {
 	}
 
 	klog.V(3).Infof("snat change ip, old ip %s, new ip %s", cachedSnat.Status.V4ip, eip.Status.IP)
-	if err = c.deleteSnatInPod(cachedSnat.Status.NatGwDp, cachedSnat.Status.V4ip, v4Cidr); err != nil {
+	if err = c.deleteSnatInPod(cachedSnat.Status.NatGwDp, cachedSnat.Status.V4ip, cachedSnat.Status.V6ip, cachedSnat.Status.InternalCIDR); err != nil {
 		klog.Errorf("failed to delete old snat, %v", err)
 		return err
 	}
-	if err = c.createSnatInPod(cachedSnat.Status.NatGwDp, eip.Status.IP, v4CidrSpec); err != nil {
+	if err = c.createSnatInPod(cachedSnat.Status.NatGwDp, eip.Status.IP, eip.Spec.V6ip, cachedSnat.Spec.InternalCIDR); err != nil {
 		klog.Errorf("failed to create new snat, %v", err)
 		return err
 	}
@@ -996,7 +981,7 @@ func (c *Controller) handleUpdateIptablesSnatRule(key string) error {
 		cachedSnat.Status.Redo != "" &&
 		cachedSnat.Status.V4ip != "" &&
 		cachedSnat.DeletionTimestamp.IsZero() {
-		if err = c.createSnatInPod(cachedSnat.Status.NatGwDp, cachedSnat.Status.V4ip, v4CidrSpec); err != nil {
+		if err = c.createSnatInPod(cachedSnat.Status.NatGwDp, cachedSnat.Status.V4ip, cachedSnat.Status.V6ip, cachedSnat.Spec.InternalCIDR); err != nil {
 			klog.Errorf("failed to create new snat, %v", err)
 			return err
 		}
@@ -1160,7 +1145,7 @@ func (c *Controller) patchFipLabel(key string, eip *kubeovnv1.IptablesEIP) error
 			util.EipV4IpLabel:           eip.Spec.V4ip,
 		}
 		needUpdateLabel = true
-	} else if fip.Labels[util.SubnetNameLabel] != eip.Spec.NatGwDp ||
+	} else if fip.Labels[util.VpcNatGatewayNameLabel] != eip.Spec.NatGwDp ||
 		fip.Labels[util.EipV4IpLabel] != eip.Spec.V4ip {
 		op = "replace"
 		fip.Labels[util.VpcNatGatewayNameLabel] = eip.Spec.NatGwDp
@@ -1354,7 +1339,8 @@ func (c *Controller) patchDnatLabel(key string, eip *kubeovnv1.IptablesEIP) erro
 			util.EipV4IpLabel:           eip.Spec.V4ip,
 		}
 		needUpdateLabel = true
-	} else if dnat.Labels[util.SubnetNameLabel] != eip.Spec.NatGwDp ||
+	} else if dnat.Labels[util.VpcNatGatewayNameLabel] != eip.Spec.NatGwDp ||
+		dnat.Labels[util.VpcDnatEPortLabel] != dnat.Spec.ExternalPort ||
 		dnat.Labels[util.EipV4IpLabel] != eip.Spec.V4ip {
 		op = "replace"
 		dnat.Labels[util.VpcNatGatewayNameLabel] = eip.Spec.NatGwDp
@@ -1492,7 +1478,7 @@ func (c *Controller) patchSnatLabel(key string, eip *kubeovnv1.IptablesEIP) erro
 			util.EipV4IpLabel:           eip.Spec.V4ip,
 		}
 		needUpdateLabel = true
-	} else if snat.Labels[util.SubnetNameLabel] != eip.Spec.NatGwDp ||
+	} else if snat.Labels[util.VpcNatGatewayNameLabel] != eip.Spec.NatGwDp ||
 		snat.Labels[util.EipV4IpLabel] != eip.Spec.V4ip {
 		op = "replace"
 		snat.Labels[util.VpcNatGatewayNameLabel] = eip.Spec.NatGwDp
@@ -1550,15 +1536,9 @@ func (c *Controller) patchSnatStatus(key, v4ip, v6ip, natGwDp, redo string, read
 		snat.Status.NatGwDp = natGwDp
 		changed = true
 	}
-	if ready && snat.Spec.InternalCIDR != "" {
-		v4CidrSpec, _ := util.SplitStringIP(snat.Spec.InternalCIDR)
-		if v4CidrSpec != "" {
-			v4Cidr, _ := util.SplitStringIP(snat.Status.InternalCIDR)
-			if v4Cidr != v4CidrSpec {
-				snat.Status.InternalCIDR = v4CidrSpec
-				changed = true
-			}
-		}
+	if ready && snat.Spec.InternalCIDR != snat.Status.InternalCIDR {
+		snat.Status.InternalCIDR = snat.Spec.InternalCIDR
+		changed = true
 	}
 
 	if changed {
@@ -1605,15 +1585,26 @@ func (c *Controller) redoSnat(key, redo string, eipReady bool) error {
 	return nil
 }
 
-func (c *Controller) createFipInPod(dp, v4ip, internalIP string) error {
+func (c *Controller) createFipInPod(dp, v4ip, v6ip, internalIP string) error {
 	gwPod, err := c.getNatGwPod(dp)
 	if err != nil {
 		klog.Error(err)
 		return err
 	}
 	var addRules []string
-	rule := fmt.Sprintf("%s,%s", v4ip, internalIP)
-	addRules = append(addRules, rule)
+	var rule string
+	for _, ipAddr := range strings.Split(internalIP, ",") {
+		switch util.CheckProtocol(ipAddr) {
+		case kubeovnv1.ProtocolIPv4:
+			rule = fmt.Sprintf("%s,%s", v4ip, ipAddr)
+		case kubeovnv1.ProtocolIPv6:
+			rule = fmt.Sprintf("%s,%s", v6ip, ipAddr)
+		default:
+			return fmt.Errorf("invalid internalIP: %s", ipAddr)
+		}
+		addRules = append(addRules, rule)
+	}
+
 	if err = c.execNatGwRules(gwPod, natGwSubnetFipAdd, addRules); err != nil {
 		klog.Errorf("failed to create fip, err: %v", err)
 		return err
@@ -1621,7 +1612,7 @@ func (c *Controller) createFipInPod(dp, v4ip, internalIP string) error {
 	return nil
 }
 
-func (c *Controller) deleteFipInPod(dp, v4ip, internalIP string) error {
+func (c *Controller) deleteFipInPod(dp, v4ip, v6ip, internalIP string) error {
 	gwPod, err := c.getNatGwPod(dp)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -1632,8 +1623,19 @@ func (c *Controller) deleteFipInPod(dp, v4ip, internalIP string) error {
 	}
 	// del nat
 	var delRules []string
-	rule := fmt.Sprintf("%s,%s", v4ip, internalIP)
-	delRules = append(delRules, rule)
+	var rule string
+	for _, ipAddr := range strings.Split(internalIP, ",") {
+		switch util.CheckProtocol(ipAddr) {
+		case kubeovnv1.ProtocolIPv4:
+			rule = fmt.Sprintf("%s,%s", v4ip, ipAddr)
+		case kubeovnv1.ProtocolIPv6:
+			rule = fmt.Sprintf("%s,%s", v6ip, ipAddr)
+		default:
+			return fmt.Errorf("invalid internalIP: %s", ipAddr)
+		}
+		delRules = append(delRules, rule)
+	}
+
 	if err = c.execNatGwRules(gwPod, natGwSubnetFipDel, delRules); err != nil {
 		klog.Errorf("failed to delete fip, err: %v", err)
 		return err
@@ -1641,15 +1643,25 @@ func (c *Controller) deleteFipInPod(dp, v4ip, internalIP string) error {
 	return nil
 }
 
-func (c *Controller) createDnatInPod(dp, protocol, v4ip, internalIp, externalPort, internalPort string) error {
+func (c *Controller) createDnatInPod(dp, protocol, v4ip, v6ip, internalIP, externalPort, internalPort string) error {
 	gwPod, err := c.getNatGwPod(dp)
 	if err != nil {
 		klog.Errorf("failed to get nat gw pod, %v", err)
 		return err
 	}
 	var addRules []string
-	rule := fmt.Sprintf("%s,%s,%s,%s,%s", v4ip, externalPort, protocol, internalIp, internalPort)
-	addRules = append(addRules, rule)
+	var rule string
+	for _, ipAddr := range strings.Split(internalIP, ",") {
+		switch util.CheckProtocol(ipAddr) {
+		case kubeovnv1.ProtocolIPv4:
+			rule = fmt.Sprintf("%s,%s,%s,%s,%s", v4ip, externalPort, protocol, ipAddr, internalPort)
+		case kubeovnv1.ProtocolIPv6:
+			rule = fmt.Sprintf("%s,%s,%s,%s,%s", v6ip, externalPort, protocol, ipAddr, internalPort)
+		default:
+			return fmt.Errorf("invalid internalIP: %s", ipAddr)
+		}
+		addRules = append(addRules, rule)
+	}
 
 	if err = c.execNatGwRules(gwPod, natGwDnatAdd, addRules); err != nil {
 		klog.Errorf("failed to create dnat, err: %v", err)
@@ -1658,7 +1670,7 @@ func (c *Controller) createDnatInPod(dp, protocol, v4ip, internalIp, externalPor
 	return nil
 }
 
-func (c *Controller) deleteDnatInPod(dp, protocol, v4ip, internalIp, externalPort, internalPort string) error {
+func (c *Controller) deleteDnatInPod(dp, protocol, v4ip, v6ip, internalIP, externalPort, internalPort string) error {
 	gwPod, err := c.getNatGwPod(dp)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -1670,8 +1682,19 @@ func (c *Controller) deleteDnatInPod(dp, protocol, v4ip, internalIp, externalPor
 
 	// del nat
 	var delRules []string
-	rule := fmt.Sprintf("%s,%s,%s,%s,%s", v4ip, externalPort, protocol, internalIp, internalPort)
-	delRules = append(delRules, rule)
+	var rule string
+	for _, ipAddr := range strings.Split(internalIP, ",") {
+		switch util.CheckProtocol(ipAddr) {
+		case kubeovnv1.ProtocolIPv4:
+			rule = fmt.Sprintf("%s,%s,%s,%s,%s", v4ip, externalPort, protocol, ipAddr, internalPort)
+		case kubeovnv1.ProtocolIPv6:
+			rule = fmt.Sprintf("%s,%s,%s,%s,%s", v6ip, externalPort, protocol, ipAddr, internalPort)
+		default:
+			return fmt.Errorf("invalid internalIP: %s", ipAddr)
+		}
+		delRules = append(delRules, rule)
+	}
+
 	if err = c.execNatGwRules(gwPod, natGwDnatDel, delRules); err != nil {
 		klog.Errorf("failed to delete dnat, err: %v", err)
 		return err
@@ -1679,25 +1702,40 @@ func (c *Controller) deleteDnatInPod(dp, protocol, v4ip, internalIp, externalPor
 	return nil
 }
 
-func (c *Controller) createSnatInPod(dp, v4ip, internalCIDR string) error {
+func (c *Controller) createSnatInPod(dp, v4ip, v6ip, internalCIDR string) error {
 	gwPod, err := c.getNatGwPod(dp)
 	if err != nil {
 		klog.Errorf("failed to get nat gw pod, %v", err)
 		return err
 	}
-	var rules []string
-	rule := fmt.Sprintf("%s,%s", v4ip, internalCIDR)
-
 	version, err := c.getIptablesVersion(gwPod)
 	if err != nil {
 		version = "1.0.0"
 		klog.Warningf("failed to checking iptables version, assuming version at least %s: %v", version, err)
 	}
-	if util.CompareVersion(version, "1.6.2") >= 1 {
-		rule = fmt.Sprintf("%s,%s", rule, "--random-fully")
+
+	var rules []string
+	var rule string
+	for _, cidr := range strings.Split(internalCIDR, ",") {
+		switch util.CheckProtocol(cidr) {
+		case kubeovnv1.ProtocolIPv4:
+			rule = fmt.Sprintf("%s,%s", v4ip, cidr)
+
+			if util.CompareVersion(version, "1.6.2") >= 1 {
+				rule = fmt.Sprintf("%s,%s", rule, "--random-fully")
+			}
+		case kubeovnv1.ProtocolIPv6:
+			rule = fmt.Sprintf("%s,%s", v6ip, cidr)
+
+			if util.CompareVersion(version, "1.6.2") >= 1 {
+				rule = fmt.Sprintf("%s,%s", rule, "--random-fully")
+			}
+		default:
+			return fmt.Errorf("invalid internalCIDR: %s", cidr)
+		}
+		rules = append(rules, rule)
 	}
 
-	rules = append(rules, rule)
 	if err = c.execNatGwRules(gwPod, natGwSnatAdd, rules); err != nil {
 		klog.Errorf("failed to exec nat gateway rule, err: %v", err)
 		return err
@@ -1705,7 +1743,7 @@ func (c *Controller) createSnatInPod(dp, v4ip, internalCIDR string) error {
 	return nil
 }
 
-func (c *Controller) deleteSnatInPod(dp, v4ip, internalCIDR string) error {
+func (c *Controller) deleteSnatInPod(dp, v4ip, v6ip, internalCIDR string) error {
 	gwPod, err := c.getNatGwPod(dp)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -1716,8 +1754,19 @@ func (c *Controller) deleteSnatInPod(dp, v4ip, internalCIDR string) error {
 	}
 	// del nat
 	var delRules []string
-	rule := fmt.Sprintf("%s,%s", v4ip, internalCIDR)
-	delRules = append(delRules, rule)
+	var rule string
+	for _, cidr := range strings.Split(internalCIDR, ",") {
+		switch util.CheckProtocol(cidr) {
+		case kubeovnv1.ProtocolIPv4:
+			rule = fmt.Sprintf("%s,%s", v4ip, cidr)
+		case kubeovnv1.ProtocolIPv6:
+			rule = fmt.Sprintf("%s,%s", v6ip, cidr)
+		default:
+			return fmt.Errorf("invalid internalCIDR: %s", cidr)
+		}
+		delRules = append(delRules, rule)
+	}
+
 	if err = c.execNatGwRules(gwPod, natGwSnatDel, delRules); err != nil {
 		klog.Errorf("failed to delete snat, err: %v", err)
 		return err

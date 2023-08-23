@@ -376,7 +376,18 @@ func (c *Controller) handleInitVpcNatGw(key string) error {
 	}
 	NAT_GW_CREATED_AT = pod.CreationTimestamp.Format("2006-01-02T15:04:05")
 	klog.V(3).Infof("nat gw pod '%s' inited at %s", key, NAT_GW_CREATED_AT)
-	if err = c.execNatGwRules(pod, natGwInit, []string{fmt.Sprintf("%s,%s", c.config.ServiceClusterIPRange, pod.Annotations[util.GatewayAnnotation])}); err != nil {
+
+	var rules []string
+	for _, svcCidr := range strings.Split(c.config.ServiceClusterIPRange, ",") {
+		for _, gwIP := range strings.Split(pod.Annotations[util.GatewayAnnotation], ",") {
+			if util.CheckProtocol(svcCidr) != util.CheckProtocol(gwIP) {
+				continue
+			}
+			rules = append(rules, fmt.Sprintf("%s,%s", svcCidr, gwIP))
+		}
+	}
+
+	if err = c.execNatGwRules(pod, natGwInit, rules); err != nil {
 		err = fmt.Errorf("failed to init vpc nat gateway, %v", err)
 		klog.Error(err)
 		return err
@@ -429,7 +440,7 @@ func (c *Controller) handleUpdateVpcFloatingIp(natGwKey string) error {
 
 	c.vpcNatGwKeyMutex.LockKey(natGwKey)
 	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(natGwKey) }()
-	klog.Infof("handle update vpc fip %s", natGwKey)
+	klog.Infof("handle update vpc fips for %s", natGwKey)
 
 	// refresh exist fips
 	if err := c.initCreateAt(natGwKey); err != nil {
@@ -464,7 +475,7 @@ func (c *Controller) handleUpdateVpcEip(natGwKey string) error {
 
 	c.vpcNatGwKeyMutex.LockKey(natGwKey)
 	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(natGwKey) }()
-	klog.Infof("handle update vpc eip %s", natGwKey)
+	klog.Infof("handle update vpc eips for %s", natGwKey)
 
 	// refresh exist fips
 	if err := c.initCreateAt(natGwKey); err != nil {
@@ -497,7 +508,7 @@ func (c *Controller) handleUpdateVpcSnat(natGwKey string) error {
 
 	c.vpcNatGwKeyMutex.LockKey(natGwKey)
 	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(natGwKey) }()
-	klog.Infof("handle update vpc snat %s", natGwKey)
+	klog.Infof("handle update vpc snats for %s", natGwKey)
 
 	// refresh exist snats
 	if err := c.initCreateAt(natGwKey); err != nil {
@@ -531,7 +542,7 @@ func (c *Controller) handleUpdateVpcDnat(natGwKey string) error {
 
 	c.vpcNatGwKeyMutex.LockKey(natGwKey)
 	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(natGwKey) }()
-	klog.Infof("handle update vpc dnat %s", natGwKey)
+	klog.Infof("handle update vpc dnats for %s", natGwKey)
 
 	// refresh exist dnats
 	if err := c.initCreateAt(natGwKey); err != nil {
@@ -604,6 +615,9 @@ func (c *Controller) handleUpdateNatGwSubnetRoute(natGwKey string) error {
 
 	gw, err := c.vpcNatGatewayLister.Get(natGwKey)
 	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
 		klog.Error(err)
 		return err
 	}
@@ -616,22 +630,29 @@ func (c *Controller) handleUpdateNatGwSubnetRoute(natGwKey string) error {
 	}
 	pod := oriPod.DeepCopy()
 	var extRules []string
-	var v4ExternalGw, v4InternalGw, v4ExternalCidr string
+	var v4ExternalGw, v4InternalGw, v4ExternalCidr, v6ExternalGw, v6InternalGw, v6ExternalCidr string
 	externalNetwork := util.GetNatGwExternalNetwork(gw.Spec.ExternalSubnets)
 	if subnet, ok := c.ipam.Subnets[externalNetwork]; ok {
 		v4ExternalGw = subnet.V4Gw
 		v4ExternalCidr = subnet.V4CIDR.String()
+		if subnet.V6CIDR != nil {
+			v6ExternalGw = subnet.V6Gw
+			v6ExternalCidr = subnet.V6CIDR.String()
+		}
 	} else {
 		return fmt.Errorf("failed to get external subnet %s", externalNetwork)
 	}
 	extRules = append(extRules, fmt.Sprintf("%s,%s", v4ExternalCidr, v4ExternalGw))
+	if v6ExternalCidr != "" {
+		extRules = append(extRules, fmt.Sprintf("%s,%s", v6ExternalCidr, v6ExternalGw))
+	}
 	if err = c.execNatGwRules(pod, natGwExtSubnetRouteAdd, extRules); err != nil {
 		err = fmt.Errorf("failed to exec nat gateway rule, err: %v", err)
 		klog.Error(err)
 		return err
 	}
 
-	if v4InternalGw, _, err = c.GetGwBySubnet(gw.Spec.Subnet); err != nil {
+	if v4InternalGw, v6InternalGw, err = c.GetGwBySubnet(gw.Spec.Subnet); err != nil {
 		err = fmt.Errorf("failed to get gw, err: %v", err)
 		klog.Error(err)
 		return err
@@ -647,13 +668,13 @@ func (c *Controller) handleUpdateNatGwSubnetRoute(natGwKey string) error {
 	var newCIDRS, oldCIDRs, toBeDelCIDRs []string
 	if len(vpc.Status.Subnets) > 0 {
 		for _, s := range vpc.Status.Subnets {
-			subnet, ok := c.ipam.Subnets[s]
-			if !ok {
+			subnet, err := c.subnetsLister.Get(s)
+			if err != nil {
 				err = fmt.Errorf("failed to get subnet, err: %v", err)
 				klog.Error(err)
 				return err
 			}
-			newCIDRS = append(newCIDRS, subnet.V4CIDR.String())
+			newCIDRS = append(newCIDRS, subnet.Spec.CIDRBlock)
 		}
 	}
 	if cidrs, ok := pod.Annotations[util.VpcCIDRsAnnotation]; ok {
@@ -670,8 +691,19 @@ func (c *Controller) handleUpdateNatGwSubnetRoute(natGwKey string) error {
 	if len(newCIDRS) > 0 {
 		var rules []string
 		for _, cidr := range newCIDRS {
-			if !util.CIDRContainIP(cidr, v4InternalGw) {
-				rules = append(rules, fmt.Sprintf("%s,%s", cidr, v4InternalGw))
+			for _, cidrBlock := range strings.Split(cidr, ",") {
+				switch util.CheckProtocol(cidrBlock) {
+				case kubeovnv1.ProtocolIPv4:
+					if !util.CIDRContainIP(cidrBlock, v4InternalGw) {
+						rules = append(rules, fmt.Sprintf("%s,%s", cidrBlock, v4InternalGw))
+					}
+				case kubeovnv1.ProtocolIPv6:
+					if !util.CIDRContainIP(cidrBlock, v6InternalGw) {
+						rules = append(rules, fmt.Sprintf("%s,%s", cidrBlock, v6InternalGw))
+					}
+				default:
+					return fmt.Errorf("invalid cidrBlock: %s", cidrBlock)
+				}
 			}
 		}
 		if len(rules) > 0 {
@@ -685,10 +717,12 @@ func (c *Controller) handleUpdateNatGwSubnetRoute(natGwKey string) error {
 
 	if len(toBeDelCIDRs) > 0 {
 		for _, cidr := range toBeDelCIDRs {
-			if err = c.execNatGwRules(pod, natGwSubnetRouteDel, []string{cidr}); err != nil {
-				err = fmt.Errorf("failed to exec nat gateway rule, err: %v", err)
-				klog.Error(err)
-				return err
+			for _, cidrBlock := range strings.Split(cidr, ",") {
+				if err = c.execNatGwRules(pod, natGwSubnetRouteDel, []string{cidrBlock}); err != nil {
+					err = fmt.Errorf("failed to exec nat gateway rule, err: %v", err)
+					klog.Error(err)
+					return err
+				}
 			}
 		}
 	}
