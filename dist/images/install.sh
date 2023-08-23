@@ -3236,6 +3236,8 @@ spec:
               value: "180000"
             - name: OVN_LEADER_PROBE_INTERVAL
               value: "5"
+            - name: OVN_NORTHD_N_THREADS
+              value: "1"
           resources:
             requests:
               cpu: 300m
