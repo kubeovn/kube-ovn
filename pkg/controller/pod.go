@@ -932,7 +932,7 @@ func (c *Controller) handleDeletePod(key string) error {
 	if len(ports) != 0 {
 		addresses := c.ipam.GetPodAddress(key)
 		for _, address := range addresses {
-			if strings.TrimSpace(address.Ip) == "" {
+			if strings.TrimSpace(address.IP) == "" {
 				continue
 			}
 			subnet, err := c.subnetsLister.Get(address.Subnet.Name)
@@ -951,12 +951,12 @@ func (c *Controller) handleDeletePod(key string) error {
 			}
 			// If pod has snat or eip, also need delete staticRoute when delete pod
 			if vpc.Name == c.config.ClusterRouter {
-				if err = c.ovnNbClient.DeleteLogicalRouterStaticRoute(vpc.Name, &subnet.Spec.RouteTable, nil, address.Ip, ""); err != nil {
+				if err = c.ovnNbClient.DeleteLogicalRouterStaticRoute(vpc.Name, &subnet.Spec.RouteTable, nil, address.IP, ""); err != nil {
 					return err
 				}
 			}
 			if exGwEnabled == "true" {
-				if err := c.ovnNbClient.DeleteNat(vpc.Name, "", "", address.Ip); err != nil {
+				if err := c.ovnNbClient.DeleteNat(vpc.Name, "", "", address.IP); err != nil {
 					return err
 				}
 			}
@@ -978,7 +978,7 @@ func (c *Controller) handleDeletePod(key string) error {
 	isVmPod, vmName := isVmPod(pod)
 	if isVmPod && c.config.EnableKeepVmIP {
 		toDel := c.isVmPodToDel(pod, vmName)
-		delete, err := appendCheckPodToDel(c, pod, vmName, util.VmInstance)
+		delete, err := appendCheckPodToDel(c, pod, vmName, util.VMInstance)
 		if pod.DeletionTimestamp != nil {
 			// triggered by delete event
 			if !(toDel || (delete && err == nil)) {
@@ -1737,7 +1737,7 @@ func appendCheckPodToDel(c *Controller, pod *v1.Pod, ownerRefName, ownerRefKind 
 			ownerRefSubnet = ss.Spec.Template.ObjectMeta.Annotations[util.LogicalSwitchAnnotation]
 		}
 
-	case util.VmInstance:
+	case util.VMInstance:
 		vm, err := c.config.KubevirtClient.VirtualMachine(pod.Namespace).Get(ownerRefName, &metav1.GetOptions{})
 		if err != nil {
 			if k8serrors.IsNotFound(err) {
@@ -1785,7 +1785,7 @@ func appendCheckPodToDel(c *Controller, pod *v1.Pod, ownerRefName, ownerRefKind 
 func isVmPod(pod *v1.Pod) (bool, string) {
 	for _, owner := range pod.OwnerReferences {
 		// The name of vmi is consistent with vm's name.
-		if owner.Kind == util.VmInstance && strings.HasPrefix(owner.APIVersion, "kubevirt.io") {
+		if owner.Kind == util.VMInstance && strings.HasPrefix(owner.APIVersion, "kubevirt.io") {
 			return true, owner.Name
 		}
 	}
@@ -1794,7 +1794,7 @@ func isVmPod(pod *v1.Pod) (bool, string) {
 
 func isOwnsByTheVM(vmi metav1.Object) (bool, string) {
 	for _, owner := range vmi.GetOwnerReferences() {
-		if owner.Kind == util.Vm && strings.HasPrefix(owner.APIVersion, "kubevirt.io") {
+		if owner.Kind == util.VM && strings.HasPrefix(owner.APIVersion, "kubevirt.io") {
 			return true, owner.Name
 		}
 	}
@@ -1903,7 +1903,7 @@ func getPodType(pod *v1.Pod) string {
 	}
 
 	if isVmPod, _ := isVmPod(pod); isVmPod {
-		return util.Vm
+		return util.VM
 	}
 	return ""
 }

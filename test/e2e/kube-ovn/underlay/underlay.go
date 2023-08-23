@@ -803,7 +803,7 @@ func checkU2OItems(f *framework.Framework, subnet *apiv1.Subnet, underlayPod, ov
 			}
 		}
 
-		asName := strings.Replace(fmt.Sprintf("%s.u2o_exclude_ip.%s", subnet.Name, protocolStr), "-", ".", -1)
+		asName := strings.ReplaceAll(fmt.Sprintf("%s.u2o_exclude_ip.%s", subnet.Name, protocolStr), "-", ".")
 		if !isU2OCustomVpc {
 			ginkgo.By(fmt.Sprintf("checking underlay subnet's policy1 route %s", protocolStr))
 			hitPolicyStr := fmt.Sprintf("%d %s.dst == %s allow", util.U2OSubnetPolicyPriority, protocolStr, cidr)
@@ -850,11 +850,12 @@ func checkU2OItems(f *framework.Framework, subnet *apiv1.Subnet, underlayPod, ov
 		}
 	}
 
-	if subnet.Spec.Protocol == apiv1.ProtocolIPv4 {
+	switch {
+	case subnet.Spec.Protocol == apiv1.ProtocolIPv4:
 		framework.ExpectTrue(isV4DefaultRouteExist)
-	} else if subnet.Spec.Protocol == apiv1.ProtocolIPv6 {
+	case subnet.Spec.Protocol == apiv1.ProtocolIPv6:
 		framework.ExpectTrue(isV6DefaultRouteExist)
-	} else if subnet.Spec.Protocol == apiv1.ProtocolDual {
+	case subnet.Spec.Protocol == apiv1.ProtocolDual:
 		framework.ExpectTrue(isV4DefaultRouteExist)
 		framework.ExpectTrue(isV6DefaultRouteExist)
 	}

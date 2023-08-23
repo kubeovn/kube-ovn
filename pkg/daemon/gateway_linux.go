@@ -997,15 +997,17 @@ func (c *Controller) generateNatOutgoingPolicyChainRules(protocol string) ([]uti
 			dstMatch := getNatOutGoingPolicyRuleIPSetName(rule.RuleID, "dst", protocol, true)
 
 			var ovnNatoutGoingPolicyRule util.IPTableRule
-			if rule.Match.DstIPs != "" && rule.Match.SrcIPs != "" {
+
+			switch {
+			case rule.Match.DstIPs != "" && rule.Match.SrcIPs != "":
 				ovnNatoutGoingPolicyRule = util.IPTableRule{Table: NAT, Chain: ovnNatPolicySubnetChainName, Rule: strings.Fields(fmt.Sprintf(`-m set --match-set %s src -m set --match-set %s dst -j MARK --set-xmark %s`, srcMatch, dstMatch, markCode))}
-			} else if rule.Match.SrcIPs != "" {
+			case rule.Match.SrcIPs != "":
 				protocol = getMatchProtocol(rule.Match.SrcIPs)
 				ovnNatoutGoingPolicyRule = util.IPTableRule{Table: NAT, Chain: ovnNatPolicySubnetChainName, Rule: strings.Fields(fmt.Sprintf(`-m set --match-set %s src -j MARK --set-xmark %s`, srcMatch, markCode))}
-			} else if rule.Match.DstIPs != "" {
+			case rule.Match.DstIPs != "":
 				protocol = getMatchProtocol(rule.Match.DstIPs)
 				ovnNatoutGoingPolicyRule = util.IPTableRule{Table: NAT, Chain: ovnNatPolicySubnetChainName, Rule: strings.Fields(fmt.Sprintf(`-m set --match-set %s dst -j MARK --set-xmark %s`, dstMatch, markCode))}
-			} else {
+			default:
 				continue
 			}
 			natPolicyRuleIptables = append(natPolicyRuleIptables, ovnNatoutGoingPolicyRule)
@@ -1212,11 +1214,13 @@ func (c *Controller) setOvnSubnetGatewayMetric() {
 			for _, item := range items {
 				if strings.Contains(item, util.OvnSubnetGatewayIptables) {
 					cidr = items[3]
-					if items[2] == "-s" {
+
+					switch items[2] {
+					case "-s":
 						direction = "egress"
-					} else if items[2] == "-d" {
+					case "-d":
 						direction = "ingress"
-					} else {
+					default:
 						break
 					}
 
@@ -1586,17 +1590,17 @@ func (c *Controller) appendMssRule() {
 	}
 }
 
-func (c *Controller) updateMssRuleByProtocol(protocol string, MssMangleRule util.IPTableRule) {
-	exists, err := c.iptables[protocol].Exists(MssMangleRule.Table, MssMangleRule.Chain, MssMangleRule.Rule...)
+func (c *Controller) updateMssRuleByProtocol(protocol string, mssMangleRule util.IPTableRule) {
+	exists, err := c.iptables[protocol].Exists(mssMangleRule.Table, mssMangleRule.Chain, mssMangleRule.Rule...)
 	if err != nil {
-		klog.Errorf("check iptables rule %v failed, %+v", MssMangleRule.Rule, err)
+		klog.Errorf("check iptables rule %v failed, %+v", mssMangleRule.Rule, err)
 		return
 	}
 
 	if !exists {
-		klog.Infof("iptables rules %s not exist, append iptables rules", strings.Join(MssMangleRule.Rule, " "))
-		if err := c.iptables[protocol].Append(MssMangleRule.Table, MssMangleRule.Chain, MssMangleRule.Rule...); err != nil {
-			klog.Errorf("append iptables rule %v failed, %+v", MssMangleRule.Rule, err)
+		klog.Infof("iptables rules %s not exist, append iptables rules", strings.Join(mssMangleRule.Rule, " "))
+		if err := c.iptables[protocol].Append(mssMangleRule.Table, mssMangleRule.Chain, mssMangleRule.Rule...); err != nil {
+			klog.Errorf("append iptables rule %v failed, %+v", mssMangleRule.Rule, err)
 			return
 		}
 	}

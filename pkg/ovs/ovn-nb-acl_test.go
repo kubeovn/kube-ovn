@@ -90,7 +90,7 @@ func (suite *OvnClientTestSuite) testUpdateIngressAclOps() {
 
 		npp := mockNetworkPolicyPort()
 
-		ops, err := ovnClient.UpdateIngressAclOps(pgName, asIngressName, asExceptName, protocol, npp, true, nil)
+		ops, err := ovnClient.UpdateIngressACLOps(pgName, asIngressName, asExceptName, protocol, npp, true, nil)
 		require.NoError(t, err)
 		require.Len(t, ops, 4)
 
@@ -116,7 +116,7 @@ func (suite *OvnClientTestSuite) testUpdateIngressAclOps() {
 		err := ovnClient.CreatePortGroup(pgName, nil)
 		require.NoError(t, err)
 
-		ops, err := ovnClient.UpdateIngressAclOps(pgName, asIngressName, asExceptName, protocol, nil, true, nil)
+		ops, err := ovnClient.UpdateIngressACLOps(pgName, asIngressName, asExceptName, protocol, nil, true, nil)
 		require.NoError(t, err)
 		require.Len(t, ops, 3)
 
@@ -160,7 +160,7 @@ func (suite *OvnClientTestSuite) testUpdateEgressAclOps() {
 
 		npp := mockNetworkPolicyPort()
 
-		ops, err := ovnClient.UpdateEgressAclOps(pgName, asEgressName, asExceptName, protocol, npp, true, nil)
+		ops, err := ovnClient.UpdateEgressACLOps(pgName, asEgressName, asExceptName, protocol, npp, true, nil)
 		require.NoError(t, err)
 		require.Len(t, ops, 4)
 
@@ -186,7 +186,7 @@ func (suite *OvnClientTestSuite) testUpdateEgressAclOps() {
 		err := ovnClient.CreatePortGroup(pgName, nil)
 		require.NoError(t, err)
 
-		ops, err := ovnClient.UpdateEgressAclOps(pgName, asEgressName, asExceptName, protocol, nil, true, nil)
+		ops, err := ovnClient.UpdateEgressACLOps(pgName, asEgressName, asExceptName, protocol, nil, true, nil)
 		require.NoError(t, err)
 		require.Len(t, ops, 3)
 

@@ -130,7 +130,7 @@ func (c *Controller) enqueueDeletePodAnnotatedIptablesFip(obj interface{}) {
 			c.delPodAnnotatedIptablesFipQueue.Add(obj)
 			return
 		}
-		if delete, err := appendCheckPodToDel(c, p, vmName, util.VmInstance); delete && err == nil {
+		if delete, err := appendCheckPodToDel(c, p, vmName, util.VMInstance); delete && err == nil {
 			c.delPodAnnotatedIptablesFipQueue.Add(obj)
 			return
 		}

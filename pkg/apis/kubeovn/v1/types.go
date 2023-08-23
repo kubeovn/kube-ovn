@@ -440,7 +440,7 @@ type StaticRoute struct {
 	CIDR       string      `json:"cidr"`
 	NextHopIP  string      `json:"nextHopIP"`
 	ECMPMode   string      `json:"ecmpMode"`
-	BfdID      string      `json:"bfdId"`
+	BfdID      string      `json:"bfdID"`
 	RouteTable string      `json:"routeTable"`
 }
 

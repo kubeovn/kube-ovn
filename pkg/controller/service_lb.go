@@ -299,7 +299,7 @@ func (c *Controller) updatePodAttachNets(pod *corev1.Pod, svc *corev1.Service) e
 	}
 
 	loadBalancerIP := pod.Annotations[attachIpAnnotation]
-	ipAddr := util.GetIpAddrWithMask(loadBalancerIP, pod.Annotations[attachCidrAnnotation])
+	ipAddr := util.GetIPAddrWithMask(loadBalancerIP, pod.Annotations[attachCidrAnnotation])
 
 	var addRules []string
 	addRules = append(addRules, fmt.Sprintf("%s,%s", ipAddr, pod.Annotations[attachGatewayAnnotation]))

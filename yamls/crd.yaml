@@ -1546,7 +1546,7 @@ spec:
                         type: string
                       ecmpMode:
                         type: string
-                      bfdId:
+                      bfdID:
                         type: string
                     type: object
                   type: array

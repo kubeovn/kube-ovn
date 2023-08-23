@@ -19,7 +19,7 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-// IpClient is a struct for Ip client.
+// IpClient is a struct for IP client.
 type IpClient struct {
 	f *Framework
 	v1.IPInterface
@@ -33,24 +33,24 @@ func (f *Framework) IpClient() *IpClient {
 }
 
 func (c *IpClient) Get(name string) *apiv1.IP {
-	Ip, err := c.IPInterface.Get(context.TODO(), name, metav1.GetOptions{})
+	IP, err := c.IPInterface.Get(context.TODO(), name, metav1.GetOptions{})
 	ExpectNoError(err)
-	return Ip.DeepCopy()
+	return IP.DeepCopy()
 }
 
-// Create creates a new Ip according to the framework specifications
-func (c *IpClient) Create(Ip *apiv1.IP) *apiv1.IP {
-	Ip, err := c.IPInterface.Create(context.TODO(), Ip, metav1.CreateOptions{})
-	ExpectNoError(err, "Error creating Ip")
-	return Ip.DeepCopy()
+// Create creates a new IP according to the framework specifications
+func (c *IpClient) Create(iP *apiv1.IP) *apiv1.IP {
+	iP, err := c.IPInterface.Create(context.TODO(), iP, metav1.CreateOptions{})
+	ExpectNoError(err, "Error creating IP")
+	return iP.DeepCopy()
 }
 
 // CreateSync creates a new IP according to the framework specifications, and waits for it to be ready.
-func (c *IpClient) CreateSync(Ip *apiv1.IP) *apiv1.IP {
-	Ip = c.Create(Ip)
-	ExpectTrue(c.WaitToBeReady(Ip.Name, timeout))
+func (c *IpClient) CreateSync(iP *apiv1.IP) *apiv1.IP {
+	iP = c.Create(iP)
+	ExpectTrue(c.WaitToBeReady(iP.Name, timeout))
 	// Get the newest IP after it becomes ready
-	return c.Get(Ip.Name).DeepCopy()
+	return c.Get(iP.Name).DeepCopy()
 }
 
 // WaitToBeReady returns whether the IP is ready within timeout.
@@ -68,7 +68,7 @@ func (c *IpClient) WaitToBeReady(name string, timeout time.Duration) bool {
 	return false
 }
 
-// Patch patches the Ip
+// Patch patches the IP
 func (c *IpClient) Patch(original, modified *apiv1.IP, timeout time.Duration) *apiv1.IP {
 	patch, err := util.GenerateMergePatchPayload(original, modified)
 	ExpectNoError(err)
@@ -77,7 +77,7 @@ func (c *IpClient) Patch(original, modified *apiv1.IP, timeout time.Duration) *a
 	err = wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
 		p, err := c.IPInterface.Patch(ctx, original.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
 		if err != nil {
-			return handleWaitingAPIError(err, false, "patch Ip %q", original.Name)
+			return handleWaitingAPIError(err, false, "patch IP %q", original.Name)
 		}
 		patchedIp = p
 		return true, nil
@@ -94,11 +94,11 @@ func (c *IpClient) Patch(original, modified *apiv1.IP, timeout time.Duration) *a
 	return nil
 }
 
-// Delete deletes a Ip if the Ip exists
+// Delete deletes a IP if the IP exists
 func (c *IpClient) Delete(name string) {
 	err := c.IPInterface.Delete(context.TODO(), name, metav1.DeleteOptions{})
 	if err != nil && !apierrors.IsNotFound(err) {
-		Failf("Failed to delete Ip %q: %v", name, err)
+		Failf("Failed to delete IP %q: %v", name, err)
 	}
 }
 
@@ -127,7 +127,7 @@ func (c *IpClient) WaitToDisappear(name string, interval, timeout time.Duration)
 func MakeIp(name, ns, subnet string) *apiv1.IP {
 	// pod ip name should including: pod name and namespace
 	// node ip name: only node name
-	Ip := &apiv1.IP{
+	IP := &apiv1.IP{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
 		},
@@ -136,5 +136,5 @@ func MakeIp(name, ns, subnet string) *apiv1.IP {
 			Subnet:    subnet,
 		},
 	}
-	return Ip
+	return IP
 }

@@ -836,7 +836,7 @@ func (c *Controller) handleAddVpcExternal(key string) error {
 		return err
 	}
 
-	v4ipCidr := util.GetIpAddrWithMask(v4ip, cachedSubnet.Spec.CIDRBlock)
+	v4ipCidr := util.GetIPAddrWithMask(v4ip, cachedSubnet.Spec.CIDRBlock)
 	lspName := fmt.Sprintf("%s-%s", c.config.ExternalGatewaySwitch, key)
 	lrpName := fmt.Sprintf("%s-%s", key, c.config.ExternalGatewaySwitch)
 

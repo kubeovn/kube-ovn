@@ -44,11 +44,11 @@ type Subnet struct {
 func NewSubnet(name, cidrStr string, excludeIps []string) (*Subnet, error) {
 	var cidrs []*net.IPNet
 	for _, cidrBlock := range strings.Split(cidrStr, ",") {
-		if _, cidr, err := net.ParseCIDR(cidrBlock); err != nil {
+		_, cidr, err := net.ParseCIDR(cidrBlock)
+		if err != nil {
 			return nil, ErrInvalidCIDR
-		} else {
-			cidrs = append(cidrs, cidr)
 		}
+		cidrs = append(cidrs, cidr)
 	}
 
 	// subnet.Spec.ExcludeIps contains both v4 and v6 addresses
@@ -83,17 +83,18 @@ func NewSubnet(name, cidrStr string, excludeIps []string) (*Subnet, error) {
 		PodToNicList: map[string][]string{},
 		IPPools:      make(map[string]*IPPool, 0),
 	}
-	if protocol == kubeovnv1.ProtocolIPv4 {
+	switch protocol {
+	case kubeovnv1.ProtocolIPv4:
 		firstIP, _ := util.FirstIP(cidrStr)
 		lastIP, _ := util.LastIP(cidrStr)
 		subnet.V4CIDR = cidrs[0]
 		subnet.V4Free, _ = NewIPRangeListFrom(fmt.Sprintf("%s..%s", firstIP, lastIP))
-	} else if protocol == kubeovnv1.ProtocolIPv6 {
+	case kubeovnv1.ProtocolIPv6:
 		firstIP, _ := util.FirstIP(cidrStr)
 		lastIP, _ := util.LastIP(cidrStr)
 		subnet.V6CIDR = cidrs[0]
 		subnet.V6Free, _ = NewIPRangeListFrom(fmt.Sprintf("%s..%s", firstIP, lastIP))
-	} else {
+	default:
 		subnet.V4CIDR = cidrs[0]
 		subnet.V6CIDR = cidrs[1]
 		cidrBlocks := strings.Split(cidrStr, ",")
@@ -128,93 +129,94 @@ func NewSubnet(name, cidrStr string, excludeIps []string) (*Subnet, error) {
 	return subnet, nil
 }
 
-func (subnet *Subnet) GetRandomMac(podName, nicName string) string {
-	if mac, ok := subnet.NicToMac[nicName]; ok {
+func (s *Subnet) GetRandomMac(podName, nicName string) string {
+	if mac, ok := s.NicToMac[nicName]; ok {
 		return mac
 	}
 	for {
 		mac := util.GenerateMac()
-		if _, ok := subnet.MacToPod[mac]; !ok {
-			subnet.MacToPod[mac] = podName
-			subnet.NicToMac[nicName] = mac
+		if _, ok := s.MacToPod[mac]; !ok {
+			s.MacToPod[mac] = podName
+			s.NicToMac[nicName] = mac
 			return mac
 		}
 	}
 }
 
-func (subnet *Subnet) GetStaticMac(podName, nicName, mac string, checkConflict bool) error {
+func (s *Subnet) GetStaticMac(podName, nicName, mac string, checkConflict bool) error {
 	if mac == "" {
 		return nil
 	}
 	if checkConflict {
-		if p, ok := subnet.MacToPod[mac]; ok && p != podName {
+		if p, ok := s.MacToPod[mac]; ok && p != podName {
 			return ErrConflict
 		}
 	}
-	subnet.MacToPod[mac] = podName
-	subnet.NicToMac[nicName] = mac
+	s.MacToPod[mac] = podName
+	s.NicToMac[nicName] = mac
 	return nil
 }
 
-func (subnet *Subnet) pushPodNic(podName, nicName string) {
-	if subnet.V4NicToIP[nicName] != nil || subnet.V6NicToIP[nicName] != nil || subnet.NicToMac[nicName] != "" {
-		subnet.PodToNicList[podName] = util.UniqString(append(subnet.PodToNicList[podName], nicName))
+func (s *Subnet) pushPodNic(podName, nicName string) {
+	if s.V4NicToIP[nicName] != nil || s.V6NicToIP[nicName] != nil || s.NicToMac[nicName] != "" {
+		s.PodToNicList[podName] = util.UniqString(append(s.PodToNicList[podName], nicName))
 	}
 }
 
-func (subnet *Subnet) popPodNic(podName, nicName string) {
-	subnet.PodToNicList[podName] = util.RemoveString(subnet.PodToNicList[podName], nicName)
-	if subnet.PodToNicList[podName] == nil {
-		delete(subnet.PodToNicList, podName)
+func (s *Subnet) popPodNic(podName, nicName string) {
+	s.PodToNicList[podName] = util.RemoveString(s.PodToNicList[podName], nicName)
+	if s.PodToNicList[podName] == nil {
+		delete(s.PodToNicList, podName)
 	}
 }
 
-func (subnet *Subnet) GetRandomAddress(poolName, podName, nicName string, mac *string, skippedAddrs []string, checkConflict bool) (IP, IP, string, error) {
-	subnet.mutex.Lock()
+func (s *Subnet) GetRandomAddress(poolName, podName, nicName string, mac *string, skippedAddrs []string, checkConflict bool) (IP, IP, string, error) {
+	s.mutex.Lock()
 	defer func() {
-		subnet.pushPodNic(podName, nicName)
-		subnet.mutex.Unlock()
+		s.pushPodNic(podName, nicName)
+		s.mutex.Unlock()
 	}()
 
-	if subnet.Protocol == kubeovnv1.ProtocolDual {
-		return subnet.getDualRandomAddress(poolName, podName, nicName, mac, skippedAddrs, checkConflict)
-	} else if subnet.Protocol == kubeovnv1.ProtocolIPv4 {
-		return subnet.getV4RandomAddress(poolName, podName, nicName, mac, skippedAddrs, checkConflict)
-	} else {
-		return subnet.getV6RandomAddress(poolName, podName, nicName, mac, skippedAddrs, checkConflict)
+	switch s.Protocol {
+	case kubeovnv1.ProtocolDual:
+		return s.getDualRandomAddress(poolName, podName, nicName, mac, skippedAddrs, checkConflict)
+	case kubeovnv1.ProtocolIPv4:
+		return s.getV4RandomAddress(poolName, podName, nicName, mac, skippedAddrs, checkConflict)
+	default:
+		return s.getV6RandomAddress(poolName, podName, nicName, mac, skippedAddrs, checkConflict)
 	}
 }
 
-func (subnet *Subnet) getDualRandomAddress(poolName, podName, nicName string, mac *string, skippedAddrs []string, checkConflict bool) (IP, IP, string, error) {
-	v4IP, _, _, err := subnet.getV4RandomAddress(poolName, podName, nicName, mac, skippedAddrs, checkConflict)
+func (s *Subnet) getDualRandomAddress(poolName, podName, nicName string, mac *string, skippedAddrs []string, checkConflict bool) (IP, IP, string, error) {
+	v4IP, _, _, err := s.getV4RandomAddress(poolName, podName, nicName, mac, skippedAddrs, checkConflict)
 	if err != nil {
 		return nil, nil, "", err
 	}
-	_, v6IP, macStr, err := subnet.getV6RandomAddress(poolName, podName, nicName, mac, skippedAddrs, checkConflict)
+	_, v6IP, macStr, err := s.getV6RandomAddress(poolName, podName, nicName, mac, skippedAddrs, checkConflict)
 	if err != nil {
 		return nil, nil, "", err
 	}
 
 	// allocated IPv4 address may be released in getV6RandomAddress()
-	if !subnet.V4NicToIP[nicName].Equal(v4IP) {
-		v4IP, _, _, _ = subnet.getV4RandomAddress(poolName, podName, nicName, mac, skippedAddrs, checkConflict)
+	if !s.V4NicToIP[nicName].Equal(v4IP) {
+		v4IP, _, _, _ = s.getV4RandomAddress(poolName, podName, nicName, mac, skippedAddrs, checkConflict)
 	}
 
 	return v4IP, v6IP, macStr, nil
 }
 
-func (subnet *Subnet) getV4RandomAddress(ippoolName, podName, nicName string, mac *string, skippedAddrs []string, checkConflict bool) (IP, IP, string, error) {
+func (s *Subnet) getV4RandomAddress(ippoolName, podName, nicName string, mac *string, skippedAddrs []string, checkConflict bool) (IP, IP, string, error) {
 	// After 'macAdd' introduced to support only static mac address, pod restart will run into error mac AddressConflict
 	// controller will re-enqueue the new pod then wait for old pod deleted and address released.
 	// here will return only if both ip and mac exist, otherwise only ip without mac returned will trigger CreatePort error.
-	if subnet.V4NicToIP[nicName] != nil && subnet.NicToMac[nicName] != "" {
-		if !util.ContainsString(skippedAddrs, subnet.V4NicToIP[nicName].String()) {
-			return subnet.V4NicToIP[nicName], nil, subnet.NicToMac[nicName], nil
+	if s.V4NicToIP[nicName] != nil && s.NicToMac[nicName] != "" {
+		if !util.ContainsString(skippedAddrs, s.V4NicToIP[nicName].String()) {
+			return s.V4NicToIP[nicName], nil, s.NicToMac[nicName], nil
 		}
-		subnet.releaseAddr(podName, nicName)
+		s.releaseAddr(podName, nicName)
 	}
 
-	pool := subnet.IPPools[ippoolName]
+	pool := s.IPPools[ippoolName]
 	if pool == nil {
 		return nil, nil, "", ErrNoAvailable
 	}
@@ -240,35 +242,34 @@ func (subnet *Subnet) getV4RandomAddress(ippoolName, podName, nicName string, ma
 
 	pool.V4Available.Remove(ip)
 	pool.V4Using.Add(ip)
-	subnet.V4Free.Remove(ip)
-	subnet.V4Available.Remove(ip)
-	subnet.V4Using.Add(ip)
+	s.V4Free.Remove(ip)
+	s.V4Available.Remove(ip)
+	s.V4Using.Add(ip)
 
-	subnet.V4NicToIP[nicName] = ip
-	subnet.V4IPToPod[ip.String()] = podName
-	subnet.pushPodNic(podName, nicName)
+	s.V4NicToIP[nicName] = ip
+	s.V4IPToPod[ip.String()] = podName
+	s.pushPodNic(podName, nicName)
 	if mac == nil {
-		return ip, nil, subnet.GetRandomMac(podName, nicName), nil
-	} else {
-		if err := subnet.GetStaticMac(podName, nicName, *mac, checkConflict); err != nil {
-			return nil, nil, "", err
-		}
-		return ip, nil, *mac, nil
+		return ip, nil, s.GetRandomMac(podName, nicName), nil
 	}
+	if err := s.GetStaticMac(podName, nicName, *mac, checkConflict); err != nil {
+		return nil, nil, "", err
+	}
+	return ip, nil, *mac, nil
 }
 
-func (subnet *Subnet) getV6RandomAddress(ippoolName, podName, nicName string, mac *string, skippedAddrs []string, checkConflict bool) (IP, IP, string, error) {
+func (s *Subnet) getV6RandomAddress(ippoolName, podName, nicName string, mac *string, skippedAddrs []string, checkConflict bool) (IP, IP, string, error) {
 	// After 'macAdd' introduced to support only static mac address, pod restart will run into error mac AddressConflict
 	// controller will re-enqueue the new pod then wait for old pod deleted and address released.
 	// here will return only if both ip and mac exist, otherwise only ip without mac returned will trigger CreatePort error.
-	if subnet.V6NicToIP[nicName] != nil && subnet.NicToMac[nicName] != "" {
-		if !util.ContainsString(skippedAddrs, subnet.V6NicToIP[nicName].String()) {
-			return nil, subnet.V6NicToIP[nicName], subnet.NicToMac[nicName], nil
+	if s.V6NicToIP[nicName] != nil && s.NicToMac[nicName] != "" {
+		if !util.ContainsString(skippedAddrs, s.V6NicToIP[nicName].String()) {
+			return nil, s.V6NicToIP[nicName], s.NicToMac[nicName], nil
 		}
-		subnet.releaseAddr(podName, nicName)
+		s.releaseAddr(podName, nicName)
 	}
 
-	pool := subnet.IPPools[ippoolName]
+	pool := s.IPPools[ippoolName]
 	if pool == nil {
 		return nil, nil, "", ErrNoAvailable
 	}
@@ -294,43 +295,42 @@ func (subnet *Subnet) getV6RandomAddress(ippoolName, podName, nicName string, ma
 
 	pool.V6Available.Remove(ip)
 	pool.V6Using.Add(ip)
-	subnet.V6Free.Remove(ip)
-	subnet.V6Available.Remove(ip)
-	subnet.V6Using.Add(ip)
+	s.V6Free.Remove(ip)
+	s.V6Available.Remove(ip)
+	s.V6Using.Add(ip)
 
-	subnet.V6NicToIP[nicName] = ip
-	subnet.V6IPToPod[ip.String()] = podName
-	subnet.pushPodNic(podName, nicName)
+	s.V6NicToIP[nicName] = ip
+	s.V6IPToPod[ip.String()] = podName
+	s.pushPodNic(podName, nicName)
 	if mac == nil {
-		return nil, ip, subnet.GetRandomMac(podName, nicName), nil
-	} else {
-		if err := subnet.GetStaticMac(podName, nicName, *mac, checkConflict); err != nil {
-			return nil, nil, "", err
-		}
-		return nil, ip, *mac, nil
+		return nil, ip, s.GetRandomMac(podName, nicName), nil
 	}
+	if err := s.GetStaticMac(podName, nicName, *mac, checkConflict); err != nil {
+		return nil, nil, "", err
+	}
+	return nil, ip, *mac, nil
 }
 
-func (subnet *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac *string, force bool, checkConflict bool) (IP, string, error) {
+func (s *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac *string, force bool, checkConflict bool) (IP, string, error) {
 	var v4, v6 bool
 	isAllocated := false
-	subnet.mutex.Lock()
-	defer subnet.mutex.Unlock()
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
 
 	if ip.To4() != nil {
-		v4 = subnet.V4CIDR != nil
+		v4 = s.V4CIDR != nil
 	} else {
-		v6 = subnet.V6CIDR != nil
+		v6 = s.V6CIDR != nil
 	}
-	if v4 && !subnet.V4CIDR.Contains(net.IP(ip)) {
+	if v4 && !s.V4CIDR.Contains(net.IP(ip)) {
 		return ip, "", ErrOutOfRange
 	}
-	if v6 && !subnet.V6CIDR.Contains(net.IP(ip)) {
+	if v6 && !s.V6CIDR.Contains(net.IP(ip)) {
 		return ip, "", ErrOutOfRange
 	}
 
 	var pool *IPPool
-	for _, p := range subnet.IPPools {
+	for _, p := range s.IPPools {
 		if v4 && p.V4IPs.Contains(ip) {
 			pool = p
 			break
@@ -342,17 +342,17 @@ func (subnet *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac *stri
 	}
 
 	defer func() {
-		subnet.pushPodNic(podName, nicName)
+		s.pushPodNic(podName, nicName)
 		if isAllocated {
 			if v4 {
-				subnet.V4Available.Remove(ip)
-				subnet.V4Using.Add(ip)
+				s.V4Available.Remove(ip)
+				s.V4Using.Add(ip)
 				pool.V4Available.Remove(ip)
 				pool.V4Using.Add(ip)
 			}
 			if v6 {
-				subnet.V6Available.Remove(ip)
-				subnet.V6Using.Add(ip)
+				s.V6Available.Remove(ip)
+				s.V6Using.Add(ip)
 				pool.V6Available.Remove(ip)
 				pool.V6Using.Add(ip)
 			}
@@ -361,25 +361,25 @@ func (subnet *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac *stri
 
 	var macStr string
 	if mac == nil {
-		if m, ok := subnet.NicToMac[nicName]; ok {
+		if m, ok := s.NicToMac[nicName]; ok {
 			macStr = m
 		} else {
-			macStr = subnet.GetRandomMac(podName, nicName)
+			macStr = s.GetRandomMac(podName, nicName)
 		}
 	} else {
-		if err := subnet.GetStaticMac(podName, nicName, *mac, checkConflict); err != nil {
+		if err := s.GetStaticMac(podName, nicName, *mac, checkConflict); err != nil {
 			return ip, macStr, err
 		}
 		macStr = *mac
 	}
 
 	if v4 {
-		if existPod, ok := subnet.V4IPToPod[ip.String()]; ok {
+		if existPod, ok := s.V4IPToPod[ip.String()]; ok {
 			pods := strings.Split(existPod, ",")
 			if !util.ContainsString(pods, podName) {
 				if !checkConflict {
-					subnet.V4NicToIP[nicName] = ip
-					subnet.V4IPToPod[ip.String()] = fmt.Sprintf("%s,%s", subnet.V4IPToPod[ip.String()], podName)
+					s.V4NicToIP[nicName] = ip
+					s.V4IPToPod[ip.String()] = fmt.Sprintf("%s,%s", s.V4IPToPod[ip.String()], podName)
 					return ip, macStr, nil
 				}
 				klog.Errorf("ip %s has been allocated to %v", ip.String(), pods)
@@ -391,30 +391,30 @@ func (subnet *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac *stri
 		}
 
 		if pool.V4Reserved.Contains(ip) {
-			subnet.V4NicToIP[nicName] = ip
-			subnet.V4IPToPod[ip.String()] = podName
+			s.V4NicToIP[nicName] = ip
+			s.V4IPToPod[ip.String()] = podName
 			return ip, macStr, nil
 		}
 
 		if pool.V4Free.Remove(ip) {
-			subnet.V4Free.Remove(ip)
-			subnet.V4NicToIP[nicName] = ip
-			subnet.V4IPToPod[ip.String()] = podName
+			s.V4Free.Remove(ip)
+			s.V4NicToIP[nicName] = ip
+			s.V4IPToPod[ip.String()] = podName
 			isAllocated = true
 			return ip, macStr, nil
 		} else if pool.V4Released.Remove(ip) {
-			subnet.V4NicToIP[nicName] = ip
-			subnet.V4IPToPod[ip.String()] = podName
+			s.V4NicToIP[nicName] = ip
+			s.V4IPToPod[ip.String()] = podName
 			isAllocated = true
 			return ip, macStr, nil
 		}
 	} else if v6 {
-		if existPod, ok := subnet.V6IPToPod[ip.String()]; ok {
+		if existPod, ok := s.V6IPToPod[ip.String()]; ok {
 			pods := strings.Split(existPod, ",")
 			if !util.ContainsString(pods, podName) {
 				if !checkConflict {
-					subnet.V6NicToIP[nicName] = ip
-					subnet.V6IPToPod[ip.String()] = fmt.Sprintf("%s,%s", subnet.V6IPToPod[ip.String()], podName)
+					s.V6NicToIP[nicName] = ip
+					s.V6IPToPod[ip.String()] = fmt.Sprintf("%s,%s", s.V6IPToPod[ip.String()], podName)
 					return ip, macStr, nil
 				}
 				klog.Errorf("ip %s has been allocated to %v", ip.String(), pods)
@@ -426,20 +426,20 @@ func (subnet *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac *stri
 		}
 
 		if pool.V6Reserved.Contains(ip) {
-			subnet.V6NicToIP[nicName] = ip
-			subnet.V6IPToPod[ip.String()] = podName
+			s.V6NicToIP[nicName] = ip
+			s.V6IPToPod[ip.String()] = podName
 			return ip, macStr, nil
 		}
 
 		if pool.V6Free.Remove(ip) {
-			subnet.V6Free.Remove(ip)
-			subnet.V6NicToIP[nicName] = ip
-			subnet.V6IPToPod[ip.String()] = podName
+			s.V6Free.Remove(ip)
+			s.V6NicToIP[nicName] = ip
+			s.V6IPToPod[ip.String()] = podName
 			isAllocated = true
 			return ip, macStr, nil
 		} else if pool.V6Released.Remove(ip) {
-			subnet.V6NicToIP[nicName] = ip
-			subnet.V6IPToPod[ip.String()] = podName
+			s.V6NicToIP[nicName] = ip
+			s.V6IPToPod[ip.String()] = podName
 			isAllocated = true
 			return ip, macStr, nil
 		}
@@ -447,43 +447,43 @@ func (subnet *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac *stri
 	return ip, macStr, ErrNoAvailable
 }
 
-func (subnet *Subnet) releaseAddr(podName, nicName string) {
+func (s *Subnet) releaseAddr(podName, nicName string) {
 	var ip IP
 	var mac string
 	var ok, changed bool
-	if ip, ok = subnet.V4NicToIP[nicName]; ok {
-		oldPods := strings.Split(subnet.V4IPToPod[ip.String()], ",")
+	if ip, ok = s.V4NicToIP[nicName]; ok {
+		oldPods := strings.Split(s.V4IPToPod[ip.String()], ",")
 		if len(oldPods) > 1 {
 			newPods := util.RemoveString(oldPods, podName)
-			subnet.V4IPToPod[ip.String()] = strings.Join(newPods, ",")
+			s.V4IPToPod[ip.String()] = strings.Join(newPods, ",")
 		} else {
-			delete(subnet.V4NicToIP, nicName)
-			delete(subnet.V4IPToPod, ip.String())
-			if mac, ok = subnet.NicToMac[nicName]; ok {
-				delete(subnet.NicToMac, nicName)
-				delete(subnet.MacToPod, mac)
+			delete(s.V4NicToIP, nicName)
+			delete(s.V4IPToPod, ip.String())
+			if mac, ok = s.NicToMac[nicName]; ok {
+				delete(s.NicToMac, nicName)
+				delete(s.MacToPod, mac)
 			}
 
 			// When CIDR changed, do not relocate ip to CIDR list
-			if !subnet.V4CIDR.Contains(net.IP(ip)) {
+			if !s.V4CIDR.Contains(net.IP(ip)) {
 				// Continue to release IPv6 address
-				klog.Infof("release v4 %s mac %s from subnet %s for %s, ignore ip", ip, mac, subnet.Name, podName)
+				klog.Infof("release v4 %s mac %s from subnet %s for %s, ignore ip", ip, mac, s.Name, podName)
 				changed = true
 			}
 
-			if subnet.V4Reserved.Contains(ip) {
-				klog.Infof("release v4 %s mac %s from subnet %s for %s, ip is in reserved list", ip, mac, subnet.Name, podName)
+			if s.V4Reserved.Contains(ip) {
+				klog.Infof("release v4 %s mac %s from subnet %s for %s, ip is in reserved list", ip, mac, s.Name, podName)
 				changed = true
 			}
 
-			subnet.V4Available.Add(ip)
-			subnet.V4Using.Remove(ip)
-			for _, pool := range subnet.IPPools {
+			s.V4Available.Add(ip)
+			s.V4Using.Remove(ip)
+			for _, pool := range s.IPPools {
 				if pool.V4Using.Remove(ip) {
 					pool.V4Available.Add(ip)
 					if !changed {
 						if pool.V4Released.Add(ip) {
-							klog.Infof("release v4 %s mac %s from subnet %s for %s, add ip to released list", ip, mac, subnet.Name, podName)
+							klog.Infof("release v4 %s mac %s from subnet %s for %s, add ip to released list", ip, mac, s.Name, podName)
 						}
 					}
 					break
@@ -491,38 +491,38 @@ func (subnet *Subnet) releaseAddr(podName, nicName string) {
 			}
 		}
 	}
-	if ip, ok = subnet.V6NicToIP[nicName]; ok {
-		oldPods := strings.Split(subnet.V6IPToPod[ip.String()], ",")
+	if ip, ok = s.V6NicToIP[nicName]; ok {
+		oldPods := strings.Split(s.V6IPToPod[ip.String()], ",")
 		if len(oldPods) > 1 {
 			newPods := util.RemoveString(oldPods, podName)
-			subnet.V6IPToPod[ip.String()] = strings.Join(newPods, ",")
+			s.V6IPToPod[ip.String()] = strings.Join(newPods, ",")
 		} else {
-			delete(subnet.V6NicToIP, nicName)
-			delete(subnet.V6IPToPod, ip.String())
-			if mac, ok = subnet.NicToMac[nicName]; ok {
-				delete(subnet.NicToMac, nicName)
-				delete(subnet.MacToPod, mac)
+			delete(s.V6NicToIP, nicName)
+			delete(s.V6IPToPod, ip.String())
+			if mac, ok = s.NicToMac[nicName]; ok {
+				delete(s.NicToMac, nicName)
+				delete(s.MacToPod, mac)
 			}
 			changed = false
 			// When CIDR changed, do not relocate ip to CIDR list
-			if !subnet.V6CIDR.Contains(net.IP(ip)) {
-				klog.Infof("release v6 %s mac %s from subnet %s for %s, ignore ip", ip, mac, subnet.Name, podName)
+			if !s.V6CIDR.Contains(net.IP(ip)) {
+				klog.Infof("release v6 %s mac %s from subnet %s for %s, ignore ip", ip, mac, s.Name, podName)
 				changed = true
 			}
 
-			if subnet.V6Reserved.Contains(ip) {
-				klog.Infof("release v6 %s mac %s from subnet %s for %s, ip is in reserved list", ip, mac, subnet.Name, podName)
+			if s.V6Reserved.Contains(ip) {
+				klog.Infof("release v6 %s mac %s from subnet %s for %s, ip is in reserved list", ip, mac, s.Name, podName)
 				changed = true
 			}
 
-			subnet.V6Available.Add(ip)
-			subnet.V6Using.Remove(ip)
-			for _, pool := range subnet.IPPools {
+			s.V6Available.Add(ip)
+			s.V6Using.Remove(ip)
+			for _, pool := range s.IPPools {
 				if pool.V6Using.Remove(ip) {
 					pool.V6Available.Add(ip)
 					if !changed {
 						if pool.V6Released.Add(ip) {
-							klog.Infof("release v6 %s mac %s from subnet %s for %s, add ip to released list", ip, mac, subnet.Name, podName)
+							klog.Infof("release v6 %s mac %s from subnet %s for %s, add ip to released list", ip, mac, s.Name, podName)
 						}
 					}
 					break
@@ -532,58 +532,59 @@ func (subnet *Subnet) releaseAddr(podName, nicName string) {
 	}
 }
 
-func (subnet *Subnet) ReleaseAddress(podName string) {
-	subnet.mutex.Lock()
-	defer subnet.mutex.Unlock()
-	for _, nicName := range subnet.PodToNicList[podName] {
-		subnet.releaseAddr(podName, nicName)
-		subnet.popPodNic(podName, nicName)
+func (s *Subnet) ReleaseAddress(podName string) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	for _, nicName := range s.PodToNicList[podName] {
+		s.releaseAddr(podName, nicName)
+		s.popPodNic(podName, nicName)
 	}
 }
 
-func (subnet *Subnet) ReleaseAddressWithNicName(podName, nicName string) {
-	subnet.mutex.Lock()
-	defer subnet.mutex.Unlock()
+func (s *Subnet) ReleaseAddressWithNicName(podName, nicName string) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
 
-	subnet.releaseAddr(podName, nicName)
-	subnet.popPodNic(podName, nicName)
+	s.releaseAddr(podName, nicName)
+	s.popPodNic(podName, nicName)
 }
 
-func (subnet *Subnet) ContainAddress(address IP) bool {
-	subnet.mutex.RLock()
-	defer subnet.mutex.RUnlock()
+func (s *Subnet) ContainAddress(address IP) bool {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
 
-	if _, ok := subnet.V4IPToPod[address.String()]; ok {
+	if _, ok := s.V4IPToPod[address.String()]; ok {
 		return true
-	} else if _, ok := subnet.V6IPToPod[address.String()]; ok {
+	} else if _, ok := s.V6IPToPod[address.String()]; ok {
 		return true
 	}
 	return false
 }
 
 // This func is only called in ipam.GetPodAddress, move mutex to caller
-func (subnet *Subnet) GetPodAddress(podName, nicName string) (IP, IP, string, string) {
-	if subnet.Protocol == kubeovnv1.ProtocolIPv4 {
-		ip, mac := subnet.V4NicToIP[nicName], subnet.NicToMac[nicName]
+func (s *Subnet) GetPodAddress(podName, nicName string) (IP, IP, string, string) {
+	switch s.Protocol {
+	case kubeovnv1.ProtocolIPv4:
+		ip, mac := s.V4NicToIP[nicName], s.NicToMac[nicName]
 		return ip, nil, mac, kubeovnv1.ProtocolIPv4
-	} else if subnet.Protocol == kubeovnv1.ProtocolIPv6 {
-		ip, mac := subnet.V6NicToIP[nicName], subnet.NicToMac[nicName]
+	case kubeovnv1.ProtocolIPv6:
+		ip, mac := s.V6NicToIP[nicName], s.NicToMac[nicName]
 		return nil, ip, mac, kubeovnv1.ProtocolIPv6
-	} else {
-		v4IP, v6IP, mac := subnet.V4NicToIP[nicName], subnet.V6NicToIP[nicName], subnet.NicToMac[nicName]
+	default:
+		v4IP, v6IP, mac := s.V4NicToIP[nicName], s.V6NicToIP[nicName], s.NicToMac[nicName]
 		return v4IP, v6IP, mac, kubeovnv1.ProtocolDual
 	}
 }
 
-func (subnet *Subnet) isIPAssignedToOtherPod(ip, podName string) (string, bool) {
-	if existPod, ok := subnet.V4IPToPod[ip]; ok {
+func (s *Subnet) isIPAssignedToOtherPod(ip, podName string) (string, bool) {
+	if existPod, ok := s.V4IPToPod[ip]; ok {
 		klog.V(4).Infof("v4 check ip assigned, existPod %s, podName %s", existPod, podName)
 		pods := strings.Split(existPod, ",")
 		if !util.ContainsString(pods, podName) {
 			return existPod, true
 		}
 	}
-	if existPod, ok := subnet.V6IPToPod[ip]; ok {
+	if existPod, ok := s.V6IPToPod[ip]; ok {
 		klog.V(4).Infof("v6 check ip assigned, existPod %s, podName %s", existPod, podName)
 		pods := strings.Split(existPod, ",")
 		if !util.ContainsString(pods, podName) {

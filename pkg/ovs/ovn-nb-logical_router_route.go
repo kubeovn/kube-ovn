@@ -60,7 +60,7 @@ func (c *ovnNbClient) CreateLogicalRouterStaticRoutes(lrName string, routes ...*
 }
 
 // AddLogicalRouterStaticRoute add a logical router static route
-func (c *ovnNbClient) AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix string, bfdId *string, nexthops ...string) error {
+func (c *ovnNbClient) AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix string, bfdID *string, nexthops ...string) error {
 	if len(policy) == 0 {
 		policy = ovnnb.LogicalRouterStaticRoutePolicyDstIP
 	}
@@ -77,7 +77,7 @@ func (c *ovnNbClient) AddLogicalRouterStaticRoute(lrName, routeTable, policy, ip
 		if util.ContainsString(nexthops, route.Nexthop) {
 			existing.Add(route.Nexthop)
 		} else {
-			if route.BFD != nil && bfdId != nil && *route.BFD != *bfdId {
+			if route.BFD != nil && bfdID != nil && *route.BFD != *bfdID {
 				continue
 			}
 			toDel = append(toDel, route.UUID)
@@ -86,7 +86,7 @@ func (c *ovnNbClient) AddLogicalRouterStaticRoute(lrName, routeTable, policy, ip
 	var toAdd []*ovnnb.LogicalRouterStaticRoute
 	for _, nexthop := range nexthops {
 		if !existing.Has(nexthop) {
-			route, err := c.newLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nexthop, bfdId)
+			route, err := c.newLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nexthop, bfdID)
 			if err != nil {
 				klog.Error(err)
 				return err
@@ -288,7 +288,7 @@ func (c *ovnNbClient) LogicalRouterStaticRouteExists(lrName, routeTable, policy,
 }
 
 // newLogicalRouterStaticRoute return logical router static route with basic information
-func (c *ovnNbClient) newLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nexthop string, bfdId *string, options ...func(route *ovnnb.LogicalRouterStaticRoute)) (*ovnnb.LogicalRouterStaticRoute, error) {
+func (c *ovnNbClient) newLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nexthop string, bfdID *string, options ...func(route *ovnnb.LogicalRouterStaticRoute)) (*ovnnb.LogicalRouterStaticRoute, error) {
 	if len(lrName) == 0 {
 		return nil, fmt.Errorf("the logical router name is required")
 	}
@@ -318,8 +318,8 @@ func (c *ovnNbClient) newLogicalRouterStaticRoute(lrName, routeTable, policy, ip
 		option(route)
 	}
 
-	if bfdId != nil {
-		route.BFD = bfdId
+	if bfdID != nil {
+		route.BFD = bfdID
 		if route.Options == nil {
 			route.Options = make(map[string]string)
 		}

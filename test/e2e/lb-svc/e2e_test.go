@@ -191,7 +191,7 @@ var _ = framework.SerialDescribe("[group:lb-svc]", func() {
 
 	framework.ConformanceIt("should allocate static external IP for service", func() {
 		ginkgo.By("Creating service " + serviceName)
-		base := util.Ip2BigInt(gateway)
+		base := util.IP2BigInt(gateway)
 		lbIP := util.BigInt2Ip(base.Add(base, big.NewInt(50+rand.Int63n(50))))
 		ports := []corev1.ServicePort{{
 			Name:       "tcp",

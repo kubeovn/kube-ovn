@@ -18,7 +18,7 @@ func (c *ovnNbClient) CreateLogicalSwitch(lsName, lrName, cidrBlock, gateway str
 	lspName := fmt.Sprintf("%s-%s", lsName, lrName)
 	lrpName := fmt.Sprintf("%s-%s", lrName, lsName)
 
-	networks := util.GetIpAddrWithMask(gateway, cidrBlock)
+	networks := util.GetIPAddrWithMask(gateway, cidrBlock)
 
 	exist, err := c.LogicalSwitchExists(lsName)
 	if err != nil {
@@ -344,8 +344,8 @@ func (c *ovnNbClient) LogicalSwitchUpdateLoadBalancerOp(lsName string, lbUUIDs [
 	return c.LogicalSwitchOp(lsName, mutation)
 }
 
-// logicalSwitchUpdateAclOp create operations add acl to or delete acl from logical switch
-func (c *ovnNbClient) logicalSwitchUpdateAclOp(lsName string, aclUUIDs []string, op ovsdb.Mutator) ([]ovsdb.Operation, error) {
+// logicalSwitchUpdateACLOp create operations add acl to or delete acl from logical switch
+func (c *ovnNbClient) logicalSwitchUpdateACLOp(lsName string, aclUUIDs []string, op ovsdb.Mutator) ([]ovsdb.Operation, error) {
 	if len(aclUUIDs) == 0 {
 		return nil, nil
 	}

@@ -95,8 +95,8 @@ var _ = framework.OrderedDescribe("[group:node]", func() {
 			})
 			framework.ExpectNoError(err)
 			framework.ExpectHaveLen(links, 1)
-			framework.Logf(util.GetIpAddrWithMask(node.Annotations[util.IPAddressAnnotation], join.Spec.CIDRBlock))
-			ips := strings.Split(util.GetIpAddrWithMask(node.Annotations[util.IPAddressAnnotation], join.Spec.CIDRBlock), ",")
+			framework.Logf(util.GetIPAddrWithMask(node.Annotations[util.IPAddressAnnotation], join.Spec.CIDRBlock))
+			ips := strings.Split(util.GetIPAddrWithMask(node.Annotations[util.IPAddressAnnotation], join.Spec.CIDRBlock), ",")
 			framework.ExpectConsistOf(links[0].NonLinkLocalAddresses(), ips)
 
 			err = podClient.Delete(podName)

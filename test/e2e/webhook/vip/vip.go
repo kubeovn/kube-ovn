@@ -79,7 +79,7 @@ var _ = framework.Describe("[group:webhook-vip]", func() {
 
 		ginkgo.By("validate ip not in subnet cidr")
 		vip.Spec.V6ip = ""
-		vip.Spec.V4ip = util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(lastIPv4), big.NewInt(10)))
+		vip.Spec.V4ip = util.BigInt2Ip(big.NewInt(0).Add(util.IP2BigInt(lastIPv4), big.NewInt(10)))
 		_, err = vipClient.VipInterface.Create(context.TODO(), vip, metav1.CreateOptions{})
 		framework.ExpectError(err, "%s is not in the range of subnet %s", vip.Spec.V4ip, vip.Spec.Subnet)
 	})

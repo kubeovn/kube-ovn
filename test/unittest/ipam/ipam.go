@@ -90,7 +90,7 @@ var _ = Describe("[IPAM]", func() {
 
 				addresses := im.GetPodAddress(pod2)
 				Expect(addresses).To(HaveLen(2))
-				Expect([]string{addresses[0].Ip, addresses[1].Ip}).To(Equal([]string{freeIP2, freeIP3}))
+				Expect([]string{addresses[0].IP, addresses[1].IP}).To(Equal([]string{freeIP2, freeIP3}))
 				Expect(im.ContainAddress(freeIP2)).Should(BeTrue())
 				Expect(im.ContainAddress(freeIP3)).Should(BeTrue())
 
@@ -245,7 +245,7 @@ var _ = Describe("[IPAM]", func() {
 
 				addresses := im.GetPodAddress(pod2)
 				Expect(addresses).To(HaveLen(2))
-				Expect([]string{addresses[0].Ip, addresses[1].Ip}).To(Equal([]string{freeIP2, freeIP3}))
+				Expect([]string{addresses[0].IP, addresses[1].IP}).To(Equal([]string{freeIP2, freeIP3}))
 				Expect(im.ContainAddress(freeIP2)).Should(BeTrue())
 				Expect(im.ContainAddress(freeIP3)).Should(BeTrue())
 
@@ -407,7 +407,7 @@ var _ = Describe("[IPAM]", func() {
 
 				addresses := im.GetPodAddress(pod2)
 				Expect(addresses).To(HaveLen(4))
-				Expect([]string{addresses[0].Ip, addresses[1].Ip, addresses[2].Ip, addresses[3].Ip}).
+				Expect([]string{addresses[0].IP, addresses[1].IP, addresses[2].IP, addresses[3].IP}).
 					To(Equal([]string{freeIP42, freeIP62, freeIP43, freeIP63}))
 				Expect(im.ContainAddress(freeIP42)).Should(BeTrue())
 				Expect(im.ContainAddress(freeIP43)).Should(BeTrue())

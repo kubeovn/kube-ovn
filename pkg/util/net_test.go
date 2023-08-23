@@ -137,7 +137,7 @@ func TestIp2BigInt(t *testing.T) {
 	}
 	for _, c := range tests {
 		t.Run(c.name, func(t *testing.T) {
-			if ans := Ip2BigInt(c.ip); !reflect.DeepEqual(ans, c.expect) {
+			if ans := IP2BigInt(c.ip); !reflect.DeepEqual(ans, c.expect) {
 				t.Errorf("%v expected %v, but %v got",
 					c.ip, c.expect, ans)
 			}
@@ -701,7 +701,7 @@ func TestGetStringIP(t *testing.T) {
 	}
 }
 
-func TestGetIpAddrWithMask(t *testing.T) {
+func TestGetIPAddrWithMask(t *testing.T) {
 	tests := []struct {
 		name string
 		ip   string
@@ -729,7 +729,7 @@ func TestGetIpAddrWithMask(t *testing.T) {
 	}
 	for _, c := range tests {
 		t.Run(c.name, func(t *testing.T) {
-			ans := GetIpAddrWithMask(c.ip, c.cidr)
+			ans := GetIPAddrWithMask(c.ip, c.cidr)
 			if c.want != ans {
 				t.Errorf("%v, %v expected %v, but %v got",
 					c.ip, c.cidr, c.want, ans)
@@ -738,7 +738,7 @@ func TestGetIpAddrWithMask(t *testing.T) {
 	}
 }
 
-func TestGetIpWithoutMask(t *testing.T) {
+func TestGetIPWithoutMask(t *testing.T) {
 	tests := []struct {
 		name string
 		cidr string
@@ -757,7 +757,7 @@ func TestGetIpWithoutMask(t *testing.T) {
 	}
 	for _, c := range tests {
 		t.Run(c.name, func(t *testing.T) {
-			ans := GetIpWithoutMask(c.cidr)
+			ans := GetIPWithoutMask(c.cidr)
 			if c.want != ans {
 				t.Errorf("%v expected %v, but %v got",
 					c.cidr, c.want, ans)
@@ -920,7 +920,7 @@ func TestCountIpNums(t *testing.T) {
 	}
 	for _, c := range tests {
 		t.Run(c.name, func(t *testing.T) {
-			ans := CountIpNums(c.excl)
+			ans := CountIPNums(c.excl)
 			if ans != c.want {
 				t.Errorf("%v expected %v but %v got",
 					c.excl, c.want, ans)

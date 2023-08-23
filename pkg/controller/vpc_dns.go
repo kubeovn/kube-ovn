@@ -506,9 +506,9 @@ func (c *Controller) checkOvnDefaultSpecProvider() error {
 }
 
 func (c *Controller) resyncVpcDnsConfig() {
-	cm, err := c.configMapsLister.ConfigMaps(c.config.PodNamespace).Get(util.VpcDnsConfig)
+	cm, err := c.configMapsLister.ConfigMaps(c.config.PodNamespace).Get(util.VpcDNSConfig)
 	if err != nil && !k8serrors.IsNotFound(err) {
-		klog.Errorf("failed to get %s, %v", util.VpcDnsConfig, err)
+		klog.Errorf("failed to get %s, %v", util.VpcDNSConfig, err)
 		return
 	}
 

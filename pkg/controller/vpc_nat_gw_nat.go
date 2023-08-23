@@ -30,15 +30,15 @@ func (c *Controller) enqueueAddIptablesFip(obj interface{}) {
 	c.addIptablesFipQueue.Add(key)
 }
 
-func (c *Controller) enqueueUpdateIptablesFip(old, new interface{}) {
+func (c *Controller) enqueueUpdateIptablesFip(oldObj, newObj interface{}) {
 	var key string
 	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(new); err != nil {
+	if key, err = cache.MetaNamespaceKeyFunc(newObj); err != nil {
 		utilruntime.HandleError(err)
 		return
 	}
-	oldFip := old.(*kubeovnv1.IptablesFIPRule)
-	newFip := new.(*kubeovnv1.IptablesFIPRule)
+	oldFip := oldObj.(*kubeovnv1.IptablesFIPRule)
+	newFip := newObj.(*kubeovnv1.IptablesFIPRule)
 	if !newFip.DeletionTimestamp.IsZero() {
 		klog.V(3).Infof("enqueue update to clean fip %s", key)
 		c.updateIptablesFipQueue.Add(key)

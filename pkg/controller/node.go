@@ -492,10 +492,10 @@ func (c *Controller) handleDeleteNode(key string) error {
 
 	addresses := c.ipam.GetPodAddress(portName)
 	for _, addr := range addresses {
-		if addr.Ip == "" {
+		if addr.IP == "" {
 			continue
 		}
-		if err := c.ovnNbClient.DeleteLogicalRouterPolicyByNexthop(c.config.ClusterRouter, util.NodeRouterPolicyPriority, addr.Ip); err != nil {
+		if err := c.ovnNbClient.DeleteLogicalRouterPolicyByNexthop(c.config.ClusterRouter, util.NodeRouterPolicyPriority, addr.IP); err != nil {
 			klog.Errorf("failed to delete router policy for node %s: %v", key, err)
 			return err
 		}
@@ -1204,7 +1204,7 @@ func (c *Controller) addPolicyRouteForLocalDnsCacheOnNode(nodePortName, nodeIP, 
 	match := fmt.Sprintf("ip%d.src == $%s && ip%d.dst == %s", af, pgAs, af, c.config.NodeLocalDnsIP)
 	action := ovnnb.LogicalRouterPolicyActionReroute
 	klog.Infof("add node local dns cache policy route for router: %s, match %s, action %s, nexthop %s, externalID %v", c.config.ClusterRouter, match, action, nodeIP, externalIDs)
-	if err := c.ovnNbClient.AddLogicalRouterPolicy(c.config.ClusterRouter, util.NodeLocalDnsPolicyPriority, match, action, []string{nodeIP}, externalIDs); err != nil {
+	if err := c.ovnNbClient.AddLogicalRouterPolicy(c.config.ClusterRouter, util.NodeLocalDNSPolicyPriority, match, action, []string{nodeIP}, externalIDs); err != nil {
 		klog.Errorf("failed to add logical router policy for node %s: %v", nodeName, err)
 		return err
 	}

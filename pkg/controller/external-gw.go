@@ -207,7 +207,7 @@ func (c *Controller) createDefaultVpcLrpEip(config map[string]string) (string, s
 			return "", "", err
 		}
 	}
-	v4ipCidr := util.GetIpAddrWithMask(v4ip, cachedSubnet.Spec.CIDRBlock)
+	v4ipCidr := util.GetIPAddrWithMask(v4ip, cachedSubnet.Spec.CIDRBlock)
 	return v4ipCidr, mac, nil
 }
 

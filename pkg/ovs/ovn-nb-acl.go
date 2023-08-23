@@ -18,8 +18,8 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-// UpdateIngressAclOps return operation that creates an ingress ACL
-func (c *ovnNbClient) UpdateIngressAclOps(pgName, asIngressName, asExceptName, protocol string, npp []netv1.NetworkPolicyPort, logEnable bool, namedPortMap map[string]*util.NamedPortInfo) ([]ovsdb.Operation, error) {
+// UpdateIngressACLOps return operation that creates an ingress ACL
+func (c *ovnNbClient) UpdateIngressACLOps(pgName, asIngressName, asExceptName, protocol string, npp []netv1.NetworkPolicyPort, logEnable bool, namedPortMap map[string]*util.NamedPortInfo) ([]ovsdb.Operation, error) {
 	acls := make([]*ovnnb.ACL, 0)
 
 	ipSuffix := "ip4"
@@ -28,7 +28,7 @@ func (c *ovnNbClient) UpdateIngressAclOps(pgName, asIngressName, asExceptName, p
 	}
 
 	/* default drop acl */
-	allIpMatch := NewAndAclMatch(
+	allIPMatch := NewAndAclMatch(
 		NewAclMatch("outport", "==", "@"+pgName, ""),
 		NewAclMatch(ipSuffix, "", "", ""),
 	)
@@ -39,22 +39,22 @@ func (c *ovnNbClient) UpdateIngressAclOps(pgName, asIngressName, asExceptName, p
 		}
 	}
 
-	defaultDropAcl, err := c.newAclWithoutCheck(pgName, ovnnb.ACLDirectionToLport, util.IngressDefaultDrop, allIpMatch.String(), ovnnb.ACLActionDrop, options)
+	defaultDropACL, err := c.newAclWithoutCheck(pgName, ovnnb.ACLDirectionToLport, util.IngressDefaultDrop, allIPMatch.String(), ovnnb.ACLActionDrop, options)
 	if err != nil {
 		return nil, fmt.Errorf("new default drop ingress acl for port group %s: %v", pgName, err)
 	}
 
-	acls = append(acls, defaultDropAcl)
+	acls = append(acls, defaultDropACL)
 
 	/* allow acl */
 	matches := newNetworkPolicyAclMatch(pgName, asIngressName, asExceptName, protocol, ovnnb.ACLDirectionToLport, npp, namedPortMap)
 	for _, m := range matches {
-		allowAcl, err := c.newAclWithoutCheck(pgName, ovnnb.ACLDirectionToLport, util.IngressAllowPriority, m, ovnnb.ACLActionAllowRelated)
+		allowACL, err := c.newAclWithoutCheck(pgName, ovnnb.ACLDirectionToLport, util.IngressAllowPriority, m, ovnnb.ACLActionAllowRelated)
 		if err != nil {
 			return nil, fmt.Errorf("new allow ingress acl for port group %s: %v", pgName, err)
 		}
 
-		acls = append(acls, allowAcl)
+		acls = append(acls, allowACL)
 	}
 
 	ops, err := c.CreateAclsOps(pgName, portGroupKey, acls...)
@@ -65,8 +65,8 @@ func (c *ovnNbClient) UpdateIngressAclOps(pgName, asIngressName, asExceptName, p
 	return ops, nil
 }
 
-// UpdateEgressAclOps return operation that creates an egress ACL
-func (c *ovnNbClient) UpdateEgressAclOps(pgName, asEgressName, asExceptName, protocol string, npp []netv1.NetworkPolicyPort, logEnable bool, namedPortMap map[string]*util.NamedPortInfo) ([]ovsdb.Operation, error) {
+// UpdateEgressACLOps return operation that creates an egress ACL
+func (c *ovnNbClient) UpdateEgressACLOps(pgName, asEgressName, asExceptName, protocol string, npp []netv1.NetworkPolicyPort, logEnable bool, namedPortMap map[string]*util.NamedPortInfo) ([]ovsdb.Operation, error) {
 	acls := make([]*ovnnb.ACL, 0)
 
 	ipSuffix := "ip4"
@@ -75,7 +75,7 @@ func (c *ovnNbClient) UpdateEgressAclOps(pgName, asEgressName, asExceptName, pro
 	}
 
 	/* default drop acl */
-	allIpMatch := NewAndAclMatch(
+	allIPMatch := NewAndAclMatch(
 		NewAclMatch("inport", "==", "@"+pgName, ""),
 		NewAclMatch(ipSuffix, "", "", ""),
 	)
@@ -91,18 +91,18 @@ func (c *ovnNbClient) UpdateEgressAclOps(pgName, asEgressName, asExceptName, pro
 		acl.Options["apply-after-lb"] = "true"
 	}
 
-	defaultDropAcl, err := c.newAclWithoutCheck(pgName, ovnnb.ACLDirectionFromLport, util.EgressDefaultDrop, allIpMatch.String(), ovnnb.ACLActionDrop, options)
+	defaultDropACL, err := c.newAclWithoutCheck(pgName, ovnnb.ACLDirectionFromLport, util.EgressDefaultDrop, allIPMatch.String(), ovnnb.ACLActionDrop, options)
 	if err != nil {
 		klog.Error(err)
 		return nil, fmt.Errorf("new default drop egress acl for port group %s: %v", pgName, err)
 	}
 
-	acls = append(acls, defaultDropAcl)
+	acls = append(acls, defaultDropACL)
 
 	/* allow acl */
 	matches := newNetworkPolicyAclMatch(pgName, asEgressName, asExceptName, protocol, ovnnb.ACLDirectionFromLport, npp, namedPortMap)
 	for _, m := range matches {
-		allowAcl, err := c.newAclWithoutCheck(pgName, ovnnb.ACLDirectionFromLport, util.EgressAllowPriority, m, ovnnb.ACLActionAllowRelated, func(acl *ovnnb.ACL) {
+		allowACL, err := c.newAclWithoutCheck(pgName, ovnnb.ACLDirectionFromLport, util.EgressAllowPriority, m, ovnnb.ACLActionAllowRelated, func(acl *ovnnb.ACL) {
 			if acl.Options == nil {
 				acl.Options = make(map[string]string)
 			}
@@ -113,7 +113,7 @@ func (c *ovnNbClient) UpdateEgressAclOps(pgName, asEgressName, asExceptName, pro
 			return nil, fmt.Errorf("new allow egress acl for port group %s: %v", pgName, err)
 		}
 
-		acls = append(acls, allowAcl)
+		acls = append(acls, allowACL)
 	}
 
 	ops, err := c.CreateAclsOps(pgName, portGroupKey, acls...)
@@ -158,13 +158,13 @@ func (c *ovnNbClient) CreateGatewayAcl(lsName, pgName, gateway string) error {
 			acl.Options["apply-after-lb"] = "true"
 		}
 
-		allowEgressAcl, err := c.newAcl(parentName, ovnnb.ACLDirectionFromLport, util.EgressAllowPriority, fmt.Sprintf("%s.dst == %s", ipSuffix, gw), ovnnb.ACLActionAllowStateless, options)
+		allowEgressACL, err := c.newAcl(parentName, ovnnb.ACLDirectionFromLport, util.EgressAllowPriority, fmt.Sprintf("%s.dst == %s", ipSuffix, gw), ovnnb.ACLActionAllowStateless, options)
 		if err != nil {
 			klog.Error(err)
 			return fmt.Errorf("new allow egress acl for %s: %v", parentName, err)
 		}
 
-		acls = append(acls, allowIngressAcl, allowEgressAcl)
+		acls = append(acls, allowIngressAcl, allowEgressACL)
 
 		if ipSuffix == "ip6" {
 			ndAcl, err := c.newAcl(parentName, ovnnb.ACLDirectionFromLport, util.EgressAllowPriority, "nd || nd_ra || nd_rs", ovnnb.ACLActionAllowStateless, options)
@@ -186,9 +186,9 @@ func (c *ovnNbClient) CreateGatewayAcl(lsName, pgName, gateway string) error {
 }
 
 // CreateNodeAcl create allow acl for node join ip
-func (c *ovnNbClient) CreateNodeAcl(pgName, nodeIpStr, joinIpStr string) error {
+func (c *ovnNbClient) CreateNodeAcl(pgName, nodeIPStr, joinIpStr string) error {
 	acls := make([]*ovnnb.ACL, 0)
-	nodeIPs := strings.Split(nodeIpStr, ",")
+	nodeIPs := strings.Split(nodeIPStr, ",")
 	for _, nodeIP := range nodeIPs {
 		protocol := util.CheckProtocol(nodeIP)
 		ipSuffix := "ip4"
@@ -210,13 +210,13 @@ func (c *ovnNbClient) CreateNodeAcl(pgName, nodeIpStr, joinIpStr string) error {
 			acl.Options["apply-after-lb"] = "true"
 		}
 
-		allowEgressAcl, err := c.newAcl(pgName, ovnnb.ACLDirectionFromLport, util.NodeAllowPriority, fmt.Sprintf("%s.dst == %s && %s.src == $%s", ipSuffix, nodeIP, ipSuffix, pgAs), ovnnb.ACLActionAllowStateless, options)
+		allowEgressACL, err := c.newAcl(pgName, ovnnb.ACLDirectionFromLport, util.NodeAllowPriority, fmt.Sprintf("%s.dst == %s && %s.src == $%s", ipSuffix, nodeIP, ipSuffix, pgAs), ovnnb.ACLActionAllowStateless, options)
 		if err != nil {
 			klog.Error(err)
 			return fmt.Errorf("new allow egress acl for port group %s: %v", pgName, err)
 		}
 
-		acls = append(acls, allowIngressAcl, allowEgressAcl)
+		acls = append(acls, allowIngressAcl, allowEgressACL)
 	}
 
 	for _, joinIp := range strings.Split(joinIpStr, ",") {
@@ -459,7 +459,7 @@ func (c *ovnNbClient) SetLogicalSwitchPrivate(lsName, cidrBlock, nodeSwitchCIDR 
 	acls := make([]*ovnnb.ACL, 0)
 
 	/* default drop acl */
-	allIpMatch := NewAclMatch("ip", "", "", "")
+	allIPMatch := NewAclMatch("ip", "", "", "")
 
 	options := func(acl *ovnnb.ACL) {
 		acl.Name = &lsName
@@ -467,13 +467,13 @@ func (c *ovnNbClient) SetLogicalSwitchPrivate(lsName, cidrBlock, nodeSwitchCIDR 
 		acl.Severity = &ovnnb.ACLSeverityWarning
 	}
 
-	defaultDropAcl, err := c.newAcl(lsName, ovnnb.ACLDirectionToLport, util.DefaultDropPriority, allIpMatch.String(), ovnnb.ACLActionDrop, options)
+	defaultDropACL, err := c.newAcl(lsName, ovnnb.ACLDirectionToLport, util.DefaultDropPriority, allIPMatch.String(), ovnnb.ACLActionDrop, options)
 	if err != nil {
 		klog.Error(err)
 		return fmt.Errorf("new default drop ingress acl for logical switch %s: %v", lsName, err)
 	}
 
-	acls = append(acls, defaultDropAcl)
+	acls = append(acls, defaultDropACL)
 
 	nodeSubnetAclFunc := func(protocol, ipSuffix string) error {
 		for _, nodeCidr := range strings.Split(nodeSwitchCIDR, ",") {
@@ -588,12 +588,12 @@ func (c *ovnNbClient) SetAclLog(pgName, protocol string, logEnable, isIngress bo
 	}
 
 	// match all traffic to or from pgName
-	allIpMatch := NewAndAclMatch(
+	allIPMatch := NewAndAclMatch(
 		NewAclMatch(portDirection, "==", "@"+pgName, ""),
 		NewAclMatch(ipSuffix, "", "", ""),
 	)
 
-	acl, err := c.GetAcl(pgName, direction, util.IngressDefaultDrop, allIpMatch.String(), true)
+	acl, err := c.GetAcl(pgName, direction, util.IngressDefaultDrop, allIPMatch.String(), true)
 	if err != nil {
 		klog.Error(err)
 		return err
@@ -687,7 +687,7 @@ func (c *ovnNbClient) DeleteAcl(parentName, parentType, direction, priority, mat
 			return fmt.Errorf("generate operations for deleting acl from port group %s: %v", parentName, err)
 		}
 	} else { // remove acl from logical switch
-		removeAclOp, err = c.logicalSwitchUpdateAclOp(parentName, []string{acl.UUID}, ovsdb.MutateOperationDelete)
+		removeAclOp, err = c.logicalSwitchUpdateACLOp(parentName, []string{acl.UUID}, ovsdb.MutateOperationDelete)
 		if err != nil {
 			klog.Error(err)
 			return fmt.Errorf("generate operations for deleting acl from logical switch %s: %v", parentName, err)
@@ -854,7 +854,7 @@ func (c *ovnNbClient) newSgRuleACL(sgName string, direction string, rule *kubeov
 	ipKey := ipSuffix + "." + srcOrDst
 
 	/* match all traffic to or from pgName */
-	allIpMatch := NewAndAclMatch(
+	allIPMatch := NewAndAclMatch(
 		NewAclMatch(portDirection, "==", "@"+pgName, ""),
 		NewAclMatch(ipSuffix, "", "", ""),
 	)
@@ -862,7 +862,7 @@ func (c *ovnNbClient) newSgRuleACL(sgName string, direction string, rule *kubeov
 	/* allow allowed ip traffic */
 	// type address
 	allowedIpMatch := NewAndAclMatch(
-		allIpMatch,
+		allIPMatch,
 		NewAclMatch(ipKey, "==", rule.RemoteAddress, ""),
 	)
 
@@ -873,7 +873,7 @@ func (c *ovnNbClient) newSgRuleACL(sgName string, direction string, rule *kubeov
 	}
 	if rule.RemoteType == kubeovnv1.SgRemoteTypeSg {
 		allowedIpMatch = NewAndAclMatch(
-			allIpMatch,
+			allIPMatch,
 			NewAclMatch(ipKey, "==", "$"+remotePgName, ""),
 		)
 	}
@@ -933,13 +933,13 @@ func newNetworkPolicyAclMatch(pgName, asAllowName, asExceptName, protocol, direc
 	ipKey := ipSuffix + "." + srcOrDst
 
 	// match all traffic to or from pgName
-	allIpMatch := NewAndAclMatch(
+	allIPMatch := NewAndAclMatch(
 		NewAclMatch(portDirection, "==", "@"+pgName, ""),
 		NewAclMatch("ip", "", "", ""),
 	)
 
 	allowedIpMatch := NewAndAclMatch(
-		allIpMatch,
+		allIPMatch,
 		NewAclMatch(ipKey, "==", "$"+asAllowName, ""),
 		NewAclMatch(ipKey, "!=", "$"+asExceptName, ""),
 	)
@@ -1077,7 +1077,7 @@ func (c *ovnNbClient) CreateAclsOps(parentName, parentType string, acls ...*ovnn
 			return nil, fmt.Errorf("generate operations for adding acls to port group %s: %v", parentName, err)
 		}
 	} else { // acl attach to logical switch
-		aclAddOp, err = c.logicalSwitchUpdateAclOp(parentName, aclUUIDs, ovsdb.MutateOperationInsert)
+		aclAddOp, err = c.logicalSwitchUpdateACLOp(parentName, aclUUIDs, ovsdb.MutateOperationInsert)
 		if err != nil {
 			klog.Error(err)
 			return nil, fmt.Errorf("generate operations for adding acls to logical switch %s: %v", parentName, err)
@@ -1122,7 +1122,7 @@ func (c *ovnNbClient) DeleteAclsOps(parentName, parentType string, direction str
 			return nil, fmt.Errorf("generate operations for deleting acls from port group %s: %v", parentName, err)
 		}
 	} else { // remove acl from logical switch
-		removeAclOp, err = c.logicalSwitchUpdateAclOp(parentName, aclUUIDs, ovsdb.MutateOperationDelete)
+		removeAclOp, err = c.logicalSwitchUpdateACLOp(parentName, aclUUIDs, ovsdb.MutateOperationDelete)
 		if err != nil {
 			klog.Error(err)
 			return nil, fmt.Errorf("generate operations for deleting acls from logical switch %s: %v", parentName, err)

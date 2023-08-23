@@ -41,7 +41,7 @@ func ValidateSubnet(subnet kubeovnv1.Subnet) error {
 					return fmt.Errorf("ip %s in exclude_ips is not a valid address", ip)
 				}
 			}
-			if Ip2BigInt(ips[0]).Cmp(Ip2BigInt(ips[1])) == 1 {
+			if IP2BigInt(ips[0]).Cmp(IP2BigInt(ips[1])) == 1 {
 				return fmt.Errorf("%s in excludeIps is not a valid ip range", ipr)
 			}
 		}
@@ -73,9 +73,9 @@ func ValidateSubnet(subnet kubeovnv1.Subnet) error {
 	}
 
 	if subnet.Spec.Vpc == DefaultVpc {
-		k8sApiServer := os.Getenv("KUBERNETES_SERVICE_HOST")
-		if k8sApiServer != "" && CIDRContainIP(subnet.Spec.CIDRBlock, k8sApiServer) {
-			return fmt.Errorf("subnet %s cidr %s conflicts with k8s apiserver svc ip %s", subnet.Name, subnet.Spec.CIDRBlock, k8sApiServer)
+		k8sAPIServer := os.Getenv("KUBERNETES_SERVICE_HOST")
+		if k8sAPIServer != "" && CIDRContainIP(subnet.Spec.CIDRBlock, k8sAPIServer) {
+			return fmt.Errorf("subnet %s cidr %s conflicts with k8s apiserver svc ip %s", subnet.Name, subnet.Spec.CIDRBlock, k8sAPIServer)
 		}
 	}
 

@@ -303,7 +303,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 						npp = npr.Ports
 					}
 
-					ops, err := c.ovnNbClient.UpdateIngressAclOps(pgName, ingressAllowAsName, ingressExceptAsName, protocol, npp, logEnable, namedPortMap)
+					ops, err := c.ovnNbClient.UpdateIngressACLOps(pgName, ingressAllowAsName, ingressExceptAsName, protocol, npp, logEnable, namedPortMap)
 					if err != nil {
 						klog.Errorf("generate operations that add ingress acls to np %s: %v", key, err)
 						return err
@@ -329,7 +329,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 						return err
 					}
 
-					ops, err := c.ovnNbClient.UpdateIngressAclOps(pgName, ingressAllowAsName, ingressExceptAsName, protocol, []netv1.NetworkPolicyPort{}, logEnable, namedPortMap)
+					ops, err := c.ovnNbClient.UpdateIngressACLOps(pgName, ingressAllowAsName, ingressExceptAsName, protocol, []netv1.NetworkPolicyPort{}, logEnable, namedPortMap)
 					if err != nil {
 						klog.Errorf("generate operations that add ingress acls to np %s: %v", key, err)
 						return err
@@ -455,7 +455,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 					}
 
 					if len(allows) != 0 || len(excepts) != 0 {
-						ops, err := c.ovnNbClient.UpdateEgressAclOps(pgName, egressAllowAsName, egressExceptAsName, protocol, npr.Ports, logEnable, namedPortMap)
+						ops, err := c.ovnNbClient.UpdateEgressACLOps(pgName, egressAllowAsName, egressExceptAsName, protocol, npr.Ports, logEnable, namedPortMap)
 						if err != nil {
 							klog.Errorf("generate operations that add egress acls to np %s: %v", key, err)
 							return err
@@ -482,7 +482,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 						return err
 					}
 
-					ops, err := c.ovnNbClient.UpdateEgressAclOps(pgName, egressAllowAsName, egressExceptAsName, protocol, []netv1.NetworkPolicyPort{}, logEnable, namedPortMap)
+					ops, err := c.ovnNbClient.UpdateEgressACLOps(pgName, egressAllowAsName, egressExceptAsName, protocol, []netv1.NetworkPolicyPort{}, logEnable, namedPortMap)
 					if err != nil {
 						klog.Errorf("generate operations that add egress acls to np %s: %v", key, err)
 						return err

@@ -31,7 +31,7 @@ var _ = Describe("[Net]", func() {
 		}
 	})
 
-	It("CountIpNums", func() {
+	It("CountIPNums", func() {
 		args := [][]string{
 			{"10.0.0.101"},
 			{"10.0.0.101..10.0.0.105"},
@@ -45,7 +45,7 @@ var _ = Describe("[Net]", func() {
 		Expect(args).To(HaveLen(len(wants)))
 
 		for i := range args {
-			Expect(util.CountIpNums(args[i])).To(Equal(wants[i]))
+			Expect(util.CountIPNums(args[i])).To(Equal(wants[i]))
 		}
 	})
 

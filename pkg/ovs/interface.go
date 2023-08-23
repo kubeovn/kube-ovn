@@ -100,10 +100,10 @@ type PortGroup interface {
 }
 
 type ACL interface {
-	UpdateIngressAclOps(pgName, asIngressName, asExceptName, protocol string, npp []netv1.NetworkPolicyPort, logEnable bool, namedPortMap map[string]*util.NamedPortInfo) ([]ovsdb.Operation, error)
-	UpdateEgressAclOps(pgName, asEgressName, asExceptName, protocol string, npp []netv1.NetworkPolicyPort, logEnable bool, namedPortMap map[string]*util.NamedPortInfo) ([]ovsdb.Operation, error)
+	UpdateIngressACLOps(pgName, asIngressName, asExceptName, protocol string, npp []netv1.NetworkPolicyPort, logEnable bool, namedPortMap map[string]*util.NamedPortInfo) ([]ovsdb.Operation, error)
+	UpdateEgressACLOps(pgName, asEgressName, asExceptName, protocol string, npp []netv1.NetworkPolicyPort, logEnable bool, namedPortMap map[string]*util.NamedPortInfo) ([]ovsdb.Operation, error)
 	CreateGatewayAcl(lsName, pgName, gateway string) error
-	CreateNodeAcl(pgName, nodeIpStr, joinIpStr string) error
+	CreateNodeAcl(pgName, nodeIPStr, joinIpStr string) error
 	CreateSgDenyAllAcl(sgName string) error
 	CreateSgBaseACL(sgName string, direction string) error
 	UpdateSgAcl(sg *kubeovnv1.SecurityGroup, direction string) error
@@ -123,7 +123,7 @@ type AddressSet interface {
 }
 
 type LogicalRouterStaticRoute interface {
-	AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix string, bfdId *string, nexthops ...string) error
+	AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix string, bfdID *string, nexthops ...string) error
 	ClearLogicalRouterStaticRoute(lrName string) error
 	DeleteLogicalRouterStaticRoute(lrName string, routeTable, policy *string, ipPrefix, nextHop string) error
 	ListLogicalRouterStaticRoutesByOption(lrName, routeTable, key, value string) ([]*ovnnb.LogicalRouterStaticRoute, error)

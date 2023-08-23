@@ -1957,8 +1957,8 @@ func calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 	v6toSubIPs := util.ExpandExcludeIPs(v6ExcludeIps, cidrBlocks[1])
 	_, v4CIDR, _ := net.ParseCIDR(cidrBlocks[0])
 	_, v6CIDR, _ := net.ParseCIDR(cidrBlocks[1])
-	v4availableIPs := util.AddressCount(v4CIDR) - util.CountIpNums(v4toSubIPs)
-	v6availableIPs := util.AddressCount(v6CIDR) - util.CountIpNums(v6toSubIPs)
+	v4availableIPs := util.AddressCount(v4CIDR) - util.CountIPNums(v4toSubIPs)
+	v6availableIPs := util.AddressCount(v6CIDR) - util.CountIPNums(v6toSubIPs)
 
 	usingIPs := float64(len(podUsedIPs))
 
@@ -2034,7 +2034,7 @@ func calcSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 	}
 	// gateway always in excludeIPs
 	toSubIPs := util.ExpandExcludeIPs(subnet.Spec.ExcludeIps, subnet.Spec.CIDRBlock)
-	availableIPs := util.AddressCount(cidr) - util.CountIpNums(toSubIPs)
+	availableIPs := util.AddressCount(cidr) - util.CountIPNums(toSubIPs)
 	usingIPs := float64(len(podUsedIPs))
 	vips, err := c.virtualIpsLister.List(labels.SelectorFromSet(labels.Set{
 		util.SubnetNameLabel: subnet.Name,

@@ -317,7 +317,7 @@ func (c *Controller) InitIPAM() error {
 	for _, ip := range ips {
 		ipsMap[ip.Name] = ip
 		// recover sts and kubevirt vm ip, other ip recover in later pod loop
-		if ip.Spec.PodType != "StatefulSet" && ip.Spec.PodType != util.Vm {
+		if ip.Spec.PodType != "StatefulSet" && ip.Spec.PodType != util.VM {
 			continue
 		}
 
@@ -576,7 +576,7 @@ func (c *Controller) initSyncCrdIPs() error {
 		ip := ipCr.DeepCopy()
 		changed := false
 		if ipMap.Has(ip.Name) && ip.Spec.PodType == "" {
-			ip.Spec.PodType = util.Vm
+			ip.Spec.PodType = util.VM
 			changed = true
 		}
 

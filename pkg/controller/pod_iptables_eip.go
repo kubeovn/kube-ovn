@@ -142,7 +142,7 @@ func (c *Controller) enqueueDeletePodAnnotatedIptablesEip(obj interface{}) {
 			c.delPodAnnotatedIptablesEipQueue.Add(obj)
 			return
 		}
-		if delete, err := appendCheckPodToDel(c, p, vmName, util.VmInstance); delete && err == nil {
+		if delete, err := appendCheckPodToDel(c, p, vmName, util.VMInstance); delete && err == nil {
 			c.delPodAnnotatedIptablesEipQueue.Add(obj)
 			return
 		}

@@ -1770,7 +1770,7 @@ spec:
                         type: string
                       ecmpMode:
                         type: string
-                      bfdId:
+                      bfdID:
                         type: string
                       routeTable:
                         type: string

@@ -345,7 +345,7 @@ func (config *Configuration) initKubeClient() error {
 	}
 
 	// try to connect to apiserver's tcp port
-	if err = util.DialApiServer(cfg.Host); err != nil {
+	if err = util.DialAPIServer(cfg.Host); err != nil {
 		klog.Errorf("failed to dial apiserver: %v", err)
 		return err
 	}

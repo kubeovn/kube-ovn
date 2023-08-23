@@ -162,8 +162,8 @@ const (
 	ExternalGatewaySwitch  = "ovn-external"
 	VpcNatGatewayConfig    = "ovn-vpc-nat-gw-config"
 	VpcLbNetworkAttachment = "ovn-vpc-lb"
-	VpcDnsConfig           = "vpc-dns-config"
-	VpcDnsDepTemplate      = "vpc-dns-dep"
+	VpcDNSConfig           = "vpc-dns-config"
+	VpcDNSDepTemplate      = "vpc-dns-dep"
 	VpcNatConfig           = "ovn-vpc-nat-config"
 
 	DefaultSecurityGroupName = "default-securitygroup"
@@ -191,7 +191,7 @@ const (
 	GatewayRouterPolicyPriority = 29000
 	OvnICPolicyPriority         = 29500
 	NodeRouterPolicyPriority    = 30000
-	NodeLocalDnsPolicyPriority  = 30100
+	NodeLocalDNSPolicyPriority  = 30100
 	SubnetRouterPolicyPriority  = 31000
 
 	OffloadType  = "offload-port"
@@ -201,8 +201,8 @@ const (
 	HostnameEnv    = "KUBE_NODE_NAME"
 	ChasRetryTime  = 5
 	ChasRetryIntev = 1
-	Vm             = "VirtualMachine"
-	VmInstance     = "VirtualMachineInstance"
+	VM             = "VirtualMachine"
+	VMInstance     = "VirtualMachineInstance"
 
 	MirrorControlAnnotation = "ovn.kubernetes.io/mirror"
 	MirrorDefaultName       = "m0"

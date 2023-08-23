@@ -13,7 +13,7 @@ import (
 	"k8s.io/klog/v2"
 )
 
-func DialApiServer(host string) error {
+func DialAPIServer(host string) error {
 	u, err := url.Parse(host)
 	if err != nil {
 		return fmt.Errorf("failed to parse host %q: %v", host, err)
