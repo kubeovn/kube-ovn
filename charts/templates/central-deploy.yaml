@@ -76,6 +76,8 @@ spec:
               value: "{{ .Values.networking.PROBE_INTERVAL }}"
             - name: OVN_LEADER_PROBE_INTERVAL
               value: "{{ .Values.networking.OVN_LEADER_PROBE_INTERVAL }}"
+            - name: OVN_NORTHD_N_THREADS
+              value: "{{ .Values.networking.OVN_NORTHD_N_THREADS }}"
           resources:
             requests:
               cpu: {{ index .Values "ovn-central" "requests" "cpu" }}
