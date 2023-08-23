@@ -7,7 +7,7 @@ OVN_NB_POD=
 OVN_SB_POD=
 OVN_NORTHD_POD=
 KUBE_OVN_VERSION=
-REGISTRY="kubeovn"
+REGISTRY="docker.io/kubeovn"
 PERF_TIMES=5
 PERF_LABEL="PerfTest"
 CONN_CHECK_LABEL="conn-check"
@@ -36,7 +36,7 @@ showHelp(){
   echo "  tuning {install-fastpath|local-install-fastpath|remove-fastpath|install-stt|local-install-stt|remove-stt} {centos7|centos8}} [kernel-devel-version]    deploy kernel optimisation components to the system"
   echo "  reload    restart all kube-ovn components"
   echo "  log {kube-ovn|ovn|ovs|linux|all}    save log to ./kubectl-ko-log/"
-  echo "  perf [image] performance test default image is kubeovn/test:v1.12.0"
+  echo "  perf [image] performance test default image is docker.io/kubeovn/test:v1.13.0"
 }
 
 # usage: ipv4_to_hex 192.168.0.1
@@ -509,8 +509,7 @@ applyConnServerDaemonset(){
   fi
 
   imageID=$(kubectl get ds -n $KUBE_OVN_NS kube-ovn-pinger -o jsonpath={.spec.template.spec.containers[0].image})
-  tmpFileName="conn-server.yaml"
-  cat <<EOF > $tmpFileName
+  cat <<EOF | kubectl apply -f -
 kind: DaemonSet
 apiVersion: apps/v1
 metadata:
@@ -544,8 +543,6 @@ spec:
                 fieldRef:
                   fieldPath: metadata.name
 EOF
-  kubectl apply -f $tmpFileName
-  rm $tmpFileName
 
   isfailed=true
   for i in {0..59}
@@ -565,9 +562,7 @@ EOF
 
 applyTestNodePortService() {
   local svcName="test-node-port"
-  tmpFileName="$svcName.yaml"
-
-  cat <<EOF > $tmpFileName
+  cat <<EOF | kubectl apply -f -
 apiVersion: v1
 kind: Service
 metadata:
@@ -585,12 +580,9 @@ spec:
   selector:
     app: kube-ovn-pinger
 EOF
-  kubectl apply -f $tmpFileName
-  rm $tmpFileName
 }
 
 getTestNodePortServiceIPPorts() {
-
   targetIPPorts=""
   nodeIPs=($(kubectl get node -o wide | grep -v "INTERNAL-IP" | awk '{print $6}'))
   nodePort=$(kubectl get svc test-node-port -n $KUBE_OVN_NS -o 'jsonpath={.spec.ports[0].nodePort}')
@@ -1253,9 +1245,7 @@ applyTestServer() {
   podName="test-server"
   nodeID=$1
   imageID=$2
-  tmpFileName="$podName.yaml"
-
-  cat <<EOF > $tmpFileName
+  cat <<EOF | kubectl apply -f -
 apiVersion: v1
 kind: Pod
 metadata:
@@ -1277,18 +1267,13 @@ spec:
   nodeSelector:
     kubernetes.io/hostname: $nodeID
 EOF
-
-  kubectl apply -f $tmpFileName
-  rm $tmpFileName
 }
 
 applyTestHostServer() {
   podName="test-host-server"
   nodeID=$1
   imageID=$2
-  tmpFileName="$podName.yaml"
-
-  cat <<EOF > $tmpFileName
+  cat <<EOF | kubectl apply -f -
 apiVersion: v1
 kind: Pod
 metadata:
@@ -1310,19 +1295,13 @@ spec:
   nodeSelector:
     kubernetes.io/hostname: $nodeID
 EOF
-
-  kubectl apply -f $tmpFileName
-  rm $tmpFileName
 }
-
 
 applyTestClient() {
   local podName="test-client"
   local nodeID=$1
   local imageID=$2
-  tmpFileName="$podName.yaml"
-
-  cat <<EOF > $tmpFileName
+  cat <<EOF | kubectl apply -f -
 apiVersion: v1
 kind: Pod
 metadata:
@@ -1339,17 +1318,13 @@ spec:
   nodeSelector:
     kubernetes.io/hostname: $nodeID
 EOF
-  kubectl apply -f $tmpFileName
-  rm $tmpFileName
 }
 
 applyTestHostClient() {
   local podName="test-host-client"
   local nodeID=$1
   local imageID=$2
-  tmpFileName="$podName.yaml"
-
-  cat <<EOF > $tmpFileName
+  cat <<EOF | kubectl apply -f -
 apiVersion: v1
 kind: Pod
 metadata:
@@ -1367,15 +1342,11 @@ spec:
   nodeSelector:
     kubernetes.io/hostname: $nodeID
 EOF
-  kubectl apply -f $tmpFileName
-  rm $tmpFileName
 }
 
 applyTestServerService() {
   local svcName="test-server"
-  tmpFileName="$svcName.yaml"
-
-  cat <<EOF > $tmpFileName
+  cat <<EOF | kubectl apply -f -
 apiVersion: v1
 kind: Service
 metadata:
@@ -1404,8 +1375,6 @@ spec:
   selector:
     env: server
 EOF
-  kubectl apply -f $tmpFileName
-  rm $tmpFileName
 }
 
 addHeaderDecoration() {
@@ -1456,7 +1425,7 @@ quitPerfTest() {
 
 perf(){
   addHeaderDecoration "Prepareing Performance Test Resources"
-  imageID=${1:-"kubeovn/test:v1.12.0"}
+  imageID=${1:-"docker.io/kubeovn/test:v1.13.0"}
 
   nodes=($(kubectl get node --no-headers -o custom-columns=NAME:.metadata.name))
   if [[ ${#nodes} -eq 1 ]]; then
@@ -1601,7 +1570,7 @@ genMulticastPerfResult() {
   tmpFileName="multicast-$serverName.log"
   PERF_GC_COMMAND+=("rm -f $tmpFileName")
   LAST_PERF_FAILED_LOG=$tmpFileName
-  
+
   start_server_cmd="iperf -s -B 224.0.0.100 -i 1 -u"
   kubectl exec $serverName -n $KUBE_OVN_NS -- $start_server_cmd > $tmpFileName &
   sleep 1
@@ -1627,7 +1596,6 @@ checkLeaderRecover() {
   sleep 5
   getOvnCentralPod
   getPodRecoverTime "northd"
-
 }
 
 getPodRecoverTime(){
@@ -1663,25 +1631,27 @@ fi
 
 subcommand="$1"; shift
 
-getOvnCentralPod
-
 case $subcommand in
   nbctl)
+    getOvnCentralPod
     kubectl exec "$OVN_NB_POD" -n $KUBE_OVN_NS -c ovn-central -- ovn-nbctl "$@"
     ;;
   sbctl)
+    getOvnCentralPod
     kubectl exec "$OVN_SB_POD" -n $KUBE_OVN_NS -c ovn-central -- ovn-sbctl "$@"
     ;;
   vsctl|ofctl|dpctl|appctl)
     xxctl "$subcommand" "$@"
     ;;
   nb|sb)
+    getOvnCentralPod
     dbtool "$subcommand" "$@"
     ;;
   tcpdump)
     tcpdump "$@"
     ;;
   trace)
+    getOvnCentralPod
     trace "$@"
     ;;
   diagnose)
@@ -1700,6 +1670,7 @@ case $subcommand in
     log "$@"
     ;;
   perf)
+    getOvnCentralPod
     perf "$@"
     ;;
   *)
