@@ -509,8 +509,7 @@ applyConnServerDaemonset(){
   fi
 
   imageID=$(kubectl get ds -n $KUBE_OVN_NS kube-ovn-pinger -o jsonpath={.spec.template.spec.containers[0].image})
-  tmpFileName="conn-server.yaml"
-  cat <<EOF > $tmpFileName
+  cat <<EOF | kubectl apply -f -
 kind: DaemonSet
 apiVersion: apps/v1
 metadata:
@@ -544,8 +543,6 @@ spec:
                 fieldRef:
                   fieldPath: metadata.name
 EOF
-  kubectl apply -f $tmpFileName
-  rm $tmpFileName
 
   isfailed=true
   for i in {0..59}
@@ -565,9 +562,7 @@ EOF
 
 applyTestNodePortService() {
   local svcName="test-node-port"
-  tmpFileName="$svcName.yaml"
-
-  cat <<EOF > $tmpFileName
+  cat <<EOF | kubectl apply -f -
 apiVersion: v1
 kind: Service
 metadata:
@@ -585,12 +580,9 @@ spec:
   selector:
     app: kube-ovn-pinger
 EOF
-  kubectl apply -f $tmpFileName
-  rm $tmpFileName
 }
 
 getTestNodePortServiceIPPorts() {
-
   targetIPPorts=""
   nodeIPs=($(kubectl get node -o wide | grep -v "INTERNAL-IP" | awk '{print $6}'))
   nodePort=$(kubectl get svc test-node-port -n $KUBE_OVN_NS -o 'jsonpath={.spec.ports[0].nodePort}')
@@ -1253,9 +1245,7 @@ applyTestServer() {
   podName="test-server"
   nodeID=$1
   imageID=$2
-  tmpFileName="$podName.yaml"
-
-  cat <<EOF > $tmpFileName
+  cat <<EOF | kubectl apply -f -
 apiVersion: v1
 kind: Pod
 metadata:
@@ -1277,18 +1267,13 @@ spec:
   nodeSelector:
     kubernetes.io/hostname: $nodeID
 EOF
-
-  kubectl apply -f $tmpFileName
-  rm $tmpFileName
 }
 
 applyTestHostServer() {
   podName="test-host-server"
   nodeID=$1
   imageID=$2
-  tmpFileName="$podName.yaml"
-
-  cat <<EOF > $tmpFileName
+  cat <<EOF | kubectl apply -f -
 apiVersion: v1
 kind: Pod
 metadata:
@@ -1310,19 +1295,13 @@ spec:
   nodeSelector:
     kubernetes.io/hostname: $nodeID
 EOF
-
-  kubectl apply -f $tmpFileName
-  rm $tmpFileName
 }
-
 
 applyTestClient() {
   local podName="test-client"
   local nodeID=$1
   local imageID=$2
-  tmpFileName="$podName.yaml"
-
-  cat <<EOF > $tmpFileName
+  cat <<EOF | kubectl apply -f -
 apiVersion: v1
 kind: Pod
 metadata:
@@ -1339,17 +1318,13 @@ spec:
   nodeSelector:
     kubernetes.io/hostname: $nodeID
 EOF
-  kubectl apply -f $tmpFileName
-  rm $tmpFileName
 }
 
 applyTestHostClient() {
   local podName="test-host-client"
   local nodeID=$1
   local imageID=$2
-  tmpFileName="$podName.yaml"
-
-  cat <<EOF > $tmpFileName
+  cat <<EOF | kubectl apply -f -
 apiVersion: v1
 kind: Pod
 metadata:
@@ -1367,15 +1342,11 @@ spec:
   nodeSelector:
     kubernetes.io/hostname: $nodeID
 EOF
-  kubectl apply -f $tmpFileName
-  rm $tmpFileName
 }
 
 applyTestServerService() {
   local svcName="test-server"
-  tmpFileName="$svcName.yaml"
-
-  cat <<EOF > $tmpFileName
+  cat <<EOF | kubectl apply -f -
 apiVersion: v1
 kind: Service
 metadata:
@@ -1404,8 +1375,6 @@ spec:
   selector:
     env: server
 EOF
-  kubectl apply -f $tmpFileName
-  rm $tmpFileName
 }
 
 addHeaderDecoration() {
