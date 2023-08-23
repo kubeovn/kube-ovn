@@ -146,19 +146,22 @@ func (c *Controller) establishExternalGateway(config map[string]string) error {
 		klog.Errorf("failed to get lrp %s, %v", lrpName, err)
 		return err
 	}
-	if lrp != nil {
+
+	switch {
+	case lrp != nil:
 		klog.Infof("lrp %s already exist", lrpName)
 		lrpMac = lrp.MAC
 		lrpIp = lrp.Networks[0]
-	} else if config["nic-ip"] == "" {
+	case config["nic-ip"] == "":
 		if lrpIp, lrpMac, err = c.createDefaultVpcLrpEip(config); err != nil {
 			klog.Errorf("failed to create ovn eip for default vpc lrp: %v", err)
 			return err
 		}
-	} else {
+	default:
 		lrpIp = config["nic-ip"]
 		lrpMac = config["nic-mac"]
 	}
+
 	if err := c.ovnNbClient.CreateGatewayLogicalSwitch(c.config.ExternalGatewaySwitch, c.config.ClusterRouter, c.config.ExternalGatewayNet, lrpIp, lrpMac, c.config.ExternalGatewayVlanID, chassises...); err != nil {
 		klog.Errorf("create external gateway switch %s: %v", c.config.ExternalGatewaySwitch, err)
 		return err

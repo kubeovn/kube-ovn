@@ -344,7 +344,7 @@ func (c *Controller) handleAddNode(key string) error {
 	}
 
 	// ovn acl doesn't support address_set name with '-', so replace '-' by '.'
-	pgName := strings.Replace(node.Annotations[util.PortNameAnnotation], "-", ".", -1)
+	pgName := strings.ReplaceAll(node.Annotations[util.PortNameAnnotation], "-", ".")
 	if err = c.ovnNbClient.CreatePortGroup(pgName, map[string]string{networkPolicyKey: "node" + "/" + key}); err != nil {
 		klog.Errorf("create port group %s for node %s: %v", pgName, key, err)
 		return err
@@ -479,7 +479,7 @@ func (c *Controller) handleDeleteNode(key string) error {
 	}
 
 	// ovn acl doesn't support address_set name with '-', so replace '-' by '.'
-	pgName := strings.Replace(portName, "-", ".", -1)
+	pgName := strings.ReplaceAll(portName, "-", ".")
 	if err := c.ovnNbClient.DeletePortGroup(pgName); err != nil {
 		klog.Errorf("delete port group %s for node: %v", portName, err)
 		return err
@@ -625,13 +625,15 @@ func (c *Controller) handleUpdateNode(key string) error {
 
 func (c *Controller) createOrUpdateCrdIPs(podName, ip, mac, subnetName, ns, nodeName, providerName, podType string, existingCR **kubeovnv1.IP) error {
 	var key, ipName string
-	if subnetName == c.config.NodeSwitch {
+
+	switch {
+	case subnetName == c.config.NodeSwitch:
 		key = nodeName
 		ipName = fmt.Sprintf("node-%s", nodeName)
-	} else if strings.HasPrefix(podName, util.U2OInterconnName[0:19]) {
+	case strings.HasPrefix(podName, util.U2OInterconnName[0:19]):
 		key = podName
 		ipName = podName
-	} else {
+	default:
 		key = podName
 		ipName = ovs.PodNameToPortName(podName, ns, providerName)
 	}
@@ -833,16 +835,14 @@ func (c *Controller) checkGatewayReady() error {
 								}
 							}
 						}
-					} else {
-						if exist {
-							klog.Infof("subnet %s gatewayNode does not contains node %v, delete policy route for node ip %s", subnet.Name, node.Name, ip)
-							nextHops.Remove(ip)
-							delete(nameIpMap, node.Name)
-							klog.Infof("update policy route for centralized subnet %s, nextHops %s", subnet.Name, nextHops)
-							if err = c.updatePolicyRouteForCentralizedSubnet(subnet.Name, cidrBlock, nextHops.List(), nameIpMap); err != nil {
-								klog.Errorf("failed to delete ecmp policy route for subnet %s on node %s, %v", subnet.Name, node.Name, err)
-								return err
-							}
+					} else if exist {
+						klog.Infof("subnet %s gatewayNode does not contains node %v, delete policy route for node ip %s", subnet.Name, node.Name, ip)
+						nextHops.Remove(ip)
+						delete(nameIpMap, node.Name)
+						klog.Infof("update policy route for centralized subnet %s, nextHops %s", subnet.Name, nextHops)
+						if err = c.updatePolicyRouteForCentralizedSubnet(subnet.Name, cidrBlock, nextHops.List(), nameIpMap); err != nil {
+							klog.Errorf("failed to delete ecmp policy route for subnet %s on node %s, %v", subnet.Name, node.Name, err)
+							return err
 						}
 					}
 				}
@@ -942,7 +942,7 @@ func (c *Controller) checkAndUpdateNodePortGroup() error {
 
 	for _, node := range nodes {
 		// The port-group should already created when add node
-		pgName := strings.Replace(node.Annotations[util.PortNameAnnotation], "-", ".", -1)
+		pgName := strings.ReplaceAll(node.Annotations[util.PortNameAnnotation], "-", ".")
 
 		// use join IP only when no internal IP exists
 		nodeIPv4, nodeIPv6 := util.GetNodeInternalIP(*node)
@@ -1200,7 +1200,7 @@ func (c *Controller) addPolicyRouteForLocalDnsCacheOnNode(nodePortName, nodeIP, 
 		"isLocalDnsCache": "true",
 	}
 
-	pgAs := strings.Replace(fmt.Sprintf("%s_ip%d", nodePortName, af), "-", ".", -1)
+	pgAs := strings.ReplaceAll(fmt.Sprintf("%s_ip%d", nodePortName, af), "-", ".")
 	match := fmt.Sprintf("ip%d.src == $%s && ip%d.dst == %s", af, pgAs, af, c.config.NodeLocalDnsIP)
 	action := ovnnb.LogicalRouterPolicyActionReroute
 	klog.Infof("add node local dns cache policy route for router: %s, match %s, action %s, nexthop %s, externalID %v", c.config.ClusterRouter, match, action, nodeIP, externalIDs)

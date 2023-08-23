@@ -356,7 +356,7 @@ func (c *Controller) waitTsReady() error {
 
 		klog.Info("wait for logical switch %s ready", util.InterconnectionSwitch)
 		time.Sleep(5 * time.Second)
-		retry = retry - 1
+		retry -= 1
 	}
 	return fmt.Errorf("timeout to wait for logical switch %s ready", util.InterconnectionSwitch)
 }
@@ -436,11 +436,13 @@ func (c *Controller) RemoveOldChassisInSbDB(azName string) error {
 
 func stripPrefix(policyMatch string) (string, error) {
 	matches := strings.Split(policyMatch, "==")
-	if strings.Trim(matches[0], " ") == util.MatchV4Dst {
+
+	switch {
+	case strings.Trim(matches[0], " ") == util.MatchV4Dst:
 		return strings.Trim(matches[1], " "), nil
-	} else if strings.Trim(matches[0], " ") == util.MatchV6Dst {
+	case strings.Trim(matches[0], " ") == util.MatchV6Dst:
 		return strings.Trim(matches[1], " "), nil
-	} else {
+	default:
 		return "", fmt.Errorf("policy %s is mismatched", policyMatch)
 	}
 }

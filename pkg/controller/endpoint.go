@@ -26,9 +26,9 @@ func (c *Controller) enqueueAddEndpoint(obj interface{}) {
 	c.updateEndpointQueue.Add(key)
 }
 
-func (c *Controller) enqueueUpdateEndpoint(old, new interface{}) {
-	oldEp := old.(*v1.Endpoints)
-	newEp := new.(*v1.Endpoints)
+func (c *Controller) enqueueUpdateEndpoint(oldObj, newObj interface{}) {
+	oldEp := oldObj.(*v1.Endpoints)
+	newEp := newObj.(*v1.Endpoints)
 	if oldEp.ResourceVersion == newEp.ResourceVersion {
 		return
 	}
@@ -39,7 +39,7 @@ func (c *Controller) enqueueUpdateEndpoint(old, new interface{}) {
 
 	var key string
 	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(new); err != nil {
+	if key, err = cache.MetaNamespaceKeyFunc(newObj); err != nil {
 		utilruntime.HandleError(err)
 		return
 	}

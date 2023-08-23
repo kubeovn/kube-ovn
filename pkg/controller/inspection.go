@@ -63,14 +63,11 @@ func (c *Controller) inspectPod() error {
 					klog.V(5).Infof("finish remove annotation for %s", portName)
 					c.addOrUpdatePodQueue.Add(fmt.Sprintf("%s/%s", pod.Namespace, pod.Name))
 					break
-				} else {
-					if pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)] == "true" && pod.Spec.NodeName != "" {
-						if pod.Annotations[fmt.Sprintf(util.RoutedAnnotationTemplate, podNet.ProviderName)] != "true" {
-							klog.V(5).Infof("enqueue update pod %s/%s", pod.Namespace, pod.Name)
-							c.addOrUpdatePodQueue.Add(fmt.Sprintf("%s/%s", pod.Namespace, pod.Name))
-							break
-						}
-					}
+				} else if pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)] == "true" && pod.Spec.NodeName != "" &&
+					pod.Annotations[fmt.Sprintf(util.RoutedAnnotationTemplate, podNet.ProviderName)] != "true" {
+					klog.V(5).Infof("enqueue update pod %s/%s", pod.Namespace, pod.Name)
+					c.addOrUpdatePodQueue.Add(fmt.Sprintf("%s/%s", pod.Namespace, pod.Name))
+					break
 				}
 			}
 		}

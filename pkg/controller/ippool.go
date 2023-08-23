@@ -38,10 +38,10 @@ func (c *Controller) enqueueDeleteIPPool(obj interface{}) {
 	c.deleteIPPoolQueue.Add(obj)
 }
 
-func (c *Controller) enqueueUpdateIPPool(old, new interface{}) {
-	oldIPPool := old.(*kubeovnv1.IPPool)
-	newIPPool := new.(*kubeovnv1.IPPool)
-	key, err := cache.MetaNamespaceKeyFunc(new)
+func (c *Controller) enqueueUpdateIPPool(oldObj, newObj interface{}) {
+	oldIPPool := oldObj.(*kubeovnv1.IPPool)
+	newIPPool := newObj.(*kubeovnv1.IPPool)
+	key, err := cache.MetaNamespaceKeyFunc(newObj)
 	if err != nil {
 		utilruntime.HandleError(err)
 		return

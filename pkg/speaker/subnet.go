@@ -290,9 +290,9 @@ func getNextHopFromPathAttributes(attrs []bgp.PathAttributeInterface) net.IP {
 	}
 	return nil
 }
-func getNextHopAttribute(NeighborAddress string, RouteId string) string {
+func getNextHopAttribute(neighborAddress string, RouteId string) string {
 	nextHop := RouteId
-	routes, err := netlink.RouteGet(net.ParseIP(NeighborAddress))
+	routes, err := netlink.RouteGet(net.ParseIP(neighborAddress))
 	if err == nil && len(routes) == 1 && routes[0].Src != nil {
 		nextHop = routes[0].Src.String()
 	}

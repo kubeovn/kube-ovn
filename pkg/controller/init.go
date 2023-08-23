@@ -201,7 +201,7 @@ func (c *Controller) initLB(name, protocol string, sessionAffinity bool) error {
 
 	var selectFields string
 	if sessionAffinity {
-		selectFields = string(ovnnb.LoadBalancerSelectionFieldsIPSrc)
+		selectFields = ovnnb.LoadBalancerSelectionFieldsIPSrc
 	}
 
 	if err := c.ovnNbClient.CreateLoadBalancer(name, protocol, selectFields); err != nil {

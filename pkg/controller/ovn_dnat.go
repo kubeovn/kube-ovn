@@ -31,14 +31,14 @@ func (c *Controller) enqueueAddOvnDnatRule(obj interface{}) {
 	c.addOvnDnatRuleQueue.Add(key)
 }
 
-func (c *Controller) enqueueUpdateOvnDnatRule(old, new interface{}) {
+func (c *Controller) enqueueUpdateOvnDnatRule(oldObj, newObj interface{}) {
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(new); err != nil {
 		utilruntime.HandleError(err)
 		return
 	}
-	newDnat := new.(*kubeovnv1.OvnDnatRule)
+	newDnat := newObj.(*kubeovnv1.OvnDnatRule)
 	if !newDnat.DeletionTimestamp.IsZero() {
 		if len(newDnat.Finalizers) == 0 {
 			// avoid delete twice
@@ -49,7 +49,7 @@ func (c *Controller) enqueueUpdateOvnDnatRule(old, new interface{}) {
 			return
 		}
 	}
-	oldDnat := old.(*kubeovnv1.OvnDnatRule)
+	oldDnat := oldObj.(*kubeovnv1.OvnDnatRule)
 	if oldDnat.Spec.OvnEip != newDnat.Spec.OvnEip {
 		c.resetOvnEipQueue.Add(oldDnat.Spec.OvnEip)
 	}

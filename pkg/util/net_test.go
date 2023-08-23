@@ -6,8 +6,9 @@ import (
 	"reflect"
 	"testing"
 
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/stretchr/testify/require"
+
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 )
 
 func TestCheckSystemCIDR(t *testing.T) {

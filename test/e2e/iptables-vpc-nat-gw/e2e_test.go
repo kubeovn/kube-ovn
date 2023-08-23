@@ -1316,7 +1316,7 @@ var _ = framework.Describe("[group:qos-policy]", func() {
 			// case 1: set specific ip qos policy for natgw
 			specifyingIPQoSCases(f, vpcNatGwClient, qosPolicyClient, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, vpcQosParams.vpcNat1GwName)
 		})
-		framework.ConformanceIt("qos priority maching", func() {
+		framework.ConformanceIt("qos priority matching ", func() {
 			// case 1: test qos match priority
 			// case 2: change qos policy of natgw
 			priorityQoSCases(f, vpcNatGwClient, iptablesEIPClient, qosPolicyClient, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, vpcQosParams.vpcNat1GwName, vpcQosParams.vpc1EIPName)

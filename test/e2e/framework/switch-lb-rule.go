@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -16,7 +17,6 @@ import (
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	v1 "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/typed/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
-	"github.com/onsi/gomega"
 )
 
 // SwitchLBRuleClient is a struct for switch-lb-rule client.

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -15,6 +14,8 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/kubernetes/test/e2e/framework"
+
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 // EndpointsClient is a struct for endpoint client.

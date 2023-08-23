@@ -1982,11 +1982,11 @@ func calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 		}
 		usingIPs += float64(len(eips))
 	}
-	v4availableIPs = v4availableIPs - usingIPs
+	v4availableIPs -= usingIPs
 	if v4availableIPs < 0 {
 		v4availableIPs = 0
 	}
-	v6availableIPs = v6availableIPs - usingIPs
+	v6availableIPs -= usingIPs
 	if v6availableIPs < 0 {
 		v6availableIPs = 0
 	}
@@ -2056,7 +2056,7 @@ func calcSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 		usingIPs += float64(len(eips))
 	}
 
-	availableIPs = availableIPs - usingIPs
+	availableIPs -= usingIPs
 	if availableIPs < 0 {
 		availableIPs = 0
 	}
@@ -2248,7 +2248,7 @@ func (c *Controller) addCommonRoutesForSubnet(subnet *kubeovnv1.Subnet) error {
 }
 
 func getOverlaySubnetsPortGroupName(subnetName, nodeName string) string {
-	return strings.Replace(fmt.Sprintf("%s.%s", subnetName, nodeName), "-", ".", -1)
+	return strings.ReplaceAll(fmt.Sprintf("%s.%s", subnetName, nodeName), "-", ".")
 }
 
 func (c *Controller) createPortGroupForDistributedSubnet(node *v1.Node, subnet *kubeovnv1.Subnet) error {
@@ -2481,8 +2481,8 @@ func (c *Controller) addPolicyRouteForU2OInterconn(subnet *kubeovnv1.Subnet) err
 		}
 	}
 
-	u2oExcludeIp4Ag := strings.Replace(fmt.Sprintf(util.U2OExcludeIPAg, subnet.Name, "ip4"), "-", ".", -1)
-	u2oExcludeIp6Ag := strings.Replace(fmt.Sprintf(util.U2OExcludeIPAg, subnet.Name, "ip6"), "-", ".", -1)
+	u2oExcludeIp4Ag := strings.ReplaceAll(fmt.Sprintf(util.U2OExcludeIPAg, subnet.Name, "ip4"), "-", ".")
+	u2oExcludeIp6Ag := strings.ReplaceAll(fmt.Sprintf(util.U2OExcludeIPAg, subnet.Name, "ip6"), "-", ".")
 
 	if err := c.ovnNbClient.CreateAddressSet(u2oExcludeIp4Ag, externalIDs); err != nil {
 		klog.Errorf("create address set %s: %v", u2oExcludeIp4Ag, err)
@@ -2595,8 +2595,8 @@ func (c *Controller) deletePolicyRouteForU2OInterconn(subnet *kubeovnv1.Subnet) 
 		}
 	}
 
-	u2oExcludeIp4Ag := strings.Replace(fmt.Sprintf(util.U2OExcludeIPAg, subnet.Name, "ip4"), "-", ".", -1)
-	u2oExcludeIp6Ag := strings.Replace(fmt.Sprintf(util.U2OExcludeIPAg, subnet.Name, "ip6"), "-", ".", -1)
+	u2oExcludeIp4Ag := strings.ReplaceAll(fmt.Sprintf(util.U2OExcludeIPAg, subnet.Name, "ip4"), "-", ".")
+	u2oExcludeIp6Ag := strings.ReplaceAll(fmt.Sprintf(util.U2OExcludeIPAg, subnet.Name, "ip6"), "-", ".")
 
 	if err := c.ovnNbClient.DeleteAddressSet(u2oExcludeIp4Ag); err != nil {
 		klog.Errorf("delete address set %s: %v", u2oExcludeIp4Ag, err)

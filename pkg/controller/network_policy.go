@@ -44,14 +44,14 @@ func (c *Controller) enqueueDeleteNp(obj interface{}) {
 	c.deleteNpQueue.Add(key)
 }
 
-func (c *Controller) enqueueUpdateNp(old, new interface{}) {
-	oldNp := old.(*netv1.NetworkPolicy)
-	newNp := new.(*netv1.NetworkPolicy)
+func (c *Controller) enqueueUpdateNp(oldObj, newObj interface{}) {
+	oldNp := oldObj.(*netv1.NetworkPolicy)
+	newNp := newObj.(*netv1.NetworkPolicy)
 	if !reflect.DeepEqual(oldNp.Spec, newNp.Spec) ||
 		!reflect.DeepEqual(oldNp.Annotations, newNp.Annotations) {
 		var key string
 		var err error
-		if key, err = cache.MetaNamespaceKeyFunc(new); err != nil {
+		if key, err = cache.MetaNamespaceKeyFunc(newObj); err != nil {
 			utilruntime.HandleError(err)
 			return
 		}
@@ -168,11 +168,11 @@ func (c *Controller) handleUpdateNp(key string) error {
 	// TODO: ovn acl doesn't support address_set name with '-', now we replace '-' by '.'.
 	// This may cause conflict if two np with name test-np and test.np. Maybe hash is a better solution,
 	// but we do not want to lost the readability now.
-	pgName := strings.Replace(fmt.Sprintf("%s.%s", np.Name, np.Namespace), "-", ".", -1)
-	ingressAllowAsNamePrefix := strings.Replace(fmt.Sprintf("%s.%s.ingress.allow", np.Name, np.Namespace), "-", ".", -1)
-	ingressExceptAsNamePrefix := strings.Replace(fmt.Sprintf("%s.%s.ingress.except", np.Name, np.Namespace), "-", ".", -1)
-	egressAllowAsNamePrefix := strings.Replace(fmt.Sprintf("%s.%s.egress.allow", np.Name, np.Namespace), "-", ".", -1)
-	egressExceptAsNamePrefix := strings.Replace(fmt.Sprintf("%s.%s.egress.except", np.Name, np.Namespace), "-", ".", -1)
+	pgName := strings.ReplaceAll(fmt.Sprintf("%s.%s", np.Name, np.Namespace), "-", ".")
+	ingressAllowAsNamePrefix := strings.ReplaceAll(fmt.Sprintf("%s.%s.ingress.allow", np.Name, np.Namespace), "-", ".")
+	ingressExceptAsNamePrefix := strings.ReplaceAll(fmt.Sprintf("%s.%s.ingress.except", np.Name, np.Namespace), "-", ".")
+	egressAllowAsNamePrefix := strings.ReplaceAll(fmt.Sprintf("%s.%s.egress.allow", np.Name, np.Namespace), "-", ".")
+	egressExceptAsNamePrefix := strings.ReplaceAll(fmt.Sprintf("%s.%s.egress.except", np.Name, np.Namespace), "-", ".")
 
 	if err = c.ovnNbClient.CreatePortGroup(pgName, map[string]string{networkPolicyKey: np.Namespace + "/" + np.Name}); err != nil {
 		klog.Errorf("create port group for np %s: %v", key, err)
@@ -202,8 +202,8 @@ func (c *Controller) handleUpdateNp(key string) error {
 	}
 
 	// set svc address_set
-	svcAsNameIPv4 := strings.Replace(fmt.Sprintf("%s.%s.service.%s", npName, np.Namespace, kubeovnv1.ProtocolIPv4), "-", ".", -1)
-	svcAsNameIPv6 := strings.Replace(fmt.Sprintf("%s.%s.service.%s", npName, np.Namespace, kubeovnv1.ProtocolIPv6), "-", ".", -1)
+	svcAsNameIPv4 := strings.ReplaceAll(fmt.Sprintf("%s.%s.service.%s", npName, np.Namespace, kubeovnv1.ProtocolIPv4), "-", ".")
+	svcAsNameIPv6 := strings.ReplaceAll(fmt.Sprintf("%s.%s.service.%s", npName, np.Namespace, kubeovnv1.ProtocolIPv6), "-", ".")
 	svcIpv4s, svcIpv6s, err := c.fetchSelectedSvc(np.Namespace, &np.Spec.PodSelector)
 	if err != nil {
 		klog.Errorf("failed to fetchSelectedSvc svcIPs result  %v", err)
@@ -569,7 +569,7 @@ func (c *Controller) handleDeleteNp(key string) error {
 		npName = "np" + name
 	}
 
-	pgName := strings.Replace(fmt.Sprintf("%s.%s", name, namespace), "-", ".", -1)
+	pgName := strings.ReplaceAll(fmt.Sprintf("%s.%s", name, namespace), "-", ".")
 	if err = c.ovnNbClient.DeletePortGroup(pgName); err != nil {
 		klog.Errorf("delete np %s port group: %v", key, err)
 	}

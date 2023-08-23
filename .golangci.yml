@@ -25,9 +25,10 @@ issues:
     - linters:
         - revive
       text: "underscore"
-#    - path: _test.go
-#      linters:
-#        - errcheck
+    - path: test/unittest/util/net.go
+      linters:
+        - revive
+      text: "dot imports"
 
 linters-settings:
   goimports:
