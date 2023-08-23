@@ -7,6 +7,7 @@ import (
 	"github.com/kubeovn/gonetworkmanager/v2"
 	"github.com/scylladb/go-set/strset"
 	"github.com/vishvananda/netlink"
+	"golang.org/x/mod/semver"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 )
@@ -190,58 +191,72 @@ func (n *networkManagerSyncer) SetManaged(name string, managed bool) error {
 	}
 
 	if !managed {
-		devices, err := n.manager.GetAllDevices()
+		links, err := netlink.LinkList()
 		if err != nil {
-			klog.Errorf("failed to get all devices from NetworkManager: %v", err)
+			klog.Errorf("failed to list network links: %v", err)
 			return err
 		}
 
-		var hasVlan bool
-		for _, dev := range devices {
-			managed, err := device.GetPropertyManaged()
-			if err != nil {
-				klog.Errorf("failed to get property managed of device %s: %v", dev.GetPath(), err)
-				continue
-			}
-			if !managed {
+		for _, l := range links {
+			if l.Attrs().ParentIndex != link.Attrs().Index || l.Type() != "vlan" {
 				continue
 			}
 
-			devType, err := dev.GetPropertyDeviceType()
+			d, err := n.manager.GetDeviceByIpIface(l.Attrs().Name)
 			if err != nil {
-				klog.Errorf("failed to get type of device %s: %v", dev.GetPath(), err)
-				continue
+				klog.Errorf("failed to get device by IP iface %q: %v", l.Attrs().Name, err)
+				return err
 			}
-			if devType != gonetworkmanager.NmDeviceTypeVlan {
-				continue
-			}
-
-			vlanName, err := dev.GetPropertyIpInterface()
+			vlanManaged, err := d.GetPropertyManaged()
 			if err != nil {
-				klog.Errorf("failed to get IP interface of device %s: %v", dev.GetPath(), err)
+				klog.Errorf("failed to get property managed of device %s: %v", l.Attrs().Name, err)
 				continue
 			}
-
-			vlanLink, err := netlink.LinkByName(vlanName)
-			if err != nil {
-				klog.Errorf("failed to get link %s: %v", vlanName, err)
-				continue
-			}
-			if vlanLink.Type() != "vlan" {
-				klog.Errorf("unexpected link type: %s", vlanLink.Type())
-				continue
-			}
-
-			if vlanLink.Attrs().ParentIndex == link.Attrs().Index {
-				klog.Infof("device %s has a vlan interface %s managed by NetworkManager", name, vlanName)
-				hasVlan = true
-				break
+			if vlanManaged {
+				klog.Infof(`will not set device %s NetworkManager property "managed" to %v`, name, managed)
+				return nil
 			}
 		}
 
-		if hasVlan {
-			klog.Infof(`will not set device %s NetworkManager property "managed" to %v`, name, managed)
+		version, err := n.manager.GetPropertyVersion()
+		if err != nil {
+			klog.Errorf("failed to get NetworkManager version: %v", err)
+			return err
+		}
+
+		if !strings.HasPrefix(version, "v") {
+			version = "v" + version
+		}
+
+		if semver.Compare(version, "v1.6.0") < 0 {
+			klog.Infof("NetworkManager version %s is less than v1.6.0")
 			return nil
+		}
+
+		// requires NetworkManager >= v1.6
+		dnsManager, err := gonetworkmanager.NewDnsManager()
+		if err != nil {
+			klog.Errorf("failed to initialize NetworkManager DNS manager: %v", err)
+			return err
+		}
+
+		configurations, err := dnsManager.GetPropertyConfiguration()
+		if err != nil {
+			klog.Errorf("failed to get NetworkManager DNS configuration: %v", err)
+			return err
+		}
+
+		for _, c := range configurations {
+			if c.Interface == name {
+				if len(c.Nameservers) != 0 {
+					klog.Infof("DNS servers %s are configured on interface %s", strings.Join(c.Nameservers, ","), name)
+					if semver.MajorMinor(version) == "v1.18" {
+						klog.Infof("NetworkManager's version is v1.18.x")
+						return nil
+					}
+				}
+				break
+			}
 		}
 	}
 
