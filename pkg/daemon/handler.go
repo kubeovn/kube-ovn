@@ -117,7 +117,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 			time.Sleep(1 * time.Second)
 			continue
 		}
-		ip = pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podRequest.Provider)]
+		ip = pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, podRequest.Provider)]
 		cidr = pod.Annotations[fmt.Sprintf(util.CidrAnnotationTemplate, podRequest.Provider)]
 		gw = pod.Annotations[fmt.Sprintf(util.GatewayAnnotationTemplate, podRequest.Provider)]
 		subnet = pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, podRequest.Provider)]
@@ -128,7 +128,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		loss = pod.Annotations[fmt.Sprintf(util.NetemQosLossAnnotationTemplate, podRequest.Provider)]
 		jitter = pod.Annotations[fmt.Sprintf(util.NetemQosJitterAnnotationTemplate, podRequest.Provider)]
 		providerNetwork = pod.Annotations[fmt.Sprintf(util.ProviderNetworkTemplate, podRequest.Provider)]
-		vmName = pod.Annotations[fmt.Sprintf(util.VmTemplate, podRequest.Provider)]
+		vmName = pod.Annotations[fmt.Sprintf(util.VMTemplate, podRequest.Provider)]
 		ipAddr = util.GetIpAddrWithMask(ip, cidr)
 		if s := pod.Annotations[fmt.Sprintf(util.RoutesAnnotationTemplate, podRequest.Provider)]; s != "" {
 			if err = json.Unmarshal([]byte(s), &routes); err != nil {
@@ -316,7 +316,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 
 	response := &request.CniResponse{
 		Protocol:   util.CheckProtocol(cidr),
-		IpAddress:  ip,
+		IPAddress:  ip,
 		MacAddress: macAddr,
 		CIDR:       cidr,
 		PodNicName: podNicName,
@@ -402,7 +402,7 @@ func (csh cniServerHandler) handleDel(req *restful.Request, resp *restful.Respon
 	if pod.Annotations != nil && (podRequest.Provider == util.OvnProvider || podRequest.CniType == util.CniTypeName) {
 		subnet := pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, podRequest.Provider)]
 		if subnet != "" {
-			ip := pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podRequest.Provider)]
+			ip := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, podRequest.Provider)]
 			if err = csh.Controller.removeEgressConfig(subnet, ip); err != nil {
 				errMsg := fmt.Errorf("failed to remove egress configuration: %v", err)
 				klog.Error(errMsg)
@@ -429,7 +429,7 @@ func (csh cniServerHandler) handleDel(req *restful.Request, resp *restful.Respon
 		} else {
 			nicType = pod.Annotations[fmt.Sprintf(util.PodNicAnnotationTemplate, podRequest.Provider)]
 		}
-		vmName := pod.Annotations[fmt.Sprintf(util.VmTemplate, podRequest.Provider)]
+		vmName := pod.Annotations[fmt.Sprintf(util.VMTemplate, podRequest.Provider)]
 		if vmName != "" {
 			podRequest.PodName = vmName
 		}

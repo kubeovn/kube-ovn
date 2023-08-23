@@ -1590,7 +1590,7 @@ func (suite *OvnClientTestSuite) testnewNetworkPolicyAclMatch() {
 
 			namedPortMap := map[string]*util.NamedPortInfo{
 				"test-pod-port": {
-					PortId: 13455,
+					PortID: 13455,
 				},
 			}
 			matches := newNetworkPolicyAclMatch(pgName, asAllowName, asExceptName, kubeovnv1.ProtocolIPv4, ovnnb.ACLDirectionToLport, npp, namedPortMap)
@@ -1614,7 +1614,7 @@ func (suite *OvnClientTestSuite) testnewNetworkPolicyAclMatch() {
 
 			namedPortMap := map[string]*util.NamedPortInfo{
 				"test-pod-port": {
-					PortId: 13455,
+					PortID: 13455,
 				},
 			}
 			matches := newNetworkPolicyAclMatch(pgName, asAllowName, asExceptName, kubeovnv1.ProtocolIPv4, ovnnb.ACLDirectionToLport, npp, namedPortMap)

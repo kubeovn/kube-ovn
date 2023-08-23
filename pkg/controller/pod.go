@@ -66,11 +66,11 @@ func (n *NamedPort) AddNamedPortByPod(pod *v1.Pod) {
 
 			if _, ok := n.namedPortMap[ns]; ok {
 				if _, ok := n.namedPortMap[ns][port.Name]; ok {
-					if n.namedPortMap[ns][port.Name].PortId == port.ContainerPort {
+					if n.namedPortMap[ns][port.Name].PortID == port.ContainerPort {
 						n.namedPortMap[ns][port.Name].Pods.Add(podName)
 					} else {
 						klog.Warningf("named port %s has already be defined with portID %d",
-							port.Name, n.namedPortMap[ns][port.Name].PortId)
+							port.Name, n.namedPortMap[ns][port.Name].PortID)
 					}
 					continue
 				}
@@ -78,7 +78,7 @@ func (n *NamedPort) AddNamedPortByPod(pod *v1.Pod) {
 				n.namedPortMap[ns] = make(map[string]*util.NamedPortInfo)
 			}
 			n.namedPortMap[ns][port.Name] = &util.NamedPortInfo{
-				PortId: port.ContainerPort,
+				PortID: port.ContainerPort,
 				Pods:   strset.New(podName),
 			}
 		}
@@ -619,7 +619,7 @@ func (c *Controller) reconcileAllocateSubnets(cachedPod, pod *v1.Pod, needAlloca
 			return nil, err
 		}
 		ipStr := util.GetStringIP(v4IP, v6IP)
-		pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)] = ipStr
+		pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, podNet.ProviderName)] = ipStr
 		if mac == "" {
 			delete(pod.Annotations, fmt.Sprintf(util.MacAddressAnnotationTemplate, podNet.ProviderName))
 		} else {
@@ -638,7 +638,7 @@ func (c *Controller) reconcileAllocateSubnets(cachedPod, pod *v1.Pod, needAlloca
 		}
 		pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)] = "true"
 		if isVmPod && c.config.EnableKeepVmIP {
-			pod.Annotations[fmt.Sprintf(util.VmTemplate, podNet.ProviderName)] = vmName
+			pod.Annotations[fmt.Sprintf(util.VMTemplate, podNet.ProviderName)] = vmName
 			if err := c.changeVMSubnet(vmName, namespace, podNet.ProviderName, subnet.Name, pod); err != nil {
 				klog.Errorf("change subnet of pod %s/%s to %s failed: %v", namespace, name, subnet.Name, err)
 				return nil, err
@@ -671,7 +671,7 @@ func (c *Controller) reconcileAllocateSubnets(cachedPod, pod *v1.Pod, needAlloca
 					c.recorder.Eventf(pod, v1.EventTypeWarning, "GetVlanInfoFailed", err.Error())
 					return nil, err
 				}
-				pod.Annotations[fmt.Sprintf(util.VlanIdAnnotationTemplate, podNet.ProviderName)] = strconv.Itoa(vlan.Spec.ID)
+				pod.Annotations[fmt.Sprintf(util.VlanIDAnnotationTemplate, podNet.ProviderName)] = strconv.Itoa(vlan.Spec.ID)
 				pod.Annotations[fmt.Sprintf(util.ProviderNetworkTemplate, podNet.ProviderName)] = vlan.Spec.Provider
 			}
 
@@ -764,7 +764,7 @@ func (c *Controller) reconcileRouteSubnets(cachedPod, pod *v1.Pod, needRoutePodN
 			return fmt.Errorf("no address has been allocated to %s/%s", namespace, name)
 		}
 
-		podIP = pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)]
+		podIP = pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, podNet.ProviderName)]
 		subnet = podNet.Subnet
 
 		if podIP != "" && (subnet.Spec.Vlan == "" || subnet.Spec.LogicalGateway) && subnet.Spec.Vpc == c.config.ClusterRouter {
@@ -1058,7 +1058,7 @@ func (c *Controller) handleUpdatePodSecurity(key string) error {
 		}
 
 		mac := pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, podNet.ProviderName)]
-		ipStr := pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)]
+		ipStr := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, podNet.ProviderName)]
 		vips := pod.Annotations[fmt.Sprintf(util.PortVipAnnotationTemplate, podNet.ProviderName)]
 
 		if err = c.ovnNbClient.SetLogicalSwitchPortSecurity(portSecurity, ovs.PodNameToPortName(podName, namespace, podNet.ProviderName), mac, ipStr, vips); err != nil {
@@ -1206,7 +1206,7 @@ func isStatefulSetPodToDel(c kubernetes.Interface, pod *v1.Pod, statefulSetName 
 
 func getNodeTunlIP(node *v1.Node) ([]net.IP, error) {
 	var nodeTunlIPAddr []net.IP
-	nodeTunlIP := node.Annotations[util.IpAddressAnnotation]
+	nodeTunlIP := node.Annotations[util.IPAddressAnnotation]
 	if nodeTunlIP == "" {
 		return nil, fmt.Errorf("node has no tunnel ip annotation")
 	}
@@ -1550,7 +1550,7 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 		*macStr = ""
 	}
 
-	ippoolStr := pod.Annotations[fmt.Sprintf(util.IpPoolAnnotationTemplate, podNet.ProviderName)]
+	ippoolStr := pod.Annotations[fmt.Sprintf(util.IPPoolAnnotationTemplate, podNet.ProviderName)]
 	if ippoolStr == "" {
 		ns, err := c.namespacesLister.Get(pod.Namespace)
 		if err != nil {
@@ -1558,12 +1558,12 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 			return "", "", "", podNet.Subnet, err
 		}
 		if len(ns.Annotations) != 0 {
-			ippoolStr = ns.Annotations[util.IpPoolAnnotation]
+			ippoolStr = ns.Annotations[util.IPPoolAnnotation]
 		}
 	}
 
 	// Random allocate
-	if pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)] == "" &&
+	if pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, podNet.ProviderName)] == "" &&
 		ippoolStr == "" {
 		var skippedAddrs []string
 		for {
@@ -1600,8 +1600,8 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 	var err error
 
 	// Static allocate
-	if pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)] != "" {
-		ipStr := pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)]
+	if pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, podNet.ProviderName)] != "" {
+		ipStr := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, podNet.ProviderName)]
 
 		for _, net := range nsNets {
 			v4IP, v6IP, mac, err = c.acquireStaticAddress(key, portName, ipStr, macStr, net.Subnet.Name, net.AllowLiveMigration)
@@ -1769,8 +1769,8 @@ func appendCheckPodToDel(c *Controller, pod *v1.Pod, ownerRefName, ownerRefKind 
 		klog.Errorf("failed to get subnet %s, %v", pod.Annotations[util.LogicalSwitchAnnotation], err)
 		return false, err
 	}
-	if podSubnet != nil && !util.CIDRContainIP(podSubnet.Spec.CIDRBlock, pod.Annotations[util.IpAddressAnnotation]) {
-		klog.Infof("pod's ip %s is not in the range of subnet %s, delete pod", pod.Annotations[util.IpAddressAnnotation], podSubnet.Name)
+	if podSubnet != nil && !util.CIDRContainIP(podSubnet.Spec.CIDRBlock, pod.Annotations[util.IPAddressAnnotation]) {
+		klog.Infof("pod's ip %s is not in the range of subnet %s, delete pod", pod.Annotations[util.IPAddressAnnotation], podSubnet.Name)
 		return true, nil
 	}
 	// subnet of ownerReference(sts/vm) has been changed, it needs to handle delete pod and create port on the new logical switch

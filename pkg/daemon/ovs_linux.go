@@ -430,7 +430,7 @@ func (c *Controller) loopOvn0Check() {
 		klog.Errorf("failed to get node %s: %v", c.config.NodeName, err)
 		return
 	}
-	ip := node.Annotations[util.IpAddressAnnotation]
+	ip := node.Annotations[util.IPAddressAnnotation]
 	gw := node.Annotations[util.GatewayAnnotation]
 	if err := waitNetworkReady(util.NodeNic, ip, gw, false, false, 5); err != nil {
 		util.LogFatalAndExit(err, "failed to ping ovn0 gateway %s", gw)

@@ -84,7 +84,7 @@ func (c *Controller) genLbSvcDeployment(svc *corev1.Service) (dp *v1.Deployment)
 	attachmentName, attachmentNs := parseAttachNetworkProvider(svc)
 	providerName := getAttachNetworkProvider(svc)
 	attachSubnetAnnotation := fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, providerName)
-	attachIpAnnotation := fmt.Sprintf(util.IpAddressAnnotationTemplate, providerName)
+	attachIpAnnotation := fmt.Sprintf(util.IPAddressAnnotationTemplate, providerName)
 	podAnnotations := map[string]string{
 		util.AttachmentNetworkAnnotation: fmt.Sprintf("%s/%s", attachmentNs, attachmentName),
 		attachSubnetAnnotation:           svc.Annotations[attachSubnetAnnotation],
@@ -138,7 +138,7 @@ func (c *Controller) updateLbSvcDeployment(svc *corev1.Service, dp *v1.Deploymen
 	attachmentName, attachmentNs := parseAttachNetworkProvider(svc)
 	providerName := getAttachNetworkProvider(svc)
 	attachSubnetAnnotation := fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, providerName)
-	attachIpAnnotation := fmt.Sprintf(util.IpAddressAnnotationTemplate, providerName)
+	attachIpAnnotation := fmt.Sprintf(util.IPAddressAnnotationTemplate, providerName)
 	podAnnotations := map[string]string{
 		util.AttachmentNetworkAnnotation: fmt.Sprintf("%s/%s", attachmentNs, attachmentName),
 		attachSubnetAnnotation:           svc.Annotations[attachSubnetAnnotation],
@@ -186,16 +186,17 @@ func (c *Controller) getLbSvcPod(svcName, svcNamespace string) (*corev1.Pod, err
 	})
 
 	pods, err := c.podsLister.Pods(svcNamespace).List(sel)
-	if err != nil {
+	switch {
+	case err != nil:
 		klog.Error(err)
 		return nil, err
-	} else if len(pods) == 0 {
+	case len(pods) == 0:
 		time.Sleep(2 * time.Second)
 		return nil, fmt.Errorf("pod '%s' not exist", genLbSvcDpName(svcName))
-	} else if len(pods) != 1 {
+	case len(pods) != 1:
 		time.Sleep(2 * time.Second)
 		return nil, fmt.Errorf("too many pod")
-	} else if pods[0].Status.Phase != "Running" {
+	case pods[0].Status.Phase != "Running":
 		time.Sleep(2 * time.Second)
 		return nil, fmt.Errorf("pod is not active now")
 	}
@@ -232,7 +233,7 @@ func (c *Controller) getPodAttachIP(pod *corev1.Pod, svc *corev1.Service) (strin
 	var err error
 
 	providerName := getAttachNetworkProvider(svc)
-	attachIpAnnotation := fmt.Sprintf(util.IpAddressAnnotationTemplate, providerName)
+	attachIpAnnotation := fmt.Sprintf(util.IPAddressAnnotationTemplate, providerName)
 
 	if pod.Annotations[attachIpAnnotation] != "" {
 		loadBalancerIP = pod.Annotations[attachIpAnnotation]
@@ -289,7 +290,7 @@ func (c *Controller) updatePodAttachNets(pod *corev1.Pod, svc *corev1.Service) e
 	}
 
 	providerName := getAttachNetworkProvider(svc)
-	attachIpAnnotation := fmt.Sprintf(util.IpAddressAnnotationTemplate, providerName)
+	attachIpAnnotation := fmt.Sprintf(util.IPAddressAnnotationTemplate, providerName)
 	attachCidrAnnotation := fmt.Sprintf(util.CidrAnnotationTemplate, providerName)
 	attachGatewayAnnotation := fmt.Sprintf(util.GatewayAnnotationTemplate, providerName)
 

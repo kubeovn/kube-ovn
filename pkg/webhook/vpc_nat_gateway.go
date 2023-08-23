@@ -356,15 +356,15 @@ func (v *ValidatingHook) ValidateVpcNatGW(ctx context.Context, gw *ovnv1.VpcNatG
 	}
 
 	for _, t := range gw.Spec.Tolerations {
-		if corev1.TolerationOperator(t.Operator) != corev1.TolerationOpExists &&
-			corev1.TolerationOperator(t.Operator) != corev1.TolerationOpEqual {
+		if t.Operator != corev1.TolerationOpExists &&
+			t.Operator != corev1.TolerationOpEqual {
 			err := fmt.Errorf("invaild taint operator: %s, supported params: \"Equal\", \"Exists\"", t.Operator)
 			return err
 		}
 
-		if corev1.TaintEffect(t.Effect) != corev1.TaintEffectNoSchedule &&
-			corev1.TaintEffect(t.Effect) != corev1.TaintEffectNoExecute &&
-			corev1.TaintEffect(t.Effect) != corev1.TaintEffectPreferNoSchedule {
+		if t.Effect != corev1.TaintEffectNoSchedule &&
+			t.Effect != corev1.TaintEffectNoExecute &&
+			t.Effect != corev1.TaintEffectPreferNoSchedule {
 			err := fmt.Errorf("invaild taint effect: %s, supported params: \"NoSchedule\", \"PreferNoSchedule\", \"NoExecute\"", t.Effect)
 			return err
 		}

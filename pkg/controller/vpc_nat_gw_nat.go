@@ -79,15 +79,15 @@ func (c *Controller) enqueueAddIptablesDnatRule(obj interface{}) {
 	c.addIptablesDnatRuleQueue.Add(key)
 }
 
-func (c *Controller) enqueueUpdateIptablesDnatRule(old, new interface{}) {
+func (c *Controller) enqueueUpdateIptablesDnatRule(oldObj, newObj interface{}) {
 	var key string
 	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(new); err != nil {
+	if key, err = cache.MetaNamespaceKeyFunc(newObj); err != nil {
 		utilruntime.HandleError(err)
 		return
 	}
-	oldDnat := old.(*kubeovnv1.IptablesDnatRule)
-	newDnat := new.(*kubeovnv1.IptablesDnatRule)
+	oldDnat := oldObj.(*kubeovnv1.IptablesDnatRule)
+	newDnat := newObj.(*kubeovnv1.IptablesDnatRule)
 	if !newDnat.DeletionTimestamp.IsZero() {
 		klog.V(3).Infof("enqueue update to clean dnat %s", key)
 		c.updateIptablesDnatRuleQueue.Add(key)
@@ -132,15 +132,15 @@ func (c *Controller) enqueueAddIptablesSnatRule(obj interface{}) {
 	c.addIptablesSnatRuleQueue.Add(key)
 }
 
-func (c *Controller) enqueueUpdateIptablesSnatRule(old, new interface{}) {
+func (c *Controller) enqueueUpdateIptablesSnatRule(oldObj, newObj interface{}) {
 	var key string
 	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(new); err != nil {
+	if key, err = cache.MetaNamespaceKeyFunc(newObj); err != nil {
 		utilruntime.HandleError(err)
 		return
 	}
-	oldSnat := old.(*kubeovnv1.IptablesSnatRule)
-	newSnat := new.(*kubeovnv1.IptablesSnatRule)
+	oldSnat := oldObj.(*kubeovnv1.IptablesSnatRule)
+	newSnat := newObj.(*kubeovnv1.IptablesSnatRule)
 	if !newSnat.DeletionTimestamp.IsZero() {
 		klog.V(3).Infof("enqueue update to clean snat %s", key)
 		c.updateIptablesSnatRuleQueue.Add(key)

@@ -9,10 +9,10 @@ const (
 	RoutedAnnotation     = "ovn.kubernetes.io/routed"
 	RoutesAnnotation     = "ovn.kubernetes.io/routes"
 	MacAddressAnnotation = "ovn.kubernetes.io/mac_address"
-	IpAddressAnnotation  = "ovn.kubernetes.io/ip_address"
+	IPAddressAnnotation  = "ovn.kubernetes.io/ip_address"
 	CidrAnnotation       = "ovn.kubernetes.io/cidr"
 	GatewayAnnotation    = "ovn.kubernetes.io/gateway"
-	IpPoolAnnotation     = "ovn.kubernetes.io/ip_pool"
+	IPPoolAnnotation     = "ovn.kubernetes.io/ip_pool"
 	BgpAnnotation        = "ovn.kubernetes.io/bgp"
 	SnatAnnotation       = "ovn.kubernetes.io/snat"
 	EipAnnotation        = "ovn.kubernetes.io/eip"
@@ -23,7 +23,7 @@ const (
 	VipAnnotation        = "ovn.kubernetes.io/vip"
 	ChassisAnnotation    = "ovn.kubernetes.io/chassis"
 
-	ExternalIpAnnotation         = "ovn.kubernetes.io/external_ip"
+	ExternalIPAnnotation         = "ovn.kubernetes.io/external_ip"
 	ExternalMacAnnotation        = "ovn.kubernetes.io/external_mac"
 	ExternalCidrAnnotation       = "ovn.kubernetes.io/external_cidr"
 	ExternalSwitchAnnotation     = "ovn.kubernetes.io/external_switch"
@@ -33,7 +33,7 @@ const (
 	VpcNatGatewayAnnotation     = "ovn.kubernetes.io/vpc_nat_gw"
 	VpcNatGatewayInitAnnotation = "ovn.kubernetes.io/vpc_nat_gw_init"
 	VpcEipsAnnotation           = "ovn.kubernetes.io/vpc_eips"
-	VpcFloatingIpMd5Annotation  = "ovn.kubernetes.io/vpc_floating_ips"
+	VpcFloatingIPMd5Annotation  = "ovn.kubernetes.io/vpc_floating_ips"
 	VpcDnatMd5Annotation        = "ovn.kubernetes.io/vpc_dnat_md5"
 	VpcSnatMd5Annotation        = "ovn.kubernetes.io/vpc_snat_md5"
 	VpcCIDRsAnnotation          = "ovn.kubernetes.io/vpc_cidrs"
@@ -62,13 +62,13 @@ const (
 	RoutedAnnotationTemplate        = "%s.kubernetes.io/routed"
 	RoutesAnnotationTemplate        = "%s.kubernetes.io/routes"
 	MacAddressAnnotationTemplate    = "%s.kubernetes.io/mac_address"
-	IpAddressAnnotationTemplate     = "%s.kubernetes.io/ip_address"
+	IPAddressAnnotationTemplate     = "%s.kubernetes.io/ip_address"
 	CidrAnnotationTemplate          = "%s.kubernetes.io/cidr"
 	GatewayAnnotationTemplate       = "%s.kubernetes.io/gateway"
-	IpPoolAnnotationTemplate        = "%s.kubernetes.io/ip_pool"
+	IPPoolAnnotationTemplate        = "%s.kubernetes.io/ip_pool"
 	LogicalSwitchAnnotationTemplate = "%s.kubernetes.io/logical_switch"
 	LogicalRouterAnnotationTemplate = "%s.kubernetes.io/logical_router"
-	VlanIdAnnotationTemplate        = "%s.kubernetes.io/vlan_id"
+	VlanIDAnnotationTemplate        = "%s.kubernetes.io/vlan_id"
 	IngressRateAnnotationTemplate   = "%s.kubernetes.io/ingress_rate"
 	EgressRateAnnotationTemplate    = "%s.kubernetes.io/egress_rate"
 	SecurityGroupAnnotationTemplate = "%s.kubernetes.io/security_groups"
@@ -83,7 +83,7 @@ const (
 	ProviderNetworkMtuTemplate        = "%s.provider-network.kubernetes.io/mtu"
 	MirrorControlAnnotationTemplate   = "%s.kubernetes.io/mirror"
 	PodNicAnnotationTemplate          = "%s.kubernetes.io/pod_nic_type"
-	VmTemplate                        = "%s.kubernetes.io/virtualmachine"
+	VMTemplate                        = "%s.kubernetes.io/virtualmachine"
 
 	ExcludeIpsAnnotation = "ovn.kubernetes.io/exclude_ips"
 
@@ -103,10 +103,10 @@ const (
 	ExGatewayLabel             = "ovn.kubernetes.io/external-gw"
 	NodeExtGwLabel             = "ovn.kubernetes.io/node-ext-gw"
 	VpcNatGatewayLabel         = "ovn.kubernetes.io/vpc-nat-gw"
-	IpReservedLabel            = "ovn.kubernetes.io/ip_reserved"
+	IPReservedLabel            = "ovn.kubernetes.io/ip_reserved"
 	VpcNatGatewayNameLabel     = "ovn.kubernetes.io/vpc-nat-gw-name"
 	VpcLbLabel                 = "ovn.kubernetes.io/vpc_lb"
-	VpcDnsNameLabel            = "ovn.kubernetes.io/vpc-dns"
+	VpcDNSNameLabel            = "ovn.kubernetes.io/vpc-dns"
 	QoSLabel                   = "ovn.kubernetes.io/qos"
 	NodeNameLabel              = "ovn.kubernetes.io/node-name"
 	NetworkPolicyLogAnnotation = "ovn.kubernetes.io/enable_log"
@@ -148,7 +148,7 @@ const (
 	GeneveHeaderLength = 100
 	VxlanHeaderLength  = 50
 	SttHeaderLength    = 72
-	TcpIpHeaderLength  = 40
+	TCPIPHeaderLength  = 40
 
 	OvnProvider                 = "ovn"
 	AttachmentNetworkAnnotation = "k8s.v1.cni.cncf.io/networks"

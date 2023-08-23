@@ -235,9 +235,9 @@ func (c *Controller) handleAddNode(key string) error {
 
 	var v4IP, v6IP, mac string
 	portName := fmt.Sprintf("node-%s", key)
-	if node.Annotations[util.AllocatedAnnotation] == "true" && node.Annotations[util.IpAddressAnnotation] != "" && node.Annotations[util.MacAddressAnnotation] != "" {
+	if node.Annotations[util.AllocatedAnnotation] == "true" && node.Annotations[util.IPAddressAnnotation] != "" && node.Annotations[util.MacAddressAnnotation] != "" {
 		macStr := node.Annotations[util.MacAddressAnnotation]
-		v4IP, v6IP, mac, err = c.ipam.GetStaticAddress(portName, portName, node.Annotations[util.IpAddressAnnotation],
+		v4IP, v6IP, mac, err = c.ipam.GetStaticAddress(portName, portName, node.Annotations[util.IPAddressAnnotation],
 			&macStr, node.Annotations[util.LogicalSwitchAnnotation], true)
 		if err != nil {
 			klog.Errorf("failed to alloc static ip addrs for node %v: %v", node.Name, err)
@@ -307,7 +307,7 @@ func (c *Controller) handleAddNode(key string) error {
 		op = "add"
 	}
 
-	node.Annotations[util.IpAddressAnnotation] = ipStr
+	node.Annotations[util.IPAddressAnnotation] = ipStr
 	node.Annotations[util.MacAddressAnnotation] = mac
 	node.Annotations[util.CidrAnnotation] = subnet.Spec.CIDRBlock
 	node.Annotations[util.GatewayAnnotation] = subnet.Spec.Gateway
@@ -764,7 +764,7 @@ func (c *Controller) checkGatewayReady() error {
 		}
 
 		for _, node := range nodes {
-			ipStr := node.Annotations[util.IpAddressAnnotation]
+			ipStr := node.Annotations[util.IPAddressAnnotation]
 			for _, ip := range strings.Split(ipStr, ",") {
 				for _, cidrBlock := range strings.Split(subnet.Spec.CIDRBlock, ",") {
 					if util.CheckProtocol(cidrBlock) != util.CheckProtocol(ip) {
@@ -946,7 +946,7 @@ func (c *Controller) checkAndUpdateNodePortGroup() error {
 
 		// use join IP only when no internal IP exists
 		nodeIPv4, nodeIPv6 := util.GetNodeInternalIP(*node)
-		joinIP := node.Annotations[util.IpAddressAnnotation]
+		joinIP := node.Annotations[util.IPAddressAnnotation]
 		joinIPv4, joinIPv6 := util.SplitStringIP(joinIP)
 		if nodeIPv4 == "" {
 			nodeIPv4 = joinIPv4

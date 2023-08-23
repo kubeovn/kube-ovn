@@ -93,16 +93,16 @@ func (c *Controller) enqueueDeleteService(obj interface{}) {
 	}
 }
 
-func (c *Controller) enqueueUpdateService(old, new interface{}) {
-	oldSvc := old.(*v1.Service)
-	newSvc := new.(*v1.Service)
+func (c *Controller) enqueueUpdateService(oldObj, newObj interface{}) {
+	oldSvc := oldObj.(*v1.Service)
+	newSvc := newObj.(*v1.Service)
 	if oldSvc.ResourceVersion == newSvc.ResourceVersion {
 		return
 	}
 
 	var key string
 	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(new); err != nil {
+	if key, err = cache.MetaNamespaceKeyFunc(newObj); err != nil {
 		utilruntime.HandleError(err)
 		return
 	}

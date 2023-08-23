@@ -32,26 +32,26 @@ func (c *Controller) enqueueAddQoSPolicy(obj interface{}) {
 	c.addQoSPolicyQueue.Add(key)
 }
 
-func compareQoSPolicyBandwidthLimitRules(old, new kubeovnv1.QoSPolicyBandwidthLimitRules) bool {
-	if len(old) != len(new) {
+func compareQoSPolicyBandwidthLimitRules(oldObj, newObj kubeovnv1.QoSPolicyBandwidthLimitRules) bool {
+	if len(oldObj) != len(newObj) {
 		return false
 	}
 
-	sort.Slice(new, func(i, j int) bool {
-		return new[i].Name < new[j].Name
+	sort.Slice(newObj, func(i, j int) bool {
+		return newObj[i].Name < newObj[j].Name
 	})
-	return reflect.DeepEqual(old, new)
+	return reflect.DeepEqual(oldObj, newObj)
 }
 
-func (c *Controller) enqueueUpdateQoSPolicy(old, new interface{}) {
+func (c *Controller) enqueueUpdateQoSPolicy(oldObj, newObj interface{}) {
 	var key string
 	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(new); err != nil {
+	if key, err = cache.MetaNamespaceKeyFunc(newObj); err != nil {
 		utilruntime.HandleError(err)
 		return
 	}
-	oldQos := old.(*kubeovnv1.QoSPolicy)
-	newQos := new.(*kubeovnv1.QoSPolicy)
+	oldQos := oldObj.(*kubeovnv1.QoSPolicy)
+	newQos := newObj.(*kubeovnv1.QoSPolicy)
 	if !newQos.DeletionTimestamp.IsZero() {
 		klog.V(3).Infof("enqueue update to clean qos %s", key)
 		c.updateQoSPolicyQueue.Add(key)
@@ -474,15 +474,16 @@ func (c *Controller) handleUpdateQoSPolicy(key string) error {
 					klog.Errorf("failed to get eip list, %v", err)
 					return err
 				}
-				if len(eips) == 0 {
+				switch {
+				case len(eips) == 0:
 					// not thing to do
-				} else if len(eips) == 1 {
+				case len(eips) == 1:
 					eip := eips[0]
 					if err = c.reconcileEIPBandtithLimitRules(eip, added, deleted, updated); err != nil {
 						klog.Errorf("failed to reconcile eip %s bandwidth limit rules, %v", eip.Name, err)
 						return err
 					}
-				} else {
+				default:
 					err := fmt.Errorf("not support qos %s change rule, related eip more than one", key)
 					klog.Error(err)
 					return err

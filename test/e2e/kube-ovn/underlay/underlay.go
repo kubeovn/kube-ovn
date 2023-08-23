@@ -459,7 +459,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		ip := containerInfo.NetworkSettings.Networks[dockerNetworkName].IPAddress
 		mac := containerInfo.NetworkSettings.Networks[dockerNetworkName].MacAddress
 		ginkgo.By("Creating pod " + podName + " with IP address " + ip)
-		annotations := map[string]string{util.IpAddressAnnotation: ip}
+		annotations := map[string]string{util.IPAddressAnnotation: ip}
 		pod := framework.MakePod(namespaceName, podName, nil, annotations, image, cmd, nil)
 		pod.Spec.TerminationGracePeriodSeconds = nil
 		_ = podClient.Create(pod)

@@ -67,9 +67,9 @@ func (c *Controller) syncSubnetRoutes() {
 		}
 		for _, svc := range services {
 			if svc.Annotations != nil && svc.Annotations[util.BgpAnnotation] == "true" && isClusterIPService(svc) {
-				for _, clusterIp := range svc.Spec.ClusterIPs {
-					ipFamily := util.CheckProtocol(clusterIp)
-					bgpExpected[ipFamily] = append(bgpExpected[ipFamily], fmt.Sprintf("%s/%d", clusterIp, maskMap[ipFamily]))
+				for _, clusterIP := range svc.Spec.ClusterIPs {
+					ipFamily := util.CheckProtocol(clusterIP)
+					bgpExpected[ipFamily] = append(bgpExpected[ipFamily], fmt.Sprintf("%s/%d", clusterIP, maskMap[ipFamily]))
 				}
 			}
 		}
@@ -88,9 +88,9 @@ func (c *Controller) syncSubnetRoutes() {
 	for _, pod := range pods {
 		if isPodAlive(pod) && !pod.Spec.HostNetwork && pod.Annotations[util.BgpAnnotation] == "true" && pod.Status.PodIP != "" {
 			podIps := pod.Status.PodIPs
-			for _, podIp := range podIps {
-				ipFamily := util.CheckProtocol(podIp.IP)
-				bgpExpected[ipFamily] = append(bgpExpected[ipFamily], fmt.Sprintf("%s/%d", podIp.IP, maskMap[ipFamily]))
+			for _, podIP := range podIps {
+				ipFamily := util.CheckProtocol(podIP.IP)
+				bgpExpected[ipFamily] = append(bgpExpected[ipFamily], fmt.Sprintf("%s/%d", podIP.IP, maskMap[ipFamily]))
 			}
 		}
 	}
@@ -101,10 +101,10 @@ func (c *Controller) syncSubnetRoutes() {
 		for _, path := range d.Paths {
 			attrInterfaces, _ := bgpapiutil.UnmarshalPathAttributes(path.Pattrs)
 			nextHop := getNextHopFromPathAttributes(attrInterfaces)
-			klog.V(5).Infof("nexthop is %s, routerID is %s", nextHop.String(), c.config.RouterId)
+			klog.V(5).Infof("nexthop is %s, routerID is %s", nextHop.String(), c.config.RouterID)
 			ipFamily := util.CheckProtocol(nextHop.String())
 			route, _ := netlink.RouteGet(nextHop)
-			if len(route) == 1 && route[0].Type == unix.RTN_LOCAL || nextHop.String() == c.config.RouterId {
+			if len(route) == 1 && route[0].Type == unix.RTN_LOCAL || nextHop.String() == c.config.RouterID {
 				bgpExists[ipFamily] = append(bgpExists[ipFamily], d.Prefix)
 				return
 			}
@@ -249,7 +249,7 @@ func (c *Controller) getNlriAndAttrs(route string) (*anypb.Any, []*anypb.Any, er
 		Origin: 0,
 	})
 	a2, _ := anypb.New(&bgpapi.NextHopAttribute{
-		NextHop: getNextHopAttribute(neighborAddr, c.config.RouterId),
+		NextHop: getNextHopAttribute(neighborAddr, c.config.RouterID),
 	})
 	attrs := []*anypb.Any{a1, a2}
 	return nlri, attrs, err

@@ -383,7 +383,7 @@ func (c *Controller) createOrUpdateCrdVip(key, ns, subnet, v4ip, v6ip, mac, pV4i
 					Name: key,
 					Labels: map[string]string{
 						util.SubnetNameLabel: subnet,
-						util.IpReservedLabel: "",
+						util.IPReservedLabel: "",
 					},
 					Namespace: ns,
 				},
@@ -439,7 +439,7 @@ func (c *Controller) createOrUpdateCrdVip(key, ns, subnet, v4ip, v6ip, mac, pV4i
 			op = "add"
 			vip.Labels = map[string]string{
 				util.SubnetNameLabel: subnet,
-				util.IpReservedLabel: "",
+				util.IPReservedLabel: "",
 			}
 			needUpdateLabel = true
 		}
@@ -505,15 +505,15 @@ func (c *Controller) podReuseVip(key, portName string, keepVIP bool) error {
 	vip := oriVip.DeepCopy()
 	var op string
 
-	if vip.Labels[util.IpReservedLabel] != "" {
-		if keepVIP && vip.Labels[util.IpReservedLabel] == portName {
+	if vip.Labels[util.IPReservedLabel] != "" {
+		if keepVIP && vip.Labels[util.IPReservedLabel] == portName {
 			return nil
 		} else {
-			return fmt.Errorf("vip '%s' is in use by pod %s", vip.Name, vip.Labels[util.IpReservedLabel])
+			return fmt.Errorf("vip '%s' is in use by pod %s", vip.Name, vip.Labels[util.IPReservedLabel])
 		}
 	}
 	op = "replace"
-	vip.Labels[util.IpReservedLabel] = portName
+	vip.Labels[util.IPReservedLabel] = portName
 	patchPayloadTemplate := `[{ "op": "%s", "path": "/metadata/labels", "value": %s }]`
 	raw, _ := json.Marshal(vip.Labels)
 	patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
@@ -539,11 +539,11 @@ func (c *Controller) releaseVip(key string) error {
 	vip := oriVip.DeepCopy()
 	var needUpdateLabel bool
 	var op string
-	if vip.Labels[util.IpReservedLabel] == "" {
+	if vip.Labels[util.IPReservedLabel] == "" {
 		return nil
 	} else {
 		op = "replace"
-		vip.Labels[util.IpReservedLabel] = ""
+		vip.Labels[util.IPReservedLabel] = ""
 		needUpdateLabel = true
 	}
 	if needUpdateLabel {

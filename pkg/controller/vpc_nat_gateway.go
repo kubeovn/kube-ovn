@@ -280,7 +280,8 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 		needToUpdate = true
 	}
 
-	if needToCreate {
+	switch {
+	case needToCreate:
 		// if pod create successfully, will add initVpcNatGatewayQueue
 		if _, err := c.config.KubeClient.AppsV1().StatefulSets(c.config.PodNamespace).
 			Create(context.Background(), newSts, metav1.CreateOptions{}); err != nil {
@@ -293,7 +294,7 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 			return err
 		}
 		return nil
-	} else if needToUpdate {
+	case needToUpdate:
 		if _, err := c.config.KubeClient.AppsV1().StatefulSets(c.config.PodNamespace).
 			Update(context.Background(), newSts, metav1.UpdateOptions{}); err != nil {
 			err := fmt.Errorf("failed to update statefulset '%s', err: %v", newSts.Name, err)
@@ -304,7 +305,7 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 			klog.Errorf("failed to patch nat gw sts status for nat gw %s, %v", key, err)
 			return err
 		}
-	} else {
+	default:
 		// check if need to change qos
 		if gw.Spec.QoSPolicy != gw.Status.QoSPolicy {
 			if gw.Status.QoSPolicy != "" {
@@ -753,7 +754,7 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 		util.VpcNatGatewayAnnotation:     gw.Name,
 		util.AttachmentNetworkAnnotation: fmt.Sprintf("%s/%s", c.config.PodNamespace, externalNetwork),
 		util.LogicalSwitchAnnotation:     gw.Spec.Subnet,
-		util.IpAddressAnnotation:         gw.Spec.LanIP,
+		util.IPAddressAnnotation:         gw.Spec.LanIP,
 	}
 	for key, value := range podAnnotations {
 		newPodAnnotations[key] = value
@@ -829,15 +830,17 @@ func (c *Controller) getNatGwPod(name string) (*corev1.Pod, error) {
 	})
 
 	pods, err := c.podsLister.Pods(c.config.PodNamespace).List(sel)
-	if err != nil {
+
+	switch {
+	case err != nil:
 		klog.Error(err)
 		return nil, err
-	} else if len(pods) == 0 {
+	case len(pods) == 0:
 		return nil, k8serrors.NewNotFound(v1.Resource("pod"), name)
-	} else if len(pods) != 1 {
+	case len(pods) != 1:
 		time.Sleep(5 * time.Second)
 		return nil, fmt.Errorf("too many pod")
-	} else if pods[0].Status.Phase != "Running" {
+	case pods[0].Status.Phase != "Running":
 		time.Sleep(5 * time.Second)
 		return nil, fmt.Errorf("pod is not active now")
 	}
@@ -1046,7 +1049,8 @@ func (c *Controller) execNatGwQoSInPod(
 	}
 	var addRules []string
 	var classifierType, matchDirection, cidr string
-	if r.MatchType == "ip" {
+	switch {
+	case r.MatchType == "ip":
 		classifierType = "u32"
 		// matchValue: dst xxx.xxx.xxx.xxx/32
 		splitStr := strings.Split(r.MatchValue, " ")
@@ -1057,9 +1061,9 @@ func (c *Controller) execNatGwQoSInPod(
 		}
 		matchDirection = splitStr[0]
 		cidr = splitStr[1]
-	} else if r.MatchType == "" {
+	case r.MatchType == "":
 		classifierType = "matchall"
-	} else {
+	default:
 		err := fmt.Errorf("MatchType %s format error", r.MatchType)
 		klog.Error(err)
 		return err

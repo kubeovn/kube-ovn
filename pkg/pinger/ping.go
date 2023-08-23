@@ -169,24 +169,24 @@ func pingPods(config *Configuration) error {
 	for _, pod := range pods.Items {
 		for _, podIP := range pod.Status.PodIPs {
 			if util.ContainsString(config.PodProtocols, util.CheckProtocol(podIP.IP)) {
-				func(podIp, podName, nodeIP, nodeName string) {
+				func(podIP, podName, nodeIP, nodeName string) {
 					if config.EnableVerboseConnCheck {
-						if err := util.TCPConnectivityCheck(fmt.Sprintf("%s:%d", podIp, config.TCPConnCheckPort)); err != nil {
-							klog.Infof("TCP connectivity to pod %s %s failed", podName, podIp)
+						if err := util.TCPConnectivityCheck(fmt.Sprintf("%s:%d", podIP, config.TCPConnCheckPort)); err != nil {
+							klog.Infof("TCP connectivity to pod %s %s failed", podName, podIP)
 							pingErr = err
 						} else {
-							klog.Infof("TCP connectivity to pod %s %s success", podName, podIp)
+							klog.Infof("TCP connectivity to pod %s %s success", podName, podIP)
 						}
 
-						if err := util.UDPConnectivityCheck(fmt.Sprintf("%s:%d", podIp, config.UDPConnCheckPort)); err != nil {
-							klog.Infof("UDP connectivity to pod %s %s failed", podName, podIp)
+						if err := util.UDPConnectivityCheck(fmt.Sprintf("%s:%d", podIP, config.UDPConnCheckPort)); err != nil {
+							klog.Infof("UDP connectivity to pod %s %s failed", podName, podIP)
 							pingErr = err
 						} else {
-							klog.Infof("UDP connectivity to pod %s %s success", podName, podIp)
+							klog.Infof("UDP connectivity to pod %s %s success", podName, podIP)
 						}
 					}
 
-					pinger, err := goping.NewPinger(podIp)
+					pinger, err := goping.NewPinger(podIP)
 					if err != nil {
 						klog.Errorf("failed to init pinger, %v", err)
 						pingErr = err
@@ -198,14 +198,14 @@ func pingPods(config *Configuration) error {
 					pinger.Count = 3
 					pinger.Interval = 1 * time.Millisecond
 					if err = pinger.Run(); err != nil {
-						klog.Errorf("failed to run pinger for destination %s: %v", podIp, err)
+						klog.Errorf("failed to run pinger for destination %s: %v", podIP, err)
 						pingErr = err
 						return
 					}
 
 					stats := pinger.Statistics()
 					klog.Infof("ping pod: %s %s, count: %d, loss count %d, average rtt %.2fms",
-						podName, podIp, pinger.Count, int(math.Abs(float64(stats.PacketsSent-stats.PacketsRecv))), float64(stats.AvgRtt)/float64(time.Millisecond))
+						podName, podIP, pinger.Count, int(math.Abs(float64(stats.PacketsSent-stats.PacketsRecv))), float64(stats.AvgRtt)/float64(time.Millisecond))
 					if int(math.Abs(float64(stats.PacketsSent-stats.PacketsRecv))) != 0 {
 						pingErr = fmt.Errorf("ping failed")
 					}
@@ -215,7 +215,7 @@ func pingPods(config *Configuration) error {
 						config.PodName,
 						nodeName,
 						nodeIP,
-						podIp,
+						podIP,
 						float64(stats.AvgRtt)/float64(time.Millisecond),
 						int(math.Abs(float64(stats.PacketsSent-stats.PacketsRecv))),
 						int(float64(stats.PacketsSent)))
@@ -328,10 +328,10 @@ func internalNslookup(config *Configuration) error {
 	elapsed := time.Since(t1)
 	if err != nil {
 		klog.Errorf("failed to resolve dns %s, %v", config.InternalDNS, err)
-		SetInternalDnsUnhealthyMetrics(config.NodeName)
+		SetInternalDNSUnhealthyMetrics(config.NodeName)
 		return err
 	}
-	SetInternalDnsHealthyMetrics(config.NodeName, float64(elapsed)/float64(time.Millisecond))
+	SetInternalDNSHealthyMetrics(config.NodeName, float64(elapsed)/float64(time.Millisecond))
 	klog.Infof("resolve dns %s to %v in %.2fms", config.InternalDNS, addrs, float64(elapsed)/float64(time.Millisecond))
 	return nil
 }
@@ -346,10 +346,10 @@ func externalNslookup(config *Configuration) error {
 	elapsed := time.Since(t1)
 	if err != nil {
 		klog.Errorf("failed to resolve dns %s, %v", config.ExternalDNS, err)
-		SetExternalDnsUnhealthyMetrics(config.NodeName)
+		SetExternalDNSUnhealthyMetrics(config.NodeName)
 		return err
 	}
-	SetExternalDnsHealthyMetrics(config.NodeName, float64(elapsed)/float64(time.Millisecond))
+	SetExternalDNSHealthyMetrics(config.NodeName, float64(elapsed)/float64(time.Millisecond))
 	klog.Infof("resolve dns %s to %v in %.2fms", config.ExternalDNS, addrs, float64(elapsed)/float64(time.Millisecond))
 	return nil
 }

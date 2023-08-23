@@ -459,12 +459,12 @@ func CIDROverlap(a, b string) bool {
 			if CheckProtocol(cidrA) != CheckProtocol(cidrB) {
 				continue
 			}
-			aIp, aIpNet, aErr := net.ParseCIDR(cidrA)
+			aIP, aIpNet, aErr := net.ParseCIDR(cidrA)
 			bIp, bIpNet, bErr := net.ParseCIDR(cidrB)
 			if aErr != nil || bErr != nil {
 				return false
 			}
-			if aIpNet.Contains(bIp) || bIpNet.Contains(aIp) {
+			if aIpNet.Contains(bIp) || bIpNet.Contains(aIP) {
 				return true
 			}
 		}

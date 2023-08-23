@@ -48,9 +48,9 @@ func (c *Controller) enqueueAddSwitchLBRule(obj interface{}) {
 	c.addSwitchLBRuleQueue.Add(key)
 }
 
-func (c *Controller) enqueueUpdateSwitchLBRule(old, new interface{}) {
-	oldSlr := old.(*kubeovnv1.SwitchLBRule)
-	newSlr := new.(*kubeovnv1.SwitchLBRule)
+func (c *Controller) enqueueUpdateSwitchLBRule(oldObj, newObj interface{}) {
+	oldSlr := oldObj.(*kubeovnv1.SwitchLBRule)
+	newSlr := newObj.(*kubeovnv1.SwitchLBRule)
 	info := NewSlrInfo(oldSlr)
 
 	if oldSlr.ResourceVersion == newSlr.ResourceVersion ||

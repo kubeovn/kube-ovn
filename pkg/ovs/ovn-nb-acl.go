@@ -981,7 +981,7 @@ func newNetworkPolicyAclMatch(pgName, asAllowName, asExceptName, protocol, direc
 						// this case expect all-deny if no named port defined
 						klog.Errorf("no named port with name %s found ", port.Port.StrVal)
 					} else {
-						portId = namedPortMap[port.Port.StrVal].PortId
+						portId = namedPortMap[port.Port.StrVal].PortID
 					}
 				}
 			}

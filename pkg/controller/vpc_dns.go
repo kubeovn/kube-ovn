@@ -374,7 +374,7 @@ func (c *Controller) genVpcDnsDeployment(vpcDns *kubeovnv1.VpcDNS, oldDeploy *v1
 	}
 
 	dep.ObjectMeta.Labels = map[string]string{
-		util.VpcDnsNameLabel: "true",
+		util.VpcDNSNameLabel: "true",
 	}
 
 	setCoreDnsEnv(dep)
@@ -407,7 +407,7 @@ func (c *Controller) genVpcDnsSlr(vpcName, namespace string) (*kubeovnv1.SwitchL
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
 			Labels: map[string]string{
-				util.VpcDnsNameLabel: "true",
+				util.VpcDNSNameLabel: "true",
 			},
 		},
 		Spec: kubeovnv1.SwitchLBRuleSpec{

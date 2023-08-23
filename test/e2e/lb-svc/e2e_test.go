@@ -174,7 +174,7 @@ var _ = framework.SerialDescribe("[group:lb-svc]", func() {
 		key := fmt.Sprintf(util.AllocatedAnnotationTemplate, subnetProvider)
 		framework.ExpectHaveKeyWithValue(pods.Items[0].Annotations, key, "true")
 		cidrKey := fmt.Sprintf(util.CidrAnnotationTemplate, subnetProvider)
-		ipKey := fmt.Sprintf(util.IpAddressAnnotationTemplate, subnetProvider)
+		ipKey := fmt.Sprintf(util.IPAddressAnnotationTemplate, subnetProvider)
 		framework.ExpectHaveKey(pods.Items[0].Annotations, cidrKey)
 		framework.ExpectHaveKey(pods.Items[0].Annotations, ipKey)
 		cidr := pods.Items[0].Annotations[cidrKey]
@@ -230,7 +230,7 @@ var _ = framework.SerialDescribe("[group:lb-svc]", func() {
 		ginkgo.By("Checking pod annotations")
 		key := fmt.Sprintf(util.AllocatedAnnotationTemplate, subnetProvider)
 		framework.ExpectHaveKeyWithValue(pods.Items[0].Annotations, key, "true")
-		ipKey := fmt.Sprintf(util.IpAddressAnnotationTemplate, subnetProvider)
+		ipKey := fmt.Sprintf(util.IPAddressAnnotationTemplate, subnetProvider)
 		framework.ExpectHaveKeyWithValue(pods.Items[0].Annotations, ipKey, lbIP)
 		cidr := pods.Items[0].Annotations[fmt.Sprintf(util.CidrAnnotationTemplate, subnetProvider)]
 		framework.ExpectTrue(util.CIDRContainIP(cidr, lbIP))

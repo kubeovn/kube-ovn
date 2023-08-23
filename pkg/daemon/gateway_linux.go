@@ -1458,7 +1458,7 @@ func (c *Controller) getLocalPodIPsNeedPR(protocol string) (map[policyRouteMeta]
 			pod.DeletionTimestamp != nil ||
 			pod.Spec.NodeName != nodeName ||
 			pod.Annotations[util.LogicalSwitchAnnotation] == "" ||
-			pod.Annotations[util.IpAddressAnnotation] == "" {
+			pod.Annotations[util.IPAddressAnnotation] == "" {
 			continue
 		}
 
@@ -1485,7 +1485,7 @@ func (c *Controller) getLocalPodIPsNeedPR(protocol string) (map[policyRouteMeta]
 				ips = append(ips, pod.Status.PodIP)
 			}
 		} else {
-			ipv4, ipv6 := util.SplitStringIP(pod.Annotations[util.IpAddressAnnotation])
+			ipv4, ipv6 := util.SplitStringIP(pod.Annotations[util.IPAddressAnnotation])
 			if ipv4 != "" && protocol == kubeovnv1.ProtocolIPv4 {
 				ips = append(ips, ipv4)
 			}

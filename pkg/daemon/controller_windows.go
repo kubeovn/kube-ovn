@@ -158,8 +158,8 @@ func (c *Controller) handlePod(key string) error {
 	}
 
 	podName := pod.Name
-	if pod.Annotations[fmt.Sprintf(util.VmTemplate, util.OvnProvider)] != "" {
-		podName = pod.Annotations[fmt.Sprintf(util.VmTemplate, util.OvnProvider)]
+	if pod.Annotations[fmt.Sprintf(util.VMTemplate, util.OvnProvider)] != "" {
+		podName = pod.Annotations[fmt.Sprintf(util.VMTemplate, util.OvnProvider)]
 	}
 
 	// set default nic bandwidth
@@ -180,8 +180,8 @@ func (c *Controller) handlePod(key string) error {
 	}
 	for _, multiNet := range attachNets {
 		provider := fmt.Sprintf("%s.%s.ovn", multiNet.Name, multiNet.Namespace)
-		if pod.Annotations[fmt.Sprintf(util.VmTemplate, provider)] != "" {
-			podName = pod.Annotations[fmt.Sprintf(util.VmTemplate, provider)]
+		if pod.Annotations[fmt.Sprintf(util.VMTemplate, provider)] != "" {
+			podName = pod.Annotations[fmt.Sprintf(util.VMTemplate, provider)]
 		}
 		if pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, provider)] == "true" {
 			ifaceID = ovs.PodNameToPortName(podName, pod.Namespace, provider)

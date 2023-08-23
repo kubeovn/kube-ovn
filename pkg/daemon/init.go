@@ -59,7 +59,7 @@ func InitNodeGateway(config *Configuration) error {
 			klog.Errorf("failed to get node %s info %v", nodeName, err)
 			return err
 		}
-		if node.Annotations[util.IpAddressAnnotation] == "" {
+		if node.Annotations[util.IPAddressAnnotation] == "" {
 			klog.Warningf("no ovn0 address for node %s, please check kube-ovn-controller logs", nodeName)
 			time.Sleep(3 * time.Second)
 			continue
@@ -70,7 +70,7 @@ func InitNodeGateway(config *Configuration) error {
 			continue
 		} else {
 			macAddr = node.Annotations[util.MacAddressAnnotation]
-			ip = node.Annotations[util.IpAddressAnnotation]
+			ip = node.Annotations[util.IPAddressAnnotation]
 			cidr = node.Annotations[util.CidrAnnotation]
 			portName = node.Annotations[util.PortNameAnnotation]
 			gw = node.Annotations[util.GatewayAnnotation]

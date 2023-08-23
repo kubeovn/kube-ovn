@@ -108,7 +108,7 @@ func NewController(config *Configuration, stopCh <-chan struct{}, podInformerFac
 	if err != nil {
 		util.LogFatalAndExit(err, "failed to get node %s info", config.NodeName)
 	}
-	controller.protocol = util.CheckProtocol(node.Annotations[util.IpAddressAnnotation])
+	controller.protocol = util.CheckProtocol(node.Annotations[util.IPAddressAnnotation])
 
 	if err = controller.initRuntime(); err != nil {
 		return nil, err
@@ -158,8 +158,8 @@ func (c *Controller) enqueueAddProviderNetwork(obj interface{}) {
 	c.addOrUpdateProviderNetworkQueue.Add(key)
 }
 
-func (c *Controller) enqueueUpdateProviderNetwork(old, new interface{}) {
-	key, err := cache.MetaNamespaceKeyFunc(new)
+func (c *Controller) enqueueUpdateProviderNetwork(oldObj, newObj interface{}) {
+	key, err := cache.MetaNamespaceKeyFunc(newObj)
 	if err != nil {
 		utilruntime.HandleError(err)
 		return
@@ -391,11 +391,7 @@ func (c *Controller) cleanProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v
 		return err
 	}
 
-	if err = c.ovsCleanProviderNetwork(pn.Name); err != nil {
-		return err
-	}
-
-	return nil
+	return c.ovsCleanProviderNetwork(pn.Name)
 }
 
 func (c *Controller) handleDeleteProviderNetwork(pn *kubeovnv1.ProviderNetwork) error {
@@ -429,19 +425,19 @@ func (c *Controller) handleDeleteProviderNetwork(pn *kubeovnv1.ProviderNetwork) 
 }
 
 type subnetEvent struct {
-	old, new interface{}
+	oldObj, newObj interface{}
 }
 
 func (c *Controller) enqueueAddSubnet(obj interface{}) {
-	c.subnetQueue.Add(subnetEvent{new: obj})
+	c.subnetQueue.Add(subnetEvent{newObj: obj})
 }
 
-func (c *Controller) enqueueUpdateSubnet(old, new interface{}) {
-	c.subnetQueue.Add(subnetEvent{old: old, new: new})
+func (c *Controller) enqueueUpdateSubnet(oldObj, newObj interface{}) {
+	c.subnetQueue.Add(subnetEvent{oldObj: oldObj, newObj: newObj})
 }
 
 func (c *Controller) enqueueDeleteSubnet(obj interface{}) {
-	c.subnetQueue.Add(subnetEvent{old: obj})
+	c.subnetQueue.Add(subnetEvent{oldObj: obj})
 }
 
 func (c *Controller) runSubnetWorker() {
@@ -478,9 +474,9 @@ func (c *Controller) processNextSubnetWorkItem() bool {
 	return true
 }
 
-func (c *Controller) enqueuePod(old, new interface{}) {
-	oldPod := old.(*v1.Pod)
-	newPod := new.(*v1.Pod)
+func (c *Controller) enqueuePod(oldObj, newObj interface{}) {
+	oldPod := oldObj.(*v1.Pod)
+	newPod := newObj.(*v1.Pod)
 
 	if oldPod.Annotations[util.IngressRateAnnotation] != newPod.Annotations[util.IngressRateAnnotation] ||
 		oldPod.Annotations[util.EgressRateAnnotation] != newPod.Annotations[util.EgressRateAnnotation] ||
@@ -491,7 +487,7 @@ func (c *Controller) enqueuePod(old, new interface{}) {
 		oldPod.Annotations[util.MirrorControlAnnotation] != newPod.Annotations[util.MirrorControlAnnotation] {
 		var key string
 		var err error
-		if key, err = cache.MetaNamespaceKeyFunc(new); err != nil {
+		if key, err = cache.MetaNamespaceKeyFunc(newObj); err != nil {
 			utilruntime.HandleError(err)
 			return
 		}
@@ -514,7 +510,7 @@ func (c *Controller) enqueuePod(old, new interface{}) {
 				oldPod.Annotations[fmt.Sprintf(util.MirrorControlAnnotationTemplate, provider)] != newPod.Annotations[fmt.Sprintf(util.MirrorControlAnnotationTemplate, provider)] {
 				var key string
 				var err error
-				if key, err = cache.MetaNamespaceKeyFunc(new); err != nil {
+				if key, err = cache.MetaNamespaceKeyFunc(newObj); err != nil {
 					utilruntime.HandleError(err)
 					return
 				}

@@ -32,13 +32,13 @@ func (c *Controller) enqueueAddSg(obj interface{}) {
 	c.addOrUpdateSgQueue.Add(key)
 }
 
-func (c *Controller) enqueueUpdateSg(old, new interface{}) {
-	oldSg := old.(*kubeovnv1.SecurityGroup)
-	newSg := new.(*kubeovnv1.SecurityGroup)
+func (c *Controller) enqueueUpdateSg(oldObj, newObj interface{}) {
+	oldSg := oldObj.(*kubeovnv1.SecurityGroup)
+	newSg := newObj.(*kubeovnv1.SecurityGroup)
 	if !reflect.DeepEqual(oldSg.Spec, newSg.Spec) {
 		var key string
 		var err error
-		if key, err = cache.MetaNamespaceKeyFunc(new); err != nil {
+		if key, err = cache.MetaNamespaceKeyFunc(newObj); err != nil {
 			utilruntime.HandleError(err)
 			return
 		}

@@ -345,7 +345,7 @@ func (c *Controller) InitIPAM() error {
 
 		podNets, err := c.getPodKubeovnNets(pod)
 		if err != nil {
-			klog.Errorf("failed to get pod kubeovn nets %s.%s address %s: %v", pod.Name, pod.Namespace, pod.Annotations[util.IpAddressAnnotation], err)
+			klog.Errorf("failed to get pod kubeovn nets %s.%s address %s: %v", pod.Name, pod.Namespace, pod.Annotations[util.IPAddressAnnotation], err)
 			continue
 		}
 
@@ -355,11 +355,11 @@ func (c *Controller) InitIPAM() error {
 		for _, podNet := range podNets {
 			if pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)] == "true" {
 				portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
-				ip := pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)]
+				ip := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, podNet.ProviderName)]
 				mac := pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, podNet.ProviderName)]
 				_, _, _, err := c.ipam.GetStaticAddress(key, portName, ip, &mac, podNet.Subnet.Name, true)
 				if err != nil {
-					klog.Errorf("failed to init pod %s.%s address %s: %v", podName, pod.Namespace, pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)], err)
+					klog.Errorf("failed to init pod %s.%s address %s: %v", podName, pod.Namespace, pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, podNet.ProviderName)], err)
 				} else {
 					ipCR := ipsMap[portName]
 					err = c.createOrUpdateCrdIPs(podName, ip, mac, podNet.Subnet.Name, pod.Namespace, pod.Spec.NodeName, podNet.ProviderName, podType, &ipCR)
@@ -423,13 +423,13 @@ func (c *Controller) InitIPAM() error {
 			portName := fmt.Sprintf("node-%s", node.Name)
 			mac := node.Annotations[util.MacAddressAnnotation]
 			v4IP, v6IP, _, err := c.ipam.GetStaticAddress(portName, portName,
-				node.Annotations[util.IpAddressAnnotation], &mac,
+				node.Annotations[util.IPAddressAnnotation], &mac,
 				node.Annotations[util.LogicalSwitchAnnotation], true)
 			if err != nil {
-				klog.Errorf("failed to init node %s.%s address %s: %v", node.Name, node.Namespace, node.Annotations[util.IpAddressAnnotation], err)
+				klog.Errorf("failed to init node %s.%s address %s: %v", node.Name, node.Namespace, node.Annotations[util.IPAddressAnnotation], err)
 			}
 			if v4IP != "" && v6IP != "" {
-				node.Annotations[util.IpAddressAnnotation] = util.GetStringIP(v4IP, v6IP)
+				node.Annotations[util.IPAddressAnnotation] = util.GetStringIP(v4IP, v6IP)
 			}
 		}
 	}
@@ -760,7 +760,7 @@ func (c *Controller) initNodeRoutes() error {
 			continue
 		}
 		nodeIPv4, nodeIPv6 := util.GetNodeInternalIP(*node)
-		joinAddrV4, joinAddrV6 := util.SplitStringIP(node.Annotations[util.IpAddressAnnotation])
+		joinAddrV4, joinAddrV6 := util.SplitStringIP(node.Annotations[util.IPAddressAnnotation])
 		if nodeIPv4 != "" && joinAddrV4 != "" {
 			if err = c.migrateNodeRoute(4, node.Name, nodeIPv4, joinAddrV4); err != nil {
 				klog.Errorf("failed to migrate IPv4 route for node %s: %v", node.Name, err)

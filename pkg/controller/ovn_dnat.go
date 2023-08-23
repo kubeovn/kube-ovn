@@ -34,7 +34,7 @@ func (c *Controller) enqueueAddOvnDnatRule(obj interface{}) {
 func (c *Controller) enqueueUpdateOvnDnatRule(oldObj, newObj interface{}) {
 	var key string
 	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(new); err != nil {
+	if key, err = cache.MetaNamespaceKeyFunc(newObj); err != nil {
 		utilruntime.HandleError(err)
 		return
 	}
@@ -493,7 +493,7 @@ func (c *Controller) patchOvnDnatAnnotations(key, eipName string) error {
 	return nil
 }
 
-func (c *Controller) patchOvnDnatStatus(key, vpcName, v4Eip, podIp, podMac string, ready bool) error {
+func (c *Controller) patchOvnDnatStatus(key, vpcName, v4Eip, podIP, podMac string, ready bool) error {
 	oriDnat, err := c.ovnDnatRulesLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -535,11 +535,11 @@ func (c *Controller) patchOvnDnatStatus(key, vpcName, v4Eip, podIp, podMac strin
 
 	if (v4Eip != "" && dnat.Status.V4Eip != v4Eip) ||
 		(vpcName != "" && dnat.Status.Vpc != vpcName) ||
-		(podIp != "" && dnat.Status.V4Ip != podIp) ||
+		(podIP != "" && dnat.Status.V4Ip != podIP) ||
 		(podMac != "" && dnat.Status.MacAddress != podMac) {
 		dnat.Status.Vpc = vpcName
 		dnat.Status.V4Eip = v4Eip
-		dnat.Status.V4Ip = podIp
+		dnat.Status.V4Ip = podIP
 		dnat.Status.MacAddress = podMac
 		changed = true
 	}

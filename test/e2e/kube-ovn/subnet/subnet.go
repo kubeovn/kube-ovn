@@ -437,7 +437,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		nodeIPs := make([]string, 0, len(nodes.Items))
 		for i := 0; i < 3 && i < len(nodes.Items); i++ {
 			gatewayNodes = append(gatewayNodes, nodes.Items[i].Name)
-			nodeIPs = append(nodeIPs, nodes.Items[i].Annotations[util.IpAddressAnnotation])
+			nodeIPs = append(nodeIPs, nodes.Items[i].Annotations[util.IPAddressAnnotation])
 		}
 		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, gatewayNodes, nil)
 		subnet = subnetClient.CreateSync(subnet)
@@ -1419,7 +1419,7 @@ func createPodsByRandomIPs(podClient *framework.PodClient, subnetClient *framewo
 
 		annotations := map[string]string{
 			util.LogicalSwitchAnnotation:                                        subnetName,
-			fmt.Sprintf(util.IpAddressAnnotationTemplate, subnet.Spec.Provider): allocIP,
+			fmt.Sprintf(util.IPAddressAnnotationTemplate, subnet.Spec.Provider): allocIP,
 		}
 
 		podName := fmt.Sprintf("%s-%d", podNamePrefix, i)

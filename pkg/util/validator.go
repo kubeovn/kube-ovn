@@ -189,17 +189,17 @@ func validateNatOutGoingPolicyRuleIPs(matchIPStr string) (string, error) {
 func ValidatePodNetwork(annotations map[string]string) error {
 	errors := []error{}
 
-	if ipAddress := annotations[IpAddressAnnotation]; ipAddress != "" {
+	if ipAddress := annotations[IPAddressAnnotation]; ipAddress != "" {
 		// The format of IP Annotation in dual-stack is 10.244.0.0/16,fd00:10:244:0:2::/80
 		for _, ip := range strings.Split(ipAddress, ",") {
 			if strings.Contains(ip, "/") {
 				if _, _, err := net.ParseCIDR(ip); err != nil {
-					errors = append(errors, fmt.Errorf("%s is not a valid %s", ip, IpAddressAnnotation))
+					errors = append(errors, fmt.Errorf("%s is not a valid %s", ip, IPAddressAnnotation))
 					continue
 				}
 			} else {
 				if net.ParseIP(ip) == nil {
-					errors = append(errors, fmt.Errorf("%s is not a valid %s", ip, IpAddressAnnotation))
+					errors = append(errors, fmt.Errorf("%s is not a valid %s", ip, IPAddressAnnotation))
 					continue
 				}
 			}
@@ -225,7 +225,7 @@ func ValidatePodNetwork(annotations map[string]string) error {
 		}
 	}
 
-	ipPool := annotations[IpPoolAnnotation]
+	ipPool := annotations[IPPoolAnnotation]
 	if ipPool != "" {
 		if strings.ContainsRune(ipPool, ';') || strings.ContainsRune(ipPool, ',') || net.ParseIP(ipPool) != nil {
 			for _, ips := range strings.Split(ipPool, ";") {
@@ -238,7 +238,7 @@ func ValidatePodNetwork(annotations map[string]string) error {
 
 				for _, ip := range strings.Split(ips, ",") {
 					if net.ParseIP(strings.TrimSpace(ip)) == nil {
-						errors = append(errors, fmt.Errorf("%s in %s is not a valid address", ip, IpPoolAnnotation))
+						errors = append(errors, fmt.Errorf("%s in %s is not a valid address", ip, IPPoolAnnotation))
 					}
 				}
 			}

@@ -215,7 +215,7 @@ func (c *Controller) handleDeleteIPPool(ippool *kubeovnv1.IPPool) error {
 		if len(ns.Annotations) == 0 {
 			continue
 		}
-		if ns.Annotations[util.IpPoolAnnotation] == ippool.Name {
+		if ns.Annotations[util.IPPoolAnnotation] == ippool.Name {
 			c.enqueueAddNamespace(ns)
 		}
 	}

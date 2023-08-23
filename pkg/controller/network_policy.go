@@ -750,7 +750,7 @@ func (c *Controller) fetchPolicySelectedAddresses(namespace, protocol string, np
 				return nil, nil, err
 			}
 			for _, podNet := range podNets {
-				podIPAnnotation := pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)]
+				podIPAnnotation := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, podNet.ProviderName)]
 				podIPs := strings.Split(podIPAnnotation, ",")
 				for _, podIP := range podIPs {
 					if podIP != "" && util.CheckProtocol(podIP) == protocol {

@@ -274,7 +274,7 @@ func (config *Configuration) initNicConfig(nicBridgeMappings map[string]string) 
 		}
 	}
 
-	config.MSS = config.MTU - util.TcpIpHeaderLength
+	config.MSS = config.MTU - util.TCPIPHeaderLength
 	if !config.EncapChecksum {
 		if err := disableChecksum(); err != nil {
 			klog.Errorf("failed to set checksum offload, %v", err)

@@ -49,13 +49,13 @@ func (c *Controller) enqueueDeleteSubnet(obj interface{}) {
 	c.deleteSubnetQueue.Add(obj)
 }
 
-func (c *Controller) enqueueUpdateSubnet(old, new interface{}) {
-	oldSubnet := old.(*kubeovnv1.Subnet)
-	newSubnet := new.(*kubeovnv1.Subnet)
+func (c *Controller) enqueueUpdateSubnet(oldObj, newObj interface{}) {
+	oldSubnet := oldObj.(*kubeovnv1.Subnet)
+	newSubnet := newObj.(*kubeovnv1.Subnet)
 
 	var key string
 	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(new); err != nil {
+	if key, err = cache.MetaNamespaceKeyFunc(newObj); err != nil {
 		utilruntime.HandleError(err)
 		return
 	}
@@ -405,11 +405,12 @@ func checkAndUpdateGateway(subnet *kubeovnv1.Subnet) (bool, error) {
 	changed := false
 	var gw string
 	var err error
-	if subnet.Spec.Gateway == "" {
+	switch {
+	case subnet.Spec.Gateway == "":
 		gw, err = util.GetGwByCidr(subnet.Spec.CIDRBlock)
-	} else if util.CheckProtocol(subnet.Spec.Gateway) != util.CheckProtocol(subnet.Spec.CIDRBlock) {
+	case util.CheckProtocol(subnet.Spec.Gateway) != util.CheckProtocol(subnet.Spec.CIDRBlock):
 		gw, err = util.AppendGwByCidr(subnet.Spec.Gateway, subnet.Spec.CIDRBlock)
-	} else {
+	default:
 		gw = subnet.Spec.Gateway
 	}
 	if err != nil {
@@ -1482,7 +1483,7 @@ func (c *Controller) reconcileDistributedSubnetRouteInDefaultVpc(subnet *kubeovn
 				continue
 			}
 
-			if pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)] == "" || pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, podNet.ProviderName)] != subnet.Name {
+			if pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, podNet.ProviderName)] == "" || pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, podNet.ProviderName)] != subnet.Name {
 				continue
 			}
 
@@ -1490,7 +1491,7 @@ func (c *Controller) reconcileDistributedSubnetRouteInDefaultVpc(subnet *kubeovn
 				nextHop := pod.Annotations[util.NorthGatewayAnnotation]
 				if err := c.ovnNbClient.AddLogicalRouterStaticRoute(
 					c.config.ClusterRouter, util.MainRouteTable, ovnnb.LogicalRouterStaticRoutePolicySrcIP,
-					pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)], nil, nextHop,
+					pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, podNet.ProviderName)], nil, nextHop,
 				); err != nil {
 					klog.Errorf("add static route failed, %v", err)
 					return err
@@ -1623,7 +1624,7 @@ func (c *Controller) reconcileEcmpCentralizedSubnetRouteInDefaultVpc(subnet *kub
 		}
 
 		if nodeReady(node) {
-			nexthopNodeIP := strings.TrimSpace(node.Annotations[util.IpAddressAnnotation])
+			nexthopNodeIP := strings.TrimSpace(node.Annotations[util.IPAddressAnnotation])
 			if nexthopNodeIP == "" {
 				klog.Errorf("gateway node %v has no ip annotation", node.Name)
 				continue
@@ -1687,9 +1688,9 @@ func (c *Controller) reconcileOvnDefaultVpcRoute(subnet *kubeovnv1.Subnet) error
 			return err
 		}
 		for _, pod := range pods {
-			if pod.Annotations[util.LogicalSwitchAnnotation] == subnet.Name && pod.Annotations[util.IpAddressAnnotation] != "" {
+			if pod.Annotations[util.LogicalSwitchAnnotation] == subnet.Name && pod.Annotations[util.IPAddressAnnotation] != "" {
 				if err := c.deleteStaticRoute(
-					pod.Annotations[util.IpAddressAnnotation], c.config.ClusterRouter, subnet.Spec.RouteTable); err != nil {
+					pod.Annotations[util.IPAddressAnnotation], c.config.ClusterRouter, subnet.Spec.RouteTable); err != nil {
 					klog.Errorf("failed to delete static route %v", err)
 					return err
 				}
@@ -1906,21 +1907,19 @@ func (c *Controller) reconcileU2OInterconnectionIP(subnet *kubeovnv1.Subnet) err
 
 			needCalcIP = true
 		}
-	} else {
-		if subnet.Status.U2OInterconnectionIP != "" {
-			u2oInterconnName := fmt.Sprintf(util.U2OInterconnName, subnet.Spec.Vpc, subnet.Name)
-			c.ipam.ReleaseAddressByPod(u2oInterconnName)
-			subnet.Status.U2OInterconnectionIP = ""
+	} else if subnet.Status.U2OInterconnectionIP != "" {
+		u2oInterconnName := fmt.Sprintf(util.U2OInterconnName, subnet.Spec.Vpc, subnet.Name)
+		c.ipam.ReleaseAddressByPod(u2oInterconnName)
+		subnet.Status.U2OInterconnectionIP = ""
 
-			if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), u2oInterconnName, metav1.DeleteOptions{}); err != nil {
-				if !k8serrors.IsNotFound(err) {
-					klog.Errorf("failed to delete ip %s, %v", u2oInterconnName, err)
-					return err
-				}
+		if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), u2oInterconnName, metav1.DeleteOptions{}); err != nil {
+			if !k8serrors.IsNotFound(err) {
+				klog.Errorf("failed to delete ip %s, %v", u2oInterconnName, err)
+				return err
 			}
-
-			needCalcIP = true
 		}
+
+		needCalcIP = true
 	}
 
 	if needCalcIP {
@@ -1965,7 +1964,7 @@ func calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 
 	vips, err := c.virtualIpsLister.List(labels.SelectorFromSet(labels.Set{
 		util.SubnetNameLabel: subnet.Name,
-		util.IpReservedLabel: "",
+		util.IPReservedLabel: "",
 	}))
 	if err != nil {
 		klog.Error(err)
@@ -2039,7 +2038,7 @@ func calcSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 	usingIPs := float64(len(podUsedIPs))
 	vips, err := c.virtualIpsLister.List(labels.SelectorFromSet(labels.Set{
 		util.SubnetNameLabel: subnet.Name,
-		util.IpReservedLabel: "",
+		util.IPReservedLabel: "",
 	}))
 	if err != nil {
 		klog.Error(err)

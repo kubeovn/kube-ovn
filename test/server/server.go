@@ -26,10 +26,10 @@ type Result struct {
 	RemotePort          uint32
 	TotalIcmpEcho       int
 	IcmpLost            int
-	TotalTcpOutSegments int
-	TcpRetransSegment   int
-	TotalTcpConnection  int
-	FailedTcpConnection int
+	TotalTCPOutSegments int
+	TCPRetransSegment   int
+	TotalTCPConnection  int
+	FailedTCPConnection int
 }
 
 func parseFlag() *Configuration {
@@ -112,10 +112,10 @@ func main() {
 				break
 			}
 			time.Sleep(100 * time.Millisecond)
-			totalConnection += 1
+			totalConnection++
 			_, err := exec.Command("curl", "-m", "1", fmt.Sprintf("%s:%d", config.RemoteAddress, config.RemotePort)).CombinedOutput()
 			if err != nil {
-				failedConnection += 1
+				failedConnection++
 			}
 		}
 		tcpConnDone <- ""
@@ -151,17 +151,17 @@ func main() {
 		RemotePort:          config.RemotePort,
 		TotalIcmpEcho:       curIcmpEcho - preIcmpEcho,
 		IcmpLost:            curDiff - preDiff,
-		TotalTcpOutSegments: curOutSegs - preOutSegs,
-		TcpRetransSegment:   curRetrans - preRetrans,
-		TotalTcpConnection:  totalConnection,
-		FailedTcpConnection: failedConnection,
+		TotalTCPOutSegments: curOutSegs - preOutSegs,
+		TCPRetransSegment:   curRetrans - preRetrans,
+		TotalTCPConnection:  totalConnection,
+		FailedTCPConnection: failedConnection,
 	}
 
 	if config.Output == "text" {
 		klog.Infof("remote address = %s, remote port = %d", result.RemoteAddress, result.RemotePort)
 		klog.Infof("total icmp echo %d, lost %d icmp response", result.TotalIcmpEcho, result.IcmpLost)
-		klog.Infof("total out %d tcp segments, retrans %d tcp segments", result.TotalTcpOutSegments, result.TcpRetransSegment)
-		klog.Infof("%d failed connection, %d total connection", result.TotalTcpConnection, result.FailedTcpConnection)
+		klog.Infof("total out %d tcp segments, retrans %d tcp segments", result.TotalTCPOutSegments, result.TCPRetransSegment)
+		klog.Infof("%d failed connection, %d total connection", result.TotalTCPConnection, result.FailedTCPConnection)
 	} else {
 		output, _ := json.MarshalIndent(result, "", "  ")
 		fmt.Println(string(output))

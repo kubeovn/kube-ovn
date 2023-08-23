@@ -375,8 +375,8 @@ var _ = Describe("[IPAM]", func() {
 				pod1Nic1 := "pod1nic1.ns"
 				freeIP41 := im.Subnets[subnetName].V4Free.At(0).Start().String()
 				freeIP61 := im.Subnets[subnetName].V6Free.At(0).Start().String()
-				dualIp := fmt.Sprintf("%s,%s", freeIP41, freeIP61)
-				ip4, ip6, _, err := im.GetStaticAddress(pod1, pod1Nic1, dualIp, nil, subnetName, true)
+				dualIP := fmt.Sprintf("%s,%s", freeIP41, freeIP61)
+				ip4, ip6, _, err := im.GetStaticAddress(pod1, pod1Nic1, dualIP, nil, subnetName, true)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(ip4).To(Equal(freeIP41))
 				Expect(ip6).To(Equal(freeIP61))

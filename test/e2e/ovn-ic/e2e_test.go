@@ -188,7 +188,7 @@ var _ = framework.OrderedDescribe("[group:ovn-ic]", func() {
 		framework.ExpectNoError(err, "failed to marshal patch data")
 
 		ginkgo.By("patching the ConfigMap in cluster " + clusters[0])
-		_, err = clientSets[0].CoreV1().ConfigMaps(framework.KubeOvnNamespace).Patch(context.TODO(), util.InterconnectionConfig, k8stypes.StrategicMergePatchType, []byte(configMapPatchPayload), metav1.PatchOptions{})
+		_, err = clientSets[0].CoreV1().ConfigMaps(framework.KubeOvnNamespace).Patch(context.TODO(), util.InterconnectionConfig, k8stypes.StrategicMergePatchType, configMapPatchPayload, metav1.PatchOptions{})
 		framework.ExpectNoError(err, "failed to patch ConfigMap")
 
 		ginkgo.By("Waiting for new az names to be applied")

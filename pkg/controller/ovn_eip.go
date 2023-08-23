@@ -32,14 +32,14 @@ func (c *Controller) enqueueAddOvnEip(obj interface{}) {
 	c.addOvnEipQueue.Add(key)
 }
 
-func (c *Controller) enqueueUpdateOvnEip(old, new interface{}) {
+func (c *Controller) enqueueUpdateOvnEip(oldObj, newObj interface{}) {
 	var key string
 	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(new); err != nil {
+	if key, err = cache.MetaNamespaceKeyFunc(newObj); err != nil {
 		utilruntime.HandleError(err)
 		return
 	}
-	newEip := new.(*kubeovnv1.OvnEip)
+	newEip := newObj.(*kubeovnv1.OvnEip)
 	if newEip.DeletionTimestamp != nil {
 		if len(newEip.Finalizers) == 0 {
 			// avoid delete eip twice
@@ -50,7 +50,7 @@ func (c *Controller) enqueueUpdateOvnEip(old, new interface{}) {
 			return
 		}
 	}
-	oldEip := old.(*kubeovnv1.OvnEip)
+	oldEip := oldObj.(*kubeovnv1.OvnEip)
 	if oldEip.Spec.V4Ip != "" && oldEip.Spec.V4Ip != newEip.Spec.V4Ip ||
 		oldEip.Spec.MacAddress != "" && oldEip.Spec.MacAddress != newEip.Spec.MacAddress {
 		klog.Infof("not support change ip or mac for eip %s", key)

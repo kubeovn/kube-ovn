@@ -245,9 +245,9 @@ func (c *Controller) gcNode() error {
 
 func (c *Controller) gcVip() error {
 	klog.Infof("start to gc vips")
-	selector, err := util.LabelSelectorNotEmpty(util.IpReservedLabel)
+	selector, err := util.LabelSelectorNotEmpty(util.IPReservedLabel)
 	if err != nil {
-		klog.Errorf("failed to generate selector for label %s: %v", util.IpReservedLabel, err)
+		klog.Errorf("failed to generate selector for label %s: %v", util.IPReservedLabel, err)
 		return err
 	}
 	vips, err := c.virtualIpsLister.List(selector)
@@ -256,7 +256,7 @@ func (c *Controller) gcVip() error {
 		return err
 	}
 	for _, vip := range vips {
-		portName := vip.Labels[util.IpReservedLabel]
+		portName := vip.Labels[util.IPReservedLabel]
 		portNameSplits := strings.Split(portName, ".")
 		if len(portNameSplits) >= 2 {
 			podName := portNameSplits[0]
@@ -816,7 +816,7 @@ func (c *Controller) gcVpcDns() error {
 		return err
 	}
 
-	sel, _ := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{MatchLabels: map[string]string{util.VpcDnsNameLabel: "true"}})
+	sel, _ := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{MatchLabels: map[string]string{util.VpcDNSNameLabel: "true"}})
 
 	deps, err := c.config.KubeClient.AppsV1().Deployments(c.config.PodNamespace).List(context.Background(), metav1.ListOptions{
 		LabelSelector: sel.String(),

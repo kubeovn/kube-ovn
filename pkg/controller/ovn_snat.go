@@ -28,14 +28,14 @@ func (c *Controller) enqueueAddOvnSnatRule(obj interface{}) {
 	c.addOvnSnatRuleQueue.Add(key)
 }
 
-func (c *Controller) enqueueUpdateOvnSnatRule(old, new interface{}) {
+func (c *Controller) enqueueUpdateOvnSnatRule(oldObj, newObj interface{}) {
 	var key string
 	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(new); err != nil {
+	if key, err = cache.MetaNamespaceKeyFunc(newObj); err != nil {
 		utilruntime.HandleError(err)
 		return
 	}
-	newSnat := new.(*kubeovnv1.OvnSnatRule)
+	newSnat := newObj.(*kubeovnv1.OvnSnatRule)
 	if !newSnat.DeletionTimestamp.IsZero() {
 		if len(newSnat.Finalizers) == 0 {
 			// avoid delete twice
@@ -46,7 +46,7 @@ func (c *Controller) enqueueUpdateOvnSnatRule(old, new interface{}) {
 			return
 		}
 	}
-	oldSnat := old.(*kubeovnv1.OvnSnatRule)
+	oldSnat := oldObj.(*kubeovnv1.OvnSnatRule)
 	if oldSnat.Spec.OvnEip != newSnat.Spec.OvnEip {
 		// enqueue to reset eip to be clean
 		c.resetOvnEipQueue.Add(oldSnat.Spec.OvnEip)

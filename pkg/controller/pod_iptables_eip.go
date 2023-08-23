@@ -127,7 +127,8 @@ func (c *Controller) enqueueDeletePodAnnotatedIptablesEip(obj interface{}) {
 	}
 	isStateful, statefulSetName := isStatefulSetPod(p)
 	isVmPod, vmName := isVmPod(p)
-	if isStateful {
+	switch {
+	case isStateful:
 		if isStatefulSetDeleted(c.config.KubeClient, p, statefulSetName) {
 			c.delPodAnnotatedIptablesEipQueue.Add(obj)
 			return
@@ -136,7 +137,7 @@ func (c *Controller) enqueueDeletePodAnnotatedIptablesEip(obj interface{}) {
 			c.delPodAnnotatedIptablesEipQueue.Add(obj)
 			return
 		}
-	} else if c.config.EnableKeepVmIP && isVmPod {
+	case c.config.EnableKeepVmIP && isVmPod:
 		if c.isVmPodToDel(p, vmName) {
 			c.delPodAnnotatedIptablesEipQueue.Add(obj)
 			return
@@ -145,7 +146,7 @@ func (c *Controller) enqueueDeletePodAnnotatedIptablesEip(obj interface{}) {
 			c.delPodAnnotatedIptablesEipQueue.Add(obj)
 			return
 		}
-	} else {
+	default:
 		c.delPodAnnotatedIptablesEipQueue.Add(obj)
 		return
 	}

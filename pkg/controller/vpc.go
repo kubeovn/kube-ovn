@@ -35,13 +35,13 @@ func (c *Controller) enqueueAddVpc(obj interface{}) {
 	}
 }
 
-func (c *Controller) enqueueUpdateVpc(old, new interface{}) {
-	oldVpc := old.(*kubeovnv1.Vpc)
-	newVpc := new.(*kubeovnv1.Vpc)
+func (c *Controller) enqueueUpdateVpc(oldObj, newObj interface{}) {
+	oldVpc := oldObj.(*kubeovnv1.Vpc)
+	newVpc := newObj.(*kubeovnv1.Vpc)
 
 	var key string
 	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(new); err != nil {
+	if key, err = cache.MetaNamespaceKeyFunc(newObj); err != nil {
 		utilruntime.HandleError(err)
 		return
 	}

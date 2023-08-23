@@ -31,15 +31,15 @@ func (c *Controller) enqueueAddIptablesEip(obj interface{}) {
 	c.addIptablesEipQueue.Add(key)
 }
 
-func (c *Controller) enqueueUpdateIptablesEip(old, new interface{}) {
+func (c *Controller) enqueueUpdateIptablesEip(oldObj, newObj interface{}) {
 	var key string
 	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(new); err != nil {
+	if key, err = cache.MetaNamespaceKeyFunc(newObj); err != nil {
 		utilruntime.HandleError(err)
 		return
 	}
-	oldEip := old.(*kubeovnv1.IptablesEIP)
-	newEip := new.(*kubeovnv1.IptablesEIP)
+	oldEip := oldObj.(*kubeovnv1.IptablesEIP)
+	newEip := newObj.(*kubeovnv1.IptablesEIP)
 	if !newEip.DeletionTimestamp.IsZero() ||
 		oldEip.Status.Redo != newEip.Status.Redo ||
 		oldEip.Spec.QoSPolicy != newEip.Spec.QoSPolicy {

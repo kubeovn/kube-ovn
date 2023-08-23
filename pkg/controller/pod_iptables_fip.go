@@ -115,7 +115,8 @@ func (c *Controller) enqueueDeletePodAnnotatedIptablesFip(obj interface{}) {
 	}
 	isStateful, statefulSetName := isStatefulSetPod(p)
 	isVmPod, vmName := isVmPod(p)
-	if isStateful {
+	switch {
+	case isStateful:
 		if isStatefulSetPodToDel(c.config.KubeClient, p, statefulSetName) {
 			c.delPodAnnotatedIptablesFipQueue.Add(obj)
 			return
@@ -124,7 +125,7 @@ func (c *Controller) enqueueDeletePodAnnotatedIptablesFip(obj interface{}) {
 			c.delPodAnnotatedIptablesFipQueue.Add(obj)
 			return
 		}
-	} else if c.config.EnableKeepVmIP && isVmPod {
+	case c.config.EnableKeepVmIP && isVmPod:
 		if c.isVmPodToDel(p, vmName) {
 			c.delPodAnnotatedIptablesFipQueue.Add(obj)
 			return
@@ -133,7 +134,7 @@ func (c *Controller) enqueueDeletePodAnnotatedIptablesFip(obj interface{}) {
 			c.delPodAnnotatedIptablesFipQueue.Add(obj)
 			return
 		}
-	} else {
+	default:
 		c.delPodAnnotatedIptablesFipQueue.Add(obj)
 		return
 	}
@@ -246,7 +247,7 @@ func (c *Controller) handleAddPodAnnotatedIptablesFip(key string) error {
 			return err
 		}
 		klog.V(3).Infof("handle add pod annotated iptables fip %s", fipName)
-		if err := c.createOrUpdateCrdFip(fipName, fipName, cachedPod.Annotations[util.IpAddressAnnotation]); err != nil {
+		if err := c.createOrUpdateCrdFip(fipName, fipName, cachedPod.Annotations[util.IPAddressAnnotation]); err != nil {
 			klog.Errorf("failed to create fip %s: %v", fipName, err)
 			return err
 		}
