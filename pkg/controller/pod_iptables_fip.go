@@ -217,6 +217,7 @@ func (c *Controller) handleAddPodAnnotatedIptablesFip(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	if cachedPod.Annotations[util.FipEnableAnnotation] != "true" {
@@ -255,6 +256,7 @@ func (c *Controller) handleAddPodAnnotatedIptablesFip(key string) error {
 	newPod.Annotations[util.FipNameAnnotation] = fipName
 	patch, err := util.GenerateStrategicMergePatchPayload(cachedPod, newPod)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 	if _, err := c.config.KubeClient.CoreV1().Pods(namespace).Patch(context.Background(), name,

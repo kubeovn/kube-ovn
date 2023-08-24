@@ -21,7 +21,7 @@ const (
 
 // RandomSuffix provides a random sequence to append to resources.
 func RandomSuffix() string {
-	return fmt.Sprintf("%d%04d", ginkgo.GinkgoParallelProcess(), rand.Intn(10000))
+	return fmt.Sprintf("%d%04d%04d", ginkgo.GinkgoParallelProcess(), rand.Intn(10000), rand.Intn(10000))
 }
 
 func RandomCIDR(family string) string {
@@ -199,7 +199,7 @@ func randomPool(cidr string, count int) []string {
 			x, y := k%len(ips), (k+1)%len(ips)
 			n1, _ := rl.Find(ips[x])
 			n2, _ := rl.Find(ips[y])
-			if n1 == n2 {
+			if n1 == n2 && ips[x].LessThan(ips[y]) {
 				set.Add(fmt.Sprintf("%s..%s", ips[x].String(), ips[y].String()))
 				i, k = i+1, k+2
 				continue

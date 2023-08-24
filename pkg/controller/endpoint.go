@@ -101,6 +101,7 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 		if errors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 
@@ -109,6 +110,7 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 		if errors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	svc := cachedService.DeepCopy()
@@ -201,18 +203,18 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 			// for performance reason delete lb with no backends
 			if len(backends) != 0 {
 				klog.V(3).Infof("update vip %s with backends %s to LB %s", vip, backends, lb)
-				if err = c.ovnClient.LoadBalancerAddVip(lb, vip, mappings, backends...); err != nil {
+				if err = c.ovnNbClient.LoadBalancerAddVip(lb, vip, mappings, backends...); err != nil {
 					klog.Errorf("failed to add vip %s with backends %s to LB %s: %v", vip, backends, lb, err)
 					return err
 				}
 			} else {
 				klog.V(3).Infof("delete vip %s from LB %s", vip, lb)
-				if err = c.ovnClient.LoadBalancerDeleteVip(lb, vip); err != nil {
+				if err = c.ovnNbClient.LoadBalancerDeleteVip(lb, vip); err != nil {
 					klog.Errorf("failed to delete vip %s from LB %s: %v", vip, lb, err)
 					return err
 				}
 				klog.V(3).Infof("delete vip %s from old LB %s", vip, lb)
-				if err = c.ovnClient.LoadBalancerDeleteVip(oldLb, vip); err != nil {
+				if err = c.ovnNbClient.LoadBalancerDeleteVip(oldLb, vip); err != nil {
 					klog.Errorf("failed to delete vip %s from LB %s: %v", vip, lb, err)
 					return err
 				}

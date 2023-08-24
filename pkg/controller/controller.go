@@ -54,7 +54,9 @@ type Controller struct {
 	namedPort    *NamedPort
 
 	ovnLegacyClient *ovs.LegacyClient
-	ovnClient       ovs.OvnClient
+
+	ovnNbClient ovs.NbClient
+	ovnSbClient ovs.SbClient
 
 	// ExternalGatewayType define external gateway type, centralized
 	ExternalGatewayType string
@@ -249,7 +251,7 @@ type Controller struct {
 func Run(ctx context.Context, config *Configuration) {
 	utilruntime.Must(kubeovnv1.AddToScheme(scheme.Scheme))
 	klog.V(4).Info("Creating event broadcaster")
-	eventBroadcaster := record.NewBroadcaster()
+	eventBroadcaster := record.NewBroadcasterWithCorrelatorOptions(record.CorrelatorOptions{BurstSize: 100})
 	eventBroadcaster.StartLogging(klog.Infof)
 	eventBroadcaster.StartRecordingToSink(&typedcorev1.EventSinkImpl{Interface: config.KubeFactoryClient.CoreV1().Events("")})
 	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: controllerAgentName})
@@ -310,7 +312,7 @@ func Run(ctx context.Context, config *Configuration) {
 		vpcs:              &sync.Map{},
 		podSubnetMap:      &sync.Map{},
 		deletingPodObjMap: &sync.Map{},
-		ovnLegacyClient:   ovs.NewLegacyClient(config.OvnTimeout, config.OvnSbAddr, config.ClusterRouter, config.ClusterTcpLoadBalancer, config.ClusterUdpLoadBalancer, config.ClusterTcpSessionLoadBalancer, config.ClusterUdpSessionLoadBalancer, config.NodeSwitch, config.NodeSwitchCIDR),
+		ovnLegacyClient:   ovs.NewLegacyClient(config.OvnTimeout),
 		ipam:              ovnipam.NewIPAM(),
 		namedPort:         NewNamedPort(),
 
@@ -486,10 +488,12 @@ func Run(ctx context.Context, config *Configuration) {
 	}
 
 	var err error
-	if controller.ovnClient, err = ovs.NewOvnClient(config.OvnNbAddr, config.OvnTimeout, config.NodeSwitchCIDR); err != nil {
-		util.LogFatalAndExit(err, "failed to create ovn client")
+	if controller.ovnNbClient, err = ovs.NewOvnNbClient(config.OvnNbAddr, config.OvnTimeout); err != nil {
+		util.LogFatalAndExit(err, "failed to create ovn nb client")
 	}
-
+	if controller.ovnSbClient, err = ovs.NewOvnSbClient(config.OvnSbAddr, config.OvnTimeout); err != nil {
+		util.LogFatalAndExit(err, "failed to create ovn sb client")
+	}
 	if config.EnableLb {
 		controller.switchLBRuleLister = switchLBRuleInformer.Lister()
 		controller.switchLBRuleSynced = switchLBRuleInformer.Informer().HasSynced
@@ -766,20 +770,22 @@ func Run(ctx context.Context, config *Configuration) {
 // is closed, at which point it will shutdown the workqueue and wait for
 // workers to finish processing their current work items.
 func (c *Controller) Run(ctx context.Context) {
-	if err := c.ovnClient.SetLsDnatModDlDst(c.config.LsDnatModDlDst); err != nil {
+	// The init process can only be placed here if the init process do really affect the normal process of controller, such as Nodes/Pods/Subnets...
+	// Otherwise, the init process should be placed after all workers have already started working
+	if err := c.ovnNbClient.SetLsDnatModDlDst(c.config.LsDnatModDlDst); err != nil {
 		util.LogFatalAndExit(err, "failed to set NB_Global option ls_dnat_mod_dl_dst")
 	}
 
-	if err := c.ovnClient.SetUseCtInvMatch(); err != nil {
+	if err := c.ovnNbClient.SetUseCtInvMatch(); err != nil {
 		util.LogFatalAndExit(err, "failed to set NB_Global option use_ct_inv_match to false")
-	}
-
-	if err := c.InitDefaultVpc(); err != nil {
-		util.LogFatalAndExit(err, "failed to initialize default vpc")
 	}
 
 	if err := c.InitOVN(); err != nil {
 		util.LogFatalAndExit(err, "failed to initialize ovn resources")
+	}
+
+	if err := c.InitDefaultVpc(); err != nil {
+		util.LogFatalAndExit(err, "failed to initialize default vpc")
 	}
 
 	// sync ip crd before initIPAM since ip crd will be used to restore vm and statefulset pod in initIPAM
@@ -791,41 +797,15 @@ func (c *Controller) Run(ctx context.Context) {
 		util.LogFatalAndExit(err, "failed to initialize ipam")
 	}
 
-	if err := c.initNodeChassis(); err != nil {
-		util.LogFatalAndExit(err, "failed to initialize node chassis")
-	}
-
 	if err := c.initNodeRoutes(); err != nil {
 		util.LogFatalAndExit(err, "failed to initialize node routes")
 	}
 
-	if err := c.initDenyAllSecurityGroup(); err != nil {
-		util.LogFatalAndExit(err, "failed to initialize 'deny_all' security group")
-	}
-
-	// remove resources in ovndb that not exist any more in kubernetes resources
-	if err := c.gc(); err != nil {
-		util.LogFatalAndExit(err, "failed to run gc")
-	}
-
-	c.registerSubnetMetrics()
 	if err := c.initSyncCrdSubnets(); err != nil {
 		util.LogFatalAndExit(err, "failed to sync crd subnets")
 	}
 	if err := c.initSyncCrdVlans(); err != nil {
 		util.LogFatalAndExit(err, "failed to sync crd vlans")
-	}
-
-	if c.config.PodDefaultFipType == util.IptablesFip {
-		if err := c.initSyncCrdVpcNatGw(); err != nil {
-			util.LogFatalAndExit(err, "failed to sync crd vpc nat gateways")
-		}
-	}
-
-	if c.config.EnableLb {
-		if err := c.initVpcDnsConfig(); err != nil {
-			util.LogFatalAndExit(err, "failed to initialize vpc-dns")
-		}
 	}
 
 	if err := c.addNodeGwStaticRoute(); err != nil {
@@ -834,6 +814,8 @@ func (c *Controller) Run(ctx context.Context) {
 
 	// start workers to do all the network operations
 	c.startWorkers(ctx)
+
+	c.initResourceOnce()
 	<-ctx.Done()
 	klog.Info("Shutting down workers")
 }
@@ -1148,7 +1130,7 @@ func (c *Controller) startWorkers(ctx context.Context) {
 
 func (c *Controller) allSubnetReady(subnets ...string) (bool, error) {
 	for _, lsName := range subnets {
-		exist, err := c.ovnClient.LogicalSwitchExists(lsName)
+		exist, err := c.ovnNbClient.LogicalSwitchExists(lsName)
 		if err != nil {
 			return false, fmt.Errorf("check logical switch %s exist: %v", lsName, err)
 		}
@@ -1159,4 +1141,34 @@ func (c *Controller) allSubnetReady(subnets ...string) (bool, error) {
 	}
 
 	return true, nil
+}
+
+func (c *Controller) initResourceOnce() {
+	c.registerSubnetMetrics()
+
+	if err := c.initNodeChassis(); err != nil {
+		util.LogFatalAndExit(err, "failed to initialize node chassis")
+	}
+
+	if err := c.initDenyAllSecurityGroup(); err != nil {
+		util.LogFatalAndExit(err, "failed to initialize 'deny_all' security group")
+	}
+
+	if c.config.PodDefaultFipType == util.IptablesFip {
+		if err := c.initSyncCrdVpcNatGw(); err != nil {
+			util.LogFatalAndExit(err, "failed to sync crd vpc nat gateways")
+		}
+	}
+
+	if c.config.EnableLb {
+		if err := c.initVpcDnsConfig(); err != nil {
+			util.LogFatalAndExit(err, "failed to initialize vpc-dns")
+		}
+	}
+
+	// remove resources in ovndb that not exist any more in kubernetes resources
+	// process gc at last in case of affecting other init process
+	if err := c.gc(); err != nil {
+		util.LogFatalAndExit(err, "failed to run gc")
+	}
 }

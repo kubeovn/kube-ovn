@@ -23,6 +23,7 @@ import (
 type ServiceClient struct {
 	f *Framework
 	v1core.ServiceInterface
+	namespace string
 }
 
 func (f *Framework) ServiceClient() *ServiceClient {
@@ -33,6 +34,7 @@ func (f *Framework) ServiceClientNS(namespace string) *ServiceClient {
 	return &ServiceClient{
 		f:                f,
 		ServiceInterface: f.ClientSet.CoreV1().Services(namespace),
+		namespace:        namespace,
 	}
 }
 

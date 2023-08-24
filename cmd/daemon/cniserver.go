@@ -127,6 +127,7 @@ func mvCNIConf(configDir, configFile, confName string) error {
 	// #nosec
 	data, err := os.ReadFile(configFile)
 	if err != nil {
+		klog.Errorf("failed to read cni config file %s, %v", configFile, err)
 		return err
 	}
 
@@ -163,7 +164,21 @@ func initChassisAnno(cfg *daemon.Configuration) error {
 	}
 
 	chassistr := string(chassisID)
-	node.Annotations[util.ChassisAnnotation] = strings.TrimSpace(chassistr)
+	chassesName := strings.TrimSpace(chassistr)
+	if chassesName == "" {
+		// not ready yet
+		err = fmt.Errorf("chassis id is empty")
+		klog.Error(err)
+		return err
+	}
+	if annoChassesName, ok := node.Annotations[util.ChassisAnnotation]; ok {
+		if annoChassesName == chassesName {
+			return nil
+		} else {
+			klog.Infof("chassis id changed, old: %s, new: %s", annoChassesName, chassesName)
+		}
+	}
+	node.Annotations[util.ChassisAnnotation] = chassesName
 	patchPayloadTemplate :=
 		`[{
         "op": "%s",

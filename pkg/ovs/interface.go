@@ -7,6 +7,7 @@ import (
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -15,7 +16,6 @@ type NBGlobal interface {
 	SetAzName(azName string) error
 	SetUseCtInvMatch() error
 	SetICAutoRoute(enable bool, blackList []string) error
-	SetLBCIDR(serviceCIDR string) error
 	SetLsDnatModDlDst(enabled bool) error
 	GetNbGlobal() (*ovnnb.NBGlobal, error)
 }
@@ -51,6 +51,7 @@ type LogicalSwitch interface {
 	CreateLogicalSwitch(lsName, lrName, cidrBlock, gateway string, needRouter, randomAllocateGW bool) error
 	CreateBareLogicalSwitch(lsName string) error
 	LogicalSwitchUpdateLoadBalancers(lsName string, op ovsdb.Mutator, lbNames ...string) error
+	LogicalSwitchUpdateOtherConfig(lsName string, op ovsdb.Mutator, otherConfig map[string]string) error
 	DeleteLogicalSwitch(lsName string) error
 	ListLogicalSwitch(needVendorFilter bool, filter func(ls *ovnnb.LogicalSwitch) bool) ([]ovnnb.LogicalSwitch, error)
 	LogicalSwitchExists(lsName string) (bool, error)
@@ -122,7 +123,7 @@ type ACL interface {
 	UpdateSgAcl(sg *kubeovnv1.SecurityGroup, direction string) error
 	UpdateLogicalSwitchAcl(lsName string, subnetAcls []kubeovnv1.Acl) error
 	SetAclLog(pgName, protocol string, logEnable, isIngress bool) error
-	SetLogicalSwitchPrivate(lsName, cidrBlock string, allowSubnets []string) error
+	SetLogicalSwitchPrivate(lsName, cidrBlock, nodeSwitchCIDR string, allowSubnets []string) error
 	DeleteAcls(parentName, parentType string, direction string, externalIDs map[string]string) error
 	DeleteAclsOps(parentName, parentType string, direction string, externalIDs map[string]string) ([]ovsdb.Operation, error)
 }
@@ -136,7 +137,7 @@ type AddressSet interface {
 }
 
 type LogicalRouterStaticRoute interface {
-	AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix string, nexthops ...string) error
+	AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix string, bfdId *string, nexthops ...string) error
 	ClearLogicalRouterStaticRoute(lrName string) error
 	DeleteLogicalRouterStaticRoute(lrName string, routeTable, policy *string, ipPrefix, nextHop string) error
 	ListLogicalRouterStaticRoutesByOption(lrName, routeTable, key, value string) ([]*ovnnb.LogicalRouterStaticRoute, error)
@@ -173,12 +174,11 @@ type DHCPOptions interface {
 	ListDHCPOptions(needVendorFilter bool, externalIDs map[string]string) ([]ovnnb.DHCPOptions, error)
 }
 
-type OvnClient interface {
+type NbClient interface {
 	ACL
 	AddressSet
 	BFD
 	DHCPOptions
-	// GatewayChassis
 	LoadBalancer
 	LoadBalancerHealthCheck
 	LogicalRouterPolicy
@@ -195,6 +195,27 @@ type OvnClient interface {
 	RemoveLogicalPatchPort(lspName, lrpName string) error
 	DeleteLogicalGatewaySwitch(lsName, lrName string) error
 	DeleteSecurityGroup(sgName string) error
-	GetEntityInfo(entity interface{}) error
+	Common
+}
+
+type SbClient interface {
+	Chassis
+	Common
+}
+
+type Common interface {
 	Transact(method string, operations []ovsdb.Operation) error
+	GetEntityInfo(entity interface{}) error
+}
+
+type Chassis interface {
+	DeleteChassis(chassisName string) error
+	DeleteChassisByHost(node string) error
+	GetAllChassisByHost(nodeName string) (*[]ovnsb.Chassis, error)
+	GetChassisByHost(nodeName string) (*ovnsb.Chassis, error)
+	GetChassis(chassisName string, ignoreNotFound bool) (*ovnsb.Chassis, error)
+	GetKubeOvnChassisses() (*[]ovnsb.Chassis, error)
+	UpdateChassisTag(chassisName string, nodeName string) error
+	UpdateChassis(chassis *ovnsb.Chassis, fields ...interface{}) error
+	ListChassis() (*[]ovnsb.Chassis, error)
 }

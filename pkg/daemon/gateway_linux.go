@@ -616,6 +616,21 @@ func (c *Controller) setIptables() error {
 			kubeProxyIpsetProtocol, matchset, svcMatchset, nodeMatchSet = "6-", "ovn60subnets", "ovn60services", "ovn60"+OtherNodeSet
 		}
 
+		ipset := fmt.Sprintf("KUBE-%sCLUSTER-IP", kubeProxyIpsetProtocol)
+		ipsetExists, err := c.ipsetExists(ipset)
+		if err != nil {
+			klog.Error("failed to check existence of ipset %s: %v", ipset, err)
+			return err
+		}
+		if ipsetExists {
+			iptablesRules[0].Rule = strings.Fields(fmt.Sprintf(`-i ovn0 -m set --match-set %s src -m set --match-set %s dst,dst -j MARK --set-xmark 0x4000/0x4000`, matchset, ipset))
+			rejectRule := strings.Fields(fmt.Sprintf(`-m mark ! --mark 0x4000/0x4000 -m set --match-set %s dst -m conntrack --ctstate NEW -j REJECT`, svcMatchset))
+			iptablesRules = append(iptablesRules,
+				util.IPTableRule{Table: "filter", Chain: "INPUT", Rule: rejectRule},
+				util.IPTableRule{Table: "filter", Chain: "OUTPUT", Rule: rejectRule},
+			)
+		}
+
 		if nodeIP := nodeIPs[protocol]; nodeIP != "" {
 			obsoleteRules = []util.IPTableRule{
 				{Table: NAT, Chain: Postrouting, Rule: strings.Fields(fmt.Sprintf(`! -s %s -m set --match-set %s dst -j MASQUERADE`, nodeIP, matchset))},
@@ -698,7 +713,8 @@ func (c *Controller) setIptables() error {
 		var natPreroutingRules, natPostroutingRules, ovnMasqueradeRules []util.IPTableRule
 		for _, rule := range iptablesRules {
 			if rule.Table == NAT {
-				if c.k8siptables[protocol].HasRandomFully() && rule.Rule[len(rule.Rule)-1] == "MASQUERADE" {
+				if c.k8siptables[protocol].HasRandomFully() &&
+					(rule.Rule[len(rule.Rule)-1] == "MASQUERADE" || util.ContainsString(rule.Rule, "SNAT")) {
 					rule.Rule = append(rule.Rule, "--random-fully")
 				}
 
@@ -721,13 +737,18 @@ func (c *Controller) setIptables() error {
 			}
 		}
 
+		var randomFully string
+		if c.k8siptables[protocol].HasRandomFully() {
+			randomFully = "--random-fully"
+		}
+
 		// add iptables rule for nat gw with designative ip in centralized subnet
 		for cidr, ip := range centralGwNatIPs {
 			if util.CheckProtocol(cidr) != protocol {
 				continue
 			}
 
-			s := fmt.Sprintf("-s %s -m set ! --match-set %s dst -j SNAT --to-source %s", cidr, matchset, ip)
+			s := fmt.Sprintf("-s %s -m set ! --match-set %s dst -j SNAT --to-source %s %s", cidr, matchset, ip, randomFully)
 			rule := util.IPTableRule{
 				Table: NAT,
 				Chain: OvnPostrouting,
@@ -950,8 +971,8 @@ func (c *Controller) generateNatOutgoingPolicyChainRules(protocol string) ([]uti
 		natPolicySubnetUIDs.Add(util.GetTruncatedUID(string(subnet.GetUID())))
 		cidrBlock := getCidrByProtocol(subnet.Spec.CIDRBlock, protocol)
 
-		OvnNatPolicySubnetChainName := OvnNatOutGoingPolicySubnet + util.GetTruncatedUID(string(subnet.GetUID()))
-		natPolicySubnetIptables = append(natPolicySubnetIptables, util.IPTableRule{Table: NAT, Chain: OvnNatOutGoingPolicy, Rule: strings.Fields(fmt.Sprintf(`-s %s -m comment --comment natPolicySubnet-%s -j %s`, cidrBlock, subnet.Name, OvnNatPolicySubnetChainName))})
+		ovnNatPolicySubnetChainName := OvnNatOutGoingPolicySubnet + util.GetTruncatedUID(string(subnet.GetUID()))
+		natPolicySubnetIptables = append(natPolicySubnetIptables, util.IPTableRule{Table: NAT, Chain: OvnNatOutGoingPolicy, Rule: strings.Fields(fmt.Sprintf(`-s %s -m comment --comment natPolicySubnet-%s -j %s`, cidrBlock, subnet.Name, ovnNatPolicySubnetChainName))})
 		for _, rule := range subnet.Status.NatOutgoingPolicyRules {
 			var markCode string
 			if rule.Action == util.NatPolicyRuleActionNat {
@@ -975,21 +996,21 @@ func (c *Controller) generateNatOutgoingPolicyChainRules(protocol string) ([]uti
 			srcMatch := getNatOutGoingPolicyRuleIPSetName(rule.RuleID, "src", protocol, true)
 			dstMatch := getNatOutGoingPolicyRuleIPSetName(rule.RuleID, "dst", protocol, true)
 
-			var OvnNatoutGoingPolicyRule util.IPTableRule
+			var ovnNatoutGoingPolicyRule util.IPTableRule
 			if rule.Match.DstIPs != "" && rule.Match.SrcIPs != "" {
-				OvnNatoutGoingPolicyRule = util.IPTableRule{Table: NAT, Chain: OvnNatPolicySubnetChainName, Rule: strings.Fields(fmt.Sprintf(`-m set --match-set %s src -m set --match-set %s dst -j MARK --set-xmark %s`, srcMatch, dstMatch, markCode))}
+				ovnNatoutGoingPolicyRule = util.IPTableRule{Table: NAT, Chain: ovnNatPolicySubnetChainName, Rule: strings.Fields(fmt.Sprintf(`-m set --match-set %s src -m set --match-set %s dst -j MARK --set-xmark %s`, srcMatch, dstMatch, markCode))}
 			} else if rule.Match.SrcIPs != "" {
 				protocol = getMatchProtocol(rule.Match.SrcIPs)
-				OvnNatoutGoingPolicyRule = util.IPTableRule{Table: NAT, Chain: OvnNatPolicySubnetChainName, Rule: strings.Fields(fmt.Sprintf(`-m set --match-set %s src -j MARK --set-xmark %s`, srcMatch, markCode))}
+				ovnNatoutGoingPolicyRule = util.IPTableRule{Table: NAT, Chain: ovnNatPolicySubnetChainName, Rule: strings.Fields(fmt.Sprintf(`-m set --match-set %s src -j MARK --set-xmark %s`, srcMatch, markCode))}
 			} else if rule.Match.DstIPs != "" {
 				protocol = getMatchProtocol(rule.Match.DstIPs)
-				OvnNatoutGoingPolicyRule = util.IPTableRule{Table: NAT, Chain: OvnNatPolicySubnetChainName, Rule: strings.Fields(fmt.Sprintf(`-m set --match-set %s dst -j MARK --set-xmark %s`, dstMatch, markCode))}
+				ovnNatoutGoingPolicyRule = util.IPTableRule{Table: NAT, Chain: ovnNatPolicySubnetChainName, Rule: strings.Fields(fmt.Sprintf(`-m set --match-set %s dst -j MARK --set-xmark %s`, dstMatch, markCode))}
 			} else {
 				continue
 			}
-			natPolicyRuleIptables = append(natPolicyRuleIptables, OvnNatoutGoingPolicyRule)
+			natPolicyRuleIptables = append(natPolicyRuleIptables, ovnNatoutGoingPolicyRule)
 		}
-		natPolicyRuleIptablesMap[OvnNatPolicySubnetChainName] = natPolicyRuleIptables
+		natPolicyRuleIptablesMap[ovnNatPolicySubnetChainName] = natPolicyRuleIptables
 	}
 
 	existNatChains, err := c.iptables[protocol].ListChains(NAT)
@@ -1322,7 +1343,7 @@ func (c *Controller) setExGateway() error {
 		return err
 	}
 	enable := node.Labels[util.ExGatewayLabel]
-	externalBride := fmt.Sprintf("br-%s", c.config.ExternalGatewaySwitch)
+	externalBridge := util.ExternalBridgeName(c.config.ExternalGatewaySwitch)
 	if enable == "true" {
 		cm, err := c.config.KubeClient.CoreV1().ConfigMaps(c.config.ExternalGatewayConfigNS).Get(context.Background(), util.ExternalGatewayConfig, metav1.GetOptions{})
 		if err != nil {
@@ -1335,22 +1356,22 @@ func (c *Controller) setExGateway() error {
 		if !exist || len(linkName) == 0 {
 			return nil
 		}
-		link, err := netlink.LinkByName(cm.Data["external-gw-nic"])
+		link, err := netlink.LinkByName(linkName)
 		if err != nil {
-			klog.Errorf("failed to get nic %s, %v", cm.Data["external-gw-nic"], err)
+			klog.Errorf("failed to get nic %s, %v", linkName, err)
 			return err
 		}
 		if err := netlink.LinkSetUp(link); err != nil {
-			klog.Errorf("failed to set gateway nic %s up, %v", cm.Data["external-gw-nic"], err)
+			klog.Errorf("failed to set gateway nic %s up, %v", linkName, err)
 			return err
 		}
 		externalBrReady := false
 		// if external nic already attached into another bridge
-		if existBr, err := ovs.Exec("port-to-br", cm.Data["external-gw-nic"]); err == nil {
-			if existBr == externalBride {
+		if existBr, err := ovs.Exec("port-to-br", linkName); err == nil {
+			if existBr == externalBridge {
 				externalBrReady = true
 			} else {
-				klog.Infof("external bridge should change from %s to %s, delete external bridge %s", existBr, externalBride, existBr)
+				klog.Infof("external bridge should change from %s to %s, delete external bridge %s", existBr, externalBridge, existBr)
 				if _, err := ovs.Exec(ovs.IfExists, "del-br", existBr); err != nil {
 					err = fmt.Errorf("failed to del external br %s, %v", existBr, err)
 					klog.Error(err)
@@ -1361,32 +1382,19 @@ func (c *Controller) setExGateway() error {
 
 		if !externalBrReady {
 			if _, err := ovs.Exec(
-				ovs.MayExist, "add-br", externalBride, "--",
-				ovs.MayExist, "add-port", externalBride, cm.Data["external-gw-nic"],
+				ovs.MayExist, "add-br", externalBridge, "--",
+				ovs.MayExist, "add-port", externalBridge, linkName,
 			); err != nil {
 				err = fmt.Errorf("failed to enable external gateway, %v", err)
 				klog.Error(err)
 			}
 		}
-		output, err := ovs.Exec(ovs.IfExists, "get", "open", ".", "external-ids:ovn-bridge-mappings")
-		if err != nil {
-			err = fmt.Errorf("failed to get external-ids, %v", err)
-			klog.Error(err)
-			return err
-		}
-		bridgeMappings := fmt.Sprintf("external:%s", externalBride)
-		if output != "" && !util.IsStringIn(bridgeMappings, strings.Split(output, ",")) {
-			bridgeMappings = fmt.Sprintf("%s,%s", output, bridgeMappings)
-		}
-
-		output, err = ovs.Exec("set", "open", ".", fmt.Sprintf("external-ids:ovn-bridge-mappings=%s", bridgeMappings))
-		if err != nil {
-			err = fmt.Errorf("failed to set bridge-mappings, %v: %q", err, output)
+		if err = addOvnMapping("ovn-bridge-mappings", c.config.ExternalGatewaySwitch, externalBridge, true); err != nil {
 			klog.Error(err)
 			return err
 		}
 	} else {
-		brExists, err := ovs.BridgeExists(externalBride)
+		brExists, err := ovs.BridgeExists(externalBridge)
 		if err != nil {
 			return fmt.Errorf("failed to check OVS bridge existence: %v", err)
 		}
@@ -1403,7 +1411,7 @@ func (c *Controller) setExGateway() error {
 		for _, pn := range providerNetworks {
 			// if external nic already attached into another bridge
 			if existBr, err := ovs.Exec("port-to-br", pn.Spec.DefaultInterface); err == nil {
-				if existBr == externalBride {
+				if existBr == externalBridge {
 					// delete switch after related provider network not exist
 					return nil
 				}
@@ -1424,9 +1432,9 @@ func (c *Controller) setExGateway() error {
 		}
 
 		if !keepExternalSubnet {
-			klog.Infof("delete external bridge %s", externalBride)
+			klog.Infof("delete external bridge %s", externalBridge)
 			if _, err := ovs.Exec(
-				ovs.IfExists, "del-br", externalBride); err != nil {
+				ovs.IfExists, "del-br", externalBridge); err != nil {
 				err = fmt.Errorf("failed to disable external gateway, %v", err)
 				klog.Error(err)
 				return err

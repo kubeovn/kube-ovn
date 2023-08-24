@@ -19,6 +19,7 @@ import (
 type StatefulSetClient struct {
 	f *Framework
 	v1apps.StatefulSetInterface
+	namespace string
 }
 
 func (f *Framework) StatefulSetClient() *StatefulSetClient {
@@ -29,6 +30,7 @@ func (f *Framework) StatefulSetClientNS(namespace string) *StatefulSetClient {
 	return &StatefulSetClient{
 		f:                    f,
 		StatefulSetInterface: f.ClientSet.AppsV1().StatefulSets(namespace),
+		namespace:            namespace,
 	}
 }
 

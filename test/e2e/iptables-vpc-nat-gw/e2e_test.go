@@ -443,17 +443,17 @@ var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 		shareFipShouldFail = iptablesFIPClient.Get(sharedEipFipShoudFailName)
 
 		ginkgo.By("Check share eip should has the external ip label")
-		framework.ExpectHaveKeyWithValue(shareEip.Labels, util.IptablesEipV4IPLabel, shareEip.Spec.V4ip)
+		framework.ExpectHaveKeyWithValue(shareEip.Labels, util.EipV4IpLabel, shareEip.Spec.V4ip)
 		ginkgo.By("Check share dnat should has the external ip label")
-		framework.ExpectHaveKeyWithValue(shareDnat.Labels, util.IptablesEipV4IPLabel, shareEip.Spec.V4ip)
+		framework.ExpectHaveKeyWithValue(shareDnat.Labels, util.EipV4IpLabel, shareEip.Spec.V4ip)
 		ginkgo.By("Check share snat should has the external ip label")
-		framework.ExpectHaveKeyWithValue(shareSnat.Labels, util.IptablesEipV4IPLabel, shareEip.Spec.V4ip)
+		framework.ExpectHaveKeyWithValue(shareSnat.Labels, util.EipV4IpLabel, shareEip.Spec.V4ip)
 		ginkgo.By("Check share fip should ok should has the external ip label")
-		framework.ExpectHaveKeyWithValue(shareFipShouldOk.Labels, util.IptablesEipV4IPLabel, shareEip.Spec.V4ip)
+		framework.ExpectHaveKeyWithValue(shareFipShouldOk.Labels, util.EipV4IpLabel, shareEip.Spec.V4ip)
 		ginkgo.By("Check share fip should fail should not be ready")
 		framework.ExpectEqual(shareFipShouldFail.Status.Ready, false)
 
-		// define a list and strings join
+		// make sure eip is shared
 		nats := []string{util.DnatUsingEip, util.FipUsingEip, util.SnatUsingEip}
 		framework.ExpectEqual(shareEip.Status.Nat, strings.Join(nats, ","))
 
@@ -563,7 +563,7 @@ var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 func iperf(f *framework.Framework, iperfClientPod *corev1.Pod, iperfServerEIP *apiv1.IptablesEIP) string {
 	for i := 0; i < 20; i++ {
 		command := fmt.Sprintf("iperf -e -p %s --reportstyle C -i 1 -c %s -t 10", iperf2Port, iperfServerEIP.Status.IP)
-		stdOutput, errOutput, err := framework.ExecShellInPod(context.Background(), f, iperfClientPod.Name, command)
+		stdOutput, errOutput, err := framework.ExecShellInPod(context.Background(), f, iperfClientPod.Namespace, iperfClientPod.Name, command)
 		framework.Logf("output from exec on client pod %s (eip %s)\n", iperfClientPod.Name, iperfServerEIP.Name)
 		if stdOutput != "" && err == nil {
 			framework.Logf("output:\n%s", stdOutput)

@@ -166,6 +166,7 @@ type SubnetSpec struct {
 	U2OInterconnection   bool   `json:"u2oInterconnection,omitempty"`
 	EnableLb             *bool  `json:"enableLb,omitempty"`
 	EnableEcmp           bool   `json:"enableEcmp,omitempty"`
+	EnableMulicastSnoop  bool   `json:"enableMulticastSnoop,omitempty"`
 
 	RouteTable string `json:"routeTable,omitempty"`
 }
@@ -949,7 +950,10 @@ type OvnEipSpec struct {
 	V6Ip           string `json:"v6Ip"`
 	MacAddress     string `json:"macAddress"`
 	Type           string `json:"type"`
-	// usage type: fip, snat, lrp, node external gw
+	// usage type: lrp, lsp, nat
+	// nat: used by nat: dnat, snat, fip
+	// lrp: lrp created by vpc enable external, and also could be used by nat
+	// lsp: in the case of bfd session between lrp and lsp, the lsp is on the node as ecmp nexthop
 }
 
 // OvnEipCondition describes the state of an object at a certain point.
@@ -964,6 +968,7 @@ type OvnEipStatus struct {
 	Conditions []OvnEipCondition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 
 	Type       string `json:"type" patchStrategy:"merge"`
+	Nat        string `json:"nat" patchStrategy:"merge"`
 	Ready      bool   `json:"ready" patchStrategy:"merge"`
 	V4Ip       string `json:"v4Ip" patchStrategy:"merge"`
 	V6Ip       string `json:"v6Ip" patchStrategy:"merge"`

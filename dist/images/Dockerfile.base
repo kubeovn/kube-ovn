@@ -23,12 +23,12 @@ RUN cd /usr/src/ && \
     # Add jitter parameter patch for netem qos
     curl -s https://github.com/kubeovn/ovs/commit/2eaaf89fbf3ee2172719ed10d045fd79900edc8e.patch | git apply && \
     # fix memory leak in qos
-    curl -s https://github.com/kubeovn/ovs/commit/6a4dd2f4b9311a227cc26fef7c398ae9b241311b.patch | git apply
+    curl -s https://github.com/kubeovn/ovs/commit/6a4dd2f4b9311a227cc26fef7c398ae9b241311b.patch | git apply && \
+    # ovsdb-tool: add command fix-cluster
+    curl -s https://github.com/kubeovn/ovs/commit/f52c239f5ded40b503e4d217f916b46ca413da4c.patch | git apply
 
 RUN cd /usr/src/ && git clone -b branch-22.12 --depth=1 https://github.com/ovn-org/ovn.git && \
     cd ovn && \
-    # do not send traffic that not designate to svc to conntrack
-    curl -s https://github.com/kubeovn/ovn/commit/961e67eff786fe219c98054a7af5409cc0fb52cc.patch | git apply && \
     # change hash type from dp_hash to hash with field src_ip
     curl -s https://github.com/kubeovn/ovn/commit/daa09e380eec61620d4ee317e3265c44366d1147.patch | git apply && \
     # set ether dst addr for dnat on logical switch
@@ -109,7 +109,7 @@ RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages  \
 ARG DEBUG=false
 RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages \
     if [ "${DEBUG}" = "true" ]; then \
-        apt update && apt install -y --no-install-recommends valgrind && \
+        apt update && apt install -y --no-install-recommends gdb valgrind && \
         rm -rf /var/lib/apt/lists/* && \
         dpkg -i --ignore-depends=openvswitch-switch,openvswitch-common /packages/*.ddeb; \
     fi

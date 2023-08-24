@@ -23,6 +23,7 @@ import (
 type SwitchLBRuleClient struct {
 	f *Framework
 	v1.SwitchLBRuleInterface
+	namespace string
 }
 
 func (f *Framework) SwitchLBRuleClient() *SwitchLBRuleClient {
@@ -33,6 +34,7 @@ func (f *Framework) SwitchLBRuleClientNS(namespace string) *SwitchLBRuleClient {
 	return &SwitchLBRuleClient{
 		f:                     f,
 		SwitchLBRuleInterface: f.KubeOVNClientSet.KubeovnV1().SwitchLBRules(),
+		namespace:             namespace,
 	}
 }
 

@@ -21,7 +21,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  GO_VERSION: '1.20.5'
+  GO_VERSION: ''
   GOSEC_VERSION: '2.16.0'
   HELM_VERSION: v3.12.2
   SUBMARINER_VERSION: '0.14.6'
@@ -428,7 +428,7 @@ jobs:
       - build-e2e-binaries
       - netpol-path-filter
     runs-on: ubuntu-22.04
-    timeout-minutes: 60
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
@@ -1654,8 +1654,8 @@ jobs:
       - name: Cleanup
         run: sh -x dist/images/cleanup.sh
 
-  kube-ovn-security-e2e:
-    name: Kube-OVN Security E2E
+  kube-ovn-ha-e2e:
+    name: Kube-OVN HA E2E
     needs:
       - build-kube-ovn
       - build-e2e-binaries
@@ -1752,116 +1752,25 @@ jobs:
         env:
           E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
           E2E_IP_FAMILY: ${{ matrix.ip-family }}
-        run: make kube-ovn-security-e2e
+        run: |
+          make kube-ovn-security-e2e
+          make kube-ovn-ha-e2e
 
       - name: kubectl ko log
         if: failure()
         run: |
           make kubectl-ko-log
-          mv kubectl-ko-log.tar.gz kube-ovn-security-e2e-${{ matrix.ssl }}-${{ matrix.bind-local }}-${{ matrix.ip-family }}-ko-log.tar.gz
+          mv kubectl-ko-log.tar.gz kube-ovn-ha-e2e-${{ matrix.ssl }}-${{ matrix.bind-local }}-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
         uses: actions/upload-artifact@v3
         if: failure()
         with:
-          name: kube-ovn-security-e2e-${{ matrix.ssl }}-${{ matrix.bind-local }}-${{ matrix.ip-family }}-ko-log
-          path: kube-ovn-security-e2e-${{ matrix.ssl }}-${{ matrix.bind-local }}-${{ matrix.ip-family }}-ko-log.tar.gz
+          name: kube-ovn-ha-e2e-${{ matrix.ssl }}-${{ matrix.bind-local }}-${{ matrix.ip-family }}-ko-log
+          path: kube-ovn-ha-e2e-${{ matrix.ssl }}-${{ matrix.bind-local }}-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: Cleanup
         run: sh -x dist/images/cleanup.sh
-
-  push:
-    name: Push Images
-    needs:
-      - build-centos-compile
-      - k8s-conformance-e2e
-      - k8s-netpol-e2e
-      - k8s-netpol-legacy-e2e
-      - cyclonus-netpol-e2e
-      - kube-ovn-conformance-e2e
-      - kube-ovn-ic-conformance-e2e
-      - ovn-vpc-nat-gw-conformance-e2e
-      - iptables-vpc-nat-gw-conformance-e2e
-      - webhook-e2e
-      - lb-svc-e2e
-      - underlay-logical-gateway-installation-test
-      - chart-installation-test
-      - installation-compatibility-test
-      - no-ovn-lb-test
-      - no-np-test
-      - cilium-chaining-e2e
-      - kube-ovn-security-e2e
-      - kubevirt-e2e
-    if: always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
-    runs-on: ubuntu-22.04
-    steps:
-      - uses: actions/checkout@v3
-
-      - name: Download kube-ovn image
-        uses: actions/download-artifact@v3
-        with:
-          name: kube-ovn
-
-      - name: Download vpc-nat-gateway image
-        uses: actions/download-artifact@v3
-        with:
-          name: vpc-nat-gateway
-
-      - name: Download centos7-compile image
-        uses: actions/download-artifact@v3
-        with:
-          name: centos7-compile
-
-      # - name: Download centos8-compile image
-      #   uses: actions/download-artifact@v3
-      #   with:
-      #     name: centos8-compile
-
-      - name: Load image
-        run: |
-          docker load --input kube-ovn.tar
-          docker load --input vpc-nat-gateway.tar
-          docker load --input centos7-compile.tar
-          # docker load --input centos8-compile.tar
-
-      - name: Security Scan
-        run: |
-          sudo apt-get install wget apt-transport-https gnupg lsb-release
-          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
-          echo deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main | sudo tee -a /etc/apt/sources.list.d/trivy.list
-          sudo apt-get update
-          sudo apt-get install trivy
-          make scan
-
-      - name: Push
-        if: github.ref_name == github.event.repository.default_branch || startsWith(github.ref_name, 'release-')
-        env:
-          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
-          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
-          COMMIT: ${{ github.sha }}
-        run: |
-          cat VERSION
-          TAG=$(cat VERSION)
-          echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
-          docker tag kubeovn/kube-ovn:$TAG kubeovn/kube-ovn-dev:$COMMIT-x86
-          docker tag kubeovn/kube-ovn:$TAG kubeovn/kube-ovn:$TAG-x86
-          docker tag kubeovn/kube-ovn:$TAG-debug kubeovn/kube-ovn:$TAG-debug-x86
-          docker tag kubeovn/vpc-nat-gateway:$TAG kubeovn/vpc-nat-gateway-dev:$COMMIT-x86
-          docker tag kubeovn/vpc-nat-gateway:$TAG kubeovn/vpc-nat-gateway:$TAG-x86
-          docker tag kubeovn/centos7-compile:$TAG kubeovn/centos7-compile-dev:$TAG-x86
-          docker tag kubeovn/centos7-compile:$TAG kubeovn/centos7-compile:$TAG-x86
-          # docker tag kubeovn/centos8-compile:$TAG kubeovn/centos8-compile-dev:$TAG-x86
-          # docker tag kubeovn/centos8-compile:$TAG kubeovn/centos8-compile:$TAG-x86
-          docker images
-          docker push kubeovn/kube-ovn:$TAG-x86
-          docker push kubeovn/kube-ovn-dev:$COMMIT-x86
-          docker push kubeovn/kube-ovn:$TAG-debug-x86
-          docker push kubeovn/vpc-nat-gateway:$TAG-x86
-          docker push kubeovn/vpc-nat-gateway-dev:$COMMIT-x86
-          docker push kubeovn/centos7-compile:$TAG-x86
-          docker push kubeovn/centos7-compile-dev:$TAG-x86
-          # docker push kubeovn/centos8-compile:$TAG-x86
-          # docker push kubeovn/centos8-compile-dev:$TAG-x86
 
   kube-ovn-submariner-conformance-e2e:
     name: Kube-OVN Submariner Conformance E2E
@@ -2114,3 +2023,97 @@ jobs:
       - name: Run E2E
         working-directory: ${{ env.E2E_DIR }}
         run: make ovn-vpc-nat-gw-conformance-e2e
+
+  push:
+    name: Push Images
+    needs:
+      - build-centos-compile
+      - k8s-conformance-e2e
+      - k8s-netpol-e2e
+      - k8s-netpol-legacy-e2e
+      - cyclonus-netpol-e2e
+      - kube-ovn-conformance-e2e
+      - kube-ovn-ic-conformance-e2e
+      - ovn-vpc-nat-gw-conformance-e2e
+      - iptables-vpc-nat-gw-conformance-e2e
+      - webhook-e2e
+      - lb-svc-e2e
+      - underlay-logical-gateway-installation-test
+      - chart-installation-test
+      - installation-compatibility-test
+      - no-ovn-lb-test
+      - no-np-test
+      - cilium-chaining-e2e
+      - kube-ovn-ha-e2e
+      - kubevirt-e2e
+      - kube-ovn-submariner-conformance-e2e
+    if: always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Download kube-ovn image
+        uses: actions/download-artifact@v3
+        with:
+          name: kube-ovn
+
+      - name: Download vpc-nat-gateway image
+        uses: actions/download-artifact@v3
+        with:
+          name: vpc-nat-gateway
+
+      - name: Download centos7-compile image
+        uses: actions/download-artifact@v3
+        with:
+          name: centos7-compile
+
+      # - name: Download centos8-compile image
+      #   uses: actions/download-artifact@v3
+      #   with:
+      #     name: centos8-compile
+
+      - name: Load image
+        run: |
+          docker load --input kube-ovn.tar
+          docker load --input vpc-nat-gateway.tar
+          docker load --input centos7-compile.tar
+          # docker load --input centos8-compile.tar
+
+      - name: Security Scan
+        run: |
+          sudo apt-get install wget apt-transport-https gnupg lsb-release
+          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+          echo deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main | sudo tee -a /etc/apt/sources.list.d/trivy.list
+          sudo apt-get update
+          sudo apt-get install trivy
+          make scan
+
+      - name: Push
+        if: github.ref_name == github.event.repository.default_branch || startsWith(github.ref_name, 'release-')
+        env:
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+          COMMIT: ${{ github.sha }}
+        run: |
+          cat VERSION
+          TAG=$(cat VERSION)
+          echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+          docker tag kubeovn/kube-ovn:$TAG kubeovn/kube-ovn-dev:$COMMIT-x86
+          docker tag kubeovn/kube-ovn:$TAG kubeovn/kube-ovn:$TAG-x86
+          docker tag kubeovn/kube-ovn:$TAG-debug kubeovn/kube-ovn:$TAG-debug-x86
+          docker tag kubeovn/vpc-nat-gateway:$TAG kubeovn/vpc-nat-gateway-dev:$COMMIT-x86
+          docker tag kubeovn/vpc-nat-gateway:$TAG kubeovn/vpc-nat-gateway:$TAG-x86
+          docker tag kubeovn/centos7-compile:$TAG kubeovn/centos7-compile-dev:$TAG-x86
+          docker tag kubeovn/centos7-compile:$TAG kubeovn/centos7-compile:$TAG-x86
+          # docker tag kubeovn/centos8-compile:$TAG kubeovn/centos8-compile-dev:$TAG-x86
+          # docker tag kubeovn/centos8-compile:$TAG kubeovn/centos8-compile:$TAG-x86
+          docker images
+          docker push kubeovn/kube-ovn:$TAG-x86
+          docker push kubeovn/kube-ovn-dev:$COMMIT-x86
+          docker push kubeovn/kube-ovn:$TAG-debug-x86
+          docker push kubeovn/vpc-nat-gateway:$TAG-x86
+          docker push kubeovn/vpc-nat-gateway-dev:$COMMIT-x86
+          docker push kubeovn/centos7-compile:$TAG-x86
+          docker push kubeovn/centos7-compile-dev:$TAG-x86
+          # docker push kubeovn/centos8-compile:$TAG-x86
+          # docker push kubeovn/centos8-compile-dev:$TAG-x86

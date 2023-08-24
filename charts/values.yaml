@@ -10,7 +10,7 @@ global:
       repository: kube-ovn
       dpdkRepository: kube-ovn-dpdk
       vpcRepository: vpc-nat-gateway
-      tag: v1.12.0
+      tag: v1.13.0
       support_arm: true
       thirdparty: true
 
@@ -47,6 +47,11 @@ networking:
   ENABLE_ECMP: false
   ENABLE_METRICS: true
   NODE_LOCAL_DNS_IP: ""
+  PROBE_INTERVAL: 180000
+  OVN_LEADER_PROBE_INTERVAL: 5
+  OVN_REMOTE_PROBE_INTERVAL: 10000
+  OVN_REMOTE_OPENFLOW_INTERVAL: 180
+  OVN_NORTHD_N_THREADS: 1
 
 func:
   ENABLE_LB: true

@@ -236,6 +236,7 @@ func (c *Controller) processNextUpdateServiceWorkItem() bool {
 func (c *Controller) handleDeleteService(service *vpcService) error {
 	key, err := cache.MetaNamespaceKeyFunc(service.Svc)
 	if err != nil {
+		klog.Error(err)
 		utilruntime.HandleError(fmt.Errorf("failed to get meta namespace key of %#v: %v", service.Svc, err))
 		return nil
 	}
@@ -275,7 +276,7 @@ func (c *Controller) handleDeleteService(service *vpcService) error {
 		}
 
 		for _, lb := range vpcLB {
-			if err := c.ovnClient.LoadBalancerDeleteVip(lb, vip); err != nil {
+			if err := c.ovnNbClient.LoadBalancerDeleteVip(lb, vip); err != nil {
 				klog.Errorf("failed to delete vip %s from LB %s: %v", vip, lb, err)
 				return err
 			}
@@ -303,6 +304,7 @@ func (c *Controller) handleUpdateService(key string) error {
 
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
+		klog.Error(err)
 		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
 		return nil
 	}
@@ -316,6 +318,7 @@ func (c *Controller) handleUpdateService(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 
@@ -357,14 +360,14 @@ func (c *Controller) handleUpdateService(key string) error {
 			return nil
 		}
 
-		lb, err := c.ovnClient.GetLoadBalancer(lbName, false)
+		lb, err := c.ovnNbClient.GetLoadBalancer(lbName, false)
 		if err != nil {
 			klog.Errorf("failed to get LB %s: %v", lbName, err)
 			return err
 		}
 		klog.V(3).Infof("existing vips of LB %s: %v", lbName, lb.Vips)
 		for _, vip := range svcVips {
-			if err := c.ovnClient.LoadBalancerDeleteVip(oLbName, vip); err != nil {
+			if err := c.ovnNbClient.LoadBalancerDeleteVip(oLbName, vip); err != nil {
 				klog.Errorf("failed to delete vip %s from LB %s: %v", vip, oLbName, err)
 				return err
 			}
@@ -379,7 +382,7 @@ func (c *Controller) handleUpdateService(key string) error {
 		for vip := range lb.Vips {
 			if ip := parseVipAddr(vip); (util.ContainsString(ips, ip) && !util.IsStringIn(vip, svcVips)) || util.ContainsString(ipsToDel, ip) {
 				klog.Infof("remove stale vip %s from LB %s", vip, lb)
-				if err := c.ovnClient.LoadBalancerDeleteVip(lbName, vip); err != nil {
+				if err := c.ovnNbClient.LoadBalancerDeleteVip(lbName, vip); err != nil {
 					klog.Errorf("failed to delete vip %s from LB %s: %v", vip, lb, err)
 					return err
 				}
@@ -390,7 +393,7 @@ func (c *Controller) handleUpdateService(key string) error {
 			return nil
 		}
 
-		oLb, err := c.ovnClient.GetLoadBalancer(oLbName, false)
+		oLb, err := c.ovnNbClient.GetLoadBalancer(oLbName, false)
 		if err != nil {
 			klog.Errorf("failed to get LB %s: %v", oLbName, err)
 			return err
@@ -399,7 +402,7 @@ func (c *Controller) handleUpdateService(key string) error {
 		for vip := range oLb.Vips {
 			if ip := parseVipAddr(vip); util.ContainsString(ips, ip) || util.ContainsString(ipsToDel, ip) {
 				klog.Infof("remove stale vip %s from LB %s", vip, oLbName)
-				if err = c.ovnClient.LoadBalancerDeleteVip(oLbName, vip); err != nil {
+				if err = c.ovnNbClient.LoadBalancerDeleteVip(oLbName, vip); err != nil {
 					klog.Errorf("failed to delete vip %s from LB %s: %v", vip, oLbName, err)
 					return err
 				}
@@ -437,6 +440,7 @@ func parseVipAddr(vip string) string {
 func (c *Controller) handleAddService(key string) error {
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
+		klog.Error(err)
 		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
 		return nil
 	}
@@ -450,6 +454,7 @@ func (c *Controller) handleAddService(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	if svc.Spec.Type != v1.ServiceTypeLoadBalancer || !c.config.EnableLbSvc {
@@ -489,6 +494,7 @@ func (c *Controller) handleAddService(key string) error {
 			if k8serrors.IsNotFound(err) {
 				return nil
 			}
+			klog.Error(err)
 			return err
 		}
 	}
@@ -504,6 +510,7 @@ func (c *Controller) handleAddService(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	var ingress v1.LoadBalancerIngress

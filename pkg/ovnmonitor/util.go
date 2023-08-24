@@ -76,6 +76,7 @@ func getClusterEnableState(dbName string) (bool, error) {
 	cmd := exec.Command("sh", "-c", cmdstr)
 	_, err := cmd.CombinedOutput()
 	if err != nil {
+		klog.Error(err)
 		return false, err
 	}
 	return true, nil

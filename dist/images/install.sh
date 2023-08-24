@@ -44,7 +44,7 @@ CNI_BIN_DIR="/opt/cni/bin"
 
 REGISTRY="docker.io/kubeovn"
 VPC_NAT_IMAGE="vpc-nat-gateway"
-VERSION="v1.12.0"
+VERSION="v1.13.0"
 IMAGE_PULL_POLICY="IfNotPresent"
 POD_CIDR="10.16.0.0/16"                # Do NOT overlap with NODE/SVC/JOIN CIDR
 POD_GATEWAY="10.16.0.1"
@@ -80,9 +80,7 @@ POD_NIC_TYPE="veth-pair"                          # veth-pair or internal-port
 POD_DEFAULT_FIP_TYPE=""                           # iptables, pod can set iptables fip automatically by enable fip annotation
 
 # VLAN Config only take effect when NETWORK_TYPE is vlan
-PROVIDER_NAME="provider"
 VLAN_INTERFACE_NAME=""
-VLAN_NAME="ovn-vlan"
 VLAN_ID="100"
 
 if [ "$ENABLE_VLAN" = "true" ]; then
@@ -134,7 +132,7 @@ then
       --with-dpdk=*)
         DPDK=true
         DPDK_VERSION="${1#*=}"
-        if [[ ! "${DPDK_SUPPORTED_VERSIONS[@]}" = "${DPDK_VERSION}" ]] || [[ -z "${DPDK_VERSION}" ]]; then
+        if [[ ! "${DPDK_SUPPORTED_VERSIONS[*]}" = "${DPDK_VERSION}" ]] || [[ -z "${DPDK_VERSION}" ]]; then
           echo "Unsupported DPDK version: ${DPDK_VERSION}"
           echo "Supported DPDK versions: ${DPDK_SUPPORTED_VERSIONS[*]}"
           exit 1
@@ -201,17 +199,17 @@ fi
 echo "[Step 1/6] Label kube-ovn-master node and label datapath type"
 count=$(kubectl get no -l$LABEL --no-headers | wc -l)
 node_label="$LABEL"
-if [ $count -eq 0 ]; then
+if [ "${count}" -eq 0 ]; then
   count=$(kubectl get no -l$DEPRECATED_LABEL --no-headers | wc -l)
   node_label="$DEPRECATED_LABEL"
-  if [ $count -eq 0 ]; then
+  if [ "${count}" -eq 0 ]; then
     echo "ERROR: No node with label $LABEL or $DEPRECATED_LABEL found"
     exit 1
   fi
 fi
 kubectl label no -l$node_label kube-ovn/role=master --overwrite
 
-if [ "$DPDK" = "true" -o "$HYBRID_DPDK" = "true" ]; then
+if [ "$DPDK" = "true" ] || [ "$HYBRID_DPDK" = "true" ]; then
   kubectl label no -lovn.kubernetes.io/ovs_dp_type!=userspace ovn.kubernetes.io/ovs_dp_type=kernel --overwrite
 fi
 
@@ -1407,6 +1405,9 @@ spec:
       - jsonPath: .status.type
         name: Type
         type: string
+      - jsonPath: .status.nat
+        name: Nat
+        type: string
       - jsonPath: .status.ready
         name: Ready
         type: boolean
@@ -1418,6 +1419,8 @@ spec:
               type: object
               properties:
                 type:
+                  type: string
+                nat:
                   type: string
                 ready:
                   type: boolean
@@ -2293,6 +2296,8 @@ spec:
                 enableLb:
                   type: boolean
                 enableEcmp:
+                  type: boolean
+                enableMulticastSnoop:
                   type: boolean
                 routeTable:
                   type: string
@@ -3199,7 +3204,8 @@ spec:
         - name: ovn-central
           image: "$REGISTRY/kube-ovn:$VERSION"
           imagePullPolicy: $IMAGE_PULL_POLICY
-          command: ["/kube-ovn/start-db.sh"]
+          command: 
+          - /kube-ovn/start-db.sh
           securityContext:
             capabilities:
               add: ["SYS_NICE"]
@@ -3228,6 +3234,12 @@ spec:
               value: "$ENABLE_BIND_LOCAL_IP"
             - name: DEBUG_WRAPPER
               value: "$DEBUG_WRAPPER"
+            - name: PROBE_INTERVAL
+              value: "180000"
+            - name: OVN_LEADER_PROBE_INTERVAL
+              value: "5"
+            - name: OVN_NORTHD_N_THREADS
+              value: "1"
           resources:
             requests:
               cpu: 300m
@@ -3321,13 +3333,16 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app: ovs
+      app: ovs-dpdk
   updateStrategy:
-    type: OnDelete
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   template:
     metadata:
       labels:
-        app: ovs
+        app: ovs-dpdk
         component: network
         type: infra
     spec:
@@ -3487,7 +3502,7 @@ spec:
   updateStrategy:
     type: RollingUpdate
     rollingUpdate:
-      maxSurge: 100%
+      maxSurge: 1
       maxUnavailable: 0
   template:
     metadata:
@@ -3511,7 +3526,8 @@ spec:
         - name: openvswitch
           image: "$REGISTRY/kube-ovn:$VERSION"
           imagePullPolicy: $IMAGE_PULL_POLICY
-          command: ["/kube-ovn/start-ovs.sh"]
+          command: 
+          - /kube-ovn/start-ovs.sh
           securityContext:
             runAsUser: 0
             privileged: true
@@ -3542,6 +3558,10 @@ spec:
               value: $addresses
             - name: DEBUG_WRAPPER
               value: "$DEBUG_WRAPPER"
+            - name: OVN_REMOTE_PROBE_INTERVAL
+              value: "10000" 
+            - name: OVN_REMOTE_OPENFLOW_INTERVAL
+              value: "180"
           volumeMounts:
             - mountPath: /var/run/netns
               name: host-ns
@@ -4514,7 +4534,7 @@ if ! sh -c "echo \":$PATH:\" | grep -q \":/usr/local/bin:\""; then
 fi
 
 echo "[Step 6/6] Run network diagnose"
-kubectl cp kube-system/$(kubectl  -n kube-system get pods -o wide | grep cni | awk '{print $1}' | awk 'NR==1{print}'):/kube-ovn/kubectl-ko /usr/local/bin/kubectl-ko
+kubectl cp kube-system/"$(kubectl  -n kube-system get pods -o wide | grep cni | awk '{print $1}' | awk 'NR==1{print}')":/kube-ovn/kubectl-ko /usr/local/bin/kubectl-ko
 chmod +x /usr/local/bin/kubectl-ko
 kubectl ko diagnose all
 

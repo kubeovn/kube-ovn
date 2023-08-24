@@ -204,9 +204,10 @@ spec:
       hostNetwork: true
       containers:
         - name: ovn-central
-          image: "kubeovn/kube-ovn:v1.10.0"
+          image: "kubeovn/kube-ovn:v1.12.0"
           imagePullPolicy: IfNotPresent
-          command: ["/kube-ovn/start-db.sh"]
+          command: 
+          - /kube-ovn/start-db.sh
           securityContext:
             capabilities:
               add: ["SYS_NICE"]
@@ -231,6 +232,12 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: status.podIPs
+            - name: PROBE_INTERVAL
+              value: "180000"
+            - name: OVN_LEADER_PROBE_INTERVAL
+              value: "5"
+            - name: OVN_NORTHD_N_THREADS
+              value: "1"
           resources:
             requests:
               cpu: 500m
@@ -310,13 +317,16 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app: ovs
+      app: ovs-dpdk
   updateStrategy:
-    type: OnDelete
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   template:
     metadata:
       labels:
-        app: ovs
+        app: ovs-dpdk
         component: network
         type: infra
     spec:

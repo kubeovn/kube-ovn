@@ -10,7 +10,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  GO_VERSION: '1.20.5'
+  GO_VERSION: ''
   HELM_VERSION: v3.12.2
   SUBMARINER_VERSION: '0.14.6'
 
@@ -24,10 +24,10 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.12
           - release-1.11
           - release-1.10
           - release-1.9
-          - release-1.8
         ip-family:
           - ipv4
           - ipv6
@@ -108,16 +108,16 @@ jobs:
   k8s-netpol-e2e:
     name: Kubernetes Network Policy E2E
     runs-on: ubuntu-22.04
-    timeout-minutes: 60
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
         branch:
           - master
+          - release-1.12
           - release-1.11
           - release-1.10
           - release-1.9
-          - release-1.8
         ip-family:
           - ipv4
           - ipv6
@@ -197,10 +197,10 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.12
           - release-1.11
           - release-1.10
           - release-1.9
-          - release-1.8
         ip-family:
           - ipv4
           - ipv6
@@ -280,10 +280,10 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.12
           - release-1.11
           - release-1.10
           - release-1.9
-          - release-1.8
         ip-family:
           - ipv4
           - ipv6
@@ -340,10 +340,10 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.12
           - release-1.11
           - release-1.10
           - release-1.9
-          - release-1.8
         ip-family:
           - ipv4
           - ipv6
@@ -424,6 +424,7 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.12
           - release-1.11
           - release-1.10
           - release-1.9
@@ -489,54 +490,6 @@ jobs:
           E2E_BRANCH: ${{ matrix.branch }}
         run: make kube-ovn-ic-conformance-e2e
 
-  ha-installation-test:
-    name: HA Installation Test
-    runs-on: ubuntu-22.04
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        branch:
-          - release-1.8
-    steps:
-      - uses: actions/checkout@v3
-
-      - name: Create branch directory
-        run: mkdir -p test/e2e/kube-ovn/branches/${{ matrix.branch }}
-
-      - name: Check out branch
-        uses: actions/checkout@v3
-        with:
-          ref: ${{ matrix.branch }}
-          fetch-depth: 1
-          path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
-
-      - name: Install kind
-        uses: helm/kind-action@v1.8.0
-        with:
-          version: v0.20.0
-          install_only: true
-
-      - name: Create kind cluster
-        working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
-        run: |
-          sudo pip3 install j2cli
-          sudo pip3 install "j2cli[yaml]"
-          sudo PATH=~/.local/bin:$PATH make kind-init-ha
-          sudo cp -r /root/.kube/ ~/.kube/
-          sudo chown -R $(id -un). ~/.kube/
-
-      - name: Install Kube-OVN
-        working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
-        run: |
-          version=$(grep -E '^VERSION="v([0-9]+\.){2}[0-9]+"$' dist/images/install.sh | head -n1 | awk -F= '{print $2}' | tr -d '"')
-          docker pull kubeovn/kube-ovn:$version
-          sudo ENABLE_SSL=true VERSION=$version make kind-install
-
-      - name: Cleanup
-        working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
-        run: sh dist/images/cleanup.sh
-
   underlay-logical-gateway-installation-test:
     name: Underlay Logical Gateway Installation Test
     runs-on: ubuntu-22.04
@@ -546,6 +499,7 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.12
           - release-1.11
           - release-1.10
           - release-1.9
@@ -597,10 +551,10 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.12
           - release-1.11
           - release-1.10
           - release-1.9
-          - release-1.8
     steps:
       - uses: actions/checkout@v3
 
@@ -651,10 +605,10 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.12
           - release-1.11
           - release-1.10
           - release-1.9
-          - release-1.8
     steps:
       - uses: actions/checkout@v3
 
@@ -705,6 +659,7 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.12
           - release-1.11
     steps:
       - uses: actions/checkout@v3
@@ -777,6 +732,7 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.12
     steps:
       - uses: actions/checkout@v3
 
@@ -847,6 +803,7 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.12
     steps:
       - uses: actions/checkout@v3
 
@@ -917,10 +874,10 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.12
           - release-1.11
           - release-1.10
           - release-1.9
-          - release-1.8
     steps:
       - uses: actions/checkout@v3
 
@@ -968,10 +925,10 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.12
           - release-1.11
           - release-1.10
           - release-1.9
-          - release-1.8
     steps:
       - uses: actions/checkout@v3
       - uses: azure/setup-helm@v3
@@ -1047,8 +1004,8 @@ jobs:
         working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
         run: sh dist/images/cleanup.sh
 
-  kube-ovn-security-e2e:
-    name: Kube-OVN Security E2E
+  kube-ovn-ha-e2e:
+    name: Kube-OVN HA E2E
     runs-on: ubuntu-22.04
     timeout-minutes: 30
     strategy:
@@ -1056,6 +1013,7 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.12
           - release-1.11
           - release-1.10
           - release-1.9
@@ -1132,7 +1090,9 @@ jobs:
         env:
           E2E_BRANCH: ${{ matrix.branch }}
           E2E_IP_FAMILY: ${{ matrix.ip-family }}
-        run: make kube-ovn-security-e2e
+        run: |
+          make kube-ovn-security-e2e
+          make kube-ovn-ha-e2e
 
       - name: Cleanup
         run: sh dist/images/cleanup.sh
@@ -1254,6 +1214,7 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.12
     steps:
       - uses: actions/checkout@v3
 
@@ -1311,6 +1272,7 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.12
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-go@v4
@@ -1380,6 +1342,7 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.12
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-go@v4

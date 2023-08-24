@@ -40,6 +40,7 @@ func (c LegacyClient) ovnIcNbCommand(cmdArgs ...string) (string, error) {
 func (c LegacyClient) GetTsSubnet(ts string) (string, error) {
 	subnet, err := c.ovnIcNbCommand("get", "Transit_Switch", ts, "external_ids:subnet")
 	if err != nil {
+		klog.Error(err)
 		return "", fmt.Errorf("failed to get ts subnet, %v", err)
 	}
 	return subnet, nil

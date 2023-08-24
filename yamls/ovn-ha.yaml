@@ -93,9 +93,10 @@ spec:
       hostNetwork: true
       containers:
         - name: ovn-central
-          image: "kubeovn/kube-ovn:v1.12.0"
+          image: "kubeovn/kube-ovn:v1.13.0"
           imagePullPolicy: IfNotPresent
-          command: ["/kube-ovn/start-db.sh"]
+          command: 
+          - /kube-ovn/start-db.sh
           securityContext:
             capabilities:
               add: ["SYS_NICE"]
@@ -122,6 +123,12 @@ spec:
                   fieldPath: status.podIPs
             - name: ENABLE_BIND_LOCAL_IP
               value: "true"
+            - name: PROBE_INTERVAL
+              value: "180000"
+            - name: OVN_LEADER_PROBE_INTERVAL
+              value: "5"
+            - name: OVN_NORTHD_N_THREADS
+              value: "1"
           resources:
             requests:
               cpu: 300m
@@ -214,7 +221,7 @@ spec:
   updateStrategy:
     type: RollingUpdate
     rollingUpdate:
-      maxSurge: 100%
+      maxSurge: 1
       maxUnavailable: 0
   template:
     metadata:
@@ -236,9 +243,10 @@ spec:
       hostPID: true
       containers:
         - name: openvswitch
-          image: "kubeovn/kube-ovn:v1.12.0"
+          image: "kubeovn/kube-ovn:v1.13.0"
           imagePullPolicy: IfNotPresent
-          command: ["/kube-ovn/start-ovs.sh"]
+          command: 
+          - /kube-ovn/start-ovs.sh
           securityContext:
             runAsUser: 0
             privileged: true
@@ -265,6 +273,10 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
+            - name: OVN_REMOTE_PROBE_INTERVAL
+              value: "10000" 
+            - name: OVN_REMOTE_OPENFLOW_INTERVAL
+              value: "180"
           volumeMounts:
             - mountPath: /var/run/netns
               name: host-ns

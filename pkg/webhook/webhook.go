@@ -63,6 +63,16 @@ func NewValidatingHook(client client.Client, scheme *runtime.Scheme, cache cache
 	updateHooks[iptablesDnatRule] = v.iptablesDnatUpdateHook
 	createHooks[iptablesFIPRule] = v.iptablesFipCreateHook
 	updateHooks[iptablesFIPRule] = v.iptablesFipUpdateHook
+
+	createHooks[ovnEip] = v.ovnEipCreateHook
+	updateHooks[ovnEip] = v.ovnEipUpdateHook
+	deleteHooks[ovnEip] = v.ovnEipDeleteHook
+	createHooks[ovnFip] = v.ovnFipCreateHook
+	updateHooks[ovnFip] = v.ovnFipUpdateHook
+	createHooks[ovnSnat] = v.ovnSnatCreateHook
+	updateHooks[ovnSnat] = v.ovnSnatUpdateHook
+	createHooks[ovnDnat] = v.ovnDnatCreateHook
+	updateHooks[ovnDnat] = v.ovnDnatUpdateHook
 	return v, nil
 }
 

@@ -259,6 +259,7 @@ func ParseFlags() (*Configuration, error) {
 	if config.DefaultGateway == "" {
 		gw, err := util.GetGwByCidr(config.DefaultCIDR)
 		if err != nil {
+			klog.Error(err)
 			return nil, err
 		}
 		config.DefaultGateway = gw
@@ -271,6 +272,7 @@ func ParseFlags() (*Configuration, error) {
 	if config.NodeSwitchGateway == "" {
 		gw, err := util.GetGwByCidr(config.NodeSwitchCIDR)
 		if err != nil {
+			klog.Error(err)
 			return nil, err
 		}
 		config.NodeSwitchGateway = gw

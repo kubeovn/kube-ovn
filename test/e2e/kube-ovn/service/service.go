@@ -126,11 +126,12 @@ var _ = framework.Describe("[group:service]", func() {
 		}
 		f.SkipVersionPriorTo(1, 11, "This case is support in v1.11")
 		ginkgo.By("Creating service " + serviceName)
+		port := 8000 + rand.Int31n(1000)
 		ports := []corev1.ServicePort{{
 			Name:       "tcp",
 			Protocol:   corev1.ProtocolTCP,
-			Port:       80,
-			TargetPort: intstr.FromInt(80),
+			Port:       port,
+			TargetPort: intstr.FromInt(int(port)),
 		}}
 
 		selector := map[string]string{"app": "svc-dual"}
@@ -142,6 +143,7 @@ var _ = framework.Describe("[group:service]", func() {
 		v6ClusterIp := service.Spec.ClusterIPs[1]
 		originService := service.DeepCopy()
 
+		ginkgo.By("Creating pod " + podName)
 		podBackend := framework.MakePod(namespaceName, podName, selector, nil, framework.PauseImage, nil, nil)
 		_ = podClient.CreateSync(podBackend)
 
@@ -149,11 +151,19 @@ var _ = framework.Describe("[group:service]", func() {
 			execCmd := "kubectl ko nbctl --format=csv --data=bare --no-heading --columns=vips find Load_Balancer name=cluster-tcp-loadbalancer"
 			framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 				output, err := exec.Command("bash", "-c", execCmd).CombinedOutput()
-				framework.Logf("output is %s ", output)
-				framework.Logf("v6ClusterIp is %s ", v6ClusterIp)
 				framework.ExpectNoError(err)
-				if (isContain && strings.Contains(string(output), v6ClusterIp)) ||
-					(!isContain && !strings.Contains(string(output), v6ClusterIp)) {
+				framework.Logf("output is %q", output)
+				framework.Logf("v6ClusterIp is %q", v6ClusterIp)
+				vips := strings.Fields(string(output))
+				prefix := util.JoinHostPort(v6ClusterIp, port) + "="
+				var found bool
+				for _, vip := range vips {
+					if strings.HasPrefix(vip, prefix) {
+						found = true
+						break
+					}
+				}
+				if found == isContain {
 					return true, nil
 				}
 				return false, nil

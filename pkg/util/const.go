@@ -23,11 +23,6 @@ const (
 	VipAnnotation        = "ovn.kubernetes.io/vip"
 	ChassisAnnotation    = "ovn.kubernetes.io/chassis"
 
-	OvnFipUseEipFinalizer  = "ovn.kubernetes.io/ovn_fip"
-	OvnSnatUseEipFinalizer = "ovn.kubernetes.io/ovn_snat"
-	OvnDnatUseEipFinalizer = "ovn.kubernetes.io/ovn_dnat"
-	OvnLrpUseEipFinalizer  = "ovn.kubernetes.io/ovn_lrp"
-
 	ExternalIpAnnotation         = "ovn.kubernetes.io/external_ip"
 	ExternalMacAnnotation        = "ovn.kubernetes.io/external_mac"
 	ExternalCidrAnnotation       = "ovn.kubernetes.io/external_cidr"
@@ -47,10 +42,8 @@ const (
 	VpcEipAnnotation            = "ovn.kubernetes.io/vpc_eip"
 	VpcDnatEPortLabel           = "ovn.kubernetes.io/vpc_dnat_eport"
 	VpcNatAnnotation            = "ovn.kubernetes.io/vpc_nat"
-	IptablesEipV4IPLabel        = "ovn.kubernetes.io/iptables_eip_v4_ip"
-
-	OvnEipUsageLabel        = "ovn.kubernetes.io/ovn_eip_usage"
-	OvnLrpEipEnableBfdLabel = "ovn.kubernetes.io/ovn_lrp_eip_enable_bfd"
+	OvnEipTypeLabel             = "ovn.kubernetes.io/ovn_eip_type"
+	EipV4IpLabel                = "ovn.kubernetes.io/eip_v4_ip"
 
 	SwitchLBRuleVipsAnnotation = "ovn.kubernetes.io/switch_lb_vip"
 	SwitchLBRuleVip            = "switch_lb_vip"
@@ -178,20 +171,23 @@ const (
 	DefaultVpc    = "ovn-cluster"
 	DefaultSubnet = "ovn-default"
 
-	EcmpRouteType   = "ecmp"
-	NormalRouteType = "normal"
+	NormalRouteType    = "normal"
+	EcmpRouteType      = "ecmp"
+	StaticRouteBfdEcmp = "ecmp_symmetric_reply"
 
-	LrpUsingEip       = "lrp"
-	FipUsingEip       = "fip"
-	NatUsingVip       = "vip"
-	SnatUsingEip      = "snat"
-	DnatUsingEip      = "dnat"
-	NodeExtGwUsingEip = "node-ext-gw"
-	StaicRouteBfdEcmp = "ecmp-symmetric-reply"
+	Vip = "vip"
+	Lrp = "lrp"
+	Lsp = "lsp"
+
+	NatUsingEip  = "nat"
+	FipUsingEip  = "fip"
+	SnatUsingEip = "snat"
+	DnatUsingEip = "dnat"
 
 	OvnFip      = "ovn"
 	IptablesFip = "iptables"
 
+	U2OSubnetPolicyPriority     = 29400
 	GatewayRouterPolicyPriority = 29000
 	OvnICPolicyPriority         = 29500
 	NodeRouterPolicyPriority    = 30000

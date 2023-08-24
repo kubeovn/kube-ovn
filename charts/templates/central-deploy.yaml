@@ -44,7 +44,8 @@ spec:
         - name: ovn-central
           image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          command: ["/kube-ovn/start-db.sh"]
+          command: 
+          - /kube-ovn/start-db.sh
           securityContext:
             capabilities:
               add: ["SYS_NICE"]
@@ -71,6 +72,12 @@ spec:
                   fieldPath: status.podIPs
             - name: ENABLE_BIND_LOCAL_IP
               value: "{{- .Values.func.ENABLE_BIND_LOCAL_IP }}"
+            - name: PROBE_INTERVAL
+              value: "{{ .Values.networking.PROBE_INTERVAL }}"
+            - name: OVN_LEADER_PROBE_INTERVAL
+              value: "{{ .Values.networking.OVN_LEADER_PROBE_INTERVAL }}"
+            - name: OVN_NORTHD_N_THREADS
+              value: "{{ .Values.networking.OVN_NORTHD_N_THREADS }}"
           resources:
             requests:
               cpu: {{ index .Values "ovn-central" "requests" "cpu" }}

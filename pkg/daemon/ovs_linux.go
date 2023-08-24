@@ -443,14 +443,15 @@ func (c *Controller) checkNodeGwNicInNs(nodeExtIp, ip, gw string, gwNS ns.NetNS)
 		klog.Error(err)
 		return err
 	}
-	filters := labels.Set{util.OvnEipUsageLabel: util.LrpUsingEip, util.OvnLrpEipEnableBfdLabel: "true"}
+	filters := labels.Set{util.OvnEipTypeLabel: util.Lrp}
 	ovnEips, err := c.ovnEipsLister.List(labels.SelectorFromSet(filters))
 	if err != nil {
-		klog.Errorf("failed to list node external ovn eip, %v", err)
+		klog.Errorf("failed to list ovn eip, %v", err)
 		return err
 	}
 	if len(ovnEips) == 0 {
-		// no lrp eip, no need to check
+		klog.Errorf("failed to get type %s ovn eip, %v", util.Lrp, err)
+		// node ext gw eip need lrp eip to establish bfd session
 		return nil
 	}
 	if exists {
@@ -615,8 +616,6 @@ func removeNodeGwNs() error {
 	return nil
 }
 
-// If OVS restart, the ovnext0 port will down and prevent host to pod network,
-// Restart the kube-ovn-cni when this happens
 func (c *Controller) loopOvnExt0Check() {
 	node, err := c.nodesLister.Get(c.config.NodeName)
 	if err != nil {
@@ -625,8 +624,8 @@ func (c *Controller) loopOvnExt0Check() {
 	}
 
 	portName := node.Name
-	cachedEip, err := c.ovnEipsLister.Get(portName)
 	needClean := false
+	cachedEip, err := c.ovnEipsLister.Get(portName)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			if val, ok := node.Labels[util.NodeExtGwLabel]; !ok || (val == "false") {
@@ -956,6 +955,7 @@ func (c *Controller) transferAddrsAndRoutes(nicName, brName string, delNonExiste
 		klog.Infof("address %q has been removed from link %s", addr.String(), nicName)
 
 		addr.Label = ""
+		addr.PreferedLft, addr.ValidLft = 0, 0
 		if err = netlink.AddrReplace(bridge, &addr); err != nil {
 			return 0, fmt.Errorf("failed to replace address %q on OVS bridge %s: %v", addr.String(), brName, err)
 		}
