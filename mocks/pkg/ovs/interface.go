@@ -2329,7 +2329,7 @@ func (mr *MockNbClientMockRecorder) CreateLoadBalancer(lbName, protocol, selectF
 }
 
 // CreateLoadBalancerHealthCheck mocks base method.
-func (m *MockOvnClient) CreateLoadBalancerHealthCheck(lbName, vip string) error {
+func (m *MockNbClient) CreateLoadBalancerHealthCheck(lbName, vip string) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CreateLoadBalancerHealthCheck", lbName, vip)
 	ret0, _ := ret[0].(error)
@@ -2337,9 +2337,9 @@ func (m *MockOvnClient) CreateLoadBalancerHealthCheck(lbName, vip string) error 
 }
 
 // CreateLoadBalancerHealthCheck indicates an expected call of CreateLoadBalancerHealthCheck.
-func (mr *MockOvnClientMockRecorder) CreateLoadBalancerHealthCheck(lbName, vip interface{}) *gomock.Call {
+func (mr *MockNbClientMockRecorder) CreateLoadBalancerHealthCheck(lbName, vip interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateLoadBalancerHealthCheck", reflect.TypeOf((*MockOvnClient)(nil).CreateLoadBalancerHealthCheck), lbName, vip)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateLoadBalancerHealthCheck", reflect.TypeOf((*MockNbClient)(nil).CreateLoadBalancerHealthCheck), lbName, vip)
 }
 
 // CreateLocalnetLogicalSwitchPort mocks base method.
@@ -2624,7 +2624,7 @@ func (mr *MockNbClientMockRecorder) DeleteDHCPOptionsByUUIDs(uuidList ...interfa
 }
 
 // DeleteLoadBalancerHealthCheck mocks base method.
-func (m *MockOvnClient) DeleteLoadBalancerHealthCheck(lbName, vip string) error {
+func (m *MockNbClient) DeleteLoadBalancerHealthCheck(lbName, vip string) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "DeleteLoadBalancerHealthCheck", lbName, vip)
 	ret0, _ := ret[0].(error)
@@ -2632,13 +2632,13 @@ func (m *MockOvnClient) DeleteLoadBalancerHealthCheck(lbName, vip string) error 
 }
 
 // DeleteLoadBalancerHealthCheck indicates an expected call of DeleteLoadBalancerHealthCheck.
-func (mr *MockOvnClientMockRecorder) DeleteLoadBalancerHealthCheck(lbName, vip interface{}) *gomock.Call {
+func (mr *MockNbClientMockRecorder) DeleteLoadBalancerHealthCheck(lbName, vip interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteLoadBalancerHealthCheck", reflect.TypeOf((*MockOvnClient)(nil).DeleteLoadBalancerHealthCheck), lbName, vip)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteLoadBalancerHealthCheck", reflect.TypeOf((*MockNbClient)(nil).DeleteLoadBalancerHealthCheck), lbName, vip)
 }
 
 // DeleteLoadBalancerHealthChecks mocks base method.
-func (m *MockOvnClient) DeleteLoadBalancerHealthChecks(filter func(*ovnnb.LoadBalancerHealthCheck) bool) error {
+func (m *MockNbClient) DeleteLoadBalancerHealthChecks(filter func(*ovnnb.LoadBalancerHealthCheck) bool) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "DeleteLoadBalancerHealthChecks", filter)
 	ret0, _ := ret[0].(error)
@@ -2646,9 +2646,9 @@ func (m *MockOvnClient) DeleteLoadBalancerHealthChecks(filter func(*ovnnb.LoadBa
 }
 
 // DeleteLoadBalancerHealthChecks indicates an expected call of DeleteLoadBalancerHealthChecks.
-func (mr *MockOvnClientMockRecorder) DeleteLoadBalancerHealthChecks(filter interface{}) *gomock.Call {
+func (mr *MockNbClientMockRecorder) DeleteLoadBalancerHealthChecks(filter interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteLoadBalancerHealthChecks", reflect.TypeOf((*MockOvnClient)(nil).DeleteLoadBalancerHealthChecks), filter)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteLoadBalancerHealthChecks", reflect.TypeOf((*MockNbClient)(nil).DeleteLoadBalancerHealthChecks), filter)
 }
 
 // DeleteLoadBalancers mocks base method.
@@ -2919,7 +2919,7 @@ func (mr *MockNbClientMockRecorder) GetLoadBalancer(lbName, ignoreNotFound inter
 }
 
 // GetLoadBalancerHealthCheck mocks base method.
-func (m *MockOvnClient) GetLoadBalancerHealthCheck(lbName, vip string, ignoreNotFound bool) (*ovnnb.LoadBalancerHealthCheck, error) {
+func (m *MockNbClient) GetLoadBalancerHealthCheck(lbName, vip string, ignoreNotFound bool) (*ovnnb.LoadBalancerHealthCheck, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetLoadBalancerHealthCheck", lbName, vip, ignoreNotFound)
 	ret0, _ := ret[0].(*ovnnb.LoadBalancerHealthCheck)
@@ -2928,9 +2928,9 @@ func (m *MockOvnClient) GetLoadBalancerHealthCheck(lbName, vip string, ignoreNot
 }
 
 // GetLoadBalancerHealthCheck indicates an expected call of GetLoadBalancerHealthCheck.
-func (mr *MockOvnClientMockRecorder) GetLoadBalancerHealthCheck(lbName, vip, ignoreNotFound interface{}) *gomock.Call {
+func (mr *MockNbClientMockRecorder) GetLoadBalancerHealthCheck(lbName, vip, ignoreNotFound interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLoadBalancerHealthCheck", reflect.TypeOf((*MockOvnClient)(nil).GetLoadBalancerHealthCheck), lbName, vip, ignoreNotFound)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLoadBalancerHealthCheck", reflect.TypeOf((*MockNbClient)(nil).GetLoadBalancerHealthCheck), lbName, vip, ignoreNotFound)
 }
 
 // GetLogicalRouter mocks base method.
@@ -3084,7 +3084,7 @@ func (mr *MockNbClientMockRecorder) ListDHCPOptions(needVendorFilter, externalID
 }
 
 // ListLoadBalancerHealthChecks mocks base method.
-func (m *MockOvnClient) ListLoadBalancerHealthChecks(filter func(*ovnnb.LoadBalancerHealthCheck) bool) ([]ovnnb.LoadBalancerHealthCheck, error) {
+func (m *MockNbClient) ListLoadBalancerHealthChecks(filter func(*ovnnb.LoadBalancerHealthCheck) bool) ([]ovnnb.LoadBalancerHealthCheck, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListLoadBalancerHealthChecks", filter)
 	ret0, _ := ret[0].([]ovnnb.LoadBalancerHealthCheck)
@@ -3093,9 +3093,9 @@ func (m *MockOvnClient) ListLoadBalancerHealthChecks(filter func(*ovnnb.LoadBala
 }
 
 // ListLoadBalancerHealthChecks indicates an expected call of ListLoadBalancerHealthChecks.
-func (mr *MockOvnClientMockRecorder) ListLoadBalancerHealthChecks(filter interface{}) *gomock.Call {
+func (mr *MockNbClientMockRecorder) ListLoadBalancerHealthChecks(filter interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLoadBalancerHealthChecks", reflect.TypeOf((*MockOvnClient)(nil).ListLoadBalancerHealthChecks), filter)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLoadBalancerHealthChecks", reflect.TypeOf((*MockNbClient)(nil).ListLoadBalancerHealthChecks), filter)
 }
 
 // ListLoadBalancers mocks base method.
@@ -3279,7 +3279,7 @@ func (mr *MockNbClientMockRecorder) ListPortGroups(externalIDs interface{}) *gom
 }
 
 // LoadBalancerAddHealthCheck mocks base method.
-func (m *MockOvnClient) LoadBalancerAddHealthCheck(lbName, uuid string) error {
+func (m *MockNbClient) LoadBalancerAddHealthCheck(lbName, uuid string) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "LoadBalancerAddHealthCheck", lbName, uuid)
 	ret0, _ := ret[0].(error)
@@ -3287,13 +3287,13 @@ func (m *MockOvnClient) LoadBalancerAddHealthCheck(lbName, uuid string) error {
 }
 
 // LoadBalancerAddHealthCheck indicates an expected call of LoadBalancerAddHealthCheck.
-func (mr *MockOvnClientMockRecorder) LoadBalancerAddHealthCheck(lbName, uuid interface{}) *gomock.Call {
+func (mr *MockNbClientMockRecorder) LoadBalancerAddHealthCheck(lbName, uuid interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LoadBalancerAddHealthCheck", reflect.TypeOf((*MockOvnClient)(nil).LoadBalancerAddHealthCheck), lbName, uuid)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LoadBalancerAddHealthCheck", reflect.TypeOf((*MockNbClient)(nil).LoadBalancerAddHealthCheck), lbName, uuid)
 }
 
 // LoadBalancerAddIPPortMapping mocks base method.
-func (m *MockOvnClient) LoadBalancerAddIPPortMapping(lbName, vip string, mappings map[string]string) error {
+func (m *MockNbClient) LoadBalancerAddIPPortMapping(lbName, vip string, mappings map[string]string) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "LoadBalancerAddIPPortMapping", lbName, vip, mappings)
 	ret0, _ := ret[0].(error)
@@ -3301,9 +3301,9 @@ func (m *MockOvnClient) LoadBalancerAddIPPortMapping(lbName, vip string, mapping
 }
 
 // LoadBalancerAddIPPortMapping indicates an expected call of LoadBalancerAddIPPortMapping.
-func (mr *MockOvnClientMockRecorder) LoadBalancerAddIPPortMapping(lbName, vip, mappings interface{}) *gomock.Call {
+func (mr *MockNbClientMockRecorder) LoadBalancerAddIPPortMapping(lbName, vip, mappings interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LoadBalancerAddIPPortMapping", reflect.TypeOf((*MockOvnClient)(nil).LoadBalancerAddIPPortMapping), lbName, vip, mappings)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LoadBalancerAddIPPortMapping", reflect.TypeOf((*MockNbClient)(nil).LoadBalancerAddIPPortMapping), lbName, vip, mappings)
 }
 
 // LoadBalancerAddVip mocks base method.
@@ -3322,11 +3322,11 @@ func (m *MockNbClient) LoadBalancerAddVip(lbName, vip string, mappings map[strin
 func (mr *MockNbClientMockRecorder) LoadBalancerAddVip(lbName, vip, mappings interface{}, backends ...interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	varargs := append([]interface{}{lbName, vip, mappings}, backends...)
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LoadBalancerAddVip", reflect.TypeOf((*MockOvnClient)(nil).LoadBalancerAddVip), varargs...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LoadBalancerAddVip", reflect.TypeOf((*MockNbClient)(nil).LoadBalancerAddVip), varargs...)
 }
 
 // LoadBalancerDeleteHealthCheck mocks base method.
-func (m *MockOvnClient) LoadBalancerDeleteHealthCheck(lbName, uuid string) error {
+func (m *MockNbClient) LoadBalancerDeleteHealthCheck(lbName, uuid string) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "LoadBalancerDeleteHealthCheck", lbName, uuid)
 	ret0, _ := ret[0].(error)
@@ -3334,13 +3334,13 @@ func (m *MockOvnClient) LoadBalancerDeleteHealthCheck(lbName, uuid string) error
 }
 
 // LoadBalancerDeleteHealthCheck indicates an expected call of LoadBalancerDeleteHealthCheck.
-func (mr *MockOvnClientMockRecorder) LoadBalancerDeleteHealthCheck(lbName, uuid interface{}) *gomock.Call {
+func (mr *MockNbClientMockRecorder) LoadBalancerDeleteHealthCheck(lbName, uuid interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LoadBalancerDeleteHealthCheck", reflect.TypeOf((*MockOvnClient)(nil).LoadBalancerDeleteHealthCheck), lbName, uuid)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LoadBalancerDeleteHealthCheck", reflect.TypeOf((*MockNbClient)(nil).LoadBalancerDeleteHealthCheck), lbName, uuid)
 }
 
 // LoadBalancerDeleteIPPortMapping mocks base method.
-func (m *MockOvnClient) LoadBalancerDeleteIPPortMapping(lbName, vip string, mappings map[string]string) error {
+func (m *MockNbClient) LoadBalancerDeleteIPPortMapping(lbName, vip string, mappings map[string]string) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "LoadBalancerDeleteIPPortMapping", lbName, vip, mappings)
 	ret0, _ := ret[0].(error)
@@ -3348,9 +3348,9 @@ func (m *MockOvnClient) LoadBalancerDeleteIPPortMapping(lbName, vip string, mapp
 }
 
 // LoadBalancerDeleteIPPortMapping indicates an expected call of LoadBalancerDeleteIPPortMapping.
-func (mr *MockOvnClientMockRecorder) LoadBalancerDeleteIPPortMapping(lbName, vip, mappings interface{}) *gomock.Call {
+func (mr *MockNbClientMockRecorder) LoadBalancerDeleteIPPortMapping(lbName, vip, mappings interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LoadBalancerDeleteIPPortMapping", reflect.TypeOf((*MockOvnClient)(nil).LoadBalancerDeleteIPPortMapping), lbName, vip, mappings)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LoadBalancerDeleteIPPortMapping", reflect.TypeOf((*MockNbClient)(nil).LoadBalancerDeleteIPPortMapping), lbName, vip, mappings)
 }
 
 // LoadBalancerDeleteVip mocks base method.
@@ -3383,7 +3383,7 @@ func (mr *MockNbClientMockRecorder) LoadBalancerExists(lbName interface{}) *gomo
 }
 
 // LoadBalancerHealthCheckExists mocks base method.
-func (m *MockOvnClient) LoadBalancerHealthCheckExists(lbName, vip string) (bool, error) {
+func (m *MockNbClient) LoadBalancerHealthCheckExists(lbName, vip string) (bool, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "LoadBalancerHealthCheckExists", lbName, vip)
 	ret0, _ := ret[0].(bool)
@@ -3392,13 +3392,13 @@ func (m *MockOvnClient) LoadBalancerHealthCheckExists(lbName, vip string) (bool,
 }
 
 // LoadBalancerHealthCheckExists indicates an expected call of LoadBalancerHealthCheckExists.
-func (mr *MockOvnClientMockRecorder) LoadBalancerHealthCheckExists(lbName, vip interface{}) *gomock.Call {
+func (mr *MockNbClientMockRecorder) LoadBalancerHealthCheckExists(lbName, vip interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LoadBalancerHealthCheckExists", reflect.TypeOf((*MockOvnClient)(nil).LoadBalancerHealthCheckExists), lbName, vip)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LoadBalancerHealthCheckExists", reflect.TypeOf((*MockNbClient)(nil).LoadBalancerHealthCheckExists), lbName, vip)
 }
 
 // LoadBalancerUpdateIPPortMapping mocks base method.
-func (m *MockOvnClient) LoadBalancerUpdateIPPortMapping(lbName, vip string, mappings map[string]string) error {
+func (m *MockNbClient) LoadBalancerUpdateIPPortMapping(lbName, vip string, mappings map[string]string) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "LoadBalancerUpdateIPPortMapping", lbName, vip, mappings)
 	ret0, _ := ret[0].(error)
@@ -3406,9 +3406,9 @@ func (m *MockOvnClient) LoadBalancerUpdateIPPortMapping(lbName, vip string, mapp
 }
 
 // LoadBalancerUpdateIPPortMapping indicates an expected call of LoadBalancerUpdateIPPortMapping.
-func (mr *MockOvnClientMockRecorder) LoadBalancerUpdateIPPortMapping(lbName, vip, mappings interface{}) *gomock.Call {
+func (mr *MockNbClientMockRecorder) LoadBalancerUpdateIPPortMapping(lbName, vip, mappings interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LoadBalancerUpdateIPPortMapping", reflect.TypeOf((*MockOvnClient)(nil).LoadBalancerUpdateIPPortMapping), lbName, vip, mappings)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LoadBalancerUpdateIPPortMapping", reflect.TypeOf((*MockNbClient)(nil).LoadBalancerUpdateIPPortMapping), lbName, vip, mappings)
 }
 
 // LogicalRouterExists mocks base method.

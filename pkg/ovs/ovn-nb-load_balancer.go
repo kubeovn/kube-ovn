@@ -146,16 +146,8 @@ func (c *ovnNbClient) LoadBalancerDeleteVip(lbName string, vip string) error {
 	if lbhc != nil {
 		if err = c.LoadBalancerDeleteHealthCheck(lbName, lbhc.UUID); err != nil {
 			return err
-    }
-	ops, err := c.LoadBalancerOp(lbName, func(lb *ovnnb.LoadBalancer) []model.Mutation {
-		if len(lb.Vips) == 0 {
-			return nil
-		}
-		if err = c.DeleteLoadBalancerHealthCheck(lbName, vip); err != nil {
-			return err
 		}
 	}
-
 	ops, err = c.LoadBalancerOp(
 		lbName,
 		func(lb *ovnnb.LoadBalancer) ([]model.Mutation, error) {
@@ -360,7 +352,7 @@ func (c *ovnNbClient) DeleteLoadBalancerOp(lbName string) ([]ovsdb.Operation, er
 }
 
 // LoadBalancerAddIPPortMapping add load balancer ip port mapping
-func (c *ovnClient) LoadBalancerAddIPPortMapping(lbName, vip string, mappings map[string]string) error {
+func (c *ovnNbClient) LoadBalancerAddIPPortMapping(lbName, vip string, mappings map[string]string) error {
 	if len(mappings) == 0 {
 		return nil
 	}
@@ -399,7 +391,7 @@ func (c *ovnClient) LoadBalancerAddIPPortMapping(lbName, vip string, mappings ma
 }
 
 // LoadBalancerDeleteIPPortMapping delete load balancer ip port mapping
-func (c *ovnClient) LoadBalancerDeleteIPPortMapping(lbName, vip string, mappings map[string]string) error {
+func (c *ovnNbClient) LoadBalancerDeleteIPPortMapping(lbName, vip string, mappings map[string]string) error {
 	var (
 		ops []ovsdb.Operation
 		err error
@@ -481,7 +473,7 @@ func (c *ovnClient) LoadBalancerDeleteIPPortMapping(lbName, vip string, mappings
 }
 
 // LoadBalancerUpdateIPPortMapping update load balancer ip port mapping
-func (c *ovnClient) LoadBalancerUpdateIPPortMapping(lbName, vip string, mappings map[string]string) error {
+func (c *ovnNbClient) LoadBalancerUpdateIPPortMapping(lbName, vip string, mappings map[string]string) error {
 	var (
 		ops []ovsdb.Operation
 		err error
@@ -561,7 +553,7 @@ func (c *ovnClient) LoadBalancerUpdateIPPortMapping(lbName, vip string, mappings
 }
 
 // LoadBalancerAddHealthCheck add load balancer health check
-func (c *ovnClient) LoadBalancerAddHealthCheck(lbName, uuid string) error {
+func (c *ovnNbClient) LoadBalancerAddHealthCheck(lbName, uuid string) error {
 	var (
 		ops []ovsdb.Operation
 		lb  *ovnnb.LoadBalancer
@@ -604,7 +596,7 @@ func (c *ovnClient) LoadBalancerAddHealthCheck(lbName, uuid string) error {
 }
 
 // LoadBalancerDeleteHealthCheck delete load balancer health check
-func (c *ovnClient) LoadBalancerDeleteHealthCheck(lbName, uuid string) error {
+func (c *ovnNbClient) LoadBalancerDeleteHealthCheck(lbName, uuid string) error {
 	var (
 		ops []ovsdb.Operation
 		lb  *ovnnb.LoadBalancer
