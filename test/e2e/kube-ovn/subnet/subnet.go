@@ -98,7 +98,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		deployName = "deploy-" + framework.RandomSuffix()
 		podNamePrefix = "pod-" + framework.RandomSuffix()
 		podName = "pod-" + framework.RandomSuffix()
-		cidr = framework.RandomCIDR(f.ClusterIpFamily)
+		cidr = framework.RandomCIDR(f.ClusterIPFamily)
 		cidrV4, cidrV6 = util.SplitStringIP(cidr)
 		gateways = nil
 		podCount = 0
@@ -1153,7 +1153,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		_ = subnetClient.PatchSync(subnet, modifiedSubnet)
 
 		ginkgo.By("Creating another subnet with the same rules: " + fakeSubnetName)
-		fakeCidr := framework.RandomCIDR(f.ClusterIpFamily)
+		fakeCidr := framework.RandomCIDR(f.ClusterIPFamily)
 		fakeCidrV4, fakeCidrV6 := util.SplitStringIP(fakeCidr)
 		fakeSubnet := framework.MakeSubnet(fakeSubnetName, "", fakeCidr, "", "", "", nil, nil, nil)
 		fakeSubnet.Spec.NatOutgoingPolicyRules = rules
@@ -1405,13 +1405,14 @@ func createPodsByRandomIPs(podClient *framework.PodClient, subnetClient *framewo
 	subnet := subnetClient.Get(subnetName)
 	for i := 1; i <= podCount; i++ {
 		step := rand.Int63()%10 + 2
-		if subnet.Spec.Protocol == apiv1.ProtocolIPv4 {
+		switch subnet.Spec.Protocol {
+		case apiv1.ProtocolIPv4:
 			podv4IP = util.BigInt2Ip(big.NewInt(0).Add(util.IP2BigInt(podv4IP), big.NewInt(step)))
 			allocIP = podv4IP
-		} else if subnet.Spec.Protocol == apiv1.ProtocolIPv6 {
+		case apiv1.ProtocolIPv6:
 			podv6IP = util.BigInt2Ip(big.NewInt(0).Add(util.IP2BigInt(podv6IP), big.NewInt(step)))
 			allocIP = podv6IP
-		} else {
+		default:
 			podv4IP = util.BigInt2Ip(big.NewInt(0).Add(util.IP2BigInt(podv4IP), big.NewInt(step)))
 			podv6IP = util.BigInt2Ip(big.NewInt(0).Add(util.IP2BigInt(podv6IP), big.NewInt(step)))
 			allocIP = fmt.Sprintf("%s,%s", podv4IP, podv6IP)

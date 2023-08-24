@@ -17,8 +17,8 @@ import (
 )
 
 var (
-	exGwEnabled                   = "unknown"
-	lastExGwCM  map[string]string = nil
+	exGwEnabled = "unknown"
+	lastExGwCM  map[string]string
 )
 
 func (c *Controller) resyncExternalGateway() {
@@ -45,33 +45,33 @@ func (c *Controller) resyncExternalGateway() {
 		lastExGwCM = nil
 		klog.Info("finish remove ovn external gw")
 		return
-	} else {
-		if exGwEnabled == "true" && lastExGwCM != nil && reflect.DeepEqual(cm.Data, lastExGwCM) {
-			return
-		}
-		klog.Infof("last external gw configmap: %v", lastExGwCM)
-		if (lastExGwCM["type"] == "distributed" && cm.Data["type"] == "centralized") ||
-			lastExGwCM != nil && !reflect.DeepEqual(lastExGwCM["external-gw-nodes"], cm.Data["external-gw-nodes"]) {
-			klog.Info("external gw nodes list changed, start to remove ovn external gw")
-			if err := c.removeExternalGateway(); err != nil {
-				klog.Errorf("failed to remove old ovn external gw, %v", err)
-				return
-			}
-		}
-		klog.Info("start to establish ovn external gw")
-		if err := c.establishExternalGateway(cm.Data); err != nil {
-			klog.Errorf("failed to establish ovn-external-gw, %v", err)
-			return
-		}
-		exGwEnabled = "true"
-		lastExGwCM = cm.Data
-		c.ExternalGatewayType = cm.Data["type"]
-		if err := c.updateDefaultVpcExternal(true); err != nil {
-			klog.Error("failed to update default vpc, %v", err)
-			return
-		}
-		klog.Info("finish establishing ovn external gw")
 	}
+
+	if exGwEnabled == "true" && lastExGwCM != nil && reflect.DeepEqual(cm.Data, lastExGwCM) {
+		return
+	}
+	klog.Infof("last external gw configmap: %v", lastExGwCM)
+	if (lastExGwCM["type"] == "distributed" && cm.Data["type"] == "centralized") ||
+		lastExGwCM != nil && !reflect.DeepEqual(lastExGwCM["external-gw-nodes"], cm.Data["external-gw-nodes"]) {
+		klog.Info("external gw nodes list changed, start to remove ovn external gw")
+		if err := c.removeExternalGateway(); err != nil {
+			klog.Errorf("failed to remove old ovn external gw, %v", err)
+			return
+		}
+	}
+	klog.Info("start to establish ovn external gw")
+	if err := c.establishExternalGateway(cm.Data); err != nil {
+		klog.Errorf("failed to establish ovn-external-gw, %v", err)
+		return
+	}
+	exGwEnabled = "true"
+	lastExGwCM = cm.Data
+	c.ExternalGatewayType = cm.Data["type"]
+	if err := c.updateDefaultVpcExternal(true); err != nil {
+		klog.Error("failed to update default vpc, %v", err)
+		return
+	}
+	klog.Info("finish establishing ovn external gw")
 }
 
 func (c *Controller) removeExternalGateway() error {
@@ -139,7 +139,7 @@ func (c *Controller) establishExternalGateway(config map[string]string) error {
 		klog.Errorf("failed to get gateway chassis, %v", err)
 		return err
 	}
-	var lrpIp, lrpMac string
+	var lrpIP, lrpMac string
 	lrpName := fmt.Sprintf("%s-%s", c.config.ClusterRouter, c.config.ExternalGatewaySwitch)
 	lrp, err := c.ovnNbClient.GetLogicalRouterPort(lrpName, true)
 	if err != nil {
@@ -151,18 +151,18 @@ func (c *Controller) establishExternalGateway(config map[string]string) error {
 	case lrp != nil:
 		klog.Infof("lrp %s already exist", lrpName)
 		lrpMac = lrp.MAC
-		lrpIp = lrp.Networks[0]
+		lrpIP = lrp.Networks[0]
 	case config["nic-ip"] == "":
-		if lrpIp, lrpMac, err = c.createDefaultVpcLrpEip(config); err != nil {
+		if lrpIP, lrpMac, err = c.createDefaultVpcLrpEip(config); err != nil {
 			klog.Errorf("failed to create ovn eip for default vpc lrp: %v", err)
 			return err
 		}
 	default:
-		lrpIp = config["nic-ip"]
+		lrpIP = config["nic-ip"]
 		lrpMac = config["nic-mac"]
 	}
 
-	if err := c.ovnNbClient.CreateGatewayLogicalSwitch(c.config.ExternalGatewaySwitch, c.config.ClusterRouter, c.config.ExternalGatewayNet, lrpIp, lrpMac, c.config.ExternalGatewayVlanID, chassises...); err != nil {
+	if err := c.ovnNbClient.CreateGatewayLogicalSwitch(c.config.ExternalGatewaySwitch, c.config.ClusterRouter, c.config.ExternalGatewayNet, lrpIP, lrpMac, c.config.ExternalGatewayVlanID, chassises...); err != nil {
 		klog.Errorf("create external gateway switch %s: %v", c.config.ExternalGatewaySwitch, err)
 		return err
 	}
@@ -197,7 +197,7 @@ func (c *Controller) createDefaultVpcLrpEip(config map[string]string) (string, s
 		}
 	} else {
 		var v6ip string
-		v4ip, v6ip, mac, err = c.acquireIpAddress(c.config.ExternalGatewaySwitch, lrpEipName, lrpEipName)
+		v4ip, v6ip, mac, err = c.acquireIPAddress(c.config.ExternalGatewaySwitch, lrpEipName, lrpEipName)
 		if err != nil {
 			klog.Errorf("failed to acquire ip address for default vpc lrp %s, %v", lrpEipName, err)
 			return "", "", err

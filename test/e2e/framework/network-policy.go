@@ -33,8 +33,8 @@ func (f *Framework) NetworkPolicyClientNS(namespace string) *NetworkPolicyClient
 	}
 }
 
-func (s *NetworkPolicyClient) Get(name string) *netv1.NetworkPolicy {
-	np, err := s.NetworkPolicyInterface.Get(context.TODO(), name, metav1.GetOptions{})
+func (c *NetworkPolicyClient) Get(name string) *netv1.NetworkPolicy {
+	np, err := c.NetworkPolicyInterface.Get(context.TODO(), name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return np
 }

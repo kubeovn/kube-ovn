@@ -84,13 +84,13 @@ func (c *Controller) genLbSvcDeployment(svc *corev1.Service) (dp *v1.Deployment)
 	attachmentName, attachmentNs := parseAttachNetworkProvider(svc)
 	providerName := getAttachNetworkProvider(svc)
 	attachSubnetAnnotation := fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, providerName)
-	attachIpAnnotation := fmt.Sprintf(util.IPAddressAnnotationTemplate, providerName)
+	attachIPAnnotation := fmt.Sprintf(util.IPAddressAnnotationTemplate, providerName)
 	podAnnotations := map[string]string{
 		util.AttachmentNetworkAnnotation: fmt.Sprintf("%s/%s", attachmentNs, attachmentName),
 		attachSubnetAnnotation:           svc.Annotations[attachSubnetAnnotation],
 	}
 	if svc.Spec.LoadBalancerIP != "" {
-		podAnnotations[attachIpAnnotation] = svc.Spec.LoadBalancerIP
+		podAnnotations[attachIPAnnotation] = svc.Spec.LoadBalancerIP
 	}
 	if v, ok := svc.Annotations[util.LogicalSwitchAnnotation]; ok {
 		podAnnotations[util.LogicalSwitchAnnotation] = v
@@ -138,13 +138,13 @@ func (c *Controller) updateLbSvcDeployment(svc *corev1.Service, dp *v1.Deploymen
 	attachmentName, attachmentNs := parseAttachNetworkProvider(svc)
 	providerName := getAttachNetworkProvider(svc)
 	attachSubnetAnnotation := fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, providerName)
-	attachIpAnnotation := fmt.Sprintf(util.IPAddressAnnotationTemplate, providerName)
+	attachIPAnnotation := fmt.Sprintf(util.IPAddressAnnotationTemplate, providerName)
 	podAnnotations := map[string]string{
 		util.AttachmentNetworkAnnotation: fmt.Sprintf("%s/%s", attachmentNs, attachmentName),
 		attachSubnetAnnotation:           svc.Annotations[attachSubnetAnnotation],
 	}
 	if svc.Spec.LoadBalancerIP != "" {
-		podAnnotations[attachIpAnnotation] = svc.Spec.LoadBalancerIP
+		podAnnotations[attachIPAnnotation] = svc.Spec.LoadBalancerIP
 	}
 	dp.Spec.Template.Annotations = podAnnotations
 
@@ -233,10 +233,10 @@ func (c *Controller) getPodAttachIP(pod *corev1.Pod, svc *corev1.Service) (strin
 	var err error
 
 	providerName := getAttachNetworkProvider(svc)
-	attachIpAnnotation := fmt.Sprintf(util.IPAddressAnnotationTemplate, providerName)
+	attachIPAnnotation := fmt.Sprintf(util.IPAddressAnnotationTemplate, providerName)
 
-	if pod.Annotations[attachIpAnnotation] != "" {
-		loadBalancerIP = pod.Annotations[attachIpAnnotation]
+	if pod.Annotations[attachIPAnnotation] != "" {
+		loadBalancerIP = pod.Annotations[attachIPAnnotation]
 	} else {
 		err = fmt.Errorf("failed to get attachment ip from pod's annotation")
 	}
@@ -290,7 +290,7 @@ func (c *Controller) updatePodAttachNets(pod *corev1.Pod, svc *corev1.Service) e
 	}
 
 	providerName := getAttachNetworkProvider(svc)
-	attachIpAnnotation := fmt.Sprintf(util.IPAddressAnnotationTemplate, providerName)
+	attachIPAnnotation := fmt.Sprintf(util.IPAddressAnnotationTemplate, providerName)
 	attachCidrAnnotation := fmt.Sprintf(util.CidrAnnotationTemplate, providerName)
 	attachGatewayAnnotation := fmt.Sprintf(util.GatewayAnnotationTemplate, providerName)
 
@@ -298,7 +298,7 @@ func (c *Controller) updatePodAttachNets(pod *corev1.Pod, svc *corev1.Service) e
 		return fmt.Errorf("failed to get attachment network info for pod %s", pod.Name)
 	}
 
-	loadBalancerIP := pod.Annotations[attachIpAnnotation]
+	loadBalancerIP := pod.Annotations[attachIPAnnotation]
 	ipAddr := util.GetIPAddrWithMask(loadBalancerIP, pod.Annotations[attachCidrAnnotation])
 
 	var addRules []string

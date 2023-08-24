@@ -42,7 +42,7 @@ var _ = framework.OrderedDescribe("[group:node]", func() {
 		hostPodName = "pod-" + framework.RandomSuffix()
 		serviceName = "service-" + framework.RandomSuffix()
 		subnetName = "subnet-" + framework.RandomSuffix()
-		cidr = framework.RandomCIDR(f.ClusterIpFamily)
+		cidr = framework.RandomCIDR(f.ClusterIPFamily)
 
 		if image == "" {
 			image = framework.GetKubeOvnImage(cs)

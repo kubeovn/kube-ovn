@@ -202,7 +202,7 @@ func (c *Controller) handlePod(key string) error {
 	return nil
 }
 
-func (c *Controller) loopEncapIpCheck() {
+func (c *Controller) loopEncapIPCheck() {
 	// TODO
 }
 

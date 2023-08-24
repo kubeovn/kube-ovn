@@ -22,8 +22,8 @@ func (f *Framework) NetworkAttachmentDefinitionClient(namespace string) *Network
 	}
 }
 
-func (s *NetworkAttachmentDefinitionClient) Get(name string) *apiv1.NetworkAttachmentDefinition {
-	nad, err := s.NetworkAttachmentDefinitionInterface.Get(context.TODO(), name, metav1.GetOptions{})
+func (c *NetworkAttachmentDefinitionClient) Get(name string) *apiv1.NetworkAttachmentDefinition {
+	nad, err := c.NetworkAttachmentDefinitionInterface.Get(context.TODO(), name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return nad
 }

@@ -145,8 +145,8 @@ func (c *Controller) runDelVpcNatGwWorker() {
 	}
 }
 
-func (c *Controller) runUpdateVpcFloatingIpWorker() {
-	for c.processNextWorkItem("updateVpcFloatingIp", c.updateVpcFloatingIpQueue, c.handleUpdateVpcFloatingIp) {
+func (c *Controller) runUpdateVpcFloatingIPWorker() {
+	for c.processNextWorkItem("updateVpcFloatingIp", c.updateVpcFloatingIPQueue, c.handleUpdateVpcFloatingIP) {
 	}
 }
 
@@ -399,7 +399,7 @@ func (c *Controller) handleInitVpcNatGw(key string) error {
 		return err
 	}
 
-	c.updateVpcFloatingIpQueue.Add(key)
+	c.updateVpcFloatingIPQueue.Add(key)
 	c.updateVpcDnatQueue.Add(key)
 	c.updateVpcSnatQueue.Add(key)
 	c.updateVpcSubnetQueue.Add(key)
@@ -419,7 +419,7 @@ func (c *Controller) handleInitVpcNatGw(key string) error {
 	return nil
 }
 
-func (c *Controller) handleUpdateVpcFloatingIp(natGwKey string) error {
+func (c *Controller) handleUpdateVpcFloatingIP(natGwKey string) error {
 	if vpcNatEnabled != "true" {
 		return fmt.Errorf("iptables nat gw not enable")
 	}

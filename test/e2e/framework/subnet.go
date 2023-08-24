@@ -35,8 +35,8 @@ func (f *Framework) SubnetClient() *SubnetClient {
 	}
 }
 
-func (s *SubnetClient) Get(name string) *apiv1.Subnet {
-	subnet, err := s.SubnetInterface.Get(context.TODO(), name, metav1.GetOptions{})
+func (c *SubnetClient) Get(name string) *apiv1.Subnet {
+	subnet, err := c.SubnetInterface.Get(context.TODO(), name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return subnet
 }

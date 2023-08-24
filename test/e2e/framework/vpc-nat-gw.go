@@ -34,8 +34,8 @@ func (f *Framework) VpcNatGatewayClient() *VpcNatGatewayClient {
 	}
 }
 
-func (s *VpcNatGatewayClient) Get(name string) *apiv1.VpcNatGateway {
-	vpcNatGw, err := s.VpcNatGatewayInterface.Get(context.TODO(), name, metav1.GetOptions{})
+func (c *VpcNatGatewayClient) Get(name string) *apiv1.VpcNatGateway {
+	vpcNatGw, err := c.VpcNatGatewayInterface.Get(context.TODO(), name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return vpcNatGw
 }
@@ -192,7 +192,7 @@ func (c *VpcNatGatewayClient) WaitToQoSReady(name string) bool {
 	return false
 }
 
-func MakeVpcNatGateway(name, vpc, subnet, lanIp, externalSubnet, qosPolicyName string) *apiv1.VpcNatGateway {
+func MakeVpcNatGateway(name, vpc, subnet, lanIP, externalSubnet, qosPolicyName string) *apiv1.VpcNatGateway {
 	vpcNatGw := &apiv1.VpcNatGateway{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
@@ -200,7 +200,7 @@ func MakeVpcNatGateway(name, vpc, subnet, lanIp, externalSubnet, qosPolicyName s
 		Spec: apiv1.VpcNatSpec{
 			Vpc:    vpc,
 			Subnet: subnet,
-			LanIP:  lanIp,
+			LanIP:  lanIP,
 		},
 	}
 	if externalSubnet != "" {

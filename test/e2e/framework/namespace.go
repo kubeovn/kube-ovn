@@ -32,8 +32,8 @@ func (f *Framework) NamespaceClient() *NamespaceClient {
 	}
 }
 
-func (s *NamespaceClient) Get(name string) *corev1.Namespace {
-	np, err := s.NamespaceInterface.Get(context.TODO(), name, metav1.GetOptions{})
+func (c *NamespaceClient) Get(name string) *corev1.Namespace {
+	np, err := c.NamespaceInterface.Get(context.TODO(), name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return np
 }

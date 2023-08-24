@@ -102,13 +102,13 @@ type PortGroup interface {
 type ACL interface {
 	UpdateIngressACLOps(pgName, asIngressName, asExceptName, protocol string, npp []netv1.NetworkPolicyPort, logEnable bool, namedPortMap map[string]*util.NamedPortInfo) ([]ovsdb.Operation, error)
 	UpdateEgressACLOps(pgName, asEgressName, asExceptName, protocol string, npp []netv1.NetworkPolicyPort, logEnable bool, namedPortMap map[string]*util.NamedPortInfo) ([]ovsdb.Operation, error)
-	CreateGatewayAcl(lsName, pgName, gateway string) error
-	CreateNodeAcl(pgName, nodeIPStr, joinIpStr string) error
-	CreateSgDenyAllAcl(sgName string) error
+	CreateGatewayACL(lsName, pgName, gateway string) error
+	CreateNodeACL(pgName, nodeIPStr, joinIPStr string) error
+	CreateSgDenyAllACL(sgName string) error
 	CreateSgBaseACL(sgName string, direction string) error
-	UpdateSgAcl(sg *kubeovnv1.SecurityGroup, direction string) error
-	UpdateLogicalSwitchAcl(lsName string, subnetAcls []kubeovnv1.ACL) error
-	SetAclLog(pgName, protocol string, logEnable, isIngress bool) error
+	UpdateSgACL(sg *kubeovnv1.SecurityGroup, direction string) error
+	UpdateLogicalSwitchACL(lsName string, subnetAcls []kubeovnv1.ACL) error
+	SetACLLog(pgName, protocol string, logEnable, isIngress bool) error
 	SetLogicalSwitchPrivate(lsName, cidrBlock, nodeSwitchCIDR string, allowSubnets []string) error
 	DeleteAcls(parentName, parentType string, direction string, externalIDs map[string]string) error
 	DeleteAclsOps(parentName, parentType string, direction string, externalIDs map[string]string) ([]ovsdb.Operation, error)

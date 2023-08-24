@@ -33,8 +33,8 @@ func (f *Framework) IptablesFIPClient() *IptablesFIPClient {
 	}
 }
 
-func (s *IptablesFIPClient) Get(name string) *apiv1.IptablesFIPRule {
-	fip, err := s.IptablesFIPRuleInterface.Get(context.TODO(), name, metav1.GetOptions{})
+func (c *IptablesFIPClient) Get(name string) *apiv1.IptablesFIPRule {
+	fip, err := c.IptablesFIPRuleInterface.Get(context.TODO(), name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return fip
 }
@@ -146,14 +146,14 @@ func (c *IptablesFIPClient) WaitToDisappear(name string, interval, timeout time.
 	return nil
 }
 
-func MakeIptablesFIPRule(name, eip, internalIp string) *apiv1.IptablesFIPRule {
+func MakeIptablesFIPRule(name, eip, internalIP string) *apiv1.IptablesFIPRule {
 	fip := &apiv1.IptablesFIPRule{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
 		},
 		Spec: apiv1.IptablesFIPRuleSpec{
 			EIP:        eip,
-			InternalIP: internalIp,
+			InternalIP: internalIP,
 		},
 	}
 	return fip

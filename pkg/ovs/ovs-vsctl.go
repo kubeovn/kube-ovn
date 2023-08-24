@@ -174,10 +174,10 @@ func ClearPodBandwidth(podName, podNamespace, ifaceID string) error {
 		return err
 	}
 
-	for _, qosId := range qosList {
+	for _, qosID := range qosList {
 		found := false
-		for _, usedQosId := range usedQosList {
-			if qosId == usedQosId {
+		for _, usedQosID := range usedQosList {
+			if qosID == usedQosID {
 				found = true
 				break
 			}
@@ -186,7 +186,7 @@ func ClearPodBandwidth(podName, podNamespace, ifaceID string) error {
 			continue
 		}
 
-		if err := ovsDestroy("qos", qosId); err != nil {
+		if err := ovsDestroy("qos", qosID); err != nil {
 			return err
 		}
 	}
@@ -300,10 +300,10 @@ func ConfigInterfaceMirror(globalMirror bool, open string, iface string) error {
 		if len(portUUIDs) != 1 {
 			return fmt.Errorf(fmt.Sprintf("find port failed, portName=%s", ifName))
 		}
-		portId := portUUIDs[0]
+		portID := portUUIDs[0]
 		if open == "true" {
 			// add port to mirror
-			err = ovsAdd("mirror", util.MirrorDefaultName, "select_dst_port", portId)
+			err = ovsAdd("mirror", util.MirrorDefaultName, "select_dst_port", portID)
 			if err != nil {
 				klog.Error(err)
 				return err
@@ -321,9 +321,9 @@ func ConfigInterfaceMirror(globalMirror bool, open string, iface string) error {
 				return fmt.Errorf("repeated mirror data, mirror name=" + util.MirrorDefaultName)
 			}
 			for _, mirrorPortIds := range mirrorPorts {
-				if strings.Contains(mirrorPortIds, portId) {
+				if strings.Contains(mirrorPortIds, portID) {
 					// remove port from mirror
-					_, err := Exec("remove", "mirror", util.MirrorDefaultName, "select_dst_port", portId)
+					_, err := Exec("remove", "mirror", util.MirrorDefaultName, "select_dst_port", portID)
 					if err != nil {
 						klog.Error(err)
 						return err
@@ -393,11 +393,11 @@ func ListExternalIds(table string) (map[string]string, error) {
 		}
 		uuid := strings.TrimSpace(parts[0])
 		externalIds := strings.Fields(parts[1])
-		for _, externalId := range externalIds {
-			if !strings.Contains(externalId, "iface-id=") {
+		for _, externalID := range externalIds {
+			if !strings.Contains(externalID, "iface-id=") {
 				continue
 			}
-			iface := strings.TrimPrefix(strings.TrimSpace(externalId), "iface-id=")
+			iface := strings.TrimPrefix(strings.TrimSpace(externalID), "iface-id=")
 			result[iface] = uuid
 			break
 		}
@@ -422,12 +422,12 @@ func ListQosQueueIds() (map[string]string, error) {
 		if len(parts) != 2 {
 			continue
 		}
-		qosId := strings.TrimSpace(parts[0])
+		qosID := strings.TrimSpace(parts[0])
 		if !strings.Contains(strings.TrimSpace(parts[1]), "0=") {
 			continue
 		}
-		queueId := strings.TrimPrefix(strings.TrimSpace(parts[1]), "0=")
-		result[qosId] = queueId
+		queueID := strings.TrimPrefix(strings.TrimSpace(parts[1]), "0=")
+		result[qosID] = queueID
 	}
 	return result, nil
 }

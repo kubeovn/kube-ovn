@@ -427,10 +427,7 @@ func (c *Controller) createEipInPod(dp, gw, v4Cidr string) error {
 	var addRules []string
 	rule := fmt.Sprintf("%s,%s", v4Cidr, gw)
 	addRules = append(addRules, rule)
-	if err = c.execNatGwRules(gwPod, natGwEipAdd, addRules); err != nil {
-		return err
-	}
-	return nil
+	return c.execNatGwRules(gwPod, natGwEipAdd, addRules)
 }
 
 func (c *Controller) deleteEipInPod(dp, v4Cidr string) error {
@@ -534,10 +531,7 @@ func (c *Controller) addEipQoSInPod(
 		operation = natGwEipEgressQoSAdd
 	}
 
-	if err = c.execNatGwRules(gwPod, operation, addRules); err != nil {
-		return err
-	}
-	return nil
+	return c.execNatGwRules(gwPod, operation, addRules)
 }
 
 func (c *Controller) delEipQoSInPod(dp, v4ip string, direction kubeovnv1.QoSPolicyRuleDirection) error {
@@ -557,10 +551,7 @@ func (c *Controller) delEipQoSInPod(dp, v4ip string, direction kubeovnv1.QoSPoli
 		operation = natGwEipEgressQoSDel
 	}
 
-	if err = c.execNatGwRules(gwPod, operation, delRules); err != nil {
-		return err
-	}
-	return nil
+	return c.execNatGwRules(gwPod, operation, delRules)
 }
 
 func (c *Controller) acquireStaticEip(name, namespace, nicName, ip, externalSubnet string) (string, string, string, error) {

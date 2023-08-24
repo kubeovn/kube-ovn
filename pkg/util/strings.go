@@ -11,12 +11,13 @@ func DoubleQuotedFields(s string) []string {
 	var fields []string
 	sb := &strings.Builder{}
 	for _, r := range s {
-		if r == '"' {
+		switch {
+		case r == '"':
 			quoted = !quoted
-		} else if !quoted && r == ' ' {
+		case !quoted && r == ' ':
 			fields = append(fields, sb.String())
 			sb.Reset()
-		} else {
+		default:
 			sb.WriteRune(r)
 		}
 	}

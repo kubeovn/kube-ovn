@@ -42,7 +42,7 @@ func (v *ValidatingHook) DeploymentCreateHook(ctx context.Context, req admission
 	if staticIPSAnno == "" {
 		return ctrlwebhook.Allowed("by pass")
 	}
-	return v.validateIp(ctx, o.Spec.Template.GetAnnotations(), o.Kind, o.GetName(), o.GetNamespace())
+	return v.validateIP(ctx, o.Spec.Template.GetAnnotations(), o.Kind, o.GetName(), o.GetNamespace())
 }
 
 func (v *ValidatingHook) StatefulSetCreateHook(ctx context.Context, req admission.Request) admission.Response {
@@ -56,7 +56,7 @@ func (v *ValidatingHook) StatefulSetCreateHook(ctx context.Context, req admissio
 	if staticIPSAnno == "" {
 		return ctrlwebhook.Allowed("by pass")
 	}
-	return v.validateIp(ctx, o.Spec.Template.GetAnnotations(), o.Kind, o.GetName(), o.GetNamespace())
+	return v.validateIP(ctx, o.Spec.Template.GetAnnotations(), o.Kind, o.GetName(), o.GetNamespace())
 }
 
 func (v *ValidatingHook) DaemonSetCreateHook(ctx context.Context, req admission.Request) admission.Response {
@@ -70,7 +70,7 @@ func (v *ValidatingHook) DaemonSetCreateHook(ctx context.Context, req admission.
 	if staticIPSAnno == "" {
 		return ctrlwebhook.Allowed("by pass")
 	}
-	return v.validateIp(ctx, o.Spec.Template.GetAnnotations(), o.Kind, o.GetName(), o.GetNamespace())
+	return v.validateIP(ctx, o.Spec.Template.GetAnnotations(), o.Kind, o.GetName(), o.GetNamespace())
 }
 
 func (v *ValidatingHook) JobSetCreateHook(ctx context.Context, req admission.Request) admission.Response {
@@ -84,7 +84,7 @@ func (v *ValidatingHook) JobSetCreateHook(ctx context.Context, req admission.Req
 	if staticIPSAnno == "" {
 		return ctrlwebhook.Allowed("by pass")
 	}
-	return v.validateIp(ctx, o.Spec.Template.GetAnnotations(), o.Kind, o.GetName(), o.GetNamespace())
+	return v.validateIP(ctx, o.Spec.Template.GetAnnotations(), o.Kind, o.GetName(), o.GetNamespace())
 }
 
 func (v *ValidatingHook) CornJobSetCreateHook(ctx context.Context, req admission.Request) admission.Response {
@@ -98,7 +98,7 @@ func (v *ValidatingHook) CornJobSetCreateHook(ctx context.Context, req admission
 	if staticIPSAnno == "" {
 		return ctrlwebhook.Allowed("by pass")
 	}
-	return v.validateIp(ctx, o.Spec.JobTemplate.Spec.Template.GetAnnotations(), o.Kind, o.GetName(), o.GetNamespace())
+	return v.validateIP(ctx, o.Spec.JobTemplate.Spec.Template.GetAnnotations(), o.Kind, o.GetName(), o.GetNamespace())
 }
 
 func (v *ValidatingHook) PodCreateHook(ctx context.Context, req admission.Request) admission.Response {
@@ -117,7 +117,7 @@ func (v *ValidatingHook) PodCreateHook(ctx context.Context, req admission.Reques
 	if v.allowLiveMigration(ctx, o.GetAnnotations(), o.GetName(), o.GetNamespace()) {
 		return ctrlwebhook.Allowed("by pass")
 	}
-	return v.validateIp(ctx, o.GetAnnotations(), o.Kind, o.GetName(), o.GetNamespace())
+	return v.validateIP(ctx, o.GetAnnotations(), o.Kind, o.GetName(), o.GetNamespace())
 }
 
 func (v *ValidatingHook) allowLiveMigration(ctx context.Context, annotations map[string]string, name, namespace string) bool {
@@ -152,7 +152,7 @@ func (v *ValidatingHook) allowLiveMigration(ctx context.Context, annotations map
 	return false
 }
 
-func (v *ValidatingHook) validateIp(ctx context.Context, annotations map[string]string, kind, name, namespace string) admission.Response {
+func (v *ValidatingHook) validateIP(ctx context.Context, annotations map[string]string, kind, name, namespace string) admission.Response {
 	if err := util.ValidatePodNetwork(annotations); err != nil {
 		klog.Errorf("validate %s %s/%s failed: %v", kind, namespace, name, err)
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)

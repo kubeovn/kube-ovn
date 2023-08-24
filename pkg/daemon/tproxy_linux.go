@@ -308,10 +308,10 @@ func probePortInNs(podIP, probePort string, isTProxyProbe bool, conn net.Conn) {
 
 	_ = ns.WithNetNSPath(podNS.Path(), func(_ ns.NetNS) error {
 		// Packet's src and dst IP are both PodIP in netns
-		localpodTcpAddr := net.TCPAddr{IP: net.ParseIP(podIP)}
-		remotepodTcpAddr := net.TCPAddr{IP: net.ParseIP(podIP), Port: iprobePort}
+		localpodTCPAddr := net.TCPAddr{IP: net.ParseIP(podIP)}
+		remotepodTCPAddr := net.TCPAddr{IP: net.ParseIP(podIP), Port: iprobePort}
 
-		remoteConn, err := goTProxy.DialTCP(&localpodTcpAddr, &remotepodTcpAddr, !isTProxyProbe)
+		remoteConn, err := goTProxy.DialTCP(&localpodTCPAddr, &remotepodTCPAddr, !isTProxyProbe)
 		if err != nil {
 			if isTProxyProbe {
 				customVPCPodTCPProbeIPPort.Store(getIPPortString(podIP, probePort), false)

@@ -68,14 +68,13 @@ func InitNodeGateway(config *Configuration) error {
 			klog.Errorf("validate node %s address annotation failed, %v", nodeName, err)
 			time.Sleep(3 * time.Second)
 			continue
-		} else {
-			macAddr = node.Annotations[util.MacAddressAnnotation]
-			ip = node.Annotations[util.IPAddressAnnotation]
-			cidr = node.Annotations[util.CidrAnnotation]
-			portName = node.Annotations[util.PortNameAnnotation]
-			gw = node.Annotations[util.GatewayAnnotation]
-			break
 		}
+		macAddr = node.Annotations[util.MacAddressAnnotation]
+		ip = node.Annotations[util.IPAddressAnnotation]
+		cidr = node.Annotations[util.CidrAnnotation]
+		portName = node.Annotations[util.PortNameAnnotation]
+		gw = node.Annotations[util.GatewayAnnotation]
+		break
 	}
 	mac, err := net.ParseMAC(macAddr)
 	if err != nil {
@@ -196,9 +195,5 @@ func (c *Controller) ovsCleanProviderNetwork(provider string) error {
 	if err := removeOvnMapping("ovn-chassis-mac-mappings", provider); err != nil {
 		return err
 	}
-	if err := removeOvnMapping("ovn-bridge-mappings", provider); err != nil {
-		return err
-	}
-
-	return nil
+	return removeOvnMapping("ovn-bridge-mappings", provider)
 }

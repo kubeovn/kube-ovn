@@ -50,7 +50,7 @@ func StartPinger(config *Configuration, e *Exporter) {
 
 func ping(config *Configuration) error {
 	errHappens := false
-	if checkApiServer(config) != nil {
+	if checkAPIServer(config) != nil {
 		errHappens = true
 	}
 	if pingPods(config) != nil {
@@ -295,21 +295,22 @@ func checkAccessTargetIPPorts(config *Configuration) error {
 			addr = fmt.Sprintf("[%s]", addr)
 		}
 
-		if proto == util.ProtocolTCP {
+		switch proto {
+		case util.ProtocolTCP:
 			if err := util.TCPConnectivityCheck(fmt.Sprintf("%s:%s", addr, port)); err != nil {
 				klog.Infof("TCP connectivity to targetIPPort %s:%s failed", addr, port)
 				checkErr = err
 			} else {
 				klog.Infof("TCP connectivity to targetIPPort %s:%s success", addr, port)
 			}
-		} else if proto == util.ProtocolUDP {
+		case util.ProtocolUDP:
 			if err := util.UDPConnectivityCheck(fmt.Sprintf("%s:%s", addr, port)); err != nil {
 				klog.Infof("UDP connectivity to target %s:%s failed", addr, port)
 				checkErr = err
 			} else {
 				klog.Infof("UDP connectivity to target %s:%s success", addr, port)
 			}
-		} else {
+		default:
 			klog.Infof("unrecognized protocol %s", proto)
 			continue
 		}
@@ -354,7 +355,7 @@ func externalNslookup(config *Configuration) error {
 	return nil
 }
 
-func checkApiServer(config *Configuration) error {
+func checkAPIServer(config *Configuration) error {
 	klog.Infof("start to check apiserver connectivity")
 	t1 := time.Now()
 	_, err := config.KubeClient.Discovery().ServerVersion()

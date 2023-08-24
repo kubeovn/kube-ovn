@@ -36,8 +36,8 @@ func (f *Framework) QoSPolicyClient() *QoSPolicyClient {
 	}
 }
 
-func (s *QoSPolicyClient) Get(name string) *apiv1.QoSPolicy {
-	qosPolicy, err := s.QoSPolicyInterface.Get(context.TODO(), name, metav1.GetOptions{})
+func (c *QoSPolicyClient) Get(name string) *apiv1.QoSPolicy {
+	qosPolicy, err := c.QoSPolicyInterface.Get(context.TODO(), name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return qosPolicy
 }
@@ -262,7 +262,7 @@ func (c *QoSPolicyClient) WaitToQoSReady(name string) bool {
 		for index, specRule := range qos.Spec.BandwidthLimitRules {
 			statusRule := qos.Status.BandwidthLimitRules[index]
 			if reflect.DeepEqual(specRule, statusRule) {
-				equalCount += 1
+				equalCount++
 			}
 		}
 

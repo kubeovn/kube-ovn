@@ -828,7 +828,7 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		c.patchSubnetStatus(subnet, "ResetLogicalSwitchAclSuccess", "")
 	}
 
-	if err := c.ovnNbClient.UpdateLogicalSwitchAcl(subnet.Name, subnet.Spec.Acls); err != nil {
+	if err := c.ovnNbClient.UpdateLogicalSwitchACL(subnet.Name, subnet.Spec.Acls); err != nil {
 		c.patchSubnetStatus(subnet, "SetLogicalSwitchAclsFailed", err.Error())
 		return err
 	}
@@ -1874,7 +1874,7 @@ func (c *Controller) reconcileU2OInterconnectionIP(subnet *kubeovnv1.Subnet) err
 		var v4ip, v6ip string
 		var err error
 		if subnet.Spec.U2OInterconnectionIP == "" && subnet.Status.U2OInterconnectionIP == "" {
-			v4ip, v6ip, _, err = c.acquireIpAddress(subnet.Name, u2oInterconnName, u2oInterconnLrpName)
+			v4ip, v6ip, _, err = c.acquireIPAddress(subnet.Name, u2oInterconnName, u2oInterconnLrpName)
 			if err != nil {
 				klog.Errorf("failed to acquire underlay to overlay interconnection ip address for subnet %s, %v", subnet.Name, err)
 				return err
@@ -1884,7 +1884,7 @@ func (c *Controller) reconcileU2OInterconnectionIP(subnet *kubeovnv1.Subnet) err
 				c.ipam.ReleaseAddressByPod(u2oInterconnName)
 			}
 
-			v4ip, v6ip, _, err = c.acquireStaticIpAddress(subnet.Name, u2oInterconnName, u2oInterconnLrpName, subnet.Spec.U2OInterconnectionIP)
+			v4ip, v6ip, _, err = c.acquireStaticIPAddress(subnet.Name, u2oInterconnName, u2oInterconnLrpName, subnet.Spec.U2OInterconnectionIP)
 			if err != nil {
 				klog.Errorf("failed to acquire static underlay to overlay interconnection ip address for subnet %s, %v", subnet.Name, err)
 				return err
@@ -2267,7 +2267,7 @@ func (c *Controller) createPortGroupForDistributedSubnet(node *v1.Node, subnet *
 	return nil
 }
 
-func (c *Controller) updatePolicyRouteForCentralizedSubnet(subnetName, cidr string, nextHops []string, nameIpMap map[string]string) error {
+func (c *Controller) updatePolicyRouteForCentralizedSubnet(subnetName, cidr string, nextHops []string, nameIPMap map[string]string) error {
 	ipSuffix := "ip4"
 	if util.CheckProtocol(cidr) == kubeovnv1.ProtocolIPv6 {
 		ipSuffix = "ip6"
@@ -2284,7 +2284,7 @@ func (c *Controller) updatePolicyRouteForCentralizedSubnet(subnetName, cidr stri
 	}
 	// It's difficult to delete policy route when delete node,
 	// add map nodeName:nodeIP to external_ids to help process when delete node
-	for node, ip := range nameIpMap {
+	for node, ip := range nameIPMap {
 		externalIDs[node] = ip
 	}
 	klog.Infof("add policy route for router: %s, match %s, action %s, nexthops %v, extrenalID %s", c.config.ClusterRouter, match, action, nextHops, externalIDs)
@@ -2305,14 +2305,14 @@ func (c *Controller) addPolicyRouteForCentralizedSubnet(subnet *kubeovnv1.Subnet
 			// Check for repeat policy route is processed in AddPolicyRoute
 
 			var nextHops []string
-			nameIpMap := map[string]string{}
+			nameIPMap := map[string]string{}
 			nextHops = append(nextHops, nodeIP)
 			tmpName := nodeName
 			if nodeName == "" {
 				tmpName = ipNameMap[nodeIP]
 			}
-			nameIpMap[tmpName] = nodeIP
-			if err := c.updatePolicyRouteForCentralizedSubnet(subnet.Name, cidrBlock, nextHops, nameIpMap); err != nil {
+			nameIPMap[tmpName] = nodeIP
+			if err := c.updatePolicyRouteForCentralizedSubnet(subnet.Name, cidrBlock, nextHops, nameIPMap); err != nil {
 				return err
 			}
 		}
@@ -2480,29 +2480,29 @@ func (c *Controller) addPolicyRouteForU2OInterconn(subnet *kubeovnv1.Subnet) err
 		}
 	}
 
-	u2oExcludeIp4Ag := strings.ReplaceAll(fmt.Sprintf(util.U2OExcludeIPAg, subnet.Name, "ip4"), "-", ".")
-	u2oExcludeIp6Ag := strings.ReplaceAll(fmt.Sprintf(util.U2OExcludeIPAg, subnet.Name, "ip6"), "-", ".")
+	u2oExcludeIP4Ag := strings.ReplaceAll(fmt.Sprintf(util.U2OExcludeIPAg, subnet.Name, "ip4"), "-", ".")
+	u2oExcludeIP6Ag := strings.ReplaceAll(fmt.Sprintf(util.U2OExcludeIPAg, subnet.Name, "ip6"), "-", ".")
 
-	if err := c.ovnNbClient.CreateAddressSet(u2oExcludeIp4Ag, externalIDs); err != nil {
-		klog.Errorf("create address set %s: %v", u2oExcludeIp4Ag, err)
+	if err := c.ovnNbClient.CreateAddressSet(u2oExcludeIP4Ag, externalIDs); err != nil {
+		klog.Errorf("create address set %s: %v", u2oExcludeIP4Ag, err)
 		return err
 	}
 
-	if err := c.ovnNbClient.CreateAddressSet(u2oExcludeIp6Ag, externalIDs); err != nil {
-		klog.Errorf("create address set %s: %v", u2oExcludeIp6Ag, err)
+	if err := c.ovnNbClient.CreateAddressSet(u2oExcludeIP6Ag, externalIDs); err != nil {
+		klog.Errorf("create address set %s: %v", u2oExcludeIP6Ag, err)
 		return err
 	}
 
 	if len(nodesIPv4) > 0 {
-		if err := c.ovnNbClient.AddressSetUpdateAddress(u2oExcludeIp4Ag, nodesIPv4...); err != nil {
-			klog.Errorf("set v4 address set %s with address %v: %v", u2oExcludeIp4Ag, nodesIPv4, err)
+		if err := c.ovnNbClient.AddressSetUpdateAddress(u2oExcludeIP4Ag, nodesIPv4...); err != nil {
+			klog.Errorf("set v4 address set %s with address %v: %v", u2oExcludeIP4Ag, nodesIPv4, err)
 			return err
 		}
 	}
 
 	if len(nodesIPv6) > 0 {
-		if err := c.ovnNbClient.AddressSetUpdateAddress(u2oExcludeIp6Ag, nodesIPv6...); err != nil {
-			klog.Errorf("set v6 address set %s with address %v: %v", u2oExcludeIp6Ag, nodesIPv6, err)
+		if err := c.ovnNbClient.AddressSetUpdateAddress(u2oExcludeIP6Ag, nodesIPv6...); err != nil {
+			klog.Errorf("set v6 address set %s with address %v: %v", u2oExcludeIP6Ag, nodesIPv6, err)
 			return err
 		}
 	}
@@ -2510,11 +2510,11 @@ func (c *Controller) addPolicyRouteForU2OInterconn(subnet *kubeovnv1.Subnet) err
 	for _, cidrBlock := range strings.Split(subnet.Spec.CIDRBlock, ",") {
 		ipSuffix := "ip4"
 		nextHop := v4Gw
-		U2OexcludeIPAs := u2oExcludeIp4Ag
+		U2OexcludeIPAs := u2oExcludeIP4Ag
 		if util.CheckProtocol(cidrBlock) == kubeovnv1.ProtocolIPv6 {
 			ipSuffix = "ip6"
 			nextHop = v6Gw
-			U2OexcludeIPAs = u2oExcludeIp6Ag
+			U2OexcludeIPAs = u2oExcludeIP6Ag
 		}
 
 		match1 := fmt.Sprintf("%s.dst == %s", ipSuffix, cidrBlock)
@@ -2594,16 +2594,16 @@ func (c *Controller) deletePolicyRouteForU2OInterconn(subnet *kubeovnv1.Subnet) 
 		}
 	}
 
-	u2oExcludeIp4Ag := strings.ReplaceAll(fmt.Sprintf(util.U2OExcludeIPAg, subnet.Name, "ip4"), "-", ".")
-	u2oExcludeIp6Ag := strings.ReplaceAll(fmt.Sprintf(util.U2OExcludeIPAg, subnet.Name, "ip6"), "-", ".")
+	u2oExcludeIP4Ag := strings.ReplaceAll(fmt.Sprintf(util.U2OExcludeIPAg, subnet.Name, "ip4"), "-", ".")
+	u2oExcludeIP6Ag := strings.ReplaceAll(fmt.Sprintf(util.U2OExcludeIPAg, subnet.Name, "ip6"), "-", ".")
 
-	if err := c.ovnNbClient.DeleteAddressSet(u2oExcludeIp4Ag); err != nil {
-		klog.Errorf("delete address set %s: %v", u2oExcludeIp4Ag, err)
+	if err := c.ovnNbClient.DeleteAddressSet(u2oExcludeIP4Ag); err != nil {
+		klog.Errorf("delete address set %s: %v", u2oExcludeIP4Ag, err)
 		return err
 	}
 
-	if err := c.ovnNbClient.DeleteAddressSet(u2oExcludeIp6Ag); err != nil {
-		klog.Errorf("delete address set %s: %v", u2oExcludeIp6Ag, err)
+	if err := c.ovnNbClient.DeleteAddressSet(u2oExcludeIP6Ag); err != nil {
+		klog.Errorf("delete address set %s: %v", u2oExcludeIP6Ag, err)
 		return err
 	}
 

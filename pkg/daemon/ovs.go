@@ -141,11 +141,7 @@ func addOvnMapping(name, key, value string, overwrite bool) error {
 	}
 
 	mappings[key] = value
-	if err = setOvnMappings(name, mappings); err != nil {
-		return err
-	}
-
-	return nil
+	return setOvnMappings(name, mappings)
 }
 
 func removeOvnMapping(name, key string) error {
@@ -159,11 +155,7 @@ func removeOvnMapping(name, key string) error {
 	if len(mappings) == length {
 		return nil
 	}
-	if err = setOvnMappings(name, mappings); err != nil {
-		return err
-	}
-
-	return nil
+	return setOvnMappings(name, mappings)
 }
 
 func configExternalBridge(provider, bridge, nic string, exchangeLinkName, macLearningFallback bool) error {

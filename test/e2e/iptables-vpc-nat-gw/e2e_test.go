@@ -140,7 +140,7 @@ func setupVpcNatGwTestEnvironment(
 	natGwQosPolicy string,
 	overlaySubnetV4Cidr string,
 	overlaySubnetV4Gw string,
-	lanIp string,
+	lanIP string,
 	dockerExtNetName string,
 	externalNetworkName string,
 	nicName string,
@@ -159,7 +159,7 @@ func setupVpcNatGwTestEnvironment(
 	framework.ExpectNoError(err, "failed to get ConfigMap")
 
 	ginkgo.By("Creating custom vpc " + vpcName)
-	vpc := framework.MakeVpc(vpcName, lanIp, false, false, nil)
+	vpc := framework.MakeVpc(vpcName, lanIP, false, false, nil)
 	_ = vpcClient.CreateSync(vpc)
 
 	ginkgo.By("Creating custom overlay subnet " + overlaySubnetName)
@@ -167,7 +167,7 @@ func setupVpcNatGwTestEnvironment(
 	_ = subnetClient.CreateSync(overlaySubnet)
 
 	ginkgo.By("Creating custom vpc nat gw " + vpcNatGwName)
-	vpcNatGw := framework.MakeVpcNatGateway(vpcNatGwName, vpcName, overlaySubnetName, lanIp, externalNetworkName, natGwQosPolicy)
+	vpcNatGw := framework.MakeVpcNatGateway(vpcNatGwName, vpcName, overlaySubnetName, lanIP, externalNetworkName, natGwQosPolicy)
 	_ = vpcNatGwClient.CreateSync(vpcNatGw, f.ClientSet)
 }
 
@@ -185,7 +185,7 @@ var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 	// sharing case
 	var sharedVipName, sharedEipName, sharedEipDnatName, sharedEipSnatName, sharedEipFipShoudOkName, sharedEipFipShoudFailName string
 	var vipClient *framework.VipClient
-	var ipClient *framework.IpClient
+	var ipClient *framework.IPClient
 	var iptablesEIPClient *framework.IptablesEIPClient
 	var iptablesFIPClient *framework.IptablesFIPClient
 	var iptablesSnatRuleClient *framework.IptablesSnatClient
@@ -245,7 +245,7 @@ var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 		vpcNatGwClient = f.VpcNatGatewayClient()
 		iptablesEIPClient = f.IptablesEIPClient()
 		vipClient = f.VipClient()
-		ipClient = f.IpClient()
+		ipClient = f.IPClient()
 		iptablesFIPClient = f.IptablesFIPClient()
 		iptablesSnatRuleClient = f.IptablesSnatClient()
 		iptablesDnatRuleClient = f.IptablesDnatClient()
@@ -369,13 +369,13 @@ var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 	framework.ConformanceIt("iptables eip fip snat dnat", func() {
 		overlaySubnetV4Cidr := "10.0.0.0/24"
 		overlaySubnetV4Gw := "10.0.0.1"
-		lanIp := "10.0.0.254"
+		lanIP := "10.0.0.254"
 		natgwQoS := ""
 		setupVpcNatGwTestEnvironment(
 			f, dockerExtNet1Network, attachNetClient,
 			subnetClient, vpcClient, vpcNatGwClient,
 			vpcName, overlaySubnetName, vpcNatGwName, natgwQoS,
-			overlaySubnetV4Cidr, overlaySubnetV4Gw, lanIp,
+			overlaySubnetV4Cidr, overlaySubnetV4Gw, lanIP,
 			dockerExtNet1Name, networkAttachDefName, net1NicName,
 			externalSubnetProvider,
 			false,
@@ -514,13 +514,13 @@ var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 		// multiple external network case
 		net2OverlaySubnetV4Cidr := "10.0.1.0/24"
 		net2OoverlaySubnetV4Gw := "10.0.1.1"
-		net2LanIp := "10.0.1.254"
+		net2LanIP := "10.0.1.254"
 		natgwQoS = ""
 		setupVpcNatGwTestEnvironment(
 			f, dockerExtNet2Network, attachNetClient,
 			subnetClient, vpcClient, vpcNatGwClient,
 			net2VpcName, net2OverlaySubnetName, net2VpcNatGwName, natgwQoS,
-			net2OverlaySubnetV4Cidr, net2OoverlaySubnetV4Gw, net2LanIp,
+			net2OverlaySubnetV4Cidr, net2OoverlaySubnetV4Gw, net2LanIP,
 			dockerExtNet2Name, net2AttachDefName, net2NicName,
 			net2SubnetProvider,
 			false,
@@ -909,7 +909,7 @@ func priorityQoSCases(f *framework.Framework,
 
 func createNatGwAndSetQosCases(f *framework.Framework,
 	vpcNatGwClient *framework.VpcNatGatewayClient,
-	ipClient *framework.IpClient,
+	ipClient *framework.IPClient,
 	eipClient *framework.IptablesEIPClient,
 	fipClient *framework.IptablesFIPClient,
 	subnetClient *framework.SubnetClient,
@@ -922,7 +922,7 @@ func createNatGwAndSetQosCases(f *framework.Framework,
 	fipName string,
 	vpcName string,
 	overlaySubnetName string,
-	lanIp string,
+	lanIP string,
 	attachDefName string,
 ) {
 	// delete fip
@@ -956,7 +956,7 @@ func createNatGwAndSetQosCases(f *framework.Framework,
 	_ = qosPolicyClient.CreateSync(qosPolicy)
 
 	ginkgo.By("Creating custom vpc nat gw")
-	vpcNatGw := framework.MakeVpcNatGateway(natgwName, vpcName, overlaySubnetName, lanIp, attachDefName, natgwQoSPolicyName)
+	vpcNatGw := framework.MakeVpcNatGateway(natgwName, vpcName, overlaySubnetName, lanIP, attachDefName, natgwQoSPolicyName)
 	_ = vpcNatGwClient.CreateSync(vpcNatGw, f.ClientSet)
 
 	eipQoSPolicyName := "eip-qos-policy-" + framework.RandomSuffix()
@@ -1028,7 +1028,7 @@ var _ = framework.Describe("[group:qos-policy]", func() {
 	var vpcNatGwClient *framework.VpcNatGatewayClient
 	var subnetClient *framework.SubnetClient
 	var podClient *framework.PodClient
-	var ipClient *framework.IpClient
+	var ipClient *framework.IPClient
 	var iptablesEIPClient *framework.IptablesEIPClient
 	var iptablesFIPClient *framework.IptablesFIPClient
 	var qosPolicyClient *framework.QoSPolicyClient
@@ -1049,7 +1049,7 @@ var _ = framework.Describe("[group:qos-policy]", func() {
 	var vpc1FIP *apiv1.IptablesFIPRule
 	var vpc2FIP *apiv1.IptablesFIPRule
 
-	var lanIp string
+	var lanIP string
 	var overlaySubnetV4Cidr string
 	var overlaySubnetV4Gw string
 	var eth0Exist, net1Exist bool
@@ -1088,7 +1088,7 @@ var _ = framework.Describe("[group:qos-policy]", func() {
 		vpcClient = f.VpcClient()
 		vpcNatGwClient = f.VpcNatGatewayClient()
 		iptablesEIPClient = f.IptablesEIPClient()
-		ipClient = f.IpClient()
+		ipClient = f.IPClient()
 		iptablesFIPClient = f.IptablesFIPClient()
 		qosPolicyClient = f.QoSPolicyClient()
 		if image == "" {
@@ -1188,13 +1188,13 @@ var _ = framework.Describe("[group:qos-policy]", func() {
 			iperfServerCmd = []string{"iperf", "-s", "-i", "1", "-p", iperf2Port}
 			overlaySubnetV4Cidr = "10.0.0.0/24"
 			overlaySubnetV4Gw = "10.0.0.1"
-			lanIp = "10.0.0.254"
+			lanIP = "10.0.0.254"
 			natgwQoS := ""
 			setupVpcNatGwTestEnvironment(
 				f, dockerExtNetNetwork, attachNetClient,
 				subnetClient, vpcClient, vpcNatGwClient,
 				vpcQosParams.vpc1Name, vpcQosParams.vpc1SubnetName, vpcQosParams.vpcNat1GwName,
-				natgwQoS, overlaySubnetV4Cidr, overlaySubnetV4Gw, lanIp,
+				natgwQoS, overlaySubnetV4Cidr, overlaySubnetV4Gw, lanIP,
 				dockerExtNetName, vpcQosParams.attachDefName, net1NicName,
 				vpcQosParams.subnetProvider,
 				true,
@@ -1218,7 +1218,7 @@ var _ = framework.Describe("[group:qos-policy]", func() {
 				f, dockerExtNetNetwork, attachNetClient,
 				subnetClient, vpcClient, vpcNatGwClient,
 				vpcQosParams.vpc2Name, vpcQosParams.vpc2SubnetName, vpcQosParams.vpcNat2GwName,
-				natgwQoS, overlaySubnetV4Cidr, overlaySubnetV4Gw, lanIp,
+				natgwQoS, overlaySubnetV4Cidr, overlaySubnetV4Gw, lanIP,
 				dockerExtNetName, vpcQosParams.attachDefName, net1NicName,
 				vpcQosParams.subnetProvider,
 				true,
@@ -1328,7 +1328,7 @@ var _ = framework.Describe("[group:qos-policy]", func() {
 				vpcNatGwClient, ipClient, iptablesEIPClient, iptablesFIPClient,
 				subnetClient, qosPolicyClient, vpc1Pod, vpc2Pod, vpc2EIP, vpcQosParams.vpcNat1GwName,
 				vpcQosParams.vpc1EIPName, vpcQosParams.vpc1FIPName, vpcQosParams.vpc1Name,
-				vpcQosParams.vpc1SubnetName, lanIp, vpcQosParams.attachDefName)
+				vpcQosParams.vpc1SubnetName, lanIP, vpcQosParams.attachDefName)
 		})
 	})
 })

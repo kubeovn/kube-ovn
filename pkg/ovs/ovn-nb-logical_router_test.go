@@ -21,11 +21,7 @@ func createLogicalRouter(c *ovnNbClient, lr *ovnnb.LogicalRouter) error {
 		return err
 	}
 
-	if err := c.Transact("lr-add", op); err != nil {
-		return err
-	}
-
-	return nil
+	return c.Transact("lr-add", op)
 }
 
 func (suite *OvnClientTestSuite) testCreateLogicalRouter() {

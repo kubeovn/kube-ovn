@@ -54,10 +54,7 @@ func (csh cniServerHandler) configureDpdkNic(podName, podNamespace, provider, ne
 	if err != nil {
 		return fmt.Errorf("add nic to ovs failed %v: %q", err, output)
 	}
-	if err = ovs.SetInterfaceBandwidth(podName, podNamespace, ifaceID, egress, ingress); err != nil {
-		return err
-	}
-	return nil
+	return ovs.SetInterfaceBandwidth(podName, podNamespace, ifaceID, egress, ingress)
 }
 
 func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns, containerID, vfDriver, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute, detectIPConflict bool, routes []request.Route, dnsServer, dnsSuffix []string, ingress, egress, deviceID, nicType, latency, limit, loss, jitter string, gwCheckMode int, u2oInterconnectionIP string) error {
@@ -126,10 +123,7 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 	if err != nil {
 		return fmt.Errorf("failed to open netns %q: %v", netns, err)
 	}
-	if err = configureContainerNic(containerNicName, ifName, ip, gateway, isDefaultRoute, detectIPConflict, routes, macAddr, podNS, mtu, nicType, gwCheckMode, u2oInterconnectionIP); err != nil {
-		return err
-	}
-	return nil
+	return configureContainerNic(containerNicName, ifName, ip, gateway, isDefaultRoute, detectIPConflict, routes, macAddr, podNS, mtu, nicType, gwCheckMode, u2oInterconnectionIP)
 }
 
 func (csh cniServerHandler) deleteNic(podName, podNamespace, containerID, netns, deviceID, ifName, nicType string) error {
@@ -437,7 +431,7 @@ func (c *Controller) loopOvn0Check() {
 	}
 }
 
-func (c *Controller) checkNodeGwNicInNs(nodeExtIp, ip, gw string, gwNS ns.NetNS) error {
+func (c *Controller) checkNodeGwNicInNs(nodeExtIP, ip, gw string, gwNS ns.NetNS) error {
 	exists, err := ovs.PortExists(util.NodeGwNic)
 	if err != nil {
 		klog.Error(err)
@@ -466,7 +460,7 @@ func (c *Controller) checkNodeGwNicInNs(nodeExtIp, ip, gw string, gwNS ns.NetNS)
 				}
 				for _, eip := range ovnEips {
 					if eip.Status.Ready {
-						cmd := exec.Command("sh", "-c", fmt.Sprintf("bfdd-control status remote %s local %s", eip.Spec.V4Ip, nodeExtIp))
+						cmd := exec.Command("sh", "-c", fmt.Sprintf("bfdd-control status remote %s local %s", eip.Spec.V4Ip, nodeExtIP))
 						var outb bytes.Buffer
 						cmd.Stdout = &outb
 						if err := cmd.Run(); err == nil {
@@ -482,7 +476,7 @@ func (c *Controller) checkNodeGwNicInNs(nodeExtIp, ip, gw string, gwNS ns.NetNS)
 								}
 							}
 						} else {
-							err := fmt.Errorf("faild to check bfd status remote %s local %s", eip.Spec.V4Ip, nodeExtIp)
+							err := fmt.Errorf("faild to check bfd status remote %s local %s", eip.Spec.V4Ip, nodeExtIP)
 							klog.Error(err)
 							return err
 						}
@@ -492,11 +486,11 @@ func (c *Controller) checkNodeGwNicInNs(nodeExtIp, ip, gw string, gwNS ns.NetNS)
 			}
 			return err
 		})
-	} else {
-		err := fmt.Errorf("node external gw not ready")
-		klog.Error(err)
-		return err
 	}
+
+	err = fmt.Errorf("node external gw not ready")
+	klog.Error(err)
+	return err
 }
 
 func configureNodeGwNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu int, gwNS ns.NetNS) error {
@@ -686,9 +680,9 @@ func (c *Controller) loopOvnExt0Check() {
 			return
 		}
 	}
-	nodeExtIp := cachedEip.Spec.V4Ip
+	nodeExtIP := cachedEip.Spec.V4Ip
 	ipAddr := util.GetIPAddrWithMask(ips, cachedSubnet.Spec.CIDRBlock)
-	if err := c.checkNodeGwNicInNs(nodeExtIp, ipAddr, gw, gwNS); err == nil {
+	if err := c.checkNodeGwNicInNs(nodeExtIP, ipAddr, gw, gwNS); err == nil {
 		// add all lrp ip in bfd listening list
 		return
 	}
@@ -1305,11 +1299,7 @@ func renameLink(curName, newName string) error {
 	if err := netlink.LinkSetName(link, newName); err != nil {
 		return err
 	}
-	if err := netlink.LinkSetUp(link); err != nil {
-		return err
-	}
-
-	return nil
+	return netlink.LinkSetUp(link)
 }
 
 func (csh cniServerHandler) configureNicWithInternalPort(podName, podNamespace, provider, netns, containerID, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute, detectIPConflict bool, routes []request.Route, dnsServer, dnsSuffix []string, ingress, egress, deviceID, nicType, latency, limit, loss, jitter string, gwCheckMode int, u2oInterconnectionIP string) (string, error) {

@@ -44,11 +44,10 @@ func (c *Controller) enqueueUpdateOvnEip(oldObj, newObj interface{}) {
 		if len(newEip.Finalizers) == 0 {
 			// avoid delete eip twice
 			return
-		} else {
-			klog.Infof("enqueue del ovn eip %s", key)
-			c.delOvnEipQueue.Add(key)
-			return
 		}
+		klog.Infof("enqueue del ovn eip %s", key)
+		c.delOvnEipQueue.Add(key)
+		return
 	}
 	oldEip := oldObj.(*kubeovnv1.OvnEip)
 	if oldEip.Spec.V4Ip != "" && oldEip.Spec.V4Ip != newEip.Spec.V4Ip ||
@@ -233,10 +232,10 @@ func (c *Controller) handleAddOvnEip(key string) error {
 	}
 	portName := cachedEip.Name
 	if cachedEip.Spec.V4Ip != "" {
-		v4ip, v6ip, mac, err = c.acquireStaticIpAddress(subnet.Name, cachedEip.Name, portName, cachedEip.Spec.V4Ip)
+		v4ip, v6ip, mac, err = c.acquireStaticIPAddress(subnet.Name, cachedEip.Name, portName, cachedEip.Spec.V4Ip)
 	} else {
 		// random allocate
-		v4ip, v6ip, mac, err = c.acquireIpAddress(subnet.Name, cachedEip.Name, portName)
+		v4ip, v6ip, mac, err = c.acquireIPAddress(subnet.Name, cachedEip.Name, portName)
 	}
 	if err != nil {
 		klog.Errorf("failed to acquire ip address, %v", err)
@@ -265,7 +264,7 @@ func (c *Controller) handleAddOvnEip(key string) error {
 			return err
 		}
 	}
-	if err = c.subnetCountIp(subnet); err != nil {
+	if err = c.subnetCountIP(subnet); err != nil {
 		klog.Errorf("failed to count ovn eip '%s' in subnet, %v", cachedEip.Name, err)
 		return err
 	}
@@ -292,7 +291,7 @@ func (c *Controller) handleUpdateOvnEip(key string) error {
 			klog.Errorf("failed to get external subnet, %v", err)
 			return err
 		}
-		if err = c.subnetCountIp(subnet); err != nil {
+		if err = c.subnetCountIP(subnet); err != nil {
 			klog.Errorf("failed to count ovn eip '%s' in subnet, %v", cachedEip.Name, err)
 			return err
 		}

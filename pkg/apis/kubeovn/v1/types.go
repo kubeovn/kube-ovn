@@ -514,7 +514,7 @@ type VpcNatSpec struct {
 	Vpc             string              `json:"vpc"`
 	Subnet          string              `json:"subnet"`
 	ExternalSubnets []string            `json:"externalSubnets"`
-	LanIP           string              `json:"lanIp"`
+	LanIP           string              `json:"lanIP"`
 	Selector        []string            `json:"selector"`
 	Tolerations     []corev1.Toleration `json:"tolerations"`
 	Affinity        corev1.Affinity     `json:"affinity"`
@@ -592,7 +592,7 @@ type IptablesFIPRule struct {
 }
 type IptablesFIPRuleSpec struct {
 	EIP        string `json:"eip"`
-	InternalIP string `json:"internalIp"`
+	InternalIP string `json:"internalIP"`
 }
 
 // IptablesFIPRuleCondition describes the state of an object at a certain point.
@@ -607,7 +607,7 @@ type IptablesFIPRuleStatus struct {
 	V6ip       string `json:"v6ip" patchStrategy:"merge"`
 	NatGwDp    string `json:"natGwDp" patchStrategy:"merge"`
 	Redo       string `json:"redo" patchStrategy:"merge"`
-	InternalIP string `json:"internalIp"  patchStrategy:"merge"`
+	InternalIP string `json:"internalIP"  patchStrategy:"merge"`
 
 	// Conditions represents the latest state of the object
 	// +optional
@@ -688,7 +688,7 @@ type IptablesDnatRuleSpec struct {
 	EIP          string `json:"eip"`
 	ExternalPort string `json:"externalPort"`
 	Protocol     string `json:"protocol,omitempty"`
-	InternalIP   string `json:"internalIp"`
+	InternalIP   string `json:"internalIP"`
 	InternalPort string `json:"internalPort"`
 }
 
@@ -705,7 +705,7 @@ type IptablesDnatRuleStatus struct {
 	NatGwDp      string `json:"natGwDp" patchStrategy:"merge"`
 	Redo         string `json:"redo" patchStrategy:"merge"`
 	Protocol     string `json:"protocol"  patchStrategy:"merge"`
-	InternalIP   string `json:"internalIp"  patchStrategy:"merge"`
+	InternalIP   string `json:"internalIP"  patchStrategy:"merge"`
 	InternalPort string `json:"internalPort"  patchStrategy:"merge"`
 	ExternalPort string `json:"externalPort"  patchStrategy:"merge"`
 

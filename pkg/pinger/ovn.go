@@ -59,10 +59,10 @@ func checkPortBindings(config *Configuration) error {
 		klog.Errorf("%d port %v not exist in sb-bindings", len(misMatch), misMatch)
 		inconsistentPortBindingGauge.WithLabelValues(config.NodeName).Set(float64(len(misMatch)))
 		return fmt.Errorf("%d port %v not exist in sb-bindings", len(misMatch), misMatch)
-	} else {
-		klog.Infof("ovs and ovn-sb binding check passed")
-		inconsistentPortBindingGauge.WithLabelValues(config.NodeName).Set(0)
 	}
+
+	klog.Infof("ovs and ovn-sb binding check passed")
+	inconsistentPortBindingGauge.WithLabelValues(config.NodeName).Set(0)
 	return nil
 }
 

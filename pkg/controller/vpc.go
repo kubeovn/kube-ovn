@@ -170,9 +170,9 @@ func (c *Controller) handleUpdateVpcStatus(key string) error {
 
 type VpcLoadBalancer struct {
 	TCPLoadBalancer      string
-	TcpSessLoadBalancer  string
+	TCPSessLoadBalancer  string
 	UDPLoadBalancer      string
-	UdpSessLoadBalancer  string
+	UDPSessLoadBalancer  string
 	SctpLoadBalancer     string
 	SctpSessLoadBalancer string
 }
@@ -180,19 +180,19 @@ type VpcLoadBalancer struct {
 func (c *Controller) GenVpcLoadBalancer(vpcKey string) *VpcLoadBalancer {
 	if vpcKey == c.config.ClusterRouter || vpcKey == "" {
 		return &VpcLoadBalancer{
-			TCPLoadBalancer:      c.config.ClusterTcpLoadBalancer,
-			TcpSessLoadBalancer:  c.config.ClusterTcpSessionLoadBalancer,
-			UDPLoadBalancer:      c.config.ClusterUdpLoadBalancer,
-			UdpSessLoadBalancer:  c.config.ClusterUdpSessionLoadBalancer,
+			TCPLoadBalancer:      c.config.ClusterTCPLoadBalancer,
+			TCPSessLoadBalancer:  c.config.ClusterTCPSessionLoadBalancer,
+			UDPLoadBalancer:      c.config.ClusterUDPLoadBalancer,
+			UDPSessLoadBalancer:  c.config.ClusterUDPSessionLoadBalancer,
 			SctpLoadBalancer:     c.config.ClusterSctpLoadBalancer,
 			SctpSessLoadBalancer: c.config.ClusterSctpSessionLoadBalancer,
 		}
 	} else {
 		return &VpcLoadBalancer{
 			TCPLoadBalancer:      fmt.Sprintf("vpc-%s-tcp-load", vpcKey),
-			TcpSessLoadBalancer:  fmt.Sprintf("vpc-%s-tcp-sess-load", vpcKey),
+			TCPSessLoadBalancer:  fmt.Sprintf("vpc-%s-tcp-sess-load", vpcKey),
 			UDPLoadBalancer:      fmt.Sprintf("vpc-%s-udp-load", vpcKey),
-			UdpSessLoadBalancer:  fmt.Sprintf("vpc-%s-udp-sess-load", vpcKey),
+			UDPSessLoadBalancer:  fmt.Sprintf("vpc-%s-udp-sess-load", vpcKey),
 			SctpLoadBalancer:     fmt.Sprintf("vpc-%s-sctp-load", vpcKey),
 			SctpSessLoadBalancer: fmt.Sprintf("vpc-%s-sctp-sess-load", vpcKey),
 		}
@@ -204,13 +204,13 @@ func (c *Controller) addLoadBalancer(vpc string) (*VpcLoadBalancer, error) {
 	if err := c.initLB(vpcLbConfig.TCPLoadBalancer, string(v1.ProtocolTCP), false); err != nil {
 		return nil, err
 	}
-	if err := c.initLB(vpcLbConfig.TcpSessLoadBalancer, string(v1.ProtocolTCP), true); err != nil {
+	if err := c.initLB(vpcLbConfig.TCPSessLoadBalancer, string(v1.ProtocolTCP), true); err != nil {
 		return nil, err
 	}
 	if err := c.initLB(vpcLbConfig.UDPLoadBalancer, string(v1.ProtocolUDP), false); err != nil {
 		return nil, err
 	}
-	if err := c.initLB(vpcLbConfig.UdpSessLoadBalancer, string(v1.ProtocolUDP), true); err != nil {
+	if err := c.initLB(vpcLbConfig.UDPSessLoadBalancer, string(v1.ProtocolUDP), true); err != nil {
 		return nil, err
 	}
 	if err := c.initLB(vpcLbConfig.SctpLoadBalancer, string(v1.ProtocolSCTP), false); err != nil {
@@ -439,9 +439,9 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 			return err
 		}
 		vpc.Status.TCPLoadBalancer = vpcLb.TCPLoadBalancer
-		vpc.Status.TCPSessionLoadBalancer = vpcLb.TcpSessLoadBalancer
+		vpc.Status.TCPSessionLoadBalancer = vpcLb.TCPSessLoadBalancer
 		vpc.Status.UDPLoadBalancer = vpcLb.UDPLoadBalancer
-		vpc.Status.UDPSessionLoadBalancer = vpcLb.UdpSessLoadBalancer
+		vpc.Status.UDPSessionLoadBalancer = vpcLb.UDPSessLoadBalancer
 		vpc.Status.SctpLoadBalancer = vpcLb.SctpLoadBalancer
 		vpc.Status.SctpSessionLoadBalancer = vpcLb.SctpSessLoadBalancer
 	}
@@ -799,7 +799,7 @@ func (c *Controller) handleAddVpcExternal(key string) error {
 	var v4ip, v6ip, mac string
 	klog.V(3).Infof("create vpc lrp eip %s", lrpEipName)
 	if needCreateEip {
-		if v4ip, v6ip, mac, err = c.acquireIpAddress(c.config.ExternalGatewaySwitch, lrpEipName, lrpEipName); err != nil {
+		if v4ip, v6ip, mac, err = c.acquireIPAddress(c.config.ExternalGatewaySwitch, lrpEipName, lrpEipName); err != nil {
 			klog.Errorf("failed to acquire ip address for lrp eip %s, %v", lrpEipName, err)
 			return err
 		}

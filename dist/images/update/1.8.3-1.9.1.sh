@@ -28,7 +28,7 @@ spec:
         - jsonPath: .spec.subnet
           name: Subnet
           type: string
-        - jsonPath: .spec.lanIp
+        - jsonPath: .spec.lanIP
           name: LanIP
           type: string
       name: v1
@@ -50,7 +50,7 @@ spec:
                         type: string
                       externalPort:
                         type: string
-                      internalIp:
+                      internalIP:
                         type: string
                       internalPort:
                         type: string
@@ -72,9 +72,9 @@ spec:
                     properties:
                       eip:
                         type: string
-                      internalIp:
+                      internalIP:
                         type: string
-                lanIp:
+                lanIP:
                   type: string
                 snatRules:
                   type: array
@@ -1304,7 +1304,7 @@ dbtool(){
           echo "first nodeIP is $firstIP"
 
           i=0
-          for nodeIp in ${nodeIps[@]}
+          for nodeIP in ${nodeIps[@]}
           do
             for pod in $podNames
             do

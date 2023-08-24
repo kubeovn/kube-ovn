@@ -172,7 +172,7 @@ func dialTCP(device string, laddr, raddr *net.TCPAddr, dontAssumeRemote bool, is
 	}
 
 	if device != "" {
-		if err = syscall.BindToDevice(int(fileDescriptor), device); err != nil {
+		if err = syscall.BindToDevice(fileDescriptor, device); err != nil {
 			klog.Error(err)
 			return nil, &net.OpError{Op: "dial", Err: fmt.Errorf("set socket option: SO_BINDTODEVICE(%s): %s", device, err)}
 		}

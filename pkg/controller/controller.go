@@ -83,7 +83,7 @@ type Controller struct {
 	delVpcNatGatewayQueue         workqueue.RateLimitingInterface
 	initVpcNatGatewayQueue        workqueue.RateLimitingInterface
 	updateVpcEipQueue             workqueue.RateLimitingInterface
-	updateVpcFloatingIpQueue      workqueue.RateLimitingInterface
+	updateVpcFloatingIPQueue      workqueue.RateLimitingInterface
 	updateVpcDnatQueue            workqueue.RateLimitingInterface
 	updateVpcSnatQueue            workqueue.RateLimitingInterface
 	updateVpcSubnetQueue          workqueue.RateLimitingInterface
@@ -95,10 +95,10 @@ type Controller struct {
 	UpdateSwitchLBRuleQueue workqueue.RateLimitingInterface
 	delSwitchLBRuleQueue    workqueue.RateLimitingInterface
 
-	vpcDnsLister           kubeovnlister.VpcDnsLister
-	vpcDnsSynced           cache.InformerSynced
-	addOrUpdateVpcDnsQueue workqueue.RateLimitingInterface
-	delVpcDnsQueue         workqueue.RateLimitingInterface
+	vpcDNSLister           kubeovnlister.VpcDnsLister
+	vpcDNSSynced           cache.InformerSynced
+	addOrUpdateVpcDNSQueue workqueue.RateLimitingInterface
+	delVpcDNSQueue         workqueue.RateLimitingInterface
 
 	subnetsLister           kubeovnlister.SubnetLister
 	subnetSynced            cache.InformerSynced
@@ -120,9 +120,9 @@ type Controller struct {
 
 	virtualIpsLister     kubeovnlister.VipLister
 	virtualIpsSynced     cache.InformerSynced
-	addVirtualIpQueue    workqueue.RateLimitingInterface
-	updateVirtualIpQueue workqueue.RateLimitingInterface
-	delVirtualIpQueue    workqueue.RateLimitingInterface
+	addVirtualIPQueue    workqueue.RateLimitingInterface
+	updateVirtualIPQueue workqueue.RateLimitingInterface
+	delVirtualIPQueue    workqueue.RateLimitingInterface
 
 	iptablesEipsLister     kubeovnlister.IptablesEIPLister
 	iptablesEipSynced      cache.InformerSynced
@@ -279,7 +279,7 @@ func Run(ctx context.Context, config *Configuration) {
 	subnetInformer := kubeovnInformerFactory.Kubeovn().V1().Subnets()
 	ippoolInformer := kubeovnInformerFactory.Kubeovn().V1().IPPools()
 	ipInformer := kubeovnInformerFactory.Kubeovn().V1().IPs()
-	virtualIpInformer := kubeovnInformerFactory.Kubeovn().V1().Vips()
+	virtualIPInformer := kubeovnInformerFactory.Kubeovn().V1().Vips()
 	iptablesEipInformer := kubeovnInformerFactory.Kubeovn().V1().IptablesEIPs()
 	iptablesFipInformer := kubeovnInformerFactory.Kubeovn().V1().IptablesFIPRules()
 	iptablesDnatRuleInformer := kubeovnInformerFactory.Kubeovn().V1().IptablesDnatRules()
@@ -330,7 +330,7 @@ func Run(ctx context.Context, config *Configuration) {
 		initVpcNatGatewayQueue:        workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "InitVpcNatGw"),
 		delVpcNatGatewayQueue:         workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "DeleteVpcNatGw"),
 		updateVpcEipQueue:             workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "UpdateVpcEip"),
-		updateVpcFloatingIpQueue:      workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "UpdateVpcFloatingIp"),
+		updateVpcFloatingIPQueue:      workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "UpdateVpcFloatingIp"),
 		updateVpcDnatQueue:            workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "UpdateVpcDnat"),
 		updateVpcSnatQueue:            workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "UpdateVpcSnat"),
 		updateVpcSubnetQueue:          workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "UpdateVpcSubnet"),
@@ -354,11 +354,11 @@ func Run(ctx context.Context, config *Configuration) {
 		ipsLister: ipInformer.Lister(),
 		ipSynced:  ipInformer.Informer().HasSynced,
 
-		virtualIpsLister:     virtualIpInformer.Lister(),
-		virtualIpsSynced:     virtualIpInformer.Informer().HasSynced,
-		addVirtualIpQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddVirtualIp"),
-		updateVirtualIpQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateVirtualIp"),
-		delVirtualIpQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteVirtualIp"),
+		virtualIpsLister:     virtualIPInformer.Lister(),
+		virtualIpsSynced:     virtualIPInformer.Informer().HasSynced,
+		addVirtualIPQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddVirtualIp"),
+		updateVirtualIPQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateVirtualIp"),
+		delVirtualIPQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteVirtualIp"),
 
 		iptablesEipsLister:     iptablesEipInformer.Lister(),
 		iptablesEipSynced:      iptablesEipInformer.Informer().HasSynced,
@@ -502,10 +502,10 @@ func Run(ctx context.Context, config *Configuration) {
 		controller.delSwitchLBRuleQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "delSwitchLBRule")
 		controller.UpdateSwitchLBRuleQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "updateSwitchLBRule")
 
-		controller.vpcDnsLister = vpcDnsInformer.Lister()
-		controller.vpcDnsSynced = vpcDnsInformer.Informer().HasSynced
-		controller.addOrUpdateVpcDnsQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "AddOrUpdateVpcDns")
-		controller.delVpcDnsQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "DeleteVpcDns")
+		controller.vpcDNSLister = vpcDnsInformer.Lister()
+		controller.vpcDNSSynced = vpcDnsInformer.Informer().HasSynced
+		controller.addOrUpdateVpcDNSQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "AddOrUpdateVpcDns")
+		controller.delVpcDNSQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "DeleteVpcDns")
 	}
 
 	if config.EnableNP {
@@ -536,7 +536,7 @@ func Run(ctx context.Context, config *Configuration) {
 		controller.ovnDnatRuleSynced,
 	}
 	if controller.config.EnableLb {
-		cacheSyncs = append(cacheSyncs, controller.switchLBRuleSynced, controller.vpcDnsSynced)
+		cacheSyncs = append(cacheSyncs, controller.switchLBRuleSynced, controller.vpcDNSSynced)
 	}
 	if controller.config.EnableNP {
 		cacheSyncs = append(cacheSyncs, controller.npsSynced)
@@ -640,10 +640,10 @@ func Run(ctx context.Context, config *Configuration) {
 		util.LogFatalAndExit(err, "failed to add security group event handler")
 	}
 
-	if _, err = virtualIpInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    controller.enqueueAddVirtualIp,
-		UpdateFunc: controller.enqueueUpdateVirtualIp,
-		DeleteFunc: controller.enqueueDelVirtualIp,
+	if _, err = virtualIPInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    controller.enqueueAddVirtualIP,
+		UpdateFunc: controller.enqueueUpdateVirtualIP,
+		DeleteFunc: controller.enqueueDelVirtualIP,
 	}); err != nil {
 		util.LogFatalAndExit(err, "failed to add virtual ip event handler")
 	}
@@ -745,8 +745,8 @@ func Run(ctx context.Context, config *Configuration) {
 		}
 
 		if _, err = vpcDnsInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-			AddFunc:    controller.enqueueAddVpcDns,
-			UpdateFunc: controller.enqueueUpdateVpcDns,
+			AddFunc:    controller.enqueueAddVpcDNS,
+			UpdateFunc: controller.enqueueUpdateVpcDNS,
 			DeleteFunc: controller.enqueueDeleteVpcDns,
 		}); err != nil {
 			util.LogFatalAndExit(err, "failed to add vpc dns event handler")
@@ -860,7 +860,7 @@ func (c *Controller) shutdown() {
 	c.initVpcNatGatewayQueue.ShutDown()
 	c.delVpcNatGatewayQueue.ShutDown()
 	c.updateVpcEipQueue.ShutDown()
-	c.updateVpcFloatingIpQueue.ShutDown()
+	c.updateVpcFloatingIPQueue.ShutDown()
 	c.updateVpcDnatQueue.ShutDown()
 	c.updateVpcSnatQueue.ShutDown()
 	c.updateVpcSubnetQueue.ShutDown()
@@ -870,13 +870,13 @@ func (c *Controller) shutdown() {
 		c.delSwitchLBRuleQueue.ShutDown()
 		c.UpdateSwitchLBRuleQueue.ShutDown()
 
-		c.addOrUpdateVpcDnsQueue.ShutDown()
-		c.delVpcDnsQueue.ShutDown()
+		c.addOrUpdateVpcDNSQueue.ShutDown()
+		c.delVpcDNSQueue.ShutDown()
 	}
 
-	c.addVirtualIpQueue.ShutDown()
-	c.updateVirtualIpQueue.ShutDown()
-	c.delVirtualIpQueue.ShutDown()
+	c.addVirtualIPQueue.ShutDown()
+	c.updateVirtualIPQueue.ShutDown()
+	c.delVirtualIPQueue.ShutDown()
 
 	c.addIptablesEipQueue.ShutDown()
 	c.updateIptablesEipQueue.ShutDown()
@@ -942,7 +942,7 @@ func (c *Controller) startWorkers(ctx context.Context) {
 	go wait.Until(c.runAddOrUpdateVpcNatGwWorker, time.Second, ctx.Done())
 	go wait.Until(c.runInitVpcNatGwWorker, time.Second, ctx.Done())
 	go wait.Until(c.runDelVpcNatGwWorker, time.Second, ctx.Done())
-	go wait.Until(c.runUpdateVpcFloatingIpWorker, time.Second, ctx.Done())
+	go wait.Until(c.runUpdateVpcFloatingIPWorker, time.Second, ctx.Done())
 	go wait.Until(c.runUpdateVpcEipWorker, time.Second, ctx.Done())
 	go wait.Until(c.runUpdateVpcDnatWorker, time.Second, ctx.Done())
 	go wait.Until(c.runUpdateVpcSnatWorker, time.Second, ctx.Done())
@@ -1095,9 +1095,9 @@ func (c *Controller) startWorkers(ctx context.Context) {
 		go wait.Until(c.CheckNodePortGroup, time.Duration(c.config.NodePgProbeTime)*time.Minute, ctx.Done())
 	}
 
-	go wait.Until(c.runAddVirtualIpWorker, time.Second, ctx.Done())
-	go wait.Until(c.runUpdateVirtualIpWorker, time.Second, ctx.Done())
-	go wait.Until(c.runDelVirtualIpWorker, time.Second, ctx.Done())
+	go wait.Until(c.runAddVirtualIPWorker, time.Second, ctx.Done())
+	go wait.Until(c.runUpdateVirtualIPWorker, time.Second, ctx.Done())
+	go wait.Until(c.runDelVirtualIPWorker, time.Second, ctx.Done())
 
 	go wait.Until(c.runAddIptablesEipWorker, time.Second, ctx.Done())
 	go wait.Until(c.runUpdateIptablesEipWorker, time.Second, ctx.Done())

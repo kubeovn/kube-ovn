@@ -6,15 +6,16 @@ import (
 	"strconv"
 	"time"
 
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	"github.com/kubeovn/kube-ovn/pkg/util"
-	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 	"github.com/onsi/ginkgo/v2"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	e2epodoutput "k8s.io/kubernetes/test/e2e/framework/pod/output"
+
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/util"
+	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 )
 
 func generateSwitchLBRuleName(ruleName string) string {
@@ -88,7 +89,7 @@ var _ = framework.Describe("[group:slr]", func() {
 		epSlrFrontPort = 8092
 		backendPort = 80
 		vip = ""
-		overlaySubnetCidr = framework.RandomCIDR(f.ClusterIpFamily)
+		overlaySubnetCidr = framework.RandomCIDR(f.ClusterIPFamily)
 		ginkgo.By("Creating custom vpc")
 		vpc := framework.MakeVpc(vpcName, "", false, false, []string{namespaceName})
 		_ = vpcClient.CreateSync(vpc)

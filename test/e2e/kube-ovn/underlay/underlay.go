@@ -536,7 +536,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		waitSubnetStatusUpdate(subnetName, subnetClient, 2)
 
 		ginkgo.By("Creating overlay subnet " + u2oOverlaySubnetName)
-		cidr := framework.RandomCIDR(f.ClusterIpFamily)
+		cidr := framework.RandomCIDR(f.ClusterIPFamily)
 		overlaySubnet := framework.MakeSubnet(u2oOverlaySubnetName, "", cidr, "", "", "", nil, nil, nil)
 		overlaySubnet = subnetClient.CreateSync(overlaySubnet)
 
@@ -691,7 +691,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		vpcClient.CreateSync(customVPC)
 
 		ginkgo.By("Creating subnet " + u2oOverlaySubnetNameCustomVPC)
-		cidr = framework.RandomCIDR(f.ClusterIpFamily)
+		cidr = framework.RandomCIDR(f.ClusterIPFamily)
 		overlaySubnetCustomVpc := framework.MakeSubnet(u2oOverlaySubnetNameCustomVPC, "", cidr, "", vpcName, "", nil, nil, []string{namespaceName})
 		_ = subnetClient.CreateSync(overlaySubnetCustomVpc)
 
@@ -826,7 +826,7 @@ func checkU2OItems(f *framework.Framework, subnet *apiv1.Subnet, underlayPod, ov
 	framework.ExpectNoError(err)
 	framework.ExpectNotEmpty(routes)
 
-	v4InterconnIp, v6InterconnIp := util.SplitStringIP(subnet.Status.U2OInterconnectionIP)
+	v4InterconnIP, v6InterconnIP := util.SplitStringIP(subnet.Status.U2OInterconnectionIP)
 
 	isV4DefaultRouteExist := false
 	isV6DefaultRouteExist := false
@@ -834,14 +834,14 @@ func checkU2OItems(f *framework.Framework, subnet *apiv1.Subnet, underlayPod, ov
 		if route.Dst == "default" {
 			if util.CheckProtocol(route.Gateway) == apiv1.ProtocolIPv4 {
 				if subnet.Spec.U2OInterconnection {
-					framework.ExpectEqual(route.Gateway, v4InterconnIp)
+					framework.ExpectEqual(route.Gateway, v4InterconnIP)
 				} else {
 					framework.ExpectEqual(route.Gateway, v4gw)
 				}
 				isV4DefaultRouteExist = true
 			} else {
 				if subnet.Spec.U2OInterconnection {
-					framework.ExpectEqual(route.Gateway, v6InterconnIp)
+					framework.ExpectEqual(route.Gateway, v6InterconnIP)
 				} else {
 					framework.ExpectEqual(route.Gateway, v6gw)
 				}

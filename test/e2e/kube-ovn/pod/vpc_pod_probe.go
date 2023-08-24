@@ -39,7 +39,7 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 		namespaceName = f.Namespace.Name
 		subnetName = "subnet-" + framework.RandomSuffix()
 		podName = "pod-" + framework.RandomSuffix()
-		cidr = framework.RandomCIDR(f.ClusterIpFamily)
+		cidr = framework.RandomCIDR(f.ClusterIPFamily)
 		vpcClient = f.VpcClient()
 		if image == "" {
 			image = framework.GetKubeOvnImage(cs)
@@ -94,7 +94,7 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 		vpcClient.CreateSync(customVPC)
 
 		ginkgo.By("Creating subnet " + custVPCSubnetName)
-		cidr = framework.RandomCIDR(f.ClusterIpFamily)
+		cidr = framework.RandomCIDR(f.ClusterIPFamily)
 		subnet := framework.MakeSubnet(custVPCSubnetName, "", cidr, "", vpcName, "", nil, nil, nil)
 		_ = subnetClient.CreateSync(subnet)
 

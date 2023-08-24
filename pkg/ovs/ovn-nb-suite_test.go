@@ -418,23 +418,23 @@ func (suite *OvnClientTestSuite) Test_addressSetFilter() {
 
 /* acl unit test */
 func (suite *OvnClientTestSuite) Test_testUpdateIngressAclOps() {
-	suite.testUpdateIngressAclOps()
+	suite.testUpdateIngressACLOps()
 }
 
 func (suite *OvnClientTestSuite) Test_UpdateEgressAclOps() {
-	suite.testUpdateEgressAclOps()
+	suite.testUpdateEgressACLOps()
 }
 
 func (suite *OvnClientTestSuite) Test_CreateGatewayAcl() {
-	suite.testCreateGatewayAcl()
+	suite.testCreateGatewayACL()
 }
 
 func (suite *OvnClientTestSuite) Test_CreateNodeAcl() {
-	suite.testCreateNodeAcl()
+	suite.testCreateNodeACL()
 }
 
 func (suite *OvnClientTestSuite) Test_CreateSgDenyAllAcl() {
-	suite.testCreateSgDenyAllAcl()
+	suite.testCreateSgDenyAllACL()
 }
 
 func (suite *OvnClientTestSuite) Test_CreateSgBaseACL() {
@@ -446,11 +446,11 @@ func (suite *OvnClientTestSuite) Test_UpdateSgAcl() {
 }
 
 func (suite *OvnClientTestSuite) Test_UpdateLogicalSwitchAcl() {
-	suite.testUpdateLogicalSwitchAcl()
+	suite.testUpdateLogicalSwitchACL()
 }
 
 func (suite *OvnClientTestSuite) Test_SetAclLog() {
-	suite.testSetAclLog()
+	suite.testSetACLLog()
 }
 
 func (suite *OvnClientTestSuite) Test_SetLogicalSwitchPrivate() {
@@ -470,11 +470,11 @@ func (suite *OvnClientTestSuite) Test_DeleteAcls() {
 }
 
 func (suite *OvnClientTestSuite) Test_DeleteAcl() {
-	suite.testDeleteAcl()
+	suite.testDeleteACL()
 }
 
 func (suite *OvnClientTestSuite) Test_GetAcl() {
-	suite.testGetAcl()
+	suite.testGetACL()
 }
 
 func (suite *OvnClientTestSuite) Test_ListAcls() {
@@ -486,7 +486,7 @@ func (suite *OvnClientTestSuite) Test_newAcl() {
 }
 
 func (suite *OvnClientTestSuite) Test_newNetworkPolicyAclMatch() {
-	suite.testnewNetworkPolicyAclMatch()
+	suite.testnewNetworkPolicyACLMatch()
 }
 
 func (suite *OvnClientTestSuite) Test_aclFilter() {

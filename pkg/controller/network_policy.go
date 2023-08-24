@@ -233,16 +233,16 @@ func (c *Controller) handleUpdateNp(key string) error {
 		}
 	}
 
-	var ingressAclOps []ovsdb.Operation
+	var ingressACLOps []ovsdb.Operation
 
-	clearIngressAclOps, err := c.ovnNbClient.DeleteAclsOps(pgName, portGroupKey, "to-lport", nil)
+	clearIngressACLOps, err := c.ovnNbClient.DeleteAclsOps(pgName, portGroupKey, "to-lport", nil)
 	if err != nil {
 		klog.Errorf("generate operations that clear np %s ingress acls: %v", key, err)
 		return err
 	}
 
 	// put clear acl and update acl in a single transaction to imitate update acl
-	ingressAclOps = append(ingressAclOps, clearIngressAclOps...)
+	ingressACLOps = append(ingressACLOps, clearIngressACLOps...)
 
 	if hasIngressRule(np) {
 		for _, subnet := range subnets {
@@ -309,7 +309,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 						return err
 					}
 
-					ingressAclOps = append(ingressAclOps, ops...)
+					ingressACLOps = append(ingressACLOps, ops...)
 				}
 				if len(np.Spec.Ingress) == 0 {
 					ingressAllowAsName := fmt.Sprintf("%s.%s.all", ingressAllowAsNamePrefix, protocol)
@@ -335,14 +335,14 @@ func (c *Controller) handleUpdateNp(key string) error {
 						return err
 					}
 
-					ingressAclOps = append(ingressAclOps, ops...)
+					ingressACLOps = append(ingressACLOps, ops...)
 				}
 
-				if err = c.ovnNbClient.Transact("add-ingress-acls", ingressAclOps); err != nil {
+				if err = c.ovnNbClient.Transact("add-ingress-acls", ingressACLOps); err != nil {
 					return fmt.Errorf("add ingress acls to %s: %v", pgName, err)
 				}
 
-				if err = c.ovnNbClient.SetAclLog(pgName, protocol, logEnable, true); err != nil {
+				if err = c.ovnNbClient.SetACLLog(pgName, protocol, logEnable, true); err != nil {
 					// just log and do not return err here
 					klog.Errorf("failed to set ingress acl log for np %s, %v", key, err)
 				}
@@ -389,16 +389,16 @@ func (c *Controller) handleUpdateNp(key string) error {
 		}
 	}
 
-	var egressAclOps []ovsdb.Operation
+	var egressACLOps []ovsdb.Operation
 
-	clearEgressAclOps, err := c.ovnNbClient.DeleteAclsOps(pgName, portGroupKey, "from-lport", nil)
+	clearEgressACLOps, err := c.ovnNbClient.DeleteAclsOps(pgName, portGroupKey, "from-lport", nil)
 	if err != nil {
 		klog.Errorf("generate operations that clear np %s egress acls: %v", key, err)
 		return err
 	}
 
 	// put clear and add acl in a single transaction to imitate acl update
-	egressAclOps = append(egressAclOps, clearEgressAclOps...)
+	egressACLOps = append(egressACLOps, clearEgressACLOps...)
 
 	if hasEgressRule(np) {
 		for _, subnet := range subnets {
@@ -461,7 +461,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 							return err
 						}
 
-						egressAclOps = append(egressAclOps, ops...)
+						egressACLOps = append(egressACLOps, ops...)
 					}
 				}
 				if len(np.Spec.Egress) == 0 {
@@ -488,14 +488,14 @@ func (c *Controller) handleUpdateNp(key string) error {
 						return err
 					}
 
-					egressAclOps = append(egressAclOps, ops...)
+					egressACLOps = append(egressACLOps, ops...)
 				}
 
-				if err = c.ovnNbClient.Transact("add-egress-acls", egressAclOps); err != nil {
+				if err = c.ovnNbClient.Transact("add-egress-acls", egressACLOps); err != nil {
 					return fmt.Errorf("add egress acls to %s: %v", pgName, err)
 				}
 
-				if err = c.ovnNbClient.SetAclLog(pgName, protocol, logEnable, false); err != nil {
+				if err = c.ovnNbClient.SetACLLog(pgName, protocol, logEnable, false); err != nil {
 					// just log and do not return err here
 					klog.Errorf("failed to set egress acl log for np %s, %v", key, err)
 				}
@@ -544,7 +544,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 	}
 
 	for _, subnet := range subnets {
-		if err = c.ovnNbClient.CreateGatewayAcl("", pgName, subnet.Spec.Gateway); err != nil {
+		if err = c.ovnNbClient.CreateGatewayACL("", pgName, subnet.Spec.Gateway); err != nil {
 			klog.Errorf("create gateway acl: %v", err)
 			return err
 		}
@@ -782,7 +782,7 @@ func svcMatchPods(svcs []*corev1.Service, pod *corev1.Pod, protocol string) ([]s
 		}
 		if isMatch {
 			clusterIPs := util.ServiceClusterIPs(*svc)
-			protocolClusterIPs := getProtocolSvcIp(clusterIPs, protocol)
+			protocolClusterIPs := getProtocolSvcIP(clusterIPs, protocol)
 			if len(protocolClusterIPs) != 0 {
 				matchSvcs = append(matchSvcs, protocolClusterIPs...)
 			}
@@ -791,7 +791,7 @@ func svcMatchPods(svcs []*corev1.Service, pod *corev1.Pod, protocol string) ([]s
 	return matchSvcs, nil
 }
 
-func getProtocolSvcIp(clusterIPs []string, protocol string) []string {
+func getProtocolSvcIP(clusterIPs []string, protocol string) []string {
 	protocolClusterIPs := []string{}
 	for _, clusterIP := range clusterIPs {
 		if clusterIP != "" && clusterIP != corev1.ClusterIPNone && util.CheckProtocol(clusterIP) == protocol {

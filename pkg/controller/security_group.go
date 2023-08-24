@@ -172,7 +172,7 @@ func (c *Controller) initDenyAllSecurityGroup() error {
 		return err
 	}
 
-	if err := c.ovnNbClient.CreateSgDenyAllAcl(util.DenyAllSecurityGroup); err != nil {
+	if err := c.ovnNbClient.CreateSgDenyAllACL(util.DenyAllSecurityGroup); err != nil {
 		klog.Errorf("create deny all acl for sg %s: %v", util.DenyAllSecurityGroup, err)
 		return err
 	}
@@ -299,7 +299,7 @@ func (c *Controller) handleAddOrUpdateSg(key string) error {
 
 	// update sg rule
 	if ingressNeedUpdate {
-		if err = c.ovnNbClient.UpdateSgAcl(sg, ovnnb.ACLDirectionToLport); err != nil {
+		if err = c.ovnNbClient.UpdateSgACL(sg, ovnnb.ACLDirectionToLport); err != nil {
 			sg.Status.IngressLastSyncSuccess = false
 			c.patchSgStatus(sg)
 			return err
@@ -313,7 +313,7 @@ func (c *Controller) handleAddOrUpdateSg(key string) error {
 		c.patchSgStatus(sg)
 	}
 	if egressNeedUpdate {
-		if err = c.ovnNbClient.UpdateSgAcl(sg, ovnnb.ACLDirectionFromLport); err != nil {
+		if err = c.ovnNbClient.UpdateSgACL(sg, ovnnb.ACLDirectionFromLport); err != nil {
 			sg.Status.IngressLastSyncSuccess = false
 			c.patchSgStatus(sg)
 			return err

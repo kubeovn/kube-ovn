@@ -33,8 +33,8 @@ func (f *Framework) IptablesEIPClient() *IptablesEIPClient {
 	}
 }
 
-func (s *IptablesEIPClient) Get(name string) *apiv1.IptablesEIP {
-	eip, err := s.IptablesEIPInterface.Get(context.TODO(), name, metav1.GetOptions{})
+func (c *IptablesEIPClient) Get(name string) *apiv1.IptablesEIP {
+	eip, err := c.IptablesEIPInterface.Get(context.TODO(), name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return eip
 }

@@ -67,10 +67,10 @@ func (c *Controller) InitDefaultVpc() error {
 	vpc.Status.DefaultLogicalSwitch = c.config.DefaultLogicalSwitch
 	vpc.Status.Router = c.config.ClusterRouter
 	if c.config.EnableLb {
-		vpc.Status.TCPLoadBalancer = c.config.ClusterTcpLoadBalancer
-		vpc.Status.TCPSessionLoadBalancer = c.config.ClusterTcpSessionLoadBalancer
-		vpc.Status.UDPLoadBalancer = c.config.ClusterUdpLoadBalancer
-		vpc.Status.UDPSessionLoadBalancer = c.config.ClusterUdpSessionLoadBalancer
+		vpc.Status.TCPLoadBalancer = c.config.ClusterTCPLoadBalancer
+		vpc.Status.TCPSessionLoadBalancer = c.config.ClusterTCPSessionLoadBalancer
+		vpc.Status.UDPLoadBalancer = c.config.ClusterUDPLoadBalancer
+		vpc.Status.UDPSessionLoadBalancer = c.config.ClusterUDPSessionLoadBalancer
 		vpc.Status.SctpLoadBalancer = c.config.ClusterSctpLoadBalancer
 		vpc.Status.SctpSessionLoadBalancer = c.config.ClusterSctpSessionLoadBalancer
 	}
@@ -233,13 +233,13 @@ func (c *Controller) initLoadBalancer() error {
 		if err = c.initLB(vpcLb.TCPLoadBalancer, string(v1.ProtocolTCP), false); err != nil {
 			return err
 		}
-		if err = c.initLB(vpcLb.TcpSessLoadBalancer, string(v1.ProtocolTCP), true); err != nil {
+		if err = c.initLB(vpcLb.TCPSessLoadBalancer, string(v1.ProtocolTCP), true); err != nil {
 			return err
 		}
 		if err = c.initLB(vpcLb.UDPLoadBalancer, string(v1.ProtocolUDP), false); err != nil {
 			return err
 		}
-		if err = c.initLB(vpcLb.UdpSessLoadBalancer, string(v1.ProtocolUDP), true); err != nil {
+		if err = c.initLB(vpcLb.UDPSessLoadBalancer, string(v1.ProtocolUDP), true); err != nil {
 			return err
 		}
 		if err = c.initLB(vpcLb.SctpLoadBalancer, string(v1.ProtocolSCTP), false); err != nil {
@@ -250,9 +250,9 @@ func (c *Controller) initLoadBalancer() error {
 		}
 
 		vpc.Status.TCPLoadBalancer = vpcLb.TCPLoadBalancer
-		vpc.Status.TCPSessionLoadBalancer = vpcLb.TcpSessLoadBalancer
+		vpc.Status.TCPSessionLoadBalancer = vpcLb.TCPSessLoadBalancer
 		vpc.Status.UDPLoadBalancer = vpcLb.UDPLoadBalancer
-		vpc.Status.UDPSessionLoadBalancer = vpcLb.UdpSessLoadBalancer
+		vpc.Status.UDPSessionLoadBalancer = vpcLb.UDPSessLoadBalancer
 		vpc.Status.SctpLoadBalancer = vpcLb.SctpLoadBalancer
 		vpc.Status.SctpSessionLoadBalancer = vpcLb.SctpSessLoadBalancer
 		bytes, err := vpc.Status.Bytes()
@@ -570,7 +570,7 @@ func (c *Controller) initSyncCrdIPs() error {
 		return err
 	}
 
-	ipMap := strset.New(c.getVmLsps()...)
+	ipMap := strset.New(c.getVMLsps()...)
 
 	for _, ipCr := range ips {
 		ip := ipCr.DeepCopy()

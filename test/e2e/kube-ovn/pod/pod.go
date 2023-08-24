@@ -32,7 +32,7 @@ var _ = framework.Describe("[group:pod]", func() {
 		namespaceName = f.Namespace.Name
 		subnetName = "subnet-" + framework.RandomSuffix()
 		podName = "pod-" + framework.RandomSuffix()
-		cidr = framework.RandomCIDR(f.ClusterIpFamily)
+		cidr = framework.RandomCIDR(f.ClusterIPFamily)
 		if image == "" {
 			image = framework.GetKubeOvnImage(cs)
 		}

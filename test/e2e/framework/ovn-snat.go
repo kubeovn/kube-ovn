@@ -33,8 +33,8 @@ func (f *Framework) OvnSnatRuleClient() *OvnSnatRuleClient {
 	}
 }
 
-func (s *OvnSnatRuleClient) Get(name string) *apiv1.OvnSnatRule {
-	snat, err := s.OvnSnatRuleInterface.Get(context.TODO(), name, metav1.GetOptions{})
+func (c *OvnSnatRuleClient) Get(name string) *apiv1.OvnSnatRule {
+	snat, err := c.OvnSnatRuleInterface.Get(context.TODO(), name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return snat
 }

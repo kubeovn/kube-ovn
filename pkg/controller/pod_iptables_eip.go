@@ -42,14 +42,14 @@ func (c *Controller) enqueueAddPodAnnotatedIptablesEip(obj interface{}) {
 	// delete eip if pod not alive
 	if !isPodAlive(p) {
 		isStateful, statefulSetName := isStatefulSetPod(p)
-		isVmPod, vmName := isVmPod(p)
-		if isStateful || (isVmPod && c.config.EnableKeepVmIP) {
+		isVMPod, vmName := isVMPod(p)
+		if isStateful || (isVMPod && c.config.EnableKeepVMIP) {
 			if isStateful && isStatefulSetDeleted(c.config.KubeClient, p, statefulSetName) {
 				klog.V(3).Infof("enqueue delete pod annotated iptables eip %s", eipName)
 				c.delPodAnnotatedIptablesEipQueue.Add(obj)
 				return
 			}
-			if isVmPod && c.isVmPodToDel(p, vmName) {
+			if isVMPod && c.isVmPodToDel(p, vmName) {
 				klog.V(3).Infof("enqueue delete pod annotated iptables eip %s", eipName)
 				c.delPodAnnotatedIptablesEipQueue.Add(obj)
 				return
@@ -97,16 +97,16 @@ func (c *Controller) enqueueUpdatePodAnnotatedIptablesEip(oldObj, newObj interfa
 		return
 	}
 	isStateful, _ := isStatefulSetPod(newPod)
-	isVmPod, vmName := isVmPod(newPod)
+	isVMPod, vmName := isVMPod(newPod)
 	if newPod.DeletionTimestamp != nil && isStateful {
 		c.delPodAnnotatedIptablesEipQueue.Add(newObj)
 		return
 	}
-	if !isPodAlive(newPod) && !isStateful && !isVmPod {
+	if !isPodAlive(newPod) && !isStateful && !isVMPod {
 		c.delPodAnnotatedIptablesEipQueue.Add(newObj)
 		return
 	}
-	if c.config.EnableKeepVmIP && isVmPod && c.isVmPodToDel(newPod, vmName) {
+	if c.config.EnableKeepVMIP && isVMPod && c.isVmPodToDel(newPod, vmName) {
 		c.delPodAnnotatedIptablesEipQueue.Add(newObj)
 		return
 	}
@@ -126,23 +126,23 @@ func (c *Controller) enqueueDeletePodAnnotatedIptablesEip(obj interface{}) {
 		return
 	}
 	isStateful, statefulSetName := isStatefulSetPod(p)
-	isVmPod, vmName := isVmPod(p)
+	isVMPod, vmName := isVMPod(p)
 	switch {
 	case isStateful:
 		if isStatefulSetDeleted(c.config.KubeClient, p, statefulSetName) {
 			c.delPodAnnotatedIptablesEipQueue.Add(obj)
 			return
 		}
-		if delete, err := appendCheckPodToDel(c, p, statefulSetName, "StatefulSet"); delete && err == nil {
+		if isDelete, err := appendCheckPodToDel(c, p, statefulSetName, "StatefulSet"); isDelete && err == nil {
 			c.delPodAnnotatedIptablesEipQueue.Add(obj)
 			return
 		}
-	case c.config.EnableKeepVmIP && isVmPod:
+	case c.config.EnableKeepVMIP && isVMPod:
 		if c.isVmPodToDel(p, vmName) {
 			c.delPodAnnotatedIptablesEipQueue.Add(obj)
 			return
 		}
-		if delete, err := appendCheckPodToDel(c, p, vmName, util.VMInstance); delete && err == nil {
+		if isDelete, err := appendCheckPodToDel(c, p, vmName, util.VMInstance); isDelete && err == nil {
 			c.delPodAnnotatedIptablesEipQueue.Add(obj)
 			return
 		}

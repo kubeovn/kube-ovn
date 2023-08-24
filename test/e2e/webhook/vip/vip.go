@@ -25,7 +25,7 @@ var _ = framework.Describe("[group:webhook-vip]", func() {
 	ginkgo.BeforeEach(func() {
 		subnetClient = f.SubnetClient()
 		subnetName = "subnet-" + framework.RandomSuffix()
-		cidr = framework.RandomCIDR(f.ClusterIpFamily)
+		cidr = framework.RandomCIDR(f.ClusterIPFamily)
 		cidrV4, _ := util.SplitStringIP(cidr)
 		if cidrV4 == "" {
 			lastIPv4 = ""

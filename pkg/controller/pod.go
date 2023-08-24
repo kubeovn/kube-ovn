@@ -194,14 +194,14 @@ func (c *Controller) enqueueAddPod(obj interface{}) {
 
 	if !isPodAlive(p) {
 		isStateful, statefulSetName := isStatefulSetPod(p)
-		isVmPod, vmName := isVmPod(p)
-		if isStateful || (isVmPod && c.config.EnableKeepVmIP) {
+		isVMPod, vmName := isVMPod(p)
+		if isStateful || (isVMPod && c.config.EnableKeepVMIP) {
 			if isStateful && isStatefulSetPodToDel(c.config.KubeClient, p, statefulSetName) {
 				klog.V(3).Infof("enqueue delete pod %s", key)
 				c.deletingPodObjMap.Store(key, p)
 				c.deletePodQueue.Add(key)
 			}
-			if isVmPod && c.isVmPodToDel(p, vmName) {
+			if isVMPod && c.isVmPodToDel(p, vmName) {
 				klog.V(3).Infof("enqueue delete pod %s", key)
 				c.deletingPodObjMap.Store(key, p)
 				c.deletePodQueue.Add(key)
@@ -297,8 +297,8 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 	}
 
 	isStateful, statefulSetName := isStatefulSetPod(newPod)
-	isVmPod, vmName := isVmPod(newPod)
-	if !isPodStatusPhaseAlive(newPod) && !isStateful && !isVmPod {
+	isVMPod, vmName := isVMPod(newPod)
+	if !isPodStatusPhaseAlive(newPod) && !isStateful && !isVMPod {
 		klog.V(3).Infof("enqueue delete pod %s", key)
 		c.deletingPodObjMap.Store(key, newPod)
 		c.deletePodQueue.Add(key)
@@ -315,7 +315,7 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 		}
 	}
 
-	if newPod.DeletionTimestamp != nil && !isStateful && !isVmPod {
+	if newPod.DeletionTimestamp != nil && !isStateful && !isVMPod {
 		go func() {
 			// In case node get lost and pod can not be deleted,
 			// the ip address will not be recycled
@@ -335,7 +335,7 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 		}()
 		return
 	}
-	if isVmPod && c.isVmPodToDel(newPod, vmName) {
+	if isVMPod && c.isVmPodToDel(newPod, vmName) {
 		go func() {
 			klog.V(3).Infof("enqueue delete pod %s after %v", key, delay)
 			c.deletingPodObjMap.Store(key, newPod)
@@ -605,7 +605,7 @@ func (c *Controller) handleAddOrUpdatePod(key string) (err error) {
 func (c *Controller) reconcileAllocateSubnets(cachedPod, pod *v1.Pod, needAllocatePodNets []*kubeovnNet) (*v1.Pod, error) {
 	namespace := pod.Namespace
 	name := pod.Name
-	isVmPod, vmName := isVmPod(pod)
+	isVMPod, vmName := isVMPod(pod)
 
 	klog.Infof("sync pod %s/%s allocated", namespace, name)
 
@@ -637,7 +637,7 @@ func (c *Controller) reconcileAllocateSubnets(cachedPod, pod *v1.Pod, needAlloca
 			delete(pod.Annotations, fmt.Sprintf(util.PodNicAnnotationTemplate, podNet.ProviderName))
 		}
 		pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)] = "true"
-		if isVmPod && c.config.EnableKeepVmIP {
+		if isVMPod && c.config.EnableKeepVMIP {
 			pod.Annotations[fmt.Sprintf(util.VMTemplate, podNet.ProviderName)] = vmName
 			if err := c.changeVMSubnet(vmName, namespace, podNet.ProviderName, subnet.Name, pod); err != nil {
 				klog.Errorf("change subnet of pod %s/%s to %s failed: %v", namespace, name, subnet.Name, err)
@@ -966,22 +966,22 @@ func (c *Controller) handleDeletePod(key string) error {
 	var keepIpCR bool
 	if ok, sts := isStatefulSetPod(pod); ok {
 		toDel := isStatefulSetPodToDel(c.config.KubeClient, pod, sts)
-		delete, err := appendCheckPodToDel(c, pod, sts, "StatefulSet")
+		isDelete, err := appendCheckPodToDel(c, pod, sts, "StatefulSet")
 		if pod.DeletionTimestamp != nil {
 			// triggered by delete event
-			if !(toDel || (delete && err == nil)) {
+			if !(toDel || (isDelete && err == nil)) {
 				return nil
 			}
 		}
-		keepIpCR = !toDel && !delete && err == nil
+		keepIpCR = !toDel && !isDelete && err == nil
 	}
-	isVmPod, vmName := isVmPod(pod)
-	if isVmPod && c.config.EnableKeepVmIP {
+	isVMPod, vmName := isVMPod(pod)
+	if isVMPod && c.config.EnableKeepVMIP {
 		toDel := c.isVmPodToDel(pod, vmName)
-		delete, err := appendCheckPodToDel(c, pod, vmName, util.VMInstance)
+		isDelete, err := appendCheckPodToDel(c, pod, vmName, util.VMInstance)
 		if pod.DeletionTimestamp != nil {
 			// triggered by delete event
-			if !(toDel || (delete && err == nil)) {
+			if !(toDel || (isDelete && err == nil)) {
 				return nil
 			}
 			klog.Infof("delete vm pod %s", podName)
@@ -1516,7 +1516,7 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 	podName := c.getNameByPod(pod)
 	key := fmt.Sprintf("%s/%s", pod.Namespace, podName)
 
-	var isVMPod bool
+	var checkVMPod bool
 	isStsPod, _ := isStatefulSetPod(pod)
 	// if pod has static vip
 	vipName := pod.Annotations[util.VipAnnotation]
@@ -1527,10 +1527,10 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 			return "", "", "", podNet.Subnet, err
 		}
 		portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
-		if c.config.EnableKeepVmIP {
-			isVMPod, _ = isVmPod(pod)
+		if c.config.EnableKeepVMIP {
+			checkVMPod, _ = isVMPod(pod)
 		}
-		if err = c.podReuseVip(vipName, portName, isStsPod || isVMPod); err != nil {
+		if err = c.podReuseVip(vipName, portName, isStsPod || checkVMPod); err != nil {
 			return "", "", "", podNet.Subnet, err
 		}
 		return vip.Status.V4ip, vip.Status.V6ip, vip.Status.Mac, podNet.Subnet, nil
@@ -1782,7 +1782,7 @@ func appendCheckPodToDel(c *Controller, pod *v1.Pod, ownerRefName, ownerRefKind 
 	return false, nil
 }
 
-func isVmPod(pod *v1.Pod) (bool, string) {
+func isVMPod(pod *v1.Pod) (bool, string) {
 	for _, owner := range pod.OwnerReferences {
 		// The name of vmi is consistent with vm's name.
 		if owner.Kind == util.VMInstance && strings.HasPrefix(owner.APIVersion, "kubevirt.io") {
@@ -1853,8 +1853,8 @@ func (c *Controller) isVmPodToDel(pod *v1.Pod, vmiName string) bool {
 }
 
 func (c *Controller) getNameByPod(pod *v1.Pod) string {
-	if c.config.EnableKeepVmIP {
-		if isVmPod, vmName := isVmPod(pod); isVmPod {
+	if c.config.EnableKeepVMIP {
+		if isVMPod, vmName := isVMPod(pod); isVMPod {
 			return vmName
 		}
 	}
@@ -1902,7 +1902,7 @@ func getPodType(pod *v1.Pod) string {
 		return "StatefulSet"
 	}
 
-	if isVmPod, _ := isVmPod(pod); isVmPod {
+	if isVMPod, _ := isVMPod(pod); isVMPod {
 		return util.VM
 	}
 	return ""

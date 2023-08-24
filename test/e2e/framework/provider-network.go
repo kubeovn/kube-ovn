@@ -34,8 +34,8 @@ func (f *Framework) ProviderNetworkClient() *ProviderNetworkClient {
 	}
 }
 
-func (s *ProviderNetworkClient) Get(name string) *apiv1.ProviderNetwork {
-	pn, err := s.ProviderNetworkInterface.Get(context.TODO(), name, metav1.GetOptions{})
+func (c *ProviderNetworkClient) Get(name string) *apiv1.ProviderNetwork {
+	pn, err := c.ProviderNetworkInterface.Get(context.TODO(), name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return pn
 }

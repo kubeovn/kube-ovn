@@ -110,9 +110,9 @@ func (c *Controller) enqueueUpdateService(oldObj, newObj interface{}) {
 	oldClusterIps := getVipIps(oldSvc)
 	newClusterIps := getVipIps(newSvc)
 	var ipsToDel []string
-	for _, oldClusterIp := range oldClusterIps {
-		if !util.ContainsString(newClusterIps, oldClusterIp) {
-			ipsToDel = append(ipsToDel, oldClusterIp)
+	for _, oldClusterIP := range oldClusterIps {
+		if !util.ContainsString(newClusterIps, oldClusterIP) {
+			ipsToDel = append(ipsToDel, oldClusterIP)
 		}
 	}
 
@@ -251,9 +251,9 @@ func (c *Controller) handleDeleteService(service *vpcService) error {
 	var vpcLB [2]string
 	switch service.Protocol {
 	case v1.ProtocolTCP:
-		vpcLB = [2]string{vpcLbConfig.TCPLoadBalancer, vpcLbConfig.TcpSessLoadBalancer}
+		vpcLB = [2]string{vpcLbConfig.TCPLoadBalancer, vpcLbConfig.TCPSessLoadBalancer}
 	case v1.ProtocolUDP:
-		vpcLB = [2]string{vpcLbConfig.UDPLoadBalancer, vpcLbConfig.UdpSessLoadBalancer}
+		vpcLB = [2]string{vpcLbConfig.UDPLoadBalancer, vpcLbConfig.UDPSessLoadBalancer}
 	case v1.ProtocolSCTP:
 		vpcLB = [2]string{vpcLbConfig.SctpLoadBalancer, vpcLbConfig.SctpSessLoadBalancer}
 	}

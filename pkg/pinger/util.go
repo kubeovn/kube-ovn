@@ -76,14 +76,15 @@ func (e *Exporter) setOvsDpIfMetric(datapathName string) error {
 	var datapathPortCount float64
 	for _, kvPair := range strings.Split(string(output), "\n") {
 		line := strings.TrimSpace(kvPair)
-		if strings.HasPrefix(line, "lookups:") {
+		switch {
+		case strings.HasPrefix(line, "lookups:"):
 			e.ovsDatapathLookupsMetrics(line, datapathName)
-		} else if strings.HasPrefix(line, "masks:") {
+		case strings.HasPrefix(line, "masks:"):
 			e.ovsDatapathMasksMetrics(line, datapathName)
-		} else if strings.HasPrefix(line, "port ") {
+		case strings.HasPrefix(line, "port "):
 			e.ovsDatapathPortMetrics(line, datapathName)
 			datapathPortCount++
-		} else if strings.HasPrefix(line, "flows:") {
+		case strings.HasPrefix(line, "flows:"):
 			flowFields := strings.Fields(line)
 			value, _ := strconv.ParseFloat(flowFields[1], 64)
 			metricOvsDpFlowsTotal.WithLabelValues(e.Client.System.Hostname, datapathName).Set(value)

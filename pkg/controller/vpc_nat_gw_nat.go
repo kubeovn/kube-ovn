@@ -1631,14 +1631,14 @@ func (c *Controller) deleteFipInPod(dp, v4ip, internalIP string) error {
 	return nil
 }
 
-func (c *Controller) createDnatInPod(dp, protocol, v4ip, internalIp, externalPort, internalPort string) error {
+func (c *Controller) createDnatInPod(dp, protocol, v4ip, internalIP, externalPort, internalPort string) error {
 	gwPod, err := c.getNatGwPod(dp)
 	if err != nil {
 		klog.Errorf("failed to get nat gw pod, %v", err)
 		return err
 	}
 	var addRules []string
-	rule := fmt.Sprintf("%s,%s,%s,%s,%s", v4ip, externalPort, protocol, internalIp, internalPort)
+	rule := fmt.Sprintf("%s,%s,%s,%s,%s", v4ip, externalPort, protocol, internalIP, internalPort)
 	addRules = append(addRules, rule)
 
 	if err = c.execNatGwRules(gwPod, natGwDnatAdd, addRules); err != nil {
@@ -1648,7 +1648,7 @@ func (c *Controller) createDnatInPod(dp, protocol, v4ip, internalIp, externalPor
 	return nil
 }
 
-func (c *Controller) deleteDnatInPod(dp, protocol, v4ip, internalIp, externalPort, internalPort string) error {
+func (c *Controller) deleteDnatInPod(dp, protocol, v4ip, internalIP, externalPort, internalPort string) error {
 	gwPod, err := c.getNatGwPod(dp)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -1660,7 +1660,7 @@ func (c *Controller) deleteDnatInPod(dp, protocol, v4ip, internalIp, externalPor
 
 	// del nat
 	var delRules []string
-	rule := fmt.Sprintf("%s,%s,%s,%s,%s", v4ip, externalPort, protocol, internalIp, internalPort)
+	rule := fmt.Sprintf("%s,%s,%s,%s,%s", v4ip, externalPort, protocol, internalIP, internalPort)
 	delRules = append(delRules, rule)
 	if err = c.execNatGwRules(gwPod, natGwDnatDel, delRules); err != nil {
 		klog.Errorf("failed to delete dnat, err: %v", err)
@@ -1770,7 +1770,7 @@ func (c *Controller) isDnatDuplicated(gwName, eipName, dnatName, externalPort st
 	return false, nil
 }
 
-func (c *Controller) createOrUpdateCrdFip(key, eipName, internalIp string) error {
+func (c *Controller) createOrUpdateCrdFip(key, eipName, internalIP string) error {
 	cachedFip, err := c.iptablesFipsLister.Get(key)
 	if err != nil {
 		klog.V(3).Infof("create fip cr %s", key)
@@ -1781,7 +1781,7 @@ func (c *Controller) createOrUpdateCrdFip(key, eipName, internalIp string) error
 				},
 				Spec: kubeovnv1.IptablesFIPRuleSpec{
 					EIP:        eipName,
-					InternalIP: internalIp,
+					InternalIP: internalIP,
 				},
 			}, metav1.CreateOptions{}); err != nil {
 				errMsg := fmt.Errorf("failed to create fip crd %s, %v", key, err)
@@ -1796,9 +1796,9 @@ func (c *Controller) createOrUpdateCrdFip(key, eipName, internalIp string) error
 	} else {
 		klog.V(3).Infof("update fip cr %s", key)
 		fip := cachedFip.DeepCopy()
-		if fip.Spec.EIP != eipName || fip.Spec.InternalIP != internalIp {
+		if fip.Spec.EIP != eipName || fip.Spec.InternalIP != internalIP {
 			fip.Spec.EIP = eipName
-			fip.Spec.InternalIP = internalIp
+			fip.Spec.InternalIP = internalIP
 			if _, err := c.config.KubeOvnClient.KubeovnV1().IptablesFIPRules().Update(context.Background(), fip, metav1.UpdateOptions{}); err != nil {
 				errMsg := fmt.Errorf("failed to update eip crd %s, %v", key, err)
 				klog.Error(errMsg)

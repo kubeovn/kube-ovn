@@ -20,11 +20,7 @@ func createLogicalSwitch(c *ovnNbClient, ls *ovnnb.LogicalSwitch) error {
 		return err
 	}
 
-	if err := c.Transact("ls-add", op); err != nil {
-		return err
-	}
-
-	return nil
+	return c.Transact("ls-add", op)
 }
 
 func (suite *OvnClientTestSuite) testCreateLogicalSwitch() {

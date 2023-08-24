@@ -44,11 +44,10 @@ func (c *Controller) enqueueUpdateOvnFip(oldObj, newObj interface{}) {
 		if len(newFip.Finalizers) == 0 {
 			// avoid delete twice
 			return
-		} else {
-			klog.Infof("enqueue del ovn fip %s", key)
-			c.delOvnFipQueue.Add(key)
-			return
 		}
+		klog.Infof("enqueue del ovn fip %s", key)
+		c.delOvnFipQueue.Add(key)
+		return
 	}
 	oldFip := oldObj.(*kubeovnv1.OvnFip)
 	if oldFip.Spec.OvnEip != newFip.Spec.OvnEip {
@@ -218,14 +217,14 @@ func (c *Controller) handleAddOvnFip(key string) error {
 		mac = internalVip.Status.Mac
 		subnetName = internalVip.Spec.Subnet
 	} else {
-		internalIp, err := c.ipsLister.Get(cachedFip.Spec.IPName)
+		internalIP, err := c.ipsLister.Get(cachedFip.Spec.IPName)
 		if err != nil {
 			klog.Errorf("failed to get ip %s, %v", cachedFip.Spec.IPName, err)
 			return err
 		}
-		internalV4Ip = internalIp.Spec.V4IPAddress
-		mac = internalIp.Spec.MacAddress
-		subnetName = internalIp.Spec.Subnet
+		internalV4Ip = internalIP.Spec.V4IPAddress
+		mac = internalIP.Spec.MacAddress
+		subnetName = internalIP.Spec.Subnet
 	}
 
 	// get eip
@@ -338,14 +337,14 @@ func (c *Controller) handleUpdateOvnFip(key string) error {
 		mac = internalVip.Status.Mac
 		subnetName = internalVip.Spec.Subnet
 	} else {
-		internalIp, err := c.ipsLister.Get(cachedFip.Spec.IPName)
+		internalIP, err := c.ipsLister.Get(cachedFip.Spec.IPName)
 		if err != nil {
 			klog.Errorf("failed to get ip %s, %v", cachedFip.Spec.IPName, err)
 			return err
 		}
-		internalV4Ip = internalIp.Spec.V4IPAddress
-		mac = internalIp.Spec.MacAddress
-		subnetName = internalIp.Spec.Subnet
+		internalV4Ip = internalIP.Spec.V4IPAddress
+		mac = internalIP.Spec.MacAddress
+		subnetName = internalIP.Spec.Subnet
 	}
 	// get eip
 	eipName := cachedFip.Spec.OvnEip

@@ -7,7 +7,7 @@ output:
 linters:
   enable:
     - gocritic
-    - gofumpt
+    #- gofumpt
     - goimports
     - misspell
     - predeclared

@@ -34,8 +34,8 @@ func (f *Framework) IPPoolClient() *IPPoolClient {
 	}
 }
 
-func (s *IPPoolClient) Get(name string) *apiv1.IPPool {
-	ippool, err := s.IPPoolInterface.Get(context.TODO(), name, metav1.GetOptions{})
+func (c *IPPoolClient) Get(name string) *apiv1.IPPool {
+	ippool, err := c.IPPoolInterface.Get(context.TODO(), name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return ippool
 }

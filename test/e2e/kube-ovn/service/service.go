@@ -40,7 +40,7 @@ var _ = framework.Describe("[group:service]", func() {
 		podName = "pod-" + framework.RandomSuffix()
 		hostPodName = "pod-" + framework.RandomSuffix()
 		subnetName = "subnet-" + framework.RandomSuffix()
-		cidr = framework.RandomCIDR(f.ClusterIpFamily)
+		cidr = framework.RandomCIDR(f.ClusterIPFamily)
 		if image == "" {
 			image = framework.GetKubeOvnImage(cs)
 		}
@@ -140,22 +140,22 @@ var _ = framework.Describe("[group:service]", func() {
 		service = serviceClient.CreateSync(service, func(s *corev1.Service) (bool, error) {
 			return len(s.Spec.ClusterIPs) != 0, nil
 		}, "cluster ips are not empty")
-		v6ClusterIp := service.Spec.ClusterIPs[1]
+		v6ClusterIP := service.Spec.ClusterIPs[1]
 		originService := service.DeepCopy()
 
 		ginkgo.By("Creating pod " + podName)
 		podBackend := framework.MakePod(namespaceName, podName, selector, nil, framework.PauseImage, nil, nil)
 		_ = podClient.CreateSync(podBackend)
 
-		checkContainsClusterIP := func(v6ClusterIp string, isContain bool) {
+		checkContainsClusterIP := func(v6ClusterIP string, isContain bool) {
 			execCmd := "kubectl ko nbctl --format=csv --data=bare --no-heading --columns=vips find Load_Balancer name=cluster-tcp-loadbalancer"
 			framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 				output, err := exec.Command("bash", "-c", execCmd).CombinedOutput()
 				framework.ExpectNoError(err)
 				framework.Logf("output is %q", output)
-				framework.Logf("v6ClusterIp is %q", v6ClusterIp)
+				framework.Logf("v6ClusterIP is %q", v6ClusterIP)
 				vips := strings.Fields(string(output))
-				prefix := util.JoinHostPort(v6ClusterIp, port) + "="
+				prefix := util.JoinHostPort(v6ClusterIP, port) + "="
 				var found bool
 				for _, vip := range vips {
 					if strings.HasPrefix(vip, prefix) {
@@ -171,11 +171,11 @@ var _ = framework.Describe("[group:service]", func() {
 
 			output, err := exec.Command("bash", "-c", execCmd).CombinedOutput()
 			framework.ExpectNoError(err)
-			framework.ExpectEqual(strings.Contains(string(output), v6ClusterIp), isContain)
+			framework.ExpectEqual(strings.Contains(string(output), v6ClusterIP), isContain)
 		}
 
 		ginkgo.By("check service from dual stack should have cluster ip ")
-		checkContainsClusterIP(v6ClusterIp, true)
+		checkContainsClusterIP(v6ClusterIP, true)
 
 		ginkgo.By("change service from dual stack to single stack ")
 		modifyService := service.DeepCopy()
@@ -183,7 +183,7 @@ var _ = framework.Describe("[group:service]", func() {
 		modifyService.Spec.IPFamilies = []corev1.IPFamily{corev1.IPv4Protocol}
 		modifyService.Spec.ClusterIPs = []string{service.Spec.ClusterIP}
 		service = serviceClient.Patch(service, modifyService)
-		checkContainsClusterIP(v6ClusterIp, false)
+		checkContainsClusterIP(v6ClusterIP, false)
 
 		ginkgo.By("recover service from single stack to dual stack ")
 		recoverService := service.DeepCopy()
@@ -191,6 +191,6 @@ var _ = framework.Describe("[group:service]", func() {
 		recoverService.Spec.IPFamilies = originService.Spec.IPFamilies
 		recoverService.Spec.ClusterIPs = originService.Spec.ClusterIPs
 		_ = serviceClient.Patch(service, recoverService)
-		checkContainsClusterIP(v6ClusterIp, true)
+		checkContainsClusterIP(v6ClusterIP, true)
 	})
 })

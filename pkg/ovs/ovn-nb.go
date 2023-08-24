@@ -41,11 +41,7 @@ func (c *ovnNbClient) CreateGatewayLogicalSwitch(lsName, lrName, provider, ip, m
 		return fmt.Errorf("create localnet logical switch port %s: %v", localnetLspName, err)
 	}
 
-	if err := c.CreateLogicalPatchPort(lsName, lrName, lspName, lrpName, ip, mac, chassises...); err != nil {
-		return err
-	}
-
-	return nil
+	return c.CreateLogicalPatchPort(lsName, lrName, lspName, lrpName, ip, mac, chassises...)
 }
 
 // CreateLogicalPatchPort create logical router port and associated logical switch port which type is router
@@ -68,11 +64,7 @@ func (c *ovnNbClient) CreateLogicalPatchPort(lsName, lrName, lspName, lrpName, i
 	}
 
 	/* create gateway chassises for logical router port */
-	if err = c.CreateGatewayChassises(lrpName, chassises...); err != nil {
-		return err
-	}
-
-	return nil
+	return c.CreateGatewayChassises(lrpName, chassises...)
 }
 
 // DeleteLogicalGatewaySwitch delete gateway switch and corresponding port
@@ -121,11 +113,7 @@ func (c *ovnNbClient) DeleteSecurityGroup(sgName string) error {
 	}
 
 	// delete pg
-	if err := c.DeletePortGroup(pgName); err != nil {
-		return err
-	}
-
-	return nil
+	return c.DeletePortGroup(pgName)
 }
 
 func (c *ovnNbClient) CreateRouterPortOp(lsName, lrName, lspName, lrpName, ip, mac string) ([]ovsdb.Operation, error) {

@@ -506,7 +506,7 @@ func (c *Controller) setIptables() error {
 		kubeovnv1.ProtocolIPv6: nodeIPv6,
 	}
 
-	centralGwNatIPs, err := c.getEgressNatIpByNode(c.config.NodeName)
+	centralGwNatIPs, err := c.getEgressNatIPByNode(c.config.NodeName)
 	if err != nil {
 		klog.Errorf("failed to get centralized subnets nat ips on node %s, %v", c.config.NodeName, err)
 		return err

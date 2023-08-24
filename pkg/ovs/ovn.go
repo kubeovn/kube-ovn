@@ -101,7 +101,7 @@ func NewOvnSbClient(ovnSbAddr string, ovnSbTimeout int) (*ovnSbClient, error) {
 
 	monitors := []client.MonitorOption{
 		client.WithTable(&ovnsb.Chassis{}),
-		// TODO:// monitor other neccessary tables in ovsdb/ovnsb/model.go
+		// TODO:// monitor other necessary tables in ovsdb/ovnsb/model.go
 	}
 	sbClient, err := ovsclient.NewOvsDbClient(ovsclient.SBDB, ovnSbAddr, dbModel, monitors)
 	if err != nil {

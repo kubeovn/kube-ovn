@@ -19,34 +19,34 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-// IpClient is a struct for IP client.
-type IpClient struct {
+// IPClient is a struct for IP client.
+type IPClient struct {
 	f *Framework
 	v1.IPInterface
 }
 
-func (f *Framework) IpClient() *IpClient {
-	return &IpClient{
+func (f *Framework) IPClient() *IPClient {
+	return &IPClient{
 		f:           f,
 		IPInterface: f.KubeOVNClientSet.KubeovnV1().IPs(),
 	}
 }
 
-func (c *IpClient) Get(name string) *apiv1.IP {
+func (c *IPClient) Get(name string) *apiv1.IP {
 	IP, err := c.IPInterface.Get(context.TODO(), name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return IP.DeepCopy()
 }
 
 // Create creates a new IP according to the framework specifications
-func (c *IpClient) Create(iP *apiv1.IP) *apiv1.IP {
+func (c *IPClient) Create(iP *apiv1.IP) *apiv1.IP {
 	iP, err := c.IPInterface.Create(context.TODO(), iP, metav1.CreateOptions{})
 	ExpectNoError(err, "Error creating IP")
 	return iP.DeepCopy()
 }
 
 // CreateSync creates a new IP according to the framework specifications, and waits for it to be ready.
-func (c *IpClient) CreateSync(iP *apiv1.IP) *apiv1.IP {
+func (c *IPClient) CreateSync(iP *apiv1.IP) *apiv1.IP {
 	iP = c.Create(iP)
 	ExpectTrue(c.WaitToBeReady(iP.Name, timeout))
 	// Get the newest IP after it becomes ready
@@ -54,7 +54,7 @@ func (c *IpClient) CreateSync(iP *apiv1.IP) *apiv1.IP {
 }
 
 // WaitToBeReady returns whether the IP is ready within timeout.
-func (c *IpClient) WaitToBeReady(name string, timeout time.Duration) bool {
+func (c *IPClient) WaitToBeReady(name string, timeout time.Duration) bool {
 	Logf("Waiting up to %v for IP %s to be ready", timeout, name)
 	for start := time.Now(); time.Since(start) < timeout; time.Sleep(poll) {
 		ip := c.Get(name)
@@ -69,21 +69,21 @@ func (c *IpClient) WaitToBeReady(name string, timeout time.Duration) bool {
 }
 
 // Patch patches the IP
-func (c *IpClient) Patch(original, modified *apiv1.IP, timeout time.Duration) *apiv1.IP {
+func (c *IPClient) Patch(original, modified *apiv1.IP, timeout time.Duration) *apiv1.IP {
 	patch, err := util.GenerateMergePatchPayload(original, modified)
 	ExpectNoError(err)
 
-	var patchedIp *apiv1.IP
+	var patchedIP *apiv1.IP
 	err = wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
 		p, err := c.IPInterface.Patch(ctx, original.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
 		if err != nil {
 			return handleWaitingAPIError(err, false, "patch IP %q", original.Name)
 		}
-		patchedIp = p
+		patchedIP = p
 		return true, nil
 	})
 	if err == nil {
-		return patchedIp.DeepCopy()
+		return patchedIP.DeepCopy()
 	}
 
 	if errors.Is(err, context.DeadlineExceeded) {
@@ -95,7 +95,7 @@ func (c *IpClient) Patch(original, modified *apiv1.IP, timeout time.Duration) *a
 }
 
 // Delete deletes a IP if the IP exists
-func (c *IpClient) Delete(name string) {
+func (c *IPClient) Delete(name string) {
 	err := c.IPInterface.Delete(context.TODO(), name, metav1.DeleteOptions{})
 	if err != nil && !apierrors.IsNotFound(err) {
 		Failf("Failed to delete IP %q: %v", name, err)
@@ -104,13 +104,13 @@ func (c *IpClient) Delete(name string) {
 
 // DeleteSync deletes the IP and waits for the IP to disappear for `timeout`.
 // If the IP doesn't disappear before the timeout, it will fail the test.
-func (c *IpClient) DeleteSync(name string) {
+func (c *IPClient) DeleteSync(name string) {
 	c.Delete(name)
 	gomega.Expect(c.WaitToDisappear(name, 2*time.Second, timeout)).To(gomega.Succeed(), "wait for ovn eip %q to disappear", name)
 }
 
 // WaitToDisappear waits the given timeout duration for the specified IP to disappear.
-func (c *IpClient) WaitToDisappear(name string, interval, timeout time.Duration) error {
+func (c *IPClient) WaitToDisappear(name string, interval, timeout time.Duration) error {
 	err := framework.Gomega().Eventually(context.Background(), framework.HandleRetry(func(ctx context.Context) (*apiv1.IP, error) {
 		ip, err := c.IPInterface.Get(ctx, name, metav1.GetOptions{})
 		if apierrors.IsNotFound(err) {
@@ -124,7 +124,7 @@ func (c *IpClient) WaitToDisappear(name string, interval, timeout time.Duration)
 	return nil
 }
 
-func MakeIp(name, ns, subnet string) *apiv1.IP {
+func MakeIP(name, ns, subnet string) *apiv1.IP {
 	// pod ip name should including: pod name and namespace
 	// node ip name: only node name
 	IP := &apiv1.IP{

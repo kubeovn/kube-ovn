@@ -32,7 +32,7 @@ var _ = framework.Describe("[group:webhook-pod]", func() {
 		subnetName = "subnet-" + framework.RandomSuffix()
 		podName = "pod-" + framework.RandomSuffix()
 		conflictName = podName + "-conflict"
-		cidr = framework.RandomCIDR(f.ClusterIpFamily)
+		cidr = framework.RandomCIDR(f.ClusterIPFamily)
 		if image == "" {
 			image = framework.GetKubeOvnImage(cs)
 		}

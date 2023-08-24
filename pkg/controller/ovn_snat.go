@@ -40,11 +40,10 @@ func (c *Controller) enqueueUpdateOvnSnatRule(oldObj, newObj interface{}) {
 		if len(newSnat.Finalizers) == 0 {
 			// avoid delete twice
 			return
-		} else {
-			klog.Infof("enqueue del ovn snat %s", key)
-			c.delOvnSnatRuleQueue.Add(key)
-			return
 		}
+		klog.Infof("enqueue del ovn snat %s", key)
+		c.delOvnSnatRuleQueue.Add(key)
+		return
 	}
 	oldSnat := oldObj.(*kubeovnv1.OvnSnatRule)
 	if oldSnat.Spec.OvnEip != newSnat.Spec.OvnEip {
@@ -217,18 +216,18 @@ func (c *Controller) handleAddOvnSnatRule(key string) error {
 		v4IpCidr = subnet.Spec.CIDRBlock
 	}
 	if cachedSnat.Spec.IPName != "" {
-		vpcPodIp, err := c.ipsLister.Get(cachedSnat.Spec.IPName)
+		vpcPodIP, err := c.ipsLister.Get(cachedSnat.Spec.IPName)
 		if err != nil {
 			klog.Errorf("failed to get pod ip %s, %v", cachedSnat.Spec.IPName, err)
 			return err
 		}
-		subnet, err := c.subnetsLister.Get(vpcPodIp.Spec.Subnet)
+		subnet, err := c.subnetsLister.Get(vpcPodIP.Spec.Subnet)
 		if err != nil {
-			klog.Errorf("failed to get vpc subnet %s, %v", vpcPodIp.Spec.Subnet, err)
+			klog.Errorf("failed to get vpc subnet %s, %v", vpcPodIP.Spec.Subnet, err)
 			return err
 		}
 		vpcName = subnet.Spec.Vpc
-		v4IpCidr = vpcPodIp.Spec.V4IPAddress
+		v4IpCidr = vpcPodIP.Spec.V4IPAddress
 	}
 
 	if v4IpCidr == "" {
@@ -329,18 +328,18 @@ func (c *Controller) handleUpdateOvnSnatRule(key string) error {
 		v4IpCidr = subnet.Spec.CIDRBlock
 	}
 	if cachedSnat.Spec.IPName != "" {
-		vpcPodIp, err := c.ipsLister.Get(cachedSnat.Spec.IPName)
+		vpcPodIP, err := c.ipsLister.Get(cachedSnat.Spec.IPName)
 		if err != nil {
 			klog.Errorf("failed to get pod ip %s, %v", cachedSnat.Spec.IPName, err)
 			return err
 		}
-		subnet, err := c.subnetsLister.Get(vpcPodIp.Spec.Subnet)
+		subnet, err := c.subnetsLister.Get(vpcPodIP.Spec.Subnet)
 		if err != nil {
-			klog.Errorf("failed to get vpc subnet %s, %v", vpcPodIp.Spec.Subnet, err)
+			klog.Errorf("failed to get vpc subnet %s, %v", vpcPodIP.Spec.Subnet, err)
 			return err
 		}
 		vpcName = subnet.Spec.Vpc
-		v4IpCidr = vpcPodIp.Spec.V4IPAddress
+		v4IpCidr = vpcPodIP.Spec.V4IPAddress
 	}
 
 	if v4IpCidr == "" {

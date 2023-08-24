@@ -33,8 +33,8 @@ func (f *Framework) OvnEipClient() *OvnEipClient {
 	}
 }
 
-func (s *OvnEipClient) Get(name string) *apiv1.OvnEip {
-	eip, err := s.OvnEipInterface.Get(context.TODO(), name, metav1.GetOptions{})
+func (c *OvnEipClient) Get(name string) *apiv1.OvnEip {
+	eip, err := c.OvnEipInterface.Get(context.TODO(), name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return eip
 }

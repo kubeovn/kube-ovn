@@ -33,8 +33,8 @@ func (f *Framework) VpcClient() *VpcClient {
 	}
 }
 
-func (s *VpcClient) Get(name string) *kubeovnv1.Vpc {
-	vpc, err := s.VpcInterface.Get(context.TODO(), name, metav1.GetOptions{})
+func (c *VpcClient) Get(name string) *kubeovnv1.Vpc {
+	vpc, err := c.VpcInterface.Get(context.TODO(), name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return vpc
 }

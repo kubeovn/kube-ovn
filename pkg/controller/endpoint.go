@@ -172,9 +172,9 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 	}
 
 	tcpLb, udpLb, sctpLb := vpc.Status.TCPLoadBalancer, vpc.Status.UDPLoadBalancer, vpc.Status.SctpLoadBalancer
-	oldTcpLb, oldUdpLb, oldSctpLb := vpc.Status.TCPSessionLoadBalancer, vpc.Status.UDPSessionLoadBalancer, vpc.Status.SctpSessionLoadBalancer
+	oldTCPLb, oldUDPLb, oldSctpLb := vpc.Status.TCPSessionLoadBalancer, vpc.Status.UDPSessionLoadBalancer, vpc.Status.SctpSessionLoadBalancer
 	if svc.Spec.SessionAffinity == v1.ServiceAffinityClientIP {
-		tcpLb, udpLb, sctpLb, oldTcpLb, oldUdpLb, oldSctpLb = oldTcpLb, oldUdpLb, oldSctpLb, tcpLb, udpLb, sctpLb
+		tcpLb, udpLb, sctpLb, oldTCPLb, oldUDPLb, oldSctpLb = oldTCPLb, oldUDPLb, oldSctpLb, tcpLb, udpLb, sctpLb
 	}
 
 	for _, settingIP := range LbIPs {
@@ -182,9 +182,9 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 			var lb, oldLb string
 			switch port.Protocol {
 			case v1.ProtocolTCP:
-				lb, oldLb = tcpLb, oldTcpLb
+				lb, oldLb = tcpLb, oldTCPLb
 			case v1.ProtocolUDP:
-				lb, oldLb = udpLb, oldUdpLb
+				lb, oldLb = udpLb, oldUDPLb
 			case v1.ProtocolSCTP:
 				lb, oldLb = sctpLb, oldSctpLb
 			}

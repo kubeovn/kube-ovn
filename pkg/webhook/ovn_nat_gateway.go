@@ -54,10 +54,9 @@ func (v *ValidatingHook) ovnEipUpdateHook(ctx context.Context, req admission.Req
 		if eipOld.Status.Ready {
 			err := fmt.Errorf("ovnEip \"%s\" is ready, not support change", eipNew.Name)
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
-		} else {
-			if err := v.ValidateOvnEip(ctx, &eipNew); err != nil {
-				return ctrlwebhook.Errored(http.StatusBadRequest, err)
-			}
+		}
+		if err := v.ValidateOvnEip(ctx, &eipNew); err != nil {
+			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		}
 	}
 	return ctrlwebhook.Allowed("by pass")
@@ -145,10 +144,9 @@ func (v *ValidatingHook) ovnDnatUpdateHook(ctx context.Context, req admission.Re
 		if dnatOld.Status.Ready {
 			err := fmt.Errorf("OvnDnatRule \"%s\" is ready, not support change", dnatNew.Name)
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
-		} else {
-			if err := v.ValidateOvnDnat(ctx, &dnatNew); err != nil {
-				return ctrlwebhook.Errored(http.StatusBadRequest, err)
-			}
+		}
+		if err := v.ValidateOvnDnat(ctx, &dnatNew); err != nil {
+			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		}
 	}
 
@@ -183,10 +181,9 @@ func (v *ValidatingHook) ovnSnatUpdateHook(ctx context.Context, req admission.Re
 		if snatOld.Status.Ready {
 			err := fmt.Errorf("OvnSnatRule \"%s\" is ready, not support change", snatNew.Name)
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
-		} else {
-			if err := v.ValidateOvnSnat(ctx, &snatNew); err != nil {
-				return ctrlwebhook.Errored(http.StatusBadRequest, err)
-			}
+		}
+		if err := v.ValidateOvnSnat(ctx, &snatNew); err != nil {
+			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		}
 	}
 
@@ -221,10 +218,9 @@ func (v *ValidatingHook) ovnFipUpdateHook(ctx context.Context, req admission.Req
 		if fipOld.Status.Ready {
 			err := fmt.Errorf("OvnFIPRule \"%s\" is ready, not support change", fipNew.Name)
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
-		} else {
-			if err := v.ValidateOvnFip(ctx, &fipNew); err != nil {
-				return ctrlwebhook.Errored(http.StatusBadRequest, err)
-			}
+		}
+		if err := v.ValidateOvnFip(ctx, &fipNew); err != nil {
+			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		}
 	}
 	return ctrlwebhook.Allowed("by pass")
@@ -301,10 +297,10 @@ func (v *ValidatingHook) ValidateOvnDnat(ctx context.Context, dnat *ovnv1.OvnDna
 	}
 
 	if port, err := strconv.Atoi(dnat.Spec.InternalPort); err != nil {
-		errMsg := fmt.Errorf("failed to parse internalIp %s: %v", dnat.Spec.InternalPort, err)
+		errMsg := fmt.Errorf("failed to parse internalIP %s: %v", dnat.Spec.InternalPort, err)
 		return errMsg
 	} else if port < 0 || port > 65535 {
-		err := fmt.Errorf("internalIp %s is not a valid port", dnat.Spec.InternalPort)
+		err := fmt.Errorf("internalIP %s is not a valid port", dnat.Spec.InternalPort)
 		return err
 	}
 
@@ -328,11 +324,7 @@ func (v *ValidatingHook) ValidateOvnSnat(ctx context.Context, snat *ovnv1.OvnSna
 	}
 	eip := &ovnv1.OvnEip{}
 	key := types.NamespacedName{Name: snat.Spec.OvnEip}
-	if err := v.cache.Get(ctx, key, eip); err != nil {
-		return err
-	}
-
-	return nil
+	return v.cache.Get(ctx, key, eip)
 }
 
 func (v *ValidatingHook) ValidateOvnFip(ctx context.Context, fip *ovnv1.OvnFip) error {
@@ -346,9 +338,5 @@ func (v *ValidatingHook) ValidateOvnFip(ctx context.Context, fip *ovnv1.OvnFip) 
 	}
 	eip := &ovnv1.OvnEip{}
 	key := types.NamespacedName{Name: fip.Spec.OvnEip}
-	if err := v.cache.Get(ctx, key, eip); err != nil {
-		return err
-	}
-
-	return nil
+	return v.cache.Get(ctx, key, eip)
 }

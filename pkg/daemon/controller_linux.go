@@ -574,7 +574,7 @@ func (c *Controller) handlePod(key string) error {
 	return nil
 }
 
-func (c *Controller) loopEncapIpCheck() {
+func (c *Controller) loopEncapIPCheck() {
 	node, err := c.nodesLister.Get(c.config.NodeName)
 	if err != nil {
 		klog.Errorf("failed to get node %s %v", c.config.NodeName, err)

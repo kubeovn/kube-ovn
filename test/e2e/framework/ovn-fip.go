@@ -33,8 +33,8 @@ func (f *Framework) OvnFipClient() *OvnFipClient {
 	}
 }
 
-func (s *OvnFipClient) Get(name string) *apiv1.OvnFip {
-	fip, err := s.OvnFipInterface.Get(context.TODO(), name, metav1.GetOptions{})
+func (c *OvnFipClient) Get(name string) *apiv1.OvnFip {
+	fip, err := c.OvnFipInterface.Get(context.TODO(), name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return fip
 }

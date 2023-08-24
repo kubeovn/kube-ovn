@@ -327,7 +327,7 @@ func (c *Controller) markAndCleanLSP() error {
 	}
 
 	// The lsp for vm pod should not be deleted if vm still exists
-	ipMap.Add(c.getVmLsps()...)
+	ipMap.Add(c.getVMLsps()...)
 
 	lsps, err := c.ovnNbClient.ListNormalLogicalSwitchPorts(c.config.EnableExternalVpc, nil)
 	if err != nil {
@@ -681,13 +681,12 @@ func (c *Controller) gcChassis() error {
 			if hostname == node.Name {
 				// node is alive, matched chassis should be alive
 				continue
-			} else {
-				// maybe node name changed, delete chassis
-				klog.Infof("gc node %s chassis %s", node.Name, chassisName)
-				if err := c.ovnSbClient.DeleteChassis(chassisName); err != nil {
-					klog.Errorf("failed to delete node %s chassis %s %v", node.Name, chassisName, err)
-					return err
-				}
+			}
+			// maybe node name changed, delete chassis
+			klog.Infof("gc node %s chassis %s", node.Name, chassisName)
+			if err := c.ovnSbClient.DeleteChassis(chassisName); err != nil {
+				klog.Errorf("failed to delete node %s chassis %s %v", node.Name, chassisName, err)
+				return err
 			}
 		}
 	}
@@ -709,10 +708,10 @@ func (c *Controller) isOVNProvided(providerName string, pod *corev1.Pod) (bool, 
 	return false, nil
 }
 
-func (c *Controller) getVmLsps() []string {
+func (c *Controller) getVMLsps() []string {
 	var vmLsps []string
 
-	if !c.config.EnableKeepVmIP {
+	if !c.config.EnableKeepVMIP {
 		return vmLsps
 	}
 
@@ -729,34 +728,32 @@ func (c *Controller) getVmLsps() []string {
 				klog.Errorf("failed to list vm in namespace %s, %v", ns, err)
 			}
 			continue
-		} else {
-			for _, vm := range vms.Items {
-				vmLsp := ovs.PodNameToPortName(vm.Name, ns.Name, util.OvnProvider)
-				vmLsps = append(vmLsps, vmLsp)
+		}
+		for _, vm := range vms.Items {
+			vmLsp := ovs.PodNameToPortName(vm.Name, ns.Name, util.OvnProvider)
+			vmLsps = append(vmLsps, vmLsp)
 
-				attachNets, err := util.ParsePodNetworkAnnotation(vm.Spec.Template.ObjectMeta.Annotations[util.AttachmentNetworkAnnotation], vm.Namespace)
-				if err != nil {
-					klog.Errorf("failed to get attachment subnet of vm %s, %v", vm.Name, err)
-					continue
-				}
-				for _, multiNet := range attachNets {
-					provider := fmt.Sprintf("%s.%s.ovn", multiNet.Name, multiNet.Namespace)
+			attachNets, err := util.ParsePodNetworkAnnotation(vm.Spec.Template.ObjectMeta.Annotations[util.AttachmentNetworkAnnotation], vm.Namespace)
+			if err != nil {
+				klog.Errorf("failed to get attachment subnet of vm %s, %v", vm.Name, err)
+				continue
+			}
+			for _, multiNet := range attachNets {
+				provider := fmt.Sprintf("%s.%s.ovn", multiNet.Name, multiNet.Namespace)
+				vmLsp := ovs.PodNameToPortName(vm.Name, ns.Name, provider)
+				vmLsps = append(vmLsps, vmLsp)
+			}
+
+			for _, network := range vm.Spec.Template.Spec.Networks {
+				if network.Multus != nil && network.Multus.NetworkName != "" {
+					items := strings.Split(network.Multus.NetworkName, "/")
+					if len(items) != 2 {
+						continue
+					}
+					provider := fmt.Sprintf("%s.%s.ovn", items[1], items[0])
 					vmLsp := ovs.PodNameToPortName(vm.Name, ns.Name, provider)
 					vmLsps = append(vmLsps, vmLsp)
 				}
-
-				for _, network := range vm.Spec.Template.Spec.Networks {
-					if network.Multus != nil && network.Multus.NetworkName != "" {
-						items := strings.Split(network.Multus.NetworkName, "/")
-						if len(items) != 2 {
-							continue
-						}
-						provider := fmt.Sprintf("%s.%s.ovn", items[1], items[0])
-						vmLsp := ovs.PodNameToPortName(vm.Name, ns.Name, provider)
-						vmLsps = append(vmLsps, vmLsp)
-					}
-				}
-
 			}
 		}
 	}
@@ -810,7 +807,7 @@ func (c *Controller) gcVpcDns() error {
 	}
 
 	klog.Infof("start to gc vpc dns")
-	vds, err := c.vpcDnsLister.List(labels.Everything())
+	vds, err := c.vpcDNSLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list vpc-dns, %v", err)
 		return err
@@ -829,7 +826,7 @@ func (c *Controller) gcVpcDns() error {
 	for _, dep := range deps.Items {
 		canFind := false
 		for _, vd := range vds {
-			name := genVpcDnsDpName(vd.Name)
+			name := genVpcDNSDpName(vd.Name)
 			if dep.Name == name {
 				canFind = true
 				break
@@ -854,7 +851,7 @@ func (c *Controller) gcVpcDns() error {
 	for _, slr := range slrs {
 		canFind := false
 		for _, vd := range vds {
-			name := genVpcDnsDpName(vd.Name)
+			name := genVpcDNSDpName(vd.Name)
 			if slr.Name == name {
 				canFind = true
 				break

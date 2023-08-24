@@ -160,7 +160,7 @@ function add_floating_ip() {
     do
         arr=(${rule//,/ })
         eip=(${arr[0]//\// })
-        internalIp=${arr[1]}
+        internalIP=${arr[1]}
         # check if already exist
         iptables-save  | grep "EXCLUSIVE_DNAT" | grep -w "\-d $eip/32" | grep  "destination" && exit 0
         exec_cmd "iptables -t nat -A EXCLUSIVE_DNAT -d $eip -j DNAT --to-destination $internalIp"
@@ -175,7 +175,7 @@ function del_floating_ip() {
     do
         arr=(${rule//,/ })
         eip=(${arr[0]//\// })
-        internalIp=${arr[1]}
+        internalIP=${arr[1]}
         # check if already exist
         iptables-save  | grep "EXCLUSIVE_DNAT" | grep -w "\-d $eip/32" | grep  "destination"
         if [ "$?" -eq 0 ];then
@@ -229,7 +229,7 @@ function add_dnat() {
         eip=(${arr[0]//\// })
         dport=${arr[1]}
         protocol=${arr[2]}
-        internalIp=${arr[3]}
+        internalIP=${arr[3]}
         internalPort=${arr[4]}
         # check if already exist
         iptables-save  | grep "SHARED_DNAT" | grep -w "\-d $eip/32" | grep "p $protocol" | grep -w "dport $dport"| grep  -w "destination $internalIp:$internalPort"  && exit 0
@@ -247,7 +247,7 @@ function del_dnat() {
         eip=(${arr[0]//\// })
         dport=${arr[1]}
         protocol=${arr[2]}
-        internalIp=${arr[3]}
+        internalIP=${arr[3]}
         internalPort=${arr[4]}
         # check if already exist
         iptables-save  | grep "SHARED_DNAT" | grep -w "\-d $eip/32" | grep "p $protocol" | grep -w "dport $dport"| grep  -w "destination $internalIp:$internalPort"

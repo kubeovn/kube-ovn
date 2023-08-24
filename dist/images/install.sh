@@ -387,7 +387,7 @@ spec:
         - jsonPath: .spec.subnet
           name: Subnet
           type: string
-        - jsonPath: .spec.lanIp
+        - jsonPath: .spec.lanIP
           name: LanIP
           type: string
       name: v1
@@ -707,7 +707,7 @@ spec:
             spec:
               type: object
               properties:
-                lanIp:
+                lanIP:
                   type: string
                 subnet:
                   type: string
@@ -1129,7 +1129,7 @@ spec:
       - jsonPath: .status.v4ip
         name: V4ip
         type: string
-      - jsonPath: .spec.internalIp
+      - jsonPath: .spec.internalIP
         name: InternalIP
         type: string
       - jsonPath: .status.v6ip
@@ -1158,7 +1158,7 @@ spec:
                   type: string
                 redo:
                   type: string
-                internalIp:
+                internalIP:
                   type: string
                 conditions:
                   type: array
@@ -1182,7 +1182,7 @@ spec:
               properties:
                 eip:
                   type: string
-                internalIp:
+                internalIP:
                   type: string
 ---
 apiVersion: apiextensions.k8s.io/v1
@@ -1218,7 +1218,7 @@ spec:
       - jsonPath: .status.v6ip
         name: V6ip
         type: string
-      - jsonPath: .spec.internalIp
+      - jsonPath: .spec.internalIP
         name: InternalIP
         type: string
       - jsonPath: .spec.externalPort
@@ -1252,7 +1252,7 @@ spec:
                   type: string
                 protocol:
                   type: string
-                internalIp:
+                internalIP:
                   type: string
                 internalPort:
                   type: string
@@ -1284,7 +1284,7 @@ spec:
                   type: string
                 protocol:
                   type: string
-                internalIp:
+                internalIP:
                   type: string
                 internalPort:
                   type: string

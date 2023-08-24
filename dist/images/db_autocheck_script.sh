@@ -30,7 +30,7 @@ restoreNB(){
   echo "first nodeIP is $firstIP"
 
   i=0
-  for nodeIp in ${nodeIps[@]}
+  for nodeIP in ${nodeIps[@]}
   do
     for pod in $podNames
     do

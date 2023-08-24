@@ -45,7 +45,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 		podName = "pod-" + framework.RandomSuffix()
 		deployName = "deploy-" + framework.RandomSuffix()
 		stsName = "sts-" + framework.RandomSuffix()
-		cidr = framework.RandomCIDR(f.ClusterIpFamily)
+		cidr = framework.RandomCIDR(f.ClusterIPFamily)
 
 		ginkgo.By("Creating subnet " + subnetName)
 		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, []string{namespaceName})

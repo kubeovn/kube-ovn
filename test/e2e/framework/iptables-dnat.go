@@ -33,8 +33,8 @@ func (f *Framework) IptablesDnatClient() *IptablesDnatClient {
 	}
 }
 
-func (s *IptablesDnatClient) Get(name string) *apiv1.IptablesDnatRule {
-	dnat, err := s.IptablesDnatRuleInterface.Get(context.TODO(), name, metav1.GetOptions{})
+func (c *IptablesDnatClient) Get(name string) *apiv1.IptablesDnatRule {
+	dnat, err := c.IptablesDnatRuleInterface.Get(context.TODO(), name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return dnat
 }

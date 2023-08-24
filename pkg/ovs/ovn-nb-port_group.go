@@ -241,8 +241,8 @@ func (c *ovnNbClient) portGroupUpdatePortOp(pgName string, lspUUIDs []string, op
 	return c.portGroupOp(pgName, mutation)
 }
 
-// portGroupUpdateAclOp create operations add acl to or delete acl from port group
-func (c *ovnNbClient) portGroupUpdateAclOp(pgName string, aclUUIDs []string, op ovsdb.Mutator) ([]ovsdb.Operation, error) {
+// portGroupUpdateACLOp create operations add acl to or delete acl from port group
+func (c *ovnNbClient) portGroupUpdateACLOp(pgName string, aclUUIDs []string, op ovsdb.Mutator) ([]ovsdb.Operation, error) {
 	if len(aclUUIDs) == 0 {
 		return nil, nil
 	}

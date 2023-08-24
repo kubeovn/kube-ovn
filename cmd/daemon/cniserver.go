@@ -174,9 +174,8 @@ func initChassisAnno(cfg *daemon.Configuration) error {
 	if annoChassesName, ok := node.Annotations[util.ChassisAnnotation]; ok {
 		if annoChassesName == chassesName {
 			return nil
-		} else {
-			klog.Infof("chassis id changed, old: %s, new: %s", annoChassesName, chassesName)
 		}
+		klog.Infof("chassis id changed, old: %s, new: %s", annoChassesName, chassesName)
 	}
 	node.Annotations[util.ChassisAnnotation] = chassesName
 	patchPayloadTemplate :=
