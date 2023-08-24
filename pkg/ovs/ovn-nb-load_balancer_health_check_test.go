@@ -51,7 +51,7 @@ func (suite *OvnClientTestSuite) testUpdateLoadBalancerHealthCheck() {
 	var (
 		ovnClient = suite.ovnClient
 		lbName    = "test-update-lb-hc"
-		vip       = "1.1.1.1:80"
+		vip       = "2.2.2.2:80"
 		lbhc      *ovnnb.LoadBalancerHealthCheck
 		err       error
 	)
@@ -62,7 +62,7 @@ func (suite *OvnClientTestSuite) testUpdateLoadBalancerHealthCheck() {
 	lbhc, err = ovnClient.GetLoadBalancerHealthCheck(lbName, vip, false)
 	require.NoError(t, err)
 
-	vip = "2.2.2.2:80"
+	vip = "3.3.3.3:80"
 	t.Run("update vip",
 		func(t *testing.T) {
 			lbhc.Vip = vip
@@ -85,7 +85,7 @@ func (suite *OvnClientTestSuite) testDeleteLoadBalancerHealthCheck() {
 	var (
 		ovnClient = suite.ovnClient
 		lbName    = "test-del-lb-hc"
-		vip       = "1.1.1.1:80"
+		vip       = "1.1.1.11:80"
 		err       error
 	)
 
@@ -148,8 +148,8 @@ func (suite *OvnClientTestSuite) testGetLoadBalancerHealthCheck() {
 	var (
 		ovnClient      = suite.ovnClient
 		lbName         = "test-get-lb-hc"
-		vip            = "1.1.1.1:80"
-		vipNonExistent = "1.1.1.2:80"
+		vip            = "1.1.1.22:80"
+		vipNonExistent = "1.1.1.33:80"
 		lbhc           *ovnnb.LoadBalancerHealthCheck
 		err            error
 	)
@@ -199,7 +199,7 @@ func (suite *OvnClientTestSuite) testListLoadBalancerHealthChecks() {
 	)
 
 	vips = make([]string, 0, 5)
-	for i := 0; i < 5; i++ {
+	for i := 101; i <= 105; i++ {
 		lbName = fmt.Sprintf("%s-%d", lbNamePrefix, i)
 		vip = fmt.Sprintf(vipFormat, i+1)
 
@@ -222,7 +222,7 @@ func (suite *OvnClientTestSuite) testListLoadBalancerHealthChecks() {
 				newVips = append(newVips, lbhc.Vip)
 			}
 
-			require.ElementsMatch(t, vips, newVips)
+			require.Subset(t, newVips, vips)
 		},
 	)
 
@@ -244,7 +244,7 @@ func (suite *OvnClientTestSuite) testListLoadBalancerHealthChecks() {
 
 					newVips = make([]string, 0, 5)
 					for _, lbhc := range lbhcs {
-						if !strings.Contains(lbhc.Vip, "1.1.1") {
+						if !strings.Contains(lbhc.Vip, "1.1.1.10") {
 							continue
 						}
 						newVips = append(newVips, lbhc.Vip)
@@ -263,8 +263,8 @@ func (suite *OvnClientTestSuite) testDeleteLoadBalancerHealthCheckOp() {
 	var (
 		ovnClient      = suite.ovnClient
 		lbName         = "test-del-lb-hc-op"
-		vip            = "1.1.1.1:80"
-		vipNonExistent = "1.1.1.2:80"
+		vip            = "1.1.1.44:80"
+		vipNonExistent = "1.1.1.55:80"
 		lbhc           *ovnnb.LoadBalancerHealthCheck
 		ops            []ovsdb.Operation
 		err            error

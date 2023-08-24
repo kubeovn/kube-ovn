@@ -53,8 +53,8 @@ func (suite *OvnClientTestSuite) testUpdateLoadBalancer() {
 	t.Run("update vips", func(t *testing.T) {
 		lb.Vips = map[string]string{
 			"10.96.0.1:443":           "192.168.20.3:6443",
-			"10.107.43.237:8080":      "10.244.0.15:8080,10.244.0.16:8080,10.244.0.17:8080",
-			"[fd00:10:96::e82f]:8080": "[fc00::af4:f]:8080,[fc00::af4:10]:8080,[fc00::af4:11]:8080",
+			"10.107.43.238:8080":      "10.244.0.15:8080,10.244.0.16:8080,10.244.0.17:8080",
+			"[fd00:10:96::e83f]:8080": "[fc00::af4:f]:8080,[fc00::af4:10]:8080,[fc00::af4:11]:8080",
 		}
 
 		err := ovnClient.UpdateLoadBalancer(lb, &lb.Vips)
@@ -65,8 +65,8 @@ func (suite *OvnClientTestSuite) testUpdateLoadBalancer() {
 
 		require.Equal(t, map[string]string{
 			"10.96.0.1:443":           "192.168.20.3:6443",
-			"10.107.43.237:8080":      "10.244.0.15:8080,10.244.0.16:8080,10.244.0.17:8080",
-			"[fd00:10:96::e82f]:8080": "[fc00::af4:f]:8080,[fc00::af4:10]:8080,[fc00::af4:11]:8080",
+			"10.107.43.238:8080":      "10.244.0.15:8080,10.244.0.16:8080,10.244.0.17:8080",
+			"[fd00:10:96::e83f]:8080": "[fc00::af4:f]:8080,[fc00::af4:10]:8080,[fc00::af4:11]:8080",
 		}, lb.Vips)
 	})
 
@@ -346,7 +346,7 @@ func (suite *OvnClientTestSuite) testLoadBalancerAddVip() {
 	require.NoError(t, err)
 
 	vips = map[string]string{
-		"10.96.0.1:443":           "192.168.20.3:6443",
+		"10.96.0.2:443":           "192.168.20.3:6443",
 		"10.107.43.237:8080":      "10.244.0.15:8080,10.244.0.16:8080,10.244.0.17:8080",
 		"[fd00:10:96::e82f]:8080": "[fc00::af4:a]:8080,[fc00::af4:b]:8080,[fc00::af4:c]:8080",
 	}
@@ -369,7 +369,7 @@ func (suite *OvnClientTestSuite) testLoadBalancerAddVip() {
 	)
 
 	vips = map[string]string{
-		"10.96.0.1:443":   "192.168.20.3:6443,192.168.20.4:6443",
+		"10.96.0.2:443":   "192.168.20.3:6443,192.168.20.4:6443",
 		"10.96.0.112:143": "192.168.120.3:6443,192.168.120.4:6443",
 	}
 
@@ -410,9 +410,9 @@ func (suite *OvnClientTestSuite) testLoadBalancerDeleteVip() {
 	require.NoError(t, err)
 
 	vips = map[string]string{
-		"10.96.0.1:443":           "192.168.20.3:6443",
-		"10.107.43.237:8080":      "10.244.0.15:8080,10.244.0.16:8080,10.244.0.17:8080",
-		"[fd00:10:96::e82f]:8080": "[fc00::af4:a]:8080,[fc00::af4:b]:8080,[fc00::af4:c]:8080",
+		"10.96.0.3:443":           "192.168.20.3:6443",
+		"10.107.43.239:8080":      "10.244.0.15:8080,10.244.0.16:8080,10.244.0.17:8080",
+		"[fd00:10:96::e84f]:8080": "[fc00::af4:a]:8080,[fc00::af4:b]:8080,[fc00::af4:c]:8080",
 	}
 
 	for vip, backends := range vips {
@@ -421,8 +421,8 @@ func (suite *OvnClientTestSuite) testLoadBalancerDeleteVip() {
 	}
 
 	deletedVips = []string{
-		"10.96.0.1:443",
-		"[fd00:10:96::e82f]:8080",
+		"10.96.0.3:443",
+		"[fd00:10:96::e84f]:8080",
 		"10.96.0.100:1443", // non-existent vip
 	}
 
@@ -456,9 +456,9 @@ func (suite *OvnClientTestSuite) testLoadBalancerAddIPPortMapping() {
 	require.NoError(t, err)
 
 	vips = map[string]string{
-		"10.96.0.1:443":           "192.168.20.3:6443",
-		"10.107.43.237:8080":      "10.244.0.15:8080,10.244.0.16:8080,10.244.0.17:8080",
-		"[fd00:10:96::e82f]:8080": "[fc00::af4:a]:8080,[fc00::af4:b]:8080,[fc00::af4:c]:8080",
+		"10.96.0.4:443":           "192.168.20.3:6443",
+		"10.107.43.240:8080":      "10.244.0.15:8080,10.244.0.16:8080,10.244.0.17:8080",
+		"[fd00:10:96::e85f]:8080": "[fc00::af4:a]:8080,[fc00::af4:b]:8080,[fc00::af4:c]:8080",
 	}
 	t.Run("add new ip port mappings to load balancer",
 		func(t *testing.T) {
@@ -497,7 +497,7 @@ func (suite *OvnClientTestSuite) testLoadBalancerAddIPPortMapping() {
 	)
 
 	vips = map[string]string{
-		"10.96.0.1:443":   "192.168.20.3:6443,192.168.20.4:6443",
+		"10.96.0.4:443":   "192.168.20.3:6443,192.168.20.4:6443",
 		"10.96.0.112:143": "192.168.120.3:6443,192.168.120.4:6443",
 	}
 	t.Run("add new ip port mappings to load balancer repeatedly",
@@ -556,9 +556,9 @@ func (suite *OvnClientTestSuite) testLoadBalancerDeleteIPPortMapping() {
 	require.NoError(t, err)
 
 	vips = map[string]string{
-		"10.96.0.1:443":           "192.168.20.3:6443",
-		"10.107.43.237:8080":      "10.244.0.15:8080,10.244.0.16:8080,10.244.0.17:8080",
-		"[fd00:10:96::e82f]:8080": "[fc00::af4:a]:8080,[fc00::af4:b]:8080,[fc00::af4:c]:8080",
+		"10.96.0.5:443":           "192.168.20.3:6443",
+		"10.107.43.241:8080":      "10.244.0.15:8080,10.244.0.16:8080,10.244.0.17:8080",
+		"[fd00:10:96::e86f]:8080": "[fc00::af4:a]:8080,[fc00::af4:b]:8080,[fc00::af4:c]:8080",
 	}
 	t.Run("delete ip port mappings from load balancer",
 		func(t *testing.T) {
@@ -616,7 +616,7 @@ func (suite *OvnClientTestSuite) testLoadBalancerDeleteIPPortMapping() {
 	)
 
 	vips = map[string]string{
-		"10.96.0.1:443":   "192.168.20.3:6443,192.168.20.4:6443",
+		"10.96.0.5:443":   "192.168.20.3:6443,192.168.20.4:6443",
 		"10.96.0.112:143": "192.168.120.3:6443,192.168.120.4:6443",
 	}
 	t.Run("delete ip port mappings from load balancer repeatedly",
@@ -656,7 +656,7 @@ func (suite *OvnClientTestSuite) testLoadBalancerDeleteIPPortMapping() {
 	)
 
 	vips = map[string]string{
-		"[fd00:10:96::e82f]:8080": "",
+		"[fd00:10:96::e86f]:8080": "",
 	}
 	t.Run("delete ip port mappings from load balancer repeatedly",
 		func(t *testing.T) {
@@ -713,7 +713,7 @@ func (suite *OvnClientTestSuite) testLoadBalancerUpdateIPPortMapping() {
 
 	var (
 		ovnClient      = suite.ovnClient
-		lbName         = "test-lb-del-ip-port-mapping"
+		lbName         = "test-lb-update-ip-port-mapping"
 		vips, mappings map[string]string
 		lb             *ovnnb.LoadBalancer
 		err            error
@@ -726,9 +726,9 @@ func (suite *OvnClientTestSuite) testLoadBalancerUpdateIPPortMapping() {
 	require.NoError(t, err)
 
 	vips = map[string]string{
-		"10.96.0.1:443":           "192.168.20.3:6443",
-		"10.107.43.237:8080":      "10.244.0.15:8080,10.244.0.16:8080,10.244.0.17:8080",
-		"[fd00:10:96::e82f]:8080": "[fc00::af4:a]:8080,[fc00::af4:b]:8080,[fc00::af4:c]:8080",
+		"10.96.0.6:443":           "192.168.20.3:6443",
+		"10.107.43.242:8080":      "10.244.0.15:8080,10.244.0.16:8080,10.244.0.17:8080",
+		"[fd00:10:96::e87f]:8080": "[fc00::af4:a]:8080,[fc00::af4:b]:8080,[fc00::af4:c]:8080",
 	}
 	t.Run("add ip port mappings from load balancer",
 		func(t *testing.T) {
@@ -767,7 +767,7 @@ func (suite *OvnClientTestSuite) testLoadBalancerUpdateIPPortMapping() {
 	)
 
 	vips = map[string]string{
-		"10.96.0.1:443": "192.168.20.4:6443",
+		"10.96.0.6:443": "192.168.20.4:6443",
 	}
 	t.Run("update ip port mappings from load balancer repeatedly",
 		func(t *testing.T) {
