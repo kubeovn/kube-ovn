@@ -3020,10 +3020,15 @@ rules:
       - coordination.k8s.io
     resources:
       - leases
+    verbs:
+      - create
+  - apiGroups:
+      - coordination.k8s.io
+    resources:
+      - leases
     resourceNames:
       - kube-ovn-controller
     verbs:
-      - create
       - delete
       - update
       - patch
