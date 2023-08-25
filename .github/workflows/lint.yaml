@@ -28,6 +28,10 @@ jobs:
           check-latest: true
           cache: false
 
+      - name: gofumpt
+        run: |
+          make gofumpt
+
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v3
         with:
