@@ -134,7 +134,7 @@ func CmdMain() {
 }
 
 func checkPermission(config *controller.Configuration) error {
-	resources := []string{"vpcs", "subnets", "ips", "vlans", "vpc-nat-gateways"}
+	resources := []string{"vpcs", "subnets", "ips", "provider-networks", "vlans", "vpc-nat-gateways"}
 	for _, res := range resources {
 		ssar := &v1.SelfSubjectAccessReview{
 			Spec: v1.SelfSubjectAccessReviewSpec{

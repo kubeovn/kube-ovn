@@ -26,7 +26,6 @@ jobs:
           - master
           - release-1.12
           - release-1.11
-          - release-1.10
           - release-1.9
         ip-family:
           - ipv4
@@ -116,7 +115,6 @@ jobs:
           - master
           - release-1.12
           - release-1.11
-          - release-1.10
           - release-1.9
         ip-family:
           - ipv4
@@ -199,7 +197,6 @@ jobs:
           - master
           - release-1.12
           - release-1.11
-          - release-1.10
           - release-1.9
         ip-family:
           - ipv4
@@ -282,7 +279,6 @@ jobs:
           - master
           - release-1.12
           - release-1.11
-          - release-1.10
           - release-1.9
         ip-family:
           - ipv4
@@ -342,7 +338,6 @@ jobs:
           - master
           - release-1.12
           - release-1.11
-          - release-1.10
           - release-1.9
         ip-family:
           - ipv4
@@ -426,7 +421,6 @@ jobs:
           - master
           - release-1.12
           - release-1.11
-          - release-1.10
           - release-1.9
     steps:
       - uses: actions/checkout@v3
@@ -501,7 +495,6 @@ jobs:
           - master
           - release-1.12
           - release-1.11
-          - release-1.10
           - release-1.9
     steps:
       - uses: actions/checkout@v3
@@ -553,7 +546,6 @@ jobs:
           - master
           - release-1.12
           - release-1.11
-          - release-1.10
           - release-1.9
     steps:
       - uses: actions/checkout@v3
@@ -607,7 +599,6 @@ jobs:
           - master
           - release-1.12
           - release-1.11
-          - release-1.10
           - release-1.9
     steps:
       - uses: actions/checkout@v3
@@ -876,7 +867,6 @@ jobs:
           - master
           - release-1.12
           - release-1.11
-          - release-1.10
           - release-1.9
     steps:
       - uses: actions/checkout@v3
@@ -927,7 +917,6 @@ jobs:
           - master
           - release-1.12
           - release-1.11
-          - release-1.10
           - release-1.9
     steps:
       - uses: actions/checkout@v3
@@ -1015,7 +1004,6 @@ jobs:
           - master
           - release-1.12
           - release-1.11
-          - release-1.10
           - release-1.9
         ssl:
           - "true"
@@ -1106,8 +1094,11 @@ jobs:
       matrix:
         case:
           - release-1.9 => release-1.11
+          - release-1.9 => release-1.12
           - release-1.9 => master
+          - release-1.11 => release-1.12
           - release-1.11 => master
+          - release-1.12 => master
     steps:
       - uses: actions/checkout@v3
       - uses: azure/setup-helm@v3

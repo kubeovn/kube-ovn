@@ -2793,6 +2793,7 @@ metadata:
     rbac.authorization.k8s.io/system-only: "true"
   name: system:ovn-ovs
 rules:
+  # ovn-central liveness/readiness probe
   - apiGroups:
       - ""
     resources:
@@ -2800,15 +2801,15 @@ rules:
     verbs:
       - get
       - patch
+  # ovn-central liveness/readiness probe
   - apiGroups:
       - ""
-      - networking.k8s.io
-      - apps
     resources:
       - services
       - endpoints
     verbs:
       - get
+  # ovs-ovn start-ovs.sh
   - apiGroups:
       - apps
     resources:
@@ -2889,7 +2890,46 @@ rules:
       - qos-policies
       - qos-policies/status
     verbs:
-      - "*"
+      - get
+      - list
+      - watch
+      - patch
+      - update
+  - apiGroups:
+      - "kubeovn.io"
+    resources:
+      - vpcs
+      - vpc-nat-gateways
+      - subnets
+      - ips
+      - vips
+      - vlans
+      - provider-networks
+      - iptables-eips
+      - iptables-fip-rules
+      - ovn-eips
+      # VPC DNS
+      - switch-lb-rules
+    verbs:
+      - create
+  - apiGroups:
+      - "kubeovn.io"
+    resources:
+      # sync external VPC
+      - vpcs
+      # gc VPC
+      - vpc-nat-gateways
+      - ips
+      # gc VPC DNS
+      - switch-lb-rules
+      # delete Pod
+      - iptables-eips
+      # delete Pod
+      - iptables-fip-rules
+      # delete VPC or disable VPC external
+      - ovn-eips
+    verbs:
+      - delete
   - apiGroups:
       - ""
     resources:
@@ -2899,7 +2939,6 @@ rules:
       - nodes
       - configmaps
     verbs:
-      - create
       - get
       - list
       - watch
@@ -2912,35 +2951,26 @@ rules:
     verbs:
       - get
   - apiGroups:
-      - ""
       - networking.k8s.io
-      - apps
     resources:
       - networkpolicies
-      - daemonsets
     verbs:
       - get
       - list
       - watch
   - apiGroups:
       - ""
-      - apps
     resources:
       - services/status
     verbs:
       - update
   - apiGroups:
       - ""
-      - networking.k8s.io
-      - apps
-      - extensions
     resources:
       - services
       - endpoints
-      - statefulsets
-      - deployments
-      - deployments/scale
     verbs:
+      # switch LB rule needs create/delete/update
       - create
       - delete
       - update
@@ -2948,6 +2978,36 @@ rules:
       - get
       - list
       - watch
+  - apiGroups:
+      - apps
+    resources:
+      - statefulsets
+      - deployments
+      - deployments/scale
+    verbs:
+      - update
+      - patch
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - apps
+    resources:
+      # VPC NAT gateway
+      - statefulsets
+      # LB Service
+      - deployments
+    verbs:
+      - create
+  - apiGroups:
+      - apps
+    resources:
+      # VPC NAT gateway
+      - statefulsets
+      # delete LB Service
+      - deployments
+    verbs:
+      - delete
   - apiGroups:
       - ""
     resources:
@@ -2960,8 +3020,15 @@ rules:
       - coordination.k8s.io
     resources:
       - leases
+    resourceNames:
+      - kube-ovn-controller
     verbs:
-      - "*"
+      - create
+      - delete
+      - update
+      - patch
+      - get
+      - watch
   - apiGroups:
       - "kubevirt.io"
     resources:
@@ -3025,6 +3092,13 @@ rules:
       - list
       - patch
       - watch
+  # external-gateway-config
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+    verbs:
+      - get
   - apiGroups:
       - ""
     resources:
@@ -3072,11 +3146,11 @@ rules:
       - get
       - list
   - apiGroups:
-      - ""
-      - networking.k8s.io
       - apps
     resources:
       - daemonsets
+    resourceNames:
+      - kube-ovn-pinger
     verbs:
       - get
 ---
