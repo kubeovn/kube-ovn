@@ -17,7 +17,8 @@ import (
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 )
 
-var vpcExternalNet = "ovn-vpc-external-network"
+// #nosec G101
+const vpcExternalNet = "ovn-vpc-external-network"
 
 const (
 	IPv4Multicast        = "224.0.0.0/4"
