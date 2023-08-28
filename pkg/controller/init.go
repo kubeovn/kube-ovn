@@ -316,15 +316,6 @@ func (c *Controller) InitIPAM() error {
 		}
 	}
 
-	result, err := c.ovnLegacyClient.CustomFindEntity("logical_switch_port", []string{"name"}, `external-ids:vendor{<}""`)
-	if err != nil {
-		klog.Errorf("failed to find logical switch port without external-ids:vendor: %v", err)
-	}
-	lspWithoutVendor := make(map[string]struct{}, len(result))
-	for _, lsp := range result {
-		lspWithoutVendor[lsp["name"][0]] = struct{}{}
-	}
-
 	pods, err := c.podsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list pods: %v", err)
@@ -392,12 +383,6 @@ func (c *Controller) InitIPAM() error {
 						klog.Errorf("failed to create/update ips CR %s.%s with ip address %s: %v", podName, pod.Namespace, ip, err)
 					}
 				}
-
-				if _, ok := lspWithoutVendor[portName]; ok {
-					if err = c.initAppendLspExternalIds(portName, pod); err != nil {
-						klog.Errorf("failed to append external-ids for logical switch port %s: %v", portName, err)
-					}
-				}
 				// Append ExternalIds is added in v1.7, used for upgrading from v1.6.3. It should be deleted now since v1.7 is not used anymore.
 			}
 		}
@@ -420,12 +405,6 @@ func (c *Controller) InitIPAM() error {
 			}
 			if v4IP != "" && v6IP != "" {
 				node.Annotations[util.IpAddressAnnotation] = util.GetStringIP(v4IP, v6IP)
-			}
-
-			if _, ok := lspWithoutVendor[portName]; ok {
-				if err = c.initAppendLspExternalIds(portName, nil); err != nil {
-					klog.Errorf("failed to append external-ids for logical switch port %s: %v", portName, err)
-				}
 			}
 		}
 	}
@@ -698,21 +677,6 @@ func (c *Controller) initNodeRoutes() error {
 				klog.Errorf("failed to migrate IPv6 route for node %s: %v", node.Name, err)
 			}
 		}
-	}
-
-	return nil
-}
-
-func (c *Controller) initAppendLspExternalIds(portName string, pod *v1.Pod) error {
-	externalIDs := make(map[string]string, 2)
-	externalIDs["vendor"] = util.CniTypeName
-	if pod != nil {
-		externalIDs["pod"] = fmt.Sprintf("%s/%s", pod.Namespace, pod.Name)
-	}
-
-	if err := c.ovnLegacyClient.SetLspExternalIds(portName, externalIDs); err != nil {
-		klog.Errorf("failed to set lsp external_ids for port %s: %v", portName, err)
-		return err
 	}
 
 	return nil
