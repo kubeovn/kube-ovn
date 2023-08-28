@@ -121,6 +121,8 @@ func (c *ovnSbClient) GetChassisByHost(nodeName string) (*ovnsb.Chassis, error) 
 		klog.Error(err)
 		return nil, err
 	}
+
+	// #nosec G602
 	return &chassisList[0], nil
 }
 
