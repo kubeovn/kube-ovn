@@ -274,9 +274,9 @@ func (c *Controller) handleDeleteService(service *vpcService) error {
 		if found {
 			continue
 		}
-
+		ignoreHealthCheck := true
 		for _, lb := range vpcLB {
-			if err := c.ovnNbClient.LoadBalancerDeleteVip(lb, vip); err != nil {
+			if err := c.ovnNbClient.LoadBalancerDeleteVip(lb, vip, ignoreHealthCheck); err != nil {
 				klog.Errorf("failed to delete vip %s from LB %s: %v", vip, lb, err)
 				return err
 			}
@@ -366,8 +366,9 @@ func (c *Controller) handleUpdateService(key string) error {
 			return err
 		}
 		klog.V(3).Infof("existing vips of LB %s: %v", lbName, lb.Vips)
+		ignoreHealthCheck := true
 		for _, vip := range svcVips {
-			if err := c.ovnNbClient.LoadBalancerDeleteVip(oLbName, vip); err != nil {
+			if err := c.ovnNbClient.LoadBalancerDeleteVip(oLbName, vip, ignoreHealthCheck); err != nil {
 				klog.Errorf("failed to delete vip %s from LB %s: %v", vip, oLbName, err)
 				return err
 			}
@@ -382,7 +383,7 @@ func (c *Controller) handleUpdateService(key string) error {
 		for vip := range lb.Vips {
 			if ip := parseVipAddr(vip); (util.ContainsString(ips, ip) && !util.IsStringIn(vip, svcVips)) || util.ContainsString(ipsToDel, ip) {
 				klog.Infof("remove stale vip %s from LB %s", vip, lb)
-				if err := c.ovnNbClient.LoadBalancerDeleteVip(lbName, vip); err != nil {
+				if err := c.ovnNbClient.LoadBalancerDeleteVip(lbName, vip, ignoreHealthCheck); err != nil {
 					klog.Errorf("failed to delete vip %s from LB %s: %v", vip, lb, err)
 					return err
 				}
@@ -402,7 +403,7 @@ func (c *Controller) handleUpdateService(key string) error {
 		for vip := range oLb.Vips {
 			if ip := parseVipAddr(vip); util.ContainsString(ips, ip) || util.ContainsString(ipsToDel, ip) {
 				klog.Infof("remove stale vip %s from LB %s", vip, oLbName)
-				if err = c.ovnNbClient.LoadBalancerDeleteVip(oLbName, vip); err != nil {
+				if err = c.ovnNbClient.LoadBalancerDeleteVip(oLbName, vip, ignoreHealthCheck); err != nil {
 					klog.Errorf("failed to delete vip %s from LB %s: %v", vip, oLbName, err)
 					return err
 				}

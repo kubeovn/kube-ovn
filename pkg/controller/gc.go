@@ -448,10 +448,12 @@ func (c *Controller) gcLoadBalancer() error {
 	tcpSessionVips := strset.NewWithSize(len(svcs) * 2)
 	udpSessionVips := strset.NewWithSize(len(svcs) * 2)
 	sctpSessionVips := strset.NewWithSize(len(svcs) * 2)
+	ignoreHealthCheck := true
 	for _, svc := range svcs {
 		ips := util.ServiceClusterIPs(*svc)
 		if v, ok := svc.Annotations[util.SwitchLBRuleVipsAnnotation]; ok {
 			ips = strings.Split(v, ",")
+			ignoreHealthCheck = false
 		}
 
 		for _, ip := range ips {
@@ -509,7 +511,7 @@ func (c *Controller) gcLoadBalancer() error {
 
 			for vip := range lb.Vips {
 				if !svcVips.Has(vip) {
-					if err = c.ovnNbClient.LoadBalancerDeleteVip(lbName, vip); err != nil {
+					if err = c.ovnNbClient.LoadBalancerDeleteVip(lbName, vip, ignoreHealthCheck); err != nil {
 						klog.Errorf("failed to delete vip %s from LB %s: %v", vip, lbName, err)
 						return err
 					}

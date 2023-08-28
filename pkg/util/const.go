@@ -270,4 +270,6 @@ const (
 	TProxyOutputMask     = 0x90003
 	TProxyPreroutingMark = 0x90004
 	TProxyPreroutingMask = 0x90004
+
+	LB_MAP_Templ = "%s.%s:%s" // CRD, vpc, subnet gw
 )

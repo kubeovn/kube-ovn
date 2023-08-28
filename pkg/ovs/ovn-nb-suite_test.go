@@ -354,6 +354,47 @@ func (suite *OvnClientTestSuite) Test_SetLoadBalancerAffinityTimeout() {
 	suite.testSetLoadBalancerAffinityTimeout()
 }
 
+func (suite *OvnClientTestSuite) Test_LoadBalancerAddIPPortMapping() {
+	suite.testLoadBalancerAddIPPortMapping()
+}
+
+func (suite *OvnClientTestSuite) Test_LoadBalancerDeleteIPPortMapping() {
+	suite.testLoadBalancerDeleteIPPortMapping()
+}
+
+func (suite *OvnClientTestSuite) Test_LoadBalancerWithHealthCheck() {
+	suite.testLoadBalancerWithHealthCheck()
+}
+
+/* load_balancer health check unit test */
+func (suite *OvnClientTestSuite) Test_CreateLoadBalancerHealthCheck() {
+	suite.testCreateLoadBalancerHealthCheck()
+}
+
+func (suite *OvnClientTestSuite) Test_UpdateLoadBalancerHealthCheck() {
+	suite.testUpdateLoadBalancerHealthCheck()
+}
+
+func (suite *OvnClientTestSuite) Test_DeleteLoadBalancerHealthCheck() {
+	suite.testDeleteLoadBalancerHealthCheck()
+}
+
+func (suite *OvnClientTestSuite) Test_DeleteLoadBalancerHealthChecks() {
+	suite.testDeleteLoadBalancerHealthChecks()
+}
+
+func (suite *OvnClientTestSuite) Test_GetLoadBalancerHealthCheck() {
+	suite.testGetLoadBalancerHealthCheck()
+}
+
+func (suite *OvnClientTestSuite) Test_ListLoadBalancerHealthChecks() {
+	suite.testListLoadBalancerHealthChecks()
+}
+
+func (suite *OvnClientTestSuite) Test_DeleteLoadBalancerHealthCheckOp() {
+	suite.testDeleteLoadBalancerHealthCheckOp()
+}
+
 /* port_group unit test */
 func (suite *OvnClientTestSuite) Test_CreatePortGroup() {
 	suite.testCreatePortGroup()
@@ -741,6 +782,7 @@ func newNbClient(addr string, timeout int) (client.Client, error) {
 		client.WithTable(&ovnnb.DHCPOptions{}),
 		client.WithTable(&ovnnb.GatewayChassis{}),
 		client.WithTable(&ovnnb.LoadBalancer{}),
+		client.WithTable(&ovnnb.LoadBalancerHealthCheck{}),
 		client.WithTable(&ovnnb.LogicalRouterPolicy{}),
 		client.WithTable(&ovnnb.LogicalRouterPort{}),
 		client.WithTable(&ovnnb.LogicalRouterStaticRoute{}),

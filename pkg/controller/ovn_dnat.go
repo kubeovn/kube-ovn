@@ -583,15 +583,36 @@ func (c *Controller) patchOvnDnatStatus(key, vpcName, v4Eip, podIp, podMac strin
 }
 
 func (c *Controller) AddDnatRule(vpcName, dnatName, externalIp, internalIp, externalPort, internalPort, protocol string) error {
-	externalEndpoint := net.JoinHostPort(externalIp, externalPort)
-	internalEndpoint := net.JoinHostPort(internalIp, internalPort)
+	var (
+		externalEndpoint   = net.JoinHostPort(externalIp, externalPort)
+		internalEndpoint   = net.JoinHostPort(internalIp, internalPort)
+		healthCheckVipMaps = make(map[string]string)
+	)
+
+	vpc, err := c.vpcsLister.Get(vpcName)
+	if err != nil {
+		klog.Errorf("failed to get vpc %s of lb, %v", vpcName, err)
+		return err
+	}
+
+	gateways, err := c.getVpcSubnetGateways(vpc)
+	if err != nil {
+		klog.Errorf("failed to get vpc %s subnet gateways, %v", vpcName, err)
+		return err
+	}
+
+	for cidrBlock, gateway := range gateways {
+		if util.CIDRContainIP(cidrBlock, internalIp) {
+			healthCheckVipMaps[internalIp] = fmt.Sprintf(util.LB_MAP_Templ, dnatName, vpcName, gateway)
+		}
+	}
 
 	if err := c.ovnNbClient.CreateLoadBalancer(dnatName, protocol, ""); err != nil {
 		klog.Errorf("create loadBalancer %s: %v", dnatName, err)
 		return err
 	}
-
-	if err := c.ovnNbClient.LoadBalancerAddVip(dnatName, externalEndpoint, internalEndpoint); err != nil {
+	ignoreHealthCheck := false
+	if err := c.ovnNbClient.LoadBalancerAddVip(dnatName, externalEndpoint, ignoreHealthCheck, healthCheckVipMaps, internalEndpoint); err != nil {
 		klog.Errorf("add vip %s with backends %s to LB %s: %v", externalEndpoint, internalEndpoint, dnatName, err)
 		return err
 	}
@@ -605,8 +626,8 @@ func (c *Controller) AddDnatRule(vpcName, dnatName, externalIp, internalIp, exte
 
 func (c *Controller) DelDnatRule(vpcName, dnatName, externalIp, externalPort string) error {
 	externalEndpoint := net.JoinHostPort(externalIp, externalPort)
-
-	if err := c.ovnNbClient.LoadBalancerDeleteVip(dnatName, externalEndpoint); err != nil {
+	ignoreHealthCheck := false
+	if err := c.ovnNbClient.LoadBalancerDeleteVip(dnatName, externalEndpoint, ignoreHealthCheck); err != nil {
 		klog.Errorf("delete loadBalancer vips %s: %v", externalEndpoint, err)
 		return err
 	}
