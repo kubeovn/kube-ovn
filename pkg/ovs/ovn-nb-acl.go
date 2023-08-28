@@ -734,6 +734,7 @@ func (c *ovnNbClient) GetAcl(parent, direction, priority, match string, ignoreNo
 		return nil, fmt.Errorf("more than one acl with same 'parent %s direction %s priority %s match %s'", parent, direction, priority, match)
 	}
 
+	// #nosec G602
 	return &aclList[0], nil
 }
 

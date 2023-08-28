@@ -109,6 +109,7 @@ func (c *ovnNbClient) GetLogicalRouter(lrName string, ignoreNotFound bool) (*ovn
 		return nil, fmt.Errorf("more than one logical router with same name %q", lrName)
 	}
 
+	// #nosec G602
 	return &lrList[0], nil
 }
 

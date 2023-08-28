@@ -210,6 +210,7 @@ func (c *ovnNbClient) GetLogicalSwitch(lsName string, ignoreNotFound bool) (*ovn
 		return nil, fmt.Errorf("more than one logical switch with same name %q", lsName)
 	}
 
+	// #nosec G602
 	return &lsList[0], nil
 }
 
