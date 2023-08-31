@@ -812,7 +812,7 @@ func (suite *OvnClientTestSuite) testLoadBalancerWithHealthCheck() {
 
 			lb, err = ovnClient.GetLoadBalancer(lbName, false)
 			require.NoError(t, err)
-			lbhc, err = ovnClient.GetLoadBalancerHealthCheck(lbName, vip, false)
+			_, lbhc, err = ovnClient.GetLoadBalancerHealthCheck(lbName, vip)
 			require.NoError(t, err)
 			lbhcId = lbhc.UUID
 			require.Contains(t, lb.HealthCheck, lbhcId)
@@ -825,7 +825,7 @@ func (suite *OvnClientTestSuite) testLoadBalancerWithHealthCheck() {
 			require.NoError(t, err)
 			lb, err = ovnClient.GetLoadBalancer(lbName, false)
 			require.NoError(t, err)
-			lbhc, err = ovnClient.GetLoadBalancerHealthCheck(lbName, vip, false)
+			_, lbhc, err = ovnClient.GetLoadBalancerHealthCheck(lbName, vip)
 			require.NoError(t, err)
 			require.Contains(t, lb.HealthCheck, lbhcId)
 		},

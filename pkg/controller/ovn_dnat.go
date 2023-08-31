@@ -588,25 +588,6 @@ func (c *Controller) AddDnatRule(vpcName, dnatName, externalIp, internalIp, exte
 		internalEndpoint   = net.JoinHostPort(internalIp, internalPort)
 		healthCheckVipMaps = make(map[string]string)
 	)
-
-	vpc, err := c.vpcsLister.Get(vpcName)
-	if err != nil {
-		klog.Errorf("failed to get vpc %s of lb, %v", vpcName, err)
-		return err
-	}
-
-	gateways, err := c.getVpcSubnetGateways(vpc)
-	if err != nil {
-		klog.Errorf("failed to get vpc %s subnet gateways, %v", vpcName, err)
-		return err
-	}
-
-	for cidrBlock, gateway := range gateways {
-		if util.CIDRContainIP(cidrBlock, internalIp) {
-			healthCheckVipMaps[internalIp] = fmt.Sprintf(util.LB_MAP_Templ, dnatName, vpcName, gateway)
-		}
-	}
-
 	if err := c.ovnNbClient.CreateLoadBalancer(dnatName, protocol, ""); err != nil {
 		klog.Errorf("create loadBalancer %s: %v", dnatName, err)
 		return err

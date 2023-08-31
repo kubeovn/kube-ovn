@@ -27,7 +27,7 @@ func (suite *OvnClientTestSuite) testCreateLoadBalancerHealthCheck() {
 	err = ovnClient.CreateLoadBalancerHealthCheck(lbName, vip)
 	require.NoError(t, err)
 
-	lbhc, err = ovnClient.GetLoadBalancerHealthCheck(lbName, vip, false)
+	_, lbhc, err = ovnClient.GetLoadBalancerHealthCheck(lbName, vip)
 	require.NoError(t, err)
 	require.Equal(t, vip, lbhc.Vip)
 	require.NotEmpty(t, lbhc.UUID)
@@ -36,7 +36,7 @@ func (suite *OvnClientTestSuite) testCreateLoadBalancerHealthCheck() {
 	err = ovnClient.CreateLoadBalancerHealthCheck(lbName, vip)
 	require.NoError(t, err)
 
-	lbhcRepeat, err = ovnClient.GetLoadBalancerHealthCheck(lbName, vip, false)
+	_, lbhcRepeat, err = ovnClient.GetLoadBalancerHealthCheck(lbName, vip)
 	require.NoError(t, err)
 	require.Equal(t, vip, lbhcRepeat.Vip)
 	require.NotEmpty(t, lbhcRepeat.UUID)
@@ -59,7 +59,7 @@ func (suite *OvnClientTestSuite) testUpdateLoadBalancerHealthCheck() {
 	err = ovnClient.CreateLoadBalancerHealthCheck(lbName, vip)
 	require.NoError(t, err)
 
-	lbhc, err = ovnClient.GetLoadBalancerHealthCheck(lbName, vip, false)
+	_, lbhc, err = ovnClient.GetLoadBalancerHealthCheck(lbName, vip)
 	require.NoError(t, err)
 
 	vip = "3.3.3.3:80"
@@ -70,7 +70,7 @@ func (suite *OvnClientTestSuite) testUpdateLoadBalancerHealthCheck() {
 			err = ovnClient.UpdateLoadBalancerHealthCheck(lbhc, &lbhc.Vip)
 			require.NoError(t, err)
 
-			lbhc, err = ovnClient.GetLoadBalancerHealthCheck(lbName, vip, false)
+			_, lbhc, err = ovnClient.GetLoadBalancerHealthCheck(lbName, vip)
 			require.NoError(t, err)
 
 			require.Equal(t, vip, lbhc.Vip)
@@ -95,7 +95,7 @@ func (suite *OvnClientTestSuite) testDeleteLoadBalancerHealthCheck() {
 	err = ovnClient.DeleteLoadBalancerHealthCheck(lbName, vip)
 	require.NoError(t, err)
 
-	_, err = ovnClient.GetLoadBalancerHealthCheck(lbName, vip, false)
+	_, _, err = ovnClient.GetLoadBalancerHealthCheck(lbName, vip)
 	require.ErrorContains(t, err, "not found load balancer health check")
 }
 
@@ -122,7 +122,7 @@ func (suite *OvnClientTestSuite) testDeleteLoadBalancerHealthChecks() {
 
 		vips = append(vips, vip)
 
-		lbhc, err = ovnClient.GetLoadBalancerHealthCheck(lbName, vip, false)
+		_, lbhc, err = ovnClient.GetLoadBalancerHealthCheck(lbName, vip)
 		require.NoError(t, err)
 
 		require.Equal(t, vip, lbhc.Vip)
@@ -136,7 +136,7 @@ func (suite *OvnClientTestSuite) testDeleteLoadBalancerHealthChecks() {
 	require.NoError(t, err)
 
 	for _, ip := range vips {
-		_, err = ovnClient.GetLoadBalancerHealthCheck(lbName, ip, false)
+		_, _, err = ovnClient.GetLoadBalancerHealthCheck(lbName, ip)
 		require.ErrorContains(t, err, "not found load balancer health check")
 	}
 }
@@ -160,7 +160,7 @@ func (suite *OvnClientTestSuite) testGetLoadBalancerHealthCheck() {
 	t.Run("should return no err when found load balancer health check",
 		func(t *testing.T) {
 			t.Parallel()
-			lbhc, err = ovnClient.GetLoadBalancerHealthCheck(lbName, vip, false)
+			_, lbhc, err = ovnClient.GetLoadBalancerHealthCheck(lbName, vip)
 			require.NoError(t, err)
 			require.Equal(t, vip, lbhc.Vip)
 			require.NotEmpty(t, lbhc.UUID)
@@ -170,7 +170,7 @@ func (suite *OvnClientTestSuite) testGetLoadBalancerHealthCheck() {
 	t.Run("should return err when not found load balancer health check",
 		func(t *testing.T) {
 			t.Parallel()
-			_, err = ovnClient.GetLoadBalancerHealthCheck(lbName, vipNonExistent, false)
+			_, _, err = ovnClient.GetLoadBalancerHealthCheck(lbName, vipNonExistent)
 			require.ErrorContains(t, err, "not found load balancer health check")
 		},
 	)
@@ -178,7 +178,7 @@ func (suite *OvnClientTestSuite) testGetLoadBalancerHealthCheck() {
 	t.Run("no err when not found load balancer health check and ignoreNotFound is true",
 		func(t *testing.T) {
 			t.Parallel()
-			_, err = ovnClient.GetLoadBalancerHealthCheck(lbName, vipNonExistent, true)
+			_, _, err = ovnClient.GetLoadBalancerHealthCheck(lbName, vipNonExistent)
 			require.NoError(t, err)
 		},
 	)
@@ -273,7 +273,7 @@ func (suite *OvnClientTestSuite) testDeleteLoadBalancerHealthCheckOp() {
 	err = ovnClient.CreateLoadBalancerHealthCheck(lbName, vip)
 	require.NoError(t, err)
 
-	lbhc, err = ovnClient.GetLoadBalancerHealthCheck(lbName, vip, false)
+	_, lbhc, err = ovnClient.GetLoadBalancerHealthCheck(lbName, vip)
 	require.NoError(t, err)
 
 	t.Run("normal delete",

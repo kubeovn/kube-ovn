@@ -271,5 +271,5 @@ const (
 	TProxyPreroutingMark = 0x90004
 	TProxyPreroutingMask = 0x90004
 
-	LB_MAP_Templ = "%s.%s:%s" // CRD, vpc, subnet gw
+	IP_HC_VIP_Templ = "%s:%s" // ip name, health check vip
 )

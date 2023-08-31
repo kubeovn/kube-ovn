@@ -3,7 +3,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -13,7 +12,6 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -116,12 +114,12 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 	}
 	svc := cachedService.DeepCopy()
 
-	var LbIPs []string
+	var lbVips []string
 	ignoreHealthCheck := true
 	if vip, ok := svc.Annotations[util.SwitchLBRuleVipsAnnotation]; ok {
-		LbIPs = []string{vip}
+		lbVips = []string{vip}
 		ignoreHealthCheck = false
-	} else if LbIPs = util.ServiceClusterIPs(*svc); len(LbIPs) == 0 {
+	} else if lbVips = util.ServiceClusterIPs(*svc); len(lbVips) == 0 {
 		return nil
 	}
 
@@ -177,19 +175,13 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 		}
 	}
 
-	gateways, err := c.getVpcSubnetGateways(vpc)
-	if err != nil {
-		klog.Errorf("failed to get vpc %s subnet gateways: %v", vpcName, err)
-		return err
-	}
-
 	tcpLb, udpLb, sctpLb := vpc.Status.TcpLoadBalancer, vpc.Status.UdpLoadBalancer, vpc.Status.SctpLoadBalancer
 	oldTcpLb, oldUdpLb, oldSctpLb := vpc.Status.TcpSessionLoadBalancer, vpc.Status.UdpSessionLoadBalancer, vpc.Status.SctpSessionLoadBalancer
 	if svc.Spec.SessionAffinity == v1.ServiceAffinityClientIP {
 		tcpLb, udpLb, sctpLb, oldTcpLb, oldUdpLb, oldSctpLb = oldTcpLb, oldUdpLb, oldSctpLb, tcpLb, udpLb, sctpLb
 	}
 
-	for _, settingIP := range LbIPs {
+	for _, lbVip := range lbVips {
 		for _, port := range svc.Spec.Ports {
 			var lb, oldLb string
 			switch port.Protocol {
@@ -201,24 +193,24 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 				lb, oldLb = sctpLb, oldSctpLb
 			}
 
-			vip := util.JoinHostPort(settingIP, port.Port)
-			backends, healthCheckVipMaps := getServiceEndpointMaps(ep, pods, port, settingIP, vpcName, gateways)
+			vipEndpoint := util.JoinHostPort(lbVip, port.Port)
+			fronts, backends := getLbFrontBacakend(ep, pods, port, lbVip, ignoreHealthCheck)
 			// for performance reason delete lb with no backends
 			if len(backends) != 0 {
-				klog.Infof("lb %s add vip %s, backends %v, health check vip maps %v", lb, vip, backends, healthCheckVipMaps)
-				if err = c.ovnNbClient.LoadBalancerAddVip(lb, vip, ignoreHealthCheck, healthCheckVipMaps, backends...); err != nil {
-					klog.Errorf("failed to add vip %s with backends %s to LB %s: %v", vip, backends, lb, err)
+				klog.Infof("add vip endpoint %s, fonts %v, backends %v to LB %s", vipEndpoint, fronts, backends, lb)
+				if err = c.ovnNbClient.LoadBalancerAddVip(lb, vipEndpoint, ignoreHealthCheck, fronts, backends...); err != nil {
+					klog.Errorf("failed to add vip %s with backends %s to LB %s: %v", lbVip, backends, lb, err)
 					return err
 				}
 			} else {
-				klog.V(3).Infof("delete vip %s from LB %s", vip, lb)
-				if err = c.ovnNbClient.LoadBalancerDeleteVip(lb, vip, ignoreHealthCheck); err != nil {
-					klog.Errorf("failed to delete vip %s from LB %s: %v", vip, lb, err)
+				klog.V(3).Infof("delete vip endpoint %s from LB %s", vipEndpoint, lb)
+				if err = c.ovnNbClient.LoadBalancerDeleteVip(lb, vipEndpoint, ignoreHealthCheck); err != nil {
+					klog.Errorf("failed to delete vip endpoint %s from LB %s: %v", vipEndpoint, lb, err)
 					return err
 				}
-				klog.V(3).Infof("delete vip %s from old LB %s", vip, lb)
-				if err = c.ovnNbClient.LoadBalancerDeleteVip(oldLb, vip, ignoreHealthCheck); err != nil {
-					klog.Errorf("failed to delete vip %s from LB %s: %v", vip, lb, err)
+				klog.V(3).Infof("delete vip endpoint %s from old LB %s", vipEndpoint, lb)
+				if err = c.ovnNbClient.LoadBalancerDeleteVip(oldLb, vipEndpoint, ignoreHealthCheck); err != nil {
+					klog.Errorf("failed to delete vip %s from LB %s: %v", vipEndpoint, lb, err)
 					return err
 				}
 			}
@@ -228,7 +220,7 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 	return nil
 }
 
-func getServiceEndpointMaps(endpoints *v1.Endpoints, pods []*v1.Pod, servicePort v1.ServicePort, serviceIP, vpcName string, gateways map[string]string) ([]string, map[string]string) {
+func getLbFrontBacakend(endpoints *v1.Endpoints, pods []*v1.Pod, servicePort v1.ServicePort, serviceIP string, ignoreHealthCheck bool) (map[string]string, []string) {
 	var (
 		svcEndpointMap = map[string]string{}
 		backends       = []string{}
@@ -248,10 +240,9 @@ func getServiceEndpointMaps(endpoints *v1.Endpoints, pods []*v1.Pod, servicePort
 		}
 
 		for _, address := range subset.Addresses {
-			for cidrBlock, gateway := range gateways {
-				if util.CIDRContainIP(cidrBlock, address.IP) {
-					svcEndpointMap[address.IP] = fmt.Sprintf(util.LB_MAP_Templ, address.TargetRef.Name, vpcName, gateway)
-				}
+			if !ignoreHealthCheck && address.TargetRef != nil {
+				ipName := fmt.Sprintf("%s.%s", address.TargetRef.Name, endpoints.Namespace)
+				svcEndpointMap[address.IP] = fmt.Sprintf(util.IP_HC_VIP_Templ, ipName, serviceIP)
 			}
 			if address.TargetRef == nil || address.TargetRef.Kind != "Pod" {
 				if util.CheckProtocol(address.IP) == protocol {
@@ -284,34 +275,5 @@ func getServiceEndpointMaps(endpoints *v1.Endpoints, pods []*v1.Pod, servicePort
 		}
 	}
 
-	return backends, svcEndpointMap
-}
-
-func (c *Controller) getVpcSubnetGateways(vpc *kubeovnv1.Vpc) (map[string]string, error) {
-	var (
-		gateways = make(map[string]string)
-	)
-
-	for _, subnetName := range vpc.Status.Subnets {
-		subnet, err := c.subnetsLister.Get(subnetName)
-		if err != nil {
-			klog.Errorf("failed to get subnet %s: %v", subnetName, err)
-			return nil, err
-		}
-
-		for _, cidrBlock := range strings.Split(subnet.Spec.CIDRBlock, ",") {
-			if err := util.CheckCidrs(subnet.Spec.CIDRBlock); err != nil {
-				klog.Errorf("failed to check cidr %s: %v", subnet.Spec.CIDRBlock, err)
-				return nil, err
-			}
-
-			for _, gateway := range strings.Split(subnet.Spec.Gateway, ",") {
-				if util.CIDRContainIP(cidrBlock, gateway) {
-					gateways[cidrBlock] = gateway
-				}
-			}
-		}
-	}
-
-	return gateways, nil
+	return svcEndpointMap, backends
 }

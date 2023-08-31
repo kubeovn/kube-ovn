@@ -67,7 +67,7 @@ func (c *ovnNbClient) UpdateLoadBalancer(lb *ovnnb.LoadBalancer, fields ...inter
 }
 
 // LoadBalancerAddVips adds or updates a vip
-func (c *ovnNbClient) LoadBalancerAddVip(lbName, vip string, ignoreHealthCheck bool, healthCheckVipMaps map[string]string, backends ...string) error {
+func (c *ovnNbClient) LoadBalancerAddVip(lbName, vipEndpoint string, ignoreHealthCheck bool, healthCheckVipMaps map[string]string, backends ...string) error {
 	var (
 		ops []ovsdb.Operation
 		err error
@@ -83,12 +83,12 @@ func (c *ovnNbClient) LoadBalancerAddVip(lbName, vip string, ignoreHealthCheck b
 			)
 
 			if len(lb.Vips) != 0 {
-				if lb.Vips[vip] == value {
+				if lb.Vips[vipEndpoint] == value {
 					return nil, nil
 				}
 				mutations = append(mutations, model.Mutation{
 					Field:   &lb.Vips,
-					Value:   map[string]string{vip: lb.Vips[vip]},
+					Value:   map[string]string{vipEndpoint: lb.Vips[vipEndpoint]},
 					Mutator: ovsdb.MutateOperationDelete,
 				})
 			}
@@ -96,7 +96,7 @@ func (c *ovnNbClient) LoadBalancerAddVip(lbName, vip string, ignoreHealthCheck b
 				mutations,
 				model.Mutation{
 					Field:   &lb.Vips,
-					Value:   map[string]string{vip: value},
+					Value:   map[string]string{vipEndpoint: value},
 					Mutator: ovsdb.MutateOperationInsert,
 				},
 			)
@@ -105,28 +105,20 @@ func (c *ovnNbClient) LoadBalancerAddVip(lbName, vip string, ignoreHealthCheck b
 	)
 
 	if err != nil {
-		return fmt.Errorf("failed to generate operations when adding vip %s with backends %v to load balancers %s: %v", vip, backends, lbName, err)
+		return fmt.Errorf("failed to generate operations when adding vip %s with backends %v to load balancers %s: %v", vipEndpoint, backends, lbName, err)
 	}
 	if err = c.Transact("lb-add", ops); err != nil {
-		return fmt.Errorf("failed to add vip %s with backends %v to load balancers %s: %v", vip, backends, lbName, err)
+		return fmt.Errorf("failed to add vip %s with backends %v to load balancers %s: %v", vipEndpoint, backends, lbName, err)
 	}
 	if !ignoreHealthCheck {
-		exist, err := c.LoadBalancerHealthCheckExists(lbName, vip)
-		if err != nil {
-			klog.Errorf("failed to check lb %s: %v", lbName, err)
-			return err
-		}
-		if exist {
-			return nil
-		}
-		klog.Infof("add health check for lb %s with vip %s and mappings %v", lbName, vip, healthCheckVipMaps)
-		// update ip port mapping
-		if err = c.LoadBalancerUpdateIPPortMapping(lbName, vip, healthCheckVipMaps); err != nil {
+		klog.Infof("lb %s update ip port mapping %v", lbName, healthCheckVipMaps)
+		if err = c.LoadBalancerUpdateIPPortMapping(lbName, vipEndpoint, healthCheckVipMaps); err != nil {
 			klog.Errorf("failed to update lb ip port mapping: %v", err)
 			return err
 		}
-		// add health check
-		if err = c.CreateLoadBalancerHealthCheck(lbName, vip); err != nil {
+		klog.Infof("add health check for lb %s with vip %s and health check vip maps %v", lbName, vipEndpoint, healthCheckVipMaps)
+		// add health check and update lb to use health check
+		if err = c.CreateLoadBalancerHealthCheck(lbName, vipEndpoint); err != nil {
 			klog.Errorf("failed to create lb health check: %v", err)
 			return err
 		}
@@ -135,21 +127,21 @@ func (c *ovnNbClient) LoadBalancerAddVip(lbName, vip string, ignoreHealthCheck b
 }
 
 // LoadBalancerDeleteVip deletes load balancer vip
-func (c *ovnNbClient) LoadBalancerDeleteVip(lbName string, vip string, ignoreHealthCheck bool) error {
+func (c *ovnNbClient) LoadBalancerDeleteVip(lbName string, vipEndpoint string, ignoreHealthCheck bool) error {
 	var (
 		lbhc *ovnnb.LoadBalancerHealthCheck
 		ops  []ovsdb.Operation
 		err  error
 	)
 	if !ignoreHealthCheck {
-		klog.Infof("clean health check for lb %s with vip %s", lbName, vip)
+		klog.Infof("clean health check for lb %s with vip %s", lbName, vipEndpoint)
 		// delete ip port mapping
-		if err = c.LoadBalancerDeleteIPPortMapping(lbName, vip, nil); err != nil {
+		if err = c.LoadBalancerDeleteIPPortMapping(lbName, vipEndpoint, nil); err != nil {
 			klog.Errorf("failed to delete lb ip port mapping: %v", err)
 			return err
 		}
 		// delete health check
-		if lbhc, err = c.GetLoadBalancerHealthCheck(lbName, vip, true); err != nil {
+		if _, lbhc, err = c.GetLoadBalancerHealthCheck(lbName, vipEndpoint); err != nil {
 			klog.Errorf("failed to get lb health check: %v", err)
 			return err
 		}
@@ -166,14 +158,14 @@ func (c *ovnNbClient) LoadBalancerDeleteVip(lbName string, vip string, ignoreHea
 			if len(lb.Vips) == 0 {
 				return nil, nil
 			}
-			if _, ok := lb.Vips[vip]; !ok {
+			if _, ok := lb.Vips[vipEndpoint]; !ok {
 				return nil, nil
 			}
 
 			return []model.Mutation{
 				{
 					Field:   &lb.Vips,
-					Value:   map[string]string{vip: lb.Vips[vip]},
+					Value:   map[string]string{vipEndpoint: lb.Vips[vipEndpoint]},
 					Mutator: ovsdb.MutateOperationDelete,
 				},
 			}, nil
@@ -181,13 +173,13 @@ func (c *ovnNbClient) LoadBalancerDeleteVip(lbName string, vip string, ignoreHea
 	)
 
 	if err != nil {
-		return fmt.Errorf("failed to generate operations when deleting vip %s from load balancers %s: %v", vip, lbName, err)
+		return fmt.Errorf("failed to generate operations when deleting vip %s from load balancers %s: %v", vipEndpoint, lbName, err)
 	}
 	if len(ops) == 0 {
 		return nil
 	}
 	if err = c.Transact("lb-add", ops); err != nil {
-		return fmt.Errorf("failed to delete vip %s from load balancers %s: %v", vip, lbName, err)
+		return fmt.Errorf("failed to delete vip %s from load balancers %s: %v", vipEndpoint, lbName, err)
 	}
 	return nil
 }
@@ -368,7 +360,7 @@ func (c *ovnNbClient) DeleteLoadBalancerOp(lbName string) ([]ovsdb.Operation, er
 }
 
 // LoadBalancerAddIPPortMapping add load balancer ip port mapping
-func (c *ovnNbClient) LoadBalancerAddIPPortMapping(lbName, vip string, mappings map[string]string) error {
+func (c *ovnNbClient) LoadBalancerAddIPPortMapping(lbName, vipEndpoint string, mappings map[string]string) error {
 	if len(mappings) == 0 {
 		return nil
 	}
@@ -398,16 +390,16 @@ func (c *ovnNbClient) LoadBalancerAddIPPortMapping(lbName, vip string, mappings 
 	)
 
 	if err != nil {
-		return fmt.Errorf("failed to generate operations when adding ip port mapping with vip %v to load balancers %s: %v", vip, lbName, err)
+		return fmt.Errorf("failed to generate operations when adding ip port mapping with vip %v to load balancers %s: %v", vipEndpoint, lbName, err)
 	}
 	if err = c.Transact("lb-add", ops); err != nil {
-		return fmt.Errorf("failed to add ip port mapping with vip %v to load balancers %s: %v", vip, lbName, err)
+		return fmt.Errorf("failed to add ip port mapping with vip %v to load balancers %s: %v", vipEndpoint, lbName, err)
 	}
 	return nil
 }
 
 // LoadBalancerDeleteIPPortMapping delete load balancer ip port mapping
-func (c *ovnNbClient) LoadBalancerDeleteIPPortMapping(lbName, vip string, mappings map[string]string) error {
+func (c *ovnNbClient) LoadBalancerDeleteIPPortMapping(lbName, vipEndpoint string, mappings map[string]string) error {
 	var (
 		ops []ovsdb.Operation
 		err error
@@ -426,7 +418,7 @@ func (c *ovnNbClient) LoadBalancerDeleteIPPortMapping(lbName, vip string, mappin
 			)
 
 			if len(mappings) == 0 {
-				backends, ok := lb.Vips[vip]
+				backends, ok := lb.Vips[vipEndpoint]
 				if !ok {
 					return nil, nil
 				}
@@ -448,7 +440,7 @@ func (c *ovnNbClient) LoadBalancerDeleteIPPortMapping(lbName, vip string, mappin
 
 			if len(mappings) != 0 {
 				for ip, backends := range lb.Vips {
-					if strings.Compare(ip, vip) != 0 &&
+					if strings.Compare(ip, vipEndpoint) != 0 &&
 						strings.Compare(backends, "") != 0 {
 						for _, backend := range strings.Split(backends, ",") {
 							if strings.Compare(backend, "") != 0 {
@@ -479,19 +471,19 @@ func (c *ovnNbClient) LoadBalancerDeleteIPPortMapping(lbName, vip string, mappin
 	)
 
 	if err != nil {
-		return fmt.Errorf("failed to generate operations when deleting ip port mapping %s from load balancers %s: %v", vip, lbName, err)
+		return fmt.Errorf("failed to generate operations when deleting ip port mapping %s from load balancers %s: %v", vipEndpoint, lbName, err)
 	}
 	if len(ops) == 0 {
 		return nil
 	}
 	if err = c.Transact("lb-del", ops); err != nil {
-		return fmt.Errorf("failed to delete ip port mappings %s from load balancer %s: %v", vip, lbName, err)
+		return fmt.Errorf("failed to delete ip port mappings %s from load balancer %s: %v", vipEndpoint, lbName, err)
 	}
 	return nil
 }
 
 // LoadBalancerUpdateIPPortMapping update load balancer ip port mapping
-func (c *ovnNbClient) LoadBalancerUpdateIPPortMapping(lbName, vip string, healthCheckVipMaps map[string]string) error {
+func (c *ovnNbClient) LoadBalancerUpdateIPPortMapping(lbName, vipEndpoint string, healthCheckVipMaps map[string]string) error {
 	var (
 		ops []ovsdb.Operation
 		err error
@@ -506,7 +498,7 @@ func (c *ovnNbClient) LoadBalancerUpdateIPPortMapping(lbName, vip string, health
 				host      string
 			)
 
-			if backends, exist := lb.Vips[vip]; exist {
+			if backends, exist := lb.Vips[vipEndpoint]; exist {
 				for _, backend := range strings.Split(backends, ",") {
 					if backend != "" {
 						if host, _, err := net.SplitHostPort(backend); err != nil {
@@ -523,7 +515,7 @@ func (c *ovnNbClient) LoadBalancerUpdateIPPortMapping(lbName, vip string, health
 
 			if len(exists) != 0 {
 				for ip, backends := range lb.Vips {
-					if strings.Compare(ip, vip) != 0 &&
+					if strings.Compare(ip, vipEndpoint) != 0 &&
 						strings.Compare(backends, "") != 0 {
 						for _, backend := range strings.Split(backends, ",") {
 							if strings.Compare(backend, "") != 0 {
@@ -564,10 +556,10 @@ func (c *ovnNbClient) LoadBalancerUpdateIPPortMapping(lbName, vip string, health
 	)
 
 	if err != nil {
-		return fmt.Errorf("failed to generate operations when adding ip port mapping with vip %v to load balancers %s: %v", vip, lbName, err)
+		return fmt.Errorf("failed to generate operations when adding ip port mapping with vip %v to load balancers %s: %v", vipEndpoint, lbName, err)
 	}
 	if err = c.Transact("lb-add", ops); err != nil {
-		return fmt.Errorf("failed to add ip port mapping with vip %v to load balancers %s: %v", vip, lbName, err)
+		return fmt.Errorf("failed to add ip port mapping with vip %v to load balancers %s: %v", vipEndpoint, lbName, err)
 	}
 	return nil
 }
