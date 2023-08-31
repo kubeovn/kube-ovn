@@ -16,7 +16,7 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-func (c *OVNNbClient) ListLogicalRouterStaticRoutesByOption(lrName, routeTable, key, value string) ([]*ovnnb.LogicalRouterStaticRoute, error) {
+func (c *OVNNbClient) ListLogicalRouterStaticRoutesByOption(lrName, _, key, value string) ([]*ovnnb.LogicalRouterStaticRoute, error) {
 	fnFilter := func(route *ovnnb.LogicalRouterStaticRoute) bool {
 		return len(route.Options) != 0 && route.Options[key] == value
 	}

@@ -83,7 +83,7 @@ func (v *ValidatingHook) SubnetUpdateHook(ctx context.Context, req admission.Req
 	return ctrlwebhook.Allowed("by pass")
 }
 
-func (v *ValidatingHook) SubnetDeleteHook(ctx context.Context, req admission.Request) admission.Response {
+func (v *ValidatingHook) SubnetDeleteHook(_ context.Context, req admission.Request) admission.Response {
 	subnet := ovnv1.Subnet{}
 	if err := v.decoder.DecodeRaw(req.OldObject, &subnet); err != nil {
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)

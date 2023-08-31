@@ -86,7 +86,7 @@ func (c *NamespaceClient) DeleteSync(name string) {
 }
 
 // WaitToDisappear waits the given timeout duration for the specified namespace to disappear.
-func (c *NamespaceClient) WaitToDisappear(name string, interval, timeout time.Duration) error {
+func (c *NamespaceClient) WaitToDisappear(name string, _, timeout time.Duration) error {
 	err := framework.Gomega().Eventually(context.Background(), framework.HandleRetry(func(ctx context.Context) (*corev1.Namespace, error) {
 		policy, err := c.NamespaceInterface.Get(ctx, name, metav1.GetOptions{})
 		if apierrors.IsNotFound(err) {

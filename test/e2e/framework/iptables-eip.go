@@ -82,7 +82,7 @@ func (c *IptablesEIPClient) Patch(original, modified *apiv1.IptablesEIP) *apiv1.
 
 // PatchSync patches the iptables eip and waits for the iptables eip to be ready for `timeout`.
 // If the iptables eip doesn't become ready before the timeout, it will fail the test.
-func (c *IptablesEIPClient) PatchSync(original, modified *apiv1.IptablesEIP, requiredNodes []string, timeout time.Duration) *apiv1.IptablesEIP {
+func (c *IptablesEIPClient) PatchSync(original, modified *apiv1.IptablesEIP, _ []string, timeout time.Duration) *apiv1.IptablesEIP {
 	eip := c.Patch(original, modified)
 	ExpectTrue(c.WaitToBeUpdated(eip, timeout))
 	ExpectTrue(c.WaitToBeReady(eip.Name, timeout))
@@ -157,7 +157,7 @@ func (c *IptablesEIPClient) WaitToBeUpdated(eip *apiv1.IptablesEIP, timeout time
 }
 
 // WaitToDisappear waits the given timeout duration for the specified iptables eip to disappear.
-func (c *IptablesEIPClient) WaitToDisappear(name string, interval, timeout time.Duration) error {
+func (c *IptablesEIPClient) WaitToDisappear(name string, _, timeout time.Duration) error {
 	err := framework.Gomega().Eventually(context.Background(), framework.HandleRetry(func(ctx context.Context) (*apiv1.IptablesEIP, error) {
 		eip, err := c.IptablesEIPInterface.Get(ctx, name, metav1.GetOptions{})
 		if apierrors.IsNotFound(err) {

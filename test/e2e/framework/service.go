@@ -134,7 +134,7 @@ func (c *ServiceClient) WaitUntil(name string, cond func(s *corev1.Service) (boo
 }
 
 // WaitToDisappear waits the given timeout duration for the specified service to disappear.
-func (c *ServiceClient) WaitToDisappear(name string, interval, timeout time.Duration) error {
+func (c *ServiceClient) WaitToDisappear(name string, _, timeout time.Duration) error {
 	err := framework.Gomega().Eventually(context.Background(), framework.HandleRetry(func(ctx context.Context) (*corev1.Service, error) {
 		svc, err := c.ServiceInterface.Get(ctx, name, metav1.GetOptions{})
 		if apierrors.IsNotFound(err) {

@@ -105,7 +105,7 @@ func (c *SwitchLBRuleClient) DeleteSync(name string) {
 }
 
 // WaitUntil waits the given timeout duration for the specified condition to be met.
-func (c *SwitchLBRuleClient) WaitUntil(name string, cond func(s *apiv1.SwitchLBRule) (bool, error), condDesc string, interval, timeout time.Duration) *apiv1.SwitchLBRule {
+func (c *SwitchLBRuleClient) WaitUntil(name string, cond func(s *apiv1.SwitchLBRule) (bool, error), condDesc string, _, timeout time.Duration) *apiv1.SwitchLBRule {
 	var rules *apiv1.SwitchLBRule
 	err := wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
 		Logf("Waiting for switch-lb-rule %s to meet condition %q", name, condDesc)
@@ -134,7 +134,7 @@ func (c *SwitchLBRuleClient) WaitUntil(name string, cond func(s *apiv1.SwitchLBR
 }
 
 // WaitToDisappear waits the given timeout duration for the specified switch-lb-rule to disappear.
-func (c *SwitchLBRuleClient) WaitToDisappear(name string, interval, timeout time.Duration) error {
+func (c *SwitchLBRuleClient) WaitToDisappear(name string, _, timeout time.Duration) error {
 	err := framework.Gomega().Eventually(context.Background(), framework.HandleRetry(func(ctx context.Context) (*apiv1.SwitchLBRule, error) {
 		svc, err := c.SwitchLBRuleInterface.Get(ctx, name, metav1.GetOptions{})
 		if apierrors.IsNotFound(err) {

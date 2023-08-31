@@ -29,9 +29,6 @@ issues:
       linters:
         - revive
       text: "dot imports"
-    - linters:
-        - revive
-      text: "unused-parameter"
 
 linters-settings:
   goimports:

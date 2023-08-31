@@ -82,7 +82,7 @@ func (c *IptablesFIPClient) Patch(original, modified *apiv1.IptablesFIPRule) *ap
 
 // PatchSync patches the iptables fip and waits for the iptables fip to be ready for `timeout`.
 // If the iptables fip doesn't become ready before the timeout, it will fail the test.
-func (c *IptablesFIPClient) PatchSync(original, modified *apiv1.IptablesFIPRule, requiredNodes []string, timeout time.Duration) *apiv1.IptablesFIPRule {
+func (c *IptablesFIPClient) PatchSync(original, modified *apiv1.IptablesFIPRule, _ []string, timeout time.Duration) *apiv1.IptablesFIPRule {
 	fip := c.Patch(original, modified)
 	ExpectTrue(c.WaitToBeUpdated(fip, timeout))
 	ExpectTrue(c.WaitToBeReady(fip.Name, timeout))
@@ -132,7 +132,7 @@ func (c *IptablesFIPClient) WaitToBeUpdated(fip *apiv1.IptablesFIPRule, timeout 
 }
 
 // WaitToDisappear waits the given timeout duration for the specified iptables FIP rule to disappear.
-func (c *IptablesFIPClient) WaitToDisappear(name string, interval, timeout time.Duration) error {
+func (c *IptablesFIPClient) WaitToDisappear(name string, _, timeout time.Duration) error {
 	err := framework.Gomega().Eventually(context.Background(), framework.HandleRetry(func(ctx context.Context) (*apiv1.IptablesFIPRule, error) {
 		rule, err := c.IptablesFIPRuleInterface.Get(ctx, name, metav1.GetOptions{})
 		if apierrors.IsNotFound(err) {

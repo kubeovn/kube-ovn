@@ -228,7 +228,7 @@ func (c *IPPoolClient) WaitUntil(name string, cond func(s *apiv1.IPPool) (bool, 
 }
 
 // WaitToDisappear waits the given timeout duration for the specified ippool to disappear.
-func (c *IPPoolClient) WaitToDisappear(name string, interval, timeout time.Duration) error {
+func (c *IPPoolClient) WaitToDisappear(name string, _, timeout time.Duration) error {
 	err := framework.Gomega().Eventually(context.Background(), framework.HandleRetry(func(ctx context.Context) (*apiv1.IPPool, error) {
 		ippool, err := c.IPPoolInterface.Get(ctx, name, metav1.GetOptions{})
 		if apierrors.IsNotFound(err) {

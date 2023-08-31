@@ -554,7 +554,7 @@ func (c *Controller) delEipQoSInPod(dp, v4ip string, direction kubeovnv1.QoSPoli
 	return c.execNatGwRules(gwPod, operation, delRules)
 }
 
-func (c *Controller) acquireStaticEip(name, namespace, nicName, ip, externalSubnet string) (string, string, string, error) {
+func (c *Controller) acquireStaticEip(name, _, nicName, ip, externalSubnet string) (string, string, string, error) {
 	checkConflict := true
 	var v4ip, v6ip, mac string
 	var err error
@@ -571,7 +571,7 @@ func (c *Controller) acquireStaticEip(name, namespace, nicName, ip, externalSubn
 	return v4ip, v6ip, mac, nil
 }
 
-func (c *Controller) acquireEip(name, namespace, nicName, externalSubnet string) (string, string, string, error) {
+func (c *Controller) acquireEip(name, _, nicName, externalSubnet string) (string, string, string, error) {
 	var skippedAddrs []string
 	for {
 		ipv4, ipv6, mac, err := c.ipam.GetRandomAddress(name, nicName, nil, externalSubnet, "", skippedAddrs, true)

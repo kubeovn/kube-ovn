@@ -50,7 +50,7 @@ func getIfaceByIP(ip string) (string, int, error) {
 	return "", 0, fmt.Errorf("failed to find interface by address %s", ip)
 }
 
-func (config *Configuration) initRuntimeConfig(node *corev1.Node) error {
+func (config *Configuration) initRuntimeConfig(_ *corev1.Node) error {
 	// nothing to do on Linux
 	return nil
 }

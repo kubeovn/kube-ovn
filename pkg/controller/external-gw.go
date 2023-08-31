@@ -153,7 +153,7 @@ func (c *Controller) establishExternalGateway(config map[string]string) error {
 		lrpMac = lrp.MAC
 		lrpIP = lrp.Networks[0]
 	case config["nic-ip"] == "":
-		if lrpIP, lrpMac, err = c.createDefaultVpcLrpEip(config); err != nil {
+		if lrpIP, lrpMac, err = c.createDefaultVpcLrpEip(); err != nil {
 			klog.Errorf("failed to create ovn eip for default vpc lrp: %v", err)
 			return err
 		}
@@ -170,7 +170,7 @@ func (c *Controller) establishExternalGateway(config map[string]string) error {
 	return nil
 }
 
-func (c *Controller) createDefaultVpcLrpEip(config map[string]string) (string, string, error) {
+func (c *Controller) createDefaultVpcLrpEip() (string, string, error) {
 	cachedSubnet, err := c.subnetsLister.Get(c.config.ExternalGatewaySwitch)
 	if err != nil {
 		klog.Errorf("failed to get subnet %s, %v", c.config.ExternalGatewaySwitch, err)

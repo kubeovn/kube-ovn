@@ -106,7 +106,7 @@ func (c *Controller) enqueueAddVpcNatGw(obj interface{}) {
 	c.addOrUpdateVpcNatGatewayQueue.Add(key)
 }
 
-func (c *Controller) enqueueUpdateVpcNatGw(oldObj, newObj interface{}) {
+func (c *Controller) enqueueUpdateVpcNatGw(_, newObj interface{}) {
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(newObj); err != nil {

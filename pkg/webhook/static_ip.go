@@ -120,7 +120,7 @@ func (v *ValidatingHook) PodCreateHook(ctx context.Context, req admission.Reques
 	return v.validateIP(ctx, o.GetAnnotations(), o.Kind, o.GetName(), o.GetNamespace())
 }
 
-func (v *ValidatingHook) allowLiveMigration(ctx context.Context, annotations map[string]string, name, namespace string) bool {
+func (v *ValidatingHook) allowLiveMigration(_ context.Context, annotations map[string]string, name, namespace string) bool {
 	var multusNets []*multustypes.NetworkSelectionElement
 	defaultAttachNetworks := annotations[util.DefaultNetworkAnnotation]
 	if defaultAttachNetworks != "" {

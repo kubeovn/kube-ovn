@@ -562,7 +562,7 @@ func (s *Subnet) ContainAddress(address IP) bool {
 }
 
 // This func is only called in ipam.GetPodAddress, move mutex to caller
-func (s *Subnet) GetPodAddress(podName, nicName string) (IP, IP, string, string) {
+func (s *Subnet) GetPodAddress(_, nicName string) (IP, IP, string, string) {
 	switch s.Protocol {
 	case kubeovnv1.ProtocolIPv4:
 		ip, mac := s.V4NicToIP[nicName], s.NicToMac[nicName]

@@ -22,7 +22,7 @@ func (c *Controller) enqueueAddOrDelIP(obj interface{}) {
 	}
 }
 
-func (c *Controller) enqueueUpdateIP(oldObj, newObj interface{}) {
+func (c *Controller) enqueueUpdateIP(_, newObj interface{}) {
 	ipObj := newObj.(*kubeovnv1.IP)
 	klog.V(3).Infof("enqueue update status subnet %s", ipObj.Spec.Subnet)
 	for _, as := range ipObj.Spec.AttachSubnets {

@@ -229,7 +229,7 @@ func (c *SubnetClient) WaitUntil(name string, cond func(s *apiv1.Subnet) (bool, 
 }
 
 // WaitToDisappear waits the given timeout duration for the specified subnet to disappear.
-func (c *SubnetClient) WaitToDisappear(name string, interval, timeout time.Duration) error {
+func (c *SubnetClient) WaitToDisappear(name string, _, timeout time.Duration) error {
 	err := framework.Gomega().Eventually(context.Background(), framework.HandleRetry(func(ctx context.Context) (*apiv1.Subnet, error) {
 		subnet, err := c.SubnetInterface.Get(ctx, name, metav1.GetOptions{})
 		if apierrors.IsNotFound(err) {

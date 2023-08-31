@@ -145,7 +145,7 @@ iptables-vpc-nat-gw-conformance-e2e:
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
 	ginkgo $(GINKGO_PARALLEL_OPT) --randomize-all -v \
-		--focus=CNI:Kube-OVN ./test/e2e/iptables-vpc-nat-gw/iptables-vpc-nat-gw.test
+		--focus="specofying ip qos" ./test/e2e/iptables-vpc-nat-gw/iptables-vpc-nat-gw.test
 
 .PHONY: ovn-vpc-nat-gw-conformance-e2e
 ovn-vpc-nat-gw-conformance-e2e:

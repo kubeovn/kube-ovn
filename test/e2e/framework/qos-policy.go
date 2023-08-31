@@ -230,7 +230,7 @@ func (c *QoSPolicyClient) WaitUntil(name string, cond func(s *apiv1.QoSPolicy) (
 }
 
 // WaitToDisappear waits the given timeout duration for the specified qosPolicy to disappear.
-func (c *QoSPolicyClient) WaitToDisappear(name string, interval, timeout time.Duration) error {
+func (c *QoSPolicyClient) WaitToDisappear(name string, _, timeout time.Duration) error {
 	err := framework.Gomega().Eventually(context.Background(), framework.HandleRetry(func(ctx context.Context) (*apiv1.QoSPolicy, error) {
 		qosPolicy, err := c.QoSPolicyInterface.Get(ctx, name, metav1.GetOptions{})
 		if apierrors.IsNotFound(err) {

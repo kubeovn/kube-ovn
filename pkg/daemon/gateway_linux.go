@@ -367,7 +367,7 @@ func (c *Controller) addPolicyRouting(family int, gateway string, priority, tabl
 	return nil
 }
 
-func (c *Controller) deletePolicyRouting(family int, gateway string, priority, tableID uint32, ips ...string) error {
+func (c *Controller) deletePolicyRouting(family int, _ string, priority, tableID uint32, ips ...string) error {
 	maskBits := 32
 	if family == netlink.FAMILY_V6 {
 		maskBits = 128

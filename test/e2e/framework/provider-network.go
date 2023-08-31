@@ -83,7 +83,7 @@ func (c *ProviderNetworkClient) Patch(original, modified *apiv1.ProviderNetwork)
 
 // PatchSync patches the provider network and waits for the provider network to be ready for `timeout`.
 // If the provider network doesn't become ready before the timeout, it will fail the test.
-func (c *ProviderNetworkClient) PatchSync(original, modified *apiv1.ProviderNetwork, requiredNodes []string, timeout time.Duration) *apiv1.ProviderNetwork {
+func (c *ProviderNetworkClient) PatchSync(original, modified *apiv1.ProviderNetwork, _ []string, timeout time.Duration) *apiv1.ProviderNetwork {
 	pn := c.Patch(original, modified)
 	ExpectTrue(c.WaitToBeUpdated(pn, timeout))
 	ExpectTrue(c.WaitToBeReady(pn.Name, timeout))
@@ -172,7 +172,7 @@ func (c *ProviderNetworkClient) WaitToBeUpdated(pn *apiv1.ProviderNetwork, timeo
 }
 
 // WaitToDisappear waits the given timeout duration for the specified provider network to disappear.
-func (c *ProviderNetworkClient) WaitToDisappear(name string, interval, timeout time.Duration) error {
+func (c *ProviderNetworkClient) WaitToDisappear(name string, _, timeout time.Duration) error {
 	err := framework.Gomega().Eventually(context.Background(), framework.HandleRetry(func(ctx context.Context) (*apiv1.ProviderNetwork, error) {
 		pn, err := c.ProviderNetworkInterface.Get(ctx, name, metav1.GetOptions{})
 		if apierrors.IsNotFound(err) {

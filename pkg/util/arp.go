@@ -15,7 +15,7 @@ import (
 	"k8s.io/klog/v2"
 )
 
-func ArpResolve(nic, srcIP, dstIP string, timeout time.Duration, maxRetry int) (net.HardwareAddr, int, error) {
+func ArpResolve(nic, _, dstIP string, timeout time.Duration, maxRetry int) (net.HardwareAddr, int, error) {
 	target, err := netip.ParseAddr(dstIP)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to parse target address %s: %v", dstIP, err)

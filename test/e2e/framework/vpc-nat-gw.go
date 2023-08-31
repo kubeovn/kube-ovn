@@ -165,7 +165,7 @@ func (c *VpcNatGatewayClient) WaitToBeUpdated(vpcNatGw *apiv1.VpcNatGateway, tim
 }
 
 // WaitToDisappear waits the given timeout duration for the specified VPC NAT gateway to disappear.
-func (c *VpcNatGatewayClient) WaitToDisappear(name string, interval, timeout time.Duration) error {
+func (c *VpcNatGatewayClient) WaitToDisappear(name string, _, timeout time.Duration) error {
 	err := framework.Gomega().Eventually(context.Background(), framework.HandleRetry(func(ctx context.Context) (*apiv1.VpcNatGateway, error) {
 		gw, err := c.VpcNatGatewayInterface.Get(ctx, name, metav1.GetOptions{})
 		if apierrors.IsNotFound(err) {

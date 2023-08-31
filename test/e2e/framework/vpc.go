@@ -82,7 +82,7 @@ func (c *VpcClient) Patch(original, modified *kubeovnv1.Vpc) *kubeovnv1.Vpc {
 
 // PatchSync patches the vpc and waits for the vpc to be ready for `timeout`.
 // If the vpc doesn't become ready before the timeout, it will fail the test.
-func (c *VpcClient) PatchSync(original, modified *kubeovnv1.Vpc, requiredNodes []string, timeout time.Duration) *kubeovnv1.Vpc {
+func (c *VpcClient) PatchSync(original, modified *kubeovnv1.Vpc, _ []string, timeout time.Duration) *kubeovnv1.Vpc {
 	vpc := c.Patch(original, modified)
 	ExpectTrue(c.WaitToBeUpdated(vpc, timeout))
 	ExpectTrue(c.WaitToBeReady(vpc.Name, timeout))
@@ -131,7 +131,7 @@ func (c *VpcClient) WaitToBeUpdated(vpc *kubeovnv1.Vpc, timeout time.Duration) b
 }
 
 // WaitToDisappear waits the given timeout duration for the specified VPC to disappear.
-func (c *VpcClient) WaitToDisappear(name string, interval, timeout time.Duration) error {
+func (c *VpcClient) WaitToDisappear(name string, _, timeout time.Duration) error {
 	err := framework.Gomega().Eventually(context.Background(), framework.HandleRetry(func(ctx context.Context) (*kubeovnv1.Vpc, error) {
 		vpc, err := c.VpcInterface.Get(ctx, name, metav1.GetOptions{})
 		if apierrors.IsNotFound(err) {

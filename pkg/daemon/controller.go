@@ -158,7 +158,7 @@ func (c *Controller) enqueueAddProviderNetwork(obj interface{}) {
 	c.addOrUpdateProviderNetworkQueue.Add(key)
 }
 
-func (c *Controller) enqueueUpdateProviderNetwork(oldObj, newObj interface{}) {
+func (c *Controller) enqueueUpdateProviderNetwork(_, newObj interface{}) {
 	key, err := cache.MetaNamespaceKeyFunc(newObj)
 	if err != nil {
 		utilruntime.HandleError(err)

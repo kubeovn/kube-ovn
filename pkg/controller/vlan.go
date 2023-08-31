@@ -27,7 +27,7 @@ func (c *Controller) enqueueAddVlan(obj interface{}) {
 	c.addVlanQueue.Add(key)
 }
 
-func (c *Controller) enqueueUpdateVlan(oldObj, newObj interface{}) {
+func (c *Controller) enqueueUpdateVlan(_, newObj interface{}) {
 	key, err := cache.MetaNamespaceKeyFunc(newObj)
 	if err != nil {
 		utilruntime.HandleError(err)
