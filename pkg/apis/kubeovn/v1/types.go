@@ -440,7 +440,7 @@ type StaticRoute struct {
 	CIDR       string      `json:"cidr"`
 	NextHopIP  string      `json:"nextHopIP"`
 	ECMPMode   string      `json:"ecmpMode"`
-	BfdID      string      `json:"bfdID"`
+	BfdID      string      `json:"bfdId"`
 	RouteTable string      `json:"routeTable"`
 }
 
@@ -514,7 +514,7 @@ type VpcNatSpec struct {
 	Vpc             string              `json:"vpc"`
 	Subnet          string              `json:"subnet"`
 	ExternalSubnets []string            `json:"externalSubnets"`
-	LanIP           string              `json:"lanIP"`
+	LanIP           string              `json:"lanIp"`
 	Selector        []string            `json:"selector"`
 	Tolerations     []corev1.Toleration `json:"tolerations"`
 	Affinity        corev1.Affinity     `json:"affinity"`
@@ -592,7 +592,7 @@ type IptablesFIPRule struct {
 }
 type IptablesFIPRuleSpec struct {
 	EIP        string `json:"eip"`
-	InternalIP string `json:"internalIP"`
+	InternalIP string `json:"internalIp"`
 }
 
 // IptablesFIPRuleCondition describes the state of an object at a certain point.
@@ -607,7 +607,7 @@ type IptablesFIPRuleStatus struct {
 	V6ip       string `json:"v6ip" patchStrategy:"merge"`
 	NatGwDp    string `json:"natGwDp" patchStrategy:"merge"`
 	Redo       string `json:"redo" patchStrategy:"merge"`
-	InternalIP string `json:"internalIP"  patchStrategy:"merge"`
+	InternalIP string `json:"internalIp"  patchStrategy:"merge"`
 
 	// Conditions represents the latest state of the object
 	// +optional
@@ -688,7 +688,7 @@ type IptablesDnatRuleSpec struct {
 	EIP          string `json:"eip"`
 	ExternalPort string `json:"externalPort"`
 	Protocol     string `json:"protocol,omitempty"`
-	InternalIP   string `json:"internalIP"`
+	InternalIP   string `json:"internalIp"`
 	InternalPort string `json:"internalPort"`
 }
 
@@ -705,7 +705,7 @@ type IptablesDnatRuleStatus struct {
 	NatGwDp      string `json:"natGwDp" patchStrategy:"merge"`
 	Redo         string `json:"redo" patchStrategy:"merge"`
 	Protocol     string `json:"protocol"  patchStrategy:"merge"`
-	InternalIP   string `json:"internalIP"  patchStrategy:"merge"`
+	InternalIP   string `json:"internalIp"  patchStrategy:"merge"`
 	InternalPort string `json:"internalPort"  patchStrategy:"merge"`
 	ExternalPort string `json:"externalPort"  patchStrategy:"merge"`
 
@@ -844,7 +844,7 @@ type VipList struct {
 // +genclient:nonNamespaced
 // +resourceName=vpc-dnses
 
-type VpcDNS struct {
+type VpcDns struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
@@ -859,11 +859,11 @@ type VpcDNSSpec struct {
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
-type VpcDNSList struct {
+type VpcDnsList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata"`
 
-	Items []VpcDNS `json:"items"`
+	Items []VpcDns `json:"items"`
 }
 
 type VpcDNSStatus struct {

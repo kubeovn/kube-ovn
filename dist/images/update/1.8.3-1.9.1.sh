@@ -28,7 +28,7 @@ spec:
         - jsonPath: .spec.subnet
           name: Subnet
           type: string
-        - jsonPath: .spec.lanIP
+        - jsonPath: .spec.lanIp
           name: LanIP
           type: string
       name: v1
@@ -50,7 +50,7 @@ spec:
                         type: string
                       externalPort:
                         type: string
-                      internalIP:
+                      internalIp:
                         type: string
                       internalPort:
                         type: string
@@ -72,9 +72,9 @@ spec:
                     properties:
                       eip:
                         type: string
-                      internalIP:
+                      internalIp:
                         type: string
-                lanIP:
+                lanIp:
                   type: string
                 snatRules:
                   type: array

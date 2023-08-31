@@ -233,8 +233,8 @@ spec:
     singular: vpc-dns
     shortNames:
       - vpc-dns
-    kind: VpcDNS
-    listKind: VpcDNSList
+    kind: VpcDns
+    listKind: VpcDnsList
   scope: Cluster
   versions:
     - additionalPrinterColumns:
@@ -387,7 +387,7 @@ spec:
         - jsonPath: .spec.subnet
           name: Subnet
           type: string
-        - jsonPath: .spec.lanIP
+        - jsonPath: .spec.lanIp
           name: LanIP
           type: string
       name: v1
@@ -707,7 +707,7 @@ spec:
             spec:
               type: object
               properties:
-                lanIP:
+                lanIp:
                   type: string
                 subnet:
                   type: string
@@ -1129,8 +1129,8 @@ spec:
       - jsonPath: .status.v4ip
         name: V4ip
         type: string
-      - jsonPath: .spec.internalIP
-        name: InternalIP
+      - jsonPath: .spec.internalIp
+        name: InternalIp
         type: string
       - jsonPath: .status.v6ip
         name: V6ip
@@ -1158,7 +1158,7 @@ spec:
                   type: string
                 redo:
                   type: string
-                internalIP:
+                internalIp:
                   type: string
                 conditions:
                   type: array
@@ -1182,7 +1182,7 @@ spec:
               properties:
                 eip:
                   type: string
-                internalIP:
+                internalIp:
                   type: string
 ---
 apiVersion: apiextensions.k8s.io/v1
@@ -1218,8 +1218,8 @@ spec:
       - jsonPath: .status.v6ip
         name: V6ip
         type: string
-      - jsonPath: .spec.internalIP
-        name: InternalIP
+      - jsonPath: .spec.internalIp
+        name: InternalIp
         type: string
       - jsonPath: .spec.externalPort
         name: ExternalPort
@@ -1252,7 +1252,7 @@ spec:
                   type: string
                 protocol:
                   type: string
-                internalIP:
+                internalIp:
                   type: string
                 internalPort:
                   type: string
@@ -1284,7 +1284,7 @@ spec:
                   type: string
                 protocol:
                   type: string
-                internalIP:
+                internalIp:
                   type: string
                 internalPort:
                   type: string
@@ -1495,10 +1495,10 @@ spec:
         name: Ready
         type: boolean
       - jsonPath: .spec.ipType
-        name: IPType
+        name: IpType
         type: string
       - jsonPath: .spec.ipName
-        name: IPName
+        name: IpName
         type: string
       schema:
         openAPIV3Schema:
@@ -1659,7 +1659,7 @@ spec:
           name: ExternalPort
           type: string
         - jsonPath: .spec.ipName
-          name: IPName
+          name: IpName
           type: string
         - jsonPath: .status.ready
           name: Ready
@@ -1770,7 +1770,7 @@ spec:
                         type: string
                       ecmpMode:
                         type: string
-                      bfdID:
+                      bfdId:
                         type: string
                       routeTable:
                         type: string

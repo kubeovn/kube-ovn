@@ -44,14 +44,14 @@ type vpcDNSInformer struct {
 	tweakListOptions internalinterfaces.TweakListOptionsFunc
 }
 
-// NewVpcDnsInformer constructs a new informer for VpcDNS type.
+// NewVpcDnsInformer constructs a new informer for VpcDns type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
 func NewVpcDnsInformer(client versioned.Interface, resyncPeriod time.Duration, indexers cache.Indexers) cache.SharedIndexInformer {
 	return NewFilteredVpcDnsInformer(client, resyncPeriod, indexers, nil)
 }
 
-// NewFilteredVpcDnsInformer constructs a new informer for VpcDNS type.
+// NewFilteredVpcDnsInformer constructs a new informer for VpcDns type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
 func NewFilteredVpcDnsInformer(client versioned.Interface, resyncPeriod time.Duration, indexers cache.Indexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) cache.SharedIndexInformer {
@@ -70,7 +70,7 @@ func NewFilteredVpcDnsInformer(client versioned.Interface, resyncPeriod time.Dur
 				return client.KubeovnV1().VpcDnses().Watch(context.TODO(), options)
 			},
 		},
-		&kubeovnv1.VpcDNS{},
+		&kubeovnv1.VpcDns{},
 		resyncPeriod,
 		indexers,
 	)
@@ -81,7 +81,7 @@ func (f *vpcDNSInformer) defaultInformer(client versioned.Interface, resyncPerio
 }
 
 func (f *vpcDNSInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&kubeovnv1.VpcDNS{}, f.defaultInformer)
+	return f.factory.InformerFor(&kubeovnv1.VpcDns{}, f.defaultInformer)
 }
 
 func (f *vpcDNSInformer) Lister() v1.VpcDnsLister {
