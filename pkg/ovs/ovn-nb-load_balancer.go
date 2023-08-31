@@ -267,6 +267,7 @@ func (c *ovnNbClient) GetLoadBalancer(lbName string, ignoreNotFound bool) (*ovnn
 		return nil, fmt.Errorf("more than one load balancer with same name %q", lbName)
 	}
 
+	// #nosec G602
 	return &lbList[0], nil
 }
 
