@@ -1,4 +1,72 @@
-{{ if .Values.restart_ovs }}
+{{ if (lookup "apps/v1" "DaemonSet" "kube-system" "ovs-ovn") }}
+{{ if eq (lookup "apps/v1" "DaemonSet" "kube-system" "ovs-ovn").spec.updateStrategy.type "OnDelete" }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ovs-ovn-upgrade
+  namespace: kube-system
+  annotations:
+    # This is what defines this resource as a hook. Without this line, the
+    # job is considered part of the release.
+    "helm.sh/hook": post-upgrade
+    "helm.sh/hook-weight": "1"
+    "helm.sh/hook-delete-policy": hook-succeeded
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  annotations:
+    rbac.authorization.k8s.io/system-only: "true"
+    # This is what defines this resource as a hook. Without this line, the
+    # job is considered part of the release.
+    "helm.sh/hook": post-upgrade
+    "helm.sh/hook-weight": "2"
+    "helm.sh/hook-delete-policy": hook-succeeded
+  name: system:ovs-ovn-upgrade
+rules:
+  - apiGroups:
+      - apps
+    resources:
+      - daemonsets
+    resourceNames:
+      - ovs-ovn
+    verbs:
+      - get
+  - apiGroups:
+      - ""
+    resources:
+      - nodes
+    verbs:
+      - list
+  - apiGroups:
+      - ""
+    resources:
+      - pods
+    verbs:
+      - list
+      - get
+      - delete
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: ovs-ovn-upgrade
+  annotations:
+    # This is what defines this resource as a hook. Without this line, the
+    # job is considered part of the release.
+    "helm.sh/hook": post-upgrade
+    "helm.sh/hook-weight": "3"
+    "helm.sh/hook-delete-policy": hook-succeeded
+roleRef:
+  name: system:ovs-ovn-upgrade
+  kind: ClusterRole
+  apiGroup: rbac.authorization.k8s.io
+subjects:
+  - kind: ServiceAccount
+    name: ovs-ovn-upgrade
+    namespace: kube-system
+---
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -13,7 +81,7 @@ metadata:
     # This is what defines this resource as a hook. Without this line, the
     # job is considered part of the release.
     "helm.sh/hook": post-upgrade
-    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook-weight": "4"
     "helm.sh/hook-delete-policy": hook-succeeded
 spec:
   completions: 1
@@ -49,8 +117,8 @@ spec:
       hostNetwork: true
       nodeSelector:
         kubernetes.io/os: "linux"
-      serviceAccount: ovn
-      serviceAccountName: ovn
+      serviceAccount: ovs-ovn-upgrade
+      serviceAccountName: ovs-ovn-upgrade
       containers:
         - name: post-upgrade-job
           image: "{{ .Values.global.registry.address}}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}"
@@ -70,4 +138,5 @@ spec:
         - name: kube-ovn-log
           hostPath:
             path: /var/log/kube-ovn
+{{ end }}
 {{ end }}
