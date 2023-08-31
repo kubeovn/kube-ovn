@@ -464,7 +464,7 @@ func (suite *OvnClientTestSuite) testLogicalSwitchUpdateLoadBalancerOp() {
 	})
 }
 
-func (suite *OvnClientTestSuite) test_logicalSwitchUpdateAclOp() {
+func (suite *OvnClientTestSuite) testLogicalSwitchUpdateACLOp() {
 	t := suite.T()
 	t.Parallel()
 

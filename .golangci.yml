@@ -24,11 +24,11 @@ issues:
       text: "appendAssign"
     - linters:
         - revive
-      text: "underscore" # package name not change
+      text: "don't use an underscore in package name" # package name not change
     - path: test/unittest/
       linters:
         - revive
-      text: "dot imports" # ginkgo coding style
+      text: "should not use dot imports" # ginkgo coding style
     - linters:
         - revive
       text: "VpcDns should be VpcDNS"  # api param not change

@@ -299,7 +299,7 @@ func (suite *OvnClientTestSuite) testListPortGroups() {
 	})
 }
 
-func (suite *OvnClientTestSuite) test_portGroupUpdatePortOp() {
+func (suite *OvnClientTestSuite) testPortGroupUpdatePortOp() {
 	t := suite.T()
 	t.Parallel()
 
@@ -367,7 +367,7 @@ func (suite *OvnClientTestSuite) test_portGroupUpdatePortOp() {
 	})
 }
 
-func (suite *OvnClientTestSuite) test_portGroupUpdateAclOp() {
+func (suite *OvnClientTestSuite) testPortGroupUpdateACLOp() {
 	t := suite.T()
 	t.Parallel()
 
@@ -435,7 +435,7 @@ func (suite *OvnClientTestSuite) test_portGroupUpdateAclOp() {
 	})
 }
 
-func (suite *OvnClientTestSuite) test_portGroupOp() {
+func (suite *OvnClientTestSuite) testPortGroupOp() {
 	t := suite.T()
 	t.Parallel()
 

@@ -348,7 +348,7 @@ func (suite *OvnClientTestSuite) testListLogicalRouterStaticRoutes() {
 	})
 }
 
-func (suite *OvnClientTestSuite) test_newLogicalRouterStaticRoute() {
+func (suite *OvnClientTestSuite) testNewLogicalRouterStaticRoute() {
 	t := suite.T()
 	t.Parallel()
 

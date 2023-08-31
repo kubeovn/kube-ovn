@@ -427,7 +427,7 @@ func (suite *OvnClientTestSuite) testGetNat() {
 	})
 }
 
-func (suite *OvnClientTestSuite) test_newNat() {
+func (suite *OvnClientTestSuite) testNewNat() {
 	t := suite.T()
 	t.Parallel()
 
@@ -482,7 +482,7 @@ func (suite *OvnClientTestSuite) test_newNat() {
 	})
 }
 
-func (suite *OvnClientTestSuite) test_natFilter() {
+func (suite *OvnClientTestSuite) testNatFilter() {
 	t := suite.T()
 	t.Parallel()
 

@@ -890,7 +890,7 @@ func (suite *OvnClientTestSuite) testSetLogicalSwitchPrivate() {
 	})
 }
 
-func (suite *OvnClientTestSuite) test_newSgRuleACL() {
+func (suite *OvnClientTestSuite) testNewSgRuleACL() {
 	t := suite.T()
 	t.Parallel()
 
@@ -1471,7 +1471,7 @@ func (suite *OvnClientTestSuite) testListAcls() {
 	require.Equal(t, count, 5)
 }
 
-func (suite *OvnClientTestSuite) test_newAcl() {
+func (suite *OvnClientTestSuite) testNewACL() {
 	t := suite.T()
 	t.Parallel()
 
@@ -1622,7 +1622,7 @@ func (suite *OvnClientTestSuite) testnewNetworkPolicyACLMatch() {
 	})
 }
 
-func (suite *OvnClientTestSuite) test_aclFilter() {
+func (suite *OvnClientTestSuite) testACLFilter() {
 	t := suite.T()
 	t.Parallel()
 
