@@ -102,7 +102,7 @@ jobs:
           # fix kernel crash
           Invoke-WebRequest -Uri "https://github.com/kubeovn/ovs/commit/64383c14a9c25e9e0ca53c6758d9499c60132536.patch" -OutFile ..\ovs-01.patch
           # support for building in github actions
-          Invoke-WebRequest -Uri "https://github.com/kubeovn/ovs/commit/08a95db2ca506fce4d89fdf4fafab74607b2bb9f.patch" -OutFile ..\ovs-02.patch
+          Invoke-WebRequest -Uri "https://github.com/kubeovn/ovs/commit/d170c6237cb6a7bbe16f916ab2286c3c942a852c.patch" -OutFile ..\ovs-02.patch
           # listen on tcp 127.0.0.1:6643 by default
           Invoke-WebRequest -Uri "https://github.com/kubeovn/ovs/commit/680e77a190ae7df3086bc35bb6150238e97f9020.patch" -OutFile ..\ovs-03.patch
           git apply ..\ovs-01.patch
@@ -112,14 +112,17 @@ jobs:
       - name: Apply OVN patches
         working-directory: ovn
         run: |
+          # python: Rename build related code to ovs_build_helpers.
+          Invoke-WebRequest -Uri "https://github.com/kubeovn/ovn/commit/9d961aec6fd7ef3e3002bc34e285833279e989c2.patch" -OutFile ..\ovn-00.patch
           # change hash type from dp_hash to hash with field src_ip
           Invoke-WebRequest -Uri "https://github.com/kubeovn/ovn/commit/5a04402c01df1463b9e1edcbc1c5634793687140.patch" -OutFile ..\ovn-01.patch
           # add support for windows
-          Invoke-WebRequest -Uri "https://github.com/kubeovn/ovn/commit/2c85af7097e4c39d225c98dc68b55a964d0197d7.patch" -OutFile ..\ovn-02.patch
+          Invoke-WebRequest -Uri "https://github.com/kubeovn/ovn/commit/2be843b9fc7cba253fb27fc57c384034e97db148.patch" -OutFile ..\ovn-02.patch
           # set br-int controller to TCP 127.0.0.1:6653
           Invoke-WebRequest -Uri "https://github.com/kubeovn/ovn/commit/24dcd9485ebb0f6c962250684fae512850cd9210.patch" -OutFile ..\ovn-03.patch
           # ovn-controller: do not send GARP on localnet for Kube-OVN ports
           Invoke-WebRequest -Uri "https://github.com/kubeovn/ovn/commit/30ff0ba51745f5ea1b38ed63e8cd8e0479d0f916.patch" -OutFile ..\ovn-04.patch
+          git apply ..\ovn-00.patch
           git apply ..\ovn-01.patch
           git apply ..\ovn-02.patch
           git apply ..\ovn-03.patch
@@ -131,9 +134,6 @@ jobs:
         run: |
           call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
           nmake all install
-
-      - name: Install pypiwin32
-        run: python3 -m pip install pypiwin32
 
       - name: Build OVS and OVN
         shell: cmd
@@ -154,14 +154,15 @@ jobs:
             echo %%~d | findstr /C:"C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise" > nul && set _vs_path=!_vs_path!;%%~d
           )
           SET PATH="%_vs_path%;%PATH%"
-          C:\msys64\usr\bin\bash.exe -lc "pacman -S --noconfirm libtool autoconf automake-wrapper"
+          C:\msys64\usr\bin\bash.exe -lc "pacman -S --noconfirm python-pip libtool autoconf automake-wrapper"
+          C:\msys64\usr\bin\bash.exe -lc "python3 -m pip install pypiwin32"
           C:\msys64\usr\bin\bash.exe -lc "rm -f `which link`"
           C:\msys64\usr\bin\bash.exe -lc "cd '%_ovs_dir%' && ./boot.sh"
           C:\msys64\usr\bin\bash.exe -lc "cd '%_ovs_dir%' && ./configure CC=./build-aux/cccl LD='`which link`' LIBS='-lws2_32 -lShlwapi -liphlpapi -lwbemuuid -lole32 -loleaut32' --prefix='C:/openvswitch/usr' --localstatedir='C:/openvswitch/var' --sysconfdir='C:/openvswitch/etc' --with-pthread='%_p4w_dir%' --disable-ssl"
           C:\msys64\usr\bin\bash.exe -lc "cd '%_ovs_dir%' && make -j"
           C:\msys64\usr\bin\bash.exe -lc "cd '%_ovs_dir%' && make windows_installer"
           C:\msys64\usr\bin\bash.exe -lc "cd '%_ovn_dir%' && ./boot.sh"
-          C:\msys64\usr\bin\bash.exe -lc "cd '%_ovn_dir%' && ./configure CC=./build-aux/cccl LD='`which link`' LIBS='-lws2_32 -lShlwapi -liphlpapi -lwbemuuid -lole32 -loleaut32' --prefix='C:/ovn/usr' --localstatedir='C:/ovn/var' --sysconfdir='C:/ovn/etc' --with-pthread='%_p4w_dir%' --disable-ssl --with-ovs-source='../ovs' --with-ovs-build='../ovs'"
+          C:\msys64\usr\bin\bash.exe -lc "cd '%_ovn_dir%' && ./configure CC=./build-aux/cccl LD='`which link`' LIBS='-lws2_32 -lShlwapi -liphlpapi -lwbemuuid -lole32 -loleaut32' --prefix='C:/ovn/usr' --localstatedir='C:/ovn/var' --sysconfdir='C:/ovn/etc' --with-pthread='%_p4w_dir%' --disable-ssl --with-ovs-source='../ovs'"
           C:\msys64\usr\bin\bash.exe -lc "cd '%_ovn_dir%' && make -j"
           C:\msys64\usr\bin\bash.exe -lc "cd '%_ovn_dir%' && make install"
 
