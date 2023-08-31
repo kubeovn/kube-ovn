@@ -29,6 +29,12 @@ issues:
       linters:
         - revive
       text: "dot imports"
+    - linters:
+        - revive
+      text: "VpcDns should be VpcDNS"
+    - linters:
+        - revive
+      text: "VpcDnsList should be VpcDNSList"
 
 linters-settings:
   goimports:
