@@ -401,13 +401,14 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		}
 	}
 
-	if vpc.Spec.PolicyRoutes != nil {
-		// diff update vpc policy route
+	// update vpc policy route
+	{
 		policyList, err := c.ovnNbClient.ListLogicalRouterPolicies(vpc.Name, -1, nil)
 		if err != nil {
 			klog.Errorf("failed to get vpc %s policy route list, %v", vpc.Name, err)
 			return err
 		}
+		// diff vpc policy route
 		policyRouteNeedDel, policyRouteNeedAdd, err := diffPolicyRoute(policyList, vpc.Spec.PolicyRoutes)
 		if err != nil {
 			klog.Errorf("failed to diff vpc %s policy route, %v", vpc.Name, err)
