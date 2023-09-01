@@ -478,8 +478,7 @@ func (c *Controller) handleDeleteNode(key string) error {
 		return err
 	}
 
-	afs := []int{4, 6}
-	for _, af := range afs {
+	for _, af := range [...]int{4, 6} {
 		if err := c.deletePolicyRouteForLocalDnsCacheOnNode(key, af); err != nil {
 			return err
 		}
@@ -1126,8 +1125,8 @@ func (c *Controller) deletePolicyRouteForNode(nodeName string) error {
 					}
 				}
 			} else {
-				klog.Infof("delete policy route for centralized subnet %s", subnet.Name)
-				if err := c.deletePolicyRouteForCentralizedSubnet(subnet); err != nil {
+				klog.Infof("reconcile policy route for centralized subnet %s", subnet.Name)
+				if err := c.reconcileDefaultCentralizedSubnetRouteInDefaultVpc(subnet); err != nil {
 					klog.Errorf("failed to delete policy route for centralized subnet %s, %v", subnet.Name, err)
 					return err
 				}
