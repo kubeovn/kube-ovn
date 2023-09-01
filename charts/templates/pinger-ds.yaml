@@ -20,6 +20,13 @@ spec:
         type: infra
     spec:
       priorityClassName: system-node-critical
+      tolerations:
+        - effect: NoSchedule
+          operator: Exists
+        - effect: NoExecute
+          operator: Exists
+        - key: CriticalAddonsOnly
+          operator: Exists
       serviceAccountName: kube-ovn-app
       hostPID: true
       containers:
