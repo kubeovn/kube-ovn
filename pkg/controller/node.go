@@ -1199,9 +1199,9 @@ func (c *Controller) deletePolicyRouteForNode(nodeName string) error {
 						}
 					}
 				}
-			} else {
-				klog.Infof("delete policy route for centralized subnet %s", subnet.Name)
-				if err := c.deletePolicyRouteForCentralizedSubnet(subnet); err != nil {
+			} else if subnet.Status.ActivateGateway == nodeName {
+				klog.Infof("reconcile ovn route for centralized subnet %s", subnet.Name)
+				if err := c.reconcileOvnRoute(subnet); err != nil {
 					klog.Errorf("failed to delete policy route for centralized subnet %s, %v", subnet.Name, err)
 					return err
 				}
