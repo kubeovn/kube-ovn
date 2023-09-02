@@ -368,7 +368,7 @@ func (suite *OvnClientTestSuite) Test_LoadBalancerWithHealthCheck() {
 
 /* load_balancer health check unit test */
 func (suite *OvnClientTestSuite) Test_CreateLoadBalancerHealthCheck() {
-	suite.testCreateLoadBalancerHealthCheck()
+	suite.testAddLoadBalancerHealthCheck()
 }
 
 func (suite *OvnClientTestSuite) Test_UpdateLoadBalancerHealthCheck() {

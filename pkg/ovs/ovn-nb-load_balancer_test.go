@@ -353,9 +353,8 @@ func (suite *OvnClientTestSuite) testLoadBalancerAddVip() {
 
 	t.Run("add new vips to load balancer",
 		func(t *testing.T) {
-			ignoreHealthCheck := true
 			for vip, backends := range vips {
-				err = ovnClient.LoadBalancerAddVip(lbName, vip, ignoreHealthCheck, nil, strings.Split(backends, ",")...)
+				err = ovnClient.LoadBalancerAddVip(lbName, vip, strings.Split(backends, ",")...)
 				require.NoError(t, err)
 
 				expectedVips[vip] = backends
@@ -375,9 +374,8 @@ func (suite *OvnClientTestSuite) testLoadBalancerAddVip() {
 
 	t.Run("add new vips to load balancer repeatedly",
 		func(t *testing.T) {
-			ignoreHealthCheck := true
 			for vip, backends := range vips {
-				err := ovnClient.LoadBalancerAddVip(lbName, vip, ignoreHealthCheck, nil, strings.Split(backends, ",")...)
+				err := ovnClient.LoadBalancerAddVip(lbName, vip, strings.Split(backends, ",")...)
 				require.NoError(t, err)
 
 				expectedVips[vip] = backends
@@ -417,7 +415,7 @@ func (suite *OvnClientTestSuite) testLoadBalancerDeleteVip() {
 	}
 	ignoreHealthCheck := true
 	for vip, backends := range vips {
-		err = ovnClient.LoadBalancerAddVip(lbName, vip, ignoreHealthCheck, nil, strings.Split(backends, ",")...)
+		err = ovnClient.LoadBalancerAddVip(lbName, vip, strings.Split(backends, ",")...)
 		require.NoError(t, err)
 	}
 
@@ -477,8 +475,7 @@ func (suite *OvnClientTestSuite) testLoadBalancerAddIPPortMapping() {
 
 					mappings[host] = host
 				}
-				ignoreHealthCheck := true
-				err = ovnClient.LoadBalancerAddVip(lbName, vip, ignoreHealthCheck, nil, list...)
+				err = ovnClient.LoadBalancerAddVip(lbName, vip, list...)
 				require.NoError(t, err)
 
 				err = ovnClient.LoadBalancerAddIPPortMapping(lbName, vip, mappings)
@@ -517,8 +514,7 @@ func (suite *OvnClientTestSuite) testLoadBalancerAddIPPortMapping() {
 
 					mappings[host] = host
 				}
-				ignoreHealthCheck := true
-				err = ovnClient.LoadBalancerAddVip(lbName, vip, ignoreHealthCheck, nil, list...)
+				err = ovnClient.LoadBalancerAddVip(lbName, vip, list...)
 				require.NoError(t, err)
 
 				err = ovnClient.LoadBalancerAddIPPortMapping(lbName, vip, mappings)
@@ -580,8 +576,7 @@ func (suite *OvnClientTestSuite) testLoadBalancerDeleteIPPortMapping() {
 
 				vhost, _, err = net.SplitHostPort(vip)
 				require.NoError(t, err)
-				ignoreHealthCheck := true
-				err = ovnClient.LoadBalancerAddVip(lbName, vhost, ignoreHealthCheck, nil, strings.Split(backends, ",")...)
+				err = ovnClient.LoadBalancerAddVip(lbName, vhost, strings.Split(backends, ",")...)
 				require.NoError(t, err)
 
 				err = ovnClient.LoadBalancerAddIPPortMapping(lbName, vhost, mappings)
@@ -597,7 +592,7 @@ func (suite *OvnClientTestSuite) testLoadBalancerDeleteIPPortMapping() {
 					require.Contains(t, lb.IPPortMappings, backend)
 				}
 
-				err = ovnClient.LoadBalancerDeleteIPPortMapping(lbName, vhost, mappings)
+				err = ovnClient.LoadBalancerDeleteIPPortMapping(lbName, vip)
 				require.NoError(t, err)
 
 				lb, err = ovnClient.GetLoadBalancer(lbName, false)
@@ -623,24 +618,10 @@ func (suite *OvnClientTestSuite) testLoadBalancerDeleteIPPortMapping() {
 	t.Run("delete ip port mappings from load balancer repeatedly",
 		func(t *testing.T) {
 			for vip, backends := range vips {
-				var (
-					list        []string
-					vhost, host string
-				)
-				list = strings.Split(backends, ",")
+				list := strings.Split(backends, ",")
 				mappings = make(map[string]string)
 
-				for _, backend := range list {
-					host, _, err = net.SplitHostPort(backend)
-					require.NoError(t, err)
-
-					mappings[host] = host
-				}
-
-				vhost, _, err = net.SplitHostPort(vip)
-				require.NoError(t, err)
-
-				err = ovnClient.LoadBalancerDeleteIPPortMapping(lbName, vhost, mappings)
+				err = ovnClient.LoadBalancerDeleteIPPortMapping(lbName, vip)
 				require.NoError(t, err)
 
 				lb, err = ovnClient.GetLoadBalancer(lbName, false)
@@ -661,43 +642,8 @@ func (suite *OvnClientTestSuite) testLoadBalancerDeleteIPPortMapping() {
 	}
 	t.Run("delete ip port mappings from load balancer repeatedly",
 		func(t *testing.T) {
-			for vip, backends := range vips {
-				var (
-					list        []string
-					vhost, host string
-				)
-				list = strings.Split(backends, ",")
-				mappings = make(map[string]string)
-
-				for _, backend := range list {
-					if backend != "" {
-						host, _, err = net.SplitHostPort(backend)
-						require.NoError(t, err)
-
-						mappings[host] = host
-					}
-				}
-
-				if len(mappings) == 0 {
-					if backends, exist := lb.Vips[vip]; exist {
-						for _, backend := range strings.Split(backends, ",") {
-							if backend != "" {
-								if host, _, err := net.SplitHostPort(backend); err != nil {
-									require.NoError(t, err)
-								} else {
-									if tar, exist := lb.IPPortMappings[host]; exist {
-										mappings[host] = tar
-									}
-								}
-							}
-						}
-					}
-				}
-
-				vhost, _, err = net.SplitHostPort(vip)
-				require.NoError(t, err)
-
-				err = ovnClient.LoadBalancerDeleteIPPortMapping(lbName, vhost, mappings)
+			for vip := range vips {
+				err = ovnClient.LoadBalancerDeleteIPPortMapping(lbName, vip)
 				require.NoError(t, err)
 
 				lb, err = ovnClient.GetLoadBalancer(lbName, false)
@@ -749,8 +695,7 @@ func (suite *OvnClientTestSuite) testLoadBalancerWithHealthCheck() {
 
 					mappings[host] = host
 				}
-				ignoreHealthCheck := true
-				err = ovnClient.LoadBalancerAddVip(lbName, vip, ignoreHealthCheck, nil, list...)
+				err = ovnClient.LoadBalancerAddVip(lbName, vip, list...)
 				require.NoError(t, err)
 
 				err = ovnClient.LoadBalancerAddIPPortMapping(lbName, vip, mappings)
@@ -807,12 +752,12 @@ func (suite *OvnClientTestSuite) testLoadBalancerWithHealthCheck() {
 	vip := "10.96.0.6:443"
 	t.Run("add new health check to load balancer",
 		func(t *testing.T) {
-			err = ovnClient.CreateLoadBalancerHealthCheck(lbName, vip)
+			err = ovnClient.AddLoadBalancerHealthCheck(lbName, vip)
 			require.NoError(t, err)
 
 			lb, err = ovnClient.GetLoadBalancer(lbName, false)
 			require.NoError(t, err)
-			_, lbhc, err = ovnClient.GetLoadBalancerHealthCheck(lbName, vip)
+			_, lbhc, err = ovnClient.GetLoadBalancerHealthCheck(lbName, vip, false)
 			require.NoError(t, err)
 			lbhcId = lbhc.UUID
 			require.Contains(t, lb.HealthCheck, lbhcId)
@@ -821,11 +766,11 @@ func (suite *OvnClientTestSuite) testLoadBalancerWithHealthCheck() {
 
 	t.Run("add new health check to load balancer repeatedly",
 		func(t *testing.T) {
-			err = ovnClient.CreateLoadBalancerHealthCheck(lbName, vip)
+			err = ovnClient.AddLoadBalancerHealthCheck(lbName, vip)
 			require.NoError(t, err)
 			lb, err = ovnClient.GetLoadBalancer(lbName, false)
 			require.NoError(t, err)
-			_, lbhc, err = ovnClient.GetLoadBalancerHealthCheck(lbName, vip)
+			_, lbhc, err = ovnClient.GetLoadBalancerHealthCheck(lbName, vip, false)
 			require.NoError(t, err)
 			require.Contains(t, lb.HealthCheck, lbhcId)
 		},

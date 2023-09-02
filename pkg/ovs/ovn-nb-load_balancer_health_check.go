@@ -14,28 +14,50 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 )
 
-// CreateLoadBalancerHealthCheck create lb health check
-func (c *ovnNbClient) CreateLoadBalancerHealthCheck(lbName, vipEndpoint string) error {
-	lb, lbhc, err := c.GetLoadBalancerHealthCheck(lbName, vipEndpoint)
+func (c *ovnNbClient) AddLoadBalancerHealthCheck(lbName, vipEndpoint string) error {
+	lbhc, err := c.newLoadBalancerHealthCheck(lbName, vipEndpoint, func(lbhc *ovnnb.LoadBalancerHealthCheck) {
+		if lbName == "" || vipEndpoint == "" {
+			return
+		}
+	})
 	if err != nil {
-		klog.Errorf("failed to get lb health check: %v", err)
-		return err
-	}
-
-	if lbhc != nil {
-		klog.Infof("lb health check %s %s already exists", lbName, vipEndpoint)
-		return nil
-	}
-
-	if lb.IPPortMappings == nil {
-		err := fmt.Errorf("lb %s should has ip port mapping before setting health check", lbName)
+		err := fmt.Errorf("failed to new lb health check: %v", err)
 		klog.Error(err)
 		return err
 	}
-	ops := make([]ovsdb.Operation, 0, 2)
-	uuid := ovsclient.NamedUUID()
-	lbhc = &ovnnb.LoadBalancerHealthCheck{
-		UUID: uuid,
+
+	return c.CreateLoadBalancerHealthCheck(lbName, vipEndpoint, lbhc)
+}
+
+// newLoadBalancerHealthCheck return hc with basic information
+func (c *ovnNbClient) newLoadBalancerHealthCheck(lbName, vipEndpoint string, funcs ...func(nat *ovnnb.LoadBalancerHealthCheck)) (*ovnnb.LoadBalancerHealthCheck, error) {
+	if len(lbName) == 0 {
+		err := fmt.Errorf("the lb name is required")
+		klog.Error(err)
+		return nil, err
+	}
+	if len(vipEndpoint) == 0 {
+		err := fmt.Errorf("the vip endpoint is required")
+		klog.Error(err)
+		return nil, err
+	}
+
+	exists, err := c.LoadBalancerHealthCheckExists(lbName, vipEndpoint)
+	if err != nil {
+		err := fmt.Errorf("get lb health check %s: %v", vipEndpoint, err)
+		klog.Error(err)
+		return nil, err
+	}
+
+	// found, ignore
+	if exists {
+		klog.Infof("already exists health check with vip %s for lb %s ", vipEndpoint, lbName)
+		return nil, nil
+	}
+
+	klog.Infof("create health check for vip endpoint %s in lb %s ", vipEndpoint, lbName)
+	lbhc := &ovnnb.LoadBalancerHealthCheck{
+		UUID: ovsclient.NamedUUID(),
 		Options: map[string]string{
 			"timeout":       "20",
 			"interval":      "5",
@@ -44,44 +66,49 @@ func (c *ovnNbClient) CreateLoadBalancerHealthCheck(lbName, vipEndpoint string) 
 		},
 		Vip: vipEndpoint,
 	}
-	lb.HealthCheck = append(lb.HealthCheck, uuid)
 
-	// prepare wait operation
-	condition := model.Condition{
-		Field:    &lb.HealthCheck,
-		Function: ovsdb.ConditionEqual,
-		Value:    lb.HealthCheck,
+	// for _, f := range funcs {
+	// 	f(lbhc)
+	// }
+
+	return lbhc, nil
+}
+
+// CreateLoadBalancerHealthCheck create lb health check
+func (c *ovnNbClient) CreateLoadBalancerHealthCheck(lbName, vipEndpoint string, lbhc *ovnnb.LoadBalancerHealthCheck) error {
+	if lbhc == nil {
+		return nil
 	}
-	timeout0 := 0
-	lbWaitHcOps, err := c.ovsDbClient.WhereAll(lb, condition).Wait(
-		ovsdb.WaitConditionNotEqual, // Until
-		&timeout0,                   // Timeout
-		lb,                          // Row (and Table)
-		&lb.HealthCheck,             // Cols (aka fields)
-	)
+
+	models := make([]model.Model, 0, 1)
+	lbhcUUIDs := make([]string, 0, 1)
+
+	lbHcModel := model.Model(lbhc)
+	models = append(models, lbHcModel)
+	lbhcUUIDs = append(lbhcUUIDs, lbhc.UUID)
+
+	createLbhcOp, err := c.ovsDbClient.Create(models...)
 	if err != nil {
-		err := fmt.Errorf("generate operations for waiting lb %s health check: %v", lbName, err)
+		klog.Error(err)
+		return fmt.Errorf("generate operations for creating lbhc: %v", err)
+	}
+
+	lbHcAddOp, err := c.LoadBalancerUpdateHealthCheckOp(lbName, lbhcUUIDs, ovsdb.MutateOperationInsert)
+	if err != nil {
+		err := fmt.Errorf("generate operations for adding lbhc to lb %s: %v", lbName, err)
 		klog.Error(err)
 		return err
 	}
-	ops = append(ops, lbWaitHcOps...)
-	hcOp, err := c.ovsDbClient.Create(lbhc)
-	if err != nil {
-		return fmt.Errorf("generate operations for creating lb health check %s %s: %v", lbName, vipEndpoint, err)
-	}
-	ops = append(ops, hcOp...)
-	lbOp, err := c.ovsDbClient.Where(lb).Update(lb)
-	if err != nil {
-		err := fmt.Errorf("generate operations for updating lb %s: %v", lbName, err)
-		klog.Error(err)
-		return err
-	}
-	ops = append(ops, lbOp...)
+
+	ops := make([]ovsdb.Operation, 0, 2)
+	ops = append(ops, createLbhcOp...)
+	ops = append(ops, lbHcAddOp...)
 	if err = c.Transact("lbhc-add", ops); err != nil {
 		err = fmt.Errorf("failed to create lb health check for lb %s vip %s: %v", lbName, vipEndpoint, err)
 		klog.Error(err)
 		return err
 	}
+
 	return nil
 }
 
@@ -152,13 +179,22 @@ func (c *ovnNbClient) DeleteLoadBalancerHealthCheck(lbName, vip string) error {
 }
 
 // GetLoadBalancerHealthCheck get lb health check by vip
-func (c *ovnNbClient) GetLoadBalancerHealthCheck(lbName, vipEndpoint string) (*ovnnb.LoadBalancer, *ovnnb.LoadBalancerHealthCheck, error) {
+func (c *ovnNbClient) GetLoadBalancerHealthCheck(lbName, vipEndpoint string, ignoreNotFound bool) (*ovnnb.LoadBalancer, *ovnnb.LoadBalancerHealthCheck, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
 	defer cancel()
 	var lb *ovnnb.LoadBalancer
 	var err error
 	if lb, err = c.GetLoadBalancer(lbName, false); err != nil {
 		klog.Errorf("failed to get lb %s: %v", lbName, err)
+		return nil, nil, err
+	}
+
+	if lb.HealthCheck == nil {
+		if ignoreNotFound {
+			return lb, nil, nil
+		}
+		err := fmt.Errorf("lb %s doesn't have health check", lbName)
+		klog.Error(err)
 		return nil, nil, err
 	}
 
@@ -176,11 +212,16 @@ func (c *ovnNbClient) GetLoadBalancerHealthCheck(lbName, vipEndpoint string) (*o
 		klog.Error(err)
 		return nil, nil, err
 	}
-	if len(healthCheckList) == 1 {
-		// #nosec G602
-		return lb, &healthCheckList[0], nil
+	if len(healthCheckList) == 0 {
+		if ignoreNotFound {
+			return lb, nil, nil
+		}
+		err := fmt.Errorf("lb %s doesn't have health check with vip %s", lbName, vipEndpoint)
+		klog.Error(err)
+		return nil, nil, err
 	}
-	return lb, nil, nil
+	// #nosec G602
+	return lb, &healthCheckList[0], nil
 }
 
 // ListLoadBalancerHealthChecks list all lb health checks
@@ -209,10 +250,10 @@ func (c *ovnNbClient) ListLoadBalancerHealthChecks(filter func(lbhc *ovnnb.LoadB
 }
 
 // LoadBalancerHealthCheckExists get lb health check and return the result of existence
-func (c *ovnNbClient) LoadBalancerHealthCheckExists(lbName, vip string) (bool, error) {
-	_, lbhc, err := c.GetLoadBalancerHealthCheck(lbName, vip)
+func (c *ovnNbClient) LoadBalancerHealthCheckExists(lbName, vipEndpoint string) (bool, error) {
+	_, lbhc, err := c.GetLoadBalancerHealthCheck(lbName, vipEndpoint, true)
 	if err != nil {
-		klog.Errorf("failed to get lb health check: %v", err)
+		klog.Errorf("failed to get lb %s health check by vip endpoint %s: %v", vipEndpoint, err)
 		return false, err
 	}
 	return lbhc != nil, err
@@ -225,7 +266,7 @@ func (c *ovnNbClient) DeleteLoadBalancerHealthCheckOp(lbName, vip string) ([]ovs
 		err  error
 	)
 
-	_, lbhc, err = c.GetLoadBalancerHealthCheck(lbName, vip)
+	_, lbhc, err = c.GetLoadBalancerHealthCheck(lbName, vip, true)
 	if err != nil {
 		klog.Errorf("failed to get lb health check: %v", err)
 		return nil, err

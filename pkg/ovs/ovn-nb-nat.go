@@ -28,6 +28,7 @@ func (c *ovnNbClient) AddNat(lrName, natType, externalIP, logicalIP, logicalMac,
 		}
 	})
 	if err != nil {
+		klog.Errorf("failed to new nat: %v", err)
 		return err
 	}
 
@@ -282,7 +283,7 @@ func (c *ovnNbClient) NatExists(lrName, natType, externalIP, logicalIP string) (
 	return nat != nil, err
 }
 
-// newNat return net with basic information
+// newNat return nat with basic information
 func (c *ovnNbClient) newNat(lrName, natType, externalIP, logicalIP, logicalMac, port string, options ...func(nat *ovnnb.NAT)) (*ovnnb.NAT, error) {
 	if len(lrName) == 0 {
 		return nil, fmt.Errorf("the logical router name is required")
