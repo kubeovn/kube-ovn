@@ -2802,8 +2802,6 @@ rules:
       - patch
   - apiGroups:
       - ""
-      - networking.k8s.io
-      - apps
     resources:
       - services
       - endpoints
@@ -2913,7 +2911,6 @@ rules:
       - get
   - apiGroups:
       - ""
-      - networking.k8s.io
       - apps
     resources:
       - networkpolicies
@@ -2924,16 +2921,13 @@ rules:
       - watch
   - apiGroups:
       - ""
-      - apps
     resources:
       - services/status
     verbs:
       - update
   - apiGroups:
       - ""
-      - networking.k8s.io
       - apps
-      - extensions
     resources:
       - services
       - endpoints
@@ -3025,6 +3019,13 @@ rules:
       - list
       - patch
       - watch
+  # ovn-external-gw-config
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+    verbs:
+      - get
   - apiGroups:
       - ""
     resources:
@@ -3072,11 +3073,11 @@ rules:
       - get
       - list
   - apiGroups:
-      - ""
-      - networking.k8s.io
       - apps
     resources:
       - daemonsets
+    resourceNames:
+      - kube-ovn-pinger
     verbs:
       - get
 ---
