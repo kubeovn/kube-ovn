@@ -54,8 +54,3 @@ TEST SUITE: None
 # 高可用集群安装
 $ helm install kube-ovn kubeovn/kube-ovn --set MASTER_NODES=${Node0IP},${Node1IP},${Node2IP}, --set replicaCount=3
 ```
-
-6、如果从 v1.12.0 之前的版本升级到 Kube-OVN v1.12.0 版本，需要同时设置 `restart_ovs` 参数为 `true`
-```bash
-$ helm upgrade kube-ovn kubeovn/kube-ovn --set MASTER_NODES=${Node0},${Node1},${Node2}, --set replicaCount=3 --set restart_ovs=true
-```
