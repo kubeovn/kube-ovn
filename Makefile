@@ -307,28 +307,29 @@ kind-install-chart: kind-load-image kind-untaint-control-plane
 	kubectl label node -lbeta.kubernetes.io/os=linux kubernetes.io/os=linux --overwrite
 	kubectl label node -lnode-role.kubernetes.io/control-plane kube-ovn/role=master --overwrite
 	kubectl label node -lovn.kubernetes.io/ovs_dp_type!=userspace ovn.kubernetes.io/ovs_dp_type=kernel --overwrite
-	ips=$$(kubectl get node -lkube-ovn/role=master --no-headers -o wide | awk '{print $$6}') && \
+	ips=$$(kubectl get node -lkube-ovn/role=master --no-headers -o wide | awk '{print $$6}' | tr '\n' ',' | sed 's/,$$//') && \
 	helm install kubeovn ./kubeovn-helm \
 		--set global.images.kubeovn.tag=$(VERSION) \
-		--set replicaCount=$$(echo $$ips | awk '{print NF}') \
-		--set MASTER_NODES="$$(echo $$ips | tr \\n ',' | sed -e 's/,$$//' -e 's/,/\\,/g')"
-	kubectl rollout status deployment/ovn-central -n kube-system --timeout 300s
-	kubectl rollout status deployment/kube-ovn-controller -n kube-system --timeout 120s
-	kubectl rollout status daemonset/kube-ovn-cni -n kube-system --timeout 120s
-	kubectl rollout status daemonset/kube-ovn-pinger -n kube-system --timeout 120s
-	kubectl rollout status deployment/coredns -n kube-system --timeout 60s
+		--set replicaCount=$$(echo $$ips | awk -F ',' '{print NF}') \
+		--set MASTER_NODES="$$(echo $$ips | sed 's/,/\\,/g')"
+	sleep 60
+	kubectl -n kube-system rollout status --timeout=1s deployment/ovn-central
+	kubectl -n kube-system rollout status --timeout=1s deployment/kube-ovn-controller
+	kubectl -n kube-system rollout status --timeout=1s daemonset/kube-ovn-cni
+	kubectl -n kube-system rollout status --timeout=1s daemonset/kube-ovn-pinger
 
 .PHONY: kind-upgrade-chart
 kind-upgrade-chart: kind-load-image
-	$(eval OVN_DB_IPS = $(shell kubectl get no -lkube-ovn/role=master --no-headers -o wide | awk '{print $$6}' | tr \\n ',' | sed -e 's/,$$//' -e 's/,/\\,/g'))
+	$(eval OVN_DB_IPS = $(shell kubectl get node -lkube-ovn/role=master --no-headers -o wide | awk '{print $$6}' | tr '\n' ',' | sed -e 's/,$$//' -e 's/,/\\,/g'))
 	helm upgrade kubeovn ./kubeovn-helm \
 		--set global.images.kubeovn.tag=$(VERSION) \
 		--set replicaCount=$$(echo $(OVN_DB_IPS) | awk -F ',' '{print NF}') \
 		--set MASTER_NODES='$(OVN_DB_IPS)'
-	kubectl rollout status deployment/ovn-central -n kube-system --timeout 300s
-	kubectl rollout status deployment/kube-ovn-controller -n kube-system --timeout 300s
-	kubectl rollout status daemonset/kube-ovn-cni -n kube-system --timeout 120s
-	kubectl rollout status daemonset/kube-ovn-pinger -n kube-system --timeout 120s
+	sleep 90
+	kubectl -n kube-system rollout status --timeout=1s deployment/ovn-central
+	kubectl -n kube-system rollout status --timeout=1s deployment/kube-ovn-controller
+	kubectl -n kube-system rollout status --timeout=1s daemonset/kube-ovn-cni
+	kubectl -n kube-system rollout status --timeout=1s daemonset/kube-ovn-pinger
 
 .PHONY: kind-install
 kind-install: kind-load-image
