@@ -442,12 +442,16 @@ func (c *Controller) gcLoadBalancer() error {
 		klog.Errorf("failed to list svc, %v", err)
 		return err
 	}
-	tcpVips := strset.NewWithSize(len(svcs) * 2)
-	udpVips := strset.NewWithSize(len(svcs) * 2)
-	sctpVips := strset.NewWithSize(len(svcs) * 2)
-	tcpSessionVips := strset.NewWithSize(len(svcs) * 2)
-	udpSessionVips := strset.NewWithSize(len(svcs) * 2)
-	sctpSessionVips := strset.NewWithSize(len(svcs) * 2)
+
+	var (
+		tcpVips         = strset.NewWithSize(len(svcs) * 2)
+		udpVips         = strset.NewWithSize(len(svcs) * 2)
+		sctpVips        = strset.NewWithSize(len(svcs) * 2)
+		tcpSessionVips  = strset.NewWithSize(len(svcs) * 2)
+		udpSessionVips  = strset.NewWithSize(len(svcs) * 2)
+		sctpSessionVips = strset.NewWithSize(len(svcs) * 2)
+	)
+
 	for _, svc := range svcs {
 		ips := util.ServiceClusterIPs(*svc)
 		if v, ok := svc.Annotations[util.SwitchLBRuleVipsAnnotation]; ok {
@@ -486,7 +490,12 @@ func (c *Controller) gcLoadBalancer() error {
 		klog.Errorf("failed to list vpc, %v", err)
 		return err
 	}
-	var vpcLbs []string
+
+	var (
+		vpcLbs            []string
+		ignoreHealthCheck = true
+	)
+
 	for _, vpc := range vpcs {
 		tcpLb, udpLb, sctpLb := vpc.Status.TcpLoadBalancer, vpc.Status.UdpLoadBalancer, vpc.Status.SctpLoadBalancer
 		tcpSessLb, udpSessLb, sctpSessLb := vpc.Status.TcpSessionLoadBalancer, vpc.Status.UdpSessionLoadBalancer, vpc.Status.SctpSessionLoadBalancer
@@ -509,7 +518,7 @@ func (c *Controller) gcLoadBalancer() error {
 
 			for vip := range lb.Vips {
 				if !svcVips.Has(vip) {
-					if err = c.ovnNbClient.LoadBalancerDeleteVip(lbName, vip); err != nil {
+					if err = c.ovnNbClient.LoadBalancerDeleteVip(lbName, vip, ignoreHealthCheck); err != nil {
 						klog.Errorf("failed to delete vip %s from LB %s: %v", vip, lbName, err)
 						return err
 					}

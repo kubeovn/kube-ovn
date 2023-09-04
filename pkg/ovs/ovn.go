@@ -67,6 +67,7 @@ func NewOvnNbClient(ovnNbAddr string, ovnNbTimeout int) (*ovnNbClient, error) {
 		client.WithTable(&ovnnb.DHCPOptions{}),
 		client.WithTable(&ovnnb.GatewayChassis{}),
 		client.WithTable(&ovnnb.LoadBalancer{}),
+		client.WithTable(&ovnnb.LoadBalancerHealthCheck{}),
 		client.WithTable(&ovnnb.LogicalRouterPolicy{}),
 		client.WithTable(&ovnnb.LogicalRouterPort{}),
 		client.WithTable(&ovnnb.LogicalRouterStaticRoute{}),

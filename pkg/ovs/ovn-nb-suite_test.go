@@ -330,10 +330,6 @@ func (suite *OvnClientTestSuite) Test_DeleteLoadBalancer() {
 	suite.testDeleteLoadBalancer()
 }
 
-func (suite *OvnClientTestSuite) Test_LoadBalancerAddVip() {
-	suite.testLoadBalancerAddVip()
-}
-
 func (suite *OvnClientTestSuite) Test_LoadBalancerDeleteVip() {
 	suite.testLoadBalancerDeleteVip()
 }
@@ -344,6 +340,10 @@ func (suite *OvnClientTestSuite) Test_GetLoadBalancer() {
 
 func (suite *OvnClientTestSuite) Test_ListLoadBalancers() {
 	suite.testListLoadBalancers()
+}
+
+func (suite *OvnClientTestSuite) Test_LoadBalancerAddVip() {
+	suite.testLoadBalancerAddVip()
 }
 
 func (suite *OvnClientTestSuite) Test_DeleteLoadBalancerOp() {
@@ -362,21 +362,13 @@ func (suite *OvnClientTestSuite) Test_LoadBalancerDeleteIPPortMapping() {
 	suite.testLoadBalancerDeleteIPPortMapping()
 }
 
-func (suite *OvnClientTestSuite) Test_LoadBalancerUpdateIPPortMapping() {
-	suite.testLoadBalancerUpdateIPPortMapping()
-}
-
-func (suite *OvnClientTestSuite) Test_LoadBalancerAddHealthCheck() {
-	suite.testLoadBalancerAddHealthCheck()
-}
-
-func (suite *OvnClientTestSuite) Test_LoadBalancerDeleteHealthCheck() {
-	suite.testLoadBalancerDeleteHealthCheck()
+func (suite *OvnClientTestSuite) Test_LoadBalancerWithHealthCheck() {
+	suite.testLoadBalancerWithHealthCheck()
 }
 
 /* load_balancer health check unit test */
 func (suite *OvnClientTestSuite) Test_CreateLoadBalancerHealthCheck() {
-	suite.testCreateLoadBalancerHealthCheck()
+	suite.testAddLoadBalancerHealthCheck()
 }
 
 func (suite *OvnClientTestSuite) Test_UpdateLoadBalancerHealthCheck() {

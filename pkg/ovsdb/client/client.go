@@ -90,6 +90,7 @@ func NewOvsDbClient(db, addr string, dbModel model.ClientDBModel, monitors []cli
 		klog.Errorf("failed to connect to OVN NB server %s: %v", addr, err)
 		return nil, err
 	}
+
 	monitor := c.NewMonitor(monitors...)
 	monitor.Method = ovsdb.ConditionalMonitorRPC
 	if _, err = c.Monitor(context.TODO(), monitor); err != nil {

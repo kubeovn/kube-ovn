@@ -251,20 +251,26 @@ func (c *Controller) handleDeleteService(service *vpcService) error {
 		return err
 	}
 
-	vpcLbConfig := c.GenVpcLoadBalancer(service.Vpc)
-	var vpcLB [2]string
+	var (
+		vpcLb             [2]string
+		vpcLbConfig       = c.GenVpcLoadBalancer(service.Vpc)
+		ignoreHealthCheck = true
+	)
 	switch service.Protocol {
 	case v1.ProtocolTCP:
-		vpcLB = [2]string{vpcLbConfig.TcpLoadBalancer, vpcLbConfig.TcpSessLoadBalancer}
+		vpcLb = [2]string{vpcLbConfig.TcpLoadBalancer, vpcLbConfig.TcpSessLoadBalancer}
 	case v1.ProtocolUDP:
-		vpcLB = [2]string{vpcLbConfig.UdpLoadBalancer, vpcLbConfig.UdpSessLoadBalancer}
+		vpcLb = [2]string{vpcLbConfig.UdpLoadBalancer, vpcLbConfig.UdpSessLoadBalancer}
 	case v1.ProtocolSCTP:
-		vpcLB = [2]string{vpcLbConfig.SctpLoadBalancer, vpcLbConfig.SctpSessLoadBalancer}
+		vpcLb = [2]string{vpcLbConfig.SctpLoadBalancer, vpcLbConfig.SctpSessLoadBalancer}
 	}
 
 	for _, vip := range service.Vips {
-		var found bool
-		ip := parseVipAddr(vip)
+		var (
+			ip    = parseVipAddr(vip)
+			found bool
+		)
+
 		for _, svc := range svcs {
 			if util.ContainsString(util.ServiceClusterIPs(*svc), ip) {
 				found = true
@@ -275,8 +281,8 @@ func (c *Controller) handleDeleteService(service *vpcService) error {
 			continue
 		}
 
-		for _, lb := range vpcLB {
-			if err := c.ovnNbClient.LoadBalancerDeleteVip(lb, vip); err != nil {
+		for _, lb := range vpcLb {
+			if err := c.ovnNbClient.LoadBalancerDeleteVip(lb, vip, ignoreHealthCheck); err != nil {
 				klog.Errorf("failed to delete vip %s from LB %s: %v", vip, lb, err)
 				return err
 			}
@@ -366,8 +372,10 @@ func (c *Controller) handleUpdateService(key string) error {
 			return err
 		}
 		klog.V(3).Infof("existing vips of LB %s: %v", lbName, lb.Vips)
+
+		ignoreHealthCheck := true
 		for _, vip := range svcVips {
-			if err := c.ovnNbClient.LoadBalancerDeleteVip(oLbName, vip); err != nil {
+			if err = c.ovnNbClient.LoadBalancerDeleteVip(oLbName, vip, ignoreHealthCheck); err != nil {
 				klog.Errorf("failed to delete vip %s from LB %s: %v", vip, oLbName, err)
 				return err
 			}
@@ -382,7 +390,7 @@ func (c *Controller) handleUpdateService(key string) error {
 		for vip := range lb.Vips {
 			if ip := parseVipAddr(vip); (util.ContainsString(ips, ip) && !util.IsStringIn(vip, svcVips)) || util.ContainsString(ipsToDel, ip) {
 				klog.Infof("remove stale vip %s from LB %s", vip, lb)
-				if err := c.ovnNbClient.LoadBalancerDeleteVip(lbName, vip); err != nil {
+				if err = c.ovnNbClient.LoadBalancerDeleteVip(lbName, vip, ignoreHealthCheck); err != nil {
 					klog.Errorf("failed to delete vip %s from LB %s: %v", vip, lb, err)
 					return err
 				}
@@ -402,7 +410,7 @@ func (c *Controller) handleUpdateService(key string) error {
 		for vip := range oLb.Vips {
 			if ip := parseVipAddr(vip); util.ContainsString(ips, ip) || util.ContainsString(ipsToDel, ip) {
 				klog.Infof("remove stale vip %s from LB %s", vip, oLbName)
-				if err = c.ovnNbClient.LoadBalancerDeleteVip(oLbName, vip); err != nil {
+				if err = c.ovnNbClient.LoadBalancerDeleteVip(oLbName, vip, ignoreHealthCheck); err != nil {
 					klog.Errorf("failed to delete vip %s from LB %s: %v", vip, oLbName, err)
 					return err
 				}
