@@ -35,7 +35,7 @@ jobs:
           - overlay
           - underlay
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Remove DNS search domain
         run: |
@@ -65,7 +65,7 @@ jobs:
         run: mkdir -p test/e2e/k8s-network/branches/${{ matrix.branch }}
 
       - name: Check out branch
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: ${{ matrix.branch }}
           fetch-depth: 1
@@ -121,7 +121,7 @@ jobs:
           - ipv6
           - dual
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Remove DNS search domain
         run: |
@@ -151,7 +151,7 @@ jobs:
         run: mkdir -p test/e2e/k8s-network/branches/${{ matrix.branch }}
 
       - name: Check out branch
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: ${{ matrix.branch }}
           fetch-depth: 1
@@ -203,7 +203,7 @@ jobs:
           - ipv6
           - dual
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Remove DNS search domain
         run: |
@@ -233,7 +233,7 @@ jobs:
         run: mkdir -p test/e2e/k8s-network/branches/${{ matrix.branch }}
 
       - name: Check out branch
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: ${{ matrix.branch }}
           fetch-depth: 1
@@ -285,7 +285,7 @@ jobs:
           - ipv6
           - dual
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Remove DNS search domain
         run: |
@@ -296,7 +296,7 @@ jobs:
         run: mkdir -p test/e2e/k8s-network/branches/${{ matrix.branch }}
 
       - name: Check out branch
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: ${{ matrix.branch }}
           fetch-depth: 1
@@ -347,7 +347,7 @@ jobs:
           - overlay
           - underlay
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: actions/setup-go@v4
         with:
           go-version: ${{ env.GO_VERSION || '' }}
@@ -371,7 +371,7 @@ jobs:
         run: mkdir -p test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Check out branch
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: ${{ matrix.branch }}
           fetch-depth: 1
@@ -423,7 +423,7 @@ jobs:
           - release-1.11
           - release-1.9
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: actions/setup-go@v4
         with:
           go-version: ${{ env.GO_VERSION || '' }}
@@ -447,7 +447,7 @@ jobs:
         run: mkdir -p test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Check out branch
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: ${{ matrix.branch }}
           fetch-depth: 1
@@ -497,13 +497,13 @@ jobs:
           - release-1.11
           - release-1.9
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Create branch directory
         run: mkdir -p test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Check out branch
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: ${{ matrix.branch }}
           fetch-depth: 1
@@ -548,13 +548,13 @@ jobs:
           - release-1.11
           - release-1.9
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Create branch directory
         run: mkdir -p test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Check out branch
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: ${{ matrix.branch }}
           fetch-depth: 1
@@ -601,13 +601,13 @@ jobs:
           - release-1.11
           - release-1.9
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Create branch directory
         run: mkdir -p test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Check out branch
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: ${{ matrix.branch }}
           fetch-depth: 1
@@ -653,7 +653,7 @@ jobs:
           - release-1.12
           - release-1.11
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - uses: actions/setup-go@v4
         with:
@@ -678,7 +678,7 @@ jobs:
         run: mkdir -p test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Check out branch
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: ${{ matrix.branch }}
           fetch-depth: 1
@@ -725,7 +725,7 @@ jobs:
           - master
           - release-1.12
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - uses: actions/setup-go@v4
         with:
@@ -750,7 +750,7 @@ jobs:
         run: mkdir -p test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Check out branch
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: ${{ matrix.branch }}
           fetch-depth: 1
@@ -796,7 +796,7 @@ jobs:
           - master
           - release-1.12
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - uses: actions/setup-go@v4
         with:
@@ -821,7 +821,7 @@ jobs:
         run: mkdir -p test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Check out branch
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: ${{ matrix.branch }}
           fetch-depth: 1
@@ -869,13 +869,13 @@ jobs:
           - release-1.11
           - release-1.9
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Create branch directory
         run: mkdir -p test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Check out branch
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: ${{ matrix.branch }}
           fetch-depth: 1
@@ -919,7 +919,7 @@ jobs:
           - release-1.11
           - release-1.9
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: azure/setup-helm@v3
         with:
           version: '${{ env.HELM_VERSION }}'
@@ -952,7 +952,7 @@ jobs:
         run: mkdir -p test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Check out branch
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: ${{ matrix.branch }}
           fetch-depth: 1
@@ -1016,7 +1016,7 @@ jobs:
           - ipv6
           - dual
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: actions/setup-go@v4
         with:
           go-version: ${{ env.GO_VERSION || '' }}
@@ -1040,7 +1040,7 @@ jobs:
         run: mkdir -p test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Check out branch
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: ${{ matrix.branch }}
           fetch-depth: 1
@@ -1100,7 +1100,7 @@ jobs:
           - release-1.11 => master
           - release-1.12 => master
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: azure/setup-helm@v3
         with:
           version: '${{ env.HELM_VERSION }}'
@@ -1134,13 +1134,13 @@ jobs:
       - name: Create branch directory
         run: mkdir -p test/e2e/kube-ovn/branches
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           ref: ${{ env.VERSION_FROM }}
           fetch-depth: 1
           path: test/e2e/kube-ovn/branches/${{ env.VERSION_FROM }}
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           ref: ${{ env.VERSION_TO }}
           fetch-depth: 1
@@ -1198,13 +1198,13 @@ jobs:
           - master
           - release-1.12
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Create branch directory
         run: mkdir -p test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Check out branch
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: ${{ matrix.branch }}
           fetch-depth: 1
@@ -1256,7 +1256,7 @@ jobs:
           - master
           - release-1.12
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: actions/setup-go@v4
         with:
           go-version: ${{ env.GO_VERSION || '' }}
@@ -1280,7 +1280,7 @@ jobs:
         run: mkdir -p test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Check out branch
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: ${{ matrix.branch }}
           fetch-depth: 1
@@ -1326,7 +1326,7 @@ jobs:
           - master
           - release-1.12
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: actions/setup-go@v4
         with:
           go-version: ${{ env.GO_VERSION || '' }}
@@ -1350,7 +1350,7 @@ jobs:
         run: mkdir -p test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Check out branch
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: ${{ matrix.branch }}
           fetch-depth: 1
