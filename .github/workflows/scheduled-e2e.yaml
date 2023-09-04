@@ -26,7 +26,6 @@ jobs:
           - master
           - release-1.12
           - release-1.11
-          - release-1.10
           - release-1.9
         ip-family:
           - ipv4
@@ -116,7 +115,6 @@ jobs:
           - master
           - release-1.12
           - release-1.11
-          - release-1.10
           - release-1.9
         ip-family:
           - ipv4
@@ -199,7 +197,6 @@ jobs:
           - master
           - release-1.12
           - release-1.11
-          - release-1.10
           - release-1.9
         ip-family:
           - ipv4
@@ -282,7 +279,6 @@ jobs:
           - master
           - release-1.12
           - release-1.11
-          - release-1.10
           - release-1.9
         ip-family:
           - ipv4
@@ -342,7 +338,6 @@ jobs:
           - master
           - release-1.12
           - release-1.11
-          - release-1.10
           - release-1.9
         ip-family:
           - ipv4
@@ -426,7 +421,6 @@ jobs:
           - master
           - release-1.12
           - release-1.11
-          - release-1.10
           - release-1.9
     steps:
       - uses: actions/checkout@v3
@@ -501,7 +495,6 @@ jobs:
           - master
           - release-1.12
           - release-1.11
-          - release-1.10
           - release-1.9
     steps:
       - uses: actions/checkout@v3
@@ -553,7 +546,6 @@ jobs:
           - master
           - release-1.12
           - release-1.11
-          - release-1.10
           - release-1.9
     steps:
       - uses: actions/checkout@v3
@@ -607,7 +599,6 @@ jobs:
           - master
           - release-1.12
           - release-1.11
-          - release-1.10
           - release-1.9
     steps:
       - uses: actions/checkout@v3
@@ -876,7 +867,6 @@ jobs:
           - master
           - release-1.12
           - release-1.11
-          - release-1.10
           - release-1.9
     steps:
       - uses: actions/checkout@v3
@@ -927,7 +917,6 @@ jobs:
           - master
           - release-1.12
           - release-1.11
-          - release-1.10
           - release-1.9
     steps:
       - uses: actions/checkout@v3
@@ -1015,7 +1004,6 @@ jobs:
           - master
           - release-1.12
           - release-1.11
-          - release-1.10
           - release-1.9
         ssl:
           - "true"
@@ -1106,8 +1094,11 @@ jobs:
       matrix:
         case:
           - release-1.9 => release-1.11
+          - release-1.9 => release-1.12
           - release-1.9 => master
+          - release-1.11 => release-1.12
           - release-1.11 => master
+          - release-1.12 => master
     steps:
       - uses: actions/checkout@v3
       - uses: azure/setup-helm@v3
@@ -1169,7 +1160,7 @@ jobs:
         run: |
           sudo pip3 install j2cli
           sudo pip3 install "j2cli[yaml]"
-          sudo PATH=~/.local/bin:$PATH make kind-init
+          sudo PATH=~/.local/bin:$PATH make kind-init-ha
           sudo cp -r /root/.kube/ ~/.kube/
           sudo chown -R $(id -un). ~/.kube/
 
@@ -1185,16 +1176,7 @@ jobs:
         run: |
           version=$(grep -E '^VERSION="v([0-9]+\.){2}[0-9]+"$' dist/images/install.sh | head -n1 | awk -F= '{print $2}' | tr -d '"')
           docker pull kubeovn/kube-ovn:$version
-
-          restart_ovs=false
-          v1=$(printf "$VERSION_FROM\\nrelease-1.11" | sort -Vr | head -n1)
-          v2=$(printf "$VERSION_TO\\nrelease-1.12" | sort -Vr | head -n1)
-          if [ $v1 = "release-1.11" ]; then
-            if [ $VERSION_TO = "master" -o $VERSION_TO = $v2 ]; then
-              restart_ovs=true
-            fi
-          fi
-          CHART_UPGRADE_RESTART_OVS=$restart_ovs VERSION=$version make kind-upgrade-chart
+          VERSION=$version make kind-upgrade-chart
 
       - name: Run E2E
         env:
