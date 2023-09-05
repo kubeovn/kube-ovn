@@ -166,7 +166,7 @@ func removeOvnMapping(name, key string) error {
 	return nil
 }
 
-func configExternalBridge(provider, bridge, nic string, exchangeLinkName, macLearningFallback bool) error {
+func (c *Controller) configExternalBridge(provider, bridge, nic string, exchangeLinkName, macLearningFallback bool) error {
 	brExists, err := ovs.BridgeExists(bridge)
 	if err != nil {
 		return fmt.Errorf("failed to check OVS bridge existence: %v", err)
@@ -196,7 +196,7 @@ func configExternalBridge(provider, bridge, nic string, exchangeLinkName, macLea
 					return fmt.Errorf("failed to check vendor of port %s: %v", port, err)
 				}
 				if ok {
-					if err = removeProviderNic(port, bridge); err != nil {
+					if err = c.removeProviderNic(port, bridge); err != nil {
 						return fmt.Errorf("failed to remove port %s from OVS bridge %s: %v", port, bridge, err)
 					}
 				}
