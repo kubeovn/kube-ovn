@@ -396,7 +396,7 @@ jobs:
           kubectl -n kube-system rollout status deploy ovn-central
           kubectl -n kube-system rollout status ds ovs-ovn
           while true; do
-            if [ ! -z "$(kubectl -n kube-system get ep ovn-nb -o jsonpath='{.subsets}')" ]; then
+            if [ $(kubectl -n kube-system get pod -l app=ovs -o name | wc -l) -eq $(kubectl get node -o name | wc -l) ]; then
               break
             fi
             sleep 1
@@ -542,7 +542,7 @@ jobs:
           kubectl -n kube-system rollout status deploy ovn-central
           kubectl -n kube-system rollout status ds ovs-ovn
           while true; do
-            if [ ! -z "$(kubectl -n kube-system get ep ovn-nb -o jsonpath='{.subsets}')" ]; then
+            if [ $(kubectl -n kube-system get pod -l app=ovs -o name | wc -l) -eq $(kubectl get node -o name | wc -l) ]; then
               break
             fi
             sleep 1
@@ -809,7 +809,7 @@ jobs:
           kubectl -n kube-system rollout status deploy ovn-central
           kubectl -n kube-system rollout status ds ovs-ovn
           while true; do
-            if [ ! -z "$(kubectl -n kube-system get ep ovn-nb -o jsonpath='{.subsets}')" ]; then
+            if [ $(kubectl -n kube-system get pod -l app=ovs -o name | wc -l) -eq $(kubectl get node -o name | wc -l) ]; then
               break
             fi
             sleep 1
@@ -953,7 +953,7 @@ jobs:
           kubectl -n kube-system rollout status deploy ovn-central
           kubectl -n kube-system rollout status ds ovs-ovn
           while true; do
-            if [ ! -z "$(kubectl -n kube-system get ep ovn-nb -o jsonpath='{.subsets}')" ]; then
+            if [ $(kubectl -n kube-system get pod -l app=ovs -o name | wc -l) -eq $(kubectl get node -o name | wc -l) ]; then
               break
             fi
             sleep 1
