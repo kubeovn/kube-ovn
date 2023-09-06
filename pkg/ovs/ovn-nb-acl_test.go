@@ -231,7 +231,6 @@ func (suite *OvnClientTestSuite) testCreateGatewayACL() {
 		}
 		require.Equal(t, expect, acl)
 		require.Contains(t, acls, acl.UUID)
-
 	}
 
 	expect := func(parent interface{}, gateway string) {
@@ -527,10 +526,9 @@ func (suite *OvnClientTestSuite) testCreateSgBaseACL() {
 		match = fmt.Sprintf("%s == @%s && udp.src == 546 && udp.dst == 547 && ip6", portDirection, pgName)
 		expect(pg, match)
 	})
-
 }
 
-func (suite *OvnClientTestSuite) testUpdateSgAcl() {
+func (suite *OvnClientTestSuite) testUpdateSgACL() {
 	t := suite.T()
 	t.Parallel()
 
@@ -732,7 +730,6 @@ func (suite *OvnClientTestSuite) testSetACLLog() {
 		require.NoError(t, err)
 		require.True(t, acl.Log)
 	})
-
 }
 
 func (suite *OvnClientTestSuite) testSetLogicalSwitchPrivate() {

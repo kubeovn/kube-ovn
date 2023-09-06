@@ -465,41 +465,41 @@ func (c *Controller) handleUpdateQoSPolicy(key string) error {
 			err := fmt.Errorf("not support shared qos %s change rule ", key)
 			klog.Error(err)
 			return err
-		} else {
-			if cachedQos.Status.BindingType == kubeovnv1.QoSBindingTypeEIP {
-				// filter to eip
-				eips, err := c.iptablesEipsLister.List(
-					labels.SelectorFromSet(labels.Set{util.QoSLabel: key}))
-				if err != nil {
-					klog.Errorf("failed to get eip list, %v", err)
-					return err
-				}
-				switch {
-				case len(eips) == 0:
-					// not thing to do
-				case len(eips) == 1:
-					eip := eips[0]
-					if err = c.reconcileEIPBandtithLimitRules(eip, added, deleted, updated); err != nil {
-						klog.Errorf("failed to reconcile eip %s bandwidth limit rules, %v", eip.Name, err)
-						return err
-					}
-				default:
-					err := fmt.Errorf("not support qos %s change rule, related eip more than one", key)
-					klog.Error(err)
-					return err
-				}
-			}
+		}
 
-			sortedNewRules := cachedQos.Spec.BandwidthLimitRules
-			sort.Slice(sortedNewRules, func(i, j int) bool {
-				return sortedNewRules[i].Name < sortedNewRules[j].Name
-			})
-
-			// .Status.Shared and .Status.BindingType are not supported to change
-			if err = c.patchQoSStatus(key, cachedQos.Status.Shared, cachedQos.Status.BindingType, sortedNewRules); err != nil {
-				klog.Errorf("failed to patch status for qos %s, %v", key, err)
+		if cachedQos.Status.BindingType == kubeovnv1.QoSBindingTypeEIP {
+			// filter to eip
+			eips, err := c.iptablesEipsLister.List(
+				labels.SelectorFromSet(labels.Set{util.QoSLabel: key}))
+			if err != nil {
+				klog.Errorf("failed to get eip list, %v", err)
 				return err
 			}
+			switch {
+			case len(eips) == 0:
+				// not thing to do
+			case len(eips) == 1:
+				eip := eips[0]
+				if err = c.reconcileEIPBandtithLimitRules(eip, added, deleted, updated); err != nil {
+					klog.Errorf("failed to reconcile eip %s bandwidth limit rules, %v", eip.Name, err)
+					return err
+				}
+			default:
+				err := fmt.Errorf("not support qos %s change rule, related eip more than one", key)
+				klog.Error(err)
+				return err
+			}
+		}
+
+		sortedNewRules := cachedQos.Spec.BandwidthLimitRules
+		sort.Slice(sortedNewRules, func(i, j int) bool {
+			return sortedNewRules[i].Name < sortedNewRules[j].Name
+		})
+
+		// .Status.Shared and .Status.BindingType are not supported to change
+		if err = c.patchQoSStatus(key, cachedQos.Status.Shared, cachedQos.Status.BindingType, sortedNewRules); err != nil {
+			klog.Errorf("failed to patch status for qos %s, %v", key, err)
+			return err
 		}
 	}
 	return nil

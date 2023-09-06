@@ -148,7 +148,7 @@ func DialTCP(laddr, raddr *net.TCPAddr, isnonblocking bool) (*net.TCPConn, error
 	return dialTCP("", laddr, raddr, false, isnonblocking)
 }
 
-func dialTCP(device string, laddr, raddr *net.TCPAddr, dontAssumeRemote bool, isnonblocking bool) (*net.TCPConn, error) {
+func dialTCP(device string, laddr, raddr *net.TCPAddr, dontAssumeRemote, isnonblocking bool) (*net.TCPConn, error) {
 	if laddr == nil || raddr == nil {
 		return nil, &net.OpError{Op: "dial", Err: fmt.Errorf("empty local address or remote address")}
 	}

@@ -316,7 +316,6 @@ func checkAccessTargetIPPorts(config *Configuration) error {
 		}
 	}
 	return checkErr
-
 }
 
 func internalNslookup(config *Configuration) error {

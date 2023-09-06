@@ -18,11 +18,11 @@ import (
 )
 
 const (
-	INIT_ROUTE_TABLE = "init"
-	POD_EIP_ADD      = "eip-add"
-	POD_DNAT_ADD     = "dnat-add"
-	ATTACHMENT_NAME  = "lb-svc-attachment"
-	ATTACHMENT_NS    = "kube-system"
+	initRouteTable = "init"
+	podEIPAdd      = "eip-add"
+	podDNATAdd     = "dnat-add"
+	attachmentName = "lb-svc-attachment"
+	attachmentNs   = "kube-system"
 )
 
 func genLbSvcDpName(name string) string {
@@ -30,7 +30,7 @@ func genLbSvcDpName(name string) string {
 }
 
 func getAttachNetworkProvider(svc *corev1.Service) string {
-	providerName := fmt.Sprintf("%s.%s", ATTACHMENT_NAME, ATTACHMENT_NS)
+	providerName := fmt.Sprintf("%s.%s", attachmentName, attachmentNs)
 	if svc.Annotations[util.AttachmentProvider] != "" {
 		providerName = svc.Annotations[util.AttachmentProvider]
 	}
@@ -248,10 +248,9 @@ func (c *Controller) deleteLbSvc(svc *corev1.Service) error {
 	if err := c.config.KubeClient.AppsV1().Deployments(svc.Namespace).Delete(context.Background(), genLbSvcDpName(svc.Name), metav1.DeleteOptions{}); err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
-		} else {
-			klog.Errorf("failed to delete deployment %s, err: %v", genLbSvcDpName(svc.Name), err)
-			return err
 		}
+		klog.Errorf("failed to delete deployment %s, err: %v", genLbSvcDpName(svc.Name), err)
+		return err
 	}
 
 	return nil
@@ -284,7 +283,7 @@ func (c *Controller) execNatRules(pod *corev1.Pod, operation string, rules []str
 }
 
 func (c *Controller) updatePodAttachNets(pod *corev1.Pod, svc *corev1.Service) error {
-	if err := c.execNatRules(pod, INIT_ROUTE_TABLE, []string{}); err != nil {
+	if err := c.execNatRules(pod, initRouteTable, []string{}); err != nil {
 		klog.Errorf("failed to init route table, err: %v", err)
 		return err
 	}
@@ -304,7 +303,7 @@ func (c *Controller) updatePodAttachNets(pod *corev1.Pod, svc *corev1.Service) e
 	var addRules []string
 	addRules = append(addRules, fmt.Sprintf("%s,%s", ipAddr, pod.Annotations[attachGatewayAnnotation]))
 	klog.Infof("add eip rules for lb svc pod, %v", addRules)
-	if err := c.execNatRules(pod, POD_EIP_ADD, addRules); err != nil {
+	if err := c.execNatRules(pod, podEIPAdd, addRules); err != nil {
 		klog.Errorf("failed to add eip for pod, err: %v", err)
 		return err
 	}
@@ -324,7 +323,7 @@ func (c *Controller) updatePodAttachNets(pod *corev1.Pod, svc *corev1.Service) e
 		var rules []string
 		rules = append(rules, fmt.Sprintf("%s,%d,%s,%s,%d,%s", loadBalancerIP, port.Port, protocol, svc.Spec.ClusterIP, port.Port, defaultGateway))
 		klog.Infof("add dnat rules for lb svc pod, %v", rules)
-		if err := c.execNatRules(pod, POD_DNAT_ADD, rules); err != nil {
+		if err := c.execNatRules(pod, podDNATAdd, rules); err != nil {
 			klog.Errorf("failed to add dnat for pod, err: %v", err)
 			return err
 		}

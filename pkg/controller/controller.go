@@ -56,8 +56,8 @@ type Controller struct {
 
 	ovnLegacyClient *ovs.LegacyClient
 
-	ovnNbClient ovs.NbClient
-	ovnSbClient ovs.SbClient
+	OVNNbClient ovs.NbClient
+	OVNSbClient ovs.SbClient
 
 	// ExternalGatewayType define external gateway type, centralized
 	ExternalGatewayType string
@@ -298,7 +298,7 @@ func Run(ctx context.Context, config *Configuration) {
 	configMapInformer := cmInformerFactory.Core().V1().ConfigMaps()
 	npInformer := informerFactory.Networking().V1().NetworkPolicies()
 	switchLBRuleInformer := kubeovnInformerFactory.Kubeovn().V1().SwitchLBRules()
-	vpcDnsInformer := kubeovnInformerFactory.Kubeovn().V1().VpcDnses()
+	vpcDNSInformer := kubeovnInformerFactory.Kubeovn().V1().VpcDnses()
 	ovnEipInformer := kubeovnInformerFactory.Kubeovn().V1().OvnEips()
 	ovnFipInformer := kubeovnInformerFactory.Kubeovn().V1().OvnFips()
 	ovnSnatRuleInformer := kubeovnInformerFactory.Kubeovn().V1().OvnSnatRules()
@@ -489,10 +489,10 @@ func Run(ctx context.Context, config *Configuration) {
 	}
 
 	var err error
-	if controller.ovnNbClient, err = ovs.NewOvnNbClient(config.OvnNbAddr, config.OvnTimeout); err != nil {
+	if controller.OVNNbClient, err = ovs.NewOvnNbClient(config.OvnNbAddr, config.OvnTimeout); err != nil {
 		util.LogFatalAndExit(err, "failed to create ovn nb client")
 	}
-	if controller.ovnSbClient, err = ovs.NewOvnSbClient(config.OvnSbAddr, config.OvnTimeout); err != nil {
+	if controller.OVNSbClient, err = ovs.NewOvnSbClient(config.OvnSbAddr, config.OvnTimeout); err != nil {
 		util.LogFatalAndExit(err, "failed to create ovn sb client")
 	}
 	if config.EnableLb {
@@ -502,8 +502,8 @@ func Run(ctx context.Context, config *Configuration) {
 		controller.delSwitchLBRuleQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "delSwitchLBRule")
 		controller.UpdateSwitchLBRuleQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "updateSwitchLBRule")
 
-		controller.vpcDNSLister = vpcDnsInformer.Lister()
-		controller.vpcDNSSynced = vpcDnsInformer.Informer().HasSynced
+		controller.vpcDNSLister = vpcDNSInformer.Lister()
+		controller.vpcDNSSynced = vpcDNSInformer.Informer().HasSynced
 		controller.addOrUpdateVpcDNSQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "AddOrUpdateVpcDns")
 		controller.delVpcDNSQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "DeleteVpcDns")
 	}
@@ -744,10 +744,10 @@ func Run(ctx context.Context, config *Configuration) {
 			util.LogFatalAndExit(err, "failed to add switch lb rule event handler")
 		}
 
-		if _, err = vpcDnsInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		if _, err = vpcDNSInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc:    controller.enqueueAddVpcDNS,
 			UpdateFunc: controller.enqueueUpdateVpcDNS,
-			DeleteFunc: controller.enqueueDeleteVpcDns,
+			DeleteFunc: controller.enqueueDeleteVPCDNS,
 		}); err != nil {
 			util.LogFatalAndExit(err, "failed to add vpc dns event handler")
 		}
@@ -773,11 +773,11 @@ func Run(ctx context.Context, config *Configuration) {
 func (c *Controller) Run(ctx context.Context) {
 	// The init process can only be placed here if the init process do really affect the normal process of controller, such as Nodes/Pods/Subnets...
 	// Otherwise, the init process should be placed after all workers have already started working
-	if err := c.ovnNbClient.SetLsDnatModDlDst(c.config.LsDnatModDlDst); err != nil {
+	if err := c.OVNNbClient.SetLsDnatModDlDst(c.config.LsDnatModDlDst); err != nil {
 		util.LogFatalAndExit(err, "failed to set NB_Global option ls_dnat_mod_dl_dst")
 	}
 
-	if err := c.ovnNbClient.SetUseCtInvMatch(); err != nil {
+	if err := c.OVNNbClient.SetUseCtInvMatch(); err != nil {
 		util.LogFatalAndExit(err, "failed to set NB_Global option use_ct_inv_match to false")
 	}
 
@@ -1004,10 +1004,10 @@ func (c *Controller) startWorkers(ctx context.Context) {
 		go wait.Until(c.runDelSwitchLBRuleWorker, time.Second, ctx.Done())
 		go wait.Until(c.runUpdateSwitchLBRuleWorker, time.Second, ctx.Done())
 
-		go wait.Until(c.runAddOrUpdateVpcDnsWorker, time.Second, ctx.Done())
-		go wait.Until(c.runDelVpcDnsWorker, time.Second, ctx.Done())
+		go wait.Until(c.runAddOrUpdateVPCDNSWorker, time.Second, ctx.Done())
+		go wait.Until(c.runDelVPCDNSWorker, time.Second, ctx.Done())
 		go wait.Until(func() {
-			c.resyncVpcDnsConfig()
+			c.resyncVpcDNSConfig()
 		}, 5*time.Second, ctx.Done())
 	}
 
@@ -1131,7 +1131,7 @@ func (c *Controller) startWorkers(ctx context.Context) {
 
 func (c *Controller) allSubnetReady(subnets ...string) (bool, error) {
 	for _, lsName := range subnets {
-		exist, err := c.ovnNbClient.LogicalSwitchExists(lsName)
+		exist, err := c.OVNNbClient.LogicalSwitchExists(lsName)
 		if err != nil {
 			return false, fmt.Errorf("check logical switch %s exist: %v", lsName, err)
 		}
@@ -1162,7 +1162,7 @@ func (c *Controller) initResourceOnce() {
 	}
 
 	if c.config.EnableLb {
-		if err := c.initVpcDnsConfig(); err != nil {
+		if err := c.initVpcDNSConfig(); err != nil {
 			util.LogFatalAndExit(err, "failed to initialize vpc-dns")
 		}
 	}

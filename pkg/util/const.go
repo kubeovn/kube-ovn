@@ -219,7 +219,7 @@ const (
 	NetemQosLossAnnotationTemplate    = "%s.kubernetes.io/loss"
 	NetemQosJitterAnnotationTemplate  = "%s.kubernetes.io/jitter"
 
-	POD_IP             = "POD_IP"
+	PodIP              = "POD_IP"
 	ContentType        = "application/vnd.kubernetes.protobuf"
 	AcceptContentTypes = "application/vnd.kubernetes.protobuf,application/json"
 

@@ -62,7 +62,6 @@ func (c *Controller) StartTProxyForwarding() {
 }
 
 func (c *Controller) StartTProxyTCPPortProbe() {
-
 	probePorts := strset.New()
 
 	pods, err := c.getTProxyConditionPod(false)
@@ -270,7 +269,6 @@ func delRouteIfExist(family, table int, dst *net.IPNet) error {
 }
 
 func handleRedirectFlow(conn net.Conn) {
-
 	klog.V(5).Infof("Accepting TCP connection from %v with destination of %v", conn.RemoteAddr().String(), conn.LocalAddr().String())
 	defer func() {
 		if err := conn.Close(); err != nil {

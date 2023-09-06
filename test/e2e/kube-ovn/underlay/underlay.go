@@ -26,8 +26,10 @@ import (
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/kind"
 )
 
-const dockerNetworkName = "kube-ovn-vlan"
-const curlListenPort = 8081
+const (
+	dockerNetworkName = "kube-ovn-vlan"
+	curlListenPort    = 8081
+)
 
 func makeProviderNetwork(providerNetworkName string, exchangeLinkName bool, linkMap map[string]*iproute.Link) *apiv1.ProviderNetwork {
 	var defaultInterface string

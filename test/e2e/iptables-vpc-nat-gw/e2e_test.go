@@ -32,14 +32,18 @@ import (
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/kind"
 )
 
-const dockerExtNet1Name = "kube-ovn-ext-net1"
-const dockerExtNet2Name = "kube-ovn-ext-net2"
-const vpcNatGWConfigMapName = "ovn-vpc-nat-gw-config"
-const networkAttachDefName = "ovn-vpc-external-network"
-const externalSubnetProvider = "ovn-vpc-external-network.kube-system"
+const (
+	dockerExtNet1Name      = "kube-ovn-ext-net1"
+	dockerExtNet2Name      = "kube-ovn-ext-net2"
+	vpcNatGWConfigMapName  = "ovn-vpc-nat-gw-config"
+	networkAttachDefName   = "ovn-vpc-external-network"
+	externalSubnetProvider = "ovn-vpc-external-network.kube-system"
+)
 
-const iperf2Port = "20288"
-const skipIperf = false
+const (
+	iperf2Port = "20288"
+	skipIperf  = false
+)
 
 const (
 	eipLimit = iota*5 + 10
@@ -147,7 +151,6 @@ func setupVpcNatGwTestEnvironment(
 	provider string,
 	skipNADSetup bool,
 ) {
-
 	if !skipNADSetup {
 		setupNetworkAttachmentDefinition(
 			f, dockerExtNetNetwork, attachNetClient,
@@ -577,8 +580,9 @@ func iperf(f *framework.Framework, iperfClientPod *corev1.Pod, iperfServerEIP *a
 }
 
 func checkQos(f *framework.Framework,
-	vpc1Pod *corev1.Pod, vpc2Pod *corev1.Pod, vpc1EIP *apiv1.IptablesEIP, vpc2EIP *apiv1.IptablesEIP,
-	limit int, expect bool) {
+	vpc1Pod, vpc2Pod *corev1.Pod, vpc1EIP, vpc2EIP *apiv1.IptablesEIP,
+	limit int, expect bool,
+) {
 	if !skipIperf {
 		if expect {
 			output := iperf(f, vpc1Pod, vpc2EIP)
@@ -1183,7 +1187,7 @@ var _ = framework.Describe("[group:qos-policy]", func() {
 		}
 	})
 
-	var _ = framework.Describe("vpc qos", func() {
+	_ = framework.Describe("vpc qos", func() {
 		ginkgo.BeforeEach(func() {
 			iperfServerCmd = []string{"iperf", "-s", "-i", "1", "-p", iperf2Port}
 			overlaySubnetV4Cidr = "10.0.0.0/24"
@@ -1298,7 +1302,6 @@ var _ = framework.Describe("[group:qos-policy]", func() {
 			ipClient.DeleteSync(net1IpName)
 			ginkgo.By("Deleting overlay subnet " + vpcQosParams.vpc2SubnetName)
 			subnetClient.DeleteSync(vpcQosParams.vpc2SubnetName)
-
 		})
 		framework.ConformanceIt("default nic qos", func() {
 			// case 1: set qos policy for natgw

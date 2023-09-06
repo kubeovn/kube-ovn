@@ -219,7 +219,7 @@ func getCidrByProtocol(cidr, protocol string) string {
 }
 
 func (c *Controller) getEgressNatIPByNode(nodeName string) (map[string]string, error) {
-	var subnetsNatIP = make(map[string]string)
+	subnetsNatIP := make(map[string]string)
 	subnetList, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list subnets %v", err)
@@ -253,7 +253,6 @@ func (c *Controller) getEgressNatIPByNode(nodeName string) (map[string]string, e
 }
 
 func (c *Controller) getTProxyConditionPod(needSort bool) ([]*v1.Pod, error) {
-
 	var filteredPods []*v1.Pod
 	pods, err := c.podsLister.List(labels.Everything())
 	if err != nil {

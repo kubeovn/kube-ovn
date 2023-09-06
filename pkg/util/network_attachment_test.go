@@ -87,7 +87,6 @@ func TestParsePodNetworkObjectName(t *testing.T) {
 }
 
 func TestParsePodNetworkAnnotation(t *testing.T) {
-
 	correctJSON0, _ := json.Marshal([]types.NetworkSelectionElement{
 		{
 			Name:                       "lb-svc-attachment",

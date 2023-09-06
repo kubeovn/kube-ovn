@@ -193,7 +193,7 @@ func (c *Controller) initNodeSwitch() error {
 
 // InitClusterRouter init cluster router to connect different logical switches
 func (c *Controller) initClusterRouter() error {
-	return c.ovnNbClient.CreateLogicalRouter(c.config.ClusterRouter)
+	return c.OVNNbClient.CreateLogicalRouter(c.config.ClusterRouter)
 }
 
 func (c *Controller) initLB(name, protocol string, sessionAffinity bool) error {
@@ -204,13 +204,13 @@ func (c *Controller) initLB(name, protocol string, sessionAffinity bool) error {
 		selectFields = ovnnb.LoadBalancerSelectionFieldsIPSrc
 	}
 
-	if err := c.ovnNbClient.CreateLoadBalancer(name, protocol, selectFields); err != nil {
+	if err := c.OVNNbClient.CreateLoadBalancer(name, protocol, selectFields); err != nil {
 		klog.Errorf("create load balancer %s: %v", name, err)
 		return err
 	}
 
 	if sessionAffinity {
-		if err := c.ovnNbClient.SetLoadBalancerAffinityTimeout(name, util.DefaultServiceSessionStickinessTimeout); err != nil {
+		if err := c.OVNNbClient.SetLoadBalancerAffinityTimeout(name, util.DefaultServiceSessionStickinessTimeout); err != nil {
 			klog.Errorf("failed to set affinity timeout of %s load balancer %s: %v", protocol, name, err)
 			return err
 		}
@@ -722,13 +722,13 @@ func (c *Controller) migrateNodeRoute(af int, node, ip, nexthop string) error {
 	}
 	klog.V(3).Infof("add policy route for router: %s, priority: %d, match %s, action %s, nexthop %s, extrenalID %v",
 		c.config.ClusterRouter, util.NodeRouterPolicyPriority, match, action, nexthop, externalIDs)
-	if err := c.ovnNbClient.AddLogicalRouterPolicy(c.config.ClusterRouter, util.NodeRouterPolicyPriority, match, action, []string{nexthop}, externalIDs); err != nil {
+	if err := c.OVNNbClient.AddLogicalRouterPolicy(c.config.ClusterRouter, util.NodeRouterPolicyPriority, match, action, []string{nexthop}, externalIDs); err != nil {
 		klog.Errorf("failed to add logical router policy for node %s: %v", node, err)
 		return err
 	}
 
 	routeTable := util.MainRouteTable
-	if err := c.ovnNbClient.DeleteLogicalRouterStaticRoute(c.config.ClusterRouter, &routeTable, nil, ip, ""); err != nil {
+	if err := c.OVNNbClient.DeleteLogicalRouterStaticRoute(c.config.ClusterRouter, &routeTable, nil, ip, ""); err != nil {
 		klog.Errorf("failed to delete obsolete static route for node %s: %v", node, err)
 		return err
 	}
@@ -736,12 +736,12 @@ func (c *Controller) migrateNodeRoute(af int, node, ip, nexthop string) error {
 	asName := nodeUnderlayAddressSetName(node, af)
 	obsoleteMatch := fmt.Sprintf("ip%d.dst == %s && ip%d.src != $%s", af, ip, af, asName)
 	klog.V(3).Infof("delete policy route for router: %s, priority: %d, match %s", c.config.ClusterRouter, util.NodeRouterPolicyPriority, obsoleteMatch)
-	if err := c.ovnNbClient.DeleteLogicalRouterPolicy(c.config.ClusterRouter, util.NodeRouterPolicyPriority, obsoleteMatch); err != nil {
+	if err := c.OVNNbClient.DeleteLogicalRouterPolicy(c.config.ClusterRouter, util.NodeRouterPolicyPriority, obsoleteMatch); err != nil {
 		klog.Errorf("failed to delete obsolete logical router policy for node %s: %v", node, err)
 		return err
 	}
 
-	if err := c.ovnNbClient.DeleteAddressSet(asName); err != nil {
+	if err := c.OVNNbClient.DeleteAddressSet(asName); err != nil {
 		klog.Errorf("delete obsolete address set %s for node %s: %v", asName, node, err)
 		return err
 	}
@@ -782,7 +782,7 @@ func (c *Controller) initNodeChassis() error {
 		klog.Errorf("failed to list nodes: %v", err)
 		return err
 	}
-	chassises, err := c.ovnSbClient.GetKubeOvnChassisses()
+	chassises, err := c.OVNSbClient.GetKubeOvnChassisses()
 	if err != nil {
 		klog.Errorf("failed to get chassis nodes: %v", err)
 		return err

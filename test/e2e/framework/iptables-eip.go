@@ -92,7 +92,7 @@ func (c *IptablesEIPClient) PatchSync(original, modified *apiv1.IptablesEIP, req
 
 // PatchQoS patches the vpc nat gw and waits for the qos to be ready for `timeout`.
 // If the qos doesn't become ready before the timeout, it will fail the test.
-func (c *IptablesEIPClient) PatchQoSPolicySync(eipName string, qosPolicyName string) *apiv1.IptablesEIP {
+func (c *IptablesEIPClient) PatchQoSPolicySync(eipName, qosPolicyName string) *apiv1.IptablesEIP {
 	eip := c.Get(eipName)
 	modifiedEIP := eip.DeepCopy()
 	modifiedEIP.Spec.QoSPolicy = qosPolicyName

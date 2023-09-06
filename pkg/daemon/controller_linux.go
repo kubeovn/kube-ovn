@@ -733,7 +733,7 @@ func readKos(dir string) (*[]string, error) {
 	return kos, nil
 }
 
-func isFile(filename string, dir string) (bool, string) {
+func isFile(filename, dir string) (bool, string) {
 	isFile := false
 	fileFullName := ""
 	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {

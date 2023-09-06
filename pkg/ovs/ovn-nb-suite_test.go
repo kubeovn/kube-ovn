@@ -26,7 +26,7 @@ import (
 
 type OvnClientTestSuite struct {
 	suite.Suite
-	ovnClient *ovnNbClient
+	ovnClient *OVNNbClient
 }
 
 func (suite *OvnClientTestSuite) SetupSuite() {
@@ -442,7 +442,7 @@ func (suite *OvnClientTestSuite) Test_CreateSgBaseACL() {
 }
 
 func (suite *OvnClientTestSuite) Test_UpdateSgAcl() {
-	suite.testUpdateSgAcl()
+	suite.testUpdateSgACL()
 }
 
 func (suite *OvnClientTestSuite) Test_UpdateLogicalSwitchAcl() {
@@ -692,11 +692,11 @@ func newOVSDBServer(t *testing.T, dbModel model.ClientDBModel, schema ovsdb.Data
 	return server, tmpfile
 }
 
-func newOvnNbClient(t *testing.T, ovnNbAddr string, ovnNbTimeout int) (*ovnNbClient, error) {
+func newOvnNbClient(t *testing.T, ovnNbAddr string, ovnNbTimeout int) (*OVNNbClient, error) {
 	nbClient, err := newNbClient(ovnNbAddr, ovnNbTimeout)
 	require.NoError(t, err)
 
-	return &ovnNbClient{
+	return &OVNNbClient{
 		ovsDbClient: ovsDbClient{
 			Client:  nbClient,
 			Timeout: time.Duration(ovnNbTimeout) * time.Second,

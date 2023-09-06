@@ -243,8 +243,8 @@ func (c *Controller) handleAddOvnEip(key string) error {
 	}
 
 	if cachedEip.Spec.Type == util.Lsp {
-		mergedIp := util.GetStringIP(v4ip, v6ip)
-		if err := c.ovnNbClient.CreateBareLogicalSwitchPort(subnet.Name, portName, mergedIp, mac); err != nil {
+		mergedIP := util.GetStringIP(v4ip, v6ip)
+		if err := c.OVNNbClient.CreateBareLogicalSwitchPort(subnet.Name, portName, mergedIP, mac); err != nil {
 			klog.Error("failed to create lsp for ovn eip %s, %v", key, err)
 			return err
 		}
@@ -343,14 +343,14 @@ func (c *Controller) handleDelOvnEip(key string) error {
 	}
 
 	if eip.Spec.Type == util.Lsp {
-		if err := c.ovnNbClient.DeleteLogicalSwitchPort(eip.Name); err != nil {
+		if err := c.OVNNbClient.DeleteLogicalSwitchPort(eip.Name); err != nil {
 			klog.Errorf("failed to delete lsp %s, %v", eip.Name, err)
 			return err
 		}
 	}
 
 	if eip.Spec.Type == util.Lrp {
-		if err := c.ovnNbClient.DeleteLogicalRouterPort(eip.Name); err != nil {
+		if err := c.OVNNbClient.DeleteLogicalRouterPort(eip.Name); err != nil {
 			klog.Errorf("failed to delete lrp %s, %v", eip.Name, err)
 			return err
 		}

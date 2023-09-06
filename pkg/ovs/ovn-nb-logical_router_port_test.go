@@ -25,7 +25,7 @@ func newLogicalRouterPort(lrName, lrpName, mac string, networks []string) *ovnnb
 	}
 }
 
-func createLogicalRouterPort(c *ovnNbClient, lrp *ovnnb.LogicalRouterPort) error {
+func createLogicalRouterPort(c *OVNNbClient, lrp *ovnnb.LogicalRouterPort) error {
 	op, err := c.Create(lrp)
 	if err != nil {
 		return fmt.Errorf("generate operations for creating logical router port %s: %v", lrp.Name, err)
@@ -125,7 +125,6 @@ func (suite *OvnClientTestSuite) testUpdateLogicalRouterPortRA() {
 		require.NoError(t, err)
 		require.Empty(t, out.Ipv6Prefix)
 		require.Empty(t, out.Ipv6RaConfigs)
-
 	})
 
 	t.Run("do nothing when enableIPv6RA is true and ipv6RAConfigsStr is invalid", func(t *testing.T) {

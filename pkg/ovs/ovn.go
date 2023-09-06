@@ -22,12 +22,12 @@ type LegacyClient struct {
 	OvnICSbAddress string
 }
 
-type ovnNbClient struct {
+type OVNNbClient struct {
 	ovsDbClient
 	ClusterRouter string
 }
 
-type ovnSbClient struct {
+type OVNSbClient struct {
 	ovsDbClient
 }
 
@@ -53,7 +53,7 @@ func NewLegacyClient(timeout int) *LegacyClient {
 	}
 }
 
-func NewOvnNbClient(ovnNbAddr string, ovnNbTimeout int) (*ovnNbClient, error) {
+func NewOvnNbClient(ovnNbAddr string, ovnNbTimeout int) (*OVNNbClient, error) {
 	dbModel, err := ovnnb.FullDatabaseModel()
 	if err != nil {
 		klog.Error(err)
@@ -83,7 +83,7 @@ func NewOvnNbClient(ovnNbAddr string, ovnNbTimeout int) (*ovnNbClient, error) {
 		return nil, err
 	}
 
-	c := &ovnNbClient{
+	c := &OVNNbClient{
 		ovsDbClient: ovsDbClient{
 			Client:  nbClient,
 			Timeout: time.Duration(ovnNbTimeout) * time.Second,
@@ -92,7 +92,7 @@ func NewOvnNbClient(ovnNbAddr string, ovnNbTimeout int) (*ovnNbClient, error) {
 	return c, nil
 }
 
-func NewOvnSbClient(ovnSbAddr string, ovnSbTimeout int) (*ovnSbClient, error) {
+func NewOvnSbClient(ovnSbAddr string, ovnSbTimeout int) (*OVNSbClient, error) {
 	dbModel, err := ovnsb.FullDatabaseModel()
 	if err != nil {
 		klog.Error(err)
@@ -109,7 +109,7 @@ func NewOvnSbClient(ovnSbAddr string, ovnSbTimeout int) (*ovnSbClient, error) {
 		return nil, err
 	}
 
-	c := &ovnSbClient{
+	c := &OVNSbClient{
 		ovsDbClient: ovsDbClient{
 			Client:  sbClient,
 			Timeout: time.Duration(ovnSbTimeout) * time.Second,
@@ -120,11 +120,11 @@ func NewOvnSbClient(ovnSbAddr string, ovnSbTimeout int) (*ovnSbClient, error) {
 
 // TODO: support ic-nb ic-sb client
 
-func ConstructWaitForNameNotExistsOperation(name string, table string) ovsdb.Operation {
+func ConstructWaitForNameNotExistsOperation(name, table string) ovsdb.Operation {
 	return ConstructWaitForUniqueOperation(table, "name", name)
 }
 
-func ConstructWaitForUniqueOperation(table string, column string, value interface{}) ovsdb.Operation {
+func ConstructWaitForUniqueOperation(table, column string, value interface{}) ovsdb.Operation {
 	timeout := OVSDBWaitTimeout
 	return ovsdb.Operation{
 		Op:      ovsdb.OperationWait,

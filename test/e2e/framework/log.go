@@ -27,7 +27,7 @@ func nowStamp() string {
 	return time.Now().Format(time.StampMilli)
 }
 
-func log(level string, format string, args ...interface{}) {
+func log(level, format string, args ...interface{}) {
 	fmt.Fprintf(ginkgo.GinkgoWriter, nowStamp()+": "+level+": "+format+"\n", args...)
 }
 

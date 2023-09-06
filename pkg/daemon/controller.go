@@ -66,7 +66,7 @@ type Controller struct {
 }
 
 // NewController init a daemon controller
-func NewController(config *Configuration, stopCh <-chan struct{}, podInformerFactory informers.SharedInformerFactory, nodeInformerFactory informers.SharedInformerFactory, kubeovnInformerFactory kubeovninformer.SharedInformerFactory) (*Controller, error) {
+func NewController(config *Configuration, stopCh <-chan struct{}, podInformerFactory, nodeInformerFactory informers.SharedInformerFactory, kubeovnInformerFactory kubeovninformer.SharedInformerFactory) (*Controller, error) {
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(klog.Infof)
 	eventBroadcaster.StartRecordingToSink(&typedcorev1.EventSinkImpl{Interface: config.KubeClient.CoreV1().Events("")})
@@ -205,7 +205,6 @@ func (c *Controller) processNextAddOrUpdateProviderNetworkWorkItem() bool {
 		c.addOrUpdateProviderNetworkQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		c.addOrUpdateProviderNetworkQueue.AddRateLimited(obj)
@@ -235,7 +234,6 @@ func (c *Controller) processNextDeleteProviderNetworkWorkItem() bool {
 		c.deleteProviderNetworkQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		c.deleteProviderNetworkQueue.AddRateLimited(obj)
@@ -317,7 +315,7 @@ func (c *Controller) initProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v1
 	return nil
 }
 
-func (c *Controller) recordProviderNetworkErr(providerNetwork string, errMsg string) {
+func (c *Controller) recordProviderNetworkErr(providerNetwork, errMsg string) {
 	var currentPod *v1.Pod
 	var err error
 	if c.localPodName == "" {
@@ -466,7 +464,6 @@ func (c *Controller) processNextSubnetWorkItem() bool {
 		c.subnetQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -548,7 +545,6 @@ func (c *Controller) processNextPodWorkItem() bool {
 		c.podQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true

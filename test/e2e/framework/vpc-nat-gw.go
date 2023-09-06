@@ -95,7 +95,7 @@ func (c *VpcNatGatewayClient) PatchSync(original, modified *apiv1.VpcNatGateway,
 
 // PatchQoS patches the vpc nat gw and waits for the qos to be ready for `timeout`.
 // If the qos doesn't become ready before the timeout, it will fail the test.
-func (c *VpcNatGatewayClient) PatchQoSPolicySync(natgwName string, qosPolicyName string) *apiv1.VpcNatGateway {
+func (c *VpcNatGatewayClient) PatchQoSPolicySync(natgwName, qosPolicyName string) *apiv1.VpcNatGateway {
 	natgw := c.Get(natgwName)
 	modifiedNATGW := natgw.DeepCopy()
 	modifiedNATGW.Spec.QoSPolicy = qosPolicyName

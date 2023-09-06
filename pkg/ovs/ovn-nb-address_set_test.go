@@ -163,7 +163,6 @@ func (suite *OvnClientTestSuite) testListAddressSets() {
 	require.NoError(t, err)
 	require.Len(t, ass, 1)
 	require.Equal(t, asName, ass[0].Name)
-
 }
 
 func (suite *OvnClientTestSuite) test_addressSetFilter() {

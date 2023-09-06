@@ -9,7 +9,7 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 )
 
-func (c *ovnNbClient) ListBFD(lrpName, dstIP string) ([]ovnnb.BFD, error) {
+func (c *OVNNbClient) ListBFD(lrpName, dstIP string) ([]ovnnb.BFD, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
 	defer cancel()
 
@@ -26,7 +26,7 @@ func (c *ovnNbClient) ListBFD(lrpName, dstIP string) ([]ovnnb.BFD, error) {
 	return bfdList, nil
 }
 
-func (c *ovnNbClient) CreateBFD(lrpName, dstIP string, minRx, minTx, detectMult int) (*ovnnb.BFD, error) {
+func (c *OVNNbClient) CreateBFD(lrpName, dstIP string, minRx, minTx, detectMult int) (*ovnnb.BFD, error) {
 	bfdList, err := c.ListBFD(lrpName, dstIP)
 	if err != nil {
 		klog.Error(err)
@@ -60,7 +60,7 @@ func (c *ovnNbClient) CreateBFD(lrpName, dstIP string, minRx, minTx, detectMult 
 	return &bfdList[0], nil
 }
 
-func (c *ovnNbClient) DeleteBFD(lrpName, dstIP string) error {
+func (c *OVNNbClient) DeleteBFD(lrpName, dstIP string) error {
 	bfdList, err := c.ListBFD(lrpName, dstIP)
 	if err != nil {
 		klog.Error(err)

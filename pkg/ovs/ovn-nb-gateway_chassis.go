@@ -14,7 +14,7 @@ import (
 )
 
 // CreateGatewayChassises create multiple gateway chassis once
-func (c *ovnNbClient) CreateGatewayChassises(lrpName string, chassises ...string) error {
+func (c *OVNNbClient) CreateGatewayChassises(lrpName string, chassises ...string) error {
 	op, err := c.CreateGatewayChassisesOp(lrpName, chassises)
 	if err != nil {
 		return fmt.Errorf("generate operations for creating gateway chassis %v", err)
@@ -28,7 +28,7 @@ func (c *ovnNbClient) CreateGatewayChassises(lrpName string, chassises ...string
 }
 
 // DeleteGatewayChassises delete multiple gateway chassis once
-func (c *ovnNbClient) DeleteGatewayChassises(lrpName string, chassises []string) error {
+func (c *OVNNbClient) DeleteGatewayChassises(lrpName string, chassises []string) error {
 	if len(chassises) == 0 {
 		return nil
 	}
@@ -59,7 +59,7 @@ func (c *ovnNbClient) DeleteGatewayChassises(lrpName string, chassises []string)
 }
 
 // GetGatewayChassis get gateway chassis by name
-func (c *ovnNbClient) GetGatewayChassis(name string, ignoreNotFound bool) (*ovnnb.GatewayChassis, error) {
+func (c *OVNNbClient) GetGatewayChassis(name string, ignoreNotFound bool) (*ovnnb.GatewayChassis, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
 	defer cancel()
 
@@ -75,13 +75,13 @@ func (c *ovnNbClient) GetGatewayChassis(name string, ignoreNotFound bool) (*ovnn
 	return gwChassis, nil
 }
 
-func (c *ovnNbClient) GatewayChassisExist(name string) (bool, error) {
+func (c *OVNNbClient) GatewayChassisExist(name string) (bool, error) {
 	gwChassis, err := c.GetGatewayChassis(name, true)
 	return gwChassis != nil, err
 }
 
 // newGatewayChassis return gateway chassis with basic information
-func (c *ovnNbClient) newGatewayChassis(gwChassisName, chassisName string, priority int) (*ovnnb.GatewayChassis, error) {
+func (c *OVNNbClient) newGatewayChassis(gwChassisName, chassisName string, priority int) (*ovnnb.GatewayChassis, error) {
 	exists, err := c.GatewayChassisExist(gwChassisName)
 	if err != nil {
 		klog.Error(err)
@@ -104,7 +104,7 @@ func (c *ovnNbClient) newGatewayChassis(gwChassisName, chassisName string, prior
 }
 
 // DeleteGatewayChassisOp create operation which create gateway chassis
-func (c *ovnNbClient) CreateGatewayChassisesOp(lrpName string, chassises []string) ([]ovsdb.Operation, error) {
+func (c *OVNNbClient) CreateGatewayChassisesOp(lrpName string, chassises []string) ([]ovsdb.Operation, error) {
 	if len(chassises) == 0 {
 		return nil, nil
 	}
@@ -148,9 +148,8 @@ func (c *ovnNbClient) CreateGatewayChassisesOp(lrpName string, chassises []strin
 }
 
 // DeleteGatewayChassisOp create operation which delete gateway chassis
-func (c *ovnNbClient) DeleteGatewayChassisOp(chassisName string) ([]ovsdb.Operation, error) {
+func (c *OVNNbClient) DeleteGatewayChassisOp(chassisName string) ([]ovsdb.Operation, error) {
 	gwChassis, err := c.GetGatewayChassis(chassisName, true)
-
 	if err != nil {
 		klog.Error(err)
 		return nil, err

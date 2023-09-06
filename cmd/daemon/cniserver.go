@@ -132,10 +132,10 @@ func mvCNIConf(configDir, configFile, confName string) error {
 	}
 
 	cniConfPath := filepath.Join(configDir, confName)
-	return os.WriteFile(cniConfPath, data, 0644)
+	return os.WriteFile(cniConfPath, data, 0o644)
 }
 
-func Retry(attempts int, sleep int, f func(configuration *daemon.Configuration) error, ctrl *daemon.Configuration) (err error) {
+func Retry(attempts, sleep int, f func(configuration *daemon.Configuration) error, ctrl *daemon.Configuration) (err error) {
 	for i := 0; ; i++ {
 		err = f(ctrl)
 		if err == nil {
@@ -178,8 +178,7 @@ func initChassisAnno(cfg *daemon.Configuration) error {
 		klog.Infof("chassis id changed, old: %s, new: %s", annoChassesName, chassesName)
 	}
 	node.Annotations[util.ChassisAnnotation] = chassesName
-	patchPayloadTemplate :=
-		`[{
+	patchPayloadTemplate := `[{
         "op": "%s",
         "path": "/metadata/annotations",
         "value": %s

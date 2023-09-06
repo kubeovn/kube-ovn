@@ -15,7 +15,7 @@ import (
 )
 
 // createLogicalRouter delete logical router in ovn
-func createLogicalRouter(c *ovnNbClient, lr *ovnnb.LogicalRouter) error {
+func createLogicalRouter(c *OVNNbClient, lr *ovnnb.LogicalRouter) error {
 	op, err := c.ovsDbClient.Create(lr)
 	if err != nil {
 		return err

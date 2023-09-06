@@ -94,24 +94,24 @@ func (c *Controller) enqueueAddVpcDNS(obj interface{}) {
 	c.addOrUpdateVpcDNSQueue.Add(key)
 }
 
-func (c *Controller) enqueueUpdateVpcDNS(old, new interface{}) {
+func (c *Controller) enqueueUpdateVpcDNS(oldObj, newObj interface{}) {
 	var key string
 	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(new); err != nil {
+	if key, err = cache.MetaNamespaceKeyFunc(newObj); err != nil {
 		utilruntime.HandleError(err)
 		return
 	}
 
-	oldVpcDns := old.(*kubeovnv1.VpcDNS)
-	newVpcDns := new.(*kubeovnv1.VpcDNS)
-	if oldVpcDns.ResourceVersion != newVpcDns.ResourceVersion &&
-		!reflect.DeepEqual(oldVpcDns.Spec, newVpcDns.Spec) {
+	oldVPCDNS := oldObj.(*kubeovnv1.VpcDNS)
+	newVPCDNS := newObj.(*kubeovnv1.VpcDNS)
+	if oldVPCDNS.ResourceVersion != newVPCDNS.ResourceVersion &&
+		!reflect.DeepEqual(oldVPCDNS.Spec, newVPCDNS.Spec) {
 		klog.V(3).Infof("enqueue update vpc-dns %s", key)
 		c.addOrUpdateVpcDNSQueue.Add(key)
 	}
 }
 
-func (c *Controller) enqueueDeleteVpcDns(obj interface{}) {
+func (c *Controller) enqueueDeleteVPCDNS(obj interface{}) {
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -122,18 +122,18 @@ func (c *Controller) enqueueDeleteVpcDns(obj interface{}) {
 	c.delVpcDNSQueue.Add(key)
 }
 
-func (c *Controller) runAddOrUpdateVpcDnsWorker() {
-	for c.processNextWorkItem("addOrUpdateVpcDns", c.addOrUpdateVpcDNSQueue, c.handleAddOrUpdateVpcDns) {
+func (c *Controller) runAddOrUpdateVPCDNSWorker() {
+	for c.processNextWorkItem("addOrUpdateVpcDns", c.addOrUpdateVpcDNSQueue, c.handleAddOrUpdateVPCDNS) {
 	}
 }
 
-func (c *Controller) runDelVpcDnsWorker() {
-	for c.processNextWorkItem("delVpcDns", c.delVpcDNSQueue, c.handleDelVpcDns) {
+func (c *Controller) runDelVPCDNSWorker() {
+	for c.processNextWorkItem("delVpcDns", c.delVpcDNSQueue, c.handleDelVpcDNS) {
 	}
 }
 
-func (c *Controller) handleAddOrUpdateVpcDns(key string) error {
-	klog.V(3).Infof("handleAddOrUpdateVpcDns %s", key)
+func (c *Controller) handleAddOrUpdateVPCDNS(key string) error {
+	klog.V(3).Infof("handleAddOrUpdateVPCDNS %s", key)
 	if !enableCoredns {
 		time.Sleep(10 * time.Second)
 		if !enableCoredns {
@@ -141,7 +141,7 @@ func (c *Controller) handleAddOrUpdateVpcDns(key string) error {
 		}
 	}
 
-	vpcDns, err := c.vpcDNSLister.Get(key)
+	vpcDNS, err := c.vpcDNSLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
@@ -150,14 +150,14 @@ func (c *Controller) handleAddOrUpdateVpcDns(key string) error {
 	}
 
 	defer func() {
-		newVpcDns := vpcDns.DeepCopy()
-		newVpcDns.Status.Active = true
+		newVPCDNS := vpcDNS.DeepCopy()
+		newVPCDNS.Status.Active = true
 		if err != nil {
-			newVpcDns.Status.Active = false
+			newVPCDNS.Status.Active = false
 		}
 
 		if _, err = c.config.KubeOvnClient.KubeovnV1().VpcDnses().UpdateStatus(context.Background(),
-			newVpcDns, metav1.UpdateOptions{}); err != nil {
+			newVPCDNS, metav1.UpdateOptions{}); err != nil {
 			err := fmt.Errorf("failed to update vpc dns status, %v", err)
 			klog.Error(err)
 		}
@@ -175,14 +175,14 @@ func (c *Controller) handleAddOrUpdateVpcDns(key string) error {
 		return err
 	}
 
-	if _, err := c.vpcsLister.Get(vpcDns.Spec.Vpc); err != nil {
-		err := fmt.Errorf("failed to get vpc '%s', err: %v", vpcDns.Spec.Vpc, err)
+	if _, err := c.vpcsLister.Get(vpcDNS.Spec.Vpc); err != nil {
+		err := fmt.Errorf("failed to get vpc '%s', err: %v", vpcDNS.Spec.Vpc, err)
 		klog.Error(err)
 		return err
 	}
 
-	if _, err := c.subnetsLister.Get(vpcDns.Spec.Subnet); err != nil {
-		err := fmt.Errorf("failed to get subnet '%s', err: %v", vpcDns.Spec.Subnet, err)
+	if _, err := c.subnetsLister.Get(vpcDNS.Spec.Subnet); err != nil {
+		err := fmt.Errorf("failed to get subnet '%s', err: %v", vpcDNS.Spec.Subnet, err)
 		klog.Error(err)
 		return err
 	}
@@ -199,20 +199,20 @@ func (c *Controller) handleAddOrUpdateVpcDns(key string) error {
 		return err
 	}
 
-	if err := c.checkVpcDnsDuplicated(vpcDns); err != nil {
-		err = fmt.Errorf("failed to deploy %s, %v", vpcDns.Name, err)
+	if err := c.checkVpcDNSDuplicated(vpcDNS); err != nil {
+		err = fmt.Errorf("failed to deploy %s, %v", vpcDNS.Name, err)
 		klog.Error(err)
 		return err
 	}
 
-	if err := c.createOrUpdateVpcDnsDep(vpcDns); err != nil {
-		err = fmt.Errorf("failed to create or update vpc dns %s, %v", vpcDns.Name, err)
+	if err := c.createOrUpdateVpcDNSDep(vpcDNS); err != nil {
+		err = fmt.Errorf("failed to create or update vpc dns %s, %v", vpcDNS.Name, err)
 		klog.Error(err)
 		return err
 	}
 
-	if err := c.createOrUpdateVpcDnsSlr(vpcDns); err != nil {
-		err = fmt.Errorf("failed to create or update slr for vpc dns %s, %v", vpcDns.Name, err)
+	if err := c.createOrUpdateVpcDNSSlr(vpcDNS); err != nil {
+		err = fmt.Errorf("failed to create or update slr for vpc dns %s, %v", vpcDNS.Name, err)
 		klog.Error(err)
 		return err
 	}
@@ -220,8 +220,8 @@ func (c *Controller) handleAddOrUpdateVpcDns(key string) error {
 	return err
 }
 
-func (c *Controller) handleDelVpcDns(key string) error {
-	klog.V(3).Infof("handleDelVpcDns,%s", key)
+func (c *Controller) handleDelVpcDNS(key string) error {
+	klog.V(3).Infof("handleDelVpcDNS,%s", key)
 	name := genVpcDNSDpName(key)
 	err := c.config.KubeClient.AppsV1().Deployments(c.config.PodNamespace).Delete(context.Background(), name, metav1.DeleteOptions{})
 	if err != nil && !k8serrors.IsNotFound(err) {
@@ -239,8 +239,8 @@ func (c *Controller) handleDelVpcDns(key string) error {
 	return nil
 }
 
-func (c *Controller) checkVpcDnsDuplicated(vpcDns *kubeovnv1.VpcDNS) error {
-	vpcDnsList, err := c.vpcDNSLister.List(labels.Everything())
+func (c *Controller) checkVpcDNSDuplicated(vpcDNS *kubeovnv1.VpcDNS) error {
+	vpcDNSList, err := c.vpcDNSLister.List(labels.Everything())
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
@@ -248,10 +248,10 @@ func (c *Controller) checkVpcDnsDuplicated(vpcDns *kubeovnv1.VpcDNS) error {
 		return err
 	}
 
-	for _, item := range vpcDnsList {
+	for _, item := range vpcDNSList {
 		if item.Status.Active &&
-			item.Name != vpcDns.Name &&
-			item.Spec.Vpc == vpcDns.Spec.Vpc {
+			item.Name != vpcDNS.Name &&
+			item.Spec.Vpc == vpcDNS.Spec.Vpc {
 			err = fmt.Errorf("only one vpc-dns can be deployed in a vpc")
 			return err
 		}
@@ -259,10 +259,10 @@ func (c *Controller) checkVpcDnsDuplicated(vpcDns *kubeovnv1.VpcDNS) error {
 	return nil
 }
 
-func (c *Controller) createOrUpdateVpcDnsDep(vpcDns *kubeovnv1.VpcDNS) error {
+func (c *Controller) createOrUpdateVpcDNSDep(vpcDNS *kubeovnv1.VpcDNS) error {
 	needToCreateDp := false
 	oldDp, err := c.config.KubeClient.AppsV1().Deployments(c.config.PodNamespace).
-		Get(context.Background(), genVpcDNSDpName(vpcDns.Name), metav1.GetOptions{})
+		Get(context.Background(), genVpcDNSDpName(vpcDNS.Name), metav1.GetOptions{})
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			needToCreateDp = true
@@ -271,7 +271,7 @@ func (c *Controller) createOrUpdateVpcDnsDep(vpcDns *kubeovnv1.VpcDNS) error {
 		}
 	}
 
-	newDp, err := c.genVpcDnsDeployment(vpcDns, oldDp)
+	newDp, err := c.genVpcDNSDeployment(vpcDNS, oldDp)
 	if err != nil {
 		klog.Errorf("failed to generate vpc-dns deployment, %v", err)
 		return err
@@ -295,9 +295,9 @@ func (c *Controller) createOrUpdateVpcDnsDep(vpcDns *kubeovnv1.VpcDNS) error {
 	return nil
 }
 
-func (c *Controller) createOrUpdateVpcDnsSlr(vpcDns *kubeovnv1.VpcDNS) error {
+func (c *Controller) createOrUpdateVpcDNSSlr(vpcDNS *kubeovnv1.VpcDNS) error {
 	needToCreateSlr := false
-	oldSlr, err := c.switchLBRuleLister.Get(genVpcDNSDpName(vpcDns.Name))
+	oldSlr, err := c.switchLBRuleLister.Get(genVpcDNSDpName(vpcDNS.Name))
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			needToCreateSlr = true
@@ -307,7 +307,7 @@ func (c *Controller) createOrUpdateVpcDnsSlr(vpcDns *kubeovnv1.VpcDNS) error {
 		}
 	}
 
-	newSlr, err := c.genVpcDnsSlr(vpcDns.Name, c.config.PodNamespace)
+	newSlr, err := c.genVpcDNSSlr(vpcDNS.Name, c.config.PodNamespace)
 	if err != nil {
 		klog.Errorf("failed to generate vpc-dns switchLBRule, %v", err)
 		return err
@@ -334,7 +334,7 @@ func (c *Controller) createOrUpdateVpcDnsSlr(vpcDns *kubeovnv1.VpcDNS) error {
 	return nil
 }
 
-func (c *Controller) genVpcDnsDeployment(vpcDns *kubeovnv1.VpcDNS, oldDeploy *v1.Deployment) (*v1.Deployment, error) {
+func (c *Controller) genVpcDNSDeployment(vpcDNS *kubeovnv1.VpcDNS, oldDeploy *v1.Deployment) (*v1.Deployment, error) {
 	if _, err := os.Stat(CorednsTemplateDep); errors.Is(err, os.ErrNotExist) {
 		klog.Errorf("failed to get coredns template file, %v", err)
 		return nil, err
@@ -347,7 +347,7 @@ func (c *Controller) genVpcDnsDeployment(vpcDns *kubeovnv1.VpcDNS, oldDeploy *v1
 	}
 
 	buffer := new(bytes.Buffer)
-	name := genVpcDNSDpName(vpcDns.Name)
+	name := genVpcDNSDpName(vpcDNS.Name)
 	if err := tmp.Execute(buffer, map[string]interface{}{
 		"DeployName":   name,
 		"CorednsImage": corednsImage,
@@ -356,13 +356,13 @@ func (c *Controller) genVpcDnsDeployment(vpcDns *kubeovnv1.VpcDNS, oldDeploy *v1
 	}
 
 	dep := &v1.Deployment{}
-	retJson, err := yaml.ToJSON(buffer.Bytes())
+	retJSON, err := yaml.ToJSON(buffer.Bytes())
 	if err != nil {
 		klog.Errorf("failed to switch yaml, %v", err)
 		return nil, err
 	}
 
-	if err := json.Unmarshal(retJson, dep); err != nil {
+	if err := json.Unmarshal(retJSON, dep); err != nil {
 		klog.Errorf("failed to switch json, %v", err)
 		return nil, err
 	}
@@ -377,8 +377,8 @@ func (c *Controller) genVpcDnsDeployment(vpcDns *kubeovnv1.VpcDNS, oldDeploy *v1
 		util.VpcDNSNameLabel: "true",
 	}
 
-	setCoreDnsEnv(dep)
-	setVpcDnsInterface(dep, vpcDns.Spec.Subnet)
+	setCoreDNSEnv(dep)
+	setVpcDNSInterface(dep, vpcDNS.Spec.Subnet)
 
 	defaultSubnet, err := c.subnetsLister.Get(util.DefaultSubnet)
 	if err != nil {
@@ -389,11 +389,11 @@ func (c *Controller) genVpcDnsDeployment(vpcDns *kubeovnv1.VpcDNS, oldDeploy *v1
 		klog.Errorf("failed to resync vpc nat config, err: %v", err)
 		return nil, err
 	}
-	setVpcDnsRoute(dep, defaultSubnet.Spec.Gateway)
+	setVpcDNSRoute(dep, defaultSubnet.Spec.Gateway)
 	return dep, nil
 }
 
-func (c *Controller) genVpcDnsSlr(vpcName, namespace string) (*kubeovnv1.SwitchLBRule, error) {
+func (c *Controller) genVpcDNSSlr(vpcName, namespace string) (*kubeovnv1.SwitchLBRule, error) {
 	name := genVpcDNSDpName(vpcName)
 	label := fmt.Sprintf("%s:%s", CorednsLabelKey, name)
 
@@ -422,14 +422,14 @@ func (c *Controller) genVpcDnsSlr(vpcName, namespace string) (*kubeovnv1.SwitchL
 	return slr, nil
 }
 
-func setVpcDnsInterface(dp *v1.Deployment, subnetName string) {
+func setVpcDNSInterface(dp *v1.Deployment, subnetName string) {
 	annotations := dp.Spec.Template.Annotations
 	annotations[util.LogicalSwitchAnnotation] = subnetName
 	annotations[util.AttachmentNetworkAnnotation] = fmt.Sprintf("%s/%s", corev1.NamespaceDefault, nadName)
 	annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, nadProvider)] = util.DefaultSubnet
 }
 
-func setCoreDnsEnv(dp *v1.Deployment) {
+func setCoreDNSEnv(dp *v1.Deployment) {
 	var env []corev1.EnvVar
 
 	if len(k8sServiceHost) != 0 {
@@ -448,7 +448,7 @@ func setCoreDnsEnv(dp *v1.Deployment) {
 	}
 }
 
-func setVpcDnsRoute(dp *v1.Deployment, subnetGw string) {
+func setVpcDNSRoute(dp *v1.Deployment, subnetGw string) {
 	var serviceHost string
 	if len(k8sServiceHost) == 0 {
 		serviceHost = os.Getenv("KUBERNETES_SERVICE_HOST")
@@ -505,7 +505,7 @@ func (c *Controller) checkOvnDefaultSpecProvider() error {
 	return nil
 }
 
-func (c *Controller) resyncVpcDnsConfig() {
+func (c *Controller) resyncVpcDNSConfig() {
 	cm, err := c.configMapsLister.ConfigMaps(c.config.PodNamespace).Get(util.VpcDNSConfig)
 	if err != nil && !k8serrors.IsNotFound(err) {
 		klog.Errorf("failed to get %s, %v", util.VpcDNSConfig, err)
@@ -515,7 +515,7 @@ func (c *Controller) resyncVpcDnsConfig() {
 	if k8serrors.IsNotFound(err) {
 		klog.V(3).Infof("the vpc-dns configuration is not set ")
 		if len(cmVersion) != 0 {
-			if err := c.cleanVpcDns(); err != nil {
+			if err := c.cleanVpcDNS(); err != nil {
 				klog.Errorf("failed to clear all vpc-dns, %v", err)
 				return
 			}
@@ -526,10 +526,9 @@ func (c *Controller) resyncVpcDnsConfig() {
 
 	if cmVersion == cm.ResourceVersion {
 		return
-	} else {
-		cmVersion = cm.ResourceVersion
-		klog.V(3).Infof("the vpc-dns ConfigMap update")
 	}
+	cmVersion = cm.ResourceVersion
+	klog.V(3).Infof("the vpc-dns ConfigMap update")
 
 	getValue := func(key string) string {
 		if v, ok := cm.Data[key]; ok {
@@ -540,7 +539,7 @@ func (c *Controller) resyncVpcDnsConfig() {
 
 	corednsImage = getValue("coredns-image")
 	if len(corednsImage) == 0 {
-		defaultImage, err := c.getDefaultCoreDnsImage()
+		defaultImage, err := c.getDefaultCoreDNSImage()
 		if err != nil {
 			klog.Errorf("failed to get kube-system/coredns image, %s", err)
 			return
@@ -571,12 +570,12 @@ func (c *Controller) resyncVpcDnsConfig() {
 	}
 
 	if enableCoredns && !newEnableCoredns {
-		if err := c.cleanVpcDns(); err != nil {
+		if err := c.cleanVpcDNS(); err != nil {
 			klog.Errorf("failed to clear all vpc-dns, %v", err)
 			return
 		}
 	} else {
-		if err := c.updateVpcDns(); err != nil {
+		if err := c.updateVpcDNS(); err != nil {
 			klog.Errorf("failed to update vpc-dns deployment")
 			return
 		}
@@ -584,7 +583,7 @@ func (c *Controller) resyncVpcDnsConfig() {
 	enableCoredns = newEnableCoredns
 }
 
-func (c *Controller) getDefaultCoreDnsImage() (string, error) {
+func (c *Controller) getDefaultCoreDNSImage() (string, error) {
 	dp, err := c.config.KubeClient.AppsV1().Deployments("kube-system").
 		Get(context.Background(), "coredns", metav1.GetOptions{})
 	if err != nil {
@@ -601,17 +600,17 @@ func (c *Controller) getDefaultCoreDnsImage() (string, error) {
 	return "", fmt.Errorf("coredns container no found")
 }
 
-func (c *Controller) initVpcDnsConfig() error {
+func (c *Controller) initVpcDNSConfig() error {
 	if err := hostConfigFromReader(); err != nil {
 		klog.Errorf("failed to get get host nameserver, %v", err)
 		return err
 	}
 
-	c.resyncVpcDnsConfig()
+	c.resyncVpcDNSConfig()
 	return nil
 }
 
-func (c *Controller) cleanVpcDns() error {
+func (c *Controller) cleanVpcDNS() error {
 	klog.Infof("clear all vpc-dns")
 	err := c.config.KubeOvnClient.KubeovnV1().VpcDnses().DeleteCollection(context.Background(), metav1.DeleteOptions{},
 		metav1.ListOptions{})
@@ -623,7 +622,7 @@ func (c *Controller) cleanVpcDns() error {
 	return nil
 }
 
-func (c *Controller) updateVpcDns() error {
+func (c *Controller) updateVpcDNS() error {
 	list, err := c.vpcDNSLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to get vpc-dns list, %s", err)

@@ -220,7 +220,7 @@ func (c *Controller) handleAddIptablesEip(key string) error {
 	}
 	var v4ip, v6ip, mac, eipV4Cidr, v4Gw string
 	externalNetwork := util.GetExternalNetwork(cachedEip.Spec.ExternalSubnet)
-	externalProvider := fmt.Sprintf("%s.%s", externalNetwork, ATTACHMENT_NS)
+	externalProvider := fmt.Sprintf("%s.%s", externalNetwork, attachmentNs)
 
 	portName := ovs.PodNameToPortName(cachedEip.Name, cachedEip.Namespace, externalProvider)
 	if cachedEip.Spec.V4ip != "" {
@@ -621,9 +621,8 @@ func (c *Controller) getEipV4Cidr(v4ip, externalSubnet string) (string, error) {
 func (c *Controller) GetGwBySubnet(name string) (string, string, error) {
 	if subnet, ok := c.ipam.Subnets[name]; ok {
 		return subnet.V4Gw, subnet.V6Gw, nil
-	} else {
-		return "", "", fmt.Errorf("failed to get subnet %s", name)
 	}
+	return "", "", fmt.Errorf("failed to get subnet %s", name)
 }
 
 func (c *Controller) createOrUpdateCrdEip(key, v4ip, v6ip, mac, natGwDp, qos, externalNet string) error {

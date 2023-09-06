@@ -62,7 +62,7 @@ func ovsSet(table, record string, values ...string) error {
 	return err
 }
 
-func ovsAdd(table, record string, column string, values ...string) error {
+func ovsAdd(table, record, column string, values ...string) error {
 	args := append([]string{"add", table, record, column}, values...)
 	_, err := Exec(args...)
 	return err
@@ -279,7 +279,7 @@ func GetInterfacePodNs(iface string) (string, error) {
 }
 
 // config mirror for interface by pod annotations and install param
-func ConfigInterfaceMirror(globalMirror bool, open string, iface string) error {
+func ConfigInterfaceMirror(globalMirror bool, open, iface string) error {
 	if globalMirror {
 		return nil
 	}

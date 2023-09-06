@@ -49,7 +49,7 @@ func (c *Controller) enqueueAddPodAnnotatedIptablesEip(obj interface{}) {
 				c.delPodAnnotatedIptablesEipQueue.Add(obj)
 				return
 			}
-			if isVMPod && c.isVmPodToDel(p, vmName) {
+			if isVMPod && c.isVMPodToDel(p, vmName) {
 				klog.V(3).Infof("enqueue delete pod annotated iptables eip %s", eipName)
 				c.delPodAnnotatedIptablesEipQueue.Add(obj)
 				return
@@ -106,7 +106,7 @@ func (c *Controller) enqueueUpdatePodAnnotatedIptablesEip(oldObj, newObj interfa
 		c.delPodAnnotatedIptablesEipQueue.Add(newObj)
 		return
 	}
-	if c.config.EnableKeepVMIP && isVMPod && c.isVmPodToDel(newPod, vmName) {
+	if c.config.EnableKeepVMIP && isVMPod && c.isVMPodToDel(newPod, vmName) {
 		c.delPodAnnotatedIptablesEipQueue.Add(newObj)
 		return
 	}
@@ -138,7 +138,7 @@ func (c *Controller) enqueueDeletePodAnnotatedIptablesEip(obj interface{}) {
 			return
 		}
 	case c.config.EnableKeepVMIP && isVMPod:
-		if c.isVmPodToDel(p, vmName) {
+		if c.isVMPodToDel(p, vmName) {
 			c.delPodAnnotatedIptablesEipQueue.Add(obj)
 			return
 		}
@@ -342,10 +342,9 @@ func isStatefulSetDeleted(c kubernetes.Interface, pod *v1.Pod, statefulSetName s
 		if k8serrors.IsNotFound(err) {
 			// statefulset is deleted
 			return true
-		} else {
-			klog.Errorf("failed to get statefulset %v", err)
-			return false
 		}
+		klog.Errorf("failed to get statefulset %v", err)
+		return false
 	}
 	// statefulset is deleting
 	if ss.DeletionTimestamp != nil {

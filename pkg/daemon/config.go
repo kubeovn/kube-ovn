@@ -290,7 +290,7 @@ func (config *Configuration) initNicConfig(nicBridgeMappings map[string]string) 
 }
 
 func (config *Configuration) getEncapIP(node *corev1.Node) string {
-	if podIP := os.Getenv(util.POD_IP); podIP != "" {
+	if podIP := os.Getenv(util.PodIP); podIP != "" {
 		return podIP
 	}
 

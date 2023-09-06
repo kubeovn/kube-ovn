@@ -15,7 +15,6 @@ import (
 )
 
 func CheckIptablesRulesOnNode(f *framework.Framework, node, table, chain, protocol string, expectedRules []string, shouldExist bool) {
-
 	ovsPod := getOvsPodOnNode(f, node)
 
 	iptBin := "iptables"

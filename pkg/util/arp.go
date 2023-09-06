@@ -76,8 +76,8 @@ func ArpDetectIPConflict(nic, ip string, mac net.HardwareAddr) (net.HardwareAddr
 	const (
 		probeWait        = 1 * time.Second // initial random delay
 		probeNum         = 3               // number of probe packets
-		probeMin         = 1 * time.Second // minimum delay until repeated probe
-		probeMax         = 2 * time.Second // maximum delay until repeated probe
+		probeMinmum      = 1 * time.Second // minimum delay until repeated probe
+		probeMaxmum      = 2 * time.Second // maximum delay until repeated probe
 		announceWait     = 2 * time.Second // delay before announcing
 		announceNum      = 2               // number of Announcement packets
 		announceInterval = 2 * time.Second // time between Announcement packets
@@ -119,7 +119,7 @@ func ArpDetectIPConflict(nic, ip string, mac net.HardwareAddr) (net.HardwareAddr
 	for i := 1; i < probeNum; i++ {
 		// send PROBE_NUM probe packets, each of these probe packets spaced
 		// randomly and uniformly, PROBE_MIN to PROBE_MAX seconds apart
-		durations[i] = probeMin + time.Duration(rand.Int63n(int64(probeMax-probeMin)))
+		durations[i] = probeMinmum + time.Duration(rand.Int63n(int64(probeMaxmum-probeMinmum)))
 		deadline = deadline.Add(durations[i])
 	}
 

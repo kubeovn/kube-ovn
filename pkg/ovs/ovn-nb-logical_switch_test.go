@@ -14,7 +14,7 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-func createLogicalSwitch(c *ovnNbClient, ls *ovnnb.LogicalSwitch) error {
+func createLogicalSwitch(c *OVNNbClient, ls *ovnnb.LogicalSwitch) error {
 	op, err := c.Create(ls)
 	if err != nil {
 		return err

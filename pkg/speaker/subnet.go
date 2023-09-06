@@ -4,7 +4,6 @@ package speaker
 import (
 	"context"
 	"fmt"
-
 	"net"
 	"strconv"
 	"strings"
@@ -169,7 +168,7 @@ func (c *Controller) syncSubnetRoutes() {
 	}
 }
 
-func routeDiff(expected, exists []string) (toAdd []string, toDel []string) {
+func routeDiff(expected, exists []string) (toAdd, toDel []string) {
 	expectedMap, existsMap := map[string]bool{}, map[string]bool{}
 	for _, e := range expected {
 		expectedMap[e] = true
@@ -290,7 +289,8 @@ func getNextHopFromPathAttributes(attrs []bgp.PathAttributeInterface) net.IP {
 	}
 	return nil
 }
-func getNextHopAttribute(neighborAddress string, routeID string) string {
+
+func getNextHopAttribute(neighborAddress, routeID string) string {
 	nextHop := routeID
 	routes, err := netlink.RouteGet(net.ParseIP(neighborAddress))
 	if err == nil && len(routes) == 1 && routes[0].Src != nil {

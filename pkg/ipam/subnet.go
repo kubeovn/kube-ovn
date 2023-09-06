@@ -311,7 +311,7 @@ func (s *Subnet) getV6RandomAddress(ippoolName, podName, nicName string, mac *st
 	return nil, ip, *mac, nil
 }
 
-func (s *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac *string, force bool, checkConflict bool) (IP, string, error) {
+func (s *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac *string, force, checkConflict bool) (IP, string, error) {
 	var v4, v6 bool
 	isAllocated := false
 	s.mutex.Lock()

@@ -8,7 +8,7 @@ func SetInterfaceBandwidth(podName, podNamespace, iface, ingress, egress string)
 }
 
 func ClearHtbQosQueue(podName, podNamespace, iface string) error {
-	//TODO
+	// TODO
 	return nil
 }
 
@@ -18,7 +18,7 @@ func IsHtbQos(iface string) (bool, error) {
 }
 
 func SetHtbQosQueueRecord(podName, podNamespace, iface, priority string, maxRateBPS int, queueIfaceUIDMap map[string]string) (string, error) {
-	//TODO
+	// TODO
 	return "", nil
 }
 

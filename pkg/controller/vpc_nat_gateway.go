@@ -26,9 +26,9 @@ import (
 )
 
 var (
-	vpcNatEnabled     = "unknown"
-	VpcNatCmVersion   = ""
-	NAT_GW_CREATED_AT = ""
+	vpcNatEnabled   = "unknown"
+	VpcNatCmVersion = ""
+	natGwCreatedAT  = ""
 )
 
 const (
@@ -74,27 +74,25 @@ func (c *Controller) resyncVpcNatGwConfig() {
 		VpcNatCmVersion = ""
 		klog.Info("finish clean up vpc nat gateway")
 		return
-	} else {
-		if vpcNatEnabled == "true" && VpcNatCmVersion == cm.ResourceVersion {
-			return
-		}
-		gws, err := c.vpcNatGatewayLister.List(labels.Everything())
-		if err != nil {
-			klog.Errorf("failed to get vpc nat gateway, %v", err)
-			return
-		}
-		if err = c.resyncVpcNatImage(); err != nil {
-			klog.Errorf("failed to resync vpc nat config, err: %v", err)
-			return
-		}
-		vpcNatEnabled = "true"
-		VpcNatCmVersion = cm.ResourceVersion
-		for _, gw := range gws {
-			c.addOrUpdateVpcNatGatewayQueue.Add(gw.Name)
-		}
-		klog.Info("finish establishing vpc-nat-gateway")
+	}
+	if vpcNatEnabled == "true" && VpcNatCmVersion == cm.ResourceVersion {
 		return
 	}
+	gws, err := c.vpcNatGatewayLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to get vpc nat gateway, %v", err)
+		return
+	}
+	if err = c.resyncVpcNatImage(); err != nil {
+		klog.Errorf("failed to resync vpc nat config, err: %v", err)
+		return
+	}
+	vpcNatEnabled = "true"
+	VpcNatCmVersion = cm.ResourceVersion
+	for _, gw := range gws {
+		c.addOrUpdateVpcNatGatewayQueue.Add(gw.Name)
+	}
+	klog.Info("finish establishing vpc-nat-gateway")
 }
 
 func (c *Controller) enqueueAddVpcNatGw(obj interface{}) {
@@ -371,8 +369,8 @@ func (c *Controller) handleInitVpcNatGw(key string) error {
 	if _, hasInit := pod.Annotations[util.VpcNatGatewayInitAnnotation]; hasInit {
 		return nil
 	}
-	NAT_GW_CREATED_AT = pod.CreationTimestamp.Format("2006-01-02T15:04:05")
-	klog.V(3).Infof("nat gw pod '%s' inited at %s", key, NAT_GW_CREATED_AT)
+	natGwCreatedAT = pod.CreationTimestamp.Format("2006-01-02T15:04:05")
+	klog.V(3).Infof("nat gw pod '%s' inited at %s", key, natGwCreatedAT)
 	if err = c.execNatGwRules(pod, natGwInit, []string{fmt.Sprintf("%s,%s", c.config.ServiceClusterIPRange, pod.Annotations[util.GatewayAnnotation])}); err != nil {
 		err = fmt.Errorf("failed to init vpc nat gateway, %v", err)
 		klog.Error(err)
@@ -443,9 +441,9 @@ func (c *Controller) handleUpdateVpcFloatingIP(natGwKey string) error {
 	}
 
 	for _, fip := range fips {
-		if fip.Status.Redo != NAT_GW_CREATED_AT {
+		if fip.Status.Redo != natGwCreatedAT {
 			klog.V(3).Infof("redo fip %s", fip.Name)
-			if err = c.redoFip(fip.Name, NAT_GW_CREATED_AT, false); err != nil {
+			if err = c.redoFip(fip.Name, natGwCreatedAT, false); err != nil {
 				klog.Errorf("failed to update eip '%s' to re-apply, %v", fip.Spec.EIP, err)
 				return err
 			}
@@ -476,9 +474,9 @@ func (c *Controller) handleUpdateVpcEip(natGwKey string) error {
 		return err
 	}
 	for _, eip := range eips {
-		if eip.Spec.NatGwDp == natGwKey && eip.Status.Redo != NAT_GW_CREATED_AT {
+		if eip.Spec.NatGwDp == natGwKey && eip.Status.Redo != natGwCreatedAT {
 			klog.V(3).Infof("redo eip %s", eip.Name)
-			if err = c.patchEipStatus(eip.Name, "", NAT_GW_CREATED_AT, "", false); err != nil {
+			if err = c.patchEipStatus(eip.Name, "", natGwCreatedAT, "", false); err != nil {
 				klog.Errorf("failed to update eip '%s' to re-apply, %v", eip.Name, err)
 				return err
 			}
@@ -509,9 +507,9 @@ func (c *Controller) handleUpdateVpcSnat(natGwKey string) error {
 		return err
 	}
 	for _, snat := range snats {
-		if snat.Status.Redo != NAT_GW_CREATED_AT {
+		if snat.Status.Redo != natGwCreatedAT {
 			klog.V(3).Infof("redo snat %s", snat.Name)
-			if err = c.redoSnat(snat.Name, NAT_GW_CREATED_AT, false); err != nil {
+			if err = c.redoSnat(snat.Name, natGwCreatedAT, false); err != nil {
 				err = fmt.Errorf("failed to update eip '%s' to re-apply, %v", snat.Spec.EIP, err)
 				klog.Error(err)
 				return err
@@ -544,9 +542,9 @@ func (c *Controller) handleUpdateVpcDnat(natGwKey string) error {
 		return err
 	}
 	for _, dnat := range dnats {
-		if dnat.Status.Redo != NAT_GW_CREATED_AT {
+		if dnat.Status.Redo != natGwCreatedAT {
 			klog.V(3).Infof("redo dnat %s", dnat.Name)
-			if err = c.redoDnat(dnat.Name, NAT_GW_CREATED_AT, false); err != nil {
+			if err = c.redoDnat(dnat.Name, natGwCreatedAT, false); err != nil {
 				err := fmt.Errorf("failed to update dnat '%s' to redo, %v", dnat.Name, err)
 				klog.Error(err)
 				return err
@@ -849,7 +847,7 @@ func (c *Controller) getNatGwPod(name string) (*corev1.Pod, error) {
 }
 
 func (c *Controller) initCreateAt(key string) (err error) {
-	if NAT_GW_CREATED_AT != "" {
+	if natGwCreatedAT != "" {
 		return nil
 	}
 	pod, err := c.getNatGwPod(key)
@@ -857,7 +855,7 @@ func (c *Controller) initCreateAt(key string) (err error) {
 		klog.Error(err)
 		return err
 	}
-	NAT_GW_CREATED_AT = pod.CreationTimestamp.Format("2006-01-02T15:04:05")
+	natGwCreatedAT = pod.CreationTimestamp.Format("2006-01-02T15:04:05")
 	return nil
 }
 
