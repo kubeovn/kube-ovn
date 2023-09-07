@@ -21,7 +21,6 @@ import (
 )
 
 func (c *Controller) enqueueAddIptablesEip(obj interface{}) {
-
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -32,15 +31,15 @@ func (c *Controller) enqueueAddIptablesEip(obj interface{}) {
 	c.addIptablesEipQueue.Add(key)
 }
 
-func (c *Controller) enqueueUpdateIptablesEip(old, new interface{}) {
+func (c *Controller) enqueueUpdateIptablesEip(oldObj, newObj interface{}) {
 	var key string
 	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(new); err != nil {
+	if key, err = cache.MetaNamespaceKeyFunc(newObj); err != nil {
 		utilruntime.HandleError(err)
 		return
 	}
-	oldEip := old.(*kubeovnv1.IptablesEIP)
-	newEip := new.(*kubeovnv1.IptablesEIP)
+	oldEip := oldObj.(*kubeovnv1.IptablesEIP)
+	newEip := newObj.(*kubeovnv1.IptablesEIP)
 	if !newEip.DeletionTimestamp.IsZero() ||
 		oldEip.Status.Redo != newEip.Status.Redo ||
 		oldEip.Spec.QoSPolicy != newEip.Spec.QoSPolicy {
@@ -107,7 +106,6 @@ func (c *Controller) processNextAddIptablesEipWorkItem() bool {
 		c.addIptablesEipQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -137,7 +135,6 @@ func (c *Controller) processNextResetIptablesEipWorkItem() bool {
 		c.resetIptablesEipQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -194,7 +191,6 @@ func (c *Controller) processNextDeleteIptablesEipWorkItem() bool {
 		c.delIptablesEipQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -224,7 +220,7 @@ func (c *Controller) handleAddIptablesEip(key string) error {
 	}
 	var v4ip, v6ip, mac, eipV4Cidr, v4Gw string
 	externalNetwork := util.GetExternalNetwork(cachedEip.Spec.ExternalSubnet)
-	externalProvider := fmt.Sprintf("%s.%s", externalNetwork, ATTACHMENT_NS)
+	externalProvider := fmt.Sprintf("%s.%s", externalNetwork, attachmentNs)
 
 	portName := ovs.PodNameToPortName(cachedEip.Name, cachedEip.Namespace, externalProvider)
 	if cachedEip.Spec.V4ip != "" {
@@ -431,10 +427,7 @@ func (c *Controller) createEipInPod(dp, gw, v4Cidr string) error {
 	var addRules []string
 	rule := fmt.Sprintf("%s,%s", v4Cidr, gw)
 	addRules = append(addRules, rule)
-	if err = c.execNatGwRules(gwPod, natGwEipAdd, addRules); err != nil {
-		return err
-	}
-	return nil
+	return c.execNatGwRules(gwPod, natGwEipAdd, addRules)
 }
 
 func (c *Controller) deleteEipInPod(dp, v4Cidr string) error {
@@ -518,8 +511,9 @@ func (c *Controller) delEipQoS(eip *kubeovnv1.IptablesEIP, v4ip string) error {
 }
 
 func (c *Controller) addEipQoSInPod(
-	dp string, v4ip string, direction kubeovnv1.QoSPolicyRuleDirection, priority int, rate string,
-	burst string) error {
+	dp, v4ip string, direction kubeovnv1.QoSPolicyRuleDirection, priority int, rate string,
+	burst string,
+) error {
 	var operation string
 	gwPod, err := c.getNatGwPod(dp)
 	if err != nil {
@@ -537,13 +531,10 @@ func (c *Controller) addEipQoSInPod(
 		operation = natGwEipEgressQoSAdd
 	}
 
-	if err = c.execNatGwRules(gwPod, operation, addRules); err != nil {
-		return err
-	}
-	return nil
+	return c.execNatGwRules(gwPod, operation, addRules)
 }
 
-func (c *Controller) delEipQoSInPod(dp string, v4ip string, direction kubeovnv1.QoSPolicyRuleDirection) error {
+func (c *Controller) delEipQoSInPod(dp, v4ip string, direction kubeovnv1.QoSPolicyRuleDirection) error {
 	var operation string
 	gwPod, err := c.getNatGwPod(dp)
 	if err != nil {
@@ -560,13 +551,10 @@ func (c *Controller) delEipQoSInPod(dp string, v4ip string, direction kubeovnv1.
 		operation = natGwEipEgressQoSDel
 	}
 
-	if err = c.execNatGwRules(gwPod, operation, delRules); err != nil {
-		return err
-	}
-	return nil
+	return c.execNatGwRules(gwPod, operation, delRules)
 }
 
-func (c *Controller) acquireStaticEip(name, namespace, nicName, ip, externalSubnet string) (string, string, string, error) {
+func (c *Controller) acquireStaticEip(name, _, nicName, ip, externalSubnet string) (string, string, string, error) {
 	checkConflict := true
 	var v4ip, v6ip, mac string
 	var err error
@@ -583,7 +571,7 @@ func (c *Controller) acquireStaticEip(name, namespace, nicName, ip, externalSubn
 	return v4ip, v6ip, mac, nil
 }
 
-func (c *Controller) acquireEip(name, namespace, nicName, externalSubnet string) (string, string, string, error) {
+func (c *Controller) acquireEip(name, _, nicName, externalSubnet string) (string, string, string, error) {
 	var skippedAddrs []string
 	for {
 		ipv4, ipv6, mac, err := c.ipam.GetRandomAddress(name, nicName, nil, externalSubnet, "", skippedAddrs, true)
@@ -633,9 +621,8 @@ func (c *Controller) getEipV4Cidr(v4ip, externalSubnet string) (string, error) {
 func (c *Controller) GetGwBySubnet(name string) (string, string, error) {
 	if subnet, ok := c.ipam.Subnets[name]; ok {
 		return subnet.V4Gw, subnet.V6Gw, nil
-	} else {
-		return "", "", fmt.Errorf("failed to get subnet %s", name)
 	}
+	return "", "", fmt.Errorf("failed to get subnet %s", name)
 }
 
 func (c *Controller) createOrUpdateCrdEip(key, v4ip, v6ip, mac, natGwDp, qos, externalNet string) error {
@@ -660,7 +647,6 @@ func (c *Controller) createOrUpdateCrdEip(key, v4ip, v6ip, mac, natGwDp, qos, ex
 					NatGwDp:    natGwDp,
 				},
 			}, metav1.CreateOptions{})
-
 			if err != nil {
 				errMsg := fmt.Errorf("failed to create eip crd %s, %v", key, err)
 				klog.Error(errMsg)

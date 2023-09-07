@@ -33,8 +33,8 @@ func (f *Framework) OvnEipClient() *OvnEipClient {
 	}
 }
 
-func (s *OvnEipClient) Get(name string) *apiv1.OvnEip {
-	eip, err := s.OvnEipInterface.Get(context.TODO(), name, metav1.GetOptions{})
+func (c *OvnEipClient) Get(name string) *apiv1.OvnEip {
+	eip, err := c.OvnEipInterface.Get(context.TODO(), name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return eip
 }
@@ -82,7 +82,7 @@ func (c *OvnEipClient) Patch(original, modified *apiv1.OvnEip) *apiv1.OvnEip {
 
 // PatchSync patches the ovn eip and waits for the ovn eip to be ready for `timeout`.
 // If the ovn eip doesn't become ready before the timeout, it will fail the test.
-func (c *OvnEipClient) PatchSync(original, modified *apiv1.OvnEip, requiredNodes []string, timeout time.Duration) *apiv1.OvnEip {
+func (c *OvnEipClient) PatchSync(original, modified *apiv1.OvnEip, _ []string, timeout time.Duration) *apiv1.OvnEip {
 	eip := c.Patch(original, modified)
 	ExpectTrue(c.WaitToBeUpdated(eip, timeout))
 	ExpectTrue(c.WaitToBeReady(eip.Name, timeout))
@@ -134,7 +134,7 @@ func (c *OvnEipClient) WaitToBeUpdated(eip *apiv1.OvnEip, timeout time.Duration)
 }
 
 // WaitToDisappear waits the given timeout duration for the specified OVN EIP to disappear.
-func (c *OvnEipClient) WaitToDisappear(name string, interval, timeout time.Duration) error {
+func (c *OvnEipClient) WaitToDisappear(name string, _, timeout time.Duration) error {
 	err := framework.Gomega().Eventually(context.Background(), framework.HandleRetry(func(ctx context.Context) (*apiv1.OvnEip, error) {
 		eip, err := c.OvnEipInterface.Get(ctx, name, metav1.GetOptions{})
 		if apierrors.IsNotFound(err) {

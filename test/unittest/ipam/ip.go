@@ -34,7 +34,7 @@ var _ = ginkgo.Context("[group:IPAM]", func() {
 		ginkgo.It("IPv4", func() {
 			n1 := rand.Uint32()
 			if n1 == 0xffffffff {
-				n1 -= 1
+				n1--
 			}
 			n2 := n1 + 1
 
@@ -47,10 +47,6 @@ var _ = ginkgo.Context("[group:IPAM]", func() {
 			ip2, err := ipam.NewIP(ip2Str)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			gomega.Expect(ip2.String()).To(gomega.Equal(ip2Str))
-
-			gomega.Expect(ip1.Equal(ip1)).To(gomega.BeTrue())
-			gomega.Expect(ip1.GreaterThan(ip1)).To(gomega.BeFalse())
-			gomega.Expect(ip1.LessThan(ip1)).To(gomega.BeFalse())
 
 			gomega.Expect(ip1.Equal(ip2)).To(gomega.BeFalse())
 			gomega.Expect(ip1.GreaterThan(ip2)).To(gomega.BeFalse())
@@ -65,7 +61,7 @@ var _ = ginkgo.Context("[group:IPAM]", func() {
 		ginkgo.It("IPv6", func() {
 			n1 := [4]uint32{rand.Uint32(), rand.Uint32(), rand.Uint32(), rand.Uint32()}
 			if n1[0] == 0xffffffff && n1[1] == 0xffffffff && n1[2] == 0xffffffff && n1[3] == 0xffffffff {
-				n1[3] -= 1
+				n1[3]--
 			}
 			n2 := [4]uint32{n1[0], n1[1], n1[2], n1[3] + 1}
 
@@ -88,10 +84,6 @@ var _ = ginkgo.Context("[group:IPAM]", func() {
 			ip2, err = ipam.NewIP(ip2Str)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			gomega.Expect(ip2.String()).To(gomega.Equal(net.ParseIP(ip2Str).String()))
-
-			gomega.Expect(ip1.Equal(ip1)).To(gomega.BeTrue())
-			gomega.Expect(ip1.GreaterThan(ip1)).To(gomega.BeFalse())
-			gomega.Expect(ip1.LessThan(ip1)).To(gomega.BeFalse())
 
 			gomega.Expect(ip1.Equal(ip2)).To(gomega.BeFalse())
 			gomega.Expect(ip1.GreaterThan(ip2)).To(gomega.BeFalse())

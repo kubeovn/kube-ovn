@@ -26,8 +26,10 @@ import (
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/kind"
 )
 
-const dockerNetworkName = "kube-ovn-vlan"
-const curlListenPort = 8081
+const (
+	dockerNetworkName = "kube-ovn-vlan"
+	curlListenPort    = 8081
+)
 
 func makeProviderNetwork(providerNetworkName string, exchangeLinkName bool, linkMap map[string]*iproute.Link) *apiv1.ProviderNetwork {
 	var defaultInterface string
@@ -459,7 +461,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		ip := containerInfo.NetworkSettings.Networks[dockerNetworkName].IPAddress
 		mac := containerInfo.NetworkSettings.Networks[dockerNetworkName].MacAddress
 		ginkgo.By("Creating pod " + podName + " with IP address " + ip)
-		annotations := map[string]string{util.IpAddressAnnotation: ip}
+		annotations := map[string]string{util.IPAddressAnnotation: ip}
 		pod := framework.MakePod(namespaceName, podName, nil, annotations, image, cmd, nil)
 		pod.Spec.TerminationGracePeriodSeconds = nil
 		_ = podClient.Create(pod)
@@ -536,7 +538,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		waitSubnetStatusUpdate(subnetName, subnetClient, 2)
 
 		ginkgo.By("Creating overlay subnet " + u2oOverlaySubnetName)
-		cidr := framework.RandomCIDR(f.ClusterIpFamily)
+		cidr := framework.RandomCIDR(f.ClusterIPFamily)
 		overlaySubnet := framework.MakeSubnet(u2oOverlaySubnetName, "", cidr, "", "", "", nil, nil, nil)
 		overlaySubnet = subnetClient.CreateSync(overlaySubnet)
 
@@ -691,7 +693,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		vpcClient.CreateSync(customVPC)
 
 		ginkgo.By("Creating subnet " + u2oOverlaySubnetNameCustomVPC)
-		cidr = framework.RandomCIDR(f.ClusterIpFamily)
+		cidr = framework.RandomCIDR(f.ClusterIPFamily)
 		overlaySubnetCustomVpc := framework.MakeSubnet(u2oOverlaySubnetNameCustomVPC, "", cidr, "", vpcName, "", nil, nil, []string{namespaceName})
 		_ = subnetClient.CreateSync(overlaySubnetCustomVpc)
 
@@ -803,7 +805,7 @@ func checkU2OItems(f *framework.Framework, subnet *apiv1.Subnet, underlayPod, ov
 			}
 		}
 
-		asName := strings.Replace(fmt.Sprintf("%s.u2o_exclude_ip.%s", subnet.Name, protocolStr), "-", ".", -1)
+		asName := strings.ReplaceAll(fmt.Sprintf("%s.u2o_exclude_ip.%s", subnet.Name, protocolStr), "-", ".")
 		if !isU2OCustomVpc {
 			ginkgo.By(fmt.Sprintf("checking underlay subnet's policy1 route %s", protocolStr))
 			hitPolicyStr := fmt.Sprintf("%d %s.dst == %s allow", util.U2OSubnetPolicyPriority, protocolStr, cidr)
@@ -826,7 +828,7 @@ func checkU2OItems(f *framework.Framework, subnet *apiv1.Subnet, underlayPod, ov
 	framework.ExpectNoError(err)
 	framework.ExpectNotEmpty(routes)
 
-	v4InterconnIp, v6InterconnIp := util.SplitStringIP(subnet.Status.U2OInterconnectionIP)
+	v4InterconnIP, v6InterconnIP := util.SplitStringIP(subnet.Status.U2OInterconnectionIP)
 
 	isV4DefaultRouteExist := false
 	isV6DefaultRouteExist := false
@@ -834,14 +836,14 @@ func checkU2OItems(f *framework.Framework, subnet *apiv1.Subnet, underlayPod, ov
 		if route.Dst == "default" {
 			if util.CheckProtocol(route.Gateway) == apiv1.ProtocolIPv4 {
 				if subnet.Spec.U2OInterconnection {
-					framework.ExpectEqual(route.Gateway, v4InterconnIp)
+					framework.ExpectEqual(route.Gateway, v4InterconnIP)
 				} else {
 					framework.ExpectEqual(route.Gateway, v4gw)
 				}
 				isV4DefaultRouteExist = true
 			} else {
 				if subnet.Spec.U2OInterconnection {
-					framework.ExpectEqual(route.Gateway, v6InterconnIp)
+					framework.ExpectEqual(route.Gateway, v6InterconnIP)
 				} else {
 					framework.ExpectEqual(route.Gateway, v6gw)
 				}
@@ -850,11 +852,12 @@ func checkU2OItems(f *framework.Framework, subnet *apiv1.Subnet, underlayPod, ov
 		}
 	}
 
-	if subnet.Spec.Protocol == apiv1.ProtocolIPv4 {
+	switch {
+	case subnet.Spec.Protocol == apiv1.ProtocolIPv4:
 		framework.ExpectTrue(isV4DefaultRouteExist)
-	} else if subnet.Spec.Protocol == apiv1.ProtocolIPv6 {
+	case subnet.Spec.Protocol == apiv1.ProtocolIPv6:
 		framework.ExpectTrue(isV6DefaultRouteExist)
-	} else if subnet.Spec.Protocol == apiv1.ProtocolDual {
+	case subnet.Spec.Protocol == apiv1.ProtocolDual:
 		framework.ExpectTrue(isV4DefaultRouteExist)
 		framework.ExpectTrue(isV6DefaultRouteExist)
 	}

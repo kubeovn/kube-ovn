@@ -22,7 +22,6 @@ import (
 )
 
 func (c *Controller) enqueueAddOvnEip(obj interface{}) {
-
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -33,25 +32,24 @@ func (c *Controller) enqueueAddOvnEip(obj interface{}) {
 	c.addOvnEipQueue.Add(key)
 }
 
-func (c *Controller) enqueueUpdateOvnEip(old, new interface{}) {
+func (c *Controller) enqueueUpdateOvnEip(oldObj, newObj interface{}) {
 	var key string
 	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(new); err != nil {
+	if key, err = cache.MetaNamespaceKeyFunc(newObj); err != nil {
 		utilruntime.HandleError(err)
 		return
 	}
-	newEip := new.(*kubeovnv1.OvnEip)
+	newEip := newObj.(*kubeovnv1.OvnEip)
 	if newEip.DeletionTimestamp != nil {
 		if len(newEip.Finalizers) == 0 {
 			// avoid delete eip twice
 			return
-		} else {
-			klog.Infof("enqueue del ovn eip %s", key)
-			c.delOvnEipQueue.Add(key)
-			return
 		}
+		klog.Infof("enqueue del ovn eip %s", key)
+		c.delOvnEipQueue.Add(key)
+		return
 	}
-	oldEip := old.(*kubeovnv1.OvnEip)
+	oldEip := oldObj.(*kubeovnv1.OvnEip)
 	if oldEip.Spec.V4Ip != "" && oldEip.Spec.V4Ip != newEip.Spec.V4Ip ||
 		oldEip.Spec.MacAddress != "" && oldEip.Spec.MacAddress != newEip.Spec.MacAddress {
 		klog.Infof("not support change ip or mac for eip %s", key)
@@ -201,7 +199,6 @@ func (c *Controller) processNextDeleteOvnEipWorkItem() bool {
 		c.delOvnEipQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -235,10 +232,10 @@ func (c *Controller) handleAddOvnEip(key string) error {
 	}
 	portName := cachedEip.Name
 	if cachedEip.Spec.V4Ip != "" {
-		v4ip, v6ip, mac, err = c.acquireStaticIpAddress(subnet.Name, cachedEip.Name, portName, cachedEip.Spec.V4Ip)
+		v4ip, v6ip, mac, err = c.acquireStaticIPAddress(subnet.Name, cachedEip.Name, portName, cachedEip.Spec.V4Ip)
 	} else {
 		// random allocate
-		v4ip, v6ip, mac, err = c.acquireIpAddress(subnet.Name, cachedEip.Name, portName)
+		v4ip, v6ip, mac, err = c.acquireIPAddress(subnet.Name, cachedEip.Name, portName)
 	}
 	if err != nil {
 		klog.Errorf("failed to acquire ip address, %v", err)
@@ -246,8 +243,8 @@ func (c *Controller) handleAddOvnEip(key string) error {
 	}
 
 	if cachedEip.Spec.Type == util.Lsp {
-		mergedIp := util.GetStringIP(v4ip, v6ip)
-		if err := c.ovnNbClient.CreateBareLogicalSwitchPort(subnet.Name, portName, mergedIp, mac); err != nil {
+		mergedIP := util.GetStringIP(v4ip, v6ip)
+		if err := c.OVNNbClient.CreateBareLogicalSwitchPort(subnet.Name, portName, mergedIP, mac); err != nil {
 			klog.Error("failed to create lsp for ovn eip %s, %v", key, err)
 			return err
 		}
@@ -267,7 +264,7 @@ func (c *Controller) handleAddOvnEip(key string) error {
 			return err
 		}
 	}
-	if err = c.subnetCountIp(subnet); err != nil {
+	if err = c.subnetCountIP(subnet); err != nil {
 		klog.Errorf("failed to count ovn eip '%s' in subnet, %v", cachedEip.Name, err)
 		return err
 	}
@@ -294,7 +291,7 @@ func (c *Controller) handleUpdateOvnEip(key string) error {
 			klog.Errorf("failed to get external subnet, %v", err)
 			return err
 		}
-		if err = c.subnetCountIp(subnet); err != nil {
+		if err = c.subnetCountIP(subnet); err != nil {
 			klog.Errorf("failed to count ovn eip '%s' in subnet, %v", cachedEip.Name, err)
 			return err
 		}
@@ -346,14 +343,14 @@ func (c *Controller) handleDelOvnEip(key string) error {
 	}
 
 	if eip.Spec.Type == util.Lsp {
-		if err := c.ovnNbClient.DeleteLogicalSwitchPort(eip.Name); err != nil {
+		if err := c.OVNNbClient.DeleteLogicalSwitchPort(eip.Name); err != nil {
 			klog.Errorf("failed to delete lsp %s, %v", eip.Name, err)
 			return err
 		}
 	}
 
 	if eip.Spec.Type == util.Lrp {
-		if err := c.ovnNbClient.DeleteLogicalRouterPort(eip.Name); err != nil {
+		if err := c.OVNNbClient.DeleteLogicalRouterPort(eip.Name); err != nil {
 			klog.Errorf("failed to delete lrp %s, %v", eip.Name, err)
 			return err
 		}

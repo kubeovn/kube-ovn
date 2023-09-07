@@ -68,7 +68,7 @@ var (
 		[]string{
 			"nodeName",
 		})
-	internalDnsHealthyGauge = prometheus.NewGaugeVec(
+	internalDNSHealthyGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "pinger_internal_dns_healthy",
 			Help: "If the internal dns request is healthy on this node",
@@ -76,7 +76,7 @@ var (
 		[]string{
 			"nodeName",
 		})
-	internalDnsUnhealthyGauge = prometheus.NewGaugeVec(
+	internalDNSUnhealthyGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "pinger_internal_dns_unhealthy",
 			Help: "If the internal dns request is unhealthy on this node",
@@ -84,7 +84,7 @@ var (
 		[]string{
 			"nodeName",
 		})
-	internalDnsRequestLatencyHistogram = prometheus.NewHistogramVec(
+	internalDNSRequestLatencyHistogram = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name:    "pinger_internal_dns_latency_ms",
 			Help:    "The latency ms histogram the node request internal dns",
@@ -93,7 +93,7 @@ var (
 		[]string{
 			"nodeName",
 		})
-	externalDnsHealthyGauge = prometheus.NewGaugeVec(
+	externalDNSHealthyGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "pinger_external_dns_healthy",
 			Help: "If the external dns request is healthy on this node",
@@ -101,7 +101,7 @@ var (
 		[]string{
 			"nodeName",
 		})
-	externalDnsUnhealthyGauge = prometheus.NewGaugeVec(
+	externalDNSUnhealthyGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "pinger_external_dns_unhealthy",
 			Help: "If the external dns request is unhealthy on this node",
@@ -109,7 +109,7 @@ var (
 		[]string{
 			"nodeName",
 		})
-	externalDnsRequestLatencyHistogram = prometheus.NewHistogramVec(
+	externalDNSRequestLatencyHistogram = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name:    "pinger_external_dns_latency_ms",
 			Help:    "The latency ms histogram the node request external dns",
@@ -647,12 +647,12 @@ func InitPingerMetrics() {
 	prometheus.MustRegister(apiserverHealthyGauge)
 	prometheus.MustRegister(apiserverUnhealthyGauge)
 	prometheus.MustRegister(apiserverRequestLatencyHistogram)
-	prometheus.MustRegister(internalDnsHealthyGauge)
-	prometheus.MustRegister(internalDnsUnhealthyGauge)
-	prometheus.MustRegister(internalDnsRequestLatencyHistogram)
-	prometheus.MustRegister(externalDnsHealthyGauge)
-	prometheus.MustRegister(externalDnsUnhealthyGauge)
-	prometheus.MustRegister(externalDnsRequestLatencyHistogram)
+	prometheus.MustRegister(internalDNSHealthyGauge)
+	prometheus.MustRegister(internalDNSUnhealthyGauge)
+	prometheus.MustRegister(internalDNSRequestLatencyHistogram)
+	prometheus.MustRegister(externalDNSHealthyGauge)
+	prometheus.MustRegister(externalDNSUnhealthyGauge)
+	prometheus.MustRegister(externalDNSRequestLatencyHistogram)
 	prometheus.MustRegister(podPingLatencyHistogram)
 	prometheus.MustRegister(podPingLostCounter)
 	prometheus.MustRegister(podPingTotalCounter)
@@ -739,26 +739,26 @@ func SetApiserverUnhealthyMetrics(nodeName string) {
 	apiserverUnhealthyGauge.WithLabelValues(nodeName).Set(1)
 }
 
-func SetInternalDnsHealthyMetrics(nodeName string, latency float64) {
-	internalDnsHealthyGauge.WithLabelValues(nodeName).Set(1)
-	internalDnsRequestLatencyHistogram.WithLabelValues(nodeName).Observe(latency)
-	internalDnsUnhealthyGauge.WithLabelValues(nodeName).Set(0)
+func SetInternalDNSHealthyMetrics(nodeName string, latency float64) {
+	internalDNSHealthyGauge.WithLabelValues(nodeName).Set(1)
+	internalDNSRequestLatencyHistogram.WithLabelValues(nodeName).Observe(latency)
+	internalDNSUnhealthyGauge.WithLabelValues(nodeName).Set(0)
 }
 
-func SetInternalDnsUnhealthyMetrics(nodeName string) {
-	internalDnsHealthyGauge.WithLabelValues(nodeName).Set(0)
-	internalDnsUnhealthyGauge.WithLabelValues(nodeName).Set(1)
+func SetInternalDNSUnhealthyMetrics(nodeName string) {
+	internalDNSHealthyGauge.WithLabelValues(nodeName).Set(0)
+	internalDNSUnhealthyGauge.WithLabelValues(nodeName).Set(1)
 }
 
-func SetExternalDnsHealthyMetrics(nodeName string, latency float64) {
-	externalDnsHealthyGauge.WithLabelValues(nodeName).Set(1)
-	externalDnsRequestLatencyHistogram.WithLabelValues(nodeName).Observe(latency)
-	externalDnsUnhealthyGauge.WithLabelValues(nodeName).Set(0)
+func SetExternalDNSHealthyMetrics(nodeName string, latency float64) {
+	externalDNSHealthyGauge.WithLabelValues(nodeName).Set(1)
+	externalDNSRequestLatencyHistogram.WithLabelValues(nodeName).Observe(latency)
+	externalDNSUnhealthyGauge.WithLabelValues(nodeName).Set(0)
 }
 
-func SetExternalDnsUnhealthyMetrics(nodeName string) {
-	externalDnsHealthyGauge.WithLabelValues(nodeName).Set(0)
-	externalDnsUnhealthyGauge.WithLabelValues(nodeName).Set(1)
+func SetExternalDNSUnhealthyMetrics(nodeName string) {
+	externalDNSHealthyGauge.WithLabelValues(nodeName).Set(0)
+	externalDNSUnhealthyGauge.WithLabelValues(nodeName).Set(1)
 }
 
 func SetPodPingMetrics(srcNodeName, srcNodeIP, srcPodIP, targetNodeName, targetNodeIP, targetPodIP string, latency float64, lost, total int) {

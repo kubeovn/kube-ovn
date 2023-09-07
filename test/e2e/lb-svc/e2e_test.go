@@ -174,7 +174,7 @@ var _ = framework.SerialDescribe("[group:lb-svc]", func() {
 		key := fmt.Sprintf(util.AllocatedAnnotationTemplate, subnetProvider)
 		framework.ExpectHaveKeyWithValue(pods.Items[0].Annotations, key, "true")
 		cidrKey := fmt.Sprintf(util.CidrAnnotationTemplate, subnetProvider)
-		ipKey := fmt.Sprintf(util.IpAddressAnnotationTemplate, subnetProvider)
+		ipKey := fmt.Sprintf(util.IPAddressAnnotationTemplate, subnetProvider)
 		framework.ExpectHaveKey(pods.Items[0].Annotations, cidrKey)
 		framework.ExpectHaveKey(pods.Items[0].Annotations, ipKey)
 		cidr := pods.Items[0].Annotations[cidrKey]
@@ -191,7 +191,7 @@ var _ = framework.SerialDescribe("[group:lb-svc]", func() {
 
 	framework.ConformanceIt("should allocate static external IP for service", func() {
 		ginkgo.By("Creating service " + serviceName)
-		base := util.Ip2BigInt(gateway)
+		base := util.IP2BigInt(gateway)
 		lbIP := util.BigInt2Ip(base.Add(base, big.NewInt(50+rand.Int63n(50))))
 		ports := []corev1.ServicePort{{
 			Name:       "tcp",
@@ -230,7 +230,7 @@ var _ = framework.SerialDescribe("[group:lb-svc]", func() {
 		ginkgo.By("Checking pod annotations")
 		key := fmt.Sprintf(util.AllocatedAnnotationTemplate, subnetProvider)
 		framework.ExpectHaveKeyWithValue(pods.Items[0].Annotations, key, "true")
-		ipKey := fmt.Sprintf(util.IpAddressAnnotationTemplate, subnetProvider)
+		ipKey := fmt.Sprintf(util.IPAddressAnnotationTemplate, subnetProvider)
 		framework.ExpectHaveKeyWithValue(pods.Items[0].Annotations, ipKey, lbIP)
 		cidr := pods.Items[0].Annotations[fmt.Sprintf(util.CidrAnnotationTemplate, subnetProvider)]
 		framework.ExpectTrue(util.CIDRContainIP(cidr, lbIP))

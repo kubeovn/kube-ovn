@@ -98,18 +98,17 @@ func (v *ValidatingHook) iptablesEIPUpdateHook(ctx context.Context, req admissio
 		if eipOld.Status.Ready && eipNew.Status.Redo == eipOld.Status.Redo {
 			err := fmt.Errorf("IptablesEIP \"%s\" is ready,not support change", eipNew.Name)
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
-		} else {
-			if err := v.ValidateVpcNatConfig(ctx); err != nil {
-				return ctrlwebhook.Errored(http.StatusBadRequest, err)
-			}
+		}
+		if err := v.ValidateVpcNatConfig(ctx); err != nil {
+			return ctrlwebhook.Errored(http.StatusBadRequest, err)
+		}
 
-			if err := v.ValidateVpcNatGatewayConfig(ctx); err != nil {
-				return ctrlwebhook.Errored(http.StatusBadRequest, err)
-			}
+		if err := v.ValidateVpcNatGatewayConfig(ctx); err != nil {
+			return ctrlwebhook.Errored(http.StatusBadRequest, err)
+		}
 
-			if err := v.ValidateIptablesEIP(ctx, &eipNew); err != nil {
-				return ctrlwebhook.Errored(http.StatusBadRequest, err)
-			}
+		if err := v.ValidateIptablesEIP(ctx, &eipNew); err != nil {
+			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		}
 	}
 	return ctrlwebhook.Allowed("by pass")
@@ -197,18 +196,17 @@ func (v *ValidatingHook) iptablesDnatUpdateHook(ctx context.Context, req admissi
 		if dnatOld.Status.Ready && dnatOld.Status.Redo == dnatNew.Status.Redo {
 			err := fmt.Errorf("IptablesDnatRule \"%s\" is ready,not support change", dnatNew.Name)
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
-		} else {
-			if err := v.ValidateVpcNatConfig(ctx); err != nil {
-				return ctrlwebhook.Errored(http.StatusBadRequest, err)
-			}
+		}
+		if err := v.ValidateVpcNatConfig(ctx); err != nil {
+			return ctrlwebhook.Errored(http.StatusBadRequest, err)
+		}
 
-			if err := v.ValidateVpcNatGatewayConfig(ctx); err != nil {
-				return ctrlwebhook.Errored(http.StatusBadRequest, err)
-			}
+		if err := v.ValidateVpcNatGatewayConfig(ctx); err != nil {
+			return ctrlwebhook.Errored(http.StatusBadRequest, err)
+		}
 
-			if err := v.ValidateIptablesDnat(ctx, &dnatNew); err != nil {
-				return ctrlwebhook.Errored(http.StatusBadRequest, err)
-			}
+		if err := v.ValidateIptablesDnat(ctx, &dnatNew); err != nil {
+			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		}
 	}
 
@@ -251,18 +249,17 @@ func (v *ValidatingHook) iptablesSnatUpdateHook(ctx context.Context, req admissi
 		if snatOld.Status.Ready && snatOld.Status.Redo == snatNew.Status.Redo {
 			err := fmt.Errorf("IptablesSnatRule \"%s\" is ready,not support change", snatNew.Name)
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
-		} else {
-			if err := v.ValidateVpcNatConfig(ctx); err != nil {
-				return ctrlwebhook.Errored(http.StatusBadRequest, err)
-			}
+		}
+		if err := v.ValidateVpcNatConfig(ctx); err != nil {
+			return ctrlwebhook.Errored(http.StatusBadRequest, err)
+		}
 
-			if err := v.ValidateVpcNatGatewayConfig(ctx); err != nil {
-				return ctrlwebhook.Errored(http.StatusBadRequest, err)
-			}
+		if err := v.ValidateVpcNatGatewayConfig(ctx); err != nil {
+			return ctrlwebhook.Errored(http.StatusBadRequest, err)
+		}
 
-			if err := v.ValidateIptablesSnat(ctx, &snatNew); err != nil {
-				return ctrlwebhook.Errored(http.StatusBadRequest, err)
-			}
+		if err := v.ValidateIptablesSnat(ctx, &snatNew); err != nil {
+			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		}
 	}
 
@@ -305,18 +302,17 @@ func (v *ValidatingHook) iptablesFipUpdateHook(ctx context.Context, req admissio
 		if fipOld.Status.Ready && fipNew.Status.Redo == fipOld.Status.Redo {
 			err := fmt.Errorf("IptablesFIPRule \"%s\" is ready,not support change", fipNew.Name)
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
-		} else {
-			if err := v.ValidateVpcNatConfig(ctx); err != nil {
-				return ctrlwebhook.Errored(http.StatusBadRequest, err)
-			}
+		}
+		if err := v.ValidateVpcNatConfig(ctx); err != nil {
+			return ctrlwebhook.Errored(http.StatusBadRequest, err)
+		}
 
-			if err := v.ValidateVpcNatGatewayConfig(ctx); err != nil {
-				return ctrlwebhook.Errored(http.StatusBadRequest, err)
-			}
+		if err := v.ValidateVpcNatGatewayConfig(ctx); err != nil {
+			return ctrlwebhook.Errored(http.StatusBadRequest, err)
+		}
 
-			if err := v.ValidateIptablesFip(ctx, &fipNew); err != nil {
-				return ctrlwebhook.Errored(http.StatusBadRequest, err)
-			}
+		if err := v.ValidateIptablesFip(ctx, &fipNew); err != nil {
+			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		}
 	}
 	return ctrlwebhook.Allowed("by pass")
@@ -344,27 +340,27 @@ func (v *ValidatingHook) ValidateVpcNatGW(ctx context.Context, gw *ovnv1.VpcNatG
 		return err
 	}
 
-	if net.ParseIP(gw.Spec.LanIp) == nil {
-		err := fmt.Errorf("lanIp %s is not a valid", gw.Spec.LanIp)
+	if net.ParseIP(gw.Spec.LanIP) == nil {
+		err := fmt.Errorf("lanIP %s is not a valid", gw.Spec.LanIP)
 		return err
 	}
 
-	if !util.CIDRContainIP(subnet.Spec.CIDRBlock, gw.Spec.LanIp) {
-		err := fmt.Errorf("lanIp %s is not in the range of subnet %s, cidr %v",
-			gw.Spec.LanIp, subnet.Name, subnet.Spec.CIDRBlock)
+	if !util.CIDRContainIP(subnet.Spec.CIDRBlock, gw.Spec.LanIP) {
+		err := fmt.Errorf("lanIP %s is not in the range of subnet %s, cidr %v",
+			gw.Spec.LanIP, subnet.Name, subnet.Spec.CIDRBlock)
 		return err
 	}
 
 	for _, t := range gw.Spec.Tolerations {
-		if corev1.TolerationOperator(t.Operator) != corev1.TolerationOpExists &&
-			corev1.TolerationOperator(t.Operator) != corev1.TolerationOpEqual {
+		if t.Operator != corev1.TolerationOpExists &&
+			t.Operator != corev1.TolerationOpEqual {
 			err := fmt.Errorf("invaild taint operator: %s, supported params: \"Equal\", \"Exists\"", t.Operator)
 			return err
 		}
 
-		if corev1.TaintEffect(t.Effect) != corev1.TaintEffectNoSchedule &&
-			corev1.TaintEffect(t.Effect) != corev1.TaintEffectNoExecute &&
-			corev1.TaintEffect(t.Effect) != corev1.TaintEffectPreferNoSchedule {
+		if t.Effect != corev1.TaintEffectNoSchedule &&
+			t.Effect != corev1.TaintEffectNoExecute &&
+			t.Effect != corev1.TaintEffectPreferNoSchedule {
 			err := fmt.Errorf("invaild taint effect: %s, supported params: \"NoSchedule\", \"PreferNoSchedule\", \"NoExecute\"", t.Effect)
 			return err
 		}
@@ -471,15 +467,15 @@ func (v *ValidatingHook) ValidateIptablesDnat(ctx context.Context, dnat *ovnv1.I
 	}
 
 	if port, err := strconv.Atoi(dnat.Spec.InternalPort); err != nil {
-		errMsg := fmt.Errorf("failed to parse internalIp %s: %v", dnat.Spec.InternalPort, err)
+		errMsg := fmt.Errorf("failed to parse internalIP %s: %v", dnat.Spec.InternalPort, err)
 		return errMsg
 	} else if port < 0 || port > 65535 {
-		err := fmt.Errorf("internalIp %s is not a valid port", dnat.Spec.InternalPort)
+		err := fmt.Errorf("internalIP %s is not a valid port", dnat.Spec.InternalPort)
 		return err
 	}
 
-	if net.ParseIP(dnat.Spec.InternalIp) == nil {
-		err := fmt.Errorf("internalIp %s is not a valid ip", dnat.Spec.InternalIp)
+	if net.ParseIP(dnat.Spec.InternalIP) == nil {
+		err := fmt.Errorf("internalIP %s is not a valid ip", dnat.Spec.InternalIP)
 		return err
 	}
 
@@ -521,8 +517,8 @@ func (v *ValidatingHook) ValidateIptablesFip(ctx context.Context, fip *ovnv1.Ipt
 		return err
 	}
 
-	if net.ParseIP(fip.Spec.InternalIp) == nil {
-		err := fmt.Errorf("internalIp %s is not a valid", fip.Spec.InternalIp)
+	if net.ParseIP(fip.Spec.InternalIP) == nil {
+		err := fmt.Errorf("internalIP %s is not a valid", fip.Spec.InternalIP)
 		return err
 	}
 

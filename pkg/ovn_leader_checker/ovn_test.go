@@ -30,7 +30,8 @@ func Test_patchPodLabels(t *testing.T) {
 		podName := "ovn-central-123"
 		podNamespace := "default"
 		pod := mockPod(podName, podNamespace, map[string]string{
-			"app": "nginx"})
+			"app": "nginx",
+		})
 		clientset := fake.NewSimpleClientset(pod)
 
 		cfg := &Configuration{

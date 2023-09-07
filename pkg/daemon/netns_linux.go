@@ -5,8 +5,9 @@ import (
 	"os"
 	"path"
 
-	"github.com/kubeovn/kube-ovn/pkg/util"
 	"golang.org/x/sys/unix"
+
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 // NsHandle is a handle to a network namespace. It can be cast directly

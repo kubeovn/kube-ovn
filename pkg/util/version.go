@@ -6,7 +6,7 @@ import (
 )
 
 // CompareVersion compare two version
-func CompareVersion(version1 string, version2 string) int {
+func CompareVersion(version1, version2 string) int {
 	versionA := strings.Split(version1, ".")
 	versionB := strings.Split(version2, ".")
 
@@ -19,11 +19,13 @@ func CompareVersion(version1 string, version2 string) int {
 	for i := 0; i < 4; i++ {
 		version1, _ := strconv.Atoi(versionA[i])
 		version2, _ := strconv.Atoi(versionB[i])
-		if version1 == version2 {
+
+		switch {
+		case version1 == version2:
 			continue
-		} else if version1 > version2 {
+		case version1 > version2:
 			return 1
-		} else {
+		default:
 			return -1
 		}
 	}

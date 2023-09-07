@@ -7,15 +7,14 @@ import (
 	"time"
 
 	"github.com/onsi/gomega"
+	corev1 "k8s.io/api/core/v1"
+	e2epodoutput "k8s.io/kubernetes/test/e2e/framework/pod/output"
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
-	corev1 "k8s.io/api/core/v1"
-	e2epodoutput "k8s.io/kubernetes/test/e2e/framework/pod/output"
 )
 
 func CheckIptablesRulesOnNode(f *framework.Framework, node, table, chain, protocol string, expectedRules []string, shouldExist bool) {
-
 	ovsPod := getOvsPodOnNode(f, node)
 
 	iptBin := "iptables"

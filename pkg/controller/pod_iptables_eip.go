@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	"github.com/kubeovn/kube-ovn/pkg/util"
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -15,10 +13,12 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
+
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func (c *Controller) enqueueAddPodAnnotatedIptablesEip(obj interface{}) {
-
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -42,14 +42,14 @@ func (c *Controller) enqueueAddPodAnnotatedIptablesEip(obj interface{}) {
 	// delete eip if pod not alive
 	if !isPodAlive(p) {
 		isStateful, statefulSetName := isStatefulSetPod(p)
-		isVmPod, vmName := isVmPod(p)
-		if isStateful || (isVmPod && c.config.EnableKeepVmIP) {
+		isVMPod, vmName := isVMPod(p)
+		if isStateful || (isVMPod && c.config.EnableKeepVMIP) {
 			if isStateful && isStatefulSetDeleted(c.config.KubeClient, p, statefulSetName) {
 				klog.V(3).Infof("enqueue delete pod annotated iptables eip %s", eipName)
 				c.delPodAnnotatedIptablesEipQueue.Add(obj)
 				return
 			}
-			if isVmPod && c.isVmPodToDel(p, vmName) {
+			if isVMPod && c.isVMPodToDel(p, vmName) {
 				klog.V(3).Infof("enqueue delete pod annotated iptables eip %s", eipName)
 				c.delPodAnnotatedIptablesEipQueue.Add(obj)
 				return
@@ -97,16 +97,16 @@ func (c *Controller) enqueueUpdatePodAnnotatedIptablesEip(oldObj, newObj interfa
 		return
 	}
 	isStateful, _ := isStatefulSetPod(newPod)
-	isVmPod, vmName := isVmPod(newPod)
+	isVMPod, vmName := isVMPod(newPod)
 	if newPod.DeletionTimestamp != nil && isStateful {
 		c.delPodAnnotatedIptablesEipQueue.Add(newObj)
 		return
 	}
-	if !isPodAlive(newPod) && !isStateful && !isVmPod {
+	if !isPodAlive(newPod) && !isStateful && !isVMPod {
 		c.delPodAnnotatedIptablesEipQueue.Add(newObj)
 		return
 	}
-	if c.config.EnableKeepVmIP && isVmPod && c.isVmPodToDel(newPod, vmName) {
+	if c.config.EnableKeepVMIP && isVMPod && c.isVMPodToDel(newPod, vmName) {
 		c.delPodAnnotatedIptablesEipQueue.Add(newObj)
 		return
 	}
@@ -126,26 +126,27 @@ func (c *Controller) enqueueDeletePodAnnotatedIptablesEip(obj interface{}) {
 		return
 	}
 	isStateful, statefulSetName := isStatefulSetPod(p)
-	isVmPod, vmName := isVmPod(p)
-	if isStateful {
+	isVMPod, vmName := isVMPod(p)
+	switch {
+	case isStateful:
 		if isStatefulSetDeleted(c.config.KubeClient, p, statefulSetName) {
 			c.delPodAnnotatedIptablesEipQueue.Add(obj)
 			return
 		}
-		if delete, err := appendCheckPodToDel(c, p, statefulSetName, "StatefulSet"); delete && err == nil {
+		if isDelete, err := appendCheckPodToDel(c, p, statefulSetName, "StatefulSet"); isDelete && err == nil {
 			c.delPodAnnotatedIptablesEipQueue.Add(obj)
 			return
 		}
-	} else if c.config.EnableKeepVmIP && isVmPod {
-		if c.isVmPodToDel(p, vmName) {
+	case c.config.EnableKeepVMIP && isVMPod:
+		if c.isVMPodToDel(p, vmName) {
 			c.delPodAnnotatedIptablesEipQueue.Add(obj)
 			return
 		}
-		if delete, err := appendCheckPodToDel(c, p, vmName, util.VmInstance); delete && err == nil {
+		if isDelete, err := appendCheckPodToDel(c, p, vmName, util.VMInstance); isDelete && err == nil {
 			c.delPodAnnotatedIptablesEipQueue.Add(obj)
 			return
 		}
-	} else {
+	default:
 		c.delPodAnnotatedIptablesEipQueue.Add(obj)
 		return
 	}
@@ -182,7 +183,6 @@ func (c *Controller) processNextAddPodAnnotatedIptablesEipWorkItem() bool {
 		c.addPodAnnotatedIptablesEipQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -211,7 +211,6 @@ func (c *Controller) processNextDeletePodAnnotatedIptablesEipWorkItem() bool {
 		c.delPodAnnotatedIptablesEipQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -343,10 +342,9 @@ func isStatefulSetDeleted(c kubernetes.Interface, pod *v1.Pod, statefulSetName s
 		if k8serrors.IsNotFound(err) {
 			// statefulset is deleted
 			return true
-		} else {
-			klog.Errorf("failed to get statefulset %v", err)
-			return false
 		}
+		klog.Errorf("failed to get statefulset %v", err)
+		return false
 	}
 	// statefulset is deleting
 	if ss.DeletionTimestamp != nil {

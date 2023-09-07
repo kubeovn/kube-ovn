@@ -364,7 +364,7 @@ func getDefaultSubnetParam(protocol string) (string, string, string, []string) {
 }
 
 func getDefaultSubnetRandomIps(b *testing.B, protocol string, ipCount int) *stringSet {
-	var newIp string
+	var newIP string
 	ipSet := newStringSet()
 	for n := 0; ipSet.Len() < ipCount; n++ {
 		bytes := make([]byte, 3)
@@ -373,14 +373,14 @@ func getDefaultSubnetRandomIps(b *testing.B, protocol string, ipCount int) *stri
 		}
 		switch protocol {
 		case kubeovnv1.ProtocolIPv4:
-			newIp = fmt.Sprintf("10.%d.%d.%d", bytes[0], bytes[1], bytes[2])
+			newIP = fmt.Sprintf("10.%d.%d.%d", bytes[0], bytes[1], bytes[2])
 		case kubeovnv1.ProtocolIPv6:
-			newIp = fmt.Sprintf("fd00::00%02x:%02x%02x", bytes[0], bytes[1], bytes[2])
+			newIP = fmt.Sprintf("fd00::00%02x:%02x%02x", bytes[0], bytes[1], bytes[2])
 		case kubeovnv1.ProtocolDual:
-			newIp = fmt.Sprintf("10.%d.%d.%d,fd00::00%02x:%02x%02x",
+			newIP = fmt.Sprintf("10.%d.%d.%d,fd00::00%02x:%02x%02x",
 				bytes[0], bytes[1], bytes[2], bytes[0], bytes[1], bytes[2])
 		}
-		ipSet.Add(newIp)
+		ipSet.Add(newIP)
 	}
 	return ipSet
 }

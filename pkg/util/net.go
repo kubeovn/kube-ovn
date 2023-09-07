@@ -46,7 +46,7 @@ func GenerateMac() string {
 	return mac
 }
 
-func Ip2BigInt(ipStr string) *big.Int {
+func IP2BigInt(ipStr string) *big.Int {
 	ipBigInt := big.NewInt(0)
 	if CheckProtocol(ipStr) == kubeovnv1.ProtocolIPv4 {
 		ipBigInt.SetBytes(net.ParseIP(ipStr).To4())
@@ -79,7 +79,7 @@ func SubnetBroadcast(subnet string) string {
 		length = 128
 	}
 	maskLength, _ := cidr.Mask.Size()
-	ipInt := Ip2BigInt(cidr.IP.String())
+	ipInt := IP2BigInt(cidr.IP.String())
 	size := big.NewInt(0).Lsh(big.NewInt(1), length-uint(maskLength))
 	size = big.NewInt(0).Sub(size, big.NewInt(1))
 	return BigInt2Ip(ipInt.Add(ipInt, size))
@@ -90,7 +90,7 @@ func FirstIP(subnet string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("%s is not a valid cidr", subnet)
 	}
-	ipInt := Ip2BigInt(cidr.IP.String())
+	ipInt := IP2BigInt(cidr.IP.String())
 	return BigInt2Ip(ipInt.Add(ipInt, big.NewInt(1))), nil
 }
 
@@ -106,7 +106,7 @@ func LastIP(subnet string) (string, error) {
 		length = 128
 	}
 	maskLength, _ := cidr.Mask.Size()
-	ipInt := Ip2BigInt(cidr.IP.String())
+	ipInt := IP2BigInt(cidr.IP.String())
 	size := big.NewInt(0).Lsh(big.NewInt(1), length-uint(maskLength))
 	size = big.NewInt(0).Sub(size, big.NewInt(2))
 	return BigInt2Ip(ipInt.Add(ipInt, size)), nil
@@ -204,7 +204,7 @@ func genRandomIP(cidr string, isIPv6 bool) string {
 	if err != nil {
 		LogFatalAndExit(err, "failed to generate random ip")
 	}
-	t := big.NewInt(0).Add(Ip2BigInt(ip), add)
+	t := big.NewInt(0).Add(IP2BigInt(ip), add)
 	return fmt.Sprintf("%s/%d", BigInt2Ip(t), netMask)
 }
 
@@ -252,21 +252,20 @@ func AppendGwByCidr(gateway, cidrStr string) (string, error) {
 		if CheckProtocol(gateway) == CheckProtocol(cidr) {
 			gws = append(gws, gateway)
 			continue
-		} else {
-			gw, err := FirstIP(cidr)
-			if err != nil {
-				return "", err
-			}
-			var gwArray [2]string
-			if CheckProtocol(gateway) == kubeovnv1.ProtocolIPv4 {
-				gwArray[0] = gateway
-				gwArray[1] = gw
-			} else {
-				gwArray[0] = gw
-				gwArray[1] = gateway
-			}
-			gws = gwArray[:]
 		}
+		gw, err := FirstIP(cidr)
+		if err != nil {
+			return "", err
+		}
+		var gwArray [2]string
+		if CheckProtocol(gateway) == kubeovnv1.ProtocolIPv4 {
+			gwArray[0] = gateway
+			gwArray[1] = gw
+		} else {
+			gwArray[0] = gw
+			gwArray[1] = gateway
+		}
+		gws = gwArray[:]
 	}
 
 	return strings.Join(gws, ","), nil
@@ -288,17 +287,18 @@ func SplitIpsByProtocol(excludeIps []string) ([]string, []string) {
 
 func GetStringIP(v4IP, v6IP string) string {
 	var ipStr string
-	if IsValidIP(v4IP) && IsValidIP(v6IP) {
+	switch {
+	case IsValidIP(v4IP) && IsValidIP(v6IP):
 		ipStr = v4IP + "," + v6IP
-	} else if IsValidIP(v4IP) {
+	case IsValidIP(v4IP):
 		ipStr = v4IP
-	} else if IsValidIP(v6IP) {
+	case IsValidIP(v6IP):
 		ipStr = v6IP
 	}
 	return ipStr
 }
 
-func GetIpAddrWithMask(ip, cidr string) string {
+func GetIPAddrWithMask(ip, cidr string) string {
 	var ipAddr string
 	if CheckProtocol(cidr) == kubeovnv1.ProtocolDual {
 		cidrBlocks := strings.Split(cidr, ",")
@@ -314,7 +314,7 @@ func GetIpAddrWithMask(ip, cidr string) string {
 	return ipAddr
 }
 
-func GetIpWithoutMask(ipStr string) string {
+func GetIPWithoutMask(ipStr string) string {
 	var ips []string
 	for _, ip := range strings.Split(ipStr, ",") {
 		ips = append(ips, strings.Split(ip, "/")[0])
@@ -353,8 +353,8 @@ func ExpandExcludeIPs(excludeIPs []string, cidr string) []string {
 				klog.Errorf("invalid exclude IP: %s", excludeIP)
 				continue
 			}
-			s := Ip2BigInt(parts[0])
-			e := Ip2BigInt(parts[1])
+			s := IP2BigInt(parts[0])
+			e := IP2BigInt(parts[1])
 			if s.Cmp(e) > 0 {
 				continue
 			}
@@ -375,11 +375,11 @@ func ExpandExcludeIPs(excludeIPs []string, cidr string) []string {
 				}
 				lastIP, _ := LastIP(cidrBlock)
 				s1, e1 := s, e
-				if s1.Cmp(Ip2BigInt(firstIP)) < 0 {
-					s1 = Ip2BigInt(firstIP)
+				if s1.Cmp(IP2BigInt(firstIP)) < 0 {
+					s1 = IP2BigInt(firstIP)
 				}
-				if e1.Cmp(Ip2BigInt(lastIP)) > 0 {
-					e1 = Ip2BigInt(lastIP)
+				if e1.Cmp(IP2BigInt(lastIP)) > 0 {
+					e1 = IP2BigInt(lastIP)
 				}
 				if c := s1.Cmp(e1); c == 0 {
 					rv = append(rv, BigInt2Ip(s1))
@@ -400,31 +400,29 @@ func ExpandExcludeIPs(excludeIPs []string, cidr string) []string {
 	return rv
 }
 
-func ContainsIPs(excludeIP string, ip string) bool {
+func ContainsIPs(excludeIP, ip string) bool {
 	if strings.Contains(excludeIP, "..") {
 		parts := strings.Split(excludeIP, "..")
-		s := Ip2BigInt(parts[0])
-		e := Ip2BigInt(parts[1])
-		ipv := Ip2BigInt(ip)
+		s := IP2BigInt(parts[0])
+		e := IP2BigInt(parts[1])
+		ipv := IP2BigInt(ip)
 		if s.Cmp(ipv) <= 0 && e.Cmp(ipv) >= 0 {
 			return true
 		}
-	} else {
-		if excludeIP == ip {
-			return true
-		}
+	} else if excludeIP == ip {
+		return true
 	}
 	return false
 }
 
-func CountIpNums(excludeIPs []string) float64 {
+func CountIPNums(excludeIPs []string) float64 {
 	var count float64
 	for _, excludeIP := range excludeIPs {
 		if strings.Contains(excludeIP, "..") {
 			var val big.Int
 			parts := strings.Split(excludeIP, "..")
-			s := Ip2BigInt(parts[0])
-			e := Ip2BigInt(parts[1])
+			s := IP2BigInt(parts[0])
+			e := IP2BigInt(parts[1])
 			v, _ := new(big.Float).SetInt(val.Add(val.Sub(e, s), big.NewInt(1))).Float64()
 			count += v
 		} else {
@@ -459,12 +457,12 @@ func CIDROverlap(a, b string) bool {
 			if CheckProtocol(cidrA) != CheckProtocol(cidrB) {
 				continue
 			}
-			aIp, aIpNet, aErr := net.ParseCIDR(cidrA)
-			bIp, bIpNet, bErr := net.ParseCIDR(cidrB)
+			aIP, aIPNet, aErr := net.ParseCIDR(cidrA)
+			bIP, bIPNet, bErr := net.ParseCIDR(cidrB)
 			if aErr != nil || bErr != nil {
 				return false
 			}
-			if aIpNet.Contains(bIp) || bIpNet.Contains(aIp) {
+			if aIPNet.Contains(bIP) || bIPNet.Contains(aIP) {
 				return true
 			}
 		}
@@ -567,7 +565,6 @@ func TCPConnectivityListen(address string) error {
 }
 
 func UDPConnectivityCheck(address string) error {
-
 	udpAddr, err := net.ResolveUDPAddr("udp", address)
 	if err != nil {
 		return fmt.Errorf("resolve udp addr failed with err %v", err)

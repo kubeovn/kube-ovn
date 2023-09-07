@@ -38,7 +38,7 @@ type Configuration struct {
 	GrpcHost                    string
 	GrpcPort                    uint32
 	ClusterAs                   uint32
-	RouterId                    string
+	RouterID                    string
 	NeighborAddress             string
 	NeighborIPv6Address         string
 	NeighborAs                  uint32
@@ -50,7 +50,7 @@ type Configuration struct {
 	GracefulRestartDeferralTime time.Duration
 	GracefulRestartTime         time.Duration
 	PassiveMode                 bool
-	EbgpMultihopTtl             uint8
+	EbgpMultihopTTL             uint8
 
 	KubeConfigFile string
 	KubeClient     kubernetes.Interface
@@ -68,7 +68,7 @@ func ParseFlags() (*Configuration, error) {
 		argGrpcHost                    = pflag.String("grpc-host", "127.0.0.1", "The host address for grpc to listen, default: 127.0.0.1")
 		argGrpcPort                    = pflag.Uint32("grpc-port", DefaultBGPGrpcPort, "The port for grpc to listen, default:50051")
 		argClusterAs                   = pflag.Uint32("cluster-as", DefaultBGPClusterAs, "The as number of container network, default 65000")
-		argRouterId                    = pflag.String("router-id", "", "The address for the speaker to use as router id, default the node ip")
+		argRouterID                    = pflag.String("router-id", "", "The address for the speaker to use as router id, default the node ip")
 		argNeighborAddress             = pflag.String("neighbor-address", "", "The router address the speaker connects to.")
 		argNeighborIPv6Address         = pflag.String("neighbor-ipv6-address", "", "The router address the speaker connects to.")
 		argNeighborAs                  = pflag.Uint32("neighbor-as", DefaultBGPNeighborAs, "The router as number, default 65001")
@@ -77,7 +77,7 @@ func ParseFlags() (*Configuration, error) {
 		argPprofPort                   = pflag.Uint32("pprof-port", DefaultPprofPort, "The port to get profiling data, default: 10667")
 		argKubeConfigFile              = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.")
 		argPassiveMode                 = pflag.BoolP("passivemode", "", false, "Set BGP Speaker to passive model,do not actively initiate connections to peers ")
-		argEbgpMultihopTtl             = pflag.Uint8("ebgp-multihop", DefaultEbgpMultiHop, "The TTL value of EBGP peer, default: 1")
+		argEbgpMultihopTTL             = pflag.Uint8("ebgp-multihop", DefaultEbgpMultiHop, "The TTL value of EBGP peer, default: 1")
 	)
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
 	klog.InitFlags(klogFlags)
@@ -101,8 +101,8 @@ func ParseFlags() (*Configuration, error) {
 	if ht > 65536 || ht < 3 {
 		return nil, errors.New("the bgp holdtime must be in the range 3s to 65536s")
 	}
-	if *argRouterId != "" && net.ParseIP(*argRouterId) == nil {
-		return nil, fmt.Errorf("invalid router-id format: %s", *argRouterId)
+	if *argRouterID != "" && net.ParseIP(*argRouterID) == nil {
+		return nil, fmt.Errorf("invalid router-id format: %s", *argRouterID)
 	}
 	if *argNeighborAddress != "" && net.ParseIP(*argNeighborAddress).To4() == nil {
 		return nil, fmt.Errorf("invalid neighbor-address format: %s", *argNeighborAddress)
@@ -110,7 +110,7 @@ func ParseFlags() (*Configuration, error) {
 	if *argNeighborIPv6Address != "" && net.ParseIP(*argNeighborIPv6Address).To16() == nil {
 		return nil, fmt.Errorf("invalid neighbor-ipv6-address format: %s", *argNeighborIPv6Address)
 	}
-	if *argEbgpMultihopTtl < 1 || *argEbgpMultihopTtl > 255 {
+	if *argEbgpMultihopTTL < 1 || *argEbgpMultihopTTL > 255 {
 		return nil, errors.New("the bgp MultihopTtl must be in the range 1 to 255")
 	}
 
@@ -119,7 +119,7 @@ func ParseFlags() (*Configuration, error) {
 		GrpcHost:                    *argGrpcHost,
 		GrpcPort:                    *argGrpcPort,
 		ClusterAs:                   *argClusterAs,
-		RouterId:                    *argRouterId,
+		RouterID:                    *argRouterID,
 		NeighborAddress:             *argNeighborAddress,
 		NeighborIPv6Address:         *argNeighborIPv6Address,
 		NeighborAs:                  *argNeighborAs,
@@ -131,12 +131,12 @@ func ParseFlags() (*Configuration, error) {
 		GracefulRestartDeferralTime: *argGracefulRestartDeferralTime,
 		GracefulRestartTime:         *argDefaultGracefulTime,
 		PassiveMode:                 *argPassiveMode,
-		EbgpMultihopTtl:             *argEbgpMultihopTtl,
+		EbgpMultihopTTL:             *argEbgpMultihopTTL,
 	}
 
-	if config.RouterId == "" {
-		config.RouterId = os.Getenv("POD_IP")
-		if config.RouterId == "" {
+	if config.RouterID == "" {
+		config.RouterID = os.Getenv("POD_IP")
+		if config.RouterID == "" {
 			return nil, errors.New("no router id or POD_IP")
 		}
 	}
@@ -224,7 +224,7 @@ func (config *Configuration) initBgpServer() error {
 	if err := s.StartBgp(context.Background(), &api.StartBgpRequest{
 		Global: &api.Global{
 			Asn:              config.ClusterAs,
-			RouterId:         config.RouterId,
+			RouterId:         config.RouterID,
 			ListenPort:       listenPort,
 			UseMultiplePaths: true,
 		},
@@ -242,10 +242,10 @@ func (config *Configuration) initBgpServer() error {
 				PassiveMode: config.PassiveMode,
 			},
 		}
-		if config.EbgpMultihopTtl != DefaultEbgpMultiHop {
+		if config.EbgpMultihopTTL != DefaultEbgpMultiHop {
 			peer.EbgpMultihop = &api.EbgpMultihop{
 				Enabled:     true,
-				MultihopTtl: uint32(config.EbgpMultihopTtl),
+				MultihopTtl: uint32(config.EbgpMultihopTTL),
 			}
 		}
 		if config.AuthPassword != "" {

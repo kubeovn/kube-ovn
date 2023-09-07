@@ -31,7 +31,7 @@ func InitWorkQueueMetrics() {
 	workqueue.SetProvider(workqueueMetricsProvider{})
 }
 
-func registerWorkqueueMetric(c prometheus.Collector, name, queue string) {
+func registerWorkqueueMetric(c prometheus.Collector, _, _ string) {
 	prometheus.MustRegister(c)
 }
 
@@ -138,27 +138,27 @@ func (workqueueMetricsProvider) NewDeprecatedLongestRunningProcessorMicroseconds
 // NOTE: The following deprecated metrics are noops because they were never
 // included in controller-runtime.
 
-func (workqueueMetricsProvider) NewDeprecatedDepthMetric(queue string) workqueue.GaugeMetric {
+func (workqueueMetricsProvider) NewDeprecatedDepthMetric(_ string) workqueue.GaugeMetric {
 	return noopMetric{}
 }
 
-func (workqueueMetricsProvider) NewDeprecatedAddsMetric(queue string) workqueue.CounterMetric {
+func (workqueueMetricsProvider) NewDeprecatedAddsMetric(_ string) workqueue.CounterMetric {
 	return noopMetric{}
 }
 
-func (workqueueMetricsProvider) NewDeprecatedLatencyMetric(queue string) workqueue.SummaryMetric {
+func (workqueueMetricsProvider) NewDeprecatedLatencyMetric(_ string) workqueue.SummaryMetric {
 	return noopMetric{}
 }
 
-func (workqueueMetricsProvider) NewDeprecatedWorkDurationMetric(queue string) workqueue.SummaryMetric {
+func (workqueueMetricsProvider) NewDeprecatedWorkDurationMetric(_ string) workqueue.SummaryMetric {
 	return noopMetric{}
 }
 
-func (workqueueMetricsProvider) NewDeprecatedUnfinishedWorkSecondsMetric(queue string) workqueue.SettableGaugeMetric {
+func (workqueueMetricsProvider) NewDeprecatedUnfinishedWorkSecondsMetric(_ string) workqueue.SettableGaugeMetric {
 	return noopMetric{}
 }
 
-func (workqueueMetricsProvider) NewDeprecatedRetriesMetric(queue string) workqueue.CounterMetric {
+func (workqueueMetricsProvider) NewDeprecatedRetriesMetric(_ string) workqueue.CounterMetric {
 	return noopMetric{}
 }
 

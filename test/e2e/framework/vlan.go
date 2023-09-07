@@ -28,8 +28,8 @@ func (f *Framework) VlanClient() *VlanClient {
 	}
 }
 
-func (s *VlanClient) Get(name string) *apiv1.Vlan {
-	vlan, err := s.VlanInterface.Get(context.TODO(), name, metav1.GetOptions{})
+func (c *VlanClient) Get(name string) *apiv1.Vlan {
+	vlan, err := c.VlanInterface.Get(context.TODO(), name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return vlan
 }

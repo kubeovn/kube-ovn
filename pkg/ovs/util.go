@@ -37,15 +37,15 @@ func LogicalSwitchPortName(lr, ls string) string {
 }
 
 func GetSgPortGroupName(sgName string) string {
-	return strings.Replace(fmt.Sprintf("ovn.sg.%s", sgName), "-", ".", -1)
+	return strings.ReplaceAll(fmt.Sprintf("ovn.sg.%s", sgName), "-", ".")
 }
 
 func GetSgV4AssociatedName(sgName string) string {
-	return strings.Replace(fmt.Sprintf("ovn.sg.%s.associated.v4", sgName), "-", ".", -1)
+	return strings.ReplaceAll(fmt.Sprintf("ovn.sg.%s.associated.v4", sgName), "-", ".")
 }
 
 func GetSgV6AssociatedName(sgName string) string {
-	return strings.Replace(fmt.Sprintf("ovn.sg.%s.associated.v6", sgName), "-", ".", -1)
+	return strings.ReplaceAll(fmt.Sprintf("ovn.sg.%s.associated.v6", sgName), "-", ".")
 }
 
 // parseIpv6RaConfigs parses the ipv6 ra config,
@@ -120,23 +120,23 @@ func matchAddressSetName(asName string) bool {
 	return addressSetNameRegex.MatchString(asName)
 }
 
-type AclMatch interface {
+type ACLMatch interface {
 	Match() (string, error)
 	String() string
 }
 
-type AndAclMatch struct {
-	matches []AclMatch
+type AndACLMatch struct {
+	matches []ACLMatch
 }
 
-func NewAndAclMatch(matches ...AclMatch) AclMatch {
-	return AndAclMatch{
+func NewAndACLMatch(matches ...ACLMatch) ACLMatch {
+	return AndACLMatch{
 		matches: matches,
 	}
 }
 
 // Rule generate acl match like 'ip4.src == $test.allow.as && ip4.src != $test.except.as && 12345 <= tcp.dst <= 12500 && outport == @ovn.sg.test_sg && ip'
-func (m AndAclMatch) Match() (string, error) {
+func (m AndACLMatch) Match() (string, error) {
 	var matches []string
 	for _, r := range m.matches {
 		match, err := r.Match()
@@ -149,23 +149,23 @@ func (m AndAclMatch) Match() (string, error) {
 	return strings.Join(matches, " && "), nil
 }
 
-func (m AndAclMatch) String() string {
+func (m AndACLMatch) String() string {
 	match, _ := m.Match()
 	return match
 }
 
-type OrAclMatch struct {
-	matches []AclMatch
+type OrACLMatch struct {
+	matches []ACLMatch
 }
 
-func NewOrAclMatch(matches ...AclMatch) AclMatch {
-	return OrAclMatch{
+func NewOrACLMatch(matches ...ACLMatch) ACLMatch {
+	return OrACLMatch{
 		matches: matches,
 	}
 }
 
 // Match generate acl match like '(ip4.src==10.250.0.0/16 && ip4.dst==10.244.0.0/16) || (ip4.src==10.244.0.0/16 && ip4.dst==10.250.0.0/16)'
-func (m OrAclMatch) Match() (string, error) {
+func (m OrACLMatch) Match() (string, error) {
 	var matches []string
 	for _, specification := range m.matches {
 		match, err := specification.Match()
@@ -184,7 +184,7 @@ func (m OrAclMatch) Match() (string, error) {
 	return strings.Join(matches, " || "), nil
 }
 
-func (m OrAclMatch) String() string {
+func (m OrACLMatch) String() string {
 	match, _ := m.Match()
 	return match
 }
@@ -196,7 +196,7 @@ type aclMatch struct {
 	effect   string
 }
 
-func NewAclMatch(key, effect, value, maxValue string) AclMatch {
+func NewACLMatch(key, effect, value, maxValue string) ACLMatch {
 	return aclMatch{
 		key:      key,
 		effect:   effect,

@@ -34,8 +34,8 @@ func (f *Framework) VpcNatGatewayClient() *VpcNatGatewayClient {
 	}
 }
 
-func (s *VpcNatGatewayClient) Get(name string) *apiv1.VpcNatGateway {
-	vpcNatGw, err := s.VpcNatGatewayInterface.Get(context.TODO(), name, metav1.GetOptions{})
+func (c *VpcNatGatewayClient) Get(name string) *apiv1.VpcNatGateway {
+	vpcNatGw, err := c.VpcNatGatewayInterface.Get(context.TODO(), name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return vpcNatGw
 }
@@ -95,7 +95,7 @@ func (c *VpcNatGatewayClient) PatchSync(original, modified *apiv1.VpcNatGateway,
 
 // PatchQoS patches the vpc nat gw and waits for the qos to be ready for `timeout`.
 // If the qos doesn't become ready before the timeout, it will fail the test.
-func (c *VpcNatGatewayClient) PatchQoSPolicySync(natgwName string, qosPolicyName string) *apiv1.VpcNatGateway {
+func (c *VpcNatGatewayClient) PatchQoSPolicySync(natgwName, qosPolicyName string) *apiv1.VpcNatGateway {
 	natgw := c.Get(natgwName)
 	modifiedNATGW := natgw.DeepCopy()
 	modifiedNATGW.Spec.QoSPolicy = qosPolicyName
@@ -122,7 +122,7 @@ func (c *VpcNatGatewayClient) DeleteSync(name string) {
 // WaitToBeReady returns whether the vpc nat gw is ready within timeout.
 func (c *VpcNatGatewayClient) WaitToBeReady(name string, timeout time.Duration) bool {
 	for start := time.Now(); time.Since(start) < timeout; time.Sleep(poll) {
-		if c.Get(name).Spec.LanIp != "" {
+		if c.Get(name).Spec.LanIP != "" {
 			return true
 		}
 	}
@@ -165,7 +165,7 @@ func (c *VpcNatGatewayClient) WaitToBeUpdated(vpcNatGw *apiv1.VpcNatGateway, tim
 }
 
 // WaitToDisappear waits the given timeout duration for the specified VPC NAT gateway to disappear.
-func (c *VpcNatGatewayClient) WaitToDisappear(name string, interval, timeout time.Duration) error {
+func (c *VpcNatGatewayClient) WaitToDisappear(name string, _, timeout time.Duration) error {
 	err := framework.Gomega().Eventually(context.Background(), framework.HandleRetry(func(ctx context.Context) (*apiv1.VpcNatGateway, error) {
 		gw, err := c.VpcNatGatewayInterface.Get(ctx, name, metav1.GetOptions{})
 		if apierrors.IsNotFound(err) {
@@ -192,7 +192,7 @@ func (c *VpcNatGatewayClient) WaitToQoSReady(name string) bool {
 	return false
 }
 
-func MakeVpcNatGateway(name, vpc, subnet, lanIp, externalSubnet, qosPolicyName string) *apiv1.VpcNatGateway {
+func MakeVpcNatGateway(name, vpc, subnet, lanIP, externalSubnet, qosPolicyName string) *apiv1.VpcNatGateway {
 	vpcNatGw := &apiv1.VpcNatGateway{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
@@ -200,7 +200,7 @@ func MakeVpcNatGateway(name, vpc, subnet, lanIp, externalSubnet, qosPolicyName s
 		Spec: apiv1.VpcNatSpec{
 			Vpc:    vpc,
 			Subnet: subnet,
-			LanIp:  lanIp,
+			LanIP:  lanIP,
 		},
 	}
 	if externalSubnet != "" {

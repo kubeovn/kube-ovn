@@ -19,7 +19,6 @@ import (
 )
 
 func (c *Controller) enqueueAddNamespace(obj interface{}) {
-
 	if c.config.EnableNP {
 		for _, np := range c.namespaceMatchNetworkPolicies(obj.(*v1.Namespace)) {
 			c.updateNpQueue.Add(np)
@@ -35,7 +34,6 @@ func (c *Controller) enqueueAddNamespace(obj interface{}) {
 }
 
 func (c *Controller) enqueueDeleteNamespace(obj interface{}) {
-
 	if c.config.EnableNP {
 		for _, np := range c.namespaceMatchNetworkPolicies(obj.(*v1.Namespace)) {
 			c.updateNpQueue.Add(np)
@@ -43,9 +41,9 @@ func (c *Controller) enqueueDeleteNamespace(obj interface{}) {
 	}
 }
 
-func (c *Controller) enqueueUpdateNamespace(old, new interface{}) {
-	oldNs := old.(*v1.Namespace)
-	newNs := new.(*v1.Namespace)
+func (c *Controller) enqueueUpdateNamespace(oldObj, newObj interface{}) {
+	oldNs := oldObj.(*v1.Namespace)
+	newNs := newObj.(*v1.Namespace)
 	if oldNs.ResourceVersion == newNs.ResourceVersion {
 		return
 	}
@@ -97,7 +95,6 @@ func (c *Controller) processNextAddNamespaceWorkItem() bool {
 		c.addNamespaceQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -188,22 +185,21 @@ func (c *Controller) handleAddNamespace(key string) error {
 
 	if namespace.Annotations == nil || len(namespace.Annotations) == 0 {
 		namespace.Annotations = map[string]string{}
-	} else {
-		if namespace.Annotations[util.LogicalSwitchAnnotation] == strings.Join(lss, ",") &&
-			namespace.Annotations[util.CidrAnnotation] == strings.Join(cidrs, ";") &&
-			namespace.Annotations[util.ExcludeIpsAnnotation] == strings.Join(excludeIps, ";") &&
-			namespace.Annotations[util.IpPoolAnnotation] == ippool {
-			return nil
-		}
+	} else if namespace.Annotations[util.LogicalSwitchAnnotation] == strings.Join(lss, ",") &&
+		namespace.Annotations[util.CidrAnnotation] == strings.Join(cidrs, ";") &&
+		namespace.Annotations[util.ExcludeIpsAnnotation] == strings.Join(excludeIps, ";") &&
+		namespace.Annotations[util.IPPoolAnnotation] == ippool {
+		return nil
 	}
+
 	namespace.Annotations[util.LogicalSwitchAnnotation] = strings.Join(lss, ",")
 	namespace.Annotations[util.CidrAnnotation] = strings.Join(cidrs, ";")
 	namespace.Annotations[util.ExcludeIpsAnnotation] = strings.Join(excludeIps, ";")
 
 	if ippool == "" {
-		delete(namespace.Annotations, util.IpPoolAnnotation)
+		delete(namespace.Annotations, util.IPPoolAnnotation)
 	} else {
-		namespace.Annotations[util.IpPoolAnnotation] = ippool
+		namespace.Annotations[util.IPPoolAnnotation] = ippool
 	}
 
 	patch, err := util.GenerateStrategicMergePatchPayload(cachedNs, namespace)

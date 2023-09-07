@@ -39,7 +39,7 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 		namespaceName = f.Namespace.Name
 		subnetName = "subnet-" + framework.RandomSuffix()
 		podName = "pod-" + framework.RandomSuffix()
-		cidr = framework.RandomCIDR(f.ClusterIpFamily)
+		cidr = framework.RandomCIDR(f.ClusterIPFamily)
 		vpcClient = f.VpcClient()
 		if image == "" {
 			image = framework.GetKubeOvnImage(cs)
@@ -94,7 +94,7 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 		vpcClient.CreateSync(customVPC)
 
 		ginkgo.By("Creating subnet " + custVPCSubnetName)
-		cidr = framework.RandomCIDR(f.ClusterIpFamily)
+		cidr = framework.RandomCIDR(f.ClusterIPFamily)
 		subnet := framework.MakeSubnet(custVPCSubnetName, "", cidr, "", vpcName, "", nil, nil, nil)
 		_ = subnetClient.CreateSync(subnet)
 
@@ -190,7 +190,6 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 })
 
 func checkTProxyRules(f *framework.Framework, pod *corev1.Pod, probePort int, exist bool) {
-
 	nodeName := pod.Spec.NodeName
 	tProxyOutputMarkMask := fmt.Sprintf("%#x/%#x", util.TProxyOutputMark, util.TProxyOutputMask)
 	tProxyPreRoutingMarkMask := fmt.Sprintf("%#x/%#x", util.TProxyPreroutingMark, util.TProxyPreroutingMask)

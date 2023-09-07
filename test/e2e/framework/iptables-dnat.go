@@ -33,8 +33,8 @@ func (f *Framework) IptablesDnatClient() *IptablesDnatClient {
 	}
 }
 
-func (s *IptablesDnatClient) Get(name string) *apiv1.IptablesDnatRule {
-	dnat, err := s.IptablesDnatRuleInterface.Get(context.TODO(), name, metav1.GetOptions{})
+func (c *IptablesDnatClient) Get(name string) *apiv1.IptablesDnatRule {
+	dnat, err := c.IptablesDnatRuleInterface.Get(context.TODO(), name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return dnat
 }
@@ -82,7 +82,7 @@ func (c *IptablesDnatClient) Patch(original, modified *apiv1.IptablesDnatRule) *
 
 // PatchSync patches the iptables dnat and waits for the iptables dnat to be ready for `timeout`.
 // If the iptables dnat doesn't become ready before the timeout, it will fail the test.
-func (c *IptablesDnatClient) PatchSync(original, modified *apiv1.IptablesDnatRule, requiredNodes []string, timeout time.Duration) *apiv1.IptablesDnatRule {
+func (c *IptablesDnatClient) PatchSync(original, modified *apiv1.IptablesDnatRule, _ []string, timeout time.Duration) *apiv1.IptablesDnatRule {
 	dnat := c.Patch(original, modified)
 	ExpectTrue(c.WaitToBeUpdated(dnat, timeout))
 	ExpectTrue(c.WaitToBeReady(dnat.Name, timeout))
@@ -132,7 +132,7 @@ func (c *IptablesDnatClient) WaitToBeUpdated(dnat *apiv1.IptablesDnatRule, timeo
 }
 
 // WaitToDisappear waits the given timeout duration for the specified iptables DNAT rule to disappear.
-func (c *IptablesDnatClient) WaitToDisappear(name string, interval, timeout time.Duration) error {
+func (c *IptablesDnatClient) WaitToDisappear(name string, _, timeout time.Duration) error {
 	err := framework.Gomega().Eventually(context.Background(), framework.HandleRetry(func(ctx context.Context) (*apiv1.IptablesDnatRule, error) {
 		rule, err := c.IptablesDnatRuleInterface.Get(ctx, name, metav1.GetOptions{})
 		if apierrors.IsNotFound(err) {
@@ -155,7 +155,7 @@ func MakeIptablesDnatRule(name, eip, externalPort, protocol, internalIP, interna
 			EIP:          eip,
 			ExternalPort: externalPort,
 			Protocol:     protocol,
-			InternalIp:   internalIP,
+			InternalIP:   internalIP,
 			InternalPort: internalPort,
 		},
 	}

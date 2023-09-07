@@ -287,19 +287,17 @@ func (e *Exporter) exportOvnDBStatusGauge() {
 				if checkNbDbCnt < 6 {
 					klog.Warningf("Failed to get OVN NB DB status for %v times", checkNbDbCnt)
 					return
-				} else {
-					klog.Warningf("Failed to get OVN NB DB status for %v times, ready to restore OVN DB", checkNbDbCnt)
-					checkNbDbCnt = 0
 				}
+				klog.Warningf("Failed to get OVN NB DB status for %v times, ready to restore OVN DB", checkNbDbCnt)
+				checkNbDbCnt = 0
 			case "OVN_Southbound":
 				checkSbDbCnt++
 				if checkSbDbCnt < 6 {
 					klog.Warningf("Failed to get OVN SB DB status for %v times", checkSbDbCnt)
 					return
-				} else {
-					klog.Warningf("Failed to get OVN SB DB status for %v times, ready to restore OVN DB", checkSbDbCnt)
-					checkSbDbCnt = 0
 				}
+				klog.Warningf("Failed to get OVN SB DB status for %v times, ready to restore OVN DB", checkSbDbCnt)
+				checkSbDbCnt = 0
 			}
 
 			output, err := exec.Command("/bin/bash", "/kube-ovn/restore-ovn-nb-db.sh").CombinedOutput()

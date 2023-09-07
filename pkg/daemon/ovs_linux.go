@@ -34,11 +34,11 @@ import (
 
 var pciAddrRegexp = regexp.MustCompile(`\b([0-9a-fA-F]{4}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}.\d{1}\S*)`)
 
-func (csh cniServerHandler) configureDpdkNic(podName, podNamespace, provider, netns, containerID, ifName, mac string, mtu int, ip, gateway, ingress, egress, shortSharedDir, socketName string) error {
+func (csh cniServerHandler) configureDpdkNic(podName, podNamespace, provider, netns, containerID, ifName, _ string, _ int, ip, _, ingress, egress, shortSharedDir, socketName string) error {
 	sharedDir := filepath.Join("/var", shortSharedDir)
 	hostNicName, _ := generateNicName(containerID, ifName)
 
-	ipStr := util.GetIpWithoutMask(ip)
+	ipStr := util.GetIPWithoutMask(ip)
 	ifaceID := ovs.PodNameToPortName(podName, podNamespace, provider)
 	ovs.CleanDuplicatePort(ifaceID, hostNicName)
 	// Add veth pair host end to ovs port
@@ -54,30 +54,27 @@ func (csh cniServerHandler) configureDpdkNic(podName, podNamespace, provider, ne
 	if err != nil {
 		return fmt.Errorf("add nic to ovs failed %v: %q", err, output)
 	}
-	if err = ovs.SetInterfaceBandwidth(podName, podNamespace, ifaceID, egress, ingress); err != nil {
-		return err
-	}
-	return nil
+	return ovs.SetInterfaceBandwidth(podName, podNamespace, ifaceID, egress, ingress)
 }
 
-func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns, containerID, vfDriver, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute, detectIPConflict bool, routes []request.Route, dnsServer, dnsSuffix []string, ingress, egress, DeviceID, nicType, latency, limit, loss, jitter string, gwCheckMode int, u2oInterconnectionIP string) error {
+func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns, containerID, vfDriver, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute, detectIPConflict bool, routes []request.Route, _, _ []string, ingress, egress, deviceID, nicType, latency, limit, loss, jitter string, gwCheckMode int, u2oInterconnectionIP string) error {
 	var err error
 	var hostNicName, containerNicName string
-	if DeviceID == "" {
+	if deviceID == "" {
 		hostNicName, containerNicName, err = setupVethPair(containerID, ifName, mtu)
 		if err != nil {
 			klog.Errorf("failed to create veth pair %v", err)
 			return err
 		}
 	} else {
-		hostNicName, containerNicName, err = setupSriovInterface(containerID, DeviceID, vfDriver, ifName, mtu, mac)
+		hostNicName, containerNicName, err = setupSriovInterface(containerID, deviceID, vfDriver, ifName, mtu, mac)
 		if err != nil {
 			klog.Errorf("failed to create sriov interfaces %v", err)
 			return err
 		}
 	}
 
-	ipStr := util.GetIpWithoutMask(ip)
+	ipStr := util.GetIPWithoutMask(ip)
 	ifaceID := ovs.PodNameToPortName(podName, podNamespace, provider)
 	ovs.CleanDuplicatePort(ifaceID, hostNicName)
 	// Add veth pair host end to ovs port
@@ -126,13 +123,10 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 	if err != nil {
 		return fmt.Errorf("failed to open netns %q: %v", netns, err)
 	}
-	if err = configureContainerNic(containerNicName, ifName, ip, gateway, isDefaultRoute, detectIPConflict, routes, macAddr, podNS, mtu, nicType, gwCheckMode, u2oInterconnectionIP); err != nil {
-		return err
-	}
-	return nil
+	return configureContainerNic(containerNicName, ifName, ip, gateway, isDefaultRoute, detectIPConflict, routes, macAddr, podNS, mtu, nicType, gwCheckMode, u2oInterconnectionIP)
 }
 
-func (csh cniServerHandler) deleteNic(podName, podNamespace, containerID, netns, deviceID, ifName, nicType string) error {
+func (csh cniServerHandler) deleteNic(podName, podNamespace, containerID, _, deviceID, ifName, nicType string) error {
 	var nicName string
 	hostNicName, containerNicName := generateNicName(containerID, ifName)
 
@@ -217,7 +211,7 @@ func configureHostNic(nicName string) error {
 	return nil
 }
 
-func configureContainerNic(nicName, ifName string, ipAddr, gateway string, isDefaultRoute, detectIPConflict bool, routes []request.Route, macAddr net.HardwareAddr, netns ns.NetNS, mtu int, nicType string, gwCheckMode int, u2oInterconnectionIP string) error {
+func configureContainerNic(nicName, ifName, ipAddr, gateway string, isDefaultRoute, detectIPConflict bool, routes []request.Route, macAddr net.HardwareAddr, netns ns.NetNS, mtu int, nicType string, gwCheckMode int, u2oInterconnectionIP string) error {
 	containerLink, err := netlink.LinkByName(nicName)
 	if err != nil {
 		return fmt.Errorf("can not find container nic %s: %v", nicName, err)
@@ -381,7 +375,7 @@ func waitNetworkReady(nic, ipAddr, gateway string, underlayGateway, verbose bool
 }
 
 func configureNodeNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu int) error {
-	ipStr := util.GetIpWithoutMask(ip)
+	ipStr := util.GetIPWithoutMask(ip)
 	raw, err := ovs.Exec(ovs.MayExist, "add-port", "br-int", util.NodeNic, "--",
 		"set", "interface", util.NodeNic, "type=internal", "--",
 		"set", "interface", util.NodeNic, fmt.Sprintf("external_ids:iface-id=%s", portName),
@@ -430,14 +424,14 @@ func (c *Controller) loopOvn0Check() {
 		klog.Errorf("failed to get node %s: %v", c.config.NodeName, err)
 		return
 	}
-	ip := node.Annotations[util.IpAddressAnnotation]
+	ip := node.Annotations[util.IPAddressAnnotation]
 	gw := node.Annotations[util.GatewayAnnotation]
 	if err := waitNetworkReady(util.NodeNic, ip, gw, false, false, 5); err != nil {
 		util.LogFatalAndExit(err, "failed to ping ovn0 gateway %s", gw)
 	}
 }
 
-func (c *Controller) checkNodeGwNicInNs(nodeExtIp, ip, gw string, gwNS ns.NetNS) error {
+func (c *Controller) checkNodeGwNicInNs(nodeExtIP, ip, gw string, gwNS ns.NetNS) error {
 	exists, err := ovs.PortExists(util.NodeGwNic)
 	if err != nil {
 		klog.Error(err)
@@ -466,11 +460,11 @@ func (c *Controller) checkNodeGwNicInNs(nodeExtIp, ip, gw string, gwNS ns.NetNS)
 				}
 				for _, eip := range ovnEips {
 					if eip.Status.Ready {
-						cmd := exec.Command("sh", "-c", fmt.Sprintf("bfdd-control status remote %s local %s", eip.Spec.V4Ip, nodeExtIp))
+						cmd := exec.Command("sh", "-c", fmt.Sprintf("bfdd-control status remote %s local %s", eip.Spec.V4Ip, nodeExtIP))
 						var outb bytes.Buffer
 						cmd.Stdout = &outb
 						if err := cmd.Run(); err == nil {
-							out := string(outb.String())
+							out := outb.String()
 							klog.V(3).Info(out)
 							if strings.Contains(out, "No session") {
 								// not exist
@@ -482,7 +476,7 @@ func (c *Controller) checkNodeGwNicInNs(nodeExtIp, ip, gw string, gwNS ns.NetNS)
 								}
 							}
 						} else {
-							err := fmt.Errorf("faild to check bfd status remote %s local %s", eip.Spec.V4Ip, nodeExtIp)
+							err := fmt.Errorf("faild to check bfd status remote %s local %s", eip.Spec.V4Ip, nodeExtIP)
 							klog.Error(err)
 							return err
 						}
@@ -492,15 +486,15 @@ func (c *Controller) checkNodeGwNicInNs(nodeExtIp, ip, gw string, gwNS ns.NetNS)
 			}
 			return err
 		})
-	} else {
-		err := fmt.Errorf("node external gw not ready")
-		klog.Error(err)
-		return err
 	}
+
+	err = fmt.Errorf("node external gw not ready")
+	klog.Error(err)
+	return err
 }
 
 func configureNodeGwNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu int, gwNS ns.NetNS) error {
-	ipStr := util.GetIpWithoutMask(ip)
+	ipStr := util.GetIPWithoutMask(ip)
 	output, err := ovs.Exec(ovs.MayExist, "add-port", "br-int", util.NodeGwNic, "--",
 		"set", "interface", util.NodeGwNic, "type=internal", "--",
 		"set", "interface", util.NodeGwNic, fmt.Sprintf("external_ids:iface-id=%s", portName),
@@ -686,9 +680,9 @@ func (c *Controller) loopOvnExt0Check() {
 			return
 		}
 	}
-	nodeExtIp := cachedEip.Spec.V4Ip
-	ipAddr := util.GetIpAddrWithMask(ips, cachedSubnet.Spec.CIDRBlock)
-	if err := c.checkNodeGwNicInNs(nodeExtIp, ipAddr, gw, gwNS); err == nil {
+	nodeExtIP := cachedEip.Spec.V4Ip
+	ipAddr := util.GetIPAddrWithMask(ips, cachedSubnet.Spec.CIDRBlock)
+	if err := c.checkNodeGwNicInNs(nodeExtIP, ipAddr, gw, gwNS); err == nil {
 		// add all lrp ip in bfd listening list
 		return
 	}
@@ -762,7 +756,7 @@ func (c *Controller) patchNodeExternalGwLabel(key string, enabled bool) error {
 	return nil
 }
 
-func configureMirrorLink(portName string, mtu int) error {
+func configureMirrorLink(portName string, _ int) error {
 	mirrorLink, err := netlink.LinkByName(portName)
 	if err != nil {
 		return fmt.Errorf("can not find mirror nic %s: %v", portName, err)
@@ -1215,7 +1209,7 @@ func setupVethPair(containerID, ifName string, mtu int) (string, string, error) 
 // Setup sriov interface in the pod
 // https://github.com/ovn-org/ovn-kubernetes/commit/6c96467d0d3e58cab05641293d1c1b75e5914795
 func setupSriovInterface(containerID, deviceID, vfDriver, ifName string, mtu int, mac string) (string, string, error) {
-	var isVfioPciDriver = false
+	isVfioPciDriver := false
 	if vfDriver == "vfio-pci" {
 		matches, err := filepath.Glob(filepath.Join(util.VfioSysDir, "*"))
 		if err != nil {
@@ -1312,16 +1306,12 @@ func renameLink(curName, newName string) error {
 	if err := netlink.LinkSetName(link, newName); err != nil {
 		return err
 	}
-	if err := netlink.LinkSetUp(link); err != nil {
-		return err
-	}
-
-	return nil
+	return netlink.LinkSetUp(link)
 }
 
-func (csh cniServerHandler) configureNicWithInternalPort(podName, podNamespace, provider, netns, containerID, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute, detectIPConflict bool, routes []request.Route, dnsServer, dnsSuffix []string, ingress, egress, DeviceID, nicType, latency, limit, loss, jitter string, gwCheckMode int, u2oInterconnectionIP string) (string, error) {
+func (csh cniServerHandler) configureNicWithInternalPort(podName, podNamespace, provider, netns, containerID, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute, detectIPConflict bool, routes []request.Route, _, _ []string, ingress, egress, _, nicType, latency, limit, loss, jitter string, gwCheckMode int, u2oInterconnectionIP string) (string, error) {
 	_, containerNicName := generateNicName(containerID, ifName)
-	ipStr := util.GetIpWithoutMask(ip)
+	ipStr := util.GetIPWithoutMask(ip)
 	ifaceID := ovs.PodNameToPortName(podName, podNamespace, provider)
 	ovs.CleanDuplicatePort(ifaceID, containerNicName)
 

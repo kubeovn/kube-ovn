@@ -26,7 +26,6 @@ type vpcService struct {
 }
 
 func (c *Controller) enqueueAddService(obj interface{}) {
-
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -94,16 +93,16 @@ func (c *Controller) enqueueDeleteService(obj interface{}) {
 	}
 }
 
-func (c *Controller) enqueueUpdateService(old, new interface{}) {
-	oldSvc := old.(*v1.Service)
-	newSvc := new.(*v1.Service)
+func (c *Controller) enqueueUpdateService(oldObj, newObj interface{}) {
+	oldSvc := oldObj.(*v1.Service)
+	newSvc := newObj.(*v1.Service)
 	if oldSvc.ResourceVersion == newSvc.ResourceVersion {
 		return
 	}
 
 	var key string
 	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(new); err != nil {
+	if key, err = cache.MetaNamespaceKeyFunc(newObj); err != nil {
 		utilruntime.HandleError(err)
 		return
 	}
@@ -111,9 +110,9 @@ func (c *Controller) enqueueUpdateService(old, new interface{}) {
 	oldClusterIps := getVipIps(oldSvc)
 	newClusterIps := getVipIps(newSvc)
 	var ipsToDel []string
-	for _, oldClusterIp := range oldClusterIps {
-		if !util.ContainsString(newClusterIps, oldClusterIp) {
-			ipsToDel = append(ipsToDel, oldClusterIp)
+	for _, oldClusterIP := range oldClusterIps {
+		if !util.ContainsString(newClusterIps, oldClusterIP) {
+			ipsToDel = append(ipsToDel, oldClusterIP)
 		}
 	}
 
@@ -163,7 +162,6 @@ func (c *Controller) processNextAddServiceWorkItem() bool {
 		c.addServiceQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -194,7 +192,6 @@ func (c *Controller) processNextDeleteServiceWorkItem() bool {
 		c.deleteServiceQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -225,7 +222,6 @@ func (c *Controller) processNextUpdateServiceWorkItem() bool {
 		c.updateServiceQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -255,9 +251,9 @@ func (c *Controller) handleDeleteService(service *vpcService) error {
 	var vpcLB [2]string
 	switch service.Protocol {
 	case v1.ProtocolTCP:
-		vpcLB = [2]string{vpcLbConfig.TcpLoadBalancer, vpcLbConfig.TcpSessLoadBalancer}
+		vpcLB = [2]string{vpcLbConfig.TCPLoadBalancer, vpcLbConfig.TCPSessLoadBalancer}
 	case v1.ProtocolUDP:
-		vpcLB = [2]string{vpcLbConfig.UdpLoadBalancer, vpcLbConfig.UdpSessLoadBalancer}
+		vpcLB = [2]string{vpcLbConfig.UDPLoadBalancer, vpcLbConfig.UDPSessLoadBalancer}
 	case v1.ProtocolSCTP:
 		vpcLB = [2]string{vpcLbConfig.SctpLoadBalancer, vpcLbConfig.SctpSessLoadBalancer}
 	}
@@ -276,7 +272,7 @@ func (c *Controller) handleDeleteService(service *vpcService) error {
 		}
 
 		for _, lb := range vpcLB {
-			if err := c.ovnNbClient.LoadBalancerDeleteVip(lb, vip); err != nil {
+			if err := c.OVNNbClient.LoadBalancerDeleteVip(lb, vip); err != nil {
 				klog.Errorf("failed to delete vip %s from LB %s: %v", vip, lb, err)
 				return err
 			}
@@ -334,10 +330,10 @@ func (c *Controller) handleUpdateService(key string) error {
 		return err
 	}
 
-	tcpLb, udpLb, sctpLb := vpc.Status.TcpLoadBalancer, vpc.Status.UdpLoadBalancer, vpc.Status.SctpLoadBalancer
-	oTcpLb, oUdpLb, oSctpLb := vpc.Status.TcpSessionLoadBalancer, vpc.Status.UdpSessionLoadBalancer, vpc.Status.SctpSessionLoadBalancer
+	tcpLb, udpLb, sctpLb := vpc.Status.TCPLoadBalancer, vpc.Status.UDPLoadBalancer, vpc.Status.SctpLoadBalancer
+	oTCPLb, oUDPLb, oSctpLb := vpc.Status.TCPSessionLoadBalancer, vpc.Status.UDPSessionLoadBalancer, vpc.Status.SctpSessionLoadBalancer
 	if svc.Spec.SessionAffinity == v1.ServiceAffinityClientIP {
-		tcpLb, udpLb, sctpLb, oTcpLb, oUdpLb, oSctpLb = oTcpLb, oUdpLb, oSctpLb, tcpLb, udpLb, sctpLb
+		tcpLb, udpLb, sctpLb, oTCPLb, oUDPLb, oSctpLb = oTCPLb, oUDPLb, oSctpLb, tcpLb, udpLb, sctpLb
 	}
 
 	var tcpVips, udpVips, sctpVips []string
@@ -360,14 +356,14 @@ func (c *Controller) handleUpdateService(key string) error {
 			return nil
 		}
 
-		lb, err := c.ovnNbClient.GetLoadBalancer(lbName, false)
+		lb, err := c.OVNNbClient.GetLoadBalancer(lbName, false)
 		if err != nil {
 			klog.Errorf("failed to get LB %s: %v", lbName, err)
 			return err
 		}
 		klog.V(3).Infof("existing vips of LB %s: %v", lbName, lb.Vips)
 		for _, vip := range svcVips {
-			if err := c.ovnNbClient.LoadBalancerDeleteVip(oLbName, vip); err != nil {
+			if err := c.OVNNbClient.LoadBalancerDeleteVip(oLbName, vip); err != nil {
 				klog.Errorf("failed to delete vip %s from LB %s: %v", vip, oLbName, err)
 				return err
 			}
@@ -382,7 +378,7 @@ func (c *Controller) handleUpdateService(key string) error {
 		for vip := range lb.Vips {
 			if ip := parseVipAddr(vip); (util.ContainsString(ips, ip) && !util.IsStringIn(vip, svcVips)) || util.ContainsString(ipsToDel, ip) {
 				klog.Infof("remove stale vip %s from LB %s", vip, lb)
-				if err := c.ovnNbClient.LoadBalancerDeleteVip(lbName, vip); err != nil {
+				if err := c.OVNNbClient.LoadBalancerDeleteVip(lbName, vip); err != nil {
 					klog.Errorf("failed to delete vip %s from LB %s: %v", vip, lb, err)
 					return err
 				}
@@ -393,7 +389,7 @@ func (c *Controller) handleUpdateService(key string) error {
 			return nil
 		}
 
-		oLb, err := c.ovnNbClient.GetLoadBalancer(oLbName, false)
+		oLb, err := c.OVNNbClient.GetLoadBalancer(oLbName, false)
 		if err != nil {
 			klog.Errorf("failed to get LB %s: %v", oLbName, err)
 			return err
@@ -402,7 +398,7 @@ func (c *Controller) handleUpdateService(key string) error {
 		for vip := range oLb.Vips {
 			if ip := parseVipAddr(vip); util.ContainsString(ips, ip) || util.ContainsString(ipsToDel, ip) {
 				klog.Infof("remove stale vip %s from LB %s", vip, oLbName)
-				if err = c.ovnNbClient.LoadBalancerDeleteVip(oLbName, vip); err != nil {
+				if err = c.OVNNbClient.LoadBalancerDeleteVip(oLbName, vip); err != nil {
 					klog.Errorf("failed to delete vip %s from LB %s: %v", vip, oLbName, err)
 					return err
 				}
@@ -411,10 +407,10 @@ func (c *Controller) handleUpdateService(key string) error {
 		return nil
 	}
 
-	if err = updateVip(tcpLb, oTcpLb, tcpVips); err != nil {
+	if err = updateVip(tcpLb, oTCPLb, tcpVips); err != nil {
 		return err
 	}
-	if err = updateVip(udpLb, oUdpLb, udpVips); err != nil {
+	if err = updateVip(udpLb, oUDPLb, udpVips); err != nil {
 		return err
 	}
 	if err = updateVip(sctpLb, oSctpLb, sctpVips); err != nil {

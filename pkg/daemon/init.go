@@ -59,7 +59,7 @@ func InitNodeGateway(config *Configuration) error {
 			klog.Errorf("failed to get node %s info %v", nodeName, err)
 			return err
 		}
-		if node.Annotations[util.IpAddressAnnotation] == "" {
+		if node.Annotations[util.IPAddressAnnotation] == "" {
 			klog.Warningf("no ovn0 address for node %s, please check kube-ovn-controller logs", nodeName)
 			time.Sleep(3 * time.Second)
 			continue
@@ -68,21 +68,20 @@ func InitNodeGateway(config *Configuration) error {
 			klog.Errorf("validate node %s address annotation failed, %v", nodeName, err)
 			time.Sleep(3 * time.Second)
 			continue
-		} else {
-			macAddr = node.Annotations[util.MacAddressAnnotation]
-			ip = node.Annotations[util.IpAddressAnnotation]
-			cidr = node.Annotations[util.CidrAnnotation]
-			portName = node.Annotations[util.PortNameAnnotation]
-			gw = node.Annotations[util.GatewayAnnotation]
-			break
 		}
+		macAddr = node.Annotations[util.MacAddressAnnotation]
+		ip = node.Annotations[util.IPAddressAnnotation]
+		cidr = node.Annotations[util.CidrAnnotation]
+		portName = node.Annotations[util.PortNameAnnotation]
+		gw = node.Annotations[util.GatewayAnnotation]
+		break
 	}
 	mac, err := net.ParseMAC(macAddr)
 	if err != nil {
 		return fmt.Errorf("failed to parse mac %s %v", mac, err)
 	}
 
-	ipAddr = util.GetIpAddrWithMask(ip, cidr)
+	ipAddr = util.GetIPAddrWithMask(ip, cidr)
 	return configureNodeNic(portName, ipAddr, gw, mac, config.MTU)
 }
 
@@ -196,9 +195,5 @@ func (c *Controller) ovsCleanProviderNetwork(provider string) error {
 	if err := removeOvnMapping("ovn-chassis-mac-mappings", provider); err != nil {
 		return err
 	}
-	if err := removeOvnMapping("ovn-bridge-mappings", provider); err != nil {
-		return err
-	}
-
-	return nil
+	return removeOvnMapping("ovn-bridge-mappings", provider)
 }

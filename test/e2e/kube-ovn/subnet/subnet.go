@@ -98,7 +98,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		deployName = "deploy-" + framework.RandomSuffix()
 		podNamePrefix = "pod-" + framework.RandomSuffix()
 		podName = "pod-" + framework.RandomSuffix()
-		cidr = framework.RandomCIDR(f.ClusterIpFamily)
+		cidr = framework.RandomCIDR(f.ClusterIPFamily)
 		cidrV4, cidrV6 = util.SplitStringIP(cidr)
 		gateways = nil
 		podCount = 0
@@ -273,14 +273,14 @@ var _ = framework.Describe("[group:subnet]", func() {
 			framework.ExpectZero(subnet.Status.V4AvailableIPs)
 		} else {
 			_, ipnet, _ := net.ParseCIDR(cidrV4)
-			expected := util.AddressCount(ipnet) - util.CountIpNums(excludeIPv4) - 1
+			expected := util.AddressCount(ipnet) - util.CountIPNums(excludeIPv4) - 1
 			framework.ExpectEqual(subnet.Status.V4AvailableIPs, expected)
 		}
 		if cidrV6 == "" {
 			framework.ExpectZero(subnet.Status.V6AvailableIPs)
 		} else {
 			_, ipnet, _ := net.ParseCIDR(cidrV6)
-			expected := util.AddressCount(ipnet) - util.CountIpNums(excludeIPv6) - 1
+			expected := util.AddressCount(ipnet) - util.CountIPNums(excludeIPv6) - 1
 			framework.ExpectEqual(subnet.Status.V6AvailableIPs, expected)
 		}
 	})
@@ -437,7 +437,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		nodeIPs := make([]string, 0, len(nodes.Items))
 		for i := 0; i < 3 && i < len(nodes.Items); i++ {
 			gatewayNodes = append(gatewayNodes, nodes.Items[i].Name)
-			nodeIPs = append(nodeIPs, nodes.Items[i].Annotations[util.IpAddressAnnotation])
+			nodeIPs = append(nodeIPs, nodes.Items[i].Annotations[util.IPAddressAnnotation])
 		}
 		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, gatewayNodes, nil)
 		subnet = subnetClient.CreateSync(subnet)
@@ -680,10 +680,10 @@ var _ = framework.Describe("[group:subnet]", func() {
 		podCount = 5
 		var startIPv4, startIPv6 string
 		if firstIPv4 != "" {
-			startIPv4 = util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(firstIPv4), big.NewInt(1)))
+			startIPv4 = util.BigInt2Ip(big.NewInt(0).Add(util.IP2BigInt(firstIPv4), big.NewInt(1)))
 		}
 		if firstIPv6 != "" {
-			startIPv6 = util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(firstIPv6), big.NewInt(1)))
+			startIPv6 = util.BigInt2Ip(big.NewInt(0).Add(util.IP2BigInt(firstIPv6), big.NewInt(1)))
 		}
 
 		ginkgo.By("Creating subnet " + subnetName)
@@ -709,8 +709,8 @@ var _ = framework.Describe("[group:subnet]", func() {
 		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 			subnet = subnetClient.Get(subnetName)
 			if cidrV4 != "" {
-				v4UsingIPEnd := util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(startIPv4), big.NewInt(int64(podCount-1))))
-				v4AvailableIPStart := util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(v4UsingIPEnd), big.NewInt(1)))
+				v4UsingIPEnd := util.BigInt2Ip(big.NewInt(0).Add(util.IP2BigInt(startIPv4), big.NewInt(int64(podCount-1))))
+				v4AvailableIPStart := util.BigInt2Ip(big.NewInt(0).Add(util.IP2BigInt(v4UsingIPEnd), big.NewInt(1)))
 				framework.Logf("V4UsingIPRange: expected %q, current %q",
 					fmt.Sprintf("%s-%s", startIPv4, v4UsingIPEnd),
 					subnet.Status.V4UsingIPRange,
@@ -725,8 +725,8 @@ var _ = framework.Describe("[group:subnet]", func() {
 				}
 			}
 			if cidrV6 != "" {
-				v6UsingIPEnd := util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(startIPv6), big.NewInt(int64(podCount-1))))
-				v6AvailableIPStart := util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(v6UsingIPEnd), big.NewInt(1)))
+				v6UsingIPEnd := util.BigInt2Ip(big.NewInt(0).Add(util.IP2BigInt(startIPv6), big.NewInt(int64(podCount-1))))
+				v6AvailableIPStart := util.BigInt2Ip(big.NewInt(0).Add(util.IP2BigInt(v6UsingIPEnd), big.NewInt(1)))
 				framework.Logf("V6UsingIPRange: expected %q, current %q",
 					fmt.Sprintf("%s-%s", startIPv6, v6UsingIPEnd),
 					subnet.Status.V6UsingIPRange,
@@ -787,10 +787,10 @@ var _ = framework.Describe("[group:subnet]", func() {
 		var startIPv4, startIPv6, usingIPv4Str, availableIPv4Str, usingIPv6Str, availableIPv6Str string
 
 		if firstIPv4 != "" {
-			startIPv4 = util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(firstIPv4), big.NewInt(1)))
+			startIPv4 = util.BigInt2Ip(big.NewInt(0).Add(util.IP2BigInt(firstIPv4), big.NewInt(1)))
 		}
 		if firstIPv6 != "" {
-			startIPv6 = util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(firstIPv6), big.NewInt(1)))
+			startIPv6 = util.BigInt2Ip(big.NewInt(0).Add(util.IP2BigInt(firstIPv6), big.NewInt(1)))
 		}
 
 		ginkgo.By("Creating subnet " + subnetName)
@@ -855,10 +855,10 @@ var _ = framework.Describe("[group:subnet]", func() {
 
 		var startIPv4, startIPv6 string
 		if firstIPv4 != "" {
-			startIPv4 = util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(firstIPv4), big.NewInt(1)))
+			startIPv4 = util.BigInt2Ip(big.NewInt(0).Add(util.IP2BigInt(firstIPv4), big.NewInt(1)))
 		}
 		if firstIPv6 != "" {
-			startIPv6 = util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(firstIPv6), big.NewInt(1)))
+			startIPv6 = util.BigInt2Ip(big.NewInt(0).Add(util.IP2BigInt(firstIPv6), big.NewInt(1)))
 		}
 
 		ginkgo.By("Creating subnet " + subnetName)
@@ -878,8 +878,8 @@ var _ = framework.Describe("[group:subnet]", func() {
 				return true
 			}
 
-			usingIPEnd := util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(startIP), big.NewInt(count-1)))
-			availableIPStart := util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(usingIPEnd), big.NewInt(1)))
+			usingIPEnd := util.BigInt2Ip(big.NewInt(0).Add(util.IP2BigInt(startIP), big.NewInt(count-1)))
+			availableIPStart := util.BigInt2Ip(big.NewInt(0).Add(util.IP2BigInt(usingIPEnd), big.NewInt(1)))
 
 			framework.Logf(`subnet status usingIPRange %q expect "%s-%s"`, usingIPRange, startIP, usingIPEnd)
 			if usingIPRange != fmt.Sprintf("%s-%s", startIP, usingIPEnd) {
@@ -908,13 +908,13 @@ var _ = framework.Describe("[group:subnet]", func() {
 
 			expectAvailIPRangeStr := fmt.Sprintf("%s-%s,%s-%s",
 				startIP,
-				util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(startIP), big.NewInt(count-1))),
-				util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(startIP), big.NewInt(2*count))),
+				util.BigInt2Ip(big.NewInt(0).Add(util.IP2BigInt(startIP), big.NewInt(count-1))),
+				util.BigInt2Ip(big.NewInt(0).Add(util.IP2BigInt(startIP), big.NewInt(2*count))),
 				lastIP,
 			)
 			expectUsingIPRangeStr := fmt.Sprintf("%s-%s",
-				util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(startIP), big.NewInt(count))),
-				util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(startIP), big.NewInt(2*count-1))),
+				util.BigInt2Ip(big.NewInt(0).Add(util.IP2BigInt(startIP), big.NewInt(count))),
+				util.BigInt2Ip(big.NewInt(0).Add(util.IP2BigInt(startIP), big.NewInt(2*count-1))),
 			)
 
 			framework.Logf("subnet status usingIPRange %q expect %q", usingIPRange, expectUsingIPRangeStr)
@@ -1153,7 +1153,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		_ = subnetClient.PatchSync(subnet, modifiedSubnet)
 
 		ginkgo.By("Creating another subnet with the same rules: " + fakeSubnetName)
-		fakeCidr := framework.RandomCIDR(f.ClusterIpFamily)
+		fakeCidr := framework.RandomCIDR(f.ClusterIPFamily)
 		fakeCidrV4, fakeCidrV6 := util.SplitStringIP(fakeCidr)
 		fakeSubnet := framework.MakeSubnet(fakeSubnetName, "", fakeCidr, "", "", "", nil, nil, nil)
 		fakeSubnet.Spec.NatOutgoingPolicyRules = rules
@@ -1405,21 +1405,22 @@ func createPodsByRandomIPs(podClient *framework.PodClient, subnetClient *framewo
 	subnet := subnetClient.Get(subnetName)
 	for i := 1; i <= podCount; i++ {
 		step := rand.Int63()%10 + 2
-		if subnet.Spec.Protocol == apiv1.ProtocolIPv4 {
-			podv4IP = util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(podv4IP), big.NewInt(step)))
+		switch subnet.Spec.Protocol {
+		case apiv1.ProtocolIPv4:
+			podv4IP = util.BigInt2Ip(big.NewInt(0).Add(util.IP2BigInt(podv4IP), big.NewInt(step)))
 			allocIP = podv4IP
-		} else if subnet.Spec.Protocol == apiv1.ProtocolIPv6 {
-			podv6IP = util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(podv6IP), big.NewInt(step)))
+		case apiv1.ProtocolIPv6:
+			podv6IP = util.BigInt2Ip(big.NewInt(0).Add(util.IP2BigInt(podv6IP), big.NewInt(step)))
 			allocIP = podv6IP
-		} else {
-			podv4IP = util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(podv4IP), big.NewInt(step)))
-			podv6IP = util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(podv6IP), big.NewInt(step)))
+		default:
+			podv4IP = util.BigInt2Ip(big.NewInt(0).Add(util.IP2BigInt(podv4IP), big.NewInt(step)))
+			podv6IP = util.BigInt2Ip(big.NewInt(0).Add(util.IP2BigInt(podv6IP), big.NewInt(step)))
 			allocIP = fmt.Sprintf("%s,%s", podv4IP, podv6IP)
 		}
 
 		annotations := map[string]string{
 			util.LogicalSwitchAnnotation:                                        subnetName,
-			fmt.Sprintf(util.IpAddressAnnotationTemplate, subnet.Spec.Provider): allocIP,
+			fmt.Sprintf(util.IPAddressAnnotationTemplate, subnet.Spec.Provider): allocIP,
 		}
 
 		podName := fmt.Sprintf("%s-%d", podNamePrefix, i)
@@ -1444,11 +1445,11 @@ func calcuIPRangeListStr(podIPs []string, startIP, lastIP string) (string, strin
 	for index, podIP := range podIPs {
 		usingIPs = append(usingIPs, podIP)
 		if index == 0 {
-			availableIPs = append(availableIPs, fmt.Sprintf("%s-%s", startIP, util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(podIP), big.NewInt(-1)))))
+			availableIPs = append(availableIPs, fmt.Sprintf("%s-%s", startIP, util.BigInt2Ip(big.NewInt(0).Add(util.IP2BigInt(podIP), big.NewInt(-1)))))
 		} else {
 			preIP := prePodIP
-			start := util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(preIP), big.NewInt(1)))
-			end := util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(podIP), big.NewInt(-1)))
+			start := util.BigInt2Ip(big.NewInt(0).Add(util.IP2BigInt(preIP), big.NewInt(1)))
+			end := util.BigInt2Ip(big.NewInt(0).Add(util.IP2BigInt(podIP), big.NewInt(-1)))
 
 			if start == end {
 				availableIPs = append(availableIPs, start)
@@ -1460,7 +1461,7 @@ func calcuIPRangeListStr(podIPs []string, startIP, lastIP string) (string, strin
 	}
 
 	if prePodIP != "" {
-		availableIPs = append(availableIPs, fmt.Sprintf("%s-%s", util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(prePodIP), big.NewInt(1))), lastIP))
+		availableIPs = append(availableIPs, fmt.Sprintf("%s-%s", util.BigInt2Ip(big.NewInt(0).Add(util.IP2BigInt(prePodIP), big.NewInt(1))), lastIP))
 	}
 
 	usingIPStr = strings.Join(usingIPs, ",")

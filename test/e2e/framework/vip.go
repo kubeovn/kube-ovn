@@ -109,7 +109,7 @@ func (c *VipClient) DeleteSync(name string) {
 }
 
 // WaitToDisappear waits the given timeout duration for the specified OVN VIP to disappear.
-func (c *VipClient) WaitToDisappear(name string, interval, timeout time.Duration) error {
+func (c *VipClient) WaitToDisappear(name string, _, timeout time.Duration) error {
 	err := framework.Gomega().Eventually(context.Background(), framework.HandleRetry(func(ctx context.Context) (*apiv1.Vip, error) {
 		vip, err := c.VipInterface.Get(ctx, name, metav1.GetOptions{})
 		if apierrors.IsNotFound(err) {

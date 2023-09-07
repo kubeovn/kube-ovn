@@ -184,6 +184,7 @@ func TestRemoveString(t *testing.T) {
 		})
 	}
 }
+
 func Test_DiffStringSlice(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

@@ -19,7 +19,7 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-type slrInfo struct {
+type SlrInfo struct {
 	Name       string
 	Namespace  string
 	IsRecreate bool
@@ -29,8 +29,8 @@ func generateSvcName(name string) string {
 	return fmt.Sprintf("slr-%s", name)
 }
 
-func NewSlrInfo(slr *kubeovnv1.SwitchLBRule) *slrInfo {
-	return &slrInfo{
+func NewSlrInfo(slr *kubeovnv1.SwitchLBRule) *SlrInfo {
+	return &SlrInfo{
 		Name:       slr.Name,
 		Namespace:  slr.Spec.Namespace,
 		IsRecreate: false,
@@ -38,7 +38,6 @@ func NewSlrInfo(slr *kubeovnv1.SwitchLBRule) *slrInfo {
 }
 
 func (c *Controller) enqueueAddSwitchLBRule(obj interface{}) {
-
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -49,9 +48,9 @@ func (c *Controller) enqueueAddSwitchLBRule(obj interface{}) {
 	c.addSwitchLBRuleQueue.Add(key)
 }
 
-func (c *Controller) enqueueUpdateSwitchLBRule(old, new interface{}) {
-	oldSlr := old.(*kubeovnv1.SwitchLBRule)
-	newSlr := new.(*kubeovnv1.SwitchLBRule)
+func (c *Controller) enqueueUpdateSwitchLBRule(oldObj, newObj interface{}) {
+	oldSlr := oldObj.(*kubeovnv1.SwitchLBRule)
+	newSlr := newObj.(*kubeovnv1.SwitchLBRule)
 	info := NewSlrInfo(oldSlr)
 
 	if oldSlr.ResourceVersion == newSlr.ResourceVersion ||
@@ -81,7 +80,7 @@ func (c *Controller) enqueueDeleteSwitchLBRule(obj interface{}) {
 	c.delSwitchLBRuleQueue.Add(info)
 }
 
-func (c *Controller) processSwitchLBRuleWorkItem(processName string, queue workqueue.RateLimitingInterface, handler func(key *slrInfo) error) bool {
+func (c *Controller) processSwitchLBRuleWorkItem(processName string, queue workqueue.RateLimitingInterface, handler func(key *SlrInfo) error) bool {
 	obj, shutdown := queue.Get()
 	if shutdown {
 		return false
@@ -89,7 +88,7 @@ func (c *Controller) processSwitchLBRuleWorkItem(processName string, queue workq
 
 	err := func(obj interface{}) error {
 		defer queue.Done(obj)
-		key, ok := obj.(*slrInfo)
+		key, ok := obj.(*SlrInfo)
 		if !ok {
 			queue.Forget(obj)
 			utilruntime.HandleError(fmt.Errorf("expected switchLBRule in workqueue but got %#v", obj))
@@ -101,7 +100,6 @@ func (c *Controller) processSwitchLBRuleWorkItem(processName string, queue workq
 		queue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("process: %s. err: %v", processName, err))
 		queue.AddRateLimited(obj)
@@ -224,7 +222,7 @@ func (c *Controller) handleAddOrUpdateSwitchLBRule(key string) error {
 	return nil
 }
 
-func (c *Controller) handleDelSwitchLBRule(info *slrInfo) error {
+func (c *Controller) handleDelSwitchLBRule(info *SlrInfo) error {
 	klog.V(3).Infof("handleDelSwitchLBRule %s", info.Name)
 
 	name := generateSvcName(info.Name)
@@ -239,7 +237,7 @@ func (c *Controller) handleDelSwitchLBRule(info *slrInfo) error {
 	return nil
 }
 
-func (c *Controller) handleUpdateSwitchLBRule(info *slrInfo) error {
+func (c *Controller) handleUpdateSwitchLBRule(info *SlrInfo) error {
 	klog.V(3).Infof("handleUpdateSwitchLBRule %s", info.Name)
 	if info.IsRecreate {
 		if err := c.handleDelSwitchLBRule(info); err != nil {
@@ -308,7 +306,6 @@ func generateHeadlessService(slr *kubeovnv1.SwitchLBRule, oldSvc *corev1.Service
 				SessionAffinity: corev1.ServiceAffinity(slr.Spec.SessionAffinity),
 			},
 		}
-
 	}
 	return newSvc
 }

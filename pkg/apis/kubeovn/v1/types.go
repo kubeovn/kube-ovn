@@ -158,7 +158,7 @@ type SubnetSpec struct {
 	EnableIPv6RA  bool   `json:"enableIPv6RA,omitempty"`
 	IPv6RAConfigs string `json:"ipv6RAConfigs,omitempty"`
 
-	Acls []Acl `json:"acls,omitempty"`
+	Acls []ACL `json:"acls,omitempty"`
 
 	NatOutgoingPolicyRules []NatOutgoingPolicyRule `json:"natOutgoingPolicyRules,omitempty"`
 
@@ -170,7 +170,7 @@ type SubnetSpec struct {
 	RouteTable string `json:"routeTable,omitempty"`
 }
 
-type Acl struct {
+type ACL struct {
 	Direction string `json:"direction,omitempty"`
 	Priority  int    `json:"priority,omitempty"`
 	Match     string `json:"match,omitempty"`
@@ -312,7 +312,7 @@ type Vlan struct {
 
 type VlanSpec struct {
 	// deprecated fields, use ID & Provider instead
-	VlanId                int    `json:"vlanId,omitempty"`
+	VlanID                int    `json:"vlanId,omitempty"`
 	ProviderInterfaceName string `json:"providerInterfaceName,omitempty"`
 
 	ID       int    `json:"id"`
@@ -439,7 +439,7 @@ type StaticRoute struct {
 	CIDR       string      `json:"cidr"`
 	NextHopIP  string      `json:"nextHopIP"`
 	ECMPMode   string      `json:"ecmpMode"`
-	BfdId      string      `json:"bfdId"`
+	BfdID      string      `json:"bfdId"`
 	RouteTable string      `json:"routeTable"`
 }
 
@@ -471,11 +471,11 @@ type VpcStatus struct {
 	Default                 bool     `json:"default"`
 	DefaultLogicalSwitch    string   `json:"defaultLogicalSwitch"`
 	Router                  string   `json:"router"`
-	TcpLoadBalancer         string   `json:"tcpLoadBalancer"`
-	UdpLoadBalancer         string   `json:"udpLoadBalancer"`
+	TCPLoadBalancer         string   `json:"tcpLoadBalancer"`
+	UDPLoadBalancer         string   `json:"udpLoadBalancer"`
 	SctpLoadBalancer        string   `json:"sctpLoadBalancer"`
-	TcpSessionLoadBalancer  string   `json:"tcpSessionLoadBalancer"`
-	UdpSessionLoadBalancer  string   `json:"udpSessionLoadBalancer"`
+	TCPSessionLoadBalancer  string   `json:"tcpSessionLoadBalancer"`
+	UDPSessionLoadBalancer  string   `json:"udpSessionLoadBalancer"`
 	SctpSessionLoadBalancer string   `json:"sctpSessionLoadBalancer"`
 	Subnets                 []string `json:"subnets"`
 	VpcPeerings             []string `json:"vpcPeerings"`
@@ -513,7 +513,7 @@ type VpcNatSpec struct {
 	Vpc             string              `json:"vpc"`
 	Subnet          string              `json:"subnet"`
 	ExternalSubnets []string            `json:"externalSubnets"`
-	LanIp           string              `json:"lanIp"`
+	LanIP           string              `json:"lanIp"`
 	Selector        []string            `json:"selector"`
 	Tolerations     []corev1.Toleration `json:"tolerations"`
 	Affinity        corev1.Affinity     `json:"affinity"`
@@ -591,7 +591,7 @@ type IptablesFIPRule struct {
 }
 type IptablesFIPRuleSpec struct {
 	EIP        string `json:"eip"`
-	InternalIp string `json:"internalIp"`
+	InternalIP string `json:"internalIp"`
 }
 
 // IptablesFIPRuleCondition describes the state of an object at a certain point.
@@ -606,7 +606,7 @@ type IptablesFIPRuleStatus struct {
 	V6ip       string `json:"v6ip" patchStrategy:"merge"`
 	NatGwDp    string `json:"natGwDp" patchStrategy:"merge"`
 	Redo       string `json:"redo" patchStrategy:"merge"`
-	InternalIp string `json:"internalIp"  patchStrategy:"merge"`
+	InternalIP string `json:"internalIp"  patchStrategy:"merge"`
 
 	// Conditions represents the latest state of the object
 	// +optional
@@ -687,7 +687,7 @@ type IptablesDnatRuleSpec struct {
 	EIP          string `json:"eip"`
 	ExternalPort string `json:"externalPort"`
 	Protocol     string `json:"protocol,omitempty"`
-	InternalIp   string `json:"internalIp"`
+	InternalIP   string `json:"internalIp"`
 	InternalPort string `json:"internalPort"`
 }
 
@@ -704,7 +704,7 @@ type IptablesDnatRuleStatus struct {
 	NatGwDp      string `json:"natGwDp" patchStrategy:"merge"`
 	Redo         string `json:"redo" patchStrategy:"merge"`
 	Protocol     string `json:"protocol"  patchStrategy:"merge"`
-	InternalIp   string `json:"internalIp"  patchStrategy:"merge"`
+	InternalIP   string `json:"internalIp"  patchStrategy:"merge"`
 	InternalPort string `json:"internalPort"  patchStrategy:"merge"`
 	ExternalPort string `json:"externalPort"  patchStrategy:"merge"`
 
@@ -847,11 +847,11 @@ type VpcDns struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   VpcDnsSpec   `json:"spec"`
-	Status VpcDnsStatus `json:"status,omitempty"`
+	Spec   VpcDNSSpec   `json:"spec"`
+	Status VpcDNSStatus `json:"status,omitempty"`
 }
 
-type VpcDnsSpec struct {
+type VpcDNSSpec struct {
 	Vpc    string `json:"vpc"`
 	Subnet string `json:"subnet"`
 }
@@ -865,18 +865,18 @@ type VpcDnsList struct {
 	Items []VpcDns `json:"items"`
 }
 
-type VpcDnsStatus struct {
+type VpcDNSStatus struct {
 	// +optional
 	// +patchMergeKey=type
 	// +patchStrategy=merge
-	Conditions []VpcDnsCondition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
+	Conditions []VpcDNSCondition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 
 	Active bool `json:"active" patchStrategy:"merge"`
 }
 
-// VpcDnsCondition describes the state of an object at a certain point.
+// VpcDNSCondition describes the state of an object at a certain point.
 // +k8s:deepcopy-gen=true
-type VpcDnsCondition Condition
+type VpcDNSCondition Condition
 
 type SlrPort struct {
 	Name       string `json:"name"`
@@ -997,8 +997,8 @@ type OvnFip struct {
 }
 type OvnFipSpec struct {
 	OvnEip string `json:"ovnEip"`
-	IpType string `json:"ipType"` // vip, ip
-	IpName string `json:"ipName"` // vip, ip crd name
+	IPType string `json:"ipType"` // vip, ip
+	IPName string `json:"ipName"` // vip, ip crd name
 }
 
 // OvnFipCondition describes the state of an object at a certain point.
@@ -1046,7 +1046,7 @@ type OvnSnatRule struct {
 type OvnSnatRuleSpec struct {
 	OvnEip    string `json:"ovnEip"`
 	VpcSubnet string `json:"vpcSubnet"`
-	IpName    string `json:"ipName"`
+	IPName    string `json:"ipName"`
 }
 
 // OvnSnatRuleCondition describes the state of an object at a certain point.
@@ -1092,8 +1092,8 @@ type OvnDnatRule struct {
 
 type OvnDnatRuleSpec struct {
 	OvnEip       string `json:"ovnEip"`
-	IpType       string `json:"ipType"` // vip, ip
-	IpName       string `json:"ipName"` // vip, ip crd name
+	IPType       string `json:"ipType"` // vip, ip
+	IPName       string `json:"ipName"` // vip, ip crd name
 	InternalPort string `json:"internalPort"`
 	ExternalPort string `json:"externalPort"`
 	Protocol     string `json:"protocol,omitempty"`
@@ -1115,7 +1115,7 @@ type OvnDnatRuleStatus struct {
 	InternalPort string `json:"internalPort"`
 	ExternalPort string `json:"externalPort"`
 	Protocol     string `json:"protocol,omitempty"`
-	IpName       string `json:"ipName"`
+	IPName       string `json:"ipName"`
 
 	// Conditions represents the latest state of the object
 	// +optional

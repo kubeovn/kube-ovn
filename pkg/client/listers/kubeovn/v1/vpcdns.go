@@ -37,18 +37,18 @@ type VpcDnsLister interface {
 	VpcDnsListerExpansion
 }
 
-// vpcDnsLister implements the VpcDnsLister interface.
-type vpcDnsLister struct {
+// vpcDNSLister implements the VpcDnsLister interface.
+type vpcDNSLister struct {
 	indexer cache.Indexer
 }
 
 // NewVpcDnsLister returns a new VpcDnsLister.
 func NewVpcDnsLister(indexer cache.Indexer) VpcDnsLister {
-	return &vpcDnsLister{indexer: indexer}
+	return &vpcDNSLister{indexer: indexer}
 }
 
 // List lists all VpcDnses in the indexer.
-func (s *vpcDnsLister) List(selector labels.Selector) (ret []*v1.VpcDns, err error) {
+func (s *vpcDNSLister) List(selector labels.Selector) (ret []*v1.VpcDns, err error) {
 	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1.VpcDns))
 	})
@@ -56,7 +56,7 @@ func (s *vpcDnsLister) List(selector labels.Selector) (ret []*v1.VpcDns, err err
 }
 
 // Get retrieves the VpcDns from the index for a given name.
-func (s *vpcDnsLister) Get(name string) (*v1.VpcDns, error) {
+func (s *vpcDNSLister) Get(name string) (*v1.VpcDns, error) {
 	obj, exists, err := s.indexer.GetByKey(name)
 	if err != nil {
 		return nil, err
