@@ -11,6 +11,14 @@ import (
 	"k8s.io/klog/v2"
 )
 
+const (
+	nmIP4ConfigInterfacePropertiesChanged = gonetworkmanager.IP4ConfigInterface + ".PropertiesChanged"
+	nmIP6ConfigInterfacePropertiesChanged = gonetworkmanager.IP6ConfigInterface + ".PropertiesChanged"
+
+	nmDBusObjectPathIPConfig4 = gonetworkmanager.NetworkManagerObjectPath + "/IP4Config/"
+	nmDBusObjectPathIPConfig6 = gonetworkmanager.NetworkManagerObjectPath + "/IP6Config/"
+)
+
 type networkManagerSyncer struct {
 	manager   gonetworkmanager.NetworkManager
 	workqueue workqueue.Interface
@@ -59,18 +67,15 @@ func (n *networkManagerSyncer) Run(handler func(nic, bridge string, delNonExiste
 		ch := n.manager.Subscribe()
 		defer n.manager.Unsubscribe()
 
-		suffix := "." + gonetworkmanager.ActiveConnectionSignalStateChanged
 		for {
 			event := <-ch
-			if len(event.Body) == 0 || !strings.HasSuffix(event.Name, suffix) {
+			if event.Name != nmIP4ConfigInterfacePropertiesChanged &&
+				event.Name != nmIP6ConfigInterfacePropertiesChanged {
 				continue
 			}
-			state, ok := event.Body[0].(uint32)
-			if !ok {
-				klog.Warningf("failed to convert %#v to uint32", event.Body[0])
-				continue
-			}
-			if gonetworkmanager.NmDeviceState(state) != gonetworkmanager.NmDeviceStateActivated {
+			path := string(event.Path)
+			if !strings.HasPrefix(path, nmDBusObjectPathIPConfig4) &&
+				!strings.HasPrefix(path, nmDBusObjectPathIPConfig6) {
 				continue
 			}
 
@@ -82,13 +87,29 @@ func (n *networkManagerSyncer) Run(handler func(nic, bridge string, delNonExiste
 
 			var device gonetworkmanager.Device
 			for _, dev := range devices {
-				if dev.GetPath() == event.Path {
-					device = dev
-					break
+				if event.Name == nmIP4ConfigInterfacePropertiesChanged {
+					config, err := dev.GetPropertyIP4Config()
+					if err != nil {
+						klog.Errorf("failed to get ipv4 config of device %s: %v", dev.GetPath(), err)
+						break
+					}
+					if config != nil && config.Path() == event.Path {
+						device = dev
+						break
+					}
+				} else {
+					config, err := dev.GetPropertyIP6Config()
+					if err != nil {
+						klog.Errorf("failed to get ipv6 config of device %s: %v", dev.GetPath(), err)
+						break
+					}
+					if config != nil && config.Path() == event.Path {
+						device = dev
+						break
+					}
 				}
 			}
 			if device == nil {
-				klog.Warningf("NetworkManager device %s not found", event.Path)
 				continue
 			}
 
@@ -105,7 +126,7 @@ func (n *networkManagerSyncer) Run(handler func(nic, bridge string, delNonExiste
 			}
 			n.lock.Unlock()
 
-			klog.Infof("adding device %s to workqueue", name)
+			klog.Infof("ip address change detected on device %q, adding to workqueue", name)
 			n.workqueue.Add(name)
 		}
 	}()
@@ -151,17 +172,15 @@ func (n *networkManagerSyncer) AddDevice(nicName, bridge string) error {
 	return nil
 }
 
-func (n *networkManagerSyncer) RemoveDevice(nicName string) error {
+func (n *networkManagerSyncer) RemoveDevice(nicName string) {
 	if n.manager == nil {
-		return nil
+		return
 	}
 
 	n.lock.Lock()
 	n.devices.Remove(nicName)
 	delete(n.bridgeMap, nicName)
 	n.lock.Unlock()
-
-	return nil
 }
 
 func (n *networkManagerSyncer) SetManaged(name string, managed bool) error {
