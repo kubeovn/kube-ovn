@@ -319,7 +319,7 @@ func (c *Controller) configProviderNic(nicName, brName string) (int, error) {
 	return 0, nil
 }
 
-func removeProviderNic(nicName, brName string) error {
+func (c *Controller) removeProviderNic(nicName, brName string) error {
 	// nothing to do on Windows
 	return nil
 }

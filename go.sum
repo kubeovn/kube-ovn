@@ -723,8 +723,9 @@ github.com/google/uuid v1.1.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+
 github.com/google/uuid v1.1.1/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
 github.com/google/uuid v1.1.2/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
 github.com/google/uuid v1.2.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
-github.com/google/uuid v1.3.0 h1:t6JiXgmwXMjEs8VusXIJk2BXHsn+wx8BZdTaoZ5fu7I=
 github.com/google/uuid v1.3.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
+github.com/google/uuid v1.3.1 h1:KjJaJ9iWZ3jOFZIf1Lqf4laDRCasjl0BCmnEGxkdLb4=
+github.com/google/uuid v1.3.1/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
 github.com/googleapis/enterprise-certificate-proxy v0.2.3 h1:yk9/cqRKtT9wXZSsRH9aurXEpJX+U6FLtpYTdC3R06k=
 github.com/googleapis/enterprise-certificate-proxy v0.2.3/go.mod h1:AwSRAtLfXpU5Nm3pW+v7rGDHp09LsPtGY9MduiEsR9k=
 github.com/googleapis/gax-go v2.0.2+incompatible/go.mod h1:SFVmujtThgffbyetf+mdk2eWhX2bMyUtNHzFKcPA9HY=
@@ -899,8 +900,8 @@ github.com/kubeovn/felix v0.0.0-20220325073257-c8a0f705d139 h1:MaLC8/dohKHU8nkfg
 github.com/kubeovn/felix v0.0.0-20220325073257-c8a0f705d139/go.mod h1:ulxnUH9cbIOtCH+exhJPeV2mleh+bDv67WKsl/MVU/g=
 github.com/kubeovn/go-iptables v0.0.0-20230322103850-8619a8ab3dca h1:fTMjoho2et9nKVOFrjzVEWVd9XD1zzxOYrlxxZpO0fU=
 github.com/kubeovn/go-iptables v0.0.0-20230322103850-8619a8ab3dca/go.mod h1:jY1XeGzkx8ASNJ+SqQSxTESNXARkjvt+I6IJOTnzIjw=
-github.com/kubeovn/gonetworkmanager/v2 v2.0.0-20230327064018-0b27f88874f7 h1:X5/DAYXXe8p3mUz3Z+j0dsgpIUPiNhaq0f7D1Z9/8CY=
-github.com/kubeovn/gonetworkmanager/v2 v2.0.0-20230327064018-0b27f88874f7/go.mod h1:rNwHas8aX9k/BEz5dwObhRvfV7KEd0MnrTTDd4gQ3D0=
+github.com/kubeovn/gonetworkmanager/v2 v2.0.0-20230905082151-e28c4d73a589 h1:y9exo1hjCsq7jsGUzt11kxhTiEGrGSQ0ZqibAiZk2PQ=
+github.com/kubeovn/gonetworkmanager/v2 v2.0.0-20230905082151-e28c4d73a589/go.mod h1:49upX+/hUyppWIqu58cumojyIwXdkA8k6reA/mQlKuI=
 github.com/kubeovn/kubevirt-client-go v0.0.0-20221209084839-9c2ed1f0604d h1:sM7V2MhONBa10zYQA1yg/UbPm/Y7JqVqymtgoDiGqMo=
 github.com/kubeovn/kubevirt-client-go v0.0.0-20221209084839-9c2ed1f0604d/go.mod h1:FjHUGVwls5NE1q8rsSL0LsRU46p35cwgnwSItkr8oXs=
 github.com/kubeovn/libovsdb v0.0.0-20221208095821-f8830e1998e8 h1:gkYOU8DJQJeDef9hYETOf0D270zVS3xYuytjFLEi0rc=
