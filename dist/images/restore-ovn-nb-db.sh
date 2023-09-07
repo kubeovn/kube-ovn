@@ -22,7 +22,7 @@ podNames=`kubectl get pod -n $KUBE_OVN_NS | grep ovs-ovn | awk '{print $1}'`
 echo "first nodeIP is $firstIP"
 
 i=0
-for nodeIP in ${nodeIps[@]}
+for nodeIp in ${nodeIps[@]}
 do
   for pod in $podNames
   do

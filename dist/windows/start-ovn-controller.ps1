@@ -15,14 +15,14 @@ Get-Content $ovnConfigPath | ForEach-Object -process {
     }
 }
 
-$ovnDbIPs = $global:ovnConfig["OVN_DB_IPS"]
+$ovnDBIPs = $global:ovnConfig["OVN_DB_IPS"]
 $ovnDBPort = $global:ovnConfig["OVN_DB_PORT"]
 $tunnelType = $($global:ovnConfig["TUNNEL_TYPE"]).ToLower()
 $nodeName = $($global:ovnConfig["NODE_NAME"]).ToLower()
 $hnsNetwork = $global:ovnConfig["HNS_NETWORK"]
 
 $connections = @()
-foreach ($ip in $ovnDbIPs.Split(',')) {
+foreach ($ip in $ovnDBIPs.Split(',')) {
     $connections += [string]::Format("tcp:[{0}]:{1}", $ip, $ovnDBPort)
 }
 $connString = $connections -join ','

@@ -49,7 +49,7 @@ function add_dnat() {
         eip=(${arr[0]//\// })
         dport=${arr[1]}
         protocol=${arr[2]}
-        internalIP=${arr[3]}
+        internalIp=${arr[3]}
         internalPort=${arr[4]}
         defaultGateway=${arr[5]}
         # check if already exist

@@ -1304,7 +1304,7 @@ dbtool(){
           echo "first nodeIP is $firstIP"
 
           i=0
-          for nodeIP in ${nodeIps[@]}
+          for nodeIp in ${nodeIps[@]}
           do
             for pod in $podNames
             do
