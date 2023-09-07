@@ -108,7 +108,7 @@ func (c *Controller) ovsInitProviderNetwork(provider, nic string, exchangeLinkNa
 	}
 
 	klog.V(3).Infof("configure external bridge %s", brName)
-	if err := configExternalBridge(provider, brName, nic, exchangeLinkName, macLearningFallback); err != nil {
+	if err := c.configExternalBridge(provider, brName, nic, exchangeLinkName, macLearningFallback); err != nil {
 		errMsg := fmt.Errorf("failed to create and configure external bridge %s: %v", brName, err)
 		klog.Error(errMsg)
 		return 0, errMsg
@@ -170,7 +170,7 @@ func (c *Controller) ovsCleanProviderNetwork(provider string) error {
 				continue
 			}
 			klog.V(3).Infof("removing ovs port %s from bridge %s", port, brName)
-			if err = removeProviderNic(port, brName); err != nil {
+			if err = c.removeProviderNic(port, brName); err != nil {
 				errMsg := fmt.Errorf("failed to remove port %s from external bridge %s: %v", port, brName, err)
 				klog.Error(errMsg)
 				return errMsg
