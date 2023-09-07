@@ -64,7 +64,7 @@ func (suite *OvnClientTestSuite) testUpdateDHCPOptions() {
 	})
 }
 
-func (suite *OvnClientTestSuite) test_updateDHCPv4Options() {
+func (suite *OvnClientTestSuite) testUpdateDHCPv4Options() {
 	t := suite.T()
 	t.Parallel()
 
@@ -134,7 +134,7 @@ func (suite *OvnClientTestSuite) test_updateDHCPv4Options() {
 	})
 }
 
-func (suite *OvnClientTestSuite) test_updateDHCPv6Options() {
+func (suite *OvnClientTestSuite) testUpdateDHCPv6Options() {
 	t := suite.T()
 	t.Parallel()
 
@@ -358,7 +358,7 @@ func (suite *OvnClientTestSuite) testListDHCPOptions() {
 	require.Len(t, out, 3)
 }
 
-func (suite *OvnClientTestSuite) test_dhcpOptionsFilter() {
+func (suite *OvnClientTestSuite) testDhcpOptionsFilter() {
 	t := suite.T()
 	t.Parallel()
 

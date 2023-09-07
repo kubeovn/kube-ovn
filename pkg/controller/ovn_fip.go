@@ -22,7 +22,6 @@ import (
 )
 
 func (c *Controller) enqueueAddOvnFip(obj interface{}) {
-
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -33,32 +32,31 @@ func (c *Controller) enqueueAddOvnFip(obj interface{}) {
 	c.addOvnFipQueue.Add(key)
 }
 
-func (c *Controller) enqueueUpdateOvnFip(old, new interface{}) {
+func (c *Controller) enqueueUpdateOvnFip(oldObj, newObj interface{}) {
 	var key string
 	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(new); err != nil {
+	if key, err = cache.MetaNamespaceKeyFunc(newObj); err != nil {
 		utilruntime.HandleError(err)
 		return
 	}
-	newFip := new.(*kubeovnv1.OvnFip)
+	newFip := newObj.(*kubeovnv1.OvnFip)
 	if !newFip.DeletionTimestamp.IsZero() {
 		if len(newFip.Finalizers) == 0 {
 			// avoid delete twice
 			return
-		} else {
-			klog.Infof("enqueue del ovn fip %s", key)
-			c.delOvnFipQueue.Add(key)
-			return
 		}
+		klog.Infof("enqueue del ovn fip %s", key)
+		c.delOvnFipQueue.Add(key)
+		return
 	}
-	oldFip := old.(*kubeovnv1.OvnFip)
+	oldFip := oldObj.(*kubeovnv1.OvnFip)
 	if oldFip.Spec.OvnEip != newFip.Spec.OvnEip {
 		// enqueue to reset eip to be clean
 		klog.Infof("enqueue reset old ovn eip %s", oldFip.Spec.OvnEip)
 		c.resetOvnEipQueue.Add(oldFip.Spec.OvnEip)
 	}
-	if !reflect.DeepEqual(oldFip.Spec.IpName, newFip.Spec.IpName) ||
-		!reflect.DeepEqual(oldFip.Spec.IpType, newFip.Spec.IpType) {
+	if !reflect.DeepEqual(oldFip.Spec.IPName, newFip.Spec.IPName) ||
+		!reflect.DeepEqual(oldFip.Spec.IPType, newFip.Spec.IPType) {
 		klog.Infof("enqueue update fip %s", key)
 		c.updateOvnFipQueue.Add(key)
 		return
@@ -141,7 +139,6 @@ func (c *Controller) processNextUpdateOvnFipWorkItem() bool {
 		c.updateOvnFipQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -210,24 +207,24 @@ func (c *Controller) handleAddOvnFip(key string) error {
 	}
 	klog.Infof("handle add fip %s", key)
 	var internalV4Ip, mac, subnetName string
-	if cachedFip.Spec.IpType == util.Vip {
-		internalVip, err := c.virtualIpsLister.Get(cachedFip.Spec.IpName)
+	if cachedFip.Spec.IPType == util.Vip {
+		internalVip, err := c.virtualIpsLister.Get(cachedFip.Spec.IPName)
 		if err != nil {
-			klog.Errorf("failed to get vip %s, %v", cachedFip.Spec.IpName, err)
+			klog.Errorf("failed to get vip %s, %v", cachedFip.Spec.IPName, err)
 			return err
 		}
 		internalV4Ip = internalVip.Status.V4ip
 		mac = internalVip.Status.Mac
 		subnetName = internalVip.Spec.Subnet
 	} else {
-		internalIp, err := c.ipsLister.Get(cachedFip.Spec.IpName)
+		internalIP, err := c.ipsLister.Get(cachedFip.Spec.IPName)
 		if err != nil {
-			klog.Errorf("failed to get ip %s, %v", cachedFip.Spec.IpName, err)
+			klog.Errorf("failed to get ip %s, %v", cachedFip.Spec.IPName, err)
 			return err
 		}
-		internalV4Ip = internalIp.Spec.V4IPAddress
-		mac = internalIp.Spec.MacAddress
-		subnetName = internalIp.Spec.Subnet
+		internalV4Ip = internalIP.Spec.V4IPAddress
+		mac = internalIP.Spec.MacAddress
+		subnetName = internalIP.Spec.Subnet
 	}
 
 	// get eip
@@ -287,8 +284,8 @@ func (c *Controller) handleAddOvnFip(key string) error {
 		return err
 	}
 	// ovn add fip
-	if err = c.ovnNbClient.AddNat(vpcName, ovnnb.NATTypeDNATAndSNAT, cachedEip.Status.V4Ip,
-		internalV4Ip, mac, cachedFip.Spec.IpName,
+	if err = c.OVNNbClient.AddNat(vpcName, ovnnb.NATTypeDNATAndSNAT, cachedEip.Status.V4Ip,
+		internalV4Ip, mac, cachedFip.Spec.IPName,
 		map[string]string{"staleless": strconv.FormatBool(c.ExternalGatewayType == kubeovnv1.GWDistributedType)}); err != nil {
 		klog.Errorf("failed to create v4 fip, %v", err)
 		return err
@@ -330,24 +327,24 @@ func (c *Controller) handleUpdateOvnFip(key string) error {
 	}
 	klog.Infof("handle update fip %s", key)
 	var internalV4Ip, mac, subnetName string
-	if cachedFip.Spec.IpType == util.Vip {
-		internalVip, err := c.virtualIpsLister.Get(cachedFip.Spec.IpName)
+	if cachedFip.Spec.IPType == util.Vip {
+		internalVip, err := c.virtualIpsLister.Get(cachedFip.Spec.IPName)
 		if err != nil {
-			klog.Errorf("failed to get vip %s, %v", cachedFip.Spec.IpName, err)
+			klog.Errorf("failed to get vip %s, %v", cachedFip.Spec.IPName, err)
 			return err
 		}
 		internalV4Ip = internalVip.Status.V4ip
 		mac = internalVip.Status.Mac
 		subnetName = internalVip.Spec.Subnet
 	} else {
-		internalIp, err := c.ipsLister.Get(cachedFip.Spec.IpName)
+		internalIP, err := c.ipsLister.Get(cachedFip.Spec.IPName)
 		if err != nil {
-			klog.Errorf("failed to get ip %s, %v", cachedFip.Spec.IpName, err)
+			klog.Errorf("failed to get ip %s, %v", cachedFip.Spec.IPName, err)
 			return err
 		}
-		internalV4Ip = internalIp.Spec.V4IPAddress
-		mac = internalIp.Spec.MacAddress
-		subnetName = internalIp.Spec.Subnet
+		internalV4Ip = internalIP.Spec.V4IPAddress
+		mac = internalIP.Spec.MacAddress
+		subnetName = internalIP.Spec.Subnet
 	}
 	// get eip
 	eipName := cachedFip.Spec.OvnEip
@@ -383,8 +380,8 @@ func (c *Controller) handleUpdateOvnFip(key string) error {
 		return err
 	}
 	vpcName := subnet.Spec.Vpc
-	if err = c.ovnNbClient.AddNat(vpcName, ovnnb.NATTypeDNATAndSNAT, cachedEip.Status.V4Ip,
-		internalV4Ip, mac, cachedFip.Spec.IpName,
+	if err = c.OVNNbClient.AddNat(vpcName, ovnnb.NATTypeDNATAndSNAT, cachedEip.Status.V4Ip,
+		internalV4Ip, mac, cachedFip.Spec.IPName,
 		map[string]string{"staleless": strconv.FormatBool(c.ExternalGatewayType == kubeovnv1.GWDistributedType)}); err != nil {
 		klog.Errorf("failed to create v4 fip, %v", err)
 		return err
@@ -393,13 +390,13 @@ func (c *Controller) handleUpdateOvnFip(key string) error {
 	// fip change eip
 	if c.ovnFipChangeEip(fip, cachedEip) {
 		klog.Infof("fip change ip, old ip '%s', new ip %s", fip.Status.V4Ip, cachedEip.Status.V4Ip)
-		if err = c.ovnNbClient.DeleteNat(vpcName, ovnnb.NATTypeDNATAndSNAT, fip.Status.V4Ip, internalV4Ip); err != nil {
+		if err = c.OVNNbClient.DeleteNat(vpcName, ovnnb.NATTypeDNATAndSNAT, fip.Status.V4Ip, internalV4Ip); err != nil {
 			klog.Errorf("failed to create fip, %v", err)
 			return err
 		}
 		// ovn add fip
-		if err = c.ovnNbClient.AddNat(vpcName, ovnnb.NATTypeDNATAndSNAT, cachedEip.Status.V4Ip,
-			internalV4Ip, mac, cachedFip.Spec.IpName,
+		if err = c.OVNNbClient.AddNat(vpcName, ovnnb.NATTypeDNATAndSNAT, cachedEip.Status.V4Ip,
+			internalV4Ip, mac, cachedFip.Spec.IPName,
 			map[string]string{"staleless": strconv.FormatBool(c.ExternalGatewayType == kubeovnv1.GWDistributedType)}); err != nil {
 			klog.Errorf("failed to create fip, %v", err)
 			return err
@@ -434,7 +431,7 @@ func (c *Controller) handleDelOvnFip(key string) error {
 	}
 	// ovn delete fip nat
 	if cachedFip.Status.Vpc != "" && cachedFip.Status.V4Eip != "" && cachedFip.Status.V4Ip != "" {
-		if err = c.ovnNbClient.DeleteNat(cachedFip.Status.Vpc, ovnnb.NATTypeDNATAndSNAT, cachedFip.Status.V4Eip, cachedFip.Status.V4Ip); err != nil {
+		if err = c.OVNNbClient.DeleteNat(cachedFip.Status.Vpc, ovnnb.NATTypeDNATAndSNAT, cachedFip.Status.V4Eip, cachedFip.Status.V4Ip); err != nil {
 			klog.Errorf("failed to delete fip %s, %v", key, err)
 			return err
 		}
@@ -487,7 +484,7 @@ func (c *Controller) patchOvnFipAnnotations(key, eipName string) error {
 	return nil
 }
 
-func (c *Controller) patchOvnFipStatus(key, vpcName, v4Eip, podIp, podMac string, ready bool) error {
+func (c *Controller) patchOvnFipStatus(key, vpcName, v4Eip, podIP, podMac string, ready bool) error {
 	oriFip, err := c.ovnFipsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -527,11 +524,11 @@ func (c *Controller) patchOvnFipStatus(key, vpcName, v4Eip, podIp, podMac string
 	}
 	if (v4Eip != "" && fip.Status.V4Eip != v4Eip) ||
 		(vpcName != "" && fip.Status.Vpc != vpcName) ||
-		(podIp != "" && fip.Status.V4Ip != podIp) ||
+		(podIP != "" && fip.Status.V4Ip != podIP) ||
 		(podMac != "" && fip.Status.MacAddress != podMac) {
 		fip.Status.Vpc = vpcName
 		fip.Status.V4Eip = v4Eip
-		fip.Status.V4Ip = podIp
+		fip.Status.V4Ip = podIP
 		fip.Status.MacAddress = podMac
 		changed = true
 	}

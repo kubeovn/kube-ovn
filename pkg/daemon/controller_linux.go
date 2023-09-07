@@ -131,15 +131,15 @@ func (c *Controller) reconcileRouters(event *subnetEvent) error {
 	if event != nil {
 		var ok bool
 		var oldSubnet, newSubnet *kubeovnv1.Subnet
-		if event.old != nil {
-			if oldSubnet, ok = event.old.(*kubeovnv1.Subnet); !ok {
-				klog.Errorf("expected old subnet in subnetEvent but got %#v", event.old)
+		if event.oldObj != nil {
+			if oldSubnet, ok = event.oldObj.(*kubeovnv1.Subnet); !ok {
+				klog.Errorf("expected old subnet in subnetEvent but got %#v", event.oldObj)
 				return nil
 			}
 		}
-		if event.new != nil {
-			if newSubnet, ok = event.new.(*kubeovnv1.Subnet); !ok {
-				klog.Errorf("expected new subnet in subnetEvent but got %#v", event.new)
+		if event.newObj != nil {
+			if newSubnet, ok = event.newObj.(*kubeovnv1.Subnet); !ok {
+				klog.Errorf("expected new subnet in subnetEvent but got %#v", event.newObj)
 				return nil
 			}
 		}
@@ -524,8 +524,8 @@ func (c *Controller) handlePod(key string) error {
 	}
 
 	podName := pod.Name
-	if pod.Annotations[fmt.Sprintf(util.VmTemplate, util.OvnProvider)] != "" {
-		podName = pod.Annotations[fmt.Sprintf(util.VmTemplate, util.OvnProvider)]
+	if pod.Annotations[fmt.Sprintf(util.VMTemplate, util.OvnProvider)] != "" {
+		podName = pod.Annotations[fmt.Sprintf(util.VMTemplate, util.OvnProvider)]
 	}
 
 	// set default nic bandwidth
@@ -551,8 +551,8 @@ func (c *Controller) handlePod(key string) error {
 	}
 	for _, multiNet := range attachNets {
 		provider := fmt.Sprintf("%s.%s.ovn", multiNet.Name, multiNet.Namespace)
-		if pod.Annotations[fmt.Sprintf(util.VmTemplate, provider)] != "" {
-			podName = pod.Annotations[fmt.Sprintf(util.VmTemplate, provider)]
+		if pod.Annotations[fmt.Sprintf(util.VMTemplate, provider)] != "" {
+			podName = pod.Annotations[fmt.Sprintf(util.VMTemplate, provider)]
 		}
 		if pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, provider)] == "true" {
 			ifaceID = ovs.PodNameToPortName(podName, pod.Namespace, provider)
@@ -574,7 +574,7 @@ func (c *Controller) handlePod(key string) error {
 	return nil
 }
 
-func (c *Controller) loopEncapIpCheck() {
+func (c *Controller) loopEncapIPCheck() {
 	node, err := c.nodesLister.Get(c.config.NodeName)
 	if err != nil {
 		klog.Errorf("failed to get node %s %v", c.config.NodeName, err)
@@ -733,7 +733,7 @@ func readKos(dir string) (*[]string, error) {
 	return kos, nil
 }
 
-func isFile(filename string, dir string) (bool, string) {
+func isFile(filename, dir string) (bool, string) {
 	isFile := false
 	fileFullName := ""
 	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {

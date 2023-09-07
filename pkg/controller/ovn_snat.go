@@ -19,7 +19,6 @@ import (
 )
 
 func (c *Controller) enqueueAddOvnSnatRule(obj interface{}) {
-
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -29,32 +28,31 @@ func (c *Controller) enqueueAddOvnSnatRule(obj interface{}) {
 	c.addOvnSnatRuleQueue.Add(key)
 }
 
-func (c *Controller) enqueueUpdateOvnSnatRule(old, new interface{}) {
+func (c *Controller) enqueueUpdateOvnSnatRule(oldObj, newObj interface{}) {
 	var key string
 	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(new); err != nil {
+	if key, err = cache.MetaNamespaceKeyFunc(newObj); err != nil {
 		utilruntime.HandleError(err)
 		return
 	}
-	newSnat := new.(*kubeovnv1.OvnSnatRule)
+	newSnat := newObj.(*kubeovnv1.OvnSnatRule)
 	if !newSnat.DeletionTimestamp.IsZero() {
 		if len(newSnat.Finalizers) == 0 {
 			// avoid delete twice
 			return
-		} else {
-			klog.Infof("enqueue del ovn snat %s", key)
-			c.delOvnSnatRuleQueue.Add(key)
-			return
 		}
+		klog.Infof("enqueue del ovn snat %s", key)
+		c.delOvnSnatRuleQueue.Add(key)
+		return
 	}
-	oldSnat := old.(*kubeovnv1.OvnSnatRule)
+	oldSnat := oldObj.(*kubeovnv1.OvnSnatRule)
 	if oldSnat.Spec.OvnEip != newSnat.Spec.OvnEip {
 		// enqueue to reset eip to be clean
 		c.resetOvnEipQueue.Add(oldSnat.Spec.OvnEip)
 	}
 	if oldSnat.Spec.OvnEip != newSnat.Spec.OvnEip ||
 		oldSnat.Spec.VpcSubnet != newSnat.Spec.VpcSubnet ||
-		oldSnat.Spec.IpName != newSnat.Spec.IpName {
+		oldSnat.Spec.IPName != newSnat.Spec.IPName {
 		klog.Infof("enqueue update snat %s", key)
 		c.updateOvnSnatRuleQueue.Add(key)
 		return
@@ -109,7 +107,6 @@ func (c *Controller) processNextAddOvnSnatRuleWorkItem() bool {
 		c.addOvnSnatRuleQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -139,7 +136,6 @@ func (c *Controller) processNextUpdateOvnSnatRuleWorkItem() bool {
 		c.updateOvnSnatRuleQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -169,7 +165,6 @@ func (c *Controller) processNextDeleteOvnSnatRuleWorkItem() bool {
 		c.delOvnSnatRuleQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -220,19 +215,19 @@ func (c *Controller) handleAddOvnSnatRule(key string) error {
 		vpcName = subnet.Spec.Vpc
 		v4IpCidr = subnet.Spec.CIDRBlock
 	}
-	if cachedSnat.Spec.IpName != "" {
-		vpcPodIp, err := c.ipsLister.Get(cachedSnat.Spec.IpName)
+	if cachedSnat.Spec.IPName != "" {
+		vpcPodIP, err := c.ipsLister.Get(cachedSnat.Spec.IPName)
 		if err != nil {
-			klog.Errorf("failed to get pod ip %s, %v", cachedSnat.Spec.IpName, err)
+			klog.Errorf("failed to get pod ip %s, %v", cachedSnat.Spec.IPName, err)
 			return err
 		}
-		subnet, err := c.subnetsLister.Get(vpcPodIp.Spec.Subnet)
+		subnet, err := c.subnetsLister.Get(vpcPodIP.Spec.Subnet)
 		if err != nil {
-			klog.Errorf("failed to get vpc subnet %s, %v", vpcPodIp.Spec.Subnet, err)
+			klog.Errorf("failed to get vpc subnet %s, %v", vpcPodIP.Spec.Subnet, err)
 			return err
 		}
 		vpcName = subnet.Spec.Vpc
-		v4IpCidr = vpcPodIp.Spec.V4IPAddress
+		v4IpCidr = vpcPodIP.Spec.V4IPAddress
 	}
 
 	if v4IpCidr == "" {
@@ -252,7 +247,7 @@ func (c *Controller) handleAddOvnSnatRule(key string) error {
 		return err
 	}
 	// ovn add snat
-	if err = c.ovnNbClient.AddNat(vpcName, ovnnb.NATTypeSNAT, cachedEip.Spec.V4Ip, v4IpCidr, "", "", nil); err != nil {
+	if err = c.OVNNbClient.AddNat(vpcName, ovnnb.NATTypeSNAT, cachedEip.Spec.V4Ip, v4IpCidr, "", "", nil); err != nil {
 		klog.Errorf("failed to create snat, %v", err)
 		return err
 	}
@@ -305,7 +300,7 @@ func (c *Controller) handleUpdateOvnSnatRule(key string) error {
 		klog.V(3).Infof("ovn delete snat %s", key)
 		// ovn delete snat
 		if cachedSnat.Status.Vpc != "" && cachedSnat.Status.V4Eip != "" && cachedSnat.Status.V4IpCidr != "" {
-			if err = c.ovnNbClient.DeleteNat(cachedSnat.Status.Vpc, ovnnb.NATTypeSNAT, cachedSnat.Status.V4Eip, cachedSnat.Status.V4IpCidr); err != nil {
+			if err = c.OVNNbClient.DeleteNat(cachedSnat.Status.Vpc, ovnnb.NATTypeSNAT, cachedSnat.Status.V4Eip, cachedSnat.Status.V4IpCidr); err != nil {
 				klog.Errorf("failed to delete snat, %v", err)
 				return err
 			}
@@ -332,19 +327,19 @@ func (c *Controller) handleUpdateOvnSnatRule(key string) error {
 		vpcName = subnet.Spec.Vpc
 		v4IpCidr = subnet.Spec.CIDRBlock
 	}
-	if cachedSnat.Spec.IpName != "" {
-		vpcPodIp, err := c.ipsLister.Get(cachedSnat.Spec.IpName)
+	if cachedSnat.Spec.IPName != "" {
+		vpcPodIP, err := c.ipsLister.Get(cachedSnat.Spec.IPName)
 		if err != nil {
-			klog.Errorf("failed to get pod ip %s, %v", cachedSnat.Spec.IpName, err)
+			klog.Errorf("failed to get pod ip %s, %v", cachedSnat.Spec.IPName, err)
 			return err
 		}
-		subnet, err := c.subnetsLister.Get(vpcPodIp.Spec.Subnet)
+		subnet, err := c.subnetsLister.Get(vpcPodIP.Spec.Subnet)
 		if err != nil {
-			klog.Errorf("failed to get vpc subnet %s, %v", vpcPodIp.Spec.Subnet, err)
+			klog.Errorf("failed to get vpc subnet %s, %v", vpcPodIP.Spec.Subnet, err)
 			return err
 		}
 		vpcName = subnet.Spec.Vpc
-		v4IpCidr = vpcPodIp.Spec.V4IPAddress
+		v4IpCidr = vpcPodIP.Spec.V4IPAddress
 	}
 
 	if v4IpCidr == "" {
@@ -355,12 +350,12 @@ func (c *Controller) handleUpdateOvnSnatRule(key string) error {
 	// snat change eip
 	if c.ovnSnatChangeEip(cachedSnat, cachedEip) {
 		klog.Infof("snat change ip, old ip %s, new ip %s", cachedEip.Status.V4Ip, cachedEip.Spec.V4Ip)
-		if err = c.ovnNbClient.DeleteNat(vpcName, ovnnb.NATTypeSNAT, cachedEip.Status.V4Ip, v4IpCidr); err != nil {
+		if err = c.OVNNbClient.DeleteNat(vpcName, ovnnb.NATTypeSNAT, cachedEip.Status.V4Ip, v4IpCidr); err != nil {
 			klog.Errorf("failed to delte snat, %v", err)
 			return err
 		}
 		// ovn add snat with new eip
-		if err = c.ovnNbClient.AddNat(vpcName, ovnnb.NATTypeSNAT, cachedEip.Spec.V4Ip, v4IpCidr, "", "", nil); err != nil {
+		if err = c.OVNNbClient.AddNat(vpcName, ovnnb.NATTypeSNAT, cachedEip.Spec.V4Ip, v4IpCidr, "", "", nil); err != nil {
 			klog.Errorf("failed to create snat, %v", err)
 			return err
 		}
@@ -393,7 +388,7 @@ func (c *Controller) handleDelOvnSnatRule(key string) error {
 	}
 	// ovn delete snat
 	if cachedSnat.Status.Vpc != "" && cachedSnat.Status.V4Eip != "" && cachedSnat.Status.V4IpCidr != "" {
-		if err = c.ovnNbClient.DeleteNat(cachedSnat.Status.Vpc, ovnnb.NATTypeSNAT,
+		if err = c.OVNNbClient.DeleteNat(cachedSnat.Status.Vpc, ovnnb.NATTypeSNAT,
 			cachedSnat.Status.V4Eip, cachedSnat.Status.V4IpCidr); err != nil {
 			klog.Errorf("failed to delete snat %s, %v", key, err)
 			return err

@@ -32,7 +32,7 @@ var _ = framework.Describe("[group:webhook-pod]", func() {
 		subnetName = "subnet-" + framework.RandomSuffix()
 		podName = "pod-" + framework.RandomSuffix()
 		conflictName = podName + "-conflict"
-		cidr = framework.RandomCIDR(f.ClusterIpFamily)
+		cidr = framework.RandomCIDR(f.ClusterIPFamily)
 		if image == "" {
 			image = framework.GetKubeOvnImage(cs)
 		}
@@ -66,17 +66,17 @@ var _ = framework.Describe("[group:webhook-pod]", func() {
 
 		ginkgo.By("validate ip validation")
 		annotations := map[string]string{
-			util.IpAddressAnnotation: "10.10.10.10.10",
+			util.IPAddressAnnotation: "10.10.10.10.10",
 		}
 		pod := framework.MakePod(namespaceName, podName, nil, annotations, image, cmd, nil)
 		_, err := podClient.PodInterface.Create(context.TODO(), pod, metav1.CreateOptions{})
-		framework.ExpectError(err, "ip %s is not a valid %s", annotations[util.IpAddressAnnotation], util.IpAddressAnnotation)
+		framework.ExpectError(err, "ip %s is not a valid %s", annotations[util.IPAddressAnnotation], util.IPAddressAnnotation)
 
 		ginkgo.By("validate pod ip not in subnet cidr")
-		staticIP := util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(lastIPv4), big.NewInt(10)))
+		staticIP := util.BigInt2Ip(big.NewInt(0).Add(util.IP2BigInt(lastIPv4), big.NewInt(10)))
 		annotations = map[string]string{
 			util.CidrAnnotation:      cidr,
-			util.IpAddressAnnotation: staticIP,
+			util.IPAddressAnnotation: staticIP,
 		}
 		framework.Logf("validate ip not in subnet range, cidr %s, staticip %s", cidr, staticIP)
 		pod.Annotations = annotations
@@ -85,12 +85,12 @@ var _ = framework.Describe("[group:webhook-pod]", func() {
 		framework.ExpectError(err, "%s not in cidr %s", staticIP, cidr)
 
 		ginkgo.By("validate pod ippool not in subnet cidr")
-		startIP := util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(lastIPv4), big.NewInt(10)))
-		endIP := util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(lastIPv4), big.NewInt(20)))
+		startIP := util.BigInt2Ip(big.NewInt(0).Add(util.IP2BigInt(lastIPv4), big.NewInt(10)))
+		endIP := util.BigInt2Ip(big.NewInt(0).Add(util.IP2BigInt(lastIPv4), big.NewInt(20)))
 		ipPool := startIP + "," + endIP
 		annotations = map[string]string{
 			util.CidrAnnotation:   cidr,
-			util.IpPoolAnnotation: ipPool,
+			util.IPPoolAnnotation: ipPool,
 		}
 		framework.Logf("validate ippool not in subnet range, cidr %s, ippool %s", cidr, ipPool)
 		pod.Annotations = annotations
@@ -98,11 +98,11 @@ var _ = framework.Describe("[group:webhook-pod]", func() {
 		framework.ExpectError(err, "%s not in cidr %s", ipPool, cidr)
 
 		ginkgo.By("validate pod static ip success")
-		staticIP = util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(firstIPv4), big.NewInt(10)))
+		staticIP = util.BigInt2Ip(big.NewInt(0).Add(util.IP2BigInt(firstIPv4), big.NewInt(10)))
 		annotations = map[string]string{
 			util.LogicalSwitchAnnotation: subnetName,
 			util.CidrAnnotation:          cidr,
-			util.IpAddressAnnotation:     staticIP,
+			util.IPAddressAnnotation:     staticIP,
 		}
 		pod.Annotations = annotations
 		_ = podClient.CreateSync(pod)

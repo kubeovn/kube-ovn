@@ -53,11 +53,11 @@ type Configuration struct {
 
 	ServiceClusterIPRange string
 
-	ClusterTcpLoadBalancer         string
-	ClusterUdpLoadBalancer         string
+	ClusterTCPLoadBalancer         string
+	ClusterUDPLoadBalancer         string
 	ClusterSctpLoadBalancer        string
-	ClusterTcpSessionLoadBalancer  string
-	ClusterUdpSessionLoadBalancer  string
+	ClusterTCPSessionLoadBalancer  string
+	ClusterUDPSessionLoadBalancer  string
 	ClusterSctpSessionLoadBalancer string
 
 	PodName      string
@@ -84,7 +84,7 @@ type Configuration struct {
 	EnableEipSnat     bool
 	EnableExternalVpc bool
 	EnableEcmp        bool
-	EnableKeepVmIP    bool
+	EnableKeepVMIP    bool
 	EnableLbSvc       bool
 	EnableMetrics     bool
 
@@ -100,7 +100,7 @@ type Configuration struct {
 	BfdMinRx      int
 	BfdDetectMult int
 
-	NodeLocalDnsIP string
+	NodeLocalDNSIP string
 }
 
 // ParseFlags parses cmd args then init kubeclient and conf
@@ -130,11 +130,11 @@ func ParseFlags() (*Configuration, error) {
 
 		argServiceClusterIPRange = pflag.String("service-cluster-ip-range", "10.96.0.0/12", "The kubernetes service cluster ip range")
 
-		argClusterTcpLoadBalancer         = pflag.String("cluster-tcp-loadbalancer", "cluster-tcp-loadbalancer", "The name for cluster tcp loadbalancer")
-		argClusterUdpLoadBalancer         = pflag.String("cluster-udp-loadbalancer", "cluster-udp-loadbalancer", "The name for cluster udp loadbalancer")
+		argClusterTCPLoadBalancer         = pflag.String("cluster-tcp-loadbalancer", "cluster-tcp-loadbalancer", "The name for cluster tcp loadbalancer")
+		argClusterUDPLoadBalancer         = pflag.String("cluster-udp-loadbalancer", "cluster-udp-loadbalancer", "The name for cluster udp loadbalancer")
 		argClusterSctpLoadBalancer        = pflag.String("cluster-sctp-loadbalancer", "cluster-sctp-loadbalancer", "The name for cluster sctp loadbalancer")
-		argClusterTcpSessionLoadBalancer  = pflag.String("cluster-tcp-session-loadbalancer", "cluster-tcp-session-loadbalancer", "The name for cluster tcp session loadbalancer")
-		argClusterUdpSessionLoadBalancer  = pflag.String("cluster-udp-session-loadbalancer", "cluster-udp-session-loadbalancer", "The name for cluster udp session loadbalancer")
+		argClusterTCPSessionLoadBalancer  = pflag.String("cluster-tcp-session-loadbalancer", "cluster-tcp-session-loadbalancer", "The name for cluster tcp session loadbalancer")
+		argClusterUDPSessionLoadBalancer  = pflag.String("cluster-udp-session-loadbalancer", "cluster-udp-session-loadbalancer", "The name for cluster udp session loadbalancer")
 		argClusterSctpSessionLoadBalancer = pflag.String("cluster-sctp-session-loadbalancer", "cluster-sctp-session-loadbalancer", "The name for cluster sctp session loadbalancer")
 
 		argWorkerNum       = pflag.Int("worker-num", 3, "The parallelism of each worker")
@@ -156,7 +156,7 @@ func ParseFlags() (*Configuration, error) {
 		argEnableEipSnat           = pflag.Bool("enable-eip-snat", true, "Enable EIP and SNAT")
 		argEnableExternalVpc       = pflag.Bool("enable-external-vpc", true, "Enable external vpc support")
 		argEnableEcmp              = pflag.Bool("enable-ecmp", false, "Enable ecmp route for centralized subnet")
-		argKeepVmIP                = pflag.Bool("keep-vm-ip", true, "Whether to keep ip for kubevirt pod when pod is rebuild")
+		argKeepVMIP                = pflag.Bool("keep-vm-ip", true, "Whether to keep ip for kubevirt pod when pod is rebuild")
 		argEnableLbSvc             = pflag.Bool("enable-lb-svc", false, "Whether to support loadbalancer service")
 		argEnableMetrics           = pflag.Bool("enable-metrics", true, "Whether to support metrics query")
 
@@ -164,7 +164,7 @@ func ParseFlags() (*Configuration, error) {
 		argExternalGatewaySwitch   = pflag.String("external-gateway-switch", "external", "The name of the external gateway switch which is a ovs bridge to provide external network, default: external")
 		argExternalGatewayNet      = pflag.String("external-gateway-net", "external", "The name of the external network which mappings with an ovs bridge, default: external")
 		argExternalGatewayVlanID   = pflag.Int("external-gateway-vlanid", 0, "The vlanId of port ln-ovn-external, default: 0")
-		argNodeLocalDnsIP          = pflag.String("node-local-dns-ip", "", "The node local dns ip , this feature is using the local dns cache in k8s")
+		argNodeLocalDNSIP          = pflag.String("node-local-dns-ip", "", "The node local dns ip , this feature is using the local dns cache in k8s")
 
 		argGCInterval      = pflag.Int("gc-interval", 360, "The interval between GC processes, default 360 seconds")
 		argInspectInterval = pflag.Int("inspect-interval", 20, "The interval between inspect processes, default 20 seconds")
@@ -211,11 +211,11 @@ func ParseFlags() (*Configuration, error) {
 		NodeSwitchCIDR:                 *argNodeSwitchCIDR,
 		NodeSwitchGateway:              *argNodeSwitchGateway,
 		ServiceClusterIPRange:          *argServiceClusterIPRange,
-		ClusterTcpLoadBalancer:         *argClusterTcpLoadBalancer,
-		ClusterUdpLoadBalancer:         *argClusterUdpLoadBalancer,
+		ClusterTCPLoadBalancer:         *argClusterTCPLoadBalancer,
+		ClusterUDPLoadBalancer:         *argClusterUDPLoadBalancer,
 		ClusterSctpLoadBalancer:        *argClusterSctpLoadBalancer,
-		ClusterTcpSessionLoadBalancer:  *argClusterTcpSessionLoadBalancer,
-		ClusterUdpSessionLoadBalancer:  *argClusterUdpSessionLoadBalancer,
+		ClusterTCPSessionLoadBalancer:  *argClusterTCPSessionLoadBalancer,
+		ClusterUDPSessionLoadBalancer:  *argClusterUDPSessionLoadBalancer,
 		ClusterSctpSessionLoadBalancer: *argClusterSctpSessionLoadBalancer,
 		WorkerNum:                      *argWorkerNum,
 		EnablePprof:                    *argEnablePprof,
@@ -240,7 +240,7 @@ func ParseFlags() (*Configuration, error) {
 		ExternalGatewayNet:             *argExternalGatewayNet,
 		ExternalGatewayVlanID:          *argExternalGatewayVlanID,
 		EnableEcmp:                     *argEnableEcmp,
-		EnableKeepVmIP:                 *argKeepVmIP,
+		EnableKeepVMIP:                 *argKeepVMIP,
 		NodePgProbeTime:                *argNodePgProbeTime,
 		GCInterval:                     *argGCInterval,
 		InspectInterval:                *argInspectInterval,
@@ -249,7 +249,7 @@ func ParseFlags() (*Configuration, error) {
 		BfdMinTx:                       *argBfdMinTx,
 		BfdMinRx:                       *argBfdMinRx,
 		BfdDetectMult:                  *argBfdDetectMult,
-		NodeLocalDnsIP:                 *argNodeLocalDnsIP,
+		NodeLocalDNSIP:                 *argNodeLocalDNSIP,
 	}
 
 	if config.NetworkType == util.NetworkTypeVlan && config.DefaultHostInterface == "" {
@@ -309,7 +309,7 @@ func (config *Configuration) initKubeClient() error {
 	}
 
 	// try to connect to apiserver's tcp port
-	if err = util.DialApiServer(cfg.Host); err != nil {
+	if err = util.DialAPIServer(cfg.Host); err != nil {
 		klog.Errorf("failed to dial apiserver: %v", err)
 		return err
 	}

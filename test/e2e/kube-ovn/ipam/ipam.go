@@ -45,7 +45,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 		podName = "pod-" + framework.RandomSuffix()
 		deployName = "deploy-" + framework.RandomSuffix()
 		stsName = "sts-" + framework.RandomSuffix()
-		cidr = framework.RandomCIDR(f.ClusterIpFamily)
+		cidr = framework.RandomCIDR(f.ClusterIPFamily)
 
 		ginkgo.By("Creating subnet " + subnetName)
 		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, []string{namespaceName})
@@ -74,7 +74,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 
 		ginkgo.By("Creating pod " + podName + " with ip " + ip + " and mac " + mac)
 		annotations := map[string]string{
-			util.IpAddressAnnotation:  ip,
+			util.IPAddressAnnotation:  ip,
 			util.MacAddressAnnotation: mac,
 		}
 		pod := framework.MakePod(namespaceName, podName, nil, annotations, "", nil, nil)
@@ -83,7 +83,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.CidrAnnotation, subnet.Spec.CIDRBlock)
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.GatewayAnnotation, subnet.Spec.Gateway)
-		framework.ExpectHaveKeyWithValue(pod.Annotations, util.IpAddressAnnotation, ip)
+		framework.ExpectHaveKeyWithValue(pod.Annotations, util.IPAddressAnnotation, ip)
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.LogicalSwitchAnnotation, subnet.Name)
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.MacAddressAnnotation, mac)
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
@@ -102,15 +102,15 @@ var _ = framework.Describe("[group:ipam]", func() {
 
 		pool := framework.RandomIPs(cidr, ",", 3)
 		ginkgo.By("Creating pod " + podName + " with ippool " + pool)
-		annotations := map[string]string{util.IpPoolAnnotation: pool}
+		annotations := map[string]string{util.IPPoolAnnotation: pool}
 		pod := framework.MakePod(namespaceName, podName, nil, annotations, "", nil, nil)
 		pod = podClient.CreateSync(pod)
 
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.CidrAnnotation, subnet.Spec.CIDRBlock)
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.GatewayAnnotation, subnet.Spec.Gateway)
-		framework.ExpectHaveKeyWithValue(pod.Annotations, util.IpPoolAnnotation, pool)
-		framework.ExpectEqual(pod.Annotations[util.IpAddressAnnotation], pod.Status.PodIP)
+		framework.ExpectHaveKeyWithValue(pod.Annotations, util.IPPoolAnnotation, pool)
+		framework.ExpectEqual(pod.Annotations[util.IPAddressAnnotation], pod.Status.PodIP)
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.LogicalSwitchAnnotation, subnet.Name)
 		framework.ExpectMAC(pod.Annotations[util.MacAddressAnnotation])
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
@@ -131,7 +131,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 
 		ginkgo.By("Creating deployment " + deployName + " with ippool " + ippool)
 		labels := map[string]string{"app": deployName}
-		annotations := map[string]string{util.IpPoolAnnotation: ippool}
+		annotations := map[string]string{util.IPPoolAnnotation: ippool}
 		deploy := framework.MakeDeployment(deployName, int32(replicas), labels, annotations, "pause", framework.PauseImage, "")
 		deploy = deployClient.CreateSync(deploy)
 
@@ -145,8 +145,8 @@ var _ = framework.Describe("[group:ipam]", func() {
 			framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
 			framework.ExpectHaveKeyWithValue(pod.Annotations, util.CidrAnnotation, subnet.Spec.CIDRBlock)
 			framework.ExpectHaveKeyWithValue(pod.Annotations, util.GatewayAnnotation, subnet.Spec.Gateway)
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.IpPoolAnnotation, ippool)
-			framework.ExpectContainElement(ips, pod.Annotations[util.IpAddressAnnotation])
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.IPPoolAnnotation, ippool)
+			framework.ExpectContainElement(ips, pod.Annotations[util.IPAddressAnnotation])
 			framework.ExpectHaveKeyWithValue(pod.Annotations, util.LogicalSwitchAnnotation, subnet.Name)
 			framework.ExpectMAC(pod.Annotations[util.MacAddressAnnotation])
 			framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
@@ -155,7 +155,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 			for _, podIP := range pod.Status.PodIPs {
 				podIPs = append(podIPs, podIP.IP)
 			}
-			framework.ExpectConsistOf(podIPs, strings.Split(pod.Annotations[util.IpAddressAnnotation], ","))
+			framework.ExpectConsistOf(podIPs, strings.Split(pod.Annotations[util.IPAddressAnnotation], ","))
 		}
 
 		ginkgo.By("Deleting pods for deployment " + deployName)
@@ -178,8 +178,8 @@ var _ = framework.Describe("[group:ipam]", func() {
 			framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
 			framework.ExpectHaveKeyWithValue(pod.Annotations, util.CidrAnnotation, subnet.Spec.CIDRBlock)
 			framework.ExpectHaveKeyWithValue(pod.Annotations, util.GatewayAnnotation, subnet.Spec.Gateway)
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.IpPoolAnnotation, ippool)
-			framework.ExpectContainElement(ips, pod.Annotations[util.IpAddressAnnotation])
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.IPPoolAnnotation, ippool)
+			framework.ExpectContainElement(ips, pod.Annotations[util.IPAddressAnnotation])
 			framework.ExpectHaveKeyWithValue(pod.Annotations, util.LogicalSwitchAnnotation, subnet.Name)
 			framework.ExpectMAC(pod.Annotations[util.MacAddressAnnotation])
 			framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
@@ -188,7 +188,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 			for _, podIP := range pod.Status.PodIPs {
 				podIPs = append(podIPs, podIP.IP)
 			}
-			framework.ExpectConsistOf(podIPs, strings.Split(pod.Annotations[util.IpAddressAnnotation], ","))
+			framework.ExpectConsistOf(podIPs, strings.Split(pod.Annotations[util.IPAddressAnnotation], ","))
 		}
 	})
 
@@ -217,8 +217,8 @@ var _ = framework.Describe("[group:ipam]", func() {
 			for _, podIP := range pod.Status.PodIPs {
 				podIPs = append(podIPs, podIP.IP)
 			}
-			framework.ExpectConsistOf(podIPs, strings.Split(pod.Annotations[util.IpAddressAnnotation], ","))
-			ips = append(ips, pod.Annotations[util.IpAddressAnnotation])
+			framework.ExpectConsistOf(podIPs, strings.Split(pod.Annotations[util.IPAddressAnnotation], ","))
+			ips = append(ips, pod.Annotations[util.IPAddressAnnotation])
 		}
 
 		ginkgo.By("Deleting pods for statefulset " + stsName)
@@ -236,7 +236,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 			framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
 			framework.ExpectHaveKeyWithValue(pod.Annotations, util.CidrAnnotation, subnet.Spec.CIDRBlock)
 			framework.ExpectHaveKeyWithValue(pod.Annotations, util.GatewayAnnotation, subnet.Spec.Gateway)
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.IpAddressAnnotation, ips[i])
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.IPAddressAnnotation, ips[i])
 			framework.ExpectHaveKeyWithValue(pod.Annotations, util.LogicalSwitchAnnotation, subnet.Name)
 			framework.ExpectMAC(pod.Annotations[util.MacAddressAnnotation])
 			framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
@@ -259,7 +259,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 
 			ginkgo.By("Creating statefulset " + stsName + " with ippool " + ippool)
 			sts := framework.MakeStatefulSet(stsName, stsName, int32(replicas), labels, framework.PauseImage)
-			sts.Spec.Template.Annotations = map[string]string{util.IpPoolAnnotation: ippool}
+			sts.Spec.Template.Annotations = map[string]string{util.IPPoolAnnotation: ippool}
 			sts = stsClient.CreateSync(sts)
 
 			ginkgo.By("Getting pods for statefulset " + stsName)
@@ -271,7 +271,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 				framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
 				framework.ExpectHaveKeyWithValue(pod.Annotations, util.CidrAnnotation, subnet.Spec.CIDRBlock)
 				framework.ExpectHaveKeyWithValue(pod.Annotations, util.GatewayAnnotation, subnet.Spec.Gateway)
-				framework.ExpectHaveKeyWithValue(pod.Annotations, util.IpPoolAnnotation, ippool)
+				framework.ExpectHaveKeyWithValue(pod.Annotations, util.IPPoolAnnotation, ippool)
 				framework.ExpectHaveKeyWithValue(pod.Annotations, util.LogicalSwitchAnnotation, subnet.Name)
 				framework.ExpectMAC(pod.Annotations[util.MacAddressAnnotation])
 				framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
@@ -280,8 +280,8 @@ var _ = framework.Describe("[group:ipam]", func() {
 				for _, podIP := range pod.Status.PodIPs {
 					podIPs = append(podIPs, podIP.IP)
 				}
-				framework.ExpectConsistOf(podIPs, strings.Split(pod.Annotations[util.IpAddressAnnotation], ","))
-				ips = append(ips, pod.Annotations[util.IpAddressAnnotation])
+				framework.ExpectConsistOf(podIPs, strings.Split(pod.Annotations[util.IPAddressAnnotation], ","))
+				ips = append(ips, pod.Annotations[util.IPAddressAnnotation])
 			}
 			framework.ExpectConsistOf(ips, strings.Split(ippool, ippoolSep))
 
@@ -300,8 +300,8 @@ var _ = framework.Describe("[group:ipam]", func() {
 				framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
 				framework.ExpectHaveKeyWithValue(pod.Annotations, util.CidrAnnotation, subnet.Spec.CIDRBlock)
 				framework.ExpectHaveKeyWithValue(pod.Annotations, util.GatewayAnnotation, subnet.Spec.Gateway)
-				framework.ExpectHaveKeyWithValue(pod.Annotations, util.IpPoolAnnotation, ippool)
-				framework.ExpectHaveKeyWithValue(pod.Annotations, util.IpAddressAnnotation, ips[i])
+				framework.ExpectHaveKeyWithValue(pod.Annotations, util.IPPoolAnnotation, ippool)
+				framework.ExpectHaveKeyWithValue(pod.Annotations, util.IPAddressAnnotation, ips[i])
 				framework.ExpectHaveKeyWithValue(pod.Annotations, util.LogicalSwitchAnnotation, subnet.Name)
 				framework.ExpectMAC(pod.Annotations[util.MacAddressAnnotation])
 				framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
@@ -310,7 +310,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 				for _, podIP := range pod.Status.PodIPs {
 					podIPs = append(podIPs, podIP.IP)
 				}
-				framework.ExpectConsistOf(podIPs, strings.Split(pod.Annotations[util.IpAddressAnnotation], ","))
+				framework.ExpectConsistOf(podIPs, strings.Split(pod.Annotations[util.IPAddressAnnotation], ","))
 			}
 
 			ginkgo.By("Deleting statefulset " + stsName)
@@ -331,7 +331,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 
 		ginkgo.By("Creating statefulset " + stsName + " with ippool " + ippool)
 		sts := framework.MakeStatefulSet(stsName, stsName, int32(replicas), labels, framework.PauseImage)
-		sts.Spec.Template.Annotations = map[string]string{util.IpPoolAnnotation: ippool}
+		sts.Spec.Template.Annotations = map[string]string{util.IPPoolAnnotation: ippool}
 		sts = stsClient.CreateSync(sts)
 
 		ginkgo.By("Getting pods for statefulset " + stsName)
@@ -343,7 +343,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 			framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
 			framework.ExpectHaveKeyWithValue(pod.Annotations, util.CidrAnnotation, subnet.Spec.CIDRBlock)
 			framework.ExpectHaveKeyWithValue(pod.Annotations, util.GatewayAnnotation, subnet.Spec.Gateway)
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.IpPoolAnnotation, ippool)
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.IPPoolAnnotation, ippool)
 			framework.ExpectHaveKeyWithValue(pod.Annotations, util.LogicalSwitchAnnotation, subnet.Name)
 			framework.ExpectMAC(pod.Annotations[util.MacAddressAnnotation])
 			framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
@@ -352,8 +352,8 @@ var _ = framework.Describe("[group:ipam]", func() {
 			for _, podIP := range pod.Status.PodIPs {
 				podIPs = append(podIPs, podIP.IP)
 			}
-			framework.ExpectConsistOf(podIPs, strings.Split(pod.Annotations[util.IpAddressAnnotation], ","))
-			ips = append(ips, pod.Annotations[util.IpAddressAnnotation])
+			framework.ExpectConsistOf(podIPs, strings.Split(pod.Annotations[util.IPAddressAnnotation], ","))
+			ips = append(ips, pod.Annotations[util.IPAddressAnnotation])
 		}
 		framework.ExpectConsistOf(ips, strings.Split(ippool, ippoolSep))
 
@@ -372,8 +372,8 @@ var _ = framework.Describe("[group:ipam]", func() {
 			framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
 			framework.ExpectHaveKeyWithValue(pod.Annotations, util.CidrAnnotation, subnet.Spec.CIDRBlock)
 			framework.ExpectHaveKeyWithValue(pod.Annotations, util.GatewayAnnotation, subnet.Spec.Gateway)
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.IpPoolAnnotation, ippool)
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.IpAddressAnnotation, ips[i])
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.IPPoolAnnotation, ippool)
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.IPAddressAnnotation, ips[i])
 			framework.ExpectHaveKeyWithValue(pod.Annotations, util.LogicalSwitchAnnotation, subnet.Name)
 			framework.ExpectMAC(pod.Annotations[util.MacAddressAnnotation])
 			framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
@@ -382,7 +382,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 			for _, podIP := range pod.Status.PodIPs {
 				podIPs = append(podIPs, podIP.IP)
 			}
-			framework.ExpectConsistOf(podIPs, strings.Split(pod.Annotations[util.IpAddressAnnotation], ","))
+			framework.ExpectConsistOf(podIPs, strings.Split(pod.Annotations[util.IPAddressAnnotation], ","))
 		}
 	})
 
@@ -457,7 +457,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 		ginkgo.By("Creating deployment " + deployName + " within ippool " + ippoolName)
 		replicas := 3
 		labels := map[string]string{"app": deployName}
-		annotations := map[string]string{util.IpPoolAnnotation: ippoolName}
+		annotations := map[string]string{util.IPPoolAnnotation: ippoolName}
 		deploy := framework.MakeDeployment(deployName, int32(replicas), labels, annotations, "pause", framework.PauseImage, "")
 		deploy = deployClient.CreateSync(deploy)
 
@@ -535,7 +535,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 		ginkgo.By("Validating namespace annotations")
 		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 			ns := nsClient.Get(namespaceName)
-			return len(ns.Annotations) != 0 && ns.Annotations[util.IpPoolAnnotation] == ippoolName, nil
+			return len(ns.Annotations) != 0 && ns.Annotations[util.IPPoolAnnotation] == ippoolName, nil
 		}, "")
 
 		ginkgo.By("Patching deployment " + deployName)

@@ -176,7 +176,7 @@ func isDBLeader(dbName string, port int) bool {
 
 func checkNorthdActive() bool {
 	var command []string
-	file, err := os.OpenFile(OvnNorthdPid, os.O_RDWR, 0600)
+	file, err := os.OpenFile(OvnNorthdPid, os.O_RDWR, 0o600)
 	if err != nil {
 		klog.Errorf("failed to open %s err =  %v", OvnNorthdPid, err)
 		return false
@@ -322,7 +322,7 @@ func updatePodLabels(labels map[string]string, key string, isLeader bool) {
 }
 
 func compactOvnDatabase(db string) {
-	var command = []string{
+	command := []string{
 		"-t",
 		fmt.Sprintf("/var/run/ovn/ovn%s_db.ctl", db),
 		"ovsdb-server/compact",
@@ -341,7 +341,7 @@ func compactOvnDatabase(db string) {
 	}
 }
 
-func doOvnLeaderCheck(cfg *Configuration, podName string, podNamespace string) {
+func doOvnLeaderCheck(cfg *Configuration, podName, podNamespace string) {
 	if podName == "" || podNamespace == "" {
 		util.LogFatalAndExit(nil, "env variables POD_NAME and POD_NAMESPACE must be set")
 	}

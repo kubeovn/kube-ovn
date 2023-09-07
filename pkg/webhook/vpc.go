@@ -36,7 +36,7 @@ func (v *ValidatingHook) VpcCreateHook(ctx context.Context, req admission.Reques
 	return ctrlwebhook.Allowed("by pass")
 }
 
-func (v *ValidatingHook) VpcUpdateHook(ctx context.Context, req admission.Request) admission.Response {
+func (v *ValidatingHook) VpcUpdateHook(_ context.Context, req admission.Request) admission.Response {
 	vpc := ovnv1.Vpc{}
 	if err := v.decoder.DecodeRaw(req.Object, &vpc); err != nil {
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
@@ -49,7 +49,7 @@ func (v *ValidatingHook) VpcUpdateHook(ctx context.Context, req admission.Reques
 	return ctrlwebhook.Allowed("by pass")
 }
 
-func (v *ValidatingHook) VpcDeleteHook(ctx context.Context, req admission.Request) admission.Response {
+func (v *ValidatingHook) VpcDeleteHook(_ context.Context, req admission.Request) admission.Response {
 	vpc := ovnv1.Vpc{}
 	if err := v.decoder.DecodeRaw(req.OldObject, &vpc); err != nil {
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)

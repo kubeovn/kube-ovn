@@ -39,7 +39,7 @@ type VpcDnsInformer interface {
 	Lister() v1.VpcDnsLister
 }
 
-type vpcDnsInformer struct {
+type vpcDNSInformer struct {
 	factory          internalinterfaces.SharedInformerFactory
 	tweakListOptions internalinterfaces.TweakListOptionsFunc
 }
@@ -76,14 +76,14 @@ func NewFilteredVpcDnsInformer(client versioned.Interface, resyncPeriod time.Dur
 	)
 }
 
-func (f *vpcDnsInformer) defaultInformer(client versioned.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
+func (f *vpcDNSInformer) defaultInformer(client versioned.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
 	return NewFilteredVpcDnsInformer(client, resyncPeriod, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, f.tweakListOptions)
 }
 
-func (f *vpcDnsInformer) Informer() cache.SharedIndexInformer {
+func (f *vpcDNSInformer) Informer() cache.SharedIndexInformer {
 	return f.factory.InformerFor(&kubeovnv1.VpcDns{}, f.defaultInformer)
 }
 
-func (f *vpcDnsInformer) Lister() v1.VpcDnsLister {
+func (f *vpcDNSInformer) Lister() v1.VpcDnsLister {
 	return v1.NewVpcDnsLister(f.Informer().GetIndexer())
 }

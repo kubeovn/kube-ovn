@@ -367,7 +367,7 @@ func (c *Controller) addPolicyRouting(family int, gateway string, priority, tabl
 	return nil
 }
 
-func (c *Controller) deletePolicyRouting(family int, gateway string, priority, tableID uint32, ips ...string) error {
+func (c *Controller) deletePolicyRouting(family int, _ string, priority, tableID uint32, ips ...string) error {
 	maskBits := 32
 	if family == netlink.FAMILY_V6 {
 		maskBits = 128
@@ -506,7 +506,7 @@ func (c *Controller) setIptables() error {
 		kubeovnv1.ProtocolIPv6: nodeIPv6,
 	}
 
-	centralGwNatIPs, err := c.getEgressNatIpByNode(c.config.NodeName)
+	centralGwNatIPs, err := c.getEgressNatIPByNode(c.config.NodeName)
 	if err != nil {
 		klog.Errorf("failed to get centralized subnets nat ips on node %s, %v", c.config.NodeName, err)
 		return err
@@ -997,15 +997,17 @@ func (c *Controller) generateNatOutgoingPolicyChainRules(protocol string) ([]uti
 			dstMatch := getNatOutGoingPolicyRuleIPSetName(rule.RuleID, "dst", protocol, true)
 
 			var ovnNatoutGoingPolicyRule util.IPTableRule
-			if rule.Match.DstIPs != "" && rule.Match.SrcIPs != "" {
+
+			switch {
+			case rule.Match.DstIPs != "" && rule.Match.SrcIPs != "":
 				ovnNatoutGoingPolicyRule = util.IPTableRule{Table: NAT, Chain: ovnNatPolicySubnetChainName, Rule: strings.Fields(fmt.Sprintf(`-m set --match-set %s src -m set --match-set %s dst -j MARK --set-xmark %s`, srcMatch, dstMatch, markCode))}
-			} else if rule.Match.SrcIPs != "" {
+			case rule.Match.SrcIPs != "":
 				protocol = getMatchProtocol(rule.Match.SrcIPs)
 				ovnNatoutGoingPolicyRule = util.IPTableRule{Table: NAT, Chain: ovnNatPolicySubnetChainName, Rule: strings.Fields(fmt.Sprintf(`-m set --match-set %s src -j MARK --set-xmark %s`, srcMatch, markCode))}
-			} else if rule.Match.DstIPs != "" {
+			case rule.Match.DstIPs != "":
 				protocol = getMatchProtocol(rule.Match.DstIPs)
 				ovnNatoutGoingPolicyRule = util.IPTableRule{Table: NAT, Chain: ovnNatPolicySubnetChainName, Rule: strings.Fields(fmt.Sprintf(`-m set --match-set %s dst -j MARK --set-xmark %s`, dstMatch, markCode))}
-			} else {
+			default:
 				continue
 			}
 			natPolicyRuleIptables = append(natPolicyRuleIptables, ovnNatoutGoingPolicyRule)
@@ -1212,11 +1214,13 @@ func (c *Controller) setOvnSubnetGatewayMetric() {
 			for _, item := range items {
 				if strings.Contains(item, util.OvnSubnetGatewayIptables) {
 					cidr = items[3]
-					if items[2] == "-s" {
+
+					switch items[2] {
+					case "-s":
 						direction = "egress"
-					} else if items[2] == "-d" {
+					case "-d":
 						direction = "ingress"
-					} else {
+					default:
 						break
 					}
 
@@ -1458,7 +1462,7 @@ func (c *Controller) getLocalPodIPsNeedPR(protocol string) (map[policyRouteMeta]
 			pod.DeletionTimestamp != nil ||
 			pod.Spec.NodeName != nodeName ||
 			pod.Annotations[util.LogicalSwitchAnnotation] == "" ||
-			pod.Annotations[util.IpAddressAnnotation] == "" {
+			pod.Annotations[util.IPAddressAnnotation] == "" {
 			continue
 		}
 
@@ -1485,7 +1489,7 @@ func (c *Controller) getLocalPodIPsNeedPR(protocol string) (map[policyRouteMeta]
 				ips = append(ips, pod.Status.PodIP)
 			}
 		} else {
-			ipv4, ipv6 := util.SplitStringIP(pod.Annotations[util.IpAddressAnnotation])
+			ipv4, ipv6 := util.SplitStringIP(pod.Annotations[util.IPAddressAnnotation])
 			if ipv4 != "" && protocol == kubeovnv1.ProtocolIPv4 {
 				ips = append(ips, ipv4)
 			}
@@ -1586,17 +1590,17 @@ func (c *Controller) appendMssRule() {
 	}
 }
 
-func (c *Controller) updateMssRuleByProtocol(protocol string, MssMangleRule util.IPTableRule) {
-	exists, err := c.iptables[protocol].Exists(MssMangleRule.Table, MssMangleRule.Chain, MssMangleRule.Rule...)
+func (c *Controller) updateMssRuleByProtocol(protocol string, mssMangleRule util.IPTableRule) {
+	exists, err := c.iptables[protocol].Exists(mssMangleRule.Table, mssMangleRule.Chain, mssMangleRule.Rule...)
 	if err != nil {
-		klog.Errorf("check iptables rule %v failed, %+v", MssMangleRule.Rule, err)
+		klog.Errorf("check iptables rule %v failed, %+v", mssMangleRule.Rule, err)
 		return
 	}
 
 	if !exists {
-		klog.Infof("iptables rules %s not exist, append iptables rules", strings.Join(MssMangleRule.Rule, " "))
-		if err := c.iptables[protocol].Append(MssMangleRule.Table, MssMangleRule.Chain, MssMangleRule.Rule...); err != nil {
-			klog.Errorf("append iptables rule %v failed, %+v", MssMangleRule.Rule, err)
+		klog.Infof("iptables rules %s not exist, append iptables rules", strings.Join(mssMangleRule.Rule, " "))
+		if err := c.iptables[protocol].Append(mssMangleRule.Table, mssMangleRule.Chain, mssMangleRule.Rule...); err != nil {
+			klog.Errorf("append iptables rule %v failed, %+v", mssMangleRule.Rule, err)
 			return
 		}
 	}

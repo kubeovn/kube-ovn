@@ -1942,6 +1942,19 @@ jobs:
         working-directory: ${{ env.E2E_DIR }}
         run: make iptables-vpc-nat-gw-conformance-e2e
 
+      - name: kubectl ko log
+        if: failure()
+        run: |
+          make kubectl-ko-log
+          mv kubectl-ko-log.tar.gz iptables-vpc-nat-gw-conformance-e2e-ko-log.tar.gz
+
+      - name: upload kubectl ko log
+        uses: actions/upload-artifact@v3
+        if: failure()
+        with:
+          name: iptables-vpc-nat-gw-conformance-e2e-ko-log
+          path: iptables-vpc-nat-gw-conformance-e2e-ko-log.tar.gz
+
   ovn-vpc-nat-gw-conformance-e2e:
     name: OVN VPC NAT Gateway E2E
     needs:

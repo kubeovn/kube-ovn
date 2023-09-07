@@ -8,9 +8,7 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-var (
-	vpcNatImage = ""
-)
+var vpcNatImage = ""
 
 func (c *Controller) resyncVpcNatImage() error {
 	cm, err := c.configMapsLister.ConfigMaps(c.config.PodNamespace).Get(util.VpcNatConfig)

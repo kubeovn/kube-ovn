@@ -87,8 +87,7 @@ func TestParsePodNetworkObjectName(t *testing.T) {
 }
 
 func TestParsePodNetworkAnnotation(t *testing.T) {
-
-	correctJson0, _ := json.Marshal([]types.NetworkSelectionElement{
+	correctJSON0, _ := json.Marshal([]types.NetworkSelectionElement{
 		{
 			Name:                       "lb-svc-attachment",
 			Namespace:                  "kube-system",
@@ -98,7 +97,7 @@ func TestParsePodNetworkAnnotation(t *testing.T) {
 			IPRequest:                  []string{"192.168.50.6"},
 		},
 	})
-	correctJson0IP, _ := json.Marshal([]types.NetworkSelectionElement{
+	correctJSON0IP, _ := json.Marshal([]types.NetworkSelectionElement{
 		{
 			Name:                       "lb-svc-attachment",
 			Namespace:                  "kube-system",
@@ -108,7 +107,7 @@ func TestParsePodNetworkAnnotation(t *testing.T) {
 			IPRequest:                  []string{"192.168.50.6/20"},
 		},
 	})
-	errJson0, _ := json.Marshal(types.NetworkSelectionElement{
+	errJSON0, _ := json.Marshal(types.NetworkSelectionElement{
 		Name:                       "lb-svc-attachment",
 		Namespace:                  "kube-system",
 		InterfaceRequest:           "eth0",
@@ -116,7 +115,7 @@ func TestParsePodNetworkAnnotation(t *testing.T) {
 		DeprecatedInterfaceRequest: "eth0",
 		IPRequest:                  []string{"192.168.50.6"},
 	})
-	errJsonMac, _ := json.Marshal([]types.NetworkSelectionElement{
+	errJSONMac, _ := json.Marshal([]types.NetworkSelectionElement{
 		{
 			Name:                       "lb-svc-attachment",
 			Namespace:                  "kube-system",
@@ -126,7 +125,7 @@ func TestParsePodNetworkAnnotation(t *testing.T) {
 			IPRequest:                  []string{"192.168.50.6"},
 		},
 	})
-	errJson0IP1, _ := json.Marshal([]types.NetworkSelectionElement{
+	errJSON0IP1, _ := json.Marshal([]types.NetworkSelectionElement{
 		{
 			Name:                       "lb-svc-attachment",
 			Namespace:                  "kube-system",
@@ -136,7 +135,7 @@ func TestParsePodNetworkAnnotation(t *testing.T) {
 			IPRequest:                  []string{"192.168.6"},
 		},
 	})
-	errJson0IP2, _ := json.Marshal([]types.NetworkSelectionElement{
+	errJSON0IP2, _ := json.Marshal([]types.NetworkSelectionElement{
 		{
 			Name:                       "lb-svc-attachment",
 			Namespace:                  "kube-system",
@@ -146,7 +145,7 @@ func TestParsePodNetworkAnnotation(t *testing.T) {
 			IPRequest:                  []string{"192.168.6/20"},
 		},
 	})
-	correctJson0IfReq, _ := json.Marshal([]types.NetworkSelectionElement{
+	correctJSON0IfReq, _ := json.Marshal([]types.NetworkSelectionElement{
 		{
 			Name:                       "lb-svc-attachment",
 			Namespace:                  "kube-system",
@@ -231,7 +230,7 @@ func TestParsePodNetworkAnnotation(t *testing.T) {
 		},
 		{
 			name:             "correctJson",
-			podNetworks:      string(correctJson0),
+			podNetworks:      string(correctJSON0),
 			defaultNamespace: "kube-system",
 			exp: []*types.NetworkSelectionElement{
 				{
@@ -247,7 +246,7 @@ func TestParsePodNetworkAnnotation(t *testing.T) {
 		},
 		{
 			name:             "correctJsonIP",
-			podNetworks:      string(correctJson0IP),
+			podNetworks:      string(correctJSON0IP),
 			defaultNamespace: "kube-system",
 			exp: []*types.NetworkSelectionElement{
 				{
@@ -263,7 +262,7 @@ func TestParsePodNetworkAnnotation(t *testing.T) {
 		},
 		{
 			name:             "correctJsonIfReq",
-			podNetworks:      string(correctJson0IfReq),
+			podNetworks:      string(correctJSON0IfReq),
 			defaultNamespace: "kube-system",
 			exp: []*types.NetworkSelectionElement{
 				{
@@ -279,28 +278,28 @@ func TestParsePodNetworkAnnotation(t *testing.T) {
 		},
 		{
 			name:             "errJson",
-			podNetworks:      string(errJson0),
+			podNetworks:      string(errJSON0),
 			defaultNamespace: "kube-system",
 			exp:              nil,
 			err:              "json: cannot unmarshal object into Go value",
 		},
 		{
-			name:             "errJsonMac",
-			podNetworks:      string(errJsonMac),
+			name:             "errJSONMac",
+			podNetworks:      string(errJSONMac),
 			defaultNamespace: "kube-system",
 			exp:              nil,
 			err:              "invalid MAC address",
 		},
 		{
 			name:             "errJsonIP1",
-			podNetworks:      string(errJson0IP1),
+			podNetworks:      string(errJSON0IP1),
 			defaultNamespace: "kube-system",
 			exp:              nil,
 			err:              "failed to parse IP address",
 		},
 		{
 			name:             "errJsonIP2",
-			podNetworks:      string(errJson0IP2),
+			podNetworks:      string(errJSON0IP2),
 			defaultNamespace: "kube-system",
 			exp:              nil,
 			err:              "invalid CIDR address",

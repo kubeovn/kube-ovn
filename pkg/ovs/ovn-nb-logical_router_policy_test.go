@@ -290,7 +290,7 @@ func (suite *OvnClientTestSuite) testGetLogicalRouterPolicy() {
 	})
 }
 
-func (suite *OvnClientTestSuite) test_newLogicalRouterPolicy() {
+func (suite *OvnClientTestSuite) testNewLogicalRouterPolicy() {
 	t := suite.T()
 	t.Parallel()
 
@@ -317,7 +317,7 @@ func (suite *OvnClientTestSuite) test_newLogicalRouterPolicy() {
 	require.Equal(t, expect, policy)
 }
 
-func (suite *OvnClientTestSuite) test_policyFilter() {
+func (suite *OvnClientTestSuite) testPolicyFilter() {
 	t := suite.T()
 	t.Parallel()
 

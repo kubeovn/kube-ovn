@@ -827,6 +827,10 @@ lint:
 	@GOOS=linux go vet ./...
 	@GOOS=linux gosec -exclude=G204,G306,G404,G601,G301 -exclude-dir=test -exclude-dir=pkg/client ./...
 
+.PHONY: gofumpt
+gofumpt: gofumpt
+	gofumpt -w -extra .
+
 .PHONY: lint-windows
 lint-windows:
 	@GOOS=windows go vet ./cmd/windows/...

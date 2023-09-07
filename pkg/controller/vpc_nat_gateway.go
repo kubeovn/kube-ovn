@@ -26,9 +26,9 @@ import (
 )
 
 var (
-	vpcNatEnabled     = "unknown"
-	VpcNatCmVersion   = ""
-	NAT_GW_CREATED_AT = ""
+	vpcNatEnabled   = "unknown"
+	VpcNatCmVersion = ""
+	natGwCreatedAT  = ""
 )
 
 const (
@@ -74,31 +74,28 @@ func (c *Controller) resyncVpcNatGwConfig() {
 		VpcNatCmVersion = ""
 		klog.Info("finish clean up vpc nat gateway")
 		return
-	} else {
-		if vpcNatEnabled == "true" && VpcNatCmVersion == cm.ResourceVersion {
-			return
-		}
-		gws, err := c.vpcNatGatewayLister.List(labels.Everything())
-		if err != nil {
-			klog.Errorf("failed to get vpc nat gateway, %v", err)
-			return
-		}
-		if err = c.resyncVpcNatImage(); err != nil {
-			klog.Errorf("failed to resync vpc nat config, err: %v", err)
-			return
-		}
-		vpcNatEnabled = "true"
-		VpcNatCmVersion = cm.ResourceVersion
-		for _, gw := range gws {
-			c.addOrUpdateVpcNatGatewayQueue.Add(gw.Name)
-		}
-		klog.Info("finish establishing vpc-nat-gateway")
+	}
+	if vpcNatEnabled == "true" && VpcNatCmVersion == cm.ResourceVersion {
 		return
 	}
+	gws, err := c.vpcNatGatewayLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to get vpc nat gateway, %v", err)
+		return
+	}
+	if err = c.resyncVpcNatImage(); err != nil {
+		klog.Errorf("failed to resync vpc nat config, err: %v", err)
+		return
+	}
+	vpcNatEnabled = "true"
+	VpcNatCmVersion = cm.ResourceVersion
+	for _, gw := range gws {
+		c.addOrUpdateVpcNatGatewayQueue.Add(gw.Name)
+	}
+	klog.Info("finish establishing vpc-nat-gateway")
 }
 
 func (c *Controller) enqueueAddVpcNatGw(obj interface{}) {
-
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -109,10 +106,10 @@ func (c *Controller) enqueueAddVpcNatGw(obj interface{}) {
 	c.addOrUpdateVpcNatGatewayQueue.Add(key)
 }
 
-func (c *Controller) enqueueUpdateVpcNatGw(old, new interface{}) {
+func (c *Controller) enqueueUpdateVpcNatGw(_, newObj interface{}) {
 	var key string
 	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(new); err != nil {
+	if key, err = cache.MetaNamespaceKeyFunc(newObj); err != nil {
 		utilruntime.HandleError(err)
 		return
 	}
@@ -146,8 +143,8 @@ func (c *Controller) runDelVpcNatGwWorker() {
 	}
 }
 
-func (c *Controller) runUpdateVpcFloatingIpWorker() {
-	for c.processNextWorkItem("updateVpcFloatingIp", c.updateVpcFloatingIpQueue, c.handleUpdateVpcFloatingIp) {
+func (c *Controller) runUpdateVpcFloatingIPWorker() {
+	for c.processNextWorkItem("updateVpcFloatingIp", c.updateVpcFloatingIPQueue, c.handleUpdateVpcFloatingIP) {
 	}
 }
 
@@ -192,7 +189,6 @@ func (c *Controller) processNextWorkItem(processName string, queue workqueue.Rat
 		queue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("process: %s. err: %v", processName, err))
 		queue.AddRateLimited(obj)
@@ -217,7 +213,6 @@ func (c *Controller) handleDelVpcNatGw(key string) error {
 }
 
 func isVpcNatGwChanged(gw *kubeovnv1.VpcNatGateway) bool {
-
 	if !reflect.DeepEqual(gw.Spec.ExternalSubnets, gw.Status.ExternalSubnets) {
 		gw.Status.ExternalSubnets = gw.Spec.ExternalSubnets
 		return true
@@ -270,7 +265,6 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 	needToUpdate := false
 	oldSts, err := c.config.KubeClient.AppsV1().StatefulSets(c.config.PodNamespace).
 		Get(context.Background(), util.GenNatGwStsName(gw.Name), metav1.GetOptions{})
-
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			needToCreate = true
@@ -284,7 +278,8 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 		needToUpdate = true
 	}
 
-	if needToCreate {
+	switch {
+	case needToCreate:
 		// if pod create successfully, will add initVpcNatGatewayQueue
 		if _, err := c.config.KubeClient.AppsV1().StatefulSets(c.config.PodNamespace).
 			Create(context.Background(), newSts, metav1.CreateOptions{}); err != nil {
@@ -297,7 +292,7 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 			return err
 		}
 		return nil
-	} else if needToUpdate {
+	case needToUpdate:
 		if _, err := c.config.KubeClient.AppsV1().StatefulSets(c.config.PodNamespace).
 			Update(context.Background(), newSts, metav1.UpdateOptions{}); err != nil {
 			err := fmt.Errorf("failed to update statefulset '%s', err: %v", newSts.Name, err)
@@ -308,7 +303,7 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 			klog.Errorf("failed to patch nat gw sts status for nat gw %s, %v", key, err)
 			return err
 		}
-	} else {
+	default:
 		// check if need to change qos
 		if gw.Spec.QoSPolicy != gw.Status.QoSPolicy {
 			if gw.Status.QoSPolicy != "" {
@@ -374,8 +369,8 @@ func (c *Controller) handleInitVpcNatGw(key string) error {
 	if _, hasInit := pod.Annotations[util.VpcNatGatewayInitAnnotation]; hasInit {
 		return nil
 	}
-	NAT_GW_CREATED_AT = pod.CreationTimestamp.Format("2006-01-02T15:04:05")
-	klog.V(3).Infof("nat gw pod '%s' inited at %s", key, NAT_GW_CREATED_AT)
+	natGwCreatedAT = pod.CreationTimestamp.Format("2006-01-02T15:04:05")
+	klog.V(3).Infof("nat gw pod '%s' inited at %s", key, natGwCreatedAT)
 	if err = c.execNatGwRules(pod, natGwInit, []string{fmt.Sprintf("%s,%s", c.config.ServiceClusterIPRange, pod.Annotations[util.GatewayAnnotation])}); err != nil {
 		err = fmt.Errorf("failed to init vpc nat gateway, %v", err)
 		klog.Error(err)
@@ -402,7 +397,7 @@ func (c *Controller) handleInitVpcNatGw(key string) error {
 		return err
 	}
 
-	c.updateVpcFloatingIpQueue.Add(key)
+	c.updateVpcFloatingIPQueue.Add(key)
 	c.updateVpcDnatQueue.Add(key)
 	c.updateVpcSnatQueue.Add(key)
 	c.updateVpcSubnetQueue.Add(key)
@@ -422,7 +417,7 @@ func (c *Controller) handleInitVpcNatGw(key string) error {
 	return nil
 }
 
-func (c *Controller) handleUpdateVpcFloatingIp(natGwKey string) error {
+func (c *Controller) handleUpdateVpcFloatingIP(natGwKey string) error {
 	if vpcNatEnabled != "true" {
 		return fmt.Errorf("iptables nat gw not enable")
 	}
@@ -446,9 +441,9 @@ func (c *Controller) handleUpdateVpcFloatingIp(natGwKey string) error {
 	}
 
 	for _, fip := range fips {
-		if fip.Status.Redo != NAT_GW_CREATED_AT {
+		if fip.Status.Redo != natGwCreatedAT {
 			klog.V(3).Infof("redo fip %s", fip.Name)
-			if err = c.redoFip(fip.Name, NAT_GW_CREATED_AT, false); err != nil {
+			if err = c.redoFip(fip.Name, natGwCreatedAT, false); err != nil {
 				klog.Errorf("failed to update eip '%s' to re-apply, %v", fip.Spec.EIP, err)
 				return err
 			}
@@ -479,9 +474,9 @@ func (c *Controller) handleUpdateVpcEip(natGwKey string) error {
 		return err
 	}
 	for _, eip := range eips {
-		if eip.Spec.NatGwDp == natGwKey && eip.Status.Redo != NAT_GW_CREATED_AT {
+		if eip.Spec.NatGwDp == natGwKey && eip.Status.Redo != natGwCreatedAT {
 			klog.V(3).Infof("redo eip %s", eip.Name)
-			if err = c.patchEipStatus(eip.Name, "", NAT_GW_CREATED_AT, "", false); err != nil {
+			if err = c.patchEipStatus(eip.Name, "", natGwCreatedAT, "", false); err != nil {
 				klog.Errorf("failed to update eip '%s' to re-apply, %v", eip.Name, err)
 				return err
 			}
@@ -512,9 +507,9 @@ func (c *Controller) handleUpdateVpcSnat(natGwKey string) error {
 		return err
 	}
 	for _, snat := range snats {
-		if snat.Status.Redo != NAT_GW_CREATED_AT {
+		if snat.Status.Redo != natGwCreatedAT {
 			klog.V(3).Infof("redo snat %s", snat.Name)
-			if err = c.redoSnat(snat.Name, NAT_GW_CREATED_AT, false); err != nil {
+			if err = c.redoSnat(snat.Name, natGwCreatedAT, false); err != nil {
 				err = fmt.Errorf("failed to update eip '%s' to re-apply, %v", snat.Spec.EIP, err)
 				klog.Error(err)
 				return err
@@ -547,9 +542,9 @@ func (c *Controller) handleUpdateVpcDnat(natGwKey string) error {
 		return err
 	}
 	for _, dnat := range dnats {
-		if dnat.Status.Redo != NAT_GW_CREATED_AT {
+		if dnat.Status.Redo != natGwCreatedAT {
 			klog.V(3).Infof("redo dnat %s", dnat.Name)
-			if err = c.redoDnat(dnat.Name, NAT_GW_CREATED_AT, false); err != nil {
+			if err = c.redoDnat(dnat.Name, natGwCreatedAT, false); err != nil {
 				err := fmt.Errorf("failed to update dnat '%s' to redo, %v", dnat.Name, err)
 				klog.Error(err)
 				return err
@@ -564,7 +559,6 @@ func (c *Controller) getIptablesVersion(pod *corev1.Pod) (version string, err er
 	cmd := fmt.Sprintf("bash /kube-ovn/nat-gateway.sh %s", operation)
 	klog.V(3).Infof(cmd)
 	stdOutput, errOutput, err := util.ExecuteCommandInContainer(c.config.KubeClient, c.config.KubeRestConfig, pod.Namespace, pod.Name, "vpc-nat-gw", []string{"/bin/bash", "-c", cmd}...)
-
 	if err != nil {
 		if len(errOutput) > 0 {
 			klog.Errorf("failed to ExecuteCommandInContainer, errOutput: %v", errOutput)
@@ -718,7 +712,6 @@ func (c *Controller) execNatGwRules(pod *corev1.Pod, operation string, rules []s
 	cmd := fmt.Sprintf("bash /kube-ovn/nat-gateway.sh %s %s", operation, strings.Join(rules, " "))
 	klog.V(3).Infof(cmd)
 	stdOutput, errOutput, err := util.ExecuteCommandInContainer(c.config.KubeClient, c.config.KubeRestConfig, pod.Namespace, pod.Name, "vpc-nat-gw", []string{"/bin/bash", "-c", cmd}...)
-
 	if err != nil {
 		if len(errOutput) > 0 {
 			klog.Errorf("failed to ExecuteCommandInContainer, errOutput: %v", errOutput)
@@ -759,7 +752,7 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 		util.VpcNatGatewayAnnotation:     gw.Name,
 		util.AttachmentNetworkAnnotation: fmt.Sprintf("%s/%s", c.config.PodNamespace, externalNetwork),
 		util.LogicalSwitchAnnotation:     gw.Spec.Subnet,
-		util.IpAddressAnnotation:         gw.Spec.LanIp,
+		util.IPAddressAnnotation:         gw.Spec.LanIP,
 	}
 	for key, value := range podAnnotations {
 		newPodAnnotations[key] = value
@@ -835,15 +828,17 @@ func (c *Controller) getNatGwPod(name string) (*corev1.Pod, error) {
 	})
 
 	pods, err := c.podsLister.Pods(c.config.PodNamespace).List(sel)
-	if err != nil {
+
+	switch {
+	case err != nil:
 		klog.Error(err)
 		return nil, err
-	} else if len(pods) == 0 {
+	case len(pods) == 0:
 		return nil, k8serrors.NewNotFound(v1.Resource("pod"), name)
-	} else if len(pods) != 1 {
+	case len(pods) != 1:
 		time.Sleep(5 * time.Second)
 		return nil, fmt.Errorf("too many pod")
-	} else if pods[0].Status.Phase != "Running" {
+	case pods[0].Status.Phase != "Running":
 		time.Sleep(5 * time.Second)
 		return nil, fmt.Errorf("pod is not active now")
 	}
@@ -852,7 +847,7 @@ func (c *Controller) getNatGwPod(name string) (*corev1.Pod, error) {
 }
 
 func (c *Controller) initCreateAt(key string) (err error) {
-	if NAT_GW_CREATED_AT != "" {
+	if natGwCreatedAT != "" {
 		return nil
 	}
 	pod, err := c.getNatGwPod(key)
@@ -860,11 +855,11 @@ func (c *Controller) initCreateAt(key string) (err error) {
 		klog.Error(err)
 		return err
 	}
-	NAT_GW_CREATED_AT = pod.CreationTimestamp.Format("2006-01-02T15:04:05")
+	natGwCreatedAT = pod.CreationTimestamp.Format("2006-01-02T15:04:05")
 	return nil
 }
 
-func (c *Controller) updateCrdNatGwLabels(key string, qos string) error {
+func (c *Controller) updateCrdNatGwLabels(key, qos string) error {
 	gw, err := c.vpcNatGatewayLister.Get(key)
 	if err != nil {
 		errMsg := fmt.Errorf("failed to get vpc nat gw '%s', %v", key, err)
@@ -1012,7 +1007,7 @@ func (c *Controller) patchNatGwStatus(key string) error {
 	return nil
 }
 
-func (c *Controller) execNatGwQoS(gw *kubeovnv1.VpcNatGateway, qos string, operation string) error {
+func (c *Controller) execNatGwQoS(gw *kubeovnv1.VpcNatGateway, qos, operation string) error {
 	qosPolicy, err := c.qosPoliciesLister.Get(qos)
 	if err != nil {
 		klog.Errorf("get qos policy %s failed: %v", qos, err)
@@ -1043,7 +1038,8 @@ func (c *Controller) execNatGwBandtithLimitRules(gw *kubeovnv1.VpcNatGateway, ru
 }
 
 func (c *Controller) execNatGwQoSInPod(
-	dp string, r *kubeovnv1.QoSPolicyBandwidthLimitRule, operation string) error {
+	dp string, r *kubeovnv1.QoSPolicyBandwidthLimitRule, operation string,
+) error {
 	gwPod, err := c.getNatGwPod(dp)
 	if err != nil {
 		klog.Errorf("failed to get nat gw pod, %v", err)
@@ -1051,7 +1047,8 @@ func (c *Controller) execNatGwQoSInPod(
 	}
 	var addRules []string
 	var classifierType, matchDirection, cidr string
-	if r.MatchType == "ip" {
+	switch {
+	case r.MatchType == "ip":
 		classifierType = "u32"
 		// matchValue: dst xxx.xxx.xxx.xxx/32
 		splitStr := strings.Split(r.MatchValue, " ")
@@ -1062,9 +1059,9 @@ func (c *Controller) execNatGwQoSInPod(
 		}
 		matchDirection = splitStr[0]
 		cidr = splitStr[1]
-	} else if r.MatchType == "" {
+	case r.MatchType == "":
 		classifierType = "matchall"
-	} else {
+	default:
 		err := fmt.Errorf("MatchType %s format error", r.MatchType)
 		klog.Error(err)
 		return err

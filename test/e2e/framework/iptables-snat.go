@@ -33,8 +33,8 @@ func (f *Framework) IptablesSnatClient() *IptablesSnatClient {
 	}
 }
 
-func (s *IptablesSnatClient) Get(name string) *apiv1.IptablesSnatRule {
-	snat, err := s.IptablesSnatRuleInterface.Get(context.TODO(), name, metav1.GetOptions{})
+func (c *IptablesSnatClient) Get(name string) *apiv1.IptablesSnatRule {
+	snat, err := c.IptablesSnatRuleInterface.Get(context.TODO(), name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return snat
 }
@@ -82,7 +82,7 @@ func (c *IptablesSnatClient) Patch(original, modified *apiv1.IptablesSnatRule) *
 
 // PatchSync patches the iptables snat and waits for the iptables snat to be ready for `timeout`.
 // If the iptables snat doesn't become ready before the timeout, it will fail the test.
-func (c *IptablesSnatClient) PatchSync(original, modified *apiv1.IptablesSnatRule, requiredNodes []string, timeout time.Duration) *apiv1.IptablesSnatRule {
+func (c *IptablesSnatClient) PatchSync(original, modified *apiv1.IptablesSnatRule, _ []string, timeout time.Duration) *apiv1.IptablesSnatRule {
 	snat := c.Patch(original, modified)
 	ExpectTrue(c.WaitToBeUpdated(snat, timeout))
 	ExpectTrue(c.WaitToBeReady(snat.Name, timeout))
@@ -132,7 +132,7 @@ func (c *IptablesSnatClient) WaitToBeUpdated(snat *apiv1.IptablesSnatRule, timeo
 }
 
 // WaitToDisappear waits the given timeout duration for the specified iptables SNAT rule to disappear.
-func (c *IptablesSnatClient) WaitToDisappear(name string, interval, timeout time.Duration) error {
+func (c *IptablesSnatClient) WaitToDisappear(name string, _, timeout time.Duration) error {
 	err := framework.Gomega().Eventually(context.Background(), framework.HandleRetry(func(ctx context.Context) (*apiv1.IptablesSnatRule, error) {
 		rule, err := c.IptablesSnatRuleInterface.Get(ctx, name, metav1.GetOptions{})
 		if apierrors.IsNotFound(err) {

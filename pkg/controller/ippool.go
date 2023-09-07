@@ -38,10 +38,10 @@ func (c *Controller) enqueueDeleteIPPool(obj interface{}) {
 	c.deleteIPPoolQueue.Add(obj)
 }
 
-func (c *Controller) enqueueUpdateIPPool(old, new interface{}) {
-	oldIPPool := old.(*kubeovnv1.IPPool)
-	newIPPool := new.(*kubeovnv1.IPPool)
-	key, err := cache.MetaNamespaceKeyFunc(new)
+func (c *Controller) enqueueUpdateIPPool(oldObj, newObj interface{}) {
+	oldIPPool := oldObj.(*kubeovnv1.IPPool)
+	newIPPool := newObj.(*kubeovnv1.IPPool)
+	key, err := cache.MetaNamespaceKeyFunc(newObj)
 	if err != nil {
 		utilruntime.HandleError(err)
 		return
@@ -90,7 +90,6 @@ func (c *Controller) processNextAddIPPoolWorkItem() bool {
 		c.addOrUpdateIPPoolQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -119,7 +118,6 @@ func (c *Controller) processNextUpdateIPPoolStatusWorkItem() bool {
 		}
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -148,7 +146,6 @@ func (c *Controller) processNextDeleteIPPoolWorkItem() bool {
 		c.deleteIPPoolQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -218,7 +215,7 @@ func (c *Controller) handleDeleteIPPool(ippool *kubeovnv1.IPPool) error {
 		if len(ns.Annotations) == 0 {
 			continue
 		}
-		if ns.Annotations[util.IpPoolAnnotation] == ippool.Name {
+		if ns.Annotations[util.IPPoolAnnotation] == ippool.Name {
 			c.enqueueAddNamespace(ns)
 		}
 	}

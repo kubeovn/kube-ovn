@@ -41,7 +41,7 @@ type CniRequest struct {
 // CniResponse is the cniserver response format
 type CniResponse struct {
 	Protocol   string    `json:"protocol"`
-	IpAddress  string    `json:"address"`
+	IPAddress  string    `json:"address"`
 	MacAddress string    `json:"mac_address"`
 	CIDR       string    `json:"cidr"`
 	Gateway    string    `json:"gateway"`

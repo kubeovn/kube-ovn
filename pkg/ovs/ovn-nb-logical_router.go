@@ -14,7 +14,7 @@ import (
 )
 
 // CreateLogicalRouter create logical router in ovn
-func (c *ovnNbClient) CreateLogicalRouter(lrName string) error {
+func (c *OVNNbClient) CreateLogicalRouter(lrName string) error {
 	exist, err := c.LogicalRouterExists(lrName)
 	if err != nil {
 		return err
@@ -44,7 +44,7 @@ func (c *ovnNbClient) CreateLogicalRouter(lrName string) error {
 }
 
 // UpdateLogicalRouter update logical router
-func (c *ovnNbClient) UpdateLogicalRouter(lr *ovnnb.LogicalRouter, fields ...interface{}) error {
+func (c *OVNNbClient) UpdateLogicalRouter(lr *ovnnb.LogicalRouter, fields ...interface{}) error {
 	op, err := c.UpdateLogicalRouterOp(lr, fields...)
 	if err != nil {
 		klog.Error(err)
@@ -59,7 +59,7 @@ func (c *ovnNbClient) UpdateLogicalRouter(lr *ovnnb.LogicalRouter, fields ...int
 }
 
 // DeleteLogicalRouter delete logical router in ovn
-func (c *ovnNbClient) DeleteLogicalRouter(lrName string) error {
+func (c *OVNNbClient) DeleteLogicalRouter(lrName string) error {
 	lr, err := c.GetLogicalRouter(lrName, true)
 	if err != nil {
 		klog.Error(err)
@@ -85,8 +85,8 @@ func (c *ovnNbClient) DeleteLogicalRouter(lrName string) error {
 }
 
 // GetLogicalRouter get logical router by name,
-// it is because of lack name index that does't use ovnNbClient.Get
-func (c *ovnNbClient) GetLogicalRouter(lrName string, ignoreNotFound bool) (*ovnnb.LogicalRouter, error) {
+// it is because of lack name index that does't use OVNNbClient.Get
+func (c *OVNNbClient) GetLogicalRouter(lrName string, ignoreNotFound bool) (*ovnnb.LogicalRouter, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
 	defer cancel()
 
@@ -113,13 +113,13 @@ func (c *ovnNbClient) GetLogicalRouter(lrName string, ignoreNotFound bool) (*ovn
 	return &lrList[0], nil
 }
 
-func (c *ovnNbClient) LogicalRouterExists(name string) (bool, error) {
+func (c *OVNNbClient) LogicalRouterExists(name string) (bool, error) {
 	lrp, err := c.GetLogicalRouter(name, true)
 	return lrp != nil, err
 }
 
 // ListLogicalRouter list logical router
-func (c *ovnNbClient) ListLogicalRouter(needVendorFilter bool, filter func(lr *ovnnb.LogicalRouter) bool) ([]ovnnb.LogicalRouter, error) {
+func (c *OVNNbClient) ListLogicalRouter(needVendorFilter bool, filter func(lr *ovnnb.LogicalRouter) bool) ([]ovnnb.LogicalRouter, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
 	defer cancel()
 
@@ -143,7 +143,7 @@ func (c *ovnNbClient) ListLogicalRouter(needVendorFilter bool, filter func(lr *o
 }
 
 // LogicalRouterUpdateLoadBalancers add several lb to or from logical router once
-func (c *ovnNbClient) LogicalRouterUpdateLoadBalancers(lrName string, op ovsdb.Mutator, lbNames ...string) error {
+func (c *OVNNbClient) LogicalRouterUpdateLoadBalancers(lrName string, op ovsdb.Mutator, lbNames ...string) error {
 	if len(lbNames) == 0 {
 		return nil
 	}
@@ -181,14 +181,13 @@ func (c *ovnNbClient) LogicalRouterUpdateLoadBalancers(lrName string, op ovsdb.M
 
 	if err := c.Transact("lr-lb-update", ops); err != nil {
 		return fmt.Errorf("logical router %s update lbs %v: %v", lrName, lbNames, err)
-
 	}
 
 	return nil
 }
 
 // UpdateLogicalRouterOp generate operations which update logical router
-func (c *ovnNbClient) UpdateLogicalRouterOp(lr *ovnnb.LogicalRouter, fields ...interface{}) ([]ovsdb.Operation, error) {
+func (c *OVNNbClient) UpdateLogicalRouterOp(lr *ovnnb.LogicalRouter, fields ...interface{}) ([]ovsdb.Operation, error) {
 	if lr == nil {
 		return nil, fmt.Errorf("logical_router is nil")
 	}
@@ -203,7 +202,7 @@ func (c *ovnNbClient) UpdateLogicalRouterOp(lr *ovnnb.LogicalRouter, fields ...i
 }
 
 // LogicalRouterUpdatePortOp create operations add to or delete port from logical router
-func (c *ovnNbClient) LogicalRouterUpdatePortOp(lrName, lrpUUID string, op ovsdb.Mutator) ([]ovsdb.Operation, error) {
+func (c *OVNNbClient) LogicalRouterUpdatePortOp(lrName, lrpUUID string, op ovsdb.Mutator) ([]ovsdb.Operation, error) {
 	if len(lrpUUID) == 0 {
 		return nil, nil
 	}
@@ -247,7 +246,7 @@ func (c *ovnNbClient) LogicalRouterUpdatePortOp(lrName, lrpUUID string, op ovsdb
 }
 
 // LogicalRouterUpdatePolicyOp create operations add to or delete policy from logical router
-func (c *ovnNbClient) LogicalRouterUpdatePolicyOp(lrName string, policyUUIDs []string, op ovsdb.Mutator) ([]ovsdb.Operation, error) {
+func (c *OVNNbClient) LogicalRouterUpdatePolicyOp(lrName string, policyUUIDs []string, op ovsdb.Mutator) ([]ovsdb.Operation, error) {
 	if len(policyUUIDs) == 0 {
 		return nil, nil
 	}
@@ -266,7 +265,7 @@ func (c *ovnNbClient) LogicalRouterUpdatePolicyOp(lrName string, policyUUIDs []s
 }
 
 // LogicalRouterUpdateNatOp create operations add to or delete nat rule from logical router
-func (c *ovnNbClient) LogicalRouterUpdateNatOp(lrName string, natUUIDs []string, op ovsdb.Mutator) ([]ovsdb.Operation, error) {
+func (c *OVNNbClient) LogicalRouterUpdateNatOp(lrName string, natUUIDs []string, op ovsdb.Mutator) ([]ovsdb.Operation, error) {
 	if len(natUUIDs) == 0 {
 		return nil, nil
 	}
@@ -285,7 +284,7 @@ func (c *ovnNbClient) LogicalRouterUpdateNatOp(lrName string, natUUIDs []string,
 }
 
 // LogicalRouterUpdateStaticRouteOp create operations add to or delete static route from logical router
-func (c *ovnNbClient) LogicalRouterUpdateStaticRouteOp(lrName string, routeUUIDs []string, op ovsdb.Mutator) ([]ovsdb.Operation, error) {
+func (c *OVNNbClient) LogicalRouterUpdateStaticRouteOp(lrName string, routeUUIDs []string, op ovsdb.Mutator) ([]ovsdb.Operation, error) {
 	if len(routeUUIDs) == 0 {
 		return nil, nil
 	}
@@ -304,7 +303,7 @@ func (c *ovnNbClient) LogicalRouterUpdateStaticRouteOp(lrName string, routeUUIDs
 }
 
 // LogicalRouterOp create operations about logical router
-func (c *ovnNbClient) LogicalRouterOp(lrName string, mutationsFunc ...func(lr *ovnnb.LogicalRouter) *model.Mutation) ([]ovsdb.Operation, error) {
+func (c *OVNNbClient) LogicalRouterOp(lrName string, mutationsFunc ...func(lr *ovnnb.LogicalRouter) *model.Mutation) ([]ovsdb.Operation, error) {
 	lr, err := c.GetLogicalRouter(lrName, false)
 	if err != nil {
 		klog.Error(err)

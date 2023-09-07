@@ -42,7 +42,7 @@ var _ = framework.OrderedDescribe("[group:node]", func() {
 		hostPodName = "pod-" + framework.RandomSuffix()
 		serviceName = "service-" + framework.RandomSuffix()
 		subnetName = "subnet-" + framework.RandomSuffix()
-		cidr = framework.RandomCIDR(f.ClusterIpFamily)
+		cidr = framework.RandomCIDR(f.ClusterIPFamily)
 
 		if image == "" {
 			image = framework.GetKubeOvnImage(cs)
@@ -76,7 +76,7 @@ var _ = framework.OrderedDescribe("[group:node]", func() {
 			framework.ExpectUUID(node.Annotations[util.ChassisAnnotation])
 			framework.ExpectHaveKeyWithValue(node.Annotations, util.CidrAnnotation, join.Spec.CIDRBlock)
 			framework.ExpectHaveKeyWithValue(node.Annotations, util.GatewayAnnotation, join.Spec.Gateway)
-			framework.ExpectIPInCIDR(node.Annotations[util.IpAddressAnnotation], join.Spec.CIDRBlock)
+			framework.ExpectIPInCIDR(node.Annotations[util.IPAddressAnnotation], join.Spec.CIDRBlock)
 			framework.ExpectHaveKeyWithValue(node.Annotations, util.LogicalSwitchAnnotation, join.Name)
 			framework.ExpectMAC(node.Annotations[util.MacAddressAnnotation])
 			framework.ExpectHaveKeyWithValue(node.Annotations, util.PortNameAnnotation, "node-"+node.Name)
@@ -95,8 +95,8 @@ var _ = framework.OrderedDescribe("[group:node]", func() {
 			})
 			framework.ExpectNoError(err)
 			framework.ExpectHaveLen(links, 1)
-			framework.Logf(util.GetIpAddrWithMask(node.Annotations[util.IpAddressAnnotation], join.Spec.CIDRBlock))
-			ips := strings.Split(util.GetIpAddrWithMask(node.Annotations[util.IpAddressAnnotation], join.Spec.CIDRBlock), ",")
+			framework.Logf(util.GetIPAddrWithMask(node.Annotations[util.IPAddressAnnotation], join.Spec.CIDRBlock))
+			ips := strings.Split(util.GetIPAddrWithMask(node.Annotations[util.IPAddressAnnotation], join.Spec.CIDRBlock), ",")
 			framework.ExpectConsistOf(links[0].NonLinkLocalAddresses(), ips)
 
 			err = podClient.Delete(podName)

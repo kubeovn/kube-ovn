@@ -8,21 +8,21 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/moby/sys/mountinfo"
 	"golang.org/x/sys/unix"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
 
 	"github.com/kubeovn/kube-ovn/pkg/request"
 	"github.com/kubeovn/kube-ovn/pkg/util"
-	"github.com/moby/sys/mountinfo"
 )
 
-func (csh cniServerHandler) validatePodRequest(req *request.CniRequest) error {
+func (csh cniServerHandler) validatePodRequest(_ *request.CniRequest) error {
 	// nothing to do on linux
 	return nil
 }
 
-func createShortSharedDir(pod *v1.Pod, volumeName string, kubeletDir string) (err error) {
+func createShortSharedDir(pod *v1.Pod, volumeName, kubeletDir string) (err error) {
 	var volume *v1.Volume
 	for index, v := range pod.Spec.Volumes {
 		if v.Name == volumeName {
@@ -42,7 +42,7 @@ func createShortSharedDir(pod *v1.Pod, volumeName string, kubeletDir string) (er
 	mask := syscall.Umask(0)
 	defer syscall.Umask(mask)
 	if _, err = os.Stat(newSharedDir); os.IsNotExist(err) {
-		err = os.MkdirAll(newSharedDir, 0777)
+		err = os.MkdirAll(newSharedDir, 0o777)
 		if err != nil {
 			return fmt.Errorf("createSharedDir: Failed to create dir (%s): %v", newSharedDir, err)
 		}

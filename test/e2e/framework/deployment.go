@@ -193,7 +193,7 @@ func (c *DeploymentClient) WaitToComplete(deploy *appsv1.Deployment) error {
 }
 
 // WaitToDisappear waits the given timeout duration for the specified deployment to disappear.
-func (c *DeploymentClient) WaitToDisappear(name string, interval, timeout time.Duration) error {
+func (c *DeploymentClient) WaitToDisappear(name string, _, timeout time.Duration) error {
 	err := framework.Gomega().Eventually(context.Background(), framework.HandleRetry(func(ctx context.Context) (*appsv1.Deployment, error) {
 		deploy, err := c.DeploymentInterface.Get(ctx, name, metav1.GetOptions{})
 		if apierrors.IsNotFound(err) {

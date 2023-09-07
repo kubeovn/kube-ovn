@@ -299,7 +299,7 @@ func (suite *OvnClientTestSuite) testListPortGroups() {
 	})
 }
 
-func (suite *OvnClientTestSuite) test_portGroupUpdatePortOp() {
+func (suite *OvnClientTestSuite) testPortGroupUpdatePortOp() {
 	t := suite.T()
 	t.Parallel()
 
@@ -367,7 +367,7 @@ func (suite *OvnClientTestSuite) test_portGroupUpdatePortOp() {
 	})
 }
 
-func (suite *OvnClientTestSuite) test_portGroupUpdateAclOp() {
+func (suite *OvnClientTestSuite) testPortGroupUpdateACLOp() {
 	t := suite.T()
 	t.Parallel()
 
@@ -384,7 +384,7 @@ func (suite *OvnClientTestSuite) test_portGroupUpdateAclOp() {
 	t.Run("add new acl to port group", func(t *testing.T) {
 		t.Parallel()
 
-		ops, err := ovnClient.portGroupUpdateAclOp(pgName, aclUUIDs, ovsdb.MutateOperationInsert)
+		ops, err := ovnClient.portGroupUpdateACLOp(pgName, aclUUIDs, ovsdb.MutateOperationInsert)
 		require.NoError(t, err)
 		require.Equal(t, []ovsdb.Mutation{
 			{
@@ -407,7 +407,7 @@ func (suite *OvnClientTestSuite) test_portGroupUpdateAclOp() {
 	t.Run("del acl from port group", func(t *testing.T) {
 		t.Parallel()
 
-		ops, err := ovnClient.portGroupUpdateAclOp(pgName, aclUUIDs, ovsdb.MutateOperationDelete)
+		ops, err := ovnClient.portGroupUpdateACLOp(pgName, aclUUIDs, ovsdb.MutateOperationDelete)
 		require.NoError(t, err)
 		require.Equal(t, []ovsdb.Mutation{
 			{
@@ -430,12 +430,12 @@ func (suite *OvnClientTestSuite) test_portGroupUpdateAclOp() {
 	t.Run("should return err when port group does not exist", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := ovnClient.portGroupUpdateAclOp("test-acl-op-pg-non-existent", aclUUIDs, ovsdb.MutateOperationInsert)
+		_, err := ovnClient.portGroupUpdateACLOp("test-acl-op-pg-non-existent", aclUUIDs, ovsdb.MutateOperationInsert)
 		require.ErrorContains(t, err, "object not found")
 	})
 }
 
-func (suite *OvnClientTestSuite) test_portGroupOp() {
+func (suite *OvnClientTestSuite) testPortGroupOp() {
 	t := suite.T()
 	t.Parallel()
 

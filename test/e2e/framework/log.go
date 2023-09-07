@@ -27,7 +27,7 @@ func nowStamp() string {
 	return time.Now().Format(time.StampMilli)
 }
 
-func log(level string, format string, args ...interface{}) {
+func log(level, format string, args ...interface{}) {
 	fmt.Fprintf(ginkgo.GinkgoWriter, nowStamp()+": "+level+": "+format+"\n", args...)
 }
 
@@ -89,7 +89,7 @@ func PrunedStack(skip int) []byte {
 	n := 0
 	for i := 0; i < len(stack)/2; i++ {
 		// We filter out based on the source code file name.
-		if !codeFilterRE.Match([]byte(stack[i*2+1])) {
+		if !codeFilterRE.Match(stack[i*2+1]) {
 			stack[n] = stack[i*2]
 			stack[n+1] = stack[i*2+1]
 			n += 2

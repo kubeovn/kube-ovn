@@ -82,7 +82,7 @@ func (c *StatefulSetClient) WaitForRunningAndReady(sts *appsv1.StatefulSet) {
 }
 
 // WaitToDisappear waits the given timeout duration for the specified statefulset to disappear.
-func (c *StatefulSetClient) WaitToDisappear(name string, interval, timeout time.Duration) error {
+func (c *StatefulSetClient) WaitToDisappear(name string, _, timeout time.Duration) error {
 	err := framework.Gomega().Eventually(context.Background(), framework.HandleRetry(func(ctx context.Context) (*appsv1.StatefulSet, error) {
 		sts, err := c.StatefulSetInterface.Get(ctx, name, metav1.GetOptions{})
 		if apierrors.IsNotFound(err) {
