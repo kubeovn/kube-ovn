@@ -941,11 +941,13 @@ func (c *Controller) transferAddrsAndRoutes(nicName, brName string, delNonExiste
 		return 0, err
 	}
 
+	var count int
 	for _, addr := range addrs {
 		if addr.IP.IsLinkLocalUnicast() {
 			// skip 169.254.0.0/16 and fe80::/10
 			continue
 		}
+		count++
 
 		if err = netlink.AddrDel(nic, &addr); err != nil {
 			errMsg := fmt.Errorf("failed to delete address %q on nic %s: %v", addr.String(), nicName, err)
@@ -961,13 +963,16 @@ func (c *Controller) transferAddrsAndRoutes(nicName, brName string, delNonExiste
 		}
 		klog.Infof("address %q has been added/replaced to link %s", addr.String(), brName)
 	}
-	for _, addr := range delAddrs {
-		if err = netlink.AddrDel(bridge, &addr); err != nil {
-			errMsg := fmt.Errorf("failed to delete address %q on OVS bridge %s: %v", addr.String(), brName, err)
-			klog.Error(errMsg)
-			return 0, errMsg
+
+	if count != 0 {
+		for _, addr := range delAddrs {
+			if err = netlink.AddrDel(bridge, &addr); err != nil {
+				errMsg := fmt.Errorf("failed to delete address %q on OVS bridge %s: %v", addr.String(), brName, err)
+				klog.Error(errMsg)
+				return 0, errMsg
+			}
+			klog.Infof("address %q has been removed from OVS bridge %s", addr.String(), brName)
 		}
-		klog.Infof("address %q has been removed from OVS bridge %s", addr.String(), brName)
 	}
 
 	// keep mac address the same with the provider nic,
@@ -1008,7 +1013,7 @@ func (c *Controller) transferAddrsAndRoutes(nicName, brName string, delNonExiste
 	}
 
 	var delRoutes []netlink.Route
-	if delNonExistent {
+	if delNonExistent && count != 0 {
 		for _, route := range brRoutes {
 			if route.Gw == nil && route.Dst != nil && route.Dst.IP.IsLinkLocalUnicast() {
 				// skip 169.254.0.0/16 and fe80::/10
@@ -1101,7 +1106,9 @@ func linkIsAlbBond(link netlink.Link) (bool, error) {
 
 // Remove host nic from external bridge
 // IP addresses & routes will be transferred to the host nic
-func removeProviderNic(nicName, brName string) error {
+func (c *Controller) removeProviderNic(nicName, brName string) error {
+	c.nmSyncer.RemoveDevice(nicName)
+
 	nic, err := netlink.LinkByName(nicName)
 	if err != nil {
 		if _, ok := err.(netlink.LinkNotFoundError); ok {

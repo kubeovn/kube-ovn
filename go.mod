@@ -20,7 +20,7 @@ require (
 	github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.4.0
 	github.com/k8snetworkplumbingwg/sriovnet v1.2.0
 	github.com/kubeovn/go-iptables v0.0.0-20230322103850-8619a8ab3dca
-	github.com/kubeovn/gonetworkmanager/v2 v2.0.0-20230327064018-0b27f88874f7
+	github.com/kubeovn/gonetworkmanager/v2 v2.0.0-20230905082151-e28c4d73a589
 	github.com/mdlayher/arp v0.0.0-20220512170110-6706a2966875
 	github.com/moby/sys/mountinfo v0.6.2
 	github.com/onsi/ginkgo/v2 v2.11.0
@@ -133,7 +133,7 @@ require (
 	github.com/google/gofuzz v1.2.0 // indirect
 	github.com/google/pprof v0.0.0-20230510103437-eeec1cb781c3 // indirect
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510 // indirect
-	github.com/google/uuid v1.3.0 // indirect
+	github.com/google/uuid v1.3.1 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.2.3 // indirect
 	github.com/googleapis/gax-go/v2 v2.7.1 // indirect
 	github.com/gopherjs/gopherjs v1.17.2 // indirect
