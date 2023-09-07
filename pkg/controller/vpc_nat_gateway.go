@@ -3,7 +3,7 @@ package controller
 import (
 	"context"
 	"encoding/json"
-	//"errors"
+	"errors"
 	"fmt"
 	"reflect"
 	"regexp"
@@ -720,7 +720,7 @@ func (c *Controller) execNatGwRules(pod *corev1.Pod, operation string, rules []s
 			klog.V(3).Infof("failed to ExecuteCommandInContainer, stdOutput: %v", stdOutput)
 		}
 		klog.Error(err)
-		// return err
+		return err
 	}
 
 	if len(stdOutput) > 0 {
@@ -729,7 +729,7 @@ func (c *Controller) execNatGwRules(pod *corev1.Pod, operation string, rules []s
 
 	if len(errOutput) > 0 {
 		klog.Errorf("failed to ExecuteCommandInContainer errOutput: %v", errOutput)
-		// return errors.New(errOutput)
+		return errors.New(errOutput)
 	}
 	return nil
 }
