@@ -829,7 +829,7 @@ lint:
 
 .PHONY: gofumpt
 gofumpt: gofumpt
-	find . -name "*.go" -execdir gofumpt -w -extra {} \;
+	gofumpt -w -extra .
 
 .PHONY: lint-windows
 lint-windows:
