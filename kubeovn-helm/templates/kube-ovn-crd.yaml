@@ -436,6 +436,8 @@ spec:
                   type: string
                 u2oInterconnection:
                   type: boolean
+                enableMulticastSnoop:
+                  type: boolean
                 u2oInterconnectionIP:
                   type: string
   scope: Cluster

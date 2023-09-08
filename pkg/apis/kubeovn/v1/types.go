@@ -129,6 +129,7 @@ type SubnetSpec struct {
 	DisableInterConnection bool   `json:"disableInterConnection,omitempty"`
 	U2OInterconnection     bool   `json:"u2oInterconnection,omitempty"`
 	U2OInterconnectionIP   string `json:"u2oInterconnectionIP,omitempty"`
+	EnableMulicastSnoop    bool   `json:"enableMulticastSnoop,omitempty"`
 }
 
 // ConditionType encodes information on the condition

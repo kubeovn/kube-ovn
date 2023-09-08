@@ -94,7 +94,8 @@ func (c *Controller) enqueueUpdateSubnet(old, new interface{}) {
 		oldSubnet.Spec.Vlan != newSubnet.Spec.Vlan ||
 		oldSubnet.Spec.U2OInterconnection != newSubnet.Spec.U2OInterconnection ||
 		(newSubnet.Spec.U2OInterconnection && newSubnet.Spec.U2OInterconnectionIP != "" &&
-			oldSubnet.Spec.U2OInterconnectionIP != newSubnet.Spec.U2OInterconnectionIP) {
+			oldSubnet.Spec.U2OInterconnectionIP != newSubnet.Spec.U2OInterconnectionIP) ||
+		oldSubnet.Spec.EnableMulicastSnoop != newSubnet.Spec.EnableMulicastSnoop {
 		klog.V(3).Infof("enqueue update subnet %s", key)
 		c.addOrUpdateSubnetQueue.Add(key)
 	}
@@ -602,7 +603,7 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 	if !exist {
 		subnet.Status.EnsureStandardConditions()
 		// If multiple namespace use same ls name, only first one will success
-		if err := c.ovnLegacyClient.CreateLogicalSwitch(subnet.Name, vpc.Status.Router, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, needRouter); err != nil {
+		if err := c.ovnLegacyClient.CreateLogicalSwitch(subnet.Name, vpc.Status.Router, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, needRouter, subnet.Spec.EnableMulicastSnoop); err != nil {
 			c.patchSubnetStatus(subnet, "CreateLogicalSwitchFailed", err.Error())
 			return err
 		}
@@ -619,7 +620,7 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		if subnet.Status.U2OInterconnectionIP != "" && subnet.Spec.U2OInterconnection {
 			gateway = subnet.Status.U2OInterconnectionIP
 		}
-		if err := c.ovnLegacyClient.SetLogicalSwitchConfig(subnet.Name, vpc.Status.Router, subnet.Spec.Protocol, subnet.Spec.CIDRBlock, gateway, subnet.Spec.ExcludeIps, needRouter); err != nil {
+		if err := c.ovnLegacyClient.SetLogicalSwitchConfig(subnet.Name, vpc.Status.Router, subnet.Spec.Protocol, subnet.Spec.CIDRBlock, gateway, subnet.Spec.ExcludeIps, needRouter, subnet.Spec.EnableMulicastSnoop); err != nil {
 			c.patchSubnetStatus(subnet, "SetLogicalSwitchConfigFailed", err.Error())
 			return err
 		}

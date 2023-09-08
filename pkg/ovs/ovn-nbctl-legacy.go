@@ -305,7 +305,7 @@ func (c LegacyClient) ListPodLogicalSwitchPorts(pod, namespace string) ([]string
 	return result, nil
 }
 
-func (c LegacyClient) SetLogicalSwitchConfig(ls, lr, protocol, subnet, gateway string, excludeIps []string, needRouter bool) error {
+func (c LegacyClient) SetLogicalSwitchConfig(ls, lr, protocol, subnet, gateway string, excludeIps []string, needRouter, needMulticastSnoop bool) error {
 	var err error
 	cidrBlocks := strings.Split(subnet, ",")
 	mask := strings.Split(cidrBlocks[0], "/")[1]
@@ -364,6 +364,15 @@ func (c LegacyClient) SetLogicalSwitchConfig(ls, lr, protocol, subnet, gateway s
 	}
 	cmd = append(cmd, []string{"--",
 		"set", "logical_switch", ls, fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName)}...)
+
+	if needMulticastSnoop {
+		cmd = append(cmd, []string{"--",
+			"set", "logical_switch", ls, "other_config:mcast_snoop=true", "other_config:mcast_querier=false"}...)
+	} else {
+		cmd = append(cmd, []string{"--",
+			"remove", "logical_switch", ls, "other_config", "mcast_snoop=true", "mcast_querier=false"}...)
+	}
+
 	_, err = c.ovnNbCommand(cmd...)
 	if err != nil {
 		klog.Errorf("set switch config for %s failed: %v", ls, err)
@@ -373,10 +382,15 @@ func (c LegacyClient) SetLogicalSwitchConfig(ls, lr, protocol, subnet, gateway s
 }
 
 // CreateLogicalSwitch create logical switch in ovn, connect it to router and apply tcp/udp lb rules
-func (c LegacyClient) CreateLogicalSwitch(ls, lr, subnet, gateway string, needRouter bool) error {
-	_, err := c.ovnNbCommand(MayExist, "ls-add", ls, "--",
-		"set", "logical_switch", ls, fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName))
+func (c LegacyClient) CreateLogicalSwitch(ls, lr, subnet, gateway string, needRouter, needMulticastSnoop bool) error {
+	cmd := []string{MayExist, "ls-add", ls, "--", "set", "logical_switch", ls, fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName)}
 
+	if needMulticastSnoop {
+		cmd = append(cmd, []string{"--",
+			"set", "logical_switch", ls, "other_config:mcast_snoop=true", "other_config:mcast_querier=false"}...)
+	}
+
+	_, err := c.ovnNbCommand(cmd...)
 	if err != nil {
 		klog.Errorf("create switch %s failed: %v", ls, err)
 		return err
