@@ -16,6 +16,9 @@ import (
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 )
 
+// #nosec G101
+const VpcExternalNet = "ovn-vpc-external-network"
+
 const (
 	IPv4Multicast        = "224.0.0.0/4"
 	IPv4Loopback         = "127.0.0.1/8"
