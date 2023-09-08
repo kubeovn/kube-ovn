@@ -137,6 +137,6 @@ spec:
       volumes:
         - name: kube-ovn-log
           hostPath:
-            path: /var/log/kube-ovn
+            path: {{ .Values.log_conf.LOG_DIR }}/kube-ovn
 {{ end }}
 {{ end }}

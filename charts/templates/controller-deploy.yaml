@@ -167,7 +167,7 @@ spec:
             path: /etc/localtime
         - name: kube-ovn-log
           hostPath:
-            path: /var/log/kube-ovn
+            path: {{ .Values.log_conf.LOG_DIR }}/kube-ovn
         - name: kube-ovn-tls
           secret:
             optional: true
