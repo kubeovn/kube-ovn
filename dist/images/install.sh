@@ -38,6 +38,7 @@ ENABLE_TPROXY=${ENABLE_TPROXY:-false}
 DEBUG_WRAPPER=${DEBUG_WRAPPER:-}
 
 KUBELET_DIR=${KUBELET_DIR:-/var/lib/kubelet}
+LOG_DIR=${LOG_DIR:-/var/log}
 
 CNI_CONF_DIR="/etc/cni/net.d"
 CNI_BIN_DIR="/opt/cni/bin"
@@ -3303,10 +3304,10 @@ spec:
             path: /etc/origin/ovn
         - name: host-log-ovs
           hostPath:
-            path: /var/log/openvswitch
+            path: $LOG_DIR/openvswitch
         - name: host-log-ovn
           hostPath:
-            path: /var/log/ovn
+            path: $LOG_DIR/ovn
         - name: localtime
           hostPath:
             path: /etc/localtime
@@ -3462,10 +3463,10 @@ spec:
             path: /etc/origin/ovn
         - name: host-log-ovs
           hostPath:
-            path: /var/log/openvswitch
+            path: $LOG_DIR/openvswitch
         - name: host-log-ovn
           hostPath:
-            path: /var/log/ovn
+            path: $LOG_DIR/ovn
         - name: host-config-ovs
           hostPath:
             path: /opt/ovs-config
@@ -3641,10 +3642,10 @@ spec:
             path: /etc/origin/ovn
         - name: host-log-ovs
           hostPath:
-            path: /var/log/openvswitch
+            path: $LOG_DIR/openvswitch
         - name: host-log-ovn
           hostPath:
-            path: /var/log/ovn
+            path: $LOG_DIR/ovn
         - name: localtime
           hostPath:
             path: /etc/localtime
@@ -3738,9 +3739,9 @@ spec:
               name: host-config-openvswitch
             - mountPath: /etc/ovn
               name: host-config-ovn
-            - mountPath: /var/log/openvswitch
+            - mountPath: $LOG_DIR/openvswitch
               name: host-log-ovs
-            - mountPath: /var/log/ovn
+            - mountPath: $LOG_DIR/ovn
               name: host-log-ovn
             - mountPath: /etc/localtime
               name: localtime
@@ -3808,10 +3809,10 @@ spec:
             path: /etc/origin/ovn
         - name: host-log-ovs
           hostPath:
-            path: /var/log/openvswitch
+            path: $LOG_DIR/openvswitch
         - name: host-log-ovn
           hostPath:
-            path: /var/log/ovn
+            path: $LOG_DIR/ovn
         - name: localtime
           hostPath:
             path: /etc/localtime
@@ -3984,7 +3985,7 @@ spec:
             path: /etc/localtime
         - name: kube-ovn-log
           hostPath:
-            path: /var/log/kube-ovn
+            path: $LOG_DIR/kube-ovn
         - name: kube-ovn-tls
           secret:
             optional: true
@@ -4170,13 +4171,13 @@ spec:
             path: /var/run/dbus
         - name: host-log-ovs
           hostPath:
-            path: /var/log/openvswitch
+            path: $LOG_DIR/openvswitch
         - name: kube-ovn-log
           hostPath:
-            path: /var/log/kube-ovn
+            path: $LOG_DIR/kube-ovn
         - name: host-log-ovn
           hostPath:
-            path: /var/log/ovn
+            path: $LOG_DIR/ovn
         - name: localtime
           hostPath:
             path: /etc/localtime
@@ -4288,13 +4289,13 @@ spec:
             path: /etc/origin/openvswitch
         - name: host-log-ovs
           hostPath:
-            path: /var/log/openvswitch
+            path: $LOG_DIR/openvswitch
         - name: kube-ovn-log
           hostPath:
-            path: /var/log/kube-ovn
+            path: $LOG_DIR/kube-ovn
         - name: host-log-ovn
           hostPath:
-            path: /var/log/ovn
+            path: $LOG_DIR/ovn
         - name: localtime
           hostPath:
             path: /etc/localtime
@@ -4429,7 +4430,7 @@ spec:
             path: /etc/origin/ovn
         - name: host-log-ovn
           hostPath:
-            path: /var/log/ovn
+            path: $LOG_DIR/ovn
         - name: localtime
           hostPath:
             path: /etc/localtime
@@ -4439,7 +4440,7 @@ spec:
             secretName: kube-ovn-tls
         - name: kube-ovn-log
           hostPath:
-            path: /var/log/kube-ovn
+            path: $LOG_DIR/kube-ovn
 ---
 kind: Service
 apiVersion: v1
