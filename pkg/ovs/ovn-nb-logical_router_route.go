@@ -309,10 +309,11 @@ func (c *OVNNbClient) newLogicalRouterStaticRoute(lrName, routeTable, policy, ip
 	}
 
 	route := &ovnnb.LogicalRouterStaticRoute{
-		UUID:     ovsclient.NamedUUID(),
-		Policy:   &policy,
-		IPPrefix: ipPrefix,
-		Nexthop:  nexthop,
+		UUID:       ovsclient.NamedUUID(),
+		Policy:     &policy,
+		IPPrefix:   ipPrefix,
+		Nexthop:    nexthop,
+		RouteTable: routeTable,
 	}
 	for _, option := range options {
 		option(route)
