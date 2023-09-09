@@ -372,7 +372,13 @@ func (c *Controller) delLearnedRoute() error {
 			return err
 		}
 		for _, r := range routeList {
-			if err = c.OVNNbClient.DeleteLogicalRouterStaticRoute(lr.Name, &r.RouteTable, r.Policy, r.IPPrefix, r.Nexthop); err != nil {
+			if err = c.deleteStaticRouteFromVpc(
+				lr.Name,
+				r.RouteTable,
+				r.IPPrefix,
+				r.Nexthop,
+				reversePolicy(*r.Policy),
+			); err != nil {
 				klog.Errorf("failed to delete learned static route %#v on logical router %s: %v", r, lr.Name, err)
 				return err
 			}
@@ -484,14 +490,30 @@ func (c *Controller) syncOneRouteToPolicy(key, value string) {
 			var matchFiled string
 			if util.CheckProtocol(lrRoute.IPPrefix) == kubeovnv1.ProtocolIPv4 {
 				matchFiled = util.MatchV4Dst + " == " + lrRoute.IPPrefix
-				if err := c.OVNNbClient.AddLogicalRouterPolicy(lr.Name, util.OvnICPolicyPriority, matchFiled, ovnnb.LogicalRouterPolicyActionAllow, nil, map[string]string{key: value, "vendor": util.CniTypeName}); err != nil {
+				if err := c.addPolicyRouteToVpc(
+					lr.Name,
+					&kubeovnv1.PolicyRoute{
+						Priority: util.OvnICPolicyPriority,
+						Match:    matchFiled,
+						Action:   kubeovnv1.PolicyRouteActionAllow,
+					},
+					map[string]string{key: value, "vendor": util.CniTypeName},
+				); err != nil {
 					klog.Errorf("adding router policy failed %v", err)
 				}
 			}
 
 			if util.CheckProtocol(lrRoute.IPPrefix) == kubeovnv1.ProtocolIPv6 {
 				matchFiled = util.MatchV6Dst + " == " + lrRoute.IPPrefix
-				if err := c.OVNNbClient.AddLogicalRouterPolicy(lr.Name, util.OvnICPolicyPriority, matchFiled, ovnnb.LogicalRouterPolicyActionAllow, nil, map[string]string{key: value, "vendor": util.CniTypeName}); err != nil {
+				if err := c.addPolicyRouteToVpc(
+					lr.Name,
+					&kubeovnv1.PolicyRoute{
+						Priority: util.OvnICPolicyPriority,
+						Match:    matchFiled,
+						Action:   kubeovnv1.PolicyRouteActionAllow,
+					},
+					map[string]string{key: value, "vendor": util.CniTypeName},
+				); err != nil {
 					klog.Errorf("adding router policy failed %v", err)
 				}
 			}
