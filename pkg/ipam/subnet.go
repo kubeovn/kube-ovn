@@ -220,10 +220,13 @@ func (subnet *Subnet) getV4RandomAddress(podName, nicName string, mac string, sk
 	var ip IP
 	var idx int
 	for i, ipr := range subnet.V4FreeIPList {
+		klog.Infof("allocate pod %s v4 ip in the range of start: %s, end: %s", podName, ipr.Start, ipr.End)
 		for next := ipr.Start; !next.GreaterThan(ipr.End); next = next.Add(1) {
 			if !util.ContainsString(skippedAddrs, string(next)) {
 				ip = next
 				break
+			} else {
+				klog.Infof("v4 ip %s is in skipped addrs %+v", skippedAddrs)
 			}
 		}
 		if ip != "" {
@@ -235,16 +238,19 @@ func (subnet *Subnet) getV4RandomAddress(podName, nicName string, mac string, sk
 		klog.Errorf("no available ip in subnet %s, v4 free ip list %v", subnet.Name, subnet.V4FreeIPList)
 		return "", "", "", ErrConflict
 	}
-
-	ipr := subnet.V4FreeIPList[idx]
-	part1 := &IPRange{Start: ipr.Start, End: ip.Sub(1)}
-	part2 := &IPRange{Start: ip.Add(1), End: ipr.End}
-	subnet.V4FreeIPList = append(subnet.V4FreeIPList[:idx], subnet.V4FreeIPList[idx+1:]...)
-	if !part1.Start.GreaterThan(part1.End) {
-		subnet.V4FreeIPList = append(subnet.V4FreeIPList, part1)
-	}
-	if !part2.Start.GreaterThan(part2.End) {
-		subnet.V4FreeIPList = append(subnet.V4FreeIPList, part2)
+	if subnet.V4FreeIPList[idx].Start.Equal(ip) {
+		subnet.V4FreeIPList[idx].Start = ip.Add(1)
+	} else {
+		ipr := subnet.V4FreeIPList[idx]
+		part1 := &IPRange{Start: ipr.Start, End: ip.Sub(1)}
+		part2 := &IPRange{Start: ip.Add(1), End: ipr.End}
+		subnet.V4FreeIPList = append(subnet.V4FreeIPList[:idx], subnet.V4FreeIPList[idx+1:]...)
+		if !part1.Start.GreaterThan(part1.End) {
+			subnet.V4FreeIPList = append(subnet.V4FreeIPList, part1)
+		}
+		if !part2.Start.GreaterThan(part2.End) {
+			subnet.V4FreeIPList = append(subnet.V4FreeIPList, part2)
+		}
 	}
 
 	subnet.V4NicToIP[nicName] = ip
@@ -282,10 +288,13 @@ func (subnet *Subnet) getV6RandomAddress(podName, nicName string, mac string, sk
 	var ip IP
 	var idx int
 	for i, ipr := range subnet.V6FreeIPList {
+		klog.Infof("allocate pod %s v6 ip in the range of start: %s, end: %s", podName, ipr.Start, ipr.End)
 		for next := ipr.Start; !next.GreaterThan(ipr.End); next = next.Add(1) {
 			if !util.ContainsString(skippedAddrs, string(next)) {
 				ip = next
 				break
+			} else {
+				klog.Infof("v6 ip %s is in skipped addrs %+v", skippedAddrs)
 			}
 		}
 		if ip != "" {
@@ -297,16 +306,19 @@ func (subnet *Subnet) getV6RandomAddress(podName, nicName string, mac string, sk
 		klog.Errorf("no available ip in subnet %s, v6 free ip list %v", subnet.Name, subnet.V6FreeIPList)
 		return "", "", "", ErrConflict
 	}
-
-	ipr := subnet.V6FreeIPList[idx]
-	part1 := &IPRange{Start: ipr.Start, End: ip.Sub(1)}
-	part2 := &IPRange{Start: ip.Add(1), End: ipr.End}
-	subnet.V6FreeIPList = append(subnet.V6FreeIPList[:idx], subnet.V6FreeIPList[idx+1:]...)
-	if !part1.Start.GreaterThan(part1.End) {
-		subnet.V6FreeIPList = append(subnet.V6FreeIPList, part1)
-	}
-	if !part2.Start.GreaterThan(part2.End) {
-		subnet.V6FreeIPList = append(subnet.V6FreeIPList, part2)
+	if subnet.V6FreeIPList[idx].Start.Equal(ip) {
+		subnet.V6FreeIPList[idx].Start = ip.Add(1)
+	} else {
+		ipr := subnet.V6FreeIPList[idx]
+		part1 := &IPRange{Start: ipr.Start, End: ip.Sub(1)}
+		part2 := &IPRange{Start: ip.Add(1), End: ipr.End}
+		subnet.V6FreeIPList = append(subnet.V6FreeIPList[:idx], subnet.V6FreeIPList[idx+1:]...)
+		if !part1.Start.GreaterThan(part1.End) {
+			subnet.V6FreeIPList = append(subnet.V6FreeIPList, part1)
+		}
+		if !part2.Start.GreaterThan(part2.End) {
+			subnet.V6FreeIPList = append(subnet.V6FreeIPList, part2)
+		}
 	}
 
 	subnet.V6NicToIP[nicName] = ip
