@@ -81,8 +81,8 @@ func (suite *OvnClientTestSuite) testUpdateIngressACLOps() {
 		t.Parallel()
 
 		pgName := "test_create_v4_ingress_acl_pg"
-		asIngressName := "test.default.ingress.allow.ipv4"
-		asExceptName := "test.default.ingress.except.ipv4"
+		asIngressName := "test.default.ingress.allow.ipv4.all"
+		asExceptName := "test.default.ingress.except.ipv4.all"
 		protocol := kubeovnv1.ProtocolIPv4
 
 		err := ovnClient.CreatePortGroup(pgName, nil)
@@ -109,8 +109,8 @@ func (suite *OvnClientTestSuite) testUpdateIngressACLOps() {
 		t.Parallel()
 
 		pgName := "test_create_v6_ingress_acl_pg"
-		asIngressName := "test.default.ingress.allow.ipv6"
-		asExceptName := "test.default.ingress.except.ipv6"
+		asIngressName := "test.default.ingress.allow.ipv6.all"
+		asExceptName := "test.default.ingress.except.ipv6.all"
 		protocol := kubeovnv1.ProtocolIPv6
 
 		err := ovnClient.CreatePortGroup(pgName, nil)
@@ -151,8 +151,8 @@ func (suite *OvnClientTestSuite) testUpdateEgressACLOps() {
 		t.Parallel()
 
 		pgName := "test_create_v4_egress_acl_pg"
-		asEgressName := "test.default.egress.allow.ipv4"
-		asExceptName := "test.default.egress.except.ipv4"
+		asEgressName := "test.default.egress.allow.ipv4.all"
+		asExceptName := "test.default.egress.except.ipv4.all"
 		protocol := kubeovnv1.ProtocolIPv4
 
 		err := ovnClient.CreatePortGroup(pgName, nil)
@@ -179,8 +179,8 @@ func (suite *OvnClientTestSuite) testUpdateEgressACLOps() {
 		t.Parallel()
 
 		pgName := "test_create_v6_egress_acl_pg"
-		asEgressName := "test.default.egress.allow.ipv6"
-		asExceptName := "test.default.egress.except.ipv6"
+		asEgressName := "test.default.egress.allow.ipv6.all"
+		asExceptName := "test.default.egress.except.ipv6.all"
 		protocol := kubeovnv1.ProtocolIPv6
 
 		err := ovnClient.CreatePortGroup(pgName, nil)
