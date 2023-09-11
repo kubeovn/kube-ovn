@@ -22,29 +22,32 @@ import (
 func (c *OVNNbClient) UpdateIngressACLOps(pgName, asIngressName, asExceptName, protocol string, npp []netv1.NetworkPolicyPort, logEnable bool, namedPortMap map[string]*util.NamedPortInfo) ([]ovsdb.Operation, error) {
 	acls := make([]*ovnnb.ACL, 0)
 
-	ipSuffix := "ip4"
-	if protocol == kubeovnv1.ProtocolIPv6 {
-		ipSuffix = "ip6"
-	}
-
-	/* default drop acl */
-	allIPMatch := NewAndACLMatch(
-		NewACLMatch("outport", "==", "@"+pgName, ""),
-		NewACLMatch(ipSuffix, "", "", ""),
-	)
-	options := func(acl *ovnnb.ACL) {
-		if logEnable {
-			acl.Log = true
-			acl.Severity = &ovnnb.ACLSeverityWarning
+	if strings.HasSuffix(asIngressName, ".0") || strings.HasSuffix(asIngressName, ".all") {
+		// create the default drop rule for only once
+		ipSuffix := "ip4"
+		if protocol == kubeovnv1.ProtocolIPv6 {
+			ipSuffix = "ip6"
 		}
-	}
 
-	defaultDropACL, err := c.newACLWithoutCheck(pgName, ovnnb.ACLDirectionToLport, util.IngressDefaultDrop, allIPMatch.String(), ovnnb.ACLActionDrop, options)
-	if err != nil {
-		return nil, fmt.Errorf("new default drop ingress acl for port group %s: %v", pgName, err)
-	}
+		/* default drop acl */
+		allIPMatch := NewAndACLMatch(
+			NewACLMatch("outport", "==", "@"+pgName, ""),
+			NewACLMatch(ipSuffix, "", "", ""),
+		)
+		options := func(acl *ovnnb.ACL) {
+			if logEnable {
+				acl.Log = true
+				acl.Severity = &ovnnb.ACLSeverityWarning
+			}
+		}
 
-	acls = append(acls, defaultDropACL)
+		defaultDropACL, err := c.newACLWithoutCheck(pgName, ovnnb.ACLDirectionToLport, util.IngressDefaultDrop, allIPMatch.String(), ovnnb.ACLActionDrop, options)
+		if err != nil {
+			return nil, fmt.Errorf("new default drop ingress acl for port group %s: %v", pgName, err)
+		}
+
+		acls = append(acls, defaultDropACL)
+	}
 
 	/* allow acl */
 	matches := newNetworkPolicyACLMatch(pgName, asIngressName, asExceptName, protocol, ovnnb.ACLDirectionToLport, npp, namedPortMap)
@@ -69,35 +72,38 @@ func (c *OVNNbClient) UpdateIngressACLOps(pgName, asIngressName, asExceptName, p
 func (c *OVNNbClient) UpdateEgressACLOps(pgName, asEgressName, asExceptName, protocol string, npp []netv1.NetworkPolicyPort, logEnable bool, namedPortMap map[string]*util.NamedPortInfo) ([]ovsdb.Operation, error) {
 	acls := make([]*ovnnb.ACL, 0)
 
-	ipSuffix := "ip4"
-	if protocol == kubeovnv1.ProtocolIPv6 {
-		ipSuffix = "ip6"
-	}
-
-	/* default drop acl */
-	allIPMatch := NewAndACLMatch(
-		NewACLMatch("inport", "==", "@"+pgName, ""),
-		NewACLMatch(ipSuffix, "", "", ""),
-	)
-	options := func(acl *ovnnb.ACL) {
-		if logEnable {
-			acl.Log = true
-			acl.Severity = &ovnnb.ACLSeverityWarning
+	if strings.HasSuffix(asEgressName, ".0") || strings.HasSuffix(asEgressName, ".all") {
+		// create the default drop rule for only once
+		ipSuffix := "ip4"
+		if protocol == kubeovnv1.ProtocolIPv6 {
+			ipSuffix = "ip6"
 		}
 
-		if acl.Options == nil {
-			acl.Options = make(map[string]string)
+		/* default drop acl */
+		allIPMatch := NewAndACLMatch(
+			NewACLMatch("inport", "==", "@"+pgName, ""),
+			NewACLMatch(ipSuffix, "", "", ""),
+		)
+		options := func(acl *ovnnb.ACL) {
+			if logEnable {
+				acl.Log = true
+				acl.Severity = &ovnnb.ACLSeverityWarning
+			}
+
+			if acl.Options == nil {
+				acl.Options = make(map[string]string)
+			}
+			acl.Options["apply-after-lb"] = "true"
 		}
-		acl.Options["apply-after-lb"] = "true"
-	}
 
-	defaultDropACL, err := c.newACLWithoutCheck(pgName, ovnnb.ACLDirectionFromLport, util.EgressDefaultDrop, allIPMatch.String(), ovnnb.ACLActionDrop, options)
-	if err != nil {
-		klog.Error(err)
-		return nil, fmt.Errorf("new default drop egress acl for port group %s: %v", pgName, err)
-	}
+		defaultDropACL, err := c.newACLWithoutCheck(pgName, ovnnb.ACLDirectionFromLport, util.EgressDefaultDrop, allIPMatch.String(), ovnnb.ACLActionDrop, options)
+		if err != nil {
+			klog.Error(err)
+			return nil, fmt.Errorf("new default drop egress acl for port group %s: %v", pgName, err)
+		}
 
-	acls = append(acls, defaultDropACL)
+		acls = append(acls, defaultDropACL)
+	}
 
 	/* allow acl */
 	matches := newNetworkPolicyACLMatch(pgName, asEgressName, asExceptName, protocol, ovnnb.ACLDirectionFromLport, npp, namedPortMap)
