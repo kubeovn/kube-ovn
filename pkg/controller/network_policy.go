@@ -332,7 +332,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 						return err
 					}
 
-					ops, err := c.ovnNbClient.UpdateIngressAclOps(pgName, ingressAllowAsName, ingressExceptAsName, protocol, []netv1.NetworkPolicyPort{}, logEnable, namedPortMap)
+					ops, err := c.ovnNbClient.UpdateIngressAclOps(pgName, ingressAllowAsName, ingressExceptAsName, protocol, nil, logEnable, namedPortMap)
 					if err != nil {
 						klog.Errorf("generate operations that add ingress acls to np %s: %v", key, err)
 						return err
@@ -485,7 +485,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 						return err
 					}
 
-					ops, err := c.ovnNbClient.UpdateEgressAclOps(pgName, egressAllowAsName, egressExceptAsName, protocol, []netv1.NetworkPolicyPort{}, logEnable, namedPortMap)
+					ops, err := c.ovnNbClient.UpdateEgressAclOps(pgName, egressAllowAsName, egressExceptAsName, protocol, nil, logEnable, namedPortMap)
 					if err != nil {
 						klog.Errorf("generate operations that add egress acls to np %s: %v", key, err)
 						return err
