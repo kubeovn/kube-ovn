@@ -94,7 +94,7 @@ func (suite *OvnClientTestSuite) testUpdateIngressACLOps() {
 		require.NoError(t, err)
 		require.Len(t, ops, 4)
 
-		expect(ops[0].Row, "drop", ovnnb.ACLDirectionToLport, fmt.Sprintf("outport == @%s && ip4", pgName), util.IngressDefaultDrop)
+		expect(ops[0].Row, ovnnb.ACLActionDrop, ovnnb.ACLDirectionToLport, fmt.Sprintf("outport == @%s && ip4", pgName), util.IngressDefaultDrop)
 
 		matches := newNetworkPolicyACLMatch(pgName, asIngressName, asExceptName, protocol, ovnnb.ACLDirectionToLport, npp, nil)
 		i := 1
@@ -120,7 +120,7 @@ func (suite *OvnClientTestSuite) testUpdateIngressACLOps() {
 		require.NoError(t, err)
 		require.Len(t, ops, 3)
 
-		expect(ops[0].Row, "drop", ovnnb.ACLDirectionToLport, fmt.Sprintf("outport == @%s && ip6", pgName), util.IngressDefaultDrop)
+		expect(ops[0].Row, ovnnb.ACLActionDrop, ovnnb.ACLDirectionToLport, fmt.Sprintf("outport == @%s && ip6", pgName), util.IngressDefaultDrop)
 
 		matches := newNetworkPolicyACLMatch(pgName, asIngressName, asExceptName, protocol, ovnnb.ACLDirectionToLport, nil, nil)
 		i := 1
@@ -162,15 +162,19 @@ func (suite *OvnClientTestSuite) testUpdateEgressACLOps() {
 
 		ops, err := ovnClient.UpdateEgressACLOps(pgName, asEgressName, asExceptName, protocol, npp, true, nil)
 		require.NoError(t, err)
-		require.Len(t, ops, 4)
+		require.Len(t, ops, 6)
 
-		expect(ops[0].Row, "drop", ovnnb.ACLDirectionFromLport, fmt.Sprintf("inport == @%s && ip4", pgName), util.EgressDefaultDrop)
+		expect(ops[0].Row, ovnnb.ACLActionDrop, ovnnb.ACLDirectionFromLport, fmt.Sprintf("inport == @%s && ip4", pgName), util.EgressDefaultDrop)
 
 		matches := newNetworkPolicyACLMatch(pgName, asEgressName, asExceptName, protocol, ovnnb.ACLDirectionFromLport, npp, nil)
 		i := 1
 		for _, m := range matches {
 			require.Equal(t, m, ops[i].Row["match"])
+			expect(ops[i].Row, ovnnb.ACLActionAllowStateless, ovnnb.ACLDirectionFromLport, m, util.EgressAllowPriority)
+			i++
+			require.Equal(t, m, ops[i].Row["match"])
 			expect(ops[i].Row, ovnnb.ACLActionAllowRelated, ovnnb.ACLDirectionFromLport, m, util.EgressAllowPriority)
+			// TODO: check options:apply-after-lb
 			i++
 		}
 	})
@@ -188,15 +192,19 @@ func (suite *OvnClientTestSuite) testUpdateEgressACLOps() {
 
 		ops, err := ovnClient.UpdateEgressACLOps(pgName, asEgressName, asExceptName, protocol, nil, true, nil)
 		require.NoError(t, err)
-		require.Len(t, ops, 3)
+		require.Len(t, ops, 4)
 
-		expect(ops[0].Row, "drop", ovnnb.ACLDirectionFromLport, fmt.Sprintf("inport == @%s && ip6", pgName), util.EgressDefaultDrop)
+		expect(ops[0].Row, ovnnb.ACLActionDrop, ovnnb.ACLDirectionFromLport, fmt.Sprintf("inport == @%s && ip6", pgName), util.EgressDefaultDrop)
 
 		matches := newNetworkPolicyACLMatch(pgName, asEgressName, asExceptName, protocol, ovnnb.ACLDirectionFromLport, nil, nil)
 		i := 1
 		for _, m := range matches {
 			require.Equal(t, m, ops[i].Row["match"])
+			expect(ops[i].Row, ovnnb.ACLActionAllowStateless, ovnnb.ACLDirectionFromLport, m, util.EgressAllowPriority)
+			i++
+			require.Equal(t, m, ops[i].Row["match"])
 			expect(ops[i].Row, ovnnb.ACLActionAllowRelated, ovnnb.ACLDirectionFromLport, m, util.EgressAllowPriority)
+			// TODO: check options:apply-after-lb
 			i++
 		}
 	})
@@ -994,9 +1002,9 @@ func (suite *OvnClientTestSuite) testNewSgRuleACL() {
 			IPVersion:     "ipv4",
 			RemoteType:    kubeovnv1.SgRemoteTypeAddress,
 			RemoteAddress: "10.10.10.12/24",
-			Protocol:      "icmp",
+			Protocol:      kubeovnv1.ProtocolICMP,
 			Priority:      21,
-			Policy:        "drop",
+			Policy:        kubeovnv1.PolicyDrop,
 		}
 		priority := strconv.Itoa(highestPriority - sgRule.Priority)
 

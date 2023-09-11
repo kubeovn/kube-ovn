@@ -108,7 +108,20 @@ func (c *OVNNbClient) UpdateEgressACLOps(pgName, asEgressName, asExceptName, pro
 	/* allow acl */
 	matches := newNetworkPolicyACLMatch(pgName, asEgressName, asExceptName, protocol, ovnnb.ACLDirectionFromLport, npp, namedPortMap)
 	for _, m := range matches {
-		allowACL, err := c.newACLWithoutCheck(pgName, ovnnb.ACLDirectionFromLport, util.EgressAllowPriority, m, ovnnb.ACLActionAllowRelated, func(acl *ovnnb.ACL) {
+		allowACL, err := c.newACLWithoutCheck(pgName, ovnnb.ACLDirectionFromLport, util.EgressAllowPriority, m, ovnnb.ACLActionAllowStateless)
+		if err != nil {
+			klog.Error(err)
+			return nil, fmt.Errorf("new allow egress acl for port group %s: %v", pgName, err)
+		}
+		if err != nil {
+			klog.Error(err)
+			return nil, fmt.Errorf("new allow egress acl for port group %s: %v", pgName, err)
+		}
+
+		acls = append(acls, allowACL)
+
+		// allow after LB
+		allowACL, err = c.newACLWithoutCheck(pgName, ovnnb.ACLDirectionFromLport, util.EgressAllowPriority, m, ovnnb.ACLActionAllowRelated, func(acl *ovnnb.ACL) {
 			if acl.Options == nil {
 				acl.Options = make(map[string]string)
 			}
