@@ -147,27 +147,56 @@ func convertExcludeIps(excludeIps []string) IPRangeList {
 
 func splitRange(a, b *IPRange) IPRangeList {
 	if b.End.LessThan(a.Start) || b.Start.GreaterThan(a.End) {
+		// bs----be----as----ae or as----ae----bs----be
+		// a is aready splited with b
+
 		return IPRangeList{a}
 	}
 
 	if (a.Start.Equal(b.Start) || a.Start.GreaterThan(b.Start)) &&
 		(a.End.Equal(b.End) || a.End.LessThan(b.End)) {
+		// as(bs)---- or bs----as----
+		// ae(be) or ae----be
+		// a is the same as b
+		// a in b
+
 		return nil
 	}
 
 	if (a.Start.Equal(b.Start) || a.Start.GreaterThan(b.Start)) &&
 		a.End.GreaterThan(b.End) {
+		// as(bs)---- or bs----as----
+		// be----ae
+		// as(bs)----be----ae
+		// bs----as----be----ae
+		// get be----ae
+
 		ipr := IPRange{Start: b.End.Add(1), End: a.End}
 		return IPRangeList{&ipr}
 	}
 
 	if (a.End.Equal(b.End) || a.End.LessThan(b.End)) &&
 		a.Start.LessThan(b.Start) {
+		// -----ae(be) or ----ae----be
+		// -----as----bs
+		// -----as----bs-----ae(be)
+		// -----as----bs-----ae----be
+		// get as----bs
+
 		ipr := IPRange{Start: a.Start, End: b.Start.Add(-1)}
 		return IPRangeList{&ipr}
 	}
 
 	ipr1 := IPRange{Start: a.Start, End: b.Start.Add(-1)}
 	ipr2 := IPRange{Start: b.End.Add(1), End: a.End}
-	return IPRangeList{&ipr1, &ipr2}
+	results := IPRangeList{}
+	if !ipr1.Start.GreaterThan(ipr1.End) {
+		// start <= end
+		results = append(results, &ipr1)
+	}
+	if !ipr2.Start.GreaterThan(ipr2.End) {
+		// start <= end
+		results = append(results, &ipr2)
+	}
+	return results
 }

@@ -238,19 +238,12 @@ func (subnet *Subnet) getV4RandomAddress(podName, nicName string, mac string, sk
 		klog.Errorf("no available ip in subnet %s, v4 free ip list %v", subnet.Name, subnet.V4FreeIPList)
 		return "", "", "", ErrConflict
 	}
-	if subnet.V4FreeIPList[idx].Start.Equal(ip) {
-		subnet.V4FreeIPList[idx].Start = ip.Add(1)
-	} else {
-		ipr := subnet.V4FreeIPList[idx]
-		part1 := &IPRange{Start: ipr.Start, End: ip.Sub(1)}
-		part2 := &IPRange{Start: ip.Add(1), End: ipr.End}
+
+	if subnet.V4FreeIPList[idx].End.Equal(ip) {
+		// the item of ip range is all allocated, remove it
 		subnet.V4FreeIPList = append(subnet.V4FreeIPList[:idx], subnet.V4FreeIPList[idx+1:]...)
-		if !part1.Start.GreaterThan(part1.End) {
-			subnet.V4FreeIPList = append(subnet.V4FreeIPList, part1)
-		}
-		if !part2.Start.GreaterThan(part2.End) {
-			subnet.V4FreeIPList = append(subnet.V4FreeIPList, part2)
-		}
+	} else {
+		subnet.V4FreeIPList[idx].Start = ip.Add(1)
 	}
 
 	subnet.V4NicToIP[nicName] = ip
@@ -306,19 +299,12 @@ func (subnet *Subnet) getV6RandomAddress(podName, nicName string, mac string, sk
 		klog.Errorf("no available ip in subnet %s, v6 free ip list %v", subnet.Name, subnet.V6FreeIPList)
 		return "", "", "", ErrConflict
 	}
-	if subnet.V6FreeIPList[idx].Start.Equal(ip) {
-		subnet.V6FreeIPList[idx].Start = ip.Add(1)
-	} else {
-		ipr := subnet.V6FreeIPList[idx]
-		part1 := &IPRange{Start: ipr.Start, End: ip.Sub(1)}
-		part2 := &IPRange{Start: ip.Add(1), End: ipr.End}
+
+	if subnet.V6FreeIPList[idx].End.Equal(ip) {
+		// the item of ip range is all allocated, remove it
 		subnet.V6FreeIPList = append(subnet.V6FreeIPList[:idx], subnet.V6FreeIPList[idx+1:]...)
-		if !part1.Start.GreaterThan(part1.End) {
-			subnet.V6FreeIPList = append(subnet.V6FreeIPList, part1)
-		}
-		if !part2.Start.GreaterThan(part2.End) {
-			subnet.V6FreeIPList = append(subnet.V6FreeIPList, part2)
-		}
+	} else {
+		subnet.V6FreeIPList[idx].Start = ip.Add(1)
 	}
 
 	subnet.V6NicToIP[nicName] = ip
