@@ -220,10 +220,13 @@ func (subnet *Subnet) getV4RandomAddress(podName, nicName string, mac string, sk
 	var ip IP
 	var idx int
 	for i, ipr := range subnet.V4FreeIPList {
+		klog.Infof("allocate pod %s v4 ip in the range of start: %s, end: %s", podName, ipr.Start, ipr.End)
 		for next := ipr.Start; !next.GreaterThan(ipr.End); next = next.Add(1) {
 			if !util.ContainsString(skippedAddrs, string(next)) {
 				ip = next
 				break
+			} else {
+				klog.Infof("v4 ip %s is in skipped addrs %+v", skippedAddrs)
 			}
 		}
 		if ip != "" {
@@ -282,10 +285,13 @@ func (subnet *Subnet) getV6RandomAddress(podName, nicName string, mac string, sk
 	var ip IP
 	var idx int
 	for i, ipr := range subnet.V6FreeIPList {
+		klog.Infof("allocate pod %s v6 ip in the range of start: %s, end: %s", podName, ipr.Start, ipr.End)
 		for next := ipr.Start; !next.GreaterThan(ipr.End); next = next.Add(1) {
 			if !util.ContainsString(skippedAddrs, string(next)) {
 				ip = next
 				break
+			} else {
+				klog.Infof("v6 ip %s is in skipped addrs %+v", skippedAddrs)
 			}
 		}
 		if ip != "" {
