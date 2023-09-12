@@ -14,6 +14,7 @@ CONN_CHECK_LABEL="conn-check"
 CONN_CHECK_SERVER="conn-check-server"
 PERF_GC_COMMAND=()
 LAST_PERF_FAILED_LOG=""
+OVN_TRACE=0
 
 showHelp(){
   echo "kubectl ko {subcommand} [option...]"
@@ -26,11 +27,11 @@ showHelp(){
   echo "  dpctl {nodeName} [ovs-dpctl options ...]   invoke ovs-dpctl on the specified node"
   echo "  appctl {nodeName} [ovs-appctl options ...]   invoke ovs-appctl on the specified node"
   echo "  tcpdump {namespace/podname} [tcpdump options ...]     capture pod traffic"
-  echo "  trace ...    trace ovn microflow of specific packet"
-  echo "    trace {namespace/podname} {target ip address} [target mac address] {icmp|tcp|udp} [target tcp/udp port]    trace ICMP/TCP/UDP"
-  echo "    trace {namespace/podname} {target ip address} [target mac address] arp {request|reply}                     trace ARP request/reply"
-  echo "    trace {node//nodename} {target ip address} [target mac address] {icmp|tcp|udp} [target tcp/udp port]       trace ICMP/TCP/UDP"
-  echo "    trace {node//nodename} {target ip address} [target mac address] arp {request|reply}                        trace ARP request/reply"
+  echo "  trace/ovn-trace ...    trace ovn microflow of specific packet"
+  echo "    trace/ovn-trace {namespace/podname} {target ip address} [target mac address] {icmp|tcp|udp} [target tcp/udp port]    trace ICMP/TCP/UDP"
+  echo "    trace/ovn-trace {namespace/podname} {target ip address} [target mac address] arp {request|reply}                     trace ARP request/reply"
+  echo "    trace/ovn-trace {node//nodename} {target ip address} [target mac address] {icmp|tcp|udp} [target tcp/udp port]       trace ICMP/TCP/UDP"
+  echo "    trace/ovn-trace {node//nodename} {target ip address} [target mac address] arp {request|reply}                        trace ARP request/reply"
   echo "  diagnose {all|node|subnet|IPPorts} [nodename|subnetName|{proto1}-{IP1}-{Port1},{proto2}-{IP2}-{Port2}]    diagnose connectivity of all nodes or a specific node or specify subnet's ds pod or IPPorts like 'tcp-172.18.0.2-53,udp-172.18.0.3-53'"
   echo "  env-check    check the environment configuration"
   echo "  tuning {install-fastpath|local-install-fastpath|remove-fastpath|install-stt|local-install-stt|remove-stt} {centos7|centos8}} [kernel-devel-version]    deploy kernel optimisation components to the system"
@@ -440,6 +441,8 @@ trace(){
   esac
 
   set +x
+  test $OVN_TRACE -ne 0 && return
+
   echo "--------"
   echo "Start OVS Tracing"
   echo ""
@@ -1652,6 +1655,11 @@ case $subcommand in
     ;;
   trace)
     getOvnCentralPod
+    trace "$@"
+    ;;
+  ovn-trace)
+    getOvnCentralPod
+    OVN_TRACE=1
     trace "$@"
     ;;
   diagnose)
