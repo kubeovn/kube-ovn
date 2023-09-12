@@ -578,10 +578,10 @@ func (c *Controller) patchOvnDnatStatus(key, vpcName, v4Eip, podIP, podMac strin
 	return nil
 }
 
-func (c *Controller) AddDnatRule(vpcName, dnatName, externalIp, internalIp, externalPort, internalPort, protocol string) error {
+func (c *Controller) AddDnatRule(vpcName, dnatName, externalIP, internalIP, externalPort, internalPort, protocol string) error {
 	var (
-		externalEndpoint = net.JoinHostPort(externalIp, externalPort)
-		internalEndpoint = net.JoinHostPort(internalIp, internalPort)
+		externalEndpoint = net.JoinHostPort(externalIP, externalPort)
+		internalEndpoint = net.JoinHostPort(internalIP, internalPort)
 		err              error
 	)
 
@@ -602,9 +602,9 @@ func (c *Controller) AddDnatRule(vpcName, dnatName, externalIp, internalIp, exte
 	return nil
 }
 
-func (c *Controller) DelDnatRule(vpcName, dnatName, externalIp, externalPort string) error {
+func (c *Controller) DelDnatRule(vpcName, dnatName, externalIP, externalPort string) error {
 	var (
-		externalEndpoint  = net.JoinHostPort(externalIp, externalPort)
+		externalEndpoint  = net.JoinHostPort(externalIP, externalPort)
 		ignoreHealthCheck = true
 		err               error
 	)

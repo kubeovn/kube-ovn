@@ -80,11 +80,11 @@ type LogicalSwitchPort interface {
 type LoadBalancer interface {
 	CreateLoadBalancer(lbName, protocol, selectFields string) error
 	LoadBalancerAddVip(lbName, vipEndpoint string, backends ...string) error
-	LoadBalancerDeleteVip(lbName string, vipEndpoint string, ignoreHealthCheck bool) error
+	LoadBalancerDeleteVip(lbName, vipEndpoint string, ignoreHealthCheck bool) error
 	LoadBalancerAddIPPortMapping(lbName, vipEndpoint string, ipPortMappings map[string]string) error
 	LoadBalancerUpdateIPPortMapping(lbName, vipEndpoint string, ipPortMappings map[string]string) error
 	LoadBalancerDeleteIPPortMapping(lbName, vipEndpoint string) error
-	LoadBalancerAddHealthCheck(lbName, vipEndpoint string, ignoreHealthCheck bool, ipPortMapping map[string]string, backends ...string) error
+	LoadBalancerAddHealthCheck(lbName, vipEndpoint string, ignoreHealthCheck bool, ipPortMapping map[string]string) error
 	LoadBalancerDeleteHealthCheck(lbName, uuid string) error
 	SetLoadBalancerAffinityTimeout(lbName string, timeout int) error
 	DeleteLoadBalancers(filter func(lb *ovnnb.LoadBalancer) bool) error

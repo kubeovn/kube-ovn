@@ -116,16 +116,18 @@ func (c *OVNNbClient) LoadBalancerUpdateHealthCheckOp(lbName string, lbhcUUIDs [
 }
 
 // LoadBalancerAddHealthCheck adds health check
-func (c *OVNNbClient) LoadBalancerAddHealthCheck(lbName, vipEndpoint string, ignoreHealthCheck bool, ipPortMapping map[string]string, backends ...string) error {
+func (c *OVNNbClient) LoadBalancerAddHealthCheck(lbName, vipEndpoint string, ignoreHealthCheck bool, ipPortMapping map[string]string) error {
 	klog.Infof("lb %s health check use ip port mapping %v", lbName, ipPortMapping)
 	if err := c.LoadBalancerUpdateIPPortMapping(lbName, vipEndpoint, ipPortMapping); err != nil {
 		klog.Errorf("failed to update lb ip port mapping: %v", err)
 		return err
 	}
-	klog.Infof("add health check for lb %s with vip %s and health check vip maps %v", lbName, vipEndpoint, ipPortMapping)
-	if err := c.AddLoadBalancerHealthCheck(lbName, vipEndpoint); err != nil {
-		klog.Errorf("failed to create lb health check: %v", err)
-		return err
+	if !ignoreHealthCheck {
+		klog.Infof("add health check for lb %s with vip %s and health check vip maps %v", lbName, vipEndpoint, ipPortMapping)
+		if err := c.AddLoadBalancerHealthCheck(lbName, vipEndpoint); err != nil {
+			klog.Errorf("failed to create lb health check: %v", err)
+			return err
+		}
 	}
 	return nil
 }
@@ -390,10 +392,10 @@ func (c *OVNNbClient) LoadBalancerDeleteIPPortMapping(lbName, vipEndpoint string
 		return err
 	}
 	mappings := lb.IPPortMappings
-	for portIp, portMapVip := range lb.IPPortMappings {
+	for portIP, portMapVip := range lb.IPPortMappings {
 		splits := strings.Split(portMapVip, ":")
 		if len(splits) == 2 && splits[1] == vip {
-			delete(mappings, portIp)
+			delete(mappings, portIP)
 		}
 	}
 
@@ -470,4 +472,3 @@ func (c *OVNNbClient) LoadBalancerDeleteHealthCheck(lbName, uuid string) error {
 
 	return nil
 }
-

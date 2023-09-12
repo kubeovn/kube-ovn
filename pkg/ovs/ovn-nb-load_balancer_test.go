@@ -649,7 +649,6 @@ func (suite *OvnClientTestSuite) testLoadBalancerDeleteIPPortMapping() {
 				lb, err = ovnClient.GetLoadBalancer(lbName, false)
 				require.NoError(t, err)
 			}
-
 		},
 	)
 }
@@ -664,7 +663,7 @@ func (suite *OvnClientTestSuite) testLoadBalancerWithHealthCheck() {
 		vips, mappings map[string]string
 		lb             *ovnnb.LoadBalancer
 		lbhc           *ovnnb.LoadBalancerHealthCheck
-		lbhcId         string
+		lbhcID         string
 		err            error
 	)
 
@@ -759,8 +758,8 @@ func (suite *OvnClientTestSuite) testLoadBalancerWithHealthCheck() {
 			require.NoError(t, err)
 			_, lbhc, err = ovnClient.GetLoadBalancerHealthCheck(lbName, vip, false)
 			require.NoError(t, err)
-			lbhcId = lbhc.UUID
-			require.Contains(t, lb.HealthCheck, lbhcId)
+			lbhcID = lbhc.UUID
+			require.Contains(t, lb.HealthCheck, lbhcID)
 		},
 	)
 
@@ -772,29 +771,29 @@ func (suite *OvnClientTestSuite) testLoadBalancerWithHealthCheck() {
 			require.NoError(t, err)
 			_, lbhc, err = ovnClient.GetLoadBalancerHealthCheck(lbName, vip, false)
 			require.NoError(t, err)
-			require.Contains(t, lb.HealthCheck, lbhcId)
+			require.Contains(t, lb.HealthCheck, lbhcID)
 		},
 	)
 
 	t.Run("delete health check from load balancer repeatedly",
 		func(t *testing.T) {
-			err = ovnClient.LoadBalancerDeleteHealthCheck(lbName, lbhcId)
+			err = ovnClient.LoadBalancerDeleteHealthCheck(lbName, lbhcID)
 			require.NoError(t, err)
 
 			lb, err = ovnClient.GetLoadBalancer(lbName, false)
 			require.NoError(t, err)
-			require.NotContains(t, lb.HealthCheck, lbhcId)
+			require.NotContains(t, lb.HealthCheck, lbhcID)
 		},
 	)
 
 	t.Run("delete health check from load balancer repeatedly",
 		func(t *testing.T) {
-			err = ovnClient.LoadBalancerDeleteHealthCheck(lbName, lbhcId)
+			err = ovnClient.LoadBalancerDeleteHealthCheck(lbName, lbhcID)
 			require.NoError(t, err)
 
 			lb, err = ovnClient.GetLoadBalancer(lbName, false)
 			require.NoError(t, err)
-			require.NotContains(t, lb.HealthCheck, lbhcId)
+			require.NotContains(t, lb.HealthCheck, lbhcID)
 		},
 	)
 }

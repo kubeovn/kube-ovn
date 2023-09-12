@@ -22,9 +22,7 @@ import (
 )
 
 func (c *Controller) InitOVN() error {
-	var (
-		err error
-	)
+	var err error
 
 	if err = c.initClusterRouter(); err != nil {
 		klog.Errorf("init cluster router failed: %v", err)

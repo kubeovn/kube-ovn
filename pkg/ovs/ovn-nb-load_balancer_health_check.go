@@ -15,16 +15,7 @@ import (
 )
 
 func (c *OVNNbClient) AddLoadBalancerHealthCheck(lbName, vipEndpoint string) error {
-	lbhc, err := c.newLoadBalancerHealthCheck(
-		lbName,
-		vipEndpoint,
-		func(lbhc *ovnnb.LoadBalancerHealthCheck) {
-			if lbName == "" || vipEndpoint == "" {
-				return
-			}
-		},
-	)
-
+	lbhc, err := c.newLoadBalancerHealthCheck(lbName, vipEndpoint)
 	if err != nil {
 		err := fmt.Errorf("failed to new lb health check: %v", err)
 		klog.Error(err)
@@ -35,7 +26,7 @@ func (c *OVNNbClient) AddLoadBalancerHealthCheck(lbName, vipEndpoint string) err
 }
 
 // newLoadBalancerHealthCheck return hc with basic information
-func (c *OVNNbClient) newLoadBalancerHealthCheck(lbName, vipEndpoint string, funcs ...func(nat *ovnnb.LoadBalancerHealthCheck)) (*ovnnb.LoadBalancerHealthCheck, error) {
+func (c *OVNNbClient) newLoadBalancerHealthCheck(lbName, vipEndpoint string) (*ovnnb.LoadBalancerHealthCheck, error) {
 	if len(lbName) == 0 {
 		err := fmt.Errorf("the lb name is required")
 		klog.Error(err)
@@ -283,10 +274,7 @@ func (c *OVNNbClient) DeleteLoadBalancerHealthCheckOp(lbName, vip string) ([]ovs
 		return nil, nil
 	}
 
-	var (
-		op []ovsdb.Operation
-	)
-
+	var op []ovsdb.Operation
 	op, err = c.Where(lbhc).Delete()
 	if err != nil {
 		klog.Errorf("failed to generate operations for deleting lb health check: %v", err)

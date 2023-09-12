@@ -194,7 +194,7 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 			}
 
 			vipEndpoint := util.JoinHostPort(lbVip, port.Port)
-			ipPortMapping, backends := getIpPortMappingBackend(ep, pods, port, lbVip, ignoreHealthCheck)
+			ipPortMapping, backends := getIPPortMappingBackend(ep, pods, port, lbVip, ignoreHealthCheck)
 			// for performance reason delete lb with no backends
 			if len(backends) != 0 {
 				klog.Infof("add vip endpoint %s, backends %v to LB %s", vipEndpoint, backends, lb)
@@ -227,7 +227,7 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 	return nil
 }
 
-func getIpPortMappingBackend(endpoints *v1.Endpoints, pods []*v1.Pod, servicePort v1.ServicePort, serviceIP string, ignoreHealthCheck bool) (map[string]string, []string) {
+func getIPPortMappingBackend(endpoints *v1.Endpoints, pods []*v1.Pod, servicePort v1.ServicePort, serviceIP string, ignoreHealthCheck bool) (map[string]string, []string) {
 	var (
 		ipPortMapping = map[string]string{}
 		backends      = []string{}
