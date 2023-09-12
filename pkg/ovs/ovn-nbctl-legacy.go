@@ -876,27 +876,29 @@ func (c LegacyClient) CreatePeerRouterPort(localRouter, remoteRouter, localRoute
 		ipStr := strings.Split(localRouterPortIP, ",")
 		if len(ipStr) == 2 {
 			klog.Infof("add vpc lrp %s", localRouterPort)
-			_, err = c.ovnNbCommand(MayExist, "lrp-add", localRouter, localRouterPort, util.GenerateMac(), ipStr[0], ipStr[1], "--",
-				"set", "logical_router_port", localRouterPort, fmt.Sprintf("peer=%s", remoteRouterPort))
+			_, err = c.ovnNbCommand(MayExist, "lrp-add", localRouter, localRouterPort, util.GenerateMac(), ipStr[0], ipStr[1],
+				fmt.Sprintf("peer=%s", remoteRouterPort))
 		} else {
 			klog.Infof("add vpc lrp %s", localRouterPort)
-			_, err = c.ovnNbCommand(MayExist, "lrp-add", localRouter, localRouterPort, util.GenerateMac(), ipStr[0], "--",
-				"set", "logical_router_port", localRouterPort, fmt.Sprintf("peer=%s", remoteRouterPort))
+			_, err = c.ovnNbCommand(MayExist, "lrp-add", localRouter, localRouterPort, util.GenerateMac(), ipStr[0],
+				fmt.Sprintf("peer=%s", remoteRouterPort))
 		}
 		if err != nil {
 			klog.Errorf("failed to create router port %s: %v", localRouterPort, err)
 			return err
 		}
+	} else {
+		klog.Infof("set lrp %s, networks %s", localRouterPort, localRouterPortIP)
+		networks := strings.ReplaceAll(strings.Join(strings.Split(localRouterPortIP, ","), " "), ":", "\\:")
+		_, err = c.ovnNbCommand("set", "logical_router_port", localRouterPort,
+			fmt.Sprintf("networks=%s", networks))
+
+		if err != nil {
+			klog.Errorf("failed to set router port %s: %v", localRouterPort, err)
+			return err
+		}
 	}
 
-	klog.Infof("set lrp %s, networks %s", localRouterPort, localRouterPortIP)
-	_, err = c.ovnNbCommand("set", "logical_router_port", localRouterPort,
-		fmt.Sprintf("networks=\"%s\"", strings.ReplaceAll(localRouterPortIP, ",", " ")))
-
-	if err != nil {
-		klog.Errorf("failed to set router port %s: %v", localRouterPort, err)
-		return err
-	}
 	return nil
 }
 
