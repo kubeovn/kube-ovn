@@ -239,11 +239,15 @@ func (subnet *Subnet) getV4RandomAddress(podName, nicName string, mac string, sk
 		return "", "", "", ErrConflict
 	}
 
-	if subnet.V4FreeIPList[idx].End.Equal(ip) {
-		// the item of ip range is all allocated, remove it
-		subnet.V4FreeIPList = append(subnet.V4FreeIPList[:idx], subnet.V4FreeIPList[idx+1:]...)
-	} else {
-		subnet.V4FreeIPList[idx].Start = ip.Add(1)
+	ipr := subnet.V4FreeIPList[idx]
+	part1 := &IPRange{Start: ipr.Start, End: ip.Sub(1)}
+	part2 := &IPRange{Start: ip.Add(1), End: ipr.End}
+	subnet.V4FreeIPList = append(subnet.V4FreeIPList[:idx], subnet.V4FreeIPList[idx+1:]...)
+	if !part1.Start.GreaterThan(part1.End) {
+		subnet.V4FreeIPList = append(subnet.V4FreeIPList, part1)
+	}
+	if !part2.Start.GreaterThan(part2.End) {
+		subnet.V4FreeIPList = append(subnet.V4FreeIPList, part2)
 	}
 
 	subnet.V4NicToIP[nicName] = ip
@@ -300,11 +304,15 @@ func (subnet *Subnet) getV6RandomAddress(podName, nicName string, mac string, sk
 		return "", "", "", ErrConflict
 	}
 
-	if subnet.V6FreeIPList[idx].End.Equal(ip) {
-		// the item of ip range is all allocated, remove it
-		subnet.V6FreeIPList = append(subnet.V6FreeIPList[:idx], subnet.V6FreeIPList[idx+1:]...)
-	} else {
-		subnet.V6FreeIPList[idx].Start = ip.Add(1)
+	ipr := subnet.V6FreeIPList[idx]
+	part1 := &IPRange{Start: ipr.Start, End: ip.Sub(1)}
+	part2 := &IPRange{Start: ip.Add(1), End: ipr.End}
+	subnet.V6FreeIPList = append(subnet.V6FreeIPList[:idx], subnet.V6FreeIPList[idx+1:]...)
+	if !part1.Start.GreaterThan(part1.End) {
+		subnet.V6FreeIPList = append(subnet.V6FreeIPList, part1)
+	}
+	if !part2.Start.GreaterThan(part2.End) {
+		subnet.V6FreeIPList = append(subnet.V6FreeIPList, part2)
 	}
 
 	subnet.V6NicToIP[nicName] = ip
