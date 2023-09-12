@@ -40,11 +40,12 @@ func (c *Controller) exportSubnetMetrics() bool {
 
 func (c *Controller) exportSubnetAvailableIPsGauge(subnet *kubeovnv1.Subnet) {
 	var availableIPs float64
-	if subnet.Spec.Protocol == kubeovnv1.ProtocolIPv4 {
+	switch subnet.Spec.Protocol {
+	case kubeovnv1.ProtocolIPv4:
 		availableIPs = subnet.Status.V4AvailableIPs
-	} else if subnet.Spec.Protocol == kubeovnv1.ProtocolIPv6 {
+	case kubeovnv1.ProtocolIPv6:
 		availableIPs = subnet.Status.V6AvailableIPs
-	} else {
+	default:
 		availableIPs = math.Min(subnet.Status.V4AvailableIPs, subnet.Status.V6AvailableIPs)
 	}
 	metricSubnetAvailableIPs.WithLabelValues(subnet.Name, subnet.Spec.Protocol, subnet.Spec.CIDRBlock).Set(availableIPs)

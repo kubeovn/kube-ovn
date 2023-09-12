@@ -22,7 +22,7 @@ const (
 )
 
 // CreateGatewayLogicalSwitch create gateway switch connect external networks
-func (c *ovnNbClient) CreateGatewayLogicalSwitch(lsName, lrName, provider, ip, mac string, vlanID int, chassises ...string) error {
+func (c *OVNNbClient) CreateGatewayLogicalSwitch(lsName, lrName, provider, ip, mac string, vlanID int, chassises ...string) error {
 	lspName := fmt.Sprintf("%s-%s", lsName, lrName)
 	lrpName := fmt.Sprintf("%s-%s", lrName, lsName)
 
@@ -41,15 +41,11 @@ func (c *ovnNbClient) CreateGatewayLogicalSwitch(lsName, lrName, provider, ip, m
 		return fmt.Errorf("create localnet logical switch port %s: %v", localnetLspName, err)
 	}
 
-	if err := c.CreateLogicalPatchPort(lsName, lrName, lspName, lrpName, ip, mac, chassises...); err != nil {
-		return err
-	}
-
-	return nil
+	return c.CreateLogicalPatchPort(lsName, lrName, lspName, lrpName, ip, mac, chassises...)
 }
 
 // CreateLogicalPatchPort create logical router port and associated logical switch port which type is router
-func (c *ovnNbClient) CreateLogicalPatchPort(lsName, lrName, lspName, lrpName, ip, mac string, chassises ...string) error {
+func (c *OVNNbClient) CreateLogicalPatchPort(lsName, lrName, lspName, lrpName, ip, mac string, chassises ...string) error {
 	if len(ip) != 0 {
 		// check ip format: 192.168.231.1/24,fc00::0af4:01/112
 		if err := util.CheckCidrs(ip); err != nil {
@@ -68,15 +64,11 @@ func (c *ovnNbClient) CreateLogicalPatchPort(lsName, lrName, lspName, lrpName, i
 	}
 
 	/* create gateway chassises for logical router port */
-	if err = c.CreateGatewayChassises(lrpName, chassises...); err != nil {
-		return err
-	}
-
-	return nil
+	return c.CreateGatewayChassises(lrpName, chassises...)
 }
 
 // DeleteLogicalGatewaySwitch delete gateway switch and corresponding port
-func (c *ovnNbClient) DeleteLogicalGatewaySwitch(lsName, lrName string) error {
+func (c *OVNNbClient) DeleteLogicalGatewaySwitch(lsName, lrName string) error {
 	lrpName := fmt.Sprintf("%s-%s", lrName, lsName)
 
 	// all corresponding logical switch port(e.g. localnet port and normal port) will be deleted when delete logical switch
@@ -101,7 +93,7 @@ func (c *ovnNbClient) DeleteLogicalGatewaySwitch(lsName, lrName string) error {
 	return nil
 }
 
-func (c *ovnNbClient) DeleteSecurityGroup(sgName string) error {
+func (c *OVNNbClient) DeleteSecurityGroup(sgName string) error {
 	pgName := GetSgPortGroupName(sgName)
 
 	// clear acl
@@ -121,14 +113,10 @@ func (c *ovnNbClient) DeleteSecurityGroup(sgName string) error {
 	}
 
 	// delete pg
-	if err := c.DeletePortGroup(pgName); err != nil {
-		return err
-	}
-
-	return nil
+	return c.DeletePortGroup(pgName)
 }
 
-func (c *ovnNbClient) CreateRouterPortOp(lsName, lrName, lspName, lrpName, ip, mac string) ([]ovsdb.Operation, error) {
+func (c *OVNNbClient) CreateRouterPortOp(lsName, lrName, lspName, lrpName, ip, mac string) ([]ovsdb.Operation, error) {
 	/* do nothing if logical switch port exist */
 	lspExist, err := c.LogicalSwitchPortExists(lspName)
 	if err != nil {
@@ -177,7 +165,7 @@ func (c *ovnNbClient) CreateRouterPortOp(lsName, lrName, lspName, lrpName, ip, m
 }
 
 // RemoveLogicalPatchPort delete logical router port and associated logical switch port which type is router
-func (c *ovnNbClient) RemoveLogicalPatchPort(lspName, lrpName string) error {
+func (c *OVNNbClient) RemoveLogicalPatchPort(lspName, lrpName string) error {
 	/* delete logical switch port*/
 	lspDelOp, err := c.DeleteLogicalSwitchPortOp(lspName)
 	if err != nil {

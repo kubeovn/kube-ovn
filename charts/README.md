@@ -18,9 +18,3 @@ $ helm install --debug kubeovn ./kubeovn-helm --set MASTER_NODES=${Node0},${Node
 # upgrade to this version
 $ helm upgrade --debug kubeovn ./kubeovn-helm --set MASTER_NODES=${Node0},${Node1},${Node2}, --set replicaCount=3
 ```
-
-If you are upgrading Kube-OVN from versions prior to v1.12, you need to set `restart_ovs` to `true`:
-
-```shell
-$ helm upgrade --debug kubeovn ./kubeovn-helm --set MASTER_NODES=${Node0},${Node1},${Node2}, --set replicaCount=3 --set restart_ovs=true
-```

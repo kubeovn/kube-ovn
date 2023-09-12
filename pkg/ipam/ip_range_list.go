@@ -33,7 +33,9 @@ func NewIPRangeListFrom(x ...string) (*IPRangeList, error) {
 	ret := &IPRangeList{}
 	for _, s := range x {
 		var r *IPRange
-		if strings.Contains(s, "..") {
+
+		switch {
+		case strings.Contains(s, ".."):
 			ips := strings.Split(s, "..")
 			start, err := NewIP(ips[0])
 			if err != nil {
@@ -47,13 +49,13 @@ func NewIPRangeListFrom(x ...string) (*IPRangeList, error) {
 				return nil, fmt.Errorf("invalid ip range %q: %s is greater than %s", s, start, end)
 			}
 			r = NewIPRange(start, end)
-		} else if strings.ContainsRune(s, '/') {
+		case strings.ContainsRune(s, '/'):
 			_, cidr, err := net.ParseCIDR(s)
 			if err != nil {
 				return nil, err
 			}
 			r = NewIPRangeFromCIDR(*cidr)
-		} else {
+		default:
 			start, err := NewIP(s)
 			if err != nil {
 				return nil, err

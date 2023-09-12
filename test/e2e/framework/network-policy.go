@@ -33,8 +33,8 @@ func (f *Framework) NetworkPolicyClientNS(namespace string) *NetworkPolicyClient
 	}
 }
 
-func (s *NetworkPolicyClient) Get(name string) *netv1.NetworkPolicy {
-	np, err := s.NetworkPolicyInterface.Get(context.TODO(), name, metav1.GetOptions{})
+func (c *NetworkPolicyClient) Get(name string) *netv1.NetworkPolicy {
+	np, err := c.NetworkPolicyInterface.Get(context.TODO(), name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return np
 }
@@ -62,7 +62,7 @@ func (c *NetworkPolicyClient) DeleteSync(name string) {
 }
 
 // WaitToDisappear waits the given timeout duration for the specified network policy to disappear.
-func (c *NetworkPolicyClient) WaitToDisappear(name string, interval, timeout time.Duration) error {
+func (c *NetworkPolicyClient) WaitToDisappear(name string, _, timeout time.Duration) error {
 	err := framework.Gomega().Eventually(context.Background(), framework.HandleRetry(func(ctx context.Context) (*netv1.NetworkPolicy, error) {
 		policy, err := c.NetworkPolicyInterface.Get(ctx, name, metav1.GetOptions{})
 		if apierrors.IsNotFound(err) {

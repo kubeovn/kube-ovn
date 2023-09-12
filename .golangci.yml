@@ -1,0 +1,44 @@
+run:
+  timeout: 15m
+
+output:
+  sort-results: true
+
+linters:
+  enable:
+    - gocritic
+    - gofumpt
+    - goimports
+    - misspell
+    - predeclared
+    - revive
+    - unconvert
+    - unused
+    - errcheck
+
+issues:
+  max-same-issues: 0
+  exclude-rules:
+    - linters:
+        - gocritic
+      text: "appendAssign"
+    - linters:
+        - revive
+      text: "don't use an underscore in package name" # package name not change
+    - path: test/unittest/
+      linters:
+        - revive
+      text: "should not use dot imports" # ginkgo coding style
+    - linters:
+        - revive
+      text: "VpcDns should be VpcDNS"  # api param not change
+    - linters:
+        - revive
+      text: "VpcDnsList should be VpcDNSList" # api param not change
+
+linters-settings:
+  goimports:
+    local-prefixes: github.com/kubeovn/kube-ovn
+  gofumpt:
+    extra-rules: true
+

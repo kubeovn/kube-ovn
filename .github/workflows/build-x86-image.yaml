@@ -33,7 +33,7 @@ jobs:
     outputs:
       build-base: ${{ steps.build.outputs.build-base }}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 2
 
@@ -74,7 +74,7 @@ jobs:
     runs-on: ubuntu-22.04
     needs: build-kube-ovn-base
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v2
       - uses: actions/setup-go@v4
         with:
@@ -144,7 +144,7 @@ jobs:
     name: Build vpc-nat-gateway
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Build
         run: |
@@ -161,7 +161,7 @@ jobs:
     name: Build centos-compile
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v2
 
       - name: Build
@@ -186,7 +186,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -194,7 +194,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -241,7 +241,7 @@ jobs:
     outputs:
       test-netpol: ${{ steps.filter.outputs.kube-ovn-controller }}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: actions/setup-go@v4
         with:
           go-version: ${{ env.GO_VERSION || '' }}
@@ -287,7 +287,7 @@ jobs:
           - overlay
           - underlay
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -295,7 +295,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -396,7 +396,7 @@ jobs:
           kubectl -n kube-system rollout status deploy ovn-central
           kubectl -n kube-system rollout status ds ovs-ovn
           while true; do
-            if [ ! -z "$(kubectl -n kube-system get ep ovn-nb -o jsonpath='{.subsets}')" ]; then
+            if [ $(kubectl -n kube-system get pod -l app=ovs -o name | wc -l) -eq $(kubectl get node -o name | wc -l) ]; then
               break
             fi
             sleep 1
@@ -437,7 +437,7 @@ jobs:
           - ipv6
           - dual
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -445,7 +445,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -542,7 +542,7 @@ jobs:
           kubectl -n kube-system rollout status deploy ovn-central
           kubectl -n kube-system rollout status ds ovs-ovn
           while true; do
-            if [ ! -z "$(kubectl -n kube-system get ep ovn-nb -o jsonpath='{.subsets}')" ]; then
+            if [ $(kubectl -n kube-system get pod -l app=ovs -o name | wc -l) -eq $(kubectl get node -o name | wc -l) ]; then
               break
             fi
             sleep 1
@@ -583,7 +583,7 @@ jobs:
           - ipv6
           - dual
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -591,7 +591,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -728,7 +728,7 @@ jobs:
           - ipv6
           - dual
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -736,7 +736,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -809,7 +809,7 @@ jobs:
           kubectl -n kube-system rollout status deploy ovn-central
           kubectl -n kube-system rollout status ds ovs-ovn
           while true; do
-            if [ ! -z "$(kubectl -n kube-system get ep ovn-nb -o jsonpath='{.subsets}')" ]; then
+            if [ $(kubectl -n kube-system get pod -l app=ovs -o name | wc -l) -eq $(kubectl get node -o name | wc -l) ]; then
               break
             fi
             sleep 1
@@ -849,7 +849,7 @@ jobs:
           - overlay
           - underlay
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -857,7 +857,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -953,7 +953,7 @@ jobs:
           kubectl -n kube-system rollout status deploy ovn-central
           kubectl -n kube-system rollout status ds ovs-ovn
           while true; do
-            if [ ! -z "$(kubectl -n kube-system get ep ovn-nb -o jsonpath='{.subsets}')" ]; then
+            if [ $(kubectl -n kube-system get pod -l app=ovs -o name | wc -l) -eq $(kubectl get node -o name | wc -l) ]; then
               break
             fi
             sleep 1
@@ -993,7 +993,7 @@ jobs:
           - dual
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -1001,7 +1001,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -1086,7 +1086,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Install kind
         uses: helm/kind-action@v1.8.0
@@ -1122,7 +1122,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Install kind
         uses: helm/kind-action@v1.8.0
@@ -1158,7 +1158,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Install kind
         uses: helm/kind-action@v1.8.0
@@ -1196,7 +1196,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Install kind
         uses: helm/kind-action@v1.8.0
@@ -1237,7 +1237,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -1245,7 +1245,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -1326,7 +1326,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -1334,7 +1334,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -1409,7 +1409,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -1417,7 +1417,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -1503,7 +1503,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Install kind
         uses: helm/kind-action@v1.8.0
@@ -1554,7 +1554,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: azure/setup-helm@v3
         with:
           version: '${{ env.HELM_VERSION }}'
@@ -1565,7 +1565,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -1675,7 +1675,7 @@ jobs:
           - ipv6
           - dual
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -1683,7 +1683,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -1779,7 +1779,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -1787,7 +1787,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -1861,7 +1861,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -1869,7 +1869,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -1942,6 +1942,19 @@ jobs:
         working-directory: ${{ env.E2E_DIR }}
         run: make iptables-vpc-nat-gw-conformance-e2e
 
+      - name: kubectl ko log
+        if: failure()
+        run: |
+          make kubectl-ko-log
+          mv kubectl-ko-log.tar.gz iptables-vpc-nat-gw-conformance-e2e-ko-log.tar.gz
+
+      - name: upload kubectl ko log
+        uses: actions/upload-artifact@v3
+        if: failure()
+        with:
+          name: iptables-vpc-nat-gw-conformance-e2e-ko-log
+          path: iptables-vpc-nat-gw-conformance-e2e-ko-log.tar.gz
+
   ovn-vpc-nat-gw-conformance-e2e:
     name: OVN VPC NAT Gateway E2E
     needs:
@@ -1950,7 +1963,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -1958,7 +1971,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -2050,7 +2063,7 @@ jobs:
     if: always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Download kube-ovn image
         uses: actions/download-artifact@v3

@@ -55,7 +55,14 @@ function quit {
     pid=$(/usr/share/ovn/scripts/ovn-ctl status_controller | awk '{print $NF}')
     if cgroup_match "${pid}" self; then
       /usr/share/ovn/scripts/grace_stop_ovn_controller
-      /usr/share/openvswitch/scripts/ovs-ctl stop
+    fi
+    pid=$(/usr/share/openvswitch/scripts/ovs-ctl status | grep ovsdb-server | awk '{print $NF}')
+    if cgroup_match "${pid}" self; then
+      /usr/share/openvswitch/scripts/ovs-ctl --no-ovs-vswitchd stop
+    fi
+    pid=$(/usr/share/openvswitch/scripts/ovs-ctl status | grep ovs-vswitchd | awk '{print $NF}')
+    if cgroup_match "${pid}" self; then
+      /usr/share/openvswitch/scripts/ovs-ctl --no-ovsdb-server stop
     fi
   fi
 

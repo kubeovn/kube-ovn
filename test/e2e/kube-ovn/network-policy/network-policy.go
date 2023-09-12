@@ -45,7 +45,7 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 		netpolName = "netpol-" + framework.RandomSuffix()
 		podName = "pod-" + framework.RandomSuffix()
 		subnetName = "subnet-" + framework.RandomSuffix()
-		cidr = framework.RandomCIDR(f.ClusterIpFamily)
+		cidr = framework.RandomCIDR(f.ClusterIPFamily)
 
 		if image == "" {
 			image = framework.GetKubeOvnImage(cs)

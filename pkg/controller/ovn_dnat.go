@@ -31,32 +31,31 @@ func (c *Controller) enqueueAddOvnDnatRule(obj interface{}) {
 	c.addOvnDnatRuleQueue.Add(key)
 }
 
-func (c *Controller) enqueueUpdateOvnDnatRule(old, new interface{}) {
+func (c *Controller) enqueueUpdateOvnDnatRule(oldObj, newObj interface{}) {
 	var key string
 	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(new); err != nil {
+	if key, err = cache.MetaNamespaceKeyFunc(newObj); err != nil {
 		utilruntime.HandleError(err)
 		return
 	}
-	newDnat := new.(*kubeovnv1.OvnDnatRule)
+	newDnat := newObj.(*kubeovnv1.OvnDnatRule)
 	if !newDnat.DeletionTimestamp.IsZero() {
 		if len(newDnat.Finalizers) == 0 {
 			// avoid delete twice
 			return
-		} else {
-			klog.Infof("enqueue del ovn dnat %s", key)
-			c.delOvnDnatRuleQueue.Add(key)
-			return
 		}
+		klog.Infof("enqueue del ovn dnat %s", key)
+		c.delOvnDnatRuleQueue.Add(key)
+		return
 	}
-	oldDnat := old.(*kubeovnv1.OvnDnatRule)
+	oldDnat := oldObj.(*kubeovnv1.OvnDnatRule)
 	if oldDnat.Spec.OvnEip != newDnat.Spec.OvnEip {
 		c.resetOvnEipQueue.Add(oldDnat.Spec.OvnEip)
 	}
 
 	if oldDnat.Spec.OvnEip != newDnat.Spec.OvnEip ||
 		oldDnat.Spec.Protocol != newDnat.Spec.Protocol ||
-		oldDnat.Spec.IpName != newDnat.Spec.IpName ||
+		oldDnat.Spec.IPName != newDnat.Spec.IPName ||
 		oldDnat.Spec.InternalPort != newDnat.Spec.InternalPort ||
 		oldDnat.Spec.ExternalPort != newDnat.Spec.ExternalPort {
 		klog.Infof("enqueue update dnat %s", key)
@@ -112,7 +111,6 @@ func (c *Controller) processNextAddOvnDnatRuleWorkItem() bool {
 		c.addOvnDnatRuleQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -142,7 +140,6 @@ func (c *Controller) processNextUpdateOvnDnatRuleWorkItem() bool {
 		c.updateOvnDnatRuleQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -172,7 +169,6 @@ func (c *Controller) processNextDeleteOvnDnatRuleWorkItem() bool {
 		c.delOvnDnatRuleQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -218,24 +214,24 @@ func (c *Controller) handleAddOvnDnatRule(key string) error {
 	}
 	klog.Infof("handle add dnat %s", key)
 	var internalV4Ip, mac, subnetName string
-	if cachedDnat.Spec.IpType == util.Vip {
-		internalVip, err := c.virtualIpsLister.Get(cachedDnat.Spec.IpName)
+	if cachedDnat.Spec.IPType == util.Vip {
+		internalVip, err := c.virtualIpsLister.Get(cachedDnat.Spec.IPName)
 		if err != nil {
-			klog.Errorf("failed to get vip %s, %v", cachedDnat.Spec.IpName, err)
+			klog.Errorf("failed to get vip %s, %v", cachedDnat.Spec.IPName, err)
 			return err
 		}
 		internalV4Ip = internalVip.Status.V4ip
 		mac = internalVip.Status.Mac
 		subnetName = internalVip.Spec.Subnet
 	} else {
-		internalIp, err := c.ipsLister.Get(cachedDnat.Spec.IpName)
+		internalIP, err := c.ipsLister.Get(cachedDnat.Spec.IPName)
 		if err != nil {
-			klog.Errorf("failed to get ip %s, %v", cachedDnat.Spec.IpName, err)
+			klog.Errorf("failed to get ip %s, %v", cachedDnat.Spec.IPName, err)
 			return err
 		}
-		internalV4Ip = internalIp.Spec.V4IPAddress
-		mac = internalIp.Spec.MacAddress
-		subnetName = internalIp.Spec.Subnet
+		internalV4Ip = internalIP.Spec.V4IPAddress
+		mac = internalIP.Spec.MacAddress
+		subnetName = internalIP.Spec.Subnet
 	}
 
 	eipName := cachedDnat.Spec.OvnEip
@@ -362,24 +358,24 @@ func (c *Controller) handleUpdateOvnDnatRule(key string) error {
 
 	klog.Infof("handle update dnat %s", key)
 	var internalV4Ip, mac, subnetName string
-	if cachedDnat.Spec.IpType == util.Vip {
-		internalVip, err := c.virtualIpsLister.Get(cachedDnat.Spec.IpName)
+	if cachedDnat.Spec.IPType == util.Vip {
+		internalVip, err := c.virtualIpsLister.Get(cachedDnat.Spec.IPName)
 		if err != nil {
-			klog.Errorf("failed to get vip %s, %v", cachedDnat.Spec.IpName, err)
+			klog.Errorf("failed to get vip %s, %v", cachedDnat.Spec.IPName, err)
 			return err
 		}
 		internalV4Ip = internalVip.Status.V4ip
 		mac = internalVip.Status.Mac
 		subnetName = internalVip.Spec.Subnet
 	} else {
-		internalIp, err := c.ipsLister.Get(cachedDnat.Spec.IpName)
+		internalIP, err := c.ipsLister.Get(cachedDnat.Spec.IPName)
 		if err != nil {
-			klog.Errorf("failed to get ip %s, %v", cachedDnat.Spec.IpName, err)
+			klog.Errorf("failed to get ip %s, %v", cachedDnat.Spec.IPName, err)
 			return err
 		}
-		internalV4Ip = internalIp.Spec.V4IPAddress
-		mac = internalIp.Spec.MacAddress
-		subnetName = internalIp.Spec.Subnet
+		internalV4Ip = internalIP.Spec.V4IPAddress
+		mac = internalIP.Spec.MacAddress
+		subnetName = internalIP.Spec.Subnet
 	}
 
 	eipName := cachedDnat.Spec.OvnEip
@@ -496,7 +492,7 @@ func (c *Controller) patchOvnDnatAnnotations(key, eipName string) error {
 	return nil
 }
 
-func (c *Controller) patchOvnDnatStatus(key, vpcName, v4Eip, podIp, podMac string, ready bool) error {
+func (c *Controller) patchOvnDnatStatus(key, vpcName, v4Eip, podIP, podMac string, ready bool) error {
 	oriDnat, err := c.ovnDnatRulesLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -538,11 +534,11 @@ func (c *Controller) patchOvnDnatStatus(key, vpcName, v4Eip, podIp, podMac strin
 
 	if (v4Eip != "" && dnat.Status.V4Eip != v4Eip) ||
 		(vpcName != "" && dnat.Status.Vpc != vpcName) ||
-		(podIp != "" && dnat.Status.V4Ip != podIp) ||
+		(podIP != "" && dnat.Status.V4Ip != podIP) ||
 		(podMac != "" && dnat.Status.MacAddress != podMac) {
 		dnat.Status.Vpc = vpcName
 		dnat.Status.V4Eip = v4Eip
-		dnat.Status.V4Ip = podIp
+		dnat.Status.V4Ip = podIP
 		dnat.Status.MacAddress = podMac
 		changed = true
 	}
@@ -552,8 +548,8 @@ func (c *Controller) patchOvnDnatStatus(key, vpcName, v4Eip, podIp, podMac strin
 		changed = true
 	}
 
-	if ready && dnat.Spec.IpName != "" && dnat.Spec.IpName != dnat.Status.IpName {
-		dnat.Status.IpName = dnat.Spec.IpName
+	if ready && dnat.Spec.IPName != "" && dnat.Spec.IPName != dnat.Status.IPName {
+		dnat.Status.IPName = dnat.Spec.IPName
 		changed = true
 	}
 
@@ -589,17 +585,17 @@ func (c *Controller) AddDnatRule(vpcName, dnatName, externalIp, internalIp, exte
 		err              error
 	)
 
-	if err = c.ovnNbClient.CreateLoadBalancer(dnatName, protocol, ""); err != nil {
+	if err = c.OVNNbClient.CreateLoadBalancer(dnatName, protocol, ""); err != nil {
 		klog.Errorf("create loadBalancer %s: %v", dnatName, err)
 		return err
 	}
 
-	if err = c.ovnNbClient.LoadBalancerAddVip(dnatName, externalEndpoint, internalEndpoint); err != nil {
+	if err = c.OVNNbClient.LoadBalancerAddVip(dnatName, externalEndpoint, internalEndpoint); err != nil {
 		klog.Errorf("add vip %s with backends %s to LB %s: %v", externalEndpoint, internalEndpoint, dnatName, err)
 		return err
 	}
 
-	if err = c.ovnNbClient.LogicalRouterUpdateLoadBalancers(vpcName, ovsdb.MutateOperationInsert, dnatName); err != nil {
+	if err = c.OVNNbClient.LogicalRouterUpdateLoadBalancers(vpcName, ovsdb.MutateOperationInsert, dnatName); err != nil {
 		klog.Errorf("add lb %s to vpc %s: %v", dnatName, vpcName, err)
 		return err
 	}
@@ -613,12 +609,12 @@ func (c *Controller) DelDnatRule(vpcName, dnatName, externalIp, externalPort str
 		err               error
 	)
 
-	if err = c.ovnNbClient.LoadBalancerDeleteVip(dnatName, externalEndpoint, ignoreHealthCheck); err != nil {
+	if err = c.OVNNbClient.LoadBalancerDeleteVip(dnatName, externalEndpoint, ignoreHealthCheck); err != nil {
 		klog.Errorf("delete loadBalancer vips %s: %v", externalEndpoint, err)
 		return err
 	}
 
-	if err = c.ovnNbClient.LogicalRouterUpdateLoadBalancers(vpcName, ovsdb.MutateOperationDelete, dnatName); err != nil {
+	if err = c.OVNNbClient.LogicalRouterUpdateLoadBalancers(vpcName, ovsdb.MutateOperationDelete, dnatName); err != nil {
 		klog.Errorf("failed to remove lb %s from vpc %s: %v", dnatName, vpcName, err)
 		return err
 	}

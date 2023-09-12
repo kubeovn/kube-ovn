@@ -198,7 +198,6 @@ var _ = ginkgo.Context("[group:IPAM]", func() {
 			merged := v1.Merge(v2)
 			gomega.Expect(merged.Equal(expected)).To(gomega.BeTrue())
 		})
-
 	})
 
 	ginkgo.It("NewIPRangeListFrom", func() {

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -15,6 +14,8 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/kubernetes/test/e2e/framework"
+
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 // EndpointsClient is a struct for endpoint client.
@@ -103,7 +104,7 @@ func (c *EndpointsClient) DeleteSync(name string) {
 }
 
 // WaitUntil waits the given timeout duration for the specified condition to be met.
-func (c *EndpointsClient) WaitUntil(name string, cond func(s *corev1.Endpoints) (bool, error), condDesc string, interval, timeout time.Duration) *corev1.Endpoints {
+func (c *EndpointsClient) WaitUntil(name string, cond func(s *corev1.Endpoints) (bool, error), condDesc string, _, timeout time.Duration) *corev1.Endpoints {
 	var endpoints *corev1.Endpoints
 	err := wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
 		Logf("Waiting for endpoints %s to meet condition %q", name, condDesc)
@@ -132,7 +133,7 @@ func (c *EndpointsClient) WaitUntil(name string, cond func(s *corev1.Endpoints) 
 }
 
 // WaitToDisappear waits the given timeout duration for the specified endpoints to disappear.
-func (c *EndpointsClient) WaitToDisappear(name string, interval, timeout time.Duration) error {
+func (c *EndpointsClient) WaitToDisappear(name string, _, timeout time.Duration) error {
 	err := framework.Gomega().Eventually(context.Background(), framework.HandleRetry(func(ctx context.Context) (*corev1.Endpoints, error) {
 		svc, err := c.EndpointsInterface.Get(ctx, name, metav1.GetOptions{})
 		if apierrors.IsNotFound(err) {

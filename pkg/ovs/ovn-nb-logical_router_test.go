@@ -15,17 +15,13 @@ import (
 )
 
 // createLogicalRouter delete logical router in ovn
-func createLogicalRouter(c *ovnNbClient, lr *ovnnb.LogicalRouter) error {
+func createLogicalRouter(c *OVNNbClient, lr *ovnnb.LogicalRouter) error {
 	op, err := c.ovsDbClient.Create(lr)
 	if err != nil {
 		return err
 	}
 
-	if err := c.Transact("lr-add", op); err != nil {
-		return err
-	}
-
-	return nil
+	return c.Transact("lr-add", op)
 }
 
 func (suite *OvnClientTestSuite) testCreateLogicalRouter() {

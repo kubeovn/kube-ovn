@@ -39,7 +39,7 @@ var vpcdnsesResource = schema.GroupVersionResource{Group: "kubeovn.io", Version:
 
 var vpcdnsesKind = schema.GroupVersionKind{Group: "kubeovn.io", Version: "v1", Kind: "VpcDns"}
 
-// Get takes name of the vpcDns, and returns the corresponding vpcDns object, and an error if there is any.
+// Get takes name of the vpcDNS, and returns the corresponding vpcDNS object, and an error if there is any.
 func (c *FakeVpcDnses) Get(ctx context.Context, name string, options v1.GetOptions) (result *kubeovnv1.VpcDns, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewRootGetAction(vpcdnsesResource, name), &kubeovnv1.VpcDns{})
@@ -76,20 +76,20 @@ func (c *FakeVpcDnses) Watch(ctx context.Context, opts v1.ListOptions) (watch.In
 		InvokesWatch(testing.NewRootWatchAction(vpcdnsesResource, opts))
 }
 
-// Create takes the representation of a vpcDns and creates it.  Returns the server's representation of the vpcDns, and an error, if there is any.
-func (c *FakeVpcDnses) Create(ctx context.Context, vpcDns *kubeovnv1.VpcDns, opts v1.CreateOptions) (result *kubeovnv1.VpcDns, err error) {
+// Create takes the representation of a vpcDNS and creates it.  Returns the server's representation of the vpcDNS, and an error, if there is any.
+func (c *FakeVpcDnses) Create(ctx context.Context, vpcDNS *kubeovnv1.VpcDns, opts v1.CreateOptions) (result *kubeovnv1.VpcDns, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootCreateAction(vpcdnsesResource, vpcDns), &kubeovnv1.VpcDns{})
+		Invokes(testing.NewRootCreateAction(vpcdnsesResource, vpcDNS), &kubeovnv1.VpcDns{})
 	if obj == nil {
 		return nil, err
 	}
 	return obj.(*kubeovnv1.VpcDns), err
 }
 
-// Update takes the representation of a vpcDns and updates it. Returns the server's representation of the vpcDns, and an error, if there is any.
-func (c *FakeVpcDnses) Update(ctx context.Context, vpcDns *kubeovnv1.VpcDns, opts v1.UpdateOptions) (result *kubeovnv1.VpcDns, err error) {
+// Update takes the representation of a vpcDNS and updates it. Returns the server's representation of the vpcDNS, and an error, if there is any.
+func (c *FakeVpcDnses) Update(ctx context.Context, vpcDNS *kubeovnv1.VpcDns, opts v1.UpdateOptions) (result *kubeovnv1.VpcDns, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootUpdateAction(vpcdnsesResource, vpcDns), &kubeovnv1.VpcDns{})
+		Invokes(testing.NewRootUpdateAction(vpcdnsesResource, vpcDNS), &kubeovnv1.VpcDns{})
 	if obj == nil {
 		return nil, err
 	}
@@ -98,16 +98,16 @@ func (c *FakeVpcDnses) Update(ctx context.Context, vpcDns *kubeovnv1.VpcDns, opt
 
 // UpdateStatus was generated because the type contains a Status member.
 // Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-func (c *FakeVpcDnses) UpdateStatus(ctx context.Context, vpcDns *kubeovnv1.VpcDns, opts v1.UpdateOptions) (*kubeovnv1.VpcDns, error) {
+func (c *FakeVpcDnses) UpdateStatus(ctx context.Context, vpcDNS *kubeovnv1.VpcDns, opts v1.UpdateOptions) (*kubeovnv1.VpcDns, error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootUpdateSubresourceAction(vpcdnsesResource, "status", vpcDns), &kubeovnv1.VpcDns{})
+		Invokes(testing.NewRootUpdateSubresourceAction(vpcdnsesResource, "status", vpcDNS), &kubeovnv1.VpcDns{})
 	if obj == nil {
 		return nil, err
 	}
 	return obj.(*kubeovnv1.VpcDns), err
 }
 
-// Delete takes name of the vpcDns and deletes it. Returns an error if one occurs.
+// Delete takes name of the vpcDNS and deletes it. Returns an error if one occurs.
 func (c *FakeVpcDnses) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	_, err := c.Fake.
 		Invokes(testing.NewRootDeleteActionWithOptions(vpcdnsesResource, name, opts), &kubeovnv1.VpcDns{})
@@ -122,7 +122,7 @@ func (c *FakeVpcDnses) DeleteCollection(ctx context.Context, opts v1.DeleteOptio
 	return err
 }
 
-// Patch applies the patch and returns the patched vpcDns.
+// Patch applies the patch and returns the patched vpcDNS.
 func (c *FakeVpcDnses) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *kubeovnv1.VpcDns, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewRootPatchSubresourceAction(vpcdnsesResource, name, pt, data, subresources...), &kubeovnv1.VpcDns{})

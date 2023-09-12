@@ -60,7 +60,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
 		framework.ExpectHaveKeyWithValue(pod.Annotations, "ovn.kubernetes.io/virtualmachine", "testvm")
-		ipAddr := pod.Annotations[util.IpAddressAnnotation]
+		ipAddr := pod.Annotations[util.IPAddressAnnotation]
 
 		ginkgo.By("Deleting pod " + pod.Name)
 		podClient.DeleteSync(pod.Name)
@@ -80,7 +80,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 		framework.ExpectHaveKeyWithValue(pod.Annotations, "ovn.kubernetes.io/virtualmachine", "testvm")
 
 		ginkgo.By("Check vm pod ip unchanged" + pod.Name)
-		ipNewAddr := pod.Annotations[util.IpAddressAnnotation]
+		ipNewAddr := pod.Annotations[util.IPAddressAnnotation]
 		framework.ExpectEqual(ipAddr, ipNewAddr)
 	})
 })

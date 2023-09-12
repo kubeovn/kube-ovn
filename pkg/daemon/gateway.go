@@ -46,13 +46,13 @@ func (c *Controller) setGatewayBandwidth() error {
 		return err
 	}
 	ingress, egress := node.Annotations[util.IngressRateAnnotation], node.Annotations[util.EgressRateAnnotation]
-	ifaceId := fmt.Sprintf("node-%s", c.config.NodeName)
+	ifaceID := fmt.Sprintf("node-%s", c.config.NodeName)
 	if ingress == "" && egress == "" {
-		if htbQos, _ := ovs.IsHtbQos(ifaceId); !htbQos {
+		if htbQos, _ := ovs.IsHtbQos(ifaceID); !htbQos {
 			return nil
 		}
 	}
-	return ovs.SetInterfaceBandwidth("", "", ifaceId, egress, ingress)
+	return ovs.SetInterfaceBandwidth("", "", ifaceID, egress, ingress)
 }
 
 func (c *Controller) setICGateway() error {
@@ -218,12 +218,12 @@ func getCidrByProtocol(cidr, protocol string) string {
 	return cidrStr
 }
 
-func (c *Controller) getEgressNatIpByNode(nodeName string) (map[string]string, error) {
-	var subnetsNatIp = make(map[string]string)
+func (c *Controller) getEgressNatIPByNode(nodeName string) (map[string]string, error) {
+	subnetsNatIP := make(map[string]string)
 	subnetList, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list subnets %v", err)
-		return subnetsNatIp, err
+		return subnetsNatIP, err
 	}
 
 	for _, subnet := range subnetList {
@@ -240,20 +240,19 @@ func (c *Controller) getEgressNatIpByNode(nodeName string) (map[string]string, e
 			for _, gw := range strings.Split(subnet.Spec.GatewayNode, ",") {
 				if strings.Contains(gw, ":") && util.GatewayContains(gw, nodeName) && util.CheckProtocol(cidr) == util.CheckProtocol(strings.Split(gw, ":")[1]) {
 					if subnet.Spec.EnableEcmp {
-						subnetsNatIp[cidr] = strings.TrimSpace(strings.Split(gw, ":")[1])
+						subnetsNatIP[cidr] = strings.TrimSpace(strings.Split(gw, ":")[1])
 					} else if subnet.Status.ActivateGateway == nodeName {
-						subnetsNatIp[cidr] = strings.TrimSpace(strings.Split(gw, ":")[1])
+						subnetsNatIP[cidr] = strings.TrimSpace(strings.Split(gw, ":")[1])
 					}
 					break
 				}
 			}
 		}
 	}
-	return subnetsNatIp, nil
+	return subnetsNatIP, nil
 }
 
 func (c *Controller) getTProxyConditionPod(needSort bool) ([]*v1.Pod, error) {
-
 	var filteredPods []*v1.Pod
 	pods, err := c.podsLister.List(labels.Everything())
 	if err != nil {

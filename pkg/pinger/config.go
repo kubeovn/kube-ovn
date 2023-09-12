@@ -70,8 +70,8 @@ func ParseFlags() (*Configuration, error) {
 		argInterval           = pflag.Int("interval", 5, "interval seconds between consecutive pings")
 		argMode               = pflag.String("mode", "server", "server or job Mode")
 		argExitCode           = pflag.Int("exit-code", 0, "exit code when failure happens")
-		argInternalDns        = pflag.String("internal-dns", "kubernetes.default", "check dns from pod")
-		argExternalDns        = pflag.String("external-dns", "", "check external dns resolve from pod")
+		argInternalDNS        = pflag.String("internal-dns", "kubernetes.default", "check dns from pod")
+		argExternalDNS        = pflag.String("external-dns", "", "check external dns resolve from pod")
 		argExternalAddress    = pflag.String("external-address", "", "check ping connection to an external address, default: 114.114.114.114")
 		argTargetIPPorts      = pflag.String("target-ip-ports", "", "target protocol ip and port, eg: 'tcp-169.254.1.1-8080,udp-169.254.2.2-8081'")
 		argNetworkMode        = pflag.String("network-mode", "kube-ovn", "The cni plugin current cluster used, default: kube-ovn")
@@ -119,8 +119,8 @@ func ParseFlags() (*Configuration, error) {
 		Interval:           *argInterval,
 		Mode:               *argMode,
 		ExitCode:           *argExitCode,
-		InternalDNS:        *argInternalDns,
-		ExternalDNS:        *argExternalDns,
+		InternalDNS:        *argInternalDNS,
+		ExternalDNS:        *argExternalDNS,
 		PodIP:              os.Getenv("POD_IP"),
 		HostIP:             os.Getenv("HOST_IP"),
 		NodeName:           os.Getenv("NODE_NAME"),

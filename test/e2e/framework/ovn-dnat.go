@@ -33,8 +33,8 @@ func (f *Framework) OvnDnatRuleClient() *OvnDnatRuleClient {
 	}
 }
 
-func (s *OvnDnatRuleClient) Get(name string) *apiv1.OvnDnatRule {
-	dnat, err := s.OvnDnatRuleInterface.Get(context.TODO(), name, metav1.GetOptions{})
+func (c *OvnDnatRuleClient) Get(name string) *apiv1.OvnDnatRule {
+	dnat, err := c.OvnDnatRuleInterface.Get(context.TODO(), name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return dnat
 }
@@ -82,7 +82,7 @@ func (c *OvnDnatRuleClient) Patch(original, modified *apiv1.OvnDnatRule) *apiv1.
 
 // PatchSync patches the ovn dnat and waits for the ovn dnat to be ready for `timeout`.
 // If the ovn dnat doesn't become ready before the timeout, it will fail the test.
-func (c *OvnDnatRuleClient) PatchSync(original, modified *apiv1.OvnDnatRule, requiredNodes []string, timeout time.Duration) *apiv1.OvnDnatRule {
+func (c *OvnDnatRuleClient) PatchSync(original, modified *apiv1.OvnDnatRule, _ []string, timeout time.Duration) *apiv1.OvnDnatRule {
 	dnat := c.Patch(original, modified)
 	ExpectTrue(c.WaitToBeUpdated(dnat, timeout))
 	ExpectTrue(c.WaitToBeReady(dnat.Name, timeout))
@@ -134,7 +134,7 @@ func (c *OvnDnatRuleClient) WaitToBeUpdated(dnat *apiv1.OvnDnatRule, timeout tim
 }
 
 // WaitToDisappear waits the given timeout duration for the specified ovn dnat to disappear.
-func (c *OvnDnatRuleClient) WaitToDisappear(name string, interval, timeout time.Duration) error {
+func (c *OvnDnatRuleClient) WaitToDisappear(name string, _, timeout time.Duration) error {
 	err := framework.Gomega().Eventually(context.Background(), framework.HandleRetry(func(ctx context.Context) (*apiv1.OvnDnatRule, error) {
 		rule, err := c.OvnDnatRuleInterface.Get(ctx, name, metav1.GetOptions{})
 		if apierrors.IsNotFound(err) {
@@ -155,8 +155,8 @@ func MakeOvnDnatRule(name, ovnEip, ipType, ipName, internalPort, externalPort, p
 		},
 		Spec: apiv1.OvnDnatRuleSpec{
 			OvnEip:       ovnEip,
-			IpType:       ipType,
-			IpName:       ipName,
+			IPType:       ipType,
+			IPName:       ipName,
 			InternalPort: internalPort,
 			ExternalPort: externalPort,
 			Protocol:     protocol,

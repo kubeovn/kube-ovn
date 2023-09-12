@@ -11,6 +11,7 @@ import (
 	"syscall"
 
 	"github.com/containernetworking/plugins/pkg/ns"
+	"github.com/scylladb/go-set/strset"
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 	"k8s.io/klog/v2"
@@ -19,7 +20,6 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	goTProxy "github.com/kubeovn/kube-ovn/pkg/tproxy"
 	"github.com/kubeovn/kube-ovn/pkg/util"
-	"github.com/scylladb/go-set/strset"
 )
 
 var (
@@ -62,7 +62,6 @@ func (c *Controller) StartTProxyForwarding() {
 }
 
 func (c *Controller) StartTProxyTCPPortProbe() {
-
 	probePorts := strset.New()
 
 	pods, err := c.getTProxyConditionPod(false)
@@ -270,7 +269,6 @@ func delRouteIfExist(family, table int, dst *net.IPNet) error {
 }
 
 func handleRedirectFlow(conn net.Conn) {
-
 	klog.V(5).Infof("Accepting TCP connection from %v with destination of %v", conn.RemoteAddr().String(), conn.LocalAddr().String())
 	defer func() {
 		if err := conn.Close(); err != nil {
@@ -308,10 +306,10 @@ func probePortInNs(podIP, probePort string, isTProxyProbe bool, conn net.Conn) {
 
 	_ = ns.WithNetNSPath(podNS.Path(), func(_ ns.NetNS) error {
 		// Packet's src and dst IP are both PodIP in netns
-		localpodTcpAddr := net.TCPAddr{IP: net.ParseIP(podIP)}
-		remotepodTcpAddr := net.TCPAddr{IP: net.ParseIP(podIP), Port: iprobePort}
+		localpodTCPAddr := net.TCPAddr{IP: net.ParseIP(podIP)}
+		remotepodTCPAddr := net.TCPAddr{IP: net.ParseIP(podIP), Port: iprobePort}
 
-		remoteConn, err := goTProxy.DialTCP(&localpodTcpAddr, &remotepodTcpAddr, !isTProxyProbe)
+		remoteConn, err := goTProxy.DialTCP(&localpodTCPAddr, &remotepodTCPAddr, !isTProxyProbe)
 		if err != nil {
 			if isTProxyProbe {
 				customVPCPodTCPProbeIPPort.Store(getIPPortString(podIP, probePort), false)

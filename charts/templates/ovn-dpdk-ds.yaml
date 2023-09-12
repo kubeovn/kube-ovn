@@ -146,10 +146,10 @@ spec:
             path: /etc/origin/ovn
         - name: host-log-ovs
           hostPath:
-            path: /var/log/openvswitch
+            path: {{ .Values.log_conf.LOG_DIR }}/openvswitch
         - name: host-log-ovn
           hostPath:
-            path: /var/log/ovn
+            path: {{ .Values.log_conf.LOG_DIR }}/ovn
         - name: localtime
           hostPath:
             path: /etc/localtime

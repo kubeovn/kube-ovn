@@ -40,7 +40,7 @@ type Framework struct {
 	ClusterVersionMajor uint
 	ClusterVersionMinor uint
 	// ipv4/ipv6/dual
-	ClusterIpFamily string
+	ClusterIPFamily string
 	// overlay/underlay/underlay-hairpin
 	ClusterNetworkMode string
 }
@@ -50,7 +50,7 @@ func NewDefaultFramework(baseName string) *Framework {
 		Framework: framework.NewDefaultFramework(baseName),
 	}
 	f.NamespacePodSecurityEnforceLevel = admissionapi.LevelPrivileged
-	f.ClusterIpFamily = os.Getenv("E2E_IP_FAMILY")
+	f.ClusterIPFamily = os.Getenv("E2E_IP_FAMILY")
 	f.ClusterVersion = os.Getenv("E2E_BRANCH")
 	f.ClusterNetworkMode = os.Getenv("E2E_NETWORK_MODE")
 
@@ -98,7 +98,7 @@ func NewFrameworkWithContext(baseName, kubeContext string) *Framework {
 
 	f.Framework = framework.NewDefaultFramework(baseName)
 	f.NamespacePodSecurityEnforceLevel = admissionapi.LevelPrivileged
-	f.ClusterIpFamily = os.Getenv("E2E_IP_FAMILY")
+	f.ClusterIPFamily = os.Getenv("E2E_IP_FAMILY")
 	f.ClusterVersion = os.Getenv("E2E_BRANCH")
 	f.ClusterNetworkMode = os.Getenv("E2E_NETWORK_MODE")
 
@@ -110,15 +110,15 @@ func NewFrameworkWithContext(baseName, kubeContext string) *Framework {
 }
 
 func (f *Framework) IsIPv4() bool {
-	return f.ClusterIpFamily == IPv4
+	return f.ClusterIPFamily == IPv4
 }
 
 func (f *Framework) IsIPv6() bool {
-	return f.ClusterIpFamily == IPv6
+	return f.ClusterIPFamily == IPv6
 }
 
 func (f *Framework) IsDual() bool {
-	return f.ClusterIpFamily == Dual
+	return f.ClusterIPFamily == Dual
 }
 
 func (f *Framework) HasIPv4() bool {

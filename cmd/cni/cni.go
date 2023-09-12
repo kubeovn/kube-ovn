@@ -82,14 +82,14 @@ func generateCNIResult(cniResponse *request.CniResponse, netns string) current.R
 	}
 	switch cniResponse.Protocol {
 	case kubeovnv1.ProtocolIPv4:
-		ip, route := assignV4Address(cniResponse.IpAddress, cniResponse.Gateway, mask)
+		ip, route := assignV4Address(cniResponse.IPAddress, cniResponse.Gateway, mask)
 		result.IPs = []*current.IPConfig{ip}
 		if route != nil {
 			result.Routes = []*types.Route{route}
 		}
 		result.Interfaces = []*current.Interface{&podIface}
 	case kubeovnv1.ProtocolIPv6:
-		ip, route := assignV6Address(cniResponse.IpAddress, cniResponse.Gateway, mask)
+		ip, route := assignV6Address(cniResponse.IPAddress, cniResponse.Gateway, mask)
 		result.IPs = []*current.IPConfig{ip}
 		if route != nil {
 			result.Routes = []*types.Route{route}
@@ -102,7 +102,7 @@ func generateCNIResult(cniResponse *request.CniResponse, netns string) current.R
 			_, netMask, _ = net.ParseCIDR(cidrBlock)
 			gwStr = ""
 			if util.CheckProtocol(cidrBlock) == kubeovnv1.ProtocolIPv4 {
-				ipStr := strings.Split(cniResponse.IpAddress, ",")[0]
+				ipStr := strings.Split(cniResponse.IPAddress, ",")[0]
 				if cniResponse.Gateway != "" {
 					gwStr = strings.Split(cniResponse.Gateway, ",")[0]
 				}
@@ -113,7 +113,7 @@ func generateCNIResult(cniResponse *request.CniResponse, netns string) current.R
 					result.Routes = append(result.Routes, route)
 				}
 			} else if util.CheckProtocol(cidrBlock) == kubeovnv1.ProtocolIPv6 {
-				ipStr := strings.Split(cniResponse.IpAddress, ",")[1]
+				ipStr := strings.Split(cniResponse.IPAddress, ",")[1]
 				if cniResponse.Gateway != "" {
 					gwStr = strings.Split(cniResponse.Gateway, ",")[1]
 				}

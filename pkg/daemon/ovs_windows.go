@@ -47,7 +47,7 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 		return err
 	}
 
-	ipAddr := util.GetIpWithoutMask(ip)
+	ipAddr := util.GetIPWithoutMask(ip)
 	sandbox := hns.GetSandboxContainerID(containerID, netns)
 	epName := sandbox[:12]
 	_, err = hns.AddHnsEndpoint(epName, hnsNetwork.Id, containerID, netns, func() (*hcsshim.HNSEndpoint, error) {
@@ -253,7 +253,7 @@ func waitNetworkReady(nic, ipAddr, gateway string, underlayGateway, verbose bool
 }
 
 func configureNodeNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu int) error {
-	ipStr := util.GetIpWithoutMask(ip)
+	ipStr := util.GetIPWithoutMask(ip)
 	raw, err := ovs.Exec(ovs.MayExist, "add-port", "br-int", util.NodeNic, "--",
 		"set", "interface", util.NodeNic, "type=internal", "--",
 		"set", "interface", util.NodeNic, fmt.Sprintf("external_ids:iface-id=%s", portName),
@@ -325,7 +325,7 @@ func (c *Controller) configProviderNic(nicName, brName string) (int, error) {
 	return 0, nil
 }
 
-func removeProviderNic(nicName, brName string) error {
+func (c *Controller) removeProviderNic(nicName, brName string) error {
 	// nothing to do on Windows
 	return nil
 }

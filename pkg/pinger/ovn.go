@@ -59,10 +59,10 @@ func checkPortBindings(config *Configuration) error {
 		klog.Errorf("%d port %v not exist in sb-bindings", len(misMatch), misMatch)
 		inconsistentPortBindingGauge.WithLabelValues(config.NodeName).Set(float64(len(misMatch)))
 		return fmt.Errorf("%d port %v not exist in sb-bindings", len(misMatch), misMatch)
-	} else {
-		klog.Infof("ovs and ovn-sb binding check passed")
-		inconsistentPortBindingGauge.WithLabelValues(config.NodeName).Set(0)
 	}
+
+	klog.Infof("ovs and ovn-sb binding check passed")
+	inconsistentPortBindingGauge.WithLabelValues(config.NodeName).Set(0)
 	return nil
 }
 
@@ -144,7 +144,8 @@ func checkSBBindings(config *Configuration) ([]string, error) {
 		"--timeout=10",
 		"find",
 		"port_binding",
-		fmt.Sprintf("chassis=%s", chassis)}
+		fmt.Sprintf("chassis=%s", chassis),
+	}
 	if os.Getenv("ENABLE_SSL") == "true" {
 		command = []string{
 			"-p", "/var/run/tls/key",

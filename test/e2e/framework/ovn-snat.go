@@ -33,8 +33,8 @@ func (f *Framework) OvnSnatRuleClient() *OvnSnatRuleClient {
 	}
 }
 
-func (s *OvnSnatRuleClient) Get(name string) *apiv1.OvnSnatRule {
-	snat, err := s.OvnSnatRuleInterface.Get(context.TODO(), name, metav1.GetOptions{})
+func (c *OvnSnatRuleClient) Get(name string) *apiv1.OvnSnatRule {
+	snat, err := c.OvnSnatRuleInterface.Get(context.TODO(), name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return snat
 }
@@ -82,7 +82,7 @@ func (c *OvnSnatRuleClient) Patch(original, modified *apiv1.OvnSnatRule) *apiv1.
 
 // PatchSync patches the ovn snat and waits for the ovn snat to be ready for `timeout`.
 // If the ovn snat doesn't become ready before the timeout, it will fail the test.
-func (c *OvnSnatRuleClient) PatchSync(original, modified *apiv1.OvnSnatRule, requiredNodes []string, timeout time.Duration) *apiv1.OvnSnatRule {
+func (c *OvnSnatRuleClient) PatchSync(original, modified *apiv1.OvnSnatRule, _ []string, timeout time.Duration) *apiv1.OvnSnatRule {
 	snat := c.Patch(original, modified)
 	ExpectTrue(c.WaitToBeUpdated(snat, timeout))
 	ExpectTrue(c.WaitToBeReady(snat.Name, timeout))
@@ -134,7 +134,7 @@ func (c *OvnSnatRuleClient) WaitToBeUpdated(snat *apiv1.OvnSnatRule, timeout tim
 }
 
 // WaitToDisappear waits the given timeout duration for the specified OVN SNAT rule to disappear.
-func (c *OvnSnatRuleClient) WaitToDisappear(name string, interval, timeout time.Duration) error {
+func (c *OvnSnatRuleClient) WaitToDisappear(name string, _, timeout time.Duration) error {
 	err := framework.Gomega().Eventually(context.Background(), framework.HandleRetry(func(ctx context.Context) (*apiv1.OvnSnatRule, error) {
 		rule, err := c.OvnSnatRuleInterface.Get(ctx, name, metav1.GetOptions{})
 		if apierrors.IsNotFound(err) {
@@ -156,7 +156,7 @@ func MakeOvnSnatRule(name, ovnEip, vpcSubnet, ipName string) *apiv1.OvnSnatRule 
 		Spec: apiv1.OvnSnatRuleSpec{
 			OvnEip:    ovnEip,
 			VpcSubnet: vpcSubnet,
-			IpName:    ipName,
+			IPName:    ipName,
 		},
 	}
 	return snat

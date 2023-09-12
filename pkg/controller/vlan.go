@@ -17,7 +17,6 @@ import (
 )
 
 func (c *Controller) enqueueAddVlan(obj interface{}) {
-
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -28,9 +27,8 @@ func (c *Controller) enqueueAddVlan(obj interface{}) {
 	c.addVlanQueue.Add(key)
 }
 
-func (c *Controller) enqueueUpdateVlan(old, new interface{}) {
-
-	key, err := cache.MetaNamespaceKeyFunc(new)
+func (c *Controller) enqueueUpdateVlan(_, newObj interface{}) {
+	key, err := cache.MetaNamespaceKeyFunc(newObj)
 	if err != nil {
 		utilruntime.HandleError(err)
 		return
@@ -89,7 +87,6 @@ func (c *Controller) processNextAddVlanWorkItem() bool {
 		c.addVlanQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -123,7 +120,6 @@ func (c *Controller) processNextUpdateVlanWorkItem() bool {
 		c.updateVlanQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -158,7 +154,6 @@ func (c *Controller) processNextDelVlanWorkItem() bool {
 		c.delVlanQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -318,7 +313,7 @@ func (c *Controller) updateProviderNetworkStatusForVlanDeletion(pn *kubeovnv1.Pr
 
 func (c *Controller) setLocalnetTag(subnet string, vlanID int) error {
 	localnetPort := ovs.GetLocalnetName(subnet)
-	if err := c.ovnNbClient.SetLogicalSwitchPortVlanTag(localnetPort, vlanID); err != nil {
+	if err := c.OVNNbClient.SetLogicalSwitchPortVlanTag(localnetPort, vlanID); err != nil {
 		klog.Errorf("set localnet port %s vlan tag %d: %v", localnetPort, vlanID, err)
 		return err
 	}
@@ -328,7 +323,7 @@ func (c *Controller) setLocalnetTag(subnet string, vlanID int) error {
 
 func (c *Controller) delLocalnet(subnet string) error {
 	localnetPort := ovs.GetLocalnetName(subnet)
-	if err := c.ovnNbClient.DeleteLogicalSwitchPort(localnetPort); err != nil {
+	if err := c.OVNNbClient.DeleteLogicalSwitchPort(localnetPort); err != nil {
 		klog.Errorf("delete localnet port %s: %v", localnetPort, err)
 		return err
 	}

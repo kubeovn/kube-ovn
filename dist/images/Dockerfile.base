@@ -29,6 +29,8 @@ RUN cd /usr/src/ && \
 
 RUN cd /usr/src/ && git clone -b branch-22.12 --depth=1 https://github.com/ovn-org/ovn.git && \
     cd ovn && \
+    # python: Rename build related code to ovs_build_helpers.
+    curl -s https://github.com/kubeovn/ovn/commit/9d961aec6fd7ef3e3002bc34e285833279e989c2.patch | git apply && \
     # change hash type from dp_hash to hash with field src_ip
     curl -s https://github.com/kubeovn/ovn/commit/daa09e380eec61620d4ee317e3265c44366d1147.patch | git apply && \
     # set ether dst addr for dnat on logical switch

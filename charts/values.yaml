@@ -110,12 +110,13 @@ cni_conf:
 
 kubelet_conf:
   KUBELET_DIR: "/var/lib/kubelet"
+
+log_conf:
+  LOG_DIR: "/var/log"
   
 imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""
-
-restart_ovs: false
 
 # hybrid dpdk
 HYBRID_DPDK: false

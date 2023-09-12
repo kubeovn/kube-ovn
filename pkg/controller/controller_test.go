@@ -58,7 +58,7 @@ func newFakeController(t *testing.T) *fakeController {
 		vpcSynced:             alwaysReady,
 		subnetsLister:         sbunetInformer.Lister(),
 		subnetSynced:          alwaysReady,
-		ovnNbClient:           mockOvnClient,
+		OVNNbClient:           mockOvnClient,
 		syncVirtualPortsQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), ""),
 	}
 

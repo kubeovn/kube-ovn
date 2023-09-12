@@ -31,7 +31,7 @@ type LogicalRouter interface {
 
 type LogicalRouterPort interface {
 	CreatePeerRouterPort(localRouter, remoteRouter, localRouterPortIP string) error
-	CreateLogicalRouterPort(lrName string, lrpName, mac string, networks []string) error
+	CreateLogicalRouterPort(lrName, lrpName, mac string, networks []string) error
 	UpdateLogicalRouterPortRA(lrpName, ipv6RAConfigsStr string, enableIPv6RA bool) error
 	UpdateLogicalRouterPortOptions(lrpName string, options map[string]string) error
 	DeleteLogicalRouterPort(lrpName string) error
@@ -58,7 +58,7 @@ type LogicalSwitch interface {
 }
 
 type LogicalSwitchPort interface {
-	CreateLogicalSwitchPort(lsName, lspName, ip, mac, podName, namespace string, portSecurity bool, securityGroups string, vips string, enableDHCP bool, dhcpOptions *DHCPOptionsUUIDs, vpc string) error
+	CreateLogicalSwitchPort(lsName, lspName, ip, mac, podName, namespace string, portSecurity bool, securityGroups, vips string, enableDHCP bool, dhcpOptions *DHCPOptionsUUIDs, vpc string) error
 	CreateBareLogicalSwitchPort(lsName, lspName, ip, mac string) error
 	CreateLocalnetLogicalSwitchPort(lsName, lspName, provider string, vlanID int) error
 	CreateVirtualLogicalSwitchPorts(lsName string, ips ...string) error
@@ -67,7 +67,7 @@ type LogicalSwitchPort interface {
 	SetLogicalSwitchPortArpProxy(lspName string, enableArpProxy bool) error
 	SetLogicalSwitchPortExternalIds(lspName string, externalIds map[string]string) error
 	SetLogicalSwitchPortVlanTag(lspName string, vlanID int) error
-	SetLogicalSwitchPortsSecurityGroup(sgName string, op string) error
+	SetLogicalSwitchPortsSecurityGroup(sgName, op string) error
 	EnablePortLayer2forward(lspName string) error
 	DeleteLogicalSwitchPort(lspName string) error
 	ListLogicalSwitchPorts(needVendorFilter bool, externalIDs map[string]string, filter func(lsp *ovnnb.LogicalSwitchPort) bool) ([]ovnnb.LogicalSwitchPort, error)
@@ -115,18 +115,18 @@ type PortGroup interface {
 }
 
 type ACL interface {
-	UpdateIngressAclOps(pgName, asIngressName, asExceptName, protocol string, npp []netv1.NetworkPolicyPort, logEnable bool, namedPortMap map[string]*util.NamedPortInfo) ([]ovsdb.Operation, error)
-	UpdateEgressAclOps(pgName, asEgressName, asExceptName, protocol string, npp []netv1.NetworkPolicyPort, logEnable bool, namedPortMap map[string]*util.NamedPortInfo) ([]ovsdb.Operation, error)
-	CreateGatewayAcl(lsName, pgName, gateway string) error
-	CreateNodeAcl(pgName, nodeIpStr, joinIpStr string) error
-	CreateSgDenyAllAcl(sgName string) error
-	CreateSgBaseACL(sgName string, direction string) error
-	UpdateSgAcl(sg *kubeovnv1.SecurityGroup, direction string) error
-	UpdateLogicalSwitchAcl(lsName string, subnetAcls []kubeovnv1.Acl) error
-	SetAclLog(pgName, protocol string, logEnable, isIngress bool) error
+	UpdateIngressACLOps(pgName, asIngressName, asExceptName, protocol string, npp []netv1.NetworkPolicyPort, logEnable bool, namedPortMap map[string]*util.NamedPortInfo) ([]ovsdb.Operation, error)
+	UpdateEgressACLOps(pgName, asEgressName, asExceptName, protocol string, npp []netv1.NetworkPolicyPort, logEnable bool, namedPortMap map[string]*util.NamedPortInfo) ([]ovsdb.Operation, error)
+	CreateGatewayACL(lsName, pgName, gateway string) error
+	CreateNodeACL(pgName, nodeIPStr, joinIPStr string) error
+	CreateSgDenyAllACL(sgName string) error
+	CreateSgBaseACL(sgName, direction string) error
+	UpdateSgACL(sg *kubeovnv1.SecurityGroup, direction string) error
+	UpdateLogicalSwitchACL(lsName string, subnetAcls []kubeovnv1.ACL) error
+	SetACLLog(pgName, protocol string, logEnable, isIngress bool) error
 	SetLogicalSwitchPrivate(lsName, cidrBlock, nodeSwitchCIDR string, allowSubnets []string) error
-	DeleteAcls(parentName, parentType string, direction string, externalIDs map[string]string) error
-	DeleteAclsOps(parentName, parentType string, direction string, externalIDs map[string]string) ([]ovsdb.Operation, error)
+	DeleteAcls(parentName, parentType, direction string, externalIDs map[string]string) error
+	DeleteAclsOps(parentName, parentType, direction string, externalIDs map[string]string) ([]ovsdb.Operation, error)
 }
 
 type AddressSet interface {
@@ -138,7 +138,7 @@ type AddressSet interface {
 }
 
 type LogicalRouterStaticRoute interface {
-	AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix string, bfdId *string, nexthops ...string) error
+	AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix string, bfdID *string, nexthops ...string) error
 	ClearLogicalRouterStaticRoute(lrName string) error
 	DeleteLogicalRouterStaticRoute(lrName string, routeTable, policy *string, ipPrefix, nextHop string) error
 	ListLogicalRouterStaticRoutesByOption(lrName, routeTable, key, value string) ([]*ovnnb.LogicalRouterStaticRoute, error)
@@ -150,7 +150,7 @@ type LogicalRouterPolicy interface {
 	AddLogicalRouterPolicy(lrName string, priority int, match, action string, nextHops []string, externalIDs map[string]string) error
 	DeleteLogicalRouterPolicy(lrName string, priority int, match string) error
 	DeleteLogicalRouterPolicies(lrName string, priority int, externalIDs map[string]string) error
-	DeleteLogicalRouterPolicyByUUID(lrName string, uuid string) error
+	DeleteLogicalRouterPolicyByUUID(lrName, uuid string) error
 	DeleteLogicalRouterPolicyByNexthop(lrName string, priority int, nexthop string) error
 	ClearLogicalRouterPolicy(lrName string) error
 	ListLogicalRouterPolicies(lrName string, priority int, externalIDs map[string]string) ([]*ovnnb.LogicalRouterPolicy, error)
@@ -170,7 +170,7 @@ type NAT interface {
 
 type DHCPOptions interface {
 	UpdateDHCPOptions(subnet *kubeovnv1.Subnet, mtu int) (*DHCPOptionsUUIDs, error)
-	DeleteDHCPOptions(lsName string, protocol string) error
+	DeleteDHCPOptions(lsName, protocol string) error
 	DeleteDHCPOptionsByUUIDs(uuidList ...string) error
 	ListDHCPOptions(needVendorFilter bool, externalIDs map[string]string) ([]ovnnb.DHCPOptions, error)
 }
@@ -215,7 +215,7 @@ type Chassis interface {
 	GetChassisByHost(nodeName string) (*ovnsb.Chassis, error)
 	GetChassis(chassisName string, ignoreNotFound bool) (*ovnsb.Chassis, error)
 	GetKubeOvnChassisses() (*[]ovnsb.Chassis, error)
-	UpdateChassisTag(chassisName string, nodeName string) error
+	UpdateChassisTag(chassisName, nodeName string) error
 	UpdateChassis(chassis *ovnsb.Chassis, fields ...interface{}) error
 	ListChassis() (*[]ovnsb.Chassis, error)
 }

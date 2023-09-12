@@ -33,8 +33,8 @@ func (f *Framework) OvnFipClient() *OvnFipClient {
 	}
 }
 
-func (s *OvnFipClient) Get(name string) *apiv1.OvnFip {
-	fip, err := s.OvnFipInterface.Get(context.TODO(), name, metav1.GetOptions{})
+func (c *OvnFipClient) Get(name string) *apiv1.OvnFip {
+	fip, err := c.OvnFipInterface.Get(context.TODO(), name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return fip
 }
@@ -82,7 +82,7 @@ func (c *OvnFipClient) Patch(original, modified *apiv1.OvnFip) *apiv1.OvnFip {
 
 // PatchSync patches the ovn fip and waits for the ovn fip to be ready for `timeout`.
 // If the ovn fip doesn't become ready before the timeout, it will fail the test.
-func (c *OvnFipClient) PatchSync(original, modified *apiv1.OvnFip, requiredNodes []string, timeout time.Duration) *apiv1.OvnFip {
+func (c *OvnFipClient) PatchSync(original, modified *apiv1.OvnFip, _ []string, timeout time.Duration) *apiv1.OvnFip {
 	fip := c.Patch(original, modified)
 	ExpectTrue(c.WaitToBeUpdated(fip, timeout))
 	ExpectTrue(c.WaitToBeReady(fip.Name, timeout))
@@ -134,7 +134,7 @@ func (c *OvnFipClient) WaitToBeUpdated(fip *apiv1.OvnFip, timeout time.Duration)
 }
 
 // WaitToDisappear waits the given timeout duration for the specified ovn fip to disappear.
-func (c *OvnFipClient) WaitToDisappear(name string, interval, timeout time.Duration) error {
+func (c *OvnFipClient) WaitToDisappear(name string, _, timeout time.Duration) error {
 	err := framework.Gomega().Eventually(context.Background(), framework.HandleRetry(func(ctx context.Context) (*apiv1.OvnFip, error) {
 		fip, err := c.OvnFipInterface.Get(ctx, name, metav1.GetOptions{})
 		if apierrors.IsNotFound(err) {
@@ -155,8 +155,8 @@ func MakeOvnFip(name, ovnEip, ipType, ipName string) *apiv1.OvnFip {
 		},
 		Spec: apiv1.OvnFipSpec{
 			OvnEip: ovnEip,
-			IpType: ipType,
-			IpName: ipName,
+			IPType: ipType,
+			IPName: ipName,
 		},
 	}
 	return fip

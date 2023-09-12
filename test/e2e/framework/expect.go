@@ -30,12 +30,12 @@ var (
 )
 
 // ExpectEqual expects the specified two are the same, otherwise an exception raises
-func ExpectEqual(actual interface{}, extra interface{}, explain ...interface{}) {
+func ExpectEqual(actual, extra interface{}, explain ...interface{}) {
 	gomega.ExpectWithOffset(1, actual).To(gomega.Equal(extra), explain...)
 }
 
 // ExpectNotEqual expects the specified two are not the same, otherwise an exception raises
-func ExpectNotEqual(actual interface{}, extra interface{}, explain ...interface{}) {
+func ExpectNotEqual(actual, extra interface{}, explain ...interface{}) {
 	gomega.ExpectWithOffset(1, actual).NotTo(gomega.Equal(extra), explain...)
 }
 
@@ -84,17 +84,17 @@ func ExpectNoErrorWithOffset(offset int, err error, explain ...interface{}) {
 
 // ExpectConsistOf expects actual contains precisely the extra elements.
 // The ordering of the elements does not matter.
-func ExpectConsistOf(actual interface{}, extra interface{}, explain ...interface{}) {
+func ExpectConsistOf(actual, extra interface{}, explain ...interface{}) {
 	gomega.ExpectWithOffset(1, actual).To(gomega.ConsistOf(extra), explain...)
 }
 
 // ExpectContainElement expects actual contains the extra elements.
-func ExpectContainElement(actual interface{}, extra interface{}, explain ...interface{}) {
+func ExpectContainElement(actual, extra interface{}, explain ...interface{}) {
 	gomega.ExpectWithOffset(1, actual).To(gomega.ContainElement(extra), explain...)
 }
 
 // ExpectNotContainElement expects actual does not contain the extra elements.
-func ExpectNotContainElement(actual interface{}, extra interface{}, explain ...interface{}) {
+func ExpectNotContainElement(actual, extra interface{}, explain ...interface{}) {
 	gomega.ExpectWithOffset(1, actual).NotTo(gomega.ContainElement(extra), explain...)
 }
 
@@ -109,17 +109,17 @@ func ExpectNotContainSubstring(actual, substr string, explain ...interface{}) {
 }
 
 // ExpectHaveKey expects the actual map has the key in the keyset
-func ExpectHaveKey(actual interface{}, key interface{}, explain ...interface{}) {
+func ExpectHaveKey(actual, key interface{}, explain ...interface{}) {
 	gomega.ExpectWithOffset(1, actual).To(gomega.HaveKey(key), explain...)
 }
 
 // ExpectHaveKeyWithValue expects the actual map has the passed in key/value pair.
-func ExpectHaveKeyWithValue(actual interface{}, key, value interface{}, explain ...interface{}) {
+func ExpectHaveKeyWithValue(actual, key, value interface{}, explain ...interface{}) {
 	gomega.ExpectWithOffset(1, actual).To(gomega.HaveKeyWithValue(key, value), explain...)
 }
 
 // ExpectNotHaveKey expects the actual map does not have the key in the keyset
-func ExpectNotHaveKey(actual interface{}, key interface{}, explain ...interface{}) {
+func ExpectNotHaveKey(actual, key interface{}, explain ...interface{}) {
 	gomega.ExpectWithOffset(1, actual).NotTo(gomega.HaveKey(key), explain...)
 }
 

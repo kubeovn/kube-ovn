@@ -175,7 +175,7 @@ func (suite *OvnClientTestSuite) testDeleteSecurityGroup() {
 	})
 	require.NoError(t, err)
 
-	acl, err := ovnClient.newAcl(pgName, ovnnb.ACLDirectionToLport, priority, match, ovnnb.ACLActionAllowRelated)
+	acl, err := ovnClient.newACL(pgName, ovnnb.ACLDirectionToLport, priority, match, ovnnb.ACLActionAllowRelated)
 	require.NoError(t, err)
 
 	err = ovnClient.CreateAcls(pgName, portGroupKey, acl)

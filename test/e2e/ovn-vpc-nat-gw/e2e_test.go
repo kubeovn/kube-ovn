@@ -87,7 +87,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 	var subnetClient *framework.SubnetClient
 	var ovnEipClient *framework.OvnEipClient
 	var fipVipName, fipEipName, fipName, dnatVipName, dnatEipName, dnatName, snatEipName, snatName, namespaceName string
-	var ipClient *framework.IpClient
+	var ipClient *framework.IPClient
 	var vipClient *framework.VipClient
 	var ovnFipClient *framework.OvnFipClient
 	var ovnSnatRuleClient *framework.OvnSnatRuleClient
@@ -109,7 +109,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		vpcClient = f.VpcClient()
 		providerNetworkClient = f.ProviderNetworkClient()
 		ovnEipClient = f.OvnEipClient()
-		ipClient = f.IpClient()
+		ipClient = f.IPClient()
 		vipClient = f.VipClient()
 		ovnFipClient = f.OvnFipClient()
 		ovnSnatRuleClient = f.OvnSnatRuleClient()

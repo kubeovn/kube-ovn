@@ -20,8 +20,7 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-func (c *Controller) enqueueAddVirtualIp(obj interface{}) {
-
+func (c *Controller) enqueueAddVirtualIP(obj interface{}) {
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -29,29 +28,29 @@ func (c *Controller) enqueueAddVirtualIp(obj interface{}) {
 		return
 	}
 	klog.Infof("enqueue add vip %s", key)
-	c.addVirtualIpQueue.Add(key)
+	c.addVirtualIPQueue.Add(key)
 }
 
-func (c *Controller) enqueueUpdateVirtualIp(old, new interface{}) {
+func (c *Controller) enqueueUpdateVirtualIP(oldObj, newObj interface{}) {
 	var key string
 	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(new); err != nil {
+	if key, err = cache.MetaNamespaceKeyFunc(newObj); err != nil {
 		utilruntime.HandleError(err)
 		return
 	}
-	oldVip := old.(*kubeovnv1.Vip)
-	newVip := new.(*kubeovnv1.Vip)
+	oldVip := oldObj.(*kubeovnv1.Vip)
+	newVip := newObj.(*kubeovnv1.Vip)
 	if !newVip.DeletionTimestamp.IsZero() ||
 		oldVip.Spec.MacAddress != newVip.Spec.MacAddress ||
 		oldVip.Spec.ParentMac != newVip.Spec.ParentMac ||
 		oldVip.Spec.ParentV4ip != newVip.Spec.ParentV4ip ||
 		oldVip.Spec.V4ip != newVip.Spec.V4ip {
 		klog.Infof("enqueue update vip %s", key)
-		c.updateVirtualIpQueue.Add(key)
+		c.updateVirtualIPQueue.Add(key)
 	}
 }
 
-func (c *Controller) enqueueDelVirtualIp(obj interface{}) {
+func (c *Controller) enqueueDelVirtualIP(obj interface{}) {
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -60,73 +59,44 @@ func (c *Controller) enqueueDelVirtualIp(obj interface{}) {
 	}
 	klog.Infof("enqueue del vip %s", key)
 	vip := obj.(*kubeovnv1.Vip)
-	c.delVirtualIpQueue.Add(vip)
+	c.delVirtualIPQueue.Add(vip)
 }
 
-func (c *Controller) runAddVirtualIpWorker() {
-	for c.processNextAddVirtualIpWorkItem() {
+func (c *Controller) runAddVirtualIPWorker() {
+	for c.processNextAddVirtualIPWorkItem() {
 	}
 }
 
-func (c *Controller) runUpdateVirtualIpWorker() {
-	for c.processNextUpdateVirtualIpWorkItem() {
+func (c *Controller) runUpdateVirtualIPWorker() {
+	for c.processNextUpdateVirtualIPWorkItem() {
 	}
 }
 
-func (c *Controller) runDelVirtualIpWorker() {
-	for c.processNextDeleteVirtualIpWorkItem() {
+func (c *Controller) runDelVirtualIPWorker() {
+	for c.processNextDeleteVirtualIPWorkItem() {
 	}
 }
 
-func (c *Controller) processNextAddVirtualIpWorkItem() bool {
-	obj, shutdown := c.addVirtualIpQueue.Get()
+func (c *Controller) processNextAddVirtualIPWorkItem() bool {
+	obj, shutdown := c.addVirtualIPQueue.Get()
 	if shutdown {
 		return false
 	}
 
 	err := func(obj interface{}) error {
-		defer c.addVirtualIpQueue.Done(obj)
+		defer c.addVirtualIPQueue.Done(obj)
 		var key string
 		var ok bool
 		if key, ok = obj.(string); !ok {
-			c.addVirtualIpQueue.Forget(obj)
+			c.addVirtualIPQueue.Forget(obj)
 			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
 			return nil
 		}
-		if err := c.handleAddVirtualIp(key); err != nil {
-			c.addVirtualIpQueue.AddRateLimited(key)
+		if err := c.handleAddVirtualIP(key); err != nil {
+			c.addVirtualIPQueue.AddRateLimited(key)
 			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
 		}
-		c.addVirtualIpQueue.Forget(obj)
-		return nil
-	}(obj)
-
-	if err != nil {
-		utilruntime.HandleError(err)
-		return true
-	}
-	return true
-}
-
-func (c *Controller) processNextUpdateVirtualIpWorkItem() bool {
-	obj, shutdown := c.updateVirtualIpQueue.Get()
-	if shutdown {
-		return false
-	}
-	err := func(obj interface{}) error {
-		defer c.updateVirtualIpQueue.Done(obj)
-		var key string
-		var ok bool
-		if key, ok = obj.(string); !ok {
-			c.updateVirtualIpQueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
-			return nil
-		}
-		if err := c.handleUpdateVirtualIp(key); err != nil {
-			c.updateVirtualIpQueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
-		}
-		c.updateVirtualIpQueue.Forget(obj)
+		c.addVirtualIPQueue.Forget(obj)
 		return nil
 	}(obj)
 	if err != nil {
@@ -136,29 +106,56 @@ func (c *Controller) processNextUpdateVirtualIpWorkItem() bool {
 	return true
 }
 
-func (c *Controller) processNextDeleteVirtualIpWorkItem() bool {
-	obj, shutdown := c.delVirtualIpQueue.Get()
+func (c *Controller) processNextUpdateVirtualIPWorkItem() bool {
+	obj, shutdown := c.updateVirtualIPQueue.Get()
+	if shutdown {
+		return false
+	}
+	err := func(obj interface{}) error {
+		defer c.updateVirtualIPQueue.Done(obj)
+		var key string
+		var ok bool
+		if key, ok = obj.(string); !ok {
+			c.updateVirtualIPQueue.Forget(obj)
+			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
+			return nil
+		}
+		if err := c.handleUpdateVirtualIP(key); err != nil {
+			c.updateVirtualIPQueue.AddRateLimited(key)
+			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
+		}
+		c.updateVirtualIPQueue.Forget(obj)
+		return nil
+	}(obj)
+	if err != nil {
+		utilruntime.HandleError(err)
+		return true
+	}
+	return true
+}
+
+func (c *Controller) processNextDeleteVirtualIPWorkItem() bool {
+	obj, shutdown := c.delVirtualIPQueue.Get()
 	if shutdown {
 		return false
 	}
 
 	err := func(obj interface{}) error {
-		defer c.delVirtualIpQueue.Done(obj)
+		defer c.delVirtualIPQueue.Done(obj)
 		var vip *kubeovnv1.Vip
 		var ok bool
 		if vip, ok = obj.(*kubeovnv1.Vip); !ok {
-			c.delVirtualIpQueue.Forget(obj)
+			c.delVirtualIPQueue.Forget(obj)
 			utilruntime.HandleError(fmt.Errorf("expected vip in workqueue but got %#v", obj))
 			return nil
 		}
-		if err := c.handleDelVirtualIp(vip); err != nil {
-			c.delVirtualIpQueue.AddRateLimited(obj)
+		if err := c.handleDelVirtualIP(vip); err != nil {
+			c.delVirtualIPQueue.AddRateLimited(obj)
 			return fmt.Errorf("error syncing '%s': %s, requeuing", vip.Name, err.Error())
 		}
-		c.delVirtualIpQueue.Forget(obj)
+		c.delVirtualIPQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -166,7 +163,7 @@ func (c *Controller) processNextDeleteVirtualIpWorkItem() bool {
 	return true
 }
 
-func (c *Controller) handleAddVirtualIp(key string) error {
+func (c *Controller) handleAddVirtualIP(key string) error {
 	cachedVip, err := c.virtualIpsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -193,10 +190,10 @@ func (c *Controller) handleAddVirtualIp(key string) error {
 	portName := ovs.PodNameToPortName(vip.Name, vip.Spec.Namespace, subnet.Spec.Provider)
 	sourceV4Ip = vip.Spec.V4ip
 	if sourceV4Ip != "" {
-		v4ip, v6ip, mac, err = c.acquireStaticIpAddress(subnet.Name, vip.Name, portName, sourceV4Ip)
+		v4ip, v6ip, mac, err = c.acquireStaticIPAddress(subnet.Name, vip.Name, portName, sourceV4Ip)
 	} else {
 		// Random allocate
-		v4ip, v6ip, mac, err = c.acquireIpAddress(subnet.Name, vip.Name, portName)
+		v4ip, v6ip, mac, err = c.acquireIPAddress(subnet.Name, vip.Name, portName)
 	}
 	if err != nil {
 		klog.Error(err)
@@ -207,7 +204,7 @@ func (c *Controller) handleAddVirtualIp(key string) error {
 		// create a lsp use subnet gw mac, and set it option as arp_proxy
 		lrpName := fmt.Sprintf("%s-%s", subnet.Spec.Vpc, subnet.Name)
 		klog.Infof("get logical router port %s", lrpName)
-		lrp, err := c.ovnNbClient.GetLogicalRouterPort(lrpName, false)
+		lrp, err := c.OVNNbClient.GetLogicalRouterPort(lrpName, false)
 		if err != nil {
 			klog.Errorf("failed to get lrp %s: %v", lrpName, err)
 			return err
@@ -219,12 +216,12 @@ func (c *Controller) handleAddVirtualIp(key string) error {
 		}
 		mac = lrp.MAC
 		ipStr := util.GetStringIP(v4ip, v6ip)
-		if err := c.ovnNbClient.CreateLogicalSwitchPort(subnet.Name, portName, ipStr, mac, vip.Name, vip.Spec.Namespace, false, "", "", false, nil, subnet.Spec.Vpc); err != nil {
+		if err := c.OVNNbClient.CreateLogicalSwitchPort(subnet.Name, portName, ipStr, mac, vip.Name, vip.Spec.Namespace, false, "", "", false, nil, subnet.Spec.Vpc); err != nil {
 			err = fmt.Errorf("failed to create lsp %s: %v", portName, err)
 			klog.Error(err)
 			return err
 		}
-		if err := c.ovnNbClient.SetLogicalSwitchPortArpProxy(portName, true); err != nil {
+		if err := c.OVNNbClient.SetLogicalSwitchPortArpProxy(portName, true); err != nil {
 			err = fmt.Errorf("failed to enable lsp arp proxy for vip %s: %v", portName, err)
 			klog.Error(err)
 			return err
@@ -244,14 +241,14 @@ func (c *Controller) handleAddVirtualIp(key string) error {
 		klog.Errorf("failed to create or update vip '%s', %v", vip.Name, err)
 		return err
 	}
-	if err = c.subnetCountIp(subnet); err != nil {
+	if err = c.subnetCountIP(subnet); err != nil {
 		klog.Errorf("failed to count vip '%s' in subnet, %v", vip.Name, err)
 		return err
 	}
 	return nil
 }
 
-func (c *Controller) handleUpdateVirtualIp(key string) error {
+func (c *Controller) handleUpdateVirtualIP(key string) error {
 	cachedVip, err := c.virtualIpsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -297,7 +294,7 @@ func (c *Controller) handleUpdateVirtualIp(key string) error {
 	return nil
 }
 
-func (c *Controller) handleDelVirtualIp(vip *kubeovnv1.Vip) error {
+func (c *Controller) handleDelVirtualIP(vip *kubeovnv1.Vip) error {
 	klog.Infof("handle delete vip %s", vip.Name)
 	// TODO:// clean vip in its parent port aap list
 	if vip.Spec.Type == util.SwitchLBRuleVip {
@@ -308,7 +305,7 @@ func (c *Controller) handleDelVirtualIp(vip *kubeovnv1.Vip) error {
 		}
 		portName := ovs.PodNameToPortName(vip.Name, vip.Spec.Namespace, subnet.Spec.Provider)
 		klog.Infof("delete vip arp proxy lsp %s", portName)
-		if err := c.ovnNbClient.DeleteLogicalSwitchPort(portName); err != nil {
+		if err := c.OVNNbClient.DeleteLogicalSwitchPort(portName); err != nil {
 			err = fmt.Errorf("failed to delete lsp %s: %v", vip.Name, err)
 			klog.Error(err)
 			return err
@@ -319,7 +316,7 @@ func (c *Controller) handleDelVirtualIp(vip *kubeovnv1.Vip) error {
 	return nil
 }
 
-func (c *Controller) acquireStaticIpAddress(subnetName, name, nicName, ip string) (string, string, string, error) {
+func (c *Controller) acquireStaticIPAddress(subnetName, name, nicName, ip string) (string, string, string, error) {
 	checkConflict := true
 	var v4ip, v6ip, mac string
 	var err error
@@ -336,7 +333,7 @@ func (c *Controller) acquireStaticIpAddress(subnetName, name, nicName, ip string
 	return v4ip, v6ip, mac, nil
 }
 
-func (c *Controller) acquireIpAddress(subnetName, name, nicName string) (string, string, string, error) {
+func (c *Controller) acquireIPAddress(subnetName, name, nicName string) (string, string, string, error) {
 	var skippedAddrs []string
 	var v4ip, v6ip, mac string
 	checkConflict := true
@@ -367,7 +364,7 @@ func (c *Controller) acquireIpAddress(subnetName, name, nicName string) (string,
 	}
 }
 
-func (c *Controller) subnetCountIp(subnet *kubeovnv1.Subnet) error {
+func (c *Controller) subnetCountIP(subnet *kubeovnv1.Subnet) error {
 	var err error
 	if util.CheckProtocol(subnet.Spec.CIDRBlock) == kubeovnv1.ProtocolDual {
 		err = calcDualSubnetStatusIP(subnet, c)
@@ -386,7 +383,7 @@ func (c *Controller) createOrUpdateCrdVip(key, ns, subnet, v4ip, v6ip, mac, pV4i
 					Name: key,
 					Labels: map[string]string{
 						util.SubnetNameLabel: subnet,
-						util.IpReservedLabel: "",
+						util.IPReservedLabel: "",
 					},
 					Namespace: ns,
 				},
@@ -442,7 +439,7 @@ func (c *Controller) createOrUpdateCrdVip(key, ns, subnet, v4ip, v6ip, mac, pV4i
 			op = "add"
 			vip.Labels = map[string]string{
 				util.SubnetNameLabel: subnet,
-				util.IpReservedLabel: "",
+				util.IPReservedLabel: "",
 			}
 			needUpdateLabel = true
 		}
@@ -508,15 +505,14 @@ func (c *Controller) podReuseVip(key, portName string, keepVIP bool) error {
 	vip := oriVip.DeepCopy()
 	var op string
 
-	if vip.Labels[util.IpReservedLabel] != "" {
-		if keepVIP && vip.Labels[util.IpReservedLabel] == portName {
+	if vip.Labels[util.IPReservedLabel] != "" {
+		if keepVIP && vip.Labels[util.IPReservedLabel] == portName {
 			return nil
-		} else {
-			return fmt.Errorf("vip '%s' is in use by pod %s", vip.Name, vip.Labels[util.IpReservedLabel])
 		}
+		return fmt.Errorf("vip '%s' is in use by pod %s", vip.Name, vip.Labels[util.IPReservedLabel])
 	}
 	op = "replace"
-	vip.Labels[util.IpReservedLabel] = portName
+	vip.Labels[util.IPReservedLabel] = portName
 	patchPayloadTemplate := `[{ "op": "%s", "path": "/metadata/labels", "value": %s }]`
 	raw, _ := json.Marshal(vip.Labels)
 	patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
@@ -542,13 +538,12 @@ func (c *Controller) releaseVip(key string) error {
 	vip := oriVip.DeepCopy()
 	var needUpdateLabel bool
 	var op string
-	if vip.Labels[util.IpReservedLabel] == "" {
+	if vip.Labels[util.IPReservedLabel] == "" {
 		return nil
-	} else {
-		op = "replace"
-		vip.Labels[util.IpReservedLabel] = ""
-		needUpdateLabel = true
 	}
+	op = "replace"
+	vip.Labels[util.IPReservedLabel] = ""
+	needUpdateLabel = true
 	if needUpdateLabel {
 		klog.V(3).Infof("clean reserved label from vip %s", key)
 		patchPayloadTemplate := `[{ "op": "%s", "path": "/metadata/labels", "value": %s }]`

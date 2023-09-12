@@ -192,16 +192,16 @@ spec:
             path: /var/run/dbus
         - name: kube-ovn-log
           hostPath:
-            path: /var/log/kube-ovn
+            path: {{ .Values.log_conf.LOG_DIR }}/kube-ovn
         - name: localtime
           hostPath:
             path: /etc/localtime
         - name: host-log-ovs
           hostPath:
-            path: /var/log/openvswitch
+            path: {{ .Values.log_conf.LOG_DIR }}/openvswitch
         - name: host-log-ovn
           hostPath:
-            path: /var/log/ovn
+            path: {{ .Values.log_conf.LOG_DIR }}/ovn
         - name: tmp
           hostPath:
             path: /tmp

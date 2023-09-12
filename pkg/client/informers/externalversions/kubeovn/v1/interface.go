@@ -169,7 +169,7 @@ func (v *version) Vpcs() VpcInformer {
 
 // VpcDnses returns a VpcDnsInformer.
 func (v *version) VpcDnses() VpcDnsInformer {
-	return &vpcDnsInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
+	return &vpcDNSInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
 }
 
 // VpcNatGateways returns a VpcNatGatewayInformer.

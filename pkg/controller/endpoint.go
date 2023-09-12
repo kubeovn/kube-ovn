@@ -26,10 +26,9 @@ func (c *Controller) enqueueAddEndpoint(obj interface{}) {
 	c.updateEndpointQueue.Add(key)
 }
 
-func (c *Controller) enqueueUpdateEndpoint(old, new interface{}) {
-
-	oldEp := old.(*v1.Endpoints)
-	newEp := new.(*v1.Endpoints)
+func (c *Controller) enqueueUpdateEndpoint(oldObj, newObj interface{}) {
+	oldEp := oldObj.(*v1.Endpoints)
+	newEp := newObj.(*v1.Endpoints)
 	if oldEp.ResourceVersion == newEp.ResourceVersion {
 		return
 	}
@@ -40,7 +39,7 @@ func (c *Controller) enqueueUpdateEndpoint(old, new interface{}) {
 
 	var key string
 	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(new); err != nil {
+	if key, err = cache.MetaNamespaceKeyFunc(newObj); err != nil {
 		utilruntime.HandleError(err)
 		return
 	}
@@ -76,7 +75,6 @@ func (c *Controller) processNextUpdateEndpointWorkItem() bool {
 		c.updateEndpointQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -177,10 +175,10 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 		}
 	}
 
-	tcpLb, udpLb, sctpLb := vpc.Status.TcpLoadBalancer, vpc.Status.UdpLoadBalancer, vpc.Status.SctpLoadBalancer
-	oldTcpLb, oldUdpLb, oldSctpLb := vpc.Status.TcpSessionLoadBalancer, vpc.Status.UdpSessionLoadBalancer, vpc.Status.SctpSessionLoadBalancer
+	tcpLb, udpLb, sctpLb := vpc.Status.TCPLoadBalancer, vpc.Status.UDPLoadBalancer, vpc.Status.SctpLoadBalancer
+	oldTCPLb, oldUDPLb, oldSctpLb := vpc.Status.TCPSessionLoadBalancer, vpc.Status.UDPSessionLoadBalancer, vpc.Status.SctpSessionLoadBalancer
 	if svc.Spec.SessionAffinity == v1.ServiceAffinityClientIP {
-		tcpLb, udpLb, sctpLb, oldTcpLb, oldUdpLb, oldSctpLb = oldTcpLb, oldUdpLb, oldSctpLb, tcpLb, udpLb, sctpLb
+		tcpLb, udpLb, sctpLb, oldTCPLb, oldUDPLb, oldSctpLb = oldTCPLb, oldUDPLb, oldSctpLb, tcpLb, udpLb, sctpLb
 	}
 
 	for _, lbVip := range lbVips {
@@ -188,9 +186,9 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 			var lb, oldLb string
 			switch port.Protocol {
 			case v1.ProtocolTCP:
-				lb, oldLb = tcpLb, oldTcpLb
+				lb, oldLb = tcpLb, oldTCPLb
 			case v1.ProtocolUDP:
-				lb, oldLb = udpLb, oldUdpLb
+				lb, oldLb = udpLb, oldUDPLb
 			case v1.ProtocolSCTP:
 				lb, oldLb = sctpLb, oldSctpLb
 			}
@@ -200,25 +198,25 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 			// for performance reason delete lb with no backends
 			if len(backends) != 0 {
 				klog.Infof("add vip endpoint %s, backends %v to LB %s", vipEndpoint, backends, lb)
-				if err = c.ovnNbClient.LoadBalancerAddVip(lb, vipEndpoint, backends...); err != nil {
+				if err = c.OVNNbClient.LoadBalancerAddVip(lb, vipEndpoint, backends...); err != nil {
 					klog.Errorf("failed to add vip %s with backends %s to LB %s: %v", lbVip, backends, lb, err)
 					return err
 				}
 				if !ignoreHealthCheck && len(ipPortMapping) != 0 {
 					klog.Infof("add health check ip port mapping %v to LB %s", ipPortMapping, lb)
-					if err = c.ovnNbClient.LoadBalancerAddHealthCheck(lb, vipEndpoint, ignoreHealthCheck, ipPortMapping); err != nil {
+					if err = c.OVNNbClient.LoadBalancerAddHealthCheck(lb, vipEndpoint, ignoreHealthCheck, ipPortMapping); err != nil {
 						klog.Errorf("failed to add health check for vip %s with ip port mapping %s to LB %s: %v", lbVip, ipPortMapping, lb, err)
 						return err
 					}
 				}
 			} else {
 				klog.V(3).Infof("delete vip endpoint %s from LB %s", vipEndpoint, lb)
-				if err = c.ovnNbClient.LoadBalancerDeleteVip(lb, vipEndpoint, ignoreHealthCheck); err != nil {
+				if err = c.OVNNbClient.LoadBalancerDeleteVip(lb, vipEndpoint, ignoreHealthCheck); err != nil {
 					klog.Errorf("failed to delete vip endpoint %s from LB %s: %v", vipEndpoint, lb, err)
 					return err
 				}
 				klog.V(3).Infof("delete vip endpoint %s from old LB %s", vipEndpoint, lb)
-				if err = c.ovnNbClient.LoadBalancerDeleteVip(oldLb, vipEndpoint, ignoreHealthCheck); err != nil {
+				if err = c.OVNNbClient.LoadBalancerDeleteVip(oldLb, vipEndpoint, ignoreHealthCheck); err != nil {
 					klog.Errorf("failed to delete vip %s from LB %s: %v", vipEndpoint, lb, err)
 					return err
 				}

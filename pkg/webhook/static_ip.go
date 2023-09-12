@@ -37,12 +37,12 @@ func (v *ValidatingHook) DeploymentCreateHook(ctx context.Context, req admission
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 	// Get pod template static ips
-	staticIPSAnno := o.Spec.Template.GetAnnotations()[util.IpPoolAnnotation]
+	staticIPSAnno := o.Spec.Template.GetAnnotations()[util.IPPoolAnnotation]
 	klog.V(3).Infof("%s %s@%s, ip_pool: %s", o.Kind, o.GetName(), o.GetNamespace(), staticIPSAnno)
 	if staticIPSAnno == "" {
 		return ctrlwebhook.Allowed("by pass")
 	}
-	return v.validateIp(ctx, o.Spec.Template.GetAnnotations(), o.Kind, o.GetName(), o.GetNamespace())
+	return v.validateIP(ctx, o.Spec.Template.GetAnnotations(), o.Kind, o.GetName(), o.GetNamespace())
 }
 
 func (v *ValidatingHook) StatefulSetCreateHook(ctx context.Context, req admission.Request) admission.Response {
@@ -51,12 +51,12 @@ func (v *ValidatingHook) StatefulSetCreateHook(ctx context.Context, req admissio
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 	// Get pod template static ips
-	staticIPSAnno := o.Spec.Template.GetAnnotations()[util.IpPoolAnnotation]
+	staticIPSAnno := o.Spec.Template.GetAnnotations()[util.IPPoolAnnotation]
 	klog.V(3).Infof("%s %s@%s, ip_pool: %s", o.Kind, o.GetName(), o.GetNamespace(), staticIPSAnno)
 	if staticIPSAnno == "" {
 		return ctrlwebhook.Allowed("by pass")
 	}
-	return v.validateIp(ctx, o.Spec.Template.GetAnnotations(), o.Kind, o.GetName(), o.GetNamespace())
+	return v.validateIP(ctx, o.Spec.Template.GetAnnotations(), o.Kind, o.GetName(), o.GetNamespace())
 }
 
 func (v *ValidatingHook) DaemonSetCreateHook(ctx context.Context, req admission.Request) admission.Response {
@@ -65,12 +65,12 @@ func (v *ValidatingHook) DaemonSetCreateHook(ctx context.Context, req admission.
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 	// Get pod template static ips
-	staticIPSAnno := o.Spec.Template.GetAnnotations()[util.IpPoolAnnotation]
+	staticIPSAnno := o.Spec.Template.GetAnnotations()[util.IPPoolAnnotation]
 	klog.V(3).Infof("%s %s@%s, ip_pool: %s", o.Kind, o.GetName(), o.GetNamespace(), staticIPSAnno)
 	if staticIPSAnno == "" {
 		return ctrlwebhook.Allowed("by pass")
 	}
-	return v.validateIp(ctx, o.Spec.Template.GetAnnotations(), o.Kind, o.GetName(), o.GetNamespace())
+	return v.validateIP(ctx, o.Spec.Template.GetAnnotations(), o.Kind, o.GetName(), o.GetNamespace())
 }
 
 func (v *ValidatingHook) JobSetCreateHook(ctx context.Context, req admission.Request) admission.Response {
@@ -79,12 +79,12 @@ func (v *ValidatingHook) JobSetCreateHook(ctx context.Context, req admission.Req
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 	// Get pod template static ips
-	staticIPSAnno := o.Spec.Template.GetAnnotations()[util.IpPoolAnnotation]
+	staticIPSAnno := o.Spec.Template.GetAnnotations()[util.IPPoolAnnotation]
 	klog.V(3).Infof("%s %s@%s, ip_pool: %s", o.Kind, o.GetName(), o.GetNamespace(), staticIPSAnno)
 	if staticIPSAnno == "" {
 		return ctrlwebhook.Allowed("by pass")
 	}
-	return v.validateIp(ctx, o.Spec.Template.GetAnnotations(), o.Kind, o.GetName(), o.GetNamespace())
+	return v.validateIP(ctx, o.Spec.Template.GetAnnotations(), o.Kind, o.GetName(), o.GetNamespace())
 }
 
 func (v *ValidatingHook) CornJobSetCreateHook(ctx context.Context, req admission.Request) admission.Response {
@@ -93,12 +93,12 @@ func (v *ValidatingHook) CornJobSetCreateHook(ctx context.Context, req admission
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 	// Get pod template static ips
-	staticIPSAnno := o.Spec.JobTemplate.Spec.Template.GetAnnotations()[util.IpPoolAnnotation]
+	staticIPSAnno := o.Spec.JobTemplate.Spec.Template.GetAnnotations()[util.IPPoolAnnotation]
 	klog.V(3).Infof("%s %s@%s, ip_pool: %s", o.Kind, o.GetName(), o.GetNamespace(), staticIPSAnno)
 	if staticIPSAnno == "" {
 		return ctrlwebhook.Allowed("by pass")
 	}
-	return v.validateIp(ctx, o.Spec.JobTemplate.Spec.Template.GetAnnotations(), o.Kind, o.GetName(), o.GetNamespace())
+	return v.validateIP(ctx, o.Spec.JobTemplate.Spec.Template.GetAnnotations(), o.Kind, o.GetName(), o.GetNamespace())
 }
 
 func (v *ValidatingHook) PodCreateHook(ctx context.Context, req admission.Request) admission.Response {
@@ -106,10 +106,10 @@ func (v *ValidatingHook) PodCreateHook(ctx context.Context, req admission.Reques
 	if err := v.decoder.Decode(req, &o); err != nil {
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
-	poolAnno := o.GetAnnotations()[util.IpPoolAnnotation]
+	poolAnno := o.GetAnnotations()[util.IPPoolAnnotation]
 	klog.V(3).Infof("%s %s@%s, ip_pool: %s", o.Kind, o.GetName(), o.GetNamespace(), poolAnno)
 
-	staticIP := o.GetAnnotations()[util.IpAddressAnnotation]
+	staticIP := o.GetAnnotations()[util.IPAddressAnnotation]
 	klog.V(3).Infof("%s %s@%s, ip_address: %s", o.Kind, o.GetName(), o.GetNamespace(), staticIP)
 	if staticIP == "" && poolAnno == "" {
 		return ctrlwebhook.Allowed("by pass")
@@ -117,10 +117,10 @@ func (v *ValidatingHook) PodCreateHook(ctx context.Context, req admission.Reques
 	if v.allowLiveMigration(ctx, o.GetAnnotations(), o.GetName(), o.GetNamespace()) {
 		return ctrlwebhook.Allowed("by pass")
 	}
-	return v.validateIp(ctx, o.GetAnnotations(), o.Kind, o.GetName(), o.GetNamespace())
+	return v.validateIP(ctx, o.GetAnnotations(), o.Kind, o.GetName(), o.GetNamespace())
 }
 
-func (v *ValidatingHook) allowLiveMigration(ctx context.Context, annotations map[string]string, name, namespace string) bool {
+func (v *ValidatingHook) allowLiveMigration(_ context.Context, annotations map[string]string, name, namespace string) bool {
 	var multusNets []*multustypes.NetworkSelectionElement
 	defaultAttachNetworks := annotations[util.DefaultNetworkAnnotation]
 	if defaultAttachNetworks != "" {
@@ -152,7 +152,7 @@ func (v *ValidatingHook) allowLiveMigration(ctx context.Context, annotations map
 	return false
 }
 
-func (v *ValidatingHook) validateIp(ctx context.Context, annotations map[string]string, kind, name, namespace string) admission.Response {
+func (v *ValidatingHook) validateIP(ctx context.Context, annotations map[string]string, kind, name, namespace string) admission.Response {
 	if err := util.ValidatePodNetwork(annotations); err != nil {
 		klog.Errorf("validate %s %s/%s failed: %v", kind, namespace, name, err)
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
@@ -175,13 +175,13 @@ func (v *ValidatingHook) validateIPConflict(annotations map[string]string, name 
 		annoSubnet = util.DefaultSubnet
 	}
 
-	if ipAddress := annotations[util.IpAddressAnnotation]; ipAddress != "" {
+	if ipAddress := annotations[util.IPAddressAnnotation]; ipAddress != "" {
 		if err := v.checkIPConflict(ipAddress, annoSubnet, name, ipList); err != nil {
 			return err
 		}
 	}
 
-	ipPool := annotations[util.IpPoolAnnotation]
+	ipPool := annotations[util.IPPoolAnnotation]
 	if ipPool != "" {
 		if err := v.checkIPConflict(ipPool, annoSubnet, name, ipList); err != nil {
 			return err
