@@ -68,28 +68,46 @@ func (c *OVNNbClient) UpdateLoadBalancer(lb *ovnnb.LoadBalancer, fields ...inter
 
 // LoadBalancerAddVips adds or updates a vip
 func (c *OVNNbClient) LoadBalancerAddVip(lbName, vip string, backends ...string) error {
-	lb, err := c.GetLoadBalancer(lbName, false)
-	if err != nil {
+	var (
+		ops []ovsdb.Operation
+		err error
+	)
+
+	if _, err = c.GetLoadBalancer(lbName, false); err != nil {
 		klog.Errorf("failed to get lb health check: %v", err)
 		return err
 	}
 
 	sort.Strings(backends)
-	backendsStr := strings.Join(backends, ",")
-	if len(lb.Vips) != 0 {
-		if lb.Vips[vip] == backendsStr {
-			return nil
-		}
-	}
+	if ops, err = c.LoadBalancerOp(lbName, func(lb *ovnnb.LoadBalancer) []model.Mutation {
+		var (
+			mutations = make([]model.Mutation, 0, 2)
+			value     = strings.Join(backends, ",")
+		)
 
-	ops, err := c.LoadBalancerOp(lbName, func(lb *ovnnb.LoadBalancer) []model.Mutation {
-		return []model.Mutation{{
-			Field:   &lb.Vips,
-			Value:   map[string]string{vip: backendsStr},
-			Mutator: ovsdb.MutateOperationInsert,
-		}}
-	})
-	if err != nil {
+		if len(lb.Vips) != 0 {
+			if lb.Vips[vip] == value {
+				return nil
+			}
+			mutations = append(
+				mutations,
+				model.Mutation{
+					Field:   &lb.Vips,
+					Value:   map[string]string{vip: lb.Vips[vip]},
+					Mutator: ovsdb.MutateOperationDelete,
+				},
+			)
+		}
+		mutations = append(
+			mutations,
+			model.Mutation{
+				Field:   &lb.Vips,
+				Value:   map[string]string{vip: value},
+				Mutator: ovsdb.MutateOperationInsert,
+			},
+		)
+		return mutations
+	}); err != nil {
 		return fmt.Errorf("failed to generate operations when adding vip %s with backends %v to load balancers %s: %v", vip, backends, lbName, err)
 	}
 	if ops != nil {

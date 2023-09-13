@@ -24,6 +24,9 @@ func (suite *OvnClientTestSuite) testAddLoadBalancerHealthCheck() {
 		err              error
 	)
 
+	err = ovnClient.CreateLoadBalancer(lbName, "tcp", "ip_dst")
+	require.NoError(t, err)
+
 	err = ovnClient.AddLoadBalancerHealthCheck(lbName, vip)
 	require.NoError(t, err)
 
@@ -55,6 +58,9 @@ func (suite *OvnClientTestSuite) testUpdateLoadBalancerHealthCheck() {
 		lbhc      *ovnnb.LoadBalancerHealthCheck
 		err       error
 	)
+
+	err = ovnClient.CreateLoadBalancer(lbName, "tcp", "ip_dst")
+	require.NoError(t, err)
 
 	err = ovnClient.AddLoadBalancerHealthCheck(lbName, vip)
 	require.NoError(t, err)
@@ -89,14 +95,17 @@ func (suite *OvnClientTestSuite) testDeleteLoadBalancerHealthCheck() {
 		err       error
 	)
 
+	err = ovnClient.CreateLoadBalancer(lbName, "tcp", "ip_dst")
+	require.NoError(t, err)
+
 	err = ovnClient.AddLoadBalancerHealthCheck(lbName, vip)
 	require.NoError(t, err)
 
 	err = ovnClient.DeleteLoadBalancerHealthCheck(lbName, vip)
 	require.NoError(t, err)
 
-	_, _, err = ovnClient.GetLoadBalancerHealthCheck(lbName, vip, true)
-	require.ErrorContains(t, err, "not found load balancer health check")
+	_, _, err = ovnClient.GetLoadBalancerHealthCheck(lbName, vip, false)
+	require.Error(t, err)
 }
 
 func (suite *OvnClientTestSuite) testDeleteLoadBalancerHealthChecks() {
@@ -116,6 +125,9 @@ func (suite *OvnClientTestSuite) testDeleteLoadBalancerHealthChecks() {
 	for i := 0; i < 5; i++ {
 		lbName = fmt.Sprintf("%s-%d", lbNamePrefix, i)
 		vip = fmt.Sprintf(vipFormat, i+1)
+
+		err = ovnClient.CreateLoadBalancer(lbName, "tcp", "ip_dst")
+		require.NoError(t, err)
 
 		err = ovnClient.AddLoadBalancerHealthCheck(lbName, vip)
 		require.NoError(t, err)
@@ -137,7 +149,10 @@ func (suite *OvnClientTestSuite) testDeleteLoadBalancerHealthChecks() {
 
 	for _, ip := range vips {
 		_, _, err = ovnClient.GetLoadBalancerHealthCheck(lbName, ip, true)
-		require.ErrorContains(t, err, "not found load balancer health check")
+		require.NoError(t, err)
+
+		_, _, err = ovnClient.GetLoadBalancerHealthCheck(lbName, ip, false)
+		require.Error(t, err)
 	}
 }
 
@@ -153,6 +168,9 @@ func (suite *OvnClientTestSuite) testGetLoadBalancerHealthCheck() {
 		lbhc           *ovnnb.LoadBalancerHealthCheck
 		err            error
 	)
+
+	err = ovnClient.CreateLoadBalancer(lbName, "tcp", "ip_dst")
+	require.NoError(t, err)
 
 	err = ovnClient.AddLoadBalancerHealthCheck(lbName, vip)
 	require.NoError(t, err)
@@ -171,7 +189,7 @@ func (suite *OvnClientTestSuite) testGetLoadBalancerHealthCheck() {
 		func(t *testing.T) {
 			t.Parallel()
 			_, _, err = ovnClient.GetLoadBalancerHealthCheck(lbName, vipNonExistent, false)
-			require.ErrorContains(t, err, "not found load balancer health check")
+			require.Error(t, err)
 		},
 	)
 
@@ -190,7 +208,7 @@ func (suite *OvnClientTestSuite) testListLoadBalancerHealthChecks() {
 
 	var (
 		ovnClient     = suite.ovnClient
-		lbNamePrefix  = "test-del-lb-hcs"
+		lbNamePrefix  = "test-list-lb-hcs"
 		vipFormat     = "1.1.1.%d:80"
 		vips, newVips []string
 		lbhcs         []ovnnb.LoadBalancerHealthCheck
@@ -202,6 +220,9 @@ func (suite *OvnClientTestSuite) testListLoadBalancerHealthChecks() {
 	for i := 101; i <= 105; i++ {
 		lbName = fmt.Sprintf("%s-%d", lbNamePrefix, i)
 		vip = fmt.Sprintf(vipFormat, i+1)
+
+		err = ovnClient.CreateLoadBalancer(lbName, "tcp", "ip_dst")
+		require.NoError(t, err)
 
 		err = ovnClient.AddLoadBalancerHealthCheck(lbName, vip)
 		require.NoError(t, err)
@@ -269,6 +290,9 @@ func (suite *OvnClientTestSuite) testDeleteLoadBalancerHealthCheckOp() {
 		ops            []ovsdb.Operation
 		err            error
 	)
+
+	err = ovnClient.CreateLoadBalancer(lbName, "tcp", "ip_dst")
+	require.NoError(t, err)
 
 	err = ovnClient.AddLoadBalancerHealthCheck(lbName, vip)
 	require.NoError(t, err)

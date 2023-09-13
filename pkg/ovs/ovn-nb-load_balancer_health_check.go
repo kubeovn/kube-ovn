@@ -38,8 +38,12 @@ func (c *OVNNbClient) newLoadBalancerHealthCheck(lbName, vipEndpoint string) (*o
 		return nil, err
 	}
 
-	exists, err := c.LoadBalancerHealthCheckExists(lbName, vipEndpoint)
-	if err != nil {
+	var (
+		exists bool
+		err    error
+	)
+
+	if exists, err = c.LoadBalancerHealthCheckExists(lbName, vipEndpoint); err != nil {
 		err := fmt.Errorf("get lb health check %s: %v", vipEndpoint, err)
 		klog.Error(err)
 		return nil, err
@@ -50,9 +54,9 @@ func (c *OVNNbClient) newLoadBalancerHealthCheck(lbName, vipEndpoint string) (*o
 		klog.Infof("already exists health check with vip %s for lb %s ", vipEndpoint, lbName)
 		return nil, nil
 	}
-
 	klog.Infof("create health check for vip endpoint %s in lb %s ", vipEndpoint, lbName)
-	lbhc := &ovnnb.LoadBalancerHealthCheck{
+
+	return &ovnnb.LoadBalancerHealthCheck{
 		UUID: ovsclient.NamedUUID(),
 		Options: map[string]string{
 			"timeout":       "20",
@@ -61,9 +65,7 @@ func (c *OVNNbClient) newLoadBalancerHealthCheck(lbName, vipEndpoint string) (*o
 			"failure_count": "3",
 		},
 		Vip: vipEndpoint,
-	}
-
-	return lbhc, nil
+	}, nil
 }
 
 // CreateLoadBalancerHealthCheck create lb health check
@@ -113,8 +115,7 @@ func (c *OVNNbClient) UpdateLoadBalancerHealthCheck(lbhc *ovnnb.LoadBalancerHeal
 		err error
 	)
 
-	op, err = c.ovsDbClient.Where(lbhc).Update(lbhc, fields...)
-	if err != nil {
+	if op, err = c.ovsDbClient.Where(lbhc).Update(lbhc, fields...); err != nil {
 		return fmt.Errorf("generate operations for updating lb health check %s: %v", lbhc.Vip, err)
 	}
 
@@ -191,22 +192,25 @@ func (c *OVNNbClient) GetLoadBalancerHealthCheck(lbName, vipEndpoint string, ign
 		if ignoreNotFound {
 			return lb, nil, nil
 		}
-		err := fmt.Errorf("lb %s doesn't have health check", lbName)
+		err = fmt.Errorf("lb %s doesn't have health check", lbName)
 		klog.Error(err)
 		return nil, nil, err
 	}
 
 	healthCheckList := make([]ovnnb.LoadBalancerHealthCheck, 0)
-	if err := c.ovsDbClient.WhereCache(func(healthCheck *ovnnb.LoadBalancerHealthCheck) bool {
-		return slices.Contains(lb.HealthCheck, healthCheck.UUID)
-	}).List(ctx, &healthCheckList); err != nil {
-		err := fmt.Errorf("failed to list lb health check lb health check by vip %q: %v", vipEndpoint, err)
+	if err = c.ovsDbClient.WhereCache(
+		func(healthCheck *ovnnb.LoadBalancerHealthCheck) bool {
+			return slices.Contains(lb.HealthCheck, healthCheck.UUID) &&
+				healthCheck.Vip == vipEndpoint
+		},
+	).List(ctx, &healthCheckList); err != nil {
+		err = fmt.Errorf("failed to list lb health check lb health check by vip %q: %v", vipEndpoint, err)
 		klog.Error(err)
 		return nil, nil, err
 	}
 
 	if len(healthCheckList) > 1 {
-		err := fmt.Errorf("lb %s has more than one health check with the same vip %s", lbName, vipEndpoint)
+		err = fmt.Errorf("lb %s has more than one health check with the same vip %s", lbName, vipEndpoint)
 		klog.Error(err)
 		return nil, nil, err
 	}
@@ -214,7 +218,7 @@ func (c *OVNNbClient) GetLoadBalancerHealthCheck(lbName, vipEndpoint string, ign
 		if ignoreNotFound {
 			return lb, nil, nil
 		}
-		err := fmt.Errorf("lb %s doesn't have health check with vip %s", lbName, vipEndpoint)
+		err = fmt.Errorf("lb %s doesn't have health check with vip %s", lbName, vipEndpoint)
 		klog.Error(err)
 		return nil, nil, err
 	}
@@ -251,7 +255,7 @@ func (c *OVNNbClient) ListLoadBalancerHealthChecks(filter func(lbhc *ovnnb.LoadB
 func (c *OVNNbClient) LoadBalancerHealthCheckExists(lbName, vipEndpoint string) (bool, error) {
 	_, lbhc, err := c.GetLoadBalancerHealthCheck(lbName, vipEndpoint, true)
 	if err != nil {
-		klog.Errorf("failed to get lb %s health check by vip endpoint %s: %v", vipEndpoint, err)
+		klog.Errorf("failed to get lb %s health check by vip endpoint %s: %v", lbName, vipEndpoint, err)
 		return false, err
 	}
 	return lbhc != nil, err
@@ -275,8 +279,7 @@ func (c *OVNNbClient) DeleteLoadBalancerHealthCheckOp(lbName, vip string) ([]ovs
 	}
 
 	var op []ovsdb.Operation
-	op, err = c.Where(lbhc).Delete()
-	if err != nil {
+	if op, err = c.Where(lbhc).Delete(); err != nil {
 		klog.Errorf("failed to generate operations for deleting lb health check: %v", err)
 		return nil, err
 	}

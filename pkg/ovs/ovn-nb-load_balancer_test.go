@@ -162,7 +162,7 @@ func (suite *OvnClientTestSuite) testListLoadBalancers() {
 	t.Parallel()
 
 	ovnClient := suite.ovnClient
-	lbNamePrefix := "test-list-lb"
+	lbNamePrefix := "test-list-lbs"
 	lbNames := make([]string, 0, 3)
 	protocol := []string{"tcp", "udp"}
 
@@ -663,7 +663,7 @@ func (suite *OvnClientTestSuite) testLoadBalancerWithHealthCheck() {
 		vips, mappings map[string]string
 		lb             *ovnnb.LoadBalancer
 		lbhc           *ovnnb.LoadBalancerHealthCheck
-		lbhcID         string
+		lbhcID, vip    string
 		err            error
 	)
 
@@ -748,7 +748,8 @@ func (suite *OvnClientTestSuite) testLoadBalancerWithHealthCheck() {
 			}
 		},
 	)
-	vip := "10.96.0.6:443"
+
+	vip = "10.96.0.6:443"
 	t.Run("add new health check to load balancer",
 		func(t *testing.T) {
 			err = ovnClient.AddLoadBalancerHealthCheck(lbName, vip)
@@ -775,7 +776,7 @@ func (suite *OvnClientTestSuite) testLoadBalancerWithHealthCheck() {
 		},
 	)
 
-	t.Run("delete health check from load balancer repeatedly",
+	t.Run("delete health check from load balancer",
 		func(t *testing.T) {
 			err = ovnClient.LoadBalancerDeleteHealthCheck(lbName, lbhcID)
 			require.NoError(t, err)
