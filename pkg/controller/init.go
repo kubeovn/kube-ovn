@@ -712,21 +712,37 @@ func (c *Controller) initSyncCrdVlans() error {
 }
 
 func (c *Controller) migrateNodeRoute(af int, node, ip, nexthop string) error {
-	match := fmt.Sprintf("ip%d.dst == %s", af, ip)
-	action := ovnnb.LogicalRouterPolicyActionReroute
-	externalIDs := map[string]string{
-		"vendor": util.CniTypeName,
-		"node":   node,
-	}
+	var (
+		match       = fmt.Sprintf("ip%d.dst == %s", af, ip)
+		action      = kubeovnv1.PolicyRouteActionReroute
+		externalIDs = map[string]string{
+			"vendor": util.CniTypeName,
+			"node":   node,
+		}
+	)
 	klog.V(3).Infof("add policy route for router: %s, priority: %d, match %s, action %s, nexthop %s, extrenalID %v",
 		c.config.ClusterRouter, util.NodeRouterPolicyPriority, match, action, nexthop, externalIDs)
-	if err := c.ovnNbClient.AddLogicalRouterPolicy(c.config.ClusterRouter, util.NodeRouterPolicyPriority, match, action, []string{nexthop}, externalIDs); err != nil {
+	if err := c.addPolicyRouteToVpc(
+		c.config.ClusterRouter,
+		&kubeovnv1.PolicyRoute{
+			Priority:  util.NodeRouterPolicyPriority,
+			Match:     match,
+			Action:    action,
+			NextHopIP: nexthop,
+		},
+		externalIDs,
+	); err != nil {
 		klog.Errorf("failed to add logical router policy for node %s: %v", node, err)
 		return err
 	}
 
-	routeTable := util.MainRouteTable
-	if err := c.ovnNbClient.DeleteLogicalRouterStaticRoute(c.config.ClusterRouter, &routeTable, nil, ip, ""); err != nil {
+	if err := c.deleteStaticRouteFromVpc(
+		c.config.ClusterRouter,
+		util.MainRouteTable,
+		ip,
+		"",
+		kubeovnv1.PolicyDst,
+	); err != nil {
 		klog.Errorf("failed to delete obsolete static route for node %s: %v", node, err)
 		return err
 	}
@@ -734,7 +750,7 @@ func (c *Controller) migrateNodeRoute(af int, node, ip, nexthop string) error {
 	asName := nodeUnderlayAddressSetName(node, af)
 	obsoleteMatch := fmt.Sprintf("ip%d.dst == %s && ip%d.src != $%s", af, ip, af, asName)
 	klog.V(3).Infof("delete policy route for router: %s, priority: %d, match %s", c.config.ClusterRouter, util.NodeRouterPolicyPriority, obsoleteMatch)
-	if err := c.ovnNbClient.DeleteLogicalRouterPolicy(c.config.ClusterRouter, util.NodeRouterPolicyPriority, obsoleteMatch); err != nil {
+	if err := c.deletePolicyRouteFromVpc(c.config.ClusterRouter, util.NodeRouterPolicyPriority, obsoleteMatch); err != nil {
 		klog.Errorf("failed to delete obsolete logical router policy for node %s: %v", node, err)
 		return err
 	}
