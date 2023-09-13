@@ -798,8 +798,14 @@ func (c *Controller) reconcileRouteSubnets(cachedPod, pod *v1.Pod, needRoutePodN
 					nextHop = strings.Split(nextHop, "/")[0]
 				}
 
-				if err := c.OVNNbClient.AddLogicalRouterStaticRoute(
-					c.config.ClusterRouter, subnet.Spec.RouteTable, ovnnb.LogicalRouterStaticRoutePolicySrcIP, podIP, nil, nextHop,
+				if err := c.addStaticRouteToVpc(
+					c.config.ClusterRouter,
+					&kubeovnv1.StaticRoute{
+						Policy:     kubeovnv1.PolicySrc,
+						CIDR:       podIP,
+						NextHopIP:  nextHop,
+						RouteTable: subnet.Spec.RouteTable,
+					},
 				); err != nil {
 					klog.Errorf("failed to add static route, %v", err)
 					return err
@@ -842,15 +848,25 @@ func (c *Controller) reconcileRouteSubnets(cachedPod, pod *v1.Pod, needRoutePodN
 				}
 
 				if pod.Annotations[util.NorthGatewayAnnotation] != "" {
-					if err := c.OVNNbClient.AddLogicalRouterStaticRoute(
-						c.config.ClusterRouter, subnet.Spec.RouteTable, ovnnb.LogicalRouterStaticRoutePolicySrcIP, podIP, nil, pod.Annotations[util.NorthGatewayAnnotation],
+					if err := c.addStaticRouteToVpc(
+						subnet.Spec.RouteTable,
+						&kubeovnv1.StaticRoute{
+							Policy:     kubeovnv1.PolicySrc,
+							CIDR:       podIP,
+							NextHopIP:  pod.Annotations[util.NorthGatewayAnnotation],
+							RouteTable: subnet.Spec.RouteTable,
+						},
 					); err != nil {
 						klog.Errorf("failed to add static route, %v", err)
 						return err
 					}
 				} else if c.config.EnableEipSnat {
-					if err = c.OVNNbClient.DeleteLogicalRouterStaticRoute(
-						c.config.ClusterRouter, &subnet.Spec.RouteTable, nil, podIP, "",
+					if err = c.deleteStaticRouteFromVpc(
+						c.config.ClusterRouter,
+						subnet.Spec.RouteTable,
+						podIP,
+						"",
+						kubeovnv1.PolicyDst,
 					); err != nil {
 						return err
 					}
@@ -951,7 +967,13 @@ func (c *Controller) handleDeletePod(key string) error {
 			}
 			// If pod has snat or eip, also need delete staticRoute when delete pod
 			if vpc.Name == c.config.ClusterRouter {
-				if err = c.OVNNbClient.DeleteLogicalRouterStaticRoute(vpc.Name, &subnet.Spec.RouteTable, nil, address.IP, ""); err != nil {
+				if err = c.deleteStaticRouteFromVpc(
+					vpc.Name,
+					subnet.Spec.RouteTable,
+					address.IP,
+					"",
+					kubeovnv1.PolicyDst,
+				); err != nil {
 					return err
 				}
 			}

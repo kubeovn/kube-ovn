@@ -648,7 +648,13 @@ func (c *Controller) gcStaticRoute() error {
 				continue
 			}
 			klog.Infof("gc static route %s %v %s %s", route.RouteTable, route.Policy, route.IPPrefix, route.Nexthop)
-			if err = c.OVNNbClient.DeleteLogicalRouterStaticRoute(c.config.ClusterRouter, &route.RouteTable, route.Policy, route.IPPrefix, route.Nexthop); err != nil {
+			if err = c.deleteStaticRouteFromVpc(
+				c.config.ClusterRouter,
+				route.RouteTable,
+				route.IPPrefix,
+				route.Nexthop,
+				reversePolicy(*route.Policy),
+			); err != nil {
 				klog.Errorf("failed to delete stale route %s %v %s %s: %v", route.RouteTable, route.Policy, route.IPPrefix, route.Nexthop, err)
 			}
 		}

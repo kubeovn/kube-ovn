@@ -22,7 +22,6 @@ import (
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -266,15 +265,26 @@ func (c *Controller) handleAddNode(key string) error {
 			nodeIP, af = nodeIPv6, 6
 		}
 		if nodeIP != "" {
-			match := fmt.Sprintf("ip%d.dst == %s", af, nodeIP)
-			action := ovnnb.LogicalRouterPolicyActionReroute
-			externalIDs := map[string]string{
-				"vendor":         util.CniTypeName,
-				"node":           node.Name,
-				"address-family": strconv.Itoa(af),
-			}
+			var (
+				match       = fmt.Sprintf("ip%d.dst == %s", af, nodeIP)
+				action      = kubeovnv1.PolicyRouteActionReroute
+				externalIDs = map[string]string{
+					"vendor":         util.CniTypeName,
+					"node":           node.Name,
+					"address-family": strconv.Itoa(af),
+				}
+			)
 			klog.Infof("add policy route for router: %s, match %s, action %s, nexthop %s, externalID %v", c.config.ClusterRouter, match, action, ip, externalIDs)
-			if err = c.OVNNbClient.AddLogicalRouterPolicy(c.config.ClusterRouter, util.NodeRouterPolicyPriority, match, action, []string{ip}, externalIDs); err != nil {
+			if err = c.addPolicyRouteToVpc(
+				c.config.ClusterRouter,
+				&kubeovnv1.PolicyRoute{
+					Priority:  util.NodeRouterPolicyPriority,
+					Match:     match,
+					Action:    action,
+					NextHopIP: ip,
+				},
+				externalIDs,
+			); err != nil {
 				klog.Errorf("failed to add logical router policy for node %s: %v", node.Name, err)
 				return err
 			}
@@ -1018,7 +1028,16 @@ func (c *Controller) addNodeGwStaticRoute() error {
 			if util.CheckProtocol(cidrBlock) != util.CheckProtocol(nextHop) {
 				continue
 			}
-			if err := c.OVNNbClient.AddLogicalRouterStaticRoute(c.config.ClusterRouter, util.MainRouteTable, ovnnb.LogicalRouterStaticRoutePolicyDstIP, cidrBlock, nil, nextHop); err != nil {
+
+			if err := c.addStaticRouteToVpc(
+				c.config.ClusterRouter,
+				&kubeovnv1.StaticRoute{
+					Policy:     kubeovnv1.PolicyDst,
+					CIDR:       cidrBlock,
+					NextHopIP:  nextHop,
+					RouteTable: util.MainRouteTable,
+				},
+			); err != nil {
 				klog.Errorf("failed to add static route for node gw: %v", err)
 				return err
 			}
@@ -1190,18 +1209,28 @@ func (c *Controller) addPolicyRouteForCentralizedSubnetOnNode(nodeName, nodeIP s
 }
 
 func (c *Controller) addPolicyRouteForLocalDNSCacheOnNode(nodePortName, nodeIP, nodeName string, af int) error {
-	externalIDs := map[string]string{
-		"vendor":          util.CniTypeName,
-		"node":            nodeName,
-		"address-family":  strconv.Itoa(af),
-		"isLocalDnsCache": "true",
-	}
-
-	pgAs := strings.ReplaceAll(fmt.Sprintf("%s_ip%d", nodePortName, af), "-", ".")
-	match := fmt.Sprintf("ip%d.src == $%s && ip%d.dst == %s", af, pgAs, af, c.config.NodeLocalDNSIP)
-	action := ovnnb.LogicalRouterPolicyActionReroute
+	var (
+		externalIDs = map[string]string{
+			"vendor":          util.CniTypeName,
+			"node":            nodeName,
+			"address-family":  strconv.Itoa(af),
+			"isLocalDnsCache": "true",
+		}
+		pgAs   = strings.ReplaceAll(fmt.Sprintf("%s_ip%d", nodePortName, af), "-", ".")
+		match  = fmt.Sprintf("ip%d.src == $%s && ip%d.dst == %s", af, pgAs, af, c.config.NodeLocalDNSIP)
+		action = kubeovnv1.PolicyRouteActionReroute
+	)
 	klog.Infof("add node local dns cache policy route for router: %s, match %s, action %s, nexthop %s, externalID %v", c.config.ClusterRouter, match, action, nodeIP, externalIDs)
-	if err := c.OVNNbClient.AddLogicalRouterPolicy(c.config.ClusterRouter, util.NodeLocalDNSPolicyPriority, match, action, []string{nodeIP}, externalIDs); err != nil {
+	if err := c.addPolicyRouteToVpc(
+		c.config.ClusterRouter,
+		&kubeovnv1.PolicyRoute{
+			Priority:  util.NodeRouterPolicyPriority,
+			Match:     match,
+			Action:    action,
+			NextHopIP: nodeIP,
+		},
+		externalIDs,
+	); err != nil {
 		klog.Errorf("failed to add logical router policy for node %s: %v", nodeName, err)
 		return err
 	}
