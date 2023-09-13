@@ -789,10 +789,6 @@ func (c *Controller) Run(ctx context.Context) {
 		util.LogFatalAndExit(err, "failed to initialize default vpc")
 	}
 
-	if err := c.initNodeChassis(); err != nil {
-		util.LogFatalAndExit(err, "failed to initialize node chassis")
-	}
-
 	// sync ip crd before initIPAM since ip crd will be used to restore vm and statefulset pod in initIPAM
 	if err := c.initSyncCrdIPs(); err != nil {
 		util.LogFatalAndExit(err, "failed to sync crd ips")
@@ -806,33 +802,12 @@ func (c *Controller) Run(ctx context.Context) {
 		util.LogFatalAndExit(err, "failed to initialize node routes")
 	}
 
-	if err := c.initDenyAllSecurityGroup(); err != nil {
-		util.LogFatalAndExit(err, "failed to initialize 'deny_all' security group")
-	}
-
-	// remove resources in ovndb that not exist any more in kubernetes resources
-	if err := c.gc(); err != nil {
-		util.LogFatalAndExit(err, "failed to run gc")
-	}
-
-	c.registerSubnetMetrics()
 	if err := c.initSyncCrdSubnets(); err != nil {
 		util.LogFatalAndExit(err, "failed to sync crd subnets")
 	}
+
 	if err := c.initSyncCrdVlans(); err != nil {
 		util.LogFatalAndExit(err, "failed to sync crd vlans")
-	}
-
-	if c.config.PodDefaultFipType == util.IptablesFip {
-		if err := c.initSyncCrdVpcNatGw(); err != nil {
-			util.LogFatalAndExit(err, "failed to sync crd vpc nat gateways")
-		}
-	}
-
-	if c.config.EnableLb {
-		if err := c.initVpcDnsConfig(); err != nil {
-			util.LogFatalAndExit(err, "failed to initialize vpc-dns")
-		}
 	}
 
 	if err := c.addNodeGwStaticRoute(); err != nil {
@@ -841,6 +816,8 @@ func (c *Controller) Run(ctx context.Context) {
 
 	// start workers to do all the network operations
 	c.startWorkers(ctx)
+
+	c.initResourceOnce()
 	<-ctx.Done()
 	klog.Info("Shutting down workers")
 }

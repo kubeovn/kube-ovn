@@ -751,19 +751,6 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		return err
 	}
 
-	multicastSnoopFlag := map[string]string{"mcast_snoop": "true", "mcast_querier": "false"}
-	if subnet.Spec.EnableMulicastSnoop {
-		if err := c.OVNNbClient.LogicalSwitchUpdateOtherConfig(subnet.Name, ovsdb.MutateOperationInsert, multicastSnoopFlag); err != nil {
-			klog.Errorf("enable logical switch multicast snoop %s: %v", subnet.Name, err)
-			return err
-		}
-	} else {
-		if err := c.OVNNbClient.LogicalSwitchUpdateOtherConfig(subnet.Name, ovsdb.MutateOperationDelete, multicastSnoopFlag); err != nil {
-			klog.Errorf("disable logical switch multicast snoop  %s: %v", subnet.Name, err)
-			return err
-		}
-	}
-
 	subnet.Status.EnsureStandardConditions()
 
 	if err := c.updateSubnetDHCPOption(subnet, needRouter); err != nil {
