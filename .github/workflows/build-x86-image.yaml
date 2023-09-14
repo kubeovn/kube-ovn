@@ -1080,7 +1080,7 @@ jobs:
           name: kube-ovn-ic-conformance-e2e-ko-log
           path: kube-ovn-ic-conformance-e2e-ko-log.tar.gz
 
-  chart-installation-test:
+  chart-test:
     name: Chart Installation Test
     needs: build-kube-ovn
     runs-on: ubuntu-22.04
@@ -1113,8 +1113,8 @@ jobs:
       - name: Install Kube-OVN
         run: make kind-install-chart
 
-      - name: Cleanup
-        run: sh -x dist/images/cleanup.sh
+      - name: Uninstall Kube-OVN
+        run: make kind-uninstall-chart
 
   underlay-logical-gateway-installation-test:
     name: Underlay Logical Gateway Installation Test

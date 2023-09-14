@@ -1,15 +1,12 @@
-{{ if (lookup "apps/v1" "DaemonSet" "kube-system" "ovs-ovn") }}
-{{ if eq (lookup "apps/v1" "DaemonSet" "kube-system" "ovs-ovn").spec.updateStrategy.type "OnDelete" }}
----
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: ovs-ovn-upgrade
+  name: kube-ovn-pre-delete-hook
   namespace: kube-system
   annotations:
     # This is what defines this resource as a hook. Without this line, the
     # job is considered part of the release.
-    "helm.sh/hook": post-upgrade
+    "helm.sh/hook": pre-delete
     "helm.sh/hook-weight": "1"
     "helm.sh/hook-delete-policy": hook-succeeded
 ---
@@ -20,57 +17,43 @@ metadata:
     rbac.authorization.k8s.io/system-only: "true"
     # This is what defines this resource as a hook. Without this line, the
     # job is considered part of the release.
-    "helm.sh/hook": post-upgrade
+    "helm.sh/hook": pre-delete
     "helm.sh/hook-weight": "2"
     "helm.sh/hook-delete-policy": hook-succeeded
-  name: system:ovs-ovn-upgrade
+  name: system:kube-ovn-pre-delete-hook
 rules:
   - apiGroups:
-      - apps
+      - kubeovn.io
     resources:
-      - daemonsets
-    resourceNames:
-      - ovs-ovn
+      - subnets
     verbs:
       - get
-  - apiGroups:
-      - ""
-    resources:
-      - nodes
-    verbs:
       - list
-  - apiGroups:
-      - ""
-    resources:
-      - pods
-    verbs:
-      - list
-      - get
-      - delete
+      - patch
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: ovs-ovn-upgrade
+  name: kube-ovn-pre-delete-hook
   annotations:
     # This is what defines this resource as a hook. Without this line, the
     # job is considered part of the release.
-    "helm.sh/hook": post-upgrade
+    "helm.sh/hook": pre-delete
     "helm.sh/hook-weight": "3"
     "helm.sh/hook-delete-policy": hook-succeeded
 roleRef:
-  name: system:ovs-ovn-upgrade
+  name: system:kube-ovn-pre-delete-hook
   kind: ClusterRole
   apiGroup: rbac.authorization.k8s.io
 subjects:
   - kind: ServiceAccount
-    name: ovs-ovn-upgrade
+    name: kube-ovn-pre-delete-hook
     namespace: kube-system
 ---
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: "{{ .Chart.Name }}-post-upgrade-hook"
+  name: "{{ .Chart.Name }}-pre-delete-hook"
   namespace: kube-system
   labels:
     app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
@@ -80,7 +63,7 @@ metadata:
   annotations:
     # This is what defines this resource as a hook. Without this line, the
     # job is considered part of the release.
-    "helm.sh/hook": post-upgrade
+    "helm.sh/hook": pre-delete
     "helm.sh/hook-weight": "4"
     "helm.sh/hook-delete-policy": hook-succeeded
 spec:
@@ -92,7 +75,7 @@ spec:
         app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
         app.kubernetes.io/instance: {{ .Release.Name | quote }}
         helm.sh/chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
-        app: post-upgrade
+        app: kube-ovn-pre-delete-hook
         component: job
     spec:
       tolerations:
@@ -108,7 +91,7 @@ spec:
                   - key: app
                     operator: In
                     values:
-                      - post-upgrade
+                      - kube-ovn-pre-delete-hook
                   - key: component
                     operator: In
                     values:
@@ -117,10 +100,10 @@ spec:
       hostNetwork: true
       nodeSelector:
         kubernetes.io/os: "linux"
-      serviceAccount: ovs-ovn-upgrade
-      serviceAccountName: ovs-ovn-upgrade
+      serviceAccount: kube-ovn-pre-delete-hook
+      serviceAccountName: kube-ovn-pre-delete-hook
       containers:
-        - name: ovs-ovn-upgrade
+        - name: remove-subnet-finalizer
           image: "{{ .Values.global.registry.address}}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}"
           env:
             - name: POD_NAMESPACE
@@ -130,7 +113,7 @@ spec:
           command:
             - sh
             - -c
-            - /kube-ovn/upgrade-ovs.sh 2>&1 | tee -a /var/log/kube-ovn/upgrade-ovs.log
+            - /kube-ovn/remove-subnet-finalizer.sh 2>&1 | tee -a /var/log/kube-ovn/remove-subnet-finalizer.log
           volumeMounts:
             - mountPath: /var/log/kube-ovn
               name: kube-ovn-log
@@ -138,5 +121,3 @@ spec:
         - name: kube-ovn-log
           hostPath:
             path: {{ .Values.log_conf.LOG_DIR }}/kube-ovn
-{{ end }}
-{{ end }}
