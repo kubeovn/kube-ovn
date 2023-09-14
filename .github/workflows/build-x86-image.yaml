@@ -1080,8 +1080,8 @@ jobs:
           name: kube-ovn-ic-conformance-e2e-ko-log
           path: kube-ovn-ic-conformance-e2e-ko-log.tar.gz
 
-  chart-installation-test:
-    name: Chart Installation Test
+  chart-test:
+    name: Chart Installation/Uninstallation Test
     needs: build-kube-ovn
     runs-on: ubuntu-22.04
     timeout-minutes: 30
@@ -1113,8 +1113,8 @@ jobs:
       - name: Install Kube-OVN
         run: make kind-install-chart
 
-      - name: Cleanup
-        run: sh -x dist/images/cleanup.sh
+      - name: Uninstall Kube-OVN
+        run: make kind-uninstall-chart
 
   underlay-logical-gateway-installation-test:
     name: Underlay Logical Gateway Installation Test
@@ -2052,7 +2052,7 @@ jobs:
       - webhook-e2e
       - lb-svc-e2e
       - underlay-logical-gateway-installation-test
-      - chart-installation-test
+      - chart-test
       - installation-compatibility-test
       - no-ovn-lb-test
       - no-np-test

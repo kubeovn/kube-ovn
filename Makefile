@@ -447,6 +447,10 @@ kind-upgrade-chart: kind-load-image
 	kubectl -n kube-system rollout status --timeout=1s daemonset/kube-ovn-cni
 	kubectl -n kube-system rollout status --timeout=1s daemonset/kube-ovn-pinger
 
+.PHONY: kind-uninstall-chart
+kind-uninstall-chart:
+	helm uninstall kubeovn
+
 .PHONY: kind-install
 kind-install: kind-load-image
 	kubectl config use-context kind-kube-ovn
