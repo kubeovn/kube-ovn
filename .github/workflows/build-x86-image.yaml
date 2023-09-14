@@ -2052,7 +2052,7 @@ jobs:
       - webhook-e2e
       - lb-svc-e2e
       - underlay-logical-gateway-installation-test
-      - chart-installation-test
+      - chart-test
       - installation-compatibility-test
       - no-ovn-lb-test
       - no-np-test
