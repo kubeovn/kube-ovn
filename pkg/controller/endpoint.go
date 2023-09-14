@@ -16,8 +16,11 @@ import (
 )
 
 func (c *Controller) enqueueAddEndpoint(obj interface{}) {
-	var key string
-	var err error
+	var (
+		key string
+		err error
+	)
+
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
 		utilruntime.HandleError(err)
 		return
@@ -37,8 +40,11 @@ func (c *Controller) enqueueUpdateEndpoint(oldObj, newObj interface{}) {
 		return
 	}
 
-	var key string
-	var err error
+	var (
+		key string
+		err error
+	)
+
 	if key, err = cache.MetaNamespaceKeyFunc(newObj); err != nil {
 		utilruntime.HandleError(err)
 		return
@@ -59,23 +65,28 @@ func (c *Controller) processNextUpdateEndpointWorkItem() bool {
 		return false
 	}
 
-	err := func(obj interface{}) error {
+	if err := func(obj interface{}) error {
 		defer c.updateEndpointQueue.Done(obj)
-		var key string
-		var ok bool
+
+		var (
+			key string
+			ok  bool
+			err error
+		)
+
 		if key, ok = obj.(string); !ok {
 			c.updateEndpointQueue.Forget(obj)
 			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
 			return nil
 		}
-		if err := c.handleUpdateEndpoint(key); err != nil {
+
+		if err = c.handleUpdateEndpoint(key); err != nil {
 			c.updateEndpointQueue.AddRateLimited(key)
 			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
 		}
 		c.updateEndpointQueue.Forget(obj)
 		return nil
-	}(obj)
-	if err != nil {
+	}(obj); err != nil {
 		utilruntime.HandleError(err)
 		return true
 	}
@@ -112,10 +123,17 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 	}
 	svc := cachedService.DeepCopy()
 
-	var LbIPs []string
-	if vip, ok := svc.Annotations[util.SwitchLBRuleVipsAnnotation]; ok {
-		LbIPs = []string{vip}
-	} else if LbIPs = util.ServiceClusterIPs(*svc); len(LbIPs) == 0 {
+	var (
+		lbVips            []string
+		vip, vpcName      string
+		ok                bool
+		ignoreHealthCheck = true
+	)
+
+	if vip, ok = svc.Annotations[util.SwitchLBRuleVipsAnnotation]; ok {
+		lbVips = []string{vip}
+		ignoreHealthCheck = false
+	} else if lbVips = util.ServiceClusterIPs(*svc); len(lbVips) == 0 {
 		return nil
 	}
 
@@ -125,7 +143,6 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 		return err
 	}
 
-	var vpcName string
 	for _, pod := range pods {
 		if len(pod.Annotations) == 0 {
 			continue
@@ -177,7 +194,7 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 		tcpLb, udpLb, sctpLb, oldTCPLb, oldUDPLb, oldSctpLb = oldTCPLb, oldUDPLb, oldSctpLb, tcpLb, udpLb, sctpLb
 	}
 
-	for _, settingIP := range LbIPs {
+	for _, lbVip := range lbVips {
 		for _, port := range svc.Spec.Ports {
 			var lb, oldLb string
 			switch port.Protocol {
@@ -189,37 +206,52 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 				lb, oldLb = sctpLb, oldSctpLb
 			}
 
-			vip := util.JoinHostPort(settingIP, port.Port)
-			backends := getServicePortBackends(ep, pods, port, settingIP)
+			var (
+				vip           string
+				backends      []string
+				ipPortMapping map[string]string
+			)
+			vip = util.JoinHostPort(lbVip, port.Port)
+			ipPortMapping, backends = getIPPortMappingBackend(ep, pods, port, lbVip, ignoreHealthCheck)
 
 			// for performance reason delete lb with no backends
 			if len(backends) != 0 {
-				klog.V(3).Infof("update vip %s with backends %s to LB %s", vip, backends, lb)
+				klog.Infof("add vip endpoint %s, backends %v to LB %s", vip, backends, lb)
 				if err = c.OVNNbClient.LoadBalancerAddVip(lb, vip, backends...); err != nil {
-					klog.Errorf("failed to add vip %s with backends %s to LB %s: %v", vip, backends, lb, err)
+					klog.Errorf("failed to add vip %s with backends %s to LB %s: %v", lbVip, backends, lb, err)
 					return err
+				}
+				if !ignoreHealthCheck && len(ipPortMapping) != 0 {
+					klog.Infof("add health check ip port mapping %v to LB %s", ipPortMapping, lb)
+					if err = c.OVNNbClient.LoadBalancerAddHealthCheck(lb, vip, ignoreHealthCheck, ipPortMapping); err != nil {
+						klog.Errorf("failed to add health check for vip %s with ip port mapping %s to LB %s: %v", lbVip, ipPortMapping, lb, err)
+						return err
+					}
 				}
 			} else {
-				klog.V(3).Infof("delete vip %s from LB %s", vip, lb)
-				if err := c.OVNNbClient.LoadBalancerDeleteVip(lb, vip); err != nil {
-					klog.Errorf("failed to delete vip %s from LB %s: %v", vip, lb, err)
+				klog.V(3).Infof("delete vip endpoint %s from LB %s", vip, lb)
+				if err = c.OVNNbClient.LoadBalancerDeleteVip(lb, vip, ignoreHealthCheck); err != nil {
+					klog.Errorf("failed to delete vip endpoint %s from LB %s: %v", vip, lb, err)
 					return err
 				}
-				klog.V(3).Infof("delete vip %s from old LB %s", vip, lb)
-				if err := c.OVNNbClient.LoadBalancerDeleteVip(oldLb, vip); err != nil {
+				klog.V(3).Infof("delete vip endpoint %s from old LB %s", vip, lb)
+				if err = c.OVNNbClient.LoadBalancerDeleteVip(oldLb, vip, ignoreHealthCheck); err != nil {
 					klog.Errorf("failed to delete vip %s from LB %s: %v", vip, lb, err)
 					return err
 				}
 			}
 		}
 	}
-
 	return nil
 }
 
-func getServicePortBackends(endpoints *v1.Endpoints, pods []*v1.Pod, servicePort v1.ServicePort, serviceIP string) []string {
-	backends := []string{}
-	protocol := util.CheckProtocol(serviceIP)
+func getIPPortMappingBackend(endpoints *v1.Endpoints, pods []*v1.Pod, servicePort v1.ServicePort, serviceIP string, ignoreHealthCheck bool) (map[string]string, []string) {
+	var (
+		ipPortMapping = map[string]string{}
+		backends      = []string{}
+		protocol      = util.CheckProtocol(serviceIP)
+	)
+
 	for _, subset := range endpoints.Subsets {
 		var targetPort int32
 		for _, port := range subset.Ports {
@@ -233,13 +265,16 @@ func getServicePortBackends(endpoints *v1.Endpoints, pods []*v1.Pod, servicePort
 		}
 
 		for _, address := range subset.Addresses {
+			if !ignoreHealthCheck && address.TargetRef != nil {
+				ipName := fmt.Sprintf("%s.%s", address.TargetRef.Name, endpoints.Namespace)
+				ipPortMapping[address.IP] = fmt.Sprintf(util.HealthCheckNamedVipTemplate, ipName, serviceIP)
+			}
 			if address.TargetRef == nil || address.TargetRef.Kind != "Pod" {
 				if util.CheckProtocol(address.IP) == protocol {
 					backends = append(backends, util.JoinHostPort(address.IP, targetPort))
 				}
 				continue
 			}
-
 			var ip string
 			for _, pod := range pods {
 				if pod.Name == address.TargetRef.Name {
@@ -265,5 +300,5 @@ func getServicePortBackends(endpoints *v1.Endpoints, pods []*v1.Pod, servicePort
 		}
 	}
 
-	return backends
+	return ipPortMapping, backends
 }

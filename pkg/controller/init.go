@@ -22,29 +22,30 @@ import (
 )
 
 func (c *Controller) InitOVN() error {
-	if err := c.initClusterRouter(); err != nil {
+	err := c.initClusterRouter()
+	if err != nil {
 		klog.Errorf("init cluster router failed: %v", err)
 		return err
 	}
 
 	if c.config.EnableLb {
-		if err := c.initLoadBalancer(); err != nil {
+		if err = c.initLoadBalancer(); err != nil {
 			klog.Errorf("init load balancer failed: %v", err)
 			return err
 		}
 	}
 
-	if err := c.initDefaultVlan(); err != nil {
+	if err = c.initDefaultVlan(); err != nil {
 		klog.Errorf("init default vlan failed: %v", err)
 		return err
 	}
 
-	if err := c.initNodeSwitch(); err != nil {
+	if err = c.initNodeSwitch(); err != nil {
 		klog.Errorf("init node switch failed: %v", err)
 		return err
 	}
 
-	if err := c.initDefaultLogicalSwitch(); err != nil {
+	if err = c.initDefaultLogicalSwitch(); err != nil {
 		klog.Errorf("init default switch failed: %v", err)
 		return err
 	}
@@ -199,18 +200,22 @@ func (c *Controller) initClusterRouter() error {
 func (c *Controller) initLB(name, protocol string, sessionAffinity bool) error {
 	protocol = strings.ToLower(protocol)
 
-	var selectFields string
+	var (
+		selectFields string
+		err          error
+	)
+
 	if sessionAffinity {
 		selectFields = ovnnb.LoadBalancerSelectionFieldsIPSrc
 	}
 
-	if err := c.OVNNbClient.CreateLoadBalancer(name, protocol, selectFields); err != nil {
+	if err = c.OVNNbClient.CreateLoadBalancer(name, protocol, selectFields); err != nil {
 		klog.Errorf("create load balancer %s: %v", name, err)
 		return err
 	}
 
 	if sessionAffinity {
-		if err := c.OVNNbClient.SetLoadBalancerAffinityTimeout(name, util.DefaultServiceSessionStickinessTimeout); err != nil {
+		if err = c.OVNNbClient.SetLoadBalancerAffinityTimeout(name, util.DefaultServiceSessionStickinessTimeout); err != nil {
 			klog.Errorf("failed to set affinity timeout of %s load balancer %s: %v", protocol, name, err)
 			return err
 		}
@@ -375,7 +380,7 @@ func (c *Controller) InitIPAM() error {
 
 	vips, err := c.virtualIpsLister.List(labels.Everything())
 	if err != nil {
-		klog.Errorf("failed to list VIPs: %v", err)
+		klog.Errorf("failed to list vips: %v", err)
 		return err
 	}
 	for _, vip := range vips {

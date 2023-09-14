@@ -330,11 +330,14 @@ func generateEndpoints(slr *kubeovnv1.SwitchLBRule, oldEps *corev1.Endpoints) *c
 		)
 	}
 
-	for _, addr := range slr.Spec.Endpoints {
+	for _, endpoint := range slr.Spec.Endpoints {
 		addrs = append(
 			addrs,
 			corev1.EndpointAddress{
-				IP: addr,
+				IP: endpoint,
+				TargetRef: &corev1.ObjectReference{
+					Namespace: slr.Namespace,
+				},
 			},
 		)
 	}
