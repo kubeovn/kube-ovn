@@ -111,6 +111,9 @@ const (
 	NodeNameLabel              = "ovn.kubernetes.io/node-name"
 	NetworkPolicyLogAnnotation = "ovn.kubernetes.io/enable_log"
 
+	VpcLastName     = "ovn.kubernetes.io/last_vpc_name"
+	VpcLastPolicies = "ovn.kubernetes.io/last_policies"
+
 	ProtocolTCP  = "tcp"
 	ProtocolUDP  = "udp"
 	ProtocolSCTP = "sctp"
