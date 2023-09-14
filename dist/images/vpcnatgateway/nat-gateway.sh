@@ -97,7 +97,7 @@ function add_vpc_external_route() {
         sleep 1
         ip route | grep "default via $nextHop dev net1"
         # make sure route is added
-        # gw lost probably occured when you create >10 nat gw pod at the same time
+        # gw lost probably occurred when you create >10 nat gw pod at the same time
         # so add the same logic again in every eip add process
 
     done
