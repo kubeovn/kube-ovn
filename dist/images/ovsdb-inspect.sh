@@ -6,7 +6,7 @@ function ovs-exec {
   kubectl -n kube-system exec -i $1 -- $2
 }
 
-# for the crictl inital for containerd in ovs-ovn ds
+# for the crictl initial for containerd in ovs-ovn ds
 function init-ovs-ctr() {
   for i in $(kubectl -n kube-system get pods -o wide | grep ovs-ovn | awk '{print $1}');
   do
