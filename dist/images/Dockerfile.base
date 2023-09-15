@@ -6,7 +6,7 @@ ARG NO_AVX512=false
 ARG DEBIAN_FRONTEND=noninteractive
 ENV SRC_DIR='/usr/src'
 
-RUN apt update && apt install build-essential git libnuma-dev autoconf curl \
+RUN apt update && apt upgrade -y && apt install build-essential git libnuma-dev autoconf curl \
     python3 libmnl-dev libpcap-dev libtool libcap-ng-dev libssl-dev pkg-config \
     python3-six libunbound-dev libunwind-dev dh-make fakeroot debhelper dh-python \
     flake8 python3-sphinx graphviz groff wget -y
