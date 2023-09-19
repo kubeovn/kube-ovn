@@ -89,6 +89,9 @@ RUN apt update && apt upgrade -y && apt install ca-certificates python3 hostname
         rm -rf /var/lib/apt/lists/* && \
         rm -rf /etc/localtime
 
+RUN apt purge -y perl
+RUN apt autoremove -y
+
 RUN mkdir -p /var/run/openvswitch && \
     mkdir -p /var/run/ovn && \
     mkdir -p /etc/cni/net.d && \
