@@ -638,7 +638,7 @@ func (c *Controller) addPolicyRouteToVpc(name string, policy *kubeovnv1.PolicyRo
 	)
 
 	if policy.NextHopIP != "" {
-		nextHops = []string{policy.NextHopIP}
+		nextHops = strings.Split(policy.NextHopIP, ",")
 	}
 
 	if err = c.OVNNbClient.AddLogicalRouterPolicy(name, policy.Priority, policy.Match, string(policy.Action), nextHops, externalIDs); err != nil {
