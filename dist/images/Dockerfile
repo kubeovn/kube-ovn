@@ -12,10 +12,13 @@ COPY grace_stop_ovn_controller /usr/share/ovn/scripts/grace_stop_ovn_controller
 WORKDIR /kube-ovn
 
 RUN /kube-ovn/iptables-wrapper-installer.sh --no-sanity-check
-RUN rm -f /usr/bin/nc &&\
-    rm -f /usr/bin/netcat
+
 RUN deluser sync &&\
     deluser tss
+
+RUN rm -f /usr/bin/nc && \
+    rm -f /usr/bin/perl && \
+    rm -f /usr/bin/netcat
 
 COPY kube-ovn-cmd /kube-ovn/kube-ovn-cmd
 COPY kube-ovn-webhook /kube-ovn/kube-ovn-webhook
