@@ -802,7 +802,7 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 							Name:            "vpc-nat-gw-init",
 							Image:           vpcNatImage,
 							Command:         []string{"bash"},
-							Args:            []string{"-c", fmt.Sprintf("/kube-ovn/nat-gateway.sh init %s,%s", c.config.ServiceClusterIPRange, v4SubnetGw)},
+							Args:            []string{"-c", fmt.Sprintf("bash /kube-ovn/nat-gateway.sh init %s,%s", c.config.ServiceClusterIPRange, v4SubnetGw)},
 							ImagePullPolicy: corev1.PullIfNotPresent,
 							SecurityContext: &corev1.SecurityContext{
 								Privileged:               &privileged,
