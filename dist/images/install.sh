@@ -3379,6 +3379,10 @@ spec:
                   fieldPath: spec.nodeName
             - name: OVN_DB_IPS
               value: $addresses
+            - name: OVN_REMOTE_PROBE_INTERVAL
+              value: "10000" 
+            - name: OVN_REMOTE_OPENFLOW_INTERVAL
+              value: "180"
           volumeMounts:
             - mountPath: /var/run/netns
               name: host-ns
@@ -3720,6 +3724,10 @@ spec:
                   fieldPath: spec.nodeName
             - name: OVN_DB_IPS
               value: $addresses
+            - name: OVN_REMOTE_PROBE_INTERVAL
+              value: "10000" 
+            - name: OVN_REMOTE_OPENFLOW_INTERVAL
+              value: "180"
           volumeMounts:
             - mountPath: /opt/ovs-config
               name: host-config-ovs
