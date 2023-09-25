@@ -166,7 +166,7 @@ var _ = framework.OrderedDescribe("[group:node]", func() {
 		ports := []corev1.ServicePort{{
 			Name:       "tcp",
 			Protocol:   corev1.ProtocolTCP,
-			Port:       int32(port),
+			Port:       port,
 			TargetPort: intstr.FromInt32(port),
 		}}
 		service := framework.MakeService(serviceName, "", nil, podLabels, ports, "")

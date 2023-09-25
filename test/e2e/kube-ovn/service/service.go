@@ -80,7 +80,7 @@ var _ = framework.Describe("[group:service]", func() {
 		ports := []corev1.ServicePort{{
 			Name:       "tcp",
 			Protocol:   corev1.ProtocolTCP,
-			Port:       int32(port),
+			Port:       port,
 			TargetPort: intstr.FromInt32(port),
 		}}
 		service := framework.MakeService(serviceName, corev1.ServiceTypeNodePort, nil, podLabels, ports, "")
