@@ -1477,3 +1477,14 @@ func turnOffNicTxChecksum(nicName string) (err error) {
 func getShortSharedDir(uid types.UID, volumeName string) string {
 	return filepath.Join(util.DefaultHostVhostuserBaseDir, string(uid), volumeName)
 }
+
+func linkExists(name string) (bool, error) {
+	_, err := netlink.LinkByName(name)
+	if err == nil {
+		return true, nil
+	} else if _, ok := err.(netlink.LinkNotFoundError); ok {
+		return false, nil
+	} else {
+		return false, err
+	}
+}
