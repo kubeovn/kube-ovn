@@ -82,7 +82,9 @@ func (c *Controller) enqueueUpdateSubnet(oldObj, newObj interface{}) {
 		return
 	}
 
-	if oldSubnet.Spec.Vpc != newSubnet.Spec.Vpc {
+	if oldSubnet.Spec.Vpc != newSubnet.Spec.Vpc &&
+		!(oldSubnet.Spec.Vpc == "" && newSubnet.Spec.Vpc == c.config.ClusterRouter ||
+			oldSubnet.Spec.Vpc == c.config.ClusterRouter && newSubnet.Spec.Vpc == "") {
 		if oldSubnet.Spec.Vpc == "" {
 			newSubnet.Annotations[util.VpcLastName] = c.config.ClusterRouter
 		} else {
@@ -562,7 +564,8 @@ func (c *Controller) validateVpcBySubnet(subnet *kubeovnv1.Subnet) (*kubeovnv1.V
 			return vpc, err
 		}
 		for _, vpc := range vpcs {
-			if (subnet.Annotations[util.VpcLastName] == "" && subnet.Spec.Vpc != vpc.Name || subnet.Annotations[util.VpcLastName] != "" && subnet.Annotations[util.VpcLastName] != vpc.Name) &&
+			if (subnet.Annotations[util.VpcLastName] == "" && subnet.Spec.Vpc != vpc.Name ||
+				subnet.Annotations[util.VpcLastName] != "" && subnet.Annotations[util.VpcLastName] != vpc.Name) &&
 				!vpc.Status.Default && util.IsStringsOverlap(vpc.Spec.Namespaces, subnet.Spec.Namespaces) {
 				err = fmt.Errorf("namespaces %v are overlap with vpc '%s'", subnet.Spec.Namespaces, vpc.Name)
 				klog.Error(err)
