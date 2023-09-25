@@ -1958,18 +1958,15 @@ spec:
       served: true
       storage: true
       additionalPrinterColumns:
-      - name: NS
-        type: string
-        jsonPath: .spec.namespace
       - name: V4IP
         type: string
         jsonPath: .status.v4ip
-      - name: Mac
-        type: string
-        jsonPath: .status.mac
       - name: V6IP
         type: string
         jsonPath: .status.v6ip
+      - name: Mac
+        type: string
+        jsonPath: .status.mac
       - name: PMac
         type: string
         jsonPath: .spec.parentMac
@@ -3379,6 +3376,10 @@ spec:
                   fieldPath: spec.nodeName
             - name: OVN_DB_IPS
               value: $addresses
+            - name: OVN_REMOTE_PROBE_INTERVAL
+              value: "10000" 
+            - name: OVN_REMOTE_OPENFLOW_INTERVAL
+              value: "180"
           volumeMounts:
             - mountPath: /var/run/netns
               name: host-ns
@@ -3720,6 +3721,10 @@ spec:
                   fieldPath: spec.nodeName
             - name: OVN_DB_IPS
               value: $addresses
+            - name: OVN_REMOTE_PROBE_INTERVAL
+              value: "10000" 
+            - name: OVN_REMOTE_OPENFLOW_INTERVAL
+              value: "180"
           volumeMounts:
             - mountPath: /opt/ovs-config
               name: host-config-ovs
