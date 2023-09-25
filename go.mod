@@ -26,7 +26,7 @@ require (
 	github.com/onsi/ginkgo/v2 v2.12.1
 	github.com/onsi/gomega v1.27.10
 	github.com/osrg/gobgp/v3 v3.18.0
-	github.com/ovn-org/libovsdb v0.0.0-20230207174348-7f620a35d7e8
+	github.com/ovn-org/libovsdb v0.0.0-20230711201130-6785b52d4020
 	github.com/parnurzeal/gorequest v0.2.16
 	github.com/prometheus-community/pro-bing v0.3.0
 	github.com/prometheus/client_golang v1.16.0
@@ -50,7 +50,7 @@ require (
 	k8s.io/pod-security-admission v0.28.1
 	k8s.io/sample-controller v0.28.1
 	k8s.io/utils v0.0.0-20230726121419-3b25d923346b
-	kubevirt.io/client-go v0.58.1
+	kubevirt.io/client-go v1.0.0
 	sigs.k8s.io/controller-runtime v0.16.1
 )
 
@@ -74,7 +74,7 @@ require (
 	github.com/NYTimes/gziphandler v1.1.1 // indirect
 	github.com/antlr/antlr4/runtime/Go/antlr/v4 v4.0.0-20230305170008-8188dc5388df // indirect
 	github.com/armon/circbuf v0.0.0-20190214190532-5111143e8da2 // indirect
-	github.com/asaskevich/govalidator v0.0.0-20190424111038-f61b66f89f4a // indirect
+	github.com/asaskevich/govalidator v0.0.0-20200108200545-475eaeb16496 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/blang/semver/v4 v4.0.0 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
@@ -92,7 +92,7 @@ require (
 	github.com/containerd/ttrpc v1.2.2 // indirect
 	github.com/coreos/go-semver v0.3.1 // indirect
 	github.com/coreos/go-systemd/v22 v22.5.0 // indirect
-	github.com/coreos/prometheus-operator v0.38.0 // indirect
+	github.com/coreos/prometheus-operator v0.38.3 // indirect
 	github.com/cyphar/filepath-securejoin v0.2.4 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dgryski/go-farm v0.0.0-20200201041132-a6ae2369ad13 // indirect
@@ -182,7 +182,7 @@ require (
 	github.com/opencontainers/runc v1.1.7 // indirect
 	github.com/opencontainers/runtime-spec v1.1.0-rc.3 // indirect
 	github.com/opencontainers/selinux v1.11.0 // indirect
-	github.com/openshift/api v0.0.0-20221103085154-ea838af1820e // indirect
+	github.com/openshift/api v0.0.0-20230621174358-ea40115b9fa6 // indirect
 	github.com/openshift/client-go v3.9.0+incompatible // indirect
 	github.com/openshift/custom-resource-status v1.1.2 // indirect
 	github.com/pborman/uuid v1.2.1 // indirect
@@ -262,13 +262,13 @@ require (
 	k8s.io/csi-translation-lib v0.28.1 // indirect
 	k8s.io/dynamic-resource-allocation v0.0.0 // indirect
 	k8s.io/kms v0.28.1 // indirect
-	k8s.io/kube-openapi v0.0.0-20230717233707-2695361300d9 // indirect
+	k8s.io/kube-openapi v0.0.0-20230905202853-d090da108d2f // indirect
 	k8s.io/kube-scheduler v0.0.0 // indirect
 	k8s.io/kubelet v0.28.1 // indirect
 	k8s.io/legacy-cloud-providers v0.0.0 // indirect
 	k8s.io/mount-utils v0.0.0 // indirect
-	kubevirt.io/api v0.58.1 // indirect
-	kubevirt.io/containerized-data-importer-api v1.55.2 // indirect
+	kubevirt.io/api v1.0.0 // indirect
+	kubevirt.io/containerized-data-importer-api v1.57.0-alpha1 // indirect
 	kubevirt.io/controller-lifecycle-operator-sdk/api v0.2.4 // indirect
 	moul.io/http2curl v1.0.0 // indirect
 	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.1.2 // indirect
@@ -283,8 +283,8 @@ replace (
 	github.com/alauda/felix => github.com/kubeovn/felix v0.0.0-20220325073257-c8a0f705d139
 	github.com/greenpau/ovsdb => github.com/kubeovn/ovsdb v0.0.0-20221213053943-9372db56919f
 	github.com/mdlayher/arp => github.com/kubeovn/arp v0.0.0-20230101053045-8a0772d9c34c
-	github.com/openshift/client-go => github.com/openshift/client-go v0.0.0-20221107163225-3335a34a1d24
-	github.com/ovn-org/libovsdb => github.com/kubeovn/libovsdb v0.0.0-20230517064328-9d5a1383643f
+	github.com/openshift/client-go => github.com/openshift/client-go v0.0.1
+	github.com/ovn-org/libovsdb => github.com/kubeovn/libovsdb v0.0.0-20230824051252-485a54fd6cb4
 	github.com/vishvananda/netlink => github.com/kubeovn/netlink v0.0.0-20230322092337-960188369daf
 	k8s.io/api => k8s.io/api v0.28.1
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.28.1
@@ -312,5 +312,5 @@ replace (
 	k8s.io/mount-utils => k8s.io/mount-utils v0.28.1
 	k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.28.1
 	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.28.1
-	kubevirt.io/client-go => github.com/kubeovn/kubevirt-client-go v0.0.0-20230517062539-8dd832f39ec5
+	kubevirt.io/client-go => github.com/kubeovn/kubevirt-client-go v0.0.0-20230824060608-c0b4509b6928
 )
