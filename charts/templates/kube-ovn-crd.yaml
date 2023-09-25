@@ -1420,18 +1420,15 @@ spec:
       served: true
       storage: true
       additionalPrinterColumns:
-      - name: NS
-        type: string
-        jsonPath: .spec.namespace
       - name: V4IP
         type: string
         jsonPath: .status.v4ip
-      - name: Mac
-        type: string
-        jsonPath: .status.mac
       - name: V6IP
         type: string
         jsonPath: .status.v6ip
+      - name: Mac
+        type: string
+        jsonPath: .status.mac
       - name: PMac
         type: string
         jsonPath: .spec.parentMac
