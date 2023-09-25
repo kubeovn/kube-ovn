@@ -107,14 +107,14 @@ var _ = framework.OrderedDescribe("[group:ovn-ic]", func() {
 		for i := range clusters {
 			podNames[i] = "pod-" + framework.RandomSuffix()
 			ginkgo.By("Creating pod " + podNames[i] + " in cluster " + clusters[i])
-			port := 8000 + rand.Intn(1000)
-			ports[i] = strconv.Itoa(port)
+			port := 8000 + rand.Int31n(1000)
+			ports[i] = strconv.Itoa(int(port))
 			args := []string{"netexec", "--http-port", ports[i]}
 			pods[i] = framework.MakePod(namespaceNames[i], podNames[i], nil, nil, framework.AgnhostImage, nil, args)
 			pods[i].Spec.Containers[0].ReadinessProbe = &corev1.Probe{
 				ProbeHandler: corev1.ProbeHandler{
 					HTTPGet: &corev1.HTTPGetAction{
-						Port: intstr.FromInt(port),
+						Port: intstr.FromInt32(port),
 					},
 				},
 			}

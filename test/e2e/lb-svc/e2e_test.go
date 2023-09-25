@@ -138,7 +138,7 @@ var _ = framework.SerialDescribe("[group:lb-svc]", func() {
 			Name:       "tcp",
 			Protocol:   corev1.ProtocolTCP,
 			Port:       80,
-			TargetPort: intstr.FromInt(80),
+			TargetPort: intstr.FromInt32(80),
 		}}
 		annotations := map[string]string{
 			subnetProvider + ".kubernetes.io/logical_switch": subnetName,
@@ -197,7 +197,7 @@ var _ = framework.SerialDescribe("[group:lb-svc]", func() {
 			Name:       "tcp",
 			Protocol:   corev1.ProtocolTCP,
 			Port:       80,
-			TargetPort: intstr.FromInt(80),
+			TargetPort: intstr.FromInt32(80),
 		}}
 		annotations := map[string]string{
 			subnetProvider + ".kubernetes.io/logical_switch": subnetName,
