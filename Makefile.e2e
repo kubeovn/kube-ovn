@@ -76,13 +76,6 @@ k8s-conformance-e2e:
 		$(call ginkgo_option,skip,$(K8S_CONFORMANCE_E2E_SKIP)) \
 		./test/e2e/k8s-network/k8s-network.test
 
-.PHONY: k8s-netpol-legacy-e2e
-k8s-netpol-legacy-e2e:
-	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/k8s-network
-	ginkgo $(GINKGO_PARALLEL_OPT) --randomize-all -v --timeout=2h \
-		$(call ginkgo_option,focus,$(K8S_NETPOL_LEGACY_E2E_FOCUS)) \
-		./test/e2e/k8s-network/k8s-network.test
-
 .PHONY: k8s-netpol-e2e
 k8s-netpol-e2e:
 	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/k8s-network
