@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"math/rand"
 	"net"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -45,11 +43,6 @@ func init() {
 }
 
 func TestE2E(t *testing.T) {
-	if k8sframework.TestContext.KubeConfig == "" {
-		k8sframework.TestContext.KubeConfig = filepath.Join(os.Getenv("HOME"), ".kube", "config")
-	}
-	k8sframework.AfterReadingAllFlags(&k8sframework.TestContext)
-
 	var err error
 	if clusters, err = kind.ListClusters(); err != nil {
 		t.Fatalf("failed to list kind clusters: %v", err)
@@ -58,6 +51,7 @@ func TestE2E(t *testing.T) {
 		t.Fatal("no enough kind clusters to run ovn-ic e2e testing")
 	}
 
+	k8sframework.AfterReadingAllFlags(&k8sframework.TestContext)
 	e2e.RunE2ETests(t)
 }
 
