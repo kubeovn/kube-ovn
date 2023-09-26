@@ -222,7 +222,7 @@ func (c *Controller) handleAddIptablesEip(key string) error {
 	}
 	//compare gw pod started time with eip redo time. if redo time before gw pod started. redo again
 	eipRedo, _ := time.ParseInLocation("2006-01-02T15:04:05", cachedEip.Status.Redo, time.Local)
-	if cachedEip.Status.Ready && cachedEip.Status.IP != "" && gwPod.Status.ContainerStatuses[0].State.Running.StartedAt.Before(& metav1.Time{Time: eipRedo}){
+	if cachedEip.Status.Ready && cachedEip.Status.IP != "" && gwPod.Status.ContainerStatuses[0].State.Running.StartedAt.Before(&metav1.Time{Time: eipRedo}) {
 		// already ok
 		return nil
 	}
