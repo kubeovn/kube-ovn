@@ -38,10 +38,10 @@ func (c *OVNSbClient) DeleteChassis(chassisName string) error {
 	}
 	ops, err := c.ovsDbClient.Where(chassis).Delete()
 	if err != nil {
-		return fmt.Errorf("failed to generate delete operations for chassis %s: %v", chassis.UUID, err)
+		return fmt.Errorf("failed to generate delete chassis operations for node %s: %v", chassis.Hostname, err)
 	}
 	if err = c.Transact("chassis-del", ops); err != nil {
-		return fmt.Errorf("failed to delete chassis with with UUID %s: %v", chassis.UUID, err)
+		return fmt.Errorf("failed to delete chassis for node %s: %v", chassis.Hostname, err)
 	}
 	return nil
 }
