@@ -339,3 +339,11 @@ func getShortSharedDir(uid types.UID, volumeName string) string {
 	// DPDK is not supported on Windows
 	return ""
 }
+
+func linkExists(name string) (bool, error) {
+	_, err := util.GetNetAdapter(name, true)
+	if err != nil {
+		return false, nil
+	}
+	return true, nil
+}

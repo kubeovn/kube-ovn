@@ -364,6 +364,10 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
+            - name: OVN_REMOTE_PROBE_INTERVAL
+              value: "{{ .Values.networking.OVN_REMOTE_PROBE_INTERVAL }}"
+            - name: OVN_REMOTE_OPENFLOW_INTERVAL
+              value: "{{ .Values.networking.OVN_REMOTE_OPENFLOW_INTERVAL }}"
           volumeMounts:
             - mountPath: /lib/modules
               name: host-modules
