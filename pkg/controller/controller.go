@@ -1160,7 +1160,9 @@ func (c *Controller) initResourceOnce() {
 			util.LogFatalAndExit(err, "failed to sync crd vpc nat gateways")
 		}
 	}
-
+	if err := c.initVpcNatGw(); err != nil {
+		util.LogFatalAndExit(err, "failed to initialize vpc nat gateways")
+	}
 	if c.config.EnableLb {
 		if err := c.initVpcDNSConfig(); err != nil {
 			util.LogFatalAndExit(err, "failed to initialize vpc-dns")
