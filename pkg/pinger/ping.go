@@ -153,7 +153,7 @@ func pingPods(config *Configuration) error {
 					pinger.Timeout = 1 * time.Second
 					pinger.Debug = true
 					pinger.Count = 3
-					pinger.Interval = 1 * time.Millisecond
+					pinger.Interval = 100 * time.Millisecond
 					pinger.Run()
 					stats := pinger.Statistics()
 					klog.Infof("ping pod: %s %s, count: %d, loss count %d, average rtt %.2fms",
@@ -199,7 +199,7 @@ func pingExternal(config *Configuration) error {
 		pinger.Timeout = 5 * time.Second
 		pinger.Debug = true
 		pinger.Count = 3
-		pinger.Interval = 1 * time.Millisecond
+		pinger.Interval = 100 * time.Millisecond
 		pinger.Run()
 		stats := pinger.Statistics()
 		klog.Infof("ping external address: %s, total count: %d, loss count %d, average rtt %.2fms",
