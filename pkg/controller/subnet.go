@@ -1036,12 +1036,12 @@ func (c *Controller) reconcileSubnet(subnet *kubeovnv1.Subnet) error {
 		}
 	}
 
-	if subnet.Spec.Vpc != c.config.ClusterRouter {
-		if err := c.reconcileCustomVpcStaticRoute(subnet); err != nil {
-			klog.Errorf("reconcile custom vpc ovn route for subnet %s failed: %v", subnet.Name, err)
-			return err
-		}
-	}
+	// if subnet.Spec.Vpc != c.config.ClusterRouter {
+	// 	if err := c.reconcileCustomVpcStaticRoute(subnet); err != nil {
+	// 		klog.Errorf("reconcile custom vpc ovn route for subnet %s failed: %v", subnet.Name, err)
+	// 		return err
+	// 	}
+	// }
 
 	if err := c.reconcileVlan(subnet); err != nil {
 		klog.Errorf("reconcile vlan for subnet %s failed, %v", subnet.Name, err)

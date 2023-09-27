@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"reflect"
+	"sort"
 	"strings"
 
 	v1 "k8s.io/api/core/v1"
@@ -534,9 +535,9 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 	if vpc.Name != util.DefaultVpc {
 		if cachedVpc.Spec.EnableExternal {
 			if !cachedVpc.Status.EnableExternal {
+				var err error
 				// connect vpc to externalSubnets
 				if cachedVpc.Spec.ExternalSubnets != nil {
-					var err error
 					for _, subnet := range cachedVpc.Spec.ExternalSubnets {
 						klog.Infof("connect external network %s with vpc %s", subnet, vpc.Name)
 						err = c.handleAddVpcExternalSubnets(key, subnet)
@@ -547,8 +548,66 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 					if err != nil {
 						klog.Error(err)
 					}
+				} else {
+					err = fmt.Errorf("externalSubnets is empty")
+					klog.Error(err)
+					return err
 				}
 			}
+			if cachedVpc.Spec.ExternalSubnets != nil && len(cachedVpc.Spec.ExternalSubnets) != 0 {
+				sort.Strings(cachedVpc.Spec.ExternalSubnets)
+			}
+			if cachedVpc.Status.ExternalSubnets != nil && len(cachedVpc.Status.ExternalSubnets) != 0 {
+				sort.Strings(cachedVpc.Status.ExternalSubnets)
+			}
+			if cachedVpc.Status.EnableExternal && !reflect.DeepEqual(cachedVpc.Spec.ExternalSubnets, cachedVpc.Status.ExternalSubnets) {
+				onlyInSpec := []string{}
+				onlyInStatus := []string{}
+				for _, subnetSpec := range cachedVpc.Spec.ExternalSubnets {
+					found := false
+					for _, subnetStatus := range cachedVpc.Status.ExternalSubnets {
+						if subnetSpec == subnetStatus {
+							found = true
+							break
+						}
+					}
+					if !found {
+						onlyInSpec = append(onlyInSpec, subnetSpec)
+					}
+				}
+				for _, subnetStatus := range cachedVpc.Status.ExternalSubnets {
+					found := false
+					for _, subnetSpec := range cachedVpc.Spec.ExternalSubnets {
+						if subnetStatus == subnetSpec {
+							found = true
+							break
+						}
+					}
+					if !found {
+						onlyInStatus = append(onlyInStatus, subnetStatus)
+					}
+				}
+				klog.Info("externalSubnets in Spec not in Status : ", onlyInSpec)
+				klog.Info("externalSubnets in Status not in Spec : ", onlyInStatus)
+				var err error
+				for _, subnet := range onlyInSpec {
+					klog.Infof("connect %s network with vpc %s", subnet, vpc.Name)
+					if err = c.handleAddVpcExternalSubnets(key, subnet); err != nil {
+						klog.Errorf("failed to add %s connection for vpc %s, error %v", subnet, key, err)
+					}
+				}
+				for _, subnet := range onlyInStatus {
+					klog.Infof("delete %s connection for vpc %s", subnet, vpc.Name)
+					if err = c.handleDelVpcExternalSubnets(vpc.Name, subnet); err != nil {
+						klog.Errorf("failed to delete %s connection for vpc %s, error %v", subnet, vpc.Name, err)
+					}
+				}
+				if err != nil {
+					klog.Error("failed to update externalSubnets for vpc %s", key)
+					return err
+				}
+			}
+
 			// 	if vpc.Spec.EnableBfd {
 			// 		klog.Infof("remove normal static ecmp route for vpc %s", vpc.Name)
 			// 		// auto remove normal type static route, if using ecmp based bfd
@@ -1118,6 +1177,17 @@ func (c *Controller) handleAddVpcExternalSubnets(key string, subnet string) erro
 	}
 	vpc := cachedVpc.DeepCopy()
 	vpc.Status.EnableExternal = cachedVpc.Spec.EnableExternal
+	needUpdate := true
+	for _, externalSubnet := range vpc.Status.ExternalSubnets {
+		if externalSubnet == subnet {
+			needUpdate = false
+			break
+		}
+	}
+	if needUpdate {
+		klog.Info("update externalSubnets status,add subnet : ", subnet)
+		vpc.Status.ExternalSubnets = append(vpc.Status.ExternalSubnets, subnet)
+	}
 	bytes, err := vpc.Status.Bytes()
 	if err != nil {
 		klog.Errorf("failed to marshal vpc status: %v", err)
@@ -1198,6 +1268,19 @@ func (c *Controller) handleDelVpcExternalSubnets(key string, subnet string) erro
 	}
 	vpc := cachedVpc.DeepCopy()
 	vpc.Status.EnableExternal = cachedVpc.Spec.EnableExternal
+	var index int
+	needUpdate := false
+	for i, externalSubnet := range vpc.Status.ExternalSubnets {
+		if externalSubnet == subnet {
+			needUpdate = true
+			index = i
+			break
+		}
+	}
+	if needUpdate {
+		klog.Info("update externalSubnets status,add subnet : ", subnet)
+		vpc.Status.ExternalSubnets = append(vpc.Status.ExternalSubnets[:index], vpc.Status.ExternalSubnets[index+1:]...)
+	}
 	vpc.Status.EnableBfd = cachedVpc.Spec.EnableBfd
 	bytes, err := vpc.Status.Bytes()
 	if err != nil {
