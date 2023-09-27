@@ -147,7 +147,7 @@ var _ = framework.Describe("[group:slr]", func() {
 			Name:       "http",
 			Protocol:   corev1.ProtocolTCP,
 			Port:       frontPort,
-			TargetPort: intstr.FromInt(80),
+			TargetPort: intstr.FromInt32(80),
 		}}
 		selector := map[string]string{"app": label}
 		annotations := map[string]string{
