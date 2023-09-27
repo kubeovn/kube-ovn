@@ -196,7 +196,7 @@ func pingPods(config *Configuration) error {
 					pinger.Timeout = 1 * time.Second
 					pinger.Debug = true
 					pinger.Count = 3
-					pinger.Interval = 1 * time.Millisecond
+					pinger.Interval = 100 * time.Millisecond
 					if err = pinger.Run(); err != nil {
 						klog.Errorf("failed to run pinger for destination %s: %v", podIP, err)
 						pingErr = err
@@ -247,7 +247,7 @@ func pingExternal(config *Configuration) error {
 		pinger.Timeout = 5 * time.Second
 		pinger.Debug = true
 		pinger.Count = 3
-		pinger.Interval = 1 * time.Millisecond
+		pinger.Interval = 100 * time.Millisecond
 		if err = pinger.Run(); err != nil {
 			klog.Errorf("failed to run pinger for destination %s: %v", addr, err)
 			return err
