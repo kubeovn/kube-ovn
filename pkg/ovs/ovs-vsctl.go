@@ -1,6 +1,7 @@
 package ovs
 
 import (
+	"context"
 	"fmt"
 	"os/exec"
 	"regexp"
@@ -8,10 +9,28 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/time/rate"
 	"k8s.io/klog/v2"
 
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
+
+var (
+	limiter *rate.Limiter
+	burst   int = 100
+)
+
+func init() {
+	limiter = rate.NewLimiter(rate.Every(time.Millisecond), burst)
+}
+
+func UpdateOVSVsctlLimiter(b int) {
+	if b > 0 {
+		burst = b
+		limiter.SetBurst(burst)
+		klog.V(4).Infof("update ovs-vsctl rate limite to ", burst)
+	}
+}
 
 // Glory belongs to openvswitch/ovn-kubernetes
 // https://github.com/openvswitch/ovn-kubernetes/blob/master/go-controller/pkg/util/ovs.go
@@ -19,6 +38,15 @@ import (
 var podNetNsRegexp = regexp.MustCompile(`pod_netns="([^"]+)"`)
 
 func Exec(args ...string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	err := limiter.Wait(ctx)
+	if err != nil {
+		klog.V(4).Infof("command %s %s waiting for execution timeout by rate limiter of %v", OvsVsCtl, strings.Join(args, " "), burst)
+		return "", err
+	}
+
 	start := time.Now()
 	args = append([]string{"--timeout=30"}, args...)
 	output, err := exec.Command(OvsVsCtl, args...).CombinedOutput()

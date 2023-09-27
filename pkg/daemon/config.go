@@ -64,6 +64,7 @@ type Configuration struct {
 	TCPConnCheckPort          int
 	UDPConnCheckPort          int
 	EnableTProxy              bool
+	OVSVsctlRate              int
 }
 
 // ParseFlags will parse cmd args then init kubeClient and configuration
@@ -102,6 +103,7 @@ func ParseFlags() *Configuration {
 		argTCPConnectivityCheckPort  = pflag.Int("tcp-conn-check-port", 8100, "TCP connectivity Check Port")
 		argUDPConnectivityCheckPort  = pflag.Int("udp-conn-check-port", 8101, "UDP connectivity Check Port")
 		argEnableTProxy              = pflag.Bool("enable-tproxy", false, "enable tproxy for vpc pod liveness or readiness probe")
+		argOVSVsctlRate              = pflag.Int("ovs-vsctl-rate", 100, "rate limit of ovs-vsctl")
 	)
 
 	// mute info log for ipset lib
@@ -157,6 +159,7 @@ func ParseFlags() *Configuration {
 		TCPConnCheckPort:          *argTCPConnectivityCheckPort,
 		UDPConnCheckPort:          *argUDPConnectivityCheckPort,
 		EnableTProxy:              *argEnableTProxy,
+		OVSVsctlRate:              *argOVSVsctlRate,
 	}
 	return config
 }
