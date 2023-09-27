@@ -524,6 +524,7 @@ func (c *Controller) handleAddIptablesFip(key string) error {
 	fipRedo, _ := time.ParseInLocation("2006-01-02T15:04:05", fip.Status.Redo, time.Local)
 	if fip.Status.Ready && fip.Status.V4ip != "" && gwPod.Status.ContainerStatuses[0].State.Running.StartedAt.Before(&metav1.Time{Time: fipRedo}) {
 		// already ok
+		klog.V(3).Infof("fip %s already ok", key)
 		return nil
 	}
 
