@@ -526,11 +526,19 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 	if vpc.Name != util.DefaultVpc {
 		if cachedVpc.Spec.EnableExternal {
 			if !cachedVpc.Status.EnableExternal {
-				// connect vpc to external
-				klog.Infof("connect external network with vpc %s", vpc.Name)
-				if err := c.handleAddVpcExternal(key); err != nil {
-					klog.Errorf("failed to add external connection for vpc %s, error %v", key, err)
-					return err
+				// connect vpc to externalSubnets
+				if cachedVpc.Spec.ExternalSubnets != nil {
+					var err error
+					for _, subnet := range cachedVpc.Spec.ExternalSubnets {
+						klog.Infof("connect external network %s with vpc %s", subnet, vpc.Name)
+						err = c.handleAddVpcExternalSubnets(key, subnet)
+						if err != nil {
+							klog.Error(err)
+						}
+					}
+					if err != nil {
+						klog.Error(err)
+					}
 				}
 			}
 			if vpc.Spec.EnableBfd {
@@ -1000,13 +1008,13 @@ func (c *Controller) deleteVpcRouter(lr string) error {
 	return c.OVNNbClient.DeleteLogicalRouter(lr)
 }
 
-func (c *Controller) handleAddVpcExternal(key string) error {
-	cachedSubnet, err := c.subnetsLister.Get(c.config.ExternalGatewaySwitch)
+func (c *Controller) handleAddVpcExternalSubnets(key string, subnet string) error {
+	cachedSubnet, err := c.subnetsLister.Get(subnet)
 	if err != nil {
 		klog.Error(err)
 		return err
 	}
-	lrpEipName := fmt.Sprintf("%s-%s", key, c.config.ExternalGatewaySwitch)
+	lrpEipName := fmt.Sprintf("%s-%s", key, subnet)
 	cachedEip, err := c.ovnEipsLister.Get(lrpEipName)
 	var needCreateEip bool
 	if err != nil {
@@ -1018,11 +1026,11 @@ func (c *Controller) handleAddVpcExternal(key string) error {
 	var v4ip, v6ip, mac string
 	klog.V(3).Infof("create vpc lrp eip %s", lrpEipName)
 	if needCreateEip {
-		if v4ip, v6ip, mac, err = c.acquireIPAddress(c.config.ExternalGatewaySwitch, lrpEipName, lrpEipName); err != nil {
+		if v4ip, v6ip, mac, err = c.acquireIPAddress(subnet, lrpEipName, lrpEipName); err != nil {
 			klog.Errorf("failed to acquire ip address for lrp eip %s, %v", lrpEipName, err)
 			return err
 		}
-		if err := c.createOrUpdateCrdOvnEip(lrpEipName, c.config.ExternalGatewaySwitch, v4ip, v6ip, mac, util.Lrp); err != nil {
+		if err := c.createOrUpdateCrdOvnEip(lrpEipName, subnet, v4ip, v6ip, mac, util.Lrp); err != nil {
 			klog.Errorf("failed to create ovn eip for lrp %s: %v", lrpEipName, err)
 			return err
 		}
@@ -1076,10 +1084,10 @@ func (c *Controller) handleAddVpcExternal(key string) error {
 	}
 
 	v4ipCidr := util.GetIPAddrWithMask(v4ip, cachedSubnet.Spec.CIDRBlock)
-	lspName := fmt.Sprintf("%s-%s", c.config.ExternalGatewaySwitch, key)
-	lrpName := fmt.Sprintf("%s-%s", key, c.config.ExternalGatewaySwitch)
+	lspName := fmt.Sprintf("%s-%s", subnet, key)
+	lrpName := fmt.Sprintf("%s-%s", key, subnet)
 
-	if err := c.OVNNbClient.CreateLogicalPatchPort(c.config.ExternalGatewaySwitch, key, lspName, lrpName, v4ipCidr, mac, chassises...); err != nil {
+	if err := c.OVNNbClient.CreateLogicalPatchPort(subnet, key, lspName, lrpName, v4ipCidr, mac, chassises...); err != nil {
 		klog.Errorf("failed to connect router '%s' to external: %v", key, err)
 		return err
 	}
