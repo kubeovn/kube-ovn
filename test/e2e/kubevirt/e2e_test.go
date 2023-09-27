@@ -3,8 +3,6 @@ package kubevirt
 import (
 	"context"
 	"flag"
-	"os"
-	"path/filepath"
 	"testing"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -29,11 +27,7 @@ func init() {
 }
 
 func TestE2E(t *testing.T) {
-	if k8sframework.TestContext.KubeConfig == "" {
-		k8sframework.TestContext.KubeConfig = filepath.Join(os.Getenv("HOME"), ".kube", "config")
-	}
 	k8sframework.AfterReadingAllFlags(&k8sframework.TestContext)
-
 	e2e.RunE2ETests(t)
 }
 

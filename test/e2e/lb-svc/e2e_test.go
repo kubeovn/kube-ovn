@@ -7,8 +7,6 @@ import (
 	"math/big"
 	"math/rand"
 	"net"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -45,11 +43,7 @@ func init() {
 }
 
 func TestE2E(t *testing.T) {
-	if k8sframework.TestContext.KubeConfig == "" {
-		k8sframework.TestContext.KubeConfig = filepath.Join(os.Getenv("HOME"), ".kube", "config")
-	}
 	k8sframework.AfterReadingAllFlags(&k8sframework.TestContext)
-
 	e2e.RunE2ETests(t)
 }
 
@@ -138,7 +132,7 @@ var _ = framework.SerialDescribe("[group:lb-svc]", func() {
 			Name:       "tcp",
 			Protocol:   corev1.ProtocolTCP,
 			Port:       80,
-			TargetPort: intstr.FromInt(80),
+			TargetPort: intstr.FromInt32(80),
 		}}
 		annotations := map[string]string{
 			subnetProvider + ".kubernetes.io/logical_switch": subnetName,
@@ -197,7 +191,7 @@ var _ = framework.SerialDescribe("[group:lb-svc]", func() {
 			Name:       "tcp",
 			Protocol:   corev1.ProtocolTCP,
 			Port:       80,
-			TargetPort: intstr.FromInt(80),
+			TargetPort: intstr.FromInt32(80),
 		}}
 		annotations := map[string]string{
 			subnetProvider + ".kubernetes.io/logical_switch": subnetName,

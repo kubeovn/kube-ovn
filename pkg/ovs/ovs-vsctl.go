@@ -16,12 +16,13 @@ import (
 )
 
 var (
-	limiter *rate.Limiter
-	burst   int = 100
+	limiter  *rate.Limiter
+	burst    = 100
+	interval = 100 * time.Millisecond
 )
 
 func init() {
-	limiter = rate.NewLimiter(rate.Every(time.Millisecond), burst)
+	limiter = rate.NewLimiter(rate.Every(interval), burst)
 }
 
 func UpdateOVSVsctlLimiter(b int) {
