@@ -52,6 +52,8 @@ define ginkgo_option
 --$(1)=$(shell echo '$(2)' | sed -E 's/^[[:space:]]+//' | sed -E 's/"[[:space:]]+"/" --$(1)="/g')
 endef
 
+TEST_BIN_ARGS = -kubeconfig $(KUBECONFIG) -num-nodes $(shell kubectl get node -o name | wc -l)
+
 .PHONY: e2e
 e2e: kube-ovn-conformance-e2e
 
@@ -74,14 +76,7 @@ k8s-conformance-e2e:
 	ginkgo $(GINKGO_PARALLEL_OPT) --randomize-all -v --timeout=1h \
 		$(call ginkgo_option,focus,$(K8S_CONFORMANCE_E2E_FOCUS)) \
 		$(call ginkgo_option,skip,$(K8S_CONFORMANCE_E2E_SKIP)) \
-		./test/e2e/k8s-network/k8s-network.test
-
-.PHONY: k8s-netpol-legacy-e2e
-k8s-netpol-legacy-e2e:
-	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/k8s-network
-	ginkgo $(GINKGO_PARALLEL_OPT) --randomize-all -v --timeout=2h \
-		$(call ginkgo_option,focus,$(K8S_NETPOL_LEGACY_E2E_FOCUS)) \
-		./test/e2e/k8s-network/k8s-network.test
+		./test/e2e/k8s-network/k8s-network.test -- $(TEST_BIN_ARGS)
 
 .PHONY: k8s-netpol-e2e
 k8s-netpol-e2e:
@@ -89,7 +84,7 @@ k8s-netpol-e2e:
 	ginkgo --randomize-all -v --timeout=2h \
 		$(call ginkgo_option,focus,$(K8S_NETPOL_E2E_FOCUS)) \
 		$(call ginkgo_option,skip,$(K8S_NETPOL_E2E_SKIP)) \
-		./test/e2e/k8s-network/k8s-network.test
+		./test/e2e/k8s-network/k8s-network.test -- $(TEST_BIN_ARGS)
 
 .PHONY: cyclonus-netpol-e2e
 cyclonus-netpol-e2e:
@@ -112,7 +107,7 @@ kube-ovn-conformance-e2e:
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
 	ginkgo $(GINKGO_PARALLEL_OPT) --randomize-all -v --timeout=30m \
-		--focus=CNI:Kube-OVN ./test/e2e/kube-ovn/kube-ovn.test
+		--focus=CNI:Kube-OVN ./test/e2e/kube-ovn/kube-ovn.test -- $(TEST_BIN_ARGS)
 
 .PHONY: kube-ovn-ic-conformance-e2e
 kube-ovn-ic-conformance-e2e:
@@ -121,7 +116,7 @@ kube-ovn-ic-conformance-e2e:
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
 	ginkgo $(GINKGO_PARALLEL_OPT) --randomize-all -v \
-		--focus=CNI:Kube-OVN ./test/e2e/ovn-ic/ovn-ic.test
+		--focus=CNI:Kube-OVN ./test/e2e/ovn-ic/ovn-ic.test -- $(TEST_BIN_ARGS)
 
 .PHONY: kube-ovn-submariner-conformance-e2e
 kube-ovn-submariner-conformance-e2e:
@@ -136,7 +131,7 @@ kube-ovn-lb-svc-conformance-e2e:
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
 	ginkgo $(GINKGO_PARALLEL_OPT) --randomize-all -v \
-		--focus=CNI:Kube-OVN ./test/e2e/lb-svc/lb-svc.test
+		--focus=CNI:Kube-OVN ./test/e2e/lb-svc/lb-svc.test -- $(TEST_BIN_ARGS)
 
 .PHONY: iptables-vpc-nat-gw-conformance-e2e
 iptables-vpc-nat-gw-conformance-e2e:
@@ -145,7 +140,7 @@ iptables-vpc-nat-gw-conformance-e2e:
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
 	ginkgo $(GINKGO_PARALLEL_OPT) --randomize-all -v \
-		--focus=CNI:Kube-OVN ./test/e2e/iptables-vpc-nat-gw/iptables-vpc-nat-gw.test
+		--focus=CNI:Kube-OVN ./test/e2e/iptables-vpc-nat-gw/iptables-vpc-nat-gw.test -- $(TEST_BIN_ARGS)
 
 .PHONY: ovn-vpc-nat-gw-conformance-e2e
 ovn-vpc-nat-gw-conformance-e2e:
@@ -154,7 +149,7 @@ ovn-vpc-nat-gw-conformance-e2e:
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
 	ginkgo $(GINKGO_PARALLEL_OPT) --randomize-all -v \
-		--focus=CNI:Kube-OVN ./test/e2e/ovn-vpc-nat-gw/ovn-vpc-nat-gw.test
+		--focus=CNI:Kube-OVN ./test/e2e/ovn-vpc-nat-gw/ovn-vpc-nat-gw.test -- $(TEST_BIN_ARGS)
 
 .PHONY: kube-ovn-ha-e2e
 kube-ovn-ha-e2e:
@@ -163,7 +158,7 @@ kube-ovn-ha-e2e:
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
 	ginkgo $(GINKGO_PARALLEL_OPT) --randomize-all -v \
-		--focus=CNI:Kube-OVN ./test/e2e/ha/ha.test
+		--focus=CNI:Kube-OVN ./test/e2e/ha/ha.test -- $(TEST_BIN_ARGS)
 
 .PHONY: kube-ovn-security-e2e
 kube-ovn-security-e2e:
@@ -172,7 +167,7 @@ kube-ovn-security-e2e:
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
 	ginkgo $(GINKGO_PARALLEL_OPT) --randomize-all -v \
-		--focus=CNI:Kube-OVN ./test/e2e/security/security.test
+		--focus=CNI:Kube-OVN ./test/e2e/security/security.test -- $(TEST_BIN_ARGS)
 
 .PHONY: kube-ovn-kubevirt-e2e
 kube-ovn-kubevirt-e2e:
@@ -181,7 +176,7 @@ kube-ovn-kubevirt-e2e:
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
 	ginkgo $(GINKGO_PARALLEL_OPT) --randomize-all -v \
-		--focus=CNI:Kube-OVN ./test/e2e/kubevirt/kubevirt.test
+		--focus=CNI:Kube-OVN ./test/e2e/kubevirt/kubevirt.test -- $(TEST_BIN_ARGS)
 
 .PHONY: kube-ovn-webhook-e2e
 kube-ovn-webhook-e2e:
@@ -190,7 +185,7 @@ kube-ovn-webhook-e2e:
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
 	ginkgo $(GINKGO_PARALLEL_OPT) --randomize-all -v \
-		--focus=CNI:Kube-OVN ./test/e2e/webhook/webhook.test
+		--focus=CNI:Kube-OVN ./test/e2e/webhook/webhook.test -- $(TEST_BIN_ARGS)
 
 .PHONY: kubectl-ko-log
 kubectl-ko-log:
