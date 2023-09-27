@@ -115,12 +115,20 @@ func (c *Controller) handleDelVpc(vpc *kubeovnv1.Vpc) error {
 		return err
 	}
 
-	if err := c.handleDelVpcExternal(vpc.Name); err != nil {
-		klog.Errorf("failed to delete external connection for vpc %s, error %v", vpc.Name, err)
+	var err error
+	// TODO:disconnect external subnets according to vpc.Spec.ExternalSubnets
+	for _, subnet := range vpc.Spec.ExternalSubnets {
+		klog.Infof("disconnect external network %s to vpc %s", subnet, vpc.Name)
+		err = c.handleDelVpcExternalSubnets(vpc.Name, subnet)
+		if err != nil {
+			klog.Error(err)
+		}
+	}
+	if err != nil {
 		return err
 	}
 
-	err := c.deleteVpcRouter(vpc.Status.Router)
+	err = c.deleteVpcRouter(vpc.Status.Router)
 	if err != nil {
 		klog.Error(err)
 		return err
@@ -541,40 +549,48 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 					}
 				}
 			}
-			if vpc.Spec.EnableBfd {
-				klog.Infof("remove normal static ecmp route for vpc %s", vpc.Name)
-				// auto remove normal type static route, if using ecmp based bfd
-				if err := c.reconcileCustomVpcDelNormalStaticRoute(vpc.Name); err != nil {
-					klog.Errorf("failed to reconcile del vpc %q normal static route", vpc.Name)
-					return err
-				}
-			}
-			if !vpc.Spec.EnableBfd {
-				// auto add normal type static route, if not use ecmp based bfd
-				klog.Infof("add normal external static route for enable external vpc %s", vpc.Name)
-				if err := c.reconcileCustomVpcAddNormalStaticRoute(vpc.Name); err != nil {
-					klog.Errorf("failed to reconcile vpc %q bfd static route", vpc.Name)
-					return err
-				}
-			}
+			// 	if vpc.Spec.EnableBfd {
+			// 		klog.Infof("remove normal static ecmp route for vpc %s", vpc.Name)
+			// 		// auto remove normal type static route, if using ecmp based bfd
+			// 		if err := c.reconcileCustomVpcDelNormalStaticRoute(vpc.Name); err != nil {
+			// 			klog.Errorf("failed to reconcile del vpc %q normal static route", vpc.Name)
+			// 			return err
+			// 		}
+			// 	}
+			// 	if !vpc.Spec.EnableBfd {
+			// 		// auto add normal type static route, if not use ecmp based bfd
+			// 		klog.Infof("add normal external static route for enable external vpc %s", vpc.Name)
+			// 		if err := c.reconcileCustomVpcAddNormalStaticRoute(vpc.Name); err != nil {
+			// 			klog.Errorf("failed to reconcile vpc %q bfd static route", vpc.Name)
+			// 			return err
+			// 		}
+			// 	}
 		}
 
-		if !cachedVpc.Spec.EnableBfd && cachedVpc.Status.EnableBfd {
-			lrpEipName := fmt.Sprintf("%s-%s", key, c.config.ExternalGatewaySwitch)
-			if err := c.OVNNbClient.DeleteBFD(lrpEipName, ""); err != nil {
-				klog.Error(err)
-				return err
-			}
-			if err := c.handleDeleteVpcStaticRoute(key); err != nil {
-				klog.Errorf("failed to delete bfd route for vpc %s, error %v", key, err)
-				return err
-			}
-		}
+		// if !cachedVpc.Spec.EnableBfd && cachedVpc.Status.EnableBfd {
+		// 	lrpEipName := fmt.Sprintf("%s-%s", key, c.config.ExternalGatewaySwitch)
+		// 	if err := c.OVNNbClient.DeleteBFD(lrpEipName, ""); err != nil {
+		// 		klog.Error(err)
+		// 		return err
+		// 	}
+		// 	if err := c.handleDeleteVpcStaticRoute(key); err != nil {
+		// 		klog.Errorf("failed to delete bfd route for vpc %s, error %v", key, err)
+		// 		return err
+		// 	}
+		// }
 
 		if !cachedVpc.Spec.EnableExternal && cachedVpc.Status.EnableExternal {
-			// disconnect vpc to external
-			if err := c.handleDelVpcExternal(key); err != nil {
-				klog.Errorf("failed to delete external connection for vpc %s, error %v", key, err)
+			// disconnect vpc to externalSubnets
+			var err error
+			// TODO:disconnect external subnets according to vpc.Spec.ExternalSubnets
+			for _, subnet := range cachedVpc.Spec.ExternalSubnets {
+				klog.Infof("disconnect external network %s to vpc %s", subnet, vpc.Name)
+				err = c.handleDelVpcExternalSubnets(key, subnet)
+				if err != nil {
+					klog.Error(err)
+				}
+			}
+			if err != nil {
 				return err
 			}
 		}
@@ -1153,9 +1169,9 @@ func (c *Controller) handleDeleteVpcStaticRoute(key string) error {
 	return nil
 }
 
-func (c *Controller) handleDelVpcExternal(key string) error {
-	lspName := fmt.Sprintf("%s-%s", c.config.ExternalGatewaySwitch, key)
-	lrpName := fmt.Sprintf("%s-%s", key, c.config.ExternalGatewaySwitch)
+func (c *Controller) handleDelVpcExternalSubnets(key string, subnet string) error {
+	lspName := fmt.Sprintf("%s-%s", subnet, key)
+	lrpName := fmt.Sprintf("%s-%s", key, subnet)
 	klog.V(3).Infof("delete vpc lrp %s", lrpName)
 	if err := c.OVNNbClient.RemoveLogicalPatchPort(lspName, lrpName); err != nil {
 		klog.Errorf("failed to disconnect router '%s' to external, %v", key, err)
