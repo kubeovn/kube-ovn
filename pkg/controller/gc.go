@@ -728,7 +728,7 @@ func (c *Controller) getVMLsps() []string {
 	}
 
 	for _, ns := range nss {
-		vms, err := c.config.KubevirtClient.VirtualMachine(ns.Name).List(&metav1.ListOptions{})
+		vms, err := c.config.KubevirtClient.VirtualMachine(ns.Name).List(context.Background(), &metav1.ListOptions{})
 		if err != nil {
 			if !k8serrors.IsNotFound(err) {
 				klog.Errorf("failed to list vm in namespace %s, %v", ns, err)
