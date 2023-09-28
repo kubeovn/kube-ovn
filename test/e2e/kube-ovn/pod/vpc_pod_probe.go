@@ -99,14 +99,14 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 		_ = subnetClient.CreateSync(subnet)
 
 		ginkgo.By("Creating pod with HTTP readiness probe that port is accessible " + podName)
-		port := 8000 + rand.Intn(1000)
-		portStr := strconv.Itoa(port)
+		port := 8000 + rand.Int31n(1000)
+		portStr := strconv.Itoa(int(port))
 		args := []string{"netexec", "--http-port", portStr}
 		pod := framework.MakePod(namespaceName, podName, nil, map[string]string{util.LogicalSwitchAnnotation: custVPCSubnetName}, framework.AgnhostImage, nil, args)
 		pod.Spec.Containers[0].ReadinessProbe = &corev1.Probe{
 			ProbeHandler: corev1.ProbeHandler{
 				HTTPGet: &corev1.HTTPGetAction{
-					Port: intstr.FromInt(port),
+					Port: intstr.FromInt32(port),
 				},
 			},
 		}
@@ -121,7 +121,7 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 		pod.Spec.Containers[0].ReadinessProbe = &corev1.Probe{
 			ProbeHandler: corev1.ProbeHandler{
 				HTTPGet: &corev1.HTTPGetAction{
-					Port: intstr.FromInt(port + 1),
+					Port: intstr.FromInt32(port + 1),
 				},
 			},
 		}
@@ -150,7 +150,7 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 		pod.Spec.Containers[0].ReadinessProbe = &corev1.Probe{
 			ProbeHandler: corev1.ProbeHandler{
 				TCPSocket: &corev1.TCPSocketAction{
-					Port: intstr.FromInt(port),
+					Port: intstr.FromInt32(port),
 				},
 			},
 		}
@@ -165,7 +165,7 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 		pod.Spec.Containers[0].ReadinessProbe = &corev1.Probe{
 			ProbeHandler: corev1.ProbeHandler{
 				TCPSocket: &corev1.TCPSocketAction{
-					Port: intstr.FromInt(port - 1),
+					Port: intstr.FromInt32(port - 1),
 				},
 			},
 		}
@@ -189,7 +189,7 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 	})
 })
 
-func checkTProxyRules(f *framework.Framework, pod *corev1.Pod, probePort int, exist bool) {
+func checkTProxyRules(f *framework.Framework, pod *corev1.Pod, probePort int32, exist bool) {
 	nodeName := pod.Spec.NodeName
 	tProxyOutputMarkMask := fmt.Sprintf("%#x/%#x", util.TProxyOutputMark, util.TProxyOutputMask)
 	tProxyPreRoutingMarkMask := fmt.Sprintf("%#x/%#x", util.TProxyPreroutingMark, util.TProxyPreroutingMask)

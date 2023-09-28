@@ -1758,7 +1758,7 @@ func appendCheckPodToDel(c *Controller, pod *v1.Pod, ownerRefName, ownerRefKind 
 		}
 
 	case util.VMInstance:
-		vm, err := c.config.KubevirtClient.VirtualMachine(pod.Namespace).Get(ownerRefName, &metav1.GetOptions{})
+		vm, err := c.config.KubevirtClient.VirtualMachine(pod.Namespace).Get(context.Background(), ownerRefName, &metav1.GetOptions{})
 		if err != nil {
 			if k8serrors.IsNotFound(err) {
 				return true, nil
@@ -1826,7 +1826,7 @@ func (c *Controller) isVMPodToDel(pod *v1.Pod, vmiName string) bool {
 		vmName   string
 	)
 	// The vmi is also deleted when pod is deleted, only left vm exists.
-	vmi, err := c.config.KubevirtClient.VirtualMachineInstance(pod.Namespace).Get(vmiName, &metav1.GetOptions{})
+	vmi, err := c.config.KubevirtClient.VirtualMachineInstance(pod.Namespace).Get(context.Background(), vmiName, &metav1.GetOptions{})
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			vmiAlive = false
@@ -1851,7 +1851,7 @@ func (c *Controller) isVMPodToDel(pod *v1.Pod, vmiName string) bool {
 		return false
 	}
 
-	vm, err := c.config.KubevirtClient.VirtualMachine(pod.Namespace).Get(vmName, &metav1.GetOptions{})
+	vm, err := c.config.KubevirtClient.VirtualMachine(pod.Namespace).Get(context.Background(), vmName, &metav1.GetOptions{})
 	if err != nil {
 		// the vm has gone
 		if k8serrors.IsNotFound(err) {
