@@ -117,10 +117,9 @@ func (c *Controller) handleDelVpc(vpc *kubeovnv1.Vpc) error {
 	}
 
 	var err error
-	// TODO:disconnect external subnets according to vpc.Spec.ExternalSubnets
-	for _, subnet := range vpc.Spec.ExternalSubnets {
+	for _, subnet := range vpc.Status.ExternalSubnets {
 		klog.Infof("disconnect external network %s to vpc %s", subnet, vpc.Name)
-		err = c.handleDelVpcExternalSubnets(vpc.Name, subnet)
+		err = c.handleDelVpcExternalSubnet(vpc.Name, subnet)
 		if err != nil {
 			klog.Error(err)
 		}
@@ -540,7 +539,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 				if cachedVpc.Spec.ExternalSubnets != nil {
 					for _, subnet := range cachedVpc.Spec.ExternalSubnets {
 						klog.Infof("connect external network %s with vpc %s", subnet, vpc.Name)
-						err = c.handleAddVpcExternalSubnets(key, subnet)
+						err = c.handleAddVpcExternalSubnet(key, subnet)
 						if err != nil {
 							klog.Error(err)
 						}
@@ -554,10 +553,10 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 					return err
 				}
 			}
-			if cachedVpc.Spec.ExternalSubnets != nil && len(cachedVpc.Spec.ExternalSubnets) != 0 {
+			if cachedVpc.Spec.ExternalSubnets != nil {
 				sort.Strings(cachedVpc.Spec.ExternalSubnets)
 			}
-			if cachedVpc.Status.ExternalSubnets != nil && len(cachedVpc.Status.ExternalSubnets) != 0 {
+			if cachedVpc.Status.ExternalSubnets != nil {
 				sort.Strings(cachedVpc.Status.ExternalSubnets)
 			}
 			if cachedVpc.Status.EnableExternal && !reflect.DeepEqual(cachedVpc.Spec.ExternalSubnets, cachedVpc.Status.ExternalSubnets) {
@@ -587,18 +586,16 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 						onlyInStatus = append(onlyInStatus, subnetStatus)
 					}
 				}
-				klog.Info("externalSubnets in Spec not in Status : ", onlyInSpec)
-				klog.Info("externalSubnets in Status not in Spec : ", onlyInStatus)
 				var err error
 				for _, subnet := range onlyInSpec {
 					klog.Infof("connect %s network with vpc %s", subnet, vpc.Name)
-					if err = c.handleAddVpcExternalSubnets(key, subnet); err != nil {
+					if err = c.handleAddVpcExternalSubnet(key, subnet); err != nil {
 						klog.Errorf("failed to add %s connection for vpc %s, error %v", subnet, key, err)
 					}
 				}
 				for _, subnet := range onlyInStatus {
 					klog.Infof("delete %s connection for vpc %s", subnet, vpc.Name)
-					if err = c.handleDelVpcExternalSubnets(vpc.Name, subnet); err != nil {
+					if err = c.handleDelVpcExternalSubnet(vpc.Name, subnet); err != nil {
 						klog.Errorf("failed to delete %s connection for vpc %s, error %v", subnet, vpc.Name, err)
 					}
 				}
@@ -641,10 +638,9 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		if !cachedVpc.Spec.EnableExternal && cachedVpc.Status.EnableExternal {
 			// disconnect vpc to externalSubnets
 			var err error
-			// TODO:disconnect external subnets according to vpc.Spec.ExternalSubnets
-			for _, subnet := range cachedVpc.Spec.ExternalSubnets {
+			for _, subnet := range cachedVpc.Status.ExternalSubnets {
 				klog.Infof("disconnect external network %s to vpc %s", subnet, vpc.Name)
-				err = c.handleDelVpcExternalSubnets(key, subnet)
+				err = c.handleDelVpcExternalSubnet(key, subnet)
 				if err != nil {
 					klog.Error(err)
 				}
@@ -1083,7 +1079,7 @@ func (c *Controller) deleteVpcRouter(lr string) error {
 	return c.OVNNbClient.DeleteLogicalRouter(lr)
 }
 
-func (c *Controller) handleAddVpcExternalSubnets(key string, subnet string) error {
+func (c *Controller) handleAddVpcExternalSubnet(key string, subnet string) error {
 	cachedSubnet, err := c.subnetsLister.Get(subnet)
 	if err != nil {
 		klog.Error(err)
@@ -1239,7 +1235,7 @@ func (c *Controller) handleDeleteVpcStaticRoute(key string) error {
 	return nil
 }
 
-func (c *Controller) handleDelVpcExternalSubnets(key string, subnet string) error {
+func (c *Controller) handleDelVpcExternalSubnet(key string, subnet string) error {
 	lspName := fmt.Sprintf("%s-%s", subnet, key)
 	lrpName := fmt.Sprintf("%s-%s", key, subnet)
 	klog.V(3).Infof("delete vpc lrp %s", lrpName)
@@ -1268,18 +1264,12 @@ func (c *Controller) handleDelVpcExternalSubnets(key string, subnet string) erro
 	}
 	vpc := cachedVpc.DeepCopy()
 	vpc.Status.EnableExternal = cachedVpc.Spec.EnableExternal
-	var index int
-	needUpdate := false
 	for i, externalSubnet := range vpc.Status.ExternalSubnets {
 		if externalSubnet == subnet {
-			needUpdate = true
-			index = i
+			klog.Info("update externalSubnets status,add subnet : ", subnet)
+			vpc.Status.ExternalSubnets = append(vpc.Status.ExternalSubnets[:i], vpc.Status.ExternalSubnets[i+1:]...)
 			break
 		}
-	}
-	if needUpdate {
-		klog.Info("update externalSubnets status,add subnet : ", subnet)
-		vpc.Status.ExternalSubnets = append(vpc.Status.ExternalSubnets[:index], vpc.Status.ExternalSubnets[index+1:]...)
 	}
 	vpc.Status.EnableBfd = cachedVpc.Spec.EnableBfd
 	bytes, err := vpc.Status.Bytes()
