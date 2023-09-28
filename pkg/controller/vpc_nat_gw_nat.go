@@ -493,10 +493,10 @@ func (c *Controller) handleAddIptablesFip(key string) error {
 		klog.Error(err)
 		return err
 	}
-	if fip.Status.Ready && fip.Status.V4ip != "" {
+	/*if fip.Status.Ready && fip.Status.V4ip != "" {
 		// already ok
 		return nil
-	}
+	}*/
 	klog.V(3).Infof("handle add fip %s", key)
 	// get eip
 	eipName := fip.Spec.EIP
@@ -513,6 +513,19 @@ func (c *Controller) handleAddIptablesFip(key string) error {
 		err = fmt.Errorf("failed to create fip %s, %v", key, err)
 		klog.Error(err)
 		return err
+	}
+
+	gwPod, err := c.getNatGwPod(eip.Spec.NatGwDp)
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
+	// compare gw pod started time with fip redo time. if redo time before gw pod started. redo again
+	fipRedo, _ := time.ParseInLocation("2006-01-02T15:04:05", fip.Status.Redo, time.Local)
+	if fip.Status.Ready && fip.Status.V4ip != "" && gwPod.Status.ContainerStatuses[0].State.Running.StartedAt.Before(&metav1.Time{Time: fipRedo}) {
+		// already ok
+		klog.V(3).Infof("fip %s already ok", key)
+		return nil
 	}
 
 	// create fip nat
