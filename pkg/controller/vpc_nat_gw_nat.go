@@ -520,7 +520,7 @@ func (c *Controller) handleAddIptablesFip(key string) error {
 		klog.Error(err)
 		return err
 	}
-	//compare gw pod started time with fip redo time. if redo time before gw pod started. redo again
+	// compare gw pod started time with fip redo time. if redo time before gw pod started. redo again
 	fipRedo, _ := time.ParseInLocation("2006-01-02T15:04:05", fip.Status.Redo, time.Local)
 	if fip.Status.Ready && fip.Status.V4ip != "" && gwPod.Status.ContainerStatuses[0].State.Running.StartedAt.Before(&metav1.Time{Time: fipRedo}) {
 		// already ok
