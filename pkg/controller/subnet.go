@@ -2246,7 +2246,7 @@ func (c *Controller) addCommonRoutesForSubnet(subnet *kubeovnv1.Subnet) error {
 			action      = kubeovnv1.PolicyRouteActionAllow
 			externalIDs = map[string]string{"vendor": util.CniTypeName, "subnet": subnet.Name}
 		)
-		klog.Infof("add policy route for router: %s, match %s, action %s, externalID %v", subnet.Spec.Vpc, match, action, externalIDs)
+		klog.Infof("add common policy route for router: %s, match %s, action %s, externalID %v", subnet.Spec.Vpc, match, action, externalIDs)
 		if err := c.addPolicyRouteToVpc(
 			subnet.Spec.Vpc,
 			&kubeovnv1.PolicyRoute{

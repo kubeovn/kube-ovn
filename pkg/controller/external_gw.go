@@ -262,7 +262,7 @@ func (c *Controller) getGatewayChassis(config map[string]string) ([]string, erro
 			klog.Errorf("failed to get node %s chassis: %s, %v", node.Name, annoChassisName, err)
 			return chassises, err
 		}
-		chassises = append(chassises, chassis.UUID)
+		chassises = append(chassises, chassis.Name)
 	}
 	if len(chassises) == 0 {
 		klog.Error("no available external gw")

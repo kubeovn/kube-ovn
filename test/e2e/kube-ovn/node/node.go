@@ -156,8 +156,8 @@ var _ = framework.OrderedDescribe("[group:node]", func() {
 		annotations := map[string]string{
 			util.LogicalSwitchAnnotation: subnetName,
 		}
-		port := 8000 + rand.Intn(1000)
-		portStr := strconv.Itoa(port)
+		port := 8000 + rand.Int31n(1000)
+		portStr := strconv.Itoa(int(port))
 		args := []string{"netexec", "--http-port", portStr}
 		pod := framework.MakePod(namespaceName, podName, podLabels, annotations, framework.AgnhostImage, nil, args)
 		_ = podClient.CreateSync(pod)
@@ -166,8 +166,8 @@ var _ = framework.OrderedDescribe("[group:node]", func() {
 		ports := []corev1.ServicePort{{
 			Name:       "tcp",
 			Protocol:   corev1.ProtocolTCP,
-			Port:       int32(port),
-			TargetPort: intstr.FromInt(port),
+			Port:       port,
+			TargetPort: intstr.FromInt32(port),
 		}}
 		service := framework.MakeService(serviceName, "", nil, podLabels, ports, "")
 		_ = serviceClient.CreateSync(service, func(s *corev1.Service) (bool, error) {
