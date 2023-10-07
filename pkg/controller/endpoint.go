@@ -134,7 +134,10 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 
 	if vip, ok = svc.Annotations[util.SwitchLBRuleVipsAnnotation]; ok {
 		lbVips = []string{vip}
-		ignoreHealthCheck = false
+		// TODO: IPv6
+		if util.CheckProtocol(vip) == kubeovnv1.ProtocolIPv4 {
+			ignoreHealthCheck = false
+		}
 	} else if lbVips = util.ServiceClusterIPs(*svc); len(lbVips) == 0 {
 		return nil
 	}
