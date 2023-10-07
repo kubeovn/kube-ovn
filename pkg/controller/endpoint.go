@@ -12,6 +12,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -124,10 +125,11 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 	svc := cachedService.DeepCopy()
 
 	var (
-		lbVips            []string
-		vip, vpcName      string
-		ok                bool
-		ignoreHealthCheck = true
+		pods                     []*v1.Pod
+		lbVips                   []string
+		vip, vpcName, subnetName string
+		ok                       bool
+		ignoreHealthCheck        = true
 	)
 
 	if vip, ok = svc.Annotations[util.SwitchLBRuleVipsAnnotation]; ok {
@@ -137,8 +139,7 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 		return nil
 	}
 
-	pods, err := c.podsLister.Pods(namespace).List(labels.Set(svc.Spec.Selector).AsSelector())
-	if err != nil {
+	if pods, err = c.podsLister.Pods(namespace).List(labels.Set(svc.Spec.Selector).AsSelector()); err != nil {
 		klog.Errorf("failed to get pods for service %s in namespace %s: %v", name, namespace, err)
 		return err
 	}
@@ -148,6 +149,7 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 			continue
 		}
 
+		subnetName = pod.Annotations[util.LogicalSwitchAnnotation]
 		for _, subset := range ep.Subsets {
 			for _, addr := range subset.Addresses {
 				if addr.IP == pod.Status.PodIP {
@@ -171,13 +173,21 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 		}
 	}
 
-	vpc, err := c.vpcsLister.Get(vpcName)
-	if err != nil {
+	if subnetName == "" {
+		subnetName = util.DefaultSubnet
+	}
+
+	var (
+		vpc    *kubeovnv1.Vpc
+		svcVpc string
+	)
+
+	if vpc, err = c.vpcsLister.Get(vpcName); err != nil {
 		klog.Errorf("failed to get vpc %s of lb, %v", vpcName, err)
 		return err
 	}
 
-	if svcVpc := svc.Annotations[util.VpcAnnotation]; svcVpc != vpcName {
+	if svcVpc = svc.Annotations[util.VpcAnnotation]; svcVpc != vpcName {
 		if svc.Annotations == nil {
 			svc.Annotations = make(map[string]string, 1)
 		}
@@ -207,12 +217,53 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 			}
 
 			var (
-				vip           string
+				checkVip      *kubeovnv1.Vip
+				vip, checkIP  string
 				backends      []string
 				ipPortMapping map[string]string
 			)
 			vip = util.JoinHostPort(lbVip, port.Port)
-			ipPortMapping, backends = getIPPortMappingBackend(ep, pods, port, lbVip, ignoreHealthCheck)
+
+			if !ignoreHealthCheck {
+				if checkVip, err = c.config.KubeOvnClient.KubeovnV1().Vips().Get(context.Background(), subnetName, metav1.GetOptions{}); err != nil {
+					if errors.IsNotFound(err) {
+						if checkVip, err = c.config.KubeOvnClient.
+							KubeovnV1().
+							Vips().
+							Create(context.Background(),
+								&kubeovnv1.Vip{
+									ObjectMeta: metav1.ObjectMeta{
+										Name: subnetName,
+									},
+									Spec: kubeovnv1.VipSpec{
+										Subnet: subnetName,
+									},
+								},
+								metav1.CreateOptions{},
+							); err != nil {
+							klog.Errorf("failed to create health check vip from %s %s, %v", vpcName, subnetName, err)
+							return err
+						}
+					} else {
+						klog.Errorf("failed to get health check vip from %s %s, %v", vpcName, subnetName, err)
+						return err
+					}
+				}
+
+				switch util.CheckProtocol(lbVip) {
+				case kubeovnv1.ProtocolIPv4:
+					checkIP = checkVip.Status.V4ip
+				case kubeovnv1.ProtocolIPv6:
+					checkIP = checkVip.Status.V6ip
+				}
+				if checkIP == "" {
+					err = fmt.Errorf("failed to get health check vip from %s %s", vpcName, subnetName)
+					klog.Error(err)
+					return err
+				}
+			}
+
+			ipPortMapping, backends = getIPPortMappingBackend(ep, pods, port, lbVip, checkIP, ignoreHealthCheck)
 
 			// for performance reason delete lb with no backends
 			if len(backends) != 0 {
@@ -245,7 +296,7 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 	return nil
 }
 
-func getIPPortMappingBackend(endpoints *v1.Endpoints, pods []*v1.Pod, servicePort v1.ServicePort, serviceIP string, ignoreHealthCheck bool) (map[string]string, []string) {
+func getIPPortMappingBackend(endpoints *v1.Endpoints, pods []*v1.Pod, servicePort v1.ServicePort, serviceIP, chekcVip string, ignoreHealthCheck bool) (map[string]string, []string) {
 	var (
 		ipPortMapping = map[string]string{}
 		backends      = []string{}
@@ -267,7 +318,7 @@ func getIPPortMappingBackend(endpoints *v1.Endpoints, pods []*v1.Pod, servicePor
 		for _, address := range subset.Addresses {
 			if !ignoreHealthCheck && address.TargetRef != nil {
 				ipName := fmt.Sprintf("%s.%s", address.TargetRef.Name, endpoints.Namespace)
-				ipPortMapping[address.IP] = fmt.Sprintf(util.HealthCheckNamedVipTemplate, ipName, serviceIP)
+				ipPortMapping[address.IP] = fmt.Sprintf(util.HealthCheckNamedVipTemplate, ipName, chekcVip)
 			}
 			if address.TargetRef == nil || address.TargetRef.Kind != "Pod" {
 				if util.CheckProtocol(address.IP) == protocol {
