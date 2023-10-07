@@ -31,6 +31,7 @@ import (
 )
 
 const (
+	dockerExtNetName       = "kube-ovn-ext"
 	dockerExtNet1Name      = "kube-ovn-ext-net1"
 	dockerExtNet2Name      = "kube-ovn-ext-net2"
 	vpcNatGWConfigMapName  = "ovn-vpc-nat-gw-config"
@@ -1038,7 +1039,6 @@ var _ = framework.Describe("[group:qos-policy]", func() {
 	var containerID string
 	var image string
 	var net1NicName string
-	var dockerExtNetName string
 
 	// docker network
 	var dockerExtNetNetwork *dockertypes.NetworkResource
@@ -1061,8 +1061,6 @@ var _ = framework.Describe("[group:qos-policy]", func() {
 
 	ginkgo.BeforeEach(func() {
 		vpcQosParams = newVPCQoSParamsInit()
-
-		dockerExtNetName = "kube-ovn-qos-" + framework.RandomSuffix()
 
 		vpcQosParams.vpc1SubnetName = "qos-vpc1-subnet-" + framework.RandomSuffix()
 		vpcQosParams.vpc2SubnetName = "qos-vpc2-subnet-" + framework.RandomSuffix()
