@@ -115,7 +115,7 @@ jobs:
           # python: Rename build related code to ovs_build_helpers.
           Invoke-WebRequest -Uri "https://github.com/kubeovn/ovn/commit/9d961aec6fd7ef3e3002bc34e285833279e989c2.patch" -OutFile ..\ovn-00.patch
           # change hash type from dp_hash to hash with field src_ip
-          Invoke-WebRequest -Uri "https://github.com/kubeovn/ovn/commit/5a04402c01df1463b9e1edcbc1c5634793687140.patch" -OutFile ..\ovn-01.patch
+          Invoke-WebRequest -Uri "https://github.com/kubeovn/ovn/commit/75876f75203bbf06a8f5ffb5628eca98bef03407.patch" -OutFile ..\ovn-01.patch
           # add support for windows
           Invoke-WebRequest -Uri "https://github.com/kubeovn/ovn/commit/2be843b9fc7cba253fb27fc57c384034e97db148.patch" -OutFile ..\ovn-02.patch
           # set br-int controller to TCP 127.0.0.1:6653
