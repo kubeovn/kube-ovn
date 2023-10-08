@@ -1,9 +1,11 @@
 package ovs
 
 import (
+	"context"
 	"fmt"
 	"regexp"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -238,46 +240,42 @@ func (m aclMatch) String() string {
 }
 
 type Limiter struct {
-	limit   int
-	timeout time.Duration
-	tokens  chan struct{}
+	limit   int32
+	current int32
 }
 
-func (l *Limiter) Initialize(limit int, timeout time.Duration) {
-	l.limit = limit
-	l.timeout = timeout
-	l.tokens = make(chan struct{}, l.limit)
-
-	for i := 0; i < l.limit; i++ {
-		l.tokens <- struct{}{}
-	}
-}
-
-func (l *Limiter) Limit() int {
+func (l *Limiter) Limit() int32 {
 	return l.limit
 }
 
-func (l *Limiter) Timeout() time.Duration {
-	return l.timeout
+func (l *Limiter) Current() int32 {
+	return l.current
 }
 
-func (l *Limiter) Wait() error {
-	if l.tokens == nil {
-		return nil
-	}
+func (l *Limiter) Update(limit int32) {
+	l.limit = limit
+}
 
-	select {
-	case <-l.tokens:
-		return nil
-	case <-time.After(l.timeout):
-		return fmt.Errorf("waiting for token timeout %d second", l.timeout)
+func (l *Limiter) Wait(ctx context.Context) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("context canceled by timeout")
+		default:
+			if l.limit == 0 {
+				atomic.AddInt32(&l.current, 1)
+				return nil
+			}
+
+			if atomic.LoadInt32(&l.current) < l.limit {
+				atomic.AddInt32(&l.current, 1)
+				return nil
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
 	}
 }
 
 func (l *Limiter) Done() {
-	if l.tokens == nil {
-		return
-	}
-
-	l.tokens <- struct{}{}
+	atomic.AddInt32(&l.current, -1)
 }
