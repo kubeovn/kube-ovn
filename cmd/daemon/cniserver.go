@@ -38,7 +38,7 @@ func CmdMain() {
 		util.LogFatalAndExit(err, "failed to do the OS initialization")
 	}
 
-	ovs.UpdateOVSVsctlLimiter(config.OVSVsctlRate)
+	ovs.InitializeOVSVsctlLimiter(config.OVSVsctlConcurrency)
 
 	nicBridgeMappings, err := daemon.InitOVSBridges()
 	if err != nil {

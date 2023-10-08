@@ -1,7 +1,6 @@
 package ovs
 
 import (
-	"context"
 	"fmt"
 	"os/exec"
 	"regexp"
@@ -9,28 +8,27 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/time/rate"
 	"k8s.io/klog/v2"
 
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 var (
-	limiter  *rate.Limiter
-	burst    = 100
-	interval = 100 * time.Millisecond
+	limiter     *Limiter
+	concurrency = 100
 )
 
 func init() {
-	limiter = rate.NewLimiter(rate.Every(interval), burst)
+	limiter = new(Limiter)
 }
 
-func UpdateOVSVsctlLimiter(b int) {
-	if b > 0 {
-		burst = b
-		limiter.SetBurst(burst)
-		klog.V(4).Infof("update ovs-vsctl rate limite to ", burst)
+func InitializeOVSVsctlLimiter(c int) {
+	if c > 0 {
+		concurrency = c
 	}
+
+	limiter.Initialize(concurrency, time.Second)
+	klog.V(4).Infof("update ovs-vsctl concurrency limite to ", limiter.Limit())
 }
 
 // Glory belongs to openvswitch/ovn-kubernetes
@@ -39,28 +37,34 @@ func UpdateOVSVsctlLimiter(b int) {
 var podNetNsRegexp = regexp.MustCompile(`pod_netns="([^"]+)"`)
 
 func Exec(args ...string) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
+	var (
+		start        time.Time
+		elapsed      float64
+		output       []byte
+		method, code string
+		err          error
+	)
 
-	err := limiter.Wait(ctx)
-	if err != nil {
-		klog.V(4).Infof("command %s %s waiting for execution timeout by rate limiter of %v", OvsVsCtl, strings.Join(args, " "), burst)
+	if err = limiter.Wait(); err != nil {
+		klog.V(4).Infof("command %s %s waiting for execution timeout by concurrency limiter of %v", OvsVsCtl, strings.Join(args, " "), limiter.Limit())
 		return "", err
 	}
+	defer limiter.Done()
 
-	start := time.Now()
+	start = time.Now()
 	args = append([]string{"--timeout=30"}, args...)
-	output, err := exec.Command(OvsVsCtl, args...).CombinedOutput()
-	elapsed := float64((time.Since(start)) / time.Millisecond)
+	output, err = exec.Command(OvsVsCtl, args...).CombinedOutput()
+	elapsed = float64((time.Since(start)) / time.Millisecond)
 	klog.V(4).Infof("command %s %s in %vms", OvsVsCtl, strings.Join(args, " "), elapsed)
-	method := ""
+
 	for _, arg := range args {
 		if !strings.HasPrefix(arg, "--") {
 			method = arg
 			break
 		}
 	}
-	code := "0"
+
+	code = "0"
 	defer func() {
 		ovsClientRequestLatency.WithLabelValues("ovsdb", method, code).Observe(elapsed)
 	}()

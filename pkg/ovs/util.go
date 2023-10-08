@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -234,4 +235,49 @@ func (m aclMatch) Match() (string, error) {
 func (m aclMatch) String() string {
 	rule, _ := m.Match()
 	return rule
+}
+
+type Limiter struct {
+	limit   int
+	timeout time.Duration
+	tokens  chan struct{}
+}
+
+func (l *Limiter) Initialize(limit int, timeout time.Duration) {
+	l.limit = limit
+	l.timeout = timeout
+	l.tokens = make(chan struct{}, l.limit)
+
+	for i := 0; i < l.limit; i++ {
+		l.tokens <- struct{}{}
+	}
+}
+
+func (l *Limiter) Limit() int {
+	return l.limit
+}
+
+func (l *Limiter) Timeout() time.Duration {
+	return l.timeout
+}
+
+func (l *Limiter) Wait() error {
+	if l.tokens == nil {
+		return nil
+	}
+
+	select {
+	case <-l.tokens:
+		return nil
+	case <-time.After(l.timeout):
+		return fmt.Errorf("waiting for token timeout %d second", l.timeout)
+	}
+}
+
+func (l *Limiter) Done() {
+	if l.tokens == nil {
+		return
+	}
+
+	l.tokens <- struct{}{}
 }
