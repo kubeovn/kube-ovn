@@ -24,19 +24,19 @@ require (
 	github.com/mdlayher/arp v0.0.0-20220512170110-6706a2966875
 	github.com/moby/sys/mountinfo v0.6.2
 	github.com/onsi/ginkgo/v2 v2.12.1
-	github.com/onsi/gomega v1.27.10
-	github.com/osrg/gobgp/v3 v3.18.0
+	github.com/onsi/gomega v1.28.0
+	github.com/osrg/gobgp/v3 v3.19.0
 	github.com/ovn-org/libovsdb v0.0.0-20230711201130-6785b52d4020
 	github.com/parnurzeal/gorequest v0.2.16
 	github.com/prometheus-community/pro-bing v0.3.0
-	github.com/prometheus/client_golang v1.16.0
+	github.com/prometheus/client_golang v1.17.0
 	github.com/scylladb/go-set v1.0.2
 	github.com/sirupsen/logrus v1.9.3
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.8.4
 	github.com/vishvananda/netlink v1.2.1-beta.2
-	golang.org/x/mod v0.12.0
-	golang.org/x/sys v0.12.0
+	golang.org/x/mod v0.13.0
+	golang.org/x/sys v0.13.0
 	golang.org/x/time v0.3.0
 	google.golang.org/grpc v1.58.2
 	google.golang.org/protobuf v1.31.0
@@ -186,25 +186,25 @@ require (
 	github.com/openshift/client-go v3.9.0+incompatible // indirect
 	github.com/openshift/custom-resource-status v1.1.2 // indirect
 	github.com/pborman/uuid v1.2.1 // indirect
-	github.com/pelletier/go-toml/v2 v2.0.7 // indirect
+	github.com/pelletier/go-toml/v2 v2.0.8 // indirect
 	github.com/peterbourgon/diskv v2.0.1+incompatible // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/projectcalico/go-json v0.0.0-20161128004156-6219dc7339ba // indirect
 	github.com/projectcalico/go-yaml-wrapper v0.0.0-20191112210931-090425220c54 // indirect
 	github.com/projectcalico/libcalico-go v0.0.0-20190305235709-3d935c3b8b86 // indirect
-	github.com/prometheus/client_model v0.4.0 // indirect
+	github.com/prometheus/client_model v0.4.1-0.20230718164431-9a2bf3000d16 // indirect
 	github.com/prometheus/common v0.44.0 // indirect
-	github.com/prometheus/procfs v0.10.1 // indirect
+	github.com/prometheus/procfs v0.11.1 // indirect
 	github.com/rubiojr/go-vhd v0.0.0-20200706105327-02e210299021 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/seccomp/libseccomp-golang v0.10.0 // indirect
 	github.com/smartystreets/assertions v1.13.0 // indirect
 	github.com/spf13/afero v1.9.5 // indirect
-	github.com/spf13/cast v1.5.0 // indirect
+	github.com/spf13/cast v1.5.1 // indirect
 	github.com/spf13/cobra v1.7.0 // indirect
 	github.com/spf13/jwalterweatherman v1.1.0 // indirect
-	github.com/spf13/viper v1.15.0 // indirect
+	github.com/spf13/viper v1.16.0 // indirect
 	github.com/stoewer/go-strcase v1.2.1 // indirect
 	github.com/subosito/gotenv v1.4.2 // indirect
 	github.com/syndtr/gocapability v0.0.0-20200815063812-42c35b437635 // indirect
@@ -229,14 +229,14 @@ require (
 	go.starlark.net v0.0.0-20230525235612-a134d8f9ddca // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.25.0 // indirect
-	golang.org/x/crypto v0.13.0 // indirect
-	golang.org/x/exp v0.0.0-20230905200255-921286631fa9 // indirect
-	golang.org/x/net v0.15.0 // indirect
-	golang.org/x/oauth2 v0.12.0 // indirect
-	golang.org/x/sync v0.3.0 // indirect
-	golang.org/x/term v0.12.0 // indirect
+	golang.org/x/crypto v0.14.0 // indirect
+	golang.org/x/exp v0.0.0-20231006140011-7918f672742d // indirect
+	golang.org/x/net v0.16.0 // indirect
+	golang.org/x/oauth2 v0.13.0 // indirect
+	golang.org/x/sync v0.4.0 // indirect
+	golang.org/x/term v0.13.0 // indirect
 	golang.org/x/text v0.13.0 // indirect
-	golang.org/x/tools v0.13.0 // indirect
+	golang.org/x/tools v0.14.0 // indirect
 	gomodules.xyz/jsonpatch/v2 v2.4.0 // indirect
 	google.golang.org/api v0.126.0 // indirect
 	google.golang.org/appengine v1.6.8 // indirect
