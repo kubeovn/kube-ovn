@@ -21,8 +21,6 @@ import (
 	"github.com/kubeovn/kube-ovn/versions"
 )
 
-const healthProbePort = 8080
-
 const hookServerCertDir = "/tmp/k8s-webhook-server/serving-certs"
 
 var scheme = runtime.NewScheme()
@@ -43,6 +41,7 @@ func main() {
 	klog.Infof(versions.String())
 
 	port := pflag.Int("port", 8443, "The port webhook listen on.")
+	healthProbePort := pflag.Int32("health-probe-port", 8080, "The port health probes listen on.")
 
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
 	klog.InitFlags(klogFlags)
@@ -77,7 +76,7 @@ func main() {
 		Metrics: metricsserver.Options{
 			BindAddress: "0",
 		},
-		HealthProbeBindAddress: util.JoinHostPort(os.Getenv("POD_IP"), healthProbePort),
+		HealthProbeBindAddress: util.JoinHostPort(os.Getenv("POD_IP"), *healthProbePort),
 	})
 	if err != nil {
 		panic(err)

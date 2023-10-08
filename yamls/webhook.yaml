@@ -39,6 +39,7 @@ spec:
             - /kube-ovn/kube-ovn-webhook
           args:
             - --port=8443
+            - --health-probe-port=8080
             - --v=3
           env:
             - name: POD_IP
