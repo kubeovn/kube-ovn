@@ -22,6 +22,12 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
+const (
+	// "cluster" is the default policy
+	announcePolicyCluster = "cluster"
+	announcePolicyLocal   = "local"
+)
+
 func isPodAlive(p *v1.Pod) bool {
 	if p.Status.Phase == v1.PodSucceeded && p.Spec.RestartPolicy != v1.RestartPolicyAlways {
 		return false
@@ -84,12 +90,14 @@ func (c *Controller) syncSubnetRoutes() {
 			}
 
 			switch policy {
-			case "true", "cluster":
+			case "true":
+				fallthrough
+			case announcePolicyCluster:
 				for _, cidr := range ips {
 					ipFamily := util.CheckProtocol(cidr)
 					bgpExpected[ipFamily] = append(bgpExpected[ipFamily], cidr)
 				}
-			case "local":
+			case announcePolicyLocal:
 				localSubnets[subnet.Name] = subnet.Spec.CIDRBlock
 			default:
 				klog.Warningf("invalid subnet annotation %s=%s", util.BgpAnnotation, policy)
@@ -105,11 +113,13 @@ func (c *Controller) syncSubnetRoutes() {
 		ips := make(map[string]string, 2)
 		if policy := pod.Annotations[util.BgpAnnotation]; policy != "" {
 			switch policy {
-			case "true", "cluster":
+			case "true":
+				fallthrough
+			case announcePolicyCluster:
 				for _, podIP := range pod.Status.PodIPs {
 					ips[util.CheckProtocol(podIP.IP)] = podIP.IP
 				}
-			case "local":
+			case announcePolicyLocal:
 				if pod.Spec.NodeName == c.config.NodeName {
 					for _, podIP := range pod.Status.PodIPs {
 						ips[util.CheckProtocol(podIP.IP)] = podIP.IP

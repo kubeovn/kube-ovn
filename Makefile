@@ -847,7 +847,7 @@ kind-clean-ovn-submariner: kind-clean
 .PHONY: kind-clean-bgp
 kind-clean-bgp:
 	$(call docker_rm_container,kube-ovn-bgp)
-	kube_ovn_version=$(RELEASE_TAG) j2 yamls/clab-bgp.yaml.j2 -o yamls/clab-bgp.yaml
+	kube_ovn_version=$(VERSION) j2 yamls/clab-bgp.yaml.j2 -o yamls/clab-bgp.yaml
 	docker run --rm --privileged \
 		--name kube-ovn-bgp \
 		--network host \
