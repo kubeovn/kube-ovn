@@ -21,7 +21,7 @@ func init() {
 }
 
 func UpdateOVSVsctlLimiter(c int32) {
-	if c > 0 {
+	if c >= 0 {
 		limiter.Update(c)
 		klog.V(4).Infof("update ovs-vsctl concurrency limit to %d", limiter.Limit())
 	}
