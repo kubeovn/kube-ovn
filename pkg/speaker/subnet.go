@@ -160,7 +160,7 @@ func (c *Controller) syncSubnetRoutes() {
 		}
 	}
 
-	if c.config.NeighborAddress != "" {
+	if len(c.config.NeighborAddresses) != 0 {
 		listPathRequest := &bgpapi.ListPathRequest{
 			TableType: bgpapi.TableType_GLOBAL,
 			Family:    &bgpapi.Family{Afi: bgpapi.Family_AFI_IP, Safi: bgpapi.Family_SAFI_UNICAST},
@@ -187,8 +187,7 @@ func (c *Controller) syncSubnetRoutes() {
 		}
 	}
 
-	if c.config.NeighborIPv6Address != "" {
-
+	if len(c.config.NeighborIPv6Addresses) != 0 {
 		listIPv6PathRequest := &bgpapi.ListPathRequest{
 			TableType: bgpapi.TableType_GLOBAL,
 			Family:    &bgpapi.Family{Afi: bgpapi.Family_AFI_IP6, Safi: bgpapi.Family_SAFI_UNICAST},
@@ -266,24 +265,26 @@ func (c *Controller) addRoute(route string) error {
 	if err != nil {
 		return err
 	}
-	_, err = c.config.BgpServer.AddPath(context.Background(), &bgpapi.AddPathRequest{
-		Path: &bgpapi.Path{
-			Family: &bgpapi.Family{Afi: routeAfi, Safi: bgpapi.Family_SAFI_UNICAST},
-			Nlri:   nlri,
-			Pattrs: attrs,
-		},
-	})
-	if err != nil {
-		klog.Errorf("add path failed, %v", err)
-		return err
+	for _, attr := range attrs {
+		_, err = c.config.BgpServer.AddPath(context.Background(), &bgpapi.AddPathRequest{
+			Path: &bgpapi.Path{
+				Family: &bgpapi.Family{Afi: routeAfi, Safi: bgpapi.Family_SAFI_UNICAST},
+				Nlri:   nlri,
+				Pattrs: attr,
+			},
+		})
+		if err != nil {
+			klog.Errorf("add path failed, %v", err)
+			return err
+		}
 	}
 	return nil
 }
 
-func (c *Controller) getNlriAndAttrs(route string) (*anypb.Any, []*anypb.Any, error) {
-	neighborAddr := c.config.NeighborAddress
+func (c *Controller) getNlriAndAttrs(route string) (*anypb.Any, [][]*anypb.Any, error) {
+	neighborAddresses := c.config.NeighborAddresses
 	if util.CheckProtocol(route) == kubeovnv1.ProtocolIPv6 {
-		neighborAddr = c.config.NeighborIPv6Address
+		neighborAddresses = c.config.NeighborIPv6Addresses
 	}
 
 	prefix, prefixLen, err := parseRoute(route)
@@ -294,13 +295,18 @@ func (c *Controller) getNlriAndAttrs(route string) (*anypb.Any, []*anypb.Any, er
 		Prefix:    prefix,
 		PrefixLen: prefixLen,
 	})
-	a1, _ := anypb.New(&bgpapi.OriginAttribute{
-		Origin: 0,
-	})
-	a2, _ := anypb.New(&bgpapi.NextHopAttribute{
-		NextHop: getNextHopAttribute(neighborAddr, c.config.RouterID),
-	})
-	attrs := []*anypb.Any{a1, a2}
+
+	attrs := make([][]*anypb.Any, 0, len(neighborAddresses))
+	for _, addr := range neighborAddresses {
+		a1, _ := anypb.New(&bgpapi.OriginAttribute{
+			Origin: 0,
+		})
+		a2, _ := anypb.New(&bgpapi.NextHopAttribute{
+			NextHop: getNextHopAttribute(addr, c.config.RouterID),
+		})
+		attrs = append(attrs, []*anypb.Any{a1, a2})
+	}
+
 	return nlri, attrs, err
 }
 
@@ -314,16 +320,18 @@ func (c *Controller) delRoute(route string) error {
 	if err != nil {
 		return err
 	}
-	err = c.config.BgpServer.DeletePath(context.Background(), &bgpapi.DeletePathRequest{
-		Path: &bgpapi.Path{
-			Family: &bgpapi.Family{Afi: routeAfi, Safi: bgpapi.Family_SAFI_UNICAST},
-			Nlri:   nlri,
-			Pattrs: attrs,
-		},
-	})
-	if err != nil {
-		klog.Errorf("del path failed, %v", err)
-		return err
+	for _, attr := range attrs {
+		err = c.config.BgpServer.DeletePath(context.Background(), &bgpapi.DeletePathRequest{
+			Path: &bgpapi.Path{
+				Family: &bgpapi.Family{Afi: routeAfi, Safi: bgpapi.Family_SAFI_UNICAST},
+				Nlri:   nlri,
+				Pattrs: attr,
+			},
+		})
+		if err != nil {
+			klog.Errorf("del path failed, %v", err)
+			return err
+		}
 	}
 	return nil
 }
