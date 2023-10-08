@@ -264,6 +264,10 @@ spec:
                   type: string
                 subnet:
                   type: string
+                replicas:
+                  type: integer
+                  minimum: 1
+                  maximum: 3
             status:
               type: object
               properties:

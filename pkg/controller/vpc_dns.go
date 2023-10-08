@@ -277,6 +277,10 @@ func (c *Controller) createOrUpdateVpcDNSDep(vpcDNS *kubeovnv1.VpcDns) error {
 		return err
 	}
 
+	if vpcDNS.Spec.Replicas != 0 {
+		newDp.Spec.Replicas = &vpcDNS.Spec.Replicas
+	}
+
 	if needToCreateDp {
 		_, err := c.config.KubeClient.AppsV1().Deployments(c.config.PodNamespace).
 			Create(context.Background(), newDp, metav1.CreateOptions{})
