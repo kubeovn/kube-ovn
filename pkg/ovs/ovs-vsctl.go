@@ -28,7 +28,7 @@ func InitializeOVSVsctlLimiter(c int) {
 	}
 
 	limiter.Initialize(concurrency, time.Second)
-	klog.V(4).Infof("update ovs-vsctl concurrency limite to ", limiter.Limit())
+	klog.V(4).Infof("update ovs-vsctl concurrency limite to %d", limiter.Limit())
 }
 
 // Glory belongs to openvswitch/ovn-kubernetes
