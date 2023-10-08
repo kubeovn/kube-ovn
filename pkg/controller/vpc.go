@@ -569,8 +569,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 				sort.Strings(cachedVpc.Status.ExternalSubnets)
 			}
 			if !reflect.DeepEqual(cachedVpc.Spec.ExternalSubnets, cachedVpc.Status.ExternalSubnets) {
-				onlyInSpec := []string{}
-				onlyInStatus := []string{}
+				var err error
 				for _, subnetSpec := range cachedVpc.Spec.ExternalSubnets {
 					found := false
 					for _, subnetStatus := range cachedVpc.Status.ExternalSubnets {
@@ -580,7 +579,10 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 						}
 					}
 					if !found {
-						onlyInSpec = append(onlyInSpec, subnetSpec)
+						klog.Infof("connect %s network with vpc %s", subnetSpec, vpc.Name)
+						if err = c.handleAddVpcExternalSubnet(key, subnetSpec); err != nil {
+							klog.Errorf("failed to add %s connection for vpc %s, error %v", subnetSpec, key, err)
+						}
 					}
 				}
 				for _, subnetStatus := range cachedVpc.Status.ExternalSubnets {
@@ -592,20 +594,10 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 						}
 					}
 					if !found {
-						onlyInStatus = append(onlyInStatus, subnetStatus)
-					}
-				}
-				var err error
-				for _, subnet := range onlyInSpec {
-					klog.Infof("connect %s network with vpc %s", subnet, vpc.Name)
-					if err = c.handleAddVpcExternalSubnet(key, subnet); err != nil {
-						klog.Errorf("failed to add %s connection for vpc %s, error %v", subnet, key, err)
-					}
-				}
-				for _, subnet := range onlyInStatus {
-					klog.Infof("delete %s connection for vpc %s", subnet, vpc.Name)
-					if err = c.handleDelVpcExternalSubnet(vpc.Name, subnet); err != nil {
-						klog.Errorf("failed to delete %s connection for vpc %s, error %v", subnet, vpc.Name, err)
+						klog.Infof("delete %s connection for vpc %s", subnetStatus, vpc.Name)
+						if err = c.handleDelVpcExternalSubnet(vpc.Name, subnetStatus); err != nil {
+							klog.Errorf("failed to delete %s connection for vpc %s, error %v", subnetStatus, vpc.Name, err)
+						}
 					}
 				}
 				if err != nil {
