@@ -79,6 +79,7 @@ spec:
           - --enable-metrics={{- .Values.networking.ENABLE_METRICS }}
           - --kubelet-dir={{ .Values.kubelet_conf.KUBELET_DIR }}
           - --enable-tproxy={{ .Values.func.ENABLE_TPROXY }}
+          - --ovs-vsctl-concurrency={{ .Values.performance.OVS_VSCTL_CONCURRENCY }}
         securityContext:
           runAsUser: 0
           privileged: true
