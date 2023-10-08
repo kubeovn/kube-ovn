@@ -416,6 +416,19 @@ kind-init-bgp: kind-clean-bgp kind-init
 		-v $(CURDIR)/yamls/clab-bgp.yaml:/clab.yaml \
 		$(CLAB_IMAGE) clab deploy -t /clab.yaml
 
+.PHONY: kind-init-bgp-ha
+kind-init-bgp-ha: kind-clean-bgp kind-init
+	kube_ovn_version=$(VERSION) j2 yamls/clab-bgp-ha.yaml.j2 -o yamls/clab-bgp-ha.yaml
+	docker run --rm --privileged \
+		--name kube-ovn-bgp \
+		--network host \
+		-v /var/run/docker.sock:/var/run/docker.sock \
+		-v /var/run/netns:/var/run/netns \
+		-v /var/lib/docker/containers:/var/lib/docker/containers \
+		--pid=host \
+		-v $(CURDIR)/yamls/clab-bgp-ha.yaml:/clab.yaml \
+		$(CLAB_IMAGE) clab deploy -t /clab.yaml
+
 .PHONY: kind-load-image
 kind-load-image:
 	$(call kind_load_image,kube-ovn,$(REGISTRY)/kube-ovn:$(VERSION))
@@ -792,6 +805,20 @@ kind-install-bgp: kind-install
 		-e 's/--cluster-as=.*/--cluster-as=65002/' yamls/speaker.yaml | \
 		kubectl apply -f -
 	kubectl -n kube-system rollout status ds kube-ovn-speaker --timeout 60s
+	docker exec clab-bgp-router vtysh -c "show ip route bgp"
+
+.PHONY: kind-install-bgp-ha
+kind-install-bgp-ha: kind-install
+	kubectl label node --all ovn.kubernetes.io/bgp=true
+	kubectl annotate subnet ovn-default ovn.kubernetes.io/bgp=local
+	sed -e 's#image: .*#image: $(REGISTRY)/kube-ovn:$(VERSION)#' \
+		-e 's/--neighbor-address=.*/--neighbor-address=10.0.1.1,10.0.1.2/' \
+		-e 's/--neighbor-as=.*/--neighbor-as=65001/' \
+		-e 's/--cluster-as=.*/--cluster-as=65002/' yamls/speaker.yaml | \
+		kubectl apply -f -
+	kubectl -n kube-system rollout status ds kube-ovn-speaker --timeout 60s
+	docker exec clab-bgp-router-1 vtysh -c "show ip route bgp"
+	docker exec clab-bgp-router-2 vtysh -c "show ip route bgp"
 
 .PHONY: kind-install-deepflow
 kind-install-deepflow: kind-install
@@ -845,8 +872,7 @@ kind-clean-ovn-submariner: kind-clean
 	kind delete cluster --name=kube-ovn1
 
 .PHONY: kind-clean-bgp
-kind-clean-bgp:
-	$(call docker_rm_container,kube-ovn-bgp)
+kind-clean-bgp: kind-clean-bgp-ha
 	kube_ovn_version=$(VERSION) j2 yamls/clab-bgp.yaml.j2 -o yamls/clab-bgp.yaml
 	docker run --rm --privileged \
 		--name kube-ovn-bgp \
@@ -856,6 +882,20 @@ kind-clean-bgp:
 		-v /var/lib/docker/containers:/var/lib/docker/containers \
 		--pid=host \
 		-v $(CURDIR)/yamls/clab-bgp.yaml:/clab.yaml \
+		$(CLAB_IMAGE) clab destroy -t /clab.yaml
+	@$(MAKE) kind-clean
+
+.PHONY: kind-clean-bgp-ha
+kind-clean-bgp-ha:
+	kube_ovn_version=$(VERSION) j2 yamls/clab-bgp-ha.yaml.j2 -o yamls/clab-bgp-ha.yaml
+	docker run --rm --privileged \
+		--name kube-ovn-bgp \
+		--network host \
+		-v /var/run/docker.sock:/var/run/docker.sock \
+		-v /var/run/netns:/var/run/netns \
+		-v /var/lib/docker/containers:/var/lib/docker/containers \
+		--pid=host \
+		-v $(CURDIR)/yamls/clab-bgp-ha.yaml:/clab.yaml \
 		$(CLAB_IMAGE) clab destroy -t /clab.yaml
 	@$(MAKE) kind-clean
 
@@ -901,7 +941,8 @@ ipam-bench:
 .PHONY: clean
 clean:
 	$(RM) dist/images/kube-ovn dist/images/kube-ovn-cmd
-	$(RM) yamls/kind.yaml yamls/clab-bgp.yaml
+	$(RM) yamls/kind.yaml
+	$(RM) yamls/clab-bgp.yaml yamls/clab-bgp-ha.yaml
 	$(RM) ovn.yaml kube-ovn.yaml kube-ovn-crd.yaml
 	$(RM) ovn-ic-0.yaml ovn-ic-1.yaml
 	$(RM) kustomization.yaml kwok.yaml kwok-node.yaml
