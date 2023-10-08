@@ -193,12 +193,6 @@ func (c *Controller) handleAddOrUpdateVPCDNS(key string) error {
 		return err
 	}
 
-	if err := c.checkOvnDefaultSpecProvider(); err != nil {
-		err := fmt.Errorf("failed to check %s spec provider, %v", util.DefaultSubnet, err)
-		klog.Error(err)
-		return err
-	}
-
 	if err := c.checkVpcDNSDuplicated(vpcDNS); err != nil {
 		err = fmt.Errorf("failed to deploy %s, %v", vpcDNS.Name, err)
 		klog.Error(err)
@@ -490,20 +484,6 @@ func (c *Controller) checkOvnNad() error {
 	if err != nil {
 		klog.Error(err)
 		return err
-	}
-
-	return nil
-}
-
-func (c *Controller) checkOvnDefaultSpecProvider() error {
-	cachedSubnet, err := c.subnetsLister.Get(util.DefaultSubnet)
-	if err != nil {
-		klog.Error(err)
-		return fmt.Errorf("failed to get default subnet %v", err)
-	}
-
-	if cachedSubnet.Spec.Provider != nadProvider {
-		return fmt.Errorf("the %s provider does not exist", nadProvider)
 	}
 
 	return nil
