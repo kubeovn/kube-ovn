@@ -38,8 +38,6 @@ func CmdMain() {
 		util.LogFatalAndExit(err, "failed to do the OS initialization")
 	}
 
-	ovs.InitializeOVSVsctlLimiter(config.OVSVsctlConcurrency)
-
 	nicBridgeMappings, err := daemon.InitOVSBridges()
 	if err != nil {
 		util.LogFatalAndExit(err, "failed to initialize OVS bridges")
@@ -85,6 +83,8 @@ func CmdMain() {
 	if err := mvCNIConf(config.CniConfDir, config.CniConfFile, config.CniConfName); err != nil {
 		util.LogFatalAndExit(err, "failed to mv cni config file")
 	}
+
+	ovs.InitializeOVSVsctlLimiter(config.OVSVsctlConcurrency)
 
 	mux := http.NewServeMux()
 	if config.EnableMetrics {
