@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strings"
 	"time"
 
 	api "github.com/osrg/gobgp/v3/api"
@@ -52,6 +53,7 @@ type Configuration struct {
 	PassiveMode                 bool
 	EbgpMultihopTTL             uint8
 
+	NodeName       string
 	KubeConfigFile string
 	KubeClient     kubernetes.Interface
 	KubeOvnClient  clientset.Interface
@@ -75,6 +77,7 @@ func ParseFlags() (*Configuration, error) {
 		argAuthPassword                = pflag.String("auth-password", "", "bgp peer auth password")
 		argHoldTime                    = pflag.Duration("holdtime", DefaultBGPHoldtime, "ovn-speaker goes down abnormally, the local saving time of BGP route will be affected.Holdtime must be in the range 3s to 65536s. (default 90s)")
 		argPprofPort                   = pflag.Uint32("pprof-port", DefaultPprofPort, "The port to get profiling data, default: 10667")
+		argNodeName                    = pflag.String("node-name", os.Getenv(util.HostnameEnv), "Name of the node on which the speaker is running on.")
 		argKubeConfigFile              = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.")
 		argPassiveMode                 = pflag.BoolP("passivemode", "", false, "Set BGP Speaker to passive model,do not actively initiate connections to peers ")
 		argEbgpMultihopTTL             = pflag.Uint8("ebgp-multihop", DefaultEbgpMultiHop, "The TTL value of EBGP peer, default: 1")
@@ -126,6 +129,7 @@ func ParseFlags() (*Configuration, error) {
 		AuthPassword:                *argAuthPassword,
 		HoldTime:                    ht,
 		PprofPort:                   *argPprofPort,
+		NodeName:                    strings.ToLower(*argNodeName),
 		KubeConfigFile:              *argKubeConfigFile,
 		GracefulRestart:             *argGracefulRestart,
 		GracefulRestartDeferralTime: *argGracefulRestartDeferralTime,

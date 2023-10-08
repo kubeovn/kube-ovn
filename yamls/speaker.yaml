@@ -38,6 +38,10 @@ spec:
             - --neighbor-as=65030
             - --cluster-as=65000
           env:
+            - name: KUBE_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
             - name: POD_IP
               valueFrom:
                 fieldRef:

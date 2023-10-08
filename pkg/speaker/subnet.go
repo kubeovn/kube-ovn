@@ -22,6 +22,12 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
+const (
+	// "cluster" is the default policy
+	announcePolicyCluster = "cluster"
+	announcePolicyLocal   = "local"
+)
+
 func isPodAlive(p *v1.Pod) bool {
 	if p.Status.Phase == v1.PodSucceeded && p.Spec.RestartPolicy != v1.RestartPolicyAlways {
 		return false
@@ -74,23 +80,67 @@ func (c *Controller) syncSubnetRoutes() {
 		}
 	}
 
+	localSubnets := make(map[string]string, 2)
 	for _, subnet := range subnets {
-		if subnet.Status.IsReady() && subnet.Annotations != nil && subnet.Annotations[util.BgpAnnotation] == "true" {
+		if subnet.Status.IsReady() && subnet.Annotations != nil {
 			ips := strings.Split(subnet.Spec.CIDRBlock, ",")
-			for _, cidr := range ips {
-				ipFamily := util.CheckProtocol(cidr)
-				bgpExpected[ipFamily] = append(bgpExpected[ipFamily], cidr)
+			policy := subnet.Annotations[util.BgpAnnotation]
+			if policy == "" {
+				continue
+			}
+
+			switch policy {
+			case "true":
+				fallthrough
+			case announcePolicyCluster:
+				for _, cidr := range ips {
+					ipFamily := util.CheckProtocol(cidr)
+					bgpExpected[ipFamily] = append(bgpExpected[ipFamily], cidr)
+				}
+			case announcePolicyLocal:
+				localSubnets[subnet.Name] = subnet.Spec.CIDRBlock
+			default:
+				klog.Warningf("invalid subnet annotation %s=%s", util.BgpAnnotation, policy)
 			}
 		}
 	}
 
 	for _, pod := range pods {
-		if isPodAlive(pod) && !pod.Spec.HostNetwork && pod.Annotations[util.BgpAnnotation] == "true" && pod.Status.PodIP != "" {
-			podIps := pod.Status.PodIPs
-			for _, podIP := range podIps {
-				ipFamily := util.CheckProtocol(podIP.IP)
-				bgpExpected[ipFamily] = append(bgpExpected[ipFamily], fmt.Sprintf("%s/%d", podIP.IP, maskMap[ipFamily]))
+		if pod.Spec.HostNetwork || pod.Status.PodIP == "" || len(pod.Annotations) == 0 || !isPodAlive(pod) {
+			continue
+		}
+
+		ips := make(map[string]string, 2)
+		if policy := pod.Annotations[util.BgpAnnotation]; policy != "" {
+			switch policy {
+			case "true":
+				fallthrough
+			case announcePolicyCluster:
+				for _, podIP := range pod.Status.PodIPs {
+					ips[util.CheckProtocol(podIP.IP)] = podIP.IP
+				}
+			case announcePolicyLocal:
+				if pod.Spec.NodeName == c.config.NodeName {
+					for _, podIP := range pod.Status.PodIPs {
+						ips[util.CheckProtocol(podIP.IP)] = podIP.IP
+					}
+				}
+			default:
+				klog.Warningf("invalid pod annotation %s=%s", util.BgpAnnotation, policy)
 			}
+		} else if pod.Spec.NodeName == c.config.NodeName {
+			cidrBlock := localSubnets[pod.Annotations[util.LogicalSwitchAnnotation]]
+			if cidrBlock != "" {
+				for _, podIP := range pod.Status.PodIPs {
+					if util.CIDRContainIP(cidrBlock, podIP.IP) {
+						ips[util.CheckProtocol(podIP.IP)] = podIP.IP
+					}
+				}
+			}
+		}
+
+		for ipFamily, ip := range ips {
+			bgpExpected[ipFamily] = append(bgpExpected[ipFamily], fmt.Sprintf("%s/%d", ip, maskMap[ipFamily]))
 		}
 	}
 
