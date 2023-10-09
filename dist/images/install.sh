@@ -1760,7 +1760,7 @@ spec:
                   items:
                     type: string
                   type: array
-                externalSubnets:
+                addExternalSubnets:
                   items:
                     type: string
                   type: array
@@ -1839,7 +1839,7 @@ spec:
                   items:
                     type: string
                   type: array
-                externalSubnets:
+                addExternalSubnets:
                   items:
                     type: string
                   type: array
