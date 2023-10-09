@@ -1111,23 +1111,8 @@ func (c *Controller) handleAddVpcExternalSubnet(key string, subnet string) error
 		klog.Errorf("failed to list nodes, %v", err)
 		return err
 	}
-	if nodes == nil {
-		err := fmt.Errorf("failed to get chassis nodes, there is no labeled gw node")
-		klog.Error(err)
-		return err
-	}
-	gwNodes := make([]string, 0, len(nodes))
-	for _, node := range nodes {
-		gwNodes = append(gwNodes, node.Name)
-	}
-	for _, gw := range gwNodes {
-		gw = strings.TrimSpace(gw)
-		cachedNode, err := c.nodesLister.Get(gw)
-		if err != nil {
-			klog.Errorf("failed to get gw node %s, %v", gw, err)
-			return err
-		}
-		node := cachedNode.DeepCopy()
+	for _, gw := range nodes {
+		node := gw.DeepCopy()
 		annoChassisName := node.Annotations[util.ChassisAnnotation]
 		if annoChassisName == "" {
 			err := fmt.Errorf("node %s has no chassis annotation, kube-ovn-cni not ready", gw)
@@ -1141,6 +1126,11 @@ func (c *Controller) handleAddVpcExternalSubnet(key string, subnet string) error
 			return err
 		}
 		chassises = append(chassises, chassis.Name)
+	}
+
+	if len(chassises) == 0 {
+		err := fmt.Errorf("failed to get chassis, no node is labeled")
+		return err
 	}
 
 	v4ipCidr := util.GetIPAddrWithMask(v4ip, cachedSubnet.Spec.CIDRBlock)
