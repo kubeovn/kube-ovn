@@ -76,7 +76,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 	var skip bool
 	var itFn func(bool)
 	var cs clientset.Interface
-	var nodeNames []string
+	var nodeNames, gwNodeNames, providerBridgeIps []string
 	var clusterName, providerNetworkName, vlanName, underlaySubnetName, noBfdVpcName, bfdVpcName, noBfdSubnetName, bfdSubnetName string
 	var linkMap map[string]*iproute.Link
 	var providerNetworkClient *framework.ProviderNetworkClient
@@ -99,6 +99,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 	var image string
 
 	var sharedVipName, sharedEipName, sharedEipDnatName, sharedEipSnatName, sharedEipFipShoudOkName, sharedEipFipShoudFailName string
+	var fipPodName, podEipName, podFipName string
 
 	ginkgo.BeforeEach(func() {
 		cs = f.ClientSet
@@ -116,6 +117,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		podClient = f.PodClient()
 
 		namespaceName = f.Namespace.Name
+		gwNodeNum := 2
 		noBfdVpcName = "no-bfd-vpc-" + framework.RandomSuffix()
 		bfdVpcName = "bfd-vpc-" + framework.RandomSuffix()
 
@@ -148,6 +150,11 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		sharedEipSnatName = "shared-eip-snat-" + framework.RandomSuffix()
 		sharedEipFipShoudOkName = "shared-eip-fip-should-ok-" + framework.RandomSuffix()
 		sharedEipFipShoudFailName = "shared-eip-fip-should-fail-" + framework.RandomSuffix()
+
+		// pod with fip
+		fipPodName = "fip-pod-" + framework.RandomSuffix()
+		podEipName = fipPodName
+		podFipName = fipPodName
 
 		containerID = ""
 		if image == "" {
@@ -193,12 +200,13 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 
 		linkMap = make(map[string]*iproute.Link, len(nodes))
 		nodeNames = make([]string, 0, len(nodes))
-		// node ext gw ovn eip name is the same as node name in this scenario
+		gwNodeNames = make([]string, 0, gwNodeNum)
+		providerBridgeIps = make([]string, 0, len(nodes))
 
-		for _, node := range nodes {
+		// node ext gw ovn eip name is the same as node name in this scenario
+		for index, node := range nodes {
 			links, err := node.ListLinks()
 			framework.ExpectNoError(err, "failed to list links on node %s: %v", node.Name(), err)
-
 			for _, link := range links {
 				if link.Address == node.NetworkSettings.Networks[dockerNetworkName].MacAddress {
 					linkMap[node.ID] = &link
@@ -208,6 +216,9 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 			framework.ExpectHaveKey(linkMap, node.ID)
 			linkMap[node.Name()] = linkMap[node.ID]
 			nodeNames = append(nodeNames, node.Name())
+			if index < 2 {
+				gwNodeNames = append(gwNodeNames, node.Name())
+			}
 		}
 
 		itFn = func(exchangeLinkName bool) {
@@ -274,6 +285,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 				framework.ExpectNotNil(bridge)
 				framework.ExpectEqual(bridge.LinkInfo.InfoKind, "openvswitch")
 				framework.ExpectEqual(bridge.Address, port.Address)
+				providerBridgeIps = append(providerBridgeIps, bridge.Address)
 				framework.ExpectEqual(bridge.Mtu, port.Mtu)
 				framework.ExpectEqual(bridge.OperState, "UNKNOWN")
 				framework.ExpectContainElement(bridge.Flags, "UP")
@@ -364,7 +376,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		}
 	})
 
-	framework.ConformanceIt("ovn eip fip snat dnat", func() {
+	framework.ConformanceIt("Test ovn eip fip snat dnat", func() {
 		ginkgo.By("Getting docker network " + dockerNetworkName)
 		network, err := docker.NetworkInspect(dockerNetworkName)
 		framework.ExpectNoError(err, "getting docker network "+dockerNetworkName)
@@ -411,7 +423,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		framework.ExpectEqual(vlanSubnet.Spec.Vlan, vlanName)
 		framework.ExpectNotEqual(vlanSubnet.Spec.CIDRBlock, "")
 
-		externalGwNodes := strings.Join(nodeNames, ",")
+		externalGwNodes := strings.Join(gwNodeNames, ",")
 		ginkgo.By("Creating config map ovn-external-gw-config for centralized case")
 		cmData := map[string]string{
 			"enable-external-gw": "true",
@@ -430,17 +442,40 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		_, err = cs.CoreV1().ConfigMaps(framework.KubeOvnNamespace).Create(context.Background(), configMap, metav1.CreateOptions{})
 		framework.ExpectNoError(err, "failed to create")
 
-		ginkgo.By("1. Creating custom vpc enable external no bfd")
+		ginkgo.By("1. Test custom vpc using centralized external gw")
 		noBfdSubnetV4Cidr := "192.168.0.0/24"
 		noBfdSubnetV4Gw := "192.168.0.1"
 		enableExternal := true
 		disableBfd := false
 		noBfdVpc := framework.MakeVpc(noBfdVpcName, "", enableExternal, disableBfd, nil)
 		_ = vpcClient.CreateSync(noBfdVpc)
-		ginkgo.By("Creating overlay subnet enable ecmp")
+		ginkgo.By("Creating overlay subnet " + noBfdSubnetName)
 		noBfdSubnet := framework.MakeSubnet(noBfdSubnetName, "", noBfdSubnetV4Cidr, noBfdSubnetV4Gw, noBfdVpcName, util.OvnProvider, nil, nil, nil)
 		_ = subnetClient.CreateSync(noBfdSubnet)
+		ginkgo.By("Creating pod on nodes")
+		for _, node := range nodeNames {
+			// create pod on gw node and worker node
+			podOnNodeName := fmt.Sprintf("no-bfd-%s", node)
+			ginkgo.By("Creating no bfd pod " + podOnNodeName + " with subnet " + noBfdSubnetName)
+			annotations := map[string]string{util.LogicalSwitchAnnotation: noBfdSubnetName}
+			cmd := []string{"sh", "-c", "sleep infinity"}
+			pod := framework.MakePod(namespaceName, podOnNodeName, nil, annotations, image, cmd, nil)
+			pod.Spec.NodeName = node
+			_ = podClient.CreateSync(pod)
+		}
 
+		ginkgo.By("Creating pod with fip")
+		annotations := map[string]string{util.LogicalSwitchAnnotation: noBfdSubnetName}
+		cmd := []string{"sh", "-c", "sleep infinity"}
+		fipPod := framework.MakePod(namespaceName, fipPodName, nil, annotations, image, cmd, nil)
+		fipPod = podClient.CreateSync(fipPod)
+		podEip := framework.MakeOvnEip(podEipName, underlaySubnetName, "", "", "", "")
+		_ = ovnEipClient.CreateSync(podEip)
+		fipPodIp := ovs.PodNameToPortName(fipPod.Name, fipPod.Namespace, noBfdSubnet.Spec.Provider)
+		podFip := framework.MakeOvnFip(podFipName, podEipName, "", fipPodIp)
+		podFip = ovnFipClient.CreateSync(podFip)
+
+		ginkgo.By("1.1 Test fip dnat snat share eip by by setting eip name and ip name")
 		// share eip case
 		ginkgo.By("Creating share vip")
 		shareVip := framework.MakeVip(sharedVipName, noBfdSubnetName, "", "", "")
@@ -493,7 +528,47 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 			framework.ExpectContainSubstring(vlanSubnetGw, route.NextHopIP)
 		}
 
-		ginkgo.By("2. Creating custom vpc enable external and bfd")
+		ginkgo.By("1.2 Test snat fip external connectivity")
+		noBfdlrpEipName := fmt.Sprintf("%s-%s", noBfdVpcName, underlaySubnetName)
+		noBfdLrpEip := ovnEipClient.Get(noBfdlrpEipName)
+		for _, node := range nodeNames {
+			// all the pods should ping lrp, node br-external ip successfully
+			podOnNodeName := fmt.Sprintf("no-bfd-%s", node)
+			pod := podClient.GetPod(podOnNodeName)
+			ginkgo.By("Test pod ping lrp eip " + noBfdlrpEipName)
+			command := fmt.Sprintf("ping -t 1 -c 1 %s", noBfdLrpEip.Status.V4Ip)
+			stdOutput, errOutput, err := framework.ExecShellInPod(context.Background(), f, pod.Namespace, pod.Name, command)
+			framework.Logf("output from exec on client pod %s dest lrp ip %s\n", pod.Name, noBfdLrpEip.Name)
+			if stdOutput != "" && err == nil {
+				framework.Logf("output:\n%s", stdOutput)
+			}
+			framework.Logf("exec %s failed err: %v, errOutput: %s, stdOutput: %s", command, err, errOutput, stdOutput)
+
+			ginkgo.By("Test pod ping pod fip " + podFip.Status.V4Ip)
+			command = fmt.Sprintf("ping -t 1 -c 1 %s", podFip.Status.V4Ip)
+			stdOutput, errOutput, err = framework.ExecShellInPod(context.Background(), f, pod.Namespace, pod.Name, command)
+			framework.Logf("output from exec on client pod %s dst fip %s\n", pod.Name, noBfdLrpEip.Name)
+			if stdOutput != "" && err == nil {
+				framework.Logf("output:\n%s", stdOutput)
+			}
+			framework.Logf("exec %s failed err: %v, errOutput: %s, stdOutput: %s", command, err, errOutput, stdOutput)
+
+			ginkgo.By("Test pod ping node provider bridge ip " + strings.Join(providerBridgeIps, ","))
+			for _, ip := range providerBridgeIps {
+				command := fmt.Sprintf("ping -t 1 -c 1 %s", ip)
+				stdOutput, errOutput, err = framework.ExecShellInPod(context.Background(), f, pod.Namespace, pod.Name, command)
+				framework.Logf("output from exec on client pod %s dest node ip %s\n", pod.Name, ip)
+				if stdOutput != "" && err == nil {
+					framework.Logf("output:\n%s", stdOutput)
+				}
+			}
+			framework.Logf("exec %s failed err: %v, errOutput: %s, stdOutput: %s", command, err, errOutput, stdOutput)
+		}
+
+		ginkgo.By("2. Test custom vpc nat traditonal mode")
+		ginkgo.By("2.1 Test fip dnat snat by setting eip name and ip or ip cidr")
+
+		ginkgo.By("3. Test custom vpc with bfd route, subnet, nats, pods")
 		for _, nodeName := range nodeNames {
 			ginkgo.By("Creating ovn node-ext-gw type eip on node " + nodeName)
 			eip := makeOvnEip(nodeName, underlaySubnetName, "", "", "", util.Lsp)
@@ -538,7 +613,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		ginkgo.By("Creating ovn eip " + snatEipName)
 		snatEip := makeOvnEip(snatEipName, underlaySubnetName, "", "", "", "")
 		_ = ovnEipClient.CreateSync(snatEip)
-		ginkgo.By("Creating ovn snat" + snatName)
+		ginkgo.By("Creating ovn snat reuse lrp eip" + snatName)
 		snat := makeOvnSnat(snatName, snatEipName, bfdSubnetName, "")
 		_ = ovnSnatRuleClient.CreateSync(snat)
 
@@ -566,14 +641,19 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 			framework.ExpectEqual(route.Policy, kubeovnv1.PolicySrc)
 			framework.ExpectNotEmpty(route.CIDR)
 		}
-		k8sNodes, err = e2enode.GetReadySchedulableNodes(context.Background(), cs)
-		framework.ExpectNoError(err)
-		for _, node := range k8sNodes.Items {
-			ginkgo.By("Deleting ovn eip " + node.Name)
-			ovnEipClient.DeleteSync(node.Name)
-		}
 
-		ginkgo.By("2. Updating config map ovn-external-gw-config for distributed case")
+		for _, node := range nodeNames {
+			podOnNodeName := fmt.Sprintf("bfd-%s", node)
+			ginkgo.By("Creating bfd pod " + podOnNodeName + " with subnet " + bfdSubnetName)
+			annotations := map[string]string{util.LogicalSwitchAnnotation: bfdSubnetName}
+			cmd := []string{"sh", "-c", "sleep infinity"}
+			pod := framework.MakePod(namespaceName, podOnNodeName, nil, annotations, image, cmd, nil)
+			pod.Spec.NodeName = node
+			_ = podClient.CreateSync(pod)
+		}
+		// TODO:// pod should ping vpc lrp ip successfully
+
+		ginkgo.By("3. Updating config map ovn-external-gw-config for distributed case")
 		cmData = map[string]string{
 			"enable-external-gw": "true",
 			"external-gw-nodes":  externalGwNodes,
@@ -596,19 +676,11 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		nodes, err := kind.ListNodes(clusterName, "")
 		framework.ExpectNoError(err, "getting nodes in kind cluster")
 		framework.ExpectNotEmpty(nodes)
-		ginkgo.By("Creating crd in distributed case")
+		ginkgo.By("4. Creating crd in distributed case")
 		for _, node := range nodeNames {
-			podOnNodeName := fmt.Sprintf("on-node-%s", node)
+			podOnNodeName := fmt.Sprintf("bfd-%s", node)
 			eipOnNodeName := fmt.Sprintf("eip-on-node-%s", node)
 			fipOnNodeName := fmt.Sprintf("fip-on-node-%s", node)
-			ginkgo.By("Creating pod " + podOnNodeName + " with subnet " + bfdSubnetName)
-			annotations := map[string]string{util.LogicalSwitchAnnotation: bfdSubnetName}
-			cmd := []string{"sh", "-c", "sleep infinity"}
-			pod := framework.MakePod(namespaceName, podOnNodeName, nil, annotations, image, cmd, nil)
-			pod.Spec.NodeName = node
-			_ = podClient.CreateSync(pod)
-			// create fip in distributed case
-			// for now, vip has no lsp, so not support in distributed case
 			ipName := ovs.PodNameToPortName(podOnNodeName, namespaceName, bfdSubnet.Spec.Provider)
 			ginkgo.By("Get pod ip" + ipName)
 			ip := ipClient.Get(ipName)
@@ -620,8 +692,22 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 			_ = ovnFipClient.CreateSync(fip)
 		}
 
-		ginkgo.By("Deleting crd in distributed case")
+		// wait here to have an insight into all the ovn nat resources
+		ginkgo.By("4. Deleting pod")
 		for _, node := range nodeNames {
+			podOnNodeName := fmt.Sprintf("bfd-%s", node)
+			ginkgo.By("Deleting pod " + podOnNodeName)
+			podClient.DeleteSync(podOnNodeName)
+			podOnNodeName = fmt.Sprintf("no-bfd-%s", node)
+			ginkgo.By("Deleting pod " + podOnNodeName)
+			podClient.DeleteSync(podOnNodeName)
+
+		}
+
+		ginkgo.By("5. Deleting crd in distributed case")
+		for _, node := range nodeNames {
+			ginkgo.By("Deleting node external gw ovn eip " + node)
+			ovnEipClient.DeleteSync(node)
 			podOnNodeName := fmt.Sprintf("on-node-%s", node)
 			eipOnNodeName := fmt.Sprintf("eip-on-node-%s", node)
 			fipOnNodeName := fmt.Sprintf("fip-on-node-%s", node)
