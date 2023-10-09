@@ -12,6 +12,7 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
 	ctrlwebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
@@ -162,14 +163,14 @@ func (v *ValidatingHook) validateIP(ctx context.Context, annotations map[string]
 	if err := v.cache.List(ctx, ipList); err != nil {
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
-	if err := v.validateIPConflict(annotations, name, ipList.Items); err != nil {
+	if err := v.validateIPConflict(ctx, annotations, name, ipList.Items); err != nil {
 		return ctrlwebhook.Denied(err.Error())
 	}
 
 	return ctrlwebhook.Allowed("by pass")
 }
 
-func (v *ValidatingHook) validateIPConflict(annotations map[string]string, name string, ipList []ovnv1.IP) error {
+func (v *ValidatingHook) validateIPConflict(ctx context.Context, annotations map[string]string, name string, ipList []ovnv1.IP) error {
 	annoSubnet := annotations[util.LogicalSwitchAnnotation]
 	if annotations[util.LogicalSwitchAnnotation] == "" {
 		annoSubnet = util.DefaultSubnet
@@ -183,7 +184,12 @@ func (v *ValidatingHook) validateIPConflict(annotations map[string]string, name 
 
 	ipPool := annotations[util.IPPoolAnnotation]
 	if ipPool != "" {
-		if err := v.checkIPConflict(ipPool, annoSubnet, name, ipList); err != nil {
+		if !strings.ContainsRune(ipPool, ',') && net.ParseIP(ipPool) == nil {
+			pool := &ovnv1.IPPool{}
+			if err := v.cache.Get(ctx, types.NamespacedName{Name: ipPool}, pool); err != nil {
+				return fmt.Errorf("ippool %q not found", ipPool)
+			}
+		} else if err := v.checkIPConflict(ipPool, annoSubnet, name, ipList); err != nil {
 			return err
 		}
 	}
@@ -197,6 +203,9 @@ func (v *ValidatingHook) checkIPConflict(ipAddress, annoSubnet, name string, ipL
 			ipAddr, _, _ = net.ParseCIDR(ip)
 		} else {
 			ipAddr = net.ParseIP(strings.TrimSpace(ip))
+		}
+		if ipAddr == nil {
+			return fmt.Errorf("invalid static ip/ippool annotation value: %s", ipAddress)
 		}
 
 		for _, ipCr := range ipList {
