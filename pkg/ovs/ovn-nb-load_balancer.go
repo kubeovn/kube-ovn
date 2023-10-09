@@ -510,7 +510,7 @@ func (c *OVNNbClient) LoadBalancerUpdateIPPortMapping(lbName, vipEndpoint string
 }
 
 // LoadBalancerAddHealthCheck adds health check
-func (c *OVNNbClient) LoadBalancerAddHealthCheck(lbName, vipEndpoint string, ignoreHealthCheck bool, ipPortMapping map[string]string) error {
+func (c *OVNNbClient) LoadBalancerAddHealthCheck(lbName, vipEndpoint string, ignoreHealthCheck bool, ipPortMapping, externals map[string]string) error {
 	klog.Infof("lb %s health check use ip port mapping %v", lbName, ipPortMapping)
 	if err := c.LoadBalancerUpdateIPPortMapping(lbName, vipEndpoint, ipPortMapping); err != nil {
 		klog.Errorf("failed to update lb ip port mapping: %v", err)
@@ -518,7 +518,7 @@ func (c *OVNNbClient) LoadBalancerAddHealthCheck(lbName, vipEndpoint string, ign
 	}
 	if !ignoreHealthCheck {
 		klog.Infof("add health check for lb %s with vip %s and health check vip maps %v", lbName, vipEndpoint, ipPortMapping)
-		if err := c.AddLoadBalancerHealthCheck(lbName, vipEndpoint); err != nil {
+		if err := c.AddLoadBalancerHealthCheck(lbName, vipEndpoint, externals); err != nil {
 			klog.Errorf("failed to create lb health check: %v", err)
 			return err
 		}

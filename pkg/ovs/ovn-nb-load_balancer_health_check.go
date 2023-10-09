@@ -14,8 +14,8 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 )
 
-func (c *OVNNbClient) AddLoadBalancerHealthCheck(lbName, vipEndpoint string) error {
-	lbhc, err := c.newLoadBalancerHealthCheck(lbName, vipEndpoint)
+func (c *OVNNbClient) AddLoadBalancerHealthCheck(lbName, vipEndpoint string, externals map[string]string) error {
+	lbhc, err := c.newLoadBalancerHealthCheck(lbName, vipEndpoint, externals)
 	if err != nil {
 		err := fmt.Errorf("failed to new lb health check: %v", err)
 		klog.Error(err)
@@ -26,7 +26,7 @@ func (c *OVNNbClient) AddLoadBalancerHealthCheck(lbName, vipEndpoint string) err
 }
 
 // newLoadBalancerHealthCheck return hc with basic information
-func (c *OVNNbClient) newLoadBalancerHealthCheck(lbName, vipEndpoint string) (*ovnnb.LoadBalancerHealthCheck, error) {
+func (c *OVNNbClient) newLoadBalancerHealthCheck(lbName, vipEndpoint string, externals map[string]string) (*ovnnb.LoadBalancerHealthCheck, error) {
 	if len(lbName) == 0 {
 		err := fmt.Errorf("the lb name is required")
 		klog.Error(err)
@@ -57,7 +57,8 @@ func (c *OVNNbClient) newLoadBalancerHealthCheck(lbName, vipEndpoint string) (*o
 	klog.Infof("create health check for vip endpoint %s in lb %s ", vipEndpoint, lbName)
 
 	return &ovnnb.LoadBalancerHealthCheck{
-		UUID: ovsclient.NamedUUID(),
+		UUID:        ovsclient.NamedUUID(),
+		ExternalIDs: externals,
 		Options: map[string]string{
 			"timeout":       "20",
 			"interval":      "5",

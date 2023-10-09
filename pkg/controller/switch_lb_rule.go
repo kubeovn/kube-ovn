@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"strconv"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
@@ -16,6 +17,7 @@ import (
 	"k8s.io/klog/v2"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -23,6 +25,7 @@ type SlrInfo struct {
 	Name       string
 	Namespace  string
 	IsRecreate bool
+	Vips       []string
 }
 
 func generateSvcName(name string) string {
@@ -30,10 +33,30 @@ func generateSvcName(name string) string {
 }
 
 func NewSlrInfo(slr *kubeovnv1.SwitchLBRule) *SlrInfo {
+	var (
+		vips      []string
+		namespace string
+	)
+
+	if namespace = slr.Spec.Namespace; namespace == "" {
+		namespace = "default"
+	}
+
+	for _, port := range slr.Spec.Ports {
+		vips = append(
+			vips,
+			strings.Join(
+				[]string{slr.Spec.Vip, strconv.Itoa(int(port.Port))},
+				":",
+			),
+		)
+	}
+
 	return &SlrInfo{
 		Name:       slr.Name,
-		Namespace:  slr.Spec.Namespace,
+		Namespace:  namespace,
 		IsRecreate: false,
+		Vips:       vips,
 	}
 }
 
@@ -234,6 +257,79 @@ func (c *Controller) handleDelSwitchLBRule(info *SlrInfo) error {
 		klog.Errorf("failed to delete service %s,err: %v", name, err)
 		return err
 	}
+
+	lbhcs, err := c.OVNNbClient.ListLoadBalancerHealthChecks(
+		func(lbhc *ovnnb.LoadBalancerHealthCheck) bool {
+			return util.ContainsString(info.Vips, lbhc.Vip)
+		},
+	)
+	if err != nil && !k8serrors.IsNotFound(err) {
+		klog.Errorf("failed to list load balancer health checks %s,err: %v", info.Vips, err)
+		return err
+	}
+
+	vips := make(map[string]struct{})
+
+	for _, lbhc := range lbhcs {
+		lbs, err := c.OVNNbClient.ListLoadBalancers(
+			func(lb *ovnnb.LoadBalancer) bool {
+				return util.ContainsString(lb.HealthCheck, lbhc.UUID)
+			},
+		)
+		if err != nil && !k8serrors.IsNotFound(err) {
+			klog.Errorf("failed to list load balancer %s,err: %v", lbhc.Vip, err)
+			return err
+		}
+
+		for _, lb := range lbs {
+			err = c.OVNNbClient.LoadBalancerDeleteHealthCheck(lb.Name, lbhc.UUID)
+			if err != nil && !k8serrors.IsNotFound(err) {
+				klog.Errorf("failed to delete load balancer health checks health checks %s from load balancer %s ,err: %v", lbhc.Vip, lb.Name, err)
+				return err
+			}
+
+			err = c.OVNNbClient.LoadBalancerDeleteIPPortMapping(lb.Name, lbhc.Vip)
+			if err != nil && !k8serrors.IsNotFound(err) {
+				klog.Errorf("failed to delete ip port mappings %s from load balancer %s ,err: %v", lbhc.Vip, lb.Name, err)
+				return err
+			}
+		}
+
+		if vip, ex := lbhc.ExternalIDs[util.SwitchLBRuleSubnet]; ex && vip != "" {
+			vips[vip] = struct{}{}
+		}
+	}
+
+	err = c.OVNNbClient.DeleteLoadBalancerHealthChecks(
+		func(lbhc *ovnnb.LoadBalancerHealthCheck) bool {
+			return util.ContainsString(info.Vips, lbhc.Vip)
+		},
+	)
+	if err != nil && !k8serrors.IsNotFound(err) {
+		klog.Errorf("delete load balancer health checks %s,err: %v", info.Vips, err)
+		return err
+	}
+
+	for vip := range vips {
+		lbhcs, err = c.OVNNbClient.ListLoadBalancerHealthChecks(
+			func(lbhc *ovnnb.LoadBalancerHealthCheck) bool {
+				return lbhc.ExternalIDs[util.SwitchLBRuleSubnet] == vip
+			},
+		)
+		if err != nil && !k8serrors.IsNotFound(err) {
+			klog.Errorf("failed to list load balancer ,err: %v", err)
+			return err
+		}
+
+		if len(lbhcs) == 0 {
+			err = c.config.KubeOvnClient.KubeovnV1().Vips().Delete(context.Background(), vip, metav1.DeleteOptions{})
+			if err != nil {
+				klog.Errorf("failed to delete vip %s for load balancer health check ,err: %v", vip, err)
+				return err
+			}
+		}
+	}
+
 	return nil
 }
 

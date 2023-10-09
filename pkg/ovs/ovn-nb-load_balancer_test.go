@@ -752,7 +752,7 @@ func (suite *OvnClientTestSuite) testLoadBalancerWithHealthCheck() {
 	vip = "10.96.0.6:443"
 	t.Run("add new health check to load balancer",
 		func(t *testing.T) {
-			err = ovnClient.AddLoadBalancerHealthCheck(lbName, vip)
+			err = ovnClient.AddLoadBalancerHealthCheck(lbName, vip, map[string]string{})
 			require.NoError(t, err)
 
 			lb, err = ovnClient.GetLoadBalancer(lbName, false)
@@ -766,7 +766,7 @@ func (suite *OvnClientTestSuite) testLoadBalancerWithHealthCheck() {
 
 	t.Run("add new health check to load balancer repeatedly",
 		func(t *testing.T) {
-			err = ovnClient.AddLoadBalancerHealthCheck(lbName, vip)
+			err = ovnClient.AddLoadBalancerHealthCheck(lbName, vip, map[string]string{})
 			require.NoError(t, err)
 			lb, err = ovnClient.GetLoadBalancer(lbName, false)
 			require.NoError(t, err)

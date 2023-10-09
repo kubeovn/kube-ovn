@@ -47,6 +47,7 @@ const (
 
 	SwitchLBRuleVipsAnnotation = "ovn.kubernetes.io/switch_lb_vip"
 	SwitchLBRuleVip            = "switch_lb_vip"
+	SwitchLBRuleSubnet         = "switch_lb_subnet"
 
 	LogicalRouterAnnotation = "ovn.kubernetes.io/logical_router"
 	VpcAnnotation           = "ovn.kubernetes.io/vpc"

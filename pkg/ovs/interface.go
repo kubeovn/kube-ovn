@@ -84,7 +84,7 @@ type LoadBalancer interface {
 	LoadBalancerAddIPPortMapping(lbName, vip string, ipPortMappings map[string]string) error
 	LoadBalancerUpdateIPPortMapping(lbName, vip string, ipPortMappings map[string]string) error
 	LoadBalancerDeleteIPPortMapping(lbName, vip string) error
-	LoadBalancerAddHealthCheck(lbName, vip string, ignoreHealthCheck bool, ipPortMapping map[string]string) error
+	LoadBalancerAddHealthCheck(lbName, vip string, ignoreHealthCheck bool, ipPortMapping, externals map[string]string) error
 	LoadBalancerDeleteHealthCheck(lbName, uuid string) error
 	SetLoadBalancerAffinityTimeout(lbName string, timeout int) error
 	DeleteLoadBalancers(filter func(lb *ovnnb.LoadBalancer) bool) error
@@ -94,7 +94,7 @@ type LoadBalancer interface {
 }
 
 type LoadBalancerHealthCheck interface {
-	AddLoadBalancerHealthCheck(lbName, vip string) error
+	AddLoadBalancerHealthCheck(lbName, vip string, externals map[string]string) error
 	CreateLoadBalancerHealthCheck(lbName, vip string, lbhc *ovnnb.LoadBalancerHealthCheck) error
 	DeleteLoadBalancerHealthCheck(lbName, vip string) error
 	DeleteLoadBalancerHealthChecks(filter func(lbhc *ovnnb.LoadBalancerHealthCheck) bool) error
@@ -181,6 +181,7 @@ type NbClient interface {
 	BFD
 	DHCPOptions
 	LoadBalancer
+	LoadBalancerHealthCheck
 	LogicalRouterPolicy
 	LogicalRouterPort
 	LogicalRouterStaticRoute

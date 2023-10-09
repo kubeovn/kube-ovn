@@ -134,9 +134,15 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 
 	if vip, ok = svc.Annotations[util.SwitchLBRuleVipsAnnotation]; ok {
 		lbVips = []string{vip}
-		// TODO: IPv6
-		if util.CheckProtocol(vip) == kubeovnv1.ProtocolIPv4 {
-			ignoreHealthCheck = false
+
+		for _, subset := range ep.Subsets {
+			for _, address := range subset.Addresses {
+				// TODO: IPv6
+				if util.CheckProtocol(vip) == kubeovnv1.ProtocolIPv4 &&
+					address.TargetRef.Name != "" {
+					ignoreHealthCheck = false
+				}
+			}
 		}
 	} else if lbVips = util.ServiceClusterIPs(*svc); len(lbVips) == 0 {
 		return nil
@@ -220,10 +226,10 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 			}
 
 			var (
-				checkVip      *kubeovnv1.Vip
-				vip, checkIP  string
-				backends      []string
-				ipPortMapping map[string]string
+				checkVip                 *kubeovnv1.Vip
+				vip, checkIP             string
+				backends                 []string
+				ipPortMapping, externals map[string]string
 			)
 			vip = util.JoinHostPort(lbVip, port.Port)
 
@@ -253,6 +259,10 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 					}
 				}
 
+				externals = map[string]string{
+					util.SwitchLBRuleSubnet: subnetName,
+				}
+
 				switch util.CheckProtocol(lbVip) {
 				case kubeovnv1.ProtocolIPv4:
 					checkIP = checkVip.Status.V4ip
@@ -277,7 +287,7 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 				}
 				if !ignoreHealthCheck && len(ipPortMapping) != 0 {
 					klog.Infof("add health check ip port mapping %v to LB %s", ipPortMapping, lb)
-					if err = c.OVNNbClient.LoadBalancerAddHealthCheck(lb, vip, ignoreHealthCheck, ipPortMapping); err != nil {
+					if err = c.OVNNbClient.LoadBalancerAddHealthCheck(lb, vip, ignoreHealthCheck, ipPortMapping, externals); err != nil {
 						klog.Errorf("failed to add health check for vip %s with ip port mapping %s to LB %s: %v", lbVip, ipPortMapping, lb, err)
 						return err
 					}
@@ -288,9 +298,10 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 					klog.Errorf("failed to delete vip endpoint %s from LB %s: %v", vip, lb, err)
 					return err
 				}
-				klog.V(3).Infof("delete vip endpoint %s from old LB %s", vip, lb)
+
+				klog.V(3).Infof("delete vip endpoint %s from old LB %s", vip, oldLb)
 				if err = c.OVNNbClient.LoadBalancerDeleteVip(oldLb, vip, ignoreHealthCheck); err != nil {
-					klog.Errorf("failed to delete vip %s from LB %s: %v", vip, lb, err)
+					klog.Errorf("failed to delete vip %s from LB %s: %v", vip, oldLb, err)
 					return err
 				}
 			}
@@ -299,7 +310,7 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 	return nil
 }
 
-func getIPPortMappingBackend(endpoints *v1.Endpoints, pods []*v1.Pod, servicePort v1.ServicePort, serviceIP, chekcVip string, ignoreHealthCheck bool) (map[string]string, []string) {
+func getIPPortMappingBackend(endpoints *v1.Endpoints, pods []*v1.Pod, servicePort v1.ServicePort, serviceIP, checkVip string, ignoreHealthCheck bool) (map[string]string, []string) {
 	var (
 		ipPortMapping = map[string]string{}
 		backends      = []string{}
@@ -319,9 +330,9 @@ func getIPPortMappingBackend(endpoints *v1.Endpoints, pods []*v1.Pod, servicePor
 		}
 
 		for _, address := range subset.Addresses {
-			if !ignoreHealthCheck && address.TargetRef != nil {
+			if !ignoreHealthCheck && address.TargetRef.Name != "" {
 				ipName := fmt.Sprintf("%s.%s", address.TargetRef.Name, endpoints.Namespace)
-				ipPortMapping[address.IP] = fmt.Sprintf(util.HealthCheckNamedVipTemplate, ipName, chekcVip)
+				ipPortMapping[address.IP] = fmt.Sprintf(util.HealthCheckNamedVipTemplate, ipName, checkVip)
 			}
 			if address.TargetRef == nil || address.TargetRef.Kind != "Pod" {
 				if util.CheckProtocol(address.IP) == protocol {
