@@ -571,40 +571,58 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 			if cachedVpc.Spec.AddExternalSubnets != nil {
 				sort.Strings(cachedVpc.Spec.AddExternalSubnets)
 			}
-			if cachedVpc.Status.AddExternalSubnets != nil {
-				sort.Strings(cachedVpc.Status.AddExternalSubnets)
-			}
 			if !reflect.DeepEqual(cachedVpc.Spec.AddExternalSubnets, cachedVpc.Status.AddExternalSubnets) {
 				var updateErr error
-				for _, subnetSpec := range cachedVpc.Spec.AddExternalSubnets {
-					found := false
-					for _, subnetStatus := range cachedVpc.Status.AddExternalSubnets {
-						if subnetSpec == subnetStatus {
-							found = true
-							break
-						}
-					}
-					if !found {
-						klog.Infof("connect %s network with vpc %s", subnetSpec, vpc.Name)
-						if err := c.handleAddVpcExternalSubnet(key, subnetSpec); err != nil {
+				if cachedVpc.Spec.AddExternalSubnets == nil {
+					for _, subnet := range cachedVpc.Status.AddExternalSubnets {
+						klog.Infof("delete %s connection for vpc %s", subnet, vpc.Name)
+						if err := c.handleDelVpcExternalSubnet(vpc.Name, subnet); err != nil {
 							updateErr = err
-							klog.Errorf("failed to add %s connection for vpc %s, error %v", subnetSpec, key, err)
+							klog.Errorf("failed to delete %s connection for vpc %s, error %v", subnet, vpc.Name, err)
 						}
 					}
-				}
-				for _, subnetStatus := range cachedVpc.Status.AddExternalSubnets {
-					found := false
-					for _, subnetSpec := range cachedVpc.Spec.AddExternalSubnets {
-						if subnetStatus == subnetSpec {
-							found = true
-							break
-						}
-					}
-					if !found {
-						klog.Infof("delete %s connection for vpc %s", subnetStatus, vpc.Name)
-						if err := c.handleDelVpcExternalSubnet(vpc.Name, subnetStatus); err != nil {
+				} else if cachedVpc.Status.AddExternalSubnets == nil {
+					for _, subnet := range cachedVpc.Spec.AddExternalSubnets {
+						klog.Infof("connect %s network with vpc %s", subnet, vpc.Name)
+						if err := c.handleAddVpcExternalSubnet(key, subnet); err != nil {
 							updateErr = err
-							klog.Errorf("failed to delete %s connection for vpc %s, error %v", subnetStatus, vpc.Name, err)
+							klog.Errorf("failed to add %s connection for vpc %s, error %v", subnet, key, err)
+						}
+					}
+				} else {
+					specPointer, statusPointer := 0, 0
+					for specPointer < len(cachedVpc.Spec.AddExternalSubnets) && statusPointer < len(cachedVpc.Status.AddExternalSubnets) {
+						if cachedVpc.Spec.AddExternalSubnets[specPointer] == cachedVpc.Status.AddExternalSubnets[statusPointer] {
+							specPointer++
+							statusPointer++
+						} else if cachedVpc.Spec.AddExternalSubnets[specPointer] < cachedVpc.Status.AddExternalSubnets[statusPointer] {
+							klog.Infof("connect %s network with vpc %s", cachedVpc.Spec.AddExternalSubnets[specPointer], vpc.Name)
+							if err := c.handleAddVpcExternalSubnet(key, cachedVpc.Spec.AddExternalSubnets[specPointer]); err != nil {
+								updateErr = err
+								klog.Errorf("failed to add %s connection for vpc %s, error %v", cachedVpc.Spec.AddExternalSubnets[specPointer], key, err)
+							}
+							specPointer++
+						} else {
+							klog.Infof("delete %s connection for vpc %s", cachedVpc.Status.AddExternalSubnets[statusPointer], vpc.Name)
+							if err := c.handleDelVpcExternalSubnet(vpc.Name, cachedVpc.Status.AddExternalSubnets[statusPointer]); err != nil {
+								updateErr = err
+								klog.Errorf("failed to delete %s connection for vpc %s, error %v", cachedVpc.Status.AddExternalSubnets[statusPointer], vpc.Name, err)
+							}
+							statusPointer++
+						}
+					}
+					for _, subnet := range cachedVpc.Spec.AddExternalSubnets[specPointer:] {
+						klog.Infof("connect %s network with vpc %s", subnet, vpc.Name)
+						if err := c.handleAddVpcExternalSubnet(key, subnet); err != nil {
+							updateErr = err
+							klog.Errorf("failed to add %s connection for vpc %s, error %v", subnet, key, err)
+						}
+					}
+					for _, subnet := range cachedVpc.Status.AddExternalSubnets[statusPointer:] {
+						klog.Infof("delete %s connection for vpc %s", subnet, vpc.Name)
+						if err := c.handleDelVpcExternalSubnet(vpc.Name, subnet); err != nil {
+							updateErr = err
+							klog.Errorf("failed to delete %s connection for vpc %s, error %v", subnet, vpc.Name, err)
 						}
 					}
 				}
