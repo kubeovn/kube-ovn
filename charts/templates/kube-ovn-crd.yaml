@@ -1222,6 +1222,10 @@ spec:
                   items:
                     type: string
                   type: array
+                addExternalSubnets:
+                  items:
+                    type: string
+                  type: array
                 staticRoutes:
                   items:
                     properties:
@@ -1294,6 +1298,10 @@ spec:
                 enableBfd:
                   type: boolean
                 subnets:
+                  items:
+                    type: string
+                  type: array
+                addExternalSubnets:
                   items:
                     type: string
                   type: array
