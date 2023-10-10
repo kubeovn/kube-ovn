@@ -121,23 +121,29 @@ func (c *Controller) handleDelVpc(vpc *kubeovnv1.Vpc) error {
 		return err
 	}
 
-	var err error
-	for _, subnet := range vpc.Status.AddExternalSubnets {
+	var delErr error
+	for _, subnet := range vpc.Spec.AddExternalSubnets {
 		klog.Infof("disconnect external network %s to vpc %s", subnet, vpc.Name)
-		err = c.handleDelVpcExternalSubnet(vpc.Name, subnet)
-		if err != nil {
+		if err := c.handleDelVpcExternalSubnet(vpc.Name, subnet); err != nil {
+			delErr = err
 			klog.Error(err)
 		}
 	}
-	if err != nil {
+	if delErr != nil {
+		delErr = fmt.Errorf("failed to delete additional external subnets for vpc %s", vpc.Name)
+		return delErr
+	}
+
+	if err := c.updateVpcAddExternalStatus(vpc.Name, false); err != nil {
+		klog.Error("failed to update additional external subnets status, %v", err)
 		return err
 	}
 
-	err = c.deleteVpcRouter(vpc.Status.Router)
-	if err != nil {
+	if err := c.deleteVpcRouter(vpc.Status.Router); err != nil {
 		klog.Error(err)
 		return err
 	}
+
 	return nil
 }
 
@@ -569,7 +575,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 				sort.Strings(cachedVpc.Status.AddExternalSubnets)
 			}
 			if !reflect.DeepEqual(cachedVpc.Spec.AddExternalSubnets, cachedVpc.Status.AddExternalSubnets) {
-				var err error
+				var updateErr error
 				for _, subnetSpec := range cachedVpc.Spec.AddExternalSubnets {
 					found := false
 					for _, subnetStatus := range cachedVpc.Status.AddExternalSubnets {
@@ -580,7 +586,8 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 					}
 					if !found {
 						klog.Infof("connect %s network with vpc %s", subnetSpec, vpc.Name)
-						if err = c.handleAddVpcExternalSubnet(key, subnetSpec); err != nil {
+						if err := c.handleAddVpcExternalSubnet(key, subnetSpec); err != nil {
+							updateErr = err
 							klog.Errorf("failed to add %s connection for vpc %s, error %v", subnetSpec, key, err)
 						}
 					}
@@ -595,13 +602,19 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 					}
 					if !found {
 						klog.Infof("delete %s connection for vpc %s", subnetStatus, vpc.Name)
-						if err = c.handleDelVpcExternalSubnet(vpc.Name, subnetStatus); err != nil {
+						if err := c.handleDelVpcExternalSubnet(vpc.Name, subnetStatus); err != nil {
+							updateErr = err
 							klog.Errorf("failed to delete %s connection for vpc %s, error %v", subnetStatus, vpc.Name, err)
 						}
 					}
 				}
-				if err != nil {
-					klog.Error("failed to update additional external subnets for vpc %s", key)
+				if updateErr != nil {
+					updateErr = fmt.Errorf("failed to update additional external subnets for vpc %s", key)
+					klog.Error(updateErr)
+					return updateErr
+				}
+				if err := c.updateVpcAddExternalStatus(key, true); err != nil {
+					klog.Error("failed to update additional external subnets status, %v", err)
 					return err
 				}
 			}
@@ -625,16 +638,24 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 				klog.Errorf("failed to delete external connection for vpc %s, error %v", key, err)
 				return err
 			}
+		}
+
+		if !cachedVpc.Spec.EnableExternal && (cachedVpc.Status.AddExternalSubnets != nil || cachedVpc.Spec.AddExternalSubnets != nil) {
 			// disconnect vpc to extra external subnets
-			var err error
-			for _, subnet := range cachedVpc.Status.AddExternalSubnets {
+			var delErr error
+			for _, subnet := range cachedVpc.Spec.AddExternalSubnets {
 				klog.Infof("disconnect external network %s to vpc %s", subnet, vpc.Name)
-				err = c.handleDelVpcExternalSubnet(key, subnet)
-				if err != nil {
+				if err := c.handleDelVpcExternalSubnet(key, subnet); err != nil {
+					delErr = err
 					klog.Error(err)
 				}
 			}
-			if err != nil {
+			if delErr != nil {
+				delErr = fmt.Errorf("failed to delete additional external subnets for vpc %s", key)
+				return delErr
+			}
+			if err := c.updateVpcAddExternalStatus(key, false); err != nil {
+				klog.Error("failed to update additional external subnets status, %v", err)
 				return err
 			}
 		}
@@ -1150,31 +1171,20 @@ func (c *Controller) handleAddVpcExternalSubnet(key string, subnet string) error
 		klog.Error("failed to get vpc %s, %v", key, err)
 		return err
 	}
-	vpc := cachedVpc.DeepCopy()
-	vpc.Status.EnableExternal = cachedVpc.Spec.EnableExternal
-	if subnet != c.config.ExternalGatewaySwitch {
-		needUpdate := true
-		for _, externalSubnet := range vpc.Status.AddExternalSubnets {
-			if externalSubnet == subnet {
-				needUpdate = false
-				break
-			}
+	if subnet == c.config.ExternalGatewaySwitch {
+		vpc := cachedVpc.DeepCopy()
+		vpc.Status.EnableExternal = cachedVpc.Spec.EnableExternal
+		bytes, err := vpc.Status.Bytes()
+		if err != nil {
+			klog.Errorf("failed to marshal vpc status: %v", err)
+			return err
 		}
-		if needUpdate {
-			klog.Info("update additional external subnets status, add subnet: ", subnet)
-			vpc.Status.AddExternalSubnets = append(vpc.Status.AddExternalSubnets, subnet)
+		if _, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Patch(context.Background(),
+			vpc.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
+			err := fmt.Errorf("failed to patch vpc %s status, %v", vpc.Name, err)
+			klog.Error(err)
+			return err
 		}
-	}
-	bytes, err := vpc.Status.Bytes()
-	if err != nil {
-		klog.Errorf("failed to marshal vpc status: %v", err)
-		return err
-	}
-	if _, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Patch(context.Background(),
-		vpc.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
-		err := fmt.Errorf("failed to patch vpc %s status, %v", vpc.Name, err)
-		klog.Error(err)
-		return err
 	}
 	if _, err = c.ovnEipsLister.Get(lrpEipName); err != nil {
 		err := fmt.Errorf("failed to get ovn eip %s, %v", lrpEipName, err)
@@ -1243,30 +1253,23 @@ func (c *Controller) handleDelVpcExternalSubnet(key string, subnet string) error
 		klog.Errorf("failed to get vpc %s, %v", key, err)
 		return err
 	}
-	vpc := cachedVpc.DeepCopy()
-	vpc.Status.EnableExternal = cachedVpc.Spec.EnableExternal
-	if subnet != c.config.ExternalGatewaySwitch {
-		for i, externalSubnet := range vpc.Status.AddExternalSubnets {
-			if externalSubnet == subnet {
-				klog.Info("update additional external subnets status, add subnet: ", subnet)
-				vpc.Status.AddExternalSubnets = append(vpc.Status.AddExternalSubnets[:i], vpc.Status.AddExternalSubnets[i+1:]...)
-				break
+	if subnet == c.config.ExternalGatewaySwitch {
+		vpc := cachedVpc.DeepCopy()
+		vpc.Status.EnableExternal = cachedVpc.Spec.EnableExternal
+		vpc.Status.EnableBfd = cachedVpc.Spec.EnableBfd
+		bytes, err := vpc.Status.Bytes()
+		if err != nil {
+			klog.Errorf("failed to marshal vpc status: %v", err)
+			return err
+		}
+		if _, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Patch(context.Background(),
+			vpc.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
+			if k8serrors.IsNotFound(err) {
+				return nil
 			}
+			klog.Errorf("failed to patch vpc %s, %v", key, err)
+			return err
 		}
-	}
-	vpc.Status.EnableBfd = cachedVpc.Spec.EnableBfd
-	bytes, err := vpc.Status.Bytes()
-	if err != nil {
-		klog.Errorf("failed to marshal vpc status: %v", err)
-		return err
-	}
-	if _, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Patch(context.Background(),
-		vpc.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
-		klog.Errorf("failed to patch vpc %s, %v", key, err)
-		return err
 	}
 	return nil
 }
@@ -1305,4 +1308,31 @@ func (c *Controller) getRouteTablesByVpc(vpc *kubeovnv1.Vpc) map[string][]*kubeo
 		rtbs[route.RouteTable] = append(rtbs[route.RouteTable], route)
 	}
 	return rtbs
+}
+
+func (c *Controller) updateVpcAddExternalStatus(key string, addExternalStatus bool) error {
+	cachedVpc, err := c.vpcsLister.Get(key)
+	if err != nil {
+		klog.Errorf("failed to get vpc %s, %v", key, err)
+		return err
+	}
+	vpc := cachedVpc.DeepCopy()
+	if addExternalStatus && vpc.Spec.AddExternalSubnets != nil {
+		sort.Strings(vpc.Spec.AddExternalSubnets)
+		vpc.Status.AddExternalSubnets = vpc.Spec.AddExternalSubnets
+	} else {
+		vpc.Status.AddExternalSubnets = nil
+	}
+	bytes, err := vpc.Status.Bytes()
+	if err != nil {
+		klog.Errorf("failed to get vpc bytes, %v", err)
+		return err
+	}
+	if _, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Patch(context.Background(),
+		vpc.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
+		klog.Errorf("failed to patch vpc %s, %v", key, err)
+		return err
+	}
+
+	return nil
 }
