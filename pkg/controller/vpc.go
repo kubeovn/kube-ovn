@@ -1053,7 +1053,7 @@ func (c *Controller) deleteVpcRouter(lr string) error {
 	return c.OVNNbClient.DeleteLogicalRouter(lr)
 }
 
-func (c *Controller) handleAddVpcExternalSubnet(key string, subnet string) error {
+func (c *Controller) handleAddVpcExternalSubnet(key, subnet string) error {
 	cachedSubnet, err := c.subnetsLister.Get(subnet)
 	if err != nil {
 		klog.Error(err)
@@ -1190,7 +1190,7 @@ func (c *Controller) handleDeleteVpcStaticRoute(key string) error {
 	return nil
 }
 
-func (c *Controller) handleDelVpcExternalSubnet(key string, subnet string) error {
+func (c *Controller) handleDelVpcExternalSubnet(key, subnet string) error {
 	lspName := fmt.Sprintf("%s-%s", subnet, key)
 	lrpName := fmt.Sprintf("%s-%s", key, subnet)
 	klog.V(3).Infof("delete vpc lrp %s", lrpName)
