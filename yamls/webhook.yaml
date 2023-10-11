@@ -39,7 +39,14 @@ spec:
             - /kube-ovn/kube-ovn-webhook
           args:
             - --port=8443
+            - --health-probe-port=8080
             - --v=3
+          env:
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: status.podIP
           volumeMounts:
             - mountPath: /tmp/k8s-webhook-server/serving-certs
               name: cert
@@ -48,12 +55,14 @@ spec:
           - containerPort: 8443
             name: https
             protocol: TCP
+          - containerPort: 8080
+            name: health-probe
+            protocol: TCP
           livenessProbe:
             failureThreshold: 3
             httpGet:
-              path: /validating
-              port: 8443
-              scheme: HTTPS
+              path: /healthz
+              port: 8080
             initialDelaySeconds: 60
             periodSeconds: 10
             successThreshold: 1
@@ -61,9 +70,8 @@ spec:
           readinessProbe:
             failureThreshold: 3
             httpGet:
-              path: /validating
-              port: 8443
-              scheme: HTTPS
+              path: /readyz
+              port: 8080
             initialDelaySeconds: 5
             periodSeconds: 5
             successThreshold: 1
