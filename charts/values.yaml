@@ -97,6 +97,7 @@ performance:
   RPMS: "openvswitch-kmod"
   GC_INTERVAL: 360
   INSPECT_INTERVAL: 20
+  OVS_VSCTL_CONCURRENCY: 100
 
 debug:
   ENABLE_MIRROR: false

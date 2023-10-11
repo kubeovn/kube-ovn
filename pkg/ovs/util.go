@@ -1,9 +1,12 @@
 package ovs
 
 import (
+	"context"
 	"fmt"
 	"regexp"
 	"strings"
+	"sync/atomic"
+	"time"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -234,4 +237,45 @@ func (m aclMatch) Match() (string, error) {
 func (m aclMatch) String() string {
 	rule, _ := m.Match()
 	return rule
+}
+
+type Limiter struct {
+	limit   int32
+	current int32
+}
+
+func (l *Limiter) Limit() int32 {
+	return l.limit
+}
+
+func (l *Limiter) Current() int32 {
+	return atomic.LoadInt32(&l.current)
+}
+
+func (l *Limiter) Update(limit int32) {
+	l.limit = limit
+}
+
+func (l *Limiter) Wait(ctx context.Context) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("context canceled by timeout")
+		default:
+			if l.limit == 0 {
+				atomic.AddInt32(&l.current, 1)
+				return nil
+			}
+
+			if atomic.LoadInt32(&l.current) < l.limit {
+				atomic.AddInt32(&l.current, 1)
+				return nil
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
+}
+
+func (l *Limiter) Done() {
+	atomic.AddInt32(&l.current, -1)
 }

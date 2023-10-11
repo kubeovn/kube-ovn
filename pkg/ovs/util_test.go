@@ -1,7 +1,9 @@
 package ovs
 
 import (
+	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -227,5 +229,94 @@ func Test_OrAclMatch_Match(t *testing.T) {
 
 		_, err := match.Match()
 		require.ErrorContains(t, err, "acl rule key is required")
+	})
+}
+
+func Test_Limiter(t *testing.T) {
+	t.Parallel()
+
+	t.Run("without limit", func(t *testing.T) {
+		t.Parallel()
+
+		var (
+			limiter *Limiter
+			err     error
+		)
+
+		limiter = new(Limiter)
+
+		err = limiter.Wait(context.Background())
+		require.NoError(t, err)
+		require.Equal(t, int32(1), limiter.Current())
+
+		err = limiter.Wait(context.Background())
+		require.NoError(t, err)
+		require.Equal(t, int32(2), limiter.Current())
+
+		limiter.Done()
+		require.Equal(t, int32(1), limiter.Current())
+
+		limiter.Done()
+		require.Equal(t, int32(0), limiter.Current())
+	})
+
+	t.Run("with limit", func(t *testing.T) {
+		t.Parallel()
+
+		var (
+			limiter *Limiter
+			err     error
+		)
+
+		limiter = new(Limiter)
+		limiter.Update(2)
+
+		err = limiter.Wait(context.Background())
+		require.NoError(t, err)
+		require.Equal(t, int32(1), limiter.Current())
+
+		err = limiter.Wait(context.Background())
+		require.NoError(t, err)
+		require.Equal(t, int32(2), limiter.Current())
+
+		time.AfterFunc(10*time.Second, func() {
+			limiter.Done()
+			require.Equal(t, int32(1), limiter.Current())
+		})
+
+		err = limiter.Wait(context.Background())
+		require.NoError(t, err)
+		require.Equal(t, int32(2), limiter.Current())
+	})
+
+	t.Run("with timeout", func(t *testing.T) {
+		t.Parallel()
+
+		var (
+			limiter *Limiter
+			err     error
+		)
+
+		limiter = new(Limiter)
+		limiter.Update(2)
+
+		err = limiter.Wait(context.Background())
+		require.NoError(t, err)
+		require.Equal(t, int32(1), limiter.Current())
+
+		err = limiter.Wait(context.Background())
+		require.NoError(t, err)
+		require.Equal(t, int32(2), limiter.Current())
+
+		time.AfterFunc(10*time.Second, func() {
+			limiter.Done()
+		})
+
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+
+		err = limiter.Wait(ctx)
+		require.ErrorContains(t, err, "context canceled by timeout")
+		require.Equal(t, int32(2), limiter.Current())
 	})
 }
