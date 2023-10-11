@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 
@@ -564,14 +565,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 			// add external subnets only in spec and delete external subnets only in status
 			if !reflect.DeepEqual(vpc.Spec.AddExternalSubnets, vpc.Status.AddExternalSubnets) {
 				for _, subnetStatus := range cachedVpc.Status.AddExternalSubnets {
-					found := false
-					for _, subnetSpec := range cachedVpc.Spec.AddExternalSubnets {
-						if subnetStatus == subnetSpec {
-							found = true
-							break
-						}
-					}
-					if !found {
+					if !slices.Contains(cachedVpc.Spec.AddExternalSubnets, subnetStatus) {
 						klog.Infof("delete external subnet %s connection for vpc %s", subnetStatus, vpc.Name)
 						if err := c.handleDelVpcExternalSubnet(vpc.Name, subnetStatus); err != nil {
 							klog.Errorf("failed to delete external subnet %s connection for vpc %s, error %v", subnetStatus, vpc.Name, err)
@@ -580,14 +574,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 					}
 				}
 				for _, subnetSpec := range cachedVpc.Spec.AddExternalSubnets {
-					found := false
-					for _, subnetStatus := range cachedVpc.Status.AddExternalSubnets {
-						if subnetSpec == subnetStatus {
-							found = true
-							break
-						}
-					}
-					if !found {
+					if !slices.Contains(cachedVpc.Status.AddExternalSubnets, subnetSpec) {
 						klog.Infof("connect external subnet %s with vpc %s", subnetSpec, vpc.Name)
 						if err := c.handleAddVpcExternalSubnet(key, subnetSpec); err != nil {
 							klog.Errorf("failed to add external subnet %s connection for vpc %s, error %v", subnetSpec, key, err)
@@ -622,7 +609,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 			}
 		}
 
-		if !cachedVpc.Spec.EnableExternal && (cachedVpc.Status.AddExternalSubnets != nil || cachedVpc.Spec.AddExternalSubnets != nil) {
+		if cachedVpc.Status.AddExternalSubnets != nil && !cachedVpc.Spec.EnableExternal {
 			// disconnect vpc to extra external subnets
 			for _, subnet := range cachedVpc.Status.AddExternalSubnets {
 				klog.Infof("disconnect external network %s to vpc %s", subnet, vpc.Name)
