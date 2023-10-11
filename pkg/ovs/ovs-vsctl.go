@@ -1,6 +1,7 @@
 package ovs
 
 import (
+	"context"
 	"fmt"
 	"os/exec"
 	"regexp"
@@ -13,25 +14,57 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
+var limiter *Limiter
+
+func init() {
+	limiter = new(Limiter)
+}
+
+func UpdateOVSVsctlLimiter(c int32) {
+	if c >= 0 {
+		limiter.Update(c)
+		klog.V(4).Infof("update ovs-vsctl concurrency limit to %d", limiter.Limit())
+	}
+}
+
 // Glory belongs to openvswitch/ovn-kubernetes
 // https://github.com/openvswitch/ovn-kubernetes/blob/master/go-controller/pkg/util/ovs.go
 
 var podNetNsRegexp = regexp.MustCompile(`pod_netns="([^"]+)"`)
 
 func Exec(args ...string) (string, error) {
-	start := time.Now()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	var (
+		start        time.Time
+		elapsed      float64
+		output       []byte
+		method, code string
+		err          error
+	)
+
+	if err = limiter.Wait(ctx); err != nil {
+		klog.V(4).Infof("command %s %s waiting for execution timeout by concurrency limit of %d", OvsVsCtl, strings.Join(args, " "), limiter.Limit())
+		return "", err
+	}
+	defer limiter.Done()
+	klog.V(4).Infof("command %s %s waiting for execution concurrency %d/%d", OvsVsCtl, strings.Join(args, " "), limiter.Current(), limiter.Limit())
+
+	start = time.Now()
 	args = append([]string{"--timeout=30"}, args...)
-	output, err := exec.Command(OvsVsCtl, args...).CombinedOutput()
-	elapsed := float64((time.Since(start)) / time.Millisecond)
+	output, err = exec.Command(OvsVsCtl, args...).CombinedOutput()
+	elapsed = float64((time.Since(start)) / time.Millisecond)
 	klog.V(4).Infof("command %s %s in %vms", OvsVsCtl, strings.Join(args, " "), elapsed)
-	method := ""
+
 	for _, arg := range args {
 		if !strings.HasPrefix(arg, "--") {
 			method = arg
 			break
 		}
 	}
-	code := "0"
+
+	code = "0"
 	defer func() {
 		ovsClientRequestLatency.WithLabelValues("ovsdb", method, code).Observe(elapsed)
 	}()
