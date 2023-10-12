@@ -473,7 +473,7 @@ func (suite *OvnClientTestSuite) testCreateSgBaseACL() {
 
 		pg, err := ovnClient.GetPortGroup(pgName, false)
 		require.NoError(t, err)
-		require.Len(t, pg.ACLs, 4)
+		require.Len(t, pg.ACLs, 5)
 
 		// arp
 		match := fmt.Sprintf("%s == @%s && arp", portDirection, pgName)
@@ -489,6 +489,10 @@ func (suite *OvnClientTestSuite) testCreateSgBaseACL() {
 
 		// dhcpv6
 		match = fmt.Sprintf("%s == @%s && udp.src == 547 && udp.dst == 546 && ip6", portDirection, pgName)
+		expect(pg, match)
+
+		// vrrp
+		match = fmt.Sprintf("%s == @%s && ip.proto == 112", portDirection, pgName)
 		expect(pg, match)
 	})
 
@@ -508,14 +512,14 @@ func (suite *OvnClientTestSuite) testCreateSgBaseACL() {
 
 		pg, err := ovnClient.GetPortGroup(pgName, false)
 		require.NoError(t, err)
-		require.Len(t, pg.ACLs, 4)
+		require.Len(t, pg.ACLs, 5)
 
 		// arp
 		match := fmt.Sprintf("%s == @%s && arp", portDirection, pgName)
 		expect(pg, match)
 
 		// icmpv6
-		match = fmt.Sprintf("%s == @%s && icmp6.type == {130, 134, 135, 136} && icmp6.code == 0 && ip.ttl == 255", portDirection, pgName)
+		match = fmt.Sprintf("%s == @%s && icmp6.type == {130, 133, 135, 136} && icmp6.code == 0 && ip.ttl == 255", portDirection, pgName)
 		expect(pg, match)
 
 		// dhcpv4
@@ -524,6 +528,10 @@ func (suite *OvnClientTestSuite) testCreateSgBaseACL() {
 
 		// dhcpv6
 		match = fmt.Sprintf("%s == @%s && udp.src == 546 && udp.dst == 547 && ip6", portDirection, pgName)
+		expect(pg, match)
+
+		// vrrp
+		match = fmt.Sprintf("%s == @%s && ip.proto == 112", portDirection, pgName)
 		expect(pg, match)
 	})
 }
