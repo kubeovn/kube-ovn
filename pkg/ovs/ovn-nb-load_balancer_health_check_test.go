@@ -73,7 +73,7 @@ func (suite *OvnClientTestSuite) testUpdateLoadBalancerHealthCheck() {
 		func(t *testing.T) {
 			lbhc.Vip = vip
 
-			err = ovnClient.UpdateLoadBalancerHealthCheck(lbhc, &lbhc.Vip, map[string]string{})
+			err = ovnClient.UpdateLoadBalancerHealthCheck(lbhc, &lbhc.Vip)
 			require.NoError(t, err)
 
 			_, lbhc, err = ovnClient.GetLoadBalancerHealthCheck(lbName, vip, false)
