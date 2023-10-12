@@ -853,8 +853,9 @@ type VpcDns struct {
 }
 
 type VpcDNSSpec struct {
-	Vpc    string `json:"vpc"`
-	Subnet string `json:"subnet"`
+	Replicas int32  `json:"replicas"`
+	Vpc      string `json:"vpc"`
+	Subnet   string `json:"subnet"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

@@ -33,6 +33,7 @@ IFACE=${IFACE:-}
 DPDK_TUNNEL_IFACE=${DPDK_TUNNEL_IFACE:-br-phy}
 ENABLE_BIND_LOCAL_IP=${ENABLE_BIND_LOCAL_IP:-true}
 ENABLE_TPROXY=${ENABLE_TPROXY:-false}
+OVS_VSCTL_CONCURRENCY=${OVS_VSCTL_CONCURRENCY:-100}
 
 # debug
 DEBUG_WRAPPER=${DEBUG_WRAPPER:-}
@@ -264,6 +265,10 @@ spec:
                   type: string
                 subnet:
                   type: string
+                replicas:
+                  type: integer
+                  minimum: 1
+                  maximum: 3
             status:
               type: object
               properties:
@@ -4065,6 +4070,7 @@ spec:
           - --log_file_max_size=0
           - --kubelet-dir=$KUBELET_DIR
           - --enable-tproxy=$ENABLE_TPROXY
+          - --ovs-vsctl-concurrency=$OVS_VSCTL_CONCURRENCY
         securityContext:
           runAsUser: 0
           privileged: true

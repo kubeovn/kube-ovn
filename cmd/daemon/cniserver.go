@@ -20,6 +20,7 @@ import (
 
 	kubeovninformer "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions"
 	"github.com/kubeovn/kube-ovn/pkg/daemon"
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/versions"
 )
@@ -36,6 +37,8 @@ func CmdMain() {
 	if err := initForOS(); err != nil {
 		util.LogFatalAndExit(err, "failed to do the OS initialization")
 	}
+
+	ovs.UpdateOVSVsctlLimiter(config.OVSVsctlConcurrency)
 
 	nicBridgeMappings, err := daemon.InitOVSBridges()
 	if err != nil {
