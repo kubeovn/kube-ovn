@@ -20,11 +20,13 @@ endif
 
 CONTROL_PLANE_TAINTS = node-role.kubernetes.io/master node-role.kubernetes.io/control-plane
 
+CLAB_IMAGE = ghcr.io/srl-labs/clab:latest
+
 MULTUS_VERSION = v4.0.2
 MULTUS_IMAGE = ghcr.io/k8snetworkplumbingwg/multus-cni:$(MULTUS_VERSION)-thick
 MULTUS_YAML = https://raw.githubusercontent.com/k8snetworkplumbingwg/multus-cni/$(MULTUS_VERSION)/deployments/multus-daemonset-thick.yml
 
-KUBEVIRT_VERSION = v0.59.2
+KUBEVIRT_VERSION = v1.0.0
 KUBEVIRT_OPERATOR_IMAGE = quay.io/kubevirt/virt-operator:$(KUBEVIRT_VERSION)
 KUBEVIRT_API_IMAGE = quay.io/kubevirt/virt-api:$(KUBEVIRT_VERSION)
 KUBEVIRT_CONTROLLER_IMAGE = quay.io/kubevirt/virt-controller:$(KUBEVIRT_VERSION)
@@ -38,7 +40,7 @@ KUBEVIRT_TEST_YAML = https://kubevirt.io/labs/manifests/vm.yaml
 CILIUM_VERSION = 1.14.1
 CILIUM_IMAGE_REPO = quay.io/cilium/cilium
 
-CERT_MANAGER_VERSION = v1.12.3
+CERT_MANAGER_VERSION = v1.12.5
 CERT_MANAGER_CONTROLLER = quay.io/jetstack/cert-manager-controller:$(CERT_MANAGER_VERSION)
 CERT_MANAGER_CAINJECTOR = quay.io/jetstack/cert-manager-cainjector:$(CERT_MANAGER_VERSION)
 CERT_MANAGER_WEBHOOK = quay.io/jetstack/cert-manager-webhook:$(CERT_MANAGER_VERSION)
@@ -401,6 +403,32 @@ kind-init-ipv6:
 kind-init-dual:
 	@ip_family=dual $(MAKE) kind-init
 
+.PHONY: kind-init-bgp
+kind-init-bgp: kind-clean-bgp kind-init
+	kube_ovn_version=$(VERSION) j2 yamls/clab-bgp.yaml.j2 -o yamls/clab-bgp.yaml
+	docker run --rm --privileged \
+		--name kube-ovn-bgp \
+		--network host \
+		-v /var/run/docker.sock:/var/run/docker.sock \
+		-v /var/run/netns:/var/run/netns \
+		-v /var/lib/docker/containers:/var/lib/docker/containers \
+		--pid=host \
+		-v $(CURDIR)/yamls/clab-bgp.yaml:/clab.yaml \
+		$(CLAB_IMAGE) clab deploy -t /clab.yaml
+
+.PHONY: kind-init-bgp-ha
+kind-init-bgp-ha: kind-clean-bgp kind-init
+	kube_ovn_version=$(VERSION) j2 yamls/clab-bgp-ha.yaml.j2 -o yamls/clab-bgp-ha.yaml
+	docker run --rm --privileged \
+		--name kube-ovn-bgp \
+		--network host \
+		-v /var/run/docker.sock:/var/run/docker.sock \
+		-v /var/run/netns:/var/run/netns \
+		-v /var/lib/docker/containers:/var/lib/docker/containers \
+		--pid=host \
+		-v $(CURDIR)/yamls/clab-bgp-ha.yaml:/clab.yaml \
+		$(CLAB_IMAGE) clab deploy -t /clab.yaml
+
 .PHONY: kind-load-image
 kind-load-image:
 	$(call kind_load_image,kube-ovn,$(REGISTRY)/kube-ovn:$(VERSION))
@@ -741,7 +769,7 @@ kind-install-webhook: kind-install
 	kubectl rollout status deployment/cert-manager-cainjector -n cert-manager --timeout 120s
 	kubectl rollout status deployment/cert-manager-webhook -n cert-manager --timeout 120s
 
-	kubectl apply -f yamls/webhook.yaml
+	sed 's#image: .*#image: $(REGISTRY)/kube-ovn:$(VERSION)#' yamls/webhook.yaml | kubectl apply -f -
 	kubectl rollout status deployment/kube-ovn-webhook -n kube-system --timeout 120s
 
 .PHONY: kind-install-cilium-chaining
@@ -766,6 +794,31 @@ kind-install-cilium-chaining: kind-load-image kind-untaint-control-plane
 	sed 's/VERSION=.*/VERSION=$(VERSION)/' dist/images/install.sh | \
 		ENABLE_LB=false ENABLE_NP=false CNI_CONFIG_PRIORITY=10 bash
 	kubectl describe no
+
+.PHONY: kind-install-bgp
+kind-install-bgp: kind-install
+	kubectl label node --all ovn.kubernetes.io/bgp=true
+	kubectl annotate subnet ovn-default ovn.kubernetes.io/bgp=local
+	sed -e 's#image: .*#image: $(REGISTRY)/kube-ovn:$(VERSION)#' \
+		-e 's/--neighbor-address=.*/--neighbor-address=10.0.1.1/' \
+		-e 's/--neighbor-as=.*/--neighbor-as=65001/' \
+		-e 's/--cluster-as=.*/--cluster-as=65002/' yamls/speaker.yaml | \
+		kubectl apply -f -
+	kubectl -n kube-system rollout status ds kube-ovn-speaker --timeout 60s
+	docker exec clab-bgp-router vtysh -c "show ip route bgp"
+
+.PHONY: kind-install-bgp-ha
+kind-install-bgp-ha: kind-install
+	kubectl label node --all ovn.kubernetes.io/bgp=true
+	kubectl annotate subnet ovn-default ovn.kubernetes.io/bgp=local
+	sed -e 's#image: .*#image: $(REGISTRY)/kube-ovn:$(VERSION)#' \
+		-e 's/--neighbor-address=.*/--neighbor-address=10.0.1.1,10.0.1.2/' \
+		-e 's/--neighbor-as=.*/--neighbor-as=65001/' \
+		-e 's/--cluster-as=.*/--cluster-as=65002/' yamls/speaker.yaml | \
+		kubectl apply -f -
+	kubectl -n kube-system rollout status ds kube-ovn-speaker --timeout 60s
+	docker exec clab-bgp-router-1 vtysh -c "show ip route bgp"
+	docker exec clab-bgp-router-2 vtysh -c "show ip route bgp"
 
 .PHONY: kind-install-deepflow
 kind-install-deepflow: kind-install
@@ -818,6 +871,34 @@ kind-clean-ovn-ic: kind-clean
 kind-clean-ovn-submariner: kind-clean
 	kind delete cluster --name=kube-ovn1
 
+.PHONY: kind-clean-bgp
+kind-clean-bgp: kind-clean-bgp-ha
+	kube_ovn_version=$(VERSION) j2 yamls/clab-bgp.yaml.j2 -o yamls/clab-bgp.yaml
+	docker run --rm --privileged \
+		--name kube-ovn-bgp \
+		--network host \
+		-v /var/run/docker.sock:/var/run/docker.sock \
+		-v /var/run/netns:/var/run/netns \
+		-v /var/lib/docker/containers:/var/lib/docker/containers \
+		--pid=host \
+		-v $(CURDIR)/yamls/clab-bgp.yaml:/clab.yaml \
+		$(CLAB_IMAGE) clab destroy -t /clab.yaml
+	@$(MAKE) kind-clean
+
+.PHONY: kind-clean-bgp-ha
+kind-clean-bgp-ha:
+	kube_ovn_version=$(VERSION) j2 yamls/clab-bgp-ha.yaml.j2 -o yamls/clab-bgp-ha.yaml
+	docker run --rm --privileged \
+		--name kube-ovn-bgp \
+		--network host \
+		-v /var/run/docker.sock:/var/run/docker.sock \
+		-v /var/run/netns:/var/run/netns \
+		-v /var/lib/docker/containers:/var/lib/docker/containers \
+		--pid=host \
+		-v $(CURDIR)/yamls/clab-bgp-ha.yaml:/clab.yaml \
+		$(CLAB_IMAGE) clab destroy -t /clab.yaml
+	@$(MAKE) kind-clean
+
 .PHONY: uninstall
 uninstall:
 	bash dist/images/cleanup.sh
@@ -861,6 +942,7 @@ ipam-bench:
 clean:
 	$(RM) dist/images/kube-ovn dist/images/kube-ovn-cmd
 	$(RM) yamls/kind.yaml
+	$(RM) yamls/clab-bgp.yaml yamls/clab-bgp-ha.yaml
 	$(RM) ovn.yaml kube-ovn.yaml kube-ovn-crd.yaml
 	$(RM) ovn-ic-0.yaml ovn-ic-1.yaml
 	$(RM) kustomization.yaml kwok.yaml kwok-node.yaml

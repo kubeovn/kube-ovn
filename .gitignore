@@ -22,6 +22,8 @@ kwok-node.yaml
 broker-info.subm
 broker-info.subm.*
 broker-info-internal.subm
+yamls/clab-bgp.yaml
+yamls/clab-bgp-ha.yaml
 kube-ovn.tar
 vpc-nat-gateway.tar
 image-amd64.tar

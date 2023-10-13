@@ -22,6 +22,12 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
+const (
+	// "cluster" is the default policy
+	announcePolicyCluster = "cluster"
+	announcePolicyLocal   = "local"
+)
+
 func isPodAlive(p *v1.Pod) bool {
 	if p.Status.Phase == v1.PodSucceeded && p.Spec.RestartPolicy != v1.RestartPolicyAlways {
 		return false
@@ -74,23 +80,67 @@ func (c *Controller) syncSubnetRoutes() {
 		}
 	}
 
+	localSubnets := make(map[string]string, 2)
 	for _, subnet := range subnets {
-		if subnet.Status.IsReady() && subnet.Annotations != nil && subnet.Annotations[util.BgpAnnotation] == "true" {
+		if subnet.Status.IsReady() && subnet.Annotations != nil {
 			ips := strings.Split(subnet.Spec.CIDRBlock, ",")
-			for _, cidr := range ips {
-				ipFamily := util.CheckProtocol(cidr)
-				bgpExpected[ipFamily] = append(bgpExpected[ipFamily], cidr)
+			policy := subnet.Annotations[util.BgpAnnotation]
+			if policy == "" {
+				continue
+			}
+
+			switch policy {
+			case "true":
+				fallthrough
+			case announcePolicyCluster:
+				for _, cidr := range ips {
+					ipFamily := util.CheckProtocol(cidr)
+					bgpExpected[ipFamily] = append(bgpExpected[ipFamily], cidr)
+				}
+			case announcePolicyLocal:
+				localSubnets[subnet.Name] = subnet.Spec.CIDRBlock
+			default:
+				klog.Warningf("invalid subnet annotation %s=%s", util.BgpAnnotation, policy)
 			}
 		}
 	}
 
 	for _, pod := range pods {
-		if isPodAlive(pod) && !pod.Spec.HostNetwork && pod.Annotations[util.BgpAnnotation] == "true" && pod.Status.PodIP != "" {
-			podIps := pod.Status.PodIPs
-			for _, podIP := range podIps {
-				ipFamily := util.CheckProtocol(podIP.IP)
-				bgpExpected[ipFamily] = append(bgpExpected[ipFamily], fmt.Sprintf("%s/%d", podIP.IP, maskMap[ipFamily]))
+		if pod.Spec.HostNetwork || pod.Status.PodIP == "" || len(pod.Annotations) == 0 || !isPodAlive(pod) {
+			continue
+		}
+
+		ips := make(map[string]string, 2)
+		if policy := pod.Annotations[util.BgpAnnotation]; policy != "" {
+			switch policy {
+			case "true":
+				fallthrough
+			case announcePolicyCluster:
+				for _, podIP := range pod.Status.PodIPs {
+					ips[util.CheckProtocol(podIP.IP)] = podIP.IP
+				}
+			case announcePolicyLocal:
+				if pod.Spec.NodeName == c.config.NodeName {
+					for _, podIP := range pod.Status.PodIPs {
+						ips[util.CheckProtocol(podIP.IP)] = podIP.IP
+					}
+				}
+			default:
+				klog.Warningf("invalid pod annotation %s=%s", util.BgpAnnotation, policy)
 			}
+		} else if pod.Spec.NodeName == c.config.NodeName {
+			cidrBlock := localSubnets[pod.Annotations[util.LogicalSwitchAnnotation]]
+			if cidrBlock != "" {
+				for _, podIP := range pod.Status.PodIPs {
+					if util.CIDRContainIP(cidrBlock, podIP.IP) {
+						ips[util.CheckProtocol(podIP.IP)] = podIP.IP
+					}
+				}
+			}
+		}
+
+		for ipFamily, ip := range ips {
+			bgpExpected[ipFamily] = append(bgpExpected[ipFamily], fmt.Sprintf("%s/%d", ip, maskMap[ipFamily]))
 		}
 	}
 
@@ -110,7 +160,7 @@ func (c *Controller) syncSubnetRoutes() {
 		}
 	}
 
-	if c.config.NeighborAddress != "" {
+	if len(c.config.NeighborAddresses) != 0 {
 		listPathRequest := &bgpapi.ListPathRequest{
 			TableType: bgpapi.TableType_GLOBAL,
 			Family:    &bgpapi.Family{Afi: bgpapi.Family_AFI_IP, Safi: bgpapi.Family_SAFI_UNICAST},
@@ -137,8 +187,7 @@ func (c *Controller) syncSubnetRoutes() {
 		}
 	}
 
-	if c.config.NeighborIPv6Address != "" {
-
+	if len(c.config.NeighborIPv6Addresses) != 0 {
 		listIPv6PathRequest := &bgpapi.ListPathRequest{
 			TableType: bgpapi.TableType_GLOBAL,
 			Family:    &bgpapi.Family{Afi: bgpapi.Family_AFI_IP6, Safi: bgpapi.Family_SAFI_UNICAST},
@@ -216,24 +265,26 @@ func (c *Controller) addRoute(route string) error {
 	if err != nil {
 		return err
 	}
-	_, err = c.config.BgpServer.AddPath(context.Background(), &bgpapi.AddPathRequest{
-		Path: &bgpapi.Path{
-			Family: &bgpapi.Family{Afi: routeAfi, Safi: bgpapi.Family_SAFI_UNICAST},
-			Nlri:   nlri,
-			Pattrs: attrs,
-		},
-	})
-	if err != nil {
-		klog.Errorf("add path failed, %v", err)
-		return err
+	for _, attr := range attrs {
+		_, err = c.config.BgpServer.AddPath(context.Background(), &bgpapi.AddPathRequest{
+			Path: &bgpapi.Path{
+				Family: &bgpapi.Family{Afi: routeAfi, Safi: bgpapi.Family_SAFI_UNICAST},
+				Nlri:   nlri,
+				Pattrs: attr,
+			},
+		})
+		if err != nil {
+			klog.Errorf("add path failed, %v", err)
+			return err
+		}
 	}
 	return nil
 }
 
-func (c *Controller) getNlriAndAttrs(route string) (*anypb.Any, []*anypb.Any, error) {
-	neighborAddr := c.config.NeighborAddress
+func (c *Controller) getNlriAndAttrs(route string) (*anypb.Any, [][]*anypb.Any, error) {
+	neighborAddresses := c.config.NeighborAddresses
 	if util.CheckProtocol(route) == kubeovnv1.ProtocolIPv6 {
-		neighborAddr = c.config.NeighborIPv6Address
+		neighborAddresses = c.config.NeighborIPv6Addresses
 	}
 
 	prefix, prefixLen, err := parseRoute(route)
@@ -244,13 +295,18 @@ func (c *Controller) getNlriAndAttrs(route string) (*anypb.Any, []*anypb.Any, er
 		Prefix:    prefix,
 		PrefixLen: prefixLen,
 	})
-	a1, _ := anypb.New(&bgpapi.OriginAttribute{
-		Origin: 0,
-	})
-	a2, _ := anypb.New(&bgpapi.NextHopAttribute{
-		NextHop: getNextHopAttribute(neighborAddr, c.config.RouterID),
-	})
-	attrs := []*anypb.Any{a1, a2}
+
+	attrs := make([][]*anypb.Any, 0, len(neighborAddresses))
+	for _, addr := range neighborAddresses {
+		a1, _ := anypb.New(&bgpapi.OriginAttribute{
+			Origin: 0,
+		})
+		a2, _ := anypb.New(&bgpapi.NextHopAttribute{
+			NextHop: getNextHopAttribute(addr, c.config.RouterID),
+		})
+		attrs = append(attrs, []*anypb.Any{a1, a2})
+	}
+
 	return nlri, attrs, err
 }
 
@@ -264,16 +320,18 @@ func (c *Controller) delRoute(route string) error {
 	if err != nil {
 		return err
 	}
-	err = c.config.BgpServer.DeletePath(context.Background(), &bgpapi.DeletePathRequest{
-		Path: &bgpapi.Path{
-			Family: &bgpapi.Family{Afi: routeAfi, Safi: bgpapi.Family_SAFI_UNICAST},
-			Nlri:   nlri,
-			Pattrs: attrs,
-		},
-	})
-	if err != nil {
-		klog.Errorf("del path failed, %v", err)
-		return err
+	for _, attr := range attrs {
+		err = c.config.BgpServer.DeletePath(context.Background(), &bgpapi.DeletePathRequest{
+			Path: &bgpapi.Path{
+				Family: &bgpapi.Family{Afi: routeAfi, Safi: bgpapi.Family_SAFI_UNICAST},
+				Nlri:   nlri,
+				Pattrs: attr,
+			},
+		})
+		if err != nil {
+			klog.Errorf("del path failed, %v", err)
+			return err
+		}
 	}
 	return nil
 }

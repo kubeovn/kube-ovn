@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"os"
 
 	"github.com/spf13/pflag"
 	appsv1 "k8s.io/api/apps/v1"
@@ -10,6 +11,8 @@ import (
 	"k8s.io/klog/v2"
 	"k8s.io/klog/v2/klogr"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/healthz"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	ctrlwebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	ovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -38,6 +41,7 @@ func main() {
 	klog.Infof(versions.String())
 
 	port := pflag.Int("port", 8443, "The port webhook listen on.")
+	healthProbePort := pflag.Int32("health-probe-port", 8080, "The port health probes listen on.")
 
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
 	klog.InitFlags(klogFlags)
@@ -69,7 +73,10 @@ func main() {
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme: scheme,
 		// disable metrics to avoid port conflict
-		MetricsBindAddress: "0",
+		Metrics: metricsserver.Options{
+			BindAddress: "0",
+		},
+		HealthProbeBindAddress: util.JoinHostPort(os.Getenv("POD_IP"), *healthProbePort),
 	})
 	if err != nil {
 		panic(err)
@@ -85,6 +92,13 @@ func main() {
 	hookServer.Register("/validating", &ctrlwebhook.Admission{Handler: validatingHook})
 
 	if err := mgr.Add(hookServer); err != nil {
+		panic(err)
+	}
+
+	if err = mgr.AddHealthzCheck("liveness probe", healthz.Ping); err != nil {
+		panic(err)
+	}
+	if err = mgr.AddReadyzCheck("readiness probe", healthz.Ping); err != nil {
 		panic(err)
 	}
 

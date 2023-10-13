@@ -286,10 +286,18 @@ func (c *OVNNbClient) CreateSgBaseACL(sgName, direction string) error {
 	portDirection := "outport"
 	dhcpv4UdpSrc, dhcpv4UdpDst := "67", "68"
 	dhcpv6UdpSrc, dhcpv6UdpDst := "547", "546"
+	icmpv6Type := "{130, 134, 135, 136}"
+	// 130 group membership query
+	// 133 router solicitation
+	// 134 router advertisement
+	// 135 neighbor solicitation
+	// 136 neighbor advertisement
+
 	if direction == ovnnb.ACLDirectionFromLport { // egress rule
 		portDirection = "inport"
 		dhcpv4UdpSrc, dhcpv4UdpDst = dhcpv4UdpDst, dhcpv4UdpSrc
 		dhcpv6UdpSrc, dhcpv6UdpDst = dhcpv6UdpDst, dhcpv6UdpSrc
+		icmpv6Type = "{130, 133, 135, 136}"
 	}
 
 	acls := make([]*ovnnb.ACL, 0)
@@ -314,7 +322,7 @@ func (c *OVNNbClient) CreateSgBaseACL(sgName, direction string) error {
 	// icmpv6
 	icmpv6Match := NewAndACLMatch(
 		NewACLMatch(portDirection, "==", "@"+pgName, ""),
-		NewACLMatch("icmp6.type", "==", "{130, 134, 135, 136}", ""),
+		NewACLMatch("icmp6.type", "==", icmpv6Type, ""),
 		NewACLMatch("icmp6.code", "==", "0", ""),
 		NewACLMatch("ip.ttl", "==", "255", ""),
 	)
@@ -336,8 +344,14 @@ func (c *OVNNbClient) CreateSgBaseACL(sgName, direction string) error {
 		NewACLMatch("udp.dst", "==", dhcpv6UdpDst, ""),
 		NewACLMatch("ip6", "", "", ""),
 	)
-
 	newACL(dhcpv6Match.String())
+
+	// vrrp
+	vrrpMatch := NewAndACLMatch(
+		NewACLMatch(portDirection, "==", "@"+pgName, ""),
+		NewACLMatch("ip.proto", "==", "112", ""),
+	)
+	newACL(vrrpMatch.String())
 
 	if err := c.CreateAcls(pgName, portGroupKey, acls...); err != nil {
 		return fmt.Errorf("add ingress acls to port group %s: %v", pgName, err)
