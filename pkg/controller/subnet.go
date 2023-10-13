@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net"
 	"reflect"
 	"sort"
@@ -235,10 +234,6 @@ func (c *Controller) processNextDeleteSubnetWorkItem() bool {
 	if shutdown {
 		return false
 	}
-
-	log.Println("======================================================")
-	log.Println("delete subnet", "processNextDeleteSubnetWorkItem")
-	log.Println("======================================================")
 
 	err := func(obj interface{}) error {
 		defer c.deleteSubnetQueue.Done(obj)
@@ -945,15 +940,6 @@ func (c *Controller) handleDeleteSubnet(subnet *kubeovnv1.Subnet) error {
 		klog.Errorf("failed to delete policy route for underlay to overlay subnet interconnection %s, %v", subnet.Name, err)
 		return err
 	}
-
-	// if err := c.config.KubeOvnClient.
-	// 	KubeovnV1().
-	// 	Vips().
-	// 	Delete(context.Background(), subnet.Name, metav1.DeleteOptions{}); err != nil {
-	// 	if !errors.IsNotFound(err) {
-	// 		return err
-	// 	}
-	// }
 
 	u2oInterconnName := fmt.Sprintf(util.U2OInterconnName, subnet.Spec.Vpc, subnet.Name)
 	if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), u2oInterconnName, metav1.DeleteOptions{}); err != nil {

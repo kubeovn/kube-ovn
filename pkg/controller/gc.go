@@ -511,7 +511,7 @@ func (c *Controller) gcLoadBalancer() error {
 		}
 
 		if lb == nil {
-			klog.Infof("load balancer %q not found", lbName)
+			klog.Infof("load balancer %q already deleted", lbName)
 			return nil
 		}
 

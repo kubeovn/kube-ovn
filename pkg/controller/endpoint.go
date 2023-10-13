@@ -153,38 +153,7 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 		return err
 	}
 
-	for _, pod := range pods {
-		if len(pod.Annotations) == 0 {
-			continue
-		}
-
-		subnetName = pod.Annotations[util.LogicalSwitchAnnotation]
-		for _, subset := range ep.Subsets {
-			for _, addr := range subset.Addresses {
-				if addr.IP == pod.Status.PodIP {
-					if vpcName = pod.Annotations[util.LogicalRouterAnnotation]; vpcName != "" {
-						break
-					}
-				}
-			}
-			if vpcName != "" {
-				break
-			}
-		}
-		if vpcName != "" {
-			break
-		}
-	}
-
-	if vpcName == "" {
-		if vpcName = svc.Annotations[util.VpcAnnotation]; vpcName == "" {
-			vpcName = c.config.ClusterRouter
-		}
-	}
-
-	if subnetName == "" {
-		subnetName = util.DefaultSubnet
-	}
+	vpcName, subnetName = c.getVpcSubnetName(pods, ep, svc)
 
 	var (
 		vpc    *kubeovnv1.Vpc
@@ -226,7 +195,6 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 			}
 
 			var (
-				checkVip                 *kubeovnv1.Vip
 				vip, checkIP             string
 				backends                 []string
 				ipPortMapping, externals map[string]string
@@ -234,45 +202,12 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 			vip = util.JoinHostPort(lbVip, port.Port)
 
 			if !ignoreHealthCheck {
-				if checkVip, err = c.config.KubeOvnClient.KubeovnV1().Vips().Get(context.Background(), subnetName, metav1.GetOptions{}); err != nil {
-					if errors.IsNotFound(err) {
-						if checkVip, err = c.config.KubeOvnClient.
-							KubeovnV1().
-							Vips().
-							Create(context.Background(),
-								&kubeovnv1.Vip{
-									ObjectMeta: metav1.ObjectMeta{
-										Name: subnetName,
-									},
-									Spec: kubeovnv1.VipSpec{
-										Subnet: subnetName,
-									},
-								},
-								metav1.CreateOptions{},
-							); err != nil {
-							klog.Errorf("failed to create health check vip from %s %s, %v", vpcName, subnetName, err)
-							return err
-						}
-					} else {
-						klog.Errorf("failed to get health check vip from %s %s, %v", vpcName, subnetName, err)
-						return err
-					}
+				if checkIP, err = c.getHealthCheckVip(vpcName, subnetName, lbVip); err != nil {
+					return err
 				}
 
 				externals = map[string]string{
 					util.SwitchLBRuleSubnet: subnetName,
-				}
-
-				switch util.CheckProtocol(lbVip) {
-				case kubeovnv1.ProtocolIPv4:
-					checkIP = checkVip.Status.V4ip
-				case kubeovnv1.ProtocolIPv6:
-					checkIP = checkVip.Status.V6ip
-				}
-				if checkIP == "" {
-					err = fmt.Errorf("failed to get health check vip from %s %s", vpcName, subnetName)
-					klog.Error(err)
-					return err
 				}
 			}
 
@@ -308,6 +243,101 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 		}
 	}
 	return nil
+}
+
+func (c *Controller) getVpcSubnetName(pods []*v1.Pod, endpoints *v1.Endpoints, service *v1.Service) (string, string) {
+	var (
+		vpcName    string
+		subnetName string
+	)
+
+	for _, pod := range pods {
+		if len(pod.Annotations) == 0 {
+			continue
+		}
+
+		if subnetName == "" {
+			subnetName = pod.Annotations[util.LogicalSwitchAnnotation]
+		}
+
+	LOOP:
+		for _, subset := range endpoints.Subsets {
+			for _, addr := range subset.Addresses {
+				if addr.IP == pod.Status.PodIP {
+					if vpcName == "" {
+						vpcName = pod.Annotations[util.LogicalRouterAnnotation]
+					}
+
+					if vpcName != "" {
+						break LOOP
+					}
+				}
+			}
+		}
+
+		if vpcName != "" && subnetName != "" {
+			break
+		}
+	}
+
+	if vpcName == "" {
+		if vpcName = service.Annotations[util.VpcAnnotation]; vpcName == "" {
+			vpcName = c.config.ClusterRouter
+		}
+	}
+
+	if subnetName == "" {
+		subnetName = util.DefaultSubnet
+	}
+
+	return vpcName, subnetName
+}
+
+func (c *Controller) getHealthCheckVip(vpcName, subnetName, lbVip string) (string, error) {
+	var (
+		checkVip *kubeovnv1.Vip
+		checkIP  string
+		err      error
+	)
+
+	if checkVip, err = c.config.KubeOvnClient.KubeovnV1().Vips().Get(context.Background(), subnetName, metav1.GetOptions{}); err != nil {
+		if errors.IsNotFound(err) {
+			if checkVip, err = c.config.KubeOvnClient.
+				KubeovnV1().
+				Vips().
+				Create(context.Background(),
+					&kubeovnv1.Vip{
+						ObjectMeta: metav1.ObjectMeta{
+							Name: subnetName,
+						},
+						Spec: kubeovnv1.VipSpec{
+							Subnet: subnetName,
+						},
+					},
+					metav1.CreateOptions{},
+				); err != nil {
+				klog.Errorf("failed to create health check vip from vpc %s subnet %s, %v", vpcName, subnetName, err)
+				return checkIP, err
+			}
+		} else {
+			klog.Errorf("failed to get health check vip from vpc %s subnet %s, %v", vpcName, subnetName, err)
+			return checkIP, err
+		}
+	}
+
+	switch util.CheckProtocol(lbVip) {
+	case kubeovnv1.ProtocolIPv4:
+		checkIP = checkVip.Status.V4ip
+	case kubeovnv1.ProtocolIPv6:
+		checkIP = checkVip.Status.V6ip
+	}
+	if checkIP == "" {
+		err = fmt.Errorf("failed to get health check vip from vpc %s subnet %s", vpcName, subnetName)
+		klog.Error(err)
+		return checkIP, err
+	}
+
+	return checkIP, nil
 }
 
 func getIPPortMappingBackend(endpoints *v1.Endpoints, pods []*v1.Pod, servicePort v1.ServicePort, serviceIP, checkVip string, ignoreHealthCheck bool) (map[string]string, []string) {
