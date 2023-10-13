@@ -194,7 +194,7 @@ func (c *Controller) processNextAddSubnetWorkItem() bool {
 		return false
 	}
 
-	err := func(obj interface{}) error {
+	if err := func(obj interface{}) error {
 		defer c.addOrUpdateSubnetQueue.Done(obj)
 		var key string
 		var ok bool
@@ -209,8 +209,7 @@ func (c *Controller) processNextAddSubnetWorkItem() bool {
 		}
 		c.addOrUpdateSubnetQueue.Forget(obj)
 		return nil
-	}(obj)
-	if err != nil {
+	}(obj); err != nil {
 		utilruntime.HandleError(err)
 		return true
 	}
@@ -223,7 +222,7 @@ func (c *Controller) processNextUpdateSubnetStatusWorkItem() bool {
 		return false
 	}
 
-	err := func(obj interface{}) error {
+	if err := func(obj interface{}) error {
 		defer c.updateSubnetStatusQueue.Done(obj)
 		var key string
 		var ok bool
@@ -238,8 +237,7 @@ func (c *Controller) processNextUpdateSubnetStatusWorkItem() bool {
 		}
 		c.updateSubnetStatusQueue.Forget(obj)
 		return nil
-	}(obj)
-	if err != nil {
+	}(obj); err != nil {
 		utilruntime.HandleError(err)
 		return true
 	}
@@ -252,7 +250,7 @@ func (c *Controller) processNextDeleteSubnetWorkItem() bool {
 		return false
 	}
 
-	err := func(obj interface{}) error {
+	if err := func(obj interface{}) error {
 		defer c.deleteSubnetQueue.Done(obj)
 		var subnet *kubeovnv1.Subnet
 		var ok bool
@@ -267,8 +265,7 @@ func (c *Controller) processNextDeleteSubnetWorkItem() bool {
 		}
 		c.deleteSubnetQueue.Forget(obj)
 		return nil
-	}(obj)
-	if err != nil {
+	}(obj); err != nil {
 		utilruntime.HandleError(err)
 		return true
 	}
@@ -526,8 +523,7 @@ func (c Controller) patchSubnetStatus(subnet *kubeovnv1.Subnet, reason, errStr s
 		}
 	}
 
-	bytes, err := subnet.Status.Bytes()
-	if err != nil {
+	if bytes, err := subnet.Status.Bytes(); err != nil {
 		klog.Error(err)
 	} else {
 		if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(context.Background(), subnet.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
@@ -1195,7 +1191,10 @@ func (c *Controller) syncVirtualPort(key string) error {
 }
 
 func (c *Controller) reconcileNamespaces(subnet *kubeovnv1.Subnet) error {
-	var err error
+	var (
+		namespaces []*v1.Namespace
+		err        error
+	)
 
 	// 1. add annotations to bind namespace
 	for _, ns := range subnet.Spec.Namespaces {
@@ -1203,8 +1202,7 @@ func (c *Controller) reconcileNamespaces(subnet *kubeovnv1.Subnet) error {
 	}
 
 	// 2. update unbind namespace annotation
-	namespaces, err := c.namespacesLister.List(labels.Everything())
-	if err != nil {
+	if namespaces, err = c.namespacesLister.List(labels.Everything()); err != nil {
 		klog.Errorf("failed to list namespaces, %v", err)
 		return err
 	}
@@ -1265,6 +1263,7 @@ func (c *Controller) reconcileCustomVpcBfdStaticRoute(vpcName, subnetName string
 		return err
 	}
 	vpc := cachedVpc.DeepCopy()
+
 	for _, eip := range ovnEips {
 		if !eip.Status.Ready || eip.Status.V4Ip == "" {
 			err := fmt.Errorf("ovn eip %q not ready", eip.Name)

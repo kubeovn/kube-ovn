@@ -1,5 +1,5 @@
 # syntax = docker/dockerfile:experimental
-FROM ubuntu:23.10 as ovs-builder
+FROM ubuntu:22.04 as ovs-builder
 
 ARG ARCH
 ARG DEBIAN_FRONTEND=noninteractive
@@ -73,7 +73,7 @@ RUN mkdir /packages/ && \
     cp /usr/src/ovn-*deb /packages && \
     cd /packages && rm -f *source* *doc* *datapath* *docker* *vtep* *test* *dev*
 
-FROM ubuntu:23.10
+FROM ubuntu:22.04
 
 ARG DEBIAN_FRONTEND=noninteractive
 RUN apt update && apt upgrade -y && apt install ca-certificates python3 hostname libunwind8 netbase \
@@ -93,7 +93,7 @@ ARG ARCH
 ENV CNI_VERSION=v1.3.0
 RUN curl -sSf -L --retry 5 https://github.com/containernetworking/plugins/releases/download/${CNI_VERSION}/cni-plugins-linux-${ARCH}-${CNI_VERSION}.tgz | tar -xz -C . ./loopback ./portmap ./macvlan
 
-ENV KUBE_VERSION="v1.27.4"
+ENV KUBE_VERSION="v1.28.2"
 
 RUN curl -L https://dl.k8s.io/${KUBE_VERSION}/kubernetes-client-linux-${ARCH}.tar.gz | tar -xz -C . && cp ./kubernetes/client/bin/kubectl /usr/bin/kubectl \
  && chmod +x /usr/bin/kubectl && rm -rf ./kubernetes
