@@ -66,7 +66,7 @@ func (c *Controller) enqueueUpdateVpc(oldObj, newObj interface{}) {
 		if newVpc.Annotations == nil {
 			newVpc.Annotations = make(map[string]string)
 		}
-		newVpc.Annotations["ovn.kubernetes.io/last_policies"] = convertPolicies(oldVpc.Spec.PolicyRoutes)
+		newVpc.Annotations[util.VpcLastPolicies] = convertPolicies(oldVpc.Spec.PolicyRoutes)
 
 		c.addOrUpdateVpcQueue.Add(key)
 	}
@@ -440,7 +440,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 	)
 
 	if vpc.Name == c.config.ClusterRouter {
-		policyRouteExisted = reversePolicies(vpc.Annotations["ovn.kubernetes.io/last_policies"])
+		policyRouteExisted = reversePolicies(vpc.Annotations[util.VpcLastPolicies])
 		// diff list
 		policyRouteNeedDel, policyRouteNeedAdd = diffPolicyRouteWithExisted(policyRouteExisted, vpc.Spec.PolicyRoutes)
 	} else {
