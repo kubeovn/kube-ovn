@@ -297,15 +297,13 @@ func (c *Controller) handleUpdateOvnSnatRule(key string) error {
 	}
 	// should delete
 	if !cachedSnat.DeletionTimestamp.IsZero() {
-		klog.V(3).Infof("ovn delete snat %s", key)
-		// ovn delete snat
+		klog.Infof("ovn delete snat %s", key)
 		if cachedSnat.Status.Vpc != "" && cachedSnat.Status.V4Eip != "" && cachedSnat.Status.V4IpCidr != "" {
 			if err = c.OVNNbClient.DeleteNat(cachedSnat.Status.Vpc, ovnnb.NATTypeSNAT, cachedSnat.Status.V4Eip, cachedSnat.Status.V4IpCidr); err != nil {
 				klog.Errorf("failed to delete snat, %v", err)
 				return err
 			}
 		}
-		//  reset eip
 		c.resetOvnEipQueue.Add(cachedSnat.Spec.OvnEip)
 		return nil
 	}
@@ -398,7 +396,6 @@ func (c *Controller) handleDelOvnSnatRule(key string) error {
 		klog.Errorf("failed to remove finalizer for ovn snat %s, %v", cachedSnat.Name, err)
 		return err
 	}
-	//  reset eip
 	if cachedSnat.Spec.OvnEip != "" {
 		c.resetOvnEipQueue.Add(cachedSnat.Spec.OvnEip)
 	}

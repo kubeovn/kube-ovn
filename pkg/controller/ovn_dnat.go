@@ -391,11 +391,6 @@ func (c *Controller) handleUpdateOvnDnatRule(key string) error {
 		return err
 	}
 
-	if cachedEip.Status.Type != "" && cachedEip.Status.Type != util.NatUsingEip {
-		err = fmt.Errorf("ovn eip %s type is not %s, can not use", cachedEip.Name, util.NatUsingEip)
-		return err
-	}
-
 	if _, err := c.isOvnDnatDuplicated(eipName, key, cachedDnat.Spec.ExternalPort); err != nil {
 		klog.Error("failed to update dnat %s, %v", cachedDnat.Name, err)
 		return err
