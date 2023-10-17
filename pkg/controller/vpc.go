@@ -52,6 +52,7 @@ func (c *Controller) enqueueUpdateVpc(oldObj, newObj interface{}) {
 		!reflect.DeepEqual(oldVpc.Spec.PolicyRoutes, newVpc.Spec.PolicyRoutes) ||
 		!reflect.DeepEqual(oldVpc.Spec.VpcPeerings, newVpc.Spec.VpcPeerings) ||
 		!reflect.DeepEqual(oldVpc.Annotations, newVpc.Annotations) ||
+		!reflect.DeepEqual(oldVpc.Spec.AddExternalSubnets, newVpc.Spec.AddExternalSubnets) ||
 		oldVpc.Labels[util.VpcExternalLabel] != newVpc.Labels[util.VpcExternalLabel] {
 		// TODO:// label VpcExternalLabel replace with spec enable external
 		var (
