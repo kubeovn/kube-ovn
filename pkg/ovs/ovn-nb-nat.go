@@ -16,6 +16,17 @@ import (
 )
 
 func (c *OVNNbClient) AddNat(lrName, natType, externalIP, logicalIP, logicalMac, port string, options map[string]string) error {
+	// The logical_port and external_mac are only accepted
+	// when router is a distributed router (rather than a gateway router)
+	// and type is dnat_and_snat. The logical_port is the name
+	// of an existing logical switch port where the logical_ip resides.
+	// The external_mac is an Ethernet address.
+
+	// When the logical_port and external_mac are specified,
+	// the NAT rule will be programmed on the chassis where the logical_port resides.
+	// This includes ARP replies for the external_ip, which return the value of external_mac.
+	// All packets transmitted with source IP address equal to external_ip will be sent using the external_mac.
+
 	nat, err := c.newNat(lrName, natType, externalIP, logicalIP, logicalMac, port, func(nat *ovnnb.NAT) {
 		if len(options) == 0 {
 			return

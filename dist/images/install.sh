@@ -1519,8 +1519,6 @@ spec:
                   type: string
                 v4Ip:
                   type: string
-                macAddress:
-                  type: string
                 vpc:
                   type: string
                 conditions:
@@ -1548,6 +1546,10 @@ spec:
                 ipType:
                   type: string
                 ipName:
+                  type: string
+                vpc:
+                  type: string
+                v4Ip:
                   type: string
 ---
 apiVersion: apiextensions.k8s.io/v1
@@ -1577,7 +1579,10 @@ spec:
       - jsonPath: .status.v4Eip
         name: V4Eip
         type: string
-      - jsonPath: .status.v4ipCidr
+      - jsonPath: .status.v4IpCidr
+        name: V4IpCidr
+        type: string
+      - jsonPath: .status.v4Ip
         name: V4Ip
         type: string
       - jsonPath: .status.ready
@@ -1594,7 +1599,9 @@ spec:
                   type: boolean
                 v4Eip:
                   type: string
-                v4ipCidr:
+                v4IpCidr:
+                  type: string
+                v4Ip:
                   type: string
                 vpc:
                   type: string
@@ -1623,6 +1630,12 @@ spec:
                 vpcSubnet:
                   type: string
                 ipName:
+                  type: string
+                vpc:
+                  type: string
+                v4IpCidr:
+                  type: string
+                v4Ip:
                   type: string
 ---
 apiVersion: apiextensions.k8s.io/v1
@@ -1683,8 +1696,6 @@ spec:
                     type: string
                   v4Ip:
                     type: string
-                  macAddress:
-                    type: string
                   vpc:
                     type: string
                   externalPort:
@@ -1726,6 +1737,10 @@ spec:
                   internalPort:
                     type: string
                   protocol:
+                    type: string
+                  vpc:
+                    type: string
+                  v4Ip:
                     type: string
 ---
 apiVersion: apiextensions.k8s.io/v1

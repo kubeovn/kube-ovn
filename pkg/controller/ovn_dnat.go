@@ -176,7 +176,7 @@ func (c *Controller) processNextDeleteOvnDnatRuleWorkItem() bool {
 	return true
 }
 
-func (c *Controller) isOvnDnatDuplicated(eipName, dnatName, externalPort string) (bool, error) {
+func (c *Controller) isOvnDnatDuplicated(eipName, dnatName, externalPort string) error {
 	// check if eip:external port already used
 	dnats, err := c.ovnDnatRulesLister.List(labels.SelectorFromSet(labels.Set{
 		util.VpcDnatEPortLabel: externalPort,
@@ -184,18 +184,18 @@ func (c *Controller) isOvnDnatDuplicated(eipName, dnatName, externalPort string)
 	if err != nil {
 		if !k8serrors.IsNotFound(err) {
 			klog.Error(err)
-			return false, err
+			return err
 		}
 	}
 	if len(dnats) != 0 {
 		for _, d := range dnats {
 			if d.Name != dnatName && d.Spec.OvnEip == eipName {
 				err = fmt.Errorf("failed to create dnat %s, duplicate, same eip %s, same external port '%s' is using by dnat %s", dnatName, eipName, externalPort, d.Name)
-				return true, err
+				return err
 			}
 		}
 	}
-	return false, nil
+	return nil
 }
 
 func (c *Controller) handleAddOvnDnatRule(key string) error {
@@ -213,67 +213,80 @@ func (c *Controller) handleAddOvnDnatRule(key string) error {
 		return nil
 	}
 	klog.Infof("handle add dnat %s", key)
-	var internalV4Ip, mac, subnetName string
-	if cachedDnat.Spec.IPType == util.Vip {
-		internalVip, err := c.virtualIpsLister.Get(cachedDnat.Spec.IPName)
-		if err != nil {
-			klog.Errorf("failed to get vip %s, %v", cachedDnat.Spec.IPName, err)
-			return err
-		}
-		internalV4Ip = internalVip.Status.V4ip
-		mac = internalVip.Status.Mac
-		subnetName = internalVip.Spec.Subnet
-	} else {
-		internalIP, err := c.ipsLister.Get(cachedDnat.Spec.IPName)
-		if err != nil {
-			klog.Errorf("failed to get ip %s, %v", cachedDnat.Spec.IPName, err)
-			return err
-		}
-		internalV4Ip = internalIP.Spec.V4IPAddress
-		mac = internalIP.Spec.MacAddress
-		subnetName = internalIP.Spec.Subnet
-	}
-
+	// check eip
 	eipName := cachedDnat.Spec.OvnEip
-	if len(eipName) == 0 {
+	if eipName == "" {
 		err := fmt.Errorf("failed to create dnat %s, should set eip", cachedDnat.Name)
 		klog.Error(err)
 		return err
 	}
-
 	cachedEip, err := c.GetOvnEip(eipName)
 	if err != nil {
 		klog.Errorf("failed to get eip, %v", err)
 		return err
 	}
-
 	if cachedEip.Spec.Type == util.Lsp {
 		// eip is using by ecmp nexthop lsp, nat can not use
 		err = fmt.Errorf("ovn nat %s can not use type %s eip %s", key, util.Lsp, eipName)
 		klog.Error(err)
 		return err
 	}
-
-	if _, err := c.isOvnDnatDuplicated(eipName, key, cachedDnat.Spec.ExternalPort); err != nil {
+	if cachedEip.Status.V4Ip == "" {
+		err := fmt.Errorf("failed to create v4 dnat %s, eip %s has no v4 ip", cachedDnat.Name, eipName)
+		klog.Error(err)
+		return err
+	}
+	if err := c.isOvnDnatDuplicated(eipName, key, cachedDnat.Spec.ExternalPort); err != nil {
 		klog.Error("failed to create dnat %s, %v", cachedDnat.Name, err)
 		return err
 	}
 
-	subnet, err := c.subnetsLister.Get(subnetName)
-	if err != nil {
-		klog.Errorf("failed to get vpc subnet %s, %v", subnetName, err)
+	// get dnat external ip, internal ip, vpc name
+	var internalV4Ip, subnetName, vpcName string
+	if cachedDnat.Spec.Vpc != "" {
+		vpcName = cachedDnat.Spec.Vpc
+	}
+	if cachedDnat.Spec.V4Ip != "" {
+		internalV4Ip = cachedDnat.Spec.V4Ip
+	}
+	if internalV4Ip == "" && cachedDnat.Spec.IPName != "" {
+		if cachedDnat.Spec.IPType == util.Vip {
+			internalVip, err := c.virtualIpsLister.Get(cachedDnat.Spec.IPName)
+			if err != nil {
+				klog.Errorf("failed to get vip %s, %v", cachedDnat.Spec.IPName, err)
+				return err
+			}
+			internalV4Ip = internalVip.Status.V4ip
+			subnetName = internalVip.Spec.Subnet
+		} else {
+			internalIP, err := c.ipsLister.Get(cachedDnat.Spec.IPName)
+			if err != nil {
+				klog.Errorf("failed to get ip %s, %v", cachedDnat.Spec.IPName, err)
+				return err
+			}
+			internalV4Ip = internalIP.Spec.V4IPAddress
+			subnetName = internalIP.Spec.Subnet
+		}
+		subnet, err := c.subnetsLister.Get(subnetName)
+		if err != nil {
+			klog.Errorf("failed to get vpc subnet %s, %v", subnetName, err)
+			return err
+		}
+		vpcName = subnet.Spec.Vpc
+	}
+	if internalV4Ip == "" {
+		err := fmt.Errorf("failed to create v4 dnat %s, no internal v4 ip", cachedDnat.Name)
+		klog.Error(err)
 		return err
 	}
-
-	if cachedEip.Status.V4Ip == "" || internalV4Ip == "" {
-		err := fmt.Errorf("failed to create v4 dnat %s", cachedDnat.Name)
+	if vpcName == "" {
+		err := fmt.Errorf("failed to create v4 dnat %s, no vpc", cachedDnat.Name)
 		klog.Error(err)
 		return err
 	}
 
-	vpcName := subnet.Spec.Vpc
 	if err = c.patchOvnDnatStatus(key, vpcName, cachedEip.Status.V4Ip,
-		internalV4Ip, mac, false); err != nil {
+		internalV4Ip, false); err != nil {
 		klog.Errorf("failed to patch status for dnat %s, %v", key, err)
 		return err
 	}
@@ -306,7 +319,7 @@ func (c *Controller) handleAddOvnDnatRule(key string) error {
 	}
 
 	if err = c.patchOvnDnatStatus(key, vpcName, cachedEip.Status.V4Ip,
-		internalV4Ip, mac, true); err != nil {
+		internalV4Ip, true); err != nil {
 		klog.Errorf("failed to patch status for dnat %s, %v", key, err)
 		return err
 	}
@@ -357,61 +370,74 @@ func (c *Controller) handleUpdateOvnDnatRule(key string) error {
 	}
 
 	klog.Infof("handle update dnat %s", key)
-	var internalV4Ip, mac, subnetName string
-	if cachedDnat.Spec.IPType == util.Vip {
-		internalVip, err := c.virtualIpsLister.Get(cachedDnat.Spec.IPName)
-		if err != nil {
-			klog.Errorf("failed to get vip %s, %v", cachedDnat.Spec.IPName, err)
-			return err
-		}
-		internalV4Ip = internalVip.Status.V4ip
-		mac = internalVip.Status.Mac
-		subnetName = internalVip.Spec.Subnet
-	} else {
-		internalIP, err := c.ipsLister.Get(cachedDnat.Spec.IPName)
-		if err != nil {
-			klog.Errorf("failed to get ip %s, %v", cachedDnat.Spec.IPName, err)
-			return err
-		}
-		internalV4Ip = internalIP.Spec.V4IPAddress
-		mac = internalIP.Spec.MacAddress
-		subnetName = internalIP.Spec.Subnet
-	}
-
+	// check eip
 	eipName := cachedDnat.Spec.OvnEip
-	if len(eipName) == 0 {
+	if eipName == "" {
 		err := fmt.Errorf("failed to create dnat %s, should set eip", cachedDnat.Name)
 		klog.Error(err)
 		return err
 	}
-
 	cachedEip, err := c.GetOvnEip(eipName)
 	if err != nil {
 		klog.Errorf("failed to get eip, %v", err)
 		return err
 	}
-
-	if _, err := c.isOvnDnatDuplicated(eipName, key, cachedDnat.Spec.ExternalPort); err != nil {
-		klog.Error("failed to update dnat %s, %v", cachedDnat.Name, err)
-		return err
-	}
-
-	subnet, err := c.subnetsLister.Get(subnetName)
-	if err != nil {
-		klog.Errorf("failed to get vpc subnet %s, %v", subnetName, err)
-		return err
-	}
-	vpcName := subnet.Spec.Vpc
-
-	if cachedEip.Status.V4Ip == "" || internalV4Ip == "" {
-		err := fmt.Errorf("failed to create v4 dnat %s", cachedDnat.Name)
-		klog.Error(err)
-		return err
-	}
-
 	if cachedEip.Spec.Type == util.Lsp {
 		// eip is using by ecmp nexthop lsp, nat can not use
 		err = fmt.Errorf("ovn nat %s can not use type %s eip %s", key, util.Lsp, eipName)
+		klog.Error(err)
+		return err
+	}
+	if cachedEip.Status.V4Ip == "" {
+		err := fmt.Errorf("failed to create v4 dnat %s, eip %s has no v4 ip", cachedDnat.Name, eipName)
+		klog.Error(err)
+		return err
+	}
+	if err := c.isOvnDnatDuplicated(eipName, key, cachedDnat.Spec.ExternalPort); err != nil {
+		klog.Error("failed to create dnat %s, %v", cachedDnat.Name, err)
+		return err
+	}
+
+	// get dnat external ip, internal ip, vpc name
+	var internalV4Ip, subnetName, vpcName string
+	if cachedDnat.Spec.Vpc != "" {
+		vpcName = cachedDnat.Spec.Vpc
+	}
+	if cachedDnat.Spec.V4Ip != "" {
+		internalV4Ip = cachedDnat.Spec.V4Ip
+	}
+	if internalV4Ip == "" && cachedDnat.Spec.IPName != "" {
+		if cachedDnat.Spec.IPType == util.Vip {
+			internalVip, err := c.virtualIpsLister.Get(cachedDnat.Spec.IPName)
+			if err != nil {
+				klog.Errorf("failed to get vip %s, %v", cachedDnat.Spec.IPName, err)
+				return err
+			}
+			internalV4Ip = internalVip.Status.V4ip
+			subnetName = internalVip.Spec.Subnet
+		} else {
+			internalIP, err := c.ipsLister.Get(cachedDnat.Spec.IPName)
+			if err != nil {
+				klog.Errorf("failed to get ip %s, %v", cachedDnat.Spec.IPName, err)
+				return err
+			}
+			internalV4Ip = internalIP.Spec.V4IPAddress
+			subnetName = internalIP.Spec.Subnet
+		}
+		subnet, err := c.subnetsLister.Get(subnetName)
+		if err != nil {
+			klog.Errorf("failed to get vpc subnet %s, %v", subnetName, err)
+			return err
+		}
+		vpcName = subnet.Spec.Vpc
+	}
+	if internalV4Ip == "" {
+		err := fmt.Errorf("failed to create v4 dnat %s, no internal v4 ip", cachedDnat.Name)
+		klog.Error(err)
+		return err
+	}
+	if vpcName == "" {
+		err := fmt.Errorf("failed to create v4 dnat %s, no vpc", cachedDnat.Name)
 		klog.Error(err)
 		return err
 	}
@@ -440,7 +466,7 @@ func (c *Controller) handleUpdateOvnDnatRule(key string) error {
 			return err
 		}
 
-		if err = c.patchOvnDnatStatus(key, vpcName, cachedEip.Status.V4Ip, internalV4Ip, mac, true); err != nil {
+		if err = c.patchOvnDnatStatus(key, vpcName, cachedEip.Status.V4Ip, internalV4Ip, true); err != nil {
 			klog.Errorf("failed to patch status for dnat '%s', %v", key, err)
 			return err
 		}
@@ -487,7 +513,7 @@ func (c *Controller) patchOvnDnatAnnotations(key, eipName string) error {
 	return nil
 }
 
-func (c *Controller) patchOvnDnatStatus(key, vpcName, v4Eip, podIP, podMac string, ready bool) error {
+func (c *Controller) patchOvnDnatStatus(key, vpcName, v4Eip, podIP string, ready bool) error {
 	oriDnat, err := c.ovnDnatRulesLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -529,12 +555,10 @@ func (c *Controller) patchOvnDnatStatus(key, vpcName, v4Eip, podIP, podMac strin
 
 	if (v4Eip != "" && dnat.Status.V4Eip != v4Eip) ||
 		(vpcName != "" && dnat.Status.Vpc != vpcName) ||
-		(podIP != "" && dnat.Status.V4Ip != podIP) ||
-		(podMac != "" && dnat.Status.MacAddress != podMac) {
+		(podIP != "" && dnat.Status.V4Ip != podIP) {
 		dnat.Status.Vpc = vpcName
 		dnat.Status.V4Eip = v4Eip
 		dnat.Status.V4Ip = podIP
-		dnat.Status.MacAddress = podMac
 		changed = true
 	}
 
