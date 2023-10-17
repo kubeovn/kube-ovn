@@ -52,7 +52,7 @@ func (c *Controller) enqueueUpdateVpc(oldObj, newObj interface{}) {
 		!reflect.DeepEqual(oldVpc.Spec.PolicyRoutes, newVpc.Spec.PolicyRoutes) ||
 		!reflect.DeepEqual(oldVpc.Spec.VpcPeerings, newVpc.Spec.VpcPeerings) ||
 		!reflect.DeepEqual(oldVpc.Annotations, newVpc.Annotations) ||
-		!reflect.DeepEqual(oldVpc.Spec.AddExternalSubnets, newVpc.Spec.AddExternalSubnets) ||
+		!reflect.DeepEqual(oldVpc.Spec.ExtraExternalSubnets, newVpc.Spec.ExtraExternalSubnets) ||
 		oldVpc.Labels[util.VpcExternalLabel] != newVpc.Labels[util.VpcExternalLabel] {
 		// TODO:// label VpcExternalLabel replace with spec enable external
 		var (
@@ -123,7 +123,7 @@ func (c *Controller) handleDelVpc(vpc *kubeovnv1.Vpc) error {
 		return err
 	}
 
-	for _, subnet := range vpc.Status.AddExternalSubnets {
+	for _, subnet := range vpc.Status.ExtraExternalSubnets {
 		klog.Infof("disconnect external network %s to vpc %s", subnet, vpc.Name)
 		if err := c.handleDelVpcExternalSubnet(vpc.Name, subnet); err != nil {
 			klog.Error(err)
@@ -560,13 +560,13 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 					return err
 				}
 			}
-			if cachedVpc.Spec.AddExternalSubnets != nil {
-				sort.Strings(vpc.Spec.AddExternalSubnets)
+			if cachedVpc.Spec.ExtraExternalSubnets != nil {
+				sort.Strings(vpc.Spec.ExtraExternalSubnets)
 			}
 			// add external subnets only in spec and delete external subnets only in status
-			if !reflect.DeepEqual(vpc.Spec.AddExternalSubnets, vpc.Status.AddExternalSubnets) {
-				for _, subnetStatus := range cachedVpc.Status.AddExternalSubnets {
-					if !slices.Contains(cachedVpc.Spec.AddExternalSubnets, subnetStatus) {
+			if !reflect.DeepEqual(vpc.Spec.ExtraExternalSubnets, vpc.Status.ExtraExternalSubnets) {
+				for _, subnetStatus := range cachedVpc.Status.ExtraExternalSubnets {
+					if !slices.Contains(cachedVpc.Spec.ExtraExternalSubnets, subnetStatus) {
 						klog.Infof("delete external subnet %s connection for vpc %s", subnetStatus, vpc.Name)
 						if err := c.handleDelVpcExternalSubnet(vpc.Name, subnetStatus); err != nil {
 							klog.Errorf("failed to delete external subnet %s connection for vpc %s, error %v", subnetStatus, vpc.Name, err)
@@ -574,8 +574,8 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 						}
 					}
 				}
-				for _, subnetSpec := range cachedVpc.Spec.AddExternalSubnets {
-					if !slices.Contains(cachedVpc.Status.AddExternalSubnets, subnetSpec) {
+				for _, subnetSpec := range cachedVpc.Spec.ExtraExternalSubnets {
+					if !slices.Contains(cachedVpc.Status.ExtraExternalSubnets, subnetSpec) {
 						klog.Infof("connect external subnet %s with vpc %s", subnetSpec, vpc.Name)
 						if err := c.handleAddVpcExternalSubnet(key, subnetSpec); err != nil {
 							klog.Errorf("failed to add external subnet %s connection for vpc %s, error %v", subnetSpec, key, err)
@@ -610,9 +610,9 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 			}
 		}
 
-		if cachedVpc.Status.AddExternalSubnets != nil && !cachedVpc.Spec.EnableExternal {
+		if cachedVpc.Status.ExtraExternalSubnets != nil && !cachedVpc.Spec.EnableExternal {
 			// disconnect vpc to extra external subnets
-			for _, subnet := range cachedVpc.Status.AddExternalSubnets {
+			for _, subnet := range cachedVpc.Status.ExtraExternalSubnets {
 				klog.Infof("disconnect external network %s to vpc %s", subnet, vpc.Name)
 				if err := c.handleDelVpcExternalSubnet(key, subnet); err != nil {
 					klog.Error(err)
@@ -1282,11 +1282,11 @@ func (c *Controller) updateVpcAddExternalStatus(key string, addExternalStatus bo
 		return err
 	}
 	vpc := cachedVpc.DeepCopy()
-	if addExternalStatus && vpc.Spec.AddExternalSubnets != nil {
-		sort.Strings(vpc.Spec.AddExternalSubnets)
-		vpc.Status.AddExternalSubnets = vpc.Spec.AddExternalSubnets
+	if addExternalStatus && vpc.Spec.ExtraExternalSubnets != nil {
+		sort.Strings(vpc.Spec.ExtraExternalSubnets)
+		vpc.Status.ExtraExternalSubnets = vpc.Spec.ExtraExternalSubnets
 	} else {
-		vpc.Status.AddExternalSubnets = nil
+		vpc.Status.ExtraExternalSubnets = nil
 	}
 	bytes, err := vpc.Status.Bytes()
 	if err != nil {
