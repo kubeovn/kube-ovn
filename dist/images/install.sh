@@ -1743,6 +1743,9 @@ spec:
         - jsonPath: .status.subnets
           name: Subnets
           type: string
+        - jsonPath: .status.extraExternalSubnets
+          name: ExtraExternalSubnets
+          type: string
         - jsonPath: .spec.namespaces
           name: Namespaces
           type: string
