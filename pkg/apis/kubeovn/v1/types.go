@@ -414,12 +414,13 @@ type Vpc struct {
 }
 
 type VpcSpec struct {
-	Namespaces     []string       `json:"namespaces,omitempty"`
-	StaticRoutes   []*StaticRoute `json:"staticRoutes,omitempty"`
-	PolicyRoutes   []*PolicyRoute `json:"policyRoutes,omitempty"`
-	VpcPeerings    []*VpcPeering  `json:"vpcPeerings,omitempty"`
-	EnableExternal bool           `json:"enableExternal,omitempty"`
-	EnableBfd      bool           `json:"enableBfd,omitempty"`
+	Namespaces           []string       `json:"namespaces,omitempty"`
+	StaticRoutes         []*StaticRoute `json:"staticRoutes,omitempty"`
+	PolicyRoutes         []*PolicyRoute `json:"policyRoutes,omitempty"`
+	VpcPeerings          []*VpcPeering  `json:"vpcPeerings,omitempty"`
+	EnableExternal       bool           `json:"enableExternal,omitempty"`
+	ExtraExternalSubnets []string       `json:"extraExternalSubnets,omitempty"`
+	EnableBfd            bool           `json:"enableBfd,omitempty"`
 }
 
 type VpcPeering struct {
@@ -480,6 +481,7 @@ type VpcStatus struct {
 	Subnets                 []string `json:"subnets"`
 	VpcPeerings             []string `json:"vpcPeerings"`
 	EnableExternal          bool     `json:"enableExternal"`
+	ExtraExternalSubnets    []string `json:"extraExternalSubnets"`
 	EnableBfd               bool     `json:"enableBfd"`
 }
 
