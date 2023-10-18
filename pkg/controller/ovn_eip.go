@@ -223,7 +223,9 @@ func (c *Controller) handleAddOvnEip(key string) error {
 	var v4ip, v6ip, mac, subnetName string
 	subnetName = cachedEip.Spec.ExternalSubnet
 	if subnetName == "" {
-		return fmt.Errorf("failed to create ovn eip '%s', subnet should be set", key)
+		err := fmt.Errorf("failed to create ovn eip '%s', subnet should be set", key)
+		klog.Error(err)
+		return err
 	}
 	subnet, err := c.subnetsLister.Get(subnetName)
 	if err != nil {
@@ -284,7 +286,9 @@ func (c *Controller) handleUpdateOvnEip(key string) error {
 	if !cachedEip.DeletionTimestamp.IsZero() {
 		subnetName := cachedEip.Spec.ExternalSubnet
 		if subnetName == "" {
-			return fmt.Errorf("failed to update ovn eip '%s', subnet should be set", key)
+			err := fmt.Errorf("failed to create ovn eip '%s', subnet should be set", key)
+			klog.Error(err)
+			return err
 		}
 		subnet, err := c.subnetsLister.Get(subnetName)
 		if err != nil {

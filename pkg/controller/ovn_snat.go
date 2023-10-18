@@ -246,6 +246,7 @@ func (c *Controller) handleAddOvnSnatRule(key string) error {
 	if v4IpCidr == "" {
 		// only support IPv4 snat
 		err = fmt.Errorf("failed to get v4 internal ip for snat %s", key)
+		klog.Error(err)
 		return err
 	}
 	if vpcName == "" {
@@ -364,6 +365,7 @@ func (c *Controller) handleUpdateOvnSnatRule(key string) error {
 	if v4IpCidr == "" {
 		// only support IPv4 snat
 		err = fmt.Errorf("failed to get v4 internal ip for snat %s", key)
+		klog.Error(err)
 		return err
 	}
 	if vpcName == "" {

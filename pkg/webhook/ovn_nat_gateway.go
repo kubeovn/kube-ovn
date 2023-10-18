@@ -52,7 +52,7 @@ func (v *ValidatingHook) ovnEipUpdateHook(ctx context.Context, req admission.Req
 
 	if eipOld.Spec != eipNew.Spec {
 		if eipOld.Status.Ready {
-			err := fmt.Errorf("ovnEip \"%s\" is ready, not support change", eipNew.Name)
+			err := fmt.Errorf("OvnEip not support change")
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		}
 		if err := v.ValidateOvnEip(ctx, &eipNew); err != nil {
@@ -70,27 +70,27 @@ func (v *ValidatingHook) isOvnEipInUse(ctx context.Context, eipV4IP string) (str
 	opts := cli.MatchingLabels{util.EipV4IpLabel: eipV4IP}
 	err = v.cache.List(ctx, &dnatList, opts)
 	if err != nil {
-		klog.Errorf("failed to get ovn dnats, %v", err)
+		klog.Errorf("failed to list ovn dnat, %v", err)
 		return "", err
 	}
 	if len(dnatList.Items) != 0 {
-		return "dnat", nil
+		return util.DnatUsingEip, nil
 	}
 	err = v.cache.List(ctx, &fipList, opts)
 	if err != nil {
-		klog.Errorf("failed to get ovn fip, %v", err)
+		klog.Errorf("failed to list ovn fip, %v", err)
 		return "", err
 	}
 	if len(fipList.Items) != 0 {
-		return "fip", nil
+		return util.FipUsingEip, nil
 	}
 	err = v.cache.List(ctx, &snatList, opts)
 	if err != nil {
-		klog.Errorf("failed to get ovn dnats, %v", err)
+		klog.Errorf("failed to list ovn snat, %v", err)
 		return "", err
 	}
 	if len(snatList.Items) != 0 {
-		return "snat", nil
+		return util.SnatUsingEip, nil
 	}
 	return "", nil
 }
@@ -105,7 +105,7 @@ func (v *ValidatingHook) ovnEipDeleteHook(ctx context.Context, req admission.Req
 		var err error
 		nat, err := v.isOvnEipInUse(ctx, eip.Spec.V4Ip)
 		if nat != "" {
-			err = fmt.Errorf("eip \"%s\" is still using by ovn nat", eip.Name)
+			err = fmt.Errorf("OvnEip %s is still using by ovn nat", eip.Name)
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		}
 		if err != nil {
@@ -142,7 +142,7 @@ func (v *ValidatingHook) ovnDnatUpdateHook(ctx context.Context, req admission.Re
 
 	if dnatOld.Spec != dnatNew.Spec {
 		if dnatOld.Status.Ready {
-			err := fmt.Errorf("OvnDnatRule \"%s\" is ready, not support change", dnatNew.Name)
+			err := fmt.Errorf("OvnDnat not support change")
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		}
 		if err := v.ValidateOvnDnat(ctx, &dnatNew); err != nil {
@@ -179,7 +179,7 @@ func (v *ValidatingHook) ovnSnatUpdateHook(ctx context.Context, req admission.Re
 
 	if snatOld.Spec != snatNew.Spec {
 		if snatOld.Status.Ready {
-			err := fmt.Errorf("OvnSnatRule \"%s\" is ready, not support change", snatNew.Name)
+			err := fmt.Errorf("OvnSnat not support change")
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		}
 		if err := v.ValidateOvnSnat(ctx, &snatNew); err != nil {
@@ -216,7 +216,7 @@ func (v *ValidatingHook) ovnFipUpdateHook(ctx context.Context, req admission.Req
 
 	if fipNew.Spec != fipOld.Spec {
 		if fipOld.Status.Ready {
-			err := fmt.Errorf("OvnFIPRule \"%s\" is ready, not support change", fipNew.Name)
+			err := fmt.Errorf("OvnFip not support change")
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		}
 		if err := v.ValidateOvnFip(ctx, &fipNew); err != nil {
@@ -236,12 +236,12 @@ func (v *ValidatingHook) ValidateOvnEip(ctx context.Context, eip *ovnv1.OvnEip) 
 
 	if eip.Spec.V4Ip != "" {
 		if net.ParseIP(eip.Spec.V4Ip) == nil {
-			err := fmt.Errorf("v4ip %s is not a valid", eip.Spec.V4Ip)
+			err := fmt.Errorf("spec v4Ip %s is not a valid", eip.Spec.V4Ip)
 			return err
 		}
 
 		if !util.CIDRContainIP(subnet.Spec.CIDRBlock, eip.Spec.V4Ip) {
-			err := fmt.Errorf("the vip %s is not in the range of subnet \"%s\", cidr %v",
+			err := fmt.Errorf("the vip %s is not in the range of subnet %s, cidr %v",
 				eip.Spec.V4Ip, subnet.Name, subnet.Spec.CIDRBlock)
 			return err
 		}
@@ -249,12 +249,12 @@ func (v *ValidatingHook) ValidateOvnEip(ctx context.Context, eip *ovnv1.OvnEip) 
 
 	if eip.Spec.V6Ip != "" {
 		if net.ParseIP(eip.Spec.V6Ip) == nil {
-			err := fmt.Errorf("v6ip %s is not a valid", eip.Spec.V6Ip)
+			err := fmt.Errorf("spec v6ip %s is not a valid", eip.Spec.V6Ip)
 			return err
 		}
 
 		if !util.CIDRContainIP(subnet.Spec.CIDRBlock, eip.Spec.V6Ip) {
-			err := fmt.Errorf("the vip %s is not in the range of subnet \"%s\", cidr %v",
+			err := fmt.Errorf("the vip %s is not in the range of subnet %s, cidr %v",
 				eip.Spec.V6Ip, subnet.Name, subnet.Spec.CIDRBlock)
 			return err
 		}
@@ -265,11 +265,11 @@ func (v *ValidatingHook) ValidateOvnEip(ctx context.Context, eip *ovnv1.OvnEip) 
 
 func (v *ValidatingHook) ValidateOvnDnat(ctx context.Context, dnat *ovnv1.OvnDnatRule) error {
 	if dnat.Spec.OvnEip == "" {
-		err := fmt.Errorf("parameter \"OvnEip\" cannot be empty")
+		err := fmt.Errorf("should set spec ovnEip")
 		return err
 	}
-	if dnat.Spec.IPName == "" {
-		err := fmt.Errorf("parameter \"IPName\" cannot be empty")
+	if dnat.Spec.IPName == "" && dnat.Spec.V4Ip == "" {
+		err := fmt.Errorf("should set spec ipName or v4Ip")
 		return err
 	}
 	eip := &ovnv1.OvnEip{}
@@ -279,34 +279,34 @@ func (v *ValidatingHook) ValidateOvnDnat(ctx context.Context, dnat *ovnv1.OvnDna
 	}
 
 	if dnat.Spec.ExternalPort == "" {
-		err := fmt.Errorf("parameter \"externalPort\" cannot be empty")
+		err := fmt.Errorf("should set spec externalPort")
 		return err
 	}
 
 	if dnat.Spec.InternalPort == "" {
-		err := fmt.Errorf("parameter \"internalPort\" cannot be empty")
+		err := fmt.Errorf("should set spec internalPort")
 		return err
 	}
 
 	if port, err := strconv.Atoi(dnat.Spec.ExternalPort); err != nil {
-		errMsg := fmt.Errorf("failed to parse externalPort %s: %v", dnat.Spec.ExternalPort, err)
+		errMsg := fmt.Errorf("failed to parse spec externalPort %s: %v", dnat.Spec.ExternalPort, err)
 		return errMsg
 	} else if port < 0 || port > 65535 {
-		err := fmt.Errorf("externalPort %s is not a valid port", dnat.Spec.ExternalPort)
+		err := fmt.Errorf("spec externalPort %s is not a valid port", dnat.Spec.ExternalPort)
 		return err
 	}
 
 	if port, err := strconv.Atoi(dnat.Spec.InternalPort); err != nil {
-		errMsg := fmt.Errorf("failed to parse internalIP %s: %v", dnat.Spec.InternalPort, err)
+		errMsg := fmt.Errorf("failed to parse spec internalIP %s: %v", dnat.Spec.InternalPort, err)
 		return errMsg
 	} else if port < 0 || port > 65535 {
-		err := fmt.Errorf("internalIP %s is not a valid port", dnat.Spec.InternalPort)
+		err := fmt.Errorf("spec internalIP %s is not a valid port", dnat.Spec.InternalPort)
 		return err
 	}
 
 	if !strings.EqualFold(dnat.Spec.Protocol, "tcp") &&
 		!strings.EqualFold(dnat.Spec.Protocol, "udp") {
-		err := fmt.Errorf("invaild iptable protocol: %s,supported params: \"tcp\", \"udp\"", dnat.Spec.Protocol)
+		err := fmt.Errorf("invaild dnat protocol: %s, support tcp or udp", dnat.Spec.Protocol)
 		return err
 	}
 
@@ -315,11 +315,11 @@ func (v *ValidatingHook) ValidateOvnDnat(ctx context.Context, dnat *ovnv1.OvnDna
 
 func (v *ValidatingHook) ValidateOvnSnat(ctx context.Context, snat *ovnv1.OvnSnatRule) error {
 	if snat.Spec.OvnEip == "" {
-		err := fmt.Errorf("parameter \"eip\" cannot be empty")
+		err := fmt.Errorf("should set spec OvnEip")
 		return err
 	}
-	if snat.Spec.VpcSubnet == "" && snat.Spec.IPName == "" {
-		err := fmt.Errorf("should set parameter \"VpcSubnet\" or \"IPName\" at least")
+	if snat.Spec.VpcSubnet == "" && snat.Spec.IPName == "" && snat.Spec.V4Ip == "" && snat.Spec.V4IpCidr == "" {
+		err := fmt.Errorf("should set spec vpcSubnet or ipName or v4Ip or v4IpCidr at least")
 		return err
 	}
 	eip := &ovnv1.OvnEip{}
@@ -329,11 +329,11 @@ func (v *ValidatingHook) ValidateOvnSnat(ctx context.Context, snat *ovnv1.OvnSna
 
 func (v *ValidatingHook) ValidateOvnFip(ctx context.Context, fip *ovnv1.OvnFip) error {
 	if fip.Spec.OvnEip == "" {
-		err := fmt.Errorf("parameter \"OvnEip\" cannot be empty")
+		err := fmt.Errorf("should set spec ovnEip")
 		return err
 	}
-	if fip.Spec.IPName == "" {
-		err := fmt.Errorf("parameter \"IPName\" cannot be empty")
+	if fip.Spec.IPName == "" && fip.Spec.V4Ip == "" {
+		err := fmt.Errorf("should set spec ipName or v4Ip")
 		return err
 	}
 	eip := &ovnv1.OvnEip{}
