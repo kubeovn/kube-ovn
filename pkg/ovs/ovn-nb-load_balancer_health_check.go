@@ -27,21 +27,21 @@ func (c *OVNNbClient) AddLoadBalancerHealthCheck(lbName, vipEndpoint string, ext
 
 // newLoadBalancerHealthCheck return hc with basic information
 func (c *OVNNbClient) newLoadBalancerHealthCheck(lbName, vipEndpoint string, externals map[string]string) (*ovnnb.LoadBalancerHealthCheck, error) {
-	if len(lbName) == 0 {
-		err := fmt.Errorf("the lb name is required")
-		klog.Error(err)
-		return nil, err
-	}
-	if len(vipEndpoint) == 0 {
-		err := fmt.Errorf("the vip endpoint is required")
-		klog.Error(err)
-		return nil, err
-	}
-
 	var (
 		exists bool
 		err    error
 	)
+
+	if len(lbName) == 0 {
+		err = fmt.Errorf("the lb name is required")
+		klog.Error(err)
+		return nil, err
+	}
+	if len(vipEndpoint) == 0 {
+		err = fmt.Errorf("the vip endpoint is required")
+		klog.Error(err)
+		return nil, err
+	}
 
 	if exists, err = c.LoadBalancerHealthCheckExists(lbName, vipEndpoint); err != nil {
 		err := fmt.Errorf("get lb health check %s: %v", vipEndpoint, err)
@@ -76,24 +76,24 @@ func (c *OVNNbClient) CreateLoadBalancerHealthCheck(lbName, vipEndpoint string, 
 	}
 
 	var (
-		models    = make([]model.Model, 0, 1)
-		lbhcUUIDs = make([]string, 0, 1)
-		lbHcModel = model.Model(lbhc)
-		ops       = make([]ovsdb.Operation, 0, 2)
+		models                  = make([]model.Model, 0, 1)
+		lbhcUUIDs               = make([]string, 0, 1)
+		lbHcModel               = model.Model(lbhc)
+		ops                     = make([]ovsdb.Operation, 0, 2)
+		createLbhcOp, lbHcAddOp []ovsdb.Operation
+		err                     error
 	)
 
 	models = append(models, lbHcModel)
 	lbhcUUIDs = append(lbhcUUIDs, lbhc.UUID)
 
-	createLbhcOp, err := c.ovsDbClient.Create(models...)
-	if err != nil {
+	if createLbhcOp, err = c.ovsDbClient.Create(models...); err != nil {
 		klog.Error(err)
 		return fmt.Errorf("generate operations for creating lbhc: %v", err)
 	}
 	ops = append(ops, createLbhcOp...)
 
-	lbHcAddOp, err := c.LoadBalancerUpdateHealthCheckOp(lbName, lbhcUUIDs, ovsdb.MutateOperationInsert)
-	if err != nil {
+	if lbHcAddOp, err = c.LoadBalancerUpdateHealthCheckOp(lbName, lbhcUUIDs, ovsdb.MutateOperationInsert); err != nil {
 		err = fmt.Errorf("generate operations for adding lbhc to lb %s: %v", lbName, err)
 		klog.Error(err)
 		return err
