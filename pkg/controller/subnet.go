@@ -1874,12 +1874,6 @@ func (c *Controller) reconcileVlan(subnet *kubeovnv1.Subnet) error {
 		return nil
 	}
 	klog.Infof("reconcile vlan %v", subnet.Spec.Vlan)
-	isExternalGatewaySwitch := !subnet.Spec.LogicalGateway && subnet.Name == c.config.ExternalGatewaySwitch
-	if isExternalGatewaySwitch {
-		// external gw deal this vlan subnet, just skip
-		klog.Infof("skip reconcile vlan subnet %s", c.config.ExternalGatewaySwitch)
-		return nil
-	}
 
 	vlan, err := c.vlansLister.Get(subnet.Spec.Vlan)
 	if err != nil {
