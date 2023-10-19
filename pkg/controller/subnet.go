@@ -850,7 +850,7 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		c.patchSubnetStatus(subnet, "ResetLogicalSwitchAclSuccess", "")
 	}
 
-	if err := c.OVNNbClient.UpdateLogicalSwitchACL(subnet.Name, subnet.Spec.Acls); err != nil {
+	if err := c.OVNNbClient.UpdateLogicalSwitchACL(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Acls, subnet.Spec.AllowEWTraffic); err != nil {
 		c.patchSubnetStatus(subnet, "SetLogicalSwitchAclsFailed", err.Error())
 		return err
 	}
