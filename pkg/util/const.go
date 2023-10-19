@@ -140,6 +140,8 @@ const (
 	EgressAllowPriority = "2001"
 	EgressDefaultDrop   = "2000"
 
+	AllowSameSubnetPriority = "1900"
+
 	SubnetAllowPriority = "1001"
 	DefaultDropPriority = "1000"
 

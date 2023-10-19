@@ -158,7 +158,8 @@ type SubnetSpec struct {
 	EnableIPv6RA  bool   `json:"enableIPv6RA,omitempty"`
 	IPv6RAConfigs string `json:"ipv6RAConfigs,omitempty"`
 
-	Acls []ACL `json:"acls,omitempty"`
+	Acls                   []ACL `json:"acls,omitempty"`
+	AllowSameSubnetTraffic bool  `json:"allowSameSubnetTraffic"`
 
 	NatOutgoingPolicyRules []NatOutgoingPolicyRule `json:"natOutgoingPolicyRules,omitempty"`
 

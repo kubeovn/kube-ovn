@@ -655,6 +655,7 @@ func (suite *OvnClientTestSuite) testUpdateLogicalSwitchACL() {
 
 	ovnClient := suite.ovnClient
 	lsName := "test_update_acl_ls"
+	cidrBlock := "192.168.2.0/24, 2409:8720:4a00::0/64"
 
 	subnetAcls := []kubeovnv1.ACL{
 		{
@@ -674,11 +675,27 @@ func (suite *OvnClientTestSuite) testUpdateLogicalSwitchACL() {
 	err := ovnClient.CreateBareLogicalSwitch(lsName)
 	require.NoError(t, err)
 
-	err = ovnClient.UpdateLogicalSwitchACL(lsName, subnetAcls)
+	err = ovnClient.UpdateLogicalSwitchACL(lsName, cidrBlock, subnetAcls, true)
 	require.NoError(t, err)
 
 	ls, err := ovnClient.GetLogicalSwitch(lsName, false)
 	require.NoError(t, err)
+
+	for _, cidr := range strings.Split(cidrBlock, ",") {
+		protocol := util.CheckProtocol(cidr)
+
+		match := "ip4.src == 192.168.2.0/24 && ip4.dst == 192.168.2.0/24"
+		if protocol == kubeovnv1.ProtocolIPv6 {
+			match = "ip6.src == 2409:8720:4a00::0/64 && ip6.dst == 2409:8720:4a00::0/64"
+		}
+		acl, err := ovnClient.GetACL(lsName, ovnnb.ACLDirectionToLport, util.AllowSameSubnetPriority, match, false)
+		require.NoError(t, err)
+		expect := newACL(lsName, ovnnb.ACLDirectionToLport, util.AllowSameSubnetPriority, match, ovnnb.ACLActionAllowRelated)
+		expect.UUID = acl.UUID
+		expect.ExternalIDs["subnet"] = lsName
+		require.Equal(t, expect, acl)
+		require.Contains(t, ls.ACLs, acl.UUID)
+	}
 
 	for _, subnetACL := range subnetAcls {
 		acl, err := ovnClient.GetACL(lsName, subnetACL.Direction, strconv.Itoa(subnetACL.Priority), subnetACL.Match, false)

@@ -1479,12 +1479,11 @@ func getShortSharedDir(uid types.UID, volumeName string) string {
 }
 
 func linkExists(name string) (bool, error) {
-	_, err := netlink.LinkByName(name)
-	if err == nil {
-		return true, nil
-	} else if _, ok := err.(netlink.LinkNotFoundError); ok {
-		return false, nil
-	} else {
+	if _, err := netlink.LinkByName(name); err != nil {
+		if _, ok := err.(netlink.LinkNotFoundError); ok {
+			return false, nil
+		}
 		return false, err
 	}
+	return true, nil
 }
