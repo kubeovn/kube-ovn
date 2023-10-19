@@ -1521,17 +1521,17 @@ func (mr *MockACLMockRecorder) UpdateIngressACLOps(pgName, asIngressName, asExce
 }
 
 // UpdateLogicalSwitchACL mocks base method.
-func (m *MockACL) UpdateLogicalSwitchACL(lsName string, subnetAcls []v1.ACL) error {
+func (m *MockACL) UpdateLogicalSwitchACL(lsName, cidrBlock string, subnetAcls []v1.ACL, allowSameSubnetTraffic bool) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateLogicalSwitchACL", lsName, subnetAcls)
+	ret := m.ctrl.Call(m, "UpdateLogicalSwitchACL", lsName, cidrBlock, subnetAcls, allowSameSubnetTraffic)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // UpdateLogicalSwitchACL indicates an expected call of UpdateLogicalSwitchACL.
-func (mr *MockACLMockRecorder) UpdateLogicalSwitchACL(lsName, subnetAcls interface{}) *gomock.Call {
+func (mr *MockACLMockRecorder) UpdateLogicalSwitchACL(lsName, cidrBlock, subnetAcls, allowSameSubnetTraffic interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateLogicalSwitchACL", reflect.TypeOf((*MockACL)(nil).UpdateLogicalSwitchACL), lsName, subnetAcls)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateLogicalSwitchACL", reflect.TypeOf((*MockACL)(nil).UpdateLogicalSwitchACL), lsName, cidrBlock, subnetAcls, allowSameSubnetTraffic)
 }
 
 // UpdateSgACL mocks base method.
@@ -3953,17 +3953,17 @@ func (mr *MockNbClientMockRecorder) UpdateLogicalRouterPortRA(lrpName, ipv6RACon
 }
 
 // UpdateLogicalSwitchACL mocks base method.
-func (m *MockNbClient) UpdateLogicalSwitchACL(lsName string, subnetAcls []v1.ACL) error {
+func (m *MockNbClient) UpdateLogicalSwitchACL(lsName, cidrBlock string, subnetAcls []v1.ACL, allowSameSubnetTraffic bool) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateLogicalSwitchACL", lsName, subnetAcls)
+	ret := m.ctrl.Call(m, "UpdateLogicalSwitchACL", lsName, cidrBlock, subnetAcls, allowSameSubnetTraffic)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // UpdateLogicalSwitchACL indicates an expected call of UpdateLogicalSwitchACL.
-func (mr *MockNbClientMockRecorder) UpdateLogicalSwitchACL(lsName, subnetAcls interface{}) *gomock.Call {
+func (mr *MockNbClientMockRecorder) UpdateLogicalSwitchACL(lsName, cidrBlock, subnetAcls, allowSameSubnetTraffic interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateLogicalSwitchACL", reflect.TypeOf((*MockNbClient)(nil).UpdateLogicalSwitchACL), lsName, subnetAcls)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateLogicalSwitchACL", reflect.TypeOf((*MockNbClient)(nil).UpdateLogicalSwitchACL), lsName, cidrBlock, subnetAcls, allowSameSubnetTraffic)
 }
 
 // UpdateNbGlobal mocks base method.

@@ -2273,6 +2273,8 @@ spec:
                   type: boolean
                 ipv6RAConfigs:
                   type: string
+                allowSameSubnetTraffic:
+                  type: string
                 acls:
                   type: array
                   items:

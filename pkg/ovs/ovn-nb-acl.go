@@ -417,7 +417,7 @@ func (c *OVNNbClient) UpdateSgACL(sg *kubeovnv1.SecurityGroup, direction string)
 	return nil
 }
 
-func (c *OVNNbClient) UpdateLogicalSwitchACL(lsName string, subnetAcls []kubeovnv1.ACL) error {
+func (c *OVNNbClient) UpdateLogicalSwitchACL(lsName, cidrBlock string, subnetAcls []kubeovnv1.ACL, allowSameSubnetTraffic bool) error {
 	if err := c.DeleteAcls(lsName, logicalSwitchKey, "", map[string]string{"subnet": lsName}); err != nil {
 		return fmt.Errorf("delete subnet acls from %s: %v", lsName, err)
 	}
@@ -425,13 +425,38 @@ func (c *OVNNbClient) UpdateLogicalSwitchACL(lsName string, subnetAcls []kubeovn
 	if len(subnetAcls) == 0 {
 		return nil
 	}
-	acls := make([]*ovnnb.ACL, 0, len(subnetAcls))
+	acls := make([]*ovnnb.ACL, 0)
 
 	options := func(acl *ovnnb.ACL) {
 		if acl.ExternalIDs == nil {
 			acl.ExternalIDs = make(map[string]string)
 		}
 		acl.ExternalIDs["subnet"] = lsName
+	}
+
+	if allowSameSubnetTraffic {
+		for _, cidr := range strings.Split(cidrBlock, ",") {
+			protocol := util.CheckProtocol(cidr)
+
+			ipSuffix := "ip4"
+			if protocol == kubeovnv1.ProtocolIPv6 {
+				ipSuffix = "ip6"
+			}
+
+			/* same subnet acl */
+			sameSubnetMatch := NewAndACLMatch(
+				NewACLMatch(ipSuffix+".src", "==", cidr, ""),
+				NewACLMatch(ipSuffix+".dst", "==", cidr, ""),
+			)
+
+			sameSubnetACL, err := c.newACL(lsName, ovnnb.ACLDirectionToLport, util.AllowSameSubnetPriority, sameSubnetMatch.String(), ovnnb.ACLActionAllowRelated, options)
+			if err != nil {
+				klog.Error(err)
+				return fmt.Errorf("new same subnet ingress acl for logical switch %s: %v", lsName, err)
+			}
+
+			acls = append(acls, sameSubnetACL)
+		}
 	}
 
 	/* recreate logical switch acl */
