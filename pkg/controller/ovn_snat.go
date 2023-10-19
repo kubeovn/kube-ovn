@@ -219,7 +219,7 @@ func (c *Controller) handleAddOvnSnatRule(key string) error {
 	if cachedSnat.Spec.V4IpCidr != "" {
 		v4IpCidr = cachedSnat.Spec.V4IpCidr
 	}
-	if v4IpCidr != "" && cachedSnat.Spec.VpcSubnet != "" {
+	if v4IpCidr == "" && cachedSnat.Spec.VpcSubnet != "" {
 		subnet, err := c.subnetsLister.Get(cachedSnat.Spec.VpcSubnet)
 		if err != nil {
 			klog.Errorf("failed to get vpc subnet %s, %v", cachedSnat.Spec.VpcSubnet, err)
@@ -228,7 +228,7 @@ func (c *Controller) handleAddOvnSnatRule(key string) error {
 		vpcName = subnet.Spec.Vpc
 		v4IpCidr = subnet.Spec.CIDRBlock
 	}
-	if v4IpCidr != "" && cachedSnat.Spec.IPName != "" {
+	if v4IpCidr == "" && cachedSnat.Spec.IPName != "" {
 		vpcPodIP, err := c.ipsLister.Get(cachedSnat.Spec.IPName)
 		if err != nil {
 			klog.Errorf("failed to get pod ip %s, %v", cachedSnat.Spec.IPName, err)
@@ -242,7 +242,6 @@ func (c *Controller) handleAddOvnSnatRule(key string) error {
 		vpcName = subnet.Spec.Vpc
 		v4IpCidr = vpcPodIP.Spec.V4IPAddress
 	}
-
 	if v4IpCidr == "" {
 		// only support IPv4 snat
 		err = fmt.Errorf("failed to get v4 internal ip for snat %s", key)
@@ -347,7 +346,16 @@ func (c *Controller) handleUpdateOvnSnatRule(key string) error {
 	if cachedSnat.Spec.V4IpCidr != "" {
 		v4IpCidr = cachedSnat.Spec.V4IpCidr
 	}
-	if v4IpCidr != "" && cachedSnat.Spec.IPName != "" {
+	if v4IpCidr == "" && cachedSnat.Spec.VpcSubnet != "" {
+		subnet, err := c.subnetsLister.Get(cachedSnat.Spec.VpcSubnet)
+		if err != nil {
+			klog.Errorf("failed to get vpc subnet %s, %v", cachedSnat.Spec.VpcSubnet, err)
+			return err
+		}
+		vpcName = subnet.Spec.Vpc
+		v4IpCidr = subnet.Spec.CIDRBlock
+	}
+	if v4IpCidr == "" && cachedSnat.Spec.IPName != "" {
 		vpcPodIP, err := c.ipsLister.Get(cachedSnat.Spec.IPName)
 		if err != nil {
 			klog.Errorf("failed to get pod ip %s, %v", cachedSnat.Spec.IPName, err)
@@ -361,7 +369,6 @@ func (c *Controller) handleUpdateOvnSnatRule(key string) error {
 		vpcName = subnet.Spec.Vpc
 		v4IpCidr = vpcPodIP.Spec.V4IPAddress
 	}
-
 	if v4IpCidr == "" {
 		// only support IPv4 snat
 		err = fmt.Errorf("failed to get v4 internal ip for snat %s", key)

@@ -398,25 +398,49 @@ func (c *Controller) createOrUpdateCrdOvnEip(key, subnet, v4ip, v6ip, mac, usage
 		}
 	} else {
 		ovnEip := cachedEip.DeepCopy()
-		if ovnEip.Spec.V4Ip == "" && v4ip != "" ||
-			ovnEip.Spec.V6Ip == "" && v6ip != "" {
-			ovnEip.Spec.ExternalSubnet = subnet
-			ovnEip.Spec.V4Ip = v4ip
-			ovnEip.Spec.V6Ip = v6ip
+		needUpdate := false
+
+		if mac != "" && ovnEip.Spec.MacAddress != mac {
 			ovnEip.Spec.MacAddress = mac
+			needUpdate = true
+		}
+		if v4ip != "" && ovnEip.Spec.V4Ip != v4ip {
+			ovnEip.Spec.V4Ip = v4ip
+			needUpdate = true
+		}
+		if v6ip != "" && ovnEip.Spec.V6Ip != v6ip {
+			ovnEip.Spec.V6Ip = v6ip
+			needUpdate = true
+		}
+		if usage != "" && ovnEip.Spec.Type != usage {
 			ovnEip.Spec.Type = usage
+			needUpdate = true
+		}
+		if needUpdate {
 			if _, err := c.config.KubeOvnClient.KubeovnV1().OvnEips().Update(context.Background(), ovnEip, metav1.UpdateOptions{}); err != nil {
 				errMsg := fmt.Errorf("failed to update ovn eip '%s', %v", key, err)
 				klog.Error(errMsg)
 				return errMsg
 			}
 		}
-
-		if ovnEip.Status.MacAddress == "" {
+		needPatch := false
+		if ovnEip.Status.V4Ip == "" && ovnEip.Status.V4Ip != v4ip {
 			ovnEip.Status.V4Ip = v4ip
+			needPatch = true
+		}
+		if ovnEip.Status.V6Ip == "" && ovnEip.Status.V6Ip != v6ip {
 			ovnEip.Status.V6Ip = v6ip
+			needPatch = true
+		}
+		if ovnEip.Status.MacAddress == "" && ovnEip.Status.MacAddress != mac {
 			ovnEip.Status.MacAddress = mac
+			needPatch = true
+		}
+		if ovnEip.Status.Type == "" && ovnEip.Status.Type != usage {
 			ovnEip.Status.Type = usage
+			needPatch = true
+		}
+		if needPatch {
 			bytes, err := ovnEip.Status.Bytes()
 			if err != nil {
 				klog.Error("failed to marshal ovn eip %s, %v", key, err)

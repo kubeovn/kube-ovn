@@ -246,11 +246,35 @@ func (c *OVNNbClient) GetNATByUUID(uuid string) (*ovnnb.NAT, error) {
 func (c *OVNNbClient) GetNat(lrName, natType, externalIP, logicalIP string, ignoreNotFound bool) (*ovnnb.NAT, error) {
 	// this is necessary because may exist same nat rule in different logical router
 	if len(lrName) == 0 {
-		return nil, fmt.Errorf("the logical router name is required")
+		err := fmt.Errorf("the logical router name is required")
+		klog.Error(err)
+		return nil, err
+	}
+	if natType == ovnnb.NATTypeDNAT {
+		err := fmt.Errorf("does not support dnat for now")
+		klog.Error(err)
+		return nil, err
 	}
 
-	if natType == ovnnb.NATTypeDNAT {
-		return nil, fmt.Errorf("does not support dnat for now")
+	if natType != ovnnb.NATTypeSNAT && natType != ovnnb.NATTypeDNATAndSNAT {
+		err := fmt.Errorf("nat type must one of [ snat, dnat_and_snat ]")
+		klog.Error(err)
+		return nil, err
+	}
+
+	if natType == ovnnb.NATTypeSNAT {
+		if logicalIP == "" {
+			err := fmt.Errorf("logical ip is required when nat type is %s", natType)
+			klog.Error(err)
+			return nil, err
+		}
+	}
+	if natType == ovnnb.NATTypeDNATAndSNAT {
+		if externalIP == "" {
+			err := fmt.Errorf("external ip is required when nat type is %s", natType)
+			klog.Error(err)
+			return nil, err
+		}
 	}
 
 	fnFilter := func(nat *ovnnb.NAT) bool {
@@ -273,11 +297,15 @@ func (c *OVNNbClient) GetNat(lrName, natType, externalIP, logicalIP string, igno
 		if ignoreNotFound {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("not found logical router %s nat 'type %s external ip %s logical ip %s'", lrName, natType, externalIP, logicalIP)
+		err := fmt.Errorf("not found logical router %s nat 'type %s external ip %s logical ip %s'", lrName, natType, externalIP, logicalIP)
+		klog.Error(err)
+		return nil, err
 	}
 
 	if len(natList) > 1 {
-		return nil, fmt.Errorf("more than one nat 'type %s external ip %s logical ip %s' in logical router %s", natType, externalIP, logicalIP, lrName)
+		err := fmt.Errorf("more than one nat 'type %s external ip %s logical ip %s' in logical router %s", natType, externalIP, logicalIP, lrName)
+		klog.Error(err)
+		return nil, err
 	}
 
 	return natList[0], nil
@@ -294,17 +322,40 @@ func (c *OVNNbClient) NatExists(lrName, natType, externalIP, logicalIP string) (
 }
 
 // newNat return net with basic information
+// a nat rule is uniquely identified by router(lrName), type(natType) and logical_ip when snat
+// a nat rule is uniquely identified by router(lrName), type(natType) and external_ip when dnat_and_snat
 func (c *OVNNbClient) newNat(lrName, natType, externalIP, logicalIP, logicalMac, port string, options ...func(nat *ovnnb.NAT)) (*ovnnb.NAT, error) {
 	if len(lrName) == 0 {
-		return nil, fmt.Errorf("the logical router name is required")
+		err := fmt.Errorf("the logical router name is required")
+		klog.Error(err)
+		return nil, err
+	}
+
+	if natType == ovnnb.NATTypeDNAT {
+		err := fmt.Errorf("does not support dnat for now")
+		klog.Error(err)
+		return nil, err
 	}
 
 	if natType != ovnnb.NATTypeSNAT && natType != ovnnb.NATTypeDNATAndSNAT {
-		return nil, fmt.Errorf("nat type must one of [ snat, dnat_and_snat ]")
+		err := fmt.Errorf("nat type must one of [ snat, dnat_and_snat ]")
+		klog.Error(err)
+		return nil, err
 	}
 
-	if len(externalIP) == 0 || len(logicalIP) == 0 {
-		return nil, fmt.Errorf("nat 'externalIP %s' and 'logicalIP %s' is required", externalIP, logicalIP)
+	if natType == ovnnb.NATTypeSNAT {
+		if logicalIP == "" {
+			err := fmt.Errorf("logical ip is required when nat type is %s", natType)
+			klog.Error(err)
+			return nil, err
+		}
+	}
+	if natType == ovnnb.NATTypeDNATAndSNAT {
+		if externalIP == "" {
+			err := fmt.Errorf("external ip is required when nat type is %s", natType)
+			klog.Error(err)
+			return nil, err
+		}
 	}
 
 	exists, err := c.NatExists(lrName, natType, externalIP, logicalIP)
