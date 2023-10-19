@@ -47,6 +47,7 @@ const (
 
 	SwitchLBRuleVipsAnnotation = "ovn.kubernetes.io/switch_lb_vip"
 	SwitchLBRuleVip            = "switch_lb_vip"
+	SwitchLBRuleSubnet         = "switch_lb_subnet"
 
 	LogicalRouterAnnotation = "ovn.kubernetes.io/logical_router"
 	VpcAnnotation           = "ovn.kubernetes.io/vpc"
@@ -110,6 +111,9 @@ const (
 	QoSLabel                   = "ovn.kubernetes.io/qos"
 	NodeNameLabel              = "ovn.kubernetes.io/node-name"
 	NetworkPolicyLogAnnotation = "ovn.kubernetes.io/enable_log"
+
+	VpcLastName     = "ovn.kubernetes.io/last_vpc_name"
+	VpcLastPolicies = "ovn.kubernetes.io/last_policies"
 
 	ProtocolTCP  = "tcp"
 	ProtocolUDP  = "udp"
@@ -270,4 +274,6 @@ const (
 	TProxyOutputMask     = 0x90003
 	TProxyPreroutingMark = 0x90004
 	TProxyPreroutingMask = 0x90004
+
+	HealthCheckNamedVipTemplate = "%s:%s" // ip name, health check vip
 )

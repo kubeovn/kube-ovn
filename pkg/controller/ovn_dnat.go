@@ -21,8 +21,11 @@ import (
 )
 
 func (c *Controller) enqueueAddOvnDnatRule(obj interface{}) {
-	var key string
-	var err error
+	var (
+		key string
+		err error
+	)
+
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
 		utilruntime.HandleError(err)
 		return
@@ -32,8 +35,11 @@ func (c *Controller) enqueueAddOvnDnatRule(obj interface{}) {
 }
 
 func (c *Controller) enqueueUpdateOvnDnatRule(oldObj, newObj interface{}) {
-	var key string
-	var err error
+	var (
+		key string
+		err error
+	)
+
 	if key, err = cache.MetaNamespaceKeyFunc(newObj); err != nil {
 		utilruntime.HandleError(err)
 		return
@@ -64,8 +70,11 @@ func (c *Controller) enqueueUpdateOvnDnatRule(oldObj, newObj interface{}) {
 }
 
 func (c *Controller) enqueueDelOvnDnatRule(obj interface{}) {
-	var key string
-	var err error
+	var (
+		key string
+		err error
+	)
+
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
 		utilruntime.HandleError(err)
 		return
@@ -476,18 +485,25 @@ func (c *Controller) handleUpdateOvnDnatRule(key string) error {
 }
 
 func (c *Controller) patchOvnDnatAnnotations(key, eipName string) error {
-	oriDnat, err := c.ovnDnatRulesLister.Get(key)
-	if err != nil {
+	var (
+		oriDnat, dnat *kubeovnv1.OvnDnatRule
+		err           error
+	)
+
+	if oriDnat, err = c.ovnDnatRulesLister.Get(key); err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
 		klog.Error(err)
 		return err
 	}
+	dnat = oriDnat.DeepCopy()
 
-	dnat := oriDnat.DeepCopy()
-	var needUpdateAnno bool
-	var op string
+	var (
+		needUpdateAnno bool
+		op             string
+	)
+
 	if len(dnat.Annotations) == 0 {
 		op = "add"
 		dnat.Annotations = map[string]string{
@@ -522,9 +538,14 @@ func (c *Controller) patchOvnDnatStatus(key, vpcName, v4Eip, podIP string, ready
 		klog.Error(err)
 		return err
 	}
-	dnat := oriDnat.DeepCopy()
-	needUpdateLabel := false
-	var op string
+	dnat = oriDnat.DeepCopy()
+
+	var (
+		needUpdateLabel = false
+		changed         bool
+		op              string
+	)
+
 	if len(dnat.Labels) == 0 {
 		op = "add"
 		needUpdateLabel = true
@@ -547,7 +568,6 @@ func (c *Controller) patchOvnDnatStatus(key, vpcName, v4Eip, podIP string, ready
 		}
 	}
 
-	var changed bool
 	if dnat.Status.Ready != ready {
 		dnat.Status.Ready = ready
 		changed = true
@@ -598,20 +618,23 @@ func (c *Controller) patchOvnDnatStatus(key, vpcName, v4Eip, podIP string, ready
 }
 
 func (c *Controller) AddDnatRule(vpcName, dnatName, externalIP, internalIP, externalPort, internalPort, protocol string) error {
-	externalEndpoint := net.JoinHostPort(externalIP, externalPort)
-	internalEndpoint := net.JoinHostPort(internalIP, internalPort)
+	var (
+		externalEndpoint = net.JoinHostPort(externalIP, externalPort)
+		internalEndpoint = net.JoinHostPort(internalIP, internalPort)
+		err              error
+	)
 
-	if err := c.OVNNbClient.CreateLoadBalancer(dnatName, protocol, ""); err != nil {
+	if err = c.OVNNbClient.CreateLoadBalancer(dnatName, protocol, ""); err != nil {
 		klog.Errorf("create loadBalancer %s: %v", dnatName, err)
 		return err
 	}
 
-	if err := c.OVNNbClient.LoadBalancerAddVip(dnatName, externalEndpoint, internalEndpoint); err != nil {
+	if err = c.OVNNbClient.LoadBalancerAddVip(dnatName, externalEndpoint, internalEndpoint); err != nil {
 		klog.Errorf("add vip %s with backends %s to LB %s: %v", externalEndpoint, internalEndpoint, dnatName, err)
 		return err
 	}
 
-	if err := c.OVNNbClient.LogicalRouterUpdateLoadBalancers(vpcName, ovsdb.MutateOperationInsert, dnatName); err != nil {
+	if err = c.OVNNbClient.LogicalRouterUpdateLoadBalancers(vpcName, ovsdb.MutateOperationInsert, dnatName); err != nil {
 		klog.Errorf("add lb %s to vpc %s: %v", dnatName, vpcName, err)
 		return err
 	}
@@ -619,14 +642,19 @@ func (c *Controller) AddDnatRule(vpcName, dnatName, externalIP, internalIP, exte
 }
 
 func (c *Controller) DelDnatRule(vpcName, dnatName, externalIP, externalPort string) error {
-	externalEndpoint := net.JoinHostPort(externalIP, externalPort)
+	var (
+		ignoreHealthCheck = true
+		externalEndpoint  string
+		err               error
+	)
+	externalEndpoint = net.JoinHostPort(externalIP, externalPort)
 
-	if err := c.OVNNbClient.LoadBalancerDeleteVip(dnatName, externalEndpoint); err != nil {
+	if err = c.OVNNbClient.LoadBalancerDeleteVip(dnatName, externalEndpoint, ignoreHealthCheck); err != nil {
 		klog.Errorf("delete loadBalancer vips %s: %v", externalEndpoint, err)
 		return err
 	}
 
-	if err := c.OVNNbClient.LogicalRouterUpdateLoadBalancers(vpcName, ovsdb.MutateOperationDelete, dnatName); err != nil {
+	if err = c.OVNNbClient.LogicalRouterUpdateLoadBalancers(vpcName, ovsdb.MutateOperationDelete, dnatName); err != nil {
 		klog.Errorf("failed to remove lb %s from vpc %s: %v", dnatName, vpcName, err)
 		return err
 	}
@@ -640,14 +668,20 @@ func (c *Controller) handleAddOvnDnatFinalizer(cachedDnat *kubeovnv1.OvnDnatRule
 			return nil
 		}
 	}
-	newDnat := cachedDnat.DeepCopy()
+
+	var (
+		newDnat = cachedDnat.DeepCopy()
+		patch   []byte
+		err     error
+	)
+
 	controllerutil.AddFinalizer(newDnat, finalizer)
-	patch, err := util.GenerateMergePatchPayload(cachedDnat, newDnat)
-	if err != nil {
+	if patch, err = util.GenerateMergePatchPayload(cachedDnat, newDnat); err != nil {
 		klog.Errorf("failed to generate patch payload for ovn dnat '%s', %v", cachedDnat.Name, err)
 		return err
 	}
-	if _, err := c.config.KubeOvnClient.KubeovnV1().OvnDnatRules().Patch(context.Background(), cachedDnat.Name,
+
+	if _, err = c.config.KubeOvnClient.KubeovnV1().OvnDnatRules().Patch(context.Background(), cachedDnat.Name,
 		types.MergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
@@ -662,15 +696,20 @@ func (c *Controller) handleDelOvnDnatFinalizer(cachedDnat *kubeovnv1.OvnDnatRule
 	if len(cachedDnat.Finalizers) == 0 {
 		return nil
 	}
-	var err error
-	newDnat := cachedDnat.DeepCopy()
+
+	var (
+		newDnat = cachedDnat.DeepCopy()
+		patch   []byte
+		err     error
+	)
+
 	controllerutil.RemoveFinalizer(newDnat, finalizer)
-	patch, err := util.GenerateMergePatchPayload(cachedDnat, newDnat)
-	if err != nil {
+	if patch, err = util.GenerateMergePatchPayload(cachedDnat, newDnat); err != nil {
 		klog.Errorf("failed to generate patch payload for ovn dnat '%s', %v", cachedDnat.Name, err)
 		return err
 	}
-	if _, err := c.config.KubeOvnClient.KubeovnV1().OvnDnatRules().Patch(context.Background(), cachedDnat.Name,
+
+	if _, err = c.config.KubeOvnClient.KubeovnV1().OvnDnatRules().Patch(context.Background(), cachedDnat.Name,
 		types.MergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil

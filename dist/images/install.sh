@@ -1763,6 +1763,9 @@ spec:
         - jsonPath: .status.subnets
           name: Subnets
           type: string
+        - jsonPath: .status.extraExternalSubnets
+          name: ExtraExternalSubnets
+          type: string
         - jsonPath: .spec.namespaces
           name: Namespaces
           type: string
@@ -1777,6 +1780,10 @@ spec:
                 enableBfd:
                   type: boolean
                 namespaces:
+                  items:
+                    type: string
+                  type: array
+                extraExternalSubnets:
                   items:
                     type: string
                   type: array
@@ -1852,6 +1859,10 @@ spec:
                 enableBfd:
                   type: boolean
                 subnets:
+                  items:
+                    type: string
+                  type: array
+                extraExternalSubnets:
                   items:
                     type: string
                   type: array

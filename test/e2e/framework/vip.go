@@ -86,9 +86,9 @@ func (c *VipClient) Patch(original, modified *apiv1.Vip, timeout time.Duration) 
 	}
 
 	if errors.Is(err, context.DeadlineExceeded) {
-		Failf("timed out while retrying to patch VIP %s", original.Name)
+		Failf("timed out while retrying to patch vip %s", original.Name)
 	}
-	Failf("error occurred while retrying to patch VIP %s: %v", original.Name, err)
+	Failf("error occurred while retrying to patch vip %s: %v", original.Name, err)
 
 	return nil
 }
@@ -118,7 +118,7 @@ func (c *VipClient) WaitToDisappear(name string, _, timeout time.Duration) error
 		return vip, err
 	})).WithTimeout(timeout).Should(gomega.BeNil())
 	if err != nil {
-		return fmt.Errorf("expected VIP %s to not be found: %w", name, err)
+		return fmt.Errorf("expected vip %s to not be found: %w", name, err)
 	}
 	return nil
 }
