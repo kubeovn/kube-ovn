@@ -28,6 +28,7 @@ func (c *OVNNbClient) AddNat(lrName, natType, externalIP, logicalIP, logicalMac,
 		}
 	})
 	if err != nil {
+		klog.Errorf("failed to new nat: %v", err)
 		return err
 	}
 
