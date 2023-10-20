@@ -10,6 +10,11 @@ import (
 )
 
 func (c *Controller) enqueueAddOrDelIP(obj interface{}) {
+	if _, ok := obj.(*kubeovnv1.IP); !ok {
+		klog.Errorf("object is not an IP, ignore it")
+		return
+	}
+
 	ipObj := obj.(*kubeovnv1.IP)
 	klog.V(3).Infof("enqueue update status subnet %s", ipObj.Spec.Subnet)
 	if strings.HasPrefix(ipObj.Name, util.U2OInterconnName[0:19]) {
