@@ -213,9 +213,6 @@ func (c *Controller) handleAddOvnSnatRule(key string) error {
 	if cachedSnat.Spec.Vpc != "" {
 		vpcName = cachedSnat.Spec.Vpc
 	}
-	if cachedSnat.Spec.V4Ip != "" {
-		v4IpCidr = cachedSnat.Spec.V4Ip
-	}
 	if cachedSnat.Spec.V4IpCidr != "" {
 		v4IpCidr = cachedSnat.Spec.V4IpCidr
 	}
@@ -251,10 +248,6 @@ func (c *Controller) handleAddOvnSnatRule(key string) error {
 	if vpcName == "" {
 		err := fmt.Errorf("failed to get vpc for snat %s", cachedSnat.Name)
 		klog.Error(err)
-		return err
-	}
-	if err = c.patchOvnSnatStatus(key, vpcName, cachedEip.Spec.V4Ip, v4IpCidr, false); err != nil {
-		klog.Errorf("failed to update status for snat %s, %v", key, err)
 		return err
 	}
 
@@ -339,9 +332,6 @@ func (c *Controller) handleUpdateOvnSnatRule(key string) error {
 	var v4IpCidr, vpcName string
 	if cachedSnat.Spec.Vpc != "" {
 		vpcName = cachedSnat.Spec.Vpc
-	}
-	if cachedSnat.Spec.V4Ip != "" {
-		v4IpCidr = cachedSnat.Spec.V4Ip
 	}
 	if cachedSnat.Spec.V4IpCidr != "" {
 		v4IpCidr = cachedSnat.Spec.V4IpCidr
@@ -481,12 +471,16 @@ func (c *Controller) patchOvnSnatStatus(key, vpc, v4Eip, v4IpCidr string, ready 
 		snat.Status.Ready = ready
 		changed = true
 	}
-	if (v4Eip != "" && snat.Status.V4Eip != v4Eip) ||
-		(v4IpCidr != "" && snat.Status.V4IpCidr != v4IpCidr) ||
-		(vpc != "" && snat.Status.Vpc != vpc) {
-		snat.Status.V4Eip = v4Eip
-		snat.Status.V4IpCidr = v4IpCidr
+	if vpc != "" && snat.Status.Vpc != vpc {
 		snat.Status.Vpc = vpc
+		changed = true
+	}
+	if v4Eip != "" && snat.Status.V4Eip != v4Eip {
+		snat.Status.V4Eip = v4Eip
+		changed = true
+	}
+	if v4IpCidr != "" && snat.Status.V4IpCidr != v4IpCidr {
+		snat.Status.V4IpCidr = v4IpCidr
 		changed = true
 	}
 	if changed {

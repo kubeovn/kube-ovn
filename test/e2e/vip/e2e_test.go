@@ -82,7 +82,7 @@ var _ = framework.Describe("[group:vip]", func() {
 
 	framework.ConformanceIt("Test vip", func() {
 		ginkgo.By("1. Test allowed address pair vip")
-		ginkgo.By("Creating allowed address pair vip, should have diffrent ip and mac")
+		ginkgo.By("Creating allowed address pair vip, should have different ip and mac")
 		ginkgo.By("Creating allowed address pair vip " + vip1Name)
 		vip1 := makeOvnVip(namespaceName, vip1Name, subnetName, "", "", "")
 		vip1 = vipClient.CreateSync(vip1)

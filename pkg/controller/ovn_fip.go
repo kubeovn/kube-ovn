@@ -263,7 +263,7 @@ func (c *Controller) handleAddOvnFip(key string) error {
 			internalV4Ip = internalIP.Spec.V4IPAddress
 			subnetName = internalIP.Spec.Subnet
 			mac = internalIP.Spec.MacAddress
-			// mac is neccessary while using distributed router fip, fip use lsp its mac
+			// mac is necessary while using distributed router fip, fip use lsp its mac
 			// centralized router fip not need lsp mac, fip use lrp mac
 		}
 		subnet, err := c.subnetsLister.Get(subnetName)
@@ -286,11 +286,6 @@ func (c *Controller) handleAddOvnFip(key string) error {
 	if vpcName == "" {
 		err := fmt.Errorf("failed to create v4 fip %s, no vpc", cachedFip.Name)
 		klog.Error(err)
-		return err
-	}
-	if err = c.patchOvnFipStatus(key, vpcName, cachedEip.Status.V4Ip,
-		internalV4Ip, mac, false); err != nil {
-		klog.Errorf("failed to patch status for fip %s, %v", key, err)
 		return err
 	}
 	if err = c.handleAddOvnEipFinalizer(cachedEip, util.ControllerName); err != nil {
@@ -320,7 +315,7 @@ func (c *Controller) handleAddOvnFip(key string) error {
 		return err
 	}
 	if err = c.patchOvnFipStatus(key, vpcName, cachedEip.Status.V4Ip,
-		internalV4Ip, mac, true); err != nil {
+		internalV4Ip, true); err != nil {
 		klog.Errorf("failed to patch status for fip %s, %v", key, err)
 		return err
 	}
@@ -397,7 +392,7 @@ func (c *Controller) handleUpdateOvnFip(key string) error {
 			internalV4Ip = internalIP.Spec.V4IPAddress
 			subnetName = internalIP.Spec.Subnet
 			mac = internalIP.Spec.MacAddress
-			// mac is neccessary while using distributed router fip, fip use lsp its mac
+			// mac is necessary while using distributed router fip, fip use lsp its mac
 			// centralized router fip not need lsp mac, fip use lrp mac
 		}
 		subnet, err := c.subnetsLister.Get(subnetName)
@@ -420,11 +415,6 @@ func (c *Controller) handleUpdateOvnFip(key string) error {
 	if vpcName == "" {
 		err := fmt.Errorf("failed to create v4 fip %s, no vpc", cachedFip.Name)
 		klog.Error(err)
-		return err
-	}
-	if err = c.patchOvnFipStatus(key, vpcName, cachedEip.Status.V4Ip,
-		internalV4Ip, mac, false); err != nil {
-		klog.Errorf("failed to patch status for fip %s, %v", key, err)
 		return err
 	}
 	if err = c.handleAddOvnEipFinalizer(cachedEip, util.ControllerName); err != nil {
@@ -455,7 +445,7 @@ func (c *Controller) handleUpdateOvnFip(key string) error {
 			return err
 		}
 		if err = c.patchOvnFipStatus(key, vpcName, cachedEip.Status.V4Ip,
-			internalV4Ip, mac, true); err != nil {
+			internalV4Ip, true); err != nil {
 			klog.Errorf("failed to patch status for fip '%s', %v", key, err)
 			return err
 		}
@@ -529,7 +519,7 @@ func (c *Controller) patchOvnFipAnnotations(key, eipName string) error {
 	return nil
 }
 
-func (c *Controller) patchOvnFipStatus(key, vpcName, v4Eip, podIP, podMac string, ready bool) error {
+func (c *Controller) patchOvnFipStatus(key, vpcName, v4Eip, podIP string, ready bool) error {
 	oriFip, err := c.ovnFipsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -567,11 +557,15 @@ func (c *Controller) patchOvnFipStatus(key, vpcName, v4Eip, podIP, podMac string
 		fip.Status.Ready = ready
 		changed = true
 	}
-	if (v4Eip != "" && fip.Status.V4Eip != v4Eip) ||
-		(vpcName != "" && fip.Status.Vpc != vpcName) ||
-		(podIP != "" && fip.Status.V4Ip != podIP) {
+	if vpcName != "" && fip.Status.Vpc != vpcName {
 		fip.Status.Vpc = vpcName
+		changed = true
+	}
+	if v4Eip != "" && fip.Status.V4Eip != v4Eip {
 		fip.Status.V4Eip = v4Eip
+		changed = true
+	}
+	if podIP != "" && fip.Status.V4Ip != podIP {
 		fip.Status.V4Ip = podIP
 		changed = true
 	}

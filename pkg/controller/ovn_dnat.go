@@ -294,12 +294,6 @@ func (c *Controller) handleAddOvnDnatRule(key string) error {
 		return err
 	}
 
-	if err = c.patchOvnDnatStatus(key, vpcName, cachedEip.Status.V4Ip,
-		internalV4Ip, false); err != nil {
-		klog.Errorf("failed to patch status for dnat %s, %v", key, err)
-		return err
-	}
-
 	if err = c.handleAddOvnEipFinalizer(cachedEip, util.ControllerName); err != nil {
 		klog.Errorf("failed to add finalizer for ovn eip, %v", err)
 		return err

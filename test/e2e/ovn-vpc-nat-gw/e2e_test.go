@@ -62,8 +62,8 @@ func makeOvnFip(name, ovnEip, ipType, ipName, vpc, v4Ip string) *kubeovnv1.OvnFi
 	return framework.MakeOvnFip(name, ovnEip, ipType, ipName, vpc, v4Ip)
 }
 
-func makeOvnSnat(name, ovnEip, vpcSubnet, ipName, vpc, v4IpCidr, v4Ip string) *kubeovnv1.OvnSnatRule {
-	return framework.MakeOvnSnatRule(name, ovnEip, vpcSubnet, ipName, vpc, v4IpCidr, v4Ip)
+func makeOvnSnat(name, ovnEip, vpcSubnet, ipName, vpc, v4IpCidr string) *kubeovnv1.OvnSnatRule {
+	return framework.MakeOvnSnatRule(name, ovnEip, vpcSubnet, ipName, vpc, v4IpCidr)
 }
 
 func makeOvnDnat(name, ovnEip, ipType, ipName, vpc, v4Ip, internalPort, externalPort, protocol string) *kubeovnv1.OvnDnatRule {
@@ -172,6 +172,8 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		cidrSnatEipName = "cidr-snat-eip-" + framework.RandomSuffix()
 		cidrSnatName = "cidr-snat-" + framework.RandomSuffix()
 		ipSnatVipName = "ip-snat-vip-" + framework.RandomSuffix()
+		ipSnatEipName = "ip-snat-eip-" + framework.RandomSuffix()
+		ipSnatName = "ip-snat-" + framework.RandomSuffix()
 
 		containerID = ""
 		if image == "" {
@@ -358,7 +360,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		ginkgo.By("Deleting ovn fip " + ipFipName)
 		ovnFipClient.DeleteSync(ipFipName)
 
-		ginkgo.By("Deleting ovn fip " + ipFipEipName)
+		ginkgo.By("Deleting ovn eip " + ipFipEipName)
 		ovnFipClient.DeleteSync(ipFipEipName)
 		ginkgo.By("Deleting ovn eip " + ipDnatEipName)
 		ovnEipClient.DeleteSync(ipDnatEipName)
@@ -528,7 +530,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		ginkgo.By("Create snat, dnat, fip with the same vpc lrp eip")
 		noBfdlrpEipName := fmt.Sprintf("%s-%s", noBfdVpcName, underlaySubnetName)
 		noBfdLrpEip := ovnEipClient.Get(noBfdlrpEipName)
-		lrpEipSnat := framework.MakeOvnSnatRule(lrpEipSnatName, noBfdlrpEipName, noBfdSubnetName, "", "", "", "")
+		lrpEipSnat := framework.MakeOvnSnatRule(lrpEipSnatName, noBfdlrpEipName, noBfdSubnetName, "", "", "")
 		_ = ovnSnatRuleClient.CreateSync(lrpEipSnat)
 		ginkgo.By("Get lrp eip snat")
 		lrpEipSnat = ovnSnatRuleClient.Get(lrpEipSnatName)
@@ -642,12 +644,13 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		ipFipVip = vipClient.CreateSync(ipFipVip)
 		framework.ExpectNotEmpty(ipFipVip.Status.V4ip)
 		ginkgo.By("Creating ovn eip " + ipFipEipName)
-		ipFipEip := makeOvnEip(fipEipName, underlaySubnetName, "", "", "", "")
+		ipFipEip := makeOvnEip(ipFipEipName, underlaySubnetName, "", "", "", "")
 		ipFipEip = ovnEipClient.CreateSync(ipFipEip)
 		framework.ExpectNotEmpty(ipFipEip.Status.V4Ip)
 		ginkgo.By("Creating ovn fip " + ipFipName)
-		ipFip := makeOvnFip(fipName, fipEipName, "", "", bfdVpcName, ipFipVip.Status.V4ip)
+		ipFip := makeOvnFip(fipName, ipFipEipName, "", "", bfdVpcName, ipFipVip.Status.V4ip)
 		ipFip = ovnFipClient.CreateSync(ipFip)
+		framework.ExpectEqual(ipFip.Status.V4Eip, ipFipEip.Status.V4Ip)
 		framework.ExpectNotEmpty(ipFip.Status.V4Ip)
 
 		ginkgo.By("Test ovn dnat with eip name and ip")
@@ -660,9 +663,10 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		ipDnatEip = ovnEipClient.CreateSync(ipDnatEip)
 		framework.ExpectNotEmpty(ipDnatEip.Status.V4Ip)
 		ginkgo.By("Creating ovn dnat " + ipDnatName)
-		ipDnat := makeOvnDnat(dnatName, ipDnatName, "", "", bfdVpcName, ipFipVip.Status.V4ip, "80", "8080", "tcp")
+		ipDnat := makeOvnDnat(ipDnatName, ipDnatEipName, "", "", bfdVpcName, ipDnatVip.Status.V4ip, "80", "8080", "tcp")
 		ipDnat = ovnDnatRuleClient.CreateSync(ipDnat)
 		framework.ExpectEqual(ipDnat.Status.Vpc, bfdVpcName)
+		framework.ExpectEqual(ipDnat.Status.V4Eip, ipDnatEip.Status.V4Ip)
 		framework.ExpectEqual(ipDnat.Status.V4Ip, ipDnatVip.Status.V4ip)
 
 		ginkgo.By("Test ovn snat with eip name and ip cidr")
@@ -671,9 +675,10 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		cidrSnatEip = ovnEipClient.CreateSync(cidrSnatEip)
 		framework.ExpectNotEmpty(cidrSnatEip.Status.V4Ip)
 		ginkgo.By("Creating ovn snat mapping with subnet cidr" + bfdSubnetV4Cidr)
-		cidrSnat := makeOvnSnat(cidrSnatName, snatEipName, "", "", bfdVpcName, bfdSubnetV4Cidr, "")
+		cidrSnat := makeOvnSnat(cidrSnatName, cidrSnatEipName, "", "", bfdVpcName, bfdSubnetV4Cidr)
 		cidrSnat = ovnSnatRuleClient.CreateSync(cidrSnat)
 		framework.ExpectEqual(cidrSnat.Status.Vpc, bfdVpcName)
+		framework.ExpectEqual(cidrSnat.Status.V4Eip, cidrSnatEip.Status.V4Ip)
 		framework.ExpectEqual(cidrSnat.Status.V4IpCidr, bfdSubnetV4Cidr)
 
 		ginkgo.By("Test ovn snat with eip name and ip")
@@ -686,10 +691,10 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		ipSnatEip = ovnEipClient.CreateSync(ipSnatEip)
 		framework.ExpectNotEmpty(ipSnatEip.Status.V4Ip)
 		ginkgo.By("Creating ovn snat " + ipSnatName)
-		ipSnat := makeOvnSnat(snatName, ipSnatName, "", "", bfdVpcName, "", ipSnatVip.Status.V4ip)
+		ipSnat := makeOvnSnat(ipSnatName, ipSnatEipName, "", "", bfdVpcName, ipSnatVip.Status.V4ip)
 		ipSnat = ovnSnatRuleClient.CreateSync(ipSnat)
 		framework.ExpectEqual(ipSnat.Status.Vpc, bfdVpcName)
-		framework.ExpectEqual(ipSnat.Status.V4Ip, ipSnatVip.Status.V4ip)
+		framework.ExpectEqual(ipSnat.Status.V4IpCidr, ipSnatVip.Status.V4ip)
 
 		k8sNodes, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
 		framework.ExpectNoError(err)

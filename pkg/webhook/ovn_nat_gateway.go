@@ -318,10 +318,27 @@ func (v *ValidatingHook) ValidateOvnSnat(ctx context.Context, snat *ovnv1.OvnSna
 		err := fmt.Errorf("should set spec OvnEip")
 		return err
 	}
-	if snat.Spec.VpcSubnet == "" && snat.Spec.IPName == "" && snat.Spec.V4Ip == "" && snat.Spec.V4IpCidr == "" {
-		err := fmt.Errorf("should set spec vpcSubnet or ipName or v4Ip or v4IpCidr at least")
+
+	if snat.Spec.VpcSubnet != "" && snat.Spec.IPName != "" {
+		err := fmt.Errorf("should not set spec vpcSubnet and ipName at the same time")
 		return err
 	}
+
+	if snat.Spec.Vpc != "" && snat.Spec.V4IpCidr == "" {
+		err := fmt.Errorf("should set spec v4IpCidr (subnet cidr or ip address) when spec vpc is set")
+		return err
+	}
+
+	if snat.Spec.Vpc == "" && snat.Spec.V4IpCidr != "" {
+		err := fmt.Errorf("should set spec vpc when spec v4IpCidr is set")
+		return err
+	}
+
+	if snat.Spec.VpcSubnet == "" && snat.Spec.IPName == "" && snat.Spec.Vpc == "" && snat.Spec.V4IpCidr == "" {
+		err := fmt.Errorf("should set spec vpcSubnet or ipName or vpc and v4IpCidr at least")
+		return err
+	}
+
 	eip := &ovnv1.OvnEip{}
 	key := types.NamespacedName{Name: snat.Spec.OvnEip}
 	return v.cache.Get(ctx, key, eip)

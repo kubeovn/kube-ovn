@@ -1582,9 +1582,6 @@ spec:
       - jsonPath: .status.v4IpCidr
         name: V4IpCidr
         type: string
-      - jsonPath: .status.v4Ip
-        name: V4Ip
-        type: string
       - jsonPath: .status.ready
         name: Ready
         type: boolean
@@ -1600,8 +1597,6 @@ spec:
                 v4Eip:
                   type: string
                 v4IpCidr:
-                  type: string
-                v4Ip:
                   type: string
                 vpc:
                   type: string
@@ -1634,8 +1629,6 @@ spec:
                 vpc:
                   type: string
                 v4IpCidr:
-                  type: string
-                v4Ip:
                   type: string
 ---
 apiVersion: apiextensions.k8s.io/v1
