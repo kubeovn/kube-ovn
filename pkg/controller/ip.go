@@ -1,14 +1,19 @@
 package controller
 
 import (
+	"strings"
+
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	"k8s.io/klog/v2"
-	"strings"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 )
 
 func (c *Controller) enqueueAddOrDelIP(obj interface{}) {
+	if _, ok := obj.(*kubeovnv1.IP); !ok {
+		klog.Errorf("object is not an IP, ignore it")
+		return
+	}
 
 	ipObj := obj.(*kubeovnv1.IP)
 	klog.V(3).Infof("enqueue update status subnet %s", ipObj.Spec.Subnet)
