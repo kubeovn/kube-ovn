@@ -54,8 +54,8 @@ func makeOvnEip(name, subnet, v4ip, v6ip, mac, usage string) *kubeovnv1.OvnEip {
 	return framework.MakeOvnEip(name, subnet, v4ip, v6ip, mac, usage)
 }
 
-func makeOvnVip(name, subnet, v4ip, v6ip, vipType string) *kubeovnv1.Vip {
-	return framework.MakeVip(name, subnet, v4ip, v6ip, vipType)
+func makeOvnVip(namespaceName, name, subnet, v4ip, v6ip, vipType string) *kubeovnv1.Vip {
+	return framework.MakeVip(namespaceName, name, subnet, v4ip, v6ip, vipType)
 }
 
 func makeOvnFip(name, ovnEip, ipType, ipName string) *kubeovnv1.OvnFip {
@@ -498,7 +498,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		framework.ExpectHaveKeyWithValue(lrpEipSnat.Labels, util.EipV4IpLabel, noBfdLrpEip.Spec.V4Ip)
 
 		ginkgo.By("Creating share vip")
-		shareVip := framework.MakeVip(sharedVipName, noBfdSubnetName, "", "", "")
+		shareVip := framework.MakeVip(namespaceName, sharedVipName, noBfdSubnetName, "", "", "")
 		_ = vipClient.CreateSync(shareVip)
 		ginkgo.By("Creating the first ovn fip with share eip vip should be ok")
 		shareFipShouldOk := framework.MakeOvnFip(sharedEipFipShoudOkName, noBfdlrpEipName, util.Vip, sharedVipName)
@@ -574,13 +574,10 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 			framework.Logf("exec %s failed err: %v, errOutput: %s, stdOutput: %s", command, err, errOutput, stdOutput)
 		}
 
-		// test create nat with ip crd name passed
-		// test nat share the same external eip passed
-
-		ginkgo.By("2. Test custom vpc with bfd route, subnet, nats, pods")
-		ginkgo.By("2.1 Test custom vpc dnat, fip, snat in traditonal mode")
-		ginkgo.By("Create dnat, fip, snat by setting eip name and ip or ip cidr")
-		// Todo:// Test custom vpc nat traditonal mode, test create nat with ip crd name passed above
+		// nat with ip crd name and share the same external eip tests all passed
+		ginkgo.By("2. Test custom vpc with bfd route")
+		ginkgo.By("2.1 Test custom vpc dnat, fip, snat in traditonal way")
+		ginkgo.By("Create dnat, fip, snat with eip name and ip or ip cidr")
 
 		for _, nodeName := range nodeNames {
 			ginkgo.By("Creating ovn node-ext-gw type eip on node " + nodeName)
@@ -598,12 +595,13 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		_ = subnetClient.CreateSync(bfdSubnet)
 
 		// arp proxy vip test case
+		// TODO:// arp proxy vip only used in switch lb rule, the lb vip use the subnet gw mac to use lb nat flow
 		ginkgo.By("Creating two arp proxy vips, should have the same mac which is from gw subnet mac")
 		ginkgo.By("Creating arp proxy vip " + arpProxyVip1Name)
-		arpProxyVip1 := makeOvnVip(arpProxyVip1Name, bfdSubnetName, "", "", util.SwitchLBRuleVip)
+		arpProxyVip1 := makeOvnVip(namespaceName, arpProxyVip1Name, bfdSubnetName, "", "", util.SwitchLBRuleVip)
 		_ = vipClient.CreateSync(arpProxyVip1)
 		ginkgo.By("Creating arp proxy vip " + arpProxyVip2Name)
-		arpProxyVip2 := makeOvnVip(arpProxyVip2Name, bfdSubnetName, "", "", util.SwitchLBRuleVip)
+		arpProxyVip2 := makeOvnVip(namespaceName, arpProxyVip2Name, bfdSubnetName, "", "", util.SwitchLBRuleVip)
 		_ = vipClient.CreateSync(arpProxyVip2)
 
 		arpProxyVip1 = vipClient.Get(arpProxyVip1Name)
@@ -614,7 +612,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		ginkgo.By("Creating crd in centralized case")
 		// for now, vip do not have parent ip can be used in centralized external gw case
 		ginkgo.By("Creating ovn vip " + fipVipName)
-		fipVip := makeOvnVip(fipVipName, bfdSubnetName, "", "", "")
+		fipVip := makeOvnVip(namespaceName, fipVipName, bfdSubnetName, "", "", "")
 		_ = vipClient.CreateSync(fipVip)
 		ginkgo.By("Creating ovn eip " + fipEipName)
 		eip := makeOvnEip(fipEipName, underlaySubnetName, "", "", "", "")
@@ -631,7 +629,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		_ = ovnSnatRuleClient.CreateSync(snat)
 
 		ginkgo.By("Creating ovn vip " + dnatVipName)
-		dnatVip := makeOvnVip(dnatVipName, bfdSubnetName, "", "", "")
+		dnatVip := makeOvnVip(namespaceName, dnatVipName, bfdSubnetName, "", "", "")
 		_ = vipClient.CreateSync(dnatVip)
 		ginkgo.By("Creating ovn eip " + dnatEipName)
 		dnatEip := makeOvnEip(dnatEipName, underlaySubnetName, "", "", "", "")

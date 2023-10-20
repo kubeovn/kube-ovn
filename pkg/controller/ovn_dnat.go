@@ -538,7 +538,7 @@ func (c *Controller) patchOvnDnatStatus(key, vpcName, v4Eip, podIP string, ready
 		klog.Error(err)
 		return err
 	}
-	dnat = oriDnat.DeepCopy()
+	dnat := oriDnat.DeepCopy()
 
 	var (
 		needUpdateLabel = false
