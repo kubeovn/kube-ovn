@@ -4,11 +4,11 @@ set -eo pipefail
 TS_NAME=${TS_NAME:-ts}
 PROTOCOL=${PROTOCOL:-ipv4}
 if [ "$PROTOCOL" = "ipv4" ]; then
-  TS_CIDR=${TS_CIDR:-169.254.100.0/24}
+  TS_CIDR=${TS_CIDR:-169.255.100.0/24}
 elif [ "$PROTOCOL" = "ipv6" ]; then
-  TS_CIDR=${TS_CIDR:-fe80:a9fe:64::/112}
+  TS_CIDR=${TS_CIDR:-fec0:ffff:ffff::/120}
 elif [ "$PROTOCOL" = "dual" ]; then
-  TS_CIDR=${TS_CIDR:-"169.254.100.0/24,fe80:a9fe:64::/112"}
+  TS_CIDR=${TS_CIDR:-"169.255.100.0/24,fec0:ffff:ffff::/120"}
 fi
 
 function quit {
