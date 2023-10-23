@@ -297,10 +297,10 @@ spec:
             path: /etc/origin/ovn
         - name: host-log-ovs
           hostPath:
-            path: {{ .Values.log_conf.LOG_DIR }}/openvswitch
+            path: /var/log/openvswitch
         - name: host-log-ovn
           hostPath:
-            path: {{ .Values.log_conf.LOG_DIR }}/ovn
+            path: /var/log/ovn
         - name: kube-ovn-tls
           secret:
             optional: true
@@ -438,10 +438,10 @@ spec:
             path: /etc/origin/ovn
         - name: host-log-ovs
           hostPath:
-            path: {{ .Values.log_conf.LOG_DIR }}/openvswitch
+            path: /var/log/openvswitch
         - name: host-log-ovn
           hostPath:
-            path: {{ .Values.log_conf.LOG_DIR }}/ovn
+            path: /var/log/ovn
         - name: host-config-ovs
           hostPath:
             path: /opt/ovs-config

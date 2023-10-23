@@ -3977,6 +3977,9 @@ spec:
               readOnly: true
             - mountPath: /var/log/kube-ovn
               name: kube-ovn-log
+            # ovn-ic log directory
+            - mountPath: /var/log/ovn
+              name: ovn-log
             - mountPath: /var/run/tls
               name: kube-ovn-tls
           readinessProbe:
@@ -4009,6 +4012,9 @@ spec:
         - name: kube-ovn-log
           hostPath:
             path: $LOG_DIR/kube-ovn
+        - name: ovn-log
+          hostPath:
+            path: $LOG_DIR/ovn
         - name: kube-ovn-tls
           secret:
             optional: true
