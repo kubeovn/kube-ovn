@@ -194,10 +194,10 @@ spec:
             path: /etc/origin/ovn
         - name: host-log-ovs
           hostPath:
-            path: {{ .Values.log_conf.LOG_DIR }}/openvswitch
+            path: /var/log/openvswitch
         - name: host-log-ovn
           hostPath:
-            path: {{ .Values.log_conf.LOG_DIR }}/ovn
+            path: /var/log/ovn
         - name: localtime
           hostPath:
             path: /etc/localtime
@@ -358,10 +358,10 @@ spec:
             path: /etc/origin/ovn
         - name: host-log-ovs
           hostPath:
-            path: {{ .Values.log_conf.LOG_DIR }}/openvswitch
+            path: /var/log/openvswitch
         - name: host-log-ovn
           hostPath:
-            path: {{ .Values.log_conf.LOG_DIR }}/ovn
+            path: /var/log/ovn
         - name: localtime
           hostPath:
             path: /etc/localtime

@@ -99,6 +99,9 @@ spec:
               readOnly: true
             - mountPath: /var/log/kube-ovn
               name: kube-ovn-log
+            # ovn-ic log directory
+            - mountPath: /var/log/ovn
+              name: ovn-log
             - mountPath: /var/run/tls
               name: kube-ovn-tls
           readinessProbe:
@@ -130,7 +133,10 @@ spec:
             path: /etc/localtime
         - name: kube-ovn-log
           hostPath:
-            path: {{ .Values.log_conf.LOG_DIR }}/kube-ovn
+            path: /var/log/kube-ovn
+        - name: ovn-log
+          hostPath:
+            path: /var/log/ovn
         - name: kube-ovn-tls
           secret:
             optional: true
@@ -315,13 +321,13 @@ spec:
             path: /var/run/dbus
         - name: host-log-ovs
           hostPath:
-            path: {{ .Values.log_conf.LOG_DIR }}/openvswitch
+            path: /var/log/openvswitch
         - name: kube-ovn-log
           hostPath:
-            path: {{ .Values.log_conf.LOG_DIR }}/kube-ovn
+            path: /var/log/kube-ovn
         - name: host-log-ovn
           hostPath:
-            path: {{ .Values.log_conf.LOG_DIR }}/ovn
+            path: /var/log/ovn
         - name: localtime
           hostPath:
             path: /etc/localtime
@@ -433,13 +439,13 @@ spec:
             path: /etc/origin/openvswitch
         - name: host-log-ovs
           hostPath:
-            path: {{ .Values.log_conf.LOG_DIR }}/openvswitch
+            path: /var/log/openvswitch
         - name: kube-ovn-log
           hostPath:
-            path: {{ .Values.log_conf.LOG_DIR }}/kube-ovn
+            path: /var/log/kube-ovn
         - name: host-log-ovn
           hostPath:
-            path: {{ .Values.log_conf.LOG_DIR }}/ovn
+            path: /var/log/ovn
         - name: localtime
           hostPath:
             path: /etc/localtime
@@ -574,7 +580,7 @@ spec:
             path: /etc/origin/ovn
         - name: host-log-ovn
           hostPath:
-            path: {{ .Values.log_conf.LOG_DIR }}/ovn
+            path: /var/log/ovn
         - name: localtime
           hostPath:
             path: /etc/localtime
@@ -584,7 +590,7 @@ spec:
             secretName: kube-ovn-tls
         - name: kube-ovn-log
           hostPath:
-            path: {{ .Values.log_conf.LOG_DIR }}/kube-ovn
+            path: /var/log/kube-ovn
 ---
 kind: Service
 apiVersion: v1
