@@ -123,7 +123,11 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		podClient = f.PodClient()
 
 		namespaceName = f.Namespace.Name
+
 		gwNodeNum := 2
+		// gw node is 2 means e2e HA cluster will have 2 gw nodes and a worker node
+		// in this env, tcpdump gw nat flows will be more clear
+
 		noBfdVpcName = "no-bfd-vpc-" + framework.RandomSuffix()
 		bfdVpcName = "bfd-vpc-" + framework.RandomSuffix()
 
@@ -160,15 +164,17 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		podEipName = fipPodName
 		podFipName = fipPodName
 
-		// nats use ip or cidr
+		// fip use ip addr
 		ipFipVipName = "ip-fip-vip-" + framework.RandomSuffix()
 		ipFipEipName = "ip-fip-eip-" + framework.RandomSuffix()
 		ipFipName = "ip-fip-" + framework.RandomSuffix()
 
+		// dnat use ip addr
 		ipDnatVipName = "ip-dnat-vip-" + framework.RandomSuffix()
 		ipDnatEipName = "ip-dnat-eip-" + framework.RandomSuffix()
 		ipDnatName = "ip-dnat-" + framework.RandomSuffix()
 
+		// snat use ip cidr
 		cidrSnatEipName = "cidr-snat-eip-" + framework.RandomSuffix()
 		cidrSnatName = "cidr-snat-" + framework.RandomSuffix()
 		ipSnatVipName = "ip-snat-vip-" + framework.RandomSuffix()
@@ -235,7 +241,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 			framework.ExpectHaveKey(linkMap, node.ID)
 			linkMap[node.Name()] = linkMap[node.ID]
 			nodeNames = append(nodeNames, node.Name())
-			if index < 2 {
+			if index < gwNodeNum {
 				gwNodeNames = append(gwNodeNames, node.Name())
 			}
 		}
@@ -338,9 +344,9 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		ginkgo.By("Deleting ovn eip " + snatEipName)
 		ovnEipClient.DeleteSync(snatEipName)
 
-		ginkgo.By("Deleting ovn allowd address pair vip " + aapVip1Name)
+		ginkgo.By("Deleting ovn allowed address pair vip " + aapVip1Name)
 		vipClient.DeleteSync(aapVip1Name)
-		ginkgo.By("Deleting ovn allowd address pair vip " + aapVip2Name)
+		ginkgo.By("Deleting ovn allowed address pair vip " + aapVip2Name)
 
 		// clean up share eip case resource
 		ginkgo.By("Deleting share ovn dnat " + sharedEipDnatName)
@@ -522,8 +528,8 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		fipPod = podClient.CreateSync(fipPod)
 		podEip := framework.MakeOvnEip(podEipName, underlaySubnetName, "", "", "", "")
 		_ = ovnEipClient.CreateSync(podEip)
-		fipPodIp := ovs.PodNameToPortName(fipPod.Name, fipPod.Namespace, noBfdSubnet.Spec.Provider)
-		podFip := framework.MakeOvnFip(podFipName, podEipName, "", fipPodIp, "", "")
+		fipPodIP := ovs.PodNameToPortName(fipPod.Name, fipPod.Namespace, noBfdSubnet.Spec.Provider)
+		podFip := framework.MakeOvnFip(podFipName, podEipName, "", fipPodIP, "", "")
 		podFip = ovnFipClient.CreateSync(podFip)
 
 		ginkgo.By("1.1 Test fip dnat snat share eip by by setting eip name and ip name")

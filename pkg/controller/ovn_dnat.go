@@ -524,16 +524,18 @@ func (c *Controller) patchOvnDnatAnnotations(key, eipName string) error {
 }
 
 func (c *Controller) patchOvnDnatStatus(key, vpcName, v4Eip, podIP string, ready bool) error {
-	oriDnat, err := c.ovnDnatRulesLister.Get(key)
-	if err != nil {
+	var (
+		oriDnat, dnat *kubeovnv1.OvnDnatRule
+		err           error
+	)
+	if oriDnat, err = c.ovnDnatRulesLister.Get(key); err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
 		klog.Error(err)
 		return err
 	}
-	dnat := oriDnat.DeepCopy()
-
+	dnat = oriDnat.DeepCopy()
 	var (
 		needUpdateLabel = false
 		changed         bool
@@ -567,11 +569,17 @@ func (c *Controller) patchOvnDnatStatus(key, vpcName, v4Eip, podIP string, ready
 		changed = true
 	}
 
-	if (v4Eip != "" && dnat.Status.V4Eip != v4Eip) ||
-		(vpcName != "" && dnat.Status.Vpc != vpcName) ||
-		(podIP != "" && dnat.Status.V4Ip != podIP) {
+	if vpcName != "" && dnat.Status.Vpc != vpcName {
 		dnat.Status.Vpc = vpcName
+		changed = true
+	}
+
+	if v4Eip != "" && dnat.Status.V4Eip != v4Eip {
 		dnat.Status.V4Eip = v4Eip
+		changed = true
+	}
+
+	if podIP != "" && dnat.Status.V4Ip != podIP {
 		dnat.Status.V4Ip = podIP
 		changed = true
 	}
