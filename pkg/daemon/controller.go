@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"reflect"
 	"strconv"
 	"strings"
@@ -16,7 +17,7 @@ import (
 	"time"
 
 	"github.com/alauda/felix/ipsets"
-	"github.com/coreos/go-iptables/iptables"
+	"github.com/kubeovn/go-iptables/iptables"
 	"github.com/vishvananda/netlink"
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -66,9 +67,10 @@ type Controller struct {
 
 	recorder record.EventRecorder
 
-	iptables  map[string]*iptables.IPTables
-	ipsets    map[string]*ipsets.IPSets
-	ipsetLock sync.Mutex
+	iptables         map[string]*iptables.IPTables
+	iptablesObsolete map[string]*iptables.IPTables
+	ipsets           map[string]*ipsets.IPSets
+	ipsetLock        sync.Mutex
 
 	protocol       string
 	localPodName   string
@@ -121,22 +123,44 @@ func NewController(config *Configuration, podInformerFactory informers.SharedInf
 	}
 	controller.protocol = util.CheckProtocol(node.Annotations[util.IpAddressAnnotation])
 
+	ok, err := isLegacyIptablesMode()
+	if err != nil {
+		klog.Errorf("failed to check iptables mode: %v", err)
+		return nil, err
+	}
+	if !ok {
+		// iptables works in nft mode, we should migrate iptables rules
+		controller.iptablesObsolete = make(map[string]*iptables.IPTables, 2)
+	}
+
 	controller.iptables = make(map[string]*iptables.IPTables)
 	controller.ipsets = make(map[string]*ipsets.IPSets)
 	if controller.protocol == kubeovnv1.ProtocolIPv4 || controller.protocol == kubeovnv1.ProtocolDual {
-		iptables, err := iptables.NewWithProtocol(iptables.ProtocolIPv4)
+		ipt, err := iptables.NewWithProtocol(iptables.ProtocolIPv4)
 		if err != nil {
 			return nil, err
 		}
-		controller.iptables[kubeovnv1.ProtocolIPv4] = iptables
+		controller.iptables[kubeovnv1.ProtocolIPv4] = ipt
+		if controller.iptablesObsolete != nil {
+			if ipt, err = iptables.NewWithProtocolAndMode(iptables.ProtocolIPv4, "legacy"); err != nil {
+				return nil, err
+			}
+			controller.iptablesObsolete[kubeovnv1.ProtocolIPv4] = ipt
+		}
 		controller.ipsets[kubeovnv1.ProtocolIPv4] = ipsets.NewIPSets(ipsets.NewIPVersionConfig(ipsets.IPFamilyV4, IPSetPrefix, nil, nil))
 	}
 	if controller.protocol == kubeovnv1.ProtocolIPv6 || controller.protocol == kubeovnv1.ProtocolDual {
-		iptables, err := iptables.NewWithProtocol(iptables.ProtocolIPv6)
+		ipt, err := iptables.NewWithProtocol(iptables.ProtocolIPv6)
 		if err != nil {
 			return nil, err
 		}
-		controller.iptables[kubeovnv1.ProtocolIPv6] = iptables
+		controller.iptables[kubeovnv1.ProtocolIPv6] = ipt
+		if controller.iptablesObsolete != nil {
+			if ipt, err = iptables.NewWithProtocolAndMode(iptables.ProtocolIPv6, "legacy"); err != nil {
+				return nil, err
+			}
+			controller.iptablesObsolete[kubeovnv1.ProtocolIPv6] = ipt
+		}
 		controller.ipsets[kubeovnv1.ProtocolIPv6] = ipsets.NewIPSets(ipsets.NewIPVersionConfig(ipsets.IPFamilyV6, IPSetPrefix, nil, nil))
 	}
 
@@ -487,6 +511,31 @@ func (c *Controller) processNextSubnetWorkItem() bool {
 		return true
 	}
 	return true
+}
+
+func evalCommandSymlinks(cmd string) (string, error) {
+	path, err := exec.LookPath(cmd)
+	if err != nil {
+		return "", fmt.Errorf("failed to search for command %q: %v", cmd, err)
+	}
+	file, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return "", fmt.Errorf("failed to read evaluate symbolic links for file %q: %v", path, err)
+	}
+
+	return file, nil
+}
+
+func isLegacyIptablesMode() (bool, error) {
+	path, err := evalCommandSymlinks("iptables")
+	if err != nil {
+		return false, err
+	}
+	pathLegacy, err := evalCommandSymlinks("iptables-legacy")
+	if err != nil {
+		return false, err
+	}
+	return path == pathLegacy, nil
 }
 
 func (c *Controller) reconcileRouters(event subnetEvent) error {
