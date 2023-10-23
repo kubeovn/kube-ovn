@@ -1482,9 +1482,9 @@ func linkExists(name string) (bool, error) {
 	_, err := netlink.LinkByName(name)
 	if err == nil {
 		return true, nil
-	} else if _, ok := err.(netlink.LinkNotFoundError); ok {
-		return false, nil
-	} else {
-		return false, err
 	}
+	if _, ok := err.(netlink.LinkNotFoundError); ok {
+		return false, nil
+	}
+	return false, err
 }
