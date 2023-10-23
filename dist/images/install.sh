@@ -1652,6 +1652,9 @@ spec:
       subresources:
         status: {}
       additionalPrinterColumns:
+        - jsonPath: .status.vpc
+          name: Vpc
+          type: string
         - jsonPath: .spec.ovnEip
           name: Eip
           type: string
