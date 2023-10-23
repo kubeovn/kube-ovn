@@ -77,7 +77,6 @@ var _ = framework.Describe("[group:vip]", func() {
 		subnetClient.DeleteSync(subnetName)
 		ginkgo.By("Deleting vpc " + vpcName)
 		vpcClient.DeleteSync(vpcName)
-
 	})
 
 	framework.ConformanceIt("Test vip", func() {
