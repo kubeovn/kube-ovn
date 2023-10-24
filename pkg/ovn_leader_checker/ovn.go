@@ -31,7 +31,7 @@ const (
 	EnvPodName           = "POD_NAME"
 	EnvPodNameSpace      = "POD_NAMESPACE"
 	OvnNorthdPid         = "/var/run/ovn/ovn-northd.pid"
-	DefaultProbeInterval = 5
+	DefaultProbeInterval = 15
 	OvnNorthdPort        = "6643"
 	MaxFailCount         = 3
 )
