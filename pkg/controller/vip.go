@@ -559,7 +559,7 @@ func (c *Controller) releaseVip(key string) error {
 			mac = nil
 		}
 		if _, _, _, err = c.ipam.GetStaticAddress(key, vip.Name, vip.Status.V4ip, mac, vip.Spec.Subnet, false); err != nil {
-			klog.Errorf("failed to recover IPAM from VIP CR %s: %v", vip.Name, err)
+			klog.Errorf("failed to recover IPAM from vip CR %s: %v", vip.Name, err)
 		}
 		c.updateSubnetStatusQueue.Add(vip.Spec.Subnet)
 	}

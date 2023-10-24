@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"strconv"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
@@ -16,6 +17,7 @@ import (
 	"k8s.io/klog/v2"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -23,6 +25,7 @@ type SlrInfo struct {
 	Name       string
 	Namespace  string
 	IsRecreate bool
+	Vips       []string
 }
 
 func generateSvcName(name string) string {
@@ -30,28 +33,54 @@ func generateSvcName(name string) string {
 }
 
 func NewSlrInfo(slr *kubeovnv1.SwitchLBRule) *SlrInfo {
+	var (
+		vips      []string
+		namespace string
+	)
+
+	if namespace = slr.Spec.Namespace; namespace == "" {
+		namespace = "default"
+	}
+
+	for _, port := range slr.Spec.Ports {
+		vips = append(
+			vips,
+			strings.Join(
+				[]string{slr.Spec.Vip, strconv.Itoa(int(port.Port))},
+				":",
+			),
+		)
+	}
+
 	return &SlrInfo{
 		Name:       slr.Name,
-		Namespace:  slr.Spec.Namespace,
+		Namespace:  namespace,
 		IsRecreate: false,
+		Vips:       vips,
 	}
 }
 
 func (c *Controller) enqueueAddSwitchLBRule(obj interface{}) {
-	var key string
-	var err error
+	var (
+		key string
+		err error
+	)
+
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
 		utilruntime.HandleError(err)
 		return
 	}
+
 	klog.Infof("enqueue add SwitchLBRule %s", key)
 	c.addSwitchLBRuleQueue.Add(key)
 }
 
 func (c *Controller) enqueueUpdateSwitchLBRule(oldObj, newObj interface{}) {
-	oldSlr := oldObj.(*kubeovnv1.SwitchLBRule)
-	newSlr := newObj.(*kubeovnv1.SwitchLBRule)
-	info := NewSlrInfo(oldSlr)
+	var (
+		oldSlr = oldObj.(*kubeovnv1.SwitchLBRule)
+		newSlr = newObj.(*kubeovnv1.SwitchLBRule)
+		info   = NewSlrInfo(oldSlr)
+	)
 
 	if oldSlr.ResourceVersion == newSlr.ResourceVersion ||
 		reflect.DeepEqual(oldSlr.Spec, newSlr.Spec) {
@@ -67,17 +96,18 @@ func (c *Controller) enqueueUpdateSwitchLBRule(oldObj, newObj interface{}) {
 }
 
 func (c *Controller) enqueueDeleteSwitchLBRule(obj interface{}) {
-	var key string
-	var err error
+	var (
+		key string
+		err error
+	)
+
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
 		utilruntime.HandleError(err)
 		return
 	}
-	klog.Infof("enqueue del SwitchLBRule %s", key)
 
-	slr := obj.(*kubeovnv1.SwitchLBRule)
-	info := NewSlrInfo(slr)
-	c.delSwitchLBRuleQueue.Add(info)
+	klog.Infof("enqueue del SwitchLBRule %s", key)
+	c.delSwitchLBRuleQueue.Add(NewSlrInfo(obj.(*kubeovnv1.SwitchLBRule)))
 }
 
 func (c *Controller) processSwitchLBRuleWorkItem(processName string, queue workqueue.RateLimitingInterface, handler func(key *SlrInfo) error) bool {
@@ -86,7 +116,7 @@ func (c *Controller) processSwitchLBRuleWorkItem(processName string, queue workq
 		return false
 	}
 
-	err := func(obj interface{}) error {
+	if err := func(obj interface{}) error {
 		defer queue.Done(obj)
 		key, ok := obj.(*SlrInfo)
 		if !ok {
@@ -99,8 +129,7 @@ func (c *Controller) processSwitchLBRuleWorkItem(processName string, queue workq
 		}
 		queue.Forget(obj)
 		return nil
-	}(obj)
-	if err != nil {
+	}(obj); err != nil {
 		utilruntime.HandleError(fmt.Errorf("process: %s. err: %v", processName, err))
 		queue.AddRateLimited(obj)
 		return true
@@ -202,9 +231,12 @@ func (c *Controller) handleAddOrUpdateSwitchLBRule(key string) error {
 		}
 	}
 
-	formatPorts := ""
-	newSlr := slr.DeepCopy()
+	var (
+		formatPorts string
+		newSlr      = slr.DeepCopy()
+	)
 	newSlr.Status.Service = fmt.Sprintf("%s/%s", svc.Namespace, svc.Name)
+
 	for _, port := range newSlr.Spec.Ports {
 		protocol := port.Protocol
 		if len(protocol) == 0 {
@@ -225,15 +257,95 @@ func (c *Controller) handleAddOrUpdateSwitchLBRule(key string) error {
 func (c *Controller) handleDelSwitchLBRule(info *SlrInfo) error {
 	klog.V(3).Infof("handleDelSwitchLBRule %s", info.Name)
 
-	name := generateSvcName(info.Name)
-	err := c.config.KubeClient.CoreV1().Services(info.Namespace).Delete(context.Background(), name, metav1.DeleteOptions{})
-	if err != nil {
+	var (
+		name  string
+		lbhcs []ovnnb.LoadBalancerHealthCheck
+		vips  map[string]struct{}
+		err   error
+	)
+
+	name = generateSvcName(info.Name)
+	if err = c.config.KubeClient.CoreV1().Services(info.Namespace).Delete(context.Background(), name, metav1.DeleteOptions{}); err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
-		klog.Errorf("failed to delete service %s,err: %v", name, err)
+		klog.Errorf("failed to delete service %s, err: %v", name, err)
 		return err
 	}
+
+	if lbhcs, err = c.OVNNbClient.ListLoadBalancerHealthChecks(
+		func(lbhc *ovnnb.LoadBalancerHealthCheck) bool {
+			return util.ContainsString(info.Vips, lbhc.Vip)
+		},
+	); err != nil && !k8serrors.IsNotFound(err) {
+		klog.Errorf("failed to list load balancer health checks matched vips %s, err: %v", info.Vips, err)
+		return err
+	}
+
+	vips = make(map[string]struct{})
+	for _, lbhc := range lbhcs {
+		var (
+			lbs []ovnnb.LoadBalancer
+			vip string
+			ex  bool
+		)
+
+		if lbs, err = c.OVNNbClient.ListLoadBalancers(
+			func(lb *ovnnb.LoadBalancer) bool {
+				return util.ContainsString(lb.HealthCheck, lbhc.UUID)
+			},
+		); err != nil && !k8serrors.IsNotFound(err) {
+			klog.Errorf("failed to list load balancer matched vips %s, err: %v", lbhc.Vip, err)
+			return err
+		}
+
+		for _, lb := range lbs {
+			err = c.OVNNbClient.LoadBalancerDeleteHealthCheck(lb.Name, lbhc.UUID)
+			if err != nil && !k8serrors.IsNotFound(err) {
+				klog.Errorf("failed to delete load balancer health checks health checks %s from load balancer matched vip %s, err: %v", lbhc.Vip, lb.Name, err)
+				return err
+			}
+
+			err = c.OVNNbClient.LoadBalancerDeleteIPPortMapping(lb.Name, lbhc.Vip)
+			if err != nil && !k8serrors.IsNotFound(err) {
+				klog.Errorf("failed to delete ip port mappings %s from load balancer matched vip %s, err: %v", lbhc.Vip, lb.Name, err)
+				return err
+			}
+		}
+
+		if vip, ex = lbhc.ExternalIDs[util.SwitchLBRuleSubnet]; ex && vip != "" {
+			vips[vip] = struct{}{}
+		}
+	}
+
+	if err = c.OVNNbClient.DeleteLoadBalancerHealthChecks(
+		func(lbhc *ovnnb.LoadBalancerHealthCheck) bool {
+			return util.ContainsString(info.Vips, lbhc.Vip)
+		},
+	); err != nil && !k8serrors.IsNotFound(err) {
+		klog.Errorf("delete load balancer health checks matched vip %s, err: %v", info.Vips, err)
+		return err
+	}
+
+	for vip := range vips {
+		if lbhcs, err = c.OVNNbClient.ListLoadBalancerHealthChecks(
+			func(lbhc *ovnnb.LoadBalancerHealthCheck) bool {
+				return lbhc.ExternalIDs[util.SwitchLBRuleSubnet] == vip
+			},
+		); err != nil && !k8serrors.IsNotFound(err) {
+			klog.Errorf("failed to list load balancer, err: %v", err)
+			return err
+		}
+
+		if len(lbhcs) == 0 {
+			err = c.config.KubeOvnClient.KubeovnV1().Vips().Delete(context.Background(), vip, metav1.DeleteOptions{})
+			if err != nil {
+				klog.Errorf("failed to delete vip %s for load balancer health check, err: %v", vip, err)
+				return err
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -330,11 +442,14 @@ func generateEndpoints(slr *kubeovnv1.SwitchLBRule, oldEps *corev1.Endpoints) *c
 		)
 	}
 
-	for _, addr := range slr.Spec.Endpoints {
+	for _, endpoint := range slr.Spec.Endpoints {
 		addrs = append(
 			addrs,
 			corev1.EndpointAddress{
-				IP: addr,
+				IP: endpoint,
+				TargetRef: &corev1.ObjectReference{
+					Namespace: slr.Namespace,
+				},
 			},
 		)
 	}

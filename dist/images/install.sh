@@ -1519,8 +1519,6 @@ spec:
                   type: string
                 v4Ip:
                   type: string
-                macAddress:
-                  type: string
                 vpc:
                   type: string
                 conditions:
@@ -1548,6 +1546,10 @@ spec:
                 ipType:
                   type: string
                 ipName:
+                  type: string
+                vpc:
+                  type: string
+                v4Ip:
                   type: string
 ---
 apiVersion: apiextensions.k8s.io/v1
@@ -1577,8 +1579,8 @@ spec:
       - jsonPath: .status.v4Eip
         name: V4Eip
         type: string
-      - jsonPath: .status.v4ipCidr
-        name: V4Ip
+      - jsonPath: .status.v4IpCidr
+        name: V4IpCidr
         type: string
       - jsonPath: .status.ready
         name: Ready
@@ -1594,7 +1596,7 @@ spec:
                   type: boolean
                 v4Eip:
                   type: string
-                v4ipCidr:
+                v4IpCidr:
                   type: string
                 vpc:
                   type: string
@@ -1624,6 +1626,10 @@ spec:
                   type: string
                 ipName:
                   type: string
+                vpc:
+                  type: string
+                v4IpCidr:
+                  type: string
 ---
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
@@ -1646,6 +1652,9 @@ spec:
       subresources:
         status: {}
       additionalPrinterColumns:
+        - jsonPath: .status.vpc
+          name: Vpc
+          type: string
         - jsonPath: .spec.ovnEip
           name: Eip
           type: string
@@ -1682,8 +1691,6 @@ spec:
                   v4Eip:
                     type: string
                   v4Ip:
-                    type: string
-                  macAddress:
                     type: string
                   vpc:
                     type: string
@@ -1727,6 +1734,10 @@ spec:
                     type: string
                   protocol:
                     type: string
+                  vpc:
+                    type: string
+                  v4Ip:
+                    type: string
 ---
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
@@ -1748,6 +1759,9 @@ spec:
         - jsonPath: .status.subnets
           name: Subnets
           type: string
+        - jsonPath: .status.extraExternalSubnets
+          name: ExtraExternalSubnets
+          type: string
         - jsonPath: .spec.namespaces
           name: Namespaces
           type: string
@@ -1762,6 +1776,10 @@ spec:
                 enableBfd:
                   type: boolean
                 namespaces:
+                  items:
+                    type: string
+                  type: array
+                extraExternalSubnets:
                   items:
                     type: string
                   type: array
@@ -1837,6 +1855,10 @@ spec:
                 enableBfd:
                   type: boolean
                 subnets:
+                  items:
+                    type: string
+                  type: array
+                extraExternalSubnets:
                   items:
                     type: string
                   type: array
@@ -3968,6 +3990,9 @@ spec:
               readOnly: true
             - mountPath: /var/log/kube-ovn
               name: kube-ovn-log
+            # ovn-ic log directory
+            - mountPath: /var/log/ovn
+              name: ovn-log
             - mountPath: /var/run/tls
               name: kube-ovn-tls
           readinessProbe:
@@ -4000,6 +4025,9 @@ spec:
         - name: kube-ovn-log
           hostPath:
             path: $LOG_DIR/kube-ovn
+        - name: ovn-log
+          hostPath:
+            path: $LOG_DIR/ovn
         - name: kube-ovn-tls
           secret:
             optional: true

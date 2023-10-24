@@ -252,7 +252,7 @@ func (c *Controller) gcVip() error {
 	}
 	vips, err := c.virtualIpsLister.List(selector)
 	if err != nil {
-		klog.Errorf("failed to list VIPs: %v", err)
+		klog.Errorf("failed to list vips: %v", err)
 		return err
 	}
 	for _, vip := range vips {
@@ -382,7 +382,7 @@ func (c *Controller) markAndCleanLSP() error {
 }
 
 func (c *Controller) gcLoadBalancer() error {
-	klog.Infof("start to gc loadbalancers")
+	klog.Infof("start to gc load balancers")
 	if !c.config.EnableLb {
 		// remove lb from logical switch
 		vpcs, err := c.vpcsLister.List(labels.Everything())
@@ -427,7 +427,6 @@ func (c *Controller) gcLoadBalancer() error {
 				return err
 			}
 		}
-
 		// lbs will remove from logical switch automatically when delete lbs
 		if err = c.OVNNbClient.DeleteLoadBalancers(nil); err != nil {
 			klog.Errorf("delete all load balancers: %v", err)
@@ -441,12 +440,16 @@ func (c *Controller) gcLoadBalancer() error {
 		klog.Errorf("failed to list svc, %v", err)
 		return err
 	}
-	tcpVips := strset.NewWithSize(len(svcs) * 2)
-	udpVips := strset.NewWithSize(len(svcs) * 2)
-	sctpVips := strset.NewWithSize(len(svcs) * 2)
-	tcpSessionVips := strset.NewWithSize(len(svcs) * 2)
-	udpSessionVips := strset.NewWithSize(len(svcs) * 2)
-	sctpSessionVips := strset.NewWithSize(len(svcs) * 2)
+
+	var (
+		tcpVips         = strset.NewWithSize(len(svcs) * 2)
+		udpVips         = strset.NewWithSize(len(svcs) * 2)
+		sctpVips        = strset.NewWithSize(len(svcs) * 2)
+		tcpSessionVips  = strset.NewWithSize(len(svcs) * 2)
+		udpSessionVips  = strset.NewWithSize(len(svcs) * 2)
+		sctpSessionVips = strset.NewWithSize(len(svcs) * 2)
+	)
+
 	for _, svc := range svcs {
 		ips := util.ServiceClusterIPs(*svc)
 		if v, ok := svc.Annotations[util.SwitchLBRuleVipsAnnotation]; ok {
@@ -485,66 +488,80 @@ func (c *Controller) gcLoadBalancer() error {
 		klog.Errorf("failed to list vpc, %v", err)
 		return err
 	}
-	var vpcLbs []string
-	for _, vpc := range vpcs {
-		tcpLb, udpLb, sctpLb := vpc.Status.TCPLoadBalancer, vpc.Status.UDPLoadBalancer, vpc.Status.SctpLoadBalancer
-		tcpSessLb, udpSessLb, sctpSessLb := vpc.Status.TCPSessionLoadBalancer, vpc.Status.UDPSessionLoadBalancer, vpc.Status.SctpSessionLoadBalancer
-		vpcLbs = append(vpcLbs, tcpLb, udpLb, sctpLb, tcpSessLb, udpSessLb, sctpSessLb)
 
-		removeVIP := func(lbName string, svcVips *strset.Set) error {
-			if lbName == "" {
-				return nil
-			}
+	var (
+		removeVip         func(lbName string, svcVips *strset.Set) error
+		vpcLbs            []string
+		ignoreHealthCheck = true
+	)
 
-			lb, err := c.OVNNbClient.GetLoadBalancer(lbName, true)
-			if err != nil {
-				klog.Errorf("get LB %s: %v", lbName, err)
-				return err
-			}
-			if lb == nil {
-				klog.Infof("load balancer %q not found", lbName)
-				return nil
-			}
-
-			for vip := range lb.Vips {
-				if !svcVips.Has(vip) {
-					if err = c.OVNNbClient.LoadBalancerDeleteVip(lbName, vip); err != nil {
-						klog.Errorf("failed to delete vip %s from LB %s: %v", vip, lbName, err)
-						return err
-					}
-				}
-			}
+	removeVip = func(lbName string, svcVips *strset.Set) error {
+		if lbName == "" {
 			return nil
 		}
 
-		if err = removeVIP(tcpLb, tcpVips); err != nil {
+		var (
+			lb  *ovnnb.LoadBalancer
+			err error
+		)
+
+		if lb, err = c.OVNNbClient.GetLoadBalancer(lbName, true); err != nil {
+			klog.Errorf("get LB %s: %v", lbName, err)
 			return err
 		}
-		if err = removeVIP(tcpSessLb, tcpSessionVips); err != nil {
+
+		if lb == nil {
+			klog.Infof("load balancer %q already deleted", lbName)
+			return nil
+		}
+
+		for vip := range lb.Vips {
+			if !svcVips.Has(vip) {
+				if err = c.OVNNbClient.LoadBalancerDeleteVip(lbName, vip, ignoreHealthCheck); err != nil {
+					klog.Errorf("failed to delete vip %s from LB %s: %v", vip, lbName, err)
+					return err
+				}
+			}
+		}
+		return nil
+	}
+
+	for _, vpc := range vpcs {
+		var (
+			tcpLb, udpLb, sctpLb             = vpc.Status.TCPLoadBalancer, vpc.Status.UDPLoadBalancer, vpc.Status.SctpLoadBalancer
+			tcpSessLb, udpSessLb, sctpSessLb = vpc.Status.TCPSessionLoadBalancer, vpc.Status.UDPSessionLoadBalancer, vpc.Status.SctpSessionLoadBalancer
+		)
+
+		vpcLbs = append(vpcLbs, tcpLb, udpLb, sctpLb, tcpSessLb, udpSessLb, sctpSessLb)
+		if err = removeVip(tcpLb, tcpVips); err != nil {
 			return err
 		}
-		if err = removeVIP(udpLb, udpVips); err != nil {
+		if err = removeVip(tcpSessLb, tcpSessionVips); err != nil {
 			return err
 		}
-		if err = removeVIP(udpSessLb, udpSessionVips); err != nil {
+		if err = removeVip(udpLb, udpVips); err != nil {
 			return err
 		}
-		if err = removeVIP(sctpLb, sctpVips); err != nil {
+		if err = removeVip(udpSessLb, udpSessionVips); err != nil {
 			return err
 		}
-		if err = removeVIP(sctpSessLb, sctpSessionVips); err != nil {
+		if err = removeVip(sctpLb, sctpVips); err != nil {
+			return err
+		}
+		if err = removeVip(sctpSessLb, sctpSessionVips); err != nil {
 			return err
 		}
 	}
 
 	// delete lbs
-	if err = c.OVNNbClient.DeleteLoadBalancers(func(lb *ovnnb.LoadBalancer) bool {
-		return !util.ContainsString(vpcLbs, lb.Name)
-	}); err != nil {
+	if err = c.OVNNbClient.DeleteLoadBalancers(
+		func(lb *ovnnb.LoadBalancer) bool {
+			return !util.ContainsString(vpcLbs, lb.Name)
+		},
+	); err != nil {
 		klog.Errorf("delete load balancers: %v", err)
 		return err
 	}
-
 	return nil
 }
 

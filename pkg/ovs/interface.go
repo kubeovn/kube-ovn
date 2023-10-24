@@ -80,12 +80,27 @@ type LogicalSwitchPort interface {
 type LoadBalancer interface {
 	CreateLoadBalancer(lbName, protocol, selectFields string) error
 	LoadBalancerAddVip(lbName, vip string, backends ...string) error
-	LoadBalancerDeleteVip(lbName, vip string) error
+	LoadBalancerDeleteVip(lbName, vip string, ignoreHealthCheck bool) error
+	LoadBalancerAddIPPortMapping(lbName, vip string, ipPortMappings map[string]string) error
+	LoadBalancerUpdateIPPortMapping(lbName, vip string, ipPortMappings map[string]string) error
+	LoadBalancerDeleteIPPortMapping(lbName, vip string) error
+	LoadBalancerAddHealthCheck(lbName, vip string, ignoreHealthCheck bool, ipPortMapping, externals map[string]string) error
+	LoadBalancerDeleteHealthCheck(lbName, uuid string) error
 	SetLoadBalancerAffinityTimeout(lbName string, timeout int) error
 	DeleteLoadBalancers(filter func(lb *ovnnb.LoadBalancer) bool) error
 	GetLoadBalancer(lbName string, ignoreNotFound bool) (*ovnnb.LoadBalancer, error)
 	ListLoadBalancers(filter func(lb *ovnnb.LoadBalancer) bool) ([]ovnnb.LoadBalancer, error)
 	LoadBalancerExists(lbName string) (bool, error)
+}
+
+type LoadBalancerHealthCheck interface {
+	AddLoadBalancerHealthCheck(lbName, vip string, externals map[string]string) error
+	CreateLoadBalancerHealthCheck(lbName, vip string, lbhc *ovnnb.LoadBalancerHealthCheck) error
+	DeleteLoadBalancerHealthCheck(lbName, vip string) error
+	DeleteLoadBalancerHealthChecks(filter func(lbhc *ovnnb.LoadBalancerHealthCheck) bool) error
+	GetLoadBalancerHealthCheck(lbName, vip string, ignoreNotFound bool) (*ovnnb.LoadBalancer, *ovnnb.LoadBalancerHealthCheck, error)
+	ListLoadBalancerHealthChecks(filter func(lbhc *ovnnb.LoadBalancerHealthCheck) bool) ([]ovnnb.LoadBalancerHealthCheck, error)
+	LoadBalancerHealthCheckExists(lbName, vip string) (bool, error)
 }
 
 type PortGroup interface {
@@ -166,6 +181,7 @@ type NbClient interface {
 	BFD
 	DHCPOptions
 	LoadBalancer
+	LoadBalancerHealthCheck
 	LogicalRouterPolicy
 	LogicalRouterPort
 	LogicalRouterStaticRoute

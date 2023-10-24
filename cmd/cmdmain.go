@@ -42,33 +42,50 @@ func dumpProfile() {
 		for {
 			<-ch1
 			name := fmt.Sprintf("cpu-profile-%s.pprof", time.Now().Format(timeFormat))
-			f, err := os.Create(filepath.Join(os.TempDir(), name)) // #nosec G303,G304
+			path := filepath.Join(os.TempDir(), name)
+			f, err := os.Create(path) // #nosec G303,G304
 			if err != nil {
 				klog.Errorf("failed to create cpu profile file: %v", err)
 				return
 			}
-			defer f.Close()
 			if err = pprof.StartCPUProfile(f); err != nil {
 				klog.Errorf("failed to start cpu profile: %v", err)
+				if err = f.Close(); err != nil {
+					klog.Errorf("failed to close file %q: %v", path, err)
+				}
 				return
 			}
+			defer f.Close()
 			time.Sleep(30 * time.Second)
 			pprof.StopCPUProfile()
+			if err = f.Close(); err != nil {
+				klog.Errorf("failed to close file %q: %v", path, err)
+				return
+			}
 		}
 	}()
 	go func() {
 		for {
 			<-ch2
 			name := fmt.Sprintf("mem-profile-%s.pprof", time.Now().Format(timeFormat))
-			f, err := os.Create(filepath.Join(os.TempDir(), name)) // #nosec G303,G304
+			path := filepath.Join(os.TempDir(), name)
+			f, err := os.Create(path) // #nosec G303,G304
 			if err != nil {
 				klog.Errorf("failed to create memory profile file: %v", err)
 				return
 			}
-			defer f.Close()
 			if err = pprof.WriteHeapProfile(f); err != nil {
 				klog.Errorf("failed to write memory profile file: %v", err)
+				if err = f.Close(); err != nil {
+					klog.Errorf("failed to close file %q: %v", path, err)
+				}
+				return
 			}
+			if err = f.Close(); err != nil {
+				klog.Errorf("failed to close file %q: %v", path, err)
+				return
+			}
+			defer f.Close()
 		}
 	}()
 }
