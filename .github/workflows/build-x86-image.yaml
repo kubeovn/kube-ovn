@@ -1887,7 +1887,11 @@ jobs:
       - name: Install Kube-OVN
         run: make kind-install
 
-      - name: Run E2E
+      - name: Run Vip E2E
+        working-directory: ${{ env.E2E_DIR }}
+        run: make vip-conformance-e2e
+
+      - name: Run Ovn VPC NAT GW E2E
         working-directory: ${{ env.E2E_DIR }}
         run: make ovn-vpc-nat-gw-conformance-e2e
 
