@@ -196,7 +196,7 @@ func (c *Controller) establishInterConnection(config map[string]string) error {
 	groups := strings.Split(config["gw-nodes"], ";")
 	for i, group := range groups {
 		gwNodes := strings.Split(group, ",")
-		chassises := make([]string, len(gwNodes)*2)
+		chassises := make([]string, len(gwNodes))
 		for j, gw := range gwNodes {
 			gw = strings.TrimSpace(gw)
 			chassisID, err := c.ovnLegacyClient.GetChassis(gw)
@@ -208,7 +208,6 @@ func (c *Controller) establishInterConnection(config map[string]string) error {
 				return fmt.Errorf("no chassisID for gw %s", gw)
 			}
 			chassises[j] = chassisID
-			chassises[j+len(gwNodes)] = chassisID
 
 			cachedNode, err := c.nodesLister.Get(gw)
 			if err != nil {
@@ -259,7 +258,7 @@ func (c *Controller) establishInterConnection(config map[string]string) error {
 			return err
 		}
 
-		if err = c.ovnLegacyClient.CreateICLogicalRouterPort(config["az-name"], tsName, util.GenerateMac(), lrpAddr, chassises[i:i+len(gwNodes)]); err != nil {
+		if err = c.ovnLegacyClient.CreateICLogicalRouterPort(config["az-name"], tsName, util.GenerateMac(), lrpAddr, chassises); err != nil {
 			klog.Errorf("failed to create ovn-ic lrp %v", err)
 			return err
 		}

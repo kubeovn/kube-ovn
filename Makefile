@@ -371,8 +371,8 @@ kind-install-ovn-ic: kind-install
 	docker run -d --name ovn-ic-db --network kind $(REGISTRY)/kube-ovn:$(VERSION) bash start-ic-db.sh
 	@set -e; \
 	ic_db_host=$$(docker inspect ovn-ic-db -f "{{.NetworkSettings.Networks.kind.IPAddress}}"); \
-	zone=az0 ic_db_host=$$ic_db_host gateway_node_name='kube-ovn-control-plane;kube-ovn-worker' j2 yamls/ovn-ic.yaml.j2 -o ovn-ic-0.yaml; \
-	zone=az1 ic_db_host=$$ic_db_host gateway_node_name='kube-ovn1-control-plane;kube-ovn1-worker' j2 yamls/ovn-ic.yaml.j2 -o ovn-ic-1.yaml
+	zone=az0 ic_db_host=$$ic_db_host gateway_node_name='kube-ovn-control-plane;kube-ovn-worker;kube-ovn-worker2' j2 yamls/ovn-ic.yaml.j2 -o ovn-ic-0.yaml; \
+	zone=az1 ic_db_host=$$ic_db_host gateway_node_name='kube-ovn1-control-plane;kube-ovn1-worker;kube-ovn1-worker2' j2 yamls/ovn-ic.yaml.j2 -o ovn-ic-1.yaml
 	kubectl config use-context kind-kube-ovn
 	kubectl apply -f ovn-ic-0.yaml
 	kubectl config use-context kind-kube-ovn1
