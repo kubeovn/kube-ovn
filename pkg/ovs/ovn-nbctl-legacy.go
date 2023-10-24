@@ -126,21 +126,22 @@ func (c LegacyClient) DeleteLogicalRouterPort(port string) error {
 	return nil
 }
 
-func (c LegacyClient) CreateICLogicalRouterPort(az, mac, subnet string, chassises []string) error {
-	lrpName := fmt.Sprintf("%s-ts", az)
+func (c LegacyClient) CreateICLogicalRouterPort(az, ts, mac, subnet string, chassises []string) error {
+	lspName := fmt.Sprintf("%s-%s", ts, az)
+	lrpName := fmt.Sprintf("%s-%s", az, ts)
 	klog.Infof("add vpc lrp %s", lrpName)
 	if _, err := c.ovnNbCommand(MayExist, "lrp-add", c.ClusterRouter, lrpName, mac, subnet); err != nil {
 		return fmt.Errorf("failed to create ovn-ic lrp, %v", err)
 	}
-	if _, err := c.ovnNbCommand(MayExist, "lsp-add", util.InterconnectionSwitch, fmt.Sprintf("ts-%s", az), "--",
-		"lsp-set-addresses", fmt.Sprintf("ts-%s", az), "router", "--",
-		"lsp-set-type", fmt.Sprintf("ts-%s", az), "router", "--",
-		"lsp-set-options", fmt.Sprintf("ts-%s", az), fmt.Sprintf("router-port=%s-ts", az), "--",
-		"set", "logical_switch_port", fmt.Sprintf("ts-%s", az), fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName)); err != nil {
+	if _, err := c.ovnNbCommand(MayExist, "lsp-add", ts, lspName, "--",
+		"lsp-set-addresses", lspName, "router", "--",
+		"lsp-set-type", lspName, "router", "--",
+		"lsp-set-options", lspName, fmt.Sprintf("router-port=%s", lrpName), "--",
+		"set", "logical_switch_port", lspName, fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName)); err != nil {
 		return fmt.Errorf("failed to create ovn-ic lsp, %v", err)
 	}
 	for index, chassis := range chassises {
-		if _, err := c.ovnNbCommand("lrp-set-gateway-chassis", fmt.Sprintf("%s-ts", az), chassis, fmt.Sprintf("%d", 100-index)); err != nil {
+		if _, err := c.ovnNbCommand("lrp-set-gateway-chassis", lrpName, chassis, strconv.Itoa(100-index)); err != nil {
 			return fmt.Errorf("failed to set gateway chassis, %v", err)
 		}
 	}
