@@ -90,7 +90,7 @@ done
 
 case ${BOND_TYPE} in
   "")
-    ovs-vsctl --timeout 10 add-port ${DPDK_TUNNEL_IFACE} dpdk0 ${OPTS};;
+    ovs-vsctl --timeout 10 add-port ${DPDK_TUNNEL_IFACE} dpdk0 -- set Interface dpdk0 type=dpdk options:dpdk-devargs=${DPDK_DEV[0]}
   "active-backup"|1)
     ovs-vsctl --timeout 10 add-bond ${DPDK_TUNNEL_IFACE} dpdk0 ${IPS} ${OPTS}
     ovs-vsctl set port dpdk0 bond_mode=active-backup;;
