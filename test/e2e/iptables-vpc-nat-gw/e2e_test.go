@@ -385,7 +385,7 @@ var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 		)
 
 		ginkgo.By("Creating iptables vip for fip")
-		fipVip := framework.MakeVip(fipVipName, overlaySubnetName, "", "", "")
+		fipVip := framework.MakeVip(f.Namespace.Name, fipVipName, overlaySubnetName, "", "", "")
 		_ = vipClient.CreateSync(fipVip)
 		fipVip = vipClient.Get(fipVipName)
 		ginkgo.By("Creating iptables eip for fip")
@@ -403,7 +403,7 @@ var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 		_ = iptablesSnatRuleClient.CreateSync(snat)
 
 		ginkgo.By("Creating iptables vip for dnat")
-		dnatVip := framework.MakeVip(dnatVipName, overlaySubnetName, "", "", "")
+		dnatVip := framework.MakeVip(f.Namespace.Name, dnatVipName, overlaySubnetName, "", "", "")
 		_ = vipClient.CreateSync(dnatVip)
 		dnatVip = vipClient.Get(dnatVipName)
 		ginkgo.By("Creating iptables eip for dnat")
@@ -415,7 +415,7 @@ var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 
 		// share eip case
 		ginkgo.By("Creating share vip")
-		shareVip := framework.MakeVip(sharedVipName, overlaySubnetName, "", "", "")
+		shareVip := framework.MakeVip(f.Namespace.Name, sharedVipName, overlaySubnetName, "", "", "")
 		_ = vipClient.CreateSync(shareVip)
 		fipVip = vipClient.Get(fipVipName)
 		ginkgo.By("Creating share iptables eip")

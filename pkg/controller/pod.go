@@ -977,9 +977,16 @@ func (c *Controller) handleDeletePod(key string) error {
 					return err
 				}
 			}
-			if exGwEnabled == "true" {
-				if err := c.OVNNbClient.DeleteNat(vpc.Name, "", "", address.IP); err != nil {
-					return err
+			if c.config.EnableEipSnat {
+				if pod.Annotations[util.EipAnnotation] != "" {
+					if err = c.OVNNbClient.DeleteNat(c.config.ClusterRouter, ovnnb.NATTypeDNATAndSNAT, pod.Annotations[util.EipAnnotation], address.IP); err != nil {
+						klog.Errorf("failed to delete nat rules: %v", err)
+					}
+				}
+				if pod.Annotations[util.SnatAnnotation] != "" {
+					if err = c.OVNNbClient.DeleteNat(c.config.ClusterRouter, ovnnb.NATTypeSNAT, "", address.IP); err != nil {
+						klog.Errorf("failed to delete nat rules: %v", err)
+					}
 				}
 			}
 		}

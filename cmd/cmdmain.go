@@ -47,11 +47,11 @@ func dumpProfile() {
 				klog.Errorf("failed to create cpu profile file: %v", err)
 				return
 			}
-			defer f.Close()
 			if err = pprof.StartCPUProfile(f); err != nil {
 				klog.Errorf("failed to start cpu profile: %v", err)
 				return
 			}
+			defer f.Close()
 			time.Sleep(30 * time.Second)
 			pprof.StopCPUProfile()
 		}
@@ -65,10 +65,10 @@ func dumpProfile() {
 				klog.Errorf("failed to create memory profile file: %v", err)
 				return
 			}
-			defer f.Close()
 			if err = pprof.WriteHeapProfile(f); err != nil {
 				klog.Errorf("failed to write memory profile file: %v", err)
 			}
+			defer f.Close()
 		}
 	}()
 }

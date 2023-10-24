@@ -43,19 +43,25 @@ func NewIPAM() *IPAM {
 func (ipam *IPAM) GetRandomAddress(podName, nicName string, mac *string, subnetName, poolName string, skippedAddrs []string, checkConflict bool) (string, string, string, error) {
 	ipam.mutex.RLock()
 	defer ipam.mutex.RUnlock()
-
+	var v4, v6 string
 	subnet, ok := ipam.Subnets[subnetName]
 	if !ok {
 		return "", "", "", ErrNoAvailable
 	}
 
 	v4IP, v6IP, macStr, err := subnet.GetRandomAddress(poolName, podName, nicName, mac, skippedAddrs, checkConflict)
-	if poolName == "" {
-		klog.Infof("allocate v4 %s v6 %s mac %s for %s from subnet %s", v4IP, v6IP, macStr, podName, subnetName)
-	} else {
-		klog.Infof("allocate v4 %s v6 %s mac %s for %s from ippool %s in subnet %s", v4IP, v6IP, macStr, podName, poolName, subnetName)
+	if v4IP != nil {
+		v4 = v4IP.String()
 	}
-	return v4IP.String(), v6IP.String(), macStr, err
+	if v6IP != nil {
+		v6 = v6IP.String()
+	}
+	if poolName == "" {
+		klog.Infof("allocate v4 %s, v6 %s, mac %s for %s from subnet %s", v4, v6, macStr, podName, subnetName)
+	} else {
+		klog.Infof("allocate v4 %s, v6 %s, mac %s for %s from ippool %s in subnet %s", v4, v6, macStr, podName, poolName, subnetName)
+	}
+	return v4, v6, macStr, err
 }
 
 func (ipam *IPAM) GetStaticAddress(podName, nicName, ip string, mac *string, subnetName string, checkConflict bool) (string, string, string, error) {
@@ -71,7 +77,7 @@ func (ipam *IPAM) GetStaticAddress(podName, nicName, ip string, mac *string, sub
 	var ips []IP
 	var err error
 	var ipAddr IP
-	var macStr string
+	var v4, v6, macStr string
 	for _, ipStr := range strings.Split(ip, ",") {
 		ip, err := NewIP(ipStr)
 		if err != nil {
@@ -93,14 +99,20 @@ func (ipam *IPAM) GetStaticAddress(podName, nicName, ip string, mac *string, sub
 
 	switch subnet.Protocol {
 	case kubeovnv1.ProtocolIPv4:
-		klog.Infof("allocate v4 %s mac %s for %s from subnet %s", ip, macStr, podName, subnetName)
+		klog.Infof("allocate v4 %s, mac %s for %s from subnet %s", ip, macStr, podName, subnetName)
 		return ip, "", macStr, err
 	case kubeovnv1.ProtocolIPv6:
-		klog.Infof("allocate v6 %s mac %s for %s from subnet %s", ip, macStr, podName, subnetName)
+		klog.Infof("allocate v6 %s, mac %s for %s from subnet %s", ip, macStr, podName, subnetName)
 		return "", ip, macStr, err
 	case kubeovnv1.ProtocolDual:
-		klog.Infof("allocate v4 %s v6 %s mac %s for %s from subnet %s", ips[0].String(), ips[1].String(), macStr, podName, subnetName)
-		return ips[0].String(), ips[1].String(), macStr, err
+		if ips[0] != nil {
+			v4 = ips[0].String()
+		}
+		if ips[1] != nil {
+			v6 = ips[1].String()
+		}
+		klog.Infof("allocate v4 %s, v6 %s, mac %s for %s from subnet %s", ips[0].String(), ips[1].String(), macStr, podName, subnetName)
+		return v4, v6, macStr, err
 	}
 	return "", "", "", ErrNoAvailable
 }

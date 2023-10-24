@@ -148,7 +148,7 @@ func (c *OvnDnatRuleClient) WaitToDisappear(name string, _, timeout time.Duratio
 	return nil
 }
 
-func MakeOvnDnatRule(name, ovnEip, ipType, ipName, internalPort, externalPort, protocol string) *apiv1.OvnDnatRule {
+func MakeOvnDnatRule(name, ovnEip, ipType, ipName, vpc, v4Ip, internalPort, externalPort, protocol string) *apiv1.OvnDnatRule {
 	dnat := &apiv1.OvnDnatRule{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
@@ -157,6 +157,8 @@ func MakeOvnDnatRule(name, ovnEip, ipType, ipName, internalPort, externalPort, p
 			OvnEip:       ovnEip,
 			IPType:       ipType,
 			IPName:       ipName,
+			Vpc:          vpc,
+			V4Ip:         v4Ip,
 			InternalPort: internalPort,
 			ExternalPort: externalPort,
 			Protocol:     protocol,

@@ -53,7 +53,7 @@ var _ = framework.Describe("[group:webhook-vip]", func() {
 
 	framework.ConformanceIt("check create vip with different errors", func() {
 		ginkgo.By("Creating vip " + vipName)
-		vip = framework.MakeVip(vipName, "", "", "", "")
+		vip = framework.MakeVip(namespaceName, vipName, "", "", "", "")
 
 		ginkgo.By("validating subnet")
 		vip.Spec.Subnet = ""
