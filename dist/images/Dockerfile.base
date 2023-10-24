@@ -49,7 +49,7 @@ RUN cd /usr/src/ && git clone -b branch-22.03 --depth=1 https://github.com/ovn-o
     # fix ssl listen address
     curl -s https://github.com/kubeovn/ovn/commit/dca043b2c35756fd370214fc40d61f755bd3a66f.patch | git apply && \
     # ovn-controller: Add a generic way to check if the daemon started recently.
-    curl -s https://github.com/kubeovn/ovn/commit/54c478d38ec31c900d54d29c557bf414f5194baf.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/2d6823753c295411ac63a66d1d1c5a5d8ba57bdc.patch | git apply && \
     # patch.c: Avoid patch interface deletion & recreation during restart.
     curl -s https://github.com/kubeovn/ovn/commit/03a46942b9e14d77a23313c193fe062ccafa4769.patch | git apply && \
     # change hash type from dp_hash to hash with field src_ip
