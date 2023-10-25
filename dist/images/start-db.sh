@@ -23,6 +23,8 @@ cat /proc/cmdline"
     exit 1
 fi
 
+PRBOE_INTERVAL=${PRBOE_INTERVAL:-5}
+ENABLE_COMPACT=${ENABLE_COMPACT:-false}
 DB_NB_ADDR=${DB_NB_ADDR:-::}
 DB_NB_PORT=${DB_NB_PORT:-6641}
 DB_SB_ADDR=${DB_SB_ADDR:-::}
@@ -366,5 +368,5 @@ ovs-appctl -t /var/run/ovn/ovnnb_db.ctl ovsdb-server/memory-trim-on-compaction o
 ovs-appctl -t /var/run/ovn/ovnsb_db.ctl ovsdb-server/memory-trim-on-compaction on
 
 chmod 600 /etc/ovn/*
-/kube-ovn/kube-ovn-leader-checker
+/kube-ovn/kube-ovn-leader-checker --probeInterval=$PRBOE_INTERVAL --enableCompact=$ENABLE_COMPACT
 
