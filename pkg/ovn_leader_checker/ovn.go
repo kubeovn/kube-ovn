@@ -52,7 +52,7 @@ func ParseFlags() (*Configuration, error) {
 	var (
 		argKubeConfigFile = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.")
 		argProbeInterval  = pflag.Int("probeInterval", DefaultProbeInterval, "interval of probing leader in seconds")
-		argEnableCompact  = pflag.Bool("enableCompact", true, "interval of probing leader in seconds")
+		argEnableCompact  = pflag.Bool("enableCompact", true, "is enable compact")
 	)
 
 	klogFlags := flag.NewFlagSet("klog", flag.ContinueOnError)
