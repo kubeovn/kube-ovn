@@ -71,6 +71,10 @@ spec:
                   fieldPath: status.podIPs
             - name: ENABLE_BIND_LOCAL_IP
               value: "{{- .Values.func.ENABLE_BIND_LOCAL_IP }}"
+            - name: OVN_LEADER_PROBE_INTERVAL
+              value: "{{ .Values.networking.OVN_LEADER_PROBE_INTERVAL }}"
+            - name: ENABLE_COMPACT
+              value: "{{ .Values.networking.ENABLE_COMPACT }}"
           resources:
             requests:
               cpu: 300m
