@@ -119,6 +119,16 @@ jobs:
         if: needs.build-kube-ovn-base.outputs.build-base == 1
         run: docker load --input image-amd64.tar
 
+      - name: Download base-dpdk images
+        if: needs.build-kube-ovn-base-dpdk.outputs.build-base-dpdk == 1
+        uses: actions/download-artifact@v3
+        with:
+          name: kube-ovn-base-dpdk
+
+      - name: Load base-dpdk images
+        if: needs.build-kube-ovn-base-dpdk.outputs.build-base-dpdk == 1
+        run: docker load --input image-amd64-dpdk.tar
+
       - name: Build
         run: |
           go mod tidy
@@ -128,6 +138,7 @@ jobs:
             TAG=$(cat VERSION)
             docker tag kubeovn/kube-ovn-base:$TAG-amd64 kubeovn/kube-ovn-base:$TAG
             docker tag kubeovn/kube-ovn-base:$TAG-debug-amd64 kubeovn/kube-ovn-base:$TAG-debug
+            docker tag kubeovn/kube-ovn-base:$TAG-amd64-dpdk kubeovn/kube-ovn-base:$TAG-dpdk
             make build-kube-ovn
           else
             make image-kube-ovn
@@ -1971,6 +1982,7 @@ jobs:
           docker tag kubeovn/kube-ovn:$TAG kubeovn/kube-ovn-dev:$COMMIT-x86
           docker tag kubeovn/kube-ovn:$TAG kubeovn/kube-ovn:$TAG-x86
           docker tag kubeovn/kube-ovn:$TAG-debug kubeovn/kube-ovn:$TAG-debug-x86
+          docker tag kubeovn/kube-ovn:$TAG-dpdk kubeovn/kube-ovn:$TAG-dpdk-x86
           docker tag kubeovn/vpc-nat-gateway:$TAG kubeovn/vpc-nat-gateway-dev:$COMMIT-x86
           docker tag kubeovn/vpc-nat-gateway:$TAG kubeovn/vpc-nat-gateway:$TAG-x86
           docker tag kubeovn/centos7-compile:$TAG kubeovn/centos7-compile-dev:$TAG-x86
@@ -1981,6 +1993,7 @@ jobs:
           docker push kubeovn/kube-ovn:$TAG-x86
           docker push kubeovn/kube-ovn-dev:$COMMIT-x86
           docker push kubeovn/kube-ovn:$TAG-debug-x86
+          docker push kubeovn/kube-ovn:$TAG-dpdk-x86
           docker push kubeovn/vpc-nat-gateway:$TAG-x86
           docker push kubeovn/vpc-nat-gateway-dev:$COMMIT-x86
           docker push kubeovn/centos7-compile:$TAG-x86
