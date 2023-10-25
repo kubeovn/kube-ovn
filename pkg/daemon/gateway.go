@@ -33,6 +33,12 @@ const (
 	IPSetPrefix  = "ovn"
 )
 
+const (
+	NAT         = "nat"
+	Prerouting  = "PREROUTING"
+	Postrouting = "POSTROUTING"
+)
+
 type policyRouteMeta struct {
 	family   int
 	source   string
@@ -542,18 +548,102 @@ func deleteIptablesRule(ipt *iptables.IPTables, rule util.IPTableRule) error {
 	return nil
 }
 
-func (c *Controller) cleanObsoleteIptablesRules(protocol string, rules []util.IPTableRule) error {
+func (c *Controller) cleanObsoleteIptablesRules(protocol string) error {
 	if c.iptablesObsolete == nil || c.iptablesObsolete[protocol] == nil {
 		return nil
 	}
 
+	var (
+		v4ObsoleteRules = []util.IPTableRule{
+			{Table: NAT, Chain: Postrouting, Rule: strings.Fields(`-m mark --mark 0x40000/0x40000 -j MASQUERADE`)},
+			{Table: "mangle", Chain: Prerouting, Rule: strings.Fields(`-i ovn0 -m set --match-set ovn40subnets src -m set --match-set ovn40services dst -j MARK --set-xmark 0x40000/0x40000`)},
+			// legacy rules
+			// nat packets marked by kube-proxy or kube-ovn
+			{Table: NAT, Chain: Postrouting, Rule: strings.Fields(`-m mark --mark 0x4000/0x4000 -j MASQUERADE`)},
+			// nat service traffic
+			{Table: NAT, Chain: Postrouting, Rule: strings.Fields(`-m set --match-set ovn40subnets src -m set --match-set ovn40subnets dst -j MASQUERADE`)},
+			// do not nat node port service traffic with external traffic policy set to local
+			{Table: NAT, Chain: Postrouting, Rule: strings.Fields(`-m mark --mark 0x80000/0x80000 -m set --match-set ovn40subnets-distributed-gw dst -j RETURN`)},
+			// nat node port service traffic with external traffic policy set to local for subnets with centralized gateway
+			{Table: NAT, Chain: Postrouting, Rule: strings.Fields(`-m mark --mark 0x80000/0x80000 -j MASQUERADE`)},
+			// do not nat reply packets in direct routing
+			{Table: NAT, Chain: Postrouting, Rule: strings.Fields(`-p tcp --tcp-flags SYN NONE -m conntrack --ctstate NEW -j RETURN`)},
+			// do not nat route traffic
+			{Table: NAT, Chain: Postrouting, Rule: strings.Fields(`-m set ! --match-set ovn40subnets src -m set ! --match-set ovn40other-node src -m set --match-set ovn40subnets-nat dst -j RETURN`)},
+			// nat outgoing
+			{Table: NAT, Chain: Postrouting, Rule: strings.Fields(`-m set --match-set ovn40subnets-nat src -m set ! --match-set ovn40subnets dst -j MASQUERADE`)},
+			// mark packets from pod to service
+			{Table: "mangle", Chain: Prerouting, Rule: strings.Fields(`-i ovn0 -m set --match-set ovn40subnets src -m set --match-set ovn40services dst -j MARK --set-xmark 0x4000/0x4000`)},
+			// Input Accept
+			{Table: "filter", Chain: "INPUT", Rule: strings.Fields(`-m set --match-set ovn40subnets src -j ACCEPT`)},
+			{Table: "filter", Chain: "INPUT", Rule: strings.Fields(`-m set --match-set ovn40subnets dst -j ACCEPT`)},
+			{Table: "filter", Chain: "INPUT", Rule: strings.Fields(`-m set --match-set ovn40services src -j ACCEPT`)},
+			{Table: "filter", Chain: "INPUT", Rule: strings.Fields(`-m set --match-set ovn40services dst -j ACCEPT`)},
+			// Forward Accept
+			{Table: "filter", Chain: "FORWARD", Rule: strings.Fields(`-m set --match-set ovn40subnets src -j ACCEPT`)},
+			{Table: "filter", Chain: "FORWARD", Rule: strings.Fields(`-m set --match-set ovn40subnets dst -j ACCEPT`)},
+			{Table: "filter", Chain: "FORWARD", Rule: strings.Fields(`-m set --match-set ovn40services src -j ACCEPT`)},
+			{Table: "filter", Chain: "FORWARD", Rule: strings.Fields(`-m set --match-set ovn40services dst -j ACCEPT`)},
+			// Output unmark to bypass kernel nat checksum issue https://github.com/flannel-io/flannel/issues/1279
+			{Table: "filter", Chain: "OUTPUT", Rule: strings.Fields(`-p udp -m udp --dport 6081 -j MARK --set-xmark 0x0`)},
+		}
+		v6ObsoleteRules = []util.IPTableRule{
+			{Table: NAT, Chain: Postrouting, Rule: strings.Fields(`-m mark --mark 0x40000/0x40000 -j MASQUERADE`)},
+			{Table: "mangle", Chain: Prerouting, Rule: strings.Fields(`-i ovn0 -m set --match-set ovn60subnets src -m set --match-set ovn60services dst -j MARK --set-xmark 0x40000/0x40000`)},
+			// legacy rules
+			// nat packets marked by kube-proxy or kube-ovn
+			{Table: NAT, Chain: Postrouting, Rule: strings.Fields(`-m mark --mark 0x4000/0x4000 -j MASQUERADE`)},
+			// nat service traffic
+			{Table: NAT, Chain: Postrouting, Rule: strings.Fields(`-m set --match-set ovn60subnets src -m set --match-set ovn60subnets dst -j MASQUERADE`)},
+			// do not nat node port service traffic with external traffic policy set to local
+			{Table: NAT, Chain: Postrouting, Rule: strings.Fields(`-m mark --mark 0x80000/0x80000 -m set --match-set ovn60subnets-distributed-gw dst -j RETURN`)},
+			// nat node port service traffic with external traffic policy set to local for subnets with centralized gateway
+			{Table: NAT, Chain: Postrouting, Rule: strings.Fields(`-m mark --mark 0x80000/0x80000 -j MASQUERADE`)},
+			// do not nat reply packets in direct routing
+			{Table: NAT, Chain: Postrouting, Rule: strings.Fields(`-p tcp --tcp-flags SYN NONE -m conntrack --ctstate NEW -j RETURN`)},
+			// do not nat route traffic
+			{Table: NAT, Chain: Postrouting, Rule: strings.Fields(`-m set ! --match-set ovn60subnets src -m set ! --match-set ovn60other-node src -m set --match-set ovn60subnets-nat dst -j RETURN`)},
+			// nat outgoing
+			{Table: NAT, Chain: Postrouting, Rule: strings.Fields(`-m set --match-set ovn60subnets-nat src -m set ! --match-set ovn60subnets dst -j MASQUERADE`)},
+			// mark packets from pod to service
+			{Table: "mangle", Chain: Prerouting, Rule: strings.Fields(`-i ovn0 -m set --match-set ovn60subnets src -m set --match-set ovn60services dst -j MARK --set-xmark 0x4000/0x4000`)},
+			// Input Accept
+			{Table: "filter", Chain: "INPUT", Rule: strings.Fields(`-m set --match-set ovn60subnets src -j ACCEPT`)},
+			{Table: "filter", Chain: "INPUT", Rule: strings.Fields(`-m set --match-set ovn60subnets dst -j ACCEPT`)},
+			{Table: "filter", Chain: "INPUT", Rule: strings.Fields(`-m set --match-set ovn60services src -j ACCEPT`)},
+			{Table: "filter", Chain: "INPUT", Rule: strings.Fields(`-m set --match-set ovn60services dst -j ACCEPT`)},
+			// Forward Accept
+			{Table: "filter", Chain: "FORWARD", Rule: strings.Fields(`-m set --match-set ovn60subnets src -j ACCEPT`)},
+			{Table: "filter", Chain: "FORWARD", Rule: strings.Fields(`-m set --match-set ovn60subnets dst -j ACCEPT`)},
+			{Table: "filter", Chain: "FORWARD", Rule: strings.Fields(`-m set --match-set ovn60services src -j ACCEPT`)},
+			{Table: "filter", Chain: "FORWARD", Rule: strings.Fields(`-m set --match-set ovn60services dst -j ACCEPT`)},
+			// Output unmark to bypass kernel nat checksum issue https://github.com/flannel-io/flannel/issues/1279
+			{Table: "filter", Chain: "OUTPUT", Rule: strings.Fields(`-p udp -m udp --dport 6081 -j MARK --set-xmark 0x0`)},
+		}
+	)
+
+	var obsoleteRules []util.IPTableRule
+	if protocol == kubeovnv1.ProtocolIPv4 {
+		obsoleteRules = v4ObsoleteRules
+	} else {
+		obsoleteRules = v6ObsoleteRules
+	}
+
 	ipt := c.iptablesObsolete[protocol]
-	for _, rule := range rules {
+	for _, rule := range obsoleteRules {
 		if err := deleteIptablesRule(ipt, rule); err != nil {
 			klog.Error(err)
 			return err
 		}
 	}
+
+	//ipt := c.iptablesObsolete[protocol]
+	//for _, rule := range rules {
+	//	if err := deleteIptablesRule(ipt, rule); err != nil {
+	//		klog.Error(err)
+	//		return err
+	//	}
+	//}
 
 	delete(c.iptablesObsolete, protocol)
 	if len(c.iptablesObsolete) == 0 {
