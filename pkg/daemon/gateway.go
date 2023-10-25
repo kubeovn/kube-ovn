@@ -490,7 +490,7 @@ func (c *Controller) setIptables() error {
 			}
 		}
 
-		if err = c.cleanObsoleteIptablesRules(protocol, iptablesRules); err != nil {
+		if err = c.cleanObsoleteIptablesRules(protocol); err != nil {
 			klog.Errorf("failed to clean legacy iptables rules: %v", err)
 			return err
 		}
