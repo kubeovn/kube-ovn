@@ -8,6 +8,7 @@ DEBUG_OPT="--ovn-northd-wrapper=$DEBUG_WRAPPER --ovsdb-nb-wrapper=$DEBUG_WRAPPER
 echo "PROBE_INTERVAL is set to $PROBE_INTERVAL"
 echo "OVN_LEADER_PROBE_INTERVAL is set to $OVN_LEADER_PROBE_INTERVAL"
 echo "OVN_NORTHD_N_THREADS is set to $OVN_NORTHD_N_THREADS"
+echo "ENABLE_COMPACT is set to $ENABLE_COMPACT"
 
 # https://bugs.launchpad.net/neutron/+bug/1776778
 if grep -q "3.10.0-862" /proc/version
@@ -496,4 +497,4 @@ ovs-appctl -t /var/run/ovn/ovnnb_db.ctl ovsdb-server/memory-trim-on-compaction o
 ovs-appctl -t /var/run/ovn/ovnsb_db.ctl ovsdb-server/memory-trim-on-compaction on
 
 chmod 600 /etc/ovn/*
-/kube-ovn/kube-ovn-leader-checker --probeInterval=${OVN_LEADER_PROBE_INTERVAL}
+/kube-ovn/kube-ovn-leader-checker --probeInterval=${OVN_LEADER_PROBE_INTERVAL} --enableCompact=${ENABLE_COMPACT}

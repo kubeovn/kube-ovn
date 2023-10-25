@@ -3243,6 +3243,8 @@ spec:
               value: "5"
             - name: OVN_NORTHD_N_THREADS
               value: "1"
+            - name: ENABLE_COMPACT
+              value: "true"
           resources:
             requests:
               cpu: 300m
