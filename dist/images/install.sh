@@ -34,6 +34,7 @@ DPDK_TUNNEL_IFACE=${DPDK_TUNNEL_IFACE:-br-phy}
 ENABLE_BIND_LOCAL_IP=${ENABLE_BIND_LOCAL_IP:-true}
 ENABLE_TPROXY=${ENABLE_TPROXY:-false}
 OVS_VSCTL_CONCURRENCY=${OVS_VSCTL_CONCURRENCY:-100}
+ENABLE_COMPACT=${ENABLE_COMPACT:false}
 
 # debug
 DEBUG_WRAPPER=${DEBUG_WRAPPER:-}
@@ -3244,7 +3245,7 @@ spec:
             - name: OVN_NORTHD_N_THREADS
               value: "1"
             - name: ENABLE_COMPACT
-              value: "false"
+              value: "$ENABLE_COMPACT"
           resources:
             requests:
               cpu: 300m
