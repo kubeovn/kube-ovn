@@ -381,6 +381,15 @@ func (c *Controller) setIptables() error {
 	klog.V(3).Infof("centralized subnets nat ips %v", centralGwNatips)
 
 	var (
+		v4AbandonedRules = []util.IPTableRule{
+			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m mark --mark 0x40000/0x40000 -j MASQUERADE`)},
+			{Table: "mangle", Chain: "PREROUTING", Rule: strings.Fields(`-i ovn0 -m set --match-set ovn40subnets src -m set --match-set ovn40services dst -j MARK --set-xmark 0x40000/0x40000`)},
+		}
+		v6AbandonedRules = []util.IPTableRule{
+			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m mark --mark 0x40000/0x40000 -j MASQUERADE`)},
+			{Table: "mangle", Chain: "PREROUTING", Rule: strings.Fields(`-i ovn0 -m set --match-set ovn60subnets src -m set --match-set ovn60services dst -j MARK --set-xmark 0x40000/0x40000`)},
+		}
+
 		v4Rules = []util.IPTableRule{
 			// nat service traffic
 			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m set --match-set ovn40subnets src -m set --match-set ovn40subnets dst -j MASQUERADE`)},
@@ -435,11 +444,9 @@ func (c *Controller) setIptables() error {
 	}
 
 	for _, protocol := range protocols {
-		ipt := c.iptables[protocol]
-		if ipt == nil {
+		if c.iptables[protocol] == nil {
 			continue
 		}
-
 		// delete unused iptables rule when nat gw with designative ip has been changed in centralized subnet
 		if err = c.deleteUnusedIptablesRule(protocol, "nat", "POSTROUTING", centralGwNatips); err != nil {
 			klog.Errorf("failed to delete iptables rule on node %s, maybe can delete manually, %v", c.config.NodeName, err)
@@ -447,19 +454,19 @@ func (c *Controller) setIptables() error {
 		}
 
 		var matchset string
-		var obsoleteRules, iptablesRules []util.IPTableRule
+		var abandonedRules, iptablesRules []util.IPTableRule
 		if protocol == kubeovnv1.ProtocolIPv4 {
-			iptablesRules = v4Rules
+			iptablesRules, abandonedRules = v4Rules, v4AbandonedRules
 			matchset = "ovn40subnets"
 		} else {
-			iptablesRules = v6Rules
+			iptablesRules, abandonedRules = v6Rules, v6AbandonedRules
 			matchset = "ovn60subnets"
 		}
 
 		if nodeIP := nodeIPs[protocol]; nodeIP != "" {
-			obsoleteRules = []util.IPTableRule{
-				{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(fmt.Sprintf(`! -s %s -m set --match-set %s dst -j MASQUERADE`, nodeIP, matchset))},
-			}
+			abandonedRules = append(abandonedRules,
+				util.IPTableRule{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(fmt.Sprintf(`! -s %s -m set --match-set %s dst -j MASQUERADE`, nodeIP, matchset))},
+			)
 
 			rules := make([]util.IPTableRule, len(iptablesRules)+2)
 			copy(rules[1:4], iptablesRules[:3])
@@ -467,6 +474,27 @@ func (c *Controller) setIptables() error {
 			rules[4] = util.IPTableRule{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(fmt.Sprintf(`! -s %s -m set ! --match-set %s src -m set --match-set %s dst -j MASQUERADE`, nodeIP, matchset, matchset))}
 			copy(rules[5:], iptablesRules[3:])
 			iptablesRules = rules
+		}
+
+		// delete abandoned iptables rules
+		for _, iptRule := range abandonedRules {
+			exists, err := c.iptables[protocol].Exists(iptRule.Table, iptRule.Chain, iptRule.Rule...)
+			if err != nil {
+				klog.Errorf("failed to check existence of iptables rule: %v", err)
+				return err
+			}
+			if exists {
+				klog.Infof("deleting abandoned iptables rule: %s", strings.Join(iptRule.Rule, " "))
+				if err := c.iptables[protocol].Delete(iptRule.Table, iptRule.Chain, iptRule.Rule...); err != nil {
+					klog.Errorf("failed to delete iptables rule %s: %v", strings.Join(iptRule.Rule, " "), err)
+					return err
+				}
+			}
+		}
+
+		if err = c.cleanObsoleteIptablesRules(protocol); err != nil {
+			klog.Errorf("failed to clean legacy iptables rules: %v", err)
+			return err
 		}
 
 		// add iptables rule for nat gw with designative ip in centralized subnet
@@ -510,13 +538,7 @@ func (c *Controller) setIptables() error {
 			}
 			klog.V(3).Infof("iptables rules %v, exists %v", strings.Join(iptRule.Rule, " "), exists)
 		}
-
-		if err = c.cleanObsoleteIptablesRules(protocol, obsoleteRules); err != nil {
-			klog.Errorf("failed to clean legacy iptables rules: %v", err)
-			return err
-		}
 	}
-
 	return nil
 }
 
@@ -550,41 +572,12 @@ func clearObsoleteIptablesChain(ipt *iptables.IPTables, table, chain, parent str
 	return nil
 }
 
-func (c *Controller) cleanObsoleteIptablesRules(protocol string, rules []util.IPTableRule) error {
+func (c *Controller) cleanObsoleteIptablesRules(protocol string) error {
 	if c.iptablesObsolete == nil || c.iptablesObsolete[protocol] == nil {
 		return nil
 	}
 
-	v4ObsoleteRules := []util.IPTableRule{
-		{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m mark --mark 0x40000/0x40000 -j MASQUERADE`)},
-		{Table: "mangle", Chain: "PREROUTING", Rule: strings.Fields(`-i ovn0 -m set --match-set ovn40subnets src -m set --match-set ovn40services dst -j MARK --set-xmark 0x40000/0x40000`)},
-	}
-	v6ObsoleteRules := []util.IPTableRule{
-		{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m mark --mark 0x40000/0x40000 -j MASQUERADE`)},
-		{Table: "mangle", Chain: "PREROUTING", Rule: strings.Fields(`-i ovn0 -m set --match-set ovn60subnets src -m set --match-set ovn60services dst -j MARK --set-xmark 0x40000/0x40000`)},
-	}
-
-	var obsoleteRules []util.IPTableRule
-	if protocol == kubeovnv1.ProtocolIPv4 {
-		obsoleteRules = v4ObsoleteRules
-	} else {
-		obsoleteRules = v6ObsoleteRules
-	}
-
 	ipt := c.iptablesObsolete[protocol]
-	for _, rule := range obsoleteRules {
-		if err := deleteIptablesRule(ipt, rule); err != nil {
-			klog.Error(err)
-			return err
-		}
-	}
-	for _, rule := range rules {
-		if err := deleteIptablesRule(ipt, rule); err != nil {
-			klog.Error(err)
-			return err
-		}
-	}
-
 	if err := clearObsoleteIptablesChain(ipt, NAT, OvnPrerouting, Prerouting); err != nil {
 		return err
 	}
