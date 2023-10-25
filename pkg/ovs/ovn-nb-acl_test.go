@@ -655,7 +655,7 @@ func (suite *OvnClientTestSuite) testUpdateLogicalSwitchACL() {
 
 	ovnClient := suite.ovnClient
 	lsName := "test_update_acl_ls"
-	cidrBlock := "192.168.2.0/24, 2409:8720:4a00::0/64"
+	cidrBlock := "192.168.2.0/24,2409:8720:4a00::0/64"
 
 	subnetAcls := []kubeovnv1.ACL{
 		{
