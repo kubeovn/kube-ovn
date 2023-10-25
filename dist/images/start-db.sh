@@ -4,6 +4,9 @@ set -eo pipefail
 DEBUG_WRAPPER=${DEBUG_WRAPPER:-}
 DEBUG_OPT="--ovn-northd-wrapper=$DEBUG_WRAPPER --ovsdb-nb-wrapper=$DEBUG_WRAPPER --ovsdb-sb-wrapper=$DEBUG_WRAPPER"
 
+echo "OVN_LEADER_PROBE_INTERVAL is set to $OVN_LEADER_PROBE_INTERVAL"
+echo "ENABLE_COMPACT is set to $ENABLE_COMPACT"
+
 # https://bugs.launchpad.net/neutron/+bug/1776778
 if grep -q "3.10.0-862" /proc/version
 then
@@ -23,8 +26,6 @@ cat /proc/cmdline"
     exit 1
 fi
 
-PRBOE_INTERVAL=${PRBOE_INTERVAL:-5}
-ENABLE_COMPACT=${ENABLE_COMPACT:-false}
 DB_NB_ADDR=${DB_NB_ADDR:-::}
 DB_NB_PORT=${DB_NB_PORT:-6641}
 DB_SB_ADDR=${DB_SB_ADDR:-::}
@@ -368,5 +369,4 @@ ovs-appctl -t /var/run/ovn/ovnnb_db.ctl ovsdb-server/memory-trim-on-compaction o
 ovs-appctl -t /var/run/ovn/ovnsb_db.ctl ovsdb-server/memory-trim-on-compaction on
 
 chmod 600 /etc/ovn/*
-/kube-ovn/kube-ovn-leader-checker --probeInterval=$PRBOE_INTERVAL --enableCompact=$ENABLE_COMPACT
-
+/kube-ovn/kube-ovn-leader-checker --probeInterval=${OVN_LEADER_PROBE_INTERVAL} --enableCompact=${ENABLE_COMPACT}

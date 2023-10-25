@@ -30,6 +30,8 @@ IFACE=${IFACE:-}
 # Note that the dpdk tunnel iface and tunnel ip cidr should be diffierent with Kubernetes api cidr,otherwise the route will be a problem.
 DPDK_TUNNEL_IFACE=${DPDK_TUNNEL_IFACE:-br-phy}
 ENABLE_BIND_LOCAL_IP=${ENABLE_BIND_LOCAL_IP:-true}
+OVN_LEADER_PROBE_INTERVAL=${OVN_LEADER_PROBE_INTERVAL:-5}
+ENABLE_COMPACT=${ENABLE_COMPACT:-false}
 
 # debug
 DEBUG_WRAPPER=${DEBUG_WRAPPER:-}
@@ -2027,6 +2029,10 @@ spec:
               value: "$ENABLE_BIND_LOCAL_IP"
             - name: DEBUG_WRAPPER
               value: "$DEBUG_WRAPPER"
+            - name: OVN_LEADER_PROBE_INTERVAL
+              value: "$OVN_LEADER_PROBE_INTERVAL"
+            - name: ENABLE_COMPACT
+              value: "$ENABLE_COMPACT"
           resources:
             requests:
               cpu: 300m
@@ -2528,6 +2534,10 @@ spec:
               value: "$ENABLE_BIND_LOCAL_IP"
             - name: DEBUG_WRAPPER
               value: "$DEBUG_WRAPPER"
+            - name: OVN_LEADER_PROBE_INTERVAL
+              value: "$OVN_LEADER_PROBE_INTERVAL"
+            - name: ENABLE_COMPACT
+              value: "$ENABLE_COMPACT"
           resources:
             requests:
               cpu: 300m

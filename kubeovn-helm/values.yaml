@@ -37,6 +37,8 @@ networking:
   EXCHANGE_LINK_NAME: false
   ENABLE_EIP_SNAT: true
   POD_DEFAULT_FIP_TYPE: ""
+  OVN_LEADER_PROBE_INTERVAL: 5
+  ENABLE_COMPACT: false
 
 func:
   ENABLE_LB: true
