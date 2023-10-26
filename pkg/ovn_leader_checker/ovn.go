@@ -43,6 +43,7 @@ type Configuration struct {
 	KubeConfigFile string
 	KubeClient     kubernetes.Interface
 	ProbeInterval  int
+	EnableCompact  bool
 }
 
 // ParseFlags parses cmd args then init kubeclient and conf
@@ -51,6 +52,7 @@ func ParseFlags() (*Configuration, error) {
 	var (
 		argKubeConfigFile = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.")
 		argProbeInterval  = pflag.Int("probeInterval", DefaultProbeInterval, "interval of probing leader in seconds")
+		argEnableCompact  = pflag.Bool("enableCompact", true, "is enable compact")
 	)
 
 	klogFlags := flag.NewFlagSet("klog", flag.ContinueOnError)
@@ -80,6 +82,7 @@ func ParseFlags() (*Configuration, error) {
 	config := &Configuration{
 		KubeConfigFile: *argKubeConfigFile,
 		ProbeInterval:  *argProbeInterval,
+		EnableCompact:  *argEnableCompact,
 	}
 	return config, nil
 }
@@ -380,8 +383,11 @@ func doOvnLeaderCheck(cfg *Configuration, podName, podNamespace string) {
 			stealLock()
 		}
 	}
-	compactOvnDatabase("nb")
-	compactOvnDatabase("sb")
+
+	if cfg.EnableCompact {
+		compactOvnDatabase("nb")
+		compactOvnDatabase("sb")
+	}
 }
 
 func StartOvnLeaderCheck(cfg *Configuration) {
