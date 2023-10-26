@@ -78,6 +78,8 @@ spec:
               value: "{{ .Values.networking.OVN_LEADER_PROBE_INTERVAL }}"
             - name: OVN_NORTHD_N_THREADS
               value: "{{ .Values.networking.OVN_NORTHD_N_THREADS }}"
+            - name: ENABLE_COMPACT
+              value: "{{ .Values.networking.ENABLE_COMPACT }}"
           resources:
             requests:
               cpu: {{ index .Values "ovn-central" "requests" "cpu" }}
