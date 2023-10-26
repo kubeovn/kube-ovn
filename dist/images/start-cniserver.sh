@@ -38,6 +38,9 @@ while true; do
   sleep 1
 done
 
+# update links to point to the iptables binaries
+iptables -V
+
 # If nftables not exist do not exit
 set +e
 iptables -P FORWARD ACCEPT

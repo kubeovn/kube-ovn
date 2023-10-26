@@ -284,6 +284,19 @@ jobs:
           E2E_NETWORK_MODE: ${{ matrix.mode }}
         run: make k8s-conformance-e2e
 
+      - name: kubectl ko log
+        if: failure()
+        run: |
+          make kubectl-ko-log
+          mv kubectl-ko-log.tar.gz k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-ko-log.tar.gz
+
+      - name: upload kubectl ko log
+        uses: actions/upload-artifact@v3
+        if: failure()
+        with:
+          name: k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-ko-log
+          path: k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-ko-log.tar.gz
+
   k8s-netpol-e2e:
     name: Kubernetes Network Policy E2E
     if: |
@@ -548,6 +561,19 @@ jobs:
           E2E_NETWORK_MODE: ${{ matrix.mode }}
         run: make kube-ovn-conformance-e2e
 
+      - name: kubectl ko log
+        if: failure()
+        run: |
+          make kubectl-ko-log
+          mv kubectl-ko-log.tar.gz kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log.tar.gz
+
+      - name: upload kubectl ko log
+        uses: actions/upload-artifact@v3
+        if: failure()
+        with:
+          name: kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log
+          path: kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log.tar.gz
+
       - name: Cleanup
         run: |
           if [ "${{ matrix.mode }}" != underlay ]; then
@@ -773,6 +799,20 @@ jobs:
         env:
           ENABLE_LB: "false"
         run: make kind-install
+
+      - name: kubectl ko log
+        if: failure()
+        run: |
+          make kubectl-ko-log
+          mv kube-ovn-no-lb-ko-log.tar.gz
+
+      - name: upload kubectl ko log
+        uses: actions/upload-artifact@v3
+        if: failure()
+        with:
+          name: kube-ovn-no-lb-ko-log
+          path: kube-ovn-no-lb-ko-log.tar.gz
+
 
       - name: Cleanup
         run: sh dist/images/cleanup.sh
