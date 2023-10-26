@@ -11,6 +11,7 @@ import (
 	"syscall"
 
 	"github.com/alauda/felix/ipsets"
+	"github.com/kubeovn/go-iptables/iptables"
 	"github.com/vishvananda/netlink"
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -483,6 +484,11 @@ func (c *Controller) setIptables() error {
 			}
 		}
 
+		if err = c.cleanObsoleteIptablesRules(protocol, iptablesRules); err != nil {
+			klog.Errorf("failed to clean legacy iptables rules: %v", err)
+			return err
+		}
+
 		// add iptables rule for nat gw with designative ip in centralized subnet
 		for cidr, natip := range centralGwNatips {
 			if util.CheckProtocol(cidr) != protocol {
@@ -524,6 +530,34 @@ func (c *Controller) setIptables() error {
 			}
 			klog.V(3).Infof("iptables rules %v, exists %v", strings.Join(iptRule.Rule, " "), exists)
 		}
+	}
+	return nil
+}
+
+func deleteIptablesRule(ipt *iptables.IPTables, rule util.IPTableRule) error {
+	if err := ipt.DeleteIfExists(rule.Table, rule.Chain, rule.Rule...); err != nil {
+		klog.Errorf("failed to delete iptables rule %q: %v", strings.Join(rule.Rule, " "), err)
+		return err
+	}
+	return nil
+}
+
+func (c *Controller) cleanObsoleteIptablesRules(protocol string, rules []util.IPTableRule) error {
+	if c.iptablesObsolete == nil || c.iptablesObsolete[protocol] == nil {
+		return nil
+	}
+
+	ipt := c.iptablesObsolete[protocol]
+	for _, rule := range rules {
+		if err := deleteIptablesRule(ipt, rule); err != nil {
+			klog.Error(err)
+			return err
+		}
+	}
+
+	delete(c.iptablesObsolete, protocol)
+	if len(c.iptablesObsolete) == 0 {
+		c.iptablesObsolete = nil
 	}
 	return nil
 }

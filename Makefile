@@ -495,6 +495,12 @@ scan:
 ut:
 	ginkgo -mod=mod -progress -reportPassed --slowSpecThreshold=60 test/unittest
 
+
+.PHONY: kubectl-ko-log
+kubectl-ko-log:
+	/usr/local/bin/kubectl-ko log all
+	tar -zcvf kubectl-ko-log.tar.gz kubectl-ko-log/
+
 .PHONY: clean
 clean:
 	$(RM) dist/images/kube-ovn dist/images/kube-ovn-cmd
