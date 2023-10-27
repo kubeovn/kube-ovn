@@ -22,9 +22,9 @@ concurrency:
 
 env:
   GO_VERSION: ''
-  GOSEC_VERSION: '2.17.0'
-  HELM_VERSION: v3.12.3
-  SUBMARINER_VERSION: '0.14.6'
+  GOSEC_VERSION: '2.18.2'
+  HELM_VERSION: v3.13.1
+  SUBMARINER_VERSION: '0.14.7'
 
 jobs:
   build-kube-ovn-base:
