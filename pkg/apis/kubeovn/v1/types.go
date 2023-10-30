@@ -808,6 +808,7 @@ type VipSpec struct {
 	ParentV4ip    string   `json:"parentV4ip"`
 	ParentV6ip    string   `json:"parentV6ip"`
 	ParentMac     string   `json:"parentMac"`
+	Selector      []string `json:"selector"`
 	AttachSubnets []string `json:"attachSubnets"`
 }
 

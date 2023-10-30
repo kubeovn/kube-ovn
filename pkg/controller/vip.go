@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"reflect"
+	"slices"
 	"strings"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -44,7 +46,8 @@ func (c *Controller) enqueueUpdateVirtualIP(oldObj, newObj interface{}) {
 		oldVip.Spec.MacAddress != newVip.Spec.MacAddress ||
 		oldVip.Spec.ParentMac != newVip.Spec.ParentMac ||
 		oldVip.Spec.ParentV4ip != newVip.Spec.ParentV4ip ||
-		oldVip.Spec.V4ip != newVip.Spec.V4ip {
+		oldVip.Spec.V4ip != newVip.Spec.V4ip ||
+		!reflect.DeepEqual(oldVip.Spec.Selector, newVip.Spec.Selector) {
 		klog.Infof("enqueue update vip %s", key)
 		c.updateVirtualIPQueue.Add(key)
 	}
@@ -245,6 +248,11 @@ func (c *Controller) handleAddVirtualIP(key string) error {
 		klog.Errorf("failed to count vip '%s' in subnet, %v", vip.Name, err)
 		return err
 	}
+	if v4ip != "" {
+		if err := c.syncVirtualParents(key); err != nil {
+			return fmt.Errorf("error syncing virtual parents for vip '%s': %s", key, err.Error())
+		}
+	}
 	return nil
 }
 
@@ -256,6 +264,11 @@ func (c *Controller) handleUpdateVirtualIP(key string) error {
 		}
 		klog.Error(err)
 		return err
+	}
+	if cachedVip.Status.V4ip != "" {
+		if err := c.syncVirtualParents(key); err != nil {
+			return fmt.Errorf("error syncing virtual parents for vip '%s': %s", key, err.Error())
+		}
 	}
 	vip := cachedVip.DeepCopy()
 	// should delete
@@ -311,6 +324,12 @@ func (c *Controller) handleDelVirtualIP(vip *kubeovnv1.Vip) error {
 			return err
 		}
 	}
+	// delete virtual ports
+	lspName := fmt.Sprintf("%s-vip-%s", vip.Spec.Subnet, vip.Status.V4ip)
+	if err := c.OVNNbClient.DeleteLogicalSwitchPort(lspName); err != nil {
+		klog.Errorf("delete virtual port %s lspName from logical switch %s: %v", vip.Status.V4ip, vip.Spec.Subnet, err)
+		return err
+	}
 	c.ipam.ReleaseAddressByPod(vip.Name)
 	c.updateSubnetStatusQueue.Add(vip.Spec.Subnet)
 	return nil
@@ -362,6 +381,67 @@ func (c *Controller) acquireIPAddress(subnetName, name, nicName string) (string,
 			skippedAddrs = append(skippedAddrs, v6ip)
 		}
 	}
+}
+
+func (c *Controller) syncVirtualParents(key string) error {
+	cachedVip, err := c.virtualIpsLister.Get(key)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+
+	// add new virtual port
+	if err = c.OVNNbClient.CreateVirtualLogicalSwitchPorts(cachedVip.Spec.Subnet, cachedVip.Status.V4ip); err != nil {
+		klog.Errorf("create virtual port with vips %v from logical switch %s: %v", cachedVip.Status.V4ip, cachedVip.Spec.Subnet, err)
+		return err
+	}
+
+	selectors := make([]map[string]string, 0)
+	for _, v := range cachedVip.Spec.Selector {
+		parts := strings.Split(strings.TrimSpace(v), ":")
+		if len(parts) != 2 {
+			continue
+		}
+		selector := make(map[string]string)
+		selector[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
+		selectors = append(selectors, selector)
+	}
+
+	var virtualParents []string
+	for _, selector := range selectors {
+		sel, _ := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{MatchLabels: selector})
+		pods, err := c.podsLister.List(sel)
+		if err != nil {
+			klog.Errorf("failed to list allow-address-pair pods, %v", err)
+			return err
+		}
+
+		for _, pod := range pods {
+			if pod.Annotations[util.LogicalSwitchAnnotation] != cachedVip.Spec.Subnet {
+				continue
+			}
+			key := fmt.Sprintf("%s/%s", pod.Namespace, pod.Name)
+			ports, err := c.OVNNbClient.ListNormalLogicalSwitchPorts(true, map[string]string{"pod": key})
+			if err != nil {
+				klog.Errorf("failed to list lsps of pod '%s', %v", pod.Name, err)
+				return err
+			}
+			for _, port := range ports {
+				if !slices.Contains(virtualParents, port.Name) {
+					virtualParents = append(virtualParents, port.Name)
+				}
+			}
+		}
+	}
+
+	if err = c.OVNNbClient.SetLogicalSwitchPortVirtualParents(cachedVip.Spec.Subnet, strings.Join(virtualParents, ","), cachedVip.Status.V4ip); err != nil {
+		klog.Errorf("set vip %s virtual parents %v: %v", cachedVip.Status.V4ip, virtualParents, err)
+		return err
+	}
+
+	return nil
 }
 
 func (c *Controller) subnetCountIP(subnet *kubeovnv1.Subnet) error {
