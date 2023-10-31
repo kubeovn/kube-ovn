@@ -2274,6 +2274,8 @@ spec:
                   type: boolean
                 ipv6RAConfigs:
                   type: string
+                allowEWTraffic:
+                  type: boolean
                 acls:
                   type: array
                   items:
