@@ -361,7 +361,7 @@ func (suite *OvnClientTestSuite) testCreateNodeACL() {
 	checkACL := func(pg *ovnnb.PortGroup, direction, priority, match string, options map[string]string) {
 		acl, err := ovnClient.GetACL(pg.Name, direction, priority, match, false)
 		require.NoError(t, err)
-		expect := newACL(pg.Name, direction, priority, match, ovnnb.ACLActionAllowStateless)
+		expect := newACL(pg.Name, direction, priority, match, ovnnb.ACLActionAllowRelated)
 		expect.UUID = acl.UUID
 		if len(options) != 0 {
 			expect.Options = options
