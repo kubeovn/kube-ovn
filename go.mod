@@ -30,7 +30,7 @@ require (
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.8.1
 	github.com/vishvananda/netlink v1.2.1-beta.2
-	golang.org/x/sys v0.7.0
+	golang.org/x/sys v0.13.0
 	google.golang.org/grpc v1.56.3
 	gopkg.in/k8snetworkplumbingwg/multus-cni.v3 v3.7.2
 	k8s.io/api v0.23.1
@@ -115,11 +115,11 @@ require (
 	github.com/spf13/viper v1.8.1 // indirect
 	github.com/subosito/gotenv v1.2.0 // indirect
 	github.com/vishvananda/netns v0.0.4 // indirect
-	golang.org/x/net v0.9.0 // indirect
+	golang.org/x/net v0.17.0 // indirect
 	golang.org/x/oauth2 v0.7.0 // indirect
 	golang.org/x/sync v0.1.0 // indirect
-	golang.org/x/term v0.7.0 // indirect
-	golang.org/x/text v0.9.0 // indirect
+	golang.org/x/term v0.13.0 // indirect
+	golang.org/x/text v0.13.0 // indirect
 	golang.org/x/time v0.0.0-20210723032227-1f47c861a9ac // indirect
 	gomodules.xyz/jsonpatch/v2 v2.2.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
