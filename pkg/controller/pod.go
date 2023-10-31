@@ -702,6 +702,14 @@ func (c *Controller) reconcileAllocateSubnets(cachedPod, pod *v1.Pod, needAlloca
 				return nil, err
 			}
 
+			if pod.Annotations[fmt.Sprintf(util.Layer2ForwardAnnotationTemplate, podNet.ProviderName)] == "true" {
+				if err := c.OVNNbClient.EnablePortLayer2forward(portName); err != nil {
+					c.recorder.Eventf(pod, v1.EventTypeWarning, "SetOVNPortL2ForwardFailed", err.Error())
+					klog.Errorf("%v", err)
+					return nil, err
+				}
+			}
+
 			if portSecurity {
 				sgNames := strings.Split(securityGroupAnnotation, ",")
 				for _, sgName := range sgNames {
