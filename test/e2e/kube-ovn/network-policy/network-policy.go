@@ -30,6 +30,7 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 	var cs clientset.Interface
 	var podClient *framework.PodClient
 	var subnetClient *framework.SubnetClient
+	var defaultServiceClient *framework.ServiceClient
 	var netpolClient *framework.NetworkPolicyClient
 	var daemonSetClient *framework.DaemonSetClient
 	var namespaceName, netpolName, subnetName, podName string
@@ -39,6 +40,7 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 		cs = f.ClientSet
 		podClient = f.PodClient()
 		subnetClient = f.SubnetClient()
+		defaultServiceClient = f.ServiceClientNS("default")
 		netpolClient = f.NetworkPolicyClient()
 		daemonSetClient = f.DaemonSetClientNS(framework.KubeOvnNamespace)
 		namespaceName = f.Namespace.Name
@@ -144,5 +146,50 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 				framework.ExpectError(err)
 			}
 		}
+	})
+
+	framework.ConformanceIt("should be able to access svc with backend host network pod after any other ingress network policy rules created", func() {
+		ginkgo.By("Creating network policy " + netpolName)
+		netpol := &netv1.NetworkPolicy{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: netpolName,
+			},
+			Spec: netv1.NetworkPolicySpec{
+				Ingress: []netv1.NetworkPolicyIngressRule{
+					{
+						From: []netv1.NetworkPolicyPeer{
+							{
+								nil,
+								nil,
+								&netv1.IPBlock{CIDR: "0.0.0.0/0", Except: []string{"127.0.0.1/32"}},
+							},
+						},
+					},
+				},
+				PolicyTypes: []netv1.PolicyType{netv1.PolicyTypeIngress},
+			},
+		}
+		_ = netpolClient.Create(netpol)
+
+		ginkgo.By("Creating pod " + podName)
+		pod := framework.MakePod(namespaceName, podName, nil, nil, framework.AgnhostImage, nil, nil)
+		pod = podClient.CreateSync(pod)
+
+		svc := defaultServiceClient.Get("kubernetes")
+		clusterIP := svc.Spec.ClusterIP
+
+		ginkgo.By("Checking connection from pod " + podName + " to " + clusterIP + " via TCP")
+
+		cmd := fmt.Sprintf("curl -k -q -s --connect-timeout 2 https://%s", net.JoinHostPort(clusterIP, "443"))
+		ginkgo.By(fmt.Sprintf(`Executing %q in pod %s/%s`, cmd, pod.Namespace, pod.Name))
+
+		var retErr error
+		framework.WaitUntil(2*time.Second, time.Minute, func(_ context.Context) (bool, error) {
+			_, err := e2epodoutput.RunHostCmd(pod.Namespace, pod.Name, cmd)
+			retErr = err
+			return err == nil, nil
+		}, "")
+
+		framework.ExpectNoError(retErr)
 	})
 })
