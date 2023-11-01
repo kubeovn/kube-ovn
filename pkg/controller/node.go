@@ -332,7 +332,7 @@ func (c *Controller) handleAddNode(key string) error {
 		return err
 	}
 
-	if err := c.createOrUpdateCrdIPs("", ipStr, mac, c.config.NodeSwitch, "", node.Name, "", "", nil); err != nil {
+	if err := c.createOrUpdateCrdIPs("", ipStr, mac, c.config.NodeSwitch, "", node.Name, "", ""); err != nil {
 		klog.Errorf("failed to create or update IPs node-%s: %v", key, err)
 		return err
 	}
@@ -630,7 +630,7 @@ func (c *Controller) handleUpdateNode(key string) error {
 	return nil
 }
 
-func (c *Controller) createOrUpdateCrdIPs(podName, ip, mac, subnetName, ns, nodeName, providerName, podType string, existingCR **kubeovnv1.IP) error {
+func (c *Controller) createOrUpdateCrdIPs(podName, ip, mac, subnetName, ns, nodeName, providerName, podType string) error {
 	var key, ipName string
 
 	switch {
@@ -647,19 +647,15 @@ func (c *Controller) createOrUpdateCrdIPs(podName, ip, mac, subnetName, ns, node
 
 	var err error
 	var ipCr *kubeovnv1.IP
-	if existingCR != nil {
-		ipCr = *existingCR
-	} else {
-		ipCr, err = c.ipsLister.Get(ipName)
-		if err != nil {
-			if !k8serrors.IsNotFound(err) {
-				errMsg := fmt.Errorf("failed to get ip CR %s: %v", ipName, err)
-				klog.Error(errMsg)
-				return errMsg
-			}
-			// the returned pointer is not nil if the CR does not exist
-			ipCr = nil
+	ipCr, err = c.ipsLister.Get(ipName)
+	if err != nil {
+		if !k8serrors.IsNotFound(err) {
+			errMsg := fmt.Errorf("failed to get ip CR %s: %v", ipName, err)
+			klog.Error(errMsg)
+			return errMsg
 		}
+		// the returned pointer is not nil if the CR does not exist
+		ipCr = nil
 	}
 
 	v4IP, v6IP := util.SplitStringIP(ip)
