@@ -159,9 +159,9 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 					{
 						From: []netv1.NetworkPolicyPeer{
 							{
-								nil,
-								nil,
-								&netv1.IPBlock{CIDR: "0.0.0.0/0", Except: []string{"127.0.0.1/32"}},
+								PodSelector:       nil,
+								NamespaceSelector: nil,
+								IPBlock:           &netv1.IPBlock{CIDR: "0.0.0.0/0", Except: []string{"127.0.0.1/32"}},
 							},
 						},
 					},
