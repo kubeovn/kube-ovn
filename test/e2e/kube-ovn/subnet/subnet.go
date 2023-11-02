@@ -1247,7 +1247,6 @@ var _ = framework.Describe("[group:subnet]", func() {
 	})
 
 	framework.ConformanceIt("should support customize mtu of all pods in subnet", func() {
-
 		ginkgo.By("Creating subnet " + subnetName)
 		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, nil)
 		subnet.Spec.Mtu = 1100
@@ -1268,7 +1267,6 @@ var _ = framework.Describe("[group:subnet]", func() {
 		framework.ExpectNoError(err)
 		framework.ExpectHaveLen(links, 1, "should get eth0 information")
 		framework.ExpectEqual(links[0].Mtu, int(subnet.Spec.Mtu))
-
 	})
 })
 
