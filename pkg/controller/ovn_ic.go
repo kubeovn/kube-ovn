@@ -567,3 +567,21 @@ func (c *Controller) getTSName(index int) string {
 	}
 	return tsName
 }
+
+func (c *Controller) getTSCidr(index int) (string, error) {
+	defaultSubnet, err := c.subnetsLister.Get(c.config.DefaultLogicalSwitch)
+	if err != nil {
+		return "", err
+	}
+
+	var cidr string
+	switch defaultSubnet.Spec.Protocol {
+	case kubeovnv1.ProtocolIPv4:
+		cidr = fmt.Sprintf("169.254.%d.0/24", index)
+	case kubeovnv1.ProtocolIPv6:
+		cidr = fmt.Sprintf("fe80:a9fe:64::%04x0000/112", index)
+	case kubeovnv1.ProtocolDual:
+		cidr = fmt.Sprintf("169.254.%d.0/24,fe80:a9fe:64::%04x0000/112", index, index)
+	}
+	return cidr, nil
+}

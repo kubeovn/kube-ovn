@@ -523,7 +523,7 @@ kind-install-ovn-ic-ipv4: kind-install
 	@set -e; \
 	ic_db_host=$$(docker inspect ovn-ic-db -f "{{.NetworkSettings.Networks.kind.IPAddress}}"); \
 	zone=az0 ic_db_host=$$ic_db_host gateway_node_name='kube-ovn-worker,kube-ovn-worker2;kube-ovn-control-plane' j2 yamls/ovn-ic.yaml.j2 -o ovn-ic-0.yaml; \
-	zone=az1 ic_db_host=$$ic_db_host gateway_node_name='kube-ovn-worker,kube-ovn-worker2;kube-ovn-control-plane' j2 yamls/ovn-ic.yaml.j2 -o ovn-ic-1.yaml
+	zone=az1 ic_db_host=$$ic_db_host gateway_node_name='kube-ovn1-worker,kube-ovn1-worker2;kube-ovn1-control-plane' j2 yamls/ovn-ic.yaml.j2 -o ovn-ic-1.yaml
 	kubectl config use-context kind-kube-ovn
 	kubectl apply -f ovn-ic-0.yaml
 	kubectl config use-context kind-kube-ovn1
@@ -548,7 +548,7 @@ kind-install-ovn-ic-ipv6: kind-install-ipv6
 	@set -e; \
 	ic_db_host=$$(docker inspect ovn-ic-db -f "{{.NetworkSettings.Networks.kind.GlobalIPv6Address}}"); \
 	zone=az0 ic_db_host=$$ic_db_host gateway_node_name='kube-ovn-worker,kube-ovn-worker2;kube-ovn-control-plane' j2 yamls/ovn-ic.yaml.j2 -o ovn-ic-0.yaml; \
-	zone=az1 ic_db_host=$$ic_db_host gateway_node_name='kube-ovn-worker,kube-ovn-worker2;kube-ovn-control-plane' j2 yamls/ovn-ic.yaml.j2 -o ovn-ic-1.yaml
+	zone=az1 ic_db_host=$$ic_db_host gateway_node_name='kube-ovn1-worker,kube-ovn1-worker2;kube-ovn1-control-plane' j2 yamls/ovn-ic.yaml.j2 -o ovn-ic-1.yaml
 	kubectl config use-context kind-kube-ovn
 	kubectl apply -f ovn-ic-0.yaml
 	kubectl config use-context kind-kube-ovn1
@@ -577,7 +577,7 @@ kind-install-ovn-ic-dual: kind-install-dual
 
 	ic_db_host=$$(docker inspect ovn-ic-db -f "{{.NetworkSettings.Networks.kind.IPAddress}}"); \
 	zone=az0 ic_db_host=$$ic_db_host gateway_node_name='kube-ovn-worker,kube-ovn-worker2;kube-ovn-control-plane' j2 yamls/ovn-ic.yaml.j2 -o ovn-ic-0.yaml; \
-	zone=az1 ic_db_host=$$ic_db_host gateway_node_name='kube-ovn-worker,kube-ovn-worker2;kube-ovn-control-plane' j2 yamls/ovn-ic.yaml.j2 -o ovn-ic-1.yaml
+	zone=az1 ic_db_host=$$ic_db_host gateway_node_name='kube-ovn1-worker,kube-ovn1-worker2;kube-ovn1-control-plane' j2 yamls/ovn-ic.yaml.j2 -o ovn-ic-1.yaml
 	kubectl config use-context kind-kube-ovn
 	kubectl apply -f ovn-ic-0.yaml
 	kubectl config use-context kind-kube-ovn1
