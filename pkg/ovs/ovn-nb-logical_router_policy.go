@@ -228,7 +228,6 @@ func (c *OVNNbClient) GetLogicalRouterPolicyByUUID(uuid string) (*ovnnb.LogicalR
 // GetLogicalRouterPoliciesByExtID get logical router policy route by external ID
 func (c *OVNNbClient) GetLogicalRouterPoliciesByExtID(lrName, key, value string) ([]*ovnnb.LogicalRouterPolicy, error) {
 	fnFilter := func(policy *ovnnb.LogicalRouterPolicy) bool {
-
 		if len(policy.ExternalIDs) != 0 {
 			if _, ok := policy.ExternalIDs[key]; ok {
 				return policy.ExternalIDs[key] == value
