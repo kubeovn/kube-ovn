@@ -11,6 +11,7 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.12-cmss
           - release-1.12
     name: Build AMD64
     runs-on: ubuntu-22.04
@@ -35,6 +36,7 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.12-cmss
           - release-1.12
     needs:
       - build-amd64
