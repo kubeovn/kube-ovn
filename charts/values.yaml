@@ -38,8 +38,8 @@ networking:
     VLAN_INTERFACE_NAME: ""
     VLAN_NAME: "ovn-vlan"
     VLAN_ID: "100"
-  EXCHANGE_LINK_NAME: false
   ENABLE_EIP_SNAT: true
+  EXCHANGE_LINK_NAME: false
   POD_DEFAULT_FIP_TYPE: ""
   DEFAULT_SUBNET: "ovn-default"
   DEFAULT_VPC: "ovn-cluster"
@@ -57,14 +57,11 @@ networking:
 func:
   ENABLE_LB: true
   ENABLE_NP: true
-  ENABLE_EIP_SNAT: true
   ENABLE_EXTERNAL_VPC: true
   HW_OFFLOAD: false
   ENABLE_LB_SVC: false
   ENABLE_KEEP_VM_IP: true
   LS_DNAT_MOD_DL_DST: true
-  CHECK_GATEWAY: true
-  LOGICAL_GATEWAY: false
   ENABLE_BIND_LOCAL_IP: true
   U2O_INTERCONNECTION: false
   ENABLE_TPROXY: false
@@ -105,6 +102,8 @@ debug:
   MIRROR_IFACE: "mirror0"
 
 cni_conf:
+  CHECK_GATEWAY: true
+  LOGICAL_GATEWAY: false
   CNI_CONFIG_PRIORITY: "01"
   CNI_CONF_DIR: "/etc/cni/net.d"
   CNI_BIN_DIR: "/opt/cni/bin"
@@ -115,7 +114,7 @@ kubelet_conf:
 
 log_conf:
   LOG_DIR: "/var/log"
-  
+
 imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""
