@@ -131,11 +131,10 @@ type Controller struct {
 	resetIptablesEipQueue  workqueue.RateLimitingInterface
 	delIptablesEipQueue    workqueue.RateLimitingInterface
 
-	podAnnotatedIptablesEipLister      v1.PodLister
-	podAnnotatedIptablesEipSynced      cache.InformerSynced
-	addPodAnnotatedIptablesEipQueue    workqueue.RateLimitingInterface
-	updatePodAnnotatedIptablesEipQueue workqueue.RateLimitingInterface
-	delPodAnnotatedIptablesEipQueue    workqueue.RateLimitingInterface
+	podAnnotatedIptablesEipLister   v1.PodLister
+	podAnnotatedIptablesEipSynced   cache.InformerSynced
+	addPodAnnotatedIptablesEipQueue workqueue.RateLimitingInterface
+	delPodAnnotatedIptablesEipQueue workqueue.RateLimitingInterface
 
 	iptablesFipsLister     kubeovnlister.IptablesFIPRuleLister
 	iptablesFipSynced      cache.InformerSynced
@@ -143,11 +142,10 @@ type Controller struct {
 	updateIptablesFipQueue workqueue.RateLimitingInterface
 	delIptablesFipQueue    workqueue.RateLimitingInterface
 
-	podAnnotatedIptablesFipLister      v1.PodLister
-	podAnnotatedIptablesFipSynced      cache.InformerSynced
-	addPodAnnotatedIptablesFipQueue    workqueue.RateLimitingInterface
-	updatePodAnnotatedIptablesFipQueue workqueue.RateLimitingInterface
-	delPodAnnotatedIptablesFipQueue    workqueue.RateLimitingInterface
+	podAnnotatedIptablesFipLister   v1.PodLister
+	podAnnotatedIptablesFipSynced   cache.InformerSynced
+	addPodAnnotatedIptablesFipQueue workqueue.RateLimitingInterface
+	delPodAnnotatedIptablesFipQueue workqueue.RateLimitingInterface
 
 	iptablesDnatRulesLister     kubeovnlister.IptablesDnatRuleLister
 	iptablesDnatRuleSynced      cache.InformerSynced
@@ -367,11 +365,10 @@ func Run(ctx context.Context, config *Configuration) {
 		resetIptablesEipQueue:  workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "ResetIptablesEip"),
 		delIptablesEipQueue:    workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "DeleteIptablesEip"),
 
-		podAnnotatedIptablesEipLister:      podAnnotatedIptablesEipInformer.Lister(),
-		podAnnotatedIptablesEipSynced:      podAnnotatedIptablesEipInformer.Informer().HasSynced,
-		addPodAnnotatedIptablesEipQueue:    workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "AddPodAnnotatedIptablesEip"),
-		updatePodAnnotatedIptablesEipQueue: workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "UpdatePodAnnotatedIptablesEip"),
-		delPodAnnotatedIptablesEipQueue:    workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "DeletePodAnnotatedIptablesEip"),
+		podAnnotatedIptablesEipLister:   podAnnotatedIptablesEipInformer.Lister(),
+		podAnnotatedIptablesEipSynced:   podAnnotatedIptablesEipInformer.Informer().HasSynced,
+		addPodAnnotatedIptablesEipQueue: workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "AddPodAnnotatedIptablesEip"),
+		delPodAnnotatedIptablesEipQueue: workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "DeletePodAnnotatedIptablesEip"),
 
 		iptablesFipsLister:     iptablesFipInformer.Lister(),
 		iptablesFipSynced:      iptablesFipInformer.Informer().HasSynced,
@@ -379,11 +376,10 @@ func Run(ctx context.Context, config *Configuration) {
 		updateIptablesFipQueue: workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "UpdateIptablesFip"),
 		delIptablesFipQueue:    workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "DeleteIptablesFip"),
 
-		podAnnotatedIptablesFipLister:      podAnnotatedIptablesFipInformer.Lister(),
-		podAnnotatedIptablesFipSynced:      podAnnotatedIptablesFipInformer.Informer().HasSynced,
-		addPodAnnotatedIptablesFipQueue:    workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "AddPodAnnotatedIptablesFip"),
-		updatePodAnnotatedIptablesFipQueue: workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "UpdatePodAnnotatedIptablesFip"),
-		delPodAnnotatedIptablesFipQueue:    workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "DeletePodAnnotatedIptablesFip"),
+		podAnnotatedIptablesFipLister:   podAnnotatedIptablesFipInformer.Lister(),
+		podAnnotatedIptablesFipSynced:   podAnnotatedIptablesFipInformer.Informer().HasSynced,
+		addPodAnnotatedIptablesFipQueue: workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "AddPodAnnotatedIptablesFip"),
+		delPodAnnotatedIptablesFipQueue: workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "DeletePodAnnotatedIptablesFip"),
 
 		iptablesDnatRulesLister:     iptablesDnatRuleInformer.Lister(),
 		iptablesDnatRuleSynced:      iptablesDnatRuleInformer.Informer().HasSynced,
@@ -917,15 +913,12 @@ func (c *Controller) shutdown() {
 	c.updateOvnDnatRuleQueue.ShutDown()
 	c.delOvnDnatRuleQueue.ShutDown()
 
-	if c.config.PodDefaultFipType == util.IptablesFip {
-		c.addPodAnnotatedIptablesEipQueue.ShutDown()
-		c.updatePodAnnotatedIptablesEipQueue.ShutDown()
-		c.delPodAnnotatedIptablesEipQueue.ShutDown()
+	c.addPodAnnotatedIptablesEipQueue.ShutDown()
+	c.delPodAnnotatedIptablesEipQueue.ShutDown()
 
-		c.addPodAnnotatedIptablesFipQueue.ShutDown()
-		c.updatePodAnnotatedIptablesFipQueue.ShutDown()
-		c.delPodAnnotatedIptablesFipQueue.ShutDown()
-	}
+	c.addPodAnnotatedIptablesFipQueue.ShutDown()
+	c.delPodAnnotatedIptablesFipQueue.ShutDown()
+
 	if c.config.EnableNP {
 		c.updateNpQueue.ShutDown()
 		c.deleteNpQueue.ShutDown()
@@ -1121,13 +1114,11 @@ func (c *Controller) startWorkers(ctx context.Context) {
 	go wait.Until(c.runUpdateQoSPolicyWorker, time.Second, ctx.Done())
 	go wait.Until(c.runDelQoSPolicyWorker, time.Second, ctx.Done())
 
-	if c.config.PodDefaultFipType == util.IptablesFip {
-		go wait.Until(c.runAddPodAnnotatedIptablesEipWorker, time.Second, ctx.Done())
-		go wait.Until(c.runDelPodAnnotatedIptablesEipWorker, time.Second, ctx.Done())
+	go wait.Until(c.runAddPodAnnotatedIptablesEipWorker, time.Second, ctx.Done())
+	go wait.Until(c.runDelPodAnnotatedIptablesEipWorker, time.Second, ctx.Done())
 
-		go wait.Until(c.runAddPodAnnotatedIptablesFipWorker, time.Second, ctx.Done())
-		go wait.Until(c.runDelPodAnnotatedIptablesFipWorker, time.Second, ctx.Done())
-	}
+	go wait.Until(c.runAddPodAnnotatedIptablesFipWorker, time.Second, ctx.Done())
+	go wait.Until(c.runDelPodAnnotatedIptablesFipWorker, time.Second, ctx.Done())
 }
 
 func (c *Controller) allSubnetReady(subnets ...string) (bool, error) {
