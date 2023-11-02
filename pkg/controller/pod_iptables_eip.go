@@ -166,6 +166,13 @@ func (c *Controller) processNextAddPodAnnotatedIptablesEipWorkItem() bool {
 	if shutdown {
 		return false
 	}
+
+	if c.config.PodDefaultFipType != util.IptablesFip {
+		c.addPodAnnotatedIptablesEipQueue.Forget(obj)
+		c.addPodAnnotatedIptablesEipQueue.Done(obj)
+		return true
+	}
+
 	err := func(obj interface{}) error {
 		defer c.addPodAnnotatedIptablesEipQueue.Done(obj)
 		var key string
@@ -195,6 +202,13 @@ func (c *Controller) processNextDeletePodAnnotatedIptablesEipWorkItem() bool {
 	if shutdown {
 		return false
 	}
+
+	if c.config.PodDefaultFipType != util.IptablesFip {
+		c.delPodAnnotatedIptablesEipQueue.Forget(obj)
+		c.delPodAnnotatedIptablesEipQueue.Done(obj)
+		return true
+	}
+
 	err := func(obj interface{}) error {
 		defer c.delPodAnnotatedIptablesEipQueue.Done(obj)
 		var pod *v1.Pod
