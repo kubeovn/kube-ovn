@@ -381,7 +381,7 @@ func (suite *OvnClientTestSuite) testPolicyFilter() {
 		filterFunc := policyFilter(-1, map[string]string{
 			"k1":  "v1",
 			"key": "value",
-		})
+		}, true)
 		require.False(t, filterFunc(policy))
 	})
 }
