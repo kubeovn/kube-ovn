@@ -24,6 +24,8 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.12-cmss
+          - release-1.12
           - release-1.11
           - release-1.9
           - release-1.8
@@ -113,6 +115,8 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.12-cmss
+          - release-1.12
           - release-1.11
           - release-1.9
           - release-1.8
@@ -277,6 +281,8 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.12-cmss
+          - release-1.12
           - release-1.11
           - release-1.9
           - release-1.8
@@ -336,6 +342,8 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.12-cmss
+          - release-1.12
           - release-1.11
           - release-1.9
           - release-1.8
@@ -419,6 +427,8 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.12-cmss
+          - release-1.12
           - release-1.11
           - release-1.9
     steps:
@@ -540,6 +550,8 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.12-cmss
+          - release-1.12
           - release-1.11
           - release-1.9
     steps:
@@ -590,6 +602,8 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.12-cmss
+          - release-1.12
           - release-1.11
           - release-1.9
           - release-1.8
@@ -643,6 +657,8 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.12-cmss
+          - release-1.12
           - release-1.11
           - release-1.9
           - release-1.8
@@ -696,6 +712,8 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.12-cmss
+          - release-1.12
           - release-1.11
     steps:
       - uses: actions/checkout@v3
@@ -768,6 +786,9 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.12-cmss
+          - release-1.12
+  
     steps:
       - uses: actions/checkout@v3
 
@@ -838,6 +859,8 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.12-cmss
+          - release-1.12
     steps:
       - uses: actions/checkout@v3
 
@@ -908,6 +931,8 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.12-cmss
+          - release-1.12
           - release-1.11
           - release-1.9
           - release-1.8
@@ -958,6 +983,8 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.12-cmss
+          - release-1.12
           - release-1.11
           - release-1.9
           - release-1.8
@@ -1045,6 +1072,8 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.12-cmss
+          - release-1.12
           - release-1.11
           - release-1.9
         ssl:
@@ -1238,6 +1267,8 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.12-cmss
+          - release-1.12
     steps:
       - uses: actions/checkout@v3
 
@@ -1295,6 +1326,8 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.12-cmss
+          - release-1.12
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-go@v4
@@ -1364,6 +1397,8 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.12-cmss
+          - release-1.12
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-go@v4
