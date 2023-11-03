@@ -209,7 +209,6 @@ var _ = framework.OrderedDescribe("[group:ovn-ic]", func() {
 	})
 
 	framework.ConformanceIt("should be able to update gateway to ecmp or HA ", func() {
-
 		gwNodes := make([]string, len(clusters))
 		for i := range clusters {
 			ginkgo.By("fetching the ConfigMap in cluster " + clusters[i])
