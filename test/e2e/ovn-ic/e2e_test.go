@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math/rand"
 	"net"
+	"os/exec"
 	"strconv"
 	"strings"
 	"testing"
@@ -206,4 +207,73 @@ var _ = framework.OrderedDescribe("[group:ovn-ic]", func() {
 
 		fnCheckPodHTTP()
 	})
+
+	framework.ConformanceIt("should be able to update gateway to ecmp or HA ", func() {
+
+		gwNodes := make([]string, len(clusters))
+		for i := range clusters {
+			ginkgo.By("fetching the ConfigMap in cluster " + clusters[i])
+			cm, err := clientSets[i].CoreV1().ConfigMaps(framework.KubeOvnNamespace).Get(context.TODO(), util.InterconnectionConfig, metav1.GetOptions{})
+			framework.ExpectNoError(err, "failed to get ConfigMap")
+			gwNodes[i] = cm.Data["gw-nodes"]
+		}
+
+		ginkgo.By("Case 1: Changing the ConfigMap in cluster to HA")
+		changeGatewayType("ha", gwNodes, clientSets)
+		ginkgo.By("Waiting for HA gateway to be applied")
+		time.Sleep(15 * time.Second)
+
+		checkECMPCount(0)
+		fnCheckPodHTTP()
+
+		ginkgo.By("Case 2: Changing the ConfigMap in cluster to ecmp ")
+		changeGatewayType("ecmp", gwNodes, clientSets)
+		ginkgo.By("Waiting for ecmp gateway to be applied")
+		time.Sleep(15 * time.Second)
+
+		checkECMPCount(3)
+		fnCheckPodHTTP()
+
+		ginkgo.By("Case 3: Changing the ConfigMap in cluster to half ha and half ecmp")
+		changeGatewayType("half", gwNodes, clientSets)
+		ginkgo.By("Waiting for half gateway to be applied")
+		time.Sleep(15 * time.Second)
+
+		checkECMPCount(2)
+		fnCheckPodHTTP()
+	})
 })
+
+func checkECMPCount(expectCount int) {
+	execCmd := "kubectl ko nbctl lr-route-list ovn-cluster "
+	output, err := exec.Command("bash", "-c", execCmd).CombinedOutput()
+	ecmpCount := strings.Count(string(output), "ecmp")
+	framework.ExpectNoError(err)
+	framework.ExpectEqual(ecmpCount, expectCount)
+}
+
+func changeGatewayType(gatewayType string, gwNodes []string, clientSets []clientset.Interface) {
+	for index, clientSet := range clientSets {
+		var gatewayStr string
+		switch gatewayType {
+		case "ha":
+			gatewayStr = strings.ReplaceAll(gwNodes[index], ";", ",")
+		case "ecmp":
+			gatewayStr = strings.ReplaceAll(gwNodes[index], ",", ";")
+		case "half":
+			gatewayStr = strings.Replace(gwNodes[index], ",", ";", 1)
+		}
+		framework.Logf("check gatewayStr %s ", gatewayStr)
+		configMapPatchPayload, err := json.Marshal(corev1.ConfigMap{
+			Data: map[string]string{
+				"gw-nodes": gatewayStr,
+			},
+		})
+
+		framework.ExpectNoError(err, "failed to marshal patch data")
+
+		ginkgo.By("patching the ConfigMap in cluster " + clusters[index])
+		_, err = clientSet.CoreV1().ConfigMaps(framework.KubeOvnNamespace).Patch(context.TODO(), util.InterconnectionConfig, k8stypes.StrategicMergePatchType, configMapPatchPayload, metav1.PatchOptions{})
+		framework.ExpectNoError(err, "failed to patch ConfigMap")
+	}
+}
