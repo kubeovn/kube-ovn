@@ -127,6 +127,17 @@ func ValidateSubnet(subnet kubeovnv1.Subnet) error {
 	return nil
 }
 
+func ValidateSubnetUpdate(subnet, oldSubnet kubeovnv1.Subnet) error {
+	if err := ValidateSubnet(subnet); err != nil {
+		return err
+	}
+	// only support add excludeIps
+	if len(subnet.Spec.ExcludeIps) < len(oldSubnet.Spec.ExcludeIps) {
+		return fmt.Errorf("subnet %s excludeIps is not support delete", subnet.Name)
+	}
+	return nil
+}
+
 func validateNatOutgoingPolicyRules(subnet kubeovnv1.Subnet) error {
 	for _, rule := range subnet.Spec.NatOutgoingPolicyRules {
 		var srcProtocol, dstProtocol string

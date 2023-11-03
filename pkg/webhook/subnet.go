@@ -68,7 +68,7 @@ func (v *ValidatingHook) SubnetUpdateHook(ctx context.Context, req admission.Req
 		return ctrlwebhook.Denied(err.Error())
 	}
 
-	if err := util.ValidateSubnet(o); err != nil {
+	if err := util.ValidateSubnetUpdate(o, oldSubnet); err != nil {
 		return ctrlwebhook.Denied(err.Error())
 	}
 

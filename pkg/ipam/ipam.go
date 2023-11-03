@@ -193,89 +193,147 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr, gw string, excludeIps []strin
 			klog.Errorf("failed to parse v6 exclude ips %v", v6ExcludeIps)
 			return err
 		}
-		if (protocol == kubeovnv1.ProtocolDual || protocol == kubeovnv1.ProtocolIPv4) &&
-			(subnet.V4CIDR.String() != v4cidrStr || subnet.V4Gw != v4Gw || !subnet.V4Reserved.Equal(v4Reserved)) {
-			_, cidr, _ := net.ParseCIDR(v4cidrStr)
-			subnet.V4CIDR = cidr
-			subnet.V4Reserved = v4Reserved
-			firstIP, _ := util.FirstIP(v4cidrStr)
-			lastIP, _ := util.LastIP(v4cidrStr)
-			ips, _ := NewIPRangeListFrom(fmt.Sprintf("%s..%s", firstIP, lastIP))
-			subnet.V4Free = ips.Separate(subnet.V4Reserved)
-			subnet.V4Available = subnet.V4Free.Clone()
-			subnet.V4Using = subnet.V4Using.Intersect(ips)
-			subnet.V4Gw = v4Gw
+		if protocol == kubeovnv1.ProtocolDual || protocol == kubeovnv1.ProtocolIPv4 {
+			if subnet.V4CIDR.String() != v4cidrStr || subnet.V4Gw != v4Gw {
+				_, cidr, _ := net.ParseCIDR(v4cidrStr)
+				subnet.V4CIDR = cidr
+				subnet.V4Reserved = v4Reserved
+				firstIP, _ := util.FirstIP(v4cidrStr)
+				lastIP, _ := util.LastIP(v4cidrStr)
+				ips, _ := NewIPRangeListFrom(fmt.Sprintf("%s..%s", firstIP, lastIP))
+				subnet.V4Free = ips.Separate(subnet.V4Reserved)
+				subnet.V4Available = subnet.V4Free.Clone()
+				subnet.V4Using = subnet.V4Using.Intersect(ips)
+				subnet.V4Gw = v4Gw
 
-			pool := subnet.IPPools[""]
-			pool.V4IPs = ips
-			pool.V4Free = subnet.V4Free.Clone()
-			pool.V4Reserved = subnet.V4Reserved.Clone()
-			pool.V4Released = NewEmptyIPRangeList()
-			pool.V4Using = subnet.V4Using.Clone()
+				pool := subnet.IPPools[""]
+				pool.V4IPs = ips
+				pool.V4Free = subnet.V4Free.Clone()
+				pool.V4Reserved = subnet.V4Reserved.Clone()
+				pool.V4Released = NewEmptyIPRangeList()
+				pool.V4Using = subnet.V4Using.Clone()
 
-			for name, p := range subnet.IPPools {
-				if name == "" {
-					continue
+				for name, p := range subnet.IPPools {
+					if name == "" {
+						continue
+					}
+					p.V4Free = ips.Intersect(p.V4IPs)
+					p.V4Reserved = subnet.V4Reserved.Intersect(p.V4IPs)
+					p.V4Available = p.V4Free.Clone()
+					p.V4Released = NewEmptyIPRangeList()
+					pool.V4Free = pool.V4Free.Separate(p.V4IPs)
+					pool.V4Reserved = pool.V4Reserved.Separate(p.V4Reserved)
 				}
-				p.V4Free = ips.Intersect(p.V4IPs)
-				p.V4Reserved = subnet.V4Reserved.Intersect(p.V4IPs)
-				p.V4Available = p.V4Free.Clone()
-				p.V4Released = NewEmptyIPRangeList()
-				pool.V4Free = pool.V4Free.Separate(p.V4IPs)
-				pool.V4Reserved = p.V4Reserved.Separate(p.V4Reserved)
+				pool.V4Available = pool.V4Free.Clone()
+
+				for nicName, ip := range subnet.V4NicToIP {
+					if !ips.Contains(ip) {
+						podName := subnet.V4IPToPod[ip.String()]
+						klog.Errorf("%s address %s not in subnet %s new cidr %s", podName, ip.String(), name, cidrStr)
+						delete(subnet.V4NicToIP, nicName)
+						delete(subnet.V4IPToPod, ip.String())
+						continue
+					}
+				}
 			}
-			pool.V4Available = pool.V4Free.Clone()
+			if !subnet.V4Reserved.Equal(v4Reserved) {
+				newAddV4Reserved := v4Reserved.Separate(subnet.V4Reserved)
+				// only support add reserved ip, because it will cause the ip repeated sometime when you add reserved ip and delete after sometime.
+				if newAddV4Reserved.Len() != 0 {
+					subnet.V4Free = subnet.V4Free.Separate(newAddV4Reserved)
+					subnet.V4Available = subnet.V4Free.Clone()
+					subnet.V4Reserved = v4Reserved
 
-			for nicName, ip := range subnet.V4NicToIP {
-				if !ips.Contains(ip) {
-					podName := subnet.V4IPToPod[ip.String()]
-					klog.Errorf("%s address %s not in subnet %s new cidr %s", podName, ip.String(), name, cidrStr)
-					delete(subnet.V4NicToIP, nicName)
-					delete(subnet.V4IPToPod, ip.String())
-					continue
+					pool := subnet.IPPools[""]
+					pool.V4Free = subnet.V4Free.Clone()
+					pool.V4Reserved = subnet.V4Reserved.Clone()
+					pool.V4Released = NewEmptyIPRangeList()
+
+					for name, p := range subnet.IPPools {
+						if name == "" {
+							continue
+						}
+						p.V4Reserved = subnet.V4Reserved.Intersect(p.V4IPs)
+						p.V4Free = p.V4Free.Separate(p.V4Reserved)
+						p.V4Available = p.V4Free.Clone()
+						p.V4Released = NewEmptyIPRangeList()
+						pool.V4Free = pool.V4Free.Separate(p.V4IPs)
+						pool.V4Reserved = pool.V4Reserved.Separate(p.V4Reserved)
+					}
+					pool.V4Available = pool.V4Free.Clone()
 				}
+
 			}
 		}
-		if (protocol == kubeovnv1.ProtocolDual || protocol == kubeovnv1.ProtocolIPv6) &&
-			(subnet.V6CIDR.String() != v6cidrStr || subnet.V6Gw != v6Gw || !subnet.V6Reserved.Equal(v6Reserved)) {
-			_, cidr, _ := net.ParseCIDR(v6cidrStr)
-			subnet.V6CIDR = cidr
-			subnet.V6Reserved = v6Reserved
-			firstIP, _ := util.FirstIP(v6cidrStr)
-			lastIP, _ := util.LastIP(v6cidrStr)
-			ips, _ := NewIPRangeListFrom(fmt.Sprintf("%s..%s", firstIP, lastIP))
-			subnet.V6Free = ips.Separate(subnet.V6Reserved)
-			subnet.V6Available = subnet.V6Free.Clone()
-			subnet.V6Using = subnet.V6Using.Intersect(ips)
-			subnet.V6Gw = v6Gw
 
-			pool := subnet.IPPools[""]
-			pool.V6IPs = ips
-			pool.V6Free = subnet.V6Free.Clone()
-			pool.V6Reserved = subnet.V6Reserved.Clone()
-			pool.V6Released = NewEmptyIPRangeList()
-			pool.V6Using = subnet.V6Using.Clone()
+		if protocol == kubeovnv1.ProtocolDual || protocol == kubeovnv1.ProtocolIPv6 {
+			if subnet.V6CIDR.String() != v6cidrStr || subnet.V6Gw != v6Gw {
+				_, cidr, _ := net.ParseCIDR(v6cidrStr)
+				subnet.V6CIDR = cidr
+				subnet.V6Reserved = v6Reserved
+				firstIP, _ := util.FirstIP(v6cidrStr)
+				lastIP, _ := util.LastIP(v6cidrStr)
+				ips, _ := NewIPRangeListFrom(fmt.Sprintf("%s..%s", firstIP, lastIP))
+				subnet.V6Free = ips.Separate(subnet.V6Reserved)
+				subnet.V6Available = subnet.V6Free.Clone()
+				subnet.V6Using = subnet.V6Using.Intersect(ips)
+				subnet.V6Gw = v6Gw
 
-			for name, p := range subnet.IPPools {
-				if name == "" {
-					continue
+				pool := subnet.IPPools[""]
+				pool.V6IPs = ips
+				pool.V6Free = subnet.V6Free.Clone()
+				pool.V6Reserved = subnet.V6Reserved.Clone()
+				pool.V6Released = NewEmptyIPRangeList()
+				pool.V6Using = subnet.V6Using.Clone()
+
+				for name, p := range subnet.IPPools {
+					if name == "" {
+						continue
+					}
+					p.V6Free = ips.Intersect(p.V6IPs)
+					p.V6Reserved = subnet.V6Reserved.Intersect(p.V6IPs)
+					p.V6Available = p.V6Free.Clone()
+					p.V6Released = NewEmptyIPRangeList()
+					pool.V6Free = pool.V6Free.Separate(p.V6IPs)
+					pool.V6Reserved = pool.V6Reserved.Separate(p.V6Reserved)
 				}
-				p.V6Free = ips.Intersect(p.V6IPs)
-				p.V6Reserved = subnet.V6Reserved.Intersect(p.V6IPs)
-				p.V6Available = p.V6Free.Clone()
-				p.V6Released = NewEmptyIPRangeList()
-				pool.V6Free = pool.V6Free.Separate(p.V6IPs)
-				pool.V6Reserved = p.V6Reserved.Separate(p.V6Reserved)
-			}
-			pool.V6Available = pool.V6Free.Clone()
+				pool.V6Available = pool.V6Free.Clone()
 
-			for nicName, ip := range subnet.V6NicToIP {
-				if !ips.Contains(ip) {
-					podName := subnet.V6IPToPod[ip.String()]
-					klog.Errorf("%s address %s not in subnet %s new cidr %s", podName, ip.String(), name, cidrStr)
-					delete(subnet.V6NicToIP, nicName)
-					delete(subnet.V6IPToPod, ip.String())
-					continue
+				for nicName, ip := range subnet.V6NicToIP {
+					if !ips.Contains(ip) {
+						podName := subnet.V6IPToPod[ip.String()]
+						klog.Errorf("%s address %s not in subnet %s new cidr %s", podName, ip.String(), name, cidrStr)
+						delete(subnet.V6NicToIP, nicName)
+						delete(subnet.V6IPToPod, ip.String())
+						continue
+					}
+				}
+			}
+			if !subnet.V6Reserved.Equal(v6Reserved) {
+				newAddV6Reserved := v6Reserved.Separate(subnet.V6Reserved)
+				// only support add reserved ip, because it will cause the ip repeated sometime when you add reserved ip and delete after sometime.
+				if newAddV6Reserved.Len() != 0 {
+					subnet.V6Free = subnet.V6Free.Separate(newAddV6Reserved)
+					subnet.V6Available = subnet.V6Free.Clone()
+					subnet.V6Reserved = v6Reserved
+
+					pool := subnet.IPPools[""]
+					pool.V6Free = subnet.V6Free.Clone()
+					pool.V6Reserved = subnet.V6Reserved.Clone()
+					pool.V6Released = NewEmptyIPRangeList()
+
+					for name, p := range subnet.IPPools {
+						if name == "" {
+							continue
+						}
+						p.V6Reserved = subnet.V6Reserved.Intersect(p.V6IPs)
+						p.V6Free = p.V6Free.Separate(p.V6Reserved)
+						p.V6Available = p.V6Free.Clone()
+						p.V6Released = NewEmptyIPRangeList()
+						pool.V6Free = pool.V6Free.Separate(p.V6IPs)
+						pool.V6Reserved = pool.V6Reserved.Separate(p.V6Reserved)
+					}
+					pool.V6Available = pool.V6Free.Clone()
 				}
 			}
 		}
