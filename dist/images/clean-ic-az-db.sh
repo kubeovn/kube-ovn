@@ -26,3 +26,4 @@ done
 
 ovn-ic-sbctl destroy availability_zone $availability_zone
 echo "Destroyed availability_zone: $availability_zone"
+
