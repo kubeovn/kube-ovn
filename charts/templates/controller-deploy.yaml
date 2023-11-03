@@ -61,8 +61,8 @@ spec:
           {{- else if eq .Values.networking.NET_STACK "ipv6" -}}
           {{ .Values.ipv6.POD_GATEWAY }}
           {{- end }}
-          - --default-gateway-check={{- .Values.func.CHECK_GATEWAY }}
-          - --default-logical-gateway={{- .Values.func.LOGICAL_GATEWAY }}
+          - --default-gateway-check={{- .Values.cni_conf.CHECK_GATEWAY }}
+          - --default-logical-gateway={{- .Values.cni_conf.LOGICAL_GATEWAY }}
           - --default-u2o-interconnection={{- .Values.func.U2O_INTERCONNECTION }}
           - --default-exclude-ips={{- .Values.networking.EXCLUDE_IPS }}
           - --cluster-router={{ .Values.networking.DEFAULT_VPC }}
@@ -157,11 +157,21 @@ spec:
             timeoutSeconds: 45
           resources:
             requests:
+            {{- if .Release.IsUpgrade }}
+              cpu: {{ (index (lookup "apps/v1" "Deployment" "kube-system" "kube-ovn-controller").spec.template.spec.containers 0).resources.requests.cpu | quote }}
+              memory: {{ (index (lookup "apps/v1" "Deployment" "kube-system" "kube-ovn-controller").spec.template.spec.containers 0).resources.requests.memory | quote }}
+            {{- else }}
               cpu: {{ index .Values "kube-ovn-controller" "requests" "cpu" }}
               memory: {{ index .Values "kube-ovn-controller" "requests" "memory" }}
+            {{- end }}
             limits:
+            {{- if .Release.IsUpgrade }}
+              cpu: {{ (index (lookup "apps/v1" "Deployment" "kube-system" "kube-ovn-controller").spec.template.spec.containers 0).resources.limits.cpu | quote }}
+              memory: {{ (index (lookup "apps/v1" "Deployment" "kube-system" "kube-ovn-controller").spec.template.spec.containers 0).resources.limits.memory | quote }}
+            {{- else }}
               cpu: {{ index .Values "kube-ovn-controller" "limits" "cpu" }}
               memory: {{ index .Values "kube-ovn-controller" "limits" "memory" }}
+            {{- end }}
       nodeSelector:
         kubernetes.io/os: "linux"
       volumes:
