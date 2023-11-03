@@ -256,14 +256,14 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 	newPod := newObj.(*v1.Pod)
 
 	if !reflect.DeepEqual(oldPod.Labels, newPod.Labels) || !reflect.DeepEqual(oldPod.Annotations, newPod.Annotations) {
-		oldAaps := strings.Split(oldPod.Annotations[util.AAPAnnotation], ",")
-		newAaps := strings.Split(newPod.Annotations[util.AAPAnnotation], ",")
-		if oldAaps != nil || newAaps != nil {
+		oldAAPs := strings.Split(oldPod.Annotations[util.AAPAnnotation], ",")
+		newAAPs := strings.Split(newPod.Annotations[util.AAPAnnotation], ",")
+		if oldAAPs != nil || newAAPs != nil {
 			var vipNames []string
-			vipNames = append(vipNames, oldAaps...)
-			for _, newAap := range newAaps {
-				if !slices.Contains(vipNames, newAap) {
-					vipNames = append(vipNames, newAap)
+			vipNames = append(vipNames, oldAAPs...)
+			for _, newAAP := range newAAPs {
+				if !slices.Contains(vipNames, newAAP) {
+					vipNames = append(vipNames, newAAP)
 				}
 			}
 			for _, vipName := range vipNames {
@@ -271,7 +271,8 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 					if vip.Spec.Namespace != newPod.Namespace {
 						continue
 					}
-					c.updateVirtualIPQueue.Add(vipName)
+					klog.Infof("enqueue update virtual parents for %s", vipName)
+					c.updateVirtualParentsQueue.Add(vipName)
 				}
 			}
 		}
@@ -969,7 +970,8 @@ func (c *Controller) handleDeletePod(key string) error {
 				if vip.Spec.Namespace != pod.Namespace {
 					continue
 				}
-				c.updateVirtualIPQueue.Add(vipName)
+				klog.Infof("enqueue update virtual parents for %s", vipName)
+				c.updateVirtualParentsQueue.Add(vipName)
 			}
 		}
 	}

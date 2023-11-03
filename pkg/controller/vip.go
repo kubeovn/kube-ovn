@@ -46,11 +46,14 @@ func (c *Controller) enqueueUpdateVirtualIP(oldObj, newObj interface{}) {
 		oldVip.Spec.MacAddress != newVip.Spec.MacAddress ||
 		oldVip.Spec.ParentMac != newVip.Spec.ParentMac ||
 		oldVip.Spec.ParentV4ip != newVip.Spec.ParentV4ip ||
-		oldVip.Spec.V4ip != newVip.Spec.V4ip ||
-		oldVip.Spec.Namespace != newVip.Spec.Namespace ||
-		!reflect.DeepEqual(oldVip.Spec.Selector, newVip.Spec.Selector) {
+		oldVip.Spec.V4ip != newVip.Spec.V4ip {
 		klog.Infof("enqueue update vip %s", key)
 		c.updateVirtualIPQueue.Add(key)
+	}
+	if oldVip.Spec.Namespace != newVip.Spec.Namespace ||
+		!reflect.DeepEqual(oldVip.Spec.Selector, newVip.Spec.Selector) {
+		klog.Infof("enqueue update virtual parents for %s", key)
+		c.updateVirtualParentsQueue.Add(key)
 	}
 }
 
@@ -73,6 +76,11 @@ func (c *Controller) runAddVirtualIPWorker() {
 
 func (c *Controller) runUpdateVirtualIPWorker() {
 	for c.processNextUpdateVirtualIPWorkItem() {
+	}
+}
+
+func (c *Controller) runUpdateVirtualParentsWorker() {
+	for c.processNextUpdateVirtualParentsWorkItem() {
 	}
 }
 
@@ -129,6 +137,34 @@ func (c *Controller) processNextUpdateVirtualIPWorkItem() bool {
 			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
 		}
 		c.updateVirtualIPQueue.Forget(obj)
+		return nil
+	}(obj)
+	if err != nil {
+		utilruntime.HandleError(err)
+		return true
+	}
+	return true
+}
+
+func (c *Controller) processNextUpdateVirtualParentsWorkItem() bool {
+	obj, shutdown := c.updateVirtualParentsQueue.Get()
+	if shutdown {
+		return false
+	}
+	err := func(obj interface{}) error {
+		defer c.updateVirtualParentsQueue.Done(obj)
+		var key string
+		var ok bool
+		if key, ok = obj.(string); !ok {
+			c.updateVirtualParentsQueue.Forget(obj)
+			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
+			return nil
+		}
+		if err := c.handleUpdateVirtualParents(key); err != nil {
+			c.updateVirtualParentsQueue.AddRateLimited(key)
+			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
+		}
+		c.updateVirtualParentsQueue.Forget(obj)
 		return nil
 	}(obj)
 	if err != nil {
@@ -249,7 +285,7 @@ func (c *Controller) handleAddVirtualIP(key string) error {
 		klog.Errorf("failed to count vip '%s' in subnet, %v", vip.Name, err)
 		return err
 	}
-	if err := c.syncVirtualParents(key); err != nil {
+	if err := c.handleUpdateVirtualParents(key); err != nil {
 		return fmt.Errorf("error syncing virtual parents for vip '%s': %s", key, err.Error())
 	}
 	return nil
@@ -263,9 +299,6 @@ func (c *Controller) handleUpdateVirtualIP(key string) error {
 		}
 		klog.Error(err)
 		return err
-	}
-	if err := c.syncVirtualParents(key); err != nil {
-		return fmt.Errorf("error syncing virtual parents for vip '%s': %s", key, err.Error())
 	}
 	vip := cachedVip.DeepCopy()
 	// should delete
@@ -380,7 +413,7 @@ func (c *Controller) acquireIPAddress(subnetName, name, nicName string) (string,
 	}
 }
 
-func (c *Controller) syncVirtualParents(key string) error {
+func (c *Controller) handleUpdateVirtualParents(key string) error {
 	cachedVip, err := c.virtualIpsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
