@@ -255,36 +255,23 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 	oldPod := oldObj.(*v1.Pod)
 	newPod := newObj.(*v1.Pod)
 
-	if !reflect.DeepEqual(oldPod.Labels, newPod.Labels) {
-		vips, err := c.virtualIpsLister.List(labels.SelectorFromSet(labels.Set{
-			util.SubnetNameLabel: newPod.Annotations[util.LogicalSwitchAnnotation],
-		}))
-		if err != nil {
-			klog.Error(err)
-			return
-		}
-		for _, vip := range vips {
-			lspName := fmt.Sprintf("%s-vip-%s", vip.Spec.Subnet, vip.Status.V4ip)
-			lsp, err := c.OVNNbClient.GetLogicalSwitchPort(lspName, true)
-			if err != nil {
-				klog.Error(err)
-				return
-			}
-			if lsp != nil {
-				virtualParents := strings.Split(lsp.Options["virtual-parents"], ",")
-				if slices.Contains(virtualParents, fmt.Sprintf("%s.%s", newPod.Name, newPod.Namespace)) {
-					c.updateVirtualIPQueue.Add(vip.Name)
-					continue
+	if !reflect.DeepEqual(oldPod.Labels, newPod.Labels) || !reflect.DeepEqual(oldPod.Annotations, newPod.Annotations) {
+		oldAaps := strings.Split(oldPod.Annotations[util.AAPAnnotation], ",")
+		newAaps := strings.Split(newPod.Annotations[util.AAPAnnotation], ",")
+		if oldAaps != nil || newAaps != nil {
+			var vipNames []string
+			vipNames = append(vipNames, oldAaps...)
+			for _, newAap := range newAaps {
+				if !slices.Contains(vipNames, newAap) {
+					vipNames = append(vipNames, newAap)
 				}
-				for _, v := range vip.Spec.Selector {
-					parts := strings.Split(strings.TrimSpace(v), ":")
-					if len(parts) != 2 {
+			}
+			for _, vipName := range vipNames {
+				if vip, err := c.virtualIpsLister.Get(vipName); err == nil {
+					if vip.Spec.Namespace != newPod.Namespace {
 						continue
 					}
-					if newPod.Labels[strings.TrimSpace(parts[0])] == strings.TrimSpace(parts[1]) {
-						c.updateVirtualIPQueue.Add(vip.Name)
-						break
-					}
+					c.updateVirtualIPQueue.Add(vipName)
 				}
 			}
 		}
@@ -976,6 +963,17 @@ func (c *Controller) handleDeletePod(key string) error {
 		return nil
 	}
 
+	if aaps := strings.Split(pod.Annotations[util.AAPAnnotation], ","); aaps != nil {
+		for _, vipName := range aaps {
+			if vip, err := c.virtualIpsLister.Get(vipName); err == nil {
+				if vip.Spec.Namespace != pod.Namespace {
+					continue
+				}
+				c.updateVirtualIPQueue.Add(vipName)
+			}
+		}
+	}
+
 	ports, err := c.OVNNbClient.ListNormalLogicalSwitchPorts(true, map[string]string{"pod": key})
 	if err != nil {
 		klog.Errorf("failed to list lsps of pod '%s', %v", pod.Name, err)
@@ -1084,27 +1082,7 @@ func (c *Controller) handleDeletePod(key string) error {
 	}
 	for _, podNet := range podNets {
 		c.syncVirtualPortsQueue.Add(podNet.Subnet.Name)
-		vips, err := c.virtualIpsLister.List(labels.SelectorFromSet(labels.Set{
-			util.SubnetNameLabel: podNet.Subnet.Name,
-		}))
-		if err != nil {
-			klog.Error(err)
-			return err
-		}
-		for _, vip := range vips {
-			lspName := fmt.Sprintf("%s-vip-%s", vip.Spec.Subnet, vip.Status.V4ip)
-			lsp, err := c.OVNNbClient.GetLogicalSwitchPort(lspName, true)
-			if err != nil {
-				klog.Error(err)
-				return err
-			}
-			virtualParents := strings.Split(lsp.Options["virtual-parents"], ",")
-			if slices.Contains(virtualParents, fmt.Sprintf("%s.%s", pod.Name, pod.Namespace)) {
-				c.updateVirtualIPQueue.Add(vip.Name)
-			}
-		}
 	}
-
 	return nil
 }
 
