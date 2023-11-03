@@ -625,7 +625,7 @@ func (c *Controller) updateSubnetDHCPOption(subnet *kubeovnv1.Subnet, needRouter
 	if subnet.Spec.Mtu > 0 {
 		mtu = int(subnet.Spec.Mtu)
 	} else {
-		mtu := util.DefaultMTU
+		mtu = util.DefaultMTU
 		if subnet.Spec.Vlan == "" {
 			switch c.config.NetworkType {
 			case util.NetworkTypeVlan:
