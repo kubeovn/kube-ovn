@@ -185,7 +185,7 @@ func (c *OVNNbClient) CreateVirtualLogicalSwitchPorts(lsName string, ips ...stri
 	return nil
 }
 
-// CreateVirtualLogicalSwitchPort create one virtual type logical switch for aap
+// CreateVirtualLogicalSwitchPort create one virtual type logical switch port for allowed-address-pair
 func (c *OVNNbClient) CreateVirtualLogicalSwitchPort(lspName, lsName, ip string) error {
 	exist, err := c.LogicalSwitchPortExists(lspName)
 	if err != nil {
@@ -214,7 +214,7 @@ func (c *OVNNbClient) CreateVirtualLogicalSwitchPort(lspName, lsName, ip string)
 	}
 
 	if err := c.Transact("lsp-add", op); err != nil {
-		return fmt.Errorf("create virtual logical switch ports for logical switch %s: %v", lsName, err)
+		return fmt.Errorf("create virtual logical switch port %s for logical switch %s: %v", lspName, lsName, err)
 	}
 
 	return nil
@@ -290,8 +290,8 @@ func (c *OVNNbClient) SetLogicalSwitchPortVirtualParents(lsName, parents string,
 	return nil
 }
 
-// CreateVirtualLogicalSwitchPort update one virtual type logical switch port virtual-parents
-func (c *OVNNbClient) SetLogicalSwitchPortVirtualParent(lspName, parents string) error {
+// CreateVirtualLogicalSwitchPort update one virtual type logical switch port virtual-parents for allowed-address-pair
+func (c *OVNNbClient) SetVirtualLogicalSwitchPortVirtualParents(lspName, parents string) error {
 	lsp, err := c.GetLogicalSwitchPort(lspName, true)
 	if err != nil {
 		klog.Error(err)
