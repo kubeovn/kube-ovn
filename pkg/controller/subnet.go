@@ -1579,7 +1579,7 @@ func (c *Controller) reconcileU2OInterconnectionIP(subnet *kubeovnv1.Subnet) err
 			case kubeovnv1.ProtocolDual:
 				subnet.Status.U2OInterconnectionIP = fmt.Sprintf("%s,%s", v4ip, v6ip)
 			}
-			if err := c.createOrUpdateCrdIPs(u2oInterconnName, subnet.Status.U2OInterconnectionIP, "", subnet.Name, "default", "", "", "", nil); err != nil {
+			if err := c.createOrUpdateCrdIPs(u2oInterconnName, subnet.Status.U2OInterconnectionIP, "", subnet.Name, "default", "", "", ""); err != nil {
 				klog.Errorf("failed to create or update IPs of %s : %v", u2oInterconnLrpName, err)
 				return err
 			}
