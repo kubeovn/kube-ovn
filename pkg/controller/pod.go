@@ -562,6 +562,12 @@ func (c *Controller) changeVMSubnet(vmName, namespace, providerName, subnetName 
 	if ipCr != nil {
 		if ipCr.Spec.Subnet != subnetName {
 			key := fmt.Sprintf("%s/%s", pod.Namespace, vmName)
+			if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), ipName, metav1.DeleteOptions{}); err != nil {
+				if !k8serrors.IsNotFound(err) {
+					klog.Errorf("failed to delete ip %s, %v", ipName, err)
+					return err
+				}
+			}
 			ports, err := c.ovnClient.ListPodLogicalSwitchPorts(key)
 			if err != nil {
 				klog.Errorf("failed to list lsps of pod '%s', %v", pod.Name, err)
@@ -575,6 +581,7 @@ func (c *Controller) changeVMSubnet(vmName, namespace, providerName, subnetName 
 					return err
 				}
 			}
+			c.ipam.ReleaseAddressByPod(key, subnetName)
 		}
 	}
 	return nil
