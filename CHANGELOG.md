@@ -1,5 +1,29 @@
 # Changelog
 
+## v1.12.3 (2023-11-06)
+
+ * [b64d7e9b](https://github.com/kubeovn/kube-ovn/commit/b64d7e9b1e0422b397a7e7b30dfbd8c45d7cafc8) set release for 1.12.3
+ * [a9cbe027](https://github.com/kubeovn/kube-ovn/commit/a9cbe0279482b9317d56055e9de1a7867268c8f5) kube-ovn-dpdk building need its dpdk base img (#3371)
+ * [b0efd5a9](https://github.com/kubeovn/kube-ovn/commit/b0efd5a9c16d3ad41ef1ee40178d5c7f11f892e4) delete check for existing ip cr (#3361)
+ * [366e6411](https://github.com/kubeovn/kube-ovn/commit/366e6411041d540b13fb6dc3df91f9532bdb7c00) fix IP residue after changing subnet of vm in some scenarios (#3370)
+ * [f593a046](https://github.com/kubeovn/kube-ovn/commit/f593a046c6ffa5d5a9d7ceda9ee7d0a7195f7dfb) sync acp chart (#3364)
+ * [def75169](https://github.com/kubeovn/kube-ovn/commit/def7516926b4d3d8781016569c06dabfaef876f5) kube-ovn-controller: fix memory growth caused by unused workqueue
+ * [3023336d](https://github.com/kubeovn/kube-ovn/commit/3023336dffa6a56b87edbe4bae2185b88adc3028) build(deps): bump github.com/osrg/gobgp/v3 from 3.19.0 to 3.20.0 (#3362)
+ * [c7ffd1f5](https://github.com/kubeovn/kube-ovn/commit/c7ffd1f56682519efec6bc7f5b5d4b5c8202055b) fix access svc ip failed, when acl is on (#3350)
+ * [5da74964](https://github.com/kubeovn/kube-ovn/commit/5da7496476a8a336b6ee18b7bc54036045704370) Add Layer 2 forwarding for subnet ports again (#3300)
+ * [31e77fbf](https://github.com/kubeovn/kube-ovn/commit/31e77fbf3c757413b76d21e861dddba59268a061) add compact for release-1.12 (#3342)
+ * [d771eb8c](https://github.com/kubeovn/kube-ovn/commit/d771eb8ce222e50511a3b93fe61e92b28c69c272) prepare for next release
+
+### Contributors
+
+ * Tobias
+ * bobz965
+ * changluyi
+ * dependabot[bot]
+ * hzma
+ * 张祖建
+ * 袁又袁
+
 ## v1.12.2 (2023-10-24)
 
  * [23a6299c](https://github.com/kubeovn/kube-ovn/commit/23a6299c1ad15b8a52a34b4ac70e4295c6903116) set release 1.12.2
