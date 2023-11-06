@@ -657,6 +657,20 @@ func (mr *MockLogicalSwitchPortMockRecorder) CreateLogicalSwitchPort(lsName, lsp
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateLogicalSwitchPort", reflect.TypeOf((*MockLogicalSwitchPort)(nil).CreateLogicalSwitchPort), lsName, lspName, ip, mac, podName, namespace, portSecurity, securityGroups, vips, enableDHCP, dhcpOptions, vpc)
 }
 
+// CreateVirtualLogicalSwitchPort mocks base method.
+func (m *MockLogicalSwitchPort) CreateVirtualLogicalSwitchPort(lspName, lsName, ip string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateVirtualLogicalSwitchPort", lspName, lsName, ip)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// CreateVirtualLogicalSwitchPort indicates an expected call of CreateVirtualLogicalSwitchPort.
+func (mr *MockLogicalSwitchPortMockRecorder) CreateVirtualLogicalSwitchPort(lspName, lsName, ip interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateVirtualLogicalSwitchPort", reflect.TypeOf((*MockLogicalSwitchPort)(nil).CreateVirtualLogicalSwitchPort), lspName, lsName, ip)
+}
+
 // CreateVirtualLogicalSwitchPorts mocks base method.
 func (m *MockLogicalSwitchPort) CreateVirtualLogicalSwitchPorts(lsName string, ips ...string) error {
 	m.ctrl.T.Helper()
@@ -819,6 +833,20 @@ func (m *MockLogicalSwitchPort) SetLogicalSwitchPortSecurity(portSecurity bool, 
 func (mr *MockLogicalSwitchPortMockRecorder) SetLogicalSwitchPortSecurity(portSecurity, lspName, mac, ips, vips interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLogicalSwitchPortSecurity", reflect.TypeOf((*MockLogicalSwitchPort)(nil).SetLogicalSwitchPortSecurity), portSecurity, lspName, mac, ips, vips)
+}
+
+// SetLogicalSwitchPortVirtualParent mocks base method.
+func (m *MockLogicalSwitchPort) SetLogicalSwitchPortVirtualParent(lsName, parents string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetLogicalSwitchPortVirtualParent", lsName, parents)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetLogicalSwitchPortVirtualParent indicates an expected call of SetLogicalSwitchPortVirtualParent.
+func (mr *MockLogicalSwitchPortMockRecorder) SetLogicalSwitchPortVirtualParent(lsName, parents interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLogicalSwitchPortVirtualParent", reflect.TypeOf((*MockLogicalSwitchPort)(nil).SetLogicalSwitchPortVirtualParent), lsName, parents)
 }
 
 // SetLogicalSwitchPortVirtualParents mocks base method.
@@ -2530,6 +2558,20 @@ func (mr *MockNbClientMockRecorder) CreateSgDenyAllACL(sgName interface{}) *gomo
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateSgDenyAllACL", reflect.TypeOf((*MockNbClient)(nil).CreateSgDenyAllACL), sgName)
 }
 
+// CreateVirtualLogicalSwitchPort mocks base method.
+func (m *MockNbClient) CreateVirtualLogicalSwitchPort(lspName, lsName, ip string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateVirtualLogicalSwitchPort", lspName, lsName, ip)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// CreateVirtualLogicalSwitchPort indicates an expected call of CreateVirtualLogicalSwitchPort.
+func (mr *MockNbClientMockRecorder) CreateVirtualLogicalSwitchPort(lspName, lsName, ip interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateVirtualLogicalSwitchPort", reflect.TypeOf((*MockNbClient)(nil).CreateVirtualLogicalSwitchPort), lspName, lsName, ip)
+}
+
 // CreateVirtualLogicalSwitchPorts mocks base method.
 func (m *MockNbClient) CreateVirtualLogicalSwitchPorts(lsName string, ips ...string) error {
 	m.ctrl.T.Helper()
@@ -3760,6 +3802,20 @@ func (m *MockNbClient) SetLogicalSwitchPortSecurity(portSecurity bool, lspName, 
 func (mr *MockNbClientMockRecorder) SetLogicalSwitchPortSecurity(portSecurity, lspName, mac, ips, vips interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLogicalSwitchPortSecurity", reflect.TypeOf((*MockNbClient)(nil).SetLogicalSwitchPortSecurity), portSecurity, lspName, mac, ips, vips)
+}
+
+// SetLogicalSwitchPortVirtualParent mocks base method.
+func (m *MockNbClient) SetLogicalSwitchPortVirtualParent(lsName, parents string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetLogicalSwitchPortVirtualParent", lsName, parents)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetLogicalSwitchPortVirtualParent indicates an expected call of SetLogicalSwitchPortVirtualParent.
+func (mr *MockNbClientMockRecorder) SetLogicalSwitchPortVirtualParent(lsName, parents interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLogicalSwitchPortVirtualParent", reflect.TypeOf((*MockNbClient)(nil).SetLogicalSwitchPortVirtualParent), lsName, parents)
 }
 
 // SetLogicalSwitchPortVirtualParents mocks base method.

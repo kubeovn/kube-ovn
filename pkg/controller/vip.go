@@ -50,8 +50,7 @@ func (c *Controller) enqueueUpdateVirtualIP(oldObj, newObj interface{}) {
 		klog.Infof("enqueue update vip %s", key)
 		c.updateVirtualIPQueue.Add(key)
 	}
-	if oldVip.Spec.Namespace != newVip.Spec.Namespace ||
-		!reflect.DeepEqual(oldVip.Spec.Selector, newVip.Spec.Selector) {
+	if !reflect.DeepEqual(oldVip.Spec.Selector, newVip.Spec.Selector) {
 		klog.Infof("enqueue update virtual parents for %s", key)
 		c.updateVirtualParentsQueue.Add(key)
 	}
@@ -355,9 +354,8 @@ func (c *Controller) handleDelVirtualIP(vip *kubeovnv1.Vip) error {
 		}
 	}
 	// delete virtual ports
-	lspName := fmt.Sprintf("%s-vip-%s", vip.Spec.Subnet, vip.Status.V4ip)
-	if err := c.OVNNbClient.DeleteLogicalSwitchPort(lspName); err != nil {
-		klog.Errorf("delete virtual port %s lspName from logical switch %s: %v", vip.Status.V4ip, vip.Spec.Subnet, err)
+	if err := c.OVNNbClient.DeleteLogicalSwitchPort(vip.Name); err != nil {
+		klog.Errorf("delete virtual logical switch port %s from logical switch %s: %v", vip.Name, vip.Spec.Subnet, err)
 		return err
 	}
 	c.ipam.ReleaseAddressByPod(vip.Name)
@@ -426,8 +424,8 @@ func (c *Controller) handleUpdateVirtualParents(key string) error {
 		return nil
 	}
 	// add new virtual port if not exist
-	if err = c.OVNNbClient.CreateVirtualLogicalSwitchPorts(cachedVip.Spec.Subnet, cachedVip.Status.V4ip); err != nil {
-		klog.Errorf("create virtual port with vips %s from logical switch %s: %v", cachedVip.Status.V4ip, cachedVip.Spec.Subnet, err)
+	if err = c.OVNNbClient.CreateVirtualLogicalSwitchPort(cachedVip.Name, cachedVip.Spec.Subnet, cachedVip.Status.V4ip); err != nil {
+		klog.Errorf("create virtual port with vip %s from logical switch %s: %v", cachedVip.Status.V4ip, cachedVip.Spec.Subnet, err)
 		return err
 	}
 
@@ -464,8 +462,8 @@ func (c *Controller) handleUpdateVirtualParents(key string) error {
 		}
 	}
 
-	if err = c.OVNNbClient.SetLogicalSwitchPortVirtualParents(cachedVip.Spec.Subnet, strings.Join(virtualParents, ","), cachedVip.Status.V4ip); err != nil {
-		klog.Errorf("set vip %s virtual parents %s: %v", cachedVip.Status.V4ip, virtualParents, err)
+	if err = c.OVNNbClient.SetLogicalSwitchPortVirtualParent(cachedVip.Name, strings.Join(virtualParents, ",")); err != nil {
+		klog.Errorf("set vip %s virtual parents %s: %v", cachedVip.Name, virtualParents, err)
 		return err
 	}
 

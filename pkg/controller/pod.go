@@ -255,7 +255,7 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 	oldPod := oldObj.(*v1.Pod)
 	newPod := newObj.(*v1.Pod)
 
-	if !reflect.DeepEqual(oldPod.Labels, newPod.Labels) || !reflect.DeepEqual(oldPod.Annotations, newPod.Annotations) {
+	if oldPod.Annotations[util.AAPAnnotation] != newPod.Annotations[util.AAPAnnotation] {
 		oldAAPs := strings.Split(oldPod.Annotations[util.AAPAnnotation], ",")
 		newAAPs := strings.Split(newPod.Annotations[util.AAPAnnotation], ",")
 		if oldAAPs != nil || newAAPs != nil {
