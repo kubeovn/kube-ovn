@@ -9,7 +9,7 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 )
 
-func (c *OVNNbClient) ListBFD(lrpName, dstIP string) ([]ovnnb.BFD, error) {
+func (c *OVNNbClient) ListBFD(lrpName, dstIP string) (*[]ovnnb.BFD, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
 	defer cancel()
 
@@ -23,7 +23,7 @@ func (c *OVNNbClient) ListBFD(lrpName, dstIP string) ([]ovnnb.BFD, error) {
 		return nil, fmt.Errorf("failed to list BFD with logical_port=%s and dst_ip=%s: %v", lrpName, dstIP, err)
 	}
 
-	return bfdList, nil
+	return &bfdList, nil
 }
 
 func (c *OVNNbClient) CreateBFD(lrpName, dstIP string, minRx, minTx, detectMult int) (*ovnnb.BFD, error) {
@@ -32,8 +32,8 @@ func (c *OVNNbClient) CreateBFD(lrpName, dstIP string, minRx, minTx, detectMult 
 		klog.Error(err)
 		return nil, err
 	}
-	if len(bfdList) != 0 {
-		return &bfdList[0], nil
+	if len(*bfdList) != 0 {
+		return &(*bfdList)[0], nil
 	}
 
 	bfd := &ovnnb.BFD{
@@ -54,10 +54,10 @@ func (c *OVNNbClient) CreateBFD(lrpName, dstIP string, minRx, minTx, detectMult 
 	if bfdList, err = c.ListBFD(lrpName, dstIP); err != nil {
 		return nil, err
 	}
-	if len(bfdList) == 0 {
+	if len(*bfdList) != 0 {
 		return nil, fmt.Errorf("BFD with logical_port=%s and dst_ip=%s not found", lrpName, dstIP)
 	}
-	return &bfdList[0], nil
+	return &(*bfdList)[0], nil
 }
 
 func (c *OVNNbClient) DeleteBFD(lrpName, dstIP string) error {
@@ -66,11 +66,11 @@ func (c *OVNNbClient) DeleteBFD(lrpName, dstIP string) error {
 		klog.Error(err)
 		return err
 	}
-	if len(bfdList) == 0 {
+	if len(*bfdList) == 0 {
 		return nil
 	}
 
-	for _, bfd := range bfdList {
+	for _, bfd := range *bfdList {
 		ops, err := c.Where(&bfd).Delete()
 		if err != nil {
 			return fmt.Errorf("failed to generate operations for BFD deletion with UUID %s: %v", bfd.UUID, err)

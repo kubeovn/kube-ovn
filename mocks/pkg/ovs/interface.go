@@ -464,6 +464,21 @@ func (mr *MockBFDMockRecorder) DeleteBFD(lrpName, dstIP interface{}) *gomock.Cal
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteBFD", reflect.TypeOf((*MockBFD)(nil).DeleteBFD), lrpName, dstIP)
 }
 
+// ListBFD mocks base method.
+func (m *MockBFD) ListBFD(lrpName, dstIP string) (*[]ovnnb.BFD, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListBFD", lrpName, dstIP)
+	ret0, _ := ret[0].(*[]ovnnb.BFD)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListBFD indicates an expected call of ListBFD.
+func (mr *MockBFDMockRecorder) ListBFD(lrpName, dstIP interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListBFD", reflect.TypeOf((*MockBFD)(nil).ListBFD), lrpName, dstIP)
+}
+
 // MockLogicalSwitch is a mock of LogicalSwitch interface.
 type MockLogicalSwitch struct {
 	ctrl     *gomock.Controller
@@ -3096,6 +3111,21 @@ func (m *MockNbClient) ListAddressSets(externalIDs map[string]string) ([]ovnnb.A
 func (mr *MockNbClientMockRecorder) ListAddressSets(externalIDs interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListAddressSets", reflect.TypeOf((*MockNbClient)(nil).ListAddressSets), externalIDs)
+}
+
+// ListBFD mocks base method.
+func (m *MockNbClient) ListBFD(lrpName, dstIP string) (*[]ovnnb.BFD, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListBFD", lrpName, dstIP)
+	ret0, _ := ret[0].(*[]ovnnb.BFD)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListBFD indicates an expected call of ListBFD.
+func (mr *MockNbClientMockRecorder) ListBFD(lrpName, dstIP interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListBFD", reflect.TypeOf((*MockNbClient)(nil).ListBFD), lrpName, dstIP)
 }
 
 // ListDHCPOptions mocks base method.

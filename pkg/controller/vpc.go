@@ -51,10 +51,10 @@ func (c *Controller) enqueueUpdateVpc(oldObj, newObj interface{}) {
 		!reflect.DeepEqual(oldVpc.Spec.StaticRoutes, newVpc.Spec.StaticRoutes) ||
 		!reflect.DeepEqual(oldVpc.Spec.PolicyRoutes, newVpc.Spec.PolicyRoutes) ||
 		!reflect.DeepEqual(oldVpc.Spec.VpcPeerings, newVpc.Spec.VpcPeerings) ||
-		!reflect.DeepEqual(oldVpc.Spec.EnableExternal, newVpc.Spec.EnableExternal) ||
-		!reflect.DeepEqual(oldVpc.Spec.EnableBfd, newVpc.Spec.EnableBfd) ||
 		!reflect.DeepEqual(oldVpc.Annotations, newVpc.Annotations) ||
 		!reflect.DeepEqual(oldVpc.Spec.ExtraExternalSubnets, newVpc.Spec.ExtraExternalSubnets) ||
+		oldVpc.Spec.EnableExternal != newVpc.Spec.EnableExternal ||
+		oldVpc.Spec.EnableBfd != newVpc.Spec.EnableBfd ||
 		oldVpc.Labels[util.VpcExternalLabel] != newVpc.Labels[util.VpcExternalLabel] {
 		// TODO:// label VpcExternalLabel replace with spec enable external
 		var (
@@ -320,6 +320,15 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 	staticRouteMapping = c.getRouteTablesByVpc(vpc)
 	staticTargetRoutes = vpc.Spec.StaticRoutes
 
+	var externalSubnet *kubeovnv1.Subnet
+	if c.config.EnableEipSnat {
+		externalSubnet, err = c.subnetsLister.Get(c.config.ExternalGatewaySwitch)
+		if err != nil {
+			klog.Errorf("failed to get subnet %s, %v", c.config.ExternalGatewaySwitch, err)
+			return err
+		}
+	}
+
 	if vpc.Name == c.config.ClusterRouter {
 		if _, ok := staticRouteMapping[util.MainRouteTable]; !ok {
 			staticRouteMapping[util.MainRouteTable] = nil
@@ -359,17 +368,11 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 				)
 			}
 		}
-
 		if c.config.EnableEipSnat {
 			cm, err := c.configMapsLister.ConfigMaps(c.config.ExternalGatewayConfigNS).Get(util.ExternalGatewayConfig)
 			if err == nil {
 				nextHop := cm.Data["external-gw-addr"]
 				if nextHop == "" {
-					externalSubnet, err := c.subnetsLister.Get(c.config.ExternalGatewaySwitch)
-					if err != nil {
-						klog.Errorf("failed to get subnet %s, %v", c.config.ExternalGatewaySwitch, err)
-						return err
-					}
 					nextHop = externalSubnet.Spec.Gateway
 					if nextHop == "" {
 						klog.Errorf("no available gateway address")
@@ -530,10 +533,13 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		klog.Error(err)
 		return err
 	}
-
+	CustomVpcUseEcmpRoute := false
 	for _, subnet := range subnets {
 		if subnet.Spec.Vpc == key {
 			c.addOrUpdateSubnetQueue.Add(subnet.Name)
+			if vpc.Name != util.DefaultVpc && subnet.Spec.EnableEcmp {
+				CustomVpcUseEcmpRoute = true
+			}
 		}
 	}
 	if vpc.Name != util.DefaultVpc {
@@ -547,11 +553,25 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 				}
 			}
 			if vpc.Spec.EnableBfd {
-				klog.Infof("remove normal static ecmp route for vpc %s", vpc.Name)
-				// auto remove normal type static route, if using ecmp based bfd
-				if err := c.reconcileCustomVpcDelNormalStaticRoute(vpc.Name); err != nil {
-					klog.Errorf("failed to reconcile del vpc %q normal static route", vpc.Name)
-					return err
+				if CustomVpcUseEcmpRoute {
+					klog.Infof("remove normal static ecmp route for vpc %s", vpc.Name)
+					// auto remove normal type static route, if using ecmp based bfd
+					if err := c.reconcileCustomVpcDelNormalStaticRoute(vpc.Name); err != nil {
+						klog.Errorf("failed to reconcile del vpc %q normal static route", vpc.Name)
+						return err
+					}
+				} else {
+					// create bfd between lrp and physical switch gw
+					// bfd status down means current lrp binding chassis node external nic has no external network connectivity
+					// gc will switch lrp to another node
+					lrpEipName := fmt.Sprintf("%s-%s", key, c.config.ExternalGatewaySwitch)
+					v4ExtGw, _ := util.SplitStringIP(externalSubnet.Spec.Gateway)
+					// TODO: support v6 external gateway BFD check
+					if _, err := c.OVNNbClient.CreateBFD(lrpEipName, v4ExtGw, c.config.BfdMinRx, c.config.BfdMinTx, c.config.BfdDetectMult); err != nil {
+						klog.Error(err)
+						return err
+					}
+					// TODO: support multi external nic
 				}
 			}
 			if !vpc.Spec.EnableBfd {

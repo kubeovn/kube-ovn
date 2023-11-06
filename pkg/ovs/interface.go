@@ -45,6 +45,7 @@ type LogicalRouterPort interface {
 type BFD interface {
 	CreateBFD(lrpName, dstIP string, minRx, minTx, detectMult int) (*ovnnb.BFD, error)
 	DeleteBFD(lrpName, dstIP string) error
+	ListBFD(lrpName, dstIP string) (*[]ovnnb.BFD, error)
 }
 
 type LogicalSwitch interface {
