@@ -328,9 +328,7 @@ func (c *Controller) InitIPAM() error {
 		return err
 	}
 
-	ipsMap := make(map[string]*kubeovnv1.IP, len(ips))
 	for _, ip := range ips {
-		ipsMap[ip.Name] = ip
 		// recover sts and kubevirt vm ip, other ip recover in later pod loop
 		if ip.Spec.PodType != "StatefulSet" && ip.Spec.PodType != util.Vm {
 			continue
@@ -377,8 +375,7 @@ func (c *Controller) InitIPAM() error {
 				if err != nil {
 					klog.Errorf("failed to init pod %s.%s address %s: %v", podName, pod.Namespace, pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)], err)
 				} else {
-					ipCR := ipsMap[portName]
-					err = c.createOrUpdateCrdIPs(podName, ip, mac, subnet, pod.Namespace, pod.Spec.NodeName, podNet.ProviderName, podType, &ipCR)
+					err = c.createOrUpdateCrdIPs(podName, ip, mac, subnet, pod.Namespace, pod.Spec.NodeName, podNet.ProviderName, podType)
 					if err != nil {
 						klog.Errorf("failed to create/update ips CR %s.%s with ip address %s: %v", podName, pod.Namespace, ip, err)
 					}

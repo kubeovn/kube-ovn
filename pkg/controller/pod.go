@@ -547,7 +547,7 @@ func (c *Controller) handleAddPod(key string) error {
 
 		podType := getPodType(pod)
 		podName := c.getNameByPod(pod)
-		if err := c.createOrUpdateCrdIPs(podName, ipStr, mac, subnet.Name, pod.Namespace, pod.Spec.NodeName, podNet.ProviderName, podType, nil); err != nil {
+		if err := c.createOrUpdateCrdIPs(podName, ipStr, mac, subnet.Name, pod.Namespace, pod.Spec.NodeName, podNet.ProviderName, podType); err != nil {
 			err = fmt.Errorf("failed to create ips CR %s.%s: %v", podName, pod.Namespace, err)
 			klog.Error(err)
 			return err
