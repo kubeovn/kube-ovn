@@ -260,7 +260,7 @@ func changeGatewayType(gatewayType string, gwNodes []string, clientSets []client
 		case "ecmp":
 			gatewayStr = strings.ReplaceAll(gwNodes[index], ",", ";")
 		case "half":
-			gatewayStr = strings.Replace(gwNodes[index], ",", ";", 1)
+			gatewayStr = gwNodes[index]
 		}
 		framework.Logf("check gatewayStr %s ", gatewayStr)
 		configMapPatchPayload, err := json.Marshal(corev1.ConfigMap{
