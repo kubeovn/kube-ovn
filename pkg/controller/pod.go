@@ -255,9 +255,9 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 	oldPod := oldObj.(*v1.Pod)
 	newPod := newObj.(*v1.Pod)
 
-	if oldPod.Annotations[util.AAPAnnotation] != newPod.Annotations[util.AAPAnnotation] {
-		oldAAPs := strings.Split(oldPod.Annotations[util.AAPAnnotation], ",")
-		newAAPs := strings.Split(newPod.Annotations[util.AAPAnnotation], ",")
+	if oldPod.Annotations[util.AAPsAnnotation] != newPod.Annotations[util.AAPsAnnotation] {
+		oldAAPs := strings.Split(oldPod.Annotations[util.AAPsAnnotation], ",")
+		newAAPs := strings.Split(newPod.Annotations[util.AAPsAnnotation], ",")
 		if oldAAPs != nil || newAAPs != nil {
 			var vipNames []string
 			vipNames = append(vipNames, oldAAPs...)
@@ -964,7 +964,7 @@ func (c *Controller) handleDeletePod(key string) error {
 		return nil
 	}
 
-	if aaps := strings.Split(pod.Annotations[util.AAPAnnotation], ","); aaps != nil {
+	if aaps := strings.Split(pod.Annotations[util.AAPsAnnotation], ","); aaps != nil {
 		for _, vipName := range aaps {
 			if vip, err := c.virtualIpsLister.Get(vipName); err == nil {
 				if vip.Spec.Namespace != pod.Namespace {

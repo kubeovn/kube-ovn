@@ -446,7 +446,7 @@ func (c *Controller) handleUpdateVirtualParents(key string) error {
 
 	var virtualParents []string
 	for _, pod := range pods {
-		if aaps := strings.Split(pod.Annotations[util.AAPAnnotation], ","); !slices.Contains(aaps, cachedVip.Name) {
+		if aaps := strings.Split(pod.Annotations[util.AAPsAnnotation], ","); !slices.Contains(aaps, cachedVip.Name) {
 			continue
 		}
 		podNets, err := c.getPodKubeovnNets(pod)
