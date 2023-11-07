@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8stypes "k8s.io/apimachinery/pkg/types"
@@ -230,7 +231,11 @@ var _ = framework.OrderedDescribe("[group:ovn-ic]", func() {
 		ginkgo.By("Waiting for ecmp gateway to be applied")
 		time.Sleep(15 * time.Second)
 
-		checkECMPCount(3)
+		if frameworks[0].ClusterIPFamily == apiv1.ProtocolDual {
+			checkECMPCount(6)
+		} else {
+			checkECMPCount(3)
+		}
 		fnCheckPodHTTP()
 
 		ginkgo.By("Case 3: Changing the ConfigMap in cluster to half ha and half ecmp")
@@ -238,7 +243,11 @@ var _ = framework.OrderedDescribe("[group:ovn-ic]", func() {
 		ginkgo.By("Waiting for half gateway to be applied")
 		time.Sleep(15 * time.Second)
 
-		checkECMPCount(2)
+		if frameworks[0].ClusterIPFamily == apiv1.ProtocolDual {
+			checkECMPCount(4)
+		} else {
+			checkECMPCount(2)
+		}
 		fnCheckPodHTTP()
 	})
 })
