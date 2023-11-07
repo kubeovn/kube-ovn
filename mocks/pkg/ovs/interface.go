@@ -384,6 +384,20 @@ func (mr *MockLogicalRouterPortMockRecorder) LogicalRouterPortExists(lrpName int
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LogicalRouterPortExists", reflect.TypeOf((*MockLogicalRouterPort)(nil).LogicalRouterPortExists), lrpName)
 }
 
+// UpdateLogicalRouterPortGatewayChassis mocks base method.
+func (m *MockLogicalRouterPort) UpdateLogicalRouterPortGatewayChassis(lrpName string, gatewayChassis []string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateLogicalRouterPortGatewayChassis", lrpName, gatewayChassis)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateLogicalRouterPortGatewayChassis indicates an expected call of UpdateLogicalRouterPortGatewayChassis.
+func (mr *MockLogicalRouterPortMockRecorder) UpdateLogicalRouterPortGatewayChassis(lrpName, gatewayChassis interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateLogicalRouterPortGatewayChassis", reflect.TypeOf((*MockLogicalRouterPort)(nil).UpdateLogicalRouterPortGatewayChassis), lrpName, gatewayChassis)
+}
+
 // UpdateLogicalRouterPortOptions mocks base method.
 func (m *MockLogicalRouterPort) UpdateLogicalRouterPortOptions(lrpName string, options map[string]string) error {
 	m.ctrl.T.Helper()
@@ -477,6 +491,21 @@ func (m *MockBFD) ListBFD(lrpName, dstIP string) (*[]ovnnb.BFD, error) {
 func (mr *MockBFDMockRecorder) ListBFD(lrpName, dstIP interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListBFD", reflect.TypeOf((*MockBFD)(nil).ListBFD), lrpName, dstIP)
+}
+
+// ListDownBFDs mocks base method.
+func (m *MockBFD) ListDownBFDs() (*[]ovnnb.BFD, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListDownBFDs")
+	ret0, _ := ret[0].(*[]ovnnb.BFD)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListDownBFDs indicates an expected call of ListDownBFDs.
+func (mr *MockBFDMockRecorder) ListDownBFDs() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListDownBFDs", reflect.TypeOf((*MockBFD)(nil).ListDownBFDs))
 }
 
 // MockLogicalSwitch is a mock of LogicalSwitch interface.
@@ -3143,6 +3172,21 @@ func (mr *MockNbClientMockRecorder) ListDHCPOptions(needVendorFilter, externalID
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListDHCPOptions", reflect.TypeOf((*MockNbClient)(nil).ListDHCPOptions), needVendorFilter, externalIDs)
 }
 
+// ListDownBFDs mocks base method.
+func (m *MockNbClient) ListDownBFDs() (*[]ovnnb.BFD, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListDownBFDs")
+	ret0, _ := ret[0].(*[]ovnnb.BFD)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListDownBFDs indicates an expected call of ListDownBFDs.
+func (mr *MockNbClientMockRecorder) ListDownBFDs() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListDownBFDs", reflect.TypeOf((*MockNbClient)(nil).ListDownBFDs))
+}
+
 // ListLoadBalancerHealthChecks mocks base method.
 func (m *MockNbClient) ListLoadBalancerHealthChecks(filter func(*ovnnb.LoadBalancerHealthCheck) bool) ([]ovnnb.LoadBalancerHealthCheck, error) {
 	m.ctrl.T.Helper()
@@ -3952,6 +3996,20 @@ func (m *MockNbClient) UpdateIngressACLOps(pgName, asIngressName, asExceptName, 
 func (mr *MockNbClientMockRecorder) UpdateIngressACLOps(pgName, asIngressName, asExceptName, protocol, npp, logEnable, namedPortMap interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateIngressACLOps", reflect.TypeOf((*MockNbClient)(nil).UpdateIngressACLOps), pgName, asIngressName, asExceptName, protocol, npp, logEnable, namedPortMap)
+}
+
+// UpdateLogicalRouterPortGatewayChassis mocks base method.
+func (m *MockNbClient) UpdateLogicalRouterPortGatewayChassis(lrpName string, gatewayChassis []string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateLogicalRouterPortGatewayChassis", lrpName, gatewayChassis)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateLogicalRouterPortGatewayChassis indicates an expected call of UpdateLogicalRouterPortGatewayChassis.
+func (mr *MockNbClientMockRecorder) UpdateLogicalRouterPortGatewayChassis(lrpName, gatewayChassis interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateLogicalRouterPortGatewayChassis", reflect.TypeOf((*MockNbClient)(nil).UpdateLogicalRouterPortGatewayChassis), lrpName, gatewayChassis)
 }
 
 // UpdateLogicalRouterPortOptions mocks base method.

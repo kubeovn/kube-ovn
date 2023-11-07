@@ -26,6 +26,23 @@ func (c *OVNNbClient) ListBFD(lrpName, dstIP string) (*[]ovnnb.BFD, error) {
 	return &bfdList, nil
 }
 
+func (c *OVNNbClient) ListDownBFDs() (*[]ovnnb.BFD, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+
+	bfdList := make([]ovnnb.BFD, 0)
+	if err := c.ovsDbClient.WhereCache(func(bfd *ovnnb.BFD) bool {
+		if *bfd.Status == ovnnb.BFDStatusDown || *bfd.Status == ovnnb.BFDStatusAdminDown {
+			return true
+		}
+		return false
+	}).List(ctx, &bfdList); err != nil {
+		return nil, fmt.Errorf("failed to list down BFDs: %v", err)
+	}
+
+	return &bfdList, nil
+}
+
 func (c *OVNNbClient) CreateBFD(lrpName, dstIP string, minRx, minTx, detectMult int) (*ovnnb.BFD, error) {
 	bfdList, err := c.ListBFD(lrpName, dstIP)
 	if err != nil {

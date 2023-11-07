@@ -13,6 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
 
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -78,7 +79,7 @@ func (c *Controller) removeExternalGateway() error {
 	sel, _ := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{MatchLabels: map[string]string{util.ExGatewayLabel: "true"}})
 	nodes, err := c.nodesLister.List(sel)
 	if err != nil {
-		klog.Errorf("failed to list nodes, %v", err)
+		klog.Errorf("failed to list external gw nodes, %v", err)
 		return err
 	}
 	for _, cachedNode := range nodes {
@@ -223,10 +224,15 @@ func (c *Controller) getGatewayChassis(config map[string]string) ([]string, erro
 		gwNodes = append(gwNodes, node.Name)
 	}
 	if config["type"] != "distributed" {
-		gwNodes = strings.Split(config["external-gw-nodes"], ",")
+		nodeNames := strings.Split(config["external-gw-nodes"], ",")
+		for _, name := range nodeNames {
+			name = strings.TrimSpace(name)
+			if name != "" && !util.ContainsString(gwNodes, name) {
+				gwNodes = append(gwNodes, name)
+			}
+		}
 	}
 	for _, gw := range gwNodes {
-		gw = strings.TrimSpace(gw)
 		cachedNode, err := c.nodesLister.Get(gw)
 		if err != nil {
 			klog.Errorf("failed to get gw node %s, %v", gw, err)
@@ -300,4 +306,78 @@ func (c *Controller) updateDefaultVpcExternal(enableExternal bool) error {
 		}
 	}
 	return nil
+}
+
+func (c *Controller) l3HA() {
+	// maintain router external lrp ha
+	// based on the bfd between router external lrp and physical switch gw
+	// if bfd down, switch router external lrp to another chassis node
+
+	bfds, err := c.OVNNbClient.ListDownBFDs()
+	if err != nil {
+		klog.Errorf("failed to list bfd, %v", err)
+		return
+	}
+	// no bfd down
+	if len(*bfds) == 0 {
+		return
+	}
+
+	// get gw chassis
+	sel, err := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{MatchLabels: map[string]string{util.ExGatewayLabel: "true"}})
+	if err != nil {
+		klog.Errorf("failed to convert label selector, %v", err)
+		return
+	}
+	gwNodes, err := c.nodesLister.List(sel)
+	if err != nil {
+		klog.Errorf("failed to list external gw nodes, %v", err)
+		return
+	}
+	chassises := []string{}
+	for _, node := range gwNodes {
+		if annoChassesName, ok := node.Annotations[util.ChassisAnnotation]; ok {
+			chassises = append(chassises, annoChassesName)
+		}
+	}
+	if len(chassises) == 0 {
+		klog.Errorf("failed to found external gw chassis for lrp which bfd status is down")
+		return
+	}
+
+	if len(chassises) == 1 {
+		klog.Errorf("only one external gw chassis, can not switch lrp which bfd status is down")
+		return
+	}
+
+	downBfdLrps := []*ovnnb.LogicalRouterPort{}
+	for _, bfd := range *bfds {
+		lrp, err := c.OVNNbClient.GetLogicalRouterPort(bfd.LogicalPort, false)
+		if err != nil {
+			klog.Errorf("failed to get lrp %s, %v", bfd.LogicalPort, err)
+			continue
+		}
+		downBfdLrps = append(downBfdLrps, lrp)
+	}
+
+	// switch router external lrp to another chassis
+	for _, lrp := range downBfdLrps {
+		gwChassis := lrp.GatewayChassis
+		if len(gwChassis) == 0 {
+			// wait init
+			continue
+		}
+		if len(gwChassis) == 1 {
+			// last one bad chassis
+			gwChassis = chassises
+		} else {
+			// use the next one chassis
+			klog.Errorf("lrp %s located on bad chassis %s", lrp.Name, gwChassis[0])
+			gwChassis = gwChassis[1:]
+			klog.Infof("lrp %s will migrate to another chassis %s", lrp.Name, gwChassis[0])
+		}
+		if err := c.OVNNbClient.UpdateLogicalRouterPortGatewayChassis(lrp.Name, gwChassis); err != nil {
+			klog.Errorf("failed to update chassises for lrp %s: %v", lrp.Name, err)
+		}
+	}
 }

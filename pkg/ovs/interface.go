@@ -34,6 +34,7 @@ type LogicalRouterPort interface {
 	CreateLogicalRouterPort(lrName, lrpName, mac string, networks []string) error
 	UpdateLogicalRouterPortRA(lrpName, ipv6RAConfigsStr string, enableIPv6RA bool) error
 	UpdateLogicalRouterPortOptions(lrpName string, options map[string]string) error
+	UpdateLogicalRouterPortGatewayChassis(lrpName string, gatewayChassis []string) error
 	DeleteLogicalRouterPort(lrpName string) error
 	DeleteLogicalRouterPorts(externalIDs map[string]string, filter func(lrp *ovnnb.LogicalRouterPort) bool) error
 	GetLogicalRouterPort(lrpName string, ignoreNotFound bool) (*ovnnb.LogicalRouterPort, error)
@@ -46,6 +47,7 @@ type BFD interface {
 	CreateBFD(lrpName, dstIP string, minRx, minTx, detectMult int) (*ovnnb.BFD, error)
 	DeleteBFD(lrpName, dstIP string) error
 	ListBFD(lrpName, dstIP string) (*[]ovnnb.BFD, error)
+	ListDownBFDs() (*[]ovnnb.BFD, error)
 }
 
 type LogicalSwitch interface {

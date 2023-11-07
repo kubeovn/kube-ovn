@@ -533,16 +533,16 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		klog.Error(err)
 		return err
 	}
-	CustomVpcUseEcmpRoute := false
+	CustomVpcUseMultiHopEcmp := false
 	for _, subnet := range subnets {
 		if subnet.Spec.Vpc == key {
 			c.addOrUpdateSubnetQueue.Add(subnet.Name)
 			if vpc.Name != util.DefaultVpc && subnet.Spec.EnableEcmp {
-				CustomVpcUseEcmpRoute = true
+				CustomVpcUseMultiHopEcmp = true
 			}
 		}
 	}
-	if vpc.Name != util.DefaultVpc {
+	if vpc.Name != util.DefaultVpc && !externalSubnet.Spec.LogicalGateway {
 		if cachedVpc.Spec.EnableExternal {
 			if !cachedVpc.Status.EnableExternal {
 				// connect vpc to default external
@@ -553,25 +553,26 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 				}
 			}
 			if vpc.Spec.EnableBfd {
-				if CustomVpcUseEcmpRoute {
+				if !externalSubnet.Spec.LogicalGateway {
+					// create bfd between lrp and physical switch gw
+					// bfd status down means current lrp binding chassis node external nic lost external network connectivity
+					// should switch lrp to another node
+					lrpEipName := fmt.Sprintf("%s-%s", key, c.config.ExternalGatewaySwitch)
+					v4ExtGw, _ := util.SplitStringIP(externalSubnet.Spec.Gateway)
+					// TODO: dualstack
+					if _, err := c.OVNNbClient.CreateBFD(lrpEipName, v4ExtGw, c.config.BfdMinRx, c.config.BfdMinTx, c.config.BfdDetectMult); err != nil {
+						klog.Error(err)
+						return err
+					}
+					// TODO: support multi external nic
+				}
+				if CustomVpcUseMultiHopEcmp {
 					klog.Infof("remove normal static ecmp route for vpc %s", vpc.Name)
 					// auto remove normal type static route, if using ecmp based bfd
 					if err := c.reconcileCustomVpcDelNormalStaticRoute(vpc.Name); err != nil {
 						klog.Errorf("failed to reconcile del vpc %q normal static route", vpc.Name)
 						return err
 					}
-				} else {
-					// create bfd between lrp and physical switch gw
-					// bfd status down means current lrp binding chassis node external nic has no external network connectivity
-					// gc will switch lrp to another node
-					lrpEipName := fmt.Sprintf("%s-%s", key, c.config.ExternalGatewaySwitch)
-					v4ExtGw, _ := util.SplitStringIP(externalSubnet.Spec.Gateway)
-					// TODO: support v6 external gateway BFD check
-					if _, err := c.OVNNbClient.CreateBFD(lrpEipName, v4ExtGw, c.config.BfdMinRx, c.config.BfdMinTx, c.config.BfdDetectMult); err != nil {
-						klog.Error(err)
-						return err
-					}
-					// TODO: support multi external nic
 				}
 			}
 			if !vpc.Spec.EnableBfd {

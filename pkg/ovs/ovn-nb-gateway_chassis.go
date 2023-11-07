@@ -103,7 +103,7 @@ func (c *OVNNbClient) newGatewayChassis(gwChassisName, chassisName string, prior
 	return gwChassis, nil
 }
 
-// DeleteGatewayChassisOp create operation which create gateway chassis
+// CreateGatewayChassisesOp create operation which create gateway chassises
 func (c *OVNNbClient) CreateGatewayChassisesOp(lrpName string, chassises []string) ([]ovsdb.Operation, error) {
 	if len(chassises) == 0 {
 		return nil, nil
