@@ -13,7 +13,6 @@ import (
 	"testing"
 	"time"
 
-	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8stypes "k8s.io/apimachinery/pkg/types"
@@ -28,6 +27,7 @@ import (
 
 	"github.com/onsi/ginkgo/v2"
 
+	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/kind"
