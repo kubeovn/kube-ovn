@@ -419,7 +419,7 @@ func (c *Controller) syncSgLogicalPort(key string) error {
 		return err
 	}
 
-	results, err := c.OVNNbClient.ListLogicalSwitchPorts(false, map[string]string{"external_ids:associated_sg_" + key: "true"}, nil)
+	results, err := c.OVNNbClient.ListLogicalSwitchPorts(false, map[string]string{fmt.Sprintf("associated_sg_%s", key): "true"}, nil)
 	if err != nil {
 		klog.Errorf("failed to find logical port, %v", err)
 		return err
