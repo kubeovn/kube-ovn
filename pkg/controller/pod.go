@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -253,6 +254,30 @@ func (c *Controller) enqueueDeletePod(obj interface{}) {
 func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 	oldPod := oldObj.(*v1.Pod)
 	newPod := newObj.(*v1.Pod)
+
+	if oldPod.Annotations[util.AAPsAnnotation] != newPod.Annotations[util.AAPsAnnotation] {
+		oldAAPs := strings.Split(oldPod.Annotations[util.AAPsAnnotation], ",")
+		newAAPs := strings.Split(newPod.Annotations[util.AAPsAnnotation], ",")
+		if oldAAPs != nil || newAAPs != nil {
+			var vipNames []string
+			vipNames = append(vipNames, oldAAPs...)
+			for _, newAAP := range newAAPs {
+				if !slices.Contains(vipNames, newAAP) {
+					vipNames = append(vipNames, newAAP)
+				}
+			}
+			for _, vipName := range vipNames {
+				if vip, err := c.virtualIpsLister.Get(vipName); err == nil {
+					if vip.Spec.Namespace != newPod.Namespace {
+						continue
+					}
+					klog.Infof("enqueue update virtual parents for %s", vipName)
+					c.updateVirtualParentsQueue.Add(vipName)
+				}
+			}
+		}
+	}
+
 	if oldPod.ResourceVersion == newPod.ResourceVersion {
 		return
 	}
@@ -952,6 +977,18 @@ func (c *Controller) handleDeletePod(key string) error {
 	if p != nil && p.UID != pod.UID {
 		// Pod with same name exists, just return here
 		return nil
+	}
+
+	if aaps := strings.Split(pod.Annotations[util.AAPsAnnotation], ","); aaps != nil {
+		for _, vipName := range aaps {
+			if vip, err := c.virtualIpsLister.Get(vipName); err == nil {
+				if vip.Spec.Namespace != pod.Namespace {
+					continue
+				}
+				klog.Infof("enqueue update virtual parents for %s", vipName)
+				c.updateVirtualParentsQueue.Add(vipName)
+			}
+		}
 	}
 
 	ports, err := c.OVNNbClient.ListNormalLogicalSwitchPorts(true, map[string]string{"pod": key})

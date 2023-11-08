@@ -185,6 +185,41 @@ func (c *OVNNbClient) CreateVirtualLogicalSwitchPorts(lsName string, ips ...stri
 	return nil
 }
 
+// CreateVirtualLogicalSwitchPort create one virtual type logical switch port for allowed-address-pair
+func (c *OVNNbClient) CreateVirtualLogicalSwitchPort(lspName, lsName, ip string) error {
+	exist, err := c.LogicalSwitchPortExists(lspName)
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
+
+	// ignore
+	if exist {
+		return nil
+	}
+
+	lsp := &ovnnb.LogicalSwitchPort{
+		UUID: ovsclient.NamedUUID(),
+		Name: lspName,
+		Type: "virtual",
+		Options: map[string]string{
+			"virtual-ip": ip,
+		},
+	}
+
+	op, err := c.CreateLogicalSwitchPortOp(lsp, lsName)
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
+
+	if err := c.Transact("lsp-add", op); err != nil {
+		return fmt.Errorf("create virtual logical switch port %s for logical switch %s: %v", lspName, lsName, err)
+	}
+
+	return nil
+}
+
 // CreateBareLogicalSwitchPort create logical switch port with basic configuration
 func (c *OVNNbClient) CreateBareLogicalSwitchPort(lsName, lspName, ip, mac string) error {
 	exist, err := c.LogicalSwitchPortExists(lspName)
@@ -250,6 +285,31 @@ func (c *OVNNbClient) SetLogicalSwitchPortVirtualParents(lsName, parents string,
 	}
 
 	if err := c.Transact("lsp-update", ops); err != nil {
+		return fmt.Errorf("set logical switch port virtual-parents %v", err)
+	}
+	return nil
+}
+
+// CreateVirtualLogicalSwitchPort update one virtual type logical switch port virtual-parents for allowed-address-pair
+func (c *OVNNbClient) SetVirtualLogicalSwitchPortVirtualParents(lspName, parents string) error {
+	lsp, err := c.GetLogicalSwitchPort(lspName, true)
+	if err != nil {
+		klog.Error(err)
+		return fmt.Errorf("get logical switch port %s: %v", lspName, err)
+	}
+
+	lsp.Options["virtual-parents"] = parents
+	if len(parents) == 0 {
+		delete(lsp.Options, "virtual-parents")
+	}
+
+	op, err := c.UpdateLogicalSwitchPortOp(lsp, &lsp.Options)
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
+
+	if err := c.Transact("lsp-update", op); err != nil {
 		return fmt.Errorf("set logical switch port virtual-parents %v", err)
 	}
 	return nil

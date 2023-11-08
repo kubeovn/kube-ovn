@@ -47,7 +47,7 @@ func (v *ValidatingHook) VipUpdateHook(ctx context.Context, req admission.Reques
 				return ctrlwebhook.Errored(http.StatusBadRequest, err)
 			}
 		} else {
-			err := fmt.Errorf("vip has been assigned,not support change")
+			err := fmt.Errorf("vip has been assigned, not support change")
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		}
 	}

@@ -2030,6 +2030,10 @@ spec:
                   type: string
                 pmac:
                   type: string
+                selector:
+                  type: array
+                  items:
+                    type: string
                 conditions:
                   type: array
                   items:
@@ -2072,6 +2076,10 @@ spec:
                   type: string
                 parentV6ip:
                   type: string
+                selector:
+                  type: array
+                  items:
+                    type: string
 ---
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
