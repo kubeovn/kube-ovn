@@ -3921,6 +3921,15 @@ spec:
         - key: CriticalAddonsOnly
           operator: Exists
       affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - preference:
+              matchExpressions:
+              - key: "ovn.kubernetes.io/ic-gw"
+                operator: NotIn
+                values:
+                - "true"
+            weight: 100
         podAntiAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
             - labelSelector:
