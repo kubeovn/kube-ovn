@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"reflect"
+	"slices"
 	"strings"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -48,6 +50,10 @@ func (c *Controller) enqueueUpdateVirtualIP(oldObj, newObj interface{}) {
 		klog.Infof("enqueue update vip %s", key)
 		c.updateVirtualIPQueue.Add(key)
 	}
+	if !reflect.DeepEqual(oldVip.Spec.Selector, newVip.Spec.Selector) {
+		klog.Infof("enqueue update virtual parents for %s", key)
+		c.updateVirtualParentsQueue.Add(key)
+	}
 }
 
 func (c *Controller) enqueueDelVirtualIP(obj interface{}) {
@@ -69,6 +75,11 @@ func (c *Controller) runAddVirtualIPWorker() {
 
 func (c *Controller) runUpdateVirtualIPWorker() {
 	for c.processNextUpdateVirtualIPWorkItem() {
+	}
+}
+
+func (c *Controller) runUpdateVirtualParentsWorker() {
+	for c.processNextUpdateVirtualParentsWorkItem() {
 	}
 }
 
@@ -125,6 +136,34 @@ func (c *Controller) processNextUpdateVirtualIPWorkItem() bool {
 			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
 		}
 		c.updateVirtualIPQueue.Forget(obj)
+		return nil
+	}(obj)
+	if err != nil {
+		utilruntime.HandleError(err)
+		return true
+	}
+	return true
+}
+
+func (c *Controller) processNextUpdateVirtualParentsWorkItem() bool {
+	obj, shutdown := c.updateVirtualParentsQueue.Get()
+	if shutdown {
+		return false
+	}
+	err := func(obj interface{}) error {
+		defer c.updateVirtualParentsQueue.Done(obj)
+		var key string
+		var ok bool
+		if key, ok = obj.(string); !ok {
+			c.updateVirtualParentsQueue.Forget(obj)
+			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
+			return nil
+		}
+		if err := c.handleUpdateVirtualParents(key); err != nil {
+			c.updateVirtualParentsQueue.AddRateLimited(key)
+			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
+		}
+		c.updateVirtualParentsQueue.Forget(obj)
 		return nil
 	}(obj)
 	if err != nil {
@@ -245,6 +284,9 @@ func (c *Controller) handleAddVirtualIP(key string) error {
 		klog.Errorf("failed to count vip '%s' in subnet, %v", vip.Name, err)
 		return err
 	}
+	if err := c.handleUpdateVirtualParents(key); err != nil {
+		return fmt.Errorf("error syncing virtual parents for vip '%s': %s", key, err.Error())
+	}
 	return nil
 }
 
@@ -311,6 +353,11 @@ func (c *Controller) handleDelVirtualIP(vip *kubeovnv1.Vip) error {
 			return err
 		}
 	}
+	// delete virtual ports
+	if err := c.OVNNbClient.DeleteLogicalSwitchPort(vip.Name); err != nil {
+		klog.Errorf("delete virtual logical switch port %s from logical switch %s: %v", vip.Name, vip.Spec.Subnet, err)
+		return err
+	}
 	c.ipam.ReleaseAddressByPod(vip.Name)
 	c.updateSubnetStatusQueue.Add(vip.Spec.Subnet)
 	return nil
@@ -362,6 +409,71 @@ func (c *Controller) acquireIPAddress(subnetName, name, nicName string) (string,
 			skippedAddrs = append(skippedAddrs, v6ip)
 		}
 	}
+}
+
+func (c *Controller) handleUpdateVirtualParents(key string) error {
+	cachedVip, err := c.virtualIpsLister.Get(key)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+	// only pods in the same namespace as vip are allowed to use aap
+	if cachedVip.Status.V4ip == "" || cachedVip.Spec.Namespace == "" {
+		return nil
+	}
+	// add new virtual port if not exist
+	if err = c.OVNNbClient.CreateVirtualLogicalSwitchPort(cachedVip.Name, cachedVip.Spec.Subnet, cachedVip.Status.V4ip); err != nil {
+		klog.Errorf("create virtual port with vip %s from logical switch %s: %v", cachedVip.Name, cachedVip.Spec.Subnet, err)
+		return err
+	}
+
+	selectors := make(map[string]string)
+	for _, v := range cachedVip.Spec.Selector {
+		parts := strings.Split(strings.TrimSpace(v), ":")
+		if len(parts) != 2 {
+			continue
+		}
+		selectors[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
+	}
+	sel, _ := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{MatchLabels: selectors})
+	pods, err := c.podsLister.Pods(cachedVip.Spec.Namespace).List(sel)
+	if err != nil {
+		klog.Errorf("failed to list pods that meet selector requirements, %v", err)
+		return err
+	}
+
+	var virtualParents []string
+	for _, pod := range pods {
+		if pod.Annotations == nil {
+			err = fmt.Errorf("pod annotations have not been initialized")
+			klog.Error(err)
+			return err
+		}
+		if aaps := strings.Split(pod.Annotations[util.AAPsAnnotation], ","); !slices.Contains(aaps, cachedVip.Name) {
+			continue
+		}
+		podNets, err := c.getPodKubeovnNets(pod)
+		if err != nil {
+			klog.Errorf("failed to get pod nets %v", err)
+		}
+		for _, podNet := range podNets {
+			if podNet.Subnet.Name == cachedVip.Spec.Subnet {
+				portName := ovs.PodNameToPortName(pod.Name, pod.Namespace, podNet.Subnet.Spec.Provider)
+				virtualParents = append(virtualParents, portName)
+				break
+			}
+		}
+	}
+
+	parents := strings.Join(virtualParents, ",")
+	if err = c.OVNNbClient.SetVirtualLogicalSwitchPortVirtualParents(cachedVip.Name, parents); err != nil {
+		klog.Errorf("set vip %s virtual parents %s: %v", cachedVip.Name, parents, err)
+		return err
+	}
+
+	return nil
 }
 
 func (c *Controller) subnetCountIP(subnet *kubeovnv1.Subnet) error {

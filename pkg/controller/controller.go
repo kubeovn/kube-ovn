@@ -118,11 +118,12 @@ type Controller struct {
 	ipsLister kubeovnlister.IPLister
 	ipSynced  cache.InformerSynced
 
-	virtualIpsLister     kubeovnlister.VipLister
-	virtualIpsSynced     cache.InformerSynced
-	addVirtualIPQueue    workqueue.RateLimitingInterface
-	updateVirtualIPQueue workqueue.RateLimitingInterface
-	delVirtualIPQueue    workqueue.RateLimitingInterface
+	virtualIpsLister          kubeovnlister.VipLister
+	virtualIpsSynced          cache.InformerSynced
+	addVirtualIPQueue         workqueue.RateLimitingInterface
+	updateVirtualIPQueue      workqueue.RateLimitingInterface
+	updateVirtualParentsQueue workqueue.RateLimitingInterface
+	delVirtualIPQueue         workqueue.RateLimitingInterface
 
 	iptablesEipsLister     kubeovnlister.IptablesEIPLister
 	iptablesEipSynced      cache.InformerSynced
@@ -352,11 +353,12 @@ func Run(ctx context.Context, config *Configuration) {
 		ipsLister: ipInformer.Lister(),
 		ipSynced:  ipInformer.Informer().HasSynced,
 
-		virtualIpsLister:     virtualIPInformer.Lister(),
-		virtualIpsSynced:     virtualIPInformer.Informer().HasSynced,
-		addVirtualIPQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddVirtualIp"),
-		updateVirtualIPQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateVirtualIp"),
-		delVirtualIPQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteVirtualIp"),
+		virtualIpsLister:          virtualIPInformer.Lister(),
+		virtualIpsSynced:          virtualIPInformer.Informer().HasSynced,
+		addVirtualIPQueue:         workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddVirtualIp"),
+		updateVirtualIPQueue:      workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateVirtualIp"),
+		updateVirtualParentsQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateVirtualParents"),
+		delVirtualIPQueue:         workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteVirtualIp"),
 
 		iptablesEipsLister:     iptablesEipInformer.Lister(),
 		iptablesEipSynced:      iptablesEipInformer.Informer().HasSynced,
@@ -872,6 +874,7 @@ func (c *Controller) shutdown() {
 
 	c.addVirtualIPQueue.ShutDown()
 	c.updateVirtualIPQueue.ShutDown()
+	c.updateVirtualParentsQueue.ShutDown()
 	c.delVirtualIPQueue.ShutDown()
 
 	c.addIptablesEipQueue.ShutDown()
@@ -1090,6 +1093,7 @@ func (c *Controller) startWorkers(ctx context.Context) {
 
 	go wait.Until(c.runAddVirtualIPWorker, time.Second, ctx.Done())
 	go wait.Until(c.runUpdateVirtualIPWorker, time.Second, ctx.Done())
+	go wait.Until(c.runUpdateVirtualParentsWorker, time.Second, ctx.Done())
 	go wait.Until(c.runDelVirtualIPWorker, time.Second, ctx.Done())
 
 	go wait.Until(c.runAddIptablesEipWorker, time.Second, ctx.Done())
