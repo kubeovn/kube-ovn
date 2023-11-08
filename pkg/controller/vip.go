@@ -446,6 +446,11 @@ func (c *Controller) handleUpdateVirtualParents(key string) error {
 
 	var virtualParents []string
 	for _, pod := range pods {
+		if pod.Annotations == nil {
+			err = fmt.Errorf("pod annotations have not been initialized")
+			klog.Error(err)
+			return err
+		}
 		if aaps := strings.Split(pod.Annotations[util.AAPsAnnotation], ","); !slices.Contains(aaps, cachedVip.Name) {
 			continue
 		}
