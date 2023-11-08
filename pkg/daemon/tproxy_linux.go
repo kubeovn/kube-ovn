@@ -120,18 +120,18 @@ func (c *Controller) reconcileTProxyRoutes(protocol string) {
 	}
 
 	if err := addRuleIfNotExist(family, TProxyOutputMark, TProxyOutputMask, util.TProxyRouteTable); err != nil {
-		klog.Error("add output rule failed err:%v ", err)
+		klog.Errorf("add output rule failed: %v", err)
 		return
 	}
 
 	if err := addRuleIfNotExist(family, TProxyPreroutingMark, TProxyPreroutingMask, util.TProxyRouteTable); err != nil {
-		klog.Error("add prerouting rule failed err:%v ", err)
+		klog.Errorf("add prerouting rule failed: %v", err)
 		return
 	}
 
 	dst := GetDefaultRouteDst(protocol)
 	if err := addRouteIfNotExist(family, util.TProxyRouteTable, &dst); err != nil {
-		klog.Error("add tproxy route failed err:%v ", err)
+		klog.Errorf("add tproxy route failed: %v", err)
 		return
 	}
 }
@@ -152,16 +152,16 @@ func (c *Controller) cleanTProxyRoutes(protocol string) {
 	}
 
 	if err := deleteRuleIfExists(family, TProxyOutputMark); err != nil {
-		klog.Errorf("delete tproxy route rule mark %v failed err: %v ", TProxyOutputMark, err)
+		klog.Errorf("delete tproxy route rule mark %v failed err: %v", TProxyOutputMark, err)
 	}
 
 	if err := deleteRuleIfExists(family, TProxyPreroutingMark); err != nil {
-		klog.Errorf("delete tproxy route rule mark %v failed err: %v ", TProxyPreroutingMark, err)
+		klog.Errorf("delete tproxy route rule mark %v failed err: %v", TProxyPreroutingMark, err)
 	}
 
 	dst := GetDefaultRouteDst(protocol)
 	if err := delRouteIfExist(family, util.TProxyRouteTable, &dst); err != nil {
-		klog.Errorf("delete tproxy route rule mark %v failed err: %v ", TProxyPreroutingMark, err)
+		klog.Errorf("delete tproxy route rule mark %v failed err: %v", TProxyPreroutingMark, err)
 	}
 }
 
@@ -182,7 +182,7 @@ func addRuleIfNotExist(family, mark, mask, table int) error {
 	rule.Family = family
 
 	if err = netlink.RuleAdd(rule); err != nil && !errors.Is(err, syscall.EEXIST) {
-		klog.Errorf("add rule %v failed with err %v ", rule, err)
+		klog.Errorf("add rule %v failed with err %v", rule, err)
 		return err
 	}
 
@@ -217,7 +217,7 @@ func addRouteIfNotExist(family, table int, dst *net.IPNet) error {
 
 	link, err := netlink.LinkByName("lo")
 	if err != nil {
-		return fmt.Errorf("can't find device lo")
+		return errors.New("can't find device lo")
 	}
 
 	route := netlink.Route{
@@ -229,7 +229,7 @@ func addRouteIfNotExist(family, table int, dst *net.IPNet) error {
 	}
 
 	if err = netlink.RouteReplace(&route); err != nil && !errors.Is(err, syscall.EEXIST) {
-		klog.Errorf("add route %v failed with err %v ", route, err)
+		klog.Errorf("add route %v failed with err %v", route, err)
 		return err
 	}
 
@@ -239,7 +239,7 @@ func addRouteIfNotExist(family, table int, dst *net.IPNet) error {
 func delRouteIfExist(family, table int, dst *net.IPNet) error {
 	curRoutes, err := netlink.RouteListFiltered(family, &netlink.Route{Table: table}, netlink.RT_FILTER_TABLE)
 	if err != nil {
-		klog.Error("list routes with table %d failed with err: %v", table, err)
+		klog.Errorf("list routes with table %d failed with err: %v", table, err)
 		return err
 	}
 

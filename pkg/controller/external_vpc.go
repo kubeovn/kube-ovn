@@ -44,7 +44,7 @@ func (c *Controller) syncExternalVpc() {
 		} else {
 			err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Delete(context.Background(), vpcName, metav1.DeleteOptions{})
 			if err != nil {
-				klog.Error("delete vpc %s failed: %v", vpcName, err)
+				klog.Errorf("delete vpc %s failed: %v", vpcName, err)
 				continue
 			}
 			klog.Infof("deleted vpc %s ", vpcName)

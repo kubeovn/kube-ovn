@@ -1151,7 +1151,7 @@ func (c *Controller) removeProviderNic(nicName, brName string) error {
 	}
 
 	if err = netlink.LinkSetUp(nic); err != nil {
-		klog.Error("failed to set link %s up: %v", nicName, err)
+		klog.Errorf("failed to set link %s up: %v", nicName, err)
 		return err
 	}
 

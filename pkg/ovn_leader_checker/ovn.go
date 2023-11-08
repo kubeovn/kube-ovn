@@ -340,7 +340,7 @@ func compactOvnDatabase(db string) {
 	}
 
 	if len(output) != 0 {
-		klog.V(5).Infof("compact ovn%s database: %s", string(output))
+		klog.V(5).Infof("compact ovn%s database: %s", db, string(output))
 	}
 }
 
@@ -353,7 +353,7 @@ func doOvnLeaderCheck(cfg *Configuration, podName, podNamespace string) {
 	}
 
 	if !checkOvnIsAlive() {
-		klog.Errorf("ovn is not alive")
+		klog.Error("ovn is not alive")
 		return
 	}
 

@@ -291,7 +291,7 @@ func (c *Controller) InitIPAM() error {
 		u2oInterconnLrpName := fmt.Sprintf("%s-%s", subnet.Spec.Vpc, subnet.Name)
 		if subnet.Status.U2OInterconnectionIP != "" {
 			if _, _, _, err = c.ipam.GetStaticAddress(u2oInterconnName, u2oInterconnLrpName, subnet.Status.U2OInterconnectionIP, nil, subnet.Name, true); err != nil {
-				klog.Errorf("failed to init subnet u2o interonnection ip to ipam %v", subnet.Name, err)
+				klog.Errorf("failed to init subnet %q u2o interonnection ip to ipam %v", subnet.Name, err)
 			}
 		}
 	}
@@ -557,7 +557,7 @@ func (c *Controller) initDefaultVlan() error {
 
 	_, err = c.config.KubeOvnClient.KubeovnV1().Vlans().Create(context.Background(), &defaultVlan, metav1.CreateOptions{})
 	if err != nil {
-		klog.Errorf("failed to create vlan %s: %v", defaultVlan, err)
+		klog.Errorf("failed to create vlan %s: %v", defaultVlan.Name, err)
 		return err
 	}
 	return nil
@@ -674,7 +674,7 @@ func (c *Controller) initSyncCrdVpcNatGw() error {
 	}
 	for _, gw := range gws {
 		if err := c.updateCrdNatGwLabels(gw.Name, ""); err != nil {
-			klog.Errorf("failed to update nat gw: %v", gw.Name, err)
+			klog.Errorf("failed to update nat gw %s: %v", gw.Name, err)
 			return err
 		}
 	}

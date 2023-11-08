@@ -144,9 +144,9 @@ func (c *Controller) gcLogicalSwitch() error {
 			continue
 		}
 
-		klog.Infof("gc subnet %s", ls)
+		klog.Infof("gc subnet %s", ls.Name)
 		if err := c.handleDeleteLogicalSwitch(ls.Name); err != nil {
-			klog.Errorf("failed to gc subnet %s, %v", ls, err)
+			klog.Errorf("failed to gc subnet %s, %v", ls.Name, err)
 			return err
 		}
 	}
@@ -199,9 +199,9 @@ func (c *Controller) gcCustomLogicalRouter() error {
 			continue
 		}
 		if !util.IsStringIn(lr.Name, vpcNames) {
-			klog.Infof("gc router %s", lr)
+			klog.Infof("gc router %s", lr.Name)
 			if err := c.deleteVpcRouter(lr.Name); err != nil {
-				klog.Errorf("failed to delete router %s, %v", lr, err)
+				klog.Errorf("failed to delete router %s, %v", lr.Name, err)
 				return err
 			}
 		}
