@@ -771,7 +771,7 @@ func (c *Controller) getVMLsps() []string {
 				if network.Multus != nil && network.Multus.NetworkName != "" {
 					items := strings.Split(network.Multus.NetworkName, "/")
 					if len(items) != 2 {
-						continue
+						items = []string{vm.GetNamespace(), items[0]}
 					}
 					provider := fmt.Sprintf("%s.%s.ovn", items[1], items[0])
 					vmLsp := ovs.PodNameToPortName(vm.Name, ns.Name, provider)
