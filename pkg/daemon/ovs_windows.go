@@ -242,11 +242,10 @@ func waitNetworkReady(nic, ipAddr, gateway string, underlayGateway, verbose bool
 	for i, gw := range strings.Split(gateway, ",") {
 		src := strings.Split(ips[i], "/")[0]
 		if !underlayGateway || util.CheckProtocol(gw) == kubeovnv1.ProtocolIPv6 {
-			count, err := pingGateway(gw, src, verbose, maxRetry)
+			_, err := pingGateway(gw, src, verbose, maxRetry)
 			if err != nil {
 				return err
 			}
-			maxRetry -= count
 		}
 	}
 	return nil
