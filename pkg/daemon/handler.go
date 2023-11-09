@@ -216,6 +216,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		}
 
 		var mtu int
+
 		if podSubnet.Spec.Mtu > 0 {
 			mtu = int(podSubnet.Spec.Mtu)
 		} else {
@@ -239,31 +240,9 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 						}
 						return
 					}
-					mtuStr := node.Labels[fmt.Sprintf(util.ProviderNetworkMtuTemplate, providerNetwork)]
-					if mtuStr != "" {
-						if mtu, err = strconv.Atoi(mtuStr); err != nil || mtu <= 0 {
-							errMsg := fmt.Errorf("failed to parse provider network MTU %s: %v", mtuStr, err)
-							klog.Error(errMsg)
-							if err = resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()}); err != nil {
-								klog.Errorf("failed to write response: %v", err)
-							}
-							return
-						}
-						mtuStr := node.Labels[fmt.Sprintf(util.ProviderNetworkMtuTemplate, providerNetwork)]
-						if mtuStr != "" {
-							if mtu, err = strconv.Atoi(mtuStr); err != nil || mtu <= 0 {
-								errMsg := fmt.Errorf("failed to parse provider network MTU %s: %v", mtuStr, err)
-								klog.Error(errMsg)
-								if err = resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()}); err != nil {
-									klog.Errorf("failed to write response: %v", err)
-								}
-								return
-							}
-						}
-					} else {
-						mtu = csh.Config.MTU
-					}
 				}
+			} else {
+				mtu = csh.Config.MTU
 			}
 		}
 
