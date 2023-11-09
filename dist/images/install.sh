@@ -599,7 +599,7 @@ spec:
                       - 253 # default
                       - 254 # main
                       - 255 # local
-                 mtu:
+                mtu:
                   type: integer
                   minimum: 68
                   maximum: 65535
