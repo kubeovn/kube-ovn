@@ -134,7 +134,7 @@ var _ = framework.Describe("[group:vip]", func() {
 			for _, pair := range pairs {
 				keyValue := strings.Split(pair, "=")
 				if len(keyValue) == 2 {
-					options[keyValue[0]] = strings.Replace(keyValue[1], "\n", "", -1)
+					options[keyValue[0]] = strings.ReplaceAll(keyValue[1], "\n", "")
 				}
 			}
 			virtualParents := options["virtual-parents"]
