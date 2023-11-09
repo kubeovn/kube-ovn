@@ -114,3 +114,36 @@ func MakePod(ns, name string, labels, annotations map[string]string, image strin
 
 	return pod
 }
+
+func MakeNetAdminPod(ns, name string, labels, annotations map[string]string, image string, command, args []string) *corev1.Pod {
+	if image == "" {
+		image = PauseImage
+	}
+
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        name,
+			Namespace:   ns,
+			Labels:      labels,
+			Annotations: annotations,
+		},
+		Spec: corev1.PodSpec{
+			Containers: []corev1.Container{
+				{
+					Name:            "container",
+					Image:           image,
+					ImagePullPolicy: corev1.PullIfNotPresent,
+					Command:         command,
+					Args:            args,
+					SecurityContext: &corev1.SecurityContext{
+						Capabilities: &corev1.Capabilities{Add: []corev1.Capability{"NET_ADMIN"}},
+					},
+				},
+			},
+		},
+	}
+	pod.Spec.TerminationGracePeriodSeconds = new(int64)
+	*pod.Spec.TerminationGracePeriodSeconds = 3
+
+	return pod
+}
