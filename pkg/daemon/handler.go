@@ -216,29 +216,55 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		}
 
 		var mtu int
-		if providerNetwork != "" && !podSubnet.Spec.LogicalGateway && !podSubnet.Spec.U2OInterconnection {
-			node, err := csh.Controller.nodesLister.Get(csh.Config.NodeName)
-			if err != nil {
-				errMsg := fmt.Errorf("failed to get node %s: %v", csh.Config.NodeName, err)
-				klog.Error(errMsg)
-				if err = resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()}); err != nil {
-					klog.Errorf("failed to write response: %v", err)
-				}
-				return
-			}
-			mtuStr := node.Labels[fmt.Sprintf(util.ProviderNetworkMtuTemplate, providerNetwork)]
-			if mtuStr != "" {
-				if mtu, err = strconv.Atoi(mtuStr); err != nil || mtu <= 0 {
-					errMsg := fmt.Errorf("failed to parse provider network MTU %s: %v", mtuStr, err)
+		if podSubnet.Spec.Mtu > 0 {
+			mtu = int(podSubnet.Spec.Mtu)
+		} else {
+			if providerNetwork != "" && !podSubnet.Spec.LogicalGateway && !podSubnet.Spec.U2OInterconnection {
+				node, err := csh.Controller.nodesLister.Get(csh.Config.NodeName)
+				if err != nil {
+					errMsg := fmt.Errorf("failed to get node %s: %v", csh.Config.NodeName, err)
 					klog.Error(errMsg)
 					if err = resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()}); err != nil {
 						klog.Errorf("failed to write response: %v", err)
 					}
 					return
 				}
+				mtuStr := node.Labels[fmt.Sprintf(util.ProviderNetworkMtuTemplate, providerNetwork)]
+				if mtuStr != "" {
+					if mtu, err = strconv.Atoi(mtuStr); err != nil || mtu <= 0 {
+						errMsg := fmt.Errorf("failed to parse provider network MTU %s: %v", mtuStr, err)
+						klog.Error(errMsg)
+						if err = resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()}); err != nil {
+							klog.Errorf("failed to write response: %v", err)
+						}
+						return
+					}
+					mtuStr := node.Labels[fmt.Sprintf(util.ProviderNetworkMtuTemplate, providerNetwork)]
+					if mtuStr != "" {
+						if mtu, err = strconv.Atoi(mtuStr); err != nil || mtu <= 0 {
+							errMsg := fmt.Errorf("failed to parse provider network MTU %s: %v", mtuStr, err)
+							klog.Error(errMsg)
+							if err = resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()}); err != nil {
+								klog.Errorf("failed to write response: %v", err)
+							}
+							return
+						}
+						mtuStr := node.Labels[fmt.Sprintf(util.ProviderNetworkMtuTemplate, providerNetwork)]
+						if mtuStr != "" {
+							if mtu, err = strconv.Atoi(mtuStr); err != nil || mtu <= 0 {
+								errMsg := fmt.Errorf("failed to parse provider network MTU %s: %v", mtuStr, err)
+								klog.Error(errMsg)
+								if err = resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()}); err != nil {
+									klog.Errorf("failed to write response: %v", err)
+								}
+								return
+							}
+						}
+					} else {
+						mtu = csh.Config.MTU
+					}
+				}
 			}
-		} else {
-			mtu = csh.Config.MTU
 		}
 
 		klog.Infof("create container interface %s mac %s, ip %s, cidr %s, gw %s, custom routes %v", ifName, macAddr, ipAddr, cidr, gw, podRequest.Routes)
