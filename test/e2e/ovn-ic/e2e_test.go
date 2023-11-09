@@ -230,8 +230,7 @@ var _ = framework.OrderedDescribe("[group:ovn-ic]", func() {
 		changeGatewayType("ecmp", gwNodes, clientSets)
 		ginkgo.By("Waiting for ecmp gateway to be applied")
 		time.Sleep(15 * time.Second)
-
-		if frameworks[0].ClusterIPFamily == apiv1.ProtocolDual {
+		if frameworks[0].ClusterIPFamily == "dual" {
 			checkECMPCount(6)
 		} else {
 			checkECMPCount(3)
