@@ -1245,6 +1245,29 @@ var _ = framework.Describe("[group:subnet]", func() {
 		checkNatPolicyRules(f, cs, fakeSubnet, fakeCidrV4, fakeCidrV6, false)
 		checkNatPolicyIPsets(f, cs, fakeSubnet, fakeCidrV4, fakeCidrV6, false)
 	})
+
+	framework.ConformanceIt("should support customize mtu of all pods in subnet", func() {
+		ginkgo.By("Creating subnet " + subnetName)
+		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, nil)
+		subnet.Spec.Mtu = 1600
+		subnet = subnetClient.CreateSync(subnet)
+
+		ginkgo.By("Creating pod " + podName)
+		annotations := map[string]string{
+			util.LogicalSwitchAnnotation: subnetName,
+		}
+
+		pod := framework.MakePod(namespaceName, podName, nil, annotations, framework.AgnhostImage, nil, nil)
+		_ = podClient.CreateSync(pod)
+
+		ginkgo.By("Validating pod MTU")
+		links, err := iproute.AddressShow("eth0", func(cmd ...string) ([]byte, []byte, error) {
+			return framework.KubectlExec(namespaceName, podName, cmd...)
+		})
+		framework.ExpectNoError(err)
+		framework.ExpectHaveLen(links, 1, "should get eth0 information")
+		framework.ExpectEqual(links[0].Mtu, int(subnet.Spec.Mtu))
+	})
 })
 
 func checkNatPolicyIPsets(f *framework.Framework, cs clientset.Interface, subnet *apiv1.Subnet, cidrV4, cidrV6 string, shouldExist bool) {
