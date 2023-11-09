@@ -27,7 +27,6 @@ import (
 
 	"github.com/onsi/ginkgo/v2"
 
-	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/kind"
@@ -210,6 +209,7 @@ var _ = framework.OrderedDescribe("[group:ovn-ic]", func() {
 	})
 
 	framework.ConformanceIt("should be able to update gateway to ecmp or HA ", func() {
+		frameworks[0].SkipVersionPriorTo(1, 13, "This feature was introduced in v1.13")
 		gwNodes := make([]string, len(clusters))
 		for i := range clusters {
 			ginkgo.By("fetching the ConfigMap in cluster " + clusters[i])
@@ -242,7 +242,7 @@ var _ = framework.OrderedDescribe("[group:ovn-ic]", func() {
 		ginkgo.By("Waiting for half gateway to be applied")
 		time.Sleep(15 * time.Second)
 
-		if frameworks[0].ClusterIPFamily == apiv1.ProtocolDual {
+		if frameworks[0].ClusterIPFamily == "dual" {
 			checkECMPCount(4)
 		} else {
 			checkECMPCount(2)
