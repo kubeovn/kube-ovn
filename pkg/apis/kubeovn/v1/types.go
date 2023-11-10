@@ -117,6 +117,7 @@ type SubnetSpec struct {
 	ExternalEgressGateway string `json:"externalEgressGateway,omitempty"`
 	PolicyRoutingPriority uint32 `json:"policyRoutingPriority,omitempty"`
 	PolicyRoutingTableID  uint32 `json:"policyRoutingTableID,omitempty"`
+	Mtu                   uint32 `json:"mtu,omitempty"`
 
 	Private      bool     `json:"private"`
 	AllowSubnets []string `json:"allowSubnets,omitempty"`
