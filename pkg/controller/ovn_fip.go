@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"reflect"
 	"strconv"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -55,8 +54,8 @@ func (c *Controller) enqueueUpdateOvnFip(oldObj, newObj interface{}) {
 		klog.Infof("enqueue reset old ovn eip %s", oldFip.Spec.OvnEip)
 		c.resetOvnEipQueue.Add(oldFip.Spec.OvnEip)
 	}
-	if !reflect.DeepEqual(oldFip.Spec.IPName, newFip.Spec.IPName) ||
-		!reflect.DeepEqual(oldFip.Spec.IPType, newFip.Spec.IPType) {
+	if oldFip.Spec.IPName != newFip.Spec.IPName ||
+		oldFip.Spec.IPType != newFip.Spec.IPType {
 		klog.Infof("enqueue update fip %s", key)
 		c.updateOvnFipQueue.Add(key)
 		return
