@@ -354,13 +354,13 @@ kind-init-ovn-ic-ipv4: kind-clean-ovn-ic
 	$(call kind_create_cluster,yamls/kind.yaml,kube-ovn1,1)
 
 .PHONY: kind-init-ovn-ic-ipv6
-kind-init-ovn-ic-ipv6: kind-clean-ovn-ic kind-init-ipv6
+kind-init-ovn-ic-ipv6: kind-clean-ovn-ic
 	@ovn_ic=true $(MAKE) kind-init-ipv6
 	@ovn_ic=true ip_family=ipv6 $(MAKE) kind-generate-config
 	$(call kind_create_cluster,yamls/kind.yaml,kube-ovn1,1)
 
 .PHONY: kind-init-ovn-ic-dual
-kind-init-ovn-ic-dual: kind-clean-ovn-ic kind-init-dual
+kind-init-ovn-ic-dual: kind-clean-ovn-ic
 	@ovn_ic=true $(MAKE) kind-init-dual
 	@ovn_ic=true ip_family=dual $(MAKE) kind-generate-config
 	$(call kind_create_cluster,yamls/kind.yaml,kube-ovn1,1)
