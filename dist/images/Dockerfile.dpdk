@@ -1,6 +1,6 @@
 # syntax = docker/dockerfile:experimental
 ARG VERSION
-ARG BASE_TAG=$VERSION-dpdk
+ARG BASE_TAG=$VERSION-amd64-dpdk
 FROM kubeovn/kube-ovn-base:$BASE_TAG
 
 COPY *.sh /kube-ovn/

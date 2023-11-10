@@ -94,6 +94,7 @@ jobs:
         run: |
           if git diff --name-only HEAD^ HEAD | grep -q ^dist/images/Dockerfile.base-dpdk$; then
             make base-amd64-dpdk
+            make base-tar-amd64-dpdk
             echo build-dpdk-base=1 >> "$GITHUB_OUTPUT"
           fi
 
@@ -149,6 +150,7 @@ jobs:
         uses: actions/download-artifact@v3
         with:
           name: kube-ovn-base
+          path: image-amd64.tar
 
       - name: Load base images
         if: needs.build-kube-ovn-base.outputs.build-base == 1
@@ -159,7 +161,8 @@ jobs:
         uses: actions/download-artifact@v3
         with:
           name: kube-ovn-dpdk-base
-
+          path: image-amd64-dpdk.tar
+          
       - name: Load dpdk base images
         if: needs.build-kube-ovn-dpdk-base.outputs.build-dpdk-base == 1
         run: docker load --input image-amd64-dpdk.tar
