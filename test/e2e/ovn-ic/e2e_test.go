@@ -237,7 +237,7 @@ var _ = framework.OrderedDescribe("[group:ovn-ic]", func() {
 		}
 		fnCheckPodHTTP()
 
-		ginkgo.By("Case 3: Changing the ConfigMap in cluster to half ha and half ecmp")
+		ginkgo.By("Case 3: Changing the ConfigMap in cluster to ha + ecmp")
 		changeGatewayType("half", gwNodes, clientSets)
 		ginkgo.By("Waiting for half gateway to be applied")
 		time.Sleep(15 * time.Second)

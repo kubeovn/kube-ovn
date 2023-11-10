@@ -10,6 +10,9 @@
 {%- if ha is not defined -%}
   {%- set ha = "false" -%}
 {%- endif -%}
+{%- if ovn_ic is not defined -%}
+  {%- set ovn_ic = "false" -%}
+{%- endif -%}
 {%- if single is not defined -%}
   {%- set single = "false" -%}
 {%- endif -%}
@@ -78,7 +81,7 @@ nodes:
     image: kindest/node:{{ k8s_version }}
     labels:
       kube-ovn/role: master
-  {%- else %}
+  {%- elif ovn_ic is equalto "true" %}
   - role: worker
     image: kindest/node:{{ k8s_version }}
   {%- endif %}

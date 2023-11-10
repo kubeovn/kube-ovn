@@ -559,13 +559,10 @@ func (c *Controller) listRemoteLogicalSwitchPortAddress() (*strset.Set, error) {
 }
 
 func (c *Controller) getTSName(index int) string {
-	var tsName string
 	if index == 0 {
-		tsName = util.InterconnectionSwitch
-	} else {
-		tsName = fmt.Sprintf("%s%d", util.InterconnectionSwitch, index)
+		return util.InterconnectionSwitch
 	}
-	return tsName
+	return fmt.Sprintf("%s%d", util.InterconnectionSwitch, index)
 }
 
 func (c *Controller) getTSCidr(index int) (string, error) {
