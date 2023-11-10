@@ -30,7 +30,7 @@ spec:
                   app: kube-ovn-webhook
               topologyKey: kubernetes.io/hostname
       serviceAccountName: ovn
-      hostNetwork: true
+      hostNetwork: false
       containers:
         - name: kube-ovn-webhook
           image: "kubeovn/kube-ovn:v1.13.0"
