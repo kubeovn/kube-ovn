@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os/exec"
+	"sort"
 	"strings"
 	"testing"
 
@@ -137,8 +138,10 @@ var _ = framework.Describe("[group:vip]", func() {
 					options[keyValue[0]] = strings.ReplaceAll(keyValue[1], "\n", "")
 				}
 			}
-			virtualParents := options["virtual-parents"]
-			expectVirtualParents := fmt.Sprintf("%s.%s,%s.%s", aapPodName1, namespaceName, aapPodName2, namespaceName)
+			virtualParents := strings.Split(options["virtual-parents"], ",")
+			sort.Strings(virtualParents)
+			expectVirtualParents := []string{fmt.Sprintf("%s.%s", aapPodName1, namespaceName), fmt.Sprintf("%s.%s", aapPodName2, namespaceName)}
+			sort.Strings(expectVirtualParents)
 			framework.ExpectEqual(expectVirtualParents, virtualParents)
 			// other pods can communicate with the aap pod through vip
 			ginkgo.By("Test pod ping aap address " + vip1.Status.V4ip)
