@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"reflect"
 	"strings"
 	"time"
 
@@ -56,8 +55,8 @@ func (c *Controller) enqueueUpdateOvnEip(oldObj, newObj interface{}) {
 		c.resetOvnEipQueue.Add(key)
 		return
 	}
-	if !reflect.DeepEqual(oldEip.Spec.V4Ip, newEip.Spec.V4Ip) ||
-		!reflect.DeepEqual(oldEip.Spec.V6Ip, newEip.Spec.V6Ip) {
+	if oldEip.Spec.V4Ip != newEip.Spec.V4Ip ||
+		oldEip.Spec.V6Ip != newEip.Spec.V6Ip {
 		klog.Infof("enqueue update ovn eip %s", key)
 		c.updateOvnEipQueue.Add(key)
 	}
