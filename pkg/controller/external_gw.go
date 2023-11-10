@@ -78,7 +78,7 @@ func (c *Controller) removeExternalGateway() error {
 	sel, _ := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{MatchLabels: map[string]string{util.ExGatewayLabel: "true"}})
 	nodes, err := c.nodesLister.List(sel)
 	if err != nil {
-		klog.Errorf("failed to list nodes, %v", err)
+		klog.Errorf("failed to list external gw nodes, %v", err)
 		return err
 	}
 	for _, cachedNode := range nodes {
@@ -223,10 +223,13 @@ func (c *Controller) getGatewayChassis(config map[string]string) ([]string, erro
 		gwNodes = append(gwNodes, node.Name)
 	}
 	if config["type"] != "distributed" {
-		gwNodes = strings.Split(config["external-gw-nodes"], ",")
+		nodeNames := strings.Split(config["external-gw-nodes"], ",")
+		for _, name := range nodeNames {
+			name = strings.TrimSpace(name)
+			gwNodes = append(gwNodes, name)
+		}
 	}
 	for _, gw := range gwNodes {
-		gw = strings.TrimSpace(gw)
 		cachedNode, err := c.nodesLister.Get(gw)
 		if err != nil {
 			klog.Errorf("failed to get gw node %s, %v", gw, err)
