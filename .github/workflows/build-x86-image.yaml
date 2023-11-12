@@ -95,15 +95,16 @@ jobs:
           if git diff --name-only HEAD^ HEAD | grep -q ^dist/images/Dockerfile.base-dpdk$; then
             make base-amd64-dpdk
             make base-tar-amd64-dpdk
+            make push-amd64-dpdk
             echo build-dpdk-base=1 >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Upload dpdk base images to artifact
-        if: steps.build.outputs.build-dpdk-base == 1
-        uses: actions/upload-artifact@v3
-        with:
-          name: kube-ovn-dpdk-base
-          path: image-amd64-dpdk.tar
+      # - name: Upload dpdk base images to artifact
+      #   if: steps.build.outputs.build-dpdk-base == 1
+      #   uses: actions/upload-artifact@v3
+      #   with:
+      #     name: kube-ovn-dpdk-base
+      #     path: image-amd64-dpdk.tar
 
   build-kube-ovn:
     name: Build kube-ovn
@@ -145,27 +146,23 @@ jobs:
           install "$tmp/gosec" /usr/local/bin
           rm -rf $tmp
 
-      - name: Download base images
-        if: needs.build-kube-ovn-base.outputs.build-base == 1
-        uses: actions/download-artifact@v3
-        with:
-          name: kube-ovn-base
-          path: image-amd64.tar
+      # - name: Download base images
+      #   uses: actions/download-artifact@v3
+      #   with:
+      #     name: kube-ovn-base
+      #     path: image-amd64.tar
 
-      - name: Load base images
-        if: needs.build-kube-ovn-base.outputs.build-base == 1
-        run: docker load --input image-amd64.tar
+      # - name: Load base images
+      #   run: docker load --input image-amd64.tar
 
-      - name: Download dpdk base images
-        if: needs.build-kube-ovn-dpdk-base.outputs.build-dpdk-base == 1
-        uses: actions/download-artifact@v3
-        with:
-          name: kube-ovn-dpdk-base
-          path: image-amd64-dpdk.tar
+      # - name: Download dpdk base images
+      #   uses: actions/download-artifact@v3
+      #   with:
+      #     name: kube-ovn-dpdk-base
+      #     path: image-amd64-dpdk.tar
           
-      - name: Load dpdk base images
-        if: needs.build-kube-ovn-dpdk-base.outputs.build-dpdk-base == 1
-        run: docker load --input image-amd64-dpdk.tar
+      # - name: Load dpdk base images
+      #   run: docker load --input image-amd64-dpdk.tar
 
       - name: Build
         run: |

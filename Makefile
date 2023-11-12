@@ -158,6 +158,10 @@ push-dev:
 push-release: release
 	docker push $(REGISTRY)/kube-ovn:$(RELEASE_TAG)
 
+.PHONY: push-amd64-dpdk
+push-amd64-dpdk:
+	docker push $(REGISTRY)/kube-ovn-base:$(RELEASE_TAG)-amd64-dpdk
+
 .PHONY: tar-kube-ovn
 tar-kube-ovn:
 	docker save $(REGISTRY)/kube-ovn:$(RELEASE_TAG) $(REGISTRY)/kube-ovn:$(DEBUG_TAG) $(REGISTRY)/kube-ovn:$(RELEASE_TAG)-dpdk -o kube-ovn.tar
