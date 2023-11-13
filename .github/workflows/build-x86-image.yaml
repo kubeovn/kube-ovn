@@ -31,7 +31,7 @@ jobs:
     name: Build kube-ovn-base
     runs-on: ubuntu-22.04
     outputs:
-      build-base: ${{ steps.build.outputs.build-base }}
+      build-base: ${{ steps.check.outputs.build-base }}
     steps:
       - uses: jlumbroso/free-disk-space@v1.3.1
         with:
@@ -52,25 +52,22 @@ jobs:
           if [ ${{ github.event_name }} != 'pull_request' ]; then
             exit
           fi
-          if git diff --name-only HEAD^ HEAD | grep -q ^dist/images/Dockerfile.base; then
-            echo buildx=1 >> "$GITHUB_OUTPUT"
-          fi
-
-      - uses: docker/setup-buildx-action@v2
-        if: steps.check.outputs.buildx == 1
-
-      - name: Build kube-ovn-base image
-        id: build
-        if: steps.check.outputs.buildx == 1
-        run: |
           if git diff --name-only HEAD^ HEAD | grep -q ^dist/images/Dockerfile.base$; then
-            make base-amd64
-            make base-tar-amd64
             echo build-base=1 >> "$GITHUB_OUTPUT"
           fi
 
+      - uses: docker/setup-buildx-action@v3
+        if: steps.check.outputs.build-base == 1
+
+      - name: Build kube-ovn-base image
+        id: build
+        if: steps.check.outputs.build-base == 1
+        run: |
+            make base-amd64
+            make base-tar-amd64
+
       - name: Upload base images to artifact
-        if: steps.build.outputs.build-base == 1
+        if: steps.check.outputs.build-base == 1
         uses: actions/upload-artifact@v3
         with:
           name: kube-ovn-base
@@ -80,7 +77,7 @@ jobs:
     name: Build kube-ovn-dpdk-base
     runs-on: ubuntu-22.04
     outputs:
-      build-base: ${{ steps.build.outputs.build-dpdk-base }}
+      build-dpdk-base: ${{ steps.check.outputs.build-dpdk-base }}
     steps:
       - uses: jlumbroso/free-disk-space@v1.3.1
         with:
@@ -101,24 +98,22 @@ jobs:
           if [ ${{ github.event_name }} != 'pull_request' ]; then
             exit
           fi
-          if git diff --name-only HEAD^ HEAD | grep -q ^dist/images/Dockerfile.base; then
-            echo buildx=1 >> "$GITHUB_OUTPUT"
-          fi
-
-      - uses: docker/setup-buildx-action@v3
-        if: steps.check.outputs.buildx == 1
-
-      - name: Build kube-ovn-dpdk-base image
-        id: build
-        if: steps.check.outputs.buildx == 1
-        run: |
           if git diff --name-only HEAD^ HEAD | grep -q ^dist/images/Dockerfile.base-dpdk$; then
-            make base-amd64-dpdk
             echo build-dpdk-base=1 >> "$GITHUB_OUTPUT"
           fi
 
+      - uses: docker/setup-buildx-action@v3
+        if: steps.check.outputs.build-dpdk-base == 1
+
+      - name: Build kube-ovn-dpdk-base image
+        id: build
+        if: steps.check.outputs.build-dpdk-base == 1
+        run: |
+          make base-amd64-dpdk
+          make base-tar-amd64-dpdk
+
       - name: Upload dpdk base images to artifact
-        if: steps.build.outputs.build-dpdk-base == 1
+        if: steps.check.outputs.build-dpdk-base == 1
         uses: actions/upload-artifact@v3
         with:
           name: kube-ovn-dpdk-base
@@ -127,7 +122,9 @@ jobs:
   build-kube-ovn:
     name: Build kube-ovn
     runs-on: ubuntu-22.04
-    needs: build-kube-ovn-base
+    needs:
+      - build-kube-ovn-base
+      - build-kube-ovn-dpdk-base
     steps:
       - uses: jlumbroso/free-disk-space@v1.3.1
         with:
@@ -203,18 +200,35 @@ jobs:
             TAG=$(cat VERSION)
             docker tag kubeovn/kube-ovn-base:$TAG-amd64 kubeovn/kube-ovn-base:$TAG
             docker tag kubeovn/kube-ovn-base:$TAG-debug-amd64 kubeovn/kube-ovn-base:$TAG-debug
-            docker tag kubeovn/kube-ovn-base:$TAG-amd64-dpdk kubeovn/kube-ovn-base:$TAG-dpdk
             make build-kube-ovn
           else
             make image-kube-ovn
           fi
           make tar-kube-ovn
 
+      - name: Build dpdk
+        run: |
+          if [ ${{ needs.build-kube-ovn-dpdk-base.outputs.build-dpdk-base || 0 }} = 1 ]; then
+            TAG=$(cat VERSION)
+            docker tag kubeovn/kube-ovn-base:$TAG-amd64-dpdk kubeovn/kube-ovn-base:$TAG-dpdk
+            make build-kube-ovn-dpdk
+          else
+            make image-kube-ovn-dpdk
+          fi
+          make tar-kube-ovn-dpdk
+
       - name: Upload images to artifact
         uses: actions/upload-artifact@v3
         with:
           name: kube-ovn
           path: kube-ovn.tar
+
+      - name: Upload dpdk images to artifact
+        uses: actions/upload-artifact@v3
+        if: github.event_name != 'pull_request'
+        with:
+          name: kube-ovn-dpdk
+          path: kube-ovn-dpdk.tar
 
   build-vpc-nat-gateway:
     name: Build vpc-nat-gateway
@@ -2370,6 +2384,12 @@ jobs:
         with:
           name: kube-ovn
 
+      - name: Download kube-ovn-dpdk image
+        uses: actions/download-artifact@v3
+        if: github.event_name != 'pull_request'
+        with:
+          name: kube-ovn-dpdk
+
       - name: Download vpc-nat-gateway image
         uses: actions/download-artifact@v3
         with:
@@ -2391,6 +2411,9 @@ jobs:
           docker load --input vpc-nat-gateway.tar
           docker load --input centos7-compile.tar
           # docker load --input centos8-compile.tar
+          if [ '${{ github.event_name }}' != 'pull_request' ]; then
+            docker load --input kube-ovn-dpdk.tar
+          fi
 
       - name: Security Scan
         run: |
