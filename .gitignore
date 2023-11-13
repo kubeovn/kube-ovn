@@ -25,8 +25,10 @@ broker-info-internal.subm
 yamls/clab-bgp.yaml
 yamls/clab-bgp-ha.yaml
 kube-ovn.tar
+kube-ovn-dpdk.tar
 vpc-nat-gateway.tar
 image-amd64.tar
+image-amd64-dpdk.tar
 image-arm64.tar
 test/**/*.test
 kube-ovn-app-sa.yaml
