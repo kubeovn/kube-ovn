@@ -39,7 +39,7 @@ func (c *Controller) resyncExternalGateway() {
 			return
 		}
 		if err := c.updateDefaultVpcExternal(false); err != nil {
-			klog.Error("failed to update default vpc, %v", err)
+			klog.Errorf("failed to update default vpc, %v", err)
 			return
 		}
 		exGwEnabled = "false"
@@ -69,7 +69,7 @@ func (c *Controller) resyncExternalGateway() {
 	lastExGwCM = cm.Data
 	c.ExternalGatewayType = cm.Data["type"]
 	if err := c.updateDefaultVpcExternal(true); err != nil {
-		klog.Error("failed to update default vpc, %v", err)
+		klog.Errorf("failed to update default vpc, %v", err)
 		return
 	}
 	klog.Info("finish establishing ovn external gw")

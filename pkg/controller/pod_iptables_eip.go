@@ -276,7 +276,7 @@ func (c *Controller) handleAddPodAnnotatedIptablesEip(key string) error {
 		router := newPod.Annotations[util.LogicalRouterAnnotation]
 		natGw, err := c.getNatGw(router, subnet)
 		if err != nil {
-			klog.Errorf("failed to get vpc nat gw eip: %v", eipName, err)
+			klog.Errorf("failed to get vpc nat gw eip %s: %v", eipName, err)
 			return err
 		}
 		externalNetwork := util.GetExternalNetwork(eip.Spec.ExternalSubnet)
