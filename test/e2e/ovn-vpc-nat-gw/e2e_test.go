@@ -453,8 +453,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 			case kubeovnv1.ProtocolIPv4:
 				if f.HasIPv4() {
 					cidr = append(cidr, config.Subnet)
-					gateway = append(gateway, "172.19.255.254")
-					// gateway = append(gateway, config.Gateway)
+					gateway = append(gateway, config.Gateway)
 				}
 			case kubeovnv1.ProtocolIPv6:
 				if f.HasIPv6() {

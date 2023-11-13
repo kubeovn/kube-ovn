@@ -367,6 +367,11 @@ func (c *Controller) l3HA() {
 			// wait init
 			continue
 		}
+		if len(chassises) == 1 && gwChassis[0] == chassises[0] {
+			// only one chassis, and it is bad chassis
+			klog.Errorf("lrp %s located on bad chassis %s", lrp.Name, gwChassis[0])
+			continue
+		}
 		if len(gwChassis) == 1 {
 			// last one bad chassis
 			gwChassis = chassises
