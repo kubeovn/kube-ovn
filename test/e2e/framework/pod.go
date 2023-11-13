@@ -114,3 +114,11 @@ func MakePod(ns, name string, labels, annotations map[string]string, image strin
 
 	return pod
 }
+
+func MakeNetAdminPod(ns, name string, labels, annotations map[string]string, image string, command, args []string) *corev1.Pod {
+	pod := MakePod(ns, name, labels, annotations, image, command, args)
+	pod.Spec.Containers[0].SecurityContext = &corev1.SecurityContext{
+		Capabilities: &corev1.Capabilities{Add: []corev1.Capability{"NET_ADMIN"}},
+	}
+	return pod
+}
