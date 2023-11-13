@@ -464,7 +464,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 				return err
 			}
 		} else {
-			policyRouteLogical, err = c.OVNNbClient.ListLogicalRouterPolicies(vpc.Name, -1, nil)
+			policyRouteLogical, err = c.OVNNbClient.ListLogicalRouterPolicies(vpc.Name, -1, nil, true)
 			if err != nil {
 				klog.Errorf("failed to get vpc %s policy route list, %v", vpc.Name, err)
 				return err

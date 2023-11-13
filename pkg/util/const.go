@@ -233,6 +233,7 @@ const (
 	OvnICKey       = "origin"
 	OvnICConnected = "connected"
 	OvnICStatic    = "static"
+	OvnICNone      = ""
 
 	MatchV4Src = "ip4.src"
 	MatchV4Dst = "ip4.dst"
