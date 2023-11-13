@@ -1239,7 +1239,7 @@ func (c *Controller) deletePolicyRouteForLocalDNSCacheOnNode(nodeName string, af
 		"node":            nodeName,
 		"address-family":  strconv.Itoa(af),
 		"isLocalDnsCache": "true",
-	})
+	}, true)
 	if err != nil {
 		klog.Errorf("failed to list logical router policies: %v", err)
 		return err

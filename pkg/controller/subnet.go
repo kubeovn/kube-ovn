@@ -2669,7 +2669,7 @@ func (c *Controller) deletePolicyRouteForU2OInterconn(subnet *kubeovnv1.Subnet) 
 		"isU2ORoutePolicy": "true",
 		"vendor":           util.CniTypeName,
 		"subnet":           subnet.Name,
-	})
+	}, true)
 	if err != nil {
 		klog.Errorf("failed to list logical router policies: %v", err)
 		return err

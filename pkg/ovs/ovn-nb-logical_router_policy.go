@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 
 	"github.com/ovn-org/libovsdb/client"
 	"github.com/ovn-org/libovsdb/model"
@@ -29,7 +30,7 @@ func (c *OVNNbClient) AddLogicalRouterPolicy(lrName string, priority int, match,
 	var found bool
 	duplicate := make([]string, 0, len(policyList))
 	for _, policy := range policyList {
-		if found || policy.Action != action || (policy.Action == ovnnb.LogicalRouterPolicyActionReroute && !strset.New(nextHops...).IsEqual(strset.New(policy.Nexthops...))) {
+		if found || policy.Action != action || !reflect.DeepEqual(policy.ExternalIDs, externalIDs) || (policy.Action == ovnnb.LogicalRouterPolicyActionReroute && !strset.New(nextHops...).IsEqual(strset.New(policy.Nexthops...))) {
 			duplicate = append(duplicate, policy.UUID)
 		} else {
 			found = true
@@ -109,7 +110,7 @@ func (c *OVNNbClient) DeleteLogicalRouterPolicy(lrName string, priority int, mat
 // DeleteLogicalRouterPolicy delete some policies from logical router once
 func (c *OVNNbClient) DeleteLogicalRouterPolicies(lrName string, priority int, externalIDs map[string]string) error {
 	// remove policies from logical router
-	policies, err := c.ListLogicalRouterPolicies(lrName, priority, externalIDs)
+	policies, err := c.ListLogicalRouterPolicies(lrName, priority, externalIDs, false)
 	if err != nil {
 		klog.Error(err)
 		return err
@@ -224,16 +225,22 @@ func (c *OVNNbClient) GetLogicalRouterPolicyByUUID(uuid string) (*ovnnb.LogicalR
 	return policy, nil
 }
 
+// GetLogicalRouterPoliciesByExtID get logical router policy route by external ID
 func (c *OVNNbClient) GetLogicalRouterPoliciesByExtID(lrName, key, value string) ([]*ovnnb.LogicalRouterPolicy, error) {
 	fnFilter := func(policy *ovnnb.LogicalRouterPolicy) bool {
-		return len(policy.ExternalIDs) != 0 && policy.ExternalIDs[key] == value
+		if len(policy.ExternalIDs) != 0 {
+			if _, ok := policy.ExternalIDs[key]; ok {
+				return policy.ExternalIDs[key] == value
+			}
+		}
+		return false
 	}
 	return c.listLogicalRouterPoliciesByFilter(lrName, fnFilter)
 }
 
 // ListLogicalRouterPolicies list route policy which match the given externalIDs
-func (c *OVNNbClient) ListLogicalRouterPolicies(lrName string, priority int, externalIDs map[string]string) ([]*ovnnb.LogicalRouterPolicy, error) {
-	return c.listLogicalRouterPoliciesByFilter(lrName, policyFilter(priority, externalIDs))
+func (c *OVNNbClient) ListLogicalRouterPolicies(lrName string, priority int, externalIDs map[string]string, ignoreExtIDEmptyValue bool) ([]*ovnnb.LogicalRouterPolicy, error) {
+	return c.listLogicalRouterPoliciesByFilter(lrName, policyFilter(priority, externalIDs, ignoreExtIDEmptyValue))
 }
 
 // newLogicalRouterPolicy return logical router policy with basic information
@@ -249,7 +256,7 @@ func (c *OVNNbClient) newLogicalRouterPolicy(priority int, match, action string,
 }
 
 // policyFilter filter policies which match the given externalIDs
-func policyFilter(priority int, externalIDs map[string]string) func(policy *ovnnb.LogicalRouterPolicy) bool {
+func policyFilter(priority int, externalIDs map[string]string, ignoreExtIDEmptyValue bool) func(policy *ovnnb.LogicalRouterPolicy) bool {
 	return func(policy *ovnnb.LogicalRouterPolicy) bool {
 		if len(policy.ExternalIDs) < len(externalIDs) {
 			return false
@@ -257,9 +264,10 @@ func policyFilter(priority int, externalIDs map[string]string) func(policy *ovnn
 
 		if len(policy.ExternalIDs) != 0 {
 			for k, v := range externalIDs {
+				// ignoreExtIDEmptyValue is used to the case below:
 				// if only key exist but not value in externalIDs, we should include this lsp,
 				// it's equal to shell command `ovn-nbctl --columns=xx find logical_router_policy external_ids:key!=\"\"`
-				if len(v) == 0 {
+				if len(v) == 0 && ignoreExtIDEmptyValue {
 					if len(policy.ExternalIDs[k]) == 0 {
 						return false
 					}
