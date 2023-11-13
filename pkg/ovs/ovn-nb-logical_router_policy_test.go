@@ -159,7 +159,7 @@ func (suite *OvnClientTestSuite) testDeleteLogicalRouterPolicies() {
 		require.NoError(t, err)
 		require.Len(t, lr.Policies, 3)
 
-		policies, err := ovnClient.ListLogicalRouterPolicies(lrName, -1, externalIDs)
+		policies, err := ovnClient.ListLogicalRouterPolicies(lrName, -1, externalIDs, true)
 		require.NoError(t, err)
 		require.Len(t, policies, 3)
 	}
@@ -174,7 +174,7 @@ func (suite *OvnClientTestSuite) testDeleteLogicalRouterPolicies() {
 		require.NoError(t, err)
 		require.Empty(t, lr.Policies)
 
-		policies, err := ovnClient.ListLogicalRouterPolicies(lrName, -1, externalIDs)
+		policies, err := ovnClient.ListLogicalRouterPolicies(lrName, -1, externalIDs, true)
 		require.NoError(t, err)
 		require.Empty(t, policies)
 	})
@@ -190,7 +190,7 @@ func (suite *OvnClientTestSuite) testDeleteLogicalRouterPolicies() {
 		require.Len(t, lr.Policies, 2)
 
 		// no basePriority policy
-		policies, err := ovnClient.ListLogicalRouterPolicies(lrName, -1, externalIDs)
+		policies, err := ovnClient.ListLogicalRouterPolicies(lrName, -1, externalIDs, true)
 		require.NoError(t, err)
 		require.Len(t, policies, 2)
 	})
@@ -342,7 +342,7 @@ func (suite *OvnClientTestSuite) testPolicyFilter() {
 	}
 
 	t.Run("include all policies", func(t *testing.T) {
-		filterFunc := policyFilter(-1, nil)
+		filterFunc := policyFilter(-1, nil, true)
 		count := 0
 		for _, policy := range policies {
 			if filterFunc(policy) {
@@ -353,7 +353,7 @@ func (suite *OvnClientTestSuite) testPolicyFilter() {
 	})
 
 	t.Run("include all policies with external ids", func(t *testing.T) {
-		filterFunc := policyFilter(-1, map[string]string{"k1": "v1"})
+		filterFunc := policyFilter(-1, map[string]string{"k1": "v1"}, true)
 		count := 0
 		for _, policy := range policies {
 			if filterFunc(policy) {
@@ -364,7 +364,7 @@ func (suite *OvnClientTestSuite) testPolicyFilter() {
 	})
 
 	t.Run("include all policies with same priority", func(t *testing.T) {
-		filterFunc := policyFilter(10000, map[string]string{"k1": "v1"})
+		filterFunc := policyFilter(10000, map[string]string{"k1": "v1"}, true)
 		count := 0
 		for _, policy := range policies {
 			if filterFunc(policy) {

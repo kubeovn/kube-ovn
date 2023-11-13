@@ -78,5 +78,8 @@ nodes:
     image: kindest/node:{{ k8s_version }}
     labels:
       kube-ovn/role: master
+  {%- else %}
+  - role: worker
+    image: kindest/node:{{ k8s_version }}
   {%- endif %}
 {%- endif %}

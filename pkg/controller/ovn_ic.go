@@ -18,6 +18,7 @@ import (
 	"k8s.io/klog/v2"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -165,15 +166,22 @@ func (c *Controller) removeInterConnection(azName string) error {
 	}
 
 	if azName != "" {
-		lspName := fmt.Sprintf("ts-%s", azName)
-		lrpName := fmt.Sprintf("%s-ts", azName)
-		if err := c.OVNNbClient.RemoveLogicalPatchPort(lspName, lrpName); err != nil {
-			klog.Errorf("delete ovn-ic logical port %s and %s: %v", lspName, lrpName, err)
+		if err := c.OVNNbClient.DeleteLogicalSwitchPorts(nil, func(lsp *ovnnb.LogicalSwitchPort) bool {
+			names := strings.Split(lsp.Name, "-")
+			return len(names) == 2 && names[1] == azName && strings.HasPrefix(names[0], "ts")
+		}); err != nil {
+			return err
+		}
+
+		if err := c.OVNNbClient.DeleteLogicalRouterPorts(nil, func(lrp *ovnnb.LogicalRouterPort) bool {
+			names := strings.Split(lrp.Name, "-")
+			return len(names) == 2 && names[0] == azName && strings.HasPrefix(names[1], "ts")
+		}); err != nil {
 			return err
 		}
 	}
 
-	if err := c.stopOvnIC(); err != nil {
+	if err := c.stopOVNIC(); err != nil {
 		klog.Errorf("failed to stop ovn-ic, %v", err)
 		return err
 	}
@@ -182,21 +190,9 @@ func (c *Controller) removeInterConnection(azName string) error {
 }
 
 func (c *Controller) establishInterConnection(config map[string]string) error {
-	if err := c.startOvnIC(config["ic-db-host"], config["ic-nb-port"], config["ic-sb-port"]); err != nil {
+	if err := c.startOVNIC(config["ic-db-host"], config["ic-nb-port"], config["ic-sb-port"]); err != nil {
 		klog.Errorf("failed to start ovn-ic, %v", err)
 		return err
-	}
-
-	tsPort := fmt.Sprintf("ts-%s", config["az-name"])
-	exist, err := c.OVNNbClient.LogicalSwitchPortExists(tsPort)
-	if err != nil {
-		klog.Errorf("failed to list logical switch ports, %v", err)
-		return err
-	}
-
-	if exist {
-		klog.Infof("ts port %s already exists", tsPort)
-		return nil
 	}
 
 	if err := c.OVNNbClient.SetAzName(config["az-name"]); err != nil {
@@ -204,66 +200,81 @@ func (c *Controller) establishInterConnection(config map[string]string) error {
 		return err
 	}
 
-	chassises := []string{}
-	gwNodes := strings.Split(config["gw-nodes"], ",")
-	for _, gw := range gwNodes {
-		gw = strings.TrimSpace(gw)
-		cachedNode, err := c.nodesLister.Get(gw)
-		if err != nil {
-			klog.Errorf("failed to get gw node %s, %v", gw, err)
-			return err
-		}
-		node := cachedNode.DeepCopy()
-		patchPayloadTemplate := `[{
-        "op": "%s",
-        "path": "/metadata/labels",
-        "value": %s
-    	}]`
-		op := "replace"
-		if len(node.Labels) == 0 {
-			op = "add"
-		}
-		node.Labels[util.ICGatewayLabel] = "true"
-		raw, _ := json.Marshal(node.Labels)
-		patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
-		_, err = c.config.KubeClient.CoreV1().Nodes().Patch(context.Background(), gw, types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{}, "")
-		if err != nil {
-			klog.Errorf("patch gw node %s failed %v", gw, err)
-			return err
-		}
-		annoChassisName := node.Annotations[util.ChassisAnnotation]
-		if annoChassisName == "" {
-			err := fmt.Errorf("node %s has no chassis annotation, kube-ovn-cni not ready", gw)
-			klog.Error(err)
-			return err
-		}
-		klog.Infof("gw node %s chassis %s", gw, annoChassisName)
-		chassis, err := c.OVNSbClient.GetChassis(annoChassisName, false)
-		if err != nil {
-			klog.Errorf("failed to get node chassis %s, %v", annoChassisName, err)
-			return err
-		}
-		chassises = append(chassises, chassis.Name)
-	}
-	if len(chassises) == 0 {
-		klog.Error("no available ic gw")
-		return fmt.Errorf("no available ic gw")
-	}
-	if err := c.waitTsReady(); err != nil {
-		klog.Errorf("failed to wait ts ready, %v", err)
-		return err
-	}
+	groups := strings.Split(config["gw-nodes"], ";")
+	for i, group := range groups {
+		gwNodes := strings.Split(group, ",")
+		chassises := make([]string, len(gwNodes))
+		for j, gw := range gwNodes {
+			gw = strings.TrimSpace(gw)
+			chassis, err := c.OVNSbClient.GetChassisByHost(gw)
+			if err != nil {
+				klog.Errorf("failed to get gw %s chassis: %v", gw, err)
+				return err
+			}
+			if chassis.Name == "" {
+				return fmt.Errorf("no chassis for gw %s", gw)
+			}
+			chassises[j] = chassis.Name
 
-	lrpIP, err := c.acquireLrpAddress(util.InterconnectionSwitch)
-	if err != nil {
-		klog.Errorf("failed to acquire lrp address, %v", err)
-		return err
-	}
+			cachedNode, err := c.nodesLister.Get(gw)
+			if err != nil {
+				klog.Errorf("failed to get gw node %s, %v", gw, err)
+				return err
+			}
+			node := cachedNode.DeepCopy()
+			patchPayloadTemplate := `[{
+			"op": "%s",
+			"path": "/metadata/labels",
+			"value": %s
+			}]`
+			op := "replace"
+			if len(node.Labels) == 0 {
+				op = "add"
+			}
+			node.Labels[util.ICGatewayLabel] = "true"
+			raw, _ := json.Marshal(node.Labels)
+			patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
+			_, err = c.config.KubeClient.CoreV1().Nodes().Patch(context.Background(), gw, types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{}, "")
+			if err != nil {
+				klog.Errorf("patch gw node %s failed %v", gw, err)
+				return err
+			}
+		}
 
-	lrpName := fmt.Sprintf("%s-ts", config["az-name"])
-	if err := c.OVNNbClient.CreateLogicalPatchPort(util.InterconnectionSwitch, c.config.ClusterRouter, tsPort, lrpName, lrpIP, util.GenerateMac(), chassises...); err != nil {
-		klog.Errorf("failed to create ovn-ic lrp %v", err)
-		return err
+		tsName := c.getTSName(i)
+		cidr, err := c.getTSCidr(i)
+		if err != nil {
+			klog.Errorf("failed to get ts cidr index %d err: %v", i, err)
+			return err
+		}
+
+		if err := c.createTS(genHostAddress(config["ic-db-host"], config["ic-nb-port"]), tsName, cidr); err != nil {
+			klog.Errorf("failed to create ts %q: %v", tsName, err)
+			return err
+		}
+
+		tsPort := fmt.Sprintf("%s-%s", tsName, config["az-name"])
+		exist, err := c.OVNNbClient.LogicalSwitchPortExists(tsPort)
+		if err != nil {
+			klog.Errorf("failed to list logical switch ports, %v", err)
+			return err
+		}
+		if exist {
+			klog.Infof("ts port %s already exists", tsPort)
+			continue
+		}
+
+		lrpAddr, err := c.acquireLrpAddress(tsName)
+		if err != nil {
+			klog.Errorf("failed to acquire lrp address, %v", err)
+			return err
+		}
+
+		lrpName := fmt.Sprintf("%s-%s", config["az-name"], tsName)
+		if err := c.OVNNbClient.CreateLogicalPatchPort(tsName, c.config.ClusterRouter, tsPort, lrpName, lrpAddr, util.GenerateMac(), chassises...); err != nil {
+			klog.Errorf("failed to create ovn-ic lrp %q: %v", lrpName, err)
+			return err
+		}
 	}
 
 	return nil
@@ -272,12 +283,12 @@ func (c *Controller) establishInterConnection(config map[string]string) error {
 func (c *Controller) acquireLrpAddress(ts string) (string, error) {
 	cidr, err := c.ovnLegacyClient.GetTsSubnet(ts)
 	if err != nil {
-		klog.Errorf("failed to get ts subnet: %v", err)
+		klog.Errorf("failed to get ts subnet %s: %v", ts, err)
 		return "", err
 	}
 	existAddress, err := c.listRemoteLogicalSwitchPortAddress()
 	if err != nil {
-		klog.Errorf("list remote port address: %v", err)
+		klog.Errorf("failed to list remote port address, %v", err)
 		return "", err
 	}
 
@@ -303,7 +314,7 @@ func (c *Controller) acquireLrpAddress(ts string) (string, error) {
 	}
 }
 
-func (c *Controller) startOvnIC(icHost, icNbPort, icSbPort string) error {
+func (c *Controller) startOVNIC(icHost, icNbPort, icSbPort string) error {
 	cmd := exec.Command("/usr/share/ovn/scripts/ovn-ctl",
 		fmt.Sprintf("--ovn-ic-nb-db=%s", genHostAddress(icHost, icNbPort)),
 		fmt.Sprintf("--ovn-ic-sb-db=%s", genHostAddress(icHost, icSbPort)),
@@ -323,40 +334,39 @@ func (c *Controller) startOvnIC(icHost, icNbPort, icSbPort string) error {
 	}
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		klog.Error(err)
-		return fmt.Errorf("%s", output)
+		return fmt.Errorf("output: %s, err: %v", output, err)
 	}
 	return nil
 }
 
-func (c *Controller) stopOvnIC() error {
+func (c *Controller) stopOVNIC() error {
 	cmd := exec.Command("/usr/share/ovn/scripts/ovn-ctl", "stop_ic")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		klog.Error(err)
-		return fmt.Errorf("%s", output)
+		return fmt.Errorf("output: %s, err: %v", output, err)
 	}
 	return nil
 }
 
-func (c *Controller) waitTsReady() error {
-	retry := 6
-	for retry > 0 {
-		ready, err := c.allSubnetReady(util.InterconnectionSwitch)
-		if err != nil {
-			klog.Error(err)
-			return err
-		}
-
-		if ready {
-			return nil
-		}
-
-		klog.Infof("wait for logical switch %s ready", util.InterconnectionSwitch)
-		time.Sleep(5 * time.Second)
-		retry--
+func (c *Controller) createTS(icNBAddr, tsName, subnet string) error {
+	cmd := exec.Command("ovn-ic-nbctl",
+		fmt.Sprintf("--db=%s", icNBAddr),
+		ovs.MayExist, "ts-add", tsName,
+		"--", "set", "Transit_Switch", tsName, fmt.Sprintf(`external_ids:subnet="%s"`, subnet))
+	if os.Getenv("ENABLE_SSL") == "true" {
+		cmd = exec.Command("ovn-ic-nbctl",
+			fmt.Sprintf("--db=%s", icNBAddr),
+			"--private-key=/var/run/tls/key",
+			"--certificate=/var/run/tls/cert",
+			"--ca-cert=/var/run/tls/cacert",
+			ovs.MayExist, "ts-add", tsName,
+			"--", "set", "Transit_Switch", tsName, fmt.Sprintf(`external_ids:subnet="%s"`, subnet))
 	}
-	return fmt.Errorf("timeout to wait for logical switch %s ready", util.InterconnectionSwitch)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("output: %s, err: %v", output, err)
+	}
+	return nil
 }
 
 func (c *Controller) delLearnedRoute() error {
@@ -372,12 +382,16 @@ func (c *Controller) delLearnedRoute() error {
 			return err
 		}
 		for _, r := range routeList {
+			var policy ovnnb.LogicalRouterStaticRoutePolicy
+			if r.Policy != nil {
+				policy = *r.Policy
+			}
 			if err = c.deleteStaticRouteFromVpc(
 				lr.Name,
 				r.RouteTable,
 				r.IPPrefix,
 				r.Nexthop,
-				reversePolicy(*r.Policy),
+				reversePolicy(policy),
 			); err != nil {
 				klog.Errorf("failed to delete learned static route %#v on logical router %s: %v", r, lr.Name, err)
 				return err
@@ -409,6 +423,8 @@ func genHostAddress(host, port string) (hostAddress string) {
 func (c *Controller) SynRouteToPolicy() {
 	c.syncOneRouteToPolicy(util.OvnICKey, util.OvnICConnected)
 	c.syncOneRouteToPolicy(util.OvnICKey, util.OvnICStatic)
+	// To support the version before kube-ovn v1.9, in which version the option tag is origin=""
+	c.syncOneRouteToPolicy(util.OvnICKey, util.OvnICNone)
 }
 
 func (c *Controller) RemoveOldChassisInSbDB(azName string) error {
@@ -459,6 +475,13 @@ func (c *Controller) syncOneRouteToPolicy(key, value string) {
 		klog.Errorf("failed to list lr ovn-ic route %v", err)
 		return
 	}
+
+	lrPolicyList, err := c.OVNNbClient.GetLogicalRouterPoliciesByExtID(lr.Name, key, value)
+	if err != nil {
+		klog.Errorf("failed to list ovn-ic lr policy: %v", err)
+		return
+	}
+
 	if len(lrRouteList) == 0 {
 		klog.V(5).Info("lr ovn-ic route does not exist")
 		err := c.OVNNbClient.DeleteLogicalRouterPolicies(lr.Name, util.OvnICPolicyPriority, map[string]string{key: value})
@@ -470,11 +493,7 @@ func (c *Controller) syncOneRouteToPolicy(key, value string) {
 	}
 
 	policyMap := map[string]string{}
-	lrPolicyList, err := c.OVNNbClient.ListLogicalRouterPolicies(lr.Name, util.OvnICPolicyPriority, map[string]string{key: value})
-	if err != nil {
-		klog.Errorf("failed to list ovn-ic lr policy: %v", err)
-		return
-	}
+
 	for _, lrPolicy := range lrPolicyList {
 		match, err := stripPrefix(lrPolicy.Match)
 		if err != nil {
@@ -483,42 +502,27 @@ func (c *Controller) syncOneRouteToPolicy(key, value string) {
 		}
 		policyMap[match] = lrPolicy.UUID
 	}
+	networks := strset.NewWithSize(len(lrRouteList))
 	for _, lrRoute := range lrRouteList {
-		if _, ok := policyMap[lrRoute.IPPrefix]; ok {
-			delete(policyMap, lrRoute.IPPrefix)
-		} else {
-			var matchFiled string
-			if util.CheckProtocol(lrRoute.IPPrefix) == kubeovnv1.ProtocolIPv4 {
-				matchFiled = util.MatchV4Dst + " == " + lrRoute.IPPrefix
-				if err := c.addPolicyRouteToVpc(
-					lr.Name,
-					&kubeovnv1.PolicyRoute{
-						Priority: util.OvnICPolicyPriority,
-						Match:    matchFiled,
-						Action:   kubeovnv1.PolicyRouteActionAllow,
-					},
-					map[string]string{key: value, "vendor": util.CniTypeName},
-				); err != nil {
-					klog.Errorf("adding router policy failed %v", err)
-				}
-			}
-
-			if util.CheckProtocol(lrRoute.IPPrefix) == kubeovnv1.ProtocolIPv6 {
-				matchFiled = util.MatchV6Dst + " == " + lrRoute.IPPrefix
-				if err := c.addPolicyRouteToVpc(
-					lr.Name,
-					&kubeovnv1.PolicyRoute{
-						Priority: util.OvnICPolicyPriority,
-						Match:    matchFiled,
-						Action:   kubeovnv1.PolicyRouteActionAllow,
-					},
-					map[string]string{key: value, "vendor": util.CniTypeName},
-				); err != nil {
-					klog.Errorf("adding router policy failed %v", err)
-				}
-			}
-		}
+		networks.Add(lrRoute.IPPrefix)
 	}
+
+	networks.Each(func(prefix string) bool {
+		if _, ok := policyMap[prefix]; ok {
+			delete(policyMap, prefix)
+			return true
+		}
+		match := util.MatchV4Dst + " == " + prefix
+		if util.CheckProtocol(prefix) == kubeovnv1.ProtocolIPv6 {
+			match = util.MatchV6Dst + " == " + prefix
+		}
+
+		if err = c.OVNNbClient.AddLogicalRouterPolicy(lr.Name, util.OvnICPolicyPriority, match, ovnnb.LogicalRouterPolicyActionAllow, nil, map[string]string{key: value, "vendor": util.CniTypeName}); err != nil {
+			klog.Errorf("failed to add router policy: %v", err)
+		}
+
+		return true
+	})
 	for _, uuid := range policyMap {
 		if err := c.OVNNbClient.DeleteLogicalRouterPolicyByUUID(lr.Name, uuid); err != nil {
 			klog.Errorf("deleting router policy failed %v", err)
@@ -552,4 +556,14 @@ func (c *Controller) listRemoteLogicalSwitchPortAddress() (*strset.Set, error) {
 	}
 
 	return existAddress, nil
+}
+
+func (c *Controller) getTSName(index int) string {
+	var tsName string
+	if index == 0 {
+		tsName = util.InterconnectionSwitch
+	} else {
+		tsName = fmt.Sprintf("%s%d", util.InterconnectionSwitch, index)
+	}
+	return tsName
 }
