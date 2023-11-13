@@ -96,7 +96,10 @@ build-go-arm:
 build-kube-ovn: build-go
 	docker build -t $(REGISTRY)/kube-ovn:$(RELEASE_TAG) --build-arg VERSION=$(RELEASE_TAG) -f dist/images/Dockerfile dist/images/
 	docker build -t $(REGISTRY)/kube-ovn:$(DEBUG_TAG) --build-arg BASE_TAG=$(DEBUG_TAG) -f dist/images/Dockerfile dist/images/
-	docker build -t $(REGISTRY)/kube-ovn:$(RELEASE_TAG)-dpdk -f dist/images/Dockerfile.dpdk dist/images/
+
+.PHONY: build-kube-ovn-dpdk
+build-kube-ovn-dpdk: build-go
+	docker build -t $(REGISTRY)/kube-ovn:$(RELEASE_TAG)-dpdk --build-arg BASE_TAG=$(RELEASE_TAG)-dpdk -f dist/images/Dockerfile dist/images/
 
 .PHONY: build-dev
 build-dev: build-go
@@ -128,7 +131,10 @@ base-arm64:
 image-kube-ovn: build-go
 	docker buildx build --platform linux/amd64 -t $(REGISTRY)/kube-ovn:$(RELEASE_TAG) --build-arg VERSION=$(RELEASE_TAG) -o type=docker -f dist/images/Dockerfile dist/images/
 	docker buildx build --platform linux/amd64 -t $(REGISTRY)/kube-ovn:$(DEBUG_TAG) --build-arg BASE_TAG=$(DEBUG_TAG) -o type=docker -f dist/images/Dockerfile dist/images/
-	docker buildx build --platform linux/amd64 -t $(REGISTRY)/kube-ovn:$(RELEASE_TAG)-dpdk --build-arg VERSION=$(RELEASE_TAG) -o type=docker -f dist/images/Dockerfile.dpdk dist/images/
+
+.PHONY: image-kube-ovn-dpdk
+image-kube-ovn-dpdk: build-go
+	docker buildx build --platform linux/amd64 -t $(REGISTRY)/kube-ovn:$(RELEASE_TAG)-dpdk --build-arg VERSION=$(RELEASE_TAG) --build-arg BASE_TAG=$(RELEASE_TAG)-dpdk -o type=docker -f dist/images/Dockerfile dist/images/
 
 .PHONY: image-vpc-nat-gateway
 image-vpc-nat-gateway:
@@ -162,7 +168,11 @@ push-release: release
 
 .PHONY: tar-kube-ovn
 tar-kube-ovn:
-	docker save $(REGISTRY)/kube-ovn:$(RELEASE_TAG) $(REGISTRY)/kube-ovn:$(DEBUG_TAG) $(REGISTRY)/kube-ovn:$(RELEASE_TAG)-dpdk -o kube-ovn.tar
+	docker save $(REGISTRY)/kube-ovn:$(RELEASE_TAG) $(REGISTRY)/kube-ovn:$(DEBUG_TAG) -o kube-ovn.tar
+
+.PHONY: tar-kube-ovn-dpdk
+tar-kube-ovn-dpdk:
+	docker save $(REGISTRY)/kube-ovn:$(RELEASE_TAG)-dpdk -o kube-ovn-dpdk.tar
 
 .PHONY: tar-vpc-nat-gateway
 tar-vpc-nat-gateway:
@@ -946,7 +956,7 @@ clean:
 	$(RM) ovn.yaml kube-ovn.yaml kube-ovn-crd.yaml
 	$(RM) ovn-ic-0.yaml ovn-ic-1.yaml
 	$(RM) kustomization.yaml kwok.yaml kwok-node.yaml
-	$(RM) kube-ovn.tar vpc-nat-gateway.tar image-amd64.tar image-arm64.tar
+	$(RM) kube-ovn.tar kube-ovn-dpdk.tar vpc-nat-gateway.tar image-amd64.tar image-amd64-dpdk.tar image-arm64.tar
 
 .PHONY: changelog
 changelog:
