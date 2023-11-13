@@ -251,7 +251,7 @@ func (n *networkManagerSyncer) SetManaged(name string, managed bool) error {
 		// Retrieving DNS configuration requires NetworkManager >= v1.6.0.
 		// Do not set device managed=no if the version is < v1.6.0.
 		if semver.Compare(version, "v1.6.0") < 0 {
-			klog.Infof("NetworkManager version %s is less than v1.6.0")
+			klog.Infof("NetworkManager version %s is less than v1.6.0", version)
 			return nil
 		}
 
