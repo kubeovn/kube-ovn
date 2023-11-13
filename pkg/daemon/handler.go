@@ -359,7 +359,7 @@ func (csh cniServerHandler) UpdateIPCr(podRequest request.CniRequest, subnet, ip
 			}
 		}
 		if err != nil {
-			klog.Warning("wait pod ip %s to be ready", ipCrName)
+			klog.Warningf("wait pod ip %s to be ready", ipCrName)
 			time.Sleep(1 * time.Second)
 		} else {
 			return nil

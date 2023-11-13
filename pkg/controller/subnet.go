@@ -672,7 +672,7 @@ func (c *Controller) updateSubnetDHCPOption(subnet *kubeovnv1.Subnet, needRouter
 			return err
 		}
 		if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(context.Background(), subnet.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
-			klog.Error("patch subnet %s dhcp options failed: %v", subnet.Name, err)
+			klog.Errorf("patch subnet %s dhcp options failed: %v", subnet.Name, err)
 			return err
 		}
 	}
@@ -817,7 +817,7 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 			}
 		} else {
 			if err := c.OVNNbClient.LogicalSwitchUpdateLoadBalancers(subnet.Name, ovsdb.MutateOperationDelete, lbs...); err != nil {
-				klog.Error("remove load-balancer from subnet %s failed: %v", subnet.Name, err)
+				klog.Errorf("remove load-balancer from subnet %s failed: %v", subnet.Name, err)
 				return err
 			}
 		}
@@ -1328,7 +1328,7 @@ func (c *Controller) reconcileCustomVpcAddNormalStaticRoute(vpcName string) erro
 
 	defualtExternalSubnet, err := c.subnetsLister.Get(c.config.ExternalGatewaySwitch)
 	if err != nil {
-		klog.Error("failed to get default external switch subnet %s: %v", c.config.ExternalGatewaySwitch, err)
+		klog.Errorf("failed to get default external switch subnet %s: %v", c.config.ExternalGatewaySwitch, err)
 		return err
 	}
 	gatewayV4, gatewayV6 := util.SplitStringIP(defualtExternalSubnet.Spec.Gateway)
@@ -1409,7 +1409,7 @@ func (c *Controller) reconcileCustomVpcDelNormalStaticRoute(vpcName string) erro
 	// if use ecmp bfd static route, normal static route should not exist
 	defualtExternalSubnet, err := c.subnetsLister.Get(c.config.ExternalGatewaySwitch)
 	if err != nil {
-		klog.Error("failed to get default external switch subnet %s: %v", c.config.ExternalGatewaySwitch)
+		klog.Errorf("failed to get default external switch subnet %s: %v", c.config.ExternalGatewaySwitch, err)
 		return err
 	}
 	gatewayV4, gatewayV6 := util.SplitStringIP(defualtExternalSubnet.Spec.Gateway)

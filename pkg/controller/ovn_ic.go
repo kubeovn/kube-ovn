@@ -352,7 +352,7 @@ func (c *Controller) waitTsReady() error {
 			return nil
 		}
 
-		klog.Info("wait for logical switch %s ready", util.InterconnectionSwitch)
+		klog.Infof("wait for logical switch %s ready", util.InterconnectionSwitch)
 		time.Sleep(5 * time.Second)
 		retry--
 	}
@@ -472,13 +472,13 @@ func (c *Controller) syncOneRouteToPolicy(key, value string) {
 	policyMap := map[string]string{}
 	lrPolicyList, err := c.OVNNbClient.ListLogicalRouterPolicies(lr.Name, util.OvnICPolicyPriority, map[string]string{key: value})
 	if err != nil {
-		klog.Errorf("failed to list ovn-ic lr policy ", err)
+		klog.Errorf("failed to list ovn-ic lr policy: %v", err)
 		return
 	}
 	for _, lrPolicy := range lrPolicyList {
 		match, err := stripPrefix(lrPolicy.Match)
 		if err != nil {
-			klog.Errorf("policy match abnormal ", err)
+			klog.Errorf("policy match abnormal: %v", err)
 			continue
 		}
 		policyMap[match] = lrPolicy.UUID
