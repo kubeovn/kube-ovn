@@ -340,7 +340,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		joinSubnet, err := c.subnetsLister.Get(c.config.NodeSwitch)
 		if err != nil {
 			if !k8serrors.IsNotFound(err) {
-				klog.Error("failed to get node switch subnet %s: %v", c.config.NodeSwitch)
+				klog.Errorf("failed to get node switch subnet %s: %v", c.config.NodeSwitch, err)
 				return err
 			}
 		}
@@ -625,7 +625,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 					}
 				}
 				if err := c.updateVpcAddExternalStatus(key, true); err != nil {
-					klog.Error("failed to update additional external subnets status, %v", err)
+					klog.Errorf("failed to update additional external subnets status, %v", err)
 					return err
 				}
 			}
@@ -661,7 +661,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 				}
 			}
 			if err := c.updateVpcAddExternalStatus(key, false); err != nil {
-				klog.Error("failed to update additional external subnets status, %v", err)
+				klog.Errorf("failed to update additional external subnets status, %v", err)
 				return err
 			}
 		}
@@ -1166,7 +1166,7 @@ func (c *Controller) handleAddVpcExternalSubnet(key, subnet string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
-		klog.Error("failed to get vpc %s, %v", key, err)
+		klog.Errorf("failed to get vpc %s, %v", key, err)
 		return err
 	}
 	if subnet == c.config.ExternalGatewaySwitch {
@@ -1278,7 +1278,7 @@ func (c *Controller) patchVpcBfdStatus(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
-		klog.Error("failed to get vpc %s, %v", key, err)
+		klog.Errorf("failed to get vpc %s, %v", key, err)
 		return err
 	}
 

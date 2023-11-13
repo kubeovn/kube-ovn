@@ -249,7 +249,7 @@ func (c *Controller) handleAddOvnDnatRule(key string) error {
 		return err
 	}
 	if err := c.isOvnDnatDuplicated(eipName, key, cachedDnat.Spec.ExternalPort); err != nil {
-		klog.Error("failed to create dnat %s, %v", cachedDnat.Name, err)
+		klog.Errorf("failed to create dnat %s, %v", cachedDnat.Name, err)
 		return err
 	}
 
@@ -395,7 +395,7 @@ func (c *Controller) handleUpdateOvnDnatRule(key string) error {
 		return err
 	}
 	if err := c.isOvnDnatDuplicated(eipName, key, cachedDnat.Spec.ExternalPort); err != nil {
-		klog.Error("failed to create dnat %s, %v", cachedDnat.Name, err)
+		klog.Errorf("failed to create dnat %s, %v", cachedDnat.Name, err)
 		return err
 	}
 

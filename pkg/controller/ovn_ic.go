@@ -506,7 +506,6 @@ func (c *Controller) syncOneRouteToPolicy(key, value string) {
 	}
 
 	policyMap := map[string]string{}
-
 	for _, lrPolicy := range lrPolicyList {
 		match, err := stripPrefix(lrPolicy.Match)
 		if err != nil {

@@ -274,7 +274,7 @@ func (c Controller) patchIPPoolStatus(ippool *kubeovnv1.IPPool) error {
 		return err
 	}
 	if _, err = c.config.KubeOvnClient.KubeovnV1().IPPools().Patch(context.Background(), ippool.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
-		klog.Error("failed to patch status of ippool %s: %v", ippool.Name, err)
+		klog.Errorf("failed to patch status of ippool %s: %v", ippool.Name, err)
 		return err
 	}
 

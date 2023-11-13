@@ -565,7 +565,7 @@ func (c *Controller) initDefaultVlan() error {
 
 	_, err = c.config.KubeOvnClient.KubeovnV1().Vlans().Create(context.Background(), &defaultVlan, metav1.CreateOptions{})
 	if err != nil {
-		klog.Errorf("failed to create vlan %s: %v", defaultVlan, err)
+		klog.Errorf("failed to create vlan %s: %v", defaultVlan.Name, err)
 		return err
 	}
 	return nil
@@ -687,7 +687,7 @@ func (c *Controller) syncVpcNatGatewayCR() error {
 	}
 	for _, gw := range gws {
 		if err := c.updateCrdNatGwLabels(gw.Name, ""); err != nil {
-			klog.Errorf("failed to update nat gw: %v", gw.Name, err)
+			klog.Errorf("failed to update nat gw %s: %v", gw.Name, err)
 			return err
 		}
 	}

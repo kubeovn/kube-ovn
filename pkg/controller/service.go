@@ -393,7 +393,7 @@ func (c *Controller) handleUpdateService(key string) error {
 			if ip := parseVipAddr(vip); (slices.Contains(ips, ip) && !slices.Contains(svcVips, vip)) || slices.Contains(ipsToDel, ip) {
 				klog.Infof("remove stale vip %s from LB %s", vip, lbName)
 				if err := c.OVNNbClient.LoadBalancerDeleteVip(lbName, vip, ignoreHealthCheck); err != nil {
-					klog.Errorf("failed to delete vip %s from LB %s: %v", vip, lb, err)
+					klog.Errorf("failed to delete vip %s from LB %s: %v", vip, lbName, err)
 					return err
 				}
 			}

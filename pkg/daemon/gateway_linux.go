@@ -180,7 +180,7 @@ func (c *Controller) addNatOutGoingPolicyRuleIPset(rule kubeovnv1.NatOutgoingPol
 func (c *Controller) removeNatOutGoingPolicyRuleIPset(protocol string, natPolicyRuleIDs *strset.Set) {
 	sets, err := c.k8sipsets.ListSets()
 	if err != nil {
-		klog.Error("failed to list ipsets: %v", err)
+		klog.Errorf("failed to list ipsets: %v", err)
 		return
 	}
 	for _, set := range sets {
@@ -620,7 +620,7 @@ func (c *Controller) setIptables() error {
 		ipset := fmt.Sprintf("KUBE-%sCLUSTER-IP", kubeProxyIpsetProtocol)
 		ipsetExists, err := c.ipsetExists(ipset)
 		if err != nil {
-			klog.Error("failed to check existence of ipset %s: %v", ipset, err)
+			klog.Errorf("failed to check existence of ipset %s: %v", ipset, err)
 			return err
 		}
 		if ipsetExists {
@@ -653,7 +653,7 @@ func (c *Controller) setIptables() error {
 				ipset := fmt.Sprintf("KUBE-%sNODE-PORT-LOCAL-%s", kubeProxyIpsetProtocol, strings.ToUpper(p))
 				ipsetExists, err := c.ipsetExists(ipset)
 				if err != nil {
-					klog.Error("failed to check existence of ipset %s: %v", ipset, err)
+					klog.Errorf("failed to check existence of ipset %s: %v", ipset, err)
 					return err
 				}
 				if !ipsetExists {
@@ -771,15 +771,15 @@ func (c *Controller) setIptables() error {
 		}
 
 		if err = c.updateIptablesChain(ipt, NAT, OvnPrerouting, Prerouting, natPreroutingRules); err != nil {
-			klog.Errorf("failed to update chain %s/%s: %v", NAT, OvnPrerouting)
+			klog.Errorf("failed to update chain %s/%s: %v", NAT, OvnPrerouting, err)
 			return err
 		}
 		if err = c.updateIptablesChain(ipt, NAT, OvnMasquerade, "", ovnMasqueradeRules); err != nil {
-			klog.Errorf("failed to update chain %s/%s: %v", NAT, OvnMasquerade)
+			klog.Errorf("failed to update chain %s/%s: %v", NAT, OvnMasquerade, err)
 			return err
 		}
 		if err = c.updateIptablesChain(ipt, NAT, OvnPostrouting, Postrouting, natPostroutingRules); err != nil {
-			klog.Errorf("failed to update chain %s/%s: %v", NAT, OvnPostrouting)
+			klog.Errorf("failed to update chain %s/%s: %v", NAT, OvnPostrouting, err)
 			return err
 		}
 
