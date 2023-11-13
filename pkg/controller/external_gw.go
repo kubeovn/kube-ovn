@@ -340,13 +340,8 @@ func (c *Controller) l3HA() {
 			chassises = append(chassises, annoChassesName)
 		}
 	}
-	if len(chassises) == 0 {
-		klog.Errorf("failed to found external gw chassis for lrp which bfd status is down")
-		return
-	}
-
-	if len(chassises) == 1 {
-		klog.Errorf("only one external gw chassis, can not switch lrp which bfd status is down")
+	if len(chassises) < 2 {
+		klog.Errorf("failed to found alternative chassis for lrp when bfd status is down")
 		return
 	}
 
@@ -360,29 +355,43 @@ func (c *Controller) l3HA() {
 		downBfdLrps = append(downBfdLrps, lrp)
 	}
 
-	// switch router external lrp to another chassis
+	badChassisNames := []string{}
+	badChassises := []ovnnb.GatewayChassis{}
+
+	// update bad chassis with low priority
 	for _, lrp := range downBfdLrps {
-		gwChassis := lrp.GatewayChassis
-		if len(gwChassis) == 0 {
-			// wait init
+		gwChassisList, err := c.OVNNbClient.ListGatewayChassisByLogicalRouterPort(lrp.Name, false)
+		if err != nil {
+			klog.Errorf("failed to list gateway chassis for lrp %s, %v", lrp.Name, err)
 			continue
 		}
-		if len(chassises) == 1 && gwChassis[0] == chassises[0] {
-			// only one chassis, and it is bad chassis
-			klog.Errorf("lrp %s located on bad chassis %s", lrp.Name, gwChassis[0])
+		if len(*gwChassisList) == 0 {
+			klog.Errorf("no gateway chassis for lrp %s", lrp.Name)
 			continue
 		}
-		if len(gwChassis) == 1 {
-			// last one bad chassis
-			gwChassis = chassises
-		} else {
-			// use the next one chassis
-			klog.Errorf("lrp %s located on bad chassis %s", lrp.Name, gwChassis[0])
-			gwChassis = gwChassis[1:]
-			klog.Infof("lrp %s will migrate to another chassis %s", lrp.Name, gwChassis[0])
+		badChassis := (*gwChassisList)[0]
+		klog.Errorf("lrp %s using bad chassis %s", lrp.Name, badChassis.ChassisName)
+		if util.ContainsString(badChassisNames, badChassis.ChassisName) {
+			badChassisNames = append(badChassisNames, badChassis.ChassisName)
 		}
-		if err := c.OVNNbClient.UpdateLogicalRouterPortGatewayChassis(lrp.Name, gwChassis); err != nil {
-			klog.Errorf("failed to update chassises for lrp %s: %v", lrp.Name, err)
+		badChassises = append(badChassises, badChassis)
+	}
+
+	if len(badChassisNames) == len(chassises) {
+		// all chassis bfd status are down
+		klog.Errorf("all bad external gw chassis %v", badChassisNames)
+		return
+	}
+
+	// bad chassis use low priority
+	for _, badChassis := range badChassises {
+		if badChassis.Priority != 0 {
+			badChassis.Priority = 0
+			if err := c.OVNNbClient.UpdateGatewayChassis(&badChassis, &badChassis.Priority); err != nil {
+				klog.Errorf("failed to update bad chassis %s, %v", badChassis.Name, err)
+				continue
+			}
 		}
 	}
+	klog.Warningf("should fix bad gw chassis %v", badChassisNames)
 }

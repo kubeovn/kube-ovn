@@ -1049,7 +1049,7 @@ func (c *Controller) startWorkers(ctx context.Context) {
 		// maintain l3 ha about the vpc external lrp binding to the gw chassis
 		go wait.Until(func() {
 			c.l3HA()
-		}, time.Second, ctx.Done())
+		}, 5*time.Second, ctx.Done())
 	}
 
 	go wait.Until(func() {

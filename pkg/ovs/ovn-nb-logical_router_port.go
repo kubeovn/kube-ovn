@@ -107,22 +107,6 @@ func (c *OVNNbClient) UpdateLogicalRouterPortOptions(lrpName string, options map
 	return c.UpdateLogicalRouterPort(lrp, &lrp.Options)
 }
 
-func (c *OVNNbClient) UpdateLogicalRouterPortGatewayChassis(lrpName string, gatewayChassis []string) error {
-	if len(gatewayChassis) == 0 {
-		return nil
-	}
-
-	lrp, err := c.GetLogicalRouterPort(lrpName, false)
-	if err != nil {
-		klog.Error(err)
-		return err
-	}
-
-	lrp.GatewayChassis = gatewayChassis
-
-	return c.UpdateLogicalRouterPort(lrp, &lrp.GatewayChassis)
-}
-
 // UpdateLogicalRouterPort update logical router port
 func (c *OVNNbClient) UpdateLogicalRouterPort(lrp *ovnnb.LogicalRouterPort, fields ...interface{}) error {
 	if lrp == nil {

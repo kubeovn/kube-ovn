@@ -32,9 +32,10 @@ type LogicalRouter interface {
 type LogicalRouterPort interface {
 	CreatePeerRouterPort(localRouter, remoteRouter, localRouterPortIP string) error
 	CreateLogicalRouterPort(lrName, lrpName, mac string, networks []string) error
+	ListGatewayChassisByLogicalRouterPort(lrpName string, ignoreNotFound bool) (*[]ovnnb.GatewayChassis, error)
+	UpdateGatewayChassis(gwChassis *ovnnb.GatewayChassis, fields ...interface{}) error
 	UpdateLogicalRouterPortRA(lrpName, ipv6RAConfigsStr string, enableIPv6RA bool) error
 	UpdateLogicalRouterPortOptions(lrpName string, options map[string]string) error
-	UpdateLogicalRouterPortGatewayChassis(lrpName string, gatewayChassis []string) error
 	DeleteLogicalRouterPort(lrpName string) error
 	DeleteLogicalRouterPorts(externalIDs map[string]string, filter func(lrp *ovnnb.LogicalRouterPort) bool) error
 	GetLogicalRouterPort(lrpName string, ignoreNotFound bool) (*ovnnb.LogicalRouterPort, error)
