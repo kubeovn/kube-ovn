@@ -4451,22 +4451,22 @@ spec:
               name: kube-ovn-tls
             - mountPath: /var/log/kube-ovn
               name: kube-ovn-log
-          readinessProbe:
-            exec:
-              command:
-              - cat
-              - /var/run/ovn/ovn-controller.pid
-            periodSeconds: 10
-            timeoutSeconds: 45
           livenessProbe:
-            exec:
-              command:
-              - cat
-              - /var/run/ovn/ovn-controller.pid
+            failureThreshold: 3
             initialDelaySeconds: 30
-            periodSeconds: 10
-            failureThreshold: 5
-            timeoutSeconds: 45
+            periodSeconds: 7
+            successThreshold: 1
+            tcpSocket:
+              port: 10661
+            timeoutSeconds: 3
+          readinessProbe:
+            failureThreshold: 3
+            initialDelaySeconds: 30
+            periodSeconds: 7
+            successThreshold: 1
+            tcpSocket:
+              port: 10661
+            timeoutSeconds: 3
       nodeSelector:
         kubernetes.io/os: "linux"
         kube-ovn/role: "master"
