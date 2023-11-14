@@ -528,6 +528,21 @@ func (mr *MockBFDMockRecorder) ListDownBFDs() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListDownBFDs", reflect.TypeOf((*MockBFD)(nil).ListDownBFDs))
 }
 
+// ListUpBFDs mocks base method.
+func (m *MockBFD) ListUpBFDs() (*[]ovnnb.BFD, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListUpBFDs")
+	ret0, _ := ret[0].(*[]ovnnb.BFD)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListUpBFDs indicates an expected call of ListUpBFDs.
+func (mr *MockBFDMockRecorder) ListUpBFDs() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListUpBFDs", reflect.TypeOf((*MockBFD)(nil).ListUpBFDs))
+}
+
 // MockLogicalSwitch is a mock of LogicalSwitch interface.
 type MockLogicalSwitch struct {
 	ctrl     *gomock.Controller
@@ -3457,6 +3472,21 @@ func (m *MockNbClient) ListPortGroups(externalIDs map[string]string) ([]ovnnb.Po
 func (mr *MockNbClientMockRecorder) ListPortGroups(externalIDs interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListPortGroups", reflect.TypeOf((*MockNbClient)(nil).ListPortGroups), externalIDs)
+}
+
+// ListUpBFDs mocks base method.
+func (m *MockNbClient) ListUpBFDs() (*[]ovnnb.BFD, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListUpBFDs")
+	ret0, _ := ret[0].(*[]ovnnb.BFD)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListUpBFDs indicates an expected call of ListUpBFDs.
+func (mr *MockNbClientMockRecorder) ListUpBFDs() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListUpBFDs", reflect.TypeOf((*MockNbClient)(nil).ListUpBFDs))
 }
 
 // LoadBalancerAddHealthCheck mocks base method.

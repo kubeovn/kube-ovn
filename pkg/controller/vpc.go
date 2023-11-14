@@ -533,12 +533,12 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		klog.Error(err)
 		return err
 	}
-	CustomVpcUseMultiHopEcmp := false
+	custVpcEnableExternalMultiHopEcmp := false
 	for _, subnet := range subnets {
 		if subnet.Spec.Vpc == key {
 			c.addOrUpdateSubnetQueue.Add(subnet.Name)
-			if vpc.Name != util.DefaultVpc && subnet.Spec.EnableEcmp {
-				CustomVpcUseMultiHopEcmp = true
+			if vpc.Name != util.DefaultVpc && vpc.Spec.EnableBfd && subnet.Spec.EnableEcmp {
+				custVpcEnableExternalMultiHopEcmp = true
 			}
 		}
 	}
@@ -566,7 +566,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 					}
 					// TODO: support multi external nic
 				}
-				if CustomVpcUseMultiHopEcmp {
+				if custVpcEnableExternalMultiHopEcmp {
 					klog.Infof("remove normal static ecmp route for vpc %s", vpc.Name)
 					// auto remove normal type static route, if using ecmp based bfd
 					if err := c.reconcileCustomVpcDelNormalStaticRoute(vpc.Name); err != nil {

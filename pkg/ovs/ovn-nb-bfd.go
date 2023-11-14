@@ -43,6 +43,20 @@ func (c *OVNNbClient) ListDownBFDs() (*[]ovnnb.BFD, error) {
 	return &bfdList, nil
 }
 
+func (c *OVNNbClient) ListUpBFDs() (*[]ovnnb.BFD, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+
+	bfdList := make([]ovnnb.BFD, 0)
+	if err := c.ovsDbClient.WhereCache(func(bfd *ovnnb.BFD) bool {
+		return *bfd.Status == ovnnb.BFDStatusUp
+	}).List(ctx, &bfdList); err != nil {
+		return nil, fmt.Errorf("failed to list up BFDs: %v", err)
+	}
+
+	return &bfdList, nil
+}
+
 func (c *OVNNbClient) CreateBFD(lrpName, dstIP string, minRx, minTx, detectMult int) (*ovnnb.BFD, error) {
 	bfdList, err := c.ListBFD(lrpName, dstIP)
 	if err != nil {
@@ -71,7 +85,7 @@ func (c *OVNNbClient) CreateBFD(lrpName, dstIP string, minRx, minTx, detectMult 
 	if bfdList, err = c.ListBFD(lrpName, dstIP); err != nil {
 		return nil, err
 	}
-	if len(*bfdList) != 0 {
+	if len(*bfdList) == 0 {
 		return nil, fmt.Errorf("BFD with logical_port=%s and dst_ip=%s not found", lrpName, dstIP)
 	}
 	return &(*bfdList)[0], nil

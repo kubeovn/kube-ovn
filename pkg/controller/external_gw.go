@@ -313,13 +313,13 @@ func (c *Controller) l3HA() {
 	// based on the bfd between router external lrp and physical switch gw
 	// if bfd down, switch router external lrp to another chassis node
 
-	bfds, err := c.OVNNbClient.ListDownBFDs()
+	downBfds, err := c.OVNNbClient.ListDownBFDs()
 	if err != nil {
 		klog.Errorf("failed to list bfd, %v", err)
 		return
 	}
 	// no bfd down
-	if len(*bfds) == 0 {
+	if len(*downBfds) == 0 {
 		return
 	}
 
@@ -334,19 +334,19 @@ func (c *Controller) l3HA() {
 		klog.Errorf("failed to list external gw nodes, %v", err)
 		return
 	}
-	chassises := []string{}
+	centralizedGwChassisList := []string{}
 	for _, node := range gwNodes {
 		if annoChassesName, ok := node.Annotations[util.ChassisAnnotation]; ok {
-			chassises = append(chassises, annoChassesName)
+			centralizedGwChassisList = append(centralizedGwChassisList, annoChassesName)
 		}
 	}
-	if len(chassises) < 2 {
+	if len(centralizedGwChassisList) < 2 {
 		klog.Errorf("failed to found alternative chassis for lrp when bfd status is down")
 		return
 	}
 
 	downBfdLrps := []*ovnnb.LogicalRouterPort{}
-	for _, bfd := range *bfds {
+	for _, bfd := range *downBfds {
 		lrp, err := c.OVNNbClient.GetLogicalRouterPort(bfd.LogicalPort, false)
 		if err != nil {
 			klog.Errorf("failed to get lrp %s, %v", bfd.LogicalPort, err)
@@ -377,16 +377,19 @@ func (c *Controller) l3HA() {
 		badChassises = append(badChassises, badChassis)
 	}
 
-	if len(badChassisNames) == len(chassises) {
+	if len(badChassisNames) == len(centralizedGwChassisList) {
 		// all chassis bfd status are down
 		klog.Errorf("all bad external gw chassis %v", badChassisNames)
 		return
 	}
 
+	// centralized gw chassis node number probably less than 7
+	maxGwnum := 7
 	// bad chassis use low priority
 	for _, badChassis := range badChassises {
-		if badChassis.Priority != 0 {
-			badChassis.Priority = 0
+		if badChassis.Priority > maxGwnum {
+			badChassis.Priority -= maxGwnum
+			klog.Warningf("lower bad chassis %s priority to %d", badChassis.Name, badChassis.Priority)
 			if err := c.OVNNbClient.UpdateGatewayChassis(&badChassis, &badChassis.Priority); err != nil {
 				klog.Errorf("failed to update bad chassis %s, %v", badChassis.Name, err)
 				continue
@@ -394,4 +397,58 @@ func (c *Controller) l3HA() {
 		}
 	}
 	klog.Warningf("should fix bad gw chassis %v", badChassisNames)
+
+	upBfds, err := c.OVNNbClient.ListUpBFDs()
+	if err != nil {
+		klog.Errorf("failed to list bfd, %v", err)
+		return
+	}
+	// no bfd down
+	if len(*upBfds) == 0 {
+		return
+	}
+
+	upBfdLrps := []*ovnnb.LogicalRouterPort{}
+	for _, bfd := range *upBfds {
+		lrp, err := c.OVNNbClient.GetLogicalRouterPort(bfd.LogicalPort, false)
+		if err != nil {
+			klog.Errorf("failed to get lrp %s, %v", bfd.LogicalPort, err)
+			continue
+		}
+		upBfdLrps = append(upBfdLrps, lrp)
+	}
+
+	goodChassisNames := []string{}
+	goodChassises := []ovnnb.GatewayChassis{}
+
+	// update bad chassis with low priority
+	for _, lrp := range upBfdLrps {
+		gwChassisList, err := c.OVNNbClient.ListGatewayChassisByLogicalRouterPort(lrp.Name, false)
+		if err != nil {
+			klog.Errorf("failed to list gateway chassis for lrp %s, %v", lrp.Name, err)
+			continue
+		}
+		if len(*gwChassisList) == 0 {
+			klog.Errorf("no gateway chassis for lrp %s", lrp.Name)
+			continue
+		}
+		goodChassis := (*gwChassisList)[0]
+		klog.Errorf("lrp %s using good chassis %s", lrp.Name, goodChassis.ChassisName)
+		if util.ContainsString(goodChassisNames, goodChassis.ChassisName) {
+			goodChassisNames = append(goodChassisNames, goodChassis.ChassisName)
+		}
+		goodChassises = append(goodChassises, goodChassis)
+	}
+
+	// good chassis use high priority
+	for _, goodChassis := range goodChassises {
+		if goodChassis.Priority != util.GwChassisMaxPriority {
+			goodChassis.Priority = util.GwChassisMaxPriority
+			klog.Infof("raise good chassis %s priority to %d", goodChassis.Name, goodChassis.Priority)
+			if err := c.OVNNbClient.UpdateGatewayChassis(&goodChassis, &goodChassis.Priority); err != nil {
+				klog.Errorf("failed to update good chassis %s, %v", goodChassis.Name, err)
+				continue
+			}
+		}
+	}
 }

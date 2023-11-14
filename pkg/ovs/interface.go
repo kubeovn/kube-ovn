@@ -49,6 +49,7 @@ type BFD interface {
 	DeleteBFD(lrpName, dstIP string) error
 	ListBFD(lrpName, dstIP string) (*[]ovnnb.BFD, error)
 	ListDownBFDs() (*[]ovnnb.BFD, error)
+	ListUpBFDs() (*[]ovnnb.BFD, error)
 }
 
 type LogicalSwitch interface {

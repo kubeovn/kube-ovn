@@ -11,6 +11,7 @@ import (
 
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 // CreateGatewayChassises create multiple gateway chassis once
@@ -156,7 +157,7 @@ func (c *OVNNbClient) CreateGatewayChassisesOp(lrpName string, chassises []strin
 	uuids := make([]string, 0, len(chassises))
 
 	for i, chassisName := range chassises {
-		gwChassis, err := c.newGatewayChassis(lrpName, chassisName, 100-i)
+		gwChassis, err := c.newGatewayChassis(lrpName, chassisName, util.GwChassisMaxPriority-i)
 		if err != nil {
 			klog.Error(err)
 			return nil, err
