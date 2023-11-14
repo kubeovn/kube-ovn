@@ -18,7 +18,12 @@ import (
 
 func (c *OVNNbClient) ListLogicalRouterStaticRoutesByOption(lrName, _, key, value string) ([]*ovnnb.LogicalRouterStaticRoute, error) {
 	fnFilter := func(route *ovnnb.LogicalRouterStaticRoute) bool {
-		return len(route.Options) != 0 && route.Options[key] == value
+		if len(route.Options) != 0 {
+			if _, ok := route.Options[key]; ok {
+				return route.Options[key] == value
+			}
+		}
+		return false
 	}
 	return c.listLogicalRouterStaticRoutesByFilter(lrName, fnFilter)
 }

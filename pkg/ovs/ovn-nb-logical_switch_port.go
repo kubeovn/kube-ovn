@@ -504,6 +504,31 @@ func (c *OVNNbClient) DeleteLogicalSwitchPort(lspName string) error {
 	return nil
 }
 
+// DeleteLogicalSwitchPorts delete logical switch port from logical switch
+func (c *OVNNbClient) DeleteLogicalSwitchPorts(externalIDs map[string]string, filter func(lrp *ovnnb.LogicalSwitchPort) bool) error {
+	lspList, err := c.ListLogicalSwitchPorts(false, externalIDs, filter)
+	if err != nil {
+		klog.Error(err)
+		return fmt.Errorf("list switch ports: %v", err)
+	}
+
+	ops := make([]ovsdb.Operation, 0, len(lspList))
+	for _, lsp := range lspList {
+		op, err := c.DeleteLogicalSwitchPortOp(lsp.Name)
+		if err != nil {
+			klog.Error(err)
+			return fmt.Errorf("generate operations for deleting logical switch port %s: %v", lsp.Name, err)
+		}
+		ops = append(ops, op...)
+	}
+
+	if err := c.Transact("lsps-del", ops); err != nil {
+		return fmt.Errorf("del logical switch ports: %v", err)
+	}
+
+	return nil
+}
+
 // GetLogicalSwitchPort get logical switch port by name
 func (c *OVNNbClient) GetLogicalSwitchPort(lspName string, ignoreNotFound bool) (*ovnnb.LogicalSwitchPort, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
