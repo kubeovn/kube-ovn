@@ -72,7 +72,6 @@ spec:
           - --alsologtostderr=true
           - --log_file=/var/log/kube-ovn/kube-ovn-cni.log
           - --log_file_max_size=0
-          - --enable-metrics={{- .Values.networking.ENABLE_METRICS }}
           - --kubelet-dir={{ .Values.kubelet_conf.KUBELET_DIR }}
         securityContext:
           runAsUser: 0
