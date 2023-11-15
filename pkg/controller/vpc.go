@@ -1115,23 +1115,22 @@ func (c *Controller) handleAddVpcExternalSubnet(key, subnet string) error {
 	// init lrp gw chassis group
 	chassises := []string{}
 	sel, _ := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{MatchLabels: map[string]string{util.ExGatewayLabel: "true"}})
-	nodes, err := c.nodesLister.List(sel)
+	gwNodes, err := c.nodesLister.List(sel)
 	if err != nil {
 		klog.Errorf("failed to list external gw nodes, %v", err)
 		return err
 	}
-	for _, gw := range nodes {
-		node := gw.DeepCopy()
-		annoChassisName := node.Annotations[util.ChassisAnnotation]
+	for _, gwNode := range gwNodes {
+		annoChassisName := gwNode.Annotations[util.ChassisAnnotation]
 		if annoChassisName == "" {
-			err := fmt.Errorf("node %s has no chassis annotation, kube-ovn-cni not ready", gw)
+			err := fmt.Errorf("node %s has no chassis annotation, kube-ovn-cni not ready", gwNode.Name)
 			klog.Error(err)
 			return err
 		}
-		klog.Infof("get node %s chassis: %s", gw, annoChassisName)
+		klog.Infof("get node %s chassis: %s", gwNode.Name, annoChassisName)
 		chassis, err := c.OVNSbClient.GetChassis(annoChassisName, false)
 		if err != nil {
-			klog.Errorf("failed to get node %s chassis: %s, %v", node.Name, annoChassisName, err)
+			klog.Errorf("failed to get node %s chassis: %s, %v", gwNode.Name, annoChassisName, err)
 			return err
 		}
 		chassises = append(chassises, chassis.Name)
