@@ -766,7 +766,6 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		}
 
 		// wait here to have an insight into all the ovn nat resources
-		time.Sleep(36000 * time.Second)
 		ginkgo.By("4. Deleting pod")
 		for _, node := range nodeNames {
 			podOnNodeName := fmt.Sprintf("bfd-%s", node)

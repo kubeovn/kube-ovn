@@ -26,13 +26,13 @@ func (c *OVNNbClient) ListBFD(lrpName, dstIP string) (*[]ovnnb.BFD, error) {
 	return &bfdList, nil
 }
 
-func (c *OVNNbClient) ListDownBFDs() (*[]ovnnb.BFD, error) {
+func (c *OVNNbClient) ListDownBFDs(dstIP string) (*[]ovnnb.BFD, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
 	defer cancel()
 
 	bfdList := make([]ovnnb.BFD, 0)
 	if err := c.ovsDbClient.WhereCache(func(bfd *ovnnb.BFD) bool {
-		if *bfd.Status == ovnnb.BFDStatusDown || *bfd.Status == ovnnb.BFDStatusAdminDown {
+		if bfd.DstIP == dstIP && (*bfd.Status == ovnnb.BFDStatusDown || *bfd.Status == ovnnb.BFDStatusAdminDown) {
 			return true
 		}
 		return false
@@ -43,13 +43,13 @@ func (c *OVNNbClient) ListDownBFDs() (*[]ovnnb.BFD, error) {
 	return &bfdList, nil
 }
 
-func (c *OVNNbClient) ListUpBFDs() (*[]ovnnb.BFD, error) {
+func (c *OVNNbClient) ListUpBFDs(dstIP string) (*[]ovnnb.BFD, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
 	defer cancel()
 
 	bfdList := make([]ovnnb.BFD, 0)
 	if err := c.ovsDbClient.WhereCache(func(bfd *ovnnb.BFD) bool {
-		return *bfd.Status == ovnnb.BFDStatusUp
+		return bfd.DstIP == dstIP && *bfd.Status == ovnnb.BFDStatusUp
 	}).List(ctx, &bfdList); err != nil {
 		return nil, fmt.Errorf("failed to list up BFDs: %v", err)
 	}

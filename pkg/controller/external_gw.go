@@ -313,16 +313,6 @@ func (c *Controller) l3HA() {
 	// based on the bfd between router external lrp and physical switch gw
 	// if bfd down, switch router external lrp to another chassis node
 
-	downBfds, err := c.OVNNbClient.ListDownBFDs()
-	if err != nil {
-		klog.Errorf("failed to list bfd, %v", err)
-		return
-	}
-	// no bfd down
-	if len(*downBfds) == 0 {
-		return
-	}
-
 	// get gw chassis
 	sel, err := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{MatchLabels: map[string]string{util.ExGatewayLabel: "true"}})
 	if err != nil {
@@ -334,6 +324,27 @@ func (c *Controller) l3HA() {
 		klog.Errorf("failed to list external gw nodes, %v", err)
 		return
 	}
+	if len(gwNodes) == 0 {
+		return
+	}
+
+	// get down bfd by external subnet gateway
+	externalSubnet, err := c.subnetsLister.Get(c.config.ExternalGatewaySwitch)
+	if err != nil {
+		klog.Errorf("failed to get default external subnet %s, %v", c.config.ExternalGatewaySwitch, err)
+		return
+	}
+	v4ExtGw, _ := util.SplitStringIP(externalSubnet.Spec.Gateway)
+	downBfds, err := c.OVNNbClient.ListDownBFDs(v4ExtGw)
+	if err != nil {
+		klog.Errorf("failed to list bfd, %v", err)
+		return
+	}
+	// no bfd down
+	if len(*downBfds) == 0 {
+		return
+	}
+
 	centralizedGwChassisList := []string{}
 	for _, node := range gwNodes {
 		if annoChassesName, ok := node.Annotations[util.ChassisAnnotation]; ok {
@@ -371,10 +382,14 @@ func (c *Controller) l3HA() {
 		}
 		badChassis := (*gwChassisList)[0]
 		klog.Errorf("lrp %s using bad chassis %s", lrp.Name, badChassis.ChassisName)
-		if util.ContainsString(badChassisNames, badChassis.ChassisName) {
+		if !util.ContainsString(badChassisNames, badChassis.ChassisName) {
 			badChassisNames = append(badChassisNames, badChassis.ChassisName)
 		}
 		badChassises = append(badChassises, badChassis)
+	}
+
+	if len(badChassisNames) == 0 {
+		return
 	}
 
 	if len(badChassisNames) == len(centralizedGwChassisList) {
@@ -383,22 +398,25 @@ func (c *Controller) l3HA() {
 		return
 	}
 
-	// centralized gw chassis node number probably less than 7
-	maxGwnum := 7
+	// centralized gw chassis node number probably less than 5
+	maxGwnum := 5
 	// bad chassis use low priority
 	for _, badChassis := range badChassises {
 		if badChassis.Priority > maxGwnum {
 			badChassis.Priority -= maxGwnum
 			klog.Warningf("lower bad chassis %s priority to %d", badChassis.Name, badChassis.Priority)
-			if err := c.OVNNbClient.UpdateGatewayChassis(&badChassis, &badChassis.Priority); err != nil {
-				klog.Errorf("failed to update bad chassis %s, %v", badChassis.Name, err)
-				continue
-			}
+		} else {
+			badChassis.Priority = util.GwChassisMaxPriority - maxGwnum
+			// in case of priority too low to switch back
+			klog.Warningf("refresh bad chassis %s priority to %d", badChassis.Name, badChassis.Priority)
+		}
+		if err := c.OVNNbClient.UpdateGatewayChassis(&badChassis, &badChassis.Priority); err != nil {
+			klog.Errorf("failed to update bad chassis %s, %v", badChassis.Name, err)
+			continue
 		}
 	}
-	klog.Warningf("should fix bad gw chassis %v", badChassisNames)
 
-	upBfds, err := c.OVNNbClient.ListUpBFDs()
+	upBfds, err := c.OVNNbClient.ListUpBFDs(v4ExtGw)
 	if err != nil {
 		klog.Errorf("failed to list bfd, %v", err)
 		return
@@ -434,7 +452,7 @@ func (c *Controller) l3HA() {
 		}
 		goodChassis := (*gwChassisList)[0]
 		klog.Errorf("lrp %s using good chassis %s", lrp.Name, goodChassis.ChassisName)
-		if util.ContainsString(goodChassisNames, goodChassis.ChassisName) {
+		if !util.ContainsString(goodChassisNames, goodChassis.ChassisName) {
 			goodChassisNames = append(goodChassisNames, goodChassis.ChassisName)
 		}
 		goodChassises = append(goodChassises, goodChassis)
