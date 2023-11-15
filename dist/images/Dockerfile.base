@@ -42,7 +42,11 @@ RUN cd /usr/src/ && git clone -b branch-22.12 --depth=1 https://github.com/ovn-o
     # ovn-ic blacklist function not work on ipv6
     curl -s https://github.com/kubeovn/ovn/commit/78ab91005854532e7eb5c4fe6b2923ce292e3681.patch | git apply && \
     # fix lr-lb dnat with multiple distributed gateway ports
-    curl -s https://github.com/kubeovn/ovn/commit/80f37c2debbf9f5230403691f791d11cc2b2e277.patch | git apply
+    curl -s https://github.com/kubeovn/ovn/commit/80f37c2debbf9f5230403691f791d11cc2b2e277.patch | git apply && \
+    if [ "$ARCH" = "arm64" ]; then \
+    # fix ovn-northd/ovn-controller not creating pidfile in arm64
+    curl -s https://github.com/kubeovn/ovn/commit/fbfea0f1258d9d7723ead7e3dc8d7edbe74863d2.patch | git apply; \
+    fi
 
 RUN apt install -y build-essential fakeroot \
     autoconf automake bzip2 debhelper-compat dh-exec dh-python dh-sequence-python3 dh-sequence-sphinxdoc \
