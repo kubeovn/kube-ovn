@@ -741,7 +741,7 @@ func (c *Controller) checkGatewayReady() error {
 						continue
 					}
 
-					exist, err := c.checkPolicyRouteExistForNode(node.Name, cidrBlock, ip, util.GatewayRouterPolicyPriority)
+					exist, err := c.checkPolicyRouteConsistent(cidrBlock, ip, util.GatewayRouterPolicyPriority)
 					if err != nil {
 						klog.Errorf("check ecmp policy route exist for subnet %v, error %v", subnet.Name, err)
 						break
@@ -1104,20 +1104,7 @@ func (c *Controller) getPolicyRouteParas(cidr string, priority int32) ([]string,
 	return nextHops, nameIpMap, nil
 }
 
-func (c *Controller) checkPolicyRouteExistForNode(nodeName, cidr, nexthop string, priority int32) (bool, error) {
-	nextHops, _, err := c.getPolicyRouteParas(cidr, priority)
-	if err != nil {
-		klog.Errorf("failed to get policy route paras, %v", err)
-		return false, err
-	}
-
-	if util.ContainsString(nextHops, nexthop) {
-		return true, nil
-	}
-	return false, nil
-}
-
-func (c *Controller) checkPolicyRouteConsistent(nodeName, cidr, nexthop string, priority int32) (bool, error) {
+func (c *Controller) checkPolicyRouteConsistent(cidr, nexthop string, priority int32) (bool, error) {
 	nextHops, _, err := c.getPolicyRouteParas(cidr, priority)
 	if err != nil {
 		klog.Errorf("failed to get policy route paras, %v", err)
@@ -1229,7 +1216,7 @@ func (c *Controller) addPolicyRouteForCentralizedSubnetOnNode(nodeName, nodeIP s
 					if util.CheckProtocol(cidrBlock) != util.CheckProtocol(nextHop) {
 						continue
 					}
-					exist, err := c.checkPolicyRouteExistForNode(nodeName, cidrBlock, nextHop, util.GatewayRouterPolicyPriority)
+					exist, err := c.checkPolicyRouteConsistent(cidrBlock, nextHop, util.GatewayRouterPolicyPriority)
 					if err != nil {
 						klog.Errorf("check ecmp policy route exist for subnet %v, error %v", subnet.Name, err)
 						continue

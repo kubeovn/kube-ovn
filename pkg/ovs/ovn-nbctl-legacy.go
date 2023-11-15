@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"reflect"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -2686,10 +2688,13 @@ func (c LegacyClient) CheckPolicyRouteNexthopConsistent(router, match, nexthop s
 		klog.Errorf("failed to get policy route paras, %v", err)
 		return false, err
 	}
-	for _, next := range nextHops {
-		if next == nexthop {
-			return true, nil
-		}
+	sort.Strings(nextHops)
+
+	inNextHops := strings.Split(nexthop, ",")
+	sort.Strings(inNextHops)
+
+	if reflect.DeepEqual(inNextHops, nextHops) {
+		return true, nil
 	}
 	return false, nil
 }

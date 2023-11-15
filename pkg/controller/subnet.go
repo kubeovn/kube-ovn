@@ -1974,7 +1974,7 @@ func (c *Controller) updatePolicyRouteForCentralizedSubnet(subnetName, cidr stri
 	for node, ip := range nameIpMap {
 		externalIDs[node] = ip
 	}
-	klog.Infof("add ecmp policy route for router: %s, match %s, action %s, nexthop %s, extrenalID %s", c.config.ClusterRouter, match, "allow", "", externalIDs)
+	klog.Infof("add ecmp policy route for router: %s, match %s, action %s, nexthop %s, extrenalID %s", c.config.ClusterRouter, match, "reroute", nextHopIp, externalIDs)
 	if err := c.ovnLegacyClient.AddPolicyRoute(c.config.ClusterRouter, util.GatewayRouterPolicyPriority, match, "reroute", nextHopIp, externalIDs); err != nil {
 		klog.Errorf("failed to add policy route for centralized subnet %s: %v", subnetName, err)
 		return err
@@ -1989,7 +1989,7 @@ func (c *Controller) addPolicyRouteForCentralizedSubnet(subnet *kubeovnv1.Subnet
 			if util.CheckProtocol(cidrBlock) != util.CheckProtocol(nodeIP) {
 				continue
 			}
-			consistent, err := c.checkPolicyRouteConsistent(nodeName, cidrBlock, nodeIP, util.GatewayRouterPolicyPriority)
+			consistent, err := c.checkPolicyRouteConsistent(cidrBlock, nodeIP, util.GatewayRouterPolicyPriority)
 			if err != nil {
 				klog.Errorf("failed to check policy route for subnet %v, error %v", subnet.Name, err)
 				continue
