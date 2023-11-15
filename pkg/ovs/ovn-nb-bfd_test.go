@@ -39,8 +39,8 @@ func (suite *OvnClientTestSuite) testListBFD() {
 
 	ovnClient := suite.ovnClient
 	lrpName := "test-list-bfd"
-	dstIP1 := "192.168.124.1"
-	dstIP2 := "192.168.124.2"
+	dstIP1 := "192.168.124.2"
+	dstIP2 := "192.168.124.3"
 	minRx1, minTx1, detectMult1 := 101, 102, 19
 	minRx2, minTx2, detectMult2 := 201, 202, 29
 
@@ -82,8 +82,8 @@ func (suite *OvnClientTestSuite) testDeleteBFD() {
 
 	ovnClient := suite.ovnClient
 	lrpName := "test-list-bfd"
-	dstIP1 := "192.168.124.1"
-	dstIP2 := "192.168.124.2"
+	dstIP1 := "192.168.124.4"
+	dstIP2 := "192.168.124.5"
 	minRx1, minTx1, detectMult1 := 101, 102, 19
 	minRx2, minTx2, detectMult2 := 201, 202, 29
 
