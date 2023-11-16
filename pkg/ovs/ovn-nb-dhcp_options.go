@@ -69,22 +69,26 @@ func (c *OVNNbClient) UpdateDHCPOptions(subnet *kubeovnv1.Subnet, mtu int) (*DHC
 		v4Gateway = gateways[0]
 	}
 
-	dhcpV4OptUUID, err := c.updateDHCPv4Options(lsName, v4CIDR, v4Gateway, subnet.Spec.DHCPv4Options, mtu)
-	if err != nil {
-		klog.Error(err)
-		return nil, fmt.Errorf("update IPv4 dhcp options for logical switch %s: %v", lsName, err)
+	dhcpOptionsUUIDs := &DHCPOptionsUUIDs{}
+	if len(v4CIDR) != 0 {
+		dhcpV4OptUUID, err := c.updateDHCPv4Options(lsName, v4CIDR, v4Gateway, subnet.Spec.DHCPv4Options, mtu)
+		if err != nil {
+			klog.Error(err)
+			return nil, fmt.Errorf("update IPv4 dhcp options for logical switch %s: %v", lsName, err)
+		}
+		dhcpOptionsUUIDs.DHCPv4OptionsUUID = dhcpV4OptUUID
 	}
 
-	dhcpV6OptUUID, err := c.updateDHCPv6Options(lsName, v6CIDR, subnet.Spec.DHCPv6Options)
-	if err != nil {
-		klog.Error(err)
-		return nil, fmt.Errorf("update IPv6 dhcp options for logical switch %s: %v", lsName, err)
+	if len(v6CIDR) != 0 {
+		dhcpV6OptUUID, err := c.updateDHCPv6Options(lsName, v6CIDR, subnet.Spec.DHCPv6Options)
+		if err != nil {
+			klog.Error(err)
+			return nil, fmt.Errorf("update IPv6 dhcp options for logical switch %s: %v", lsName, err)
+		}
+		dhcpOptionsUUIDs.DHCPv6OptionsUUID = dhcpV6OptUUID
 	}
 
-	return &DHCPOptionsUUIDs{
-		dhcpV4OptUUID,
-		dhcpV6OptUUID,
-	}, nil
+	return dhcpOptionsUUIDs, nil
 }
 
 func (c *OVNNbClient) updateDHCPv4Options(lsName, cidr, gateway, options string, mtu int) (uuid string, err error) {
