@@ -15,8 +15,10 @@ jobs:
     name: Build AMD64
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v3
-      - uses: docker/setup-buildx-action@v2
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.branch }}
+      - uses: docker/setup-buildx-action@v3
 
       - name: Build
         run: |
@@ -26,8 +28,9 @@ jobs:
       - name: Upload image to artifact
         uses: actions/upload-artifact@v3
         with:
-          name: image-amd64-dpdk
+          name: image-amd64-dpdk-${{ matrix.branch }}
           path: image-amd64-dpdk.tar
+          retention-days: 7
 
   push:
     strategy:
@@ -41,12 +44,14 @@ jobs:
     name: push
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.branch }}
 
       - name: Download image
         uses: actions/download-artifact@v3
         with:
-          name: image-amd64-dpdk
+          name: image-amd64-dpdk-${{ matrix.branch }}
 
       - name: Load Image
         run: |

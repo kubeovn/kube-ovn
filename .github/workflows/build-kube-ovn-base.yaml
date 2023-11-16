@@ -33,6 +33,7 @@ jobs:
         with:
           name: image-amd64-${{ matrix.branch }}
           path: image-amd64.tar
+          retention-days: 7
 
   build-arm64:
     strategy:
@@ -65,12 +66,18 @@ jobs:
         with:
           name: image-arm64-${{ matrix.branch }}
           path: image-arm64.tar
+          retention-days: 7
 
   push:
     strategy:
       fail-fast: false
       matrix:
-        branch: [master, release-1.11, release-1.9]
+        branch:
+        - master
+        - release-1.12-cmss
+        - release-1.12
+        - release-1.11
+        - release-1.9
     needs:
       - build-arm64
       - build-amd64
