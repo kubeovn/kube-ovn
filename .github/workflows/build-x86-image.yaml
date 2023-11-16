@@ -1235,6 +1235,9 @@ jobs:
 
       - name: Run E2E
         working-directory: ${{ env.E2E_DIR }}
+        env:
+          E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
+          E2E_IP_FAMILY: ${{ matrix.ip-family }}
         run: make kube-ovn-ic-conformance-e2e
 
       - name: kubectl ko log
@@ -1536,6 +1539,8 @@ jobs:
 
       - name: Run E2E
         working-directory: ${{ env.E2E_DIR }}
+        env:
+          E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
         run: make kube-ovn-lb-svc-conformance-e2e
 
   kubevirt-e2e:
@@ -1629,6 +1634,8 @@ jobs:
 
       - name: Run E2E
         working-directory: ${{ env.E2E_DIR }}
+        env:
+          E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
         run: make kube-ovn-kubevirt-e2e
 
   webhook-e2e:
@@ -1722,6 +1729,8 @@ jobs:
 
       - name: Run E2E
         working-directory: ${{ env.E2E_DIR }}
+        env:
+          E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
         run: make kube-ovn-webhook-e2e
 
       - name: kubectl ko log
@@ -1896,6 +1905,7 @@ jobs:
         working-directory: ${{ env.E2E_DIR }}
         env:
           E2E_CILIUM_CHAINING: "true"
+          E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
         run: make k8s-conformance-e2e
 
       - name: kubectl ko log
@@ -2230,6 +2240,8 @@ jobs:
 
       - name: Run E2E
         working-directory: ${{ env.E2E_DIR }}
+        env:
+          E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
         run: make iptables-vpc-nat-gw-conformance-e2e
 
       - name: kubectl ko log
@@ -2335,10 +2347,14 @@ jobs:
 
       - name: Run Vip E2E
         working-directory: ${{ env.E2E_DIR }}
+        env:
+          E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
         run: make vip-conformance-e2e
 
       - name: Run Ovn VPC NAT GW E2E
         working-directory: ${{ env.E2E_DIR }}
+        env:
+          E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
         run: make ovn-vpc-nat-gw-conformance-e2e
 
   push:
