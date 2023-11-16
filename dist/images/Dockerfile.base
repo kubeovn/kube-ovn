@@ -12,29 +12,28 @@ RUN apt update && apt install build-essential git libnuma-dev autoconf curl \
     flake8 python3-sphinx graphviz groff wget -y
 
 RUN cd /usr/src/ && \
-    git clone -b branch-2.17 --depth=1 https://github.com/openvswitch/ovs.git && \
+    git clone -b branch-3.0 --depth=1 https://github.com/openvswitch/ovs.git && \
     cd ovs && \
-    # ovsdb-idl: Support write-only-changed IDL monitor mode
-    curl -s https://github.com/kubeovn/ovs/commit/bef703ef862fbbf8740b8d5bf6ca8df9ed617da5.patch | git apply && \
-    # fix memleak
-    curl -s https://github.com/kubeovn/ovs/commit/3cf5c5236494b5f54dd2c363f2b547f9d90b372d.patch | git apply && \
-    # fix log file descriptor leak in monitor process
-    curl -s https://github.com/kubeovn/ovs/commit/9bce4a9bced0d699ebbb2893bc68448bb0243846.patch | git apply && \
+    # fix memory leak by ofport_usage and trim memory periodically
+    curl -s https://github.com/kubeovn/ovs/commit/25d71867370c9a44c66b973556338de7a4d9bad7.patch | git apply && \
     # increase election timer
-    curl -s https://github.com/kubeovn/ovs/commit/28ee0fc71cd4256fc422fff30d13e2aa0028cfca.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovs/commit/31f736fb54cf00e893a23e396958883f54f4080f.patch | git apply && \
     # add fdb update logging
-    curl -s https://github.com/kubeovn/ovs/commit/e3ed5ec298e2427b77dd2252e8c2218894e45220.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovs/commit/119ab5c7e104d25641cdf4506a359c5729acdd9a.patch | git apply && \
     # fdb: fix mac learning in environments with hairpin enabled
-    curl -s https://github.com/kubeovn/ovs/commit/b721a251dadfb0857a2aebe32611d18ca935421f.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovs/commit/40d5597a9a3a09015dda2202f6aa81791c5c03f3.patch | git apply && \
     # ovsdb-tool: add optional server id parameter for "join-cluster" command
-    curl -s https://github.com/kubeovn/ovs/commit/0664cbe47d1684ca5b7147e3449779635454970e.patch | git apply && \
-    # ovsdb-tool: add command fix-cluster
-    curl -s https://github.com/kubeovn/ovs/commit/f52c239f5ded40b503e4d217f916b46ca413da4c.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovs/commit/ebf61515da71fa2e23125a92859fbdb96dcbffe7.patch | git apply && \
+    # Add jitter parameter patch for netem qos
+    curl -s https://github.com/kubeovn/ovs/commit/2eaaf89fbf3ee2172719ed10d045fd79900edc8e.patch | git apply && \
     # fix memory leak in qos
     curl -s https://github.com/kubeovn/ovs/commit/6a4dd2f4b9311a227cc26fef7c398ae9b241311b.patch | git apply && \
+    # ovsdb-tool: add command fix-cluster
+    curl -s https://github.com/kubeovn/ovs/commit/f52c239f5ded40b503e4d217f916b46ca413da4c.patch | git apply && \
     # compile without avx512
     if [ "$ARCH" = "amd64" -a "$NO_AVX512" = "true" ]; then curl -s https://github.com/kubeovn/ovs/commit/f61283c8934589fe6de2b1e86041204dfc31a3e3.patch | git apply; fi && \
     ./boot.sh && \
+    ./configure && \
     rm -rf .git && \
     CONFIGURE_OPTS='' && \
     if [ "$ARCH" = "amd64" ]; then CONFIGURE_OPTS='CFLAGS="-O2 -g -msse4.2 -mpopcnt"'; fi && \
@@ -65,9 +64,11 @@ RUN cd /usr/src/ && git clone -b branch-22.03 --depth=1 https://github.com/ovn-o
     sed -i 's/OVN/ovn/g' debian/changelog && \
     rm -rf .git && \
     ./boot.sh && \
+    ./configure && \
+    make debian && \
     CONFIGURE_OPTS='' && \
     if [ "$ARCH" = "amd64" ]; then CONFIGURE_OPTS='CFLAGS="-O2 -g -msse4.2 -mpopcnt"'; fi && \
-    OVSDIR=/usr/src/ovs EXTRA_CONFIGURE_OPTS=$CONFIGURE_OPTS DEB_BUILD_OPTIONS='parallel=8 nocheck' fakeroot debian/rules binary
+    OVSDIR=/usr/src/ovs EXTRA_CONFIGURE_OPTS=$CONFIGURE_OPTS DEB_BUILD_OPTIONS='parallel=8 nocheck nodpdk' fakeroot debian/rules binary
 
 RUN mkdir /packages/ && \
      cp /usr/src/libopenvswitch*deb /packages && \
@@ -96,7 +97,7 @@ ARG ARCH
 ENV CNI_VERSION=v1.2.0
 RUN curl -sSf -L --retry 5 https://github.com/containernetworking/plugins/releases/download/${CNI_VERSION}/cni-plugins-linux-${ARCH}-${CNI_VERSION}.tgz | tar -xz -C . ./loopback ./portmap ./macvlan
 
-ENV KUBE_VERSION="v1.28.2"
+ENV KUBE_VERSION="v1.28.4"
 
 RUN curl -L https://dl.k8s.io/${KUBE_VERSION}/kubernetes-client-linux-${ARCH}.tar.gz | tar -xz -C . && cp ./kubernetes/client/bin/kubectl /usr/bin/kubectl \
  && chmod +x /usr/bin/kubectl && rm -rf ./kubernetes
