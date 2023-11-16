@@ -103,6 +103,8 @@ var _ = framework.Describe("[group:vip]", func() {
 	})
 
 	framework.ConformanceIt("Test vip", func() {
+		f.SkipVersionPriorTo(1, 13, "This feature was introduced in v1.13")
+
 		ginkgo.By("1. Test allowed address pair vip")
 		annotations := map[string]string{util.AAPsAnnotation: vip1Name}
 		cmd := []string{"sh", "-c", "sleep infinity"}
