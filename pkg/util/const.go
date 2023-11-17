@@ -76,6 +76,8 @@ const (
 	SecurityGroupAnnotationTemplate = "%s.kubernetes.io/security_groups"
 	LiveMigrationAnnotationTemplate = "%s.kubernetes.io/allow_live_migration"
 	DefaultRouteAnnotationTemplate  = "%s.kubernetes.io/default_route"
+	VfRepresentorNameTemplate       = "%s.kubernetes.io/vf_representor"
+	VfNameTemplate                  = "%s.kubernetes.io/vf"
 
 	ProviderNetworkTemplate           = "%s.kubernetes.io/provider_network"
 	ProviderNetworkErrMessageTemplate = "%s.provider-network.kubernetes.io/err_mesg"

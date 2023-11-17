@@ -57,7 +57,7 @@ func (csh cniServerHandler) configureDpdkNic(podName, podNamespace, provider, ne
 	return ovs.SetInterfaceBandwidth(podName, podNamespace, ifaceID, egress, ingress)
 }
 
-func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns, containerID, vfDriver, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute, detectIPConflict bool, routes []request.Route, _, _ []string, ingress, egress, deviceID, nicType, latency, limit, loss, jitter string, gwCheckMode int, u2oInterconnectionIP string) error {
+func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns, containerID, vfDriver, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute, detectIPConflict bool, routes []request.Route, _, _ []string, ingress, egress, deviceID, nicType, latency, limit, loss, jitter string, gwCheckMode int, u2oInterconnectionIP, oldPodName string) error {
 	var err error
 	var hostNicName, containerNicName string
 	if deviceID == "" {
@@ -87,6 +87,34 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 		fmt.Sprintf("external_ids:pod_netns=%s", netns))
 	if err != nil {
 		return fmt.Errorf("add nic to ovs failed %v: %q", err, output)
+	}
+
+	// add hostNicName and containerNicName into pod annotations
+	if deviceID != "" {
+		var podNameNew string
+		if podName != oldPodName {
+			podNameNew = oldPodName
+		} else {
+			podNameNew = podName
+		}
+		pod, err := csh.Controller.podsLister.Pods(podNamespace).Get(podNameNew)
+		if err != nil {
+			klog.Errorf("failed to generate patch for pod %s/%s: %v", podNameNew, podNamespace, err)
+			return err
+		}
+		oriPod := pod.DeepCopy()
+		pod.Annotations[fmt.Sprintf(util.VfRepresentorNameTemplate, provider)] = hostNicName
+		pod.Annotations[fmt.Sprintf(util.VfNameTemplate, provider)] = containerNicName
+		patch, err := util.GenerateMergePatchPayload(oriPod, pod)
+		if err != nil {
+			klog.Errorf("failed to generate patch for pod %s/%s: %v", podNameNew, podNamespace, err)
+			return err
+		}
+		if _, err := csh.Config.KubeClient.CoreV1().Pods(podNamespace).Patch(context.Background(), podNameNew,
+			types.MergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
+			klog.Errorf("patch pod %s/%s failed: %v", podNameNew, podNamespace, err)
+			return err
+		}
 	}
 
 	// lsp and container nic must use same mac address, otherwise ovn will reject these packets by default
@@ -126,7 +154,65 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 	return configureContainerNic(containerNicName, ifName, ip, gateway, isDefaultRoute, detectIPConflict, routes, macAddr, podNS, mtu, nicType, gwCheckMode, u2oInterconnectionIP)
 }
 
-func (csh cniServerHandler) deleteNic(podName, podNamespace, containerID, _, deviceID, ifName, nicType string) error {
+func (csh cniServerHandler) releaseVf(podName, podNamespace, podNetns, ifName, nicType, provider, deviceID string) error {
+	// Only for SRIOV case, we'd need to move the VF from container namespace back to the host namespace
+	if !(nicType == util.OffloadType && deviceID != "") {
+		return nil
+	}
+	podDesc := fmt.Sprintf("for pod %s/%s", podNamespace, podName)
+	klog.Infof("Tear down interface %s", podDesc)
+	netns, err := ns.GetNS(podNetns)
+	if err != nil {
+		return fmt.Errorf("failed to get container namespace %s: %v", podDesc, err)
+	}
+	defer netns.Close()
+
+	hostNS, err := ns.GetCurrentNS()
+	if err != nil {
+		return fmt.Errorf("failed to get host namespace %s: %v", podDesc, err)
+	}
+	defer hostNS.Close()
+
+	err = netns.Do(func(_ ns.NetNS) error {
+		// container side interface deletion
+		link, err := netlink.LinkByName(ifName)
+		if err != nil {
+			return fmt.Errorf("failed to get container interface %s %s: %v", ifName, podDesc, err)
+		}
+		if err = netlink.LinkSetDown(link); err != nil {
+			return fmt.Errorf("failed to bring down container interface %s %s: %v", ifName, podDesc, err)
+		}
+		// rename VF device back to its original name in the host namespace:
+		pod, err := csh.Controller.podsLister.Pods(podNamespace).Get(podName)
+		if err != nil {
+			klog.Errorf("failed to get pod %s/%s: %v", podName, podNamespace, err)
+			return err
+		}
+		vfName := pod.Annotations[fmt.Sprintf(util.VfNameTemplate, provider)]
+		if err = netlink.LinkSetName(link, vfName); err != nil {
+			return fmt.Errorf("failed to rename container interface %s to %s %s: %v",
+				ifName, vfName, podDesc, err)
+		}
+		// move VF device to host netns
+		if err = netlink.LinkSetNsFd(link, int(hostNS.Fd())); err != nil {
+			return fmt.Errorf("failed to move container interface %s back to host namespace %s: %v",
+				ifName, podDesc, err)
+		}
+		return nil
+	})
+	if err != nil {
+		klog.Errorf(err.Error())
+	}
+
+	return nil
+}
+
+func (csh cniServerHandler) deleteNic(podName, podNamespace, containerID, netns, deviceID, ifName, nicType, provider string) error {
+	if err := csh.releaseVf(podName, podNamespace, netns, ifName, nicType, provider, deviceID); err != nil {
+		return fmt.Errorf("failed to release VF %s assigned to the Pod %s/%s back to the host network namespace: "+
+			"%v", ifName, podName, podNamespace, err)
+	}
+
 	var nicName string
 	hostNicName, containerNicName := generateNicName(containerID, ifName)
 

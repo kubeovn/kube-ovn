@@ -146,7 +146,7 @@ func cmdDel(args *skel.CmdArgs) error {
 	if err != nil {
 		return err
 	}
-	if netConf.Type == util.CniTypeName && args.IfName == "eth0" {
+	if netConf.Provider == "" && netConf.Type == util.CniTypeName && args.IfName == "eth0" {
 		netConf.Provider = util.OvnProvider
 	}
 
