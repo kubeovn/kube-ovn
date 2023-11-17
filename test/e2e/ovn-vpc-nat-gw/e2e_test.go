@@ -800,6 +800,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 			framework.Logf("exec %s failed err: %v, errOutput: %s, stdOutput: %s", command, err, errOutput, stdOutput)
 
 			ginkgo.By("Test pod ping node provider bridge ip " + strings.Join(extraProviderBridgeIps, ","))
+			framework.Logf("Pod can not ping bridge ip through extra external subnet in Kind test")
 			for _, ip := range extraProviderBridgeIps {
 				command := fmt.Sprintf("ping -W 1 -c 1 %s", ip)
 				stdOutput, errOutput, err = framework.ExecShellInPod(context.Background(), f, pod.Namespace, pod.Name, command)
