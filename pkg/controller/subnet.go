@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"reflect"
+	"sort"
 	"strings"
 	"time"
 
@@ -253,7 +254,8 @@ func formatSubnet(subnet *kubeovnv1.Subnet, c *Controller) error {
 		subnet.Spec.Provider = util.OvnProvider
 		changed = true
 	}
-	if subnet.Spec.Protocol == "" || subnet.Spec.Protocol != util.CheckProtocol(subnet.Spec.CIDRBlock) {
+	newCIDRBlock := subnet.Spec.CIDRBlock
+	if subnet.Spec.Protocol != util.CheckProtocol(newCIDRBlock) {
 		subnet.Spec.Protocol = util.CheckProtocol(subnet.Spec.CIDRBlock)
 		changed = true
 	}
@@ -365,6 +367,7 @@ func checkAndUpdateExcludeIps(subnet *kubeovnv1.Subnet) bool {
 	changed := false
 	var excludeIps []string
 	excludeIps = append(excludeIps, strings.Split(subnet.Spec.Gateway, ",")...)
+	sort.Strings(excludeIps)
 	if len(subnet.Spec.ExcludeIps) == 0 {
 		subnet.Spec.ExcludeIps = excludeIps
 		changed = true
@@ -380,6 +383,7 @@ func checkAndUpdateExcludeIps(subnet *kubeovnv1.Subnet) bool {
 			}
 			if !gwExists {
 				subnet.Spec.ExcludeIps = append(subnet.Spec.ExcludeIps, gw)
+				sort.Strings(subnet.Spec.ExcludeIps)
 				changed = true
 			}
 		}
@@ -1443,6 +1447,7 @@ func checkAndFormatsExcludeIps(subnet *kubeovnv1.Subnet) bool {
 			excludeIps = append(excludeIps, string(v.Start)+".."+string(v.End))
 		}
 	}
+	sort.Strings(excludeIps)
 	klog.V(3).Infof("excludeips before format is %v, after format is %v", subnet.Spec.ExcludeIps, excludeIps)
 	if !reflect.DeepEqual(subnet.Spec.ExcludeIps, excludeIps) {
 		subnet.Spec.ExcludeIps = excludeIps
