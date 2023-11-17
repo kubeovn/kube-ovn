@@ -996,7 +996,14 @@ func (c *Controller) handleDeletePod(key string) error {
 		}
 	}
 
-	ports, err := c.OVNNbClient.ListNormalLogicalSwitchPorts(true, map[string]string{"pod": key})
+	isVMPod, vmName := isVMPod(pod)
+	isVMPodNeedKeepIP := isVMPod && c.config.EnableKeepVMIP
+	podkey := key
+	if isVMPodNeedKeepIP {
+		podkey = fmt.Sprintf("%s/%s", pod.GetNamespace(), vmName)
+	}
+
+	ports, err := c.OVNNbClient.ListNormalLogicalSwitchPorts(true, map[string]string{"pod": podkey})
 	if err != nil {
 		klog.Errorf("failed to list lsps of pod '%s', %v", pod.Name, err)
 		return err
@@ -1061,8 +1068,8 @@ func (c *Controller) handleDeletePod(key string) error {
 		}
 		keepIPCR = !toDel && !isDelete && err == nil
 	}
-	isVMPod, vmName := isVMPod(pod)
-	if isVMPod && c.config.EnableKeepVMIP {
+
+	if isVMPodNeedKeepIP {
 		toDel := c.isVMPodToDel(pod, vmName)
 		isDelete, err := appendCheckPodToDel(c, pod, vmName, util.VMInstance)
 		if pod.DeletionTimestamp != nil {
