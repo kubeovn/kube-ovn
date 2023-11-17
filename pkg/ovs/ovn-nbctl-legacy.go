@@ -1929,16 +1929,16 @@ func (c LegacyClient) CreateGatewayACL(ls, pgName, gateway, cidr string) error {
 
 			var ingressArgs, egressArgs []string
 			if pgName != "" {
-				ingressArgs = []string{"--", MayExist, "--type=port-group", "acl-add", pgName, "to-lport", util.IngressAllowPriority, fmt.Sprintf("%s.src == %s", ipSuffix, gw), "allow-stateless"}
-				egressArgs = []string{"--", MayExist, "--type=port-group", "--apply-after-lb", "acl-add", pgName, "from-lport", util.EgressAllowPriority, fmt.Sprintf("%s.dst == %s", ipSuffix, gw), "allow-stateless"}
+				ingressArgs = []string{"--", MayExist, "--type=port-group", "acl-add", pgName, "to-lport", util.IngressAllowPriority, fmt.Sprintf("%s.src == %s", ipSuffix, gw), "allow-related"}
+				egressArgs = []string{"--", MayExist, "--type=port-group", "--apply-after-lb", "acl-add", pgName, "from-lport", util.EgressAllowPriority, fmt.Sprintf("%s.dst == %s", ipSuffix, gw), "allow-related"}
 				if ipSuffix == "ip6" {
-					egressArgs = append(egressArgs, []string{"--", "--type=port-group", MayExist, "--apply-after-lb", "acl-add", pgName, "from-lport", util.EgressAllowPriority, `nd || nd_ra || nd_rs`, "allow-stateless"}...)
+					egressArgs = append(egressArgs, []string{"--", "--type=port-group", MayExist, "--apply-after-lb", "acl-add", pgName, "from-lport", util.EgressAllowPriority, `nd || nd_ra || nd_rs`, "allow-related"}...)
 				}
 			} else if ls != "" {
-				ingressArgs = []string{"--", MayExist, "acl-add", ls, "to-lport", util.IngressAllowPriority, fmt.Sprintf(`%s.src == %s`, ipSuffix, gw), "allow-stateless"}
-				egressArgs = []string{"--", MayExist, "--apply-after-lb", "acl-add", ls, "from-lport", util.EgressAllowPriority, fmt.Sprintf(`%s.dst == %s`, ipSuffix, gw), "allow-stateless"}
+				ingressArgs = []string{"--", MayExist, "acl-add", ls, "to-lport", util.IngressAllowPriority, fmt.Sprintf(`%s.src == %s`, ipSuffix, gw), "allow-related"}
+				egressArgs = []string{"--", MayExist, "--apply-after-lb", "acl-add", ls, "from-lport", util.EgressAllowPriority, fmt.Sprintf(`%s.dst == %s`, ipSuffix, gw), "allow-related"}
 				if ipSuffix == "ip6" {
-					egressArgs = append(egressArgs, []string{"--", MayExist, "--apply-after-lb", "acl-add", ls, "from-lport", util.EgressAllowPriority, `nd || nd_ra || nd_rs`, "allow-stateless"}...)
+					egressArgs = append(egressArgs, []string{"--", MayExist, "--apply-after-lb", "acl-add", ls, "from-lport", util.EgressAllowPriority, `nd || nd_ra || nd_rs`, "allow-related"}...)
 				}
 			}
 
@@ -1960,8 +1960,8 @@ func (c LegacyClient) CreateACLForNodePg(pgName, nodeIpStr string) error {
 		}
 		pgAs := fmt.Sprintf("%s_%s", pgName, ipSuffix)
 
-		ingressArgs := []string{MayExist, "--type=port-group", "acl-add", pgName, "to-lport", util.NodeAllowPriority, fmt.Sprintf("%s.src == %s && %s.dst == $%s", ipSuffix, nodeIp, ipSuffix, pgAs), "allow-stateless"}
-		egressArgs := []string{"--", MayExist, "--type=port-group", "--apply-after-lb", "acl-add", pgName, "from-lport", util.NodeAllowPriority, fmt.Sprintf("%s.dst == %s && %s.src == $%s", ipSuffix, nodeIp, ipSuffix, pgAs), "allow-stateless"}
+		ingressArgs := []string{MayExist, "--type=port-group", "acl-add", pgName, "to-lport", util.NodeAllowPriority, fmt.Sprintf("%s.src == %s && %s.dst == $%s", ipSuffix, nodeIp, ipSuffix, pgAs), "allow-related"}
+		egressArgs := []string{"--", MayExist, "--type=port-group", "--apply-after-lb", "acl-add", pgName, "from-lport", util.NodeAllowPriority, fmt.Sprintf("%s.dst == %s && %s.src == $%s", ipSuffix, nodeIp, ipSuffix, pgAs), "allow-related"}
 		ovnArgs := append(ingressArgs, egressArgs...)
 		if _, err := c.ovnNbCommand(ovnArgs...); err != nil {
 			klog.Errorf("failed to add node port-group acl: %v", err)
