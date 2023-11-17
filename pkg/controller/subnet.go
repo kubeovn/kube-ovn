@@ -1796,7 +1796,7 @@ func (c *Controller) reconcileOvnDefaultVpcRoute(subnet *kubeovnv1.Subnet) error
 func (c *Controller) reconcileCustomVpcStaticRoute(subnet *kubeovnv1.Subnet) error {
 	// in custom vpc, subnet gw type is unmeaning
 	// 1. vpc out to public network through vpc nat gw pod, the static route is auto managed by admin user
-	// 2. vpc out to public network through ovn nat lrp, whose nexthop rely on bfd ecmp, the vpc spec bfd tatic route is auto managed here
+	// 2. vpc out to public network through ovn nat lrp, whose nexthop rely on bfd ecmp, the vpc spec bfd static route is auto managed here
 	// 3. vpc out to public network through ovn nat lrp, without bfd ecmp, the vpc spec static route is auto managed here
 
 	vpc, err := c.vpcsLister.Get(subnet.Spec.Vpc)
