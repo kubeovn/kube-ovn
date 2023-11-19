@@ -374,11 +374,6 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 			if err == nil {
 				nextHop := cm.Data["external-gw-addr"]
 				if nextHop == "" {
-					externalSubnet, err := c.subnetsLister.Get(c.config.ExternalGatewaySwitch)
-					if err != nil {
-						klog.Errorf("failed to get subnet %s, %v", c.config.ExternalGatewaySwitch, err)
-						return err
-					}
 					nextHop = externalSubnet.Spec.Gateway
 					if nextHop == "" {
 						klog.Errorf("no available gateway address")
