@@ -11,6 +11,7 @@ import (
 
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 // CreateGatewayChassises create multiple gateway chassis once
@@ -24,6 +25,22 @@ func (c *OVNNbClient) CreateGatewayChassises(lrpName string, chassises ...string
 		return fmt.Errorf("create gateway chassis %v for logical router port %s: %v", chassises, lrpName, err)
 	}
 
+	return nil
+}
+
+// UpdateGatewayChassis update gateway chassis
+func (c *OVNNbClient) UpdateGatewayChassis(gwChassis *ovnnb.GatewayChassis, fields ...interface{}) error {
+	op, err := c.ovsDbClient.Where(gwChassis).Update(gwChassis, fields...)
+	if err != nil {
+		err := fmt.Errorf("failed to generate operations for gateway chassis %s with fields %v: %v", gwChassis.ChassisName, fields, err)
+		klog.Error(err)
+		return err
+	}
+	if err = c.Transact("gateway-chassis-update", op); err != nil {
+		err := fmt.Errorf("failed to update gateway chassis %s: %v", gwChassis.ChassisName, err)
+		klog.Error(err)
+		return err
+	}
 	return nil
 }
 
@@ -58,6 +75,29 @@ func (c *OVNNbClient) DeleteGatewayChassises(lrpName string, chassises []string)
 	return nil
 }
 
+// ListGatewayChassisByLogicalRouterPort get gateway chassis by lrp name
+func (c *OVNNbClient) ListGatewayChassisByLogicalRouterPort(lrpName string, ignoreNotFound bool) (*[]ovnnb.GatewayChassis, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+
+	gwChassisList := make([]ovnnb.GatewayChassis, 0)
+	if err := c.ovsDbClient.WhereCache(func(gwChassis *ovnnb.GatewayChassis) bool {
+		if gwChassis.ExternalIDs != nil && gwChassis.ExternalIDs["lrp"] == lrpName {
+			return true
+		}
+		return false
+	}).List(ctx, &gwChassisList); err != nil {
+		if ignoreNotFound && err == client.ErrNotFound {
+			return nil, nil
+		}
+		err = fmt.Errorf("failed to list gw chassis for lrp %s: %v", lrpName, err)
+		klog.Error(err)
+		return nil, err
+	}
+
+	return &gwChassisList, nil
+}
+
 // GetGatewayChassis get gateway chassis by name
 func (c *OVNNbClient) GetGatewayChassis(name string, ignoreNotFound bool) (*ovnnb.GatewayChassis, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
@@ -81,7 +121,8 @@ func (c *OVNNbClient) GatewayChassisExist(name string) (bool, error) {
 }
 
 // newGatewayChassis return gateway chassis with basic information
-func (c *OVNNbClient) newGatewayChassis(gwChassisName, chassisName string, priority int) (*ovnnb.GatewayChassis, error) {
+func (c *OVNNbClient) newGatewayChassis(lrpName, chassisName string, priority int) (*ovnnb.GatewayChassis, error) {
+	gwChassisName := lrpName + "-" + chassisName
 	exists, err := c.GatewayChassisExist(gwChassisName)
 	if err != nil {
 		klog.Error(err)
@@ -98,12 +139,15 @@ func (c *OVNNbClient) newGatewayChassis(gwChassisName, chassisName string, prior
 		Name:        gwChassisName,
 		ChassisName: chassisName,
 		Priority:    priority,
+		ExternalIDs: map[string]string{
+			"lrp": lrpName,
+		},
 	}
 
 	return gwChassis, nil
 }
 
-// DeleteGatewayChassisOp create operation which create gateway chassis
+// CreateGatewayChassisesOp create operation which create gateway chassises
 func (c *OVNNbClient) CreateGatewayChassisesOp(lrpName string, chassises []string) ([]ovsdb.Operation, error) {
 	if len(chassises) == 0 {
 		return nil, nil
@@ -113,8 +157,7 @@ func (c *OVNNbClient) CreateGatewayChassisesOp(lrpName string, chassises []strin
 	uuids := make([]string, 0, len(chassises))
 
 	for i, chassisName := range chassises {
-		gwChassisName := lrpName + "-" + chassisName
-		gwChassis, err := c.newGatewayChassis(gwChassisName, chassisName, 100-i)
+		gwChassis, err := c.newGatewayChassis(lrpName, chassisName, util.GwChassisMaxPriority-i)
 		if err != nil {
 			klog.Error(err)
 			return nil, err
