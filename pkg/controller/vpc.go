@@ -319,12 +319,14 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 
 	var externalSubnet *kubeovnv1.Subnet
 	isExternalSubnetExist := false
-	if c.config.EnableEipSnat {
+	if c.config.EnableEipSnat && c.config.NetworkType != util.NetworkTypeVlan {
 		externalSubnet, err = c.subnetsLister.Get(c.config.ExternalGatewaySwitch)
 		if err != nil {
-			klog.Errorf("failed to get subnet %s, %v", c.config.ExternalGatewaySwitch, err)
-			isExternalSubnetExist = false
+			err = fmt.Errorf("failed to get external subnet %s, %v", c.config.ExternalGatewaySwitch, err)
+			klog.Error(err)
+			return err
 		}
+		isExternalSubnetExist = true
 	}
 
 	staticRouteMapping = c.getRouteTablesByVpc(vpc)
