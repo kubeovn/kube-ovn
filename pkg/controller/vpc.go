@@ -317,18 +317,18 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		return err
 	}
 
-	staticRouteMapping = c.getRouteTablesByVpc(vpc)
-	staticTargetRoutes = vpc.Spec.StaticRoutes
-
 	var externalSubnet *kubeovnv1.Subnet
+	isExternalSubnetExist := false
 	if c.config.EnableEipSnat {
 		externalSubnet, err = c.subnetsLister.Get(c.config.ExternalGatewaySwitch)
 		if err != nil {
 			klog.Errorf("failed to get subnet %s, %v", c.config.ExternalGatewaySwitch, err)
-			return err
+			isExternalSubnetExist = false
 		}
 	}
 
+	staticRouteMapping = c.getRouteTablesByVpc(vpc)
+	staticTargetRoutes = vpc.Spec.StaticRoutes
 	if vpc.Name == c.config.ClusterRouter {
 		if _, ok := staticRouteMapping[util.MainRouteTable]; !ok {
 			staticRouteMapping[util.MainRouteTable] = nil
@@ -368,8 +368,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 				)
 			}
 		}
-
-		if c.config.EnableEipSnat {
+		if c.config.EnableEipSnat && isExternalSubnetExist {
 			cm, err := c.configMapsLister.ConfigMaps(c.config.ExternalGatewayConfigNS).Get(util.ExternalGatewayConfig)
 			if err == nil {
 				nextHop := cm.Data["external-gw-addr"]
@@ -544,7 +543,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		}
 	}
 
-	if vpc.Name != util.DefaultVpc && !externalSubnet.Spec.LogicalGateway {
+	if isExternalSubnetExist && vpc.Name != util.DefaultVpc && !externalSubnet.Spec.LogicalGateway {
 		if cachedVpc.Spec.EnableExternal {
 			if !cachedVpc.Status.EnableExternal {
 				// connect vpc to default external
