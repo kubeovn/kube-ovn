@@ -23,10 +23,10 @@ func (csh cniServerHandler) configureDpdkNic(podName, podNamespace, provider, ne
 }
 
 func (csh cniServerHandler) configureNicWithInternalPort(podName, podNamespace, provider, netns, containerID, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute, detectIPConflict bool, routes []request.Route, dnsServer, dnsSuffix []string, ingress, egress, DeviceID, nicType, latency, limit, loss, jitter string, gwCheckMode int, u2oInterconnectionIP string) (string, error) {
-	return ifName, csh.configureNic(podName, podNamespace, provider, netns, containerID, "", ifName, mac, mtu, ip, gateway, isDefaultRoute, detectIPConflict, routes, dnsServer, dnsSuffix, ingress, egress, DeviceID, nicType, latency, limit, loss, jitter, gwCheckMode, u2oInterconnectionIP)
+	return ifName, csh.configureNic(podName, podNamespace, provider, netns, containerID, "", ifName, mac, mtu, ip, gateway, isDefaultRoute, detectIPConflict, routes, dnsServer, dnsSuffix, ingress, egress, DeviceID, nicType, latency, limit, loss, jitter, gwCheckMode, u2oInterconnectionIP, "")
 }
 
-func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns, containerID, vfDriver, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute, detectIPConflict bool, routes []request.Route, dnsServer, dnsSuffix []string, ingress, egress, DeviceID, nicType, latency, limit, loss, jitter string, gwCheckMode int, u2oInterconnectionIP string) error {
+func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns, containerID, vfDriver, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute, detectIPConflict bool, routes []request.Route, dnsServer, dnsSuffix []string, ingress, egress, DeviceID, nicType, latency, limit, loss, jitter string, gwCheckMode int, u2oInterconnectionIP, _ string) error {
 	if DeviceID != "" {
 		return errors.New("SR-IOV is not supported on Windows")
 	}
@@ -219,7 +219,7 @@ func configureNic(name, ip string, mac net.HardwareAddr, mtu int) error {
 	return nil
 }
 
-func (csh cniServerHandler) deleteNic(podName, podNamespace, containerID, netns, deviceID, ifName, nicType string) error {
+func (csh cniServerHandler) deleteNic(podName, podNamespace, containerID, netns, deviceID, ifName, nicType, _ string) error {
 	epName := hns.ConstructEndpointName(containerID, netns, util.HnsNetwork)[:12]
 	// remove ovs port
 	output, err := ovs.Exec(ovs.IfExists, "--with-iface", "del-port", "br-int", epName)
