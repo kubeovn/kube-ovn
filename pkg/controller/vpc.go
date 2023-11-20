@@ -322,11 +322,15 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 	if c.config.EnableEipSnat && c.config.NetworkType != util.NetworkTypeVlan {
 		externalSubnet, err = c.subnetsLister.Get(c.config.ExternalGatewaySwitch)
 		if err != nil {
-			err = fmt.Errorf("failed to get external subnet %s, %v", c.config.ExternalGatewaySwitch, err)
-			klog.Error(err)
-			return err
+			if !k8serrors.IsNotFound(err) {
+				klog.Infof("failed to get external subnet %s: %v", c.config.ExternalGatewaySwitch, err)
+			} else {
+				klog.Infof("external subnet %s not found", c.config.ExternalGatewaySwitch)
+			}
+
+		} else {
+			isExternalSubnetExist = true
 		}
-		isExternalSubnetExist = true
 	}
 
 	staticRouteMapping = c.getRouteTablesByVpc(vpc)
@@ -370,11 +374,16 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 				)
 			}
 		}
-		if c.config.EnableEipSnat && isExternalSubnetExist {
+		if c.config.EnableEipSnat {
 			cm, err := c.configMapsLister.ConfigMaps(c.config.ExternalGatewayConfigNS).Get(util.ExternalGatewayConfig)
 			if err == nil {
 				nextHop := cm.Data["external-gw-addr"]
 				if nextHop == "" {
+					if !isExternalSubnetExist {
+						err = fmt.Errorf("no available external subnet")
+						klog.Error(err)
+						return err
+					}
 					nextHop = externalSubnet.Spec.Gateway
 					if nextHop == "" {
 						klog.Errorf("no available gateway address")
