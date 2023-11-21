@@ -222,9 +222,8 @@ func (c *Controller) handleAddOvnEip(key string) error {
 	var v4ip, v6ip, mac, subnetName string
 	subnetName = cachedEip.Spec.ExternalSubnet
 	if subnetName == "" {
-		err := fmt.Errorf("failed to create ovn eip '%s', subnet should be set", key)
-		klog.Error(err)
-		return err
+		klog.Infof("subnet has not been set for eip %q, using default external subnet %q", key, c.config.ExternalGatewaySwitch)
+		subnetName = c.config.ExternalGatewaySwitch
 	}
 	subnet, err := c.subnetsLister.Get(subnetName)
 	if err != nil {
