@@ -1,6 +1,17 @@
 name: Build Base
 on:
   workflow_dispatch:
+    inputs:
+      branch:
+        description: "Select branch"
+        required: true
+        type: choice
+        options:
+          - master
+          - release-1.12-cmss
+          - release-1.12
+          - release-1.11
+          - release-1.9
   schedule:
   - cron: "20 19 * * *"
 
@@ -19,16 +30,21 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
+        if: github.event.inputs.branch == matrix.branch
         with:
           ref: ${{ matrix.branch }}
+
       - uses: docker/setup-buildx-action@v3
+        if: github.event.inputs.branch == matrix.branch
 
       - name: Build
+        if: github.event.inputs.branch == matrix.branch
         run: |
           make base-amd64
           make base-tar-amd64
 
       - name: Upload image to artifact
+        if: github.event.inputs.branch == matrix.branch
         uses: actions/upload-artifact@v3
         with:
           name: image-amd64-${{ matrix.branch }}
@@ -49,19 +65,26 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
+        if: github.event.inputs.branch == matrix.branch
         with:
           ref: ${{ matrix.branch }}
+
       - uses: docker/setup-buildx-action@v3
+        if: github.event.inputs.branch == matrix.branch
+
       - uses: docker/setup-qemu-action@v3
+        if: github.event.inputs.branch == matrix.branch
         with:
           platforms: arm64
 
       - name: Build
+        if: github.event.inputs.branch == matrix.branch
         run: |
           make base-arm64 || make base-arm64
           make base-tar-arm64
 
       - name: Upload image to artifact
+        if: github.event.inputs.branch == matrix.branch
         uses: actions/upload-artifact@v3
         with:
           name: image-arm64-${{ matrix.branch }}
@@ -85,24 +108,30 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
+        if: github.event.inputs.branch == matrix.branch
         with:
           ref: ${{ matrix.branch }}
+
       - name: Download image
+        if: github.event.inputs.branch == matrix.branch
         uses: actions/download-artifact@v3
         with:
           name: image-amd64-${{ matrix.branch }}
 
       - name: Download image
+        if: github.event.inputs.branch == matrix.branch
         uses: actions/download-artifact@v3
         with:
           name: image-arm64-${{ matrix.branch }}
 
       - name: Load Image
+        if: github.event.inputs.branch == matrix.branch
         run: |
           docker load --input image-amd64.tar
           docker load --input image-arm64.tar
 
       - name: Push
+        if: github.event.inputs.branch == matrix.branch
         env:
           DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
           DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
