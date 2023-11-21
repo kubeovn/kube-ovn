@@ -380,7 +380,9 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 		newSg := newPod.Annotations[fmt.Sprintf(util.SecurityGroupAnnotationTemplate, podNet.ProviderName)]
 		oldVips := oldPod.Annotations[fmt.Sprintf(util.PortVipAnnotationTemplate, podNet.ProviderName)]
 		newVips := newPod.Annotations[fmt.Sprintf(util.PortVipAnnotationTemplate, podNet.ProviderName)]
-		if oldSecurity != newSecurity || oldSg != newSg || oldVips != newVips {
+		oldAAPs := oldPod.Annotations[util.AAPsAnnotation]
+		newAAPs := newPod.Annotations[util.AAPsAnnotation]
+		if oldSecurity != newSecurity || oldSg != newSg || oldVips != newVips || oldAAPs != newAAPs {
 			c.updatePodSecurityQueue.Add(key)
 			break
 		}
@@ -642,6 +644,8 @@ func (c *Controller) reconcileAllocateSubnets(cachedPod, pod *v1.Pod, needAlloca
 
 	klog.Infof("sync pod %s/%s allocated", namespace, name)
 
+	vipsMap := c.getVirtualIPs(pod, needAllocatePodNets)
+
 	// Avoid create lsp for already running pod in ovn-nb when controller restart
 	for _, podNet := range needAllocatePodNets {
 		// the subnet may changed when alloc static ip from the latter subnet after ns supports multi subnets
@@ -714,7 +718,7 @@ func (c *Controller) reconcileAllocateSubnets(cachedPod, pod *v1.Pod, needAlloca
 			}
 
 			securityGroupAnnotation := pod.Annotations[fmt.Sprintf(util.SecurityGroupAnnotationTemplate, podNet.ProviderName)]
-			vips := pod.Annotations[fmt.Sprintf(util.PortVipAnnotationTemplate, podNet.ProviderName)]
+			vips := vipsMap[fmt.Sprintf("%s.%s", podNet.Subnet.Name, podNet.ProviderName)]
 			for _, ip := range strings.Split(vips, ",") {
 				if ip != "" && net.ParseIP(ip) == nil {
 					klog.Errorf("invalid vip address '%s' for pod %s", ip, name)
@@ -980,8 +984,8 @@ func (c *Controller) handleDeletePod(key string) error {
 		return nil
 	}
 
-	if aaps := strings.Split(pod.Annotations[util.AAPsAnnotation], ","); aaps != nil {
-		for _, vipName := range aaps {
+	if aaps := pod.Annotations[util.AAPsAnnotation]; aaps != "" {
+		for _, vipName := range strings.Split(aaps, ",") {
 			if vip, err := c.virtualIpsLister.Get(vipName); err == nil {
 				if vip.Spec.Namespace != pod.Namespace {
 					continue
@@ -1132,6 +1136,8 @@ func (c *Controller) handleUpdatePodSecurity(key string) error {
 		return err
 	}
 
+	vipsMap := c.getVirtualIPs(pod, podNets)
+
 	// associated with security group
 	for _, podNet := range podNets {
 		portSecurity := false
@@ -1141,7 +1147,7 @@ func (c *Controller) handleUpdatePodSecurity(key string) error {
 
 		mac := pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, podNet.ProviderName)]
 		ipStr := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, podNet.ProviderName)]
-		vips := pod.Annotations[fmt.Sprintf(util.PortVipAnnotationTemplate, podNet.ProviderName)]
+		vips := vipsMap[fmt.Sprintf("%s.%s", podNet.Subnet.Name, podNet.ProviderName)]
 
 		if err = c.OVNNbClient.SetLogicalSwitchPortSecurity(portSecurity, ovs.PodNameToPortName(podName, namespace, podNet.ProviderName), mac, ipStr, vips); err != nil {
 			klog.Errorf("set logical switch port security: %v", err)
@@ -1154,6 +1160,9 @@ func (c *Controller) handleUpdatePodSecurity(key string) error {
 		if portSecurity {
 			securityGroups = pod.Annotations[fmt.Sprintf(util.SecurityGroupAnnotationTemplate, podNet.ProviderName)]
 			securityGroups = strings.ReplaceAll(securityGroups, " ", "")
+			for _, sg := range strings.Split(securityGroups, ",") {
+				c.syncSgPortsQueue.Add(sg)
+			}
 		}
 		if err = c.reconcilePortSg(ovs.PodNameToPortName(podName, namespace, podNet.ProviderName), securityGroups); err != nil {
 			klog.Errorf("reconcilePortSg failed. %v", err)
@@ -1984,4 +1993,45 @@ func getPodType(pod *v1.Pod) string {
 		return util.VM
 	}
 	return ""
+}
+
+func (c *Controller) getVirtualIPs(pod *v1.Pod, podNets []*kubeovnNet) map[string]string {
+	vipsMap := make(map[string]string)
+	if aaps := pod.Annotations[util.AAPsAnnotation]; aaps != "" {
+		for _, vipName := range strings.Split(aaps, ",") {
+			vip, err := c.virtualIpsLister.Get(vipName)
+			if err != nil {
+				klog.Errorf("failed to get vip %s, %v", vipName, err)
+				continue
+			}
+			if vip.Spec.Namespace != pod.Namespace || vip.Status.V4ip == "" {
+				continue
+			}
+			subnet, err := c.subnetsLister.Get(vip.Spec.Subnet)
+			if err != nil {
+				klog.Errorf("failed to get subnet %s, %v", vip.Spec.Subnet, err)
+				continue
+			}
+			key := fmt.Sprintf("%s.%s", subnet.Name, subnet.Spec.Provider)
+			if vips, exists := vipsMap[key]; exists {
+				vipsMap[key] = strings.Join([]string{vips, vip.Status.V4ip}, ",")
+			} else {
+				vipsMap[key] = vip.Status.V4ip
+			}
+		}
+	}
+
+	for _, podNet := range podNets {
+		key := fmt.Sprintf("%s.%s", podNet.Subnet.Name, podNet.ProviderName)
+		vip := pod.Annotations[fmt.Sprintf(util.PortVipAnnotationTemplate, podNet.ProviderName)]
+		if vip == "" {
+			continue
+		}
+		if vips, exists := vipsMap[key]; exists {
+			vipsMap[key] = strings.Join([]string{vips, vip}, ",")
+		} else {
+			vipsMap[key] = vip
+		}
+	}
+	return vipsMap
 }
