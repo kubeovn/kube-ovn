@@ -24,7 +24,7 @@ MULTUS_VERSION = v4.0.2
 MULTUS_IMAGE = ghcr.io/k8snetworkplumbingwg/multus-cni:$(MULTUS_VERSION)-thick
 MULTUS_YAML = https://raw.githubusercontent.com/k8snetworkplumbingwg/multus-cni/$(MULTUS_VERSION)/deployments/multus-daemonset-thick.yml
 
-KUBEVIRT_VERSION = v0.59.2
+KUBEVIRT_VERSION = v1.1.0
 KUBEVIRT_OPERATOR_IMAGE = quay.io/kubevirt/virt-operator:$(KUBEVIRT_VERSION)
 KUBEVIRT_API_IMAGE = quay.io/kubevirt/virt-api:$(KUBEVIRT_VERSION)
 KUBEVIRT_CONTROLLER_IMAGE = quay.io/kubevirt/virt-controller:$(KUBEVIRT_VERSION)
@@ -35,16 +35,16 @@ KUBEVIRT_OPERATOR_YAML = https://github.com/kubevirt/kubevirt/releases/download/
 KUBEVIRT_CR_YAML = https://github.com/kubevirt/kubevirt/releases/download/$(KUBEVIRT_VERSION)/kubevirt-cr.yaml
 KUBEVIRT_TEST_YAML = https://kubevirt.io/labs/manifests/vm.yaml
 
-CILIUM_VERSION = 1.14.1
+CILIUM_VERSION = 1.14.4
 CILIUM_IMAGE_REPO = quay.io/cilium/cilium
 
-CERT_MANAGER_VERSION = v1.12.5
+CERT_MANAGER_VERSION = v1.13.2
 CERT_MANAGER_CONTROLLER = quay.io/jetstack/cert-manager-controller:$(CERT_MANAGER_VERSION)
 CERT_MANAGER_CAINJECTOR = quay.io/jetstack/cert-manager-cainjector:$(CERT_MANAGER_VERSION)
 CERT_MANAGER_WEBHOOK = quay.io/jetstack/cert-manager-webhook:$(CERT_MANAGER_VERSION)
 CERT_MANAGER_YAML = https://github.com/cert-manager/cert-manager/releases/download/$(CERT_MANAGER_VERSION)/cert-manager.yaml
 
-SUBMARINER_VERSION = $(shell echo $${SUBMARINER_VERSION:-0.14.6})
+SUBMARINER_VERSION = $(shell echo $${SUBMARINER_VERSION:-0.16.2})
 SUBMARINER_OPERATOR = quay.io/submariner/submariner-operator:$(SUBMARINER_VERSION)
 SUBMARINER_GATEWAY = quay.io/submariner/submariner-gateway:$(SUBMARINER_VERSION)
 SUBMARINER_LIGHTHOUSE_AGENT = quay.io/submariner/lighthouse-agent:$(SUBMARINER_VERSION)
@@ -789,9 +789,12 @@ kind-install-deepflow: kind-install
 	helm install deepflow -n deepflow deepflow/deepflow \
 		--create-namespace --version $(DEEPFLOW_CHART_VERSION) \
 		--set global.image.repository=$(DEEPFLOW_IMAGE_REPO) \
+		--set global.image.pullPolicy=IfNotPresent \
 		--set grafana.image.repository=$(DEEPFLOW_IMAGE_REPO)/grafana \
-		--set deepflow-agent.sysctlInitContainer.enabled=false \
-		--set 'mysql.storageConfig.persistence.size=5Gi' \
+		--set grafana.image.pullPolicy=IfNotPresent \
+		--set mysql.storageConfig.persistence.size=5Gi \
+		--set mysql.image.pullPolicy=IfNotPresent \
+		--set clickhouse.image.pullPolicy=IfNotPresent \
 		--set-json 'clickhouse.storageConfig.persistence=$(CLICKHOUSE_PERSISTENCE)'
 	kubectl -n deepflow patch svc deepflow-grafana --type=json \
 		-p '[{"op": "replace", "path": "/spec/ports/0/nodePort", "value": $(DEEPFLOW_GRAFANA_PORT)}]'
