@@ -11,8 +11,8 @@ concurrency:
 
 env:
   GO_VERSION: ''
-  HELM_VERSION: v3.13.1
-  SUBMARINER_VERSION: '0.14.7'
+  HELM_VERSION: v3.13.2
+  SUBMARINER_VERSION: '0.16.2'
 
 jobs:
   k8s-conformance-e2e:
