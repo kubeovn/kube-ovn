@@ -40,11 +40,7 @@ RUN cd /usr/src/ && git clone -b branch-22.12 --depth=1 https://github.com/ovn-o
     # ovn-controller: do not send GARP on localnet for Kube-OVN ports
     curl -s https://github.com/kubeovn/ovn/commit/8af8751cdb55f582c675db921f2526b06fd3d8c0.patch | git apply && \
     # ovn-ic blacklist function not work on ipv6
-    curl -s https://github.com/kubeovn/ovn/commit/78ab91005854532e7eb5c4fe6b2923ce292e3681.patch | git apply && \
-    if [ "$ARCH" = "arm64" ]; then \
-    # fix ovn-northd/ovn-controller not creating pidfile in arm64
-    curl -s https://github.com/kubeovn/ovn/commit/fbfea0f1258d9d7723ead7e3dc8d7edbe74863d2.patch | git apply; \
-    fi
+    curl -s https://github.com/kubeovn/ovn/commit/78ab91005854532e7eb5c4fe6b2923ce292e3681.patch | git apply
 
 RUN apt install -y build-essential fakeroot \
     autoconf automake bzip2 debhelper-compat dh-exec dh-python dh-sequence-python3 dh-sequence-sphinxdoc \
@@ -55,18 +51,16 @@ RUN cd /usr/src/ovs && \
     ./boot.sh && \
     ./configure && \
     rm -rf .git && \
-    CONFIGURE_OPTS='' && \
+    CONFIGURE_OPTS='CFLAGS="-fPIC"' && \
     if [ "$ARCH" = "amd64" ]; then CONFIGURE_OPTS='CFLAGS="-O2 -g -msse4.2 -mpopcnt -fPIC"'; fi && \
     DATAPATH_CONFIGURE_OPTS='--prefix=/usr' EXTRA_CONFIGURE_OPTS=$CONFIGURE_OPTS DEB_BUILD_OPTIONS='parallel=8 nocheck nodpdk' make debian-deb
-
-RUN dpkg -i /usr/src/python3-openvswitch*.deb
 
 RUN cd /usr/src/ovn && \
     sed -i 's/OVN/ovn/g' debian/changelog && \
     rm -rf .git && \
     ./boot.sh && \
-    CONFIGURE_OPTS='--with-ovs-build=/usr/src/ovs/_debian' && \
-    if [ "$ARCH" = "amd64" ]; then CONFIGURE_OPTS="$CONFIGURE_OPTS CFLAGS='-O2 -g -msse4.2 -mpopcnt -fPIC'"; fi && \
+    CONFIGURE_OPTS='--with-ovs-build=/usr/src/ovs/_debian CFLAGS="-fPIC"' && \
+    if [ "$ARCH" = "amd64" ]; then CONFIGURE_OPTS="--with-ovs-build=/usr/src/ovs/_debian CFLAGS='-O2 -g -msse4.2 -mpopcnt -fPIC'"; fi && \
     OVSDIR=/usr/src/ovs EXTRA_CONFIGURE_OPTS=$CONFIGURE_OPTS DEB_BUILD_OPTIONS='parallel=8 nocheck' fakeroot debian/rules binary
 
 RUN mkdir /packages/ && \
