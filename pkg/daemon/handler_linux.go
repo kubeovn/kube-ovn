@@ -22,7 +22,7 @@ func (csh cniServerHandler) validatePodRequest(_ *request.CniRequest) error {
 	return nil
 }
 
-func createShortSharedDir(pod *v1.Pod, volumeName, kubeletDir string) (err error) {
+func createShortSharedDir(pod *v1.Pod, volumeName, socketConsumption, kubeletDir string) (err error) {
 	var volume *v1.Volume
 	for index, v := range pod.Spec.Volumes {
 		if v.Name == volumeName {
@@ -41,30 +41,48 @@ func createShortSharedDir(pod *v1.Pod, volumeName, kubeletDir string) (err error
 	// set vhostuser dir 777 for qemu has the permission to create sock
 	mask := syscall.Umask(0)
 	defer syscall.Umask(mask)
-	if _, err = os.Stat(newSharedDir); os.IsNotExist(err) {
-		err = os.MkdirAll(newSharedDir, 0o777)
-		if err != nil {
-			return fmt.Errorf("createSharedDir: Failed to create dir (%s): %v", newSharedDir, err)
-		}
-
-		if strings.Contains(newSharedDir, util.DefaultHostVhostuserBaseDir) {
-			klog.Infof("createSharedDir: Mount from %s to %s", originSharedDir, newSharedDir)
-			err = unix.Mount(originSharedDir, newSharedDir, "", unix.MS_BIND, "")
+	if _, err = os.Stat(newSharedDir); err != nil {
+		if os.IsNotExist(err) {
+			err = os.MkdirAll(newSharedDir, 0o777)
 			if err != nil {
-				return fmt.Errorf("createSharedDir: Failed to bind mount: %s", err)
+				return fmt.Errorf("createSharedDir: Failed to create dir (%s): %v", newSharedDir, err)
 			}
-		}
-		return nil
 
+			if strings.Contains(newSharedDir, util.DefaultHostVhostuserBaseDir) {
+				klog.Infof("createSharedDir: Mount from %s to %s", originSharedDir, newSharedDir)
+				err = unix.Mount(originSharedDir, newSharedDir, "", unix.MS_BIND, "")
+				if err != nil {
+					return fmt.Errorf("createSharedDir: Failed to bind mount: %s", err)
+				}
+			}
+			return nil
+		}
+		return err
 	}
-	return err
+
+	if socketConsumption != util.ConsumptionKubevirt {
+		return fmt.Errorf("createSharedDir: voume name %s is exists", volumeName)
+	}
+
+	return nil
 }
 
-func removeShortSharedDir(pod *v1.Pod, volumeName string) (err error) {
+func removeShortSharedDir(pod *v1.Pod, volumeName, socketConsumption string) (err error) {
 	sharedDir := getShortSharedDir(pod.UID, volumeName)
 	if _, err = os.Stat(sharedDir); os.IsNotExist(err) {
-		klog.Errorf("shared directory %s does not exist to unmount, %s", sharedDir, err)
+		klog.Infof("shared directory %s does not exist to unmount, %s", sharedDir, err)
 		return nil
+	}
+
+	// keep mount util dpdk sock not used by kuebvirt
+	if socketConsumption == util.ConsumptionKubevirt {
+		files, err := os.ReadDir(sharedDir)
+		if err != nil {
+			return fmt.Errorf("read file from dpdk share dir error: %s", err)
+		}
+		if len(files) != 0 {
+			return nil
+		}
 	}
 
 	foundMount, err := mountinfo.Mounted(sharedDir)

@@ -47,19 +47,20 @@ func cmdAdd(args *skel.CmdArgs) error {
 
 	client := request.NewCniServerClient(netConf.ServerSocket)
 	response, err := client.Add(request.CniRequest{
-		CniType:                   netConf.Type,
-		PodName:                   podName,
-		PodNamespace:              podNamespace,
-		ContainerID:               args.ContainerID,
-		NetNs:                     args.Netns,
-		IfName:                    args.IfName,
-		Provider:                  netConf.Provider,
-		Routes:                    netConf.Routes,
-		DNS:                       netConf.DNS,
-		DeviceID:                  netConf.DeviceID,
-		VfDriver:                  netConf.VfDriver,
-		VhostUserSocketVolumeName: netConf.VhostUserSocketVolumeName,
-		VhostUserSocketName:       netConf.VhostUserSocketName,
+		CniType:                    netConf.Type,
+		PodName:                    podName,
+		PodNamespace:               podNamespace,
+		ContainerID:                args.ContainerID,
+		NetNs:                      args.Netns,
+		IfName:                     args.IfName,
+		Provider:                   netConf.Provider,
+		Routes:                     netConf.Routes,
+		DNS:                        netConf.DNS,
+		DeviceID:                   netConf.DeviceID,
+		VfDriver:                   netConf.VfDriver,
+		VhostUserSocketVolumeName:  netConf.VhostUserSocketVolumeName,
+		VhostUserSocketName:        netConf.VhostUserSocketName,
+		VhostUserSocketConsumption: netConf.VhostUserSocketConsumption,
 	})
 	if err != nil {
 		return types.NewError(types.ErrTryAgainLater, "RPC failed", err.Error())
@@ -151,15 +152,16 @@ func cmdDel(args *skel.CmdArgs) error {
 	}
 
 	err = client.Del(request.CniRequest{
-		CniType:                   netConf.Type,
-		PodName:                   podName,
-		PodNamespace:              podNamespace,
-		ContainerID:               args.ContainerID,
-		NetNs:                     args.Netns,
-		IfName:                    args.IfName,
-		Provider:                  netConf.Provider,
-		DeviceID:                  netConf.DeviceID,
-		VhostUserSocketVolumeName: netConf.VhostUserSocketVolumeName,
+		CniType:                    netConf.Type,
+		PodName:                    podName,
+		PodNamespace:               podNamespace,
+		ContainerID:                args.ContainerID,
+		NetNs:                      args.Netns,
+		IfName:                     args.IfName,
+		Provider:                   netConf.Provider,
+		DeviceID:                   netConf.DeviceID,
+		VhostUserSocketVolumeName:  netConf.VhostUserSocketVolumeName,
+		VhostUserSocketConsumption: netConf.VhostUserSocketConsumption,
 	})
 	if err != nil {
 		return types.NewError(types.ErrTryAgainLater, "RPC failed", err.Error())

@@ -34,18 +34,24 @@ import (
 
 var pciAddrRegexp = regexp.MustCompile(`\b([0-9a-fA-F]{4}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}.\d{1}\S*)`)
 
-func (csh cniServerHandler) configureDpdkNic(podName, podNamespace, provider, netns, containerID, ifName, _ string, _ int, ip, _, ingress, egress, shortSharedDir, socketName string) error {
+func (csh cniServerHandler) configureDpdkNic(podName, podNamespace, provider, netns, containerID, ifName, _ string, _ int, ip, _, ingress, egress, shortSharedDir, socketName, socketConsumption string) error {
 	sharedDir := filepath.Join("/var", shortSharedDir)
 	hostNicName, _ := generateNicName(containerID, ifName)
 
 	ipStr := util.GetIPWithoutMask(ip)
 	ifaceID := ovs.PodNameToPortName(podName, podNamespace, provider)
 	ovs.CleanDuplicatePort(ifaceID, hostNicName)
-	// Add veth pair host end to ovs port
+
+	vhostServerPath := path.Join(sharedDir, socketName)
+	if socketConsumption == util.ConsumptionKubevirt {
+		vhostServerPath = path.Join(sharedDir, ifName)
+	}
+
+	// Add vhostuser host end to ovs port
 	output, err := ovs.Exec(ovs.MayExist, "add-port", "br-int", hostNicName, "--",
 		"set", "interface", hostNicName,
 		"type=dpdkvhostuserclient",
-		fmt.Sprintf("options:vhost-server-path=%s", path.Join(sharedDir, socketName)),
+		fmt.Sprintf("options:vhost-server-path=%s", vhostServerPath),
 		fmt.Sprintf("external_ids:iface-id=%s", ifaceID),
 		fmt.Sprintf("external_ids:pod_name=%s", podName),
 		fmt.Sprintf("external_ids:pod_namespace=%s", podNamespace),
@@ -1559,7 +1565,7 @@ func turnOffNicTxChecksum(nicName string) (err error) {
 }
 
 func getShortSharedDir(uid types.UID, volumeName string) string {
-	return filepath.Join(util.DefaultHostVhostuserBaseDir, string(uid), volumeName)
+	return filepath.Clean(filepath.Join(util.DefaultHostVhostuserBaseDir, string(uid), volumeName))
 }
 
 func linkExists(name string) (bool, error) {
