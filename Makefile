@@ -842,9 +842,12 @@ kind-install-deepflow: kind-install
 	helm install deepflow -n deepflow deepflow/deepflow \
 		--create-namespace --version $(DEEPFLOW_CHART_VERSION) \
 		--set global.image.repository=$(DEEPFLOW_IMAGE_REPO) \
+		--set global.image.pullPolicy=IfNotPresent \
 		--set grafana.image.repository=$(DEEPFLOW_IMAGE_REPO)/grafana \
-		--set deepflow-agent.sysctlInitContainer.enabled=false \
-		--set 'mysql.storageConfig.persistence.size=5Gi' \
+		--set grafana.image.pullPolicy=IfNotPresent \
+		--set mysql.storageConfig.persistence.size=5Gi \
+		--set mysql.image.pullPolicy=IfNotPresent \
+		--set clickhouse.image.pullPolicy=IfNotPresent \
 		--set-json 'clickhouse.storageConfig.persistence=$(CLICKHOUSE_PERSISTENCE)'
 	kubectl -n deepflow patch svc deepflow-grafana --type=json \
 		-p '[{"op": "replace", "path": "/spec/ports/0/nodePort", "value": $(DEEPFLOW_GRAFANA_PORT)}]'
