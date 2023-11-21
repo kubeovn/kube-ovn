@@ -70,18 +70,16 @@ RUN cd /usr/src/ovs && \
     echo override_dh_shlibdeps: >> /usr/src/ovs/debian/rules && \
     echo "\tdh_shlibdeps --dpkg-shlibdeps-params=--ignore-missing-info" >> /usr/src/ovs/debian/rules && \
     export DPDK_DIR=/usr/src/dpdk-stable-22.11.1 && \
-    CONFIGURE_OPTS='LIBS=-ljemalloc' && \
+    CONFIGURE_OPTS='CFLAGS="-fPIC"' && \
     if [ "$ARCH" = "amd64" ]; then CONFIGURE_OPTS='CFLAGS="-O2 -g -msse4.2 -mpopcnt -fPIC"'; fi && \
     DATAPATH_CONFIGURE_OPTS='--prefix=/usr' EXTRA_CONFIGURE_OPTS=$CONFIGURE_OPTS DEB_BUILD_OPTIONS='parallel=8 nocheck' make debian-deb
-
-RUN dpkg -i /usr/src/python3-openvswitch*.deb
 
 RUN cd /usr/src/ovn && \
     sed -i 's/OVN/ovn/g' debian/changelog && \
     rm -rf .git && \
     ./boot.sh && \
-    CONFIGURE_OPTS='--with-ovs-build=/usr/src/ovs/_debian' && \
-    if [ "$ARCH" = "amd64" ]; then CONFIGURE_OPTS="$CONFIGURE_OPTS CFLAGS='-O2 -g -msse4.2 -mpopcnt -fPIC'"; fi && \
+    CONFIGURE_OPTS='--with-ovs-build=/usr/src/ovs/_debian CFLAGS="-fPIC"' && \
+    if [ "$ARCH" = "amd64" ]; then CONFIGURE_OPTS="--with-ovs-build=/usr/src/ovs/_debian CFLAGS='-O2 -g -msse4.2 -mpopcnt -fPIC'"; fi && \
     OVSDIR=/usr/src/ovs EXTRA_CONFIGURE_OPTS=$CONFIGURE_OPTS DEB_BUILD_OPTIONS='parallel=8 nocheck' fakeroot debian/rules binary
 
 RUN mkdir /packages/ && \
