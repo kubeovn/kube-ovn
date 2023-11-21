@@ -1013,10 +1013,12 @@ func Test_CIDRContainIP(t *testing.T) {
 			true,
 		},
 		{
+			// After ns supports multiple subnets, the ippool static addresses can be allocated in any subnets, such as "ovn.kubernetes.io/ip_pool: 11.16.10.14,12.26.11.21"
+			// so if anyone ip is included in cidr, return true
 			"ipv4 family which CIDR does't contain ip",
 			"192.168.230.0/24",
 			"192.168.231.10,192.168.230.11",
-			false,
+			true,
 		},
 		{
 			"ipv6 family",
@@ -1037,10 +1039,12 @@ func Test_CIDRContainIP(t *testing.T) {
 			true,
 		},
 		{
+			// After ns supports multiple subnets, the ippool static addresses can be allocated in any subnets, such as "ovn.kubernetes.io/ip_pool: 11.16.10.14,12.26.11.21"
+			// so if anyone ip is included in cidr, return true
 			"dual which CIDR does't contain ip",
 			"192.168.230.0/24,fc00::0af4:00/112",
 			"fc00::0af4:10,fd00::0af4:11,192.168.230.10,192.168.230.11",
-			false,
+			true,
 		},
 		{
 			"different family",
@@ -1064,6 +1068,7 @@ func Test_CIDRContainIP(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.desc, func(t *testing.T) {
+			t.Logf("test case %v", tt.desc)
 			got := CIDRContainIP(tt.cidrs, tt.ips)
 			require.Equal(t, got, tt.want)
 		})

@@ -232,8 +232,18 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr, gw string, excludeIps []strin
 					klog.Errorf("%s address %s not in subnet %s new cidr %s", podName, ip.String(), name, cidrStr)
 					delete(subnet.V4NicToIP, nicName)
 					delete(subnet.V4IPToPod, ip.String())
-					continue
+				} else {
+					// The already assigned addresses should be added in ipam again when subnet cidr changed
+					pool.V4Available.Remove(ip)
+					pool.V4Using.Add(ip)
+					subnet.V4Free.Remove(ip)
+					subnet.V4Available.Remove(ip)
+					subnet.V4Using.Add(ip)
 				}
+			}
+
+			for nicName, ip := range subnet.V4NicToIP {
+				klog.Infof("already assigned ip %s to nic %s in subnet %s", ip.String(), nicName, name)
 			}
 		}
 		if (protocol == kubeovnv1.ProtocolDual || protocol == kubeovnv1.ProtocolIPv6) &&
@@ -275,8 +285,18 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr, gw string, excludeIps []strin
 					klog.Errorf("%s address %s not in subnet %s new cidr %s", podName, ip.String(), name, cidrStr)
 					delete(subnet.V6NicToIP, nicName)
 					delete(subnet.V6IPToPod, ip.String())
-					continue
+				} else {
+					// The already assigned addresses should be added in ipam again when subnet cidr changed
+					pool.V6Available.Remove(ip)
+					pool.V6Using.Add(ip)
+					subnet.V6Free.Remove(ip)
+					subnet.V6Available.Remove(ip)
+					subnet.V6Using.Add(ip)
 				}
+			}
+
+			for nicName, ip := range subnet.V6NicToIP {
+				klog.Infof("already assigned ip %s to nic %s in subnet %s", ip.String(), nicName, name)
 			}
 		}
 
