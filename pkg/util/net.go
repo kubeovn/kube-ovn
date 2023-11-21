@@ -130,6 +130,7 @@ func CIDRContainIP(cidrStr, ipStr string) bool {
 			return false
 		}
 
+		found := false
 		for _, ip := range ips {
 			if CheckProtocol(cidr) != CheckProtocol(ip) {
 				continue
@@ -139,9 +140,15 @@ func CIDRContainIP(cidrStr, ipStr string) bool {
 				return false
 			}
 
-			if !cidrNet.Contains(ipAddr) {
-				return false
+			// After ns supports multiple subnets, the ippool static addresses can be allocated in any subnets, such as "ovn.kubernetes.io/ip_pool: 11.16.10.14,12.26.11.21"
+			found = false
+			if cidrNet.Contains(ipAddr) {
+				found = true
+				break
 			}
+		}
+		if !found {
+			return false
 		}
 	}
 	// v4 and v6 address should be both matched for dualstack check
