@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
     inputs:
       branch:
-        description: "Which branch to build base images"
+        description: "Select branch"
         required: true
         type: choice
         options:
