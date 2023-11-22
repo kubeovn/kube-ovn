@@ -318,7 +318,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 	}
 
 	var externalSubnet *kubeovnv1.Subnet
-	isExternalSubnetExist := false
+	externalSubnetExist := false
 	if c.config.EnableEipSnat && c.config.NetworkType != util.NetworkTypeVlan {
 		externalSubnet, err = c.subnetsLister.Get(c.config.ExternalGatewaySwitch)
 		if err != nil {
