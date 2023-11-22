@@ -831,7 +831,7 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 		}
 	}
 
-	c.ipam.ReleaseAddressByPod(key)
+	c.ipam.ReleaseAddressByPod(key, "")
 
 	podNets, err := c.getPodKubeovnNets(pod)
 	if err != nil {

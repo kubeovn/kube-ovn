@@ -233,7 +233,7 @@ func delPodAddressCapacity(b *testing.B, im *ipam.IPAM, isTimeTrace bool) {
 			fmt.Printf("delete %d to %d pods spent time %ds \n", n+1-step, n, currentTime-startTime)
 			startTime = currentTime
 		}
-		im.ReleaseAddressByPod(podName)
+		im.ReleaseAddressByPod(podName, "")
 	}
 }
 
@@ -331,7 +331,7 @@ func benchmarkAllocFreeAddrParallel(b *testing.B, podNumber int, protocol string
 			}
 			for n := 0; n < podNumber; n++ {
 				podName := fmt.Sprintf("pod%d_%d", key, n)
-				im.ReleaseAddressByPod(podName)
+				im.ReleaseAddressByPod(podName, "")
 			}
 		}
 	})

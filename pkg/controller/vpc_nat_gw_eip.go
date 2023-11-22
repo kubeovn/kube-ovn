@@ -3,6 +3,9 @@ package controller
 import (
 	"context"
 	"fmt"
+	"net"
+	"strings"
+
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
@@ -10,9 +13,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
-	"net"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
-	"strings"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
@@ -393,8 +394,8 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 }
 
 func (c *Controller) handleDelIptablesEip(key string) error {
-	c.ipam.ReleaseAddressByPod(key)
-	klog.V(3).Infof("deleted vpc nat eip %s", key)
+	klog.V(3).Infof("delete vpc nat eip %s", key)
+	c.ipam.ReleaseAddressByPod(key, "")
 	return nil
 }
 

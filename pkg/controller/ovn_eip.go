@@ -299,7 +299,7 @@ func (c *Controller) handleResetOvnEip(key string) error {
 
 func (c *Controller) handleDelOvnEip(key string) error {
 	klog.V(3).Infof("release ovn eip %s", key)
-	c.ipam.ReleaseAddressByPod(key)
+	c.ipam.ReleaseAddressByPod(key, "")
 	return nil
 }
 
