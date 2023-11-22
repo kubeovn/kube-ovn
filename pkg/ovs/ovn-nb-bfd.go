@@ -193,7 +193,7 @@ func (c *OVNNbClient) isLrpBfdUp(lrpName, dstIP string) (bool, error) {
 }
 
 func (c *OVNNbClient) bfdAddL3HAHandler(table string, model model.Model) {
-	if table != "BFD" {
+	if table != ovnnb.BFDTable {
 		return
 	}
 
