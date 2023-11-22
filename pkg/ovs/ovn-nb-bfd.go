@@ -222,7 +222,7 @@ func (c *OVNNbClient) bfdAddL3HAHandler(table string, model model.Model) {
 }
 
 func (c *OVNNbClient) bfdUpdateL3HAHandler(table string, oldModel, newModel model.Model) {
-	if table != "BFD" {
+	if table != ovnnb.BFDTable {
 		return
 	}
 
