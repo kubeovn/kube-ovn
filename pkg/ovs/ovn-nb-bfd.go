@@ -338,7 +338,7 @@ func (c *OVNNbClient) bfdUpdateL3HAHandler(table string, oldModel, newModel mode
 }
 
 func (c *OVNNbClient) bfdDelL3HAHandler(table string, model model.Model) {
-	if table != "BFD" {
+	if table != ovnnb.BFDTable {
 		return
 	}
 	bfd := model.(*ovnnb.BFD)
