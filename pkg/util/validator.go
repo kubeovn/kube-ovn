@@ -229,17 +229,29 @@ func ValidatePodNetwork(annotations map[string]string) error {
 	if ipPool != "" {
 		if strings.ContainsRune(ipPool, ';') || strings.ContainsRune(ipPool, ',') || net.ParseIP(ipPool) != nil {
 			for _, ips := range strings.Split(ipPool, ";") {
-				if cidrStr := annotations[CidrAnnotation]; cidrStr != "" {
-					if !CIDRContainIP(cidrStr, ips) {
-						errors = append(errors, fmt.Errorf("%s not in cidr %s", ips, cidrStr))
-						continue
-					}
-				}
-
+				found := false
 				for _, ip := range strings.Split(ips, ",") {
 					if net.ParseIP(strings.TrimSpace(ip)) == nil {
 						errors = append(errors, fmt.Errorf("%s in %s is not a valid address", ip, IPPoolAnnotation))
 					}
+
+					// After ns supports multiple subnets, the ippool static addresses can be allocated in any subnets, such as "ovn.kubernetes.io/ip_pool: 11.16.10.14,12.26.11.21"
+					// so if anyone ip is included in cidr, return true
+					if cidrStr := annotations[CidrAnnotation]; cidrStr != "" {
+						if CIDRContainIP(cidrStr, ip) {
+							found = true
+							break
+						}
+					} else {
+						// annotation maybe empty when a pod is new created, do not return err in this situation
+						found = true
+						break
+					}
+				}
+
+				if !found {
+					errors = append(errors, fmt.Errorf("%s not in cidr %s", ips, annotations[CidrAnnotation]))
+					continue
 				}
 			}
 		}

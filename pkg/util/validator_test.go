@@ -584,7 +584,7 @@ func TestValidatePodNetwork(t *testing.T) {
 				"ovn.kubernetes.io/egress_rate":  "1",
 				"ovn.kubernetes.io/cidr":         "10.16.0.0/16",
 			},
-			err: "10.16.1111.15,10.16.0.16,10.16.0.17 not in cidr 10.16.0.0/16",
+			err: "10.16.1111.15 in ovn.kubernetes.io/ip_pool is not a valid address",
 		},
 		{
 			name: "ingRaErr",
@@ -613,6 +613,7 @@ func TestValidatePodNetwork(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Logf("test case %v", tt.name)
 			ret := ValidatePodNetwork(tt.annotations)
 			if !ErrorContains(ret, tt.err) {
 				t.Errorf("got %v, want a error %v", ret, tt.err)
