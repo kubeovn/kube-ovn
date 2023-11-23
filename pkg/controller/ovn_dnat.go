@@ -347,7 +347,7 @@ func (c *Controller) handleDelOvnDnatRule(key string) error {
 	}
 	if cachedDnat.Status.Vpc != "" && cachedDnat.Status.V4Eip != "" && cachedDnat.Status.ExternalPort != "" {
 		if err = c.DelDnatRule(cachedDnat.Status.Vpc, cachedDnat.Name,
-			cachedDnat.Status.V4Eip, cachedDnat.Status.ExternalPort); err != nil {
+			cachedDnat.Status.V4Eip, cachedDnat.Status.ExternalPort, cachedDnat.Status.Protocol); err != nil {
 			klog.Errorf("failed to delete dnat %s, %v", key, err)
 			return err
 		}
@@ -448,7 +448,7 @@ func (c *Controller) handleUpdateOvnDnatRule(key string) error {
 	dnat := cachedDnat.DeepCopy()
 	if dnat.Status.Ready {
 		klog.Infof("dnat change ip, old ip '%s', new ip %s", dnat.Status.V4Ip, cachedEip.Status.V4Ip)
-		if err = c.DelDnatRule(dnat.Status.Vpc, dnat.Name, dnat.Status.V4Eip, dnat.Status.ExternalPort); err != nil {
+		if err = c.DelDnatRule(dnat.Status.Vpc, dnat.Name, dnat.Status.V4Eip, dnat.Status.ExternalPort, dnat.Status.Protocol); err != nil {
 			klog.Errorf("failed to delete dnat, %v", err)
 			return err
 		}
@@ -624,40 +624,85 @@ func (c *Controller) AddDnatRule(vpcName, dnatName, externalIP, internalIP, exte
 		externalEndpoint = net.JoinHostPort(externalIP, externalPort)
 		internalEndpoint = net.JoinHostPort(internalIP, internalPort)
 		err              error
+		lbName           string
 	)
 
-	if err = c.OVNNbClient.CreateLoadBalancer(dnatName, protocol, ""); err != nil {
-		klog.Errorf("create loadBalancer %s: %v", dnatName, err)
+	cachedVpc, err := c.vpcsLister.Get(vpcName)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		klog.Errorf("failed to get vpc %s, %v", vpcName, err)
+		return err
+	}
+	vpc := cachedVpc.DeepCopy()
+
+	switch protocol {
+	case "tcp":
+		lbName = vpc.Status.TCPLoadBalancer
+	case "udp":
+		lbName = vpc.Status.UDPLoadBalancer
+	case "sctp":
+		lbName = vpc.Status.SctpLoadBalancer
+	default:
+		klog.Errorf("failed to get lb-name, vpc %s, %v", vpcName, err)
 		return err
 	}
 
-	if err = c.OVNNbClient.LoadBalancerAddVip(dnatName, externalEndpoint, internalEndpoint); err != nil {
-		klog.Errorf("add vip %s with backends %s to LB %s: %v", externalEndpoint, internalEndpoint, dnatName, err)
+	if err = c.OVNNbClient.CreateLoadBalancer(lbName, protocol, ""); err != nil {
+		klog.Errorf("create loadBalancer %s: %v", lbName, err)
 		return err
 	}
 
-	if err = c.OVNNbClient.LogicalRouterUpdateLoadBalancers(vpcName, ovsdb.MutateOperationInsert, dnatName); err != nil {
-		klog.Errorf("add lb %s to vpc %s: %v", dnatName, vpcName, err)
+	if err = c.OVNNbClient.LoadBalancerAddVip(lbName, externalEndpoint, internalEndpoint); err != nil {
+		klog.Errorf("add vip %s with backends %s to LB %s: %v", externalEndpoint, internalEndpoint, lbName, err)
+		return err
+	}
+
+	if err = c.OVNNbClient.LogicalRouterUpdateLoadBalancers(vpcName, ovsdb.MutateOperationInsert, lbName); err != nil {
+		klog.Errorf("add lb %s to vpc %s: %v", lbName, vpcName, err)
 		return err
 	}
 	return nil
 }
 
-func (c *Controller) DelDnatRule(vpcName, dnatName, externalIP, externalPort string) error {
+func (c *Controller) DelDnatRule(vpcName, dnatName, externalIP, externalPort string, protocol string) error {
 	var (
 		ignoreHealthCheck = true
 		externalEndpoint  string
 		err               error
+		lbName            string
 	)
 	externalEndpoint = net.JoinHostPort(externalIP, externalPort)
 
-	if err = c.OVNNbClient.LoadBalancerDeleteVip(dnatName, externalEndpoint, ignoreHealthCheck); err != nil {
+	cachedVpc, err := c.vpcsLister.Get(vpcName)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		klog.Errorf("failed to get vpc %s, %v", vpcName, err)
+		return err
+	}
+	vpc := cachedVpc.DeepCopy()
+	switch protocol {
+	case "tcp":
+		lbName = vpc.Status.TCPLoadBalancer
+	case "udp":
+		lbName = vpc.Status.UDPLoadBalancer
+	case "sctp":
+		lbName = vpc.Status.SctpLoadBalancer
+	default:
+		klog.Errorf("failed to get lb-name, vpc %s, %v", vpcName, err)
+		return err
+	}
+
+	if err = c.OVNNbClient.LoadBalancerDeleteVip(lbName, externalEndpoint, ignoreHealthCheck); err != nil {
 		klog.Errorf("delete loadBalancer vips %s: %v", externalEndpoint, err)
 		return err
 	}
 
-	if err = c.OVNNbClient.LogicalRouterUpdateLoadBalancers(vpcName, ovsdb.MutateOperationDelete, dnatName); err != nil {
-		klog.Errorf("failed to remove lb %s from vpc %s: %v", dnatName, vpcName, err)
+	if err = c.OVNNbClient.LogicalRouterUpdateLoadBalancers(vpcName, ovsdb.MutateOperationDelete, lbName); err != nil {
+		klog.Errorf("failed to remove lb %s from vpc %s: %v", lbName, vpcName, err)
 		return err
 	}
 

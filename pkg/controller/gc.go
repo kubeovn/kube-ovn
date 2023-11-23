@@ -522,6 +522,7 @@ func (c *Controller) gcLoadBalancer() error {
 			klog.Infof("load balancer %q already deleted", lbName)
 			return nil
 		}
+		klog.Infof("gc: clean LB, removeVip, LB Name:", lbName)
 
 		for vip := range lb.Vips {
 			if !svcVips.Has(vip) {

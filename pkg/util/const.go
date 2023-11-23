@@ -1,6 +1,7 @@
 package util
 
 const (
+	None        = ""
 	CniTypeName = "kube-ovn"
 
 	ControllerName = "kube-ovn-controller"
