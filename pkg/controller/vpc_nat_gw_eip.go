@@ -314,13 +314,9 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 				return err
 			}
 		}
-		if err = c.handleDelIptablesEipFinalizer(key); err != nil {
-			klog.Errorf("failed to handle del finalizer for eip %s, %v", key, err)
-			return err
-		}
 		return nil
 	}
-	klog.V(3).Infof("handle update eip %s", key)
+	klog.Infof("handle update eip %s", key)
 	// eip change ip
 	if c.eipChangeIP(cachedEip) {
 		err := fmt.Errorf("not support eip change ip, old ip '%s', new ip '%s'", cachedEip.Status.IP, cachedEip.Spec.V4ip)
@@ -400,8 +396,20 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 }
 
 func (c *Controller) handleDelIptablesEip(key string) error {
-	c.ipam.ReleaseAddressByPod(key)
-	klog.V(3).Infof("deleted vpc nat eip %s", key)
+	klog.Infof("handle delete iptables eip %s", key)
+	eip, err := c.iptablesEipsLister.Get(key)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		klog.Error(err)
+		return err
+	}
+	if err = c.handleDelIptablesEipFinalizer(key); err != nil {
+		klog.Errorf("failed to handle del finalizer for eip %s, %v", key, err)
+		return err
+	}
+	c.ipam.ReleaseAddressByPod(key, eip.Spec.ExternalSubnet)
 	return nil
 }
 
