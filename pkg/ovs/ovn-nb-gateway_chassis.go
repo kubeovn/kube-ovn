@@ -76,7 +76,7 @@ func (c *OVNNbClient) DeleteGatewayChassises(lrpName string, chassises []string)
 }
 
 // ListGatewayChassisByLogicalRouterPort get gateway chassis by lrp name
-func (c *OVNNbClient) ListGatewayChassisByLogicalRouterPort(lrpName string, ignoreNotFound bool) (*[]ovnnb.GatewayChassis, error) {
+func (c *OVNNbClient) ListGatewayChassisByLogicalRouterPort(lrpName string, ignoreNotFound bool) ([]ovnnb.GatewayChassis, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
 	defer cancel()
 
@@ -95,7 +95,7 @@ func (c *OVNNbClient) ListGatewayChassisByLogicalRouterPort(lrpName string, igno
 		return nil, err
 	}
 
-	return &gwChassisList, nil
+	return gwChassisList, nil
 }
 
 // GetGatewayChassis get gateway chassis by name

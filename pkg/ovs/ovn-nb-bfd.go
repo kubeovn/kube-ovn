@@ -14,7 +14,7 @@ import (
 	"github.com/ovn-org/libovsdb/model"
 )
 
-func (c *OVNNbClient) ListBFD(lrpName, dstIP string) (*[]ovnnb.BFD, error) {
+func (c *OVNNbClient) ListBFD(lrpName, dstIP string) ([]ovnnb.BFD, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
 	defer cancel()
 
@@ -30,10 +30,10 @@ func (c *OVNNbClient) ListBFD(lrpName, dstIP string) (*[]ovnnb.BFD, error) {
 		return nil, err
 	}
 
-	return &bfdList, nil
+	return bfdList, nil
 }
 
-func (c *OVNNbClient) ListDownBFDs(dstIP string) (*[]ovnnb.BFD, error) {
+func (c *OVNNbClient) ListDownBFDs(dstIP string) ([]ovnnb.BFD, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
 	defer cancel()
 
@@ -49,10 +49,10 @@ func (c *OVNNbClient) ListDownBFDs(dstIP string) (*[]ovnnb.BFD, error) {
 		return nil, err
 	}
 
-	return &bfdList, nil
+	return bfdList, nil
 }
 
-func (c *OVNNbClient) ListUpBFDs(dstIP string) (*[]ovnnb.BFD, error) {
+func (c *OVNNbClient) ListUpBFDs(dstIP string) ([]ovnnb.BFD, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
 	defer cancel()
 
@@ -65,7 +65,7 @@ func (c *OVNNbClient) ListUpBFDs(dstIP string) (*[]ovnnb.BFD, error) {
 		return nil, err
 	}
 
-	return &bfdList, nil
+	return bfdList, nil
 }
 
 func (c *OVNNbClient) CreateBFD(lrpName, dstIP string, minRx, minTx, detectMult int) (*ovnnb.BFD, error) {
@@ -74,8 +74,8 @@ func (c *OVNNbClient) CreateBFD(lrpName, dstIP string, minRx, minTx, detectMult 
 		klog.Error(err)
 		return nil, err
 	}
-	if len(*bfdList) != 0 {
-		return &(*bfdList)[0], nil
+	if len(bfdList) != 0 {
+		return &bfdList[0], nil
 	}
 
 	bfd := &ovnnb.BFD{
@@ -100,10 +100,10 @@ func (c *OVNNbClient) CreateBFD(lrpName, dstIP string, minRx, minTx, detectMult 
 	if bfdList, err = c.ListBFD(lrpName, dstIP); err != nil {
 		return nil, err
 	}
-	if len(*bfdList) == 0 {
+	if len(bfdList) == 0 {
 		return nil, fmt.Errorf("BFD with logical_port=%s and dst_ip=%s not found", lrpName, dstIP)
 	}
-	return &(*bfdList)[0], nil
+	return &bfdList[0], nil
 }
 
 // UpdateBFD update BFD
@@ -128,12 +128,12 @@ func (c *OVNNbClient) DeleteBFD(lrpName, dstIP string) error {
 		klog.Error(err)
 		return err
 	}
-	if len(*bfdList) == 0 {
+	if len(bfdList) == 0 {
 		return nil
 	}
 
-	for _, bfd := range *bfdList {
-		ops, err := c.Where(&bfd).Delete()
+	for _, bfd := range bfdList {
+		ops, err := c.Where(bfd).Delete()
 		if err != nil {
 			err := fmt.Errorf("failed to generate operations for BFD deletion with UUID %s: %v", bfd.UUID, err)
 			klog.Error(err)
@@ -172,12 +172,12 @@ func (c *OVNNbClient) isLrpBfdUp(lrpName, dstIP string) (bool, error) {
 		klog.Errorf("failed to list bfd for lrp %s, %v", lrpName, err)
 		return false, err
 	}
-	if len(*bfdList) == 0 {
+	if len(bfdList) == 0 {
 		klog.Errorf("no bfd for lrp %s", lrpName)
 		// no bfd, means no need to handle
 		return true, nil
 	}
-	bfd := &(*bfdList)[0]
+	bfd := bfdList[0]
 	if bfd.Status == nil {
 		err := fmt.Errorf("lrp %s bfd status is nil", lrpName)
 		klog.Error(err)
@@ -260,11 +260,11 @@ func (c *OVNNbClient) bfdUpdateL3HAHandler(table string, oldModel, newModel mode
 			klog.Errorf("failed to list gateway chassis for lrp %s, %v", lrpName, err)
 			return
 		}
-		if len(*gwChassisList) == 0 {
+		if len(gwChassisList) == 0 {
 			klog.Errorf("no gateway chassis for lrp %s", lrpName)
 			return
 		}
-		goodChassis := (*gwChassisList)[0]
+		goodChassis := gwChassisList[0]
 		goodChassis.Priority = util.GwChassisMaxPriority + 1
 		klog.Infof("raise good chassis %s priority to %d", goodChassis.Name, goodChassis.Priority)
 		if err := c.UpdateGatewayChassis(&goodChassis, &goodChassis.Priority); err != nil {
@@ -283,11 +283,11 @@ func (c *OVNNbClient) bfdUpdateL3HAHandler(table string, oldModel, newModel mode
 			klog.Errorf("failed to list gateway chassis for lrp %s, %v", lrpName, err)
 			return
 		}
-		if len(*gwChassisList) == 0 {
+		if len(gwChassisList) == 0 {
 			klog.Errorf("no gateway chassis for lrp %s", lrpName)
 			return
 		}
-		badChassis := (*gwChassisList)[0]
+		badChassis := gwChassisList[0]
 		// centralized gw chassis node number probably less than 5
 		badChassis.Priority = util.GwChassisMaxPriority - 5
 		klog.Infof("lower bad chassis %s priority to %d", badChassis.Name, badChassis.Priority)
@@ -310,11 +310,11 @@ func (c *OVNNbClient) bfdUpdateL3HAHandler(table string, oldModel, newModel mode
 					klog.Errorf("failed to list gateway chassis for lrp %s, %v", lrpName, err)
 					return
 				}
-				if len(*gwChassisList) == 0 {
+				if len(gwChassisList) == 0 {
 					klog.Errorf("no gateway chassis for lrp %s", lrpName)
 					return
 				}
-				badChassis = (*gwChassisList)[0]
+				badChassis = gwChassisList[0]
 				if newBfd.ExternalIDs == nil {
 					newBfd.ExternalIDs = make(map[string]string)
 				}

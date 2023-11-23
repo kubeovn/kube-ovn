@@ -355,10 +355,10 @@ func (mr *MockLogicalRouterPortMockRecorder) GetLogicalRouterPortByUUID(uuid int
 }
 
 // ListGatewayChassisByLogicalRouterPort mocks base method.
-func (m *MockLogicalRouterPort) ListGatewayChassisByLogicalRouterPort(lrpName string, ignoreNotFound bool) (*[]ovnnb.GatewayChassis, error) {
+func (m *MockLogicalRouterPort) ListGatewayChassisByLogicalRouterPort(lrpName string, ignoreNotFound bool) ([]ovnnb.GatewayChassis, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListGatewayChassisByLogicalRouterPort", lrpName, ignoreNotFound)
-	ret0, _ := ret[0].(*[]ovnnb.GatewayChassis)
+	ret0, _ := ret[0].([]ovnnb.GatewayChassis)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -522,10 +522,10 @@ func (mr *MockBFDMockRecorder) DeleteBFD(lrpName, dstIP interface{}) *gomock.Cal
 }
 
 // ListBFD mocks base method.
-func (m *MockBFD) ListBFD(lrpName, dstIP string) (*[]ovnnb.BFD, error) {
+func (m *MockBFD) ListBFD(lrpName, dstIP string) ([]ovnnb.BFD, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListBFD", lrpName, dstIP)
-	ret0, _ := ret[0].(*[]ovnnb.BFD)
+	ret0, _ := ret[0].([]ovnnb.BFD)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -537,10 +537,10 @@ func (mr *MockBFDMockRecorder) ListBFD(lrpName, dstIP interface{}) *gomock.Call 
 }
 
 // ListDownBFDs mocks base method.
-func (m *MockBFD) ListDownBFDs(dstIP string) (*[]ovnnb.BFD, error) {
+func (m *MockBFD) ListDownBFDs(dstIP string) ([]ovnnb.BFD, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListDownBFDs", dstIP)
-	ret0, _ := ret[0].(*[]ovnnb.BFD)
+	ret0, _ := ret[0].([]ovnnb.BFD)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -552,10 +552,10 @@ func (mr *MockBFDMockRecorder) ListDownBFDs(dstIP interface{}) *gomock.Call {
 }
 
 // ListUpBFDs mocks base method.
-func (m *MockBFD) ListUpBFDs(dstIP string) (*[]ovnnb.BFD, error) {
+func (m *MockBFD) ListUpBFDs(dstIP string) ([]ovnnb.BFD, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListUpBFDs", dstIP)
-	ret0, _ := ret[0].(*[]ovnnb.BFD)
+	ret0, _ := ret[0].([]ovnnb.BFD)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -3332,10 +3332,10 @@ func (mr *MockNbClientMockRecorder) ListAddressSets(externalIDs interface{}) *go
 }
 
 // ListBFD mocks base method.
-func (m *MockNbClient) ListBFD(lrpName, dstIP string) (*[]ovnnb.BFD, error) {
+func (m *MockNbClient) ListBFD(lrpName, dstIP string) ([]ovnnb.BFD, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListBFD", lrpName, dstIP)
-	ret0, _ := ret[0].(*[]ovnnb.BFD)
+	ret0, _ := ret[0].([]ovnnb.BFD)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -3362,10 +3362,10 @@ func (mr *MockNbClientMockRecorder) ListDHCPOptions(needVendorFilter, externalID
 }
 
 // ListDownBFDs mocks base method.
-func (m *MockNbClient) ListDownBFDs(dstIP string) (*[]ovnnb.BFD, error) {
+func (m *MockNbClient) ListDownBFDs(dstIP string) ([]ovnnb.BFD, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListDownBFDs", dstIP)
-	ret0, _ := ret[0].(*[]ovnnb.BFD)
+	ret0, _ := ret[0].([]ovnnb.BFD)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -3377,10 +3377,10 @@ func (mr *MockNbClientMockRecorder) ListDownBFDs(dstIP interface{}) *gomock.Call
 }
 
 // ListGatewayChassisByLogicalRouterPort mocks base method.
-func (m *MockNbClient) ListGatewayChassisByLogicalRouterPort(lrpName string, ignoreNotFound bool) (*[]ovnnb.GatewayChassis, error) {
+func (m *MockNbClient) ListGatewayChassisByLogicalRouterPort(lrpName string, ignoreNotFound bool) ([]ovnnb.GatewayChassis, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListGatewayChassisByLogicalRouterPort", lrpName, ignoreNotFound)
-	ret0, _ := ret[0].(*[]ovnnb.GatewayChassis)
+	ret0, _ := ret[0].([]ovnnb.GatewayChassis)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -3587,10 +3587,10 @@ func (mr *MockNbClientMockRecorder) ListPortGroups(externalIDs interface{}) *gom
 }
 
 // ListUpBFDs mocks base method.
-func (m *MockNbClient) ListUpBFDs(dstIP string) (*[]ovnnb.BFD, error) {
+func (m *MockNbClient) ListUpBFDs(dstIP string) ([]ovnnb.BFD, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListUpBFDs", dstIP)
-	ret0, _ := ret[0].(*[]ovnnb.BFD)
+	ret0, _ := ret[0].([]ovnnb.BFD)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

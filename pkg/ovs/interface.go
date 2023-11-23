@@ -39,7 +39,7 @@ type LogicalRouterPort interface {
 	GetLogicalRouterPort(lrpName string, ignoreNotFound bool) (*ovnnb.LogicalRouterPort, error)
 	GetLogicalRouterPortByUUID(uuid string) (*ovnnb.LogicalRouterPort, error)
 	ListLogicalRouterPorts(externalIDs map[string]string, filter func(lrp *ovnnb.LogicalRouterPort) bool) ([]ovnnb.LogicalRouterPort, error)
-	ListGatewayChassisByLogicalRouterPort(lrpName string, ignoreNotFound bool) (*[]ovnnb.GatewayChassis, error)
+	ListGatewayChassisByLogicalRouterPort(lrpName string, ignoreNotFound bool) ([]ovnnb.GatewayChassis, error)
 	LogicalRouterPortExists(lrpName string) (bool, error)
 }
 
@@ -50,9 +50,9 @@ type GatewayChassis interface {
 type BFD interface {
 	CreateBFD(lrpName, dstIP string, minRx, minTx, detectMult int) (*ovnnb.BFD, error)
 	DeleteBFD(lrpName, dstIP string) error
-	ListBFD(lrpName, dstIP string) (*[]ovnnb.BFD, error)
-	ListDownBFDs(dstIP string) (*[]ovnnb.BFD, error)
-	ListUpBFDs(dstIP string) (*[]ovnnb.BFD, error)
+	ListBFD(lrpName, dstIP string) ([]ovnnb.BFD, error)
+	ListDownBFDs(dstIP string) ([]ovnnb.BFD, error)
+	ListUpBFDs(dstIP string) ([]ovnnb.BFD, error)
 	UpdateBFD(bfd *ovnnb.BFD, fields ...interface{}) error
 	MonitorBFD()
 }

@@ -88,6 +88,8 @@ VLAN_ID="100"
 
 if [ "$ENABLE_VLAN" = "true" ]; then
   NETWORK_TYPE="vlan"
+  # ENABLE_EIP_SNAT is only supported when you use vpc, vlan not support
+  ENABLE_EIP_SNAT=${ENABLE_EIP_SNAT:-false}
   if [ "$VLAN_NIC" != "" ]; then
     VLAN_INTERFACE_NAME="$VLAN_NIC"
   fi

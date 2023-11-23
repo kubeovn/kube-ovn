@@ -57,19 +57,19 @@ func (suite *OvnClientTestSuite) testListBFD() {
 
 		bfdList, err := ovnClient.ListBFD(lrpName, dstIP1)
 		require.NoError(t, err)
-		require.Len(t, *bfdList, 1)
-		require.Equal(t, bfd1.UUID, (*bfdList)[0].UUID)
+		require.Len(t, bfdList, 1)
+		require.Equal(t, bfd1.UUID, bfdList[0].UUID)
 
 		bfdList, err = ovnClient.ListBFD(lrpName, dstIP2)
 		require.NoError(t, err)
-		require.Len(t, *bfdList, 1)
-		require.Equal(t, bfd2.UUID, (*bfdList)[0].UUID)
+		require.Len(t, bfdList, 1)
+		require.Equal(t, bfd2.UUID, bfdList[0].UUID)
 
 		bfdList, err = ovnClient.ListBFD(lrpName, "")
 		require.NoError(t, err)
-		require.Len(t, *bfdList, 2)
-		uuids := strset.NewWithSize(len(*bfdList))
-		for _, bfd := range *bfdList {
+		require.Len(t, bfdList, 2)
+		uuids := strset.NewWithSize(len(bfdList))
+		for _, bfd := range bfdList {
 			uuids.Add(bfd.UUID)
 		}
 		require.True(t, uuids.IsEqual(strset.New(bfd1.UUID, bfd2.UUID)))
@@ -99,12 +99,12 @@ func (suite *OvnClientTestSuite) testDeleteBFD() {
 
 		bfdList, err := ovnClient.ListBFD(lrpName, dstIP1)
 		require.NoError(t, err)
-		require.Len(t, *bfdList, 0)
+		require.Len(t, bfdList, 0)
 
 		bfdList, err = ovnClient.ListBFD(lrpName, dstIP2)
 		require.NoError(t, err)
-		require.Len(t, *bfdList, 1)
-		require.Equal(t, bfd2.UUID, (*bfdList)[0].UUID)
+		require.Len(t, bfdList, 1)
+		require.Equal(t, bfd2.UUID, bfdList[0].UUID)
 	})
 
 	t.Run("delete multiple BFDs", func(t *testing.T) {
@@ -113,6 +113,6 @@ func (suite *OvnClientTestSuite) testDeleteBFD() {
 
 		bfdList, err := ovnClient.ListBFD(lrpName, "")
 		require.NoError(t, err)
-		require.Len(t, *bfdList, 0)
+		require.Len(t, bfdList, 0)
 	})
 }

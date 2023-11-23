@@ -319,12 +319,12 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 
 	var externalSubnet *kubeovnv1.Subnet
 	externalSubnetExist := false
-	if c.config.EnableEipSnat && c.config.NetworkType != util.NetworkTypeVlan {
+	if c.config.EnableEipSnat {
 		externalSubnet, err = c.subnetsLister.Get(c.config.ExternalGatewaySwitch)
 		if err != nil {
 			klog.Errorf("failed to get external subnet %s: %v", c.config.ExternalGatewaySwitch, err)
 		} else {
-			isExternalSubnetExist = true
+			externalSubnetExist = true
 		}
 	}
 
@@ -374,7 +374,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 			if err == nil {
 				nextHop := cm.Data["external-gw-addr"]
 				if nextHop == "" {
-					if !isExternalSubnetExist {
+					if !externalSubnetExist {
 						err = fmt.Errorf("no available external subnet")
 						klog.Error(err)
 						return err
@@ -549,8 +549,13 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		}
 	}
 
-	if isExternalSubnetExist && vpc.Name != util.DefaultVpc && !externalSubnet.Spec.LogicalGateway {
+	if vpc.Name != util.DefaultVpc && !externalSubnet.Spec.LogicalGateway {
 		if cachedVpc.Spec.EnableExternal {
+			if !externalSubnetExist {
+				err = fmt.Errorf("no available external subnet")
+				klog.Error(err)
+				return err
+			}
 			if !cachedVpc.Status.EnableExternal {
 				// connect vpc to default external
 				klog.Infof("connect external network with vpc %s", vpc.Name)
