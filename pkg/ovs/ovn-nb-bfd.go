@@ -133,7 +133,7 @@ func (c *OVNNbClient) DeleteBFD(lrpName, dstIP string) error {
 	}
 
 	for _, bfd := range bfdList {
-		ops, err := c.Where(bfd).Delete()
+		ops, err := c.Where(&bfd).Delete()
 		if err != nil {
 			err := fmt.Errorf("failed to generate operations for BFD deletion with UUID %s: %v", bfd.UUID, err)
 			klog.Error(err)
