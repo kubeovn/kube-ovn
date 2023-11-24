@@ -969,6 +969,12 @@ func (c *Controller) handleDeleteSubnet(subnet *kubeovnv1.Subnet) error {
 		klog.Errorf("failed to delete policy route for underlay to overlay subnet interconnection %s, %v", subnet.Name, err)
 		return err
 	}
+	if subnet.Spec.Vpc != c.config.ClusterRouter {
+		if err := c.deleteStaticRouteForU2OInterconn(subnet); err != nil {
+			klog.Errorf("failed to delete static route for underlay to overlay subnet interconnection %s, %v", subnet.Name, err)
+			return err
+		}
+	}
 
 	u2oInterconnName := fmt.Sprintf(util.U2OInterconnName, subnet.Spec.Vpc, subnet.Name)
 	if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), u2oInterconnName, metav1.DeleteOptions{}); err != nil {
@@ -1847,6 +1853,11 @@ func (c *Controller) reconcileCustomVpcStaticRoute(subnet *kubeovnv1.Subnet) err
 			klog.Errorf("failed to add policy route for underlay to overlay subnet interconnection %s %v", subnet.Name, err)
 			return err
 		}
+
+		if err := c.addStaticRouteForU2OInterconn(subnet); err != nil {
+			klog.Errorf("failed to add static route for underlay to overlay subnet interconnection %s %v", subnet.Name, err)
+			return err
+		}
 	}
 
 	if err := c.addCustomVPCPolicyRoutesForSubnet(subnet); err != nil {
@@ -2708,6 +2719,101 @@ func (c *Controller) deletePolicyRouteForU2OInterconn(subnet *kubeovnv1.Subnet) 
 	return nil
 }
 
+func (c *Controller) addStaticRouteForU2OInterconn(subnet *kubeovnv1.Subnet) error {
+	var v4Gw, v6Gw, v4Cidr, v6Cidr string
+	for _, gw := range strings.Split(subnet.Spec.Gateway, ",") {
+		switch util.CheckProtocol(gw) {
+		case kubeovnv1.ProtocolIPv4:
+			v4Gw = gw
+		case kubeovnv1.ProtocolIPv6:
+			v6Gw = gw
+		}
+	}
+
+	for _, cidr := range strings.Split(subnet.Spec.CIDRBlock, ",") {
+		if util.CheckProtocol(cidr) == kubeovnv1.ProtocolIPv4 {
+			v4Cidr = cidr
+		} else {
+			v6Cidr = cidr
+		}
+	}
+
+	if v4Gw != "" && v4Cidr != "" {
+		if err := c.addStaticRouteToVpc(
+			subnet.Spec.Vpc,
+			&kubeovnv1.StaticRoute{
+				Policy:    kubeovnv1.PolicySrc,
+				CIDR:      v4Cidr,
+				NextHopIP: v4Gw,
+			},
+		); err != nil {
+			klog.Errorf("failed to add static route, %v", err)
+			return err
+		}
+	}
+
+	if v6Gw != "" && v6Cidr != "" {
+		if err := c.addStaticRouteToVpc(
+			subnet.Spec.Vpc,
+			&kubeovnv1.StaticRoute{
+				Policy:    kubeovnv1.PolicySrc,
+				CIDR:      v6Cidr,
+				NextHopIP: v6Gw,
+			},
+		); err != nil {
+			klog.Errorf("failed to add static route, %v", err)
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *Controller) deleteStaticRouteForU2OInterconn(subnet *kubeovnv1.Subnet) error {
+	var v4Gw, v6Gw, v4Cidr, v6Cidr string
+	for _, gw := range strings.Split(subnet.Spec.Gateway, ",") {
+		switch util.CheckProtocol(gw) {
+		case kubeovnv1.ProtocolIPv4:
+			v4Gw = gw
+		case kubeovnv1.ProtocolIPv6:
+			v6Gw = gw
+		}
+	}
+
+	for _, cidr := range strings.Split(subnet.Spec.CIDRBlock, ",") {
+		if util.CheckProtocol(cidr) == kubeovnv1.ProtocolIPv4 {
+			v4Cidr = cidr
+		} else {
+			v6Cidr = cidr
+		}
+	}
+
+	if v4Gw != "" && v4Cidr != "" {
+		if err := c.deleteStaticRouteFromVpc(
+			subnet.Spec.Vpc,
+			subnet.Spec.RouteTable,
+			v4Cidr,
+			v4Gw,
+			kubeovnv1.PolicySrc,
+		); err != nil {
+			klog.Errorf("failed to add static route, %v", err)
+			return err
+		}
+	}
+
+	if v6Gw != "" && v6Cidr != "" {
+		if err := c.deleteStaticRouteFromVpc(
+			subnet.Spec.Vpc,
+			subnet.Spec.RouteTable,
+			v6Cidr,
+			v6Gw,
+			kubeovnv1.PolicySrc,
+		); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (c *Controller) reconcileRouteTableForSubnet(subnet *kubeovnv1.Subnet) error {
 	if subnet.Spec.Vlan != "" && !subnet.Spec.U2OInterconnection {
 		return nil
@@ -2782,6 +2888,13 @@ func (c *Controller) clearOldU2OResource(subnet *kubeovnv1.Subnet) error {
 		if err := c.deletePolicyRouteForU2OInterconn(subnet); err != nil {
 			klog.Errorf("failed to delete u2o policy route for u2o connection %s: %v", subnet.Name, err)
 			return err
+		}
+
+		if subnet.Status.U2OInterconnectionVPC != c.config.ClusterRouter {
+			if err := c.deleteStaticRouteForU2OInterconn(subnet); err != nil {
+				klog.Errorf("failed to delete u2o static route for u2o connection %s: %v", subnet.Name, err)
+				return err
+			}
 		}
 	}
 	return nil
