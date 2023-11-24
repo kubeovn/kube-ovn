@@ -145,12 +145,17 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 			ifName = "eth0"
 		}
 
+		// For Support kubevirt hotplug dpdk nic, forbidden set the volume name
+		if podRequest.VhostUserSocketConsumption == util.ConsumptionKubevirt {
+			podRequest.VhostUserSocketVolumeName = util.VhostUserSocketVolumeName
+		}
+
 		switch {
 		case podRequest.DeviceID != "":
 			nicType = util.OffloadType
 		case podRequest.VhostUserSocketVolumeName != "":
 			nicType = util.DpdkType
-			if err = createShortSharedDir(pod, podRequest.VhostUserSocketVolumeName, csh.Config.KubeletDir); err != nil {
+			if err = createShortSharedDir(pod, podRequest.VhostUserSocketVolumeName, podRequest.VhostUserSocketConsumption, csh.Config.KubeletDir); err != nil {
 				klog.Error(err.Error())
 				if err = resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: err.Error()}); err != nil {
 					klog.Errorf("failed to write response: %v", err)
@@ -293,7 +298,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		case util.InternalType:
 			podNicName, err = csh.configureNicWithInternalPort(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, ifName, macAddr, mtu, ipAddr, gw, isDefaultRoute, detectIPConflict, routes, podRequest.DNS.Nameservers, podRequest.DNS.Search, ingress, egress, podRequest.DeviceID, nicType, latency, limit, loss, jitter, gatewayCheckMode, u2oInterconnectionIP)
 		case util.DpdkType:
-			err = csh.configureDpdkNic(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, ifName, macAddr, mtu, ipAddr, gw, ingress, egress, getShortSharedDir(pod.UID, podRequest.VhostUserSocketVolumeName), podRequest.VhostUserSocketName)
+			err = csh.configureDpdkNic(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, ifName, macAddr, mtu, ipAddr, gw, ingress, egress, getShortSharedDir(pod.UID, podRequest.VhostUserSocketVolumeName), podRequest.VhostUserSocketName, podRequest.VhostUserSocketConsumption)
 		default:
 			err = csh.configureNic(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, podRequest.VfDriver, ifName, macAddr, mtu, ipAddr, gw, isDefaultRoute, detectIPConflict, routes, podRequest.DNS.Nameservers, podRequest.DNS.Search, ingress, egress, podRequest.DeviceID, nicType, latency, limit, loss, jitter, gatewayCheckMode, u2oInterconnectionIP, oldPodName)
 		}
@@ -419,13 +424,18 @@ func (csh cniServerHandler) handleDel(req *restful.Request, resp *restful.Respon
 			}
 		}
 
+		// For Support kubevirt hotplug dpdk nic, forbidden set the volume name
+		if podRequest.VhostUserSocketConsumption == util.ConsumptionKubevirt {
+			podRequest.VhostUserSocketVolumeName = util.VhostUserSocketVolumeName
+		}
+
 		var nicType string
 		switch {
 		case podRequest.DeviceID != "":
 			nicType = util.OffloadType
 		case podRequest.VhostUserSocketVolumeName != "":
 			nicType = util.DpdkType
-			if err = removeShortSharedDir(pod, podRequest.VhostUserSocketVolumeName); err != nil {
+			if err = removeShortSharedDir(pod, podRequest.VhostUserSocketVolumeName, podRequest.VhostUserSocketConsumption); err != nil {
 				klog.Error(err.Error())
 				if err = resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: err.Error()}); err != nil {
 					klog.Errorf("failed to write response: %v", err)
