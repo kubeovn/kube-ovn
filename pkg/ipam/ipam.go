@@ -201,9 +201,9 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr, gw string, excludeIps []strin
 			firstIP, _ := util.FirstIP(v4cidrStr)
 			lastIP, _ := util.LastIP(v4cidrStr)
 			ips, _ := NewIPRangeListFrom(fmt.Sprintf("%s..%s", firstIP, lastIP))
-			subnet.V4Free = ips.Separate(subnet.V4Reserved)
-			subnet.V4Available = subnet.V4Free.Clone()
 			subnet.V4Using = subnet.V4Using.Intersect(ips)
+			subnet.V4Free = ips.Separate(subnet.V4Reserved).Separate(subnet.V4Using)
+			subnet.V4Available = subnet.V4Free.Clone()
 			subnet.V4Gw = v4Gw
 
 			pool := subnet.IPPools[""]
@@ -222,7 +222,7 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr, gw string, excludeIps []strin
 				p.V4Available = p.V4Free.Clone()
 				p.V4Released = NewEmptyIPRangeList()
 				pool.V4Free = pool.V4Free.Separate(p.V4IPs)
-				pool.V4Reserved = p.V4Reserved.Separate(p.V4Reserved)
+				pool.V4Reserved = pool.V4Reserved.Separate(p.V4Reserved)
 			}
 			pool.V4Available = pool.V4Free.Clone()
 
@@ -232,13 +232,6 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr, gw string, excludeIps []strin
 					klog.Errorf("%s address %s not in subnet %s new cidr %s", podName, ip.String(), name, cidrStr)
 					delete(subnet.V4NicToIP, nicName)
 					delete(subnet.V4IPToPod, ip.String())
-				} else {
-					// The already assigned addresses should be added in ipam again when subnet cidr changed
-					pool.V4Available.Remove(ip)
-					pool.V4Using.Add(ip)
-					subnet.V4Free.Remove(ip)
-					subnet.V4Available.Remove(ip)
-					subnet.V4Using.Add(ip)
 				}
 			}
 
@@ -254,9 +247,9 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr, gw string, excludeIps []strin
 			firstIP, _ := util.FirstIP(v6cidrStr)
 			lastIP, _ := util.LastIP(v6cidrStr)
 			ips, _ := NewIPRangeListFrom(fmt.Sprintf("%s..%s", firstIP, lastIP))
-			subnet.V6Free = ips.Separate(subnet.V6Reserved)
-			subnet.V6Available = subnet.V6Free.Clone()
 			subnet.V6Using = subnet.V6Using.Intersect(ips)
+			subnet.V6Free = ips.Separate(subnet.V6Reserved).Separate(subnet.V6Using)
+			subnet.V6Available = subnet.V6Free.Clone()
 			subnet.V6Gw = v6Gw
 
 			pool := subnet.IPPools[""]
@@ -275,7 +268,7 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr, gw string, excludeIps []strin
 				p.V6Available = p.V6Free.Clone()
 				p.V6Released = NewEmptyIPRangeList()
 				pool.V6Free = pool.V6Free.Separate(p.V6IPs)
-				pool.V6Reserved = p.V6Reserved.Separate(p.V6Reserved)
+				pool.V6Reserved = pool.V6Reserved.Separate(p.V6Reserved)
 			}
 			pool.V6Available = pool.V6Free.Clone()
 
@@ -285,13 +278,6 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr, gw string, excludeIps []strin
 					klog.Errorf("%s address %s not in subnet %s new cidr %s", podName, ip.String(), name, cidrStr)
 					delete(subnet.V6NicToIP, nicName)
 					delete(subnet.V6IPToPod, ip.String())
-				} else {
-					// The already assigned addresses should be added in ipam again when subnet cidr changed
-					pool.V6Available.Remove(ip)
-					pool.V6Using.Add(ip)
-					subnet.V6Free.Remove(ip)
-					subnet.V6Available.Remove(ip)
-					subnet.V6Using.Add(ip)
 				}
 			}
 
