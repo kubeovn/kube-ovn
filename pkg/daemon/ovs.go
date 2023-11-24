@@ -40,6 +40,11 @@ func pingGateway(gw, src string, verbose bool, maxRetry int) (count int, err err
 		return 0, err
 	}
 
+	if pinger.PacketsRecv == 0 {
+		klog.Warningf("%s network not ready after %d ping, gw %s", src, pinger.PacketsSent, gw)
+		return pinger.PacketsSent, fmt.Errorf("no packets received from gateway %s", gw)
+	}
+
 	cniConnectivityResult.WithLabelValues(nodeName).Add(float64(pinger.PacketsSent))
 	if verbose {
 		klog.Infof("%s network ready after %d ping, gw %s", src, pinger.PacketsSent, gw)
