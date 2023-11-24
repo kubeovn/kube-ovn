@@ -39,7 +39,7 @@ ovn-ctl status_controller
 file="/var/log/ovn/ovn-controller.log"
 if [ -e $file ]
 then
-  result=$(tail -6 $file)
+  result=$(tail -6 $file 2>/dev/null || true)
   if [[ "$result" =~ "clustered database server has stale data" ]]
   then
     echo "check write to ovn sb db, clustered database server has stale data, run sb-cluster-state-reset command to restore"
