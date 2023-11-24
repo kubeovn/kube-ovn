@@ -282,4 +282,7 @@ const (
 	TProxyPreroutingMask = 0x90004
 
 	HealthCheckNamedVipTemplate = "%s:%s" // ip name, health check vip
+
+	ConsumptionKubevirt       = "kubevirt"
+	VhostUserSocketVolumeName = "vhostuser-sockets"
 )
