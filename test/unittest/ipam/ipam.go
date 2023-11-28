@@ -116,12 +116,12 @@ var _ = Describe("[IPAM]", func() {
 				Expect(err).Should(MatchError(ipam.ErrConflict))
 
 				By("release pod with multiple nics")
-				im.ReleaseAddressByPod(pod2)
+				im.ReleaseAddressByPod(pod2, "")
 				Expect(im.Subnets[subnetName].V4ReleasedIPList.Contains(ipam.IP(freeIp2))).Should(BeTrue())
 				Expect(im.Subnets[subnetName].V4ReleasedIPList.Contains(ipam.IP(freeIp3))).Should(BeTrue())
 
 				By("release pod with single nic")
-				im.ReleaseAddressByPod(pod1)
+				im.ReleaseAddressByPod(pod1, "")
 				Expect(im.Subnets[subnetName].V4ReleasedIPList.Contains(ipam.IP(freeIp1))).Should(BeTrue())
 
 				By("create new pod with released ips")
@@ -166,12 +166,12 @@ var _ = Describe("[IPAM]", func() {
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(ip).To(Equal("10.16.0.1"))
 
-				im.ReleaseAddressByPod("pod1.ns")
+				im.ReleaseAddressByPod("pod1.ns", "")
 				ip, _, _, err = im.GetRandomAddress("pod1.ns", "pod1.ns", "", subnetName, nil, true)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(ip).To(Equal("10.16.0.2"))
 
-				im.ReleaseAddressByPod("pod1.ns")
+				im.ReleaseAddressByPod("pod1.ns", "")
 				ip, _, _, err = im.GetRandomAddress("pod1.ns", "pod1.ns", "", subnetName, nil, true)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(ip).To(Equal("10.16.0.1"))
@@ -186,7 +186,7 @@ var _ = Describe("[IPAM]", func() {
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(ip).To(Equal("10.16.0.1"))
 
-				im.ReleaseAddressByPod("pod1.ns")
+				im.ReleaseAddressByPod("pod1.ns", "")
 				err = im.AddOrUpdateSubnet(subnetName, "10.16.0.0/30", v4Gw, []string{"10.16.0.1..10.16.0.2"})
 				Expect(err).ShouldNot(HaveOccurred())
 
@@ -266,12 +266,12 @@ var _ = Describe("[IPAM]", func() {
 				Expect(err).Should(MatchError(ipam.ErrConflict))
 
 				By("release pod with multiple nics")
-				im.ReleaseAddressByPod(pod2)
+				im.ReleaseAddressByPod(pod2, "")
 				Expect(im.Subnets[subnetName].V6ReleasedIPList.Contains(ipam.IP(freeIp2))).Should(BeTrue())
 				Expect(im.Subnets[subnetName].V6ReleasedIPList.Contains(ipam.IP(freeIp3))).Should(BeTrue())
 
 				By("release pod with single nic")
-				im.ReleaseAddressByPod(pod1)
+				im.ReleaseAddressByPod(pod1, "")
 				Expect(im.Subnets[subnetName].V6ReleasedIPList.Contains(ipam.IP(freeIp1))).Should(BeTrue())
 
 				By("create new pod with released ips")
@@ -315,12 +315,12 @@ var _ = Describe("[IPAM]", func() {
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(ip).To(Equal("fd00::1"))
 
-				im.ReleaseAddressByPod("pod1.ns")
+				im.ReleaseAddressByPod("pod1.ns", "")
 				_, ip, _, err = im.GetRandomAddress("pod1.ns", "pod1.ns", "", subnetName, nil, true)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(ip).To(Equal("fd00::2"))
 
-				im.ReleaseAddressByPod("pod1.ns")
+				im.ReleaseAddressByPod("pod1.ns", "")
 				_, ip, _, err = im.GetRandomAddress("pod1.ns", "pod1.ns", "", subnetName, nil, true)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(ip).To(Equal("fd00::1"))
@@ -335,7 +335,7 @@ var _ = Describe("[IPAM]", func() {
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(ip).To(Equal("fd00::1"))
 
-				im.ReleaseAddressByPod("pod1.ns")
+				im.ReleaseAddressByPod("pod1.ns", "")
 				err = im.AddOrUpdateSubnet(subnetName, "fd00::/126", v6Gw, []string{"fd00::1..fd00::2"})
 				Expect(err).ShouldNot(HaveOccurred())
 
@@ -434,14 +434,14 @@ var _ = Describe("[IPAM]", func() {
 				Expect(err).Should(MatchError(ipam.ErrConflict))
 
 				By("release pod with multiple nics")
-				im.ReleaseAddressByPod(pod2)
+				im.ReleaseAddressByPod(pod2, "")
 				Expect(im.Subnets[subnetName].V4ReleasedIPList.Contains(ipam.IP(freeIp42))).Should(BeTrue())
 				Expect(im.Subnets[subnetName].V4ReleasedIPList.Contains(ipam.IP(freeIp43))).Should(BeTrue())
 				Expect(im.Subnets[subnetName].V6ReleasedIPList.Contains(ipam.IP(freeIp62))).Should(BeTrue())
 				Expect(im.Subnets[subnetName].V6ReleasedIPList.Contains(ipam.IP(freeIp63))).Should(BeTrue())
 
 				By("release pod with single nic")
-				im.ReleaseAddressByPod(pod1)
+				im.ReleaseAddressByPod(pod1, "")
 				Expect(im.Subnets[subnetName].V4ReleasedIPList.Contains(ipam.IP(freeIp41))).Should(BeTrue())
 				Expect(im.Subnets[subnetName].V6ReleasedIPList.Contains(ipam.IP(freeIp61))).Should(BeTrue())
 
@@ -487,13 +487,13 @@ var _ = Describe("[IPAM]", func() {
 				Expect(ipv4).To(Equal("10.16.0.1"))
 				Expect(ipv6).To(Equal("fd00::1"))
 
-				im.ReleaseAddressByPod("pod1.ns")
+				im.ReleaseAddressByPod("pod1.ns", "")
 				ipv4, ipv6, _, err = im.GetRandomAddress("pod1.ns", "pod1.ns", "", subnetName, nil, true)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(ipv4).To(Equal("10.16.0.2"))
 				Expect(ipv6).To(Equal("fd00::2"))
 
-				im.ReleaseAddressByPod("pod1.ns")
+				im.ReleaseAddressByPod("pod1.ns", "")
 				ipv4, ipv6, _, err = im.GetRandomAddress("pod1.ns", "pod1.ns", "", subnetName, nil, true)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(ipv4).To(Equal("10.16.0.1"))
@@ -510,7 +510,7 @@ var _ = Describe("[IPAM]", func() {
 				Expect(ipv4).To(Equal("10.16.0.1"))
 				Expect(ipv6).To(Equal("fd00::1"))
 
-				im.ReleaseAddressByPod("pod1.ns")
+				im.ReleaseAddressByPod("pod1.ns", "")
 				err = im.AddOrUpdateSubnet(subnetName, "10.16.0.2/30,fd00::/126", dualGw, []string{"10.16.0.1..10.16.0.2", "fd00::1..fd00::2"})
 				Expect(err).ShouldNot(HaveOccurred())
 

@@ -262,7 +262,7 @@ func (c *Controller) handleUpdateVirtualIp(key string) error {
 
 func (c *Controller) handleDelVirtualIp(key string) error {
 	klog.V(3).Infof("release vip %s", key)
-	c.ipam.ReleaseAddressByPod(key)
+	c.ipam.ReleaseAddressByPod(key, "")
 	return nil
 }
 
@@ -468,7 +468,7 @@ func (c *Controller) podReuseVip(key, portName string, isStsPod bool) error {
 		klog.Errorf("failed to patch label for vip '%s', %v", vip.Name, err)
 		return err
 	}
-	c.ipam.ReleaseAddressByPod(key)
+	c.ipam.ReleaseAddressByPod(key, vip.Spec.Subnet)
 	c.updateSubnetStatusQueue.Add(vip.Spec.Subnet)
 	return nil
 }

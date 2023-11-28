@@ -490,7 +490,7 @@ func (c *Controller) handleDeleteNode(key string) error {
 		return err
 	}
 
-	c.ipam.ReleaseAddressByPod(portName)
+	c.ipam.ReleaseAddressByPod(portName, c.config.NodeSwitch)
 
 	providerNetworks, err := c.providerNetworksLister.List(labels.Everything())
 	if err != nil && !k8serrors.IsNotFound(err) {

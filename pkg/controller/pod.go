@@ -830,8 +830,8 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 			c.syncSgPortsQueue.Add(sg)
 		}
 	}
-
-	c.ipam.ReleaseAddressByPod(key)
+	klog.Infof("release all ip address for deleting pod %s", key)
+	c.ipam.ReleaseAddressByPod(key, "")
 
 	podNets, err := c.getPodKubeovnNets(pod)
 	if err != nil {

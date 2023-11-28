@@ -1565,7 +1565,7 @@ func (c *Controller) reconcileU2OInterconnectionIP(subnet *kubeovnv1.Subnet) err
 			}
 		} else if subnet.Spec.U2OInterconnectionIP != "" && subnet.Status.U2OInterconnectionIP != subnet.Spec.U2OInterconnectionIP {
 			if subnet.Status.U2OInterconnectionIP != "" {
-				c.ipam.ReleaseAddressByPod(u2oInterconnName)
+				c.ipam.ReleaseAddressByPod(u2oInterconnName, subnet.Name)
 			}
 
 			v4ip, v6ip, _, err = c.acquireStaticIpAddress(subnet.Name, u2oInterconnName, u2oInterconnLrpName, subnet.Spec.U2OInterconnectionIP)
@@ -1594,7 +1594,7 @@ func (c *Controller) reconcileU2OInterconnectionIP(subnet *kubeovnv1.Subnet) err
 	} else {
 		if subnet.Status.U2OInterconnectionIP != "" {
 			u2oInterconnName := fmt.Sprintf(util.U2OInterconnName, subnet.Spec.Vpc, subnet.Name)
-			c.ipam.ReleaseAddressByPod(u2oInterconnName)
+			c.ipam.ReleaseAddressByPod(u2oInterconnName, subnet.Name)
 			subnet.Status.U2OInterconnectionIP = ""
 
 			if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), u2oInterconnName, metav1.DeleteOptions{}); err != nil {
