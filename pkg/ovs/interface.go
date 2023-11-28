@@ -50,7 +50,7 @@ type GatewayChassis interface {
 type BFD interface {
 	CreateBFD(lrpName, dstIP string, minRx, minTx, detectMult int) (*ovnnb.BFD, error)
 	DeleteBFD(lrpName, dstIP string) error
-	ListBFD(lrpName, dstIP string) ([]ovnnb.BFD, error)
+	ListBFDs(lrpName, dstIP string) ([]ovnnb.BFD, error)
 	ListDownBFDs(dstIP string) ([]ovnnb.BFD, error)
 	ListUpBFDs(dstIP string) ([]ovnnb.BFD, error)
 	UpdateBFD(bfd *ovnnb.BFD, fields ...interface{}) error

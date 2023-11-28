@@ -14,7 +14,7 @@ import (
 	"github.com/ovn-org/libovsdb/model"
 )
 
-func (c *OVNNbClient) ListBFD(lrpName, dstIP string) ([]ovnnb.BFD, error) {
+func (c *OVNNbClient) ListBFDs(lrpName, dstIP string) ([]ovnnb.BFD, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
 	defer cancel()
 
@@ -69,7 +69,7 @@ func (c *OVNNbClient) ListUpBFDs(dstIP string) ([]ovnnb.BFD, error) {
 }
 
 func (c *OVNNbClient) CreateBFD(lrpName, dstIP string, minRx, minTx, detectMult int) (*ovnnb.BFD, error) {
-	bfdList, err := c.ListBFD(lrpName, dstIP)
+	bfdList, err := c.ListBFDs(lrpName, dstIP)
 	if err != nil {
 		klog.Error(err)
 		return nil, err
@@ -97,7 +97,7 @@ func (c *OVNNbClient) CreateBFD(lrpName, dstIP string, minRx, minTx, detectMult 
 		return nil, err
 	}
 
-	if bfdList, err = c.ListBFD(lrpName, dstIP); err != nil {
+	if bfdList, err = c.ListBFDs(lrpName, dstIP); err != nil {
 		return nil, err
 	}
 	if len(bfdList) == 0 {
@@ -123,7 +123,7 @@ func (c *OVNNbClient) UpdateBFD(bfd *ovnnb.BFD, fields ...interface{}) error {
 }
 
 func (c *OVNNbClient) DeleteBFD(lrpName, dstIP string) error {
-	bfdList, err := c.ListBFD(lrpName, dstIP)
+	bfdList, err := c.ListBFDs(lrpName, dstIP)
 	if err != nil {
 		klog.Error(err)
 		return err
@@ -167,7 +167,7 @@ func (c *OVNNbClient) MonitorBFD() {
 }
 
 func (c *OVNNbClient) isLrpBfdUp(lrpName, dstIP string) (bool, error) {
-	bfdList, err := c.ListBFD(lrpName, dstIP)
+	bfdList, err := c.ListBFDs(lrpName, dstIP)
 	if err != nil {
 		klog.Errorf("failed to list bfd for lrp %s, %v", lrpName, err)
 		return false, err

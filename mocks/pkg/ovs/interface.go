@@ -521,19 +521,19 @@ func (mr *MockBFDMockRecorder) DeleteBFD(lrpName, dstIP interface{}) *gomock.Cal
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteBFD", reflect.TypeOf((*MockBFD)(nil).DeleteBFD), lrpName, dstIP)
 }
 
-// ListBFD mocks base method.
-func (m *MockBFD) ListBFD(lrpName, dstIP string) ([]ovnnb.BFD, error) {
+// ListBFDs mocks base method.
+func (m *MockBFD) ListBFDs(lrpName, dstIP string) ([]ovnnb.BFD, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListBFD", lrpName, dstIP)
+	ret := m.ctrl.Call(m, "ListBFDs", lrpName, dstIP)
 	ret0, _ := ret[0].([]ovnnb.BFD)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// ListBFD indicates an expected call of ListBFD.
-func (mr *MockBFDMockRecorder) ListBFD(lrpName, dstIP interface{}) *gomock.Call {
+// ListBFDs indicates an expected call of ListBFDs.
+func (mr *MockBFDMockRecorder) ListBFDs(lrpName, dstIP interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListBFD", reflect.TypeOf((*MockBFD)(nil).ListBFD), lrpName, dstIP)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListBFDs", reflect.TypeOf((*MockBFD)(nil).ListBFDs), lrpName, dstIP)
 }
 
 // ListDownBFDs mocks base method.
@@ -3331,19 +3331,19 @@ func (mr *MockNbClientMockRecorder) ListAddressSets(externalIDs interface{}) *go
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListAddressSets", reflect.TypeOf((*MockNbClient)(nil).ListAddressSets), externalIDs)
 }
 
-// ListBFD mocks base method.
-func (m *MockNbClient) ListBFD(lrpName, dstIP string) ([]ovnnb.BFD, error) {
+// ListBFDs mocks base method.
+func (m *MockNbClient) ListBFDs(lrpName, dstIP string) ([]ovnnb.BFD, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListBFD", lrpName, dstIP)
+	ret := m.ctrl.Call(m, "ListBFDs", lrpName, dstIP)
 	ret0, _ := ret[0].([]ovnnb.BFD)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// ListBFD indicates an expected call of ListBFD.
-func (mr *MockNbClientMockRecorder) ListBFD(lrpName, dstIP interface{}) *gomock.Call {
+// ListBFDs indicates an expected call of ListBFDs.
+func (mr *MockNbClientMockRecorder) ListBFDs(lrpName, dstIP interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListBFD", reflect.TypeOf((*MockNbClient)(nil).ListBFD), lrpName, dstIP)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListBFDs", reflect.TypeOf((*MockNbClient)(nil).ListBFDs), lrpName, dstIP)
 }
 
 // ListDHCPOptions mocks base method.

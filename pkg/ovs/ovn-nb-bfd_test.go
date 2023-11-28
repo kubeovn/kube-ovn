@@ -55,17 +55,17 @@ func (suite *OvnClientTestSuite) testListBFD() {
 		require.NoError(t, err)
 		require.NotNil(t, bfd2)
 
-		bfdList, err := ovnClient.ListBFD(lrpName, dstIP1)
+		bfdList, err := ovnClient.ListBFDs(lrpName, dstIP1)
 		require.NoError(t, err)
 		require.Len(t, bfdList, 1)
 		require.Equal(t, bfd1.UUID, bfdList[0].UUID)
 
-		bfdList, err = ovnClient.ListBFD(lrpName, dstIP2)
+		bfdList, err = ovnClient.ListBFDs(lrpName, dstIP2)
 		require.NoError(t, err)
 		require.Len(t, bfdList, 1)
 		require.Equal(t, bfd2.UUID, bfdList[0].UUID)
 
-		bfdList, err = ovnClient.ListBFD(lrpName, "")
+		bfdList, err = ovnClient.ListBFDs(lrpName, "")
 		require.NoError(t, err)
 		require.Len(t, bfdList, 2)
 		uuids := strset.NewWithSize(len(bfdList))
@@ -97,11 +97,11 @@ func (suite *OvnClientTestSuite) testDeleteBFD() {
 		err = ovnClient.DeleteBFD(lrpName, dstIP1)
 		require.NoError(t, err)
 
-		bfdList, err := ovnClient.ListBFD(lrpName, dstIP1)
+		bfdList, err := ovnClient.ListBFDs(lrpName, dstIP1)
 		require.NoError(t, err)
 		require.Len(t, bfdList, 0)
 
-		bfdList, err = ovnClient.ListBFD(lrpName, dstIP2)
+		bfdList, err = ovnClient.ListBFDs(lrpName, dstIP2)
 		require.NoError(t, err)
 		require.Len(t, bfdList, 1)
 		require.Equal(t, bfd2.UUID, bfdList[0].UUID)
@@ -111,7 +111,7 @@ func (suite *OvnClientTestSuite) testDeleteBFD() {
 		err = ovnClient.DeleteBFD(lrpName, "")
 		require.NoError(t, err)
 
-		bfdList, err := ovnClient.ListBFD(lrpName, "")
+		bfdList, err := ovnClient.ListBFDs(lrpName, "")
 		require.NoError(t, err)
 		require.Len(t, bfdList, 0)
 	})
