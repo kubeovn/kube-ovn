@@ -296,7 +296,7 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 	externalNetwork := util.GetExternalNetwork(cachedEip.Spec.ExternalSubnet)
 	// should delete
 	if !cachedEip.DeletionTimestamp.IsZero() {
-		klog.V(3).Infof("clean eip '%s' in pod", key)
+		klog.Infof("clean eip %q in pod", key)
 		v4Cidr, err := c.getEipV4Cidr(cachedEip.Status.IP, externalNetwork)
 		if err != nil {
 			klog.Errorf("failed to clean eip %s, %v", key, err)
@@ -314,6 +314,11 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 				return err
 			}
 		}
+		if err = c.handleDelIptablesEipFinalizer(key); err != nil {
+			klog.Errorf("failed to handle del finalizer for eip %s, %v", key, err)
+			return err
+		}
+		c.ipam.ReleaseAddressByPod(key, cachedEip.Spec.ExternalSubnet)
 		return nil
 	}
 	klog.Infof("handle update eip %s", key)
@@ -397,19 +402,6 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 
 func (c *Controller) handleDelIptablesEip(key string) error {
 	klog.Infof("handle delete iptables eip %s", key)
-	eip, err := c.iptablesEipsLister.Get(key)
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
-		klog.Error(err)
-		return err
-	}
-	if err = c.handleDelIptablesEipFinalizer(key); err != nil {
-		klog.Errorf("failed to handle del finalizer for eip %s, %v", key, err)
-		return err
-	}
-	c.ipam.ReleaseAddressByPod(key, eip.Spec.ExternalSubnet)
 	return nil
 }
 
