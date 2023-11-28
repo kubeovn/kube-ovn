@@ -44,7 +44,12 @@ RUN cd /usr/src/ && git clone -b branch-22.12 --depth=1 https://github.com/ovn-o
     # fix lr-lb dnat with multiple distributed gateway ports
     curl -s https://github.com/kubeovn/ovn/commit/80f37c2debbf9f5230403691f791d11cc2b2e277.patch | git apply
 
-RUN apt install -y build-essential fakeroot \
+# use python 3.12 to fix CVE-2023-40217
+RUN apt update && apt upgrade -y && \
+    apt install software-properties-common -y && \
+    add-apt-repository ppa:deadsnakes/ppa -y && \
+    apt update && \
+    apt install -y python3.12 python3.12-minimal libpython3.12-minimal libpython3.12-stdlib \
     autoconf automake bzip2 debhelper-compat dh-exec dh-python dh-sequence-python3 dh-sequence-sphinxdoc \
     graphviz iproute2 libcap-ng-dev libdbus-1-dev libnuma-dev libpcap-dev libssl-dev libtool libunbound-dev \
     openssl pkg-config procps python3-all-dev python3-setuptools python3-sortedcontainers python3-sphinx
@@ -74,13 +79,19 @@ RUN mkdir /packages/ && \
 FROM ubuntu:22.04
 
 ARG DEBIAN_FRONTEND=noninteractive
-RUN apt update && apt upgrade -y && apt install ca-certificates python3 hostname libunwind8 netbase \
-        ethtool iproute2 ncat libunbound-dev procps libatomic1 kmod iptables python3-netifaces python3-sortedcontainers \
-        tcpdump ipset curl uuid-runtime openssl inetutils-ping arping ndisc6 \
-        logrotate dnsutils net-tools strongswan strongswan-pki libcharon-extra-plugins \
-        libcharon-extauth-plugins libstrongswan-extra-plugins libstrongswan-standard-plugins -y --no-install-recommends && \
-        rm -rf /var/lib/apt/lists/* && \
-        rm -rf /etc/localtime
+# use python 3.12 to fix CVE-2023-40217
+RUN apt update && apt upgrade -y && \
+    apt install software-properties-common -y && \
+    add-apt-repository ppa:deadsnakes/ppa -y && \
+    apt update && \
+    apt install -y python3.12 python3.12-minimal libpython3.12-minimal libpython3.12-stdlib \
+    ca-certificates hostname libunwind8 netbase \
+    ethtool iproute2 ncat libunbound-dev procps libatomic1 kmod iptables python3-netifaces python3-sortedcontainers \
+    tcpdump ipset curl uuid-runtime openssl inetutils-ping arping ndisc6 \
+    logrotate dnsutils net-tools strongswan strongswan-pki libcharon-extra-plugins \
+    libcharon-extauth-plugins libstrongswan-extra-plugins libstrongswan-standard-plugins -y --no-install-recommends && \
+    rm -rf /var/lib/apt/lists/* && \
+    rm -rf /etc/localtime
 
 RUN mkdir -p /var/run/openvswitch && \
     mkdir -p /var/run/ovn && \
@@ -92,7 +103,6 @@ ENV CNI_VERSION=v1.3.0
 RUN curl -sSf -L --retry 5 https://github.com/containernetworking/plugins/releases/download/${CNI_VERSION}/cni-plugins-linux-${ARCH}-${CNI_VERSION}.tgz | tar -xz -C . ./loopback ./portmap ./macvlan
 
 ENV KUBE_VERSION="v1.28.3"
-
 RUN curl -L https://dl.k8s.io/${KUBE_VERSION}/kubernetes-client-linux-${ARCH}.tar.gz | tar -xz -C . && cp ./kubernetes/client/bin/kubectl /usr/bin/kubectl \
  && chmod +x /usr/bin/kubectl && rm -rf ./kubernetes
 
