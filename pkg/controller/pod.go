@@ -752,14 +752,15 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 		return nil
 	}
 
-	ports, err := c.ovnClient.ListPodLogicalSwitchPorts(key)
+	podKey := fmt.Sprintf("%s/%s", pod.Namespace, podName)
+	ports, err := c.ovnClient.ListPodLogicalSwitchPorts(podKey)
 	if err != nil {
 		klog.Errorf("failed to list lsps of pod '%s', %v", pod.Name, err)
 		return err
 	}
 
 	if len(ports) != 0 {
-		addresses := c.ipam.GetPodAddress(key)
+		addresses := c.ipam.GetPodAddress(podKey)
 		for _, address := range addresses {
 			if strings.TrimSpace(address.Ip) == "" {
 				continue
@@ -831,8 +832,7 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 		}
 	}
 	klog.Infof("release all ip address for deleting pod %s", key)
-	c.ipam.ReleaseAddressByPod(key, "")
-
+	c.ipam.ReleaseAddressByPod(podKey, "")
 	podNets, err := c.getPodKubeovnNets(pod)
 	if err != nil {
 		klog.Errorf("failed to get pod nets %v", err)
