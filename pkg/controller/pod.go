@@ -1084,8 +1084,8 @@ func (c *Controller) handleDeletePod(key string) error {
 			return err
 		}
 	}
-  
-	klog.Infof("release all ip address for deleting pod %s", key)
+
+	klog.Infof("release all ip address for deleting pod %s", podKey)
 	c.ipam.ReleaseAddressByPod(podKey, "")
 
 	podNets, err := c.getPodKubeovnNets(pod)
