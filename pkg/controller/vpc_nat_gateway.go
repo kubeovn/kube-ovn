@@ -1112,6 +1112,7 @@ func (c *Controller) initVpcNatGw() error {
 			// the nat gw maybe deleted
 			err := fmt.Errorf("failed to get nat gw %s pod: %v", gw.Name, err)
 			klog.Error(err)
+			continue
 		}
 		if vpcGwName, isVpcNatGw := pod.Annotations[util.VpcNatGatewayAnnotation]; isVpcNatGw {
 			if _, hasInit := pod.Annotations[util.VpcNatGatewayInitAnnotation]; hasInit {
