@@ -215,6 +215,10 @@ func (c *Controller) handleAddIptablesEip(key string) error {
 		klog.Error(err)
 		return err
 	}
+	if cachedEip.Status.Ready && cachedEip.Status.IP != "" {
+		// already ok
+		return nil
+	}
 	var v4ip, v6ip, mac, eipV4Cidr, v4Gw string
 	externalNetwork := util.GetExternalNetwork(cachedEip.Spec.ExternalSubnet)
 	externalProvider := fmt.Sprintf("%s.%s", externalNetwork, attachmentNs)

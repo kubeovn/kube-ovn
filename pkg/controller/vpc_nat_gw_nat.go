@@ -711,18 +711,6 @@ func (c *Controller) handleAddIptablesDnatRule(key string) error {
 	if dup, err := c.isDnatDuplicated(eip.Spec.NatGwDp, eipName, dnat.Name, dnat.Spec.ExternalPort); dup || err != nil {
 		return err
 	}
-	gwPod, err := c.getNatGwPod(eip.Spec.NatGwDp)
-	if err != nil {
-		klog.Error(err)
-		return err
-	}
-	// compare gw pod started time with dnat redo time. if redo time before gw pod started. redo again
-	dnatRedo, _ := time.ParseInLocation("2006-01-02T15:04:05", dnat.Status.Redo, time.Local)
-	if dnat.Status.Ready && dnat.Status.V4ip != "" && gwPod.Status.ContainerStatuses[0].State.Running.StartedAt.Before(&metav1.Time{Time: dnatRedo}) {
-		// already ok
-		klog.V(3).Infof("dnat %s already ok", key)
-		return nil
-	}
 	// create nat
 	if err = c.createDnatInPod(eip.Spec.NatGwDp, dnat.Spec.Protocol,
 		eip.Status.IP, dnat.Spec.InternalIP,
