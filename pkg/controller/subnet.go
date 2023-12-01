@@ -691,11 +691,21 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		klog.Error(err)
 		return err
 	}
-	klog.V(4).Infof("handle add or update subnet %s", cachedSubnet.Name)
+	klog.V(3).Infof("handle add or update subnet %s", cachedSubnet.Name)
 
 	subnet, err := formatSubnet(cachedSubnet.DeepCopy(), c)
 	if err != nil {
 		klog.Error(err)
+		return err
+	}
+
+	if subnet.Spec.Protocol == kubeovnv1.ProtocolDual {
+		err = calcDualSubnetStatusIP(subnet, c)
+	} else {
+		err = calcSubnetStatusIP(subnet, c)
+	}
+	if err != nil {
+		klog.Errorf("calculate subnet %s used ip failed, %v", subnet.Name, err)
 		return err
 	}
 
@@ -714,16 +724,6 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		return err
 	}
 	c.patchSubnetStatus(subnet, "ValidateLogicalSwitchSuccess", "")
-
-	if subnet.Spec.Protocol == kubeovnv1.ProtocolDual {
-		err = calcDualSubnetStatusIP(subnet, c)
-	} else {
-		err = calcSubnetStatusIP(subnet, c)
-	}
-	if err != nil {
-		klog.Errorf("calculate subnet %s used ip failed, %v", subnet.Name, err)
-		return err
-	}
 
 	if err := c.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps); err != nil {
 		return err
