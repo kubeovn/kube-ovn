@@ -4042,6 +4042,7 @@ spec:
               memory: 1Gi
       nodeSelector:
         kubernetes.io/os: "linux"
+        kube-ovn/role: master
       volumes:
         - name: localtime
           hostPath:
