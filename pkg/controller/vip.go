@@ -311,7 +311,8 @@ func (c *Controller) handleDelVirtualIP(vip *kubeovnv1.Vip) error {
 			return err
 		}
 	}
-	c.ipam.ReleaseAddressByPod(vip.Name)
+
+	c.ipam.ReleaseAddressByPod(vip.Name, vip.Spec.Subnet)
 	c.updateSubnetStatusQueue.Add(vip.Spec.Subnet)
 	return nil
 }
@@ -520,7 +521,7 @@ func (c *Controller) podReuseVip(key, portName string, keepVIP bool) error {
 		klog.Errorf("failed to patch label for vip '%s', %v", vip.Name, err)
 		return err
 	}
-	c.ipam.ReleaseAddressByPod(key)
+	c.ipam.ReleaseAddressByPod(key, vip.Spec.Subnet)
 	c.updateSubnetStatusQueue.Add(vip.Spec.Subnet)
 	return nil
 }

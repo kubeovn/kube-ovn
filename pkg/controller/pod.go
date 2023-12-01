@@ -540,7 +540,8 @@ func (c *Controller) changeVMSubnet(vmName, namespace, providerName, subnetName 
 					return err
 				}
 			}
-			c.ipam.ReleaseAddressByPod(key)
+			klog.Infof("after changing subnet, release ip %s", ipName)
+			c.ipam.ReleaseAddressByPod(key, ipCr.Spec.Subnet)
 		}
 	}
 	return nil
@@ -1042,7 +1043,8 @@ func (c *Controller) handleDeletePod(key string) error {
 		}
 	}
 
-	c.ipam.ReleaseAddressByPod(podKey)
+	klog.Infof("release all ip address for deleting pod %s", podKey)
+	c.ipam.ReleaseAddressByPod(podKey, "")
 
 	podNets, err := c.getPodKubeovnNets(pod)
 	if err != nil {
