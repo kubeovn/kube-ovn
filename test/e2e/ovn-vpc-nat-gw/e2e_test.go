@@ -457,15 +457,17 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		subnetClient.DeleteSync(noBfdExtraSubnetName)
 		ginkgo.By("Deleting subnet " + bfdSubnetName)
 		subnetClient.DeleteSync(bfdSubnetName)
-		ginkgo.By("Deleting underlay subnet " + underlaySubnetName)
-		subnetClient.DeleteSync(underlaySubnetName)
-		ginkgo.By("Deleting extra underlay subnet " + underlayExtraSubnetName)
-		subnetClient.DeleteSync(underlayExtraSubnetName)
 
 		ginkgo.By("Deleting no bfd custom vpc " + noBfdVpcName)
 		vpcClient.DeleteSync(noBfdVpcName)
 		ginkgo.By("Deleting bfd custom vpc " + bfdVpcName)
 		vpcClient.DeleteSync(bfdVpcName)
+
+		ginkgo.By("Deleting underlay vlan subnet")
+		ginkgo.By("Deleting underlay subnet " + underlaySubnetName)
+		subnetClient.DeleteSync(underlaySubnetName)
+		ginkgo.By("Deleting extra underlay subnet " + underlayExtraSubnetName)
+		subnetClient.DeleteSync(underlayExtraSubnetName)
 
 		ginkgo.By("Deleting vlan " + vlanName)
 		vlanClient.Delete(vlanName, metav1.DeleteOptions{})
