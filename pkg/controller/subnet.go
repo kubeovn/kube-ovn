@@ -692,7 +692,7 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		klog.Error(err)
 		return err
 	}
-	klog.Infof("handle add or update subnet %s", cachedSubnet.Name)
+	klog.V(3).Infof("handle add or update subnet %s", cachedSubnet.Name)
 
 	subnet, err := formatSubnet(cachedSubnet.DeepCopy(), c)
 	if err != nil {
