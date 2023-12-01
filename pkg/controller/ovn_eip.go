@@ -358,7 +358,7 @@ func (c *Controller) handleDelOvnEip(key string) error {
 		}
 	}
 
-	c.ipam.ReleaseAddressByPod(eip.Name)
+	c.ipam.ReleaseAddressByPod(eip.Name, eip.Spec.ExternalSubnet)
 	c.updateSubnetStatusQueue.Add(eip.Spec.ExternalSubnet)
 	return nil
 }
