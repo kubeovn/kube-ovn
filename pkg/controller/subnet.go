@@ -2070,6 +2070,14 @@ func calcSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 		return err
 	}
 	usingIPs += float64(len(vips))
+	ovnEips, err := c.ovnEipsLister.List(labels.SelectorFromSet(labels.Set{
+		util.SubnetNameLabel: subnet.Name,
+	}))
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
+	usingIPs += float64(len(ovnEips))
 	if !isOvnSubnet(subnet) {
 		eips, err := c.iptablesEipsLister.List(
 			labels.SelectorFromSet(labels.Set{util.SubnetNameLabel: subnet.Name}))
