@@ -378,7 +378,7 @@ spec:
           command:
             - /kube-ovn/kube-ovn-pinger
           args:
-            - --external-address=114.114.114.114,2400:3200::1
+            - --external-address=1.1.1.1,2606:4700:4700::1111
             - --external-dns=google.com.
             - --logtostderr=false
             - --alsologtostderr=true
