@@ -683,7 +683,7 @@ diagnose(){
         kubectl exec -n $KUBE_OVN_NS "$pinger" -- ovs-vsctl show
         echo ""
         echo "#### pinger diagnose results:"
-        kubectl exec -n $KUBE_OVN_NS "$pinger" -- /kube-ovn/kube-ovn-pinger --mode=job --external-address=114.114.114.114,2400:3200::1 --target-ip-ports=$targetIPPorts
+        kubectl exec -n $KUBE_OVN_NS "$pinger" -- /kube-ovn/kube-ovn-pinger --mode=job --external-address=1.1.1.1,2606:4700:4700::1111 --target-ip-ports=$targetIPPorts
         echo "### finish diagnose node $nodeName"
         echo ""
       done
@@ -703,7 +703,7 @@ diagnose(){
       echo "#### ovs-vswitchd log:"
       kubectl exec -n $KUBE_OVN_NS "$pinger" -- tail /var/log/openvswitch/ovs-vswitchd.log
       echo ""
-      kubectl exec -n $KUBE_OVN_NS "$pinger" -- /kube-ovn/kube-ovn-pinger --mode=job --external-address=114.114.114.114,2400:3200::1 --target-ip-ports=$targetIPPorts
+      kubectl exec -n $KUBE_OVN_NS "$pinger" -- /kube-ovn/kube-ovn-pinger --mode=job --external-address=1.1.1.1,2606:4700:4700::1111 --target-ip-ports=$targetIPPorts
       echo "### finish diagnose node $nodeName"
       echo ""
       ;;
@@ -720,7 +720,7 @@ diagnose(){
       for pinger in $pingers
       do
         echo "#### pinger $pinger on namespace $KUBE_OVN_NS diagnose results:"
-        kubectl exec -n $KUBE_OVN_NS "$pinger" -- /kube-ovn/kube-ovn-pinger --mode=job --ds-name=$subnetName-$CONN_CHECK_SERVER --ds-namespace=$KUBE_OVN_NS --enable-verbose-conn-check=true --external-address=114.114.114.114,2400:3200::1 --target-ip-ports=$targetIPPorts
+        kubectl exec -n $KUBE_OVN_NS "$pinger" -- /kube-ovn/kube-ovn-pinger --mode=job --ds-name=$subnetName-$CONN_CHECK_SERVER --ds-namespace=$KUBE_OVN_NS --enable-verbose-conn-check=true --external-address=1.1.1.1,2606:4700:4700::1111 --target-ip-ports=$targetIPPorts
         echo ""
       done
       ;;
