@@ -11,6 +11,7 @@ on:
           - release-1.12
           - release-1.11
           - release-1.9
+          - release-1.12-mc
   schedule:
   - cron: "20 19 * * *"
 
@@ -24,6 +25,7 @@ jobs:
         - release-1.12
         - release-1.11
         - release-1.9
+        - release-1.12-mc
     name: Build AMD64
     runs-on: ubuntu-22.04
     steps:
@@ -58,6 +60,7 @@ jobs:
         - release-1.12
         - release-1.11
         - release-1.9
+        - release-1.12-mc
     name: Build ARM64
     runs-on: ubuntu-22.04
     steps:
@@ -97,6 +100,7 @@ jobs:
         - release-1.12
         - release-1.11
         - release-1.9
+        - release-1.12-mc
     needs:
       - build-arm64
       - build-amd64
