@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"strings"
+	"time"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -366,6 +367,18 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 		cachedEip.Status.Redo != "" &&
 		cachedEip.Status.IP != "" &&
 		cachedEip.DeletionTimestamp.IsZero() {
+		gwPod, err := c.getNatGwPod(cachedEip.Spec.NatGwDp)
+		if err != nil {
+			klog.Error(err)
+			return err
+		}
+		// compare gw pod started time with eip redo time. if redo time before gw pod started. redo again
+		eipRedo, _ := time.ParseInLocation("2006-01-02T15:04:05", cachedEip.Status.Redo, time.Local)
+		if cachedEip.Status.Ready && cachedEip.Status.IP != "" && gwPod.Status.ContainerStatuses[0].State.Running.StartedAt.Before(&metav1.Time{Time: eipRedo}) {
+			// already ok
+			klog.V(3).Infof("eip %s already ok", key)
+			return nil
+		}
 		eipV4Cidr, err := c.getEipV4Cidr(cachedEip.Status.IP, externalNetwork)
 		if err != nil {
 			klog.Errorf("failed to get eip or v4Cidr, %v", err)

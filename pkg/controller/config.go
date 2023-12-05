@@ -150,7 +150,7 @@ func ParseFlags() (*Configuration, error) {
 		argDefaultVlanID           = pflag.Int("default-vlan-id", 1, "The default vlan id")
 		argLsDnatModDlDst          = pflag.Bool("ls-dnat-mod-dl-dst", true, "Set ethernet destination address for DNAT on logical switch")
 		argPodNicType              = pflag.String("pod-nic-type", "veth-pair", "The default pod network nic implementation type")
-		argPodDefaultFipType       = pflag.String("pod-default-fip-type", "", "The type of fip bind to pod automatically: iptables")
+		argPodDefaultFipType       = pflag.String("pod-default-fip-type", "iptables", "The type of fip bind to pod automatically: iptables")
 		argEnableLb                = pflag.Bool("enable-lb", true, "Enable load balancer")
 		argEnableNP                = pflag.Bool("enable-np", true, "Enable network policy support")
 		argEnableEipSnat           = pflag.Bool("enable-eip-snat", true, "Enable EIP and SNAT")
