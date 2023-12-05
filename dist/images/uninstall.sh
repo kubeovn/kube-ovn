@@ -69,8 +69,8 @@ ip6tables -t mangle -F OVN-PREROUTING
 ip6tables -t mangle -X OVN-PREROUTING
 ip6tables -t mangle -F OVN-OUTPUT
 ip6tables -t mangle -X OVN-OUTPUT
-iptables -t mangle -F OVN-POSTROUTING
-iptables -t mangle -X OVN-POSTROUTING
+ip6tables -t mangle -F OVN-POSTROUTING
+ip6tables -t mangle -X OVN-POSTROUTING
 
 sleep 1
 
