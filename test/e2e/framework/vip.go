@@ -105,7 +105,7 @@ func (c *VipClient) Delete(name string) {
 // If the ovn vip doesn't disappear before the timeout, it will fail the test.
 func (c *VipClient) DeleteSync(name string) {
 	c.Delete(name)
-	gomega.Expect(c.WaitToDisappear(name, 2*time.Second, timeout)).To(gomega.Succeed(), "wait for ovn eip %q to disappear", name)
+	gomega.Expect(c.WaitToDisappear(name, 2*time.Second, timeout)).To(gomega.Succeed(), "wait for ovn vip %q to disappear", name)
 }
 
 // WaitToDisappear waits the given timeout duration for the specified OVN VIP to disappear.
