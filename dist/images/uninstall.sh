@@ -19,6 +19,8 @@ iptables -t filter -D FORWARD -m set --match-set ovn40subnets src -j ACCEPT
 iptables -t filter -D FORWARD -m set --match-set ovn40services dst -j ACCEPT
 iptables -t filter -D FORWARD -m set --match-set ovn40services src -j ACCEPT
 iptables -t filter -D OUTPUT -p udp -m udp --dport 6081 -j MARK --set-xmark 0x0
+iptables -t mangle -F OVN-POSTROUTING
+iptables -t mangle -X OVN-POSTROUTING
 
 sleep 1
 
@@ -46,6 +48,8 @@ ip6tables -t filter -D FORWARD -m set --match-set ovn60subnets src -j ACCEPT
 ip6tables -t filter -D FORWARD -m set --match-set ovn60services dst -j ACCEPT
 ip6tables -t filter -D FORWARD -m set --match-set ovn60services src -j ACCEPT
 ip6tables -t filter -D OUTPUT -p udp -m udp --dport 6081 -j MARK --set-xmark 0x0
+ip6tables -t mangle -F OVN-POSTROUTING
+ip6tables -t mangle -X OVN-POSTROUTING
 
 sleep 1
 
