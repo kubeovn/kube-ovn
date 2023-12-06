@@ -551,6 +551,8 @@ func (c *Controller) setIptables() error {
 			{Table: "filter", Chain: "FORWARD", Rule: strings.Fields(`-m set --match-set ovn40services dst -j ACCEPT`)},
 			// Output unmark to bypass kernel nat checksum issue https://github.com/flannel-io/flannel/issues/1279
 			{Table: "filter", Chain: "OUTPUT", Rule: strings.Fields(`-p udp -m udp --dport 6081 -j MARK --set-xmark 0x0`)},
+			// Drop invalid rst
+			{Table: MANGLE, Chain: OvnPostrouting, Rule: strings.Fields(`-p tcp -m set --match-set ovn40subnets src -m tcp --tcp-flags RST RST -m state --state INVALID -j DROP`)},
 		}
 		v6Rules = []util.IPTableRule{
 			// mark packets from pod to service
@@ -588,6 +590,8 @@ func (c *Controller) setIptables() error {
 			{Table: "filter", Chain: "FORWARD", Rule: strings.Fields(`-m set --match-set ovn60services dst -j ACCEPT`)},
 			// Output unmark to bypass kernel nat checksum issue https://github.com/flannel-io/flannel/issues/1279
 			{Table: "filter", Chain: "OUTPUT", Rule: strings.Fields(`-p udp -m udp --dport 6081 -j MARK --set-xmark 0x0`)},
+			// Drop invalid rst
+			{Table: MANGLE, Chain: OvnPostrouting, Rule: strings.Fields(`-p tcp -m set --match-set ovn60subnets src -m tcp --tcp-flags RST RST -m state --state INVALID -j DROP`)},
 		}
 	)
 	protocols := make([]string, 2)
@@ -710,7 +714,7 @@ func (c *Controller) setIptables() error {
 			}
 		}
 
-		var natPreroutingRules, natPostroutingRules, ovnMasqueradeRules []util.IPTableRule
+		var natPreroutingRules, natPostroutingRules, ovnMasqueradeRules, manglePostroutingRules []util.IPTableRule
 		for _, rule := range iptablesRules {
 			if rule.Table == NAT {
 				if c.k8siptables[protocol].HasRandomFully() &&
@@ -727,6 +731,11 @@ func (c *Controller) setIptables() error {
 					continue
 				case OvnMasquerade:
 					ovnMasqueradeRules = append(ovnMasqueradeRules, rule)
+					continue
+				}
+			} else if rule.Table == MANGLE {
+				if rule.Chain == OvnPostrouting {
+					manglePostroutingRules = append(manglePostroutingRules, rule)
 					continue
 				}
 			}
@@ -777,6 +786,11 @@ func (c *Controller) setIptables() error {
 		}
 		if err = c.updateIptablesChain(ipt, NAT, OvnPostrouting, Postrouting, natPostroutingRules); err != nil {
 			klog.Errorf("failed to update chain %s/%s: %v", NAT, OvnPostrouting)
+			return err
+		}
+
+		if err = c.updateIptablesChain(ipt, MANGLE, OvnPostrouting, Postrouting, manglePostroutingRules); err != nil {
+			klog.Errorf("failed to update chain %s/%s: %v", MANGLE, OvnPostrouting, err)
 			return err
 		}
 
