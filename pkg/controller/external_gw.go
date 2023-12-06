@@ -226,7 +226,12 @@ func (c *Controller) getGatewayChassis(config map[string]string) ([]string, erro
 		nodeNames := strings.Split(config["external-gw-nodes"], ",")
 		for _, name := range nodeNames {
 			name = strings.TrimSpace(name)
-			gwNodes = append(gwNodes, name)
+			if name == "" {
+				continue
+			}
+			if !util.ContainsString(gwNodes, name) {
+				gwNodes = append(gwNodes, name)
+			}
 		}
 	}
 	for _, gw := range gwNodes {

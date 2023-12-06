@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/ovn-org/libovsdb/ovsdb"
+	"k8s.io/klog/v2"
 
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
@@ -49,6 +50,8 @@ func (c *OVNNbClient) CreateLogicalPatchPort(lsName, lrName, lspName, lrpName, i
 	if len(ip) != 0 {
 		// check ip format: 192.168.231.1/24,fc00::0af4:01/112
 		if err := util.CheckCidrs(ip); err != nil {
+			err := fmt.Errorf("invalid ip %s: %v", ip, err)
+			klog.Error(err)
 			return err
 		}
 	}
@@ -56,15 +59,24 @@ func (c *OVNNbClient) CreateLogicalPatchPort(lsName, lrName, lspName, lrpName, i
 	/* create router port */
 	ops, err := c.CreateRouterPortOp(lsName, lrName, lspName, lrpName, ip, mac)
 	if err != nil {
-		return fmt.Errorf("generate operations for creating patch port: %v", err)
+		err := fmt.Errorf("generate operations for creating patch port: %v", err)
+		klog.Error(err)
+		return err
 	}
 
 	if err = c.Transact("lrp-lsp-add", ops); err != nil {
-		return fmt.Errorf("create logical patch port %s and %s: %v", lspName, lrpName, err)
+		err := fmt.Errorf("create logical patch port %s and %s: %v", lspName, lrpName, err)
+		klog.Error(err)
+		return err
 	}
 
 	/* create gateway chassises for logical router port */
-	return c.CreateGatewayChassises(lrpName, chassises...)
+	if err := c.CreateGatewayChassises(lrpName, chassises...); err != nil {
+		err := fmt.Errorf("create gateway chassises for logical router port %s: %v", lrpName, err)
+		klog.Error(err)
+		return err
+	}
+	return nil
 }
 
 // DeleteLogicalGatewaySwitch delete gateway switch and corresponding port
