@@ -714,7 +714,7 @@ func (c *Controller) setIptables() error {
 			}
 		}
 
-		var natPreroutingRules, natPostroutingRules, ovnMasqueradeRules, manglePostrutingRules []util.IPTableRule
+		var natPreroutingRules, natPostroutingRules, ovnMasqueradeRules, manglePostroutingRules []util.IPTableRule
 		for _, rule := range iptablesRules {
 			if rule.Table == NAT {
 				if c.k8siptables[protocol].HasRandomFully() &&
@@ -735,7 +735,7 @@ func (c *Controller) setIptables() error {
 				}
 			} else if rule.Table == MANGLE {
 				if rule.Chain == OvnPostrouting {
-					manglePostrutingRules = append(manglePostrutingRules, rule)
+					manglePostroutingRules = append(manglePostroutingRules, rule)
 					continue
 				}
 			}
@@ -789,7 +789,7 @@ func (c *Controller) setIptables() error {
 			return err
 		}
 
-		if err = c.updateIptablesChain(ipt, MANGLE, OvnPostrouting, Postrouting, manglePostrutingRules); err != nil {
+		if err = c.updateIptablesChain(ipt, MANGLE, OvnPostrouting, Postrouting, manglePostroutingRules); err != nil {
 			klog.Errorf("failed to update chain %s/%s: %v", MANGLE, OvnPostrouting, err)
 			return err
 		}
