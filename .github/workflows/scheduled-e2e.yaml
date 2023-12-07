@@ -42,7 +42,7 @@ jobs:
           sudo sed -i '/^search/d' /etc/resolv.conf
           sudo systemctl restart docker
 
-      - uses: actions/setup-go@v4
+      - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: go.mod
@@ -128,7 +128,7 @@ jobs:
           sudo sed -i '/^search/d' /etc/resolv.conf
           sudo systemctl restart docker
 
-      - uses: actions/setup-go@v4
+      - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: go.mod
@@ -267,7 +267,7 @@ jobs:
           - underlay
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v4
+      - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: go.mod
@@ -343,7 +343,7 @@ jobs:
           - release-1.9
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v4
+      - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: go.mod
@@ -575,7 +575,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-go@v4
+      - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: go.mod
@@ -649,7 +649,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-go@v4
+      - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: go.mod
@@ -720,7 +720,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-go@v4
+      - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: go.mod
@@ -851,7 +851,7 @@ jobs:
           sudo sed -i '/^search/d' /etc/resolv.conf
           sudo systemctl restart docker
 
-      - uses: actions/setup-go@v4
+      - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: go.mod
@@ -940,7 +940,7 @@ jobs:
           - dual
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v4
+      - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: go.mod
@@ -1028,7 +1028,7 @@ jobs:
         with:
           version: '${{ env.HELM_VERSION }}'
 
-      - uses: actions/setup-go@v4
+      - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: go.mod
@@ -1180,7 +1180,7 @@ jobs:
           - release-1.12
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v4
+      - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: go.mod
@@ -1251,7 +1251,7 @@ jobs:
           - release-1.12-mc
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v4
+      - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: go.mod
