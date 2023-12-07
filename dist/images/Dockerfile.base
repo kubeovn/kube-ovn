@@ -29,6 +29,8 @@ RUN cd /usr/src/ && \
 
 RUN cd /usr/src/ && git clone -b branch-22.12 --depth=1 https://github.com/ovn-org/ovn.git && \
     cd ovn && \
+    # ovn: add geneve PMTUD support
+    curl -s https://github.com/kubeovn/ovn/commit/d53e35385568ff55d027535aa01b06d758fcd85b.patch | git apply && \
     # change hash type from dp_hash to hash with field src_ip
     curl -s https://github.com/kubeovn/ovn/commit/4ad8763f707ff4088ae61396c7931e8735f71f22.patch | git apply && \
     # set ether dst addr for dnat on logical switch
