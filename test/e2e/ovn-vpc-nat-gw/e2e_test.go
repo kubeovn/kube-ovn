@@ -81,7 +81,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 	var dockerNetwork, dockerExtraNetwork *dockertypes.NetworkResource
 	var nodeNames, gwNodeNames, providerBridgeIps, extraProviderBridgeIps []string
 	var clusterName, providerNetworkName, vlanName, underlaySubnetName, noBfdVpcName, bfdVpcName, noBfdSubnetName, bfdSubnetName string
-	var providerExtraNetworkName, underlayExtraSubnetName, noBfdExtraSubnetName string
+	var providerExtraNetworkName, vlanExtraName, underlayExtraSubnetName, noBfdExtraSubnetName string
 	var linkMap, extraLinkMap map[string]*iproute.Link
 	var providerNetworkClient *framework.ProviderNetworkClient
 	var vlanClient *framework.VlanClient
@@ -158,6 +158,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		providerNetworkName = "external"
 		providerExtraNetworkName = "extra"
 		vlanName = "vlan-" + framework.RandomSuffix()
+		vlanExtraName = "vlan-extra" + framework.RandomSuffix()
 		underlaySubnetName = "external"
 		underlayExtraSubnetName = "extra"
 
@@ -469,6 +470,8 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 
 		ginkgo.By("Deleting vlan " + vlanName)
 		vlanClient.Delete(vlanName, metav1.DeleteOptions{})
+		ginkgo.By("Deleting extra vlan " + vlanExtraName)
+		vlanClient.Delete(vlanExtraName, metav1.DeleteOptions{})
 
 		ginkgo.By("Deleting provider network " + providerNetworkName)
 		providerNetworkClient.DeleteSync(providerNetworkName)
@@ -692,6 +695,10 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		framework.ExpectNoError(err, "getting extra docker network "+dockerExtraNetworkName)
 		itFn(exchangeLinkName, providerExtraNetworkName, extraLinkMap, &extraProviderBridgeIps)
 
+		ginkgo.By("Creating underlay extra vlan " + vlanExtraName)
+		vlan = framework.MakeVlan(vlanExtraName, providerExtraNetworkName, 0)
+		_ = vlanClient.Create(vlan)
+
 		ginkgo.By("Creating extra underlay subnet " + underlayExtraSubnetName)
 		extracidr := make([]string, 0, 2)
 		extragateway := make([]string, 0, 2)
@@ -722,11 +729,11 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		}
 		extraVlanSubnetCidr := strings.Join(extracidr, ",")
 		extraVlanSubnetGw := strings.Join(extragateway, ",")
-		underlayExtraSubnet := framework.MakeSubnet(underlayExtraSubnetName, vlanName, extraVlanSubnetCidr, extraVlanSubnetGw, "", "", extraExcludeIPs, nil, nil)
+		underlayExtraSubnet := framework.MakeSubnet(underlayExtraSubnetName, vlanExtraName, extraVlanSubnetCidr, extraVlanSubnetGw, "", "", extraExcludeIPs, nil, nil)
 		_ = subnetClient.CreateSync(underlayExtraSubnet)
 		vlanExtraSubnet := subnetClient.Get(underlayExtraSubnetName)
 		ginkgo.By("Checking extra underlay vlan " + vlanExtraSubnet.Name)
-		framework.ExpectEqual(vlanExtraSubnet.Spec.Vlan, vlanName)
+		framework.ExpectEqual(vlanExtraSubnet.Spec.Vlan, vlanExtraName)
 		framework.ExpectNotEqual(vlanExtraSubnet.Spec.CIDRBlock, "")
 
 		ginkgo.By("1.3 Test custom vpc nats using extra centralized external gw")
