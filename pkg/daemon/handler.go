@@ -401,7 +401,7 @@ func (csh cniServerHandler) handleDel(req *restful.Request, resp *restful.Respon
 		return
 	}
 
-	if pod.DeletionTimestamp == nil && podRequest.NetNs == "" {
+	if podRequest.NetNs == "" {
 		klog.Infof("skip del port request: %v", podRequest)
 		resp.WriteHeader(http.StatusNoContent)
 		return
