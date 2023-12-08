@@ -457,6 +457,12 @@ func (c *Controller) gcLoadBalancer() error {
 		return err
 	}
 
+	dnats, err := c.ovnDnatRulesLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list dnats, %v", err)
+		return err
+	}
+
 	var (
 		tcpVips         = strset.NewWithSize(len(svcs) * 2)
 		udpVips         = strset.NewWithSize(len(svcs) * 2)
@@ -510,6 +516,10 @@ func (c *Controller) gcLoadBalancer() error {
 		vpcLbs            []string
 		ignoreHealthCheck = true
 	)
+
+	for _, dnat := range dnats {
+		vpcLbs = append(vpcLbs, dnat.Name)
+	}
 
 	removeVip = func(lbName string, svcVips *strset.Set) error {
 		if lbName == "" {
