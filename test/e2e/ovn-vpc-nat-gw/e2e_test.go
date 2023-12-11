@@ -158,7 +158,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		providerNetworkName = "external"
 		providerExtraNetworkName = "extra"
 		vlanName = "vlan-" + framework.RandomSuffix()
-		vlanExtraName = "vlan-extra" + framework.RandomSuffix()
+		vlanExtraName = "vlan-extra-" + framework.RandomSuffix()
 		underlaySubnetName = "external"
 		underlayExtraSubnetName = "extra"
 
@@ -740,14 +740,15 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		noBfdExtraSubnetV4Cidr := "192.168.3.0/24"
 		noBfdExtraSubnetV4Gw := "192.168.3.1"
 
-		noBfdVpc = vpcClient.Get(noBfdVpcName)
+		cachedVpc := vpcClient.Get(noBfdVpcName)
+		noBfdVpc = cachedVpc.DeepCopy()
 		noBfdVpc.Spec.ExtraExternalSubnets = append(noBfdVpc.Spec.ExtraExternalSubnets, underlayExtraSubnetName)
 		noBfdVpc.Spec.StaticRoutes = append(noBfdVpc.Spec.StaticRoutes, &kubeovnv1.StaticRoute{
 			Policy:    kubeovnv1.PolicySrc,
 			CIDR:      noBfdExtraSubnetV4Cidr,
 			NextHopIP: gatewayV4,
 		})
-		_, err = vpcClient.Update(context.Background(), noBfdVpc, metav1.UpdateOptions{})
+		_ = vpcClient.PatchSync(cachedVpc, noBfdVpc, nil, 180*time.Second)
 		framework.ExpectNoError(err)
 
 		ginkgo.By("Creating overlay subnet " + noBfdExtraSubnetName)
@@ -1012,6 +1013,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 
 		k8sNodes, err = e2enode.GetReadySchedulableNodes(context.Background(), cs)
 		framework.ExpectNoError(err)
+		time.Sleep(5 * time.Second)
 		for _, node := range k8sNodes.Items {
 			// label should be false after remove node external gw
 			framework.ExpectHaveKeyWithValue(node.Labels, util.NodeExtGwLabel, "false")
