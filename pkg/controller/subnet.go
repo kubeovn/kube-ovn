@@ -478,8 +478,15 @@ func checkAndUpdateExcludeIPs(subnet *kubeovnv1.Subnet) bool {
 
 func (c *Controller) handleSubnetFinalizer(subnet *kubeovnv1.Subnet) (bool, error) {
 	if subnet.DeletionTimestamp.IsZero() && !util.ContainsString(subnet.Finalizers, util.ControllerName) {
-		subnet.Finalizers = append(subnet.Finalizers, util.ControllerName)
-		if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Update(context.Background(), subnet, metav1.UpdateOptions{}); err != nil {
+		newSubnet := subnet.DeepCopy()
+		newSubnet.Finalizers = append(newSubnet.Finalizers, util.ControllerName)
+		patch, err := util.GenerateMergePatchPayload(subnet, newSubnet)
+		if err != nil {
+			klog.Errorf("failed to generate patch payload for subnet '%s', %v", subnet.Name, err)
+			return false, err
+		}
+		if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(context.Background(), subnet.Name,
+			types.MergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
 			klog.Errorf("failed to add finalizer to subnet %s, %v", subnet.Name, err)
 			return false, err
 		}
@@ -495,8 +502,15 @@ func (c *Controller) handleSubnetFinalizer(subnet *kubeovnv1.Subnet) (bool, erro
 
 	u2oInterconnIP := subnet.Status.U2OInterconnectionIP
 	if !subnet.DeletionTimestamp.IsZero() && (usingIPs == 0 || (usingIPs == 1 && u2oInterconnIP != "")) {
-		subnet.Finalizers = util.RemoveString(subnet.Finalizers, util.ControllerName)
-		if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Update(context.Background(), subnet, metav1.UpdateOptions{}); err != nil {
+		newSubnet := subnet.DeepCopy()
+		newSubnet.Finalizers = util.RemoveString(newSubnet.Finalizers, util.ControllerName)
+		patch, err := util.GenerateMergePatchPayload(subnet, newSubnet)
+		if err != nil {
+			klog.Errorf("failed to generate patch payload for subnet '%s', %v", subnet.Name, err)
+			return false, err
+		}
+		if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(context.Background(), subnet.Name,
+			types.MergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
 			klog.Errorf("failed to remove finalizer from subnet %s, %v", subnet.Name, err)
 			return false, err
 		}
