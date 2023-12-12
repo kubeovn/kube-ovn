@@ -39,7 +39,7 @@ require (
 	golang.org/x/mod v0.14.0
 	golang.org/x/sys v0.15.0
 	golang.org/x/time v0.5.0
-	google.golang.org/grpc v1.59.0
+	google.golang.org/grpc v1.60.0
 	google.golang.org/protobuf v1.31.0
 	gopkg.in/k8snetworkplumbingwg/multus-cni.v4 v4.0.2
 	k8s.io/api v0.28.4
