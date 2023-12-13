@@ -428,7 +428,7 @@ func (c *Controller) setIptables() error {
 			// Output unmark to bypass kernel nat checksum issue https://github.com/flannel-io/flannel/issues/1279
 			{Table: "filter", Chain: "OUTPUT", Rule: strings.Fields(`-p udp -m udp --dport 6081 -j MARK --set-xmark 0x0`)},
 			// Drop invalid rst
-			{Table: "mangle", Chain: "POSTROUTING", Rule: strings.Fields(`-p tcp -m set --match-set ovn60subnets src -m tcp --tcp-flags RST RST -m state --state INVALID -j DROP`)},
+			// {Table: "mangle", Chain: "POSTROUTING", Rule: strings.Fields(`-p tcp -m set --match-set ovn60subnets src -m tcp --tcp-flags RST RST -m state --state INVALID -j DROP`)},
 		}
 	)
 	protocols := make([]string, 2)
