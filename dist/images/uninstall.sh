@@ -34,7 +34,6 @@ iptables -t filter -D FORWARD -m set --match-set ovn40subnets src -j ACCEPT
 iptables -t filter -D FORWARD -m set --match-set ovn40services dst -j ACCEPT
 iptables -t filter -D FORWARD -m set --match-set ovn40services src -j ACCEPT
 iptables -t filter -D OUTPUT -p udp -m udp --dport 6081 -j MARK --set-xmark 0x0
-iptables -t mangle -D POSTROUTING -p tcp -m set --match-set ovn40subnets src -m tcp --tcp-flags RST RST -m state --state INVALID -j DROP
 
 if [ -n "$nodeIPv4" ]; then
     iptables -t nat -D POSTROUTING ! -s "$nodeIPv4" -m mark --mark 0x4000/0x4000 -j MASQUERADE
@@ -62,7 +61,6 @@ ip6tables -t filter -D FORWARD -m set --match-set ovn60subnets src -j ACCEPT
 ip6tables -t filter -D FORWARD -m set --match-set ovn60services dst -j ACCEPT
 ip6tables -t filter -D FORWARD -m set --match-set ovn60services src -j ACCEPT
 ip6tables -t filter -D OUTPUT -p udp -m udp --dport 6081 -j MARK --set-xmark 0x0
-ip6tables -t mangle -D POSTROUTING -p tcp -m set --match-set ovn60subnets src -m tcp --tcp-flags RST RST -m state --state INVALID -j DROP
 
 if [ -n "$nodeIPv6" ]; then
     ip6tables -t nat -D POSTROUTING ! -s "$nodeIPv6" -m mark --mark 0x4000/0x4000 -j MASQUERADE
