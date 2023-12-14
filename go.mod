@@ -42,14 +42,14 @@ require (
 	google.golang.org/grpc v1.60.0
 	google.golang.org/protobuf v1.31.0
 	gopkg.in/k8snetworkplumbingwg/multus-cni.v4 v4.0.2
-	k8s.io/api v0.28.4
-	k8s.io/apimachinery v0.28.4
+	k8s.io/api v0.29.0
+	k8s.io/apimachinery v0.29.0
 	k8s.io/client-go v12.0.0+incompatible
 	k8s.io/klog/v2 v2.110.1
 	k8s.io/kubectl v0.28.4
 	k8s.io/kubernetes v1.28.4
 	k8s.io/pod-security-admission v0.28.4
-	k8s.io/sample-controller v0.28.4
+	k8s.io/sample-controller v0.29.0
 	k8s.io/utils v0.0.0-20230726121419-3b25d923346b
 	kubevirt.io/client-go v1.0.0
 	sigs.k8s.io/controller-runtime v0.16.3
@@ -261,7 +261,7 @@ require (
 	k8s.io/csi-translation-lib v0.28.4 // indirect
 	k8s.io/dynamic-resource-allocation v0.0.0 // indirect
 	k8s.io/kms v0.28.4 // indirect
-	k8s.io/kube-openapi v0.0.0-20230905202853-d090da108d2f // indirect
+	k8s.io/kube-openapi v0.0.0-20231010175941-2dd684a91f00 // indirect
 	k8s.io/kube-scheduler v0.0.0 // indirect
 	k8s.io/kubelet v0.28.4 // indirect
 	k8s.io/legacy-cloud-providers v0.0.0 // indirect
@@ -274,7 +274,7 @@ require (
 	sigs.k8s.io/json v0.0.0-20221116044647-bc3834ca7abd // indirect
 	sigs.k8s.io/kustomize/api v0.14.0 // indirect
 	sigs.k8s.io/kustomize/kyaml v0.14.3 // indirect
-	sigs.k8s.io/structured-merge-diff/v4 v4.3.0 // indirect
+	sigs.k8s.io/structured-merge-diff/v4 v4.4.1 // indirect
 	sigs.k8s.io/yaml v1.3.0 // indirect
 )
 
