@@ -30,3 +30,19 @@ if echo ${sb_status} | grep "disconnected" && echo ${sb_role} | grep "candidate"
     echo "sb health check failed"
     exit 1
 fi
+
+set +o pipefail
+
+# check nb/sb log file
+function check_log_file() {
+    local log_file="/var/log/ovn/ovsdb-server-$1.log"
+    if [ -e $log_file ]; then
+        if grep -wE '(opened log file)|(does not match prerequisite)' $log_file 2>/dev/null | tail -n 1 | grep 'does not match prerequisite' ; then
+            echo "raft inconsistency in $1 db was detected, please check $log_file for more details."
+            return 1
+        fi
+    fi
+}
+
+check_log_file nb
+check_log_file sb
