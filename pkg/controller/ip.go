@@ -25,10 +25,28 @@ func (c *Controller) enqueueAddOrDelIP(obj interface{}) {
 		}
 		portName := ovs.PodNameToPortName(ipObj.Name, ipObj.Spec.Namespace, subnet.Spec.Provider)
 		if isOvnSubnet(subnet) {
-			klog.V(3).Infof("delete ip logical switch port %s from logical switch %s", portName, subnet.Name)
-			if err := c.OVNNbClient.DeleteLogicalSwitchPort(portName); err != nil {
-				klog.Errorf("delete ip logical switch port %s from logical switch %s: %v", portName, subnet.Name, err)
+			port, err := c.OVNNbClient.GetLogicalSwitchPort(portName, true)
+			if err != nil {
+				klog.Errorf("failed to get logical switch port %s: %v", portName, err)
 				return
+			}
+			if port != nil {
+				sgList, err := c.getPortSg(port)
+				if err != nil {
+					klog.Errorf("get port sg failed, %v", err)
+					return
+				}
+				klog.V(3).Infof("delete ip logical switch port %s from logical switch %s", portName, subnet.Name)
+				if err := c.OVNNbClient.DeleteLogicalSwitchPort(portName); err != nil {
+					klog.Errorf("delete ip logical switch port %s from logical switch %s: %v", portName, subnet.Name, err)
+					return
+				}
+				// refresh sg after delete port
+				for _, sgName := range sgList {
+					if sgName != "" {
+						c.syncSgPortsQueue.Add(sgName)
+					}
+				}
 			}
 		}
 		klog.V(3).Infof("release ipam for ip %s from subnet %s", ipObj.Name, ipObj.Spec.Subnet)
