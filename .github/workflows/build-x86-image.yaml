@@ -255,7 +255,7 @@ jobs:
 
       - name: Install ginkgo
         working-directory: ${{ env.E2E_DIR }}
-        run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
+        run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo@v2.13.1
 
       - name: Download image
         uses: actions/download-artifact@v3
