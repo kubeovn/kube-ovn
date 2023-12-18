@@ -691,7 +691,8 @@ func (c *Controller) reconcileAllocateSubnets(cachedPod, pod *v1.Pod, needAlloca
 
 		podType := getPodType(pod)
 		podName := c.getNameByPod(pod)
-		if err := c.createOrUpdateCrdIPs(podName, ipStr, mac, subnet.Name, pod.Namespace, pod.Spec.NodeName, podNet.ProviderName, podType); err != nil {
+		isExcludeIP := isPodIPInSubnetExlcudeIPs(ipStr, podNet.Subnet)
+		if err := c.createOrUpdateCrdIPs(podName, ipStr, mac, subnet.Name, pod.Namespace, pod.Spec.NodeName, podNet.ProviderName, podType, isExcludeIP); err != nil {
 			err = fmt.Errorf("failed to create ips CR %s.%s: %v", podName, pod.Namespace, err)
 			klog.Error(err)
 			return nil, err
@@ -2048,4 +2049,20 @@ func (c *Controller) getVirtualIPs(pod *v1.Pod, podNets []*kubeovnNet) map[strin
 		}
 	}
 	return vipsMap
+}
+
+func isPodIPInSubnetExlcudeIPs(ip string, subnet *kubeovnv1.Subnet) bool {
+	for _, excludeIP := range subnet.Spec.ExcludeIps {
+		if util.CheckProtocol(ip) == kubeovnv1.ProtocolDual {
+			for _, ipStr := range strings.Split(ip, ",") {
+				if util.ContainsIPs(excludeIP, ipStr) {
+					return true
+				}
+			}
+		} else if util.ContainsIPs(excludeIP, ip) {
+			return true
+		}
+	}
+
+	return false
 }

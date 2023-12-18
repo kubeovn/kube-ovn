@@ -332,7 +332,7 @@ func (c *Controller) handleAddNode(key string) error {
 		return err
 	}
 
-	if err := c.createOrUpdateCrdIPs("", ipStr, mac, c.config.NodeSwitch, "", node.Name, "", ""); err != nil {
+	if err := c.createOrUpdateCrdIPs("", ipStr, mac, c.config.NodeSwitch, "", node.Name, "", "", false); err != nil {
 		klog.Errorf("failed to create or update IPs node-%s: %v", key, err)
 		return err
 	}
@@ -631,7 +631,7 @@ func (c *Controller) handleUpdateNode(key string) error {
 	return nil
 }
 
-func (c *Controller) createOrUpdateCrdIPs(podName, ip, mac, subnetName, ns, nodeName, providerName, podType string) error {
+func (c *Controller) createOrUpdateCrdIPs(podName, ip, mac, subnetName, ns, nodeName, providerName, podType string, isExcludeIP bool) error {
 	var key, ipName string
 
 	switch {
@@ -661,14 +661,23 @@ func (c *Controller) createOrUpdateCrdIPs(podName, ip, mac, subnetName, ns, node
 
 	v4IP, v6IP := util.SplitStringIP(ip)
 	if ipCr == nil {
+		labels := map[string]string{
+			util.SubnetNameLabel: subnetName,
+			util.NodeNameLabel:   nodeName,
+			subnetName:           "",
+		}
+		if providerName != "" {
+			if isExcludeIP {
+				labels[fmt.Sprintf(util.ExcludeIpsTemplate, providerName)] = "true"
+			} else {
+				labels[fmt.Sprintf(util.ExcludeIpsTemplate, providerName)] = "false"
+			}
+		}
+
 		_, err = c.config.KubeOvnClient.KubeovnV1().IPs().Create(context.Background(), &kubeovnv1.IP{
 			ObjectMeta: metav1.ObjectMeta{
-				Name: ipName,
-				Labels: map[string]string{
-					util.SubnetNameLabel: subnetName,
-					util.NodeNameLabel:   nodeName,
-					subnetName:           "",
-				},
+				Name:   ipName,
+				Labels: labels,
 			},
 			Spec: kubeovnv1.IPSpec{
 				PodName:       key,
@@ -701,6 +710,14 @@ func (c *Controller) createOrUpdateCrdIPs(podName, ip, mac, subnetName, ns, node
 				util.NodeNameLabel:   nodeName,
 			}
 		}
+		if providerName != "" {
+			if isExcludeIP {
+				newIPCr.Labels[fmt.Sprintf(util.ExcludeIpsTemplate, providerName)] = "true"
+			} else {
+				newIPCr.Labels[fmt.Sprintf(util.ExcludeIpsTemplate, providerName)] = "false"
+			}
+		}
+
 		newIPCr.Spec.PodName = key
 		newIPCr.Spec.Namespace = ns
 		newIPCr.Spec.Subnet = subnetName

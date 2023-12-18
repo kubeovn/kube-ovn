@@ -1965,7 +1965,8 @@ func (c *Controller) reconcileU2OInterconnectionIP(subnet *kubeovnv1.Subnet) err
 			case kubeovnv1.ProtocolDual:
 				subnet.Status.U2OInterconnectionIP = fmt.Sprintf("%s,%s", v4ip, v6ip)
 			}
-			if err := c.createOrUpdateCrdIPs(u2oInterconnName, subnet.Status.U2OInterconnectionIP, "", subnet.Name, "default", "", "", ""); err != nil {
+			isExcludeIP := isPodIPInSubnetExlcudeIPs(subnet.Status.U2OInterconnectionIP, subnet)
+			if err := c.createOrUpdateCrdIPs(u2oInterconnName, subnet.Status.U2OInterconnectionIP, "", subnet.Name, "default", "", "", "", isExcludeIP); err != nil {
 				klog.Errorf("failed to create or update IPs of %s : %v", u2oInterconnLrpName, err)
 				return err
 			}
@@ -2009,7 +2010,10 @@ func calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 		return err
 	}
 	// Get the number of pods, not ips. For one pod with two ip(v4 & v6) in dual-stack, num of Items is 1
-	podUsedIPs, err := c.ipsLister.List(labels.SelectorFromSet(labels.Set{subnet.Name: ""}))
+	podUsedIPs, err := c.ipsLister.List(labels.SelectorFromSet(labels.Set{
+		subnet.Name: "",
+		fmt.Sprintf(util.ExcludeIpsTemplate, subnet.Spec.Provider): "false",
+	}))
 	if err != nil {
 		klog.Error(err)
 		return err
@@ -2093,7 +2097,10 @@ func calcSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 		klog.Error(err)
 		return err
 	}
-	podUsedIPs, err := c.ipsLister.List(labels.SelectorFromSet(labels.Set{subnet.Name: ""}))
+	podUsedIPs, err := c.ipsLister.List(labels.SelectorFromSet(labels.Set{
+		subnet.Name: "",
+		fmt.Sprintf(util.ExcludeIpsTemplate, subnet.Spec.Provider): "false",
+	}))
 	if err != nil {
 		klog.Error(err)
 		return err
