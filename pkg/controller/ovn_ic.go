@@ -186,7 +186,6 @@ func (c *Controller) removeInterConnection(azName string) error {
 				return firstPart == azName && strings.HasPrefix(secondPart, util.InterconnectionSwitch)
 			}
 			return false
-
 		}); err != nil {
 			return err
 		}
