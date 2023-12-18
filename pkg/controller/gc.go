@@ -368,14 +368,6 @@ func (c *Controller) markAndCleanLSP() error {
 			klog.Errorf("failed to delete ip %s, %v", ipCr.Name, err)
 			return err
 		}
-		if ipCr.Spec.Subnet == "" {
-			klog.Errorf("ip %s has no subnet", ipCr.Name)
-			// ip cr no subnet, skip lsp gc
-			continue
-		}
-		if key := lsp.ExternalIDs["pod"]; key != "" {
-			c.ipam.ReleaseAddressByPod(key, ipCr.Spec.Subnet)
-		}
 	}
 	lastNoPodLSP = noPodLSP
 
