@@ -534,7 +534,7 @@ func (c *Controller) getPodKubeovnNets(pod *v1.Pod) ([]*kubeovnNet, error) {
 	return podNets, nil
 }
 
-func (c *Controller) changeVMSubnet(vmName, namespace, providerName, subnetName string, pod *v1.Pod) error {
+func (c *Controller) changeVMSubnet(vmName, namespace, providerName, subnetName string) error {
 	ipName := ovs.PodNameToPortName(vmName, namespace, providerName)
 	ipCr, err := c.ipsLister.Get(ipName)
 	if err != nil {
@@ -546,30 +546,12 @@ func (c *Controller) changeVMSubnet(vmName, namespace, providerName, subnetName 
 		// the returned pointer is not nil if the CR does not exist
 		ipCr = nil
 	}
-	if ipCr != nil {
-		if ipCr.Spec.Subnet != subnetName {
-			key := fmt.Sprintf("%s/%s", pod.Namespace, vmName)
-			if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), ipName, metav1.DeleteOptions{}); err != nil {
-				if !k8serrors.IsNotFound(err) {
-					klog.Errorf("failed to delete ip %s, %v", ipName, err)
-					return err
-				}
-			}
-			ports, err := c.OVNNbClient.ListNormalLogicalSwitchPorts(true, map[string]string{"pod": key})
-			if err != nil {
-				klog.Errorf("failed to list lsps of pod '%s', %v", pod.Name, err)
+	if ipCr != nil && ipCr.Spec.Subnet != subnetName {
+		if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), ipName, metav1.DeleteOptions{}); err != nil {
+			if !k8serrors.IsNotFound(err) {
+				klog.Errorf("failed to delete ip %s, %v", ipName, err)
 				return err
 			}
-			for _, port := range ports {
-				// when lsp is deleted, the port of pod is deleted from any port-group automatically.
-				klog.Infof("gc logical switch port %s", port.Name)
-				if err := c.OVNNbClient.DeleteLogicalSwitchPort(port.Name); err != nil {
-					klog.Errorf("failed to delete lsp %s, %v", port.Name, err)
-					return err
-				}
-			}
-			klog.Infof("after changing subnet, release ip %s", ipName)
-			c.ipam.ReleaseAddressByPod(key, ipCr.Spec.Subnet)
 		}
 	}
 	return nil
@@ -677,7 +659,7 @@ func (c *Controller) reconcileAllocateSubnets(cachedPod, pod *v1.Pod, needAlloca
 		pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)] = "true"
 		if isVMPod && c.config.EnableKeepVMIP {
 			pod.Annotations[fmt.Sprintf(util.VMTemplate, podNet.ProviderName)] = vmName
-			if err := c.changeVMSubnet(vmName, namespace, podNet.ProviderName, subnet.Name, pod); err != nil {
+			if err := c.changeVMSubnet(vmName, namespace, podNet.ProviderName, subnet.Name); err != nil {
 				klog.Errorf("change subnet of pod %s/%s to %s failed: %v", namespace, name, subnet.Name, err)
 				return nil, err
 			}
