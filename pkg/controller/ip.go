@@ -7,6 +7,7 @@ import (
 	"k8s.io/klog/v2"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
 )
 
 func (c *Controller) enqueueAddOrDelIP(obj interface{}) {
@@ -19,6 +20,24 @@ func (c *Controller) enqueueAddOrDelIP(obj interface{}) {
 	klog.V(3).Infof("enqueue update status subnet %s", ipObj.Spec.Subnet)
 	if strings.HasPrefix(ipObj.Name, util.U2OInterconnName[0:19]) {
 		return
+	}
+	if !ipObj.DeletionTimestamp.IsZero() {
+		klog.V(3).Infof("delete ip %s", ipObj.Name)
+		subnet, err := c.subnetsLister.Get(ipObj.Spec.Subnet)
+		if err != nil {
+			klog.Errorf("failed to get subnet %s: %v", ipObj.Spec.Subnet, err)
+			return
+		}
+		portName := ovs.PodNameToPortName(ipObj.Name, ipObj.Spec.Namespace, subnet.Spec.Provider)
+		if isOvnSubnet(subnet) {
+			klog.V(3).Infof("delete ip logical switch port %s from logical switch %s", portName, subnet.Name)
+			if err := c.ovnLegacyClient.DeleteLogicalSwitchPort(portName); err != nil {
+				klog.Errorf("delete ip logical switch port %s from logical switch %s: %v", portName, subnet.Name, err)
+				return
+			}
+		}
+		klog.V(3).Infof("release ipam for ip %s from subnet %s", ipObj.Name, ipObj.Spec.Subnet)
+		c.ipam.ReleaseAddressByPod(ipObj.Name, ipObj.Spec.Subnet)
 	}
 	c.updateSubnetStatusQueue.Add(ipObj.Spec.Subnet)
 	for _, as := range ipObj.Spec.AttachSubnets {
