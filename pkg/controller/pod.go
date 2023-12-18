@@ -1107,6 +1107,17 @@ func (c *Controller) handleDeletePod(key string) error {
 	}
 	for _, podNet := range podNets {
 		c.syncVirtualPortsQueue.Add(podNet.Subnet.Name)
+		if pod.Annotations[fmt.Sprintf(util.PortSecurityAnnotationTemplate, podNet.ProviderName)] == "true" {
+			if securityGroupAnnotation, ok := pod.Annotations[fmt.Sprintf(util.SecurityGroupAnnotationTemplate, podNet.ProviderName)]; ok {
+				sgNames := strings.Split(securityGroupAnnotation, ",")
+				for _, sgName := range sgNames {
+					if sgName == "" {
+						continue
+					}
+					c.syncSgPortsQueue.Add(sgName)
+				}
+			}
+		}
 	}
 	return nil
 }
