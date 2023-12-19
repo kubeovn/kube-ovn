@@ -111,7 +111,7 @@ build-debug: build-go
 
 .PHONY: build-dpdk
 build-dpdk:
-	docker buildx build --platform linux/amd64 -t $(REGISTRY)/kube-ovn-dpdk:19.11-$(RELEASE_TAG) -o type=docker -f dist/images/Dockerfile.dpdk1911 dist/images/
+	docker buildx build --platform linux/amd64 -t $(REGISTRY)/kube-ovn-dpdk:19.11-$(RELEASE_TAG) -o type=docker -f dist/images/Dockerfile.dpdk2011 dist/images/
 
 .PHONY: base-amd64
 base-amd64:
