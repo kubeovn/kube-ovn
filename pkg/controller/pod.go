@@ -566,6 +566,8 @@ func (c *Controller) changeVMSubnet(vmName, namespace, providerName, subnetName 
 				return err
 			}
 		}
+		// wait for old ip CR deleted
+		time.Sleep(1 * time.Second)
 	}
 	return nil
 }
@@ -844,6 +846,18 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 	}
 	for _, podNet := range podNets {
 		c.syncVirtualPortsQueue.Add(podNet.Subnet.Name)
+	}
+	return nil
+}
+
+func (c *Controller) deleteCrdIPs(podName, ns, providerName string) error {
+	portName := ovs.PodNameToPortName(podName, ns, providerName)
+	klog.Infof("delete cr ip '%s' for pod %s/%s", portName, ns, podName)
+	if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), portName, metav1.DeleteOptions{}); err != nil {
+		if !k8serrors.IsNotFound(err) {
+			klog.Errorf("failed to delete ip %s, %v", portName, err)
+			return err
+		}
 	}
 	return nil
 }

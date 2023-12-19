@@ -91,8 +91,11 @@ type Controller struct {
 	syncVirtualPortsQueue   workqueue.RateLimitingInterface
 	subnetStatusKeyMutex    *keymutex.KeyMutex
 
-	ipsLister kubeovnlister.IPLister
-	ipSynced  cache.InformerSynced
+	ipsLister     kubeovnlister.IPLister
+	ipSynced      cache.InformerSynced
+	addIPQueue    workqueue.RateLimitingInterface
+	updateIPQueue workqueue.RateLimitingInterface
+	delIPQueue    workqueue.RateLimitingInterface
 
 	virtualIpsLister     kubeovnlister.VipLister
 	virtualIpsSynced     cache.InformerSynced
@@ -288,8 +291,11 @@ func NewController(config *Configuration) *Controller {
 		syncVirtualPortsQueue:   workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "SyncVirtualPort"),
 		subnetStatusKeyMutex:    keymutex.New(97),
 
-		ipsLister: ipInformer.Lister(),
-		ipSynced:  ipInformer.Informer().HasSynced,
+		ipsLister:     ipInformer.Lister(),
+		ipSynced:      ipInformer.Informer().HasSynced,
+		addIPQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddIP"),
+		updateIPQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateIP"),
+		delIPQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteIP"),
 
 		virtualIpsLister:     virtualIpInformer.Lister(),
 		virtualIpsSynced:     virtualIpInformer.Informer().HasSynced,
@@ -485,9 +491,9 @@ func NewController(config *Configuration) *Controller {
 	}
 
 	if _, err = ipInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    controller.enqueueAddOrDelIP,
+		AddFunc:    controller.enqueueAddIP,
 		UpdateFunc: controller.enqueueUpdateIP,
-		DeleteFunc: controller.enqueueAddOrDelIP,
+		DeleteFunc: controller.enqueueDelIP,
 	}); err != nil {
 		util.LogFatalAndExit(err, "failed to add ips event handler")
 	}
@@ -763,6 +769,10 @@ func (c *Controller) shutdown() {
 		c.delVpcDnsQueue.ShutDown()
 	}
 
+	c.addIPQueue.ShutDown()
+	c.updateIPQueue.ShutDown()
+	c.delIPQueue.ShutDown()
+
 	c.addVirtualIpQueue.ShutDown()
 	c.updateVirtualIpQueue.ShutDown()
 	c.delVirtualIpQueue.ShutDown()
@@ -976,6 +986,10 @@ func (c *Controller) startWorkers(ctx context.Context) {
 	}
 
 	go wait.Until(c.syncVmLiveMigrationPort, 15*time.Second, ctx.Done())
+
+	go wait.Until(c.runAddIPWorker, time.Second, ctx.Done())
+	go wait.Until(c.runUpdateIPWorker, time.Second, ctx.Done())
+	go wait.Until(c.runDelIPWorker, time.Second, ctx.Done())
 
 	go wait.Until(c.runAddVirtualIpWorker, time.Second, ctx.Done())
 	go wait.Until(c.runUpdateVirtualIpWorker, time.Second, ctx.Done())
