@@ -167,6 +167,7 @@ func (c *Controller) removeInterConnection(azName string) error {
 
 	if azName != "" {
 		if err := c.OVNNbClient.DeleteLogicalSwitchPorts(nil, func(lsp *ovnnb.LogicalSwitchPort) bool {
+			// add the code below because azName may have multi "-"
 			firstIndex := strings.Index(lsp.Name, "-")
 			if firstIndex != -1 {
 				firstPart := lsp.Name[:firstIndex]
