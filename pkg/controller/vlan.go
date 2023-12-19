@@ -182,7 +182,6 @@ func (c *Controller) handleAddVlan(key string) error {
 			klog.Errorf("failed to update vlan %s, %v", vlan.Name, err)
 			return err
 		}
-		vlan = vlan.DeepCopy()
 	}
 
 	subnets, err := c.subnetsLister.List(labels.Everything())
@@ -200,7 +199,7 @@ func (c *Controller) handleAddVlan(key string) error {
 	}
 
 	if needUpdate {
-		_, err = c.config.KubeOvnClient.KubeovnV1().Vlans().UpdateStatus(context.Background(), vlan, metav1.UpdateOptions{})
+		vlan, err = c.config.KubeOvnClient.KubeovnV1().Vlans().UpdateStatus(context.Background(), vlan, metav1.UpdateOptions{})
 		if err != nil {
 			klog.Errorf("failed to update status of vlan %s: %v", vlan.Name, err)
 			return err

@@ -750,7 +750,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 			CIDR:      noBfdExtraSubnetV4Cidr,
 			NextHopIP: gatewayV4,
 		})
-		_ = vpcClient.PatchSync(cachedVpc, noBfdVpc, nil, 180*time.Second)
+		_, err = vpcClient.Update(context.Background(), noBfdVpc, metav1.UpdateOptions{})
 		framework.ExpectNoError(err)
 
 		ginkgo.By("Creating overlay subnet " + noBfdExtraSubnetName)
