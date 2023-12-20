@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"reflect"
-	"slices"
 	"strings"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -219,8 +218,9 @@ func (c *Controller) handleUpdateIP(key string) error {
 				klog.Errorf("failed to get logical switch port %s: %v", portName, err)
 				return err
 			}
-			if port != nil {
-				if slices.Contains(port.Addresses, cachedIP.Spec.V4IPAddress) || slices.Contains(port.Addresses, cachedIP.Spec.V6IPAddress) {
+			if port != nil && len(port.Addresses) > 0 {
+				address := port.Addresses[0]
+				if strings.Contains(address, cachedIP.Spec.MacAddress) {
 					klog.Infof("delete ip cr lsp %s from switch %s", portName, subnet.Name)
 					if err := c.OVNNbClient.DeleteLogicalSwitchPort(portName); err != nil {
 						klog.Errorf("delete ip cr lsp %s from switch %s: %v", portName, subnet.Name, err)
