@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"unicode"
 
 	"github.com/ovn-org/libovsdb/ovsdb"
 	"github.com/scylladb/go-set/strset"
@@ -604,7 +605,13 @@ func (c *Controller) gcPortGroup() error {
 		}
 
 		for _, np := range nps {
-			npNames.Add(fmt.Sprintf("%s/%s", np.Namespace, np.Name))
+			npName := np.Name
+			nameArray := []rune(np.Name)
+			if !unicode.IsLetter(nameArray[0]) {
+				npName = "np" + np.Name
+			}
+
+			npNames.Add(fmt.Sprintf("%s/%s", np.Namespace, npName))
 		}
 
 		// append node port group to npNames to avoid gc node port group
