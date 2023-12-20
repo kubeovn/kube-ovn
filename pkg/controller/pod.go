@@ -562,7 +562,7 @@ func (c *Controller) changeVMSubnet(vmName, namespace, providerName, subnetName 
 	if ipCr != nil && ipCr.Spec.Subnet != subnetName {
 		key := fmt.Sprintf("%s/%s", namespace, vmName)
 		klog.Infof("gc logical switch port %s", key)
-		if err := c.OVNNbClient.DeleteLogicalSwitchPort(key); err != nil {
+		if err := c.ovnLegacyClient.DeleteLogicalSwitchPort(key); err != nil {
 			klog.Errorf("failed to delete lsp %s, %v", key, err)
 			return err
 		}
