@@ -568,18 +568,10 @@ func (c *Controller) changeVMSubnet(vmName, namespace, providerName, subnetName 
 					return err
 				}
 			}
-			ports, err := c.ovnClient.ListPodLogicalSwitchPorts(key)
-			if err != nil {
-				klog.Errorf("failed to list lsps of pod '%s', %v", pod.Name, err)
+			klog.Infof("gc logical switch port %s", key)
+			if err := c.ovnLegacyClient.DeleteLogicalSwitchPort(key); err != nil {
+				klog.Errorf("failed to delete lsp %s, %v", key, err)
 				return err
-			}
-			for _, port := range ports {
-				// when lsp is deleted, the port of pod is deleted from any port-group automatically.
-				klog.Infof("gc logical switch port %s", port.Name)
-				if err := c.ovnLegacyClient.DeleteLogicalSwitchPort(port.Name); err != nil {
-					klog.Errorf("failed to delete lsp %s, %v", port.Name, err)
-					return err
-				}
 			}
 			c.ipam.ReleaseAddressByPod(key, subnetName)
 		}
@@ -622,6 +614,8 @@ func (c *Controller) handleAddPod(key string) error {
 		pod.Annotations = map[string]string{}
 	}
 	isVmPod, vmName := isVmPod(pod)
+	podType := getPodType(pod)
+	// todo: isVmPod and getPodType has duplicated logic
 
 	// Avoid create lsp for already running pod in ovn-nb when controller restart
 	for _, podNet := range needAllocateSubnets(pod, podNets) {
@@ -655,14 +649,7 @@ func (c *Controller) handleAddPod(key string) error {
 			return err
 		}
 
-		podType := getPodType(pod)
 		podName := c.getNameByPod(pod)
-		if err := c.createOrUpdateCrdIPs(podName, ipStr, mac, subnet.Name, pod.Namespace, pod.Spec.NodeName, podNet.ProviderName, podType); err != nil {
-			err = fmt.Errorf("failed to create ips CR %s.%s: %v", podName, pod.Namespace, err)
-			klog.Error(err)
-			return err
-		}
-
 		if podNet.Type != providerTypeIPAM {
 			if (subnet.Spec.Vlan == "" || subnet.Spec.LogicalGateway) && subnet.Spec.Vpc != "" {
 				pod.Annotations[fmt.Sprintf(util.LogicalRouterAnnotationTemplate, podNet.ProviderName)] = subnet.Spec.Vpc
@@ -719,6 +706,12 @@ func (c *Controller) handleAddPod(key string) error {
 				c.syncVirtualPortsQueue.Add(podNet.Subnet.Name)
 			}
 		}
+		// CreatePort may fail, so put ip cr creation after CreatePort
+		if err := c.createOrUpdateCrdIPs(podName, ipStr, mac, subnet.Name, pod.Namespace, pod.Spec.NodeName, podNet.ProviderName, podType); err != nil {
+			err = fmt.Errorf("failed to create ips CR %s.%s: %v", podName, pod.Namespace, err)
+			klog.Error(err)
+			return err
+		}
 	}
 
 	patch, err := util.GenerateMergePatchPayload(oriPod, pod)
@@ -758,46 +751,7 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 		// Pod with same name exists, just return here
 		return nil
 	}
-
 	podKey := fmt.Sprintf("%s/%s", pod.Namespace, podName)
-	ports, err := c.ovnClient.ListPodLogicalSwitchPorts(podKey)
-	if err != nil {
-		klog.Errorf("failed to list lsps of pod '%s', %v", pod.Name, err)
-		return err
-	}
-
-	if len(ports) != 0 {
-		addresses := c.ipam.GetPodAddress(podKey)
-		for _, address := range addresses {
-			if strings.TrimSpace(address.Ip) == "" {
-				continue
-			}
-			subnet, err := c.subnetsLister.Get(address.Subnet.Name)
-			if k8serrors.IsNotFound(err) {
-				continue
-			} else if err != nil {
-				return err
-			}
-			vpc, err := c.vpcsLister.Get(subnet.Spec.Vpc)
-			if k8serrors.IsNotFound(err) {
-				continue
-			} else if err != nil {
-				return err
-			}
-			// If pod has snat or eip, also need delete staticRoute when delete pod
-			if vpc.Name == util.DefaultVpc {
-				if err := c.ovnLegacyClient.DeleteStaticRoute(address.Ip, vpc.Name); err != nil {
-					return err
-				}
-			}
-			if exGwEnabled == "true" {
-				if err := c.ovnLegacyClient.DeleteNatRule(address.Ip, vpc.Name); err != nil {
-					return err
-				}
-			}
-		}
-	}
-
 	var keepIpCR bool
 	if ok, sts := isStatefulSetPod(pod); ok {
 		toDel := isStatefulSetPodToDel(c.config.KubeClient, pod, sts)
@@ -822,34 +776,70 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 			klog.Infof("delete vm pod %s", podName)
 		}
 	}
-
-	for _, port := range ports {
-		sgs, err := c.getPortSg(&port)
-		if err != nil {
-			klog.Warningf("failed to get port '%s' sg, %v", port.Name, err)
-		}
-		// when lsp is deleted, the port of pod is deleted from any port-group automatically.
-		klog.Infof("gc logical switch port %s", port.Name)
-		if err := c.ovnLegacyClient.DeleteLogicalSwitchPort(port.Name); err != nil {
-			klog.Errorf("failed to delete lsp %s, %v", port.Name, err)
-			return err
-		}
-		for _, sg := range sgs {
-			c.syncSgPortsQueue.Add(sg)
-		}
-	}
-	klog.Infof("release all ip address for deleting pod %s", key)
-	c.ipam.ReleaseAddressByPod(podKey, "")
 	podNets, err := c.getPodKubeovnNets(pod)
 	if err != nil {
 		klog.Errorf("failed to get pod nets %v", err)
 	}
 	if !keepIpCR {
+		// delete lsp, ip cr, ipam, sg
+		ports, err := c.ovnClient.ListPodLogicalSwitchPorts(podKey)
+		if err != nil {
+			klog.Errorf("failed to list lsps of pod '%s', %v", pod.Name, err)
+			return err
+		}
+		if len(ports) != 0 {
+			addresses := c.ipam.GetPodAddress(podKey)
+			for _, address := range addresses {
+				if strings.TrimSpace(address.Ip) == "" {
+					continue
+				}
+				subnet, err := c.subnetsLister.Get(address.Subnet.Name)
+				if k8serrors.IsNotFound(err) {
+					continue
+				} else if err != nil {
+					return err
+				}
+				vpc, err := c.vpcsLister.Get(subnet.Spec.Vpc)
+				if k8serrors.IsNotFound(err) {
+					continue
+				} else if err != nil {
+					return err
+				}
+				// If pod has snat or eip, also need delete staticRoute when delete pod
+				if vpc.Name == util.DefaultVpc {
+					if err := c.ovnLegacyClient.DeleteStaticRoute(address.Ip, vpc.Name); err != nil {
+						return err
+					}
+				}
+				if exGwEnabled == "true" {
+					if err := c.ovnLegacyClient.DeleteNatRule(address.Ip, vpc.Name); err != nil {
+						return err
+					}
+				}
+			}
+		}
+		for _, port := range ports {
+			sgs, err := c.getPortSg(&port)
+			if err != nil {
+				klog.Warningf("failed to get port '%s' sg, %v", port.Name, err)
+			}
+			// when lsp is deleted, the port of pod is deleted from any port-group automatically.
+			klog.Infof("gc logical switch port %s", port.Name)
+			if err := c.ovnLegacyClient.DeleteLogicalSwitchPort(port.Name); err != nil {
+				klog.Errorf("failed to delete lsp %s, %v", port.Name, err)
+				return err
+			}
+			for _, sg := range sgs {
+				c.syncSgPortsQueue.Add(sg)
+			}
+		}
+		klog.Infof("release all ip address for deleting pod %s", key)
 		for _, podNet := range podNets {
 			if err = c.deleteCrdIPs(podName, pod.Namespace, podNet.ProviderName); err != nil {
 				klog.Errorf("failed to delete ip for pod %s, %v, please delete manually", pod.Name, err)
 			}
 		}
+		c.ipam.ReleaseAddressByPod(podKey, "")
 		if pod.Annotations[util.VipAnnotation] != "" {
 			if err = c.releaseVip(pod.Annotations[util.VipAnnotation]); err != nil {
 				klog.Errorf("failed to clean label from vip %s, %v", pod.Annotations[util.VipAnnotation], err)
