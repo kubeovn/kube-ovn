@@ -195,7 +195,7 @@ func (c *Controller) enqueueAddPod(obj interface{}) {
 				klog.V(3).Infof("enqueue delete pod %s", key)
 				c.deletePodQueue.Add(obj)
 			}
-			if isVmPod && c.isVmPodToDel(p, vmName) {
+			if isVmPod && c.isVmToDel(p, vmName) {
 				klog.V(3).Infof("enqueue delete pod %s", key)
 				c.deletePodQueue.Add(obj)
 			}
@@ -315,7 +315,7 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 		}()
 		return
 	}
-	if isVmPod && c.isVmPodToDel(newPod, vmName) {
+	if isVmPod && c.isVmToDel(newPod, vmName) {
 		go func() {
 			klog.V(3).Infof("enqueue delete pod %s", key)
 			time.Sleep(time.Duration(*newPod.Spec.TerminationGracePeriodSeconds) * time.Second)
@@ -766,11 +766,11 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 	}
 	isVmPod, vmName := isVmPod(pod)
 	if isVmPod && c.config.EnableKeepVmIP {
-		toDel := c.isVmPodToDel(pod, vmName)
+		vmToBeDel := c.isVmToDel(pod, vmName)
 		delete, err := appendCheckPodToDel(c, pod, vmName, util.VmInstance)
 		if pod.DeletionTimestamp != nil {
 			// triggered by delete event
-			if !(toDel || (delete && err == nil)) {
+			if !(vmToBeDel || (delete && err == nil)) {
 				return nil
 			}
 			klog.Infof("delete vm pod %s", podName)
@@ -1108,7 +1108,7 @@ func isStatefulSetPodToDel(c kubernetes.Interface, pod *v1.Pod, statefulSetName 
 		klog.Errorf("failed to parse %s to int", numStr)
 		return false
 	}
-
+	// down scaled
 	return index >= int64(*ss.Spec.Replicas)
 }
 
@@ -1561,8 +1561,9 @@ func appendCheckPodToDel(c *Controller, pod *v1.Pod, ownerRefName, ownerRefKind 
 	}
 
 	if !ownerRefSubnetExist {
-		subnetNames := podNs.Annotations[util.LogicalSwitchAnnotation]
-		if subnetNames != "" && pod.Annotations[util.LogicalSwitchAnnotation] != "" && !util.ContainsString(strings.Split(subnetNames, ","), strings.TrimSpace(pod.Annotations[util.LogicalSwitchAnnotation])) {
+		nsSubnetNames := podNs.Annotations[util.LogicalSwitchAnnotation]
+		// check if pod use the subnet of its ns
+		if nsSubnetNames != "" && pod.Annotations[util.LogicalSwitchAnnotation] != "" && !util.ContainsString(strings.Split(nsSubnetNames, ","), strings.TrimSpace(pod.Annotations[util.LogicalSwitchAnnotation])) {
 			klog.Infof("ns %s annotation subnet is %s, which is inconstant with subnet for pod %s, delete pod", pod.Namespace, podNs.Annotations[util.LogicalSwitchAnnotation], pod.Name)
 			return true, nil
 		}
@@ -1653,7 +1654,7 @@ func isOwnsByTheVM(vmi metav1.Object) (bool, string) {
 	return false, ""
 }
 
-func (c *Controller) isVmPodToDel(pod *v1.Pod, vmiName string) bool {
+func (c *Controller) isVmToDel(pod *v1.Pod, vmiName string) bool {
 	var (
 		vmiAlive bool
 		vmName   string
