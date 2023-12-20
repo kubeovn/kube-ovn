@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"slices"
 	"strings"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -218,10 +219,10 @@ func (c *Controller) handleUpdateIP(key string) error {
 				return err
 			}
 			if port != nil {
-				sgList, err := c.getPortSg(port)
-				if err != nil {
-					klog.Errorf("get port sg failed, %v", err)
-					return err
+				if !(slices.Contains(port.Addresses, cachedIP.Spec.V4IPAddress) || slices.Contains(port.Addresses, cachedIP.Spec.V6IPAddress)) {
+					// port ip address changed, only delete ip cr, do not delete lsp
+					klog.Infof("port %s changed, only delete old ip cr %s", portName, key)
+					return nil
 				}
 				klog.V(3).Infof("delete ip logical switch port %s from logical switch %s", portName, subnet.Name)
 				if err := c.ovnLegacyClient.DeleteLogicalSwitchPort(portName); err != nil {
@@ -229,6 +230,11 @@ func (c *Controller) handleUpdateIP(key string) error {
 					return err
 				}
 				klog.V(3).Infof("sync sg for deleted port %s", portName)
+				sgList, err := c.getPortSg(port)
+				if err != nil {
+					klog.Errorf("get port sg failed, %v", err)
+					return err
+				}
 				for _, sgName := range sgList {
 					if sgName != "" {
 						c.syncSgPortsQueue.Add(sgName)

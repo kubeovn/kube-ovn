@@ -560,14 +560,20 @@ func (c *Controller) changeVMSubnet(vmName, namespace, providerName, subnetName 
 		ipCr = nil
 	}
 	if ipCr != nil && ipCr.Spec.Subnet != subnetName {
+		key := fmt.Sprintf("%s/%s", namespace, vmName)
+		klog.Infof("gc logical switch port %s", key)
+		if err := c.OVNNbClient.DeleteLogicalSwitchPort(key); err != nil {
+			klog.Errorf("failed to delete lsp %s, %v", key, err)
+			return err
+		}
+		// old lsp has been deleted, delete old ip cr
 		if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), ipName, metav1.DeleteOptions{}); err != nil {
 			if !k8serrors.IsNotFound(err) {
 				klog.Errorf("failed to delete ip %s, %v", ipName, err)
 				return err
 			}
 		}
-		// wait for old ip CR deleted
-		time.Sleep(1 * time.Second)
+		// handleAddOrUpdatePod will create new lsp and new ip cr
 	}
 	return nil
 }
