@@ -797,22 +797,26 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 				if k8serrors.IsNotFound(err) {
 					continue
 				} else if err != nil {
+					klog.Errorf("failed to get subnet %s, %v", address.Subnet.Name, err)
 					return err
 				}
 				vpc, err := c.vpcsLister.Get(subnet.Spec.Vpc)
 				if k8serrors.IsNotFound(err) {
 					continue
 				} else if err != nil {
+					klog.Errorf("failed to get vpc %s, %v", subnet.Spec.Vpc, err)
 					return err
 				}
 				// If pod has snat or eip, also need delete staticRoute when delete pod
 				if vpc.Name == util.DefaultVpc {
 					if err := c.ovnLegacyClient.DeleteStaticRoute(address.Ip, vpc.Name); err != nil {
+						klog.Errorf("failed to delete static route %s, %v", address.Ip, err)
 						return err
 					}
 				}
 				if exGwEnabled == "true" {
 					if err := c.ovnLegacyClient.DeleteNatRule(address.Ip, vpc.Name); err != nil {
+						klog.Errorf("failed to delete nat rule %s, %v", address.Ip, err)
 						return err
 					}
 				}
