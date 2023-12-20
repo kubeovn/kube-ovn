@@ -211,6 +211,7 @@ func (c *Controller) handleUpdateIP(key string) error {
 			klog.Errorf("failed to get subnet %s: %v", cachedIP.Spec.Subnet, err)
 			return err
 		}
+		cleanIPAM := true
 		if isOvnSubnet(subnet) {
 			portName := cachedIP.Name
 			port, err := c.ovnClient.GetLogicalSwitchPort(portName, true)
@@ -219,31 +220,34 @@ func (c *Controller) handleUpdateIP(key string) error {
 				return err
 			}
 			if port != nil {
-				if !(slices.Contains(port.Addresses, cachedIP.Spec.V4IPAddress) || slices.Contains(port.Addresses, cachedIP.Spec.V6IPAddress)) {
-					// port ip address changed, only delete ip cr, do not delete lsp
-					klog.Infof("port %s changed, only delete old ip cr %s", portName, key)
-					return nil
-				}
-				klog.V(3).Infof("delete ip logical switch port %s from logical switch %s", portName, subnet.Name)
-				if err := c.ovnLegacyClient.DeleteLogicalSwitchPort(portName); err != nil {
-					klog.Errorf("delete ip logical switch port %s from logical switch %s: %v", portName, subnet.Name, err)
-					return err
-				}
-				klog.V(3).Infof("sync sg for deleted port %s", portName)
-				sgList, err := c.getPortSg(port)
-				if err != nil {
-					klog.Errorf("get port sg failed, %v", err)
-					return err
-				}
-				for _, sgName := range sgList {
-					if sgName != "" {
-						c.syncSgPortsQueue.Add(sgName)
+				if slices.Contains(port.Addresses, cachedIP.Spec.V4IPAddress) || slices.Contains(port.Addresses, cachedIP.Spec.V6IPAddress) {
+					klog.Infof("delete ip cr lsp %s from switch %s", portName, subnet.Name)
+					if err := c.ovnLegacyClient.DeleteLogicalSwitchPort(portName); err != nil {
+						klog.Errorf("delete ip cr lsp %s from switch %s: %v", portName, subnet.Name, err)
+						return err
 					}
+					klog.V(3).Infof("sync sg for deleted port %s", portName)
+					sgList, err := c.getPortSg(port)
+					if err != nil {
+						klog.Errorf("get port sg failed, %v", err)
+						return err
+					}
+					for _, sgName := range sgList {
+						if sgName != "" {
+							c.syncSgPortsQueue.Add(sgName)
+						}
+					}
+				} else {
+					// ip subnet changed in pod handle add or update pod process
+					klog.Infof("lsp %s ip changed, only delete old ip cr %s", portName, key)
+					cleanIPAM = false
 				}
 			}
 		}
-		klog.V(3).Infof("release ipam for deleted ip %s from subnet %s", cachedIP.Name, cachedIP.Spec.Subnet)
-		c.ipam.ReleaseAddressByPod(cachedIP.Name, cachedIP.Spec.Subnet)
+		if cleanIPAM {
+			klog.V(3).Infof("release ipam for deleted ip %s from subnet %s", cachedIP.Name, cachedIP.Spec.Subnet)
+			c.ipam.ReleaseAddressByPod(cachedIP.Name, cachedIP.Spec.Subnet)
+		}
 		if err = c.handleDelIPFinalizer(cachedIP, util.ControllerName); err != nil {
 			klog.Errorf("failed to handle del ip finalizer %v", err)
 			return err
