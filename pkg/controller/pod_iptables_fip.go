@@ -40,7 +40,7 @@ func (c *Controller) enqueueAddPodAnnotatedIptablesFip(obj interface{}) {
 				c.delPodAnnotatedIptablesFipQueue.Add(obj)
 				return
 			}
-			if isVmPod && c.isVmPodToDel(p, vmName) {
+			if isVmPod && c.isVmToDel(p, vmName) {
 				c.delPodAnnotatedIptablesFipQueue.Add(obj)
 				return
 			}
@@ -94,7 +94,7 @@ func (c *Controller) enqueueUpdatePodAnnotatedIptablesFip(oldObj, newObj interfa
 		c.delPodAnnotatedIptablesFipQueue.Add(newObj)
 		return
 	}
-	if c.config.EnableKeepVmIP && isVmPod && c.isVmPodToDel(newPod, vmName) {
+	if c.config.EnableKeepVmIP && isVmPod && c.isVmToDel(newPod, vmName) {
 		c.delPodAnnotatedIptablesFipQueue.Add(newObj)
 		return
 	}
@@ -125,7 +125,7 @@ func (c *Controller) enqueueDeletePodAnnotatedIptablesFip(obj interface{}) {
 			return
 		}
 	} else if c.config.EnableKeepVmIP && isVmPod {
-		if c.isVmPodToDel(p, vmName) {
+		if c.isVmToDel(p, vmName) {
 			c.delPodAnnotatedIptablesFipQueue.Add(obj)
 			return
 		}
