@@ -49,7 +49,7 @@ func (c *Controller) enqueueAddPodAnnotatedIptablesEip(obj interface{}) {
 				c.delPodAnnotatedIptablesEipQueue.Add(obj)
 				return
 			}
-			if isVmPod && c.isVmPodToDel(p, vmName) {
+			if isVmPod && c.isVmToDel(p, vmName) {
 				klog.V(3).Infof("enqueue delete pod annotated iptables eip %s", eipName)
 				c.delPodAnnotatedIptablesEipQueue.Add(obj)
 				return
@@ -106,7 +106,7 @@ func (c *Controller) enqueueUpdatePodAnnotatedIptablesEip(oldObj, newObj interfa
 		c.delPodAnnotatedIptablesEipQueue.Add(newObj)
 		return
 	}
-	if c.config.EnableKeepVmIP && isVmPod && c.isVmPodToDel(newPod, vmName) {
+	if c.config.EnableKeepVmIP && isVmPod && c.isVmToDel(newPod, vmName) {
 		c.delPodAnnotatedIptablesEipQueue.Add(newObj)
 		return
 	}
@@ -137,7 +137,7 @@ func (c *Controller) enqueueDeletePodAnnotatedIptablesEip(obj interface{}) {
 			return
 		}
 	} else if c.config.EnableKeepVmIP && isVmPod {
-		if c.isVmPodToDel(p, vmName) {
+		if c.isVmToDel(p, vmName) {
 			c.delPodAnnotatedIptablesEipQueue.Add(obj)
 			return
 		}
