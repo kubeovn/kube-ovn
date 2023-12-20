@@ -202,7 +202,7 @@ func (c *Controller) enqueueAddPod(obj interface{}) {
 				c.deletingPodObjMap.Store(key, p)
 				c.deletePodQueue.Add(key)
 			}
-			if isVMPod && c.isVMPodToDel(p, vmName) {
+			if isVMPod && c.isVMToDel(p, vmName) {
 				klog.V(3).Infof("enqueue delete pod %s", key)
 				c.deletingPodObjMap.Store(key, p)
 				c.deletePodQueue.Add(key)
@@ -361,7 +361,7 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 		}()
 		return
 	}
-	if isVMPod && c.isVMPodToDel(newPod, vmName) {
+	if isVMPod && c.isVMToDel(newPod, vmName) {
 		go func() {
 			klog.V(3).Infof("enqueue delete pod %s after %v", key, delay)
 			c.deletingPodObjMap.Store(key, newPod)
@@ -1004,11 +1004,11 @@ func (c *Controller) handleDeletePod(key string) error {
 	}
 	isVMPod, vmName := isVMPod(pod)
 	if isVMPod && c.config.EnableKeepVMIP {
-		toDel := c.isVMPodToDel(pod, vmName)
+		vmToBeDel := c.isVMToDel(pod, vmName)
 		isDelete, err := appendCheckPodToDel(c, pod, vmName, util.VMInstance)
 		if pod.DeletionTimestamp != nil {
 			// triggered by delete event
-			if !(toDel || (isDelete && err == nil)) {
+			if !(vmToBeDel || (isDelete && err == nil)) {
 				return nil
 			}
 			klog.Infof("delete vm pod %s", podName)
@@ -1055,6 +1055,7 @@ func (c *Controller) handleDeletePod(key string) error {
 						"",
 						kubeovnv1.PolicyDst,
 					); err != nil {
+						klog.Errorf("failed to delete static route, %v", err)
 						return err
 					}
 				}
@@ -1293,7 +1294,7 @@ func isStatefulSetPodToDel(c kubernetes.Interface, pod *v1.Pod, statefulSetName 
 		klog.Errorf("failed to parse %s to int", numStr)
 		return false
 	}
-
+	// down scaled
 	return index >= int64(*ss.Spec.Replicas)
 }
 
@@ -1845,19 +1846,20 @@ func appendCheckPodToDel(c *Controller, pod *v1.Pod, ownerRefName, ownerRefKind 
 			ownerRefSubnet = vm.Spec.Template.ObjectMeta.Annotations[util.LogicalSwitchAnnotation]
 		}
 	}
-
+	podSwitch := strings.TrimSpace(pod.Annotations[util.LogicalSwitchAnnotation])
 	if !ownerRefSubnetExist {
-		subnetNames := podNs.Annotations[util.LogicalSwitchAnnotation]
-		if subnetNames != "" && pod.Annotations[util.LogicalSwitchAnnotation] != "" && !util.ContainsString(strings.Split(subnetNames, ","), strings.TrimSpace(pod.Annotations[util.LogicalSwitchAnnotation])) {
-			klog.Infof("ns %s annotation subnet is %s, which is inconstant with subnet for pod %s, delete pod", pod.Namespace, podNs.Annotations[util.LogicalSwitchAnnotation], pod.Name)
+		nsSubnetNames := podNs.Annotations[util.LogicalSwitchAnnotation]
+		// check if pod use the subnet of its ns
+		if nsSubnetNames != "" && podSwitch != "" && !util.ContainsString(strings.Split(nsSubnetNames, ","), podSwitch) {
+			klog.Infof("ns %s annotation subnet is %s, which is inconstant with subnet for pod %s, delete pod", pod.Namespace, nsSubnetNames, pod.Name)
 			return true, nil
 		}
 	}
 
 	// subnet cidr has been changed, and statefulset pod's ip is not in the range of subnet's cidr anymore
-	podSubnet, err := c.subnetsLister.Get(strings.TrimSpace(pod.Annotations[util.LogicalSwitchAnnotation]))
+	podSubnet, err := c.subnetsLister.Get(podSwitch)
 	if err != nil {
-		klog.Errorf("failed to get subnet %s, %v", pod.Annotations[util.LogicalSwitchAnnotation], err)
+		klog.Errorf("failed to get subnet %s, %v", podSwitch, err)
 		return false, err
 	}
 	if podSubnet != nil && !util.CIDRContainIP(podSubnet.Spec.CIDRBlock, pod.Annotations[util.IPAddressAnnotation]) {
@@ -1892,7 +1894,7 @@ func isOwnsByTheVM(vmi metav1.Object) (bool, string) {
 	return false, ""
 }
 
-func (c *Controller) isVMPodToDel(pod *v1.Pod, vmiName string) bool {
+func (c *Controller) isVMToDel(pod *v1.Pod, vmiName string) bool {
 	var (
 		vmiAlive bool
 		vmName   string
