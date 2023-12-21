@@ -1228,9 +1228,17 @@ func (c LegacyClient) DeleteLoadBalancerVip(vip, lb string) error {
 		return err
 	}
 	// vip is empty or delete last rule will destroy the loadbalancer
-	if vip == "" || len(existVips) == 1 {
+	if vip == "" {
 		return nil
 	}
+	if len(existVips) == 1 {
+		if output, err := c.ovnNbCommand("clear", "load_balancer", lb, "vips"); err != nil {
+			klog.Errorf("failed to clear vips %v for load_balancer %v, %q", existVips, lb, output)
+			return err
+		}
+		return nil
+	}
+
 	_, err = c.ovnNbCommand(IfExists, "lb-del", lb, vip)
 	return err
 }
