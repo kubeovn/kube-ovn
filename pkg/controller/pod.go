@@ -562,18 +562,19 @@ func (c *Controller) changeVMSubnet(vmName, namespace, providerName, subnetName 
 	if ipCr != nil {
 		if ipCr.Spec.Subnet != subnetName {
 			key := fmt.Sprintf("%s/%s", pod.Namespace, vmName)
+			klog.Infof("release ipam for vm %s from old subnet %s", key, ipCr.Spec.Subnet)
+			c.ipam.ReleaseAddressByPod(key, ipCr.Spec.Subnet)
+			klog.Infof("gc logical switch port %s", key)
+			if err := c.ovnLegacyClient.DeleteLogicalSwitchPort(key); err != nil {
+				klog.Errorf("failed to delete lsp %s, %v", key, err)
+				return err
+			}
 			if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), ipName, metav1.DeleteOptions{}); err != nil {
 				if !k8serrors.IsNotFound(err) {
 					klog.Errorf("failed to delete ip %s, %v", ipName, err)
 					return err
 				}
 			}
-			klog.Infof("gc logical switch port %s", key)
-			if err := c.ovnLegacyClient.DeleteLogicalSwitchPort(key); err != nil {
-				klog.Errorf("failed to delete lsp %s, %v", key, err)
-				return err
-			}
-			c.ipam.ReleaseAddressByPod(key, subnetName)
 		}
 	}
 	return nil
