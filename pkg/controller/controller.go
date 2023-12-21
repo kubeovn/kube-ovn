@@ -115,8 +115,11 @@ type Controller struct {
 	deleteIPPoolQueue       workqueue.RateLimitingInterface
 	ippoolKeyMutex          keymutex.KeyMutex
 
-	ipsLister kubeovnlister.IPLister
-	ipSynced  cache.InformerSynced
+	ipsLister     kubeovnlister.IPLister
+	ipSynced      cache.InformerSynced
+	addIPQueue    workqueue.RateLimitingInterface
+	updateIPQueue workqueue.RateLimitingInterface
+	delIPQueue    workqueue.RateLimitingInterface
 
 	virtualIpsLister          kubeovnlister.VipLister
 	virtualIpsSynced          cache.InformerSynced
@@ -350,8 +353,11 @@ func Run(ctx context.Context, config *Configuration) {
 		deleteIPPoolQueue:       workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteIPPool"),
 		ippoolKeyMutex:          keymutex.NewHashed(numKeyLocks),
 
-		ipsLister: ipInformer.Lister(),
-		ipSynced:  ipInformer.Informer().HasSynced,
+		ipsLister:     ipInformer.Lister(),
+		ipSynced:      ipInformer.Informer().HasSynced,
+		addIPQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddIP"),
+		updateIPQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateIP"),
+		delIPQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteIP"),
 
 		virtualIpsLister:          virtualIPInformer.Lister(),
 		virtualIpsSynced:          virtualIPInformer.Informer().HasSynced,
@@ -615,9 +621,9 @@ func Run(ctx context.Context, config *Configuration) {
 	}
 
 	if _, err = ipInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    controller.enqueueAddOrDelIP,
+		AddFunc:    controller.enqueueAddIP,
 		UpdateFunc: controller.enqueueUpdateIP,
-		DeleteFunc: controller.enqueueAddOrDelIP,
+		DeleteFunc: controller.enqueueDelIP,
 	}); err != nil {
 		util.LogFatalAndExit(err, "failed to add ips event handler")
 	}
@@ -872,6 +878,10 @@ func (c *Controller) shutdown() {
 		c.delVpcDNSQueue.ShutDown()
 	}
 
+	c.addIPQueue.ShutDown()
+	c.updateIPQueue.ShutDown()
+	c.delIPQueue.ShutDown()
+
 	c.addVirtualIPQueue.ShutDown()
 	c.updateVirtualIPQueue.ShutDown()
 	c.updateVirtualParentsQueue.ShutDown()
@@ -1090,6 +1100,10 @@ func (c *Controller) startWorkers(ctx context.Context) {
 	if c.config.EnableNP {
 		go wait.Until(c.CheckNodePortGroup, time.Duration(c.config.NodePgProbeTime)*time.Minute, ctx.Done())
 	}
+
+	go wait.Until(c.runAddIPWorker, time.Second, ctx.Done())
+	go wait.Until(c.runUpdateIPWorker, time.Second, ctx.Done())
+	go wait.Until(c.runDelIPWorker, time.Second, ctx.Done())
 
 	go wait.Until(c.runAddVirtualIPWorker, time.Second, ctx.Done())
 	go wait.Until(c.runUpdateVirtualIPWorker, time.Second, ctx.Done())
