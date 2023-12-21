@@ -202,7 +202,7 @@ func (c *Controller) enqueueAddPod(obj interface{}) {
 				c.deletingPodObjMap.Store(key, p)
 				c.deletePodQueue.Add(key)
 			}
-			if isVMPod && c.isVMPodToDel(p, vmName) {
+			if isVMPod && c.isVMToDel(p, vmName) {
 				klog.V(3).Infof("enqueue delete pod %s", key)
 				c.deletingPodObjMap.Store(key, p)
 				c.deletePodQueue.Add(key)
@@ -361,7 +361,7 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 		}()
 		return
 	}
-	if isVMPod && c.isVMPodToDel(newPod, vmName) {
+	if isVMPod && c.isVMToDel(newPod, vmName) {
 		go func() {
 			klog.V(3).Infof("enqueue delete pod %s after %v", key, delay)
 			c.deletingPodObjMap.Store(key, newPod)
@@ -632,11 +632,13 @@ func (c *Controller) handleAddOrUpdatePod(key string) (err error) {
 func (c *Controller) reconcileAllocateSubnets(cachedPod, pod *v1.Pod, needAllocatePodNets []*kubeovnNet) (*v1.Pod, error) {
 	namespace := pod.Namespace
 	name := pod.Name
-	isVMPod, vmName := isVMPod(pod)
-
 	klog.Infof("sync pod %s/%s allocated", namespace, name)
 
 	vipsMap := c.getVirtualIPs(pod, needAllocatePodNets)
+	isVMPod, vmName := isVMPod(pod)
+	podType := getPodType(pod)
+	podName := c.getNameByPod(pod)
+	// todo: isVmPod, getPodType, getNameByPod has duplicated logic
 
 	// Avoid create lsp for already running pod in ovn-nb when controller restart
 	for _, podNet := range needAllocatePodNets {
@@ -677,14 +679,6 @@ func (c *Controller) reconcileAllocateSubnets(cachedPod, pod *v1.Pod, needAlloca
 		if err := util.ValidatePodCidr(podNet.Subnet.Spec.CIDRBlock, ipStr); err != nil {
 			klog.Errorf("validate pod %s/%s failed: %v", namespace, name, err)
 			c.recorder.Eventf(pod, v1.EventTypeWarning, "ValidatePodNetworkFailed", err.Error())
-			return nil, err
-		}
-
-		podType := getPodType(pod)
-		podName := c.getNameByPod(pod)
-		if err := c.createOrUpdateCrdIPs(podName, ipStr, mac, subnet.Name, pod.Namespace, pod.Spec.NodeName, podNet.ProviderName, podType); err != nil {
-			err = fmt.Errorf("failed to create ips CR %s.%s: %v", podName, pod.Namespace, err)
-			klog.Error(err)
 			return nil, err
 		}
 
@@ -752,6 +746,12 @@ func (c *Controller) reconcileAllocateSubnets(cachedPod, pod *v1.Pod, needAlloca
 			if vips != "" {
 				c.syncVirtualPortsQueue.Add(podNet.Subnet.Name)
 			}
+		}
+		// CreatePort may fail, so put ip cr creation after CreatePort
+		if err := c.createOrUpdateCrdIPs(podName, ipStr, mac, subnet.Name, pod.Namespace, pod.Spec.NodeName, podNet.ProviderName, podType); err != nil {
+			err = fmt.Errorf("failed to create ips CR %s.%s: %v", podName, pod.Namespace, err)
+			klog.Error(err)
+			return nil, err
 		}
 	}
 	patch, err := util.GenerateMergePatchPayload(cachedPod, pod)
@@ -989,58 +989,6 @@ func (c *Controller) handleDeletePod(key string) error {
 	}
 
 	podKey := fmt.Sprintf("%s/%s", pod.Namespace, podName)
-	ports, err := c.OVNNbClient.ListNormalLogicalSwitchPorts(true, map[string]string{"pod": podKey})
-	if err != nil {
-		klog.Errorf("failed to list lsps of pod '%s', %v", pod.Name, err)
-		return err
-	}
-
-	if len(ports) != 0 {
-		addresses := c.ipam.GetPodAddress(podKey)
-		for _, address := range addresses {
-			if strings.TrimSpace(address.IP) == "" {
-				continue
-			}
-			subnet, err := c.subnetsLister.Get(address.Subnet.Name)
-			if k8serrors.IsNotFound(err) {
-				continue
-			} else if err != nil {
-				klog.Error(err)
-				return err
-			}
-			vpc, err := c.vpcsLister.Get(subnet.Spec.Vpc)
-			if k8serrors.IsNotFound(err) {
-				continue
-			} else if err != nil {
-				klog.Error(err)
-				return err
-			}
-			// If pod has snat or eip, also need delete staticRoute when delete pod
-			if vpc.Name == c.config.ClusterRouter {
-				if err = c.deleteStaticRouteFromVpc(
-					vpc.Name,
-					subnet.Spec.RouteTable,
-					address.IP,
-					"",
-					kubeovnv1.PolicyDst,
-				); err != nil {
-					return err
-				}
-			}
-			if c.config.EnableEipSnat {
-				if pod.Annotations[util.EipAnnotation] != "" {
-					if err = c.OVNNbClient.DeleteNat(c.config.ClusterRouter, ovnnb.NATTypeDNATAndSNAT, pod.Annotations[util.EipAnnotation], address.IP); err != nil {
-						klog.Errorf("failed to delete nat rules: %v", err)
-					}
-				}
-				if pod.Annotations[util.SnatAnnotation] != "" {
-					if err = c.OVNNbClient.DeleteNat(c.config.ClusterRouter, ovnnb.NATTypeSNAT, "", address.IP); err != nil {
-						klog.Errorf("failed to delete nat rules: %v", err)
-					}
-				}
-			}
-		}
-	}
 
 	var keepIPCR bool
 	if ok, sts := isStatefulSetPod(pod); ok {
@@ -1056,39 +1004,90 @@ func (c *Controller) handleDeletePod(key string) error {
 	}
 	isVMPod, vmName := isVMPod(pod)
 	if isVMPod && c.config.EnableKeepVMIP {
-		toDel := c.isVMPodToDel(pod, vmName)
+		vmToBeDel := c.isVMToDel(pod, vmName)
 		isDelete, err := appendCheckPodToDel(c, pod, vmName, util.VMInstance)
 		if pod.DeletionTimestamp != nil {
 			// triggered by delete event
-			if !(toDel || (isDelete && err == nil)) {
+			if !(vmToBeDel || (isDelete && err == nil)) {
 				return nil
 			}
 			klog.Infof("delete vm pod %s", podName)
 		}
 	}
 
-	for _, port := range ports {
-		// when lsp is deleted, the port of pod is deleted from any port-group automatically.
-		klog.Infof("gc logical switch port %s", port.Name)
-		if err := c.OVNNbClient.DeleteLogicalSwitchPort(port.Name); err != nil {
-			klog.Errorf("failed to delete lsp %s, %v", port.Name, err)
-			return err
-		}
-	}
-
-	klog.Infof("release all ip address for deleting pod %s", podKey)
-	c.ipam.ReleaseAddressByPod(podKey, "")
-
 	podNets, err := c.getPodKubeovnNets(pod)
 	if err != nil {
 		klog.Errorf("failed to get pod nets %v", err)
 	}
 	if !keepIPCR {
+		ports, err := c.OVNNbClient.ListNormalLogicalSwitchPorts(true, map[string]string{"pod": podKey})
+		if err != nil {
+			klog.Errorf("failed to list lsps of pod '%s', %v", pod.Name, err)
+			return err
+		}
+
+		if len(ports) != 0 {
+			addresses := c.ipam.GetPodAddress(podKey)
+			for _, address := range addresses {
+				if strings.TrimSpace(address.IP) == "" {
+					continue
+				}
+				subnet, err := c.subnetsLister.Get(address.Subnet.Name)
+				if k8serrors.IsNotFound(err) {
+					continue
+				} else if err != nil {
+					klog.Error(err)
+					return err
+				}
+				vpc, err := c.vpcsLister.Get(subnet.Spec.Vpc)
+				if k8serrors.IsNotFound(err) {
+					continue
+				} else if err != nil {
+					klog.Error(err)
+					return err
+				}
+				// If pod has snat or eip, also need delete staticRoute when delete pod
+				if vpc.Name == c.config.ClusterRouter {
+					if err = c.deleteStaticRouteFromVpc(
+						vpc.Name,
+						subnet.Spec.RouteTable,
+						address.IP,
+						"",
+						kubeovnv1.PolicyDst,
+					); err != nil {
+						klog.Errorf("failed to delete static route, %v", err)
+						return err
+					}
+				}
+				if c.config.EnableEipSnat {
+					if pod.Annotations[util.EipAnnotation] != "" {
+						if err = c.OVNNbClient.DeleteNat(c.config.ClusterRouter, ovnnb.NATTypeDNATAndSNAT, pod.Annotations[util.EipAnnotation], address.IP); err != nil {
+							klog.Errorf("failed to delete nat rules: %v", err)
+						}
+					}
+					if pod.Annotations[util.SnatAnnotation] != "" {
+						if err = c.OVNNbClient.DeleteNat(c.config.ClusterRouter, ovnnb.NATTypeSNAT, "", address.IP); err != nil {
+							klog.Errorf("failed to delete nat rules: %v", err)
+						}
+					}
+				}
+			}
+		}
+		for _, port := range ports {
+			// when lsp is deleted, the port of pod is deleted from any port-group automatically.
+			klog.Infof("gc logical switch port %s", port.Name)
+			if err := c.OVNNbClient.DeleteLogicalSwitchPort(port.Name); err != nil {
+				klog.Errorf("failed to delete lsp %s, %v", port.Name, err)
+				return err
+			}
+		}
+		klog.Infof("release all ip address for deleting pod %s", podKey)
 		for _, podNet := range podNets {
 			if err = c.deleteCrdIPs(podName, pod.Namespace, podNet.ProviderName); err != nil {
 				klog.Errorf("failed to delete ip for pod %s, %v, please delete manually", pod.Name, err)
 			}
 		}
+		c.ipam.ReleaseAddressByPod(podKey, "")
 		if pod.Annotations[util.VipAnnotation] != "" {
 			if err = c.releaseVip(pod.Annotations[util.VipAnnotation]); err != nil {
 				klog.Errorf("failed to clean label from vip %s, %v", pod.Annotations[util.VipAnnotation], err)
@@ -1307,7 +1306,7 @@ func isStatefulSetPodToDel(c kubernetes.Interface, pod *v1.Pod, statefulSetName 
 		klog.Errorf("failed to parse %s to int", numStr)
 		return false
 	}
-
+	// down scaled
 	return index >= int64(*ss.Spec.Replicas)
 }
 
@@ -1859,19 +1858,20 @@ func appendCheckPodToDel(c *Controller, pod *v1.Pod, ownerRefName, ownerRefKind 
 			ownerRefSubnet = vm.Spec.Template.ObjectMeta.Annotations[util.LogicalSwitchAnnotation]
 		}
 	}
-
+	podSwitch := strings.TrimSpace(pod.Annotations[util.LogicalSwitchAnnotation])
 	if !ownerRefSubnetExist {
-		subnetNames := podNs.Annotations[util.LogicalSwitchAnnotation]
-		if subnetNames != "" && pod.Annotations[util.LogicalSwitchAnnotation] != "" && !util.ContainsString(strings.Split(subnetNames, ","), strings.TrimSpace(pod.Annotations[util.LogicalSwitchAnnotation])) {
-			klog.Infof("ns %s annotation subnet is %s, which is inconstant with subnet for pod %s, delete pod", pod.Namespace, podNs.Annotations[util.LogicalSwitchAnnotation], pod.Name)
+		nsSubnetNames := podNs.Annotations[util.LogicalSwitchAnnotation]
+		// check if pod use the subnet of its ns
+		if nsSubnetNames != "" && podSwitch != "" && !util.ContainsString(strings.Split(nsSubnetNames, ","), podSwitch) {
+			klog.Infof("ns %s annotation subnet is %s, which is inconstant with subnet for pod %s, delete pod", pod.Namespace, nsSubnetNames, pod.Name)
 			return true, nil
 		}
 	}
 
 	// subnet cidr has been changed, and statefulset pod's ip is not in the range of subnet's cidr anymore
-	podSubnet, err := c.subnetsLister.Get(strings.TrimSpace(pod.Annotations[util.LogicalSwitchAnnotation]))
+	podSubnet, err := c.subnetsLister.Get(podSwitch)
 	if err != nil {
-		klog.Errorf("failed to get subnet %s, %v", pod.Annotations[util.LogicalSwitchAnnotation], err)
+		klog.Errorf("failed to get subnet %s, %v", podSwitch, err)
 		return false, err
 	}
 	if podSubnet != nil && !util.CIDRContainIP(podSubnet.Spec.CIDRBlock, pod.Annotations[util.IPAddressAnnotation]) {
@@ -1906,7 +1906,7 @@ func isOwnsByTheVM(vmi metav1.Object) (bool, string) {
 	return false, ""
 }
 
-func (c *Controller) isVMPodToDel(pod *v1.Pod, vmiName string) bool {
+func (c *Controller) isVMToDel(pod *v1.Pod, vmiName string) bool {
 	var (
 		vmiAlive bool
 		vmName   string
