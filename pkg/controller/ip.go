@@ -223,7 +223,7 @@ func (c *Controller) handleUpdateIP(key string) error {
 				if strings.Contains(address, cachedIP.Spec.MacAddress) {
 					klog.Infof("delete ip cr lsp %s from switch %s", portName, subnet.Name)
 					if err := c.ovnLegacyClient.DeleteLogicalSwitchPort(portName); err != nil {
-						klog.Errorf("delete ip cr lsp %s from switch %s: %v", portName, subnet.Name, err)
+						klog.Errorf("failed to delete ip cr lsp %s from switch %s: %v", portName, subnet.Name, err)
 						return err
 					}
 					klog.V(3).Infof("sync sg for deleted port %s", portName)
