@@ -538,16 +538,17 @@ func (c *Controller) changeVMSubnet(vmName, namespace, providerName, subnetName 
 	ipName := ovs.PodNameToPortName(vmName, namespace, providerName)
 	ipCr, err := c.ipsLister.Get(ipName)
 	if err != nil {
-		if !k8serrors.IsNotFound(err) {
-			errMsg := fmt.Errorf("failed to get ip CR %s: %v", ipName, err)
-			klog.Error(errMsg)
-			return errMsg
+		if k8serrors.IsNotFound(err) {
+			return nil
 		}
-		// the returned pointer is not nil if the CR does not exist
-		ipCr = nil
+		err := fmt.Errorf("failed to get ip CR %s: %v", ipName, err)
+		klog.Error(err)
+		return err
 	}
-	if ipCr != nil && ipCr.Spec.Subnet != subnetName {
+	if ipCr.Spec.Subnet != subnetName {
 		key := fmt.Sprintf("%s/%s", namespace, vmName)
+		klog.Infof("release ipam for vm %s from old subnet %s", key, ipCr.Spec.Subnet)
+		c.ipam.ReleaseAddressByPod(key, ipCr.Spec.Subnet)
 		klog.Infof("gc logical switch port %s", key)
 		if err := c.OVNNbClient.DeleteLogicalSwitchPort(key); err != nil {
 			klog.Errorf("failed to delete lsp %s, %v", key, err)
