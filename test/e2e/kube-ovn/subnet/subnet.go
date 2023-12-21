@@ -1247,6 +1247,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 	})
 
 	framework.ConformanceIt("should support customize mtu of all pods in subnet", func() {
+		f.SkipVersionPriorTo(1, 9, "Support for subnet mtu in v1.9")
 		ginkgo.By("Creating subnet " + subnetName)
 		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, nil)
 		subnet.Spec.Mtu = 1600
