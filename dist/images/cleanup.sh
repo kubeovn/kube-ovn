@@ -126,7 +126,6 @@ kubectl delete --ignore-not-found sa vpc-dns -n kube-system
 
 # delete CRD
 kubectl delete --ignore-not-found crd \
-  htbqoses.kubeovn.io \
   security-groups.kubeovn.io \
   ips.kubeovn.io \
   ippools.kubeovn.io \
