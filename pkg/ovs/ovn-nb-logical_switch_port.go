@@ -620,6 +620,7 @@ func (c *OVNNbClient) CreateLogicalSwitchPortOp(lsp *ovnnb.LogicalSwitchPort, ls
 	lsp.ExternalIDs["vendor"] = util.CniTypeName
 
 	/* create logical switch port */
+	klog.V(3).Infof("create logical switch port %s in logical switch %s", lsp.Name, lsName)
 	lspCreateOp, err := c.Create(lsp)
 	if err != nil {
 		klog.Error(err)
@@ -655,6 +656,7 @@ func (c *OVNNbClient) DeleteLogicalSwitchPortOp(lspName string) ([]ovsdb.Operati
 
 	// remove logical switch port from logical switch
 	lsName := lsp.ExternalIDs[logicalSwitchKey]
+	klog.Infof("delete logical switch port %s with id %s from logical switch %s", lspName, lsp.UUID, lsName)
 	ops, err := c.LogicalSwitchUpdatePortOp(lsName, lsp.UUID, ovsdb.MutateOperationDelete)
 	if err != nil {
 		return nil, fmt.Errorf("generate operations for removing port %s from logical switch %s: %v", lspName, lsName, err)
