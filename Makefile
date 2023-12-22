@@ -798,11 +798,14 @@ kind-install-deepflow: kind-install
 	echo -e "\nGrafana URL: http://127.0.0.1:$(DEEPFLOW_GRAFANA_PORT)\nGrafana auth: admin:deepflow\n"
 
 .PHONY: kind-install-kwok
-kind-install-kwok: kind-install-underlay
-	kwok_version=$(KWOK_VERSION) j2 yamls/kwok-kustomization.yaml.j2 -o kustomization.yaml
-	kubectl kustomize ./ > kwok.yaml
+kind-install-kwok:
+	kubectl label node --overwrite -l type!=kwok type=kind
+	kubectl -n kube-system patch ds kube-proxy -p '{"spec":{"template":{"spec":{"nodeSelector":{"type":"kind"}}}}}'
+	kubectl -n kube-system patch ds ovs-ovn -p '{"spec":{"template":{"spec":{"nodeSelector":{"type":"kind"}}}}}'
+	kubectl -n kube-system patch ds kube-ovn-cni -p '{"spec":{"template":{"spec":{"nodeSelector":{"type":"kind"}}}}}'
 	$(call kind_load_kwok_image,kube-ovn)
-	kubectl apply -f kwok.yaml
+	kubectl apply -f yamls/kwok.yaml
+	kubectl apply -f yamls/kwok-stage.yaml
 	kubectl -n kube-system rollout status deploy kwok-controller --timeout 60s
 	for i in {1..20}; do \
 		kwok_node_name=fake-node-$$i j2 yamls/kwok-node.yaml.j2 -o kwok-node.yaml; \
@@ -877,7 +880,7 @@ clean:
 	$(RM) yamls/kind.yaml
 	$(RM) ovn.yaml kube-ovn.yaml kube-ovn-crd.yaml
 	$(RM) ovn-ic-0.yaml ovn-ic-1.yaml
-	$(RM) kustomization.yaml kwok.yaml kwok-node.yaml
+	$(RM) kwok-node.yaml
 	$(RM) kube-ovn.tar kube-ovn-dpdk.tar vpc-nat-gateway.tar image-amd64.tar image-amd64-dpdk.tar image-arm64.tar
 
 .PHONY: changelog
