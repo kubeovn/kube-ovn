@@ -77,7 +77,7 @@ func (c *Controller) enqueueUpdateSubnet(oldObj, newObj interface{}) {
 	}
 
 	u2oInterconnIP = newSubnet.Status.U2OInterconnectionIP
-	if !newSubnet.DeletionTimestamp.IsZero() && usingIPs == 0 || (usingIPs == 1 && u2oInterconnIP != "") {
+	if !newSubnet.DeletionTimestamp.IsZero() && (usingIPs == 0 || (usingIPs == 1 && u2oInterconnIP != "")) {
 		c.addOrUpdateSubnetQueue.Add(key)
 		return
 	}
