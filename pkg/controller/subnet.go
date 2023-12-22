@@ -708,21 +708,11 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		return err
 	}
 	klog.V(3).Infof("handle add or update subnet %s", cachedSubnet.Name)
-
 	subnet := cachedSubnet.DeepCopy()
 	subnet, err = c.formatSubnet(subnet)
 	if err != nil {
 		klog.Error(err)
 		return err
-	}
-
-	deleted, err := c.handleSubnetFinalizer(subnet)
-	if err != nil {
-		klog.Errorf("handle subnet finalizer failed %v", err)
-		return err
-	}
-	if deleted {
-		return nil
 	}
 
 	if err = util.ValidateSubnet(*subnet); err != nil {
@@ -745,6 +735,15 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 	if err != nil {
 		klog.Errorf("calculate subnet %s used ip failed, %v", subnet.Name, err)
 		return err
+	}
+
+	deleted, err := c.handleSubnetFinalizer(subnet)
+	if err != nil {
+		klog.Errorf("handle subnet finalizer failed %v", err)
+		return err
+	}
+	if deleted {
+		return nil
 	}
 
 	if !isOvnSubnet(subnet) {
