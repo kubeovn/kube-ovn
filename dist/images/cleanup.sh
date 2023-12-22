@@ -1,5 +1,6 @@
 #!/bin/bash
 set -eux
+export PS4='+ $(date "+%Y-%m-%d %H:%M:%S")\011 '
 
 kubectl delete --ignore-not-found ds kube-ovn-pinger -n kube-system
 # ensure kube-ovn-pinger has been deleted
