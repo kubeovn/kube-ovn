@@ -112,11 +112,20 @@ kubectl delete --ignore-not-found sa vpc-dns -n kube-system
 
 
 # delete CRD
-kubectl delete --ignore-not-found crd security-groups.kubeovn.io ips.kubeovn.io subnets.kubeovn.io vpcs.kubeovn.io \
+kubectl delete --ignore-not-found crd security-groups.kubeovn.io subnets.kubeovn.io vpcs.kubeovn.io \
                                       vlans.kubeovn.io provider-networks.kubeovn.io vpc-nat-gateways.kubeovn.io \
                                       iptables-dnat-rules.kubeovn.io iptables-eips.kubeovn.io iptables-fip-rules.kubeovn.io \
                                       iptables-snat-rules.kubeovn.io vips.kubeovn.io switch-lb-rules.kubeovn.io vpc-dnses.kubeovn.io \
                                       ovn-eips.kubeovn.io ovn-fips.kubeovn.io ovn-snat-rules.kubeovn.io 
+# in case of ip not delete
+set +e
+for ip in $(kubectl get ip -o name); do
+  kubectl patch "$ip" --type='json' -p '[{"op": "replace", "path": "/metadata/finalizers", "value": []}]'
+  kubectl delete --ignore-not-found "$ip"
+done
+kubectl delete --ignore-not-found crd ips.kubeovn.io
+set -e
+
 
 # Remove annotations/labels in namespaces and nodes
 kubectl annotate no --all ovn.kubernetes.io/cidr-
