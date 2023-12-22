@@ -109,9 +109,18 @@ kubectl delete --ignore-not-found clusterrole system:vpc-dns
 kubectl delete --ignore-not-found clusterrolebinding vpc-dns
 kubectl delete --ignore-not-found sa vpc-dns -n kube-system
 
+# in case of subnet re-creation
+
+set +e
+for subnet in $(kubectl get subnet -o name); do
+  kubectl patch "$subnet" --type='json' -p '[{"op": "replace", "path": "/metadata/finalizers", "value": []}]'
+  kubectl delete --ignore-not-found "$subnet"
+done
+set -e
+
 # delete CRD
-kubectl delete --ignore-not-found crd htbqoses.kubeovn.io security-groups.kubeovn.io ips.kubeovn.io subnets.kubeovn.io \
-                                      vpc-nat-gateways.kubeovn.io vpcs.kubeovn.io vlans.kubeovn.io provider-networks.kubeovn.io \
+kubectl delete --ignore-not-found crd security-groups.kubeovn.io ips.kubeovn.io subnets.kubeovn.io vpcs.kubeovn.io \
+                                      vlans.kubeovn.io provider-networks.kubeovn.io vpc-nat-gateways.kubeovn.io \
                                       iptables-dnat-rules.kubeovn.io  iptables-eips.kubeovn.io  iptables-fip-rules.kubeovn.io \
                                       iptables-snat-rules.kubeovn.io vips.kubeovn.io switch-lb-rules.kubeovn.io vpc-dnses.kubeovn.io \
                                       ovn-eips.kubeovn.io ovn-fips.kubeovn.io ovn-snat-rules.kubeovn.io 
