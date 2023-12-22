@@ -19,7 +19,11 @@ import (
 )
 
 func (c *Controller) enqueueAddIP(obj interface{}) {
-	ipObj := obj.(*kubeovnv1.IP)
+	ipObj, ok := obj.(*kubeovnv1.IP)
+	if !ok {
+		klog.Errorf("object is not an IP, ignore it")
+		return
+	}
 	if strings.HasPrefix(ipObj.Name, util.U2OInterconnName[0:19]) {
 		return
 	}
