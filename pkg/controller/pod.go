@@ -547,34 +547,33 @@ func (c *Controller) getPodKubeovnNets(pod *v1.Pod) ([]*kubeovnNet, error) {
 	return podNets, nil
 }
 
-func (c *Controller) changeVMSubnet(vmName, namespace, providerName, subnetName string, pod *v1.Pod) error {
+func (c *Controller) changeVMSubnet(vmName, namespace, providerName, subnetName string) error {
 	ipName := ovs.PodNameToPortName(vmName, namespace, providerName)
 	ipCr, err := c.config.KubeOvnClient.KubeovnV1().IPs().Get(context.Background(), ipName, metav1.GetOptions{})
 	if err != nil {
-		if !k8serrors.IsNotFound(err) {
-			errMsg := fmt.Errorf("failed to get ip CR %s: %v", ipName, err)
-			klog.Error(errMsg)
-			return errMsg
+		if k8serrors.IsNotFound(err) {
+			return nil
 		}
-		// the returned pointer is not nil if the CR does not exist
-		ipCr = nil
+		err := fmt.Errorf("failed to get ip CR %s: %v", ipName, err)
+		klog.Error(err)
+		return err
 	}
-	if ipCr != nil {
-		if ipCr.Spec.Subnet != subnetName {
-			key := fmt.Sprintf("%s/%s", pod.Namespace, vmName)
-			if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), ipName, metav1.DeleteOptions{}); err != nil {
-				if !k8serrors.IsNotFound(err) {
-					klog.Errorf("failed to delete ip %s, %v", ipName, err)
-					return err
-				}
-			}
-			klog.Infof("gc logical switch port %s", key)
-			if err := c.ovnLegacyClient.DeleteLogicalSwitchPort(key); err != nil {
-				klog.Errorf("failed to delete lsp %s, %v", key, err)
+	if ipCr.Spec.Subnet != subnetName {
+		key := fmt.Sprintf("%s/%s", namespace, vmName)
+		klog.Infof("release ipam for vm %s from old subnet %s", key, ipCr.Spec.Subnet)
+		c.ipam.ReleaseAddressByPod(key, ipCr.Spec.Subnet)
+		klog.Infof("gc logical switch port %s", key)
+		if err := c.ovnLegacyClient.DeleteLogicalSwitchPort(key); err != nil {
+			klog.Errorf("failed to delete lsp %s, %v", key, err)
+			return err
+		}
+		if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), ipName, metav1.DeleteOptions{}); err != nil {
+			if !k8serrors.IsNotFound(err) {
+				klog.Errorf("failed to delete ip %s, %v", ipName, err)
 				return err
 			}
-			c.ipam.ReleaseAddressByPod(key, subnetName)
 		}
+		// handleAddOrUpdatePod will create new lsp and new ip cr later
 	}
 	return nil
 }
@@ -637,7 +636,7 @@ func (c *Controller) handleAddPod(key string) error {
 		}
 		if isVmPod && c.config.EnableKeepVmIP {
 			pod.Annotations[fmt.Sprintf(util.VmTemplate, podNet.ProviderName)] = vmName
-			if err := c.changeVMSubnet(vmName, namespace, podNet.ProviderName, subnet.Name, pod); err != nil {
+			if err := c.changeVMSubnet(vmName, namespace, podNet.ProviderName, subnet.Name); err != nil {
 				klog.Errorf("change subnet of pod %s/%s to %s failed: %v", namespace, name, subnet.Name, err)
 				return err
 			}
@@ -853,6 +852,18 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 	}
 	for _, podNet := range podNets {
 		c.syncVirtualPortsQueue.Add(podNet.Subnet.Name)
+	}
+	return nil
+}
+
+func (c *Controller) deleteCrdIPs(podName, ns, providerName string) error {
+	portName := ovs.PodNameToPortName(podName, ns, providerName)
+	klog.Infof("delete cr ip '%s' for pod %s/%s", portName, ns, podName)
+	if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), portName, metav1.DeleteOptions{}); err != nil {
+		if !k8serrors.IsNotFound(err) {
+			klog.Errorf("failed to delete ip %s, %v", portName, err)
+			return err
+		}
 	}
 	return nil
 }
