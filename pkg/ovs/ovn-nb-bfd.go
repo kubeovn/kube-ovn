@@ -98,6 +98,8 @@ func (c *OVNNbClient) CreateBFD(lrpName, dstIP string, minRx, minTx, detectMult 
 	}
 
 	if bfdList, err = c.ListBFDs(lrpName, dstIP); err != nil {
+		err := fmt.Errorf("failed to list BFDs: %v", err)
+		klog.Error(err)
 		return nil, err
 	}
 	if len(bfdList) == 0 {
@@ -273,8 +275,8 @@ func (c *OVNNbClient) bfdUpdateL3HAHandler(table string, oldModel, newModel mode
 		}
 	}
 
-	// switch may still on a bad chassis
-	// later update recheck the bfd status
+	// LRP may still locate on a bad chassis node
+	// update recheck the bfd status later
 	if *oldBfd.Status == ovnnb.BFDStatusUp && *newBfd.Status == ovnnb.BFDStatusDown {
 		// down
 		lrpName := newBfd.LogicalPort
