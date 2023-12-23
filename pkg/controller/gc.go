@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"unicode"
 
 	"github.com/ovn-org/libovsdb/ovsdb"
 	"github.com/scylladb/go-set/strset"
@@ -353,6 +354,11 @@ func (c *Controller) markAndCleanLSP() error {
 		}
 
 		klog.Infof("gc logical switch port %s", lsp.Name)
+		if err := c.OVNNbClient.DeleteLogicalSwitchPort(lsp.Name); err != nil {
+			klog.Errorf("failed to delete lsp %s: %v", lsp.Name, err)
+			return err
+		}
+		klog.Infof("gc ip %s", lsp.Name)
 		ipCr, err := c.config.KubeOvnClient.KubeovnV1().IPs().Get(context.Background(), lsp.Name, metav1.GetOptions{})
 		if err != nil {
 			if k8serrors.IsNotFound(err) {
@@ -452,6 +458,12 @@ func (c *Controller) gcLoadBalancer() error {
 		return err
 	}
 
+	dnats, err := c.ovnDnatRulesLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list dnats, %v", err)
+		return err
+	}
+
 	var (
 		tcpVips         = strset.NewWithSize(len(svcs) * 2)
 		udpVips         = strset.NewWithSize(len(svcs) * 2)
@@ -505,6 +517,10 @@ func (c *Controller) gcLoadBalancer() error {
 		vpcLbs            []string
 		ignoreHealthCheck = true
 	)
+
+	for _, dnat := range dnats {
+		vpcLbs = append(vpcLbs, dnat.Name)
+	}
 
 	removeVip = func(lbName string, svcVips *strset.Set) error {
 		if lbName == "" {
@@ -589,7 +605,13 @@ func (c *Controller) gcPortGroup() error {
 		}
 
 		for _, np := range nps {
-			npNames.Add(fmt.Sprintf("%s/%s", np.Namespace, np.Name))
+			npName := np.Name
+			nameArray := []rune(np.Name)
+			if !unicode.IsLetter(nameArray[0]) {
+				npName = "np" + np.Name
+			}
+
+			npNames.Add(fmt.Sprintf("%s/%s", np.Namespace, npName))
 		}
 
 		// append node port group to npNames to avoid gc node port group
@@ -692,7 +714,7 @@ func (c *Controller) gcStaticRoute() error {
 
 func (c *Controller) gcChassis() error {
 	klog.Infof("start to gc chassis")
-	chassises, err := c.OVNSbClient.GetKubeOvnChassisses()
+	chassises, err := c.OVNSbClient.ListChassis()
 	if err != nil {
 		klog.Errorf("failed to get all chassis, %v", err)
 	}
@@ -714,6 +736,7 @@ func (c *Controller) gcChassis() error {
 		if hostname, exist := chassisNodes[chassisName]; exist {
 			if hostname == node.Name {
 				// node is alive, matched chassis should be alive
+				delete(chassisNodes, chassisName)
 				continue
 			}
 			// maybe node name changed, delete chassis
@@ -724,6 +747,15 @@ func (c *Controller) gcChassis() error {
 			}
 		}
 	}
+
+	for chassisName, hostname := range chassisNodes {
+		klog.Infof("gc node %s chassis %s", hostname, chassisName)
+		if err := c.OVNSbClient.DeleteChassis(chassisName); err != nil {
+			klog.Errorf("failed to delete node %s chassis %s %v", hostname, chassisName, err)
+			return err
+		}
+	}
+
 	return nil
 }
 

@@ -1,5 +1,6 @@
 #!/bin/bash
-set -eu
+set -eux
+export PS4='+ $(date "+%Y-%m-%d %H:%M:%S")\011 '
 
 kubectl delete --ignore-not-found ds kube-ovn-pinger -n kube-system
 # ensure kube-ovn-pinger has been deleted
@@ -126,9 +127,7 @@ kubectl delete --ignore-not-found sa vpc-dns -n kube-system
 
 # delete CRD
 kubectl delete --ignore-not-found crd \
-  htbqoses.kubeovn.io \
   security-groups.kubeovn.io \
-  ips.kubeovn.io \
   ippools.kubeovn.io \
   vpc-nat-gateways.kubeovn.io \
   vpcs.kubeovn.io \
@@ -146,6 +145,15 @@ kubectl delete --ignore-not-found crd \
   ovn-fips.kubeovn.io \
   ovn-eips.kubeovn.io \
   qos-policies.kubeovn.io
+
+# in case of ip not delete
+set +e
+for ip in $(kubectl get ip -o name); do
+  kubectl patch "$ip" --type='json' -p '[{"op": "replace", "path": "/metadata/finalizers", "value": []}]'
+  kubectl delete --ignore-not-found "$ip"
+done
+kubectl delete --ignore-not-found crd ips.kubeovn.io
+set -e
 
 # Remove annotations/labels in namespaces and nodes
 kubectl annotate no --all ovn.kubernetes.io/cidr-

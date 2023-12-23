@@ -18,11 +18,15 @@ import (
 func (c *OVNNbClient) CreateGatewayChassises(lrpName string, chassises ...string) error {
 	op, err := c.CreateGatewayChassisesOp(lrpName, chassises)
 	if err != nil {
-		return fmt.Errorf("generate operations for creating gateway chassis %v", err)
+		err := fmt.Errorf("generate operations for creating gateway chassis %v", err)
+		klog.Error(err)
+		return err
 	}
 
 	if err = c.Transact("gateway-chassises-add", op); err != nil {
-		return fmt.Errorf("create gateway chassis %v for logical router port %s: %v", chassises, lrpName, err)
+		err := fmt.Errorf("create gateway chassis %v for logical router port %s: %v", chassises, lrpName, err)
+		klog.Error(err)
+		return err
 	}
 
 	return nil
@@ -157,7 +161,16 @@ func (c *OVNNbClient) CreateGatewayChassisesOp(lrpName string, chassises []strin
 	uuids := make([]string, 0, len(chassises))
 
 	for i, chassisName := range chassises {
-		gwChassis, err := c.newGatewayChassis(lrpName, chassisName, util.GwChassisMaxPriority-i)
+		gwChassisName := lrpName + "-" + chassisName
+		gwChassis, err := c.GetGatewayChassis(chassisName, true)
+		if err != nil {
+			klog.Error(err)
+			return nil, err
+		}
+		if gwChassis != nil {
+			continue
+		}
+		gwChassis, err = c.newGatewayChassis(gwChassisName, chassisName, 100-i)
 		if err != nil {
 			klog.Error(err)
 			return nil, err

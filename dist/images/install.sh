@@ -49,27 +49,27 @@ REGISTRY="docker.io/kubeovn"
 VPC_NAT_IMAGE="vpc-nat-gateway"
 VERSION="v1.13.0"
 IMAGE_PULL_POLICY="IfNotPresent"
-POD_CIDR="10.16.0.0/16"                # Do NOT overlap with NODE/SVC/JOIN CIDR
+POD_CIDR="10.16.0.0/16"                     # Do NOT overlap with NODE/SVC/JOIN CIDR
 POD_GATEWAY="10.16.0.1"
-SVC_CIDR="10.96.0.0/12"                # Do NOT overlap with NODE/POD/JOIN CIDR
-JOIN_CIDR="100.64.0.0/16"              # Do NOT overlap with NODE/POD/SVC CIDR
-PINGER_EXTERNAL_ADDRESS="114.114.114.114"  # Pinger check external ip probe
+SVC_CIDR="10.96.0.0/12"                     # Do NOT overlap with NODE/POD/JOIN CIDR
+JOIN_CIDR="100.64.0.0/16"                   # Do NOT overlap with NODE/POD/SVC CIDR
+PINGER_EXTERNAL_ADDRESS="1.1.1.1"           # Pinger check external ip probe
 PINGER_EXTERNAL_DOMAIN="alauda.cn."         # Pinger check external domain probe
 SVC_YAML_IPFAMILYPOLICY=""
 if [ "$IPV6" = "true" ]; then
-  POD_CIDR="fd00:10:16::/112"                # Do NOT overlap with NODE/SVC/JOIN CIDR
+  POD_CIDR="fd00:10:16::/112"               # Do NOT overlap with NODE/SVC/JOIN CIDR
   POD_GATEWAY="fd00:10:16::1"
   SVC_CIDR="fd00:10:96::/112"               # Do NOT overlap with NODE/POD/JOIN CIDR
-  JOIN_CIDR="fd00:100:64::/112"              # Do NOT overlap with NODE/POD/SVC CIDR
-  PINGER_EXTERNAL_ADDRESS="2400:3200::1"
+  JOIN_CIDR="fd00:100:64::/112"             # Do NOT overlap with NODE/POD/SVC CIDR
+  PINGER_EXTERNAL_ADDRESS="2606:4700:4700::1111"
   PINGER_EXTERNAL_DOMAIN="google.com."
 fi
 if [ "$DUAL_STACK" = "true" ]; then
-  POD_CIDR="10.16.0.0/16,fd00:10:16::/112"                # Do NOT overlap with NODE/SVC/JOIN CIDR
+  POD_CIDR="10.16.0.0/16,fd00:10:16::/112"               # Do NOT overlap with NODE/SVC/JOIN CIDR
   POD_GATEWAY="10.16.0.1,fd00:10:16::1"
   SVC_CIDR="10.96.0.0/12,fd00:10:96::/112"               # Do NOT overlap with NODE/POD/JOIN CIDR
-  JOIN_CIDR="100.64.0.0/16,fd00:100:64::/112"             # Do NOT overlap with NODE/POD/SVC CIDR
-  PINGER_EXTERNAL_ADDRESS="114.114.114.114,2400:3200::1"
+  JOIN_CIDR="100.64.0.0/16,fd00:100:64::/112"            # Do NOT overlap with NODE/POD/SVC CIDR
+  PINGER_EXTERNAL_ADDRESS="1.1.1.1,2606:4700:4700::1111"
   PINGER_EXTERNAL_DOMAIN="google.com."
   SVC_YAML_IPFAMILYPOLICY="ipFamilyPolicy: PreferDualStack"
 fi
@@ -3289,7 +3289,7 @@ spec:
               cpu: 300m
               memory: 300Mi
             limits:
-              cpu: 3
+              cpu: 4
               memory: 4Gi
           volumeMounts:
             - mountPath: /var/run/openvswitch
@@ -4603,8 +4603,10 @@ if ! sh -c "echo \":$PATH:\" | grep -q \":/usr/local/bin:\""; then
 fi
 
 echo "[Step 6/6] Run network diagnose"
-kubectl cp kube-system/"$(kubectl  -n kube-system get pods -o wide | grep cni | awk '{print $1}' | awk 'NR==1{print}')":/kube-ovn/kubectl-ko /usr/local/bin/kubectl-ko
+kubectl cp kube-system/"$(kubectl -n kube-system get pods -o wide | grep cni | awk '{print $1}' | awk 'NR==1{print}')":/kube-ovn/kubectl-ko /usr/local/bin/kubectl-ko
 chmod +x /usr/local/bin/kubectl-ko
+# show pod status in kube-system namespace before diagnose
+kubectl get pod -n kube-system -o wide
 kubectl ko diagnose all
 
 echo "-------------------------------"

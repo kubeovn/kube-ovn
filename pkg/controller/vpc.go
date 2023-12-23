@@ -274,7 +274,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 	}
 	vpc = cachedVpc.DeepCopy()
 
-	if err = formatVpc(vpc, c); err != nil {
+	if vpc, err = c.formatVpc(vpc); err != nil {
 		klog.Errorf("failed to format vpc %s: %v", key, err)
 		return err
 	}
@@ -872,7 +872,7 @@ func getStaticRouteItemKey(item *kubeovnv1.StaticRoute) string {
 	return key
 }
 
-func formatVpc(vpc *kubeovnv1.Vpc, c *Controller) error {
+func (c *Controller) formatVpc(vpc *kubeovnv1.Vpc) (*kubeovnv1.Vpc, error) {
 	var changed bool
 	for _, item := range vpc.Spec.StaticRoutes {
 		// check policy
@@ -881,19 +881,19 @@ func formatVpc(vpc *kubeovnv1.Vpc, c *Controller) error {
 			changed = true
 		}
 		if item.Policy != kubeovnv1.PolicyDst && item.Policy != kubeovnv1.PolicySrc {
-			return fmt.Errorf("unknown policy type: %s", item.Policy)
+			return nil, fmt.Errorf("unknown policy type: %s", item.Policy)
 		}
 		// check cidr
 		if strings.Contains(item.CIDR, "/") {
 			if _, _, err := net.ParseCIDR(item.CIDR); err != nil {
-				return fmt.Errorf("invalid cidr %s: %w", item.CIDR, err)
+				return nil, fmt.Errorf("invalid cidr %s: %w", item.CIDR, err)
 			}
 		} else if ip := net.ParseIP(item.CIDR); ip == nil {
-			return fmt.Errorf("invalid ip %s", item.CIDR)
+			return nil, fmt.Errorf("invalid ip %s", item.CIDR)
 		}
 		// check next hop ip
 		if ip := net.ParseIP(item.NextHopIP); ip == nil {
-			return fmt.Errorf("invalid next hop ip %s", item.NextHopIP)
+			return nil, fmt.Errorf("invalid next hop ip %s", item.NextHopIP)
 		}
 	}
 
@@ -909,20 +909,22 @@ func formatVpc(vpc *kubeovnv1.Vpc, c *Controller) error {
 				if ip := net.ParseIP(ipStr); ip == nil {
 					err := fmt.Errorf("invalid next hop ips: %s", route.NextHopIP)
 					klog.Error(err)
-					return err
+					return nil, err
 				}
 			}
 		}
 	}
 
 	if changed {
-		if _, err := c.config.KubeOvnClient.KubeovnV1().Vpcs().Update(context.Background(), vpc, metav1.UpdateOptions{}); err != nil {
+		newVpc, err := c.config.KubeOvnClient.KubeovnV1().Vpcs().Update(context.Background(), vpc, metav1.UpdateOptions{})
+		if err != nil {
 			klog.Errorf("failed to update vpc %s: %v", vpc.Name, err)
-			return err
+			return nil, err
 		}
+		return newVpc, err
 	}
 
-	return nil
+	return vpc, nil
 }
 
 func convertPolicies(list []*kubeovnv1.PolicyRoute) string {

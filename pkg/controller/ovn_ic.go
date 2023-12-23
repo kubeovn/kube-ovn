@@ -167,15 +167,26 @@ func (c *Controller) removeInterConnection(azName string) error {
 
 	if azName != "" {
 		if err := c.OVNNbClient.DeleteLogicalSwitchPorts(nil, func(lsp *ovnnb.LogicalSwitchPort) bool {
-			names := strings.Split(lsp.Name, "-")
-			return len(names) == 2 && names[1] == azName && strings.HasPrefix(names[0], "ts")
+			// add the code below because azName may have multi "-"
+			firstIndex := strings.Index(lsp.Name, "-")
+			if firstIndex != -1 {
+				firstPart := lsp.Name[:firstIndex]
+				secondPart := lsp.Name[firstIndex+1:]
+				return secondPart == azName && strings.HasPrefix(firstPart, util.InterconnectionSwitch)
+			}
+			return false
 		}); err != nil {
 			return err
 		}
 
 		if err := c.OVNNbClient.DeleteLogicalRouterPorts(nil, func(lrp *ovnnb.LogicalRouterPort) bool {
-			names := strings.Split(lrp.Name, "-")
-			return len(names) == 2 && names[0] == azName && strings.HasPrefix(names[1], "ts")
+			lastIndex := strings.LastIndex(lrp.Name, "-")
+			if lastIndex != -1 {
+				firstPart := lrp.Name[:lastIndex]
+				secondPart := lrp.Name[lastIndex+1:]
+				return firstPart == azName && strings.HasPrefix(secondPart, util.InterconnectionSwitch)
+			}
+			return false
 		}); err != nil {
 			return err
 		}

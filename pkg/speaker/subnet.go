@@ -150,7 +150,7 @@ func (c *Controller) syncSubnetRoutes() {
 		for _, path := range d.Paths {
 			attrInterfaces, _ := bgpapiutil.UnmarshalPathAttributes(path.Pattrs)
 			nextHop := getNextHopFromPathAttributes(attrInterfaces)
-			klog.V(5).Infof("nexthop is %s, routerID is %s", nextHop.String(), c.config.RouterID)
+			klog.V(5).Infof("the route Prefix is %s, NextHop is %s", d.Prefix, nextHop.String())
 			ipFamily := util.CheckProtocol(nextHop.String())
 			route, _ := netlink.RouteGet(nextHop)
 			if len(route) == 1 && route[0].Type == unix.RTN_LOCAL || nextHop.String() == c.config.RouterID {

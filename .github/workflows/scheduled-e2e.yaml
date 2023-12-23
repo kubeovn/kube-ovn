@@ -11,7 +11,7 @@ concurrency:
 
 env:
   GO_VERSION: ''
-  HELM_VERSION: v3.13.2
+  HELM_VERSION: v3.13.3
   SUBMARINER_VERSION: '0.16.2'
 
 jobs:
@@ -42,7 +42,7 @@ jobs:
           sudo sed -i '/^search/d' /etc/resolv.conf
           sudo systemctl restart docker
 
-      - uses: actions/setup-go@v4
+      - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: go.mod
@@ -128,7 +128,7 @@ jobs:
           sudo sed -i '/^search/d' /etc/resolv.conf
           sudo systemctl restart docker
 
-      - uses: actions/setup-go@v4
+      - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: go.mod
@@ -257,6 +257,7 @@ jobs:
           - release-1.12
           - release-1.11
           - release-1.9
+          - release-1.12-mc
         ip-family:
           - ipv4
           - ipv6
@@ -266,7 +267,7 @@ jobs:
           - underlay
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v4
+      - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: go.mod
@@ -342,7 +343,7 @@ jobs:
           - release-1.9
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v4
+      - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: go.mod
@@ -570,10 +571,11 @@ jobs:
           - master
           - release-1.12
           - release-1.11
+          - release-1.12-mc
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-go@v4
+      - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: go.mod
@@ -642,11 +644,12 @@ jobs:
         branch:
           - master
           - release-1.12
+          - release-1.12-mc
   
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-go@v4
+      - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: go.mod
@@ -717,7 +720,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-go@v4
+      - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: go.mod
@@ -848,7 +851,7 @@ jobs:
           sudo sed -i '/^search/d' /etc/resolv.conf
           sudo systemctl restart docker
 
-      - uses: actions/setup-go@v4
+      - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: go.mod
@@ -924,6 +927,7 @@ jobs:
           - release-1.12
           - release-1.11
           - release-1.9
+          - release-1.12-mc
         ssl:
           - "true"
           - "false"
@@ -936,7 +940,7 @@ jobs:
           - dual
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v4
+      - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: go.mod
@@ -1024,7 +1028,7 @@ jobs:
         with:
           version: '${{ env.HELM_VERSION }}'
 
-      - uses: actions/setup-go@v4
+      - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: go.mod
@@ -1176,7 +1180,7 @@ jobs:
           - release-1.12
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v4
+      - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: go.mod
@@ -1244,9 +1248,10 @@ jobs:
         branch:
           - master
           - release-1.12
+          - release-1.12-mc
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v4
+      - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: go.mod

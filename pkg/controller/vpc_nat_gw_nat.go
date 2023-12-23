@@ -643,6 +643,18 @@ func (c *Controller) handleUpdateIptablesFip(key string) error {
 		cachedFip.Status.V4ip != "" &&
 		cachedFip.DeletionTimestamp.IsZero() {
 		klog.V(3).Infof("reapply fip '%s' in pod ", key)
+		gwPod, err := c.getNatGwPod(eip.Spec.NatGwDp)
+		if err != nil {
+			klog.Error(err)
+			return err
+		}
+		// compare gw pod started time with fip redo time. if fip redo time before gw pod started. should redo again
+		fipRedo, _ := time.ParseInLocation("2006-01-02T15:04:05", cachedFip.Status.Redo, time.Local)
+		if cachedFip.Status.Ready && cachedFip.Status.V4ip != "" && gwPod.Status.ContainerStatuses[0].State.Running.StartedAt.Before(&metav1.Time{Time: fipRedo}) {
+			// already ok
+			klog.V(3).Infof("fip %s already ok", key)
+			return nil
+		}
 		if err = c.createFipInPod(eip.Spec.NatGwDp, cachedFip.Status.V4ip, cachedFip.Spec.InternalIP); err != nil {
 			klog.Errorf("failed to create fip, %v", err)
 			return err
@@ -814,6 +826,18 @@ func (c *Controller) handleUpdateIptablesDnatRule(key string) error {
 		cachedDnat.Status.V4ip != "" &&
 		cachedDnat.DeletionTimestamp.IsZero() {
 		klog.V(3).Infof("reapply dnat in pod for %s", key)
+		gwPod, err := c.getNatGwPod(eip.Spec.NatGwDp)
+		if err != nil {
+			klog.Error(err)
+			return err
+		}
+		// compare gw pod started time with dnat redo time. if redo time before gw pod started. redo again
+		dnatRedo, _ := time.ParseInLocation("2006-01-02T15:04:05", cachedDnat.Status.Redo, time.Local)
+		if cachedDnat.Status.Ready && cachedDnat.Status.V4ip != "" && gwPod.Status.ContainerStatuses[0].State.Running.StartedAt.Before(&metav1.Time{Time: dnatRedo}) {
+			// already ok
+			klog.V(3).Infof("dnat %s already ok", key)
+			return nil
+		}
 		if err = c.createDnatInPod(eip.Spec.NatGwDp, cachedDnat.Spec.Protocol,
 			cachedDnat.Status.V4ip, cachedDnat.Spec.InternalIP,
 			cachedDnat.Spec.ExternalPort, cachedDnat.Spec.InternalPort); err != nil {
@@ -986,6 +1010,18 @@ func (c *Controller) handleUpdateIptablesSnatRule(key string) error {
 		cachedSnat.Status.Redo != "" &&
 		cachedSnat.Status.V4ip != "" &&
 		cachedSnat.DeletionTimestamp.IsZero() {
+		gwPod, err := c.getNatGwPod(eip.Spec.NatGwDp)
+		if err != nil {
+			klog.Error(err)
+			return err
+		}
+		// compare gw pod started time with snat redo time. if redo time before gw pod started. redo again
+		snatRedo, _ := time.ParseInLocation("2006-01-02T15:04:05", cachedSnat.Status.Redo, time.Local)
+		if cachedSnat.Status.Ready && cachedSnat.Status.V4ip != "" && gwPod.Status.ContainerStatuses[0].State.Running.StartedAt.Before(&metav1.Time{Time: snatRedo}) {
+			// already ok
+			klog.V(3).Infof("snat %s already ok", key)
+			return nil
+		}
 		if err = c.createSnatInPod(cachedSnat.Status.NatGwDp, cachedSnat.Status.V4ip, v4CidrSpec); err != nil {
 			klog.Errorf("failed to create new snat, %v", err)
 			return err

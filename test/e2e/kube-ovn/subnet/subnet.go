@@ -1247,6 +1247,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 	})
 
 	framework.ConformanceIt("should support customize mtu of all pods in subnet", func() {
+		f.SkipVersionPriorTo(1, 9, "Support for subnet mtu in v1.9")
 		ginkgo.By("Creating subnet " + subnetName)
 		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, nil)
 		subnet.Spec.Mtu = 1600
@@ -1386,7 +1387,7 @@ func checkAccessExternal(podName, podNamespace, protocol string, expectReachable
 	ginkgo.By("checking external ip reachable")
 
 	if protocol == apiv1.ProtocolIPv4 || protocol == apiv1.ProtocolDual {
-		externalIP := "114.114.114.114"
+		externalIP := "1.1.1.1"
 		isv4ExternalIPReachable := func() bool {
 			cmd := fmt.Sprintf("ping %s -w 1", externalIP)
 			output, _ := exec.Command("bash", "-c", cmd).CombinedOutput()
@@ -1402,7 +1403,7 @@ func checkAccessExternal(podName, podNamespace, protocol string, expectReachable
 	}
 
 	if protocol == apiv1.ProtocolIPv6 || protocol == apiv1.ProtocolDual {
-		externalIP := "2400:3200::1"
+		externalIP := "2606:4700:4700::1111"
 		isv6ExternalIPReachable := func() bool {
 			cmd := fmt.Sprintf("ping6 %s -w 1", externalIP)
 			output, _ := exec.Command("bash", "-c", cmd).CombinedOutput()

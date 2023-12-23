@@ -37,10 +37,10 @@ KUBEVIRT_OPERATOR_YAML = https://github.com/kubevirt/kubevirt/releases/download/
 KUBEVIRT_CR_YAML = https://github.com/kubevirt/kubevirt/releases/download/$(KUBEVIRT_VERSION)/kubevirt-cr.yaml
 KUBEVIRT_TEST_YAML = https://kubevirt.io/labs/manifests/vm.yaml
 
-CILIUM_VERSION = 1.14.4
+CILIUM_VERSION = 1.14.5
 CILIUM_IMAGE_REPO = quay.io/cilium/cilium
 
-CERT_MANAGER_VERSION = v1.13.2
+CERT_MANAGER_VERSION = v1.13.3
 CERT_MANAGER_CONTROLLER = quay.io/jetstack/cert-manager-controller:$(CERT_MANAGER_VERSION)
 CERT_MANAGER_CAINJECTOR = quay.io/jetstack/cert-manager-cainjector:$(CERT_MANAGER_VERSION)
 CERT_MANAGER_WEBHOOK = quay.io/jetstack/cert-manager-webhook:$(CERT_MANAGER_VERSION)
@@ -111,7 +111,7 @@ build-debug: build-go
 
 .PHONY: build-dpdk
 build-dpdk:
-	docker buildx build --platform linux/amd64 -t $(REGISTRY)/kube-ovn-dpdk:19.11-$(RELEASE_TAG) -o type=docker -f dist/images/Dockerfile.dpdk1911 dist/images/
+	docker buildx build --platform linux/amd64 -t $(REGISTRY)/kube-ovn-dpdk:19.11-$(RELEASE_TAG) -o type=docker -f dist/images/Dockerfile.dpdk2011 dist/images/
 
 .PHONY: base-amd64
 base-amd64:
@@ -422,12 +422,12 @@ kind-init-bgp: kind-clean-bgp kind-init
 	docker run --rm --privileged \
 		--name kube-ovn-bgp \
 		--network host \
+		--pid host \
 		-v /var/run/docker.sock:/var/run/docker.sock \
 		-v /var/run/netns:/var/run/netns \
 		-v /var/lib/docker/containers:/var/lib/docker/containers \
-		--pid=host \
-		-v $(CURDIR)/yamls/clab-bgp.yaml:/clab.yaml \
-		$(CLAB_IMAGE) clab deploy -t /clab.yaml
+		-v $(CURDIR)/yamls/clab-bgp.yaml:/clab-bgp/clab.yaml \
+		$(CLAB_IMAGE) clab deploy -t /clab-bgp/clab.yaml
 
 .PHONY: kind-init-bgp-ha
 kind-init-bgp-ha: kind-clean-bgp kind-init
@@ -435,12 +435,12 @@ kind-init-bgp-ha: kind-clean-bgp kind-init
 	docker run --rm --privileged \
 		--name kube-ovn-bgp \
 		--network host \
+		--pid host \
 		-v /var/run/docker.sock:/var/run/docker.sock \
 		-v /var/run/netns:/var/run/netns \
 		-v /var/lib/docker/containers:/var/lib/docker/containers \
-		--pid=host \
-		-v $(CURDIR)/yamls/clab-bgp-ha.yaml:/clab.yaml \
-		$(CLAB_IMAGE) clab deploy -t /clab.yaml
+		-v $(CURDIR)/yamls/clab-bgp-ha.yaml:/clab-bgp/clab.yaml \
+		$(CLAB_IMAGE) clab deploy -t /clab-bgp/clab.yaml
 
 .PHONY: kind-load-image
 kind-load-image:
@@ -854,11 +854,14 @@ kind-install-deepflow: kind-install
 	echo -e "\nGrafana URL: http://127.0.0.1:$(DEEPFLOW_GRAFANA_PORT)\nGrafana auth: admin:deepflow\n"
 
 .PHONY: kind-install-kwok
-kind-install-kwok: kind-install-underlay
-	kwok_version=$(KWOK_VERSION) j2 yamls/kwok-kustomization.yaml.j2 -o kustomization.yaml
-	kubectl kustomize ./ > kwok.yaml
+kind-install-kwok:
+	kubectl label node --overwrite -l type!=kwok type=kind
+	kubectl -n kube-system patch ds kube-proxy -p '{"spec":{"template":{"spec":{"nodeSelector":{"type":"kind"}}}}}'
+	kubectl -n kube-system patch ds ovs-ovn -p '{"spec":{"template":{"spec":{"nodeSelector":{"type":"kind"}}}}}'
+	kubectl -n kube-system patch ds kube-ovn-cni -p '{"spec":{"template":{"spec":{"nodeSelector":{"type":"kind"}}}}}'
 	$(call kind_load_kwok_image,kube-ovn)
-	kubectl apply -f kwok.yaml
+	kubectl apply -f yamls/kwok.yaml
+	kubectl apply -f yamls/kwok-stage.yaml
 	kubectl -n kube-system rollout status deploy kwok-controller --timeout 60s
 	for i in {1..20}; do \
 		kwok_node_name=fake-node-$$i j2 yamls/kwok-node.yaml.j2 -o kwok-node.yaml; \
@@ -894,12 +897,12 @@ kind-clean-bgp: kind-clean-bgp-ha
 	docker run --rm --privileged \
 		--name kube-ovn-bgp \
 		--network host \
+		--pid host \
 		-v /var/run/docker.sock:/var/run/docker.sock \
 		-v /var/run/netns:/var/run/netns \
 		-v /var/lib/docker/containers:/var/lib/docker/containers \
-		--pid=host \
-		-v $(CURDIR)/yamls/clab-bgp.yaml:/clab.yaml \
-		$(CLAB_IMAGE) clab destroy -t /clab.yaml
+		-v $(CURDIR)/yamls/clab-bgp.yaml:/clab-bgp/clab.yaml \
+		$(CLAB_IMAGE) clab destroy -t /clab-bgp/clab.yaml
 	@$(MAKE) kind-clean
 
 .PHONY: kind-clean-bgp-ha
@@ -908,12 +911,12 @@ kind-clean-bgp-ha:
 	docker run --rm --privileged \
 		--name kube-ovn-bgp \
 		--network host \
+		--pid host \
 		-v /var/run/docker.sock:/var/run/docker.sock \
 		-v /var/run/netns:/var/run/netns \
 		-v /var/lib/docker/containers:/var/lib/docker/containers \
-		--pid=host \
-		-v $(CURDIR)/yamls/clab-bgp-ha.yaml:/clab.yaml \
-		$(CLAB_IMAGE) clab destroy -t /clab.yaml
+		-v $(CURDIR)/yamls/clab-bgp-ha.yaml:/clab-bgp/clab.yaml \
+		$(CLAB_IMAGE) clab destroy -t /clab-bgp/clab.yaml
 	@$(MAKE) kind-clean
 
 .PHONY: uninstall
@@ -962,7 +965,7 @@ clean:
 	$(RM) yamls/clab-bgp.yaml yamls/clab-bgp-ha.yaml
 	$(RM) ovn.yaml kube-ovn.yaml kube-ovn-crd.yaml
 	$(RM) ovn-ic-0.yaml ovn-ic-1.yaml
-	$(RM) kustomization.yaml kwok.yaml kwok-node.yaml
+	$(RM) kwok-node.yaml
 	$(RM) kube-ovn.tar kube-ovn-dpdk.tar vpc-nat-gateway.tar image-amd64.tar image-amd64-dpdk.tar image-arm64.tar
 
 .PHONY: changelog

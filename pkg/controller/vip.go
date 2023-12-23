@@ -482,11 +482,15 @@ func (c *Controller) handleUpdateVirtualParents(key string) error {
 func (c *Controller) subnetCountIP(subnet *kubeovnv1.Subnet) error {
 	var err error
 	if util.CheckProtocol(subnet.Spec.CIDRBlock) == kubeovnv1.ProtocolDual {
-		err = calcDualSubnetStatusIP(subnet, c)
+		_, err = c.calcDualSubnetStatusIP(subnet)
 	} else {
-		err = calcSubnetStatusIP(subnet, c)
+		_, err = c.calcSubnetStatusIP(subnet)
 	}
-	return err
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
+	return nil
 }
 
 func (c *Controller) createOrUpdateCrdVip(key, ns, subnet, v4ip, v6ip, mac, pV4ip, pV6ip, pmac string) error {
