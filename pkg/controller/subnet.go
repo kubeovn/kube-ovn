@@ -94,6 +94,7 @@ func (c *Controller) enqueueUpdateSubnet(old, new interface{}) {
 		oldSubnet.Spec.IPv6RAConfigs != newSubnet.Spec.IPv6RAConfigs ||
 		oldSubnet.Spec.Protocol != newSubnet.Spec.Protocol ||
 		!reflect.DeepEqual(oldSubnet.Spec.Acls, newSubnet.Spec.Acls) ||
+		oldSubnet.Spec.Vpc != newSubnet.Spec.Vpc ||
 		oldSubnet.Spec.U2OInterconnection != newSubnet.Spec.U2OInterconnection ||
 		(newSubnet.Spec.U2OInterconnection && newSubnet.Spec.U2OInterconnectionIP != "" &&
 			oldSubnet.Spec.U2OInterconnectionIP != newSubnet.Spec.U2OInterconnectionIP) {
