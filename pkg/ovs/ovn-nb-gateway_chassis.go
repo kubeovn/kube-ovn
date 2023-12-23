@@ -118,7 +118,7 @@ func (c *OVNNbClient) CreateGatewayChassisesOp(lrpName string, chassises []strin
 
 	for i, chassisName := range chassises {
 		gwChassisName := lrpName + "-" + chassisName
-		gwChassis, err := c.GetGatewayChassis(chassisName, true)
+		gwChassis, err := c.GetGatewayChassis(gwChassisName, true)
 		if err != nil {
 			klog.Error(err)
 			return nil, err
