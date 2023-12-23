@@ -71,7 +71,7 @@ func (c *Controller) enqueueUpdateSubnet(old, new interface{}) {
 		usingIPs = newSubnet.Status.V4UsingIPs
 	}
 	u2oInterconnIP := newSubnet.Status.U2OInterconnectionIP
-	if !newSubnet.DeletionTimestamp.IsZero() && usingIPs == 0 || (usingIPs == 1 && u2oInterconnIP != "") {
+	if !newSubnet.DeletionTimestamp.IsZero() && (usingIPs == 0 || (usingIPs == 1 && u2oInterconnIP != "")) {
 		c.addOrUpdateSubnetQueue.Add(key)
 		return
 	}
@@ -94,6 +94,7 @@ func (c *Controller) enqueueUpdateSubnet(old, new interface{}) {
 		oldSubnet.Spec.IPv6RAConfigs != newSubnet.Spec.IPv6RAConfigs ||
 		oldSubnet.Spec.Protocol != newSubnet.Spec.Protocol ||
 		!reflect.DeepEqual(oldSubnet.Spec.Acls, newSubnet.Spec.Acls) ||
+		oldSubnet.Spec.Vpc != newSubnet.Spec.Vpc ||
 		oldSubnet.Spec.U2OInterconnection != newSubnet.Spec.U2OInterconnection ||
 		(newSubnet.Spec.U2OInterconnection && newSubnet.Spec.U2OInterconnectionIP != "" &&
 			oldSubnet.Spec.U2OInterconnectionIP != newSubnet.Spec.U2OInterconnectionIP) {
