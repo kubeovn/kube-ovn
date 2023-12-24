@@ -18,7 +18,7 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-func (c *Controller) enqueueAddOrDelIP(obj interface{}) {
+func (c *Controller) enqueueAddIP(obj interface{}) {
 	ipObj, ok := obj.(*kubeovnv1.IP)
 	if !ok {
 		klog.Errorf("object is not an IP, ignore it")
