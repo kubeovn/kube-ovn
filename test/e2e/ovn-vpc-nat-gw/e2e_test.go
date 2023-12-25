@@ -969,7 +969,6 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 			fip := makeOvnFip(fipOnNodeName, eipOnNodeName, "", ip.Name, "", "")
 			_ = ovnFipClient.CreateSync(fip)
 		}
-
 		// wait here to have an insight into all the ovn nat resources
 		ginkgo.By("5. Deleting pod")
 		for _, node := range nodeNames {

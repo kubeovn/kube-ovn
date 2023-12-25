@@ -152,6 +152,8 @@ const (
 	SubnetAllowPriority = "1001"
 	DefaultDropPriority = "1000"
 
+	GwChassisMaxPriority = 100
+
 	DefaultMTU = 1500
 
 	GeneveHeaderLength = 100

@@ -39,8 +39,8 @@ func (suite *OvnClientTestSuite) testListBFD() {
 
 	ovnClient := suite.ovnClient
 	lrpName := "test-list-bfd"
-	dstIP1 := "192.168.124.1"
-	dstIP2 := "192.168.124.2"
+	dstIP1 := "192.168.124.2"
+	dstIP2 := "192.168.124.3"
 	minRx1, minTx1, detectMult1 := 101, 102, 19
 	minRx2, minTx2, detectMult2 := 201, 202, 29
 
@@ -55,17 +55,17 @@ func (suite *OvnClientTestSuite) testListBFD() {
 		require.NoError(t, err)
 		require.NotNil(t, bfd2)
 
-		bfdList, err := ovnClient.ListBFD(lrpName, dstIP1)
+		bfdList, err := ovnClient.ListBFDs(lrpName, dstIP1)
 		require.NoError(t, err)
 		require.Len(t, bfdList, 1)
 		require.Equal(t, bfd1.UUID, bfdList[0].UUID)
 
-		bfdList, err = ovnClient.ListBFD(lrpName, dstIP2)
+		bfdList, err = ovnClient.ListBFDs(lrpName, dstIP2)
 		require.NoError(t, err)
 		require.Len(t, bfdList, 1)
 		require.Equal(t, bfd2.UUID, bfdList[0].UUID)
 
-		bfdList, err = ovnClient.ListBFD(lrpName, "")
+		bfdList, err = ovnClient.ListBFDs(lrpName, "")
 		require.NoError(t, err)
 		require.Len(t, bfdList, 2)
 		uuids := strset.NewWithSize(len(bfdList))
@@ -82,8 +82,8 @@ func (suite *OvnClientTestSuite) testDeleteBFD() {
 
 	ovnClient := suite.ovnClient
 	lrpName := "test-list-bfd"
-	dstIP1 := "192.168.124.1"
-	dstIP2 := "192.168.124.2"
+	dstIP1 := "192.168.124.4"
+	dstIP2 := "192.168.124.5"
 	minRx1, minTx1, detectMult1 := 101, 102, 19
 	minRx2, minTx2, detectMult2 := 201, 202, 29
 
@@ -97,11 +97,11 @@ func (suite *OvnClientTestSuite) testDeleteBFD() {
 		err = ovnClient.DeleteBFD(lrpName, dstIP1)
 		require.NoError(t, err)
 
-		bfdList, err := ovnClient.ListBFD(lrpName, dstIP1)
+		bfdList, err := ovnClient.ListBFDs(lrpName, dstIP1)
 		require.NoError(t, err)
 		require.Len(t, bfdList, 0)
 
-		bfdList, err = ovnClient.ListBFD(lrpName, dstIP2)
+		bfdList, err = ovnClient.ListBFDs(lrpName, dstIP2)
 		require.NoError(t, err)
 		require.Len(t, bfdList, 1)
 		require.Equal(t, bfd2.UUID, bfdList[0].UUID)
@@ -111,7 +111,7 @@ func (suite *OvnClientTestSuite) testDeleteBFD() {
 		err = ovnClient.DeleteBFD(lrpName, "")
 		require.NoError(t, err)
 
-		bfdList, err := ovnClient.ListBFD(lrpName, "")
+		bfdList, err := ovnClient.ListBFDs(lrpName, "")
 		require.NoError(t, err)
 		require.Len(t, bfdList, 0)
 	})

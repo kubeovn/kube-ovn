@@ -1051,9 +1051,15 @@ func (c *Controller) startWorkers(ctx context.Context) {
 		c.SynRouteToPolicy()
 	}, 5*time.Second, ctx.Done())
 
-	go wait.Until(func() {
-		c.resyncExternalGateway()
-	}, time.Second, ctx.Done())
+	if c.config.EnableEipSnat {
+		go wait.Until(func() {
+			// init l3 about the default vpc external lrp binding to the gw chassis
+			c.resyncExternalGateway()
+		}, time.Second, ctx.Done())
+
+		// maintain l3 ha about the vpc external lrp binding to the gw chassis
+		c.OVNNbClient.MonitorBFD()
+	}
 
 	go wait.Until(func() {
 		c.resyncVpcNatGwConfig()

@@ -317,9 +317,19 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		return err
 	}
 
+	var externalSubnet *kubeovnv1.Subnet
+	externalSubnetExist := false
+	if c.config.EnableEipSnat {
+		externalSubnet, err = c.subnetsLister.Get(c.config.ExternalGatewaySwitch)
+		if err != nil {
+			klog.Errorf("failed to get external subnet %s: %v", c.config.ExternalGatewaySwitch, err)
+		} else {
+			externalSubnetExist = true
+		}
+	}
+
 	staticRouteMapping = c.getRouteTablesByVpc(vpc)
 	staticTargetRoutes = vpc.Spec.StaticRoutes
-
 	if vpc.Name == c.config.ClusterRouter {
 		if _, ok := staticRouteMapping[util.MainRouteTable]; !ok {
 			staticRouteMapping[util.MainRouteTable] = nil
@@ -359,15 +369,14 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 				)
 			}
 		}
-
 		if c.config.EnableEipSnat {
 			cm, err := c.configMapsLister.ConfigMaps(c.config.ExternalGatewayConfigNS).Get(util.ExternalGatewayConfig)
 			if err == nil {
 				nextHop := cm.Data["external-gw-addr"]
 				if nextHop == "" {
-					externalSubnet, err := c.subnetsLister.Get(c.config.ExternalGatewaySwitch)
-					if err != nil {
-						klog.Errorf("failed to get subnet %s, %v", c.config.ExternalGatewaySwitch, err)
+					if !externalSubnetExist {
+						err = fmt.Errorf("failed to get external subnet %s", c.config.ExternalGatewaySwitch)
+						klog.Error(err)
 						return err
 					}
 					nextHop = externalSubnet.Spec.Gateway
@@ -530,14 +539,27 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		klog.Error(err)
 		return err
 	}
-
+	custVpcEnableExternalMultiHopEcmp := false
 	for _, subnet := range subnets {
 		if subnet.Spec.Vpc == key {
 			c.addOrUpdateSubnetQueue.Add(subnet.Name)
+			if vpc.Name != util.DefaultVpc && vpc.Spec.EnableBfd && subnet.Spec.EnableEcmp {
+				custVpcEnableExternalMultiHopEcmp = true
+			}
 		}
 	}
+
 	if vpc.Name != util.DefaultVpc {
 		if cachedVpc.Spec.EnableExternal {
+			if !externalSubnetExist {
+				err = fmt.Errorf("failed to get external subnet %s", c.config.ExternalGatewaySwitch)
+				klog.Error(err)
+				return err
+			}
+			if externalSubnet.Spec.LogicalGateway {
+				klog.Infof("no need to hanlde external connection for logical gw external subnet %s", c.config.ExternalGatewaySwitch)
+				return nil
+			}
 			if !cachedVpc.Status.EnableExternal {
 				// connect vpc to default external
 				klog.Infof("connect external network with vpc %s", vpc.Name)
@@ -547,11 +569,24 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 				}
 			}
 			if vpc.Spec.EnableBfd {
-				klog.Infof("remove normal static ecmp route for vpc %s", vpc.Name)
-				// auto remove normal type static route, if using ecmp based bfd
-				if err := c.reconcileCustomVpcDelNormalStaticRoute(vpc.Name); err != nil {
-					klog.Errorf("failed to reconcile del vpc %q normal static route", vpc.Name)
+				// create bfd between lrp and physical switch gw
+				// bfd status down means current lrp binding chassis node external nic lost external network connectivity
+				// should switch lrp to another node
+				lrpEipName := fmt.Sprintf("%s-%s", key, c.config.ExternalGatewaySwitch)
+				v4ExtGw, _ := util.SplitStringIP(externalSubnet.Spec.Gateway)
+				// TODO: dualstack
+				if _, err := c.OVNNbClient.CreateBFD(lrpEipName, v4ExtGw, c.config.BfdMinRx, c.config.BfdMinTx, c.config.BfdDetectMult); err != nil {
+					klog.Error(err)
 					return err
+				}
+				// TODO: support multi external nic
+				if custVpcEnableExternalMultiHopEcmp {
+					klog.Infof("remove normal static ecmp route for vpc %s", vpc.Name)
+					// auto remove normal type static route, if using ecmp based bfd
+					if err := c.reconcileCustomVpcDelNormalStaticRoute(vpc.Name); err != nil {
+						klog.Errorf("failed to reconcile del vpc %q normal static route", vpc.Name)
+						return err
+					}
 				}
 			}
 			if !vpc.Spec.EnableBfd {
@@ -1096,23 +1131,22 @@ func (c *Controller) handleAddVpcExternalSubnet(key, subnet string) error {
 	// init lrp gw chassis group
 	chassises := []string{}
 	sel, _ := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{MatchLabels: map[string]string{util.ExGatewayLabel: "true"}})
-	nodes, err := c.nodesLister.List(sel)
+	gwNodes, err := c.nodesLister.List(sel)
 	if err != nil {
 		klog.Errorf("failed to list external gw nodes, %v", err)
 		return err
 	}
-	for _, gw := range nodes {
-		node := gw.DeepCopy()
-		annoChassisName := node.Annotations[util.ChassisAnnotation]
+	for _, gwNode := range gwNodes {
+		annoChassisName := gwNode.Annotations[util.ChassisAnnotation]
 		if annoChassisName == "" {
-			err := fmt.Errorf("node %s has no chassis annotation, kube-ovn-cni not ready", gw)
+			err := fmt.Errorf("node %s has no chassis annotation, kube-ovn-cni not ready", gwNode.Name)
 			klog.Error(err)
 			return err
 		}
-		klog.Infof("get node %s chassis: %s", gw, annoChassisName)
+		klog.Infof("get node %s chassis: %s", gwNode.Name, annoChassisName)
 		chassis, err := c.OVNSbClient.GetChassis(annoChassisName, false)
 		if err != nil {
-			klog.Errorf("failed to get node %s chassis: %s, %v", node.Name, annoChassisName, err)
+			klog.Errorf("failed to get node %s chassis: %s, %v", gwNode.Name, annoChassisName, err)
 			return err
 		}
 		chassises = append(chassises, chassis.Name)
