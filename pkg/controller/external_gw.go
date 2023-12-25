@@ -92,13 +92,14 @@ func (c *Controller) removeExternalGateway() error {
 		if len(no.Labels) == 0 {
 			op = "add"
 		}
-		no.Labels[util.ExGatewayLabel] = "false"
-		raw, _ := json.Marshal(no.Labels)
-		patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
-		_, err = c.config.KubeClient.CoreV1().Nodes().Patch(context.Background(), no.Name, types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{}, "")
-		if err != nil {
-			klog.Errorf("patch external gw node %s failed %v", no.Name, err)
-			return err
+		if no.Labels[util.ExGatewayLabel] != "false" {
+			no.Labels[util.ExGatewayLabel] = "false"
+			raw, _ := json.Marshal(no.Labels)
+			patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
+			if _, err = c.config.KubeClient.CoreV1().Nodes().Patch(context.Background(), no.Name, types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{}, ""); err != nil {
+				klog.Errorf("patch external gw node %s failed %v", no.Name, err)
+				return err
+			}
 		}
 	}
 
@@ -216,7 +217,7 @@ func (c *Controller) getGatewayChassis(config map[string]string) ([]string, erro
 	nodes, err := c.nodesLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list nodes, %v", err)
-		return chassises, err
+		return nil, err
 	}
 	gwNodes := make([]string, 0, len(nodes))
 	for _, node := range nodes {
@@ -238,7 +239,7 @@ func (c *Controller) getGatewayChassis(config map[string]string) ([]string, erro
 		cachedNode, err := c.nodesLister.Get(gw)
 		if err != nil {
 			klog.Errorf("failed to get gw node %s, %v", gw, err)
-			return chassises, err
+			return nil, err
 		}
 		node := cachedNode.DeepCopy()
 		patchPayloadTemplate := `[{
@@ -250,31 +251,33 @@ func (c *Controller) getGatewayChassis(config map[string]string) ([]string, erro
 		if len(node.Labels) == 0 {
 			op = "add"
 		}
-		node.Labels[util.ExGatewayLabel] = "true"
-		raw, _ := json.Marshal(node.Labels)
-		patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
-		_, err = c.config.KubeClient.CoreV1().Nodes().Patch(context.Background(), gw, types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{}, "")
-		if err != nil {
-			klog.Errorf("patch external gw node %s failed %v", gw, err)
-			return chassises, err
+		if node.Labels[util.ExGatewayLabel] != "true" {
+			node.Labels[util.ExGatewayLabel] = "true"
+			raw, _ := json.Marshal(node.Labels)
+			patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
+			if _, err = c.config.KubeClient.CoreV1().Nodes().Patch(context.Background(), gw, types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{}, ""); err != nil {
+				klog.Errorf("patch external gw node %s failed %v", gw, err)
+				return nil, err
+			}
 		}
 		annoChassisName := node.Annotations[util.ChassisAnnotation]
 		if annoChassisName == "" {
 			err := fmt.Errorf("node %s has no chassis annotation, kube-ovn-cni not ready", gw)
 			klog.Error(err)
-			return chassises, err
+			return nil, err
 		}
 		klog.Infof("get node %s chassis: %s", gw, annoChassisName)
 		chassis, err := c.OVNSbClient.GetChassis(annoChassisName, false)
 		if err != nil {
 			klog.Errorf("failed to get node %s chassis: %s, %v", node.Name, annoChassisName, err)
-			return chassises, err
+			return nil, err
 		}
 		chassises = append(chassises, chassis.Name)
 	}
 	if len(chassises) == 0 {
-		klog.Error("no available external gw")
-		return chassises, fmt.Errorf("no available external gw")
+		err := fmt.Errorf("no available external gw")
+		klog.Error(err)
+		return nil, err
 	}
 	return chassises, nil
 }

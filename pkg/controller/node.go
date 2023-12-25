@@ -195,6 +195,7 @@ func (c *Controller) handleAddNode(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Errorf("failed to get node %s: %v", key, err)
 		return err
 	}
 	node := cachedNode.DeepCopy()
@@ -252,6 +253,7 @@ func (c *Controller) handleAddNode(key string) error {
 
 	ipStr := util.GetStringIP(v4IP, v6IP)
 	if err := c.OVNNbClient.CreateBareLogicalSwitchPort(c.config.NodeSwitch, portName, ipStr, mac); err != nil {
+		klog.Errorf("failed to create logical switch port %s: %v", portName, err)
 		return err
 	}
 
@@ -290,11 +292,13 @@ func (c *Controller) handleAddNode(key string) error {
 			}
 
 			if err = c.deletePolicyRouteForLocalDNSCacheOnNode(node.Name, af); err != nil {
+				klog.Errorf("failed to delete policy route for node %s: %v", node.Name, err)
 				return err
 			}
 
 			if c.config.NodeLocalDNSIP != "" {
 				if err = c.addPolicyRouteForLocalDNSCacheOnNode(portName, ip, node.Name, af); err != nil {
+					klog.Errorf("failed to add policy route for node %s: %v", node.Name, err)
 					return err
 				}
 			}
@@ -366,10 +370,15 @@ func (c *Controller) handleAddNode(key string) error {
 	}
 
 	if err := c.UpdateChassisTag(node); err != nil {
+		klog.Errorf("failed to update chassis tag for node %s: %v", node.Name, err)
 		return err
 	}
 
-	return c.retryDelDupChassis(util.ChasRetryTime, util.ChasRetryIntev+2, c.cleanDuplicatedChassis, node)
+	if err := c.retryDelDupChassis(util.ChassisRetryMaxTimes, util.ChassisControllerRetryInterval, c.cleanDuplicatedChassis, node); err != nil {
+		klog.Errorf("failed to clean duplicated chassis for node %s: %v", node.Name, err)
+		return err
+	}
+	return nil
 }
 
 func (c *Controller) handleNodeAnnotationsForProviderNetworks(node *v1.Node) error {
@@ -598,6 +607,7 @@ func (c *Controller) handleUpdateNode(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Errorf("failed to get node %s: %v", key, err)
 		return err
 	}
 
@@ -613,9 +623,11 @@ func (c *Controller) handleUpdateNode(key string) error {
 	}
 
 	if err := c.UpdateChassisTag(node); err != nil {
+		klog.Errorf("failed to update chassis tag for node %s: %v", node.Name, err)
 		return err
 	}
-	if err := c.retryDelDupChassis(util.ChasRetryTime, util.ChasRetryIntev+2, c.cleanDuplicatedChassis, node); err != nil {
+	if err := c.retryDelDupChassis(util.ChassisRetryMaxTimes, util.ChassisControllerRetryInterval, c.cleanDuplicatedChassis, node); err != nil {
+		klog.Errorf("failed to clean duplicated chassis for node %s: %v", node.Name, err)
 		return err
 	}
 
@@ -868,6 +880,7 @@ func (c *Controller) retryDelDupChassis(attempts, sleep int, f func(node *v1.Nod
 		if err == nil {
 			return
 		}
+		klog.Errorf("failed to delete duplicated chassis for node %s: %v", node.Name, err)
 		if i >= (attempts - 1) {
 			break
 		}
