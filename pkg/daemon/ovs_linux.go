@@ -620,11 +620,18 @@ func (c *Controller) loopOvnExt0Check() {
 	cachedEip, err := c.ovnEipsLister.Get(portName)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
-			if val, ok := node.Labels[util.NodeExtGwLabel]; !ok || (val == "false") {
-				// not gw node or already clean
+			val, ok := node.Labels[util.NodeExtGwLabel]
+			if !ok {
+				// not gw node before
 				return
 			}
-			needClean = true
+			if val == "false" {
+				// already clean
+				return
+			}
+			if val == "true" {
+				needClean = true
+			}
 		} else {
 			klog.Errorf("failed to get ecmp gateway ovn eip, %v", err)
 			return

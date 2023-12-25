@@ -202,11 +202,14 @@ const (
 	InternalType = "internal-port"
 	DpdkType     = "dpdk-port"
 
-	HostnameEnv    = "KUBE_NODE_NAME"
-	ChasRetryTime  = 5
-	ChasRetryIntev = 1
-	VM             = "VirtualMachine"
-	VMInstance     = "VirtualMachineInstance"
+	HostnameEnv = "KUBE_NODE_NAME"
+
+	ChassisRetryMaxTimes           = 5
+	ChassisCniDaemonRetryInterval  = 1
+	ChassisControllerRetryInterval = 3
+
+	VM         = "VirtualMachine"
+	VMInstance = "VirtualMachineInstance"
 
 	MirrorControlAnnotation = "ovn.kubernetes.io/mirror"
 	MirrorDefaultName       = "m0"
