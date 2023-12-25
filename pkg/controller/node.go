@@ -374,7 +374,7 @@ func (c *Controller) handleAddNode(key string) error {
 		return err
 	}
 
-	if err := c.retryDelDupChassis(util.ChasRetryTime, util.ChasCtrlRetryIntev, c.cleanDuplicatedChassis, node); err != nil {
+	if err := c.retryDelDupChassis(util.ChassisRetryMaxTimes, util.ChassisControllerRetryInterval, c.cleanDuplicatedChassis, node); err != nil {
 		klog.Errorf("failed to clean duplicated chassis for node %s: %v", node.Name, err)
 		return err
 	}
@@ -626,7 +626,7 @@ func (c *Controller) handleUpdateNode(key string) error {
 		klog.Errorf("failed to update chassis tag for node %s: %v", node.Name, err)
 		return err
 	}
-	if err := c.retryDelDupChassis(util.ChasRetryTime, util.ChasCtrlRetryIntev, c.cleanDuplicatedChassis, node); err != nil {
+	if err := c.retryDelDupChassis(util.ChassisRetryMaxTimes, util.ChassisControllerRetryInterval, c.cleanDuplicatedChassis, node); err != nil {
 		klog.Errorf("failed to clean duplicated chassis for node %s: %v", node.Name, err)
 		return err
 	}

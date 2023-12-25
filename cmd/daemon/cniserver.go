@@ -49,7 +49,7 @@ func CmdMain() {
 		util.LogFatalAndExit(err, "failed to initialize config")
 	}
 
-	if err := Retry(util.ChasRetryTime, util.ChasCnidRetryIntev, initChassisAnno, config); err != nil {
+	if err := Retry(util.ChassisRetryMaxTimes, util.ChassisCniDaemonRetryInterval, initChassisAnno, config); err != nil {
 		util.LogFatalAndExit(err, "failed to initialize ovn chassis annotation")
 	}
 
