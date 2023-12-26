@@ -3833,20 +3833,6 @@ func (mr *MockNbClientMockRecorder) LogicalSwitchUpdateLoadBalancers(lsName, op 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LogicalSwitchUpdateLoadBalancers", reflect.TypeOf((*MockNbClient)(nil).LogicalSwitchUpdateLoadBalancers), varargs...)
 }
 
-// LogicalSwitchUpdateOtherConfig mocks base method.
-func (m *MockNbClient) LogicalSwitchUpdateOtherConfig(lsName string, op ovsdb.Mutator, otherConfig map[string]string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "LogicalSwitchUpdateOtherConfig", lsName, op, otherConfig)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// LogicalSwitchUpdateOtherConfig indicates an expected call of LogicalSwitchUpdateOtherConfig.
-func (mr *MockNbClientMockRecorder) LogicalSwitchUpdateOtherConfig(lsName, op, otherConfig interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LogicalSwitchUpdateOtherConfig", reflect.TypeOf((*MockNbClient)(nil).LogicalSwitchUpdateOtherConfig), lsName, op, otherConfig)
-}
-
 // MonitorBFD mocks base method.
 func (m *MockNbClient) MonitorBFD() {
 	m.ctrl.T.Helper()
