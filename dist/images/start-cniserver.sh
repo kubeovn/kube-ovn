@@ -6,6 +6,7 @@ OVS_SOCK=/run/openvswitch/db.sock
 ENABLE_SSL=${ENABLE_SSL:-false}
 SYSCTL_NF_CONNTRACK_TCP_BE_LIBERAL=${SYSCTL_NF_CONNTRACK_TCP_BE_LIBERAL:-1}
 SYSCTL_IPV4_NEIGH_DEFAULT_GC_THRESH=${SYSCTL_IPV4_NEIGH_DEFAULT_GC_THRESH:-"1024 2048 4096"}
+SYSCTL_IPV6_ADDR_GEN_MODE=$(SYSCTL_IPV6_ADDR_GEN_MODE:-0)
 
 # usage: set_sysctl key value
 function set_sysctl {
@@ -54,5 +55,8 @@ set_sysctl net.ipv4.neigh.default.gc_thresh1 $gc_thresh1
 set_sysctl net.ipv4.neigh.default.gc_thresh2 $gc_thresh2
 set_sysctl net.ipv4.neigh.default.gc_thresh3 $gc_thresh3
 set_sysctl net.netfilter.nf_conntrack_tcp_be_liberal $SYSCTL_NF_CONNTRACK_TCP_BE_LIBERAL
+set_sysctl net.ipv6.conf.br-int.addr_gen_mode $SYSCTL_IPV6_ADDR_GEN_MODE
+set_sysctl net.ipv6.conf.mirror0.addr_gen_mode $SYSCTL_IPV6_ADDR_GEN_MODE
+set_sysctl net.ipv6.conf.ovn0.addr_gen_mode $SYSCTL_IPV6_ADDR_GEN_MODE
 
 ./kube-ovn-daemon --ovs-socket=${OVS_SOCK} --bind-socket=${CNI_SOCK} "$@"
