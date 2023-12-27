@@ -475,6 +475,15 @@ func configureNodeNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu int
 		return fmt.Errorf(raw)
 	}
 
+	value, err := sysctl.Sysctl(fmt.Sprintf("net.ipv6.conf.%s.addr_gen_mode", util.NodeNic))
+	if err == nil {
+		if value != "0" {
+			if _, err = sysctl.Sysctl(fmt.Sprintf("net.ipv6.conf.%s.addr_gen_mode", util.NodeNic), "0"); err != nil {
+				return fmt.Errorf("failed to set ovn0 addr_gen_mode: %v", err)
+			}
+		}
+	}
+
 	if err = configureNic(util.NodeNic, ip, macAddr, mtu, false); err != nil {
 		return err
 	}
