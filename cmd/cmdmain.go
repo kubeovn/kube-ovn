@@ -55,7 +55,7 @@ func dumpProfile() {
 				}
 				return
 			}
-			defer f.Close()
+			defer f.Close() // #nosec G307
 			time.Sleep(30 * time.Second)
 			pprof.StopCPUProfile()
 			if err = f.Close(); err != nil {
@@ -85,7 +85,7 @@ func dumpProfile() {
 				klog.Errorf("failed to close file %q: %v", path, err)
 				return
 			}
-			defer f.Close()
+			defer f.Close() // #nosec G307
 		}
 	}()
 }
