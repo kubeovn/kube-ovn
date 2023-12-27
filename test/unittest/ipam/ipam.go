@@ -193,6 +193,26 @@ var _ = Describe("[IPAM]", func() {
 				_, _, _, err = im.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil, true)
 				Expect(err).Should(MatchError(ipam.ErrNoAvailable))
 			})
+
+			It("do not count excludedIps as subnet's v4availableIPs and v4usingIPs", func() {
+				im := ipam.NewIPAM()
+				err := im.AddOrUpdateSubnet(subnetName, "10.16.10.0/28", "10.16.10.1", []string{"10.16.10.1", "10.16.10.10"})
+				Expect(err).ShouldNot(HaveOccurred())
+
+				ip, _, _, err := im.GetStaticAddress("pod1.ns", "pod1.ns", "10.16.10.10", nil, subnetName, true)
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(ip).To(Equal("10.16.10.10"))
+
+				v4UsingIPStr, _, v4AvailableIPStr, _ := im.GetSubnetIPRangeString(subnetName, []string{"10.16.10.10"})
+				Expect(v4UsingIPStr).To(Equal(""))
+				Expect(v4AvailableIPStr).To(Equal("10.16.10.2-10.16.10.9,10.16.10.11-10.16.10.14"))
+
+				err = im.AddOrUpdateSubnet(subnetName, "10.16.10.0/28", "10.16.10.1", []string{"10.16.10.1"})
+				Expect(err).ShouldNot(HaveOccurred())
+				v4UsingIPStr, _, v4AvailableIPStr, _ = im.GetSubnetIPRangeString(subnetName, nil)
+				Expect(v4UsingIPStr).To(Equal("10.16.10.10"))
+				Expect(v4AvailableIPStr).To(Equal("10.16.10.2-10.16.10.9,10.16.10.11-10.16.10.14"))
+			})
 		})
 
 		Context("[IPv6]", func() {
