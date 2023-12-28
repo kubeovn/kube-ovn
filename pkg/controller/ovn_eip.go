@@ -360,14 +360,12 @@ func (c *Controller) handleDelOvnEip(key string) error {
 			return err
 		}
 	}
-
-	c.ipam.ReleaseAddressByPod(eip.Name, eip.Spec.ExternalSubnet)
-	c.updateSubnetStatusQueue.Add(eip.Spec.ExternalSubnet)
-
 	if err = c.handleDelOvnEipFinalizer(eip, util.ControllerName); err != nil {
 		klog.Errorf("failed to handle remove ovn eip finalizer , %v", err)
 		return err
 	}
+	c.ipam.ReleaseAddressByPod(eip.Name, eip.Spec.ExternalSubnet)
+	c.updateSubnetStatusQueue.Add(eip.Spec.ExternalSubnet)
 	return nil
 }
 
