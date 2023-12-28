@@ -29,7 +29,7 @@ require (
 	github.com/ovn-org/libovsdb v0.0.0-20230711201130-6785b52d4020
 	github.com/parnurzeal/gorequest v0.2.16
 	github.com/prometheus-community/pro-bing v0.3.0
-	github.com/prometheus/client_golang v1.17.0
+	github.com/prometheus/client_golang v1.18.0
 	github.com/scylladb/go-set v1.0.2
 	github.com/sirupsen/logrus v1.9.3
 	github.com/spf13/pflag v1.0.5
