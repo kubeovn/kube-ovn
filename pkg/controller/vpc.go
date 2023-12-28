@@ -1119,16 +1119,6 @@ func (c *Controller) handleAddVpcExternalSubnet(key, subnet string) error {
 			klog.Errorf("failed to create ovn eip for lrp %s: %v", lrpEipName, err)
 			return err
 		}
-		cachedEip, err := c.ovnEipsLister.Get(key)
-		if err != nil {
-			err := fmt.Errorf("failed to get ovn eip %s, %v", key, err)
-			klog.Error(err)
-			return err
-		}
-		if err = c.handleAddOvnEipFinalizer(cachedEip, util.ControllerName); err != nil {
-			klog.Errorf("failed to add finalizer for ovn eip, %v", err)
-			return err
-		}
 	} else {
 		v4ip = cachedEip.Spec.V4Ip
 		mac = cachedEip.Spec.MacAddress

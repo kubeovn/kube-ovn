@@ -251,11 +251,6 @@ func (c *Controller) handleAddOvnSnatRule(key string) error {
 		return err
 	}
 
-	// create snat
-	if err = c.handleAddOvnEipFinalizer(cachedEip, util.ControllerName); err != nil {
-		klog.Errorf("failed to add finalizer for ovn eip, %v", err)
-		return err
-	}
 	// about conflicts: if multi vpc snat use the same eip, if only one gw node exist, it may should work
 	if err = c.OVNNbClient.AddNat(vpcName, ovnnb.NATTypeSNAT, cachedEip.Spec.V4Ip, v4IpCidr, "", "", nil); err != nil {
 		klog.Errorf("failed to create snat, %v", err)
