@@ -19,10 +19,6 @@ for vd in $(kubectl  get vpc-dns -o name); do
   kubectl delete --ignore-not-found $vd
 done
 
-for ip in $(kubectl get ip -o name); do
-   kubectl delete --ignore-not-found $ip
-done
-
 for vip in $(kubectl get vip -o name); do
    kubectl delete --ignore-not-found $vip
 done
