@@ -45,7 +45,17 @@ spec:
           command: ["/kube-ovn/start-ovs-dpdk.sh"]
           {{- else }}
           command: 
+          {{- if .Values.DISABLE_MODULES_MANAGEMENT }}
+          - /bin/sh
+          - -ec
+          - |
+              ln -sf /bin/true /usr/sbin/modprobe
+              ln -sf /bin/true /usr/sbin/modinfo
+              ln -sf /bin/true /usr/sbin/rmmod
+              exec /kube-ovn/start-ovs.sh
+          {{- else }}
           - /kube-ovn/start-ovs.sh
+          {{- end }}
           {{- end }}
           securityContext:
             runAsUser: 0
@@ -180,10 +190,10 @@ spec:
             path: /sys
         - name: host-config-openvswitch
           hostPath:
-            path: /etc/origin/openvswitch
+            path: {{ .Values.OPENVSWITCH_DIR }}
         - name: host-config-ovn
           hostPath:
-            path: /etc/origin/ovn
+            path: {{ .Values.OVN_DIR }}
         - name: host-log-ovs
           hostPath:
             path: {{ .Values.log_conf.LOG_DIR }}/openvswitch

@@ -39,8 +39,10 @@ spec:
         volumeMounts:
           - mountPath: /opt/cni/bin
             name: cni-bin
+          {{- if .Values.cni_conf.MOUNT_LOCAL_BIN_DIR }}
           - mountPath: /usr/local/bin
             name: local-bin
+          {{- end }}
       containers:
       - name: cni-server
         image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}
@@ -172,7 +174,7 @@ spec:
             path: {{ .Values.kubelet_conf.KUBELET_DIR }}/pods
         - name: systemid
           hostPath:
-            path: /etc/origin/openvswitch
+            path: {{ .Values.OPENVSWITCH_DIR }}
         - name: host-run-ovs
           hostPath:
             path: /run/openvswitch
@@ -206,6 +208,8 @@ spec:
         - name: tmp
           hostPath:
             path: /tmp
+        {{- if .Values.cni_conf.MOUNT_LOCAL_BIN_DIR }}
         - name: local-bin
           hostPath:
-            path: /usr/local/bin
+            path: {{ .Values.cni_conf.MOUNT_LOCAL_BIN_DIR }}
+        {{- end }}

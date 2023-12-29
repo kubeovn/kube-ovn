@@ -108,12 +108,18 @@ cni_conf:
   CNI_CONF_DIR: "/etc/cni/net.d"
   CNI_BIN_DIR: "/opt/cni/bin"
   CNI_CONF_FILE: "/kube-ovn/01-kube-ovn.conflist"
+  LOCAL_BIN_DIR: "/usr/local/bin"
+  MOUNT_LOCAL_BIN_DIR: false
 
 kubelet_conf:
   KUBELET_DIR: "/var/lib/kubelet"
 
 log_conf:
   LOG_DIR: "/var/log"
+
+OPENVSWITCH_DIR: "/etc/origin/openvswitch"
+OVN_DIR: "/etc/origin/ovn"
+DISABLE_MODULES_MANAGEMENT: false
   
 imagePullSecrets: []
 nameOverride: ""
