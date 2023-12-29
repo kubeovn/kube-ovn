@@ -1255,13 +1255,13 @@ func (c *Controller) reconcileNamespaces(subnet *kubeovnv1.Subnet) error {
 func (c *Controller) reconcileCustomVpcBfdStaticRoute(vpcName, subnetName string) error {
 	// vpc enable bfd and subnet enable ecmp
 	// use static ecmp route with bfd
-	ovnEips, err := c.ovnEipsLister.List(labels.SelectorFromSet(labels.Set{util.OvnEipTypeLabel: util.Lsp}))
+	ovnEips, err := c.ovnEipsLister.List(labels.SelectorFromSet(labels.Set{util.OvnEipTypeLabel: util.OvnEipTypeLSP}))
 	if err != nil {
 		klog.Errorf("failed to list node external ovn eip, %v", err)
 		return err
 	}
 	if len(ovnEips) < 2 {
-		err := fmt.Errorf("ecmp route with bfd for HA, which need two %s type eips at least, has %d", util.Lsp, len(ovnEips))
+		err := fmt.Errorf("ecmp route with bfd for HA, which need two %s type eips at least, has %d", util.OvnEipTypeLSP, len(ovnEips))
 		klog.Error(err)
 		return err
 	}

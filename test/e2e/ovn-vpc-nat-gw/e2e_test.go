@@ -830,7 +830,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 
 		for _, nodeName := range nodeNames {
 			ginkgo.By("Creating ovn node-ext-gw type eip on node " + nodeName)
-			eip := makeOvnEip(nodeName, underlaySubnetName, "", "", "", util.Lsp)
+			eip := makeOvnEip(nodeName, underlaySubnetName, "", "", "", util.OvnEipTypeLSP)
 			_ = ovnEipClient.CreateSync(eip)
 		}
 
