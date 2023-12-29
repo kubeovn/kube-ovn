@@ -18,7 +18,6 @@ image:
   pullPolicy: IfNotPresent
 
 namespace: kube-system
-replicaCount: 1
 MASTER_NODES: ""
 
 networking:
