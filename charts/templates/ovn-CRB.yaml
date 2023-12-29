@@ -9,7 +9,7 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: ovn
-    namespace: kube-system
+    namespace: {{ .Values.namespace }}
 
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -23,7 +23,7 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: ovn-ovs
-    namespace: kube-system
+    namespace: {{ .Values.namespace }}
 
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -37,7 +37,7 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: kube-ovn-cni
-    namespace: kube-system
+    namespace: {{ .Values.namespace }}
 
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -51,4 +51,4 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: kube-ovn-app
-    namespace: kube-system
+    namespace: {{ .Values.namespace }}

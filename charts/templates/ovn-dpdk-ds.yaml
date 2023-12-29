@@ -3,7 +3,7 @@ kind: DaemonSet
 apiVersion: apps/v1
 metadata:
   name: ovs-ovn-dpdk
-  namespace: kube-system
+  namespace: {{ .Values.namespace }}
   annotations:
     kubernetes.io/description: |
       This daemon set launches the openvswitch daemon.

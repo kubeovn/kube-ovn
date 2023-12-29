@@ -2,7 +2,7 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: kube-ovn-pre-delete-hook
-  namespace: kube-system
+  namespace: {{ .Values.namespace }}
   annotations:
     # This is what defines this resource as a hook. Without this line, the
     # job is considered part of the release.
@@ -48,13 +48,13 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: kube-ovn-pre-delete-hook
-    namespace: kube-system
+    namespace: {{ .Values.namespace }}
 ---
 apiVersion: batch/v1
 kind: Job
 metadata:
   name: "{{ .Chart.Name }}-pre-delete-hook"
-  namespace: kube-system
+  namespace: {{ .Values.namespace }}
   labels:
     app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
     app.kubernetes.io/instance: {{ .Release.Name | quote }}

@@ -54,7 +54,7 @@ function quit {
   revision_hash=$(kubectl -n "${POD_NAMESPACE}" get pod "${POD_NAME}" -o jsonpath='{.metadata.labels.controller-revision-hash}')
   revision=$(kubectl -n "${POD_NAMESPACE}" get controllerrevision "${gen_name}${revision_hash}" -o jsonpath='{.revision}')
   ds_name=${gen_name%-}
-  latest_revision=$(kubectl -n kube-system get controllerrevision --no-headers | awk '$2 == "daemonset.apps/'$ds_name'" {print $3}' | sort -nr | head -n1)
+  latest_revision=$(kubectl -n "${POD_NAMESPACE}" get controllerrevision --no-headers | awk '$2 == "daemonset.apps/'$ds_name'" {print $3}' | sort -nr | head -n1)
   if [ "x$latest_revision" = "x$revision" ]; then
     # stop ovn-controller/ovs only when the processes are in the same cgroup
     pid=$(/usr/share/ovn/scripts/ovn-ctl status_controller | awk '{print $NF}')

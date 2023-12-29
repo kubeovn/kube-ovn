@@ -2,7 +2,7 @@ kind: Service
 apiVersion: v1
 metadata:
   name: kube-ovn-monitor
-  namespace: kube-system
+  namespace: {{ .Values.namespace }}
   labels:
     app: kube-ovn-monitor
 spec:
