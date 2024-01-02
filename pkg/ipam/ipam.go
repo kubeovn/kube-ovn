@@ -380,16 +380,23 @@ func (ipam *IPAM) GetSubnetV4Mask(subnetName string) (string, error) {
 	return "", ErrNoAvailable
 }
 
-func (ipam *IPAM) GetSubnetIPRangeString(subnetName string) (string, string, string, string) {
+func (ipam *IPAM) GetSubnetIPRangeString(subnetName string, excludeIps []string) (string, string, string, string) {
 	ipam.mutex.RLock()
 	defer ipam.mutex.RUnlock()
 
+	// subnet.Spec.ExcludeIps contains both v4 and v6 addresses
+	v4ExcludeIps, v6ExcludeIps := util.SplitIpsByProtocol(excludeIps)
+
 	var v4UsingIPStr, v6UsingIPStr, v4AvailableIPStr, v6AvailableIPStr string
 	if subnet, ok := ipam.Subnets[subnetName]; ok {
-		v4UsingIPStr = subnet.V4Using.String()
-		v6UsingIPStr = subnet.V6Using.String()
-		v4AvailableIPStr = subnet.V4Available.String()
-		v6AvailableIPStr = subnet.V6Available.String()
+		v4Reserved, _ := NewIPRangeListFrom(v4ExcludeIps...)
+		v6Reserved, _ := NewIPRangeListFrom(v6ExcludeIps...)
+
+		// do not count ips in excludeIPs as available and using IPs
+		v4AvailableIPStr = subnet.V4Available.Separate(v4Reserved).String()
+		v6AvailableIPStr = subnet.V6Available.Separate(v6Reserved).String()
+		v4UsingIPStr = subnet.V4Using.Separate(v4Reserved).String()
+		v6UsingIPStr = subnet.V6Using.Separate(v6Reserved).String()
 	}
 
 	return v4UsingIPStr, v6UsingIPStr, v4AvailableIPStr, v6AvailableIPStr

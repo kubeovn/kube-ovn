@@ -396,6 +396,8 @@ func (s *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac *string, f
 		if pool.V4Reserved.Contains(ip) {
 			s.V4NicToIP[nicName] = ip
 			s.V4IPToPod[ip.String()] = podName
+			// ip allocated from excludeIPs should be recorded in usingIPs since when the ip is removed from excludeIPs, there's no way to update usingIPs
+			isAllocated = true
 			return ip, macStr, nil
 		}
 
@@ -431,6 +433,7 @@ func (s *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac *string, f
 		if pool.V6Reserved.Contains(ip) {
 			s.V6NicToIP[nicName] = ip
 			s.V6IPToPod[ip.String()] = podName
+			isAllocated = true
 			return ip, macStr, nil
 		}
 
