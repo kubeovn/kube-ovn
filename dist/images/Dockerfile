@@ -13,7 +13,8 @@ WORKDIR /kube-ovn
 
 RUN /kube-ovn/iptables-wrapper-installer.sh --no-sanity-check
 RUN rm -f /usr/bin/nc &&\
-    rm -f /usr/bin/netcat
+    rm -f /usr/bin/netcat &&\
+    rm -f /usr/lib/apt/methods/mirror
 RUN deluser sync
 
 COPY kube-ovn /kube-ovn/kube-ovn
