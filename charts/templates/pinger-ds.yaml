@@ -118,7 +118,7 @@ spec:
             path: /run/ovn
         - name: host-config-openvswitch
           hostPath:
-            path: /etc/origin/openvswitch
+            path: {{ .Values.OPENVSWITCH_DIR }}
         - name: host-log-ovs
           hostPath:
             path: {{ .Values.log_conf.LOG_DIR }}/openvswitch
