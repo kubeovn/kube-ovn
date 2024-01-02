@@ -7,7 +7,7 @@ metadata:
     kubernetes.io/description: |
       kube-ovn controller
 spec:
-  replicas: {{ .Values.replicaCount }}
+  replicas: {{ include "kubeovn.nodeCount" . }}
   selector:
     matchLabels:
       app: kube-ovn-controller
@@ -132,7 +132,7 @@ spec:
                 fieldRef:
                   fieldPath: spec.nodeName
             - name: OVN_DB_IPS
-              value: "{{ .Values.MASTER_NODES }}"
+              value: "{{ .Values.MASTER_NODES | default (include "kubeovn.nodeIPs" .) }}"
             - name: POD_IPS
               valueFrom:
                 fieldRef:
