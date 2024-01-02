@@ -51,6 +51,7 @@ spec:
           {{- else if eq .Values.networking.NET_STACK "ipv6" -}}
           {{ .Values.ipv6.PINGER_EXTERNAL_DOMAIN }}
           {{- end }}
+          - --ds-namespace={{ .Values.namespace }}
           - --logtostderr=false
           - --alsologtostderr=true
           - --log_file=/var/log/kube-ovn/kube-ovn-pinger.log

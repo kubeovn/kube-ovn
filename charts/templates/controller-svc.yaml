@@ -2,7 +2,7 @@ kind: Service
 apiVersion: v1
 metadata:
   name: kube-ovn-controller
-  namespace: kube-system
+  namespace: {{ .Values.namespace }}
   labels:
     app: kube-ovn-controller
 spec:

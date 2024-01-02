@@ -2,7 +2,7 @@ kind: Service
 apiVersion: v1
 metadata:
   name: ovn-northd
-  namespace: kube-system
+  namespace: {{ .Values.namespace }}
 spec:
   ports:
     - name: ovn-northd

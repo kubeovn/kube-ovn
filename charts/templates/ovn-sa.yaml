@@ -2,7 +2,7 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: ovn
-  namespace: kube-system
+  namespace: {{ .Values.namespace }}
 {{-  if .Values.global.registry.imagePullSecrets }}
 imagePullSecrets:
 {{- range $index, $secret := .Values.global.registry.imagePullSecrets }}
@@ -17,18 +17,18 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: ovn-ovs
-  namespace: kube-system
+  namespace: {{ .Values.namespace }}
 
 ---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: kube-ovn-cni
-  namespace: kube-system
+  namespace: {{ .Values.namespace }}
 
 ---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: kube-ovn-app
-  namespace: kube-system
+  namespace: {{ .Values.namespace }}

@@ -2,7 +2,7 @@ kind: Service
 apiVersion: v1
 metadata:
   name: kube-ovn-pinger
-  namespace: kube-system
+  namespace: {{ .Values.namespace }}
   labels:
     app: kube-ovn-pinger
 spec:
