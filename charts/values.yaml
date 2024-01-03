@@ -19,6 +19,7 @@ image:
 
 namespace: kube-system
 MASTER_NODES: ""
+MASTER_NODES_LABEL: "kube-ovn/role=master"
 
 networking:
   # NET_STACK could be dual_stack, ipv4, ipv6

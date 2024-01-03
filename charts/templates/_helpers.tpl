@@ -5,7 +5,13 @@ Get IP-addresses of master nodes
 {{- $nodes := lookup "v1" "Node" "" "" -}}
 {{- $ips := list -}}
 {{- range $node := $nodes.items -}}
-  {{- if eq (index $node.metadata.labels "kube-ovn/role") "master" -}}
+  {{- $label := splitList "=" $.Values.MASTER_NODES_LABEL }}
+  {{- $key := index $label 0 }}
+  {{- $val := "" }}
+  {{- if eq (len $label) 2 }}
+  {{- $val = index $label 1 }}
+  {{- end }}
+  {{- if eq (index $node.metadata.labels $key) $val -}}
     {{- range $address := $node.status.addresses -}}
       {{- if eq $address.type "InternalIP" -}}
         {{- $ips = append $ips $address.address -}}
