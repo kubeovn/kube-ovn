@@ -136,7 +136,9 @@ spec:
             timeoutSeconds: 45
       nodeSelector:
         kubernetes.io/os: "linux"
-        kube-ovn/role: "master"
+        {{- with splitList "=" .Values.MASTER_NODES_LABEL }}
+        {{ index . 0 }}: "{{ if eq (len .) 2 }}{{ index . 1 }}{{ end }}"
+        {{- end }}
       volumes:
         - name: host-run-ovs
           hostPath:
