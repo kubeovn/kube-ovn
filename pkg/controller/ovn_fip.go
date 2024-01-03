@@ -287,10 +287,6 @@ func (c *Controller) handleAddOvnFip(key string) error {
 		klog.Error(err)
 		return err
 	}
-	if err = c.handleAddOvnEipFinalizer(cachedEip, util.ControllerName); err != nil {
-		klog.Errorf("failed to add finalizer for ovn eip, %v", err)
-		return err
-	}
 	// ovn add fip
 	options := map[string]string{"staleless": strconv.FormatBool(c.ExternalGatewayType == kubeovnv1.GWDistributedType)}
 	if err = c.OVNNbClient.AddNat(vpcName, ovnnb.NATTypeDNATAndSNAT, cachedEip.Status.V4Ip,
@@ -414,10 +410,6 @@ func (c *Controller) handleUpdateOvnFip(key string) error {
 	if vpcName == "" {
 		err := fmt.Errorf("failed to create v4 fip %s, no vpc", cachedFip.Name)
 		klog.Error(err)
-		return err
-	}
-	if err = c.handleAddOvnEipFinalizer(cachedEip, util.ControllerName); err != nil {
-		klog.Errorf("failed to add finalizer for ovn eip, %v", err)
 		return err
 	}
 	fip := cachedFip.DeepCopy()

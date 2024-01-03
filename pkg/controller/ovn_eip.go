@@ -267,6 +267,10 @@ func (c *Controller) handleAddOvnEip(key string) error {
 			return err
 		}
 	}
+	if err = c.handleAddOvnEipFinalizer(cachedEip, util.ControllerName); err != nil {
+		klog.Errorf("failed to add finalizer for ovn eip, %v", err)
+		return err
+	}
 	if err = c.subnetCountIP(subnet); err != nil {
 		klog.Errorf("failed to count ovn eip '%s' in subnet, %v", cachedEip.Name, err)
 		return err
@@ -342,10 +346,6 @@ func (c *Controller) handleDelOvnEip(key string) error {
 		klog.Error(err)
 		return err
 	}
-	if err = c.handleDelOvnEipFinalizer(eip, util.ControllerName); err != nil {
-		klog.Errorf("failed to handle remove ovn eip finalizer , %v", err)
-		return err
-	}
 
 	if eip.Spec.Type == util.OvnEipTypeLSP {
 		if err := c.OVNNbClient.DeleteLogicalSwitchPort(eip.Name); err != nil {
@@ -360,7 +360,10 @@ func (c *Controller) handleDelOvnEip(key string) error {
 			return err
 		}
 	}
-
+	if err = c.handleDelOvnEipFinalizer(eip, util.ControllerName); err != nil {
+		klog.Errorf("failed to handle remove ovn eip finalizer , %v", err)
+		return err
+	}
 	c.ipam.ReleaseAddressByPod(eip.Name, eip.Spec.ExternalSubnet)
 	c.updateSubnetStatusQueue.Add(eip.Spec.ExternalSubnet)
 	return nil
