@@ -463,6 +463,8 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		vpcClient.DeleteSync(bfdVpcName)
 
 		ginkgo.By("Deleting underlay vlan subnet")
+		time.Sleep(1 * time.Second)
+		// wait 1s to make sure webhook allow delete subnet
 		ginkgo.By("Deleting underlay subnet " + underlaySubnetName)
 		subnetClient.DeleteSync(underlaySubnetName)
 		ginkgo.By("Deleting extra underlay subnet " + underlayExtraSubnetName)
