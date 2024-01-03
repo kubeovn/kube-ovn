@@ -830,7 +830,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 
 		for _, nodeName := range nodeNames {
 			ginkgo.By("Creating ovn node-ext-gw type eip on node " + nodeName)
-			eip := makeOvnEip(nodeName, underlaySubnetName, "", "", "", util.Lsp)
+			eip := makeOvnEip(nodeName, underlaySubnetName, "", "", "", util.OvnEipTypeLSP)
 			_ = ovnEipClient.CreateSync(eip)
 		}
 
@@ -853,7 +853,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		ipFipVip = vipClient.CreateSync(ipFipVip)
 		framework.ExpectNotEmpty(ipFipVip.Status.V4ip)
 		ginkgo.By("Creating ovn eip " + ipFipEipName)
-		ipFipEip := makeOvnEip(ipFipEipName, underlaySubnetName, "", "", "", "")
+		ipFipEip := makeOvnEip(ipFipEipName, underlaySubnetName, "", "", "", util.OvnEipTypeNAT)
 		ipFipEip = ovnEipClient.CreateSync(ipFipEip)
 		framework.ExpectNotEmpty(ipFipEip.Status.V4Ip)
 		ginkgo.By("Creating ovn fip " + ipFipName)
@@ -868,7 +868,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		ipDnatVip = vipClient.CreateSync(ipDnatVip)
 		framework.ExpectNotEmpty(ipDnatVip.Status.V4ip)
 		ginkgo.By("Creating ovn eip " + ipDnatEipName)
-		ipDnatEip := makeOvnEip(ipDnatEipName, underlaySubnetName, "", "", "", "")
+		ipDnatEip := makeOvnEip(ipDnatEipName, underlaySubnetName, "", "", "", util.OvnEipTypeNAT)
 		ipDnatEip = ovnEipClient.CreateSync(ipDnatEip)
 		framework.ExpectNotEmpty(ipDnatEip.Status.V4Ip)
 		ginkgo.By("Creating ovn dnat " + ipDnatName)

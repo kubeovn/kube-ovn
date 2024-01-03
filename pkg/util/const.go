@@ -187,10 +187,11 @@ const (
 	StaticRouteBfdEcmp = "ecmp_symmetric_reply"
 
 	Vip = "vip"
-	Lrp = "lrp"
-	Lsp = "lsp"
 
-	NatUsingEip  = "nat"
+	OvnEipTypeLRP = "lrp"
+	OvnEipTypeLSP = "lsp"
+	OvnEipTypeNAT = "nat"
+
 	FipUsingEip  = "fip"
 	SnatUsingEip = "snat"
 	DnatUsingEip = "dnat"

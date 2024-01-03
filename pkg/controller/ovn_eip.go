@@ -242,7 +242,7 @@ func (c *Controller) handleAddOvnEip(key string) error {
 		return err
 	}
 
-	if cachedEip.Spec.Type == util.Lsp {
+	if cachedEip.Spec.Type == util.OvnEipTypeLSP {
 		mergedIP := util.GetStringIP(v4ip, v6ip)
 		if err := c.OVNNbClient.CreateBareLogicalSwitchPort(subnet.Name, portName, mergedIP, mac); err != nil {
 			klog.Errorf("failed to create lsp for ovn eip %s, %v", key, err)
@@ -251,13 +251,16 @@ func (c *Controller) handleAddOvnEip(key string) error {
 	}
 	if cachedEip.Spec.Type == "" {
 		// the eip only used by nat: fip, dnat, snat
-		cachedEip.Spec.Type = util.NatUsingEip
+		cachedEip.Spec.Type = util.OvnEipTypeNAT
+	} else if cachedEip.Spec.Type != util.OvnEipTypeLRP && cachedEip.Spec.Type != util.OvnEipTypeLSP {
+		cachedEip.Spec.Type = util.OvnEipTypeNAT
 	}
+
 	if err = c.createOrUpdateCrdOvnEip(key, subnet.Name, v4ip, v6ip, mac, cachedEip.Spec.Type); err != nil {
 		klog.Errorf("failed to create or update ovn eip '%s', %v", cachedEip.Name, err)
 		return err
 	}
-	if cachedEip.Spec.Type != util.Lsp {
+	if cachedEip.Spec.Type != util.OvnEipTypeLSP {
 		// node ext gw use lsp eip, has a nic on gw node, so left node to make it ready
 		if err = c.patchOvnEipStatus(key, true); err != nil {
 			klog.Errorf("failed to patch ovn eip %s: %v", key, err)
@@ -299,7 +302,7 @@ func (c *Controller) handleUpdateOvnEip(key string) error {
 		}
 		return nil
 	}
-	if cachedEip.Spec.Type != util.Lsp {
+	if cachedEip.Spec.Type != util.OvnEipTypeLSP {
 		// node ext gw use lsp eip, has a nic on gw node, so left node to make it ready
 		if err = c.patchOvnEipStatus(key, true); err != nil {
 			klog.Errorf("failed to patch ovn eip %s: %v", key, err)
@@ -344,14 +347,14 @@ func (c *Controller) handleDelOvnEip(key string) error {
 		return err
 	}
 
-	if eip.Spec.Type == util.Lsp {
+	if eip.Spec.Type == util.OvnEipTypeLSP {
 		if err := c.OVNNbClient.DeleteLogicalSwitchPort(eip.Name); err != nil {
 			klog.Errorf("failed to delete lsp %s, %v", eip.Name, err)
 			return err
 		}
 	}
 
-	if eip.Spec.Type == util.Lrp {
+	if eip.Spec.Type == util.OvnEipTypeLRP {
 		if err := c.OVNNbClient.DeleteLogicalRouterPort(eip.Name); err != nil {
 			klog.Errorf("failed to delete lrp %s, %v", eip.Name, err)
 			return err

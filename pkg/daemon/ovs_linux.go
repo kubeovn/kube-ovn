@@ -536,14 +536,14 @@ func (c *Controller) checkNodeGwNicInNs(nodeExtIP, ip, gw string, gwNS ns.NetNS)
 		klog.Error(err)
 		return err
 	}
-	filters := labels.Set{util.OvnEipTypeLabel: util.Lrp}
+	filters := labels.Set{util.OvnEipTypeLabel: util.OvnEipTypeLRP}
 	ovnEips, err := c.ovnEipsLister.List(labels.SelectorFromSet(filters))
 	if err != nil {
 		klog.Errorf("failed to list ovn eip, %v", err)
 		return err
 	}
 	if len(ovnEips) == 0 {
-		klog.Errorf("failed to get type %s ovn eip, %v", util.Lrp, err)
+		klog.Errorf("failed to get type %s ovn eip, %v", util.OvnEipTypeLRP, err)
 		// node ext gw eip need lrp eip to establish bfd session
 		return nil
 	}

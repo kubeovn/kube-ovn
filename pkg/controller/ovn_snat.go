@@ -198,9 +198,9 @@ func (c *Controller) handleAddOvnSnatRule(key string) error {
 		klog.Errorf("failed to get eip, %v", err)
 		return err
 	}
-	if cachedEip.Spec.Type == util.Lsp {
+	if cachedEip.Spec.Type == util.OvnEipTypeLSP {
 		// eip is using by ecmp nexthop lsp, nat can not use
-		err = fmt.Errorf("ovn nat %s can not use type %s eip %s", key, util.Lsp, eipName)
+		err = fmt.Errorf("ovn nat %s can not use type %s eip %s", key, util.OvnEipTypeLSP, eipName)
 		klog.Error(err)
 		return err
 	}
@@ -318,9 +318,9 @@ func (c *Controller) handleUpdateOvnSnatRule(key string) error {
 		klog.Errorf("failed to get eip, %v", err)
 		return err
 	}
-	if cachedEip.Spec.Type == util.Lsp {
+	if cachedEip.Spec.Type == util.OvnEipTypeLSP {
 		// eip is using by ecmp nexthop lsp, nat can not use
-		err = fmt.Errorf("ovn nat %s can not use type %s eip %s", key, util.Lsp, eipName)
+		err = fmt.Errorf("ovn nat %s can not use type %s eip %s", key, util.OvnEipTypeLSP, eipName)
 		klog.Error(err)
 		return err
 	}
@@ -370,9 +370,9 @@ func (c *Controller) handleUpdateOvnSnatRule(key string) error {
 		klog.Error(err)
 		return err
 	}
-	if cachedEip.Spec.Type == util.Lsp {
+	if cachedEip.Spec.Type == util.OvnEipTypeLSP {
 		// eip is using by ecmp nexthop lsp, nat can not use
-		err = fmt.Errorf("ovn nat %s can not use type %s eip %s", key, util.Lsp, eipName)
+		err = fmt.Errorf("ovn nat %s can not use type %s eip %s", key, util.OvnEipTypeLSP, eipName)
 		klog.Error(err)
 		return err
 	}
