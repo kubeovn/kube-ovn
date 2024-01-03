@@ -463,13 +463,20 @@ kind-install-chart: kind-load-image kind-untaint-control-plane
 	kubectl label node -lnode-role.kubernetes.io/control-plane kube-ovn/role=master --overwrite
 	kubectl label node -lovn.kubernetes.io/ovs_dp_type!=userspace ovn.kubernetes.io/ovs_dp_type=kernel --overwrite
 	helm install kubeovn ./charts \
-		--set global.images.kubeovn.tag=$(VERSION)
+		--set global.images.kubeovn.tag=$(VERSION) \
+		--set networking.NET_STACK=$(shell echo $${NET_STACK:-ipv4} | sed 's/^dual$$/dual_stack/') \
+		--set networking.ENABLE_SSL=$(shell echo $${ENABLE_SSL:-false}) \
+		--set func.ENABLE_BIND_LOCAL_IP=$(shell echo $${ENABLE_BIND_LOCAL_IP:-true})
 	sleep 60
 	kubectl -n kube-system rollout status --timeout=1s deployment/ovn-central
 	kubectl -n kube-system rollout status --timeout=1s daemonset/ovs-ovn
 	kubectl -n kube-system rollout status --timeout=1s deployment/kube-ovn-controller
 	kubectl -n kube-system rollout status --timeout=1s daemonset/kube-ovn-cni
 	kubectl -n kube-system rollout status --timeout=1s daemonset/kube-ovn-pinger
+
+.PHONY: kind-install-chart-ssl
+kind-install-chart-ssl:
+	@ENABLE_SSL=true $(MAKE) kind-install-chart
 
 .PHONY: kind-upgrade-chart
 kind-upgrade-chart: kind-load-image
@@ -518,7 +525,7 @@ kind-install-ovn-ic: kind-install-ovn-ic-ipv4
 kind-install-ovn-ic-ipv4: kind-install
 	$(call kind_load_image,kube-ovn1,$(REGISTRY)/kube-ovn:$(VERSION))
 	kubectl config use-context kind-kube-ovn1
-	$(MAKE) kind-untaint-control-plane
+	@$(MAKE) kind-untaint-control-plane
 	sed -e 's/10.16.0/10.18.0/g' \
 		-e 's/10.96.0/10.98.0/g' \
 		-e 's/100.64.0/100.68.0/g' \
