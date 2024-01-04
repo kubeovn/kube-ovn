@@ -77,7 +77,7 @@ ARG DEBIAN_FRONTEND=noninteractive
 RUN apt update && apt upgrade -y && apt install ca-certificates python3 hostname libunwind8 netbase \
         ethtool iproute2 ncat libunbound-dev procps libatomic1 kmod iptables python3-netifaces python3-sortedcontainers \
         tcpdump ipset curl uuid-runtime openssl inetutils-ping arping ndisc6 \
-        logrotate dnsutils net-tools strongswan strongswan-pki libcharon-extra-plugins \
+        logrotate dnsutils net-tools strongswan strongswan-pki libcharon-extra-plugins libmnl-dev \
         libcharon-extauth-plugins libstrongswan-extra-plugins libstrongswan-standard-plugins -y --no-install-recommends && \
         rm -rf /var/lib/apt/lists/* && \
         rm -rf /etc/localtime
@@ -100,6 +100,11 @@ ENV BFDD_VERSION="v0.5.4"
 RUN curl -sSf -L --retry 3 -o /usr/local/bin/bfdd-control https://github.com/bobz965/bfd-binary-for-kube-ovn-cni/releases/download/${BFDD_VERSION}/bfdd-control && \
     curl -sSf -L --retry 3 -o /usr/local/bin/bfdd-beacon https://github.com/bobz965/bfd-binary-for-kube-ovn-cni/releases/download/${BFDD_VERSION}/bfdd-beacon && \
     chmod +x /usr/local/bin/bfdd-control /usr/local/bin/bfdd-beacon
+
+RUN curl -sSf -L --retry 3 -O https://launchpad.net/ubuntu/+archive/primary/+files/libipset13_7.17-1ubuntu1_${ARCH}.deb && \
+    dpkg -i libipset13_7.17-1ubuntu1_${ARCH}.deb
+RUN curl -sSf -L --retry 3 -O https://launchpad.net/ubuntu/+archive/primary/+files/ipset_7.17-1ubuntu1_${ARCH}.deb && \
+    dpkg -i ipset_7.17-1ubuntu1_${ARCH}.deb
 
 RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages  \
     dpkg -i /packages/openvswitch-*.deb /packages/python3-openvswitch*.deb && \
