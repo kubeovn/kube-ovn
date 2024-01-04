@@ -1111,6 +1111,12 @@ jobs:
     name: Chart Installation/Uninstallation Test
     needs: build-kube-ovn
     runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        ssl:
+          - "true"
+          - "false"
     timeout-minutes: 30
     steps:
       - uses: jlumbroso/free-disk-space@v1.3.1
@@ -1148,6 +1154,8 @@ jobs:
           sudo chown -R $(id -un). ~/.kube/
 
       - name: Install Kube-OVN
+        env:
+          ENABLE_SSL: "${{ matrix.ssl }}"
         run: make kind-install-chart
 
       - name: Uninstall Kube-OVN
@@ -1877,9 +1885,11 @@ jobs:
           sudo chown -R $(id -un). ~/.kube/
 
       - name: Install Kube-OVN
-        run: |
-          sudo ENABLE_SSL=${{ matrix.ssl }} ENABLE_BIND_LOCAL_IP=${{ matrix.bind-local }} \
-            make kind-install-${{ matrix.ip-family }}
+        env:
+          NET_STACK: "${{ matrix.ip-family }}"
+          ENABLE_SSL: "${{ matrix.ssl }}"
+          ENABLE_BIND_LOCAL_IP: "${{ matrix.bind-local }}"
+        run: make kind-install-chart
 
       - name: Run E2E
         working-directory: ${{ env.E2E_DIR }}
