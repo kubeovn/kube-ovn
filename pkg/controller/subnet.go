@@ -1750,6 +1750,12 @@ func (c *Controller) reconcileOvnDefaultVpcRoute(subnet *kubeovnv1.Subnet) error
 			}
 		}
 	} else {
+		// It's diffcult to update policy route when subnet cidr is changed, add check for cidr changed situation
+		if err := c.reconcilePolicyRouteForCidrChangedSubnet(subnet, true); err != nil {
+			klog.Error(err)
+			return err
+		}
+
 		if err := c.addCommonRoutesForSubnet(subnet); err != nil {
 			klog.Error(err)
 			return err
@@ -1776,6 +1782,11 @@ func (c *Controller) reconcileOvnDefaultVpcRoute(subnet *kubeovnv1.Subnet) error
 			if !gwNodeExists {
 				klog.Errorf("failed to init centralized gateway for subnet %s, no gateway node exists", subnet.Name)
 				return fmt.Errorf("failed to add ecmp policy route, no gateway node exists")
+			}
+
+			if err := c.reconcilePolicyRouteForCidrChangedSubnet(subnet, false); err != nil {
+				klog.Error(err)
+				return err
 			}
 
 			if subnet.Spec.EnableEcmp {
@@ -2801,6 +2812,70 @@ func (c *Controller) clearOldU2OResource(subnet *kubeovnv1.Subnet) error {
 		if err := c.deletePolicyRouteForU2OInterconn(subnet); err != nil {
 			klog.Errorf("failed to delete u2o policy route for u2o connection %s: %v", subnet.Name, err)
 			return err
+		}
+	}
+	return nil
+}
+
+func (c *Controller) reconcilePolicyRouteForCidrChangedSubnet(subnet *kubeovnv1.Subnet, isCommonRoute bool) error {
+	var match string
+	var priority int
+
+	if isCommonRoute {
+		priority = util.SubnetRouterPolicyPriority
+	} else {
+		priority = util.GatewayRouterPolicyPriority
+	}
+
+	policies, err := c.OVNNbClient.ListLogicalRouterPolicies(subnet.Spec.Vpc, priority, map[string]string{
+		"vendor": util.CniTypeName,
+		"subnet": subnet.Name,
+	}, true)
+	if err != nil {
+		klog.Errorf("failed to list logical router policies: %v", err)
+		return err
+	}
+	if len(policies) == 0 {
+		return nil
+	}
+
+	for _, policy := range policies {
+		policyProtocol := kubeovnv1.ProtocolIPv4
+		if strings.Contains(policy.Match, "ip6") {
+			policyProtocol = kubeovnv1.ProtocolIPv6
+		}
+
+		for _, cidr := range strings.Split(subnet.Spec.CIDRBlock, ",") {
+			if cidr == "" {
+				continue
+			}
+			if policyProtocol != util.CheckProtocol(cidr) {
+				continue
+			}
+
+			af := 4
+			if util.CheckProtocol(cidr) == kubeovnv1.ProtocolIPv6 {
+				af = 6
+			}
+
+			if isCommonRoute {
+				match = fmt.Sprintf("ip%d.dst == %s", af, cidr)
+			} else {
+				if subnet.Spec.GatewayType == kubeovnv1.GWCentralizedType {
+					match = fmt.Sprintf("ip%d.src == %s", af, cidr)
+				} else {
+					// distributed subnet does not need process gateway route policy
+					continue
+				}
+			}
+
+			if policy.Match != match {
+				klog.Infof("delete old policy route for subnet %s with match %s priority %d, new match %v", subnet.Name, policy.Match, policy.Priority, match)
+				if err = c.OVNNbClient.DeleteLogicalRouterPolicyByUUID(subnet.Spec.Vpc, policy.UUID); err != nil {
+					klog.Errorf("failed to delete policy route for subnet %s: %v", subnet.Name, err)
+					return err
+				}
+			}
 		}
 	}
 	return nil
