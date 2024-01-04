@@ -609,11 +609,32 @@ diagnose(){
   kubectl get crd ips.kubeovn.io
   kubectl get crd vlans.kubeovn.io
   kubectl get crd provider-networks.kubeovn.io
+  kubectl get crd security-groups.kubeovn.io
+  kubectl get crd vips.kubeovn.io
+  kubectl get crd vpc-dnses.kubeovn.io
+  kubectl get crd switch-lb-rules.kubeovn.io
+  kubectl get crd ippools.kubeovn.io
+  kubectl get crd ovn-eips.kubeovn.io
+  kubectl get crd ovn-fips.kubeovn.io
+  kubectl get crd ovn-dnat-rules.kubeovn.io
+  kubectl get crd ovn-snat-rules.kubeovn.io
+  kubectl get crd iptables-eips.kubeovn.io
+  kubectl get crd iptables-fip-rules.kubeovn.io
+  kubectl get crd iptables-snat-rules.kubeovn.io
+  kubectl get crd iptables-dnat-rules.kubeovn.io
+  
   set +eu
   if ! kubectl get svc kube-dns -n kube-system ; then
      echo "Warning: kube-dns doesn't exist, maybe there is coredns service."
   fi
+  if [[ -z "$1" ]]; then
+      echo "diagnose all......"
+      type="all"
+  else
+      type="$1"
+  fi
   set -eu
+  
   kubectl get svc kubernetes -n default
   kubectl get sa -n kube-system ovn
   kubectl get clusterrole system:ovn
@@ -627,6 +648,8 @@ diagnose(){
   kubectl ko nbctl list address_set
   kubectl ko nbctl list acl
   kubectl ko sbctl show
+  kubectl ko sb status
+  kubectl ko nb status
 
   if [ "${WITHOUT_KUBE_PROXY}" = "false" ]; then
     checkKubeProxy
@@ -646,14 +669,12 @@ diagnose(){
     if [ ! ${#gcCommands[@]} -eq 0 ]; then
       for item in "${gcCommands[@]}"
       do
-          echo $item
+          echo "$item"
           eval "$item"
       done
     fi
   }
   trap quitDiagnose EXIT
-
-  type="$1"
 
   if [[ $type != "IPPorts" ]]; then
     gcCommands+=("kubectl delete svc -l app=$CONN_CHECK_LABEL -n $KUBE_OVN_NS")
