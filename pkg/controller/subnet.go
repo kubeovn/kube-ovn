@@ -2119,6 +2119,7 @@ func (c *Controller) calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv
 	}
 
 	if v4UsingIPStr == "" && v6UsingIPStr == "" && usingIPs != 0 {
+		// in case of subnet deletion, v4 v6 using ip should be 0
 		err = fmt.Errorf("ipam subnet %s has no ip in using, but some ip cr left: ip %d, vip %d, iptable eip %d, ovn eip %d", subnet.Name, lenIP, lenVip, lenIptablesEip, lenOvnEip)
 		klog.Warning(err)
 	}
@@ -2250,6 +2251,7 @@ func (c *Controller) calcSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv1.Su
 	}
 
 	if v4UsingIPStr == "" && v6UsingIPStr == "" && usingIPs != 0 {
+		// in case of subnet deletion, v4 v6 using ip should be 0
 		err = fmt.Errorf("ipam subnet %s has no ip in using, but some ip cr left: ip %d, vip %d, iptable eip %d, ovn eip %d", subnet.Name, lenIP, lenVip, lenIptablesEip, lenOvnEip)
 		klog.Warning(err)
 	}
