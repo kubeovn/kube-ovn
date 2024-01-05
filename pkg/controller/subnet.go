@@ -2108,8 +2108,9 @@ func (c *Controller) calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv
 	v4UsingIPStr, v6UsingIPStr, v4AvailableIPStr, v6AvailableIPStr := c.ipam.GetSubnetIPRangeString(subnet.Name, subnet.Spec.ExcludeIps)
 	if v4UsingIPStr == "" || v6UsingIPStr == "" {
 		if usingIPs != 0 {
-			klog.Warningf("ipam subnet %s has no ip in using, but some ip cr left: ip %d, vip %d, iptable eip %d, ovn eip %d", subnet.Name, lenIP, lenVip, lenIptablesEip, lenOvnEip)
-			usingIPs = 0
+			err := fmt.Errorf("ipam subnet %s has no ip in using, but some ip cr left: ip %d, vip %d, iptable eip %d, ovn eip %d", subnet.Name, lenIP, lenVip, lenIptablesEip, lenOvnEip)
+			klog.Error(err)
+			return nil, err
 		}
 	}
 
@@ -2210,8 +2211,9 @@ func (c *Controller) calcSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv1.Su
 	v4UsingIPStr, v6UsingIPStr, v4AvailableIPStr, v6AvailableIPStr := c.ipam.GetSubnetIPRangeString(subnet.Name, subnet.Spec.ExcludeIps)
 	if v4UsingIPStr == "" || v6UsingIPStr == "" {
 		if usingIPs != 0 {
-			klog.Warningf("ipam subnet %s has no ip in using, but some ip cr left: ip %d, vip %d, iptable eip %d, ovn eip %d", subnet.Name, lenIP, lenVip, lenIptablesEip, lenOvnEip)
-			usingIPs = 0
+			err := fmt.Errorf("ipam subnet %s has no ip in using, but some ip cr left: ip %d, vip %d, iptable eip %d, ovn eip %d", subnet.Name, lenIP, lenVip, lenIptablesEip, lenOvnEip)
+			klog.Error(err)
+			return nil, err
 		}
 	}
 	cachedFloatFields := [4]float64{
