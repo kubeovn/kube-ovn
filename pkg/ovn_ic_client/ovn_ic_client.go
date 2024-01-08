@@ -1,4 +1,4 @@
-package controller
+package ovn_ic_client
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"reflect"
+	"sort"
 	"strings"
 	"time"
 
@@ -17,8 +18,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
 
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -26,45 +25,34 @@ import (
 var (
 	icEnabled = "unknown"
 	lastIcCm  map[string]string
+	lastTSs   []string
+	curTSs    []string
 )
 
-func (c *Controller) resyncInterConnection() {
-	cm, err := c.configMapsLister.ConfigMaps(c.config.PodNamespace).Get(util.InterconnectionConfig)
-	if err != nil && !k8serrors.IsNotFound(err) {
-		klog.Errorf("failed to get ovn-ic-config, %v", err)
+const (
+	icNoAction = iota
+	icFirstEstablish
+	icConfigChange
+)
+
+func (c *Controller) disableOVNIC(azName string) {
+	if err := c.removeInterConnection(azName); err != nil {
+		klog.Errorf("failed to remove ovn-ic, %v", err)
+		return
+	}
+	if err := c.delLearnedRoute(); err != nil {
+		klog.Errorf("failed to remove learned static routes, %v", err)
 		return
 	}
 
-	if k8serrors.IsNotFound(err) || cm.Data["enable-ic"] == "false" {
-		if icEnabled == "false" {
-			return
-		}
-		klog.Info("start to remove ovn-ic")
-		azName := ""
-		if cm != nil {
-			azName = cm.Data["az-name"]
-		} else if lastIcCm != nil {
-			azName = lastIcCm["az-name"]
-		}
-		if err := c.removeInterConnection(azName); err != nil {
-			klog.Errorf("failed to remove ovn-ic, %v", err)
-			return
-		}
-		if err := c.delLearnedRoute(); err != nil {
-			klog.Errorf("failed to remove learned static routes, %v", err)
-			return
-		}
-		icEnabled = "false"
-		lastIcCm = nil
+	if err := c.RemoveOldChassisInSbDB(azName); err != nil {
+		klog.Errorf("failed to remove remote chassis: %v", err)
+	}
+}
 
-		klog.Info("finish removing ovn-ic")
-		return
-	}
-	blackList := []string{}
-	autoRoute := false
-	if cm.Data["auto-route"] == "true" {
-		autoRoute = true
-	}
+func (c *Controller) setAutoRoute(autoRoute bool) {
+
+	var blackList []string
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list subnets, %v", err)
@@ -93,48 +81,108 @@ func (c *Controller) resyncInterConnection() {
 		klog.Errorf("failed to config auto route, %v", err)
 		return
 	}
+}
 
-	isCMEqual := reflect.DeepEqual(cm.Data, lastIcCm)
-	if icEnabled == "true" && lastIcCm != nil && isCMEqual {
+func (c *Controller) getICState(cmData, lastcmData map[string]string) int {
+	isCMEqual := reflect.DeepEqual(cmData, lastcmData)
+	isTsEqual := true
+	if icEnabled != "true" && len(lastcmData) == 0 && cmData["enable-ic"] == "true" {
+		return icFirstEstablish
+	}
+
+	if icEnabled == "true" && lastcmData != nil && isCMEqual {
+		var err error
+		c.ovnLegacyClient.OvnICNbAddress = genHostAddress(cmData["ic-db-host"], cmData["ic-nb-port"])
+		curTSs, err = c.ovnLegacyClient.GetTs()
+		if err != nil {
+			klog.Errorf("failed to get Transit_Switch, %v", err)
+			return icNoAction
+		}
+		isTsEqual = reflect.DeepEqual(lastTSs, curTSs)
+		if isTsEqual {
+			return icNoAction
+		}
+	}
+	return icConfigChange
+}
+
+func (c *Controller) resyncInterConnection() {
+	cm, err := c.configMapsLister.ConfigMaps(c.config.PodNamespace).Get(util.InterconnectionConfig)
+	if err != nil && !k8serrors.IsNotFound(err) {
+		klog.Errorf("failed to get ovn-ic-config, %v", err)
 		return
 	}
-	if icEnabled == "true" && lastIcCm != nil && !isCMEqual {
-		if err := c.removeInterConnection(lastIcCm["az-name"]); err != nil {
-			klog.Errorf("failed to remove ovn-ic, %v", err)
-			return
-		}
-		if err := c.delLearnedRoute(); err != nil {
-			klog.Errorf("failed to remove learned static routes, %v", err)
-			return
-		}
-		c.ovnLegacyClient.OvnICSbAddress = genHostAddress(cm.Data["ic-db-host"], cm.Data["ic-sb-port"])
 
+	if k8serrors.IsNotFound(err) || cm.Data["enable-ic"] == "false" {
+		if icEnabled == "false" {
+			return
+		}
+		klog.Info("start to remove ovn-ic")
+		azName := ""
+		icDBHost := ""
+		if cm != nil {
+			azName = cm.Data["az-name"]
+			icDBHost = cm.Data["ic-db-host"]
+		} else if lastIcCm != nil {
+			azName = lastIcCm["az-name"]
+			icDBHost = lastIcCm["ic-db-host"]
+		}
+
+		if icDBHost != "" {
+			c.ovnLegacyClient.OvnICSbAddress = genHostAddress(icDBHost, cm.Data["ic-sb-port"])
+			c.ovnLegacyClient.OvnICNbAddress = genHostAddress(icDBHost, cm.Data["ic-nb-port"])
+		}
+
+		c.disableOVNIC(azName)
+		icEnabled = "false"
+		lastIcCm = nil
+
+		klog.Info("finish removing ovn-ic")
+		return
+	}
+
+	autoRoute := false
+	if cm.Data["auto-route"] == "true" {
+		autoRoute = true
+	}
+	c.setAutoRoute(autoRoute)
+
+	switch c.getICState(cm.Data, lastIcCm) {
+	case icNoAction:
+		return
+	case icFirstEstablish:
 		c.ovnLegacyClient.OvnICNbAddress = genHostAddress(cm.Data["ic-db-host"], cm.Data["ic-nb-port"])
+		klog.Info("start to establish ovn-ic")
+		if err := c.establishInterConnection(cm.Data); err != nil {
+			klog.Errorf("failed to establish ovn-ic, %v", err)
+			return
+		}
+		curTSs, err := c.ovnLegacyClient.GetTs()
+		if err != nil {
+			klog.Errorf("failed to get Transit_Switch, %v", err)
+			return
+		}
+		icEnabled = "true"
+		lastIcCm = cm.Data
+		lastTSs = curTSs
+		klog.Info("finish establishing ovn-ic")
+		return
+	case icConfigChange:
+		c.ovnLegacyClient.OvnICSbAddress = genHostAddress(lastIcCm["ic-db-host"], cm.Data["ic-sb-port"])
+		c.ovnLegacyClient.OvnICNbAddress = genHostAddress(lastIcCm["ic-db-host"], cm.Data["ic-nb-port"])
+		c.disableOVNIC(lastIcCm["az-name"])
 		klog.Info("start to reestablish ovn-ic")
 		if err := c.establishInterConnection(cm.Data); err != nil {
 			klog.Errorf("failed to reestablish ovn-ic, %v", err)
 			return
 		}
 
-		if err := c.RemoveOldChassisInSbDB(lastIcCm["az-name"]); err != nil {
-			klog.Errorf("failed to remove remote chassis: %v", err)
-		}
-
 		icEnabled = "true"
 		lastIcCm = cm.Data
+		lastTSs = curTSs
 		klog.Info("finish reestablishing ovn-ic")
 		return
 	}
-
-	c.ovnLegacyClient.OvnICNbAddress = genHostAddress(cm.Data["ic-db-host"], cm.Data["ic-nb-port"])
-	klog.Info("start to establish ovn-ic")
-	if err := c.establishInterConnection(cm.Data); err != nil {
-		klog.Errorf("failed to establish ovn-ic, %v", err)
-		return
-	}
-	icEnabled = "true"
-	lastIcCm = cm.Data
-	klog.Info("finish establishing ovn-ic")
 }
 
 func (c *Controller) removeInterConnection(azName string) error {
@@ -165,16 +213,16 @@ func (c *Controller) removeInterConnection(azName string) error {
 		}
 	}
 
-	if azName != "" {
-		if err := c.ovnLegacyClient.DeleteICLogicalRouterPort(azName); err != nil {
-			klog.Errorf("failed to delete ovn-ic lrp, %v", err)
-			return err
-		}
-	}
-
 	if err := c.stopOVNIC(); err != nil {
 		klog.Errorf("failed to stop ovn-ic, %v", err)
 		return err
+	}
+
+	if azName != "" {
+		if err := c.ovnLegacyClient.DeleteICResources(azName); err != nil {
+			klog.Errorf("failed to delete ovn-ic resource on az %s , %v", azName, err)
+			return err
+		}
 	}
 
 	return nil
@@ -191,11 +239,20 @@ func (c *Controller) establishInterConnection(config map[string]string) error {
 		return err
 	}
 
-	groups := strings.Split(config["gw-nodes"], ";")
-	for i, group := range groups {
-		gwNodes := strings.Split(group, ",")
-		chassises := make([]string, len(gwNodes))
-		for j, gw := range gwNodes {
+	tsNames, err := c.ovnLegacyClient.GetTs()
+	if err != nil {
+		klog.Errorf("failed to list ic logical switch. %v ", err)
+		return err
+	}
+
+	sort.Strings(tsNames)
+
+	gwNodes := strings.Split(config["gw-nodes"], ",")
+	chassises := make([]string, len(gwNodes))
+
+	for i, tsName := range tsNames {
+		gwNodesOrdered := moveElements(gwNodes, i)
+		for j, gw := range gwNodesOrdered {
 			gw = strings.TrimSpace(gw)
 			chassisID, err := c.ovnLegacyClient.GetChassis(gw)
 			if err != nil {
@@ -230,18 +287,6 @@ func (c *Controller) establishInterConnection(config map[string]string) error {
 				klog.Errorf("patch gw node %s failed %v", gw, err)
 				return err
 			}
-		}
-
-		tsName := c.getTSName(i)
-		cidr, err := c.getTSCidr(i)
-		if err != nil {
-			klog.Errorf("failed to get ts cidr index %d err: %v", i, err)
-			return err
-		}
-
-		if err := c.createTS(genHostAddress(config["ic-db-host"], config["ic-nb-port"]), tsName, cidr); err != nil {
-			klog.Errorf("failed to create ts %q: %v", tsName, err)
-			return err
 		}
 
 		tsPort := fmt.Sprintf("%s-%s", tsName, config["az-name"])
@@ -286,7 +331,6 @@ func (c *Controller) acquireLrpAddress(ts string) (string, error) {
 		if !util.ContainsString(existAddress, random) {
 			return random, nil
 		}
-
 		klog.Infof("random ip %s already exists", random)
 		time.Sleep(1 * time.Second)
 	}
@@ -326,27 +370,6 @@ func (c *Controller) stopOVNIC() error {
 	return nil
 }
 
-func (c *Controller) createTS(icNBAddr, tsName, subnet string) error {
-	cmd := exec.Command("ovn-ic-nbctl",
-		fmt.Sprintf("--db=%s", icNBAddr),
-		ovs.MayExist, "ts-add", tsName,
-		"--", "set", "Transit_Switch", tsName, fmt.Sprintf(`external_ids:subnet="%s"`, subnet))
-	if os.Getenv("ENABLE_SSL") == "true" {
-		cmd = exec.Command("ovn-ic-nbctl",
-			fmt.Sprintf("--db=%s", icNBAddr),
-			"--private-key=/var/run/tls/key",
-			"--certificate=/var/run/tls/cert",
-			"--ca-cert=/var/run/tls/cacert",
-			ovs.MayExist, "ts-add", tsName,
-			"--", "set", "Transit_Switch", tsName, fmt.Sprintf(`external_ids:subnet="%s"`, subnet))
-	}
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("output: %s, err: %v", output, err)
-	}
-	return nil
-}
-
 func (c *Controller) delLearnedRoute() error {
 	originalPorts, err := c.ovnLegacyClient.CustomFindEntity("Logical_Router_Static_Route", []string{"_uuid", "ip_prefix"})
 	if err != nil {
@@ -377,9 +400,12 @@ func (c *Controller) delLearnedRoute() error {
 				klog.Errorf("failed to list logical router of static route %s, %v", aLdPort["_uuid"][0], err)
 				return err
 			}
-			if err := c.ovnLegacyClient.DeleteStaticRoute(aLdPort["ip_prefix"][0], itsRouter[0]["name"][0]); err != nil {
-				klog.Errorf("failed to delete stale route %s, %v", aLdPort["ip_prefix"][0], err)
-				return err
+
+			if len(aLdPort["ip_prefix"]) != 0 && len(itsRouter) != 0 && len(itsRouter[0]["name"]) != 0 {
+				if err := c.ovnLegacyClient.DeleteStaticRoute(aLdPort["ip_prefix"][0], itsRouter[0]["name"][0]); err != nil {
+					klog.Errorf("failed to delete stale route %s, %v", aLdPort["ip_prefix"][0], err)
+					return err
+				}
 			}
 		}
 		klog.V(5).Infof("finish removing learned routes")
@@ -412,10 +438,19 @@ func (c *Controller) SynRouteToPolicy() {
 }
 
 func (c *Controller) RemoveOldChassisInSbDB(azName string) error {
+	if azName == "" {
+		return nil
+	}
+
 	azUUID, err := c.ovnLegacyClient.GetAzUUID(azName)
 	if err != nil {
 		klog.Errorf("failed to get UUID of AZ %s: %v", lastIcCm["az-name"], err)
 		return err
+	}
+
+	if azUUID == "" {
+		klog.Infof("%s have already been deleted", azName)
+		return nil
 	}
 
 	gateways, err := c.ovnLegacyClient.GetGatewayUUIDsInOneAZ(azUUID)
@@ -430,6 +465,13 @@ func (c *Controller) RemoveOldChassisInSbDB(azName string) error {
 		return err
 	}
 
+	portBindings, err := c.ovnLegacyClient.GetPortBindingUUIDsInOneAZ(azUUID)
+	if err != nil {
+		klog.Errorf("failed to get Port_Binding UUIDs in AZ %s: %v", azUUID, err)
+		return err
+	}
+
+	c.ovnLegacyClient.DestroyPortBindings(portBindings)
 	c.ovnLegacyClient.DestroyGateways(gateways)
 	c.ovnLegacyClient.DestroyRoutes(routes)
 	return c.ovnLegacyClient.DestroyChassis(azUUID)
@@ -447,7 +489,7 @@ func stripPrefix(policyMatch string) (string, error) {
 func (c *Controller) syncOneRouteToPolicy(key, value string) {
 	lr, err := c.ovnClient.GetLogicalRouter(util.DefaultVpc, false)
 	if err != nil {
-		klog.Errorf("logical router does not exist %v at %v", err, time.Now())
+		klog.Infof("logical router %s is not ready at %v", util.DefaultVpc, time.Now())
 		return
 	}
 	lrRouteList, err := c.ovnClient.GetLogicalRouterRouteByOpts(key, value)
@@ -508,27 +550,10 @@ func (c *Controller) syncOneRouteToPolicy(key, value string) {
 	}
 }
 
-func (c *Controller) getTSName(index int) string {
-	if index == 0 {
-		return util.InterconnectionSwitch
-	}
-	return fmt.Sprintf("%s%d", util.InterconnectionSwitch, index)
-}
-
-func (c *Controller) getTSCidr(index int) (string, error) {
-	defaultSubnet, err := c.subnetsLister.Get(c.config.DefaultLogicalSwitch)
-	if err != nil {
-		return "", err
+func moveElements(arr []string, order int) []string {
+	if order >= len(arr) {
+		order = order % len(arr)
 	}
 
-	var cidr string
-	switch defaultSubnet.Spec.Protocol {
-	case kubeovnv1.ProtocolIPv4:
-		cidr = fmt.Sprintf("169.254.%d.0/24", 100+index)
-	case kubeovnv1.ProtocolIPv6:
-		cidr = fmt.Sprintf("fe80:a9fe:%02x::/112", 100+index)
-	case kubeovnv1.ProtocolDual:
-		cidr = fmt.Sprintf("169.254.%d.0/24,fe80:a9fe:%02x::/112", 100+index, 100+index)
-	}
-	return cidr, nil
+	return append(arr[order:], arr[:order]...)
 }

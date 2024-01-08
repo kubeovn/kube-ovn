@@ -8,6 +8,7 @@ import (
 	"github.com/kubeovn/kube-ovn/cmd/controller"
 	"github.com/kubeovn/kube-ovn/cmd/controller_health_check"
 	"github.com/kubeovn/kube-ovn/cmd/daemon"
+	"github.com/kubeovn/kube-ovn/cmd/ovn_ic_client"
 	"github.com/kubeovn/kube-ovn/cmd/ovn_leader_checker"
 	"github.com/kubeovn/kube-ovn/cmd/ovn_monitor"
 	"github.com/kubeovn/kube-ovn/cmd/pinger"
@@ -24,6 +25,7 @@ const (
 	CmdSpeaker               = "kube-ovn-speaker"
 	CmdControllerHealthCheck = "kube-ovn-controller-healthcheck"
 	CmdOvnLeaderChecker      = "kube-ovn-leader-checker"
+	CmdOvnICClient           = "kube-ovn-ic-client"
 )
 
 func main() {
@@ -45,6 +47,8 @@ func main() {
 		controller_health_check.CmdMain()
 	case CmdOvnLeaderChecker:
 		ovn_leader_checker.CmdMain()
+	case CmdOvnICClient:
+		ovn_ic_client.CmdMain()
 	default:
 		util.LogFatalAndExit(nil, "%s is an unknown command", cmd)
 	}

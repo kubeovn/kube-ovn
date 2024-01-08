@@ -539,7 +539,6 @@ func (c *Controller) setIptables() error {
 				)
 			}
 		}
-
 		var natPreroutingRules, natPostroutingRules, ovnMasqueradeRules, manglePostroutingRules []util.IPTableRule
 		for _, rule := range iptablesRules {
 			if rule.Table == NAT {

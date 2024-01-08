@@ -23,6 +23,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
 
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -44,6 +45,7 @@ type Configuration struct {
 	KubeClient     kubernetes.Interface
 	ProbeInterval  int
 	EnableCompact  bool
+	ISICDBServer   bool
 }
 
 // ParseFlags parses cmd args then init kubeclient and conf
@@ -53,6 +55,7 @@ func ParseFlags() (*Configuration, error) {
 		argKubeConfigFile = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.")
 		argProbeInterval  = pflag.Int("probeInterval", DefaultProbeInterval, "interval of probing leader in seconds")
 		argEnableCompact  = pflag.Bool("enableCompact", true, "is enable compact")
+		argIsICDBServer   = pflag.Bool("isICDBServer", false, "is ic db server ")
 	)
 
 	klogFlags := flag.NewFlagSet("klog", flag.ContinueOnError)
@@ -83,6 +86,7 @@ func ParseFlags() (*Configuration, error) {
 		KubeConfigFile: *argKubeConfigFile,
 		ProbeInterval:  *argProbeInterval,
 		EnableCompact:  *argEnableCompact,
+		ISICDBServer:   *argIsICDBServer,
 	}
 	return config, nil
 }
@@ -351,7 +355,7 @@ func doOvnLeaderCheck(cfg *Configuration, podName string, podNamespace string) {
 		util.LogFatalAndExit(nil, "preValidChkCfg: invalid cfg")
 	}
 
-	if !checkOvnIsAlive() {
+	if !cfg.ISICDBServer && !checkOvnIsAlive() {
 		klog.Errorf("ovn is not alive")
 		return
 	}
@@ -366,27 +370,47 @@ func doOvnLeaderCheck(cfg *Configuration, podName string, podNamespace string) {
 	for k, v := range cachedPod.Labels {
 		labels[k] = v
 	}
-	nbLeader := isDBLeader("OVN_Northbound", 6641)
-	sbLeader := isDBLeader("OVN_Southbound", 6642)
-	northdLeader := checkNorthdActive()
-	updatePodLabels(labels, "ovn-nb-leader", nbLeader)
-	updatePodLabels(labels, "ovn-sb-leader", sbLeader)
-	updatePodLabels(labels, "ovn-northd-leader", northdLeader)
-	if err = patchPodLabels(cfg, cachedPod, labels); err != nil {
-		klog.Errorf("patch label error %v", err)
-		return
-	}
-	if sbLeader && checkNorthdSvcExist(cfg, podNamespace, "ovn-northd") {
-		if !checkNorthdEpAlive(cfg, podNamespace, "ovn-northd") {
-			klog.Warning("no available northd leader, try to release the lock")
-			stealLock()
+
+	if !cfg.ISICDBServer {
+		nbLeader := isDBLeader("OVN_Northbound", 6641)
+		sbLeader := isDBLeader("OVN_Southbound", 6642)
+		northdLeader := checkNorthdActive()
+		updatePodLabels(labels, "ovn-nb-leader", nbLeader)
+		updatePodLabels(labels, "ovn-sb-leader", sbLeader)
+		updatePodLabels(labels, "ovn-northd-leader", northdLeader)
+		if err = patchPodLabels(cfg, cachedPod, labels); err != nil {
+			klog.Errorf("patch label error %v", err)
+			return
+		}
+		if sbLeader && checkNorthdSvcExist(cfg, podNamespace, "ovn-northd") {
+			if !checkNorthdEpAlive(cfg, podNamespace, "ovn-northd") {
+				klog.Warning("no available northd leader, try to release the lock")
+				stealLock()
+			}
+		}
+
+		if cfg.EnableCompact {
+			compactOvnDatabase("nb")
+			compactOvnDatabase("sb")
+		}
+	} else {
+		icNbLeader := isDBLeader("OVN_IC_Northbound", 6645)
+		icSbLeader := isDBLeader("OVN_IC_Southbound", 6646)
+		updatePodLabels(labels, "ovn-ic-nb-leader", icNbLeader)
+		updatePodLabels(labels, "ovn-ic-sb-leader", icSbLeader)
+		if err = patchPodLabels(cfg, cachedPod, labels); err != nil {
+			klog.Errorf("patch label error %v", err)
+			return
+		}
+
+		if icNbLeader {
+			if err := updateTS(); err != nil {
+				klog.Errorf("update ts num failed err: %v ", err)
+				return
+			}
 		}
 	}
 
-	if cfg.EnableCompact {
-		compactOvnDatabase("nb")
-		compactOvnDatabase("sb")
-	}
 }
 
 func StartOvnLeaderCheck(cfg *Configuration) {
@@ -397,4 +421,86 @@ func StartOvnLeaderCheck(cfg *Configuration) {
 		doOvnLeaderCheck(cfg, podName, podNamespace)
 		time.Sleep(interval)
 	}
+}
+
+func getTSName(index int) string {
+	if index == 0 {
+		return util.InterconnectionSwitch
+	}
+	return fmt.Sprintf("%s%d", util.InterconnectionSwitch, index)
+}
+
+func getTSCidr(index int) string {
+	cidr := fmt.Sprintf("169.254.%d.0/24", 100+index)
+	return cidr
+}
+
+func updateTS() error {
+	cmdstr := "ovn-ic-nbctl show | wc -l"
+	cmd := exec.Command("sh", "-c", cmdstr)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("ovn-ic-nbctl show output: %s, err: %v", output, err)
+	}
+	lines := strings.Split(string(output), "\n")
+	if len(lines) < 1 {
+		return fmt.Errorf("ovsn-ic-nbctl show count line: err")
+	}
+
+	existTSCount, err := strconv.Atoi(lines[0])
+
+	if err != nil {
+		return fmt.Errorf("existTSCount atoi failed output: %s, err: %v", output, err)
+	}
+
+	expectTSCount, err := strconv.Atoi(os.Getenv("TS_NUM"))
+
+	if err != nil {
+		return fmt.Errorf("expectTSCount atoi failed output: %s, err: %v", output, err)
+	}
+
+	if expectTSCount == existTSCount {
+		return nil
+	}
+
+	if expectTSCount > existTSCount {
+		for i := expectTSCount - 1; i > existTSCount-1; i-- {
+			tsName := getTSName(i)
+			subnet := getTSCidr(i)
+			cmd := exec.Command("ovn-ic-nbctl",
+				ovs.MayExist, "ts-add", tsName,
+				"--", "set", "Transit_Switch", tsName, fmt.Sprintf(`external_ids:subnet="%s"`, subnet))
+			if os.Getenv("ENABLE_SSL") == "true" {
+				cmd = exec.Command("ovn-ic-nbctl",
+					"--private-key=/var/run/tls/key",
+					"--certificate=/var/run/tls/cert",
+					"--ca-cert=/var/run/tls/cacert",
+					ovs.MayExist, "ts-add", tsName,
+					"--", "set", "Transit_Switch", tsName, fmt.Sprintf(`external_ids:subnet="%s"`, subnet))
+			}
+			output, err := cmd.CombinedOutput()
+			if err != nil {
+				return fmt.Errorf("output: %s, err: %v", output, err)
+			}
+		}
+	} else if expectTSCount < existTSCount {
+		for i := existTSCount - 1; i >= expectTSCount; i-- {
+			tsName := getTSName(i)
+			cmd := exec.Command("ovn-ic-nbctl",
+				"ts-del", tsName)
+			if os.Getenv("ENABLE_SSL") == "true" {
+				cmd = exec.Command("ovn-ic-nbctl",
+					"--private-key=/var/run/tls/key",
+					"--certificate=/var/run/tls/cert",
+					"--ca-cert=/var/run/tls/cacert",
+					"ts-del", tsName)
+			}
+			output, err := cmd.CombinedOutput()
+			if err != nil {
+				return fmt.Errorf("output: %s, err: %v", output, err)
+			}
+		}
+	}
+
+	return nil
 }

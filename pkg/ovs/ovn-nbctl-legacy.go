@@ -150,30 +150,33 @@ func (c LegacyClient) CreateICLogicalRouterPort(az, ts, mac, subnet string, chas
 	return nil
 }
 
-func (c LegacyClient) DeleteICLogicalRouterPort(az string) error {
-	lsps, err := c.ListLogicalSwitchPort(true)
+func (c LegacyClient) DeleteICResources(az string) error {
+	lrps, err := c.ListLogicalRouterPort()
 	if err != nil {
 		klog.Errorf("failed to list logical switch port, %v", err)
 		return err
 	}
 
-	var icLsps []string
-	for _, lsp := range lsps {
-		names := strings.Split(lsp, "-")
-		if strings.HasPrefix(names[0], "ts") && names[1] == az {
-			icLsps = append(icLsps, lsp)
+	icTSs := make([]string, 0)
+	for _, lrp := range lrps {
+		lastIndex := strings.LastIndex(lrp, "-")
+		firstPart := lrp[:lastIndex]
+		secondPart := lrp[lastIndex+1:]
+		if firstPart == az && strings.HasPrefix(secondPart, util.InterconnectionSwitch) {
+			lsp := fmt.Sprintf("%s-%s", secondPart, firstPart)
+			if err := c.DeleteLogicalRouterPort(lrp); err != nil {
+				return fmt.Errorf("failed to delete ovn-ic logical router port: %v", err)
+			}
+			if err := c.DeleteLogicalSwitchPort(lsp); err != nil {
+				return fmt.Errorf("failed to delete ovn-ic logical switch port: %v", err)
+			}
+			icTSs = append(icTSs, secondPart)
 		}
 	}
 
-	for _, icLsp := range icLsps {
-		names := strings.Split(icLsp, "-")
-		lrpName := fmt.Sprintf("%s-%s", names[1], names[0])
-
-		if err := c.DeleteLogicalRouterPort(lrpName); err != nil {
-			return fmt.Errorf("failed to delete ovn-ic logical router port: %v", err)
-		}
-		if err := c.DeleteLogicalSwitchPort(icLsp); err != nil {
-			return fmt.Errorf("failed to delete ovn-ic logical switch port: %v", err)
+	for _, icTS := range icTSs {
+		if err := c.DeleteLogicalSwitch(icTS); err != nil {
+			return err
 		}
 	}
 
@@ -779,6 +782,25 @@ func (c LegacyClient) ListLogicalSwitchPort(needVendorFilter bool) ([]string, er
 	output, err := c.ovnNbCommand(cmdArg...)
 	if err != nil {
 		klog.Errorf("failed to list logical switch port, %v", err)
+		return nil, err
+	}
+	lines := strings.Split(output, "\n")
+	result := make([]string, 0, len(lines))
+	for _, l := range lines {
+		if len(strings.TrimSpace(l)) == 0 {
+			continue
+		}
+		result = append(result, strings.TrimSpace(l))
+	}
+	return result, nil
+}
+
+func (c LegacyClient) ListLogicalRouterPort() ([]string, error) {
+	cmdArg := []string{"--format=csv", "--data=bare", "--no-heading", "--columns=name", "find", "logical_router_port"}
+
+	output, err := c.ovnNbCommand(cmdArg...)
+	if err != nil {
+		klog.Errorf("failed to list logical router port, %v", err)
 		return nil, err
 	}
 	lines := strings.Split(output, "\n")
