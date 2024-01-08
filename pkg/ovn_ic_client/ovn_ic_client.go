@@ -85,7 +85,6 @@ func (c *Controller) setAutoRoute(autoRoute bool) {
 
 func (c *Controller) getICState(cmData, lastcmData map[string]string) int {
 	isCMEqual := reflect.DeepEqual(cmData, lastcmData)
-	isTsEqual := true
 	if icEnabled != "true" && len(lastcmData) == 0 && cmData["enable-ic"] == "true" {
 		return icFirstEstablish
 	}
@@ -98,7 +97,7 @@ func (c *Controller) getICState(cmData, lastcmData map[string]string) int {
 			klog.Errorf("failed to get Transit_Switch, %v", err)
 			return icNoAction
 		}
-		isTsEqual = reflect.DeepEqual(lastTSs, curTSs)
+		isTsEqual := reflect.DeepEqual(lastTSs, curTSs)
 		if isTsEqual {
 			return icNoAction
 		}

@@ -273,7 +273,7 @@ var _ = framework.SerialDescribe("[group:ovn-ic]", func() {
 			gws := strings.Split(gwNodes[i], ",")
 			newGatewayStr := strings.Join(gws[0:len(gws)-2], ",")
 
-			configMapPatchPayload, err := json.Marshal(corev1.ConfigMap{
+			configMapPatchPayload, _ := json.Marshal(corev1.ConfigMap{
 				Data: map[string]string{
 					"gw-nodes": newGatewayStr,
 				},
@@ -284,17 +284,16 @@ var _ = framework.SerialDescribe("[group:ovn-ic]", func() {
 		fnCheckPodHTTP()
 
 		ginkgo.By("case 3: recover two clusters from 1 gateway to 3 gateway")
-		gwNodes = make([]string, len(clusters))
 		for i := range clusters {
 			ginkgo.By("fetching the ConfigMap in cluster " + clusters[i])
 
-			configMapPatchPayload, err := json.Marshal(corev1.ConfigMap{
+			configMapPatchPayload, _ := json.Marshal(corev1.ConfigMap{
 				Data: map[string]string{
 					"gw-nodes": oldGatewayStr[i],
 				},
 			})
 
-			_, err = clientSets[i].CoreV1().ConfigMaps(framework.KubeOvnNamespace).Patch(context.TODO(), util.InterconnectionConfig, k8stypes.StrategicMergePatchType, []byte(configMapPatchPayload), metav1.PatchOptions{})
+			_, err := clientSets[i].CoreV1().ConfigMaps(framework.KubeOvnNamespace).Patch(context.TODO(), util.InterconnectionConfig, k8stypes.StrategicMergePatchType, []byte(configMapPatchPayload), metav1.PatchOptions{})
 			framework.ExpectNoError(err, "patch ovn-ic-config failed")
 		}
 		fnCheckPodHTTP()
@@ -305,13 +304,13 @@ var _ = framework.SerialDescribe("[group:ovn-ic]", func() {
 		framework.ExpectNoError(err, "switch to kube-ovn cluster failed")
 
 		patchCmd := "kubectl patch deployment ovn-ic-server -n kube-system --type='json' -p=\"[{'op': 'replace', 'path': '/spec/template/spec/containers/0/env/1/value', 'value': '5'}]\""
-		_, err = exec.Command("bash", "-c", patchCmd).CombinedOutput()
+		_, _ = exec.Command("bash", "-c", patchCmd).CombinedOutput()
 		checkECMPCount(5)
 		fnCheckPodHTTP()
 
 		ginkgo.By("case 5: reduce ecmp path from 5 to 3 ")
 		patchCmd = "kubectl patch deployment ovn-ic-server -n kube-system --type='json' -p=\"[{'op': 'replace', 'path': '/spec/template/spec/containers/0/env/1/value', 'value': '3'}]\""
-		_, err = exec.Command("bash", "-c", patchCmd).CombinedOutput()
+		_, _ = exec.Command("bash", "-c", patchCmd).CombinedOutput()
 		checkECMPCount(3)
 		fnCheckPodHTTP()
 
@@ -325,7 +324,7 @@ var _ = framework.SerialDescribe("[group:ovn-ic]", func() {
 		framework.ExpectNoError(err, "disable kube-ovn1-worker gateway failed")
 
 		taintCmd := "kubectl taint nodes kube-ovn1-worker e2e=test:NoSchedule"
-		_, err = exec.Command("bash", "-c", taintCmd).CombinedOutput()
+		_, _ = exec.Command("bash", "-c", taintCmd).CombinedOutput()
 		fnCheckPodHTTP()
 
 		ginkgo.By("case 7: disable gateway kube-ovn1-worker2 gateway")
@@ -338,7 +337,7 @@ var _ = framework.SerialDescribe("[group:ovn-ic]", func() {
 		framework.ExpectNoError(err, "disable kube-ovn1-worker2 gateway failed")
 
 		taintCmd = "kubectl taint nodes kube-ovn1-worker2 e2e=test:NoSchedule"
-		_, err = exec.Command("bash", "-c", taintCmd).CombinedOutput()
+		_, _ = exec.Command("bash", "-c", taintCmd).CombinedOutput()
 		fnCheckPodHTTP()
 
 		ginkgo.By("case 8: enable gateway kube-ovn1-worker gateway")
@@ -351,7 +350,7 @@ var _ = framework.SerialDescribe("[group:ovn-ic]", func() {
 		framework.ExpectNoError(err, "enable kube-ovn1-worker gateway failed")
 
 		taintCmd = "kubectl taint nodes kube-ovn1-worker e2e=test:NoSchedule-"
-		_, err = exec.Command("bash", "-c", taintCmd).CombinedOutput()
+		_, _ = exec.Command("bash", "-c", taintCmd).CombinedOutput()
 		fnCheckPodHTTP()
 
 		ginkgo.By("case 9: enable gateway kube-ovn1-worker2 gateway")
@@ -364,7 +363,7 @@ var _ = framework.SerialDescribe("[group:ovn-ic]", func() {
 		framework.ExpectNoError(err, "enable kube-ovn1-worker2 gateway failed")
 
 		taintCmd = "kubectl taint nodes kube-ovn1-worker2 e2e=test:NoSchedule-"
-		_, err = exec.Command("bash", "-c", taintCmd).CombinedOutput()
+		_, _ = exec.Command("bash", "-c", taintCmd).CombinedOutput()
 		fnCheckPodHTTP()
 	})
 })
