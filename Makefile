@@ -370,7 +370,7 @@ kind-install-ovn-ic: kind-install
 	kubectl describe no
 
 	kubectl config use-context kind-kube-ovn
-	bash dist/images/install-ic-server.sh
+	sed 's/VERSION=.*/VERSION=$(VERSION)/' dist/images/install-ic-server.sh | bash
 
 	@set -e; \
 	ic_db_host=$$(kubectl get deployment ovn-ic-server -n kube-system -o jsonpath='{range .spec.template.spec.containers[0].env[?(@.name=="NODE_IPS")]}{.value}{end}'); \
