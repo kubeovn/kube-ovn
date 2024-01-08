@@ -82,6 +82,8 @@ kubectl delete --ignore-not-found cm ovn-config ovn-ic-config ovn-external-gw-co
 kubectl delete --ignore-not-found svc kube-ovn-pinger kube-ovn-controller kube-ovn-cni kube-ovn-monitor -n kube-system
 kubectl delete --ignore-not-found ds kube-ovn-cni -n kube-system
 kubectl delete --ignore-not-found deploy kube-ovn-controller -n kube-system
+kubectl delete --ignore-not-found deploy ovn-ic-client -n kube-system
+kubectl delete --ignore-not-found deploy ovn-ic-server -n kube-system
 
 # ensure kube-ovn-cni has been deleted
 while :; do
