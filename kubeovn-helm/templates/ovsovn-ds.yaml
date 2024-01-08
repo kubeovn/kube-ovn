@@ -120,7 +120,7 @@ spec:
               cpu: 200m
               memory: 200Mi
             limits:
-              cpu: "2"
+              cpu: 1000m
               memory: 1000Mi
       nodeSelector:
         kubernetes.io/os: "linux"
