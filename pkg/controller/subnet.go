@@ -2037,10 +2037,11 @@ func (c *Controller) calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv
 		klog.Error(err)
 		return nil, err
 	}
-
-	usingIPNums := len(podUsedIPs)
-	for _, podUsedIP := range podUsedIPs {
-		for _, excludeIP := range subnet.Spec.ExcludeIps {
+	var lenIP, lenVip, lenIptablesEip, lenOvnEip int
+	lenIP = len(podUsedIPs)
+	usingIPNums := lenIP
+	for _, excludeIP := range subnet.Spec.ExcludeIps {
+		for _, podUsedIP := range podUsedIPs {
 			if util.ContainsIPs(excludeIP, podUsedIP.Spec.V4IPAddress) || util.ContainsIPs(excludeIP, podUsedIP.Spec.V6IPAddress) {
 				// This ip cr is allocated from subnet.spec.excludeIPs, do not count it as usingIPNums
 				usingIPNums--
@@ -2070,7 +2071,8 @@ func (c *Controller) calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv
 		klog.Error(err)
 		return nil, err
 	}
-	usingIPs += float64(len(vips))
+	lenVip = len(vips)
+	usingIPs += float64(lenVip)
 
 	if !isOvnSubnet(subnet) {
 		eips, err := c.iptablesEipsLister.List(
@@ -2079,8 +2081,21 @@ func (c *Controller) calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv
 			klog.Error(err)
 			return nil, err
 		}
-		usingIPs += float64(len(eips))
+		lenIptablesEip = len(eips)
+		usingIPs += float64(lenIptablesEip)
 	}
+	if subnet.Spec.Vlan != "" {
+		ovnEips, err := c.ovnEipsLister.List(labels.SelectorFromSet(labels.Set{
+			util.SubnetNameLabel: subnet.Name,
+		}))
+		if err != nil {
+			klog.Error(err)
+			return nil, err
+		}
+		lenOvnEip := len(ovnEips)
+		usingIPs += float64(lenOvnEip)
+	}
+
 	v4availableIPs -= usingIPs
 	if v4availableIPs < 0 {
 		v4availableIPs = 0
@@ -2101,6 +2116,13 @@ func (c *Controller) calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv
 		subnet.Status.V4AvailableIPRange == v4AvailableIPStr &&
 		subnet.Status.V6AvailableIPRange == v6AvailableIPStr {
 		return subnet, nil
+	}
+
+	if v4UsingIPStr == "" && v6UsingIPStr == "" && usingIPs != 0 {
+		// in case of subnet deletion, v4 v6 using ip should be 0
+		err = fmt.Errorf("ipam subnet %s has no ip in using, but some ip cr left: ip %d, vip %d, iptable eip %d, ovn eip %d", subnet.Name, lenIP, lenVip, lenIptablesEip, lenOvnEip)
+		klog.Error(err)
+		return nil, err
 	}
 
 	subnet.Status.V4AvailableIPs = v4availableIPs
@@ -2127,14 +2149,16 @@ func (c *Controller) calcSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv1.Su
 		klog.Error(err)
 		return nil, err
 	}
+	var lenIP, lenVip, lenIptablesEip, lenOvnEip int
 	podUsedIPs, err := c.ipsLister.List(labels.SelectorFromSet(labels.Set{subnet.Name: ""}))
 	if err != nil {
 		klog.Error(err)
 		return nil, err
 	}
-	usingIPNums := len(podUsedIPs)
-	for _, podUsedIP := range podUsedIPs {
-		for _, excludeIP := range subnet.Spec.ExcludeIps {
+	lenIP = len(podUsedIPs)
+	usingIPNums := lenIP
+	for _, excludeIP := range subnet.Spec.ExcludeIps {
+		for _, podUsedIP := range podUsedIPs {
 			if util.ContainsIPs(excludeIP, podUsedIP.Spec.V4IPAddress) || util.ContainsIPs(excludeIP, podUsedIP.Spec.V6IPAddress) {
 				// This ip cr is allocated from subnet.spec.excludeIPs, do not count it as usingIPNums
 				usingIPNums--
@@ -2155,15 +2179,8 @@ func (c *Controller) calcSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv1.Su
 		klog.Error(err)
 		return nil, err
 	}
-	usingIPs += float64(len(vips))
-	ovnEips, err := c.ovnEipsLister.List(labels.SelectorFromSet(labels.Set{
-		util.SubnetNameLabel: subnet.Name,
-	}))
-	if err != nil {
-		klog.Error(err)
-		return nil, err
-	}
-	usingIPs += float64(len(ovnEips))
+	lenVip = len(vips)
+	usingIPs += float64(lenVip)
 	if !isOvnSubnet(subnet) {
 		eips, err := c.iptablesEipsLister.List(
 			labels.SelectorFromSet(labels.Set{util.SubnetNameLabel: subnet.Name}))
@@ -2171,7 +2188,19 @@ func (c *Controller) calcSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv1.Su
 			klog.Error(err)
 			return nil, err
 		}
-		usingIPs += float64(len(eips))
+		lenIptablesEip = len(eips)
+		usingIPs += float64(lenIptablesEip)
+	}
+	if subnet.Spec.Vlan != "" {
+		ovnEips, err := c.ovnEipsLister.List(labels.SelectorFromSet(labels.Set{
+			util.SubnetNameLabel: subnet.Name,
+		}))
+		if err != nil {
+			klog.Error(err)
+			return nil, err
+		}
+		lenOvnEip = len(ovnEips)
+		usingIPs += float64(lenOvnEip)
 	}
 
 	availableIPs -= usingIPs
@@ -2220,6 +2249,13 @@ func (c *Controller) calcSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv1.Su
 		subnet.Status.V6AvailableIPRange,
 	} {
 		return subnet, nil
+	}
+
+	if v4UsingIPStr == "" && v6UsingIPStr == "" && usingIPs != 0 {
+		// in case of subnet deletion, v4 v6 using ip should be 0
+		err = fmt.Errorf("ipam subnet %s has no ip in using, but some ip cr left: ip %d, vip %d, iptable eip %d, ovn eip %d", subnet.Name, lenIP, lenVip, lenIptablesEip, lenOvnEip)
+		klog.Error(err)
+		return nil, err
 	}
 
 	bytes, err := subnet.Status.Bytes()

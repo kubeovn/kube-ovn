@@ -288,24 +288,6 @@ func (c *Controller) handleUpdateOvnEip(key string) error {
 		return err
 	}
 	klog.Infof("handle update ovn eip %s", cachedEip.Name)
-	if !cachedEip.DeletionTimestamp.IsZero() {
-		subnetName := cachedEip.Spec.ExternalSubnet
-		if subnetName == "" {
-			err := fmt.Errorf("failed to create ovn eip '%s', subnet should be set", key)
-			klog.Error(err)
-			return err
-		}
-		subnet, err := c.subnetsLister.Get(subnetName)
-		if err != nil {
-			klog.Errorf("failed to get external subnet, %v", err)
-			return err
-		}
-		if err = c.subnetCountIP(subnet); err != nil {
-			klog.Errorf("failed to count ovn eip '%s' in subnet, %v", cachedEip.Name, err)
-			return err
-		}
-		return nil
-	}
 	if cachedEip.Spec.Type != util.OvnEipTypeLSP {
 		// node ext gw use lsp eip, has a nic on gw node, so left node to make it ready
 		if err = c.patchOvnEipStatus(key, true); err != nil {
@@ -353,13 +335,13 @@ func (c *Controller) handleDelOvnEip(key string) error {
 			return err
 		}
 	}
-
 	if eip.Spec.Type == util.OvnEipTypeLRP {
 		if err := c.OVNNbClient.DeleteLogicalRouterPort(eip.Name); err != nil {
 			klog.Errorf("failed to delete lrp %s, %v", eip.Name, err)
 			return err
 		}
 	}
+
 	if err = c.handleDelOvnEipFinalizer(eip, util.ControllerName); err != nil {
 		klog.Errorf("failed to handle remove ovn eip finalizer , %v", err)
 		return err
