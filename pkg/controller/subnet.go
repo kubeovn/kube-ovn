@@ -2041,9 +2041,19 @@ func (c *Controller) calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv
 	lenIP = len(podUsedIPs)
 	usingIPNums := lenIP
 
-	if subnet.Spec.ExcludeIps != nil {
+	// TODO:// replace ExcludeIps with ip pool and gw to avoid later loop
+	noGWExcludeIPs := []string{}
+	v4gw, v6gw := util.SplitStringIP(subnet.Spec.Gateway)
+	for _, excludeIP := range subnet.Spec.ExcludeIps {
+		if v4gw == excludeIP || v6gw == excludeIP {
+			// no need to compair gateway ip with pod ip
+			continue
+		}
+		noGWExcludeIPs = append(noGWExcludeIPs, excludeIP)
+	}
+	if noGWExcludeIPs != nil {
 		for _, podUsedIP := range podUsedIPs {
-			for _, excludeIP := range subnet.Spec.ExcludeIps {
+			for _, excludeIP := range noGWExcludeIPs {
 				if util.ContainsIPs(excludeIP, podUsedIP.Spec.V4IPAddress) || util.ContainsIPs(excludeIP, podUsedIP.Spec.V6IPAddress) {
 					// This ip cr is allocated from subnet.spec.excludeIPs, do not count it as usingIPNums
 					usingIPNums--
@@ -2161,9 +2171,19 @@ func (c *Controller) calcSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv1.Su
 	lenIP = len(podUsedIPs)
 	usingIPNums := lenIP
 
-	if subnet.Spec.ExcludeIps != nil {
+	// TODO:// replace ExcludeIps with ip pool and gw to avoid later loop
+	noGWExcludeIPs := []string{}
+	v4gw, v6gw := util.SplitStringIP(subnet.Spec.Gateway)
+	for _, excludeIP := range subnet.Spec.ExcludeIps {
+		if v4gw == excludeIP || v6gw == excludeIP {
+			// no need to compair gateway ip with pod ip
+			continue
+		}
+		noGWExcludeIPs = append(noGWExcludeIPs, excludeIP)
+	}
+	if noGWExcludeIPs != nil {
 		for _, podUsedIP := range podUsedIPs {
-			for _, excludeIP := range subnet.Spec.ExcludeIps {
+			for _, excludeIP := range noGWExcludeIPs {
 				if util.ContainsIPs(excludeIP, podUsedIP.Spec.V4IPAddress) || util.ContainsIPs(excludeIP, podUsedIP.Spec.V6IPAddress) {
 					// This ip cr is allocated from subnet.spec.excludeIPs, do not count it as usingIPNums
 					usingIPNums--
