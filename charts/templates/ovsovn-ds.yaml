@@ -6,12 +6,13 @@ metadata:
   annotations:
     kubernetes.io/description: |
       This daemon set launches the openvswitch daemon.
+    chart-version: "{{ .Chart.Name }}-{{ .Chart.Version }}"
 spec:
   selector:
     matchLabels:
       app: ovs
   updateStrategy:
-    type: RollingUpdate
+    type: {{ include "kubeovn.ovs-ovn.updateStrategy" . }}
     rollingUpdate:
       maxSurge: 1
       maxUnavailable: 0
@@ -21,6 +22,8 @@ spec:
         app: ovs
         component: network
         type: infra
+      annotations:
+        chart-version: "{{ .Chart.Name }}-{{ .Chart.Version }}"
     spec:
       tolerations:
         - effect: NoSchedule
