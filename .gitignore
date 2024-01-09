@@ -11,9 +11,14 @@ test/e2e/ovnnb_db.*
 test/e2e/ovnsb_db.*
 kube-ovn.yaml
 kube-ovn-crd.yaml
+kube-ovn-app-sa.yaml
+kube-ovn-cni-sa.yaml
+kube-ovn-sa.yaml
 ovn.yaml
 ovn-ic-0.yaml
 ovn-ic-1.yaml
+ovn-ovs-sa.yaml
+ovs-ovn-ds.yaml
 kind.yaml
 kube-ovn.tar
 vpc-nat-gateway.tar
