@@ -198,7 +198,7 @@ func (c *Controller) reconcileRouterPorts(vpc *kubeovnv1.Vpc) error {
 			}
 			networks, err := util.GetIpAddrWithMask(gateway, subnet.Spec.CIDRBlock)
 			if err != nil {
-				klog.ErrorS(err, "unable to get ip addr with mask", "gateway", gateway, "cidr", subnet.Spec.CIDRBlock)
+				klog.Error(err)
 				return err
 			}
 			klog.Infof("add vpc lrp %s, networks %s", routerPortName, networks)
@@ -319,11 +319,12 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		return err
 	}
 	if err = c.createVpcRouter(key); err != nil {
+		klog.Errorf("failed to create vpc router: %v", err)
 		return err
 	}
 
 	if err := c.reconcileRouterPorts(vpc); err != nil {
-		klog.ErrorS(err, "unable to reconcileRouterPorts")
+		klog.Errorf("failed to reconcileRouterPorts: %v", err)
 		return err
 	}
 
@@ -761,6 +762,7 @@ func (c *Controller) getVpcSubnets(vpc *kubeovnv1.Vpc) (subnets []string, defaul
 	subnets = []string{}
 	allSubnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
+		klog.Error(err)
 		return nil, "", err
 	}
 
