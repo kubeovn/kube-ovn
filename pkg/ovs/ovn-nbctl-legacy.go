@@ -2652,6 +2652,24 @@ func (c *LegacyClient) GetPolicyRouteParas(priority int32, match string) ([]stri
 	return result[0]["nexthops"], nameIpMap, nil
 }
 
+func (c *LegacyClient) FilterSubnetPolicyRoutes(priority int32, subnetName string) ([]string, error) {
+	results, err := c.CustomFindEntity("Logical_Router_Policy", []string{"match"}, fmt.Sprintf("priority=%d", priority), fmt.Sprintf("external_ids:subnet=\"%s\"", subnetName), fmt.Sprintf("external_ids:vendor=\"%s\"", util.CniTypeName))
+	if err != nil {
+		klog.Errorf("customFindEntity failed, %v", err)
+		return nil, err
+	}
+	if len(results) == 0 {
+		return nil, nil
+	}
+
+	var policyMatches []string
+	for _, result := range results {
+		policyMatches = append(policyMatches, strings.Join(result["match"], " "))
+	}
+
+	return policyMatches, nil
+}
+
 func (c LegacyClient) SetPolicyRouteExternalIds(priority int32, match string, nameIpMaps map[string]string) error {
 	result, err := c.CustomFindEntity("Logical_Router_Policy", []string{"_uuid"}, fmt.Sprintf("priority=%d", priority), fmt.Sprintf("match=\"%s\"", match))
 	if err != nil {
