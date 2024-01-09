@@ -1,3 +1,4 @@
+{{- if eq .Values.func.ENABLE_IC true }}
 kind: Deployment
 apiVersion: apps/v1
 metadata:
@@ -95,3 +96,4 @@ spec:
           secret:
             optional: true
             secretName: kube-ovn-tls
+{{- end }}

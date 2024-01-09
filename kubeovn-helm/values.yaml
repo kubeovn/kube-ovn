@@ -52,6 +52,7 @@ func:
   CHECK_GATEWAY: true
   LOGICAL_GATEWAY: false
   ENABLE_BIND_LOCAL_IP: true
+  ENABLE_IC: true
 
 ipv4:
   POD_CIDR: "10.16.0.0/16"

@@ -19,6 +19,7 @@ ENABLE_EXTERNAL_VPC=${ENABLE_EXTERNAL_VPC:-true}
 CNI_CONFIG_PRIORITY=${CNI_CONFIG_PRIORITY:-01}
 ENABLE_LB_SVC=${ENABLE_LB_SVC:-false}
 ENABLE_KEEP_VM_IP=${ENABLE_KEEP_VM_IP:-true}
+ENABLE_IC=${ENABLE_IC:-false}
 
 # exchange link names of OVS bridge and the provider nic
 # in the default provider-network
@@ -3559,6 +3560,76 @@ spec:
             optional: true
             secretName: kube-ovn-tls
 ---
+kind: Service
+apiVersion: v1
+metadata:
+  name: kube-ovn-monitor
+  namespace: kube-system
+  labels:
+    app: kube-ovn-monitor
+spec:
+  ports:
+    - name: metrics
+      port: 10661
+  type: ClusterIP
+  ${SVC_YAML_IPFAMILYPOLICY}
+  selector:
+    app: kube-ovn-monitor
+  sessionAffinity: None
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: kube-ovn-pinger
+  namespace: kube-system
+  labels:
+    app: kube-ovn-pinger
+spec:
+  ${SVC_YAML_IPFAMILYPOLICY}
+  selector:
+    app: kube-ovn-pinger
+  ports:
+    - port: 8080
+      name: metrics
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: kube-ovn-controller
+  namespace: kube-system
+  labels:
+    app: kube-ovn-controller
+spec:
+  ${SVC_YAML_IPFAMILYPOLICY}
+  selector:
+    app: kube-ovn-controller
+  ports:
+    - port: 10660
+      name: metrics
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: kube-ovn-cni
+  namespace: kube-system
+  labels:
+    app: kube-ovn-cni
+spec:
+  ${SVC_YAML_IPFAMILYPOLICY}
+  selector:
+    app: kube-ovn-cni
+  ports:
+    - port: 10665
+      name: metrics
+EOF
+
+kubectl apply -f kube-ovn.yaml
+kubectl rollout status deployment/kube-ovn-controller -n kube-system --timeout 300s
+kubectl rollout status daemonset/kube-ovn-cni -n kube-system --timeout 300s
+
+if $ENABLE_IC; then
+
+cat <<EOF > ovn-ic-client.yaml
 kind: Deployment
 apiVersion: apps/v1
 metadata:
@@ -3656,73 +3727,10 @@ spec:
           secret:
             optional: true
             secretName: kube-ovn-tls
----
-kind: Service
-apiVersion: v1
-metadata:
-  name: kube-ovn-monitor
-  namespace: kube-system
-  labels:
-    app: kube-ovn-monitor
-spec:
-  ports:
-    - name: metrics
-      port: 10661
-  type: ClusterIP
-  ${SVC_YAML_IPFAMILYPOLICY}
-  selector:
-    app: kube-ovn-monitor
-  sessionAffinity: None
----
-kind: Service
-apiVersion: v1
-metadata:
-  name: kube-ovn-pinger
-  namespace: kube-system
-  labels:
-    app: kube-ovn-pinger
-spec:
-  ${SVC_YAML_IPFAMILYPOLICY}
-  selector:
-    app: kube-ovn-pinger
-  ports:
-    - port: 8080
-      name: metrics
----
-kind: Service
-apiVersion: v1
-metadata:
-  name: kube-ovn-controller
-  namespace: kube-system
-  labels:
-    app: kube-ovn-controller
-spec:
-  ${SVC_YAML_IPFAMILYPOLICY}
-  selector:
-    app: kube-ovn-controller
-  ports:
-    - port: 10660
-      name: metrics
----
-kind: Service
-apiVersion: v1
-metadata:
-  name: kube-ovn-cni
-  namespace: kube-system
-  labels:
-    app: kube-ovn-cni
-spec:
-  ${SVC_YAML_IPFAMILYPOLICY}
-  selector:
-    app: kube-ovn-cni
-  ports:
-    - port: 10665
-      name: metrics
 EOF
+kubectl apply -f ovn-ic-client.yaml
+fi
 
-kubectl apply -f kube-ovn.yaml
-kubectl rollout status deployment/kube-ovn-controller -n kube-system --timeout 300s
-kubectl rollout status daemonset/kube-ovn-cni -n kube-system --timeout 300s
 echo "-------------------------------"
 echo ""
 

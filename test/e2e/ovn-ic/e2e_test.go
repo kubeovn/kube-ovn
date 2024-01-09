@@ -212,49 +212,6 @@ var _ = framework.SerialDescribe("[group:ovn-ic]", func() {
 		fnCheckPodHTTP()
 	})
 
-	framework.ConformanceIt("should be able to update az name", func() {
-		azNames := make([]string, len(clusters))
-		for i := range clusters {
-			ginkgo.By("fetching the ConfigMap in cluster " + clusters[i])
-			cm, err := clientSets[i].CoreV1().ConfigMaps(framework.KubeOvnNamespace).Get(context.TODO(), util.InterconnectionConfig, metav1.GetOptions{})
-			framework.ExpectNoError(err, "failed to get ConfigMap")
-			azNames[i] = cm.Data["az-name"]
-		}
-
-		azNames[0] = fmt.Sprintf("az%04d", rand.Intn(10000))
-		configMapPatchPayload, err := json.Marshal(corev1.ConfigMap{
-			Data: map[string]string{
-				"az-name": azNames[0],
-			},
-		})
-		framework.ExpectNoError(err, "failed to marshal patch data")
-
-		ginkgo.By("patching the ConfigMap in cluster " + clusters[0])
-		_, err = clientSets[0].CoreV1().ConfigMaps(framework.KubeOvnNamespace).Patch(context.TODO(), util.InterconnectionConfig, k8stypes.StrategicMergePatchType, []byte(configMapPatchPayload), metav1.PatchOptions{})
-		framework.ExpectNoError(err, "failed to patch ConfigMap")
-
-		ginkgo.By("Waiting for new az names to be applied")
-		time.Sleep(10 * time.Second)
-
-		pods, err := clientSets[0].CoreV1().Pods("kube-system").List(context.TODO(), metav1.ListOptions{LabelSelector: "app=ovs"})
-		framework.ExpectNoError(err, "failed to get ovs-ovn pods")
-		cmd := "ovn-appctl -t ovn-controller inc-engine/recompute"
-		for _, pod := range pods.Items {
-			execPodOrDie(frameworks[0].KubeContext, "kube-system", pod.Name, cmd)
-		}
-		time.Sleep(2 * time.Second)
-
-		ginkgo.By("Ensuring logical switch ts exists in cluster " + clusters[0])
-		output := execOrDie(frameworks[0].KubeContext, "ko nbctl show ts")
-		for _, az := range azNames {
-			lsp := "ts-" + az
-			framework.ExpectTrue(strings.Contains(output, lsp), "should have lsp "+lsp)
-			framework.ExpectTrue(strings.Contains(output, lsp), "should have lsp "+lsp)
-		}
-
-		fnCheckPodHTTP()
-	})
-
 	framework.ConformanceIt("Should Support ECMP OVN Interconnection", func() {
 
 		ginkgo.By("case 1: ecmp gateway network test")

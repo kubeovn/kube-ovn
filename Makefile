@@ -358,7 +358,8 @@ kind-install-ipv4: kind-install-overlay-ipv4
 kind-install-overlay-ipv4: kind-install
 
 .PHONY: kind-install-ovn-ic
-kind-install-ovn-ic: kind-install
+kind-install-ovn-ic:
+	@ENABLE_IC=true $(MAKE) kind-install
 	$(call kind_load_image,kube-ovn1,$(REGISTRY)/kube-ovn:$(VERSION))
 	kubectl config use-context kind-kube-ovn1
 	$(MAKE) kind-untaint-control-plane
@@ -366,7 +367,7 @@ kind-install-ovn-ic: kind-install
 		-e 's/10.96.0/10.98.0/g' \
 		-e 's/100.64.0/100.68.0/g' \
 		-e 's/VERSION=.*/VERSION=$(VERSION)/' \
-		dist/images/install.sh | bash
+		dist/images/install.sh | ENABLE_IC=true bash
 	kubectl describe no
 
 	kubectl config use-context kind-kube-ovn
