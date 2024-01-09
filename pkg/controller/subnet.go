@@ -2040,12 +2040,15 @@ func (c *Controller) calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv
 	var lenIP, lenVip, lenIptablesEip, lenOvnEip int
 	lenIP = len(podUsedIPs)
 	usingIPNums := lenIP
-	for _, excludeIP := range subnet.Spec.ExcludeIps {
+
+	if subnet.Spec.ExcludeIps != nil {
 		for _, podUsedIP := range podUsedIPs {
-			if util.ContainsIPs(excludeIP, podUsedIP.Spec.V4IPAddress) || util.ContainsIPs(excludeIP, podUsedIP.Spec.V6IPAddress) {
-				// This ip cr is allocated from subnet.spec.excludeIPs, do not count it as usingIPNums
-				usingIPNums--
-				break
+			for _, excludeIP := range subnet.Spec.ExcludeIps {
+				if util.ContainsIPs(excludeIP, podUsedIP.Spec.V4IPAddress) || util.ContainsIPs(excludeIP, podUsedIP.Spec.V6IPAddress) {
+					// This ip cr is allocated from subnet.spec.excludeIPs, do not count it as usingIPNums
+					usingIPNums--
+					break
+				}
 			}
 		}
 	}
@@ -2157,12 +2160,15 @@ func (c *Controller) calcSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv1.Su
 	}
 	lenIP = len(podUsedIPs)
 	usingIPNums := lenIP
-	for _, excludeIP := range subnet.Spec.ExcludeIps {
+
+	if subnet.Spec.ExcludeIps != nil {
 		for _, podUsedIP := range podUsedIPs {
-			if util.ContainsIPs(excludeIP, podUsedIP.Spec.V4IPAddress) || util.ContainsIPs(excludeIP, podUsedIP.Spec.V6IPAddress) {
-				// This ip cr is allocated from subnet.spec.excludeIPs, do not count it as usingIPNums
-				usingIPNums--
-				break
+			for _, excludeIP := range subnet.Spec.ExcludeIps {
+				if util.ContainsIPs(excludeIP, podUsedIP.Spec.V4IPAddress) || util.ContainsIPs(excludeIP, podUsedIP.Spec.V6IPAddress) {
+					// This ip cr is allocated from subnet.spec.excludeIPs, do not count it as usingIPNums
+					usingIPNums--
+					break
+				}
 			}
 		}
 	}
