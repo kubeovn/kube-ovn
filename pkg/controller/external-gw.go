@@ -204,7 +204,11 @@ func (c *Controller) createDefaultVpcLrpEip(config map[string]string) (string, s
 		klog.Error(err)
 		return "", "", err
 	}
-	v4ipCidr := util.GetIpAddrWithMask(v4ip, cachedSubnet.Spec.CIDRBlock)
+	v4ipCidr, err := util.GetIpAddrWithMask(v4ip, cachedSubnet.Spec.CIDRBlock)
+	if err != nil {
+		klog.Errorf("failed to get ip %s with mask %s, %v", v4ip, cachedSubnet.Spec.CIDRBlock, err)
+		return "", "", err
+	}
 	return v4ipCidr, mac, nil
 }
 
