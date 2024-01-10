@@ -1646,6 +1646,17 @@ func calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 		return err
 	}
 
+	usingIPNums := len(podUsedIPs.Items)
+	for _, podUsedIP := range podUsedIPs.Items {
+		for _, excludeIP := range subnet.Spec.ExcludeIps {
+			if util.ContainsIPs(excludeIP, podUsedIP.Spec.V4IPAddress) || util.ContainsIPs(excludeIP, podUsedIP.Spec.V6IPAddress) {
+				// This ip cr is allocated from subnet.spec.excludeIPs, do not count it as usingIPNums
+				usingIPNums--
+				break
+			}
+		}
+	}
+
 	// subnet.Spec.ExcludeIps contains both v4 and v6 addresses
 	v4ExcludeIps, v6ExcludeIps := util.SplitIpsByProtocol(subnet.Spec.ExcludeIps)
 	// gateway always in excludeIPs
@@ -1657,7 +1668,7 @@ func calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 	v4availableIPs := util.AddressCount(v4CIDR) - util.CountIpNums(v4toSubIPs)
 	v6availableIPs := util.AddressCount(v6CIDR) - util.CountIpNums(v6toSubIPs)
 
-	usingIPs := float64(len(podUsedIPs.Items))
+	usingIPs := float64(usingIPNums)
 
 	vipSelectors := fields.AndSelectors(fields.OneTermEqualSelector(util.SubnetNameLabel, subnet.Name),
 		fields.OneTermEqualSelector(util.IpReservedLabel, "")).String()
@@ -1717,10 +1728,22 @@ func calcSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 	if err != nil {
 		return err
 	}
+
+	usingIPNums := len(podUsedIPs.Items)
+	for _, podUsedIP := range podUsedIPs.Items {
+		for _, excludeIP := range subnet.Spec.ExcludeIps {
+			if util.ContainsIPs(excludeIP, podUsedIP.Spec.V4IPAddress) || util.ContainsIPs(excludeIP, podUsedIP.Spec.V6IPAddress) {
+				// This ip cr is allocated from subnet.spec.excludeIPs, do not count it as usingIPNums
+				usingIPNums--
+				break
+			}
+		}
+	}
+
 	// gateway always in excludeIPs
 	toSubIPs := util.ExpandExcludeIPs(subnet.Spec.ExcludeIps, subnet.Spec.CIDRBlock)
 	availableIPs := util.AddressCount(cidr) - util.CountIpNums(toSubIPs)
-	usingIPs := float64(len(podUsedIPs.Items))
+	usingIPs := float64(usingIPNums)
 	vipSelectors := fields.AndSelectors(fields.OneTermEqualSelector(util.SubnetNameLabel, subnet.Name),
 		fields.OneTermEqualSelector(util.IpReservedLabel, "")).String()
 	vips, err := c.config.KubeOvnClient.KubeovnV1().Vips().List(context.Background(), metav1.ListOptions{
