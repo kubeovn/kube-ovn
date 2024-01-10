@@ -127,7 +127,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		vmName = pod.Annotations[fmt.Sprintf(util.VmTemplate, podRequest.Provider)]
 		ipAddr, err = util.GetIpAddrWithMask(ip, cidr)
 		if err != nil {
-			errMsg := fmt.Errorf("get ip address with mask failed %v", err)
+			errMsg := fmt.Errorf("failed to get ip address with mask, %v", err)
 			klog.Error(errMsg)
 			if err := resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()}); err != nil {
 				klog.Errorf("failed to write response, %v", err)
