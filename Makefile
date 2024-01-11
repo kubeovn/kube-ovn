@@ -484,7 +484,7 @@ kind-upgrade-chart: kind-load-image
 		--set global.images.kubeovn.tag=$(VERSION)
 	sleep 90
 	kubectl -n kube-system rollout status --timeout=1s deployment/ovn-central
-	kubectl -n kube-system rollout status --timeout=1s daemonset/ovs-ovn
+	kubectl -n kube-system wait pod --for=condition=ready -l app=ovs
 	kubectl -n kube-system rollout status --timeout=1s deployment/kube-ovn-controller
 	kubectl -n kube-system rollout status --timeout=1s daemonset/kube-ovn-cni
 	kubectl -n kube-system rollout status --timeout=1s daemonset/kube-ovn-pinger
