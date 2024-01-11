@@ -2958,7 +2958,11 @@ func (c *LegacyClient) DeleteDHCPOptions(ls string, protocol string) error {
 func (c *LegacyClient) UpdateRouterPortIPv6RA(ls, lr, cidrBlock, gateway, ipv6RAConfigsStr string, enableIPv6RA bool) error {
 	var err error
 	lrTols := fmt.Sprintf("%s-%s", lr, ls)
-	ip := util.GetIpAddrWithMask(gateway, cidrBlock)
+	ip, err := util.GetIpAddrWithMask(gateway, cidrBlock)
+	if err != nil {
+		klog.Errorf("failed to get ip addr with mask, %v", err)
+		return err
+	}
 	ipStr := strings.Split(ip, ",")
 	if enableIPv6RA {
 		var ipv6Prefix string

@@ -196,7 +196,11 @@ func (c *Controller) reconcileRouterPorts(vpc *kubeovnv1.Vpc) error {
 			if subnet.Spec.U2OInterconnection && subnet.Status.U2OInterconnectionIP != "" {
 				gateway = subnet.Status.U2OInterconnectionIP
 			}
-			networks := util.GetIpAddrWithMask(gateway, subnet.Spec.CIDRBlock)
+			networks, err := util.GetIpAddrWithMask(gateway, subnet.Spec.CIDRBlock)
+			if err != nil {
+				klog.Error(err)
+				return err
+			}
 			klog.Infof("add vpc lrp %s, networks %s", routerPortName, networks)
 			if err := c.ovnClient.AddLogicalRouterPort(router, routerPortName, "", networks); err != nil {
 				klog.ErrorS(err, "unable to create router port", "vpc", vpc.Name, "subnet", subnetName)
@@ -229,7 +233,11 @@ func (c *Controller) reconcileRouterPortBySubnet(vpc *kubeovnv1.Vpc, subnet *kub
 		if subnet.Spec.U2OInterconnection && subnet.Status.U2OInterconnectionIP != "" {
 			gateway = subnet.Status.U2OInterconnectionIP
 		}
-		networks := util.GetIpAddrWithMask(gateway, subnet.Spec.CIDRBlock)
+		networks, err := util.GetIpAddrWithMask(gateway, subnet.Spec.CIDRBlock)
+		if err != nil {
+			klog.Errorf("failed to get ip addr with mask, gateway %s, cidr %s", gateway, subnet.Spec.CIDRBlock)
+			return err
+		}
 		klog.Infof("router port does not exist, trying to create %s with ip %s", routerPortName, networks)
 
 		if err := c.ovnClient.AddLogicalRouterPort(router, routerPortName, "", networks); err != nil {
@@ -311,11 +319,12 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		return err
 	}
 	if err = c.createVpcRouter(key); err != nil {
+		klog.Errorf("failed to create vpc router: %v", err)
 		return err
 	}
 
 	if err := c.reconcileRouterPorts(vpc); err != nil {
-		klog.ErrorS(err, "unable to reconcileRouterPorts")
+		klog.Errorf("failed to reconcileRouterPorts: %v", err)
 		return err
 	}
 
@@ -753,6 +762,7 @@ func (c *Controller) getVpcSubnets(vpc *kubeovnv1.Vpc) (subnets []string, defaul
 	subnets = []string{}
 	allSubnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
+		klog.Error(err)
 		return nil, "", err
 	}
 
@@ -835,7 +845,11 @@ func (c *Controller) handleAddVpcExternal(key string) error {
 		klog.Errorf("failed to get gateway chassis, %v", err)
 		return err
 	}
-	v4ipCidr := util.GetIpAddrWithMask(v4ip, cachedSubnet.Spec.CIDRBlock)
+	v4ipCidr, err := util.GetIpAddrWithMask(v4ip, cachedSubnet.Spec.CIDRBlock)
+	if err != nil {
+		klog.Errorf("failed to get ip addr with mask, ip %s, cidr %s", v4ip, cachedSubnet.Spec.CIDRBlock)
+		return err
+	}
 	if err := c.ovnLegacyClient.ConnectRouterToExternal(c.config.ExternalGatewaySwitch, key, v4ipCidr, mac, chassises); err != nil {
 		klog.Errorf("failed to connect router '%s' to external, %v", key, err)
 		return err
