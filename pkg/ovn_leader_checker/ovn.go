@@ -410,7 +410,6 @@ func doOvnLeaderCheck(cfg *Configuration, podName string, podNamespace string) {
 			}
 		}
 	}
-
 }
 
 func StartOvnLeaderCheck(cfg *Configuration) {
@@ -436,30 +435,21 @@ func getTSCidr(index int) string {
 }
 
 func updateTS() error {
-	cmdstr := "ovn-ic-nbctl show | wc -l"
-	cmd := exec.Command("sh", "-c", cmdstr)
+	cmd := exec.Command("ovn-ic-nbctl", "show")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("ovn-ic-nbctl show output: %s, err: %v", output, err)
 	}
-	lines := strings.Split(string(output), "\n")
-	if len(lines) < 1 {
-		return fmt.Errorf("ovsn-ic-nbctl show count line: err")
+	var existTSCount int
+	if lines := strings.TrimSpace(string(output)); lines != "" {
+		existTSCount = len(strings.Split(lines, "\n"))
 	}
-
-	existTSCount, err := strconv.Atoi(lines[0])
-
-	if err != nil {
-		return fmt.Errorf("existTSCount atoi failed output: %s, err: %v", output, err)
-	}
-
 	expectTSCount, err := strconv.Atoi(os.Getenv("TS_NUM"))
-
 	if err != nil {
 		return fmt.Errorf("expectTSCount atoi failed output: %s, err: %v", output, err)
 	}
-
 	if expectTSCount == existTSCount {
+		klog.Info("%d TS found, no chenges required.")
 		return nil
 	}
 
@@ -483,7 +473,7 @@ func updateTS() error {
 				return fmt.Errorf("output: %s, err: %v", output, err)
 			}
 		}
-	} else if expectTSCount < existTSCount {
+	} else {
 		for i := existTSCount - 1; i >= expectTSCount; i-- {
 			tsName := getTSName(i)
 			cmd := exec.Command("ovn-ic-nbctl",

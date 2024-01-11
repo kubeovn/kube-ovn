@@ -19,7 +19,7 @@ ENABLE_EXTERNAL_VPC=${ENABLE_EXTERNAL_VPC:-true}
 CNI_CONFIG_PRIORITY=${CNI_CONFIG_PRIORITY:-01}
 ENABLE_LB_SVC=${ENABLE_LB_SVC:-false}
 ENABLE_KEEP_VM_IP=${ENABLE_KEEP_VM_IP:-true}
-ENABLE_IC=${ENABLE_IC:-false}
+ENABLE_IC=${ENABLE_IC:-true}
 
 # exchange link names of OVS bridge and the provider nic
 # in the default provider-network
@@ -3629,15 +3629,15 @@ kubectl rollout status daemonset/kube-ovn-cni -n kube-system --timeout 300s
 
 if $ENABLE_IC; then
 
-cat <<EOF > ovn-ic-client.yaml
+cat <<EOF > ovn-ic-controller.yaml
 kind: Deployment
 apiVersion: apps/v1
 metadata:
-  name: ovn-ic-client
+  name: ovn-ic-controller
   namespace: kube-system
   annotations:
     kubernetes.io/description: |
-      OVN IC Client
+      OVN IC Controller
 spec:
   replicas: 1
   strategy:
@@ -3647,11 +3647,11 @@ spec:
     type: RollingUpdate
   selector:
     matchLabels:
-      app: ovn-ic-client
+      app: ovn-ic-controller
   template:
     metadata:
       labels:
-        app: ovn-ic-client
+        app: ovn-ic-controller
         component: network
         type: infra
     spec:
@@ -3667,16 +3667,16 @@ spec:
           requiredDuringSchedulingIgnoredDuringExecution:
             - labelSelector:
                 matchLabels:
-                  app: ovn-ic-client
+                  app: ovn-ic-controller
               topologyKey: kubernetes.io/hostname
       priorityClassName: system-cluster-critical
       serviceAccountName: ovn
       hostNetwork: true
       containers:
-        - name: ovn-ic-client
+        - name: ovn-ic-controller
           image: "$REGISTRY/kube-ovn:$VERSION"
           imagePullPolicy: $IMAGE_PULL_POLICY
-          command: ["/kube-ovn/start-ic-client.sh"]
+          command: ["/kube-ovn/start-ic-controller.sh"]
           securityContext:
             capabilities:
               add: ["SYS_NICE"]
@@ -3728,7 +3728,7 @@ spec:
             optional: true
             secretName: kube-ovn-tls
 EOF
-kubectl apply -f ovn-ic-client.yaml
+kubectl apply -f ovn-ic-controller.yaml
 fi
 
 echo "-------------------------------"
