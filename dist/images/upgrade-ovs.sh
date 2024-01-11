@@ -1,20 +1,30 @@
 #!/bin/bash
 
-set -e
+set -ex
 
 POD_NAMESPACE=${POD_NAMESPACE:-kube-system}
 
-dsGenVer=`kubectl -n $POD_NAMESPACE get ds ovs-ovn -o jsonpath={.metadata.generation}`
-kubectl -n $POD_NAMESPACE delete pod -l app=ovs,pod-template-generation!=$dsGenVer
+dsChartVer=`kubectl get ds -n $POD_NAMESPACE ovs-ovn -o jsonpath={.spec.template.metadata.annotations.chart-version}`
 
 for node in `kubectl get node -o jsonpath='{.items[*].metadata.name}'`; do
-  # wait the pod with new version to be created and delete it
+  pods=(`kubectl -n $POD_NAMESPACE get pod -l app=ovs --field-selector spec.nodeName=$node -o name`)
+  for pod in ${pods[*]}; do
+    podChartVer=`kubectl -n $POD_NAMESPACE get $pod -o jsonpath={.metadata.annotations.chart-version}`
+    if [ "$dsChartVer" != "$podChartVer" ]; then
+      echo "deleting $pod on node $node"
+      kubectl -n $POD_NAMESPACE delete $pod
+    fi
+  done
+
   while true; do
-    pod=`kubectl -n $POD_NAMESPACE get pod -l app=ovs,pod-template-generation=$dsGenVer --field-selector spec.nodeName=$node -o name`
-    if [ ! -z $pod ]; then
-      kubectl -n $POD_NAMESPACE delete $pod --wait=false
+    pods=(`kubectl -n $POD_NAMESPACE get pod -l app=ovs --field-selector spec.nodeName=$node -o name`)
+    if [ ${#pods[*]} -ne 0 ]; then
       break
     fi
-    sleep 0.1
+    echo "waiting for ovs-ovn pod on node $node to be created"
+    sleep 1
   done
+
+  echo "waiting for ovs-ovn pod on node $node to be ready"
+  kubectl -n $POD_NAMESPACE wait pod --for=condition=ready -l app=ovs --field-selector spec.nodeName=$node
 done

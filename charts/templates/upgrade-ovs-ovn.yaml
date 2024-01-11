@@ -1,5 +1,4 @@
-{{ if (lookup "apps/v1" "DaemonSet" "kube-system" "ovs-ovn") }}
-{{ if eq (lookup "apps/v1" "DaemonSet" "kube-system" "ovs-ovn").spec.updateStrategy.type "OnDelete" }}
+{{- if eq (include "kubeovn.ovs-ovn.updateStrategy" .) "OnDelete" }}
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -46,6 +45,7 @@ rules:
     verbs:
       - list
       - get
+      - watch
       - delete
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -128,7 +128,9 @@ spec:
                 fieldRef:
                   fieldPath: metadata.namespace
           command:
-            - sh
+            - bash
+            - -eo
+            - pipefail
             - -c
             - /kube-ovn/upgrade-ovs.sh 2>&1 | tee -a /var/log/kube-ovn/upgrade-ovs.log
           volumeMounts:
@@ -138,5 +140,4 @@ spec:
         - name: kube-ovn-log
           hostPath:
             path: {{ .Values.log_conf.LOG_DIR }}/kube-ovn
-{{ end }}
 {{ end }}
