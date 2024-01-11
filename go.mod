@@ -45,7 +45,7 @@ require (
 	k8s.io/api v0.28.5
 	k8s.io/apimachinery v0.28.5
 	k8s.io/client-go v12.0.0+incompatible
-	k8s.io/klog/v2 v2.110.1
+	k8s.io/klog/v2 v2.120.0
 	k8s.io/kubectl v0.28.5
 	k8s.io/kubernetes v1.28.5
 	k8s.io/pod-security-admission v0.28.5
