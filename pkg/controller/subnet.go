@@ -507,15 +507,6 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		return err
 	}
 
-	deleted, err := c.handleSubnetFinalizer(subnet)
-	if err != nil {
-		klog.Errorf("handle subnet finalizer failed %v", err)
-		return err
-	}
-	if deleted {
-		return nil
-	}
-
 	if subnet.Spec.LogicalGateway && subnet.Spec.U2OInterconnection {
 		err = fmt.Errorf("logicalGateway and u2oInterconnection can't be opened at the same time")
 		klog.Error(err)
@@ -556,6 +547,10 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		}
 	}
 
+	if err := c.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps); err != nil {
+		return err
+	}
+
 	if subnet.Spec.Protocol == kubeovnv1.ProtocolDual {
 		err = calcDualSubnetStatusIP(subnet, c)
 	} else {
@@ -566,8 +561,13 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		return err
 	}
 
-	if err := c.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps); err != nil {
+	deleted, err := c.handleSubnetFinalizer(subnet)
+	if err != nil {
+		klog.Errorf("handle subnet finalizer failed %v", err)
 		return err
+	}
+	if deleted {
+		return nil
 	}
 
 	if subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway {
