@@ -298,20 +298,26 @@ func GetStringIP(v4IP, v6IP string) string {
 	return ipStr
 }
 
-func GetIPAddrWithMask(ip, cidr string) string {
+func GetIPAddrWithMask(ip, cidr string) (string, error) {
 	var ipAddr string
 	if CheckProtocol(cidr) == kubeovnv1.ProtocolDual {
 		cidrBlocks := strings.Split(cidr, ",")
 		ips := strings.Split(ip, ",")
-		if len(cidrBlocks) == 2 && len(ips) == 2 {
-			v4IP := fmt.Sprintf("%s/%s", ips[0], strings.Split(cidrBlocks[0], "/")[1])
-			v6IP := fmt.Sprintf("%s/%s", ips[1], strings.Split(cidrBlocks[1], "/")[1])
-			ipAddr = v4IP + "," + v6IP
+		if len(cidrBlocks) == 2 {
+			if len(ips) == 2 {
+				v4IP := fmt.Sprintf("%s/%s", ips[0], strings.Split(cidrBlocks[0], "/")[1])
+				v6IP := fmt.Sprintf("%s/%s", ips[1], strings.Split(cidrBlocks[1], "/")[1])
+				ipAddr = v4IP + "," + v6IP
+			} else {
+				err := fmt.Errorf("ip %s should be dualstack", ip)
+				klog.Error(err)
+				return "", err
+			}
 		}
 	} else {
 		ipAddr = fmt.Sprintf("%s/%s", ip, strings.Split(cidr, "/")[1])
 	}
-	return ipAddr
+	return ipAddr, nil
 }
 
 func GetIPWithoutMask(ipStr string) string {

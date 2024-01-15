@@ -81,7 +81,11 @@ func InitNodeGateway(config *Configuration) error {
 		return fmt.Errorf("failed to parse mac %s %v", mac, err)
 	}
 
-	ipAddr = util.GetIPAddrWithMask(ip, cidr)
+	ipAddr, err = util.GetIPAddrWithMask(ip, cidr)
+	if err != nil {
+		klog.Errorf("failed to get ip %s with mask %s, %v", ip, cidr, err)
+		return err
+	}
 	return configureNodeNic(portName, ipAddr, gw, mac, config.MTU)
 }
 
