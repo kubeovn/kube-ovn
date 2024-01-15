@@ -787,7 +787,11 @@ func (c *Controller) loopOvnExt0Check() {
 		}
 	}
 	nodeExtIP := cachedEip.Spec.V4Ip
-	ipAddr := util.GetIPAddrWithMask(ips, cachedSubnet.Spec.CIDRBlock)
+	ipAddr, err := util.GetIPAddrWithMask(ips, cachedSubnet.Spec.CIDRBlock)
+	if err != nil {
+		klog.Errorf("failed to get ip addr with mask %s, %v", ips, err)
+		return
+	}
 	if err := c.checkNodeGwNicInNs(nodeExtIP, ipAddr, gw, gwNS); err == nil {
 		// add all lrp ip in bfd listening list
 		return

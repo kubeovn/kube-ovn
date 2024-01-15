@@ -18,10 +18,15 @@ func (c *OVNNbClient) CreateLogicalSwitch(lsName, lrName, cidrBlock, gateway str
 	lspName := fmt.Sprintf("%s-%s", lsName, lrName)
 	lrpName := fmt.Sprintf("%s-%s", lrName, lsName)
 
-	networks := util.GetIPAddrWithMask(gateway, cidrBlock)
+	networks, err := util.GetIPAddrWithMask(gateway, cidrBlock)
+	if err != nil {
+		klog.Errorf("failed to get ip %s with mask %s, %v", gateway, cidrBlock, err)
+		return err
+	}
 
 	exist, err := c.LogicalSwitchExists(lsName)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 

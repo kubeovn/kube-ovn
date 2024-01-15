@@ -279,6 +279,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		return err
 	}
 	if err = c.createVpcRouter(key); err != nil {
+		klog.Errorf("failed to create vpc router for vpc %s: %v", key, err)
 		return err
 	}
 
@@ -1157,7 +1158,11 @@ func (c *Controller) handleAddVpcExternalSubnet(key, subnet string) error {
 		return err
 	}
 
-	v4ipCidr := util.GetIPAddrWithMask(v4ip, cachedSubnet.Spec.CIDRBlock)
+	v4ipCidr, err := util.GetIPAddrWithMask(v4ip, cachedSubnet.Spec.CIDRBlock)
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
 	lspName := fmt.Sprintf("%s-%s", subnet, key)
 	lrpName := fmt.Sprintf("%s-%s", key, subnet)
 
