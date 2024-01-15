@@ -19,7 +19,7 @@ ENABLE_EXTERNAL_VPC=${ENABLE_EXTERNAL_VPC:-true}
 CNI_CONFIG_PRIORITY=${CNI_CONFIG_PRIORITY:-01}
 ENABLE_LB_SVC=${ENABLE_LB_SVC:-false}
 ENABLE_KEEP_VM_IP=${ENABLE_KEEP_VM_IP:-true}
-ENABLE_IC=$(kubectl get node --show-labels | grep -q "ovn.kubernetes.io/ic-gw" && echo true || echo false)
+ENABLE_IC=${ENABLE_IC:-$(kubectl get node --show-labels | grep -q "ovn.kubernetes.io/ic-gw" && echo true || echo false)}
 
 # exchange link names of OVS bridge and the provider nic
 # in the default provider-network
