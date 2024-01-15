@@ -129,7 +129,15 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		jitter = pod.Annotations[fmt.Sprintf(util.NetemQosJitterAnnotationTemplate, podRequest.Provider)]
 		providerNetwork = pod.Annotations[fmt.Sprintf(util.ProviderNetworkTemplate, podRequest.Provider)]
 		vmName = pod.Annotations[fmt.Sprintf(util.VMTemplate, podRequest.Provider)]
-		ipAddr = util.GetIPAddrWithMask(ip, cidr)
+		ipAddr, err = util.GetIPAddrWithMask(ip, cidr)
+		if err != nil {
+			errMsg := fmt.Errorf("failed to get ip address with mask, %v", err)
+			klog.Error(errMsg)
+			if err := resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()}); err != nil {
+				klog.Errorf("failed to write response, %v", err)
+			}
+			return
+		}
 		oldPodName = podRequest.PodName
 		if s := pod.Annotations[fmt.Sprintf(util.RoutesAnnotationTemplate, podRequest.Provider)]; s != "" {
 			if err = json.Unmarshal([]byte(s), &routes); err != nil {

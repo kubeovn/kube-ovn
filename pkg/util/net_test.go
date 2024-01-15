@@ -729,7 +729,11 @@ func TestGetIPAddrWithMask(t *testing.T) {
 	}
 	for _, c := range tests {
 		t.Run(c.name, func(t *testing.T) {
-			ans := GetIPAddrWithMask(c.ip, c.cidr)
+			ans, err := GetIPAddrWithMask(c.ip, c.cidr)
+			if err != nil {
+				t.Errorf("%v, %v expected %v, but %v got",
+					c.ip, c.cidr, c.want, err)
+			}
 			if c.want != ans {
 				t.Errorf("%v, %v expected %v, but %v got",
 					c.ip, c.cidr, c.want, ans)

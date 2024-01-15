@@ -298,8 +298,11 @@ func (c *Controller) updatePodAttachNets(pod *corev1.Pod, svc *corev1.Service) e
 	}
 
 	loadBalancerIP := pod.Annotations[attachIPAnnotation]
-	ipAddr := util.GetIPAddrWithMask(loadBalancerIP, pod.Annotations[attachCidrAnnotation])
-
+	ipAddr, err := util.GetIPAddrWithMask(loadBalancerIP, pod.Annotations[attachCidrAnnotation])
+	if err != nil {
+		klog.Errorf("failed to get ip addr with mask, err: %v", err)
+		return err
+	}
 	var addRules []string
 	addRules = append(addRules, fmt.Sprintf("%s,%s", ipAddr, pod.Annotations[attachGatewayAnnotation]))
 	klog.Infof("add eip rules for lb svc pod, %v", addRules)
