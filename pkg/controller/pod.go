@@ -2013,42 +2013,67 @@ func getPodType(pod *v1.Pod) string {
 }
 
 func (c *Controller) getVirtualIPs(pod *v1.Pod, podNets []*kubeovnNet) map[string]string {
-	vipsMap := make(map[string]string)
-	if aaps := pod.Annotations[util.AAPsAnnotation]; aaps != "" {
-		for _, vipName := range strings.Split(aaps, ",") {
-			vip, err := c.virtualIpsLister.Get(vipName)
-			if err != nil {
-				klog.Errorf("failed to get vip %s, %v", vipName, err)
-				continue
-			}
-			if vip.Spec.Namespace != pod.Namespace || vip.Status.V4ip == "" {
-				continue
-			}
-			subnet, err := c.subnetsLister.Get(vip.Spec.Subnet)
-			if err != nil {
-				klog.Errorf("failed to get subnet %s, %v", vip.Spec.Subnet, err)
-				continue
-			}
-			key := fmt.Sprintf("%s.%s", subnet.Name, subnet.Spec.Provider)
-			if vips, exists := vipsMap[key]; exists {
-				vipsMap[key] = strings.Join([]string{vips, vip.Status.V4ip}, ",")
-			} else {
-				vipsMap[key] = vip.Status.V4ip
-			}
+	vipsListMap := make(map[string][]string)
+	var vipNamesList []string
+	for _, vipName := range strings.Split(strings.TrimSpace(pod.Annotations[util.AAPsAnnotation]), ",") {
+		if !util.ContainsString(vipNamesList, vipName) {
+			vipNamesList = append(vipNamesList, vipName)
 		}
+	}
+	for _, vipName := range vipNamesList {
+		vip, err := c.virtualIpsLister.Get(vipName)
+		if err != nil {
+			klog.Errorf("failed to get vip %s, %v", vipName, err)
+			continue
+		}
+		if vip.Spec.Namespace != pod.Namespace || (vip.Status.V4ip == "" && vip.Status.V6ip == "") {
+			continue
+		}
+		subnet, err := c.subnetsLister.Get(vip.Spec.Subnet)
+		if err != nil {
+			klog.Errorf("failed to get subnet %s, %v", vip.Spec.Subnet, err)
+			continue
+		}
+		key := fmt.Sprintf("%s.%s", subnet.Name, subnet.Spec.Provider)
+		vipsList := vipsListMap[key]
+		if vipsList == nil {
+			vipsList = []string{}
+		}
+
+		// ipam will ensure the uniqueness of VIP
+		if util.IsValidIP(vip.Status.V4ip) {
+			vipsList = append(vipsList, vip.Status.V4ip)
+		}
+		if util.IsValidIP(vip.Status.V6ip) {
+			vipsList = append(vipsList, vip.Status.V6ip)
+		}
+
+		vipsListMap[key] = vipsList
 	}
 
 	for _, podNet := range podNets {
-		key := fmt.Sprintf("%s.%s", podNet.Subnet.Name, podNet.ProviderName)
-		vip := pod.Annotations[fmt.Sprintf(util.PortVipAnnotationTemplate, podNet.ProviderName)]
-		if vip == "" {
+		vipStr := pod.Annotations[fmt.Sprintf(util.PortVipAnnotationTemplate, podNet.ProviderName)]
+		if vipStr == "" {
 			continue
 		}
-		if vips, exists := vipsMap[key]; exists {
-			vipsMap[key] = strings.Join([]string{vips, vip}, ",")
-		} else {
-			vipsMap[key] = vip
+		key := fmt.Sprintf("%s.%s", podNet.Subnet.Name, podNet.ProviderName)
+		vipsList := vipsListMap[key]
+		if vipsList == nil {
+			vipsList = []string{}
 		}
+
+		for _, vip := range strings.Split(vipStr, ",") {
+			if util.IsValidIP(vip) && !util.ContainsString(vipsList, vip) {
+				vipsList = append(vipsList, vip)
+			}
+		}
+
+		vipsListMap[key] = vipsList
+	}
+
+	vipsMap := make(map[string]string)
+	for key, vipsList := range vipsListMap {
+		vipsMap[key] = strings.Join(vipsList, ",")
 	}
 	return vipsMap
 }

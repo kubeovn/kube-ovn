@@ -46,7 +46,8 @@ func (c *Controller) enqueueUpdateVirtualIP(oldObj, newObj interface{}) {
 		oldVip.Spec.MacAddress != newVip.Spec.MacAddress ||
 		oldVip.Spec.ParentMac != newVip.Spec.ParentMac ||
 		oldVip.Spec.ParentV4ip != newVip.Spec.ParentV4ip ||
-		oldVip.Spec.V4ip != newVip.Spec.V4ip {
+		oldVip.Spec.V4ip != newVip.Spec.V4ip ||
+		oldVip.Spec.V6ip != newVip.Spec.V6ip {
 		klog.Infof("enqueue update vip %s", key)
 		c.updateVirtualIPQueue.Add(key)
 	}
@@ -216,7 +217,7 @@ func (c *Controller) handleAddVirtualIP(key string) error {
 	}
 	klog.V(3).Infof("handle add vip %s", key)
 	vip := cachedVip.DeepCopy()
-	var sourceV4Ip, v4ip, v6ip, mac, subnetName string
+	var sourceV4Ip, sourceV6Ip, v4ip, v6ip, mac, subnetName string
 	subnetName = vip.Spec.Subnet
 	if subnetName == "" {
 		return fmt.Errorf("failed to create vip '%s', subnet should be set", key)
@@ -228,12 +229,15 @@ func (c *Controller) handleAddVirtualIP(key string) error {
 	}
 	portName := ovs.PodNameToPortName(vip.Name, vip.Spec.Namespace, subnet.Spec.Provider)
 	sourceV4Ip = vip.Spec.V4ip
-	if sourceV4Ip != "" {
-		v4ip, v6ip, mac, err = c.acquireStaticIPAddress(subnet.Name, vip.Name, portName, sourceV4Ip)
+	sourceV6Ip = vip.Spec.V6ip
+	ipStr := util.GetStringIP(sourceV4Ip, sourceV6Ip)
+	if ipStr != "" {
+		v4ip, v6ip, mac, err = c.acquireStaticIPAddress(subnet.Name, vip.Name, portName, ipStr)
 	} else {
 		// Random allocate
 		v4ip, v6ip, mac, err = c.acquireIPAddress(subnet.Name, vip.Name, portName)
 	}
+
 	if err != nil {
 		klog.Error(err)
 		return err
@@ -420,11 +424,12 @@ func (c *Controller) handleUpdateVirtualParents(key string) error {
 		return err
 	}
 	// only pods in the same namespace as vip are allowed to use aap
-	if cachedVip.Status.V4ip == "" || cachedVip.Spec.Namespace == "" {
+	if (cachedVip.Status.V4ip == "" && cachedVip.Status.V6ip == "") || cachedVip.Spec.Namespace == "" {
 		return nil
 	}
 	// add new virtual port if not exist
-	if err = c.OVNNbClient.CreateVirtualLogicalSwitchPort(cachedVip.Name, cachedVip.Spec.Subnet, cachedVip.Status.V4ip); err != nil {
+	ipStr := util.GetStringIP(cachedVip.Status.V4ip, cachedVip.Status.V6ip)
+	if err = c.OVNNbClient.CreateVirtualLogicalSwitchPort(cachedVip.Name, cachedVip.Spec.Subnet, ipStr); err != nil {
 		klog.Errorf("create virtual port with vip %s from logical switch %s: %v", cachedVip.Name, cachedVip.Spec.Subnet, err)
 		return err
 	}
