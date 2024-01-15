@@ -312,7 +312,8 @@ kind-install-chart: kind-load-image kind-untaint-control-plane
 	helm install kubeovn ./kubeovn-helm \
 		--set global.images.kubeovn.tag=$(VERSION) \
 		--set replicaCount=$$(echo $$ips | awk -F ',' '{print NF}') \
-		--set MASTER_NODES="$$(echo $$ips | sed 's/,/\\,/g')"
+		--set MASTER_NODES="$$(echo $$ips | sed 's/,/\\,/g')" \
+		--set func.ENABLE_IC=$$(kubectl get node --show-labels | grep -q "ovn.kubernetes.io/ic-gw" && echo true || echo false)
 	sleep 60
 	kubectl -n kube-system rollout status --timeout=1s deployment/ovn-central
 	kubectl -n kube-system rollout status --timeout=1s deployment/kube-ovn-controller
@@ -325,7 +326,8 @@ kind-upgrade-chart: kind-load-image
 	helm upgrade kubeovn ./kubeovn-helm \
 		--set global.images.kubeovn.tag=$(VERSION) \
 		--set replicaCount=$$(echo $(OVN_DB_IPS) | awk -F ',' '{print NF}') \
-		--set MASTER_NODES='$(OVN_DB_IPS)'
+		--set MASTER_NODES='$(OVN_DB_IPS)' \
+		--set func.ENABLE_IC=$$(kubectl get node --show-labels | grep -q "ovn.kubernetes.io/ic-gw" && echo true || echo false)
 	sleep 90
 	kubectl -n kube-system rollout status --timeout=1s deployment/ovn-central
 	kubectl -n kube-system rollout status --timeout=1s deployment/kube-ovn-controller
