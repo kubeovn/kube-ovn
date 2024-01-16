@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"net"
 	"reflect"
 	"strings"
 
@@ -15,6 +16,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -113,7 +115,7 @@ func (c *Controller) processNextAddIPWorkItem() bool {
 		}
 		if err := c.handleAddIP(key); err != nil {
 			c.addIPQueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
+			return fmt.Errorf("error syncing %s: %s, requeuing", key, err.Error())
 		}
 		c.addIPQueue.Forget(obj)
 		return nil
@@ -142,7 +144,7 @@ func (c *Controller) processNextUpdateIPWorkItem() bool {
 		}
 		if err := c.handleUpdateIP(key); err != nil {
 			c.updateIPQueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
+			return fmt.Errorf("error syncing %s: %s, requeuing", key, err.Error())
 		}
 		c.updateIPQueue.Forget(obj)
 		return nil
@@ -171,7 +173,7 @@ func (c *Controller) processNextDeleteIPWorkItem() bool {
 		}
 		if err := c.handleDelIP(ip); err != nil {
 			c.delIPQueue.AddRateLimited(obj)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", ip.Name, err.Error())
+			return fmt.Errorf("error syncing %s: %s, requeuing", ip.Name, err.Error())
 		}
 		c.delIPQueue.Forget(obj)
 		return nil
@@ -184,15 +186,43 @@ func (c *Controller) processNextDeleteIPWorkItem() bool {
 }
 
 func (c *Controller) handleAddIP(key string) error {
-	cachedIP, err := c.ipsLister.Get(key)
+	ip, err := c.ipsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
 		return err
 	}
-	klog.V(3).Infof("handle add ip %s", cachedIP.Name)
-	if err := c.handleAddIPFinalizer(cachedIP, util.ControllerName); err != nil {
+	klog.V(3).Infof("handle add ip %s", ip.Name)
+
+	if ip.Spec.NodeName != "" {
+		// node ip skip later check and process
+		return nil
+	}
+
+	if ip.Spec.Namespace == "" || ip.Spec.PodName == "" || ip.Spec.Subnet == "" || ip.Spec.PodType == "" {
+		// invalid ip who has no namespace, name, subnet, podType, no need to handle it here
+		return nil
+	}
+	subnet, err := c.subnetsLister.Get(ip.Spec.Subnet)
+	if err != nil {
+		err = fmt.Errorf("failed to get subnet %s: %v", ip.Spec.Subnet, err)
+		klog.Error(err)
+		return err
+	}
+	v4IP, v6IP, mac, err := c.ipAcquireAddress(ip, subnet)
+	if err != nil {
+		err = fmt.Errorf("failed to acquire ip address %v", err)
+		klog.Error(err)
+		return err
+	}
+	ipStr := util.GetStringIP(v4IP, v6IP)
+	if err := c.createOrUpdateCrdIPs(ip.Name, ip.Spec.PodName, ipStr, mac, subnet.Name, ip.Spec.Namespace, ip.Spec.NodeName, subnet.Spec.Provider, ip.Spec.PodType); err != nil {
+		err = fmt.Errorf("failed to create ips CR %s.%s: %v", ip.Spec.PodName, ip.Spec.Namespace, err)
+		klog.Error(err)
+		return err
+	}
+	if err := c.handleAddIPFinalizer(ip, util.ControllerName); err != nil {
 		klog.Errorf("failed to handle add ip finalizer %v", err)
 		return err
 	}
@@ -314,5 +344,188 @@ func (c *Controller) handleDelIPFinalizer(cachedIP *kubeovnv1.IP, finalizer stri
 		klog.Errorf("failed to remove finalizer from ip %s, %v", cachedIP.Name, err)
 		return err
 	}
+	return nil
+}
+
+func (c *Controller) ipAcquireAddress(ip *kubeovnv1.IP, subnet *kubeovnv1.Subnet) (string, string, string, error) {
+	// 1. ip create with pod, which name is name.namespace.provider
+	// 2. preconfigured ip, which name maybe is not name.namespace.provider
+
+	key := fmt.Sprintf("%s/%s", ip.Spec.Namespace, ip.Spec.PodName)
+	portName := ovs.PodNameToPortName(ip.Spec.PodName, ip.Spec.Namespace, subnet.Spec.Provider)
+	ipStr := util.GetStringIP(ip.Spec.V4IPAddress, ip.Spec.V6IPAddress)
+
+	var v4IP, v6IP, mac string
+	var err error
+	if ipStr == "" {
+		// Random allocate
+		v4IP, v6IP, mac, err = c.ipam.GetRandomAddress(key, portName, ip.Spec.MacAddress, subnet.Name, nil, true)
+		if err == nil {
+			return v4IP, v6IP, mac, err
+		}
+		err = fmt.Errorf("failed to get random address for ip %s, %v", ip.Name, err)
+	} else {
+		v4IP, v6IP, mac, err = c.acquireStaticAddress(key, portName, ipStr, ip.Spec.MacAddress, subnet.Name, true)
+		if err == nil {
+			return v4IP, v6IP, mac, nil
+		}
+		err = fmt.Errorf("failed to get static address for ip %s, %v", ip.Name, err)
+	}
+	klog.Error(err)
+	return "", "", "", err
+}
+
+func (c *Controller) acquireStaticIPAddress(subnetName, name, nicName, ip string) (string, string, string, error) {
+	checkConflict := true
+	var v4ip, v6ip, mac string
+	var err error
+	for _, ipStr := range strings.Split(ip, ",") {
+		if net.ParseIP(ipStr) == nil {
+			return "", "", "", fmt.Errorf("failed to parse ip ip %s", ipStr)
+		}
+	}
+
+	if v4ip, v6ip, mac, err = c.ipam.GetStaticAddress(name, nicName, ip, mac, subnetName, checkConflict); err != nil {
+		klog.Errorf("failed to get static virtual ip %s, mac %s, subnet %s, %v", ip, mac, subnetName, err)
+		return "", "", "", err
+	}
+	return v4ip, v6ip, mac, nil
+}
+
+func (c *Controller) acquireIPAddress(subnetName, name, nicName string) (string, string, string, error) {
+	var skippedAddrs []string
+	var v4ip, v6ip, mac string
+	checkConflict := true
+	var err error
+	for {
+		v4ip, v6ip, mac, err = c.ipam.GetRandomAddress(name, nicName, mac, subnetName, skippedAddrs, checkConflict)
+		if err != nil {
+			return "", "", "", err
+		}
+
+		ipv4OK, ipv6OK, err := c.validatePodIP(name, subnetName, v4ip, v6ip)
+		if err != nil {
+			return "", "", "", err
+		}
+
+		if ipv4OK && ipv6OK {
+			return v4ip, v6ip, mac, nil
+		}
+
+		if !ipv4OK {
+			skippedAddrs = append(skippedAddrs, v4ip)
+		}
+		if !ipv6OK {
+			skippedAddrs = append(skippedAddrs, v6ip)
+		}
+	}
+}
+
+func (c *Controller) subnetCountIP(subnet *kubeovnv1.Subnet) error {
+	var err error
+	if util.CheckProtocol(subnet.Spec.CIDRBlock) == kubeovnv1.ProtocolDual {
+		err = calcDualSubnetStatusIP(subnet, c)
+	} else {
+		err = calcSubnetStatusIP(subnet, c)
+	}
+	return err
+}
+
+func (c *Controller) createOrUpdateCrdIPs(ipCRName, podName, ip, mac, subnetName, ns, nodeName, providerName, podType string) error {
+	var key, ipName string
+	if ipCRName != "" {
+		// ip CR preconfigured, use its name
+		key = podName
+		ipName = ipCRName
+	} else {
+		// ip CR not preconfigured, use pod name or node name
+		if subnetName == c.config.NodeSwitch {
+			key = nodeName
+			ipName = fmt.Sprintf("node-%s", nodeName)
+		} else if strings.HasPrefix(podName, util.U2OInterconnName[0:19]) {
+			key = podName
+			ipName = podName
+		} else {
+			key = podName
+			ipName = ovs.PodNameToPortName(podName, ns, providerName)
+		}
+	}
+
+	var err error
+	var ipCR *kubeovnv1.IP
+	ipCR, err = c.config.KubeOvnClient.KubeovnV1().IPs().Get(context.Background(), ipName, metav1.GetOptions{})
+	if err != nil {
+		if !k8serrors.IsNotFound(err) {
+			err := fmt.Errorf("failed to get ip CR %s: %v", ipName, err)
+			klog.Error(err)
+			return err
+		}
+		// the returned pointer is not nil if the CR does not exist
+		ipCR = nil
+	}
+
+	v4IP, v6IP := util.SplitStringIP(ip)
+	if ipCR == nil {
+		_, err = c.config.KubeOvnClient.KubeovnV1().IPs().Create(context.Background(), &kubeovnv1.IP{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: ipName,
+				Labels: map[string]string{
+					util.SubnetNameLabel: subnetName,
+					subnetName:           "",
+				},
+			},
+			Spec: kubeovnv1.IPSpec{
+				PodName:       key,
+				Subnet:        subnetName,
+				NodeName:      nodeName,
+				Namespace:     ns,
+				IPAddress:     ip,
+				V4IPAddress:   v4IP,
+				V6IPAddress:   v6IP,
+				MacAddress:    mac,
+				AttachIPs:     []string{},
+				AttachMacs:    []string{},
+				AttachSubnets: []string{},
+				PodType:       podType,
+			},
+		}, metav1.CreateOptions{})
+		if err != nil {
+			errMsg := fmt.Errorf("failed to create ip CR %s: %v", ipName, err)
+			klog.Error(errMsg)
+			return errMsg
+		}
+	} else {
+		newIPCr := ipCR.DeepCopy()
+		if newIPCr.Labels != nil {
+			newIPCr.Labels[util.SubnetNameLabel] = subnetName
+		} else {
+			newIPCr.Labels = map[string]string{
+				util.SubnetNameLabel: subnetName,
+			}
+		}
+		newIPCr.Spec.PodName = key
+		newIPCr.Spec.Namespace = ns
+		newIPCr.Spec.Subnet = subnetName
+		newIPCr.Spec.NodeName = nodeName
+		newIPCr.Spec.IPAddress = ip
+		newIPCr.Spec.V4IPAddress = v4IP
+		newIPCr.Spec.V6IPAddress = v6IP
+		newIPCr.Spec.MacAddress = mac
+		newIPCr.Spec.AttachIPs = []string{}
+		newIPCr.Spec.AttachMacs = []string{}
+		newIPCr.Spec.AttachSubnets = []string{}
+		newIPCr.Spec.PodType = podType
+		if reflect.DeepEqual(newIPCr.Labels, ipCR.Labels) && reflect.DeepEqual(newIPCr.Spec, ipCR.Spec) {
+			return nil
+		}
+
+		_, err := c.config.KubeOvnClient.KubeovnV1().IPs().Update(context.Background(), newIPCr, metav1.UpdateOptions{})
+		if err != nil {
+			errMsg := fmt.Errorf("failed to update ip CR %s: %v", newIPCr.Name, err)
+			klog.Error(errMsg)
+			return errMsg
+		}
+	}
+
 	return nil
 }

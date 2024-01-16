@@ -705,8 +705,8 @@ func (c *Controller) handleAddPod(key string) error {
 				c.syncVirtualPortsQueue.Add(podNet.Subnet.Name)
 			}
 		}
-		// CreatePort may fail, so put ip cr creation after CreatePort
-		if err := c.createOrUpdateCrdIPs(podName, ipStr, mac, subnet.Name, pod.Namespace, pod.Spec.NodeName, podNet.ProviderName, podType); err != nil {
+		// CreatePort may fail, so put ip CR creation after CreatePort
+		if err := c.createOrUpdateCrdIPs("", podName, ipStr, mac, subnet.Name, pod.Namespace, pod.Spec.NodeName, podNet.ProviderName, podType); err != nil {
 			err = fmt.Errorf("failed to create ips CR %s.%s: %v", podName, pod.Namespace, err)
 			klog.Error(err)
 			return err
@@ -1404,16 +1404,16 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 			return "", "", "", podNet.Subnet, err
 		}
 	}
-
+	portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
 	// Random allocate
 	if pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)] == "" &&
 		pod.Annotations[fmt.Sprintf(util.IpPoolAnnotationTemplate, podNet.ProviderName)] == "" {
 		var skippedAddrs []string
 		for {
-			portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
-
 			ipv4, ipv6, mac, err := c.ipam.GetRandomAddress(key, portName, macStr, podNet.Subnet.Name, skippedAddrs, !podNet.AllowLiveMigration)
 			if err != nil {
+				err := fmt.Errorf("failed to get random address for pod %s, %v", key, err)
+				klog.Error(err)
 				return "", "", "", podNet.Subnet, err
 			}
 			ipv4OK, ipv6OK, err := c.validatePodIP(pod.Name, podNet.Subnet.Name, ipv4, ipv6)
@@ -1432,8 +1432,6 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 			}
 		}
 	}
-
-	portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
 
 	// The static ip can be assigned from any subnet after ns supports multi subnets
 	nsNets, _ := c.getNsAvailableSubnets(pod, podNet)
@@ -1507,7 +1505,7 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 			}
 		}
 	}
-	klog.Errorf("alloc address for %s failed, return NoAvailableAddress", key)
+	klog.Errorf("allocate address for %s failed, return NoAvailableAddress", key)
 	return "", "", "", podNet.Subnet, ipam.ErrNoAvailable
 }
 

@@ -185,7 +185,7 @@ func (c *Controller) createDefaultVpcLrpEip(config map[string]string) (string, s
 		mac = cachedEip.Spec.MacAddress
 	} else {
 		var v6ip string
-		v4ip, v6ip, mac, err = c.acquireIpAddress(c.config.ExternalGatewaySwitch, lrpEipName, lrpEipName)
+		v4ip, v6ip, mac, err = c.acquireIPAddress(c.config.ExternalGatewaySwitch, lrpEipName, lrpEipName)
 		if err != nil {
 			klog.Errorf("failed to acquire ip address for default vpc lrp %s, %v", lrpEipName, err)
 			return "", "", err

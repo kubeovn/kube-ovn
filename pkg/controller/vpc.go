@@ -816,7 +816,7 @@ func (c *Controller) handleAddVpcExternal(key string) error {
 	var v4ip, v6ip, mac string
 	klog.V(3).Infof("create vpc lrp eip %s", lrpEipName)
 	if needCreateEip {
-		if v4ip, v6ip, mac, err = c.acquireIpAddress(c.config.ExternalGatewaySwitch, lrpEipName, lrpEipName); err != nil {
+		if v4ip, v6ip, mac, err = c.acquireIPAddress(c.config.ExternalGatewaySwitch, lrpEipName, lrpEipName); err != nil {
 			klog.Errorf("failed to acquire ip address for lrp eip %s, %v", lrpEipName, err)
 			return err
 		}
