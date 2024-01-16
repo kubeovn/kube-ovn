@@ -50,7 +50,7 @@ var _ = framework.Describe("[group:pod]", func() {
 	})
 
 	framework.ConformanceIt("should support configuring routes via pod annotation", func() {
-		f.SkipVersionPriorTo(1, 12, "This feature was introduced inn v1.12")
+		f.SkipVersionPriorTo(1, 12, "This feature was introduced in v1.12")
 
 		ginkgo.By("Generating routes")
 		routes := make([]request.Route, 0, 4)
