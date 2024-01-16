@@ -98,35 +98,6 @@ func TestIsStringsOverlap(t *testing.T) {
 	}
 }
 
-func TestIsStringIn(t *testing.T) {
-	tests := []struct {
-		name string
-		a    string
-		b    []string
-		want bool
-	}{
-		{
-			name: "base",
-			a:    "a",
-			b:    []string{"a", "b"},
-			want: true,
-		},
-		{
-			name: "baseWithDiff",
-			a:    "c",
-			b:    []string{"a", "b"},
-			want: false,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if ret := IsStringIn(tt.a, tt.b); ret != tt.want {
-				t.Errorf("got %v, want %v", ret, tt.want)
-			}
-		})
-	}
-}
-
 func TestContainsString(t *testing.T) {
 	tests := []struct {
 		name string
