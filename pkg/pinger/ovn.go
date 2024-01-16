@@ -51,7 +51,7 @@ func checkPortBindings(config *Configuration) error {
 	klog.Infof("port in sb is %v", sbBindings)
 	misMatch := []string{}
 	for _, port := range ovsBindings {
-		if !util.IsStringIn(port, sbBindings) {
+		if !util.ContainsString(sbBindings, port) {
 			misMatch = append(misMatch, port)
 		}
 	}
