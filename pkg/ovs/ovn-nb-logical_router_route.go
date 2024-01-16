@@ -13,7 +13,12 @@ func (c OvnClient) GetLogicalRouterRouteByOpts(key, value string) ([]ovnnb.Logic
 	defer cancel()
 
 	api, err := c.ovnNbClient.WherePredict(ctx, func(r *ovnnb.LogicalRouterStaticRoute) bool {
-		return r.Options[key] == value
+		if len(r.Options) > 0 {
+			if v, ok := r.Options[key]; ok {
+				return v == value
+			}
+		}
+		return false
 	})
 	if err != nil {
 		return nil, err
@@ -32,7 +37,12 @@ func (c OvnClient) GetLogicalRouterPoliciesByExtID(key, value string) ([]ovnnb.L
 	defer cancel()
 
 	api, err := c.ovnNbClient.WherePredict(ctx, func(p *ovnnb.LogicalRouterPolicy) bool {
-		return p.ExternalIDs[key] == value
+		if len(p.ExternalIDs) > 0 {
+			if v, ok := p.ExternalIDs[key]; ok {
+				return v == value
+			}
+		}
+		return false
 	})
 	if err != nil {
 		return nil, err
