@@ -61,16 +61,7 @@ func IsStringsOverlap(a, b []string) bool {
 	return false
 }
 
-func IsStringIn(str string, slice []string) bool {
-	for _, s := range slice {
-		if s == str {
-			return true
-		}
-	}
-	return false
-}
-
-// ContainsString Helper functions to check and remove string from a slice of strings.
+// ContainsString Helper functions to check if a slice contains string.
 func ContainsString(slice []string, s string) bool {
 	for _, item := range slice {
 		if item == s {

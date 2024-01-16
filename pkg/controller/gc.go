@@ -199,7 +199,7 @@ func (c *Controller) gcCustomLogicalRouter() error {
 		if lr.Name == c.config.ClusterRouter {
 			continue
 		}
-		if !util.IsStringIn(lr.Name, vpcNames) {
+		if !util.ContainsString(vpcNames, lr.Name) {
 			klog.Infof("gc router %s", lr.Name)
 			if err := c.deleteVpcRouter(lr.Name); err != nil {
 				klog.Errorf("failed to delete router %s, %v", lr.Name, err)
@@ -233,7 +233,7 @@ func (c *Controller) gcNode() error {
 		}
 	}
 	for _, no := range ipNodeNames {
-		if !util.IsStringIn(no, nodeNames) {
+		if !util.ContainsString(nodeNames, no) {
 			klog.Infof("gc node %s", no)
 			if err := c.handleDeleteNode(no); err != nil {
 				klog.Errorf("failed to gc node %s, %v", no, err)
