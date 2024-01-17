@@ -672,7 +672,6 @@ func (c *Controller) setIptables() error {
 				)
 			}
 		}
-
 		_, subnetCidrs, err := c.getDefaultVpcSubnetsCIDR(protocol)
 		if err != nil {
 			klog.Errorf("get subnets failed, %+v", err)
@@ -713,7 +712,6 @@ func (c *Controller) setIptables() error {
 				}
 			}
 		}
-
 		var natPreroutingRules, natPostroutingRules, ovnMasqueradeRules, manglePostroutingRules []util.IPTableRule
 		for _, rule := range iptablesRules {
 			if rule.Table == NAT {

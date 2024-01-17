@@ -1042,14 +1042,6 @@ func (c *Controller) startWorkers(ctx context.Context) {
 		go wait.Until(c.runUpdateVlanWorker, time.Second, ctx.Done())
 	}
 
-	go wait.Until(func() {
-		c.resyncInterConnection()
-	}, time.Second, ctx.Done())
-
-	go wait.Until(func() {
-		c.SynRouteToPolicy()
-	}, 5*time.Second, ctx.Done())
-
 	if c.config.EnableEipSnat {
 		go wait.Until(func() {
 			// init l3 about the default vpc external lrp binding to the gw chassis
