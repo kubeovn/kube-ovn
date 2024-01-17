@@ -231,7 +231,7 @@ var _ = framework.SerialDescribe("[group:ovn-ic]", func() {
 					"gw-nodes": newGatewayStr,
 				},
 			})
-			_, err = clientSets[i].CoreV1().ConfigMaps(framework.KubeOvnNamespace).Patch(context.TODO(), util.InterconnectionConfig, k8stypes.StrategicMergePatchType, []byte(configMapPatchPayload), metav1.PatchOptions{})
+			_, err = clientSets[i].CoreV1().ConfigMaps(framework.KubeOvnNamespace).Patch(context.TODO(), util.InterconnectionConfig, k8stypes.StrategicMergePatchType, configMapPatchPayload, metav1.PatchOptions{})
 			framework.ExpectNoError(err, "patch ovn-ic-config failed")
 		}
 		fnCheckPodHTTP()
@@ -246,7 +246,7 @@ var _ = framework.SerialDescribe("[group:ovn-ic]", func() {
 				},
 			})
 
-			_, err := clientSets[i].CoreV1().ConfigMaps(framework.KubeOvnNamespace).Patch(context.TODO(), util.InterconnectionConfig, k8stypes.StrategicMergePatchType, []byte(configMapPatchPayload), metav1.PatchOptions{})
+			_, err := clientSets[i].CoreV1().ConfigMaps(framework.KubeOvnNamespace).Patch(context.TODO(), util.InterconnectionConfig, k8stypes.StrategicMergePatchType, configMapPatchPayload, metav1.PatchOptions{})
 			framework.ExpectNoError(err, "patch ovn-ic-config failed")
 		}
 		fnCheckPodHTTP()
