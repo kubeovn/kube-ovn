@@ -7,9 +7,7 @@ import (
 	"fmt"
 	"math/rand"
 	"net"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -211,7 +209,7 @@ var _ = framework.SerialDescribe("[group:ovn-ic]", func() {
 	})
 
 	framework.ConformanceIt("Should Support ECMP OVN Interconnection", func() {
-
+		frameworks[0].SkipVersionPriorTo(1, 11, "This feature was introduced in v1.11")
 		ginkgo.By("case 1: ecmp gateway network test")
 		checkECMPCount(3)
 		fnCheckPodHTTP()

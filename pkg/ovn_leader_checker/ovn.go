@@ -450,7 +450,7 @@ func updateTS() error {
 		return fmt.Errorf("expectTSCount atoi failed output: %s, err: %v", output, err)
 	}
 	if expectTSCount == existTSCount {
-		klog.Info("%d TS found, no chenges required.")
+		klog.Infof("expectTSCount %d no changes required.", expectTSCount)
 		return nil
 	}
 

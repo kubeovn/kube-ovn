@@ -52,7 +52,6 @@ func (c *Controller) disableOVNIC(azName string) {
 }
 
 func (c *Controller) setAutoRoute(autoRoute bool) {
-
 	var blackList []string
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
@@ -661,7 +660,7 @@ func (c *Controller) listRemoteLogicalSwitchPortAddress() (*strset.Set, error) {
 
 func moveElements(arr []string, order int) []string {
 	if order >= len(arr) {
-		order = order % len(arr)
+		order %= len(arr)
 	}
 
 	return append(arr[order:], arr[:order]...)
