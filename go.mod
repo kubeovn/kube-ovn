@@ -13,7 +13,7 @@ require (
 	github.com/containernetworking/plugins v1.3.0
 	github.com/docker/docker v24.0.7+incompatible
 	github.com/emicklei/go-restful/v3 v3.11.2
-	github.com/evanphx/json-patch/v5 v5.8.0
+	github.com/evanphx/json-patch/v5 v5.8.1
 	github.com/go-logr/stdr v1.2.2
 	github.com/golang/mock v1.6.0
 	github.com/greenpau/ovsdb v1.0.3
@@ -103,8 +103,8 @@ require (
 	github.com/eapache/queue v1.1.0 // indirect
 	github.com/elazarl/goproxy v0.0.0-20230731152917-f99041a5c027 // indirect
 	github.com/euank/go-kmsg-parser v2.0.0+incompatible // indirect
-	github.com/evanphx/json-patch v5.6.0+incompatible // indirect
-	github.com/exponent-io/jsonpath v0.0.0-20151013193312-d6023ce2651d // indirect
+	github.com/evanphx/json-patch v5.7.0+incompatible // indirect
+	github.com/exponent-io/jsonpath v0.0.0-20210407135951-1de76d718b3f // indirect
 	github.com/fatih/camelcase v1.0.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/fsnotify/fsnotify v1.6.0 // indirect
