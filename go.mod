@@ -13,7 +13,7 @@ require (
 	github.com/containernetworking/plugins v1.4.0
 	github.com/docker/docker v24.0.7+incompatible
 	github.com/emicklei/go-restful/v3 v3.11.2
-	github.com/evanphx/json-patch/v5 v5.8.0
+	github.com/evanphx/json-patch/v5 v5.8.1
 	github.com/go-logr/stdr v1.2.2
 	github.com/golang/mock v1.6.0
 	github.com/greenpau/ovsdb v1.0.3
