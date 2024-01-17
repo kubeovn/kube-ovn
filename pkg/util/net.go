@@ -343,7 +343,6 @@ func SplitStringIP(ipStr string) (string, string) {
 		v4IP = ipStr
 	case kubeovnv1.ProtocolIPv6:
 		v6IP = ipStr
-
 	}
 
 	return v4IP, v6IP
