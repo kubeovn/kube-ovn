@@ -211,7 +211,11 @@ var _ = framework.SerialDescribe("[group:ovn-ic]", func() {
 	framework.ConformanceIt("Should Support ECMP OVN Interconnection", func() {
 		frameworks[0].SkipVersionPriorTo(1, 11, "This feature was introduced in v1.11")
 		ginkgo.By("case 1: ecmp gateway network test")
-		checkECMPCount(3)
+		if frameworks[0].ClusterIPFamily == "dual" {
+			checkECMPCount(6)
+		} else {
+			checkECMPCount(3)
+		}
 		fnCheckPodHTTP()
 
 		ginkgo.By("case 2: reduce two clusters from 3 gateway to 1 gateway")
@@ -258,13 +262,21 @@ var _ = framework.SerialDescribe("[group:ovn-ic]", func() {
 
 		patchCmd := "kubectl patch deployment ovn-ic-server -n kube-system --type='json' -p=\"[{'op': 'replace', 'path': '/spec/template/spec/containers/0/env/1/value', 'value': '5'}]\""
 		_, _ = exec.Command("bash", "-c", patchCmd).CombinedOutput()
-		checkECMPCount(5)
+		if frameworks[0].ClusterIPFamily == "dual" {
+			checkECMPCount(10)
+		} else {
+			checkECMPCount(5)
+		}
 		fnCheckPodHTTP()
 
 		ginkgo.By("case 5: reduce ecmp path from 5 to 3 ")
 		patchCmd = "kubectl patch deployment ovn-ic-server -n kube-system --type='json' -p=\"[{'op': 'replace', 'path': '/spec/template/spec/containers/0/env/1/value', 'value': '3'}]\""
 		_, _ = exec.Command("bash", "-c", patchCmd).CombinedOutput()
-		checkECMPCount(3)
+		if frameworks[0].ClusterIPFamily == "dual" {
+			checkECMPCount(6)
+		} else {
+			checkECMPCount(3)
+		}
 		fnCheckPodHTTP()
 
 		ginkgo.By("case 6: disable gateway kube-ovn1-worker gateway")
