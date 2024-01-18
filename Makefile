@@ -357,19 +357,19 @@ kind-init-ovn-ic: kind-init-ovn-ic-ipv4
 
 .PHONY: kind-init-ovn-ic-ipv4
 kind-init-ovn-ic-ipv4: kind-clean-ovn-ic
-	@ovn_ic=true $(MAKE) kind-init
+	@ha=true $(MAKE) kind-init
 	@ovn_ic=true $(MAKE) kind-generate-config
 	$(call kind_create_cluster,yamls/kind.yaml,kube-ovn1,1)
 
 .PHONY: kind-init-ovn-ic-ipv6
 kind-init-ovn-ic-ipv6: kind-clean-ovn-ic
-	@ovn_ic=true $(MAKE) kind-init-ipv6
+	@ha=true $(MAKE) kind-init-ipv6
 	@ovn_ic=true ip_family=ipv6 $(MAKE) kind-generate-config
 	$(call kind_create_cluster,yamls/kind.yaml,kube-ovn1,1)
 
 .PHONY: kind-init-ovn-ic-dual
 kind-init-ovn-ic-dual: kind-clean-ovn-ic
-	@ovn_ic=true $(MAKE) kind-init-dual
+	@ha=true $(MAKE) kind-init-dual
 	@ovn_ic=true ip_family=dual $(MAKE) kind-generate-config
 	$(call kind_create_cluster,yamls/kind.yaml,kube-ovn1,1)
 
@@ -439,6 +439,7 @@ kind-install-chart: kind-load-image kind-untaint-control-plane
 		--set global.images.kubeovn.tag=$(VERSION) \
 		--set replicaCount=$$(echo $$ips | awk -F ',' '{print NF}') \
 		--set MASTER_NODES="$$(echo $$ips | sed 's/,/\\,/g')"
+		--set func.ENABLE_IC=$$(kubectl get node --show-labels | grep -q "ovn.kubernetes.io/ic-gw" && echo true || echo false)
 	sleep 60
 	kubectl -n kube-system rollout status --timeout=1s deployment/ovn-central
 	kubectl -n kube-system rollout status --timeout=1s daemonset/ovs-ovn
@@ -453,6 +454,7 @@ kind-upgrade-chart: kind-load-image
 		--set global.images.kubeovn.tag=$(VERSION) \
 		--set replicaCount=$$(echo $(OVN_DB_IPS) | awk -F ',' '{print NF}') \
 		--set MASTER_NODES='$(OVN_DB_IPS)'
+		--set func.ENABLE_IC=$$(kubectl get node --show-labels | grep -q "ovn.kubernetes.io/ic-gw" && echo true || echo false)
 	sleep 90
 	kubectl -n kube-system rollout status --timeout=1s deployment/ovn-central
 	kubectl -n kube-system wait pod --for=condition=ready -l app=ovs
@@ -493,7 +495,8 @@ kind-install-overlay-ipv4: kind-install
 kind-install-ovn-ic: kind-install-ovn-ic-ipv4
 
 .PHONY: kind-install-ovn-ic-ipv4
-kind-install-ovn-ic-ipv4: kind-install
+kind-install-ovn-ic-ipv4:
+	@ENABLE_IC=true $(MAKE) kind-install
 	$(call kind_load_image,kube-ovn1,$(REGISTRY)/kube-ovn:$(VERSION))
 	kubectl config use-context kind-kube-ovn1
 	$(MAKE) kind-untaint-control-plane
@@ -501,23 +504,24 @@ kind-install-ovn-ic-ipv4: kind-install
 		-e 's/10.96.0/10.98.0/g' \
 		-e 's/100.64.0/100.68.0/g' \
 		-e 's/VERSION=.*/VERSION=$(VERSION)/' \
-		dist/images/install.sh | bash
+		dist/images/install.sh | ENABLE_IC=true bash
 	kubectl describe no
 
-	docker run -d --name ovn-ic-db --network kind $(REGISTRY)/kube-ovn:$(VERSION) bash start-ic-db.sh
-	@set -e; \
-	ic_db_host=$$(docker inspect ovn-ic-db -f "{{.NetworkSettings.Networks.kind.IPAddress}}"); \
-	zone=az0 ic_db_host=$$ic_db_host gateway_node_name='kube-ovn-worker,kube-ovn-worker2;kube-ovn-control-plane' j2 yamls/ovn-ic.yaml.j2 -o ovn-ic-0.yaml; \
-	zone=az1 ic_db_host=$$ic_db_host gateway_node_name='kube-ovn1-worker,kube-ovn1-worker2;kube-ovn1-control-plane' j2 yamls/ovn-ic.yaml.j2 -o ovn-ic-1.yaml
 	kubectl config use-context kind-kube-ovn
+	sed 's/VERSION=.*/VERSION=$(VERSION)/' dist/images/install-ic-server.sh | bash
+
+	@set -e; \
+	ic_db_host=$$(kubectl get deployment ovn-ic-server -n kube-system -o jsonpath='{range .spec.template.spec.containers[0].env[?(@.name=="NODE_IPS")]}{.value}{end}'); \
+	ic_db_host=$${ic_db_host%?}; \
+	zone=az0 ic_db_host=$$ic_db_host gateway_node_name='kube-ovn-worker,kube-ovn-worker2,kube-ovn-control-plane' j2 yamls/ovn-ic.yaml.j2 -o ovn-ic-0.yaml; \
+	zone=az1 ic_db_host=$$ic_db_host gateway_node_name='kube-ovn1-worker,kube-ovn1-worker2,kube-ovn1-control-plane' j2 yamls/ovn-ic.yaml.j2 -o ovn-ic-1.yaml
 	kubectl apply -f ovn-ic-0.yaml
 	kubectl config use-context kind-kube-ovn1
 	kubectl apply -f ovn-ic-1.yaml
-	sleep 6
-	docker exec ovn-ic-db ovn-ic-sbctl show
 
 .PHONY: kind-install-ovn-ic-ipv6
-kind-install-ovn-ic-ipv6: kind-install-ipv6
+kind-install-ovn-ic-ipv6:
+	@ENABLE_IC=true $(MAKE) kind-install-ipv6
 	$(call kind_load_image,kube-ovn1,$(REGISTRY)/kube-ovn:$(VERSION))
 	kubectl config use-context kind-kube-ovn1
 	@$(MAKE) kind-untaint-control-plane
@@ -526,23 +530,24 @@ kind-install-ovn-ic-ipv6: kind-install-ipv6
 		-e 's/fd00:100:64:/fd00:100:68:/g' \
 		-e 's/VERSION=.*/VERSION=$(VERSION)/' \
 		dist/images/install.sh | \
-		IPV6=true bash
+		IPV6=true ENABLE_IC=true bash
 	kubectl describe no
 
-	docker run -d --name ovn-ic-db --network kind -e PROTOCOL="ipv6" $(REGISTRY)/kube-ovn:$(VERSION) bash start-ic-db.sh
-	@set -e; \
-	ic_db_host=$$(docker inspect ovn-ic-db -f "{{.NetworkSettings.Networks.kind.GlobalIPv6Address}}"); \
-	zone=az0 ic_db_host=$$ic_db_host gateway_node_name='kube-ovn-worker,kube-ovn-worker2;kube-ovn-control-plane' j2 yamls/ovn-ic.yaml.j2 -o ovn-ic-0.yaml; \
-	zone=az1 ic_db_host=$$ic_db_host gateway_node_name='kube-ovn1-worker,kube-ovn1-worker2;kube-ovn1-control-plane' j2 yamls/ovn-ic.yaml.j2 -o ovn-ic-1.yaml
 	kubectl config use-context kind-kube-ovn
+	sed 's/VERSION=.*/VERSION=$(VERSION)/' dist/images/install-ic-server.sh | bash
+
+	@set -e; \
+	ic_db_host=$$(kubectl get deployment ovn-ic-server -n kube-system -o jsonpath='{range .spec.template.spec.containers[0].env[?(@.name=="NODE_IPS")]}{.value}{end}'); \
+	ic_db_host=$${ic_db_host%?}; \
+	zone=az0 ic_db_host=$$ic_db_host gateway_node_name='kube-ovn-worker,kube-ovn-worker2,kube-ovn-control-plane' j2 yamls/ovn-ic.yaml.j2 -o ovn-ic-0.yaml; \
+	zone=az1 ic_db_host=$$ic_db_host gateway_node_name='kube-ovn1-worker,kube-ovn1-worker2,kube-ovn1-control-plane' j2 yamls/ovn-ic.yaml.j2 -o ovn-ic-1.yaml
 	kubectl apply -f ovn-ic-0.yaml
 	kubectl config use-context kind-kube-ovn1
 	kubectl apply -f ovn-ic-1.yaml
-	sleep 6
-	docker exec ovn-ic-db ovn-ic-sbctl show
 
 .PHONY: kind-install-ovn-ic-dual
-kind-install-ovn-ic-dual: kind-install-dual
+kind-install-ovn-ic-dual:
+	@ENABLE_IC=true $(MAKE) kind-install-dual
 	$(call kind_load_image,kube-ovn1,$(REGISTRY)/kube-ovn:$(VERSION))
 	kubectl config use-context kind-kube-ovn1
 	@$(MAKE) kind-untaint-control-plane
@@ -554,21 +559,20 @@ kind-install-ovn-ic-dual: kind-install-dual
 		-e 's/fd00:100:64:/fd00:100:68:/g' \
 		-e 's/VERSION=.*/VERSION=$(VERSION)/' \
 		dist/images/install.sh | \
-		DUAL_STACK=true bash
+		DUAL_STACK=true ENABLE_IC=true bash
 	kubectl describe no
 
-	docker run -d --name ovn-ic-db --network kind -e PROTOCOL="dual" $(REGISTRY)/kube-ovn:$(VERSION) bash start-ic-db.sh
-	@set -e; \
-
-	ic_db_host=$$(docker inspect ovn-ic-db -f "{{.NetworkSettings.Networks.kind.IPAddress}}"); \
-	zone=az0 ic_db_host=$$ic_db_host gateway_node_name='kube-ovn-worker,kube-ovn-worker2;kube-ovn-control-plane' j2 yamls/ovn-ic.yaml.j2 -o ovn-ic-0.yaml; \
-	zone=az1 ic_db_host=$$ic_db_host gateway_node_name='kube-ovn1-worker,kube-ovn1-worker2;kube-ovn1-control-plane' j2 yamls/ovn-ic.yaml.j2 -o ovn-ic-1.yaml
 	kubectl config use-context kind-kube-ovn
+	sed 's/VERSION=.*/VERSION=$(VERSION)/' dist/images/install-ic-server.sh | bash
+
+	@set -e; \
+	ic_db_host=$$(kubectl get deployment ovn-ic-server -n kube-system -o jsonpath='{range .spec.template.spec.containers[0].env[?(@.name=="NODE_IPS")]}{.value}{end}'); \
+	ic_db_host=$${ic_db_host%?}; \
+	zone=az0 ic_db_host=$$ic_db_host gateway_node_name='kube-ovn-worker,kube-ovn-worker2,kube-ovn-control-plane' j2 yamls/ovn-ic.yaml.j2 -o ovn-ic-0.yaml; \
+	zone=az1 ic_db_host=$$ic_db_host gateway_node_name='kube-ovn1-worker,kube-ovn1-worker2,kube-ovn1-control-plane' j2 yamls/ovn-ic.yaml.j2 -o ovn-ic-1.yaml
 	kubectl apply -f ovn-ic-0.yaml
 	kubectl config use-context kind-kube-ovn1
 	kubectl apply -f ovn-ic-1.yaml
-	sleep 6
-	docker exec ovn-ic-db ovn-ic-sbctl show
 
 .PHONY: kind-install-ovn-submariner
 kind-install-ovn-submariner: kind-install

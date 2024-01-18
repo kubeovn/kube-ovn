@@ -5,6 +5,8 @@ KUBE_OVN_NS=kube-system
 WITHOUT_KUBE_PROXY=${WITHOUT_KUBE_PROXY:-false}
 OVN_NB_POD=
 OVN_SB_POD=
+OVN_IC_NB_POD=
+OVN_IC_SB_POD=
 OVN_NORTHD_POD=
 KUBE_OVN_VERSION=
 REGISTRY="docker.io/kubeovn"
@@ -38,6 +40,8 @@ showHelp(){
   echo "  reload    restart all kube-ovn components"
   echo "  log {kube-ovn|ovn|ovs|linux|all}    save log to ./kubectl-ko-log/"
   echo "  perf [image] performance test default image is docker.io/kubeovn/test:v1.13.0"
+  echo "  icnbctl [ovn-nbctl options ...]    invoke ovn-ic-nbctl"
+  echo "  icsbctl [ovn-sbctl options ...]    invoke ovn-ic-sbctl"
 }
 
 # usage: ipv4_to_hex 192.168.0.1
@@ -768,6 +772,22 @@ getOvnCentralPod(){
     fi
     REGISTRY=$(dirname $image)
     KUBE_OVN_VERSION=$(basename $image | awk -F ':' '{print $2}')
+}
+
+getOVNICNBPod(){
+    OVN_IC_NB_POD=$(kubectl get pod -n $KUBE_OVN_NS -l ovn-ic-nb-leader=true | grep ovn-ic-server | head -n 1 | awk '{print $1}')
+    if [ -z "$OVN_IC_NB_POD" ]; then
+      echo "ic nb leader not exists"
+      exit 1
+    fi
+}
+
+getOVNICSBPod(){
+    OVN_IC_SB_POD=$(kubectl get pod -n $KUBE_OVN_NS -l ovn-ic-sb-leader=true | grep ovn-ic-server | head -n 1 | awk '{print $1}')
+    if [ -z "$OVN_IC_SB_POD" ]; then
+      echo "ic sb leader not exists"
+      exit 1
+    fi
 }
 
 getOvnCentralDbStatus(){
@@ -1643,6 +1663,14 @@ case $subcommand in
     getOvnCentralPod
     kubectl exec "$OVN_SB_POD" -n $KUBE_OVN_NS -c ovn-central -- ovn-sbctl "$@"
     ;;
+  icnbctl)
+    getOVNICNBPod
+    kubectl exec "$OVN_IC_NB_POD" -n $KUBE_OVN_NS -- ovn-ic-nbctl "$@"
+    ;;
+  icsbctl)
+    getOVNICSBPod
+    kubectl exec "$OVN_IC_SB_POD" -n $KUBE_OVN_NS -- ovn-ic-sbctl "$@"
+    ;; 
   vsctl|ofctl|dpctl|appctl)
     xxctl "$subcommand" "$@"
     ;;
