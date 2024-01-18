@@ -706,7 +706,8 @@ func (c *Controller) handleAddPod(key string) error {
 			}
 		}
 		// CreatePort may fail, so put ip CR creation after CreatePort
-		if err := c.createOrUpdateCrdIPs("", podName, ipStr, mac, subnet.Name, pod.Namespace, pod.Spec.NodeName, podNet.ProviderName, podType); err != nil {
+		ipCrName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
+		if err := c.createOrUpdateCrdIPs(ipCrName, podName, ipStr, mac, subnet.Name, pod.Namespace, pod.Spec.NodeName, podType); err != nil {
 			err = fmt.Errorf("failed to create ips CR %s.%s: %v", podName, pod.Namespace, err)
 			klog.Error(err)
 			return err

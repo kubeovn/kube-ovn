@@ -195,6 +195,8 @@ func (c *Controller) handleAddIP(key string) error {
 	}
 	klog.V(3).Infof("handle add ip %s", ip.Name)
 
+	// not handle add the ip, which created in pod process, lsp created before ip created
+
 	if ip.Spec.NodeName != "" {
 		// node ip skip later check and process
 		return nil
@@ -217,7 +219,7 @@ func (c *Controller) handleAddIP(key string) error {
 		return err
 	}
 	ipStr := util.GetStringIP(v4IP, v6IP)
-	if err := c.createOrUpdateCrdIPs(ip.Name, ip.Spec.PodName, ipStr, mac, subnet.Name, ip.Spec.Namespace, ip.Spec.NodeName, subnet.Spec.Provider, ip.Spec.PodType); err != nil {
+	if err := c.createOrUpdateCrdIPs(ip.Name, ip.Spec.PodName, ipStr, mac, subnet.Name, ip.Spec.Namespace, ip.Spec.NodeName, ip.Spec.PodType); err != nil {
 		err = fmt.Errorf("failed to create ips CR %s.%s: %v", ip.Spec.PodName, ip.Spec.Namespace, err)
 		klog.Error(err)
 		return err
@@ -431,7 +433,7 @@ func (c *Controller) subnetCountIP(subnet *kubeovnv1.Subnet) error {
 	return err
 }
 
-func (c *Controller) createOrUpdateCrdIPs(ipCRName, podName, ip, mac, subnetName, ns, nodeName, providerName, podType string) error {
+func (c *Controller) createOrUpdateCrdIPs(ipCRName, podName, ip, mac, subnetName, ns, nodeName, podType string) error {
 	var key, ipName string
 	if ipCRName != "" {
 		// ip CR preconfigured, use its name
@@ -445,9 +447,6 @@ func (c *Controller) createOrUpdateCrdIPs(ipCRName, podName, ip, mac, subnetName
 		} else if strings.HasPrefix(podName, util.U2OInterconnName[0:19]) {
 			key = podName
 			ipName = podName
-		} else {
-			key = podName
-			ipName = ovs.PodNameToPortName(podName, ns, providerName)
 		}
 	}
 
