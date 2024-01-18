@@ -3096,8 +3096,8 @@ k8s.io/kube-aggregator v0.28.5/go.mod h1:lj/n7X1CDY2V8aMSnxVEtpU+nWW5TWgwi2u4kuV
 k8s.io/kube-openapi v0.0.0-20191107075043-30be4d16710a/go.mod h1:1TqjTSzOxsLGIKfj0lK8EeCP7K1iUG65v09OM0/WG5E=
 k8s.io/kube-openapi v0.0.0-20220124234850-424119656bbf/go.mod h1:sX9MT8g7NVZM5lVL/j8QyCCJe8YSMW30QvGZWaCIDIk=
 k8s.io/kube-openapi v0.0.0-20230717233707-2695361300d9/go.mod h1:wZK2AVp1uHCp4VamDVgBP2COHZjqD1T68Rf0CM3YjSM=
-k8s.io/kube-openapi v0.0.0-20230905202853-d090da108d2f h1:eeEUOoGYWhOz7EyXqhlR2zHKNw2mNJ9vzJmub6YN6kk=
-k8s.io/kube-openapi v0.0.0-20230905202853-d090da108d2f/go.mod h1:AsvuZPBlUDVuCdzJ87iajxtXuR9oktsTctW/R9wwouA=
+k8s.io/kube-openapi v0.0.0-20231010175941-2dd684a91f00 h1:aVUu9fTY98ivBPKR9Y5w/AuzbMm96cd3YHRTU83I780=
+k8s.io/kube-openapi v0.0.0-20231010175941-2dd684a91f00/go.mod h1:AsvuZPBlUDVuCdzJ87iajxtXuR9oktsTctW/R9wwouA=
 k8s.io/kube-scheduler v0.28.5 h1:lBpQD19mHU3ko5F7WFlAhE8CRCwNkAzejrLwd2VCA0U=
 k8s.io/kube-scheduler v0.28.5/go.mod h1:WHgI92DlWC0zqWyusQdy5YW25an8RmvBca6PqSCR868=
 k8s.io/kubectl v0.28.5 h1:jq8xtiCCZPR8Cl/Qe1D7bLU0h8KtcunwfROqIekCUeU=
@@ -3116,8 +3116,8 @@ k8s.io/pod-security-admission v0.28.5 h1:vyd6xJ6pBXVMShCJ9Y3SShshtIevZQu6cEWXWKg
 k8s.io/pod-security-admission v0.28.5/go.mod h1:w4GhKwIMdgDmYX84SsgnbpvI2GS/OyNxJfNRcG17kbQ=
 k8s.io/sample-apiserver v0.28.5 h1:oQMveavW6hnCjoaaFrzlE+MqU2952s2xgQiHRXerxEs=
 k8s.io/sample-apiserver v0.28.5/go.mod h1:91uHoSxtl4jeGXPIi3RiaE5SEkt8gEgc9KGwmL+ppRM=
-k8s.io/sample-controller v0.28.5 h1:n4S4fHO+AjG+QrgzT0bmmNOk9XT/drg3jzUdnkHZD3U=
-k8s.io/sample-controller v0.28.5/go.mod h1:UVKmspz/E049HXSNkOyJjEX5Fsf+m/2Hk8poc2cTzEI=
+k8s.io/sample-controller v0.29.1 h1:CzC7+/dSfNpIpUPfsRb091cM14nNZGCIH2NVD7wl9jw=
+k8s.io/sample-controller v0.29.1/go.mod h1:vFW0u7NO9KOHlwOb1KoBNboVlHhiA6mVvmUyn/sJh+s=
 k8s.io/utils v0.0.0-20190801114015-581e00157fb1/go.mod h1:sZAwmy6armz5eXlNoLmJcl4F1QuKu7sr+mFQ0byX7Ew=
 k8s.io/utils v0.0.0-20191114200735-6ca3b61696b6/go.mod h1:sZAwmy6armz5eXlNoLmJcl4F1QuKu7sr+mFQ0byX7Ew=
 k8s.io/utils v0.0.0-20200414100711-2df71ebbae66/go.mod h1:jPW/WVKK9YHAvNhRxK0md/EJ228hCsBRufyofKtW8HA=
