@@ -365,13 +365,13 @@ kind-init-ovn-ic-ipv4: kind-clean-ovn-ic
 
 .PHONY: kind-init-ovn-ic-ipv6
 kind-init-ovn-ic-ipv6: kind-clean-ovn-ic
-	@ovn_ic=true $(MAKE) kind-init-ipv6
+	@ha=true $(MAKE) kind-init-ipv6
 	@ovn_ic=true ip_family=ipv6 $(MAKE) kind-generate-config
 	$(call kind_create_cluster,yamls/kind.yaml,kube-ovn1,1)
 
 .PHONY: kind-init-ovn-ic-dual
 kind-init-ovn-ic-dual: kind-clean-ovn-ic
-	@ovn_ic=true $(MAKE) kind-init-dual
+	@ha=true $(MAKE) kind-init-dual
 	@ovn_ic=true ip_family=dual $(MAKE) kind-generate-config
 	$(call kind_create_cluster,yamls/kind.yaml,kube-ovn1,1)
 
@@ -524,7 +524,7 @@ kind-install-overlay-ipv4: kind-install
 kind-install-ovn-ic: kind-install-ovn-ic-ipv4
 
 .PHONY: kind-install-ovn-ic-ipv4
-kind-install-ovn-ic-ipv4: kind-install
+kind-install-ovn-ic-ipv4:
 	@ENABLE_IC=true $(MAKE) kind-install
 	$(call kind_load_image,kube-ovn1,$(REGISTRY)/kube-ovn:$(VERSION))
 	kubectl config use-context kind-kube-ovn1
@@ -549,7 +549,8 @@ kind-install-ovn-ic-ipv4: kind-install
 	kubectl apply -f ovn-ic-1.yaml
 
 .PHONY: kind-install-ovn-ic-ipv6
-kind-install-ovn-ic-ipv6: kind-install-ipv6
+kind-install-ovn-ic-ipv6:
+	@ENABLE_IC=true $(MAKE) kind-install-ipv6
 	$(call kind_load_image,kube-ovn1,$(REGISTRY)/kube-ovn:$(VERSION))
 	kubectl config use-context kind-kube-ovn1
 	@$(MAKE) kind-untaint-control-plane
@@ -558,7 +559,7 @@ kind-install-ovn-ic-ipv6: kind-install-ipv6
 		-e 's/fd00:100:64:/fd00:100:68:/g' \
 		-e 's/VERSION=.*/VERSION=$(VERSION)/' \
 		dist/images/install.sh | \
-		IPV6=true bash
+		IPV6=true ENABLE_IC=true bash
 	kubectl describe no
 
 	kubectl config use-context kind-kube-ovn
@@ -574,7 +575,8 @@ kind-install-ovn-ic-ipv6: kind-install-ipv6
 	kubectl apply -f ovn-ic-1.yaml
 
 .PHONY: kind-install-ovn-ic-dual
-kind-install-ovn-ic-dual: kind-install-dual
+kind-install-ovn-ic-dual:
+	@ENABLE_IC=true $(MAKE) kind-install-dual
 	$(call kind_load_image,kube-ovn1,$(REGISTRY)/kube-ovn:$(VERSION))
 	kubectl config use-context kind-kube-ovn1
 	@$(MAKE) kind-untaint-control-plane
@@ -586,7 +588,7 @@ kind-install-ovn-ic-dual: kind-install-dual
 		-e 's/fd00:100:64:/fd00:100:68:/g' \
 		-e 's/VERSION=.*/VERSION=$(VERSION)/' \
 		dist/images/install.sh | \
-		DUAL_STACK=true bash
+		DUAL_STACK=true ENABLE_IC=true bash
 	kubectl describe no
 
 	kubectl config use-context kind-kube-ovn

@@ -23,6 +23,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
 
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -430,9 +431,29 @@ func getTSName(index int) string {
 	return fmt.Sprintf("%s%d", util.InterconnectionSwitch, index)
 }
 
-func getTSCidr(index int) string {
-	cidr := fmt.Sprintf("169.254.%d.0/24", 100+index)
-	return cidr
+func getTSCidr(index int) (string, error) {
+	var proto, cidr string
+	podIpsEnv := os.Getenv("POD_IPS")
+	podIps := strings.Split(podIpsEnv, ",")
+	if len(podIps) == 1 {
+		if util.CheckProtocol(podIps[0]) == kubeovnv1.ProtocolIPv6 {
+			proto = kubeovnv1.ProtocolIPv6
+		} else {
+			proto = kubeovnv1.ProtocolIPv4
+		}
+	} else if len(podIps) == 2 {
+		proto = kubeovnv1.ProtocolDual
+	}
+
+	switch proto {
+	case kubeovnv1.ProtocolIPv4:
+		cidr = fmt.Sprintf("169.254.%d.0/24", 100+index)
+	case kubeovnv1.ProtocolIPv6:
+		cidr = fmt.Sprintf("fe80:a9fe:%02x::/112", 100+index)
+	case kubeovnv1.ProtocolDual:
+		cidr = fmt.Sprintf("169.254.%d.0/24,fe80:a9fe:%02x::/112", 100+index, 100+index)
+	}
+	return cidr, nil
 }
 
 func updateTS() error {
@@ -450,14 +471,17 @@ func updateTS() error {
 		return fmt.Errorf("expectTSCount atoi failed output: %s, err: %v", output, err)
 	}
 	if expectTSCount == existTSCount {
-		klog.Infof("expectTSCount %d no changes required.", expectTSCount)
+		klog.V(3).Infof("expectTSCount %d no changes required.", expectTSCount)
 		return nil
 	}
 
 	if expectTSCount > existTSCount {
 		for i := expectTSCount - 1; i > existTSCount-1; i-- {
 			tsName := getTSName(i)
-			subnet := getTSCidr(i)
+			subnet, err := getTSCidr(i)
+			if err != nil {
+				return err
+			}
 			cmd := exec.Command("ovn-ic-nbctl",
 				ovs.MayExist, "ts-add", tsName,
 				"--", "set", "Transit_Switch", tsName, fmt.Sprintf(`external_ids:subnet="%s"`, subnet))

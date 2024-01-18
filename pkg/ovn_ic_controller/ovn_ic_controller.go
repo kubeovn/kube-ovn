@@ -91,8 +91,11 @@ func (c *Controller) DeleteICResources(azName string) error {
 		if firstIndex != -1 {
 			firstPart := lsp.Name[:firstIndex]
 			secondPart := lsp.Name[firstIndex+1:]
-			icTSs = append(icTSs, firstPart)
-			return secondPart == azName && strings.HasPrefix(firstPart, util.InterconnectionSwitch)
+			needDelete := secondPart == azName && strings.HasPrefix(firstPart, util.InterconnectionSwitch)
+			if needDelete {
+				icTSs = append(icTSs, firstPart)
+			}
+			return needDelete
 		}
 		return false
 	}); err != nil {
