@@ -707,7 +707,7 @@ func (c *Controller) handleAddPod(key string) error {
 		}
 		// CreatePort may fail, so put ip CR creation after CreatePort
 		ipCrName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
-		if err := c.createOrUpdateCrdIPs(ipCrName, podName, ipStr, mac, subnet.Name, pod.Namespace, pod.Spec.NodeName, podType); err != nil {
+		if err := c.createOrUpdateCrdIPs(ipCrName, podName, ipStr, mac, subnet.Name, pod.Namespace, pod.Spec.NodeName, podType, false); err != nil {
 			err = fmt.Errorf("failed to create ips CR %s.%s: %v", podName, pod.Namespace, err)
 			klog.Error(err)
 			return err
@@ -837,13 +837,27 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 				c.syncSgPortsQueue.Add(sg)
 			}
 		}
-		klog.Infof("release all ip address for deleting pod %s", key)
+		klog.Infof("try release all ip address for deleting pod %s", key)
 		for _, podNet := range podNets {
-			if err = c.deleteCrdIPs(podName, pod.Namespace, podNet.ProviderName); err != nil {
-				klog.Errorf("failed to delete ip for pod %s, %v, please delete manually", pod.Name, err)
+			portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
+			ip, err := c.ipsLister.Get(portName)
+			if err != nil {
+				if k8serrors.IsNotFound(err) {
+					continue
+				}
+				klog.Errorf("failed to get ip %s, %v", portName, err)
+				return err
+			}
+			if ip.Labels[util.IpReservedLabel] != "true" {
+				klog.Infof("delete cr ip %s", portName)
+				if err = c.deleteCrdIPs(portName); err != nil {
+					klog.Errorf("failed to delete ip for pod %s, %v, please delete manually", pod.Name, err)
+					continue
+				}
+				// release ipam address after delete ip cr
+				c.ipam.ReleaseAddressByPod(podKey, podNet.Subnet.Name)
 			}
 		}
-		c.ipam.ReleaseAddressByPod(podKey, "")
 		if pod.Annotations[util.VipAnnotation] != "" {
 			if err = c.releaseVip(pod.Annotations[util.VipAnnotation]); err != nil {
 				klog.Errorf("failed to clean label from vip %s, %v", pod.Annotations[util.VipAnnotation], err)
@@ -857,12 +871,10 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 	return nil
 }
 
-func (c *Controller) deleteCrdIPs(podName, ns, providerName string) error {
-	portName := ovs.PodNameToPortName(podName, ns, providerName)
-	klog.Infof("delete cr ip '%s' for pod %s/%s", portName, ns, podName)
-	if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), portName, metav1.DeleteOptions{}); err != nil {
+func (c *Controller) deleteCrdIPs(ipCRName string) error {
+	if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), ipCRName, metav1.DeleteOptions{}); err != nil {
 		if !k8serrors.IsNotFound(err) {
-			klog.Errorf("failed to delete ip %s, %v", portName, err)
+			klog.Errorf("failed to delete ip %s, %v", ipCRName, err)
 			return err
 		}
 	}

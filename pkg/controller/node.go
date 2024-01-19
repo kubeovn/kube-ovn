@@ -313,7 +313,7 @@ func (c *Controller) handleAddNode(key string) error {
 		return err
 	}
 
-	if err := c.createOrUpdateCrdIPs("", "", ipStr, mac, c.config.NodeSwitch, "", node.Name, ""); err != nil {
+	if err := c.createOrUpdateCrdIPs("", "", ipStr, mac, c.config.NodeSwitch, "", node.Name, "", false); err != nil {
 		klog.Errorf("failed to create or update IPs node-%s: %v", key, err)
 		return err
 	}

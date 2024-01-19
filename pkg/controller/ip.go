@@ -113,7 +113,7 @@ func (c *Controller) processNextAddIPWorkItem() bool {
 			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
 			return nil
 		}
-		if err := c.handleAddIP(key); err != nil {
+		if err := c.handleAddReservedIP(key); err != nil {
 			c.addIPQueue.AddRateLimited(key)
 			return fmt.Errorf("error syncing %s: %s, requeuing", key, err.Error())
 		}
@@ -185,7 +185,7 @@ func (c *Controller) processNextDeleteIPWorkItem() bool {
 	return true
 }
 
-func (c *Controller) handleAddIP(key string) error {
+func (c *Controller) handleAddReservedIP(key string) error {
 	ip, err := c.ipsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -194,14 +194,6 @@ func (c *Controller) handleAddIP(key string) error {
 		return err
 	}
 	klog.V(3).Infof("handle add ip %s", ip.Name)
-
-	// not handle add the ip, which created in pod process, lsp created before ip created
-
-	if ip.Spec.NodeName != "" {
-		// node ip skip later check and process
-		return nil
-	}
-
 	if ip.Spec.Namespace == "" || ip.Spec.PodName == "" || ip.Spec.Subnet == "" || ip.Spec.PodType == "" {
 		// invalid ip who has no namespace, name, subnet, podType, no need to handle it here
 		return nil
@@ -212,6 +204,24 @@ func (c *Controller) handleAddIP(key string) error {
 		klog.Error(err)
 		return err
 	}
+
+	portName := ovs.PodNameToPortName(ip.Spec.PodName, ip.Spec.Namespace, subnet.Spec.Provider)
+	if portName != ip.Name {
+		// invalid ip or node ip, no need to handle it here
+		return nil
+	}
+
+	// not handle add the ip, which created in pod process, lsp created before ip
+	exist, err := c.ovnLegacyClient.LogicalSwitchPortExists(portName)
+	if err != nil {
+		klog.Errorf("failed to list logical switch ports %s, %v", portName, err)
+		return err
+	}
+	if exist {
+		// port already exists means the ip already created
+		return nil
+	}
+
 	v4IP, v6IP, mac, err := c.ipAcquireAddress(ip, subnet)
 	if err != nil {
 		err = fmt.Errorf("failed to acquire ip address %v", err)
@@ -219,13 +229,9 @@ func (c *Controller) handleAddIP(key string) error {
 		return err
 	}
 	ipStr := util.GetStringIP(v4IP, v6IP)
-	if err := c.createOrUpdateCrdIPs(ip.Name, ip.Spec.PodName, ipStr, mac, subnet.Name, ip.Spec.Namespace, ip.Spec.NodeName, ip.Spec.PodType); err != nil {
+	if err := c.createOrUpdateCrdIPs(ip.Name, ip.Spec.PodName, ipStr, mac, subnet.Name, ip.Spec.Namespace, ip.Spec.NodeName, ip.Spec.PodType, true); err != nil {
 		err = fmt.Errorf("failed to create ips CR %s.%s: %v", ip.Spec.PodName, ip.Spec.Namespace, err)
 		klog.Error(err)
-		return err
-	}
-	if err := c.handleAddIPFinalizer(ip, util.ControllerName); err != nil {
-		klog.Errorf("failed to handle add ip finalizer %v", err)
 		return err
 	}
 	return nil
@@ -433,8 +439,12 @@ func (c *Controller) subnetCountIP(subnet *kubeovnv1.Subnet) error {
 	return err
 }
 
-func (c *Controller) createOrUpdateCrdIPs(ipCRName, podName, ip, mac, subnetName, ns, nodeName, podType string) error {
-	var key, ipName string
+func (c *Controller) createOrUpdateCrdIPs(ipCRName, podName, ip, mac, subnetName, ns, nodeName, podType string, keep bool) error {
+	var key, ipName, keepIP string
+	keepIP = "false"
+	if keep {
+		keepIP = "true"
+	}
 	if ipCRName != "" {
 		// ip CR preconfigured, use its name
 		key = podName
@@ -465,12 +475,13 @@ func (c *Controller) createOrUpdateCrdIPs(ipCRName, podName, ip, mac, subnetName
 
 	v4IP, v6IP := util.SplitStringIP(ip)
 	if ipCR == nil {
-		_, err = c.config.KubeOvnClient.KubeovnV1().IPs().Create(context.Background(), &kubeovnv1.IP{
+		ipCR, err = c.config.KubeOvnClient.KubeovnV1().IPs().Create(context.Background(), &kubeovnv1.IP{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: ipName,
 				Labels: map[string]string{
 					util.SubnetNameLabel: subnetName,
 					subnetName:           "",
+					util.IpReservedLabel: keepIP,
 				},
 			},
 			Spec: kubeovnv1.IPSpec{
@@ -518,7 +529,7 @@ func (c *Controller) createOrUpdateCrdIPs(ipCRName, podName, ip, mac, subnetName
 			return nil
 		}
 
-		_, err := c.config.KubeOvnClient.KubeovnV1().IPs().Update(context.Background(), newIPCr, metav1.UpdateOptions{})
+		ipCR, err = c.config.KubeOvnClient.KubeovnV1().IPs().Update(context.Background(), newIPCr, metav1.UpdateOptions{})
 		if err != nil {
 			errMsg := fmt.Errorf("failed to update ip CR %s: %v", newIPCr.Name, err)
 			klog.Error(errMsg)
@@ -526,5 +537,9 @@ func (c *Controller) createOrUpdateCrdIPs(ipCRName, podName, ip, mac, subnetName
 		}
 	}
 
+	if err := c.handleAddIPFinalizer(ipCR, util.ControllerName); err != nil {
+		klog.Errorf("failed to handle add ip finalizer %v", err)
+		return err
+	}
 	return nil
 }
