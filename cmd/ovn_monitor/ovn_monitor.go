@@ -31,9 +31,9 @@ func CmdMain() {
 		go exporter.TryClientConnection()
 	}
 	exporter.StartOvnMetrics()
-
+	mux := http.NewServeMux()
 	if config.EnableMetrics {
-		http.Handle(config.MetricsPath, promhttp.Handler())
+		mux.Handle(config.MetricsPath, promhttp.Handler())
 		klog.Infoln("Listening on", config.ListenAddress)
 	}
 
@@ -57,6 +57,7 @@ func CmdMain() {
 	server := &http.Server{
 		Addr:              addr,
 		ReadHeaderTimeout: 3 * time.Second,
+		Handler:           mux,
 	}
 	klog.Fatal(server.ListenAndServe())
 }
