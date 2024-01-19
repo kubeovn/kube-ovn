@@ -37,7 +37,7 @@ Number of master nodes
       RollingUpdate
     {{- else -}}
       {{- $imageVersion := (index $ds.spec.template.spec.containers 0).image | splitList ":" | last | trimPrefix "v" -}}
-      {{- $versionRegex := "^(?P<major>0|[1-9]\d*)\.(?P<minor>0|[1-9]\d*)\.(?P<patch>0|[1-9]\d*)" -}}
+      {{- $versionRegex := `^(?P<major>0|[1-9]\d*)\.(?P<minor>0|[1-9]\d*)\.(?P<patch>0|[1-9]\d*)` -}}
       {{- if regexMatch $versionRegex $imageVersion -}}
         {{- if regexFind $versionRegex $imageVersion | semverCompare ">= 1.12.0" -}}
           RollingUpdate
