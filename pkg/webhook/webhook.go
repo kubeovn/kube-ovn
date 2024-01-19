@@ -54,6 +54,9 @@ func NewValidatingHook(c cache.Cache) (*ValidatingHook, error) {
 	updateHooks[vpcGVK] = v.VpcUpdateHook
 	deleteHooks[vpcGVK] = v.VpcDeleteHook
 
+	createHooks[ipGVK] = v.IPCreateHook
+	updateHooks[ipGVK] = v.IPUpdateHook
+
 	createHooks[vipGVK] = v.VipCreateHook
 	updateHooks[vipGVK] = v.VipUpdateHook
 
