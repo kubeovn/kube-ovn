@@ -39,7 +39,7 @@ func (v *ValidatingHook) IPUpdateHook(ctx context.Context, req admission.Request
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 
-	// (preconfigured) ip can not change these below
+	// ip can not change these specs below
 	if ipNew.Spec.Namespace != ipOld.Spec.Namespace {
 		err := fmt.Errorf("ip %s namespace can not change", ipNew.Name)
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)

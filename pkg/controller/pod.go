@@ -840,7 +840,7 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 		klog.Infof("try release all ip address for deleting pod %s", key)
 		for _, podNet := range podNets {
 			portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
-			ip, err := c.ipsLister.Get(portName)
+			ipCR, err := c.ipsLister.Get(portName)
 			if err != nil {
 				if k8serrors.IsNotFound(err) {
 					continue
@@ -848,10 +848,10 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 				klog.Errorf("failed to get ip %s, %v", portName, err)
 				return err
 			}
-			if ip.Labels[util.IpReservedLabel] != "true" {
-				klog.Infof("delete cr ip %s", portName)
+			if ipCR.Labels[util.IpReservedLabel] != "true" {
+				klog.Infof("delete ip CR %s", portName)
 				if err = c.deleteCrdIPs(portName); err != nil {
-					klog.Errorf("failed to delete ip for pod %s, %v, please delete manually", pod.Name, err)
+					klog.Errorf("failed to delete ip CR for pod %s, %v, please delete manually", pod.Name, err)
 					continue
 				}
 				// release ipam address after delete ip cr
@@ -1518,7 +1518,7 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 			}
 		}
 	}
-	klog.Errorf("allocate address for %s failed, return NoAvailableAddress", key)
+	klog.Errorf("allocate address for pod %s failed, return NoAvailableAddress", key)
 	return "", "", "", podNet.Subnet, ipam.ErrNoAvailable
 }
 

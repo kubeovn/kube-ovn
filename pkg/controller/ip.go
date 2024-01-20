@@ -193,7 +193,7 @@ func (c *Controller) handleAddReservedIP(key string) error {
 		}
 		return err
 	}
-	klog.V(3).Infof("handle add ip %s", ip.Name)
+	klog.V(3).Infof("handle add reserved ip %s", ip.Name)
 	if ip.Spec.Namespace == "" || ip.Spec.PodName == "" || ip.Spec.Subnet == "" || ip.Spec.PodType == "" {
 		// invalid ip who has no namespace, name, subnet, podType, no need to handle it here
 		return nil
@@ -299,8 +299,7 @@ func (c *Controller) handleUpdateIP(key string) error {
 }
 
 func (c *Controller) handleDelIP(ip *kubeovnv1.IP) error {
-	klog.V(3).Infof("handle delete ip %s", ip.Name)
-	klog.V(3).Infof("enqueue update status subnet %s", ip.Spec.Subnet)
+	klog.V(3).Infof("handle delete ip %s from subnet %s", ip.Name, ip.Spec.Subnet)
 	c.updateSubnetStatusQueue.Add(ip.Spec.Subnet)
 	for _, as := range ip.Spec.AttachSubnets {
 		klog.V(3).Infof("enqueue update attach status for subnet %s", as)
@@ -356,9 +355,6 @@ func (c *Controller) handleDelIPFinalizer(cachedIP *kubeovnv1.IP, finalizer stri
 }
 
 func (c *Controller) ipAcquireAddress(ip *kubeovnv1.IP, subnet *kubeovnv1.Subnet) (string, string, string, error) {
-	// 1. ip create with pod, which name is name.namespace.provider
-	// 2. preconfigured ip, which name maybe is not name.namespace.provider
-
 	key := fmt.Sprintf("%s/%s", ip.Spec.Namespace, ip.Spec.PodName)
 	portName := ovs.PodNameToPortName(ip.Spec.PodName, ip.Spec.Namespace, subnet.Spec.Provider)
 	ipStr := util.GetStringIP(ip.Spec.V4IPAddress, ip.Spec.V6IPAddress)
@@ -366,13 +362,14 @@ func (c *Controller) ipAcquireAddress(ip *kubeovnv1.IP, subnet *kubeovnv1.Subnet
 	var v4IP, v6IP, mac string
 	var err error
 	if ipStr == "" {
-		// Random allocate
+		// allocate address
 		v4IP, v6IP, mac, err = c.ipam.GetRandomAddress(key, portName, ip.Spec.MacAddress, subnet.Name, nil, true)
 		if err == nil {
 			return v4IP, v6IP, mac, err
 		}
 		err = fmt.Errorf("failed to get random address for ip %s, %v", ip.Name, err)
 	} else {
+		// static address
 		v4IP, v6IP, mac, err = c.acquireStaticAddress(key, portName, ipStr, ip.Spec.MacAddress, subnet.Name, true)
 		if err == nil {
 			return v4IP, v6IP, mac, nil
@@ -446,11 +443,11 @@ func (c *Controller) createOrUpdateCrdIPs(ipCRName, podName, ip, mac, subnetName
 		keepIP = "true"
 	}
 	if ipCRName != "" {
-		// ip CR preconfigured, use its name
+		// ip CR reserved, use its name
 		key = podName
 		ipName = ipCRName
 	} else {
-		// ip CR not preconfigured, use pod name or node name
+		// ip CR not reserved, use pod name or node name
 		if subnetName == c.config.NodeSwitch {
 			key = nodeName
 			ipName = fmt.Sprintf("node-%s", nodeName)
