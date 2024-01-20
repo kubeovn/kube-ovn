@@ -23,7 +23,7 @@ func ContainerList(filters map[string][]string) ([]types.Container, error) {
 			f.Add(k, v1)
 		}
 	}
-	return cli.ContainerList(context.Background(), types.ContainerListOptions{All: true, Filters: f})
+	return cli.ContainerList(context.Background(), container.ListOptions{All: true, Filters: f})
 }
 
 func ContainerCreate(name, image, networkName string, cmd []string) (*types.ContainerJSON, error) {
@@ -49,7 +49,7 @@ func ContainerCreate(name, image, networkName string, cmd []string) (*types.Cont
 		return nil, err
 	}
 
-	if err = cli.ContainerStart(context.Background(), resp.ID, types.ContainerStartOptions{}); err != nil {
+	if err = cli.ContainerStart(context.Background(), resp.ID, container.StartOptions{}); err != nil {
 		return nil, err
 	}
 
@@ -83,5 +83,5 @@ func ContainerRemove(id string) error {
 	}
 	defer cli.Close()
 
-	return cli.ContainerRemove(context.Background(), id, types.ContainerRemoveOptions{Force: true})
+	return cli.ContainerRemove(context.Background(), id, container.RemoveOptions{Force: true})
 }
