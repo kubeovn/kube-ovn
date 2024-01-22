@@ -24,8 +24,8 @@ env:
   GO_VERSION: ''
   KIND_VERSION: v0.21.0
   GOSEC_VERSION: '2.18.2'
-  HELM_VERSION: v3.13.2
-  SUBMARINER_VERSION: '0.16.2'
+  HELM_VERSION: v3.14.0
+  SUBMARINER_VERSION: '0.16.3'
 
 jobs:
   build-kube-ovn-base:
