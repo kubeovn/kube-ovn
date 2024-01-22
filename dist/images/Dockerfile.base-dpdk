@@ -26,6 +26,10 @@ RUN cd /usr/src/ && \
     curl -s https://github.com/kubeovn/ovs/commit/2eaaf89fbf3ee2172719ed10d045fd79900edc8e.patch | git apply && \
     # fix memory leak in qos
     curl -s https://github.com/kubeovn/ovs/commit/6a4dd2f4b9311a227cc26fef7c398ae9b241311b.patch | git apply && \
+    # netdev: reduce cpu utilization for getting device addresses
+    curl -s https://github.com/kubeovn/ovs/commit/181680672eb74e150f8244361468e63167aaea46.patch | git apply && \
+    # ovs-router: skip getting source address for kube-ipvs0
+    curl -s https://github.com/kubeovn/ovs/commit/f9048a894c019cd4cf5587d40cc07054da60ec81.patch | git apply && \
     # ovsdb-tool: add command fix-cluster
     curl -s https://github.com/kubeovn/ovs/commit/f52c239f5ded40b503e4d217f916b46ca413da4c.patch | git apply
 
