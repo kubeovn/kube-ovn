@@ -775,6 +775,46 @@
  * 张祖建
  * 袁又袁
 
+## v1.11.15 (2024-01-22)
+
+ * [94bdf05d](https://github.com/kubeovn/kube-ovn/commit/94bdf05d4555764b2d1e1f697eb47feb14cf7d08) set for release 1.11.15
+ * [b783389e](https://github.com/kubeovn/kube-ovn/commit/b783389ea7d651b164e7aea3d2249ee9736983bf) refactor start-ic-db.sh (#3645)
+ * [84c05201](https://github.com/kubeovn/kube-ovn/commit/84c052017be51f7e63f34ebe7ef9dfda152ee9ff) kube-ovn-monitor and kube-ovn-pinger export pprof path (#3656)
+ * [edf23a75](https://github.com/kubeovn/kube-ovn/commit/edf23a7574e510deb18ee76bb976fcfd2b57a0c5) SYSCTL_IPV4_IP_NO_PMTU_DISC set default to 0
+ * [7b863fbf](https://github.com/kubeovn/kube-ovn/commit/7b863fbf30b8816b53623a21bf8880b57485f67c) Ovn ic ecmp enhance 1.11 (#3609)
+ * [7a5c4aa6](https://github.com/kubeovn/kube-ovn/commit/7a5c4aa6d566bbe239d520ea0467e6af4fbab621) fix: subnet can not delete even if no ip in using (#3621)
+ * [3fec12e5](https://github.com/kubeovn/kube-ovn/commit/3fec12e5f454b242acc7872604e619bb09e8d4ca) fix: static spectify one ip (#3614)
+ * [6e80f351](https://github.com/kubeovn/kube-ovn/commit/6e80f351c0940dac50068af4cd5f7487e6bec629) do not calculate subnet.spec.excludeIPs as availableIPs (#3612)
+ * [d4967031](https://github.com/kubeovn/kube-ovn/commit/d4967031d1a4e55c690a8421fed37bc3110436d1) update policy route when subnet cidr changed (#3611)
+ * [6fad3a17](https://github.com/kubeovn/kube-ovn/commit/6fad3a17db27d2569b6551fe25450e84c502e24c) prepare for next release
+
+### Contributors
+
+ * Changlu Yi
+ * bobz965
+ * changluyi
+ * hzma
+
+## v1.11.14 (2024-01-08)
+
+ * [57630113](https://github.com/kubeovn/kube-ovn/commit/576301137576bc96710a451ca1d584038dc4dc7e) set release 1.11.14
+ * [a8f93e76](https://github.com/kubeovn/kube-ovn/commit/a8f93e76c4e20589542dbb3cac31ba8a91942124) ovs: increase cpu limit to 2 cores (#3530)
+ * [9d4ea55c](https://github.com/kubeovn/kube-ovn/commit/9d4ea55c2b6fa6ec615619b529f184494b65ce04) fix u2o infinity recycle (#3567)
+ * [ad3e3692](https://github.com/kubeovn/kube-ovn/commit/ad3e3692697a593381c933dbdd3d8f762954d707) 1.11 ip delete lsp (#3562)
+ * [e27aced6](https://github.com/kubeovn/kube-ovn/commit/e27aced6f282ff5b897a9159b9b5385a0ec9b05d) fix ipam deletion (#3549)
+ * [40db9011](https://github.com/kubeovn/kube-ovn/commit/40db90115072fce69373220f534d0ff89976b1a1) Revert "ovn-central: check raft inconsistency from nb/sb logs (#3532)"
+ * [d30a4cf7](https://github.com/kubeovn/kube-ovn/commit/d30a4cf7b16be4875af390c5509d0214c56c3a54) fix IP residue after changing subnet of vm in some scenarios (#3370)
+ * [407a26f2](https://github.com/kubeovn/kube-ovn/commit/407a26f2148bc1d31ca391eca1dc85e166127cd8) ovn-central: check raft inconsistency from nb/sb logs (#3532)
+ * [ca9e530f](https://github.com/kubeovn/kube-ovn/commit/ca9e530f7b507f138e7c6adc754df9577b9328c8) prepare for next release
+
+### Contributors
+
+ * bobz965
+ * changluyi
+ * zhangzujian
+ * 张祖建
+ * 袁又袁
+
 ## v1.11.13 (2023-12-14)
 
  * [dc24eee7](https://github.com/kubeovn/kube-ovn/commit/dc24eee7714baa541a4a91ab5ede9d3289908bbd) set release v1.11.13
