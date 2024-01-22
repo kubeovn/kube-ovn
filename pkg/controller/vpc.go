@@ -590,14 +590,6 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 					}
 				}
 			}
-			if !vpc.Spec.EnableBfd {
-				// auto add normal type static route, if not use ecmp based bfd
-				klog.Infof("add normal external static route for enable external vpc %s", vpc.Name)
-				if err := c.reconcileCustomVpcAddNormalStaticRoute(vpc.Name); err != nil {
-					klog.Errorf("failed to reconcile vpc %q bfd static route", vpc.Name)
-					return err
-				}
-			}
 			if cachedVpc.Spec.ExtraExternalSubnets != nil {
 				sort.Strings(vpc.Spec.ExtraExternalSubnets)
 			}
