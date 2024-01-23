@@ -156,19 +156,22 @@ func (c *Controller) resyncInterConnection() {
 			return
 		}
 		klog.Info("start to remove ovn-ic")
-		azName := ""
-		icDBHost := ""
+		var azName, icDBHost, icSBPort, icNBPort string
 		if cm != nil {
 			azName = cm.Data["az-name"]
 			icDBHost = cm.Data["ic-db-host"]
+			icSBPort = cm.Data["ic-sb-port"]
+			icNBPort = cm.Data["ic-nb-port"]
 		} else if lastIcCm != nil {
 			azName = lastIcCm["az-name"]
 			icDBHost = lastIcCm["ic-db-host"]
+			icSBPort = lastIcCm["ic-sb-port"]
+			icNBPort = lastIcCm["ic-nb-port"]
 		}
 
 		if icDBHost != "" {
-			c.ovnLegacyClient.OvnICSbAddress = genHostAddress(icDBHost, cm.Data["ic-sb-port"])
-			c.ovnLegacyClient.OvnICNbAddress = genHostAddress(icDBHost, cm.Data["ic-nb-port"])
+			c.ovnLegacyClient.OvnICSbAddress = genHostAddress(icDBHost, icSBPort)
+			c.ovnLegacyClient.OvnICNbAddress = genHostAddress(icDBHost, icNBPort)
 		}
 
 		c.disableOVNIC(azName)
