@@ -204,6 +204,7 @@ const (
 	OvnICPolicyPriority         = 29500
 	NodeRouterPolicyPriority    = 30000
 	NodeLocalDNSPolicyPriority  = 30100
+	DefaultVpcFipPolicyPriority = 30500
 	SubnetRouterPolicyPriority  = 31000
 
 	OffloadType  = "offload-port"

@@ -421,6 +421,28 @@ func (c *Controller) handleUpdateOvnFip(key string) error {
 			return err
 		}
 		// ovn add fip
+		if vpcName == util.DefaultVpc {
+			// fix issue https://github.com/kubeovn/kube-ovn/issues/3502
+			// Where ovn fip is not work for default vpc
+			match := fmt.Sprintf("ip4.src == %s", internalV4Ip)
+			cm, err := c.configMapsLister.ConfigMaps(c.config.ExternalGatewayConfigNS).Get(util.ExternalGatewayConfig)
+			if err != nil {
+				klog.Errorf("failed to create config map %s, %v", util.ExternalGatewayConfig, err)
+				return err
+			}
+			externalGwAddr := cm.Data["external-gw-addr"]
+			if externalGwAddr == "" {
+				err = fmt.Errorf("external-gw-addr should not be empty in config map %s", util.ExternalGatewayConfig)
+				klog.Errorf("%v", err)
+				return err
+			}
+
+			if err = c.OVNNbClient.AddLogicalRouterPolicy(vpcName, util.DefaultVpcFipPolicyPriority, match,
+				ovnnb.LogicalRouterPolicyActionReroute, []string{externalGwAddr}, nil); err != nil {
+				klog.Errorf("failed to create LogicalRouterPolicy for fip: %s, %v", fip.Name, err)
+				return err
+			}
+		}
 		options := map[string]string{"staleless": strconv.FormatBool(c.ExternalGatewayType == kubeovnv1.GWDistributedType)}
 		if err = c.OVNNbClient.AddNat(vpcName, ovnnb.NATTypeDNATAndSNAT, cachedEip.Status.V4Ip,
 			internalV4Ip, mac, cachedFip.Spec.IPName, options); err != nil {
@@ -457,6 +479,12 @@ func (c *Controller) handleDelOvnFip(key string) error {
 	}
 	// ovn delete fip nat
 	if cachedFip.Status.Vpc != "" && cachedFip.Status.V4Eip != "" && cachedFip.Status.V4Ip != "" {
+		if cachedFip.Status.Vpc == util.DefaultVpc {
+			match := fmt.Sprintf("ip4.src == %s", cachedFip.Status.V4Ip)
+			if err = c.OVNNbClient.DeleteLogicalRouterPolicy(cachedFip.Status.Vpc, util.DefaultVpcFipPolicyPriority, match); err != nil {
+				klog.Errorf("failed to delete LogicalRouterPolicy for fip: %s, %v", cachedFip.Name, err)
+			}
+		}
 		if err = c.OVNNbClient.DeleteNat(cachedFip.Status.Vpc, ovnnb.NATTypeDNATAndSNAT, cachedFip.Status.V4Eip, cachedFip.Status.V4Ip); err != nil {
 			klog.Errorf("failed to delete fip %s, %v", key, err)
 			return err
