@@ -27,7 +27,7 @@ func (v *ValidatingHook) SubnetCreateHook(ctx context.Context, req admission.Req
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 	if err := util.ValidateCidrConflict(o, subnetList.Items); err != nil {
-		return ctrlwebhook.Denied(err.Error())
+		return admission.Errored(http.StatusConflict, err)
 	}
 
 	vpcList := &ovnv1.VpcList{}
@@ -77,7 +77,7 @@ func (v *ValidatingHook) SubnetUpdateHook(ctx context.Context, req admission.Req
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 	if err := util.ValidateCidrConflict(o, subnetList.Items); err != nil {
-		return ctrlwebhook.Denied(err.Error())
+		return admission.Errored(http.StatusConflict, err)
 	}
 
 	return ctrlwebhook.Allowed("by pass")

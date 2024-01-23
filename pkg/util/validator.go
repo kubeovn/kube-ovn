@@ -31,14 +31,14 @@ func ValidateSubnet(subnet kubeovnv1.Subnet) error {
 
 		if len(ips) == 1 {
 			if net.ParseIP(ips[0]) == nil {
-				return fmt.Errorf("ip %s in exclude_ips is not a valid address", ips[0])
+				return fmt.Errorf("ip %s in excludeIps is not a valid address", ips[0])
 			}
 		}
 
 		if len(ips) == 2 {
 			for _, ip := range ips {
 				if net.ParseIP(ip) == nil {
-					return fmt.Errorf("ip %s in exclude_ips is not a valid address", ip)
+					return fmt.Errorf("ip %s in excludeIps is not a valid address", ip)
 				}
 			}
 			if IP2BigInt(ips[0]).Cmp(IP2BigInt(ips[1])) == 1 {
