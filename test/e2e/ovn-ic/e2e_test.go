@@ -160,6 +160,17 @@ var _ = framework.SerialDescribe("[group:ovn-ic]", func() {
 	})
 
 	framework.ConformanceIt("should be able to communicate between clusters", func() {
+		ginkgo.By("case 1: Pod in different clusters can be communicated ")
+		fnCheckPodHTTP()
+
+		ginkgo.By("case 2: Delete configmap ovn-ic-config and rebuild it")
+		execCmd := "kubectl get configmap ovn-ic-config -n kube-system -oyaml > temp-ovn-ic-config.yaml; kubectl delete configmap ovn-ic-config -n kube-system"
+		_, err := exec.Command("bash", "-c", execCmd).CombinedOutput()
+		framework.ExpectNoError(err)
+
+		execCmd = "kubectl apply -f temp-ovn-ic-config.yaml; rm -f temp-ovn-ic-config.yaml"
+		_, err = exec.Command("bash", "-c", execCmd).CombinedOutput()
+		framework.ExpectNoError(err)
 		fnCheckPodHTTP()
 	})
 
