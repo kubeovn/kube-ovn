@@ -3677,6 +3677,11 @@ spec:
           image: "$REGISTRY/kube-ovn:$VERSION"
           imagePullPolicy: $IMAGE_PULL_POLICY
           command: ["/kube-ovn/start-ic-controller.sh"]
+          args:
+          - --log_file=/var/log/kube-ovn/kube-ovn-ic-controller.log
+          - --log_file_max_size=0
+          - --logtostderr=false
+          - --alsologtostderr=true
           securityContext:
             capabilities:
               add: ["SYS_NICE"]
@@ -3707,6 +3712,8 @@ spec:
               name: localtime
             - mountPath: /var/run/tls
               name: kube-ovn-tls
+            - mountPath: /var/log/kube-ovn
+              name: kube-ovn-log
       nodeSelector:
         kubernetes.io/os: "linux"
         kube-ovn/role: "master"
@@ -3723,6 +3730,9 @@ spec:
         - name: localtime
           hostPath:
             path: /etc/localtime
+        - name: kube-ovn-log
+          hostPath:
+            path: /var/log/kube-ovn
         - name: kube-ovn-tls
           secret:
             optional: true
