@@ -29,11 +29,6 @@ type Configuration struct {
 	NodeSwitch     string
 	ClusterRouter  string
 	NodeSwitchCIDR string
-
-	ClusterTCPLoadBalancer        string
-	ClusterUDPLoadBalancer        string
-	ClusterTCPSessionLoadBalancer string
-	ClusterUDPSessionLoadBalancer string
 }
 
 func ParseFlags() (*Configuration, error) {
@@ -47,11 +42,6 @@ func ParseFlags() (*Configuration, error) {
 		argClusterRouter  = pflag.String("cluster-router", util.DefaultVpc, "The router name for cluster router")
 		argNodeSwitch     = pflag.String("node-switch", "join", "The name of node gateway switch which help node to access pod network")
 		argNodeSwitchCIDR = pflag.String("node-switch-cidr", "100.64.0.0/16", "The cidr for node switch")
-
-		argClusterTCPLoadBalancer        = pflag.String("cluster-tcp-loadbalancer", "cluster-tcp-loadbalancer", "The name for cluster tcp loadbalancer")
-		argClusterUDPLoadBalancer        = pflag.String("cluster-udp-loadbalancer", "cluster-udp-loadbalancer", "The name for cluster udp loadbalancer")
-		argClusterTCPSessionLoadBalancer = pflag.String("cluster-tcp-session-loadbalancer", "cluster-tcp-session-loadbalancer", "The name for cluster tcp session loadbalancer")
-		argClusterUDPSessionLoadBalancer = pflag.String("cluster-udp-session-loadbalancer", "cluster-udp-session-loadbalancer", "The name for cluster udp session loadbalancer")
 	)
 
 	klogFlags := flag.NewFlagSet("klog", flag.ContinueOnError)
@@ -89,11 +79,6 @@ func ParseFlags() (*Configuration, error) {
 		ClusterRouter:  *argClusterRouter,
 		NodeSwitch:     *argNodeSwitch,
 		NodeSwitchCIDR: *argNodeSwitchCIDR,
-
-		ClusterTCPLoadBalancer:        *argClusterTCPLoadBalancer,
-		ClusterUDPLoadBalancer:        *argClusterUDPLoadBalancer,
-		ClusterTCPSessionLoadBalancer: *argClusterTCPSessionLoadBalancer,
-		ClusterUDPSessionLoadBalancer: *argClusterUDPSessionLoadBalancer,
 	}
 
 	if err := config.initKubeClient(); err != nil {
