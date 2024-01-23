@@ -200,7 +200,7 @@ func TestValidateSubnet(t *testing.T) {
 				},
 				Status: kubeovnv1.SubnetStatus{},
 			},
-			err: "exclude_ips is not a valid address",
+			err: "excludeIps is not a valid address",
 		},
 		{
 			name: "ExcludeIPNotIPErr",
@@ -222,7 +222,7 @@ func TestValidateSubnet(t *testing.T) {
 				},
 				Status: kubeovnv1.SubnetStatus{},
 			},
-			err: "in exclude_ips is not a valid address",
+			err: "in excludeIps is not a valid address",
 		},
 		{
 			name: "ExcludeIPRangeErr",
@@ -474,7 +474,7 @@ func TestValidateSubnet(t *testing.T) {
 				},
 				Status: kubeovnv1.SubnetStatus{},
 			},
-			err: "ip 10.16.1 in exclude_ips is not a valid address",
+			err: "ip 10.16.1 in excludeIps is not a valid address",
 		},
 	}
 	for _, tt := range tests {
