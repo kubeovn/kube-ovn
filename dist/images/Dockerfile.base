@@ -46,7 +46,9 @@ RUN cd /usr/src/ && git clone -b branch-22.12 --depth=1 https://github.com/ovn-o
     # ovn-ic blacklist function not work on ipv6
     curl -s https://github.com/kubeovn/ovn/commit/78ab91005854532e7eb5c4fe6b2923ce292e3681.patch | git apply && \
     # fix lr-lb dnat with multiple distributed gateway ports
-    curl -s https://github.com/kubeovn/ovn/commit/80f37c2debbf9f5230403691f791d11cc2b2e277.patch | git apply
+    curl -s https://github.com/kubeovn/ovn/commit/80f37c2debbf9f5230403691f791d11cc2b2e277.patch | git apply && \
+    # lflow: do not send direct traffic between lports to conntrack
+    curl -s https://github.com/kubeovn/ovn/commit/6f1af045845deeabf06fdc7c90073e0a6874ab2f.patch | git apply
 
 RUN apt install -y build-essential fakeroot \
     autoconf automake bzip2 debhelper-compat dh-exec dh-python dh-sequence-python3 dh-sequence-sphinxdoc \

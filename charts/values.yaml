@@ -63,6 +63,7 @@ func:
   ENABLE_LB_SVC: false
   ENABLE_KEEP_VM_IP: true
   LS_DNAT_MOD_DL_DST: true
+  LS_CT_SKIP_DST_LPORT_IPS: true
   CHECK_GATEWAY: true
   LOGICAL_GATEWAY: false
   ENABLE_BIND_LOCAL_IP: true

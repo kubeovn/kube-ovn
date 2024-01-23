@@ -66,6 +66,7 @@ spec:
             - --default-exchange-link-name=false
             - --default-vlan-id=100
             - --ls-dnat-mod-dl-dst=true
+            - --ls-ct-skip-dst-lport-ips=true
             - --pod-nic-type=veth-pair
             - --enable-lb=true
             - --enable-np=true
