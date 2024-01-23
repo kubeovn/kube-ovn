@@ -267,6 +267,7 @@ func (c *Controller) handleResetIptablesEip(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	klog.Infof("handle reset eip %s", key)
@@ -477,6 +478,13 @@ func (c *Controller) addOrUpdateEIPBandtithLimitRules(eip *kubeovnv1.IptablesEIP
 func (c *Controller) addEipQoS(eip *kubeovnv1.IptablesEIP, v4ip string) error {
 	var err error
 	qosPolicy, err := c.qosPoliciesLister.Get(eip.Spec.QoSPolicy)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		klog.Errorf("failed to get qos policy %s, %v", eip.Spec.QoSPolicy, err)
+		return err
+	}
 	if !qosPolicy.Status.Shared {
 		eips, err := c.iptablesEipsLister.List(
 			labels.SelectorFromSet(labels.Set{util.QoSLabel: qosPolicy.Name}))
@@ -491,10 +499,6 @@ func (c *Controller) addEipQoS(eip *kubeovnv1.IptablesEIP, v4ip string) error {
 				return err
 			}
 		}
-	}
-	if err != nil {
-		klog.Errorf("get qos policy %s failed: %v", eip.Spec.QoSPolicy, err)
-		return err
 	}
 	return c.addOrUpdateEIPBandtithLimitRules(eip, v4ip, qosPolicy.Status.BandwidthLimitRules)
 }
@@ -516,7 +520,10 @@ func (c *Controller) delEipQoS(eip *kubeovnv1.IptablesEIP, v4ip string) error {
 	var err error
 	qosPolicy, err := c.qosPoliciesLister.Get(eip.Status.QoSPolicy)
 	if err != nil {
-		klog.Errorf("get qos policy %s failed: %v", eip.Status.QoSPolicy, err)
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		klog.Errorf("failed to get qos policy %s, %v", eip.Status.QoSPolicy, err)
 		return err
 	}
 
@@ -639,34 +646,37 @@ func (c *Controller) GetGwBySubnet(name string) (string, string, error) {
 }
 
 func (c *Controller) createOrUpdateCrdEip(key, v4ip, v6ip, mac, natGwDp, qos, externalNet string) error {
+	needCreate := false
 	cachedEip, err := c.iptablesEipsLister.Get(key)
-	externalNetwork := util.GetExternalNetwork(cachedEip.Spec.ExternalSubnet)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
-			klog.V(3).Infof("create eip cr %s", key)
-			_, err := c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().Create(context.Background(), &kubeovnv1.IptablesEIP{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: key,
-					Labels: map[string]string{
-						util.SubnetNameLabel:        externalNet,
-						util.EipV4IpLabel:           v4ip,
-						util.VpcNatGatewayNameLabel: natGwDp,
-					},
-				},
-				Spec: kubeovnv1.IptablesEipSpec{
-					V4ip:       v4ip,
-					V6ip:       v6ip,
-					MacAddress: mac,
-					NatGwDp:    natGwDp,
-				},
-			}, metav1.CreateOptions{})
-			if err != nil {
-				errMsg := fmt.Errorf("failed to create eip crd %s, %v", key, err)
-				klog.Error(errMsg)
-				return errMsg
-			}
+			needCreate = true
 		} else {
-			errMsg := fmt.Errorf("failed to get eip crd %s, %v", key, err)
+			klog.Errorf("failed to get eip %s, %v", key, err)
+			return err
+		}
+	}
+	externalNetwork := util.GetExternalNetwork(cachedEip.Spec.ExternalSubnet)
+	if needCreate {
+		klog.V(3).Infof("create eip cr %s", key)
+		_, err := c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().Create(context.Background(), &kubeovnv1.IptablesEIP{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: key,
+				Labels: map[string]string{
+					util.SubnetNameLabel:        externalNet,
+					util.EipV4IpLabel:           v4ip,
+					util.VpcNatGatewayNameLabel: natGwDp,
+				},
+			},
+			Spec: kubeovnv1.IptablesEipSpec{
+				V4ip:       v4ip,
+				V6ip:       v6ip,
+				MacAddress: mac,
+				NatGwDp:    natGwDp,
+			},
+		}, metav1.CreateOptions{})
+		if err != nil {
+			errMsg := fmt.Errorf("failed to create eip crd %s, %v", key, err)
 			klog.Error(errMsg)
 			return errMsg
 		}
@@ -726,6 +736,7 @@ func (c *Controller) createOrUpdateCrdEip(key, v4ip, v6ip, mac, natGwDp, qos, ex
 		}
 		if needUpdateLabel {
 			if err := c.updateIptableLabels(eip.Name, op, "eip", eip.Labels); err != nil {
+				klog.Errorf("failed to update eip %s labels, %v", eip.Name, err)
 				return err
 			}
 		}
@@ -962,6 +973,7 @@ func (c *Controller) patchEipLabel(eipName string) error {
 	}
 	if needUpdateLabel {
 		if err := c.updateIptableLabels(eip.Name, op, "eip", eip.Labels); err != nil {
+			klog.Errorf("failed to update label of eip %s, %v", eip.Name, err)
 			return err
 		}
 	}
