@@ -35,19 +35,21 @@ const (
 	icConfigChange
 )
 
-func (c *Controller) disableOVNIC(azName string) {
+func (c *Controller) disableOVNIC(azName string) error {
 	if err := c.removeInterConnection(azName); err != nil {
 		klog.Errorf("failed to remove ovn-ic, %v", err)
-		return
+		return err
 	}
 	if err := c.delLearnedRoute(); err != nil {
 		klog.Errorf("failed to remove learned static routes, %v", err)
-		return
+		return err
 	}
 
 	if err := c.RemoveOldChassisInSbDB(azName); err != nil {
 		klog.Errorf("failed to remove remote chassis: %v", err)
+		return err
 	}
+	return nil
 }
 
 func (c *Controller) setAutoRoute(autoRoute bool) {
@@ -117,22 +119,29 @@ func (c *Controller) resyncInterConnection() {
 			return
 		}
 		klog.Info("start to remove ovn-ic")
-		azName := ""
-		icDBHost := ""
+		var azName, icDBHost, icSBPort, icNBPort string
 		if cm != nil {
 			azName = cm.Data["az-name"]
 			icDBHost = cm.Data["ic-db-host"]
+			icSBPort = cm.Data["ic-sb-port"]
+			icNBPort = cm.Data["ic-nb-port"]
 		} else if lastIcCm != nil {
 			azName = lastIcCm["az-name"]
 			icDBHost = lastIcCm["ic-db-host"]
+			icSBPort = lastIcCm["ic-sb-port"]
+			icNBPort = lastIcCm["ic-nb-port"]
 		}
 
 		if icDBHost != "" {
-			c.ovnLegacyClient.OvnICSbAddress = genHostAddress(icDBHost, cm.Data["ic-sb-port"])
-			c.ovnLegacyClient.OvnICNbAddress = genHostAddress(icDBHost, cm.Data["ic-nb-port"])
+			c.ovnLegacyClient.OvnICSbAddress = genHostAddress(icDBHost, icSBPort)
+			c.ovnLegacyClient.OvnICNbAddress = genHostAddress(icDBHost, icNBPort)
 		}
 
-		c.disableOVNIC(azName)
+		err := c.disableOVNIC(azName)
+		if err != nil {
+			klog.Errorf("Disable az %s OVN IC failed ", azName)
+			return
+		}
 		icEnabled = "false"
 		lastIcCm = nil
 
@@ -169,7 +178,11 @@ func (c *Controller) resyncInterConnection() {
 	case icConfigChange:
 		c.ovnLegacyClient.OvnICSbAddress = genHostAddress(lastIcCm["ic-db-host"], cm.Data["ic-sb-port"])
 		c.ovnLegacyClient.OvnICNbAddress = genHostAddress(lastIcCm["ic-db-host"], cm.Data["ic-nb-port"])
-		c.disableOVNIC(lastIcCm["az-name"])
+		err := c.disableOVNIC(lastIcCm["az-name"])
+		if err != nil {
+			klog.Errorf("Disable az %s OVN IC failed ", lastIcCm["az-name"])
+			return
+		}
 		klog.Info("start to reestablish ovn-ic")
 		if err := c.establishInterConnection(cm.Data); err != nil {
 			klog.Errorf("failed to reestablish ovn-ic, %v", err)
