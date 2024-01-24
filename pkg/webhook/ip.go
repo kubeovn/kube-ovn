@@ -6,12 +6,13 @@ import (
 	"net"
 	"net/http"
 
-	ovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	"github.com/kubeovn/kube-ovn/pkg/util"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	ctrlwebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
+
+	ovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 var ipGVK = metav1.GroupVersionKind{Group: ovnv1.SchemeGroupVersion.Group, Version: ovnv1.SchemeGroupVersion.Version, Kind: "IP"}
@@ -36,6 +37,10 @@ func (v *ValidatingHook) IPUpdateHook(ctx context.Context, req admission.Request
 
 	ipNew := ovnv1.IP{}
 	if err := v.decoder.DecodeRaw(req.Object, &ipNew); err != nil {
+		return ctrlwebhook.Errored(http.StatusBadRequest, err)
+	}
+
+	if err := v.ValidateIP(ctx, &ipNew); err != nil {
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 

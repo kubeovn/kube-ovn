@@ -496,16 +496,17 @@ func (c *Controller) createOrUpdateCrdIPs(ipCRName, podName, ip, mac, subnetName
 			return nil
 		}
 
-		_, err := c.config.KubeOvnClient.KubeovnV1().IPs().Update(context.Background(), newIPCR, metav1.UpdateOptions{})
+		ipCR, err = c.config.KubeOvnClient.KubeovnV1().IPs().Update(context.Background(), newIPCR, metav1.UpdateOptions{})
 		if err != nil {
 			err := fmt.Errorf("failed to update ip CR %s: %v", newIPCR.Name, err)
 			klog.Error(err)
 			return err
 		}
-		if err := c.handleAddIPFinalizer(ipCR, util.ControllerName); err != nil {
-			klog.Errorf("failed to handle add ip finalizer %v", err)
-			return err
-		}
+	}
+
+	if err := c.handleAddIPFinalizer(ipCR, util.ControllerName); err != nil {
+		klog.Errorf("failed to handle add ip finalizer %v", err)
+		return err
 	}
 
 	return nil
