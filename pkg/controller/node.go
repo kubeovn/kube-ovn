@@ -659,8 +659,8 @@ func (c *Controller) createOrUpdateCrdIPs(podName, ip, mac, subnetName, ns, node
 	}
 
 	var err error
-	var ipCr *kubeovnv1.IP
-	ipCr, err = c.ipsLister.Get(ipName)
+	var ipCR *kubeovnv1.IP
+	ipCR, err = c.ipsLister.Get(ipName)
 	if err != nil {
 		if !k8serrors.IsNotFound(err) {
 			errMsg := fmt.Errorf("failed to get ip CR %s: %v", ipName, err)
@@ -668,11 +668,11 @@ func (c *Controller) createOrUpdateCrdIPs(podName, ip, mac, subnetName, ns, node
 			return errMsg
 		}
 		// the returned pointer is not nil if the CR does not exist
-		ipCr = nil
+		ipCR = nil
 	}
 
 	v4IP, v6IP := util.SplitStringIP(ip)
-	if ipCr == nil {
+	if ipCR == nil {
 		_, err = c.config.KubeOvnClient.KubeovnV1().IPs().Create(context.Background(), &kubeovnv1.IP{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: ipName,
@@ -703,37 +703,37 @@ func (c *Controller) createOrUpdateCrdIPs(podName, ip, mac, subnetName, ns, node
 			return errMsg
 		}
 	} else {
-		newIPCr := ipCr.DeepCopy()
-		if newIPCr.Labels != nil {
-			newIPCr.Labels[util.SubnetNameLabel] = subnetName
-			newIPCr.Labels[util.NodeNameLabel] = nodeName
+		newIPCR := ipCR.DeepCopy()
+		if newIPCR.Labels != nil {
+			newIPCR.Labels[util.SubnetNameLabel] = subnetName
+			newIPCR.Labels[util.NodeNameLabel] = nodeName
 		} else {
-			newIPCr.Labels = map[string]string{
+			newIPCR.Labels = map[string]string{
 				util.SubnetNameLabel: subnetName,
 				util.NodeNameLabel:   nodeName,
 			}
 		}
-		newIPCr.Spec.PodName = key
-		newIPCr.Spec.Namespace = ns
-		newIPCr.Spec.Subnet = subnetName
-		newIPCr.Spec.NodeName = nodeName
-		newIPCr.Spec.IPAddress = ip
-		newIPCr.Spec.V4IPAddress = v4IP
-		newIPCr.Spec.V6IPAddress = v6IP
-		newIPCr.Spec.MacAddress = mac
-		newIPCr.Spec.AttachIPs = []string{}
-		newIPCr.Spec.AttachMacs = []string{}
-		newIPCr.Spec.AttachSubnets = []string{}
-		newIPCr.Spec.PodType = podType
-		if reflect.DeepEqual(newIPCr.Labels, ipCr.Labels) && reflect.DeepEqual(newIPCr.Spec, ipCr.Spec) {
+		newIPCR.Spec.PodName = key
+		newIPCR.Spec.Namespace = ns
+		newIPCR.Spec.Subnet = subnetName
+		newIPCR.Spec.NodeName = nodeName
+		newIPCR.Spec.IPAddress = ip
+		newIPCR.Spec.V4IPAddress = v4IP
+		newIPCR.Spec.V6IPAddress = v6IP
+		newIPCR.Spec.MacAddress = mac
+		newIPCR.Spec.AttachIPs = []string{}
+		newIPCR.Spec.AttachMacs = []string{}
+		newIPCR.Spec.AttachSubnets = []string{}
+		newIPCR.Spec.PodType = podType
+		if reflect.DeepEqual(newIPCR.Labels, ipCR.Labels) && reflect.DeepEqual(newIPCR.Spec, ipCR.Spec) {
 			return nil
 		}
 
-		_, err := c.config.KubeOvnClient.KubeovnV1().IPs().Update(context.Background(), newIPCr, metav1.UpdateOptions{})
+		_, err := c.config.KubeOvnClient.KubeovnV1().IPs().Update(context.Background(), newIPCR, metav1.UpdateOptions{})
 		if err != nil {
-			errMsg := fmt.Errorf("failed to update ip CR %s: %v", newIPCr.Name, err)
-			klog.Error(errMsg)
-			return errMsg
+			err := fmt.Errorf("failed to update ip CR %s: %v", newIPCR.Name, err)
+			klog.Error(err)
+			return err
 		}
 	}
 

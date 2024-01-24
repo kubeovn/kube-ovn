@@ -499,7 +499,7 @@ func (c *Controller) subnetCountIP(subnet *kubeovnv1.Subnet) error {
 }
 
 func (c *Controller) createOrUpdateCrdVip(key, ns, subnet, v4ip, v6ip, mac, pV4ip, pV6ip, pmac string) error {
-	vipCr, err := c.virtualIpsLister.Get(key)
+	vipCR, err := c.virtualIpsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			if _, err := c.config.KubeOvnClient.KubeovnV1().Vips().Create(context.Background(), &kubeovnv1.Vip{
@@ -532,7 +532,7 @@ func (c *Controller) createOrUpdateCrdVip(key, ns, subnet, v4ip, v6ip, mac, pV4i
 			return errMsg
 		}
 	} else {
-		vip := vipCr.DeepCopy()
+		vip := vipCR.DeepCopy()
 		if vip.Status.Mac == "" && mac != "" {
 			// vip not support to update, just delete and create
 			vip.Spec.Namespace = ns

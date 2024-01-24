@@ -563,7 +563,7 @@ func (c *Controller) initDefaultVlan() error {
 	return nil
 }
 
-func (c *Controller) initSyncCrdIPs() error {
+func (c *Controller) initSyncIPsCR() error {
 	klog.Info("start to sync ips")
 	ips, err := c.ipsLister.List(labels.Everything())
 	if err != nil {
@@ -575,8 +575,8 @@ func (c *Controller) initSyncCrdIPs() error {
 
 	ipMap := strset.New(c.getVMLsps()...)
 
-	for _, ipCr := range ips {
-		ip := ipCr.DeepCopy()
+	for _, ipCR := range ips {
+		ip := ipCR.DeepCopy()
 		changed := false
 		if ipMap.Has(ip.Name) && ip.Spec.PodType == "" {
 			ip.Spec.PodType = util.VM

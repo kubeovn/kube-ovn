@@ -208,17 +208,17 @@ func (v *ValidatingHook) checkIPConflict(ipAddress, annoSubnet, name string, ipL
 			return fmt.Errorf("invalid static ip/ippool annotation value: %s", ipAddress)
 		}
 
-		for _, ipCr := range ipList {
-			if annoSubnet != "" && ipCr.Spec.Subnet != annoSubnet {
+		for _, ipCR := range ipList {
+			if annoSubnet != "" && ipCR.Spec.Subnet != annoSubnet {
 				continue
 			}
 
-			v4IP, v6IP := util.SplitStringIP(ipCr.Spec.IPAddress)
+			v4IP, v6IP := util.SplitStringIP(ipCR.Spec.IPAddress)
 			if ipAddr.String() == v4IP || ipAddr.String() == v6IP {
-				if name == ipCr.Spec.PodName {
+				if name == ipCR.Spec.PodName {
 					klog.Infof("get same ip crd for %s", name)
 				} else {
-					err := fmt.Errorf("annotation static-ip %s is conflict with ip crd %s, ip %s", ipAddr.String(), ipCr.Name, ipCr.Spec.IPAddress)
+					err := fmt.Errorf("annotation static-ip %s is conflict with ip crd %s, ip %s", ipAddr.String(), ipCR.Name, ipCR.Spec.IPAddress)
 					return err
 				}
 			}

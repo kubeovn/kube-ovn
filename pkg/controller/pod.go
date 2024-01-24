@@ -536,7 +536,7 @@ func (c *Controller) getPodKubeovnNets(pod *v1.Pod) ([]*kubeovnNet, error) {
 
 func (c *Controller) changeVMSubnet(vmName, namespace, providerName, subnetName string) error {
 	ipName := ovs.PodNameToPortName(vmName, namespace, providerName)
-	ipCr, err := c.ipsLister.Get(ipName)
+	ipCR, err := c.ipsLister.Get(ipName)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
@@ -545,10 +545,10 @@ func (c *Controller) changeVMSubnet(vmName, namespace, providerName, subnetName 
 		klog.Error(err)
 		return err
 	}
-	if ipCr.Spec.Subnet != subnetName {
+	if ipCR.Spec.Subnet != subnetName {
 		key := fmt.Sprintf("%s/%s", namespace, vmName)
-		klog.Infof("release ipam for vm %s from old subnet %s", key, ipCr.Spec.Subnet)
-		c.ipam.ReleaseAddressByPod(key, ipCr.Spec.Subnet)
+		klog.Infof("release ipam for vm %s from old subnet %s", key, ipCR.Spec.Subnet)
+		c.ipam.ReleaseAddressByPod(key, ipCR.Spec.Subnet)
 		klog.Infof("gc logical switch port %s", key)
 		if err := c.OVNNbClient.DeleteLogicalSwitchPort(key); err != nil {
 			klog.Errorf("failed to delete lsp %s, %v", key, err)
