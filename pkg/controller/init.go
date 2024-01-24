@@ -717,6 +717,7 @@ func (c *Controller) syncVlanCR() error {
 }
 
 func (c *Controller) migrateNodeRoute(af int, node, ip, nexthop string) error {
+	// default vpc use static route in old version, migrate to policy route
 	var (
 		match       = fmt.Sprintf("ip%d.dst == %s", af, ip)
 		action      = kubeovnv1.PolicyRouteActionReroute
@@ -768,7 +769,7 @@ func (c *Controller) migrateNodeRoute(af int, node, ip, nexthop string) error {
 	return nil
 }
 
-func (c *Controller) initNodeRoutes() error {
+func (c *Controller) syncNodeRoutes() error {
 	nodes, err := c.nodesLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list nodes: %v", err)
@@ -792,6 +793,10 @@ func (c *Controller) initNodeRoutes() error {
 		}
 	}
 
+	if err := c.addNodeGatewayStaticRoute(); err != nil {
+		klog.Errorf("failed to add static route for node gateway")
+		return err
+	}
 	return nil
 }
 

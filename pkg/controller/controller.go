@@ -806,19 +806,16 @@ func (c *Controller) Run(ctx context.Context) {
 		util.LogFatalAndExit(err, "failed to initialize ipam")
 	}
 
-	if err := c.initNodeRoutes(); err != nil {
+	if err := c.syncNodeRoutes(); err != nil {
 		util.LogFatalAndExit(err, "failed to initialize node routes")
 	}
 
 	if err := c.syncSubnetCR(); err != nil {
 		util.LogFatalAndExit(err, "failed to sync crd subnets")
 	}
+
 	if err := c.syncVlanCR(); err != nil {
 		util.LogFatalAndExit(err, "failed to sync crd vlans")
-	}
-
-	if err := c.addNodeGwStaticRoute(); err != nil {
-		util.LogFatalAndExit(err, "failed to add static route for node gateway")
 	}
 
 	// start workers to do all the network operations

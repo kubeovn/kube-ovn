@@ -305,7 +305,7 @@ func (c *Controller) handleAddNode(key string) error {
 		}
 	}
 
-	if err := c.addNodeGwStaticRoute(); err != nil {
+	if err := c.addNodeGatewayStaticRoute(); err != nil {
 		klog.Errorf("failed to add static route for node gw: %v", err)
 		return err
 	}
@@ -920,7 +920,7 @@ func (c *Controller) UpdateChassisTag(node *v1.Node) error {
 	return nil
 }
 
-func (c *Controller) addNodeGwStaticRoute() error {
+func (c *Controller) addNodeGatewayStaticRoute() error {
 	// If user not manage static route for default vpc, just add route about ovn-default to join
 	if vpc, err := c.vpcsLister.Get(c.config.ClusterRouter); err != nil || vpc.Spec.StaticRoutes != nil {
 		existRoute, err := c.OVNNbClient.ListLogicalRouterStaticRoutes(c.config.ClusterRouter, nil, nil, "", nil)
