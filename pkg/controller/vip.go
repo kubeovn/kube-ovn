@@ -279,7 +279,7 @@ func (c *Controller) handleAddVirtualIP(key string) error {
 		parentV6ip = vip.Spec.ParentV6ip
 		parentMac = vip.Spec.ParentMac
 	}
-	if err = c.createOrUpdateCrdVip(key, vip.Spec.Namespace, subnet.Name, v4ip, v6ip, mac, parentV4ip, parentV6ip, parentMac); err != nil {
+	if err = c.createOrUpdateVipCR(key, vip.Spec.Namespace, subnet.Name, v4ip, v6ip, mac, parentV4ip, parentV6ip, parentMac); err != nil {
 		klog.Errorf("failed to create or update vip '%s', %v", vip.Name, err)
 		return err
 	}
@@ -322,7 +322,7 @@ func (c *Controller) handleUpdateVirtualIP(key string) error {
 	// should update
 	if vip.Status.Mac == "" {
 		// TODO:// add vip in its parent port aap list
-		if err = c.createOrUpdateCrdVip(key, vip.Spec.Namespace, vip.Spec.Subnet,
+		if err = c.createOrUpdateVipCR(key, vip.Spec.Namespace, vip.Spec.Subnet,
 			vip.Spec.V4ip, vip.Spec.V6ip, vip.Spec.MacAddress,
 			vip.Spec.ParentV4ip, vip.Spec.ParentV6ip, vip.Spec.MacAddress); err != nil {
 			return err
@@ -435,7 +435,7 @@ func (c *Controller) handleUpdateVirtualParents(key string) error {
 	return nil
 }
 
-func (c *Controller) createOrUpdateCrdVip(key, ns, subnet, v4ip, v6ip, mac, pV4ip, pV6ip, pmac string) error {
+func (c *Controller) createOrUpdateVipCR(key, ns, subnet, v4ip, v6ip, mac, pV4ip, pV6ip, pmac string) error {
 	vipCR, err := c.virtualIpsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {

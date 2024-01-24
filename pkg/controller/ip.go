@@ -225,7 +225,7 @@ func (c *Controller) handleAddReservedIP(key string) error {
 		return err
 	}
 	ipStr := util.GetStringIP(v4IP, v6IP)
-	if err := c.createOrUpdateCrdIPs(ip.Name, ip.Spec.PodName, ipStr, mac, subnet.Name, ip.Spec.Namespace, ip.Spec.NodeName, ip.Spec.PodType, true); err != nil {
+	if err := c.createOrUpdateIPCR(ip.Name, ip.Spec.PodName, ipStr, mac, subnet.Name, ip.Spec.Namespace, ip.Spec.NodeName, ip.Spec.PodType, true); err != nil {
 		err = fmt.Errorf("failed to create ips CR %s.%s: %v", ip.Spec.PodName, ip.Spec.Namespace, err)
 		klog.Error(err)
 		return err
@@ -398,7 +398,7 @@ func (c *Controller) acquireStaticIPAddress(subnetName, name, nicName, ip string
 	return v4ip, v6ip, mac, nil
 }
 
-func (c *Controller) createOrUpdateCrdIPs(ipCRName, podName, ip, mac, subnetName, ns, nodeName, podType string, keep bool) error {
+func (c *Controller) createOrUpdateIPCR(ipCRName, podName, ip, mac, subnetName, ns, nodeName, podType string, keep bool) error {
 	// pod or vm IP name must set ipCRName when creating ip CR
 	// pod or vm IP can be pre-reserved when you set keep to true
 

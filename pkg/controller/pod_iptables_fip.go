@@ -261,7 +261,7 @@ func (c *Controller) handleAddPodAnnotatedIptablesFip(key string) error {
 			return err
 		}
 		klog.V(3).Infof("handle add pod annotated iptables fip %s", fipName)
-		if err := c.createOrUpdateCrdFip(fipName, fipName, cachedPod.Annotations[util.IPAddressAnnotation]); err != nil {
+		if err := c.createOrUpdateFipCR(fipName, fipName, cachedPod.Annotations[util.IPAddressAnnotation]); err != nil {
 			klog.Errorf("failed to create fip %s: %v", fipName, err)
 			return err
 		}

@@ -1108,7 +1108,7 @@ func (c *Controller) handleAddVpcExternalSubnet(key, subnet string) error {
 			klog.Errorf("failed to acquire ip address for lrp eip %s, %v", lrpEipName, err)
 			return err
 		}
-		if err := c.createOrUpdateCrdOvnEip(lrpEipName, subnet, v4ip, v6ip, mac, util.OvnEipTypeLRP); err != nil {
+		if err := c.createOrUpdateOvnEipCR(lrpEipName, subnet, v4ip, v6ip, mac, util.OvnEipTypeLRP); err != nil {
 			klog.Errorf("failed to create ovn eip for lrp %s: %v", lrpEipName, err)
 			return err
 		}
