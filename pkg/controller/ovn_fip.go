@@ -421,7 +421,7 @@ func (c *Controller) handleUpdateOvnFip(key string) error {
 			return err
 		}
 		// ovn add fip
-		if vpcName == util.DefaultVpc {
+		if vpcName == c.config.ClusterRouter {
 			// fix issue https://github.com/kubeovn/kube-ovn/issues/3502
 			// Where ovn fip is not work for default vpc
 			match := fmt.Sprintf("ip4.src == %s", internalV4Ip)
