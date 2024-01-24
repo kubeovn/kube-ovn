@@ -286,16 +286,20 @@ func SplitIpsByProtocol(excludeIps []string) ([]string, []string) {
 }
 
 func GetStringIP(v4IP, v6IP string) string {
-	var ipStr string
-	switch {
-	case IsValidIP(v4IP) && IsValidIP(v6IP):
-		ipStr = v4IP + "," + v6IP
-	case IsValidIP(v4IP):
-		ipStr = v4IP
-	case IsValidIP(v6IP):
-		ipStr = v6IP
+	var ipList []string
+	if IsValidIP(v4IP) {
+		ipList = append(ipList, v4IP)
 	}
-	return ipStr
+	if IsValidIP(v6IP) {
+		ipList = append(ipList, v6IP)
+	}
+	if len(ipList) == 0 {
+		return ""
+	}
+	if len(ipList) == 1 {
+		return ipList[0]
+	}
+	return strings.Join(ipList, ",")
 }
 
 func GetIPAddrWithMask(ip, cidr string) (string, error) {

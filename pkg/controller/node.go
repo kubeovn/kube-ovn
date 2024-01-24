@@ -336,7 +336,7 @@ func (c *Controller) handleAddNode(key string) error {
 		return err
 	}
 
-	if err := c.createOrUpdateCrdIPs("", ipStr, mac, c.config.NodeSwitch, "", node.Name, "", ""); err != nil {
+	if err := c.createOrUpdateCrdIPs("", "", ipStr, mac, c.config.NodeSwitch, "", node.Name, "", false); err != nil {
 		klog.Errorf("failed to create or update IPs node-%s: %v", key, err)
 		return err
 	}
@@ -637,103 +637,6 @@ func (c *Controller) handleUpdateNode(key string) error {
 			if err := c.reconcileOvnDefaultVpcRoute(subnet); err != nil {
 				return err
 			}
-		}
-	}
-
-	return nil
-}
-
-func (c *Controller) createOrUpdateCrdIPs(podName, ip, mac, subnetName, ns, nodeName, providerName, podType string) error {
-	var key, ipName string
-
-	switch {
-	case subnetName == c.config.NodeSwitch:
-		key = nodeName
-		ipName = fmt.Sprintf("node-%s", nodeName)
-	case strings.HasPrefix(podName, util.U2OInterconnName[0:19]):
-		key = podName
-		ipName = podName
-	default:
-		key = podName
-		ipName = ovs.PodNameToPortName(podName, ns, providerName)
-	}
-
-	var err error
-	var ipCR *kubeovnv1.IP
-	ipCR, err = c.ipsLister.Get(ipName)
-	if err != nil {
-		if !k8serrors.IsNotFound(err) {
-			errMsg := fmt.Errorf("failed to get ip CR %s: %v", ipName, err)
-			klog.Error(errMsg)
-			return errMsg
-		}
-		// the returned pointer is not nil if the CR does not exist
-		ipCR = nil
-	}
-
-	v4IP, v6IP := util.SplitStringIP(ip)
-	if ipCR == nil {
-		_, err = c.config.KubeOvnClient.KubeovnV1().IPs().Create(context.Background(), &kubeovnv1.IP{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: ipName,
-				Labels: map[string]string{
-					util.SubnetNameLabel: subnetName,
-					util.NodeNameLabel:   nodeName,
-					subnetName:           "",
-				},
-			},
-			Spec: kubeovnv1.IPSpec{
-				PodName:       key,
-				Subnet:        subnetName,
-				NodeName:      nodeName,
-				Namespace:     ns,
-				IPAddress:     ip,
-				V4IPAddress:   v4IP,
-				V6IPAddress:   v6IP,
-				MacAddress:    mac,
-				AttachIPs:     []string{},
-				AttachMacs:    []string{},
-				AttachSubnets: []string{},
-				PodType:       podType,
-			},
-		}, metav1.CreateOptions{})
-		if err != nil {
-			errMsg := fmt.Errorf("failed to create ip CR %s: %v", ipName, err)
-			klog.Error(errMsg)
-			return errMsg
-		}
-	} else {
-		newIPCR := ipCR.DeepCopy()
-		if newIPCR.Labels != nil {
-			newIPCR.Labels[util.SubnetNameLabel] = subnetName
-			newIPCR.Labels[util.NodeNameLabel] = nodeName
-		} else {
-			newIPCR.Labels = map[string]string{
-				util.SubnetNameLabel: subnetName,
-				util.NodeNameLabel:   nodeName,
-			}
-		}
-		newIPCR.Spec.PodName = key
-		newIPCR.Spec.Namespace = ns
-		newIPCR.Spec.Subnet = subnetName
-		newIPCR.Spec.NodeName = nodeName
-		newIPCR.Spec.IPAddress = ip
-		newIPCR.Spec.V4IPAddress = v4IP
-		newIPCR.Spec.V6IPAddress = v6IP
-		newIPCR.Spec.MacAddress = mac
-		newIPCR.Spec.AttachIPs = []string{}
-		newIPCR.Spec.AttachMacs = []string{}
-		newIPCR.Spec.AttachSubnets = []string{}
-		newIPCR.Spec.PodType = podType
-		if reflect.DeepEqual(newIPCR.Labels, ipCR.Labels) && reflect.DeepEqual(newIPCR.Spec, ipCR.Spec) {
-			return nil
-		}
-
-		_, err := c.config.KubeOvnClient.KubeovnV1().IPs().Update(context.Background(), newIPCR, metav1.UpdateOptions{})
-		if err != nil {
-			err := fmt.Errorf("failed to update ip CR %s: %v", newIPCR.Name, err)
-			klog.Error(err)
-			return err
 		}
 	}
 

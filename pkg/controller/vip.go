@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net"
 	"reflect"
 	"slices"
 	"strings"
@@ -367,54 +366,6 @@ func (c *Controller) handleDelVirtualIP(vip *kubeovnv1.Vip) error {
 	return nil
 }
 
-func (c *Controller) acquireStaticIPAddress(subnetName, name, nicName, ip string) (string, string, string, error) {
-	checkConflict := true
-	var v4ip, v6ip, mac string
-	var err error
-	for _, ipStr := range strings.Split(ip, ",") {
-		if net.ParseIP(ipStr) == nil {
-			return "", "", "", fmt.Errorf("failed to parse vip ip %s", ipStr)
-		}
-	}
-
-	if v4ip, v6ip, mac, err = c.ipam.GetStaticAddress(name, nicName, ip, nil, subnetName, checkConflict); err != nil {
-		klog.Errorf("failed to get static virtual ip '%s', mac '%s', subnet '%s', %v", ip, mac, subnetName, err)
-		return "", "", "", err
-	}
-	return v4ip, v6ip, mac, nil
-}
-
-func (c *Controller) acquireIPAddress(subnetName, name, nicName string) (string, string, string, error) {
-	var skippedAddrs []string
-	var v4ip, v6ip, mac string
-	checkConflict := true
-	var err error
-	for {
-		v4ip, v6ip, mac, err = c.ipam.GetRandomAddress(name, nicName, nil, subnetName, "", skippedAddrs, checkConflict)
-		if err != nil {
-			klog.Error(err)
-			return "", "", "", err
-		}
-
-		ipv4OK, ipv6OK, err := c.validatePodIP(name, subnetName, v4ip, v6ip)
-		if err != nil {
-			klog.Error(err)
-			return "", "", "", err
-		}
-
-		if ipv4OK && ipv6OK {
-			return v4ip, v6ip, mac, nil
-		}
-
-		if !ipv4OK {
-			skippedAddrs = append(skippedAddrs, v4ip)
-		}
-		if !ipv6OK {
-			skippedAddrs = append(skippedAddrs, v6ip)
-		}
-	}
-}
-
 func (c *Controller) handleUpdateVirtualParents(key string) error {
 	cachedVip, err := c.virtualIpsLister.Get(key)
 	if err != nil {
@@ -481,20 +432,6 @@ func (c *Controller) handleUpdateVirtualParents(key string) error {
 		return err
 	}
 
-	return nil
-}
-
-func (c *Controller) subnetCountIP(subnet *kubeovnv1.Subnet) error {
-	var err error
-	if util.CheckProtocol(subnet.Spec.CIDRBlock) == kubeovnv1.ProtocolDual {
-		_, err = c.calcDualSubnetStatusIP(subnet)
-	} else {
-		_, err = c.calcSubnetStatusIP(subnet)
-	}
-	if err != nil {
-		klog.Error(err)
-		return err
-	}
 	return nil
 }
 
