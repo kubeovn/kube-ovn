@@ -479,7 +479,7 @@ func (c *Controller) handleDelOvnFip(key string) error {
 	}
 	// ovn delete fip nat
 	if cachedFip.Status.Vpc != "" && cachedFip.Status.V4Eip != "" && cachedFip.Status.V4Ip != "" {
-		if cachedFip.Status.Vpc == util.DefaultVpc {
+		if cachedFip.Status.Vpc == c.config.ClusterRouter {
 			match := fmt.Sprintf("ip4.src == %s", cachedFip.Status.V4Ip)
 			if err = c.OVNNbClient.DeleteLogicalRouterPolicy(cachedFip.Status.Vpc, util.DefaultVpcFipPolicyPriority, match); err != nil {
 				klog.Errorf("failed to delete LogicalRouterPolicy for fip: %s, %v", cachedFip.Name, err)
