@@ -563,7 +563,7 @@ func (c *Controller) initDefaultVlan() error {
 	return nil
 }
 
-func (c *Controller) initSyncIPsCR() error {
+func (c *Controller) syncIPCR() error {
 	klog.Info("start to sync ips")
 	ips, err := c.ipsLister.List(labels.Everything())
 	if err != nil {
@@ -587,9 +587,9 @@ func (c *Controller) initSyncIPsCR() error {
 		if ip.Spec.V4IPAddress == v4IP && ip.Spec.V6IPAddress == v6IP && !changed {
 			continue
 		}
+
 		ip.Spec.V4IPAddress = v4IP
 		ip.Spec.V6IPAddress = v6IP
-
 		_, err := c.config.KubeOvnClient.KubeovnV1().IPs().Update(context.Background(), ip, metav1.UpdateOptions{})
 		if err != nil {
 			klog.Errorf("failed to sync crd ip %s: %v", ip.Spec.IPAddress, err)
@@ -599,7 +599,7 @@ func (c *Controller) initSyncIPsCR() error {
 	return nil
 }
 
-func (c *Controller) initSyncCrdSubnets() error {
+func (c *Controller) syncSubnetCR() error {
 	klog.Info("start to sync subnets")
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
@@ -639,7 +639,7 @@ func (c *Controller) initSyncCrdSubnets() error {
 	return nil
 }
 
-func (c *Controller) initSyncCrdVpcNatGw() error {
+func (c *Controller) syncVpcNatGatewayCR() error {
 	klog.Info("start to sync crd vpc nat gw")
 	// get vpc nat gateway enable state
 	cm, err := c.configMapsLister.ConfigMaps(c.config.PodNamespace).Get(util.VpcNatGatewayConfig)
@@ -681,7 +681,7 @@ func (c *Controller) initSyncCrdVpcNatGw() error {
 	return nil
 }
 
-func (c *Controller) initSyncCrdVlans() error {
+func (c *Controller) syncVlanCR() error {
 	klog.Info("start to sync vlans")
 	vlans, err := c.vlansLister.List(labels.Everything())
 	if err != nil {
