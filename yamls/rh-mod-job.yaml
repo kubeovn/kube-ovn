@@ -29,7 +29,7 @@ spec:
                       - job
       containers:
         - name: centos7-module
-          image: kubeovn/centos7-compile:v1.10.0
+          image: kubeovn/centos7-compile:v1.13.0
           imagePullPolicy: IfNotPresent
           command:
             - /fastpath/entrypoint.sh

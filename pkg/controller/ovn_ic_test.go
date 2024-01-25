@@ -3,9 +3,9 @@ package controller
 import (
 	"testing"
 
-	"github.com/golang/mock/gomock"
 	"github.com/scylladb/go-set/strset"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 )
