@@ -303,7 +303,7 @@ func (c *Controller) establishInterConnection(config map[string]string) error {
 	chassises := make([]string, len(gwNodes))
 
 	for i, tsName := range tsNames {
-		gwNodesOrdered := moveElements(gwNodes, i)
+		gwNodesOrdered := generateNewOrdergwNodes(gwNodes, i)
 		for j, gw := range gwNodesOrdered {
 			gw = strings.TrimSpace(gw)
 			chassis, err := c.OVNSbClient.GetChassisByHost(gw)
@@ -561,9 +561,18 @@ func (c *Controller) RemoveOldChassisInSbDB(azName string) error {
 		return err
 	}
 
-	c.ovnLegacyClient.DestroyPortBindings(portBindings)
-	c.ovnLegacyClient.DestroyGateways(gateways)
-	c.ovnLegacyClient.DestroyRoutes(routes)
+	if err := c.ovnLegacyClient.DestroyPortBindings(portBindings); err != nil {
+		return err
+	}
+
+	if err := c.ovnLegacyClient.DestroyGateways(gateways); err != nil {
+		return err
+	}
+
+	if err := c.ovnLegacyClient.DestroyRoutes(routes); err != nil {
+		return err
+	}
+
 	return c.ovnLegacyClient.DestroyChassis(azUUID)
 }
 
@@ -674,7 +683,7 @@ func (c *Controller) listRemoteLogicalSwitchPortAddress() (*strset.Set, error) {
 	return existAddress, nil
 }
 
-func moveElements(arr []string, order int) []string {
+func generateNewOrdergwNodes(arr []string, order int) []string {
 	if order >= len(arr) {
 		order %= len(arr)
 	}
