@@ -544,7 +544,7 @@ func (c *Controller) ipAcquireAddress(ip *kubeovnv1.IP, subnet *kubeovnv1.Subnet
 	var err error
 	if ipStr == "" {
 		// allocate address
-		v4IP, v6IP, mac, err = c.ipam.GetRandomAddress(key, portName, &ip.Spec.MacAddress, "", subnet.Name, nil, true)
+		v4IP, v6IP, mac, err = c.acquireIPAddress(subnet.Name, ip.Name, portName)
 		if err == nil {
 			return v4IP, v6IP, mac, err
 		}
