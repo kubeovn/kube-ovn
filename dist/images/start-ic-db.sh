@@ -1,10 +1,10 @@
 #!/bin/bash
 set -eo pipefail
 
-TS_NAME=${TS_NAME:-ts}
 LOCAL_IP=${LOCAL_IP:-$POD_IP}
 TS_NUM=${TS_NUM:-ts}
 ENABLE_BIND_LOCAL_IP=${ENABLE_BIND_LOCAL_IP:-true}
+ENABLE_OVN_LEADER_CHECK=${ENABLE_OVN_LEADER_CHECK:-true}
 
 DB_ADDR=::
 if [[ $ENABLE_BIND_LOCAL_IP == "true" ]]; then
@@ -211,5 +211,11 @@ else
     fi
 fi
 
-chmod 600 /etc/ovn/*
-/kube-ovn/kube-ovn-leader-checker --probeInterval=${OVN_LEADER_PROBE_INTERVAL} --isICDBServer=true
+if [[ $ENABLE_OVN_LEADER_CHECK == "true" ]]; then
+    chmod 600 /etc/ovn/*
+    /kube-ovn/kube-ovn-leader-checker --probeInterval=${OVN_LEADER_PROBE_INTERVAL} --isICDBServer=true
+else
+
+    tail --follow=name --retry /var/log/ovn/ovsdb-server-ic-nb.log
+fi
+
