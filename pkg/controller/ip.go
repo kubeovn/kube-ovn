@@ -292,7 +292,7 @@ func (c *Controller) handleUpdateIP(key string) error {
 			}
 		}
 		if cleanIPAM {
-			klog.V(3).Infof("release ipam for deleted ip %s from subnet %s", cachedIP.Name, cachedIP.Spec.Subnet)
+			klog.V(3).Infof("release ipam address %s for deleted ip %s from subnet %s", cachedIP.Spec.IPAddress, cachedIP.Name, cachedIP.Spec.Subnet)
 			c.ipam.ReleaseAddressByPod(cachedIP.Name, cachedIP.Spec.Subnet)
 		}
 		if err = c.handleDelIPFinalizer(cachedIP, util.ControllerName); err != nil {
