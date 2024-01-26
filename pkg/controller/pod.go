@@ -2021,6 +2021,9 @@ func (c *Controller) getVirtualIPs(pod *v1.Pod, podNets []*kubeovnNet) map[strin
 		}
 	}
 	for _, vipName := range vipNamesList {
+		if vipName = strings.TrimSpace(vipName); vipName == "" {
+			continue
+		}
 		vip, err := c.virtualIpsLister.Get(vipName)
 		if err != nil {
 			klog.Errorf("failed to get vip %s, %v", vipName, err)
