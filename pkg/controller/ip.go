@@ -192,10 +192,12 @@ func (c *Controller) handleAddReservedIP(key string) error {
 	klog.V(3).Infof("handle add reserved ip %s", ip.Name)
 	if ip.Spec.Subnet == "" {
 		err := fmt.Errorf("subnet parameter cannot be empty")
+		klog.Error(err)
 		return err
 	}
 	if ip.Spec.PodType != "" && ip.Spec.PodType != util.VM && ip.Spec.PodType != util.StatefulSet {
 		err := fmt.Errorf("podType %s is not supported", ip.Spec.PodType)
+		klog.Error(err)
 		return err
 	}
 
@@ -209,6 +211,7 @@ func (c *Controller) handleAddReservedIP(key string) error {
 	portName := ovs.PodNameToPortName(ip.Spec.PodName, ip.Spec.Namespace, subnet.Spec.Provider)
 	if portName != ip.Name {
 		// invalid ip or node ip, no need to handle it here
+		klog.V(3).Infof("port name %s is not equal to ip name %s", portName, ip.Name)
 		return nil
 	}
 
@@ -220,6 +223,7 @@ func (c *Controller) handleAddReservedIP(key string) error {
 	}
 	if lsp != nil {
 		// port already exists means the ip already created
+		klog.V(3).Infof("ip %s is ready", portName)
 		return nil
 	}
 
