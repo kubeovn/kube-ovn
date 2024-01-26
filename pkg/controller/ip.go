@@ -190,10 +190,15 @@ func (c *Controller) handleAddReservedIP(key string) error {
 		return err
 	}
 	klog.V(3).Infof("handle add reserved ip %s", ip.Name)
-	if ip.Spec.Namespace == "" || ip.Spec.PodName == "" || ip.Spec.Subnet == "" || ip.Spec.PodType == "" {
-		// invalid ip who has no namespace, name, subnet, podType, no need to handle it here
-		return nil
+	if ip.Spec.Subnet == "" {
+		err := fmt.Errorf("subnet parameter cannot be empty")
+		return err
 	}
+	if ip.Spec.PodType != "" && ip.Spec.PodType != util.VM && ip.Spec.PodType != util.StatefulSet {
+		err := fmt.Errorf("podType %s is not supported", ip.Spec.PodType)
+		return err
+	}
+
 	subnet, err := c.subnetsLister.Get(ip.Spec.Subnet)
 	if err != nil {
 		err = fmt.Errorf("failed to get subnet %s: %v", ip.Spec.Subnet, err)
