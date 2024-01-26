@@ -45,19 +45,19 @@ func (v *ValidatingHook) IPUpdateHook(ctx context.Context, req admission.Request
 	}
 
 	// ip can not change these specs below
-	if ipNew.Spec.Namespace != ipOld.Spec.Namespace {
-		err := fmt.Errorf("ip %s namespace can not change", ipNew.Name)
-		return ctrlwebhook.Errored(http.StatusBadRequest, err)
-	}
-	if ipNew.Spec.PodName != ipOld.Spec.PodName {
-		err := fmt.Errorf("ip %s podName can not change", ipNew.Name)
-		return ctrlwebhook.Errored(http.StatusBadRequest, err)
-	}
-	if ipNew.Spec.Subnet != ipOld.Spec.Subnet {
+	if ipOld.Spec.Subnet != "" && ipNew.Spec.Subnet != ipOld.Spec.Subnet {
 		err := fmt.Errorf("ip %s subnet can not change", ipNew.Name)
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
-	if ipNew.Spec.PodType != ipOld.Spec.PodType {
+	if ipOld.Spec.Namespace != "" && ipNew.Spec.Namespace != ipOld.Spec.Namespace {
+		err := fmt.Errorf("ip %s namespace can not change", ipNew.Name)
+		return ctrlwebhook.Errored(http.StatusBadRequest, err)
+	}
+	if ipOld.Spec.PodName != "" && ipNew.Spec.PodName != ipOld.Spec.PodName {
+		err := fmt.Errorf("ip %s podName can not change", ipNew.Name)
+		return ctrlwebhook.Errored(http.StatusBadRequest, err)
+	}
+	if ipOld.Spec.PodType != "" && ipNew.Spec.PodType != ipOld.Spec.PodType {
 		err := fmt.Errorf("ip %s podType can not change", ipNew.Name)
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
@@ -102,15 +102,10 @@ func (v *ValidatingHook) ValidateIP(ctx context.Context, ip *ovnv1.IP) error {
 		}
 	}
 
-	if ip.Spec.NodeName != "" {
-		// node ip skip later necessary specs check
-		return nil
-	}
-
-	// invalid ip who has no namespace, name, subnet, podType, no need to handle it here
-	if ip.Spec.Namespace == "" || ip.Spec.PodName == "" || ip.Spec.Subnet == "" || ip.Spec.PodType == "" {
-		err := fmt.Errorf("invalid ip %s, ip spec should set namespace podName subnet podType", ip.Name)
+	if ip.Spec.Subnet == "" {
+		err := fmt.Errorf("subnet parameter cannot be empty")
 		return err
 	}
+
 	return nil
 }
