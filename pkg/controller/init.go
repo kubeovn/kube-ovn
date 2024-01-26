@@ -321,7 +321,7 @@ func (c *Controller) InitIPAM() error {
 
 	for _, ip := range ips {
 		// recover sts and kubevirt vm ip, other ip recover in later pod loop
-		if ip.Spec.PodType != "StatefulSet" && ip.Spec.PodType != util.VM {
+		if ip.Spec.PodType != util.StatefulSet && ip.Spec.PodType != util.VM {
 			continue
 		}
 

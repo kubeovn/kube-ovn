@@ -994,7 +994,7 @@ func (c *Controller) handleDeletePod(key string) error {
 	var keepIPCR bool
 	if ok, sts := isStatefulSetPod(pod); ok {
 		toDel := isStatefulSetPodToDel(c.config.KubeClient, pod, sts)
-		isDelete, err := appendCheckPodToDel(c, pod, sts, "StatefulSet")
+		isDelete, err := appendCheckPodToDel(c, pod, sts, util.StatefulSet)
 		if pod.DeletionTimestamp != nil {
 			// triggered by delete event
 			if !(toDel || (isDelete && err == nil)) {
@@ -1278,7 +1278,7 @@ func (c *Controller) syncKubeOvnNet(cachedPod, pod *v1.Pod, podNets []*kubeovnNe
 
 func isStatefulSetPod(pod *v1.Pod) (bool, string) {
 	for _, owner := range pod.OwnerReferences {
-		if owner.Kind == "StatefulSet" && strings.HasPrefix(owner.APIVersion, "apps/") {
+		if owner.Kind == util.StatefulSet && strings.HasPrefix(owner.APIVersion, "apps/") {
 			if strings.HasPrefix(pod.Name, owner.Name) {
 				return true, owner.Name
 			}
@@ -1837,7 +1837,7 @@ func appendCheckPodToDel(c *Controller, pod *v1.Pod, ownerRefName, ownerRefKind 
 	var ownerRefSubnetExist bool
 	var ownerRefSubnet string
 	switch ownerRefKind {
-	case "StatefulSet":
+	case util.StatefulSet:
 		ss, err := c.config.KubeClient.AppsV1().StatefulSets(pod.Namespace).Get(context.Background(), ownerRefName, metav1.GetOptions{})
 		if err != nil {
 			if k8serrors.IsNotFound(err) {
@@ -2011,7 +2011,7 @@ func (c *Controller) getNsAvailableSubnets(pod *v1.Pod, podNet *kubeovnNet) ([]*
 
 func getPodType(pod *v1.Pod) string {
 	if ok, _ := isStatefulSetPod(pod); ok {
-		return "StatefulSet"
+		return util.StatefulSet
 	}
 
 	if isVMPod, _ := isVMPod(pod); isVMPod {

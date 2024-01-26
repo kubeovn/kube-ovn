@@ -219,6 +219,8 @@ const (
 	VM         = "VirtualMachine"
 	VMInstance = "VirtualMachineInstance"
 
+	StatefulSet = "StatefulSet"
+
 	MirrorControlAnnotation = "ovn.kubernetes.io/mirror"
 	MirrorDefaultName       = "m0"
 
