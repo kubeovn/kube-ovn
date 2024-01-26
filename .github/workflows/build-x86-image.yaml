@@ -349,7 +349,7 @@ jobs:
             echo "- $f" | tee -a $filter
           done
 
-      - uses: dorny/paths-filter@v2
+      - uses: dorny/paths-filter@v3
         id: filter
         with:
           base: ${{ github.base_ref || github.ref_name }}
