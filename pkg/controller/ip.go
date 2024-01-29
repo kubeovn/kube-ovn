@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 	"reflect"
@@ -234,9 +235,31 @@ func (c *Controller) handleAddReservedIP(key string) error {
 		return err
 	}
 	ipStr := util.GetStringIP(v4IP, v6IP)
-	if err := c.createOrUpdateIPCR(ip.Name, ip.Spec.PodName, ipStr, mac, subnet.Name, ip.Spec.Namespace, ip.Spec.NodeName, ip.Spec.PodType, true); err != nil {
+	if err := c.createOrUpdateIPCR(ip.Name, ip.Spec.PodName, ipStr, mac, subnet.Name, ip.Spec.Namespace, ip.Spec.NodeName, ip.Spec.PodType); err != nil {
 		err = fmt.Errorf("failed to create ips CR %s.%s: %v", ip.Spec.PodName, ip.Spec.Namespace, err)
 		klog.Error(err)
+		return err
+	}
+	cachedIP, err := c.ipsLister.Get(key)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+	ip = cachedIP.DeepCopy()
+	ip.Labels[util.IPReservedLabel] = "true"
+	patchPayloadTemplate := `[{ "op": "%s", "path": "/metadata/labels", "value": %s }]`
+	raw, err := json.Marshal(ip.Labels)
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
+	op := "replace"
+	patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
+	if _, err := c.config.KubeOvnClient.KubeovnV1().IPs().Patch(context.Background(), ip.Name,
+		types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{}); err != nil {
+		klog.Errorf("failed to patch label for ip %s, %v", ip.Name, err)
 		return err
 	}
 	return nil
@@ -407,15 +430,9 @@ func (c *Controller) acquireStaticIPAddress(subnetName, name, nicName, ip string
 	return v4ip, v6ip, mac, nil
 }
 
-func (c *Controller) createOrUpdateIPCR(ipCRName, podName, ip, mac, subnetName, ns, nodeName, podType string, keep bool) error {
-	// pod or vm IP name must set ipCRName when creating ip CR
-	// pod or vm IP can be pre-reserved when you set keep to true
-
+func (c *Controller) createOrUpdateIPCR(ipCRName, podName, ip, mac, subnetName, ns, nodeName, podType string) error {
+	// `ipCRName`: pod or vm IP name must set ip CR name when creating ip CR
 	var key, ipName string
-	keepIP := "false"
-	if keep {
-		keepIP = "true"
-	}
 	if ipCRName != "" {
 		// pod IP
 		key = podName
@@ -454,7 +471,6 @@ func (c *Controller) createOrUpdateIPCR(ipCRName, podName, ip, mac, subnetName, 
 					util.SubnetNameLabel: subnetName,
 					util.NodeNameLabel:   nodeName,
 					subnetName:           "",
-					util.IPReservedLabel: keepIP,
 				},
 			},
 			Spec: kubeovnv1.IPSpec{
