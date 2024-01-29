@@ -1031,14 +1031,6 @@ func (c *Controller) startWorkers(ctx context.Context) {
 	}
 
 	go wait.Until(func() {
-		c.resyncInterConnection()
-	}, time.Second, ctx.Done())
-
-	go wait.Until(func() {
-		c.SynRouteToPolicy()
-	}, 5*time.Second, ctx.Done())
-
-	go wait.Until(func() {
 		c.resyncExternalGateway()
 	}, time.Second, ctx.Done())
 

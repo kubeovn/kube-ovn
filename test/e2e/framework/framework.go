@@ -102,6 +102,14 @@ func NewFrameworkWithContext(baseName, kubeContext string) *Framework {
 	f.ClusterVersion = os.Getenv("E2E_BRANCH")
 	f.ClusterNetworkMode = os.Getenv("E2E_NETWORK_MODE")
 
+	if strings.HasPrefix(f.ClusterVersion, "release-") {
+		n, err := fmt.Sscanf(f.ClusterVersion, "release-%d.%d", &f.ClusterVersionMajor, &f.ClusterVersionMinor)
+		ExpectNoError(err)
+		ExpectEqual(n, 2)
+	} else {
+		f.ClusterVersionMajor, f.ClusterVersionMinor = 999, 999
+	}
+
 	ginkgo.BeforeEach(func() {
 		framework.TestContext.Host = ""
 	})
