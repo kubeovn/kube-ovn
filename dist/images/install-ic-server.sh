@@ -2,7 +2,7 @@
 set -euo pipefail
 
 REGISTRY="kubeovn"
-VERSION="v1.13.0"
+VERSION=""
 TS_NUM=${TS_NUM:-3}
 IMAGE_PULL_POLICY="IfNotPresent"
 addresses=$(kubectl get no -lkube-ovn/role=master --no-headers -o wide | awk '{print $6}' | tr \\n ',')
