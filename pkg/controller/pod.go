@@ -1105,7 +1105,6 @@ func (c *Controller) handleDeletePod(key string) error {
 				c.ipam.ReleaseAddressByPod(podKey, podNet.Subnet.Name)
 			}
 		}
-		c.ipam.ReleaseAddressByPod(podKey, "")
 		if pod.Annotations[util.VipAnnotation] != "" {
 			if err = c.releaseVip(pod.Annotations[util.VipAnnotation]); err != nil {
 				klog.Errorf("failed to clean label from vip %s, %v", pod.Annotations[util.VipAnnotation], err)
