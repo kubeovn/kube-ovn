@@ -99,31 +99,31 @@ func (c LegacyClient) GetPortBindingUUIDsInOneAZ(uuid string) ([]string, error) 
 	return portBindings, nil
 }
 
-func (c LegacyClient) DestroyGateways(uuids []string) {
+func (c LegacyClient) DestroyGateways(uuids []string) error {
 	for _, uuid := range uuids {
 		if err := c.DestroyTableWithUUID(uuid, "gateway"); err != nil {
-			klog.Errorf("failed to delete gateway %v: %v", uuid, err)
+			return fmt.Errorf("failed to delete gateway %v: %v", uuid, err)
 		}
-		continue
 	}
+	return nil
 }
 
-func (c LegacyClient) DestroyRoutes(uuids []string) {
+func (c LegacyClient) DestroyRoutes(uuids []string) error {
 	for _, uuid := range uuids {
 		if err := c.DestroyTableWithUUID(uuid, "route"); err != nil {
-			klog.Errorf("failed to delete route %v: %v", uuid, err)
+			return fmt.Errorf("failed to delete route %v: %v", uuid, err)
 		}
-		continue
 	}
+	return nil
 }
 
-func (c LegacyClient) DestroyPortBindings(uuids []string) {
+func (c LegacyClient) DestroyPortBindings(uuids []string) error {
 	for _, uuid := range uuids {
 		if err := c.DestroyTableWithUUID(uuid, "Port_Binding"); err != nil {
-			klog.Errorf("failed to delete Port_Binding %v: %v", uuid, err)
+			return fmt.Errorf("failed to delete Port_Binding %v: %v", uuid, err)
 		}
-		continue
 	}
+	return nil
 }
 
 func (c LegacyClient) DestroyChassis(uuid string) error {
