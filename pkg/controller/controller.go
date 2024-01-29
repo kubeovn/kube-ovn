@@ -785,6 +785,10 @@ func (c *Controller) Run(ctx context.Context) {
 		util.LogFatalAndExit(err, "failed to set NB_Global option use_ct_inv_match to false")
 	}
 
+	if err := c.OVNNbClient.SetLsCtSkipDstLportIPs(c.config.LsCtSkipDstLportIPs); err != nil {
+		util.LogFatalAndExit(err, "failed to set NB_Global option ls_ct_skip_dst_lport_ips")
+	}
+
 	if err := c.InitOVN(); err != nil {
 		util.LogFatalAndExit(err, "failed to initialize ovn resources")
 	}
