@@ -17,6 +17,7 @@ type NBGlobal interface {
 	SetUseCtInvMatch() error
 	SetICAutoRoute(enable bool, blackList []string) error
 	SetLsDnatModDlDst(enabled bool) error
+	SetLsCtSkipDstLportIPs(enabled bool) error
 	GetNbGlobal() (*ovnnb.NBGlobal, error)
 }
 

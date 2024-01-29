@@ -153,3 +153,7 @@ func (c *OVNNbClient) SetLBCIDR(serviceCIDR string) error {
 func (c *OVNNbClient) SetLsDnatModDlDst(enabled bool) error {
 	return c.SetNbGlobalOptions("ls_dnat_mod_dl_dst", enabled)
 }
+
+func (c *OVNNbClient) SetLsCtSkipDstLportIPs(enabled bool) error {
+	return c.SetNbGlobalOptions("ls_ct_skip_dst_lport_ips", enabled)
+}
