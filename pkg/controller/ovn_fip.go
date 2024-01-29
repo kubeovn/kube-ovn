@@ -4,8 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strconv"
-
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -14,6 +13,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"strconv"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
@@ -422,24 +422,11 @@ func (c *Controller) handleUpdateOvnFip(key string) error {
 		}
 		// ovn add fip
 		if vpcName == c.config.ClusterRouter {
-			// fix issue https://github.com/kubeovn/kube-ovn/issues/3502
-			// Where ovn fip is not work for default vpc
-			match := fmt.Sprintf("ip4.src == %s", internalV4Ip)
-			cm, err := c.configMapsLister.ConfigMaps(c.config.ExternalGatewayConfigNS).Get(util.ExternalGatewayConfig)
-			if err != nil {
-				klog.Errorf("failed to create config map %s, %v", util.ExternalGatewayConfig, err)
-				return err
-			}
-			externalGwAddr := cm.Data["external-gw-addr"]
-			if externalGwAddr == "" {
-				err = fmt.Errorf("external-gw-addr should not be empty in config map %s", util.ExternalGatewayConfig)
-				klog.Errorf("%v", err)
-				return err
-			}
+			// Default vpc
+			defaultVpcToDefaultExternalPortGroupName := ovs.VpcSubnetToPortGroupName(vpcName, c.config.ExternalGatewaySwitch)
 
-			if err = c.OVNNbClient.AddLogicalRouterPolicy(vpcName, util.DefaultVpcFipPolicyPriority, match,
-				ovnnb.LogicalRouterPolicyActionReroute, []string{externalGwAddr}, nil); err != nil {
-				klog.Errorf("failed to create LogicalRouterPolicy for fip: %s, %v", fip.Name, err)
+			if err := c.OVNNbClient.PortGroupAddPorts(defaultVpcToDefaultExternalPortGroupName, cachedFip.Spec.IPName); err != nil {
+				klog.Errorf("failed to add port %s to port group %s, %v", cachedFip.Spec.IPName, defaultVpcToDefaultExternalPortGroupName, err)
 				return err
 			}
 		}
@@ -480,9 +467,10 @@ func (c *Controller) handleDelOvnFip(key string) error {
 	// ovn delete fip nat
 	if cachedFip.Status.Vpc != "" && cachedFip.Status.V4Eip != "" && cachedFip.Status.V4Ip != "" {
 		if cachedFip.Status.Vpc == c.config.ClusterRouter {
-			match := fmt.Sprintf("ip4.src == %s", cachedFip.Status.V4Ip)
-			if err = c.OVNNbClient.DeleteLogicalRouterPolicy(cachedFip.Status.Vpc, util.DefaultVpcFipPolicyPriority, match); err != nil {
-				klog.Errorf("failed to delete LogicalRouterPolicy for fip: %s, %v", cachedFip.Name, err)
+			defaultVpcToDefaultExternalPortGroupName := ovs.VpcSubnetToPortGroupName(c.config.ClusterRouter, c.config.ExternalGatewaySwitch)
+			if err := c.OVNNbClient.PortGroupRemovePorts(defaultVpcToDefaultExternalPortGroupName, cachedFip.Spec.IPName); err != nil {
+				klog.Errorf("failed to remove port %s from port group %s, %v", cachedFip.Spec.IPName, defaultVpcToDefaultExternalPortGroupName, err)
+				return err
 			}
 		}
 		if err = c.OVNNbClient.DeleteNat(cachedFip.Status.Vpc, ovnnb.NATTypeDNATAndSNAT, cachedFip.Status.V4Eip, cachedFip.Status.V4Ip); err != nil {

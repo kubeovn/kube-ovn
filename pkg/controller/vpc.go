@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"net"
 	"reflect"
 	"slices"
@@ -416,6 +417,31 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 						}
 					}
 				}
+			}
+		}
+
+		defaultVpcToDefaultExternalPortGroupName := ovs.VpcSubnetToPortGroupName(vpc.Name, c.config.ExternalGatewaySwitch)
+		snatMatch := "ip4.src == $" + defaultVpcToDefaultExternalPortGroupName
+		if externalSubnetExist {
+			if err := c.OVNNbClient.CreatePortGroup(defaultVpcToDefaultExternalPortGroupName, nil); err != nil {
+				klog.Errorf("failed to create port group %s for vpc %s, %v", defaultVpcToDefaultExternalPortGroupName, vpc.Name, err)
+				return err
+			}
+			if policies, err := c.OVNNbClient.GetLogicalRouterPolicy(vpc.Name, util.DefaultVpcToExternalNetworkSnatPolicyPriority, snatMatch, true); err != nil {
+				klog.Errorf("failed to get snat policy route for vpc %s to external network, %v", vpc.Name, err)
+			} else if len(policies) == 0 {
+				if err := c.OVNNbClient.AddLogicalRouterPolicy(vpc.Name, util.DefaultVpcToExternalNetworkSnatPolicyPriority, snatMatch,
+					ovnnb.LogicalRouterPolicyActionReroute, []string{externalSubnet.Spec.Gateway}, nil); err != nil {
+					klog.Errorf("failed to add snat policy route for vpc %s to external network, %v", vpc.Name, err)
+				}
+			}
+		} else {
+			if err := c.OVNNbClient.DeleteLogicalRouterPolicy(vpc.Name, util.DefaultVpcToExternalNetworkSnatPolicyPriority, snatMatch); err != nil {
+				klog.Errorf("failed to delete snat policy route for vpc %s to external network, %v", vpc.Name, err)
+			}
+			if err := c.OVNNbClient.DeletePortGroup(defaultVpcToDefaultExternalPortGroupName); err != nil {
+				klog.Errorf("failed to delete port group %s for vpc %s, %v", defaultVpcToDefaultExternalPortGroupName, vpc.Name, err)
+				return err
 			}
 		}
 	}

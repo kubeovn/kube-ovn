@@ -22,6 +22,12 @@ func PodNameToPortName(pod, namespace, provider string) string {
 	return fmt.Sprintf("%s.%s.%s", pod, namespace, provider)
 }
 
+func VpcSubnetToPortGroupName(vpc, subnet string) string {
+	portGroupName := fmt.Sprintf("%s.%s", vpc, subnet)
+	portGroupName = strings.ReplaceAll(portGroupName, "-", ".")
+	return portGroupName
+}
+
 func GetLocalnetName(subnet string) string {
 	return fmt.Sprintf("localnet.%s", subnet)
 }
