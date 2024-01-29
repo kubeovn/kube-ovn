@@ -88,6 +88,20 @@ func (mr *MockNBGlobalMockRecorder) SetICAutoRoute(enable, blackList any) *gomoc
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetICAutoRoute", reflect.TypeOf((*MockNBGlobal)(nil).SetICAutoRoute), enable, blackList)
 }
 
+// SetLsCtSkipDstLportIPs mocks base method.
+func (m *MockNBGlobal) SetLsCtSkipDstLportIPs(enabled bool) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetLsCtSkipDstLportIPs", enabled)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetLsCtSkipDstLportIPs indicates an expected call of SetLsCtSkipDstLportIPs.
+func (mr *MockNBGlobalMockRecorder) SetLsCtSkipDstLportIPs(enabled any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLsCtSkipDstLportIPs", reflect.TypeOf((*MockNBGlobal)(nil).SetLsCtSkipDstLportIPs), enabled)
+}
+
 // SetLsDnatModDlDst mocks base method.
 func (m *MockNBGlobal) SetLsDnatModDlDst(enabled bool) error {
 	m.ctrl.T.Helper()
@@ -4131,6 +4145,20 @@ func (m *MockNbClient) SetLogicalSwitchPrivate(lsName, cidrBlock, nodeSwitchCIDR
 func (mr *MockNbClientMockRecorder) SetLogicalSwitchPrivate(lsName, cidrBlock, nodeSwitchCIDR, allowSubnets any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLogicalSwitchPrivate", reflect.TypeOf((*MockNbClient)(nil).SetLogicalSwitchPrivate), lsName, cidrBlock, nodeSwitchCIDR, allowSubnets)
+}
+
+// SetLsCtSkipDstLportIPs mocks base method.
+func (m *MockNbClient) SetLsCtSkipDstLportIPs(enabled bool) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetLsCtSkipDstLportIPs", enabled)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetLsCtSkipDstLportIPs indicates an expected call of SetLsCtSkipDstLportIPs.
+func (mr *MockNbClientMockRecorder) SetLsCtSkipDstLportIPs(enabled any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLsCtSkipDstLportIPs", reflect.TypeOf((*MockNbClient)(nil).SetLsCtSkipDstLportIPs), enabled)
 }
 
 // SetLsDnatModDlDst mocks base method.
