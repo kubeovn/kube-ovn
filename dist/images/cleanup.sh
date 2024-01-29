@@ -89,6 +89,8 @@ kubectl delete --ignore-not-found deploy kube-ovn-monitor -n kube-system
 kubectl delete --ignore-not-found cm ovn-config ovn-ic-config ovn-external-gw-config -n kube-system
 kubectl delete --ignore-not-found svc kube-ovn-pinger kube-ovn-controller kube-ovn-cni kube-ovn-monitor -n kube-system
 kubectl delete --ignore-not-found deploy kube-ovn-controller -n kube-system
+kubectl delete --ignore-not-found deploy ovn-ic-controller -n kube-system
+kubectl delete --ignore-not-found deploy ovn-ic-server -n kube-system
 
 # wait for provier-networks to be deleted before deleting kube-ovn-cni
 sleep 5

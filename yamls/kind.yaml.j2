@@ -84,5 +84,7 @@ nodes:
   {%- elif ovn_ic is equalto "true" %}
   - role: worker
     image: kindest/node:{{ k8s_version }}
+  - role: worker
+    image: kindest/node:{{ k8s_version }}
   {%- endif %}
 {%- endif %}
