@@ -1647,18 +1647,17 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 		return vip.Status.V4ip, vip.Status.V6ip, vip.Status.Mac, podNet.Subnet, nil
 	}
 
-	var macStr *string
+	var macPointer *string
 	if isOvnSubnet(podNet.Subnet) {
-		mac := pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, podNet.ProviderName)]
-		if mac != "" {
-			if _, err := net.ParseMAC(mac); err != nil {
+		annoMAC := pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, podNet.ProviderName)]
+		if annoMAC != "" {
+			if _, err := net.ParseMAC(annoMAC); err != nil {
 				return "", "", "", podNet.Subnet, err
 			}
-			macStr = &mac
+			macPointer = &annoMAC
 		}
 	} else {
-		macStr = new(string)
-		*macStr = ""
+		macPointer = nil
 	}
 
 	ippoolStr := pod.Annotations[fmt.Sprintf(util.IPPoolAnnotationTemplate, podNet.ProviderName)]
@@ -1680,7 +1679,7 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 		for {
 			portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
 
-			ipv4, ipv6, mac, err := c.ipam.GetRandomAddress(key, portName, macStr, podNet.Subnet.Name, "", skippedAddrs, !podNet.AllowLiveMigration)
+			ipv4, ipv6, mac, err := c.ipam.GetRandomAddress(key, portName, macPointer, podNet.Subnet.Name, "", skippedAddrs, !podNet.AllowLiveMigration)
 			if err != nil {
 				klog.Error(err)
 				return "", "", "", podNet.Subnet, err
@@ -1715,7 +1714,7 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 		ipStr := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, podNet.ProviderName)]
 
 		for _, net := range nsNets {
-			v4IP, v6IP, mac, err = c.acquireStaticAddress(key, portName, ipStr, macStr, net.Subnet.Name, net.AllowLiveMigration)
+			v4IP, v6IP, mac, err = c.acquireStaticAddress(key, portName, ipStr, macPointer, net.Subnet.Name, net.AllowLiveMigration)
 			if err == nil {
 				return v4IP, v6IP, mac, net.Subnet, nil
 			}
@@ -1742,7 +1741,7 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 			var skippedAddrs []string
 			for {
 				portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
-				ipv4, ipv6, mac, err := c.ipam.GetRandomAddress(key, portName, macStr, podNet.Subnet.Name, ipPool[0], skippedAddrs, !podNet.AllowLiveMigration)
+				ipv4, ipv6, mac, err := c.ipam.GetRandomAddress(key, portName, macPointer, podNet.Subnet.Name, ipPool[0], skippedAddrs, !podNet.AllowLiveMigration)
 				if err != nil {
 					klog.Error(err)
 					return "", "", "", podNet.Subnet, err
@@ -1781,7 +1780,7 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 						continue
 					}
 
-					v4IP, v6IP, mac, err = c.acquireStaticAddress(key, portName, staticIP, macStr, net.Subnet.Name, net.AllowLiveMigration)
+					v4IP, v6IP, mac, err = c.acquireStaticAddress(key, portName, staticIP, macPointer, net.Subnet.Name, net.AllowLiveMigration)
 					if err == nil {
 						return v4IP, v6IP, mac, net.Subnet, nil
 					}
@@ -1795,7 +1794,7 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 
 			if index < len(ipPool) {
 				for _, net := range nsNets {
-					v4IP, v6IP, mac, err = c.acquireStaticAddress(key, portName, ipPool[index], macStr, net.Subnet.Name, net.AllowLiveMigration)
+					v4IP, v6IP, mac, err = c.acquireStaticAddress(key, portName, ipPool[index], macPointer, net.Subnet.Name, net.AllowLiveMigration)
 					if err == nil {
 						return v4IP, v6IP, mac, net.Subnet, nil
 					}

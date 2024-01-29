@@ -2758,6 +2758,10 @@ func (c *Controller) deletePolicyRouteForU2OInterconn(subnet *kubeovnv1.Subnet) 
 }
 
 func (c *Controller) addStaticRouteForU2OInterconn(subnet *kubeovnv1.Subnet) error {
+	if subnet.Spec.Vpc == "" {
+		return nil
+	}
+
 	var v4Gw, v6Gw, v4Cidr, v6Cidr string
 	for _, gw := range strings.Split(subnet.Spec.Gateway, ",") {
 		switch util.CheckProtocol(gw) {
@@ -2807,6 +2811,10 @@ func (c *Controller) addStaticRouteForU2OInterconn(subnet *kubeovnv1.Subnet) err
 }
 
 func (c *Controller) deleteStaticRouteForU2OInterconn(subnet *kubeovnv1.Subnet) error {
+	if subnet.Spec.Vpc == "" {
+		return nil
+	}
+
 	var v4Gw, v6Gw, v4Cidr, v6Cidr string
 	for _, gw := range strings.Split(subnet.Spec.Gateway, ",") {
 		switch util.CheckProtocol(gw) {
@@ -2846,6 +2854,7 @@ func (c *Controller) deleteStaticRouteForU2OInterconn(subnet *kubeovnv1.Subnet) 
 			v6Gw,
 			kubeovnv1.PolicySrc,
 		); err != nil {
+			klog.Errorf("failed to delete static route, %v", err)
 			return err
 		}
 	}

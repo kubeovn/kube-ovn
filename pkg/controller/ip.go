@@ -240,27 +240,29 @@ func (c *Controller) handleAddReservedIP(key string) error {
 		klog.Error(err)
 		return err
 	}
-	cachedIP, err := c.ipsLister.Get(key)
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
+	if ip.Labels[util.IPReservedLabel] != "false" {
+		cachedIP, err := c.ipsLister.Get(key)
+		if err != nil {
+			if k8serrors.IsNotFound(err) {
+				return nil
+			}
+			return err
 		}
-		return err
-	}
-	ip = cachedIP.DeepCopy()
-	ip.Labels[util.IPReservedLabel] = "true"
-	patchPayloadTemplate := `[{ "op": "%s", "path": "/metadata/labels", "value": %s }]`
-	raw, err := json.Marshal(ip.Labels)
-	if err != nil {
-		klog.Error(err)
-		return err
-	}
-	op := "replace"
-	patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
-	if _, err := c.config.KubeOvnClient.KubeovnV1().IPs().Patch(context.Background(), ip.Name,
-		types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{}); err != nil {
-		klog.Errorf("failed to patch label for ip %s, %v", ip.Name, err)
-		return err
+		ip = cachedIP.DeepCopy()
+		ip.Labels[util.IPReservedLabel] = "true"
+		patchPayloadTemplate := `[{ "op": "%s", "path": "/metadata/labels", "value": %s }]`
+		raw, err := json.Marshal(ip.Labels)
+		if err != nil {
+			klog.Error(err)
+			return err
+		}
+		op := "replace"
+		patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
+		if _, err := c.config.KubeOvnClient.KubeovnV1().IPs().Patch(context.Background(), ip.Name,
+			types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{}); err != nil {
+			klog.Errorf("failed to patch label for ip %s, %v", ip.Name, err)
+			return err
+		}
 	}
 	return nil
 }
@@ -471,6 +473,7 @@ func (c *Controller) createOrUpdateIPCR(ipCRName, podName, ip, mac, subnetName, 
 					util.SubnetNameLabel: subnetName,
 					util.NodeNameLabel:   nodeName,
 					subnetName:           "",
+					util.IPReservedLabel: "false", // ip create with pod or node, ip not reserved
 				},
 			},
 			Spec: kubeovnv1.IPSpec{

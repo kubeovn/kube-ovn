@@ -727,9 +727,8 @@ func (c *Controller) addStaticRouteToVpc(name string, route *kubeovnv1.StaticRou
 
 func (c *Controller) deleteStaticRouteFromVpc(name, table, cidr, nextHop string, policy kubeovnv1.RoutePolicy) error {
 	var (
-		vpc, cachedVpc *kubeovnv1.Vpc
-		policyStr      string
-		err            error
+		policyStr string
+		err       error
 	)
 
 	policyStr = convertPolicy(policy)
@@ -738,21 +737,6 @@ func (c *Controller) deleteStaticRouteFromVpc(name, table, cidr, nextHop string,
 		return err
 	}
 
-	cachedVpc, err = c.vpcsLister.Get(name)
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
-		klog.Error(err)
-		return err
-	}
-	vpc = cachedVpc.DeepCopy()
-	// make sure custom policies not be deleted
-	_, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Update(context.Background(), vpc, metav1.UpdateOptions{})
-	if err != nil {
-		klog.Error(err)
-		return err
-	}
 	return nil
 }
 
