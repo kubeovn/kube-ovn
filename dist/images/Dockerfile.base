@@ -46,7 +46,9 @@ RUN cd /usr/src/ && git clone -b branch-22.12 --depth=1 https://github.com/ovn-o
     # ovn-ic blacklist function not work on ipv6
     curl -s https://github.com/kubeovn/ovn/commit/78ab91005854532e7eb5c4fe6b2923ce292e3681.patch | git apply && \
     # lflow: do not send direct traffic between lports to conntrack
-    curl -s https://github.com/kubeovn/ovn/commit/6f1af045845deeabf06fdc7c90073e0a6874ab2f.patch | git apply
+    curl -s https://github.com/kubeovn/ovn/commit/6f1af045845deeabf06fdc7c90073e0a6874ab2f.patch | git apply && \
+    # northd: add nb option version_compatibility
+    curl -s https://github.com/kubeovn/ovn/commit/174561abd707239f134501c4320cbf9b29af0305.patch | git apply
 
 RUN apt install -y build-essential fakeroot \
     autoconf automake bzip2 debhelper-compat dh-exec dh-python dh-sequence-python3 dh-sequence-sphinxdoc \
@@ -80,7 +82,7 @@ FROM ubuntu:22.04
 ARG DEBIAN_FRONTEND=noninteractive
 RUN apt update && apt upgrade -y && apt install ca-certificates python3 hostname libunwind8 netbase \
         ethtool iproute2 ncat libunbound-dev procps libatomic1 kmod iptables python3-netifaces python3-sortedcontainers \
-        tcpdump ipset curl uuid-runtime openssl inetutils-ping arping ndisc6 \
+        tcpdump ipset curl uuid-runtime openssl inetutils-ping arping ndisc6 conntrack \
         logrotate dnsutils net-tools strongswan strongswan-pki libcharon-extra-plugins libmnl-dev \
         libcharon-extauth-plugins libstrongswan-extra-plugins libstrongswan-standard-plugins -y --no-install-recommends && \
         rm -rf /var/lib/apt/lists/* && \
