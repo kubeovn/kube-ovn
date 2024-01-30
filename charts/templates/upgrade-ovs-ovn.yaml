@@ -33,6 +33,16 @@ rules:
     verbs:
       - get
   - apiGroups:
+      - apps
+    resources:
+      - deployments
+    resourceNames:
+      - ovn-central
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
       - ""
     resources:
       - nodes
@@ -127,6 +137,10 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+            - name: ENABLE_SSL
+              value: "{{ .Values.networking.ENABLE_SSL }}"
+            - name: OVN_DB_IPS
+              value: "{{ .Values.MASTER_NODES | default (include "kubeovn.nodeIPs" .) }}"
           command:
             - bash
             - -eo
@@ -136,8 +150,14 @@ spec:
           volumeMounts:
             - mountPath: /var/log/kube-ovn
               name: kube-ovn-log
+            - mountPath: /var/run/tls
+              name: kube-ovn-tls
       volumes:
         - name: kube-ovn-log
           hostPath:
             path: {{ .Values.log_conf.LOG_DIR }}/kube-ovn
+        - name: kube-ovn-tls
+          secret:
+            optional: true
+            secretName: kube-ovn-tls
 {{ end }}
