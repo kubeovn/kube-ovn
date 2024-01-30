@@ -65,6 +65,7 @@ spec:
             - --network-type=geneve
             - --default-interface-name=
             - --default-vlan-id=100
+            - --ls-ct-skip-dst-lport-ips=true
             - --pod-nic-type=veth-pair
             - --enable-lb=true
             - --enable-np=true

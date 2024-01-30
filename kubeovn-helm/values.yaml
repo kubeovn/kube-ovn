@@ -51,6 +51,7 @@ func:
   LS_DNAT_MOD_DL_DST: true
   CHECK_GATEWAY: true
   LOGICAL_GATEWAY: false
+  LS_CT_SKIP_DST_LPORT_IPS: true
   ENABLE_BIND_LOCAL_IP: true
   ENABLE_IC: false
 

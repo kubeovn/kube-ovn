@@ -93,6 +93,7 @@ spec:
           - --default-exchange-link-name={{- .Values.networking.EXCHANGE_LINK_NAME }}
           - --default-vlan-id={{- .Values.networking.vlan.VLAN_ID }}
           - --ls-dnat-mod-dl-dst={{- .Values.func.LS_DNAT_MOD_DL_DST }}
+          - --ls-ct-skip-dst-lport-ips={{- .Values.func.LS_CT_SKIP_DST_LPORT_IPS }}
           - --pod-nic-type={{- .Values.networking.POD_NIC_TYPE }}
           - --enable-lb={{- .Values.func.ENABLE_LB }}
           - --enable-np={{- .Values.func.ENABLE_NP }}
