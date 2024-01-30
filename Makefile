@@ -466,7 +466,7 @@ kind-install-chart: kind-load-image kind-untaint-control-plane
 		--set global.images.kubeovn.tag=$(VERSION) \
 		--set networking.NET_STACK=$(shell echo $${NET_STACK:-ipv4} | sed 's/^dual$$/dual_stack/') \
 		--set networking.ENABLE_SSL=$(shell echo $${ENABLE_SSL:-false}) \
-		--set func.ENABLE_BIND_LOCAL_IP=$(shell echo $${ENABLE_BIND_LOCAL_IP:-true})
+		--set func.ENABLE_BIND_LOCAL_IP=$(shell echo $${ENABLE_BIND_LOCAL_IP:-true}) \
 		--set func.ENABLE_IC=$$(kubectl get node --show-labels | grep -q "ovn.kubernetes.io/ic-gw" && echo true || echo false)
 	sleep 60
 	kubectl -n kube-system rollout status --timeout=1s deployment/ovn-central
@@ -482,7 +482,7 @@ kind-install-chart-ssl:
 .PHONY: kind-upgrade-chart
 kind-upgrade-chart: kind-load-image
 	helm upgrade kubeovn ./charts \
-		--set global.images.kubeovn.tag=$(VERSION)
+		--set global.images.kubeovn.tag=$(VERSION) \
 		--set func.ENABLE_IC=$$(kubectl get node --show-labels | grep -q "ovn.kubernetes.io/ic-gw" && echo true || echo false)
 	sleep 90
 	kubectl -n kube-system rollout status --timeout=1s deployment/ovn-central
