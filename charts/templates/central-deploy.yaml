@@ -80,6 +80,10 @@ spec:
               value: "{{ .Values.networking.OVN_NORTHD_N_THREADS }}"
             - name: ENABLE_COMPACT
               value: "{{ .Values.networking.ENABLE_COMPACT }}"
+            {{- if include "kubeovn.ovs-ovn.updateStrategy" . | eq "OnDelete" }}
+            - name: OVN_VERSION_COMPATIBILITY
+              value: "22.03"
+            {{- end }}
           resources:
             requests:
               cpu: {{ index .Values "ovn-central" "requests" "cpu" }}
