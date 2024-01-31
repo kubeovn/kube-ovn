@@ -321,7 +321,7 @@ func (c *Controller) InitIPAM() error {
 
 	for _, ip := range ips {
 		// recover sts and kubevirt vm ip, other ip recover in later pod loop
-		if ip.Spec.PodType != "StatefulSet" && ip.Spec.PodType != util.VM {
+		if ip.Spec.PodType != util.StatefulSet && ip.Spec.PodType != util.VM {
 			continue
 		}
 
@@ -365,7 +365,7 @@ func (c *Controller) InitIPAM() error {
 				if err != nil {
 					klog.Errorf("failed to init pod %s.%s address %s: %v", podName, pod.Namespace, pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, podNet.ProviderName)], err)
 				} else {
-					err = c.createOrUpdateCrdIPs(podName, ip, mac, podNet.Subnet.Name, pod.Namespace, pod.Spec.NodeName, podNet.ProviderName, podType)
+					err = c.createOrUpdateIPCR(portName, podName, ip, mac, podNet.Subnet.Name, pod.Namespace, pod.Spec.NodeName, podType)
 					if err != nil {
 						klog.Errorf("failed to create/update ips CR %s.%s with ip address %s: %v", podName, pod.Namespace, ip, err)
 					}
@@ -563,7 +563,7 @@ func (c *Controller) initDefaultVlan() error {
 	return nil
 }
 
-func (c *Controller) initSyncCrdIPs() error {
+func (c *Controller) syncIPCR() error {
 	klog.Info("start to sync ips")
 	ips, err := c.ipsLister.List(labels.Everything())
 	if err != nil {
@@ -575,8 +575,8 @@ func (c *Controller) initSyncCrdIPs() error {
 
 	ipMap := strset.New(c.getVMLsps()...)
 
-	for _, ipCr := range ips {
-		ip := ipCr.DeepCopy()
+	for _, ipCR := range ips {
+		ip := ipCR.DeepCopy()
 		changed := false
 		if ipMap.Has(ip.Name) && ip.Spec.PodType == "" {
 			ip.Spec.PodType = util.VM
@@ -587,9 +587,9 @@ func (c *Controller) initSyncCrdIPs() error {
 		if ip.Spec.V4IPAddress == v4IP && ip.Spec.V6IPAddress == v6IP && !changed {
 			continue
 		}
+
 		ip.Spec.V4IPAddress = v4IP
 		ip.Spec.V6IPAddress = v6IP
-
 		_, err := c.config.KubeOvnClient.KubeovnV1().IPs().Update(context.Background(), ip, metav1.UpdateOptions{})
 		if err != nil {
 			klog.Errorf("failed to sync crd ip %s: %v", ip.Spec.IPAddress, err)
@@ -599,7 +599,7 @@ func (c *Controller) initSyncCrdIPs() error {
 	return nil
 }
 
-func (c *Controller) initSyncCrdSubnets() error {
+func (c *Controller) syncSubnetCR() error {
 	klog.Info("start to sync subnets")
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
@@ -639,7 +639,7 @@ func (c *Controller) initSyncCrdSubnets() error {
 	return nil
 }
 
-func (c *Controller) initSyncCrdVpcNatGw() error {
+func (c *Controller) syncVpcNatGatewayCR() error {
 	klog.Info("start to sync crd vpc nat gw")
 	// get vpc nat gateway enable state
 	cm, err := c.configMapsLister.ConfigMaps(c.config.PodNamespace).Get(util.VpcNatGatewayConfig)
@@ -681,7 +681,7 @@ func (c *Controller) initSyncCrdVpcNatGw() error {
 	return nil
 }
 
-func (c *Controller) initSyncCrdVlans() error {
+func (c *Controller) syncVlanCR() error {
 	klog.Info("start to sync vlans")
 	vlans, err := c.vlansLister.List(labels.Everything())
 	if err != nil {
@@ -717,6 +717,7 @@ func (c *Controller) initSyncCrdVlans() error {
 }
 
 func (c *Controller) migrateNodeRoute(af int, node, ip, nexthop string) error {
+	// default vpc use static route in old version, migrate to policy route
 	var (
 		match       = fmt.Sprintf("ip%d.dst == %s", af, ip)
 		action      = kubeovnv1.PolicyRouteActionReroute
@@ -768,7 +769,7 @@ func (c *Controller) migrateNodeRoute(af int, node, ip, nexthop string) error {
 	return nil
 }
 
-func (c *Controller) initNodeRoutes() error {
+func (c *Controller) syncNodeRoutes() error {
 	nodes, err := c.nodesLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list nodes: %v", err)
@@ -792,6 +793,10 @@ func (c *Controller) initNodeRoutes() error {
 		}
 	}
 
+	if err := c.addNodeGatewayStaticRoute(); err != nil {
+		klog.Errorf("failed to add static route for node gateway")
+		return err
+	}
 	return nil
 }
 

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net"
 	"reflect"
 	"slices"
 	"strings"
@@ -280,7 +279,7 @@ func (c *Controller) handleAddVirtualIP(key string) error {
 		parentV6ip = vip.Spec.ParentV6ip
 		parentMac = vip.Spec.ParentMac
 	}
-	if err = c.createOrUpdateCrdVip(key, vip.Spec.Namespace, subnet.Name, v4ip, v6ip, mac, parentV4ip, parentV6ip, parentMac); err != nil {
+	if err = c.createOrUpdateVipCR(key, vip.Spec.Namespace, subnet.Name, v4ip, v6ip, mac, parentV4ip, parentV6ip, parentMac); err != nil {
 		klog.Errorf("failed to create or update vip '%s', %v", vip.Name, err)
 		return err
 	}
@@ -323,7 +322,7 @@ func (c *Controller) handleUpdateVirtualIP(key string) error {
 	// should update
 	if vip.Status.Mac == "" {
 		// TODO:// add vip in its parent port aap list
-		if err = c.createOrUpdateCrdVip(key, vip.Spec.Namespace, vip.Spec.Subnet,
+		if err = c.createOrUpdateVipCR(key, vip.Spec.Namespace, vip.Spec.Subnet,
 			vip.Spec.V4ip, vip.Spec.V6ip, vip.Spec.MacAddress,
 			vip.Spec.ParentV4ip, vip.Spec.ParentV6ip, vip.Spec.MacAddress); err != nil {
 			return err
@@ -365,54 +364,6 @@ func (c *Controller) handleDelVirtualIP(vip *kubeovnv1.Vip) error {
 	c.ipam.ReleaseAddressByPod(vip.Name, vip.Spec.Subnet)
 	c.updateSubnetStatusQueue.Add(vip.Spec.Subnet)
 	return nil
-}
-
-func (c *Controller) acquireStaticIPAddress(subnetName, name, nicName, ip string) (string, string, string, error) {
-	checkConflict := true
-	var v4ip, v6ip, mac string
-	var err error
-	for _, ipStr := range strings.Split(ip, ",") {
-		if net.ParseIP(ipStr) == nil {
-			return "", "", "", fmt.Errorf("failed to parse vip ip %s", ipStr)
-		}
-	}
-
-	if v4ip, v6ip, mac, err = c.ipam.GetStaticAddress(name, nicName, ip, nil, subnetName, checkConflict); err != nil {
-		klog.Errorf("failed to get static virtual ip '%s', mac '%s', subnet '%s', %v", ip, mac, subnetName, err)
-		return "", "", "", err
-	}
-	return v4ip, v6ip, mac, nil
-}
-
-func (c *Controller) acquireIPAddress(subnetName, name, nicName string) (string, string, string, error) {
-	var skippedAddrs []string
-	var v4ip, v6ip, mac string
-	checkConflict := true
-	var err error
-	for {
-		v4ip, v6ip, mac, err = c.ipam.GetRandomAddress(name, nicName, nil, subnetName, "", skippedAddrs, checkConflict)
-		if err != nil {
-			klog.Error(err)
-			return "", "", "", err
-		}
-
-		ipv4OK, ipv6OK, err := c.validatePodIP(name, subnetName, v4ip, v6ip)
-		if err != nil {
-			klog.Error(err)
-			return "", "", "", err
-		}
-
-		if ipv4OK && ipv6OK {
-			return v4ip, v6ip, mac, nil
-		}
-
-		if !ipv4OK {
-			skippedAddrs = append(skippedAddrs, v4ip)
-		}
-		if !ipv6OK {
-			skippedAddrs = append(skippedAddrs, v6ip)
-		}
-	}
 }
 
 func (c *Controller) handleUpdateVirtualParents(key string) error {
@@ -484,22 +435,8 @@ func (c *Controller) handleUpdateVirtualParents(key string) error {
 	return nil
 }
 
-func (c *Controller) subnetCountIP(subnet *kubeovnv1.Subnet) error {
-	var err error
-	if util.CheckProtocol(subnet.Spec.CIDRBlock) == kubeovnv1.ProtocolDual {
-		_, err = c.calcDualSubnetStatusIP(subnet)
-	} else {
-		_, err = c.calcSubnetStatusIP(subnet)
-	}
-	if err != nil {
-		klog.Error(err)
-		return err
-	}
-	return nil
-}
-
-func (c *Controller) createOrUpdateCrdVip(key, ns, subnet, v4ip, v6ip, mac, pV4ip, pV6ip, pmac string) error {
-	vipCr, err := c.virtualIpsLister.Get(key)
+func (c *Controller) createOrUpdateVipCR(key, ns, subnet, v4ip, v6ip, mac, pV4ip, pV6ip, pmac string) error {
+	vipCR, err := c.virtualIpsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			if _, err := c.config.KubeOvnClient.KubeovnV1().Vips().Create(context.Background(), &kubeovnv1.Vip{
@@ -532,7 +469,7 @@ func (c *Controller) createOrUpdateCrdVip(key, ns, subnet, v4ip, v6ip, mac, pV4i
 			return errMsg
 		}
 	} else {
-		vip := vipCr.DeepCopy()
+		vip := vipCR.DeepCopy()
 		if vip.Status.Mac == "" && mac != "" {
 			// vip not support to update, just delete and create
 			vip.Spec.Namespace = ns

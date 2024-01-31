@@ -305,7 +305,7 @@ func (c *Controller) handleAddNode(key string) error {
 		}
 	}
 
-	if err := c.addNodeGwStaticRoute(); err != nil {
+	if err := c.addNodeGatewayStaticRoute(); err != nil {
 		klog.Errorf("failed to add static route for node gw: %v", err)
 		return err
 	}
@@ -336,7 +336,7 @@ func (c *Controller) handleAddNode(key string) error {
 		return err
 	}
 
-	if err := c.createOrUpdateCrdIPs("", ipStr, mac, c.config.NodeSwitch, "", node.Name, "", ""); err != nil {
+	if err := c.createOrUpdateIPCR("", "", ipStr, mac, c.config.NodeSwitch, "", node.Name, ""); err != nil {
 		klog.Errorf("failed to create or update IPs node-%s: %v", key, err)
 		return err
 	}
@@ -643,103 +643,6 @@ func (c *Controller) handleUpdateNode(key string) error {
 	return nil
 }
 
-func (c *Controller) createOrUpdateCrdIPs(podName, ip, mac, subnetName, ns, nodeName, providerName, podType string) error {
-	var key, ipName string
-
-	switch {
-	case subnetName == c.config.NodeSwitch:
-		key = nodeName
-		ipName = fmt.Sprintf("node-%s", nodeName)
-	case strings.HasPrefix(podName, util.U2OInterconnName[0:19]):
-		key = podName
-		ipName = podName
-	default:
-		key = podName
-		ipName = ovs.PodNameToPortName(podName, ns, providerName)
-	}
-
-	var err error
-	var ipCr *kubeovnv1.IP
-	ipCr, err = c.ipsLister.Get(ipName)
-	if err != nil {
-		if !k8serrors.IsNotFound(err) {
-			errMsg := fmt.Errorf("failed to get ip CR %s: %v", ipName, err)
-			klog.Error(errMsg)
-			return errMsg
-		}
-		// the returned pointer is not nil if the CR does not exist
-		ipCr = nil
-	}
-
-	v4IP, v6IP := util.SplitStringIP(ip)
-	if ipCr == nil {
-		_, err = c.config.KubeOvnClient.KubeovnV1().IPs().Create(context.Background(), &kubeovnv1.IP{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: ipName,
-				Labels: map[string]string{
-					util.SubnetNameLabel: subnetName,
-					util.NodeNameLabel:   nodeName,
-					subnetName:           "",
-				},
-			},
-			Spec: kubeovnv1.IPSpec{
-				PodName:       key,
-				Subnet:        subnetName,
-				NodeName:      nodeName,
-				Namespace:     ns,
-				IPAddress:     ip,
-				V4IPAddress:   v4IP,
-				V6IPAddress:   v6IP,
-				MacAddress:    mac,
-				AttachIPs:     []string{},
-				AttachMacs:    []string{},
-				AttachSubnets: []string{},
-				PodType:       podType,
-			},
-		}, metav1.CreateOptions{})
-		if err != nil {
-			errMsg := fmt.Errorf("failed to create ip CR %s: %v", ipName, err)
-			klog.Error(errMsg)
-			return errMsg
-		}
-	} else {
-		newIPCr := ipCr.DeepCopy()
-		if newIPCr.Labels != nil {
-			newIPCr.Labels[util.SubnetNameLabel] = subnetName
-			newIPCr.Labels[util.NodeNameLabel] = nodeName
-		} else {
-			newIPCr.Labels = map[string]string{
-				util.SubnetNameLabel: subnetName,
-				util.NodeNameLabel:   nodeName,
-			}
-		}
-		newIPCr.Spec.PodName = key
-		newIPCr.Spec.Namespace = ns
-		newIPCr.Spec.Subnet = subnetName
-		newIPCr.Spec.NodeName = nodeName
-		newIPCr.Spec.IPAddress = ip
-		newIPCr.Spec.V4IPAddress = v4IP
-		newIPCr.Spec.V6IPAddress = v6IP
-		newIPCr.Spec.MacAddress = mac
-		newIPCr.Spec.AttachIPs = []string{}
-		newIPCr.Spec.AttachMacs = []string{}
-		newIPCr.Spec.AttachSubnets = []string{}
-		newIPCr.Spec.PodType = podType
-		if reflect.DeepEqual(newIPCr.Labels, ipCr.Labels) && reflect.DeepEqual(newIPCr.Spec, ipCr.Spec) {
-			return nil
-		}
-
-		_, err := c.config.KubeOvnClient.KubeovnV1().IPs().Update(context.Background(), newIPCr, metav1.UpdateOptions{})
-		if err != nil {
-			errMsg := fmt.Errorf("failed to update ip CR %s: %v", newIPCr.Name, err)
-			klog.Error(errMsg)
-			return errMsg
-		}
-	}
-
-	return nil
-}
-
 func (c *Controller) CheckGatewayReady() {
 	if err := c.checkGatewayReady(); err != nil {
 		klog.Errorf("failed to check gateway ready %v", err)
@@ -1017,7 +920,7 @@ func (c *Controller) UpdateChassisTag(node *v1.Node) error {
 	return nil
 }
 
-func (c *Controller) addNodeGwStaticRoute() error {
+func (c *Controller) addNodeGatewayStaticRoute() error {
 	// If user not manage static route for default vpc, just add route about ovn-default to join
 	if vpc, err := c.vpcsLister.Get(c.config.ClusterRouter); err != nil || vpc.Spec.StaticRoutes != nil {
 		existRoute, err := c.OVNNbClient.ListLogicalRouterStaticRoutes(c.config.ClusterRouter, nil, nil, "", nil)

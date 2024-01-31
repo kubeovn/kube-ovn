@@ -1806,7 +1806,7 @@ func (c *Controller) isDnatDuplicated(gwName, eipName, dnatName, externalPort st
 	return false, nil
 }
 
-func (c *Controller) createOrUpdateCrdFip(key, eipName, internalIP string) error {
+func (c *Controller) createOrUpdateFipCR(key, eipName, internalIP string) error {
 	cachedFip, err := c.iptablesFipsLister.Get(key)
 	if err != nil {
 		klog.V(3).Infof("create fip cr %s", key)

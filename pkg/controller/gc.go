@@ -358,8 +358,7 @@ func (c *Controller) markAndCleanLSP() error {
 			klog.Errorf("failed to delete lsp %s: %v", lsp.Name, err)
 			return err
 		}
-		klog.Infof("gc ip %s", lsp.Name)
-		ipCr, err := c.config.KubeOvnClient.KubeovnV1().IPs().Get(context.Background(), lsp.Name, metav1.GetOptions{})
+		ipCR, err := c.config.KubeOvnClient.KubeovnV1().IPs().Get(context.Background(), lsp.Name, metav1.GetOptions{})
 		if err != nil {
 			if k8serrors.IsNotFound(err) {
 				// ip cr not found, skip lsp gc
@@ -368,22 +367,26 @@ func (c *Controller) markAndCleanLSP() error {
 			klog.Errorf("failed to get ip %s, %v", lsp.Name, err)
 			return err
 		}
-		klog.Infof("gc ip %s", ipCr.Name)
-		if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), ipCr.Name, metav1.DeleteOptions{}); err != nil {
-			if k8serrors.IsNotFound(err) {
-				// ip cr not found, skip lsp gc
+		if ipCR.Labels[util.IPReservedLabel] != "true" {
+			klog.Infof("gc ip %s", ipCR.Name)
+			if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), ipCR.Name, metav1.DeleteOptions{}); err != nil {
+				if k8serrors.IsNotFound(err) {
+					// ip cr not found, skip lsp gc
+					continue
+				}
+				klog.Errorf("failed to delete ip %s, %v", ipCR.Name, err)
+				return err
+			}
+			if ipCR.Spec.Subnet == "" {
+				klog.Errorf("ip %s has no subnet", ipCR.Name)
+				// ip cr no subnet, skip lsp gc
 				continue
 			}
-			klog.Errorf("failed to delete ip %s, %v", ipCr.Name, err)
-			return err
-		}
-		if ipCr.Spec.Subnet == "" {
-			klog.Errorf("ip %s has no subnet", ipCr.Name)
-			// ip cr no subnet, skip lsp gc
-			continue
-		}
-		if key := lsp.ExternalIDs["pod"]; key != "" {
-			c.ipam.ReleaseAddressByPod(key, ipCr.Spec.Subnet)
+			if key := lsp.ExternalIDs["pod"]; key != "" {
+				c.ipam.ReleaseAddressByPod(key, ipCR.Spec.Subnet)
+			}
+		} else {
+			klog.Infof("gc skip reserved ip %s", ipCR.Name)
 		}
 	}
 	lastNoPodLSP = noPodLSP

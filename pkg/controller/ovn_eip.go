@@ -256,7 +256,7 @@ func (c *Controller) handleAddOvnEip(key string) error {
 		cachedEip.Spec.Type = util.OvnEipTypeNAT
 	}
 
-	if err = c.createOrUpdateCrdOvnEip(key, subnet.Name, v4ip, v6ip, mac, cachedEip.Spec.Type); err != nil {
+	if err = c.createOrUpdateOvnEipCR(key, subnet.Name, v4ip, v6ip, mac, cachedEip.Spec.Type); err != nil {
 		klog.Errorf("failed to create or update ovn eip '%s', %v", cachedEip.Name, err)
 		return err
 	}
@@ -351,7 +351,7 @@ func (c *Controller) handleDelOvnEip(key string) error {
 	return nil
 }
 
-func (c *Controller) createOrUpdateCrdOvnEip(key, subnet, v4ip, v6ip, mac, usage string) error {
+func (c *Controller) createOrUpdateOvnEipCR(key, subnet, v4ip, v6ip, mac, usage string) error {
 	cachedEip, err := c.ovnEipsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {

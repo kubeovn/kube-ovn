@@ -133,7 +133,7 @@ func (c *Controller) enqueueDeletePodAnnotatedIptablesEip(obj interface{}) {
 			c.delPodAnnotatedIptablesEipQueue.Add(obj)
 			return
 		}
-		if isDelete, err := appendCheckPodToDel(c, p, statefulSetName, "StatefulSet"); isDelete && err == nil {
+		if isDelete, err := appendCheckPodToDel(c, p, statefulSetName, util.StatefulSet); isDelete && err == nil {
 			c.delPodAnnotatedIptablesEipQueue.Add(obj)
 			return
 		}
@@ -280,7 +280,7 @@ func (c *Controller) handleAddPodAnnotatedIptablesEip(key string) error {
 			return err
 		}
 		externalNetwork := util.GetExternalNetwork(eip.Spec.ExternalSubnet)
-		if err := c.createOrUpdateCrdEip(eipName, "", "", "", "", natGw, externalNetwork); err != nil {
+		if err := c.createOrUpdateEipCR(eipName, "", "", "", "", natGw, externalNetwork); err != nil {
 			klog.Errorf("failed to create eip %s: %v", eipName, err)
 			return err
 		}
