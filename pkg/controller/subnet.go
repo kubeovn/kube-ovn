@@ -495,6 +495,7 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 
 	subnet := cachedSubnet.DeepCopy()
 	if err = formatSubnet(subnet, c); err != nil {
+		klog.Errorf("failed to format subnet %s, %v", subnet.Name, err)
 		return err
 	}
 
@@ -548,6 +549,7 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 	}
 
 	if err := c.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps); err != nil {
+		klog.Errorf("failed to add or update subnet %s, %v", subnet.Name, err)
 		return err
 	}
 
@@ -674,6 +676,7 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 			}
 
 			if err := c.ovnLegacyClient.SetLogicalSwitchConfig(subnet.Name, vpc.Status.Router, subnet.Spec.Protocol, subnet.Spec.CIDRBlock, gateway, subnet.Spec.ExcludeIps, needRouter); err != nil {
+				klog.Errorf("failed to set logical switch config, %v", err)
 				c.patchSubnetStatus(subnet, "SetLogicalSwitchConfigFailed", err.Error())
 				return err
 			}
@@ -704,7 +707,9 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 			case util.NetworkTypeStt:
 				mtu -= util.SttHeaderLength
 			default:
-				return fmt.Errorf("invalid network type: %s", c.config.NetworkType)
+				err = fmt.Errorf("invalid network type: %s", c.config.NetworkType)
+				klog.Error(err)
+				return err
 			}
 		}
 	}
@@ -1634,6 +1639,28 @@ func (c *Controller) reconcileU2OInterconnectionIP(subnet *kubeovnv1.Subnet) err
 	return nil
 }
 
+func (c *Controller) checkSubnetStatus(subnetName string, subnetCR *kubeovnv1.Subnet) error {
+	subnet, ok := c.ipam.Subnets[subnetName]
+	if !ok {
+		err := fmt.Errorf("ipam should has subnet %s", subnetName)
+		klog.Error(err)
+		return err
+	}
+	if subnetCR.Status.V4AvailableIPs != 0 && len(subnet.V4FreeIPList) == 0 && len(subnet.V4ReleasedIPList) == 0 {
+		err := fmt.Errorf("update ipam subnet %s to make sure v4 available ip", subnet.Name)
+		c.addOrUpdateSubnetQueue.Add(subnetName)
+		klog.Error(err)
+		return err
+	}
+	if subnetCR.Status.V6AvailableIPs != 0 && len(subnet.V6FreeIPList) == 0 && len(subnet.V6ReleasedIPList) == 0 {
+		err := fmt.Errorf("update ipam subnet %s to make sure v6 available ip", subnet.Name)
+		c.addOrUpdateSubnetQueue.Add(subnetName)
+		klog.Error(err)
+		return err
+	}
+	return nil
+}
+
 func calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 	if err := util.CheckCidrs(subnet.Spec.CIDRBlock); err != nil {
 		return err
@@ -1711,10 +1738,19 @@ func calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 	subnet.Status.V6UsingIPs = usingIPs
 	bytes, err := subnet.Status.Bytes()
 	if err != nil {
+		klog.Errorf("failed to marshal subnet %s status, %v", subnet.Name, err)
 		return err
 	}
-	_, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(context.Background(), subnet.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status")
-	return err
+	subnet, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(context.Background(), subnet.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status")
+	if err != nil {
+		klog.Errorf("failed to patch subnet %s status, %v", subnet.Name, err)
+		return err
+	}
+	if err = c.checkSubnetStatus(subnet.Name, subnet); err != nil {
+		klog.Error(err)
+		return err
+	}
+	return nil
 }
 
 func calcSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
@@ -1796,10 +1832,19 @@ func calcSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 
 	bytes, err := subnet.Status.Bytes()
 	if err != nil {
+		klog.Errorf("failed to marshal subnet %s status, %v", subnet.Name, err)
 		return err
 	}
-	_, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(context.Background(), subnet.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status")
-	return err
+	subnet, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(context.Background(), subnet.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status")
+	if err != nil {
+		klog.Errorf("failed to patch subnet %s status, %v", subnet.Name, err)
+		return err
+	}
+	if err = c.checkSubnetStatus(subnet.Name, subnet); err != nil {
+		klog.Error(err)
+		return err
+	}
+	return nil
 }
 
 func isOvnSubnet(subnet *kubeovnv1.Subnet) bool {

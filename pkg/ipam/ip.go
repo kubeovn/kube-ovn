@@ -95,20 +95,24 @@ func mergeIPRangeList(iprl IPRangeList, ip IP) (bool, IPRangeList) {
 	if iprl.Contains(ip) {
 		return false, nil
 	}
-
+	// keep ip range list sorted
 	for _, ipr := range iprl {
 		if inserted || ipr.Start.LessThan(ip) {
+			// if exist ipr.Start < new ip, just append existing ipr
+			// if new ip inserted, just append existing ipr
 			insertIPRangeList = append(insertIPRangeList, ipr)
 			continue
 		}
 
 		if ipr.Start.GreaterThan(ip) {
+			// if ipr.Start > ip, inserte new ip，and add append existing ipr
 			insertIPRangeList = append(insertIPRangeList, &IPRange{Start: ip, End: ip}, ipr)
 			inserted = true
 			continue
 		}
 	}
 	if !inserted {
+		// add new ip to the end of ip range list
 		newIpr := IPRange{Start: ip, End: ip}
 		insertIPRangeList = append(insertIPRangeList, &newIpr)
 	}
@@ -121,6 +125,7 @@ func mergeIPRangeList(iprl IPRangeList, ip IP) (bool, IPRangeList) {
 		}
 
 		if mergedIPRangeList[len(mergedIPRangeList)-1].End.Add(1).Equal(ipr.Start) {
+			// if the end of the previous ipr equals the start of current ipr, merge
 			mergedIPRangeList[len(mergedIPRangeList)-1].End = ipr.End
 		} else {
 			mergedIPRangeList = append(mergedIPRangeList, ipr)

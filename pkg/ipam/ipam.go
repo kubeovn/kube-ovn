@@ -2,6 +2,7 @@ package ipam
 
 import (
 	"errors"
+	"fmt"
 	"net"
 	"strconv"
 	"strings"
@@ -56,6 +57,8 @@ func (ipam *IPAM) GetStaticAddress(podName, nicName, ip, mac, subnetName string,
 	ipam.mutex.RLock()
 	defer ipam.mutex.RUnlock()
 	if subnet, ok := ipam.Subnets[subnetName]; !ok {
+		err := fmt.Errorf("ipam has no subnet %s", subnetName)
+		klog.Error(err)
 		return "", "", "", ErrNoAvailable
 	} else {
 		var ips []IP
@@ -64,6 +67,7 @@ func (ipam *IPAM) GetStaticAddress(podName, nicName, ip, mac, subnetName string,
 		for _, ipStr := range strings.Split(ip, ",") {
 			ipAddr, mac, err = subnet.GetStaticAddress(podName, nicName, IP(ipStr), mac, false, checkConflict)
 			if err != nil {
+				klog.Errorf("failed to allocate ip %s mac %s for %s", ipStr, mac, podName)
 				return "", "", "", err
 			}
 			ips = append(ips, ipAddr)
