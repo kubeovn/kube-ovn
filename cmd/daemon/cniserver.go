@@ -34,10 +34,6 @@ func CmdMain() {
 	config := daemon.ParseFlags()
 	klog.Infof(versions.String())
 
-	if err := initForOS(); err != nil {
-		util.LogFatalAndExit(err, "failed to do the OS initialization")
-	}
-
 	ovs.UpdateOVSVsctlLimiter(config.OVSVsctlConcurrency)
 
 	nicBridgeMappings, err := daemon.InitOVSBridges()
@@ -59,6 +55,10 @@ func CmdMain() {
 	klog.Info("init node gw")
 	if err = daemon.InitNodeGateway(config); err != nil {
 		util.LogFatalAndExit(err, "failed to initialize node gateway")
+	}
+
+	if err := initForOS(); err != nil {
+		util.LogFatalAndExit(err, "failed to do the OS initialization")
 	}
 
 	stopCh := signals.SetupSignalHandler().Done()
