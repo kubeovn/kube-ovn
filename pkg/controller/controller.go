@@ -798,7 +798,7 @@ func (c *Controller) Run(ctx context.Context) {
 	}
 
 	// sync ip crd before initIPAM since ip crd will be used to restore vm and statefulset pod in initIPAM
-	if err := c.initSyncCrdIPs(); err != nil {
+	if err := c.syncIPCR(); err != nil {
 		util.LogFatalAndExit(err, "failed to sync crd ips")
 	}
 
@@ -806,20 +806,16 @@ func (c *Controller) Run(ctx context.Context) {
 		util.LogFatalAndExit(err, "failed to initialize ipam")
 	}
 
-	if err := c.initNodeRoutes(); err != nil {
+	if err := c.syncNodeRoutes(); err != nil {
 		util.LogFatalAndExit(err, "failed to initialize node routes")
 	}
 
-	if err := c.initSyncCrdSubnets(); err != nil {
+	if err := c.syncSubnetCR(); err != nil {
 		util.LogFatalAndExit(err, "failed to sync crd subnets")
 	}
 
-	if err := c.initSyncCrdVlans(); err != nil {
+	if err := c.syncVlanCR(); err != nil {
 		util.LogFatalAndExit(err, "failed to sync crd vlans")
-	}
-
-	if err := c.addNodeGwStaticRoute(); err != nil {
-		util.LogFatalAndExit(err, "failed to add static route for node gateway")
 	}
 
 	// start workers to do all the network operations
@@ -1176,7 +1172,7 @@ func (c *Controller) initResourceOnce() {
 	}
 
 	if c.config.PodDefaultFipType == util.IptablesFip {
-		if err := c.initSyncCrdVpcNatGw(); err != nil {
+		if err := c.syncVpcNatGatewayCR(); err != nil {
 			util.LogFatalAndExit(err, "failed to sync crd vpc nat gateways")
 		}
 	}

@@ -106,7 +106,7 @@ var _ = framework.Describe("[group:webhook-pod]", func() {
 		}
 		pod.Annotations = annotations
 		_ = podClient.CreateSync(pod)
-		ipCr := podName + "." + namespaceName
+		ipCR := podName + "." + namespaceName
 
 		framework.WaitUntil(2*time.Second, time.Minute, func(ctx context.Context) (bool, error) {
 			checkPod, err := podClient.PodInterface.Get(ctx, podName, metav1.GetOptions{})
@@ -115,9 +115,9 @@ var _ = framework.Describe("[group:webhook-pod]", func() {
 		}, fmt.Sprintf("pod's annotation %s is true", util.RoutedAnnotation))
 
 		ginkgo.By("validate pod ip conflict")
-		framework.Logf("validate ip conflict, pod %s, ip cr %s, conflict pod %s", podName, ipCr, conflictName)
+		framework.Logf("validate ip conflict, pod %s, ip cr %s, conflict pod %s", podName, ipCR, conflictName)
 		conflictPod := framework.MakePod(namespaceName, conflictName, nil, annotations, image, cmd, nil)
 		_, err = podClient.PodInterface.Create(context.TODO(), conflictPod, metav1.CreateOptions{})
-		framework.ExpectError(err, "annotation static-ip %s is conflict with ip crd %s, ip %s", staticIP, ipCr, staticIP)
+		framework.ExpectError(err, "annotation static-ip %s is conflict with ip crd %s, ip %s", staticIP, ipCR, staticIP)
 	})
 })
