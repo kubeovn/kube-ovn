@@ -166,11 +166,7 @@ func (subnet *Subnet) popPodNic(podName, nicName string) {
 }
 
 func (subnet *Subnet) GetRandomAddress(podName, nicName string, mac string, skippedAddrs []string, checkConflict bool) (IP, IP, string, error) {
-	subnet.mutex.Lock()
-	defer func() {
-		subnet.pushPodNic(podName, nicName)
-		subnet.mutex.Unlock()
-	}()
+	defer subnet.pushPodNic(podName, nicName)
 
 	if subnet.Protocol == kubeovnv1.ProtocolDual {
 		return subnet.getDualRandomAddress(podName, nicName, mac, skippedAddrs, checkConflict)
