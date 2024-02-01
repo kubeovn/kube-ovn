@@ -163,6 +163,7 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr, gw string, excludeIps []strin
 		// update subnet
 		subnet.mutex.Lock()
 		defer subnet.mutex.Unlock()
+
 		subnet.Protocol = protocol
 		if protocol == kubeovnv1.ProtocolDual || protocol == kubeovnv1.ProtocolIPv4 {
 			_, cidr, _ := net.ParseCIDR(v4cidrStr)
@@ -202,16 +203,17 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr, gw string, excludeIps []strin
 	}
 
 	// new subnet
+	klog.Infof("adding new subnet %s", name)
 	ipam.mutex.Lock()
 	defer ipam.mutex.Unlock()
 
 	subnet, err := NewSubnet(name, cidrStr, excludeIps)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 	subnet.V4Gw = v4Gw
 	subnet.V6Gw = v6Gw
-	klog.Infof("adding new subnet %s", name)
 	ipam.Subnets[name] = subnet
 	return nil
 }
