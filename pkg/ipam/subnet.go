@@ -203,6 +203,9 @@ func (subnet *Subnet) getV4RandomAddress(podName, nicName string, mac string, sk
 	// After 'macAdd' introduced to support only static mac address, pod restart will run into error mac AddressConflict
 	// controller will re-enqueue the new pod then wait for old pod deleted and address released.
 	// here will return only if both ip and mac exist, otherwise only ip without mac returned will trigger CreatePort error.
+	subnet.mutex.Lock()
+	defer subnet.mutex.Unlock()
+
 	if subnet.V4NicToIP[nicName] != "" && subnet.NicToMac[nicName] != "" {
 		if !util.ContainsString(skippedAddrs, string(subnet.V4NicToIP[nicName])) {
 			return subnet.V4NicToIP[nicName], "", subnet.NicToMac[nicName], nil
@@ -269,6 +272,8 @@ func (subnet *Subnet) getV6RandomAddress(podName, nicName string, mac string, sk
 	// After 'macAdd' introduced to support only static mac address, pod restart will run into error mac AddressConflict
 	// controller will re-enqueue the new pod then wait for old pod deleted and address released.
 	// here will return only if both ip and mac exist, otherwise only ip without mac returned will trigger CreatePort error.
+	subnet.mutex.Lock()
+	defer subnet.mutex.Unlock()
 	if subnet.V6NicToIP[nicName] != "" && subnet.NicToMac[nicName] != "" {
 		if !util.ContainsString(skippedAddrs, string(subnet.V6NicToIP[nicName])) {
 			return "", subnet.V6NicToIP[nicName], subnet.NicToMac[nicName], nil
@@ -477,7 +482,9 @@ func (subnet *Subnet) releaseAddr(podName, nicName string) {
 			}
 
 			if merged, newReleasedList := mergeIPRangeList(subnet.V4ReleasedIPList, ip); !changed && merged {
+				subnet.mutex.Lock()
 				subnet.V4ReleasedIPList = newReleasedList
+				subnet.mutex.Unlock()
 				klog.Infof("release v4 %s mac %s for %s, add ip to released list", ip, mac, podName)
 			}
 		}
@@ -507,7 +514,9 @@ func (subnet *Subnet) releaseAddr(podName, nicName string) {
 			}
 
 			if merged, newReleasedList := mergeIPRangeList(subnet.V6ReleasedIPList, ip); !changed && merged {
+				subnet.mutex.Lock()
 				subnet.V6ReleasedIPList = newReleasedList
+				subnet.mutex.Unlock()
 				klog.Infof("release v6 %s mac %s for %s, add ip to released list", ip, mac, podName)
 			}
 		}

@@ -131,10 +131,6 @@ func (ipam *IPAM) ReleaseAddressByPod(podName, subnetName string) {
 
 func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr, gw string, excludeIps []string) error {
 	excludeIps = util.ExpandExcludeIPs(excludeIps, cidrStr)
-
-	ipam.mutex.Lock()
-	defer ipam.mutex.Unlock()
-
 	var v4cidrStr, v6cidrStr, v4Gw, v6Gw string
 	var cidrs []*net.IPNet
 	for _, cidrBlock := range strings.Split(cidrStr, ",") {
@@ -164,6 +160,9 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr, gw string, excludeIps []strin
 	v4ExcludeIps, v6ExcludeIps := util.SplitIpsByProtocol(excludeIps)
 
 	if subnet, ok := ipam.Subnets[name]; ok {
+		// update subnet
+		subnet.mutex.Lock()
+		defer subnet.mutex.Unlock()
 		subnet.Protocol = protocol
 		if protocol == kubeovnv1.ProtocolDual || protocol == kubeovnv1.ProtocolIPv4 {
 			_, cidr, _ := net.ParseCIDR(v4cidrStr)
@@ -201,6 +200,10 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr, gw string, excludeIps []strin
 		}
 		return nil
 	}
+
+	// new subnet
+	ipam.mutex.Lock()
+	defer ipam.mutex.Unlock()
 
 	subnet, err := NewSubnet(name, cidrStr, excludeIps)
 	if err != nil {

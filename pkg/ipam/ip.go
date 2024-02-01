@@ -118,8 +118,8 @@ func mergeIPRangeList(iprl IPRangeList, ip IP) (bool, IPRangeList) {
 	}
 
 	mergedIPRangeList := []*IPRange{}
-	for _, ipr := range insertIPRangeList {
-		if len(mergedIPRangeList) == 0 {
+	for index, ipr := range insertIPRangeList {
+		if index == 0 {
 			mergedIPRangeList = append(mergedIPRangeList, ipr)
 			continue
 		}
