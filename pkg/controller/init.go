@@ -280,7 +280,12 @@ func (c *Controller) InitIPAM() error {
 		klog.Errorf("failed to list subnet: %v", err)
 		return err
 	}
-	for _, subnet := range subnets {
+	for _, cachedSubnet := range subnets {
+		subnet := cachedSubnet.DeepCopy()
+		if err = formatSubnet(subnet, c); err != nil {
+			klog.Errorf("failed to format subnet %s, %v", subnet.Name, err)
+			return err
+		}
 		if err := c.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps); err != nil {
 			klog.Errorf("failed to init subnet %s: %v", subnet.Name, err)
 		}

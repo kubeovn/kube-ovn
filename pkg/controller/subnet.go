@@ -284,6 +284,7 @@ func formatSubnet(subnet *kubeovnv1.Subnet, c *Controller) error {
 
 	changed, err = checkSubnetChanged(subnet)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 	if subnet.Spec.Provider == "" {
@@ -299,7 +300,7 @@ func formatSubnet(subnet *kubeovnv1.Subnet, c *Controller) error {
 		subnet.Spec.GatewayType = kubeovnv1.GWDistributedType
 		changed = true
 	}
-	if subnet.Spec.Vpc == "" {
+	if subnet.Spec.Vpc == "" && subnet.Spec.Provider == util.OvnProvider {
 		changed = true
 		subnet.Spec.Vpc = util.DefaultVpc
 
@@ -322,7 +323,7 @@ func formatSubnet(subnet *kubeovnv1.Subnet, c *Controller) error {
 
 	klog.Infof("format subnet %v, changed %v", subnet.Name, changed)
 	if changed {
-		_, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Update(context.Background(), subnet, metav1.UpdateOptions{})
+		subnet, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Update(context.Background(), subnet, metav1.UpdateOptions{})
 		if err != nil {
 			klog.Errorf("failed to update subnet %s, %v", subnet.Name, err)
 			return err
@@ -339,14 +340,16 @@ func checkSubnetChanged(subnet *kubeovnv1.Subnet) (bool, error) {
 	// changed value may be overlapped, so use ret to record value
 	changed, err = checkAndUpdateCIDR(subnet)
 	if err != nil {
-		return changed, err
+		klog.Error(err)
+		return false, err
 	}
 	if changed {
 		ret = true
 	}
 	changed, err = checkAndUpdateGateway(subnet)
 	if err != nil {
-		return changed, err
+		klog.Error(err)
+		return false, err
 	}
 	if changed {
 		ret = true
@@ -513,37 +516,39 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		klog.Error(err)
 		return err
 	}
-
-	vpc, err := c.vpcsLister.Get(subnet.Spec.Vpc)
-	if err != nil {
-		klog.Errorf("failed to get subnet's vpc '%s', %v", subnet.Spec.Vpc, err)
-		return err
-	}
-	if !vpc.Status.Standby {
-		err = fmt.Errorf("the vpc '%s' not standby yet", vpc.Name)
-		klog.Error(err)
-		return err
-	}
-
-	if !vpc.Status.Default {
-		for _, ns := range subnet.Spec.Namespaces {
-			if !util.ContainsString(vpc.Spec.Namespaces, ns) {
-				err = fmt.Errorf("namespace '%s' is out of range to custom vpc '%s'", ns, vpc.Name)
-				klog.Error(err)
-				return err
-			}
-		}
-	} else {
-		vpcs, err := c.vpcsLister.List(labels.Everything())
+	var vpc *kubeovnv1.Vpc
+	if subnet.Spec.Vpc != "" {
+		vpc, err = c.vpcsLister.Get(subnet.Spec.Vpc)
 		if err != nil {
-			klog.Errorf("failed to list vpc, %v", err)
+			klog.Errorf("failed to get subnet's vpc '%s', %v", subnet.Spec.Vpc, err)
 			return err
 		}
-		for _, vpc := range vpcs {
-			if subnet.Spec.Vpc != vpc.Name && !vpc.Status.Default && util.IsStringsOverlap(vpc.Spec.Namespaces, subnet.Spec.Namespaces) {
-				err = fmt.Errorf("namespaces %v are overlap with vpc '%s'", subnet.Spec.Namespaces, vpc.Name)
-				klog.Error(err)
+		if !vpc.Status.Standby {
+			err = fmt.Errorf("the vpc '%s' not standby yet", vpc.Name)
+			klog.Error(err)
+			return err
+		}
+
+		if !vpc.Status.Default {
+			for _, ns := range subnet.Spec.Namespaces {
+				if !util.ContainsString(vpc.Spec.Namespaces, ns) {
+					err = fmt.Errorf("namespace '%s' is out of range to custom vpc '%s'", ns, vpc.Name)
+					klog.Error(err)
+					return err
+				}
+			}
+		} else {
+			vpcs, err := c.vpcsLister.List(labels.Everything())
+			if err != nil {
+				klog.Errorf("failed to list vpc, %v", err)
 				return err
+			}
+			for _, vpc := range vpcs {
+				if subnet.Spec.Vpc != vpc.Name && !vpc.Status.Default && util.IsStringsOverlap(vpc.Spec.Namespaces, subnet.Spec.Namespaces) {
+					err = fmt.Errorf("namespaces %v are overlap with vpc '%s'", subnet.Spec.Namespaces, vpc.Name)
+					klog.Error(err)
+					return err
+				}
 			}
 		}
 	}
@@ -560,6 +565,15 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 	}
 	if err != nil {
 		klog.Errorf("calculate subnet %s used ip failed, %v", subnet.Name, err)
+		return err
+	}
+
+	subnet, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Get(context.Background(), key, metav1.GetOptions{})
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		klog.Errorf("failed to get subnet %s error %v", key, err)
 		return err
 	}
 
