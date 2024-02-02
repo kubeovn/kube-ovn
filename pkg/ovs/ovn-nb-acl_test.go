@@ -445,11 +445,11 @@ func (suite *OvnClientTestSuite) testCreateSgBaseACL() {
 
 	ovnClient := suite.ovnClient
 
-	expect := func(pg *ovnnb.PortGroup, match string) {
-		arpACL, err := ovnClient.GetACL(pg.Name, ovnnb.ACLDirectionToLport, util.SecurityGroupBasePriority, match, false)
+	expect := func(pg *ovnnb.PortGroup, match, direction string) {
+		arpACL, err := ovnClient.GetACL(pg.Name, direction, util.SecurityGroupBasePriority, match, false)
 		require.NoError(t, err)
 
-		expect := newACL(pg.Name, ovnnb.ACLDirectionToLport, util.SecurityGroupBasePriority, match, ovnnb.ACLActionAllowRelated, func(acl *ovnnb.ACL) {
+		expect := newACL(pg.Name, direction, util.SecurityGroupBasePriority, match, ovnnb.ACLActionAllowRelated, func(acl *ovnnb.ACL) {
 			acl.UUID = arpACL.UUID
 		})
 
@@ -477,23 +477,23 @@ func (suite *OvnClientTestSuite) testCreateSgBaseACL() {
 
 		// arp
 		match := fmt.Sprintf("%s == @%s && arp", portDirection, pgName)
-		expect(pg, match)
+		expect(pg, match, ovnnb.ACLDirectionToLport)
 
 		// icmpv6
 		match = fmt.Sprintf("%s == @%s && icmp6.type == {130, 134, 135, 136} && icmp6.code == 0 && ip.ttl == 255", portDirection, pgName)
-		expect(pg, match)
+		expect(pg, match, ovnnb.ACLDirectionToLport)
 
 		// dhcpv4
 		match = fmt.Sprintf("%s == @%s && udp.src == 67 && udp.dst == 68 && ip4", portDirection, pgName)
-		expect(pg, match)
+		expect(pg, match, ovnnb.ACLDirectionToLport)
 
 		// dhcpv6
 		match = fmt.Sprintf("%s == @%s && udp.src == 547 && udp.dst == 546 && ip6", portDirection, pgName)
-		expect(pg, match)
+		expect(pg, match, ovnnb.ACLDirectionToLport)
 
 		// vrrp
 		match = fmt.Sprintf("%s == @%s && ip.proto == 112", portDirection, pgName)
-		expect(pg, match)
+		expect(pg, match, ovnnb.ACLDirectionToLport)
 	})
 
 	t.Run("create sg base egress acl", func(t *testing.T) {
@@ -516,23 +516,23 @@ func (suite *OvnClientTestSuite) testCreateSgBaseACL() {
 
 		// arp
 		match := fmt.Sprintf("%s == @%s && arp", portDirection, pgName)
-		expect(pg, match)
+		expect(pg, match, ovnnb.ACLDirectionFromLport)
 
 		// icmpv6
 		match = fmt.Sprintf("%s == @%s && icmp6.type == {130, 133, 135, 136} && icmp6.code == 0 && ip.ttl == 255", portDirection, pgName)
-		expect(pg, match)
+		expect(pg, match, ovnnb.ACLDirectionFromLport)
 
 		// dhcpv4
 		match = fmt.Sprintf("%s == @%s && udp.src == 68 && udp.dst == 67 && ip4", portDirection, pgName)
-		expect(pg, match)
+		expect(pg, match, ovnnb.ACLDirectionFromLport)
 
 		// dhcpv6
 		match = fmt.Sprintf("%s == @%s && udp.src == 546 && udp.dst == 547 && ip6", portDirection, pgName)
-		expect(pg, match)
+		expect(pg, match, ovnnb.ACLDirectionFromLport)
 
 		// vrrp
 		match = fmt.Sprintf("%s == @%s && ip.proto == 112", portDirection, pgName)
-		expect(pg, match)
+		expect(pg, match, ovnnb.ACLDirectionFromLport)
 	})
 }
 
