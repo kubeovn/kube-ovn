@@ -336,8 +336,6 @@ func (subnet *Subnet) getV6RandomAddress(podName, nicName string, mac string, sk
 }
 
 func (subnet *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac string, force bool, checkConflict bool) (IP, string, error) {
-	defer subnet.pushPodNic(podName, nicName)
-
 	var v4, v6 bool
 	if net.ParseIP(string(ip)).To4() != nil {
 		v4 = subnet.V4CIDR != nil
@@ -357,6 +355,12 @@ func (subnet *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac strin
 		klog.Errorf("v6 ip %s is out of range of subnet %s", ip, subnet.Name)
 		return ip, mac, ErrOutOfRange
 	}
+
+	subnet.mutex.Lock()
+	defer func() {
+		subnet.pushPodNic(podName, nicName)
+		subnet.mutex.Unlock()
+	}()
 
 	if mac == "" {
 		if m, ok := subnet.NicToMac[nicName]; ok {
