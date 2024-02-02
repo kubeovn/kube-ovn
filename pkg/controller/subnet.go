@@ -810,6 +810,9 @@ func (c *Controller) handleUpdateSubnetStatus(key string) error {
 }
 
 func (c *Controller) handleDeleteRoute(subnet *kubeovnv1.Subnet) error {
+	if subnet.Spec.Vpc == "" {
+		return nil
+	}
 	vpc, err := c.vpcsLister.Get(subnet.Spec.Vpc)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -1565,6 +1568,9 @@ func (c *Controller) reconcileVlan(subnet *kubeovnv1.Subnet) error {
 }
 
 func (c *Controller) reconcileU2OInterconnectionIP(subnet *kubeovnv1.Subnet) error {
+	if subnet.Spec.Vpc == "" {
+		return nil
+	}
 
 	needCalcIP := false
 	klog.Infof("reconcile underlay subnet %s  to overlay interconnection with U2OInterconnection %v U2OInterconnectionIP %s ",
@@ -2174,6 +2180,9 @@ func (c *Controller) deletePolicyRouteForDistributedSubnet(subnet *kubeovnv1.Sub
 }
 
 func (c *Controller) deletePolicyRouteByGatewayType(subnet *kubeovnv1.Subnet, gatewayType string, isDelete bool) error {
+	if subnet.Spec.Vpc == "" {
+		return nil
+	}
 	if (subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway) || subnet.Spec.Vpc != util.DefaultVpc {
 		return nil
 	}
@@ -2230,7 +2239,9 @@ func (c *Controller) deletePolicyRouteByGatewayType(subnet *kubeovnv1.Subnet, ga
 }
 
 func (c *Controller) addPolicyRouteForU2OInterconn(subnet *kubeovnv1.Subnet) error {
-
+	if subnet.Spec.Vpc == "" {
+		return nil
+	}
 	var v4Gw, v6Gw string
 	for _, gw := range strings.Split(subnet.Spec.Gateway, ",") {
 		switch util.CheckProtocol(gw) {
@@ -2344,7 +2355,9 @@ func (c *Controller) addPolicyRouteForU2OInterconn(subnet *kubeovnv1.Subnet) err
 }
 
 func (c *Controller) deletePolicyRouteForU2OInterconn(subnet *kubeovnv1.Subnet) error {
-
+	if subnet.Spec.Vpc == "" {
+		return nil
+	}
 	results, err := c.ovnLegacyClient.CustomFindEntity("Logical_Router_Policy", []string{"_uuid", "match", "priority"},
 		"external_ids:isU2ORoutePolicy=\"true\"",
 		fmt.Sprintf("external_ids:vendor=\"%s\"", util.CniTypeName),
@@ -2396,7 +2409,9 @@ func (c *Controller) addCustomVPCPolicyRoutesForSubnet(subnet *kubeovnv1.Subnet)
 }
 
 func (c *Controller) deleteCustomVPCPolicyRoutesForSubnet(subnet *kubeovnv1.Subnet) error {
-
+	if subnet.Spec.Vpc == "" {
+		return nil
+	}
 	for _, cidr := range strings.Split(subnet.Spec.CIDRBlock, ",") {
 		af := 4
 		if util.CheckProtocol(cidr) == kubeovnv1.ProtocolIPv6 {
@@ -2413,6 +2428,10 @@ func (c *Controller) deleteCustomVPCPolicyRoutesForSubnet(subnet *kubeovnv1.Subn
 }
 
 func (c *Controller) clearOldU2OResource(subnet *kubeovnv1.Subnet) error {
+	if subnet.Spec.Vpc == "" {
+		return nil
+	}
+
 	if subnet.Status.U2OInterconnectionVPC != "" &&
 		(!subnet.Spec.U2OInterconnection || (subnet.Spec.U2OInterconnection && subnet.Status.U2OInterconnectionVPC != subnet.Spec.Vpc)) {
 		// remove old u2o lsp and lrp first

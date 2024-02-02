@@ -1033,6 +1033,9 @@ func (c LegacyClient) AddStaticRoute(policy, cidr, nextHop, router string, route
 
 // AddPolicyRoute add a policy route rule in ovn
 func (c LegacyClient) AddPolicyRoute(router string, priority int32, match, action, nextHop string, externalIDs map[string]string) error {
+	if router == "" {
+		return nil
+	}
 	consistent, err := c.CheckPolicyRouteNexthopConsistent(router, match, nextHop, priority)
 	if err != nil {
 		return err
@@ -1082,6 +1085,9 @@ func (c LegacyClient) AddPolicyRoute(router string, priority int32, match, actio
 
 // DeletePolicyRoute delete a policy route rule in ovn
 func (c LegacyClient) DeletePolicyRoute(router string, priority int32, match string) error {
+	if router == "" {
+		return nil
+	}
 	exist, err := c.IsPolicyRouteExist(router, priority, match)
 	if err != nil {
 		return err
