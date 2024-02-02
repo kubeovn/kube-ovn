@@ -1646,18 +1646,20 @@ func (c *Controller) checkSubnetStatus(subnetName string, subnetCR *kubeovnv1.Su
 		klog.Error(err)
 		return err
 	}
+
+	// subnetCR.Status update is later than ipam subnet
+	// subnet status available ips should be consistent with ipam subnet ASAP, especially when ipam subnet has no available ips
 	if subnetCR.Status.V4AvailableIPs != 0 && len(subnet.V4FreeIPList) == 0 && len(subnet.V4ReleasedIPList) == 0 {
-		err := fmt.Errorf("update ipam subnet %s to make sure v4 available ip", subnet.Name)
-		klog.Error(err)
+		klog.Warningf("subnet %s v4AvailableIPs %.0f, v4FreeIPList and v4ReleasedIPList has 0 ip", subnet.Name, subnetCR.Status.V4AvailableIPs)
+		// subnet reinitialize, make sure the status is consistent with ipam
 		c.addOrUpdateSubnetQueue.Add(subnetName)
-		return err
 	}
 	if subnetCR.Status.V6AvailableIPs != 0 && len(subnet.V6FreeIPList) == 0 && len(subnet.V6ReleasedIPList) == 0 {
-		err := fmt.Errorf("update ipam subnet %s to make sure v6 available ip", subnet.Name)
-		klog.Error(err)
+		klog.Warningf("subnet %s v6AvailableIPs %.0f, v6FreeIPList and v6ReleasedIPList has 0 ip", subnet.Name, subnetCR.Status.V6AvailableIPs)
+		// subnet reinitialize, make sure the status is consistent with ipam
 		c.addOrUpdateSubnetQueue.Add(subnetName)
-		return err
 	}
+
 	return nil
 }
 
