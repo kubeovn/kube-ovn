@@ -1648,14 +1648,14 @@ func (c *Controller) checkSubnetStatus(subnetName string, subnetCR *kubeovnv1.Su
 	}
 	if subnetCR.Status.V4AvailableIPs != 0 && len(subnet.V4FreeIPList) == 0 && len(subnet.V4ReleasedIPList) == 0 {
 		err := fmt.Errorf("update ipam subnet %s to make sure v4 available ip", subnet.Name)
-		c.addOrUpdateSubnetQueue.Add(subnetName)
 		klog.Error(err)
+		c.addOrUpdateSubnetQueue.Add(subnetName)
 		return err
 	}
 	if subnetCR.Status.V6AvailableIPs != 0 && len(subnet.V6FreeIPList) == 0 && len(subnet.V6ReleasedIPList) == 0 {
 		err := fmt.Errorf("update ipam subnet %s to make sure v6 available ip", subnet.Name)
-		c.addOrUpdateSubnetQueue.Add(subnetName)
 		klog.Error(err)
+		c.addOrUpdateSubnetQueue.Add(subnetName)
 		return err
 	}
 	return nil
