@@ -303,7 +303,7 @@ func (c *OVNNbClient) CreateSgBaseACL(sgName, direction string) error {
 	acls := make([]*ovnnb.ACL, 0)
 
 	newACL := func(match string) {
-		acl, err := c.newACL(pgName, ovnnb.ACLDirectionToLport, util.SecurityGroupBasePriority, match, ovnnb.ACLActionAllowRelated)
+		acl, err := c.newACL(pgName, direction, util.SecurityGroupBasePriority, match, ovnnb.ACLActionAllowRelated)
 		if err != nil {
 			klog.Error(err)
 			klog.Errorf("new base ingress acl for security group %s: %v", sgName, err)
