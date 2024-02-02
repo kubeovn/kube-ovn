@@ -1770,45 +1770,6 @@ func (c *Controller) isDnatDuplicated(gwName, eipName, dnatName, externalPort st
 	return false, nil
 }
 
-func (c *Controller) createOrUpdateFipCR(key, eipName, internalIP string) error {
-	cachedFip, err := c.iptablesFipsLister.Get(key)
-	if err != nil {
-		klog.V(3).Infof("create fip cr %s", key)
-		if k8serrors.IsNotFound(err) {
-			if _, err := c.config.KubeOvnClient.KubeovnV1().IptablesFIPRules().Create(context.Background(), &kubeovnv1.IptablesFIPRule{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: key,
-				},
-				Spec: kubeovnv1.IptablesFIPRuleSpec{
-					EIP:        eipName,
-					InternalIP: internalIP,
-				},
-			}, metav1.CreateOptions{}); err != nil {
-				errMsg := fmt.Errorf("failed to create fip crd %s, %v", key, err)
-				klog.Error(errMsg)
-				return errMsg
-			}
-		} else {
-			errMsg := fmt.Errorf("failed to get fip crd %s, %v", key, err)
-			klog.Error(errMsg)
-			return errMsg
-		}
-	} else {
-		klog.V(3).Infof("update fip cr %s", key)
-		fip := cachedFip.DeepCopy()
-		if fip.Spec.EIP != eipName || fip.Spec.InternalIP != internalIP {
-			fip.Spec.EIP = eipName
-			fip.Spec.InternalIP = internalIP
-			if _, err := c.config.KubeOvnClient.KubeovnV1().IptablesFIPRules().Update(context.Background(), fip, metav1.UpdateOptions{}); err != nil {
-				errMsg := fmt.Errorf("failed to update eip crd %s, %v", key, err)
-				klog.Error(errMsg)
-				return errMsg
-			}
-		}
-	}
-	return nil
-}
-
 func (c *Controller) updateIptableLabels(name, op, natType string, labels map[string]string) error {
 	patchPayloadTemplate := `[{ "op": "%s", "path": "/metadata/labels", "value": %s }]`
 	raw, _ := json.Marshal(labels)

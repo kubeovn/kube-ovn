@@ -920,22 +920,6 @@ func (c *Controller) updateCrdNatGwLabels(key, qos string) error {
 	return nil
 }
 
-func (c *Controller) getNatGw(router, subnet string) (string, error) {
-	selectors := labels.Set{util.VpcNameLabel: router, util.SubnetNameLabel: subnet}.AsSelector()
-	gws, err := c.vpcNatGatewayLister.List(selectors)
-	if err != nil {
-		klog.Error(err)
-		return "", err
-	}
-	if len(gws) == 1 {
-		return gws[0].Name, nil
-	}
-	if len(gws) == 0 {
-		return "", fmt.Errorf("no vpc nat gw found by selector %v", selectors)
-	}
-	return "", fmt.Errorf("too many nat gw")
-}
-
 func (c *Controller) patchNatGwQoSStatus(key, qos string) error {
 	// add qos label to vpc nat gw
 	var changed bool

@@ -716,21 +716,6 @@ func Run(ctx context.Context, config *Configuration) {
 		util.LogFatalAndExit(err, "failed to add ovn dnat rule event handler")
 	}
 
-	if _, err = podAnnotatedIptablesEipInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    controller.enqueueAddPodAnnotatedIptablesEip,
-		UpdateFunc: controller.enqueueUpdatePodAnnotatedIptablesEip,
-		DeleteFunc: controller.enqueueDeletePodAnnotatedIptablesEip,
-	}); err != nil {
-		util.LogFatalAndExit(err, "failed to add pod iptables eip event handler")
-	}
-	if _, err = podAnnotatedIptablesFipInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    controller.enqueueAddPodAnnotatedIptablesFip,
-		UpdateFunc: controller.enqueueUpdatePodAnnotatedIptablesFip,
-		DeleteFunc: controller.enqueueDeletePodAnnotatedIptablesFip,
-	}); err != nil {
-		util.LogFatalAndExit(err, "failed to add pod iptables fip event handler")
-	}
-
 	if _, err = qosPolicyInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    controller.enqueueAddQoSPolicy,
 		UpdateFunc: controller.enqueueUpdateQoSPolicy,
@@ -1137,12 +1122,6 @@ func (c *Controller) startWorkers(ctx context.Context) {
 	go wait.Until(c.runAddQoSPolicyWorker, time.Second, ctx.Done())
 	go wait.Until(c.runUpdateQoSPolicyWorker, time.Second, ctx.Done())
 	go wait.Until(c.runDelQoSPolicyWorker, time.Second, ctx.Done())
-
-	go wait.Until(c.runAddPodAnnotatedIptablesEipWorker, time.Second, ctx.Done())
-	go wait.Until(c.runDelPodAnnotatedIptablesEipWorker, time.Second, ctx.Done())
-
-	go wait.Until(c.runAddPodAnnotatedIptablesFipWorker, time.Second, ctx.Done())
-	go wait.Until(c.runDelPodAnnotatedIptablesFipWorker, time.Second, ctx.Done())
 }
 
 func (c *Controller) allSubnetReady(subnets ...string) (bool, error) {
