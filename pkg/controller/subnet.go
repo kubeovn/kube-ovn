@@ -1653,11 +1653,13 @@ func (c *Controller) checkSubnetStatus(subnetName string, subnetCR *kubeovnv1.Su
 		klog.Warningf("subnet %s v4AvailableIPs %.0f, v4FreeIPList and v4ReleasedIPList has 0 ip", subnet.Name, subnetCR.Status.V4AvailableIPs)
 		// subnet reinitialize, make sure the status is consistent with ipam
 		c.addOrUpdateSubnetQueue.Add(subnetName)
+		return nil
 	}
 	if subnetCR.Status.V6AvailableIPs != 0 && len(subnet.V6FreeIPList) == 0 && len(subnet.V6ReleasedIPList) == 0 {
 		klog.Warningf("subnet %s v6AvailableIPs %.0f, v6FreeIPList and v6ReleasedIPList has 0 ip", subnet.Name, subnetCR.Status.V6AvailableIPs)
 		// subnet reinitialize, make sure the status is consistent with ipam
 		c.addOrUpdateSubnetQueue.Add(subnetName)
+		return nil
 	}
 
 	return nil
