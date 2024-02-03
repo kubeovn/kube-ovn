@@ -247,19 +247,53 @@ func (c *Controller) enqueueDeletePod(obj interface{}) {
 		return
 	}
 
-	p := obj.(*v1.Pod)
+	pod := obj.(*v1.Pod)
 	if c.config.EnableNP {
-		c.namedPort.DeleteNamedPortByPod(p)
-		for _, np := range c.podMatchNetworkPolicies(p) {
+		c.namedPort.DeleteNamedPortByPod(pod)
+		for _, np := range c.podMatchNetworkPolicies(pod) {
 			c.updateNpQueue.Add(np)
 		}
 	}
 
-	if p.Spec.HostNetwork {
+	if pod.Spec.HostNetwork {
 		return
 	}
 
-	klog.Infof("enqueue delete pod %s", key)
+	isStateful, statefulSetName := isStatefulSetPod(pod)
+	isVmPod, vmName := isVmPod(pod)
+
+	if !isPodAlive(pod) && !isStateful && !isVmPod {
+		klog.Infof("enqueue delete pod %s", key)
+		c.deletePodQueue.Add(obj)
+		return
+	}
+
+	if pod.DeletionTimestamp != nil && !isStateful && !isVmPod {
+		// In case node get lost and pod can not be deleted,
+		// the ip address will not be recycled
+		delay := time.Duration(*pod.Spec.TerminationGracePeriodSeconds)
+		klog.Infof("after graceful period enqueue delete pod %s", key)
+		c.deletePodQueue.AddAfter(obj, delay*time.Second)
+		return
+	}
+
+	// do not delete statefulset pod unless ownerReferences is deleted
+	if isStateful && isStatefulSetPodToDel(c.config.KubeClient, pod, statefulSetName) {
+		delay := time.Duration(*pod.Spec.TerminationGracePeriodSeconds)
+		klog.Infof("after graceful period enqueue delete pod %s", key)
+		c.deletePodQueue.AddAfter(obj, delay*time.Second)
+		return
+	}
+
+	if isVmPod && c.isVmToDel(pod, vmName) {
+		delay := time.Duration(*pod.Spec.TerminationGracePeriodSeconds)
+		klog.Infof("after graceful period enqueue delete pod %s", key)
+		time.Sleep(delay * time.Second)
+		c.deletePodQueue.AddAfter(obj, delay*time.Second)
+		return
+	}
+
+	klog.Infof("normal enqueue delete pod %s", key)
 	c.deletePodQueue.Add(obj)
 }
 
@@ -292,40 +326,9 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 		return
 	}
 
-	isStateful, statefulSetName := isStatefulSetPod(newPod)
-	isVmPod, vmName := isVmPod(newPod)
-	if !isPodAlive(newPod) && !isStateful && !isVmPod {
-		klog.Infof("update pod process enqueue delete pod %s", key)
-		c.deletePodQueue.Add(newObj)
-		return
-	}
-
-	if newPod.DeletionTimestamp != nil && !isStateful && !isVmPod {
-		go func() {
-			// In case node get lost and pod can not be deleted,
-			// the ip address will not be recycled
-			time.Sleep(time.Duration(*newPod.Spec.TerminationGracePeriodSeconds) * time.Second)
-			klog.Infof("update pod process enqueue delete pod %s", key)
-			c.deletePodQueue.Add(newObj)
-		}()
-		return
-	}
-
-	// do not delete statefulset pod unless ownerReferences is deleted
-	if isStateful && isStatefulSetPodToDel(c.config.KubeClient, newPod, statefulSetName) {
-		go func() {
-			klog.Infof("update pod process enqueue delete sts pod %s", key)
-			time.Sleep(time.Duration(*newPod.Spec.TerminationGracePeriodSeconds) * time.Second)
-			c.deletePodQueue.Add(newObj)
-		}()
-		return
-	}
-	if isVmPod && c.isVmToDel(newPod, vmName) {
-		go func() {
-			klog.Infof("update pod process enqueue delete vm pod %s", key)
-			time.Sleep(time.Duration(*newPod.Spec.TerminationGracePeriodSeconds) * time.Second)
-			c.deletePodQueue.Add(newObj)
-		}()
+	if newPod.DeletionTimestamp != nil && util.ContainsString(newPod.Finalizers, util.Finalizer) {
+		klog.Infof("enqueue update for deleting pod %s", key)
+		c.updatePodQueue.Add(key)
 		return
 	}
 
@@ -350,7 +353,7 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 					}
 				}
 
-				klog.V(3).Infof("enqueue update pod %s", key)
+				klog.Infof("enqueue update pod %s", key)
 				c.updatePodQueue.Add(key)
 				break
 			}
@@ -746,12 +749,12 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 
 	podName := c.getNameByPod(pod)
 	key = fmt.Sprintf("%s/%s", pod.Namespace, podName)
+	klog.Infof("handle delete pod: %s", key)
 	p, _ := c.podsLister.Pods(pod.Namespace).Get(pod.Name)
 	if p != nil && p.UID != pod.UID {
 		// Pod with same name exists, just return here
 		return nil
 	}
-	klog.Infof("handle delete pod: %s", key)
 	podKey := fmt.Sprintf("%s/%s", pod.Namespace, podName)
 	var keepIpCR bool
 	if ok, sts := isStatefulSetPod(pod); ok {
@@ -854,12 +857,8 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 	for _, podNet := range podNets {
 		c.syncVirtualPortsQueue.Add(podNet.Subnet.Name)
 	}
-	if err := c.handleDelPodFinalizer(pod); err != nil {
-		klog.Errorf("handle pod finalizer failed %v", err)
-		return err
-	}
 	if !keepIpCR {
-		// subnet ipam lock will block delete pod finalizer
+		// subnet ipam lock will block
 		c.ipam.ReleaseAddressByPod(podKey, "")
 	}
 	return nil
@@ -942,6 +941,14 @@ func (c *Controller) handleUpdatePod(key string) error {
 			return nil
 		}
 		return err
+	}
+	if oriPod.DeletionTimestamp != nil {
+		if err := c.handleDelPodFinalizer(oriPod); err != nil {
+			klog.Errorf("failed to handle del finalizer for pod %s, %v", key, err)
+			return err
+		}
+		klog.Infof("skip update pod %s, because it is deleting", key)
+		return nil
 	}
 	pod := oriPod.DeepCopy()
 	podName := c.getNameByPod(pod)
