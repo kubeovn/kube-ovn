@@ -195,14 +195,17 @@ func (c *Controller) enqueueAddPod(obj interface{}) {
 			if isStateful && isStatefulSetPodToDel(c.config.KubeClient, p, statefulSetName) {
 				klog.V(3).Infof("enqueue delete pod %s", key)
 				c.deletePodQueue.Add(obj)
+				return
 			}
 			if isVmPod && c.isVmToDel(p, vmName) {
 				klog.V(3).Infof("enqueue delete pod %s", key)
 				c.deletePodQueue.Add(obj)
+				return
 			}
 		} else {
 			klog.V(3).Infof("enqueue delete pod %s", key)
 			c.deletePodQueue.Add(obj)
+			return
 		}
 		return
 	}
@@ -1542,6 +1545,7 @@ func appendCheckPodToDel(c *Controller, pod *v1.Pod, ownerRefName, ownerRefKind 
 		klog.Errorf("failed to get namespace %s, %v", pod.Namespace, err)
 		return false, err
 	}
+	key := fmt.Sprintf("%s/%s", pod.Namespace, pod.Name)
 
 	// check if subnet exist in OwnerReference
 	var ownerRefSubnetExist bool
@@ -1583,7 +1587,7 @@ func appendCheckPodToDel(c *Controller, pod *v1.Pod, ownerRefName, ownerRefKind 
 		nsSubnetNames := podNs.Annotations[util.LogicalSwitchAnnotation]
 		// check if pod use the subnet of its ns
 		if nsSubnetNames != "" && pod.Annotations[util.LogicalSwitchAnnotation] != "" && !util.ContainsString(strings.Split(nsSubnetNames, ","), strings.TrimSpace(pod.Annotations[util.LogicalSwitchAnnotation])) {
-			klog.Infof("ns %s annotation subnet is %s, which is inconstant with subnet for pod %s, delete pod", pod.Namespace, podNs.Annotations[util.LogicalSwitchAnnotation], pod.Name)
+			klog.Infof("ns %s annotation subnet is %s, which is inconstant with subnet for pod %s, delete pod", pod.Namespace, podNs.Annotations[util.LogicalSwitchAnnotation], key)
 			return true, nil
 		}
 	}
@@ -1595,12 +1599,12 @@ func appendCheckPodToDel(c *Controller, pod *v1.Pod, ownerRefName, ownerRefKind 
 		return false, err
 	}
 	if podSubnet != nil && !util.CIDRContainIP(podSubnet.Spec.CIDRBlock, pod.Annotations[util.IpAddressAnnotation]) {
-		klog.Infof("pod's ip %s is not in the range of subnet %s, delete pod", pod.Annotations[util.IpAddressAnnotation], podSubnet.Name)
+		klog.Infof("pod %s ip %s is not in the range of subnet %s, delete pod", key, pod.Annotations[util.IpAddressAnnotation], podSubnet.Name)
 		return true, nil
 	}
 	// subnet of ownerReference(sts/vm) has been changed, it needs to handle delete pod and create port on the new logical switch
 	if podSubnet != nil && ownerRefSubnet != "" && podSubnet.Name != ownerRefSubnet {
-		klog.Infof("Subnet of owner %s has been changed from %s to %s, delete pod %s/%s", ownerRefName, podSubnet.Name, ownerRefSubnet, pod.Namespace, pod.Name)
+		klog.Infof("Subnet of owner %s has been changed from %s to %s, delete pod %s", ownerRefName, podSubnet.Name, ownerRefSubnet, key)
 		return true, nil
 	}
 
