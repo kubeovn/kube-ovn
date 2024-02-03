@@ -843,7 +843,6 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 				klog.Errorf("failed to delete ip for pod %s, %v, please delete manually", pod.Name, err)
 			}
 		}
-		c.ipam.ReleaseAddressByPod(podKey, "")
 		if pod.Annotations[util.VipAnnotation] != "" {
 			if err = c.releaseVip(pod.Annotations[util.VipAnnotation]); err != nil {
 				klog.Errorf("failed to clean label from vip %s, %v", pod.Annotations[util.VipAnnotation], err)
@@ -857,6 +856,10 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 	if err := c.handleDelPodFinalizer(pod); err != nil {
 		klog.Errorf("handle pod finalizer failed %v", err)
 		return err
+	}
+	if !keepIpCR {
+		// subnet ipam lock will block delete pod finalizer
+		c.ipam.ReleaseAddressByPod(podKey, "")
 	}
 	return nil
 }

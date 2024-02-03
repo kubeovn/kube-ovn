@@ -116,8 +116,6 @@ func checkAndAppendIpsForDual(ips []IP, mac string, podName string, nicName stri
 }
 
 func (ipam *IPAM) ReleaseAddressByPod(podName, subnetName string) {
-	ipam.mutex.RLock()
-	defer ipam.mutex.RUnlock()
 	if subnetName != "" {
 		if subnet, ok := ipam.Subnets[subnetName]; ok {
 			subnet.ReleaseAddress(podName)
