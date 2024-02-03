@@ -483,15 +483,17 @@ func (c Controller) patchSubnetStatus(subnet *kubeovnv1.Subnet, reason string, e
 }
 
 func (c *Controller) handleAddOrUpdateSubnet(key string) error {
-	var err error
+	klog.V(3).Infof("handle add or update subnet %s", key)
+
 	cachedSubnet, err := c.subnetsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
+			klog.V(3).Infof("subnet %s not found", key)
 			return nil
 		}
+		klog.Errorf("failed to get subnet %s error %v", key, err)
 		return err
 	}
-	klog.V(4).Infof("handle add or update subnet %s", cachedSubnet.Name)
 
 	subnet := cachedSubnet.DeepCopy()
 	if err = formatSubnet(subnet, c); err != nil {
