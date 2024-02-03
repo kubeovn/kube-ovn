@@ -204,9 +204,6 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr, gw string, excludeIps []strin
 
 	// new subnet
 	klog.Infof("adding new subnet %s", name)
-	ipam.mutex.Lock()
-	defer ipam.mutex.Unlock()
-
 	subnet, err := NewSubnet(name, cidrStr, excludeIps)
 	if err != nil {
 		klog.Error(err)
@@ -214,6 +211,9 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr, gw string, excludeIps []strin
 	}
 	subnet.V4Gw = v4Gw
 	subnet.V6Gw = v6Gw
+
+	ipam.mutex.Lock()
+	defer ipam.mutex.Unlock()
 	ipam.Subnets[name] = subnet
 	return nil
 }
