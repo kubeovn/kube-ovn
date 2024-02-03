@@ -5,6 +5,8 @@ const (
 
 	ControllerName = "kube-ovn-controller"
 
+	Finalizer = "ovn.kubernetes.io/controller"
+
 	AllocatedAnnotation  = "ovn.kubernetes.io/allocated"
 	RoutedAnnotation     = "ovn.kubernetes.io/routed"
 	MacAddressAnnotation = "ovn.kubernetes.io/mac_address"

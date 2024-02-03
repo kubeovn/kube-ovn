@@ -22,6 +22,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ipam"
@@ -438,7 +439,6 @@ func (c *Controller) processNextDeletePodWorkItem() bool {
 			utilruntime.HandleError(fmt.Errorf("expected pod in workqueue but got %#v", obj))
 			return nil
 		}
-		klog.Infof("handle delete pod %s/%s", pod.Namespace, pod.Name)
 		if err := c.handleDeletePod(pod); err != nil {
 			c.deletePodQueue.AddRateLimited(obj)
 			return fmt.Errorf("error syncing '%s': %s, requeuing", pod.Name, err.Error())
@@ -718,8 +718,8 @@ func (c *Controller) handleAddPod(key string) error {
 		klog.Errorf("failed to generate patch for pod %s/%s: %v", name, namespace, err)
 		return err
 	}
-	if _, err := c.config.KubeClient.CoreV1().Pods(namespace).Patch(context.Background(), name,
-		types.MergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
+	pod, err = c.config.KubeClient.CoreV1().Pods(namespace).Patch(context.Background(), name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
+	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			// Sometimes pod is deleted between kube-ovn configure ovn-nb and patch pod.
 			// Then we need to recycle the resource again.
@@ -729,9 +729,12 @@ func (c *Controller) handleAddPod(key string) error {
 		klog.Errorf("patch pod %s/%s failed: %v", name, namespace, err)
 		return err
 	}
-
 	if vpcGwName, isVpcNatGw := pod.Annotations[util.VpcNatGatewayAnnotation]; isVpcNatGw {
 		c.initVpcNatGatewayQueue.Add(vpcGwName)
+	}
+	if err := c.handleAddPodFinalizer(pod); err != nil {
+		klog.Errorf("handle pod finalizer failed %v", err)
+		return err
 	}
 	return nil
 }
@@ -742,14 +745,12 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 
 	podName := c.getNameByPod(pod)
 	key = fmt.Sprintf("%s/%s", pod.Namespace, podName)
-	c.podKeyMutex.Lock(key)
-	defer c.podKeyMutex.Unlock(key)
-
 	p, _ := c.podsLister.Pods(pod.Namespace).Get(pod.Name)
 	if p != nil && p.UID != pod.UID {
 		// Pod with same name exists, just return here
 		return nil
 	}
+	klog.Infof("handle delete pod: %s", key)
 	podKey := fmt.Sprintf("%s/%s", pod.Namespace, podName)
 	var keepIpCR bool
 	if ok, sts := isStatefulSetPod(pod); ok {
@@ -852,6 +853,10 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 	}
 	for _, podNet := range podNets {
 		c.syncVirtualPortsQueue.Add(podNet.Subnet.Name)
+	}
+	if err := c.handleDelPodFinalizer(pod); err != nil {
+		klog.Errorf("handle pod finalizer failed %v", err)
+		return err
 	}
 	return nil
 }
@@ -1770,4 +1775,50 @@ func getPodType(pod *v1.Pod) string {
 		return util.Vm
 	}
 	return ""
+}
+
+func (c *Controller) handleAddPodFinalizer(pod *v1.Pod) error {
+	if pod.DeletionTimestamp.IsZero() {
+		if util.ContainsString(pod.Finalizers, util.Finalizer) {
+			return nil
+		}
+	}
+	newPod := pod.DeepCopy()
+	controllerutil.AddFinalizer(newPod, util.Finalizer)
+	patch, err := util.GenerateMergePatchPayload(pod, newPod)
+	if err != nil {
+		klog.Errorf("failed to generate patch payload for pod '%s', %v", pod.Name, err)
+		return err
+	}
+	if _, err := c.config.KubevirtClient.CoreV1().Pods(pod.Namespace).Patch(context.Background(), pod.Name,
+		types.MergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		klog.Errorf("failed to add finalizer for pod '%s', %v", pod.Name, err)
+		return err
+	}
+	return nil
+}
+
+func (c *Controller) handleDelPodFinalizer(pod *v1.Pod) error {
+	if !util.ContainsString(pod.Finalizers, util.Finalizer) {
+		return nil
+	}
+	newPod := pod.DeepCopy()
+	controllerutil.RemoveFinalizer(newPod, util.Finalizer)
+	patch, err := util.GenerateMergePatchPayload(pod, newPod)
+	if err != nil {
+		klog.Errorf("failed to generate patch payload for pod '%s', %v", pod.Name, err)
+		return err
+	}
+	if _, err := c.config.KubevirtClient.CoreV1().Pods(pod.Namespace).Patch(context.Background(), pod.Name,
+		types.MergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		klog.Errorf("failed to remove finalizer from pod '%s', %v", pod.Name, err)
+		return err
+	}
+	return nil
 }
