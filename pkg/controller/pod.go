@@ -193,17 +193,17 @@ func (c *Controller) enqueueAddPod(obj interface{}) {
 		isVmPod, vmName := isVmPod(p)
 		if isStateful || (isVmPod && c.config.EnableKeepVmIP) {
 			if isStateful && isStatefulSetPodToDel(c.config.KubeClient, p, statefulSetName) {
-				klog.V(3).Infof("enqueue delete pod %s", key)
+				klog.Infof("add pod process enqueue delete sts pod %s", key)
 				c.deletePodQueue.Add(obj)
 				return
 			}
 			if isVmPod && c.isVmToDel(p, vmName) {
-				klog.V(3).Infof("enqueue delete pod %s", key)
+				klog.Infof("add pod process enqueue delete vm pod %s", key)
 				c.deletePodQueue.Add(obj)
 				return
 			}
 		} else {
-			klog.V(3).Infof("enqueue delete pod %s", key)
+			klog.Infof("add pod process enqueue delete pod %s", key)
 			c.deletePodQueue.Add(obj)
 			return
 		}
@@ -259,7 +259,7 @@ func (c *Controller) enqueueDeletePod(obj interface{}) {
 		return
 	}
 
-	klog.V(3).Infof("enqueue delete pod %s", key)
+	klog.Infof("enqueue delete pod %s", key)
 	c.deletePodQueue.Add(obj)
 }
 
@@ -295,7 +295,7 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 	isStateful, statefulSetName := isStatefulSetPod(newPod)
 	isVmPod, vmName := isVmPod(newPod)
 	if !isPodAlive(newPod) && !isStateful && !isVmPod {
-		klog.V(3).Infof("enqueue delete pod %s", key)
+		klog.Infof("update pod process enqueue delete pod %s", key)
 		c.deletePodQueue.Add(newObj)
 		return
 	}
@@ -305,6 +305,7 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 			// In case node get lost and pod can not be deleted,
 			// the ip address will not be recycled
 			time.Sleep(time.Duration(*newPod.Spec.TerminationGracePeriodSeconds) * time.Second)
+			klog.Infof("update pod process enqueue delete pod %s", key)
 			c.deletePodQueue.Add(newObj)
 		}()
 		return
@@ -313,7 +314,7 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 	// do not delete statefulset pod unless ownerReferences is deleted
 	if isStateful && isStatefulSetPodToDel(c.config.KubeClient, newPod, statefulSetName) {
 		go func() {
-			klog.V(3).Infof("enqueue delete pod %s", key)
+			klog.Infof("update pod process enqueue delete sts pod %s", key)
 			time.Sleep(time.Duration(*newPod.Spec.TerminationGracePeriodSeconds) * time.Second)
 			c.deletePodQueue.Add(newObj)
 		}()
@@ -321,7 +322,7 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 	}
 	if isVmPod && c.isVmToDel(newPod, vmName) {
 		go func() {
-			klog.V(3).Infof("enqueue delete pod %s", key)
+			klog.Infof("update pod process enqueue delete vm pod %s", key)
 			time.Sleep(time.Duration(*newPod.Spec.TerminationGracePeriodSeconds) * time.Second)
 			c.deletePodQueue.Add(newObj)
 		}()
@@ -587,9 +588,6 @@ func (c *Controller) handleAddPod(key string) error {
 		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
 		return nil
 	}
-
-	c.podKeyMutex.Lock(key)
-	defer c.podKeyMutex.Unlock(key)
 
 	cachedPod, err := c.podsLister.Pods(namespace).Get(name)
 	if err != nil {
@@ -886,9 +884,6 @@ func (c *Controller) handleUpdatePodSecurity(key string) error {
 		return nil
 	}
 
-	c.podKeyMutex.Lock(key)
-	defer c.podKeyMutex.Unlock(key)
-
 	pod, err := c.podsLister.Pods(namespace).Get(name)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -941,10 +936,6 @@ func (c *Controller) handleUpdatePod(key string) error {
 		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
 		return nil
 	}
-
-	c.podKeyMutex.Lock(key)
-	defer c.podKeyMutex.Unlock(key)
-
 	oriPod, err := c.podsLister.Pods(namespace).Get(name)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
