@@ -895,6 +895,7 @@ jobs:
         run: |
           sudo pip3 install j2cli
           sudo pip3 install "j2cli[yaml]"
+          sudo PATH=~/.local/bin:$PATH make kind-init-cilium-chaining || \
           sudo PATH=~/.local/bin:$PATH make kind-init
           sudo cp -r /root/.kube/ ~/.kube/
           sudo chown -R $(id -un). ~/.kube/

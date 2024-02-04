@@ -37,8 +37,8 @@ KUBEVIRT_OPERATOR_YAML = https://github.com/kubevirt/kubevirt/releases/download/
 KUBEVIRT_CR_YAML = https://github.com/kubevirt/kubevirt/releases/download/$(KUBEVIRT_VERSION)/kubevirt-cr.yaml
 KUBEVIRT_TEST_YAML = https://kubevirt.io/labs/manifests/vm.yaml
 
-CILIUM_VERSION = 1.14.5
-CILIUM_IMAGE_REPO = quay.io/cilium/cilium
+CILIUM_VERSION = 1.15.0
+CILIUM_IMAGE_REPO = quay.io/cilium
 
 CERT_MANAGER_VERSION = v1.13.3
 CERT_MANAGER_CONTROLLER = quay.io/jetstack/cert-manager-controller:$(CERT_MANAGER_VERSION)
@@ -349,31 +349,26 @@ kind-create:
 .PHONY: kind-init
 kind-init: kind-init-ipv4
 
-.PHONY: kind-init-ipv4
-kind-init-ipv4: kind-clean
-	@$(MAKE) kind-generate-config
+.PHONY: kind-init-%
+kind-init-%: kind-clean
+	@ip_family=$* $(MAKE) kind-generate-config
 	@$(MAKE) kind-create
 
 .PHONY: kind-init-ovn-ic
 kind-init-ovn-ic: kind-init-ovn-ic-ipv4
 
-.PHONY: kind-init-ovn-ic-ipv4
-kind-init-ovn-ic-ipv4: kind-clean-ovn-ic
-	@ha=true $(MAKE) kind-init
-	@ovn_ic=true $(MAKE) kind-generate-config
+.PHONY: kind-init-ovn-ic-%
+kind-init-ovn-ic-%: kind-clean-ovn-ic
+	@ha=true $(MAKE) kind-init-$*
+	@ovn_ic=true ip_family=$* $(MAKE) kind-generate-config
 	$(call kind_create_cluster,yamls/kind.yaml,kube-ovn1,1)
 
-.PHONY: kind-init-ovn-ic-ipv6
-kind-init-ovn-ic-ipv6: kind-clean-ovn-ic
-	@ha=true $(MAKE) kind-init-ipv6
-	@ovn_ic=true ip_family=ipv6 $(MAKE) kind-generate-config
-	$(call kind_create_cluster,yamls/kind.yaml,kube-ovn1,1)
+.PHONY: kind-init-cilium-chaining
+kind-init-cilium-chaining: kind-init-cilium-chaining-ipv4
 
-.PHONY: kind-init-ovn-ic-dual
-kind-init-ovn-ic-dual: kind-clean-ovn-ic
-	@ha=true $(MAKE) kind-init-dual
-	@ovn_ic=true ip_family=dual $(MAKE) kind-generate-config
-	$(call kind_create_cluster,yamls/kind.yaml,kube-ovn1,1)
+.PHONY: kind-init-cilium-chaining-%
+kind-init-cilium-chaining-%:
+	@kube_proxy_mode=none $(MAKE) kind-init-$*
 
 .PHONY: kind-init-ovn-submariner
 kind-init-ovn-submariner: kind-clean-ovn-submariner kind-init
@@ -392,29 +387,16 @@ kind-init-iptables:
 .PHONY: kind-init-ha
 kind-init-ha: kind-init-ha-ipv4
 
-.PHONY: kind-init-ha-ipv4
-kind-init-ha-ipv4:
-	@ha=true $(MAKE) kind-init
-
-.PHONY: kind-init-ha-ipv6
-kind-init-ha-ipv6:
-	@ip_family=ipv6 $(MAKE) kind-init-ha
-
-.PHONY: kind-init-ha-dual
-kind-init-ha-dual:
-	@ip_family=dual $(MAKE) kind-init-ha
+.PHONY: kind-init-ha-%
+kind-init-ha-%:
+	@ha=true $(MAKE) kind-init-$*
 
 .PHONY: kind-init-single
-kind-init-single:
-	@single=true $(MAKE) kind-init
+kind-init-single: kind-init-single-ipv4
 
-.PHONY: kind-init-ipv6
-kind-init-ipv6:
-	@ip_family=ipv6 $(MAKE) kind-init
-
-.PHONY: kind-init-dual
-kind-init-dual:
-	@ip_family=dual $(MAKE) kind-init
+.PHONY: kind-init-single-%
+kind-init-single-%:
+	@single=true $(MAKE) kind-init-$*
 
 .PHONY: kind-init-bgp
 kind-init-bgp: kind-clean-bgp kind-init
@@ -502,23 +484,42 @@ kind-install: kind-load-image
 	sed 's/VERSION=.*/VERSION=$(VERSION)/' dist/images/install.sh | bash
 	kubectl describe no
 
+.PHONY: kind-install-ipv4
+kind-install-ipv4: kind-install
+
+.PHONY: kind-install-ipv6
+kind-install-ipv6:
+	@IPV6=true $(MAKE) kind-install
+
+.PHONY: kind-install-dual
+kind-install-dual:
+	@DUAL_STACK=true $(MAKE) kind-install
+
+.PHONY: kind-install-overlay-%
+kind-install-overlay-%:
+	@$(MAKE) kind-install-$*
+
 .PHONY: kind-install-dev
-kind-install-dev:
-	@VERSION=$(DEV_TAG) $(MAKE) kind-install
+kind-install-dev: kind-install-dev-ipv4
+
+.PHONY: kind-install-dev-%
+kind-install-dev-%:
+	@VERSION=$(DEV_TAG) $(MAKE) kind-install-$*
 
 .PHONY: kind-install-debug
-kind-install-debug:
-	@VERSION=$(DEBUG_TAG) $(MAKE) kind-install
+kind-install-debug: kind-install-debug-ipv4
+
+.PHONY: kind-install-debug-%
+kind-install-debug-%:
+	@VERSION=$(DEBUG_TAG) $(MAKE) kind-install-$*
 
 .PHONY: kind-install-debug-valgrind
-kind-install-debug-valgrind:
+kind-install-debug-valgrind: kind-install-debug-valgrind-ipv4
 	@DEBUG_WRAPPER=valgrind $(MAKE) kind-install-debug
 
-.PHONY: kind-install-ipv4
-kind-install-ipv4: kind-install-overlay-ipv4
-
-.PHONY: kind-install-overlay-ipv4
-kind-install-overlay-ipv4: kind-install
+.PHONY: kind-install-debug-valgrind-%
+kind-install-debug-valgrind-%:
+	@DEBUG_WRAPPER=valgrind $(MAKE) kind-install-debug-$*
 
 .PHONY: kind-install-ovn-ic
 kind-install-ovn-ic: kind-install-ovn-ic-ipv4
@@ -668,13 +669,6 @@ kind-install-underlay-hairpin-ipv4: kind-enable-hairpin kind-load-image kind-unt
 		ENABLE_VLAN=true VLAN_NIC=eth0 bash
 	kubectl describe no
 
-.PHONY: kind-install-ipv6
-kind-install-ipv6: kind-install-overlay-ipv6
-
-.PHONY: kind-install-overlay-ipv6
-kind-install-overlay-ipv6:
-	@IPV6=true $(MAKE) kind-install
-
 .PHONY: kind-install-underlay-ipv6
 kind-install-underlay-ipv6: kind-disable-hairpin kind-load-image kind-untaint-control-plane
 	$(call docker_network_info,kind)
@@ -696,13 +690,6 @@ kind-install-underlay-hairpin-ipv6: kind-enable-hairpin kind-load-image kind-unt
 		-e 's/VERSION=.*/VERSION=$(VERSION)/' \
 		dist/images/install.sh | \
 		IPV6=true ENABLE_VLAN=true VLAN_NIC=eth0 bash
-
-.PHONY: kind-install-dual
-kind-install-dual: kind-install-overlay-dual
-
-.PHONY: kind-install-overlay-dual
-kind-install-overlay-dual:
-	@DUAL_STACK=true $(MAKE) kind-install
 
 .PHONY: kind-install-underlay-dual
 kind-install-underlay-dual: kind-disable-hairpin kind-load-image kind-untaint-control-plane
@@ -792,26 +779,40 @@ kind-install-webhook: kind-install
 	kubectl rollout status deployment/kube-ovn-webhook -n kube-system --timeout 120s
 
 .PHONY: kind-install-cilium-chaining
-kind-install-cilium-chaining: kind-load-image kind-untaint-control-plane
+kind-install-cilium-chaining: kind-install-cilium-chaining-ipv4
+
+.PHONY: kind-install-cilium-chaining-%
+kind-install-cilium-chaining-%:
 	$(eval KUBERNETES_SERVICE_HOST = $(shell kubectl get nodes kube-ovn-control-plane -o jsonpath='{.status.addresses[0].address}'))
-	$(call kind_load_image,kube-ovn,$(CILIUM_IMAGE_REPO):v$(CILIUM_VERSION),1)
+	$(call kind_load_image,kube-ovn,$(CILIUM_IMAGE_REPO)/cilium:v$(CILIUM_VERSION),1)
+	$(call kind_load_image,kube-ovn,$(CILIUM_IMAGE_REPO)/operator-generic:v$(CILIUM_VERSION),1)
 	kubectl apply -f yamls/cilium-chaining.yaml
 	helm repo add cilium https://helm.cilium.io/
 	helm install cilium cilium/cilium \
 		--version $(CILIUM_VERSION) \
-		--namespace=kube-system \
+		--namespace kube-system \
 		--set k8sServiceHost=$(KUBERNETES_SERVICE_HOST) \
 		--set k8sServicePort=6443 \
-		--set tunnel=disabled \
+		--set kubeProxyReplacement=true \
+		--set routingMode=native \
 		--set sessionAffinity=true \
 		--set enableIPv4Masquerade=false \
+		--set enableIPv6Masquerade=false \
+		--set hubble.enabled=false \
+		--set sctp.enabled=true \
+		--set ipv4.enabled=$(shell [ $* = ipv6 ] && echo false ||  echo true) \
+		--set ipv6.enabled=$(shell [ $* = ipv4 ] && echo false ||  echo true) \
+		--set k8s.requireIPv4PodCIDR=$(shell [ $* = ipv6 ] && echo false ||  echo true) \
+		--set k8s.requireIPv6PodCIDR=$(shell [ $* = ipv4 ] && echo false ||  echo true) \
 		--set cni.chainingMode=generic-veth \
+		--set cni.chainingTarget=kube-ovn \
 		--set cni.customConf=true \
 		--set cni.configMap=cni-configuration
 	kubectl -n kube-system rollout status ds cilium --timeout 300s
 	bash dist/images/install-cilium-cli.sh
-	sed 's/VERSION=.*/VERSION=$(VERSION)/' dist/images/install.sh | \
-		ENABLE_LB=false ENABLE_NP=false CNI_CONFIG_PRIORITY=10 bash
+	@$(MAKE) ENABLE_LB=false ENABLE_NP=false \
+		CNI_CONFIG_PRIORITY=10 WITHOUT_KUBE_PROXY=true \
+		kind-install-$*
 	kubectl describe no
 
 .PHONY: kind-install-bgp

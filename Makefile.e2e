@@ -5,7 +5,6 @@ KUBECONFIG = $(shell echo $${KUBECONFIG:-$(HOME)/.kube/config})
 E2E_BRANCH := $(shell echo $${E2E_BRANCH:-master})
 E2E_IP_FAMILY := $(shell echo $${E2E_IP_FAMILY:-ipv4})
 E2E_NETWORK_MODE := $(shell echo $${E2E_NETWORK_MODE:-overlay})
-E2E_CILIUM_CHAINING = $(shell echo $${E2E_CILIUM_CHAINING:-false})
 
 K8S_CONFORMANCE_E2E_FOCUS = "sig-network.*Conformance" "sig-network.*Feature:NoSNAT"
 K8S_CONFORMANCE_E2E_SKIP =
@@ -37,10 +36,6 @@ endif
 
 ifeq ($(E2E_IP_FAMILY),dual)
 K8S_CONFORMANCE_E2E_FOCUS += "sig-network.*Feature:IPv6DualStack"
-endif
-
-ifeq ($(E2E_CILIUM_CHAINING),true)
-K8S_CONFORMANCE_E2E_SKIP += "sig-network.*Networking.*Feature:SCTPConnectivity"
 endif
 
 GINKGO_PARALLEL_OPT = -p
