@@ -430,7 +430,15 @@ func checkAndUpdateExcludeIps(subnet *kubeovnv1.Subnet) bool {
 	return changed
 }
 
-func (c *Controller) handleSubnetFinalizer(subnet *kubeovnv1.Subnet) (bool, error) {
+func (c *Controller) handleSubnetFinalizer(key string) (bool, error) {
+	subnet, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Get(context.Background(), key, metav1.GetOptions{})
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return true, nil
+		}
+		klog.Errorf("failed to get subnet %s error %v", key, err)
+		return false, err
+	}
 	if subnet.DeletionTimestamp.IsZero() && !util.ContainsString(subnet.Finalizers, util.ControllerName) {
 		subnet.Finalizers = append(subnet.Finalizers, util.ControllerName)
 		if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Update(context.Background(), subnet, metav1.UpdateOptions{}); err != nil {
@@ -559,7 +567,7 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 	}
 
 	if err := c.handleUpdateSubnetStatus(key); err != nil {
-		klog.Errorf("failed to update subnet %s status, %v", subnet.Name, err)
+		klog.Errorf("failed to update status for subnet %s, %v", subnet.Name, err)
 		return err
 	}
 
@@ -815,15 +823,7 @@ func (c *Controller) handleUpdateSubnetStatus(key string) error {
 		return err
 	}
 
-	cachedSubnet, err = c.subnetsLister.Get(key)
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
-		return err
-	}
-	subnet = cachedSubnet.DeepCopy()
-	deleted, err := c.handleSubnetFinalizer(subnet)
+	deleted, err := c.handleSubnetFinalizer(key)
 	if err != nil {
 		klog.Errorf("faile to handle finalizer for subnet %s, %v", key, err)
 		return err
