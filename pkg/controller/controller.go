@@ -131,21 +131,11 @@ type Controller struct {
 	resetIptablesEipQueue  workqueue.RateLimitingInterface
 	delIptablesEipQueue    workqueue.RateLimitingInterface
 
-	podAnnotatedIptablesEipLister   v1.PodLister
-	podAnnotatedIptablesEipSynced   cache.InformerSynced
-	addPodAnnotatedIptablesEipQueue workqueue.RateLimitingInterface
-	delPodAnnotatedIptablesEipQueue workqueue.RateLimitingInterface
-
 	iptablesFipsLister     kubeovnlister.IptablesFIPRuleLister
 	iptablesFipSynced      cache.InformerSynced
 	addIptablesFipQueue    workqueue.RateLimitingInterface
 	updateIptablesFipQueue workqueue.RateLimitingInterface
 	delIptablesFipQueue    workqueue.RateLimitingInterface
-
-	podAnnotatedIptablesFipLister   v1.PodLister
-	podAnnotatedIptablesFipSynced   cache.InformerSynced
-	addPodAnnotatedIptablesFipQueue workqueue.RateLimitingInterface
-	delPodAnnotatedIptablesFipQueue workqueue.RateLimitingInterface
 
 	iptablesDnatRulesLister     kubeovnlister.IptablesDnatRuleLister
 	iptablesDnatRuleSynced      cache.InformerSynced
@@ -286,8 +276,6 @@ func Run(ctx context.Context, config *Configuration) {
 	providerNetworkInformer := kubeovnInformerFactory.Kubeovn().V1().ProviderNetworks()
 	sgInformer := kubeovnInformerFactory.Kubeovn().V1().SecurityGroups()
 	podInformer := informerFactory.Core().V1().Pods()
-	podAnnotatedIptablesEipInformer := informerFactory.Core().V1().Pods()
-	podAnnotatedIptablesFipInformer := informerFactory.Core().V1().Pods()
 	namespaceInformer := informerFactory.Core().V1().Namespaces()
 	nodeInformer := informerFactory.Core().V1().Nodes()
 	serviceInformer := informerFactory.Core().V1().Services()
@@ -365,21 +353,11 @@ func Run(ctx context.Context, config *Configuration) {
 		resetIptablesEipQueue:  workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "ResetIptablesEip"),
 		delIptablesEipQueue:    workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "DeleteIptablesEip"),
 
-		podAnnotatedIptablesEipLister:   podAnnotatedIptablesEipInformer.Lister(),
-		podAnnotatedIptablesEipSynced:   podAnnotatedIptablesEipInformer.Informer().HasSynced,
-		addPodAnnotatedIptablesEipQueue: workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "AddPodAnnotatedIptablesEip"),
-		delPodAnnotatedIptablesEipQueue: workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "DeletePodAnnotatedIptablesEip"),
-
 		iptablesFipsLister:     iptablesFipInformer.Lister(),
 		iptablesFipSynced:      iptablesFipInformer.Informer().HasSynced,
 		addIptablesFipQueue:    workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "AddIptablesFip"),
 		updateIptablesFipQueue: workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "UpdateIptablesFip"),
 		delIptablesFipQueue:    workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "DeleteIptablesFip"),
-
-		podAnnotatedIptablesFipLister:   podAnnotatedIptablesFipInformer.Lister(),
-		podAnnotatedIptablesFipSynced:   podAnnotatedIptablesFipInformer.Informer().HasSynced,
-		addPodAnnotatedIptablesFipQueue: workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "AddPodAnnotatedIptablesFip"),
-		delPodAnnotatedIptablesFipQueue: workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "DeletePodAnnotatedIptablesFip"),
 
 		iptablesDnatRulesLister:     iptablesDnatRuleInformer.Lister(),
 		iptablesDnatRuleSynced:      iptablesDnatRuleInformer.Informer().HasSynced,
@@ -525,7 +503,6 @@ func Run(ctx context.Context, config *Configuration) {
 		controller.vpcNatGatewaySynced, controller.vpcSynced, controller.subnetSynced,
 		controller.ipSynced, controller.virtualIpsSynced, controller.iptablesEipSynced,
 		controller.iptablesFipSynced, controller.iptablesDnatRuleSynced, controller.iptablesSnatRuleSynced,
-		controller.podAnnotatedIptablesEipSynced, controller.podAnnotatedIptablesFipSynced,
 		controller.vlanSynced, controller.podsSynced, controller.namespacesSynced, controller.nodesSynced,
 		controller.serviceSynced, controller.endpointsSynced, controller.configMapsSynced,
 		controller.ovnEipSynced, controller.ovnFipSynced, controller.ovnSnatRuleSynced,
@@ -901,12 +878,6 @@ func (c *Controller) shutdown() {
 	c.addOvnDnatRuleQueue.ShutDown()
 	c.updateOvnDnatRuleQueue.ShutDown()
 	c.delOvnDnatRuleQueue.ShutDown()
-
-	c.addPodAnnotatedIptablesEipQueue.ShutDown()
-	c.delPodAnnotatedIptablesEipQueue.ShutDown()
-
-	c.addPodAnnotatedIptablesFipQueue.ShutDown()
-	c.delPodAnnotatedIptablesFipQueue.ShutDown()
 
 	if c.config.EnableNP {
 		c.updateNpQueue.ShutDown()
