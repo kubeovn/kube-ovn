@@ -857,10 +857,6 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 	for _, podNet := range podNets {
 		c.syncVirtualPortsQueue.Add(podNet.Subnet.Name)
 	}
-	if !keepIpCR {
-		// subnet ipam lock will block
-		c.ipam.ReleaseAddressByPod(podKey, "")
-	}
 	return nil
 }
 

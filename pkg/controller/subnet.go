@@ -572,15 +572,6 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		return err
 	}
 
-	deleted, err := c.handleSubnetFinalizer(subnet)
-	if err != nil {
-		klog.Errorf("handle subnet finalizer failed %v", err)
-		return err
-	}
-	if deleted {
-		return nil
-	}
-
 	if subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway {
 		if err := c.reconcileU2OInterconnectionIP(subnet); err != nil {
 			klog.Errorf("failed to reconcile underlay subnet %s to overlay interconnection %v", subnet.Name, err)
@@ -813,11 +804,34 @@ func (c *Controller) handleUpdateSubnetStatus(key string) error {
 		}
 		return err
 	}
+
 	if util.CheckProtocol(subnet.Spec.CIDRBlock) == kubeovnv1.ProtocolDual {
-		return calcDualSubnetStatusIP(subnet, c)
+		err = calcDualSubnetStatusIP(subnet, c)
 	} else {
-		return calcSubnetStatusIP(subnet, c)
+		err = calcSubnetStatusIP(subnet, c)
 	}
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
+
+	cachedSubnet, err = c.subnetsLister.Get(key)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+	subnet = cachedSubnet.DeepCopy()
+	deleted, err := c.handleSubnetFinalizer(subnet)
+	if err != nil {
+		klog.Errorf("faile to handle finalizer for subnet %s, %v", key, err)
+		return err
+	}
+	if deleted {
+		return nil
+	}
+	return nil
 }
 
 func (c *Controller) handleDeleteRoute(subnet *kubeovnv1.Subnet) error {
