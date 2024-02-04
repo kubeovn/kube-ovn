@@ -1595,7 +1595,9 @@ func (c *Controller) reconcileVlan(subnet *kubeovnv1.Subnet) error {
 
 func (c *Controller) reconcileU2OInterconnectionIP(subnet *kubeovnv1.Subnet) error {
 	if subnet.Spec.Vpc == "" {
-		return nil
+		err := fmt.Errorf("subnet %s spec should set vpc", subnet.Name)
+		klog.Error(err)
+		return err
 	}
 
 	needCalcIP := false
@@ -2206,9 +2208,6 @@ func (c *Controller) deletePolicyRouteForDistributedSubnet(subnet *kubeovnv1.Sub
 }
 
 func (c *Controller) deletePolicyRouteByGatewayType(subnet *kubeovnv1.Subnet, gatewayType string, isDelete bool) error {
-	if subnet.Spec.Vpc == "" {
-		return nil
-	}
 	if (subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway) || subnet.Spec.Vpc != util.DefaultVpc {
 		return nil
 	}
@@ -2266,8 +2265,11 @@ func (c *Controller) deletePolicyRouteByGatewayType(subnet *kubeovnv1.Subnet, ga
 
 func (c *Controller) addPolicyRouteForU2OInterconn(subnet *kubeovnv1.Subnet) error {
 	if subnet.Spec.Vpc == "" {
-		return nil
+		err := fmt.Errorf("subnet %s spec should set vpc", subnet.Name)
+		klog.Error(err)
+		return err
 	}
+
 	var v4Gw, v6Gw string
 	for _, gw := range strings.Split(subnet.Spec.Gateway, ",") {
 		switch util.CheckProtocol(gw) {
