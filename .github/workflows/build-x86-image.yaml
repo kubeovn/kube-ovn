@@ -22,9 +22,10 @@ concurrency:
 
 env:
   GO_VERSION: ''
-  GOSEC_VERSION: '2.17.0'
-  HELM_VERSION: v3.12.3
-  SUBMARINER_VERSION: '0.14.6'
+  KIND_VERSION: v0.21.0
+  GOSEC_VERSION: '2.18.2'
+  HELM_VERSION: v3.14.0
+  SUBMARINER_VERSION: '0.16.3'
 
 jobs:
   build-kube-ovn-base:
@@ -43,7 +44,7 @@ jobs:
           tool-cache: false
           swap-storage: false
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 2
 
@@ -68,7 +69,7 @@ jobs:
 
       - name: Upload base images to artifact
         if: steps.check.outputs.build-base == 1
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: kube-ovn-base
           path: image-amd64.tar
@@ -114,7 +115,7 @@ jobs:
 
       - name: Upload dpdk base images to artifact
         if: steps.check.outputs.build-dpdk-base == 1
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: kube-ovn-dpdk-base
           path: image-amd64-dpdk.tar
@@ -136,9 +137,9 @@ jobs:
           tool-cache: false
           swap-storage: false
 
-      - uses: actions/checkout@v3
-      - uses: docker/setup-buildx-action@v2
-      - uses: actions/setup-go@v4
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: go.mod
@@ -173,7 +174,7 @@ jobs:
 
       - name: Download base images
         if: needs.build-kube-ovn-base.outputs.build-base == 1
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: kube-ovn-base
 
@@ -183,7 +184,7 @@ jobs:
 
       - name: Download dpdk base images
         if: needs.build-kube-ovn-dpdk-base.outputs.build-dpdk-base == 1
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: kube-ovn-dpdk-base
 
@@ -218,13 +219,13 @@ jobs:
           make tar-kube-ovn-dpdk
 
       - name: Upload images to artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: kube-ovn
           path: kube-ovn.tar
 
       - name: Upload dpdk images to artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: github.event_name != 'pull_request'
         with:
           name: kube-ovn-dpdk
@@ -244,7 +245,7 @@ jobs:
           tool-cache: false
           swap-storage: false
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Build
         run: |
@@ -252,7 +253,7 @@ jobs:
           make tar-vpc-nat-gateway
 
       - name: Upload image to artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: vpc-nat-gateway
           path: vpc-nat-gateway.tar
@@ -271,8 +272,8 @@ jobs:
           tool-cache: false
           swap-storage: false
 
-      - uses: actions/checkout@v3
-      - uses: docker/setup-buildx-action@v2
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
 
       - name: Build
         run: |
@@ -280,13 +281,13 @@ jobs:
           make tar-centos-compile
 
       - name: Upload centos7-compile image to artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: centos7-compile
           path: centos7-compile.tar
 
       # - name: Upload centos8-compile image to artifact
-      #   uses: actions/upload-artifact@v3
+      #   uses: actions/upload-artifact@v4
       #   with:
       #     name: centos8-compile
       #     path: centos8-compile.tar
@@ -306,7 +307,7 @@ jobs:
           tool-cache: false
           swap-storage: false
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -314,7 +315,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -328,7 +329,7 @@ jobs:
             echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
           fi
 
-      - uses: actions/setup-go@v4
+      - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: ${{ env.E2E_DIR }}/go.mod
@@ -361,8 +362,8 @@ jobs:
     outputs:
       test-netpol: ${{ steps.filter.outputs.kube-ovn-controller }}
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-go@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: go.mod
@@ -382,7 +383,7 @@ jobs:
             echo "- $f" | tee -a $filter
           done
 
-      - uses: dorny/paths-filter@v2
+      - uses: dorny/paths-filter@v3
         id: filter
         with:
           base: ${{ github.base_ref || github.ref_name }}
@@ -417,7 +418,7 @@ jobs:
           tool-cache: false
           swap-storage: false
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -425,7 +426,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -444,7 +445,7 @@ jobs:
           sudo sed -i '/^search/d' /etc/resolv.conf
           sudo systemctl restart docker
 
-      - uses: actions/setup-go@v4
+      - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: ${{ env.E2E_DIR }}/go.mod
@@ -466,7 +467,7 @@ jobs:
       - name: Install kind
         uses: helm/kind-action@v1.8.0
         with:
-          version: v0.20.0
+          version: ${{ env.KIND_VERSION }}
           install_only: true
 
       - name: Install ginkgo
@@ -474,7 +475,7 @@ jobs:
         run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
 
       - name: Download image
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: kube-ovn
 
@@ -513,7 +514,7 @@ jobs:
           mv kubectl-ko-log.tar.gz k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-ko-log
@@ -577,7 +578,7 @@ jobs:
           tool-cache: false
           swap-storage: false
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -585,7 +586,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -604,7 +605,7 @@ jobs:
           sudo sed -i '/^search/d' /etc/resolv.conf
           sudo systemctl restart docker
 
-      - uses: actions/setup-go@v4
+      - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: ${{ env.E2E_DIR }}/go.mod
@@ -626,7 +627,7 @@ jobs:
       - name: Install kind
         uses: helm/kind-action@v1.8.0
         with:
-          version: v0.20.0
+          version: ${{ env.KIND_VERSION }}
           install_only: true
 
       - name: Install ginkgo
@@ -634,7 +635,7 @@ jobs:
         run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
 
       - name: Download image
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: kube-ovn
 
@@ -669,7 +670,7 @@ jobs:
           mv kubectl-ko-log.tar.gz k8s-netpol-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: k8s-netpol-e2e-${{ matrix.ip-family }}-ko-log
@@ -723,7 +724,7 @@ jobs:
           - ipv6
           - dual
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -731,7 +732,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -750,7 +751,7 @@ jobs:
           sudo sed -i '/^search/d' /etc/resolv.conf
           sudo systemctl restart docker
 
-      - uses: actions/setup-go@v4
+      - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: ${{ env.E2E_DIR }}/go.mod
@@ -761,7 +762,7 @@ jobs:
         run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
 
       - name: Go cache
-        uses: actions/cache/restore@v3
+        uses: actions/cache/restore@v4
         with:
           path: |
             ~/.cache/go-build
@@ -772,7 +773,7 @@ jobs:
       - name: Install kind
         uses: helm/kind-action@v1.8.0
         with:
-          version: v0.20.0
+          version: ${{ env.KIND_VERSION }}
           install_only: true
 
       - name: Install ginkgo
@@ -780,7 +781,7 @@ jobs:
         run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
 
       - name: Download image
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: kube-ovn
 
@@ -815,7 +816,7 @@ jobs:
           mv kubectl-ko-log.tar.gz k8s-netpol-legacy-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: k8s-netpol-legacy-e2e-${{ matrix.ip-family }}-ko-log
@@ -878,7 +879,7 @@ jobs:
           tool-cache: false
           swap-storage: false
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -886,7 +887,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -903,7 +904,7 @@ jobs:
       - name: Install kind
         uses: helm/kind-action@v1.8.0
         with:
-          version: v0.20.0
+          version: ${{ env.KIND_VERSION }}
           install_only: true
 
       - name: Install ginkgo
@@ -911,7 +912,7 @@ jobs:
         run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
 
       - name: Download image
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: kube-ovn
 
@@ -946,7 +947,7 @@ jobs:
           mv kubectl-ko-log.tar.gz cyclonus-netpol-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: cyclonus-netpol-e2e-${{ matrix.ip-family }}-ko-log
@@ -1009,7 +1010,7 @@ jobs:
           tool-cache: false
           swap-storage: false
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -1017,7 +1018,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -1031,7 +1032,7 @@ jobs:
             echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
           fi
 
-      - uses: actions/setup-go@v4
+      - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: ${{ env.E2E_DIR }}/go.mod
@@ -1053,7 +1054,7 @@ jobs:
       - name: Install kind
         uses: helm/kind-action@v1.8.0
         with:
-          version: v0.20.0
+          version: ${{ env.KIND_VERSION }}
           install_only: true
 
       - name: Install ginkgo
@@ -1061,7 +1062,7 @@ jobs:
         run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
 
       - name: Download image
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: kube-ovn
 
@@ -1100,7 +1101,7 @@ jobs:
           mv kubectl-ko-log.tar.gz kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log
@@ -1163,7 +1164,7 @@ jobs:
           tool-cache: false
           swap-storage: false
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -1171,7 +1172,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -1185,7 +1186,7 @@ jobs:
             echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
           fi
 
-      - uses: actions/setup-go@v4
+      - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: ${{ env.E2E_DIR }}/go.mod
@@ -1207,7 +1208,7 @@ jobs:
       - name: Install kind
         uses: helm/kind-action@v1.8.0
         with:
-          version: v0.20.0
+          version: ${{ env.KIND_VERSION }}
           install_only: true
 
       - name: Install ginkgo
@@ -1215,7 +1216,7 @@ jobs:
         run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
 
       - name: Download image
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: kube-ovn
 
@@ -1247,7 +1248,7 @@ jobs:
           mv kubectl-ko-log.tar.gz kube-ovn-ic-conformance-e2e-ko-log.tar.gz
 
       - name: upload kubectl ko log
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: kube-ovn-ic-conformance-e2e-ko-log
@@ -1269,16 +1270,16 @@ jobs:
           tool-cache: false
           swap-storage: false
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Install kind
         uses: helm/kind-action@v1.8.0
         with:
-          version: v0.20.0
+          version: ${{ env.KIND_VERSION }}
           install_only: true
 
       - name: Download image
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: kube-ovn
 
@@ -1315,16 +1316,16 @@ jobs:
           tool-cache: false
           swap-storage: false
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Install kind
         uses: helm/kind-action@v1.8.0
         with:
-          version: v0.20.0
+          version: ${{ env.KIND_VERSION }}
           install_only: true
 
       - name: Download image
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: kube-ovn
 
@@ -1361,16 +1362,16 @@ jobs:
           tool-cache: false
           swap-storage: false
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Install kind
         uses: helm/kind-action@v1.8.0
         with:
-          version: v0.20.0
+          version: ${{ env.KIND_VERSION }}
           install_only: true
 
       - name: Download image
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: kube-ovn
 
@@ -1409,16 +1410,16 @@ jobs:
           tool-cache: false
           swap-storage: false
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Install kind
         uses: helm/kind-action@v1.8.0
         with:
-          version: v0.20.0
+          version: ${{ env.KIND_VERSION }}
           install_only: true
 
       - name: Download image
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: kube-ovn
 
@@ -1460,7 +1461,7 @@ jobs:
           tool-cache: false
           swap-storage: false
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -1468,7 +1469,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -1482,7 +1483,7 @@ jobs:
             echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
           fi
 
-      - uses: actions/setup-go@v4
+      - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: ${{ env.E2E_DIR }}/go.mod
@@ -1504,7 +1505,7 @@ jobs:
       - name: Install kind
         uses: helm/kind-action@v1.8.0
         with:
-          version: v0.20.0
+          version: ${{ env.KIND_VERSION }}
           install_only: true
 
       - name: Install ginkgo
@@ -1512,12 +1513,12 @@ jobs:
         run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
 
       - name: Download kube-ovn image
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: kube-ovn
 
       - name: Download vpc-nat-gateway image
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: vpc-nat-gateway
 
@@ -1561,7 +1562,7 @@ jobs:
           tool-cache: false
           swap-storage: false
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -1569,7 +1570,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -1583,7 +1584,7 @@ jobs:
             echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
           fi
 
-      - uses: actions/setup-go@v4
+      - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: ${{ env.E2E_DIR }}/go.mod
@@ -1605,7 +1606,7 @@ jobs:
       - name: Install kind
         uses: helm/kind-action@v1.8.0
         with:
-          version: v0.20.0
+          version: ${{ env.KIND_VERSION }}
           install_only: true
 
       - name: Install ginkgo
@@ -1613,7 +1614,7 @@ jobs:
         run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
 
       - name: Download kube-ovn image
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: kube-ovn
 
@@ -1656,7 +1657,7 @@ jobs:
           tool-cache: false
           swap-storage: false
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -1664,7 +1665,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -1678,7 +1679,7 @@ jobs:
             echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
           fi
 
-      - uses: actions/setup-go@v4
+      - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: ${{ env.E2E_DIR }}/go.mod
@@ -1700,7 +1701,7 @@ jobs:
       - name: Install kind
         uses: helm/kind-action@v1.8.0
         with:
-          version: v0.20.0
+          version: ${{ env.KIND_VERSION }}
           install_only: true
 
       - name: Install ginkgo
@@ -1708,7 +1709,7 @@ jobs:
         run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
 
       - name: Download kube-ovn image
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: kube-ovn
 
@@ -1740,7 +1741,7 @@ jobs:
           mv kubectl-ko-log.tar.gz webhook-e2e-ko-log.tar.gz
 
       - name: upload kubectl ko log
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: webhook-e2e-ko-log
@@ -1762,16 +1763,16 @@ jobs:
           tool-cache: false
           swap-storage: false
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Install kind
         uses: helm/kind-action@v1.8.0
         with:
-          version: v0.20.0
+          version: ${{ env.KIND_VERSION }}
           install_only: true
 
       - name: Download image
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: kube-ovn
 
@@ -1796,7 +1797,7 @@ jobs:
           mv kubectl-ko-log.tar.gz installation-compatibility-test-ko-log.tar.gz
 
       - name: upload kubectl ko log
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: installation-compatibility-test-ko-log
@@ -1823,7 +1824,7 @@ jobs:
           tool-cache: false
           swap-storage: false
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: azure/setup-helm@v3
         with:
           version: '${{ env.HELM_VERSION }}'
@@ -1834,7 +1835,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -1853,7 +1854,7 @@ jobs:
           sudo sed -i '/^search/d' /etc/resolv.conf
           sudo systemctl restart docker
 
-      - uses: actions/setup-go@v4
+      - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: ${{ env.E2E_DIR }}/go.mod
@@ -1875,7 +1876,7 @@ jobs:
       - name: Install kind
         uses: helm/kind-action@v1.8.0
         with:
-          version: v0.20.0
+          version: ${{ env.KIND_VERSION }}
           install_only: true
 
       - name: Install ginkgo
@@ -1883,7 +1884,7 @@ jobs:
         run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
 
       - name: Download image
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: kube-ovn
 
@@ -1915,7 +1916,7 @@ jobs:
           mv kubectl-ko-log.tar.gz cilium-chaining-e2e-ko-log.tar.gz
 
       - name: upload kubectl ko log
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: cilium-chaining-e2e-ko-log
@@ -1955,7 +1956,7 @@ jobs:
           tool-cache: false
           swap-storage: false
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -1963,7 +1964,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -1977,7 +1978,7 @@ jobs:
             echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
           fi
 
-      - uses: actions/setup-go@v4
+      - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: ${{ env.E2E_DIR }}/go.mod
@@ -1999,7 +2000,7 @@ jobs:
       - name: Install kind
         uses: helm/kind-action@v1.8.0
         with:
-          version: v0.20.0
+          version: ${{ env.KIND_VERSION }}
           install_only: true
 
       - name: Install ginkgo
@@ -2007,7 +2008,7 @@ jobs:
         run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
 
       - name: Download image
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: kube-ovn
 
@@ -2043,7 +2044,7 @@ jobs:
           mv kubectl-ko-log.tar.gz kube-ovn-ha-e2e-${{ matrix.ssl }}-${{ matrix.bind-local }}-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: kube-ovn-ha-e2e-${{ matrix.ssl }}-${{ matrix.bind-local }}-${{ matrix.ip-family }}-ko-log
@@ -2069,7 +2070,7 @@ jobs:
           tool-cache: false
           swap-storage: false
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -2077,7 +2078,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -2094,7 +2095,7 @@ jobs:
       - name: Install kind
         uses: helm/kind-action@v1.8.0
         with:
-          version: v0.20.0
+          version: ${{ env.KIND_VERSION }}
           install_only: true
 
       - name: Install submariner subctl
@@ -2104,7 +2105,7 @@ jobs:
         run: curl -Ls https://get.submariner.io | bash
 
       - name: Download image
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: kube-ovn
 
@@ -2133,7 +2134,7 @@ jobs:
           mv kubectl-ko-log.tar.gz kube-ovn-submariner-conformance-e2e-ko-log.tar.gz
 
       - name: upload kubectl ko log
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: kube-ovn-submariner-conformance-e2e-ko-log
@@ -2161,7 +2162,7 @@ jobs:
           tool-cache: false
           swap-storage: false
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -2169,7 +2170,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -2183,7 +2184,7 @@ jobs:
             echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
           fi
 
-      - uses: actions/setup-go@v4
+      - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: ${{ env.E2E_DIR }}/go.mod
@@ -2205,7 +2206,7 @@ jobs:
       - name: Install kind
         uses: helm/kind-action@v1.8.0
         with:
-          version: v0.20.0
+          version: ${{ env.KIND_VERSION }}
           install_only: true
 
       - name: Install ginkgo
@@ -2213,12 +2214,12 @@ jobs:
         run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
 
       - name: Download kube-ovn image
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: kube-ovn
 
       - name: Download vpc-nat-gateway image
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: vpc-nat-gateway
 
@@ -2251,7 +2252,7 @@ jobs:
           mv kubectl-ko-log.tar.gz iptables-vpc-nat-gw-conformance-e2e-ko-log.tar.gz
 
       - name: upload kubectl ko log
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: iptables-vpc-nat-gw-conformance-e2e-ko-log
@@ -2275,7 +2276,7 @@ jobs:
           tool-cache: false
           swap-storage: false
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -2283,7 +2284,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -2297,7 +2298,7 @@ jobs:
             echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
           fi
 
-      - uses: actions/setup-go@v4
+      - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: ${{ env.E2E_DIR }}/go.mod
@@ -2319,7 +2320,7 @@ jobs:
       - name: Install kind
         uses: helm/kind-action@v1.8.0
         with:
-          version: v0.20.0
+          version: ${{ env.KIND_VERSION }}
           install_only: true
 
       - name: Install ginkgo
@@ -2327,7 +2328,7 @@ jobs:
         run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
 
       - name: Download kube-ovn image
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: kube-ovn
 
@@ -2393,31 +2394,31 @@ jobs:
           tool-cache: false
           swap-storage: false
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Download kube-ovn image
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: kube-ovn
 
       - name: Download kube-ovn-dpdk image
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         if: github.event_name != 'pull_request'
         with:
           name: kube-ovn-dpdk
 
       - name: Download vpc-nat-gateway image
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: vpc-nat-gateway
 
       - name: Download centos7-compile image
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: centos7-compile
 
       # - name: Download centos8-compile image
-      #   uses: actions/download-artifact@v3
+      #   uses: actions/download-artifact@v4
       #   with:
       #     name: centos8-compile
 
