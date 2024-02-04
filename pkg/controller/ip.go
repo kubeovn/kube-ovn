@@ -249,8 +249,9 @@ func (c *Controller) handleUpdateIP(key string) error {
 			}
 		}
 		if cleanIPAM {
-			klog.Infof("ip cr %s release ipam from subnet %s", cachedIP.Name, cachedIP.Spec.Subnet)
-			c.ipam.ReleaseAddressByPod(cachedIP.Name, cachedIP.Spec.Subnet)
+			podKey := fmt.Sprintf("%s/%s", cachedIP.Spec.Namespace, cachedIP.Spec.PodName)
+			klog.Infof("ip cr %s release ipam pod key %s from subnet %s", cachedIP.Name, podKey, cachedIP.Spec.Subnet)
+			c.ipam.ReleaseAddressByPod(podKey, cachedIP.Spec.Subnet)
 		}
 		if err = c.handleDelIPFinalizer(cachedIP, util.ControllerName); err != nil {
 			klog.Errorf("failed to handle del ip finalizer %v", err)

@@ -841,7 +841,6 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 				c.syncSgPortsQueue.Add(sg)
 			}
 		}
-		klog.Infof("release all ip address for deleting pod %s", key)
 		for _, podNet := range podNets {
 			if err = c.deleteCrdIPs(podName, pod.Namespace, podNet.ProviderName); err != nil {
 				klog.Errorf("failed to delete ip for pod %s, %v, please delete manually", pod.Name, err)
@@ -1409,10 +1408,10 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 			return "", "", "", podNet.Subnet, err
 		}
 	}
-
+	annoIP := pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)]
+	annoIPPool := pod.Annotations[fmt.Sprintf(util.IpPoolAnnotationTemplate, podNet.ProviderName)]
 	// Random allocate
-	if pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)] == "" &&
-		pod.Annotations[fmt.Sprintf(util.IpPoolAnnotationTemplate, podNet.ProviderName)] == "" {
+	if annoIP == "" && annoIPPool == "" {
 		var skippedAddrs []string
 		for {
 			portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
@@ -1446,8 +1445,8 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 	var err error
 
 	// Static allocate
-	if pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)] != "" {
-		ipStr := pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)]
+	if annoIP != "" {
+		ipStr := annoIP
 
 		for _, net := range nsNets {
 			v4IP, v6IP, mac, err = c.acquireStaticAddress(key, portName, ipStr, macStr, net.Subnet.Name, net.AllowLiveMigration)
@@ -1459,20 +1458,26 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 	}
 
 	// IPPool allocate
-	if pod.Annotations[fmt.Sprintf(util.IpPoolAnnotationTemplate, podNet.ProviderName)] != "" {
+	if annoIPPool != "" {
 		var ipPool []string
-		if strings.Contains(pod.Annotations[fmt.Sprintf(util.IpPoolAnnotationTemplate, podNet.ProviderName)], ";") {
-			ipPool = strings.Split(pod.Annotations[fmt.Sprintf(util.IpPoolAnnotationTemplate, podNet.ProviderName)], ";")
+		if strings.Contains(annoIPPool, ";") {
+			ipPool = strings.Split(annoIPPool, ";")
 		} else {
-			ipPool = strings.Split(pod.Annotations[fmt.Sprintf(util.IpPoolAnnotationTemplate, podNet.ProviderName)], ",")
+			ipPool = strings.Split(annoIPPool, ",")
 			if len(ipPool) == 2 && util.CheckProtocol(ipPool[0]) != util.CheckProtocol(ipPool[1]) {
-				ipPool = []string{pod.Annotations[fmt.Sprintf(util.IpPoolAnnotationTemplate, podNet.ProviderName)]}
+				ipPool = []string{annoIPPool}
 			}
 		}
 		for i, ip := range ipPool {
 			ipPool[i] = strings.TrimSpace(ip)
 		}
-
+		if len(ipPool) != 0 {
+			// all pod in the same ip pool will try the lock
+			c.podKeyMutex.Lock(annoIPPool)
+			defer klog.Infof("pod %s end try allocate static ip from ip pool %v", key, ipPool)
+			defer c.podKeyMutex.Unlock(annoIPPool)
+			klog.Infof("pod %s start try allocate static ip from ip pool %v", key, ipPool)
+		}
 		if !isStsPod {
 			for _, net := range nsNets {
 				for _, staticIP := range ipPool {
@@ -1485,17 +1490,23 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 					}
 
 					if assignedPod, ok := c.ipam.IsIPAssignedToOtherPod(checkIP, net.Subnet.Name, key); ok {
-						klog.Errorf("static address %s for %s has been assigned to %s", staticIP, key, assignedPod)
+						klog.Infof("pod %s is using address %s, try next ip from ip pool for current pod %s", assignedPod, staticIP, key)
 						continue
 					}
 
 					v4IP, v6IP, mac, err = c.acquireStaticAddress(key, portName, staticIP, macStr, net.Subnet.Name, net.AllowLiveMigration)
-					if err == nil {
+					if err != nil {
+						err = fmt.Errorf("acquire static address %s for %s failed, %v", staticIP, key, err)
+						klog.Error(err)
+						continue
+					} else {
 						return v4IP, v6IP, mac, net.Subnet, nil
 					}
 				}
 			}
-			klog.Errorf("acquire address %s for %s failed, %v", pod.Annotations[fmt.Sprintf(util.IpPoolAnnotationTemplate, podNet.ProviderName)], key, err)
+			err = fmt.Errorf("failed to allocate address for pod %s from ip pool %s, return NoAvailableAddress", key, annoIPPool)
+			klog.Error(err)
+			return "", "", "", podNet.Subnet, err
 		} else {
 			tempStrs := strings.Split(pod.Name, "-")
 			numStr := tempStrs[len(tempStrs)-1]
@@ -1512,7 +1523,8 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 			}
 		}
 	}
-	klog.Errorf("alloc address for %s failed, return NoAvailableAddress", key)
+
+	klog.Errorf("allocate address for %s failed, return NoAvailableAddress", key)
 	return "", "", "", podNet.Subnet, ipam.ErrNoAvailable
 }
 
