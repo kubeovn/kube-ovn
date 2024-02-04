@@ -339,6 +339,13 @@ func (c *Controller) InitIPAM() error {
 			continue
 		}
 
+		// retrigger pod update to clean finalizer to delete pod
+		podKey := fmt.Sprintf("%s/%s", pod.Namespace, pod.Name)
+		if pod.DeletionTimestamp != nil && util.ContainsString(pod.Finalizers, util.Finalizer) {
+			klog.Infof("enqueue update for deleting pod %s", podKey)
+			c.updatePodQueue.Add(podKey)
+		}
+
 		podNets, err := c.getPodKubeovnNets(pod)
 		if err != nil {
 			klog.Errorf("failed to get pod kubeovn nets %s.%s address %s: %v", pod.Name, pod.Namespace, pod.Annotations[util.IpAddressAnnotation], err)
