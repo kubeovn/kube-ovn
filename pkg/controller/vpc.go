@@ -313,7 +313,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		return err
 	}
 	vpc := cachedVpc.DeepCopy()
-	klog.V(3).Infof("handle add or update vpc %s", vpc.Name)
+	klog.Infof("handle add or update vpc %s", vpc.Name)
 
 	if err = formatVpc(vpc, c); err != nil {
 		klog.Errorf("failed to format vpc: %v", err)

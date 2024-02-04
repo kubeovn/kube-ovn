@@ -483,7 +483,8 @@ func (c Controller) patchSubnetStatus(subnet *kubeovnv1.Subnet, reason string, e
 }
 
 func (c *Controller) handleAddOrUpdateSubnet(key string) error {
-	klog.V(3).Infof("handle add or update subnet %s", key)
+	defer klog.Infof("end handle add or update subnet %s", key)
+	klog.Infof("start handle add or update subnet %s", key)
 
 	cachedSubnet, err := c.subnetsLister.Get(key)
 	if err != nil {
@@ -557,13 +558,8 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		return err
 	}
 
-	if subnet.Spec.Protocol == kubeovnv1.ProtocolDual {
-		err = calcDualSubnetStatusIP(subnet, c)
-	} else {
-		err = calcSubnetStatusIP(subnet, c)
-	}
-	if err != nil {
-		klog.Errorf("calculate subnet %s used ip failed, %v", subnet.Name, err)
+	if err := c.handleUpdateSubnetStatus(key); err != nil {
+		klog.Errorf("failed to update subnet %s status, %v", subnet.Name, err)
 		return err
 	}
 
@@ -806,6 +802,8 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 func (c *Controller) handleUpdateSubnetStatus(key string) error {
 	c.subnetStatusKeyMutex.Lock(key)
 	defer c.subnetStatusKeyMutex.Unlock(key)
+	defer klog.Infof("end handle add or update status for subnet %s", key)
+	klog.Infof("start handle add or update status for subnet %s", key)
 
 	cachedSubnet, err := c.subnetsLister.Get(key)
 	subnet := cachedSubnet.DeepCopy()
