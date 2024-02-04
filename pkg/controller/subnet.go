@@ -300,7 +300,7 @@ func formatSubnet(subnet *kubeovnv1.Subnet, c *Controller) error {
 		subnet.Spec.GatewayType = kubeovnv1.GWDistributedType
 		changed = true
 	}
-	if subnet.Spec.Vpc == "" && subnet.Spec.Provider == util.OvnProvider {
+	if subnet.Spec.Vpc == "" && isOvnSubnet(subnet) {
 		changed = true
 		subnet.Spec.Vpc = util.DefaultVpc
 
@@ -323,7 +323,7 @@ func formatSubnet(subnet *kubeovnv1.Subnet, c *Controller) error {
 
 	klog.Infof("format subnet %v, changed %v", subnet.Name, changed)
 	if changed {
-		subnet, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Update(context.Background(), subnet, metav1.UpdateOptions{})
+		_, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Update(context.Background(), subnet, metav1.UpdateOptions{})
 		if err != nil {
 			klog.Errorf("failed to update subnet %s, %v", subnet.Name, err)
 			return err
@@ -531,6 +531,7 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 			klog.Errorf("failed to get subnet's vpc '%s', %v", subnet.Spec.Vpc, err)
 			return err
 		}
+
 		if !vpc.Status.Standby {
 			err = fmt.Errorf("the vpc '%s' not standby yet", vpc.Name)
 			klog.Error(err)
