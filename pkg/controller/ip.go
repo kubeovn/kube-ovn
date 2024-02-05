@@ -209,6 +209,7 @@ func (c *Controller) handleUpdateIP(key string) error {
 		return err
 	}
 	if !cachedIP.DeletionTimestamp.IsZero() {
+		klog.Infof("handle deleting ip %s", cachedIP.Name)
 		subnet, err := c.subnetsLister.Get(cachedIP.Spec.Subnet)
 		if err != nil {
 			klog.Errorf("failed to get subnet %s: %v", cachedIP.Spec.Subnet, err)
@@ -262,8 +263,7 @@ func (c *Controller) handleUpdateIP(key string) error {
 }
 
 func (c *Controller) handleDelIP(ip *kubeovnv1.IP) error {
-	klog.V(3).Infof("handle delete ip %s", ip.Name)
-	klog.V(3).Infof("enqueue update status subnet %s", ip.Spec.Subnet)
+	klog.Infof("deleting ip %s enqueue update status subnet %s", ip.Name, ip.Spec.Subnet)
 	c.updateSubnetStatusQueue.Add(ip.Spec.Subnet)
 	for _, as := range ip.Spec.AttachSubnets {
 		klog.V(3).Infof("enqueue update attach status for subnet %s", as)

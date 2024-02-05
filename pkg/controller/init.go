@@ -581,6 +581,10 @@ func (c *Controller) initSyncCrdIPs() error {
 
 	for _, ipCr := range ips.Items {
 		ip := ipCr.DeepCopy()
+		if ip.DeletionTimestamp != nil && util.ContainsString(ip.Finalizers, util.ControllerName) {
+			klog.Infof("enqueue update for deleting ip %s", ip.Name)
+			c.updateIPQueue.Add(ip.Name)
+		}
 		changed := false
 		if _, ok := ipMap[ip.Name]; ok && ip.Spec.PodType == "" {
 			ip.Spec.PodType = util.Vm
