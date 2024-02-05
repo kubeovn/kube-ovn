@@ -40,7 +40,7 @@ KUBEVIRT_TEST_YAML = https://kubevirt.io/labs/manifests/vm.yaml
 CILIUM_VERSION = 1.14.5
 CILIUM_IMAGE_REPO = quay.io/cilium/cilium
 
-CERT_MANAGER_VERSION = v1.13.3
+CERT_MANAGER_VERSION = v1.14.1
 CERT_MANAGER_CONTROLLER = quay.io/jetstack/cert-manager-controller:$(CERT_MANAGER_VERSION)
 CERT_MANAGER_CAINJECTOR = quay.io/jetstack/cert-manager-cainjector:$(CERT_MANAGER_VERSION)
 CERT_MANAGER_WEBHOOK = quay.io/jetstack/cert-manager-webhook:$(CERT_MANAGER_VERSION)
@@ -59,7 +59,7 @@ DEEPFLOW_CHART_REPO = https://deepflow-ce.oss-cn-beijing.aliyuncs.com/chart/stab
 DEEPFLOW_IMAGE_REPO = registry.cn-beijing.aliyuncs.com/deepflow-ce
 DEEPFLOW_GRAFANA_PORT = 30080
 
-KWOK_VERSION = v0.4.0
+KWOK_VERSION = v0.5.0
 KWOK_IMAGE = registry.k8s.io/kwok/kwok:$(KWOK_VERSION)
 
 VPC_NAT_GW_IMG = $(REGISTRY)/vpc-nat-gateway:$(VERSION)
@@ -860,10 +860,12 @@ kind-install-deepflow: kind-install
 
 .PHONY: kind-install-kwok
 kind-install-kwok:
-	kubectl label node --overwrite -l type!=kwok type=kind
 	kubectl -n kube-system patch ds kube-proxy -p '{"spec":{"template":{"spec":{"nodeSelector":{"type":"kind"}}}}}'
 	kubectl -n kube-system patch ds ovs-ovn -p '{"spec":{"template":{"spec":{"nodeSelector":{"type":"kind"}}}}}'
 	kubectl -n kube-system patch ds kube-ovn-cni -p '{"spec":{"template":{"spec":{"nodeSelector":{"type":"kind"}}}}}'
+	kubectl -n kube-system patch ds kube-ovn-pinger -p '{"spec":{"template":{"spec":{"nodeSelector":{"type":"kind"}}}}}'
+	kubectl -n kube-system patch deploy kube-ovn-monitor -p '{"spec":{"template":{"spec":{"nodeSelector":{"type":"kind"}}}}}'
+	kubectl -n kube-system patch deploy coredns -p '{"spec":{"template":{"spec":{"nodeSelector":{"type":"kind"}}}}}'
 	$(call kind_load_kwok_image,kube-ovn)
 	kubectl apply -f yamls/kwok.yaml
 	kubectl apply -f yamls/kwok-stage.yaml
