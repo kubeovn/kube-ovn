@@ -22,6 +22,7 @@ concurrency:
 
 env:
   GO_VERSION: ''
+  KIND_VERSION: v0.21.0
   GOSEC_VERSION: '2.18.2'
   HELM_VERSION: v3.13.2
   SUBMARINER_VERSION: '0.16.2'
@@ -68,7 +69,7 @@ jobs:
 
       - name: Upload base images to artifact
         if: steps.check.outputs.build-base == 1
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: kube-ovn-base
           path: image-amd64.tar
@@ -114,7 +115,7 @@ jobs:
 
       - name: Upload dpdk base images to artifact
         if: steps.check.outputs.build-dpdk-base == 1
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: kube-ovn-dpdk-base
           path: image-amd64-dpdk.tar
@@ -173,7 +174,7 @@ jobs:
 
       - name: Download base images
         if: needs.build-kube-ovn-base.outputs.build-base == 1
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: kube-ovn-base
 
@@ -183,7 +184,7 @@ jobs:
 
       - name: Download dpdk base images
         if: needs.build-kube-ovn-dpdk-base.outputs.build-dpdk-base == 1
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: kube-ovn-dpdk-base
 
@@ -218,13 +219,13 @@ jobs:
           make tar-kube-ovn-dpdk
 
       - name: Upload images to artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: kube-ovn
           path: kube-ovn.tar
 
       - name: Upload dpdk images to artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: github.event_name != 'pull_request'
         with:
           name: kube-ovn-dpdk
@@ -252,7 +253,7 @@ jobs:
           make tar-vpc-nat-gateway
 
       - name: Upload image to artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: vpc-nat-gateway
           path: vpc-nat-gateway.tar
@@ -280,13 +281,13 @@ jobs:
           make tar-centos-compile
 
       - name: Upload centos7-compile image to artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: centos7-compile
           path: centos7-compile.tar
 
       # - name: Upload centos8-compile image to artifact
-      #   uses: actions/upload-artifact@v3
+      #   uses: actions/upload-artifact@v4
       #   with:
       #     name: centos8-compile
       #     path: centos8-compile.tar
@@ -466,7 +467,7 @@ jobs:
       - name: Install kind
         uses: helm/kind-action@v1.8.0
         with:
-          version: v0.20.0
+          version: ${{ env.KIND_VERSION }}
           install_only: true
 
       - name: Install ginkgo
@@ -474,7 +475,7 @@ jobs:
         run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
 
       - name: Download image
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: kube-ovn
 
@@ -513,7 +514,7 @@ jobs:
           mv kubectl-ko-log.tar.gz k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-ko-log
@@ -626,7 +627,7 @@ jobs:
       - name: Install kind
         uses: helm/kind-action@v1.8.0
         with:
-          version: v0.20.0
+          version: ${{ env.KIND_VERSION }}
           install_only: true
 
       - name: Install ginkgo
@@ -634,7 +635,7 @@ jobs:
         run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
 
       - name: Download image
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: kube-ovn
 
@@ -669,7 +670,7 @@ jobs:
           mv kubectl-ko-log.tar.gz k8s-netpol-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: k8s-netpol-e2e-${{ matrix.ip-family }}-ko-log
@@ -903,7 +904,7 @@ jobs:
       - name: Install kind
         uses: helm/kind-action@v1.8.0
         with:
-          version: v0.20.0
+          version: ${{ env.KIND_VERSION }}
           install_only: true
 
       - name: Install ginkgo
@@ -911,7 +912,7 @@ jobs:
         run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
 
       - name: Download image
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: kube-ovn
 
@@ -946,7 +947,7 @@ jobs:
           mv kubectl-ko-log.tar.gz cyclonus-netpol-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: cyclonus-netpol-e2e-${{ matrix.ip-family }}-ko-log
@@ -1053,7 +1054,7 @@ jobs:
       - name: Install kind
         uses: helm/kind-action@v1.8.0
         with:
-          version: v0.20.0
+          version: ${{ env.KIND_VERSION }}
           install_only: true
 
       - name: Install ginkgo
@@ -1061,7 +1062,7 @@ jobs:
         run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
 
       - name: Download image
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: kube-ovn
 
@@ -1100,7 +1101,7 @@ jobs:
           mv kubectl-ko-log.tar.gz kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log
@@ -1159,11 +1160,11 @@ jobs:
       - name: Install kind
         uses: helm/kind-action@v1.8.0
         with:
-          version: v0.20.0
+          version: ${{ env.KIND_VERSION }}
           install_only: true
 
       - name: Download image
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: kube-ovn
 
@@ -1205,11 +1206,11 @@ jobs:
       - name: Install kind
         uses: helm/kind-action@v1.8.0
         with:
-          version: v0.20.0
+          version: ${{ env.KIND_VERSION }}
           install_only: true
 
       - name: Download image
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: kube-ovn
 
@@ -1251,11 +1252,11 @@ jobs:
       - name: Install kind
         uses: helm/kind-action@v1.8.0
         with:
-          version: v0.20.0
+          version: ${{ env.KIND_VERSION }}
           install_only: true
 
       - name: Download image
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: kube-ovn
 
@@ -1299,11 +1300,11 @@ jobs:
       - name: Install kind
         uses: helm/kind-action@v1.8.0
         with:
-          version: v0.20.0
+          version: ${{ env.KIND_VERSION }}
           install_only: true
 
       - name: Download image
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: kube-ovn
 
@@ -1389,7 +1390,7 @@ jobs:
       - name: Install kind
         uses: helm/kind-action@v1.8.0
         with:
-          version: v0.20.0
+          version: ${{ env.KIND_VERSION }}
           install_only: true
 
       - name: Install ginkgo
@@ -1397,12 +1398,12 @@ jobs:
         run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
 
       - name: Download kube-ovn image
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: kube-ovn
 
       - name: Download vpc-nat-gateway image
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: vpc-nat-gateway
 
@@ -1490,7 +1491,7 @@ jobs:
       - name: Install kind
         uses: helm/kind-action@v1.8.0
         with:
-          version: v0.20.0
+          version: ${{ env.KIND_VERSION }}
           install_only: true
 
       - name: Install ginkgo
@@ -1498,7 +1499,7 @@ jobs:
         run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
 
       - name: Download kube-ovn image
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: kube-ovn
 
@@ -1585,7 +1586,7 @@ jobs:
       - name: Install kind
         uses: helm/kind-action@v1.8.0
         with:
-          version: v0.20.0
+          version: ${{ env.KIND_VERSION }}
           install_only: true
 
       - name: Install ginkgo
@@ -1593,7 +1594,7 @@ jobs:
         run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
 
       - name: Download kube-ovn image
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: kube-ovn
 
@@ -1625,7 +1626,7 @@ jobs:
           mv kubectl-ko-log.tar.gz webhook-e2e-ko-log.tar.gz
 
       - name: upload kubectl ko log
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: webhook-e2e-ko-log
@@ -1652,11 +1653,11 @@ jobs:
       - name: Install kind
         uses: helm/kind-action@v1.8.0
         with:
-          version: v0.20.0
+          version: ${{ env.KIND_VERSION }}
           install_only: true
 
       - name: Download image
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: kube-ovn
 
@@ -1681,7 +1682,7 @@ jobs:
           mv kubectl-ko-log.tar.gz installation-compatibility-test-ko-log.tar.gz
 
       - name: upload kubectl ko log
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: installation-compatibility-test-ko-log
@@ -1760,7 +1761,7 @@ jobs:
       - name: Install kind
         uses: helm/kind-action@v1.8.0
         with:
-          version: v0.20.0
+          version: ${{ env.KIND_VERSION }}
           install_only: true
 
       - name: Install ginkgo
@@ -1768,7 +1769,7 @@ jobs:
         run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
 
       - name: Download image
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: kube-ovn
 
@@ -1800,7 +1801,7 @@ jobs:
           mv kubectl-ko-log.tar.gz cilium-chaining-e2e-ko-log.tar.gz
 
       - name: upload kubectl ko log
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: cilium-chaining-e2e-ko-log
@@ -1884,7 +1885,7 @@ jobs:
       - name: Install kind
         uses: helm/kind-action@v1.8.0
         with:
-          version: v0.20.0
+          version: ${{ env.KIND_VERSION }}
           install_only: true
 
       - name: Install ginkgo
@@ -1892,7 +1893,7 @@ jobs:
         run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
 
       - name: Download image
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: kube-ovn
 
@@ -1928,7 +1929,7 @@ jobs:
           mv kubectl-ko-log.tar.gz kube-ovn-ha-e2e-${{ matrix.ssl }}-${{ matrix.bind-local }}-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: kube-ovn-ha-e2e-${{ matrix.ssl }}-${{ matrix.bind-local }}-${{ matrix.ip-family }}-ko-log
@@ -1979,7 +1980,7 @@ jobs:
       - name: Install kind
         uses: helm/kind-action@v1.8.0
         with:
-          version: v0.20.0
+          version: ${{ env.KIND_VERSION }}
           install_only: true
 
       - name: Install submariner subctl
@@ -1989,7 +1990,7 @@ jobs:
         run: curl -Ls https://get.submariner.io | bash
 
       - name: Download image
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: kube-ovn
 
@@ -2018,7 +2019,7 @@ jobs:
           mv kubectl-ko-log.tar.gz kube-ovn-submariner-conformance-e2e-ko-log.tar.gz
 
       - name: upload kubectl ko log
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: kube-ovn-submariner-conformance-e2e-ko-log
@@ -2090,7 +2091,7 @@ jobs:
       - name: Install kind
         uses: helm/kind-action@v1.8.0
         with:
-          version: v0.20.0
+          version: ${{ env.KIND_VERSION }}
           install_only: true
 
       - name: Install ginkgo
@@ -2098,12 +2099,12 @@ jobs:
         run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
 
       - name: Download kube-ovn image
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: kube-ovn
 
       - name: Download vpc-nat-gateway image
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: vpc-nat-gateway
 
@@ -2136,7 +2137,7 @@ jobs:
           mv kubectl-ko-log.tar.gz iptables-vpc-nat-gw-conformance-e2e-ko-log.tar.gz
 
       - name: upload kubectl ko log
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: iptables-vpc-nat-gw-conformance-e2e-ko-log
@@ -2204,7 +2205,7 @@ jobs:
       - name: Install kind
         uses: helm/kind-action@v1.8.0
         with:
-          version: v0.20.0
+          version: ${{ env.KIND_VERSION }}
           install_only: true
 
       - name: Install ginkgo
@@ -2212,7 +2213,7 @@ jobs:
         run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
 
       - name: Download kube-ovn image
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: kube-ovn
 
@@ -2280,28 +2281,28 @@ jobs:
       - uses: actions/checkout@v3
 
       - name: Download kube-ovn image
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: kube-ovn
 
       - name: Download kube-ovn-dpdk image
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         if: github.event_name != 'pull_request'
         with:
           name: kube-ovn-dpdk
 
       - name: Download vpc-nat-gateway image
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: vpc-nat-gateway
 
       - name: Download centos7-compile image
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: centos7-compile
 
       # - name: Download centos8-compile image
-      #   uses: actions/download-artifact@v3
+      #   uses: actions/download-artifact@v4
       #   with:
       #     name: centos8-compile
 
