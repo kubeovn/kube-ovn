@@ -1093,7 +1093,7 @@ func (c *Controller) initResourceOnce() {
 		util.LogFatalAndExit(err, "failed to initialize 'deny_all' security group")
 	}
 
-	if err := c.syncVpcNatGatewayCR(); err != nil {
+	if err := c.initSyncCrdVpcNatGw(); err != nil {
 		util.LogFatalAndExit(err, "failed to sync crd vpc nat gateways")
 	}
 
