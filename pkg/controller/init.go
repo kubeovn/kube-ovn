@@ -291,7 +291,7 @@ func (c *Controller) InitIPAM() error {
 		u2oInterconnLrpName := fmt.Sprintf("%s-%s", subnet.Spec.Vpc, subnet.Name)
 		if subnet.Status.U2OInterconnectionIP != "" {
 			if _, _, _, err = c.ipam.GetStaticAddress(u2oInterconnName, u2oInterconnLrpName, subnet.Status.U2OInterconnectionIP, nil, subnet.Name, true); err != nil {
-				klog.Errorf("failed to init subnet u2o interonnection ip to ipam %v", subnet.Name, err)
+				klog.Errorf("failed to init subnet %q u2o interconnection ip to ipam %v", subnet.Name, err)
 			}
 		}
 	}
@@ -724,7 +724,7 @@ func (c *Controller) migrateNodeRoute(af int, node, ip, nexthop string) error {
 			"node":   node,
 		}
 	)
-	klog.V(3).Infof("add policy route for router: %s, priority: %d, match %s, action %s, nexthop %s, extrenalID %v",
+	klog.V(3).Infof("add policy route for router: %s, priority: %d, match %s, action %s, nexthop %s, externalID %v",
 		c.config.ClusterRouter, util.NodeRouterPolicyPriority, match, action, nexthop, externalIDs)
 	if err := c.addPolicyRouteToVpc(
 		c.config.ClusterRouter,
