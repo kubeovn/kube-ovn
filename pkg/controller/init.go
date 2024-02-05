@@ -577,6 +577,10 @@ func (c *Controller) syncIPCR() error {
 
 	for _, ipCR := range ips {
 		ip := ipCR.DeepCopy()
+		if ip.DeletionTimestamp != nil && util.ContainsString(ip.Finalizers, util.ControllerName) {
+			klog.Infof("enqueue update for deleting ip %s", ip.Name)
+			c.updateIPQueue.Add(ip.Name)
+		}
 		changed := false
 		if ipMap.Has(ip.Name) && ip.Spec.PodType == "" {
 			ip.Spec.PodType = util.VM
