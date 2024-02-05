@@ -1121,10 +1121,8 @@ func (c *Controller) initResourceOnce() {
 		util.LogFatalAndExit(err, "failed to initialize 'deny_all' security group")
 	}
 
-	if c.config.PodDefaultFipType == util.IptablesFip {
-		if err := c.syncVpcNatGatewayCR(); err != nil {
-			util.LogFatalAndExit(err, "failed to sync crd vpc nat gateways")
-		}
+	if err := c.syncVpcNatGatewayCR(); err != nil {
+		util.LogFatalAndExit(err, "failed to sync crd vpc nat gateways")
 	}
 
 	if c.config.EnableLb {
