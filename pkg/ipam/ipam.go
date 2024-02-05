@@ -2,6 +2,7 @@ package ipam
 
 import (
 	"errors"
+	"fmt"
 	"net"
 	"strconv"
 	"strings"
@@ -44,6 +45,8 @@ func (ipam *IPAM) GetRandomAddress(podName, nicName, mac, subnetName string, ski
 
 	subnet, ok := ipam.Subnets[subnetName]
 	if !ok {
+		err := fmt.Errorf("ipam has no subnet %s", subnetName)
+		klog.Error(err)
 		return "", "", "", ErrNoAvailable
 	}
 
@@ -56,6 +59,8 @@ func (ipam *IPAM) GetStaticAddress(podName, nicName, ip, mac, subnetName string,
 	ipam.mutex.RLock()
 	defer ipam.mutex.RUnlock()
 	if subnet, ok := ipam.Subnets[subnetName]; !ok {
+		err := fmt.Errorf("ipam has no subnet %s", subnetName)
+		klog.Error(err)
 		return "", "", "", ErrNoAvailable
 	} else {
 		var ips []IP
@@ -130,6 +135,8 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr, gw string, excludeIps []strin
 
 	ipam.mutex.Lock()
 	defer ipam.mutex.Unlock()
+	defer klog.Infof("ipam end add or update subnet %s", name)
+	klog.Infof("ipam start add or update subnet %s", name)
 
 	var v4cidrStr, v6cidrStr, v4Gw, v6Gw string
 	var cidrs []*net.IPNet
@@ -195,6 +202,7 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr, gw string, excludeIps []strin
 				}
 			}
 		}
+		klog.Infof("updated subnet %s", subnet.Name)
 		return nil
 	}
 

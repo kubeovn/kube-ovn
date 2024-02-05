@@ -41,6 +41,7 @@ func NewSubnet(name, cidrStr string, excludeIps []string) (*Subnet, error) {
 	var cidrs []*net.IPNet
 	for _, cidrBlock := range strings.Split(cidrStr, ",") {
 		if _, cidr, err := net.ParseCIDR(cidrBlock); err != nil {
+			klog.Errorf("invalid cidr %s: %v", cidrBlock, err)
 			return nil, ErrInvalidCIDR
 		} else {
 			cidrs = append(cidrs, cidr)
@@ -184,10 +185,12 @@ func (subnet *Subnet) GetRandomAddress(podName, nicName string, mac string, skip
 func (subnet *Subnet) getDualRandomAddress(podName, nicName string, mac string, skippedAddrs []string, checkConflict bool) (IP, IP, string, error) {
 	v4IP, _, _, err := subnet.getV4RandomAddress(podName, nicName, mac, skippedAddrs, checkConflict)
 	if err != nil {
+		klog.Errorf("failed to allocate v4 ip for %s: %v", podName, err)
 		return "", "", "", err
 	}
 	_, v6IP, mac, err := subnet.getV6RandomAddress(podName, nicName, mac, skippedAddrs, checkConflict)
 	if err != nil {
+		klog.Errorf("failed to allocate v6 ip for %s: %v", podName, err)
 		return "", "", "", err
 	}
 
@@ -211,6 +214,7 @@ func (subnet *Subnet) getV4RandomAddress(podName, nicName string, mac string, sk
 	}
 	if len(subnet.V4FreeIPList) == 0 {
 		if len(subnet.V4ReleasedIPList) == 0 {
+			klog.Errorf("no available ip in subnet %s, v4 free ip list %v", subnet.Name, subnet.V4FreeIPList)
 			return "", "", "", ErrNoAvailable
 		}
 		subnet.V4FreeIPList = subnet.V4ReleasedIPList
@@ -257,6 +261,7 @@ func (subnet *Subnet) getV4RandomAddress(podName, nicName string, mac string, sk
 		return ip, "", subnet.GetRandomMac(podName, nicName), nil
 	} else {
 		if err := subnet.GetStaticMac(podName, nicName, mac, checkConflict); err != nil {
+			klog.Errorf("failed to get static mac for pod %s: %v", podName, err)
 			return "", "", "", err
 		}
 		return ip, "", mac, nil
@@ -276,6 +281,7 @@ func (subnet *Subnet) getV6RandomAddress(podName, nicName string, mac string, sk
 
 	if len(subnet.V6FreeIPList) == 0 {
 		if len(subnet.V6ReleasedIPList) == 0 {
+			klog.Errorf("no available ip in subnet %s, v6 free ip list %v", subnet.Name, subnet.V6FreeIPList)
 			return "", "", "", ErrNoAvailable
 		}
 		subnet.V6FreeIPList = subnet.V6ReleasedIPList
@@ -322,6 +328,7 @@ func (subnet *Subnet) getV6RandomAddress(podName, nicName string, mac string, sk
 		return "", ip, subnet.GetRandomMac(podName, nicName), nil
 	} else {
 		if err := subnet.GetStaticMac(podName, nicName, mac, checkConflict); err != nil {
+			klog.Errorf("failed to get static mac for pod %s: %v", podName, err)
 			return "", "", "", err
 		}
 		return "", ip, mac, nil
@@ -342,6 +349,7 @@ func (subnet *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac strin
 		v6 = subnet.V6CIDR != nil
 	}
 	if v4 && !subnet.V4CIDR.Contains(net.ParseIP(string(ip))) {
+		klog.Errorf("v4 ip %s is out of range", ip)
 		return ip, mac, ErrOutOfRange
 	}
 
@@ -350,6 +358,7 @@ func (subnet *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac strin
 	}
 
 	if v6 && !subnet.V6CIDR.Contains(net.ParseIP(string(ip))) {
+		klog.Errorf("v6 ip %s is out of range", ip)
 		return ip, mac, ErrOutOfRange
 	}
 
@@ -361,6 +370,7 @@ func (subnet *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac strin
 		}
 	} else {
 		if err := subnet.GetStaticMac(podName, nicName, mac, checkConflict); err != nil {
+			klog.Errorf("failed to get static mac for pod %s: %v", podName, err)
 			return ip, mac, err
 		}
 	}
@@ -438,6 +448,7 @@ func (subnet *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac strin
 			}
 		}
 	}
+	klog.Errorf("no available ip in subnet %s", subnet.Name)
 	return ip, mac, ErrNoAvailable
 }
 

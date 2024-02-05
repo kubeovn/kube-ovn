@@ -334,6 +334,13 @@ func (c *Controller) InitIPAM() error {
 			continue
 		}
 
+		// retrigger pod update to delete pod in case of kube-ovn-controller crashed while pod is deleting
+		podKey := fmt.Sprintf("%s/%s", pod.Namespace, pod.Name)
+		if pod.DeletionTimestamp != nil {
+			klog.Infof("enqueue update for deleting pod %s", podKey)
+			c.updatePodQueue.Add(podKey)
+		}
+
 		podNets, err := c.getPodKubeovnNets(pod)
 		if err != nil {
 			klog.Errorf("failed to get pod kubeovn nets %s.%s address %s: %v", pod.Name, pod.Namespace, pod.Annotations[util.IpAddressAnnotation], err)
@@ -569,6 +576,11 @@ func (c *Controller) initSyncCrdIPs() error {
 
 	for _, ipCr := range ips.Items {
 		ip := ipCr.DeepCopy()
+		// retrigger ip update to delete ip in case of kube-ovn-controller crashed while ip is deleting
+		if ip.DeletionTimestamp != nil && util.ContainsString(ip.Finalizers, util.ControllerName) {
+			klog.Infof("enqueue update for deleting ip %s", ip.Name)
+			c.updateIPQueue.Add(ip.Name)
+		}
 		changed := false
 		if _, ok := ipMap[ip.Name]; ok && ip.Spec.PodType == "" {
 			ip.Spec.PodType = util.Vm
