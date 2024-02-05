@@ -1698,32 +1698,6 @@ func (c *Controller) reconcileU2OInterconnectionIP(subnet *kubeovnv1.Subnet) err
 	return nil
 }
 
-func (c *Controller) checkSubnetStatus(subnetName string, subnetCR *kubeovnv1.Subnet) error {
-	subnet, ok := c.ipam.Subnets[subnetName]
-	if !ok {
-		err := fmt.Errorf("ipam should has subnet %s", subnetName)
-		klog.Error(err)
-		return err
-	}
-
-	// subnetCR.Status update is later than ipam subnet
-	// subnet status available ips should be consistent with ipam subnet ASAP, especially when ipam subnet has no available ips
-	if subnetCR.Status.V4AvailableIPs != 0 && len(subnet.V4FreeIPList) == 0 && len(subnet.V4ReleasedIPList) == 0 {
-		klog.Warningf("subnet %s v4AvailableIPs %.0f, v4FreeIPList and v4ReleasedIPList has 0 ip", subnet.Name, subnetCR.Status.V4AvailableIPs)
-		// subnet reinitialize, make sure the status is consistent with ipam
-		c.addOrUpdateSubnetQueue.Add(subnetName)
-		return nil
-	}
-	if subnetCR.Status.V6AvailableIPs != 0 && len(subnet.V6FreeIPList) == 0 && len(subnet.V6ReleasedIPList) == 0 {
-		klog.Warningf("subnet %s v6AvailableIPs %.0f, v6FreeIPList and v6ReleasedIPList has 0 ip", subnet.Name, subnetCR.Status.V6AvailableIPs)
-		// subnet reinitialize, make sure the status is consistent with ipam
-		c.addOrUpdateSubnetQueue.Add(subnetName)
-		return nil
-	}
-
-	return nil
-}
-
 func calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 	if err := util.CheckCidrs(subnet.Spec.CIDRBlock); err != nil {
 		return err
@@ -1807,10 +1781,6 @@ func calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 	subnet, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(context.Background(), subnet.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status")
 	if err != nil {
 		klog.Errorf("failed to patch subnet %s status, %v", subnet.Name, err)
-		return err
-	}
-	if err = c.checkSubnetStatus(subnet.Name, subnet); err != nil {
-		klog.Error(err)
 		return err
 	}
 	return nil
@@ -1901,10 +1871,6 @@ func calcSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 	subnet, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(context.Background(), subnet.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status")
 	if err != nil {
 		klog.Errorf("failed to patch subnet %s status, %v", subnet.Name, err)
-		return err
-	}
-	if err = c.checkSubnetStatus(subnet.Name, subnet); err != nil {
-		klog.Error(err)
 		return err
 	}
 	return nil
