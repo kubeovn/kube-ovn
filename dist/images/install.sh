@@ -82,7 +82,6 @@ DEPRECATED_LABEL="node-role.kubernetes.io/master" # The node label to deploy OVN
 NETWORK_TYPE="geneve"                             # geneve or vlan
 TUNNEL_TYPE="geneve"                              # geneve, vxlan or stt. ATTENTION: some networkpolicy cannot take effect when using vxlan and stt need custom compile ovs kernel module
 POD_NIC_TYPE="veth-pair"                          # veth-pair or internal-port
-POD_DEFAULT_FIP_TYPE=""                           # iptables, pod can set iptables fip automatically by enable fip annotation
 
 # VLAN Config only take effect when NETWORK_TYPE is vlan
 VLAN_INTERFACE_NAME=""
@@ -3974,7 +3973,6 @@ spec:
           - --log_file_max_size=0
           - --enable-lb-svc=$ENABLE_LB_SVC
           - --keep-vm-ip=$ENABLE_KEEP_VM_IP
-          - --pod-default-fip-type=$POD_DEFAULT_FIP_TYPE
           - --node-local-dns-ip=$NODE_LOCAL_DNS_IP
           env:
             - name: ENABLE_SSL
