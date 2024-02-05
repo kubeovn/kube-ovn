@@ -599,6 +599,14 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		return nil
 	}
 
+	subnet, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Get(context.Background(), key, metav1.GetOptions{})
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		klog.Errorf("failed to get subnet %s error %v", key, err)
+		return err
+	}
 	if err = util.ValidateSubnet(*subnet); err != nil {
 		klog.Errorf("failed to validate subnet %s, %v", subnet.Name, err)
 		c.patchSubnetStatus(subnet, "ValidateLogicalSwitchFailed", err.Error())
@@ -660,6 +668,11 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 	}
 	needRouter := subnet.Spec.Vlan == "" || subnet.Spec.LogicalGateway ||
 		(subnet.Status.U2OInterconnectionIP != "" && subnet.Spec.U2OInterconnection)
+	vpc, err = c.vpcsLister.Get(subnet.Spec.Vpc)
+	if err != nil {
+		klog.Errorf("failed to get subnet's vpc '%s', %v", subnet.Spec.Vpc, err)
+		return err
+	}
 	// 1. overlay subnet, should add lrp, lrp ip is subnet gw
 	// 2. underlay subnet use logical gw, should add lrp, lrp ip is subnet gw
 	randomAllocateGW := !subnet.Spec.LogicalGateway && vpc.Spec.EnableExternal && subnet.Name == c.config.ExternalGatewaySwitch
