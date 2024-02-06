@@ -588,14 +588,6 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		return nil
 	}
 
-	subnet, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Get(context.Background(), key, metav1.GetOptions{})
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
-		klog.Errorf("failed to get subnet %s error %v", key, err)
-		return err
-	}
 	if err = util.ValidateSubnet(*subnet); err != nil {
 		klog.Errorf("failed to validate subnet %s, %v", subnet.Name, err)
 		c.patchSubnetStatus(subnet, "ValidateLogicalSwitchFailed", err.Error())
@@ -829,11 +821,6 @@ func (c *Controller) handleUpdateSubnetStatus(key string) error {
 	}
 	if err != nil {
 		klog.Error(err)
-		return err
-	}
-	_, err = c.handleSubnetFinalizer(subnet)
-	if err != nil {
-		klog.Errorf("faile to handle finalizer for subnet %s, %v", key, err)
 		return err
 	}
 	return nil

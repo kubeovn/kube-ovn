@@ -623,7 +623,7 @@ func (c *Controller) initSyncCrdSubnets() error {
 			klog.Errorf("failed to calculate subnet %s used ip: %v", subnet.Name, err)
 			return err
 		}
-
+		// retrigger subnet update to delete subnet in case of kube-ovn-controller crashed while subnet is deleting
 		if subnet.DeletionTimestamp != nil {
 			klog.Infof("enqueue update for deleting subnet %s", subnet.Name)
 			c.addOrUpdateSubnetQueue.Add(subnet.Name)
