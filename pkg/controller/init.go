@@ -623,6 +623,11 @@ func (c *Controller) initSyncCrdSubnets() error {
 			klog.Errorf("failed to calculate subnet %s used ip: %v", subnet.Name, err)
 			return err
 		}
+
+		if subnet.DeletionTimestamp != nil {
+			klog.Infof("enqueue update for deleting subnet %s", subnet.Name)
+			c.addOrUpdateSubnetQueue.Add(subnet.Name)
+		}
 	}
 	return nil
 }
