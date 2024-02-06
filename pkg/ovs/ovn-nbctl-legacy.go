@@ -1011,6 +1011,7 @@ func (c LegacyClient) AddStaticRoute(policy, cidr, nextHop, router string, route
 					filter := []string{fmt.Sprintf("policy=%s", policy), fmt.Sprintf(`ip_prefix="%s"`, cidrBlock), fmt.Sprintf(`nexthop!="%s"`, gw)}
 					result, err := c.CustomFindEntity("Logical_Router_Static_Route", []string{"_uuid"}, filter...)
 					if err != nil {
+						klog.Errorf("failed to find static route: %v", err)
 						return err
 					}
 
@@ -1022,6 +1023,7 @@ func (c LegacyClient) AddStaticRoute(policy, cidr, nextHop, router string, route
 				}
 
 				if _, err := c.ovnNbCommand(MayExist, fmt.Sprintf("%s=%s", Policy, policy), "lr-route-add", router, cidrBlock, gw); err != nil {
+					klog.Errorf("failed to add static route %s: %v", cidrBlock, err)
 					return err
 				}
 			}
@@ -1035,6 +1037,7 @@ func (c LegacyClient) AddStaticRoute(policy, cidr, nextHop, router string, route
 func (c LegacyClient) AddPolicyRoute(router string, priority int32, match, action, nextHop string, externalIDs map[string]string) error {
 	consistent, err := c.CheckPolicyRouteNexthopConsistent(router, match, nextHop, priority)
 	if err != nil {
+		klog.Errorf("failed to check policy route nexthop consistent: %v", err)
 		return err
 	}
 	if consistent {
@@ -1084,6 +1087,7 @@ func (c LegacyClient) AddPolicyRoute(router string, priority int32, match, actio
 func (c LegacyClient) DeletePolicyRoute(router string, priority int32, match string) error {
 	exist, err := c.IsPolicyRouteExist(router, priority, match)
 	if err != nil {
+		klog.Errorf("failed to check policy route exist: %v", err)
 		return err
 	}
 	if !exist {
@@ -1099,7 +1103,11 @@ func (c LegacyClient) DeletePolicyRoute(router string, priority int32, match str
 	}
 	klog.Infof("remove policy route from router %s: match %s", router, match)
 	_, err = c.ovnNbCommand(args...)
-	return err
+	if err != nil {
+		klog.Errorf("failed to delete policy route: %v", err)
+		return err
+	}
+	return nil
 }
 
 func (c LegacyClient) CleanPolicyRoute(router string) error {
