@@ -59,7 +59,7 @@ func (csc CniServerClient) Add(podRequest CniRequest) (*CniResponse, error) {
 		return nil, errors[0]
 	}
 	if res.StatusCode != 200 {
-		return nil, fmt.Errorf("request ip return %d %s", res.StatusCode, resp.Err)
+		return nil, fmt.Errorf("request ip return %d, %s", res.StatusCode, resp.Err)
 	}
 	return &resp, nil
 }
