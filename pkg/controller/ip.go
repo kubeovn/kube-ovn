@@ -262,7 +262,6 @@ func (c *Controller) handleUpdateIP(key string) error {
 
 func (c *Controller) handleDelIP(ip *kubeovnv1.IP) error {
 	klog.V(3).Infof("handle delete ip %s", ip.Name)
-	klog.V(3).Infof("enqueue update status subnet %s", ip.Spec.Subnet)
 	c.updateSubnetStatusQueue.Add(ip.Spec.Subnet)
 	for _, as := range ip.Spec.AttachSubnets {
 		klog.V(3).Infof("enqueue update attach status for subnet %s", as)
