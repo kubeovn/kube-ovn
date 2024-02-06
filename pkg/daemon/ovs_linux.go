@@ -407,6 +407,7 @@ func waitNetworkReady(nic, ipAddr, gateway string, underlayGateway, verbose bool
 	for i, gw := range strings.Split(gateway, ",") {
 		src := strings.Split(ips[i], "/")[0]
 		if underlayGateway && util.CheckProtocol(gw) == kubeovnv1.ProtocolIPv4 {
+			// v4 underlay gateway check use arping
 			mac, count, err := util.ArpResolve(nic, src, gw, time.Second, maxRetry)
 			cniConnectivityResult.WithLabelValues(nodeName).Add(float64(count))
 			if err != nil {
@@ -419,6 +420,7 @@ func waitNetworkReady(nic, ipAddr, gateway string, underlayGateway, verbose bool
 				klog.Infof("network %s with gateway %s is ready for interface %s after %d checks", ips[i], gw, nic, count)
 			}
 		} else {
+			// v6 or vpc gateway check use ping
 			if err := pingGateway(gw, src, verbose, maxRetry); err != nil {
 				klog.Error(err)
 				return err
