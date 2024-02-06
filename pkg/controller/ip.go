@@ -248,7 +248,7 @@ func (c *Controller) handleUpdateIP(key string) error {
 				}
 			}
 		}
-		if cleanIPAM {
+		if cleanIPAM && cachedIP.Spec.PodName != "" && cachedIP.Spec.Namespace != "" {
 			podKey := fmt.Sprintf("%s/%s", cachedIP.Spec.Namespace, cachedIP.Spec.PodName)
 			klog.Infof("ip cr %s release ipam pod key %s from subnet %s", cachedIP.Name, podKey, cachedIP.Spec.Subnet)
 			c.ipam.ReleaseAddressByPod(podKey, cachedIP.Spec.Subnet)

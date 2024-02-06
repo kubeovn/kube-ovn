@@ -1035,11 +1035,6 @@ func (c LegacyClient) AddStaticRoute(policy, cidr, nextHop, router string, route
 
 // AddPolicyRoute add a policy route rule in ovn
 func (c LegacyClient) AddPolicyRoute(router string, priority int32, match, action, nextHop string, externalIDs map[string]string) error {
-	if router == "" {
-		err := fmt.Errorf("router name is empty")
-		klog.Error(err)
-		return err
-	}
 	consistent, err := c.CheckPolicyRouteNexthopConsistent(router, match, nextHop, priority)
 	if err != nil {
 		klog.Errorf("failed to check policy route nexthop consistent: %v", err)
@@ -1090,9 +1085,6 @@ func (c LegacyClient) AddPolicyRoute(router string, priority int32, match, actio
 
 // DeletePolicyRoute delete a policy route rule in ovn
 func (c LegacyClient) DeletePolicyRoute(router string, priority int32, match string) error {
-	if router == "" {
-		return nil
-	}
 	exist, err := c.IsPolicyRouteExist(router, priority, match)
 	if err != nil {
 		klog.Errorf("failed to check policy route exist: %v", err)

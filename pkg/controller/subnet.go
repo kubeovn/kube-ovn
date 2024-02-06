@@ -300,7 +300,7 @@ func formatSubnet(subnet *kubeovnv1.Subnet, c *Controller) error {
 		subnet.Spec.GatewayType = kubeovnv1.GWDistributedType
 		changed = true
 	}
-	if subnet.Spec.Vpc == "" && isOvnSubnet(subnet) {
+	if subnet.Spec.Vpc == "" {
 		changed = true
 		subnet.Spec.Vpc = util.DefaultVpc
 
@@ -430,15 +430,7 @@ func checkAndUpdateExcludeIps(subnet *kubeovnv1.Subnet) bool {
 	return changed
 }
 
-func (c *Controller) handleSubnetFinalizer(key string) (bool, error) {
-	subnet, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Get(context.Background(), key, metav1.GetOptions{})
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return true, nil
-		}
-		klog.Errorf("failed to get subnet %s error %v", key, err)
-		return false, err
-	}
+func (c *Controller) handleSubnetFinalizer(subnet *kubeovnv1.Subnet) (bool, error) {
 	if subnet.DeletionTimestamp.IsZero() && !util.ContainsString(subnet.Finalizers, util.ControllerName) {
 		subnet.Finalizers = append(subnet.Finalizers, util.ControllerName)
 		if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Update(context.Background(), subnet, metav1.UpdateOptions{}); err != nil {
@@ -527,39 +519,36 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		return err
 	}
 
-	var vpc *kubeovnv1.Vpc
-	if subnet.Spec.Vpc != "" {
-		vpc, err := c.vpcsLister.Get(subnet.Spec.Vpc)
-		if err != nil {
-			klog.Errorf("failed to get subnet's vpc '%s', %v", subnet.Spec.Vpc, err)
-			return err
-		}
-		if !vpc.Status.Standby {
-			err = fmt.Errorf("the vpc '%s' not standby yet", vpc.Name)
-			klog.Error(err)
-			return err
-		}
+	vpc, err := c.vpcsLister.Get(subnet.Spec.Vpc)
+	if err != nil {
+		klog.Errorf("failed to get subnet's vpc '%s', %v", subnet.Spec.Vpc, err)
+		return err
+	}
+	if !vpc.Status.Standby {
+		err = fmt.Errorf("the vpc '%s' not standby yet", vpc.Name)
+		klog.Error(err)
+		return err
+	}
 
-		if !vpc.Status.Default {
-			for _, ns := range subnet.Spec.Namespaces {
-				if !util.ContainsString(vpc.Spec.Namespaces, ns) {
-					err = fmt.Errorf("namespace '%s' is out of range to custom vpc '%s'", ns, vpc.Name)
-					klog.Error(err)
-					return err
-				}
-			}
-		} else {
-			vpcs, err := c.vpcsLister.List(labels.Everything())
-			if err != nil {
-				klog.Errorf("failed to list vpc, %v", err)
+	if !vpc.Status.Default {
+		for _, ns := range subnet.Spec.Namespaces {
+			if !util.ContainsString(vpc.Spec.Namespaces, ns) {
+				err = fmt.Errorf("namespace '%s' is out of range to custom vpc '%s'", ns, vpc.Name)
+				klog.Error(err)
 				return err
 			}
-			for _, vpc := range vpcs {
-				if subnet.Spec.Vpc != vpc.Name && !vpc.Status.Default && util.IsStringsOverlap(vpc.Spec.Namespaces, subnet.Spec.Namespaces) {
-					err = fmt.Errorf("namespaces %v are overlap with vpc '%s'", subnet.Spec.Namespaces, vpc.Name)
-					klog.Error(err)
-					return err
-				}
+		}
+	} else {
+		vpcs, err := c.vpcsLister.List(labels.Everything())
+		if err != nil {
+			klog.Errorf("failed to list vpc, %v", err)
+			return err
+		}
+		for _, vpc := range vpcs {
+			if subnet.Spec.Vpc != vpc.Name && !vpc.Status.Default && util.IsStringsOverlap(vpc.Spec.Namespaces, subnet.Spec.Namespaces) {
+				err = fmt.Errorf("namespaces %v are overlap with vpc '%s'", subnet.Spec.Namespaces, vpc.Name)
+				klog.Error(err)
+				return err
 			}
 		}
 	}
@@ -579,7 +568,7 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		return err
 	}
 
-	deleted, err := c.handleSubnetFinalizer(key)
+	deleted, err := c.handleSubnetFinalizer(subnet)
 	if err != nil {
 		klog.Errorf("handle subnet finalizer failed %v", err)
 		return err
@@ -668,11 +657,6 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 	}
 	needRouter := subnet.Spec.Vlan == "" || subnet.Spec.LogicalGateway ||
 		(subnet.Status.U2OInterconnectionIP != "" && subnet.Spec.U2OInterconnection)
-	vpc, err = c.vpcsLister.Get(subnet.Spec.Vpc)
-	if err != nil {
-		klog.Errorf("failed to get subnet's vpc '%s', %v", subnet.Spec.Vpc, err)
-		return err
-	}
 	// 1. overlay subnet, should add lrp, lrp ip is subnet gw
 	// 2. underlay subnet use logical gw, should add lrp, lrp ip is subnet gw
 	randomAllocateGW := !subnet.Spec.LogicalGateway && vpc.Spec.EnableExternal && subnet.Name == c.config.ExternalGatewaySwitch
@@ -847,21 +831,15 @@ func (c *Controller) handleUpdateSubnetStatus(key string) error {
 		klog.Error(err)
 		return err
 	}
-	deleted, err := c.handleSubnetFinalizer(key)
+	_, err = c.handleSubnetFinalizer(subnet)
 	if err != nil {
 		klog.Errorf("faile to handle finalizer for subnet %s, %v", key, err)
 		return err
-	}
-	if deleted {
-		return nil
 	}
 	return nil
 }
 
 func (c *Controller) handleDeleteRoute(subnet *kubeovnv1.Subnet) error {
-	if subnet.Spec.Vpc == "" {
-		return nil
-	}
 	vpc, err := c.vpcsLister.Get(subnet.Spec.Vpc)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -1633,11 +1611,6 @@ func (c *Controller) reconcileVlan(subnet *kubeovnv1.Subnet) error {
 }
 
 func (c *Controller) reconcileU2OInterconnectionIP(subnet *kubeovnv1.Subnet) error {
-	if subnet.Spec.Vpc == "" {
-		err := fmt.Errorf("subnet %s spec should set vpc", subnet.Name)
-		klog.Error(err)
-		return err
-	}
 	needCalcIP := false
 	klog.Infof("reconcile underlay subnet %s  to overlay interconnection with U2OInterconnection %v U2OInterconnectionIP %s ",
 		subnet.Name, subnet.Spec.U2OInterconnection, subnet.Status.U2OInterconnectionIP)
@@ -1791,7 +1764,7 @@ func calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 		klog.Errorf("failed to marshal subnet %s status, %v", subnet.Name, err)
 		return err
 	}
-	subnet, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(context.Background(), subnet.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status")
+	_, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(context.Background(), subnet.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status")
 	if err != nil {
 		klog.Errorf("failed to patch subnet %s status, %v", subnet.Name, err)
 		return err
@@ -1881,7 +1854,7 @@ func calcSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 		klog.Errorf("failed to marshal subnet %s status, %v", subnet.Name, err)
 		return err
 	}
-	subnet, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(context.Background(), subnet.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status")
+	_, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(context.Background(), subnet.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status")
 	if err != nil {
 		klog.Errorf("failed to patch subnet %s status, %v", subnet.Name, err)
 		return err
@@ -2268,12 +2241,6 @@ func (c *Controller) deletePolicyRouteByGatewayType(subnet *kubeovnv1.Subnet, ga
 }
 
 func (c *Controller) addPolicyRouteForU2OInterconn(subnet *kubeovnv1.Subnet) error {
-	if subnet.Spec.Vpc == "" {
-		err := fmt.Errorf("subnet %s spec should set vpc", subnet.Name)
-		klog.Error(err)
-		return err
-	}
-
 	var v4Gw, v6Gw string
 	for _, gw := range strings.Split(subnet.Spec.Gateway, ",") {
 		switch util.CheckProtocol(gw) {
@@ -2387,10 +2354,6 @@ func (c *Controller) addPolicyRouteForU2OInterconn(subnet *kubeovnv1.Subnet) err
 }
 
 func (c *Controller) deletePolicyRouteForU2OInterconn(subnet *kubeovnv1.Subnet) error {
-	if subnet.Spec.Vpc == "" {
-		return nil
-	}
-
 	results, err := c.ovnLegacyClient.CustomFindEntity("Logical_Router_Policy", []string{"_uuid", "match", "priority"},
 		"external_ids:isU2ORoutePolicy=\"true\"",
 		fmt.Sprintf("external_ids:vendor=\"%s\"", util.CniTypeName),
@@ -2442,10 +2405,6 @@ func (c *Controller) addCustomVPCPolicyRoutesForSubnet(subnet *kubeovnv1.Subnet)
 }
 
 func (c *Controller) deleteCustomVPCPolicyRoutesForSubnet(subnet *kubeovnv1.Subnet) error {
-	if subnet.Spec.Vpc == "" {
-		return nil
-	}
-
 	for _, cidr := range strings.Split(subnet.Spec.CIDRBlock, ",") {
 		af := 4
 		if util.CheckProtocol(cidr) == kubeovnv1.ProtocolIPv6 {
@@ -2462,10 +2421,6 @@ func (c *Controller) deleteCustomVPCPolicyRoutesForSubnet(subnet *kubeovnv1.Subn
 }
 
 func (c *Controller) clearOldU2OResource(subnet *kubeovnv1.Subnet) error {
-	if subnet.Spec.Vpc == "" {
-		return nil
-	}
-
 	if subnet.Status.U2OInterconnectionVPC != "" &&
 		(!subnet.Spec.U2OInterconnection || (subnet.Spec.U2OInterconnection && subnet.Status.U2OInterconnectionVPC != subnet.Spec.Vpc)) {
 		// remove old u2o lsp and lrp first
