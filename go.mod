@@ -16,7 +16,7 @@ require (
 	github.com/evanphx/json-patch/v5 v5.9.0
 	github.com/go-logr/stdr v1.2.2
 	github.com/greenpau/ovsdb v1.0.3
-	github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.4.0
+	github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.6.0
 	github.com/k8snetworkplumbingwg/sriovnet v1.2.0
 	github.com/kubeovn/go-iptables v0.0.0-20230322103850-8619a8ab3dca
 	github.com/kubeovn/gonetworkmanager/v2 v2.0.0-20230905082151-e28c4d73a589
@@ -42,8 +42,8 @@ require (
 	google.golang.org/grpc v1.61.0
 	google.golang.org/protobuf v1.32.0
 	gopkg.in/k8snetworkplumbingwg/multus-cni.v4 v4.0.2
-	k8s.io/api v0.28.6
-	k8s.io/apimachinery v0.28.6
+	k8s.io/api v0.29.0
+	k8s.io/apimachinery v0.29.0
 	k8s.io/client-go v12.0.0+incompatible
 	k8s.io/klog/v2 v2.120.1
 	k8s.io/kubectl v0.28.6
@@ -266,7 +266,7 @@ require (
 	k8s.io/csi-translation-lib v0.28.6 // indirect
 	k8s.io/dynamic-resource-allocation v0.0.0 // indirect
 	k8s.io/kms v0.28.6 // indirect
-	k8s.io/kube-openapi v0.0.0-20230905202853-d090da108d2f // indirect
+	k8s.io/kube-openapi v0.0.0-20231010175941-2dd684a91f00 // indirect
 	k8s.io/kube-scheduler v0.0.0 // indirect
 	k8s.io/kubelet v0.28.6 // indirect
 	k8s.io/legacy-cloud-providers v0.0.0 // indirect
