@@ -107,7 +107,7 @@ var _ = framework.Describe("[group:service]", func() {
 			protocol := strings.ToLower(util.CheckProtocol(nodeIP))
 			ginkgo.By("Checking " + protocol + " connection via node " + nodeName)
 			cmd := fmt.Sprintf("curl -q -s --connect-timeout 5 %s/clientip", util.JoinHostPort(nodeIP, nodePort))
-			framework.WaitUntil(2*time.Second, 30*time.Second, func(ctx context.Context) (bool, error) {
+			framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 				ginkgo.By(fmt.Sprintf(`Executing %q in pod %s/%s`, cmd, namespaceName, hostPodName))
 				_, err := e2epodoutput.RunHostCmd(namespaceName, hostPodName, cmd)
 				return err == nil, nil

@@ -407,7 +407,7 @@ func ClearPortQosBinding(ifaceID string) error {
 	return nil
 }
 
-func ListExternalIds(table string) (map[string]string, error) {
+func ListExternalIDs(table string) (map[string]string, error) {
 	args := []string{"--data=bare", "--format=csv", "--no-heading", "--columns=_uuid,external_ids", "find", table, "external_ids:iface-id!=[]"}
 	output, err := Exec(args...)
 	if err != nil {
@@ -438,7 +438,7 @@ func ListExternalIds(table string) (map[string]string, error) {
 	return result, nil
 }
 
-func ListQosQueueIds() (map[string]string, error) {
+func ListQosQueueIDs() (map[string]string, error) {
 	args := []string{"--data=bare", "--format=csv", "--no-heading", "--columns=_uuid,queues", "find", "qos", "queues:0!=[]"}
 	output, err := Exec(args...)
 	if err != nil {
