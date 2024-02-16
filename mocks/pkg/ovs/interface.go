@@ -974,17 +974,17 @@ func (mr *MockLogicalSwitchPortMockRecorder) SetLogicalSwitchPortArpProxy(lspNam
 }
 
 // SetLogicalSwitchPortExternalIds mocks base method.
-func (m *MockLogicalSwitchPort) SetLogicalSwitchPortExternalIds(lspName string, externalIds map[string]string) error {
+func (m *MockLogicalSwitchPort) SetLogicalSwitchPortExternalIds(lspName string, externalIDs map[string]string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetLogicalSwitchPortExternalIds", lspName, externalIds)
+	ret := m.ctrl.Call(m, "SetLogicalSwitchPortExternalIds", lspName, externalIDs)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // SetLogicalSwitchPortExternalIds indicates an expected call of SetLogicalSwitchPortExternalIds.
-func (mr *MockLogicalSwitchPortMockRecorder) SetLogicalSwitchPortExternalIds(lspName, externalIds any) *gomock.Call {
+func (mr *MockLogicalSwitchPortMockRecorder) SetLogicalSwitchPortExternalIds(lspName, externalIDs any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLogicalSwitchPortExternalIds", reflect.TypeOf((*MockLogicalSwitchPort)(nil).SetLogicalSwitchPortExternalIds), lspName, externalIds)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLogicalSwitchPortExternalIds", reflect.TypeOf((*MockLogicalSwitchPort)(nil).SetLogicalSwitchPortExternalIds), lspName, externalIDs)
 }
 
 // SetLogicalSwitchPortSecurity mocks base method.
@@ -4059,17 +4059,17 @@ func (mr *MockNbClientMockRecorder) SetLogicalSwitchPortArpProxy(lspName, enable
 }
 
 // SetLogicalSwitchPortExternalIds mocks base method.
-func (m *MockNbClient) SetLogicalSwitchPortExternalIds(lspName string, externalIds map[string]string) error {
+func (m *MockNbClient) SetLogicalSwitchPortExternalIds(lspName string, externalIDs map[string]string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetLogicalSwitchPortExternalIds", lspName, externalIds)
+	ret := m.ctrl.Call(m, "SetLogicalSwitchPortExternalIds", lspName, externalIDs)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // SetLogicalSwitchPortExternalIds indicates an expected call of SetLogicalSwitchPortExternalIds.
-func (mr *MockNbClientMockRecorder) SetLogicalSwitchPortExternalIds(lspName, externalIds any) *gomock.Call {
+func (mr *MockNbClientMockRecorder) SetLogicalSwitchPortExternalIds(lspName, externalIDs any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLogicalSwitchPortExternalIds", reflect.TypeOf((*MockNbClient)(nil).SetLogicalSwitchPortExternalIds), lspName, externalIds)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLogicalSwitchPortExternalIds", reflect.TypeOf((*MockNbClient)(nil).SetLogicalSwitchPortExternalIds), lspName, externalIDs)
 }
 
 // SetLogicalSwitchPortSecurity mocks base method.

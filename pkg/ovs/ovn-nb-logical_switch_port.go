@@ -385,7 +385,7 @@ func (c *OVNNbClient) SetLogicalSwitchPortSecurity(portSecurity bool, lspName, m
 }
 
 // SetLogicalSwitchPortExternalIds set logical switch port external ids
-func (c *OVNNbClient) SetLogicalSwitchPortExternalIds(lspName string, externalIds map[string]string) error {
+func (c *OVNNbClient) SetLogicalSwitchPortExternalIds(lspName string, externalIDs map[string]string) error {
 	lsp, err := c.GetLogicalSwitchPort(lspName, false)
 	if err != nil {
 		klog.Error(err)
@@ -396,12 +396,12 @@ func (c *OVNNbClient) SetLogicalSwitchPortExternalIds(lspName string, externalId
 		lsp.ExternalIDs = make(map[string]string)
 	}
 
-	for k, v := range externalIds {
+	for k, v := range externalIDs {
 		lsp.ExternalIDs[k] = v
 	}
 
 	if err := c.UpdateLogicalSwitchPort(lsp, &lsp.ExternalIDs); err != nil {
-		return fmt.Errorf("set logical switch port %s external ids %v: %v", lspName, externalIds, err)
+		return fmt.Errorf("set logical switch port %s external ids %v: %v", lspName, externalIDs, err)
 	}
 
 	return nil
@@ -467,11 +467,11 @@ func (c *OVNNbClient) SetLogicalSwitchPortsSecurityGroup(sgName, op string) erro
 		associated = "true"
 	}
 
-	externalIds := map[string]string{associatedSgKey: associated}
-	lsps, err := c.ListNormalLogicalSwitchPorts(true, externalIds)
+	externalIDs := map[string]string{associatedSgKey: associated}
+	lsps, err := c.ListNormalLogicalSwitchPorts(true, externalIDs)
 	if err != nil {
 		klog.Error(err)
-		return fmt.Errorf("list logical switch ports with external_ids %v: %v", externalIds, err)
+		return fmt.Errorf("list logical switch ports with external_ids %v: %v", externalIDs, err)
 	}
 
 	/* add to or remove from sgs form port external_ids */
