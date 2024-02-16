@@ -23,7 +23,7 @@ ENABLE_NAT_GW=${ENABLE_NAT_GW:-false}
 ENABLE_KEEP_VM_IP=${ENABLE_KEEP_VM_IP:-true}
 ENABLE_ARP_DETECT_IP_CONFLICT=${ENABLE_ARP_DETECT_IP_CONFLICT:-true}
 NODE_LOCAL_DNS_IP=${NODE_LOCAL_DNS_IP:-}
-ENABLE_IC=${ENABLE_IC:-$(kubectl get node --show-labels | grep -q "ovn.kubernetes.io/ic-gw" && echo true || echo false)}
+ENABLE_IC=${ENABLE_IC:-$(kubectl get node --show-labels | grep -qw "ovn.kubernetes.io/ic-gw" && echo true || echo false)}
 # exchange link names of OVS bridge and the provider nic
 # in the default provider-network
 EXCHANGE_LINK_NAME=${EXCHANGE_LINK_NAME:-false}
@@ -4692,6 +4692,7 @@ spec:
             secretName: kube-ovn-tls
 EOF
 kubectl apply -f ovn-ic-controller.yaml
+kubectl rollout status deployment/ovn-ic-controller -n kube-system --timeout 60s
 fi
 
 echo "-------------------------------"
