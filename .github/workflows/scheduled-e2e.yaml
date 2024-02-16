@@ -11,8 +11,8 @@ concurrency:
 
 env:
   GO_VERSION: ''
-  KIND_VERSION: v0.21.0
-  HELM_VERSION: v3.14.0
+  KIND_VERSION: v0.22.0
+  HELM_VERSION: v3.14.1
   SUBMARINER_VERSION: '0.16.3'
 
 jobs:
