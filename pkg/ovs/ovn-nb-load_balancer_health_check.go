@@ -142,7 +142,6 @@ func (c *OVNNbClient) DeleteLoadBalancerHealthChecks(filter func(lb *ovnnb.LoadB
 			return true
 		},
 	).Delete()
-
 	if err != nil {
 		return fmt.Errorf("generate operations for delete lb health checks: %v", err)
 	}

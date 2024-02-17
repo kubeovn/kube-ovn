@@ -62,7 +62,7 @@ func (c *EndpointsClient) Patch(original, modified *corev1.Endpoints) *corev1.En
 	ExpectNoError(err)
 
 	var patchedEndpoints *corev1.Endpoints
-	err = wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+	err = wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(_ context.Context) (bool, error) {
 		s, err := c.EndpointsInterface.Patch(context.TODO(), original.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
 		if err != nil {
 			return handleWaitingAPIError(err, false, "patch endpoints %q", original.Name)
@@ -106,7 +106,7 @@ func (c *EndpointsClient) DeleteSync(name string) {
 // WaitUntil waits the given timeout duration for the specified condition to be met.
 func (c *EndpointsClient) WaitUntil(name string, cond func(s *corev1.Endpoints) (bool, error), condDesc string, _, timeout time.Duration) *corev1.Endpoints {
 	var endpoints *corev1.Endpoints
-	err := wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+	err := wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(_ context.Context) (bool, error) {
 		Logf("Waiting for endpoints %s to meet condition %q", name, condDesc)
 		endpoints = c.Get(name).DeepCopy()
 		met, err := cond(endpoints)

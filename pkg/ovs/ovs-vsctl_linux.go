@@ -21,13 +21,13 @@ func SetInterfaceBandwidth(podName, podNamespace, iface, ingress, egress string)
 		return err
 	}
 
-	qosIfaceUIDMap, err := ListExternalIds("qos")
+	qosIfaceUIDMap, err := ListExternalIDs("qos")
 	if err != nil {
 		klog.Error(err)
 		return err
 	}
 
-	queueIfaceUIDMap, err := ListExternalIds("queue")
+	queueIfaceUIDMap, err := ListExternalIDs("queue")
 	if err != nil {
 		klog.Error(err)
 		return err
@@ -103,7 +103,7 @@ func ClearHtbQosQueue(podName, podNamespace, iface string) error {
 	}
 
 	// https://github.com/kubeovn/kube-ovn/issues/1191
-	qosQueueMap, err := ListQosQueueIds()
+	qosQueueMap, err := ListQosQueueIDs()
 	if err != nil {
 		klog.Error(err)
 		return err

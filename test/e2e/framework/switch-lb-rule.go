@@ -63,7 +63,7 @@ func (c *SwitchLBRuleClient) Patch(original, modified *apiv1.SwitchLBRule) *apiv
 	ExpectNoError(err)
 
 	var patchedService *apiv1.SwitchLBRule
-	err = wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+	err = wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(_ context.Context) (bool, error) {
 		s, err := c.SwitchLBRuleInterface.Patch(context.TODO(), original.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
 		if err != nil {
 			return handleWaitingAPIError(err, false, "patch switch-lb-rule %q", original.Name)
@@ -107,7 +107,7 @@ func (c *SwitchLBRuleClient) DeleteSync(name string) {
 // WaitUntil waits the given timeout duration for the specified condition to be met.
 func (c *SwitchLBRuleClient) WaitUntil(name string, cond func(s *apiv1.SwitchLBRule) (bool, error), condDesc string, _, timeout time.Duration) *apiv1.SwitchLBRule {
 	var rules *apiv1.SwitchLBRule
-	err := wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+	err := wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(_ context.Context) (bool, error) {
 		Logf("Waiting for switch-lb-rule %s to meet condition %q", name, condDesc)
 		rules = c.Get(name).DeepCopy()
 		met, err := cond(rules)
