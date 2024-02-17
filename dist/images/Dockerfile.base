@@ -43,8 +43,6 @@ RUN cd /usr/src/ && git clone -b branch-22.12 --depth=1 https://github.com/ovn-o
     curl -s https://github.com/kubeovn/ovn/commit/6934f1a1eb5986a904eefb560c0d6d57811453d9.patch | git apply && \
     # ovn-controller: do not send GARP on localnet for Kube-OVN ports
     curl -s https://github.com/kubeovn/ovn/commit/8af8751cdb55f582c675db921f2526b06fd3d8c0.patch | git apply && \
-    # ovn-ic blacklist function not work on ipv6
-    curl -s https://github.com/kubeovn/ovn/commit/78ab91005854532e7eb5c4fe6b2923ce292e3681.patch | git apply && \
     # lflow: do not send direct traffic between lports to conntrack
     curl -s https://github.com/kubeovn/ovn/commit/6f1af045845deeabf06fdc7c90073e0a6874ab2f.patch | git apply && \
     # northd: add nb option version_compatibility
