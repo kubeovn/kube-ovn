@@ -853,7 +853,7 @@ lint:
 	@GOOS=linux gosec -exclude=G204,G301,G306,G402,G404,G601 -exclude-dir=test -exclude-dir=pkg/client ./...
 
 .PHONY: gofumpt
-gofumpt: gofumpt
+gofumpt:
 	gofumpt -w -extra .
 
 .PHONY: lint-windows

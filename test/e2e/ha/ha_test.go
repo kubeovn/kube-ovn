@@ -72,7 +72,7 @@ var _ = framework.Describe("[group:ha]", func() {
 		deployClient.SetScale(deploy.Name, 0)
 
 		ginkgo.By("Waiting for ovn-central pods to disappear")
-		framework.WaitUntil(2*time.Second, 30*time.Second, func(ctx context.Context) (bool, error) {
+		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 			pods, err := deployClient.GetAllPods(deploy)
 			if err != nil {
 				return false, err

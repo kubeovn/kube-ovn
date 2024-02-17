@@ -151,7 +151,7 @@ func (suite *OvnClientTestSuite) Test_SetLogicalSwitchPortSecurity() {
 }
 
 func (suite *OvnClientTestSuite) Test_SetSetLogicalSwitchPortExternalIds() {
-	suite.testSetSetLogicalSwitchPortExternalIds()
+	suite.testSetSetLogicalSwitchPortExternalIDs()
 }
 
 func (suite *OvnClientTestSuite) Test_SetLogicalSwitchPortSecurityGroup() {

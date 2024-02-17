@@ -43,7 +43,7 @@ func (c *OVNNbClient) GetNbGlobal() (*ovnnb.NBGlobal, error) {
 	nbGlobalList := make([]ovnnb.NBGlobal, 0, 1)
 
 	// there is only one nb_global in OVN_Northbound, so return true and it will work
-	err := c.WhereCache(func(config *ovnnb.NBGlobal) bool {
+	err := c.WhereCache(func(_ *ovnnb.NBGlobal) bool {
 		return true
 	}).List(ctx, &nbGlobalList)
 	if err != nil {
