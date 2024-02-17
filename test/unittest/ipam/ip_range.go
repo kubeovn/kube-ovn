@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
-	"math/rand"
+	"math/rand/v2"
 	"net"
 
 	"github.com/onsi/ginkgo/v2"
@@ -20,7 +20,7 @@ var _ = ginkgo.Context("[group:IPAM]", func() {
 			if n1 > n2 {
 				n1, n2 = n2, n1
 			}
-			n := n1 + uint32(rand.Int63n(int64(n2-n1+1)))
+			n := n1 + uint32(rand.Int64N(int64(n2-n1+1)))
 			startStr := uint32ToIPv4(n1)
 			endStr := uint32ToIPv4(n2)
 			ipStr := uint32ToIPv4(n)
@@ -60,7 +60,7 @@ var _ = ginkgo.Context("[group:IPAM]", func() {
 				gomega.Expect(r.Contains(r.Random())).To(gomega.BeTrue())
 			}
 
-			prefix := rand.Intn(net.IPv4len*8 + 1)
+			prefix := rand.IntN(net.IPv4len*8 + 1)
 			_, cidr, err := net.ParseCIDR(fmt.Sprintf("%s/%d", startStr, prefix))
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			gomega.Expect(cidr).NotTo(gomega.BeNil())
@@ -100,7 +100,7 @@ var _ = ginkgo.Context("[group:IPAM]", func() {
 
 			var n [4]uint32
 			for i := 0; i < 4; i++ {
-				n[i] = n1[i] + uint32(rand.Int63n(int64(n2[i]-n1[i]+1)))
+				n[i] = n1[i] + uint32(rand.Int64N(int64(n2[i]-n1[i]+1)))
 			}
 
 			startStr := uint32ToIPv6(n1)
@@ -145,7 +145,7 @@ var _ = ginkgo.Context("[group:IPAM]", func() {
 				gomega.Expect(r.Contains(r.Random())).To(gomega.BeTrue())
 			}
 
-			prefix := rand.Intn(net.IPv6len*8 + 1)
+			prefix := rand.IntN(net.IPv6len*8 + 1)
 			_, cidr, err := net.ParseCIDR(fmt.Sprintf("%s/%d", startStr, prefix))
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			gomega.Expect(cidr).NotTo(gomega.BeNil())

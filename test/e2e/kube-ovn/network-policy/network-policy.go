@@ -3,7 +3,7 @@ package network_policy
 import (
 	"context"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"net"
 	"strconv"
 	"strings"
@@ -79,7 +79,7 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 		subnet = subnetClient.CreateSync(subnet)
 
 		ginkgo.By("Creating pod " + podName)
-		port := strconv.Itoa(8000 + rand.Intn(1000))
+		port := strconv.Itoa(8000 + rand.IntN(1000))
 		args := []string{"netexec", "--http-port", port}
 		annotations := map[string]string{util.LogicalSwitchAnnotation: subnetName}
 		pod := framework.MakePod(namespaceName, podName, nil, annotations, framework.AgnhostImage, nil, args)

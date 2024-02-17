@@ -5,7 +5,7 @@ package util
 
 import (
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"net"
 	"net/netip"
 	"sync"
@@ -114,12 +114,12 @@ func ArpDetectIPConflict(nic, ip string, mac net.HardwareAddr) (net.HardwareAddr
 	durations := make([]time.Duration, probeNum)
 	// wait for a random time interval selected uniformly in the range zero to
 	// PROBE_WAIT seconds
-	durations[0] = time.Duration(rand.Int63n(int64(probeWait)))
+	durations[0] = time.Duration(rand.Int64N(int64(probeWait)))
 	deadline = deadline.Add(durations[0])
 	for i := 1; i < probeNum; i++ {
 		// send PROBE_NUM probe packets, each of these probe packets spaced
 		// randomly and uniformly, PROBE_MIN to PROBE_MAX seconds apart
-		durations[i] = probeMinmum + time.Duration(rand.Int63n(int64(probeMaxmum-probeMinmum)))
+		durations[i] = probeMinmum + time.Duration(rand.Int64N(int64(probeMaxmum-probeMinmum)))
 		deadline = deadline.Add(durations[i])
 	}
 

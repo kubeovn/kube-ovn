@@ -44,7 +44,7 @@ KUBEVIRT_TEST_YAML = https://kubevirt.io/labs/manifests/vm.yaml
 CILIUM_VERSION = 1.15.1
 CILIUM_IMAGE_REPO = quay.io/cilium
 
-CERT_MANAGER_VERSION = v1.14.1
+CERT_MANAGER_VERSION = v1.14.2
 CERT_MANAGER_CONTROLLER = quay.io/jetstack/cert-manager-controller:$(CERT_MANAGER_VERSION)
 CERT_MANAGER_CAINJECTOR = quay.io/jetstack/cert-manager-cainjector:$(CERT_MANAGER_VERSION)
 CERT_MANAGER_WEBHOOK = quay.io/jetstack/cert-manager-webhook:$(CERT_MANAGER_VERSION)

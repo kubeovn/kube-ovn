@@ -23,7 +23,7 @@ concurrency:
 
 env:
   GO_VERSION: ''
-  GOSEC_VERSION: '2.17.0'
+  GOSEC_VERSION: '2.19.0'
 
 jobs:
   filter:

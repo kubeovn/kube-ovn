@@ -5,7 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"math/big"
-	"math/rand"
+	"math/rand/v2"
 	"net"
 	"strings"
 	"testing"
@@ -186,7 +186,7 @@ var _ = framework.SerialDescribe("[group:lb-svc]", func() {
 	framework.ConformanceIt("should allocate static external IP for service", func() {
 		ginkgo.By("Creating service " + serviceName)
 		base := util.IP2BigInt(gateway)
-		lbIP := util.BigInt2Ip(base.Add(base, big.NewInt(50+rand.Int63n(50))))
+		lbIP := util.BigInt2Ip(base.Add(base, big.NewInt(50+rand.Int64N(50))))
 		ports := []corev1.ServicePort{{
 			Name:       "tcp",
 			Protocol:   corev1.ProtocolTCP,
