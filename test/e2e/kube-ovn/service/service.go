@@ -3,7 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -70,7 +70,7 @@ var _ = framework.Describe("[group:service]", func() {
 		annotations := map[string]string{
 			util.LogicalSwitchAnnotation: subnetName,
 		}
-		port := 8000 + rand.Int31n(1000)
+		port := 8000 + rand.Int32N(1000)
 		portStr := strconv.Itoa(int(port))
 		args := []string{"netexec", "--http-port", portStr}
 		pod := framework.MakePod(namespaceName, podName, podLabels, annotations, framework.AgnhostImage, nil, args)
@@ -126,7 +126,7 @@ var _ = framework.Describe("[group:service]", func() {
 		}
 		f.SkipVersionPriorTo(1, 11, "This case is support in v1.11")
 		ginkgo.By("Creating service " + serviceName)
-		port := 8000 + rand.Int31n(1000)
+		port := 8000 + rand.Int32N(1000)
 		ports := []corev1.ServicePort{{
 			Name:       "tcp",
 			Protocol:   corev1.ProtocolTCP,

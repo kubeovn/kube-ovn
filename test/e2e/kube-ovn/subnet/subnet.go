@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math/big"
-	"math/rand"
+	"math/rand/v2"
 	"net"
 	"os/exec"
 	"strconv"
@@ -241,8 +241,8 @@ var _ = framework.Describe("[group:subnet]", func() {
 	})
 
 	framework.ConformanceIt("should create subnet with exclude ips", func() {
-		excludeIPv4 := framework.RandomExcludeIPs(cidrV4, rand.Intn(10)+1)
-		excludeIPv6 := framework.RandomExcludeIPs(cidrV6, rand.Intn(10)+1)
+		excludeIPv4 := framework.RandomExcludeIPs(cidrV4, rand.IntN(10)+1)
+		excludeIPv6 := framework.RandomExcludeIPs(cidrV6, rand.IntN(10)+1)
 		excludeIPs := append(excludeIPv4, excludeIPv6...)
 
 		ginkgo.By(fmt.Sprintf("Creating subnet %s with exclude ips %v", subnetName, excludeIPs))
@@ -527,8 +527,8 @@ var _ = framework.Describe("[group:subnet]", func() {
 		}
 
 		ginkgo.By("Creating subnet " + subnetName)
-		prPriority := 1000 + rand.Intn(1000)
-		prTable := 1000 + rand.Intn(1000)
+		prPriority := 1000 + rand.IntN(1000)
+		prTable := 1000 + rand.IntN(1000)
 		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, nil)
 		subnet.Spec.ExternalEgressGateway = strings.Join(gateways, ",")
 		subnet.Spec.PolicyRoutingPriority = uint32(prPriority)
@@ -626,8 +626,8 @@ var _ = framework.Describe("[group:subnet]", func() {
 		for i := 0; i < 3 && i < len(nodes.Items); i++ {
 			gatewayNodes = append(gatewayNodes, nodes.Items[i].Name)
 		}
-		prPriority := 1000 + rand.Intn(1000)
-		prTable := 1000 + rand.Intn(1000)
+		prPriority := 1000 + rand.IntN(1000)
+		prTable := 1000 + rand.IntN(1000)
 		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, gatewayNodes, nil)
 		subnet.Spec.ExternalEgressGateway = strings.Join(gateways, ",")
 		subnet.Spec.PolicyRoutingPriority = uint32(prPriority)
@@ -1428,7 +1428,7 @@ func createPodsByRandomIPs(podClient *framework.PodClient, subnetClient *framewo
 
 	subnet := subnetClient.Get(subnetName)
 	for i := 1; i <= podCount; i++ {
-		step := rand.Int63()%10 + 2
+		step := rand.Int64()%10 + 2
 		switch subnet.Spec.Protocol {
 		case apiv1.ProtocolIPv4:
 			podv4IP = util.BigInt2Ip(big.NewInt(0).Add(util.IP2BigInt(podv4IP), big.NewInt(step)))

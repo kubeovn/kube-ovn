@@ -2,7 +2,7 @@ package ipam
 
 import (
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"net"
 	"sort"
 	"strings"
@@ -201,11 +201,11 @@ var _ = ginkgo.Context("[group:IPAM]", func() {
 	})
 
 	ginkgo.It("NewIPRangeListFrom", func() {
-		n := 40 + rand.Intn(20)
+		n := 40 + rand.IntN(20)
 		cidrList := make([]*net.IPNet, 0, n)
 		cidrSet := u32set.NewWithSize(n * 2)
 		for len(cidrList) != cap(cidrList) {
-			_, cidr, err := net.ParseCIDR(fmt.Sprintf("%s/%d", uint32ToIPv4(rand.Uint32()), 16+rand.Intn(16)))
+			_, cidr, err := net.ParseCIDR(fmt.Sprintf("%s/%d", uint32ToIPv4(rand.Uint32()), 16+rand.IntN(16)))
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			var invalid bool
@@ -226,7 +226,7 @@ var _ = ginkgo.Context("[group:IPAM]", func() {
 			}
 		}
 
-		n = 80 + rand.Intn(40)
+		n = 80 + rand.IntN(40)
 		set := u32set.NewWithSize(cidrSet.Size() + n)
 		for set.Size() != n {
 			v := rand.Uint32()
