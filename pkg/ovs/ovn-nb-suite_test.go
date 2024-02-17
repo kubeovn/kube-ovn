@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"math/rand"
+	"math/rand/v2"
 	"os"
 	"strings"
 	"testing"
@@ -716,7 +716,7 @@ func newOVSDBServer(t *testing.T, dbModel model.ClientDBModel, schema ovsdb.Data
 	server, err := server.NewOvsdbServer(db, dbMod, svrMod)
 	require.NoError(t, err)
 
-	tmpfile := fmt.Sprintf("/tmp/ovsdb-%d.sock", rand.Intn(10000))
+	tmpfile := fmt.Sprintf("/tmp/ovsdb-%d.sock", rand.IntN(10000))
 	t.Cleanup(func() {
 		os.Remove(tmpfile)
 	})

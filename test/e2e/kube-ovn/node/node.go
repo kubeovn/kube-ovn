@@ -3,7 +3,7 @@ package node
 import (
 	"context"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"net"
 	"strconv"
 	"strings"
@@ -117,7 +117,7 @@ var _ = framework.OrderedDescribe("[group:node]", func() {
 		annotations := map[string]string{
 			util.LogicalSwitchAnnotation: subnetName,
 		}
-		port := strconv.Itoa(8000 + rand.Intn(1000))
+		port := strconv.Itoa(8000 + rand.IntN(1000))
 		args := []string{"netexec", "--http-port", port}
 		pod := framework.MakePod(namespaceName, podName, nil, annotations, framework.AgnhostImage, nil, args)
 		pod = podClient.CreateSync(pod)
@@ -158,7 +158,7 @@ var _ = framework.OrderedDescribe("[group:node]", func() {
 		annotations := map[string]string{
 			util.LogicalSwitchAnnotation: subnetName,
 		}
-		port := 8000 + rand.Int31n(1000)
+		port := 8000 + rand.Int32N(1000)
 		portStr := strconv.Itoa(int(port))
 		args := []string{"netexec", "--http-port", portStr}
 		pod := framework.MakePod(namespaceName, podName, podLabels, annotations, framework.AgnhostImage, nil, args)

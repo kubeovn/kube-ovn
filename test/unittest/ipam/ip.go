@@ -2,7 +2,7 @@ package ipam
 
 import (
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"net"
 
 	"github.com/onsi/ginkgo/v2"

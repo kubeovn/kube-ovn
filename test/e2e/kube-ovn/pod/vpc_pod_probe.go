@@ -2,7 +2,7 @@ package pod
 
 import (
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"net"
 	"strconv"
 	"strings"
@@ -99,7 +99,7 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 		_ = subnetClient.CreateSync(subnet)
 
 		ginkgo.By("Creating pod with HTTP readiness probe that port is accessible " + podName)
-		port := 8000 + rand.Int31n(1000)
+		port := 8000 + rand.Int32N(1000)
 		portStr := strconv.Itoa(int(port))
 		args := []string{"netexec", "--http-port", portStr}
 		pod := framework.MakePod(namespaceName, podName, nil, map[string]string{util.LogicalSwitchAnnotation: custVPCSubnetName}, framework.AgnhostImage, nil, args)

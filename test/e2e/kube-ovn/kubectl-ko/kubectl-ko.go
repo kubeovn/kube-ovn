@@ -3,7 +3,7 @@ package kubectl_ko
 import (
 	"context"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"strings"
 
 	clientset "k8s.io/client-go/kubernetes"
@@ -206,7 +206,7 @@ var _ = framework.Describe("[group:kubectl-ko]", func() {
 		framework.ExpectNoError(err)
 		framework.ExpectNotNil(nodeList)
 		framework.ExpectNotEmpty(nodeList.Items)
-		node := nodeList.Items[rand.Intn(len(nodeList.Items))]
+		node := nodeList.Items[rand.IntN(len(nodeList.Items))]
 
 		nodeIPv4, nodeIPv6 := util.GetNodeInternalIP(node)
 		for _, ip := range []string{nodeIPv4, nodeIPv6} {

@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"net"
 	"os/exec"
 	"strconv"
@@ -102,7 +102,7 @@ var _ = framework.SerialDescribe("[group:ovn-ic]", func() {
 		for i := range clusters {
 			podNames[i] = "pod-" + framework.RandomSuffix()
 			ginkgo.By("Creating pod " + podNames[i] + " in cluster " + clusters[i])
-			port := 8000 + rand.Int31n(1000)
+			port := 8000 + rand.Int32N(1000)
 			ports[i] = strconv.Itoa(int(port))
 			args := []string{"netexec", "--http-port", ports[i]}
 			pods[i] = framework.MakePod(namespaceNames[i], podNames[i], nil, nil, framework.AgnhostImage, nil, args)
@@ -185,7 +185,7 @@ var _ = framework.SerialDescribe("[group:ovn-ic]", func() {
 			azNames[i] = cm.Data["az-name"]
 		}
 
-		azNames[0] = fmt.Sprintf("az%04d", rand.Intn(10000))
+		azNames[0] = fmt.Sprintf("az%04d", rand.IntN(10000))
 		configMapPatchPayload, err := json.Marshal(corev1.ConfigMap{
 			Data: map[string]string{
 				"az-name": azNames[0],

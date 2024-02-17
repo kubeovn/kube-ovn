@@ -2,7 +2,7 @@ package framework
 
 import (
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"net"
 	"sort"
 	"strings"
@@ -21,7 +21,7 @@ const (
 
 // RandomSuffix provides a random sequence to append to resources.
 func RandomSuffix() string {
-	return fmt.Sprintf("%d%04d%04d", ginkgo.GinkgoParallelProcess(), rand.Intn(10000), rand.Intn(10000))
+	return fmt.Sprintf("%d%04d%04d", ginkgo.GinkgoParallelProcess(), rand.IntN(10000), rand.IntN(10000))
 }
 
 func RandomCIDR(family string) string {
@@ -31,7 +31,7 @@ func RandomCIDR(family string) string {
 			Mask: net.CIDRMask(24, 32),
 		}
 		cidr.IP[1] = 0xf0 | byte(ginkgo.GinkgoParallelProcess())
-		cidr.IP[2] = byte(rand.Intn(0xff + 1))
+		cidr.IP[2] = byte(rand.IntN(0xff + 1))
 		return cidr.String()
 	}
 
@@ -41,8 +41,8 @@ func RandomCIDR(family string) string {
 			Mask: net.CIDRMask(96, 128),
 		}
 		cidr.IP[9] = byte(ginkgo.GinkgoParallelProcess())
-		cidr.IP[10] = byte(rand.Intn(0xff + 1))
-		cidr.IP[11] = byte(rand.Intn(0xff + 1))
+		cidr.IP[10] = byte(rand.IntN(0xff + 1))
+		cidr.IP[11] = byte(rand.IntN(0xff + 1))
 		return cidr.String()
 	}
 
@@ -78,14 +78,14 @@ func RandomExcludeIPs(cidr string, count int) []string {
 	ExpectNotContainSubstring(cidr, ",")
 	ExpectNotContainSubstring(cidr, ";")
 
-	rangeCount := rand.Intn(count + 1)
+	rangeCount := rand.IntN(count + 1)
 	ips := randomSortedIPs(cidr, rangeCount*2+count-rangeCount, true)
 
 	var idx int
 	rangeLeft := rangeCount
 	ret := make([]string, 0, count)
 	for i := 0; i < count; i++ {
-		if rangeLeft != 0 && rand.Intn(count-i) < rangeLeft {
+		if rangeLeft != 0 && rand.IntN(count-i) < rangeLeft {
 			ret = append(ret, fmt.Sprintf("%s..%s", ips[idx], ips[idx+1]))
 			idx++
 			rangeLeft--
@@ -158,7 +158,7 @@ func randomPool(cidr string, count int) []string {
 	rl := ipam.NewEmptyIPRangeList()
 	set := strset.NewWithSize(count)
 	for set.Size() != count/4 {
-		prefix := (ones+bits)/2 + rand.Intn((bits-ones)/2+1)
+		prefix := (ones+bits)/2 + rand.IntN((bits-ones)/2+1)
 		_, ipNet, err = net.ParseCIDR(fmt.Sprintf("%s/%d", r.Random(), prefix))
 		ExpectNoError(err)
 
@@ -193,7 +193,7 @@ func randomPool(cidr string, count int) []string {
 	sort.Slice(ips, func(i, j int) bool { return ips[i].LessThan(ips[j]) })
 
 	var i, j int
-	k := rand.Intn(len(ips))
+	k := rand.IntN(len(ips))
 	for i != m || j != n {
 		if i != m {
 			x, y := k%len(ips), (k+1)%len(ips)
