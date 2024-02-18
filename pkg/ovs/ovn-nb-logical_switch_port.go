@@ -16,18 +16,7 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-func (c *OVNNbClient) CreateLogicalSwitchPort(lsName, lspName, ip, mac, podName, namespace string, portSecurity bool, securityGroups, vips string, enableDHCP bool, dhcpOptions *DHCPOptionsUUIDs, vpc string) error {
-	exist, err := c.LogicalSwitchPortExists(lspName)
-	if err != nil {
-		klog.Error(err)
-		return err
-	}
-
-	// ignore
-	if exist {
-		return nil
-	}
-
+func buildLogicalSwitchPort(lspName, ip, mac, podName, namespace string, portSecurity bool, securityGroups, vips string, enableDHCP bool, dhcpOptions *DHCPOptionsUUIDs, vpc string) *ovnnb.LogicalSwitchPort {
 	/* normal lsp creation */
 	lsp := &ovnnb.LogicalSwitchPort{
 		UUID:        ovsclient.NamedUUID(),
@@ -88,6 +77,27 @@ func (c *OVNNbClient) CreateLogicalSwitchPort(lsName, lspName, ip, mac, podName,
 		}
 	}
 
+	return lsp
+}
+
+func (c *OVNNbClient) CreateLogicalSwitchPort(lsName, lspName, ip, mac, podName, namespace string, portSecurity bool, securityGroups, vips string, enableDHCP bool, dhcpOptions *DHCPOptionsUUIDs, vpc string) error {
+	exist, err := c.LogicalSwitchPortExists(lspName)
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
+
+	// update if exists
+	if exist {
+		lsp := buildLogicalSwitchPort(lspName, ip, mac, podName, namespace, portSecurity, securityGroups, vips, enableDHCP, dhcpOptions, vpc)
+		if err := c.UpdateLogicalSwitchPort(lsp, &lsp.PortSecurity, &lsp.ExternalIDs); err != nil {
+			klog.Error(err)
+			return fmt.Errorf("failed to update logical switch port %s: %v", lspName, err)
+		}
+		return nil
+	}
+
+	lsp := buildLogicalSwitchPort(lspName, ip, mac, podName, namespace, portSecurity, securityGroups, vips, enableDHCP, dhcpOptions, vpc)
 	ops, err := c.CreateLogicalSwitchPortOp(lsp, lsName)
 	if err != nil {
 		klog.Error(err)
