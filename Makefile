@@ -420,7 +420,7 @@ kind-load-image:
 
 .PHONY: kind-untaint-control-plane
 kind-untaint-control-plane:
-	@for node in $$(kubectl get no -o jsonpath='{.items[*].metadata.name}'); do \
+	@for node in $(shell kubectl get no -o jsonpath='{.items[*].metadata.name}'); do \
 		for key in $(CONTROL_PLANE_TAINTS); do \
 			taint=$$(kubectl get no $$node -o jsonpath="{.spec.taints[?(@.key==\"$$key\")]}"); \
 			if [ -n "$$taint" ]; then \
@@ -439,7 +439,7 @@ kind-install-chart: kind-load-image kind-untaint-control-plane
 		--set networking.NET_STACK=$(shell echo $${NET_STACK:-ipv4} | sed 's/^dual$$/dual_stack/') \
 		--set networking.ENABLE_SSL=$(shell echo $${ENABLE_SSL:-false}) \
 		--set func.ENABLE_BIND_LOCAL_IP=$(shell echo $${ENABLE_BIND_LOCAL_IP:-true}) \
-		--set func.ENABLE_IC=$$(kubectl get node --show-labels | grep -q "ovn.kubernetes.io/ic-gw" && echo true || echo false)
+		--set func.ENABLE_IC=$(shell kubectl get node --show-labels | grep -qw "ovn.kubernetes.io/ic-gw" && echo true || echo false)
 	sleep 60
 	kubectl -n kube-system rollout status --timeout=1s deployment/ovn-central
 	kubectl -n kube-system rollout status --timeout=1s daemonset/ovs-ovn
@@ -451,7 +451,7 @@ kind-install-chart: kind-load-image kind-untaint-control-plane
 kind-upgrade-chart: kind-load-image
 	helm upgrade kubeovn ./charts \
 		--set global.images.kubeovn.tag=$(VERSION) \
-		--set func.ENABLE_IC=$$(kubectl get node --show-labels | grep -q "ovn.kubernetes.io/ic-gw" && echo true || echo false)
+		--set func.ENABLE_IC=$(shell kubectl get node --show-labels | grep -qw "ovn.kubernetes.io/ic-gw" && echo true || echo false)
 	sleep 90
 	kubectl -n kube-system rollout status --timeout=1s deployment/ovn-central
 	kubectl -n kube-system wait pod --for=condition=ready -l app=ovs
