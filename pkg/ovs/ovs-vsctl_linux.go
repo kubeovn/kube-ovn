@@ -21,13 +21,13 @@ func SetInterfaceBandwidth(podName, podNamespace, iface, ingress, egress string)
 		return err
 	}
 
-	qosIfaceUIDMap, err := ListExternalIds("qos")
+	qosIfaceUIDMap, err := ListExternalIDs("qos")
 	if err != nil {
 		klog.Error(err)
 		return err
 	}
 
-	queueIfaceUIDMap, err := ListExternalIds("queue")
+	queueIfaceUIDMap, err := ListExternalIDs("queue")
 	if err != nil {
 		klog.Error(err)
 		return err

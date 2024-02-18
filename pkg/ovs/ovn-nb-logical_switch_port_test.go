@@ -455,7 +455,7 @@ func (suite *OvnClientTestSuite) testSetLogicalSwitchPortSecurity() {
 	})
 }
 
-func (suite *OvnClientTestSuite) testSetSetLogicalSwitchPortExternalIds() {
+func (suite *OvnClientTestSuite) testSetSetLogicalSwitchPortExternalIDs() {
 	t := suite.T()
 	t.Parallel()
 
@@ -473,7 +473,7 @@ func (suite *OvnClientTestSuite) testSetSetLogicalSwitchPortExternalIds() {
 	err := createLogicalSwitchPort(ovnClient, lsp)
 	require.NoError(t, err)
 
-	err = ovnClient.SetLogicalSwitchPortExternalIds(lspName, map[string]string{"k1": "v1"})
+	err = ovnClient.SetLogicalSwitchPortExternalIDs(lspName, map[string]string{"k1": "v1"})
 	require.NoError(t, err)
 
 	lsp, err = ovnClient.GetLogicalSwitchPort(lspName, false)
@@ -483,7 +483,7 @@ func (suite *OvnClientTestSuite) testSetSetLogicalSwitchPortExternalIds() {
 		"vendor": util.CniTypeName,
 	}, lsp.ExternalIDs)
 
-	err = ovnClient.SetLogicalSwitchPortExternalIds(lspName, map[string]string{"k1": "v2"})
+	err = ovnClient.SetLogicalSwitchPortExternalIDs(lspName, map[string]string{"k1": "v2"})
 	require.NoError(t, err)
 
 	lsp, err = ovnClient.GetLogicalSwitchPort(lspName, false)

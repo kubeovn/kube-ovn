@@ -25,11 +25,11 @@ func pingGateway(gw, src string, verbose bool, maxRetry int) (count int, err err
 	pinger.Timeout = time.Duration(maxRetry) * time.Second
 	pinger.Interval = time.Second
 
-	pinger.OnRecv = func(p *goping.Packet) {
+	pinger.OnRecv = func(_ *goping.Packet) {
 		pinger.Stop()
 	}
 
-	pinger.OnSend = func(p *goping.Packet) {
+	pinger.OnSend = func(_ *goping.Packet) {
 		if pinger.PacketsRecv == 0 && pinger.PacketsSent != 0 && pinger.PacketsSent%3 == 0 {
 			klog.Warningf("%s network not ready after %d ping to gateway %s", src, pinger.PacketsSent, gw)
 		}

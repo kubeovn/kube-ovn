@@ -371,7 +371,7 @@ func (c *Controller) InitIPAM() error {
 					}
 				}
 
-				// Append ExternalIds is added in v1.7, used for upgrading from v1.6.3. It should be deleted now since v1.7 is not used anymore.
+				// Append externalIDs is added in v1.7, used for upgrading from v1.6.3. It should be deleted now since v1.7 is not used anymore.
 			}
 		}
 	}

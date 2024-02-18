@@ -324,8 +324,8 @@ func (c *OVNNbClient) SetLogicalSwitchPortSecurity(portSecurity bool, lspName, m
 	return nil
 }
 
-// SetLogicalSwitchPortExternalIds set logical switch port external ids
-func (c *OVNNbClient) SetLogicalSwitchPortExternalIds(lspName string, externalIds map[string]string) error {
+// SetLogicalSwitchPortExternalIDs set logical switch port external ids
+func (c *OVNNbClient) SetLogicalSwitchPortExternalIDs(lspName string, externalIds map[string]string) error {
 	lsp, err := c.GetLogicalSwitchPort(lspName, false)
 	if err != nil {
 		klog.Error(err)
