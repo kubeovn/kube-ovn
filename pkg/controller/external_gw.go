@@ -9,7 +9,6 @@ import (
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
 
@@ -218,9 +217,10 @@ func (c *Controller) createDefaultVpcLrpEip() (string, string, error) {
 
 func (c *Controller) getGatewayChassis(config map[string]string) ([]string, error) {
 	chassises := []string{}
-	nodes, err := c.nodesLister.List(labels.Everything())
+	sel, _ := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{MatchLabels: map[string]string{util.ExGatewayLabel: "true"}})
+	nodes, err := c.nodesLister.List(sel)
 	if err != nil {
-		klog.Errorf("failed to list nodes, %v", err)
+		klog.Errorf("failed to list external gw nodes, %v", err)
 		return nil, err
 	}
 	gwNodes := make([]string, 0, len(nodes))
