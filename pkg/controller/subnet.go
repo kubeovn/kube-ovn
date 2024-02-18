@@ -827,13 +827,13 @@ func (c *Controller) handleUpdateSubnetStatus(key string) error {
 	if !subnet.DeletionTimestamp.IsZero() {
 		// subnet is being deleted
 		cachedSubnet, err = c.subnetsLister.Get(key)
-		subnet = cachedSubnet.DeepCopy()
 		if err != nil {
 			if k8serrors.IsNotFound(err) {
 				return nil
 			}
 			return err
 		}
+		subnet = cachedSubnet.DeepCopy()
 		_, err = c.handleSubnetFinalizer(subnet)
 		if err != nil {
 			klog.Errorf("faile to handle finalizer for subnet %s, %v", key, err)
