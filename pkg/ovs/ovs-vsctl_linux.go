@@ -103,7 +103,7 @@ func ClearHtbQosQueue(podName, podNamespace, iface string) error {
 	}
 
 	// https://github.com/kubeovn/kube-ovn/issues/1191
-	qosQueueMap, err := ListQosQueueIds()
+	qosQueueMap, err := ListQosQueueIDs()
 	if err != nil {
 		klog.Error(err)
 		return err
