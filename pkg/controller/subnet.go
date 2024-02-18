@@ -834,8 +834,7 @@ func (c *Controller) handleUpdateSubnetStatus(key string) error {
 			return err
 		}
 		subnet = cachedSubnet.DeepCopy()
-		_, err = c.handleSubnetFinalizer(subnet)
-		if err != nil {
+		if _, err = c.handleSubnetFinalizer(subnet); err != nil {
 			klog.Errorf("faile to handle finalizer for subnet %s, %v", key, err)
 			return err
 		}
