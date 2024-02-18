@@ -83,22 +83,27 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 		fmt.Sprintf("external_ids:ip=%s", ipStr),
 		fmt.Sprintf("external_ids:pod_netns=%s", netns))
 	if err != nil {
+		klog.Error(err)
 		return fmt.Errorf("add nic to ovs failed %v: %q", err, output)
 	}
 
 	// lsp and container nic must use same mac address, otherwise ovn will reject these packets by default
 	macAddr, err := net.ParseMAC(mac)
 	if err != nil {
+		klog.Error(err)
 		return fmt.Errorf("failed to parse mac %s %v", macAddr, err)
 	}
 	if err = configureHostNic(hostNicName); err != nil {
+		klog.Error(err)
 		return err
 	}
 	if err = ovs.SetInterfaceBandwidth(podName, podNamespace, ifaceID, egress, ingress); err != nil {
+		klog.Error(err)
 		return err
 	}
 
 	if err = ovs.SetNetemQos(podName, podNamespace, ifaceID, latency, limit, loss); err != nil {
+		klog.Error(err)
 		return err
 	}
 
@@ -107,20 +112,24 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 	}
 	isUserspaceDP, err := ovs.IsUserspaceDataPath()
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 	if isUserspaceDP {
 		// turn off tx checksum
 		if err = turnOffNicTxChecksum(containerNicName); err != nil {
+			klog.Error(err)
 			return err
 		}
 	}
 
 	podNS, err := ns.GetNS(netns)
 	if err != nil {
+		klog.Error(err)
 		return fmt.Errorf("failed to open netns %q: %v", netns, err)
 	}
 	if err = configureContainerNic(containerNicName, ifName, ip, gateway, isDefaultRoute, detectIPConflict, routes, macAddr, podNS, mtu, nicType, gwCheckMode, u2oInterconnectionIP); err != nil {
+		klog.Error(err)
 		return err
 	}
 	return nil
@@ -214,6 +223,7 @@ func configureHostNic(nicName string) error {
 func configureContainerNic(nicName, ifName string, ipAddr, gateway string, isDefaultRoute, detectIPConflict bool, routes []request.Route, macAddr net.HardwareAddr, netns ns.NetNS, mtu int, nicType string, gwCheckMode int, u2oInterconnectionIP string) error {
 	containerLink, err := netlink.LinkByName(nicName)
 	if err != nil {
+		klog.Error(err)
 		return fmt.Errorf("can not find container nic %s: %v", nicName, err)
 	}
 
@@ -224,6 +234,7 @@ func configureContainerNic(nicName, ifName string, ipAddr, gateway string, isDef
 	}
 
 	if err = netlink.LinkSetNsFd(containerLink, int(netns.Fd())); err != nil {
+		klog.Error(err)
 		return fmt.Errorf("failed to move link to netns: %v", err)
 	}
 
@@ -231,6 +242,7 @@ func configureContainerNic(nicName, ifName string, ipAddr, gateway string, isDef
 
 		if nicType != util.InternalType {
 			if err = netlink.LinkSetName(containerLink, ifName); err != nil {
+				klog.Error(err)
 				return err
 			}
 		}
@@ -241,10 +253,12 @@ func configureContainerNic(nicName, ifName string, ipAddr, gateway string, isDef
 			// See https://github.com/containernetworking/cni/issues/531
 			value, err := sysctl.Sysctl("net.ipv6.conf.all.disable_ipv6")
 			if err != nil {
+				klog.Error(err)
 				return fmt.Errorf("failed to get sysctl net.ipv6.conf.all.disable_ipv6: %v", err)
 			}
 			if value != "0" {
 				if _, err = sysctl.Sysctl("net.ipv6.conf.all.disable_ipv6", "0"); err != nil {
+					klog.Error(err)
 					return fmt.Errorf("failed to enable ipv6 on all nic: %v", err)
 				}
 			}
@@ -252,16 +266,20 @@ func configureContainerNic(nicName, ifName string, ipAddr, gateway string, isDef
 
 		if nicType == util.InternalType {
 			if err = addAdditionalNic(ifName); err != nil {
+				klog.Error(err)
 				return err
 			}
 			if err = configureAdditionalNic(ifName, ipAddr); err != nil {
+				klog.Error(err)
 				return err
 			}
 			if err = configureNic(nicName, ipAddr, macAddr, mtu, detectIPConflict); err != nil {
+				klog.Error(err)
 				return err
 			}
 		} else {
 			if err = configureNic(ifName, ipAddr, macAddr, mtu, detectIPConflict); err != nil {
+				klog.Error(err)
 				return err
 			}
 		}
@@ -354,6 +372,7 @@ func configureContainerNic(nicName, ifName string, ipAddr, gateway string, isDef
 
 			if u2oInterconnectionIP != "" {
 				if err := checkGatewayReady(gwCheckMode, interfaceName, ipAddr, u2oInterconnectionIP, false, true); err != nil {
+					klog.Error(err)
 					return err
 				}
 			}
@@ -368,14 +387,19 @@ func checkGatewayReady(gwCheckMode int, intr, ipAddr, gateway string, underlayGa
 	var err error
 
 	if gwCheckMode == gatewayCheckModeArpingNotConcerned || gwCheckMode == gatewayCheckModePingNotConcerned {
-		// ignore error while ‘disableGatewayCheck=true’
+		// ignore error while disableGatewayCheck is true
 		if err = waitNetworkReady(intr, ipAddr, gateway, underlayGateway, verbose, 1); err != nil {
+			klog.Warningf("network %s with gateway %s is not ready for interface %s: %v", ipAddr, gateway, intr, err)
 			err = nil
 		}
 	} else {
 		err = waitNetworkReady(intr, ipAddr, gateway, underlayGateway, verbose, gatewayCheckMaxRetry)
 	}
-	return err
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
+	return nil
 }
 
 func waitNetworkReady(nic, ipAddr, gateway string, underlayGateway, verbose bool, maxRetry int) error {
@@ -383,6 +407,7 @@ func waitNetworkReady(nic, ipAddr, gateway string, underlayGateway, verbose bool
 	for i, gw := range strings.Split(gateway, ",") {
 		src := strings.Split(ips[i], "/")[0]
 		if underlayGateway && util.CheckProtocol(gw) == kubeovnv1.ProtocolIPv4 {
+			// v4 underlay gateway check use arping
 			mac, count, err := util.ArpResolve(nic, src, gw, time.Second, maxRetry)
 			cniConnectivityResult.WithLabelValues(nodeName).Add(float64(count))
 			if err != nil {
@@ -395,7 +420,9 @@ func waitNetworkReady(nic, ipAddr, gateway string, underlayGateway, verbose bool
 				klog.Infof("network %s with gateway %s is ready for interface %s after %d checks", ips[i], gw, nic, count)
 			}
 		} else {
+			// v6 or vpc gateway check use ping
 			if err := pingGateway(gw, src, verbose, maxRetry); err != nil {
+				klog.Error(err)
 				return err
 			}
 		}
