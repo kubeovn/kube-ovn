@@ -65,7 +65,7 @@ type LogicalSwitchPort interface {
 	SetLogicalSwitchPortSecurity(portSecurity bool, lspName, mac, ips, vips string) error
 	SetLogicalSwitchPortVirtualParents(lsName, parents string, ips ...string) error
 	SetLogicalSwitchPortArpProxy(lspName string, enableArpProxy bool) error
-	SetLogicalSwitchPortExternalIds(lspName string, externalIds map[string]string) error
+	SetLogicalSwitchPortExternalIDs(lspName string, externalIDs map[string]string) error
 	SetLogicalSwitchPortVlanTag(lspName string, vlanID int) error
 	SetLogicalSwitchPortsSecurityGroup(sgName, op string) error
 	EnablePortLayer2forward(lspName string) error

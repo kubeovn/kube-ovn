@@ -370,7 +370,7 @@ func (suite *OvnClientTestSuite) testCreateNodeACL() {
 		require.Contains(t, pg.ACLs, acl.UUID)
 	}
 
-	expect := func(pg *ovnnb.PortGroup, gateway string) {
+	expect := func(pg *ovnnb.PortGroup, _ string) {
 		for _, ip := range strings.Split(nodeIP, ",") {
 			protocol := util.CheckProtocol(ip)
 			ipSuffix := "ip4"

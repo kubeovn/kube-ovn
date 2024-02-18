@@ -353,8 +353,8 @@ func ConfigInterfaceMirror(globalMirror bool, open, iface string) error {
 			if len(mirrorPorts) > 1 {
 				return fmt.Errorf("repeated mirror data, mirror name=" + util.MirrorDefaultName)
 			}
-			for _, mirrorPortIds := range mirrorPorts {
-				if strings.Contains(mirrorPortIds, portID) {
+			for _, mirrorPortIDs := range mirrorPorts {
+				if strings.Contains(mirrorPortIDs, portID) {
 					// remove port from mirror
 					_, err := Exec("remove", "mirror", util.MirrorDefaultName, "select_dst_port", portID)
 					if err != nil {
@@ -383,8 +383,8 @@ func GetResidualInternalPorts() []string {
 		}
 
 		// iface-id field does not exist in external_ids for residual internal port
-		externalIds := strings.Split(intf, "\n")[1]
-		if !strings.Contains(externalIds, "iface-id") {
+		externalIDs := strings.Split(intf, "\n")[1]
+		if !strings.Contains(externalIDs, "iface-id") {
 			residualPorts = append(residualPorts, name)
 		}
 	}
@@ -407,7 +407,7 @@ func ClearPortQosBinding(ifaceID string) error {
 	return nil
 }
 
-func ListExternalIds(table string) (map[string]string, error) {
+func ListExternalIDs(table string) (map[string]string, error) {
 	args := []string{"--data=bare", "--format=csv", "--no-heading", "--columns=_uuid,external_ids", "find", table, "external_ids:iface-id!=[]"}
 	output, err := Exec(args...)
 	if err != nil {
@@ -425,8 +425,8 @@ func ListExternalIds(table string) (map[string]string, error) {
 			continue
 		}
 		uuid := strings.TrimSpace(parts[0])
-		externalIds := strings.Fields(parts[1])
-		for _, externalID := range externalIds {
+		externalIDs := strings.Fields(parts[1])
+		for _, externalID := range externalIDs {
 			if !strings.Contains(externalID, "iface-id=") {
 				continue
 			}
@@ -438,7 +438,7 @@ func ListExternalIds(table string) (map[string]string, error) {
 	return result, nil
 }
 
-func ListQosQueueIds() (map[string]string, error) {
+func ListQosQueueIDs() (map[string]string, error) {
 	args := []string{"--data=bare", "--format=csv", "--no-heading", "--columns=_uuid,queues", "find", "qos", "queues:0!=[]"}
 	output, err := Exec(args...)
 	if err != nil {

@@ -812,7 +812,7 @@ func (c *Controller) checkGatewayReady() error {
 
 						success := false
 
-						pinger.OnRecv = func(p *goping.Packet) {
+						pinger.OnRecv = func(_ *goping.Packet) {
 							success = true
 							pinger.Stop()
 						}
