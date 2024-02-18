@@ -119,7 +119,7 @@ func (c *Controller) enqueueUpdateSubnet(oldObj, newObj interface{}) {
 		oldSubnet.Spec.RouteTable != newSubnet.Spec.RouteTable ||
 		oldSubnet.Spec.Vpc != newSubnet.Spec.Vpc ||
 		oldSubnet.Spec.NatOutgoing != newSubnet.Spec.NatOutgoing ||
-		oldSubnet.Spec.EnableMulicastSnoop != newSubnet.Spec.EnableMulicastSnoop ||
+		oldSubnet.Spec.EnableMulticastSnoop != newSubnet.Spec.EnableMulticastSnoop ||
 		!reflect.DeepEqual(oldSubnet.Spec.NatOutgoingPolicyRules, newSubnet.Spec.NatOutgoingPolicyRules) ||
 		(newSubnet.Spec.U2OInterconnection && newSubnet.Spec.U2OInterconnectionIP != "" && oldSubnet.Spec.U2OInterconnectionIP != newSubnet.Spec.U2OInterconnectionIP) {
 
@@ -798,7 +798,7 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 	}
 
 	multicastSnoopFlag := map[string]string{"mcast_snoop": "true", "mcast_querier": "false"}
-	if subnet.Spec.EnableMulicastSnoop {
+	if subnet.Spec.EnableMulticastSnoop {
 		if err := c.OVNNbClient.LogicalSwitchUpdateOtherConfig(subnet.Name, ovsdb.MutateOperationInsert, multicastSnoopFlag); err != nil {
 			klog.Errorf("enable logical switch multicast snoop %s: %v", subnet.Name, err)
 			return err
@@ -1124,16 +1124,16 @@ func (c *Controller) reconcileVips(subnet *kubeovnv1.Subnet) error {
 		return err
 	}
 
-	/* filter all invaild virtual port */
+	/* filter all invalid virtual port */
 	existVips := make(map[string]string) // key is vip, value is port name
 	for _, lsp := range lsps {
 		vip, ok := lsp.Options["virtual-ip"]
 		if !ok {
-			continue // ingnore vip which is empty
+			continue // ignore vip which is empty
 		}
 
 		if net.ParseIP(vip) == nil {
-			continue // ingnore invalid vip
+			continue // ignore invalid vip
 		}
 
 		existVips[vip] = lsp.Name
@@ -1203,7 +1203,7 @@ func (c *Controller) syncVirtualPort(key string) error {
 		for _, lsp := range lsps {
 			vips, ok := lsp.ExternalIDs["vips"]
 			if !ok {
-				continue // ingnore vips which is empty
+				continue // ignore vips which is empty
 			}
 
 			if strings.Contains(vips, vip) {
@@ -1211,7 +1211,7 @@ func (c *Controller) syncVirtualPort(key string) error {
 			}
 		}
 
-		// logical switch port has no vaild vip
+		// logical switch port has no valid vip
 		if len(virtualParents) == 0 {
 			continue
 		}
@@ -1353,12 +1353,12 @@ func (c *Controller) reconcileCustomVpcBfdStaticRoute(vpcName, subnetName string
 func (c *Controller) reconcileCustomVpcDelNormalStaticRoute(vpcName string) error {
 	// normal static route is prior than ecmp bfd static route
 	// if use ecmp bfd static route, normal static route should not exist
-	defualtExternalSubnet, err := c.subnetsLister.Get(c.config.ExternalGatewaySwitch)
+	defaultExternalSubnet, err := c.subnetsLister.Get(c.config.ExternalGatewaySwitch)
 	if err != nil {
 		klog.Errorf("failed to get default external switch subnet %s: %v", c.config.ExternalGatewaySwitch, err)
 		return err
 	}
-	gatewayV4, gatewayV6 := util.SplitStringIP(defualtExternalSubnet.Spec.Gateway)
+	gatewayV4, gatewayV6 := util.SplitStringIP(defaultExternalSubnet.Spec.Gateway)
 	needUpdate := false
 	vpc, err := c.vpcsLister.Get(vpcName)
 	if err != nil {
@@ -1709,7 +1709,7 @@ func (c *Controller) reconcileOvnDefaultVpcRoute(subnet *kubeovnv1.Subnet) error
 			}
 		}
 	} else {
-		// It's diffcult to update policy route when subnet cidr is changed, add check for cidr changed situation
+		// It's difficult to update policy route when subnet cidr is changed, add check for cidr changed situation
 		if err := c.reconcilePolicyRouteForCidrChangedSubnet(subnet, true); err != nil {
 			klog.Error(err)
 			return err
@@ -1953,7 +1953,7 @@ func (c *Controller) calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv
 	v4gw, v6gw := util.SplitStringIP(subnet.Spec.Gateway)
 	for _, excludeIP := range subnet.Spec.ExcludeIps {
 		if v4gw == excludeIP || v6gw == excludeIP {
-			// no need to compair gateway ip with pod ip
+			// no need to compare gateway ip with pod ip
 			continue
 		}
 		noGWExcludeIPs = append(noGWExcludeIPs, excludeIP)
@@ -2083,7 +2083,7 @@ func (c *Controller) calcSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv1.Su
 	v4gw, v6gw := util.SplitStringIP(subnet.Spec.Gateway)
 	for _, excludeIP := range subnet.Spec.ExcludeIps {
 		if v4gw == excludeIP || v6gw == excludeIP {
-			// no need to compair gateway ip with pod ip
+			// no need to compare gateway ip with pod ip
 			continue
 		}
 		noGWExcludeIPs = append(noGWExcludeIPs, excludeIP)
@@ -2387,7 +2387,7 @@ func (c *Controller) updatePolicyRouteForCentralizedSubnet(subnetName, cidr stri
 	for node, ip := range nameIPMap {
 		externalIDs[node] = ip
 	}
-	klog.Infof("add policy route for router: %s, match %s, action %s, nexthops %v, extrenalID %s", c.config.ClusterRouter, match, action, nextHops, externalIDs)
+	klog.Infof("add policy route for router: %s, match %s, action %s, nexthops %v, externalID %s", c.config.ClusterRouter, match, action, nextHops, externalIDs)
 	if err := c.addPolicyRouteToVpc(
 		c.config.ClusterRouter,
 		&kubeovnv1.PolicyRoute{
@@ -2474,7 +2474,7 @@ func (c *Controller) addPolicyRouteForDistributedSubnet(subnet *kubeovnv1.Subnet
 			}
 		)
 
-		klog.Infof("add policy route for router: %s, match %s, action %s, extrenalID %v", c.config.ClusterRouter, match, action, externalIDs)
+		klog.Infof("add policy route for router: %s, match %s, action %s, externalID %v", c.config.ClusterRouter, match, action, externalIDs)
 		if err := c.addPolicyRouteToVpc(
 			c.config.ClusterRouter,
 			&kubeovnv1.PolicyRoute{
@@ -2654,7 +2654,7 @@ func (c *Controller) addPolicyRouteForU2OInterconn(subnet *kubeovnv1.Subnet) err
 
 			comment:
 			policy1 and policy2 allow overlay pod access underlay but when overlay pod access node ip, it should go join subnet,
-			policy3: underlay pod first access u2o interconnection lrp and then reoute to physical gw
+			policy3: underlay pod first access u2o interconnection lrp and then reroute to physical gw
 		*/
 		action := kubeovnv1.PolicyRouteActionAllow
 		if subnet.Spec.Vpc == c.config.ClusterRouter {
