@@ -11,22 +11,18 @@ data:
       "plugins": [
         {
           "type": "kube-ovn",
-          "log_level": "info",
-          "datastore_type": "kubernetes",
-          "mtu": 1400,
-          "server_socket": "/run/openvswitch/kube-ovn-daemon.sock",
-          "ipam": {
-              "type": "kube-ovn",
-              "server_socket": "/run/openvswitch/kube-ovn-daemon.sock"
-          }
+          "server_socket": "/run/openvswitch/kube-ovn-daemon.sock"
         },
         {
           "type": "portmap",
           "snat": true,
-          "capabilities": {"portMappings": true}
+          "capabilities": {
+            "portMappings": true
+          }
         },
         {
-          "type": "cilium-cni"
+          "type": "cilium-cni",
+          "chaining-mode": "generic-veth"
         }
       ]
     }

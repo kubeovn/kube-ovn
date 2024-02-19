@@ -1675,6 +1675,13 @@ jobs:
       - build-e2e-binaries
     runs-on: ubuntu-22.04
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        ip-family:
+          - ipv4
+          # - ipv6
+          # - dual
     steps:
       - uses: jlumbroso/free-disk-space@v1.3.1
         with:
@@ -1757,18 +1764,19 @@ jobs:
         run: |
           sudo pip3 install j2cli
           sudo pip3 install "j2cli[yaml]"
-          sudo PATH=~/.local/bin:$PATH make kind-init
+          sudo PATH=~/.local/bin:$PATH make kind-init-cilium-chaining-${{ matrix.ip-family }}
           sudo cp -r /root/.kube/ ~/.kube/
           sudo chown -R $(id -un). ~/.kube/
 
       - name: Install Kube-OVN with Cilium chaining
-        run: make kind-install-cilium-chaining
+        run: make kind-install-cilium-chaining-${{ matrix.ip-family }}
 
       - name: Run E2E
         working-directory: ${{ env.E2E_DIR }}
         env:
           E2E_CILIUM_CHAINING: "true"
           E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
+          E2E_IP_FAMILY: ${{ matrix.ip-family }}
         run: make k8s-conformance-e2e
 
       - name: kubectl ko log

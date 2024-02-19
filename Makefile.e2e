@@ -37,10 +37,16 @@ endif
 
 ifeq ($(E2E_IP_FAMILY),dual)
 K8S_CONFORMANCE_E2E_FOCUS += "sig-network.*Feature:IPv6DualStack"
+K8S_CONFORMANCE_E2E_SKIP += "sig-network.*should create pod, add ipv6 and ipv4 ip to host ips.*Feature:PodHostIPs"
 endif
 
 ifeq ($(E2E_CILIUM_CHAINING),true)
+# https://docs.cilium.io/en/stable/configuration/sctp/
+# SCTP support does not support rewriting ports for SCTP packets.
+# This means that when defining services, the targetPort MUST equal the port,
+# otherwise the packet will be dropped.
 K8S_CONFORMANCE_E2E_SKIP += "sig-network.*Networking.*Feature:SCTPConnectivity"
+# https://github.com/cilium/cilium/issues/9207
 K8S_CONFORMANCE_E2E_SKIP += "sig-network.*Services.*should serve endpoints on same port and different protocols"
 endif
 
