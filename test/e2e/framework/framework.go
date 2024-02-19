@@ -192,7 +192,7 @@ func OrderedDescribe(text string, body func()) bool {
 // ConformanceIt is wrapper function for ginkgo It.
 // Adds "[Conformance]" tag and makes static analysis easier.
 func ConformanceIt(text string, body interface{}) bool {
-	return framework.ConformanceIt(text, body, framework.WithConformance())
+	return framework.ConformanceIt(text, body)
 }
 
 func DisruptiveIt(text string, body interface{}) bool {
