@@ -122,10 +122,14 @@ func (c *OVNNbClient) LogicalSwitchAddPort(lsName, lspName string) error {
 
 // LogicalSwitchDelPort del port from logical switch
 func (c *OVNNbClient) LogicalSwitchDelPort(lsName, lspName string) error {
-	lsp, err := c.GetLogicalSwitchPort(lspName, false)
+	lsp, err := c.GetLogicalSwitchPort(lspName, true)
 	if err != nil {
 		klog.Error(err)
 		return fmt.Errorf("get logical switch port %s when logical switch del port: %v", lspName, err)
+	}
+
+	if lsp == nil {
+		return nil
 	}
 
 	ops, err := c.LogicalSwitchUpdatePortOp(lsName, lsp.UUID, ovsdb.MutateOperationDelete)

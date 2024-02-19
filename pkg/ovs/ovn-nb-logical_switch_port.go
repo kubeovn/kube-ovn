@@ -38,7 +38,7 @@ func buildLogicalSwitchPort(lspName, lsName, ip, mac, podName, namespace string,
 			addresses = append(addresses, vipList...)
 		}
 		// addresses is the first element of port_security
-		lsp.PortSecurity = []string{strings.Join(addresses, " ")}
+		lsp.PortSecurity = []string{strings.TrimSpace(strings.Join(addresses, " "))}
 
 		// set security groups
 		if len(securityGroups) != 0 {
@@ -256,7 +256,7 @@ func (c *OVNNbClient) CreateBareLogicalSwitchPort(lsName, lspName, ip, mac strin
 	lsp := &ovnnb.LogicalSwitchPort{
 		UUID:      ovsclient.NamedUUID(),
 		Name:      lspName,
-		Addresses: []string{strings.Join(addresses, " ")}, // addresses is the first element of addresses
+		Addresses: []string{strings.TrimSpace(strings.Join(addresses, " "))}, // addresses is the first element of addresses
 	}
 
 	ops, err := c.CreateLogicalSwitchPortOp(lsp, lsName)
@@ -376,7 +376,7 @@ func (c *OVNNbClient) SetLogicalSwitchPortSecurity(portSecurity bool, lspName, m
 		}
 
 		// addresses is the first element of port_security
-		lsp.PortSecurity = []string{strings.Join(addresses, " ")}
+		lsp.PortSecurity = []string{strings.TrimSpace(strings.Join(addresses, " "))}
 	}
 
 	if vips != "" {
@@ -498,7 +498,7 @@ func (c *OVNNbClient) SetLogicalSwitchPortsSecurityGroup(sgName, op string) erro
 	return nil
 }
 
-// EnablePortLayer2forward set logical switch port addresses as 'unknown'
+// EnablePortLayer2forward adds "unknown" to logical switch port's addresses
 func (c *OVNNbClient) EnablePortLayer2forward(lspName string) error {
 	lsp, err := c.GetLogicalSwitchPort(lspName, false)
 	if err != nil {
@@ -571,6 +571,15 @@ func (c *OVNNbClient) UpdateLogicalSwitchPort(lsp *ovnnb.LogicalSwitchPort, fiel
 
 // DeleteLogicalSwitchPort delete logical switch port in ovn
 func (c *OVNNbClient) DeleteLogicalSwitchPort(lspName string) error {
+	lsp, err := c.GetLogicalSwitchPort(lspName, true)
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
+	if lsp == nil {
+		return nil
+	}
+
 	ops, err := c.DeleteLogicalSwitchPortOp(lspName)
 	if err != nil {
 		klog.Error(err)

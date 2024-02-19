@@ -11,7 +11,6 @@ import (
 
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
-	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func (suite *OvnClientTestSuite) testCreatePortGroup() {
@@ -42,31 +41,27 @@ func (suite *OvnClientTestSuite) testPortGroupResetPorts() {
 	t.Parallel()
 
 	ovnClient := suite.ovnClient
-	pgName := "test-reset-pg-ports"
-	prefix := "test-reset-ports"
+	lsName := "test-reset-pg-ports-ls"
+	pgName := "test-reset-pg-ports-pg"
+	prefix := "test-reset-pg-ports-lsp"
 	lspNames := make([]string, 0, 3)
 
-	err := ovnClient.CreatePortGroup(pgName, map[string]string{
-		"type": "security_group",
-		sgKey:  "test-sg",
-	})
+	err := ovnClient.CreateBareLogicalSwitch(lsName)
 	require.NoError(t, err)
 
 	for i := 1; i <= 3; i++ {
 		lspName := fmt.Sprintf("%s-%d", prefix, i)
 		lspNames = append(lspNames, lspName)
 
-		lsp := &ovnnb.LogicalSwitchPort{
-			UUID: ovsclient.NamedUUID(),
-			Name: lspName,
-			ExternalIDs: map[string]string{
-				"vendor": util.CniTypeName,
-			},
-		}
-
-		err := createLogicalSwitchPort(ovnClient, lsp)
+		err := ovnClient.CreateBareLogicalSwitchPort(lsName, lspName, "unknown", "")
 		require.NoError(t, err)
 	}
+
+	err = ovnClient.CreatePortGroup(pgName, map[string]string{
+		"type": "security_group",
+		sgKey:  "test-sg",
+	})
+	require.NoError(t, err)
 
 	err = ovnClient.PortGroupAddPorts(pgName, lspNames...)
 	require.NoError(t, err)

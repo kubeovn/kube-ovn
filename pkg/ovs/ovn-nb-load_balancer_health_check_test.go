@@ -115,7 +115,7 @@ func (suite *OvnClientTestSuite) testDeleteLoadBalancerHealthChecks() {
 	var (
 		ovnClient    = suite.ovnClient
 		lbNamePrefix = "test-del-lb-hcs"
-		vipFormat    = "1.1.1.%d:80"
+		vipFormat    = "5.5.5.%d:80"
 		lbhc         *ovnnb.LoadBalancerHealthCheck
 		vips         []string
 		lbName, vip  string
@@ -136,8 +136,11 @@ func (suite *OvnClientTestSuite) testDeleteLoadBalancerHealthChecks() {
 
 		_, lbhc, err = ovnClient.GetLoadBalancerHealthCheck(lbName, vip, false)
 		require.NoError(t, err)
-
+		require.NotNil(t, lbhc)
 		require.Equal(t, vip, lbhc.Vip)
+
+		err = ovnClient.LoadBalancerDeleteHealthCheck(lbName, lbhc.UUID)
+		require.NoError(t, err)
 	}
 
 	err = ovnClient.DeleteLoadBalancerHealthChecks(
@@ -165,7 +168,6 @@ func (suite *OvnClientTestSuite) testGetLoadBalancerHealthCheck() {
 		lbName         = "test-get-lb-hc"
 		vip            = "1.1.1.22:80"
 		vipNonExistent = "1.1.1.33:80"
-		lbhc           *ovnnb.LoadBalancerHealthCheck
 		err            error
 	)
 
@@ -178,7 +180,7 @@ func (suite *OvnClientTestSuite) testGetLoadBalancerHealthCheck() {
 	t.Run("should return no err when found load balancer health check",
 		func(t *testing.T) {
 			t.Parallel()
-			_, lbhc, err = ovnClient.GetLoadBalancerHealthCheck(lbName, vip, false)
+			_, lbhc, err := ovnClient.GetLoadBalancerHealthCheck(lbName, vip, false)
 			require.NoError(t, err)
 			require.Equal(t, vip, lbhc.Vip)
 			require.NotEmpty(t, lbhc.UUID)
@@ -188,7 +190,7 @@ func (suite *OvnClientTestSuite) testGetLoadBalancerHealthCheck() {
 	t.Run("should return err when not found load balancer health check",
 		func(t *testing.T) {
 			t.Parallel()
-			_, _, err = ovnClient.GetLoadBalancerHealthCheck(lbName, vipNonExistent, false)
+			_, _, err := ovnClient.GetLoadBalancerHealthCheck(lbName, vipNonExistent, false)
 			require.Error(t, err)
 		},
 	)
@@ -196,7 +198,7 @@ func (suite *OvnClientTestSuite) testGetLoadBalancerHealthCheck() {
 	t.Run("no err when not found load balancer health check and ignoreNotFound is true",
 		func(t *testing.T) {
 			t.Parallel()
-			_, _, err = ovnClient.GetLoadBalancerHealthCheck(lbName, vipNonExistent, true)
+			_, _, err := ovnClient.GetLoadBalancerHealthCheck(lbName, vipNonExistent, true)
 			require.NoError(t, err)
 		},
 	)
@@ -207,13 +209,12 @@ func (suite *OvnClientTestSuite) testListLoadBalancerHealthChecks() {
 	t.Parallel()
 
 	var (
-		ovnClient     = suite.ovnClient
-		lbNamePrefix  = "test-list-lb-hcs"
-		vipFormat     = "1.1.1.%d:80"
-		vips, newVips []string
-		lbhcs         []ovnnb.LoadBalancerHealthCheck
-		lbName, vip   string
-		err           error
+		ovnClient    = suite.ovnClient
+		lbNamePrefix = "test-list-lb-hcs"
+		vipFormat    = "6.6.6.%d:80"
+		vips         []string
+		lbName, vip  string
+		err          error
 	)
 
 	vips = make([]string, 0, 5)
@@ -234,11 +235,11 @@ func (suite *OvnClientTestSuite) testListLoadBalancerHealthChecks() {
 		func(t *testing.T) {
 			t.Parallel()
 
-			lbhcs, err = ovnClient.ListLoadBalancerHealthChecks(nil)
+			lbhcs, err := ovnClient.ListLoadBalancerHealthChecks(nil)
 			require.NoError(t, err)
 			require.NotEmpty(t, lbhcs)
 
-			newVips = make([]string, 0, 5)
+			newVips := make([]string, 0, 5)
 			for _, lbhc := range lbhcs {
 				newVips = append(newVips, lbhc.Vip)
 			}
@@ -255,17 +256,17 @@ func (suite *OvnClientTestSuite) testListLoadBalancerHealthChecks() {
 				func(t *testing.T) {
 					t.Parallel()
 
-					lbhcs, err = ovnClient.ListLoadBalancerHealthChecks(
+					lbhcs, err := ovnClient.ListLoadBalancerHealthChecks(
 						func(lbhc *ovnnb.LoadBalancerHealthCheck) bool {
-							return strings.Contains(lbhc.Vip, "1.1.1")
+							return strings.Contains(lbhc.Vip, "6.6.6.")
 						},
 					)
 					require.NoError(t, err)
 					require.NotEmpty(t, lbhcs)
 
-					newVips = make([]string, 0, 5)
+					newVips := make([]string, 0, 5)
 					for _, lbhc := range lbhcs {
-						if !strings.Contains(lbhc.Vip, "1.1.1.10") {
+						if !strings.Contains(lbhc.Vip, "6.6.6.10") {
 							continue
 						}
 						newVips = append(newVips, lbhc.Vip)
@@ -287,14 +288,17 @@ func (suite *OvnClientTestSuite) testDeleteLoadBalancerHealthCheckOp() {
 		vip            = "1.1.1.44:80"
 		vipNonExistent = "1.1.1.55:80"
 		lbhc           *ovnnb.LoadBalancerHealthCheck
-		ops            []ovsdb.Operation
 		err            error
 	)
 
 	err = ovnClient.CreateLoadBalancer(lbName, "tcp", "ip_dst")
 	require.NoError(t, err)
 
-	err = ovnClient.AddLoadBalancerHealthCheck(lbName, vip, map[string]string{})
+	lb, err := ovnClient.GetLoadBalancer(lbName, false)
+	require.NoError(t, err)
+	require.NotNil(t, lb)
+
+	err = ovnClient.AddLoadBalancerHealthCheck(lbName, vip, nil)
 	require.NoError(t, err)
 
 	_, lbhc, err = ovnClient.GetLoadBalancerHealthCheck(lbName, vip, false)
@@ -304,24 +308,53 @@ func (suite *OvnClientTestSuite) testDeleteLoadBalancerHealthCheckOp() {
 		func(t *testing.T) {
 			t.Parallel()
 
-			ops, err = ovnClient.DeleteLoadBalancerHealthCheckOp(lbName, vip)
+			ops, err := ovnClient.DeleteLoadBalancerHealthCheckOp(lbName, vip)
 			require.NoError(t, err)
-			require.Len(t, ops, 1)
+			require.Len(t, ops, 2)
 
-			require.Equal(t,
-				ovsdb.Operation{
-					Op:    "delete",
-					Table: "Load_Balancer_Health_Check",
-					Where: []ovsdb.Condition{
-						{
-							Column:   "_uuid",
-							Function: "==",
-							Value: ovsdb.UUID{
-								GoUUID: lbhc.UUID,
+			require.ElementsMatch(t, ops,
+				[]ovsdb.Operation{
+					{
+						Op:    ovsdb.OperationMutate,
+						Table: ovnnb.LoadBalancerTable,
+						Where: []ovsdb.Condition{
+							{
+								Column:   "_uuid",
+								Function: ovsdb.ConditionEqual,
+								Value: ovsdb.UUID{
+									GoUUID: lb.UUID,
+								},
+							},
+						},
+						Mutations: []ovsdb.Mutation{
+							{
+								Column:  "health_check",
+								Mutator: ovsdb.MutateOperationDelete,
+								Value: ovsdb.OvsSet{
+									GoSet: []interface{}{
+										ovsdb.UUID{
+											GoUUID: lbhc.UUID,
+										},
+									},
+								},
 							},
 						},
 					},
-				}, ops[0])
+					{
+						Op:    ovsdb.OperationDelete,
+						Table: ovnnb.LoadBalancerHealthCheckTable,
+						Where: []ovsdb.Condition{
+							{
+								Column:   "_uuid",
+								Function: ovsdb.ConditionEqual,
+								Value: ovsdb.UUID{
+									GoUUID: lbhc.UUID,
+								},
+							},
+						},
+					},
+				},
+			)
 		},
 	)
 
@@ -329,7 +362,7 @@ func (suite *OvnClientTestSuite) testDeleteLoadBalancerHealthCheckOp() {
 		func(t *testing.T) {
 			t.Parallel()
 
-			ops, err = ovnClient.DeleteLoadBalancerHealthCheckOp(lbName, vipNonExistent)
+			ops, err := ovnClient.DeleteLoadBalancerHealthCheckOp(lbName, vipNonExistent)
 			require.NoError(t, err)
 			require.Len(t, ops, 0)
 		},

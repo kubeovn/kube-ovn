@@ -25,15 +25,6 @@ func newLogicalRouterPort(lrName, lrpName, mac string, networks []string) *ovnnb
 	}
 }
 
-func createLogicalRouterPort(c *OVNNbClient, lrp *ovnnb.LogicalRouterPort) error {
-	op, err := c.Create(lrp)
-	if err != nil {
-		return fmt.Errorf("generate operations for creating logical router port %s: %v", lrp.Name, err)
-	}
-
-	return c.Transact("lrp-create", op)
-}
-
 func (suite *OvnClientTestSuite) testCreatePeerRouterPort() {
 	t := suite.T()
 	t.Parallel()
@@ -502,44 +493,40 @@ func (suite *OvnClientTestSuite) testLogicalRouterPortOp() {
 	t.Parallel()
 
 	ovnClient := suite.ovnClient
-	lrpName := "test-op-lrp"
+	lrName := "test-op-lrp-lr"
+	lrpName := "test-op-lrp-lrp"
 
-	lrp := &ovnnb.LogicalRouterPort{
-		UUID: ovsclient.NamedUUID(),
-		Name: lrpName,
-		ExternalIDs: map[string]string{
-			"vendor": util.CniTypeName,
-		},
-	}
-
-	err := createLogicalRouterPort(ovnClient, lrp)
+	err := ovnClient.CreateLogicalRouter(lrName)
 	require.NoError(t, err)
 
-	gwChassisUUID := ovsclient.NamedUUID()
+	err = ovnClient.CreateLogicalRouterPort(lrName, lrpName, util.GenerateMac(), []string{"172.177.19.1/24"})
+	require.NoError(t, err)
+
+	lrp, err := ovnClient.GetLogicalRouterPort(lrpName, false)
+	require.NoError(t, err)
+	require.NotNil(t, lrp)
+	require.ElementsMatch(t, lrp.Networks, []string{"172.177.19.1/24"})
 
 	mutation := func(lrp *ovnnb.LogicalRouterPort) *model.Mutation {
-		mutation := &model.Mutation{
-			Field:   &lrp.GatewayChassis,
-			Value:   []string{gwChassisUUID},
+		return &model.Mutation{
+			Field:   &lrp.Networks,
+			Value:   []string{"172.177.29.1/24", "172.177.39.1/24"},
 			Mutator: ovsdb.MutateOperationInsert,
 		}
-
-		return mutation
 	}
 
 	ops, err := ovnClient.LogicalRouterPortOp(lrpName, mutation)
 	require.NoError(t, err)
-
+	require.Len(t, ops, 1)
 	require.Len(t, ops[0].Mutations, 1)
 	require.Equal(t, []ovsdb.Mutation{
 		{
-			Column:  "gateway_chassis",
+			Column:  "networks",
 			Mutator: ovsdb.MutateOperationInsert,
 			Value: ovsdb.OvsSet{
 				GoSet: []interface{}{
-					ovsdb.UUID{
-						GoUUID: gwChassisUUID,
-					},
+					"172.177.29.1/24",
+					"172.177.39.1/24",
 				},
 			},
 		},

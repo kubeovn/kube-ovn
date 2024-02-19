@@ -53,22 +53,33 @@ func (c *OVNNbClient) DeleteGatewayChassises(lrpName string, chassises []string)
 		return nil
 	}
 
-	ops := make([]ovsdb.Operation, 0, len(chassises))
+	lrp, err := c.GetLogicalRouterPort(lrpName, false)
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
 
+	ops := make([]ovsdb.Operation, 0, len(chassises)*2)
 	for _, chassisName := range chassises {
 		gwChassisName := lrpName + "-" + chassisName
-		op, err := c.DeleteGatewayChassisOp(gwChassisName)
+		uuid, delOps, err := c.DeleteGatewayChassisOp(gwChassisName)
 		if err != nil {
 			klog.Error(err)
 			return nil
 		}
 
-		// ignore non-existent object
-		if len(op) == 0 {
-			continue
+		mutateOps, err := c.Where(lrp).Mutate(lrp, model.Mutation{
+			Field:   &lrp.GatewayChassis,
+			Value:   []string{uuid},
+			Mutator: ovsdb.MutateOperationDelete,
+		})
+		if err != nil {
+			klog.Error(err)
+			return nil
 		}
 
-		ops = append(ops, op...)
+		ops = append(ops, mutateOps...)
+		ops = append(ops, delOps...)
 	}
 
 	if err := c.Transact("gateway-chassises-delete", ops); err != nil {
@@ -203,23 +214,22 @@ func (c *OVNNbClient) CreateGatewayChassisesOp(lrpName string, chassises []strin
 }
 
 // DeleteGatewayChassisOp create operation which delete gateway chassis
-func (c *OVNNbClient) DeleteGatewayChassisOp(chassisName string) ([]ovsdb.Operation, error) {
+func (c *OVNNbClient) DeleteGatewayChassisOp(chassisName string) (uuid string, ops []ovsdb.Operation, err error) {
 	gwChassis, err := c.GetGatewayChassis(chassisName, true)
 	if err != nil {
 		klog.Error(err)
-		return nil, err
+		return "", nil, err
 	}
 
 	// not found, skip
 	if gwChassis == nil {
-		return nil, nil
+		return "", nil, nil
 	}
 
-	op, err := c.Where(gwChassis).Delete()
-	if err != nil {
+	if ops, err = c.Where(gwChassis).Delete(); err != nil {
 		klog.Error(err)
-		return nil, err
+		return "", nil, err
 	}
 
-	return op, nil
+	return gwChassis.UUID, ops, nil
 }

@@ -555,7 +555,7 @@ func (c *OVNNbClient) LoadBalancerDeleteHealthCheck(lbName, uuid string) error {
 		if len(ops) == 0 {
 			return nil
 		}
-		if err = c.Transact("lb-del", ops); err != nil {
+		if err = c.Transact("lb-hc-del", ops); err != nil {
 			return fmt.Errorf("failed to delete health check %s from load balancers %s: %v", uuid, lbName, err)
 		}
 	}

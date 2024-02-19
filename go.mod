@@ -16,6 +16,7 @@ require (
 	github.com/evanphx/json-patch/v5 v5.9.0
 	github.com/go-logr/stdr v1.2.2
 	github.com/golang/mock v1.6.0
+	github.com/google/uuid v1.6.0
 	github.com/greenpau/ovsdb v1.0.3
 	github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.6.0
 	github.com/k8snetworkplumbingwg/sriovnet v1.2.0
@@ -36,6 +37,7 @@ require (
 	github.com/stretchr/testify v1.8.4
 	github.com/vishvananda/netlink v1.2.1-beta.2
 	golang.org/x/exp v0.0.0-20240213143201-ec583247a57a
+	go.uber.org/mock v0.4.0
 	golang.org/x/mod v0.15.0
 	golang.org/x/sys v0.17.0
 	golang.org/x/time v0.5.0
@@ -228,6 +230,7 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.26.0 // indirect
 	golang.org/x/crypto v0.19.0 // indirect
+	golang.org/x/exp v0.0.0-20240213143201-ec583247a57a // indirect
 	golang.org/x/net v0.21.0 // indirect
 	golang.org/x/oauth2 v0.17.0 // indirect
 	golang.org/x/sync v0.6.0 // indirect

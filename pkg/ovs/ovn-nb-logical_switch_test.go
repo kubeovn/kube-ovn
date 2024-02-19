@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/ovn-org/libovsdb/model"
 	"github.com/ovn-org/libovsdb/ovsdb"
 	"github.com/stretchr/testify/require"
@@ -117,7 +118,7 @@ func (suite *OvnClientTestSuite) testLogicalSwitchDelPort() {
 	err := ovnClient.CreateBareLogicalSwitch(lsName)
 	require.NoError(t, err)
 
-	err = ovnClient.CreateBareLogicalSwitchPort(lsName, lspName, "", "")
+	err = ovnClient.CreateBareLogicalSwitchPort(lsName, lspName, "unknown", "")
 	require.NoError(t, err)
 
 	lsp, err := ovnClient.GetLogicalSwitchPort(lspName, false)
@@ -140,7 +141,7 @@ func (suite *OvnClientTestSuite) testLogicalSwitchDelPort() {
 	})
 
 	t.Run("del port from logical switch repeatedly", func(t *testing.T) {
-		err = ovnClient.LogicalSwitchDelPort(lsName, lspName)
+		err := ovnClient.LogicalSwitchDelPort(lsName, lspName)
 		require.NoError(t, err)
 
 		ls, err := ovnClient.GetLogicalSwitch(lsName, false)
@@ -274,19 +275,19 @@ func (suite *OvnClientTestSuite) testListLogicalSwitch() {
 	t.Parallel()
 
 	ovnClient := suite.ovnClient
-	namePrefix := "test-list-ls"
+	namePrefix := "test-list-ls-"
 
 	i := 0
 	// create three logical switch
 	for ; i < 3; i++ {
-		name := fmt.Sprintf("%s-%d", namePrefix, i)
+		name := fmt.Sprintf("%s%d", namePrefix, i)
 		err := ovnClient.CreateBareLogicalSwitch(name)
 		require.NoError(t, err)
 	}
 
 	// create two logical switch which vendor is others
 	for ; i < 5; i++ {
-		name := fmt.Sprintf("%s-%d", namePrefix, i)
+		name := fmt.Sprintf("%s%d", namePrefix, i)
 		ls := &ovnnb.LogicalSwitch{
 			Name:        name,
 			ExternalIDs: map[string]string{"vendor": "test-vendor"},
@@ -298,7 +299,7 @@ func (suite *OvnClientTestSuite) testListLogicalSwitch() {
 
 	// create two logical switch without vendor
 	for ; i < 7; i++ {
-		name := fmt.Sprintf("%s-%d", namePrefix, i)
+		name := fmt.Sprintf("%s%d", namePrefix, i)
 		ls := &ovnnb.LogicalSwitch{
 			Name: name,
 		}
@@ -346,33 +347,21 @@ func (suite *OvnClientTestSuite) testLogicalSwitchUpdatePortOp() {
 
 	ovnClient := suite.ovnClient
 	lsName := "test-update-port-op-ls"
-	lspUUID := ovsclient.NamedUUID()
+	lspName := "test-update-port-op-lsp"
 
 	err := ovnClient.CreateBareLogicalSwitch(lsName)
 	require.NoError(t, err)
 
-	t.Run("add new port to logical switch", func(t *testing.T) {
-		t.Parallel()
-		ops, err := ovnClient.LogicalSwitchUpdatePortOp(lsName, lspUUID, ovsdb.MutateOperationInsert)
-		require.NoError(t, err)
-		require.Equal(t, []ovsdb.Mutation{
-			{
-				Column:  "ports",
-				Mutator: ovsdb.MutateOperationInsert,
-				Value: ovsdb.OvsSet{
-					GoSet: []interface{}{
-						ovsdb.UUID{
-							GoUUID: lspUUID,
-						},
-					},
-				},
-			},
-		}, ops[0].Mutations)
-	})
+	err = ovnClient.CreateBareLogicalSwitchPort(lsName, lspName, "unknown", "")
+	require.NoError(t, err)
+
+	lsp, err := ovnClient.GetLogicalSwitchPort(lspName, false)
+	require.NoError(t, err)
+	require.NotNil(t, lsp)
 
 	t.Run("del port from logical switch", func(t *testing.T) {
 		t.Parallel()
-		ops, err := ovnClient.LogicalSwitchUpdatePortOp(lsName, lspUUID, ovsdb.MutateOperationDelete)
+		ops, err := ovnClient.LogicalSwitchUpdatePortOp(lsName, lsp.UUID, ovsdb.MutateOperationDelete)
 		require.NoError(t, err)
 		require.Equal(t, []ovsdb.Mutation{
 			{
@@ -381,7 +370,7 @@ func (suite *OvnClientTestSuite) testLogicalSwitchUpdatePortOp() {
 				Value: ovsdb.OvsSet{
 					GoSet: []interface{}{
 						ovsdb.UUID{
-							GoUUID: lspUUID,
+							GoUUID: lsp.UUID,
 						},
 					},
 				},
@@ -391,7 +380,7 @@ func (suite *OvnClientTestSuite) testLogicalSwitchUpdatePortOp() {
 
 	t.Run("should return err when logical switch does not exist", func(t *testing.T) {
 		t.Parallel()
-		_, err := ovnClient.LogicalSwitchUpdatePortOp("test-update-port-op-ls-non-existent", lspUUID, ovsdb.MutateOperationInsert)
+		_, err := ovnClient.LogicalSwitchUpdatePortOp("test-update-port-op-ls-non-existent", uuid.NewString(), ovsdb.MutateOperationInsert)
 		require.ErrorContains(t, err, "not found logical switch")
 	})
 }

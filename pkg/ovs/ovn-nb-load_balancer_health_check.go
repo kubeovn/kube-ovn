@@ -3,8 +3,7 @@ package ovs
 import (
 	"context"
 	"fmt"
-
-	"golang.org/x/exp/slices"
+	"slices"
 
 	"github.com/ovn-org/libovsdb/model"
 	"github.com/ovn-org/libovsdb/ovsdb"
@@ -129,12 +128,7 @@ func (c *OVNNbClient) UpdateLoadBalancerHealthCheck(lbhc *ovnnb.LoadBalancerHeal
 
 // DeleteLoadBalancerHealthChecks delete several lb health checks once
 func (c *OVNNbClient) DeleteLoadBalancerHealthChecks(filter func(lb *ovnnb.LoadBalancerHealthCheck) bool) error {
-	var (
-		op  []ovsdb.Operation
-		err error
-	)
-
-	op, err = c.ovsDbClient.WhereCache(
+	op, err := c.ovsDbClient.WhereCache(
 		func(lbhc *ovnnb.LoadBalancerHealthCheck) bool {
 			if filter != nil {
 				return filter(lbhc)
@@ -178,12 +172,8 @@ func (c *OVNNbClient) GetLoadBalancerHealthCheck(lbName, vipEndpoint string, ign
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
 	defer cancel()
 
-	var (
-		lb  *ovnnb.LoadBalancer
-		err error
-	)
-
-	if lb, err = c.GetLoadBalancer(lbName, false); err != nil {
+	lb, err := c.GetLoadBalancer(lbName, false)
+	if err != nil {
 		klog.Errorf("failed to get lb %s: %v", lbName, err)
 		return nil, nil, err
 	}
@@ -263,12 +253,7 @@ func (c *OVNNbClient) LoadBalancerHealthCheckExists(lbName, vipEndpoint string) 
 
 // DeleteLoadBalancerHealthCheckOp delete operation which delete lb health check
 func (c *OVNNbClient) DeleteLoadBalancerHealthCheckOp(lbName, vip string) ([]ovsdb.Operation, error) {
-	var (
-		lbhc *ovnnb.LoadBalancerHealthCheck
-		err  error
-	)
-
-	_, lbhc, err = c.GetLoadBalancerHealthCheck(lbName, vip, true)
+	lb, lbhc, err := c.GetLoadBalancerHealthCheck(lbName, vip, true)
 	if err != nil {
 		klog.Errorf("failed to get lb health check: %v", err)
 		return nil, err
@@ -278,11 +263,20 @@ func (c *OVNNbClient) DeleteLoadBalancerHealthCheckOp(lbName, vip string) ([]ovs
 		return nil, nil
 	}
 
-	var op []ovsdb.Operation
-	if op, err = c.Where(lbhc).Delete(); err != nil {
+	mutateOps, err := c.Where(lb).Mutate(lb, model.Mutation{
+		Field:   &lb.HealthCheck,
+		Value:   []string{lbhc.UUID},
+		Mutator: ovsdb.MutateOperationDelete,
+	})
+	if err != nil {
+		klog.Errorf("failed to generate operations for deleting lb health check: %v", err)
+		return nil, err
+	}
+	deleteOps, err := c.Where(lbhc).Delete()
+	if err != nil {
 		klog.Errorf("failed to generate operations for deleting lb health check: %v", err)
 		return nil, err
 	}
 
-	return op, nil
+	return append(mutateOps, deleteOps...), nil
 }
