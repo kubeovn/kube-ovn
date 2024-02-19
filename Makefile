@@ -462,7 +462,7 @@ kind-install-chart: kind-load-image kind-untaint-control-plane
 	kubectl label node -lbeta.kubernetes.io/os=linux kubernetes.io/os=linux --overwrite
 	kubectl label node -lnode-role.kubernetes.io/control-plane kube-ovn/role=master --overwrite
 	kubectl label node -lovn.kubernetes.io/ovs_dp_type!=userspace ovn.kubernetes.io/ovs_dp_type=kernel --overwrite
-	helm install kubeovn ./charts \
+	helm install kubeovn ./charts/kube-ovn \
 		--set global.images.kubeovn.tag=$(VERSION) \
 		--set networking.NET_STACK=$(shell echo $${NET_STACK:-ipv4} | sed 's/^dual$$/dual_stack/') \
 		--set networking.ENABLE_SSL=$(shell echo $${ENABLE_SSL:-false}) \
@@ -481,7 +481,7 @@ kind-install-chart-ssl:
 
 .PHONY: kind-upgrade-chart
 kind-upgrade-chart: kind-load-image
-	helm upgrade kubeovn ./charts \
+	helm upgrade kubeovn ./charts/kube-ovn \
 		--set global.images.kubeovn.tag=$(VERSION) \
 		--set func.ENABLE_IC=$(shell kubectl get node --show-labels | grep -qw "ovn.kubernetes.io/ic-gw" && echo true || echo false)
 	sleep 90
