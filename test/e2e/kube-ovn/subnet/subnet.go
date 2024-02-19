@@ -1077,7 +1077,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		}
 	})
 
-	framework.ConformanceIt("should support subnet add nat outgoing policy rules ", func() {
+	framework.ConformanceIt("should support subnet add nat outgoing policy rules", func() {
 		f.SkipVersionPriorTo(1, 12, "Support for subnet add nat outgoing policy rules in v1.12")
 
 		ginkgo.By("Creating subnet " + subnetName)

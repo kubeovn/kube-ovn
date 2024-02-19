@@ -207,6 +207,6 @@ func ConformanceIt(text string, body interface{}) bool {
 	return framework.ConformanceIt(text, body)
 }
 
-func CorruptiveIt(text string, body interface{}) bool {
-	return ginkgo.It(text+" [Corruptive]", ginkgo.Offset(1), body)
+func DisruptiveIt(text string, body interface{}) bool {
+	return framework.It(text, ginkgo.Offset(1), body, framework.WithDisruptive())
 }
