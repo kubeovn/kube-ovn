@@ -61,7 +61,7 @@ RUN cd /usr/src/ovs && \
     rm -rf .git && \
     CONFIGURE_OPTS='CFLAGS="-fPIC"' && \
     if [ "$ARCH" = "amd64" ]; then CONFIGURE_OPTS='CFLAGS="-O2 -g -msse4.2 -mpopcnt -fPIC"'; fi && \
-    DATAPATH_CONFIGURE_OPTS='--prefix=/usr' EXTRA_CONFIGURE_OPTS=$CONFIGURE_OPTS DEB_BUILD_OPTIONS='parallel=8 nocheck nodpdk' make debian-deb
+    DATAPATH_CONFIGURE_OPTS='--prefix=/usr' EXTRA_CONFIGURE_OPTS=$CONFIGURE_OPTS make debian-deb
 
 RUN cd /usr/src/ovn && \
     sed -i 's/OVN/ovn/g' debian/changelog && \
