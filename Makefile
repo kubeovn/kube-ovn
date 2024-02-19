@@ -761,14 +761,15 @@ kind-install-kubevirt: kind-install
 
 	kubectl apply -f "$(KUBEVIRT_OPERATOR_YAML)"
 	kubectl apply -f "$(KUBEVIRT_CR_YAML)"
-	kubectl rollout status deployment/virt-operator -n kubevirt --timeout 120s
-	echo "wait kubevirt releated pod running ..."
-	sleep 60
-
 	kubectl -n kubevirt patch kubevirt kubevirt --type=merge --patch '{"spec":{"configuration":{"developerConfiguration":{"useEmulation":true}}}}'
+	$(call kubectl_wait_exist_and_ready,kubevirt,deployment,virt-operator)
+	$(call kubectl_wait_exist_and_ready,kubevirt,deployment,virt-api)
+	$(call kubectl_wait_exist_and_ready,kubevirt,deployment,virt-controller)
+	$(call kubectl_wait_exist_and_ready,kubevirt,daemonset,virt-handler)
+
 	kubectl apply -f "$(KUBEVIRT_TEST_YAML)"
-	sleep 5
 	kubectl patch vm testvm --type=merge --patch '{"spec":{"running":true}}'
+	kubectl wait vm testvm --for=condition=Ready --timeout=2m
 
 .PHONY: kind-install-lb-svc
 kind-install-lb-svc:

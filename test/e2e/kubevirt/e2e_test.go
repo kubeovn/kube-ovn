@@ -47,7 +47,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 			LabelSelector: "vm.kubevirt.io/name=testvm",
 		})
 		framework.ExpectNoError(err)
-		framework.ExpectEqual(len(podList.Items), 1)
+		framework.ExpectHaveLen(podList.Items, 1)
 
 		ginkgo.By("Validating pod annotations")
 		pod := podList.Items[0]
@@ -65,7 +65,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 			LabelSelector: "vm.kubevirt.io/name=testvm",
 		})
 		framework.ExpectNoError(err)
-		framework.ExpectEqual(len(podList.Items), 1)
+		framework.ExpectHaveLen(podList.Items, 1)
 
 		ginkgo.By("Validating new pod annotations")
 		pod = podList.Items[0]
