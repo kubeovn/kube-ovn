@@ -2,7 +2,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.13.0
+    controller-gen.kubebuilder.io/version: v0.14.0
   labels:
     app: kwok-controller
   name: attaches.kwok.x-k8s.io
@@ -21,14 +21,19 @@ spec:
         description: Attach provides attach configuration for a single pod.
         properties:
           apiVersion:
-            description: 'APIVersion defines the versioned schema of this representation
-              of an object. Servers should convert recognized schemas to the latest
-              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
             type: string
           kind:
-            description: 'Kind is a string value representing the REST resource this
-              object represents. Servers may infer this from the endpoint the client
-              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
             type: string
           metadata:
             type: object
@@ -63,23 +68,23 @@ spec:
                     state of this API Resource.
                   properties:
                     lastTransitionTime:
-                      description: LastTransitionTime is the last time the condition
-                        transitioned from one status to another. This should be when
-                        the underlying condition changed.  If that is not known, then
-                        using the time when the API field changed is acceptable.
+                      description: |-
+                        LastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
                       format: date-time
                       type: string
                     message:
-                      description: Message is a human readable message indicating
-                        details about the transition. This may be an empty string.
+                      description: |-
+                        Message is a human readable message indicating details about the transition.
+                        This may be an empty string.
                       maxLength: 32768
                       type: string
                     reason:
-                      description: Reason contains a programmatic identifier indicating
-                        the reason for the condition's last transition. Producers
-                        of specific condition types may define expected values and
-                        meanings for this field, and whether the values are considered
-                        a guaranteed API. The value should be a CamelCase string.
+                      description: |-
+                        Reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
                         This field may not be empty.
                       maxLength: 1024
                       minLength: 1
@@ -89,11 +94,11 @@ spec:
                       description: Status of the condition
                       type: string
                     type:
-                      description: Type of condition in CamelCase or in foo.example.com/CamelCase.
-                        Many .condition.type values are consistent across resources
-                        like Available, but because arbitrary conditions can be useful
-                        (see .node.status.conditions), the ability to deconflict is
-                        important. The regex it matches is (dns1123SubdomainFmt/)?(qualifiedNameFmt)
+                      description: |-
+                        Type of condition in CamelCase or in foo.example.com/CamelCase.
+                        Many .condition.type values are consistent across resources like Available, but because arbitrary conditions can be
+                        useful (see .node.status.conditions), the ability to deconflict is important.
+                        The regex it matches is (dns1123SubdomainFmt/)?(qualifiedNameFmt)
                       maxLength: 316
                       pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
                       type: string
@@ -122,7 +127,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.13.0
+    controller-gen.kubebuilder.io/version: v0.14.0
   labels:
     app: kwok-controller
   name: clusterattaches.kwok.x-k8s.io
@@ -141,14 +146,19 @@ spec:
         description: ClusterAttach provides cluster-wide logging configuration
         properties:
           apiVersion:
-            description: 'APIVersion defines the versioned schema of this representation
-              of an object. Servers should convert recognized schemas to the latest
-              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
             type: string
           kind:
-            description: 'Kind is a string value representing the REST resource this
-              object represents. Servers may infer this from the endpoint the client
-              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
             type: string
           metadata:
             type: object
@@ -174,13 +184,15 @@ spec:
                 description: Selector is a selector to filter pods to configure.
                 properties:
                   matchNames:
-                    description: MatchNames is a list of names to match. if not set,
-                      all names will be matched.
+                    description: |-
+                      MatchNames is a list of names to match.
+                      if not set, all names will be matched.
                     items:
                       type: string
                     type: array
                   matchNamespaces:
-                    description: MatchNamespaces is a list of namespaces to match.
+                    description: |-
+                      MatchNamespaces is a list of namespaces to match.
                       if not set, all namespaces will be matched.
                     items:
                       type: string
@@ -199,23 +211,23 @@ spec:
                     state of this API Resource.
                   properties:
                     lastTransitionTime:
-                      description: LastTransitionTime is the last time the condition
-                        transitioned from one status to another. This should be when
-                        the underlying condition changed.  If that is not known, then
-                        using the time when the API field changed is acceptable.
+                      description: |-
+                        LastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
                       format: date-time
                       type: string
                     message:
-                      description: Message is a human readable message indicating
-                        details about the transition. This may be an empty string.
+                      description: |-
+                        Message is a human readable message indicating details about the transition.
+                        This may be an empty string.
                       maxLength: 32768
                       type: string
                     reason:
-                      description: Reason contains a programmatic identifier indicating
-                        the reason for the condition's last transition. Producers
-                        of specific condition types may define expected values and
-                        meanings for this field, and whether the values are considered
-                        a guaranteed API. The value should be a CamelCase string.
+                      description: |-
+                        Reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
                         This field may not be empty.
                       maxLength: 1024
                       minLength: 1
@@ -225,11 +237,11 @@ spec:
                       description: Status of the condition
                       type: string
                     type:
-                      description: Type of condition in CamelCase or in foo.example.com/CamelCase.
-                        Many .condition.type values are consistent across resources
-                        like Available, but because arbitrary conditions can be useful
-                        (see .node.status.conditions), the ability to deconflict is
-                        important. The regex it matches is (dns1123SubdomainFmt/)?(qualifiedNameFmt)
+                      description: |-
+                        Type of condition in CamelCase or in foo.example.com/CamelCase.
+                        Many .condition.type values are consistent across resources like Available, but because arbitrary conditions can be
+                        useful (see .node.status.conditions), the ability to deconflict is important.
+                        The regex it matches is (dns1123SubdomainFmt/)?(qualifiedNameFmt)
                       maxLength: 316
                       pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
                       type: string
@@ -255,7 +267,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.13.0
+    controller-gen.kubebuilder.io/version: v0.14.0
   labels:
     app: kwok-controller
   name: clusterexecs.kwok.x-k8s.io
@@ -274,14 +286,19 @@ spec:
         description: ClusterExec provides cluster-wide exec configuration.
         properties:
           apiVersion:
-            description: 'APIVersion defines the versioned schema of this representation
-              of an object. Servers should convert recognized schemas to the latest
-              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
             type: string
           kind:
-            description: 'Kind is a string value representing the REST resource this
-              object represents. Servers may infer this from the endpoint the client
-              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
             type: string
           metadata:
             type: object
@@ -294,8 +311,9 @@ spec:
                   description: ExecTarget holds information how to exec.
                   properties:
                     containers:
-                      description: Containers is a list of containers to exec. if
-                        not set, all containers will be execed.
+                      description: |-
+                        Containers is a list of containers to exec.
+                        if not set, all containers will be execed.
                       items:
                         type: string
                       type: array
@@ -345,13 +363,15 @@ spec:
                 description: Selector is a selector to filter pods to configure.
                 properties:
                   matchNames:
-                    description: MatchNames is a list of names to match. if not set,
-                      all names will be matched.
+                    description: |-
+                      MatchNames is a list of names to match.
+                      if not set, all names will be matched.
                     items:
                       type: string
                     type: array
                   matchNamespaces:
-                    description: MatchNamespaces is a list of namespaces to match.
+                    description: |-
+                      MatchNamespaces is a list of namespaces to match.
                       if not set, all namespaces will be matched.
                     items:
                       type: string
@@ -370,23 +390,23 @@ spec:
                     state of this API Resource.
                   properties:
                     lastTransitionTime:
-                      description: LastTransitionTime is the last time the condition
-                        transitioned from one status to another. This should be when
-                        the underlying condition changed.  If that is not known, then
-                        using the time when the API field changed is acceptable.
+                      description: |-
+                        LastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
                       format: date-time
                       type: string
                     message:
-                      description: Message is a human readable message indicating
-                        details about the transition. This may be an empty string.
+                      description: |-
+                        Message is a human readable message indicating details about the transition.
+                        This may be an empty string.
                       maxLength: 32768
                       type: string
                     reason:
-                      description: Reason contains a programmatic identifier indicating
-                        the reason for the condition's last transition. Producers
-                        of specific condition types may define expected values and
-                        meanings for this field, and whether the values are considered
-                        a guaranteed API. The value should be a CamelCase string.
+                      description: |-
+                        Reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
                         This field may not be empty.
                       maxLength: 1024
                       minLength: 1
@@ -396,11 +416,11 @@ spec:
                       description: Status of the condition
                       type: string
                     type:
-                      description: Type of condition in CamelCase or in foo.example.com/CamelCase.
-                        Many .condition.type values are consistent across resources
-                        like Available, but because arbitrary conditions can be useful
-                        (see .node.status.conditions), the ability to deconflict is
-                        important. The regex it matches is (dns1123SubdomainFmt/)?(qualifiedNameFmt)
+                      description: |-
+                        Type of condition in CamelCase or in foo.example.com/CamelCase.
+                        Many .condition.type values are consistent across resources like Available, but because arbitrary conditions can be
+                        useful (see .node.status.conditions), the ability to deconflict is important.
+                        The regex it matches is (dns1123SubdomainFmt/)?(qualifiedNameFmt)
                       maxLength: 316
                       pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
                       type: string
@@ -429,7 +449,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.13.0
+    controller-gen.kubebuilder.io/version: v0.14.0
   labels:
     app: kwok-controller
   name: clusterlogs.kwok.x-k8s.io
@@ -448,14 +468,19 @@ spec:
         description: ClusterLogs provides cluster-wide logging configuration
         properties:
           apiVersion:
-            description: 'APIVersion defines the versioned schema of this representation
-              of an object. Servers should convert recognized schemas to the latest
-              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
             type: string
           kind:
-            description: 'Kind is a string value representing the REST resource this
-              object represents. Servers may infer this from the endpoint the client
-              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
             type: string
           metadata:
             type: object
@@ -485,13 +510,15 @@ spec:
                 description: Selector is a selector to filter pods to configure.
                 properties:
                   matchNames:
-                    description: MatchNames is a list of names to match. if not set,
-                      all names will be matched.
+                    description: |-
+                      MatchNames is a list of names to match.
+                      if not set, all names will be matched.
                     items:
                       type: string
                     type: array
                   matchNamespaces:
-                    description: MatchNamespaces is a list of namespaces to match.
+                    description: |-
+                      MatchNamespaces is a list of namespaces to match.
                       if not set, all namespaces will be matched.
                     items:
                       type: string
@@ -510,23 +537,23 @@ spec:
                     state of this API Resource.
                   properties:
                     lastTransitionTime:
-                      description: LastTransitionTime is the last time the condition
-                        transitioned from one status to another. This should be when
-                        the underlying condition changed.  If that is not known, then
-                        using the time when the API field changed is acceptable.
+                      description: |-
+                        LastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
                       format: date-time
                       type: string
                     message:
-                      description: Message is a human readable message indicating
-                        details about the transition. This may be an empty string.
+                      description: |-
+                        Message is a human readable message indicating details about the transition.
+                        This may be an empty string.
                       maxLength: 32768
                       type: string
                     reason:
-                      description: Reason contains a programmatic identifier indicating
-                        the reason for the condition's last transition. Producers
-                        of specific condition types may define expected values and
-                        meanings for this field, and whether the values are considered
-                        a guaranteed API. The value should be a CamelCase string.
+                      description: |-
+                        Reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
                         This field may not be empty.
                       maxLength: 1024
                       minLength: 1
@@ -536,11 +563,11 @@ spec:
                       description: Status of the condition
                       type: string
                     type:
-                      description: Type of condition in CamelCase or in foo.example.com/CamelCase.
-                        Many .condition.type values are consistent across resources
-                        like Available, but because arbitrary conditions can be useful
-                        (see .node.status.conditions), the ability to deconflict is
-                        important. The regex it matches is (dns1123SubdomainFmt/)?(qualifiedNameFmt)
+                      description: |-
+                        Type of condition in CamelCase or in foo.example.com/CamelCase.
+                        Many .condition.type values are consistent across resources like Available, but because arbitrary conditions can be
+                        useful (see .node.status.conditions), the ability to deconflict is important.
+                        The regex it matches is (dns1123SubdomainFmt/)?(qualifiedNameFmt)
                       maxLength: 316
                       pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
                       type: string
@@ -569,7 +596,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.13.0
+    controller-gen.kubebuilder.io/version: v0.14.0
   labels:
     app: kwok-controller
   name: clusterportforwards.kwok.x-k8s.io
@@ -588,14 +615,19 @@ spec:
         description: ClusterPortForward provides cluster-wide port forward configuration.
         properties:
           apiVersion:
-            description: 'APIVersion defines the versioned schema of this representation
-              of an object. Servers should convert recognized schemas to the latest
-              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
             type: string
           kind:
-            description: 'Kind is a string value representing the REST resource this
-              object represents. Servers may infer this from the endpoint the client
-              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
             type: string
           metadata:
             type: object
@@ -608,14 +640,16 @@ spec:
                   description: Forward holds information how to forward based on ports.
                   properties:
                     command:
-                      description: Command is the command to run to forward with stdin/stdout.
+                      description: |-
+                        Command is the command to run to forward with stdin/stdout.
                         if set, Target will be ignored.
                       items:
                         type: string
                       type: array
                     ports:
-                      description: Ports is a list of ports to forward. if not set,
-                        all ports will be forwarded.
+                      description: |-
+                        Ports is a list of ports to forward.
+                        if not set, all ports will be forwarded.
                       items:
                         format: int32
                         type: integer
@@ -643,13 +677,15 @@ spec:
                 description: Selector is a selector to filter pods to configure.
                 properties:
                   matchNames:
-                    description: MatchNames is a list of names to match. if not set,
-                      all names will be matched.
+                    description: |-
+                      MatchNames is a list of names to match.
+                      if not set, all names will be matched.
                     items:
                       type: string
                     type: array
                   matchNamespaces:
-                    description: MatchNamespaces is a list of namespaces to match.
+                    description: |-
+                      MatchNamespaces is a list of namespaces to match.
                       if not set, all namespaces will be matched.
                     items:
                       type: string
@@ -668,23 +704,23 @@ spec:
                     state of this API Resource.
                   properties:
                     lastTransitionTime:
-                      description: LastTransitionTime is the last time the condition
-                        transitioned from one status to another. This should be when
-                        the underlying condition changed.  If that is not known, then
-                        using the time when the API field changed is acceptable.
+                      description: |-
+                        LastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
                       format: date-time
                       type: string
                     message:
-                      description: Message is a human readable message indicating
-                        details about the transition. This may be an empty string.
+                      description: |-
+                        Message is a human readable message indicating details about the transition.
+                        This may be an empty string.
                       maxLength: 32768
                       type: string
                     reason:
-                      description: Reason contains a programmatic identifier indicating
-                        the reason for the condition's last transition. Producers
-                        of specific condition types may define expected values and
-                        meanings for this field, and whether the values are considered
-                        a guaranteed API. The value should be a CamelCase string.
+                      description: |-
+                        Reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
                         This field may not be empty.
                       maxLength: 1024
                       minLength: 1
@@ -694,11 +730,11 @@ spec:
                       description: Status of the condition
                       type: string
                     type:
-                      description: Type of condition in CamelCase or in foo.example.com/CamelCase.
-                        Many .condition.type values are consistent across resources
-                        like Available, but because arbitrary conditions can be useful
-                        (see .node.status.conditions), the ability to deconflict is
-                        important. The regex it matches is (dns1123SubdomainFmt/)?(qualifiedNameFmt)
+                      description: |-
+                        Type of condition in CamelCase or in foo.example.com/CamelCase.
+                        Many .condition.type values are consistent across resources like Available, but because arbitrary conditions can be
+                        useful (see .node.status.conditions), the ability to deconflict is important.
+                        The regex it matches is (dns1123SubdomainFmt/)?(qualifiedNameFmt)
                       maxLength: 316
                       pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
                       type: string
@@ -727,7 +763,164 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.13.0
+    controller-gen.kubebuilder.io/version: v0.14.0
+  labels:
+    app: kwok-controller
+  name: clusterresourceusages.kwok.x-k8s.io
+spec:
+  group: kwok.x-k8s.io
+  names:
+    kind: ClusterResourceUsage
+    listKind: ClusterResourceUsageList
+    plural: clusterresourceusages
+    singular: clusterresourceusage
+  scope: Cluster
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: ClusterResourceUsage provides cluster-wide resource usage.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: Spec holds spec for cluster resource usage.
+            properties:
+              selector:
+                description: Selector is a selector to filter pods to configure.
+                properties:
+                  matchNames:
+                    description: |-
+                      MatchNames is a list of names to match.
+                      if not set, all names will be matched.
+                    items:
+                      type: string
+                    type: array
+                  matchNamespaces:
+                    description: |-
+                      MatchNamespaces is a list of namespaces to match.
+                      if not set, all namespaces will be matched.
+                    items:
+                      type: string
+                    type: array
+                type: object
+              usages:
+                description: Usages is a list of resource usage for the pod.
+                items:
+                  description: ResourceUsageContainer holds spec for resource usage
+                    container.
+                  properties:
+                    containers:
+                      description: Containers is list of container names.
+                      items:
+                        type: string
+                      type: array
+                    usage:
+                      additionalProperties:
+                        description: ResourceUsageValue holds value for resource usage.
+                        properties:
+                          expression:
+                            description: Expression is the expression for resource
+                              usage.
+                            type: string
+                          value:
+                            anyOf:
+                            - type: integer
+                            - type: string
+                            description: Value is the value for resource usage.
+                            pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                            x-kubernetes-int-or-string: true
+                        type: object
+                      description: Usage is a list of resource usage for the container.
+                      type: object
+                  type: object
+                type: array
+            type: object
+          status:
+            description: Status holds status for cluster resource usage
+            properties:
+              conditions:
+                description: Conditions holds conditions for cluster resource usage
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        LastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        Message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    reason:
+                      description: |-
+                        Reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: Status of the condition
+                      type: string
+                    type:
+                      description: |-
+                        Type of condition in CamelCase or in foo.example.com/CamelCase.
+                        Many .condition.type values are consistent across resources like Available, but because arbitrary conditions can be
+                        useful (see .node.status.conditions), the ability to deconflict is important.
+                        The regex it matches is (dns1123SubdomainFmt/)?(qualifiedNameFmt)
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+            type: object
+        required:
+        - metadata
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.14.0
   labels:
     app: kwok-controller
   name: execs.kwok.x-k8s.io
@@ -746,14 +939,19 @@ spec:
         description: Exec provides exec configuration for a single pod.
         properties:
           apiVersion:
-            description: 'APIVersion defines the versioned schema of this representation
-              of an object. Servers should convert recognized schemas to the latest
-              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
             type: string
           kind:
-            description: 'Kind is a string value representing the REST resource this
-              object represents. Servers may infer this from the endpoint the client
-              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
             type: string
           metadata:
             type: object
@@ -766,8 +964,9 @@ spec:
                   description: ExecTarget holds information how to exec.
                   properties:
                     containers:
-                      description: Containers is a list of containers to exec. if
-                        not set, all containers will be execed.
+                      description: |-
+                        Containers is a list of containers to exec.
+                        if not set, all containers will be execed.
                       items:
                         type: string
                       type: array
@@ -826,23 +1025,23 @@ spec:
                     state of this API Resource.
                   properties:
                     lastTransitionTime:
-                      description: LastTransitionTime is the last time the condition
-                        transitioned from one status to another. This should be when
-                        the underlying condition changed.  If that is not known, then
-                        using the time when the API field changed is acceptable.
+                      description: |-
+                        LastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
                       format: date-time
                       type: string
                     message:
-                      description: Message is a human readable message indicating
-                        details about the transition. This may be an empty string.
+                      description: |-
+                        Message is a human readable message indicating details about the transition.
+                        This may be an empty string.
                       maxLength: 32768
                       type: string
                     reason:
-                      description: Reason contains a programmatic identifier indicating
-                        the reason for the condition's last transition. Producers
-                        of specific condition types may define expected values and
-                        meanings for this field, and whether the values are considered
-                        a guaranteed API. The value should be a CamelCase string.
+                      description: |-
+                        Reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
                         This field may not be empty.
                       maxLength: 1024
                       minLength: 1
@@ -852,11 +1051,11 @@ spec:
                       description: Status of the condition
                       type: string
                     type:
-                      description: Type of condition in CamelCase or in foo.example.com/CamelCase.
-                        Many .condition.type values are consistent across resources
-                        like Available, but because arbitrary conditions can be useful
-                        (see .node.status.conditions), the ability to deconflict is
-                        important. The regex it matches is (dns1123SubdomainFmt/)?(qualifiedNameFmt)
+                      description: |-
+                        Type of condition in CamelCase or in foo.example.com/CamelCase.
+                        Many .condition.type values are consistent across resources like Available, but because arbitrary conditions can be
+                        useful (see .node.status.conditions), the ability to deconflict is important.
+                        The regex it matches is (dns1123SubdomainFmt/)?(qualifiedNameFmt)
                       maxLength: 316
                       pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
                       type: string
@@ -885,7 +1084,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.13.0
+    controller-gen.kubebuilder.io/version: v0.14.0
   labels:
     app: kwok-controller
   name: logs.kwok.x-k8s.io
@@ -904,14 +1103,19 @@ spec:
         description: Logs provides logging configuration for a single pod.
         properties:
           apiVersion:
-            description: 'APIVersion defines the versioned schema of this representation
-              of an object. Servers should convert recognized schemas to the latest
-              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
             type: string
           kind:
-            description: 'Kind is a string value representing the REST resource this
-              object represents. Servers may infer this from the endpoint the client
-              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
             type: string
           metadata:
             type: object
@@ -950,23 +1154,23 @@ spec:
                     state of this API Resource.
                   properties:
                     lastTransitionTime:
-                      description: LastTransitionTime is the last time the condition
-                        transitioned from one status to another. This should be when
-                        the underlying condition changed.  If that is not known, then
-                        using the time when the API field changed is acceptable.
+                      description: |-
+                        LastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
                       format: date-time
                       type: string
                     message:
-                      description: Message is a human readable message indicating
-                        details about the transition. This may be an empty string.
+                      description: |-
+                        Message is a human readable message indicating details about the transition.
+                        This may be an empty string.
                       maxLength: 32768
                       type: string
                     reason:
-                      description: Reason contains a programmatic identifier indicating
-                        the reason for the condition's last transition. Producers
-                        of specific condition types may define expected values and
-                        meanings for this field, and whether the values are considered
-                        a guaranteed API. The value should be a CamelCase string.
+                      description: |-
+                        Reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
                         This field may not be empty.
                       maxLength: 1024
                       minLength: 1
@@ -976,11 +1180,11 @@ spec:
                       description: Status of the condition
                       type: string
                     type:
-                      description: Type of condition in CamelCase or in foo.example.com/CamelCase.
-                        Many .condition.type values are consistent across resources
-                        like Available, but because arbitrary conditions can be useful
-                        (see .node.status.conditions), the ability to deconflict is
-                        important. The regex it matches is (dns1123SubdomainFmt/)?(qualifiedNameFmt)
+                      description: |-
+                        Type of condition in CamelCase or in foo.example.com/CamelCase.
+                        Many .condition.type values are consistent across resources like Available, but because arbitrary conditions can be
+                        useful (see .node.status.conditions), the ability to deconflict is important.
+                        The regex it matches is (dns1123SubdomainFmt/)?(qualifiedNameFmt)
                       maxLength: 316
                       pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
                       type: string
@@ -1009,7 +1213,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.13.0
+    controller-gen.kubebuilder.io/version: v0.14.0
   labels:
     app: kwok-controller
   name: metrics.kwok.x-k8s.io
@@ -1028,14 +1232,19 @@ spec:
         description: Metric provides metrics configuration.
         properties:
           apiVersion:
-            description: 'APIVersion defines the versioned schema of this representation
-              of an object. Servers should convert recognized schemas to the latest
-              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
             type: string
           kind:
-            description: 'Kind is a string value representing the REST resource this
-              object represents. Servers may infer this from the endpoint the client
-              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
             type: string
           metadata:
             type: object
@@ -1054,9 +1263,9 @@ spec:
                         description: MetricBucket is a single bucket for a metric.
                         properties:
                           hidden:
-                            description: Hidden is means that this bucket not shown
-                              in the metric. but value will be calculated and cumulative
-                              into the next bucket.
+                            description: |-
+                              Hidden is means that this bucket not shown in the metric.
+                              but value will be calculated and cumulative into the next bucket.
                             type: boolean
                           le:
                             description: Le is less-than or equal.
@@ -1138,23 +1347,23 @@ spec:
                     state of this API Resource.
                   properties:
                     lastTransitionTime:
-                      description: LastTransitionTime is the last time the condition
-                        transitioned from one status to another. This should be when
-                        the underlying condition changed.  If that is not known, then
-                        using the time when the API field changed is acceptable.
+                      description: |-
+                        LastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
                       format: date-time
                       type: string
                     message:
-                      description: Message is a human readable message indicating
-                        details about the transition. This may be an empty string.
+                      description: |-
+                        Message is a human readable message indicating details about the transition.
+                        This may be an empty string.
                       maxLength: 32768
                       type: string
                     reason:
-                      description: Reason contains a programmatic identifier indicating
-                        the reason for the condition's last transition. Producers
-                        of specific condition types may define expected values and
-                        meanings for this field, and whether the values are considered
-                        a guaranteed API. The value should be a CamelCase string.
+                      description: |-
+                        Reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
                         This field may not be empty.
                       maxLength: 1024
                       minLength: 1
@@ -1164,11 +1373,11 @@ spec:
                       description: Status of the condition
                       type: string
                     type:
-                      description: Type of condition in CamelCase or in foo.example.com/CamelCase.
-                        Many .condition.type values are consistent across resources
-                        like Available, but because arbitrary conditions can be useful
-                        (see .node.status.conditions), the ability to deconflict is
-                        important. The regex it matches is (dns1123SubdomainFmt/)?(qualifiedNameFmt)
+                      description: |-
+                        Type of condition in CamelCase or in foo.example.com/CamelCase.
+                        Many .condition.type values are consistent across resources like Available, but because arbitrary conditions can be
+                        useful (see .node.status.conditions), the ability to deconflict is important.
+                        The regex it matches is (dns1123SubdomainFmt/)?(qualifiedNameFmt)
                       maxLength: 316
                       pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
                       type: string
@@ -1197,7 +1406,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.13.0
+    controller-gen.kubebuilder.io/version: v0.14.0
   labels:
     app: kwok-controller
   name: portforwards.kwok.x-k8s.io
@@ -1217,14 +1426,19 @@ spec:
           pod.
         properties:
           apiVersion:
-            description: 'APIVersion defines the versioned schema of this representation
-              of an object. Servers should convert recognized schemas to the latest
-              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
             type: string
           kind:
-            description: 'Kind is a string value representing the REST resource this
-              object represents. Servers may infer this from the endpoint the client
-              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
             type: string
           metadata:
             type: object
@@ -1237,14 +1451,16 @@ spec:
                   description: Forward holds information how to forward based on ports.
                   properties:
                     command:
-                      description: Command is the command to run to forward with stdin/stdout.
+                      description: |-
+                        Command is the command to run to forward with stdin/stdout.
                         if set, Target will be ignored.
                       items:
                         type: string
                       type: array
                     ports:
-                      description: Ports is a list of ports to forward. if not set,
-                        all ports will be forwarded.
+                      description: |-
+                        Ports is a list of ports to forward.
+                        if not set, all ports will be forwarded.
                       items:
                         format: int32
                         type: integer
@@ -1281,23 +1497,23 @@ spec:
                     state of this API Resource.
                   properties:
                     lastTransitionTime:
-                      description: LastTransitionTime is the last time the condition
-                        transitioned from one status to another. This should be when
-                        the underlying condition changed.  If that is not known, then
-                        using the time when the API field changed is acceptable.
+                      description: |-
+                        LastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
                       format: date-time
                       type: string
                     message:
-                      description: Message is a human readable message indicating
-                        details about the transition. This may be an empty string.
+                      description: |-
+                        Message is a human readable message indicating details about the transition.
+                        This may be an empty string.
                       maxLength: 32768
                       type: string
                     reason:
-                      description: Reason contains a programmatic identifier indicating
-                        the reason for the condition's last transition. Producers
-                        of specific condition types may define expected values and
-                        meanings for this field, and whether the values are considered
-                        a guaranteed API. The value should be a CamelCase string.
+                      description: |-
+                        Reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
                         This field may not be empty.
                       maxLength: 1024
                       minLength: 1
@@ -1307,11 +1523,11 @@ spec:
                       description: Status of the condition
                       type: string
                     type:
-                      description: Type of condition in CamelCase or in foo.example.com/CamelCase.
-                        Many .condition.type values are consistent across resources
-                        like Available, but because arbitrary conditions can be useful
-                        (see .node.status.conditions), the ability to deconflict is
-                        important. The regex it matches is (dns1123SubdomainFmt/)?(qualifiedNameFmt)
+                      description: |-
+                        Type of condition in CamelCase or in foo.example.com/CamelCase.
+                        Many .condition.type values are consistent across resources like Available, but because arbitrary conditions can be
+                        useful (see .node.status.conditions), the ability to deconflict is important.
+                        The regex it matches is (dns1123SubdomainFmt/)?(qualifiedNameFmt)
                       maxLength: 316
                       pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
                       type: string
@@ -1340,7 +1556,146 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.13.0
+    controller-gen.kubebuilder.io/version: v0.14.0
+  labels:
+    app: kwok-controller
+  name: resourceusages.kwok.x-k8s.io
+spec:
+  group: kwok.x-k8s.io
+  names:
+    kind: ResourceUsage
+    listKind: ResourceUsageList
+    plural: resourceusages
+    singular: resourceusage
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: ResourceUsage provides resource usage for a single pod.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: Spec holds spec for resource usage.
+            properties:
+              usages:
+                description: Usages is a list of resource usage for the pod.
+                items:
+                  description: ResourceUsageContainer holds spec for resource usage
+                    container.
+                  properties:
+                    containers:
+                      description: Containers is list of container names.
+                      items:
+                        type: string
+                      type: array
+                    usage:
+                      additionalProperties:
+                        description: ResourceUsageValue holds value for resource usage.
+                        properties:
+                          expression:
+                            description: Expression is the expression for resource
+                              usage.
+                            type: string
+                          value:
+                            anyOf:
+                            - type: integer
+                            - type: string
+                            description: Value is the value for resource usage.
+                            pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                            x-kubernetes-int-or-string: true
+                        type: object
+                      description: Usage is a list of resource usage for the container.
+                      type: object
+                  type: object
+                type: array
+            type: object
+          status:
+            description: Status holds status for resource usage
+            properties:
+              conditions:
+                description: Conditions holds conditions for resource usage
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        LastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        Message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    reason:
+                      description: |-
+                        Reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: Status of the condition
+                      type: string
+                    type:
+                      description: |-
+                        Type of condition in CamelCase or in foo.example.com/CamelCase.
+                        Many .condition.type values are consistent across resources like Available, but because arbitrary conditions can be
+                        useful (see .node.status.conditions), the ability to deconflict is important.
+                        The regex it matches is (dns1123SubdomainFmt/)?(qualifiedNameFmt)
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+            type: object
+        required:
+        - metadata
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.14.0
   labels:
     app: kwok-controller
   name: stages.kwok.x-k8s.io
@@ -1359,14 +1714,19 @@ spec:
         description: Stage is an API that describes the staged change of a resource
         properties:
           apiVersion:
-            description: 'APIVersion defines the versioned schema of this representation
-              of an object. Servers should convert recognized schemas to the latest
-              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
             type: string
           kind:
-            description: 'Kind is a string value representing the REST resource this
-              object represents. Servers may infer this from the endpoint the client
-              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
             type: string
           metadata:
             type: object
@@ -1377,10 +1737,10 @@ spec:
                 description: Delay means there is a delay in this stage.
                 properties:
                   durationFrom:
-                    description: DurationFrom is the expression used to get the value.
-                      If it is a time.Time type, getting the value will be minus time.Now()
-                      to get DurationMilliseconds If it is a string type, the value
-                      get will be parsed by time.ParseDuration.
+                    description: |-
+                      DurationFrom is the expression used to get the value.
+                      If it is a time.Time type, getting the value will be minus time.Now() to get DurationMilliseconds
+                      If it is a string type, the value get will be parsed by time.ParseDuration.
                     properties:
                       expressionFrom:
                         description: ExpressionFrom is the expression used to get
@@ -1388,17 +1748,17 @@ spec:
                         type: string
                     type: object
                   durationMilliseconds:
-                    description: DurationMilliseconds indicates the stage delay time.
-                      If JitterDurationMilliseconds is less than DurationMilliseconds,
-                      then JitterDurationMilliseconds is used.
+                    description: |-
+                      DurationMilliseconds indicates the stage delay time.
+                      If JitterDurationMilliseconds is less than DurationMilliseconds, then JitterDurationMilliseconds is used.
                     format: int64
                     minimum: 0
                     type: integer
                   jitterDurationFrom:
-                    description: JitterDurationFrom is the expression used to get
-                      the value. If it is a time.Time type, getting the value will
-                      be minus time.Now() to get JitterDurationMilliseconds If it
-                      is a string type, the value get will be parsed by time.ParseDuration.
+                    description: |-
+                      JitterDurationFrom is the expression used to get the value.
+                      If it is a time.Time type, getting the value will be minus time.Now() to get JitterDurationMilliseconds
+                      If it is a string type, the value get will be parsed by time.ParseDuration.
                     properties:
                       expressionFrom:
                         description: ExpressionFrom is the expression used to get
@@ -1406,9 +1766,9 @@ spec:
                         type: string
                     type: object
                   jitterDurationMilliseconds:
-                    description: JitterDurationMilliseconds is the duration plus an
-                      additional amount chosen uniformly at random from the interval
-                      between DurationMilliseconds and JitterDurationMilliseconds.
+                    description: |-
+                      JitterDurationMilliseconds is the duration plus an additional amount chosen uniformly
+                      at random from the interval between DurationMilliseconds and JitterDurationMilliseconds.
                     format: int64
                     minimum: 0
                     type: integer
@@ -1469,6 +1829,26 @@ spec:
                           type: object
                         type: array
                     type: object
+                  statusPatchAs:
+                    description: |-
+                      StatusPatchAs indicates the impersonating configuration for client when patching status.
+                      In most cases this will be empty, in which case the default client service account will be used.
+                      When this is not empty, a corresponding rbac change is required to grant `impersonate` privilege.
+                      The support for this field is not available in Pod and Node resources.
+                    properties:
+                      username:
+                        description: Username the target username for the client to
+                          impersonate
+                        type: string
+                    required:
+                    - username
+                    type: object
+                  statusSubresource:
+                    default: status
+                    description: |-
+                      StatusSubresource indicates the name of the subresource that will be patched. The support for
+                      this field is not available in Pod and Node resources.
+                    type: string
                   statusTemplate:
                     description: StatusTemplate indicates the template for modifying
                       the status of the resource in the next.
@@ -1483,9 +1863,6 @@ spec:
                     type: string
                   kind:
                     description: Kind of the referent.
-                    enum:
-                    - Pod
-                    - Node
                     type: string
                 required:
                 - kind
@@ -1497,19 +1874,18 @@ spec:
                   matchAnnotations:
                     additionalProperties:
                       type: string
-                    description: MatchAnnotations is a map of {key,value} pairs. A
-                      single {key,value} in the matchAnnotations map is equivalent
-                      to an element of matchExpressions, whose key field is ".metadata.annotations[key]",
-                      the operator is "In", and the values array contains only "value".
-                      The requirements are ANDed.
+                    description: |-
+                      MatchAnnotations is a map of {key,value} pairs. A single {key,value} in the matchAnnotations
+                      map is equivalent to an element of matchExpressions, whose key field is ".metadata.annotations[key]", the
+                      operator is "In", and the values array contains only "value". The requirements are ANDed.
                     type: object
                   matchExpressions:
                     description: MatchExpressions is a list of label selector requirements.
                       The requirements are ANDed.
                     items:
-                      description: SelectorRequirement is a resource selector requirement
-                        is a selector that contains values, a key, and an operator
-                        that relates the key and values.
+                      description: |-
+                        SelectorRequirement is a resource selector requirement is a selector that contains values, a key,
+                        and an operator that relates the key and values.
                       properties:
                         key:
                           description: The name of the scope that the selector applies
@@ -1520,10 +1896,10 @@ spec:
                             of values.
                           type: string
                         values:
-                          description: An array of string values. If the operator
-                            is In, NotIn, Intersection or NotIntersection, the values
-                            array must be non-empty. If the operator is Exists or
-                            DoesNotExist, the values array must be empty.
+                          description: |-
+                            An array of string values.
+                            If the operator is In, NotIn, Intersection or NotIntersection, the values array must be non-empty.
+                            If the operator is Exists or DoesNotExist, the values array must be empty.
                           items:
                             type: string
                           type: array
@@ -1535,16 +1911,16 @@ spec:
                   matchLabels:
                     additionalProperties:
                       type: string
-                    description: MatchLabels is a map of {key,value} pairs. A single
-                      {key,value} in the matchLabels map is equivalent to an element
-                      of matchExpressions, whose key field is ".metadata.labels[key]",
-                      the operator is "In", and the values array contains only "value".
-                      The requirements are ANDed.
+                    description: |-
+                      MatchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                      map is equivalent to an element of matchExpressions, whose key field is ".metadata.labels[key]", the
+                      operator is "In", and the values array contains only "value". The requirements are ANDed.
                     type: object
                 type: object
               weight:
                 default: 0
-                description: Weight means the current stage, in case of multiple stages,
+                description: |-
+                  Weight means when multiple stages share the same ResourceRef and Selector,
                   a random stage will be matched as the next stage based on the weight.
                 minimum: 0
                 type: integer
@@ -1562,23 +1938,23 @@ spec:
                     state of this API Resource.
                   properties:
                     lastTransitionTime:
-                      description: LastTransitionTime is the last time the condition
-                        transitioned from one status to another. This should be when
-                        the underlying condition changed.  If that is not known, then
-                        using the time when the API field changed is acceptable.
+                      description: |-
+                        LastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
                       format: date-time
                       type: string
                     message:
-                      description: Message is a human readable message indicating
-                        details about the transition. This may be an empty string.
+                      description: |-
+                        Message is a human readable message indicating details about the transition.
+                        This may be an empty string.
                       maxLength: 32768
                       type: string
                     reason:
-                      description: Reason contains a programmatic identifier indicating
-                        the reason for the condition's last transition. Producers
-                        of specific condition types may define expected values and
-                        meanings for this field, and whether the values are considered
-                        a guaranteed API. The value should be a CamelCase string.
+                      description: |-
+                        Reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
                         This field may not be empty.
                       maxLength: 1024
                       minLength: 1
@@ -1588,11 +1964,11 @@ spec:
                       description: Status of the condition
                       type: string
                     type:
-                      description: Type of condition in CamelCase or in foo.example.com/CamelCase.
-                        Many .condition.type values are consistent across resources
-                        like Available, but because arbitrary conditions can be useful
-                        (see .node.status.conditions), the ability to deconflict is
-                        important. The regex it matches is (dns1123SubdomainFmt/)?(qualifiedNameFmt)
+                      description: |-
+                        Type of condition in CamelCase or in foo.example.com/CamelCase.
+                        Many .condition.type values are consistent across resources like Available, but because arbitrary conditions can be
+                        useful (see .node.status.conditions), the ability to deconflict is important.
+                        The regex it matches is (dns1123SubdomainFmt/)?(qualifiedNameFmt)
                       maxLength: 316
                       pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
                       type: string
@@ -1702,6 +2078,13 @@ rules:
 - apiGroups:
   - kwok.x-k8s.io
   resources:
+  - attaches/status
+  verbs:
+  - patch
+  - update
+- apiGroups:
+  - kwok.x-k8s.io
+  resources:
   - clusterattaches
   verbs:
   - create
@@ -1711,6 +2094,13 @@ rules:
   - patch
   - update
   - watch
+- apiGroups:
+  - kwok.x-k8s.io
+  resources:
+  - clusterattaches/status
+  verbs:
+  - patch
+  - update
 - apiGroups:
   - kwok.x-k8s.io
   resources:
@@ -1726,6 +2116,13 @@ rules:
 - apiGroups:
   - kwok.x-k8s.io
   resources:
+  - clusterexecs/status
+  verbs:
+  - patch
+  - update
+- apiGroups:
+  - kwok.x-k8s.io
+  resources:
   - clusterlogs
   verbs:
   - create
@@ -1735,6 +2132,13 @@ rules:
   - patch
   - update
   - watch
+- apiGroups:
+  - kwok.x-k8s.io
+  resources:
+  - clusterlogs/status
+  verbs:
+  - patch
+  - update
 - apiGroups:
   - kwok.x-k8s.io
   resources:
@@ -1750,6 +2154,32 @@ rules:
 - apiGroups:
   - kwok.x-k8s.io
   resources:
+  - clusterportforwards/status
+  verbs:
+  - patch
+  - update
+- apiGroups:
+  - kwok.x-k8s.io
+  resources:
+  - clusterresourceusages
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - kwok.x-k8s.io
+  resources:
+  - clusterresourceusages/status
+  verbs:
+  - patch
+  - update
+- apiGroups:
+  - kwok.x-k8s.io
+  resources:
   - execs
   verbs:
   - create
@@ -1759,6 +2189,13 @@ rules:
   - patch
   - update
   - watch
+- apiGroups:
+  - kwok.x-k8s.io
+  resources:
+  - execs/status
+  verbs:
+  - patch
+  - update
 - apiGroups:
   - kwok.x-k8s.io
   resources:
@@ -1774,6 +2211,13 @@ rules:
 - apiGroups:
   - kwok.x-k8s.io
   resources:
+  - logs/status
+  verbs:
+  - patch
+  - update
+- apiGroups:
+  - kwok.x-k8s.io
+  resources:
   - metrics
   verbs:
   - create
@@ -1783,6 +2227,13 @@ rules:
   - patch
   - update
   - watch
+- apiGroups:
+  - kwok.x-k8s.io
+  resources:
+  - metrics/status
+  verbs:
+  - patch
+  - update
 - apiGroups:
   - kwok.x-k8s.io
   resources:
@@ -1798,6 +2249,32 @@ rules:
 - apiGroups:
   - kwok.x-k8s.io
   resources:
+  - portforwards/status
+  verbs:
+  - patch
+  - update
+- apiGroups:
+  - kwok.x-k8s.io
+  resources:
+  - resourceusages
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - kwok.x-k8s.io
+  resources:
+  - resourceusages/status
+  verbs:
+  - patch
+  - update
+- apiGroups:
+  - kwok.x-k8s.io
+  resources:
   - stages
   verbs:
   - create
@@ -1807,6 +2284,13 @@ rules:
   - patch
   - update
   - watch
+- apiGroups:
+  - kwok.x-k8s.io
+  resources:
+  - stages/status
+  verbs:
+  - patch
+  - update
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -1870,6 +2354,7 @@ spec:
         - --cidr=10.0.0.1/24
         - --node-lease-duration-seconds=40
         - --enable-crds=Stage
+        - --enable-crds=Metric
         - --enable-crds=Attach
         - --enable-crds=ClusterAttach
         - --enable-crds=Exec
@@ -1878,6 +2363,8 @@ spec:
         - --enable-crds=ClusterLogs
         - --enable-crds=PortForward
         - --enable-crds=ClusterPortForward
+        - --enable-crds=ResourceUsage
+        - --enable-crds=ClusterResourceUsage
         env:
         - name: POD_IP
           valueFrom:
@@ -1887,17 +2374,17 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: status.hostIP
-        image: registry.k8s.io/kwok/kwok:v0.4.0
+        image: registry.k8s.io/kwok/kwok:v0.5.1
         imagePullPolicy: IfNotPresent
         livenessProbe:
-          failureThreshold: 3
+          failureThreshold: 10
           httpGet:
             path: /healthz
             port: 10247
             scheme: HTTP
-          initialDelaySeconds: 2
-          periodSeconds: 10
-          timeoutSeconds: 2
+          initialDelaySeconds: 30
+          periodSeconds: 60
+          timeoutSeconds: 10
         name: kwok-controller
         readinessProbe:
           failureThreshold: 5
