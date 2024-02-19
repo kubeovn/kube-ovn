@@ -56,8 +56,10 @@ func NewDefaultFramework(baseName string) *Framework {
 
 	if strings.HasPrefix(f.ClusterVersion, "release-") {
 		n, err := fmt.Sscanf(f.ClusterVersion, "release-%d.%d", &f.ClusterVersionMajor, &f.ClusterVersionMinor)
-		ExpectNoError(err)
-		ExpectEqual(n, 2)
+		if err != nil || n != 2 {
+			defer ginkgo.GinkgoRecover()
+			ginkgo.Fail(fmt.Sprintf("Failed to parse Kube-OVN version string %q", f.ClusterVersion))
+		}
 	} else {
 		f.ClusterVersionMajor, f.ClusterVersionMinor = 999, 999
 	}
@@ -101,6 +103,16 @@ func NewFrameworkWithContext(baseName, kubeContext string) *Framework {
 	f.ClusterIPFamily = os.Getenv("E2E_IP_FAMILY")
 	f.ClusterVersion = os.Getenv("E2E_BRANCH")
 	f.ClusterNetworkMode = os.Getenv("E2E_NETWORK_MODE")
+
+	if strings.HasPrefix(f.ClusterVersion, "release-") {
+		n, err := fmt.Sscanf(f.ClusterVersion, "release-%d.%d", &f.ClusterVersionMajor, &f.ClusterVersionMinor)
+		if err != nil || n != 2 {
+			defer ginkgo.GinkgoRecover()
+			ginkgo.Fail(fmt.Sprintf("Failed to parse Kube-OVN version string %q", f.ClusterVersion))
+		}
+	} else {
+		f.ClusterVersionMajor, f.ClusterVersionMinor = 999, 999
+	}
 
 	ginkgo.BeforeEach(func() {
 		framework.TestContext.Host = ""
@@ -184,7 +196,7 @@ func OrderedDescribe(text string, body func()) bool {
 // ConformanceIt is wrapper function for ginkgo It.
 // Adds "[Conformance]" tag and makes static analysis easier.
 func ConformanceIt(text string, body interface{}) bool {
-	return ginkgo.It(text+" [Conformance]", ginkgo.Offset(1), body)
+	return framework.ConformanceIt(text, body)
 }
 
 func CorruptiveIt(text string, body interface{}) bool {
