@@ -3,6 +3,7 @@ package ovs
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -227,7 +228,7 @@ func (c *OVNNbClient) CreateNodeACL(pgName, nodeIPStr, joinIPStr string) error {
 	}
 
 	for _, joinIP := range strings.Split(joinIPStr, ",") {
-		if util.ContainsString(nodeIPs, joinIP) {
+		if slices.Contains(nodeIPs, joinIP) {
 			continue
 		}
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -543,7 +544,7 @@ func (c *Controller) ovnSnatChangeEip(snat *kubeovnv1.OvnSnatRule, eip *kubeovnv
 
 func (c *Controller) handleAddOvnSnatFinalizer(cachedSnat *kubeovnv1.OvnSnatRule, finalizer string) error {
 	if cachedSnat.DeletionTimestamp.IsZero() {
-		if util.ContainsString(cachedSnat.Finalizers, finalizer) {
+		if slices.Contains(cachedSnat.Finalizers, finalizer) {
 			return nil
 		}
 	}

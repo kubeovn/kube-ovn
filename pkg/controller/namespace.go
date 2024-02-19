@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"slices"
 	"strings"
 
 	v1 "k8s.io/api/core/v1"
@@ -143,7 +144,7 @@ func (c *Controller) handleAddNamespace(key string) error {
 	}
 
 	for _, p := range ippools {
-		if util.ContainsString(p.Spec.Namespaces, key) {
+		if slices.Contains(p.Spec.Namespaces, key) {
 			ippool = p.Name
 			break
 		}
@@ -162,7 +163,7 @@ func (c *Controller) handleAddNamespace(key string) error {
 			return err
 		}
 		for _, v := range vpcs {
-			if util.ContainsString(v.Spec.Namespaces, key) {
+			if slices.Contains(v.Spec.Namespaces, key) {
 				vpc = v
 				break
 			}

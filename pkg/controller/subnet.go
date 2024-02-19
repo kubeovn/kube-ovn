@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -479,7 +480,7 @@ func checkAndUpdateExcludeIPs(subnet *kubeovnv1.Subnet) bool {
 }
 
 func (c *Controller) handleSubnetFinalizer(subnet *kubeovnv1.Subnet) (bool, error) {
-	if subnet.DeletionTimestamp.IsZero() && !util.ContainsString(subnet.Finalizers, util.ControllerName) {
+	if subnet.DeletionTimestamp.IsZero() && !slices.Contains(subnet.Finalizers, util.ControllerName) {
 		newSubnet := subnet.DeepCopy()
 		newSubnet.Finalizers = append(newSubnet.Finalizers, util.ControllerName)
 		patch, err := util.GenerateMergePatchPayload(subnet, newSubnet)
@@ -562,7 +563,7 @@ func (c *Controller) validateVpcBySubnet(subnet *kubeovnv1.Subnet) (*kubeovnv1.V
 
 	if !vpc.Status.Default {
 		for _, ns := range subnet.Spec.Namespaces {
-			if !util.ContainsString(vpc.Spec.Namespaces, ns) {
+			if !slices.Contains(vpc.Spec.Namespaces, ns) {
 				err = fmt.Errorf("namespace '%s' is out of range to custom vpc '%s'", ns, vpc.Name)
 				klog.Error(err)
 				return vpc, err
@@ -975,7 +976,7 @@ func (c *Controller) handleDeleteLogicalSwitch(key string) (err error) {
 			continue
 		}
 
-		if util.ContainsString(strings.Split(annotations[util.LogicalSwitchAnnotation], ","), key) {
+		if slices.Contains(strings.Split(annotations[util.LogicalSwitchAnnotation], ","), key) {
 			c.enqueueAddNamespace(ns)
 		}
 	}
@@ -1062,7 +1063,7 @@ func (c *Controller) handleDeleteSubnet(subnet *kubeovnv1.Subnet) error {
 }
 
 func (c *Controller) updateVlanStatusForSubnetDeletion(vlan *kubeovnv1.Vlan, subnet string) error {
-	if !util.ContainsString(vlan.Status.Subnets, subnet) {
+	if !slices.Contains(vlan.Status.Subnets, subnet) {
 		return nil
 	}
 
@@ -1244,7 +1245,7 @@ func (c *Controller) reconcileNamespaces(subnet *kubeovnv1.Subnet) error {
 
 	for _, ns := range namespaces {
 		// when subnet cidr changed, the ns annotation with the subnet should be updated
-		if ns.Annotations != nil && util.ContainsString(strings.Split(ns.Annotations[util.LogicalSwitchAnnotation], ","), subnet.Name) {
+		if ns.Annotations != nil && slices.Contains(strings.Split(ns.Annotations[util.LogicalSwitchAnnotation], ","), subnet.Name) {
 			c.addNamespaceQueue.Add(ns.Name)
 		}
 	}
@@ -1845,7 +1846,7 @@ func (c *Controller) reconcileVlan(subnet *kubeovnv1.Subnet) error {
 		return err
 	}
 
-	if !util.ContainsString(vlan.Status.Subnets, subnet.Name) {
+	if !slices.Contains(vlan.Status.Subnets, subnet.Name) {
 		newVlan := vlan.DeepCopy()
 		newVlan.Status.Subnets = append(newVlan.Status.Subnets, subnet.Name)
 		_, err = c.config.KubeOvnClient.KubeovnV1().Vlans().UpdateStatus(context.Background(), newVlan, metav1.UpdateOptions{})

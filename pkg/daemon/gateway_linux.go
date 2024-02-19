@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"reflect"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -698,7 +699,7 @@ func (c *Controller) setIptables() error {
 
 			var inUse bool
 			for name := range subnetCidrs {
-				if util.ContainsString(util.DoubleQuotedFields(rule), fmt.Sprintf("%s,%s", util.OvnSubnetGatewayIptables, name)) {
+				if slices.Contains(util.DoubleQuotedFields(rule), fmt.Sprintf("%s,%s", util.OvnSubnetGatewayIptables, name)) {
 					inUse = true
 					break
 				}
@@ -716,7 +717,7 @@ func (c *Controller) setIptables() error {
 		for _, rule := range iptablesRules {
 			if rule.Table == NAT {
 				if c.k8siptables[protocol].HasRandomFully() &&
-					(rule.Rule[len(rule.Rule)-1] == "MASQUERADE" || util.ContainsString(rule.Rule, "SNAT")) {
+					(rule.Rule[len(rule.Rule)-1] == "MASQUERADE" || slices.Contains(rule.Rule, "SNAT")) {
 					rule.Rule = append(rule.Rule, "--random-fully")
 				}
 
@@ -1648,7 +1649,7 @@ func (c *Controller) ipsetExists(name string) (bool, error) {
 		return false, fmt.Errorf("failed to list ipset names: %v", err)
 	}
 
-	return util.ContainsString(sets, name), nil
+	return slices.Contains(sets, name), nil
 }
 
 func getNatOutGoingPolicyRuleIPSetName(ruleID, srcOrDst, protocol string, hasPrefix bool) string {

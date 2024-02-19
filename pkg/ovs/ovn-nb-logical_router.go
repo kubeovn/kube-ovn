@@ -3,6 +3,7 @@ package ovs
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/ovn-org/libovsdb/model"
@@ -209,7 +210,7 @@ func (c *OVNNbClient) LogicalRouterUpdatePortOp(lrName, lrpUUID string, op ovsdb
 
 	if lrName == "" && op == ovsdb.MutateOperationDelete {
 		lrList, err := c.ListLogicalRouter(false, func(lr *ovnnb.LogicalRouter) bool {
-			return util.ContainsString(lr.Ports, lrpUUID)
+			return slices.Contains(lr.Ports, lrpUUID)
 		})
 		if err != nil {
 			klog.Error(err)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"slices"
 	"strings"
 	"time"
 
@@ -152,7 +153,7 @@ func (c *Controller) ovsCleanProviderNetwork(provider string) error {
 		return fmt.Errorf("failed to list OVS bridges: %v, %q", err, output)
 	}
 
-	if !util.ContainsString(strings.Split(output, "\n"), brName) {
+	if !slices.Contains(strings.Split(output, "\n"), brName) {
 		klog.V(3).Infof("ovs bridge %s not found", brName)
 		return nil
 	}

@@ -5,13 +5,13 @@ import (
 	"errors"
 	"net"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/docker/docker/api/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 
-	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/docker"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/iproute"
@@ -117,7 +117,7 @@ func ListClusters() ([]string, error) {
 
 	var clusters []string
 	for _, node := range nodeList {
-		if cluster := node.Labels[labelCluster]; !util.ContainsString(clusters, cluster) {
+		if cluster := node.Labels[labelCluster]; !slices.Contains(clusters, cluster) {
 			clusters = append(clusters, node.Labels[labelCluster])
 		}
 	}

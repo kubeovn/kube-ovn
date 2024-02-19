@@ -3,6 +3,7 @@ package ovs
 import (
 	"fmt"
 	"net"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -11,7 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
-	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func (suite *OvnClientTestSuite) testCreateLoadBalancer() {
@@ -99,7 +99,7 @@ func (suite *OvnClientTestSuite) testDeleteLoadBalancers() {
 	}
 
 	err := ovnClient.DeleteLoadBalancers(func(lb *ovnnb.LoadBalancer) bool {
-		return util.ContainsString(lbNames, lb.Name)
+		return slices.Contains(lbNames, lb.Name)
 	})
 	require.NoError(t, err)
 
@@ -202,7 +202,7 @@ func (suite *OvnClientTestSuite) testListLoadBalancers() {
 			except := lbNames[1:]
 
 			lbs, err := ovnClient.ListLoadBalancers(func(lb *ovnnb.LoadBalancer) bool {
-				return !util.ContainsString(except, lb.Name)
+				return !slices.Contains(except, lb.Name)
 			})
 			require.NoError(t, err)
 			require.NotEmpty(t, lbs)

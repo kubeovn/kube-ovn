@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"reflect"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -656,7 +657,7 @@ func (c *Controller) handleUpdateNatGwSubnetRoute(natGwKey string) error {
 		}
 	}
 	for _, old := range oldCIDRs {
-		if !util.ContainsString(newCIDRS, old) {
+		if !slices.Contains(newCIDRS, old) {
 			toBeDelCIDRs = append(toBeDelCIDRs, old)
 		}
 	}

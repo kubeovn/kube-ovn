@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -275,7 +276,7 @@ func (c *Controller) handleDelSwitchLBRule(info *SlrInfo) error {
 
 	if lbhcs, err = c.OVNNbClient.ListLoadBalancerHealthChecks(
 		func(lbhc *ovnnb.LoadBalancerHealthCheck) bool {
-			return util.ContainsString(info.Vips, lbhc.Vip)
+			return slices.Contains(info.Vips, lbhc.Vip)
 		},
 	); err != nil && !k8serrors.IsNotFound(err) {
 		klog.Errorf("failed to list load balancer health checks matched vips %s, err: %v", info.Vips, err)
@@ -292,7 +293,7 @@ func (c *Controller) handleDelSwitchLBRule(info *SlrInfo) error {
 
 		if lbs, err = c.OVNNbClient.ListLoadBalancers(
 			func(lb *ovnnb.LoadBalancer) bool {
-				return util.ContainsString(lb.HealthCheck, lbhc.UUID)
+				return slices.Contains(lb.HealthCheck, lbhc.UUID)
 			},
 		); err != nil && !k8serrors.IsNotFound(err) {
 			klog.Errorf("failed to list load balancer matched vips %s, err: %v", lbhc.Vip, err)
@@ -320,7 +321,7 @@ func (c *Controller) handleDelSwitchLBRule(info *SlrInfo) error {
 
 	if err = c.OVNNbClient.DeleteLoadBalancerHealthChecks(
 		func(lbhc *ovnnb.LoadBalancerHealthCheck) bool {
-			return util.ContainsString(info.Vips, lbhc.Vip)
+			return slices.Contains(info.Vips, lbhc.Vip)
 		},
 	); err != nil && !k8serrors.IsNotFound(err) {
 		klog.Errorf("delete load balancer health checks matched vip %s, err: %v", info.Vips, err)

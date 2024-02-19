@@ -1868,7 +1868,7 @@ func appendCheckPodToDel(c *Controller, pod *v1.Pod, ownerRefName, ownerRefKind 
 	if !ownerRefSubnetExist {
 		nsSubnetNames := podNs.Annotations[util.LogicalSwitchAnnotation]
 		// check if pod use the subnet of its ns
-		if nsSubnetNames != "" && podSwitch != "" && !util.ContainsString(strings.Split(nsSubnetNames, ","), podSwitch) {
+		if nsSubnetNames != "" && podSwitch != "" && !slices.Contains(strings.Split(nsSubnetNames, ","), podSwitch) {
 			klog.Infof("ns %s annotation subnet is %s, which is inconstant with subnet for pod %s, delete pod", pod.Namespace, nsSubnetNames, pod.Name)
 			return true, nil
 		}
@@ -2022,7 +2022,7 @@ func (c *Controller) getVirtualIPs(pod *v1.Pod, podNets []*kubeovnNet) map[strin
 	vipsListMap := make(map[string][]string)
 	var vipNamesList []string
 	for _, vipName := range strings.Split(strings.TrimSpace(pod.Annotations[util.AAPsAnnotation]), ",") {
-		if !util.ContainsString(vipNamesList, vipName) {
+		if !slices.Contains(vipNamesList, vipName) {
 			vipNamesList = append(vipNamesList, vipName)
 		}
 	}
@@ -2072,7 +2072,7 @@ func (c *Controller) getVirtualIPs(pod *v1.Pod, podNets []*kubeovnNet) map[strin
 		}
 
 		for _, vip := range strings.Split(vipStr, ",") {
-			if util.IsValidIP(vip) && !util.ContainsString(vipsList, vip) {
+			if util.IsValidIP(vip) && !slices.Contains(vipsList, vip) {
 				vipsList = append(vipsList, vip)
 			}
 		}

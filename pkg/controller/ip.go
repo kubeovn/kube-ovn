@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"reflect"
+	"slices"
 	"strings"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -342,7 +343,7 @@ func (c *Controller) handleDelIP(ip *kubeovnv1.IP) error {
 
 func (c *Controller) handleAddIPFinalizer(cachedIP *kubeovnv1.IP, finalizer string) error {
 	if cachedIP.DeletionTimestamp.IsZero() {
-		if util.ContainsString(cachedIP.Finalizers, finalizer) {
+		if slices.Contains(cachedIP.Finalizers, finalizer) {
 			return nil
 		}
 	}
