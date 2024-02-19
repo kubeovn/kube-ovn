@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"slices"
 	"strings"
 	"syscall"
 
@@ -306,7 +307,7 @@ func routeDiff(nodeNicRoutes, allRoutes []netlink.Route, cidrs, joinCIDR []strin
 	ipv4, ipv6 := util.SplitStringIP(gateway)
 	gwV4, gwV6 := net.ParseIP(ipv4), net.ParseIP(ipv6)
 	for _, c := range cidrs {
-		if util.ContainsString(joinCIDR, c) {
+		if slices.Contains(joinCIDR, c) {
 			continue
 		}
 

@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/ovn-org/libovsdb/ovsdb"
@@ -101,7 +102,7 @@ func (c *Controller) gcVpcNatGateway() error {
 		return err
 	}
 	for _, sts := range stss.Items {
-		if !util.ContainsString(gwStsNames, sts.Name) {
+		if !slices.Contains(gwStsNames, sts.Name) {
 			err = c.config.KubeClient.AppsV1().StatefulSets(c.config.PodNamespace).Delete(context.Background(), sts.Name, metav1.DeleteOptions{})
 			if err != nil {
 				klog.Errorf("failed to delete vpc nat gateway statefulset, %v", err)
@@ -198,7 +199,7 @@ func (c *Controller) gcCustomLogicalRouter() error {
 		if lr.Name == c.config.ClusterRouter {
 			continue
 		}
-		if !util.ContainsString(vpcNames, lr.Name) {
+		if !slices.Contains(vpcNames, lr.Name) {
 			klog.Infof("gc router %s", lr.Name)
 			if err := c.deleteVpcRouter(lr.Name); err != nil {
 				klog.Errorf("failed to delete router %s, %v", lr, err)
@@ -232,7 +233,7 @@ func (c *Controller) gcNode() error {
 		}
 	}
 	for _, no := range ipNodeNames {
-		if !util.ContainsString(nodeNames, no) {
+		if !slices.Contains(nodeNames, no) {
 			klog.Infof("gc node %s", no)
 			if err := c.handleDeleteNode(no); err != nil {
 				klog.Errorf("failed to gc node %s, %v", no, err)
@@ -593,7 +594,7 @@ func (c *Controller) gcLoadBalancer() error {
 	// delete lbs
 	if err = c.OVNNbClient.DeleteLoadBalancers(
 		func(lb *ovnnb.LoadBalancer) bool {
-			return !util.ContainsString(vpcLbs, lb.Name)
+			return !slices.Contains(vpcLbs, lb.Name)
 		},
 	); err != nil {
 		klog.Errorf("delete load balancers: %v", err)

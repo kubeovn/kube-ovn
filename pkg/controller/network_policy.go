@@ -3,6 +3,7 @@ package controller
 import (
 	"fmt"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode"
@@ -552,7 +553,7 @@ func (c *Controller) fetchSelectedPorts(namespace string, selector *metav1.Label
 			}
 		}
 	}
-	subnets = util.UniqString(subnets)
+	subnets = slices.Compact(subnets)
 	return ports, subnets, nil
 }
 

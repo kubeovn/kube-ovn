@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/ovn-org/libovsdb/client"
 	"github.com/ovn-org/libovsdb/model"
@@ -79,7 +80,7 @@ func (c *OVNNbClient) AddLogicalRouterStaticRoute(lrName, routeTable, policy, ip
 	existing := strset.New()
 	var toDel []string
 	for _, route := range routes {
-		if util.ContainsString(nexthops, route.Nexthop) {
+		if slices.Contains(nexthops, route.Nexthop) {
 			existing.Add(route.Nexthop)
 		} else {
 			if route.BFD != nil && bfdID != nil && *route.BFD != *bfdID {

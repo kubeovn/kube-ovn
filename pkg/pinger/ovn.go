@@ -4,11 +4,10 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
 
 	"k8s.io/klog/v2"
-
-	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func checkOvs(config *Configuration) error {
@@ -51,7 +50,7 @@ func checkPortBindings(config *Configuration) error {
 	klog.Infof("port in sb is %v", sbBindings)
 	misMatch := []string{}
 	for _, port := range ovsBindings {
-		if !util.ContainsString(sbBindings, port) {
+		if !slices.Contains(sbBindings, port) {
 			misMatch = append(misMatch, port)
 		}
 	}

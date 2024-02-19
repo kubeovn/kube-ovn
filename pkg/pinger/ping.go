@@ -6,6 +6,7 @@ import (
 	"math"
 	"net"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -97,7 +98,7 @@ func pingNodes(config *Configuration) error {
 	var pingErr error
 	for _, no := range nodes.Items {
 		for _, addr := range no.Status.Addresses {
-			if addr.Type == v1.NodeInternalIP && util.ContainsString(config.PodProtocols, util.CheckProtocol(addr.Address)) {
+			if addr.Type == v1.NodeInternalIP && slices.Contains(config.PodProtocols, util.CheckProtocol(addr.Address)) {
 				func(nodeIP, nodeName string) {
 					if config.EnableVerboseConnCheck {
 						if err := util.TCPConnectivityCheck(fmt.Sprintf("%s:%d", nodeIP, config.TCPConnCheckPort)); err != nil {
@@ -168,7 +169,7 @@ func pingPods(config *Configuration) error {
 	var pingErr error
 	for _, pod := range pods.Items {
 		for _, podIP := range pod.Status.PodIPs {
-			if util.ContainsString(config.PodProtocols, util.CheckProtocol(podIP.IP)) {
+			if slices.Contains(config.PodProtocols, util.CheckProtocol(podIP.IP)) {
 				func(podIP, podName, nodeIP, nodeName string) {
 					if config.EnableVerboseConnCheck {
 						if err := util.TCPConnectivityCheck(fmt.Sprintf("%s:%d", podIP, config.TCPConnCheckPort)); err != nil {
@@ -233,7 +234,7 @@ func pingExternal(config *Configuration) error {
 
 	addresses := strings.Split(config.ExternalAddress, ",")
 	for _, addr := range addresses {
-		if !util.ContainsString(config.PodProtocols, util.CheckProtocol(addr)) {
+		if !slices.Contains(config.PodProtocols, util.CheckProtocol(addr)) {
 			continue
 		}
 
@@ -288,7 +289,7 @@ func checkAccessTargetIPPorts(config *Configuration) error {
 		addr := items[1]
 		port := items[2]
 
-		if !util.ContainsString(config.PodProtocols, util.CheckProtocol(addr)) {
+		if !slices.Contains(config.PodProtocols, util.CheckProtocol(addr)) {
 			continue
 		}
 		if util.CheckProtocol(addr) == kubeovnv1.ProtocolIPv6 {

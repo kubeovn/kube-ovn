@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -45,7 +46,7 @@ func (c *Controller) resyncProviderNetworkStatus() {
 
 		var conditionsUpdated bool
 		for _, node := range nodes {
-			if util.ContainsString(pn.Spec.ExcludeNodes, node.Name) {
+			if slices.Contains(pn.Spec.ExcludeNodes, node.Name) {
 				if pn.Status.RemoveNodeConditions(node.Name) {
 					conditionsUpdated = true
 				}
@@ -79,7 +80,7 @@ func (c *Controller) resyncProviderNetworkStatus() {
 
 		expectNodes = append(readyNodes, notReadyNodes...)
 		for _, c := range pn.Status.Conditions {
-			if !util.ContainsString(expectNodes, c.Node) {
+			if !slices.Contains(expectNodes, c.Node) {
 				if pn.Status.RemoveNodeConditions(c.Node) {
 					conditionsUpdated = true
 				}

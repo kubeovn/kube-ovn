@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -393,7 +394,7 @@ func (c *Controller) handleNodeAnnotationsForProviderNetworks(node *v1.Node) err
 		interfaceAnno := fmt.Sprintf(util.ProviderNetworkInterfaceTemplate, pn.Name)
 
 		var newPn *kubeovnv1.ProviderNetwork
-		excluded := util.ContainsString(pn.Spec.ExcludeNodes, node.Name)
+		excluded := slices.Contains(pn.Spec.ExcludeNodes, node.Name)
 		if !excluded && len(node.Annotations) != 0 && node.Annotations[excludeAnno] == "true" {
 			newPn = pn.DeepCopy()
 			newPn.Spec.ExcludeNodes = append(newPn.Spec.ExcludeNodes, node.Name)
@@ -402,7 +403,7 @@ func (c *Controller) handleNodeAnnotationsForProviderNetworks(node *v1.Node) err
 
 		var customInterface string
 		for _, v := range pn.Spec.CustomInterfaces {
-			if util.ContainsString(v.Nodes, node.Name) {
+			if slices.Contains(v.Nodes, node.Name) {
 				customInterface = v.Interface
 				break
 			}
@@ -547,7 +548,7 @@ func (c *Controller) updateProviderNetworkForNodeDeletion(pn *kubeovnv1.Provider
 	// update provider network status
 	var needUpdate bool
 	newPn := pn.DeepCopy()
-	if util.ContainsString(newPn.Status.ReadyNodes, node) {
+	if slices.Contains(newPn.Status.ReadyNodes, node) {
 		newPn.Status.ReadyNodes = util.RemoveString(newPn.Status.ReadyNodes, node)
 		needUpdate = true
 	}

@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"slices"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -125,7 +126,7 @@ func (c *Controller) getRouterStatus() (logicalRouters map[string]util.LogicalRo
 			}
 			lsp := peerPorts[0]
 			switches, err := c.OVNNbClient.ListLogicalSwitch(false, func(ls *ovnnb.LogicalSwitch) bool {
-				return util.ContainsString(ls.Ports, lsp.UUID)
+				return slices.Contains(ls.Ports, lsp.UUID)
 			})
 			if err != nil || len(switches) > 1 {
 				klog.Errorf("failed to get logical switch of LSP %s: %v", lsp.Name, err)

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"slices"
 	"strings"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -234,7 +235,7 @@ func (c *Controller) getGatewayChassis(config map[string]string) ([]string, erro
 			if name == "" {
 				continue
 			}
-			if !util.ContainsString(gwNodes, name) {
+			if !slices.Contains(gwNodes, name) {
 				gwNodes = append(gwNodes, name)
 			}
 		}

@@ -297,7 +297,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		}
 	}
 	for _, oldPeer := range vpc.Status.VpcPeerings {
-		if !util.ContainsString(newPeers, oldPeer) {
+		if !slices.Contains(newPeers, oldPeer) {
 			if err = c.OVNNbClient.DeleteLogicalRouterPort(fmt.Sprintf("%s-%s", vpc.Name, oldPeer)); err != nil {
 				klog.Errorf("delete peer router port for vpc %s, %v", vpc.Name, err)
 				return err

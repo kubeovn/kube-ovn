@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -192,7 +193,7 @@ func (c *Controller) handleAddVlan(key string) error {
 
 	var needUpdate bool
 	for _, subnet := range subnets {
-		if subnet.Spec.Vlan == vlan.Name && !util.ContainsString(vlan.Status.Subnets, subnet.Name) {
+		if subnet.Spec.Vlan == vlan.Name && !slices.Contains(vlan.Status.Subnets, subnet.Name) {
 			vlan.Status.Subnets = append(vlan.Status.Subnets, subnet.Name)
 			needUpdate = true
 		}
@@ -212,7 +213,7 @@ func (c *Controller) handleAddVlan(key string) error {
 		return err
 	}
 
-	if !util.ContainsString(pn.Status.Vlans, vlan.Name) {
+	if !slices.Contains(pn.Status.Vlans, vlan.Name) {
 		newPn := pn.DeepCopy()
 		newPn.Status.Vlans = append(newPn.Status.Vlans, vlan.Name)
 		_, err = c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().UpdateStatus(context.Background(), newPn, metav1.UpdateOptions{})
@@ -296,7 +297,7 @@ func (c *Controller) handleDelVlan(key string) error {
 }
 
 func (c *Controller) updateProviderNetworkStatusForVlanDeletion(pn *kubeovnv1.ProviderNetwork, vlan string) error {
-	if !util.ContainsString(pn.Status.Vlans, vlan) {
+	if !slices.Contains(pn.Status.Vlans, vlan) {
 		return nil
 	}
 

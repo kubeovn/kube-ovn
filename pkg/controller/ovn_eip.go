@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -585,7 +586,7 @@ func (c *Controller) natLabelAndAnnoOvnEip(eipName, natName, vpcName string) err
 
 func (c *Controller) handleAddOvnEipFinalizer(cachedEip *kubeovnv1.OvnEip, finalizer string) error {
 	if cachedEip.DeletionTimestamp.IsZero() {
-		if util.ContainsString(cachedEip.Finalizers, finalizer) {
+		if slices.Contains(cachedEip.Finalizers, finalizer) {
 			return nil
 		}
 	}

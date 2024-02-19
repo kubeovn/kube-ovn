@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"time"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -1017,7 +1018,7 @@ func (c *Controller) handleAddIptablesFipFinalizer(key string) error {
 		return err
 	}
 	if cachedIptablesFip.DeletionTimestamp.IsZero() {
-		if util.ContainsString(cachedIptablesFip.Finalizers, util.ControllerName) {
+		if slices.Contains(cachedIptablesFip.Finalizers, util.ControllerName) {
 			return nil
 		}
 	}
@@ -1079,7 +1080,7 @@ func (c *Controller) handleAddIptablesDnatFinalizer(key string) error {
 		return err
 	}
 	if cachedIptablesDnat.DeletionTimestamp.IsZero() {
-		if util.ContainsString(cachedIptablesDnat.Finalizers, util.ControllerName) {
+		if slices.Contains(cachedIptablesDnat.Finalizers, util.ControllerName) {
 			return nil
 		}
 	}
@@ -1192,7 +1193,7 @@ func (c *Controller) handleAddIptablesSnatFinalizer(key string) error {
 		return err
 	}
 	if cachedIptablesSnat.DeletionTimestamp.IsZero() {
-		if util.ContainsString(cachedIptablesSnat.Finalizers, util.ControllerName) {
+		if slices.Contains(cachedIptablesSnat.Finalizers, util.ControllerName) {
 			return nil
 		}
 	}

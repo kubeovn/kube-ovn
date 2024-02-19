@@ -3,6 +3,7 @@ package ipam
 import (
 	"fmt"
 	"net"
+	"slices"
 	"strings"
 	"sync"
 
@@ -160,7 +161,7 @@ func (s *Subnet) GetStaticMac(podName, nicName, mac string, checkConflict bool) 
 
 func (s *Subnet) pushPodNic(podName, nicName string) {
 	if s.V4NicToIP[nicName] != nil || s.V6NicToIP[nicName] != nil || s.NicToMac[nicName] != "" {
-		s.PodToNicList[podName] = util.UniqString(append(s.PodToNicList[podName], nicName))
+		s.PodToNicList[podName] = slices.Compact(append(s.PodToNicList[podName], nicName))
 	}
 }
 
@@ -211,7 +212,7 @@ func (s *Subnet) getV4RandomAddress(ippoolName, podName, nicName string, mac *st
 	// controller will re-enqueue the new pod then wait for old pod deleted and address released.
 	// here will return only if both ip and mac exist, otherwise only ip without mac returned will trigger CreatePort error.
 	if s.V4NicToIP[nicName] != nil && s.NicToMac[nicName] != "" {
-		if !util.ContainsString(skippedAddrs, s.V4NicToIP[nicName].String()) {
+		if !slices.Contains(skippedAddrs, s.V4NicToIP[nicName].String()) {
 			return s.V4NicToIP[nicName], nil, s.NicToMac[nicName], nil
 		}
 		s.releaseAddr(podName, nicName)
@@ -265,7 +266,7 @@ func (s *Subnet) getV6RandomAddress(ippoolName, podName, nicName string, mac *st
 	// controller will re-enqueue the new pod then wait for old pod deleted and address released.
 	// here will return only if both ip and mac exist, otherwise only ip without mac returned will trigger CreatePort error.
 	if s.V6NicToIP[nicName] != nil && s.NicToMac[nicName] != "" {
-		if !util.ContainsString(skippedAddrs, s.V6NicToIP[nicName].String()) {
+		if !slices.Contains(skippedAddrs, s.V6NicToIP[nicName].String()) {
 			return nil, s.V6NicToIP[nicName], s.NicToMac[nicName], nil
 		}
 		s.releaseAddr(podName, nicName)
@@ -379,7 +380,7 @@ func (s *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac *string, f
 	if v4 {
 		if existPod, ok := s.V4IPToPod[ip.String()]; ok {
 			pods := strings.Split(existPod, ",")
-			if !util.ContainsString(pods, podName) {
+			if !slices.Contains(pods, podName) {
 				if !checkConflict {
 					s.V4NicToIP[nicName] = ip
 					s.V4IPToPod[ip.String()] = fmt.Sprintf("%s,%s", s.V4IPToPod[ip.String()], podName)
@@ -416,7 +417,7 @@ func (s *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac *string, f
 	} else if v6 {
 		if existPod, ok := s.V6IPToPod[ip.String()]; ok {
 			pods := strings.Split(existPod, ",")
-			if !util.ContainsString(pods, podName) {
+			if !slices.Contains(pods, podName) {
 				if !checkConflict {
 					s.V6NicToIP[nicName] = ip
 					s.V6IPToPod[ip.String()] = fmt.Sprintf("%s,%s", s.V6IPToPod[ip.String()], podName)
@@ -586,14 +587,14 @@ func (s *Subnet) isIPAssignedToOtherPod(ip, podName string) (string, bool) {
 	if existPod, ok := s.V4IPToPod[ip]; ok {
 		klog.V(4).Infof("v4 check ip assigned, existPod %s, podName %s", existPod, podName)
 		pods := strings.Split(existPod, ",")
-		if !util.ContainsString(pods, podName) {
+		if !slices.Contains(pods, podName) {
 			return existPod, true
 		}
 	}
 	if existPod, ok := s.V6IPToPod[ip]; ok {
 		klog.V(4).Infof("v6 check ip assigned, existPod %s, podName %s", existPod, podName)
 		pods := strings.Split(existPod, ",")
-		if !util.ContainsString(pods, podName) {
+		if !slices.Contains(pods, podName) {
 			return existPod, true
 		}
 	}

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"reflect"
+	"slices"
 	"strings"
 
 	"github.com/cnf/structhash"
@@ -498,7 +499,7 @@ func (c *Controller) reconcilePortSg(portName, securityGroups string) error {
 			continue
 		}
 		needAssociated := "false"
-		if util.ContainsString(newSgList, sgName) {
+		if slices.Contains(newSgList, sgName) {
 			needAssociated = "true"
 		}
 

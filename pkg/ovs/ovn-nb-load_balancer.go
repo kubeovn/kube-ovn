@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -14,7 +15,6 @@ import (
 
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
-	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 // CreateLoadBalancer create loadbalancer
@@ -539,7 +539,7 @@ func (c *OVNNbClient) LoadBalancerDeleteHealthCheck(lbName, uuid string) error {
 		return err
 	}
 
-	if util.ContainsString(lb.HealthCheck, uuid) {
+	if slices.Contains(lb.HealthCheck, uuid) {
 		ops, err = c.LoadBalancerOp(
 			lbName,
 			func(lb *ovnnb.LoadBalancer) []model.Mutation {
