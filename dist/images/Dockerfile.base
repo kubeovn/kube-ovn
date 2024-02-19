@@ -122,5 +122,5 @@ RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages \
     if [ "${DEBUG}" = "true" ]; then \
         apt update && apt install -y --no-install-recommends gdb valgrind && \
         rm -rf /var/lib/apt/lists/* && \
-        dpkg -i --ignore-depends=openvswitch-switch,openvswitch-common /packages/*.ddeb; \
+        dpkg -i --ignore-depends=openvswitch-switch,openvswitch-common /packages/*.deb; \
     fi
