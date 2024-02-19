@@ -56,8 +56,10 @@ func NewDefaultFramework(baseName string) *Framework {
 
 	if strings.HasPrefix(f.ClusterVersion, "release-") {
 		n, err := fmt.Sscanf(f.ClusterVersion, "release-%d.%d", &f.ClusterVersionMajor, &f.ClusterVersionMinor)
-		ExpectNoError(err)
-		ExpectEqual(n, 2)
+		if err != nil || n != 2 {
+			defer ginkgo.GinkgoRecover()
+			ginkgo.Fail(fmt.Sprintf("Failed to parse Kube-OVN version string %q", f.ClusterVersion))
+		}
 	} else {
 		f.ClusterVersionMajor, f.ClusterVersionMinor = 999, 999
 	}
@@ -104,8 +106,10 @@ func NewFrameworkWithContext(baseName, kubeContext string) *Framework {
 
 	if strings.HasPrefix(f.ClusterVersion, "release-") {
 		n, err := fmt.Sscanf(f.ClusterVersion, "release-%d.%d", &f.ClusterVersionMajor, &f.ClusterVersionMinor)
-		ExpectNoError(err)
-		ExpectEqual(n, 2)
+		if err != nil || n != 2 {
+			defer ginkgo.GinkgoRecover()
+			ginkgo.Fail(fmt.Sprintf("Failed to parse Kube-OVN version string %q", f.ClusterVersion))
+		}
 	} else {
 		f.ClusterVersionMajor, f.ClusterVersionMinor = 999, 999
 	}
