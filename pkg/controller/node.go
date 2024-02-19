@@ -1108,7 +1108,7 @@ func (c *Controller) addPolicyRouteForCentralizedSubnetOnNode(nodeName, nodeIP s
 			if subnet.Status.ActivateGateway != nodeName {
 				continue
 			}
-			klog.Infof("add policy route for centrailized subnet %s, on node %s, ip %s", subnet.Name, nodeName, nodeIP)
+			klog.Infof("add policy route for centralized subnet %s, on node %s, ip %s", subnet.Name, nodeName, nodeIP)
 			if err = c.addPolicyRouteForCentralizedSubnet(subnet, nodeName, nil, strings.Split(nodeIP, ",")); err != nil {
 				klog.Errorf("failed to add active-backup policy route for centralized subnet %s: %v", subnet.Name, err)
 				return err
