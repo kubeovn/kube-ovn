@@ -1515,7 +1515,7 @@ jobs:
           sudo cp -r /root/.kube/ ~/.kube/
           sudo chown -R $(id -un). ~/.kube/
 
-      - name: Install Kube-OVN
+      - name: Install Kube-OVN and KubeVirt
         run: make kind-install-kubevirt
 
       - name: Run E2E
