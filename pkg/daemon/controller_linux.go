@@ -79,11 +79,13 @@ func (c *Controller) initRuntime() error {
 	if c.protocol == kubeovnv1.ProtocolIPv4 || c.protocol == kubeovnv1.ProtocolDual {
 		ipt, err := iptables.NewWithProtocol(iptables.ProtocolIPv4)
 		if err != nil {
+			klog.Error(err)
 			return err
 		}
 		c.iptables[kubeovnv1.ProtocolIPv4] = ipt
 		if c.iptablesObsolete != nil {
 			if ipt, err = iptables.NewWithProtocolAndMode(iptables.ProtocolIPv4, "legacy"); err != nil {
+				klog.Error(err)
 				return err
 			}
 			c.iptablesObsolete[kubeovnv1.ProtocolIPv4] = ipt
@@ -93,11 +95,13 @@ func (c *Controller) initRuntime() error {
 	if c.protocol == kubeovnv1.ProtocolIPv6 || c.protocol == kubeovnv1.ProtocolDual {
 		ipt, err := iptables.NewWithProtocol(iptables.ProtocolIPv6)
 		if err != nil {
+			klog.Error(err)
 			return err
 		}
 		c.iptables[kubeovnv1.ProtocolIPv6] = ipt
 		if c.iptablesObsolete != nil {
 			if ipt, err = iptables.NewWithProtocolAndMode(iptables.ProtocolIPv6, "legacy"); err != nil {
+				klog.Error(err)
 				return err
 			}
 			c.iptablesObsolete[kubeovnv1.ProtocolIPv6] = ipt
@@ -217,6 +221,7 @@ func (c *Controller) reconcileRouters(event *subnetEvent) error {
 
 	existRoutes, err := getNicExistRoutes(nic, gateway)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 
@@ -453,6 +458,7 @@ func (c *Controller) handlePod(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 
@@ -471,21 +477,25 @@ func (c *Controller) handlePod(key string) error {
 	ifaceID := ovs.PodNameToPortName(podName, pod.Namespace, util.OvnProvider)
 	err = ovs.SetInterfaceBandwidth(podName, pod.Namespace, ifaceID, pod.Annotations[util.EgressRateAnnotation], pod.Annotations[util.IngressRateAnnotation])
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 	err = ovs.ConfigInterfaceMirror(c.config.EnableMirror, pod.Annotations[util.MirrorControlAnnotation], ifaceID)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 	// set linux-netem qos
 	err = ovs.SetNetemQos(podName, pod.Namespace, ifaceID, pod.Annotations[util.NetemQosLatencyAnnotation], pod.Annotations[util.NetemQosLimitAnnotation], pod.Annotations[util.NetemQosLossAnnotation])
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 
 	// set multus-nic bandwidth
 	attachNets, err := util.ParsePodNetworkAnnotation(pod.Annotations[util.AttachmentNetworkAnnotation], pod.Namespace)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 	for _, multiNet := range attachNets {
@@ -498,14 +508,17 @@ func (c *Controller) handlePod(key string) error {
 
 			err = ovs.SetInterfaceBandwidth(podName, pod.Namespace, ifaceID, pod.Annotations[fmt.Sprintf(util.EgressRateAnnotationTemplate, provider)], pod.Annotations[fmt.Sprintf(util.IngressRateAnnotationTemplate, provider)])
 			if err != nil {
+				klog.Error(err)
 				return err
 			}
 			err = ovs.ConfigInterfaceMirror(c.config.EnableMirror, pod.Annotations[fmt.Sprintf(util.MirrorControlAnnotationTemplate, provider)], ifaceID)
 			if err != nil {
+				klog.Error(err)
 				return err
 			}
 			err = ovs.SetNetemQos(podName, pod.Namespace, ifaceID, pod.Annotations[fmt.Sprintf(util.NetemQosLatencyAnnotationTemplate, provider)], pod.Annotations[fmt.Sprintf(util.NetemQosLimitAnnotationTemplate, provider)], pod.Annotations[fmt.Sprintf(util.NetemQosLossAnnotationTemplate, provider)])
 			if err != nil {
+				klog.Error(err)
 				return err
 			}
 		}

@@ -170,9 +170,11 @@ func (config *Configuration) Init(nicBridgeMappings map[string]string) error {
 	}
 
 	if err := config.initKubeClient(); err != nil {
+		klog.Error(err)
 		return err
 	}
 	if err := config.initNicConfig(nicBridgeMappings); err != nil {
+		klog.Error(err)
 		return err
 	}
 
