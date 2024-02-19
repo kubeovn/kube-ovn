@@ -398,6 +398,32 @@ kind-init-single: kind-init-single-ipv4
 kind-init-single-%:
 	@single=true $(MAKE) kind-init-$*
 
+.PHONY: kind-init-bgp
+kind-init-bgp: kind-clean-bgp kind-init
+	kube_ovn_version=$(VERSION) j2 yamls/clab-bgp.yaml.j2 -o yamls/clab-bgp.yaml
+	docker run --rm --privileged \
+		--name kube-ovn-bgp \
+		--network host \
+		--pid host \
+		-v /var/run/docker.sock:/var/run/docker.sock \
+		-v /var/run/netns:/var/run/netns \
+		-v /var/lib/docker/containers:/var/lib/docker/containers \
+		-v $(CURDIR)/yamls/clab-bgp.yaml:/clab-bgp/clab.yaml \
+		$(CLAB_IMAGE) clab deploy -t /clab-bgp/clab.yaml
+
+.PHONY: kind-init-bgp-ha
+kind-init-bgp-ha: kind-clean-bgp kind-init
+	kube_ovn_version=$(VERSION) j2 yamls/clab-bgp-ha.yaml.j2 -o yamls/clab-bgp-ha.yaml
+	docker run --rm --privileged \
+		--name kube-ovn-bgp \
+		--network host \
+		--pid host \
+		-v /var/run/docker.sock:/var/run/docker.sock \
+		-v /var/run/netns:/var/run/netns \
+		-v /var/lib/docker/containers:/var/lib/docker/containers \
+		-v $(CURDIR)/yamls/clab-bgp-ha.yaml:/clab-bgp/clab.yaml \
+		$(CLAB_IMAGE) clab deploy -t /clab-bgp/clab.yaml
+
 .PHONY: kind-load-image
 kind-load-image:
 	$(call kind_load_image,kube-ovn,$(REGISTRY)/kube-ovn:$(VERSION))
