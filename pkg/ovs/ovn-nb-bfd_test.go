@@ -81,7 +81,7 @@ func (suite *OvnClientTestSuite) testDeleteBFD() {
 	t.Parallel()
 
 	ovnClient := suite.ovnClient
-	lrpName := "test-list-bfd"
+	lrpName := "test-del-bfd"
 	dstIP1 := "192.168.124.4"
 	dstIP2 := "192.168.124.5"
 	minRx1, minTx1, detectMult1 := 101, 102, 19

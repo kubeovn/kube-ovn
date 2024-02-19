@@ -1420,7 +1420,13 @@ func (suite *OvnClientTestSuite) testGetACL() {
 	priority := "2000"
 	match := "ip4.dst == 100.64.0.0/16"
 
-	err := ovnClient.CreateBareACL(pgName, ovnnb.ACLDirectionToLport, priority, match, ovnnb.ACLActionAllowRelated)
+	err := ovnClient.CreatePortGroup(pgName, nil)
+	require.NoError(t, err)
+
+	acl, err := ovnClient.newACL(pgName, ovnnb.ACLDirectionToLport, priority, match, ovnnb.ACLActionAllowRelated)
+	require.NoError(t, err)
+
+	err = ovnClient.CreateAcls(pgName, portGroupKey, acl)
 	require.NoError(t, err)
 
 	t.Run("direction, priority and match are same", func(t *testing.T) {
@@ -1469,18 +1475,27 @@ func (suite *OvnClientTestSuite) testListAcls() {
 	pgName := "test-list-acl-pg"
 	basePort := 50000
 
+	err := ovnClient.CreatePortGroup(pgName, nil)
+	require.NoError(t, err)
+
 	matchPrefix := "outport == @ovn.sg.test_list_acl_pg && ip"
 	// create two to-lport acl
 	for i := 0; i < 2; i++ {
 		match := fmt.Sprintf("%s && tcp.dst == %d", matchPrefix, basePort+i)
-		err := ovnClient.CreateBareACL(pgName, ovnnb.ACLDirectionToLport, "9999", match, ovnnb.ACLActionAllowRelated)
+		acl, err := ovnClient.newACL(pgName, ovnnb.ACLDirectionToLport, "9999", match, ovnnb.ACLActionAllowRelated)
+		require.NoError(t, err)
+
+		err = ovnClient.CreateAcls(pgName, portGroupKey, acl)
 		require.NoError(t, err)
 	}
 
 	// create two from-lport acl
 	for i := 0; i < 3; i++ {
 		match := fmt.Sprintf("%s && tcp.dst == %d", matchPrefix, basePort+i)
-		err := ovnClient.CreateBareACL(pgName, ovnnb.ACLDirectionFromLport, "9999", match, ovnnb.ACLActionAllowRelated)
+		acl, err := ovnClient.newACL(pgName, ovnnb.ACLDirectionFromLport, "9999", match, ovnnb.ACLActionAllowRelated)
+		require.NoError(t, err)
+
+		err = ovnClient.CreateAcls(pgName, portGroupKey, acl)
 		require.NoError(t, err)
 	}
 

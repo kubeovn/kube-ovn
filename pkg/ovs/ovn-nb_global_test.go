@@ -10,8 +10,7 @@ import (
 
 func mockNBGlobal() *ovnnb.NBGlobal {
 	return &ovnnb.NBGlobal{
-		Connections: []string{"c7744628-6399-4852-8ac0-06e4e436c146"},
-		NbCfg:       100,
+		NbCfg: 100,
 		Options: map[string]string{
 			"mac_prefix": "11:22:33",
 			"max_tunid":  "16711680",
