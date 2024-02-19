@@ -262,12 +262,12 @@ func (suite *OvnClientTestSuite) testDeleteLoadBalancerOp() {
 
 		require.Equal(t,
 			ovsdb.Operation{
-				Op:    "delete",
-				Table: "Load_Balancer",
+				Op:    ovsdb.OperationDelete,
+				Table: ovnnb.LoadBalancerTable,
 				Where: []ovsdb.Condition{
 					{
 						Column:   "_uuid",
-						Function: "==",
+						Function: ovsdb.ConditionEqual,
 						Value: ovsdb.UUID{
 							GoUUID: lb.UUID,
 						},
