@@ -26,7 +26,7 @@ jobs:
           make base-tar-amd64-dpdk
 
       - name: Upload image to artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: image-amd64-dpdk-${{ matrix.branch }}
           path: image-amd64-dpdk.tar
@@ -49,7 +49,7 @@ jobs:
           ref: ${{ matrix.branch }}
 
       - name: Download image
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: image-amd64-dpdk-${{ matrix.branch }}
 

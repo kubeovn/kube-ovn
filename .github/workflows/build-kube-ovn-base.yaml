@@ -29,7 +29,7 @@ jobs:
           make base-tar-amd64
 
       - name: Upload image to artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: image-amd64-${{ matrix.branch }}
           path: image-amd64.tar
@@ -62,7 +62,7 @@ jobs:
           make base-tar-arm64
 
       - name: Upload image to artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: image-arm64-${{ matrix.branch }}
           path: image-arm64.tar
@@ -88,12 +88,12 @@ jobs:
         with:
           ref: ${{ matrix.branch }}
       - name: Download image
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: image-amd64-${{ matrix.branch }}
 
       - name: Download image
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: image-arm64-${{ matrix.branch }}
 
