@@ -798,6 +798,7 @@ kind-install-cilium-chaining: kind-load-image kind-untaint-control-plane
 	$(call kind_load_image,kube-ovn,$(CILIUM_IMAGE_REPO):v$(CILIUM_VERSION),1)
 	kubectl apply -f yamls/cilium-chaining.yaml
 	helm repo add cilium https://helm.cilium.io/
+	helm repo update
 	helm install cilium cilium/cilium \
 		--version $(CILIUM_VERSION) \
 		--namespace=kube-system \
