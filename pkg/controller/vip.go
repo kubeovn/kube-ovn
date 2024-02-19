@@ -637,7 +637,7 @@ func (c *Controller) handleAddVipFinalizer(key string) error {
 		return err
 	}
 	if cachedVip.DeletionTimestamp.IsZero() {
-		if util.ContainsString(cachedVip.Finalizers, util.ControllerName) {
+		if slices.Contains(cachedVip.Finalizers, util.ControllerName) {
 			return nil
 		}
 	}

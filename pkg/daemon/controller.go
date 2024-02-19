@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
+	"slices"
 	"strconv"
 	"time"
 
@@ -256,7 +257,7 @@ func (c *Controller) handleAddOrUpdateProviderNetwork(key string) error {
 		return err
 	}
 
-	if util.ContainsString(pn.Spec.ExcludeNodes, node.Name) {
+	if slices.Contains(pn.Spec.ExcludeNodes, node.Name) {
 		c.recordProviderNetworkErr(pn.Name, "")
 		return c.cleanProviderNetwork(pn.DeepCopy(), node.DeepCopy())
 	}
@@ -266,7 +267,7 @@ func (c *Controller) handleAddOrUpdateProviderNetwork(key string) error {
 func (c *Controller) initProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v1.Node) error {
 	nic := pn.Spec.DefaultInterface
 	for _, item := range pn.Spec.CustomInterfaces {
-		if util.ContainsString(item.Nodes, node.Name) {
+		if slices.Contains(item.Nodes, node.Name) {
 			nic = item.Interface
 			break
 		}

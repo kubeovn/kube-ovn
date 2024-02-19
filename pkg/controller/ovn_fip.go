@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strconv"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -600,7 +601,7 @@ func (c *Controller) GetOvnEip(eipName string) (*kubeovnv1.OvnEip, error) {
 
 func (c *Controller) handleAddOvnFipFinalizer(cachedFip *kubeovnv1.OvnFip, finalizer string) error {
 	if cachedFip.DeletionTimestamp.IsZero() {
-		if util.ContainsString(cachedFip.Finalizers, finalizer) {
+		if slices.Contains(cachedFip.Finalizers, finalizer) {
 			return nil
 		}
 	}

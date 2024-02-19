@@ -37,32 +37,6 @@ func TestDiffStringSlice(t *testing.T) {
 	}
 }
 
-func TestUniqString(t *testing.T) {
-	tests := []struct {
-		name   string
-		slice1 []string
-		want   []string
-	}{
-		{
-			name:   "base",
-			slice1: []string{"a", "b", "c", "d", "a", "b", "c"},
-			want:   []string{"a", "b", "c", "d"},
-		},
-		{
-			name:   "baseWithBlank",
-			slice1: []string{" a", "b", "c", "d", "a", "b", "c"},
-			want:   []string{" a", "b", "c", "d", "a"},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if ret := UniqString(tt.slice1); !reflect.DeepEqual(ret, tt.want) {
-				t.Errorf("got %v, want %v", ret, tt.want)
-			}
-		})
-	}
-}
-
 func TestIsStringsOverlap(t *testing.T) {
 	tests := []struct {
 		name string
@@ -92,35 +66,6 @@ func TestIsStringsOverlap(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if ret := IsStringsOverlap(tt.a, tt.b); ret != tt.want {
-				t.Errorf("got %v, want %v", ret, tt.want)
-			}
-		})
-	}
-}
-
-func TestContainsString(t *testing.T) {
-	tests := []struct {
-		name string
-		a    string
-		b    []string
-		want bool
-	}{
-		{
-			name: "base",
-			a:    "a",
-			b:    []string{"a", "b"},
-			want: true,
-		},
-		{
-			name: "baseWithDiff",
-			a:    "c",
-			b:    []string{"a", "b"},
-			want: false,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if ret := ContainsString(tt.b, tt.a); ret != tt.want {
 				t.Errorf("got %v, want %v", ret, tt.want)
 			}
 		})

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"slices"
 
 	ctrlwebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
@@ -42,7 +43,7 @@ func (v *ValidatingHook) SubnetCreateHook(ctx context.Context, req admission.Req
 
 		if o.Spec.Vpc == item.Name && item.Status.Standby && !item.Status.Default {
 			for _, ns := range o.Spec.Namespaces {
-				if !util.ContainsString(item.Spec.Namespaces, ns) {
+				if !slices.Contains(item.Spec.Namespaces, ns) {
 					err := fmt.Errorf("namespace '%s' is out of range to custom vpc '%s'", ns, item.Name)
 					return ctrlwebhook.Errored(http.StatusBadRequest, err)
 				}

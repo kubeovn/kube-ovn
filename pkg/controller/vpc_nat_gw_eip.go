@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"slices"
 	"strings"
 	"time"
 
@@ -759,7 +760,7 @@ func (c *Controller) handleAddIptablesEipFinalizer(key string) error {
 		return err
 	}
 	if cachedIptablesEip.DeletionTimestamp.IsZero() {
-		if util.ContainsString(cachedIptablesEip.Finalizers, util.ControllerName) {
+		if slices.Contains(cachedIptablesEip.Finalizers, util.ControllerName) {
 			return nil
 		}
 	}

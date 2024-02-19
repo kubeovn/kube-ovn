@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"regexp"
 	"runtime"
+	"slices"
 	"strings"
 
 	"github.com/sirupsen/logrus"
@@ -238,7 +239,7 @@ func (config *Configuration) initNicConfig(nicBridgeMappings map[string]string) 
 			if ip := net.ParseIP(ipStr); ip == nil || ip.IsLinkLocalUnicast() {
 				continue
 			}
-			if len(srcIPs) == 0 || util.ContainsString(srcIPs, ipStr) {
+			if len(srcIPs) == 0 || slices.Contains(srcIPs, ipStr) {
 				encapIP = ipStr
 				break
 			}

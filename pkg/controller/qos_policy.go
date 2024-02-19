@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 
@@ -520,7 +521,7 @@ func (c *Controller) handleAddQoSPolicyFinalizer(key string) error {
 		return err
 	}
 	if cachedQoSPolicy.DeletionTimestamp.IsZero() {
-		if util.ContainsString(cachedQoSPolicy.Finalizers, util.ControllerName) {
+		if slices.Contains(cachedQoSPolicy.Finalizers, util.ControllerName) {
 			return nil
 		}
 	}

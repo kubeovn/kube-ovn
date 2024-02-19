@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"slices"
 
 	"github.com/ovn-org/libovsdb/ovsdb"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -661,7 +662,7 @@ func (c *Controller) DelDnatRule(vpcName, dnatName, externalIP, externalPort str
 
 func (c *Controller) handleAddOvnDnatFinalizer(cachedDnat *kubeovnv1.OvnDnatRule, finalizer string) error {
 	if cachedDnat.DeletionTimestamp.IsZero() {
-		if util.ContainsString(cachedDnat.Finalizers, finalizer) {
+		if slices.Contains(cachedDnat.Finalizers, finalizer) {
 			return nil
 		}
 	}

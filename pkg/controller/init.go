@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -577,7 +578,7 @@ func (c *Controller) syncIPCR() error {
 
 	for _, ipCR := range ips {
 		ip := ipCR.DeepCopy()
-		if ip.DeletionTimestamp != nil && util.ContainsString(ip.Finalizers, util.ControllerName) {
+		if ip.DeletionTimestamp != nil && slices.Contains(ip.Finalizers, util.ControllerName) {
 			klog.Infof("enqueue update for deleting ip %s", ip.Name)
 			c.updateIPQueue.Add(ip.Name)
 		}

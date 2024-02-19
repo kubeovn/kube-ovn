@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"slices"
 	"strings"
 	"time"
 
@@ -111,7 +112,7 @@ func (c *Controller) enqueueUpdateService(oldObj, newObj interface{}) {
 	newClusterIps := getVipIps(newSvc)
 	var ipsToDel []string
 	for _, oldClusterIP := range oldClusterIps {
-		if !util.ContainsString(newClusterIps, oldClusterIP) {
+		if !slices.Contains(newClusterIps, oldClusterIP) {
 			ipsToDel = append(ipsToDel, oldClusterIP)
 		}
 	}
@@ -270,7 +271,7 @@ func (c *Controller) handleDeleteService(service *vpcService) error {
 		ip = parseVipAddr(vip)
 
 		for _, svc := range svcs {
-			if util.ContainsString(util.ServiceClusterIPs(*svc), ip) {
+			if slices.Contains(util.ServiceClusterIPs(*svc), ip) {
 				found = true
 				break
 			}
@@ -389,7 +390,7 @@ func (c *Controller) handleUpdateService(key string) error {
 			}
 		}
 		for vip := range lb.Vips {
-			if ip := parseVipAddr(vip); (util.ContainsString(ips, ip) && !util.ContainsString(svcVips, vip)) || util.ContainsString(ipsToDel, ip) {
+			if ip := parseVipAddr(vip); (slices.Contains(ips, ip) && !slices.Contains(svcVips, vip)) || slices.Contains(ipsToDel, ip) {
 				klog.Infof("remove stale vip %s from LB %s", vip, lbName)
 				if err := c.OVNNbClient.LoadBalancerDeleteVip(lbName, vip, ignoreHealthCheck); err != nil {
 					klog.Errorf("failed to delete vip %s from LB %s: %v", vip, lbName, err)
@@ -409,7 +410,7 @@ func (c *Controller) handleUpdateService(key string) error {
 		}
 		klog.V(3).Infof("existing vips of LB %s: %v", oLbName, lb.Vips)
 		for vip := range oLb.Vips {
-			if ip := parseVipAddr(vip); util.ContainsString(ips, ip) || util.ContainsString(ipsToDel, ip) {
+			if ip := parseVipAddr(vip); slices.Contains(ips, ip) || slices.Contains(ipsToDel, ip) {
 				klog.Infof("remove stale vip %s from LB %s", vip, oLbName)
 				if err = c.OVNNbClient.LoadBalancerDeleteVip(oLbName, vip, ignoreHealthCheck); err != nil {
 					klog.Errorf("failed to delete vip %s from LB %s: %v", vip, oLbName, err)

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"slices"
 
 	"github.com/ovn-org/libovsdb/client"
 	"github.com/ovn-org/libovsdb/model"
@@ -14,7 +15,6 @@ import (
 
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
-	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 // AddLogicalRouterPolicy add a policy route to logical router
@@ -151,7 +151,7 @@ func (c *OVNNbClient) DeleteLogicalRouterPolicyByNexthop(lrName string, priority
 		if route.Priority != priority {
 			return false
 		}
-		return (route.Nexthop != nil && *route.Nexthop == nexthop) || util.ContainsString(route.Nexthops, nexthop)
+		return (route.Nexthop != nil && *route.Nexthop == nexthop) || slices.Contains(route.Nexthops, nexthop)
 	})
 	if err != nil {
 		klog.Error(err)

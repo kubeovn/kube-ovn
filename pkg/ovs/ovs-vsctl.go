@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os/exec"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -158,7 +159,7 @@ func BridgeExists(name string) (bool, error) {
 		klog.Error(err)
 		return false, err
 	}
-	return util.ContainsString(bridges, name), nil
+	return slices.Contains(bridges, name), nil
 }
 
 // PortExists checks whether the port already exists
@@ -288,7 +289,7 @@ func SetPortTag(port, tag string) error {
 // ValidatePortVendor returns true if the port's external_ids:vendor=kube-ovn
 func ValidatePortVendor(port string) (bool, error) {
 	output, err := ovsFind("Port", "name", "external_ids:vendor="+util.CniTypeName)
-	return util.ContainsString(output, port), err
+	return slices.Contains(output, port), err
 }
 
 func GetInterfacePodNs(iface string) (string, error) {

@@ -3,6 +3,7 @@ package ovs
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -502,7 +503,7 @@ func (c *OVNNbClient) EnablePortLayer2forward(lspName string) error {
 		return fmt.Errorf("get logical switch port %s: %v", lspName, err)
 	}
 
-	if util.ContainsString(lsp.Addresses, "unknown") {
+	if slices.Contains(lsp.Addresses, "unknown") {
 		return nil
 	}
 

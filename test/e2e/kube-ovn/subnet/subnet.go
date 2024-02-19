@@ -7,6 +7,7 @@ import (
 	"math/rand/v2"
 	"net"
 	"os/exec"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -640,7 +641,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		framework.ExpectNotEmpty(kindNodes)
 
 		for _, node := range kindNodes {
-			shouldHavePolicyRoute := util.ContainsString(gatewayNodes, node.Name())
+			shouldHavePolicyRoute := slices.Contains(gatewayNodes, node.Name())
 			ginkgo.By("Getting ip rules in node " + node.Name())
 			rules, err := iproute.RuleShow("", node.Exec)
 			framework.ExpectNoError(err)
