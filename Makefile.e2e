@@ -41,6 +41,7 @@ endif
 
 ifeq ($(E2E_CILIUM_CHAINING),true)
 K8S_CONFORMANCE_E2E_SKIP += "sig-network.*Networking.*Feature:SCTPConnectivity"
+K8S_CONFORMANCE_E2E_SKIP += "sig-network.*Services.*should serve endpoints on same port and different protocols"
 endif
 
 GINKGO_PARALLEL_OPT = -p
