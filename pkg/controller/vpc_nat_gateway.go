@@ -212,6 +212,7 @@ func (c *Controller) handleDelVpcNatGw(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	return nil
@@ -229,6 +230,7 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	if _, err := c.vpcsLister.Get(gw.Spec.Vpc); err != nil {
@@ -249,6 +251,7 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 		if k8serrors.IsNotFound(err) {
 			needToCreate = true
 		} else {
+			klog.Error(err)
 			return err
 		}
 	}
@@ -287,6 +290,7 @@ func (c *Controller) handleInitVpcNatGw(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	// subnet for vpc-nat-gw has been checked when create vpc-nat-gw
@@ -298,6 +302,7 @@ func (c *Controller) handleInitVpcNatGw(key string) error {
 
 	oriPod, err := c.getNatGwPod(key)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 	pod := oriPod.DeepCopy()
@@ -326,6 +331,7 @@ func (c *Controller) handleInitVpcNatGw(key string) error {
 	pod.Annotations[util.VpcNatGatewayInitAnnotation] = "true"
 	patch, err := util.GenerateStrategicMergePatchPayload(oriPod, pod)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 	if _, err := c.config.KubeClient.CoreV1().Pods(pod.Namespace).Patch(context.Background(), pod.Name,
@@ -499,11 +505,13 @@ func (c *Controller) handleUpdateNatGwSubnetRoute(natGwKey string) error {
 	defer c.vpcNatGwKeyMutex.Unlock(natGwKey)
 	gw, err := c.vpcNatGatewayLister.Get(natGwKey)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 
 	oriPod, err := c.getNatGwPod(natGwKey)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 	pod := oriPod.DeepCopy()
@@ -545,6 +553,7 @@ func (c *Controller) handleUpdateNatGwSubnetRoute(natGwKey string) error {
 	}
 	if cidrs, ok := pod.Annotations[util.VpcCIDRsAnnotation]; ok {
 		if err = json.Unmarshal([]byte(cidrs), &oldCIDRs); err != nil {
+			klog.Error(err)
 			return err
 		}
 	}
@@ -586,6 +595,7 @@ func (c *Controller) handleUpdateNatGwSubnetRoute(natGwKey string) error {
 	pod.Annotations[util.VpcCIDRsAnnotation] = string(cidrBytes)
 	patch, err := util.GenerateStrategicMergePatchPayload(oriPod, pod)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 	if _, err := c.config.KubeClient.CoreV1().Pods(pod.Namespace).Patch(context.Background(), pod.Name,
@@ -609,6 +619,7 @@ func (c *Controller) execNatGwRules(pod *corev1.Pod, operation string, rules []s
 		if len(stdOutput) > 0 {
 			klog.V(3).Infof("failed to ExecuteCommandInContainer, stdOutput: %v", stdOutput)
 		}
+		klog.Error(err)
 		return err
 	}
 
@@ -753,6 +764,7 @@ func (c *Controller) checkVpcExternalNet() (err error) {
 			klog.Errorf("vpc external multus net '%s' should be exist already before ovn-vpc-nat-gw-config applied", util.VpcExternalNet)
 			return err
 		}
+		klog.Error(err)
 		return err
 	}
 	return nil
@@ -764,6 +776,7 @@ func (c *Controller) initCreateAt(key string) (err error) {
 	}
 	pod, err := c.getNatGwPod(key)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 	NAT_GW_CREATED_AT = pod.CreationTimestamp.Format("2006-01-02T15:04:05")
@@ -773,9 +786,9 @@ func (c *Controller) initCreateAt(key string) (err error) {
 func (c *Controller) updateCrdNatGw(key string) error {
 	gw, err := c.config.KubeOvnClient.KubeovnV1().VpcNatGateways().Get(context.Background(), key, metav1.GetOptions{})
 	if err != nil {
-		errMsg := fmt.Errorf("failed to get vpc nat gw '%s', %v", key, err)
-		klog.Error(errMsg)
-		return errMsg
+		err := fmt.Errorf("failed to get vpc nat gw '%s', %v", key, err)
+		klog.Error(err)
+		return err
 	}
 	var needUpdateLabel bool
 	var op string
@@ -816,6 +829,7 @@ func (c *Controller) getNatGw(router, subnet string) (string, error) {
 	selectors := labels.Set{util.VpcNameLabel: router, util.SubnetNameLabel: subnet}.AsSelector()
 	gws, err := c.vpcNatGatewayLister.List(selectors)
 	if err != nil {
+		klog.Error(err)
 		return "", err
 	}
 	if len(gws) == 1 {

@@ -593,6 +593,7 @@ func (c *Controller) handleAddPod(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	pod := cachedPod.DeepCopy()
@@ -622,6 +623,7 @@ func (c *Controller) handleAddPod(key string) error {
 		v4IP, v6IP, mac, subnet, err := c.acquireAddress(pod, podNet)
 		if err != nil {
 			c.recorder.Eventf(pod, v1.EventTypeWarning, "AcquireAddressFailed", err.Error())
+			klog.Error(err)
 			return err
 		}
 		ipStr := util.GetStringIP(v4IP, v6IP)
@@ -658,6 +660,7 @@ func (c *Controller) handleAddPod(key string) error {
 				vlan, err := c.vlansLister.Get(subnet.Spec.Vlan)
 				if err != nil {
 					c.recorder.Eventf(pod, v1.EventTypeWarning, "GetVlanInfoFailed", err.Error())
+					klog.Error(err)
 					return err
 				}
 				pod.Annotations[fmt.Sprintf(util.VlanIdAnnotationTemplate, podNet.ProviderName)] = strconv.Itoa(vlan.Spec.ID)
@@ -688,6 +691,7 @@ func (c *Controller) handleAddPod(key string) error {
 			hasUnknown := pod.Annotations[fmt.Sprintf(util.Layer2ForwardAnnotationTemplate, podNet.ProviderName)] == "true"
 			if err := c.ovnLegacyClient.CreatePort(subnet.Name, portName, ipStr, mac, podName, pod.Namespace, portSecurity, securityGroupAnnotation, vips, podNet.AllowLiveMigration, podNet.Subnet.Spec.EnableDHCP, dhcpOptions, hasUnknown); err != nil {
 				c.recorder.Eventf(pod, v1.EventTypeWarning, "CreateOVNPortFailed", err.Error())
+				klog.Error(err)
 				return err
 			}
 
@@ -883,6 +887,7 @@ func (c *Controller) handleUpdatePodSecurity(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	podName := c.getNameByPod(pod)
@@ -939,6 +944,7 @@ func (c *Controller) handleUpdatePod(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	pod := oriPod.DeepCopy()
@@ -1007,6 +1013,7 @@ func (c *Controller) handleUpdatePod(key string) error {
 				if subnet.Spec.GatewayType == kubeovnv1.GWDistributedType && pod.Annotations[util.NorthGatewayAnnotation] == "" {
 					nodeTunlIPAddr, err := getNodeTunlIP(node)
 					if err != nil {
+						klog.Error(err)
 						return err
 					}
 
@@ -1021,6 +1028,7 @@ func (c *Controller) handleUpdatePod(key string) error {
 							c.ovnPgKeyMutex.Lock(pgName)
 							if err = c.ovnClient.PortGroupAddPort(pgName, portName); err != nil {
 								c.ovnPgKeyMutex.Unlock(pgName)
+								klog.Error(err)
 								return err
 							}
 							c.ovnPgKeyMutex.Unlock(pgName)
@@ -1041,6 +1049,7 @@ func (c *Controller) handleUpdatePod(key string) error {
 					}
 				} else if c.config.EnableEipSnat {
 					if err := c.ovnLegacyClient.DeleteStaticRoute(podIP, c.config.ClusterRouter); err != nil {
+						klog.Error(err)
 						return err
 					}
 				}

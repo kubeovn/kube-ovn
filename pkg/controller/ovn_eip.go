@@ -208,6 +208,7 @@ func (c *Controller) handleAddOvnEip(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	if cachedEip.Status.MacAddress != "" {
@@ -253,6 +254,7 @@ func (c *Controller) handleUpdateOvnEip(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	if !cachedEip.DeletionTimestamp.IsZero() {
@@ -280,6 +282,7 @@ func (c *Controller) handleResetOvnEip(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	if cachedEip.Status.MacAddress != "" && cachedEip.Status.MacAddress != cachedEip.Spec.MacAddress {
@@ -324,11 +327,13 @@ func (c *Controller) createOrUpdateCrdOvnEip(key, subnet, v4ip, v6ip, mac, usage
 			}, metav1.CreateOptions{})
 			if err != nil {
 				err := fmt.Errorf("failed to create crd ovn eip '%s', %v", key, err)
+				klog.Error(err)
 				return err
 			}
 			// wait local cache ready
 			time.Sleep(1 * time.Second)
 		} else {
+			klog.Error(err)
 			return err
 		}
 	} else {
@@ -339,9 +344,9 @@ func (c *Controller) createOrUpdateCrdOvnEip(key, subnet, v4ip, v6ip, mac, usage
 			ovnEip.Spec.MacAddress = mac
 			ovnEip.Spec.Type = usage
 			if _, err := c.config.KubeOvnClient.KubeovnV1().OvnEips().Update(context.Background(), ovnEip, metav1.UpdateOptions{}); err != nil {
-				errMsg := fmt.Errorf("failed to update ovn eip '%s', %v", key, err)
-				klog.Error(errMsg)
-				return errMsg
+				err := fmt.Errorf("failed to update ovn eip '%s', %v", key, err)
+				klog.Error(err)
+				return err
 			}
 		}
 		var needUpdateLabel bool
@@ -432,6 +437,7 @@ func (c *Controller) natLabelOvnEip(eipName, natName, vpcName string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	eip := cachedEip.DeepCopy()
@@ -462,7 +468,7 @@ func (c *Controller) natLabelOvnEip(eipName, natName, vpcName string) error {
 			return err
 		}
 	}
-	return err
+	return nil
 }
 
 func (c *Controller) handleAddOvnEipFinalizer(cachedEip *kubeovnv1.OvnEip) error {

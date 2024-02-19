@@ -77,6 +77,7 @@ func (c *Controller) InitDefaultVpc() error {
 
 	bytes, err := vpc.Status.Bytes()
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 	_, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Patch(context.Background(), vpc.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status")
@@ -137,8 +138,10 @@ func (c *Controller) initDefaultLogicalSwitch() error {
 		defaultSubnet.Spec.U2OInterconnection = c.config.DefaultU2OInterconnection
 	}
 
-	_, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Create(context.Background(), &defaultSubnet, metav1.CreateOptions{})
-	return err
+	if _, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Create(context.Background(), &defaultSubnet, metav1.CreateOptions{}); err != nil {
+		klog.Error(err)
+	}
+	return nil
 }
 
 // InitNodeSwitch init node switch to connect host and pod
@@ -191,6 +194,7 @@ func (c *Controller) initNodeSwitch() error {
 func (c *Controller) initClusterRouter() error {
 	lrs, err := c.ovnLegacyClient.ListLogicalRouter(c.config.EnableExternalVpc)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 	klog.Infof("exists routers: %v", lrs)
@@ -237,21 +241,27 @@ func (c *Controller) initLoadBalancer() error {
 		vpc := cachedVpc.DeepCopy()
 		vpcLb := c.GenVpcLoadBalancer(vpc.Name)
 		if err = c.initLB(vpcLb.TcpLoadBalancer, string(v1.ProtocolTCP), false); err != nil {
+			klog.Error(err)
 			return err
 		}
 		if err = c.initLB(vpcLb.TcpSessLoadBalancer, string(v1.ProtocolTCP), true); err != nil {
+			klog.Error(err)
 			return err
 		}
 		if err = c.initLB(vpcLb.UdpLoadBalancer, string(v1.ProtocolUDP), false); err != nil {
+			klog.Error(err)
 			return err
 		}
 		if err = c.initLB(vpcLb.UdpSessLoadBalancer, string(v1.ProtocolUDP), true); err != nil {
+			klog.Error(err)
 			return err
 		}
 		if err = c.initLB(vpcLb.SctpLoadBalancer, string(v1.ProtocolSCTP), false); err != nil {
+			klog.Error(err)
 			return err
 		}
 		if err = c.initLB(vpcLb.SctpSessLoadBalancer, string(v1.ProtocolSCTP), true); err != nil {
+			klog.Error(err)
 			return err
 		}
 
@@ -263,10 +273,12 @@ func (c *Controller) initLoadBalancer() error {
 		vpc.Status.SctpSessionLoadBalancer = vpcLb.SctpSessLoadBalancer
 		bytes, err := vpc.Status.Bytes()
 		if err != nil {
+			klog.Error(err)
 			return err
 		}
 		_, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Patch(context.Background(), vpc.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status")
 		if err != nil {
+			klog.Error(err)
 			return err
 		}
 	}
@@ -525,6 +537,7 @@ func (c *Controller) initDefaultVlan() error {
 	}
 
 	if err := c.initDefaultProviderNetwork(); err != nil {
+		klog.Error(err)
 		return err
 	}
 
@@ -565,6 +578,7 @@ func (c *Controller) initSyncCrdIPs() error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 
@@ -610,6 +624,7 @@ func (c *Controller) initSyncCrdSubnets() error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	for _, orisubnet := range subnets {
@@ -663,6 +678,7 @@ func (c *Controller) initSyncCrdVlans() error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 
@@ -695,6 +711,7 @@ func (c *Controller) migrateNodeRoute(af int, node, ip, nexthop string) error {
 	match := fmt.Sprintf("ip%d.dst == %s", af, ip)
 	consistent, err := c.ovnLegacyClient.CheckPolicyRouteNexthopConsistent(c.config.ClusterRouter, match, nexthop, util.NodeRouterPolicyPriority)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 	if consistent {

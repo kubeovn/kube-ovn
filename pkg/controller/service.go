@@ -303,6 +303,7 @@ func (c *Controller) handleUpdateService(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 
@@ -384,12 +385,15 @@ func (c *Controller) handleUpdateService(key string) error {
 	}
 
 	if err = updateVip(tcpLb, oTcpLb, tcpVips); err != nil {
+		klog.Error(err)
 		return err
 	}
 	if err = updateVip(udpLb, oUdpLb, udpVips); err != nil {
+		klog.Error(err)
 		return err
 	}
 	if err = updateVip(sctpLb, oSctpLb, sctpVips); err != nil {
+		klog.Error(err)
 		return err
 	}
 
@@ -418,6 +422,7 @@ func (c *Controller) handleAddService(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	if svc.Spec.Type != v1.ServiceTypeLoadBalancer || !c.config.EnableLbSvc {
@@ -457,6 +462,7 @@ func (c *Controller) handleAddService(key string) error {
 			if k8serrors.IsNotFound(err) {
 				return nil
 			}
+			klog.Error(err)
 			return err
 		}
 	}
@@ -472,6 +478,7 @@ func (c *Controller) handleAddService(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	var ingress v1.LoadBalancerIngress

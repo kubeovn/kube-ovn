@@ -169,6 +169,7 @@ func (c *Controller) handleAddVirtualIp(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	if cachedVip.Status.Mac != "" {
@@ -184,6 +185,7 @@ func (c *Controller) handleAddVirtualIp(key string) error {
 	}
 	subnet, err := c.subnetsLister.Get(subnetName)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 	portName := ovs.PodNameToPortName(vip.Name, vip.Namespace, subnet.Spec.Provider)
@@ -195,6 +197,7 @@ func (c *Controller) handleAddVirtualIp(key string) error {
 		v4ip, v6ip, mac, err = c.acquireIpAddress(subnet.Name, vip.Name, portName)
 	}
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 	var parentV4ip, parentV6ip, parentMac string
@@ -220,6 +223,7 @@ func (c *Controller) handleUpdateVirtualIp(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	vip := cachedVip.DeepCopy()
@@ -237,7 +241,7 @@ func (c *Controller) handleUpdateVirtualIp(key string) error {
 		vip.Status.V4ip != "" && vip.Status.V4ip != vip.Spec.V4ip ||
 		vip.Status.V6ip != "" && vip.Status.V6ip != vip.Spec.V6ip {
 		err = fmt.Errorf("not support change ip of vip")
-		klog.Errorf("%v", err)
+		klog.Error(err)
 		return err
 	}
 	// should update
@@ -246,10 +250,12 @@ func (c *Controller) handleUpdateVirtualIp(key string) error {
 		if err = c.createOrUpdateCrdVip(key, vip.Namespace, vip.Spec.Subnet,
 			vip.Spec.V4ip, vip.Spec.V6ip, vip.Spec.MacAddress,
 			vip.Spec.ParentV4ip, vip.Spec.ParentV6ip, vip.Spec.MacAddress); err != nil {
+			klog.Error(err)
 			return err
 		}
 		ready := true
 		if err = c.patchVipStatus(key, vip.Spec.V4ip, ready); err != nil {
+			klog.Error(err)
 			return err
 		}
 		if err = c.handleAddVipFinalizer(key); err != nil {
@@ -319,7 +325,10 @@ func (c *Controller) subnetCountIp(subnet *kubeovnv1.Subnet) error {
 	} else {
 		err = calcSubnetStatusIP(subnet, c)
 	}
-	return err
+	if err != nil {
+		klog.Error(err)
+	}
+	return nil
 }
 
 func (c *Controller) createOrUpdateCrdVip(key, ns, subnet, v4ip, v6ip, mac, pV4ip, pV6ip, pmac string) error {
@@ -346,14 +355,14 @@ func (c *Controller) createOrUpdateCrdVip(key, ns, subnet, v4ip, v6ip, mac, pV4i
 					ParentMac:  pmac,
 				},
 			}, metav1.CreateOptions{}); err != nil {
-				errMsg := fmt.Errorf("failed to create crd vip '%s', %v", key, err)
-				klog.Error(errMsg)
-				return errMsg
+				err := fmt.Errorf("failed to create crd vip '%s', %v", key, err)
+				klog.Error(err)
+				return err
 			}
 		} else {
-			errMsg := fmt.Errorf("failed to get crd vip '%s', %v", key, err)
-			klog.Error(errMsg)
-			return errMsg
+			err := fmt.Errorf("failed to get crd vip '%s', %v", key, err)
+			klog.Error(err)
+			return err
 		}
 	} else {
 		vip := vipCr.DeepCopy()
@@ -375,9 +384,9 @@ func (c *Controller) createOrUpdateCrdVip(key, ns, subnet, v4ip, v6ip, mac, pV4i
 			vip.Status.Pv6ip = pV6ip
 			vip.Status.Pmac = pmac
 			if _, err := c.config.KubeOvnClient.KubeovnV1().Vips().Update(context.Background(), vip, metav1.UpdateOptions{}); err != nil {
-				errMsg := fmt.Errorf("failed to update vip '%s', %v", key, err)
-				klog.Error(errMsg)
-				return errMsg
+				err := fmt.Errorf("failed to update vip '%s', %v", key, err)
+				klog.Error(err)
+				return err
 			}
 		}
 		var needUpdateLabel bool
@@ -416,6 +425,7 @@ func (c *Controller) patchVipStatus(key, v4ip string, ready bool) error {
 			klog.Errorf("failed to get cached vip '%s', %v", key, err)
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	vip := oriVip.DeepCopy()
@@ -481,6 +491,7 @@ func (c *Controller) releaseVip(key string) error {
 			klog.Errorf("failed to get cached vip '%s', %v", key, err)
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	vip := oriVip.DeepCopy()
@@ -517,6 +528,7 @@ func (c *Controller) handleAddVipFinalizer(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	if cachedVip.DeletionTimestamp.IsZero() {
@@ -548,6 +560,7 @@ func (c *Controller) handleDelVipFinalizer(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	if len(cachedVip.Finalizers) == 0 {

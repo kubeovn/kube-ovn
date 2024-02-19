@@ -168,9 +168,11 @@ func (c *Controller) processNextDeleteSgWorkItem() bool {
 
 func (c *Controller) initDenyAllSecurityGroup() error {
 	if err := c.ovnLegacyClient.CreateSgPortGroup(util.DenyAllSecurityGroup); err != nil {
+		klog.Error(err)
 		return err
 	}
 	if err := c.ovnLegacyClient.CreateSgDenyAllACL(); err != nil {
+		klog.Error(err)
 		return err
 	}
 	c.addOrUpdateSgQueue.Add(util.DenyAllSecurityGroup)
@@ -210,18 +212,22 @@ func (c *Controller) handleAddOrUpdateSg(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
+
+	if err = c.validateSgRule(cachedSg); err != nil {
+		klog.Error(err)
+		return err
+	}
+
 	sg := cachedSg.DeepCopy()
-
-	if err = c.validateSgRule(sg); err != nil {
-		return err
-	}
-
 	if err = c.ovnLegacyClient.CreateSgPortGroup(sg.Name); err != nil {
+		klog.Error(err)
 		return fmt.Errorf("failed to create sg port_group %s, %v", key, err.Error())
 	}
 	if err = c.ovnLegacyClient.CreateSgAssociatedAddressSet(sg.Name); err != nil {
+		klog.Error(err)
 		return fmt.Errorf("failed to create sg associated address_set %s, %v", key, err.Error())
 	}
 
@@ -252,9 +258,11 @@ func (c *Controller) handleAddOrUpdateSg(key string) error {
 		if err = c.ovnLegacyClient.UpdateSgACL(sg, ovs.SgAclIngressDirection); err != nil {
 			sg.Status.IngressLastSyncSuccess = false
 			c.patchSgStatus(sg)
+			klog.Error(err)
 			return err
 		}
 		if err := c.ovnLegacyClient.CreateSgBaseIngressACL(sg.Name); err != nil {
+			klog.Error(err)
 			return err
 		}
 		sg.Status.IngressMd5 = newIngressMd5
@@ -265,9 +273,11 @@ func (c *Controller) handleAddOrUpdateSg(key string) error {
 		if err = c.ovnLegacyClient.UpdateSgACL(sg, ovs.SgAclEgressDirection); err != nil {
 			sg.Status.EgressLastSyncSuccess = false
 			c.patchSgStatus(sg)
+			klog.Error(err)
 			return err
 		}
 		if err := c.ovnLegacyClient.CreateSgBaseEgressACL(sg.Name); err != nil {
+			klog.Error(err)
 			return err
 		}
 		sg.Status.EgressMd5 = newEgressMd5

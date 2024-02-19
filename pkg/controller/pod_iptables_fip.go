@@ -231,6 +231,7 @@ func (c *Controller) handleAddPodAnnotatedIptablesFip(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	if cachedPod.Annotations[util.FipEnableAnnotation] != "true" {
@@ -249,14 +250,17 @@ func (c *Controller) handleAddPodAnnotatedIptablesFip(key string) error {
 		}
 	}
 	if err = c.handleAddPodAnnotatedIptablesFipFinalizer(cachedPod); err != nil {
+		klog.Error(err)
 		return err
 	}
 	if cachedPod.Annotations[util.AllocatedAnnotation] != "true" {
 		err = fmt.Errorf("pod network not allocated, failed to create iptables fip %s", fipName)
+		klog.Error(err)
 		return err
 	}
 	if _, err = c.iptablesFipsLister.Get(fipName); err != nil {
 		if !k8serrors.IsNotFound(err) {
+			klog.Error(err)
 			return err
 		}
 		klog.V(3).Infof("handle add pod annotated iptables fip %s", fipName)
@@ -269,6 +273,7 @@ func (c *Controller) handleAddPodAnnotatedIptablesFip(key string) error {
 	newPod.Annotations[util.FipNameAnnotation] = fipName
 	patch, err := util.GenerateStrategicMergePatchPayload(cachedPod, newPod)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 	if _, err := c.config.KubeClient.CoreV1().Pods(namespace).Patch(context.Background(), name,
@@ -307,6 +312,7 @@ func (c *Controller) handleDeletePodAnnotatedIptablesFip(pod *v1.Pod) error {
 		}
 	}
 	if err = c.handleDelPodAnnotatedIptablesFipFinalizer(pod); err != nil {
+		klog.Error(err)
 		return err
 	}
 	return nil

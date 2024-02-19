@@ -143,6 +143,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 

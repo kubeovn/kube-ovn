@@ -150,6 +150,7 @@ func (c *Controller) establishExternalGateway(config map[string]string) error {
 	lrpName := fmt.Sprintf("%s-%s", c.config.ClusterRouter, c.config.ExternalGatewaySwitch)
 	exist, err := c.ovnClient.LogicalRouterPortExists(lrpName)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 	if exist {

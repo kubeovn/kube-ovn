@@ -175,6 +175,7 @@ func (c *Controller) handleAddOvnSnatRule(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	if cachedSnat.Status.Ready && cachedSnat.Status.V4IpCidr != "" {
@@ -193,6 +194,7 @@ func (c *Controller) handleAddOvnSnatRule(key string) error {
 	}
 	if cachedEip.Spec.Type != "" && cachedEip.Spec.Type != util.SnatUsingEip {
 		err = fmt.Errorf("failed to create snat %s, eip '%s' is using by '%s'", key, eipName, cachedEip.Spec.Type)
+		klog.Error(err)
 		return err
 	}
 	var v4IpCidr, vpcName string
@@ -223,6 +225,7 @@ func (c *Controller) handleAddOvnSnatRule(key string) error {
 	if v4IpCidr == "" {
 		// only support IPv4 snat
 		err = fmt.Errorf("failed to get v4 internal ip for snat %s", key)
+		klog.Error(err)
 		return err
 	}
 	// create snat
@@ -264,6 +267,7 @@ func (c *Controller) handleUpdateOvnSnatRule(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	klog.V(3).Infof("handle add ovn snat %s", key)
@@ -299,6 +303,7 @@ func (c *Controller) handleUpdateOvnSnatRule(key string) error {
 	if cachedEip.Spec.Type != "" && cachedEip.Spec.Type != util.SnatUsingEip {
 		// eip is in use by other
 		err = fmt.Errorf("failed to create snat %s, eip '%s' is using by nat '%s'", key, eipName, cachedEip.Spec.Type)
+		klog.Error(err)
 		return err
 	}
 	var v4IpCidr, vpcName string
@@ -329,6 +334,7 @@ func (c *Controller) handleUpdateOvnSnatRule(key string) error {
 	if v4IpCidr == "" {
 		// only support IPv4 snat
 		err = fmt.Errorf("failed to get v4 internal ip for snat %s", key)
+		klog.Error(err)
 		return err
 	}
 	// snat change eip
@@ -421,6 +427,7 @@ func (c *Controller) patchOvnSnatStatus(key, vpc, v4Eip, v4IpCidr string, ready 
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	snat := oriSnat.DeepCopy()
@@ -456,6 +463,7 @@ func (c *Controller) patchOvnSnatLabel(key, eipName string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	snat := oriFip.DeepCopy()

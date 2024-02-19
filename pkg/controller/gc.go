@@ -38,6 +38,7 @@ func (c *Controller) gc() error {
 	}
 	for _, gcFunc := range gcFunctions {
 		if err := gcFunc(); err != nil {
+			klog.Error(err)
 			return err
 		}
 	}
@@ -270,6 +271,7 @@ func (c *Controller) gcVip() error {
 					}
 					return nil
 				}
+				klog.Error(err)
 				return err
 			}
 		}
@@ -394,6 +396,7 @@ func (c *Controller) gcLoadBalancer() error {
 		// remove lb from logical switch
 		vpcs, err := c.vpcsLister.List(labels.Everything())
 		if err != nil {
+			klog.Error(err)
 			return err
 		}
 		for _, cachedVpc := range vpcs {
@@ -404,6 +407,7 @@ func (c *Controller) gcLoadBalancer() error {
 					if k8serrors.IsNotFound(err) {
 						continue
 					}
+					klog.Error(err)
 					return err
 				}
 				if !isOvnSubnet(subnet) {
@@ -419,6 +423,7 @@ func (c *Controller) gcLoadBalancer() error {
 					vpc.Status.SctpLoadBalancer,
 					vpc.Status.SctpSessionLoadBalancer)
 				if err != nil {
+					klog.Error(err)
 					return err
 				}
 			}
@@ -431,10 +436,12 @@ func (c *Controller) gcLoadBalancer() error {
 			vpc.Status.SctpSessionLoadBalancer = ""
 			bytes, err := vpc.Status.Bytes()
 			if err != nil {
+				klog.Error(err)
 				return err
 			}
 			_, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Patch(context.Background(), vpc.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status")
 			if err != nil {
+				klog.Error(err)
 				return err
 			}
 		}
@@ -528,21 +535,27 @@ func (c *Controller) gcLoadBalancer() error {
 		}
 
 		if err = removeVIP(tcpLb, tcpVips); err != nil {
+			klog.Error(err)
 			return err
 		}
 		if err = removeVIP(tcpSessLb, tcpSessionVips); err != nil {
+			klog.Error(err)
 			return err
 		}
 		if err = removeVIP(udpLb, udpVips); err != nil {
+			klog.Error(err)
 			return err
 		}
 		if err = removeVIP(udpSessLb, udpSessionVips); err != nil {
+			klog.Error(err)
 			return err
 		}
 		if err = removeVIP(sctpLb, sctpVips); err != nil {
+			klog.Error(err)
 			return err
 		}
 		if err = removeVIP(sctpSessLb, sctpSessionVips); err != nil {
+			klog.Error(err)
 			return err
 		}
 	}
@@ -561,6 +574,7 @@ func (c *Controller) gcLoadBalancer() error {
 		}
 		klog.Infof("start to destroy load balancer %s", lb)
 		if err := c.ovnLegacyClient.DeleteLoadBalancer(lb); err != nil {
+			klog.Error(err)
 			return err
 		}
 	}

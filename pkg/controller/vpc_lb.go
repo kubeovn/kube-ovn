@@ -24,7 +24,13 @@ func vpcLbDeploymentName(vpc string) string {
 
 func (c *Controller) createVpcLb(vpc *kubeovnv1.Vpc) error {
 	deployment, err := c.genVpcLbDeployment(vpc)
-	if deployment == nil || err != nil {
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
+	if deployment == nil {
+		err := fmt.Errorf("failed to get deployment for vpc %s", vpc.Name)
+		klog.Error(err)
 		return err
 	}
 
