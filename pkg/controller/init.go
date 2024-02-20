@@ -827,3 +827,56 @@ func (c *Controller) initNodeChassis() error {
 	}
 	return nil
 }
+
+func (c *Controller) syncFinalizers() error {
+	// migrate depreciated finalizer to new finalizer
+	if err := c.syncIPFinalizer(); err != nil {
+		klog.Errorf("failed to sync ip finalizer: %v", err)
+		return err
+	}
+	if err := c.syncOvnDnatFinalizer(); err != nil {
+		klog.Errorf("failed to sync ovn dnat finalizer: %v", err)
+		return err
+	}
+	if err := c.syncOvnEipFinalizer(); err != nil {
+		klog.Errorf("failed to sync ovn eip finalizer: %v", err)
+		return err
+	}
+	if err := c.syncOvnFipFinalizer(); err != nil {
+		klog.Errorf("failed to sync ovn fip finalizer: %v", err)
+		return err
+	}
+	if err := c.syncOvnSnatFinalizer(); err != nil {
+		klog.Errorf("failed to sync ovn snat finalizer: %v", err)
+		return err
+	}
+	if err := c.syncQoSPolicyFinalizer(); err != nil {
+		klog.Errorf("failed to sync qos policy finalizer: %v", err)
+		return err
+	}
+	if err := c.syncSubnetFinalizer(); err != nil {
+		klog.Errorf("failed to sync subnet finalizer: %v", err)
+		return err
+	}
+	if err := c.syncVipFinalizer(); err != nil {
+		klog.Errorf("failed to sync vip finalizer: %v", err)
+		return err
+	}
+	if err := c.syncIptablesEipFinalizer(); err != nil {
+		klog.Errorf("failed to sync iptables eip finalizer: %v", err)
+		return err
+	}
+	if err := c.syncIptablesFipFinalizer(); err != nil {
+		klog.Errorf("failed to sync iptables fip finalizer: %v", err)
+		return err
+	}
+	if err := c.syncIptablesDnatFinalizer(); err != nil {
+		klog.Errorf("failed to sync iptables dnat finalizer: %v", err)
+		return err
+	}
+	if err := c.syncIptablesSnatFinalizer(); err != nil {
+		klog.Errorf("failed to sync iptables snat finalizer: %v", err)
+		return err
+	}
+	return nil
+}

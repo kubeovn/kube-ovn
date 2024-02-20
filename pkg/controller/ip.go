@@ -11,6 +11,7 @@ import (
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
@@ -337,6 +338,42 @@ func (c *Controller) handleDelIP(ip *kubeovnv1.IP) error {
 	for _, as := range ip.Spec.AttachSubnets {
 		klog.V(3).Infof("enqueue update attach status for subnet %s", as)
 		c.updateSubnetStatusQueue.Add(as)
+	}
+	return nil
+}
+
+func (c *Controller) syncIPFinalizer() error {
+	// migrate depreciated finalizer to new finalizer
+	ips, err := c.ipsLister.List(labels.Everything())
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		klog.Errorf("failed to list ips, %v", err)
+		return err
+	}
+	for _, cachedIP := range ips {
+		if len(cachedIP.Finalizers) == 0 {
+			continue
+		}
+		if slices.Contains(cachedIP.Finalizers, util.DepreciatedFinalizerName) {
+			newIP := cachedIP.DeepCopy()
+			controllerutil.RemoveFinalizer(newIP, util.DepreciatedFinalizerName)
+			controllerutil.AddFinalizer(newIP, util.FinalizerName)
+			patch, err := util.GenerateMergePatchPayload(cachedIP, newIP)
+			if err != nil {
+				klog.Errorf("failed to generate patch payload for ip %s, %v", newIP.Name, err)
+				return err
+			}
+			if _, err := c.config.KubeOvnClient.KubeovnV1().IPs().Patch(context.Background(), newIP.Name,
+				types.MergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
+				if k8serrors.IsNotFound(err) {
+					return nil
+				}
+				klog.Errorf("failed to sync finalizer for ip %s, %v", newIP.Name, err)
+				return err
+			}
+		}
 	}
 	return nil
 }

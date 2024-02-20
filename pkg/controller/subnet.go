@@ -20,6 +20,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ipam"
@@ -477,6 +478,42 @@ func checkAndUpdateExcludeIPs(subnet *kubeovnv1.Subnet) bool {
 		}
 	}
 	return changed
+}
+
+func (c *Controller) syncSubnetFinalizer() error {
+	// migrate depreciated finalizer to new finalizer
+	subnets, err := c.subnetsLister.List(labels.Everything())
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		klog.Errorf("failed to list subnets, %v", err)
+		return err
+	}
+	for _, cachedSubnet := range subnets {
+		if len(cachedSubnet.Finalizers) == 0 {
+			continue
+		}
+		if slices.Contains(cachedSubnet.Finalizers, util.DepreciatedFinalizerName) {
+			newSubnet := cachedSubnet.DeepCopy()
+			controllerutil.RemoveFinalizer(newSubnet, util.DepreciatedFinalizerName)
+			controllerutil.AddFinalizer(newSubnet, util.FinalizerName)
+			patch, err := util.GenerateMergePatchPayload(cachedSubnet, newSubnet)
+			if err != nil {
+				klog.Errorf("failed to generate patch payload for subnet %s, %v", newSubnet.Name, err)
+				return err
+			}
+			if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(context.Background(), newSubnet.Name,
+				types.MergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
+				if k8serrors.IsNotFound(err) {
+					return nil
+				}
+				klog.Errorf("failed to sync finalizer for subnet %s, %v", newSubnet.Name, err)
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func (c *Controller) handleSubnetFinalizer(subnet *kubeovnv1.Subnet) (bool, error) {

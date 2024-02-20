@@ -282,6 +282,42 @@ func (c *Controller) handleDelQoSPoliciesFinalizer(key string) error {
 	return nil
 }
 
+func (c *Controller) syncQoSPolicyFinalizer() error {
+	// migrate depreciated finalizer to new finalizer
+	qosPolicies, err := c.qosPoliciesLister.List(labels.Everything())
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		klog.Errorf("failed to list policy, %v", err)
+		return err
+	}
+	for _, cachedPolicy := range qosPolicies {
+		if len(cachedPolicy.Finalizers) == 0 {
+			continue
+		}
+		if slices.Contains(cachedPolicy.Finalizers, util.DepreciatedFinalizerName) {
+			newPolicy := cachedPolicy.DeepCopy()
+			controllerutil.RemoveFinalizer(newPolicy, util.DepreciatedFinalizerName)
+			controllerutil.AddFinalizer(newPolicy, util.FinalizerName)
+			patch, err := util.GenerateMergePatchPayload(cachedPolicy, newPolicy)
+			if err != nil {
+				klog.Errorf("failed to generate patch payload for policy %s, %v", newPolicy.Name, err)
+				return err
+			}
+			if _, err := c.config.KubeOvnClient.KubeovnV1().QoSPolicies().Patch(context.Background(), newPolicy.Name,
+				types.MergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
+				if k8serrors.IsNotFound(err) {
+					return nil
+				}
+				klog.Errorf("failed to sync finalizer for policy %s, %v", newPolicy.Name, err)
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 func diffQoSPolicyBandwidthLimitRules(oldList, newList kubeovnv1.QoSPolicyBandwidthLimitRules) (added, deleted, updated kubeovnv1.QoSPolicyBandwidthLimitRules) {
 	added = kubeovnv1.QoSPolicyBandwidthLimitRules{}
 	deleted = kubeovnv1.QoSPolicyBandwidthLimitRules{}
