@@ -1101,7 +1101,6 @@ jobs:
           for cluster in `kind get clusters`; do
             kubectl config use-context kind-$cluster
             make kubectl-ko-log
-            rm -vf kubectl-ko-log.tar.gz
             mv kubectl-ko-log.tar.gz kube-ovn-ic-conformance-e2e-${{ matrix.ip-family }}-$cluster-ko-log.tar.gz
           done
           tar zcf kube-ovn-ic-${{ matrix.ip-family }}-conformance-e2e-ko-log.tar.gz \
