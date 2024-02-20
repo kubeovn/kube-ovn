@@ -96,11 +96,13 @@ func (c *Controller) runDelVpcWorker() {
 
 func (c *Controller) handleDelVpc(vpc *kubeovnv1.Vpc) error {
 	if err := c.deleteVpcLb(vpc); err != nil {
+		klog.Error(err)
 		return err
 	}
 
 	err := c.deleteVpcRouter(vpc.Status.Router)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 
@@ -117,12 +119,14 @@ func (c *Controller) handleUpdateVpcStatus(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	vpc := cachedVpc.DeepCopy()
 
 	subnets, defaultSubnet, err := c.getVpcSubnets(vpc)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 
@@ -135,11 +139,13 @@ func (c *Controller) handleUpdateVpcStatus(key string) error {
 	vpc.Status.Subnets = subnets
 	bytes, err := vpc.Status.Bytes()
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 
 	vpc, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Patch(context.Background(), vpc.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status")
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 	if change {
@@ -150,6 +156,7 @@ func (c *Controller) handleUpdateVpcStatus(key string) error {
 
 	natGws, err := c.vpcNatGatewayLister.List(labels.Everything())
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 	for _, gw := range natGws {
@@ -172,6 +179,7 @@ func (c *Controller) reconcileRouterPorts(vpc *kubeovnv1.Vpc) error {
 		routerPortName := ovs.LogicalRouterPortName(router, subnetName)
 		exists, err := c.ovnClient.LogicalRouterPortExists(routerPortName)
 		if err != nil {
+			klog.Error(err)
 			return err
 		}
 
@@ -216,6 +224,7 @@ func (c *Controller) reconcileRouterPortBySubnet(vpc *kubeovnv1.Vpc, subnet *kub
 	routerPortName := ovs.LogicalRouterPortName(router, subnet.Name)
 	exists, err := c.ovnClient.LogicalRouterPortExists(routerPortName)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 
@@ -312,6 +321,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	vpc := cachedVpc.DeepCopy()
@@ -482,6 +492,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 	if c.config.EnableLb {
 		vpcLb, err := c.addLoadBalancer(key)
 		if err != nil {
+			klog.Error(err)
 			return err
 		}
 		vpc.Status.TcpLoadBalancer = vpcLb.TcpLoadBalancer
@@ -493,23 +504,28 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 	}
 	bytes, err := vpc.Status.Bytes()
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 	vpc, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Patch(context.Background(), vpc.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status")
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 
 	if len(vpc.Annotations) != 0 && strings.ToLower(vpc.Annotations[util.VpcLbAnnotation]) == "on" {
 		if err = c.createVpcLb(vpc); err != nil {
+			klog.Error(err)
 			return err
 		}
 	} else if err = c.deleteVpcLb(vpc); err != nil {
+		klog.Error(err)
 		return err
 	}
 
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 
@@ -785,6 +801,7 @@ func (c *Controller) getVpcSubnets(vpc *kubeovnv1.Vpc) (subnets []string, defaul
 func (c *Controller) createVpcRouter(lr string) error {
 	lrs, err := c.ovnLegacyClient.ListLogicalRouter(c.config.EnableExternalVpc)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 	klog.Infof("exists routers %v", lrs)
@@ -804,6 +821,7 @@ func (c *Controller) deleteVpcRouter(lr string) error {
 func (c *Controller) handleAddVpcExternal(key string) error {
 	cachedSubnet, err := c.subnetsLister.Get(c.config.ExternalGatewaySwitch)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 	lrpEipName := fmt.Sprintf("%s-%s", key, c.config.ExternalGatewaySwitch)
@@ -811,6 +829,7 @@ func (c *Controller) handleAddVpcExternal(key string) error {
 	var needCreateEip bool
 	if err != nil {
 		if !k8serrors.IsNotFound(err) {
+			klog.Error(err)
 			return err
 		}
 		needCreateEip = true
@@ -834,6 +853,7 @@ func (c *Controller) handleAddVpcExternal(key string) error {
 		return fmt.Errorf("lrp '%s' ip or mac should not be empty", lrpEipName)
 	}
 	if err = c.patchOvnEipStatus(lrpEipName); err != nil {
+		klog.Error(err)
 		return err
 	}
 	// init lrp gw chassis group
@@ -861,20 +881,24 @@ func (c *Controller) handleAddVpcExternal(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	vpc := cachedVpc.DeepCopy()
 	vpc.Status.EnableExternal = cachedVpc.Spec.EnableExternal
 	bytes, err := vpc.Status.Bytes()
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 	if _, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Patch(context.Background(),
 		vpc.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
+		klog.Error(err)
 		return err
 	}
 	cachedEip, err = c.ovnEipsLister.Get(lrpEipName)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 	if err = c.handleAddOvnEipFinalizer(cachedEip); err != nil {
@@ -890,6 +914,7 @@ func (c *Controller) handleDelVpcExternal(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	lrpEipName := fmt.Sprintf("%s-%s", key, c.config.ExternalGatewaySwitch)
@@ -902,10 +927,12 @@ func (c *Controller) handleDelVpcExternal(key string) error {
 	vpc.Status.EnableExternal = cachedVpc.Spec.EnableExternal
 	bytes, err := vpc.Status.Bytes()
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 	if _, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Patch(context.Background(),
 		vpc.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
+		klog.Error(err)
 		return err
 	}
 	cachedEip, err := c.ovnEipsLister.Get(lrpEipName)
@@ -913,6 +940,7 @@ func (c *Controller) handleDelVpcExternal(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	if err = c.handleDelOvnEipFinalizer(cachedEip); err != nil {

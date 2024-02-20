@@ -79,6 +79,7 @@ func InitNodeGateway(config *Configuration) error {
 	}
 	mac, err := net.ParseMAC(macAddr)
 	if err != nil {
+		klog.Error(err)
 		return fmt.Errorf("failed to parse mac %s %v", mac, err)
 	}
 
@@ -112,25 +113,25 @@ func (c *Controller) ovsInitProviderNetwork(provider, nic string, exchangeLinkNa
 	}
 
 	if err := c.configExternalBridge(provider, brName, nic, exchangeLinkName, macLearningFallback); err != nil {
-		errMsg := fmt.Errorf("failed to create and configure external bridge %s: %v", brName, err)
-		klog.Error(errMsg)
-		return 0, errMsg
+		err := fmt.Errorf("failed to create and configure external bridge %s: %v", brName, err)
+		klog.Error(err)
+		return 0, err
 	}
 
 	// init provider chassis mac
 	if err := initProviderChassisMac(provider); err != nil {
-		errMsg := fmt.Errorf("failed to init chassis mac for provider %s, %v", provider, err)
-		klog.Error(errMsg)
-		return 0, errMsg
+		err := fmt.Errorf("failed to init chassis mac for provider %s, %v", provider, err)
+		klog.Error(err)
+		return 0, err
 	}
 
 	// add host nic to the external bridge
 	klog.Infof("config provider nic %s on bridge %s", nic, brName)
 	mtu, err := c.configProviderNic(nic, brName)
 	if err != nil {
-		errMsg := fmt.Errorf("failed to add nic %s to external bridge %s: %v", nic, brName, err)
-		klog.Error(errMsg)
-		return 0, errMsg
+		err := fmt.Errorf("failed to add nic %s to external bridge %s: %v", nic, brName, err)
+		klog.Error(err)
+		return 0, err
 	}
 
 	return mtu, nil
@@ -139,6 +140,7 @@ func (c *Controller) ovsInitProviderNetwork(provider, nic string, exchangeLinkNa
 func (c *Controller) ovsCleanProviderNetwork(provider string) error {
 	mappings, err := getOvnMappings("ovn-bridge-mappings")
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 
@@ -174,9 +176,9 @@ func (c *Controller) ovsCleanProviderNetwork(provider string) error {
 			}
 			klog.V(3).Infof("removing ovs port %s from bridge %s", port, brName)
 			if err = c.removeProviderNic(port, brName); err != nil {
-				errMsg := fmt.Errorf("failed to remove port %s from external bridge %s: %v", port, brName, err)
-				klog.Error(errMsg)
-				return errMsg
+				err := fmt.Errorf("failed to remove port %s from external bridge %s: %v", port, brName, err)
+				klog.Error(err)
+				return err
 			}
 			klog.V(3).Infof("ovs port %s has been removed from bridge %s", port, brName)
 		}
@@ -184,6 +186,7 @@ func (c *Controller) ovsCleanProviderNetwork(provider string) error {
 
 	// remove OVS bridge
 	if output, err = ovs.Exec(ovs.IfExists, "del-br", brName); err != nil {
+		klog.Error(err)
 		return fmt.Errorf("failed to remove OVS bridge %s, %v: %q", brName, err, output)
 	}
 	klog.V(3).Infof("ovs bridge %s has been deleted", brName)
@@ -196,9 +199,11 @@ func (c *Controller) ovsCleanProviderNetwork(provider string) error {
 	}
 
 	if err := removeOvnMapping("ovn-chassis-mac-mappings", provider); err != nil {
+		klog.Error(err)
 		return err
 	}
 	if err := removeOvnMapping("ovn-bridge-mappings", provider); err != nil {
+		klog.Error(err)
 		return err
 	}
 

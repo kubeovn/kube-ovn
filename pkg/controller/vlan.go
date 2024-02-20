@@ -173,7 +173,7 @@ func (c *Controller) handleAddVlan(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
-
+		klog.Error(err)
 		return err
 	}
 
@@ -234,6 +234,7 @@ func (c *Controller) handleUpdateVlan(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 
@@ -254,6 +255,7 @@ func (c *Controller) handleUpdateVlan(key string) error {
 	for _, subnet := range subnets {
 		if subnet.Spec.Vlan == vlan.Name {
 			if err = c.setLocalnetTag(subnet.Name, vlan.Spec.ID); err != nil {
+				klog.Error(err)
 				return err
 			}
 		}
@@ -283,6 +285,7 @@ func (c *Controller) handleDelVlan(key string) error {
 
 	for _, pn := range providerNetworks {
 		if err = c.updateProviderNetworkStatusForVlanDeletion(pn, key); err != nil {
+			klog.Error(err)
 			return err
 		}
 	}

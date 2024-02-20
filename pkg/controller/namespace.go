@@ -112,6 +112,7 @@ func (c *Controller) handleAddNamespace(key string) error {
 		if errors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	namespace := cachedNs.DeepCopy()
@@ -184,11 +185,13 @@ func (c *Controller) handleAddNamespace(key string) error {
 
 	patch, err := util.GenerateStrategicMergePatchPayload(cachedNs, namespace)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 	if _, err = c.config.KubeClient.CoreV1().Namespaces().Patch(context.Background(), key,
 		types.StrategicMergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
 		klog.Errorf("patch namespace %s failed %v", key, err)
+		return err
 	}
-	return err
+	return nil
 }

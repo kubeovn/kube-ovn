@@ -213,6 +213,7 @@ func (c *Controller) handleAddIptablesEip(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	if cachedEip.Status.Ready && cachedEip.Status.IP != "" {
@@ -263,6 +264,7 @@ func (c *Controller) handleResetIptablesEip(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	klog.V(3).Infof("handle reset eip %s", key)
@@ -327,6 +329,7 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	// should delete
@@ -415,12 +418,14 @@ func (c *Controller) GetEip(eipName string) (*kubeovnv1.IptablesEIP, error) {
 func (c *Controller) createEipInPod(dp, gw, v4Cidr string) error {
 	gwPod, err := c.getNatGwPod(dp)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 	var addRules []string
 	rule := fmt.Sprintf("%s,%s", v4Cidr, gw)
 	addRules = append(addRules, rule)
 	if err = c.execNatGwRules(gwPod, natGwEipAdd, addRules); err != nil {
+		klog.Error(err)
 		return err
 	}
 	return nil
@@ -432,12 +437,14 @@ func (c *Controller) deleteEipInPod(dp, v4Cidr string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	var delRules []string
 	rule := v4Cidr
 	delRules = append(delRules, rule)
 	if err = c.execNatGwRules(gwPod, natGwEipDel, delRules); err != nil {
+		klog.Error(err)
 		return err
 	}
 	return nil
@@ -535,14 +542,14 @@ func (c *Controller) createOrUpdateCrdEip(key, v4ip, v6ip, mac, natGwDp string) 
 			}, metav1.CreateOptions{})
 
 			if err != nil {
-				errMsg := fmt.Errorf("failed to create eip crd %s, %v", key, err)
-				klog.Error(errMsg)
-				return errMsg
+				err := fmt.Errorf("failed to create eip crd %s, %v", key, err)
+				klog.Error(err)
+				return err
 			}
 		} else {
-			errMsg := fmt.Errorf("failed to get eip crd %s, %v", key, err)
-			klog.Error(errMsg)
-			return errMsg
+			err := fmt.Errorf("failed to get eip crd %s, %v", key, err)
+			klog.Error(err)
+			return err
 		}
 	} else {
 		eip := cachedEip.DeepCopy()
@@ -553,9 +560,9 @@ func (c *Controller) createOrUpdateCrdEip(key, v4ip, v6ip, mac, natGwDp string) 
 			eip.Spec.V6ip = v6ip
 			eip.Spec.NatGwDp = natGwDp
 			if _, err := c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().Update(context.Background(), eip, metav1.UpdateOptions{}); err != nil {
-				errMsg := fmt.Errorf("failed to update eip crd %s, %v", key, err)
-				klog.Error(errMsg)
-				return errMsg
+				err := fmt.Errorf("failed to update eip crd %s, %v", key, err)
+				klog.Error(err)
+				return err
 			}
 			if eip.Status.IP == "" {
 				// eip is ip holder, not support change ip
@@ -565,6 +572,7 @@ func (c *Controller) createOrUpdateCrdEip(key, v4ip, v6ip, mac, natGwDp string) 
 			eip.Status.Ready = true
 			bytes, err := eip.Status.Bytes()
 			if err != nil {
+				klog.Error(err)
 				return err
 			}
 			if _, err = c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().Patch(context.Background(), key, types.MergePatchType,
@@ -593,6 +601,7 @@ func (c *Controller) createOrUpdateCrdEip(key, v4ip, v6ip, mac, natGwDp string) 
 		}
 		if needUpdateLabel {
 			if err := c.updateIptableLabels(eip.Name, op, "eip", eip.Labels); err != nil {
+				klog.Error(err)
 				return err
 			}
 		}
@@ -602,6 +611,7 @@ func (c *Controller) createOrUpdateCrdEip(key, v4ip, v6ip, mac, natGwDp string) 
 			}
 			eip.Annotations[util.VpcNatAnnotation] = ""
 			if err := c.updateIptableAnnotations(eip.Name, op, "eip", eip.Annotations); err != nil {
+				klog.Error(err)
 				return err
 			}
 		}
@@ -619,6 +629,7 @@ func (c *Controller) handleAddIptablesEipFinalizer(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	if cachedIptablesEip.DeletionTimestamp.IsZero() {
@@ -650,6 +661,7 @@ func (c *Controller) handleDelIptablesEipFinalizer(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	if len(cachedIptablesEip.Finalizers) == 0 {
@@ -679,12 +691,14 @@ func (c *Controller) patchEipIP(key, v4ip string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	eip := oriEip.DeepCopy()
 	eip.Status.IP = v4ip
 	bytes, err := eip.Status.Bytes()
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 	if _, err = c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().Patch(context.Background(), key, types.MergePatchType,
@@ -704,6 +718,7 @@ func (c *Controller) patchEipStatus(key, v4ip, redo, nat string, ready bool) err
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	eip := oriEip.DeepCopy()
@@ -730,6 +745,7 @@ func (c *Controller) patchEipStatus(key, v4ip, redo, nat string, ready bool) err
 	if changed {
 		bytes, err := eip.Status.Bytes()
 		if err != nil {
+			klog.Error(err)
 			return err
 		}
 		if _, err = c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().Patch(context.Background(), key, types.MergePatchType,
@@ -750,6 +766,7 @@ func (c *Controller) patchEipNat(key, nat string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	if oriEip.Status.Nat == nat {
@@ -779,6 +796,7 @@ func (c *Controller) patchResetEipStatusNat(key, nat string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	eip := oriEip.DeepCopy()
@@ -786,6 +804,7 @@ func (c *Controller) patchResetEipStatusNat(key, nat string) error {
 		eip.Status.Nat = nat
 		bytes, err := eip.Status.Bytes()
 		if err != nil {
+			klog.Error(err)
 			return err
 		}
 		if _, err = c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().Patch(context.Background(), key, types.MergePatchType,
@@ -805,6 +824,7 @@ func (c *Controller) natLabelEip(eipName, natName string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	eip := oriEip.DeepCopy()
@@ -825,6 +845,7 @@ func (c *Controller) natLabelEip(eipName, natName string) error {
 	}
 	if needUpdateLabel {
 		if err := c.updateIptableLabels(eip.Name, op, "eip", eip.Labels); err != nil {
+			klog.Error(err)
 			return err
 		}
 	}
@@ -842,8 +863,9 @@ func (c *Controller) natLabelEip(eipName, natName string) error {
 	}
 	if needUpdateAnno {
 		if err := c.updateIptableAnnotations(eip.Name, op, "eip", eip.Annotations); err != nil {
+			klog.Error(err)
 			return err
 		}
 	}
-	return err
+	return nil
 }

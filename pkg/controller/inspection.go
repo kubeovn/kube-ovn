@@ -57,6 +57,7 @@ func (c *Controller) inspectPod() error {
 					delete(pod.Annotations, fmt.Sprintf(util.RoutedAnnotationTemplate, podNet.ProviderName))
 					patch, err := util.GenerateStrategicMergePatchPayload(oriPod, pod)
 					if err != nil {
+						klog.Error(err)
 						return err
 					}
 					if _, err := c.config.KubeClient.CoreV1().Pods(pod.Namespace).Patch(context.Background(), pod.Name,

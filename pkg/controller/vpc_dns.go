@@ -58,6 +58,7 @@ func genVpcDnsDpName(name string) string {
 func hostConfigFromReader() error {
 	file, err := os.Open("/etc/resolv.conf")
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 	defer func(file *os.File) {
@@ -69,6 +70,7 @@ func hostConfigFromReader() error {
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		if err := scanner.Err(); err != nil {
+			klog.Error(err)
 			return err
 		}
 		line := scanner.Text()
@@ -81,8 +83,10 @@ func hostConfigFromReader() error {
 			hostNameservers = append(hostNameservers, name)
 		}
 	}
-
-	return err
+	if err != nil {
+		klog.Error(err)
+	}
+	return nil
 }
 
 func (c *Controller) enqueueAddVpcDns(obj interface{}) {
@@ -149,6 +153,7 @@ func (c *Controller) handleAddOrUpdateVpcDns(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 
@@ -204,10 +209,12 @@ func (c *Controller) handleAddOrUpdateVpcDns(key string) error {
 	}
 
 	if err := c.createOrUpdateVpcDnsDep(vpcDns); err != nil {
+		klog.Error(err)
 		return err
 	}
 
 	if err := c.createOrUpdateVpcDnsSlr(vpcDns); err != nil {
+		klog.Error(err)
 		return err
 	}
 
@@ -237,6 +244,7 @@ func (c *Controller) checkVpcDnsDuplicated(vpcDns *kubeovnv1.VpcDns) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 
@@ -245,6 +253,7 @@ func (c *Controller) checkVpcDnsDuplicated(vpcDns *kubeovnv1.VpcDns) error {
 			item.Name != vpcDns.Name &&
 			item.Spec.Vpc == vpcDns.Spec.Vpc {
 			err = fmt.Errorf("only one vpc-dns can be deployed in a vpc")
+			klog.Error(err)
 			return err
 		}
 	}
@@ -260,6 +269,7 @@ func (c *Controller) createOrUpdateVpcDnsDep(vpcDns *kubeovnv1.VpcDns) error {
 		if k8serrors.IsNotFound(err) {
 			needToCreateDp = true
 		} else {
+			klog.Error(err)
 			return err
 		}
 	}
@@ -298,6 +308,7 @@ func (c *Controller) createOrUpdateVpcDnsSlr(vpcDns *kubeovnv1.VpcDns) error {
 		if k8serrors.IsNotFound(err) {
 			needToCreateSlr = true
 		} else {
+			klog.Error(err)
 			return err
 		}
 	}
@@ -473,6 +484,7 @@ func (c *Controller) checkOvnNad() error {
 	_, err := c.config.AttachNetClient.K8sCniCncfIoV1().NetworkAttachmentDefinitions(corev1.NamespaceDefault).
 		Get(context.Background(), nadName, metav1.GetOptions{})
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 
@@ -636,6 +648,7 @@ func getCoreDnsTemplateFile(url string) error {
 
 	resp, err := client.Get(url)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 	defer func(Body io.ReadCloser) {
@@ -651,11 +664,13 @@ func getCoreDnsTemplateFile(url string) error {
 
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 
 	err = os.WriteFile(CorednsTemplateDep, data, 0644)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 

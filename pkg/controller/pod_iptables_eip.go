@@ -244,6 +244,7 @@ func (c *Controller) handleAddPodAnnotatedIptablesEip(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	if cachedPod.Annotations[util.FipEnableAnnotation] != "true" {
@@ -264,10 +265,12 @@ func (c *Controller) handleAddPodAnnotatedIptablesEip(key string) error {
 	newPod := cachedPod.DeepCopy()
 	if newPod.Annotations[util.AllocatedAnnotation] != "true" {
 		err = fmt.Errorf("pod network not allocated, failed to create iptables eip %s", eipName)
+		klog.Error(err)
 		return err
 	}
 	if _, err = c.iptablesEipsLister.Get(eipName); err != nil {
 		if !k8serrors.IsNotFound(err) {
+			klog.Error(err)
 			return err
 		}
 		klog.V(3).Infof("handle add pod annotated iptables eip %s", eipName)
@@ -286,6 +289,7 @@ func (c *Controller) handleAddPodAnnotatedIptablesEip(key string) error {
 	// check eip if ready and update pod eip annotation
 	var eip *kubeovnv1.IptablesEIP
 	if eip, err = c.iptablesEipsLister.Get(eipName); err != nil {
+		klog.Error(err)
 		return err
 	}
 	// update pod eip annotation
@@ -293,6 +297,7 @@ func (c *Controller) handleAddPodAnnotatedIptablesEip(key string) error {
 		newPod.Annotations[util.EipAnnotation] = eip.Status.IP
 		patch, err := util.GenerateStrategicMergePatchPayload(cachedPod, newPod)
 		if err != nil {
+			klog.Error(err)
 			return err
 		}
 		if _, err := c.config.KubeClient.CoreV1().Pods(namespace).Patch(context.Background(), name,

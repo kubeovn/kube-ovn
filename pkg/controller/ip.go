@@ -189,6 +189,7 @@ func (c *Controller) handleAddIP(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	klog.V(3).Infof("handle add ip %s", cachedIP.Name)

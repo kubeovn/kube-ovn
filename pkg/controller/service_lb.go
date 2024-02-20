@@ -160,6 +160,7 @@ func (c *Controller) createLbSvcPod(svc *corev1.Service) error {
 		if k8serrors.IsNotFound(err) {
 			needToCreate = true
 		} else {
+			klog.Error(err)
 			return err
 		}
 	}
@@ -268,6 +269,7 @@ func (c *Controller) execNatRules(pod *corev1.Pod, operation string, rules []str
 		if len(stdOutput) > 0 {
 			klog.V(3).Infof("failed to ExecuteCommandInContainer, stdOutput: %v", stdOutput)
 		}
+		klog.Error(err)
 		return err
 	}
 

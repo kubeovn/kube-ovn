@@ -741,9 +741,11 @@ func (c *Controller) cleanObsoleteIptablesRules(protocol string, rules []util.IP
 	}
 
 	if err := clearObsoleteIptablesChain(ipt, NAT, OvnPrerouting, Prerouting); err != nil {
+		klog.Error(err)
 		return err
 	}
 	if err := clearObsoleteIptablesChain(ipt, NAT, OvnPostrouting, Postrouting); err != nil {
+		klog.Error(err)
 		return err
 	}
 
@@ -841,6 +843,7 @@ func (c *Controller) setExGateway() error {
 	} else {
 		if _, err := ovs.Exec(
 			ovs.IfExists, "del-br", externalBridge); err != nil {
+			klog.Error(err)
 			return fmt.Errorf("failed to disable external gateway, %v", err)
 		}
 	}

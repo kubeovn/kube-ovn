@@ -197,6 +197,7 @@ func (c *Controller) handleAddNode(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	node := cachedNode.DeepCopy()
@@ -254,6 +255,7 @@ func (c *Controller) handleAddNode(key string) error {
 
 	ipStr := util.GetStringIP(v4IP, v6IP)
 	if err := c.ovnLegacyClient.CreatePort(c.config.NodeSwitch, portName, ipStr, mac, "", "", false, "", "", false, false, nil, false); err != nil {
+		klog.Error(err)
 		return err
 	}
 
@@ -348,10 +350,12 @@ func (c *Controller) handleAddNode(key string) error {
 	}
 
 	if err := c.validateChassis(node); err != nil {
+		klog.Error(err)
 		return err
 	}
 
 	if err := c.retryDelDupChassis(util.ChasRetryTime, util.ChasRetryIntev+2, c.checkChassisDupl, node); err != nil {
+		klog.Error(err)
 		return err
 	}
 
@@ -457,6 +461,7 @@ func (c *Controller) handleDeleteNode(key string) error {
 	}
 
 	if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), portName, metav1.DeleteOptions{}); err != nil && !k8serrors.IsNotFound(err) {
+		klog.Error(err)
 		return err
 	}
 
@@ -500,6 +505,7 @@ func (c *Controller) handleDeleteNode(key string) error {
 
 	for _, pn := range providerNetworks {
 		if err = c.updateProviderNetworkForNodeDeletion(pn, key); err != nil {
+			klog.Error(err)
 			return err
 		}
 	}
@@ -567,6 +573,7 @@ func (c *Controller) handleUpdateNode(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 
@@ -582,9 +589,11 @@ func (c *Controller) handleUpdateNode(key string) error {
 	}
 
 	if err := c.validateChassis(node); err != nil {
+		klog.Error(err)
 		return err
 	}
 	if err := c.retryDelDupChassis(util.ChasRetryTime, util.ChasRetryIntev+2, c.checkChassisDupl, node); err != nil {
+		klog.Error(err)
 		return err
 	}
 
@@ -592,6 +601,7 @@ func (c *Controller) handleUpdateNode(key string) error {
 		subnet := cachedSubnet.DeepCopy()
 		if util.GatewayContains(subnet.Spec.GatewayNode, node.Name) {
 			if err := c.reconcileOvnRoute(subnet); err != nil {
+				klog.Error(err)
 				return err
 			}
 		}
@@ -618,9 +628,9 @@ func (c *Controller) createOrUpdateCrdIPs(podName, ip, mac, subnetName, ns, node
 	ipCr, err = c.config.KubeOvnClient.KubeovnV1().IPs().Get(context.Background(), ipName, metav1.GetOptions{})
 	if err != nil {
 		if !k8serrors.IsNotFound(err) {
-			errMsg := fmt.Errorf("failed to get ip CR %s: %v", ipName, err)
-			klog.Error(errMsg)
-			return errMsg
+			err := fmt.Errorf("failed to get ip CR %s: %v", ipName, err)
+			klog.Error(err)
+			return err
 		}
 		// the returned pointer is not nil if the CR does not exist
 		ipCr = nil
@@ -652,9 +662,9 @@ func (c *Controller) createOrUpdateCrdIPs(podName, ip, mac, subnetName, ns, node
 			},
 		}, metav1.CreateOptions{})
 		if err != nil {
-			errMsg := fmt.Errorf("failed to create ip CR %s: %v", ipName, err)
-			klog.Error(errMsg)
-			return errMsg
+			err := fmt.Errorf("failed to create ip CR %s: %v", ipName, err)
+			klog.Error(err)
+			return err
 		}
 	} else {
 		newIpCr := ipCr.DeepCopy()
@@ -683,9 +693,9 @@ func (c *Controller) createOrUpdateCrdIPs(podName, ip, mac, subnetName, ns, node
 
 		_, err := c.config.KubeOvnClient.KubeovnV1().IPs().Update(context.Background(), newIpCr, metav1.UpdateOptions{})
 		if err != nil {
-			errMsg := fmt.Errorf("failed to update ip CR %s: %v", newIpCr.Name, err)
-			klog.Error(errMsg)
-			return errMsg
+			err := fmt.Errorf("failed to update ip CR %s: %v", newIpCr.Name, err)
+			klog.Error(err)
+			return err
 		}
 	}
 
@@ -866,9 +876,9 @@ func (c *Controller) retryDelDupChassis(attempts int, sleep int, f func(node *v1
 		time.Sleep(time.Duration(sleep) * time.Second)
 	}
 	if i >= (attempts - 1) {
-		errMsg := fmt.Errorf("exhausting all attempts")
-		klog.Error(errMsg)
-		return errMsg
+		err := fmt.Errorf("exhausting all attempts")
+		klog.Error(err)
+		return err
 	}
 	klog.V(3).Infof("finish check chassis")
 	return nil

@@ -46,6 +46,7 @@ func pingGateway(gw, src string, verbose bool, maxRetry int) error {
 func configureGlobalMirror(portName string, mtu int) error {
 	nicExist, err := linkExists(portName)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 
@@ -78,6 +79,7 @@ func configureGlobalMirror(portName string, mtu int) error {
 func configureEmptyMirror(portName string, mtu int) error {
 	nicExist, err := linkExists(portName)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 
@@ -163,6 +165,7 @@ func setOvnMappings(name string, mappings map[string]string) error {
 func addOvnMapping(name, key, value string, overwrite bool) error {
 	mappings, err := getOvnMappings(name)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 
@@ -172,6 +175,7 @@ func addOvnMapping(name, key, value string, overwrite bool) error {
 
 	mappings[key] = value
 	if err = setOvnMappings(name, mappings); err != nil {
+		klog.Error(err)
 		return err
 	}
 
@@ -181,6 +185,7 @@ func addOvnMapping(name, key, value string, overwrite bool) error {
 func removeOvnMapping(name, key string) error {
 	mappings, err := getOvnMappings(name)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 
@@ -190,6 +195,7 @@ func removeOvnMapping(name, key string) error {
 		return nil
 	}
 	if err = setOvnMappings(name, mappings); err != nil {
+		klog.Error(err)
 		return err
 	}
 
