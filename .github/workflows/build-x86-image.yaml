@@ -32,6 +32,16 @@ jobs:
     outputs:
       build-base: ${{ steps.build.outputs.build-base }}
     steps:
+      - uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          docker-images: false
+          large-packages: false
+          tool-cache: false
+          swap-storage: false
+
       - uses: actions/checkout@v3
         with:
           fetch-depth: 2
@@ -71,6 +81,16 @@ jobs:
     needs:
     - build-kube-ovn-base
     steps:
+      - uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          docker-images: false
+          large-packages: false
+          tool-cache: false
+          swap-storage: false
+
       - uses: actions/checkout@v3
       - uses: docker/setup-buildx-action@v2
       - uses: actions/setup-go@v4
@@ -142,6 +162,16 @@ jobs:
     name: Build vpc-nat-gateway
     runs-on: ubuntu-22.04
     steps:
+      - uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          docker-images: false
+          large-packages: false
+          tool-cache: false
+          swap-storage: false
+
       - uses: actions/checkout@v3
       - uses: docker/setup-buildx-action@v2
 
@@ -160,6 +190,16 @@ jobs:
     name: Build centos-compile
     runs-on: ubuntu-22.04
     steps:
+      - uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          docker-images: false
+          large-packages: false
+          tool-cache: false
+          swap-storage: false
+
       - uses: actions/checkout@v3
       - uses: docker/setup-buildx-action@v2
 
@@ -183,8 +223,18 @@ jobs:
   build-e2e-binaries:
     name: Build E2E Binaries
     runs-on: ubuntu-22.04
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
+      - uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          docker-images: false
+          large-packages: false
+          tool-cache: false
+          swap-storage: false
+
       - uses: actions/checkout@v3
 
       - name: Create the default branch directory
@@ -286,6 +336,16 @@ jobs:
           - overlay
           - underlay
     steps:
+      - uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          docker-images: false
+          large-packages: false
+          tool-cache: false
+          swap-storage: false
+
       - uses: actions/checkout@v3
 
       - name: Create the default branch directory
@@ -423,6 +483,16 @@ jobs:
           - ipv6
           - dual
     steps:
+      - uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          docker-images: false
+          large-packages: false
+          tool-cache: false
+          swap-storage: false
+
       - uses: actions/checkout@v3
 
       - name: Create the default branch directory
@@ -569,6 +639,16 @@ jobs:
           - ipv6
           - dual
     steps:
+      - uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          docker-images: false
+          large-packages: false
+          tool-cache: false
+          swap-storage: false
+
       - uses: actions/checkout@v3
 
       - name: Create the default branch directory
@@ -705,7 +785,7 @@ jobs:
       - build-kube-ovn
       - netpol-path-filter
     runs-on: ubuntu-22.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -714,6 +794,16 @@ jobs:
           - ipv6
           - dual
     steps:
+      - uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          docker-images: false
+          large-packages: false
+          tool-cache: false
+          swap-storage: false
+
       - uses: actions/checkout@v3
 
       - name: Create the default branch directory
@@ -823,7 +913,7 @@ jobs:
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-22.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -835,6 +925,16 @@ jobs:
           - overlay
           - underlay
     steps:
+      - uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          docker-images: false
+          large-packages: false
+          tool-cache: false
+          swap-storage: false
+
       - uses: actions/checkout@v3
 
       - name: Create the default branch directory
@@ -960,8 +1060,18 @@ jobs:
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-22.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
+      - uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          docker-images: false
+          large-packages: false
+          tool-cache: false
+          swap-storage: false
+
       - uses: actions/checkout@v3
 
       - name: Create the default branch directory
@@ -1042,6 +1152,16 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 30
     steps:
+      - uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          docker-images: false
+          large-packages: false
+          tool-cache: false
+          swap-storage: false
+
       - uses: actions/checkout@v3
 
       - name: Install kind
@@ -1078,6 +1198,16 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 30
     steps:
+      - uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          docker-images: false
+          large-packages: false
+          tool-cache: false
+          swap-storage: false
+
       - uses: actions/checkout@v3
 
       - name: Install kind
@@ -1114,6 +1244,16 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 30
     steps:
+      - uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          docker-images: false
+          large-packages: false
+          tool-cache: false
+          swap-storage: false
+
       - uses: actions/checkout@v3
 
       - name: Install kind
@@ -1152,6 +1292,16 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 30
     steps:
+      - uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          docker-images: false
+          large-packages: false
+          tool-cache: false
+          swap-storage: false
+
       - uses: actions/checkout@v3
 
       - name: Install kind
@@ -1193,6 +1343,16 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 30
     steps:
+      - uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          docker-images: false
+          large-packages: false
+          tool-cache: false
+          swap-storage: false
+
       - uses: actions/checkout@v3
 
       - name: Create the default branch directory
@@ -1278,8 +1438,18 @@ jobs:
     name: Installation Compatibility Test
     needs: build-kube-ovn
     runs-on: ubuntu-22.04
-    timeout-minutes: 10
+    timeout-minutes: 30
     steps:
+      - uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          docker-images: false
+          large-packages: false
+          tool-cache: false
+          swap-storage: false
+
       - uses: actions/checkout@v3
 
       - name: Install kind
@@ -1316,8 +1486,18 @@ jobs:
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-22.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
+      - uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          docker-images: false
+          large-packages: false
+          tool-cache: false
+          swap-storage: false
+
       - uses: actions/checkout@v3
       - uses: azure/setup-helm@v3
         with:
@@ -1426,6 +1606,16 @@ jobs:
           - ipv6
           - dual
     steps:
+      - uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          docker-images: false
+          large-packages: false
+          tool-cache: false
+          swap-storage: false
+
       - uses: actions/checkout@v3
 
       - name: Create the default branch directory
