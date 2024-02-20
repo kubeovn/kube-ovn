@@ -1098,15 +1098,20 @@ jobs:
       - name: kubectl ko log
         if: failure()
         run: |
-          make kubectl-ko-log
-          mv kubectl-ko-log.tar.gz kube-ovn-ic-conformance-${{ matrix.ip-family }}-e2e-ko-log.tar.gz
+          for cluster in `kind get clusters`; do
+            kubectl config use-context kind-$cluster
+            make kubectl-ko-log
+            mv kubectl-ko-log.tar.gz kube-ovn-ic-conformance-e2e-${{ matrix.ip-family }}-$cluster-ko-log.tar.gz
+          done
+          tar zcvf kube-ovn-ic-conformance-e2e-${{ matrix.ip-family }}-ko-log.tar.gz \
+            `kind get clusters | xargs -I {} echo kube-ovn-ic-conformance-e2e-${{ matrix.ip-family }}-{}-ko-log.tar.gz`
 
       - name: upload kubectl ko log
         uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: kube-ovn-ic-conformance-${{ matrix.ip-family }}-e2e-ko-log
-          path: kube-ovn-ic-conformance-${{ matrix.ip-family }}-e2e-ko-log.tar.gz
+          name: kube-ovn-ic-conformance-e2e-${{ matrix.ip-family }}-ko-log
+          path: kube-ovn-ic-conformance-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
 
   chart-test:
     name: Chart Installation/Uninstallation Test
