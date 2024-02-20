@@ -1099,14 +1099,14 @@ jobs:
         if: failure()
         run: |
           make kubectl-ko-log
-          mv kubectl-ko-log.tar.gz kube-ovn-ic-conformance-e2e-ko-log.tar.gz
+          mv kubectl-ko-log.tar.gz kube-ovn-ic-conformance-${{ matrix.ip-family }}-e2e-ko-log.tar.gz
 
       - name: upload kubectl ko log
         uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: kube-ovn-ic-conformance-e2e-ko-log
-          path: kube-ovn-ic-conformance-e2e-ko-log.tar.gz
+          name: kube-ovn-ic-conformance-${{ matrix.ip-family }}-e2e-ko-log
+          path: kube-ovn-ic-conformance-${{ matrix.ip-family }}-e2e-ko-log.tar.gz
 
   chart-test:
     name: Chart Installation/Uninstallation Test
