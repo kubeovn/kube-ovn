@@ -963,7 +963,7 @@ jobs:
           - release-1.8
     steps:
       - uses: actions/checkout@v3
-      - uses: azure/setup-helm@v3
+      - uses: azure/setup-helm@v4.0.0
         with:
           version: '${{ env.HELM_VERSION }}'
 
@@ -1143,7 +1143,7 @@ jobs:
           - release-1.12 => master
     steps:
       - uses: actions/checkout@v3
-      - uses: azure/setup-helm@v3
+      - uses: azure/setup-helm@v4.0.0
         with:
           version: '${{ env.HELM_VERSION }}'
 
