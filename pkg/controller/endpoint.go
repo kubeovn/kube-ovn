@@ -3,10 +3,10 @@ package controller
 import (
 	"context"
 	"fmt"
+	"time"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -296,33 +296,42 @@ func (c *Controller) getVpcSubnetName(pods []*v1.Pod, endpoints *v1.Endpoints, s
 
 func (c *Controller) getHealthCheckVip(subnetName, lbVip string) (string, error) {
 	var (
-		checkVip *kubeovnv1.Vip
-		checkIP  string
-		err      error
+		needCreateHealthCheckVip bool
+		checkVip                 *kubeovnv1.Vip
+		checkIP                  string
+		err                      error
 	)
 
 	checkVip, err = c.virtualIpsLister.Get(subnetName)
 	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			checkVip, err = c.config.KubeOvnClient.KubeovnV1().Vips().Create(context.Background(),
-				&kubeovnv1.Vip{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: subnetName,
-					},
-					Spec: kubeovnv1.VipSpec{
-						Subnet: subnetName,
-					},
-				}, metav1.CreateOptions{})
-
-			if err != nil {
-				klog.Errorf("failed to create health check vip subnet %s, %v", subnetName, err)
-				return "", err
-			}
-			klog.Infof("create health check vip %s", subnetName)
+		if errors.IsNotFound(err) {
+			needCreateHealthCheckVip = true
+		} else {
+			klog.Errorf("failed to get health check vip %s, %v", subnetName, err)
+			return "", err
+		}
+	}
+	if needCreateHealthCheckVip {
+		vip := &kubeovnv1.Vip{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: subnetName,
+			},
+			Spec: kubeovnv1.VipSpec{
+				Subnet: subnetName,
+			},
+		}
+		if _, err = c.config.KubeOvnClient.KubeovnV1().Vips().Create(context.Background(), vip, metav1.CreateOptions{}); err != nil {
+			klog.Errorf("failed to create health check vip %s, %v", subnetName, err)
+			return "", err
 		}
 
-		klog.Errorf("failed to get health check vip subnet %s, %v", subnetName, err)
-		return "", err
+		// wait for vip created
+		time.Sleep(1 * time.Second)
+		checkVip, err = c.virtualIpsLister.Get(subnetName)
+		if err != nil {
+			klog.Errorf("failed to get health check vip %s, %v", subnetName, err)
+			return "", err
+		}
 	}
 
 	if checkVip.Status.V4ip == "" && checkVip.Status.V6ip == "" {
