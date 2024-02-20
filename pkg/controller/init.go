@@ -830,6 +830,7 @@ func (c *Controller) initNodeChassis() error {
 
 func (c *Controller) syncFinalizers() error {
 	// migrate depreciated finalizer to new finalizer
+	klog.Info("start to sync finalizers")
 	if err := c.syncIPFinalizer(); err != nil {
 		klog.Errorf("failed to sync ip finalizer: %v", err)
 		return err
@@ -878,5 +879,6 @@ func (c *Controller) syncFinalizers() error {
 		klog.Errorf("failed to sync iptables snat finalizer: %v", err)
 		return err
 	}
+	klog.Info("sync finalizers done")
 	return nil
 }
