@@ -208,6 +208,7 @@ func (c *Controller) handleAddVirtualIP(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	if cachedVip.Status.Mac != "" {
@@ -288,7 +289,9 @@ func (c *Controller) handleAddVirtualIP(key string) error {
 		return err
 	}
 	if err := c.handleUpdateVirtualParents(key); err != nil {
-		return fmt.Errorf("error syncing virtual parents for vip '%s': %s", key, err.Error())
+		err := fmt.Errorf("error syncing virtual parents for vip '%s': %s", key, err.Error())
+		klog.Error(err)
+		return err
 	}
 	return nil
 }
@@ -329,6 +332,7 @@ func (c *Controller) handleUpdateVirtualIP(key string) error {
 		}
 		ready := true
 		if err = c.patchVipStatus(key, vip.Spec.V4ip, ready); err != nil {
+			klog.Error(err)
 			return err
 		}
 		if err = c.handleAddVipFinalizer(key); err != nil {
@@ -372,12 +376,14 @@ func (c *Controller) handleUpdateVirtualParents(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	// only pods in the same namespace as vip are allowed to use aap
 	if (cachedVip.Status.V4ip == "" && cachedVip.Status.V6ip == "") || cachedVip.Spec.Namespace == "" {
 		return nil
 	}
+
 	// add new virtual port if not exist
 	ipStr := util.GetStringIP(cachedVip.Status.V4ip, cachedVip.Status.V6ip)
 	if err = c.OVNNbClient.CreateVirtualLogicalSwitchPort(cachedVip.Name, cachedVip.Spec.Subnet, ipStr); err != nil {
@@ -385,51 +391,54 @@ func (c *Controller) handleUpdateVirtualParents(key string) error {
 		return err
 	}
 
-	selectors := make(map[string]string)
-	for _, v := range cachedVip.Spec.Selector {
-		parts := strings.Split(strings.TrimSpace(v), ":")
-		if len(parts) != 2 {
-			continue
+	// update virtual parents
+	if cachedVip.Spec.Selector != nil {
+		selectors := make(map[string]string)
+		for _, v := range cachedVip.Spec.Selector {
+			parts := strings.Split(strings.TrimSpace(v), ":")
+			if len(parts) != 2 {
+				continue
+			}
+			selectors[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
 		}
-		selectors[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
-	}
-	sel, _ := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{MatchLabels: selectors})
-	pods, err := c.podsLister.Pods(cachedVip.Spec.Namespace).List(sel)
-	if err != nil {
-		klog.Errorf("failed to list pods that meet selector requirements, %v", err)
-		return err
-	}
-
-	var virtualParents []string
-	for _, pod := range pods {
-		if pod.Annotations == nil {
-			err = fmt.Errorf("pod annotations have not been initialized")
-			klog.Error(err)
+		sel, _ := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{MatchLabels: selectors})
+		pods, err := c.podsLister.Pods(cachedVip.Spec.Namespace).List(sel)
+		if err != nil {
+			klog.Errorf("failed to list pods that meet selector requirements, %v", err)
 			return err
 		}
-		if aaps := strings.Split(pod.Annotations[util.AAPsAnnotation], ","); !slices.Contains(aaps, cachedVip.Name) {
-			continue
-		}
-		podNets, err := c.getPodKubeovnNets(pod)
-		if err != nil {
-			klog.Errorf("failed to get pod nets %v", err)
-		}
-		for _, podNet := range podNets {
-			if podNet.Subnet.Name == cachedVip.Spec.Subnet {
-				portName := ovs.PodNameToPortName(pod.Name, pod.Namespace, podNet.Subnet.Spec.Provider)
-				virtualParents = append(virtualParents, portName)
-				key := fmt.Sprintf("%s/%s", pod.Namespace, pod.Name)
-				klog.Infof("enqueue update pod security for %s", key)
-				c.updatePodSecurityQueue.Add(key)
-				break
+
+		var virtualParents []string
+		for _, pod := range pods {
+			if pod.Annotations == nil {
+				err = fmt.Errorf("pod %s/%s annotations have not been initialized", pod.Namespace, pod.Name)
+				klog.Error(err)
+				return err
+			}
+			if aaps := strings.Split(pod.Annotations[util.AAPsAnnotation], ","); !slices.Contains(aaps, cachedVip.Name) {
+				continue
+			}
+			podNets, err := c.getPodKubeovnNets(pod)
+			if err != nil {
+				klog.Errorf("failed to get pod nets %v", err)
+			}
+			for _, podNet := range podNets {
+				if podNet.Subnet.Name == cachedVip.Spec.Subnet {
+					portName := ovs.PodNameToPortName(pod.Name, pod.Namespace, podNet.Subnet.Spec.Provider)
+					virtualParents = append(virtualParents, portName)
+					key := fmt.Sprintf("%s/%s", pod.Namespace, pod.Name)
+					klog.Infof("enqueue update pod security for %s", key)
+					c.updatePodSecurityQueue.Add(key)
+					break
+				}
 			}
 		}
-	}
 
-	parents := strings.Join(virtualParents, ",")
-	if err = c.OVNNbClient.SetVirtualLogicalSwitchPortVirtualParents(cachedVip.Name, parents); err != nil {
-		klog.Errorf("set vip %s virtual parents %s: %v", cachedVip.Name, parents, err)
-		return err
+		parents := strings.Join(virtualParents, ",")
+		if err = c.OVNNbClient.SetVirtualLogicalSwitchPortVirtualParents(cachedVip.Name, parents); err != nil {
+			klog.Errorf("set vip %s virtual parents %s: %v", cachedVip.Name, parents, err)
+			return err
+		}
 	}
 
 	return nil
@@ -459,14 +468,14 @@ func (c *Controller) createOrUpdateVipCR(key, ns, subnet, v4ip, v6ip, mac, pV4ip
 					ParentMac:  pmac,
 				},
 			}, metav1.CreateOptions{}); err != nil {
-				errMsg := fmt.Errorf("failed to create crd vip '%s', %v", key, err)
-				klog.Error(errMsg)
-				return errMsg
+				err := fmt.Errorf("failed to create crd vip '%s', %v", key, err)
+				klog.Error(err)
+				return err
 			}
 		} else {
-			errMsg := fmt.Errorf("failed to get crd vip '%s', %v", key, err)
-			klog.Error(errMsg)
-			return errMsg
+			err := fmt.Errorf("failed to get crd vip '%s', %v", key, err)
+			klog.Error(err)
+			return err
 		}
 	} else {
 		vip := vipCR.DeepCopy()
@@ -489,9 +498,9 @@ func (c *Controller) createOrUpdateVipCR(key, ns, subnet, v4ip, v6ip, mac, pV4ip
 			vip.Status.Pmac = pmac
 			vip.Status.Type = vip.Spec.Type
 			if _, err := c.config.KubeOvnClient.KubeovnV1().Vips().Update(context.Background(), vip, metav1.UpdateOptions{}); err != nil {
-				errMsg := fmt.Errorf("failed to update vip '%s', %v", key, err)
-				klog.Error(errMsg)
-				return errMsg
+				err := fmt.Errorf("failed to update vip '%s', %v", key, err)
+				klog.Error(err)
+				return err
 			}
 		}
 		var needUpdateLabel bool
