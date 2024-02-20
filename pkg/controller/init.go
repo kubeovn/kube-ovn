@@ -140,6 +140,7 @@ func (c *Controller) initDefaultLogicalSwitch() error {
 
 	if _, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Create(context.Background(), &defaultSubnet, metav1.CreateOptions{}); err != nil {
 		klog.Error(err)
+		return err
 	}
 	return nil
 }
@@ -182,8 +183,7 @@ func (c *Controller) initNodeSwitch() error {
 		},
 	}
 
-	_, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Create(context.Background(), &nodeSubnet, metav1.CreateOptions{})
-	if err != nil {
+	if _, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Create(context.Background(), &nodeSubnet, metav1.CreateOptions{}); err != nil {
 		klog.Errorf("failed to create subnet %s: %v", c.config.NodeSwitch, err)
 		return err
 	}
