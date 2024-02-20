@@ -22,7 +22,7 @@ concurrency:
 
 env:
   GO_VERSION: ''
-  KIND_VERSION: v0.21.0
+  KIND_VERSION: v0.22.0
   GOSEC_VERSION: '2.18.2'
   HELM_VERSION: v3.14.0
   SUBMARINER_VERSION: '0.16.3'
@@ -465,7 +465,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.8.0
+        uses: helm/kind-action@v1.9.0
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -625,7 +625,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.8.0
+        uses: helm/kind-action@v1.9.0
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -771,7 +771,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.8.0
+        uses: helm/kind-action@v1.9.0
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -902,7 +902,7 @@ jobs:
           fi
 
       - name: Install kind
-        uses: helm/kind-action@v1.8.0
+        uses: helm/kind-action@v1.9.0
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -1052,7 +1052,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.8.0
+        uses: helm/kind-action@v1.9.0
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -1206,7 +1206,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.8.0
+        uses: helm/kind-action@v1.9.0
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -1273,7 +1273,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install kind
-        uses: helm/kind-action@v1.8.0
+        uses: helm/kind-action@v1.9.0
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -1319,7 +1319,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install kind
-        uses: helm/kind-action@v1.8.0
+        uses: helm/kind-action@v1.9.0
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -1365,7 +1365,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install kind
-        uses: helm/kind-action@v1.8.0
+        uses: helm/kind-action@v1.9.0
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -1413,7 +1413,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install kind
-        uses: helm/kind-action@v1.8.0
+        uses: helm/kind-action@v1.9.0
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -1503,7 +1503,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.8.0
+        uses: helm/kind-action@v1.9.0
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -1604,7 +1604,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.8.0
+        uses: helm/kind-action@v1.9.0
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -1699,7 +1699,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.8.0
+        uses: helm/kind-action@v1.9.0
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -1766,7 +1766,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install kind
-        uses: helm/kind-action@v1.8.0
+        uses: helm/kind-action@v1.9.0
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -1874,7 +1874,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.8.0
+        uses: helm/kind-action@v1.9.0
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -1998,7 +1998,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.8.0
+        uses: helm/kind-action@v1.9.0
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -2093,7 +2093,7 @@ jobs:
           fi
 
       - name: Install kind
-        uses: helm/kind-action@v1.8.0
+        uses: helm/kind-action@v1.9.0
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -2204,7 +2204,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.8.0
+        uses: helm/kind-action@v1.9.0
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -2318,7 +2318,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.8.0
+        uses: helm/kind-action@v1.9.0
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
