@@ -760,12 +760,12 @@ func (c *Controller) handleAddIptablesEipFinalizer(key string) error {
 		return err
 	}
 	if cachedIptablesEip.DeletionTimestamp.IsZero() {
-		if slices.Contains(cachedIptablesEip.Finalizers, util.ControllerName) {
+		if slices.Contains(cachedIptablesEip.Finalizers, util.FinalizerName) {
 			return nil
 		}
 	}
 	newIptablesEip := cachedIptablesEip.DeepCopy()
-	controllerutil.AddFinalizer(newIptablesEip, util.ControllerName)
+	controllerutil.AddFinalizer(newIptablesEip, util.FinalizerName)
 	patch, err := util.GenerateMergePatchPayload(cachedIptablesEip, newIptablesEip)
 	if err != nil {
 		klog.Errorf("failed to generate patch payload for iptables eip '%s', %v", cachedIptablesEip.Name, err)
@@ -795,7 +795,7 @@ func (c *Controller) handleDelIptablesEipFinalizer(key string) error {
 		return nil
 	}
 	newIptablesEip := cachedIptablesEip.DeepCopy()
-	controllerutil.RemoveFinalizer(newIptablesEip, util.ControllerName)
+	controllerutil.RemoveFinalizer(newIptablesEip, util.FinalizerName)
 	patch, err := util.GenerateMergePatchPayload(cachedIptablesEip, newIptablesEip)
 	if err != nil {
 		klog.Errorf("failed to generate patch payload for iptables eip '%s', %v", cachedIptablesEip.Name, err)

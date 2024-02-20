@@ -296,7 +296,7 @@ func (c *Controller) handleAddOvnFip(key string) error {
 		return err
 	}
 
-	if err = c.handleAddOvnFipFinalizer(cachedFip, util.ControllerName); err != nil {
+	if err = c.handleAddOvnFipFinalizer(cachedFip, util.FinalizerName); err != nil {
 		klog.Errorf("failed to add finalizer for ovn fip, %v", err)
 		return err
 	}
@@ -463,7 +463,7 @@ func (c *Controller) handleDelOvnFip(key string) error {
 			return err
 		}
 	}
-	if err = c.handleDelOvnFipFinalizer(cachedFip, util.ControllerName); err != nil {
+	if err = c.handleDelOvnFipFinalizer(cachedFip, util.FinalizerName); err != nil {
 		klog.Errorf("failed to remove finalizer for ovn fip %s, %v", cachedFip.Name, err)
 		return err
 	}

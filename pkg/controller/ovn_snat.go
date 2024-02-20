@@ -257,7 +257,7 @@ func (c *Controller) handleAddOvnSnatRule(key string) error {
 		klog.Errorf("failed to create snat, %v", err)
 		return err
 	}
-	if err := c.handleAddOvnSnatFinalizer(cachedSnat, util.ControllerName); err != nil {
+	if err := c.handleAddOvnSnatFinalizer(cachedSnat, util.FinalizerName); err != nil {
 		klog.Errorf("failed to add finalizer for ovn snat %s, %v", cachedSnat.Name, err)
 		return err
 	}
@@ -419,7 +419,7 @@ func (c *Controller) handleDelOvnSnatRule(key string) error {
 			return err
 		}
 	}
-	if err = c.handleDelOvnSnatFinalizer(cachedSnat, util.ControllerName); err != nil {
+	if err = c.handleDelOvnSnatFinalizer(cachedSnat, util.FinalizerName); err != nil {
 		klog.Errorf("failed to remove finalizer for ovn snat %s, %v", cachedSnat.Name, err)
 		return err
 	}

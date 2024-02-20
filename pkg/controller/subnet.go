@@ -480,9 +480,9 @@ func checkAndUpdateExcludeIPs(subnet *kubeovnv1.Subnet) bool {
 }
 
 func (c *Controller) handleSubnetFinalizer(subnet *kubeovnv1.Subnet) (bool, error) {
-	if subnet.DeletionTimestamp.IsZero() && !slices.Contains(subnet.Finalizers, util.ControllerName) {
+	if subnet.DeletionTimestamp.IsZero() && !slices.Contains(subnet.Finalizers, util.FinalizerName) {
 		newSubnet := subnet.DeepCopy()
-		newSubnet.Finalizers = append(newSubnet.Finalizers, util.ControllerName)
+		newSubnet.Finalizers = append(newSubnet.Finalizers, util.FinalizerName)
 		patch, err := util.GenerateMergePatchPayload(subnet, newSubnet)
 		if err != nil {
 			klog.Errorf("failed to generate patch payload for subnet '%s', %v", subnet.Name, err)
@@ -506,7 +506,7 @@ func (c *Controller) handleSubnetFinalizer(subnet *kubeovnv1.Subnet) (bool, erro
 	u2oInterconnIP := subnet.Status.U2OInterconnectionIP
 	if !subnet.DeletionTimestamp.IsZero() && (usingIPs == 0 || (usingIPs == 1 && u2oInterconnIP != "")) {
 		newSubnet := subnet.DeepCopy()
-		newSubnet.Finalizers = util.RemoveString(newSubnet.Finalizers, util.ControllerName)
+		newSubnet.Finalizers = util.RemoveString(newSubnet.Finalizers, util.FinalizerName)
 		patch, err := util.GenerateMergePatchPayload(subnet, newSubnet)
 		if err != nil {
 			klog.Errorf("failed to generate patch payload for subnet '%s', %v", subnet.Name, err)

@@ -301,7 +301,7 @@ func (c *Controller) handleAddOvnDnatRule(key string) error {
 		return err
 	}
 
-	if err := c.handleAddOvnDnatFinalizer(cachedDnat, util.ControllerName); err != nil {
+	if err := c.handleAddOvnDnatFinalizer(cachedDnat, util.FinalizerName); err != nil {
 		klog.Errorf("failed to add finalizer for ovn dnat %s, %v", cachedDnat.Name, err)
 		return err
 	}
@@ -348,7 +348,7 @@ func (c *Controller) handleDelOvnDnatRule(key string) error {
 			return err
 		}
 	}
-	if err = c.handleDelOvnDnatFinalizer(cachedDnat, util.ControllerName); err != nil {
+	if err = c.handleDelOvnDnatFinalizer(cachedDnat, util.FinalizerName); err != nil {
 		klog.Errorf("failed to remove finalizer for ovn dnat %s, %v", cachedDnat.Name, err)
 		return err
 	}

@@ -148,7 +148,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		subnet = subnetClient.CreateSync(subnet)
 
 		ginkgo.By("Validating subnet finalizers")
-		framework.ExpectContainElement(subnet.Finalizers, util.ControllerName)
+		framework.ExpectContainElement(subnet.Finalizers, util.FinalizerName)
 
 		ginkgo.By("Validating subnet spec fields")
 		framework.ExpectFalse(subnet.Spec.Default)
@@ -206,7 +206,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		subnet = subnetClient.CreateSync(subnet)
 
 		ginkgo.By("Validating subnet finalizers")
-		framework.ExpectContainElement(subnet.ObjectMeta.Finalizers, util.ControllerName)
+		framework.ExpectContainElement(subnet.ObjectMeta.Finalizers, util.FinalizerName)
 
 		ginkgo.By("Validating subnet spec fields")
 		framework.ExpectFalse(subnet.Spec.Default)
@@ -251,7 +251,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		subnet = subnetClient.CreateSync(subnet)
 
 		ginkgo.By("Validating subnet finalizers")
-		framework.ExpectContainElement(subnet.ObjectMeta.Finalizers, util.ControllerName)
+		framework.ExpectContainElement(subnet.ObjectMeta.Finalizers, util.FinalizerName)
 
 		ginkgo.By("Validating subnet spec fields")
 		framework.ExpectFalse(subnet.Spec.Default)
@@ -301,7 +301,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		subnet = subnetClient.CreateSync(subnet)
 
 		ginkgo.By("Validating subnet finalizers")
-		framework.ExpectContainElement(subnet.Finalizers, util.ControllerName)
+		framework.ExpectContainElement(subnet.Finalizers, util.FinalizerName)
 
 		ginkgo.By("Validating subnet spec fields")
 		framework.ExpectFalse(subnet.Spec.Default)
@@ -345,7 +345,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		subnet = subnetClient.CreateSync(subnet)
 
 		ginkgo.By("Validating subnet finalizers")
-		framework.ExpectContainElement(subnet.Finalizers, util.ControllerName)
+		framework.ExpectContainElement(subnet.Finalizers, util.FinalizerName)
 
 		ginkgo.By("Validating subnet spec fields")
 		framework.ExpectFalse(subnet.Spec.Default)
@@ -388,7 +388,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		subnet = subnetClient.PatchSync(subnet, modifiedSubnet)
 
 		ginkgo.By("Validating subnet finalizers")
-		framework.ExpectContainElement(subnet.ObjectMeta.Finalizers, util.ControllerName)
+		framework.ExpectContainElement(subnet.ObjectMeta.Finalizers, util.FinalizerName)
 
 		ginkgo.By("Validating subnet spec fields")
 		framework.ExpectFalse(subnet.Spec.Default)
@@ -444,7 +444,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		subnet = subnetClient.CreateSync(subnet)
 
 		ginkgo.By("Validating subnet finalizers")
-		framework.ExpectContainElement(subnet.Finalizers, util.ControllerName)
+		framework.ExpectContainElement(subnet.Finalizers, util.FinalizerName)
 
 		ginkgo.By("Validating centralized subnet with active-standby mode")
 		framework.ExpectFalse(subnet.Spec.EnableEcmp)
@@ -947,7 +947,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		subnet = subnetClient.CreateSync(subnet)
 
 		ginkgo.By("Validating subnet load-balancer records exist")
-		framework.ExpectContainElement(subnet.Finalizers, util.ControllerName)
+		framework.ExpectContainElement(subnet.Finalizers, util.FinalizerName)
 		execCmd := "kubectl ko nbctl --format=csv --data=bare --no-heading --columns=load_balancer find logical-switch " + fmt.Sprintf("name=%s", subnetName)
 		output, err := exec.Command("bash", "-c", execCmd).CombinedOutput()
 		framework.ExpectNoError(err)

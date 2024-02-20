@@ -1054,12 +1054,12 @@ func (c *Controller) handleAddIptablesFipFinalizer(key string) error {
 		return err
 	}
 	if cachedIptablesFip.DeletionTimestamp.IsZero() {
-		if slices.Contains(cachedIptablesFip.Finalizers, util.ControllerName) {
+		if slices.Contains(cachedIptablesFip.Finalizers, util.FinalizerName) {
 			return nil
 		}
 	}
 	newIptablesFip := cachedIptablesFip.DeepCopy()
-	controllerutil.AddFinalizer(newIptablesFip, util.ControllerName)
+	controllerutil.AddFinalizer(newIptablesFip, util.FinalizerName)
 	patch, err := util.GenerateMergePatchPayload(cachedIptablesFip, newIptablesFip)
 	if err != nil {
 		klog.Errorf("failed to generate patch payload for iptables fip '%s', %v", cachedIptablesFip.Name, err)
@@ -1089,7 +1089,7 @@ func (c *Controller) handleDelIptablesFipFinalizer(key string) error {
 		return nil
 	}
 	newIptablesFip := cachedIptablesFip.DeepCopy()
-	controllerutil.RemoveFinalizer(newIptablesFip, util.ControllerName)
+	controllerutil.RemoveFinalizer(newIptablesFip, util.FinalizerName)
 	patch, err := util.GenerateMergePatchPayload(cachedIptablesFip, newIptablesFip)
 	if err != nil {
 		klog.Errorf("failed to generate patch payload for iptables fip '%s', %v", cachedIptablesFip.Name, err)
@@ -1116,12 +1116,12 @@ func (c *Controller) handleAddIptablesDnatFinalizer(key string) error {
 		return err
 	}
 	if cachedIptablesDnat.DeletionTimestamp.IsZero() {
-		if slices.Contains(cachedIptablesDnat.Finalizers, util.ControllerName) {
+		if slices.Contains(cachedIptablesDnat.Finalizers, util.FinalizerName) {
 			return nil
 		}
 	}
 	newIptablesDnat := cachedIptablesDnat.DeepCopy()
-	controllerutil.AddFinalizer(newIptablesDnat, util.ControllerName)
+	controllerutil.AddFinalizer(newIptablesDnat, util.FinalizerName)
 	patch, err := util.GenerateMergePatchPayload(cachedIptablesDnat, newIptablesDnat)
 	if err != nil {
 		klog.Errorf("failed to generate patch payload for iptables dnat '%s', %v", cachedIptablesDnat.Name, err)
@@ -1151,7 +1151,7 @@ func (c *Controller) handleDelIptablesDnatFinalizer(key string) error {
 		return nil
 	}
 	newIptablesDnat := cachedIptablesDnat.DeepCopy()
-	controllerutil.RemoveFinalizer(newIptablesDnat, util.ControllerName)
+	controllerutil.RemoveFinalizer(newIptablesDnat, util.FinalizerName)
 	patch, err := util.GenerateMergePatchPayload(cachedIptablesDnat, newIptablesDnat)
 	if err != nil {
 		klog.Errorf("failed to generate patch payload for iptables dnat '%s', %v", cachedIptablesDnat.Name, err)
@@ -1229,12 +1229,12 @@ func (c *Controller) handleAddIptablesSnatFinalizer(key string) error {
 		return err
 	}
 	if cachedIptablesSnat.DeletionTimestamp.IsZero() {
-		if slices.Contains(cachedIptablesSnat.Finalizers, util.ControllerName) {
+		if slices.Contains(cachedIptablesSnat.Finalizers, util.FinalizerName) {
 			return nil
 		}
 	}
 	newIptablesSnat := cachedIptablesSnat.DeepCopy()
-	controllerutil.AddFinalizer(newIptablesSnat, util.ControllerName)
+	controllerutil.AddFinalizer(newIptablesSnat, util.FinalizerName)
 	patch, err := util.GenerateMergePatchPayload(cachedIptablesSnat, newIptablesSnat)
 	if err != nil {
 		klog.Errorf("failed to generate patch payload for iptables snat '%s', %v", cachedIptablesSnat.Name, err)
@@ -1264,7 +1264,7 @@ func (c *Controller) handleDelIptablesSnatFinalizer(key string) error {
 		return nil
 	}
 	newIptablesSnat := cachedIptablesSnat.DeepCopy()
-	controllerutil.RemoveFinalizer(newIptablesSnat, util.ControllerName)
+	controllerutil.RemoveFinalizer(newIptablesSnat, util.FinalizerName)
 	patch, err := util.GenerateMergePatchPayload(cachedIptablesSnat, newIptablesSnat)
 	if err != nil {
 		klog.Errorf("failed to generate patch payload for iptables snat '%s', %v", cachedIptablesSnat.Name, err)

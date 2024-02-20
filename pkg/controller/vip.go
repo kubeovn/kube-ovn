@@ -649,12 +649,12 @@ func (c *Controller) handleAddVipFinalizer(key string) error {
 		return err
 	}
 	if cachedVip.DeletionTimestamp.IsZero() {
-		if slices.Contains(cachedVip.Finalizers, util.ControllerName) {
+		if slices.Contains(cachedVip.Finalizers, util.FinalizerName) {
 			return nil
 		}
 	}
 	newVip := cachedVip.DeepCopy()
-	controllerutil.AddFinalizer(newVip, util.ControllerName)
+	controllerutil.AddFinalizer(newVip, util.FinalizerName)
 	patch, err := util.GenerateMergePatchPayload(cachedVip, newVip)
 	if err != nil {
 		klog.Errorf("failed to generate patch payload for ovn eip '%s', %v", cachedVip.Name, err)
@@ -684,7 +684,7 @@ func (c *Controller) handleDelVipFinalizer(key string) error {
 		return nil
 	}
 	newVip := cachedVip.DeepCopy()
-	controllerutil.RemoveFinalizer(newVip, util.ControllerName)
+	controllerutil.RemoveFinalizer(newVip, util.FinalizerName)
 	patch, err := util.GenerateMergePatchPayload(cachedVip, newVip)
 	if err != nil {
 		klog.Errorf("failed to generate patch payload for ovn eip '%s', %v", cachedVip.Name, err)

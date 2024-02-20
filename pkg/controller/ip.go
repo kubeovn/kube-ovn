@@ -323,7 +323,7 @@ func (c *Controller) handleUpdateIP(key string) error {
 			klog.Infof("ip cr %s release ipam pod key %s from subnet %s", cachedIP.Name, podKey, cachedIP.Spec.Subnet)
 			c.ipam.ReleaseAddressByPod(podKey, cachedIP.Spec.Subnet)
 		}
-		if err = c.handleDelIPFinalizer(cachedIP, util.ControllerName); err != nil {
+		if err = c.handleDelIPFinalizer(cachedIP, util.FinalizerName); err != nil {
 			klog.Errorf("failed to handle del ip finalizer %v", err)
 			return err
 		}
@@ -535,7 +535,7 @@ func (c *Controller) createOrUpdateIPCR(ipCRName, podName, ip, mac, subnetName, 
 		}
 	}
 
-	if err := c.handleAddIPFinalizer(ipCR, util.ControllerName); err != nil {
+	if err := c.handleAddIPFinalizer(ipCR, util.FinalizerName); err != nil {
 		klog.Errorf("failed to handle add ip finalizer %v", err)
 		return err
 	}

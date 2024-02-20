@@ -265,7 +265,7 @@ func (c *Controller) handleDelQoSPoliciesFinalizer(key string) error {
 		return nil
 	}
 	newQoSPolicies := cachedQoSPolicies.DeepCopy()
-	controllerutil.RemoveFinalizer(newQoSPolicies, util.ControllerName)
+	controllerutil.RemoveFinalizer(newQoSPolicies, util.FinalizerName)
 	patch, err := util.GenerateMergePatchPayload(cachedQoSPolicies, newQoSPolicies)
 	if err != nil {
 		klog.Errorf("failed to generate patch payload for qos '%s', %v", cachedQoSPolicies.Name, err)
@@ -521,12 +521,12 @@ func (c *Controller) handleAddQoSPolicyFinalizer(key string) error {
 		return err
 	}
 	if cachedQoSPolicy.DeletionTimestamp.IsZero() {
-		if slices.Contains(cachedQoSPolicy.Finalizers, util.ControllerName) {
+		if slices.Contains(cachedQoSPolicy.Finalizers, util.FinalizerName) {
 			return nil
 		}
 	}
 	newQoSPolicy := cachedQoSPolicy.DeepCopy()
-	controllerutil.AddFinalizer(newQoSPolicy, util.ControllerName)
+	controllerutil.AddFinalizer(newQoSPolicy, util.FinalizerName)
 	patch, err := util.GenerateMergePatchPayload(cachedQoSPolicy, newQoSPolicy)
 	if err != nil {
 		klog.Errorf("failed to generate patch payload for qos '%s', %v", cachedQoSPolicy.Name, err)

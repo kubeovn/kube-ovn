@@ -268,7 +268,7 @@ func (c *Controller) handleAddOvnEip(key string) error {
 			return err
 		}
 	}
-	if err = c.handleAddOvnEipFinalizer(cachedEip, util.ControllerName); err != nil {
+	if err = c.handleAddOvnEipFinalizer(cachedEip, util.FinalizerName); err != nil {
 		klog.Errorf("failed to add finalizer for ovn eip, %v", err)
 		return err
 	}
@@ -343,7 +343,7 @@ func (c *Controller) handleDelOvnEip(key string) error {
 		}
 	}
 
-	if err = c.handleDelOvnEipFinalizer(eip, util.ControllerName); err != nil {
+	if err = c.handleDelOvnEipFinalizer(eip, util.FinalizerName); err != nil {
 		klog.Errorf("failed to handle remove ovn eip finalizer , %v", err)
 		return err
 	}
