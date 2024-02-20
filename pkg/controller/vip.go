@@ -392,53 +392,56 @@ func (c *Controller) handleUpdateVirtualParents(key string) error {
 	}
 
 	// update virtual parents
-	if cachedVip.Spec.Selector != nil {
-		selectors := make(map[string]string)
-		for _, v := range cachedVip.Spec.Selector {
-			parts := strings.Split(strings.TrimSpace(v), ":")
-			if len(parts) != 2 {
-				continue
-			}
-			selectors[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
+	if cachedVip.Spec.Type == util.SwitchLBRuleVip {
+		// switch lb rule vip no need to have virtual parents
+		return nil
+	}
+
+	// vip cloud use selector to select pods as its virtual parents
+	selectors := make(map[string]string)
+	for _, v := range cachedVip.Spec.Selector {
+		parts := strings.Split(strings.TrimSpace(v), ":")
+		if len(parts) != 2 {
+			continue
 		}
-		sel, _ := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{MatchLabels: selectors})
-		pods, err := c.podsLister.Pods(cachedVip.Spec.Namespace).List(sel)
+		selectors[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
+	}
+	sel, _ := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{MatchLabels: selectors})
+	pods, err := c.podsLister.Pods(cachedVip.Spec.Namespace).List(sel)
+	if err != nil {
+		klog.Errorf("failed to list pods that meet selector requirements, %v", err)
+		return err
+	}
+
+	var virtualParents []string
+	for _, pod := range pods {
+		if pod.Annotations == nil {
+			// pod has no aaps
+			continue
+		}
+		if aaps := strings.Split(pod.Annotations[util.AAPsAnnotation], ","); !slices.Contains(aaps, cachedVip.Name) {
+			continue
+		}
+		podNets, err := c.getPodKubeovnNets(pod)
 		if err != nil {
-			klog.Errorf("failed to list pods that meet selector requirements, %v", err)
-			return err
+			klog.Errorf("failed to get pod nets %v", err)
 		}
+		for _, podNet := range podNets {
+			if podNet.Subnet.Name == cachedVip.Spec.Subnet {
+				portName := ovs.PodNameToPortName(pod.Name, pod.Namespace, podNet.Subnet.Spec.Provider)
+				virtualParents = append(virtualParents, portName)
+				key := fmt.Sprintf("%s/%s", pod.Namespace, pod.Name)
+				klog.Infof("enqueue update pod security for %s", key)
+				c.updatePodSecurityQueue.Add(key)
+				break
+			}
+		}
+	}
 
-		var virtualParents []string
-		for _, pod := range pods {
-			if pod.Annotations == nil {
-				err = fmt.Errorf("pod %s/%s annotations have not been initialized", pod.Namespace, pod.Name)
-				klog.Error(err)
-				return err
-			}
-			if aaps := strings.Split(pod.Annotations[util.AAPsAnnotation], ","); !slices.Contains(aaps, cachedVip.Name) {
-				continue
-			}
-			podNets, err := c.getPodKubeovnNets(pod)
-			if err != nil {
-				klog.Errorf("failed to get pod nets %v", err)
-			}
-			for _, podNet := range podNets {
-				if podNet.Subnet.Name == cachedVip.Spec.Subnet {
-					portName := ovs.PodNameToPortName(pod.Name, pod.Namespace, podNet.Subnet.Spec.Provider)
-					virtualParents = append(virtualParents, portName)
-					key := fmt.Sprintf("%s/%s", pod.Namespace, pod.Name)
-					klog.Infof("enqueue update pod security for %s", key)
-					c.updatePodSecurityQueue.Add(key)
-					break
-				}
-			}
-		}
-
-		parents := strings.Join(virtualParents, ",")
-		if err = c.OVNNbClient.SetVirtualLogicalSwitchPortVirtualParents(cachedVip.Name, parents); err != nil {
-			klog.Errorf("set vip %s virtual parents %s: %v", cachedVip.Name, parents, err)
-			return err
-		}
+	parents := strings.Join(virtualParents, ",")
+	if err = c.OVNNbClient.SetVirtualLogicalSwitchPortVirtualParents(cachedVip.Name, parents); err != nil {
+		klog.Errorf("set vip %s virtual parents %s: %v", cachedVip.Name, parents, err)
+		return err
 	}
 
 	return nil
