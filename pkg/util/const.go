@@ -3,7 +3,8 @@ package util
 const (
 	CniTypeName = "kube-ovn"
 
-	ControllerName = "kube-ovn-controller"
+	DepreciatedFinalizerName   = "kube-ovn-controller"
+	KubeOVNControllerFinalizer = "kubeovn.io/kube-ovn-controller"
 
 	AllocatedAnnotation  = "ovn.kubernetes.io/allocated"
 	RoutedAnnotation     = "ovn.kubernetes.io/routed"

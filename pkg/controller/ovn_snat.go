@@ -8,6 +8,7 @@ import (
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
@@ -257,7 +258,7 @@ func (c *Controller) handleAddOvnSnatRule(key string) error {
 		klog.Errorf("failed to create snat, %v", err)
 		return err
 	}
-	if err := c.handleAddOvnSnatFinalizer(cachedSnat, util.ControllerName); err != nil {
+	if err := c.handleAddOvnSnatFinalizer(cachedSnat, util.KubeOVNControllerFinalizer); err != nil {
 		klog.Errorf("failed to add finalizer for ovn snat %s, %v", cachedSnat.Name, err)
 		return err
 	}
@@ -419,7 +420,7 @@ func (c *Controller) handleDelOvnSnatRule(key string) error {
 			return err
 		}
 	}
-	if err = c.handleDelOvnSnatFinalizer(cachedSnat, util.ControllerName); err != nil {
+	if err = c.handleDelOvnSnatFinalizer(cachedSnat, util.KubeOVNControllerFinalizer); err != nil {
 		klog.Errorf("failed to remove finalizer for ovn snat %s, %v", cachedSnat.Name, err)
 		return err
 	}
@@ -540,6 +541,36 @@ func (c *Controller) ovnSnatChangeEip(snat *kubeovnv1.OvnSnatRule, eip *kubeovnv
 		return true
 	}
 	return false
+}
+
+func (c *Controller) syncOvnSnatFinalizer() error {
+	// migrate depreciated finalizer to new finalizer
+	snats, err := c.ovnSnatRulesLister.List(labels.Everything())
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		klog.Errorf("failed to list snats, %v", err)
+		return err
+	}
+	for _, cachedSnat := range snats {
+		patch, err := c.ReplaceFinalizer(cachedSnat)
+		if err != nil {
+			klog.Errorf("failed to sync finalizer for snat %s, %v", cachedSnat.Name, err)
+			return err
+		}
+		if patch != nil {
+			if _, err := c.config.KubeOvnClient.KubeovnV1().OvnSnatRules().Patch(context.Background(), cachedSnat.Name,
+				types.MergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
+				if k8serrors.IsNotFound(err) {
+					return nil
+				}
+				klog.Errorf("failed to sync finalizer for snat %s, %v", cachedSnat.Name, err)
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func (c *Controller) handleAddOvnSnatFinalizer(cachedSnat *kubeovnv1.OvnSnatRule, finalizer string) error {
