@@ -40,7 +40,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 	})
 
 	framework.ConformanceIt("Kubevirt vm pod should keep ip", func() {
-		f.SkipVersionPriorTo(1, 12, "Only test kubevirt vm keep ip in master")
+		f.SkipVersionPriorTo(1, 12, "This feature was introduced in v1.12.")
 
 		ginkgo.By("Get kubevirt vm pod")
 		podList, err := podClient.List(context.TODO(), metav1.ListOptions{
@@ -50,7 +50,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 		framework.ExpectHaveLen(podList.Items, 1)
 
 		ginkgo.By("Validating pod annotations")
-		pod := podList.Items[0]
+		pod := &podList.Items[0]
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
 		framework.ExpectHaveKeyWithValue(pod.Annotations, "ovn.kubernetes.io/virtualmachine", "testvm")
@@ -67,8 +67,12 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 		framework.ExpectNoError(err)
 		framework.ExpectHaveLen(podList.Items, 1)
 
+		pod = &podList.Items[0]
+		ginkgo.By("Waiting for pod " + pod.Name + " to be running")
+		podClient.WaitForRunning(pod.Name)
+
 		ginkgo.By("Validating new pod annotations")
-		pod = podList.Items[0]
+		pod = podClient.GetPod(pod.Name)
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
 		framework.ExpectHaveKeyWithValue(pod.Annotations, "ovn.kubernetes.io/virtualmachine", "testvm")
