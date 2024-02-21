@@ -886,7 +886,7 @@ func (c *Controller) syncFinalizers() error {
 }
 
 func (c *Controller) ReplaceFinalizer(cachedObj client.Object) ([]byte, error) {
-	if slices.Contains(cachedObj.GetFinalizers(), util.DepreciatedFinalizerName) {
+	if controllerutil.ContainsFinalizer(cachedObj, util.DepreciatedFinalizerName) {
 		newObj := cachedObj.DeepCopyObject().(client.Object)
 		controllerutil.RemoveFinalizer(newObj, util.DepreciatedFinalizerName)
 		controllerutil.AddFinalizer(newObj, util.KubeOVNControllerFinalizer)
