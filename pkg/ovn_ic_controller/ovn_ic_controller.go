@@ -178,7 +178,7 @@ func (c *Controller) resyncInterConnection() {
 
 		err := c.disableOVNIC(azName)
 		if err != nil {
-			klog.Errorf("Disable az %s OVN IC failed", azName)
+			klog.Errorf("Disable az %s OVN IC failed: %v", azName, err)
 			return
 		}
 		icEnabled = "false"
