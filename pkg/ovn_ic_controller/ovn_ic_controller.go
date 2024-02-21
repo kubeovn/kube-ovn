@@ -293,7 +293,7 @@ func (c *Controller) establishInterConnection(config map[string]string) error {
 
 	tsNames, err := c.ovnLegacyClient.GetTs()
 	if err != nil {
-		klog.Errorf("failed to list ic logical switch. %v", err)
+		klog.Errorf("failed to list ic logical switch: %v", err)
 		return err
 	}
 
