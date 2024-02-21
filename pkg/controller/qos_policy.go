@@ -265,7 +265,7 @@ func (c *Controller) handleDelQoSPoliciesFinalizer(key string) error {
 		return nil
 	}
 	newQoSPolicies := cachedQoSPolicies.DeepCopy()
-	controllerutil.RemoveFinalizer(newQoSPolicies, util.ControllerName)
+	controllerutil.RemoveFinalizer(newQoSPolicies, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedQoSPolicies, newQoSPolicies)
 	if err != nil {
 		klog.Errorf("failed to generate patch payload for qos '%s', %v", cachedQoSPolicies.Name, err)
@@ -278,6 +278,36 @@ func (c *Controller) handleDelQoSPoliciesFinalizer(key string) error {
 		}
 		klog.Errorf("failed to remove finalizer from qos '%s', %v", cachedQoSPolicies.Name, err)
 		return err
+	}
+	return nil
+}
+
+func (c *Controller) syncQoSPolicyFinalizer() error {
+	// migrate depreciated finalizer to new finalizer
+	qosPolicies, err := c.qosPoliciesLister.List(labels.Everything())
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		klog.Errorf("failed to list policy, %v", err)
+		return err
+	}
+	for _, cachedPolicy := range qosPolicies {
+		patch, err := c.ReplaceFinalizer(cachedPolicy)
+		if err != nil {
+			klog.Errorf("failed to sync finalizer for policy %s, %v", cachedPolicy.Name, err)
+			return err
+		}
+		if patch != nil {
+			if _, err := c.config.KubeOvnClient.KubeovnV1().QoSPolicies().Patch(context.Background(), cachedPolicy.Name,
+				types.MergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
+				if k8serrors.IsNotFound(err) {
+					return nil
+				}
+				klog.Errorf("failed to sync finalizer for policy %s, %v", cachedPolicy.Name, err)
+				return err
+			}
+		}
 	}
 	return nil
 }
@@ -521,12 +551,12 @@ func (c *Controller) handleAddQoSPolicyFinalizer(key string) error {
 		return err
 	}
 	if cachedQoSPolicy.DeletionTimestamp.IsZero() {
-		if slices.Contains(cachedQoSPolicy.Finalizers, util.ControllerName) {
+		if slices.Contains(cachedQoSPolicy.Finalizers, util.KubeOVNControllerFinalizer) {
 			return nil
 		}
 	}
 	newQoSPolicy := cachedQoSPolicy.DeepCopy()
-	controllerutil.AddFinalizer(newQoSPolicy, util.ControllerName)
+	controllerutil.AddFinalizer(newQoSPolicy, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedQoSPolicy, newQoSPolicy)
 	if err != nil {
 		klog.Errorf("failed to generate patch payload for qos '%s', %v", cachedQoSPolicy.Name, err)

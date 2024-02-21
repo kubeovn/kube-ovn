@@ -11,6 +11,7 @@ import (
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
@@ -323,7 +324,7 @@ func (c *Controller) handleUpdateIP(key string) error {
 			klog.Infof("ip cr %s release ipam pod key %s from subnet %s", cachedIP.Name, podKey, cachedIP.Spec.Subnet)
 			c.ipam.ReleaseAddressByPod(podKey, cachedIP.Spec.Subnet)
 		}
-		if err = c.handleDelIPFinalizer(cachedIP, util.ControllerName); err != nil {
+		if err = c.handleDelIPFinalizer(cachedIP, util.KubeOVNControllerFinalizer); err != nil {
 			klog.Errorf("failed to handle del ip finalizer %v", err)
 			return err
 		}
@@ -337,6 +338,36 @@ func (c *Controller) handleDelIP(ip *kubeovnv1.IP) error {
 	for _, as := range ip.Spec.AttachSubnets {
 		klog.V(3).Infof("enqueue update attach status for subnet %s", as)
 		c.updateSubnetStatusQueue.Add(as)
+	}
+	return nil
+}
+
+func (c *Controller) syncIPFinalizer() error {
+	// migrate depreciated finalizer to new finalizer
+	ips, err := c.ipsLister.List(labels.Everything())
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		klog.Errorf("failed to list ips, %v", err)
+		return err
+	}
+	for _, cachedIP := range ips {
+		patch, err := c.ReplaceFinalizer(cachedIP)
+		if err != nil {
+			klog.Errorf("failed to sync finalizer for ip %s, %v", cachedIP.Name, err)
+			return err
+		}
+		if patch != nil {
+			if _, err := c.config.KubeOvnClient.KubeovnV1().IPs().Patch(context.Background(), cachedIP.Name,
+				types.MergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
+				if k8serrors.IsNotFound(err) {
+					return nil
+				}
+				klog.Errorf("failed to sync finalizer for ip %s, %v", cachedIP.Name, err)
+				return err
+			}
+		}
 	}
 	return nil
 }
@@ -535,7 +566,7 @@ func (c *Controller) createOrUpdateIPCR(ipCRName, podName, ip, mac, subnetName, 
 		}
 	}
 
-	if err := c.handleAddIPFinalizer(ipCR, util.ControllerName); err != nil {
+	if err := c.handleAddIPFinalizer(ipCR, util.KubeOVNControllerFinalizer); err != nil {
 		klog.Errorf("failed to handle add ip finalizer %v", err)
 		return err
 	}
