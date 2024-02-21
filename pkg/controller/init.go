@@ -14,8 +14,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -838,54 +840,91 @@ func (c *Controller) initNodeChassis() error {
 	return nil
 }
 
+func updateFinalizers(c client.Client, list client.ObjectList, getObjectItem func(int) (client.Object, client.Object)) error {
+	if err := c.List(context.Background(), list); err != nil {
+		klog.Errorf("failed to list objects: %v", err)
+		return err
+	}
+
+	var i int
+	var cachedObj, patchedObj client.Object
+	for {
+		if cachedObj, patchedObj = getObjectItem(i); cachedObj == nil {
+			break
+		}
+		if !controllerutil.ContainsFinalizer(cachedObj, util.DepreciatedFinalizerName) {
+			i++
+			continue
+		}
+
+		controllerutil.RemoveFinalizer(patchedObj, util.DepreciatedFinalizerName)
+		controllerutil.AddFinalizer(patchedObj, util.DepreciatedFinalizerName)
+		if err := c.Patch(context.Background(), patchedObj, client.MergeFrom(cachedObj)); err != nil && !k8serrors.IsNotFound(err) {
+			klog.Errorf("failed to sync finalizer for %s %s: %v",
+				patchedObj.GetObjectKind().GroupVersionKind().Kind,
+				cache.MetaObjectToName(patchedObj), err)
+			return err
+		}
+		i++
+	}
+
+	return nil
+}
+
 func (c *Controller) syncFinalizers() error {
+	cl, err := client.New(config.GetConfigOrDie(), client.Options{})
+	if err != nil {
+		klog.Errorf("failed to create client: %v", err)
+		return err
+	}
+
 	// migrate depreciated finalizer to new finalizer
 	klog.Info("start to sync finalizers")
-	if err := c.syncIPFinalizer(); err != nil {
+	if err := c.syncIPFinalizer(cl); err != nil {
 		klog.Errorf("failed to sync ip finalizer: %v", err)
 		return err
 	}
-	if err := c.syncOvnDnatFinalizer(); err != nil {
+	if err := c.syncOvnDnatFinalizer(cl); err != nil {
 		klog.Errorf("failed to sync ovn dnat finalizer: %v", err)
 		return err
 	}
-	if err := c.syncOvnEipFinalizer(); err != nil {
+	if err := c.syncOvnEipFinalizer(cl); err != nil {
 		klog.Errorf("failed to sync ovn eip finalizer: %v", err)
 		return err
 	}
-	if err := c.syncOvnFipFinalizer(); err != nil {
+	if err := c.syncOvnFipFinalizer(cl); err != nil {
 		klog.Errorf("failed to sync ovn fip finalizer: %v", err)
 		return err
 	}
-	if err := c.syncOvnSnatFinalizer(); err != nil {
+	if err := c.syncOvnSnatFinalizer(cl); err != nil {
 		klog.Errorf("failed to sync ovn snat finalizer: %v", err)
 		return err
 	}
-	if err := c.syncQoSPolicyFinalizer(); err != nil {
+	if err := c.syncQoSPolicyFinalizer(cl); err != nil {
 		klog.Errorf("failed to sync qos policy finalizer: %v", err)
 		return err
 	}
-	if err := c.syncSubnetFinalizer(); err != nil {
+	if err := c.syncSubnetFinalizer(cl); err != nil {
 		klog.Errorf("failed to sync subnet finalizer: %v", err)
 		return err
 	}
-	if err := c.syncVipFinalizer(); err != nil {
+	if err := c.syncVipFinalizer(cl); err != nil {
 		klog.Errorf("failed to sync vip finalizer: %v", err)
 		return err
 	}
-	if err := c.syncIptablesEipFinalizer(); err != nil {
+	if err := c.syncIptablesEipFinalizer(cl); err != nil {
 		klog.Errorf("failed to sync iptables eip finalizer: %v", err)
 		return err
 	}
-	if err := c.syncIptablesFipFinalizer(); err != nil {
+	if err := c.syncIptablesFipFinalizer(cl); err != nil {
 		klog.Errorf("failed to sync iptables fip finalizer: %v", err)
 		return err
 	}
-	if err := c.syncIptablesDnatFinalizer(); err != nil {
+	if err := c.syncIptablesDnatFinalizer(cl); err != nil {
 		klog.Errorf("failed to sync iptables dnat finalizer: %v", err)
 		return err
 	}
-	if err := c.syncIptablesSnatFinalizer(); err != nil {
+	if err := c.syncIptablesSnatFinalizer(cl); err != nil {
 		klog.Errorf("failed to sync iptables snat finalizer: %v", err)
 		return err
 	}
