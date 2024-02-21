@@ -4,7 +4,7 @@ const (
 	CniTypeName = "kube-ovn"
 
 	DepreciatedFinalizerName = "kube-ovn-controller"
-	FinalizerName            = "kubeovn.io/finalizer"
+	KubeOVNControllerFinalizer            = "kubeovn.io/kube-ovn-controller"
 
 	AllocatedAnnotation  = "ovn.kubernetes.io/allocated"
 	RoutedAnnotation     = "ovn.kubernetes.io/routed"
