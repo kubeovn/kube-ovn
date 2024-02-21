@@ -301,7 +301,7 @@ func benchmarkAllocFreeAddrParallel(b *testing.B, podNumber int, protocol string
 	im := ipam.NewIPAM()
 	subnetName, CIDR, Gw, ExcludeIPs := getDefaultSubnetParam(protocol)
 	if err := im.AddOrUpdateSubnet(subnetName, CIDR, Gw, ExcludeIPs); err != nil {
-		b.Errorf("ERROR: add subnet with %s cidr %s", protocol, CIDR)
+		b.Errorf("ERROR: add subnet with %s cidr %s: %v", protocol, CIDR, err)
 		return
 	}
 
