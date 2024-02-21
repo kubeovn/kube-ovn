@@ -160,7 +160,7 @@ var _ = framework.SerialDescribe("[group:ovn-ic]", func() {
 	})
 
 	framework.ConformanceIt("should be able to communicate between clusters", func() {
-		ginkgo.By("case 1: Pod in different clusters can be communicated ")
+		ginkgo.By("case 1: Pod in different clusters can be communicated")
 		fnCheckPodHTTP()
 
 		ginkgo.By("case 2: Delete configmap ovn-ic-config and rebuild it")
@@ -266,7 +266,7 @@ var _ = framework.SerialDescribe("[group:ovn-ic]", func() {
 		}
 		fnCheckPodHTTP()
 
-		ginkgo.By("case 4: scale ecmp path from 3 to 5 ")
+		ginkgo.By("case 4: scale ecmp path from 3 to 5")
 		switchCmd := "kubectl config use-context kind-kube-ovn"
 		_, err := exec.Command("bash", "-c", switchCmd).CombinedOutput()
 		framework.ExpectNoError(err, "switch to kube-ovn cluster failed")
@@ -280,7 +280,7 @@ var _ = framework.SerialDescribe("[group:ovn-ic]", func() {
 		}
 		fnCheckPodHTTP()
 
-		ginkgo.By("case 5: reduce ecmp path from 5 to 3 ")
+		ginkgo.By("case 5: reduce ecmp path from 5 to 3")
 		patchCmd = "kubectl patch deployment ovn-ic-server -n kube-system --type='json' -p=\"[{'op': 'replace', 'path': '/spec/template/spec/containers/0/env/1/value', 'value': '3'}]\""
 		_, _ = exec.Command("bash", "-c", patchCmd).CombinedOutput()
 		if frameworks[0].ClusterIPFamily == "dual" {

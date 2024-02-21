@@ -159,7 +159,7 @@
       ],
       "timeFrom": null,
       "timeShift": null,
-      "title": "DB Version ",
+      "title": "DB Version",
       "type": "stat"
     },
     {

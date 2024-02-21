@@ -1024,7 +1024,7 @@ func newNetworkPolicyACLMatch(pgName, asAllowName, asExceptName, protocol, direc
 				if !ok {
 					// for cyclonus network policy test case 'should allow ingress access on one named port'
 					// this case expect all-deny if no named port defined
-					klog.Errorf("no named port with name %s found ", port.Port.StrVal)
+					klog.Errorf("no named port with name %s found", port.Port.StrVal)
 				} else {
 					portID = namedPortMap[port.Port.StrVal].PortID
 				}

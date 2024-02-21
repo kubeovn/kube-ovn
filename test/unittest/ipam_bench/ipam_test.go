@@ -164,7 +164,7 @@ func BenchmarkPerformanceIPAMRandomIPv4AllocAddr(b *testing.B) {
 func addSubnetCapacity(b *testing.B, im *ipam.IPAM, protocol string) {
 	for n := 0; n < b.N; n++ {
 		if !addIPAMSubnet(b, im, n, protocol) {
-			b.Errorf("ERROR: add %s subnet with index %d ", protocol, n)
+			b.Errorf("ERROR: add %s subnet with index %d", protocol, n)
 			return
 		}
 	}
@@ -179,7 +179,7 @@ func delSubnetCapacity(b *testing.B, im *ipam.IPAM) {
 func addSerailAddrCapacity(b *testing.B, im *ipam.IPAM, protocol string) {
 	subnetName, cidr, gw, excludeIPs := getDefaultSubnetParam(protocol)
 	if err := im.AddOrUpdateSubnet(subnetName, cidr, gw, excludeIPs); err != nil {
-		b.Errorf("ERROR: add subnet with %s cidr %s err %v ", protocol, cidr, err)
+		b.Errorf("ERROR: add subnet with %s cidr %s err %v", protocol, cidr, err)
 		return
 	}
 
@@ -187,7 +187,7 @@ func addSerailAddrCapacity(b *testing.B, im *ipam.IPAM, protocol string) {
 		podName := fmt.Sprintf("pod%d", n)
 		nicName := fmt.Sprintf("nic%d", n)
 		if _, _, _, err := im.GetRandomAddress(podName, nicName, nil, subnetName, "", nil, true); err != nil {
-			b.Errorf("ERROR: allocate %s address failed with index %d with err %v ", protocol, n, err)
+			b.Errorf("ERROR: allocate %s address failed with index %d with err %v", protocol, n, err)
 			return
 		}
 	}
@@ -196,7 +196,7 @@ func addSerailAddrCapacity(b *testing.B, im *ipam.IPAM, protocol string) {
 func addRandomAddrCapacity(b *testing.B, im *ipam.IPAM, protocol string, isTimeTrace bool) {
 	subnetName, cidr, gw, excludeIPs := getDefaultSubnetParam(protocol)
 	if err := im.AddOrUpdateSubnet(subnetName, cidr, gw, excludeIPs); err != nil {
-		b.Errorf("ERROR: add subnet with %s cidr %s err %v ", protocol, cidr, err)
+		b.Errorf("ERROR: add subnet with %s cidr %s err %v", protocol, cidr, err)
 		return
 	}
 
@@ -218,7 +218,7 @@ func addRandomAddrCapacity(b *testing.B, im *ipam.IPAM, protocol string, isTimeT
 		}
 
 		if _, _, _, err := im.GetStaticAddress(podName, nicName, ip, nil, subnetName, true); err != nil {
-			b.Errorf("ERROR: allocate %s address failed with index %d with err %v ", protocol, n, err)
+			b.Errorf("ERROR: allocate %s address failed with index %d with err %v", protocol, n, err)
 			return
 		}
 	}
@@ -258,17 +258,17 @@ func addIPAMSubnet(b *testing.B, im *ipam.IPAM, index int, protocol string) bool
 	switch protocol {
 	case kubeovnv1.ProtocolIPv4:
 		if err := im.AddOrUpdateSubnet(subnetName, ipv4CIDR, v4Gw, ipv4ExcludeIPs); err != nil {
-			b.Errorf("ERROR: add subnet with ipv4 cidr %s, with index %d err %v ", ipv4CIDR, index, err)
+			b.Errorf("ERROR: add subnet with ipv4 cidr %s, with index %d err %v", ipv4CIDR, index, err)
 			return false
 		}
 	case kubeovnv1.ProtocolIPv6:
 		if err := im.AddOrUpdateSubnet(subnetName, ipv6CIDR, v6Gw, ipv6ExcludeIPs); err != nil {
-			b.Errorf("ERROR: add subnet with ipv6 cidr %s, with index %d err %v ", ipv6CIDR, index, err)
+			b.Errorf("ERROR: add subnet with ipv6 cidr %s, with index %d err %v", ipv6CIDR, index, err)
 			return false
 		}
 	case kubeovnv1.ProtocolDual:
 		if err := im.AddOrUpdateSubnet(subnetName, dualCIDR, dualGw, dualExcludeIPs); err != nil {
-			b.Errorf("ERROR: add subnet with dual cidr %s, with index %d err %v ", dualCIDR, index, err)
+			b.Errorf("ERROR: add subnet with dual cidr %s, with index %d err %v", dualCIDR, index, err)
 			return false
 		}
 	}
@@ -301,7 +301,7 @@ func benchmarkAllocFreeAddrParallel(b *testing.B, podNumber int, protocol string
 	im := ipam.NewIPAM()
 	subnetName, CIDR, Gw, ExcludeIPs := getDefaultSubnetParam(protocol)
 	if err := im.AddOrUpdateSubnet(subnetName, CIDR, Gw, ExcludeIPs); err != nil {
-		b.Errorf("ERROR: add subnet with %s cidr %s ", protocol, CIDR)
+		b.Errorf("ERROR: add subnet with %s cidr %s", protocol, CIDR)
 		return
 	}
 
@@ -314,7 +314,7 @@ func benchmarkAllocFreeAddrParallel(b *testing.B, podNumber int, protocol string
 				nicName := fmt.Sprintf("nic%d_%d", key, n)
 				if key%2 == 1 {
 					if _, _, _, err := im.GetRandomAddress(podName, nicName, nil, subnetName, "", nil, true); err != nil {
-						b.Errorf("ERROR: allocate %s address failed with index %d err %v ", protocol, n, err)
+						b.Errorf("ERROR: allocate %s address failed with index %d err %v", protocol, n, err)
 						return
 					}
 				} else {
@@ -325,7 +325,7 @@ func benchmarkAllocFreeAddrParallel(b *testing.B, podNumber int, protocol string
 					}
 
 					if _, _, _, err := im.GetStaticAddress(podName, nicName, ip, nil, subnetName, false); err != nil {
-						b.Errorf("ERROR: allocate %s address failed with index %d with err %v ", protocol, n, err)
+						b.Errorf("ERROR: allocate %s address failed with index %d with err %v", protocol, n, err)
 						return
 					}
 				}

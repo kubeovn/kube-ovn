@@ -23,12 +23,12 @@ function restore-interface() {
   CID=$(echo "$CIDWITHC" | awk -F '://' '{print $2}')
   RUNTIME=$(echo "$CIDWITHC" | awk -F '://' '{print $1}')
   if [[ $RUNTIME == "containerd" ]]; then
-    PID=$(ovs-exec "$2" "crictl inspect  --output go-template --template {{.info.pid}} $CID ")
+    PID=$(ovs-exec "$2" "crictl inspect  --output go-template --template {{.info.pid}} $CID")
     # for convenience, the label here is added as the net ns for the PID
     # in CNI request of recent version, it should be the cni-XXXX-XXXX, which chould be identified by the ip netns as:
     # $ ip netns identify PID
     PIDFILE="proc/$PID/net"
-    SANDBOXID=$(ovs-exec "$2" "crictl inspect  --output go-template --template {{.info.sandboxID}} $CID ")
+    SANDBOXID=$(ovs-exec "$2" "crictl inspect  --output go-template --template {{.info.sandboxID}} $CID")
     PODIF=${SANDBOXID: 0: 12}"_h"
   fi
   # for the docker, the inspect method could be added in HERE as else if

@@ -237,7 +237,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		}
 
 		if podSubnet.Status.U2OInterconnectionIP == "" && podSubnet.Spec.U2OInterconnection {
-			errMsg := fmt.Errorf("failed to generate u2o ip on subnet %s ", podSubnet.Name)
+			errMsg := fmt.Errorf("failed to generate u2o ip on subnet %s", podSubnet.Name)
 			klog.Error(errMsg)
 			return
 		}

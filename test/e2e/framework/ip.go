@@ -59,10 +59,10 @@ func (c *IPClient) WaitToBeReady(name string, timeout time.Duration) bool {
 	for start := time.Now(); time.Since(start) < timeout; time.Sleep(poll) {
 		ip := c.Get(name)
 		if ip.Spec.V4IPAddress != "" || ip.Spec.V6IPAddress != "" {
-			Logf("IP %s is ready ", name)
+			Logf("IP %s is ready", name)
 			return true
 		}
-		Logf("IP %s is not ready ", name)
+		Logf("IP %s is not ready", name)
 	}
 	Logf("IP %s was not ready within %v", name, timeout)
 	return false

@@ -226,7 +226,7 @@ func AnnounceArpAddress(nic, ip string, mac net.HardwareAddr, announceNum int, a
 
 	tpa, err := netip.ParseAddr(ip)
 	if err != nil {
-		klog.Errorf("failed to parse IP address %s: %v ", ip, err)
+		klog.Errorf("failed to parse IP address %s: %v", ip, err)
 		return err
 	}
 	tha := net.HardwareAddr{0, 0, 0, 0, 0, 0}

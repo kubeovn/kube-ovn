@@ -50,10 +50,10 @@ func (c *OVNNbClient) newLoadBalancerHealthCheck(lbName, vipEndpoint string, ext
 
 	// found, ignore
 	if exists {
-		klog.Infof("already exists health check with vip %s for lb %s ", vipEndpoint, lbName)
+		klog.Infof("already exists health check with vip %s for lb %s", vipEndpoint, lbName)
 		return nil, nil
 	}
-	klog.Infof("create health check for vip endpoint %s in lb %s ", vipEndpoint, lbName)
+	klog.Infof("create health check for vip endpoint %s in lb %s", vipEndpoint, lbName)
 
 	return &ovnnb.LoadBalancerHealthCheck{
 		UUID:        ovsclient.NamedUUID(),

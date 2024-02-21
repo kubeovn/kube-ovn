@@ -142,10 +142,10 @@ func (c *VpcNatGatewayClient) WaitGwPodReady(name string, timeout time.Duration,
 			framework.ExpectNoError(err, "failed to get pod %v", podName)
 		}
 		if len(pod.Annotations) != 0 && pod.Annotations[util.VpcNatGatewayInitAnnotation] == "true" {
-			Logf("natgw %s is ready ", name)
+			Logf("natgw %s is ready", name)
 			return true
 		}
-		Logf("natgw %s is not ready ", name)
+		Logf("natgw %s is not ready", name)
 	}
 	return false
 }
@@ -184,10 +184,10 @@ func (c *VpcNatGatewayClient) WaitToQoSReady(name string) bool {
 	for start := time.Now(); time.Since(start) < timeout; time.Sleep(poll) {
 		natgw := c.Get(name)
 		if natgw.Status.QoSPolicy == natgw.Spec.QoSPolicy {
-			Logf("qos %s is ready ", name)
+			Logf("qos %s is ready", name)
 			return true
 		}
-		Logf("qos %s is not ready ", name)
+		Logf("qos %s is not ready", name)
 	}
 	return false
 }
