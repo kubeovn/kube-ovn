@@ -650,12 +650,12 @@ func (c *Controller) handleAddVipFinalizer(key string) error {
 		return err
 	}
 	if cachedVip.DeletionTimestamp.IsZero() {
-		if slices.Contains(cachedVip.Finalizers, util.FinalizerName) {
+		if slices.Contains(cachedVip.Finalizers, util.KubeOVNControllerFinalizer) {
 			return nil
 		}
 	}
 	newVip := cachedVip.DeepCopy()
-	controllerutil.AddFinalizer(newVip, util.FinalizerName)
+	controllerutil.AddFinalizer(newVip, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedVip, newVip)
 	if err != nil {
 		klog.Errorf("failed to generate patch payload for ovn eip '%s', %v", cachedVip.Name, err)
@@ -685,7 +685,7 @@ func (c *Controller) handleDelVipFinalizer(key string) error {
 		return nil
 	}
 	newVip := cachedVip.DeepCopy()
-	controllerutil.RemoveFinalizer(newVip, util.FinalizerName)
+	controllerutil.RemoveFinalizer(newVip, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedVip, newVip)
 	if err != nil {
 		klog.Errorf("failed to generate patch payload for ovn eip '%s', %v", cachedVip.Name, err)
@@ -713,24 +713,18 @@ func (c *Controller) syncVipFinalizer() error {
 		return err
 	}
 	for _, cachedVip := range vips {
-		if len(cachedVip.Finalizers) == 0 {
-			continue
+		patch, err := c.ReplaceFinalizer(cachedVip)
+		if err != nil {
+			klog.Errorf("failed to sync finalizer for vip %s, %v", cachedVip.Name, err)
+			return err
 		}
-		if slices.Contains(cachedVip.Finalizers, util.DepreciatedFinalizerName) {
-			newVip := cachedVip.DeepCopy()
-			controllerutil.RemoveFinalizer(newVip, util.DepreciatedFinalizerName)
-			controllerutil.AddFinalizer(newVip, util.FinalizerName)
-			patch, err := util.GenerateMergePatchPayload(cachedVip, newVip)
-			if err != nil {
-				klog.Errorf("failed to generate patch payload for vip %s, %v", newVip.Name, err)
-				return err
-			}
-			if _, err := c.config.KubeOvnClient.KubeovnV1().Vips().Patch(context.Background(), newVip.Name,
+		if patch != nil {
+			if _, err := c.config.KubeOvnClient.KubeovnV1().Vips().Patch(context.Background(), cachedVip.Name,
 				types.MergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
 				if k8serrors.IsNotFound(err) {
 					return nil
 				}
-				klog.Errorf("failed to sync finalizer for vip %s, %v", newVip.Name, err)
+				klog.Errorf("failed to sync finalizer for vip %s, %v", cachedVip.Name, err)
 				return err
 			}
 		}

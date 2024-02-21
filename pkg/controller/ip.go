@@ -324,7 +324,7 @@ func (c *Controller) handleUpdateIP(key string) error {
 			klog.Infof("ip cr %s release ipam pod key %s from subnet %s", cachedIP.Name, podKey, cachedIP.Spec.Subnet)
 			c.ipam.ReleaseAddressByPod(podKey, cachedIP.Spec.Subnet)
 		}
-		if err = c.handleDelIPFinalizer(cachedIP, util.FinalizerName); err != nil {
+		if err = c.handleDelIPFinalizer(cachedIP, util.KubeOVNControllerFinalizer); err != nil {
 			klog.Errorf("failed to handle del ip finalizer %v", err)
 			return err
 		}
@@ -353,24 +353,18 @@ func (c *Controller) syncIPFinalizer() error {
 		return err
 	}
 	for _, cachedIP := range ips {
-		if len(cachedIP.Finalizers) == 0 {
-			continue
+		patch, err := c.ReplaceFinalizer(cachedIP)
+		if err != nil {
+			klog.Errorf("failed to sync finalizer for ip %s, %v", cachedIP.Name, err)
+			return err
 		}
-		if slices.Contains(cachedIP.Finalizers, util.DepreciatedFinalizerName) {
-			newIP := cachedIP.DeepCopy()
-			controllerutil.RemoveFinalizer(newIP, util.DepreciatedFinalizerName)
-			controllerutil.AddFinalizer(newIP, util.FinalizerName)
-			patch, err := util.GenerateMergePatchPayload(cachedIP, newIP)
-			if err != nil {
-				klog.Errorf("failed to generate patch payload for ip %s, %v", newIP.Name, err)
-				return err
-			}
-			if _, err := c.config.KubeOvnClient.KubeovnV1().IPs().Patch(context.Background(), newIP.Name,
+		if patch != nil {
+			if _, err := c.config.KubeOvnClient.KubeovnV1().IPs().Patch(context.Background(), cachedIP.Name,
 				types.MergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
 				if k8serrors.IsNotFound(err) {
 					return nil
 				}
-				klog.Errorf("failed to sync finalizer for ip %s, %v", newIP.Name, err)
+				klog.Errorf("failed to sync finalizer for ip %s, %v", cachedIP.Name, err)
 				return err
 			}
 		}
@@ -572,7 +566,7 @@ func (c *Controller) createOrUpdateIPCR(ipCRName, podName, ip, mac, subnetName, 
 		}
 	}
 
-	if err := c.handleAddIPFinalizer(ipCR, util.FinalizerName); err != nil {
+	if err := c.handleAddIPFinalizer(ipCR, util.KubeOVNControllerFinalizer); err != nil {
 		klog.Errorf("failed to handle add ip finalizer %v", err)
 		return err
 	}

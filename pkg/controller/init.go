@@ -15,6 +15,8 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
@@ -578,7 +580,7 @@ func (c *Controller) syncIPCR() error {
 
 	for _, ipCR := range ips {
 		ip := ipCR.DeepCopy()
-		if ip.DeletionTimestamp != nil && slices.Contains(ip.Finalizers, util.FinalizerName) {
+		if ip.DeletionTimestamp != nil && slices.Contains(ip.Finalizers, util.KubeOVNControllerFinalizer) {
 			klog.Infof("enqueue update for deleting ip %s", ip.Name)
 			c.updateIPQueue.Add(ip.Name)
 		}
@@ -881,4 +883,19 @@ func (c *Controller) syncFinalizers() error {
 	}
 	klog.Info("sync finalizers done")
 	return nil
+}
+
+func (c *Controller) ReplaceFinalizer(cachedObj client.Object) ([]byte, error) {
+	if slices.Contains(cachedObj.GetFinalizers(), util.DepreciatedFinalizerName) {
+		newObj := cachedObj.DeepCopyObject().(client.Object)
+		controllerutil.RemoveFinalizer(newObj, util.DepreciatedFinalizerName)
+		controllerutil.AddFinalizer(newObj, util.KubeOVNControllerFinalizer)
+		patch, err := util.GenerateMergePatchPayload(cachedObj, newObj)
+		if err != nil {
+			klog.Errorf("failed to generate patch payload for %s, %v", newObj.GetName(), err)
+			return nil, err
+		}
+		return patch, nil
+	}
+	return nil, nil
 }

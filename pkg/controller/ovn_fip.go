@@ -296,7 +296,7 @@ func (c *Controller) handleAddOvnFip(key string) error {
 		return err
 	}
 
-	if err = c.handleAddOvnFipFinalizer(cachedFip, util.FinalizerName); err != nil {
+	if err = c.handleAddOvnFipFinalizer(cachedFip, util.KubeOVNControllerFinalizer); err != nil {
 		klog.Errorf("failed to add finalizer for ovn fip, %v", err)
 		return err
 	}
@@ -463,7 +463,7 @@ func (c *Controller) handleDelOvnFip(key string) error {
 			return err
 		}
 	}
-	if err = c.handleDelOvnFipFinalizer(cachedFip, util.FinalizerName); err != nil {
+	if err = c.handleDelOvnFipFinalizer(cachedFip, util.KubeOVNControllerFinalizer); err != nil {
 		klog.Errorf("failed to remove finalizer for ovn fip %s, %v", cachedFip.Name, err)
 		return err
 	}
@@ -610,24 +610,18 @@ func (c *Controller) syncOvnFipFinalizer() error {
 		return err
 	}
 	for _, cachedFip := range fips {
-		if len(cachedFip.Finalizers) == 0 {
-			continue
+		patch, err := c.ReplaceFinalizer(cachedFip)
+		if err != nil {
+			klog.Errorf("failed to sync finalizer for fip %s, %v", cachedFip.Name, err)
+			return err
 		}
-		if slices.Contains(cachedFip.Finalizers, util.DepreciatedFinalizerName) {
-			newFip := cachedFip.DeepCopy()
-			controllerutil.RemoveFinalizer(newFip, util.DepreciatedFinalizerName)
-			controllerutil.AddFinalizer(newFip, util.FinalizerName)
-			patch, err := util.GenerateMergePatchPayload(cachedFip, newFip)
-			if err != nil {
-				klog.Errorf("failed to generate patch payload for fip %s, %v", newFip.Name, err)
-				return err
-			}
-			if _, err := c.config.KubeOvnClient.KubeovnV1().OvnFips().Patch(context.Background(), newFip.Name,
+		if patch != nil {
+			if _, err := c.config.KubeOvnClient.KubeovnV1().OvnFips().Patch(context.Background(), cachedFip.Name,
 				types.MergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
 				if k8serrors.IsNotFound(err) {
 					return nil
 				}
-				klog.Errorf("failed to sync finalizer for fip %s, %v", newFip.Name, err)
+				klog.Errorf("failed to sync finalizer for fip %s, %v", cachedFip.Name, err)
 				return err
 			}
 		}

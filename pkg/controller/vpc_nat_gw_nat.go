@@ -1055,24 +1055,18 @@ func (c *Controller) syncIptablesFipFinalizer() error {
 		return err
 	}
 	for _, cachedFip := range fips {
-		if len(cachedFip.Finalizers) == 0 {
-			continue
+		patch, err := c.ReplaceFinalizer(cachedFip)
+		if err != nil {
+			klog.Errorf("failed to sync finalizer for fip %s, %v", cachedFip.Name, err)
+			return err
 		}
-		if slices.Contains(cachedFip.Finalizers, util.DepreciatedFinalizerName) {
-			newFip := cachedFip.DeepCopy()
-			controllerutil.RemoveFinalizer(newFip, util.DepreciatedFinalizerName)
-			controllerutil.AddFinalizer(newFip, util.FinalizerName)
-			patch, err := util.GenerateMergePatchPayload(cachedFip, newFip)
-			if err != nil {
-				klog.Errorf("failed to generate patch payload for fip %s, %v", newFip.Name, err)
-				return err
-			}
-			if _, err := c.config.KubeOvnClient.KubeovnV1().IptablesFIPRules().Patch(context.Background(), newFip.Name,
+		if patch != nil {
+			if _, err := c.config.KubeOvnClient.KubeovnV1().IptablesFIPRules().Patch(context.Background(), cachedFip.Name,
 				types.MergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
 				if k8serrors.IsNotFound(err) {
 					return nil
 				}
-				klog.Errorf("failed to sync finalizer for fip %s, %v", newFip.Name, err)
+				klog.Errorf("failed to sync finalizer for fip %s, %v", cachedFip.Name, err)
 				return err
 			}
 		}
@@ -1090,12 +1084,12 @@ func (c *Controller) handleAddIptablesFipFinalizer(key string) error {
 		return err
 	}
 	if cachedIptablesFip.DeletionTimestamp.IsZero() {
-		if slices.Contains(cachedIptablesFip.Finalizers, util.FinalizerName) {
+		if slices.Contains(cachedIptablesFip.Finalizers, util.KubeOVNControllerFinalizer) {
 			return nil
 		}
 	}
 	newIptablesFip := cachedIptablesFip.DeepCopy()
-	controllerutil.AddFinalizer(newIptablesFip, util.FinalizerName)
+	controllerutil.AddFinalizer(newIptablesFip, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedIptablesFip, newIptablesFip)
 	if err != nil {
 		klog.Errorf("failed to generate patch payload for iptables fip '%s', %v", cachedIptablesFip.Name, err)
@@ -1125,7 +1119,7 @@ func (c *Controller) handleDelIptablesFipFinalizer(key string) error {
 		return nil
 	}
 	newIptablesFip := cachedIptablesFip.DeepCopy()
-	controllerutil.RemoveFinalizer(newIptablesFip, util.FinalizerName)
+	controllerutil.RemoveFinalizer(newIptablesFip, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedIptablesFip, newIptablesFip)
 	if err != nil {
 		klog.Errorf("failed to generate patch payload for iptables fip '%s', %v", cachedIptablesFip.Name, err)
@@ -1153,24 +1147,18 @@ func (c *Controller) syncIptablesDnatFinalizer() error {
 		return err
 	}
 	for _, cachedDnat := range dnats {
-		if len(cachedDnat.Finalizers) == 0 {
-			continue
+		patch, err := c.ReplaceFinalizer(cachedDnat)
+		if err != nil {
+			klog.Errorf("failed to sync finalizer for dnat %s, %v", cachedDnat.Name, err)
+			return err
 		}
-		if slices.Contains(cachedDnat.Finalizers, util.DepreciatedFinalizerName) {
-			newDnat := cachedDnat.DeepCopy()
-			controllerutil.RemoveFinalizer(newDnat, util.DepreciatedFinalizerName)
-			controllerutil.AddFinalizer(newDnat, util.FinalizerName)
-			patch, err := util.GenerateMergePatchPayload(cachedDnat, newDnat)
-			if err != nil {
-				klog.Errorf("failed to generate patch payload for dnat %s, %v", newDnat.Name, err)
-				return err
-			}
-			if _, err := c.config.KubeOvnClient.KubeovnV1().IptablesDnatRules().Patch(context.Background(), newDnat.Name,
+		if patch != nil {
+			if _, err := c.config.KubeOvnClient.KubeovnV1().IptablesDnatRules().Patch(context.Background(), cachedDnat.Name,
 				types.MergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
 				if k8serrors.IsNotFound(err) {
 					return nil
 				}
-				klog.Errorf("failed to sync finalizer for dnat %s, %v", newDnat.Name, err)
+				klog.Errorf("failed to sync finalizer for dnat %s, %v", cachedDnat.Name, err)
 				return err
 			}
 		}
@@ -1188,12 +1176,12 @@ func (c *Controller) handleAddIptablesDnatFinalizer(key string) error {
 		return err
 	}
 	if cachedIptablesDnat.DeletionTimestamp.IsZero() {
-		if slices.Contains(cachedIptablesDnat.Finalizers, util.FinalizerName) {
+		if slices.Contains(cachedIptablesDnat.Finalizers, util.KubeOVNControllerFinalizer) {
 			return nil
 		}
 	}
 	newIptablesDnat := cachedIptablesDnat.DeepCopy()
-	controllerutil.AddFinalizer(newIptablesDnat, util.FinalizerName)
+	controllerutil.AddFinalizer(newIptablesDnat, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedIptablesDnat, newIptablesDnat)
 	if err != nil {
 		klog.Errorf("failed to generate patch payload for iptables dnat '%s', %v", cachedIptablesDnat.Name, err)
@@ -1223,7 +1211,7 @@ func (c *Controller) handleDelIptablesDnatFinalizer(key string) error {
 		return nil
 	}
 	newIptablesDnat := cachedIptablesDnat.DeepCopy()
-	controllerutil.RemoveFinalizer(newIptablesDnat, util.FinalizerName)
+	controllerutil.RemoveFinalizer(newIptablesDnat, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedIptablesDnat, newIptablesDnat)
 	if err != nil {
 		klog.Errorf("failed to generate patch payload for iptables dnat '%s', %v", cachedIptablesDnat.Name, err)
@@ -1302,24 +1290,18 @@ func (c *Controller) syncIptablesSnatFinalizer() error {
 		return err
 	}
 	for _, cachedSnat := range snats {
-		if len(cachedSnat.Finalizers) == 0 {
-			continue
+		patch, err := c.ReplaceFinalizer(cachedSnat)
+		if err != nil {
+			klog.Errorf("failed to sync finalizer for snat %s, %v", cachedSnat.Name, err)
+			return err
 		}
-		if slices.Contains(cachedSnat.Finalizers, util.DepreciatedFinalizerName) {
-			newSnat := cachedSnat.DeepCopy()
-			controllerutil.RemoveFinalizer(newSnat, util.DepreciatedFinalizerName)
-			controllerutil.AddFinalizer(newSnat, util.FinalizerName)
-			patch, err := util.GenerateMergePatchPayload(cachedSnat, newSnat)
-			if err != nil {
-				klog.Errorf("failed to generate patch payload for dnat %s, %v", newSnat.Name, err)
-				return err
-			}
-			if _, err := c.config.KubeOvnClient.KubeovnV1().IptablesSnatRules().Patch(context.Background(), newSnat.Name,
+		if patch != nil {
+			if _, err := c.config.KubeOvnClient.KubeovnV1().IptablesSnatRules().Patch(context.Background(), cachedSnat.Name,
 				types.MergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
 				if k8serrors.IsNotFound(err) {
 					return nil
 				}
-				klog.Errorf("failed to sync finalizer for dnat %s, %v", newSnat.Name, err)
+				klog.Errorf("failed to sync finalizer for dnat %s, %v", cachedSnat.Name, err)
 				return err
 			}
 		}
@@ -1337,12 +1319,12 @@ func (c *Controller) handleAddIptablesSnatFinalizer(key string) error {
 		return err
 	}
 	if cachedIptablesSnat.DeletionTimestamp.IsZero() {
-		if slices.Contains(cachedIptablesSnat.Finalizers, util.FinalizerName) {
+		if slices.Contains(cachedIptablesSnat.Finalizers, util.KubeOVNControllerFinalizer) {
 			return nil
 		}
 	}
 	newIptablesSnat := cachedIptablesSnat.DeepCopy()
-	controllerutil.AddFinalizer(newIptablesSnat, util.FinalizerName)
+	controllerutil.AddFinalizer(newIptablesSnat, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedIptablesSnat, newIptablesSnat)
 	if err != nil {
 		klog.Errorf("failed to generate patch payload for iptables snat '%s', %v", cachedIptablesSnat.Name, err)
@@ -1372,7 +1354,7 @@ func (c *Controller) handleDelIptablesSnatFinalizer(key string) error {
 		return nil
 	}
 	newIptablesSnat := cachedIptablesSnat.DeepCopy()
-	controllerutil.RemoveFinalizer(newIptablesSnat, util.FinalizerName)
+	controllerutil.RemoveFinalizer(newIptablesSnat, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedIptablesSnat, newIptablesSnat)
 	if err != nil {
 		klog.Errorf("failed to generate patch payload for iptables snat '%s', %v", cachedIptablesSnat.Name, err)

@@ -258,7 +258,7 @@ func (c *Controller) handleAddOvnSnatRule(key string) error {
 		klog.Errorf("failed to create snat, %v", err)
 		return err
 	}
-	if err := c.handleAddOvnSnatFinalizer(cachedSnat, util.FinalizerName); err != nil {
+	if err := c.handleAddOvnSnatFinalizer(cachedSnat, util.KubeOVNControllerFinalizer); err != nil {
 		klog.Errorf("failed to add finalizer for ovn snat %s, %v", cachedSnat.Name, err)
 		return err
 	}
@@ -420,7 +420,7 @@ func (c *Controller) handleDelOvnSnatRule(key string) error {
 			return err
 		}
 	}
-	if err = c.handleDelOvnSnatFinalizer(cachedSnat, util.FinalizerName); err != nil {
+	if err = c.handleDelOvnSnatFinalizer(cachedSnat, util.KubeOVNControllerFinalizer); err != nil {
 		klog.Errorf("failed to remove finalizer for ovn snat %s, %v", cachedSnat.Name, err)
 		return err
 	}
@@ -554,24 +554,18 @@ func (c *Controller) syncOvnSnatFinalizer() error {
 		return err
 	}
 	for _, cachedSnat := range snats {
-		if len(cachedSnat.Finalizers) == 0 {
-			continue
+		patch, err := c.ReplaceFinalizer(cachedSnat)
+		if err != nil {
+			klog.Errorf("failed to sync finalizer for snat %s, %v", cachedSnat.Name, err)
+			return err
 		}
-		if slices.Contains(cachedSnat.Finalizers, util.DepreciatedFinalizerName) {
-			newSnat := cachedSnat.DeepCopy()
-			controllerutil.RemoveFinalizer(newSnat, util.DepreciatedFinalizerName)
-			controllerutil.AddFinalizer(newSnat, util.FinalizerName)
-			patch, err := util.GenerateMergePatchPayload(cachedSnat, newSnat)
-			if err != nil {
-				klog.Errorf("failed to generate patch payload for snat %s, %v", newSnat.Name, err)
-				return err
-			}
-			if _, err := c.config.KubeOvnClient.KubeovnV1().OvnSnatRules().Patch(context.Background(), newSnat.Name,
+		if patch != nil {
+			if _, err := c.config.KubeOvnClient.KubeovnV1().OvnSnatRules().Patch(context.Background(), cachedSnat.Name,
 				types.MergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
 				if k8serrors.IsNotFound(err) {
 					return nil
 				}
-				klog.Errorf("failed to sync finalizer for snat %s, %v", newSnat.Name, err)
+				klog.Errorf("failed to sync finalizer for snat %s, %v", cachedSnat.Name, err)
 				return err
 			}
 		}

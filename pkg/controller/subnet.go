@@ -20,7 +20,6 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ipam"
@@ -491,24 +490,18 @@ func (c *Controller) syncSubnetFinalizer() error {
 		return err
 	}
 	for _, cachedSubnet := range subnets {
-		if len(cachedSubnet.Finalizers) == 0 {
-			continue
+		patch, err := c.ReplaceFinalizer(cachedSubnet)
+		if err != nil {
+			klog.Errorf("failed to sync finalizer for subnet %s, %v", cachedSubnet.Name, err)
+			return err
 		}
-		if slices.Contains(cachedSubnet.Finalizers, util.DepreciatedFinalizerName) {
-			newSubnet := cachedSubnet.DeepCopy()
-			controllerutil.RemoveFinalizer(newSubnet, util.DepreciatedFinalizerName)
-			controllerutil.AddFinalizer(newSubnet, util.FinalizerName)
-			patch, err := util.GenerateMergePatchPayload(cachedSubnet, newSubnet)
-			if err != nil {
-				klog.Errorf("failed to generate patch payload for subnet %s, %v", newSubnet.Name, err)
-				return err
-			}
-			if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(context.Background(), newSubnet.Name,
+		if patch != nil {
+			if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(context.Background(), cachedSubnet.Name,
 				types.MergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
 				if k8serrors.IsNotFound(err) {
 					return nil
 				}
-				klog.Errorf("failed to sync finalizer for subnet %s, %v", newSubnet.Name, err)
+				klog.Errorf("failed to sync finalizer for subnet %s, %v", cachedSubnet.Name, err)
 				return err
 			}
 		}
@@ -517,9 +510,9 @@ func (c *Controller) syncSubnetFinalizer() error {
 }
 
 func (c *Controller) handleSubnetFinalizer(subnet *kubeovnv1.Subnet) (bool, error) {
-	if subnet.DeletionTimestamp.IsZero() && !slices.Contains(subnet.Finalizers, util.FinalizerName) {
+	if subnet.DeletionTimestamp.IsZero() && !slices.Contains(subnet.Finalizers, util.KubeOVNControllerFinalizer) {
 		newSubnet := subnet.DeepCopy()
-		newSubnet.Finalizers = append(newSubnet.Finalizers, util.FinalizerName)
+		newSubnet.Finalizers = append(newSubnet.Finalizers, util.KubeOVNControllerFinalizer)
 		patch, err := util.GenerateMergePatchPayload(subnet, newSubnet)
 		if err != nil {
 			klog.Errorf("failed to generate patch payload for subnet '%s', %v", subnet.Name, err)
@@ -543,7 +536,7 @@ func (c *Controller) handleSubnetFinalizer(subnet *kubeovnv1.Subnet) (bool, erro
 	u2oInterconnIP := subnet.Status.U2OInterconnectionIP
 	if !subnet.DeletionTimestamp.IsZero() && (usingIPs == 0 || (usingIPs == 1 && u2oInterconnIP != "")) {
 		newSubnet := subnet.DeepCopy()
-		newSubnet.Finalizers = util.RemoveString(newSubnet.Finalizers, util.FinalizerName)
+		newSubnet.Finalizers = util.RemoveString(newSubnet.Finalizers, util.KubeOVNControllerFinalizer)
 		patch, err := util.GenerateMergePatchPayload(subnet, newSubnet)
 		if err != nil {
 			klog.Errorf("failed to generate patch payload for subnet '%s', %v", subnet.Name, err)

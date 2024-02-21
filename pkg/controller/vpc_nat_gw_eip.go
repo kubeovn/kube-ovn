@@ -761,24 +761,18 @@ func (c *Controller) syncIptablesEipFinalizer() error {
 		return err
 	}
 	for _, cachedEip := range eips {
-		if len(cachedEip.Finalizers) == 0 {
-			continue
+		patch, err := c.ReplaceFinalizer(cachedEip)
+		if err != nil {
+			klog.Errorf("failed to sync finalizer for eip %s, %v", cachedEip.Name, err)
+			return err
 		}
-		if slices.Contains(cachedEip.Finalizers, util.DepreciatedFinalizerName) {
-			newEip := cachedEip.DeepCopy()
-			controllerutil.RemoveFinalizer(newEip, util.DepreciatedFinalizerName)
-			controllerutil.AddFinalizer(newEip, util.FinalizerName)
-			patch, err := util.GenerateMergePatchPayload(cachedEip, newEip)
-			if err != nil {
-				klog.Errorf("failed to generate patch payload for eip %s, %v", newEip.Name, err)
-				return err
-			}
-			if _, err := c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().Patch(context.Background(), newEip.Name,
+		if patch != nil {
+			if _, err := c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().Patch(context.Background(), cachedEip.Name,
 				types.MergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
 				if k8serrors.IsNotFound(err) {
 					return nil
 				}
-				klog.Errorf("failed to sync finalizer for eip %s, %v", newEip.Name, err)
+				klog.Errorf("failed to sync finalizer for eip %s, %v", cachedEip.Name, err)
 				return err
 			}
 		}
@@ -796,12 +790,12 @@ func (c *Controller) handleAddIptablesEipFinalizer(key string) error {
 		return err
 	}
 	if cachedIptablesEip.DeletionTimestamp.IsZero() {
-		if slices.Contains(cachedIptablesEip.Finalizers, util.FinalizerName) {
+		if slices.Contains(cachedIptablesEip.Finalizers, util.KubeOVNControllerFinalizer) {
 			return nil
 		}
 	}
 	newIptablesEip := cachedIptablesEip.DeepCopy()
-	controllerutil.AddFinalizer(newIptablesEip, util.FinalizerName)
+	controllerutil.AddFinalizer(newIptablesEip, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedIptablesEip, newIptablesEip)
 	if err != nil {
 		klog.Errorf("failed to generate patch payload for iptables eip '%s', %v", cachedIptablesEip.Name, err)
@@ -831,7 +825,7 @@ func (c *Controller) handleDelIptablesEipFinalizer(key string) error {
 		return nil
 	}
 	newIptablesEip := cachedIptablesEip.DeepCopy()
-	controllerutil.RemoveFinalizer(newIptablesEip, util.FinalizerName)
+	controllerutil.RemoveFinalizer(newIptablesEip, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedIptablesEip, newIptablesEip)
 	if err != nil {
 		klog.Errorf("failed to generate patch payload for iptables eip '%s', %v", cachedIptablesEip.Name, err)
