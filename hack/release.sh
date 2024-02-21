@@ -31,10 +31,12 @@ docker manifest push kubeovn/vpc-nat-gateway:${VERSION}
 echo "modify tag in install.sh and values.yaml"
 sed -i '/^VERSION=/c\VERSION="'"${VERSION}"'"' dist/images/install.sh
 sed -i 's/tag:\ .*/tag:\ '"${VERSION}"'/' charts/kube-ovn/values.yaml
+sed -i 's/version:\ .*/version:\ '"${VERSION}"'/' charts/kube-ovn/Chart.yaml
 
 echo "commit, tag and push"
 git add dist/images/install.sh
 git add charts/kube-ovn/values.yaml
+git add charts/kube-ovn/Chart.yaml
 git commit -m "release ${VERSION}"
 git tag ${VERSION}
 git push
