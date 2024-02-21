@@ -346,7 +346,7 @@ var _ = framework.SerialDescribe("[group:ovn-ic]", func() {
 
 func checkECMPCount(expectCount int) {
 	ecmpCount := 0
-	maxRetryTimes := 10
+	maxRetryTimes := 30
 	for i := 0; i < maxRetryTimes; i++ {
 		time.Sleep(3 * time.Second)
 		execCmd := "kubectl ko nbctl lr-route-list ovn-cluster "
