@@ -1,5 +1,6 @@
 #!/bin/bash
 set -euo pipefail
+# run hack/release.sh from the project root directory to publish the release
 
 echo "check status of last commit build"
 commit=$(git rev-parse HEAD)
@@ -48,5 +49,8 @@ git push
 
 echo "draft a release"
 gh release create $VERSION --draft
+
+echo "trigger action to build new base"
+gh workflow run build-kube-ovn-base.yaml --ref $(git branch --show-current)
 
 echo "Need to modify the doc version number manually"
