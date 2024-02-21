@@ -203,6 +203,7 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 
 			if !ignoreHealthCheck {
 				if checkIP, err = c.getHealthCheckVip(vpcName, subnetName, lbVip); err != nil {
+					klog.Error(err)
 					return err
 				}
 

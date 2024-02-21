@@ -125,6 +125,7 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 		}
 
 		if err = ovs.SetInterfaceBandwidth(podName, podNamespace, ifaceID, egress, ingress); err != nil {
+			klog.Error(err)
 			return err
 		}
 
@@ -207,11 +208,13 @@ func configureNic(name, ip string, mac net.HardwareAddr, mtu int) error {
 
 	for addr := range addrToDel {
 		if err = util.RemoveNetIPAddress(adapter.InterfaceIndex, addr); err != nil {
+			klog.Error(err)
 			return err
 		}
 	}
 	for addr := range addrToAdd {
 		if err = util.NewNetIPAddress(adapter.InterfaceIndex, addr); err != nil {
+			klog.Error(err)
 			return err
 		}
 	}
@@ -244,6 +247,7 @@ func waitNetworkReady(nic, ipAddr, gateway string, underlayGateway, verbose bool
 		if !underlayGateway || util.CheckProtocol(gw) == kubeovnv1.ProtocolIPv6 {
 			_, err := pingGateway(gw, src, verbose, maxRetry)
 			if err != nil {
+				klog.Error(err)
 				return err
 			}
 		}
@@ -263,6 +267,7 @@ func configureNodeNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu int
 	}
 
 	if err = configureNic(util.NodeNic, ip, macAddr, mtu); err != nil {
+		klog.Error(err)
 		return err
 	}
 

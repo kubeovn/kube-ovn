@@ -201,6 +201,7 @@ func (c *Controller) isOvnDnatDuplicated(eipName, dnatName, externalPort string)
 		for _, d := range dnats {
 			if d.Name != dnatName && d.Spec.OvnEip == eipName {
 				err = fmt.Errorf("failed to create dnat %s, duplicate, same eip %s, same external port '%s' is using by dnat %s", dnatName, eipName, externalPort, d.Name)
+				klog.Error(err)
 				return err
 			}
 		}

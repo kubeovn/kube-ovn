@@ -710,6 +710,7 @@ func (c *Controller) handleAddIptablesDnatRule(key string) error {
 		return err
 	}
 	if dup, err := c.isDnatDuplicated(eip.Spec.NatGwDp, eipName, dnat.Name, dnat.Spec.ExternalPort); dup || err != nil {
+		klog.Error(err)
 		return err
 	}
 	// create nat
@@ -1196,6 +1197,7 @@ func (c *Controller) patchFipLabel(key string, eip *kubeovnv1.IptablesEIP) error
 	}
 	if needUpdateLabel {
 		if err := c.updateIptableLabels(fip.Name, op, util.FipUsingEip, fip.Labels); err != nil {
+			klog.Error(err)
 			return err
 		}
 	}
@@ -1213,6 +1215,7 @@ func (c *Controller) patchFipLabel(key string, eip *kubeovnv1.IptablesEIP) error
 	}
 	if needUpdateAnno {
 		if err := c.updateIptableAnnotations(fip.Name, op, util.FipUsingEip, fip.Annotations); err != nil {
+			klog.Error(err)
 			return err
 		}
 	}
@@ -1391,6 +1394,7 @@ func (c *Controller) patchDnatLabel(key string, eip *kubeovnv1.IptablesEIP) erro
 	}
 	if needUpdateLabel {
 		if err := c.updateIptableLabels(dnat.Name, op, util.DnatUsingEip, dnat.Labels); err != nil {
+			klog.Error(err)
 			return err
 		}
 	}
@@ -1408,6 +1412,7 @@ func (c *Controller) patchDnatLabel(key string, eip *kubeovnv1.IptablesEIP) erro
 	}
 	if needUpdateAnno {
 		if err := c.updateIptableAnnotations(dnat.Name, op, util.DnatUsingEip, dnat.Annotations); err != nil {
+			klog.Error(err)
 			return err
 		}
 	}
@@ -1546,6 +1551,7 @@ func (c *Controller) patchSnatLabel(key string, eip *kubeovnv1.IptablesEIP) erro
 	}
 	if needUpdateAnno {
 		if err := c.updateIptableAnnotations(snat.Name, op, util.SnatUsingEip, snat.Annotations); err != nil {
+			klog.Error(err)
 			return err
 		}
 	}

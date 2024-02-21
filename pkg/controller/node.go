@@ -491,6 +491,7 @@ func (c *Controller) handleDeleteNode(key string) error {
 	afs := []int{4, 6}
 	for _, af := range afs {
 		if err := c.deletePolicyRouteForLocalDNSCacheOnNode(key, af); err != nil {
+			klog.Error(err)
 			return err
 		}
 	}
@@ -537,6 +538,7 @@ func (c *Controller) handleDeleteNode(key string) error {
 
 	for _, pn := range providerNetworks {
 		if err = c.updateProviderNetworkForNodeDeletion(pn, key); err != nil {
+			klog.Error(err)
 			return err
 		}
 	}
@@ -636,6 +638,7 @@ func (c *Controller) handleUpdateNode(key string) error {
 		subnet := cachedSubnet.DeepCopy()
 		if util.GatewayContains(subnet.Spec.GatewayNode, node.Name) {
 			if err := c.reconcileOvnDefaultVpcRoute(subnet); err != nil {
+				klog.Error(err)
 				return err
 			}
 		}

@@ -208,6 +208,7 @@ func (c *Controller) handleAddVirtualIP(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	if cachedVip.Status.Mac != "" {
@@ -325,10 +326,12 @@ func (c *Controller) handleUpdateVirtualIP(key string) error {
 		if err = c.createOrUpdateVipCR(key, vip.Spec.Namespace, vip.Spec.Subnet,
 			vip.Spec.V4ip, vip.Spec.V6ip, vip.Spec.MacAddress,
 			vip.Spec.ParentV4ip, vip.Spec.ParentV6ip, vip.Spec.MacAddress); err != nil {
+			klog.Error(err)
 			return err
 		}
 		ready := true
 		if err = c.patchVipStatus(key, vip.Spec.V4ip, ready); err != nil {
+			klog.Error(err)
 			return err
 		}
 		if err = c.handleAddVipFinalizer(key); err != nil {
@@ -372,6 +375,7 @@ func (c *Controller) handleUpdateVirtualParents(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	// only pods in the same namespace as vip are allowed to use aap
@@ -403,9 +407,7 @@ func (c *Controller) handleUpdateVirtualParents(key string) error {
 	var virtualParents []string
 	for _, pod := range pods {
 		if pod.Annotations == nil {
-			err = fmt.Errorf("pod annotations have not been initialized")
-			klog.Error(err)
-			return err
+			continue
 		}
 		if aaps := strings.Split(pod.Annotations[util.AAPsAnnotation], ","); !slices.Contains(aaps, cachedVip.Name) {
 			continue

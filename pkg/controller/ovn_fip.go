@@ -328,6 +328,7 @@ func (c *Controller) handleUpdateOvnFip(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	klog.Infof("handle update fip %s", key)

@@ -52,7 +52,6 @@ func (c *Controller) deleteVpcLb(vpc *kubeovnv1.Vpc) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
-
 		klog.Errorf("failed to check LB deployment for VPC %s: %v", vpc.Name, err)
 		return err
 	}
