@@ -819,7 +819,7 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		}
 	} else {
 		if err := c.OVNNbClient.LogicalSwitchUpdateOtherConfig(subnet.Name, ovsdb.MutateOperationDelete, multicastSnoopFlag); err != nil {
-			klog.Errorf("disable logical switch multicast snoop  %s: %v", subnet.Name, err)
+			klog.Errorf("disable logical switch multicast snoop %s: %v", subnet.Name, err)
 			return err
 		}
 	}
