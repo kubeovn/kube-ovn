@@ -27,7 +27,7 @@ require (
 	github.com/onsi/gomega v1.31.1
 	github.com/osrg/gobgp/v3 v3.23.0
 	github.com/ovn-org/libovsdb v0.0.0-20230711201130-6785b52d4020
-	github.com/parnurzeal/gorequest v0.2.16
+	github.com/parnurzeal/gorequest v0.3.0
 	github.com/prometheus-community/pro-bing v0.3.0
 	github.com/prometheus/client_golang v1.18.0
 	github.com/scylladb/go-set v1.0.2
@@ -172,6 +172,7 @@ require (
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/mohae/deepcopy v0.0.0-20170929034955-c48cc78d4826 // indirect
 	github.com/monochromegane/go-gitignore v0.0.0-20200626010858-205db1a8cc00 // indirect
+	github.com/moul/http2curl v1.0.0 // indirect
 	github.com/mrunalp/fileutils v0.5.1 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/mxk/go-flowrate v0.0.0-20140419014527-cca7078d478f // indirect
@@ -270,7 +271,6 @@ require (
 	kubevirt.io/api v1.1.1 // indirect
 	kubevirt.io/containerized-data-importer-api v1.58.1 // indirect
 	kubevirt.io/controller-lifecycle-operator-sdk/api v0.0.0-20220329064328-f3cc58c6ed90 // indirect
-	moul.io/http2curl v1.0.0 // indirect
 	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.29.0 // indirect
 	sigs.k8s.io/json v0.0.0-20221116044647-bc3834ca7abd // indirect
 	sigs.k8s.io/kustomize/api v0.16.0 // indirect
