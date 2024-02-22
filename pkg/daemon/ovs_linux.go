@@ -129,13 +129,16 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 		return fmt.Errorf("failed to parse mac %s %v", macAddr, err)
 	}
 	if err = configureHostNic(hostNicName); err != nil {
+		klog.Error(err)
 		return err
 	}
 	if err = ovs.SetInterfaceBandwidth(podName, podNamespace, ifaceID, egress, ingress); err != nil {
+		klog.Error(err)
 		return err
 	}
 
 	if err = ovs.SetNetemQos(podName, podNamespace, ifaceID, latency, limit, loss, jitter); err != nil {
+		klog.Error(err)
 		return err
 	}
 
@@ -144,11 +147,13 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 	}
 	isUserspaceDP, err := ovs.IsUserspaceDataPath()
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 	if isUserspaceDP {
 		// turn off tx checksum
 		if err = turnOffNicTxChecksum(containerNicName); err != nil {
+			klog.Error(err)
 			return err
 		}
 	}
@@ -235,9 +240,11 @@ func (csh cniServerHandler) deleteNic(podName, podNamespace, containerID, netns,
 	}
 
 	if err = ovs.ClearPodBandwidth(podName, podNamespace, ""); err != nil {
+		klog.Error(err)
 		return err
 	}
 	if err = ovs.ClearHtbQosQueue(podName, podNamespace, ""); err != nil {
+		klog.Error(err)
 		return err
 	}
 
@@ -267,6 +274,7 @@ func (csh cniServerHandler) deleteNic(podName, podNamespace, containerID, netns,
 			return err
 		}
 		if err = setVfMac(deviceID, vfIndex, "00:00:00:00:00:00"); err != nil {
+			klog.Error(err)
 			return err
 		}
 	}
@@ -322,6 +330,7 @@ func configureContainerNic(nicName, ifName, ipAddr, gateway string, isDefaultRou
 	return ns.WithNetNSPath(netns.Path(), func(_ ns.NetNS) error {
 		if nicType != util.InternalType {
 			if err = netlink.LinkSetName(containerLink, ifName); err != nil {
+				klog.Error(err)
 				return err
 			}
 		}
@@ -343,16 +352,20 @@ func configureContainerNic(nicName, ifName, ipAddr, gateway string, isDefaultRou
 
 		if nicType == util.InternalType {
 			if err = addAdditionalNic(ifName); err != nil {
+				klog.Error(err)
 				return err
 			}
 			if err = configureAdditionalNic(ifName, ipAddr); err != nil {
+				klog.Error(err)
 				return err
 			}
 			if err = configureNic(nicName, ipAddr, macAddr, mtu, detectIPConflict); err != nil {
+				klog.Error(err)
 				return err
 			}
 		} else {
 			if err = configureNic(ifName, ipAddr, macAddr, mtu, detectIPConflict); err != nil {
+				klog.Error(err)
 				return err
 			}
 		}
@@ -414,6 +427,7 @@ func configureContainerNic(nicName, ifName, ipAddr, gateway string, isDefaultRou
 
 			if u2oInterconnectionIP != "" {
 				if err := checkGatewayReady(gwCheckMode, interfaceName, ipAddr, u2oInterconnectionIP, false, true); err != nil {
+					klog.Error(err)
 					return err
 				}
 			}
@@ -457,6 +471,7 @@ func waitNetworkReady(nic, ipAddr, gateway string, underlayGateway, verbose bool
 		} else {
 			_, err := pingGateway(gw, src, verbose, maxRetry)
 			if err != nil {
+				klog.Error(err)
 				return err
 			}
 		}
@@ -485,6 +500,7 @@ func configureNodeNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu int
 	}
 
 	if err = configureNic(util.NodeNic, ip, macAddr, mtu, false); err != nil {
+		klog.Error(err)
 		return err
 	}
 
@@ -1407,13 +1423,16 @@ func setupSriovInterface(containerID, deviceID, vfDriver, ifName string, mtu int
 func renameLink(curName, newName string) error {
 	link, err := netlink.LinkByName(curName)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 
 	if err := netlink.LinkSetDown(link); err != nil {
+		klog.Error(err)
 		return err
 	}
 	if err := netlink.LinkSetName(link, newName); err != nil {
+		klog.Error(err)
 		return err
 	}
 	return netlink.LinkSetUp(link)

@@ -45,6 +45,7 @@ func createShortSharedDir(pod *v1.Pod, volumeName, socketConsumption, kubeletDir
 		if os.IsNotExist(err) {
 			err = os.MkdirAll(newSharedDir, 0o777)
 			if err != nil {
+				klog.Error(err)
 				return fmt.Errorf("createSharedDir: Failed to create dir (%s): %v", newSharedDir, err)
 			}
 
@@ -57,6 +58,7 @@ func createShortSharedDir(pod *v1.Pod, volumeName, socketConsumption, kubeletDir
 			}
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 

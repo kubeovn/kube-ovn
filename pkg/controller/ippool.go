@@ -162,6 +162,7 @@ func (c *Controller) handleAddOrUpdateIPPool(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	klog.Infof("handle add/update ippool %s", cachedIPPool.Name)
@@ -232,6 +233,7 @@ func (c *Controller) handleUpdateIPPoolStatus(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 

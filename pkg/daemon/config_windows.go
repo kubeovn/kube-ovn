@@ -60,6 +60,7 @@ func (config *Configuration) initRuntimeConfig(node *corev1.Node) error {
 
 		// create hns network
 		if err = config.createHnsNetwork(util.HnsNetwork, config.Iface, util.CheckProtocol(nodeIP)); err != nil {
+			klog.Error(err)
 			return err
 		}
 
@@ -70,11 +71,13 @@ func (config *Configuration) initRuntimeConfig(node *corev1.Node) error {
 			`Rename-NetAdapter -name "vEthernet (br-provider)" -NewName br-provider;`,
 		}
 		if _, err = util.Powershell(strings.Join(commands[:], " ")); err != nil {
+			klog.Error(err)
 			return err
 		}
 	}
 
 	if _, err = util.Powershell(fmt.Sprintf(`Enable-VMSwitchExtension "Open vSwitch Extension" "%s"`, util.HnsNetwork)); err != nil {
+		klog.Error(err)
 		return err
 	}
 

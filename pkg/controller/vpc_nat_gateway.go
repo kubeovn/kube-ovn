@@ -208,6 +208,7 @@ func (c *Controller) handleDelVpcNatGw(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	return nil
@@ -653,6 +654,7 @@ func (c *Controller) handleUpdateNatGwSubnetRoute(natGwKey string) error {
 	}
 	if cidrs, ok := pod.Annotations[util.VpcCIDRsAnnotation]; ok {
 		if err = json.Unmarshal([]byte(cidrs), &oldCIDRs); err != nil {
+			klog.Error(err)
 			return err
 		}
 	}

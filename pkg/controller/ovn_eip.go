@@ -381,6 +381,7 @@ func (c *Controller) createOrUpdateOvnEipCR(key, subnet, v4ip, v6ip, mac, usage 
 			// wait local cache ready
 			time.Sleep(1 * time.Second)
 		} else {
+			klog.Error(err)
 			return err
 		}
 	} else {

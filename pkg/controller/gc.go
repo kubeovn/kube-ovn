@@ -42,6 +42,7 @@ func (c *Controller) gc() error {
 	}
 	for _, gcFunc := range gcFunctions {
 		if err := gcFunc(); err != nil {
+			klog.Error(err)
 			return err
 		}
 	}
@@ -272,6 +273,7 @@ func (c *Controller) gcVip() error {
 					}
 					return nil
 				}
+				klog.Error(err)
 				return err
 			}
 		}
@@ -427,6 +429,7 @@ func (c *Controller) gcLoadBalancer() error {
 				}
 				lbs := []string{vpc.Status.TCPLoadBalancer, vpc.Status.TCPSessionLoadBalancer, vpc.Status.UDPLoadBalancer, vpc.Status.UDPSessionLoadBalancer, vpc.Status.SctpLoadBalancer, vpc.Status.SctpSessionLoadBalancer}
 				if err := c.OVNNbClient.LogicalSwitchUpdateLoadBalancers(subnetName, ovsdb.MutateOperationDelete, lbs...); err != nil {
+					klog.Error(err)
 					return err
 				}
 			}
@@ -565,21 +568,27 @@ func (c *Controller) gcLoadBalancer() error {
 
 		vpcLbs = append(vpcLbs, tcpLb, udpLb, sctpLb, tcpSessLb, udpSessLb, sctpSessLb)
 		if err = removeVip(tcpLb, tcpVips); err != nil {
+			klog.Error(err)
 			return err
 		}
 		if err = removeVip(tcpSessLb, tcpSessionVips); err != nil {
+			klog.Error(err)
 			return err
 		}
 		if err = removeVip(udpLb, udpVips); err != nil {
+			klog.Error(err)
 			return err
 		}
 		if err = removeVip(udpSessLb, udpSessionVips); err != nil {
+			klog.Error(err)
 			return err
 		}
 		if err = removeVip(sctpLb, sctpVips); err != nil {
+			klog.Error(err)
 			return err
 		}
 		if err = removeVip(sctpSessLb, sctpSessionVips); err != nil {
+			klog.Error(err)
 			return err
 		}
 	}

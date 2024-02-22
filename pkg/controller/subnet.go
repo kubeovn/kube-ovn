@@ -754,6 +754,7 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 	c.patchSubnetStatus(subnet, "ValidateLogicalSwitchSuccess", "")
 
 	if err := c.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps); err != nil {
+		klog.Error(err)
 		return err
 	}
 
@@ -860,6 +861,7 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		if subnet.Spec.EnableLb != nil && *subnet.Spec.EnableLb {
 			if err := c.OVNNbClient.LogicalSwitchUpdateLoadBalancers(subnet.Name, ovsdb.MutateOperationInsert, lbs...); err != nil {
 				c.patchSubnetStatus(subnet, "AddLbToLogicalSwitchFailed", err.Error())
+				klog.Error(err)
 				return err
 			}
 		} else {
@@ -888,6 +890,7 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 	if subnet.Spec.Private {
 		if err := c.OVNNbClient.SetLogicalSwitchPrivate(subnet.Name, subnet.Spec.CIDRBlock, c.config.NodeSwitchCIDR, subnet.Spec.AllowSubnets); err != nil {
 			c.patchSubnetStatus(subnet, "SetPrivateLogicalSwitchFailed", err.Error())
+			klog.Error(err)
 			return err
 		}
 
@@ -896,6 +899,7 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		// clear acl when direction is ""
 		if err = c.OVNNbClient.DeleteAcls(subnet.Name, logicalSwitchKey, "", nil); err != nil {
 			c.patchSubnetStatus(subnet, "ResetLogicalSwitchAclFailed", err.Error())
+			klog.Error(err)
 			return err
 		}
 
@@ -904,6 +908,7 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 
 	if err := c.OVNNbClient.UpdateLogicalSwitchACL(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Acls, subnet.Spec.AllowEWTraffic); err != nil {
 		c.patchSubnetStatus(subnet, "SetLogicalSwitchAclsFailed", err.Error())
+		klog.Error(err)
 		return err
 	}
 
@@ -1085,6 +1090,7 @@ func (c *Controller) handleDeleteSubnet(subnet *kubeovnv1.Subnet) error {
 
 	for _, vlan := range vlans {
 		if err = c.updateVlanStatusForSubnetDeletion(vlan, subnet.Name); err != nil {
+			klog.Error(err)
 			return err
 		}
 	}
@@ -2453,6 +2459,7 @@ func (c *Controller) addPolicyRouteForCentralizedSubnet(subnet *kubeovnv1.Subnet
 			}
 			nameIPMap[tmpName] = nodeIP
 			if err := c.updatePolicyRouteForCentralizedSubnet(subnet.Name, cidrBlock, nextHops, nameIPMap); err != nil {
+				klog.Error(err)
 				return err
 			}
 		}

@@ -6,6 +6,7 @@ import (
 	"path"
 
 	"golang.org/x/sys/unix"
+	"k8s.io/klog/v2"
 
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -55,6 +56,7 @@ func DeleteNamedNs(name string) error {
 	}
 	err := unix.Unmount(namedPath, unix.MNT_DETACH)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 

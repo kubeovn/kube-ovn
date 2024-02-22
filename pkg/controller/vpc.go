@@ -117,6 +117,7 @@ func (c *Controller) handleDelVpc(vpc *kubeovnv1.Vpc) error {
 	klog.Infof("handle delete vpc %s", vpc.Name)
 
 	if err := c.deleteVpcLb(vpc); err != nil {
+		klog.Error(err)
 		return err
 	}
 
@@ -529,9 +530,11 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 
 	if len(vpc.Annotations) != 0 && strings.ToLower(vpc.Annotations[util.VpcLbAnnotation]) == "on" {
 		if err = c.createVpcLb(vpc); err != nil {
+			klog.Error(err)
 			return err
 		}
 	} else if err = c.deleteVpcLb(vpc); err != nil {
+		klog.Error(err)
 		return err
 	}
 
@@ -683,6 +686,7 @@ func (c *Controller) deletePolicyRouteFromVpc(name string, priority int, match s
 	)
 
 	if err = c.OVNNbClient.DeleteLogicalRouterPolicy(name, priority, match); err != nil {
+		klog.Error(err)
 		return err
 	}
 
@@ -1081,6 +1085,7 @@ func (c *Controller) handleAddVpcExternalSubnet(key, subnet string) error {
 	var needCreateEip bool
 	if err != nil {
 		if !k8serrors.IsNotFound(err) {
+			klog.Error(err)
 			return err
 		}
 		needCreateEip = true
@@ -1131,6 +1136,7 @@ func (c *Controller) handleAddVpcExternalSubnet(key, subnet string) error {
 
 	if len(chassises) == 0 {
 		err := fmt.Errorf("no external gw nodes")
+		klog.Error(err)
 		return err
 	}
 

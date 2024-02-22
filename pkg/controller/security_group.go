@@ -248,6 +248,7 @@ func (c *Controller) handleAddOrUpdateSg(key string) error {
 	sg := cachedSg.DeepCopy()
 
 	if err = c.validateSgRule(sg); err != nil {
+		klog.Error(err)
 		return err
 	}
 
@@ -303,10 +304,12 @@ func (c *Controller) handleAddOrUpdateSg(key string) error {
 		if err = c.OVNNbClient.UpdateSgACL(sg, ovnnb.ACLDirectionToLport); err != nil {
 			sg.Status.IngressLastSyncSuccess = false
 			c.patchSgStatus(sg)
+			klog.Error(err)
 			return err
 		}
 
 		if err := c.OVNNbClient.CreateSgBaseACL(sg.Name, ovnnb.ACLDirectionToLport); err != nil {
+			klog.Error(err)
 			return err
 		}
 		sg.Status.IngressMd5 = newIngressMd5
@@ -317,10 +320,12 @@ func (c *Controller) handleAddOrUpdateSg(key string) error {
 		if err = c.OVNNbClient.UpdateSgACL(sg, ovnnb.ACLDirectionFromLport); err != nil {
 			sg.Status.IngressLastSyncSuccess = false
 			c.patchSgStatus(sg)
+			klog.Error(err)
 			return err
 		}
 
 		if err := c.OVNNbClient.CreateSgBaseACL(sg.Name, ovnnb.ACLDirectionFromLport); err != nil {
+			klog.Error(err)
 			return err
 		}
 
