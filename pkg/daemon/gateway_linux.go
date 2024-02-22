@@ -761,10 +761,12 @@ func (c *Controller) setIptables() error {
 		}
 
 		if err = c.reconcileNatOutgoingPolicyIptablesChain(protocol); err != nil {
+			klog.Error(err)
 			return err
 		}
 
 		if err = c.reconcileTProxyIPTableRules(protocol, isDual); err != nil {
+			klog.Error(err)
 			return err
 		}
 
@@ -801,6 +803,7 @@ func (c *Controller) reconcileTProxyIPTableRules(protocol string, isDual bool) e
 
 	pods, err := c.getTProxyConditionPod(true)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 
@@ -1181,9 +1184,11 @@ func (c *Controller) cleanObsoleteIptablesRules(protocol string, rules []util.IP
 	}
 
 	if err = clearObsoleteIptablesChain(ipt, NAT, OvnPrerouting, Prerouting); err != nil {
+		klog.Error(err)
 		return err
 	}
 	if err = clearObsoleteIptablesChain(ipt, NAT, OvnPostrouting, Postrouting); err != nil {
+		klog.Error(err)
 		return err
 	}
 

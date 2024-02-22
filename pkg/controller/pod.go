@@ -615,6 +615,7 @@ func (c *Controller) handleAddOrUpdatePod(key string) (err error) {
 	needAllocatePodNets := needAllocateSubnets(pod, podNets)
 	if len(needAllocatePodNets) != 0 {
 		if cachedPod, err = c.reconcileAllocateSubnets(cachedPod, pod, needAllocatePodNets); err != nil {
+			klog.Error(err)
 			return err
 		}
 		if cachedPod == nil {
@@ -852,6 +853,7 @@ func (c *Controller) reconcileRouteSubnets(cachedPod, pod *v1.Pod, needRoutePodN
 				// remove lsp from port group to make EIP/SNAT work
 				portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
 				if err = c.OVNNbClient.PortGroupRemovePorts(pgName, portName); err != nil {
+					klog.Error(err)
 					return err
 				}
 
@@ -906,6 +908,7 @@ func (c *Controller) reconcileRouteSubnets(cachedPod, pod *v1.Pod, needRoutePodN
 						"",
 						kubeovnv1.PolicyDst,
 					); err != nil {
+						klog.Error(err)
 						return err
 					}
 				}

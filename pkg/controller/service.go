@@ -422,12 +422,15 @@ func (c *Controller) handleUpdateService(key string) error {
 	}
 
 	if err = updateVip(tcpLb, oTCPLb, tcpVips); err != nil {
+		klog.Error(err)
 		return err
 	}
 	if err = updateVip(udpLb, oUDPLb, udpVips); err != nil {
+		klog.Error(err)
 		return err
 	}
 	if err = updateVip(sctpLb, oSctpLb, sctpVips); err != nil {
+		klog.Error(err)
 		return err
 	}
 

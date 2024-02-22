@@ -247,6 +247,7 @@ func (c *Controller) handleAddOrUpdateProviderNetwork(key string) error {
 	klog.V(3).Infof("handle update provider network %s", key)
 	node, err := c.nodesLister.Get(c.config.NodeName)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 	pn, err := c.providerNetworksLister.Get(key)
@@ -254,6 +255,7 @@ func (c *Controller) handleAddOrUpdateProviderNetwork(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 
@@ -395,11 +397,13 @@ func (c *Controller) cleanProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v
 
 func (c *Controller) handleDeleteProviderNetwork(pn *kubeovnv1.ProviderNetwork) error {
 	if err := c.ovsCleanProviderNetwork(pn.Name); err != nil {
+		klog.Error(err)
 		return err
 	}
 
 	node, err := c.nodesLister.Get(c.config.NodeName)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 	if len(node.Labels) == 0 {

@@ -159,6 +159,7 @@ func (c *Controller) createLbSvcPod(svc *corev1.Service) error {
 		if k8serrors.IsNotFound(err) {
 			needToCreate = true
 		} else {
+			klog.Error(err)
 			return err
 		}
 	}

@@ -240,21 +240,27 @@ func (c *Controller) initLoadBalancer() error {
 		vpc := cachedVpc.DeepCopy()
 		vpcLb := c.GenVpcLoadBalancer(vpc.Name)
 		if err = c.initLB(vpcLb.TCPLoadBalancer, string(v1.ProtocolTCP), false); err != nil {
+			klog.Error(err)
 			return err
 		}
 		if err = c.initLB(vpcLb.TCPSessLoadBalancer, string(v1.ProtocolTCP), true); err != nil {
+			klog.Error(err)
 			return err
 		}
 		if err = c.initLB(vpcLb.UDPLoadBalancer, string(v1.ProtocolUDP), false); err != nil {
+			klog.Error(err)
 			return err
 		}
 		if err = c.initLB(vpcLb.UDPSessLoadBalancer, string(v1.ProtocolUDP), true); err != nil {
+			klog.Error(err)
 			return err
 		}
 		if err = c.initLB(vpcLb.SctpLoadBalancer, string(v1.ProtocolSCTP), false); err != nil {
+			klog.Error(err)
 			return err
 		}
 		if err = c.initLB(vpcLb.SctpSessLoadBalancer, string(v1.ProtocolSCTP), true); err != nil {
+			klog.Error(err)
 			return err
 		}
 
@@ -571,6 +577,7 @@ func (c *Controller) syncIPCR() error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 
@@ -822,6 +829,7 @@ func (c *Controller) initNodeChassis() error {
 	}
 	for _, node := range nodes {
 		if err := c.UpdateChassisTag(node); err != nil {
+			klog.Error(err)
 			return err
 		}
 	}

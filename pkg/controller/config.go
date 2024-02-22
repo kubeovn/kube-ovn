@@ -278,14 +278,17 @@ func ParseFlags() (*Configuration, error) {
 	}
 
 	if err := config.initKubeClient(); err != nil {
+		klog.Error(err)
 		return nil, err
 	}
 
 	if err := config.initKubeFactoryClient(); err != nil {
+		klog.Error(err)
 		return nil, err
 	}
 
 	if err := util.CheckSystemCIDR([]string{config.NodeSwitchCIDR, config.DefaultCIDR, config.ServiceClusterIPRange}); err != nil {
+		klog.Error(err)
 		return nil, fmt.Errorf("check system cidr failed, %v", err)
 	}
 

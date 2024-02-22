@@ -329,6 +329,7 @@ func (c *Controller) handleUpdateVirtualIP(key string) error {
 		if err = c.createOrUpdateVipCR(key, vip.Spec.Namespace, vip.Spec.Subnet,
 			vip.Spec.V4ip, vip.Spec.V6ip, vip.Spec.MacAddress,
 			vip.Spec.ParentV4ip, vip.Spec.ParentV6ip, vip.Spec.MacAddress); err != nil {
+			klog.Error(err)
 			return err
 		}
 		ready := true
@@ -417,7 +418,7 @@ func (c *Controller) handleUpdateVirtualParents(key string) error {
 	var virtualParents []string
 	for _, pod := range pods {
 		if pod.Annotations == nil {
-			// pod has no aaps
+			// pod has no annotations
 			continue
 		}
 		if aaps := strings.Split(pod.Annotations[util.AAPsAnnotation], ","); !slices.Contains(aaps, cachedVip.Name) {

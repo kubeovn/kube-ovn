@@ -140,6 +140,7 @@ func (c *Controller) ovsInitProviderNetwork(provider, nic string, exchangeLinkNa
 func (c *Controller) ovsCleanProviderNetwork(provider string) error {
 	mappings, err := getOvnMappings("ovn-bridge-mappings")
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 
@@ -198,6 +199,7 @@ func (c *Controller) ovsCleanProviderNetwork(provider string) error {
 	}
 
 	if err := removeOvnMapping("ovn-chassis-mac-mappings", provider); err != nil {
+		klog.Error(err)
 		return err
 	}
 	return removeOvnMapping("ovn-bridge-mappings", provider)

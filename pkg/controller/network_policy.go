@@ -162,6 +162,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 
@@ -249,9 +250,11 @@ func (c *Controller) handleUpdateNp(key string) error {
 					klog.Infof("UpdateNp Ingress, allows is %v, excepts is %v, log %v", allows, excepts, logEnable)
 
 					if err = c.createAsForNetpol(np.Namespace, np.Name, "ingress", ingressAllowAsName, allows); err != nil {
+						klog.Error(err)
 						return err
 					}
 					if err = c.createAsForNetpol(np.Namespace, np.Name, "ingress", ingressExceptAsName, excepts); err != nil {
+						klog.Error(err)
 						return err
 					}
 
@@ -273,9 +276,11 @@ func (c *Controller) handleUpdateNp(key string) error {
 					ingressExceptAsName := fmt.Sprintf("%s.%s.all", ingressExceptAsNamePrefix, protocol)
 
 					if err = c.createAsForNetpol(np.Namespace, np.Name, "ingress", ingressAllowAsName, nil); err != nil {
+						klog.Error(err)
 						return err
 					}
 					if err = c.createAsForNetpol(np.Namespace, np.Name, "ingress", ingressExceptAsName, nil); err != nil {
+						klog.Error(err)
 						return err
 					}
 
@@ -376,9 +381,11 @@ func (c *Controller) handleUpdateNp(key string) error {
 					klog.Infof("UpdateNp Egress, allows is %v, excepts is %v, log %v", allows, excepts, logEnable)
 
 					if err = c.createAsForNetpol(np.Namespace, np.Name, "egress", egressAllowAsName, allows); err != nil {
+						klog.Error(err)
 						return err
 					}
 					if err = c.createAsForNetpol(np.Namespace, np.Name, "egress", egressExceptAsName, excepts); err != nil {
+						klog.Error(err)
 						return err
 					}
 
@@ -397,9 +404,11 @@ func (c *Controller) handleUpdateNp(key string) error {
 					egressExceptAsName := fmt.Sprintf("%s.%s.all", egressExceptAsNamePrefix, protocol)
 
 					if err = c.createAsForNetpol(np.Namespace, np.Name, "egress", egressAllowAsName, nil); err != nil {
+						klog.Error(err)
 						return err
 					}
 					if err = c.createAsForNetpol(np.Namespace, np.Name, "egress", egressExceptAsName, nil); err != nil {
+						klog.Error(err)
 						return err
 					}
 

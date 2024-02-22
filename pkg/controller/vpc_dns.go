@@ -56,6 +56,7 @@ func genVpcDNSDpName(name string) string {
 func hostConfigFromReader() error {
 	file, err := os.Open("/etc/resolv.conf")
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 	defer func(file *os.File) {
@@ -67,6 +68,7 @@ func hostConfigFromReader() error {
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		if err := scanner.Err(); err != nil {
+			klog.Error(err)
 			return err
 		}
 		line := scanner.Text()

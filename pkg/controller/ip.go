@@ -194,6 +194,7 @@ func (c *Controller) handleAddReservedIP(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error(err)
 		return err
 	}
 	klog.V(3).Infof("handle add reserved ip %s", ip.Name)
@@ -252,6 +253,7 @@ func (c *Controller) handleAddReservedIP(key string) error {
 			if k8serrors.IsNotFound(err) {
 				return nil
 			}
+			klog.Error(err)
 			return err
 		}
 		ip = cachedIP.DeepCopy()
