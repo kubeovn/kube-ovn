@@ -259,13 +259,13 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 		oldAAPs := strings.Split(oldPod.Annotations[util.AAPsAnnotation], ",")
 		newAAPs := strings.Split(newPod.Annotations[util.AAPsAnnotation], ",")
 		var vipNames []string
-		for _, oldAAp := range oldAAPs {
-			vipNames = append(vipNames, strings.TrimSpace(oldAAp))
+		for _, vipName := range oldAAPs {
+			vipNames = append(vipNames, strings.TrimSpace(vipName))
 		}
-		for _, newAAP := range newAAPs {
-			newAAP = strings.TrimSpace(newAAP)
-			if !slices.Contains(vipNames, newAAP) {
-				vipNames = append(vipNames, newAAP)
+		for _, vipName := range newAAPs {
+			vipName = strings.TrimSpace(vipName)
+			if !slices.Contains(vipNames, vipName) {
+				vipNames = append(vipNames, vipName)
 			}
 		}
 		for _, vipName := range vipNames {

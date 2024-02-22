@@ -10,6 +10,7 @@ import (
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
@@ -289,7 +290,9 @@ func (c *Controller) handleAddVirtualIP(key string) error {
 		return err
 	}
 	if err := c.handleUpdateVirtualParents(key); err != nil {
-		return fmt.Errorf("error syncing virtual parents for vip '%s': %s", key, err.Error())
+		err := fmt.Errorf("error syncing virtual parents for vip '%s': %s", key, err.Error())
+		klog.Error(err)
+		return err
 	}
 	return nil
 }
@@ -382,6 +385,7 @@ func (c *Controller) handleUpdateVirtualParents(key string) error {
 	if (cachedVip.Status.V4ip == "" && cachedVip.Status.V6ip == "") || cachedVip.Spec.Namespace == "" {
 		return nil
 	}
+
 	// add new virtual port if not exist
 	ipStr := util.GetStringIP(cachedVip.Status.V4ip, cachedVip.Status.V6ip)
 	if err = c.OVNNbClient.CreateVirtualLogicalSwitchPort(cachedVip.Name, cachedVip.Spec.Subnet, ipStr); err != nil {
@@ -389,6 +393,13 @@ func (c *Controller) handleUpdateVirtualParents(key string) error {
 		return err
 	}
 
+	// update virtual parents
+	if cachedVip.Spec.Type == util.SwitchLBRuleVip {
+		// switch lb rule vip no need to have virtual parents
+		return nil
+	}
+
+	// vip cloud use selector to select pods as its virtual parents
 	selectors := make(map[string]string)
 	for _, v := range cachedVip.Spec.Selector {
 		parts := strings.Split(strings.TrimSpace(v), ":")
@@ -407,6 +418,7 @@ func (c *Controller) handleUpdateVirtualParents(key string) error {
 	var virtualParents []string
 	for _, pod := range pods {
 		if pod.Annotations == nil {
+			// pod has no annotations
 			continue
 		}
 		if aaps := strings.Split(pod.Annotations[util.AAPsAnnotation], ","); !slices.Contains(aaps, cachedVip.Name) {
@@ -461,14 +473,14 @@ func (c *Controller) createOrUpdateVipCR(key, ns, subnet, v4ip, v6ip, mac, pV4ip
 					ParentMac:  pmac,
 				},
 			}, metav1.CreateOptions{}); err != nil {
-				errMsg := fmt.Errorf("failed to create crd vip '%s', %v", key, err)
-				klog.Error(errMsg)
-				return errMsg
+				err := fmt.Errorf("failed to create crd vip '%s', %v", key, err)
+				klog.Error(err)
+				return err
 			}
 		} else {
-			errMsg := fmt.Errorf("failed to get crd vip '%s', %v", key, err)
-			klog.Error(errMsg)
-			return errMsg
+			err := fmt.Errorf("failed to get crd vip '%s', %v", key, err)
+			klog.Error(err)
+			return err
 		}
 	} else {
 		vip := vipCR.DeepCopy()
@@ -491,9 +503,9 @@ func (c *Controller) createOrUpdateVipCR(key, ns, subnet, v4ip, v6ip, mac, pV4ip
 			vip.Status.Pmac = pmac
 			vip.Status.Type = vip.Spec.Type
 			if _, err := c.config.KubeOvnClient.KubeovnV1().Vips().Update(context.Background(), vip, metav1.UpdateOptions{}); err != nil {
-				errMsg := fmt.Errorf("failed to update vip '%s', %v", key, err)
-				klog.Error(errMsg)
-				return errMsg
+				err := fmt.Errorf("failed to update vip '%s', %v", key, err)
+				klog.Error(err)
+				return err
 			}
 		}
 		var needUpdateLabel bool
@@ -639,12 +651,12 @@ func (c *Controller) handleAddVipFinalizer(key string) error {
 		return err
 	}
 	if cachedVip.DeletionTimestamp.IsZero() {
-		if slices.Contains(cachedVip.Finalizers, util.ControllerName) {
+		if slices.Contains(cachedVip.Finalizers, util.KubeOVNControllerFinalizer) {
 			return nil
 		}
 	}
 	newVip := cachedVip.DeepCopy()
-	controllerutil.AddFinalizer(newVip, util.ControllerName)
+	controllerutil.AddFinalizer(newVip, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedVip, newVip)
 	if err != nil {
 		klog.Errorf("failed to generate patch payload for ovn eip '%s', %v", cachedVip.Name, err)
@@ -674,7 +686,7 @@ func (c *Controller) handleDelVipFinalizer(key string) error {
 		return nil
 	}
 	newVip := cachedVip.DeepCopy()
-	controllerutil.RemoveFinalizer(newVip, util.ControllerName)
+	controllerutil.RemoveFinalizer(newVip, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedVip, newVip)
 	if err != nil {
 		klog.Errorf("failed to generate patch payload for ovn eip '%s', %v", cachedVip.Name, err)
@@ -687,6 +699,36 @@ func (c *Controller) handleDelVipFinalizer(key string) error {
 		}
 		klog.Errorf("failed to remove finalizer from vip '%s', %v", cachedVip.Name, err)
 		return err
+	}
+	return nil
+}
+
+func (c *Controller) syncVipFinalizer() error {
+	// migrate depreciated finalizer to new finalizer
+	vips, err := c.virtualIpsLister.List(labels.Everything())
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		klog.Errorf("failed to list vips, %v", err)
+		return err
+	}
+	for _, cachedVip := range vips {
+		patch, err := c.ReplaceFinalizer(cachedVip)
+		if err != nil {
+			klog.Errorf("failed to sync finalizer for vip %s, %v", cachedVip.Name, err)
+			return err
+		}
+		if patch != nil {
+			if _, err := c.config.KubeOvnClient.KubeovnV1().Vips().Patch(context.Background(), cachedVip.Name,
+				types.MergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
+				if k8serrors.IsNotFound(err) {
+					return nil
+				}
+				klog.Errorf("failed to sync finalizer for vip %s, %v", cachedVip.Name, err)
+				return err
+			}
+		}
 	}
 	return nil
 }

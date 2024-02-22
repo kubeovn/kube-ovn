@@ -324,7 +324,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 	if c.config.EnableEipSnat {
 		externalSubnet, err = c.subnetsLister.Get(c.config.ExternalGatewaySwitch)
 		if err != nil {
-			klog.Errorf("failed to get external subnet %s: %v", c.config.ExternalGatewaySwitch, err)
+			klog.Warningf("enable-eip-snat need external subnet %s to be exist: %v", c.config.ExternalGatewaySwitch, err)
 		} else {
 			externalSubnetExist = true
 		}

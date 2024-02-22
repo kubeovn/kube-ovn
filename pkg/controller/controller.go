@@ -764,6 +764,10 @@ func (c *Controller) Run(ctx context.Context) {
 		util.LogFatalAndExit(err, "failed to sync crd ips")
 	}
 
+	if err := c.syncFinalizers(); err != nil {
+		util.LogFatalAndExit(err, "failed to initialize crd finalizers")
+	}
+
 	if err := c.InitIPAM(); err != nil {
 		util.LogFatalAndExit(err, "failed to initialize ipam")
 	}
