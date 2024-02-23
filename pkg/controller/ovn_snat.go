@@ -8,11 +8,11 @@ import (
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -543,34 +543,15 @@ func (c *Controller) ovnSnatChangeEip(snat *kubeovnv1.OvnSnatRule, eip *kubeovnv
 	return false
 }
 
-func (c *Controller) syncOvnSnatFinalizer() error {
+func (c *Controller) syncOvnSnatFinalizer(cl client.Client) error {
 	// migrate depreciated finalizer to new finalizer
-	snats, err := c.ovnSnatRulesLister.List(labels.Everything())
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
+	rules := &kubeovnv1.OvnSnatRuleList{}
+	return updateFinalizers(cl, rules, func(i int) (client.Object, client.Object) {
+		if i < 0 || i >= len(rules.Items) {
+			return nil, nil
 		}
-		klog.Errorf("failed to list snats, %v", err)
-		return err
-	}
-	for _, cachedSnat := range snats {
-		patch, err := c.ReplaceFinalizer(cachedSnat)
-		if err != nil {
-			klog.Errorf("failed to sync finalizer for snat %s, %v", cachedSnat.Name, err)
-			return err
-		}
-		if patch != nil {
-			if _, err := c.config.KubeOvnClient.KubeovnV1().OvnSnatRules().Patch(context.Background(), cachedSnat.Name,
-				types.MergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
-				if k8serrors.IsNotFound(err) {
-					return nil
-				}
-				klog.Errorf("failed to sync finalizer for snat %s, %v", cachedSnat.Name, err)
-				return err
-			}
-		}
-	}
-	return nil
+		return rules.Items[i].DeepCopy(), rules.Items[i].DeepCopy()
+	})
 }
 
 func (c *Controller) handleAddOvnSnatFinalizer(cachedSnat *kubeovnv1.OvnSnatRule, finalizer string) error {

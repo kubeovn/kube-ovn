@@ -16,6 +16,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -282,34 +283,15 @@ func (c *Controller) handleDelQoSPoliciesFinalizer(key string) error {
 	return nil
 }
 
-func (c *Controller) syncQoSPolicyFinalizer() error {
+func (c *Controller) syncQoSPolicyFinalizer(cl client.Client) error {
 	// migrate depreciated finalizer to new finalizer
-	qosPolicies, err := c.qosPoliciesLister.List(labels.Everything())
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
+	polices := &kubeovnv1.QoSPolicyList{}
+	return updateFinalizers(cl, polices, func(i int) (client.Object, client.Object) {
+		if i < 0 || i >= len(polices.Items) {
+			return nil, nil
 		}
-		klog.Errorf("failed to list policy, %v", err)
-		return err
-	}
-	for _, cachedPolicy := range qosPolicies {
-		patch, err := c.ReplaceFinalizer(cachedPolicy)
-		if err != nil {
-			klog.Errorf("failed to sync finalizer for policy %s, %v", cachedPolicy.Name, err)
-			return err
-		}
-		if patch != nil {
-			if _, err := c.config.KubeOvnClient.KubeovnV1().QoSPolicies().Patch(context.Background(), cachedPolicy.Name,
-				types.MergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
-				if k8serrors.IsNotFound(err) {
-					return nil
-				}
-				klog.Errorf("failed to sync finalizer for policy %s, %v", cachedPolicy.Name, err)
-				return err
-			}
-		}
-	}
-	return nil
+		return polices.Items[i].DeepCopy(), polices.Items[i].DeepCopy()
+	})
 }
 
 func diffQoSPolicyBandwidthLimitRules(oldList, newList kubeovnv1.QoSPolicyBandwidthLimitRules) (added, deleted, updated kubeovnv1.QoSPolicyBandwidthLimitRules) {
