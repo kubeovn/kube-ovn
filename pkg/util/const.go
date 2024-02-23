@@ -291,4 +291,9 @@ const (
 
 	ConsumptionKubevirt       = "kubevirt"
 	VhostUserSocketVolumeName = "vhostuser-sockets"
+
+	MigrationSourceNodeAnnotation = "kubevirt.io/migration-source-node" // target pod has source node name
+	MigrationSourceAnnotation     = "kubevirt.io/migration-source"      // migration source vm: true or false
+	MigrationTargetAnnotation     = "kubevirt.io/migration-target"      // migration target vm: true or false
+	MigrationPhaseAnnotation      = "kubevirt.io/migration-phase"       // migration vm phase: started/succeeded/failed
 )
