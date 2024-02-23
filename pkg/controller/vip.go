@@ -10,11 +10,11 @@ import (
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -703,32 +703,13 @@ func (c *Controller) handleDelVipFinalizer(key string) error {
 	return nil
 }
 
-func (c *Controller) syncVipFinalizer() error {
+func (c *Controller) syncVipFinalizer(cl client.Client) error {
 	// migrate depreciated finalizer to new finalizer
-	vips, err := c.virtualIpsLister.List(labels.Everything())
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
+	vips := &kubeovnv1.VipList{}
+	return updateFinalizers(cl, vips, func(i int) (client.Object, client.Object) {
+		if i < 0 || i >= len(vips.Items) {
+			return nil, nil
 		}
-		klog.Errorf("failed to list vips, %v", err)
-		return err
-	}
-	for _, cachedVip := range vips {
-		patch, err := c.ReplaceFinalizer(cachedVip)
-		if err != nil {
-			klog.Errorf("failed to sync finalizer for vip %s, %v", cachedVip.Name, err)
-			return err
-		}
-		if patch != nil {
-			if _, err := c.config.KubeOvnClient.KubeovnV1().Vips().Patch(context.Background(), cachedVip.Name,
-				types.MergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
-				if k8serrors.IsNotFound(err) {
-					return nil
-				}
-				klog.Errorf("failed to sync finalizer for vip %s, %v", cachedVip.Name, err)
-				return err
-			}
-		}
-	}
-	return nil
+		return vips.Items[i].DeepCopy(), vips.Items[i].DeepCopy()
+	})
 }

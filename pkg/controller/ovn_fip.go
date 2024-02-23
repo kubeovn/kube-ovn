@@ -14,6 +14,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -600,34 +601,15 @@ func (c *Controller) GetOvnEip(eipName string) (*kubeovnv1.OvnEip, error) {
 	return cachedEip, nil
 }
 
-func (c *Controller) syncOvnFipFinalizer() error {
+func (c *Controller) syncOvnFipFinalizer(cl client.Client) error {
 	// migrate depreciated finalizer to new finalizer
-	fips, err := c.ovnFipsLister.List(labels.Everything())
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
+	fips := &kubeovnv1.OvnFipList{}
+	return updateFinalizers(cl, fips, func(i int) (client.Object, client.Object) {
+		if i < 0 || i >= len(fips.Items) {
+			return nil, nil
 		}
-		klog.Errorf("failed to list fips, %v", err)
-		return err
-	}
-	for _, cachedFip := range fips {
-		patch, err := c.ReplaceFinalizer(cachedFip)
-		if err != nil {
-			klog.Errorf("failed to sync finalizer for fip %s, %v", cachedFip.Name, err)
-			return err
-		}
-		if patch != nil {
-			if _, err := c.config.KubeOvnClient.KubeovnV1().OvnFips().Patch(context.Background(), cachedFip.Name,
-				types.MergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
-				if k8serrors.IsNotFound(err) {
-					return nil
-				}
-				klog.Errorf("failed to sync finalizer for fip %s, %v", cachedFip.Name, err)
-				return err
-			}
-		}
-	}
-	return nil
+		return fips.Items[i].DeepCopy(), fips.Items[i].DeepCopy()
+	})
 }
 
 func (c *Controller) handleAddOvnFipFinalizer(cachedFip *kubeovnv1.OvnFip, finalizer string) error {
