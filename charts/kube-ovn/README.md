@@ -32,7 +32,7 @@ machine:
     - name: openvswitch
 ```
 
-and use the following options for install this Helm-chart:
+and use the following options to install this Helm-chart:
 
 ```
 --set cni_conf.MOUNT_LOCAL_BIN_DIR=false
