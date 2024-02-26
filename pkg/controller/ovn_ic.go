@@ -202,13 +202,13 @@ func (c *Controller) removeInterConnection(azName string) error {
 }
 
 func (c *Controller) establishInterConnection(config map[string]string) error {
-	if err := c.startOVNIC(config["ic-db-host"], config["ic-nb-port"], config["ic-sb-port"]); err != nil {
-		klog.Errorf("failed to start ovn-ic, %v", err)
+	if err := c.OVNNbClient.SetAzName(config["az-name"]); err != nil {
+		klog.Errorf("failed to set az name. %v", err)
 		return err
 	}
 
-	if err := c.OVNNbClient.SetAzName(config["az-name"]); err != nil {
-		klog.Errorf("failed to set az name. %v", err)
+	if err := c.startOVNIC(config["ic-db-host"], config["ic-nb-port"], config["ic-sb-port"]); err != nil {
+		klog.Errorf("failed to start ovn-ic, %v", err)
 		return err
 	}
 
