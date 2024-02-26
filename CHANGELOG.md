@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.12.6 (2024-02-26)
+
+ * [a395104d](https://github.com/kubeovn/kube-ovn/commit/a395104dee67e9ed973a1afe005fd4d55f4691a9) release v1.12.6
+ * [df6a84aa](https://github.com/kubeovn/kube-ovn/commit/df6a84aaf3bfd48b8a42adbde5095e8ba736703e) if startOVNIC firstly, and setazName secondly, the ovn-ic-db may sync the old azname (#3759) (#3763)
+ * [a9065452](https://github.com/kubeovn/kube-ovn/commit/a9065452236818173f6cbcaf84ec00c371298f10) modify chart.yaml version
+ * [0107f9dd](https://github.com/kubeovn/kube-ovn/commit/0107f9dd6294231d35232c9c414c8cd0870c7af3) add action for build base
+ * [f537002c](https://github.com/kubeovn/kube-ovn/commit/f537002cf51f2dd055643c5611147d3ae65dd441) prepare for next release
+
+### Contributors
+
+ * changluyi
+
 ## v1.12.5 (2024-02-21)
 
  * [b45c8339](https://github.com/kubeovn/kube-ovn/commit/b45c8339ab370c3c68d532ebbe475781d982251c) release v1.12.5
@@ -9,7 +21,7 @@
  * [669ed067](https://github.com/kubeovn/kube-ovn/commit/669ed067e0374344a2b86a8eacb8ad14b3ca0cf3) ci: collect ko logs for all kind clusters (#3744)
  * [b9224483](https://github.com/kubeovn/kube-ovn/commit/b9224483defc22663368bad0ac6e00ec596f524c) ci: fix ovn ic log file name (#3742)
  * [5e5fd728](https://github.com/kubeovn/kube-ovn/commit/5e5fd728d06d7b3f4c7dabc853f3cae10c45d267) ci: bump kind and node image
- * [cc8c9ab6](https://github.com/kubeovn/kube-ovn/commit/cc8c9ab664b19adbcd4ef95a6f23468c393b7e9d) update chart release action workflow (#3728,#3734,#3691) (#3738)
+ * [cc8c9ab6](https://github.com/kubeovn/kube-ovn/commit/cc8c9ab664b19adbcd4ef95a6f23468c393b7e9d) update chart relase action workflow (#3728,#3734,#3691) (#3738)
  * [b3d8fca7](https://github.com/kubeovn/kube-ovn/commit/b3d8fca7d21e88708fedbb0095ccf7d229714ef8) remove invalid ovs build option (#3733)
  * [2aa3311e](https://github.com/kubeovn/kube-ovn/commit/2aa3311e92ba54d4285c904016db89877243b361) dpdk: remove unnecessary ovn patch (#3736)
  * [8e0e4b17](https://github.com/kubeovn/kube-ovn/commit/8e0e4b17fd08891a5bd3dd98a6d7c9855ef5cbe2) Fix: Resolve issue with skipped execution of sg annotations (#3700)
