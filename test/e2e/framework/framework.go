@@ -7,6 +7,7 @@ import (
 	"time"
 
 	attachnetclientset "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/client/clientset/versioned"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/kubernetes/test/e2e/framework"
 	admissionapi "k8s.io/pod-security-admission/api"
@@ -14,6 +15,7 @@ import (
 	"github.com/onsi/ginkgo/v2"
 
 	kubeovncs "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 const (
@@ -178,6 +180,16 @@ func (f *Framework) VersionPriorTo(major, minor uint) bool {
 func (f *Framework) SkipVersionPriorTo(major, minor uint, reason string) {
 	if f.VersionPriorTo(major, minor) {
 		ginkgo.Skip(reason)
+	}
+}
+
+func (f *Framework) ValidateFinalizers(obj metav1.Object) {
+	finalizers := obj.GetFinalizers()
+	if !f.VersionPriorTo(1, 13) {
+		ExpectContainElement(finalizers, util.KubeOVNControllerFinalizer)
+		ExpectNotContainElement(finalizers, util.DepreciatedFinalizerName)
+	} else {
+		ExpectContainElement(finalizers, util.DepreciatedFinalizerName)
 	}
 }
 
