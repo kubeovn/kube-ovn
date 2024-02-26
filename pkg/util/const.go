@@ -292,8 +292,13 @@ const (
 	ConsumptionKubevirt       = "kubevirt"
 	VhostUserSocketVolumeName = "vhostuser-sockets"
 
+	OVNMigrationAnnotation        = "ovn.kubernetes.io/migrate"         // to control if ovn set lsp migrate options
+	OVNMigratedAnnotation         = "ovn.kubernetes.io/migrated"        // to control if ovn clean lsp migrate options
 	MigrationSourceNodeAnnotation = "kubevirt.io/migration-source-node" // target pod has source node name
 	MigrationSourceAnnotation     = "kubevirt.io/migration-source"      // migration source vm: true or false
 	MigrationTargetAnnotation     = "kubevirt.io/migration-target"      // migration target vm: true or false
 	MigrationPhaseAnnotation      = "kubevirt.io/migration-phase"       // migration vm phase: started/succeeded/failed
+	MigrationStateStarted         = "started"
+	MigrationStateSucceeded       = "succeeded"
+	MigrationStateFailed          = "failed"
 )
