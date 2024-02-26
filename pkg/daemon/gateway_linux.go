@@ -1204,7 +1204,7 @@ func (c *Controller) setOvnSubnetGatewayMetric() {
 	for proto, iptables := range c.iptables {
 		rules, err := iptables.ListWithCounters("filter", "FORWARD")
 		if err != nil {
-			klog.Errorf("get proto %s iptables failed with err %v ", proto, err)
+			klog.Errorf("get proto %s iptables failed with err %v", proto, err)
 			continue
 		}
 

@@ -691,7 +691,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, nil)
 		subnet = subnetClient.CreateSync(subnet)
 
-		ginkgo.By("Creating pod with no specify pod ip ")
+		ginkgo.By("Creating pod with no specify pod ip")
 		annotations := map[string]string{
 			util.LogicalSwitchAnnotation: subnetName,
 		}
@@ -797,7 +797,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		ginkgo.By("Creating subnet " + subnetName)
 		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, nil)
 		subnet = subnetClient.CreateSync(subnet)
-		ginkgo.By("Creating pod with specify pod ip ")
+		ginkgo.By("Creating pod with specify pod ip")
 		podIPv4s, podIPv6s := createPodsByRandomIPs(podClient, subnetClient, subnetName, podNamePrefix, podCount, startIPv4, startIPv6)
 		subnet = subnetClient.Get(subnetName)
 
@@ -1052,7 +1052,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 			}
 		}
 		framework.ExpectTrue(found, "no SubnetGatewayNodeChanged event")
-		ginkgo.By("when remove subnet the iptables rules will remove ")
+		ginkgo.By("when remove subnet the iptables rules will remove")
 		subnetClient.DeleteSync(subnetName)
 
 		for _, node := range nodes.Items {
@@ -1225,7 +1225,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		ginkgo.By("Checking accessible to external")
 		checkAccessExternal(podName, namespaceName, subnet.Spec.Protocol, false)
 
-		ginkgo.By("Step4: Remove network policy rules ")
+		ginkgo.By("Step4: Remove network policy rules")
 		subnet = subnetClient.Get(subnetName)
 		modifiedSubnet = subnet.DeepCopy()
 		modifiedSubnet.Spec.NatOutgoing = true
@@ -1349,25 +1349,25 @@ func checkNatPolicyRules(f *framework.Framework, cs clientset.Interface, subnet 
 
 			var rule string
 			if protocol == apiv1.ProtocolIPv4 {
-				rule = fmt.Sprintf("-A OVN-NAT-PSUBNET-%s ", util.GetTruncatedUID(string(subnet.UID)))
+				rule = fmt.Sprintf("-A OVN-NAT-PSUBNET-%s", util.GetTruncatedUID(string(subnet.UID)))
 				if natPolicyRule.Match.SrcIPs != "" {
-					rule += fmt.Sprintf("-m set --match-set ovn40natpr-%s-src src ", natPolicyRule.RuleID)
+					rule += fmt.Sprintf(" -m set --match-set ovn40natpr-%s-src src", natPolicyRule.RuleID)
 				}
 				if natPolicyRule.Match.DstIPs != "" {
-					rule += fmt.Sprintf("-m set --match-set ovn40natpr-%s-dst dst ", natPolicyRule.RuleID)
+					rule += fmt.Sprintf(" -m set --match-set ovn40natpr-%s-dst dst", natPolicyRule.RuleID)
 				}
-				rule += fmt.Sprintf("-j MARK --set-xmark %s", markCode)
+				rule += fmt.Sprintf(" -j MARK --set-xmark %s", markCode)
 				expectV4Rules = append(expectV4Rules, rule)
 			}
 			if protocol == apiv1.ProtocolIPv6 {
-				rule = fmt.Sprintf("-A OVN-NAT-PSUBNET-%s ", util.GetTruncatedUID(string(subnet.UID)))
+				rule = fmt.Sprintf("-A OVN-NAT-PSUBNET-%s", util.GetTruncatedUID(string(subnet.UID)))
 				if natPolicyRule.Match.SrcIPs != "" {
-					rule += fmt.Sprintf("-m set --match-set ovn60natpr-%s-src src ", natPolicyRule.RuleID)
+					rule += fmt.Sprintf(" -m set --match-set ovn60natpr-%s-src src", natPolicyRule.RuleID)
 				}
 				if natPolicyRule.Match.DstIPs != "" {
-					rule += fmt.Sprintf("-m set --match-set ovn60natpr-%s-dst dst ", natPolicyRule.RuleID)
+					rule += fmt.Sprintf(" -m set --match-set ovn60natpr-%s-dst dst", natPolicyRule.RuleID)
 				}
-				rule += fmt.Sprintf("-j MARK --set-xmark %s", markCode)
+				rule += fmt.Sprintf(" -j MARK --set-xmark %s", markCode)
 				expectV6Rules = append(expectV6Rules, rule)
 			}
 		}

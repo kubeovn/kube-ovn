@@ -475,7 +475,7 @@ func (c *Controller) handleUpdateQoSPolicy(key string) error {
 			"bandwidth limit rules is changed for qos %s, added: %s, deleted: %s, updated: %s",
 			key, added.Strings(), deleted.Strings(), updated.Strings())
 		if cachedQos.Status.Shared {
-			err := fmt.Errorf("not support shared qos %s change rule ", key)
+			err := fmt.Errorf("not support shared qos %s change rule", key)
 			klog.Error(err)
 			return err
 		}

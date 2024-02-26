@@ -499,7 +499,7 @@ func (c *Controller) resyncVpcDNSConfig() {
 	}
 
 	if k8serrors.IsNotFound(err) {
-		klog.V(3).Infof("the vpc-dns configuration is not set ")
+		klog.V(3).Infof("the vpc-dns configuration is not set")
 		if len(cmVersion) != 0 {
 			if err := c.cleanVpcDNS(); err != nil {
 				klog.Errorf("failed to clear all vpc-dns, %v", err)

@@ -644,7 +644,19 @@ func (c *Controller) handleUpdateIptablesFip(key string) error {
 		cachedFip.Status.Redo != "" &&
 		cachedFip.Status.V4ip != "" &&
 		cachedFip.DeletionTimestamp.IsZero() {
-		klog.V(3).Infof("reapply fip '%s' in pod ", key)
+		klog.V(3).Infof("reapply fip '%s' in pod", key)
+		gwPod, err := c.getNatGwPod(eip.Spec.NatGwDp)
+		if err != nil {
+			klog.Error(err)
+			return err
+		}
+		// compare gw pod started time with fip redo time. if fip redo time before gw pod started. should redo again
+		fipRedo, _ := time.ParseInLocation("2006-01-02T15:04:05", cachedFip.Status.Redo, time.Local)
+		if cachedFip.Status.Ready && cachedFip.Status.V4ip != "" && gwPod.Status.ContainerStatuses[0].State.Running.StartedAt.Before(&metav1.Time{Time: fipRedo}) {
+			// already ok
+			klog.V(3).Infof("fip %s already ok", key)
+			return nil
+		}
 		if err = c.createFipInPod(eip.Spec.NatGwDp, cachedFip.Status.V4ip, cachedFip.Spec.InternalIP); err != nil {
 			klog.Errorf("failed to create fip, %v", err)
 			return err

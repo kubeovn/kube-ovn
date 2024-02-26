@@ -181,7 +181,7 @@ func checkNorthdActive() bool {
 	var command []string
 	file, err := os.OpenFile(OvnNorthdPid, os.O_RDWR, 0o600)
 	if err != nil {
-		klog.Errorf("failed to open %s err =  %v", OvnNorthdPid, err)
+		klog.Errorf("failed to open %s err = %v", OvnNorthdPid, err)
 		return false
 	}
 	fileByte, err := io.ReadAll(file)

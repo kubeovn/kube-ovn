@@ -58,10 +58,10 @@ func (c *SecurityGroupClient) WaitToBeReady(name string, timeout time.Duration) 
 	Logf("Waiting up to %v for security group %s to be ready", timeout, name)
 	for start := time.Now(); time.Since(start) < timeout; time.Sleep(poll) {
 		if c.Get(name).Status.PortGroup != "" {
-			Logf("security group %s is ready ", name)
+			Logf("security group %s is ready", name)
 			return true
 		}
-		Logf("security group %s is not ready ", name)
+		Logf("security group %s is not ready", name)
 	}
 	Logf("security group %s was not ready within %v", name, timeout)
 	return false

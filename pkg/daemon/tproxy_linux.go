@@ -47,7 +47,7 @@ func (c *Controller) StartTProxyForwarding() {
 
 	defer func() {
 		if err := tcpListener.Close(); err != nil {
-			klog.Errorf("Error tcpListener Close err: %v ", err)
+			klog.Errorf("Error tcpListener Close err: %v", err)
 		}
 	}()
 
@@ -261,7 +261,7 @@ func delRouteIfExist(family, table int, dst *net.IPNet) error {
 	}
 
 	if err = netlink.RouteDel(&route); err != nil && !errors.Is(err, syscall.ENOENT) {
-		klog.Errorf("del route %v failed with err %v ", route, err)
+		klog.Errorf("del route %v failed with err %v", route, err)
 		return err
 	}
 
@@ -272,7 +272,7 @@ func handleRedirectFlow(conn net.Conn) {
 	klog.V(5).Infof("Accepting TCP connection from %v with destination of %v", conn.RemoteAddr().String(), conn.LocalAddr().String())
 	defer func() {
 		if err := conn.Close(); err != nil {
-			klog.Errorf("conn Close err: %v ", err)
+			klog.Errorf("conn Close err: %v", err)
 		}
 	}()
 
@@ -324,7 +324,7 @@ func probePortInNs(podIP, probePort string, isTProxyProbe bool, conn net.Conn) {
 
 		defer func() {
 			if err := remoteConn.Close(); err != nil {
-				klog.Errorf("remoteConn %v Close err: %v ", remoteConn, err)
+				klog.Errorf("remoteConn %v Close err: %v", remoteConn, err)
 			}
 		}()
 
@@ -333,7 +333,7 @@ func probePortInNs(podIP, probePort string, isTProxyProbe bool, conn net.Conn) {
 
 		streamConn := func(dst io.Writer, src io.Reader) {
 			if _, err := io.Copy(dst, src); err != nil {
-				klog.Errorf("copy stream from dst %v to src %v failed err: %v ", dst, src, err)
+				klog.Errorf("copy stream from dst %v to src %v failed err: %v", dst, src, err)
 			}
 
 			streamWait.Done()

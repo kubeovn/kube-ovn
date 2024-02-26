@@ -110,10 +110,10 @@ func (c *OvnSnatRuleClient) WaitToBeReady(name string, timeout time.Duration) bo
 	Logf("Waiting up to %v for ovn snat %s to be ready", timeout, name)
 	for start := time.Now(); time.Since(start) < timeout; time.Sleep(poll) {
 		if c.Get(name).Status.Ready {
-			Logf("ovn snat %s is ready ", name)
+			Logf("ovn snat %s is ready", name)
 			return true
 		}
-		Logf("ovn snat %s is not ready ", name)
+		Logf("ovn snat %s is not ready", name)
 	}
 	Logf("ovn snat %s was not ready within %v", name, timeout)
 	return false

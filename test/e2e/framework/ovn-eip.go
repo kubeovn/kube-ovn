@@ -110,10 +110,10 @@ func (c *OvnEipClient) WaitToBeReady(name string, timeout time.Duration) bool {
 	Logf("Waiting up to %v for ovn eip %s to be ready", timeout, name)
 	for start := time.Now(); time.Since(start) < timeout; time.Sleep(poll) {
 		if c.Get(name).Status.Ready {
-			Logf("ovn eip %s is ready ", name)
+			Logf("ovn eip %s is ready", name)
 			return true
 		}
-		Logf("ovn eip %s is not ready ", name)
+		Logf("ovn eip %s is not ready", name)
 	}
 	Logf("ovn eip %s was not ready within %v", name, timeout)
 	return false

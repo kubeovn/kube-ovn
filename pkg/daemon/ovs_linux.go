@@ -974,7 +974,7 @@ func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPCo
 		if addr.IP.To4() != nil && !detectIPConflict {
 			// when detectIPConflict is true, free arp is already broadcast in the step of announcement
 			if err := util.AnnounceArpAddress(link, addr.IP.String(), macAddr, 1, 1*time.Second); err != nil {
-				klog.Warningf("failed to broadcast free arp with err %v ", err)
+				klog.Warningf("failed to broadcast free arp with err %v", err)
 			}
 		}
 

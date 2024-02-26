@@ -128,7 +128,7 @@ func (suite *OvnClientTestSuite) testUpdateLogicalRouterPortRA() {
 	})
 
 	t.Run("do nothing when enableIPv6RA is true and ipv6RAConfigsStr is invalid", func(t *testing.T) {
-		err := ovnClient.UpdateLogicalRouterPortRA(lrpName, "address_mode=,test ", true)
+		err := ovnClient.UpdateLogicalRouterPortRA(lrpName, "address_mode=,test", true)
 		require.NoError(t, err)
 	})
 

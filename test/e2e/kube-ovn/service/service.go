@@ -174,10 +174,10 @@ var _ = framework.Describe("[group:service]", func() {
 			framework.ExpectEqual(strings.Contains(string(output), v6ClusterIP), isContain)
 		}
 
-		ginkgo.By("check service from dual stack should have cluster ip ")
+		ginkgo.By("check service from dual stack should have cluster ip")
 		checkContainsClusterIP(v6ClusterIP, true)
 
-		ginkgo.By("change service from dual stack to single stack ")
+		ginkgo.By("change service from dual stack to single stack")
 		modifyService := service.DeepCopy()
 		*modifyService.Spec.IPFamilyPolicy = corev1.IPFamilyPolicySingleStack
 		modifyService.Spec.IPFamilies = []corev1.IPFamily{corev1.IPv4Protocol}
@@ -185,7 +185,7 @@ var _ = framework.Describe("[group:service]", func() {
 		service = serviceClient.Patch(service, modifyService)
 		checkContainsClusterIP(v6ClusterIP, false)
 
-		ginkgo.By("recover service from single stack to dual stack ")
+		ginkgo.By("recover service from single stack to dual stack")
 		recoverService := service.DeepCopy()
 		*recoverService.Spec.IPFamilyPolicy = *originService.Spec.IPFamilyPolicy
 		recoverService.Spec.IPFamilies = originService.Spec.IPFamilies

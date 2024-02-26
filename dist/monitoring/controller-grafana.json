@@ -397,7 +397,7 @@
       "timeFrom": null,
       "timeRegions": [],
       "timeShift": null,
-      "title": "Work Queue Retry Count ",
+      "title": "Work Queue Retry Count",
       "tooltip": {
         "shared": true,
         "sort": 2,

@@ -2004,7 +2004,7 @@ func (c *Controller) reconcileU2OInterconnectionIP(subnet *kubeovnv1.Subnet) err
 	}
 
 	if needCalcIP {
-		klog.Infof("reconcile underlay subnet %s  to overlay interconnection with U2OInterconnection %v U2OInterconnectionIP %s ",
+		klog.Infof("reconcile underlay subnet %s to overlay interconnection with U2OInterconnection %v U2OInterconnectionIP %s",
 			subnet.Name, subnet.Spec.U2OInterconnection, subnet.Status.U2OInterconnectionIP)
 		if subnet.Spec.Protocol == kubeovnv1.ProtocolDual {
 			if _, err := c.calcDualSubnetStatusIP(subnet); err != nil {
@@ -2879,7 +2879,7 @@ func (c *Controller) clearOldU2OResource(subnet *kubeovnv1.Subnet) error {
 		// remove old u2o lsp and lrp first
 		lspName := fmt.Sprintf("%s-%s", subnet.Name, subnet.Status.U2OInterconnectionVPC)
 		lrpName := fmt.Sprintf("%s-%s", subnet.Status.U2OInterconnectionVPC, subnet.Name)
-		klog.Infof("clean subnet %s old u2o resource with lsp %s lrp %s ", subnet.Name, lspName, lrpName)
+		klog.Infof("clean subnet %s old u2o resource with lsp %s lrp %s", subnet.Name, lspName, lrpName)
 		if err := c.OVNNbClient.DeleteLogicalSwitchPort(lspName); err != nil {
 			klog.Errorf("failed to delete u2o logical switch port %s: %v", lspName, err)
 			return err

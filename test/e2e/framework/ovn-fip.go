@@ -110,10 +110,10 @@ func (c *OvnFipClient) WaitToBeReady(name string, timeout time.Duration) bool {
 	Logf("Waiting up to %v for ovn fip %s to be ready", timeout, name)
 	for start := time.Now(); time.Since(start) < timeout; time.Sleep(poll) {
 		if c.Get(name).Status.Ready {
-			Logf("ovn fip %s is ready ", name)
+			Logf("ovn fip %s is ready", name)
 			return true
 		}
-		Logf("ovn fip %s is not ready ", name)
+		Logf("ovn fip %s is not ready", name)
 	}
 	Logf("ovn fip %s was not ready within %v", name, timeout)
 	return false

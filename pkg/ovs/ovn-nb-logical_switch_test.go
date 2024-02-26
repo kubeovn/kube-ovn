@@ -475,7 +475,7 @@ func (suite *OvnClientTestSuite) testLogicalSwitchUpdateACLOp() {
 	err := ovnClient.CreateBareLogicalSwitch(lsName)
 	require.NoError(t, err)
 
-	t.Run("add new acl to logical switch ", func(t *testing.T) {
+	t.Run("add new acl to logical switch", func(t *testing.T) {
 		t.Parallel()
 
 		ops, err := ovnClient.logicalSwitchUpdateACLOp(lsName, aclUUIDs, ovsdb.MutateOperationInsert)

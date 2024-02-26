@@ -54,7 +54,7 @@ var _ = Describe("[IPAM]", func() {
 			})
 
 			It("normal subnet", func() {
-				By("create pod with static ip ")
+				By("create pod with static ip")
 				im := ipam.NewIPAM()
 				err := im.AddOrUpdateSubnet(subnetName, ipv4CIDR, v4Gw, ipv4ExcludeIPs)
 				Expect(err).ShouldNot(HaveOccurred())
@@ -72,7 +72,7 @@ var _ = Describe("[IPAM]", func() {
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(ip).To(Equal(freeIP1))
 
-				By("create multiple ips on one pod ")
+				By("create multiple ips on one pod")
 				pod2 := "pod2.ns"
 				pod2Nic1 := "pod2Nic1.ns"
 				pod2Nic2 := "pod2Nic2.ns"
@@ -104,7 +104,7 @@ var _ = Describe("[IPAM]", func() {
 				Expect(isIPAssigned).Should(BeTrue())
 				Expect(assignedPod).To(Equal(pod1))
 
-				By("get static ip conflict with ip in use ")
+				By("get static ip conflict with ip in use")
 				pod3 := "pod3.ns"
 				pod3Nic1 := "pod3Nic1.ns"
 				_, _, _, err = im.GetStaticAddress(pod3, pod3Nic1, freeIP3, nil, subnetName, true)
@@ -151,7 +151,7 @@ var _ = Describe("[IPAM]", func() {
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(ip).To(Equal("10.17.0.2"))
 
-				By("update invalid cidr, subnet should not change ")
+				By("update invalid cidr, subnet should not change")
 				err = im.AddOrUpdateSubnet(subnetName, "1.1.256.1", v4Gw, nil)
 				Expect(err).Should(MatchError(ipam.ErrInvalidCIDR))
 				Expect(im.Subnets[subnetName].V4CIDR.IP.String()).To(Equal("10.17.0.0"))
@@ -230,7 +230,7 @@ var _ = Describe("[IPAM]", func() {
 			})
 
 			It("normal subnet", func() {
-				By("create pod with static ip ")
+				By("create pod with static ip")
 				im := ipam.NewIPAM()
 				err := im.AddOrUpdateSubnet(subnetName, ipv6CIDR, v6Gw, ipv6ExcludeIPs)
 				Expect(err).ShouldNot(HaveOccurred())
@@ -248,7 +248,7 @@ var _ = Describe("[IPAM]", func() {
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(ip).To(Equal(freeIP1))
 
-				By("create multiple ips on one pod ")
+				By("create multiple ips on one pod")
 				pod2 := "pod2.ns"
 				pod2Nic1 := "pod2Nic1.ns"
 				pod2Nic2 := "pod2Nic2.ns"
@@ -279,7 +279,7 @@ var _ = Describe("[IPAM]", func() {
 				Expect(isIPAssigned).Should(BeTrue())
 				Expect(assignedPod).To(Equal(pod1))
 
-				By("get static ip conflict with ip in use ")
+				By("get static ip conflict with ip in use")
 				pod3 := "pod3.ns"
 				pod3Nic1 := "pod3Nic1.ns"
 				_, _, _, err = im.GetStaticAddress(pod3, pod3Nic1, freeIP3, nil, subnetName, true)
@@ -326,7 +326,7 @@ var _ = Describe("[IPAM]", func() {
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(ip).To(Equal("fe00::2"))
 
-				By("update invalid cidr, subnet should not change ")
+				By("update invalid cidr, subnet should not change")
 				err = im.AddOrUpdateSubnet(subnetName, "fd00::g/120", v6Gw, nil)
 				Expect(err).Should(MatchError(ipam.ErrInvalidCIDR))
 				Expect(im.Subnets[subnetName].V6CIDR.IP.String()).To(Equal("fe00::"))
@@ -384,7 +384,7 @@ var _ = Describe("[IPAM]", func() {
 			})
 
 			It("normal subnet", func() {
-				By("create pod with static ip ")
+				By("create pod with static ip")
 				im := ipam.NewIPAM()
 				err := im.AddOrUpdateSubnet(subnetName, dualCIDR, dualGw, dualExcludeIPs)
 				Expect(err).ShouldNot(HaveOccurred())
@@ -406,7 +406,7 @@ var _ = Describe("[IPAM]", func() {
 				Expect(ip4).To(Equal(freeIP41))
 				Expect(ip6).To(Equal(freeIP61))
 
-				By("create multiple ips on one pod ")
+				By("create multiple ips on one pod")
 				pod2 := "pod2.ns"
 				pod2Nic1 := "pod2Nic1.ns"
 				pod2Nic2 := "pod2Nic2.ns"
@@ -450,7 +450,7 @@ var _ = Describe("[IPAM]", func() {
 				Expect(isIPAssigned).Should(BeTrue())
 				Expect(assignedPod).To(Equal(pod1))
 
-				By("get static ip conflict with ip in use ")
+				By("get static ip conflict with ip in use")
 				pod3 := "pod3.ns"
 				pod3Nic1 := "pod3Nic1.ns"
 				_, _, _, err = im.GetStaticAddress(pod3, pod3Nic1, freeIP43, nil, subnetName, true)
