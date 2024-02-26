@@ -31,7 +31,7 @@ the project succeed.
 a Maintainer or Owner, then this section should instead be a reference to that
 documentation -->
 
-To become a Maintainer you need to demonstrate the following:
+To become a Maintainer, you need to demonstrate the following:
 
 * commitment to the project:
     * participate in discussions, contributions, code and documentation reviews
