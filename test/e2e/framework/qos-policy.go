@@ -249,7 +249,7 @@ func (c *QoSPolicyClient) WaitToQoSReady(name string) bool {
 	for start := time.Now(); time.Since(start) < timeout; time.Sleep(poll) {
 		qos := c.Get(name)
 		if len(qos.Spec.BandwidthLimitRules) != len(qos.Status.BandwidthLimitRules) {
-			Logf("qos %s is not ready ", name)
+			Logf("qos %s is not ready", name)
 			continue
 		}
 		sort.Slice(qos.Spec.BandwidthLimitRules, func(i, j int) bool {
@@ -267,10 +267,10 @@ func (c *QoSPolicyClient) WaitToQoSReady(name string) bool {
 		}
 
 		if equalCount == len(qos.Spec.BandwidthLimitRules) {
-			Logf("qos %s is ready ", name)
+			Logf("qos %s is ready", name)
 			return true
 		}
-		Logf("qos %s is not ready ", name)
+		Logf("qos %s is not ready", name)
 	}
 	return false
 }

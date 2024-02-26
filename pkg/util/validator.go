@@ -134,17 +134,17 @@ func validateNatOutgoingPolicyRules(subnet kubeovnv1.Subnet) error {
 
 		if rule.Match.SrcIPs != "" {
 			if srcProtocol, err = validateNatOutGoingPolicyRuleIPs(rule.Match.SrcIPs); err != nil {
-				return fmt.Errorf("validate nat policy rules src ips %s failed with err %v ", rule.Match.SrcIPs, err)
+				return fmt.Errorf("validate nat policy rules src ips %s failed with err %v", rule.Match.SrcIPs, err)
 			}
 		}
 		if rule.Match.DstIPs != "" {
 			if dstProtocol, err = validateNatOutGoingPolicyRuleIPs(rule.Match.DstIPs); err != nil {
-				return fmt.Errorf("validate nat policy rules dst ips %s failed with err %v ", rule.Match.DstIPs, err)
+				return fmt.Errorf("validate nat policy rules dst ips %s failed with err %v", rule.Match.DstIPs, err)
 			}
 		}
 
 		if srcProtocol != "" && dstProtocol != "" && srcProtocol != dstProtocol {
-			return fmt.Errorf("Match.SrcIPS protocol %s not equal to Match.DstIPs protocol %s ", srcProtocol, dstProtocol)
+			return fmt.Errorf("Match.SrcIPS protocol %s not equal to Match.DstIPs protocol %s", srcProtocol, dstProtocol)
 		}
 	}
 	return nil
@@ -181,7 +181,7 @@ func validateNatOutGoingPolicyRuleIPs(matchIPStr string) (string, error) {
 			continue
 		}
 
-		return "", fmt.Errorf("match ips %s is not ip or ipcidr ", matchIPStr)
+		return "", fmt.Errorf("match ips %s is not ip or ipcidr", matchIPStr)
 	}
 	return lastProtocol, nil
 }

@@ -109,10 +109,10 @@ func (c *IptablesSnatClient) DeleteSync(name string) {
 func (c *IptablesSnatClient) WaitToBeReady(name string, timeout time.Duration) bool {
 	for start := time.Now(); time.Since(start) < timeout; time.Sleep(poll) {
 		if c.Get(name).Status.Ready {
-			Logf("snat %s is ready ", name)
+			Logf("snat %s is ready", name)
 			return true
 		}
-		Logf("snat %s is not ready ", name)
+		Logf("snat %s is not ready", name)
 	}
 	return false
 }

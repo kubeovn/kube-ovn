@@ -56,7 +56,7 @@ func ParseFlags() (*Configuration, error) {
 		argKubeConfigFile = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.")
 		argProbeInterval  = pflag.Int("probeInterval", DefaultProbeInterval, "interval of probing leader in seconds")
 		argEnableCompact  = pflag.Bool("enableCompact", true, "is enable compact")
-		argIsICDBServer   = pflag.Bool("isICDBServer", false, "is ic db server ")
+		argIsICDBServer   = pflag.Bool("isICDBServer", false, "is ic db server")
 	)
 
 	klogFlags := flag.NewFlagSet("klog", flag.ContinueOnError)
@@ -186,7 +186,7 @@ func checkNorthdActive() bool {
 	var command []string
 	file, err := os.OpenFile(OvnNorthdPid, os.O_RDWR, 0o600)
 	if err != nil {
-		klog.Errorf("failed to open %s err =  %v", OvnNorthdPid, err)
+		klog.Errorf("failed to open %s err = %v", OvnNorthdPid, err)
 		return false
 	}
 	fileByte, err := io.ReadAll(file)
@@ -407,7 +407,7 @@ func doOvnLeaderCheck(cfg *Configuration, podName, podNamespace string) {
 
 		if icNbLeader {
 			if err := updateTS(); err != nil {
-				klog.Errorf("update ts num failed err: %v ", err)
+				klog.Errorf("update ts num failed err: %v", err)
 				return
 			}
 		}

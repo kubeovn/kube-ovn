@@ -644,7 +644,7 @@ func (c *Controller) handleUpdateIptablesFip(key string) error {
 		cachedFip.Status.Redo != "" &&
 		cachedFip.Status.V4ip != "" &&
 		cachedFip.DeletionTimestamp.IsZero() {
-		klog.V(3).Infof("reapply fip '%s' in pod ", key)
+		klog.V(3).Infof("reapply fip '%s' in pod", key)
 		gwPod, err := c.getNatGwPod(eip.Spec.NatGwDp)
 		if err != nil {
 			klog.Error(err)

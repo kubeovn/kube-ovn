@@ -30,7 +30,7 @@ func CheckIptablesRulesOnNode(f *framework.Framework, node, table, chain, protoc
 		output := e2epodoutput.RunHostCmdOrDie(ovsPod.Namespace, ovsPod.Name, cmd)
 		rules := strings.Split(output, "\n")
 		for _, r := range expectedRules {
-			framework.Logf("checking rule %s ", r)
+			framework.Logf("checking rule %s", r)
 			ok, err := gomega.ContainElement(gomega.HavePrefix(r)).Match(rules)
 			if err != nil || ok != shouldExist {
 				return false, err

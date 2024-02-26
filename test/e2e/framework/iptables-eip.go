@@ -121,10 +121,10 @@ func (c *IptablesEIPClient) WaitToBeReady(name string, timeout time.Duration) bo
 	for start := time.Now(); time.Since(start) < timeout; time.Sleep(poll) {
 		eip := c.Get(name)
 		if eip.Status.Ready && eip.Status.IP != "" && eip.Spec.V4ip != "" {
-			Logf("eip %s is ready ", name)
+			Logf("eip %s is ready", name)
 			return true
 		}
-		Logf("eip %s is not ready ", name)
+		Logf("eip %s is not ready", name)
 	}
 	return false
 }
@@ -134,10 +134,10 @@ func (c *IptablesEIPClient) WaitToQoSReady(name string) bool {
 	for start := time.Now(); time.Since(start) < timeout; time.Sleep(poll) {
 		eip := c.Get(name)
 		if eip.Status.QoSPolicy == eip.Spec.QoSPolicy {
-			Logf("qos %s is ready ", name)
+			Logf("qos %s is ready", name)
 			return true
 		}
-		Logf("qos %s is not ready ", name)
+		Logf("qos %s is not ready", name)
 	}
 	return false
 }

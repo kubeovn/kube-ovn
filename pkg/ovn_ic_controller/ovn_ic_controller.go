@@ -178,7 +178,7 @@ func (c *Controller) resyncInterConnection() {
 
 		err := c.disableOVNIC(azName)
 		if err != nil {
-			klog.Errorf("Disable az %s OVN IC failed ", azName)
+			klog.Errorf("Disable az %s OVN IC failed: %v", azName, err)
 			return
 		}
 		icEnabled = "false"
@@ -219,7 +219,7 @@ func (c *Controller) resyncInterConnection() {
 		c.ovnLegacyClient.OvnICNbAddress = genHostAddress(lastIcCm["ic-db-host"], cm.Data["ic-nb-port"])
 		err := c.disableOVNIC(lastIcCm["az-name"])
 		if err != nil {
-			klog.Errorf("Disable az %s OVN IC failed ", lastIcCm["az-name"])
+			klog.Errorf("Disable az %s OVN IC failed: %v", lastIcCm["az-name"], err)
 			return
 		}
 		klog.Info("start to reestablish ovn-ic")
@@ -293,7 +293,7 @@ func (c *Controller) establishInterConnection(config map[string]string) error {
 
 	tsNames, err := c.ovnLegacyClient.GetTs()
 	if err != nil {
-		klog.Errorf("failed to list ic logical switch. %v ", err)
+		klog.Errorf("failed to list ic logical switch: %v", err)
 		return err
 	}
 

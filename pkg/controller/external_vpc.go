@@ -48,7 +48,7 @@ func (c *Controller) syncExternalVpc() {
 				klog.Errorf("delete vpc %s failed: %v", vpcName, err)
 				continue
 			}
-			klog.Infof("deleted vpc %s ", vpcName)
+			klog.Infof("deleted vpc %s", vpcName)
 		}
 	}
 	if len(logicalRouters) != 0 {
@@ -77,7 +77,7 @@ func (c *Controller) syncExternalVpc() {
 				klog.Errorf("update vpc status failed %v", err)
 				return
 			}
-			klog.V(4).Infof("add vpc %s ", routerName)
+			klog.V(4).Infof("add vpc %s", routerName)
 		}
 	}
 }

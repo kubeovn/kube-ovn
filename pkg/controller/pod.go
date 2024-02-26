@@ -136,7 +136,7 @@ func (n *NamedPort) GetNamedPortByNs(namespace string) map[string]*util.NamedPor
 
 	if result, ok := n.namedPortMap[namespace]; ok {
 		for portName, info := range result {
-			klog.Infof("namespace %s's namedPort portname is %s with info %v ", namespace, portName, info)
+			klog.Infof("namespace %s's namedPort portname is %s with info %v", namespace, portName, info)
 		}
 		return result
 	}
