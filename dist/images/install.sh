@@ -2843,8 +2843,6 @@ rules:
       - patch
   - apiGroups:
       - ""
-      - networking.k8s.io
-      - apps
     resources:
       - services
       - endpoints
@@ -2935,17 +2933,28 @@ rules:
       - ""
     resources:
       - pods
-      - pods/exec
       - namespaces
-      - nodes
-      - configmaps
     verbs:
-      - create
       - get
       - list
+      - patch
       - watch
+  - apiGroups:
+      - ""
+    resources:
+      - nodes
+    verbs:
+      - get
+      - list
       - patch
       - update
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - pods/exec
+    verbs:
+      - create
   - apiGroups:
       - "k8s.cni.cncf.io"
     resources:
@@ -2955,40 +2964,53 @@ rules:
   - apiGroups:
       - ""
       - networking.k8s.io
-      - apps
     resources:
       - networkpolicies
-      - daemonsets
+      - configmaps
     verbs:
       - get
       - list
       - watch
   - apiGroups:
-      - ""
       - apps
     resources:
-      - services/status
+      - daemonsets
     verbs:
-      - update
+      - get
   - apiGroups:
       - ""
-      - networking.k8s.io
-      - apps
-      - extensions
     resources:
       - services
+      - services/status
+    verbs:
+      - get
+      - list
+      - update
+      - create
+      - delete
+      - watch
+  - apiGroups:
+      - ""
+    resources:
       - endpoints
+    verbs:
+      - create
+      - update
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - apps
+    resources:
       - statefulsets
       - deployments
       - deployments/scale
     verbs:
+      - get
+      - list
       - create
       - delete
       - update
-      - patch
-      - get
-      - list
-      - watch
   - apiGroups:
       - ""
     resources:
@@ -3043,29 +3065,34 @@ metadata:
 rules:
   - apiGroups:
       - "kubeovn.io"
+      - ""
     resources:
       - subnets
       - provider-networks
-      - ovn-eips
-      - ovn-eips/status
-      - ips
+      - pods
     verbs:
       - get
       - list
-      - patch
-      - update
       - watch
   - apiGroups:
       - ""
+      - "kubeovn.io"
     resources:
-      - pods
+      - ovn-eips
+      - ovn-eips/status
       - nodes
-      - configmaps
     verbs:
       - get
       - list
       - patch
       - watch
+  - apiGroups:
+      - "kubeovn.io"
+    resources:
+      - ips
+    verbs:
+      - get
+      - update
   - apiGroups:
       - ""
     resources:
@@ -3113,8 +3140,6 @@ rules:
       - get
       - list
   - apiGroups:
-      - ""
-      - networking.k8s.io
       - apps
     resources:
       - daemonsets
