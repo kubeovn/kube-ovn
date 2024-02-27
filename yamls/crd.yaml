@@ -1570,6 +1570,8 @@ spec:
                         type: string
                       bfdId:
                         type: string
+                      routeTable:
+                        type: string
                     type: object
                   type: array
                 policyRoutes:
@@ -1825,11 +1827,11 @@ spec:
             spec:
               type: object
               properties:
-                type:
-                  type: string
                 namespace:
                   type: string
                 subnet:
+                  type: string
+                type:
                   type: string
                 attachSubnets:
                   type: array
@@ -2110,6 +2112,8 @@ spec:
                   type: boolean
                 enableMulticastSnoop:
                   type: boolean
+                routeTable:
+                  type: string
   scope: Cluster
   names:
     plural: subnets
