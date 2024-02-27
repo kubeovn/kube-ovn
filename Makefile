@@ -148,7 +148,7 @@ image-test: build-go
 	docker buildx build --platform linux/amd64 -t $(REGISTRY)/test:$(RELEASE_TAG) -o type=docker -f dist/images/Dockerfile.test dist/images/
 
 .PHONY: release
-release: lint image-kube-ovn image-vpc-nat-gateway image-centos-compile
+release: lint ut image-kube-ovn image-vpc-nat-gateway image-centos-compile
 
 .PHONY: release-arm
 release-arm: build-go-arm

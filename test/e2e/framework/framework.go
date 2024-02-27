@@ -185,12 +185,8 @@ func (f *Framework) SkipVersionPriorTo(major, minor uint, reason string) {
 
 func (f *Framework) ValidateFinalizers(obj metav1.Object) {
 	finalizers := obj.GetFinalizers()
-	if !f.VersionPriorTo(1, 13) {
-		ExpectContainElement(finalizers, util.KubeOVNControllerFinalizer)
-		ExpectNotContainElement(finalizers, util.DepreciatedFinalizerName)
-	} else {
-		ExpectContainElement(finalizers, util.DepreciatedFinalizerName)
-	}
+	ExpectContainElement(finalizers, util.KubeOVNControllerFinalizer)
+	ExpectNotContainElement(finalizers, util.DepreciatedFinalizerName)
 }
 
 func Describe(text string, body func()) bool {
