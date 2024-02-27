@@ -182,10 +182,6 @@ func (c *Controller) processNextDeleteQoSPolicyWorkItem() bool {
 }
 
 func (c *Controller) handleAddQoSPolicy(key string) error {
-	c.vpcNatGwKeyMutex.LockKey(key)
-	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(key) }()
-	klog.Infof("handle add QoS policy %s", key)
-
 	cachedQoS, err := c.qosPoliciesLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -194,6 +190,10 @@ func (c *Controller) handleAddQoSPolicy(key string) error {
 		klog.Error(err)
 		return err
 	}
+
+	c.vpcNatGwKeyMutex.LockKey(key)
+	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(key) }()
+	klog.Infof("handle add QoS policy %s", key)
 
 	sortedNewRules := cachedQoS.Spec.BandwidthLimitRules
 	sort.Slice(sortedNewRules, func(i, j int) bool {
@@ -400,10 +400,6 @@ func (c *Controller) validateQosPolicy(qosPolicy *kubeovnv1.QoSPolicy) error {
 }
 
 func (c *Controller) handleUpdateQoSPolicy(key string) error {
-	c.vpcNatGwKeyMutex.LockKey(key)
-	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(key) }()
-	klog.Infof("handle update QoS policy %s", key)
-
 	cachedQos, err := c.qosPoliciesLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -412,6 +408,11 @@ func (c *Controller) handleUpdateQoSPolicy(key string) error {
 		klog.Error(err)
 		return err
 	}
+
+	c.vpcNatGwKeyMutex.LockKey(key)
+	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(key) }()
+	klog.Infof("handle update QoS policy %s", key)
+
 	// should delete
 	if !cachedQos.DeletionTimestamp.IsZero() {
 		if cachedQos.Spec.BindingType == kubeovnv1.QoSBindingTypeEIP {
