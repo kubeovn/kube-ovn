@@ -3,8 +3,8 @@ package unittest
 import (
 	"testing"
 
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
+	"github.com/onsi/ginkgo/v2"
+	"github.com/onsi/gomega"
 
 	// tests to run
 	_ "github.com/kubeovn/kube-ovn/test/unittest/ipam"
@@ -12,6 +12,6 @@ import (
 )
 
 func TestE2e(t *testing.T) {
-	RegisterFailHandler(Fail)
-	RunSpecs(t, "Kube-OVN unit test Suite")
+	gomega.RegisterFailHandler(ginkgo.Fail)
+	ginkgo.RunSpecs(t, "Kube-OVN unit test Suite")
 }
