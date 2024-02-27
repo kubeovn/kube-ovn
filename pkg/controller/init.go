@@ -14,7 +14,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
@@ -858,9 +857,10 @@ func updateFinalizers(c client.Client, list client.ObjectList, getObjectItem fun
 		controllerutil.RemoveFinalizer(patchedObj, util.DepreciatedFinalizerName)
 		controllerutil.AddFinalizer(patchedObj, util.KubeOVNControllerFinalizer)
 		if err := c.Patch(context.Background(), patchedObj, client.MergeFrom(cachedObj)); err != nil && !k8serrors.IsNotFound(err) {
+			objName := fmt.Sprintf("%s/%s", patchedObj.GetNamespace(), patchedObj.GetName())
 			klog.Errorf("failed to sync finalizers for %s %s: %v",
 				patchedObj.GetObjectKind().GroupVersionKind().Kind,
-				cache.MetaObjectToName(patchedObj), err)
+				objName, err)
 			return err
 		}
 		i++

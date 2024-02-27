@@ -2,6 +2,7 @@ package ovs
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -9,7 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
-	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func (suite *OvnClientTestSuite) testAddLoadBalancerHealthCheck() {
@@ -142,7 +142,7 @@ func (suite *OvnClientTestSuite) testDeleteLoadBalancerHealthChecks() {
 
 	err = ovnClient.DeleteLoadBalancerHealthChecks(
 		func(lbhc *ovnnb.LoadBalancerHealthCheck) bool {
-			return util.ContainsString(vips, lbhc.Vip)
+			return slices.Contains(vips, lbhc.Vip)
 		},
 	)
 	require.NoError(t, err)
