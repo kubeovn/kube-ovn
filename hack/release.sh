@@ -1,6 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 # run hack/release.sh from the project root directory to publish the release
+DOCS_DIR="../docs"
 
 echo "check status of last commit build"
 commit=$(git rev-parse HEAD)
@@ -56,10 +57,16 @@ git add VERSION
 git commit -m "prepare for next release"
 git push
 
-echo "draft a release"
-gh release create $VERSION --draft --generate-notes
-
 echo "trigger action to build new base"
 gh workflow run build-kube-ovn-base.yaml --ref $(git branch --show-current)
 
-echo "Need to modify the doc version number manually"
+echo "Modify the doc version number manually"
+cd ${DOCS_DIR}
+git checkout v1.12
+git pull
+sed -i "s/version: .*/version: ${VERSION}/" mkdocs.yml
+git add mkdocs.yml
+git commit -m "update version to ${VERSION}"
+git push
+
+echo "Manually update the release note with the new changelog"
