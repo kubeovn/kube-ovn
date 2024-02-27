@@ -21,10 +21,9 @@ package fake
 import (
 	"context"
 
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	labels "k8s.io/apimachinery/pkg/labels"
-	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	types "k8s.io/apimachinery/pkg/types"
 	watch "k8s.io/apimachinery/pkg/watch"
 	testing "k8s.io/client-go/testing"
@@ -35,24 +34,24 @@ type FakeVips struct {
 	Fake *FakeKubeovnV1
 }
 
-var vipsResource = schema.GroupVersionResource{Group: "kubeovn.io", Version: "v1", Resource: "vips"}
+var vipsResource = v1.SchemeGroupVersion.WithResource("vips")
 
-var vipsKind = schema.GroupVersionKind{Group: "kubeovn.io", Version: "v1", Kind: "Vip"}
+var vipsKind = v1.SchemeGroupVersion.WithKind("Vip")
 
 // Get takes name of the vip, and returns the corresponding vip object, and an error if there is any.
-func (c *FakeVips) Get(ctx context.Context, name string, options v1.GetOptions) (result *kubeovnv1.Vip, err error) {
+func (c *FakeVips) Get(ctx context.Context, name string, options metav1.GetOptions) (result *v1.Vip, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootGetAction(vipsResource, name), &kubeovnv1.Vip{})
+		Invokes(testing.NewRootGetAction(vipsResource, name), &v1.Vip{})
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*kubeovnv1.Vip), err
+	return obj.(*v1.Vip), err
 }
 
 // List takes label and field selectors, and returns the list of Vips that match those selectors.
-func (c *FakeVips) List(ctx context.Context, opts v1.ListOptions) (result *kubeovnv1.VipList, err error) {
+func (c *FakeVips) List(ctx context.Context, opts metav1.ListOptions) (result *v1.VipList, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootListAction(vipsResource, vipsKind, opts), &kubeovnv1.VipList{})
+		Invokes(testing.NewRootListAction(vipsResource, vipsKind, opts), &v1.VipList{})
 	if obj == nil {
 		return nil, err
 	}
@@ -61,8 +60,8 @@ func (c *FakeVips) List(ctx context.Context, opts v1.ListOptions) (result *kubeo
 	if label == nil {
 		label = labels.Everything()
 	}
-	list := &kubeovnv1.VipList{ListMeta: obj.(*kubeovnv1.VipList).ListMeta}
-	for _, item := range obj.(*kubeovnv1.VipList).Items {
+	list := &v1.VipList{ListMeta: obj.(*v1.VipList).ListMeta}
+	for _, item := range obj.(*v1.VipList).Items {
 		if label.Matches(labels.Set(item.Labels)) {
 			list.Items = append(list.Items, item)
 		}
@@ -71,63 +70,63 @@ func (c *FakeVips) List(ctx context.Context, opts v1.ListOptions) (result *kubeo
 }
 
 // Watch returns a watch.Interface that watches the requested vips.
-func (c *FakeVips) Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error) {
+func (c *FakeVips) Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error) {
 	return c.Fake.
 		InvokesWatch(testing.NewRootWatchAction(vipsResource, opts))
 }
 
 // Create takes the representation of a vip and creates it.  Returns the server's representation of the vip, and an error, if there is any.
-func (c *FakeVips) Create(ctx context.Context, vip *kubeovnv1.Vip, opts v1.CreateOptions) (result *kubeovnv1.Vip, err error) {
+func (c *FakeVips) Create(ctx context.Context, vip *v1.Vip, opts metav1.CreateOptions) (result *v1.Vip, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootCreateAction(vipsResource, vip), &kubeovnv1.Vip{})
+		Invokes(testing.NewRootCreateAction(vipsResource, vip), &v1.Vip{})
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*kubeovnv1.Vip), err
+	return obj.(*v1.Vip), err
 }
 
 // Update takes the representation of a vip and updates it. Returns the server's representation of the vip, and an error, if there is any.
-func (c *FakeVips) Update(ctx context.Context, vip *kubeovnv1.Vip, opts v1.UpdateOptions) (result *kubeovnv1.Vip, err error) {
+func (c *FakeVips) Update(ctx context.Context, vip *v1.Vip, opts metav1.UpdateOptions) (result *v1.Vip, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootUpdateAction(vipsResource, vip), &kubeovnv1.Vip{})
+		Invokes(testing.NewRootUpdateAction(vipsResource, vip), &v1.Vip{})
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*kubeovnv1.Vip), err
+	return obj.(*v1.Vip), err
 }
 
 // UpdateStatus was generated because the type contains a Status member.
 // Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-func (c *FakeVips) UpdateStatus(ctx context.Context, vip *kubeovnv1.Vip, opts v1.UpdateOptions) (*kubeovnv1.Vip, error) {
+func (c *FakeVips) UpdateStatus(ctx context.Context, vip *v1.Vip, opts metav1.UpdateOptions) (*v1.Vip, error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootUpdateSubresourceAction(vipsResource, "status", vip), &kubeovnv1.Vip{})
+		Invokes(testing.NewRootUpdateSubresourceAction(vipsResource, "status", vip), &v1.Vip{})
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*kubeovnv1.Vip), err
+	return obj.(*v1.Vip), err
 }
 
 // Delete takes name of the vip and deletes it. Returns an error if one occurs.
-func (c *FakeVips) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
+func (c *FakeVips) Delete(ctx context.Context, name string, opts metav1.DeleteOptions) error {
 	_, err := c.Fake.
-		Invokes(testing.NewRootDeleteActionWithOptions(vipsResource, name, opts), &kubeovnv1.Vip{})
+		Invokes(testing.NewRootDeleteActionWithOptions(vipsResource, name, opts), &v1.Vip{})
 	return err
 }
 
 // DeleteCollection deletes a collection of objects.
-func (c *FakeVips) DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error {
+func (c *FakeVips) DeleteCollection(ctx context.Context, opts metav1.DeleteOptions, listOpts metav1.ListOptions) error {
 	action := testing.NewRootDeleteCollectionAction(vipsResource, listOpts)
 
-	_, err := c.Fake.Invokes(action, &kubeovnv1.VipList{})
+	_, err := c.Fake.Invokes(action, &v1.VipList{})
 	return err
 }
 
 // Patch applies the patch and returns the patched vip.
-func (c *FakeVips) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *kubeovnv1.Vip, err error) {
+func (c *FakeVips) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *v1.Vip, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootPatchSubresourceAction(vipsResource, name, pt, data, subresources...), &kubeovnv1.Vip{})
+		Invokes(testing.NewRootPatchSubresourceAction(vipsResource, name, pt, data, subresources...), &v1.Vip{})
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*kubeovnv1.Vip), err
+	return obj.(*v1.Vip), err
 }

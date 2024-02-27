@@ -21,10 +21,9 @@ package fake
 import (
 	"context"
 
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	labels "k8s.io/apimachinery/pkg/labels"
-	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	types "k8s.io/apimachinery/pkg/types"
 	watch "k8s.io/apimachinery/pkg/watch"
 	testing "k8s.io/client-go/testing"
@@ -35,24 +34,24 @@ type FakeVpcNatGateways struct {
 	Fake *FakeKubeovnV1
 }
 
-var vpcnatgatewaysResource = schema.GroupVersionResource{Group: "kubeovn.io", Version: "v1", Resource: "vpc-nat-gateways"}
+var vpcnatgatewaysResource = v1.SchemeGroupVersion.WithResource("vpc-nat-gateways")
 
-var vpcnatgatewaysKind = schema.GroupVersionKind{Group: "kubeovn.io", Version: "v1", Kind: "VpcNatGateway"}
+var vpcnatgatewaysKind = v1.SchemeGroupVersion.WithKind("VpcNatGateway")
 
 // Get takes name of the vpcNatGateway, and returns the corresponding vpcNatGateway object, and an error if there is any.
-func (c *FakeVpcNatGateways) Get(ctx context.Context, name string, options v1.GetOptions) (result *kubeovnv1.VpcNatGateway, err error) {
+func (c *FakeVpcNatGateways) Get(ctx context.Context, name string, options metav1.GetOptions) (result *v1.VpcNatGateway, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootGetAction(vpcnatgatewaysResource, name), &kubeovnv1.VpcNatGateway{})
+		Invokes(testing.NewRootGetAction(vpcnatgatewaysResource, name), &v1.VpcNatGateway{})
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*kubeovnv1.VpcNatGateway), err
+	return obj.(*v1.VpcNatGateway), err
 }
 
 // List takes label and field selectors, and returns the list of VpcNatGateways that match those selectors.
-func (c *FakeVpcNatGateways) List(ctx context.Context, opts v1.ListOptions) (result *kubeovnv1.VpcNatGatewayList, err error) {
+func (c *FakeVpcNatGateways) List(ctx context.Context, opts metav1.ListOptions) (result *v1.VpcNatGatewayList, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootListAction(vpcnatgatewaysResource, vpcnatgatewaysKind, opts), &kubeovnv1.VpcNatGatewayList{})
+		Invokes(testing.NewRootListAction(vpcnatgatewaysResource, vpcnatgatewaysKind, opts), &v1.VpcNatGatewayList{})
 	if obj == nil {
 		return nil, err
 	}
@@ -61,8 +60,8 @@ func (c *FakeVpcNatGateways) List(ctx context.Context, opts v1.ListOptions) (res
 	if label == nil {
 		label = labels.Everything()
 	}
-	list := &kubeovnv1.VpcNatGatewayList{ListMeta: obj.(*kubeovnv1.VpcNatGatewayList).ListMeta}
-	for _, item := range obj.(*kubeovnv1.VpcNatGatewayList).Items {
+	list := &v1.VpcNatGatewayList{ListMeta: obj.(*v1.VpcNatGatewayList).ListMeta}
+	for _, item := range obj.(*v1.VpcNatGatewayList).Items {
 		if label.Matches(labels.Set(item.Labels)) {
 			list.Items = append(list.Items, item)
 		}
@@ -71,63 +70,63 @@ func (c *FakeVpcNatGateways) List(ctx context.Context, opts v1.ListOptions) (res
 }
 
 // Watch returns a watch.Interface that watches the requested vpcNatGateways.
-func (c *FakeVpcNatGateways) Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error) {
+func (c *FakeVpcNatGateways) Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error) {
 	return c.Fake.
 		InvokesWatch(testing.NewRootWatchAction(vpcnatgatewaysResource, opts))
 }
 
 // Create takes the representation of a vpcNatGateway and creates it.  Returns the server's representation of the vpcNatGateway, and an error, if there is any.
-func (c *FakeVpcNatGateways) Create(ctx context.Context, vpcNatGateway *kubeovnv1.VpcNatGateway, opts v1.CreateOptions) (result *kubeovnv1.VpcNatGateway, err error) {
+func (c *FakeVpcNatGateways) Create(ctx context.Context, vpcNatGateway *v1.VpcNatGateway, opts metav1.CreateOptions) (result *v1.VpcNatGateway, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootCreateAction(vpcnatgatewaysResource, vpcNatGateway), &kubeovnv1.VpcNatGateway{})
+		Invokes(testing.NewRootCreateAction(vpcnatgatewaysResource, vpcNatGateway), &v1.VpcNatGateway{})
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*kubeovnv1.VpcNatGateway), err
+	return obj.(*v1.VpcNatGateway), err
 }
 
 // Update takes the representation of a vpcNatGateway and updates it. Returns the server's representation of the vpcNatGateway, and an error, if there is any.
-func (c *FakeVpcNatGateways) Update(ctx context.Context, vpcNatGateway *kubeovnv1.VpcNatGateway, opts v1.UpdateOptions) (result *kubeovnv1.VpcNatGateway, err error) {
+func (c *FakeVpcNatGateways) Update(ctx context.Context, vpcNatGateway *v1.VpcNatGateway, opts metav1.UpdateOptions) (result *v1.VpcNatGateway, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootUpdateAction(vpcnatgatewaysResource, vpcNatGateway), &kubeovnv1.VpcNatGateway{})
+		Invokes(testing.NewRootUpdateAction(vpcnatgatewaysResource, vpcNatGateway), &v1.VpcNatGateway{})
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*kubeovnv1.VpcNatGateway), err
+	return obj.(*v1.VpcNatGateway), err
 }
 
 // UpdateStatus was generated because the type contains a Status member.
 // Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-func (c *FakeVpcNatGateways) UpdateStatus(ctx context.Context, vpcNatGateway *kubeovnv1.VpcNatGateway, opts v1.UpdateOptions) (*kubeovnv1.VpcNatGateway, error) {
+func (c *FakeVpcNatGateways) UpdateStatus(ctx context.Context, vpcNatGateway *v1.VpcNatGateway, opts metav1.UpdateOptions) (*v1.VpcNatGateway, error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootUpdateSubresourceAction(vpcnatgatewaysResource, "status", vpcNatGateway), &kubeovnv1.VpcNatGateway{})
+		Invokes(testing.NewRootUpdateSubresourceAction(vpcnatgatewaysResource, "status", vpcNatGateway), &v1.VpcNatGateway{})
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*kubeovnv1.VpcNatGateway), err
+	return obj.(*v1.VpcNatGateway), err
 }
 
 // Delete takes name of the vpcNatGateway and deletes it. Returns an error if one occurs.
-func (c *FakeVpcNatGateways) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
+func (c *FakeVpcNatGateways) Delete(ctx context.Context, name string, opts metav1.DeleteOptions) error {
 	_, err := c.Fake.
-		Invokes(testing.NewRootDeleteActionWithOptions(vpcnatgatewaysResource, name, opts), &kubeovnv1.VpcNatGateway{})
+		Invokes(testing.NewRootDeleteActionWithOptions(vpcnatgatewaysResource, name, opts), &v1.VpcNatGateway{})
 	return err
 }
 
 // DeleteCollection deletes a collection of objects.
-func (c *FakeVpcNatGateways) DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error {
+func (c *FakeVpcNatGateways) DeleteCollection(ctx context.Context, opts metav1.DeleteOptions, listOpts metav1.ListOptions) error {
 	action := testing.NewRootDeleteCollectionAction(vpcnatgatewaysResource, listOpts)
 
-	_, err := c.Fake.Invokes(action, &kubeovnv1.VpcNatGatewayList{})
+	_, err := c.Fake.Invokes(action, &v1.VpcNatGatewayList{})
 	return err
 }
 
 // Patch applies the patch and returns the patched vpcNatGateway.
-func (c *FakeVpcNatGateways) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *kubeovnv1.VpcNatGateway, err error) {
+func (c *FakeVpcNatGateways) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *v1.VpcNatGateway, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootPatchSubresourceAction(vpcnatgatewaysResource, name, pt, data, subresources...), &kubeovnv1.VpcNatGateway{})
+		Invokes(testing.NewRootPatchSubresourceAction(vpcnatgatewaysResource, name, pt, data, subresources...), &v1.VpcNatGateway{})
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*kubeovnv1.VpcNatGateway), err
+	return obj.(*v1.VpcNatGateway), err
 }
