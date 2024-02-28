@@ -201,13 +201,6 @@ func (c *Controller) processNextDeleteIptablesEipWorkItem() bool {
 }
 
 func (c *Controller) handleAddIptablesEip(key string) error {
-	if vpcNatEnabled != "true" {
-		return fmt.Errorf("iptables nat gw not enable")
-	}
-
-	c.vpcNatGwKeyMutex.LockKey(key)
-	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(key) }()
-	klog.Infof("handle add iptables eip %s", key)
 	cachedEip, err := c.iptablesEipsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -216,6 +209,15 @@ func (c *Controller) handleAddIptablesEip(key string) error {
 		klog.Error(err)
 		return err
 	}
+
+	if vpcNatEnabled != "true" {
+		return fmt.Errorf("iptables nat gw not enable")
+	}
+
+	c.vpcNatGwKeyMutex.LockKey(key)
+	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(key) }()
+	klog.Infof("handle add iptables eip %s", key)
+
 	if cachedEip.Status.Ready && cachedEip.Status.IP != "" {
 		// already ok
 		return nil
@@ -284,10 +286,6 @@ func (c *Controller) handleResetIptablesEip(key string) error {
 }
 
 func (c *Controller) handleUpdateIptablesEip(key string) error {
-	c.vpcNatGwKeyMutex.LockKey(key)
-	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(key) }()
-	klog.Infof("handle update iptables eip %s", key)
-
 	cachedEip, err := c.iptablesEipsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -296,6 +294,11 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 		klog.Error(err)
 		return err
 	}
+
+	c.vpcNatGwKeyMutex.LockKey(key)
+	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(key) }()
+	klog.Infof("handle update iptables eip %s", key)
+
 	externalNetwork := util.GetExternalNetwork(cachedEip.Spec.ExternalSubnet)
 	// should delete
 	if !cachedEip.DeletionTimestamp.IsZero() {

@@ -201,6 +201,7 @@ func (c *Controller) processNextWorkItem(processName string, queue workqueue.Rat
 func (c *Controller) handleDelVpcNatGw(key string) error {
 	c.vpcNatGwKeyMutex.LockKey(key)
 	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(key) }()
+
 	name := util.GenNatGwStsName(key)
 	klog.Infof("delete vpc nat gw %s", name)
 	if err := c.config.KubeClient.AppsV1().StatefulSets(c.config.PodNamespace).Delete(context.Background(),
@@ -235,14 +236,6 @@ func isVpcNatGwChanged(gw *kubeovnv1.VpcNatGateway) bool {
 }
 
 func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
-	// create nat gw statefulset
-	c.vpcNatGwKeyMutex.LockKey(key)
-	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(key) }()
-	klog.Infof("handle add/update vpc nat gateway %s", key)
-
-	if vpcNatEnabled != "true" {
-		return fmt.Errorf("iptables nat gw not enable")
-	}
 	gw, err := c.vpcNatGatewayLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -251,6 +244,16 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 		klog.Error(err)
 		return err
 	}
+
+	// create nat gw statefulset
+	c.vpcNatGwKeyMutex.LockKey(key)
+	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(key) }()
+	klog.Infof("handle add/update vpc nat gateway %s", key)
+
+	if vpcNatEnabled != "true" {
+		return fmt.Errorf("iptables nat gw not enable")
+	}
+
 	if _, err := c.vpcsLister.Get(gw.Spec.Vpc); err != nil {
 		err = fmt.Errorf("failed to get vpc '%s', err: %v", gw.Spec.Vpc, err)
 		klog.Error(err)
@@ -337,14 +340,6 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 }
 
 func (c *Controller) handleInitVpcNatGw(key string) error {
-	if vpcNatEnabled != "true" {
-		return fmt.Errorf("iptables nat gw not enable")
-	}
-
-	c.vpcNatGwKeyMutex.LockKey(key)
-	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(key) }()
-	klog.Infof("handle init vpc nat gateway %s", key)
-
 	gw, err := c.vpcNatGatewayLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -353,6 +348,15 @@ func (c *Controller) handleInitVpcNatGw(key string) error {
 		klog.Error(err)
 		return err
 	}
+
+	if vpcNatEnabled != "true" {
+		return fmt.Errorf("iptables nat gw not enable")
+	}
+
+	c.vpcNatGwKeyMutex.LockKey(key)
+	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(key) }()
+	klog.Infof("handle init vpc nat gateway %s", key)
+
 	// subnet for vpc-nat-gw has been checked when create vpc-nat-gw
 
 	oriPod, err := c.getNatGwPod(key)
@@ -590,6 +594,15 @@ func (c *Controller) getIptablesVersion(pod *corev1.Pod) (version string, err er
 }
 
 func (c *Controller) handleUpdateNatGwSubnetRoute(natGwKey string) error {
+	gw, err := c.vpcNatGatewayLister.Get(natGwKey)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		klog.Error(err)
+		return err
+	}
+
 	if vpcNatEnabled != "true" {
 		return fmt.Errorf("iptables nat gw not enable")
 	}
@@ -597,12 +610,6 @@ func (c *Controller) handleUpdateNatGwSubnetRoute(natGwKey string) error {
 	c.vpcNatGwKeyMutex.LockKey(natGwKey)
 	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(natGwKey) }()
 	klog.Infof("handle update subnet route for nat gateway %s", natGwKey)
-
-	gw, err := c.vpcNatGatewayLister.Get(natGwKey)
-	if err != nil {
-		klog.Error(err)
-		return err
-	}
 
 	oriPod, err := c.getNatGwPod(natGwKey)
 	if err != nil {
@@ -1076,6 +1083,42 @@ func (c *Controller) execNatGwQoSInPod(
 		err = fmt.Errorf("failed to exec nat gateway rule, err: %v", err)
 		klog.Error(err)
 		return err
+	}
+	return nil
+}
+
+func (c *Controller) initVpcNatGw() error {
+	klog.Infof("init all vpc nat gateways")
+	gws, err := c.vpcNatGatewayLister.List(labels.Everything())
+	if err != nil {
+		err = fmt.Errorf("failed to get vpc nat gw list, %v", err)
+		klog.Error(err)
+		return err
+	}
+	if len(gws) == 0 {
+		return nil
+	}
+
+	if vpcNatEnabled != "true" {
+		err := fmt.Errorf("iptables nat gw not enable")
+		klog.Warning(err)
+		return nil
+	}
+
+	for _, gw := range gws {
+		pod, err := c.getNatGwPod(gw.Name)
+		if err != nil {
+			// the nat gw maybe deleted
+			err := fmt.Errorf("failed to get nat gw %s pod: %v", gw.Name, err)
+			klog.Error(err)
+			continue
+		}
+		if vpcGwName, isVpcNatGw := pod.Annotations[util.VpcNatGatewayAnnotation]; isVpcNatGw {
+			if _, hasInit := pod.Annotations[util.VpcNatGatewayInitAnnotation]; hasInit {
+				return nil
+			}
+			c.initVpcNatGatewayQueue.Add(vpcGwName)
+		}
 	}
 	return nil
 }
