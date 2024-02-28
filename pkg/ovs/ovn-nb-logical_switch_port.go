@@ -16,7 +16,7 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-func buildLogicalSwitchPort(lspName, ip, mac, podName, namespace string, portSecurity bool, securityGroups, vips string, enableDHCP bool, dhcpOptions *DHCPOptionsUUIDs, vpc string) *ovnnb.LogicalSwitchPort {
+func buildLogicalSwitchPort(lspName, lsName, ip, mac, podName, namespace string, portSecurity bool, securityGroups, vips string, enableDHCP bool, dhcpOptions *DHCPOptionsUUIDs, vpc string) *ovnnb.LogicalSwitchPort {
 	/* normal lsp creation */
 	lsp := &ovnnb.LogicalSwitchPort{
 		UUID:        ovsclient.NamedUUID(),
@@ -67,6 +67,10 @@ func buildLogicalSwitchPort(lspName, ip, mac, podName, namespace string, portSec
 		lsp.ExternalIDs["pod"] = namespace + "/" + podName
 	}
 
+	// attach necessary info
+	lsp.ExternalIDs[logicalSwitchKey] = lsName
+	lsp.ExternalIDs["vendor"] = util.CniTypeName
+
 	// set dhcp options
 	if enableDHCP && dhcpOptions != nil {
 		if len(dhcpOptions.DHCPv4OptionsUUID) != 0 {
@@ -89,7 +93,7 @@ func (c *OVNNbClient) CreateLogicalSwitchPort(lsName, lspName, ip, mac, podName,
 
 	// update if exists
 	if exist {
-		lsp := buildLogicalSwitchPort(lspName, ip, mac, podName, namespace, portSecurity, securityGroups, vips, enableDHCP, dhcpOptions, vpc)
+		lsp := buildLogicalSwitchPort(lspName, lsName, ip, mac, podName, namespace, portSecurity, securityGroups, vips, enableDHCP, dhcpOptions, vpc)
 		if err := c.UpdateLogicalSwitchPort(lsp, &lsp.PortSecurity, &lsp.ExternalIDs); err != nil {
 			klog.Error(err)
 			return fmt.Errorf("failed to update logical switch port %s: %v", lspName, err)
@@ -97,7 +101,7 @@ func (c *OVNNbClient) CreateLogicalSwitchPort(lsName, lspName, ip, mac, podName,
 		return nil
 	}
 
-	lsp := buildLogicalSwitchPort(lspName, ip, mac, podName, namespace, portSecurity, securityGroups, vips, enableDHCP, dhcpOptions, vpc)
+	lsp := buildLogicalSwitchPort(lspName, lsName, ip, mac, podName, namespace, portSecurity, securityGroups, vips, enableDHCP, dhcpOptions, vpc)
 	ops, err := c.CreateLogicalSwitchPortOp(lsp, lsName)
 	if err != nil {
 		klog.Error(err)
