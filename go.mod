@@ -12,7 +12,7 @@ require (
 	github.com/containernetworking/cni v1.1.2
 	github.com/containernetworking/plugins v1.4.0
 	github.com/docker/docker v24.0.7+incompatible
-	github.com/emicklei/go-restful/v3 v3.11.2
+	github.com/emicklei/go-restful/v3 v3.11.3
 	github.com/evanphx/json-patch/v5 v5.9.0
 	github.com/go-logr/stdr v1.2.2
 	github.com/golang/mock v1.6.0
@@ -27,7 +27,7 @@ require (
 	github.com/onsi/gomega v1.31.1
 	github.com/osrg/gobgp/v3 v3.23.0
 	github.com/ovn-org/libovsdb v0.0.0-20230711201130-6785b52d4020
-	github.com/parnurzeal/gorequest v0.2.16
+	github.com/parnurzeal/gorequest v0.3.0
 	github.com/prometheus-community/pro-bing v0.3.0
 	github.com/prometheus/client_golang v1.18.0
 	github.com/scylladb/go-set v1.0.2
@@ -39,7 +39,7 @@ require (
 	golang.org/x/mod v0.14.0
 	golang.org/x/sys v0.16.0
 	golang.org/x/time v0.5.0
-	google.golang.org/grpc v1.61.0
+	google.golang.org/grpc v1.62.0
 	google.golang.org/protobuf v1.32.0
 	gopkg.in/k8snetworkplumbingwg/multus-cni.v4 v4.0.2
 	k8s.io/api v0.27.10
@@ -123,7 +123,7 @@ require (
 	github.com/gofrs/uuid v4.4.0+incompatible // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang-jwt/jwt/v4 v4.5.0 // indirect
-	github.com/golang/glog v1.1.2 // indirect
+	github.com/golang/glog v1.2.0 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/google/btree v1.0.1 // indirect
@@ -175,6 +175,7 @@ require (
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/mohae/deepcopy v0.0.0-20170929034955-c48cc78d4826 // indirect
 	github.com/monochromegane/go-gitignore v0.0.0-20200626010858-205db1a8cc00 // indirect
+	github.com/moul/http2curl v1.0.0 // indirect
 	github.com/mrunalp/fileutils v0.5.1 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/mxk/go-flowrate v0.0.0-20140419014527-cca7078d478f // indirect
@@ -240,8 +241,8 @@ require (
 	gomodules.xyz/jsonpatch/v2 v2.3.0 // indirect
 	google.golang.org/api v0.152.0 // indirect
 	google.golang.org/appengine v1.6.8 // indirect
-	google.golang.org/genproto v0.0.0-20240116215550-a9fa1716bcac // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20240102182953-50ed04b92917 // indirect
+	google.golang.org/genproto v0.0.0-20240123012728-ef4313101c80 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20240123012728-ef4313101c80 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20240125205218-1f4bbc51befe // indirect
 	gopkg.in/gcfg.v1 v1.2.3 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
@@ -271,7 +272,6 @@ require (
 	kubevirt.io/api v0.58.1 // indirect
 	kubevirt.io/containerized-data-importer-api v1.55.2 // indirect
 	kubevirt.io/controller-lifecycle-operator-sdk/api v0.2.4 // indirect
-	moul.io/http2curl v1.0.0 // indirect
 	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.1.2 // indirect
 	sigs.k8s.io/json v0.0.0-20221116044647-bc3834ca7abd // indirect
 	sigs.k8s.io/kustomize/api v0.13.2 // indirect
