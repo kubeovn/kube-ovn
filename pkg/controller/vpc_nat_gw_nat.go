@@ -479,14 +479,6 @@ func (c *Controller) processNextDeleteIptablesSnatRuleWorkItem() bool {
 }
 
 func (c *Controller) handleAddIptablesFip(key string) error {
-	if vpcNatEnabled != "true" {
-		return fmt.Errorf("iptables nat gw not enable")
-	}
-
-	c.vpcNatGwKeyMutex.LockKey(key)
-	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(key) }()
-	klog.Infof("handle add iptables fip %s", key)
-
 	fip, err := c.iptablesFipsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -495,6 +487,15 @@ func (c *Controller) handleAddIptablesFip(key string) error {
 		klog.Error(err)
 		return err
 	}
+
+	if vpcNatEnabled != "true" {
+		return fmt.Errorf("iptables nat gw not enable")
+	}
+
+	c.vpcNatGwKeyMutex.LockKey(key)
+	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(key) }()
+	klog.Infof("handle add iptables fip %s", key)
+
 	if fip.Status.Ready && fip.Status.V4ip != "" {
 		// already ok
 		return nil
@@ -562,10 +563,6 @@ func (c *Controller) fipTryUseEip(fipName, eipV4IP string) error {
 }
 
 func (c *Controller) handleUpdateIptablesFip(key string) error {
-	c.vpcNatGwKeyMutex.LockKey(key)
-	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(key) }()
-	klog.Infof("handle update iptables fip %s", key)
-
 	cachedFip, err := c.iptablesFipsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -574,6 +571,11 @@ func (c *Controller) handleUpdateIptablesFip(key string) error {
 		klog.Error(err)
 		return err
 	}
+
+	c.vpcNatGwKeyMutex.LockKey(key)
+	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(key) }()
+	klog.Infof("handle update iptables fip %s", key)
+
 	// should delete
 	if !cachedFip.DeletionTimestamp.IsZero() {
 		if vpcNatEnabled == "true" {
@@ -679,14 +681,6 @@ func (c *Controller) handleDelIptablesFip(key string) error {
 }
 
 func (c *Controller) handleAddIptablesDnatRule(key string) error {
-	if vpcNatEnabled != "true" {
-		return fmt.Errorf("iptables nat gw not enable")
-	}
-
-	c.vpcNatGwKeyMutex.LockKey(key)
-	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(key) }()
-	klog.Infof("handle add iptables dnat rule %s", key)
-
 	dnat, err := c.iptablesDnatRulesLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -695,6 +689,15 @@ func (c *Controller) handleAddIptablesDnatRule(key string) error {
 		klog.Error(err)
 		return err
 	}
+
+	if vpcNatEnabled != "true" {
+		return fmt.Errorf("iptables nat gw not enable")
+	}
+
+	c.vpcNatGwKeyMutex.LockKey(key)
+	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(key) }()
+	klog.Infof("handle add iptables dnat rule %s", key)
+
 	if dnat.Status.Ready && dnat.Status.V4ip != "" {
 		// already ok
 		return nil
@@ -743,10 +746,6 @@ func (c *Controller) handleAddIptablesDnatRule(key string) error {
 }
 
 func (c *Controller) handleUpdateIptablesDnatRule(key string) error {
-	c.vpcNatGwKeyMutex.LockKey(key)
-	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(key) }()
-	klog.Infof("handle update iptables fip %s", key)
-
 	cachedDnat, err := c.iptablesDnatRulesLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -755,6 +754,11 @@ func (c *Controller) handleUpdateIptablesDnatRule(key string) error {
 		klog.Error(err)
 		return err
 	}
+
+	c.vpcNatGwKeyMutex.LockKey(key)
+	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(key) }()
+	klog.Infof("handle update iptables fip %s", key)
+
 	// should delete
 	if !cachedDnat.DeletionTimestamp.IsZero() {
 		klog.V(3).Infof("clean dnat '%s' in pod", key)
@@ -865,14 +869,6 @@ func (c *Controller) handleDelIptablesDnatRule(key string) error {
 }
 
 func (c *Controller) handleAddIptablesSnatRule(key string) error {
-	if vpcNatEnabled != "true" {
-		return fmt.Errorf("iptables nat gw not enable")
-	}
-
-	c.vpcNatGwKeyMutex.LockKey(key)
-	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(key) }()
-	klog.Infof("handle add iptables snat rule %s", key)
-
 	snat, err := c.iptablesSnatRulesLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -881,6 +877,15 @@ func (c *Controller) handleAddIptablesSnatRule(key string) error {
 		klog.Error(err)
 		return err
 	}
+
+	if vpcNatEnabled != "true" {
+		return fmt.Errorf("iptables nat gw not enable")
+	}
+
+	c.vpcNatGwKeyMutex.LockKey(key)
+	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(key) }()
+	klog.Infof("handle add iptables snat rule %s", key)
+
 	if snat.Status.Ready && snat.Status.V4ip != "" {
 		// already ok
 		return nil
@@ -928,10 +933,6 @@ func (c *Controller) handleAddIptablesSnatRule(key string) error {
 }
 
 func (c *Controller) handleUpdateIptablesSnatRule(key string) error {
-	c.vpcNatGwKeyMutex.LockKey(key)
-	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(key) }()
-	klog.Infof("handle update iptables snat rule %s", key)
-
 	cachedSnat, err := c.iptablesSnatRulesLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -940,6 +941,11 @@ func (c *Controller) handleUpdateIptablesSnatRule(key string) error {
 		klog.Error(err)
 		return err
 	}
+
+	c.vpcNatGwKeyMutex.LockKey(key)
+	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(key) }()
+	klog.Infof("handle update iptables snat rule %s", key)
+
 	v4Cidr, _ := util.SplitStringIP(cachedSnat.Status.InternalCIDR)
 	if v4Cidr == "" {
 		err = fmt.Errorf("failed to get snat v4 internal cidr, original cidr is %s", cachedSnat.Status.InternalCIDR)
