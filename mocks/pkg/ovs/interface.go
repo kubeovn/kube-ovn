@@ -768,17 +768,17 @@ func (m *MockLogicalSwitchPort) EXPECT() *MockLogicalSwitchPortMockRecorder {
 }
 
 // CleanLogicalSwitchPortMigrateOptions mocks base method.
-func (m *MockLogicalSwitchPort) CleanLogicalSwitchPortMigrateOptions(lspName string) error {
+func (m *MockLogicalSwitchPort) CleanLogicalSwitchPortMigrateOptions(lspName string, fail bool) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CleanLogicalSwitchPortMigrateOptions", lspName)
+	ret := m.ctrl.Call(m, "CleanLogicalSwitchPortMigrateOptions", lspName, fail)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // CleanLogicalSwitchPortMigrateOptions indicates an expected call of CleanLogicalSwitchPortMigrateOptions.
-func (mr *MockLogicalSwitchPortMockRecorder) CleanLogicalSwitchPortMigrateOptions(lspName any) *gomock.Call {
+func (mr *MockLogicalSwitchPortMockRecorder) CleanLogicalSwitchPortMigrateOptions(lspName, fail any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CleanLogicalSwitchPortMigrateOptions", reflect.TypeOf((*MockLogicalSwitchPort)(nil).CleanLogicalSwitchPortMigrateOptions), lspName)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CleanLogicalSwitchPortMigrateOptions", reflect.TypeOf((*MockLogicalSwitchPort)(nil).CleanLogicalSwitchPortMigrateOptions), lspName, fail)
 }
 
 // CreateBareLogicalSwitchPort mocks base method.
@@ -2463,17 +2463,17 @@ func (mr *MockNbClientMockRecorder) AddressSetUpdateAddress(asName any, addresse
 }
 
 // CleanLogicalSwitchPortMigrateOptions mocks base method.
-func (m *MockNbClient) CleanLogicalSwitchPortMigrateOptions(lspName string) error {
+func (m *MockNbClient) CleanLogicalSwitchPortMigrateOptions(lspName string, fail bool) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CleanLogicalSwitchPortMigrateOptions", lspName)
+	ret := m.ctrl.Call(m, "CleanLogicalSwitchPortMigrateOptions", lspName, fail)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // CleanLogicalSwitchPortMigrateOptions indicates an expected call of CleanLogicalSwitchPortMigrateOptions.
-func (mr *MockNbClientMockRecorder) CleanLogicalSwitchPortMigrateOptions(lspName any) *gomock.Call {
+func (mr *MockNbClientMockRecorder) CleanLogicalSwitchPortMigrateOptions(lspName, fail any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CleanLogicalSwitchPortMigrateOptions", reflect.TypeOf((*MockNbClient)(nil).CleanLogicalSwitchPortMigrateOptions), lspName)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CleanLogicalSwitchPortMigrateOptions", reflect.TypeOf((*MockNbClient)(nil).CleanLogicalSwitchPortMigrateOptions), lspName, fail)
 }
 
 // ClearLogicalRouterPolicy mocks base method.

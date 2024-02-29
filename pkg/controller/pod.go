@@ -642,11 +642,11 @@ func (c *Controller) reconcileAllocateSubnets(cachedPod, pod *v1.Pod, needAlloca
 	// todo: isVmPod, getPodType, getNameByPod has duplicated logic
 
 	var err error
-	var isMigrating bool
+	var isMigrate, migrated, fail bool
 	var vmKey, srcNodeName, targetNodeName string
 	if isVMPod && c.config.EnableKeepVMIP {
 		vmKey = fmt.Sprintf("%s/%s", namespace, vmName)
-		if isMigrating, srcNodeName, targetNodeName, err = c.migrateVM(pod, vmKey); err != nil {
+		if isMigrate, migrated, fail, srcNodeName, targetNodeName, err = c.migrateVM(pod, vmKey); err != nil {
 			klog.Error(err)
 			return nil, err
 		}
@@ -738,20 +738,16 @@ func (c *Controller) reconcileAllocateSubnets(cachedPod, pod *v1.Pod, needAlloca
 				return nil, err
 			}
 
-			if vmKey != "" {
-				if isMigrating {
-					if err = c.setVMLSPMigrationOptions(portName, srcNodeName, targetNodeName); err != nil {
+			if vmKey != "" && isMigrate {
+				if migrated {
+					if err = c.cleanVMLSPMigrationOptions(portName, fail); err != nil {
 						klog.Error(err)
 						return nil, err
 					}
-					pod.Annotations[util.OVNMigrationAnnotation] = "true"
 				} else {
-					if migrate, ok := pod.Annotations[util.OVNMigrationAnnotation]; ok && migrate == "true" {
-						if err = c.cleanVMLSPMigrationOptions(portName); err != nil {
-							klog.Error(err)
-							return nil, err
-						}
-						pod.Annotations[util.OVNMigratedAnnotation] = "true"
+					if err = c.setVMLSPMigrationOptions(portName, srcNodeName, targetNodeName); err != nil {
+						klog.Error(err)
+						return nil, err
 					}
 				}
 			}
@@ -2120,53 +2116,56 @@ func (c *Controller) getVirtualIPs(pod *v1.Pod, podNets []*kubeovnNet) map[strin
 	return vipsMap
 }
 
-// migrate vm return migrate, src node, target node, err
-func (c *Controller) migrateVM(pod *v1.Pod, vmKey string) (bool, string, string, error) {
-	if migrated, ok := pod.Annotations[util.OVNMigratedAnnotation]; ok && migrated == "true" {
-		klog.Infof("vm %s is migrated", vmKey)
-		return false, "", "", nil
+// migrate vm return migrate, migrated, fail, src node, target node, err
+func (c *Controller) migrateVM(pod *v1.Pod, vmKey string) (bool, bool, bool, string, string, error) {
+	// try optimize vm migration, no need return error
+	// migrate true means need ovn set migrate options
+	// migrated ok means need set migrate options to target node
+	// migrated failed means need set migrate options to source node
+	isTarget, ok := pod.Annotations[util.MigrationTargetAnnotation]
+	// only handle target vm pod
+	if !ok || isTarget != "true" {
+		return false, false, false, "", "", nil
 	}
-
+	srcNode, ok := pod.Annotations[util.MigrationSourceNodeAnnotation]
+	if !ok || srcNode == "" {
+		err := fmt.Errorf("vm %s migration source node is not set", vmKey)
+		klog.Warning(err)
+		return false, false, false, "", "", nil
+	}
+	targetNode := pod.Spec.NodeName
+	if targetNode == "" {
+		err := fmt.Errorf("vm %s migration target node is not set", vmKey)
+		klog.Warning(err)
+		return false, false, false, "", "", nil
+	}
 	migratePhase, ok := pod.Annotations[util.MigrationPhaseAnnotation]
 	if !ok {
-		// not migrate vm
-		return false, "", "", nil
+		err := fmt.Errorf("vm %s migration phase is not set", vmKey)
+		klog.Warning(err)
+		return false, false, false, "", "", nil
 	}
 	// check migrate phase
 	if migratePhase == "" {
 		err := fmt.Errorf("vm %s migration phase is empty", vmKey)
-		klog.Error(err)
-		return false, "", "", err
-	}
-	if migratePhase == util.MigrationStateSucceeded {
-		klog.Infof("vm %s migration is succeeded", vmKey)
-		return false, "", "", nil
-	}
-	if migratePhase == util.MigrationStateFailed {
-		klog.Warningf("vm %s migration is failed", vmKey)
-		return false, "", "", nil
+		klog.Warning(err)
+		return false, false, false, "", "", nil
 	}
 	if migratePhase == util.MigrationStateStarted {
-		if isTarget, ok := pod.Annotations[util.MigrationTargetAnnotation]; ok && isTarget == "true" {
-			klog.Infof("start to migrate target vm %s", vmKey)
-			// this pod is target vm pod
-			srcNode, ok := pod.Annotations[util.MigrationSourceNodeAnnotation]
-			if !ok || srcNode == "" {
-				err := fmt.Errorf("vm %s migration source node is not set", vmKey)
-				klog.Error(err)
-				return false, "", "", err
-			}
-			targetNode := pod.Spec.NodeName
-			if targetNode == "" {
-				err := fmt.Errorf("vm %s migration target node is not set", vmKey)
-				klog.Error(err)
-				return false, "", "", err
-			}
-			return true, srcNode, targetNode, nil
-		}
-		klog.Infof("start to migrate src vm %s", vmKey)
+		klog.Infof("start to migrate src vm %s from %s to %s", vmKey, srcNode, targetNode)
+		return true, false, false, srcNode, targetNode, nil
 	}
-	return false, "", "", nil
+	if migratePhase == util.MigrationStateSucceeded {
+		klog.Infof("manage to migrate src vm %s from %s to %s", vmKey, srcNode, targetNode)
+
+		return true, true, false, srcNode, targetNode, nil
+	}
+	if migratePhase == util.MigrationStateFailed {
+		klog.Infof("failed to migrate src vm %s from %s to %s", vmKey, srcNode, targetNode)
+		return true, true, true, srcNode, targetNode, nil
+	}
+
+	return false, false, false, "", "", nil
 }
 
 func (c *Controller) setVMLSPMigrationOptions(portName, srcNodeName, targetNodeName string) error {
@@ -2179,9 +2178,9 @@ func (c *Controller) setVMLSPMigrationOptions(portName, srcNodeName, targetNodeN
 	return nil
 }
 
-func (c *Controller) cleanVMLSPMigrationOptions(portName string) error {
+func (c *Controller) cleanVMLSPMigrationOptions(portName string, fail bool) error {
 	klog.Infof("clean migrate options for lsp %s", portName)
-	if err := c.OVNNbClient.CleanLogicalSwitchPortMigrateOptions(portName); err != nil {
+	if err := c.OVNNbClient.CleanLogicalSwitchPortMigrateOptions(portName, fail); err != nil {
 		err = fmt.Errorf("failed to clean migrate options for lsp %s, %v", portName, err)
 		klog.Error(err)
 		return err

@@ -293,7 +293,6 @@ const (
 	VhostUserSocketVolumeName = "vhostuser-sockets"
 
 	OVNMigrationAnnotation        = "ovn.kubernetes.io/migrate"         // to control if ovn set lsp migrate options
-	OVNMigratedAnnotation         = "ovn.kubernetes.io/migrated"        // to control if ovn clean lsp migrate options
 	MigrationSourceNodeAnnotation = "kubevirt.io/migration-source-node" // target pod has source node name
 	MigrationSourceAnnotation     = "kubevirt.io/migration-source"      // migration source vm: true or false
 	MigrationTargetAnnotation     = "kubevirt.io/migration-target"      // migration target vm: true or false

@@ -93,7 +93,7 @@ type LogicalSwitchPort interface {
 	LogicalSwitchPortExists(name string) (bool, error)
 	// vm live migrate
 	SetLogicalSwitchPortMigrateOptions(lspName, srcNodeName, targetNodeName string) error
-	CleanLogicalSwitchPortMigrateOptions(lspName string) error
+	CleanLogicalSwitchPortMigrateOptions(lspName string, fail bool) error
 }
 
 type LoadBalancer interface {
