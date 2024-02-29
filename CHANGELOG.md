@@ -1,5 +1,20 @@
 # Changelog
 
+## v1.12.7 (2024-02-28)
+
+ * [14738472](https://github.com/kubeovn/kube-ovn/commit/1473847276e95ff5d4b6578d2959abafd8e9a9a6) release v1.12.7
+ * [16b563e2](https://github.com/kubeovn/kube-ovn/commit/16b563e208563061892d78ee751861bd93567fa7) fix sts pod's logical switch port do not update externa_id vendor and ls (#3778)
+ * [078a03f2](https://github.com/kubeovn/kube-ovn/commit/078a03f26ca7301ae206afcb820ab5a97fc58848) update dependence
+ * [f9f2aaeb](https://github.com/kubeovn/kube-ovn/commit/f9f2aaeb80ab20925429103bd8df6290bcd6dae7) update release.sh
+ * [29157d4d](https://github.com/kubeovn/kube-ovn/commit/29157d4ddb480cddd54d8d36fa9e80ce6b0e563c) update release.sh
+ * [b5f7a634](https://github.com/kubeovn/kube-ovn/commit/b5f7a6348bdf29a1edd6a7c2962f6feece89f4fa) refactor ovn clusterrole (#3755)
+ * [76ea1c12](https://github.com/kubeovn/kube-ovn/commit/76ea1c12f36197fb93ac77a73f6e771f35c0a335) prepare for next release
+
+### Contributors
+
+ * changluyi
+ * hzma
+
 ## v1.12.6 (2024-02-26)
 
  * [a395104d](https://github.com/kubeovn/kube-ovn/commit/a395104dee67e9ed973a1afe005fd4d55f4691a9) release v1.12.6
