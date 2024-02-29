@@ -870,16 +870,15 @@ func (c *OVNNbClient) CleanLogicalSwitchPortMigrateOptions(lspName string, fail 
 		return err
 	}
 	if src != "" && target != "" {
-		lsp.Options = make(map[string]string)
 		if fail {
 			// rollback
-			klog.Infof("clean migrator target options for port %s", lspName)
+			klog.Infof("rollback fail migrator port %s", lspName)
 			lsp.Options["requested-chassis"] = src
 		} else {
-			klog.Infof("clean migrator source options for port %s", lspName)
+			klog.Infof("set target migrator port %s", lspName)
 			lsp.Options["requested-chassis"] = target
-
 		}
+		delete(lsp.Options, "activation-strategy")
 		if err := c.UpdateLogicalSwitchPort(lsp, &lsp.Options); err != nil {
 			err = fmt.Errorf("failed to clean options for logical switch port %s : %v", lspName, err)
 			klog.Error(err)
