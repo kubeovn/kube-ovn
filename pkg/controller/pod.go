@@ -2122,9 +2122,12 @@ func (c *Controller) migrateVM(pod *v1.Pod, vmKey string) (bool, bool, bool, str
 	// migrate true means need ovn set migrate options
 	// migrated ok means need set migrate options to target node
 	// migrated failed means need set migrate options to source node
-	isTarget, ok := pod.Annotations[util.MigrationTargetAnnotation]
-	// only handle target vm pod
-	if !ok || isTarget != "true" {
+	if _, ok := pod.Annotations[util.MigrationTargetAnnotation]; ok {
+		klog.Infof("prepare to migrate vm %s out from source node %s", vmKey, pod.Spec.NodeName)
+		return false, false, false, "", "", nil
+	}
+	// ovn set migrator only in the process of target vm pod
+	if _, ok := pod.Annotations[util.MigrationTargetAnnotation]; !ok {
 		return false, false, false, "", "", nil
 	}
 	srcNode, ok := pod.Annotations[util.MigrationSourceNodeAnnotation]
