@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.12.8 (2024-02-29)
+
+ * [f8e434c6](https://github.com/kubeovn/kube-ovn/commit/f8e434c6df93377093b72992910de1f09dcf37bc) release v1.12.8
+ * [8d8f9496](https://github.com/kubeovn/kube-ovn/commit/8d8f9496dd7e0069664aba090b3e15ffe26e641e) update release.sh
+ * [1e0db6d1](https://github.com/kubeovn/kube-ovn/commit/1e0db6d1ed9b55f852308bacf995f4ba37610d3f) prepare for next release
+
+### Contributors
+
+
 ## v1.12.7 (2024-02-28)
 
  * [14738472](https://github.com/kubeovn/kube-ovn/commit/1473847276e95ff5d4b6578d2959abafd8e9a9a6) release v1.12.7
