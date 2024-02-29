@@ -58,7 +58,7 @@ git commit -m "prepare for next release"
 git push
 
 echo "trigger action to build new base"
-gh workflow run build-kube-ovn-base.yaml --ref $(git branch --show-current)
+gh workflow run build-kube-ovn-base.yaml -f branch=release-1.12
 
 echo "Modify the doc version number manually"
 cd ${DOCS_DIR}
