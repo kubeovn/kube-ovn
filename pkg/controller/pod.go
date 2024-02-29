@@ -611,7 +611,6 @@ func (c *Controller) handleAddOrUpdatePod(key string) (err error) {
 		return nil
 	}
 	pod = cachedPod.DeepCopy()
-	// check if allocate subnet is need. also allocate subnet when hotplug nic
 	needAllocatePodNets := needAllocateSubnets(pod, podNets)
 	if len(needAllocatePodNets) != 0 {
 		if cachedPod, err = c.reconcileAllocateSubnets(cachedPod, pod, needAllocatePodNets); err != nil {
@@ -1367,6 +1366,9 @@ func getNextHopByTunnelIP(gw []net.IP) string {
 }
 
 func needAllocateSubnets(pod *v1.Pod, nets []*kubeovnNet) []*kubeovnNet {
+	// check if allocate from subnet is need.
+	// allocate subnet when change subnet to hotplug nic
+	// allocate subnet when migrate vm
 	if !isPodAlive(pod) {
 		return nil
 	}
@@ -1375,9 +1377,14 @@ func needAllocateSubnets(pod *v1.Pod, nets []*kubeovnNet) []*kubeovnNet {
 		return nets
 	}
 
+	migrate := false
+	if _, ok := pod.Annotations[util.MigrationJobAnnotation]; ok {
+		migrate = true
+	}
+
 	result := make([]*kubeovnNet, 0, len(nets))
 	for _, n := range nets {
-		if pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, n.ProviderName)] != "true" {
+		if migrate || pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, n.ProviderName)] != "true" {
 			result = append(result, n)
 		}
 	}
@@ -2122,8 +2129,13 @@ func (c *Controller) migrateVM(pod *v1.Pod, vmKey string) (bool, bool, bool, str
 	// migrate true means need ovn set migrate options
 	// migrated ok means need set migrate options to target node
 	// migrated failed means need set migrate options to source node
-	if _, ok := pod.Annotations[util.MigrationTargetAnnotation]; ok {
-		klog.Infof("prepare to migrate vm %s out from source node %s", vmKey, pod.Spec.NodeName)
+	if _, ok := pod.Annotations[util.MigrationSourceAnnotation]; ok {
+		if pod.Spec.NodeName == "" {
+			err := fmt.Errorf("source vm %s running pod %s should have node name", vmKey, pod.Name)
+			klog.Warning(err)
+			return false, false, false, "", "", nil
+		}
+		klog.Infof("prepare to migrate vm %s pod %s out from source node %s", vmKey, pod.Name, pod.Spec.NodeName)
 		return false, false, false, "", "", nil
 	}
 	// ovn set migrator only in the process of target vm pod
