@@ -551,7 +551,9 @@ func (c *OVNNbClient) SetLogicalSwitchPortVlanTag(lspName string, vlanID int) er
 // UpdateLogicalSwitchPort update logical switch port
 func (c *OVNNbClient) UpdateLogicalSwitchPort(lsp *ovnnb.LogicalSwitchPort, fields ...interface{}) error {
 	if lsp == nil {
-		return fmt.Errorf("logical_switch_port is nil")
+		err := fmt.Errorf("logical switch port is nil")
+		klog.Error(err)
+		return err
 	}
 
 	op, err := c.Where(lsp).Update(lsp, fields...)
@@ -561,6 +563,7 @@ func (c *OVNNbClient) UpdateLogicalSwitchPort(lsp *ovnnb.LogicalSwitchPort, fiel
 	}
 
 	if err = c.Transact("lsp-update", op); err != nil {
+		klog.Error(err)
 		return fmt.Errorf("update logical switch port %s: %v", lsp.Name, err)
 	}
 
@@ -820,20 +823,26 @@ func (c *OVNNbClient) SetLogicalSwitchPortMigrateOptions(lspName, srcNodeName, t
 		klog.Error(err)
 		return err
 	}
+	if lsp == nil {
+		err := fmt.Errorf("no migrator logical switch port %s", lspName)
+		klog.Error(err)
+		return err
+	}
+
 	if src == srcNodeName && target == targetNodeName {
 		// already set
 		return nil
 	}
 
 	requestedChassis := fmt.Sprintf("%s,%s", srcNodeName, targetNodeName)
-	klog.Infof("set logical switch port %s options requested-chassis=%s", lspName, requestedChassis)
 	if lsp.Options == nil {
 		lsp.Options = make(map[string]string)
 	}
 	lsp.Options["requested-chassis"] = requestedChassis
 	lsp.Options["activation-strategy"] = "rarp"
+	klog.Infof("set migrator logical switch port %s options: %v", lspName, lsp.Options)
 	if err := c.UpdateLogicalSwitchPort(lsp, &lsp.Options); err != nil {
-		err = fmt.Errorf("failed to set logical switch port %s options requested chassis %s: %v", lspName, requestedChassis, err)
+		err = fmt.Errorf("failed to set migrator logical switch port %s options requested chassis %s: %v", lspName, requestedChassis, err)
 		klog.Error(err)
 		return err
 	}
@@ -842,14 +851,14 @@ func (c *OVNNbClient) SetLogicalSwitchPortMigrateOptions(lspName, srcNodeName, t
 
 // GetLogicalSwitchPortMigrateOptions get logical switch port src and target node name options of migrate
 func (c *OVNNbClient) GetLogicalSwitchPortMigrateOptions(lspName string) (*ovnnb.LogicalSwitchPort, string, string, error) {
-	lsp, err := c.GetLogicalSwitchPort(lspName, true)
+	lsp, err := c.GetLogicalSwitchPort(lspName, false)
 	if err != nil {
-		err = fmt.Errorf("failed to get logical switch port %s: %v", lspName, err)
+		err = fmt.Errorf("failed to get migrator logical switch port %s: %v", lspName, err)
 		klog.Error(err)
 		return nil, "", "", err
 	}
-	if lsp == nil || lsp.Options == nil {
-		return nil, "", "", nil
+	if lsp.Options == nil {
+		return lsp, "", "", nil
 	}
 
 	requestedChassis, ok := lsp.Options["requested-chassis"]
@@ -862,28 +871,64 @@ func (c *OVNNbClient) GetLogicalSwitchPortMigrateOptions(lspName string) (*ovnnb
 	return nil, "", "", nil
 }
 
-// CleanLogicalSwitchPortMigrateOptions clean logical switch port options of migration
-func (c *OVNNbClient) CleanLogicalSwitchPortMigrateOptions(lspName string, fail bool) error {
-	lsp, src, target, err := c.GetLogicalSwitchPortMigrateOptions(lspName)
+func (c *OVNNbClient) ResetLogicalSwitchPortMigrateOptions(lspName, srcNodeName, targetNodeName string, migratedFail bool) error {
+	lsp, err := c.GetLogicalSwitchPort(lspName, false)
 	if err != nil {
+		err = fmt.Errorf("failed to get migrator logical switch port %s: %v", lspName, err)
 		klog.Error(err)
 		return err
 	}
-	if src != "" && target != "" {
-		if fail {
-			// rollback
-			klog.Infof("rollback fail migrator port %s", lspName)
-			lsp.Options["requested-chassis"] = src
-		} else {
-			klog.Infof("set target migrator port %s", lspName)
-			lsp.Options["requested-chassis"] = target
-		}
-		delete(lsp.Options, "activation-strategy")
-		if err := c.UpdateLogicalSwitchPort(lsp, &lsp.Options); err != nil {
-			err = fmt.Errorf("failed to clean options for logical switch port %s : %v", lspName, err)
-			klog.Error(err)
-			return err
-		}
+	if lsp.Options == nil {
+		klog.Infof("logical switch port %s has no options", lspName)
+		return nil
+	}
+	if _, ok := lsp.Options["requested-chassis"]; !ok {
+		klog.Infof("logical switch port %s has no migrator options", lspName)
+		return nil
+	}
+	if migratedFail {
+		// rollback
+		klog.Infof("reset migrator port %s to source node %s", lspName, srcNodeName)
+		lsp.Options["requested-chassis"] = srcNodeName
+	} else {
+		klog.Infof("reset migrator port %s to target node %s", lspName, targetNodeName)
+		lsp.Options["requested-chassis"] = targetNodeName
+	}
+	delete(lsp.Options, "activation-strategy")
+	klog.Infof("reset migrator logical switch port %s options: %v", lspName, lsp.Options)
+	if err := c.UpdateLogicalSwitchPort(lsp, &lsp.Options); err != nil {
+		err = fmt.Errorf("failed to reset options for migrator logical switch port %s: %v", lspName, err)
+		klog.Error(err)
+		return err
+	}
+	return nil
+}
+
+// CleanLogicalSwitchPortMigrateOptions clean logical switch port options of migration
+func (c *OVNNbClient) CleanLogicalSwitchPortMigrateOptions(lspName string) error {
+	lsp, err := c.GetLogicalSwitchPort(lspName, true)
+	if err != nil {
+		err = fmt.Errorf("failed to get migrator logical switch port %s: %v", lspName, err)
+		klog.Error(err)
+		return err
+	}
+	if lsp == nil {
+		return nil
+	}
+	if lsp.Options == nil {
+		return nil
+	}
+	if _, ok := lsp.Options["requested-chassis"]; !ok {
+		return nil
+	}
+	// migrated pod port has requested-chassis, if pod force deleted, the vm pod may schedule to another node
+	// if not clean the requested-chassis, the pod has no network connectivity
+	delete(lsp.Options, "requested-chassis")
+	klog.Infof("cleaned migrator logical switch port %s options: %v", lspName, lsp.Options)
+	if err := c.UpdateLogicalSwitchPort(lsp, &lsp.Options); err != nil {
+		err = fmt.Errorf("failed to clean options for migrator logical switch port %s: %v", lspName, err)
+		klog.Error(err)
+		return err
 	}
 	return nil
 }
