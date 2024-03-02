@@ -33,7 +33,7 @@ func buildLogicalSwitchPort(lspName, lsName, ip, mac, podName, namespace string,
 
 	// addresses is the first element of addresses
 	lsp.Addresses = []string{strings.TrimSpace(strings.Join(addresses, " "))}
-
+	lsp.ExternalIDs["vendor"] = util.CniTypeName
 	if portSecurity {
 		if len(vips) != 0 {
 			addresses = append(addresses, vipList...)
@@ -868,7 +868,7 @@ func (c *OVNNbClient) GetLogicalSwitchPortMigrateOptions(lspName string) (*ovnnb
 			return lsp, splits[0], splits[1], nil
 		}
 	}
-	return nil, "", "", nil
+	return lsp, "", "", nil
 }
 
 func (c *OVNNbClient) ResetLogicalSwitchPortMigrateOptions(lspName, srcNodeName, targetNodeName string, migratedFail bool) error {
@@ -895,7 +895,6 @@ func (c *OVNNbClient) ResetLogicalSwitchPortMigrateOptions(lspName, srcNodeName,
 		lsp.Options["requested-chassis"] = targetNodeName
 	}
 	delete(lsp.Options, "activation-strategy")
-	klog.Infof("reset migrator logical switch port %s options: %v", lspName, lsp.Options)
 	if err := c.UpdateLogicalSwitchPort(lsp, &lsp.Options); err != nil {
 		err = fmt.Errorf("failed to reset options for migrator logical switch port %s: %v", lspName, err)
 		klog.Error(err)

@@ -1036,6 +1036,19 @@ func (c *Controller) handleDeletePod(key string) error {
 	}
 	isVMPod, vmName := isVMPod(pod)
 	if isVMPod && c.config.EnableKeepVMIP {
+		ports, err := c.OVNNbClient.ListNormalLogicalSwitchPorts(true, map[string]string{"pod": podKey})
+		if err != nil {
+			klog.Errorf("failed to list lsps of pod '%s', %v", pod.Name, err)
+			return err
+		}
+		for _, port := range ports {
+			klog.Infof("clean migrate options for vm lsp %s", port.Name)
+			if err := c.OVNNbClient.CleanLogicalSwitchPortMigrateOptions(port.Name); err != nil {
+				err = fmt.Errorf("failed to clean migrate options for vm lsp %s, %v", port.Name, err)
+				klog.Error(err)
+				return err
+			}
+		}
 		vmToBeDel := c.isVMToDel(pod, vmName)
 		isDelete, err := appendCheckPodToDel(c, pod, vmName, util.VMInstance)
 		if pod.DeletionTimestamp != nil {
@@ -1139,19 +1152,6 @@ func (c *Controller) handleDeletePod(key string) error {
 		if pod.Annotations[util.VipAnnotation] != "" {
 			if err = c.releaseVip(pod.Annotations[util.VipAnnotation]); err != nil {
 				klog.Errorf("failed to clean label from vip %s, %v", pod.Annotations[util.VipAnnotation], err)
-				return err
-			}
-		}
-	} else if isVMPod {
-		ports, err := c.OVNNbClient.ListNormalLogicalSwitchPorts(true, map[string]string{"pod": podKey})
-		if err != nil {
-			klog.Errorf("failed to list lsps of pod '%s', %v", pod.Name, err)
-			return err
-		}
-		for _, port := range ports {
-			if err := c.OVNNbClient.CleanLogicalSwitchPortMigrateOptions(port.Name); err != nil {
-				err = fmt.Errorf("failed to clean migrate options for lsp %s, %v", port.Name, err)
-				klog.Error(err)
 				return err
 			}
 		}
