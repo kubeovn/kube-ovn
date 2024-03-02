@@ -33,7 +33,7 @@ require (
 	github.com/scylladb/go-set v1.0.2
 	github.com/sirupsen/logrus v1.9.3
 	github.com/spf13/pflag v1.0.5
-	github.com/stretchr/testify v1.8.4
+	github.com/stretchr/testify v1.9.0
 	github.com/vishvananda/netlink v1.2.1-beta.2
 	go.uber.org/mock v0.4.0
 	golang.org/x/mod v0.15.0
