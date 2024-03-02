@@ -729,13 +729,6 @@ func (c *Controller) reconcileAllocateSubnets(cachedPod, pod *v1.Pod, needAlloca
 				DHCPv4OptionsUUID: subnet.Status.DHCPv4OptionsUUID,
 				DHCPv6OptionsUUID: subnet.Status.DHCPv6OptionsUUID,
 			}
-			if isVMPod && !isMigrate {
-				if err := c.OVNNbClient.CleanLogicalSwitchPortMigrateOptions(portName); err != nil {
-					err = fmt.Errorf("failed to clean migrate options for lsp %s, %v", portName, err)
-					klog.Error(err)
-					return nil, err
-				}
-			}
 			if err := c.OVNNbClient.CreateLogicalSwitchPort(subnet.Name, portName, ipStr, mac, podName, pod.Namespace,
 				portSecurity, securityGroupAnnotation, vips, podNet.Subnet.Spec.EnableDHCP, dhcpOptions, subnet.Spec.Vpc); err != nil {
 				c.recorder.Eventf(pod, v1.EventTypeWarning, "CreateOVNPortFailed", err.Error())
@@ -1146,6 +1139,19 @@ func (c *Controller) handleDeletePod(key string) error {
 		if pod.Annotations[util.VipAnnotation] != "" {
 			if err = c.releaseVip(pod.Annotations[util.VipAnnotation]); err != nil {
 				klog.Errorf("failed to clean label from vip %s, %v", pod.Annotations[util.VipAnnotation], err)
+				return err
+			}
+		}
+	} else if isVMPod {
+		ports, err := c.OVNNbClient.ListNormalLogicalSwitchPorts(true, map[string]string{"pod": podKey})
+		if err != nil {
+			klog.Errorf("failed to list lsps of pod '%s', %v", pod.Name, err)
+			return err
+		}
+		for _, port := range ports {
+			if err := c.OVNNbClient.CleanLogicalSwitchPortMigrateOptions(port.Name); err != nil {
+				err = fmt.Errorf("failed to clean migrate options for lsp %s, %v", port.Name, err)
+				klog.Error(err)
 				return err
 			}
 		}
