@@ -350,7 +350,7 @@ func (c *Controller) handleDelOvnDnatRule(key string) error {
 			return err
 		}
 	}
-	if err = c.handleDelOvnDnatFinalizer(cachedDnat, util.KubeOVNControllerFinalizer); err != nil {
+	if err = c.handleDelOvnDnatFinalizer(cachedDnat); err != nil {
 		klog.Errorf("failed to remove finalizer for ovn dnat %s, %v", cachedDnat.Name, err)
 		return err
 	}
@@ -665,7 +665,7 @@ func (c *Controller) DelDnatRule(vpcName, dnatName, externalIP, externalPort str
 func (c *Controller) syncOvnDnatFinalizer(cl client.Client) error {
 	// migrate depreciated finalizer to new finalizer
 	rules := &kubeovnv1.OvnDnatRuleList{}
-	return updateFinalizers(cl, rules, func(i int) (client.Object, client.Object) {
+	return migrateFinalizers(cl, rules, func(i int) (client.Object, client.Object) {
 		if i < 0 || i >= len(rules.Items) {
 			return nil, nil
 		}
@@ -703,19 +703,17 @@ func (c *Controller) handleAddOvnDnatFinalizer(cachedDnat *kubeovnv1.OvnDnatRule
 	return nil
 }
 
-func (c *Controller) handleDelOvnDnatFinalizer(cachedDnat *kubeovnv1.OvnDnatRule, finalizer string) error {
-	if len(cachedDnat.Finalizers) == 0 {
+func (c *Controller) handleDelOvnDnatFinalizer(cachedDnat *kubeovnv1.OvnDnatRule) error {
+	if len(cachedDnat.Finalizers) == 0 ||
+		!controllerutil.ContainsFinalizer(cachedDnat, util.DepreciatedFinalizerName) ||
+		!controllerutil.ContainsFinalizer(cachedDnat, util.KubeOVNControllerFinalizer) {
 		return nil
 	}
-
-	var (
-		newDnat = cachedDnat.DeepCopy()
-		patch   []byte
-		err     error
-	)
-
-	controllerutil.RemoveFinalizer(newDnat, finalizer)
-	if patch, err = util.GenerateMergePatchPayload(cachedDnat, newDnat); err != nil {
+	newDnat := cachedDnat.DeepCopy()
+	controllerutil.RemoveFinalizer(newDnat, util.DepreciatedFinalizerName)
+	controllerutil.RemoveFinalizer(newDnat, util.KubeOVNControllerFinalizer)
+	patch, err := util.GenerateMergePatchPayload(cachedDnat, newDnat)
+	if err != nil {
 		klog.Errorf("failed to generate patch payload for ovn dnat '%s', %v", cachedDnat.Name, err)
 		return err
 	}
