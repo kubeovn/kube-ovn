@@ -859,11 +859,11 @@ func updateFinalizers(c client.Client, list client.ObjectList, getObjectItem fun
 
 		controllerutil.RemoveFinalizer(patchedObj, util.DepreciatedFinalizerName)
 		controllerutil.AddFinalizer(patchedObj, util.KubeOVNControllerFinalizer)
-		if err := c.Patch(context.Background(), patchedObj, client.MergeFrom(cachedObj)); err != nil {
-			klog.Warningf("failed to sync finalizers for %s %s: %v",
+		if err := c.Patch(context.Background(), patchedObj, client.MergeFrom(cachedObj)); err != nil && !k8serrors.IsNotFound(err) {
+			klog.Errorf("failed to sync finalizers for %s %s: %v",
 				patchedObj.GetObjectKind().GroupVersionKind().Kind,
 				cache.MetaObjectToName(patchedObj), err)
-			i++
+			return err
 		}
 		i++
 	}

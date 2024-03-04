@@ -2151,7 +2151,6 @@ func (c *Controller) migrateVM(pod *v1.Pod, vmKey string) (bool, bool, bool, str
 	}
 	if _, ok := pod.Annotations[util.MigrationSourceAnnotation]; ok {
 		klog.Infof("will migrate out vm %s pod %s from source node %s", vmKey, pod.Name, pod.Spec.NodeName)
-		// 这里可能还有一个状态能标志结束，源pod更新了一次
 		return false, false, false, "", "", nil
 	}
 	// ovn set migrator only in the process of target vm pod
@@ -2182,15 +2181,15 @@ func (c *Controller) migrateVM(pod *v1.Pod, vmKey string) (bool, bool, bool, str
 		klog.Warning(err)
 		return false, false, false, "", "", nil
 	}
-	if migratePhase == util.MigrationStateStarted {
+	if migratePhase == util.MigrationPhaseStarted {
 		klog.Infof("start to migrate src vm %s from %s to %s", vmKey, srcNode, targetNode)
 		return true, false, false, srcNode, targetNode, nil
 	}
-	if migratePhase == util.MigrationStateSucceeded {
+	if migratePhase == util.MigrationPhaseSucceeded {
 		klog.Infof("succeed to migrate src vm %s from %s to %s", vmKey, srcNode, targetNode)
 		return true, true, false, srcNode, targetNode, nil
 	}
-	if migratePhase == util.MigrationStateFailed {
+	if migratePhase == util.MigrationPhaseFailed {
 		klog.Infof("failed to migrate src vm %s from %s to %s", vmKey, srcNode, targetNode)
 		return true, true, true, srcNode, targetNode, nil
 	}
