@@ -420,7 +420,7 @@ func (c *Controller) handleDelOvnSnatRule(key string) error {
 			return err
 		}
 	}
-	if err = c.handleDelOvnSnatFinalizer(cachedSnat, util.KubeOVNControllerFinalizer); err != nil {
+	if err = c.handleDelOvnSnatFinalizer(cachedSnat); err != nil {
 		klog.Errorf("failed to remove finalizer for ovn snat %s, %v", cachedSnat.Name, err)
 		return err
 	}
@@ -546,7 +546,7 @@ func (c *Controller) ovnSnatChangeEip(snat *kubeovnv1.OvnSnatRule, eip *kubeovnv
 func (c *Controller) syncOvnSnatFinalizer(cl client.Client) error {
 	// migrate depreciated finalizer to new finalizer
 	rules := &kubeovnv1.OvnSnatRuleList{}
-	return updateFinalizers(cl, rules, func(i int) (client.Object, client.Object) {
+	return migrateFinalizers(cl, rules, func(i int) (client.Object, client.Object) {
 		if i < 0 || i >= len(rules.Items) {
 			return nil, nil
 		}
@@ -578,13 +578,15 @@ func (c *Controller) handleAddOvnSnatFinalizer(cachedSnat *kubeovnv1.OvnSnatRule
 	return nil
 }
 
-func (c *Controller) handleDelOvnSnatFinalizer(cachedSnat *kubeovnv1.OvnSnatRule, finalizer string) error {
-	if len(cachedSnat.Finalizers) == 0 {
+func (c *Controller) handleDelOvnSnatFinalizer(cachedSnat *kubeovnv1.OvnSnatRule) error {
+	if len(cachedSnat.Finalizers) == 0 ||
+		!controllerutil.ContainsFinalizer(cachedSnat, util.DepreciatedFinalizerName) ||
+		!controllerutil.ContainsFinalizer(cachedSnat, util.KubeOVNControllerFinalizer) {
 		return nil
 	}
-	var err error
 	newSnat := cachedSnat.DeepCopy()
-	controllerutil.RemoveFinalizer(newSnat, finalizer)
+	controllerutil.RemoveFinalizer(newSnat, util.DepreciatedFinalizerName)
+	controllerutil.RemoveFinalizer(newSnat, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedSnat, newSnat)
 	if err != nil {
 		klog.Errorf("failed to generate patch payload for ovn snat '%s', %v", cachedSnat.Name, err)
