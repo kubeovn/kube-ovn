@@ -60,18 +60,18 @@ nodes:
     image: kindest/node:{{ k8s_version }}
     labels:
       type: kind
-{%- if port_mapping is defined %}
-  {%- set container_port = port_mapping.split(':')[0] %}
-  {%- set host_port = port_mapping.split(':')[1] %}
+{%- if mapped_ports is defined %}
     extraPortMappings:
-      - containerPort: {{ container_port }}
-        hostPort: {{ host_port }}
+  {%- for port in mapped_ports.split(',') %}
+      - containerPort: {{ port }}
+        hostPort: {{ port }}
         # optional: set the bind address on the host
         # 0.0.0.0 is the current default
         listenAddress: "0.0.0.0"
         # optional: set the protocol to one of TCP, UDP, SCTP.
         # TCP is the default
         protocol: TCP
+  {%- endfor %}
 {%- endif %}
 {%- if single is equalto "false" %}
   - role: worker

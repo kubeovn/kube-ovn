@@ -57,7 +57,13 @@ SUBMARINER_NETTEST = quay.io/submariner/nettest:$(SUBMARINER_VERSION)
 DEEPFLOW_CHART_VERSION = 6.3.013
 DEEPFLOW_CHART_REPO = https://deepflow-ce.oss-cn-beijing.aliyuncs.com/chart/stable
 DEEPFLOW_IMAGE_REPO = registry.cn-beijing.aliyuncs.com/deepflow-ce
+DEEPFLOW_SERVER_NODE_PORT = 30417
+DEEPFLOW_SERVER_GRPC_PORT = 30035
+DEEPFLOW_SERVER_HTTP_PORT = 20417
 DEEPFLOW_GRAFANA_PORT = 30080
+DEEPFLOW_MAPPED_PORTS = $(DEEPFLOW_SERVER_NODE_PORT),$(DEEPFLOW_SERVER_GRPC_PORT),$(DEEPFLOW_SERVER_HTTP_PORT),$(DEEPFLOW_GRAFANA_PORT)
+DEEPFLOW_CTL_VERSION = v6.3
+DEEPFLOW_CTL_URL = https://deepflow-ce.oss-cn-beijing.aliyuncs.com/bin/ctl/$(DEEPFLOW_CTL_VERSION)/linux/$(shell arch | sed 's|x86_64|amd64|' | sed 's|aarch64|arm64|')/deepflow-ctl
 
 KWOK_VERSION = v0.5.1
 KWOK_IMAGE = registry.k8s.io/kwok/kwok:$(KWOK_VERSION)
@@ -377,7 +383,7 @@ kind-init-ovn-submariner: kind-clean-ovn-submariner kind-init
 
 .PHONY: kind-init-deepflow
 kind-init-deepflow: kind-clean
-	@port_mapping=$(DEEPFLOW_GRAFANA_PORT):$(DEEPFLOW_GRAFANA_PORT) $(MAKE) kind-generate-config
+	@mapped_ports=$(DEEPFLOW_MAPPED_PORTS) $(MAKE) kind-generate-config
 	$(call kind_create_cluster,yamls/kind.yaml,kube-ovn,0)
 
 .PHONY: kind-init-iptables
@@ -863,6 +869,11 @@ kind-install-deepflow: kind-install
 	kubectl -n deepflow patch svc deepflow-grafana --type=json \
 		-p '[{"op": "replace", "path": "/spec/ports/0/nodePort", "value": $(DEEPFLOW_GRAFANA_PORT)}]'
 	echo -e "\nGrafana URL: http://127.0.0.1:$(DEEPFLOW_GRAFANA_PORT)\nGrafana auth: admin:deepflow\n"
+
+.PHONY: kind-install-deepflow-ctl
+kind-install-deepflow-ctl:
+	curl -so /usr/local/bin/deepflow-ctl $(DEEPFLOW_CTL_URL)
+	chmod a+x /usr/local/bin/deepflow-ctl
 
 .PHONY: kind-install-kwok
 kind-install-kwok:
