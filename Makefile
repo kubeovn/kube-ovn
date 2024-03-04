@@ -54,7 +54,7 @@ SUBMARINER_LIGHTHOUSE_COREDNS = quay.io/submariner/lighthouse-coredns:$(SUBMARIN
 SUBMARINER_ROUTE_AGENT = quay.io/submariner/submariner-route-agent:$(SUBMARINER_VERSION)
 SUBMARINER_NETTEST = quay.io/submariner/nettest:$(SUBMARINER_VERSION)
 
-DEEPFLOW_CHART_VERSION = 6.3.013
+DEEPFLOW_CHART_VERSION = 6.4.012
 DEEPFLOW_CHART_REPO = https://deepflow-ce.oss-cn-beijing.aliyuncs.com/chart/stable
 DEEPFLOW_IMAGE_REPO = registry.cn-beijing.aliyuncs.com/deepflow-ce
 DEEPFLOW_SERVER_NODE_PORT = 30417
@@ -62,7 +62,7 @@ DEEPFLOW_SERVER_GRPC_PORT = 30035
 DEEPFLOW_SERVER_HTTP_PORT = 20417
 DEEPFLOW_GRAFANA_PORT = 30080
 DEEPFLOW_MAPPED_PORTS = $(DEEPFLOW_SERVER_NODE_PORT),$(DEEPFLOW_SERVER_GRPC_PORT),$(DEEPFLOW_SERVER_HTTP_PORT),$(DEEPFLOW_GRAFANA_PORT)
-DEEPFLOW_CTL_VERSION = v6.3
+DEEPFLOW_CTL_VERSION = v6.4
 DEEPFLOW_CTL_URL = https://deepflow-ce.oss-cn-beijing.aliyuncs.com/bin/ctl/$(DEEPFLOW_CTL_VERSION)/linux/$(shell arch | sed 's|x86_64|amd64|' | sed 's|aarch64|arm64|')/deepflow-ctl
 
 KWOK_VERSION = v0.5.1
