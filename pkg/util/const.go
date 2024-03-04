@@ -298,7 +298,7 @@ const (
 	MigrationSourceAnnotation     = "kubevirt.io/migration-source"      // migration source vm: true or false
 	MigrationTargetAnnotation     = "kubevirt.io/migration-target"      // migration target vm: true or false
 	MigrationPhaseAnnotation      = "kubevirt.io/migration-phase"       // migration vm phase: started/succeeded/failed
-	MigrationStateStarted         = "started"
-	MigrationStateSucceeded       = "succeeded"
-	MigrationStateFailed          = "failed"
+	MigrationPhaseStarted         = "started"
+	MigrationPhaseSucceeded       = "succeeded"
+	MigrationPhaseFailed          = "failed"
 )
