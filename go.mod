@@ -25,7 +25,7 @@ require (
 	github.com/moby/sys/mountinfo v0.7.1
 	github.com/onsi/ginkgo/v2 v2.15.0
 	github.com/onsi/gomega v1.31.1
-	github.com/osrg/gobgp/v3 v3.23.0
+	github.com/osrg/gobgp/v3 v3.24.0
 	github.com/ovn-org/libovsdb v0.0.0-20230711201130-6785b52d4020
 	github.com/parnurzeal/gorequest v0.3.0
 	github.com/prometheus-community/pro-bing v0.3.0
@@ -216,21 +216,21 @@ require (
 	go.etcd.io/etcd/client/pkg/v3 v3.5.11 // indirect
 	go.etcd.io/etcd/client/v3 v3.5.11 // indirect
 	go.opencensus.io v0.24.0 // indirect
-	go.opentelemetry.io/contrib/instrumentation/github.com/emicklei/go-restful/otelrestful v0.48.0 // indirect
-	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.48.0 // indirect
-	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.48.0 // indirect
-	go.opentelemetry.io/otel v1.23.1 // indirect
-	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.23.1 // indirect
-	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.23.1 // indirect
-	go.opentelemetry.io/otel/metric v1.23.1 // indirect
-	go.opentelemetry.io/otel/sdk v1.23.1 // indirect
-	go.opentelemetry.io/otel/trace v1.23.1 // indirect
+	go.opentelemetry.io/contrib/instrumentation/github.com/emicklei/go-restful/otelrestful v0.49.0 // indirect
+	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.49.0 // indirect
+	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.49.0 // indirect
+	go.opentelemetry.io/otel v1.24.0 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.24.0 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.24.0 // indirect
+	go.opentelemetry.io/otel/metric v1.24.0 // indirect
+	go.opentelemetry.io/otel/sdk v1.24.0 // indirect
+	go.opentelemetry.io/otel/trace v1.24.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.1.0 // indirect
 	go.starlark.net v0.0.0-20231121155337-90ade8b19d09 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.26.0 // indirect
-	golang.org/x/crypto v0.19.0 // indirect
-	golang.org/x/exp v0.0.0-20240213143201-ec583247a57a // indirect
+	golang.org/x/crypto v0.20.0 // indirect
+	golang.org/x/exp v0.0.0-20240222234643-814bf88cf225 // indirect
 	golang.org/x/net v0.21.0 // indirect
 	golang.org/x/oauth2 v0.17.0 // indirect
 	golang.org/x/sync v0.6.0 // indirect
@@ -241,8 +241,8 @@ require (
 	google.golang.org/api v0.160.0 // indirect
 	google.golang.org/appengine v1.6.8 // indirect
 	google.golang.org/genproto v0.0.0-20240205150955-31a09d347014 // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20240213162025-012b6fc9bca9 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20240213162025-012b6fc9bca9 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20240228224816-df926f6c8641 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20240228224816-df926f6c8641 // indirect
 	gopkg.in/evanphx/json-patch.v5 v5.7.0 // indirect
 	gopkg.in/gcfg.v1 v1.2.3 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
