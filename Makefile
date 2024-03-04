@@ -54,10 +54,16 @@ SUBMARINER_LIGHTHOUSE_COREDNS = quay.io/submariner/lighthouse-coredns:$(SUBMARIN
 SUBMARINER_ROUTE_AGENT = quay.io/submariner/submariner-route-agent:$(SUBMARINER_VERSION)
 SUBMARINER_NETTEST = quay.io/submariner/nettest:$(SUBMARINER_VERSION)
 
-DEEPFLOW_CHART_VERSION = 6.3.013
+DEEPFLOW_VERSION = v6.4
+DEEPFLOW_CHART_VERSION = 6.4.012
 DEEPFLOW_CHART_REPO = https://deepflow-ce.oss-cn-beijing.aliyuncs.com/chart/stable
 DEEPFLOW_IMAGE_REPO = registry.cn-beijing.aliyuncs.com/deepflow-ce
-DEEPFLOW_GRAFANA_PORT = 30080
+DEEPFLOW_SERVER_NODE_PORT = 30417
+DEEPFLOW_SERVER_GRPC_PORT = 30035
+DEEPFLOW_SERVER_HTTP_PORT = 20417
+DEEPFLOW_GRAFANA_NODE_PORT = 30080
+DEEPFLOW_MAPPED_PORTS = $(DEEPFLOW_SERVER_NODE_PORT),$(DEEPFLOW_SERVER_GRPC_PORT),$(DEEPFLOW_SERVER_HTTP_PORT),$(DEEPFLOW_GRAFANA_NODE_PORT)
+DEEPFLOW_CTL_URL = https://deepflow-ce.oss-cn-beijing.aliyuncs.com/bin/ctl/$(DEEPFLOW_VERSION)/linux/$(shell arch | sed 's|x86_64|amd64|' | sed 's|aarch64|arm64|')/deepflow-ctl
 
 KWOK_VERSION = v0.5.1
 KWOK_IMAGE = registry.k8s.io/kwok/kwok:$(KWOK_VERSION)
@@ -377,7 +383,7 @@ kind-init-ovn-submariner: kind-clean-ovn-submariner kind-init
 
 .PHONY: kind-init-deepflow
 kind-init-deepflow: kind-clean
-	@port_mapping=$(DEEPFLOW_GRAFANA_PORT):$(DEEPFLOW_GRAFANA_PORT) $(MAKE) kind-generate-config
+	@mapped_ports=$(DEEPFLOW_MAPPED_PORTS) $(MAKE) kind-generate-config
 	$(call kind_create_cluster,yamls/kind.yaml,kube-ovn,0)
 
 .PHONY: kind-init-iptables
@@ -850,19 +856,27 @@ kind-install-deepflow: kind-install
 	helm repo add deepflow $(DEEPFLOW_CHART_REPO)
 	helm repo update deepflow
 	$(eval CLICKHOUSE_PERSISTENCE = $(shell helm show values --version $(DEEPFLOW_CHART_VERSION) --jsonpath '{.clickhouse.storageConfig.persistence}' deepflow/deepflow | sed 's/0Gi/Gi/g'))
+	$(eval GRAFANA_EXTRA_INIT_CONTAINERS = $(shell helm show values --version $(DEEPFLOW_CHART_VERSION) --jsonpath '{.grafana.extraInitContainers}' deepflow/deepflow | sed 's/:latest/:$(DEEPFLOW_VERSION)/g'))
 	helm install deepflow -n deepflow deepflow/deepflow \
 		--create-namespace --version $(DEEPFLOW_CHART_VERSION) \
 		--set global.image.repository=$(DEEPFLOW_IMAGE_REPO) \
 		--set global.image.pullPolicy=IfNotPresent \
-		--set grafana.image.repository=$(DEEPFLOW_IMAGE_REPO)/grafana \
+		--set deepflow-agent.clusterNAME=kind-kube-ovn \
+		--set grafana.image.registry=$(DEEPFLOW_IMAGE_REPO) \
 		--set grafana.image.pullPolicy=IfNotPresent \
+		--set grafana.service.nodePort=$(DEEPFLOW_GRAFANA_NODE_PORT) \
+		--set-json 'grafana.extraInitContainers=$(GRAFANA_EXTRA_INIT_CONTAINERS)' \
 		--set mysql.storageConfig.persistence.size=5Gi \
 		--set mysql.image.pullPolicy=IfNotPresent \
 		--set clickhouse.image.pullPolicy=IfNotPresent \
 		--set-json 'clickhouse.storageConfig.persistence=$(CLICKHOUSE_PERSISTENCE)'
-	kubectl -n deepflow patch svc deepflow-grafana --type=json \
-		-p '[{"op": "replace", "path": "/spec/ports/0/nodePort", "value": $(DEEPFLOW_GRAFANA_PORT)}]'
-	echo -e "\nGrafana URL: http://127.0.0.1:$(DEEPFLOW_GRAFANA_PORT)\nGrafana auth: admin:deepflow\n"
+	echo -e "\nGrafana URL: http://127.0.0.1:$(DEEPFLOW_GRAFANA_NODE_PORT)\nGrafana auth: admin:deepflow\n"
+
+.PHONY: kind-install-deepflow-ctl
+kind-install-deepflow-ctl:
+	curl -so /usr/local/bin/deepflow-ctl $(DEEPFLOW_CTL_URL)
+	chmod a+x /usr/local/bin/deepflow-ctl
+	/usr/local/bin/deepflow-ctl -v
 
 .PHONY: kind-install-kwok
 kind-install-kwok:
