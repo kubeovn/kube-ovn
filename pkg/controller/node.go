@@ -536,7 +536,7 @@ func (c *Controller) updateProviderNetworkForNodeDeletion(pn *kubeovnv1.Provider
 	// update provider network spec
 	pn, newPn = newPn, nil
 	if excludeNodes := util.RemoveString(pn.Spec.ExcludeNodes, node); len(excludeNodes) != len(pn.Spec.ExcludeNodes) {
-		newPn := pn.DeepCopy()
+		newPn = pn.DeepCopy()
 		newPn.Spec.ExcludeNodes = excludeNodes
 	}
 
