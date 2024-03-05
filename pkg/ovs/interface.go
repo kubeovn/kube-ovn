@@ -91,6 +91,10 @@ type LogicalSwitchPort interface {
 	ListLogicalSwitchPortsWithLegacyExternalIDs() ([]ovnnb.LogicalSwitchPort, error)
 	GetLogicalSwitchPort(lspName string, ignoreNotFound bool) (*ovnnb.LogicalSwitchPort, error)
 	LogicalSwitchPortExists(name string) (bool, error)
+	// vm live migrate
+	SetLogicalSwitchPortMigrateOptions(lspName, srcNodeName, targetNodeName string) error
+	ResetLogicalSwitchPortMigrateOptions(lspName, srcNodeName, targetNodeName string, migratedFail bool) error
+	CleanLogicalSwitchPortMigrateOptions(lspName string) error
 }
 
 type LoadBalancer interface {

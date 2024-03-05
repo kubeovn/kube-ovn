@@ -767,6 +767,20 @@ func (m *MockLogicalSwitchPort) EXPECT() *MockLogicalSwitchPortMockRecorder {
 	return m.recorder
 }
 
+// CleanLogicalSwitchPortMigrateOptions mocks base method.
+func (m *MockLogicalSwitchPort) CleanLogicalSwitchPortMigrateOptions(lspName string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CleanLogicalSwitchPortMigrateOptions", lspName)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// CleanLogicalSwitchPortMigrateOptions indicates an expected call of CleanLogicalSwitchPortMigrateOptions.
+func (mr *MockLogicalSwitchPortMockRecorder) CleanLogicalSwitchPortMigrateOptions(lspName any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CleanLogicalSwitchPortMigrateOptions", reflect.TypeOf((*MockLogicalSwitchPort)(nil).CleanLogicalSwitchPortMigrateOptions), lspName)
+}
+
 // CreateBareLogicalSwitchPort mocks base method.
 func (m *MockLogicalSwitchPort) CreateBareLogicalSwitchPort(lsName, lspName, ip, mac string) error {
 	m.ctrl.T.Helper()
@@ -959,6 +973,20 @@ func (mr *MockLogicalSwitchPortMockRecorder) LogicalSwitchPortExists(name any) *
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LogicalSwitchPortExists", reflect.TypeOf((*MockLogicalSwitchPort)(nil).LogicalSwitchPortExists), name)
 }
 
+// ResetLogicalSwitchPortMigrateOptions mocks base method.
+func (m *MockLogicalSwitchPort) ResetLogicalSwitchPortMigrateOptions(lspName, srcNodeName, targetNodeName string, migratedFail bool) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ResetLogicalSwitchPortMigrateOptions", lspName, srcNodeName, targetNodeName, migratedFail)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ResetLogicalSwitchPortMigrateOptions indicates an expected call of ResetLogicalSwitchPortMigrateOptions.
+func (mr *MockLogicalSwitchPortMockRecorder) ResetLogicalSwitchPortMigrateOptions(lspName, srcNodeName, targetNodeName, migratedFail any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResetLogicalSwitchPortMigrateOptions", reflect.TypeOf((*MockLogicalSwitchPort)(nil).ResetLogicalSwitchPortMigrateOptions), lspName, srcNodeName, targetNodeName, migratedFail)
+}
+
 // SetLogicalSwitchPortArpProxy mocks base method.
 func (m *MockLogicalSwitchPort) SetLogicalSwitchPortArpProxy(lspName string, enableArpProxy bool) error {
 	m.ctrl.T.Helper()
@@ -985,6 +1013,20 @@ func (m *MockLogicalSwitchPort) SetLogicalSwitchPortExternalIDs(lspName string, 
 func (mr *MockLogicalSwitchPortMockRecorder) SetLogicalSwitchPortExternalIDs(lspName, externalIDs any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLogicalSwitchPortExternalIDs", reflect.TypeOf((*MockLogicalSwitchPort)(nil).SetLogicalSwitchPortExternalIDs), lspName, externalIDs)
+}
+
+// SetLogicalSwitchPortMigrateOptions mocks base method.
+func (m *MockLogicalSwitchPort) SetLogicalSwitchPortMigrateOptions(lspName, srcNodeName, targetNodeName string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetLogicalSwitchPortMigrateOptions", lspName, srcNodeName, targetNodeName)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetLogicalSwitchPortMigrateOptions indicates an expected call of SetLogicalSwitchPortMigrateOptions.
+func (mr *MockLogicalSwitchPortMockRecorder) SetLogicalSwitchPortMigrateOptions(lspName, srcNodeName, targetNodeName any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLogicalSwitchPortMigrateOptions", reflect.TypeOf((*MockLogicalSwitchPort)(nil).SetLogicalSwitchPortMigrateOptions), lspName, srcNodeName, targetNodeName)
 }
 
 // SetLogicalSwitchPortSecurity mocks base method.
@@ -2432,6 +2474,20 @@ func (mr *MockNbClientMockRecorder) AddressSetUpdateAddress(asName any, addresse
 	mr.mock.ctrl.T.Helper()
 	varargs := append([]any{asName}, addresses...)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddressSetUpdateAddress", reflect.TypeOf((*MockNbClient)(nil).AddressSetUpdateAddress), varargs...)
+}
+
+// CleanLogicalSwitchPortMigrateOptions mocks base method.
+func (m *MockNbClient) CleanLogicalSwitchPortMigrateOptions(lspName string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CleanLogicalSwitchPortMigrateOptions", lspName)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// CleanLogicalSwitchPortMigrateOptions indicates an expected call of CleanLogicalSwitchPortMigrateOptions.
+func (mr *MockNbClientMockRecorder) CleanLogicalSwitchPortMigrateOptions(lspName any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CleanLogicalSwitchPortMigrateOptions", reflect.TypeOf((*MockNbClient)(nil).CleanLogicalSwitchPortMigrateOptions), lspName)
 }
 
 // ClearLogicalRouterPolicy mocks base method.
@@ -3988,6 +4044,20 @@ func (mr *MockNbClientMockRecorder) RemoveLogicalPatchPort(lspName, lrpName any)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemoveLogicalPatchPort", reflect.TypeOf((*MockNbClient)(nil).RemoveLogicalPatchPort), lspName, lrpName)
 }
 
+// ResetLogicalSwitchPortMigrateOptions mocks base method.
+func (m *MockNbClient) ResetLogicalSwitchPortMigrateOptions(lspName, srcNodeName, targetNodeName string, migratedFail bool) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ResetLogicalSwitchPortMigrateOptions", lspName, srcNodeName, targetNodeName, migratedFail)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ResetLogicalSwitchPortMigrateOptions indicates an expected call of ResetLogicalSwitchPortMigrateOptions.
+func (mr *MockNbClientMockRecorder) ResetLogicalSwitchPortMigrateOptions(lspName, srcNodeName, targetNodeName, migratedFail any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResetLogicalSwitchPortMigrateOptions", reflect.TypeOf((*MockNbClient)(nil).ResetLogicalSwitchPortMigrateOptions), lspName, srcNodeName, targetNodeName, migratedFail)
+}
+
 // SetACLLog mocks base method.
 func (m *MockNbClient) SetACLLog(pgName, protocol string, logEnable, isIngress bool) error {
 	m.ctrl.T.Helper()
@@ -4070,6 +4140,20 @@ func (m *MockNbClient) SetLogicalSwitchPortExternalIDs(lspName string, externalI
 func (mr *MockNbClientMockRecorder) SetLogicalSwitchPortExternalIDs(lspName, externalIDs any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLogicalSwitchPortExternalIDs", reflect.TypeOf((*MockNbClient)(nil).SetLogicalSwitchPortExternalIDs), lspName, externalIDs)
+}
+
+// SetLogicalSwitchPortMigrateOptions mocks base method.
+func (m *MockNbClient) SetLogicalSwitchPortMigrateOptions(lspName, srcNodeName, targetNodeName string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetLogicalSwitchPortMigrateOptions", lspName, srcNodeName, targetNodeName)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetLogicalSwitchPortMigrateOptions indicates an expected call of SetLogicalSwitchPortMigrateOptions.
+func (mr *MockNbClientMockRecorder) SetLogicalSwitchPortMigrateOptions(lspName, srcNodeName, targetNodeName any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLogicalSwitchPortMigrateOptions", reflect.TypeOf((*MockNbClient)(nil).SetLogicalSwitchPortMigrateOptions), lspName, srcNodeName, targetNodeName)
 }
 
 // SetLogicalSwitchPortSecurity mocks base method.
