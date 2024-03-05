@@ -18,6 +18,7 @@ ovn-ic-1.yaml
 kind.yaml
 kustomization.yaml
 kwok-node.yaml
+metallb-cr.yaml
 broker-info.subm
 broker-info.subm.*
 broker-info-internal.subm
