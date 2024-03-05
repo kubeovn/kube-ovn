@@ -24,6 +24,12 @@ MULTUS_VERSION = v4.0.2
 MULTUS_IMAGE = ghcr.io/k8snetworkplumbingwg/multus-cni:$(MULTUS_VERSION)-thick
 MULTUS_YAML = https://raw.githubusercontent.com/k8snetworkplumbingwg/multus-cni/$(MULTUS_VERSION)/deployments/multus-daemonset-thick.yml
 
+METALLB_VERSION = 0.14.3
+METALLB_CHART_REPO = https://metallb.github.io/metallb
+METALLB_CONTROLLER_IMAGE=quay.io/metallb/controller:v$(METALLB_VERSION)
+METALLB_SPEAKER_IMAGE=quay.io/metallb/speaker:v$(METALLB_VERSION)
+METALLB_FRR_IMAGE=quay.io/frrouting/frr:8.5.2
+
 KUBEVIRT_VERSION = v0.59.2
 KUBEVIRT_OPERATOR_IMAGE = quay.io/kubevirt/virt-operator:$(KUBEVIRT_VERSION)
 KUBEVIRT_API_IMAGE = quay.io/kubevirt/virt-api:$(KUBEVIRT_VERSION)
@@ -715,6 +721,24 @@ kind-install-multus:
 	curl -s "$(MULTUS_YAML)" | sed 's/:snapshot-thick/:$(MULTUS_VERSION)-thick/g' | kubectl apply -f -
 	kubectl -n kube-system rollout status ds kube-multus-ds
 
+.PHONY: kind-install-metallb
+kind-install-metallb: kind-install
+	$(call docker_network_info,kind)
+	$(call kind_load_image,kube-ovn,$(METALLB_CONTROLLER_IMAGE),1)
+	$(call kind_load_image,kube-ovn,$(METALLB_SPEAKER_IMAGE),1)
+	$(call kind_load_image,kube-ovn,$(METALLB_FRR_IMAGE),1)
+	helm repo add metallb $(METALLB_CHART_REPO)
+	helm repo update
+	helm install metallb metallb/metallb --wait \
+		--version $(METALLB_VERSION) \
+		--namespace metallb-system \
+		--create-namespace
+	$(call kubectl_wait_exist_and_ready,metallb-system,deployment,metallb-controller)
+	$(call kubectl_wait_exist_and_ready,metallb-system,daemonset,metallb-speaker)
+	@metallb_pool=$(shell echo $(KIND_IPV4_SUBNET) | sed 's/.[^.]\+$$/.201/')-$(shell echo $(KIND_IPV4_SUBNET) | sed 's/.[^.]\+$$/.250/') \
+		j2 yamls/metallb-cr.yaml.j2 -o metallb-cr.yaml
+	kubectl apply -f metallb-cr.yaml
+
 .PHONY: kind-install-vpc-nat-gw
 kind-install-vpc-nat-gw:
 	$(call kind_load_image,kube-ovn,$(VPC_NAT_GW_IMG))
@@ -884,7 +908,7 @@ clean:
 	$(RM) yamls/kind.yaml
 	$(RM) ovn.yaml kube-ovn.yaml kube-ovn-crd.yaml
 	$(RM) ovn-ic-0.yaml ovn-ic-1.yaml
-	$(RM) kwok-node.yaml
+	$(RM) kwok-node.yaml metallb-cr.yaml
 	$(RM) kube-ovn.tar kube-ovn-dpdk.tar vpc-nat-gateway.tar image-amd64.tar image-amd64-dpdk.tar image-arm64.tar
 
 .PHONY: changelog
