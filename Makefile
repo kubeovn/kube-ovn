@@ -24,7 +24,13 @@ MULTUS_VERSION = v4.0.2
 MULTUS_IMAGE = ghcr.io/k8snetworkplumbingwg/multus-cni:$(MULTUS_VERSION)-thick
 MULTUS_YAML = https://raw.githubusercontent.com/k8snetworkplumbingwg/multus-cni/$(MULTUS_VERSION)/deployments/multus-daemonset-thick.yml
 
-KUBEVIRT_VERSION = v1.1.0
+METALLB_VERSION = 0.14.3
+METALLB_CHART_REPO = https://metallb.github.io/metallb
+METALLB_CONTROLLER_IMAGE=quay.io/metallb/controller:v$(METALLB_VERSION)
+METALLB_SPEAKER_IMAGE=quay.io/metallb/speaker:v$(METALLB_VERSION)
+METALLB_FRR_IMAGE=quay.io/frrouting/frr:8.5.2
+
+KUBEVIRT_VERSION = v1.1.1
 KUBEVIRT_OPERATOR_IMAGE = quay.io/kubevirt/virt-operator:$(KUBEVIRT_VERSION)
 KUBEVIRT_API_IMAGE = quay.io/kubevirt/virt-api:$(KUBEVIRT_VERSION)
 KUBEVIRT_CONTROLLER_IMAGE = quay.io/kubevirt/virt-controller:$(KUBEVIRT_VERSION)
@@ -422,30 +428,19 @@ kind-install-chart: kind-load-image kind-untaint-control-plane
 	kubectl label node -lbeta.kubernetes.io/os=linux kubernetes.io/os=linux --overwrite
 	kubectl label node -lnode-role.kubernetes.io/control-plane kube-ovn/role=master --overwrite
 	kubectl label node -lovn.kubernetes.io/ovs_dp_type!=userspace ovn.kubernetes.io/ovs_dp_type=kernel --overwrite
-	helm install kubeovn ./charts \
+	helm install kubeovn ./charts/kube-ovn --wait \
 		--set global.images.kubeovn.tag=$(VERSION) \
 		--set networking.NET_STACK=$(shell echo $${NET_STACK:-ipv4} | sed 's/^dual$$/dual_stack/') \
 		--set networking.ENABLE_SSL=$(shell echo $${ENABLE_SSL:-false}) \
 		--set func.ENABLE_BIND_LOCAL_IP=$(shell echo $${ENABLE_BIND_LOCAL_IP:-true}) \
 		--set func.ENABLE_IC=$(shell kubectl get node --show-labels | grep -qw "ovn.kubernetes.io/ic-gw" && echo true || echo false)
-	sleep 60
-	kubectl -n kube-system rollout status --timeout=1s deployment/ovn-central
-	kubectl -n kube-system rollout status --timeout=1s daemonset/ovs-ovn
-	kubectl -n kube-system rollout status --timeout=1s deployment/kube-ovn-controller
-	kubectl -n kube-system rollout status --timeout=1s daemonset/kube-ovn-cni
-	kubectl -n kube-system rollout status --timeout=1s daemonset/kube-ovn-pinger
 
 .PHONY: kind-upgrade-chart
 kind-upgrade-chart: kind-load-image
-	helm upgrade kubeovn ./charts \
+	helm upgrade kubeovn ./charts/kube-ovn --wait \
 		--set global.images.kubeovn.tag=$(VERSION) \
 		--set func.ENABLE_IC=$(shell kubectl get node --show-labels | grep -qw "ovn.kubernetes.io/ic-gw" && echo true || echo false)
-	sleep 90
-	kubectl -n kube-system rollout status --timeout=1s deployment/ovn-central
-	kubectl -n kube-system wait pod --for=condition=ready -l app=ovs
-	kubectl -n kube-system rollout status --timeout=1s deployment/kube-ovn-controller
-	kubectl -n kube-system rollout status --timeout=1s daemonset/kube-ovn-cni
-	kubectl -n kube-system rollout status --timeout=1s daemonset/kube-ovn-pinger
+	kubectl -n kube-system wait pod --for=condition=ready -l app=ovs --timeout=60s
 
 .PHONY: kind-uninstall-chart
 kind-uninstall-chart:
@@ -703,6 +698,24 @@ kind-install-multus:
 	curl -s "$(MULTUS_YAML)" | sed 's/:snapshot-thick/:$(MULTUS_VERSION)-thick/g' | kubectl apply -f -
 	kubectl -n kube-system rollout status ds kube-multus-ds
 
+.PHONY: kind-install-metallb
+kind-install-metallb: kind-install
+	$(call docker_network_info,kind)
+	$(call kind_load_image,kube-ovn,$(METALLB_CONTROLLER_IMAGE),1)
+	$(call kind_load_image,kube-ovn,$(METALLB_SPEAKER_IMAGE),1)
+	$(call kind_load_image,kube-ovn,$(METALLB_FRR_IMAGE),1)
+	helm repo add metallb $(METALLB_CHART_REPO)
+	helm repo update
+	helm install metallb metallb/metallb --wait \
+		--version $(METALLB_VERSION) \
+		--namespace metallb-system \
+		--create-namespace
+	$(call kubectl_wait_exist_and_ready,metallb-system,deployment,metallb-controller)
+	$(call kubectl_wait_exist_and_ready,metallb-system,daemonset,metallb-speaker)
+	@metallb_pool=$(shell echo $(KIND_IPV4_SUBNET) | sed 's/.[^.]\+$$/.201/')-$(shell echo $(KIND_IPV4_SUBNET) | sed 's/.[^.]\+$$/.250/') \
+		j2 yamls/metallb-cr.yaml.j2 -o metallb-cr.yaml
+	kubectl apply -f metallb-cr.yaml
+
 .PHONY: kind-install-vpc-nat-gw
 kind-install-vpc-nat-gw:
 	$(call kind_load_image,kube-ovn,$(VPC_NAT_GW_IMG))
@@ -761,7 +774,8 @@ kind-install-cilium-chaining-%:
 	$(call kind_load_image,kube-ovn,$(CILIUM_IMAGE_REPO)/operator-generic:v$(CILIUM_VERSION),1)
 	kubectl apply -f yamls/cilium-chaining.yaml
 	helm repo add cilium https://helm.cilium.io/
-	helm install cilium cilium/cilium \
+	helm repo update
+	helm install cilium cilium/cilium --wait \
 		--version $(CILIUM_VERSION) \
 		--namespace kube-system \
 		--set k8sServiceHost=$(KUBERNETES_SERVICE_HOST) \
@@ -797,8 +811,10 @@ kind-install-deepflow: kind-install
 	helm repo update deepflow
 	$(eval CLICKHOUSE_PERSISTENCE = $(shell helm show values --version $(DEEPFLOW_CHART_VERSION) --jsonpath '{.clickhouse.storageConfig.persistence}' deepflow/deepflow | sed 's/0Gi/Gi/g'))
 	$(eval GRAFANA_EXTRA_INIT_CONTAINERS = $(shell helm show values --version $(DEEPFLOW_CHART_VERSION) --jsonpath '{.grafana.extraInitContainers}' deepflow/deepflow | sed 's/:latest/:$(DEEPFLOW_VERSION)/g'))
-	helm install deepflow -n deepflow deepflow/deepflow \
-		--create-namespace --version $(DEEPFLOW_CHART_VERSION) \
+	helm install deepflow deepflow/deepflow --wait \
+		--version $(DEEPFLOW_CHART_VERSION) \
+		--namespace deepflow \
+		--create-namespace \
 		--set global.image.repository=$(DEEPFLOW_IMAGE_REPO) \
 		--set global.image.pullPolicy=IfNotPresent \
 		--set deepflow-agent.clusterNAME=kind-kube-ovn \
@@ -903,7 +919,7 @@ clean:
 	$(RM) yamls/kind.yaml
 	$(RM) ovn.yaml kube-ovn.yaml kube-ovn-crd.yaml
 	$(RM) ovn-ic-0.yaml ovn-ic-1.yaml
-	$(RM) kwok-node.yaml
+	$(RM) kwok-node.yaml metallb-cr.yaml
 	$(RM) kube-ovn.tar kube-ovn-dpdk.tar vpc-nat-gateway.tar image-amd64.tar image-amd64-dpdk.tar image-arm64.tar
 
 .PHONY: changelog
