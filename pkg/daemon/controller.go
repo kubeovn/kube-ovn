@@ -595,7 +595,6 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	go wait.Until(ovs.CleanLostInterface, time.Minute, stopCh)
 	go wait.Until(recompute, 10*time.Minute, stopCh)
 	go wait.Until(rotateLog, 1*time.Hour, stopCh)
-	go wait.Until(c.operateMod, 10*time.Second, stopCh)
 
 	if err := c.setIPSet(); err != nil {
 		util.LogFatalAndExit(err, "failed to set ipsets")

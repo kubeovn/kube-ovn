@@ -258,40 +258,6 @@ jobs:
           name: vpc-nat-gateway
           path: vpc-nat-gateway.tar
 
-  build-centos-compile:
-    name: Build centos-compile
-    runs-on: ubuntu-22.04
-    steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
-        with:
-          android: true
-          dotnet: true
-          haskell: true
-          docker-images: false
-          large-packages: false
-          tool-cache: false
-          swap-storage: false
-
-      - uses: actions/checkout@v3
-      - uses: docker/setup-buildx-action@v2
-
-      - name: Build
-        run: |
-          make image-centos-compile
-          make tar-centos-compile
-
-      - name: Upload centos7-compile image to artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: centos7-compile
-          path: centos7-compile.tar
-
-      # - name: Upload centos8-compile image to artifact
-      #   uses: actions/upload-artifact@v4
-      #   with:
-      #     name: centos8-compile
-      #     path: centos8-compile.tar
-
   build-e2e-binaries:
     name: Build E2E Binaries
     runs-on: ubuntu-22.04
@@ -2254,7 +2220,6 @@ jobs:
   push:
     name: Push Images
     needs:
-      - build-centos-compile
       - k8s-conformance-e2e
       - k8s-netpol-e2e
       - k8s-netpol-legacy-e2e
@@ -2304,22 +2269,10 @@ jobs:
         with:
           name: vpc-nat-gateway
 
-      - name: Download centos7-compile image
-        uses: actions/download-artifact@v4
-        with:
-          name: centos7-compile
-
-      # - name: Download centos8-compile image
-      #   uses: actions/download-artifact@v4
-      #   with:
-      #     name: centos8-compile
-
       - name: Load image
         run: |
           docker load --input kube-ovn.tar
           docker load --input vpc-nat-gateway.tar
-          docker load --input centos7-compile.tar
-          # docker load --input centos8-compile.tar
           if [ '${{ github.event_name }}' != 'pull_request' ]; then
             docker load --input kube-ovn-dpdk.tar
           fi
@@ -2349,10 +2302,6 @@ jobs:
           docker tag kubeovn/kube-ovn:$TAG-dpdk kubeovn/kube-ovn:$TAG-dpdk-x86
           docker tag kubeovn/vpc-nat-gateway:$TAG kubeovn/vpc-nat-gateway-dev:$COMMIT-x86
           docker tag kubeovn/vpc-nat-gateway:$TAG kubeovn/vpc-nat-gateway:$TAG-x86
-          docker tag kubeovn/centos7-compile:$TAG kubeovn/centos7-compile-dev:$TAG-x86
-          docker tag kubeovn/centos7-compile:$TAG kubeovn/centos7-compile:$TAG-x86
-          # docker tag kubeovn/centos8-compile:$TAG kubeovn/centos8-compile-dev:$TAG-x86
-          # docker tag kubeovn/centos8-compile:$TAG kubeovn/centos8-compile:$TAG-x86
           docker images
           docker push kubeovn/kube-ovn:$TAG-x86
           docker push kubeovn/kube-ovn-dev:$COMMIT-x86
@@ -2360,7 +2309,3 @@ jobs:
           docker push kubeovn/kube-ovn:$TAG-dpdk-x86
           docker push kubeovn/vpc-nat-gateway:$TAG-x86
           docker push kubeovn/vpc-nat-gateway-dev:$COMMIT-x86
-          docker push kubeovn/centos7-compile:$TAG-x86
-          docker push kubeovn/centos7-compile-dev:$TAG-x86
-          # docker push kubeovn/centos8-compile:$TAG-x86
-          # docker push kubeovn/centos8-compile-dev:$TAG-x86

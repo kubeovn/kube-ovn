@@ -3,13 +3,11 @@ package daemon
 import (
 	"errors"
 	"fmt"
-	"io/fs"
 	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"reflect"
-	"regexp"
 	"slices"
 	"strings"
 	"syscall"
@@ -640,32 +638,6 @@ func (c *Controller) ovnMetricsUpdate() {
 	c.setOvnSubnetGatewayMetric()
 }
 
-func (c *Controller) operateMod() {
-	modules, ok := os.LookupEnv(util.KoENV)
-	if !ok || modules == "" {
-		err := removeAllMods(util.KoDir)
-		if err != nil {
-			klog.Errorf("remove all module in %s failed", util.KoDir)
-		}
-		return
-	}
-	for _, module := range strings.Split(modules, ",") {
-		isFileExist, _ := isFile(module, util.KoDir)
-		if !isFileExist && isMod(module) {
-			err := removeKo(module)
-			if err != nil {
-				klog.Errorf("remove module %s failed %v", module, err)
-			}
-		} else if !isMod(module) && isFileExist {
-			err := insertKo(module)
-			if err != nil {
-				klog.Errorf("insert module %s failed: %v", module, err)
-			}
-			klog.Infof("insert module %s", module)
-		}
-	}
-}
-
 func rotateLog() {
 	output, err := exec.Command("logrotate", "/etc/logrotate.d/openvswitch").CombinedOutput()
 	if err != nil {
@@ -679,93 +651,4 @@ func rotateLog() {
 	if err != nil {
 		klog.Errorf("failed to rotate kube-ovn log %q", output)
 	}
-}
-
-func isMod(modName string) bool {
-	out, err := exec.Command("lsmod").CombinedOutput()
-	if err != nil {
-		klog.Errorf("list module %s failed: %v", modName, err)
-	}
-	names := strings.Split(modName, ".")
-	return strings.Contains(string(out), names[0])
-}
-
-func insertKo(koName string) error {
-	file := util.KoDir + koName
-	out, err := exec.Command("insmod", file).CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("insert module %s failed: %v", koName, err)
-	}
-	if string(out) != "" {
-		return fmt.Errorf("insert module %s failed: %v", koName, string(out))
-	}
-	return nil
-}
-
-func removeAllMods(dir string) error {
-	kos, err := readKos(dir)
-	if err != nil {
-		return fmt.Errorf("access kos in %s failed: %v", dir, err)
-	}
-	for _, ko := range *kos {
-		err := removeKo(ko)
-		if err != nil {
-			return fmt.Errorf("remove module %s failed: %v", ko, err)
-		}
-	}
-	return nil
-}
-
-func removeKo(koName string) error {
-	out, err := exec.Command("rmmod", koName).CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("remove module %s failed: %v", koName, err)
-	}
-	if string(out) != "" {
-		return fmt.Errorf("remove module %s failed: %v", koName, string(out))
-	}
-	return nil
-}
-
-func readKos(dir string) (*[]string, error) {
-	kos := new([]string)
-	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			klog.Errorf("failed to access path %q: %v", path, err)
-		}
-		if d.IsDir() {
-			return nil
-		}
-		isMatch, _ := regexp.MatchString(".[.]ko$", d.Name())
-		if isMatch {
-			*kos = append(*kos, d.Name())
-		}
-		return nil
-	})
-	if err != nil {
-		return kos, fmt.Errorf("error when walking the path %q: %v", dir, err)
-	}
-	return kos, nil
-}
-
-func isFile(filename, dir string) (bool, string) {
-	isFile := false
-	fileFullName := ""
-	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			klog.Errorf("failed to access path %q: %v", path, err)
-		}
-		if d.IsDir() {
-			return nil
-		}
-		if strings.Contains(d.Name(), filename) {
-			isFile = true
-			fileFullName = filename
-		}
-		return nil
-	})
-	if err != nil {
-		klog.Errorf("error when walking the path %q: %v", dir, err)
-	}
-	return isFile, fileFullName
 }
