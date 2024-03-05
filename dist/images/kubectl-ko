@@ -36,7 +36,6 @@ showHelp(){
   echo "    {trace|ovn-trace} {node//nodename} {target ip address} [target mac address] arp {request|reply}                        trace ARP request/reply"
   echo "  diagnose {all|node|subnet|IPPorts} [nodename|subnetName|{proto1}-{IP1}-{Port1},{proto2}-{IP2}-{Port2}]    diagnose connectivity of all nodes or a specific node or specify subnet's ds pod or IPPorts like 'tcp-172.18.0.2-53,udp-172.18.0.3-53'"
   echo "  env-check    check the environment configuration"
-  echo "  tuning {install-fastpath|local-install-fastpath|remove-fastpath|install-stt|local-install-stt|remove-stt} {centos7|centos8}} [kernel-devel-version]    deploy kernel optimisation components to the system"
   echo "  reload    restart all kube-ovn components"
   echo "  log {kube-ovn|ovn|ovs|linux|all}    save log to ./kubectl-ko-log/"
   echo "  perf [image] performance test default image is docker.io/kubeovn/test:v1.13.0"
@@ -1002,141 +1001,6 @@ dbtool(){
   esac
 }
 
-tuning(){
-  action="$1"; shift
-  sys="$1"; shift
-  case $action in
-    install-fastpath)
-      case $sys in
-        centos7)
-          docker run -it --privileged -v /lib/modules:/lib/modules -v /usr/src:/usr/src -v /tmp/:/tmp/ $REGISTRY/centos7-compile:"$KUBE_OVN_VERSION" bash -c "./module.sh  centos install"
-          while [ ! -f /tmp/kube_ovn_fastpath.ko ];
-          do
-            sleep 1
-          done
-          for i in $(kubectl -n kube-system get pods | grep ovn-cni | awk '{print $1}');
-          do
-            kubectl cp /tmp/kube_ovn_fastpath.ko kube-system/"$i":/tmp/
-          done
-          ;;
-        centos8)
-          docker run -it --privileged -v /lib/modules:/lib/modules -v /usr/src:/usr/src -v /tmp/:/tmp/ $REGISTRY/centos8-compile:"$KUBE_OVN_VERSION" bash -c "./module.sh  centos install"
-          while [ ! -f /tmp/kube_ovn_fastpath.ko ];
-          do
-            sleep 1
-          done
-          for i in $(kubectl -n kube-system get pods | grep ovn-cni | awk '{print $1}');
-          do
-            kubectl cp /tmp/kube_ovn_fastpath.ko kube-system/"$i":/tmp/
-          done
-          ;;
-        *)
-          echo "unknown system $sys"
-      esac
-      ;;
-    local-install-fastpath)
-      case $sys in
-        centos7)
-          # shellcheck disable=SC2145
-          docker run -it --privileged -v /lib/modules:/lib/modules -v /usr/src:/usr/src -v /tmp:/tmp $REGISTRY/centos7-compile:"$KUBE_OVN_VERSION" bash -c "./module.sh centos local-install $@"
-          for i in $(kubectl -n kube-system get pods | grep ovn-cni | awk '{print $1}');
-          do
-            kubectl cp /tmp/kube_ovn_fastpath.ko kube-system/"$i":/tmp/
-          done
-          ;;
-        centos8)
-          # shellcheck disable=SC2145
-          docker run -it --privileged -v /lib/modules:/lib/modules -v /usr/src:/usr/src -v /tmp:/tmp $REGISTRY/centos8-compile:"$KUBE_OVN_VERSION" bash -c "./module.sh centos local-install $@"
-          for i in $(kubectl -n kube-system get pods | grep ovn-cni | awk '{print $1}');
-          do
-            kubectl cp /tmp/kube_ovn_fastpath.ko kube-system/"$i":/tmp/
-          done
-          ;;
-        *)
-          echo "unknown system $sys"
-      esac
-      ;;
-    remove-fastpath)
-      case $sys in
-        centos)
-          for i in $(kubectl -n kube-system get pods | grep ovn-cni | awk '{print $1}');
-          do
-            kubectl -n kube-system exec "$i" -- rm -f /tmp/kube_ovn_fastpath.ko
-          done
-          ;;
-        *)
-          echo "unknown system $sys"
-      esac
-      ;;
-    install-stt)
-      case $sys in
-        centos7)
-          # shellcheck disable=SC2145
-          docker run -it --privileged -v /lib/modules:/lib/modules -v /usr/src:/usr/src -v /tmp:/tmp $REGISTRY/centos7-compile:"$KUBE_OVN_VERSION" bash -c "./module.sh stt install"
-          for i in $(kubectl -n kube-system get pods | grep ovn-cni | awk '{print $1}');
-          do
-            for k in /tmp/*.rpm; do
-              kubectl cp "$k" kube-system/"$i":/tmp/
-            done
-          done
-          ;;
-        centos8)
-          # shellcheck disable=SC2145
-          docker run -it --privileged -v /lib/modules:/lib/modules -v /usr/src:/usr/src -v /tmp:/tmp $REGISTRY/centos8-compile:"$KUBE_OVN_VERSION" bash -c "./module.sh stt install"
-          for i in $(kubectl -n kube-system get pods | grep ovn-cni | awk '{print $1}');
-          do
-            for k in /tmp/*.rpm; do
-              kubectl cp "$k" kube-system/"$i":/tmp/
-            done
-          done
-          ;;
-        *)
-          echo "unknown system $sys"
-      esac
-      ;;
-    local-install-stt)
-      case $sys in
-        centos7)
-          # shellcheck disable=SC2145
-          docker run -it --privileged -v /lib/modules:/lib/modules -v /usr/src:/usr/src -v /tmp:/tmp $REGISTRY/centos7-compile:"$KUBE_OVN_VERSION" bash -c "./module.sh stt local-install $@"
-          for i in $(kubectl -n kube-system get pods | grep ovn-cni | awk '{print $1}');
-          do
-            for k in /tmp/*.rpm; do
-              kubectl cp "$k" kube-system/"$i":/tmp/
-            done
-          done
-          ;;
-        centos8)
-          # shellcheck disable=SC2145
-          docker run -it --privileged -v /lib/modules:/lib/modules -v /usr/src:/usr/src -v /tmp:/tmp $REGISTRY/centos8-compile:"$KUBE_OVN_VERSION" bash -c "./module.sh stt local-install $@"
-          for i in $(kubectl -n kube-system get pods | grep ovn-cni | awk '{print $1}');
-          do
-            for k in /tmp/*.rpm; do
-              kubectl cp "$k" kube-system/"$i":/tmp/
-            done
-          done
-          ;;
-        *)
-          echo "unknown system $sys"
-      esac
-      ;;
-    remove-stt)
-      case $sys in
-        centos)
-          for i in $(kubectl -n kube-system get pods | grep ovn-cni | awk '{print $1}');
-          do
-            kubectl -n kube-system exec "$i" -- rm -f /tmp/openvswitch-kmod*.rpm
-          done
-          ;;
-        *)
-          echo "unknown system $sys"
-      esac
-      ;;
-    *)
-      echo "unknown action $action"
-  esac
-}
-
 reload(){
   kubectl delete pod -n kube-system -l app=ovn-central
   kubectl rollout status deployment/ovn-central -n kube-system
@@ -1716,9 +1580,6 @@ case $subcommand in
     ;;
   reload)
     reload
-    ;;
-  tuning)
-    tuning "$@"
     ;;
   env-check)
     env-check
