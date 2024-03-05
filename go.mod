@@ -6,7 +6,7 @@ toolchain go1.22.0
 
 require (
 	github.com/Microsoft/go-winio v0.6.1
-	github.com/Microsoft/hcsshim v0.11.4
+	github.com/Microsoft/hcsshim v0.12.0
 	github.com/alauda/felix v3.6.6-0.20201207121355-187332daf314+incompatible
 	github.com/bhendo/go-powershell v0.0.0-20190719160123-219e7fb4e41e
 	github.com/cenkalti/backoff/v4 v4.2.1
@@ -89,8 +89,10 @@ require (
 	github.com/cilium/ebpf v0.12.3 // indirect
 	github.com/container-storage-interface/spec v1.9.0 // indirect
 	github.com/containerd/cgroups v1.1.0 // indirect
+	github.com/containerd/cgroups/v3 v3.0.2 // indirect
 	github.com/containerd/console v1.0.3 // indirect
-	github.com/containerd/containerd v1.7.11 // indirect
+	github.com/containerd/errdefs v0.1.0 // indirect
+	github.com/containerd/log v0.1.0 // indirect
 	github.com/containerd/ttrpc v1.2.2 // indirect
 	github.com/coreos/go-semver v0.3.1 // indirect
 	github.com/coreos/go-systemd/v22 v22.5.0 // indirect
@@ -224,6 +226,7 @@ require (
 	go.opentelemetry.io/otel v1.24.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.24.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.24.0 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.19.0 // indirect
 	go.opentelemetry.io/otel/metric v1.24.0 // indirect
 	go.opentelemetry.io/otel/sdk v1.24.0 // indirect
 	go.opentelemetry.io/otel/trace v1.24.0 // indirect
