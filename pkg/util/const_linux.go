@@ -10,8 +10,4 @@ const (
 
 	HtbQos   = "linux-htb"
 	NetemQos = "linux-netem"
-
-	KoDir  = "/tmp/"
-	KoENV  = "MODULES"
-	RpmENV = "RPMS"
 )
