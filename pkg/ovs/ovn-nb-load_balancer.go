@@ -152,12 +152,9 @@ func (c *OVNNbClient) LoadBalancerDeleteVip(lbName, vipEndpoint string, ignoreHe
 			klog.Errorf("failed to delete lb ip port mapping: %v", err)
 			return err
 		}
-
-		if lbhc != nil {
-			if err = c.LoadBalancerDeleteHealthCheck(lbName, lbhc.UUID); err != nil {
-				klog.Errorf("failed to delete lb health check: %v", err)
-				return err
-			}
+		if err = c.LoadBalancerDeleteHealthCheck(lbName, lbhc.UUID); err != nil {
+			klog.Errorf("failed to delete lb health check: %v", err)
+			return err
 		}
 	}
 	if lb == nil || len(lb.Vips) == 0 {

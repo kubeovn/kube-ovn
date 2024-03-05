@@ -585,9 +585,7 @@ func (c *Controller) updateProviderNetworkForNodeDeletion(pn *kubeovnv1.Provider
 		}
 	}
 	if changed {
-		if newPn == nil {
-			newPn = pn.DeepCopy()
-		}
+		newPn = pn.DeepCopy()
 		newPn.Spec.CustomInterfaces = customInterfaces
 	}
 	if newPn != nil {
