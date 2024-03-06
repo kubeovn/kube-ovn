@@ -2,17 +2,25 @@ package framework
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/wait"
 	v1apps "k8s.io/client-go/kubernetes/typed/apps/v1"
+	"k8s.io/kubectl/pkg/polymorphichelpers"
 	"k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/kubernetes/test/e2e/framework/statefulset"
 
+	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/onsi/gomega"
 )
 
@@ -94,6 +102,62 @@ func (c *StatefulSetClient) WaitToDisappear(name string, _, timeout time.Duratio
 		return fmt.Errorf("expected statefulset %s to not be found: %w", name, err)
 	}
 	return nil
+}
+
+func (c *StatefulSetClient) PatchSync(original, modified *appsv1.StatefulSet) *appsv1.StatefulSet {
+	sts := c.Patch(original, modified)
+	return c.RolloutStatus(sts.Name)
+}
+
+func (c *StatefulSetClient) Patch(original, modified *appsv1.StatefulSet) *appsv1.StatefulSet {
+	patch, err := util.GenerateMergePatchPayload(original, modified)
+	ExpectNoError(err)
+
+	var patchedSts *appsv1.StatefulSet
+	err = wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+		sts, err := c.StatefulSetInterface.Patch(ctx, original.Name, types.StrategicMergePatchType, patch, metav1.PatchOptions{}, "")
+		if err != nil {
+			return handleWaitingAPIError(err, false, "patch StatefulSet %s/%s", original.Namespace, original.Name)
+		}
+		patchedSts = sts
+		return true, nil
+	})
+	if err == nil {
+		return patchedSts.DeepCopy()
+	}
+
+	if errors.Is(err, context.DeadlineExceeded) {
+		Failf("timed out while retrying to patch StatefulSet %s/%s", original.Namespace, original.Name)
+	}
+	Failf("error occurred while retrying to patch StatefulSet %s/%s: %v", original.Namespace, original.Name, err)
+
+	return nil
+}
+
+func (c *StatefulSetClient) RolloutStatus(name string) *appsv1.StatefulSet {
+	var sts *appsv1.StatefulSet
+	WaitUntil(2*time.Second, timeout, func(_ context.Context) (bool, error) {
+		var err error
+		sts = c.Get(name)
+		unstructured := &unstructured.Unstructured{}
+		if unstructured.Object, err = runtime.DefaultUnstructuredConverter.ToUnstructured(sts); err != nil {
+			return false, err
+		}
+
+		dsv := &polymorphichelpers.StatefulSetStatusViewer{}
+		msg, done, err := dsv.Status(unstructured, 0)
+		if err != nil {
+			return false, err
+		}
+		if done {
+			return true, nil
+		}
+
+		Logf(strings.TrimSpace(msg))
+		return false, nil
+	}, "")
+
+	return sts
 }
 
 func MakeStatefulSet(name, svcName string, replicas int32, labels map[string]string, image string) *appsv1.StatefulSet {
