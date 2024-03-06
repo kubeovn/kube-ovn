@@ -44,7 +44,8 @@ var _ = framework.Describe("[group:pod]", func() {
 		pod2Name := stsName + "-2"
 		pod2 := podClient.GetPod(pod2Name)
 		pod2IP := pod2.Annotations[util.IPAddressAnnotation]
-		podClient.Delete(pod2Name)
+		err := podClient.Delete(pod2Name)
+		framework.ExpectNoError(err, "failed to delete pod "+pod2Name)
 		stsClient.WaitForRunningAndReady(sts)
 		pod2 = podClient.GetPod(pod2Name)
 		framework.ExpectEqual(pod2.Annotations[util.IPAddressAnnotation], pod2IP)
