@@ -1,6 +1,8 @@
 package pod
 
 import (
+	"fmt"
+
 	"github.com/onsi/ginkgo/v2"
 
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -45,8 +47,12 @@ var _ = framework.Describe("[group:pod]", func() {
 		ginkgo.By("Scale sts replica to 1 and Scale replica to 3 " + stsName)
 		patchSts := framework.MakeStatefulSet(stsName, stsName, int32(1), labels, framework.PauseImage)
 		stsClient.PatchSync(sts, patchSts)
-		ginkgo.By("Waiting for statefulset " + stsName + " to be ready")
-		stsClient.WaitForRunningAndReady(patchSts)
+
+		for index := 1; index <= 2; index++ {
+			podName := fmt.Sprintf("%s-%d", stsName, index)
+			ginkgo.By(fmt.Sprintf("Waiting pod %s to be deleted", podName))
+			podClient.WaitForNotFound(podName)
+		}
 
 		patchSts = framework.MakeStatefulSet(stsName, stsName, int32(3), labels, framework.PauseImage)
 		sts = stsClient.Get(stsName)
