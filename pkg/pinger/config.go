@@ -19,7 +19,7 @@ import (
 type Configuration struct {
 	KubeConfigFile     string
 	KubeClient         kubernetes.Interface
-	Port               int
+	Port               int32
 	DaemonSetNamespace string
 	DaemonSetName      string
 	Interval           int
@@ -51,18 +51,18 @@ type Configuration struct {
 	ServiceOvnControllerFileLogPath string
 	ServiceOvnControllerFilePidPath string
 	EnableVerboseConnCheck          bool
-	TCPConnCheckPort                int
-	UDPConnCheckPort                int
+	TCPConnCheckPort                int32
+	UDPConnCheckPort                int32
 	TargetIPPorts                   string
 }
 
 func ParseFlags() (*Configuration, error) {
 	var (
-		argPort = pflag.Int("port", 8080, "metrics port")
+		argPort = pflag.Int32("port", 8080, "metrics port")
 
 		argEnableVerboseConnCheck   = pflag.Bool("enable-verbose-conn-check", false, "enable TCP/UDP connectivity check")
-		argTCPConnectivityCheckPort = pflag.Int("tcp-conn-check-port", 8100, "TCP connectivity Check Port")
-		argUDPConnectivityCheckPort = pflag.Int("udp-conn-check-port", 8101, "UDP connectivity Check Port")
+		argTCPConnectivityCheckPort = pflag.Int32("tcp-conn-check-port", 8100, "TCP connectivity Check Port")
+		argUDPConnectivityCheckPort = pflag.Int32("udp-conn-check-port", 8101, "UDP connectivity Check Port")
 
 		argKubeConfigFile     = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.")
 		argDaemonSetNameSpace = pflag.String("ds-namespace", "kube-system", "kube-ovn-pinger daemonset namespace")
