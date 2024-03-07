@@ -1,8 +1,6 @@
 package pod
 
 import (
-	clientset "k8s.io/client-go/kubernetes"
-
 	"github.com/onsi/ginkgo/v2"
 
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -12,20 +10,14 @@ import (
 var _ = framework.Describe("[group:pod]", func() {
 	f := framework.NewDefaultFramework("pod")
 
-	var cs clientset.Interface
 	var podClient *framework.PodClient
 	var stsClient *framework.StatefulSetClient
 	var stsName string
-	var image string
 
 	ginkgo.BeforeEach(func() {
-		cs = f.ClientSet
 		podClient = f.PodClient()
 		stsClient = f.StatefulSetClient()
 		stsName = "sts-" + framework.RandomSuffix()
-		if image == "" {
-			image = framework.GetKubeOvnImage(cs)
-		}
 	})
 	ginkgo.AfterEach(func() {
 		ginkgo.By("Deleting sts " + stsName)
@@ -53,9 +45,13 @@ var _ = framework.Describe("[group:pod]", func() {
 		ginkgo.By("Scale sts replica to 1 and Scale replica to 3 " + stsName)
 		patchSts := framework.MakeStatefulSet(stsName, stsName, int32(1), labels, framework.PauseImage)
 		stsClient.PatchSync(sts, patchSts)
+		ginkgo.By("Waiting for statefulset " + stsName + " to be ready")
+		stsClient.WaitForRunningAndReady(patchSts)
+
 		patchSts = framework.MakeStatefulSet(stsName, stsName, int32(3), labels, framework.PauseImage)
 		sts = stsClient.Get(stsName)
 		stsClient.PatchSync(sts, patchSts)
+		ginkgo.By("Waiting for statefulset " + stsName + " to be ready")
 		stsClient.WaitForRunningAndReady(patchSts)
 	})
 })

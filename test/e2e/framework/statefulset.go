@@ -144,8 +144,8 @@ func (c *StatefulSetClient) RolloutStatus(name string) *appsv1.StatefulSet {
 			return false, err
 		}
 
-		dsv := &polymorphichelpers.StatefulSetStatusViewer{}
-		msg, done, err := dsv.Status(unstructured, 0)
+		viewer := &polymorphichelpers.StatefulSetStatusViewer{}
+		msg, done, err := viewer.Status(unstructured, 0)
 		if err != nil {
 			return false, err
 		}
