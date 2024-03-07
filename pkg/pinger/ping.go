@@ -20,23 +20,29 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-func StartPinger(config *Configuration, e *Exporter) {
+func StartPinger(config *Configuration) {
 	errHappens := false
+	var exporter *Exporter
+	withMetrics := config.Mode == "server" && config.EnableMetrics
 	for {
 		if config.NetworkMode == "kube-ovn" {
-			if checkOvs(config) != nil {
+			if checkOvs(config, withMetrics) != nil {
 				errHappens = true
 			}
-			if checkOvnController(config) != nil {
+			if checkOvnController(config, withMetrics) != nil {
 				errHappens = true
 			}
-			if checkPortBindings(config) != nil {
+			if checkPortBindings(config, withMetrics) != nil {
 				errHappens = true
 			}
-			e.ovsMetricsUpdate()
+			if withMetrics {
+				if exporter == nil {
+					exporter = NewExporter(config)
+				}
+				exporter.ovsMetricsUpdate()
+			}
 		}
-
-		if ping(config) != nil {
+		if ping(config, withMetrics) != nil {
 			errHappens = true
 		}
 		if config.Mode != "server" {
@@ -49,23 +55,23 @@ func StartPinger(config *Configuration, e *Exporter) {
 	}
 }
 
-func ping(config *Configuration) error {
+func ping(config *Configuration, withMetrics bool) error {
 	errHappens := false
-	if checkAPIServer(config) != nil {
+	if checkAPIServer(config, withMetrics) != nil {
 		errHappens = true
 	}
-	if pingPods(config) != nil {
+	if pingPods(config, withMetrics) != nil {
 		errHappens = true
 	}
-	if pingNodes(config) != nil {
+	if pingNodes(config, withMetrics) != nil {
 		errHappens = true
 	}
-	if internalNslookup(config) != nil {
+	if internalNslookup(config, withMetrics) != nil {
 		errHappens = true
 	}
 
 	if config.ExternalDNS != "" {
-		if externalNslookup(config) != nil {
+		if externalNslookup(config, withMetrics) != nil {
 			errHappens = true
 		}
 	}
@@ -77,7 +83,7 @@ func ping(config *Configuration) error {
 	}
 
 	if config.ExternalAddress != "" {
-		if pingExternal(config) != nil {
+		if pingExternal(config, withMetrics) != nil {
 			errHappens = true
 		}
 	}
@@ -87,7 +93,7 @@ func ping(config *Configuration) error {
 	return nil
 }
 
-func pingNodes(config *Configuration) error {
+func pingNodes(config *Configuration, setMetrics bool) error {
 	klog.Infof("start to check node connectivity")
 	nodes, err := config.KubeClient.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
 	if err != nil {
@@ -138,14 +144,16 @@ func pingNodes(config *Configuration) error {
 					if int(math.Abs(float64(stats.PacketsSent-stats.PacketsRecv))) != 0 {
 						pingErr = fmt.Errorf("ping failed")
 					}
-					SetNodePingMetrics(
-						config.NodeName,
-						config.HostIP,
-						config.PodName,
-						no.Name, addr.Address,
-						float64(stats.AvgRtt)/float64(time.Millisecond),
-						int(math.Abs(float64(stats.PacketsSent-stats.PacketsRecv))),
-						int(float64(stats.PacketsSent)))
+					if setMetrics {
+						SetNodePingMetrics(
+							config.NodeName,
+							config.HostIP,
+							config.PodName,
+							no.Name, addr.Address,
+							float64(stats.AvgRtt)/float64(time.Millisecond),
+							int(math.Abs(float64(stats.PacketsSent-stats.PacketsRecv))),
+							int(float64(stats.PacketsSent)))
+					}
 				}(addr.Address, no.Name)
 			}
 		}
@@ -153,7 +161,7 @@ func pingNodes(config *Configuration) error {
 	return pingErr
 }
 
-func pingPods(config *Configuration) error {
+func pingPods(config *Configuration, setMetrics bool) error {
 	klog.Infof("start to check pod connectivity")
 	ds, err := config.KubeClient.AppsV1().DaemonSets(config.DaemonSetNamespace).Get(context.Background(), config.DaemonSetName, metav1.GetOptions{})
 	if err != nil {
@@ -210,16 +218,18 @@ func pingPods(config *Configuration) error {
 					if int(math.Abs(float64(stats.PacketsSent-stats.PacketsRecv))) != 0 {
 						pingErr = fmt.Errorf("ping failed")
 					}
-					SetPodPingMetrics(
-						config.NodeName,
-						config.HostIP,
-						config.PodName,
-						nodeName,
-						nodeIP,
-						podIP,
-						float64(stats.AvgRtt)/float64(time.Millisecond),
-						int(math.Abs(float64(stats.PacketsSent-stats.PacketsRecv))),
-						int(float64(stats.PacketsSent)))
+					if setMetrics {
+						SetPodPingMetrics(
+							config.NodeName,
+							config.HostIP,
+							config.PodName,
+							nodeName,
+							nodeIP,
+							podIP,
+							float64(stats.AvgRtt)/float64(time.Millisecond),
+							int(math.Abs(float64(stats.PacketsSent-stats.PacketsRecv))),
+							int(float64(stats.PacketsSent)))
+					}
 				}(podIP.IP, pod.Name, pod.Status.HostIP, pod.Spec.NodeName)
 			}
 		}
@@ -227,7 +237,7 @@ func pingPods(config *Configuration) error {
 	return pingErr
 }
 
-func pingExternal(config *Configuration) error {
+func pingExternal(config *Configuration, setMetrics bool) error {
 	if config.ExternalAddress == "" {
 		return nil
 	}
@@ -256,13 +266,15 @@ func pingExternal(config *Configuration) error {
 		stats := pinger.Statistics()
 		klog.Infof("ping external address: %s, total count: %d, loss count %d, average rtt %.2fms",
 			addr, pinger.Count, int(math.Abs(float64(stats.PacketsSent-stats.PacketsRecv))), float64(stats.AvgRtt)/float64(time.Millisecond))
-		SetExternalPingMetrics(
-			config.NodeName,
-			config.HostIP,
-			config.PodIP,
-			addr,
-			float64(stats.AvgRtt)/float64(time.Millisecond),
-			int(math.Abs(float64(stats.PacketsSent-stats.PacketsRecv))))
+		if setMetrics {
+			SetExternalPingMetrics(
+				config.NodeName,
+				config.HostIP,
+				config.PodIP,
+				addr,
+				float64(stats.AvgRtt)/float64(time.Millisecond),
+				int(math.Abs(float64(stats.PacketsSent-stats.PacketsRecv))))
+		}
 		if int(math.Abs(float64(stats.PacketsSent-stats.PacketsRecv))) != 0 {
 			return fmt.Errorf("ping failed")
 		}
@@ -319,7 +331,7 @@ func checkAccessTargetIPPorts(config *Configuration) error {
 	return checkErr
 }
 
-func internalNslookup(config *Configuration) error {
+func internalNslookup(config *Configuration, setMetrics bool) error {
 	klog.Infof("start to check dns connectivity")
 	t1 := time.Now()
 	ctx, cancel := context.WithTimeout(context.TODO(), 10*time.Second)
@@ -329,15 +341,19 @@ func internalNslookup(config *Configuration) error {
 	elapsed := time.Since(t1)
 	if err != nil {
 		klog.Errorf("failed to resolve dns %s, %v", config.InternalDNS, err)
-		SetInternalDNSUnhealthyMetrics(config.NodeName)
+		if setMetrics {
+			SetInternalDNSUnhealthyMetrics(config.NodeName)
+		}
 		return err
 	}
-	SetInternalDNSHealthyMetrics(config.NodeName, float64(elapsed)/float64(time.Millisecond))
+	if setMetrics {
+		SetInternalDNSHealthyMetrics(config.NodeName, float64(elapsed)/float64(time.Millisecond))
+	}
 	klog.Infof("resolve dns %s to %v in %.2fms", config.InternalDNS, addrs, float64(elapsed)/float64(time.Millisecond))
 	return nil
 }
 
-func externalNslookup(config *Configuration) error {
+func externalNslookup(config *Configuration, setMetrics bool) error {
 	klog.Infof("start to check dns connectivity")
 	t1 := time.Now()
 	ctx, cancel := context.WithTimeout(context.TODO(), 10*time.Second)
@@ -347,25 +363,33 @@ func externalNslookup(config *Configuration) error {
 	elapsed := time.Since(t1)
 	if err != nil {
 		klog.Errorf("failed to resolve dns %s, %v", config.ExternalDNS, err)
-		SetExternalDNSUnhealthyMetrics(config.NodeName)
+		if setMetrics {
+			SetExternalDNSUnhealthyMetrics(config.NodeName)
+		}
 		return err
 	}
-	SetExternalDNSHealthyMetrics(config.NodeName, float64(elapsed)/float64(time.Millisecond))
+	if setMetrics {
+		SetExternalDNSHealthyMetrics(config.NodeName, float64(elapsed)/float64(time.Millisecond))
+	}
 	klog.Infof("resolve dns %s to %v in %.2fms", config.ExternalDNS, addrs, float64(elapsed)/float64(time.Millisecond))
 	return nil
 }
 
-func checkAPIServer(config *Configuration) error {
+func checkAPIServer(config *Configuration, setMetrics bool) error {
 	klog.Infof("start to check apiserver connectivity")
 	t1 := time.Now()
 	_, err := config.KubeClient.Discovery().ServerVersion()
 	elapsed := time.Since(t1)
 	if err != nil {
 		klog.Errorf("failed to connect to apiserver: %v", err)
-		SetApiserverUnhealthyMetrics(config.NodeName)
+		if setMetrics {
+			SetApiserverUnhealthyMetrics(config.NodeName)
+		}
 		return err
 	}
 	klog.Infof("connect to apiserver success in %.2fms", float64(elapsed)/float64(time.Millisecond))
-	SetApiserverHealthyMetrics(config.NodeName, float64(elapsed)/float64(time.Millisecond))
+	if setMetrics {
+		SetApiserverHealthyMetrics(config.NodeName, float64(elapsed)/float64(time.Millisecond))
+	}
 	return nil
 }

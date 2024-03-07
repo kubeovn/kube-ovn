@@ -1,7 +1,6 @@
 package pinger
 
 import (
-	"fmt"
 	"net/http"
 	_ "net/http/pprof" // #nosec
 	"time"
@@ -18,26 +17,28 @@ func CmdMain() {
 	defer klog.Flush()
 
 	klog.Infof(versions.String())
-	pinger.InitPingerMetrics()
-	util.InitKlogMetrics()
 	config, err := pinger.ParseFlags()
 	if err != nil {
 		util.LogFatalAndExit(err, "failed to parse config")
 	}
-	if config.Mode == "server" && config.EnableMetrics {
-		mux := http.NewServeMux()
-		mux.Handle("/metrics", promhttp.Handler())
+	if config.Mode == "server" {
+		if config.EnableMetrics {
+			pinger.InitPingerMetrics()
+			util.InitKlogMetrics()
 
-		go func() {
-			// conform to Gosec G114
-			// https://github.com/securego/gosec#available-rules
-			server := &http.Server{
-				Addr:              fmt.Sprintf("0.0.0.0:%d", config.Port),
-				ReadHeaderTimeout: 3 * time.Second,
-				Handler:           mux,
-			}
-			util.LogFatalAndExit(server.ListenAndServe(), "failed to listen and serve on %s", server.Addr)
-		}()
+			mux := http.NewServeMux()
+			mux.Handle("/metrics", promhttp.Handler())
+			go func() {
+				// conform to Gosec G114
+				// https://github.com/securego/gosec#available-rules
+				server := &http.Server{
+					Addr:              util.JoinHostPort("0.0.0.0", config.Port),
+					ReadHeaderTimeout: 3 * time.Second,
+					Handler:           mux,
+				}
+				util.LogFatalAndExit(server.ListenAndServe(), "failed to listen and serve on %s", server.Addr)
+			}()
+		}
 
 		if config.EnableVerboseConnCheck {
 			addr := util.JoinHostPort("0.0.0.0", config.UDPConnCheckPort)
@@ -51,6 +52,5 @@ func CmdMain() {
 			}
 		}
 	}
-	e := pinger.NewExporter(config)
-	pinger.StartPinger(config, e)
+	pinger.StartPinger(config)
 }
