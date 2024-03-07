@@ -44,8 +44,10 @@ var _ = framework.Describe("[group:pod]", func() {
 		pod2 = podClient.GetPod(pod2Name)
 		framework.ExpectEqual(pod2.Annotations[util.IPAddressAnnotation], pod2IP)
 
-		ginkgo.By("Scale sts replica to 1 and Scale replica to 3 " + stsName)
-		patchSts := framework.MakeStatefulSet(stsName, stsName, int32(1), labels, framework.PauseImage)
+		ginkgo.By("Scale sts replicas to 1")
+		sts = stsClient.Get(stsName)
+		patchSts := sts.DeepCopy()
+		*patchSts.Spec.Replicas = 1
 		stsClient.PatchSync(sts, patchSts)
 
 		for index := 1; index <= 2; index++ {
@@ -53,9 +55,10 @@ var _ = framework.Describe("[group:pod]", func() {
 			ginkgo.By(fmt.Sprintf("Waiting pod %s to be deleted", podName))
 			podClient.WaitForNotFound(podName)
 		}
-
-		patchSts = framework.MakeStatefulSet(stsName, stsName, int32(3), labels, framework.PauseImage)
+		ginkgo.By("Scale sts replicas to 3")
 		sts = stsClient.Get(stsName)
+		patchSts = sts.DeepCopy()
+		*patchSts.Spec.Replicas = 3
 		stsClient.PatchSync(sts, patchSts)
 		ginkgo.By("Waiting for statefulset " + stsName + " to be ready")
 		stsClient.WaitForRunningAndReady(patchSts)
