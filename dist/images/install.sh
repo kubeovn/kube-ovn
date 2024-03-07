@@ -107,8 +107,6 @@ DPDK_CPU="1000m"                        # Default CPU configuration for if --dpd
 DPDK_MEMORY="2Gi"                       # Default Memory configuration for it --dpdk-memory flag is not included
 
 # performance
-MODULES="kube_ovn_fastpath.ko"
-RPMS="openvswitch-kmod"
 GC_INTERVAL=360
 INSPECT_INTERVAL=20
 
@@ -4168,10 +4166,6 @@ spec:
             valueFrom:
               fieldRef:
                 fieldPath: spec.nodeName
-          - name: MODULES
-            value: $MODULES
-          - name: RPMS
-            value: $RPMS
           - name: POD_IPS
             valueFrom:
               fieldRef:
