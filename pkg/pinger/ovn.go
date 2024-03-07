@@ -10,7 +10,7 @@ import (
 	"k8s.io/klog/v2"
 )
 
-func checkOvs(config *Configuration) error {
+func checkOvs(config *Configuration, setMetrics bool) error {
 	output, err := exec.Command("/usr/share/openvswitch/scripts/ovs-ctl", "status").CombinedOutput()
 	if err != nil {
 		klog.Errorf("check ovs status failed %v, %s", err, string(output))
@@ -18,11 +18,13 @@ func checkOvs(config *Configuration) error {
 		return err
 	}
 	klog.Infof("ovs-vswitchd and ovsdb are up")
-	SetOvsUpMetrics(config.NodeName)
+	if setMetrics {
+		SetOvsUpMetrics(config.NodeName)
+	}
 	return nil
 }
 
-func checkOvnController(config *Configuration) error {
+func checkOvnController(config *Configuration, setMetrics bool) error {
 	output, err := exec.Command("/usr/share/ovn/scripts/ovn-ctl", "status_controller").CombinedOutput()
 	if err != nil {
 		klog.Errorf("check ovn_controller status failed %v, %q", err, output)
@@ -30,11 +32,13 @@ func checkOvnController(config *Configuration) error {
 		return err
 	}
 	klog.Infof("ovn_controller is up")
-	SetOvnControllerUpMetrics(config.NodeName)
+	if setMetrics {
+		SetOvnControllerUpMetrics(config.NodeName)
+	}
 	return nil
 }
 
-func checkPortBindings(config *Configuration) error {
+func checkPortBindings(config *Configuration, setMetrics bool) error {
 	klog.Infof("start to check port binding")
 	ovsBindings, err := checkOvsBindings()
 	if err != nil {
@@ -61,7 +65,9 @@ func checkPortBindings(config *Configuration) error {
 	}
 
 	klog.Infof("ovs and ovn-sb binding check passed")
-	inconsistentPortBindingGauge.WithLabelValues(config.NodeName).Set(0)
+	if setMetrics {
+		inconsistentPortBindingGauge.WithLabelValues(config.NodeName).Set(0)
+	}
 	return nil
 }
 
