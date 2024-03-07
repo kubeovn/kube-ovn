@@ -94,8 +94,6 @@ dual_stack:
   PINGER_EXTERNAL_DOMAIN: "google.com."
 
 performance:
-  MODULES: "kube_ovn_fastpath.ko"
-  RPMS: "openvswitch-kmod"
   GC_INTERVAL: 360
   INSPECT_INTERVAL: 20
   OVS_VSCTL_CONCURRENCY: 100

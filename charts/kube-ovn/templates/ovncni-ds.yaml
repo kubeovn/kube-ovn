@@ -96,10 +96,6 @@ spec:
             valueFrom:
               fieldRef:
                 fieldPath: spec.nodeName
-          - name: MODULES
-            value: "{{- .Values.performance.MODULES }}"
-          - name: RPMS
-            value: "{{- .Values.performance.RPMS }}"
           - name: POD_IPS
             valueFrom:
               fieldRef:

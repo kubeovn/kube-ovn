@@ -231,10 +231,6 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
-            - name: MODULES
-              value: kube_ovn_fastpath.ko
-            - name: RPMS
-              value: openvswitch-kmod
             - name: POD_IPS
               valueFrom:
                 fieldRef:
