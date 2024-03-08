@@ -1012,7 +1012,7 @@ jobs:
 
       - name: Uninstall Kube-OVN
         run: make kind-uninstall-chart
-
+  
   underlay-logical-gateway-installation-test:
     name: Underlay Logical Gateway Installation Test
     needs: build-kube-ovn

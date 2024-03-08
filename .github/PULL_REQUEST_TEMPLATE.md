@@ -5,6 +5,9 @@
 ## What type of this PR
 
 Examples of user facing changes:
+<!-- 
+Select one or more options that fit this PR.
+-->
 
 - Features
 - Bug fixes
@@ -18,13 +21,3 @@ Describe your changes here, ideally you can get that description straight from y
 ## Which issue(s) this PR fixes
 
 Fixes #(issue-number)
-
-## WHAT
-
-copilot:summary
-
-copilot:poem
-
-## HOW
-
-copilot:walkthrough

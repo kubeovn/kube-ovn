@@ -10,6 +10,12 @@ updates:
     schedule:
       interval: "daily"
       time: "15:00"
+    groups:
+      k8s.io:
+          patterns:
+            - "k8s.io/*"
+          update-types:
+            - "patch"
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
