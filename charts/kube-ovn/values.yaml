@@ -10,7 +10,7 @@ global:
       repository: kube-ovn
       dpdkRepository: kube-ovn-dpdk
       vpcRepository: vpc-nat-gateway
-      tag: v1.12.3
+      tag: v1.12.4-mc
       support_arm: true
       thirdparty: true
 
@@ -38,8 +38,8 @@ networking:
     VLAN_INTERFACE_NAME: ""
     VLAN_NAME: "ovn-vlan"
     VLAN_ID: "100"
-  ENABLE_EIP_SNAT: true
   EXCHANGE_LINK_NAME: false
+  ENABLE_EIP_SNAT: true
   DEFAULT_SUBNET: "ovn-default"
   DEFAULT_VPC: "ovn-cluster"
   NODE_SUBNET: "join"
@@ -56,6 +56,7 @@ networking:
 func:
   ENABLE_LB: true
   ENABLE_NP: true
+  ENABLE_EIP_SNAT: true
   ENABLE_EXTERNAL_VPC: true
   HW_OFFLOAD: false
   ENABLE_LB_SVC: false
@@ -73,7 +74,7 @@ ipv4:
   POD_GATEWAY: "10.16.0.1"
   SVC_CIDR: "10.96.0.0/12"
   JOIN_CIDR: "100.64.0.0/16"
-  PINGER_EXTERNAL_ADDRESS: "114.114.114.114"
+  PINGER_EXTERNAL_ADDRESS: "1.1.1.1"
   PINGER_EXTERNAL_DOMAIN: "alauda.cn."
 
 ipv6:
@@ -81,7 +82,7 @@ ipv6:
   POD_GATEWAY: "fd00:10:16::1"
   SVC_CIDR: "fd00:10:96::/112"
   JOIN_CIDR: "fd00:100:64::/112"
-  PINGER_EXTERNAL_ADDRESS: "2400:3200::1"
+  PINGER_EXTERNAL_ADDRESS: "2606:4700:4700::1111"
   PINGER_EXTERNAL_DOMAIN: "google.com."
 
 dual_stack:
@@ -89,12 +90,10 @@ dual_stack:
   POD_GATEWAY: "10.16.0.1,fd00:10:16::1"
   SVC_CIDR: "10.96.0.0/12,fd00:10:96::/112"
   JOIN_CIDR: "100.64.0.0/16,fd00:100:64::/112"
-  PINGER_EXTERNAL_ADDRESS: "114.114.114.114,2400:3200::1"
+  PINGER_EXTERNAL_ADDRESS: "1.1.1.1,2606:4700:4700::1111"
   PINGER_EXTERNAL_DOMAIN: "google.com."
 
 performance:
-  MODULES: "kube_ovn_fastpath.ko"
-  RPMS: "openvswitch-kmod"
   GC_INTERVAL: 360
   INSPECT_INTERVAL: 20
   OVS_VSCTL_CONCURRENCY: 100
@@ -104,8 +103,6 @@ debug:
   MIRROR_IFACE: "mirror0"
 
 cni_conf:
-  CHECK_GATEWAY: true
-  LOGICAL_GATEWAY: false
   CNI_CONFIG_PRIORITY: "01"
   CNI_CONF_DIR: "/etc/cni/net.d"
   CNI_BIN_DIR: "/opt/cni/bin"

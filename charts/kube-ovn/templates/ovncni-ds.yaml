@@ -96,10 +96,6 @@ spec:
             valueFrom:
               fieldRef:
                 fieldPath: spec.nodeName
-          - name: MODULES
-            value: "{{- .Values.performance.MODULES }}"
-          - name: RPMS
-            value: "{{- .Values.performance.RPMS }}"
           - name: POD_IPS
             valueFrom:
               fieldRef:
@@ -158,21 +154,11 @@ spec:
           timeoutSeconds: 3
         resources:
           requests:
-          {{- if .Release.IsUpgrade }}
-            cpu: {{ (index (lookup "apps/v1" "DaemonSet" "kube-system" "kube-ovn-cni").spec.template.spec.containers 0).resources.requests.cpu | quote }}
-            memory: {{ (index (lookup "apps/v1" "DaemonSet" "kube-system" "kube-ovn-cni").spec.template.spec.containers 0).resources.requests.memory | quote }}
-          {{- else }}
             cpu: {{ index .Values "kube-ovn-cni" "requests" "cpu" }}
             memory: {{ index .Values "kube-ovn-cni" "requests" "memory" }}
-          {{- end }}
           limits:
-          {{- if .Release.IsUpgrade }}
-            cpu: {{ (index (lookup "apps/v1" "DaemonSet" "kube-system" "kube-ovn-cni").spec.template.spec.containers 0).resources.limits.cpu | quote }}
-            memory: {{ (index (lookup "apps/v1" "DaemonSet" "kube-system" "kube-ovn-cni").spec.template.spec.containers 0).resources.limits.memory | quote }}
-          {{- else }}
             cpu: {{ index .Values "kube-ovn-cni" "limits" "cpu" }}
             memory: {{ index .Values "kube-ovn-cni" "limits" "memory" }}
-          {{- end }}
       nodeSelector:
         kubernetes.io/os: "linux"
       volumes:
