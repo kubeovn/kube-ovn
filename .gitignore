@@ -13,6 +13,8 @@ ovnsb_db.*.backup
 kube-ovn.yaml
 kube-ovn-crd.yaml
 ovn.yaml
+ovn-ic-controller.yaml
+ovn-ic-server.yaml
 ovn-ic-0.yaml
 ovn-ic-1.yaml
 kind.yaml
