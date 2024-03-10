@@ -1653,6 +1653,9 @@ jobs:
           - ipv4
           # - ipv6
           # - dual
+        mode:
+          - overlay
+          - underlay
     steps:
       - uses: jlumbroso/free-disk-space@v1.3.1
         with:
@@ -1740,7 +1743,7 @@ jobs:
           sudo chown -R $(id -un). ~/.kube/
 
       - name: Install Kube-OVN with Cilium chaining
-        run: make kind-install-cilium-chaining-${{ matrix.ip-family }}
+        run: make kind-install-cilium-chaining-${{ matrix.mode }}-${{ matrix.ip-family }}
 
       - name: Run E2E
         working-directory: ${{ env.E2E_DIR }}
@@ -1748,6 +1751,7 @@ jobs:
           E2E_CILIUM_CHAINING: "true"
           E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
           E2E_IP_FAMILY: ${{ matrix.ip-family }}
+          E2E_NETWORK_MODE: ${{ matrix.mode }}
         run: make k8s-conformance-e2e
 
       - name: kubectl ko log

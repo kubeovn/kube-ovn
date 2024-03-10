@@ -61,7 +61,7 @@ SVC_YAML_IPFAMILYPOLICY=""
 if [ "$IPV6" = "true" ]; then
   POD_CIDR="fd00:10:16::/112"               # Do NOT overlap with NODE/SVC/JOIN CIDR
   POD_GATEWAY="fd00:10:16::1"
-  SVC_CIDR="fd00:10:96::/112"               # Do NOT overlap with NODE/POD/JOIN CIDR
+  SVC_CIDR="fd00:10:96::/108"               # Do NOT overlap with NODE/POD/JOIN CIDR
   JOIN_CIDR="fd00:100:64::/112"             # Do NOT overlap with NODE/POD/SVC CIDR
   PINGER_EXTERNAL_ADDRESS="2606:4700:4700::1111"
   PINGER_EXTERNAL_DOMAIN="google.com."
@@ -69,7 +69,7 @@ fi
 if [ "$DUAL_STACK" = "true" ]; then
   POD_CIDR="10.16.0.0/16,fd00:10:16::/112"               # Do NOT overlap with NODE/SVC/JOIN CIDR
   POD_GATEWAY="10.16.0.1,fd00:10:16::1"
-  SVC_CIDR="10.96.0.0/12,fd00:10:96::/112"               # Do NOT overlap with NODE/POD/JOIN CIDR
+  SVC_CIDR="10.96.0.0/12,fd00:10:96::/108"               # Do NOT overlap with NODE/POD/JOIN CIDR
   JOIN_CIDR="100.64.0.0/16,fd00:100:64::/112"            # Do NOT overlap with NODE/POD/SVC CIDR
   PINGER_EXTERNAL_ADDRESS="1.1.1.1,2606:4700:4700::1111"
   PINGER_EXTERNAL_DOMAIN="google.com."
@@ -3270,7 +3270,7 @@ spec:
         - name: ovn-central
           image: "$REGISTRY/kube-ovn:$VERSION"
           imagePullPolicy: $IMAGE_PULL_POLICY
-          command: 
+          command:
           - /kube-ovn/start-db.sh
           securityContext:
             capabilities:
@@ -3447,7 +3447,7 @@ spec:
             - name: OVN_DB_IPS
               value: $addresses
             - name: OVN_REMOTE_PROBE_INTERVAL
-              value: "10000" 
+              value: "10000"
             - name: OVN_REMOTE_OPENFLOW_INTERVAL
               value: "180"
           volumeMounts:
@@ -3598,7 +3598,7 @@ spec:
         - name: openvswitch
           image: "$REGISTRY/kube-ovn:$VERSION"
           imagePullPolicy: $IMAGE_PULL_POLICY
-          command: 
+          command:
           - /kube-ovn/start-ovs.sh
           securityContext:
             runAsUser: 0
@@ -3631,7 +3631,7 @@ spec:
             - name: DEBUG_WRAPPER
               value: "$DEBUG_WRAPPER"
             - name: OVN_REMOTE_PROBE_INTERVAL
-              value: "10000" 
+              value: "10000"
             - name: OVN_REMOTE_OPENFLOW_INTERVAL
               value: "180"
           volumeMounts:
@@ -3792,7 +3792,7 @@ spec:
             - name: OVN_DB_IPS
               value: $addresses
             - name: OVN_REMOTE_PROBE_INTERVAL
-              value: "10000" 
+              value: "10000"
             - name: OVN_REMOTE_OPENFLOW_INTERVAL
               value: "180"
           volumeMounts:
