@@ -33,8 +33,8 @@ jobs:
       build-ovs-ovn: ${{ steps.filter.outputs.windows-ovs-ovn }}
       build-kube-ovn: ${{ steps.filter.outputs.windows-kube-ovn }}
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-go@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: go.mod
@@ -83,14 +83,14 @@ jobs:
           git clone https://git.code.sf.net/p/pthreads4w/code pthreads4w\code
 
       - name: Check out OVS
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           repository: openvswitch/ovs
           ref: branch-3.1
           path: ovs
 
       - name: Check out OVN
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           repository: ovn-org/ovn
           ref: branch-22.12
@@ -181,8 +181,8 @@ jobs:
     runs-on: windows-2019
     if: github.event_name == 'release' || github.event_name == 'workflow_dispatch' || needs.filter.outputs.build-kube-ovn == 'true'
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-go@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: go.mod
@@ -232,7 +232,7 @@ jobs:
       - build-kube-ovn
     runs-on: windows-2019
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Download Kube-OVN binaries
         uses: actions/download-artifact@v4

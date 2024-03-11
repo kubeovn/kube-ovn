@@ -86,21 +86,11 @@ spec:
             {{- end }}
           resources:
             requests:
-            {{- if .Release.IsUpgrade }}
-              cpu: {{ (index (lookup "apps/v1" "Deployment" "kube-system" "ovn-central").spec.template.spec.containers 0).resources.requests.cpu | quote }}
-              memory: {{ (index (lookup "apps/v1" "Deployment" "kube-system" "ovn-central").spec.template.spec.containers 0).resources.requests.memory | quote }}
-            {{- else }}
               cpu: {{ index .Values "ovn-central" "requests" "cpu" }}
               memory: {{ index .Values "ovn-central" "requests" "memory" }}
-            {{- end }}
             limits:
-            {{- if .Release.IsUpgrade }}
-              cpu: {{ (index (lookup "apps/v1" "Deployment" "kube-system" "ovn-central").spec.template.spec.containers 0).resources.limits.cpu | quote }}
-              memory: {{ (index (lookup "apps/v1" "Deployment" "kube-system" "ovn-central").spec.template.spec.containers 0).resources.limits.memory | quote }}
-            {{- else }}
               cpu: {{ index .Values "ovn-central" "limits" "cpu" }}
               memory: {{ index .Values "ovn-central" "limits" "memory" }}
-            {{- end }}
           volumeMounts:
             - mountPath: /var/run/openvswitch
               name: host-run-ovs
