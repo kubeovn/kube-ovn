@@ -20,15 +20,19 @@ endif
 
 CONTROL_PLANE_TAINTS = node-role.kubernetes.io/master node-role.kubernetes.io/control-plane
 
+FRR_VERSION = 8.5.4
+FRR_IMAGE = quay.io/frrouting/frr:$(FRR_VERSION)
+
+CLAB_IMAGE = ghcr.io/srl-labs/clab:0.52.0
+
 MULTUS_VERSION = v4.0.2
 MULTUS_IMAGE = ghcr.io/k8snetworkplumbingwg/multus-cni:$(MULTUS_VERSION)-thick
 MULTUS_YAML = https://raw.githubusercontent.com/k8snetworkplumbingwg/multus-cni/$(MULTUS_VERSION)/deployments/multus-daemonset-thick.yml
 
 METALLB_VERSION = 0.14.3
 METALLB_CHART_REPO = https://metallb.github.io/metallb
-METALLB_CONTROLLER_IMAGE=quay.io/metallb/controller:v$(METALLB_VERSION)
-METALLB_SPEAKER_IMAGE=quay.io/metallb/speaker:v$(METALLB_VERSION)
-METALLB_FRR_IMAGE=quay.io/frrouting/frr:8.5.2
+METALLB_CONTROLLER_IMAGE = quay.io/metallb/controller:v$(METALLB_VERSION)
+METALLB_SPEAKER_IMAGE = quay.io/metallb/speaker:v$(METALLB_VERSION)
 
 KUBEVIRT_VERSION = v1.1.1
 KUBEVIRT_OPERATOR_IMAGE = quay.io/kubevirt/virt-operator:$(KUBEVIRT_VERSION)
@@ -400,7 +404,7 @@ kind-init-single-%:
 
 .PHONY: kind-init-bgp
 kind-init-bgp: kind-clean-bgp kind-init
-	kube_ovn_version=$(VERSION) j2 yamls/clab-bgp.yaml.j2 -o yamls/clab-bgp.yaml
+	kube_ovn_version=$(VERSION) frr_image=$(FRR_IMAGE) j2 yamls/clab-bgp.yaml.j2 -o yamls/clab-bgp.yaml
 	docker run --rm --privileged \
 		--name kube-ovn-bgp \
 		--network host \
@@ -413,7 +417,7 @@ kind-init-bgp: kind-clean-bgp kind-init
 
 .PHONY: kind-init-bgp-ha
 kind-init-bgp-ha: kind-clean-bgp kind-init
-	kube_ovn_version=$(VERSION) j2 yamls/clab-bgp-ha.yaml.j2 -o yamls/clab-bgp-ha.yaml
+	kube_ovn_version=$(VERSION) frr_image=$(FRR_IMAGE) j2 yamls/clab-bgp-ha.yaml.j2 -o yamls/clab-bgp-ha.yaml
 	docker run --rm --privileged \
 		--name kube-ovn-bgp \
 		--network host \
@@ -719,13 +723,14 @@ kind-install-metallb: kind-install
 	$(call docker_network_info,kind)
 	$(call kind_load_image,kube-ovn,$(METALLB_CONTROLLER_IMAGE),1)
 	$(call kind_load_image,kube-ovn,$(METALLB_SPEAKER_IMAGE),1)
-	$(call kind_load_image,kube-ovn,$(METALLB_FRR_IMAGE),1)
+	$(call kind_load_image,kube-ovn,$(FRR_IMAGE),1)
 	helm repo add metallb $(METALLB_CHART_REPO)
 	helm repo update
 	helm install metallb metallb/metallb --wait \
 		--version $(METALLB_VERSION) \
 		--namespace metallb-system \
-		--create-namespace
+		--create-namespace \
+		--set frr.image.tag=$(FRR_VERSION)
 	$(call kubectl_wait_exist_and_ready,metallb-system,deployment,metallb-controller)
 	$(call kubectl_wait_exist_and_ready,metallb-system,daemonset,metallb-speaker)
 	@metallb_pool=$(shell echo $(KIND_IPV4_SUBNET) | sed 's/.[^.]\+$$/.201/')-$(shell echo $(KIND_IPV4_SUBNET) | sed 's/.[^.]\+$$/.250/') \
@@ -889,6 +894,34 @@ kind-clean-ovn-ic: kind-clean
 .PHONY: kind-clean-ovn-submariner
 kind-clean-ovn-submariner: kind-clean
 	kind delete cluster --name=kube-ovn1
+
+.PHONY: kind-clean-bgp
+kind-clean-bgp: kind-clean-bgp-ha
+	kube_ovn_version=$(VERSION) frr_image=$(FRR_IMAGE) j2 yamls/clab-bgp.yaml.j2 -o yamls/clab-bgp.yaml
+	docker run --rm --privileged \
+		--name kube-ovn-bgp \
+		--network host \
+		--pid host \
+		-v /var/run/docker.sock:/var/run/docker.sock \
+		-v /var/run/netns:/var/run/netns \
+		-v /var/lib/docker/containers:/var/lib/docker/containers \
+		-v $(CURDIR)/yamls/clab-bgp.yaml:/clab-bgp/clab.yaml \
+		$(CLAB_IMAGE) clab destroy -t /clab-bgp/clab.yaml
+	@$(MAKE) kind-clean
+
+.PHONY: kind-clean-bgp-ha
+kind-clean-bgp-ha:
+	kube_ovn_version=$(VERSION) frr_image=$(FRR_IMAGE) j2 yamls/clab-bgp-ha.yaml.j2 -o yamls/clab-bgp-ha.yaml
+	docker run --rm --privileged \
+		--name kube-ovn-bgp \
+		--network host \
+		--pid host \
+		-v /var/run/docker.sock:/var/run/docker.sock \
+		-v /var/run/netns:/var/run/netns \
+		-v /var/lib/docker/containers:/var/lib/docker/containers \
+		-v $(CURDIR)/yamls/clab-bgp-ha.yaml:/clab-bgp/clab.yaml \
+		$(CLAB_IMAGE) clab destroy -t /clab-bgp/clab.yaml
+	@$(MAKE) kind-clean
 
 .PHONY: uninstall
 uninstall:

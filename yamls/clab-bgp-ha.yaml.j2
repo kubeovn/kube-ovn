@@ -1,0 +1,96 @@
+name: bgp
+topology:
+  kinds:
+    linux:
+      image: kubeovn/kube-ovn:{{ kube_ovn_version }}
+      cmd: bash
+
+  nodes:
+    switch:
+      kind: linux
+      exec:
+      - ip link add br0 type bridge
+      - ip link set net1 master br0
+      - ip link set net2 master br0
+      - ip link set net3 master br0
+      - ip link set net4 master br0
+      - ip link set net5 master br0
+      - ip link set net6 master br0
+      - ip link set net7 master br0
+      - ip link set br0 up
+    router-1:
+      kind: linux
+      image: {{ frr_image }}
+      labels:
+        app: frr
+      exec:
+      - ip link delete eth0
+      - ip address add 10.0.1.1/24 dev net1
+      - ip address add 10.0.2.1/24 dev net2
+      - touch /etc/frr/vtysh.conf
+      - sed -i -e 's/bgpd=no/bgpd=yes/g' /etc/frr/daemons
+      - /usr/lib/frr/frrinit.sh start
+      - >-
+         vtysh -c 'conf t'
+         -c 'frr defaults datacenter'
+         -c 'router bgp 65001'
+         -c ' bgp router-id 10.0.1.1'
+         -c ' no bgp ebgp-requires-policy'
+         -c ' neighbor SERVERS peer-group'
+         -c ' neighbor SERVERS remote-as external'
+         -c ' neighbor 10.0.1.101 peer-group SERVERS'
+         -c ' neighbor 10.0.1.102 peer-group SERVERS'
+         -c ' address-family ipv4 unicast'
+         -c '   redistribute connected'
+         -c '  exit-address-family'
+         -c '!'
+    router-2:
+      kind: linux
+      image: {{ frr_image }}
+      labels:
+        app: frr
+      exec:
+      - ip link delete eth0
+      - ip address add 10.0.1.2/24 dev net1
+      - ip address add 10.0.2.2/24 dev net2
+      - touch /etc/frr/vtysh.conf
+      - sed -i -e 's/bgpd=no/bgpd=yes/g' /etc/frr/daemons
+      - /usr/lib/frr/frrinit.sh start
+      - >-
+         vtysh -c 'conf t'
+         -c 'frr defaults datacenter'
+         -c 'router bgp 65001'
+         -c ' bgp router-id 10.0.1.2'
+         -c ' no bgp ebgp-requires-policy'
+         -c ' neighbor SERVERS peer-group'
+         -c ' neighbor SERVERS remote-as external'
+         -c ' neighbor 10.0.1.101 peer-group SERVERS'
+         -c ' neighbor 10.0.1.102 peer-group SERVERS'
+         -c ' address-family ipv4 unicast'
+         -c '   redistribute connected'
+         -c '  exit-address-family'
+         -c '!'
+    kube-ovn-control-plane:
+      kind: ext-container
+      exec:
+      - ip address add 10.0.1.101/24 dev net1
+      - ip route add 10.0.0.0/16 via 10.0.1.1
+    kube-ovn-worker:
+      kind: ext-container
+      exec:
+      - ip address add 10.0.1.102/24 dev net1
+      - ip route add 10.0.0.0/16 via 10.0.1.1
+    ext:
+      kind: linux
+      exec:
+      - ip address add 10.0.2.101/24 dev net1
+      - ip route replace default nexthop via 10.0.2.1 weight 1 nexthop via 10.0.2.2 weight 1
+
+  links:
+  - endpoints: ["switch:net1", "router-1:net1"]
+  - endpoints: ["switch:net2", "router-1:net2"]
+  - endpoints: ["switch:net3", "router-2:net1"]
+  - endpoints: ["switch:net4", "router-2:net2"]
+  - endpoints: ["switch:net5", "kube-ovn-control-plane::net1"]
+  - endpoints: ["switch:net6", "kube-ovn-worker:net1"]
+  - endpoints: ["switch:net7", "ext:net1"]
