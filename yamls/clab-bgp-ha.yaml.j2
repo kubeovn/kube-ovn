@@ -20,7 +20,7 @@ topology:
       - ip link set br0 up
     router-1:
       kind: linux
-      image: frrouting/frr:v8.4.1
+      image: {{ frr_image }}
       labels:
         app: frr
       exec:
@@ -46,7 +46,7 @@ topology:
          -c '!'
     router-2:
       kind: linux
-      image: frrouting/frr:v8.4.1
+      image: {{ frr_image }}
       labels:
         app: frr
       exec:
@@ -70,15 +70,13 @@ topology:
          -c '   redistribute connected'
          -c '  exit-address-family'
          -c '!'
-    k8s-master:
-      kind: linux
-      network-mode: container:kube-ovn-control-plane
+    kube-ovn-control-plane:
+      kind: ext-container
       exec:
       - ip address add 10.0.1.101/24 dev net1
       - ip route add 10.0.0.0/16 via 10.0.1.1
-    k8s-worker:
-      kind: linux
-      network-mode: container:kube-ovn-worker
+    kube-ovn-worker:
+      kind: ext-container
       exec:
       - ip address add 10.0.1.102/24 dev net1
       - ip route add 10.0.0.0/16 via 10.0.1.1
@@ -93,6 +91,6 @@ topology:
   - endpoints: ["switch:net2", "router-1:net2"]
   - endpoints: ["switch:net3", "router-2:net1"]
   - endpoints: ["switch:net4", "router-2:net2"]
-  - endpoints: ["switch:net5", "k8s-master:net1"]
-  - endpoints: ["switch:net6", "k8s-worker:net1"]
+  - endpoints: ["switch:net5", "kube-ovn-control-plane::net1"]
+  - endpoints: ["switch:net6", "kube-ovn-worker:net1"]
   - endpoints: ["switch:net7", "ext:net1"]
