@@ -122,7 +122,7 @@ var _ = framework.Describe("[group:slr]", func() {
 	})
 
 	framework.ConformanceIt("should access sts and slr svc ok", func() {
-		f.SkipVersionPriorTo(1, 12, "This feature was introduce in v1.12")
+		f.SkipVersionPriorTo(1, 12, "This feature was introduced in v1.12")
 		ginkgo.By("1. Creating sts svc with slr")
 		var (
 			clientPod             *corev1.Pod
