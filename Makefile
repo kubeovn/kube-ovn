@@ -729,7 +729,7 @@ kind-install-metallb: kind-install
 	$(call kind_load_image,kube-ovn,$(METALLB_SPEAKER_IMAGE),1)
 	$(call kind_load_image,kube-ovn,$(METALLB_FRR_IMAGE),1)
 	helm repo add metallb $(METALLB_CHART_REPO)
-	helm repo update
+	helm repo update metallb
 	helm install metallb metallb/metallb --wait \
 		--version $(METALLB_VERSION) \
 		--namespace metallb-system \
@@ -798,14 +798,15 @@ kind-install-cilium-chaining-%:
 	$(call kind_load_image,kube-ovn,$(CILIUM_IMAGE_REPO)/operator-generic:v$(CILIUM_VERSION),1)
 	kubectl apply -f yamls/cilium-chaining.yaml
 	helm repo add cilium https://helm.cilium.io/
-	helm repo update
+	helm repo update cilium
 	helm install cilium cilium/cilium --wait \
 		--version $(CILIUM_VERSION) \
 		--namespace kube-system \
 		--set k8sServiceHost=$(KUBERNETES_SERVICE_HOST) \
 		--set k8sServicePort=6443 \
 		--set kubeProxyReplacement=partial \
-        --set socketLB.enabled=true \
+		--set operator.replicas=1 \
+		--set socketLB.enabled=true \
 		--set nodePort.enabled=true \
 		--set externalIPs.enabled=true \
 		--set hostPort.enabled=false \
@@ -815,15 +816,16 @@ kind-install-cilium-chaining-%:
 		--set enableIPv6Masquerade=false \
 		--set hubble.enabled=true \
 		--set sctp.enabled=true \
-		--set ipv4.enabled=$(shell [ $* = ipv6 ] && echo false ||  echo true) \
-		--set ipv6.enabled=$(shell [ $* = ipv4 ] && echo false ||  echo true) \
-		--set k8s.requireIPv4PodCIDR=$(shell [ $* = ipv6 ] && echo false ||  echo true) \
-		--set k8s.requireIPv6PodCIDR=$(shell [ $* = ipv4 ] && echo false ||  echo true) \
+		--set ipv4.enabled=$(shell if echo $* | grep -q ipv6; then echo false; else echo true; fi) \
+		--set ipv6.enabled=$(shell if echo $* | grep -q ipv4; then echo false; else echo true; fi) \
+		--set ipam.mode=cluster-pool \
+		--set-json ipam.operator.clusterPoolIPv4PodCIDRList='["100.65.0.0/16"]' \
+		--set-json ipam.operator.clusterPoolIPv6PodCIDRList='["fd00:100:65::/112"]' \
 		--set cni.chainingMode=generic-veth \
 		--set cni.chainingTarget=kube-ovn \
 		--set cni.customConf=true \
 		--set cni.configMap=cni-configuration
-	kubectl -n kube-system rollout status ds cilium --timeout 300s
+	kubectl -n kube-system rollout status ds cilium --timeout 120s
 	@$(MAKE) ENABLE_LB=false ENABLE_NP=false \
 		CNI_CONFIG_PRIORITY=10 WITHOUT_KUBE_PROXY=true \
 		kind-install-$*

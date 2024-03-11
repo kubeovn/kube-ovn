@@ -40,11 +40,11 @@ networking:
   podSubnet: {{ pod_cidr_v4 }}
   serviceSubnet: {{ svc_cidr_v4 }}
 {%- elif ip_family is equalto "ipv6" %}
-  podSubnet: "fd00:10:16::/64"
-  serviceSubnet: "fd00:10:96::/112"
+  podSubnet: "fd00:10:16::/112"
+  serviceSubnet: "fd00:10:96::/108"
 {%- else %}
-  podSubnet: "10.16.0.0/16,fd00:10:16::/64"
-  serviceSubnet: "10.96.0.0/12,fd00:10:96::/112"
+  podSubnet: "10.16.0.0/16,fd00:10:16::/112"
+  serviceSubnet: "10.96.0.0/12,fd00:10:96::/108"
 {%- endif %}
 kubeadmConfigPatches:
   - |
@@ -60,6 +60,17 @@ nodes:
     image: kindest/node:{{ k8s_version }}
     labels:
       type: kind
+    kubeadmConfigPatches:
+      - |
+        kind: ClusterConfiguration
+        controllerManager:
+          extraArgs:
+{%- if ip_family != "ipv6" %}
+            node-cidr-mask-size-ipv4: "24"
+{%- endif %}
+{%- if ip_family != "ipv4" %}
+            node-cidr-mask-size-ipv6: "120"
+{%- endif %}
 {%- if mapped_ports is defined %}
     extraPortMappings:
   {%- for port in mapped_ports.split(',') %}
