@@ -43,12 +43,12 @@ func (e *Exporter) getOvnStatus() map[string]int {
 	result["ovsdb-server-southbound"] = parseDbStatus(string(output))
 
 	// get ovn-northd status
-	pid, err := os.ReadFile("/var/run/ovn/ovn-northd.pid")
+	pid, err := os.ReadFile(e.Client.Service.Northd.File.Pid.Path)
 	if err != nil {
 		klog.Errorf("read ovn-northd pid failed, err %v", err)
 		result["ovn-northd"] = 0
 	} else {
-		cmdstr := "ovs-appctl -t /var/run/ovn/ovn-northd." + strings.Trim(string(pid), "\n") + ".ctl status"
+		cmdstr := fmt.Sprintf("ovs-appctl -t /var/run/ovn/ovn-northd.%s.ctl status", strings.Trim(string(pid), "\n"))
 		klog.V(3).Infof("cmd is %v", cmdstr)
 		cmd := exec.Command("sh", "-c", cmdstr)
 		output, err := cmd.CombinedOutput()
