@@ -41,19 +41,15 @@ func CmdMain() {
 		}
 
 		if config.EnableVerboseConnCheck {
-			go func() {
-				addr := util.JoinHostPort("0.0.0.0", config.TCPConnCheckPort)
-				if err := util.TCPConnectivityListen(addr); err != nil {
-					util.LogFatalAndExit(err, "failed to start TCP listen on addr %s", addr)
-				}
-			}()
+			addr := util.JoinHostPort("0.0.0.0", config.UDPConnCheckPort)
+			if err = util.UDPConnectivityListen(addr); err != nil {
+				util.LogFatalAndExit(err, "failed to start UDP listen on addr %s", addr)
+			}
 
-			go func() {
-				addr := util.JoinHostPort("0.0.0.0", config.UDPConnCheckPort)
-				if err := util.UDPConnectivityListen(addr); err != nil {
-					util.LogFatalAndExit(err, "failed to start UDP listen on addr %s", addr)
-				}
-			}()
+			addr = util.JoinHostPort("0.0.0.0", config.TCPConnCheckPort)
+			if err = util.TCPConnectivityListen(addr); err != nil {
+				util.LogFatalAndExit(err, "failed to start TCP listen on addr %s", addr)
+			}
 		}
 	}
 	pinger.StartPinger(config)
