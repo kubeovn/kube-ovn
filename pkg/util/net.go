@@ -555,13 +555,17 @@ func TCPConnectivityListen(address string) error {
 		return fmt.Errorf("listen failed with err %v", err)
 	}
 
-	for {
-		conn, err := listener.Accept()
-		if err != nil {
-			continue
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				continue
+			}
+			_ = conn.Close()
 		}
-		_ = conn.Close()
-	}
+	}()
+
+	return nil
 }
 
 func UDPConnectivityCheck(address string) error {
@@ -609,17 +613,21 @@ func UDPConnectivityListen(address string) error {
 
 	buffer := make([]byte, 1024)
 
-	for {
-		_, clientAddr, err := conn.ReadFromUDP(buffer)
-		if err != nil {
-			continue
-		}
+	go func() {
+		for {
+			_, clientAddr, err := conn.ReadFromUDP(buffer)
+			if err != nil {
+				continue
+			}
 
-		_, err = conn.WriteToUDP([]byte("health check"), clientAddr)
-		if err != nil {
-			continue
+			_, err = conn.WriteToUDP([]byte("health check"), clientAddr)
+			if err != nil {
+				continue
+			}
 		}
-	}
+	}()
+
+	return nil
 }
 
 func GetDefaultListenAddr() string {

@@ -130,10 +130,10 @@ var _ = framework.Describe("[group:kubectl-ko]", func() {
 		supportARP := !f.VersionPriorTo(1, 11)
 		supportDstMAC := !f.VersionPriorTo(1, 10)
 		if !supportARP {
-			framework.Logf("Support for ARP was introduce in v1.11")
+			framework.Logf("Support for ARP was introduced in v1.11")
 		}
 		if !supportDstMAC {
-			framework.Logf("Support for destination MAC was introduce in v1.10")
+			framework.Logf("Support for destination MAC was introduced in v1.10")
 		}
 
 		for _, ip := range pod.Status.PodIPs {
@@ -165,7 +165,7 @@ var _ = framework.Describe("[group:kubectl-ko]", func() {
 	})
 
 	framework.ConformanceIt(`should support "kubectl ko trace <pod> <args...>" for pod with host network`, func() {
-		f.SkipVersionPriorTo(1, 12, "This feature was introduce in v1.12")
+		f.SkipVersionPriorTo(1, 12, "This feature was introduced in v1.12")
 
 		ginkgo.By("Creating pod " + podName + " with host network")
 		pod := framework.MakePod(namespaceName, podName, nil, nil, "", nil, nil)
@@ -198,7 +198,7 @@ var _ = framework.Describe("[group:kubectl-ko]", func() {
 	})
 
 	framework.ConformanceIt(`should support "kubectl ko trace <node> <args...>"`, func() {
-		f.SkipVersionPriorTo(1, 12, "This feature was introduce in v1.12")
+		f.SkipVersionPriorTo(1, 12, "This feature was introduced in v1.12")
 
 		ginkgo.By("Getting nodes")
 		nodeList, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
@@ -237,15 +237,15 @@ var _ = framework.Describe("[group:kubectl-ko]", func() {
 	})
 
 	framework.ConformanceIt(`should support "kubectl ko log kube-ovn all"`, func() {
-		f.SkipVersionPriorTo(1, 12, "This feature was introduce in v1.12")
+		f.SkipVersionPriorTo(1, 12, "This feature was introduced in v1.12")
 		components := [...]string{"kube-ovn", "ovn", "ovs", "linux", "all"}
 		for _, component := range components {
 			execOrDie(fmt.Sprintf("ko log %s", component))
 		}
 	})
 
-	framework.ConformanceIt(`should support "kubectl ko diagnose subnet IPPorts "`, func() {
-		f.SkipVersionPriorTo(1, 12, "This feature was introduce in v1.12")
+	framework.ConformanceIt(`should support "kubectl ko diagnose subnet IPPorts <IPPorts>"`, func() {
+		f.SkipVersionPriorTo(1, 12, "This feature was introduced in v1.12")
 		execOrDie("ko diagnose subnet ovn-default")
 		execOrDie("ko diagnose IPPorts tcp-114.114.114.114-53,udp-114.114.114.114-53")
 	})

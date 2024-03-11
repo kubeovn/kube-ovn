@@ -105,7 +105,7 @@ var _ = framework.OrderedDescribe("[group:node]", func() {
 	})
 
 	framework.ConformanceIt("should access overlay pods using node ip", func() {
-		f.SkipVersionPriorTo(1, 12, "This feature was introduce in v1.12")
+		f.SkipVersionPriorTo(1, 12, "This feature was introduced in v1.12")
 
 		ginkgo.By("Creating subnet " + subnetName)
 		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, nil)
@@ -145,7 +145,7 @@ var _ = framework.OrderedDescribe("[group:node]", func() {
 	})
 
 	framework.ConformanceIt("should access overlay services using node ip", func() {
-		f.SkipVersionPriorTo(1, 12, "This feature was introduce in v1.12")
+		f.SkipVersionPriorTo(1, 12, "This feature was introduced in v1.12")
 
 		ginkgo.By("Creating subnet " + subnetName)
 		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, nil)

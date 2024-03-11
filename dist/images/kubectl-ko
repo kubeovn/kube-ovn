@@ -17,6 +17,8 @@ CONN_CHECK_SERVER="conn-check-server"
 PERF_GC_COMMAND=()
 LAST_PERF_FAILED_LOG=""
 OVN_TRACE=0
+TCP_CONN_CHECK_PORT=${TCP_CONN_CHECK_PORT:-8100}
+UDP_CONN_CHECK_PORT=${UDP_CONN_CHECK_PORT:-8101}
 
 showHelp(){
   echo "kubectl ko {subcommand} [option...]"
@@ -543,27 +545,31 @@ spec:
           command:
             - /kube-ovn/kube-ovn-pinger
           args:
+            - --ds-namespace=$KUBE_OVN_NS
+            - --ds-name=$subnetName-$CONN_CHECK_SERVER
             - --enable-verbose-conn-check=true
+            - --tcp-conn-check-port=$TCP_CONN_CHECK_PORT
+            - --udp-conn-check-port=$UDP_CONN_CHECK_PORT
           env:
             - name: POD_NAME
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.name
+          readinessProbe:
+            failureThreshold: 1
+            initialDelaySeconds: 3
+            periodSeconds: 5
+            successThreshold: 1
+            tcpSocket:
+              port: $TCP_CONN_CHECK_PORT
+            timeoutSeconds: 1
 EOF
 
   isfailed=true
-  for i in {0..59}
-  do
-    if kubectl wait pod --for=condition=Ready -l app=$CONN_CHECK_LABEL -n $KUBE_OVN_NS 2> /dev/null; then
-      isfailed=false
-      break
-    fi
-    sleep 1; \
-  done
-
-  if $isfailed; then
+  if kubectl -n $KUBE_OVN_NS rollout status ds $subnetName-$CONN_CHECK_SERVER --timeout=30s; then
+    isfailed=false
+  else
     echo "Error ds $subnetName-$CONN_CHECK_SERVER pod not ready"
-    return
   fi
 }
 
@@ -721,10 +727,15 @@ diagnose(){
       fi
 
       pingers=$(kubectl -n $KUBE_OVN_NS get po --no-headers -o custom-columns=NAME:.metadata.name -l app=kube-ovn-pinger)
+      cmd=(
+        /kube-ovn/kube-ovn-pinger --mode=job --ds-name=$subnetName-$CONN_CHECK_SERVER --ds-namespace=$KUBE_OVN_NS
+        --tcp-conn-check-port=$TCP_CONN_CHECK_PORT --udp-conn-check-port=$UDP_CONN_CHECK_PORT
+        --external-address=1.1.1.1,2606:4700:4700::1111 --target-ip-ports=$targetIPPorts
+      )
       for pinger in $pingers
       do
         echo "#### pinger $pinger on namespace $KUBE_OVN_NS diagnose results:"
-        kubectl exec -n $KUBE_OVN_NS "$pinger" -- /kube-ovn/kube-ovn-pinger --mode=job --ds-name=$subnetName-$CONN_CHECK_SERVER --ds-namespace=$KUBE_OVN_NS --enable-verbose-conn-check=true --external-address=114.114.114.114,2400:3200::1 --target-ip-ports=$targetIPPorts
+        kubectl exec -n $KUBE_OVN_NS "$pinger" -- ${cmd[*]}
         echo ""
       done
       ;;
