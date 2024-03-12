@@ -216,7 +216,7 @@
       "tableColumn": "",
       "targets": [
         {
-          "expr": "sum(pinger_ovs_up)",
+          "expr": "sum(pinger_ovs_down)",
           "format": "time_series",
           "instant": true,
           "intervalFactor": 1,
@@ -227,7 +227,7 @@
       "thresholds": "",
       "timeFrom": null,
       "timeShift": null,
-      "title": "OVS Up",
+      "title": "OVS Down",
       "type": "singlestat",
       "valueFontSize": "80%",
       "valueMaps": [
@@ -775,72 +775,71 @@
       "valueName": "avg"
     },
     {
-      "cacheTimeout": null,
-      "colorBackground": false,
-      "colorValue": false,
-      "colors": [
-        "#299c46",
-        "rgba(237, 129, 40, 0.89)",
-        "#d44a3a"
-      ],
-      "datasource": "${DS_PROMETHEUS}",
+      "datasource": {
+        "type": "prometheus"
+      },
       "fieldConfig": {
         "defaults": {
-          "custom": {}
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [
+            {
+              "options": {
+                "match": "null",
+                "result": {
+                  "text": "N/A"
+                }
+              },
+              "type": "special"
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "none"
         },
         "overrides": []
       },
-      "format": "none",
-      "gauge": {
-        "maxValue": 100,
-        "minValue": 0,
-        "show": false,
-        "thresholdLabels": false,
-        "thresholdMarkers": true
-      },
       "gridPos": {
-        "h": 8,
+        "h": 5,
         "w": 3,
         "x": 0,
         "y": 5
       },
       "id": 4,
-      "interval": null,
       "links": [],
-      "mappingType": 1,
-      "mappingTypes": [
-        {
-          "name": "value to text",
-          "value": 1
-        },
-        {
-          "name": "range to text",
-          "value": 2
-        }
-      ],
       "maxDataPoints": 100,
-      "nullPointMode": "connected",
-      "nullText": null,
-      "postfix": "",
-      "postfixFontSize": "50%",
-      "prefix": "",
-      "prefixFontSize": "50%",
-      "rangeMaps": [
-        {
-          "from": "null",
-          "text": "N/A",
-          "to": "null"
-        }
-      ],
-      "sparkline": {
-        "fillColor": "rgba(31, 118, 189, 0.18)",
-        "full": false,
-        "lineColor": "rgb(31, 120, 193)",
-        "show": false
+      "options": {
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "mean"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
       },
-      "tableColumn": "",
+      "pluginVersion": "9.4.12",
       "targets": [
         {
+          "datasource": {
+            "type": "prometheus"
+          },
           "expr": "sum(increase(klog_lines_total{level=\"ERROR\", instance=~\"$instance\", job=\"kube-ovn-pinger\"}[10m]))",
           "format": "time_series",
           "instant": true,
@@ -850,20 +849,284 @@
           "refId": "A"
         }
       ],
-      "thresholds": "",
-      "timeFrom": null,
-      "timeShift": null,
       "title": "Error Log in 10 Minutues",
-      "type": "singlestat",
-      "valueFontSize": "80%",
-      "valueMaps": [
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus"
+      },
+      "description": "The number of flows in a datapath",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 10000
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 21,
+        "x": 3,
+        "y": 5
+      },
+      "id": 26,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "9.4.12",
+      "targets": [
         {
-          "op": "=",
-          "text": "N/A",
-          "value": "null"
+          "datasource": {
+            "type": "prometheus"
+          },
+          "editorMode": "builder",
+          "expr": "kube_ovn_dp_flows_total",
+          "legendFormat": "{{hostname}}",
+          "range": true,
+          "refId": "A"
         }
       ],
-      "valueName": "avg"
+      "title": "ovs datapath flows num",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus"
+      },
+      "description": "The number of mismatch port bindings between ovs and ovn-sb",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 1,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 10
+      },
+      "id": 28,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "9.4.12",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus"
+          },
+          "editorMode": "builder",
+          "expr": "pinger_inconsistent_port_binding",
+          "legendFormat": "{{nodeName}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "inconsistent port binding nums",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus"
+      },
+      "description": "The currently configured MTU for OVS interface",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 10
+      },
+      "id": 30,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "9.4.12",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus"
+          },
+          "editorMode": "builder",
+          "expr": "kube_ovn_interface_mtu",
+          "legendFormat": "{{hostname}} {{interfaceName}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "interface mtu",
+      "type": "timeseries"
     },
     {
       "aliasColors": {},
@@ -881,9 +1144,9 @@
       "fillGradient": 0,
       "gridPos": {
         "h": 8,
-        "w": 11,
-        "x": 3,
-        "y": 5
+        "w": 12,
+        "x": 0,
+        "y": 17
       },
       "hiddenSeries": false,
       "id": 6,
@@ -976,9 +1239,9 @@
       "fillGradient": 0,
       "gridPos": {
         "h": 8,
-        "w": 10,
-        "x": 14,
-        "y": 5
+        "w": 12,
+        "x": 12,
+        "y": 17
       },
       "hiddenSeries": false,
       "id": 8,
@@ -1073,7 +1336,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 13
+        "y": 25
       },
       "hiddenSeries": false,
       "id": 22,
@@ -1176,7 +1439,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 13
+        "y": 25
       },
       "hiddenSeries": false,
       "id": 24,
@@ -1279,7 +1542,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 21
+        "y": 33
       },
       "hiddenSeries": false,
       "id": 26,
@@ -1371,7 +1634,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 21
+        "y": 33
       },
       "hiddenSeries": false,
       "id": 28,
@@ -1463,7 +1726,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 21
+        "y": 33
       },
       "hiddenSeries": false,
       "id": 30,
