@@ -235,15 +235,9 @@ func (c *Controller) handleAddOvnFip(key string) error {
 	}
 
 	var mac, subnetName, vpcName, ipName string
-	if cachedFip.Spec.Vpc != "" {
-		vpcName = cachedFip.Spec.Vpc
-	}
-	if cachedFip.Spec.V4Ip != "" {
-		v4IP = cachedFip.Spec.V4Ip
-	}
-	if cachedFip.Spec.V6Ip != "" {
-		v6IP = cachedFip.Spec.V6Ip
-	}
+	vpcName = cachedFip.Spec.Vpc
+	v4IP = cachedFip.Spec.V4Ip
+	v6IP = cachedFip.Spec.V6Ip
 	ipName = cachedFip.Spec.IPName
 	if v4IP == "" && v6IP == "" && ipName != "" {
 		if cachedFip.Spec.IPType == util.Vip {
@@ -284,7 +278,7 @@ func (c *Controller) handleAddOvnFip(key string) error {
 		}
 	}
 	if vpcName == "" {
-		err := fmt.Errorf("failed to create v4 fip %s, no vpc", cachedFip.Name)
+		err := fmt.Errorf("failed to create fip %s, no vpc", cachedFip.Name)
 		klog.Error(err)
 		return err
 	}
@@ -382,15 +376,9 @@ func (c *Controller) handleUpdateOvnFip(key string) error {
 	}
 
 	var mac, subnetName, vpcName, ipName string
-	if cachedFip.Spec.Vpc != "" {
-		vpcName = cachedFip.Spec.Vpc
-	}
-	if cachedFip.Spec.V4Ip != "" {
-		v4IP = cachedFip.Spec.V4Ip
-	}
-	if cachedFip.Spec.V6Ip != "" {
-		v6IP = cachedFip.Spec.V6Ip
-	}
+	vpcName = cachedFip.Spec.Vpc
+	v4IP = cachedFip.Spec.V4Ip
+	v6IP = cachedFip.Spec.V6Ip
 	ipName = cachedFip.Spec.IPName
 	if v4IP == "" && v6IP == "" && ipName != "" {
 		if cachedFip.Spec.IPType == util.Vip {
@@ -431,7 +419,7 @@ func (c *Controller) handleUpdateOvnFip(key string) error {
 		}
 	}
 	if vpcName == "" {
-		err := fmt.Errorf("failed to create v4 fip %s, no vpc", cachedFip.Name)
+		err := fmt.Errorf("failed to create fip %s, no vpc", cachedFip.Name)
 		klog.Error(err)
 		return err
 	}
