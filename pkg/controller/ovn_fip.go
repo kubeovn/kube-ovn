@@ -235,17 +235,11 @@ func (c *Controller) handleAddOvnFip(key string) error {
 	}
 
 	var mac, subnetName, vpcName, ipName string
-	if cachedFip.Spec.Vpc != "" {
-		vpcName = cachedFip.Spec.Vpc
-	}
-	if cachedFip.Spec.V4Ip != "" {
-		v4IP = cachedFip.Spec.V4Ip
-	}
-	if cachedFip.Spec.V6Ip != "" {
-		v6IP = cachedFip.Spec.V6Ip
-	}
+	vpcName = cachedFip.Spec.Vpc
+	v4IP = cachedFip.Spec.V4Ip
+	v6IP = cachedFip.Spec.V6Ip
 	ipName = cachedFip.Spec.IPName
-	if v4IP == "" && v6IP == "" && ipName != "" {
+	if ipName != "" {
 		if cachedFip.Spec.IPType == util.Vip {
 			internalVip, err := c.virtualIpsLister.Get(ipName)
 			if err != nil {
@@ -284,7 +278,7 @@ func (c *Controller) handleAddOvnFip(key string) error {
 		}
 	}
 	if vpcName == "" {
-		err := fmt.Errorf("failed to create v4 fip %s, no vpc", cachedFip.Name)
+		err := fmt.Errorf("failed to create fip %s, no vpc", cachedFip.Name)
 		klog.Error(err)
 		return err
 	}
@@ -293,26 +287,20 @@ func (c *Controller) handleAddOvnFip(key string) error {
 		klog.Error(err)
 		return err
 	}
-	if v4IP != "" && v4Eip == "" {
-		err := fmt.Errorf("failed to create fip %s, no v4 external ip", cachedFip.Name)
+	if v4Eip == "" && v6Eip == "" {
+		err := fmt.Errorf("failed to create fip %s, no external ip", cachedFip.Name)
 		klog.Error(err)
 		return err
 	}
-	if v6IP != "" && v6Eip == "" {
-		err := fmt.Errorf("failed to create fip %s, no v6 external ip", cachedFip.Name)
-		klog.Error(err)
-		return err
-	}
-
 	// ovn add fip
 	options := map[string]string{"staleless": strconv.FormatBool(c.ExternalGatewayType == kubeovnv1.GWDistributedType)}
-	if v4IP == "" {
+	if v4IP != "" && v4Eip != "" {
 		if err = c.OVNNbClient.AddNat(vpcName, ovnnb.NATTypeDNATAndSNAT, v4Eip, v4IP, mac, cachedFip.Spec.IPName, options); err != nil {
 			klog.Errorf("failed to create v4 fip, %v", err)
 			return err
 		}
 	}
-	if v6Eip == "" {
+	if v6Eip == "" && v6IP != "" {
 		if err = c.OVNNbClient.AddNat(vpcName, ovnnb.NATTypeDNATAndSNAT, v6Eip, v6IP, mac, cachedFip.Spec.IPName, options); err != nil {
 			klog.Errorf("failed to create v6 fip, %v", err)
 			return err
@@ -353,6 +341,11 @@ func (c *Controller) handleUpdateOvnFip(key string) error {
 		klog.Error(err)
 		return err
 	}
+	if !cachedFip.Status.Ready {
+		// create fip only in add process, just check to error out here
+		klog.Infof("wait ovn fip %s to be ready only in the handle add process", cachedFip.Name)
+		return nil
+	}
 	klog.Infof("handle update fip %s", key)
 	// check eip
 	eipName := cachedFip.Spec.OvnEip
@@ -381,18 +374,12 @@ func (c *Controller) handleUpdateOvnFip(key string) error {
 		return err
 	}
 
-	var mac, subnetName, vpcName, ipName string
-	if cachedFip.Spec.Vpc != "" {
-		vpcName = cachedFip.Spec.Vpc
-	}
-	if cachedFip.Spec.V4Ip != "" {
-		v4IP = cachedFip.Spec.V4Ip
-	}
-	if cachedFip.Spec.V6Ip != "" {
-		v6IP = cachedFip.Spec.V6Ip
-	}
+	var subnetName, vpcName, ipName string
+	vpcName = cachedFip.Spec.Vpc
+	v4IP = cachedFip.Spec.V4Ip
+	v6IP = cachedFip.Spec.V6Ip
 	ipName = cachedFip.Spec.IPName
-	if v4IP == "" && v6IP == "" && ipName != "" {
+	if ipName != "" {
 		if cachedFip.Spec.IPType == util.Vip {
 			internalVip, err := c.virtualIpsLister.Get(ipName)
 			if err != nil {
@@ -402,8 +389,8 @@ func (c *Controller) handleUpdateOvnFip(key string) error {
 			v4IP = internalVip.Status.V4ip
 			v6IP = internalVip.Status.V6ip
 			subnetName = internalVip.Spec.Subnet
-			// though vip lsp has its mac, vip always use its parent lsp nic mac
-			// and vip could float to different parent lsp nic
+			// vip lsp has its mac, but vip always use its parent lsp nic mac
+			// vip could float to different parent lsp nic
 			// all vip its parent lsp acl should allow the vip ip
 		} else {
 			internalIP, err := c.ipsLister.Get(ipName)
@@ -414,9 +401,6 @@ func (c *Controller) handleUpdateOvnFip(key string) error {
 			v4IP = internalIP.Spec.V4IPAddress
 			v6IP = internalIP.Spec.V6IPAddress
 			subnetName = internalIP.Spec.Subnet
-			mac = internalIP.Spec.MacAddress
-			// mac is necessary while using distributed router fip, fip use lsp its mac
-			// centralized router fip not need lsp mac, fip use lrp mac
 		}
 		subnet, err := c.subnetsLister.Get(subnetName)
 		if err != nil {
@@ -431,66 +415,34 @@ func (c *Controller) handleUpdateOvnFip(key string) error {
 		}
 	}
 	if vpcName == "" {
-		err := fmt.Errorf("failed to create v4 fip %s, no vpc", cachedFip.Name)
+		err := fmt.Errorf("failed to update ovn fip %s, no vpc", cachedFip.Name)
 		klog.Error(err)
 		return err
 	}
-	if v4IP == "" && v6IP == "" {
-		err := fmt.Errorf("failed to create fip %s, no internal ip", cachedFip.Name)
+	if vpcName != cachedFip.Status.Vpc {
+		err := fmt.Errorf("not support change vpc for ovn fip %s", cachedEip.Name)
 		klog.Error(err)
 		return err
 	}
-	if v4IP != "" && v4Eip == "" {
-		err := fmt.Errorf("failed to create fip %s, no v4 external ip", cachedFip.Name)
+	if v4IP != cachedFip.Status.V4Ip {
+		err := fmt.Errorf("not support change v4 ip for ovn fip %s", cachedEip.Name)
 		klog.Error(err)
 		return err
 	}
-	if v6IP != "" && v6Eip == "" {
-		err := fmt.Errorf("failed to create fip %s, no v6 external ip", cachedFip.Name)
+	if v6IP != cachedFip.Status.V6Ip {
+		err := fmt.Errorf("not support change v6 ip for ovn fip %s", cachedEip.Name)
 		klog.Error(err)
 		return err
 	}
-	fip := cachedFip.DeepCopy()
-	// fip change eip
-	if c.ovnFipChangeEip(fip, cachedEip) {
-		klog.Infof("fip change ip, old ip '%s', new ip %s", fip.Status.V4Ip, v4Eip)
-		options := map[string]string{"staleless": strconv.FormatBool(c.ExternalGatewayType == kubeovnv1.GWDistributedType)}
-		if v4IP != "" {
-			if err = c.OVNNbClient.DeleteNat(vpcName, ovnnb.NATTypeDNATAndSNAT, fip.Status.V4Ip, v4IP); err != nil {
-				klog.Errorf("failed to delete v4 fip, %v", err)
-				return err
-			}
-			// ovn add fip
-			if err = c.OVNNbClient.AddNat(vpcName, ovnnb.NATTypeDNATAndSNAT, v4Eip, v4IP, mac, ipName, options); err != nil {
-				klog.Errorf("failed to create v4 fip, %v", err)
-				return err
-			}
-		}
-		if v6IP != "" {
-			if err = c.OVNNbClient.DeleteNat(vpcName, ovnnb.NATTypeDNATAndSNAT, fip.Status.V6Ip, v6IP); err != nil {
-				klog.Errorf("failed to delete v4 fip, %v", err)
-				return err
-			}
-			// ovn add fip
-			if err = c.OVNNbClient.AddNat(vpcName, ovnnb.NATTypeDNATAndSNAT, v6Eip, v6IP, mac, ipName, options); err != nil {
-				klog.Errorf("failed to create v6 fip, %v", err)
-				return err
-			}
-		}
-
-		if err = c.natLabelAndAnnoOvnEip(eipName, fip.Name, vpcName); err != nil {
-			klog.Errorf("failed to label fip '%s' in eip %s, %v", fip.Name, eipName, err)
-			return err
-		}
-		if err = c.patchOvnFipAnnotations(key, eipName); err != nil {
-			klog.Errorf("failed to update label for fip %s, %v", key, err)
-			return err
-		}
-		if err = c.patchOvnFipStatus(key, vpcName, v4Eip, v4IP, true); err != nil {
-			klog.Errorf("failed to patch status for fip '%s', %v", key, err)
-			return err
-		}
-		return nil
+	if v4Eip != cachedFip.Status.V4Eip {
+		err := fmt.Errorf("not support change eip for ovn fip %s", cachedEip.Name)
+		klog.Error(err)
+		return err
+	}
+	if v6Eip != cachedFip.Status.V6Eip {
+		err := fmt.Errorf("not support change eip for ovn fip %s", cachedEip.Name)
+		klog.Error(err)
+		return err
 	}
 	return nil
 }
@@ -560,8 +512,8 @@ func (c *Controller) patchOvnFipAnnotations(key, eipName string) error {
 		patchPayloadTemplate := `[{ "op": "%s", "path": "/metadata/annotations", "value": %s }]`
 		raw, _ := json.Marshal(fip.Annotations)
 		patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
-		_, err := c.config.KubeOvnClient.KubeovnV1().OvnFips().Patch(context.Background(), fip.Name, types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{})
-		if err != nil {
+		if _, err := c.config.KubeOvnClient.KubeovnV1().OvnFips().Patch(context.Background(), fip.Name,
+			types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{}); err != nil {
 			klog.Errorf("failed to patch annotation for ovn fip %s, %v", fip.Name, err)
 			return err
 		}
@@ -634,17 +586,6 @@ func (c *Controller) patchOvnFipStatus(key, vpcName, v4Eip, podIP string, ready 
 	return nil
 }
 
-func (c *Controller) ovnFipChangeEip(fip *kubeovnv1.OvnFip, eip *kubeovnv1.OvnEip) bool {
-	if fip.Status.V4Ip == "" || eip.Status.V4Ip == "" {
-		// eip created but not ready
-		return false
-	}
-	if fip.Status.V4Ip != eip.Status.V4Ip {
-		return true
-	}
-	return false
-}
-
 func (c *Controller) GetOvnEip(eipName string) (*kubeovnv1.OvnEip, error) {
 	cachedEip, err := c.ovnEipsLister.Get(eipName)
 	if err != nil {
@@ -652,7 +593,9 @@ func (c *Controller) GetOvnEip(eipName string) (*kubeovnv1.OvnEip, error) {
 		return nil, err
 	}
 	if cachedEip.Status.V4Ip == "" && cachedEip.Status.V6Ip == "" {
-		return nil, fmt.Errorf("eip '%s' is not ready, has no ip", eipName)
+		err := fmt.Errorf("eip '%s' is not ready, has no ip", eipName)
+		klog.Error(err)
+		return nil, err
 	}
 	return cachedEip, nil
 }

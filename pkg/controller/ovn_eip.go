@@ -289,13 +289,32 @@ func (c *Controller) handleUpdateOvnEip(key string) error {
 		klog.Error(err)
 		return err
 	}
+	if !cachedEip.Status.Ready {
+		// create eip only in add process, just check to error out here
+		klog.Infof("wait ovn eip %s to be ready only in the handle add process", cachedEip.Name)
+		return nil
+	}
 	klog.Infof("handle update ovn eip %s", cachedEip.Name)
-	if cachedEip.Spec.Type != util.OvnEipTypeLSP {
-		// node ext gw use lsp eip, has a nic on gw node, so left node to make it ready
-		if err = c.patchOvnEipStatus(key, true); err != nil {
-			klog.Errorf("failed to patch ovn eip %s: %v", key, err)
-			return err
-		}
+	// not support change
+	if cachedEip.Status.V4Ip != cachedEip.Spec.V4Ip {
+		err := fmt.Errorf("not support change v4 ip for ovn eip %s", cachedEip.Name)
+		klog.Error(err)
+		return err
+	}
+	if cachedEip.Status.V6Ip != cachedEip.Spec.V6Ip {
+		err := fmt.Errorf("not support change v6 ip for ovn eip %s", cachedEip.Name)
+		klog.Error(err)
+		return err
+	}
+	if cachedEip.Status.MacAddress != cachedEip.Spec.MacAddress {
+		err := fmt.Errorf("not support change mac address for ovn eip %s", cachedEip.Name)
+		klog.Error(err)
+		return err
+	}
+	if cachedEip.Status.Type != cachedEip.Spec.Type {
+		err := fmt.Errorf("not support change type for ovn eip %s", cachedEip.Name)
+		klog.Error(err)
+		return err
 	}
 	return nil
 }

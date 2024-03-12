@@ -243,25 +243,20 @@ func (c *Controller) handleAddOvnDnatRule(key string) error {
 		klog.Error(err)
 		return err
 	}
-	if cachedEip.Status.V4Ip == "" {
-		err := fmt.Errorf("failed to create v4 dnat %s, eip %s has no v4 ip", cachedDnat.Name, eipName)
+
+	var v4Eip, v6Eip, internalV4Ip, internalV6Ip, subnetName, vpcName, ipName string
+	v4Eip = cachedEip.Status.V4Ip
+	v6Eip = cachedEip.Status.V6Ip
+	if v4Eip == "" && v6Eip == "" {
+		err := fmt.Errorf("failed to dnat %s, eip %s has no ip", cachedDnat.Name, eipName)
 		klog.Error(err)
 		return err
 	}
-	if err := c.isOvnDnatDuplicated(eipName, key, cachedDnat.Spec.ExternalPort); err != nil {
-		klog.Errorf("failed to create dnat %s, %v", cachedDnat.Name, err)
-		return err
-	}
-
-	// get dnat external ip, internal ip, vpc name
-	var internalV4Ip, subnetName, vpcName string
-	if cachedDnat.Spec.Vpc != "" {
-		vpcName = cachedDnat.Spec.Vpc
-	}
-	if cachedDnat.Spec.V4Ip != "" {
-		internalV4Ip = cachedDnat.Spec.V4Ip
-	}
-	if internalV4Ip == "" && cachedDnat.Spec.IPName != "" {
+	vpcName = cachedDnat.Spec.Vpc
+	internalV4Ip = cachedDnat.Spec.V4Ip
+	internalV6Ip = cachedDnat.Spec.V6Ip
+	ipName = cachedDnat.Spec.IPName
+	if ipName != "" {
 		if cachedDnat.Spec.IPType == util.Vip {
 			internalVip, err := c.virtualIpsLister.Get(cachedDnat.Spec.IPName)
 			if err != nil {
@@ -269,6 +264,7 @@ func (c *Controller) handleAddOvnDnatRule(key string) error {
 				return err
 			}
 			internalV4Ip = internalVip.Status.V4ip
+			internalV6Ip = internalVip.Status.V6ip
 			subnetName = internalVip.Spec.Subnet
 		} else {
 			internalIP, err := c.ipsLister.Get(cachedDnat.Spec.IPName)
@@ -277,6 +273,7 @@ func (c *Controller) handleAddOvnDnatRule(key string) error {
 				return err
 			}
 			internalV4Ip = internalIP.Spec.V4IPAddress
+			internalV6Ip = internalIP.Spec.V6IPAddress
 			subnetName = internalIP.Spec.Subnet
 		}
 		subnet, err := c.subnetsLister.Get(subnetName)
@@ -286,45 +283,75 @@ func (c *Controller) handleAddOvnDnatRule(key string) error {
 		}
 		vpcName = subnet.Spec.Vpc
 	}
-	if internalV4Ip == "" {
-		err := fmt.Errorf("failed to create v4 dnat %s, no internal v4 ip", cachedDnat.Name)
+	if internalV4Ip == "" && internalV6Ip == "" {
+		err := fmt.Errorf("failed to create dnat %s, no internal ip", cachedDnat.Name)
+		klog.Error(err)
+		return err
+	}
+	if v4Eip == "" && v6Eip == "" {
+		err := fmt.Errorf("failed to create dnat %s, no eip", cachedDnat.Name)
 		klog.Error(err)
 		return err
 	}
 	if vpcName == "" {
-		err := fmt.Errorf("failed to create v4 dnat %s, no vpc", cachedDnat.Name)
+		err := fmt.Errorf("failed to create dnat %s, no vpc", cachedDnat.Name)
 		klog.Error(err)
 		return err
 	}
 
-	if err = c.AddDnatRule(vpcName, cachedDnat.Name, cachedEip.Status.V4Ip, internalV4Ip,
-		cachedDnat.Spec.ExternalPort, cachedDnat.Spec.InternalPort, cachedDnat.Spec.Protocol); err != nil {
-		klog.Errorf("failed to create v4 dnat, %v", err)
+	var externalPort, internalPort, protocol string
+	externalPort = cachedDnat.Spec.ExternalPort
+	internalPort = cachedDnat.Spec.InternalPort
+	protocol = cachedDnat.Spec.Protocol
+	if externalPort == "" {
+		err := fmt.Errorf("failed to create dnat %s, no external port", cachedDnat.Name)
+		klog.Error(err)
+		return err
+	}
+	if err := c.isOvnDnatDuplicated(eipName, key, cachedDnat.Spec.ExternalPort); err != nil {
+		klog.Errorf("failed to create dnat %s, %v", cachedDnat.Name, err)
+		return err
+	}
+	if internalPort == "" {
+		err := fmt.Errorf("failed to create dnat %s, no internal port", cachedDnat.Name)
+		klog.Error(err)
+		return err
+	}
+	if protocol == "" {
+		err := fmt.Errorf("failed to create dnat %s, no protocol", cachedDnat.Name)
+		klog.Error(err)
 		return err
 	}
 
+	if internalV4Ip != "" && v4Eip != "" {
+		if err = c.AddDnatRule(vpcName, cachedDnat.Name, v4Eip, internalV4Ip, externalPort, internalPort, protocol); err != nil {
+			klog.Errorf("failed to create v4 dnat, %v", err)
+			return err
+		}
+	}
+	if internalV6Ip != "" && v6Eip != "" {
+		if err = c.AddDnatRule(vpcName, cachedDnat.Name, v6Eip, internalV6Ip, externalPort, internalPort, protocol); err != nil {
+			klog.Errorf("failed to create v6 dnat, %v", err)
+			return err
+		}
+	}
 	if err := c.handleAddOvnDnatFinalizer(cachedDnat, util.KubeOVNControllerFinalizer); err != nil {
 		klog.Errorf("failed to add finalizer for ovn dnat %s, %v", cachedDnat.Name, err)
 		return err
 	}
-
 	// patch dnat eip relationship
 	if err = c.natLabelAndAnnoOvnEip(eipName, cachedDnat.Name, vpcName); err != nil {
 		klog.Errorf("failed to label dnat '%s' in eip %s, %v", cachedDnat.Name, eipName, err)
 		return err
 	}
-
 	if err = c.patchOvnDnatAnnotations(key, eipName); err != nil {
 		klog.Errorf("failed to update annotations for dnat %s, %v", key, err)
 		return err
 	}
-
-	if err = c.patchOvnDnatStatus(key, vpcName, cachedEip.Status.V4Ip,
-		internalV4Ip, true); err != nil {
+	if err = c.patchOvnDnatStatus(key, vpcName, v4Eip, v6Eip, internalV4Ip, internalV6Ip, true); err != nil {
 		klog.Errorf("failed to patch status for dnat %s, %v", key, err)
 		return err
 	}
-
 	if err = c.patchOvnEipStatus(eipName, true); err != nil {
 		klog.Errorf("failed to patch status for eip %s, %v", key, err)
 		return err
@@ -343,12 +370,25 @@ func (c *Controller) handleDelOvnDnatRule(key string) error {
 		klog.Error(err)
 		return err
 	}
-	if cachedDnat.Status.Vpc != "" && cachedDnat.Status.V4Eip != "" && cachedDnat.Status.ExternalPort != "" {
-		if err = c.DelDnatRule(cachedDnat.Status.Vpc, cachedDnat.Name,
-			cachedDnat.Status.V4Eip, cachedDnat.Status.ExternalPort); err != nil {
-			klog.Errorf("failed to delete dnat %s, %v", key, err)
-			return err
+	if cachedDnat.Status.Vpc != "" {
+		if cachedDnat.Status.V4Eip != "" && cachedDnat.Status.ExternalPort != "" {
+			if err = c.DelDnatRule(cachedDnat.Status.Vpc, cachedDnat.Name,
+				cachedDnat.Status.V4Eip, cachedDnat.Status.ExternalPort); err != nil {
+				klog.Errorf("failed to delete v4 dnat %s, %v", key, err)
+				return err
+			}
 		}
+		if cachedDnat.Status.V6Eip != "" && cachedDnat.Status.ExternalPort != "" {
+			if err = c.DelDnatRule(cachedDnat.Status.Vpc, cachedDnat.Name,
+				cachedDnat.Status.V6Eip, cachedDnat.Status.ExternalPort); err != nil {
+				klog.Errorf("failed to delete v6 dnat %s, %v", key, err)
+				return err
+			}
+		}
+	} else {
+		err := fmt.Errorf("failed to delete dnat %s, no vpc", cachedDnat.Name)
+		klog.Error(err)
+		return err
 	}
 	if err = c.handleDelOvnDnatFinalizer(cachedDnat, util.KubeOVNControllerFinalizer); err != nil {
 		klog.Errorf("failed to remove finalizer for ovn dnat %s, %v", cachedDnat.Name, err)
@@ -369,7 +409,11 @@ func (c *Controller) handleUpdateOvnDnatRule(key string) error {
 		klog.Error(err)
 		return err
 	}
-
+	if !cachedDnat.Status.Ready {
+		// create dnat only in add process, just check to error out here
+		klog.Infof("wait ovn dnat %s to be ready only in the handle add process", cachedDnat.Name)
+		return nil
+	}
 	klog.Infof("handle update dnat %s", key)
 	// check eip
 	eipName := cachedDnat.Spec.OvnEip
@@ -389,25 +433,19 @@ func (c *Controller) handleUpdateOvnDnatRule(key string) error {
 		klog.Error(err)
 		return err
 	}
-	if cachedEip.Status.V4Ip == "" {
-		err := fmt.Errorf("failed to create v4 dnat %s, eip %s has no v4 ip", cachedDnat.Name, eipName)
+	var v4Eip, v6Eip, internalV4Ip, internalV6Ip, subnetName, vpcName, ipName string
+	v4Eip = cachedEip.Status.V4Ip
+	v6Eip = cachedEip.Status.V6Ip
+	if v4Eip == "" && v6Eip == "" {
+		err := fmt.Errorf("failed to update dnat %s, eip %s has no ip", cachedDnat.Name, eipName)
 		klog.Error(err)
 		return err
 	}
-	if err := c.isOvnDnatDuplicated(eipName, key, cachedDnat.Spec.ExternalPort); err != nil {
-		klog.Errorf("failed to create dnat %s, %v", cachedDnat.Name, err)
-		return err
-	}
-
-	// get dnat external ip, internal ip, vpc name
-	var internalV4Ip, subnetName, vpcName string
-	if cachedDnat.Spec.Vpc != "" {
-		vpcName = cachedDnat.Spec.Vpc
-	}
-	if cachedDnat.Spec.V4Ip != "" {
-		internalV4Ip = cachedDnat.Spec.V4Ip
-	}
-	if internalV4Ip == "" && cachedDnat.Spec.IPName != "" {
+	vpcName = cachedDnat.Spec.Vpc
+	internalV4Ip = cachedDnat.Spec.V4Ip
+	internalV6Ip = cachedDnat.Spec.V6Ip
+	ipName = cachedDnat.Spec.IPName
+	if ipName != "" {
 		if cachedDnat.Spec.IPType == util.Vip {
 			internalVip, err := c.virtualIpsLister.Get(cachedDnat.Spec.IPName)
 			if err != nil {
@@ -415,6 +453,7 @@ func (c *Controller) handleUpdateOvnDnatRule(key string) error {
 				return err
 			}
 			internalV4Ip = internalVip.Status.V4ip
+			internalV6Ip = internalVip.Status.V6ip
 			subnetName = internalVip.Spec.Subnet
 		} else {
 			internalIP, err := c.ipsLister.Get(cachedDnat.Spec.IPName)
@@ -423,6 +462,7 @@ func (c *Controller) handleUpdateOvnDnatRule(key string) error {
 				return err
 			}
 			internalV4Ip = internalIP.Spec.V4IPAddress
+			internalV6Ip = internalIP.Spec.V6IPAddress
 			subnetName = internalIP.Spec.Subnet
 		}
 		subnet, err := c.subnetsLister.Get(subnetName)
@@ -432,46 +472,50 @@ func (c *Controller) handleUpdateOvnDnatRule(key string) error {
 		}
 		vpcName = subnet.Spec.Vpc
 	}
-	if internalV4Ip == "" {
-		err := fmt.Errorf("failed to create v4 dnat %s, no internal v4 ip", cachedDnat.Name)
+	// not support chang
+	if cachedDnat.Spec.ExternalPort != cachedDnat.Status.ExternalPort {
+		err := fmt.Errorf("not support change external port for dnat %s", cachedDnat.Name)
 		klog.Error(err)
 		return err
 	}
-	if vpcName == "" {
-		err := fmt.Errorf("failed to create v4 dnat %s, no vpc", cachedDnat.Name)
+	if cachedDnat.Spec.InternalPort != cachedDnat.Status.InternalPort {
+		err := fmt.Errorf("not support change internal port for dnat %s", cachedDnat.Name)
 		klog.Error(err)
 		return err
 	}
-
-	dnat := cachedDnat.DeepCopy()
-	if dnat.Status.Ready {
-		klog.Infof("dnat change ip, old ip '%s', new ip %s", dnat.Status.V4Ip, cachedEip.Status.V4Ip)
-		if err = c.DelDnatRule(dnat.Status.Vpc, dnat.Name, dnat.Status.V4Eip, dnat.Status.ExternalPort); err != nil {
-			klog.Errorf("failed to delete dnat, %v", err)
-			return err
-		}
-
-		if err = c.AddDnatRule(vpcName, dnat.Name, cachedEip.Status.V4Ip, internalV4Ip,
-			dnat.Spec.ExternalPort, dnat.Spec.InternalPort, dnat.Spec.Protocol); err != nil {
-			klog.Errorf("failed to create dnat, %v", err)
-			return err
-		}
-
-		if err = c.natLabelAndAnnoOvnEip(eipName, dnat.Name, vpcName); err != nil {
-			klog.Errorf("failed to label dnat '%s' in eip %s, %v", dnat.Name, eipName, err)
-			return err
-		}
-
-		if err = c.patchOvnDnatAnnotations(key, eipName); err != nil {
-			klog.Errorf("failed to update annotations for dnat %s, %v", key, err)
-			return err
-		}
-
-		if err = c.patchOvnDnatStatus(key, vpcName, cachedEip.Status.V4Ip, internalV4Ip, true); err != nil {
-			klog.Errorf("failed to patch status for dnat '%s', %v", key, err)
-			return err
-		}
-		return nil
+	if cachedDnat.Spec.Protocol != cachedDnat.Status.Protocol {
+		err := fmt.Errorf("not support change protocol for dnat %s", cachedDnat.Name)
+		klog.Error(err)
+		return err
+	}
+	if v4Eip != cachedDnat.Status.V4Eip || v6Eip != cachedDnat.Status.V6Eip {
+		err := fmt.Errorf("not support change eip for dnat %s", cachedDnat.Name)
+		klog.Error(err)
+		return err
+	}
+	if internalV4Ip != cachedDnat.Status.V4Ip || internalV6Ip != cachedDnat.Status.V6Ip {
+		err := fmt.Errorf("not support change internal ip for dnat %s", cachedDnat.Name)
+		klog.Error(err)
+		return err
+	}
+	if vpcName != cachedDnat.Status.Vpc {
+		err := fmt.Errorf("not support change vpc for dnat %s", cachedDnat.Name)
+		klog.Error(err)
+		return err
+	}
+	if cachedDnat.Spec.InternalPort != cachedDnat.Status.InternalPort {
+		err := fmt.Errorf("not support change internal port for dnat %s", cachedDnat.Name)
+		klog.Error(err)
+		return err
+	}
+	if cachedDnat.Spec.ExternalPort != cachedDnat.Status.ExternalPort {
+		err := fmt.Errorf("not support change external port for dnat %s", cachedDnat.Name)
+		klog.Error(err)
+		return err
+	}
+	if err := c.isOvnDnatDuplicated(eipName, key, cachedDnat.Spec.ExternalPort); err != nil {
+		klog.Errorf("failed to update dnat %s, %v", cachedDnat.Name, err)
+		return err
 	}
 	return nil
 }
@@ -521,7 +565,7 @@ func (c *Controller) patchOvnDnatAnnotations(key, eipName string) error {
 	return nil
 }
 
-func (c *Controller) patchOvnDnatStatus(key, vpcName, v4Eip, podIP string, ready bool) error {
+func (c *Controller) patchOvnDnatStatus(key, vpcName, v4Eip, v6Eip, internalV4Ip, internalV6Ip string, ready bool) error {
 	var (
 		oriDnat, dnat *kubeovnv1.OvnDnatRule
 		err           error
@@ -545,6 +589,7 @@ func (c *Controller) patchOvnDnatStatus(key, vpcName, v4Eip, podIP string, ready
 		needUpdateLabel = true
 		dnat.Labels = map[string]string{
 			util.EipV4IpLabel: v4Eip,
+			util.EipV6IpLabel: v6Eip,
 		}
 	} else if dnat.Labels[util.EipV4IpLabel] != v4Eip {
 		op = "replace"
@@ -566,37 +611,38 @@ func (c *Controller) patchOvnDnatStatus(key, vpcName, v4Eip, podIP string, ready
 		dnat.Status.Ready = ready
 		changed = true
 	}
-
 	if vpcName != "" && dnat.Status.Vpc != vpcName {
 		dnat.Status.Vpc = vpcName
 		changed = true
 	}
-
 	if v4Eip != "" && dnat.Status.V4Eip != v4Eip {
 		dnat.Status.V4Eip = v4Eip
 		changed = true
 	}
-
-	if podIP != "" && dnat.Status.V4Ip != podIP {
-		dnat.Status.V4Ip = podIP
+	if v6Eip != "" && dnat.Status.V6Eip != v6Eip {
+		dnat.Status.V4Eip = v6Eip
 		changed = true
 	}
-
+	if internalV4Ip != "" && dnat.Status.V4Ip != internalV4Ip {
+		dnat.Status.V4Ip = internalV4Ip
+		changed = true
+	}
+	if internalV6Ip != "" && dnat.Status.V6Ip != internalV6Ip {
+		dnat.Status.V6Ip = internalV6Ip
+		changed = true
+	}
 	if ready && dnat.Spec.Protocol != "" && dnat.Status.Protocol != dnat.Spec.Protocol {
 		dnat.Status.Protocol = dnat.Spec.Protocol
 		changed = true
 	}
-
 	if ready && dnat.Spec.IPName != "" && dnat.Spec.IPName != dnat.Status.IPName {
 		dnat.Status.IPName = dnat.Spec.IPName
 		changed = true
 	}
-
 	if ready && dnat.Spec.InternalPort != "" && dnat.Status.InternalPort != dnat.Spec.InternalPort {
 		dnat.Status.InternalPort = dnat.Spec.InternalPort
 		changed = true
 	}
-
 	if ready && dnat.Spec.ExternalPort != "" && dnat.Status.ExternalPort != dnat.Spec.ExternalPort {
 		dnat.Status.ExternalPort = dnat.Spec.ExternalPort
 		changed = true
@@ -648,7 +694,6 @@ func (c *Controller) DelDnatRule(vpcName, dnatName, externalIP, externalPort str
 		err               error
 	)
 	externalEndpoint = net.JoinHostPort(externalIP, externalPort)
-
 	if err = c.OVNNbClient.LoadBalancerDeleteVip(dnatName, externalEndpoint, ignoreHealthCheck); err != nil {
 		klog.Errorf("delete loadBalancer vips %s: %v", externalEndpoint, err)
 		return err
