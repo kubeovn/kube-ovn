@@ -14,7 +14,7 @@ require (
 	github.com/containernetworking/cni v1.1.2
 	github.com/containernetworking/plugins v1.4.0
 	github.com/docker/docker v25.0.4+incompatible
-	github.com/emicklei/go-restful/v3 v3.11.3
+	github.com/emicklei/go-restful/v3 v3.12.0
 	github.com/evanphx/json-patch/v5 v5.9.0
 	github.com/go-logr/stdr v1.2.2
 	github.com/golang/mock v1.6.0
