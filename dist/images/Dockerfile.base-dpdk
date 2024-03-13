@@ -108,7 +108,7 @@ RUN mkdir -p /var/run/openvswitch && \
     mkdir -p /opt/cni/bin
 
 ARG ARCH
-ENV CNI_VERSION=v1.3.0
+ENV CNI_VERSION=v1.4.1
 RUN curl -sSf -L --retry 5 https://github.com/containernetworking/plugins/releases/download/${CNI_VERSION}/cni-plugins-linux-${ARCH}-${CNI_VERSION}.tgz | tar -xz -C . ./loopback ./portmap ./macvlan
 
 COPY --from=ovs-builder /usr/src/dpdk-stable-22.11.1 /usr/src/dpdk-stable-22.11.1
