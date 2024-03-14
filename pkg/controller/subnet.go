@@ -1727,6 +1727,20 @@ func (c *Controller) reconcileOvnDefaultVpcRoute(subnet *kubeovnv1.Subnet) error
 				return err
 			}
 		}
+
+		if (!c.config.EnableLb || !(subnet.Spec.EnableLb != nil && *subnet.Spec.EnableLb)) &&
+			subnet.Spec.U2OInterconnection && subnet.Status.U2OInterconnectionIP != "" {
+			if err := c.addPolicyRouteForU2ONoLoadBalancer(subnet); err != nil {
+				klog.Errorf("failed to add policy route for underlay to overlay subnet interconnection without enabling loadbalancer %s %v", subnet.Name, err)
+				return err
+			}
+		} else {
+			if err := c.deletePolicyRouteForU2ONoLoadBalancer(subnet); err != nil {
+				klog.Errorf("failed to delete policy route for underlay to overlay subnet interconnection without enabling loadbalancer %s, %v", subnet.Name, err)
+				return err
+			}
+		}
+
 	} else {
 		// It's difficult to update policy route when subnet cidr is changed, add check for cidr changed situation
 		if err := c.reconcilePolicyRouteForCidrChangedSubnet(subnet, true); err != nil {
@@ -3026,6 +3040,132 @@ func (c *Controller) reconcilePolicyRouteForCidrChangedSubnet(subnet *kubeovnv1.
 					return err
 				}
 			}
+		}
+	}
+	return nil
+}
+
+func (c *Controller) addPolicyRouteForU2ONoLoadBalancer(subnet *kubeovnv1.Subnet) error {
+	nodes, err := c.nodesLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list nodes: %v", err)
+		return err
+	}
+	for _, node := range nodes {
+		pgName := getOverlaySubnetsPortGroupName(subnet.Name, node.Name)
+		if err := c.OVNNbClient.CreatePortGroup(pgName, map[string]string{logicalRouterKey: subnet.Spec.Vpc, logicalSwitchKey: subnet.Name, u2oKey: "true"}); err != nil {
+			klog.Errorf("failed to create u2o port group for subnet %s and node %s: %v", subnet.Name, node.Name, err)
+			return err
+		}
+		key := fmt.Sprintf("node-%s", node.Name)
+		ip, err := c.ipsLister.Get(key)
+		if err != nil {
+			if k8serrors.IsNotFound(err) {
+				return nil
+			}
+			klog.Error(err)
+			return err
+		}
+		for _, cidrBlock := range strings.Split(subnet.Spec.CIDRBlock, ",") {
+			ipSuffix, nodeIP := "ip4", ip.Spec.V4IPAddress
+			if util.CheckProtocol(cidrBlock) == kubeovnv1.ProtocolIPv6 {
+				ipSuffix, nodeIP = "ip6", ip.Spec.V6IPAddress
+			}
+			if nodeIP == "" {
+				continue
+			}
+
+			var (
+				pgAs        = fmt.Sprintf("%s_%s", pgName, ipSuffix)
+				match       = fmt.Sprintf("%s.src == $%s && %s.dst == %s", ipSuffix, pgAs, ipSuffix, c.config.ServiceClusterIPRange)
+				action      = kubeovnv1.PolicyRouteActionReroute
+				externalIDs = map[string]string{
+					"vendor":               util.CniTypeName,
+					"subnet":               subnet.Name,
+					"isU2ONoLBRoutePolicy": "true",
+					"node":                 node.Name,
+				}
+			)
+
+			klog.Infof("add u2o interconnection policy without enabling loadbalancer for router: %s, match %s, action %s, nexthop %s", subnet.Spec.Vpc, match, action, nodeIP)
+			if err := c.addPolicyRouteToVpc(
+				c.config.ClusterRouter,
+				&kubeovnv1.PolicyRoute{
+					Priority:  util.U2OSubnetPolicyPriority,
+					Match:     match,
+					Action:    action,
+					NextHopIP: nodeIP,
+				},
+				externalIDs,
+			); err != nil {
+				klog.Errorf("failed to add logical router policy for port-group address-set %s: %v", pgAs, err)
+				return err
+			}
+		}
+	}
+	lsps, err := c.OVNNbClient.ListNormalLogicalSwitchPorts(true, map[string]string{logicalSwitchKey: subnet.Name})
+	if err != nil {
+		klog.Errorf("failed to list normal lsps for subnet %s: %v", subnet.Name, err)
+		return err
+	}
+	for _, lsp := range lsps {
+		ip, err := c.ipsLister.Get(lsp.Name)
+		if err != nil {
+			if k8serrors.IsNotFound(err) {
+				return nil
+			}
+			klog.Error(err)
+			return err
+		}
+		pgName := getOverlaySubnetsPortGroupName(subnet.Name, ip.Spec.NodeName)
+		if err = c.OVNNbClient.PortGroupAddPorts(pgName, lsp.Name); err != nil {
+			klog.Errorf("failed to add port to u2o port group %s: %v", pgName, err)
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *Controller) deletePolicyRouteForU2ONoLoadBalancer(subnet *kubeovnv1.Subnet) error {
+	logicalRouter, err := c.OVNNbClient.GetLogicalRouter(subnet.Spec.Vpc, true)
+	if err == nil && logicalRouter == nil {
+		klog.Infof("logical router %s already deleted", subnet.Spec.Vpc)
+		return nil
+	}
+	policies, err := c.OVNNbClient.ListLogicalRouterPolicies(subnet.Spec.Vpc, -1, map[string]string{
+		"isU2ONoLBRoutePolicy": "true",
+		"vendor":               util.CniTypeName,
+		"subnet":               subnet.Name,
+	}, true)
+	if err != nil {
+		klog.Errorf("failed to list logical router policies: %v", err)
+		return err
+	}
+
+	lr := subnet.Status.U2OInterconnectionVPC
+	if lr == "" {
+		// old version field U2OInterconnectionVPC may be "" and then use subnet.Spec.Vpc
+		lr = subnet.Spec.Vpc
+	}
+
+	for _, policy := range policies {
+		klog.Infof("delete u2o interconnection policy without enabling loadbalancer for router %s with match %s priority %d", lr, policy.Match, policy.Priority)
+		if err = c.OVNNbClient.DeleteLogicalRouterPolicyByUUID(lr, policy.UUID); err != nil {
+			klog.Errorf("failed to delete u2o interconnection policy for subnet %s: %v", subnet.Name, err)
+			return err
+		}
+	}
+
+	pgs, err := c.OVNNbClient.ListPortGroups(map[string]string{logicalRouterKey: subnet.Spec.Vpc, logicalSwitchKey: subnet.Name, u2oKey: "true"})
+	if err != nil {
+		klog.Errorf("failed to list u2o port groups with u2oKey is true for subnet %s: %v", subnet.Name, err)
+		return err
+	}
+	for _, pg := range pgs {
+		klog.Infof("delete u2o port group %s for subnet %s", pg.Name, subnet.Name)
+		if err = c.OVNNbClient.DeletePortGroup(pg.Name); err != nil {
+			klog.Errorf("failed to delete u2o port group for subnet %s: %v", subnet.Name, err)
+			return err
 		}
 	}
 	return nil

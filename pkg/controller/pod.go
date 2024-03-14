@@ -834,6 +834,19 @@ func (c *Controller) reconcileRouteSubnets(cachedPod, pod *v1.Pod, needRoutePodN
 		podIP = pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, podNet.ProviderName)]
 		subnet = podNet.Subnet
 
+		if (!c.config.EnableLb || !(subnet.Spec.EnableLb != nil && *subnet.Spec.EnableLb)) &&
+			subnet.Spec.Vpc == c.config.ClusterRouter &&
+			subnet.Spec.U2OInterconnection &&
+			subnet.Spec.Vlan != "" &&
+			!subnet.Spec.LogicalGateway {
+			pgName := getOverlaySubnetsPortGroupName(subnet.Name, pod.Spec.NodeName)
+			portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
+			if err := c.OVNNbClient.PortGroupAddPorts(pgName, portName); err != nil {
+				klog.Errorf("failed to add port to u2o port group %s: %v", pgName, err)
+				return err
+			}
+		}
+
 		if podIP != "" && (subnet.Spec.Vlan == "" || subnet.Spec.LogicalGateway) && subnet.Spec.Vpc == c.config.ClusterRouter {
 			node, err := c.nodesLister.Get(pod.Spec.NodeName)
 			if err != nil {
