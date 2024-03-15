@@ -347,16 +347,27 @@ var _ = framework.SerialDescribe("[group:ovn-ic]", func() {
 func checkECMPCount(expectCount int) {
 	ecmpCount := 0
 	maxRetryTimes := 30
-	for i := 0; i < maxRetryTimes; i++ {
-		time.Sleep(3 * time.Second)
-		execCmd := "kubectl ko nbctl lr-route-list ovn-cluster "
-		output, err := exec.Command("bash", "-c", execCmd).CombinedOutput()
-		framework.ExpectNoError(err)
-		ecmpCount = strings.Count(string(output), "ecmp")
-		if ecmpCount == expectCount {
-			break
+	clusterNames := []string{"kind-kube-ovn", "kind-kube-ovn1"}
+
+	for _, clusterName := range clusterNames {
+		switchCmd := "kubectl config use-context " + clusterName
+		_, err := exec.Command("bash", "-c", switchCmd).CombinedOutput()
+		framework.ExpectNoError(err, "switch to kube-ovn cluster failed")
+
+		for i := 0; i < maxRetryTimes; i++ {
+			time.Sleep(3 * time.Second)
+			execCmd := "kubectl ko nbctl lr-route-list ovn-cluster "
+			output, err := exec.Command("bash", "-c", execCmd).CombinedOutput()
+			framework.ExpectNoError(err)
+			ecmpCount = strings.Count(string(output), "ecmp")
+			if ecmpCount == expectCount {
+				break
+			}
 		}
+		framework.ExpectEqual(ecmpCount, expectCount)
 	}
 
-	framework.ExpectEqual(ecmpCount, expectCount)
+	switchCmd := "kubectl config use-context kind-kube-ovn"
+	_, err := exec.Command("bash", "-c", switchCmd).CombinedOutput()
+	framework.ExpectNoError(err, "switch to kube-ovn cluster failed")
 }
