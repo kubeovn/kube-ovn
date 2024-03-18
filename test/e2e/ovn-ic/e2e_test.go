@@ -347,13 +347,15 @@ var _ = framework.SerialDescribe("[group:ovn-ic]", func() {
 func checkECMPCount(expectCount int) {
 	ecmpCount := 0
 	maxRetryTimes := 30
-	clusterNames := []string{"kind-kube-ovn", "kind-kube-ovn1"}
 
-	for _, clusterName := range clusterNames {
+	for _, cluster := range clusters {
+		clusterName := "kind-" + cluster
+		ginkgo.By("Switching kubectl config context to " + clusterName)
 		switchCmd := "kubectl config use-context " + clusterName
 		_, err := exec.Command("bash", "-c", switchCmd).CombinedOutput()
-		framework.ExpectNoError(err, "switch to kube-ovn cluster failed")
+		framework.ExpectNoError(err, "failed to switch kubectl config context to %s", clusterName)
 
+		ginkgo.By("Checking logical router route count")
 		for i := 0; i < maxRetryTimes; i++ {
 			time.Sleep(3 * time.Second)
 			execCmd := "kubectl ko nbctl lr-route-list ovn-cluster "
