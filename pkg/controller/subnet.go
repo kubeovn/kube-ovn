@@ -317,16 +317,6 @@ func (c *Controller) formatSubnet(subnet *kubeovnv1.Subnet) (*kubeovnv1.Subnet, 
 		}
 	}
 
-	if subnet.Spec.EnableLb == nil && subnet.Name != c.config.NodeSwitch {
-		changed = true
-		subnet.Spec.EnableLb = &c.config.EnableLb
-	}
-	// set join subnet Spec.EnableLb to nil
-	if subnet.Spec.EnableLb != nil && subnet.Name == c.config.NodeSwitch {
-		changed = true
-		subnet.Spec.EnableLb = nil
-	}
-
 	if subnet.Spec.U2OInterconnectionIP != "" && !subnet.Spec.U2OInterconnection {
 		subnet.Spec.U2OInterconnectionIP = ""
 		changed = true
@@ -840,7 +830,7 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 			vpc.Status.SctpLoadBalancer,
 			vpc.Status.SctpSessionLoadBalancer,
 		}
-		if subnet.Spec.EnableLb != nil && *subnet.Spec.EnableLb {
+		if subnet.Spec.EnableLb == nil || *subnet.Spec.EnableLb {
 			if err := c.OVNNbClient.LogicalSwitchUpdateLoadBalancers(subnet.Name, ovsdb.MutateOperationInsert, lbs...); err != nil {
 				c.patchSubnetStatus(subnet, "AddLbToLogicalSwitchFailed", err.Error())
 				klog.Error(err)
