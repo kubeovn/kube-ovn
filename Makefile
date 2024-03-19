@@ -954,7 +954,7 @@ scan:
 
 .PHONY: ut
 ut:
-	ginkgo -mod=mod --show-node-events --poll-progress-after=60s -v test/unittest
+	ginkgo -mod=mod --show-node-events --poll-progress-after=60s $(GINKGO_OUTPUT_OPT) -v test/unittest
 	go test ./pkg/...
 
 .PHONY: ipam-bench
