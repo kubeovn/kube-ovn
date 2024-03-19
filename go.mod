@@ -44,14 +44,14 @@ require (
 	google.golang.org/grpc v1.62.1
 	google.golang.org/protobuf v1.33.0
 	gopkg.in/k8snetworkplumbingwg/multus-cni.v4 v4.0.2
-	k8s.io/api v0.29.2
-	k8s.io/apimachinery v0.29.2
+	k8s.io/api v0.29.3
+	k8s.io/apimachinery v0.29.3
 	k8s.io/client-go v12.0.0+incompatible
 	k8s.io/klog/v2 v2.120.1
 	k8s.io/kubectl v0.29.2
-	k8s.io/kubernetes v1.29.2
+	k8s.io/kubernetes v1.29.3
 	k8s.io/pod-security-admission v0.29.2
-	k8s.io/sample-controller v0.29.2
+	k8s.io/sample-controller v0.29.3
 	k8s.io/utils v0.0.0-20240102154912-e7106e64919e
 	kubevirt.io/client-go v1.1.1
 	sigs.k8s.io/controller-runtime v0.17.2
