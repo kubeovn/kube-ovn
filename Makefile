@@ -63,7 +63,7 @@ SUBMARINER_ROUTE_AGENT = quay.io/submariner/submariner-route-agent:$(SUBMARINER_
 SUBMARINER_NETTEST = quay.io/submariner/nettest:$(SUBMARINER_VERSION)
 
 DEEPFLOW_VERSION = v6.4
-DEEPFLOW_CHART_VERSION = 6.4.012
+DEEPFLOW_CHART_VERSION = 6.4.013
 DEEPFLOW_CHART_REPO = https://deepflow-ce.oss-cn-beijing.aliyuncs.com/chart/stable
 DEEPFLOW_IMAGE_REPO = registry.cn-beijing.aliyuncs.com/deepflow-ce
 DEEPFLOW_SERVER_NODE_PORT = 30417
@@ -864,7 +864,6 @@ kind-install-deepflow: kind-install
 	helm repo add deepflow $(DEEPFLOW_CHART_REPO)
 	helm repo update deepflow
 	$(eval CLICKHOUSE_PERSISTENCE = $(shell helm show values --version $(DEEPFLOW_CHART_VERSION) --jsonpath '{.clickhouse.storageConfig.persistence}' deepflow/deepflow | sed 's/0Gi/Gi/g'))
-	$(eval GRAFANA_EXTRA_INIT_CONTAINERS = $(shell helm show values --version $(DEEPFLOW_CHART_VERSION) --jsonpath '{.grafana.extraInitContainers}' deepflow/deepflow | sed 's/:latest/:$(DEEPFLOW_VERSION)/g'))
 	helm install deepflow deepflow/deepflow --wait \
 		--version $(DEEPFLOW_CHART_VERSION) \
 		--namespace deepflow \
@@ -875,7 +874,6 @@ kind-install-deepflow: kind-install
 		--set grafana.image.registry=$(DEEPFLOW_IMAGE_REPO) \
 		--set grafana.image.pullPolicy=IfNotPresent \
 		--set grafana.service.nodePort=$(DEEPFLOW_GRAFANA_NODE_PORT) \
-		--set-json 'grafana.extraInitContainers=$(GRAFANA_EXTRA_INIT_CONTAINERS)' \
 		--set mysql.storageConfig.persistence.size=5Gi \
 		--set mysql.image.pullPolicy=IfNotPresent \
 		--set clickhouse.image.pullPolicy=IfNotPresent \
