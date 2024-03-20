@@ -184,7 +184,6 @@ func (c *Controller) initDefaultDenyAllSecurityGroup() error {
 }
 
 func (c *Controller) syncSecurityGroup() error {
-	klog.Infof("init all security groups")
 	sgs, err := c.sgsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list security groups: %v", err)
@@ -193,6 +192,7 @@ func (c *Controller) syncSecurityGroup() error {
 	for _, sg := range sgs {
 		if lost, err := c.OVNNbClient.SGLostACL(sg); err != nil {
 			if lost {
+				klog.Infof("sync security group: %s", sg.Name)
 				c.addOrUpdateSgQueue.Add(sg.Name)
 			}
 		} else {

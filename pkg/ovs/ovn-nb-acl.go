@@ -1248,11 +1248,11 @@ func (c *OVNNbClient) sgRuleNoACL(sgName, direction string, rule *kubeovnv1.SgRu
 		return false, fmt.Errorf("failed to get acl for pg %s: %v", pgName, err)
 	}
 
-	// found, ignore
-	if exists {
-		return false, nil
+	// sg rule no acl, need to sync
+	if !exists {
+		return true, nil
 	}
-	return true, nil
+	return false, nil
 }
 
 // SGLostACL check if security group lost an acl
