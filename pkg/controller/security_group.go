@@ -194,7 +194,7 @@ func (c *Controller) updateDenyAllSgPorts() error {
 	addPorts := make([]string, 0, len(lsps))
 	for _, lsp := range lsps {
 		// skip lsp which only have mac addresses,address is in port.PortSecurity[0]
-		if len(strings.Split(lsp.PortSecurity[0], " ")) < 2 {
+		if len(lsp.PortSecurity) == 0 || len(strings.Split(lsp.PortSecurity[0], " ")) < 2 {
 			continue
 		}
 
