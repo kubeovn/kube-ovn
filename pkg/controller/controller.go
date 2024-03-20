@@ -1118,8 +1118,8 @@ func (c *Controller) initResourceOnce() {
 	if err := c.initDefaultDenyAllSecurityGroup(); err != nil {
 		util.LogFatalAndExit(err, "failed to initialize 'deny_all' security group")
 	}
-	if err := c.initAllSecurityGroups(); err != nil {
-		util.LogFatalAndExit(err, "failed to initialize all security groups")
+	if err := c.syncSecurityGroup(); err != nil {
+		util.LogFatalAndExit(err, "failed to sync security group")
 	}
 
 	if err := c.syncVpcNatGatewayCR(); err != nil {
