@@ -42,6 +42,7 @@ const (
 	sgKey                 = "sg"
 	associatedSgKeyPrefix = "associated_sg_"
 	sgsKey                = "security_groups"
+	u2oKey                = "u2o"
 )
 
 // Controller is kube-ovn main controller that watch ns/pod/node/svc/ep and operate ovn
