@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"slices"
 	"strings"
 	"time"
 
@@ -757,7 +756,7 @@ func (c *Controller) createOrUpdateEipCR(key, v4ip, v6ip, mac, natGwDp, qos, ext
 func (c *Controller) syncIptablesEipFinalizer(cl client.Client) error {
 	// migrate depreciated finalizer to new finalizer
 	eips := &kubeovnv1.IptablesEIPList{}
-	return updateFinalizers(cl, eips, func(i int) (client.Object, client.Object) {
+	return migrateFinalizers(cl, eips, func(i int) (client.Object, client.Object) {
 		if i < 0 || i >= len(eips.Items) {
 			return nil, nil
 		}
@@ -774,10 +773,10 @@ func (c *Controller) handleAddIptablesEipFinalizer(key string) error {
 		klog.Error(err)
 		return err
 	}
-	if cachedIptablesEip.DeletionTimestamp.IsZero() {
-		if slices.Contains(cachedIptablesEip.Finalizers, util.KubeOVNControllerFinalizer) {
-			return nil
-		}
+	if cachedIptablesEip.DeletionTimestamp.IsZero() &&
+		(controllerutil.ContainsFinalizer(cachedIptablesEip, util.DepreciatedFinalizerName) ||
+			controllerutil.ContainsFinalizer(cachedIptablesEip, util.KubeOVNControllerFinalizer)) {
+		return nil
 	}
 	newIptablesEip := cachedIptablesEip.DeepCopy()
 	controllerutil.AddFinalizer(newIptablesEip, util.KubeOVNControllerFinalizer)

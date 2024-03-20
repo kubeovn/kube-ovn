@@ -326,7 +326,7 @@ func (c *Controller) handleUpdateIP(key string) error {
 			klog.Infof("ip cr %s release ipam pod key %s from subnet %s", cachedIP.Name, podKey, cachedIP.Spec.Subnet)
 			c.ipam.ReleaseAddressByPod(podKey, cachedIP.Spec.Subnet)
 		}
-		if err = c.handleDelIPFinalizer(cachedIP, util.KubeOVNControllerFinalizer); err != nil {
+		if err = c.handleDelIPFinalizer(cachedIP); err != nil {
 			klog.Errorf("failed to handle del ip finalizer %v", err)
 			return err
 		}
@@ -347,7 +347,7 @@ func (c *Controller) handleDelIP(ip *kubeovnv1.IP) error {
 func (c *Controller) syncIPFinalizer(cl client.Client) error {
 	// migrate depreciated finalizer to new finalizer
 	ips := &kubeovnv1.IPList{}
-	return updateFinalizers(cl, ips, func(i int) (client.Object, client.Object) {
+	return migrateFinalizers(cl, ips, func(i int) (client.Object, client.Object) {
 		if i < 0 || i >= len(ips.Items) {
 			return nil, nil
 		}
@@ -379,12 +379,15 @@ func (c *Controller) handleAddIPFinalizer(cachedIP *kubeovnv1.IP, finalizer stri
 	return nil
 }
 
-func (c *Controller) handleDelIPFinalizer(cachedIP *kubeovnv1.IP, finalizer string) error {
-	if len(cachedIP.Finalizers) == 0 {
+func (c *Controller) handleDelIPFinalizer(cachedIP *kubeovnv1.IP) error {
+	if len(cachedIP.Finalizers) == 0 ||
+		!controllerutil.ContainsFinalizer(cachedIP, util.DepreciatedFinalizerName) ||
+		!controllerutil.ContainsFinalizer(cachedIP, util.KubeOVNControllerFinalizer) {
 		return nil
 	}
 	newIP := cachedIP.DeepCopy()
-	controllerutil.RemoveFinalizer(newIP, finalizer)
+	controllerutil.RemoveFinalizer(newIP, util.DepreciatedFinalizerName)
+	controllerutil.RemoveFinalizer(newIP, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedIP, newIP)
 	if err != nil {
 		klog.Errorf("failed to generate patch payload for ip %s, %v", cachedIP.Name, err)

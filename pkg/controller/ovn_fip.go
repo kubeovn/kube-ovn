@@ -465,7 +465,7 @@ func (c *Controller) handleDelOvnFip(key string) error {
 			return err
 		}
 	}
-	if err = c.handleDelOvnFipFinalizer(cachedFip, util.KubeOVNControllerFinalizer); err != nil {
+	if err = c.handleDelOvnFipFinalizer(cachedFip); err != nil {
 		klog.Errorf("failed to remove finalizer for ovn fip %s, %v", cachedFip.Name, err)
 		return err
 	}
@@ -604,7 +604,7 @@ func (c *Controller) GetOvnEip(eipName string) (*kubeovnv1.OvnEip, error) {
 func (c *Controller) syncOvnFipFinalizer(cl client.Client) error {
 	// migrate depreciated finalizer to new finalizer
 	fips := &kubeovnv1.OvnFipList{}
-	return updateFinalizers(cl, fips, func(i int) (client.Object, client.Object) {
+	return migrateFinalizers(cl, fips, func(i int) (client.Object, client.Object) {
 		if i < 0 || i >= len(fips.Items) {
 			return nil, nil
 		}
@@ -636,13 +636,16 @@ func (c *Controller) handleAddOvnFipFinalizer(cachedFip *kubeovnv1.OvnFip, final
 	return nil
 }
 
-func (c *Controller) handleDelOvnFipFinalizer(cachedFip *kubeovnv1.OvnFip, finalizer string) error {
-	if len(cachedFip.Finalizers) == 0 {
+func (c *Controller) handleDelOvnFipFinalizer(cachedFip *kubeovnv1.OvnFip) error {
+	if len(cachedFip.Finalizers) == 0 ||
+		!controllerutil.ContainsFinalizer(cachedFip, util.DepreciatedFinalizerName) ||
+		!controllerutil.ContainsFinalizer(cachedFip, util.KubeOVNControllerFinalizer) {
 		return nil
 	}
 	var err error
 	newFip := cachedFip.DeepCopy()
-	controllerutil.RemoveFinalizer(newFip, finalizer)
+	controllerutil.RemoveFinalizer(newFip, util.DepreciatedFinalizerName)
+	controllerutil.RemoveFinalizer(newFip, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedFip, newFip)
 	if err != nil {
 		klog.Errorf("failed to generate patch payload for ovn fip '%s', %v", cachedFip.Name, err)
