@@ -1119,8 +1119,11 @@ func (c *Controller) initResourceOnce() {
 		util.LogFatalAndExit(err, "failed to initialize node chassis")
 	}
 
-	if err := c.initDenyAllSecurityGroup(); err != nil {
+	if err := c.initDefaultDenyAllSecurityGroup(); err != nil {
 		util.LogFatalAndExit(err, "failed to initialize 'deny_all' security group")
+	}
+	if err := c.initAllSecurityGroups(); err != nil {
+		util.LogFatalAndExit(err, "failed to initialize all security groups")
 	}
 
 	if err := c.syncVpcNatGatewayCR(); err != nil {
