@@ -191,7 +191,15 @@ func (c *Controller) initAllSecurityGroups() error {
 		return err
 	}
 	for _, sg := range sgs {
-		c.addOrUpdateSgQueue.Add(sg.Name)
+		if lost, err := c.OVNNbClient.SGLostACL(sg); err != nil {
+			if lost {
+				c.addOrUpdateSgQueue.Add(sg.Name)
+			}
+		} else {
+			err = fmt.Errorf("failed to check if sg %s lost acl", sg.Name)
+			klog.Error(err)
+			return err
+		}
 	}
 	return nil
 }
