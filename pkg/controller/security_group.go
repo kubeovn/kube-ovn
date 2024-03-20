@@ -183,7 +183,7 @@ func (c *Controller) initDefaultDenyAllSecurityGroup() error {
 	return nil
 }
 
-func (c *Controller) initAllSecurityGroups() error {
+func (c *Controller) syncSecurityGroup() error {
 	klog.Infof("init all security groups")
 	sgs, err := c.sgsLister.List(labels.Everything())
 	if err != nil {
