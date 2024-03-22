@@ -40,7 +40,7 @@ require (
 	golang.org/x/sys v0.18.0
 	golang.org/x/time v0.5.0
 	google.golang.org/grpc v1.62.0
-	google.golang.org/protobuf v1.32.0
+	google.golang.org/protobuf v1.33.0
 	gopkg.in/k8snetworkplumbingwg/multus-cni.v4 v4.0.2
 	k8s.io/api v0.27.10
 	k8s.io/apimachinery v0.27.10
@@ -125,7 +125,7 @@ require (
 	github.com/golang-jwt/jwt/v4 v4.5.0 // indirect
 	github.com/golang/glog v1.2.0 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
-	github.com/golang/protobuf v1.5.3 // indirect
+	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/btree v1.0.1 // indirect
 	github.com/google/cadvisor v0.47.2 // indirect
 	github.com/google/cel-go v0.13.0 // indirect
