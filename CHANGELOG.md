@@ -1,5 +1,36 @@
 # Changelog
 
+## v1.12.9 (2024-03-22)
+
+ * [ee424ae4](https://github.com/kubeovn/kube-ovn/commit/ee424ae45dddbfe8506a0364a4a41979a044faeb) release v1.12.9
+ * [2a956e0b](https://github.com/kubeovn/kube-ovn/commit/2a956e0be09cb12952fe85aa9f298721161a81d2) chart: fix missing ENABLE_IC (#3851)
+ * [7d634ba2](https://github.com/kubeovn/kube-ovn/commit/7d634ba23126c7b0a19e18fe9a98526a4c7efe29) fix: cleanup.sh (#3569)
+ * [350eabbe](https://github.com/kubeovn/kube-ovn/commit/350eabbeacc88eadf9173e19bba4e825b42e9d5b) exclude vip as encap ip (#3855)
+ * [3cd21ed6](https://github.com/kubeovn/kube-ovn/commit/3cd21ed6bd8a32073fc5bc686d3ef79f381be24d) fix: duplicate ip deletion (#3589)
+ * [9ba51333](https://github.com/kubeovn/kube-ovn/commit/9ba51333a1fab06149199a357d9db5f3ecae30e6) iptables: reject access to invalid service port only for TCP (#3843)
+ * [19e6a99b](https://github.com/kubeovn/kube-ovn/commit/19e6a99bef98faef4ef7cb24b2e3241712ab0cb7) Fix 1.12 ipam deletion (#3554)
+ * [78c41df4](https://github.com/kubeovn/kube-ovn/commit/78c41df44d741124f3e17c5d64ad0bc92c71b00b) delete lsp and ipam with ip (#3540)
+ * [7bd3a6d0](https://github.com/kubeovn/kube-ovn/commit/7bd3a6d03134c1e51fda64124b286812597f9760) update protobuf module (#3841)
+ * [4c19787f](https://github.com/kubeovn/kube-ovn/commit/4c19787fdf080d81df7c856e3181ac30056a514b) kubectl-ko: fix subnet diagnose failure (#3808)
+ * [efe08095](https://github.com/kubeovn/kube-ovn/commit/efe08095db552f3ae2f09aa3184b5d391da69416) pinger: do not setup metrics if disabled (#3806)
+ * [52e6b3e2](https://github.com/kubeovn/kube-ovn/commit/52e6b3e2a72a2c0caa6e53cf2c13e2fe6540d750) Fix the failure to enable multi-network card traffic mirroring for newly created pods (#3805)
+ * [a8326227](https://github.com/kubeovn/kube-ovn/commit/a83262279740e9d762e111cd1ca32abc43a1fada) Makefile: add target kind-install-metallb (#3795)
+ * [ca937e58](https://github.com/kubeovn/kube-ovn/commit/ca937e58cda6e377b7254788b58ccb61baf51e1d) build(deps): bump golang.org/x/sys from 0.17.0 to 0.18.0 (#3792)
+ * [a3ee69a3](https://github.com/kubeovn/kube-ovn/commit/a3ee69a32fc692b49355f32cf452c8b036ac54cd) build(deps): bump golang.org/x/mod from 0.15.0 to 0.16.0 (#3793)
+ * [6c53861a](https://github.com/kubeovn/kube-ovn/commit/6c53861a16b43ce65e89584dddf57f0b3f891a28) Refactor build-go targets to use the -trimpath flag
+ * [442a2805](https://github.com/kubeovn/kube-ovn/commit/442a28054e9ae84a3b729c97b73e6b3b31bff124) fix incorrect variable assignment (#3787)
+ * [08a915a1](https://github.com/kubeovn/kube-ovn/commit/08a915a136748857c0c885b51753e40cb0620071) prepare for next release
+
+### Contributors
+
+ * bobz965
+ * changluyi
+ * dependabot[bot]
+ * hzma
+ * xieyanker
+ * zhangzujian
+ * 张祖建
+
 ## v1.12.8 (2024-02-29)
 
  * [f8e434c6](https://github.com/kubeovn/kube-ovn/commit/f8e434c6df93377093b72992910de1f09dcf37bc) release v1.12.8
