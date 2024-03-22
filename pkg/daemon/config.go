@@ -234,6 +234,17 @@ func (config *Configuration) initNicConfig(nicBridgeMappings map[string]string) 
 			return fmt.Errorf("failed to get iface addr. %v", err)
 		}
 		for _, addr := range addrs {
+			_, ipCidr, err := net.ParseCIDR(addr.String())
+			if err != nil {
+				klog.Errorf("Failed to parse CIDR address %s: %v", addr.String(), err)
+				continue
+			}
+			// exclude the vip as encap ip
+			if ones, bits := ipCidr.Mask.Size(); ones == bits {
+				klog.Infof("Skip address %s", ipCidr.String())
+				continue
+			}
+
 			ipStr := strings.Split(addr.String(), "/")[0]
 			if ip := net.ParseIP(ipStr); ip == nil || ip.IsLinkLocalUnicast() {
 				continue
