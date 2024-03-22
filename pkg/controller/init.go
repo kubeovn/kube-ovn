@@ -633,7 +633,7 @@ func (c *Controller) syncSubnetCR() error {
 			subnet, err = c.calcSubnetStatusIP(subnet)
 		}
 		if err != nil {
-			klog.Errorf("failed to calculate subnet %s used ip: %v", subnet.Name, err)
+			klog.Errorf("failed to calculate subnet %s used ip: %v", orisubnet.Name, err)
 			return err
 		}
 
