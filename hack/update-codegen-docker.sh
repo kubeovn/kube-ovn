@@ -12,6 +12,6 @@ docker run -it --rm \
     -e CLIENT_GENERATOR_OUT=${PROJECT_PACKAGE}/pkg/client \
     -e APIS_ROOT=${PROJECT_PACKAGE}/pkg/apis \
     -e GOPROXY=${GOPROXY} \
-    ghcr.io/zhangzujian/kube-code-generator:v1.29.2
+    ghcr.io/zhangzujian/kube-code-generator:v1.29.3
 
 go mod tidy
