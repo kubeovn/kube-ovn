@@ -625,11 +625,22 @@ func (c *Controller) setIptables() error {
 		}
 		if ipsetExists {
 			iptablesRules[0].Rule = strings.Fields(fmt.Sprintf(`-i ovn0 -m set --match-set %s src -m set --match-set %s dst,dst -j MARK --set-xmark 0x4000/0x4000`, matchset, ipset))
-			rejectRule := strings.Fields(fmt.Sprintf(`-m mark ! --mark 0x4000/0x4000 -m set --match-set %s dst -m conntrack --ctstate NEW -j REJECT`, svcMatchset))
+			rejectRule := strings.Fields(fmt.Sprintf(`-p tcp -m mark ! --mark 0x4000/0x4000 -m set --match-set %s dst -m conntrack --ctstate NEW -j REJECT`, svcMatchset))
+			obsoleteRejectRule := strings.Fields(fmt.Sprintf(`-m mark ! --mark 0x4000/0x4000 -m set --match-set %s dst -m conntrack --ctstate NEW -j REJECT`, svcMatchset))
 			iptablesRules = append(iptablesRules,
 				util.IPTableRule{Table: "filter", Chain: "INPUT", Rule: rejectRule},
 				util.IPTableRule{Table: "filter", Chain: "OUTPUT", Rule: rejectRule},
 			)
+			obsoleteRejectRules := []util.IPTableRule{
+				{Table: "filter", Chain: "INPUT", Rule: obsoleteRejectRule},
+				{Table: "filter", Chain: "OUTPUT", Rule: obsoleteRejectRule},
+			}
+			for _, rule := range obsoleteRejectRules {
+				if err = deleteIptablesRule(ipt, rule); err != nil {
+					klog.Errorf("failed to delete obsolete iptables rule %v: %v", rule, err)
+					return err
+				}
+			}
 		}
 
 		if nodeIP := nodeIPs[protocol]; nodeIP != "" {
