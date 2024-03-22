@@ -65,6 +65,7 @@ func:
   ENABLE_BIND_LOCAL_IP: true
   U2O_INTERCONNECTION: false
   ENABLE_TPROXY: false
+  ENABLE_IC: false
 
 ipv4:
   POD_CIDR: "10.16.0.0/16"
