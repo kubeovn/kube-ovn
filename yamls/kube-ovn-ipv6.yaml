@@ -274,8 +274,6 @@ spec:
             - mountPath: /etc/localtime
               name: localtime
               readOnly: true
-            - mountPath: /tmp
-              name: tmp
           livenessProbe:
             failureThreshold: 3
             initialDelaySeconds: 30
@@ -340,9 +338,6 @@ spec:
         - name: localtime
           hostPath:
             path: /etc/localtime
-        - name: tmp
-          hostPath:
-            path: /tmp
         - name: local-bin
           hostPath:
             path: /usr/local/bin

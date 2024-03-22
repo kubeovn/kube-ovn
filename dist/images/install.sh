@@ -3320,9 +3320,6 @@ spec:
               name: host-run-ovs
             - mountPath: /var/run/ovn
               name: host-run-ovn
-            - mountPath: /sys
-              name: host-sys
-              readOnly: true
             - mountPath: /etc/openvswitch
               name: host-config-openvswitch
             - mountPath: /etc/ovn
@@ -3362,9 +3359,6 @@ spec:
         - name: host-run-ovn
           hostPath:
             path: /run/ovn
-        - name: host-sys
-          hostPath:
-            path: /sys
         - name: host-config-openvswitch
           hostPath:
             path: /etc/origin/openvswitch
@@ -3645,9 +3639,6 @@ spec:
               name: host-run-ovs
             - mountPath: /var/run/ovn
               name: host-run-ovn
-            - mountPath: /sys
-              name: host-sys
-              readOnly: true
             - mountPath: /etc/openvswitch
               name: host-config-openvswitch
             - mountPath: /etc/ovn
@@ -3701,9 +3692,6 @@ spec:
         - name: host-run-ovn
           hostPath:
             path: /run/ovn
-        - name: host-sys
-          hostPath:
-            path: /sys
         - name: host-ns
           hostPath:
             path: /var/run/netns
@@ -4209,8 +4197,6 @@ spec:
           - mountPath: /etc/localtime
             name: localtime
             readOnly: true
-          - mountPath: /tmp
-            name: tmp
         livenessProbe:
           failureThreshold: 3
           initialDelaySeconds: 30
@@ -4275,9 +4261,6 @@ spec:
         - name: localtime
           hostPath:
             path: /etc/localtime
-        - name: tmp
-          hostPath:
-            path: /tmp
         - name: local-bin
           hostPath:
             path: /usr/local/bin
