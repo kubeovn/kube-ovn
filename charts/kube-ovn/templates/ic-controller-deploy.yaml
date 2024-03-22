@@ -1,4 +1,4 @@
-{{- if eq .Values.func.ENABLE_IC true }}
+{{- if .Values.func.ENABLE_IC }}
 kind: Deployment
 apiVersion: apps/v1
 metadata:
