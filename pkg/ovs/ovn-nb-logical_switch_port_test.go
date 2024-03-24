@@ -120,8 +120,8 @@ func (suite *OvnClientTestSuite) testCreateLogicalSwitchPort() {
 		require.Equal(t, dhcpUUIDs.DHCPv6OptionsUUID, *lsp.Dhcpv6Options)
 	})
 
-	t.Run("create logical switch port with default vpc", func(t *testing.T) {
-		lspName := "test-create-lsp-lsp-default-vpc"
+	t.Run("create logical switch port in default vpc with sg", func(t *testing.T) {
+		lspName := "test-create-lsp-lsp-in-default-vpc-with-sg"
 		sgs := "sg,sg1"
 		vpcName := "ovn-cluster"
 
@@ -146,7 +146,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalSwitchPort() {
 		require.Equal(t, dhcpUUIDs.DHCPv6OptionsUUID, *lsp.Dhcpv6Options)
 	})
 
-	t.Run("create logical switch port with portSecurity=false", func(t *testing.T) {
+	t.Run("create logical switch port with portSecurity=false and sg", func(t *testing.T) {
 		lspName := "test-create-lsp-lsp-no-port-security"
 		sgs := "sg,sg1"
 		vpcName := "test-vpc"
@@ -159,11 +159,14 @@ func (suite *OvnClientTestSuite) testCreateLogicalSwitchPort() {
 		require.ElementsMatch(t, []string{"00:00:00:AB:B4:65 10.244.0.37 fc00::af4:25"}, lsp.Addresses)
 		require.Equal(t, map[string]string{
 			"associated_sg_" + util.DefaultSecurityGroupName: "false",
-			"pod":         fmt.Sprintf("%s/%s", podNamespace, podName),
-			"ls":          lsName,
-			"vendor":      util.CniTypeName,
-			"vips":        vips,
-			"attach-vips": "true",
+			"associated_sg_sg":  "true",
+			"associated_sg_sg1": "true",
+			"pod":               fmt.Sprintf("%s/%s", podNamespace, podName),
+			"security_groups":   "sg/sg1",
+			"ls":                lsName,
+			"vendor":            util.CniTypeName,
+			"vips":              vips,
+			"attach-vips":       "true",
 		}, lsp.ExternalIDs)
 		require.Equal(t, dhcpUUIDs.DHCPv4OptionsUUID, *lsp.Dhcpv4Options)
 		require.Equal(t, dhcpUUIDs.DHCPv6OptionsUUID, *lsp.Dhcpv6Options)
