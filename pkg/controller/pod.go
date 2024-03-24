@@ -762,8 +762,9 @@ func (c *Controller) reconcileAllocateSubnets(cachedPod, pod *v1.Pod, needAlloca
 				}
 			}
 
-			if portSecurity {
-				sgNames := strings.Split(securityGroupAnnotation, ",")
+			if securityGroupAnnotation != "" {
+				securityGroups := strings.ReplaceAll(securityGroupAnnotation, " ", "")
+				sgNames := strings.Split(securityGroups, ",")
 				for _, sgName := range sgNames {
 					if sgName == "" {
 						continue
@@ -1233,11 +1234,10 @@ func (c *Controller) handleUpdatePodSecurity(key string) error {
 		}
 
 		c.syncVirtualPortsQueue.Add(podNet.Subnet.Name)
-
+		securityGroupAnnotation := pod.Annotations[fmt.Sprintf(util.SecurityGroupAnnotationTemplate, podNet.ProviderName)]
 		var securityGroups string
-		if portSecurity {
-			securityGroups = pod.Annotations[fmt.Sprintf(util.SecurityGroupAnnotationTemplate, podNet.ProviderName)]
-			securityGroups = strings.ReplaceAll(securityGroups, " ", "")
+		if securityGroupAnnotation != "" {
+			securityGroups = strings.ReplaceAll(securityGroupAnnotation, " ", "")
 			for _, sg := range strings.Split(securityGroups, ",") {
 				c.syncSgPortsQueue.Add(sg)
 			}
