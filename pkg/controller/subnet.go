@@ -431,7 +431,7 @@ func checkAndUpdateGateway(subnet *kubeovnv1.Subnet) (bool, error) {
 	switch {
 	case subnet.Spec.Gateway == "":
 		gw, err = util.GetGwByCidr(subnet.Spec.CIDRBlock)
-	case util.CheckProtocol(subnet.Spec.Gateway) != util.CheckProtocol(subnet.Spec.CIDRBlock):
+	case subnet.Spec.Protocol == kubeovnv1.ProtocolDual && util.CheckProtocol(subnet.Spec.Gateway) != util.CheckProtocol(subnet.Spec.CIDRBlock):
 		gw, err = util.AppendGwByCidr(subnet.Spec.Gateway, subnet.Spec.CIDRBlock)
 	default:
 		gw = subnet.Spec.Gateway
