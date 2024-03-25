@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.12.10 (2024-03-25)
+
+ * [4a6888d5](https://github.com/kubeovn/kube-ovn/commit/4a6888d5dacc16211f6b6702dce5ccc9bbcf4183) release v1.12.10
+ * [55c314ef](https://github.com/kubeovn/kube-ovn/commit/55c314eff24e17f5eb2d73c772fb10a9dc61b1fb) fix: when give ipv4 cidr ipv6 gateway, the gateway will extend infinitely (#3860)
+ * [57706685](https://github.com/kubeovn/kube-ovn/commit/5770668599905a43614bc7d083b19bb91836ff12) prepare for next release
+
+### Contributors
+
+ * changluyi
+
 ## v1.12.9 (2024-03-22)
 
  * [ee424ae4](https://github.com/kubeovn/kube-ovn/commit/ee424ae45dddbfe8506a0364a4a41979a044faeb) release v1.12.9
