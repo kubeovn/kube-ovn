@@ -7,7 +7,7 @@ require (
 	github.com/Microsoft/hcsshim v0.12.1
 	github.com/alauda/felix v3.6.6-0.20201207121355-187332daf314+incompatible
 	github.com/bhendo/go-powershell v0.0.0-20190719160123-219e7fb4e41e
-	github.com/cenkalti/backoff/v4 v4.2.1
+	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/cnf/structhash v0.0.0-20201127153200-e1b16c1ebc08
 	github.com/containernetworking/cni v1.1.2
 	github.com/containernetworking/plugins v1.4.1
