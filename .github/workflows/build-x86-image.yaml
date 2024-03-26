@@ -522,10 +522,11 @@ jobs:
 
       - name: Check valgrind result
         run: |
-          kubectl -n kube-system rollout restart deploy ovn-central
           kubectl -n kube-system rollout restart ds ovs-ovn
-          kubectl -n kube-system rollout status deploy ovn-central
           kubectl -n kube-system rollout status ds ovs-ovn
+          sleep 10
+          kubectl -n kube-system rollout restart deploy ovn-central
+          kubectl -n kube-system rollout status deploy ovn-central
           while true; do
             if [ $(kubectl -n kube-system get pod -l app=ovs -o name | wc -l) -eq $(kubectl get node -o name | wc -l) ]; then
               break
@@ -678,10 +679,11 @@ jobs:
 
       - name: Check valgrind result
         run: |
-          kubectl -n kube-system rollout restart deploy ovn-central
           kubectl -n kube-system rollout restart ds ovs-ovn
-          kubectl -n kube-system rollout status deploy ovn-central
           kubectl -n kube-system rollout status ds ovs-ovn
+          sleep 10
+          kubectl -n kube-system rollout restart deploy ovn-central
+          kubectl -n kube-system rollout status deploy ovn-central
           while true; do
             if [ $(kubectl -n kube-system get pod -l app=ovs -o name | wc -l) -eq $(kubectl get node -o name | wc -l) ]; then
               break
@@ -955,10 +957,11 @@ jobs:
 
       - name: Check valgrind result
         run: |
-          kubectl -n kube-system rollout restart deploy ovn-central
           kubectl -n kube-system rollout restart ds ovs-ovn
-          kubectl -n kube-system rollout status deploy ovn-central
           kubectl -n kube-system rollout status ds ovs-ovn
+          sleep 10
+          kubectl -n kube-system rollout restart deploy ovn-central
+          kubectl -n kube-system rollout status deploy ovn-central
           while true; do
             if [ $(kubectl -n kube-system get pod -l app=ovs -o name | wc -l) -eq $(kubectl get node -o name | wc -l) ]; then
               break
@@ -1109,10 +1112,11 @@ jobs:
 
       - name: Check valgrind result
         run: |
-          kubectl -n kube-system rollout restart deploy ovn-central
           kubectl -n kube-system rollout restart ds ovs-ovn
-          kubectl -n kube-system rollout status deploy ovn-central
           kubectl -n kube-system rollout status ds ovs-ovn
+          sleep 10
+          kubectl -n kube-system rollout restart deploy ovn-central
+          kubectl -n kube-system rollout status deploy ovn-central
           while true; do
             if [ $(kubectl -n kube-system get pod -l app=ovs -o name | wc -l) -eq $(kubectl get node -o name | wc -l) ]; then
               break
