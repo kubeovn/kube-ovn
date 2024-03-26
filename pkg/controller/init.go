@@ -622,15 +622,15 @@ func (c *Controller) syncSubnetCR() error {
 		klog.Error(err)
 		return err
 	}
-	for _, orisubnet := range subnets {
-		subnet := orisubnet.DeepCopy()
+	for _, cachedSubnet := range subnets {
+		subnet := cachedSubnet.DeepCopy()
 		if util.CheckProtocol(subnet.Spec.CIDRBlock) == kubeovnv1.ProtocolDual {
 			subnet, err = c.calcDualSubnetStatusIP(subnet)
 		} else {
 			subnet, err = c.calcSubnetStatusIP(subnet)
 		}
 		if err != nil {
-			klog.Errorf("failed to calculate subnet %s used ip: %v", subnet.Name, err)
+			klog.Errorf("failed to calculate subnet %s used ip: %v", cachedSubnet.Name, err)
 			return err
 		}
 

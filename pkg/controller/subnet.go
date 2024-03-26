@@ -746,7 +746,7 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		subnet, err = c.calcSubnetStatusIP(subnet)
 	}
 	if err != nil {
-		klog.Errorf("calculate subnet %s used ip failed, %v", subnet.Name, err)
+		klog.Errorf("calculate subnet %s used ip failed, %v", cachedSubnet.Name, err)
 		return err
 	}
 
