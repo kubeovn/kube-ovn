@@ -430,7 +430,7 @@ func (c *Controller) handleUpdateVirtualParents(key string) error {
 		}
 		for _, podNet := range podNets {
 			if podNet.Subnet.Name == cachedVip.Spec.Subnet {
-				portName := ovs.PodNameToPortName(pod.Name, pod.Namespace, podNet.Subnet.Spec.Provider)
+				portName := ovs.PodNameToPortName(pod.Name, pod.Namespace, podNet.ProviderName)
 				virtualParents = append(virtualParents, portName)
 				key := fmt.Sprintf("%s/%s", pod.Namespace, pod.Name)
 				klog.Infof("enqueue update pod security for %s", key)
