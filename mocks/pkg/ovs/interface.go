@@ -796,17 +796,17 @@ func (mr *MockLogicalSwitchPortMockRecorder) CreateBareLogicalSwitchPort(lsName,
 }
 
 // CreateLocalnetLogicalSwitchPort mocks base method.
-func (m *MockLogicalSwitchPort) CreateLocalnetLogicalSwitchPort(lsName, lspName, provider string, vlanID int) error {
+func (m *MockLogicalSwitchPort) CreateLocalnetLogicalSwitchPort(lsName, lspName, provider, cidrBlock string, vlanID int) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateLocalnetLogicalSwitchPort", lsName, lspName, provider, vlanID)
+	ret := m.ctrl.Call(m, "CreateLocalnetLogicalSwitchPort", lsName, lspName, provider, cidrBlock, vlanID)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // CreateLocalnetLogicalSwitchPort indicates an expected call of CreateLocalnetLogicalSwitchPort.
-func (mr *MockLogicalSwitchPortMockRecorder) CreateLocalnetLogicalSwitchPort(lsName, lspName, provider, vlanID any) *gomock.Call {
+func (mr *MockLogicalSwitchPortMockRecorder) CreateLocalnetLogicalSwitchPort(lsName, lspName, provider, cidrBlock, vlanID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateLocalnetLogicalSwitchPort", reflect.TypeOf((*MockLogicalSwitchPort)(nil).CreateLocalnetLogicalSwitchPort), lsName, lspName, provider, vlanID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateLocalnetLogicalSwitchPort", reflect.TypeOf((*MockLogicalSwitchPort)(nil).CreateLocalnetLogicalSwitchPort), lsName, lspName, provider, cidrBlock, vlanID)
 }
 
 // CreateLogicalSwitchPort mocks base method.
@@ -2652,17 +2652,17 @@ func (mr *MockNbClientMockRecorder) CreateLoadBalancerHealthCheck(lbName, vip, l
 }
 
 // CreateLocalnetLogicalSwitchPort mocks base method.
-func (m *MockNbClient) CreateLocalnetLogicalSwitchPort(lsName, lspName, provider string, vlanID int) error {
+func (m *MockNbClient) CreateLocalnetLogicalSwitchPort(lsName, lspName, provider, cidrBlock string, vlanID int) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateLocalnetLogicalSwitchPort", lsName, lspName, provider, vlanID)
+	ret := m.ctrl.Call(m, "CreateLocalnetLogicalSwitchPort", lsName, lspName, provider, cidrBlock, vlanID)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // CreateLocalnetLogicalSwitchPort indicates an expected call of CreateLocalnetLogicalSwitchPort.
-func (mr *MockNbClientMockRecorder) CreateLocalnetLogicalSwitchPort(lsName, lspName, provider, vlanID any) *gomock.Call {
+func (mr *MockNbClientMockRecorder) CreateLocalnetLogicalSwitchPort(lsName, lspName, provider, cidrBlock, vlanID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateLocalnetLogicalSwitchPort", reflect.TypeOf((*MockNbClient)(nil).CreateLocalnetLogicalSwitchPort), lsName, lspName, provider, vlanID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateLocalnetLogicalSwitchPort", reflect.TypeOf((*MockNbClient)(nil).CreateLocalnetLogicalSwitchPort), lsName, lspName, provider, cidrBlock, vlanID)
 }
 
 // CreateLogicalPatchPort mocks base method.
