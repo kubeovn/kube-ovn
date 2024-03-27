@@ -38,7 +38,7 @@ func (c *OVNNbClient) CreateGatewayLogicalSwitch(lsName, lrName, provider, ip, m
 		return fmt.Errorf("create logical switch %s: %v", lsName, err)
 	}
 
-	if err := c.CreateLocalnetLogicalSwitchPort(lsName, localnetLspName, provider, vlanID); err != nil {
+	if err := c.CreateLocalnetLogicalSwitchPort(lsName, localnetLspName, provider, "", vlanID); err != nil {
 		return fmt.Errorf("create localnet logical switch port %s: %v", localnetLspName, err)
 	}
 
