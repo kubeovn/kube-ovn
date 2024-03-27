@@ -46,7 +46,7 @@ RUN cd /usr/src/ && git clone -b branch-22.12 --depth=1 https://github.com/ovn-o
     # fix lr-lb dnat with multiple distributed gateway ports
     curl -s https://github.com/kubeovn/ovn/commit/80f37c2debbf9f5230403691f791d11cc2b2e277.patch | git apply && \
     # lflow: do not send direct traffic between lports to conntrack
-    curl -s https://github.com/kubeovn/ovn/commit/6f1af045845deeabf06fdc7c90073e0a6874ab2f.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/54cbe0d1ba2051e640dd3e53498f373362547691.patch | git apply && \
     # northd: add nb option version_compatibility
     curl -s https://github.com/kubeovn/ovn/commit/174561abd707239f134501c4320cbf9b29af0305.patch | git apply
 

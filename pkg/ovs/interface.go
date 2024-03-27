@@ -70,7 +70,7 @@ type LogicalSwitch interface {
 type LogicalSwitchPort interface {
 	CreateLogicalSwitchPort(lsName, lspName, ip, mac, podName, namespace string, portSecurity bool, securityGroups, vips string, enableDHCP bool, dhcpOptions *DHCPOptionsUUIDs, vpc string) error
 	CreateBareLogicalSwitchPort(lsName, lspName, ip, mac string) error
-	CreateLocalnetLogicalSwitchPort(lsName, lspName, provider string, vlanID int) error
+	CreateLocalnetLogicalSwitchPort(lsName, lspName, provider, cidrBlock string, vlanID int) error
 	CreateVirtualLogicalSwitchPorts(lsName string, ips ...string) error
 	// create virtual type logical switch port for allowed-address-pair
 	CreateVirtualLogicalSwitchPort(lspName, lsName, ip string) error
