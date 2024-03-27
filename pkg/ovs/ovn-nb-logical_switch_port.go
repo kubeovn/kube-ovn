@@ -3,6 +3,7 @@ package ovs
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"strconv"
 	"strings"
 
@@ -116,20 +117,37 @@ func (c *OVNNbClient) CreateLogicalSwitchPort(lsName, lspName, ip, mac, podName,
 }
 
 // CreateLocalnetLogicalSwitchPort create localnet type logical switch port
-func (c *OVNNbClient) CreateLocalnetLogicalSwitchPort(lsName, lspName, provider string, vlanID int) error {
-	exist, err := c.LogicalSwitchPortExists(lspName)
+func (c *OVNNbClient) CreateLocalnetLogicalSwitchPort(lsName, lspName, provider, cidrBlock string, vlanID int) error {
+	lsp, err := c.GetLogicalSwitchPort(lspName, true)
 	if err != nil {
 		klog.Error(err)
 		return err
 	}
 
-	// ignore
-	if exist {
+	ipv4CIDR, ipv6CIDR := util.SplitStringIP(cidrBlock)
+	externalIDs := make(map[string]string)
+	if ipv4CIDR != "" {
+		externalIDs["ipv4_network"] = ipv4CIDR
+	}
+	if ipv6CIDR != "" {
+		externalIDs["ipv6_network"] = ipv6CIDR
+	}
+
+	if lsp != nil {
+		externalIDs[logicalSwitchKey] = lsName
+		externalIDs["vendor"] = util.CniTypeName
+		if !reflect.DeepEqual(lsp.ExternalIDs, externalIDs) {
+			lsp.ExternalIDs = externalIDs
+			if err = c.UpdateLogicalSwitchPort(lsp, &lsp.ExternalIDs); err != nil {
+				return fmt.Errorf("failed to update external-ids of logical switch port %s: %v", lspName, err)
+			}
+		}
+
 		return nil
 	}
 
 	/* create logical switch port */
-	lsp := &ovnnb.LogicalSwitchPort{
+	lsp = &ovnnb.LogicalSwitchPort{
 		UUID:      ovsclient.NamedUUID(),
 		Name:      lspName,
 		Type:      "localnet",
@@ -137,6 +155,7 @@ func (c *OVNNbClient) CreateLocalnetLogicalSwitchPort(lsName, lspName, provider 
 		Options: map[string]string{
 			"network_name": provider,
 		},
+		ExternalIDs: externalIDs,
 	}
 
 	if vlanID > 0 && vlanID < 4096 {
