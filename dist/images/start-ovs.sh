@@ -1,8 +1,6 @@
 #!/bin/bash
 set -euo pipefail
 
-
-
 HW_OFFLOAD=${HW_OFFLOAD:-false}
 ENABLE_SSL=${ENABLE_SSL:-false}
 OVN_DB_IPS=${OVN_DB_IPS:-}
@@ -122,8 +120,13 @@ function handle_underlay_bridges() {
 
 handle_underlay_bridges
 
+# When ovs-vswitchd starts with this value set as true, it will neither flush or
+# expire previously set datapath flows nor will it send and receive any
+# packets to or from the datapath. Please check ovs-vswitchd.conf.db.5.txt
+ovs-vsctl --no-wait set open_vswitch . other_config:flow-restore-wait="true"
+
 # Start vswitchd. restart will automatically set/unset flow-restore-wait which is not what we want
-/usr/share/openvswitch/scripts/ovs-ctl restart --no-ovsdb-server --system-id=random --no-mlockall --ovs-vswitchd-wrapper="$DEBUG_WRAPPER"
+/usr/share/openvswitch/scripts/ovs-ctl start --no-ovsdb-server --system-id=random --no-mlockall --ovs-vswitchd-wrapper="$DEBUG_WRAPPER"
 /usr/share/openvswitch/scripts/ovs-ctl --protocol=udp --dport=6081 enable-protocol
 
 function gen_conn_str {
@@ -156,6 +159,20 @@ if [[ "$ENABLE_SSL" == "false" ]]; then
 else
   /usr/share/ovn/scripts/ovn-ctl --ovn-controller-ssl-key=/var/run/tls/key --ovn-controller-ssl-cert=/var/run/tls/cert --ovn-controller-ssl-ca-cert=/var/run/tls/cacert --ovn-controller-wrapper="$DEBUG_WRAPPER" restart_controller
 fi
+
+# Wait ovn-controller finish init flow compute and update it to vswitchd,
+# then update flow-restore-wait to indicate vswitchd to process flows
+set +e
+flow_num=$(ovs-ofctl dump-flows br-int | wc -l)
+while [ $flow_num -le $FLOW_LIMIT ]
+do
+  echo "$flow_num flows now, waiting for ovs-vswitchd flow ready"
+  sleep 1
+  flow_num=$(ovs-ofctl dump-flows br-int | wc -l)
+done
+set -e
+
+ovs-vsctl --no-wait set open_vswitch . other_config:flow-restore-wait="false"
 
 chmod 600 /etc/openvswitch/*
 tail --follow=name --retry /var/log/ovn/ovn-controller.log
