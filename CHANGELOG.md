@@ -927,6 +927,33 @@
  * 张祖建
  * 袁又袁
 
+## v1.11.16 (2024-03-27)
+
+ * [6b9e393c](https://github.com/kubeovn/kube-ovn/commit/6b9e393cf1f23a2cc9761e1bde781cb20d8d1f2b) set release 1.11.16
+ * [f28babda](https://github.com/kubeovn/kube-ovn/commit/f28babdae3a09e638b30bd0c0816daad847ef92e) fix cves
+ * [bc4cf1ae](https://github.com/kubeovn/kube-ovn/commit/bc4cf1aea61911dbf8370d248f3d229443de9e4d) ci: fix memory leak reporting caused by ovn-controller crashes (#3873)
+ * [e7fc6eac](https://github.com/kubeovn/kube-ovn/commit/e7fc6eac6f682776e88052c9e079e49e4b3dc8f9) Fix the failure to enable multi-network card traffic mirroring for newly created pods (#3805)
+ * [680ca67c](https://github.com/kubeovn/kube-ovn/commit/680ca67c6da8e035a69795da439e0fe37af9113e) fix incorrect variable assignment (#3787)
+ * [576866b9](https://github.com/kubeovn/kube-ovn/commit/576866b99036c224969e41fd6bff0f1e601216b9) if startOVNIC firstly, and setazName secondly, the ovn-ic-db may sync the old azname (#3762)
+ * [bf36c911](https://github.com/kubeovn/kube-ovn/commit/bf36c9117f3a6a9f69febbad9d06aaa0c16188d9) ci: cleanup disk space
+ * [fbbe6e73](https://github.com/kubeovn/kube-ovn/commit/fbbe6e732678879cd0ea23045784b1aff782cca9) Log near err (#3739)
+ * [08fa8214](https://github.com/kubeovn/kube-ovn/commit/08fa8214fd24477f42f27b60ea7eba68a29b1c59) ip trigger subnet delete (#3703)
+ * [65bb2b75](https://github.com/kubeovn/kube-ovn/commit/65bb2b75ee375ba2af31183c89b921cdb405ec04) fix some ip can not allocate after released (#3699)
+ * [1794ab87](https://github.com/kubeovn/kube-ovn/commit/1794ab8779951a80c6137b7029fd88625389c92b) Compatible with controller deployment methods before kube-ovn 1.11.16
+ * [d5d4caa4](https://github.com/kubeovn/kube-ovn/commit/d5d4caa475b4159548f02e46e2a74566938ec8f6) ovn: do not send direct traffic between lports to conntrack (#3663)
+ * [6f29efd9](https://github.com/kubeovn/kube-ovn/commit/6f29efd965425c052cec631af968f2467ad467ff) sync master change to 1.11 (#3674)
+ * [0e98a62d](https://github.com/kubeovn/kube-ovn/commit/0e98a62db22ec09064d5d0b3f8513d86d8e534d7) delete cm ovn-ic-config cause crash 1.11 (#3665)
+ * [c0fa3db1](https://github.com/kubeovn/kube-ovn/commit/c0fa3db18056c50a2cd6c64d7d7c8f290aa4b9ca) prepare for next release
+
+### Contributors
+
+ * Changlu Yi
+ * bobz965
+ * changluyi
+ * xieyanker
+ * zhangzujian
+ * 张祖建
+
 ## v1.11.15 (2024-01-22)
 
  * [94bdf05d](https://github.com/kubeovn/kube-ovn/commit/94bdf05d4555764b2d1e1f697eb47feb14cf7d08) set for release 1.11.15
