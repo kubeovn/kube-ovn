@@ -63,7 +63,7 @@ RUN cd /usr/src/ && git clone -b branch-22.03 --depth=1 https://github.com/ovn-o
     # ovn-controller: do not send GARP on localnet for Kube-OVN ports
     curl -s https://github.com/kubeovn/ovn/commit/1792621bf33a661d66ca47620871668267e3e521.patch | git apply && \
     # lflow: do not send direct traffic between lports to conntrack
-    curl -s https://github.com/kubeovn/ovn/commit/55b22c91f9e4a128ab2ae0068e426cc2f0220e0c.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/f9ad910c8036dc138e52738c400ddcca7236337e.patch | git apply && \
     sed -i 's/OVN/ovn/g' debian/changelog && \
     rm -rf .git && \
     ./boot.sh && \

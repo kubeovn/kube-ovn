@@ -2243,7 +2243,7 @@ func (c LegacyClient) GetLogicalSwitchPortByLogicalSwitch(logicalSwitch string) 
 	return rv, nil
 }
 
-func (c LegacyClient) CreateLocalnetPort(ls, port, provider string, vlanID int) error {
+func (c LegacyClient) CreateLocalnetPort(ls, port, provider, cidrBlock string, vlanID int) error {
 	cmdArg := []string{
 		MayExist, "lsp-add", ls, port, "--",
 		"lsp-set-addresses", port, "unknown", "--",
@@ -2254,6 +2254,13 @@ func (c LegacyClient) CreateLocalnetPort(ls, port, provider string, vlanID int) 
 	if vlanID > 0 && vlanID < 4096 {
 		cmdArg = append(cmdArg,
 			"--", "set", "logical_switch_port", port, fmt.Sprintf("tag=%d", vlanID))
+	}
+	ipv4CIDR, ipv6CIDR := util.SplitStringIP(cidrBlock)
+	if ipv4CIDR != "" {
+		cmdArg = append(cmdArg, "--", "set", "logical_switch_port", port, fmt.Sprintf("external_ids:ipv4_network=%s", ipv4CIDR))
+	}
+	if ipv6CIDR != "" {
+		cmdArg = append(cmdArg, "--", "set", "logical_switch_port", port, fmt.Sprintf("external_ids:ipv6_network=%s", ipv6CIDR))
 	}
 
 	if _, err := c.ovnNbCommand(cmdArg...); err != nil {
