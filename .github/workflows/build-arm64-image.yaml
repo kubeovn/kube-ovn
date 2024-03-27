@@ -52,7 +52,7 @@ jobs:
           restore-keys: ${{ runner.os }}-${{ env.GO_FULL_VER }}-arm64-
 
       - name: Build
-        run: make release-arm || make release-arm
+        run: make release-arm
 
       - name: Push
         if: github.ref_name == github.event.repository.default_branch || startsWith(github.ref_name, 'release-')
