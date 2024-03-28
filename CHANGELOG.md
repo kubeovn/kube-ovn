@@ -1,5 +1,23 @@
 # Changelog
 
+## v1.12.11 (2024-03-28)
+
+ * [66df5d63](https://github.com/kubeovn/kube-ovn/commit/66df5d63f62c33f4271f2f4ea44c5d928610a83c) release v1.12.11
+ * [db92bb99](https://github.com/kubeovn/kube-ovn/commit/db92bb99e1fc312240e97bc9aed158d2b861320e) change northd probe interval to 5s (#3882)
+ * [d4f8ebe4](https://github.com/kubeovn/kube-ovn/commit/d4f8ebe46864516ced47229832f0c85b9066768c) fix go fmt
+ * [64cd8d3a](https://github.com/kubeovn/kube-ovn/commit/64cd8d3a6e7472ab923ee93d73627e219392f964) ovn: reduce down time during upgrading from version 21.06 (#3881)
+ * [b347841a](https://github.com/kubeovn/kube-ovn/commit/b347841af7d4eb07a8f23f8d8197fcc2d728e485) compile binaries with debug symbols for debug images (#3871)
+ * [94041b19](https://github.com/kubeovn/kube-ovn/commit/94041b19efbd7825601b50e57ba48c1d06fcb0be) ovn: update patch for skipping ct (#3879)
+ * [9b183d2e](https://github.com/kubeovn/kube-ovn/commit/9b183d2e003048ef46b54b719ed226804fefb2df) ci: fix memory leak reporting caused by ovn-controller crashes (#3873)
+ * [720e5f62](https://github.com/kubeovn/kube-ovn/commit/720e5f62d18c8253ef2d9df8ee1977a5216ca153) Update dependencies in go.mod file
+ * [ccefae1d](https://github.com/kubeovn/kube-ovn/commit/ccefae1de9ca40260cfe366f590270853bbcf022) prepare for next release
+
+### Contributors
+
+ * changluyi
+ * zhangzujian
+ * 张祖建
+
 ## v1.12.10 (2024-03-25)
 
  * [4a6888d5](https://github.com/kubeovn/kube-ovn/commit/4a6888d5dacc16211f6b6702dce5ccc9bbcf4183) release v1.12.10
