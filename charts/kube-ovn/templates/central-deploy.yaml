@@ -74,6 +74,8 @@ spec:
               value: "{{- .Values.func.ENABLE_BIND_LOCAL_IP }}"
             - name: PROBE_INTERVAL
               value: "{{ .Values.networking.PROBE_INTERVAL }}"
+            - name: OVN_NORTHD_PROBE_INTERVAL
+              value: "{{ .Values.networking.OVN_NORTHD_PROBE_INTERVAL}}"
             - name: OVN_LEADER_PROBE_INTERVAL
               value: "{{ .Values.networking.OVN_LEADER_PROBE_INTERVAL }}"
             - name: OVN_NORTHD_N_THREADS
