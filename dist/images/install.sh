@@ -3302,6 +3302,8 @@ spec:
               value: "$DEBUG_WRAPPER"
             - name: PROBE_INTERVAL
               value: "180000"
+            - name: OVN_NORTHD_PROBE_INTERVAL
+              value: "5000" 
             - name: OVN_LEADER_PROBE_INTERVAL
               value: "5"
             - name: OVN_NORTHD_N_THREADS
