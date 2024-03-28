@@ -156,7 +156,7 @@ func isPodAlive(p *v1.Pod) bool {
 }
 
 func isPodStatusPhaseAlive(p *v1.Pod) bool {
-	if p.Status.Phase == v1.PodSucceeded && p.Spec.RestartPolicy != v1.RestartPolicyAlways {
+	if p.Status.Phase == v1.PodSucceeded {
 		return false
 	}
 
