@@ -82,7 +82,7 @@ spec:
               value: "{{ .Values.networking.ENABLE_COMPACT }}"
             {{- if include "kubeovn.ovs-ovn.updateStrategy" . | eq "OnDelete" }}
             - name: OVN_VERSION_COMPATIBILITY
-              value: "22.03"
+              value: "21.06"
             {{- end }}
           resources:
             requests:

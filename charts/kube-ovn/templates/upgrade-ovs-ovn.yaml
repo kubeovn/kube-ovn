@@ -140,7 +140,7 @@ spec:
             - name: ENABLE_SSL
               value: "{{ .Values.networking.ENABLE_SSL }}"
             - name: OVN_DB_IPS
-              value: "{{ .Values.MASTER_NODES | default (include "kubeovn.nodeIPs" .) }}"
+              value: "{{ .Values.MASTER_NODES }}"
           command:
             - bash
             - -eo
