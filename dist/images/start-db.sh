@@ -5,6 +5,7 @@ DEBUG_WRAPPER=${DEBUG_WRAPPER:-}
 ENABLE_COMPACT=${ENABLE_COMPACT:-false}
 PROBE_INTERVAL=${PROBE_INTERVAL:-180000}
 OVN_NORTHD_N_THREADS=${OVN_NORTHD_N_THREADS:-1}
+OVN_NORTHD_PROBE_INTERVAL=${OVN_NORTHD_PROBE_INTERVAL:-5000}
 OVN_VERSION_COMPATIBILITY=${OVN_VERSION_COMPATIBILITY:-}
 DEBUG_OPT="--ovn-northd-wrapper=$DEBUG_WRAPPER --ovsdb-nb-wrapper=$DEBUG_WRAPPER --ovsdb-sb-wrapper=$DEBUG_WRAPPER"
 
@@ -249,7 +250,7 @@ if [[ "$ENABLE_SSL" == "false" ]]; then
         /usr/share/ovn/scripts/ovn-ctl restart_northd
         ovn-nbctl --no-leader-only set-connection ptcp:"${NB_PORT}":["${DB_ADDR}"]
         ovn-nbctl --no-leader-only set Connection . inactivity_probe=${PROBE_INTERVAL}
-        ovn-nbctl --no-leader-only set NB_Global . options:northd_probe_interval=${PROBE_INTERVAL}
+        ovn-nbctl --no-leader-only set NB_Global . options:northd_probe_interval=${OVN_NORTHD_PROBE_INTERVAL}
         ovn-nbctl --no-leader-only set NB_Global . options:use_logical_dp_groups=true
 
         ovn-sbctl --no-leader-only set-connection ptcp:"${SB_PORT}":["${DB_ADDR}"]
@@ -300,7 +301,7 @@ if [[ "$ENABLE_SSL" == "false" ]]; then
                 --ovn-manage-ovsdb=no --ovn-northd-n-threads="${OVN_NORTHD_N_THREADS}" start_northd
             ovn-nbctl --no-leader-only set NB_Global . options:inactivity_probe=${PROBE_INTERVAL}
             ovn-sbctl --no-leader-only set SB_Global . options:inactivity_probe=${PROBE_INTERVAL}
-            ovn-nbctl --no-leader-only set NB_Global . options:northd_probe_interval=${PROBE_INTERVAL}
+            ovn-nbctl --no-leader-only set NB_Global . options:northd_probe_interval=${OVN_NORTHD_PROBE_INTERVAL}
             ovn-nbctl --no-leader-only set NB_Global . options:use_logical_dp_groups=true
         else
             # known leader always first
@@ -439,7 +440,7 @@ else
                 /etc/ovn/ovnsb_local_config.db
             /usr/share/ovn/scripts/ovn-ctl $ovn_ctl_args \
                 --ovn-manage-ovsdb=no --ovn-northd-n-threads="${OVN_NORTHD_N_THREADS}" start_northd
-            ovn-nbctl --no-leader-only $SSL_OPTIONS set NB_Global . options:northd_probe_interval=${PROBE_INTERVAL}
+            ovn-nbctl --no-leader-only $SSL_OPTIONS set NB_Global . options:northd_probe_interval=${OVN_NORTHD_PROBE_INTERVAL}
             ovn-nbctl --no-leader-only $SSL_OPTIONS set NB_Global . options:use_logical_dp_groups=true
         else
             # get leader if cluster exists
