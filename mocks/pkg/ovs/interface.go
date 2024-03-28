@@ -638,7 +638,8 @@ func (m *MockLogicalSwitchPort) CreateLocalnetLogicalSwitchPort(lsName, lspName,
 }
 
 // CreateLocalnetLogicalSwitchPort indicates an expected call of CreateLocalnetLogicalSwitchPort.
-func (mr *MockLogicalSwitchPortMockRecorder) CreateLocalnetLogicalSwitchPort(lsName, lspName, provider, cidrBlock, vlanID interface{}) *gomock.Call {	mr.mock.ctrl.T.Helper()
+func (mr *MockLogicalSwitchPortMockRecorder) CreateLocalnetLogicalSwitchPort(lsName, lspName, provider, cidrBlock, vlanID interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateLocalnetLogicalSwitchPort", reflect.TypeOf((*MockLogicalSwitchPort)(nil).CreateLocalnetLogicalSwitchPort), lsName, lspName, provider, cidrBlock, vlanID)
 }
 
