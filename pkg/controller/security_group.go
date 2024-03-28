@@ -11,6 +11,7 @@ import (
 	"github.com/cnf/structhash"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
@@ -163,7 +164,7 @@ func (c *Controller) processNextDeleteSgWorkItem() bool {
 	return true
 }
 
-func (c *Controller) initDenyAllSecurityGroup() error {
+func (c *Controller) initDefaultDenyAllSecurityGroup() error {
 	pgName := ovs.GetSgPortGroupName(util.DenyAllSecurityGroup)
 	if err := c.OVNNbClient.CreatePortGroup(pgName, map[string]string{
 		"type": "security_group",
@@ -179,6 +180,27 @@ func (c *Controller) initDenyAllSecurityGroup() error {
 	}
 
 	c.addOrUpdateSgQueue.Add(util.DenyAllSecurityGroup)
+	return nil
+}
+
+func (c *Controller) syncSecurityGroup() error {
+	sgs, err := c.sgsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list security groups: %v", err)
+		return err
+	}
+	for _, sg := range sgs {
+		if lost, err := c.OVNNbClient.SGLostACL(sg); err != nil {
+			if lost {
+				klog.Infof("sync security group: %s", sg.Name)
+				c.addOrUpdateSgQueue.Add(sg.Name)
+			}
+		} else {
+			err = fmt.Errorf("failed to check if sg %s lost acl", sg.Name)
+			klog.Error(err)
+			return err
+		}
+	}
 	return nil
 }
 
