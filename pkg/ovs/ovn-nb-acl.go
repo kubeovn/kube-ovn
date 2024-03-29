@@ -1244,8 +1244,9 @@ func (c *OVNNbClient) sgRuleNoACL(sgName, direction string, rule *kubeovnv1.SgRu
 
 	exists, err := c.ACLExists(pgName, direction, strconv.Itoa(rule.Priority), match.String())
 	if err != nil {
+		err = fmt.Errorf("failed to check acl rule for security group %s: %v", sgName, err)
 		klog.Error(err)
-		return false, fmt.Errorf("failed to get acl for pg %s: %v", pgName, err)
+		return false, err
 	}
 
 	// sg rule no acl, need to sync
