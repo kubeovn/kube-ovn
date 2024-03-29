@@ -193,7 +193,7 @@ func (c *Controller) updateDenyAllSgPorts() error {
 	addPorts := make([]string, 0, len(lsps))
 	for _, lsp := range lsps {
 		// skip lsp which only have mac addresses,address is in port.PortSecurity[0]
-		if len(strings.Split(lsp.PortSecurity[0], " ")) < 2 {
+		if len(lsp.PortSecurity) == 0 || len(strings.Split(lsp.PortSecurity[0], " ")) < 2 {
 			continue
 		}
 
@@ -409,16 +409,6 @@ func (c *Controller) syncSgLogicalPort(key string) error {
 	defer func() { _ = c.sgKeyMutex.UnlockKey(key) }()
 	klog.Infof("sync lsp for security group %s", key)
 
-	sg, err := c.sgsLister.Get(key)
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			klog.Errorf("sg '%s' not found.", key)
-			return nil
-		}
-		klog.Errorf("failed to get sg '%s'. %v", key, err)
-		return err
-	}
-
 	sgPorts, err := c.OVNNbClient.ListLogicalSwitchPorts(false, map[string]string{fmt.Sprintf("associated_sg_%s", key): "true"}, nil)
 	if err != nil {
 		klog.Errorf("failed to find logical port, %v", err)
@@ -444,6 +434,16 @@ func (c *Controller) syncSgLogicalPort(key string) error {
 				}
 			}
 		}
+	}
+
+	sg, err := c.sgsLister.Get(key)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			klog.Errorf("sg '%s' not found.", key)
+			return nil
+		}
+		klog.Errorf("failed to get sg '%s'. %v", key, err)
+		return err
 	}
 
 	if err = c.OVNNbClient.PortGroupSetPorts(sg.Status.PortGroup, ports); err != nil {
