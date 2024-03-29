@@ -345,6 +345,10 @@ func (s *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac *string, f
 		}
 	}
 
+	if pool == nil {
+		return ip, "", ErrOutOfRange
+	}
+
 	defer func() {
 		s.pushPodNic(podName, nicName)
 		if isAllocated {
