@@ -252,11 +252,33 @@ var _ = framework.OrderedDescribe("[group:ovn-ic]", func() {
 })
 
 func checkECMPCount(expectCount int) {
-	execCmd := "kubectl ko nbctl lr-route-list ovn-cluster "
-	output, err := exec.Command("bash", "-c", execCmd).CombinedOutput()
-	ecmpCount := strings.Count(string(output), "ecmp")
-	framework.ExpectNoError(err)
-	framework.ExpectEqual(ecmpCount, expectCount)
+	ecmpCount := 0
+	maxRetryTimes := 30
+
+	for _, cluster := range clusters {
+		clusterName := "kind-" + cluster
+		ginkgo.By("Switching kubectl config context to " + clusterName)
+		switchCmd := "kubectl config use-context " + clusterName
+		_, err := exec.Command("bash", "-c", switchCmd).CombinedOutput()
+		framework.ExpectNoError(err, "failed to switch kubectl config context to %s", clusterName)
+
+		ginkgo.By("Checking logical router route count")
+		for i := 0; i < maxRetryTimes; i++ {
+			time.Sleep(3 * time.Second)
+			execCmd := "kubectl ko nbctl lr-route-list ovn-cluster "
+			output, err := exec.Command("bash", "-c", execCmd).CombinedOutput()
+			framework.ExpectNoError(err)
+			ecmpCount = strings.Count(string(output), "ecmp")
+			if ecmpCount == expectCount {
+				break
+			}
+		}
+		framework.ExpectEqual(ecmpCount, expectCount)
+	}
+
+	switchCmd := "kubectl config use-context kind-kube-ovn"
+	_, err := exec.Command("bash", "-c", switchCmd).CombinedOutput()
+	framework.ExpectNoError(err, "switch to kube-ovn cluster failed")
 }
 
 func changeGatewayType(gatewayType string, gwNodes []string, clientSets []clientset.Interface) {
