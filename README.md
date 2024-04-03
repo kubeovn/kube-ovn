@@ -52,5 +52,5 @@ REVISION: 1
 TEST SUITE: None
 
 # 高可用集群安装
-$ helm install kube-ovn kubeovn/kube-ovn --set MASTER_NODES=${Node0IP},${Node1IP},${Node2IP}, --set replicaCount=3
+$ helm install kube-ovn kubeovn/kube-ovn --set MASTER_NODES=${Node0IP}\,${Node1IP}\,${Node2IP} --set replicaCount=3
 ```
