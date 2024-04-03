@@ -157,3 +157,7 @@ func (c *OVNNbClient) SetLsDnatModDlDst(enabled bool) error {
 func (c *OVNNbClient) SetLsCtSkipDstLportIPs(enabled bool) error {
 	return c.SetNbGlobalOptions("ls_ct_skip_dst_lport_ips", enabled)
 }
+
+func (c *OVNNbClient) SetNodeLocalDNSIP(nodeLocalDNSIP string) error {
+	return c.SetNbGlobalOptions("node_local_dns_ip", nodeLocalDNSIP)
+}
