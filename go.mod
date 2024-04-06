@@ -40,7 +40,7 @@ require (
 	github.com/vishvananda/netlink v1.2.1-beta.2
 	go.uber.org/mock v0.4.0
 	golang.org/x/mod v0.17.0
-	golang.org/x/sys v0.18.0
+	golang.org/x/sys v0.19.0
 	golang.org/x/time v0.5.0
 	google.golang.org/grpc v1.63.0
 	google.golang.org/protobuf v1.33.0
