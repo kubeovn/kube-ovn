@@ -292,6 +292,11 @@ func ParseFlags() (*Configuration, error) {
 		return nil, fmt.Errorf("check system cidr failed, %v", err)
 	}
 
+	if err := util.CheckNodeDNSIP(config.NodeLocalDNSIP); err != nil {
+		klog.Error(err)
+		return nil, err
+	}
+
 	klog.Infof("config is %+v", config)
 	return config, nil
 }

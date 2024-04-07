@@ -525,6 +525,14 @@ func CheckSystemCIDR(cidrs []string) error {
 	return nil
 }
 
+func CheckNodeDNSIP(nodeLocalDNSIP string) error {
+	if nodeLocalDNSIP != "" && IsValidIP(nodeLocalDNSIP) {
+		err := fmt.Errorf("node dns ip %s is not valid ip ", nodeLocalDNSIP)
+		return err
+	}
+	return nil
+}
+
 // GetExternalNetwork returns the external network name
 // if the external network is not specified, return the default external network name
 func GetExternalNetwork(externalNet string) string {
