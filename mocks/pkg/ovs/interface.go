@@ -97,6 +97,20 @@ func (mr *MockNBGlobalMockRecorder) SetLsCtSkipDstLportIPs(enabled any) *gomock.
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLsCtSkipDstLportIPs", reflect.TypeOf((*MockNBGlobal)(nil).SetLsCtSkipDstLportIPs), enabled)
 }
 
+// SetNodeLocalDNSIP mocks base method.
+func (m *MockNBGlobal) SetNodeLocalDNSIP(nodeLocalDNSIP string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetNodeLocalDNSIP", nodeLocalDNSIP)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetNodeLocalDNSIP indicates an expected call of SetNodeLocalDNSIP.
+func (mr *MockNBGlobalMockRecorder) SetNodeLocalDNSIP(nodeLocalDNSIP any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetNodeLocalDNSIP", reflect.TypeOf((*MockNBGlobal)(nil).SetNodeLocalDNSIP), nodeLocalDNSIP)
+}
+
 // SetLsDnatModDlDst mocks base method.
 func (m *MockNBGlobal) SetLsDnatModDlDst(enabled bool) error {
 	m.ctrl.T.Helper()
@@ -4210,6 +4224,20 @@ func (m *MockNbClient) SetLsCtSkipDstLportIPs(enabled bool) error {
 func (mr *MockNbClientMockRecorder) SetLsCtSkipDstLportIPs(enabled any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLsCtSkipDstLportIPs", reflect.TypeOf((*MockNbClient)(nil).SetLsCtSkipDstLportIPs), enabled)
+}
+
+// SetNodeLocalDNSIP mocks base method.
+func (m *MockNbClient) SetNodeLocalDNSIP(nodeLocalDNSIP string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetNodeLocalDNSIP", nodeLocalDNSIP)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetNodeLocalDNSIP indicates an expected call of SetNodeLocalDNSIP.
+func (mr *MockNbClientMockRecorder) SetNodeLocalDNSIP(nodeLocalDNSIP any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetNodeLocalDNSIP", reflect.TypeOf((*MockNbClient)(nil).SetNodeLocalDNSIP), nodeLocalDNSIP)
 }
 
 // SetLsDnatModDlDst mocks base method.

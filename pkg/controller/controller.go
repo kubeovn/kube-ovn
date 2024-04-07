@@ -752,6 +752,10 @@ func (c *Controller) Run(ctx context.Context) {
 		util.LogFatalAndExit(err, "failed to set NB_Global option ls_ct_skip_dst_lport_ips")
 	}
 
+	if err := c.OVNNbClient.SetNodeLocalDNSIP(c.config.NodeLocalDNSIP); err != nil {
+		util.LogFatalAndExit(err, "failed to set NB_Global option node_local_dns_ip")
+	}
+
 	if err := c.InitOVN(); err != nil {
 		util.LogFatalAndExit(err, "failed to initialize ovn resources")
 	}
