@@ -445,10 +445,10 @@ func (c *Controller) syncSgLogicalPort(key string) error {
 	sg, err := c.sgsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
-			klog.Errorf("sg '%s' not found.", key)
+			klog.Infof("no security group %s ", key)
 			return nil
 		}
-		klog.Errorf("failed to get sg '%s'. %v", key, err)
+		klog.Errorf("failed to get security group %s: %v", key, err)
 		return err
 	}
 

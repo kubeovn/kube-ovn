@@ -53,6 +53,10 @@ func (c *OVNNbClient) PortGroupRemovePorts(pgName string, lspNames ...string) er
 }
 
 func (c *OVNNbClient) PortGroupSetPorts(pgName string, ports []string) error {
+	if pgName == "" {
+		return fmt.Errorf("port group name is empty")
+	}
+
 	pg, err := c.GetPortGroup(pgName, false)
 	if err != nil {
 		return fmt.Errorf("get port group %s: %v", pgName, err)
