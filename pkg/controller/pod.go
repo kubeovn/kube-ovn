@@ -714,7 +714,6 @@ func (c *Controller) reconcileAllocateSubnets(cachedPod, pod *v1.Pod, needAlloca
 				portSecurity = true
 			}
 
-			securityGroupAnnotation := pod.Annotations[fmt.Sprintf(util.SecurityGroupAnnotationTemplate, podNet.ProviderName)]
 			vips := vipsMap[fmt.Sprintf("%s.%s", podNet.Subnet.Name, podNet.ProviderName)]
 			for _, ip := range strings.Split(vips, ",") {
 				if ip != "" && net.ParseIP(ip) == nil {
@@ -729,6 +728,9 @@ func (c *Controller) reconcileAllocateSubnets(cachedPod, pod *v1.Pod, needAlloca
 				DHCPv4OptionsUUID: subnet.Status.DHCPv4OptionsUUID,
 				DHCPv6OptionsUUID: subnet.Status.DHCPv6OptionsUUID,
 			}
+
+			securityGroupAnnotation := pod.Annotations[fmt.Sprintf(util.SecurityGroupAnnotationTemplate, podNet.ProviderName)]
+			securityGroups := strings.ReplaceAll(securityGroupAnnotation, " ", "")
 			if err := c.OVNNbClient.CreateLogicalSwitchPort(subnet.Name, portName, ipStr, mac, podName, pod.Namespace,
 				portSecurity, securityGroupAnnotation, vips, podNet.Subnet.Spec.EnableDHCP, dhcpOptions, subnet.Spec.Vpc); err != nil {
 				c.recorder.Eventf(pod, v1.EventTypeWarning, "CreateOVNPortFailed", err.Error())
@@ -763,13 +765,11 @@ func (c *Controller) reconcileAllocateSubnets(cachedPod, pod *v1.Pod, needAlloca
 			}
 
 			if securityGroupAnnotation != "" {
-				securityGroups := strings.ReplaceAll(securityGroupAnnotation, " ", "")
 				sgNames := strings.Split(securityGroups, ",")
 				for _, sgName := range sgNames {
-					if sgName == "" {
-						continue
+					if sgName != "" {
+						c.syncSgPortsQueue.Add(sgName)
 					}
-					c.syncSgPortsQueue.Add(sgName)
 				}
 			}
 
@@ -1172,13 +1172,11 @@ func (c *Controller) handleDeletePod(key string) error {
 	}
 	for _, podNet := range podNets {
 		c.syncVirtualPortsQueue.Add(podNet.Subnet.Name)
-		if pod.Annotations[fmt.Sprintf(util.PortSecurityAnnotationTemplate, podNet.ProviderName)] == "true" {
-			if securityGroupAnnotation, ok := pod.Annotations[fmt.Sprintf(util.SecurityGroupAnnotationTemplate, podNet.ProviderName)]; ok {
-				sgNames := strings.Split(securityGroupAnnotation, ",")
-				for _, sgName := range sgNames {
-					if sgName == "" {
-						continue
-					}
+		securityGroupAnnotation := pod.Annotations[fmt.Sprintf(util.SecurityGroupAnnotationTemplate, podNet.ProviderName)]
+		if securityGroupAnnotation != "" {
+			securityGroups := strings.ReplaceAll(securityGroupAnnotation, " ", "")
+			for _, sgName := range strings.Split(securityGroups, ",") {
+				if sgName != "" {
 					c.syncSgPortsQueue.Add(sgName)
 				}
 			}
@@ -1238,8 +1236,10 @@ func (c *Controller) handleUpdatePodSecurity(key string) error {
 		var securityGroups string
 		if securityGroupAnnotation != "" {
 			securityGroups = strings.ReplaceAll(securityGroupAnnotation, " ", "")
-			for _, sg := range strings.Split(securityGroups, ",") {
-				c.syncSgPortsQueue.Add(sg)
+			for _, sgName := range strings.Split(securityGroups, ",") {
+				if sgName != "" {
+					c.syncSgPortsQueue.Add(sgName)
+				}
 			}
 		}
 		if err = c.reconcilePortSg(ovs.PodNameToPortName(podName, namespace, podNet.ProviderName), securityGroups); err != nil {

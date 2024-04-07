@@ -423,10 +423,10 @@ func (c *Controller) syncSgLogicalPort(key string) error {
 
 	var ports, v4s, v6s []string
 	for _, lsp := range sgPorts {
+		ports = append(ports, lsp.Name)
 		if len(lsp.PortSecurity) == 0 {
 			continue
 		}
-		ports = append(ports, lsp.Name)
 		for _, ps := range lsp.PortSecurity {
 			fields := strings.Fields(ps)
 			if len(fields) < 2 {
