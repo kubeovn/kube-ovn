@@ -423,10 +423,10 @@ func (c *Controller) syncSgLogicalPort(key string) error {
 
 	var ports, v4s, v6s []string
 	for _, lsp := range sgPorts {
+		ports = append(ports, lsp.Name)
 		if len(lsp.PortSecurity) == 0 {
 			continue
 		}
-		ports = append(ports, lsp.Name)
 		for _, ps := range lsp.PortSecurity {
 			fields := strings.Fields(ps)
 			if len(fields) < 2 {
@@ -445,10 +445,10 @@ func (c *Controller) syncSgLogicalPort(key string) error {
 	sg, err := c.sgsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
-			klog.Errorf("sg '%s' not found.", key)
+			klog.Warningf("no security group %s ", key)
 			return nil
 		}
-		klog.Errorf("failed to get sg '%s'. %v", key, err)
+		klog.Errorf("failed to get security group %s: %v", key, err)
 		return err
 	}
 

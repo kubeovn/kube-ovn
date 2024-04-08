@@ -34,21 +34,24 @@ func buildLogicalSwitchPort(lspName, lsName, ip, mac, podName, namespace string,
 
 	// addresses is the first element of addresses
 	lsp.Addresses = []string{strings.TrimSpace(strings.Join(addresses, " "))}
+	lsp.ExternalIDs["vendor"] = util.CniTypeName
+
+	lsp.PortSecurity = nil
 	if portSecurity {
 		if len(vips) != 0 {
 			addresses = append(addresses, vipList...)
 		}
 		// addresses is the first element of port_security
 		lsp.PortSecurity = []string{strings.TrimSpace(strings.Join(addresses, " "))}
+	}
 
-		// set security groups
-		if len(securityGroups) != 0 {
-			lsp.ExternalIDs[sgsKey] = strings.ReplaceAll(securityGroups, ",", "/")
+	// set security groups
+	if len(securityGroups) != 0 {
+		lsp.ExternalIDs[sgsKey] = strings.ReplaceAll(securityGroups, ",", "/")
 
-			sgList := strings.Split(securityGroups, ",")
-			for _, sg := range sgList {
-				lsp.ExternalIDs[associatedSgKeyPrefix+sg] = "true"
-			}
+		sgList := strings.Split(securityGroups, ",")
+		for _, sg := range sgList {
+			lsp.ExternalIDs[associatedSgKeyPrefix+sg] = "true"
 		}
 	}
 
