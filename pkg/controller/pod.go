@@ -674,7 +674,6 @@ func (c *Controller) reconcileAllocateSubnets(cachedPod, pod *v1.Pod, needAlloca
 				portSecurity = true
 			}
 
-			securityGroupAnnotation := pod.Annotations[fmt.Sprintf(util.SecurityGroupAnnotationTemplate, podNet.ProviderName)]
 			vips := pod.Annotations[fmt.Sprintf(util.PortVipAnnotationTemplate, podNet.ProviderName)]
 			for _, ip := range strings.Split(vips, ",") {
 				if ip != "" && net.ParseIP(ip) == nil {
@@ -690,7 +689,10 @@ func (c *Controller) reconcileAllocateSubnets(cachedPod, pod *v1.Pod, needAlloca
 				DHCPv6OptionsUUID: subnet.Status.DHCPv6OptionsUUID,
 			}
 
-			if err := c.OVNNbClient.CreateLogicalSwitchPort(subnet.Name, portName, ipStr, mac, podName, pod.Namespace, portSecurity, securityGroupAnnotation, vips, podNet.Subnet.Spec.EnableDHCP, dhcpOptions, subnet.Spec.Vpc); err != nil {
+			securityGroupAnnotation := pod.Annotations[fmt.Sprintf(util.SecurityGroupAnnotationTemplate, podNet.ProviderName)]
+			securityGroups := strings.ReplaceAll(securityGroupAnnotation, " ", "")
+			if err := c.OVNNbClient.CreateLogicalSwitchPort(subnet.Name, portName, ipStr, mac, podName, pod.Namespace,
+				portSecurity, securityGroupAnnotation, vips, podNet.Subnet.Spec.EnableDHCP, dhcpOptions, subnet.Spec.Vpc); err != nil {
 				c.recorder.Eventf(pod, v1.EventTypeWarning, "CreateOVNPortFailed", err.Error())
 				klog.Errorf("%v", err)
 				return nil, err
@@ -704,13 +706,12 @@ func (c *Controller) reconcileAllocateSubnets(cachedPod, pod *v1.Pod, needAlloca
 				}
 			}
 
-			if portSecurity {
-				sgNames := strings.Split(securityGroupAnnotation, ",")
+			if securityGroupAnnotation != "" {
+				sgNames := strings.Split(securityGroups, ",")
 				for _, sgName := range sgNames {
-					if sgName == "" {
-						continue
+					if sgName != "" {
+						c.syncSgPortsQueue.Add(sgName)
 					}
-					c.syncSgPortsQueue.Add(sgName)
 				}
 			}
 
@@ -1117,11 +1118,15 @@ func (c *Controller) handleUpdatePodSecurity(key string) error {
 		}
 
 		c.syncVirtualPortsQueue.Add(podNet.Subnet.Name)
-
+		securityGroupAnnotation := pod.Annotations[fmt.Sprintf(util.SecurityGroupAnnotationTemplate, podNet.ProviderName)]
 		var securityGroups string
-		if portSecurity {
-			securityGroups = pod.Annotations[fmt.Sprintf(util.SecurityGroupAnnotationTemplate, podNet.ProviderName)]
-			securityGroups = strings.ReplaceAll(securityGroups, " ", "")
+		if securityGroupAnnotation != "" {
+			securityGroups = strings.ReplaceAll(securityGroupAnnotation, " ", "")
+			for _, sgName := range strings.Split(securityGroups, ",") {
+				if sgName != "" {
+					c.syncSgPortsQueue.Add(sgName)
+				}
+			}
 		}
 		if err = c.reconcilePortSg(ovs.PodNameToPortName(podName, namespace, podNet.ProviderName), securityGroups); err != nil {
 			klog.Errorf("reconcilePortSg failed. %v", err)
