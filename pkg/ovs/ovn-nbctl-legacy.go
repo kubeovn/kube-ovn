@@ -2112,13 +2112,22 @@ func (c LegacyClient) ListPgPortsForNodePortgroup() (map[string][]string, error)
 }
 
 func (c LegacyClient) SetPortsToPortGroup(portGroup string, portNames []string) error {
+	if portGroup == "" {
+		err := fmt.Errorf("port group name is empty")
+		klog.Error(err)
+		return err
+	}
 	ovnArgs := []string{"clear", "port_group", portGroup, "ports"}
 	if len(portNames) > 0 {
 		ovnArgs = []string{"pg-set-ports", portGroup}
 		ovnArgs = append(ovnArgs, portNames...)
 	}
-	_, err := c.ovnNbCommand(ovnArgs...)
-	return err
+	if _, err := c.ovnNbCommand(ovnArgs...); err != nil {
+		err = fmt.Errorf("failed to set ports to port group %s: %v", portGroup, err)
+		klog.Error(err)
+		return err
+	}
+	return nil
 }
 
 func (c LegacyClient) SetAddressesToAddressSet(addresses []string, as string) error {

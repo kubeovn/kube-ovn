@@ -672,7 +672,6 @@ func (c *Controller) handleAddPod(key string) error {
 				portSecurity = true
 			}
 
-			securityGroupAnnotation := pod.Annotations[fmt.Sprintf(util.SecurityGroupAnnotationTemplate, podNet.ProviderName)]
 			vips := pod.Annotations[fmt.Sprintf(util.PortVipAnnotationTemplate, podNet.ProviderName)]
 			for _, ip := range strings.Split(vips, ",") {
 				if ip != "" && net.ParseIP(ip) == nil {
@@ -689,19 +688,20 @@ func (c *Controller) handleAddPod(key string) error {
 			}
 
 			hasUnknown := pod.Annotations[fmt.Sprintf(util.Layer2ForwardAnnotationTemplate, podNet.ProviderName)] == "true"
-			if err := c.ovnLegacyClient.CreatePort(subnet.Name, portName, ipStr, mac, podName, pod.Namespace, portSecurity, securityGroupAnnotation, vips, podNet.AllowLiveMigration, podNet.Subnet.Spec.EnableDHCP, dhcpOptions, hasUnknown); err != nil {
+			securityGroupAnnotation := pod.Annotations[fmt.Sprintf(util.SecurityGroupAnnotationTemplate, podNet.ProviderName)]
+			var securityGroups string
+			if securityGroupAnnotation != "" {
+				securityGroups = strings.ReplaceAll(securityGroupAnnotation, " ", "")
+			}
+			if err := c.ovnLegacyClient.CreatePort(subnet.Name, portName, ipStr, mac, podName, pod.Namespace, portSecurity,
+				securityGroups, vips, podNet.AllowLiveMigration, podNet.Subnet.Spec.EnableDHCP, dhcpOptions, hasUnknown); err != nil {
 				c.recorder.Eventf(pod, v1.EventTypeWarning, "CreateOVNPortFailed", err.Error())
 				klog.Error(err)
 				return err
 			}
-
-			if securityGroupAnnotation != "" {
-				securityGroups := strings.ReplaceAll(securityGroupAnnotation, " ", "")
-				sgNames := strings.Split(securityGroups, ",")
-				for _, sgName := range sgNames {
-					if sgName == "" {
-						continue
-					}
+			sgNames := strings.Split(securityGroups, ",")
+			for _, sgName := range sgNames {
+				if sgName != "" {
 					c.syncSgPortsQueue.Add(sgName)
 				}
 			}

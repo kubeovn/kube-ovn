@@ -359,16 +359,6 @@ func (c *Controller) syncSgLogicalPort(key string) error {
 	c.sgKeyMutex.Lock(key)
 	defer c.sgKeyMutex.Unlock(key)
 
-	sg, err := c.sgsLister.Get(key)
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			klog.Errorf("sg '%s' not found.", key)
-			return nil
-		}
-		klog.Errorf("failed to get sg '%s'. %v", key, err)
-		return err
-	}
-
 	results, err := c.ovnLegacyClient.CustomFindEntity("logical_switch_port", []string{"_uuid", "name", "port_security"}, fmt.Sprintf("external_ids:associated_sg_%s=true", key))
 	if err != nil {
 		klog.Errorf("failed to find logical port, %v", err)
@@ -378,10 +368,10 @@ func (c *Controller) syncSgLogicalPort(key string) error {
 	var v4s, v6s []string
 	var ports []string
 	for _, ret := range results {
+		ports = append(ports, ret["name"][0])
 		if len(ret["port_security"]) < 2 {
 			continue
 		}
-		ports = append(ports, ret["name"][0])
 		for _, address := range ret["port_security"][1:] {
 			if strings.Contains(address, ":") {
 				v6s = append(v6s, address)
@@ -391,6 +381,15 @@ func (c *Controller) syncSgLogicalPort(key string) error {
 		}
 	}
 
+	sg, err := c.sgsLister.Get(key)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			klog.Warningf("no security group %s ", key)
+			return nil
+		}
+		klog.Errorf("failed to get security group %s: %v", key, err)
+		return err
+	}
 	if err = c.ovnLegacyClient.SetPortsToPortGroup(sg.Status.PortGroup, ports); err != nil {
 		klog.Errorf("failed to set port to sg, %v", err)
 		return err
