@@ -11,6 +11,7 @@ import (
 	"github.com/cnf/structhash"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
@@ -119,7 +120,7 @@ func (c *Controller) processNextAddOrUpdateSgWorkItem() bool {
 			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
 			return nil
 		}
-		if err := c.handleAddOrUpdateSg(key); err != nil {
+		if err := c.handleAddOrUpdateSg(key, false); err != nil {
 			c.addOrUpdateSgQueue.AddRateLimited(key)
 			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
 		}
@@ -163,7 +164,7 @@ func (c *Controller) processNextDeleteSgWorkItem() bool {
 	return true
 }
 
-func (c *Controller) initDenyAllSecurityGroup() error {
+func (c *Controller) initDefaultDenyAllSecurityGroup() error {
 	pgName := ovs.GetSgPortGroupName(util.DenyAllSecurityGroup)
 	if err := c.OVNNbClient.CreatePortGroup(pgName, map[string]string{
 		"type": "security_group",
@@ -179,6 +180,28 @@ func (c *Controller) initDenyAllSecurityGroup() error {
 	}
 
 	c.addOrUpdateSgQueue.Add(util.DenyAllSecurityGroup)
+	return nil
+}
+
+func (c *Controller) syncSecurityGroup() error {
+	sgs, err := c.sgsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list security groups: %v", err)
+		return err
+	}
+	for _, sg := range sgs {
+		lost, err := c.OVNNbClient.SGLostACL(sg)
+		if err != nil {
+			err = fmt.Errorf("failed to check if security group %s lost acl: %v", sg.Name, err)
+			klog.Error(err)
+			return err
+		}
+		if lost {
+			if err := c.handleAddOrUpdateSg(sg.Name, true); err != nil {
+				klog.Errorf("failed to sync security group %s: %v", sg.Name, err)
+			}
+		}
+	}
 	return nil
 }
 
@@ -224,7 +247,7 @@ func (c *Controller) updateDenyAllSgPorts() error {
 	return nil
 }
 
-func (c *Controller) handleAddOrUpdateSg(key string) error {
+func (c *Controller) handleAddOrUpdateSg(key string, force bool) error {
 	c.sgKeyMutex.LockKey(key)
 	defer func() { _ = c.sgKeyMutex.UnlockKey(key) }()
 	klog.Infof("handle add/update security group %s", key)
@@ -277,26 +300,31 @@ func (c *Controller) handleAddOrUpdateSg(key string) error {
 		return err
 	}
 
-	ingressNeedUpdate := false
-	egressNeedUpdate := false
-
-	// check md5
-	newIngressMd5 := fmt.Sprintf("%x", structhash.Md5(sg.Spec.IngressRules, 1))
-	if !sg.Status.IngressLastSyncSuccess || newIngressMd5 != sg.Status.IngressMd5 {
-		klog.Infof("ingress need update, sg:%s", sg.Name)
-		ingressNeedUpdate = true
-	}
-	newEgressMd5 := fmt.Sprintf("%x", structhash.Md5(sg.Spec.EgressRules, 1))
-	if !sg.Status.EgressLastSyncSuccess || newEgressMd5 != sg.Status.EgressMd5 {
-		klog.Infof("egress need update, sg:%s", sg.Name)
-		egressNeedUpdate = true
-	}
-
-	// check allowSameGroupTraffic switch
-	if sg.Status.AllowSameGroupTraffic != sg.Spec.AllowSameGroupTraffic {
-		klog.Infof("both ingress && egress need update, sg:%s", sg.Name)
+	var ingressNeedUpdate, egressNeedUpdate bool
+	var newIngressMd5, newEgressMd5 string
+	if force {
+		klog.Infof("force update sg %s", sg.Name)
 		ingressNeedUpdate = true
 		egressNeedUpdate = true
+	} else {
+		// check md5
+		newIngressMd5 = fmt.Sprintf("%x", structhash.Md5(sg.Spec.IngressRules, 1))
+		if !sg.Status.IngressLastSyncSuccess || newIngressMd5 != sg.Status.IngressMd5 {
+			klog.Infof("ingress need update, sg:%s", sg.Name)
+			ingressNeedUpdate = true
+		}
+		newEgressMd5 = fmt.Sprintf("%x", structhash.Md5(sg.Spec.EgressRules, 1))
+		if !sg.Status.EgressLastSyncSuccess || newEgressMd5 != sg.Status.EgressMd5 {
+			klog.Infof("egress need update, sg:%s", sg.Name)
+			egressNeedUpdate = true
+		}
+
+		// check allowSameGroupTraffic switch
+		if sg.Status.AllowSameGroupTraffic != sg.Spec.AllowSameGroupTraffic {
+			klog.Infof("both ingress && egress need update, sg:%s", sg.Name)
+			ingressNeedUpdate = true
+			egressNeedUpdate = true
+		}
 	}
 
 	// update sg rule

@@ -1175,3 +1175,112 @@ func (c *OVNNbClient) DeleteAclsOps(parentName, parentType, direction string, ex
 
 	return removeACLOp, nil
 }
+
+// sgRuleNoACL check if security group rule has acl
+func (c *OVNNbClient) sgRuleNoACL(sgName, direction string, rule *kubeovnv1.SgRule) (bool, error) {
+	ipSuffix := "ip4"
+	if rule.IPVersion == "ipv6" {
+		ipSuffix = "ip6"
+	}
+
+	pgName := GetSgPortGroupName(sgName)
+
+	// ingress rule
+	srcOrDst, portDirection := "src", "outport"
+	if direction == ovnnb.ACLDirectionFromLport { // egress rule
+		srcOrDst = "dst"
+		portDirection = "inport"
+	}
+
+	ipKey := ipSuffix + "." + srcOrDst
+
+	/* match all traffic to or from pgName */
+	allIPMatch := NewAndACLMatch(
+		NewACLMatch(portDirection, "==", "@"+pgName, ""),
+		NewACLMatch(ipSuffix, "", "", ""),
+	)
+
+	/* allow allowed ip traffic */
+	// type address
+	allowedIPMatch := NewAndACLMatch(
+		allIPMatch,
+		NewACLMatch(ipKey, "==", rule.RemoteAddress, ""),
+	)
+
+	// type securityGroup
+	remotePgName := GetSgV4AssociatedName(rule.RemoteSecurityGroup)
+	if rule.IPVersion == "ipv6" {
+		remotePgName = GetSgV6AssociatedName(rule.RemoteSecurityGroup)
+	}
+	if rule.RemoteType == kubeovnv1.SgRemoteTypeSg {
+		allowedIPMatch = NewAndACLMatch(
+			allIPMatch,
+			NewACLMatch(ipKey, "==", "$"+remotePgName, ""),
+		)
+	}
+
+	/* allow layer 4 traffic */
+	// allow all layer 4 traffic
+	match := allowedIPMatch
+
+	switch rule.Protocol {
+	case kubeovnv1.ProtocolICMP:
+		match = NewAndACLMatch(
+			allowedIPMatch,
+			NewACLMatch("icmp4", "", "", ""),
+		)
+		if ipSuffix == "ip6" {
+			match = NewAndACLMatch(
+				allowedIPMatch,
+				NewACLMatch("icmp6", "", "", ""),
+			)
+		}
+	case kubeovnv1.ProtocolTCP, kubeovnv1.ProtocolUDP:
+		match = NewAndACLMatch(
+			allowedIPMatch,
+			NewACLMatch(string(rule.Protocol)+".dst", "<=", strconv.Itoa(rule.PortRangeMin), strconv.Itoa(rule.PortRangeMax)),
+		)
+	}
+
+	exists, err := c.ACLExists(pgName, direction, strconv.Itoa(rule.Priority), match.String())
+	if err != nil {
+		err = fmt.Errorf("failed to check acl rule for security group %s: %v", sgName, err)
+		klog.Error(err)
+		return false, err
+	}
+
+	// sg rule no acl, need to sync
+	if !exists {
+		return true, nil
+	}
+	return false, nil
+}
+
+// SGLostACL check if security group lost an acl
+func (c *OVNNbClient) SGLostACL(sg *kubeovnv1.SecurityGroup) (bool, error) {
+	ingressRules := sg.Spec.IngressRules
+	for _, rule := range ingressRules {
+		no, err := c.sgRuleNoACL(sg.Name, ovnnb.ACLDirectionToLport, rule)
+		if err != nil {
+			klog.Error(err)
+			return false, err
+		}
+		if no {
+			klog.Infof("security group %s lost ingress rule: %v", sg.Name, rule)
+			return true, nil
+		}
+	}
+	egressRules := sg.Spec.EgressRules
+	for _, rule := range egressRules {
+		no, err := c.sgRuleNoACL(sg.Name, ovnnb.ACLDirectionFromLport, rule)
+		if err != nil {
+			klog.Error(err)
+			return false, err
+		}
+		if no {
+			klog.Infof("security group %s lost egress rule: %v", sg.Name, rule)
+			return true, nil
+		}
+	}
+	return false, nil
+}
