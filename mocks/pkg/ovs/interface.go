@@ -1476,6 +1476,21 @@ func (mr *MockACLMockRecorder) DeleteAclsOps(parentName, parentType, direction, 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteAclsOps", reflect.TypeOf((*MockACL)(nil).DeleteAclsOps), parentName, parentType, direction, externalIDs)
 }
 
+// SGLostACL mocks base method.
+func (m *MockACL) SGLostACL(sg *v1.SecurityGroup) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SGLostACL", sg)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SGLostACL indicates an expected call of SGLostACL.
+func (mr *MockACLMockRecorder) SGLostACL(sg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SGLostACL", reflect.TypeOf((*MockACL)(nil).SGLostACL), sg)
+}
+
 // SetACLLog mocks base method.
 func (m *MockACL) SetACLLog(pgName, protocol string, logEnable, isIngress bool) error {
 	m.ctrl.T.Helper()
@@ -3706,6 +3721,35 @@ func (m *MockNbClient) RemoveLogicalPatchPort(lspName, lrpName string) error {
 func (mr *MockNbClientMockRecorder) RemoveLogicalPatchPort(lspName, lrpName interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemoveLogicalPatchPort", reflect.TypeOf((*MockNbClient)(nil).RemoveLogicalPatchPort), lspName, lrpName)
+}
+
+// ResetLogicalSwitchPortMigrateOptions mocks base method.
+func (m *MockNbClient) ResetLogicalSwitchPortMigrateOptions(lspName, srcNodeName, targetNodeName string, migratedFail bool) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ResetLogicalSwitchPortMigrateOptions", lspName, srcNodeName, targetNodeName, migratedFail)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ResetLogicalSwitchPortMigrateOptions indicates an expected call of ResetLogicalSwitchPortMigrateOptions.
+func (mr *MockNbClientMockRecorder) ResetLogicalSwitchPortMigrateOptions(lspName, srcNodeName, targetNodeName, migratedFail any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResetLogicalSwitchPortMigrateOptions", reflect.TypeOf((*MockNbClient)(nil).ResetLogicalSwitchPortMigrateOptions), lspName, srcNodeName, targetNodeName, migratedFail)
+}
+
+// SGLostACL mocks base method.
+func (m *MockNbClient) SGLostACL(sg *v1.SecurityGroup) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SGLostACL", sg)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SGLostACL indicates an expected call of SGLostACL.
+func (mr *MockNbClientMockRecorder) SGLostACL(sg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SGLostACL", reflect.TypeOf((*MockNbClient)(nil).SGLostACL), sg)
 }
 
 // SetACLLog mocks base method.

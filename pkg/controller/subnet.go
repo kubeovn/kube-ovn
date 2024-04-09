@@ -2031,6 +2031,17 @@ func calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 		}
 		usingIPs += float64(len(eips))
 	}
+	if subnet.Spec.Vlan != "" {
+		ovnEips, err := c.ovnEipsLister.List(labels.SelectorFromSet(labels.Set{
+			util.SubnetNameLabel: subnet.Name,
+		}))
+		if err != nil {
+			klog.Error(err)
+			return err
+		}
+		usingIPs += float64(len(ovnEips))
+	}
+
 	v4availableIPs -= usingIPs
 	if v4availableIPs < 0 {
 		v4availableIPs = 0
