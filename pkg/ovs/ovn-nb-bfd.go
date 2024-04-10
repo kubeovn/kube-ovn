@@ -23,7 +23,7 @@ func (c *OVNNbClient) ListBFDs(lrpName, dstIP string) ([]ovnnb.BFD, error) {
 		if bfd.LogicalPort != lrpName {
 			return false
 		}
-		return bfd.DstIP == dstIP
+		return dstIP == "" || bfd.DstIP == dstIP
 	}).List(ctx, &bfdList); err != nil {
 		err := fmt.Errorf("failed to list BFD with logical_port=%s and dst_ip=%s: %v", lrpName, dstIP, err)
 		klog.Error(err)
@@ -140,12 +140,12 @@ func (c *OVNNbClient) DeleteBFD(lrpName, dstIP string) error {
 			klog.Error(err)
 			return err
 		}
+		klog.Infof("delete lrp %s BFD dst ip %s", lrpName, bfd.DstIP)
 		if err = c.Transact("bfd-del", ops); err != nil {
 			err := fmt.Errorf("failed to delete BFD with with UUID %s: %v", bfd.UUID, err)
 			klog.Error(err)
 			return err
 		}
-		klog.Infof("deleted lrp %s BFD dst ip %s", lrpName, bfd.DstIP)
 	}
 	return nil
 }
