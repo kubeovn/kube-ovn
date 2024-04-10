@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/greenpau/ovsdb"
+	"github.com/kubeovn/ovsdb"
 	"k8s.io/klog/v2"
 )
 
