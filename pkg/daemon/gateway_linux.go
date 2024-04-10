@@ -1377,11 +1377,12 @@ func (c *Controller) setExGateway() error {
 			klog.Errorf("failed to get ovn-external-gw-config, %v", err)
 			return err
 		}
-		// enable external-gw-config without 'external-gw-nic' configured
-		// to reuse existing physical network from arg 'external-gateway-net'
+
 		linkName, exist := cm.Data["external-gw-nic"]
 		if !exist || len(linkName) == 0 {
-			return nil
+			err = fmt.Errorf("external-gw-nic not configured in ovn-external-gw-config")
+			klog.Error(err)
+			return err
 		}
 		link, err := netlink.LinkByName(linkName)
 		if err != nil {
@@ -1408,6 +1409,7 @@ func (c *Controller) setExGateway() error {
 		}
 
 		if !externalBrReady {
+			klog.Infof("create external bridge %s and add nic %s", externalBridge, linkName)
 			if _, err := ovs.Exec(
 				ovs.MayExist, "add-br", externalBridge, "--",
 				ovs.MayExist, "add-port", externalBridge, linkName,
