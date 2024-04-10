@@ -3103,7 +3103,6 @@ rules:
       - update
   - apiGroups:
       - ""
-      - networking.k8s.io
     resources:
       - configmaps
     verbs:
