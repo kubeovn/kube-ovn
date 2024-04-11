@@ -45,6 +45,7 @@ type CniResponse struct {
 	MacAddress string    `json:"mac_address"`
 	CIDR       string    `json:"cidr"`
 	Gateway    string    `json:"gateway"`
+	Routes     []Route   `json:"routes"`
 	Mtu        int       `json:"mtu"`
 	PodNicName string    `json:"nicname"`
 	DNS        types.DNS `json:"dns"`
