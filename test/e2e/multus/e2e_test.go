@@ -123,7 +123,7 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 		framework.ExpectNoError(err)
 
 		ginkgo.By("Validating pod routes")
-		actualRoutes := make([]request.Route, len(podRoutes))
+		actualRoutes := make([]request.Route, 0, len(podRoutes))
 		for _, r := range podRoutes {
 			if r.Gateway != "" || r.Dst != "" {
 				actualRoutes = append(actualRoutes, request.Route{Destination: r.Dst, Gateway: r.Gateway})
@@ -131,7 +131,7 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 		}
 		ipv4CIDR, ipv6CIDR := util.SplitStringIP(pod.Annotations[util.CidrAnnotation])
 		ipv4Gateway, ipv6Gateway := util.SplitStringIP(pod.Annotations[util.GatewayAnnotation])
-		nadIPv4CIDR, nadIPv6CIDR := util.SplitStringIP(subnet.Spec.Gateway)
+		nadIPv4CIDR, nadIPv6CIDR := util.SplitStringIP(subnet.Spec.CIDRBlock)
 		nadIPv4Gateway, nadIPv6Gateway := util.SplitStringIP(subnet.Spec.Gateway)
 		if f.HasIPv4() {
 			framework.ExpectContainElement(actualRoutes, request.Route{Destination: ipv4CIDR})
@@ -200,7 +200,7 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 		framework.ExpectNoError(err)
 
 		ginkgo.By("Validating pod routes")
-		actualRoutes := make([]request.Route, len(podRoutes))
+		actualRoutes := make([]request.Route, 0, len(podRoutes))
 		for _, r := range podRoutes {
 			if r.Gateway != "" || r.Dst != "" {
 				actualRoutes = append(actualRoutes, request.Route{Destination: r.Dst, Gateway: r.Gateway})
@@ -208,7 +208,7 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 		}
 		ipv4CIDR, ipv6CIDR := util.SplitStringIP(pod.Annotations[util.CidrAnnotation])
 		ipv4Gateway, ipv6Gateway := util.SplitStringIP(pod.Annotations[util.GatewayAnnotation])
-		nadIPv4CIDR, nadIPv6CIDR := util.SplitStringIP(subnet.Spec.Gateway)
+		nadIPv4CIDR, nadIPv6CIDR := util.SplitStringIP(subnet.Spec.CIDRBlock)
 		if f.HasIPv4() {
 			framework.ExpectContainElement(actualRoutes, request.Route{Destination: ipv4CIDR})
 			framework.ExpectNotContainElement(actualRoutes, request.Route{Destination: "default", Gateway: ipv4Gateway})
@@ -270,7 +270,7 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 		framework.ExpectNoError(err)
 
 		ginkgo.By("Validating pod routes")
-		actualRoutes := make([]request.Route, len(podRoutes))
+		actualRoutes := make([]request.Route, 0, len(podRoutes))
 		for _, r := range podRoutes {
 			if r.Gateway != "" || r.Dst != "" {
 				actualRoutes = append(actualRoutes, request.Route{Destination: r.Dst, Gateway: r.Gateway})
@@ -278,7 +278,7 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 		}
 		ipv4CIDR, ipv6CIDR := util.SplitStringIP(pod.Annotations[util.CidrAnnotation])
 		ipv4Gateway, ipv6Gateway := util.SplitStringIP(pod.Annotations[util.GatewayAnnotation])
-		nadIPv4CIDR, nadIPv6CIDR := util.SplitStringIP(subnet.Spec.Gateway)
+		nadIPv4CIDR, nadIPv6CIDR := util.SplitStringIP(subnet.Spec.CIDRBlock)
 		nadIPv4Gateway, nadIPv6Gateway := util.SplitStringIP(subnet.Spec.Gateway)
 		if f.HasIPv4() {
 			framework.ExpectContainElement(actualRoutes, request.Route{Destination: ipv4CIDR})
@@ -354,7 +354,7 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 		framework.ExpectNoError(err)
 
 		ginkgo.By("Validating pod routes")
-		actualRoutes := make([]request.Route, len(podRoutes))
+		actualRoutes := make([]request.Route, 0, len(podRoutes))
 		for _, r := range podRoutes {
 			if r.Gateway != "" || r.Dst != "" {
 				actualRoutes = append(actualRoutes, request.Route{Destination: r.Dst, Gateway: r.Gateway})
@@ -362,7 +362,7 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 		}
 		ipv4CIDR, ipv6CIDR := util.SplitStringIP(pod.Annotations[util.CidrAnnotation])
 		ipv4Gateway, ipv6Gateway := util.SplitStringIP(pod.Annotations[util.GatewayAnnotation])
-		nadIPv4CIDR, nadIPv6CIDR := util.SplitStringIP(subnet.Spec.Gateway)
+		nadIPv4CIDR, nadIPv6CIDR := util.SplitStringIP(subnet.Spec.CIDRBlock)
 		if f.HasIPv4() {
 			framework.ExpectContainElement(actualRoutes, request.Route{Destination: ipv4CIDR})
 			framework.ExpectNotContainElement(actualRoutes, request.Route{Destination: "default", Gateway: ipv4Gateway})
