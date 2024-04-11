@@ -1,7 +1,7 @@
 //go:build !windows
 // +build !windows
 
-package main
+package netconf
 
 import (
 	"github.com/containernetworking/cni/pkg/types"
@@ -9,12 +9,12 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/request"
 )
 
-type netConf struct {
+type NetConf struct {
 	types.NetConf
 	ServerSocket string          `json:"server_socket"`
 	Provider     string          `json:"provider"`
 	Routes       []request.Route `json:"routes"`
-	IPAM         *ipamConf       `json:"ipam"`
+	IPAM         *IPAMConf       `json:"ipam"`
 	// PciAddrs in case of using sriov
 	DeviceID string `json:"deviceID"`
 	VfDriver string `json:"vf_driver"`
@@ -24,6 +24,6 @@ type netConf struct {
 	VhostUserSocketConsumption string `json:"vhost_user_socket_consumption"`
 }
 
-func (n *netConf) postLoad() {
+func (n *NetConf) PostLoad() {
 	// nothing to do on linux
 }

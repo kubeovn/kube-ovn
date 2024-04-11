@@ -22,29 +22,30 @@ func (csh cniServerHandler) configureDpdkNic(podName, podNamespace, provider, ne
 	return errors.New("DPDK is not supported on Windows")
 }
 
-func (csh cniServerHandler) configureNicWithInternalPort(podName, podNamespace, provider, netns, containerID, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute, detectIPConflict bool, routes []request.Route, dnsServer, dnsSuffix []string, ingress, egress, DeviceID, nicType, latency, limit, loss, jitter string, gwCheckMode int, u2oInterconnectionIP string) (string, error) {
-	return ifName, csh.configureNic(podName, podNamespace, provider, netns, containerID, "", ifName, mac, mtu, ip, gateway, isDefaultRoute, detectIPConflict, routes, dnsServer, dnsSuffix, ingress, egress, DeviceID, nicType, latency, limit, loss, jitter, gwCheckMode, u2oInterconnectionIP, "")
+func (csh cniServerHandler) configureNicWithInternalPort(podName, podNamespace, provider, netns, containerID, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute, detectIPConflict bool, routes []request.Route, dnsServer, dnsSuffix []string, ingress, egress, DeviceID, nicType, latency, limit, loss, jitter string, gwCheckMode int, u2oInterconnectionIP string) (string, []request.Route, error) {
+	routes, err := csh.configureNic(podName, podNamespace, provider, netns, containerID, "", ifName, mac, mtu, ip, gateway, isDefaultRoute, detectIPConflict, routes, dnsServer, dnsSuffix, ingress, egress, DeviceID, nicType, latency, limit, loss, jitter, gwCheckMode, u2oInterconnectionIP, "")
+	return ifName, routes, err
 }
 
-func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns, containerID, vfDriver, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute, detectIPConflict bool, routes []request.Route, dnsServer, dnsSuffix []string, ingress, egress, DeviceID, nicType, latency, limit, loss, jitter string, gwCheckMode int, u2oInterconnectionIP, _ string) error {
+func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns, containerID, vfDriver, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute, detectIPConflict bool, routes []request.Route, dnsServer, dnsSuffix []string, ingress, egress, DeviceID, nicType, latency, limit, loss, jitter string, gwCheckMode int, u2oInterconnectionIP, _ string) ([]request.Route, error) {
 	if DeviceID != "" {
-		return errors.New("SR-IOV is not supported on Windows")
+		return nil, errors.New("SR-IOV is not supported on Windows")
 	}
 
 	hnsNetwork, err := hcsshim.GetHNSNetworkByName(util.HnsNetwork)
 	if err != nil {
 		klog.Errorf("failed to get HNS network %s: %v", util.HnsNetwork)
-		return err
+		return nil, err
 	}
 	if hnsNetwork == nil {
 		err = fmt.Errorf("HNS network %s does not exist", util.HnsNetwork)
 		klog.Error(err)
-		return err
+		return nil, err
 	}
 	if !strings.EqualFold(hnsNetwork.Type, "Transparent") {
 		err = fmt.Errorf(`type of HNS network %s is "%s", while "Transparent" is required`, util.HnsNetwork, hnsNetwork.Type)
 		klog.Error(err)
-		return err
+		return nil, err
 	}
 
 	ipAddr := util.GetIPWithoutMask(ip)
@@ -79,22 +80,22 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 	})
 	if err != nil {
 		klog.Errorf("failed to add HNS endpoint: %v", err)
-		return err
+		return nil, err
 	}
 
 	if containerID != sandbox {
 		// pause container, return here
-		return nil
+		return nil, nil
 	}
 
 	// add OVS port
 	exists, err := ovs.PortExists(epName)
 	if err != nil {
 		klog.Error(err)
-		return err
+		return nil, err
 	}
 	if exists {
-		return nil
+		return nil, nil
 	}
 
 	timeout := 5
@@ -109,7 +110,7 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 		_mtu := uint32(mtu)
 		if err = util.SetNetIPInterface(adapter.InterfaceIndex, nil, &_mtu, nil, nil); err != nil {
 			klog.Errorf("failed to set MTU of %s to %d: %v", adapterName, mtu, err)
-			return err
+			return nil, err
 		}
 
 		ifaceID := ovs.PodNameToPortName(podName, podNamespace, provider)
@@ -121,18 +122,18 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 			fmt.Sprintf("external_ids:pod_namespace=%s", podNamespace),
 			fmt.Sprintf("external_ids:ip=%s", ipAddr))
 		if err != nil {
-			return fmt.Errorf("failed to add OVS port %s, %v: %q", epName, err, output)
+			return nil, fmt.Errorf("failed to add OVS port %s, %v: %q", epName, err, output)
 		}
 
 		if err = ovs.SetInterfaceBandwidth(podName, podNamespace, ifaceID, egress, ingress); err != nil {
 			klog.Error(err)
-			return err
+			return nil, err
 		}
 
-		return nil
+		return nil, nil
 	}
 
-	return fmt.Errorf(`failed to get network adapter "%s" after %d seconds`, adapterName, timeout)
+	return nil, fmt.Errorf(`failed to get network adapter "%s" after %d seconds`, adapterName, timeout)
 }
 
 func configureNic(name, ip string, mac net.HardwareAddr, mtu int) error {
@@ -219,6 +220,10 @@ func configureNic(name, ip string, mac net.HardwareAddr, mtu int) error {
 		}
 	}
 
+	return nil
+}
+
+func (csh cniServerHandler) removeDefaultRoute(netns string, ipv4, ipv6 bool) error {
 	return nil
 }
 
