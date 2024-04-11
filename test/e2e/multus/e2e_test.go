@@ -103,10 +103,11 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 
 		ginkgo.By("Creating network attachment definition " + nadName)
 		nad := framework.MakeNetworkAttachmentDefinition(nadName, namespaceName, string(buf))
-		_ = nadClient.Create(nad)
+		nad = nadClient.Create(nad)
+		framework.Logf("created network attachment definition config:\n%s", nad.Spec.Config)
 
 		ginkgo.By("Creating subnet " + subnetName)
-		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, []string{namespaceName})
+		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, nil)
 		subnet.Spec.Provider = provider
 		subnet = subnetClient.CreateSync(subnet)
 
@@ -151,24 +152,31 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 		provider := fmt.Sprintf("%s.%s.%s", nadName, namespaceName, util.OvnProvider)
 
 		ginkgo.By("Creating subnet " + subnetName)
-		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, []string{namespaceName})
+		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, nil)
 		subnet.Spec.Provider = provider
 		subnet = subnetClient.CreateSync(subnet)
 
 		ginkgo.By("Constructing network attachment definition config")
-		routeDst := framework.RandomCIDR(f.ClusterIPFamily)
-		routeGw := framework.RandomIPs(routeDst, "", 1)
+		var routeDst string
+		for i := 0; i < 3; i++ {
+			routeDst = framework.RandomCIDR(f.ClusterIPFamily)
+			if routeDst != subnet.Spec.CIDRBlock {
+				break
+			}
+		}
+		framework.ExpectNotEqual(routeDst, subnet.Spec.CIDRBlock)
+		routeGw := framework.RandomIPs(subnet.Spec.CIDRBlock, "", 1)
 		nadIPv4Gateway, nadIPv6Gateway := util.SplitStringIP(subnet.Spec.Gateway)
 		ipv4RouteDst, ipv6RouteDst := util.SplitStringIP(routeDst)
 		ipv4RouteGw, ipv6RouteGw := util.SplitStringIP(routeGw)
-		routes := make([]request.Route, 4)
+		routes := make([]request.Route, 0, 4)
 		if f.HasIPv4() {
-			routes = append(routes, request.Route{Gateway: ipv4RouteGw})
-			routes = append(routes, request.Route{Destination: ipv4RouteDst, Gateway: nadIPv4Gateway})
+			routes = append(routes, request.Route{Gateway: nadIPv4Gateway})
+			routes = append(routes, request.Route{Destination: ipv4RouteDst, Gateway: ipv4RouteGw})
 		}
 		if f.HasIPv6() {
-			routes = append(routes, request.Route{Gateway: ipv6RouteGw})
-			routes = append(routes, request.Route{Destination: ipv6RouteDst, Gateway: nadIPv6Gateway})
+			routes = append(routes, request.Route{Gateway: nadIPv6Gateway})
+			routes = append(routes, request.Route{Destination: ipv6RouteDst, Gateway: ipv6RouteGw})
 		}
 
 		config := &netconf.NetConf{
@@ -185,7 +193,8 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 
 		ginkgo.By("Creating network attachment definition " + nadName)
 		nad := framework.MakeNetworkAttachmentDefinition(nadName, namespaceName, string(buf))
-		_ = nadClient.Create(nad)
+		nad = nadClient.Create(nad)
+		framework.Logf("created network attachment definition config:\n%s", nad.Spec.Config)
 
 		ginkgo.By("Creating pod " + podName)
 		annotations := map[string]string{"k8s.v1.cni.cncf.io/networks": fmt.Sprintf("%s/%s", nad.Namespace, nad.Name)}
@@ -233,12 +242,12 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 			NetConf: netconf.NetConf{
 				NetConf: types.NetConf{
 					CNIVersion: CNIVersion,
-					Type:       util.CniTypeName,
+					Type:       "macvlan",
 				},
 				IPAM: &netconf.IPAMConf{
+					Type:         util.CniTypeName,
 					ServerSocket: "/run/openvswitch/kube-ovn-daemon.sock",
 					Provider:     provider,
-					// Routes:       routes,
 				},
 			},
 			Master:     "eth0",
@@ -250,10 +259,11 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 
 		ginkgo.By("Creating network attachment definition " + nadName)
 		nad := framework.MakeNetworkAttachmentDefinition(nadName, namespaceName, string(buf))
-		_ = nadClient.Create(nad)
+		nad = nadClient.Create(nad)
+		framework.Logf("created network attachment definition config:\n%s", nad.Spec.Config)
 
 		ginkgo.By("Creating subnet " + subnetName)
-		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, []string{namespaceName})
+		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, nil)
 		subnet.Spec.Provider = provider
 		subnet = subnetClient.CreateSync(subnet)
 
@@ -298,33 +308,41 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 		provider := fmt.Sprintf("%s.%s", nadName, namespaceName)
 
 		ginkgo.By("Creating subnet " + subnetName)
-		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, []string{namespaceName})
+		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, nil)
 		subnet.Spec.Provider = provider
 		subnet = subnetClient.CreateSync(subnet)
 
 		ginkgo.By("Constructing network attachment definition config")
-		routeDst := framework.RandomCIDR(f.ClusterIPFamily)
-		routeGw := framework.RandomIPs(routeDst, "", 1)
+		var routeDst string
+		for i := 0; i < 3; i++ {
+			routeDst = framework.RandomCIDR(f.ClusterIPFamily)
+			if routeDst != subnet.Spec.CIDRBlock {
+				break
+			}
+		}
+		framework.ExpectNotEqual(routeDst, subnet.Spec.CIDRBlock)
+		routeGw := framework.RandomIPs(subnet.Spec.CIDRBlock, "", 1)
 		nadIPv4Gateway, nadIPv6Gateway := util.SplitStringIP(subnet.Spec.Gateway)
 		ipv4RouteDst, ipv6RouteDst := util.SplitStringIP(routeDst)
 		ipv4RouteGw, ipv6RouteGw := util.SplitStringIP(routeGw)
-		routes := make([]request.Route, 4)
+		routes := make([]request.Route, 0, 4)
 		if f.HasIPv4() {
-			routes = append(routes, request.Route{Gateway: ipv4RouteGw})
-			routes = append(routes, request.Route{Destination: ipv4RouteDst, Gateway: nadIPv4Gateway})
+			routes = append(routes, request.Route{Gateway: nadIPv4Gateway})
+			routes = append(routes, request.Route{Destination: ipv4RouteDst, Gateway: ipv4RouteGw})
 		}
 		if f.HasIPv6() {
-			routes = append(routes, request.Route{Gateway: ipv6RouteGw})
-			routes = append(routes, request.Route{Destination: ipv6RouteDst, Gateway: nadIPv6Gateway})
+			routes = append(routes, request.Route{Gateway: nadIPv6Gateway})
+			routes = append(routes, request.Route{Destination: ipv6RouteDst, Gateway: ipv6RouteGw})
 		}
 
 		config := &MacvlanNetConf{
 			NetConf: netconf.NetConf{
 				NetConf: types.NetConf{
 					CNIVersion: CNIVersion,
-					Type:       util.CniTypeName,
+					Type:       "macvlan",
 				},
 				IPAM: &netconf.IPAMConf{
+					Type:         util.CniTypeName,
 					ServerSocket: "/run/openvswitch/kube-ovn-daemon.sock",
 					Provider:     provider,
 					Routes:       routes,
@@ -339,7 +357,8 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 
 		ginkgo.By("Creating network attachment definition " + nadName)
 		nad := framework.MakeNetworkAttachmentDefinition(nadName, namespaceName, string(buf))
-		_ = nadClient.Create(nad)
+		nad = nadClient.Create(nad)
+		framework.Logf("created network attachment definition config:\n%s", nad.Spec.Config)
 
 		ginkgo.By("Creating pod " + podName)
 		annotations := map[string]string{"k8s.v1.cni.cncf.io/networks": fmt.Sprintf("%s/%s", nad.Namespace, nad.Name)}
