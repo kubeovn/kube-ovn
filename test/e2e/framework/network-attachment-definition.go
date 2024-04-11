@@ -32,7 +32,7 @@ func (c *NetworkAttachmentDefinitionClient) Get(name string) *apiv1.NetworkAttac
 func (c *NetworkAttachmentDefinitionClient) Create(nad *apiv1.NetworkAttachmentDefinition) *apiv1.NetworkAttachmentDefinition {
 	nad, err := c.NetworkAttachmentDefinitionInterface.Create(context.TODO(), nad, metav1.CreateOptions{})
 	ExpectNoError(err, "Error creating nad")
-	return nad.DeepCopy()
+	return c.Get(nad.Name)
 }
 
 // Delete deletes a nad if the nad exists
