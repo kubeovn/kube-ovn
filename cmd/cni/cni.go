@@ -74,6 +74,7 @@ func generateCNIResult(cniResponse *request.CniResponse, netns string) current.R
 	result := current.Result{
 		CNIVersion: current.ImplementedSpecVersion,
 		DNS:        cniResponse.DNS,
+		Routes:     parseRoutes(cniResponse.Routes),
 	}
 	_, mask, _ := net.ParseCIDR(cniResponse.CIDR)
 	podIface := current.Interface{
@@ -85,20 +86,21 @@ func generateCNIResult(cniResponse *request.CniResponse, netns string) current.R
 	case kubeovnv1.ProtocolIPv4:
 		ip, route := assignV4Address(cniResponse.IPAddress, cniResponse.Gateway, mask)
 		result.IPs = []*current.IPConfig{ip}
-		if route != nil {
+		if len(result.Routes) == 0 && route != nil {
 			result.Routes = []*types.Route{route}
 		}
 		result.Interfaces = []*current.Interface{&podIface}
 	case kubeovnv1.ProtocolIPv6:
 		ip, route := assignV6Address(cniResponse.IPAddress, cniResponse.Gateway, mask)
 		result.IPs = []*current.IPConfig{ip}
-		if route != nil {
+		if len(result.Routes) == 0 && route != nil {
 			result.Routes = []*types.Route{route}
 		}
 		result.Interfaces = []*current.Interface{&podIface}
 	case kubeovnv1.ProtocolDual:
 		var netMask *net.IPNet
 		var gwStr string
+		addRoutes := len(result.Routes) == 0
 		for _, cidrBlock := range strings.Split(cniResponse.CIDR, ",") {
 			_, netMask, _ = net.ParseCIDR(cidrBlock)
 			gwStr = ""
@@ -110,7 +112,7 @@ func generateCNIResult(cniResponse *request.CniResponse, netns string) current.R
 
 				ip, route := assignV4Address(ipStr, gwStr, netMask)
 				result.IPs = append(result.IPs, ip)
-				if route != nil {
+				if addRoutes && route != nil {
 					result.Routes = append(result.Routes, route)
 				}
 			} else if util.CheckProtocol(cidrBlock) == kubeovnv1.ProtocolIPv6 {
@@ -121,7 +123,7 @@ func generateCNIResult(cniResponse *request.CniResponse, netns string) current.R
 
 				ip, route := assignV6Address(ipStr, gwStr, netMask)
 				result.IPs = append(result.IPs, ip)
-				if route != nil {
+				if addRoutes && route != nil {
 					result.Routes = append(result.Routes, route)
 				}
 			}
@@ -130,6 +132,24 @@ func generateCNIResult(cniResponse *request.CniResponse, netns string) current.R
 	}
 
 	return result
+}
+
+func parseRoutes(routes []request.Route) []*types.Route {
+	parsedRoutes := make([]*types.Route, len(routes))
+	for i, r := range routes {
+		if r.Destination == "" {
+			if util.CheckProtocol(r.Gateway) == kubeovnv1.ProtocolIPv4 {
+				r.Destination = "0.0.0.0/0"
+			} else {
+				r.Destination = "::/0"
+			}
+		}
+		parsedRoutes[i] = &types.Route{GW: net.ParseIP(r.Gateway)}
+		if _, cidr, err := net.ParseCIDR(r.Destination); err == nil {
+			parsedRoutes[i].Dst = *cidr
+		}
+	}
+	return parsedRoutes
 }
 
 func cmdDel(args *skel.CmdArgs) error {
@@ -170,8 +190,9 @@ func cmdDel(args *skel.CmdArgs) error {
 }
 
 type ipamConf struct {
-	ServerSocket string `json:"server_socket"`
-	Provider     string `json:"provider"`
+	ServerSocket string          `json:"server_socket"`
+	Provider     string          `json:"provider"`
+	Routes       []request.Route `json:"routes"`
 }
 
 func loadNetConf(bytes []byte) (*netConf, string, error) {
@@ -183,6 +204,7 @@ func loadNetConf(bytes []byte) (*netConf, string, error) {
 	if n.Type != util.CniTypeName && n.IPAM != nil {
 		n.Provider = n.IPAM.Provider
 		n.ServerSocket = n.IPAM.ServerSocket
+		n.Routes = n.IPAM.Routes
 	}
 
 	if n.ServerSocket == "" {
