@@ -71,6 +71,7 @@ e2e-build:
 	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/k8s-network
 	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/kube-ovn
 	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/ovn-ic
+	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/multus
 	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/lb-svc
 	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/vip
 	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/iptables-vpc-nat-gw
@@ -133,6 +134,15 @@ kube-ovn-submariner-conformance-e2e:
 	KUBECONFIG=$(KUBECONFIG) subctl verify \
 		--context kind-kube-ovn --tocontext kind-kube-ovn1 \
 		--verbose --disruptive-tests
+
+.PHONY: kube-ovn-multus-conformance-e2e
+kube-ovn-multus-conformance-e2e:
+	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/multus
+	E2E_BRANCH=$(E2E_BRANCH) \
+	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
+	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
+	ginkgo $(GINKGO_OUTPUT_OPT) $(GINKGO_PARALLEL_OPT) --randomize-all -v \
+		--focus=CNI:Kube-OVN ./test/e2e/multus/multus.test -- $(TEST_BIN_ARGS)
 
 .PHONY: kube-ovn-lb-svc-conformance-e2e
 kube-ovn-lb-svc-conformance-e2e:

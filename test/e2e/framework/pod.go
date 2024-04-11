@@ -47,7 +47,8 @@ func (c *PodClient) Delete(name string) error {
 }
 
 func (c *PodClient) DeleteSync(name string) {
-	c.PodClient.DeleteSync(context.Background(), name, metav1.DeleteOptions{}, timeout)
+	var gps int64 = 1
+	c.PodClient.DeleteSync(context.Background(), name, metav1.DeleteOptions{GracePeriodSeconds: &gps}, timeout)
 }
 
 func (c *PodClient) Patch(original, modified *corev1.Pod) *corev1.Pod {

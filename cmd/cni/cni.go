@@ -13,6 +13,7 @@ import (
 	"github.com/containernetworking/cni/pkg/version"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/netconf"
 	"github.com/kubeovn/kube-ovn/pkg/request"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/versions"
@@ -189,14 +190,8 @@ func cmdDel(args *skel.CmdArgs) error {
 	return nil
 }
 
-type ipamConf struct {
-	ServerSocket string          `json:"server_socket"`
-	Provider     string          `json:"provider"`
-	Routes       []request.Route `json:"routes"`
-}
-
-func loadNetConf(bytes []byte) (*netConf, string, error) {
-	n := &netConf{}
+func loadNetConf(bytes []byte) (*netconf.NetConf, string, error) {
+	n := &netconf.NetConf{}
 	if err := json.Unmarshal(bytes, n); err != nil {
 		return nil, "", types.NewError(types.ErrDecodingFailure, "failed to load netconf", err.Error())
 	}
@@ -215,7 +210,7 @@ func loadNetConf(bytes []byte) (*netConf, string, error) {
 		n.Provider = util.OvnProvider
 	}
 
-	n.postLoad()
+	n.PostLoad()
 	return n, n.CNIVersion, nil
 }
 
