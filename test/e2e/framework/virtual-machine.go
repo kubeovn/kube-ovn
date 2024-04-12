@@ -43,7 +43,7 @@ func (c *VMClient) Get(name string) *v1.VirtualMachine {
 // Create creates a new vm according to the framework specifications
 func (c *VMClient) Create(vm *v1.VirtualMachine) *v1.VirtualMachine {
 	v, err := c.VirtualMachineInterface.Create(context.TODO(), vm)
-	ExpectNoError(err, "failed to create vm %s/%s", v.Namespace, v.Name)
+	ExpectNoError(err, "failed to create vm %s", v.Name)
 	return c.Get(v.Name)
 }
 
@@ -53,6 +53,50 @@ func (c *VMClient) CreateSync(vm *v1.VirtualMachine) *v1.VirtualMachine {
 	ExpectNoError(c.WaitToBeReady(v.Name, timeout))
 	// Get the newest vm after it becomes ready
 	return c.Get(v.Name).DeepCopy()
+}
+
+// Start starts the vm.
+func (c *VMClient) Start(name string) *v1.VirtualMachine {
+	vm := c.Get(name)
+	if vm.Spec.Running != nil && *vm.Spec.Running {
+		Logf("vm %s has already been started", name)
+		return vm
+	}
+
+	running := true
+	vm.Spec.Running = &running
+	_, err := c.VirtualMachineInterface.Update(context.TODO(), vm)
+	ExpectNoError(err, "failed to update vm %s", name)
+	return c.Get(name)
+}
+
+// StartSync stops the vm and waits for it to be ready.
+func (c *VMClient) StartSync(name string) *v1.VirtualMachine {
+	_ = c.Start(name)
+	ExpectNoError(c.WaitToBeReady(name, 2*time.Minute))
+	return c.Get(name)
+}
+
+// Stop stops the vm.
+func (c *VMClient) Stop(name string) *v1.VirtualMachine {
+	vm := c.Get(name)
+	if vm.Spec.Running != nil && !*vm.Spec.Running {
+		Logf("vm %s has already been stopped", name)
+		return vm
+	}
+
+	running := false
+	vm.Spec.Running = &running
+	_, err := c.VirtualMachineInterface.Update(context.TODO(), vm)
+	ExpectNoError(err, "failed to update vm %s", name)
+	return c.Get(name)
+}
+
+// StopSync stops the vm and waits for it to be stopped.
+func (c *VMClient) StopSync(name string) *v1.VirtualMachine {
+	_ = c.Stop(name)
+	ExpectNoError(c.WaitToBeStopped(name, 2*time.Minute))
+	return c.Get(name)
 }
 
 // Delete deletes a vm if the vm exists
@@ -68,7 +112,7 @@ func (c *VMClient) DeleteSync(name string) {
 	gomega.Expect(c.WaitToDisappear(name, 2*time.Second, timeout)).To(gomega.Succeed(), "wait for vm %q to disappear", name)
 }
 
-// WaitToBeReady returns whether the vm is ready within timeout.
+// WaitToDisappear waits the given timeout duration for the specified vm to be ready.
 func (c *VMClient) WaitToBeReady(name string, timeout time.Duration) error {
 	err := k8sframework.Gomega().Eventually(context.TODO(), k8sframework.RetryNotFound(func(ctx context.Context) (*v1.VirtualMachine, error) {
 		return c.VirtualMachineInterface.Get(ctx, name, &metav1.GetOptions{})
@@ -83,6 +127,25 @@ func (c *VMClient) WaitToBeReady(name string, timeout time.Duration) error {
 		}))
 	if err != nil {
 		return fmt.Errorf("expected vm %s to be ready: %w", name, err)
+	}
+	return nil
+}
+
+// WaitToDisappear waits the given timeout duration for the specified vm to be stopped.
+func (c *VMClient) WaitToBeStopped(name string, timeout time.Duration) error {
+	err := k8sframework.Gomega().Eventually(context.TODO(), k8sframework.RetryNotFound(func(ctx context.Context) (*v1.VirtualMachine, error) {
+		return c.VirtualMachineInterface.Get(ctx, name, &metav1.GetOptions{})
+	})).WithTimeout(timeout).Should(
+		k8sframework.MakeMatcher(func(vm *v1.VirtualMachine) (func() string, error) {
+			if !vm.Status.Created {
+				return nil, nil
+			}
+			return func() string {
+				return fmt.Sprintf("expected vm status to be stopped, got status instead:\n%s", format.Object(vm.Status, 1))
+			}, nil
+		}))
+	if err != nil {
+		return fmt.Errorf("expected vm %s to be stopped: %w", name, err)
 	}
 	return nil
 }
