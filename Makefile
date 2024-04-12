@@ -970,6 +970,7 @@ kind-clean-bgp-ha:
 
 .PHONY: uninstall
 uninstall:
+	bash dist/images/check-kube-ovn-restarts.sh
 	bash dist/images/cleanup.sh
 
 .PHONY: lint
