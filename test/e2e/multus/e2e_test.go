@@ -1,6 +1,7 @@
 package multus
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"testing"
@@ -13,7 +14,6 @@ import (
 	"k8s.io/kubernetes/test/e2e/framework/config"
 
 	"github.com/onsi/ginkgo/v2"
-	"github.com/onsi/gomega/format"
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/netconf"
@@ -99,9 +99,11 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 			ServerSocket: "/run/openvswitch/kube-ovn-daemon.sock",
 			Provider:     provider,
 		}
+		buf, err := json.MarshalIndent(config, "", "  ")
+		framework.ExpectNoError(err)
 
 		ginkgo.By("Creating network attachment definition " + nadName)
-		nad := framework.MakeNetworkAttachmentDefinition(nadName, namespaceName, format.Object(config, 1))
+		nad := framework.MakeNetworkAttachmentDefinition(nadName, namespaceName, string(buf))
 		nad = nadClient.Create(nad)
 		framework.Logf("created network attachment definition config:\n%s", nad.Spec.Config)
 
@@ -192,9 +194,11 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 			Provider:     provider,
 			Routes:       routes,
 		}
+		buf, err := json.MarshalIndent(config, "", "  ")
+		framework.ExpectNoError(err)
 
 		ginkgo.By("Creating network attachment definition " + nadName)
-		nad := framework.MakeNetworkAttachmentDefinition(nadName, namespaceName, format.Object(config, 1))
+		nad := framework.MakeNetworkAttachmentDefinition(nadName, namespaceName, string(buf))
 		nad = nadClient.Create(nad)
 		framework.Logf("created network attachment definition config:\n%s", nad.Spec.Config)
 
@@ -261,9 +265,11 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 			Mode:       "bridge",
 			LinkContNs: true,
 		}
+		buf, err := json.MarshalIndent(config, "", "  ")
+		framework.ExpectNoError(err)
 
 		ginkgo.By("Creating network attachment definition " + nadName)
-		nad := framework.MakeNetworkAttachmentDefinition(nadName, namespaceName, format.Object(config, 1))
+		nad := framework.MakeNetworkAttachmentDefinition(nadName, namespaceName, string(buf))
 		nad = nadClient.Create(nad)
 		framework.Logf("created network attachment definition config:\n%s", nad.Spec.Config)
 
@@ -362,9 +368,11 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 			Mode:       "bridge",
 			LinkContNs: true,
 		}
+		buf, err := json.MarshalIndent(config, "", "  ")
+		framework.ExpectNoError(err)
 
 		ginkgo.By("Creating network attachment definition " + nadName)
-		nad := framework.MakeNetworkAttachmentDefinition(nadName, namespaceName, format.Object(config, 1))
+		nad := framework.MakeNetworkAttachmentDefinition(nadName, namespaceName, string(buf))
 		nad = nadClient.Create(nad)
 		framework.Logf("created network attachment definition config:\n%s", nad.Spec.Config)
 
