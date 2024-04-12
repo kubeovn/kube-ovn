@@ -54,6 +54,6 @@ func (c *NetConf) MarshalJSON() ([]byte, error) {
 	return json.Marshal(fixupObj)
 }
 
-func (n *NetConf) PostLoad() {
+func (c *NetConf) PostLoad() {
 	// nothing to do on linux
 }

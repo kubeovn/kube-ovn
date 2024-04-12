@@ -21,11 +21,11 @@ type NetConf struct {
 	VhostUserSocketConsumption string `json:"vhost_user_socket_consumption,omitempty"`
 }
 
-func (n *NetConf) PostLoad() {
-	if len(n.DNS.Nameservers) == 0 {
-		n.DNS.Nameservers = n.RuntimeConfig.DNS.Nameservers
+func (c *NetConf) PostLoad() {
+	if len(c.DNS.Nameservers) == 0 {
+		c.DNS.Nameservers = c.RuntimeConfig.DNS.Nameservers
 	}
-	if len(n.DNS.Search) == 0 {
-		n.DNS.Search = n.RuntimeConfig.DNS.Search
+	if len(c.DNS.Search) == 0 {
+		c.DNS.Search = c.RuntimeConfig.DNS.Search
 	}
 }
