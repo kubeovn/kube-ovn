@@ -73,7 +73,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.VMAnnotation, vmName)
-		ipAddr := pod.Annotations[util.IPAddressAnnotation]
+		ips := pod.Status.PodIPs
 
 		ginkgo.By("Deleting pod " + pod.Name)
 		podClient.DeleteSync(pod.Name)
@@ -97,8 +97,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.VMAnnotation, vmName)
 
 		ginkgo.By("Checking whether pod ips are changed")
-		ipNewAddr := pod.Annotations[util.IPAddressAnnotation]
-		framework.ExpectEqual(ipAddr, ipNewAddr)
+		framework.ExpectConsistOf(ips, pod.Status.PodIPs)
 	})
 
 	framework.ConformanceIt("should be able to keep pod ips after the vm is restarted", func() {
@@ -115,7 +114,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.VMAnnotation, vmName)
-		ipAddr := pod.Annotations[util.IPAddressAnnotation]
+		ips := pod.Status.PodIPs
 
 		ginkgo.By("Stopping vm " + vmName)
 		vmClient.StopSync(vmName)
@@ -139,7 +138,6 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.VMAnnotation, vmName)
 
 		ginkgo.By("Checking whether pod ips are changed")
-		ipNewAddr := pod.Annotations[util.IPAddressAnnotation]
-		framework.ExpectEqual(ipAddr, ipNewAddr)
+		framework.ExpectConsistOf(ips, pod.Status.PodIPs)
 	})
 })
