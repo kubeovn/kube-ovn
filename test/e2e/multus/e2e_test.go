@@ -6,12 +6,13 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/containernetworking/cni/pkg/types"
+	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/test/e2e"
 	k8sframework "k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/kubernetes/test/e2e/framework/config"
 
-	"github.com/containernetworking/cni/pkg/types"
 	"github.com/onsi/ginkgo/v2"
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -112,10 +113,15 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 		subnet = subnetClient.CreateSync(subnet)
 
 		ginkgo.By("Creating pod " + podName)
-		annotations := map[string]string{"k8s.v1.cni.cncf.io/networks": fmt.Sprintf("%s/%s", nad.Namespace, nad.Name)}
+		annotations := map[string]string{nadv1.NetworkAttachmentAnnot: fmt.Sprintf("%s/%s", nad.Namespace, nad.Name)}
 		cmd := []string{"sh", "-c", "sleep infinity"}
 		pod := framework.MakePod(namespaceName, podName, nil, annotations, image, cmd, nil)
 		pod = podClient.CreateSync(pod)
+
+		ginkgo.By("Validating pod annotations")
+		framework.ExpectNotEmpty(pod.Annotations)
+		framework.ExpectHaveKey(pod.Annotations, nadv1.NetworkStatusAnnot)
+		framework.Logf("pod network status:\n%s", pod.Annotations[nadv1.NetworkStatusAnnot])
 
 		ginkgo.By("Retrieving pod routes")
 		podRoutes, err := iproute.RouteShow("", "", func(cmd ...string) ([]byte, []byte, error) {
@@ -197,10 +203,15 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 		framework.Logf("created network attachment definition config:\n%s", nad.Spec.Config)
 
 		ginkgo.By("Creating pod " + podName)
-		annotations := map[string]string{"k8s.v1.cni.cncf.io/networks": fmt.Sprintf("%s/%s", nad.Namespace, nad.Name)}
+		annotations := map[string]string{nadv1.NetworkAttachmentAnnot: fmt.Sprintf("%s/%s", nad.Namespace, nad.Name)}
 		cmd := []string{"sh", "-c", "sleep infinity"}
 		pod := framework.MakePod(namespaceName, podName, nil, annotations, image, cmd, nil)
 		pod = podClient.CreateSync(pod)
+
+		ginkgo.By("Validating pod annotations")
+		framework.ExpectNotEmpty(pod.Annotations)
+		framework.ExpectHaveKey(pod.Annotations, nadv1.NetworkStatusAnnot)
+		framework.Logf("pod network status:\n%s", pod.Annotations[nadv1.NetworkStatusAnnot])
 
 		ginkgo.By("Retrieving pod routes")
 		podRoutes, err := iproute.RouteShow("", "", func(cmd ...string) ([]byte, []byte, error) {
@@ -268,10 +279,15 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 		subnet = subnetClient.CreateSync(subnet)
 
 		ginkgo.By("Creating pod " + podName)
-		annotations := map[string]string{"k8s.v1.cni.cncf.io/networks": fmt.Sprintf("%s/%s", nad.Namespace, nad.Name)}
+		annotations := map[string]string{nadv1.NetworkAttachmentAnnot: fmt.Sprintf("%s/%s", nad.Namespace, nad.Name)}
 		cmd := []string{"sh", "-c", "sleep infinity"}
 		pod := framework.MakePod(namespaceName, podName, nil, annotations, image, cmd, nil)
 		pod = podClient.CreateSync(pod)
+
+		ginkgo.By("Validating pod annotations")
+		framework.ExpectNotEmpty(pod.Annotations)
+		framework.ExpectHaveKey(pod.Annotations, nadv1.NetworkStatusAnnot)
+		framework.Logf("pod network status:\n%s", pod.Annotations[nadv1.NetworkStatusAnnot])
 
 		ginkgo.By("Retrieving pod routes")
 		podRoutes, err := iproute.RouteShow("", "", func(cmd ...string) ([]byte, []byte, error) {
@@ -361,10 +377,15 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 		framework.Logf("created network attachment definition config:\n%s", nad.Spec.Config)
 
 		ginkgo.By("Creating pod " + podName)
-		annotations := map[string]string{"k8s.v1.cni.cncf.io/networks": fmt.Sprintf("%s/%s", nad.Namespace, nad.Name)}
+		annotations := map[string]string{nadv1.NetworkAttachmentAnnot: fmt.Sprintf("%s/%s", nad.Namespace, nad.Name)}
 		cmd := []string{"sh", "-c", "sleep infinity"}
 		pod := framework.MakePod(namespaceName, podName, nil, annotations, image, cmd, nil)
 		pod = podClient.CreateSync(pod)
+
+		ginkgo.By("Validating pod annotations")
+		framework.ExpectNotEmpty(pod.Annotations)
+		framework.ExpectHaveKey(pod.Annotations, nadv1.NetworkStatusAnnot)
+		framework.Logf("pod network status:\n%s", pod.Annotations[nadv1.NetworkStatusAnnot])
 
 		ginkgo.By("Retrieving pod routes")
 		podRoutes, err := iproute.RouteShow("", "", func(cmd ...string) ([]byte, []byte, error) {

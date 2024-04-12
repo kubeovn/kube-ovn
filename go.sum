@@ -826,6 +826,8 @@ github.com/JohnCGriffin/overflow v0.0.0-20211019200055-46fa312c352c/go.mod h1:X0
 github.com/Knetic/govaluate v3.0.1-0.20171022003610-9aa49832a739+incompatible/go.mod h1:r7JcOSlj0wfOMncg0iLm8Leh48TZaKVeNIfJntJ2wa0=
 github.com/MakeNowJust/heredoc v1.0.0 h1:cXCdzVdstXyiTqTvfqk9SDHpKNjxuom+DOlyEeQ4pzQ=
 github.com/MakeNowJust/heredoc v1.0.0/go.mod h1:mG5amYoWBHf8vpLOuehzbGGw0EHxpZZ6lCpQ4fNJ8LE=
+github.com/Masterminds/semver/v3 v3.2.1 h1:RN9w6+7QoMeJVGyfmbcgs28Br8cvmnucEXnY0rYXWg0=
+github.com/Masterminds/semver/v3 v3.2.1/go.mod h1:qvl/7zhW3nngYb5+80sSMF+FG2BjYrf8m9wsX0PNOMQ=
 github.com/Microsoft/go-winio v0.6.1 h1:9/kr64B9VUZrLm5YYwbGtUJnMgqWVOdUAXu6Migciow=
 github.com/Microsoft/go-winio v0.6.1/go.mod h1:LRdKpFKfdobln8UmuiYcKPot9D2v6svN5+sAH+4kjUM=
 github.com/Microsoft/hcsshim v0.12.2 h1:AcXy+yfRvrx20g9v7qYaJv5Rh+8GaHOS6b8G6Wx/nKs=
@@ -986,8 +988,8 @@ github.com/containerd/ttrpc v1.2.3 h1:4jlhbXIGvijRtNC8F/5CpuJZ7yKOBFGFOOXg1bkISz
 github.com/containerd/ttrpc v1.2.3/go.mod h1:ieWsXucbb8Mj9PH0rXCw1i8IunRbbAiDkpXkbfflWBM=
 github.com/containerd/typeurl v1.0.2 h1:Chlt8zIieDbzQFzXzAeBEF92KhExuE4p9p92/QmY7aY=
 github.com/containerd/typeurl v1.0.2/go.mod h1:9trJWW2sRlGub4wZJRTW83VtbOLS6hwcDZXTn6oPz9s=
-github.com/containernetworking/cni v1.1.2 h1:wtRGZVv7olUHMOqouPpn3cXJWpJgM6+EUl31EQbXALQ=
-github.com/containernetworking/cni v1.1.2/go.mod h1:sDpYKmGVENF3s6uvMvGgldDWeG8dMxakj/u+i9ht9vw=
+github.com/containernetworking/cni v1.2.0-rc1 h1:AKI3+pXtgY4PDLN9+50o9IaywWVuey0Jkw3Lvzp0HCY=
+github.com/containernetworking/cni v1.2.0-rc1/go.mod h1:Lt0TQcZQVDju64fYxUhDziTgXCDe3Olzi9I4zZJLWHg=
 github.com/containernetworking/plugins v1.4.1 h1:+sJRRv8PKhLkXIl6tH1D7RMi+CbbHutDGU+ErLBORWA=
 github.com/containernetworking/plugins v1.4.1/go.mod h1:n6FFGKcaY4o2o5msgu/UImtoC+fpQXM3076VHfHbj60=
 github.com/coreos/bbolt v1.3.2/go.mod h1:iRUV2dpdMOn7Bo10OQBFzIJO9kkE559Wcmn+qkEiiKk=
@@ -1611,8 +1613,8 @@ github.com/jung-kurt/gofpdf v1.0.3-0.20190309125859-24315acbbda5/go.mod h1:7Id9E
 github.com/jwilder/encoding v0.0.0-20170811194829-b4e1701a28ef/go.mod h1:Ct9fl0F6iIOGgxJ5npU/IUOhOhqlVrGjyIZc8/MagT0=
 github.com/k-sone/critbitgo v1.4.0 h1:l71cTyBGeh6X5ATh6Fibgw3+rtNT80BA0uNNWgkPrbE=
 github.com/k-sone/critbitgo v1.4.0/go.mod h1:7E6pyoyADnFxlUBEKcnfS49b7SUAQGMK+OAp/UQvo0s=
-github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.6.0 h1:BT3ghAY0q7lWib9rz+tVXDFkm27dJV6SLCn7TunZwo4=
-github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.6.0/go.mod h1:wxt2YWRVItDtaQmVSmaN5ubE2L1c9CiNoHQwSJnM8Ko=
+github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.7.0 h1:47q2PIbDYHmOaqLxgGnvpLq96v9UKDsJfNW6j/KbfpQ=
+github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.7.0/go.mod h1:KDX0bPKeuhMakcNzLf2sWXKPNZ30wH01bsY/KJZLxFY=
 github.com/k8snetworkplumbingwg/sriovnet v1.2.0 h1:6ELfAxCB1dvosGUy3DVRmfH+HWTzmPD3W67HKQvMR1M=
 github.com/k8snetworkplumbingwg/sriovnet v1.2.0/go.mod h1:jyWzGe6ZtYiPq6ih6aXCOy6mZ49Y9mNyBOLBBXnli+k=
 github.com/kardianos/osext v0.0.0-20190222173326-2bc1f35cddc0 h1:iQTw/8FWTuc7uiaSepXwyf3o52HaUYcV+Tu66S3F5GA=

@@ -8,24 +8,24 @@ import (
 
 type NetConf struct {
 	hns.NetConf
-	ServerSocket string          `json:"server_socket"`
-	Provider     string          `json:"provider"`
-	Routes       []request.Route `json:"routes"`
-	IPAM         *IPAMConf       `json:"ipam"`
+	ServerSocket string          `json:"server_socket,omitempty"`
+	Provider     string          `json:"provider,omitempty"`
+	Routes       []request.Route `json:"routes,omitempty"`
+	IPAM         *IPAMConf       `json:"ipam,omitempty"`
 	// PciAddrs in case of using sriov
-	DeviceID string `json:"deviceID"`
-	VfDriver string `json:"vf_driver"`
+	DeviceID string `json:"deviceID,omitempty"`
+	VfDriver string `json:"vf_driver,omitempty"`
 	// for dpdk
-	VhostUserSocketVolumeName  string `json:"vhost_user_socket_volume_name"`
-	VhostUserSocketName        string `json:"vhost_user_socket_name"`
-	VhostUserSocketConsumption string `json:"vhost_user_socket_consumption"`
+	VhostUserSocketVolumeName  string `json:"vhost_user_socket_volume_name,omitempty"`
+	VhostUserSocketName        string `json:"vhost_user_socket_name,omitempty"`
+	VhostUserSocketConsumption string `json:"vhost_user_socket_consumption,omitempty"`
 }
 
-func (n *NetConf) PostLoad() {
-	if len(n.DNS.Nameservers) == 0 {
-		n.DNS.Nameservers = n.RuntimeConfig.DNS.Nameservers
+func (c *NetConf) PostLoad() {
+	if len(c.DNS.Nameservers) == 0 {
+		c.DNS.Nameservers = c.RuntimeConfig.DNS.Nameservers
 	}
-	if len(n.DNS.Search) == 0 {
-		n.DNS.Search = n.RuntimeConfig.DNS.Search
+	if len(c.DNS.Search) == 0 {
+		c.DNS.Search = c.RuntimeConfig.DNS.Search
 	}
 }
