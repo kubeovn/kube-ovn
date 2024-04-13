@@ -13,6 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
 
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -51,7 +52,7 @@ func (c *Controller) resyncExternalGateway() {
 		return
 	}
 	klog.Infof("last external gw configmap: %v", lastExGwCM)
-	if (lastExGwCM["type"] == "distributed" && cm.Data["type"] == "centralized") ||
+	if (lastExGwCM["type"] == kubeovnv1.GWDistributedType && cm.Data["type"] == kubeovnv1.GWCentralizedType) ||
 		lastExGwCM != nil && !reflect.DeepEqual(lastExGwCM["external-gw-nodes"], cm.Data["external-gw-nodes"]) {
 		klog.Info("external gw nodes list changed, start to remove ovn external gw")
 		if err := c.removeExternalGateway(); err != nil {
@@ -228,7 +229,7 @@ func (c *Controller) getGatewayChassis(config map[string]string) ([]string, erro
 	for _, node := range nodes {
 		gwNodes = append(gwNodes, node.Name)
 	}
-	if config["type"] != "distributed" {
+	if config["type"] != kubeovnv1.GWDistributedType {
 		nodeNames := strings.Split(config["external-gw-nodes"], ",")
 		for _, name := range nodeNames {
 			name = strings.TrimSpace(name)

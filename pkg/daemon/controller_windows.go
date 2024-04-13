@@ -183,7 +183,7 @@ func (c *Controller) handlePod(key string) error {
 		return err
 	}
 	for _, multiNet := range attachNets {
-		provider := fmt.Sprintf("%s.%s.ovn", multiNet.Name, multiNet.Namespace)
+		provider := fmt.Sprintf("%s.%s.%s", multiNet.Name, multiNet.Namespace, util.OvnProvider)
 		if pod.Annotations[fmt.Sprintf(util.VMTemplate, provider)] != "" {
 			podName = pod.Annotations[fmt.Sprintf(util.VMTemplate, provider)]
 		}

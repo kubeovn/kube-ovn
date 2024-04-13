@@ -27,8 +27,7 @@ func GetLocalnetName(subnet string) string {
 }
 
 func trimCommandOutput(raw []byte) string {
-	output := strings.TrimSpace(string(raw))
-	return strings.Trim(output, "\"")
+	return strings.Trim(strings.TrimSpace(string(raw)), `"`)
 }
 
 func LogicalRouterPortName(lr, ls string) string {
