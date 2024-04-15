@@ -70,7 +70,7 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 		cidr = framework.RandomCIDR(f.ClusterIPFamily)
 		podClient = f.PodClient()
 		subnetClient = f.SubnetClient()
-		nadClient = f.NetworkAttachmentDefinitionClient(namespaceName)
+		nadClient = f.NetworkAttachmentDefinitionClientNS(namespaceName)
 
 		if image == "" {
 			image = framework.GetKubeOvnImage(f.ClientSet)

@@ -53,6 +53,7 @@ require (
 	k8s.io/pod-security-admission v0.29.3
 	k8s.io/sample-controller v0.29.3
 	k8s.io/utils v0.0.0-20240310230437-4693a0247e57
+	kubevirt.io/api v1.1.1
 	kubevirt.io/client-go v1.1.1
 	sigs.k8s.io/controller-runtime v0.17.3
 )
@@ -115,8 +116,7 @@ require (
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
 	github.com/go-errors/errors v1.4.2 // indirect
 	github.com/go-ini/ini v1.67.0 // indirect
-	github.com/go-kit/kit v0.13.0 // indirect
-	github.com/go-kit/log v0.2.1 // indirect
+	github.com/go-kit/kit v0.10.0 // indirect
 	github.com/go-logfmt/logfmt v0.6.0 // indirect
 	github.com/go-logr/logr v1.4.1 // indirect
 	github.com/go-openapi/jsonpointer v0.21.0 // indirect
@@ -127,7 +127,6 @@ require (
 	github.com/gofrs/uuid v4.4.0+incompatible // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang-jwt/jwt/v4 v4.5.0 // indirect
-	github.com/golang/glog v1.2.0 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/btree v1.1.2 // indirect
@@ -272,7 +271,6 @@ require (
 	k8s.io/kubelet v0.29.3 // indirect
 	k8s.io/legacy-cloud-providers v0.0.0 // indirect
 	k8s.io/mount-utils v0.0.0 // indirect
-	kubevirt.io/api v1.1.1 // indirect
 	kubevirt.io/containerized-data-importer-api v1.58.1 // indirect
 	kubevirt.io/controller-lifecycle-operator-sdk/api v0.0.0-20220329064328-f3cc58c6ed90 // indirect
 	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.29.0 // indirect
@@ -317,5 +315,5 @@ replace (
 	k8s.io/mount-utils => k8s.io/mount-utils v0.29.3
 	k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.29.3
 	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.29.3
-	kubevirt.io/client-go => github.com/kubeovn/kubevirt-client-go v0.0.0-20240218040151-07ffb2d68c98
+	kubevirt.io/client-go => github.com/kubeovn/kubevirt-client-go v0.0.0-20240412101643-286960f75418
 )

@@ -15,7 +15,11 @@ type NetworkAttachmentDefinitionClient struct {
 	v1.NetworkAttachmentDefinitionInterface
 }
 
-func (f *Framework) NetworkAttachmentDefinitionClient(namespace string) *NetworkAttachmentDefinitionClient {
+func (f *Framework) NetworkAttachmentDefinitionClient() *NetworkAttachmentDefinitionClient {
+	return f.NetworkAttachmentDefinitionClientNS(f.Namespace.Name)
+}
+
+func (f *Framework) NetworkAttachmentDefinitionClientNS(namespace string) *NetworkAttachmentDefinitionClient {
 	return &NetworkAttachmentDefinitionClient{
 		f:                                    f,
 		NetworkAttachmentDefinitionInterface: f.AttachNetClient.K8sCniCncfIoV1().NetworkAttachmentDefinitions(namespace),

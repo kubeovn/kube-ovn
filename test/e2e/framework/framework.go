@@ -6,11 +6,12 @@ import (
 	"strings"
 	"time"
 
-	attachnetclientset "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/client/clientset/versioned"
+	nad "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/client/clientset/versioned"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/kubernetes/test/e2e/framework"
 	admissionapi "k8s.io/pod-security-admission/api"
+	"kubevirt.io/client-go/kubecli"
 
 	"github.com/onsi/ginkgo/v2"
 
@@ -34,8 +35,9 @@ const (
 type Framework struct {
 	KubeContext string
 	*framework.Framework
-	KubeOVNClientSet kubeovncs.Interface
-	AttachNetClient  attachnetclientset.Interface
+	KubeOVNClientSet  kubeovncs.Interface
+	KubeVirtClientSet kubecli.KubevirtClient
+	AttachNetClient   nad.Interface
 	// master/release-1.10/...
 	ClusterVersion string
 	// 999.999 for master
@@ -159,14 +161,25 @@ func (f *Framework) BeforeEach() {
 		ExpectNoError(err)
 	}
 
-	if f.AttachNetClient == nil {
-		ginkgo.By("Creating a nad client")
+	if f.KubeVirtClientSet == nil {
+		ginkgo.By("Creating a KubeVirt client")
 		config, err := framework.LoadConfig()
 		ExpectNoError(err)
 
 		config.QPS = f.Options.ClientQPS
 		config.Burst = f.Options.ClientBurst
-		f.AttachNetClient, err = attachnetclientset.NewForConfig(config)
+		f.KubeVirtClientSet, err = kubecli.GetKubevirtClientFromRESTConfig(config)
+		ExpectNoError(err)
+	}
+
+	if f.AttachNetClient == nil {
+		ginkgo.By("Creating a network attachment definition client")
+		config, err := framework.LoadConfig()
+		ExpectNoError(err)
+
+		config.QPS = f.Options.ClientQPS
+		config.Burst = f.Options.ClientBurst
+		f.AttachNetClient, err = nad.NewForConfig(config)
 		ExpectNoError(err)
 	}
 
