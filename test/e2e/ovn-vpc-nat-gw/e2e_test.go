@@ -935,7 +935,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		cmData = map[string]string{
 			"enable-external-gw": "true",
 			"external-gw-nodes":  externalGwNodes,
-			"type":               "distributed",
+			"type":               kubeovnv1.GWDistributedType,
 			"external-gw-nic":    "eth1",
 			"external-gw-addr":   strings.Join(cidr, ","),
 		}

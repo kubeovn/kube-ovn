@@ -780,7 +780,7 @@ func (c *Controller) isOVNProvided(providerName string, pod *corev1.Pod) (bool, 
 			klog.Errorf("parse annotation logical switch %s error %v", ls, err)
 			return false, err
 		}
-		if !strings.HasSuffix(subnet.Spec.Provider, util.OvnProvider) {
+		if !isOvnSubnet(subnet) {
 			return false, nil
 		}
 		return true, nil
@@ -819,7 +819,7 @@ func (c *Controller) getVMLsps() []string {
 				continue
 			}
 			for _, multiNet := range attachNets {
-				provider := fmt.Sprintf("%s.%s.ovn", multiNet.Name, multiNet.Namespace)
+				provider := fmt.Sprintf("%s.%s.%s", multiNet.Name, multiNet.Namespace, util.OvnProvider)
 				vmLsp := ovs.PodNameToPortName(vm.Name, ns.Name, provider)
 				vmLsps = append(vmLsps, vmLsp)
 			}
@@ -830,7 +830,7 @@ func (c *Controller) getVMLsps() []string {
 					if len(items) != 2 {
 						items = []string{vm.GetNamespace(), items[0]}
 					}
-					provider := fmt.Sprintf("%s.%s.ovn", items[1], items[0])
+					provider := fmt.Sprintf("%s.%s.%s", items[1], items[0], util.OvnProvider)
 					vmLsp := ovs.PodNameToPortName(vm.Name, ns.Name, provider)
 					vmLsps = append(vmLsps, vmLsp)
 				}

@@ -145,7 +145,7 @@ func (v *ValidatingHook) allowLiveMigration(_ context.Context, annotations map[s
 
 	for _, attach := range multusNets {
 		// allocate kubeovn network
-		providerName := fmt.Sprintf("%s.%s.ovn", attach.Name, attach.Namespace)
+		providerName := fmt.Sprintf("%s.%s.%s", attach.Name, attach.Namespace, util.OvnProvider)
 		if annotations[fmt.Sprintf(util.LiveMigrationAnnotationTemplate, providerName)] == "true" {
 			return true
 		}

@@ -297,7 +297,7 @@ func (c *Controller) formatSubnet(subnet *kubeovnv1.Subnet) (*kubeovnv1.Subnet, 
 		changed = true
 	}
 	if subnet.Spec.Vpc == "" {
-		if subnet.Spec.Provider != "" && !strings.HasSuffix(subnet.Spec.Provider, util.OvnProvider) {
+		if !isOvnSubnet(subnet) {
 			klog.Infof("subnet %s is not ovn subnet, no vpc", subnet.Name)
 		} else {
 			changed = true
@@ -2262,7 +2262,7 @@ func (c *Controller) calcSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv1.Su
 }
 
 func isOvnSubnet(subnet *kubeovnv1.Subnet) bool {
-	return subnet.Spec.Provider == "" || subnet.Spec.Provider == util.OvnProvider || strings.HasSuffix(subnet.Spec.Provider, "ovn")
+	return util.IsOvnProvider(subnet.Spec.Provider)
 }
 
 func checkAndFormatsExcludeIPs(subnet *kubeovnv1.Subnet) bool {
