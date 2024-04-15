@@ -129,7 +129,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		loss = pod.Annotations[fmt.Sprintf(util.NetemQosLossAnnotationTemplate, podRequest.Provider)]
 		jitter = pod.Annotations[fmt.Sprintf(util.NetemQosJitterAnnotationTemplate, podRequest.Provider)]
 		providerNetwork = pod.Annotations[fmt.Sprintf(util.ProviderNetworkTemplate, podRequest.Provider)]
-		vmName = pod.Annotations[fmt.Sprintf(util.VMTemplate, podRequest.Provider)]
+		vmName = pod.Annotations[fmt.Sprintf(util.VMAnnotationTemplate, podRequest.Provider)]
 		ipAddr = util.GetIPAddrWithMask(ip, cidr)
 		if s := pod.Annotations[fmt.Sprintf(util.RoutesAnnotationTemplate, podRequest.Provider)]; s != "" {
 			if err = json.Unmarshal([]byte(s), &routes); err != nil {
@@ -461,7 +461,7 @@ func (csh cniServerHandler) handleDel(req *restful.Request, resp *restful.Respon
 		default:
 			nicType = pod.Annotations[fmt.Sprintf(util.PodNicAnnotationTemplate, podRequest.Provider)]
 		}
-		vmName := pod.Annotations[fmt.Sprintf(util.VMTemplate, podRequest.Provider)]
+		vmName := pod.Annotations[fmt.Sprintf(util.VMAnnotationTemplate, podRequest.Provider)]
 		if vmName != "" {
 			podRequest.PodName = vmName
 		}

@@ -42,10 +42,8 @@ KUBEVIRT_API_IMAGE = quay.io/kubevirt/virt-api:$(KUBEVIRT_VERSION)
 KUBEVIRT_CONTROLLER_IMAGE = quay.io/kubevirt/virt-controller:$(KUBEVIRT_VERSION)
 KUBEVIRT_HANDLER_IMAGE = quay.io/kubevirt/virt-handler:$(KUBEVIRT_VERSION)
 KUBEVIRT_LAUNCHER_IMAGE = quay.io/kubevirt/virt-launcher:$(KUBEVIRT_VERSION)
-KUBEVIRT_TEST_IMAGE = quay.io/kubevirt/cirros-container-disk-demo
 KUBEVIRT_OPERATOR_YAML = https://github.com/kubevirt/kubevirt/releases/download/$(KUBEVIRT_VERSION)/kubevirt-operator.yaml
 KUBEVIRT_CR_YAML = https://github.com/kubevirt/kubevirt/releases/download/$(KUBEVIRT_VERSION)/kubevirt-cr.yaml
-KUBEVIRT_TEST_YAML = https://kubevirt.io/labs/manifests/vm.yaml
 
 CILIUM_VERSION = 1.14.6
 CILIUM_IMAGE_REPO = quay.io/cilium/cilium
@@ -760,24 +758,22 @@ kind-install-vpc-nat-gw:
 	@$(MAKE) kind-install-multus
 
 .PHONY: kind-install-kubevirt
-kind-install-kubevirt: kind-install
+kind-install-kubevirt:
 	$(call kind_load_image,kube-ovn,$(KUBEVIRT_OPERATOR_IMAGE),1)
 	$(call kind_load_image,kube-ovn,$(KUBEVIRT_API_IMAGE),1)
 	$(call kind_load_image,kube-ovn,$(KUBEVIRT_CONTROLLER_IMAGE),1)
 	$(call kind_load_image,kube-ovn,$(KUBEVIRT_HANDLER_IMAGE),1)
 	$(call kind_load_image,kube-ovn,$(KUBEVIRT_LAUNCHER_IMAGE),1)
-	$(call kind_load_image,kube-ovn,$(KUBEVIRT_TEST_IMAGE),1)
 
 	kubectl apply -f "$(KUBEVIRT_OPERATOR_YAML)"
 	kubectl apply -f "$(KUBEVIRT_CR_YAML)"
-	kubectl rollout status deployment/virt-operator -n kubevirt --timeout 120s
-	echo "wait kubevirt releated pod running ..."
-	sleep 60
-
-	kubectl -n kubevirt patch kubevirt kubevirt --type=merge --patch '{"spec":{"configuration":{"developerConfiguration":{"useEmulation":true}}}}'
-	kubectl apply -f "$(KUBEVIRT_TEST_YAML)"
-	sleep 5
-	kubectl patch vm testvm --type=merge --patch '{"spec":{"running":true}}'
+	kubectl -n kubevirt scale deploy virt-operator --replicas=1
+	kubectl -n kubevirt patch kubevirt kubevirt --type=merge --patch \
+		'{"spec":{"configuration":{"developerConfiguration":{"useEmulation":true}},"infra":{"replicas":1}}}'
+	$(call kubectl_wait_exist_and_ready,kubevirt,deployment,virt-operator)
+	$(call kubectl_wait_exist_and_ready,kubevirt,deployment,virt-api)
+	$(call kubectl_wait_exist_and_ready,kubevirt,deployment,virt-controller)
+	$(call kubectl_wait_exist_and_ready,kubevirt,daemonset,virt-handler)
 
 .PHONY: kind-install-lb-svc
 kind-install-lb-svc:
