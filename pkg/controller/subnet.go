@@ -2230,7 +2230,7 @@ func (c *Controller) calcSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv1.Su
 	}
 
 	if err := c.checkSubnetUsingIPs(subnet); err != nil {
-		klog.Errorf("perhaps subnet %s has some ips in deleting: %v", subnet.Name, err)
+		klog.Errorf("inconsistency detected in status of subnet %s : %v", subnet.Name, err)
 		return nil, err
 	}
 
