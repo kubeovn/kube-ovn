@@ -2096,12 +2096,12 @@ func (c *Controller) calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv
 
 func (c *Controller) checkSubnetUsingIPs(subnet *kubeovnv1.Subnet) error {
 	if subnet.Status.V4UsingIPs != 0 && subnet.Status.V4UsingIPRange == "" {
-		err := fmt.Errorf("subnet %s has %s v4 ip in use, while the v4 using ip range is empty", subnet.Name, subnet.Status.V4UsingIPs)
+		err := fmt.Errorf("subnet %s has %.0f v4 ip in use, while the v4 using ip range is empty", subnet.Name, subnet.Status.V4UsingIPs)
 		klog.Error(err)
 		return err
 	}
 	if subnet.Status.V6UsingIPs != 0 && subnet.Status.V6UsingIPRange == "" {
-		err := fmt.Errorf("subnet %s has v6 using ip, but v6 using ip range is empty", subnet.Name)
+		err := fmt.Errorf("subnet %s has %.0f v6 ip in use, while the v6 using ip range is empty", subnet.Name, subnet.Status.V6UsingIPs)
 		klog.Error(err)
 		return err
 	}
