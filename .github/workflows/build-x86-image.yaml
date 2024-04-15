@@ -915,7 +915,10 @@ jobs:
           E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
           E2E_IP_FAMILY: ${{ matrix.ip-family }}
           E2E_NETWORK_MODE: ${{ matrix.mode }}
-        run: make kube-ovn-conformance-e2e
+        run: |
+          make kube-ovn-conformance-e2e
+          make kind-install-kubevirt
+          make kube-ovn-kubevirt-e2e
 
       - name: kubectl ko log
         if: failure()
@@ -1498,101 +1501,6 @@ jobs:
         env:
           E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
         run: make kube-ovn-lb-svc-conformance-e2e
-
-  kubevirt-e2e:
-    name: Kubevirt VM E2E
-    needs:
-      - build-kube-ovn
-      - build-e2e-binaries
-    runs-on: ubuntu-22.04
-    timeout-minutes: 15
-    steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
-        with:
-          android: true
-          dotnet: true
-          haskell: true
-          docker-images: false
-          large-packages: false
-          tool-cache: false
-          swap-storage: false
-
-      - uses: actions/checkout@v4
-
-      - name: Create the default branch directory
-        if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        run: mkdir -p test/e2e/source
-
-      - name: Check out the default branch
-        if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.repository.default_branch }}
-          fetch-depth: 1
-          path: test/e2e/source
-
-      - name: Export E2E directory
-        run: |
-          if [ '${{ github.base_ref || github.ref_name }}' = '${{ github.event.repository.default_branch }}' ]; then
-            echo "E2E_DIR=." >> "$GITHUB_ENV"
-          else
-            echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
-          fi
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version: ${{ env.GO_VERSION || '' }}
-          go-version-file: ${{ env.E2E_DIR }}/go.mod
-          check-latest: true
-          cache: false
-
-      - name: Export Go full version
-        run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
-
-      - name: Go cache
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
-
-      - name: Install kind
-        uses: helm/kind-action@v1.9.0
-        with:
-          version: ${{ env.KIND_VERSION }}
-          install_only: true
-
-      - name: Install ginkgo
-        working-directory: ${{ env.E2E_DIR }}
-        run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
-
-      - name: Download kube-ovn image
-        uses: actions/download-artifact@v4
-        with:
-          name: kube-ovn
-
-      - name: Load images
-        run: |
-          docker load -i kube-ovn.tar
-
-      - name: Create kind cluster
-        run: |
-          sudo pip3 install j2cli
-          sudo pip3 install "j2cli[yaml]"
-          sudo PATH=~/.local/bin:$PATH make kind-init
-          sudo cp -r /root/.kube/ ~/.kube/
-          sudo chown -R $(id -un). ~/.kube/
-
-      - name: Install Kube-OVN and KubeVirt
-        run: make kind-install-kubevirt
-
-      - name: Run E2E
-        working-directory: ${{ env.E2E_DIR }}
-        env:
-          E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
-        run: make kube-ovn-kubevirt-e2e
 
   webhook-e2e:
     name: Webhook E2E
@@ -2347,7 +2255,6 @@ jobs:
       - no-np-test
       - cilium-chaining-e2e
       - kube-ovn-ha-e2e
-      - kubevirt-e2e
       - kube-ovn-submariner-conformance-e2e
     if: always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
     runs-on: ubuntu-22.04
