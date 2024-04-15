@@ -1607,7 +1607,7 @@ func (c *Controller) getPodAttachmentNet(pod *v1.Pod) ([]*kubeovnNet, error) {
 			allowLiveMigration := false
 			isDefault := util.IsDefaultNet(pod.Annotations[util.DefaultNetworkAnnotation], attach)
 
-			providerName = fmt.Sprintf("%s.%s.ovn", attach.Name, attach.Namespace)
+			providerName = fmt.Sprintf("%s.%s.%s", attach.Name, attach.Namespace, util.OvnProvider)
 			if pod.Annotations[fmt.Sprintf(util.LiveMigrationAnnotationTemplate, providerName)] == "true" {
 				allowLiveMigration = true
 			}
