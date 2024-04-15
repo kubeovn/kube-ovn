@@ -53,7 +53,7 @@ require (
 	k8s.io/pod-security-admission v0.29.3
 	k8s.io/sample-controller v0.29.3
 	k8s.io/utils v0.0.0-20240310230437-4693a0247e57
-	kubevirt.io/api v1.1.1
+	kubevirt.io/api v1.2.0
 	kubevirt.io/client-go v1.1.1
 	sigs.k8s.io/controller-runtime v0.17.3
 )
@@ -189,7 +189,6 @@ require (
 	github.com/openshift/api v0.0.0-20231207204216-5efc6fca4b2d // indirect
 	github.com/openshift/client-go v3.9.0+incompatible // indirect
 	github.com/openshift/custom-resource-status v1.1.2 // indirect
-	github.com/pborman/uuid v1.2.1 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.0 // indirect
 	github.com/peterbourgon/diskv v2.0.1+incompatible // indirect
 	github.com/pkg/errors v0.9.1 // indirect
