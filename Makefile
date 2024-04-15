@@ -968,9 +968,12 @@ kind-clean-bgp-ha:
 		$(CLAB_IMAGE) clab destroy -t /clab-bgp/clab.yaml
 	@$(MAKE) kind-clean
 
+.PHONY: check-kube-ovn-pod-restarts
+check-kube-ovn-pod-restarts:
+	bash dist/images/check-kube-ovn-pod-restarts.sh
+
 .PHONY: uninstall
 uninstall:
-	bash dist/images/check-kube-ovn-restarts.sh
 	bash dist/images/cleanup.sh
 
 .PHONY: lint
