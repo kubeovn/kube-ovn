@@ -2075,7 +2075,7 @@ func calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 
 	if err := c.checkSubnetUsingIPs(subnet); err != nil {
 		klog.Errorf("inconsistency detected in status of subnet %s : %v", subnet.Name, err)
-		return nil, err
+		return err
 	}
 
 	bytes, err := subnet.Status.Bytes()
@@ -2190,7 +2190,7 @@ func calcSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 
 	if err := c.checkSubnetUsingIPs(subnet); err != nil {
 		klog.Errorf("inconsistency detected in status of subnet %s : %v", subnet.Name, err)
-		return nil, err
+		return err
 	}
 
 	bytes, err := subnet.Status.Bytes()
