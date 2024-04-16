@@ -15,6 +15,18 @@ var (
 			"component",
 		})
 
+	metricOvnHealthyStatusContent = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: metricNamespace,
+			Name:      "ovn_status_content",
+			Help:      "OVN Health Status. The values are always 1. While the value of status label is the really status report.",
+		},
+		[]string{
+			"hostname",
+			"component",
+			"status",
+		})
+
 	metricRequestErrorNums = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Namespace: metricNamespace,
@@ -465,6 +477,7 @@ var (
 func registerOvnMetrics() {
 	// ovn status metrics
 	prometheus.MustRegister(metricOvnHealthyStatus)
+	prometheus.MustRegister(metricOvnHealthyStatusContent)
 	prometheus.MustRegister(metricRequestErrorNums)
 	prometheus.MustRegister(metricLogFileSize)
 	prometheus.MustRegister(metricDBFileSize)

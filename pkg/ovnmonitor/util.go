@@ -8,7 +8,7 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"github.com/greenpau/ovsdb"
+	"github.com/kubeovn/ovsdb"
 	"k8s.io/klog/v2"
 )
 
@@ -66,6 +66,36 @@ func (e *Exporter) getOvnStatus() map[string]int {
 				result["ovn-northd"] = 1
 			}
 		}
+	}
+
+	return result
+}
+
+func (e *Exporter) getOvnStatusContent() map[string]string {
+	result := map[string]string{"ovsdb-server-northbound": "", "ovsdb-server-southbound": ""}
+
+	// get ovn-northbound status
+	cmdstr := "ovs-appctl -t /var/run/ovn/ovnnb_db.ctl cluster/status OVN_Northbound"
+	cmd := exec.Command("sh", "-c", cmdstr)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		klog.Errorf("get ovn-northbound status failed, err %v", err)
+	}
+	if strings.Contains(string(output), "Servers:") {
+		servers := strings.Split(string(output), "Servers:")[1]
+		result["ovsdb-server-northbound"] = servers
+	}
+
+	// get ovn-southbound status
+	cmdstr = "ovs-appctl -t /var/run/ovn/ovnsb_db.ctl cluster/status OVN_Southbound"
+	cmd = exec.Command("sh", "-c", cmdstr)
+	output, err = cmd.CombinedOutput()
+	if err != nil {
+		klog.Errorf("get ovn-southbound status failed, err %v", err)
+	}
+	if strings.Contains(string(output), "Servers:") {
+		servers := strings.Split(string(output), "Servers:")[1]
+		result["ovsdb-server-southbound"] = servers
 	}
 
 	return result

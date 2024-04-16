@@ -7,7 +7,7 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"github.com/greenpau/ovsdb"
+	"github.com/kubeovn/ovsdb"
 	"k8s.io/klog/v2"
 )
 
