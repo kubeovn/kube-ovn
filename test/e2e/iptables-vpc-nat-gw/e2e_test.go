@@ -240,7 +240,7 @@ var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 	ginkgo.BeforeEach(func() {
 		containerID = ""
 		cs = f.ClientSet
-		attachNetClient = f.NetworkAttachmentDefinitionClient(framework.KubeOvnNamespace)
+		attachNetClient = f.NetworkAttachmentDefinitionClientNS(framework.KubeOvnNamespace)
 		subnetClient = f.SubnetClient()
 		vpcClient = f.VpcClient()
 		vpcNatGwClient = f.VpcNatGatewayClient()
@@ -1085,7 +1085,7 @@ var _ = framework.Describe("[group:qos-policy]", func() {
 		containerID = ""
 		cs = f.ClientSet
 		podClient = f.PodClient()
-		attachNetClient = f.NetworkAttachmentDefinitionClient(framework.KubeOvnNamespace)
+		attachNetClient = f.NetworkAttachmentDefinitionClientNS(framework.KubeOvnNamespace)
 		subnetClient = f.SubnetClient()
 		vpcClient = f.VpcClient()
 		vpcNatGwClient = f.VpcNatGatewayClient()

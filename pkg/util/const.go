@@ -21,6 +21,7 @@ const (
 	VipAnnotation        = "ovn.kubernetes.io/vip"
 	AAPsAnnotation       = "ovn.kubernetes.io/aaps"
 	ChassisAnnotation    = "ovn.kubernetes.io/chassis"
+	VMAnnotation         = "ovn.kubernetes.io/virtualmachine"
 
 	ExternalIPAnnotation         = "ovn.kubernetes.io/external_ip"
 	ExternalMacAnnotation        = "ovn.kubernetes.io/external_mac"
@@ -85,7 +86,7 @@ const (
 	ProviderNetworkMtuTemplate        = "%s.provider-network.kubernetes.io/mtu"
 	MirrorControlAnnotationTemplate   = "%s.kubernetes.io/mirror"
 	PodNicAnnotationTemplate          = "%s.kubernetes.io/pod_nic_type"
-	VMTemplate                        = "%s.kubernetes.io/virtualmachine"
+	VMAnnotationTemplate              = "%s.kubernetes.io/virtualmachine"
 
 	ExcludeIpsAnnotation = "ovn.kubernetes.io/exclude_ips"
 

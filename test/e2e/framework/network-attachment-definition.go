@@ -15,7 +15,11 @@ type NetworkAttachmentDefinitionClient struct {
 	v1.NetworkAttachmentDefinitionInterface
 }
 
-func (f *Framework) NetworkAttachmentDefinitionClient(namespace string) *NetworkAttachmentDefinitionClient {
+func (f *Framework) NetworkAttachmentDefinitionClient() *NetworkAttachmentDefinitionClient {
+	return f.NetworkAttachmentDefinitionClientNS(f.Namespace.Name)
+}
+
+func (f *Framework) NetworkAttachmentDefinitionClientNS(namespace string) *NetworkAttachmentDefinitionClient {
 	return &NetworkAttachmentDefinitionClient{
 		f:                                    f,
 		NetworkAttachmentDefinitionInterface: f.AttachNetClient.K8sCniCncfIoV1().NetworkAttachmentDefinitions(namespace),
@@ -32,7 +36,7 @@ func (c *NetworkAttachmentDefinitionClient) Get(name string) *apiv1.NetworkAttac
 func (c *NetworkAttachmentDefinitionClient) Create(nad *apiv1.NetworkAttachmentDefinition) *apiv1.NetworkAttachmentDefinition {
 	nad, err := c.NetworkAttachmentDefinitionInterface.Create(context.TODO(), nad, metav1.CreateOptions{})
 	ExpectNoError(err, "Error creating nad")
-	return nad.DeepCopy()
+	return c.Get(nad.Name)
 }
 
 // Delete deletes a nad if the nad exists

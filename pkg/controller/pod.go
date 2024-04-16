@@ -680,7 +680,7 @@ func (c *Controller) reconcileAllocateSubnets(cachedPod, pod *v1.Pod, needAlloca
 		pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)] = "true"
 
 		if vmKey != "" {
-			pod.Annotations[fmt.Sprintf(util.VMTemplate, podNet.ProviderName)] = vmName
+			pod.Annotations[fmt.Sprintf(util.VMAnnotationTemplate, podNet.ProviderName)] = vmName
 			if err := c.changeVMSubnet(vmName, namespace, podNet.ProviderName, subnet.Name); err != nil {
 				klog.Errorf("vm %s change subnet to %s failed: %v", vmKey, subnet.Name, err)
 				return nil, err
@@ -1607,7 +1607,7 @@ func (c *Controller) getPodAttachmentNet(pod *v1.Pod) ([]*kubeovnNet, error) {
 			allowLiveMigration := false
 			isDefault := util.IsDefaultNet(pod.Annotations[util.DefaultNetworkAnnotation], attach)
 
-			providerName = fmt.Sprintf("%s.%s.ovn", attach.Name, attach.Namespace)
+			providerName = fmt.Sprintf("%s.%s.%s", attach.Name, attach.Namespace, util.OvnProvider)
 			if pod.Annotations[fmt.Sprintf(util.LiveMigrationAnnotationTemplate, providerName)] == "true" {
 				allowLiveMigration = true
 			}

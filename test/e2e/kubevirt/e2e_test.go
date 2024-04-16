@@ -3,19 +3,24 @@ package kubevirt
 import (
 	"context"
 	"flag"
+	"fmt"
 	"testing"
+	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/test/e2e"
 	k8sframework "k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/kubernetes/test/e2e/framework/config"
+	v1 "kubevirt.io/api/core/v1"
 
 	"github.com/onsi/ginkgo/v2"
 
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 )
+
+const image = "quay.io/kubevirt/cirros-container-disk-demo:latest"
 
 func init() {
 	klog.SetOutput(ginkgo.GinkgoWriter)
@@ -34,17 +39,31 @@ func TestE2E(t *testing.T) {
 var _ = framework.Describe("[group:kubevirt]", func() {
 	f := framework.NewDefaultFramework("kubevirt")
 
+	var vmName, namespaceName string
 	var podClient *framework.PodClient
+	var vmClient *framework.VMClient
 	ginkgo.BeforeEach(func() {
-		podClient = f.PodClientNS("default")
-	})
-
-	framework.ConformanceIt("Kubevirt vm pod should keep ip", func() {
 		f.SkipVersionPriorTo(1, 12, "This feature was introduced in v1.12.")
 
-		ginkgo.By("Get kubevirt vm pod")
+		namespaceName = f.Namespace.Name
+		vmName = "vm-" + framework.RandomSuffix()
+		podClient = f.PodClientNS(namespaceName)
+		vmClient = f.VMClientNS(namespaceName)
+
+		ginkgo.By("Creating vm " + vmName)
+		vm := framework.MakeVM(vmName, image, "small", true)
+		_ = vmClient.CreateSync(vm)
+	})
+	ginkgo.AfterEach(func() {
+		ginkgo.By("Deleting vm " + vmName)
+		vmClient.DeleteSync(vmName)
+	})
+
+	framework.ConformanceIt("should be able to keep pod ips after vm pod is deleted", func() {
+		ginkgo.By("Getting pod of vm " + vmName)
+		labelSelector := fmt.Sprintf("%s=%s", v1.VirtualMachineNameLabel, vmName)
 		podList, err := podClient.List(context.TODO(), metav1.ListOptions{
-			LabelSelector: "vm.kubevirt.io/name=testvm",
+			LabelSelector: labelSelector,
 		})
 		framework.ExpectNoError(err)
 		framework.ExpectHaveLen(podList.Items, 1)
@@ -53,32 +72,72 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 		pod := &podList.Items[0]
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
-		framework.ExpectHaveKeyWithValue(pod.Annotations, "ovn.kubernetes.io/virtualmachine", "testvm")
-		ipAddr := pod.Annotations[util.IPAddressAnnotation]
+		framework.ExpectHaveKeyWithValue(pod.Annotations, util.VMAnnotation, vmName)
+		ips := pod.Status.PodIPs
 
 		ginkgo.By("Deleting pod " + pod.Name)
 		podClient.DeleteSync(pod.Name)
 		framework.ExpectNoError(err)
 
-		ginkgo.By("Check kubevirt vm pod after rebuild")
+		ginkgo.By("Waiting for vm " + vmName + " to be ready")
+		err = vmClient.WaitToBeReady(vmName, 2*time.Minute)
+		framework.ExpectNoError(err)
+
+		ginkgo.By("Getting pod of vm " + vmName)
 		podList, err = podClient.List(context.TODO(), metav1.ListOptions{
-			LabelSelector: "vm.kubevirt.io/name=testvm",
+			LabelSelector: labelSelector,
 		})
 		framework.ExpectNoError(err)
 		framework.ExpectHaveLen(podList.Items, 1)
 
-		pod = &podList.Items[0]
-		ginkgo.By("Waiting for pod " + pod.Name + " to be running")
-		podClient.WaitForRunning(pod.Name)
-
 		ginkgo.By("Validating new pod annotations")
-		pod = podClient.GetPod(pod.Name)
+		pod = &podList.Items[0]
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
-		framework.ExpectHaveKeyWithValue(pod.Annotations, "ovn.kubernetes.io/virtualmachine", "testvm")
+		framework.ExpectHaveKeyWithValue(pod.Annotations, util.VMAnnotation, vmName)
 
-		ginkgo.By("Check vm pod ip unchanged" + pod.Name)
-		ipNewAddr := pod.Annotations[util.IPAddressAnnotation]
-		framework.ExpectEqual(ipAddr, ipNewAddr)
+		ginkgo.By("Checking whether pod ips are changed")
+		framework.ExpectConsistOf(ips, pod.Status.PodIPs)
+	})
+
+	framework.ConformanceIt("should be able to keep pod ips after the vm is restarted", func() {
+		ginkgo.By("Getting pod of vm " + vmName)
+		labelSelector := fmt.Sprintf("%s=%s", v1.VirtualMachineNameLabel, vmName)
+		podList, err := podClient.List(context.TODO(), metav1.ListOptions{
+			LabelSelector: labelSelector,
+		})
+		framework.ExpectNoError(err)
+		framework.ExpectHaveLen(podList.Items, 1)
+
+		ginkgo.By("Validating pod annotations")
+		pod := &podList.Items[0]
+		framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
+		framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
+		framework.ExpectHaveKeyWithValue(pod.Annotations, util.VMAnnotation, vmName)
+		ips := pod.Status.PodIPs
+
+		ginkgo.By("Stopping vm " + vmName)
+		vmClient.StopSync(vmName)
+		framework.ExpectNoError(err)
+
+		ginkgo.By("Starting vm " + vmName)
+		vmClient.StartSync(vmName)
+		framework.ExpectNoError(err)
+
+		ginkgo.By("Getting pod of vm " + vmName)
+		podList, err = podClient.List(context.TODO(), metav1.ListOptions{
+			LabelSelector: labelSelector,
+		})
+		framework.ExpectNoError(err)
+		framework.ExpectHaveLen(podList.Items, 1)
+
+		ginkgo.By("Validating new pod annotations")
+		pod = &podList.Items[0]
+		framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
+		framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
+		framework.ExpectHaveKeyWithValue(pod.Annotations, util.VMAnnotation, vmName)
+
+		ginkgo.By("Checking whether pod ips are changed")
+		framework.ExpectConsistOf(ips, pod.Status.PodIPs)
 	})
 })

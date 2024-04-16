@@ -12,8 +12,8 @@ concurrency:
 env:
   GO_VERSION: ''
   KIND_VERSION: v0.22.0
-  HELM_VERSION: v3.14.3
-  SUBMARINER_VERSION: '0.16.3'
+  HELM_VERSION: v3.14.4
+  SUBMARINER_VERSION: '0.17.0'
 
 jobs:
   k8s-conformance-e2e:
@@ -744,6 +744,7 @@ jobs:
         run: |
           version=$(grep -E '^VERSION="v([0-9]+\.){2}[0-9]+"$' dist/images/install.sh | head -n1 | awk -F= '{print $2}' | tr -d '"')
           docker pull kubeovn/kube-ovn:$version
+          VERSION=$version make kind-install
           VERSION=$version make kind-install-kubevirt
 
       - name: Run E2E

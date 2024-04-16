@@ -26,32 +26,30 @@ endif
 
 CONTROL_PLANE_TAINTS = node-role.kubernetes.io/master node-role.kubernetes.io/control-plane
 
-FRR_VERSION = 8.5.4
+FRR_VERSION = 9.0.2
 FRR_IMAGE = quay.io/frrouting/frr:$(FRR_VERSION)
 
-CLAB_IMAGE = ghcr.io/srl-labs/clab:0.52.0
+CLAB_IMAGE = ghcr.io/srl-labs/clab:0.54.2
 
 MULTUS_VERSION = v4.0.2
 MULTUS_IMAGE = ghcr.io/k8snetworkplumbingwg/multus-cni:$(MULTUS_VERSION)-thick
 MULTUS_YAML = https://raw.githubusercontent.com/k8snetworkplumbingwg/multus-cni/$(MULTUS_VERSION)/deployments/multus-daemonset-thick.yml
 
-METALLB_VERSION = 0.14.3
+METALLB_VERSION = 0.14.4
 METALLB_CHART_REPO = https://metallb.github.io/metallb
 METALLB_CONTROLLER_IMAGE = quay.io/metallb/controller:v$(METALLB_VERSION)
 METALLB_SPEAKER_IMAGE = quay.io/metallb/speaker:v$(METALLB_VERSION)
 
-KUBEVIRT_VERSION = v1.1.1
+KUBEVIRT_VERSION = v1.2.0
 KUBEVIRT_OPERATOR_IMAGE = quay.io/kubevirt/virt-operator:$(KUBEVIRT_VERSION)
 KUBEVIRT_API_IMAGE = quay.io/kubevirt/virt-api:$(KUBEVIRT_VERSION)
 KUBEVIRT_CONTROLLER_IMAGE = quay.io/kubevirt/virt-controller:$(KUBEVIRT_VERSION)
 KUBEVIRT_HANDLER_IMAGE = quay.io/kubevirt/virt-handler:$(KUBEVIRT_VERSION)
 KUBEVIRT_LAUNCHER_IMAGE = quay.io/kubevirt/virt-launcher:$(KUBEVIRT_VERSION)
-KUBEVIRT_TEST_IMAGE = quay.io/kubevirt/cirros-container-disk-demo
 KUBEVIRT_OPERATOR_YAML = https://github.com/kubevirt/kubevirt/releases/download/$(KUBEVIRT_VERSION)/kubevirt-operator.yaml
 KUBEVIRT_CR_YAML = https://github.com/kubevirt/kubevirt/releases/download/$(KUBEVIRT_VERSION)/kubevirt-cr.yaml
-KUBEVIRT_TEST_YAML = https://kubevirt.io/labs/manifests/vm.yaml
 
-CILIUM_VERSION = 1.15.2
+CILIUM_VERSION = 1.15.3
 CILIUM_IMAGE_REPO = quay.io/cilium
 
 CERT_MANAGER_VERSION = v1.14.4
@@ -60,7 +58,7 @@ CERT_MANAGER_CAINJECTOR = quay.io/jetstack/cert-manager-cainjector:$(CERT_MANAGE
 CERT_MANAGER_WEBHOOK = quay.io/jetstack/cert-manager-webhook:$(CERT_MANAGER_VERSION)
 CERT_MANAGER_YAML = https://github.com/cert-manager/cert-manager/releases/download/$(CERT_MANAGER_VERSION)/cert-manager.yaml
 
-SUBMARINER_VERSION = $(shell echo $${SUBMARINER_VERSION:-0.16.3})
+SUBMARINER_VERSION = $(shell echo $${SUBMARINER_VERSION:-0.17.0})
 SUBMARINER_OPERATOR = quay.io/submariner/submariner-operator:$(SUBMARINER_VERSION)
 SUBMARINER_GATEWAY = quay.io/submariner/submariner-gateway:$(SUBMARINER_VERSION)
 SUBMARINER_LIGHTHOUSE_AGENT = quay.io/submariner/lighthouse-agent:$(SUBMARINER_VERSION)
@@ -750,7 +748,7 @@ kind-install-metallb: kind-install
 		--version $(METALLB_VERSION) \
 		--namespace metallb-system \
 		--create-namespace \
-		--set frr.image.tag=$(FRR_VERSION)
+		--set speaker.frr.image.tag=$(FRR_VERSION)
 	$(call kubectl_wait_exist_and_ready,metallb-system,deployment,metallb-controller)
 	$(call kubectl_wait_exist_and_ready,metallb-system,daemonset,metallb-speaker)
 	@metallb_pool=$(shell echo $(KIND_IPV4_SUBNET) | sed 's/.[^.]\+$$/.201/')-$(shell echo $(KIND_IPV4_SUBNET) | sed 's/.[^.]\+$$/.250/') \
@@ -764,25 +762,22 @@ kind-install-vpc-nat-gw:
 	@$(MAKE) kind-install-multus
 
 .PHONY: kind-install-kubevirt
-kind-install-kubevirt: kind-install
+kind-install-kubevirt:
 	$(call kind_load_image,kube-ovn,$(KUBEVIRT_OPERATOR_IMAGE),1)
 	$(call kind_load_image,kube-ovn,$(KUBEVIRT_API_IMAGE),1)
 	$(call kind_load_image,kube-ovn,$(KUBEVIRT_CONTROLLER_IMAGE),1)
 	$(call kind_load_image,kube-ovn,$(KUBEVIRT_HANDLER_IMAGE),1)
 	$(call kind_load_image,kube-ovn,$(KUBEVIRT_LAUNCHER_IMAGE),1)
-	$(call kind_load_image,kube-ovn,$(KUBEVIRT_TEST_IMAGE),1)
 
 	kubectl apply -f "$(KUBEVIRT_OPERATOR_YAML)"
 	kubectl apply -f "$(KUBEVIRT_CR_YAML)"
-	kubectl -n kubevirt patch kubevirt kubevirt --type=merge --patch '{"spec":{"configuration":{"developerConfiguration":{"useEmulation":true}}}}'
+	kubectl -n kubevirt scale deploy virt-operator --replicas=1
+	kubectl -n kubevirt patch kubevirt kubevirt --type=merge --patch \
+		'{"spec":{"configuration":{"developerConfiguration":{"useEmulation":true}},"infra":{"replicas":1}}}'
 	$(call kubectl_wait_exist_and_ready,kubevirt,deployment,virt-operator)
 	$(call kubectl_wait_exist_and_ready,kubevirt,deployment,virt-api)
 	$(call kubectl_wait_exist_and_ready,kubevirt,deployment,virt-controller)
 	$(call kubectl_wait_exist_and_ready,kubevirt,daemonset,virt-handler)
-
-	kubectl apply -f "$(KUBEVIRT_TEST_YAML)"
-	kubectl patch vm testvm --type=merge --patch '{"spec":{"running":true}}'
-	kubectl wait vm testvm --for=condition=Ready --timeout=2m
 
 .PHONY: kind-install-lb-svc
 kind-install-lb-svc:

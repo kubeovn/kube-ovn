@@ -14,8 +14,8 @@ type CniServerClient struct {
 
 // Route represents a requested route
 type Route struct {
-	Destination string `json:"dst"`
-	Gateway     string `json:"gw"`
+	Destination string `json:"dst,omitempty"`
+	Gateway     string `json:"gw,omitempty"`
 }
 
 // CniRequest is the cniserver request format
@@ -46,6 +46,7 @@ type CniResponse struct {
 	MacAddress string    `json:"mac_address"`
 	CIDR       string    `json:"cidr"`
 	Gateway    string    `json:"gateway"`
+	Routes     []Route   `json:"routes"`
 	Mtu        int       `json:"mtu"`
 	PodNicName string    `json:"nicname"`
 	DNS        types.DNS `json:"dns"`

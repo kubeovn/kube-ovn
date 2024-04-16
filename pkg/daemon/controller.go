@@ -501,7 +501,7 @@ func (c *Controller) enqueuePod(oldObj, newObj interface{}) {
 		return
 	}
 	for _, multiNet := range attachNets {
-		provider := fmt.Sprintf("%s.%s.ovn", multiNet.Name, multiNet.Namespace)
+		provider := fmt.Sprintf("%s.%s.%s", multiNet.Name, multiNet.Namespace, util.OvnProvider)
 		if newPod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, provider)] == "true" {
 			if oldPod.Annotations[fmt.Sprintf(util.IngressRateAnnotationTemplate, provider)] != newPod.Annotations[fmt.Sprintf(util.IngressRateAnnotationTemplate, provider)] ||
 				oldPod.Annotations[fmt.Sprintf(util.EgressRateAnnotationTemplate, provider)] != newPod.Annotations[fmt.Sprintf(util.EgressRateAnnotationTemplate, provider)] ||

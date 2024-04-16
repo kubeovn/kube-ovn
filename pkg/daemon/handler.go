@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -45,7 +46,7 @@ func createCniServerHandler(config *Configuration, controller *Controller) *cniS
 }
 
 func (csh cniServerHandler) providerExists(provider string) (*kubeovnv1.Subnet, bool) {
-	if provider == "" || strings.HasSuffix(provider, util.OvnProvider) {
+	if util.IsOvnProvider(provider) {
 		return nil, true
 	}
 	subnets, _ := csh.Controller.subnetsLister.List(labels.Everything())
@@ -128,7 +129,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		loss = pod.Annotations[fmt.Sprintf(util.NetemQosLossAnnotationTemplate, podRequest.Provider)]
 		jitter = pod.Annotations[fmt.Sprintf(util.NetemQosJitterAnnotationTemplate, podRequest.Provider)]
 		providerNetwork = pod.Annotations[fmt.Sprintf(util.ProviderNetworkTemplate, podRequest.Provider)]
-		vmName = pod.Annotations[fmt.Sprintf(util.VMTemplate, podRequest.Provider)]
+		vmName = pod.Annotations[fmt.Sprintf(util.VMAnnotationTemplate, podRequest.Provider)]
 		ipAddr, err = util.GetIPAddrWithMask(ip, cidr)
 		if err != nil {
 			errMsg := fmt.Errorf("failed to get ip address with mask, %v", err)
@@ -183,7 +184,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 			isDefaultRoute = ifName == "eth0"
 		}
 
-		if isDefaultRoute && pod.Annotations[fmt.Sprintf(util.RoutedAnnotationTemplate, podRequest.Provider)] != "true" && strings.HasSuffix(podRequest.Provider, util.OvnProvider) {
+		if isDefaultRoute && pod.Annotations[fmt.Sprintf(util.RoutedAnnotationTemplate, podRequest.Provider)] != "true" && util.IsOvnProvider(podRequest.Provider) {
 			klog.Infof("wait route ready for pod %s/%s provider %s", podRequest.PodNamespace, podRequest.PodName, podRequest.Provider)
 			cniWaitRouteResult.WithLabelValues(nodeName).Inc()
 			time.Sleep(1 * time.Second)
@@ -216,7 +217,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		return
 	}
 
-	if isDefaultRoute && pod.Annotations[fmt.Sprintf(util.RoutedAnnotationTemplate, podRequest.Provider)] != "true" && strings.HasSuffix(podRequest.Provider, util.OvnProvider) {
+	if isDefaultRoute && pod.Annotations[fmt.Sprintf(util.RoutedAnnotationTemplate, podRequest.Provider)] != "true" && util.IsOvnProvider(podRequest.Provider) {
 		err := fmt.Errorf("route is not ready for pod %s/%s provider %s, please see kube-ovn-controller logs to find errors", pod.Namespace, pod.Name, podRequest.Provider)
 		klog.Error(err)
 		if err := resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: err.Error()}); err != nil {
@@ -225,6 +226,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		return
 	}
 
+	routes = append(podRequest.Routes, routes...)
 	if strings.HasSuffix(podRequest.Provider, util.OvnProvider) && subnet != "" {
 		podSubnet, err := csh.Controller.subnetsLister.Get(subnet)
 		if err != nil {
@@ -298,17 +300,17 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 			}
 		}
 
-		routes = append(podRequest.Routes, routes...)
 		macAddr = pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, podRequest.Provider)]
 		klog.Infof("create container interface %s mac %s, ip %s, cidr %s, gw %s, custom routes %v", ifName, macAddr, ipAddr, cidr, gw, routes)
 		podNicName = ifName
 		switch nicType {
 		case util.InternalType:
-			podNicName, err = csh.configureNicWithInternalPort(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, ifName, macAddr, mtu, ipAddr, gw, isDefaultRoute, detectIPConflict, routes, podRequest.DNS.Nameservers, podRequest.DNS.Search, ingress, egress, podRequest.DeviceID, nicType, latency, limit, loss, jitter, gatewayCheckMode, u2oInterconnectionIP)
+			podNicName, routes, err = csh.configureNicWithInternalPort(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, ifName, macAddr, mtu, ipAddr, gw, isDefaultRoute, detectIPConflict, routes, podRequest.DNS.Nameservers, podRequest.DNS.Search, ingress, egress, podRequest.DeviceID, nicType, latency, limit, loss, jitter, gatewayCheckMode, u2oInterconnectionIP)
 		case util.DpdkType:
 			err = csh.configureDpdkNic(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, ifName, macAddr, mtu, ipAddr, gw, ingress, egress, getShortSharedDir(pod.UID, podRequest.VhostUserSocketVolumeName), podRequest.VhostUserSocketName, podRequest.VhostUserSocketConsumption)
+			routes = nil
 		default:
-			err = csh.configureNic(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, podRequest.VfDriver, ifName, macAddr, mtu, ipAddr, gw, isDefaultRoute, detectIPConflict, routes, podRequest.DNS.Nameservers, podRequest.DNS.Search, ingress, egress, podRequest.DeviceID, nicType, latency, limit, loss, jitter, gatewayCheckMode, u2oInterconnectionIP, oldPodName)
+			routes, err = csh.configureNic(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, podRequest.VfDriver, ifName, macAddr, mtu, ipAddr, gw, isDefaultRoute, detectIPConflict, routes, podRequest.DNS.Nameservers, podRequest.DNS.Search, ingress, egress, podRequest.DeviceID, nicType, latency, limit, loss, jitter, gatewayCheckMode, u2oInterconnectionIP, oldPodName)
 		}
 		if err != nil {
 			errMsg := fmt.Errorf("configure nic failed %v", err)
@@ -333,6 +335,30 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 			}
 			return
 		}
+	} else if len(routes) != 0 {
+		hasDefaultRoute := make(map[string]bool, 2)
+		for _, r := range routes {
+			if r.Destination == "" {
+				hasDefaultRoute[util.CheckProtocol(r.Gateway)] = true
+				continue
+			}
+			if _, cidr, err := net.ParseCIDR(r.Destination); err == nil {
+				if ones, _ := cidr.Mask.Size(); ones == 0 {
+					hasDefaultRoute[util.CheckProtocol(r.Gateway)] = true
+				}
+			}
+		}
+		if len(hasDefaultRoute) != 0 {
+			// remove existing default route so other CNI plugins, such as macvlan, can add the new default route correctly
+			if err = csh.removeDefaultRoute(podRequest.NetNs, hasDefaultRoute[kubeovnv1.ProtocolIPv4], hasDefaultRoute[kubeovnv1.ProtocolIPv6]); err != nil {
+				errMsg := fmt.Errorf("failed to remove existing default route for interface %s of pod %s/%s: %v", podRequest.IfName, podRequest.PodNamespace, podRequest.PodName, err)
+				klog.Error(errMsg)
+				if err = resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()}); err != nil {
+					klog.Errorf("failed to write response: %v", err)
+				}
+				return
+			}
+		}
 	}
 
 	response := &request.CniResponse{
@@ -341,6 +367,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		MacAddress: macAddr,
 		CIDR:       cidr,
 		PodNicName: podNicName,
+		Routes:     routes,
 	}
 	if isDefaultRoute {
 		response.Gateway = gw
@@ -424,7 +451,7 @@ func (csh cniServerHandler) handleDel(req *restful.Request, resp *restful.Respon
 		return
 	}
 
-	if pod.Annotations != nil && (podRequest.Provider == util.OvnProvider || podRequest.CniType == util.CniTypeName) {
+	if pod.Annotations != nil && (util.IsOvnProvider(podRequest.Provider) || podRequest.CniType == util.CniTypeName) {
 		subnet := pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, podRequest.Provider)]
 		if subnet != "" {
 			ip := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, podRequest.Provider)]
@@ -459,7 +486,7 @@ func (csh cniServerHandler) handleDel(req *restful.Request, resp *restful.Respon
 		default:
 			nicType = pod.Annotations[fmt.Sprintf(util.PodNicAnnotationTemplate, podRequest.Provider)]
 		}
-		vmName := pod.Annotations[fmt.Sprintf(util.VMTemplate, podRequest.Provider)]
+		vmName := pod.Annotations[fmt.Sprintf(util.VMAnnotationTemplate, podRequest.Provider)]
 		if vmName != "" {
 			podRequest.PodName = vmName
 		}

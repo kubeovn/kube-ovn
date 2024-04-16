@@ -260,7 +260,7 @@ func MakeSubnet(name, vlan, cidr, gateway, vpc, provider string, excludeIPs, gat
 			Namespaces:  namespaces,
 		},
 	}
-	if provider == "" || strings.HasSuffix(provider, util.OvnProvider) {
+	if util.IsOvnProvider(provider) {
 		if len(gatewayNodes) != 0 {
 			subnet.Spec.GatewayType = apiv1.GWCentralizedType
 		} else {
