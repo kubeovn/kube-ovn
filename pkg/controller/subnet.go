@@ -2073,6 +2073,11 @@ func calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 	subnet.Status.V4AvailableIPRange = v4AvailableIPStr
 	subnet.Status.V6AvailableIPRange = v6AvailableIPStr
 
+	if err := c.checkSubnetUsingIPs(subnet); err != nil {
+		klog.Errorf("inconsistency detected in status of subnet %s : %v", subnet.Name, err)
+		return nil, err
+	}
+
 	bytes, err := subnet.Status.Bytes()
 	if err != nil {
 		klog.Error(err)
@@ -2183,6 +2188,11 @@ func calcSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 		return nil
 	}
 
+	if err := c.checkSubnetUsingIPs(subnet); err != nil {
+		klog.Errorf("inconsistency detected in status of subnet %s : %v", subnet.Name, err)
+		return nil, err
+	}
+
 	bytes, err := subnet.Status.Bytes()
 	if err != nil {
 		klog.Error(err)
@@ -2190,6 +2200,20 @@ func calcSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 	}
 	_, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(context.Background(), subnet.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status")
 	return err
+}
+
+func (c *Controller) checkSubnetUsingIPs(subnet *kubeovnv1.Subnet) error {
+	if subnet.Status.V4UsingIPs != 0 && subnet.Status.V4UsingIPRange == "" {
+		err := fmt.Errorf("subnet %s has %.0f v4 ip in use, while the v4 using ip range is empty", subnet.Name, subnet.Status.V4UsingIPs)
+		klog.Error(err)
+		return err
+	}
+	if subnet.Status.V6UsingIPs != 0 && subnet.Status.V6UsingIPRange == "" {
+		err := fmt.Errorf("subnet %s has %.0f v6 ip in use, while the v6 using ip range is empty", subnet.Name, subnet.Status.V6UsingIPs)
+		klog.Error(err)
+		return err
+	}
+	return nil
 }
 
 func isOvnSubnet(subnet *kubeovnv1.Subnet) bool {
