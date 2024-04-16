@@ -1,7 +1,6 @@
 package daemon
 
 import (
-	"fmt"
 	"os"
 	"os/exec"
 	"strconv"
@@ -9,6 +8,7 @@ import (
 
 	"k8s.io/klog/v2"
 
+	"github.com/containernetworking/cni/libcni"
 	"github.com/docker/docker/libnetwork/resolvconf"
 )
 
@@ -59,30 +59,19 @@ func (c *Controller) setCheckSumErrMetric() {
 }
 
 func (c *Controller) setCniConfigMetric() {
-	cmdstr := fmt.Sprintf("ls %s", c.config.CniConfDir)
-	cmd := exec.Command("sh", "-c", cmdstr)
-	output, err := cmd.CombinedOutput()
+	files, err := libcni.ConfFiles(c.config.CniConfDir, []string{".conf", ".conflist"})
 	if err != nil {
-		klog.Errorf("failed to list cni config file, err %v", err)
+		klog.Errorf("failed to list cni config files in %s: %v", c.config.CniConfDir, err)
 		return
 	}
 
 	found := false
-	lines := strings.Split(string(output), "\n")
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" {
+	for _, file := range files {
+		if file == c.config.CniConfName {
 			continue
 		}
-
-		names := strings.Fields(line)
-		for _, name := range names {
-			if name == c.config.CniConfName {
-				continue
-			}
-			found = true
-			metricCniConfig.WithLabelValues(c.config.NodeName, c.config.CniConfName, name).Set(1)
-		}
+		found = true
+		metricCniConfig.WithLabelValues(c.config.NodeName, c.config.CniConfName, file).Set(1)
 	}
 	if !found {
 		metricCniConfig.WithLabelValues(c.config.NodeName, c.config.CniConfName, "no other cni config").Set(1)
