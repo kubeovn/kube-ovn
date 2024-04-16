@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/greenpau/ovsdb"
+	"github.com/kubeovn/ovsdb"
 	"k8s.io/klog/v2"
 
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -174,6 +174,12 @@ func (e *Exporter) exportOvnStatusGauge() {
 	for k, v := range result {
 		metricOvnHealthyStatus.WithLabelValues(e.Client.System.Hostname, k).Set(float64(v))
 	}
+
+	metricOvnHealthyStatusContent.Reset()
+	statusResult := e.getOvnStatusContent()
+	for k, v := range statusResult {
+		metricOvnHealthyStatusContent.WithLabelValues(e.Client.System.Hostname, k, v).Set(float64(1))
+	}
 }
 
 func (e *Exporter) exportOvnLogFileSizeGauge() {
@@ -223,7 +229,7 @@ func (e *Exporter) exportOvnChassisGauge() {
 		e.IncrementErrorCounter()
 	} else {
 		for _, vtep := range vteps {
-			metricChassisInfo.WithLabelValues(e.Client.System.Hostname, vtep.UUID, vtep.Name, vtep.IPAddress.String()).Set(1)
+			metricChassisInfo.WithLabelValues(vtep.Hostname, vtep.UUID, vtep.Name, vtep.IPAddress.String()).Set(1)
 		}
 	}
 }

@@ -1663,8 +1663,8 @@ github.com/kubeovn/libovsdb v0.0.0-20240218023647-f0bc3ce57fcd h1:GhgvSBFKEkVNgD
 github.com/kubeovn/libovsdb v0.0.0-20240218023647-f0bc3ce57fcd/go.mod h1:pTnlGt1JZrncr6pJn/Fhnp3FFTMQRaTVxiSKBLVGa5s=
 github.com/kubeovn/netlink v0.0.0-20240218024530-d3ada5dae96f h1:3hH6U+CRilak3SxAX9YykAXxxAY25GTEJANLlJNE2jU=
 github.com/kubeovn/netlink v0.0.0-20240218024530-d3ada5dae96f/go.mod h1:KjTlcXwJZNXDSeBgPMWF8yKVqYrIP1cpe5HfyfEi4Ls=
-github.com/kubeovn/ovsdb v0.0.0-20221213053943-9372db56919f h1:nm0ZlQesCje/A5D0LyWfaSUM8/0ro9PVpwd8hVbLBeM=
-github.com/kubeovn/ovsdb v0.0.0-20221213053943-9372db56919f/go.mod h1:LAd0qoeAAm/QyZcpxN2BnpndM2/dhZt+/kokPvcxKcE=
+github.com/kubeovn/ovsdb v0.0.0-20240410091831-5dd26006c475 h1:KZba2Kj9TXCUdUSqOR3eiy4VvkkIyhDVImYmYs6GQWU=
+github.com/kubeovn/ovsdb v0.0.0-20240410091831-5dd26006c475/go.mod h1:LAd0qoeAAm/QyZcpxN2BnpndM2/dhZt+/kokPvcxKcE=
 github.com/kubernetes-csi/external-snapshotter/client/v4 v4.2.0 h1:nHHjmvjitIiyPlUHk/ofpgvBcNcawJLtf4PYHORLjAA=
 github.com/kubernetes-csi/external-snapshotter/client/v4 v4.2.0/go.mod h1:YBCo4DoEeDndqvAn6eeu0vWM7QdXmHEeI9cFWplmBys=
 github.com/kylelemons/godebug v0.0.0-20160406211939-eadb3ce320cb/go.mod h1:B69LEHPfb2qLo0BaaOLcbitczOKLWTsrBG9LczfCD4k=
