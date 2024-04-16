@@ -623,6 +623,31 @@ func (c *Controller) loopEncapIPCheck() {
 
 func (c *Controller) ovnMetricsUpdate() {
 	c.setOvnSubnetGatewayMetric()
+
+	resetSysParaMetrics()
+	c.setIPLocalPortRangeMetric()
+	c.setCheckSumErrMetric()
+	c.setCniConfigMetric()
+	c.setDNSSearchMetric()
+	c.setTCPTwRecycleMetric()
+	c.setTCPMtuProbingMetric()
+	c.setConntrackTCPLiberalMetric()
+	c.setBridgeNfCallIptablesMetric()
+	c.setIPv6RouteMaxsizeMetric()
+	c.setTCPMemMetric()
+}
+
+func resetSysParaMetrics() {
+	metricIPLocalPortRange.Reset()
+	metricCheckSumErr.Reset()
+	metricCniConfig.Reset()
+	metricDNSSearch.Reset()
+	metricTCPTwRecycle.Reset()
+	metricTCPMtuProbing.Reset()
+	metricConntrackTCPLiberal.Reset()
+	metricBridgeNfCallIptables.Reset()
+	metricTCPMem.Reset()
+	metricIPv6RouteMaxsize.Reset()
 }
 
 func (c *Controller) operateMod() {

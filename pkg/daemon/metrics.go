@@ -91,6 +91,85 @@ var (
 			"protocol",
 		},
 	)
+
+	metricIPLocalPortRange = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "ip_local_port_range",
+		Help: "value of system parameter /proc/sys/net/ipv4/ip_local_port_range, which should not conflict with the nodeport range",
+	}, []string{
+		"hostname",
+		"start",
+		"end",
+	})
+
+	metricCheckSumErr = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "checksum_err_count",
+			Help: "Value of InCsumErrors for cmd `netstat -us`, checksum is error when value is greater than 0",
+		},
+		[]string{"hostname"})
+
+	metricCniConfig = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "cni_config_file",
+		Help: "cni config file in /etc/cni/net.d/",
+	}, []string{
+		"hostname",
+		"ovn",
+		"other",
+	})
+
+	metricDNSSearch = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "dns_search_domain",
+		Help: "search domain in /etc/resolv.conf",
+	}, []string{
+		"hostname",
+		"additional",
+	})
+
+	metricTCPTwRecycle = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "tcp_tw_recycle",
+		Help: "value of system parameter /proc/sys/net/ipv4/tcp_tw_recycle, the recommended value is 0",
+	}, []string{
+		"hostname",
+	})
+
+	metricTCPMtuProbing = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "tcp_mtu_probing",
+		Help: "value of system parameter /proc/sys/net/ipv4/tcp_mtu_probing, the recommended value is 1",
+	}, []string{
+		"hostname",
+	})
+
+	metricConntrackTCPLiberal = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "nf_conntrack_tcp_be_liberal",
+		Help: "value of system parameter /proc/sys/net/netfilter/nf_conntrack_tcp_be_liberal, the recommended value is 1",
+	}, []string{
+		"hostname",
+	})
+
+	metricBridgeNfCallIptables = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "bridge_nf_call_iptables",
+		Help: "value of system parameter /proc/sys/net/bridge/bridge-nf-call-iptables, the recommended value is 1 for overlay, and 0 for underlay network",
+	}, []string{
+		"hostname",
+	})
+
+	metricTCPMem = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "tcp_mem",
+		Help: "value of system parameter /proc/sys/net/ipv4/tcp_mem, recommend a large number value",
+	}, []string{
+		"hostname",
+		"minimum",
+		"pressure",
+		"maximum",
+	})
+
+	metricIPv6RouteMaxsize = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "max_size",
+		Help: "value of system parameter /proc/sys/net/ipv6/route/max_size, recommend a large number value, at least 16384",
+	}, []string{
+		"hostname",
+	})
+
 	// reflector metrics
 
 	// TODO(directxman12): update these to be histograms once the metrics overhaul KEP
@@ -151,6 +230,7 @@ func InitMetrics() {
 	registerReflectorMetrics()
 	registerClientMetrics()
 	registerOvnSubnetGatewayMetrics()
+	registerSystemParameterMetrics()
 	prometheus.MustRegister(cniOperationHistogram)
 	prometheus.MustRegister(cniWaitAddressResult)
 	prometheus.MustRegister(cniConnectivityResult)
@@ -159,6 +239,19 @@ func InitMetrics() {
 func registerOvnSubnetGatewayMetrics() {
 	prometheus.MustRegister(metricOvnSubnetGatewayPacketBytes)
 	prometheus.MustRegister(metricOvnSubnetGatewayPackets)
+}
+
+func registerSystemParameterMetrics() {
+	prometheus.MustRegister(metricIPLocalPortRange)
+	prometheus.MustRegister(metricCheckSumErr)
+	prometheus.MustRegister(metricCniConfig)
+	prometheus.MustRegister(metricDNSSearch)
+	prometheus.MustRegister(metricTCPTwRecycle)
+	prometheus.MustRegister(metricTCPMtuProbing)
+	prometheus.MustRegister(metricConntrackTCPLiberal)
+	prometheus.MustRegister(metricBridgeNfCallIptables)
+	prometheus.MustRegister(metricTCPMem)
+	prometheus.MustRegister(metricIPv6RouteMaxsize)
 }
 
 // registerClientMetrics sets up the client latency metrics from client-go
