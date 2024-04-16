@@ -85,6 +85,7 @@ func generateCNIResult(cniResponse *request.CniResponse, netns string) current.R
 	podIface := current.Interface{
 		Name:    cniResponse.PodNicName,
 		Mac:     cniResponse.MacAddress,
+		Mtu:     cniResponse.Mtu,
 		Sandbox: netns,
 	}
 	switch cniResponse.Protocol {

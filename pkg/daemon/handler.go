@@ -226,6 +226,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		return
 	}
 
+	var mtu int
 	routes = append(podRequest.Routes, routes...)
 	if strings.HasSuffix(podRequest.Provider, util.OvnProvider) && subnet != "" {
 		podSubnet, err := csh.Controller.subnetsLister.Get(subnet)
@@ -270,7 +271,6 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 			detectIPConflict = false
 		}
 
-		var mtu int
 		if podSubnet.Spec.Mtu > 0 {
 			mtu = int(podSubnet.Spec.Mtu)
 		} else {
@@ -368,6 +368,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		CIDR:       cidr,
 		PodNicName: podNicName,
 		Routes:     routes,
+		Mtu:        mtu,
 	}
 	if isDefaultRoute {
 		response.Gateway = gw
