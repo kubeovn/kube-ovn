@@ -98,7 +98,6 @@ require (
 	github.com/containerd/ttrpc v1.2.3 // indirect
 	github.com/coreos/go-semver v0.3.1 // indirect
 	github.com/coreos/go-systemd/v22 v22.5.0 // indirect
-	github.com/coreos/prometheus-operator v0.38.3 // indirect
 	github.com/cyphar/filepath-securejoin v0.2.4 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/dgryski/go-farm v0.0.0-20200201041132-a6ae2369ad13 // indirect
@@ -116,7 +115,8 @@ require (
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
 	github.com/go-errors/errors v1.5.1 // indirect
 	github.com/go-ini/ini v1.67.0 // indirect
-	github.com/go-kit/kit v0.10.0 // indirect
+	github.com/go-kit/kit v0.13.0 // indirect
+	github.com/go-kit/log v0.2.1 // indirect
 	github.com/go-logfmt/logfmt v0.6.0 // indirect
 	github.com/go-logr/logr v1.4.1 // indirect
 	github.com/go-openapi/jsonpointer v0.21.0 // indirect
@@ -196,6 +196,7 @@ require (
 	github.com/projectcalico/go-json v0.0.0-20161128004156-6219dc7339ba // indirect
 	github.com/projectcalico/go-yaml-wrapper v0.0.0-20191112210931-090425220c54 // indirect
 	github.com/projectcalico/libcalico-go v0.0.0-20190305235709-3d935c3b8b86 // indirect
+	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.68.0 // indirect
 	github.com/prometheus/client_model v0.6.0 // indirect
 	github.com/prometheus/common v0.47.0 // indirect
 	github.com/prometheus/procfs v0.12.0 // indirect
@@ -205,6 +206,7 @@ require (
 	github.com/sagikazarmark/slog-shim v0.1.0 // indirect
 	github.com/seccomp/libseccomp-golang v0.10.0 // indirect
 	github.com/smartystreets/assertions v1.13.0 // indirect
+	github.com/smartystreets/goconvey v1.6.4 // indirect
 	github.com/sourcegraph/conc v0.3.0 // indirect
 	github.com/spf13/afero v1.11.0 // indirect
 	github.com/spf13/cast v1.6.0 // indirect
@@ -267,7 +269,7 @@ require (
 	k8s.io/csi-translation-lib v0.29.3 // indirect
 	k8s.io/dynamic-resource-allocation v0.0.0 // indirect
 	k8s.io/kms v0.29.3 // indirect
-	k8s.io/kube-openapi v0.0.0-20240209001042-7a0d5b415232 // indirect
+	k8s.io/kube-openapi v0.0.0-20240411171206-dc4e619f62f3 // indirect
 	k8s.io/kube-scheduler v0.0.0 // indirect
 	k8s.io/kubelet v0.29.3 // indirect
 	k8s.io/legacy-cloud-providers v0.0.0 // indirect
@@ -315,5 +317,5 @@ replace (
 	k8s.io/mount-utils => k8s.io/mount-utils v0.29.3
 	k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.29.3
 	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.29.3
-	kubevirt.io/client-go => github.com/kubeovn/kubevirt-client-go v0.0.0-20240412101643-286960f75418
+	kubevirt.io/client-go => github.com/kubeovn/kubevirt-client-go v0.0.0-20240416080133-46355e8165e8
 )
