@@ -49,7 +49,7 @@ KUBEVIRT_LAUNCHER_IMAGE = quay.io/kubevirt/virt-launcher:$(KUBEVIRT_VERSION)
 KUBEVIRT_OPERATOR_YAML = https://github.com/kubevirt/kubevirt/releases/download/$(KUBEVIRT_VERSION)/kubevirt-operator.yaml
 KUBEVIRT_CR_YAML = https://github.com/kubevirt/kubevirt/releases/download/$(KUBEVIRT_VERSION)/kubevirt-cr.yaml
 
-CILIUM_VERSION = 1.15.3
+CILIUM_VERSION = 1.15.4
 CILIUM_IMAGE_REPO = quay.io/cilium
 
 CERT_MANAGER_VERSION = v1.14.4
