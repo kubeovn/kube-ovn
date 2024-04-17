@@ -473,6 +473,10 @@ jobs:
           E2E_NETWORK_MODE: ${{ matrix.mode }}
         run: make k8s-conformance-e2e
 
+      - name: Check kube ovn pod restarts
+        run: |
+          make check-kube-ovn-pod-restarts
+
       - name: kubectl ko log
         if: failure()
         run: |
