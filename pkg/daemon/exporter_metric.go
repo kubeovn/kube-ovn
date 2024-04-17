@@ -3,6 +3,7 @@ package daemon
 import (
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -67,7 +68,7 @@ func (c *Controller) setCniConfigMetric() {
 
 	found := false
 	for _, file := range files {
-		if file == c.config.CniConfName {
+		if file == filepath.Join(c.config.CniConfDir, c.config.CniConfName) {
 			continue
 		}
 		found = true
