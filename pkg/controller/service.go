@@ -89,7 +89,7 @@ func (c *Controller) enqueueDeleteService(obj interface{}) {
 			for _, ip := range ips {
 				vpcSvc.Vips = append(vpcSvc.Vips, util.JoinHostPort(ip, port.Port))
 			}
-			klog.Infof("delete vpc service %v", vpcSvc)
+			klog.V(3).Infof("delete vpc service: %v", vpcSvc)
 			c.deleteServiceQueue.Add(vpcSvc)
 		}
 	}
