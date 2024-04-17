@@ -4,12 +4,15 @@ set -euo pipefail
 CNI_SOCK=/run/openvswitch/kube-ovn-daemon.sock
 OVS_SOCK=/run/openvswitch/db.sock
 ENABLE_SSL=${ENABLE_SSL:-false}
-SYSCTL_IPV4_IP_NO_PMTU_DISC=${SYSCTL_IPV4_IP_NO_PMTU_DISC:-0}
-SYSCTL_NF_CONNTRACK_TCP_BE_LIBERAL=${SYSCTL_NF_CONNTRACK_TCP_BE_LIBERAL:-1}
-SYSCTL_IPV4_NEIGH_DEFAULT_GC_THRESH=${SYSCTL_IPV4_NEIGH_DEFAULT_GC_THRESH:-"1024 2048 4096"}
+SYSCTL_IPV4_IP_NO_PMTU_DISC=${SYSCTL_IPV4_IP_NO_PMTU_DISC:-}
+SYSCTL_NF_CONNTRACK_TCP_BE_LIBERAL=${SYSCTL_NF_CONNTRACK_TCP_BE_LIBERAL:-}
+SYSCTL_IPV4_NEIGH_DEFAULT_GC_THRESH=${SYSCTL_IPV4_NEIGH_DEFAULT_GC_THRESH:-}
 
 # usage: set_sysctl key value
 function set_sysctl {
+  if [ ! -n "$2" ]; then
+    return
+  fi
   echo "setting sysctl variable \"$1\" to \"$2\""
   procfs_path="/proc/sys/$(echo "$1" | tr . /)"
   if [ -f "$procfs_path" ]; then
@@ -51,10 +54,10 @@ set -e
 gc_thresh1=$(echo "$SYSCTL_IPV4_NEIGH_DEFAULT_GC_THRESH" | awk '{print $1}')
 gc_thresh2=$(echo "$SYSCTL_IPV4_NEIGH_DEFAULT_GC_THRESH" | awk '{print $2}')
 gc_thresh3=$(echo "$SYSCTL_IPV4_NEIGH_DEFAULT_GC_THRESH" | awk '{print $3}')
-set_sysctl net.ipv4.neigh.default.gc_thresh1 $gc_thresh1
-set_sysctl net.ipv4.neigh.default.gc_thresh2 $gc_thresh2
-set_sysctl net.ipv4.neigh.default.gc_thresh3 $gc_thresh3
-set_sysctl net.ipv4.ip_no_pmtu_disc $SYSCTL_IPV4_IP_NO_PMTU_DISC
-set_sysctl net.netfilter.nf_conntrack_tcp_be_liberal $SYSCTL_NF_CONNTRACK_TCP_BE_LIBERAL
+set_sysctl net.ipv4.neigh.default.gc_thresh1 "$gc_thresh1"
+set_sysctl net.ipv4.neigh.default.gc_thresh2 "$gc_thresh2"
+set_sysctl net.ipv4.neigh.default.gc_thresh3 "$gc_thresh3"
+set_sysctl net.ipv4.ip_no_pmtu_disc "$SYSCTL_IPV4_IP_NO_PMTU_DISC"
+set_sysctl net.netfilter.nf_conntrack_tcp_be_liberal "$SYSCTL_NF_CONNTRACK_TCP_BE_LIBERAL"
 
 ./kube-ovn-daemon --ovs-socket=${OVS_SOCK} --bind-socket=${CNI_SOCK} "$@"
