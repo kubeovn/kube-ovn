@@ -1,7 +1,6 @@
 module github.com/kubeovn/kube-ovn
 
 go 1.22
-
 toolchain go1.22.2
 
 require (
@@ -44,14 +43,14 @@ require (
 	google.golang.org/grpc v1.63.2
 	google.golang.org/protobuf v1.33.0
 	gopkg.in/k8snetworkplumbingwg/multus-cni.v4 v4.0.2
-	k8s.io/api v0.29.4
-	k8s.io/apimachinery v0.29.4
+	k8s.io/api v0.30.0
+	k8s.io/apimachinery v0.30.0
 	k8s.io/client-go v12.0.0+incompatible
 	k8s.io/klog/v2 v2.120.1
 	k8s.io/kubectl v0.29.4
 	k8s.io/kubernetes v1.29.4
 	k8s.io/pod-security-admission v0.29.4
-	k8s.io/sample-controller v0.29.4
+	k8s.io/sample-controller v0.30.0
 	k8s.io/utils v0.0.0-20240310230437-4693a0247e57
 	kubevirt.io/api v1.2.0
 	kubevirt.io/client-go v1.2.0
