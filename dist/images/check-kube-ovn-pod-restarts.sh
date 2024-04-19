@@ -1,13 +1,17 @@
 #!/bin/bash
 set -eux
 
-restartsPods=$(kubectl get po -A -o wide | grep -E "kube-ovn-controller|kube-ovn-pinger|kube-ovn-monitor|kube-ovn-cni|ovn-central|ovs-ovn" | grep -v "Running   0" | wc -l)
+Namespace="kube-system"
+crashedPodsNum=$(kubectl get po -n "$Namespace" -o wide | grep -E "ovn-controller|ovn-pinger|ovn-monitor|ovn-cni|ovn-central|ovs-ovn" | awk '{print $3$4}' | grep -v -c "Running0")
 
-if [ $restartsPods -gt 0 ]; then
-  echo "some ovn related pods are not running"
-  kubectl get po -A -o wide | grep -E "kube-ovn-controller|kube-ovn-pinger|kube-ovn-monitor|kube-ovn-cni|ovn-central|ovs-ovn" | grep -v "Running   0"
-  firstBadPod=$(kubectl get po -A -o wide | grep -E "kube-ovn-controller|kube-ovn-pinger|kube-ovn-monitor|kube-ovn-cni|ovn-central|ovs-ovn" | grep -v "Running   0" | head -n1 | awk '{print $1 " " $2}')
-  kubectl logs -p -n $firstBadPod | tail -n 100
-  echo "PLEASE CHECK THE ERROR LOGS ABOVE /|\/|\/|\/|\ "
+if [ "$crashedPodsNum" -gt 0 ]; then
+  echo "some ovn pods are not running"
+  kubectl get po -n "$Namespace" -o wide | grep -E "ovn-controller|ovn-pinger|ovn-monitor|ovn-cni|ovn-central|ovs-ovn"
+  crashedPods=$(kubectl get po -n "$Namespace" -o wide | grep -E "ovn-controller|ovn-pinger|ovn-monitor|ovn-cni|ovn-central|ovs-ovn" |  awk '{print $1 " " $3$4}' | grep -v "Running0" | awk '{print $1}')
+  for crashedPod in $crashedPods; do
+    echo "kubectl logs -p -n $crashedPod | tail -n 100"
+    kubectl logs -p -n "$Namespace" "$crashedPod" | tail -n 100
+    echo "PLEASE CHECK THE ERROR LOGS ABOVE /|\ /|\ /|\ "
+  done
   exit 1
 fi
