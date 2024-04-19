@@ -25,15 +25,10 @@ func (c *OVNNbClient) UpdateIngressACLOps(pgName, asIngressName, asExceptName, p
 
 	if strings.HasSuffix(asIngressName, ".0") || strings.HasSuffix(asIngressName, ".all") {
 		// create the default drop rule for only once
-		ipSuffix := "ip4"
-		if protocol == kubeovnv1.ProtocolIPv6 {
-			ipSuffix = "ip6"
-		}
-
-		/* default drop acl */
+		// both IPv4 and IPv6 traffic should be forbade in dual-stack situation
 		allIPMatch := NewAndACLMatch(
 			NewACLMatch("outport", "==", "@"+pgName, ""),
-			NewACLMatch(ipSuffix, "", "", ""),
+			NewACLMatch("ip", "", "", ""),
 		)
 		options := func(acl *ovnnb.ACL) {
 			if logEnable {
@@ -75,15 +70,10 @@ func (c *OVNNbClient) UpdateEgressACLOps(pgName, asEgressName, asExceptName, pro
 
 	if strings.HasSuffix(asEgressName, ".0") || strings.HasSuffix(asEgressName, ".all") {
 		// create the default drop rule for only once
-		ipSuffix := "ip4"
-		if protocol == kubeovnv1.ProtocolIPv6 {
-			ipSuffix = "ip6"
-		}
-
-		/* default drop acl */
+		// both IPv4 and IPv6 traffic should be forbade in dual-stack situation
 		allIPMatch := NewAndACLMatch(
 			NewACLMatch("inport", "==", "@"+pgName, ""),
-			NewACLMatch(ipSuffix, "", "", ""),
+			NewACLMatch("ip", "", "", ""),
 		)
 		options := func(acl *ovnnb.ACL) {
 			if logEnable {
@@ -621,7 +611,7 @@ func (c *OVNNbClient) SetLogicalSwitchPrivate(lsName, cidrBlock, nodeSwitchCIDR 
 	return nil
 }
 
-func (c *OVNNbClient) SetACLLog(pgName, protocol string, logEnable, isIngress bool) error {
+func (c *OVNNbClient) SetACLLog(pgName string, logEnable, isIngress bool) error {
 	direction := ovnnb.ACLDirectionToLport
 	portDirection := "outport"
 	if !isIngress {
@@ -629,15 +619,10 @@ func (c *OVNNbClient) SetACLLog(pgName, protocol string, logEnable, isIngress bo
 		portDirection = "inport"
 	}
 
-	ipSuffix := "ip4"
-	if protocol == kubeovnv1.ProtocolIPv6 {
-		ipSuffix = "ip6"
-	}
-
 	// match all traffic to or from pgName
 	allIPMatch := NewAndACLMatch(
 		NewACLMatch(portDirection, "==", "@"+pgName, ""),
-		NewACLMatch(ipSuffix, "", "", ""),
+		NewACLMatch("ip", "", "", ""),
 	)
 
 	acl, err := c.GetACL(pgName, direction, util.IngressDefaultDrop, allIPMatch.String(), true)
@@ -650,6 +635,9 @@ func (c *OVNNbClient) SetACLLog(pgName, protocol string, logEnable, isIngress bo
 		return nil // skip if acl not found
 	}
 
+	if acl.Log == logEnable {
+		return nil
+	}
 	acl.Log = logEnable
 
 	err = c.UpdateACL(acl, &acl.Log)
