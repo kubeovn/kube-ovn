@@ -103,7 +103,12 @@ func (c *OVNNbClient) SetNbGlobalOptions(key string, value interface{}) error {
 	for k, v := range nbGlobal.Options {
 		options[k] = v
 	}
+
+	if nbGlobal.Options == nil {
+		nbGlobal.Options = make(map[string]string)
+	}
 	nbGlobal.Options[key] = v
+
 	if err := c.UpdateNbGlobal(nbGlobal, &nbGlobal.Options); err != nil {
 		return fmt.Errorf("failed to set nb global option %s to %v: %v", key, value, err)
 	}
