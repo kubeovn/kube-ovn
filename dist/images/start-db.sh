@@ -184,7 +184,14 @@ function ovn_db_pre_start() {
                 cp "$db_file" "$db_bak" || return 1
 
                 echo "detected database corruption for file $db_file, try to fix it."
-                if ! ovsdb-tool fix-cluster "$db_file"; then
+                local fixed=0
+                if ovsdb-tool fix-cluster "$db_file"; then
+                    echo "checking whether database file $db_file has been fixed."
+                    if ovsdb-tool check-cluster "$db_file"; then
+                        fixed=1
+                    fi
+                fi
+                if [ $fixed -ne 1 ]; then
                     echo "failed to fix database file $db_file, rebuild it."
                     local sid=$(ovsdb-tool db-sid "$db_file")
                     if ! echo -n "$sid" | grep -qE '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'; then
