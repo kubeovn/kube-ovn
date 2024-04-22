@@ -1494,7 +1494,9 @@ func (csh cniServerHandler) configureNicWithInternalPort(podName, podNamespace, 
 		fmt.Sprintf("external_ids:ip=%s", ipStr),
 		fmt.Sprintf("external_ids:pod_netns=%s", netns))
 	if err != nil {
-		return containerNicName, nil, fmt.Errorf("add nic to ovs failed %v: %q", err, output)
+		err := fmt.Errorf("add nic to ovs failed %v: %q", err, output)
+		klog.Error(err)
+		return containerNicName, nil, err
 	}
 
 	// container nic must use same mac address from pod annotation, otherwise ovn will reject these packets by default

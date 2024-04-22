@@ -211,6 +211,9 @@ const (
 
 	HostnameEnv = "KUBE_NODE_NAME"
 
+	MirrosRetryMaxTimes = 5
+	MirrosRetryInterval = 1
+
 	ChassisRetryMaxTimes           = 5
 	ChassisCniDaemonRetryInterval  = 1
 	ChassisControllerRetryInterval = 3
