@@ -88,60 +88,18 @@ func (mr *MockNBGlobalMockRecorder) SetICAutoRoute(enable, blackList any) *gomoc
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetICAutoRoute", reflect.TypeOf((*MockNBGlobal)(nil).SetICAutoRoute), enable, blackList)
 }
 
-// SetLsCtSkipDstLportIPs mocks base method.
-func (m *MockNBGlobal) SetLsCtSkipDstLportIPs(enabled bool) error {
+// SetNBGlobalOptions mocks base method.
+func (m *MockNBGlobal) SetNBGlobalOptions(options map[string]string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetLsCtSkipDstLportIPs", enabled)
+	ret := m.ctrl.Call(m, "SetNBGlobalOptions", options)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// SetLsCtSkipDstLportIPs indicates an expected call of SetLsCtSkipDstLportIPs.
-func (mr *MockNBGlobalMockRecorder) SetLsCtSkipDstLportIPs(enabled any) *gomock.Call {
+// SetNBGlobalOptions indicates an expected call of SetNBGlobalOptions.
+func (mr *MockNBGlobalMockRecorder) SetNBGlobalOptions(options any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLsCtSkipDstLportIPs", reflect.TypeOf((*MockNBGlobal)(nil).SetLsCtSkipDstLportIPs), enabled)
-}
-
-// SetNodeLocalDNSIP mocks base method.
-func (m *MockNBGlobal) SetNodeLocalDNSIP(nodeLocalDNSIP string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetNodeLocalDNSIP", nodeLocalDNSIP)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// SetNodeLocalDNSIP indicates an expected call of SetNodeLocalDNSIP.
-func (mr *MockNBGlobalMockRecorder) SetNodeLocalDNSIP(nodeLocalDNSIP any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetNodeLocalDNSIP", reflect.TypeOf((*MockNBGlobal)(nil).SetNodeLocalDNSIP), nodeLocalDNSIP)
-}
-
-// SetLsDnatModDlDst mocks base method.
-func (m *MockNBGlobal) SetLsDnatModDlDst(enabled bool) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetLsDnatModDlDst", enabled)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// SetLsDnatModDlDst indicates an expected call of SetLsDnatModDlDst.
-func (mr *MockNBGlobalMockRecorder) SetLsDnatModDlDst(enabled any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLsDnatModDlDst", reflect.TypeOf((*MockNBGlobal)(nil).SetLsDnatModDlDst), enabled)
-}
-
-// SetUseCtInvMatch mocks base method.
-func (m *MockNBGlobal) SetUseCtInvMatch() error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetUseCtInvMatch")
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// SetUseCtInvMatch indicates an expected call of SetUseCtInvMatch.
-func (mr *MockNBGlobalMockRecorder) SetUseCtInvMatch() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetUseCtInvMatch", reflect.TypeOf((*MockNBGlobal)(nil).SetUseCtInvMatch))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetNBGlobalOptions", reflect.TypeOf((*MockNBGlobal)(nil).SetNBGlobalOptions), options)
 }
 
 // UpdateNbGlobal mocks base method.
@@ -4275,60 +4233,18 @@ func (mr *MockNbClientMockRecorder) SetLogicalSwitchPrivate(lsName, cidrBlock, n
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLogicalSwitchPrivate", reflect.TypeOf((*MockNbClient)(nil).SetLogicalSwitchPrivate), lsName, cidrBlock, nodeSwitchCIDR, allowSubnets)
 }
 
-// SetLsCtSkipDstLportIPs mocks base method.
-func (m *MockNbClient) SetLsCtSkipDstLportIPs(enabled bool) error {
+// SetNBGlobalOptions mocks base method.
+func (m *MockNbClient) SetNBGlobalOptions(options map[string]string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetLsCtSkipDstLportIPs", enabled)
+	ret := m.ctrl.Call(m, "SetNBGlobalOptions", options)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// SetLsCtSkipDstLportIPs indicates an expected call of SetLsCtSkipDstLportIPs.
-func (mr *MockNbClientMockRecorder) SetLsCtSkipDstLportIPs(enabled any) *gomock.Call {
+// SetNBGlobalOptions indicates an expected call of SetNBGlobalOptions.
+func (mr *MockNbClientMockRecorder) SetNBGlobalOptions(options any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLsCtSkipDstLportIPs", reflect.TypeOf((*MockNbClient)(nil).SetLsCtSkipDstLportIPs), enabled)
-}
-
-// SetNodeLocalDNSIP mocks base method.
-func (m *MockNbClient) SetNodeLocalDNSIP(nodeLocalDNSIP string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetNodeLocalDNSIP", nodeLocalDNSIP)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// SetNodeLocalDNSIP indicates an expected call of SetNodeLocalDNSIP.
-func (mr *MockNbClientMockRecorder) SetNodeLocalDNSIP(nodeLocalDNSIP any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetNodeLocalDNSIP", reflect.TypeOf((*MockNbClient)(nil).SetNodeLocalDNSIP), nodeLocalDNSIP)
-}
-
-// SetLsDnatModDlDst mocks base method.
-func (m *MockNbClient) SetLsDnatModDlDst(enabled bool) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetLsDnatModDlDst", enabled)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// SetLsDnatModDlDst indicates an expected call of SetLsDnatModDlDst.
-func (mr *MockNbClientMockRecorder) SetLsDnatModDlDst(enabled any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLsDnatModDlDst", reflect.TypeOf((*MockNbClient)(nil).SetLsDnatModDlDst), enabled)
-}
-
-// SetUseCtInvMatch mocks base method.
-func (m *MockNbClient) SetUseCtInvMatch() error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetUseCtInvMatch")
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// SetUseCtInvMatch indicates an expected call of SetUseCtInvMatch.
-func (mr *MockNbClientMockRecorder) SetUseCtInvMatch() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetUseCtInvMatch", reflect.TypeOf((*MockNbClient)(nil).SetUseCtInvMatch))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetNBGlobalOptions", reflect.TypeOf((*MockNbClient)(nil).SetNBGlobalOptions), options)
 }
 
 // SetVirtualLogicalSwitchPortVirtualParents mocks base method.

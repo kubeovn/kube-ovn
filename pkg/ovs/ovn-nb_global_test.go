@@ -187,36 +187,10 @@ func (suite *OvnClientTestSuite) testSetUseCtInvMatch() {
 	err := ovnClient.CreateNbGlobal(nbGlobal)
 	require.NoError(t, err)
 
-	err = ovnClient.SetUseCtInvMatch()
+	err = ovnClient.SetNBGlobalOptions(map[string]string{"use_ct_inv_match": "false"})
 	require.NoError(t, err)
 
 	out, err := ovnClient.GetNbGlobal()
 	require.NoError(t, err)
 	require.Equal(t, "false", out.Options["use_ct_inv_match"])
-}
-
-func (suite *OvnClientTestSuite) testSetLBCIDR() {
-	t := suite.T()
-
-	ovnClient := suite.ovnClient
-	serviceCIDR := "10.96.0.0/12"
-
-	t.Cleanup(func() {
-		err := ovnClient.DeleteNbGlobal()
-		require.NoError(t, err)
-
-		_, err = ovnClient.GetNbGlobal()
-		require.ErrorContains(t, err, "not found nb_global")
-	})
-
-	nbGlobal := mockNBGlobal()
-	err := ovnClient.CreateNbGlobal(nbGlobal)
-	require.NoError(t, err)
-
-	err = ovnClient.SetLBCIDR(serviceCIDR)
-	require.NoError(t, err)
-
-	out, err := ovnClient.GetNbGlobal()
-	require.NoError(t, err)
-	require.Equal(t, serviceCIDR, out.Options["svc_ipv4_cidr"])
 }

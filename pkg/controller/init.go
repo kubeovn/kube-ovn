@@ -29,6 +29,10 @@ import (
 func (c *Controller) InitOVN() error {
 	var err error
 
+	if err = c.initOVNNBGlobal(); err != nil {
+		util.LogFatalAndExit(err, "failed to initialize OVN NB_Global")
+	}
+
 	if err = c.initClusterRouter(); err != nil {
 		klog.Errorf("init cluster router failed: %v", err)
 		return err
@@ -198,7 +202,18 @@ func (c *Controller) initNodeSwitch() error {
 	return nil
 }
 
-// InitClusterRouter init cluster router to connect different logical switches
+func (c *Controller) initOVNNBGlobal() error {
+	options := map[string]string{
+		"use_ct_inv_match": "false",
+		"node_switch":      "",
+	}
+	if c.config.EnableLb {
+		options["node_switch"] = c.config.NodeSwitch
+	}
+	return c.OVNNbClient.SetNBGlobalOptions(options)
+}
+
+// initClusterRouter init cluster router to connect different logical switches
 func (c *Controller) initClusterRouter() error {
 	return c.OVNNbClient.CreateLogicalRouter(c.config.ClusterRouter)
 }
@@ -230,7 +245,7 @@ func (c *Controller) initLB(name, protocol string, sessionAffinity bool) error {
 	return nil
 }
 
-// InitLoadBalancer init the default tcp and udp cluster loadbalancer
+// initLoadBalancer init the default tcp and udp cluster loadbalancer
 func (c *Controller) initLoadBalancer() error {
 	vpcs, err := c.vpcsLister.List(labels.Everything())
 	if err != nil {

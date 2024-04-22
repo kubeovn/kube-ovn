@@ -72,10 +72,6 @@ func (suite *OvnClientTestSuite) Test_SetUseCtInvMatch() {
 	suite.testSetUseCtInvMatch()
 }
 
-func (suite *OvnClientTestSuite) Test_SetLBCIDR() {
-	suite.testSetLBCIDR()
-}
-
 /* logical_switch unit test */
 func (suite *OvnClientTestSuite) Test_CreateLogicalSwitch() {
 	suite.testCreateLogicalSwitch()

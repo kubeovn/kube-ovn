@@ -740,22 +740,6 @@ func Run(ctx context.Context, config *Configuration) {
 func (c *Controller) Run(ctx context.Context) {
 	// The init process can only be placed here if the init process do really affect the normal process of controller, such as Nodes/Pods/Subnets...
 	// Otherwise, the init process should be placed after all workers have already started working
-	if err := c.OVNNbClient.SetLsDnatModDlDst(c.config.LsDnatModDlDst); err != nil {
-		util.LogFatalAndExit(err, "failed to set NB_Global option ls_dnat_mod_dl_dst")
-	}
-
-	if err := c.OVNNbClient.SetUseCtInvMatch(); err != nil {
-		util.LogFatalAndExit(err, "failed to set NB_Global option use_ct_inv_match to false")
-	}
-
-	if err := c.OVNNbClient.SetLsCtSkipDstLportIPs(c.config.LsCtSkipDstLportIPs); err != nil {
-		util.LogFatalAndExit(err, "failed to set NB_Global option ls_ct_skip_dst_lport_ips")
-	}
-
-	if err := c.OVNNbClient.SetNodeLocalDNSIP(c.config.NodeLocalDNSIP); err != nil {
-		util.LogFatalAndExit(err, "failed to set NB_Global option node_local_dns_ip")
-	}
-
 	if err := c.InitOVN(); err != nil {
 		util.LogFatalAndExit(err, "failed to initialize ovn resources")
 	}

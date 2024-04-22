@@ -3,9 +3,9 @@ package ovs
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"strings"
 
+	"golang.org/x/exp/maps"
 	"k8s.io/klog/v2"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
@@ -88,96 +88,43 @@ func (c *OVNNbClient) SetAzName(azName string) error {
 	return nil
 }
 
-func (c *OVNNbClient) SetNbGlobalOptions(key string, value interface{}) error {
-	nbGlobal, err := c.GetNbGlobal()
-	if err != nil {
-		return fmt.Errorf("failed to get nb global: %v", err)
-	}
-
-	v := fmt.Sprintf("%v", value)
-	if len(nbGlobal.Options) != 0 && nbGlobal.Options[key] == v {
-		return nil
-	}
-
-	options := make(map[string]string, len(nbGlobal.Options)+1)
-	for k, v := range nbGlobal.Options {
-		options[k] = v
-	}
-	nbGlobal.Options[key] = v
-	if err := c.UpdateNbGlobal(nbGlobal, &nbGlobal.Options); err != nil {
-		return fmt.Errorf("failed to set nb global option %s to %v: %v", key, value, err)
-	}
-
-	return nil
-}
-
-func (c *OVNNbClient) SetUseCtInvMatch() error {
-	return c.SetNbGlobalOptions("use_ct_inv_match", false)
-}
-
 func (c *OVNNbClient) SetICAutoRoute(enable bool, blackList []string) error {
-	nbGlobal, err := c.GetNbGlobal()
-	if err != nil {
-		return fmt.Errorf("get nb global: %v", err)
-	}
-
-	options := make(map[string]string, len(nbGlobal.Options)+3)
-	for k, v := range nbGlobal.Options {
-		options[k] = v
+	options := map[string]string{
+		"ic-route-adv":       "",
+		"ic-route-learn":     "",
+		"ic-route-blacklist": "",
 	}
 	if enable {
 		options["ic-route-adv"] = "true"
 		options["ic-route-learn"] = "true"
 		options["ic-route-blacklist"] = strings.Join(blackList, ",")
-	} else {
-		delete(options, "ic-route-adv")
-		delete(options, "ic-route-learn")
-		delete(options, "ic-route-blacklist")
-	}
-	if reflect.DeepEqual(options, nbGlobal.Options) {
-		nbGlobal.Options = options
-		return nil
 	}
 
-	nbGlobal.Options = options
-	if err := c.UpdateNbGlobal(nbGlobal, &nbGlobal.Options); err != nil {
-		return fmt.Errorf("enable ovn-ic auto route, %v", err)
-	}
-	return nil
+	return c.SetNBGlobalOptions(options)
 }
 
-func (c *OVNNbClient) SetLBCIDR(serviceCIDR string) error {
-	return c.SetNbGlobalOptions("svc_ipv4_cidr", serviceCIDR)
-}
-
-func (c *OVNNbClient) SetLsDnatModDlDst(enabled bool) error {
-	return c.SetNbGlobalOptions("ls_dnat_mod_dl_dst", enabled)
-}
-
-func (c *OVNNbClient) SetLsCtSkipDstLportIPs(enabled bool) error {
-	return c.SetNbGlobalOptions("ls_ct_skip_dst_lport_ips", enabled)
-}
-
-func (c *OVNNbClient) SetNodeLocalDNSIP(nodeLocalDNSIP string) error {
-	if nodeLocalDNSIP != "" {
-		return c.SetNbGlobalOptions("node_local_dns_ip", nodeLocalDNSIP)
-	}
-
+func (c *OVNNbClient) SetNBGlobalOptions(options map[string]string) error {
 	nbGlobal, err := c.GetNbGlobal()
 	if err != nil {
-		return fmt.Errorf("get nb global: %v", err)
+		return fmt.Errorf("failed to get nb global: %v", err)
 	}
 
-	options := make(map[string]string, len(nbGlobal.Options))
-	for k, v := range nbGlobal.Options {
-		options[k] = v
+	newOptions := maps.Clone(nbGlobal.Options)
+	if newOptions == nil {
+		newOptions = make(map[string]string, len(options))
+	}
+	for k, v := range options {
+		if v == "" {
+			delete(nbGlobal.Options, k)
+		} else {
+			nbGlobal.Options[k] = v
+		}
 	}
 
-	delete(options, "node_local_dns_ip")
-
-	nbGlobal.Options = options
-	if err := c.UpdateNbGlobal(nbGlobal, &nbGlobal.Options); err != nil {
-		return fmt.Errorf("remove option node_local_dns_ip failed , %v", err)
+	if !maps.Equal(nbGlobal.Options, newOptions) {
+		if err = c.UpdateNbGlobal(nbGlobal, &nbGlobal.Options); err != nil {
+			return fmt.Errorf("failed to update nb global options: %v", err)
+		}
 	}
 
 	return nil

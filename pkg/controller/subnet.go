@@ -831,26 +831,26 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		return err
 	}
 
-	if c.config.EnableLb && subnet.Name != c.config.NodeSwitch {
-		lbs := []string{
-			vpc.Status.TCPLoadBalancer,
-			vpc.Status.TCPSessionLoadBalancer,
-			vpc.Status.UDPLoadBalancer,
-			vpc.Status.UDPSessionLoadBalancer,
-			vpc.Status.SctpLoadBalancer,
-			vpc.Status.SctpSessionLoadBalancer,
+	lbs := []string{
+		vpc.Status.TCPLoadBalancer,
+		vpc.Status.TCPSessionLoadBalancer,
+		vpc.Status.UDPLoadBalancer,
+		vpc.Status.UDPSessionLoadBalancer,
+		vpc.Status.SctpLoadBalancer,
+		vpc.Status.SctpSessionLoadBalancer,
+	}
+	// TODO: consider subnet.Spec.U2OInterconnection in the default vpc
+	if c.config.EnableLb && ((subnet.Name == c.config.NodeSwitch || subnet.Spec.Vpc != c.config.ClusterRouter) ||
+		(subnet.Spec.Vlan != "" && subnet.Spec.EnableLb != nil && *subnet.Spec.EnableLb)) {
+		if err := c.OVNNbClient.LogicalSwitchUpdateLoadBalancers(subnet.Name, ovsdb.MutateOperationInsert, lbs...); err != nil {
+			c.patchSubnetStatus(subnet, "AddLbToLogicalSwitchFailed", err.Error())
+			klog.Error(err)
+			return err
 		}
-		if subnet.Spec.EnableLb != nil && *subnet.Spec.EnableLb {
-			if err := c.OVNNbClient.LogicalSwitchUpdateLoadBalancers(subnet.Name, ovsdb.MutateOperationInsert, lbs...); err != nil {
-				c.patchSubnetStatus(subnet, "AddLbToLogicalSwitchFailed", err.Error())
-				klog.Error(err)
-				return err
-			}
-		} else {
-			if err := c.OVNNbClient.LogicalSwitchUpdateLoadBalancers(subnet.Name, ovsdb.MutateOperationDelete, lbs...); err != nil {
-				klog.Errorf("remove load-balancer from subnet %s failed: %v", subnet.Name, err)
-				return err
-			}
+	} else {
+		if err := c.OVNNbClient.LogicalSwitchUpdateLoadBalancers(subnet.Name, ovsdb.MutateOperationDelete, lbs...); err != nil {
+			klog.Errorf("remove load-balancer from subnet %s failed: %v", subnet.Name, err)
+			return err
 		}
 	}
 

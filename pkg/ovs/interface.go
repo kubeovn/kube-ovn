@@ -14,11 +14,8 @@ import (
 type NBGlobal interface {
 	UpdateNbGlobal(nbGlobal *ovnnb.NBGlobal, fields ...interface{}) error
 	SetAzName(azName string) error
-	SetUseCtInvMatch() error
 	SetICAutoRoute(enable bool, blackList []string) error
-	SetLsDnatModDlDst(enabled bool) error
-	SetLsCtSkipDstLportIPs(enabled bool) error
-	SetNodeLocalDNSIP(nodeLocalDNSIP string) error
+	SetNBGlobalOptions(options map[string]string) error
 	GetNbGlobal() (*ovnnb.NBGlobal, error)
 }
 
