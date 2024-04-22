@@ -304,11 +304,11 @@ func (c *OVNNbClient) CreateSgBaseACL(sgName, direction string) error {
 	}
 
 	// allow arp
-	AllArpMatch := NewAndACLMatch(
+	allArpMatch := NewAndACLMatch(
 		NewACLMatch(portDirection, "==", "@"+pgName, ""),
 		NewACLMatch("arp", "", "", ""),
 	)
-	newACL(AllArpMatch.String())
+	newACL(allArpMatch.String())
 
 	// icmpv6
 	icmpv6Match := NewAndACLMatch(
