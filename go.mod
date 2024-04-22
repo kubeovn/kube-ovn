@@ -15,7 +15,6 @@ require (
 	github.com/emicklei/go-restful/v3 v3.12.0
 	github.com/evanphx/json-patch/v5 v5.9.0
 	github.com/go-logr/stdr v1.2.2
-	github.com/golang/mock v1.6.0
 	github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.4.0
 	github.com/k8snetworkplumbingwg/sriovnet v1.2.0
 	github.com/kubeovn/go-iptables v0.0.0-20230322103850-8619a8ab3dca
@@ -35,6 +34,7 @@ require (
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.8.4
 	github.com/vishvananda/netlink v1.2.1-beta.2
+	go.uber.org/mock v0.4.0
 	golang.org/x/exp v0.0.0-20231006140011-7918f672742d
 	golang.org/x/mod v0.17.0
 	golang.org/x/sys v0.19.0
@@ -127,6 +127,7 @@ require (
 	github.com/golang-jwt/jwt/v4 v4.5.0 // indirect
 	github.com/golang/glog v1.2.0 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
+	github.com/golang/mock v1.6.0 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/btree v1.0.1 // indirect
 	github.com/google/cadvisor v0.47.2 // indirect
