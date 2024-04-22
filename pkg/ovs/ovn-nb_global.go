@@ -99,11 +99,6 @@ func (c *OVNNbClient) SetNbGlobalOptions(key string, value interface{}) error {
 		return nil
 	}
 
-	options := make(map[string]string, len(nbGlobal.Options)+1)
-	for k, v := range nbGlobal.Options {
-		options[k] = v
-	}
-
 	if nbGlobal.Options == nil {
 		nbGlobal.Options = make(map[string]string)
 	}
