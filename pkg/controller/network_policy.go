@@ -298,16 +298,15 @@ func (c *Controller) handleUpdateNp(key string) error {
 
 					ingressACLOps = append(ingressACLOps, ops...)
 				}
-
-				if err = c.OVNNbClient.Transact("add-ingress-acls", ingressACLOps); err != nil {
-					return fmt.Errorf("add ingress acls to %s: %v", pgName, err)
-				}
-
-				if err = c.OVNNbClient.SetACLLog(pgName, protocol, logEnable, true); err != nil {
-					// just log and do not return err here
-					klog.Errorf("failed to set ingress acl log for np %s, %v", key, err)
-				}
 			}
+		}
+		if err := c.OVNNbClient.Transact("add-ingress-acls", ingressACLOps); err != nil {
+			return fmt.Errorf("add ingress acls to %s: %v", pgName, err)
+		}
+
+		if err := c.OVNNbClient.SetACLLog(pgName, logEnable, true); err != nil {
+			// just log and do not return err here
+			klog.Errorf("failed to set ingress acl log for np %s, %v", key, err)
 		}
 
 		ass, err := c.OVNNbClient.ListAddressSets(map[string]string{
@@ -427,15 +426,15 @@ func (c *Controller) handleUpdateNp(key string) error {
 					egressACLOps = append(egressACLOps, ops...)
 				}
 
-				if err = c.OVNNbClient.Transact("add-egress-acls", egressACLOps); err != nil {
-					return fmt.Errorf("add egress acls to %s: %v", pgName, err)
-				}
-
-				if err = c.OVNNbClient.SetACLLog(pgName, protocol, logEnable, false); err != nil {
-					// just log and do not return err here
-					klog.Errorf("failed to set egress acl log for np %s, %v", key, err)
-				}
 			}
+		}
+		if err := c.OVNNbClient.Transact("add-egress-acls", egressACLOps); err != nil {
+			return fmt.Errorf("add egress acls to %s: %v", pgName, err)
+		}
+
+		if err := c.OVNNbClient.SetACLLog(pgName, logEnable, false); err != nil {
+			// just log and do not return err here
+			klog.Errorf("failed to set egress acl log for np %s, %v", key, err)
 		}
 
 		ass, err := c.OVNNbClient.ListAddressSets(map[string]string{

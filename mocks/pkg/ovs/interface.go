@@ -102,20 +102,6 @@ func (mr *MockNBGlobalMockRecorder) SetLsCtSkipDstLportIPs(enabled any) *gomock.
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLsCtSkipDstLportIPs", reflect.TypeOf((*MockNBGlobal)(nil).SetLsCtSkipDstLportIPs), enabled)
 }
 
-// SetNodeLocalDNSIP mocks base method.
-func (m *MockNBGlobal) SetNodeLocalDNSIP(nodeLocalDNSIP string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetNodeLocalDNSIP", nodeLocalDNSIP)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// SetNodeLocalDNSIP indicates an expected call of SetNodeLocalDNSIP.
-func (mr *MockNBGlobalMockRecorder) SetNodeLocalDNSIP(nodeLocalDNSIP any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetNodeLocalDNSIP", reflect.TypeOf((*MockNBGlobal)(nil).SetNodeLocalDNSIP), nodeLocalDNSIP)
-}
-
 // SetLsDnatModDlDst mocks base method.
 func (m *MockNBGlobal) SetLsDnatModDlDst(enabled bool) error {
 	m.ctrl.T.Helper()
@@ -128,6 +114,20 @@ func (m *MockNBGlobal) SetLsDnatModDlDst(enabled bool) error {
 func (mr *MockNBGlobalMockRecorder) SetLsDnatModDlDst(enabled any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLsDnatModDlDst", reflect.TypeOf((*MockNBGlobal)(nil).SetLsDnatModDlDst), enabled)
+}
+
+// SetNodeLocalDNSIP mocks base method.
+func (m *MockNBGlobal) SetNodeLocalDNSIP(nodeLocalDNSIP string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetNodeLocalDNSIP", nodeLocalDNSIP)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetNodeLocalDNSIP indicates an expected call of SetNodeLocalDNSIP.
+func (mr *MockNBGlobalMockRecorder) SetNodeLocalDNSIP(nodeLocalDNSIP any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetNodeLocalDNSIP", reflect.TypeOf((*MockNBGlobal)(nil).SetNodeLocalDNSIP), nodeLocalDNSIP)
 }
 
 // SetUseCtInvMatch mocks base method.
@@ -1728,17 +1728,17 @@ func (mr *MockACLMockRecorder) SGLostACL(sg any) *gomock.Call {
 }
 
 // SetACLLog mocks base method.
-func (m *MockACL) SetACLLog(pgName, protocol string, logEnable, isIngress bool) error {
+func (m *MockACL) SetACLLog(pgName string, logEnable, isIngress bool) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetACLLog", pgName, protocol, logEnable, isIngress)
+	ret := m.ctrl.Call(m, "SetACLLog", pgName, logEnable, isIngress)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // SetACLLog indicates an expected call of SetACLLog.
-func (mr *MockACLMockRecorder) SetACLLog(pgName, protocol, logEnable, isIngress any) *gomock.Call {
+func (mr *MockACLMockRecorder) SetACLLog(pgName, logEnable, isIngress any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetACLLog", reflect.TypeOf((*MockACL)(nil).SetACLLog), pgName, protocol, logEnable, isIngress)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetACLLog", reflect.TypeOf((*MockACL)(nil).SetACLLog), pgName, logEnable, isIngress)
 }
 
 // SetLogicalSwitchPrivate mocks base method.
@@ -4103,17 +4103,17 @@ func (mr *MockNbClientMockRecorder) SGLostACL(sg any) *gomock.Call {
 }
 
 // SetACLLog mocks base method.
-func (m *MockNbClient) SetACLLog(pgName, protocol string, logEnable, isIngress bool) error {
+func (m *MockNbClient) SetACLLog(pgName string, logEnable, isIngress bool) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetACLLog", pgName, protocol, logEnable, isIngress)
+	ret := m.ctrl.Call(m, "SetACLLog", pgName, logEnable, isIngress)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // SetACLLog indicates an expected call of SetACLLog.
-func (mr *MockNbClientMockRecorder) SetACLLog(pgName, protocol, logEnable, isIngress any) *gomock.Call {
+func (mr *MockNbClientMockRecorder) SetACLLog(pgName, logEnable, isIngress any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetACLLog", reflect.TypeOf((*MockNbClient)(nil).SetACLLog), pgName, protocol, logEnable, isIngress)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetACLLog", reflect.TypeOf((*MockNbClient)(nil).SetACLLog), pgName, logEnable, isIngress)
 }
 
 // SetAzName mocks base method.
@@ -4289,20 +4289,6 @@ func (mr *MockNbClientMockRecorder) SetLsCtSkipDstLportIPs(enabled any) *gomock.
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLsCtSkipDstLportIPs", reflect.TypeOf((*MockNbClient)(nil).SetLsCtSkipDstLportIPs), enabled)
 }
 
-// SetNodeLocalDNSIP mocks base method.
-func (m *MockNbClient) SetNodeLocalDNSIP(nodeLocalDNSIP string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetNodeLocalDNSIP", nodeLocalDNSIP)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// SetNodeLocalDNSIP indicates an expected call of SetNodeLocalDNSIP.
-func (mr *MockNbClientMockRecorder) SetNodeLocalDNSIP(nodeLocalDNSIP any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetNodeLocalDNSIP", reflect.TypeOf((*MockNbClient)(nil).SetNodeLocalDNSIP), nodeLocalDNSIP)
-}
-
 // SetLsDnatModDlDst mocks base method.
 func (m *MockNbClient) SetLsDnatModDlDst(enabled bool) error {
 	m.ctrl.T.Helper()
@@ -4315,6 +4301,20 @@ func (m *MockNbClient) SetLsDnatModDlDst(enabled bool) error {
 func (mr *MockNbClientMockRecorder) SetLsDnatModDlDst(enabled any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLsDnatModDlDst", reflect.TypeOf((*MockNbClient)(nil).SetLsDnatModDlDst), enabled)
+}
+
+// SetNodeLocalDNSIP mocks base method.
+func (m *MockNbClient) SetNodeLocalDNSIP(nodeLocalDNSIP string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetNodeLocalDNSIP", nodeLocalDNSIP)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetNodeLocalDNSIP indicates an expected call of SetNodeLocalDNSIP.
+func (mr *MockNbClientMockRecorder) SetNodeLocalDNSIP(nodeLocalDNSIP any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetNodeLocalDNSIP", reflect.TypeOf((*MockNbClient)(nil).SetNodeLocalDNSIP), nodeLocalDNSIP)
 }
 
 // SetUseCtInvMatch mocks base method.
