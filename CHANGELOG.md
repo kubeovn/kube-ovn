@@ -1,5 +1,46 @@
 # Changelog
 
+## v1.12.12 (2024-04-23)
+
+ * [0363e783](https://github.com/kubeovn/kube-ovn/commit/0363e783f66fdd1f53ec23b8c247fb1191a19e4a) release v1.12.12
+ * [dcca4e54](https://github.com/kubeovn/kube-ovn/commit/dcca4e549309e67ba2ba8400c070e00de5b87e59) drop both IPv4 and IPv6 traffic in networkpolicy drop acl (#3940)
+ * [4ff20a51](https://github.com/kubeovn/kube-ovn/commit/4ff20a51f89cebbcca8b87e3de3b4ef9e23cf120) update net package version (#3936)
+ * [bae87560](https://github.com/kubeovn/kube-ovn/commit/bae875607f619c63059d9fd7a5e002973c419d58) add metric for subnet info (#3932)
+ * [166d9a43](https://github.com/kubeovn/kube-ovn/commit/166d9a433b388e2c9a6e1a4ac92218596caa5903) cni-server: set sysctl variables only when the env variables are passed in (#3929)
+ * [86be0f67](https://github.com/kubeovn/kube-ovn/commit/86be0f6783cd630a36a8935344b8f6082defa770) ovn: check whether db file is fixed (#3928)
+ * [021b9962](https://github.com/kubeovn/kube-ovn/commit/021b996285dcfd67d15043e5ce25ae89fe806d1a) fix backport (#3924)
+ * [4ed15b96](https://github.com/kubeovn/kube-ovn/commit/4ed15b961cc9d52f0dc6442301d48cd8af23e17d) append filepath when compare cni config (#3923)
+ * [58932922](https://github.com/kubeovn/kube-ovn/commit/5893292232518f1f78fd7986b9bf8e98b025595a) re calculate subnet using ips while inconsistency detected (#3920)
+ * [698c9346](https://github.com/kubeovn/kube-ovn/commit/698c9346826feca5aa361055a76dc94bec5b62e8) update ovn monitor (#3903)
+ * [c91d5b66](https://github.com/kubeovn/kube-ovn/commit/c91d5b667bf6cd05660566ec838c5ce0c69d7c36) add monitor for sysctl para (#3913)
+ * [36025b57](https://github.com/kubeovn/kube-ovn/commit/36025b576b188eff5a893eba1edb23b344d54351) refactor kubevirt vm e2e (#3914)
+ * [b32f607d](https://github.com/kubeovn/kube-ovn/commit/b32f607db7e0a7bef29c965ba35af0e4dbb75ad2) support specifying routes when providing IPAM for other CNI plugins (#3904)
+ * [96a56957](https://github.com/kubeovn/kube-ovn/commit/96a5695765c7e8daae2c3fb5813987623800f4fb) Fix init sg (#3890)
+ * [abd735c6](https://github.com/kubeovn/kube-ovn/commit/abd735c6153c7239d9bc3f49e572ff2b223b1724) distinguish portSecurity with security group (#3862)
+ * [d8650a66](https://github.com/kubeovn/kube-ovn/commit/d8650a66d10ded318300660e9e3ec19c816cfece) fix br-external not init because of  no permission after ovn-nat-gw configmap created (#3902)
+ * [63fa192f](https://github.com/kubeovn/kube-ovn/commit/63fa192fd68c06ae57eaaf24cbdc95fe0af46448) build(deps): bump google.golang.org/grpc from 1.63.0 to 1.63.2 (#3900)
+ * [f8bac073](https://github.com/kubeovn/kube-ovn/commit/f8bac073322664a852b7391d7ab377ae5d2570e5) build(deps): bump github.com/osrg/gobgp/v3 from 3.24.0 to 3.25.0 (#3897)
+ * [11eae635](https://github.com/kubeovn/kube-ovn/commit/11eae635b4210deb2bccdf9858d478034ab434ce) build(deps): bump golang.org/x/sys from 0.18.0 to 0.19.0 (#3896)
+ * [2a339a65](https://github.com/kubeovn/kube-ovn/commit/2a339a6586dcb3d16726222a0e1765ec092d99ee) build(deps): bump golang.org/x/mod from 0.16.0 to 0.17.0 (#3895)
+ * [696d9f47](https://github.com/kubeovn/kube-ovn/commit/696d9f47f18a60ba3f2a99b43da74ab0c1deb9ff) build(deps): bump google.golang.org/grpc from 1.62.1 to 1.63.0 (#3898)
+ * [beb22451](https://github.com/kubeovn/kube-ovn/commit/beb224519a7ec27edb0b851dffaed831ab9a0cfe) build(deps): bump github.com/Microsoft/hcsshim from 0.12.1 to 0.12.2 (#3891)
+ * [c4be969c](https://github.com/kubeovn/kube-ovn/commit/c4be969c4763f4d708b55f18f1d1326831a11616) build(deps): bump github.com/cenkalti/backoff/v4 from 4.2.1 to 4.3.0 (#3875)
+ * [f8655fb6](https://github.com/kubeovn/kube-ovn/commit/f8655fb655ebdad0beacb831d171a264656c44bd) chart: fix ovs-ovn update strategy (#3887)
+ * [b43ac43c](https://github.com/kubeovn/kube-ovn/commit/b43ac43cb9a646c0a122e5d75c1fc8abf626eb1d) Fix index out of range in controller security_group (#3845)
+ * [6609c81a](https://github.com/kubeovn/kube-ovn/commit/6609c81af4d9fe7fc25052c58fc00e39abc75fc0) fix: ipam invalid memory address or nil pointer dereference (#3889)
+ * [c207ecae](https://github.com/kubeovn/kube-ovn/commit/c207ecae8f9cb76d27a0ef19e5963e0701ae5b61) add tracepath (#3884)
+ * [054f1298](https://github.com/kubeovn/kube-ovn/commit/054f1298de926a6cc726ff1685bb2472679ece85) prepare for next release
+
+### Contributors
+
+ * Longchuanzheng
+ * Zhao Congqi
+ * bobz965
+ * dependabot[bot]
+ * hzma
+ * zhangzujian
+ * 张祖建
+
 ## v1.12.11 (2024-03-28)
 
  * [66df5d63](https://github.com/kubeovn/kube-ovn/commit/66df5d63f62c33f4271f2f4ea44c5d928610a83c) release v1.12.11
