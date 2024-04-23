@@ -717,6 +717,8 @@ diagnose(){
     node)
       nodeName="$2"
       kubectl get no "$nodeName" > /dev/null
+      echo "### make sure kube-ovn-pinger running on node $nodeName"
+      kubectl -n $KUBE_OVN_NS get po -l app=kube-ovn-pinger
       pinger=$(kubectl -n $KUBE_OVN_NS get po -l app=kube-ovn-pinger -o 'jsonpath={.items[?(@.spec.nodeName=="'$nodeName'")].metadata.name}')
       if [ ! -n "$pinger" ]; then
         echo "Error: No kube-ovn-pinger running on node $nodeName"

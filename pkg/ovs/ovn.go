@@ -78,10 +78,22 @@ func NewOvnNbClient(ovnNbAddr string, ovnNbTimeout int) (*OVNNbClient, error) {
 		client.WithTable(&ovnnb.NBGlobal{}),
 		client.WithTable(&ovnnb.PortGroup{}),
 	}
-	nbClient, err := ovsclient.NewOvsDbClient(ovsclient.NBDB, ovnNbAddr, dbModel, monitors)
-	if err != nil {
-		klog.Errorf("failed to create OVN NB client: %v", err)
-		return nil, err
+
+	try := 0
+	maxRetry := 60
+	var nbClient client.Client
+	for {
+		nbClient, err = ovsclient.NewOvsDbClient(ovsclient.NBDB, ovnNbAddr, dbModel, monitors)
+		if err != nil {
+			klog.Errorf("failed to create OVN NB client: %v", err)
+		} else {
+			break
+		}
+		if try >= maxRetry {
+			return nil, err
+		}
+		time.Sleep(2 * time.Second)
+		try++
 	}
 
 	c := &OVNNbClient{
@@ -104,10 +116,21 @@ func NewOvnSbClient(ovnSbAddr string, ovnSbTimeout int) (*OVNSbClient, error) {
 		client.WithTable(&ovnsb.Chassis{}),
 		// TODO:// monitor other necessary tables in ovsdb/ovnsb/model.go
 	}
-	sbClient, err := ovsclient.NewOvsDbClient(ovsclient.SBDB, ovnSbAddr, dbModel, monitors)
-	if err != nil {
-		klog.Errorf("failed to create OVN SB client: %v", err)
-		return nil, err
+	maxRetry := 60
+	try := 0
+	var sbClient client.Client
+	for {
+		sbClient, err = ovsclient.NewOvsDbClient(ovsclient.SBDB, ovnSbAddr, dbModel, monitors)
+		if err != nil {
+			klog.Errorf("failed to create OVN SB client: %v", err)
+		} else {
+			break
+		}
+		if try >= maxRetry {
+			return nil, err
+		}
+		time.Sleep(2 * time.Second)
+		try++
 	}
 
 	c := &OVNSbClient{

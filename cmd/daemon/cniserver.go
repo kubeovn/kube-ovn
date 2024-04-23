@@ -49,9 +49,10 @@ func CmdMain() {
 		util.LogFatalAndExit(err, "failed to initialize ovn chassis annotation")
 	}
 
-	if err = daemon.InitMirror(config); err != nil {
+	if err := Retry(util.MirrosRetryMaxTimes, util.MirrosRetryInterval, daemon.InitMirror, config); err != nil {
 		util.LogFatalAndExit(err, "failed to initialize ovs mirror")
 	}
+
 	klog.Info("init node gw")
 	if err = daemon.InitNodeGateway(config); err != nil {
 		util.LogFatalAndExit(err, "failed to initialize node gateway")

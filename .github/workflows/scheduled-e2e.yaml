@@ -103,6 +103,10 @@ jobs:
           E2E_NETWORK_MODE: ${{ matrix.mode }}
         run: make k8s-conformance-e2e
 
+      - name: Check kube ovn pod restarts
+        run: |
+          make check-kube-ovn-pod-restarts
+          
   k8s-netpol-e2e:
     name: Kubernetes Network Policy E2E
     runs-on: ubuntu-22.04
@@ -183,7 +187,73 @@ jobs:
       - name: Run E2E
         run: make k8s-netpol-e2e
 
+      - name: Check kube ovn pod restarts
+        run: |
+          make check-kube-ovn-pod-restarts
+          
+  cyclonus-netpol-e2e:
+    name: Cyclonus Network Policy E2E
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        branch:
+          - master
+          - release-1.12
+          - release-1.11
+          - release-1.9
+        ip-family:
+          - ipv4
+          - ipv6
+          - dual
+    steps:
+      - uses: actions/checkout@v4
 
+      - name: Remove DNS search domain
+        run: |
+          sudo sed -i '/^search/d' /etc/resolv.conf
+          sudo systemctl restart docker
+
+      - name: Create branch directory
+        run: mkdir -p test/e2e/k8s-network/branches/${{ matrix.branch }}
+
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.branch }}
+          fetch-depth: 1
+          path: test/e2e/k8s-network/branches/${{ matrix.branch }}
+
+      - name: Install kind
+        uses: helm/kind-action@v1.9.0
+        with:
+          version: ${{ env.KIND_VERSION }}
+          install_only: true
+
+      - name: Create kind cluster
+        working-directory: test/e2e/k8s-network/branches/${{ matrix.branch }}
+        run: |
+          sudo pip3 install j2cli
+          sudo pip3 install "j2cli[yaml]"
+          sudo PATH=~/.local/bin:$PATH make kind-init-${{ matrix.ip-family }}
+          sudo cp -r /root/.kube/ ~/.kube/
+          sudo chown -R $(id -un). ~/.kube/
+
+      - name: Install Kube-OVN
+        working-directory: test/e2e/k8s-network/branches/${{ matrix.branch }}
+        run: |
+          version=$(grep -E '^VERSION="v([0-9]+\.){2}[0-9]+"$' dist/images/install.sh | head -n1 | awk -F= '{print $2}' | tr -d '"')
+          docker pull kubeovn/kube-ovn:$version
+          VERSION=$version make kind-install-${{ matrix.ip-family }}
+
+      - name: Run E2E
+        run: make cyclonus-netpol-e2e
+
+      - name: Check kube ovn pod restarts
+        run: |
+          make check-kube-ovn-pod-restarts
+          
   kube-ovn-conformance-e2e:
     name: Kube-OVN Conformance E2E
     runs-on: ubuntu-22.04
@@ -265,6 +335,10 @@ jobs:
           E2E_NETWORK_MODE: ${{ matrix.mode }}
         run: make kube-ovn-conformance-e2e
 
+      - name: Check kube ovn pod restarts
+        run: |
+          make check-kube-ovn-pod-restarts
+
   ha-installation-test:
     name: HA Installation Test
     runs-on: ubuntu-22.04
@@ -335,6 +409,10 @@ jobs:
         working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
         run: sh dist/images/cleanup.sh
 
+      - name: Check kube ovn pod restarts
+        run: |
+          make check-kube-ovn-pod-restarts
+          
   underlay-logical-gateway-installation-test:
     name: Underlay Logical Gateway Installation Test
     runs-on: ubuntu-22.04
@@ -380,6 +458,10 @@ jobs:
           docker pull kubeovn/kube-ovn:$version
           VERSION=$version make kind-install-underlay-logical-gateway-dual
 
+      - name: Check kube ovn pod restarts
+        run: |
+          make check-kube-ovn-pod-restarts
+          
       - name: Cleanup
         working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
         run: sh dist/images/cleanup.sh
@@ -431,6 +513,10 @@ jobs:
           docker pull kubeovn/kube-ovn:$version
           VERSION=$version make kind-install
 
+      - name: Check kube ovn pod restarts
+        run: |
+          make check-kube-ovn-pod-restarts
+          
       - name: Cleanup
         working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
         run: sh dist/images/cleanup.sh
@@ -483,6 +569,10 @@ jobs:
           docker pull kubeovn/kube-ovn:$version
           VERSION=$version make kind-install
 
+      - name: Check kube ovn pod restarts
+        run: |
+          make check-kube-ovn-pod-restarts
+          
       - name: Cleanup
         working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
         run: sh dist/images/cleanup.sh
@@ -557,6 +647,10 @@ jobs:
           docker pull kubeovn/vpc-nat-gateway:$version
           VERSION=$version make kind-install-lb-svc
 
+      - name: Check kube ovn pod restarts
+        run: |
+          make check-kube-ovn-pod-restarts
+          
       - name: Run E2E
         run: make kube-ovn-lb-svc-conformance-e2e
 
@@ -630,6 +724,10 @@ jobs:
           VERSION=$version make kind-install
           VERSION=$version make kind-install-kubevirt
 
+      - name: Check kube ovn pod restarts
+        run: |
+          make check-kube-ovn-pod-restarts
+          
       - name: Run E2E
         run: make kube-ovn-kubevirt-e2e
 
@@ -704,6 +802,10 @@ jobs:
       - name: Run E2E
         run: make kube-ovn-webhook-e2e
 
+      - name: Check kube ovn pod restarts
+        run: |
+          make check-kube-ovn-pod-restarts
+          
   installation-compatibility-test:
     name: Installation Compatibility Test
     runs-on: ubuntu-22.04
@@ -752,6 +854,10 @@ jobs:
         working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
         run: sh dist/images/cleanup.sh
 
+      - name: Check kube ovn pod restarts
+        run: |
+          make check-kube-ovn-pod-restarts
+          
   cilium-chaining-e2e:
     name: Cilium Chaining E2E
     runs-on: ubuntu-22.04
@@ -834,6 +940,10 @@ jobs:
           E2E_CILIUM_CHAINING: "true"
         run: make k8s-conformance-e2e
 
+      - name: Check kube ovn pod restarts
+        run: |
+          make check-kube-ovn-pod-restarts
+          
       - name: Cleanup
         working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
         run: sh dist/images/cleanup.sh
@@ -925,6 +1035,10 @@ jobs:
           make kube-ovn-security-e2e
           make kube-ovn-ha-e2e
 
+      - name: Check kube ovn pod restarts
+        run: |
+          make check-kube-ovn-pod-restarts
+          
       - name: Cleanup
         run: sh dist/images/cleanup.sh
 
@@ -1026,6 +1140,10 @@ jobs:
           E2E_BRANCH: ${{ env.VERSION_TO }}
         run: make k8s-conformance-e2e
 
+      - name: Check kube ovn pod restarts
+        run: |
+          make check-kube-ovn-pod-restarts
+          
       - name: Cleanup
         working-directory: test/e2e/kube-ovn/branches/${{ env.VERSION_TO }}
         run: sh dist/images/cleanup.sh
@@ -1084,6 +1202,10 @@ jobs:
       - name: Run E2E
         run: make kube-ovn-submariner-conformance-e2e
 
+      - name: Check kube ovn pod restarts
+        run: |
+          make check-kube-ovn-pod-restarts
+          
       - name: Cleanup
         working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
         run: sh dist/images/cleanup.sh
@@ -1158,6 +1280,10 @@ jobs:
       - name: Run E2E
         run: make iptables-vpc-nat-gw-conformance-e2e
 
+      - name: Check kube ovn pod restarts
+        run: |
+          make check-kube-ovn-pod-restarts
+          
   ovn-vpc-nat-gw-conformance-e2e:
     name: OVN VPC NAT Gateway E2E
     runs-on: ubuntu-22.04
@@ -1227,3 +1353,8 @@ jobs:
 
       - name: Run E2E
         run: make ovn-vpc-nat-gw-conformance-e2e
+
+      - name: Check kube ovn pod restarts
+        run: |
+          make check-kube-ovn-pod-restarts
+          

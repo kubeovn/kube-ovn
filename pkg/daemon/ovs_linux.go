@@ -917,11 +917,13 @@ func (c *Controller) patchNodeExternalGwLabel(key string, enabled bool) error {
 func configureMirrorLink(portName string, _ int) error {
 	mirrorLink, err := netlink.LinkByName(portName)
 	if err != nil {
+		klog.Error(err)
 		return fmt.Errorf("can not find mirror nic %s: %v", portName, err)
 	}
 
 	if mirrorLink.Attrs().OperState != netlink.OperUp {
 		if err = netlink.LinkSetUp(mirrorLink); err != nil {
+			klog.Error(err)
 			return fmt.Errorf("can not set mirror nic %s up: %v", portName, err)
 		}
 	}
@@ -932,10 +934,12 @@ func configureMirrorLink(portName string, _ int) error {
 func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPConflict bool) error {
 	nodeLink, err := netlink.LinkByName(link)
 	if err != nil {
+		klog.Error(err)
 		return fmt.Errorf("can not find nic %s: %v", link, err)
 	}
 
 	if err = netlink.LinkSetHardwareAddr(nodeLink, macAddr); err != nil {
+		klog.Error(err)
 		return fmt.Errorf("can not set mac address to nic %s: %v", link, err)
 	}
 
@@ -952,6 +956,7 @@ func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPCo
 
 	if nodeLink.Attrs().OperState != netlink.OperUp {
 		if err = netlink.LinkSetUp(nodeLink); err != nil {
+			klog.Error(err)
 			return fmt.Errorf("can not set node nic %s up: %v", link, err)
 		}
 	}
@@ -960,6 +965,7 @@ func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPCo
 	ipAddMap := make(map[string]netlink.Addr)
 	ipAddrs, err := netlink.AddrList(nodeLink, unix.AF_UNSPEC)
 	if err != nil {
+		klog.Error(err)
 		return fmt.Errorf("can not get addr %s: %v", nodeLink, err)
 	}
 	for _, ipAddr := range ipAddrs {
@@ -987,6 +993,7 @@ func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPCo
 	for ip, addr := range ipDelMap {
 		klog.Infof("delete ip address %s on %s", ip, link)
 		if err = netlink.AddrDel(nodeLink, &addr); err != nil {
+			klog.Error(err)
 			return fmt.Errorf("delete address %s: %v", addr, err)
 		}
 	}
@@ -1012,6 +1019,7 @@ func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPCo
 
 		klog.Infof("add ip address %s to %s", ip, link)
 		if err = netlink.AddrAdd(nodeLink, &addr); err != nil {
+			klog.Error(err)
 			return fmt.Errorf("can not add address %v to nic %s: %v", addr, link, err)
 		}
 	}
@@ -1486,7 +1494,9 @@ func (csh cniServerHandler) configureNicWithInternalPort(podName, podNamespace, 
 		fmt.Sprintf("external_ids:ip=%s", ipStr),
 		fmt.Sprintf("external_ids:pod_netns=%s", netns))
 	if err != nil {
-		return containerNicName, nil, fmt.Errorf("add nic to ovs failed %v: %q", err, output)
+		err := fmt.Errorf("add nic to ovs failed %v: %q", err, output)
+		klog.Error(err)
+		return containerNicName, nil, err
 	}
 
 	// container nic must use same mac address from pod annotation, otherwise ovn will reject these packets by default

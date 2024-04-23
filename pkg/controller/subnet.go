@@ -85,13 +85,18 @@ func (c *Controller) enqueueUpdateSubnet(oldObj, newObj interface{}) {
 	}
 
 	if oldSubnet.Spec.Vpc != newSubnet.Spec.Vpc &&
-		!(oldSubnet.Spec.Vpc == "" && newSubnet.Spec.Vpc == c.config.ClusterRouter ||
-			oldSubnet.Spec.Vpc == c.config.ClusterRouter && newSubnet.Spec.Vpc == "") {
+		!(oldSubnet.Spec.Vpc == "" && newSubnet.Spec.Vpc == c.config.ClusterRouter || oldSubnet.Spec.Vpc == c.config.ClusterRouter && newSubnet.Spec.Vpc == "") {
+
+		if newSubnet.Annotations == nil {
+			newSubnet.Annotations = make(map[string]string)
+		}
+
 		if oldSubnet.Spec.Vpc == "" {
 			newSubnet.Annotations[util.VpcLastName] = c.config.ClusterRouter
 		} else {
 			newSubnet.Annotations[util.VpcLastName] = oldSubnet.Spec.Vpc
 		}
+
 		c.updateVpcStatusQueue.Add(oldSubnet.Spec.Vpc)
 	}
 

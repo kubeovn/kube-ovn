@@ -473,6 +473,10 @@ jobs:
           E2E_NETWORK_MODE: ${{ matrix.mode }}
         run: make k8s-conformance-e2e
 
+      - name: Check kube ovn pod restarts
+        run: |
+          make check-kube-ovn-pod-restarts
+          
       - name: kubectl ko log
         if: failure()
         run: |
@@ -630,6 +634,10 @@ jobs:
         working-directory: ${{ env.E2E_DIR }}
         run: make k8s-netpol-e2e
 
+      - name: Check kube ovn pod restarts
+        run: |
+          make check-kube-ovn-pod-restarts
+          
       - name: kubectl ko log
         if: failure()
         run: |
@@ -762,6 +770,10 @@ jobs:
         working-directory: ${{ env.E2E_DIR }}
         run: make cyclonus-netpol-e2e
 
+      - name: Check kube ovn pod restarts
+        run: |
+          make check-kube-ovn-pod-restarts
+          
       - name: kubectl ko log
         if: failure()
         run: |
@@ -920,6 +932,10 @@ jobs:
           make kind-install-kubevirt
           make kube-ovn-kubevirt-e2e
 
+      - name: Check kube ovn pod restarts
+        run: |
+          make check-kube-ovn-pod-restarts
+          
       - name: kubectl ko log
         if: failure()
         run: |
@@ -1017,6 +1033,10 @@ jobs:
           ENABLE_SSL: "${{ matrix.ssl }}"
         run: make kind-install-chart
 
+      - name: Check kube ovn pod restarts
+        run: |
+          make check-kube-ovn-pod-restarts
+          
       - name: Uninstall Kube-OVN
         run: make kind-uninstall-chart
   
@@ -1063,6 +1083,10 @@ jobs:
       - name: Install Kube-OVN
         run: make kind-install-underlay-logical-gateway-dual
 
+      - name: Check kube ovn pod restarts
+        run: |
+          make check-kube-ovn-pod-restarts
+          
       - name: Cleanup
         run: sh -x dist/images/cleanup.sh
 
@@ -1111,6 +1135,10 @@ jobs:
           ENABLE_LB: "false"
         run: make kind-install
 
+      - name: Check kube ovn pod restarts
+        run: |
+          make check-kube-ovn-pod-restarts
+          
       - name: Cleanup
         run: sh -x dist/images/cleanup.sh
 
@@ -1159,6 +1187,10 @@ jobs:
           ENABLE_NP: "false"
         run: make kind-install
 
+      - name: Check kube ovn pod restarts
+        run: |
+          make check-kube-ovn-pod-restarts
+          
       - name: Cleanup
         run: sh -x dist/images/cleanup.sh
 
@@ -1264,6 +1296,10 @@ jobs:
           E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
         run: make kube-ovn-lb-svc-conformance-e2e
 
+      - name: Check kube ovn pod restarts
+        run: |
+          make check-kube-ovn-pod-restarts
+
   webhook-e2e:
     name: Webhook E2E
     needs:
@@ -1359,6 +1395,10 @@ jobs:
           E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
         run: make kube-ovn-webhook-e2e
 
+      - name: Check kube ovn pod restarts
+        run: |
+          make check-kube-ovn-pod-restarts
+          
       - name: kubectl ko log
         if: failure()
         run: |
@@ -1415,6 +1455,10 @@ jobs:
       - name: Install Kube-OVN
         run: make kind-install
 
+      - name: Check kube ovn pod restarts
+        run: |
+          make check-kube-ovn-pod-restarts
+          
       - name: kubectl ko log
         if: failure()
         run: |
@@ -1542,6 +1586,10 @@ jobs:
           E2E_IP_FAMILY: ${{ matrix.ip-family }}
         run: make k8s-conformance-e2e
 
+      - name: Check kube ovn pod restarts
+        run: |
+          make check-kube-ovn-pod-restarts
+          
       - name: kubectl ko log
         if: failure()
         run: |
@@ -1672,6 +1720,10 @@ jobs:
           make kube-ovn-security-e2e
           make kube-ovn-ha-e2e
 
+      - name: Check kube ovn pod restarts
+        run: |
+          make check-kube-ovn-pod-restarts
+          
       - name: kubectl ko log
         if: failure()
         run: |
@@ -1762,6 +1814,10 @@ jobs:
         working-directory: ${{ env.E2E_DIR }}
         run: make kube-ovn-submariner-conformance-e2e
 
+      - name: Check kube ovn pod restarts
+        run: |
+          make check-kube-ovn-pod-restarts
+          
       - name: kubectl ko log
         if: failure()
         run: |
@@ -1880,6 +1936,10 @@ jobs:
           E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
         run: make iptables-vpc-nat-gw-conformance-e2e
 
+      - name: Check kube ovn pod restarts
+        run: |
+          make check-kube-ovn-pod-restarts
+          
       - name: kubectl ko log
         if: failure()
         run: |
@@ -1993,6 +2053,10 @@ jobs:
           E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
         run: make ovn-vpc-nat-gw-conformance-e2e
 
+      - name: Check kube ovn pod restarts
+        run: |
+          make check-kube-ovn-pod-restarts
+          
   push:
     name: Push Images
     needs:
