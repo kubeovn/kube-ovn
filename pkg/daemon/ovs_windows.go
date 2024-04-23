@@ -122,7 +122,9 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 			fmt.Sprintf("external_ids:pod_namespace=%s", podNamespace),
 			fmt.Sprintf("external_ids:ip=%s", ipAddr))
 		if err != nil {
-			return nil, fmt.Errorf("failed to add OVS port %s, %v: %q", epName, err, output)
+			err := fmt.Errorf("failed to add OVS port %s, %v: %q", epName, err, output)
+			klog.Error(err)
+			return nil, err
 		}
 
 		if err = ovs.SetInterfaceBandwidth(podName, podNamespace, ifaceID, egress, ingress); err != nil {

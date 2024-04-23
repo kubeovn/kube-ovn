@@ -61,6 +61,7 @@ func configureGlobalMirror(portName string, mtu int) error {
 	}
 
 	if !nicExist {
+		klog.Infof("nic %s not exist, create it", portName)
 		raw, err := ovs.Exec(ovs.MayExist, "add-port", "br-int", portName, "--",
 			"set", "interface", portName, "type=internal", "--",
 			"clear", "bridge", "br-int", "mirrors", "--",
@@ -68,17 +69,18 @@ func configureGlobalMirror(portName string, mtu int) error {
 			"--id=@m", "create", "mirror", fmt.Sprintf("name=%s", util.MirrorDefaultName), "select_all=true", "output_port=@mirror0", "--",
 			"add", "bridge", "br-int", "mirrors", "@m")
 		if err != nil {
-			klog.Errorf("failed to configure mirror nic %s %q", portName, raw)
+			klog.Errorf("failed to configure mirror nic %s, %q, %v", portName, raw, err)
 			return fmt.Errorf(raw)
 		}
 	} else {
+		klog.Infof("nic %s exist, configure it", portName)
 		raw, err := ovs.Exec(ovs.MayExist, "add-port", "br-int", portName, "--",
 			"clear", "bridge", "br-int", "mirrors", "--",
 			"--id=@mirror0", "get", "port", portName, "--",
 			"--id=@m", "create", "mirror", fmt.Sprintf("name=%s", util.MirrorDefaultName), "select_all=true", "output_port=@mirror0", "--",
 			"add", "bridge", "br-int", "mirrors", "@m")
 		if err != nil {
-			klog.Errorf("failed to configure mirror nic %s %q", portName, raw)
+			klog.Errorf("failed to configure mirror nic %s, %q, %v", portName, raw, err)
 			return fmt.Errorf(raw)
 		}
 	}
@@ -94,6 +96,7 @@ func configureEmptyMirror(portName string, mtu int) error {
 	}
 
 	if !nicExist {
+		klog.Infof("nic %s not exist, create it", portName)
 		raw, err := ovs.Exec(ovs.MayExist, "add-port", "br-int", portName, "--",
 			"set", "interface", portName, "type=internal", "--",
 			"clear", "bridge", "br-int", "mirrors", "--",
@@ -101,10 +104,11 @@ func configureEmptyMirror(portName string, mtu int) error {
 			"--id=@m", "create", "mirror", fmt.Sprintf("name=%s", util.MirrorDefaultName), "output_port=@mirror0", "--",
 			"add", "bridge", "br-int", "mirrors", "@m")
 		if err != nil {
-			klog.Errorf("failed to configure mirror nic %s %q", portName, raw)
+			klog.Errorf("failed to configure mirror nic %s %q, %v", portName, raw, err)
 			return fmt.Errorf(raw)
 		}
 	} else {
+		klog.Infof("nic %s exist, configure it", portName)
 		raw, err := ovs.Exec(ovs.MayExist, "add-port", "br-int", portName, "--",
 			"clear", "bridge", "br-int", "mirrors", "--",
 			"--id=@mirror0", "get", "port", portName, "--",
