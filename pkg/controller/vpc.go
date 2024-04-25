@@ -378,6 +378,8 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 				klog.Error("failed to get node switch subnet %s: %v", c.config.NodeSwitch)
 				return err
 			}
+			c.addOrUpdateVpcQueue.Add(vpc.Name)
+			return nil
 		}
 		gatewayV4, gatewayV6 := util.SplitStringIP(joinSubnet.Spec.Gateway)
 		if gatewayV4 != "" {
