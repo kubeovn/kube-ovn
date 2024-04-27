@@ -773,9 +773,7 @@ func (c *Controller) handleAddIptablesEipFinalizer(key string) error {
 		klog.Error(err)
 		return err
 	}
-	if cachedIptablesEip.DeletionTimestamp.IsZero() &&
-		(controllerutil.ContainsFinalizer(cachedIptablesEip, util.DepreciatedFinalizerName) ||
-			controllerutil.ContainsFinalizer(cachedIptablesEip, util.KubeOVNControllerFinalizer)) {
+	if !cachedIptablesEip.DeletionTimestamp.IsZero() || len(cachedIptablesEip.GetFinalizers()) != 0 {
 		return nil
 	}
 	newIptablesEip := cachedIptablesEip.DeepCopy()
@@ -805,7 +803,7 @@ func (c *Controller) handleDelIptablesEipFinalizer(key string) error {
 		klog.Error(err)
 		return err
 	}
-	if len(cachedIptablesEip.Finalizers) == 0 {
+	if len(cachedIptablesEip.GetFinalizers()) == 0 {
 		return nil
 	}
 	newIptablesEip := cachedIptablesEip.DeepCopy()

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
-	"slices"
 
 	"github.com/ovn-org/libovsdb/ovsdb"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -48,7 +47,7 @@ func (c *Controller) enqueueUpdateOvnDnatRule(oldObj, newObj interface{}) {
 	}
 	newDnat := newObj.(*kubeovnv1.OvnDnatRule)
 	if !newDnat.DeletionTimestamp.IsZero() {
-		if len(newDnat.Finalizers) == 0 {
+		if len(newDnat.GetFinalizers()) == 0 {
 			// avoid delete twice
 			return
 		}
@@ -303,7 +302,7 @@ func (c *Controller) handleAddOvnDnatRule(key string) error {
 		return err
 	}
 
-	if err := c.handleAddOvnDnatFinalizer(cachedDnat, util.KubeOVNControllerFinalizer); err != nil {
+	if err := c.handleAddOvnDnatFinalizer(cachedDnat); err != nil {
 		klog.Errorf("failed to add finalizer for ovn dnat %s, %v", cachedDnat.Name, err)
 		return err
 	}
@@ -673,11 +672,9 @@ func (c *Controller) syncOvnDnatFinalizer(cl client.Client) error {
 	})
 }
 
-func (c *Controller) handleAddOvnDnatFinalizer(cachedDnat *kubeovnv1.OvnDnatRule, finalizer string) error {
-	if cachedDnat.DeletionTimestamp.IsZero() {
-		if slices.Contains(cachedDnat.Finalizers, finalizer) {
-			return nil
-		}
+func (c *Controller) handleAddOvnDnatFinalizer(cachedDnat *kubeovnv1.OvnDnatRule) error {
+	if !cachedDnat.DeletionTimestamp.IsZero() || len(cachedDnat.GetFinalizers()) != 0 {
+		return nil
 	}
 
 	var (
@@ -686,7 +683,7 @@ func (c *Controller) handleAddOvnDnatFinalizer(cachedDnat *kubeovnv1.OvnDnatRule
 		err     error
 	)
 
-	controllerutil.AddFinalizer(newDnat, finalizer)
+	controllerutil.AddFinalizer(newDnat, util.KubeOVNControllerFinalizer)
 	if patch, err = util.GenerateMergePatchPayload(cachedDnat, newDnat); err != nil {
 		klog.Errorf("failed to generate patch payload for ovn dnat '%s', %v", cachedDnat.Name, err)
 		return err
@@ -704,9 +701,7 @@ func (c *Controller) handleAddOvnDnatFinalizer(cachedDnat *kubeovnv1.OvnDnatRule
 }
 
 func (c *Controller) handleDelOvnDnatFinalizer(cachedDnat *kubeovnv1.OvnDnatRule) error {
-	if len(cachedDnat.Finalizers) == 0 ||
-		!controllerutil.ContainsFinalizer(cachedDnat, util.DepreciatedFinalizerName) ||
-		!controllerutil.ContainsFinalizer(cachedDnat, util.KubeOVNControllerFinalizer) {
+	if len(cachedDnat.GetFinalizers()) == 0 {
 		return nil
 	}
 	newDnat := cachedDnat.DeepCopy()

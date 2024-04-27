@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"slices"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -39,7 +38,7 @@ func (c *Controller) enqueueUpdateOvnSnatRule(oldObj, newObj interface{}) {
 	}
 	newSnat := newObj.(*kubeovnv1.OvnSnatRule)
 	if !newSnat.DeletionTimestamp.IsZero() {
-		if len(newSnat.Finalizers) == 0 {
+		if len(newSnat.GetFinalizers()) == 0 {
 			// avoid delete twice
 			return
 		}
@@ -258,7 +257,7 @@ func (c *Controller) handleAddOvnSnatRule(key string) error {
 		klog.Errorf("failed to create snat, %v", err)
 		return err
 	}
-	if err := c.handleAddOvnSnatFinalizer(cachedSnat, util.KubeOVNControllerFinalizer); err != nil {
+	if err := c.handleAddOvnSnatFinalizer(cachedSnat); err != nil {
 		klog.Errorf("failed to add finalizer for ovn snat %s, %v", cachedSnat.Name, err)
 		return err
 	}
@@ -554,14 +553,12 @@ func (c *Controller) syncOvnSnatFinalizer(cl client.Client) error {
 	})
 }
 
-func (c *Controller) handleAddOvnSnatFinalizer(cachedSnat *kubeovnv1.OvnSnatRule, finalizer string) error {
-	if cachedSnat.DeletionTimestamp.IsZero() {
-		if slices.Contains(cachedSnat.Finalizers, finalizer) {
-			return nil
-		}
+func (c *Controller) handleAddOvnSnatFinalizer(cachedSnat *kubeovnv1.OvnSnatRule) error {
+	if !cachedSnat.DeletionTimestamp.IsZero() || len(cachedSnat.GetFinalizers()) != 0 {
+		return nil
 	}
 	newSnat := cachedSnat.DeepCopy()
-	controllerutil.AddFinalizer(newSnat, finalizer)
+	controllerutil.AddFinalizer(newSnat, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedSnat, newSnat)
 	if err != nil {
 		klog.Errorf("failed to generate patch payload for ovn snat '%s', %v", cachedSnat.Name, err)
@@ -579,9 +576,7 @@ func (c *Controller) handleAddOvnSnatFinalizer(cachedSnat *kubeovnv1.OvnSnatRule
 }
 
 func (c *Controller) handleDelOvnSnatFinalizer(cachedSnat *kubeovnv1.OvnSnatRule) error {
-	if len(cachedSnat.Finalizers) == 0 ||
-		!controllerutil.ContainsFinalizer(cachedSnat, util.DepreciatedFinalizerName) ||
-		!controllerutil.ContainsFinalizer(cachedSnat, util.KubeOVNControllerFinalizer) {
+	if len(cachedSnat.GetFinalizers()) == 0 {
 		return nil
 	}
 	newSnat := cachedSnat.DeepCopy()

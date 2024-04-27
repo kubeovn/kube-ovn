@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"slices"
 	"strings"
 	"time"
 
@@ -42,7 +41,7 @@ func (c *Controller) enqueueUpdateOvnEip(oldObj, newObj interface{}) {
 	}
 	newEip := newObj.(*kubeovnv1.OvnEip)
 	if newEip.DeletionTimestamp != nil {
-		if len(newEip.Finalizers) == 0 {
+		if len(newEip.GetFinalizers()) == 0 {
 			// avoid delete eip twice
 			return
 		}
@@ -269,7 +268,7 @@ func (c *Controller) handleAddOvnEip(key string) error {
 			return err
 		}
 	}
-	if err = c.handleAddOvnEipFinalizer(cachedEip, util.KubeOVNControllerFinalizer); err != nil {
+	if err = c.handleAddOvnEipFinalizer(cachedEip); err != nil {
 		klog.Errorf("failed to add finalizer for ovn eip, %v", err)
 		return err
 	}
@@ -597,14 +596,12 @@ func (c *Controller) syncOvnEipFinalizer(cl client.Client) error {
 	})
 }
 
-func (c *Controller) handleAddOvnEipFinalizer(cachedEip *kubeovnv1.OvnEip, finalizer string) error {
-	if cachedEip.DeletionTimestamp.IsZero() {
-		if slices.Contains(cachedEip.Finalizers, finalizer) {
-			return nil
-		}
+func (c *Controller) handleAddOvnEipFinalizer(cachedEip *kubeovnv1.OvnEip) error {
+	if !cachedEip.DeletionTimestamp.IsZero() || len(cachedEip.GetFinalizers()) != 0 {
+		return nil
 	}
 	newEip := cachedEip.DeepCopy()
-	controllerutil.AddFinalizer(newEip, finalizer)
+	controllerutil.AddFinalizer(newEip, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedEip, newEip)
 	if err != nil {
 		klog.Errorf("failed to generate patch payload for ovn eip '%s', %v", cachedEip.Name, err)
@@ -622,9 +619,7 @@ func (c *Controller) handleAddOvnEipFinalizer(cachedEip *kubeovnv1.OvnEip, final
 }
 
 func (c *Controller) handleDelOvnEipFinalizer(cachedEip *kubeovnv1.OvnEip) error {
-	if len(cachedEip.Finalizers) == 0 ||
-		!controllerutil.ContainsFinalizer(cachedEip, util.DepreciatedFinalizerName) ||
-		!controllerutil.ContainsFinalizer(cachedEip, util.KubeOVNControllerFinalizer) {
+	if len(cachedEip.GetFinalizers()) == 0 {
 		return nil
 	}
 	var err error

@@ -585,12 +585,9 @@ func (c *Controller) syncIPCR() error {
 	}
 
 	ipMap := strset.New(c.getVMLsps()...)
-
 	for _, ipCR := range ips {
 		ip := ipCR.DeepCopy()
-		if ip.DeletionTimestamp != nil &&
-			(controllerutil.ContainsFinalizer(ip, util.DepreciatedFinalizerName) ||
-				controllerutil.ContainsFinalizer(ip, util.KubeOVNControllerFinalizer)) {
+		if !ip.DeletionTimestamp.IsZero() && len(ip.GetFinalizers()) != 0 {
 			klog.Infof("enqueue update for deleting ip %s", ip.Name)
 			c.updateIPQueue.Add(ip.Name)
 		}
@@ -841,70 +838,6 @@ func (c *Controller) initNodeChassis() error {
 	return nil
 }
 
-func addFinalizer(c client.Client, key client.ObjectKey, obj client.Object) error {
-	if err := c.Get(context.Background(), key, obj); client.IgnoreNotFound(err) != nil {
-		klog.Errorf("failed to get %s: %v", key.String(), err)
-		return err
-	}
-
-	var i int
-	var cachedObj, patchedObj client.Object
-	for {
-		if cachedObj, patchedObj = getObjectItem(i); cachedObj == nil {
-			break
-		}
-		if cachedObj.GetDeletionTimestamp() != nil ||
-			!controllerutil.ContainsFinalizer(cachedObj, util.DepreciatedFinalizerName) {
-			i++
-			continue
-		}
-
-		controllerutil.RemoveFinalizer(patchedObj, util.DepreciatedFinalizerName)
-		controllerutil.AddFinalizer(patchedObj, util.KubeOVNControllerFinalizer)
-		if err := c.Patch(context.Background(), patchedObj, client.MergeFrom(cachedObj)); client.IgnoreNotFound(err) != nil {
-			klog.Errorf("failed to sync finalizers for %s %s: %v",
-				patchedObj.GetObjectKind().GroupVersionKind().Kind,
-				cache.MetaObjectToName(patchedObj), err)
-			return err
-		}
-		i++
-	}
-
-	return nil
-}
-
-func removeFinalizer(c client.Client, list client.ObjectList, getObjectItem func(int) (client.Object, client.Object)) error {
-	if err := c.List(context.Background(), list); err != nil {
-		klog.Errorf("failed to list objects: %v", err)
-		return err
-	}
-
-	var i int
-	var cachedObj, patchedObj client.Object
-	for {
-		if cachedObj, patchedObj = getObjectItem(i); cachedObj == nil {
-			break
-		}
-		if cachedObj.GetDeletionTimestamp() != nil ||
-			!controllerutil.ContainsFinalizer(cachedObj, util.DepreciatedFinalizerName) {
-			i++
-			continue
-		}
-
-		controllerutil.RemoveFinalizer(patchedObj, util.DepreciatedFinalizerName)
-		controllerutil.AddFinalizer(patchedObj, util.KubeOVNControllerFinalizer)
-		if err := c.Patch(context.Background(), patchedObj, client.MergeFrom(cachedObj)); client.IgnoreNotFound(err) != nil {
-			klog.Errorf("failed to sync finalizers for %s %s: %v",
-				patchedObj.GetObjectKind().GroupVersionKind().Kind,
-				cache.MetaObjectToName(patchedObj), err)
-			return err
-		}
-		i++
-	}
-
-	return nil
-}
-
 func migrateFinalizers(c client.Client, list client.ObjectList, getObjectItem func(int) (client.Object, client.Object)) error {
 	if err := c.List(context.Background(), list); err != nil {
 		klog.Errorf("failed to list objects: %v", err)
@@ -917,14 +850,15 @@ func migrateFinalizers(c client.Client, list client.ObjectList, getObjectItem fu
 		if cachedObj, patchedObj = getObjectItem(i); cachedObj == nil {
 			break
 		}
-		if cachedObj.GetDeletionTimestamp() != nil ||
-			!controllerutil.ContainsFinalizer(cachedObj, util.DepreciatedFinalizerName) {
+		if !controllerutil.ContainsFinalizer(cachedObj, util.DepreciatedFinalizerName) {
 			i++
 			continue
 		}
-
 		controllerutil.RemoveFinalizer(patchedObj, util.DepreciatedFinalizerName)
-		controllerutil.AddFinalizer(patchedObj, util.KubeOVNControllerFinalizer)
+		if cachedObj.GetDeletionTimestamp() == nil {
+			// if the object is not being deleted, add the new finalizer
+			controllerutil.AddFinalizer(patchedObj, util.KubeOVNControllerFinalizer)
+		}
 		if err := c.Patch(context.Background(), patchedObj, client.MergeFrom(cachedObj)); client.IgnoreNotFound(err) != nil {
 			klog.Errorf("failed to sync finalizers for %s %s: %v",
 				patchedObj.GetObjectKind().GroupVersionKind().Kind,

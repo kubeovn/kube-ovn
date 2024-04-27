@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"slices"
 	"strconv"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -42,7 +41,7 @@ func (c *Controller) enqueueUpdateOvnFip(oldObj, newObj interface{}) {
 	}
 	newFip := newObj.(*kubeovnv1.OvnFip)
 	if !newFip.DeletionTimestamp.IsZero() {
-		if len(newFip.Finalizers) == 0 {
+		if len(newFip.GetFinalizers()) == 0 {
 			// avoid delete twice
 			return
 		}
@@ -297,7 +296,7 @@ func (c *Controller) handleAddOvnFip(key string) error {
 		return err
 	}
 
-	if err = c.handleAddOvnFipFinalizer(cachedFip, util.KubeOVNControllerFinalizer); err != nil {
+	if err = c.handleAddOvnFipFinalizer(cachedFip); err != nil {
 		klog.Errorf("failed to add finalizer for ovn fip, %v", err)
 		return err
 	}
@@ -612,14 +611,12 @@ func (c *Controller) syncOvnFipFinalizer(cl client.Client) error {
 	})
 }
 
-func (c *Controller) handleAddOvnFipFinalizer(cachedFip *kubeovnv1.OvnFip, finalizer string) error {
-	if cachedFip.DeletionTimestamp.IsZero() {
-		if slices.Contains(cachedFip.Finalizers, finalizer) {
-			return nil
-		}
+func (c *Controller) handleAddOvnFipFinalizer(cachedFip *kubeovnv1.OvnFip) error {
+	if !cachedFip.DeletionTimestamp.IsZero() || len(cachedFip.GetFinalizers()) != 0 {
+		return nil
 	}
 	newFip := cachedFip.DeepCopy()
-	controllerutil.AddFinalizer(newFip, finalizer)
+	controllerutil.AddFinalizer(newFip, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedFip, newFip)
 	if err != nil {
 		klog.Errorf("failed to generate patch payload for ovn fip '%s', %v", cachedFip.Name, err)
@@ -637,9 +634,7 @@ func (c *Controller) handleAddOvnFipFinalizer(cachedFip *kubeovnv1.OvnFip, final
 }
 
 func (c *Controller) handleDelOvnFipFinalizer(cachedFip *kubeovnv1.OvnFip) error {
-	if len(cachedFip.Finalizers) == 0 ||
-		!controllerutil.ContainsFinalizer(cachedFip, util.DepreciatedFinalizerName) ||
-		!controllerutil.ContainsFinalizer(cachedFip, util.KubeOVNControllerFinalizer) {
+	if len(cachedFip.GetFinalizers()) == 0 {
 		return nil
 	}
 	var err error

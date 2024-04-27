@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net"
 	"reflect"
-	"slices"
 	"strings"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -356,10 +355,8 @@ func (c *Controller) syncIPFinalizer(cl client.Client) error {
 }
 
 func (c *Controller) handleAddIPFinalizer(cachedIP *kubeovnv1.IP, finalizer string) error {
-	if cachedIP.DeletionTimestamp.IsZero() {
-		if slices.Contains(cachedIP.Finalizers, finalizer) {
-			return nil
-		}
+	if !cachedIP.DeletionTimestamp.IsZero() || len(cachedIP.GetFinalizers()) != 0 {
+		return nil
 	}
 	newIP := cachedIP.DeepCopy()
 	controllerutil.AddFinalizer(newIP, finalizer)
@@ -380,9 +377,7 @@ func (c *Controller) handleAddIPFinalizer(cachedIP *kubeovnv1.IP, finalizer stri
 }
 
 func (c *Controller) handleDelIPFinalizer(cachedIP *kubeovnv1.IP) error {
-	if len(cachedIP.Finalizers) == 0 ||
-		!controllerutil.ContainsFinalizer(cachedIP, util.DepreciatedFinalizerName) ||
-		!controllerutil.ContainsFinalizer(cachedIP, util.KubeOVNControllerFinalizer) {
+	if len(cachedIP.GetFinalizers()) == 0 {
 		return nil
 	}
 	newIP := cachedIP.DeepCopy()

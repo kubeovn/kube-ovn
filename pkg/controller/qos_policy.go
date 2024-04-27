@@ -261,7 +261,7 @@ func (c *Controller) handleDelQoSPoliciesFinalizer(key string) error {
 		klog.Error(err)
 		return err
 	}
-	if len(cachedQoSPolicies.Finalizers) == 0 {
+	if len(cachedQoSPolicies.GetFinalizers()) == 0 {
 		return nil
 	}
 	newQoSPolicies := cachedQoSPolicies.DeepCopy()
@@ -532,9 +532,7 @@ func (c *Controller) handleAddQoSPolicyFinalizer(key string) error {
 		klog.Error(err)
 		return err
 	}
-	if cachedQoSPolicy.DeletionTimestamp.IsZero() ||
-		controllerutil.ContainsFinalizer(cachedQoSPolicy, util.DepreciatedFinalizerName) ||
-		controllerutil.ContainsFinalizer(cachedQoSPolicy, util.KubeOVNControllerFinalizer) {
+	if !cachedQoSPolicy.DeletionTimestamp.IsZero() || len(cachedQoSPolicy.GetFinalizers()) != 0 {
 		return nil
 	}
 	newQoSPolicy := cachedQoSPolicy.DeepCopy()

@@ -650,9 +650,7 @@ func (c *Controller) handleAddVipFinalizer(key string) error {
 		klog.Error(err)
 		return err
 	}
-	if cachedVip.DeletionTimestamp.IsZero() &&
-		(controllerutil.ContainsFinalizer(cachedVip, util.DepreciatedFinalizerName) ||
-			controllerutil.ContainsFinalizer(cachedVip, util.KubeOVNControllerFinalizer)) {
+	if !cachedVip.DeletionTimestamp.IsZero() || len(cachedVip.GetFinalizers()) != 0 {
 		return nil
 	}
 	newVip := cachedVip.DeepCopy()
@@ -682,7 +680,7 @@ func (c *Controller) handleDelVipFinalizer(key string) error {
 		klog.Error(err)
 		return err
 	}
-	if len(cachedVip.Finalizers) == 0 {
+	if len(cachedVip.GetFinalizers()) == 0 {
 		return nil
 	}
 	newVip := cachedVip.DeepCopy()
