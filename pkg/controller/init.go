@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 	"strings"
 	"time"
 
@@ -583,10 +582,9 @@ func (c *Controller) syncIPCR() error {
 	}
 
 	ipMap := strset.New(c.getVMLsps()...)
-
 	for _, ipCR := range ips {
 		ip := ipCR.DeepCopy()
-		if ip.DeletionTimestamp != nil && slices.Contains(ip.Finalizers, util.KubeOVNControllerFinalizer) {
+		if !ip.DeletionTimestamp.IsZero() && len(ip.GetFinalizers()) != 0 {
 			klog.Infof("enqueue update for deleting ip %s", ip.Name)
 			c.updateIPQueue.Add(ip.Name)
 		}
@@ -837,7 +835,7 @@ func (c *Controller) initNodeChassis() error {
 	return nil
 }
 
-func updateFinalizers(c client.Client, list client.ObjectList, getObjectItem func(int) (client.Object, client.Object)) error {
+func migrateFinalizers(c client.Client, list client.ObjectList, getObjectItem func(int) (client.Object, client.Object)) error {
 	if err := c.List(context.Background(), list); err != nil {
 		klog.Errorf("failed to list objects: %v", err)
 		return err
@@ -853,10 +851,12 @@ func updateFinalizers(c client.Client, list client.ObjectList, getObjectItem fun
 			i++
 			continue
 		}
-
 		controllerutil.RemoveFinalizer(patchedObj, util.DepreciatedFinalizerName)
-		controllerutil.AddFinalizer(patchedObj, util.KubeOVNControllerFinalizer)
-		if err := c.Patch(context.Background(), patchedObj, client.MergeFrom(cachedObj)); err != nil && !k8serrors.IsNotFound(err) {
+		if cachedObj.GetDeletionTimestamp() == nil {
+			// if the object is not being deleted, add the new finalizer
+			controllerutil.AddFinalizer(patchedObj, util.KubeOVNControllerFinalizer)
+		}
+		if err := c.Patch(context.Background(), patchedObj, client.MergeFrom(cachedObj)); client.IgnoreNotFound(err) != nil {
 			objName := fmt.Sprintf("%s/%s", patchedObj.GetNamespace(), patchedObj.GetName())
 			klog.Errorf("failed to sync finalizers for %s %s: %v",
 				patchedObj.GetObjectKind().GroupVersionKind().Kind,
@@ -928,19 +928,4 @@ func (c *Controller) syncFinalizers() error {
 	}
 	klog.Info("sync finalizers done")
 	return nil
-}
-
-func (c *Controller) ReplaceFinalizer(cachedObj client.Object) ([]byte, error) {
-	if controllerutil.ContainsFinalizer(cachedObj, util.DepreciatedFinalizerName) {
-		newObj := cachedObj.DeepCopyObject().(client.Object)
-		controllerutil.RemoveFinalizer(newObj, util.DepreciatedFinalizerName)
-		controllerutil.AddFinalizer(newObj, util.KubeOVNControllerFinalizer)
-		patch, err := util.GenerateMergePatchPayload(cachedObj, newObj)
-		if err != nil {
-			klog.Errorf("failed to generate patch payload for %s, %v", newObj.GetName(), err)
-			return nil, err
-		}
-		return patch, nil
-	}
-	return nil, nil
 }

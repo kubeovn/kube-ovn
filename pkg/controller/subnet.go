@@ -21,6 +21,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ipam"
@@ -487,7 +488,7 @@ func checkAndUpdateExcludeIPs(subnet *kubeovnv1.Subnet) bool {
 func (c *Controller) syncSubnetFinalizer(cl client.Client) error {
 	// migrate depreciated finalizer to new finalizer
 	subnets := &kubeovnv1.SubnetList{}
-	return updateFinalizers(cl, subnets, func(i int) (client.Object, client.Object) {
+	return migrateFinalizers(cl, subnets, func(i int) (client.Object, client.Object) {
 		if i < 0 || i >= len(subnets.Items) {
 			return nil, nil
 		}
@@ -496,9 +497,9 @@ func (c *Controller) syncSubnetFinalizer(cl client.Client) error {
 }
 
 func (c *Controller) handleSubnetFinalizer(subnet *kubeovnv1.Subnet) (bool, error) {
-	if subnet.DeletionTimestamp.IsZero() && !slices.Contains(subnet.Finalizers, util.KubeOVNControllerFinalizer) {
+	if subnet.DeletionTimestamp.IsZero() && len(subnet.GetFinalizers()) == 0 {
 		newSubnet := subnet.DeepCopy()
-		newSubnet.Finalizers = append(newSubnet.Finalizers, util.KubeOVNControllerFinalizer)
+		controllerutil.AddFinalizer(newSubnet, util.KubeOVNControllerFinalizer)
 		patch, err := util.GenerateMergePatchPayload(subnet, newSubnet)
 		if err != nil {
 			klog.Errorf("failed to generate patch payload for subnet '%s', %v", subnet.Name, err)
@@ -522,7 +523,7 @@ func (c *Controller) handleSubnetFinalizer(subnet *kubeovnv1.Subnet) (bool, erro
 	u2oInterconnIP := subnet.Status.U2OInterconnectionIP
 	if !subnet.DeletionTimestamp.IsZero() && (usingIPs == 0 || (usingIPs == 1 && u2oInterconnIP != "")) {
 		newSubnet := subnet.DeepCopy()
-		newSubnet.Finalizers = util.RemoveString(newSubnet.Finalizers, util.KubeOVNControllerFinalizer)
+		controllerutil.RemoveFinalizer(newSubnet, util.KubeOVNControllerFinalizer)
 		patch, err := util.GenerateMergePatchPayload(subnet, newSubnet)
 		if err != nil {
 			klog.Errorf("failed to generate patch payload for subnet '%s', %v", subnet.Name, err)
