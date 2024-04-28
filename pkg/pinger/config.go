@@ -169,8 +169,8 @@ func ParseFlags() (*Configuration, error) {
 			break
 		}
 
-		if pod.Status.ContainerStatuses[0].Ready {
-			util.LogFatalAndExit(nil, "failed to get IPs of Pod %s/%s", config.DaemonSetNamespace, podName)
+		if len(pod.Status.ContainerStatuses) != 0 && pod.Status.ContainerStatuses[0].Ready {
+			util.LogFatalAndExit(nil, "failed to get IPs of Pod %s/%s: podIPs is empty while the container is ready", config.DaemonSetNamespace, podName)
 		}
 
 		klog.Infof("cannot get Pod IPs now, waiting Pod to be ready")
