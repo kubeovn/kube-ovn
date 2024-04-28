@@ -35,7 +35,7 @@ MULTUS_VERSION = v4.0.2
 MULTUS_IMAGE = ghcr.io/k8snetworkplumbingwg/multus-cni:$(MULTUS_VERSION)-thick
 MULTUS_YAML = https://raw.githubusercontent.com/k8snetworkplumbingwg/multus-cni/$(MULTUS_VERSION)/deployments/multus-daemonset-thick.yml
 
-METALLB_VERSION = 0.14.4
+METALLB_VERSION = 0.14.5
 METALLB_CHART_REPO = https://metallb.github.io/metallb
 METALLB_CONTROLLER_IMAGE = quay.io/metallb/controller:v$(METALLB_VERSION)
 METALLB_SPEAKER_IMAGE = quay.io/metallb/speaker:v$(METALLB_VERSION)
@@ -52,13 +52,13 @@ KUBEVIRT_CR_YAML = https://github.com/kubevirt/kubevirt/releases/download/$(KUBE
 CILIUM_VERSION = 1.15.4
 CILIUM_IMAGE_REPO = quay.io/cilium
 
-CERT_MANAGER_VERSION = v1.14.4
+CERT_MANAGER_VERSION = v1.14.5
 CERT_MANAGER_CONTROLLER = quay.io/jetstack/cert-manager-controller:$(CERT_MANAGER_VERSION)
 CERT_MANAGER_CAINJECTOR = quay.io/jetstack/cert-manager-cainjector:$(CERT_MANAGER_VERSION)
 CERT_MANAGER_WEBHOOK = quay.io/jetstack/cert-manager-webhook:$(CERT_MANAGER_VERSION)
 CERT_MANAGER_YAML = https://github.com/cert-manager/cert-manager/releases/download/$(CERT_MANAGER_VERSION)/cert-manager.yaml
 
-SUBMARINER_VERSION = $(shell echo $${SUBMARINER_VERSION:-0.17.0})
+SUBMARINER_VERSION = $(shell echo $${SUBMARINER_VERSION:-0.17.1})
 SUBMARINER_OPERATOR = quay.io/submariner/submariner-operator:$(SUBMARINER_VERSION)
 SUBMARINER_GATEWAY = quay.io/submariner/submariner-gateway:$(SUBMARINER_VERSION)
 SUBMARINER_LIGHTHOUSE_AGENT = quay.io/submariner/lighthouse-agent:$(SUBMARINER_VERSION)
@@ -77,7 +77,7 @@ DEEPFLOW_GRAFANA_NODE_PORT = 30080
 DEEPFLOW_MAPPED_PORTS = $(DEEPFLOW_SERVER_NODE_PORT),$(DEEPFLOW_SERVER_GRPC_PORT),$(DEEPFLOW_SERVER_HTTP_PORT),$(DEEPFLOW_GRAFANA_NODE_PORT)
 DEEPFLOW_CTL_URL = https://deepflow-ce.oss-cn-beijing.aliyuncs.com/bin/ctl/$(DEEPFLOW_VERSION)/linux/$(shell arch | sed 's|x86_64|amd64|' | sed 's|aarch64|arm64|')/deepflow-ctl
 
-KWOK_VERSION = v0.5.1
+KWOK_VERSION = v0.5.2
 KWOK_IMAGE = registry.k8s.io/kwok/kwok:$(KWOK_VERSION)
 
 VPC_NAT_GW_IMG = $(REGISTRY)/vpc-nat-gateway:$(VERSION)
@@ -348,7 +348,7 @@ endef
 
 .PHONY: kind-generate-config
 kind-generate-config:
-	j2 yamls/kind.yaml.j2 -o yamls/kind.yaml
+	jinjanate yamls/kind.yaml.j2 -o yamls/kind.yaml
 
 .PHONY: kind-disable-hairpin
 kind-disable-hairpin:
@@ -416,7 +416,7 @@ kind-init-single-%:
 
 .PHONY: kind-init-bgp
 kind-init-bgp: kind-clean-bgp kind-init
-	kube_ovn_version=$(VERSION) frr_image=$(FRR_IMAGE) j2 yamls/clab-bgp.yaml.j2 -o yamls/clab-bgp.yaml
+	kube_ovn_version=$(VERSION) frr_image=$(FRR_IMAGE) jinjanate yamls/clab-bgp.yaml.j2 -o yamls/clab-bgp.yaml
 	docker run --rm --privileged \
 		--name kube-ovn-bgp \
 		--network host \
@@ -429,7 +429,7 @@ kind-init-bgp: kind-clean-bgp kind-init
 
 .PHONY: kind-init-bgp-ha
 kind-init-bgp-ha: kind-clean-bgp kind-init
-	kube_ovn_version=$(VERSION) frr_image=$(FRR_IMAGE) j2 yamls/clab-bgp-ha.yaml.j2 -o yamls/clab-bgp-ha.yaml
+	kube_ovn_version=$(VERSION) frr_image=$(FRR_IMAGE) jinjanate yamls/clab-bgp-ha.yaml.j2 -o yamls/clab-bgp-ha.yaml
 	docker run --rm --privileged \
 		--name kube-ovn-bgp \
 		--network host \
@@ -539,10 +539,10 @@ kind-install-ovn-ic-ipv4: kind-install
 
 	docker run -d --name ovn-ic-db --network kind $(REGISTRY)/kube-ovn:$(VERSION) bash start-ic-db.sh
 	@set -e; \
-	ic_db_host=$$(docker inspect ovn-ic-db -f "{{.NetworkSettings.Networks.kind.IPAddress}}"); \
-	zone=az0 ic_db_host=$$ic_db_host gateway_node_name='kube-ovn-worker,kube-ovn-worker2;kube-ovn-control-plane' j2 yamls/ovn-ic.yaml.j2 -o ovn-ic-0.yaml; \
-	zone=az1 ic_db_host=$$ic_db_host gateway_node_name='kube-ovn1-worker,kube-ovn1-worker2;kube-ovn1-control-plane' j2 yamls/ovn-ic.yaml.j2 -o ovn-ic-1.yaml
-	kubectl config use-context kind-kube-ovn
+	ic_db_host=$$(kubectl get deployment ovn-ic-server -n kube-system -o jsonpath='{range .spec.template.spec.containers[0].env[?(@.name=="NODE_IPS")]}{.value}{end}'); \
+	ic_db_host=$${ic_db_host%?}; \
+	zone=az0 ic_db_host=$$ic_db_host gateway_node_name='kube-ovn-worker,kube-ovn-worker2,kube-ovn-control-plane' jinjanate yamls/ovn-ic.yaml.j2 -o ovn-ic-0.yaml; \
+	zone=az1 ic_db_host=$$ic_db_host gateway_node_name='kube-ovn1-worker,kube-ovn1-worker2,kube-ovn1-control-plane' jinjanate yamls/ovn-ic.yaml.j2 -o ovn-ic-1.yaml
 	kubectl apply -f ovn-ic-0.yaml
 	kubectl config use-context kind-kube-ovn1
 	kubectl apply -f ovn-ic-1.yaml
@@ -564,10 +564,10 @@ kind-install-ovn-ic-ipv6: kind-install-ipv6
 
 	docker run -d --name ovn-ic-db --network kind -e PROTOCOL="ipv6" $(REGISTRY)/kube-ovn:$(VERSION) bash start-ic-db.sh
 	@set -e; \
-	ic_db_host=$$(docker inspect ovn-ic-db -f "{{.NetworkSettings.Networks.kind.GlobalIPv6Address}}"); \
-	zone=az0 ic_db_host=$$ic_db_host gateway_node_name='kube-ovn-worker,kube-ovn-worker2;kube-ovn-control-plane' j2 yamls/ovn-ic.yaml.j2 -o ovn-ic-0.yaml; \
-	zone=az1 ic_db_host=$$ic_db_host gateway_node_name='kube-ovn1-worker,kube-ovn1-worker2;kube-ovn1-control-plane' j2 yamls/ovn-ic.yaml.j2 -o ovn-ic-1.yaml
-	kubectl config use-context kind-kube-ovn
+	ic_db_host=$$(kubectl get deployment ovn-ic-server -n kube-system -o jsonpath='{range .spec.template.spec.containers[0].env[?(@.name=="NODE_IPS")]}{.value}{end}'); \
+	ic_db_host=$${ic_db_host%?}; \
+	zone=az0 ic_db_host=$$ic_db_host gateway_node_name='kube-ovn-worker,kube-ovn-worker2,kube-ovn-control-plane' jinjanate yamls/ovn-ic.yaml.j2 -o ovn-ic-0.yaml; \
+	zone=az1 ic_db_host=$$ic_db_host gateway_node_name='kube-ovn1-worker,kube-ovn1-worker2,kube-ovn1-control-plane' jinjanate yamls/ovn-ic.yaml.j2 -o ovn-ic-1.yaml
 	kubectl apply -f ovn-ic-0.yaml
 	kubectl config use-context kind-kube-ovn1
 	kubectl apply -f ovn-ic-1.yaml
@@ -592,11 +592,10 @@ kind-install-ovn-ic-dual: kind-install-dual
 
 	docker run -d --name ovn-ic-db --network kind -e PROTOCOL="dual" $(REGISTRY)/kube-ovn:$(VERSION) bash start-ic-db.sh
 	@set -e; \
-
-	ic_db_host=$$(docker inspect ovn-ic-db -f "{{.NetworkSettings.Networks.kind.IPAddress}}"); \
-	zone=az0 ic_db_host=$$ic_db_host gateway_node_name='kube-ovn-worker,kube-ovn-worker2;kube-ovn-control-plane' j2 yamls/ovn-ic.yaml.j2 -o ovn-ic-0.yaml; \
-	zone=az1 ic_db_host=$$ic_db_host gateway_node_name='kube-ovn1-worker,kube-ovn1-worker2;kube-ovn1-control-plane' j2 yamls/ovn-ic.yaml.j2 -o ovn-ic-1.yaml
-	kubectl config use-context kind-kube-ovn
+	ic_db_host=$$(kubectl get deployment ovn-ic-server -n kube-system -o jsonpath='{range .spec.template.spec.containers[0].env[?(@.name=="NODE_IPS")]}{.value}{end}'); \
+	ic_db_host=$${ic_db_host%?}; \
+	zone=az0 ic_db_host=$$ic_db_host gateway_node_name='kube-ovn-worker,kube-ovn-worker2,kube-ovn-control-plane' jinjanate yamls/ovn-ic.yaml.j2 -o ovn-ic-0.yaml; \
+	zone=az1 ic_db_host=$$ic_db_host gateway_node_name='kube-ovn1-worker,kube-ovn1-worker2,kube-ovn1-control-plane' jinjanate yamls/ovn-ic.yaml.j2 -o ovn-ic-1.yaml
 	kubectl apply -f ovn-ic-0.yaml
 	kubectl config use-context kind-kube-ovn1
 	kubectl apply -f ovn-ic-1.yaml
@@ -746,7 +745,7 @@ kind-install-metallb: kind-install
 	$(call kubectl_wait_exist_and_ready,metallb-system,deployment,metallb-controller)
 	$(call kubectl_wait_exist_and_ready,metallb-system,daemonset,metallb-speaker)
 	@metallb_pool=$(shell echo $(KIND_IPV4_SUBNET) | sed 's/.[^.]\+$$/.201/')-$(shell echo $(KIND_IPV4_SUBNET) | sed 's/.[^.]\+$$/.250/') \
-		j2 yamls/metallb-cr.yaml.j2 -o metallb-cr.yaml
+		jinjanate yamls/metallb-cr.yaml.j2 -o metallb-cr.yaml
 	kubectl apply -f metallb-cr.yaml
 
 .PHONY: kind-install-vpc-nat-gw
@@ -875,7 +874,7 @@ kind-install-kwok:
 	kubectl apply -f yamls/kwok-stage.yaml
 	kubectl -n kube-system rollout status deploy kwok-controller --timeout 60s
 	for i in {1..20}; do \
-		kwok_node_name=fake-node-$$i j2 yamls/kwok-node.yaml.j2 -o kwok-node.yaml; \
+		kwok_node_name=fake-node-$$i jinjanate yamls/kwok-node.yaml.j2 -o kwok-node.yaml; \
 		kubectl apply -f kwok-node.yaml; \
 	done
 
@@ -904,7 +903,7 @@ kind-clean-ovn-submariner: kind-clean
 
 .PHONY: kind-clean-bgp
 kind-clean-bgp: kind-clean-bgp-ha
-	kube_ovn_version=$(VERSION) frr_image=$(FRR_IMAGE) j2 yamls/clab-bgp.yaml.j2 -o yamls/clab-bgp.yaml
+	kube_ovn_version=$(VERSION) frr_image=$(FRR_IMAGE) jinjanate yamls/clab-bgp.yaml.j2 -o yamls/clab-bgp.yaml
 	docker run --rm --privileged \
 		--name kube-ovn-bgp \
 		--network host \
@@ -918,7 +917,7 @@ kind-clean-bgp: kind-clean-bgp-ha
 
 .PHONY: kind-clean-bgp-ha
 kind-clean-bgp-ha:
-	kube_ovn_version=$(VERSION) frr_image=$(FRR_IMAGE) j2 yamls/clab-bgp-ha.yaml.j2 -o yamls/clab-bgp-ha.yaml
+	kube_ovn_version=$(VERSION) frr_image=$(FRR_IMAGE) jinjanate yamls/clab-bgp-ha.yaml.j2 -o yamls/clab-bgp-ha.yaml
 	docker run --rm --privileged \
 		--name kube-ovn-bgp \
 		--network host \
