@@ -3065,11 +3065,9 @@ metadata:
 rules:
   - apiGroups:
       - "kubeovn.io"
-      - ""
     resources:
       - subnets
       - provider-networks
-      - pods
     verbs:
       - get
       - list
@@ -3081,6 +3079,7 @@ rules:
       - ovn-eips
       - ovn-eips/status
       - nodes
+      - pods
     verbs:
       - get
       - list

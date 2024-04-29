@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net"
 	"reflect"
-	"slices"
 	"sort"
 	"strings"
 
@@ -262,7 +261,7 @@ func (c *Controller) handleDelQoSPoliciesFinalizer(key string) error {
 		klog.Error(err)
 		return err
 	}
-	if len(cachedQoSPolicies.Finalizers) == 0 {
+	if len(cachedQoSPolicies.GetFinalizers()) == 0 {
 		return nil
 	}
 	newQoSPolicies := cachedQoSPolicies.DeepCopy()
@@ -286,7 +285,7 @@ func (c *Controller) handleDelQoSPoliciesFinalizer(key string) error {
 func (c *Controller) syncQoSPolicyFinalizer(cl client.Client) error {
 	// migrate depreciated finalizer to new finalizer
 	polices := &kubeovnv1.QoSPolicyList{}
-	return updateFinalizers(cl, polices, func(i int) (client.Object, client.Object) {
+	return migrateFinalizers(cl, polices, func(i int) (client.Object, client.Object) {
 		if i < 0 || i >= len(polices.Items) {
 			return nil, nil
 		}
@@ -533,10 +532,8 @@ func (c *Controller) handleAddQoSPolicyFinalizer(key string) error {
 		klog.Error(err)
 		return err
 	}
-	if cachedQoSPolicy.DeletionTimestamp.IsZero() {
-		if slices.Contains(cachedQoSPolicy.Finalizers, util.KubeOVNControllerFinalizer) {
-			return nil
-		}
+	if !cachedQoSPolicy.DeletionTimestamp.IsZero() || len(cachedQoSPolicy.GetFinalizers()) != 0 {
+		return nil
 	}
 	newQoSPolicy := cachedQoSPolicy.DeepCopy()
 	controllerutil.AddFinalizer(newQoSPolicy, util.KubeOVNControllerFinalizer)
