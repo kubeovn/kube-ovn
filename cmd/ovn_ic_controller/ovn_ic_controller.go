@@ -18,7 +18,7 @@ func CmdMain() {
 		util.LogFatalAndExit(err, "failed to parse config")
 	}
 
-	stopCh := signals.SetupSignalHandler()
+	stopCh := signals.SetupSignalHandler().Done()
 	ctl := ovn_ic_controller.NewController(config)
 	ctl.Run(stopCh)
 }
