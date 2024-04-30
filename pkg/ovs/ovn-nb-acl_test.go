@@ -688,13 +688,20 @@ func (suite *OvnClientTestSuite) testUpdateLogicalSwitchACL() {
 		if protocol == kubeovnv1.ProtocolIPv6 {
 			match = "ip6.src == 2409:8720:4a00::0/64 && ip6.dst == 2409:8720:4a00::0/64"
 		}
-		acl, err := ovnClient.GetACL(lsName, ovnnb.ACLDirectionToLport, util.AllowEWTrafficPriority, match, false)
+		ingressACL, err := ovnClient.GetACL(lsName, ovnnb.ACLDirectionToLport, util.AllowEWTrafficPriority, match, false)
 		require.NoError(t, err)
-		expect := newACL(lsName, ovnnb.ACLDirectionToLport, util.AllowEWTrafficPriority, match, ovnnb.ACLActionAllowRelated)
-		expect.UUID = acl.UUID
-		expect.ExternalIDs["subnet"] = lsName
-		require.Equal(t, expect, acl)
-		require.Contains(t, ls.ACLs, acl.UUID)
+		ingressExpect := newACL(lsName, ovnnb.ACLDirectionToLport, util.AllowEWTrafficPriority, match, ovnnb.ACLActionAllow)
+		ingressExpect.UUID = ingressACL.UUID
+		ingressExpect.ExternalIDs["subnet"] = lsName
+		require.Equal(t, ingressExpect, ingressACL)
+		require.Contains(t, ls.ACLs, ingressACL.UUID)
+		egressACL, err := ovnClient.GetACL(lsName, ovnnb.ACLDirectionFromLport, util.AllowEWTrafficPriority, match, false)
+		require.NoError(t, err)
+		egressExpect := newACL(lsName, ovnnb.ACLDirectionFromLport, util.AllowEWTrafficPriority, match, ovnnb.ACLActionAllow)
+		egressExpect.UUID = egressACL.UUID
+		egressExpect.ExternalIDs["subnet"] = lsName
+		require.Equal(t, egressExpect, egressACL)
+		require.Contains(t, ls.ACLs, egressACL.UUID)
 	}
 
 	for _, subnetACL := range subnetAcls {

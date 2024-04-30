@@ -440,13 +440,19 @@ func (c *OVNNbClient) UpdateLogicalSwitchACL(lsName, cidrBlock string, subnetAcl
 				NewACLMatch(ipSuffix+".dst", "==", cidr, ""),
 			)
 
-			sameSubnetACL, err := c.newACL(lsName, ovnnb.ACLDirectionToLport, util.AllowEWTrafficPriority, sameSubnetMatch.String(), ovnnb.ACLActionAllowRelated, options)
+			ingressSameSubnetACL, err := c.newACL(lsName, ovnnb.ACLDirectionToLport, util.AllowEWTrafficPriority, sameSubnetMatch.String(), ovnnb.ACLActionAllow, options)
 			if err != nil {
 				klog.Error(err)
 				return fmt.Errorf("new same subnet ingress acl for logical switch %s: %v", lsName, err)
 			}
+			acls = append(acls, ingressSameSubnetACL)
 
-			acls = append(acls, sameSubnetACL)
+			egressSameSubnetACL, err := c.newACL(lsName, ovnnb.ACLDirectionFromLport, util.AllowEWTrafficPriority, sameSubnetMatch.String(), ovnnb.ACLActionAllow, options)
+			if err != nil {
+				klog.Error(err)
+				return fmt.Errorf("new same subnet egress acl for logical switch %s: %v", lsName, err)
+			}
+			acls = append(acls, egressSameSubnetACL)
 		}
 	}
 
