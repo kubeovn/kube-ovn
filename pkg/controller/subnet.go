@@ -890,9 +890,19 @@ func (c *Controller) handleUpdateSubnetStatus(key string) error {
 	}
 
 	if util.CheckProtocol(subnet.Spec.CIDRBlock) == kubeovnv1.ProtocolDual {
-		return calcDualSubnetStatusIP(subnet, c)
+		err = calcDualSubnetStatusIP(subnet, c)
+	} else {
+		err = calcSubnetStatusIP(subnet, c)
 	}
-	return calcSubnetStatusIP(subnet, c)
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
+	if err := c.checkSubnetUsingIPs(subnet); err != nil {
+		klog.Errorf("inconsistency detected in status of subnet %s : %v", subnet.Name, err)
+		return err
+	}
+	return nil
 }
 
 func (c *Controller) handleDeleteLogicalSwitch(key string) (err error) {
@@ -2073,11 +2083,6 @@ func calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 	subnet.Status.V4AvailableIPRange = v4AvailableIPStr
 	subnet.Status.V6AvailableIPRange = v6AvailableIPStr
 
-	if err := c.checkSubnetUsingIPs(subnet); err != nil {
-		klog.Errorf("inconsistency detected in status of subnet %s : %v", subnet.Name, err)
-		return err
-	}
-
 	bytes, err := subnet.Status.Bytes()
 	if err != nil {
 		klog.Error(err)
@@ -2186,11 +2191,6 @@ func calcSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 		subnet.Status.V6AvailableIPRange,
 	} {
 		return nil
-	}
-
-	if err := c.checkSubnetUsingIPs(subnet); err != nil {
-		klog.Errorf("inconsistency detected in status of subnet %s : %v", subnet.Name, err)
-		return err
 	}
 
 	bytes, err := subnet.Status.Bytes()
