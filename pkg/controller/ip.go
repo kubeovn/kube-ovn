@@ -354,12 +354,12 @@ func (c *Controller) syncIPFinalizer(cl client.Client) error {
 	})
 }
 
-func (c *Controller) handleAddIPFinalizer(cachedIP *kubeovnv1.IP, finalizer string) error {
+func (c *Controller) handleAddIPFinalizer(cachedIP *kubeovnv1.IP) error {
 	if !cachedIP.DeletionTimestamp.IsZero() || len(cachedIP.GetFinalizers()) != 0 {
 		return nil
 	}
 	newIP := cachedIP.DeepCopy()
-	controllerutil.AddFinalizer(newIP, finalizer)
+	controllerutil.AddFinalizer(newIP, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedIP, newIP)
 	if err != nil {
 		klog.Errorf("failed to generate patch payload for ip %s, %v", cachedIP.Name, err)
@@ -541,17 +541,16 @@ func (c *Controller) createOrUpdateIPCR(ipCRName, podName, ip, mac, subnetName, 
 
 		ipCR, err = c.config.KubeOvnClient.KubeovnV1().IPs().Update(context.Background(), newIPCR, metav1.UpdateOptions{})
 		if err != nil {
-			err := fmt.Errorf("failed to update ip CR %s: %v", newIPCR.Name, err)
+			err := fmt.Errorf("failed to update ip CR %s: %v", ipCRName, err)
 			klog.Error(err)
 			return err
 		}
-	}
 
-	if err := c.handleAddIPFinalizer(ipCR, util.KubeOVNControllerFinalizer); err != nil {
+	}
+	if err := c.handleAddIPFinalizer(ipCR); err != nil {
 		klog.Errorf("failed to handle add ip finalizer %v", err)
 		return err
 	}
-
 	return nil
 }
 
