@@ -546,12 +546,6 @@ func (c *Controller) createOrUpdateIPCR(ipCRName, podName, ip, mac, subnetName, 
 			return err
 		}
 	}
-
-	if err := c.handleAddIPFinalizer(ipCR, util.KubeOVNControllerFinalizer); err != nil {
-		klog.Errorf("failed to handle add ip finalizer %v", err)
-		return err
-	}
-
 	return nil
 }
 
@@ -564,6 +558,10 @@ func (c *Controller) subnetCountIP(subnet *kubeovnv1.Subnet) error {
 	}
 	if err != nil {
 		klog.Error(err)
+		return err
+	}
+	if err := c.checkSubnetUsingIPs(subnet); err != nil {
+		klog.Errorf("inconsistency detected in status of subnet %s : %v", subnet.Name, err)
 		return err
 	}
 	return nil

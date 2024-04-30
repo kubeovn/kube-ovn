@@ -757,6 +757,11 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		return err
 	}
 
+	if err := c.checkSubnetUsingIPs(subnet); err != nil {
+		klog.Errorf("inconsistency detected in status of subnet %s : %v", subnet.Name, err)
+		return err
+	}
+
 	deleted, err := c.handleSubnetFinalizer(subnet)
 	if err != nil {
 		klog.Errorf("handle subnet finalizer failed %v", err)
@@ -947,10 +952,15 @@ func (c *Controller) handleUpdateSubnetStatus(key string) error {
 			klog.Error(err)
 			return err
 		}
-		return nil
+	} else {
+		if _, err = c.calcSubnetStatusIP(subnet); err != nil {
+			klog.Error(err)
+			return err
+		}
 	}
-	if _, err = c.calcSubnetStatusIP(subnet); err != nil {
-		klog.Error(err)
+
+	if err := c.checkSubnetUsingIPs(subnet); err != nil {
+		klog.Errorf("inconsistency detected in status of subnet %s : %v", subnet.Name, err)
 		return err
 	}
 	return nil
@@ -1970,6 +1980,11 @@ func (c *Controller) reconcileU2OInterconnectionIP(subnet *kubeovnv1.Subnet) err
 			}
 		}
 	}
+
+	if err := c.checkSubnetUsingIPs(subnet); err != nil {
+		klog.Errorf("inconsistency detected in status of subnet %s : %v", subnet.Name, err)
+		return err
+	}
 	return nil
 }
 
@@ -2085,12 +2100,6 @@ func (c *Controller) calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv
 	subnet.Status.V6UsingIPRange = v6UsingIPStr
 	subnet.Status.V4AvailableIPRange = v4AvailableIPStr
 	subnet.Status.V6AvailableIPRange = v6AvailableIPStr
-
-	if err := c.checkSubnetUsingIPs(subnet); err != nil {
-		klog.Errorf("inconsistency detected in status of subnet %s : %v", subnet.Name, err)
-		return nil, err
-	}
-
 	bytes, err := subnet.Status.Bytes()
 	if err != nil {
 		klog.Error(err)
@@ -2219,11 +2228,6 @@ func (c *Controller) calcSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv1.Su
 		subnet.Status.V6AvailableIPRange,
 	} {
 		return subnet, nil
-	}
-
-	if err := c.checkSubnetUsingIPs(subnet); err != nil {
-		klog.Errorf("inconsistency detected in status of subnet %s : %v", subnet.Name, err)
-		return nil, err
 	}
 
 	bytes, err := subnet.Status.Bytes()
