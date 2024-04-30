@@ -47,7 +47,7 @@ require (
 	k8s.io/client-go v12.0.0+incompatible
 	k8s.io/klog/v2 v2.100.1
 	k8s.io/kubectl v0.27.10
-	k8s.io/kubernetes v1.27.10
+	k8s.io/kubernetes v1.27.13
 	k8s.io/pod-security-admission v0.27.10
 	k8s.io/sample-controller v0.27.10
 	k8s.io/utils v0.0.0-20240102154912-e7106e64919e
