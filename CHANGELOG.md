@@ -1,5 +1,23 @@
 # Changelog
 
+## v1.12.13 (2024-04-30)
+
+ * [ec3c9282](https://github.com/kubeovn/kube-ovn/commit/ec3c9282cfe5fdd400b045d3efe39cded184fca0) release v1.12.13
+ * [e8957799](https://github.com/kubeovn/kube-ovn/commit/e89577995f15ac5c7d72822b112aa25dd905fea5) bump k8s to v1.27.13 (#3963)
+ * [8e962a02](https://github.com/kubeovn/kube-ovn/commit/8e962a02af7f7aaae4814b63687af9239f318ef2) fix subnet check ip in using to avoid ipam init (#3964)
+ * [954df535](https://github.com/kubeovn/kube-ovn/commit/954df535dbddd49cfb154a65dab78a181fd610d3) add patch permission for cni clusterrole
+ * [db7ea0c6](https://github.com/kubeovn/kube-ovn/commit/db7ea0c69e9b40a33a32eebab5b62e9a4c7b46e2) fix index out of range (#3958)
+ * [bfe80334](https://github.com/kubeovn/kube-ovn/commit/bfe8033473dd799fe6bd2694de38b5a16ad9fce6) fix nil pointer dereference (#3951)
+ * [72106744](https://github.com/kubeovn/kube-ovn/commit/72106744c59a9f4623354baaaf94baa08b2502ab) fix: lower camel case (#3942)
+ * [5fccb52e](https://github.com/kubeovn/kube-ovn/commit/5fccb52e4042c7c981d8d368393a1ceeeb402bd9) prepare for next release
+
+### Contributors
+
+ * Zhao Congqi
+ * bobz965
+ * 张祖建
+ * 马洪贞
+
 ## v1.12.12 (2024-04-23)
 
  * [0363e783](https://github.com/kubeovn/kube-ovn/commit/0363e783f66fdd1f53ec23b8c247fb1191a19e4a) release v1.12.12
