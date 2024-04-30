@@ -757,11 +757,6 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		return err
 	}
 
-	if err := c.checkSubnetUsingIPs(subnet); err != nil {
-		klog.Errorf("inconsistency detected in status of subnet %s : %v", subnet.Name, err)
-		return err
-	}
-
 	deleted, err := c.handleSubnetFinalizer(subnet)
 	if err != nil {
 		klog.Errorf("handle subnet finalizer failed %v", err)
@@ -1979,11 +1974,6 @@ func (c *Controller) reconcileU2OInterconnectionIP(subnet *kubeovnv1.Subnet) err
 				return err
 			}
 		}
-	}
-
-	if err := c.checkSubnetUsingIPs(subnet); err != nil {
-		klog.Errorf("inconsistency detected in status of subnet %s : %v", subnet.Name, err)
-		return err
 	}
 	return nil
 }
