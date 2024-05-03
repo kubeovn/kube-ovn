@@ -1,7 +1,5 @@
 SHELL = /bin/bash
 
-include Makefile.e2e
-
 REGISTRY = kubeovn
 DEV_TAG = dev
 RELEASE_TAG = $(shell cat VERSION)
