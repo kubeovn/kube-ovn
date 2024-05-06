@@ -3,6 +3,7 @@ package ipam
 import (
 	"fmt"
 	"net"
+	"slices"
 	"sort"
 	"strings"
 
@@ -70,7 +71,9 @@ func NewIPRangeListFrom(x ...string) (*IPRangeList, error) {
 
 func (r *IPRangeList) Clone() *IPRangeList {
 	ret := &IPRangeList{make([]*IPRange, r.Len())}
-	copy(ret.ranges, r.ranges)
+	for i := range r.ranges {
+		ret.ranges[i] = r.ranges[i].Clone()
+	}
 	return ret
 }
 
@@ -120,7 +123,7 @@ func (r *IPRangeList) Add(ip IP) bool {
 		(n < r.Len() && r.ranges[n].Add(ip)) {
 		if n-1 >= 0 && n < r.Len() && r.ranges[n-1].End().Add(1).Equal(r.ranges[n].Start()) {
 			r.ranges[n-1].SetEnd(r.ranges[n].End())
-			r.ranges = append(r.ranges[:n], r.ranges[n+1:]...)
+			r.ranges = slices.Delete(r.ranges, n, n+1)
 		}
 		return true
 	}
@@ -143,7 +146,7 @@ func (r *IPRangeList) Remove(ip IP) bool {
 	v, _ := r.ranges[n].Remove(ip)
 	switch len(v) {
 	case 0:
-		r.ranges = append(r.ranges[:n], r.ranges[n+1:]...)
+		r.ranges = slices.Delete(r.ranges, n, n+1)
 	case 1:
 		r.ranges[n] = v[0]
 	case 2:
