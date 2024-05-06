@@ -1,7 +1,5 @@
 SHELL = /bin/bash
 
-include Makefile.e2e
-
 REGISTRY = kubeovn
 DEV_TAG = dev
 RELEASE_TAG = $(shell cat VERSION)
@@ -911,6 +909,11 @@ ut:
 ipam-bench:
 	go test -timeout 30m -bench='^BenchmarkIPAM' -benchtime=10000x test/unittest/ipam_bench/ipam_test.go -args -logtostderr=false
 	go test -timeout 90m -bench='^BenchmarkParallelIPAM' -benchtime=10x test/unittest/ipam_bench/ipam_test.go -args -logtostderr=false
+
+.PHONY: kubectl-ko-log
+kubectl-ko-log:
+	kubectl ko log all
+	tar -zcvf kubectl-ko-log.tar.gz kubectl-ko-log/
 
 .PHONY: clean
 clean:
