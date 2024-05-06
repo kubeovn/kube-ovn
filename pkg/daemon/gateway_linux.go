@@ -13,7 +13,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/alauda/felix/ipsets"
+	"github.com/kubeovn/felix/ipsets"
 	"github.com/kubeovn/go-iptables/iptables"
 	"github.com/scylladb/go-set/strset"
 	"github.com/vishvananda/netlink"
