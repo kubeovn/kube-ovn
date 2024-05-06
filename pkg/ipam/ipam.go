@@ -41,8 +41,8 @@ func NewIPAM() *IPAM {
 }
 
 func (ipam *IPAM) GetRandomAddress(podName, nicName string, mac *string, subnetName, poolName string, skippedAddrs []string, checkConflict bool) (string, string, string, error) {
-	ipam.mutex.RLock()
-	defer ipam.mutex.RUnlock()
+	ipam.mutex.Lock()
+	defer ipam.mutex.Unlock()
 	var v4, v6 string
 	subnet, ok := ipam.Subnets[subnetName]
 	if !ok {
@@ -65,8 +65,8 @@ func (ipam *IPAM) GetRandomAddress(podName, nicName string, mac *string, subnetN
 }
 
 func (ipam *IPAM) GetStaticAddress(podName, nicName, ip string, mac *string, subnetName string, checkConflict bool) (string, string, string, error) {
-	ipam.mutex.RLock()
-	defer ipam.mutex.RUnlock()
+	ipam.mutex.Lock()
+	defer ipam.mutex.Unlock()
 	var subnet *Subnet
 	var ok bool
 	klog.Infof("allocating static ip %s from subnet %s", ip, subnetName)
@@ -140,8 +140,8 @@ func checkAndAppendIpsForDual(ips []IP, mac, podName, nicName string, subnet *Su
 }
 
 func (ipam *IPAM) ReleaseAddressByPod(podName, subnetName string) {
-	ipam.mutex.RLock()
-	defer ipam.mutex.RUnlock()
+	ipam.mutex.Lock()
+	defer ipam.mutex.Unlock()
 	if subnetName != "" {
 		if subnet, ok := ipam.Subnets[subnetName]; ok {
 			subnet.ReleaseAddress(podName)
@@ -372,6 +372,9 @@ func (ipam *IPAM) IsIPAssignedToOtherPod(ip, subnetName, podName string) (string
 }
 
 func (ipam *IPAM) GetSubnetV4Mask(subnetName string) (string, error) {
+	ipam.mutex.RLock()
+	defer ipam.mutex.RUnlock()
+
 	subnet, ok := ipam.Subnets[subnetName]
 	if ok {
 		mask, _ := subnet.V4CIDR.Mask.Size()
@@ -403,8 +406,8 @@ func (ipam *IPAM) GetSubnetIPRangeString(subnetName string, excludeIps []string)
 }
 
 func (ipam *IPAM) AddOrUpdateIPPool(subnet, ippool string, ips []string) error {
-	ipam.mutex.RLock()
-	defer ipam.mutex.RUnlock()
+	ipam.mutex.Lock()
+	defer ipam.mutex.Unlock()
 
 	s := ipam.Subnets[subnet]
 	if s == nil {
@@ -415,11 +418,11 @@ func (ipam *IPAM) AddOrUpdateIPPool(subnet, ippool string, ips []string) error {
 }
 
 func (ipam *IPAM) RemoveIPPool(subnet, ippool string) {
-	ipam.mutex.RLock()
+	ipam.mutex.Lock()
 	if s := ipam.Subnets[subnet]; s != nil {
 		s.RemoveIPPool(ippool)
 	}
-	ipam.mutex.RUnlock()
+	ipam.mutex.Unlock()
 }
 
 func (ipam *IPAM) IPPoolStatistics(subnet, ippool string) (
