@@ -42,30 +42,28 @@ func testConnectivity(ip, namespaceName, srcPod, dstPod string, f *framework.Fra
 		addIP = fmt.Sprintf("ip addr add %s/96 dev eth0", ip)
 		delIP = fmt.Sprintf("ip addr del %s/96 dev eth0", ip)
 		command = fmt.Sprintf("ping6 -c 1 %s", ip)
+	default:
+		framework.Failf("unexpected ip address: %q", ip)
 	}
 	// check srcPod ping dstPod through vip
 	stdout, stderr, err := framework.ExecShellInPod(context.Background(), f, namespaceName, dstPod, addIP)
-	framework.Logf("exec %s failed err: %v, stderr: %s, stdout: %s", addIP, err, stderr, stdout)
+	framework.ExpectNoError(err, "exec %q failed, err: %q, stderr: %q, stdout: %q", addIP, err, stderr, stdout)
 	stdout, stderr, err = framework.ExecShellInPod(context.Background(), f, namespaceName, srcPod, command)
-	framework.Logf("exec %s failed err: %v, stderr: %s, stdout: %s", command, err, stderr, stdout)
-	framework.ExpectNoError(err)
+	framework.ExpectNoError(err, "exec %q failed, err: %q, stderr: %q, stdout: %q", command, err, stderr, stdout)
 	// srcPod can not ping dstPod vip when ip is deleted
 	stdout, stderr, err = framework.ExecShellInPod(context.Background(), f, namespaceName, dstPod, delIP)
-	framework.Logf("exec %s failed err: %v, stderr: %s, stdout: %s", delIP, err, stderr, stdout)
-	stdout, stderr, err = framework.ExecShellInPod(context.Background(), f, namespaceName, srcPod, command)
-	framework.Logf("exec %s failed err: %v, stderr: %s, stdout: %s", command, err, stderr, stdout)
+	framework.ExpectNoError(err, "exec %q failed, err: %q, stderr: %q, stdout: %q", delIP, err, stderr, stdout)
+	_, _, err = framework.ExecShellInPod(context.Background(), f, namespaceName, srcPod, command)
 	framework.ExpectError(err)
 	// check dstPod ping srcPod through vip
 	stdout, stderr, err = framework.ExecShellInPod(context.Background(), f, namespaceName, srcPod, addIP)
-	framework.Logf("exec %s failed err: %v, stderr: %s, stdout: %s", addIP, err, stderr, stdout)
+	framework.ExpectNoError(err, "exec %q failed, err: %q, stderr: %q, stdout: %q", addIP, err, stderr, stdout)
 	stdout, stderr, err = framework.ExecShellInPod(context.Background(), f, namespaceName, dstPod, command)
-	framework.Logf("exec %s failed err: %v, stderr: %s, stdout: %s", command, err, stderr, stdout)
-	framework.ExpectNoError(err)
+	framework.ExpectNoError(err, "exec %q failed, err: %q, stderr: %q, stdout: %q", command, err, stderr, stdout)
 	// dstPod can not ping srcPod vip when ip is deleted
 	stdout, stderr, err = framework.ExecShellInPod(context.Background(), f, namespaceName, srcPod, delIP)
-	framework.Logf("exec %s failed err: %v, stderr: %s, stdout: %s", delIP, err, stderr, stdout)
-	stdout, stderr, err = framework.ExecShellInPod(context.Background(), f, namespaceName, dstPod, command)
-	framework.Logf("exec %s failed err: %v, stderr: %s, stdout: %s", command, err, stderr, stdout)
+	framework.ExpectNoError(err, "exec %q failed, err: %q, stderr: %q, stdout: %q", delIP, err, stderr, stdout)
+	_, _, err = framework.ExecShellInPod(context.Background(), f, namespaceName, dstPod, command)
 	framework.ExpectError(err)
 }
 
@@ -82,11 +80,9 @@ func testVipWithSG(ip, namespaceName, allowPod, denyPod, aapPod, securityGroupNa
 	}
 	// allowPod can ping aapPod with security group
 	stdout, stderr, err := framework.ExecShellInPod(context.Background(), f, namespaceName, allowPod, sgCheck)
-	framework.Logf("exec %s failed err: %v, stderr: %s, stdout: %s", sgCheck, err, stderr, stdout)
-	framework.ExpectNoError(err)
+	framework.ExpectNoError(err, "exec %q failed, err: %q, stderr: %q, stdout: %q", sgCheck, err, stderr, stdout)
 	// denyPod can not ping aapPod with security group
-	stdout, stderr, err = framework.ExecShellInPod(context.Background(), f, namespaceName, denyPod, sgCheck)
-	framework.Logf("exec %s failed err: %v, stderr: %s, stdout: %s", sgCheck, err, stderr, stdout)
+	_, _, err = framework.ExecShellInPod(context.Background(), f, namespaceName, denyPod, sgCheck)
 	framework.ExpectError(err)
 
 	ginkgo.By("Checking ovn address_set and lsp port_security")
@@ -215,10 +211,10 @@ var _ = framework.Describe("[group:vip]", func() {
 		annotations := map[string]string{util.AAPsAnnotation: vip1Name}
 		cmd := []string{"sh", "-c", "sleep infinity"}
 		ginkgo.By("Creating pod1 support allowed address pair using " + vip1Name)
-		aapPod1 := framework.MakeNetAdminPod(namespaceName, aapPodName1, nil, annotations, image, cmd, nil)
+		aapPod1 := framework.MakePrivilegedPod(namespaceName, aapPodName1, nil, annotations, image, cmd, nil)
 		aapPod1 = podClient.CreateSync(aapPod1)
 		ginkgo.By("Creating pod2 support allowed address pair using " + vip1Name)
-		aapPod2 := framework.MakeNetAdminPod(namespaceName, aapPodName2, nil, annotations, image, cmd, nil)
+		aapPod2 := framework.MakePrivilegedPod(namespaceName, aapPodName2, nil, annotations, image, cmd, nil)
 		_ = podClient.CreateSync(aapPod2)
 		// logical switch port with type virtual should be created
 		conditions := fmt.Sprintf("type=virtual name=%s options:virtual-ip=\\\"%s\\\" ", vip1Name, virtualIP1)
@@ -303,7 +299,7 @@ var _ = framework.Describe("[group:vip]", func() {
 		ginkgo.By("Creating pod3 support allowed address pair with security group")
 		annotations[util.PortSecurityAnnotation] = "true"
 		annotations[fmt.Sprintf(util.SecurityGroupAnnotationTemplate, "ovn")] = securityGroupName
-		aapPod3 := framework.MakeNetAdminPod(namespaceName, aapPodName3, nil, annotations, image, cmd, nil)
+		aapPod3 := framework.MakePod(namespaceName, aapPodName3, nil, annotations, image, cmd, nil)
 		aapPod3 = podClient.CreateSync(aapPod3)
 		v4ip, v6ip := util.SplitStringIP(aapPod3.Annotations[util.IPAddressAnnotation])
 		if f.HasIPv4() {

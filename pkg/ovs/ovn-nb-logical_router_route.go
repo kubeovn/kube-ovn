@@ -11,6 +11,7 @@ import (
 	"github.com/ovn-org/libovsdb/ovsdb"
 	"github.com/scylladb/go-set/strset"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/ptr"
 
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
@@ -138,7 +139,7 @@ func (c *OVNNbClient) UpdateLogicalRouterStaticRoute(route *ovnnb.LogicalRouterS
 // DeleteLogicalRouterStaticRoute add a logical router static route
 func (c *OVNNbClient) DeleteLogicalRouterStaticRoute(lrName string, routeTable, policy *string, ipPrefix, nexthop string) error {
 	if policy == nil || len(*policy) == 0 {
-		policy = &ovnnb.LogicalRouterStaticRoutePolicyDstIP
+		policy = ptr.To(ovnnb.LogicalRouterStaticRoutePolicyDstIP)
 	}
 
 	routes, err := c.ListLogicalRouterStaticRoutes(lrName, routeTable, policy, ipPrefix, nil)

@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/onsi/ginkgo/v2"
+	"k8s.io/utils/ptr"
 
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
@@ -47,7 +48,7 @@ var _ = framework.Describe("[group:pod]", func() {
 		ginkgo.By("Scale sts replicas to 1")
 		sts = stsClient.Get(stsName)
 		patchSts := sts.DeepCopy()
-		*patchSts.Spec.Replicas = 1
+		patchSts.Spec.Replicas = ptr.To(int32(1))
 		stsClient.PatchSync(sts, patchSts)
 
 		for index := 1; index <= 2; index++ {
@@ -58,7 +59,7 @@ var _ = framework.Describe("[group:pod]", func() {
 		ginkgo.By("Scale sts replicas to 3")
 		sts = stsClient.Get(stsName)
 		patchSts = sts.DeepCopy()
-		*patchSts.Spec.Replicas = 3
+		patchSts.Spec.Replicas = ptr.To(int32(3))
 		stsClient.PatchSync(sts, patchSts)
 		ginkgo.By("Waiting for statefulset " + stsName + " to be ready")
 		stsClient.WaitForRunningAndReady(patchSts)
