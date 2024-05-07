@@ -115,7 +115,10 @@ func makePod(ns, name string, labels, annotations map[string]string, image strin
 			TerminationGracePeriodSeconds: ptr.To(int64(3)),
 		},
 	}
-	return e2epod.MustMixinRestrictedPodSecurity(pod)
+	if securityLevel == psaapi.LevelRestricted {
+		pod = e2epod.MustMixinRestrictedPodSecurity(pod)
+	}
+	return pod
 }
 
 func MakePod(ns, name string, labels, annotations map[string]string, image string, command, args []string) *corev1.Pod {
