@@ -14,6 +14,7 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
 	e2epodoutput "k8s.io/kubernetes/test/e2e/framework/pod/output"
+	"k8s.io/utils/ptr"
 
 	"github.com/onsi/ginkgo/v2"
 
@@ -179,7 +180,7 @@ var _ = framework.Describe("[group:service]", func() {
 
 		ginkgo.By("change service from dual stack to single stack")
 		modifyService := service.DeepCopy()
-		*modifyService.Spec.IPFamilyPolicy = corev1.IPFamilyPolicySingleStack
+		modifyService.Spec.IPFamilyPolicy = ptr.To(corev1.IPFamilyPolicySingleStack)
 		modifyService.Spec.IPFamilies = []corev1.IPFamily{corev1.IPv4Protocol}
 		modifyService.Spec.ClusterIPs = []string{service.Spec.ClusterIP}
 		service = serviceClient.Patch(service, modifyService)
@@ -187,7 +188,7 @@ var _ = framework.Describe("[group:service]", func() {
 
 		ginkgo.By("recover service from single stack to dual stack")
 		recoverService := service.DeepCopy()
-		*recoverService.Spec.IPFamilyPolicy = *originService.Spec.IPFamilyPolicy
+		recoverService.Spec.IPFamilyPolicy = ptr.To(*originService.Spec.IPFamilyPolicy)
 		recoverService.Spec.IPFamilies = originService.Spec.IPFamilies
 		recoverService.Spec.ClusterIPs = originService.Spec.ClusterIPs
 		_ = serviceClient.Patch(service, recoverService)

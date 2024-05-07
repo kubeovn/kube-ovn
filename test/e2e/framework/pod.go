@@ -10,6 +10,8 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	e2epod "k8s.io/kubernetes/test/e2e/framework/pod"
+	psaapi "k8s.io/pod-security-admission/api"
+	"k8s.io/utils/ptr"
 
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -86,7 +88,7 @@ func (c *PodClient) WaitForNotFound(name string) {
 	ExpectNoError(err)
 }
 
-func MakePod(ns, name string, labels, annotations map[string]string, image string, command, args []string) *corev1.Pod {
+func makePod(ns, name string, labels, annotations map[string]string, image string, command, args []string, securityLevel psaapi.Level) *corev1.Pod {
 	if image == "" {
 		image = PauseImage
 	}
@@ -106,20 +108,24 @@ func MakePod(ns, name string, labels, annotations map[string]string, image strin
 					ImagePullPolicy: corev1.PullIfNotPresent,
 					Command:         command,
 					Args:            args,
+					SecurityContext: e2epod.GenerateContainerSecurityContext(securityLevel),
 				},
 			},
+			SecurityContext:               e2epod.GeneratePodSecurityContext(nil, nil),
+			TerminationGracePeriodSeconds: ptr.To(int64(3)),
 		},
 	}
-	pod.Spec.TerminationGracePeriodSeconds = new(int64)
-	*pod.Spec.TerminationGracePeriodSeconds = 3
-
-	return pod
+	return e2epod.MustMixinRestrictedPodSecurity(pod)
 }
 
-func MakeNetAdminPod(ns, name string, labels, annotations map[string]string, image string, command, args []string) *corev1.Pod {
-	pod := MakePod(ns, name, labels, annotations, image, command, args)
-	pod.Spec.Containers[0].SecurityContext = &corev1.SecurityContext{
-		Capabilities: &corev1.Capabilities{Add: []corev1.Capability{"NET_ADMIN"}},
-	}
-	return pod
+func MakePod(ns, name string, labels, annotations map[string]string, image string, command, args []string) *corev1.Pod {
+	return makePod(ns, name, labels, annotations, image, command, args, psaapi.LevelBaseline)
+}
+
+func MakeRestrictedPod(ns, name string, labels, annotations map[string]string, image string, command, args []string) *corev1.Pod {
+	return makePod(ns, name, labels, annotations, image, command, args, psaapi.LevelRestricted)
+}
+
+func MakePrivilegedPod(ns, name string, labels, annotations map[string]string, image string, command, args []string) *corev1.Pod {
+	return makePod(ns, name, labels, annotations, image, command, args, psaapi.LevelPrivileged)
 }

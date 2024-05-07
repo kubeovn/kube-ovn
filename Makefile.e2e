@@ -215,8 +215,3 @@ kube-ovn-webhook-e2e:
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
 	ginkgo $(GINKGO_OUTPUT_OPT) $(GINKGO_PARALLEL_OPT) --randomize-all -v \
 		--focus=CNI:Kube-OVN ./test/e2e/webhook/webhook.test -- $(TEST_BIN_ARGS)
-
-.PHONY: kubectl-ko-log
-kubectl-ko-log:
-	kubectl ko log all
-	tar -zcvf kubectl-ko-log.tar.gz kubectl-ko-log/
