@@ -10,7 +10,7 @@ global:
       repository: kube-ovn
       dpdkRepository: kube-ovn-dpdk
       vpcRepository: vpc-nat-gateway
-      tag: v1.12.13
+      tag: v1.12.14
       support_arm: true
       thirdparty: true
 
