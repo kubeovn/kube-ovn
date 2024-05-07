@@ -299,7 +299,7 @@ var _ = framework.Describe("[group:vip]", func() {
 		ginkgo.By("Creating pod3 support allowed address pair with security group")
 		annotations[util.PortSecurityAnnotation] = "true"
 		annotations[fmt.Sprintf(util.SecurityGroupAnnotationTemplate, "ovn")] = securityGroupName
-		aapPod3 := framework.MakeRestrictedPod(namespaceName, aapPodName3, nil, annotations, image, cmd, nil)
+		aapPod3 := framework.MakePod(namespaceName, aapPodName3, nil, annotations, image, cmd, nil)
 		aapPod3 = podClient.CreateSync(aapPod3)
 		v4ip, v6ip := util.SplitStringIP(aapPod3.Annotations[util.IPAddressAnnotation])
 		if f.HasIPv4() {
