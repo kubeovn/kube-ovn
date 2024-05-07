@@ -54,6 +54,7 @@ func NewDefaultFramework(baseName string) *Framework {
 		Framework: framework.NewDefaultFramework(baseName),
 	}
 	f.NamespacePodSecurityEnforceLevel = admissionapi.LevelPrivileged
+	f.NamespacePodSecurityWarnLevel = admissionapi.LevelPrivileged
 	f.ClusterIPFamily = os.Getenv("E2E_IP_FAMILY")
 	f.ClusterVersion = os.Getenv("E2E_BRANCH")
 	f.ClusterNetworkMode = os.Getenv("E2E_NETWORK_MODE")
@@ -104,6 +105,7 @@ func NewFrameworkWithContext(baseName, kubeContext string) *Framework {
 
 	f.Framework = framework.NewDefaultFramework(baseName)
 	f.NamespacePodSecurityEnforceLevel = admissionapi.LevelPrivileged
+	f.NamespacePodSecurityWarnLevel = admissionapi.LevelPrivileged
 	f.ClusterIPFamily = os.Getenv("E2E_IP_FAMILY")
 	f.ClusterVersion = os.Getenv("E2E_BRANCH")
 	f.ClusterNetworkMode = os.Getenv("E2E_NETWORK_MODE")

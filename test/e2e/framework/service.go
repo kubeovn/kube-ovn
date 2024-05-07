@@ -13,6 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/kubernetes/test/e2e/framework"
+	"k8s.io/utils/ptr"
 
 	"github.com/onsi/gomega"
 
@@ -155,14 +156,13 @@ func MakeService(name string, svcType corev1.ServiceType, annotations, selector 
 			Annotations: annotations,
 		},
 		Spec: corev1.ServiceSpec{
+			IPFamilyPolicy:  ptr.To(corev1.IPFamilyPolicyPreferDualStack),
 			Ports:           ports,
 			Selector:        selector,
 			SessionAffinity: affinity,
 			Type:            svcType,
 		},
 	}
-	service.Spec.IPFamilyPolicy = new(corev1.IPFamilyPolicy)
-	*service.Spec.IPFamilyPolicy = corev1.IPFamilyPolicyPreferDualStack
 
 	return service
 }
