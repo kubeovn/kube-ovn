@@ -12,7 +12,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/alauda/felix/ipsets"
+	"github.com/kubeovn/felix/ipsets"
 	"github.com/kubeovn/go-iptables/iptables"
 	"github.com/vishvananda/netlink"
 	v1 "k8s.io/api/core/v1"

@@ -7,7 +7,6 @@ toolchain go1.22.2
 require (
 	github.com/Microsoft/go-winio v0.6.2
 	github.com/Microsoft/hcsshim v0.12.3
-	github.com/alauda/felix v3.6.6-0.20201207121355-187332daf314+incompatible
 	github.com/bhendo/go-powershell v0.0.0-20190719160123-219e7fb4e41e
 	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/cnf/structhash v0.0.0-20201127153200-e1b16c1ebc08
@@ -21,6 +20,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.7.0
 	github.com/k8snetworkplumbingwg/sriovnet v1.2.0
+	github.com/kubeovn/felix v0.0.0-20240506083207-ed396be1b6cf
 	github.com/kubeovn/go-iptables v0.0.0-20230322103850-8619a8ab3dca
 	github.com/kubeovn/gonetworkmanager/v2 v2.0.0-20230905082151-e28c4d73a589
 	github.com/kubeovn/ovsdb v0.0.0-20240410091831-5dd26006c475
@@ -282,7 +282,6 @@ require (
 )
 
 replace (
-	github.com/alauda/felix => github.com/kubeovn/felix v0.0.0-20220325073257-c8a0f705d139
 	github.com/mdlayher/arp => github.com/kubeovn/arp v0.0.0-20240218024213-d9612a263f68
 	github.com/openshift/client-go => github.com/openshift/client-go v0.0.1
 	github.com/ovn-org/libovsdb => github.com/kubeovn/libovsdb v0.0.0-20240218023647-f0bc3ce57fcd

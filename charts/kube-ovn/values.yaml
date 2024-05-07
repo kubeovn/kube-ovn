@@ -77,7 +77,7 @@ ipv4:
   SVC_CIDR: "10.96.0.0/12"
   JOIN_CIDR: "100.64.0.0/16"
   PINGER_EXTERNAL_ADDRESS: "1.1.1.1"
-  PINGER_EXTERNAL_DOMAIN: "alauda.cn."
+  PINGER_EXTERNAL_DOMAIN: "kube-ovn.io."
 
 ipv6:
   POD_CIDR: "fd00:10:16::/112"
