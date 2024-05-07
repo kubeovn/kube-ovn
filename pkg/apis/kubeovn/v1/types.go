@@ -1007,6 +1007,7 @@ type OvnFipSpec struct {
 	IPName string `json:"ipName"` // vip, ip crd name
 	Vpc    string `json:"vpc"`
 	V4Ip   string `json:"v4Ip"`
+	V6Ip   string `json:"v6Ip"`
 }
 
 // OvnFipCondition describes the state of an object at a certain point.
@@ -1018,7 +1019,9 @@ type OvnFipStatus struct {
 	// +patchStrategy=merge
 	Vpc   string `json:"vpc" patchStrategy:"merge"`
 	V4Eip string `json:"v4Eip" patchStrategy:"merge"`
+	V6Eip string `json:"v6Eip" patchStrategy:"merge"`
 	V4Ip  string `json:"v4Ip" patchStrategy:"merge"`
+	V6Ip  string `json:"v6Ip" patchStrategy:"merge"`
 	Ready bool   `json:"ready" patchStrategy:"merge"`
 
 	// Conditions represents the latest state of the object
@@ -1056,6 +1059,7 @@ type OvnSnatRuleSpec struct {
 	IPName    string `json:"ipName"`
 	Vpc       string `json:"vpc"`
 	V4IpCidr  string `json:"v4IpCidr"` // subnet cidr or pod ip address
+	V6IpCidr  string `json:"v6IpCidr"` // subnet cidr or pod ip address
 }
 
 // OvnSnatRuleCondition describes the state of an object at a certain point.
@@ -1067,7 +1071,9 @@ type OvnSnatRuleStatus struct {
 	// +patchStrategy=merge
 	Vpc      string `json:"vpc" patchStrategy:"merge"`
 	V4Eip    string `json:"v4Eip" patchStrategy:"merge"`
+	V6Eip    string `json:"v6Eip" patchStrategy:"merge"`
 	V4IpCidr string `json:"v4IpCidr" patchStrategy:"merge"`
+	V6IpCidr string `json:"v6IpCidr" patchStrategy:"merge"`
 	Ready    bool   `json:"ready" patchStrategy:"merge"`
 
 	// Conditions represents the latest state of the object
@@ -1108,6 +1114,7 @@ type OvnDnatRuleSpec struct {
 	Protocol     string `json:"protocol,omitempty"`
 	Vpc          string `json:"vpc"`
 	V4Ip         string `json:"v4Ip"`
+	V6Ip         string `json:"v6Ip"`
 }
 
 // OvnDnatRuleCondition describes the state of an object at a certain point.
@@ -1120,8 +1127,10 @@ type OvnDnatRuleStatus struct {
 	// +patchStrategy=merge
 	Vpc          string `json:"vpc" patchStrategy:"merge"`
 	V4Eip        string `json:"v4Eip" patchStrategy:"merge"`
+	V6Eip        string `json:"v6Eip" patchStrategy:"merge"`
 	ExternalPort string `json:"externalPort"`
 	V4Ip         string `json:"v4Ip" patchStrategy:"merge"`
+	V6Ip         string `json:"v6Ip" patchStrategy:"merge"`
 	InternalPort string `json:"internalPort"`
 	Protocol     string `json:"protocol,omitempty"`
 	IPName       string `json:"ipName"`

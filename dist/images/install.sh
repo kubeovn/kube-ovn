@@ -1498,8 +1498,14 @@ spec:
       - jsonPath: .status.v4Eip
         name: V4Eip
         type: string
+      - jsonPath: .status.v6Eip
+        name: V6Eip
+        type: string
       - jsonPath: .status.v4Ip
         name: V4Ip
+        type: string
+      - jsonPath: .status.v6Ip
+        name: V6Ip
         type: string
       - jsonPath: .status.ready
         name: Ready
@@ -1555,6 +1561,8 @@ spec:
                   type: string
                 v4Ip:
                   type: string
+                v6Ip:
+                  type: string
 ---
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
@@ -1583,8 +1591,14 @@ spec:
       - jsonPath: .status.v4Eip
         name: V4Eip
         type: string
+      - jsonPath: .status.v6Eip
+        name: V6Eip
+        type: string
       - jsonPath: .status.v4IpCidr
         name: V4IpCidr
+        type: string
+      - jsonPath: .status.v6IpCidr
+        name: V6IpCidr
         type: string
       - jsonPath: .status.ready
         name: Ready
@@ -1600,7 +1614,11 @@ spec:
                   type: boolean
                 v4Eip:
                   type: string
+                v6Eip:
+                  type: string
                 v4IpCidr:
+                  type: string
+                v6IpCidr:
                   type: string
                 vpc:
                   type: string
@@ -1633,6 +1651,8 @@ spec:
                 vpc:
                   type: string
                 v4IpCidr:
+                  type: string
+                v6IpCidr:
                   type: string
 ---
 apiVersion: apiextensions.k8s.io/v1
@@ -1668,8 +1688,14 @@ spec:
         - jsonPath: .status.v4Eip
           name: V4Eip
           type: string
+        - jsonPath: .status.v6Eip
+          name: V6Eip
+          type: string
         - jsonPath: .status.v4Ip
           name: V4Ip
+          type: string
+        - jsonPath: .status.v6Ip
+          name: V6Ip
           type: string
         - jsonPath: .status.internalPort
           name: InternalPort
@@ -1741,6 +1767,8 @@ spec:
                 vpc:
                   type: string
                 v4Ip:
+                  type: string
+                v6Ip:
                   type: string
 ---
 apiVersion: apiextensions.k8s.io/v1
