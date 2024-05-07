@@ -1,5 +1,20 @@
 # Changelog
 
+## v1.12.14 (2024-05-07)
+
+ * [8461d381](https://github.com/kubeovn/kube-ovn/commit/8461d38111e133d78de2b4198b6ac5319738d625) release v1.12.14
+ * [99fda1ef](https://github.com/kubeovn/kube-ovn/commit/99fda1effbdf20f6dc0cf12b93b0a15c6e94a5bf) ignore CVEs in CNI plugins
+ * [70871e72](https://github.com/kubeovn/kube-ovn/commit/70871e720dda180bfb35590fd32934ac5c0db4ad) ipam: fix IPRangeList clone (#3979)
+ * [12b85e50](https://github.com/kubeovn/kube-ovn/commit/12b85e500ec0fe8e5a06559cf14f9f5e65f2c7d9) remove unused e2e test cases (#3968)
+ * [fd2874a9](https://github.com/kubeovn/kube-ovn/commit/fd2874a9e3bf2bf1b38e037690a729ab227a7be3) chart: fix kubeVersion to allow for patterns that match sub versions (#3975)
+ * [4b2d5cba](https://github.com/kubeovn/kube-ovn/commit/4b2d5cbaa6ed7ccffa50b807534a398ce0a16525) prepare for next release
+
+### Contributors
+
+ * Joachim Hill-Grannec
+ * zhangzujian
+ * 张祖建
+
 ## v1.12.13 (2024-04-30)
 
  * [ec3c9282](https://github.com/kubeovn/kube-ovn/commit/ec3c9282cfe5fdd400b045d3efe39cded184fca0) release v1.12.13
@@ -2559,6 +2574,15 @@
  * [5bb5f45e](https://github.com/kubeovn/kube-ovn/commit/5bb5f45e3d4808ae8b5d9a444d4001c1f9a22f1a) kubectl-ko: fix trace when u2oInterconnection is enabled (#2836)
  * [e45a2978](https://github.com/kubeovn/kube-ovn/commit/e45a29782204cb8068b9fe477a5b8a822187fa81) fix underlay access to node through ovn0 (#2847)
  * [7e32e57d](https://github.com/kubeovn/kube-ovn/commit/7e32e57d222f1c0e43b51d185d2dbe901e6ea310) fix MTU when subnet is using logical gateway (#2834)
+
+### Contributors
+
+ * changluyi
+ * yichanglu
+ * 张祖建
+
+## v1.9.25 (2023-05-11)
+
  * [a5a97ce6](https://github.com/kubeovn/kube-ovn/commit/a5a97ce680290c93028a2a85faa24999aedd0617) prepare for v1.9.26
  * [bce5b04d](https://github.com/kubeovn/kube-ovn/commit/bce5b04db57174e894e15f6717591ff124201ad1) fix ip statistics in subnet status (#2769)
  * [6b4786b3](https://github.com/kubeovn/kube-ovn/commit/6b4786b3e7f3def75e230eeb064f94d6a30158d2) add EXCHANGE_LINK_NAME to installation script
