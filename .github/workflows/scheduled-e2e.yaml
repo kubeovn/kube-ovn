@@ -49,7 +49,7 @@ jobs:
           cache: false
 
       - name: Export Go full version
-        run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
+        run: echo "GO_FULL_VER=$(go env GOVERSION)" >> "$GITHUB_ENV"
 
       - name: Go cache
         uses: actions/cache@v4
@@ -105,7 +105,7 @@ jobs:
       - name: Check kube ovn pod restarts
         run: |
           make check-kube-ovn-pod-restarts
-          
+
   k8s-netpol-e2e:
     name: Kubernetes Network Policy E2E
     runs-on: ubuntu-22.04
@@ -136,7 +136,7 @@ jobs:
           cache: false
 
       - name: Export Go full version
-        run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
+        run: echo "GO_FULL_VER=$(go env GOVERSION)" >> "$GITHUB_ENV"
 
       - name: Go cache
         uses: actions/cache@v4
@@ -188,7 +188,7 @@ jobs:
       - name: Check kube ovn pod restarts
         run: |
           make check-kube-ovn-pod-restarts
-          
+
   cyclonus-netpol-e2e:
     name: Cyclonus Network Policy E2E
     runs-on: ubuntu-22.04
@@ -200,7 +200,6 @@ jobs:
           - master
           - release-1.12
           - release-1.11
-          - release-1.9
         ip-family:
           - ipv4
           - ipv6
@@ -250,7 +249,7 @@ jobs:
       - name: Check kube ovn pod restarts
         run: |
           make check-kube-ovn-pod-restarts
-          
+
   kube-ovn-conformance-e2e:
     name: Kube-OVN Conformance E2E
     runs-on: ubuntu-22.04
@@ -278,7 +277,7 @@ jobs:
           cache: false
 
       - name: Export Go full version
-        run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
+        run: echo "GO_FULL_VER=$(go env GOVERSION)" >> "$GITHUB_ENV"
 
       - name: Go cache
         uses: actions/cache@v4
@@ -354,7 +353,7 @@ jobs:
           cache: false
 
       - name: Export Go full version
-        run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
+        run: echo "GO_FULL_VER=$(go env GOVERSION)" >> "$GITHUB_ENV"
 
       - name: Go cache
         uses: actions/cache@v4
@@ -407,7 +406,7 @@ jobs:
       - name: Check kube ovn pod restarts
         run: |
           make check-kube-ovn-pod-restarts
-          
+
   underlay-logical-gateway-installation-test:
     name: Underlay Logical Gateway Installation Test
     runs-on: ubuntu-22.04
@@ -455,7 +454,7 @@ jobs:
       - name: Check kube ovn pod restarts
         run: |
           make check-kube-ovn-pod-restarts
-          
+
       - name: Cleanup
         working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
         run: sh dist/images/cleanup.sh
@@ -509,7 +508,7 @@ jobs:
       - name: Check kube ovn pod restarts
         run: |
           make check-kube-ovn-pod-restarts
-          
+
       - name: Cleanup
         working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
         run: sh dist/images/cleanup.sh
@@ -564,7 +563,7 @@ jobs:
       - name: Check kube ovn pod restarts
         run: |
           make check-kube-ovn-pod-restarts
-          
+
       - name: Cleanup
         working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
         run: sh dist/images/cleanup.sh
@@ -591,7 +590,7 @@ jobs:
           cache: false
 
       - name: Export Go full version
-        run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
+        run: echo "GO_FULL_VER=$(go env GOVERSION)" >> "$GITHUB_ENV"
 
       - name: Go cache
         uses: actions/cache@v4
@@ -641,7 +640,7 @@ jobs:
       - name: Check kube ovn pod restarts
         run: |
           make check-kube-ovn-pod-restarts
-          
+
       - name: Run E2E
         run: make kube-ovn-lb-svc-conformance-e2e
 
@@ -655,7 +654,7 @@ jobs:
         branch:
           - master
           - release-1.12-mc
-  
+
     steps:
       - uses: actions/checkout@v4
 
@@ -667,7 +666,7 @@ jobs:
           cache: false
 
       - name: Export Go full version
-        run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
+        run: echo "GO_FULL_VER=$(go env GOVERSION)" >> "$GITHUB_ENV"
 
       - name: Go cache
         uses: actions/cache@v4
@@ -717,7 +716,7 @@ jobs:
       - name: Check kube ovn pod restarts
         run: |
           make check-kube-ovn-pod-restarts
-          
+
       - name: Run E2E
         run: make kube-ovn-kubevirt-e2e
 
@@ -742,7 +741,7 @@ jobs:
           cache: false
 
       - name: Export Go full version
-        run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
+        run: echo "GO_FULL_VER=$(go env GOVERSION)" >> "$GITHUB_ENV"
 
       - name: Go cache
         uses: actions/cache@v4
@@ -794,7 +793,7 @@ jobs:
       - name: Check kube ovn pod restarts
         run: |
           make check-kube-ovn-pod-restarts
-          
+
   installation-compatibility-test:
     name: Installation Compatibility Test
     runs-on: ubuntu-22.04
@@ -845,7 +844,7 @@ jobs:
       - name: Check kube ovn pod restarts
         run: |
           make check-kube-ovn-pod-restarts
-          
+
   cilium-chaining-e2e:
     name: Cilium Chaining E2E
     runs-on: ubuntu-22.04
@@ -875,7 +874,7 @@ jobs:
           cache: false
 
       - name: Export Go full version
-        run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
+        run: echo "GO_FULL_VER=$(go env GOVERSION)" >> "$GITHUB_ENV"
 
       - name: Go cache
         uses: actions/cache@v4
@@ -930,7 +929,7 @@ jobs:
       - name: Check kube ovn pod restarts
         run: |
           make check-kube-ovn-pod-restarts
-          
+
       - name: Cleanup
         working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
         run: sh dist/images/cleanup.sh
@@ -965,7 +964,7 @@ jobs:
           cache: false
 
       - name: Export Go full version
-        run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
+        run: echo "GO_FULL_VER=$(go env GOVERSION)" >> "$GITHUB_ENV"
 
       - name: Go cache
         uses: actions/cache@v4
@@ -1024,7 +1023,7 @@ jobs:
       - name: Check kube ovn pod restarts
         run: |
           make check-kube-ovn-pod-restarts
-          
+
       - name: Cleanup
         run: sh dist/images/cleanup.sh
 
@@ -1036,9 +1035,6 @@ jobs:
       fail-fast: false
       matrix:
         case:
-          - release-1.9 => release-1.11
-          - release-1.9 => release-1.12
-          - release-1.9 => master
           - release-1.11 => release-1.12
           - release-1.11 => master
           - release-1.12 => master
@@ -1056,7 +1052,7 @@ jobs:
           cache: false
 
       - name: Export Go full version
-        run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
+        run: echo "GO_FULL_VER=$(go env GOVERSION)" >> "$GITHUB_ENV"
 
       - name: Go cache
         uses: actions/cache@v4
@@ -1128,7 +1124,7 @@ jobs:
       - name: Check kube ovn pod restarts
         run: |
           make check-kube-ovn-pod-restarts
-          
+
       - name: Cleanup
         working-directory: test/e2e/kube-ovn/branches/${{ env.VERSION_TO }}
         run: sh dist/images/cleanup.sh
@@ -1189,7 +1185,7 @@ jobs:
       - name: Check kube ovn pod restarts
         run: |
           make check-kube-ovn-pod-restarts
-          
+
       - name: Cleanup
         working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
         run: sh dist/images/cleanup.sh
@@ -1214,7 +1210,7 @@ jobs:
           cache: false
 
       - name: Export Go full version
-        run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
+        run: echo "GO_FULL_VER=$(go env GOVERSION)" >> "$GITHUB_ENV"
 
       - name: Go cache
         uses: actions/cache@v4
@@ -1266,7 +1262,7 @@ jobs:
       - name: Check kube ovn pod restarts
         run: |
           make check-kube-ovn-pod-restarts
-          
+
   ovn-vpc-nat-gw-conformance-e2e:
     name: OVN VPC NAT Gateway E2E
     runs-on: ubuntu-22.04
@@ -1288,7 +1284,7 @@ jobs:
           cache: false
 
       - name: Export Go full version
-        run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
+        run: echo "GO_FULL_VER=$(go env GOVERSION)" >> "$GITHUB_ENV"
 
       - name: Go cache
         uses: actions/cache@v4
@@ -1339,4 +1335,3 @@ jobs:
       - name: Check kube ovn pod restarts
         run: |
           make check-kube-ovn-pod-restarts
-          
