@@ -187,7 +187,7 @@ jobs:
 
       - name: Export Go full version
         run: |
-          $goVersion = (go version).Split()[2]
+          $goVersion = (go env GOVERSION)
           $entry = [string]::Format("GO_FULL_VER={0}", $goVersion)
           Add-Content -Path $env:GITHUB_ENV -Value $entry
 
