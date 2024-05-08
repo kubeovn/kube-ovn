@@ -2131,6 +2131,9 @@ spec:
       - name: Vpc
         type: string
         jsonPath: .spec.vpc
+      - name: Vlan
+        type: string
+        jsonPath: .spec.vlan
       - name: Protocol
         type: string
         jsonPath: .spec.protocol
