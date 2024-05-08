@@ -835,6 +835,11 @@ func (c *Controller) reconcileRouteSubnets(cachedPod, pod *v1.Pod, needRoutePodN
 		podIP = pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, podNet.ProviderName)]
 		subnet = podNet.Subnet
 
+		// Check if pod uses nodeSwitch subnet
+		if subnet.Name == c.config.NodeSwitch {
+			return fmt.Errorf("NodeSwitch subnet %s is unavailable for pod", subnet.Name)
+		}
+
 		if (!c.config.EnableLb || !(subnet.Spec.EnableLb != nil && *subnet.Spec.EnableLb)) &&
 			subnet.Spec.Vpc == c.config.ClusterRouter &&
 			subnet.Spec.U2OInterconnection &&
