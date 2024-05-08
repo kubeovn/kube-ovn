@@ -51,7 +51,7 @@ jobs:
           cache: false
 
       - name: Export Go full version
-        run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
+        run: echo "GO_FULL_VER=$(go env GOVERSION)" >> "$GITHUB_ENV"
 
       - name: Go cache
         uses: actions/cache@v4
@@ -140,7 +140,7 @@ jobs:
           cache: false
 
       - name: Export Go full version
-        run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
+        run: echo "GO_FULL_VER=$(go env GOVERSION)" >> "$GITHUB_ENV"
 
       - name: Go cache
         uses: actions/cache@v4
@@ -285,7 +285,7 @@ jobs:
           cache: false
 
       - name: Export Go full version
-        run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
+        run: echo "GO_FULL_VER=$(go env GOVERSION)" >> "$GITHUB_ENV"
 
       - name: Go cache
         uses: actions/cache@v4
@@ -364,7 +364,7 @@ jobs:
           cache: false
 
       - name: Export Go full version
-        run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
+        run: echo "GO_FULL_VER=$(go env GOVERSION)" >> "$GITHUB_ENV"
 
       - name: Go cache
         uses: actions/cache@v4
@@ -608,7 +608,7 @@ jobs:
           cache: false
 
       - name: Export Go full version
-        run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
+        run: echo "GO_FULL_VER=$(go env GOVERSION)" >> "$GITHUB_ENV"
 
       - name: Go cache
         uses: actions/cache@v4
@@ -685,7 +685,7 @@ jobs:
           cache: false
 
       - name: Export Go full version
-        run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
+        run: echo "GO_FULL_VER=$(go env GOVERSION)" >> "$GITHUB_ENV"
 
       - name: Go cache
         uses: actions/cache@v4
@@ -760,7 +760,7 @@ jobs:
           cache: false
 
       - name: Export Go full version
-        run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
+        run: echo "GO_FULL_VER=$(go env GOVERSION)" >> "$GITHUB_ENV"
 
       - name: Go cache
         uses: actions/cache@v4
@@ -897,7 +897,7 @@ jobs:
           cache: false
 
       - name: Export Go full version
-        run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
+        run: echo "GO_FULL_VER=$(go env GOVERSION)" >> "$GITHUB_ENV"
 
       - name: Go cache
         uses: actions/cache@v4
@@ -990,7 +990,7 @@ jobs:
           cache: false
 
       - name: Export Go full version
-        run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
+        run: echo "GO_FULL_VER=$(go env GOVERSION)" >> "$GITHUB_ENV"
 
       - name: Go cache
         uses: actions/cache@v4
@@ -1081,7 +1081,7 @@ jobs:
           cache: false
 
       - name: Export Go full version
-        run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
+        run: echo "GO_FULL_VER=$(go env GOVERSION)" >> "$GITHUB_ENV"
 
       - name: Go cache
         uses: actions/cache@v4
@@ -1239,7 +1239,7 @@ jobs:
           cache: false
 
       - name: Export Go full version
-        run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
+        run: echo "GO_FULL_VER=$(go env GOVERSION)" >> "$GITHUB_ENV"
 
       - name: Go cache
         uses: actions/cache@v4
@@ -1313,7 +1313,7 @@ jobs:
           cache: false
 
       - name: Export Go full version
-        run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
+        run: echo "GO_FULL_VER=$(go env GOVERSION)" >> "$GITHUB_ENV"
 
       - name: Go cache
         uses: actions/cache@v4
