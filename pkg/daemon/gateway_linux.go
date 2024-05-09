@@ -413,8 +413,27 @@ func (c *Controller) createIptablesRule(ipt *iptables.IPTables, rule util.IPTabl
 
 	s := strings.Join(rule.Rule, " ")
 	if exists {
-		klog.V(3).Infof(`iptables rule %q already exists`, s)
-		return nil
+		if rule.Table == NAT && rule.Chain == Prerouting {
+			// make sure the nat prerouting iptable rule must be in the first position
+			firstRule, err := ipt.ListById(rule.Table, rule.Chain, 1)
+			if err != nil {
+				klog.Errorf("failed to list the first rule: %v", err)
+				return err
+			}
+			firstRule = strings.ReplaceAll(firstRule, "\"", "")
+			if strings.Contains(firstRule, s) {
+				klog.V(3).Infof("the first rule %q contains: %q", firstRule, s)
+				return nil
+			}
+			klog.Warningf("the must first rule should not be: %s", firstRule)
+			if err = deleteIptablesRule(ipt, rule); err != nil {
+				klog.Errorf("failed to delete the must first rule %v: %v", rule, err)
+				return err
+			}
+		} else {
+			klog.V(3).Infof(`iptables rule %q already exists`, s)
+			return nil
+		}
 	}
 
 	klog.Infof("creating iptables rule in table %s chain %s at position %d: %q", rule.Table, rule.Chain, 1, s)
