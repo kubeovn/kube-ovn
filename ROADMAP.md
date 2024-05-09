@@ -1,42 +1,29 @@
 # Kube-OVN RoadMap
 
-## v1.11.0 -- July 2022
+This document defines high level goals for Kube-OVN project. We welcome community contributors to discuss and update this Roadmap through Issues.
 
-### DataCenter Network
-- DNS in custom VPC
-- L2 LB in custom VPC
+## Network Datapath
 
-### Application Network
-- Windows overlay/underlay network support
-- Multi cluster Service
-- Load balancer type Service
+Kube-OVN currently supports two network modes, Overlay and Underlay. We hope to improve the stability, performance, and compatibility with the ecosystem of these two network modes in Kubernetes.
 
-### Performance
-- Use libovsdb to replace ovn-nbctl daemon
-- Optimize OVN logical flows
+-  Improved Datapath network performance
+-  Keeping up with the latest network API features in the community
+-  Enhanced network monitoring and visualization capabilities
+-  Addition of automated test cases for various scenarios
 
-## Planned features
+## VPC Network
 
-### DataCenter Network
-- Namespaced VPC and Subnet
-- Integrate DPU to support bare metal
-- Integrate SDN switches to support bare metal
+VPC network is a key feature of Kube-OVN, many functions have been used in production environment, and we hope to increase the maturity of these functions and improve the user experiences.
 
-### Application Network
-- Traffic visualization and application level analyzing
-- Multi cluster Service/DNS/Networkpolicy
-- Traffic encryption
-- Fine-grained ACL
+-  Standardize multiple gateway solutions and provide the best egress practice
+-  Provide more VPC internal basic network capabilities and solutions, such as DNS, DHCP, LoadBalancer, etc.
+-  Simplify VPC operation complexity and provide a more comprehensive CLI
+-  Supplement automated test cases for various scenarios
 
-### Performance Enhancement
-- eBPF to accelerate intra-node communication
-- Tools for automatically profile
-- Repos for fastpath and optimized ovs modules
-- OVN/OVS tailor
-- SR-IOV and OVS-DPDK integration
+## User Experience
 
-### User Experience Enhancement
-- New document website and optimized for new beginners
+Improve the user experience of Kubernetes cni, making container networking simpler, more reliable, and efficient.
+
 - Helm/Operator to automate daily operations
 - More organized metrics and grafana dashboard
 - Troubleshooting tools that can automatically find known issues
