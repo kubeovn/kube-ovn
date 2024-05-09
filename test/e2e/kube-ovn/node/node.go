@@ -79,7 +79,7 @@ var _ = framework.OrderedDescribe("[group:node]", func() {
 			framework.ExpectIPInCIDR(node.Annotations[util.IPAddressAnnotation], join.Spec.CIDRBlock)
 			framework.ExpectHaveKeyWithValue(node.Annotations, util.LogicalSwitchAnnotation, join.Name)
 			framework.ExpectMAC(node.Annotations[util.MacAddressAnnotation])
-			framework.ExpectHaveKeyWithValue(node.Annotations, util.PortNameAnnotation, "node-"+node.Name)
+			framework.ExpectHaveKeyWithValue(node.Annotations, util.PortNameAnnotation, util.NodeLspName(node.Name))
 
 			podName = "pod-" + framework.RandomSuffix()
 			ginkgo.By("Creating pod " + podName + " with host network")
