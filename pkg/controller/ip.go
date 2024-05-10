@@ -459,7 +459,7 @@ func (c *Controller) createOrUpdateIPCR(ipCRName, podName, ip, mac, subnetName, 
 		switch {
 		case subnetName == c.config.NodeSwitch:
 			key = nodeName
-			ipName = fmt.Sprintf("node-%s", nodeName)
+			ipName = util.NodeLspName(nodeName)
 		case strings.HasPrefix(podName, util.U2OInterconnName[0:19]):
 			key = podName // interconn IP name
 			ipName = podName

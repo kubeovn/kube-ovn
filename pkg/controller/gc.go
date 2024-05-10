@@ -219,30 +219,44 @@ func (c *Controller) gcNode() error {
 		klog.Errorf("failed to list node, %v", err)
 		return err
 	}
-	nodeNames := make([]string, 0, len(nodes))
-	for _, no := range nodes {
-		nodeNames = append(nodeNames, no.Name)
+	nodeNames := strset.NewWithSize(len(nodes))
+	for _, node := range nodes {
+		nodeNames.Add(node.Name)
 	}
 	ips, err := c.ipsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list ip, %v", err)
 		return err
 	}
-	ipNodeNames := make([]string, 0, len(ips))
+
 	for _, ip := range ips {
-		if !strings.Contains(ip.Name, ".") {
-			ipNodeNames = append(ipNodeNames, strings.TrimPrefix(ip.Name, "node-"))
-		}
-	}
-	for _, no := range ipNodeNames {
-		if !slices.Contains(nodeNames, no) {
-			klog.Infof("gc node %s", no)
-			if err := c.handleDeleteNode(no); err != nil {
-				klog.Errorf("failed to gc node %s, %v", no, err)
-				return err
+		if strings.HasPrefix(ip.Name, util.NodeLspPrefix) && !strings.Contains(ip.Name, ".") {
+			if node := ip.Name[len(util.NodeLspPrefix):]; !nodeNames.Has(node) {
+				klog.Infof("gc node %s", node)
+				if err := c.handleDeleteNode(node); err != nil {
+					klog.Errorf("failed to gc node %s: %v", node, err)
+					return err
+				}
 			}
 		}
 	}
+
+	policies, err := c.OVNNbClient.ListLogicalRouterPolicies(c.config.ClusterRouter, util.NodeRouterPolicyPriority, map[string]string{"vendor": util.CniTypeName}, false)
+	if err != nil {
+		klog.Errorf("failed to list logical router policies on lr %s: %v", c.config.ClusterRouter, err)
+		return err
+	}
+	for _, policy := range policies {
+		if nodeNames.Has(policy.ExternalIDs["node"]) {
+			continue
+		}
+		klog.Infof("gc logical router policy %q on lr %s", policy.Match, c.config.ClusterRouter)
+		if err = c.OVNNbClient.DeleteLogicalRouterPolicy(c.config.ClusterRouter, policy.Priority, policy.Match); err != nil {
+			klog.Errorf("failed to delete logical router policy %q on lr %s", policy.Match, c.config.ClusterRouter)
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -321,7 +335,7 @@ func (c *Controller) markAndCleanLSP() error {
 	}
 	for _, node := range nodes {
 		if node.Annotations[util.AllocatedAnnotation] == "true" {
-			ipMap.Add(fmt.Sprintf("node-%s", node.Name))
+			ipMap.Add(util.NodeLspName(node.Name))
 		}
 
 		if _, err := c.ovnEipsLister.Get(node.Name); err == nil {
