@@ -46,7 +46,7 @@ func (c *Controller) setGatewayBandwidth() error {
 		return err
 	}
 	ingress, egress := node.Annotations[util.IngressRateAnnotation], node.Annotations[util.EgressRateAnnotation]
-	ifaceID := fmt.Sprintf("node-%s", c.config.NodeName)
+	ifaceID := util.NodeLspName(c.config.NodeName)
 	if ingress == "" && egress == "" {
 		if htbQos, _ := ovs.IsHtbQos(ifaceID); !htbQos {
 			return nil
