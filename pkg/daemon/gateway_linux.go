@@ -421,14 +421,17 @@ func (c *Controller) createIptablesRule(ipt *iptables.IPTables, rule util.IPTabl
 				return err
 			}
 			firstRule = strings.ReplaceAll(firstRule, "\"", "")
-			if strings.Contains(firstRule, s) {
-				klog.V(3).Infof("the first rule %q contains: %q", firstRule, s)
-				return nil
-			}
-			klog.Warningf("the must first rule should not be: %s", firstRule)
-			if err = deleteIptablesRule(ipt, rule); err != nil {
-				klog.Errorf("failed to delete the must first rule %v: %v", rule, err)
-				return err
+			ruleSpec := util.DoubleQuotedFields(firstRule)
+			if len(ruleSpec) > 2 {
+				if slices.Equal(ruleSpec[2:], rule.Rule) {
+					klog.V(3).Infof("the first rule %q contains: %q", firstRule, s)
+					return nil
+				}
+				klog.Warningf("the first rule should not be: %s", firstRule)
+				if err = deleteIptablesRule(ipt, rule); err != nil {
+					klog.Errorf("failed to delete rule %v: %v", rule, err)
+					return err
+				}
 			}
 		} else {
 			klog.V(3).Infof(`iptables rule %q already exists`, s)
