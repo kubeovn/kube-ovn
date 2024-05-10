@@ -329,7 +329,7 @@ func (c *Controller) InitIPAM() error {
 		if ip.Spec.Namespace != "" {
 			ipamKey = fmt.Sprintf("%s/%s", ip.Spec.Namespace, ip.Spec.PodName)
 		} else {
-			ipamKey = fmt.Sprintf("node-%s", ip.Spec.PodName)
+			ipamKey = util.NodeLspName(ip.Spec.PodName)
 		}
 		if _, _, _, err = c.ipam.GetStaticAddress(ipamKey, ip.Name, ip.Spec.IPAddress, &ip.Spec.MacAddress, ip.Spec.Subnet, true); err != nil {
 			klog.Errorf("failed to init IPAM from IP CR %s: %v", ip.Name, err)
@@ -421,7 +421,7 @@ func (c *Controller) InitIPAM() error {
 	}
 	for _, node := range nodes {
 		if node.Annotations[util.AllocatedAnnotation] == "true" {
-			portName := fmt.Sprintf("node-%s", node.Name)
+			portName := util.NodeLspName(node.Name)
 			mac := node.Annotations[util.MacAddressAnnotation]
 			v4IP, v6IP, _, err := c.ipam.GetStaticAddress(portName, portName,
 				node.Annotations[util.IPAddressAnnotation], &mac,

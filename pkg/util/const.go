@@ -129,6 +129,7 @@ const (
 	BindMountPath = "/run/netns"
 
 	NodeNic           = "ovn0"
+	NodeLspPrefix     = "node-"
 	NodeAllowPriority = "3000"
 
 	SecurityGroupHighestPriority = "2300"

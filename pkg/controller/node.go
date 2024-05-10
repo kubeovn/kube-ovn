@@ -234,7 +234,7 @@ func (c *Controller) handleAddNode(key string) error {
 	}
 
 	var v4IP, v6IP, mac string
-	portName := fmt.Sprintf("node-%s", key)
+	portName := util.NodeLspName(key)
 	if node.Annotations[util.AllocatedAnnotation] == "true" && node.Annotations[util.IPAddressAnnotation] != "" && node.Annotations[util.MacAddressAnnotation] != "" {
 		macStr := node.Annotations[util.MacAddressAnnotation]
 		v4IP, v6IP, mac, err = c.ipam.GetStaticAddress(portName, portName, node.Annotations[util.IPAddressAnnotation],
@@ -327,7 +327,7 @@ func (c *Controller) handleAddNode(key string) error {
 	node.Annotations[util.GatewayAnnotation] = subnet.Spec.Gateway
 	node.Annotations[util.LogicalSwitchAnnotation] = c.config.NodeSwitch
 	node.Annotations[util.AllocatedAnnotation] = "true"
-	node.Annotations[util.PortNameAnnotation] = fmt.Sprintf("node-%s", key)
+	node.Annotations[util.PortNameAnnotation] = portName
 	raw, _ := json.Marshal(node.Annotations)
 	patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
 	_, err = c.config.KubeClient.CoreV1().Nodes().Patch(context.Background(), key, types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{}, "")
@@ -337,7 +337,7 @@ func (c *Controller) handleAddNode(key string) error {
 	}
 
 	if err := c.createOrUpdateCrdIPs("", ipStr, mac, c.config.NodeSwitch, "", node.Name, "", ""); err != nil {
-		klog.Errorf("failed to create or update IPs node-%s: %v", key, err)
+		klog.Errorf("failed to create or update IPs %s: %v", portName, err)
 		return err
 	}
 
@@ -472,10 +472,10 @@ func (c *Controller) handleDeleteNode(key string) error {
 	defer func() { _ = c.nodeKeyMutex.UnlockKey(key) }()
 	klog.Infof("handle delete node %s", key)
 
-	portName := fmt.Sprintf("node-%s", key)
+	portName := util.NodeLspName(key)
 	klog.Infof("delete logical switch port %s", portName)
 	if err := c.OVNNbClient.DeleteLogicalSwitchPort(portName); err != nil {
-		klog.Errorf("failed to delete node switch port node-%s: %v", key, err)
+		klog.Errorf("failed to delete node switch port %s: %v", portName, err)
 		return err
 	}
 	if err := c.OVNSbClient.DeleteChassisByHost(key); err != nil {
@@ -483,12 +483,7 @@ func (c *Controller) handleDeleteNode(key string) error {
 		return err
 	}
 
-	if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), portName, metav1.DeleteOptions{}); err != nil && !k8serrors.IsNotFound(err) {
-		return err
-	}
-
-	afs := []int{4, 6}
-	for _, af := range afs {
+	for _, af := range [...]int{4, 6} {
 		if err := c.deletePolicyRouteForLocalDNSCacheOnNode(key, af); err != nil {
 			return err
 		}
@@ -501,21 +496,11 @@ func (c *Controller) handleDeleteNode(key string) error {
 		return err
 	}
 
-	if err := c.deletePolicyRouteForNode(key); err != nil {
+	if err := c.deletePolicyRouteForNode(key, portName); err != nil {
 		klog.Errorf("failed to delete policy route for node %s: %v", key, err)
 		return err
 	}
 
-	addresses := c.ipam.GetPodAddress(portName)
-	for _, addr := range addresses {
-		if addr.IP == "" {
-			continue
-		}
-		if err := c.OVNNbClient.DeleteLogicalRouterPolicyByNexthop(c.config.ClusterRouter, util.NodeRouterPolicyPriority, addr.IP); err != nil {
-			klog.Errorf("failed to delete router policy for node %s: %v", key, err)
-			return err
-		}
-	}
 	if err := c.OVNNbClient.DeleteAddressSet(nodeUnderlayAddressSetName(key, 4)); err != nil {
 		klog.Errorf("failed to delete address set for node %s: %v", key, err)
 		return err
@@ -538,6 +523,10 @@ func (c *Controller) handleDeleteNode(key string) error {
 		if err = c.updateProviderNetworkForNodeDeletion(pn, key); err != nil {
 			return err
 		}
+	}
+
+	if err = c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), portName, metav1.DeleteOptions{}); err != nil && !k8serrors.IsNotFound(err) {
+		return err
 	}
 
 	return nil
@@ -649,7 +638,7 @@ func (c *Controller) createOrUpdateCrdIPs(podName, ip, mac, subnetName, ns, node
 	switch {
 	case subnetName == c.config.NodeSwitch:
 		key = nodeName
-		ipName = fmt.Sprintf("node-%s", nodeName)
+		ipName = util.NodeLspName(nodeName)
 	case strings.HasPrefix(podName, util.U2OInterconnName[0:19]):
 		key = podName
 		ipName = podName
@@ -1082,11 +1071,23 @@ func (c *Controller) checkPolicyRouteExistForNode(nodeName, cidr, nexthop string
 	return false, nil
 }
 
-func (c *Controller) deletePolicyRouteForNode(nodeName string) error {
+func (c *Controller) deletePolicyRouteForNode(nodeName, portName string) error {
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("get subnets: %v", err)
 		return err
+	}
+
+	addresses := c.ipam.GetPodAddress(portName)
+	for _, addr := range addresses {
+		if addr.IP == "" {
+			continue
+		}
+		klog.Infof("deleting logical router policy with nexthop %q from %s for node %s", addr.IP, c.config.ClusterRouter, nodeName)
+		if err = c.OVNNbClient.DeleteLogicalRouterPolicyByNexthop(c.config.ClusterRouter, util.NodeRouterPolicyPriority, addr.IP); err != nil {
+			klog.Errorf("failed to delete logical router policy with nexthop %q from %s for node %s: %v", addr.IP, c.config.ClusterRouter, nodeName, err)
+			return err
+		}
 	}
 
 	for _, subnet := range subnets {
