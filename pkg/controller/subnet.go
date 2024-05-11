@@ -1907,10 +1907,10 @@ func (c *Controller) reconcileU2OInterconnectionIP(subnet *kubeovnv1.Subnet) err
 	if subnet.Spec.U2OInterconnection {
 		u2oInterconnName := fmt.Sprintf(util.U2OInterconnName, subnet.Spec.Vpc, subnet.Name)
 		u2oInterconnLrpName := fmt.Sprintf("%s-%s", subnet.Spec.Vpc, subnet.Name)
-		var v4ip, v6ip string
+		var v4ip, v6ip, mac string
 		var err error
 		if subnet.Spec.U2OInterconnectionIP == "" && subnet.Status.U2OInterconnectionIP == "" {
-			v4ip, v6ip, _, err = c.acquireIPAddress(subnet.Name, u2oInterconnName, u2oInterconnLrpName)
+			v4ip, v6ip, mac, err = c.acquireIPAddress(subnet.Name, u2oInterconnName, u2oInterconnLrpName)
 			if err != nil {
 				klog.Errorf("failed to acquire underlay to overlay interconnection ip address for subnet %s, %v", subnet.Name, err)
 				return err
@@ -1921,7 +1921,7 @@ func (c *Controller) reconcileU2OInterconnectionIP(subnet *kubeovnv1.Subnet) err
 				c.ipam.ReleaseAddressByPod(u2oInterconnName, subnet.Name)
 			}
 
-			v4ip, v6ip, _, err = c.acquireStaticIPAddress(subnet.Name, u2oInterconnName, u2oInterconnLrpName, subnet.Spec.U2OInterconnectionIP)
+			v4ip, v6ip, mac, err = c.acquireStaticIPAddress(subnet.Name, u2oInterconnName, u2oInterconnLrpName, subnet.Spec.U2OInterconnectionIP)
 			if err != nil {
 				klog.Errorf("failed to acquire static underlay to overlay interconnection ip address for subnet %s, %v", subnet.Name, err)
 				return err
@@ -1937,7 +1937,7 @@ func (c *Controller) reconcileU2OInterconnectionIP(subnet *kubeovnv1.Subnet) err
 			case kubeovnv1.ProtocolDual:
 				subnet.Status.U2OInterconnectionIP = fmt.Sprintf("%s,%s", v4ip, v6ip)
 			}
-			if err := c.createOrUpdateIPCR("", u2oInterconnName, subnet.Status.U2OInterconnectionIP, "", subnet.Name, "default", "", ""); err != nil {
+			if err := c.createOrUpdateIPCR("", u2oInterconnName, subnet.Status.U2OInterconnectionIP, mac, subnet.Name, "default", "", ""); err != nil {
 				klog.Errorf("failed to create or update IPs of %s : %v", u2oInterconnLrpName, err)
 				return err
 			}
