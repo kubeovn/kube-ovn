@@ -420,7 +420,6 @@ func (c *Controller) createIptablesRule(ipt *iptables.IPTables, rule util.IPTabl
 				klog.Errorf("failed to list the first rule: %v", err)
 				return err
 			}
-			firstRule = strings.ReplaceAll(firstRule, "\"", "")
 			ruleSpec := util.DoubleQuotedFields(firstRule)
 			if len(ruleSpec) > 2 {
 				if slices.Equal(ruleSpec[2:], rule.Rule) {
