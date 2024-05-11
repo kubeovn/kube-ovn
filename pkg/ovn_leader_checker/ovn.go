@@ -184,6 +184,7 @@ func checkNorthdActive() bool {
 		klog.Errorf("failed to open %s err = %v", OvnNorthdPid, err)
 		return false
 	}
+	defer file.Close()
 	fileByte, err := io.ReadAll(file)
 	if err != nil {
 		klog.Errorf("failed to read %s err = %v", OvnNorthdPid, err)
