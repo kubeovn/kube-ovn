@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"io"
 	"net"
 	"os"
 	"os/exec"
@@ -183,22 +182,15 @@ func isDBLeader(dbName string, port int) bool {
 }
 
 func checkNorthdActive() bool {
-	var command []string
-	file, err := os.OpenFile(OvnNorthdPid, os.O_RDWR, 0o600)
+	pid, err := os.ReadFile(OvnNorthdPid)
 	if err != nil {
-		klog.Errorf("failed to open %s err = %v", OvnNorthdPid, err)
-		return false
-	}
-	defer file.Close()
-	fileByte, err := io.ReadAll(file)
-	if err != nil {
-		klog.Errorf("failed to read %s err = %v", OvnNorthdPid, err)
+		klog.Errorf("failed to read file %q: %v", OvnNorthdPid, err)
 		return false
 	}
 
-	command = []string{
+	command := []string{
 		"-t",
-		fmt.Sprintf("/var/run/ovn/ovn-northd.%s.ctl", strings.TrimSpace(string(fileByte))),
+		fmt.Sprintf("/var/run/ovn/ovn-northd.%s.ctl", strings.TrimSpace(string(pid))),
 		"status",
 	}
 	output, err := exec.Command("ovs-appctl", command...).CombinedOutput()
