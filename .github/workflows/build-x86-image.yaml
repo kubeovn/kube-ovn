@@ -22,7 +22,7 @@ concurrency:
 
 env:
   GO_VERSION: ''
-  GOSEC_VERSION: '2.15.0'
+  GOSEC_VERSION: '2.19.0'
   HELM_VERSION: v3.11.1
 
 jobs:
