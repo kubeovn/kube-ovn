@@ -20,6 +20,7 @@ import (
 	sriovutilfs "github.com/k8snetworkplumbingwg/sriovnet/pkg/utils/filesystem"
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
+	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -72,6 +73,14 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 			klog.Errorf("failed to create veth pair %v", err)
 			return nil, err
 		}
+		defer func() {
+			if err != nil {
+				if err := rollBackVethPair(hostNicName); err != nil {
+					return
+				}
+			}
+		}()
+
 	} else {
 		hostNicName, containerNicName, err = setupSriovInterface(containerID, deviceID, vfDriver, ifName, mtu, mac)
 		if err != nil {
@@ -94,6 +103,13 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 	if err != nil {
 		return nil, fmt.Errorf("add nic to ovs failed %v: %q", err, output)
 	}
+	defer func() {
+		if err != nil {
+			if err := csh.rollbackOvsPort(hostNicName, containerNicName, nicType); err != nil {
+				return
+			}
+		}
+	}()
 
 	// add hostNicName and containerNicName into pod annotations
 	if deviceID != "" {
@@ -103,7 +119,8 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 		} else {
 			podNameNew = podName
 		}
-		pod, err := csh.Controller.podsLister.Pods(podNamespace).Get(podNameNew)
+		var pod *v1.Pod
+		pod, err = csh.Controller.podsLister.Pods(podNamespace).Get(podNameNew)
 		if err != nil {
 			klog.Errorf("failed to generate patch for pod %s/%s: %v", podNameNew, podNamespace, err)
 			return nil, err
@@ -111,12 +128,13 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 		oriPod := pod.DeepCopy()
 		pod.Annotations[fmt.Sprintf(util.VfRepresentorNameTemplate, provider)] = hostNicName
 		pod.Annotations[fmt.Sprintf(util.VfNameTemplate, provider)] = containerNicName
-		patch, err := util.GenerateMergePatchPayload(oriPod, pod)
+		var patch []byte
+		patch, err = util.GenerateMergePatchPayload(oriPod, pod)
 		if err != nil {
 			klog.Errorf("failed to generate patch for pod %s/%s: %v", podNameNew, podNamespace, err)
 			return nil, err
 		}
-		if _, err := csh.Config.KubeClient.CoreV1().Pods(podNamespace).Patch(context.Background(), podNameNew,
+		if _, err = csh.Config.KubeClient.CoreV1().Pods(podNamespace).Patch(context.Background(), podNameNew,
 			types.MergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
 			klog.Errorf("patch pod %s/%s failed: %v", podNameNew, podNamespace, err)
 			return nil, err
@@ -162,7 +180,8 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 	if err != nil {
 		return nil, fmt.Errorf("failed to open netns %q: %v", netns, err)
 	}
-	return configureContainerNic(containerNicName, ifName, ip, gateway, isDefaultRoute, detectIPConflict, routes, macAddr, podNS, mtu, nicType, gwCheckMode, u2oInterconnectionIP)
+	finalRoutes, err := configureContainerNic(containerNicName, ifName, ip, gateway, isDefaultRoute, detectIPConflict, routes, macAddr, podNS, mtu, nicType, gwCheckMode, u2oInterconnectionIP)
+	return finalRoutes, err
 }
 
 func (csh cniServerHandler) releaseVf(podName, podNamespace, podNetns, ifName, nicType, provider, deviceID string) error {
@@ -279,6 +298,21 @@ func (csh cniServerHandler) deleteNic(podName, podNamespace, containerID, netns,
 		}
 	}
 	return nil
+}
+
+func (csh cniServerHandler) rollbackOvsPort(hostNicName, containerNicName, nicType string) (err error) {
+	var nicName string
+	if nicType == util.InternalType {
+		nicName = containerNicName
+	} else {
+		nicName = hostNicName
+	}
+	output, err := ovs.Exec(ovs.IfExists, "--with-iface", "del-port", "br-int", nicName)
+	if err != nil {
+		klog.Warningf("failed to delete down ovs port %v, %q", err, output)
+	}
+	klog.Infof("rollback ovs port success %s", nicName)
+	return
 }
 
 func generateNicName(containerID, ifname string) (string, string) {
@@ -1498,6 +1532,13 @@ func (csh cniServerHandler) configureNicWithInternalPort(podName, podNamespace, 
 		klog.Error(err)
 		return containerNicName, nil, err
 	}
+	defer func() {
+		if err != nil {
+			if err := csh.rollbackOvsPort("", containerNicName, nicType); err != nil {
+				return
+			}
+		}
+	}()
 
 	// container nic must use same mac address from pod annotation, otherwise ovn will reject these packets by default
 	macAddr, err := net.ParseMAC(mac)
@@ -1691,4 +1732,26 @@ func linkExists(name string) (bool, error) {
 		return false, err
 	}
 	return true, nil
+}
+
+func rollBackVethPair(nicName string) error {
+	hostLink, err := netlink.LinkByName(nicName)
+	if err != nil {
+		// If link already not exists, return quietly
+		// E.g. Internal port had been deleted by Remove ovs port previously
+		if _, ok := err.(netlink.LinkNotFoundError); ok {
+			return nil
+		}
+		return fmt.Errorf("find host link %s failed %v", nicName, err)
+	}
+
+	hostLinkType := hostLink.Type()
+	// Sometimes no deviceID input for vf nic, avoid delete vf nic.
+	if hostLinkType == "veth" {
+		if err = netlink.LinkDel(hostLink); err != nil {
+			return fmt.Errorf("delete host link %s failed %v", hostLink, err)
+		}
+	}
+	klog.Infof("rollback veth success %s", nicName)
+	return nil
 }
