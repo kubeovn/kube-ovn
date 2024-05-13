@@ -1,5 +1,24 @@
 # Changelog
 
+## v1.12.15 (2024-05-13)
+
+ * [ad084913](https://github.com/kubeovn/kube-ovn/commit/ad08491359768c16d4ec5a790db7a0875d3e86b7) release v1.12.15
+ * [505c041d](https://github.com/kubeovn/kube-ovn/commit/505c041d261babc54aeb1206069bdbd42f61bba8) fix lsp not updating addresses (#4011)
+ * [8d4738c4](https://github.com/kubeovn/kube-ovn/commit/8d4738c45c38df56386caeb4cf6910168c81ea32) bump gosec to 2.19.0
+ * [be8def37](https://github.com/kubeovn/kube-ovn/commit/be8def3735c3cab7a3dd048614ffc58f4307d400) fix: close file (#4007)
+ * [b47f2cef](https://github.com/kubeovn/kube-ovn/commit/b47f2cefa99aebc1890d44e212c6f0f37b1f4706) fix node gc (#3992)
+ * [2b5be24b](https://github.com/kubeovn/kube-ovn/commit/2b5be24b8c9ed529f78005b4cc3e7dc255d69c52) bump go to 1.22.3 (#3989)
+ * [6df85a02](https://github.com/kubeovn/kube-ovn/commit/6df85a023dae6dc9a7eea7ed2cca14997050a6f6) build(deps): bump google.golang.org/protobuf from 1.34.0 to 1.34.1 (#3981)
+ * [ad9ee088](https://github.com/kubeovn/kube-ovn/commit/ad9ee0883ff9627dfb16e7575f9ae26f4a7fa83d) build(deps): bump golang.org/x/sys from 0.19.0 to 0.20.0 (#3980)
+ * [e77634df](https://github.com/kubeovn/kube-ovn/commit/e77634dfa97b7b2af79b2c7dc6ecda52380587eb) prepare for next release
+
+### Contributors
+
+ * dependabot[bot]
+ * guangwu
+ * zhangzujian
+ * 张祖建
+
 ## v1.12.14 (2024-05-07)
 
  * [8461d381](https://github.com/kubeovn/kube-ovn/commit/8461d38111e133d78de2b4198b6ac5319738d625) release v1.12.14
