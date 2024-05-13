@@ -3078,17 +3078,17 @@ func (c *Controller) addPolicyRouteForU2ONoLoadBalancer(subnet *kubeovnv1.Subnet
 		}
 		v4Svc, v6Svc := util.SplitStringIP(c.config.ServiceClusterIPRange)
 		for _, cidrBlock := range strings.Split(subnet.Spec.CIDRBlock, ",") {
-			ipSuffix, nodeIP, svcIP := "ip4", ip.Spec.V4IPAddress, v4Svc
+			ipSuffix, nodeIP, svcCIDR := "ip4", ip.Spec.V4IPAddress, v4Svc
 			if util.CheckProtocol(cidrBlock) == kubeovnv1.ProtocolIPv6 {
-				ipSuffix, nodeIP, svcIP = "ip6", ip.Spec.V6IPAddress, v6Svc
+				ipSuffix, nodeIP, svcCIDR = "ip6", ip.Spec.V6IPAddress, v6Svc
 			}
-			if nodeIP == "" || svcIP == "" {
+			if nodeIP == "" || svcCIDR == "" {
 				continue
 			}
 
 			var (
 				pgAs        = fmt.Sprintf("%s_%s", pgName, ipSuffix)
-				match       = fmt.Sprintf("%s.src == $%s && %s.dst == %s", ipSuffix, pgAs, ipSuffix, svcIP)
+				match       = fmt.Sprintf("%s.src == $%s && %s.dst == %s", ipSuffix, pgAs, ipSuffix, svcCIDR)
 				action      = kubeovnv1.PolicyRouteActionReroute
 				externalIDs = map[string]string{
 					"vendor":               util.CniTypeName,
