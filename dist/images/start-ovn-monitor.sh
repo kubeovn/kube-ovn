@@ -2,4 +2,4 @@
 set -euo pipefail
 ENABLE_SSL=${ENABLE_SSL:-false}
 
-exec ./kube-ovn-monitor $@
+./kube-ovn-monitor $@
