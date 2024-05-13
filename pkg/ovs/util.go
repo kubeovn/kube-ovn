@@ -112,6 +112,9 @@ func parseDHCPOptions(raw string) map[string]string {
 		if len(kv) != 2 || len(kv[0]) == 0 || len(kv[1]) == 0 {
 			continue
 		}
+		if kv[0] == "dns_server" {
+			kv[1] = strings.ReplaceAll(kv[1], ";", ",")
+		}
 		dhcpOpt[kv[0]] = kv[1]
 	}
 
