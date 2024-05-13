@@ -92,6 +92,8 @@ func (c *OVNNbClient) UpdateDHCPOptions(subnet *kubeovnv1.Subnet, mtu int) (*DHC
 }
 
 func (c *OVNNbClient) updateDHCPv4Options(lsName, cidr, gateway, options string, mtu int) (uuid string, err error) {
+	necessaryV4DHCPOptions := []string{"lease_time", "router", "server_id", "server_mac", "mtu"}
+
 	protocol := util.CheckProtocol(cidr)
 	if protocol != kubeovnv1.ProtocolIPv4 {
 		return "", fmt.Errorf("cidr %s must be a valid ipv4 address", cidr)
@@ -115,7 +117,16 @@ func (c *OVNNbClient) updateDHCPv4Options(lsName, cidr, gateway, options string,
 	/* update */
 	if dhcpOpt != nil {
 		dhcpOpt.Cidr = cidr
-		dhcpOpt.Options = parseDHCPOptions(options)
+		newOptions := parseDHCPOptions(options)
+		// append necessary options to new options
+		if dhcpOpt.Options != nil {
+			for _, option := range necessaryV4DHCPOptions {
+				if _, ok := newOptions[option]; !ok {
+					newOptions[option] = dhcpOpt.Options[option]
+				}
+			}
+		}
+		dhcpOpt.Options = newOptions
 		return dhcpOpt.UUID, c.updateDHCPOptions(dhcpOpt, &dhcpOpt.Cidr, &dhcpOpt.Options)
 	}
 
@@ -134,6 +145,8 @@ func (c *OVNNbClient) updateDHCPv4Options(lsName, cidr, gateway, options string,
 }
 
 func (c *OVNNbClient) updateDHCPv6Options(lsName, cidr, options string) (uuid string, err error) {
+	necessaryV6DHCPOptions := []string{"server_id"}
+
 	protocol := util.CheckProtocol(cidr)
 	if protocol != kubeovnv1.ProtocolIPv6 {
 		return "", fmt.Errorf("cidr %s must be a valid ipv4 address", cidr)
@@ -157,7 +170,16 @@ func (c *OVNNbClient) updateDHCPv6Options(lsName, cidr, options string) (uuid st
 	/* update */
 	if dhcpOpt != nil {
 		dhcpOpt.Cidr = cidr
-		dhcpOpt.Options = parseDHCPOptions(options)
+		newOptions := parseDHCPOptions(options)
+		// append necessary options to new options
+		if dhcpOpt.Options != nil {
+			for _, option := range necessaryV6DHCPOptions {
+				if _, ok := newOptions[option]; !ok {
+					newOptions[option] = dhcpOpt.Options[option]
+				}
+			}
+		}
+		dhcpOpt.Options = newOptions
 		return dhcpOpt.UUID, c.updateDHCPOptions(dhcpOpt, &dhcpOpt.Cidr, &dhcpOpt.Options)
 	}
 
