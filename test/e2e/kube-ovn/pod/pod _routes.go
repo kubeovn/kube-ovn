@@ -22,7 +22,6 @@ var _ = framework.Describe("[group:pod]", func() {
 	var podClient *framework.PodClient
 	var subnetClient *framework.SubnetClient
 	var namespaceName, subnetName, podName string
-	var subnet *apiv1.Subnet
 	var cidr, image string
 
 	ginkgo.BeforeEach(func() {
@@ -36,10 +35,6 @@ var _ = framework.Describe("[group:pod]", func() {
 		if image == "" {
 			image = framework.GetKubeOvnImage(cs)
 		}
-
-		ginkgo.By("Creating subnet " + subnetName)
-		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, []string{namespaceName})
-		subnet = subnetClient.CreateSync(subnet)
 	})
 	ginkgo.AfterEach(func() {
 		ginkgo.By("Deleting pod " + podName)
@@ -70,6 +65,10 @@ var _ = framework.Describe("[group:pod]", func() {
 		buff, err := json.Marshal(routes)
 		framework.ExpectNoError(err)
 
+		ginkgo.By("Creating subnet " + subnetName)
+		subnet := framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, []string{namespaceName})
+		subnet = subnetClient.CreateSync(subnet)
+
 		ginkgo.By("Creating pod " + podName)
 		annotations := map[string]string{
 			util.RoutesAnnotation: string(buff),
@@ -78,6 +77,7 @@ var _ = framework.Describe("[group:pod]", func() {
 		pod := framework.MakePod(namespaceName, podName, nil, annotations, image, cmd, nil)
 		pod = podClient.CreateSync(pod)
 
+		ginkgo.By("Validating pod annoations")
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.CidrAnnotation, subnet.Spec.CIDRBlock)
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.GatewayAnnotation, subnet.Spec.Gateway)
@@ -85,11 +85,13 @@ var _ = framework.Describe("[group:pod]", func() {
 		framework.ExpectMAC(pod.Annotations[util.MacAddressAnnotation])
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
 
+		ginkgo.By("Getting pod routes")
 		podRoutes, err := iproute.RouteShow("", "eth0", func(cmd ...string) ([]byte, []byte, error) {
 			return framework.KubectlExec(pod.Namespace, pod.Name, cmd...)
 		})
 		framework.ExpectNoError(err)
 
+		ginkgo.By("Validating pod routes")
 		actualRoutes := make([]request.Route, len(podRoutes))
 		for _, r := range podRoutes {
 			if r.Gateway != "" || r.Dst != "" {

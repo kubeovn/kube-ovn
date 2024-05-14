@@ -50,11 +50,13 @@ func makeProviderNetwork(providerNetworkName string, exchangeLinkName bool, link
 }
 
 func waitSubnetStatusUpdate(subnetName string, subnetClient *framework.SubnetClient, expectedUsingIPs float64) {
-	ginkgo.By("Waiting for status of subnet " + subnetName + " to be updated")
+	ginkgo.By("Waiting for using ips count of subnet " + subnetName + " to be " + fmt.Sprintf("%.0f", expectedUsingIPs))
 	framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 		subnet := subnetClient.Get(subnetName)
 		if (subnet.Status.V4AvailableIPs != 0 && subnet.Status.V4UsingIPs != expectedUsingIPs) ||
 			(subnet.Status.V6AvailableIPs != 0 && subnet.Status.V6UsingIPs != expectedUsingIPs) {
+			framework.Logf("current subnet status: v4AvailableIPs = %.0f, v4UsingIPs = %.0f, v6AvailableIPs = %.0f, v6UsingIPs = %.0f",
+				subnet.Status.V4AvailableIPs, subnet.Status.V4UsingIPs, subnet.Status.V6AvailableIPs, subnet.Status.V6UsingIPs)
 			return false, nil
 		}
 		return true, nil
@@ -291,38 +293,26 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		ginkgo.By("Deleting pod " + podName)
 		podClient.DeleteSync(podName)
 
-		if u2oPodNameUnderlay != "" {
-			ginkgo.By("Deleting underlay pod " + u2oPodNameUnderlay)
-			podClient.DeleteSync(u2oPodNameUnderlay)
-		}
+		ginkgo.By("Deleting pod " + u2oPodNameUnderlay)
+		podClient.DeleteSync(u2oPodNameUnderlay)
 
-		if u2oPodNameOverlay != "" {
-			ginkgo.By("Deleting overlay pod default subnet " + u2oPodNameOverlay)
-			podClient.DeleteSync(u2oPodNameOverlay)
-		}
+		ginkgo.By("Deleting pod " + u2oPodNameOverlay)
+		podClient.DeleteSync(u2oPodNameOverlay)
 
-		if u2oPodOverlayCustomVPC != "" {
-			ginkgo.By("Deleting overlay pod custom vpc " + u2oPodOverlayCustomVPC)
-			podClient.DeleteSync(u2oPodOverlayCustomVPC)
-		}
+		ginkgo.By("Deleting pod " + u2oPodOverlayCustomVPC)
+		podClient.DeleteSync(u2oPodOverlayCustomVPC)
 
-		if u2oOverlaySubnetNameCustomVPC != "" {
-			ginkgo.By("Deleting subnet in custom vpc" + u2oOverlaySubnetNameCustomVPC)
-			subnetClient.DeleteSync(u2oOverlaySubnetNameCustomVPC)
-		}
+		ginkgo.By("Deleting subnet " + u2oOverlaySubnetNameCustomVPC)
+		subnetClient.DeleteSync(u2oOverlaySubnetNameCustomVPC)
 
-		if u2oOverlaySubnetName != "" {
-			ginkgo.By("Deleting subnet " + u2oOverlaySubnetName)
-			subnetClient.DeleteSync(u2oOverlaySubnetName)
-		}
-
-		if vpcName != "" {
-			ginkgo.By("Deleting custom vpc " + vpcName)
-			vpcClient.DeleteSync(vpcName)
-		}
+		ginkgo.By("Deleting subnet " + u2oOverlaySubnetName)
+		subnetClient.DeleteSync(u2oOverlaySubnetName)
 
 		ginkgo.By("Deleting subnet " + subnetName)
 		subnetClient.DeleteSync(subnetName)
+
+		ginkgo.By("Deleting vpc " + vpcName)
+		vpcClient.DeleteSync(vpcName)
 
 		ginkgo.By("Deleting vlan " + vlanName)
 		vlanClient.Delete(vlanName, metav1.DeleteOptions{})
