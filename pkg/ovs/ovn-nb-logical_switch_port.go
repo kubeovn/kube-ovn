@@ -89,30 +89,35 @@ func buildLogicalSwitchPort(lspName, lsName, ip, mac, podName, namespace string,
 }
 
 func (c *OVNNbClient) CreateLogicalSwitchPort(lsName, lspName, ip, mac, podName, namespace string, portSecurity bool, securityGroups, vips string, enableDHCP bool, dhcpOptions *DHCPOptionsUUIDs, vpc string) error {
-	exist, err := c.LogicalSwitchPortExists(lspName)
+	existingLsp, err := c.GetLogicalSwitchPort(lspName, true)
 	if err != nil {
 		klog.Error(err)
 		return err
 	}
 
-	// update if exists
-	if exist {
-		lsp := buildLogicalSwitchPort(lspName, lsName, ip, mac, podName, namespace, portSecurity, securityGroups, vips, enableDHCP, dhcpOptions, vpc)
-		if err := c.UpdateLogicalSwitchPort(lsp, &lsp.Addresses, &lsp.Dhcpv4Options, &lsp.Dhcpv6Options, &lsp.PortSecurity, &lsp.ExternalIDs); err != nil {
-			klog.Error(err)
-			return fmt.Errorf("failed to update logical switch port %s: %v", lspName, err)
+	var ops []ovsdb.Operation
+	lsp := buildLogicalSwitchPort(lspName, lsName, ip, mac, podName, namespace, portSecurity, securityGroups, vips, enableDHCP, dhcpOptions, vpc)
+	if existingLsp != nil {
+		if lsp.ExternalIDs[logicalSwitchKey] == lsName {
+			if err := c.UpdateLogicalSwitchPort(lsp, &lsp.Addresses, &lsp.Dhcpv4Options, &lsp.Dhcpv6Options, &lsp.PortSecurity, &lsp.ExternalIDs); err != nil {
+				klog.Error(err)
+				return fmt.Errorf("failed to update logical switch port %s: %v", lspName, err)
+			}
+			return nil
 		}
-		return nil
+		if ops, err = c.LogicalSwitchUpdatePortOp(lsp.ExternalIDs[logicalSwitchKey], existingLsp.UUID, ovsdb.MutateOperationDelete); err != nil {
+			klog.Error(err)
+			return err
+		}
 	}
 
-	lsp := buildLogicalSwitchPort(lspName, lsName, ip, mac, podName, namespace, portSecurity, securityGroups, vips, enableDHCP, dhcpOptions, vpc)
-	ops, err := c.CreateLogicalSwitchPortOp(lsp, lsName)
+	createLspOps, err := c.CreateLogicalSwitchPortOp(lsp, lsName)
 	if err != nil {
 		klog.Error(err)
 		return fmt.Errorf("generate operations for creating logical switch port %s: %v", lspName, err)
 	}
 
-	if err = c.Transact("lsp-add", ops); err != nil {
+	if err = c.Transact("lsp-add", append(ops, createLspOps...)); err != nil {
 		return fmt.Errorf("create logical switch port %s: %v", lspName, err)
 	}
 
