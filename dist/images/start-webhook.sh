@@ -1,2 +1,2 @@
 #!/usr/bin/env bash
-./kube-ovn-webhook
+exec ./kube-ovn-webhook

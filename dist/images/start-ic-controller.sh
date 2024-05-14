@@ -55,6 +55,6 @@ if [ -z "${OVN_NB_DAEMON}" ]; then
   exit 1
 fi
 
-./kube-ovn-ic-controller  --ovn-nb-addr="$nb_addr" \
+exec ./kube-ovn-ic-controller  --ovn-nb-addr="$nb_addr" \
                            --ovn-sb-addr="$sb_addr" \
                            $@
