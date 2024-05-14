@@ -272,10 +272,7 @@ func (c *Controller) handleAddOvnEip(key string) error {
 		klog.Errorf("failed to add finalizer for ovn eip, %v", err)
 		return err
 	}
-	if err = c.subnetCountIP(subnet); err != nil {
-		klog.Errorf("failed to count ovn eip '%s' in subnet, %v", cachedEip.Name, err)
-		return err
-	}
+	c.updateSubnetStatusQueue.Add(subnetName)
 	return nil
 }
 

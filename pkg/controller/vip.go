@@ -285,15 +285,12 @@ func (c *Controller) handleAddVirtualIP(key string) error {
 		klog.Errorf("failed to create or update vip '%s', %v", vip.Name, err)
 		return err
 	}
-	if err = c.subnetCountIP(subnet); err != nil {
-		klog.Errorf("failed to count vip '%s' in subnet, %v", vip.Name, err)
-		return err
-	}
 	if err := c.handleUpdateVirtualParents(key); err != nil {
 		err := fmt.Errorf("error syncing virtual parents for vip '%s': %s", key, err.Error())
 		klog.Error(err)
 		return err
 	}
+	c.updateSubnetStatusQueue.Add(subnetName)
 	return nil
 }
 
