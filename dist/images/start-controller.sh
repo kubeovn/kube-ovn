@@ -32,6 +32,6 @@ function gen_conn_str {
 nb_addr="$(gen_conn_str 6641)"
 sb_addr="$(gen_conn_str 6642)"
 
-./kube-ovn-controller --ovn-nb-addr="$nb_addr" \
+exec ./kube-ovn-controller --ovn-nb-addr="$nb_addr" \
                            --ovn-sb-addr="$sb_addr" \
                            $@

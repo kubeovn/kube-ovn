@@ -95,6 +95,10 @@ RUN mkdir -p /var/run/openvswitch && \
     mkdir -p /etc/cni/net.d && \
     mkdir -p /opt/cni/bin
 
+ENV DUMB_INIT_VERSION="1.2.5"
+RUN curl -sSf -L --retry 5 -o /usr/bin/dumb-init https://github.com/Yelp/dumb-init/releases/download/v${DUMB_INIT_VERSION}/dumb-init_${DUMB_INIT_VERSION}_$(arch) && \
+    chmod +x /usr/bin/dumb-init
+
 ARG ARCH
 ENV CNI_VERSION=v1.4.1
 RUN curl -sSf -L --retry 5 https://github.com/containernetworking/plugins/releases/download/${CNI_VERSION}/cni-plugins-linux-${ARCH}-${CNI_VERSION}.tgz | tar -xz -C . ./loopback ./portmap ./macvlan
@@ -126,3 +130,5 @@ RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages \
         rm -rf /var/lib/apt/lists/* && \
         dpkg -i --ignore-depends=openvswitch-switch,openvswitch-common /packages/*.ddeb; \
     fi
+
+ENTRYPOINT ["/usr/bin/dumb-init", "--"]
