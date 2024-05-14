@@ -427,7 +427,7 @@ func (c *Controller) createIptablesRule(ipt *iptables.IPTables, rule util.IPTabl
 				}
 				if i == 1 {
 					if slices.Equal(ruleSpec[2:], rule.Rule) {
-						klog.V(3).Infof("the first rule is %q", rule.Rule)
+						klog.V(3).Infof("the first nat prerouting rule is %q", rule.Rule)
 						continue
 					}
 					// iptables -t nat -F could cause this case, auto fix it
@@ -439,14 +439,13 @@ func (c *Controller) createIptablesRule(ipt *iptables.IPTables, rule util.IPTabl
 					return nil
 				}
 				if slices.Equal(ruleSpec[2:], rule.Rule) {
-					rule.Pos = strconv.Itoa(i + 1)
-					klog.Warningf("delete the nat prerouting rule: %q", rule.Rule)
+					rule.Pos = strconv.Itoa(i)
+					klog.Warningf("delete the nat prerouting rule: %v", rule)
 					if err = deleteIptablesRule(ipt, rule); err != nil {
 						klog.Errorf("failed to delete rule %v: %v", rule, err)
 						return err
 					}
 				}
-				return nil
 			}
 		}
 		return nil
@@ -1094,7 +1093,15 @@ func (c *Controller) generateNatOutgoingPolicyChainRules(protocol string) ([]uti
 }
 
 func deleteIptablesRule(ipt *iptables.IPTables, rule util.IPTableRule) error {
-	klog.Infof("delete iptables rule: %q", strings.Join(rule.Rule, " "))
+	klog.Infof("delete iptables rule: %v", rule)
+	if rule.Pos != "" {
+		posAsSpec := []string{rule.Pos}
+		if err := ipt.Delete(rule.Table, rule.Chain, posAsSpec...); err != nil {
+			klog.Errorf("failed to delete iptables %s rule %q: %v", rule.Chain, strings.Join(rule.Rule, " "), err)
+			return err
+		}
+		return nil
+	}
 	if err := ipt.DeleteIfExists(rule.Table, rule.Chain, rule.Rule...); err != nil {
 		klog.Errorf("failed to delete iptables rule %q: %v", strings.Join(rule.Rule, " "), err)
 		return err
