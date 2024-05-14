@@ -158,4 +158,4 @@ else
 fi
 
 chmod 600 /etc/openvswitch/*
-tail --follow=name --retry /var/log/ovn/ovn-controller.log
+exec tail --follow=name --retry /var/log/ovn/ovn-controller.log
