@@ -3092,6 +3092,7 @@ func (c *Controller) addPolicyRouteForU2ONoLoadBalancer(subnet *kubeovnv1.Subnet
 				externalIDs = map[string]string{
 					"vendor":               util.CniTypeName,
 					"subnet":               subnet.Name,
+					"isU2ORoutePolicy":     "true",
 					"isU2ONoLBRoutePolicy": "true",
 					"node":                 node.Name,
 				}
