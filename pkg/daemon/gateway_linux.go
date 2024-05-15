@@ -413,7 +413,41 @@ func (c *Controller) createIptablesRule(ipt *iptables.IPTables, rule util.IPTabl
 
 	s := strings.Join(rule.Rule, " ")
 	if exists {
-		klog.V(3).Infof(`iptables rule %q already exists`, s)
+		if rule.Table == NAT && rule.Chain == Prerouting {
+			// make sure the nat prerouting iptable rule is in the first position
+			natPreroutingRules, err := ipt.List(rule.Table, rule.Chain)
+			if err != nil {
+				klog.Errorf("failed to list iptables rules: %v", err)
+				return err
+			}
+			for i, r := range natPreroutingRules {
+				ruleSpec := util.DoubleQuotedFields(r)
+				if i == 0 || len(ruleSpec) < 3 {
+					continue
+				}
+				if i == 1 {
+					if slices.Equal(ruleSpec[2:], rule.Rule) {
+						klog.V(3).Infof("the first nat prerouting rule is %q", rule.Rule)
+						continue
+					}
+					// iptables -t nat -F could cause this case, auto fix it
+					klog.Infof("insert nat prerouting rule: %q", rule.Rule)
+					if err = ipt.Insert(rule.Table, rule.Chain, 1, rule.Rule...); err != nil {
+						klog.Errorf(`failed to insert iptables rule %q: %v`, s, err)
+						return err
+					}
+					return nil
+				}
+				if slices.Equal(ruleSpec[2:], rule.Rule) {
+					rule.Pos = strconv.Itoa(i)
+					klog.Warningf("delete the nat prerouting rule: %v", rule)
+					if err = deleteIptablesRule(ipt, rule); err != nil {
+						klog.Errorf("failed to delete rule %v: %v", rule, err)
+						return err
+					}
+				}
+			}
+		}
 		return nil
 	}
 
@@ -1047,6 +1081,14 @@ func (c *Controller) generateNatOutgoingPolicyChainRules(protocol string) ([]uti
 }
 
 func deleteIptablesRule(ipt *iptables.IPTables, rule util.IPTableRule) error {
+	klog.V(3).Infof("delete iptables rule: %v", rule)
+	if rule.Pos != "" {
+		if err := ipt.Delete(rule.Table, rule.Chain, rule.Pos); err != nil {
+			klog.Errorf("failed to delete iptables %s rule %q: %v", rule.Chain, strings.Join(rule.Rule, " "), err)
+			return err
+		}
+		return nil
+	}
 	if err := ipt.DeleteIfExists(rule.Table, rule.Chain, rule.Rule...); err != nil {
 		klog.Errorf("failed to delete iptables rule %q: %v", strings.Join(rule.Rule, " "), err)
 		return err

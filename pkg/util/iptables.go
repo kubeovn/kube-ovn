@@ -7,6 +7,7 @@ package util
 type IPTableRule struct {
 	Table string
 	Chain string
+	Pos   string
 	Rule  []string
 }
 
