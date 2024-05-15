@@ -45,8 +45,8 @@ spec:
         - name: ovn-ic-controller
           image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          command: ["/kube-ovn/start-ic-controller.sh"]
           args:
+          - /kube-ovn/start-ic-controller.sh
           - --log_file=/var/log/kube-ovn/kube-ovn-ic-controller.log
           - --log_file_max_size=0
           - --logtostderr=false
