@@ -431,7 +431,7 @@ func (c *Controller) createIptablesRule(ipt *iptables.IPTables, rule util.IPTabl
 						continue
 					}
 					// iptables -t nat -F could cause this case, auto fix it
-					klog.Warningf("create the should first nat prerouting rule: %q", rule.Rule)
+					klog.Infof("insert nat prerouting rule: %q", rule.Rule)
 					if err = ipt.Insert(rule.Table, rule.Chain, 1, rule.Rule...); err != nil {
 						klog.Errorf(`failed to insert iptables rule %q: %v`, s, err)
 						return err
