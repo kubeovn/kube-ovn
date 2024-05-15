@@ -414,7 +414,7 @@ func (c *Controller) createIptablesRule(ipt *iptables.IPTables, rule util.IPTabl
 	s := strings.Join(rule.Rule, " ")
 	if exists {
 		if rule.Table == NAT && rule.Chain == Prerouting {
-			// make sure the nat prerouting iptable rule must be in the first position
+			// make sure the nat prerouting iptable rule is in the first position
 			natPreroutingRules, err := ipt.List(rule.Table, rule.Chain)
 			if err != nil {
 				klog.Errorf("failed to list iptables rules: %v", err)
