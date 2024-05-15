@@ -47,7 +47,7 @@ spec:
           {{- if .Values.DPDK }}
           command: ["/kube-ovn/start-ovs-dpdk.sh"]
           {{- else }}
-          command: 
+          args: 
           {{- if .Values.DISABLE_MODULES_MANAGEMENT }}
           - /bin/sh
           - -ec
