@@ -558,20 +558,6 @@ func (c *Controller) createOrUpdateIPCR(ipCRName, podName, ip, mac, subnetName, 
 	return nil
 }
 
-func (c *Controller) subnetCountIP(subnet *kubeovnv1.Subnet) error {
-	var err error
-	if util.CheckProtocol(subnet.Spec.CIDRBlock) == kubeovnv1.ProtocolDual {
-		_, err = c.calcDualSubnetStatusIP(subnet)
-	} else {
-		_, err = c.calcSubnetStatusIP(subnet)
-	}
-	if err != nil {
-		klog.Error(err)
-		return err
-	}
-	return nil
-}
-
 func (c *Controller) ipAcquireAddress(ip *kubeovnv1.IP, subnet *kubeovnv1.Subnet) (string, string, string, error) {
 	key := fmt.Sprintf("%s/%s", ip.Spec.Namespace, ip.Spec.PodName)
 	portName := ovs.PodNameToPortName(ip.Spec.PodName, ip.Spec.Namespace, subnet.Spec.Provider)
