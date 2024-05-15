@@ -139,7 +139,7 @@ func getCmdExitCode(cmd *exec.Cmd) int {
 func checkOvnIsAlive() bool {
 	components := [...]string{"northd", "ovnnb", "ovnsb"}
 	for _, component := range components {
-		cmd := exec.Command("/usr/share/ovn/scripts/ovn-ctl", fmt.Sprintf("status_%s", component))
+		cmd := exec.Command("/usr/share/ovn/scripts/ovn-ctl", fmt.Sprintf("status_%s", component)) // #nosec G204
 		if err := getCmdExitCode(cmd); err != 0 {
 			klog.Errorf("CheckOvnIsAlive: %s is not alive", component)
 			return false
@@ -165,7 +165,7 @@ func isDBLeader(dbName string, port int) bool {
 		}
 	}
 
-	output, err := exec.Command("ovsdb-client", cmd...).CombinedOutput()
+	output, err := exec.Command("ovsdb-client", cmd...).CombinedOutput() // #nosec G204
 	if err != nil {
 		klog.Errorf("failed to execute cmd %q: err=%v, msg=%v", strings.Join(cmd, " "), err, string(output))
 		return false
@@ -193,7 +193,7 @@ func checkNorthdActive() bool {
 		fmt.Sprintf("/var/run/ovn/ovn-northd.%s.ctl", strings.TrimSpace(string(pid))),
 		"status",
 	}
-	output, err := exec.Command("ovs-appctl", command...).CombinedOutput()
+	output, err := exec.Command("ovs-appctl", command...).CombinedOutput() // #nosec G204
 	if err != nil {
 		klog.Errorf("checkNorthdActive execute err %v error msg %v", err, string(output))
 		return false
@@ -239,7 +239,7 @@ func stealLock() {
 		}
 	}
 
-	output, err := exec.Command("ovsdb-client", command...).CombinedOutput()
+	output, err := exec.Command("ovsdb-client", command...).CombinedOutput() // #nosec G204
 	if err != nil {
 		klog.Errorf("stealLock err %v", err)
 		return
@@ -329,7 +329,7 @@ func compactOvnDatabase(db string) {
 		"ovsdb-server/compact",
 	}
 
-	output, err := exec.Command("ovn-appctl", command...).CombinedOutput()
+	output, err := exec.Command("ovn-appctl", command...).CombinedOutput() // #nosec G204
 	if err != nil {
 		if !strings.Contains(string(output), "not storing a duplicate snapshot") {
 			klog.Errorf("failed to compact ovn%s database: %s", db, string(output))
@@ -475,10 +475,12 @@ func updateTS() error {
 			if err != nil {
 				return err
 			}
+			// #nosec G204
 			cmd := exec.Command("ovn-ic-nbctl",
 				ovs.MayExist, "ts-add", tsName,
 				"--", "set", "Transit_Switch", tsName, fmt.Sprintf(`external_ids:subnet="%s"`, subnet))
 			if os.Getenv("ENABLE_SSL") == "true" {
+				// #nosec G204
 				cmd = exec.Command("ovn-ic-nbctl",
 					"--private-key=/var/run/tls/key",
 					"--certificate=/var/run/tls/cert",
@@ -494,9 +496,9 @@ func updateTS() error {
 	} else {
 		for i := existTSCount - 1; i >= expectTSCount; i-- {
 			tsName := getTSName(i)
-			cmd := exec.Command("ovn-ic-nbctl",
-				"ts-del", tsName)
+			cmd := exec.Command("ovn-ic-nbctl", "ts-del", tsName) // #nosec G204
 			if os.Getenv("ENABLE_SSL") == "true" {
+				// #nosec G204
 				cmd = exec.Command("ovn-ic-nbctl",
 					"--private-key=/var/run/tls/key",
 					"--certificate=/var/run/tls/cert",
