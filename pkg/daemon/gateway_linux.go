@@ -1095,8 +1095,7 @@ func (c *Controller) generateNatOutgoingPolicyChainRules(protocol string) ([]uti
 func deleteIptablesRule(ipt *iptables.IPTables, rule util.IPTableRule) error {
 	klog.Infof("delete iptables rule: %v", rule)
 	if rule.Pos != "" {
-		posAsSpec := []string{rule.Pos}
-		if err := ipt.Delete(rule.Table, rule.Chain, posAsSpec...); err != nil {
+		if err := ipt.Delete(rule.Table, rule.Chain, rule.Pos); err != nil {
 			klog.Errorf("failed to delete iptables %s rule %q: %v", rule.Chain, strings.Join(rule.Rule, " "), err)
 			return err
 		}
