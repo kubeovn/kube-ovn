@@ -389,6 +389,7 @@ func (config *Configuration) initKubeClient() error {
 }
 
 func setEncapIP(ip string) error {
+	// #nosec G204
 	raw, err := exec.Command(
 		"ovs-vsctl", "set", "open", ".", fmt.Sprintf("external-ids:ovn-encap-ip=%s", ip)).CombinedOutput()
 	if err != nil {
@@ -398,6 +399,7 @@ func setEncapIP(ip string) error {
 }
 
 func disableChecksum() error {
+	// #nosec G204
 	raw, err := exec.Command(
 		"ovs-vsctl", "set", "open", ".", "external-ids:ovn-encap-csum=false").CombinedOutput()
 	if err != nil {

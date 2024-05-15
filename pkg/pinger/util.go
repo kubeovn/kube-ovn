@@ -41,7 +41,7 @@ func (e *Exporter) getOvsStatus() map[string]bool {
 func (e *Exporter) getOvsDatapath() ([]string, error) {
 	var datapathsList []string
 	cmdstr := fmt.Sprintf("ovs-appctl -T %v dpctl/dump-dps", e.Client.Timeout)
-	cmd := exec.Command("sh", "-c", cmdstr)
+	cmd := exec.Command("sh", "-c", cmdstr) // #nosec G204
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get output of dpctl/dump-dps: %v", err)
@@ -67,7 +67,7 @@ func (e *Exporter) getOvsDatapath() ([]string, error) {
 
 func (e *Exporter) setOvsDpIfMetric(datapathName string) error {
 	cmdstr := fmt.Sprintf("ovs-appctl -T %v dpctl/show %s", e.Client.Timeout, datapathName)
-	cmd := exec.Command("sh", "-c", cmdstr)
+	cmd := exec.Command("sh", "-c", cmdstr) // #nosec G204
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("failed to get output of dpctl/show %s: %v", datapathName, err)

@@ -134,7 +134,7 @@ func getCmdExitCode(cmd *exec.Cmd) int {
 func checkOvnIsAlive() bool {
 	components := [...]string{"northd", "ovnnb", "ovnsb"}
 	for _, component := range components {
-		cmd := exec.Command("/usr/share/ovn/scripts/ovn-ctl", fmt.Sprintf("status_%s", component))
+		cmd := exec.Command("/usr/share/ovn/scripts/ovn-ctl", fmt.Sprintf("status_%s", component)) // #nosec G204
 		if err := getCmdExitCode(cmd); err != 0 {
 			klog.Errorf("CheckOvnIsAlive: %s is not alive", component)
 			return false
@@ -160,7 +160,7 @@ func isDBLeader(dbName string, port int) bool {
 		}
 	}
 
-	output, err := exec.Command("ovsdb-client", cmd...).CombinedOutput()
+	output, err := exec.Command("ovsdb-client", cmd...).CombinedOutput() // #nosec G204
 	if err != nil {
 		klog.Errorf("failed to execute cmd %q: err=%v, msg=%v", strings.Join(cmd, " "), err, string(output))
 		return false
@@ -188,7 +188,7 @@ func checkNorthdActive() bool {
 		fmt.Sprintf("/var/run/ovn/ovn-northd.%s.ctl", strings.TrimSpace(string(pid))),
 		"status",
 	}
-	output, err := exec.Command("ovs-appctl", command...).CombinedOutput()
+	output, err := exec.Command("ovs-appctl", command...).CombinedOutput() // #nosec G204
 	if err != nil {
 		klog.Errorf("checkNorthdActive execute err %v error msg %v", err, string(output))
 		return false
@@ -234,7 +234,7 @@ func stealLock() {
 		}
 	}
 
-	output, err := exec.Command("ovsdb-client", command...).CombinedOutput()
+	output, err := exec.Command("ovsdb-client", command...).CombinedOutput() // #nosec G204
 	if err != nil {
 		klog.Errorf("stealLock err %v", err)
 		return
@@ -324,7 +324,7 @@ func compactOvnDatabase(db string) {
 		"ovsdb-server/compact",
 	}
 
-	output, err := exec.Command("ovn-appctl", command...).CombinedOutput()
+	output, err := exec.Command("ovn-appctl", command...).CombinedOutput() // #nosec G204
 	if err != nil {
 		if !strings.Contains(string(output), "not storing a duplicate snapshot") {
 			klog.Errorf("failed to compact ovn%s database: %s", db, string(output))
@@ -391,4 +391,102 @@ func StartOvnLeaderCheck(cfg *Configuration) {
 		doOvnLeaderCheck(cfg, podName, podNamespace)
 		time.Sleep(interval)
 	}
+}
+
+func getTSName(index int) string {
+	if index == 0 {
+		return util.InterconnectionSwitch
+	}
+	return fmt.Sprintf("%s%d", util.InterconnectionSwitch, index)
+}
+
+func getTSCidr(index int) (string, error) {
+	var proto, cidr string
+	podIpsEnv := os.Getenv("POD_IPS")
+	podIps := strings.Split(podIpsEnv, ",")
+	if len(podIps) == 1 {
+		if util.CheckProtocol(podIps[0]) == kubeovnv1.ProtocolIPv6 {
+			proto = kubeovnv1.ProtocolIPv6
+		} else {
+			proto = kubeovnv1.ProtocolIPv4
+		}
+	} else if len(podIps) == 2 {
+		proto = kubeovnv1.ProtocolDual
+	}
+
+	switch proto {
+	case kubeovnv1.ProtocolIPv4:
+		cidr = fmt.Sprintf("169.254.%d.0/24", 100+index)
+	case kubeovnv1.ProtocolIPv6:
+		cidr = fmt.Sprintf("fe80:a9fe:%02x::/112", 100+index)
+	case kubeovnv1.ProtocolDual:
+		cidr = fmt.Sprintf("169.254.%d.0/24,fe80:a9fe:%02x::/112", 100+index, 100+index)
+	}
+	return cidr, nil
+}
+
+func updateTS() error {
+	cmd := exec.Command("ovn-ic-nbctl", "show")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("ovn-ic-nbctl show output: %s, err: %v", output, err)
+	}
+	var existTSCount int
+	if lines := strings.TrimSpace(string(output)); lines != "" {
+		existTSCount = len(strings.Split(lines, "\n"))
+	}
+	expectTSCount, err := strconv.Atoi(os.Getenv("TS_NUM"))
+	if err != nil {
+		return fmt.Errorf("expectTSCount atoi failed output: %s, err: %v", output, err)
+	}
+	if expectTSCount == existTSCount {
+		klog.V(3).Infof("expectTSCount %d no changes required.", expectTSCount)
+		return nil
+	}
+
+	if expectTSCount > existTSCount {
+		for i := expectTSCount - 1; i > existTSCount-1; i-- {
+			tsName := getTSName(i)
+			subnet, err := getTSCidr(i)
+			if err != nil {
+				return err
+			}
+			// #nosec G204
+			cmd := exec.Command("ovn-ic-nbctl",
+				ovs.MayExist, "ts-add", tsName,
+				"--", "set", "Transit_Switch", tsName, fmt.Sprintf(`external_ids:subnet="%s"`, subnet))
+			if os.Getenv("ENABLE_SSL") == "true" {
+				// #nosec G204
+				cmd = exec.Command("ovn-ic-nbctl",
+					"--private-key=/var/run/tls/key",
+					"--certificate=/var/run/tls/cert",
+					"--ca-cert=/var/run/tls/cacert",
+					ovs.MayExist, "ts-add", tsName,
+					"--", "set", "Transit_Switch", tsName, fmt.Sprintf(`external_ids:subnet="%s"`, subnet))
+			}
+			output, err := cmd.CombinedOutput()
+			if err != nil {
+				return fmt.Errorf("output: %s, err: %v", output, err)
+			}
+		}
+	} else {
+		for i := existTSCount - 1; i >= expectTSCount; i-- {
+			tsName := getTSName(i)
+			cmd := exec.Command("ovn-ic-nbctl", "ts-del", tsName) // #nosec G204
+			if os.Getenv("ENABLE_SSL") == "true" {
+				// #nosec G204
+				cmd = exec.Command("ovn-ic-nbctl",
+					"--private-key=/var/run/tls/key",
+					"--certificate=/var/run/tls/cert",
+					"--ca-cert=/var/run/tls/cacert",
+					"ts-del", tsName)
+			}
+			output, err := cmd.CombinedOutput()
+			if err != nil {
+				return fmt.Errorf("output: %s, err: %v", output, err)
+			}
+		}
+	}
+
+	return nil
 }
