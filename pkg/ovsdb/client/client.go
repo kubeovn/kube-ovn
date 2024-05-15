@@ -71,11 +71,10 @@ func NewOvsDbClient(db, addr string, dbModel model.ClientDBModel, monitors []cli
 		}
 		certPool := x509.NewCertPool()
 		certPool.AppendCertsFromPEM(caCert)
-		// #nosec
 		tlsConfig := &tls.Config{
 			Certificates:       []tls.Certificate{cert},
 			RootCAs:            certPool,
-			InsecureSkipVerify: true,
+			InsecureSkipVerify: true, // #nosec G402
 		}
 		options = append(options, client.WithTLSConfig(tlsConfig))
 	}

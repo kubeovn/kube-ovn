@@ -607,6 +607,7 @@ func (c *Controller) checkNodeGwNicInNs(nodeExtIP, ip, gw string, gwNS ns.NetNS)
 				}
 				for _, eip := range ovnEips {
 					if eip.Status.Ready {
+						// #nosec G204
 						cmd := exec.Command("sh", "-c", fmt.Sprintf("bfdd-control status remote %s local %s", eip.Spec.V4Ip, nodeExtIP))
 						var outb bytes.Buffer
 						cmd.Stdout = &outb
@@ -615,7 +616,7 @@ func (c *Controller) checkNodeGwNicInNs(nodeExtIP, ip, gw string, gwNS ns.NetNS)
 							klog.V(3).Info(out)
 							if strings.Contains(out, "No session") {
 								// not exist
-								cmd = exec.Command("sh", "-c", fmt.Sprintf("bfdd-control allow %s", eip.Spec.V4Ip))
+								cmd = exec.Command("sh", "-c", fmt.Sprintf("bfdd-control allow %s", eip.Spec.V4Ip)) // #nosec G204
 								if err := cmd.Run(); err != nil {
 									err := fmt.Errorf("failed to add lrp %s ip %s into bfd listening list, %v", eip.Name, eip.Status.V4Ip, err)
 									klog.Error(err)
@@ -822,7 +823,7 @@ func (c *Controller) loopOvnExt0Check() {
 	gwNS, err := ns.GetNS(util.NodeGwNsPath)
 	if err != nil {
 		// ns not exist, create node external gw ns
-		cmd := exec.Command("sh", "-c", fmt.Sprintf("/usr/sbin/ip netns add %s", util.NodeGwNs))
+		cmd := exec.Command("sh", "-c", fmt.Sprintf("/usr/sbin/ip netns add %s", util.NodeGwNs)) // #nosec G204
 		if err := cmd.Run(); err != nil {
 			err := fmt.Errorf("failed to get create gw ns %s, %v", util.NodeGwNs, err)
 			klog.Error(err)
@@ -1670,7 +1671,7 @@ func setVfMac(deviceID string, vfIndex int, mac string) error {
 func turnOffNicTxChecksum(nicName string) (err error) {
 	start := time.Now()
 	args := []string{"-K", nicName, "tx", "off"}
-	output, err := exec.Command("ethtool", args...).CombinedOutput()
+	output, err := exec.Command("ethtool", args...).CombinedOutput() // #nosec G204
 	elapsed := float64((time.Since(start)) / time.Millisecond)
 	klog.V(4).Infof("command %s %s in %vms", "ethtool", strings.Join(args, " "), elapsed)
 	if err != nil {

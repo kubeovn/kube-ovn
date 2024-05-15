@@ -128,7 +128,7 @@ func checkSBBindings(config *Configuration) ([]string, error) {
 			fmt.Sprintf("hostname=%s", config.NodeName),
 		}
 	}
-	output, err := exec.Command("ovn-sbctl", command...).CombinedOutput()
+	output, err := exec.Command("ovn-sbctl", command...).CombinedOutput() // #nosec G204
 	if err != nil {
 		klog.Errorf("failed to find chassis: %v, %s", err, string(output))
 		return nil, err
@@ -167,7 +167,7 @@ func checkSBBindings(config *Configuration) ([]string, error) {
 			fmt.Sprintf("chassis=%s", chassis),
 		}
 	}
-	output, err = exec.Command("ovn-sbctl", command...).CombinedOutput()
+	output, err = exec.Command("ovn-sbctl", command...).CombinedOutput() // #nosec G204
 	if err != nil {
 		klog.Errorf("failed to list port_binding in ovn-sb %v", err)
 		return nil, err

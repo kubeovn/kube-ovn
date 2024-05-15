@@ -128,15 +128,14 @@ func CmdMain() {
 }
 
 func mvCNIConf(configDir, configFile, confName string) error {
-	// #nosec
-	data, err := os.ReadFile(configFile)
+	data, err := os.ReadFile(configFile) // #nosec G304
 	if err != nil {
 		klog.Errorf("failed to read cni config file %s, %v", configFile, err)
 		return err
 	}
 
 	cniConfPath := filepath.Join(configDir, confName)
-	return os.WriteFile(cniConfPath, data, 0o644)
+	return os.WriteFile(cniConfPath, data, 0o644) // #nosec G306
 }
 
 func Retry(attempts, sleep int, f func(configuration *daemon.Configuration) error, ctrl *daemon.Configuration) (err error) {

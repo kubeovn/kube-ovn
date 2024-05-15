@@ -43,7 +43,7 @@ func createShortSharedDir(pod *v1.Pod, volumeName, socketConsumption, kubeletDir
 	defer syscall.Umask(mask)
 	if _, err = os.Stat(newSharedDir); err != nil {
 		if os.IsNotExist(err) {
-			err = os.MkdirAll(newSharedDir, 0o777)
+			err = os.MkdirAll(newSharedDir, 0o777) // #nosec G301
 			if err != nil {
 				klog.Error(err)
 				return fmt.Errorf("createSharedDir: Failed to create dir (%s): %v", newSharedDir, err)

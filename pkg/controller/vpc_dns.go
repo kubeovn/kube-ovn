@@ -534,7 +534,8 @@ func (c *Controller) resyncVpcDNSConfig() {
 		klog.V(3).Infof("use the cluster default coredns image version, %s", corednsImage)
 	}
 
-	if err := os.WriteFile(CorednsTemplateDep, corednsTemplateContent, 0o644); err != nil {
+	err = os.WriteFile(CorednsTemplateDep, corednsTemplateContent, 0o644) // #nosec G306
+	if err != nil {
 		klog.Errorf("failed to wirite local coredns-template.yaml file, %v", err)
 		return
 	}

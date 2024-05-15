@@ -403,6 +403,7 @@ func (c *Controller) acquireLrpAddress(ts string) (string, error) {
 }
 
 func (c *Controller) startOVNIC(icHost, icNbPort, icSbPort string) error {
+	// #nosec G204
 	cmd := exec.Command("/usr/share/ovn/scripts/ovn-ctl",
 		fmt.Sprintf("--ovn-ic-nb-db=%s", genHostAddress(icHost, icNbPort)),
 		fmt.Sprintf("--ovn-ic-sb-db=%s", genHostAddress(icHost, icSbPort)),
@@ -410,6 +411,7 @@ func (c *Controller) startOVNIC(icHost, icNbPort, icSbPort string) error {
 		fmt.Sprintf("--ovn-northd-sb-db=%s", c.config.OvnSbAddr),
 		"start_ic")
 	if os.Getenv("ENABLE_SSL") == "true" {
+		// #nosec G204
 		cmd = exec.Command("/usr/share/ovn/scripts/ovn-ctl",
 			fmt.Sprintf("--ovn-ic-nb-db=%s", genHostAddress(icHost, icNbPort)),
 			fmt.Sprintf("--ovn-ic-sb-db=%s", genHostAddress(icHost, icSbPort)),

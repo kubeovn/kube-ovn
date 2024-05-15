@@ -978,7 +978,7 @@ lint:
 		echo "Code differs from gofmt's style" 1>&2 && exit 1; \
 	fi
 	@GOOS=linux go vet ./...
-	@GOOS=linux gosec -exclude=G204,G306,G402,G404,G601,G301 -exclude-dir=test -exclude-dir=pkg/client ./...
+	@GOOS=linux gosec -exclude-dir=test -exclude-dir=pkg/client ./...
 
 .PHONY: gofumpt
 gofumpt:
@@ -987,9 +987,9 @@ gofumpt:
 .PHONY: lint-windows
 lint-windows:
 	@GOOS=windows go vet ./cmd/windows/...
-	@GOOS=windows gosec -exclude=G204,G601,G301 ./pkg/util
-	@GOOS=windows gosec -exclude=G204,G601,G301 ./pkg/request
-	@GOOS=windows gosec -exclude=G204,G601,G301 ./cmd/cni
+	@GOOS=windows gosec ./pkg/util
+	@GOOS=windows gosec ./pkg/request
+	@GOOS=windows gosec ./cmd/cni
 
 .PHONY: scan
 scan:
