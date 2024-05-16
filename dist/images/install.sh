@@ -3308,7 +3308,7 @@ spec:
         - name: ovn-central
           image: "$REGISTRY/kube-ovn:$VERSION"
           imagePullPolicy: $IMAGE_PULL_POLICY
-          args:
+          command:
           - /kube-ovn/start-db.sh
           securityContext:
             capabilities:
@@ -3632,7 +3632,7 @@ spec:
         - name: openvswitch
           image: "$REGISTRY/kube-ovn:$VERSION"
           imagePullPolicy: $IMAGE_PULL_POLICY
-          args:
+          command:
           - /kube-ovn/start-ovs.sh
           securityContext:
             runAsUser: 0
@@ -4160,8 +4160,10 @@ spec:
       - name: cni-server
         image: "$REGISTRY/kube-ovn:$VERSION"
         imagePullPolicy: $IMAGE_PULL_POLICY
-        args:
+        command:
+          - bash
           - /kube-ovn/start-cniserver.sh
+        args:
           - --enable-mirror=$ENABLE_MIRROR
           - --enable-arp-detect-ip-conflict=$ENABLE_ARP_DETECT_IP_CONFLICT
           - --encap-checksum=true
@@ -4459,8 +4461,8 @@ spec:
         - name: kube-ovn-monitor
           image: "$REGISTRY/kube-ovn:$VERSION"
           imagePullPolicy: $IMAGE_PULL_POLICY
+          command: ["/kube-ovn/start-ovn-monitor.sh"]
           args:
-          - /kube-ovn/start-ovn-monitor.sh
           - --log_file=/var/log/kube-ovn/kube-ovn-monitor.log
           - --logtostderr=false
           - --alsologtostderr=true
@@ -4669,8 +4671,8 @@ spec:
         - name: ovn-ic-controller
           image: "$REGISTRY/kube-ovn:$VERSION"
           imagePullPolicy: $IMAGE_PULL_POLICY
+          command: ["/kube-ovn/start-ic-controller.sh"]
           args:
-          - /kube-ovn/start-ic-controller.sh
           - --log_file=/var/log/kube-ovn/kube-ovn-ic-controller.log
           - --log_file_max_size=0
           - --logtostderr=false

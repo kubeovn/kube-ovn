@@ -213,7 +213,7 @@ fi
 
 if [[ $ENABLE_OVN_LEADER_CHECK == "true" ]]; then
     chmod 600 /etc/ovn/*
-    exec /kube-ovn/kube-ovn-leader-checker --probeInterval=${OVN_LEADER_PROBE_INTERVAL} --isICDBServer=true
+    /kube-ovn/kube-ovn-leader-checker --probeInterval=${OVN_LEADER_PROBE_INTERVAL} --isICDBServer=true
 else
     # Compatible with controller deployment methods before kube-ovn 1.11.16
     TS_NAME=${TS_NAME:-ts}
@@ -227,6 +227,6 @@ else
     fi
     ovn-ic-nbctl --may-exist ts-add "$TS_NAME"
     ovn-ic-nbctl set Transit_Switch ts external_ids:subnet="$TS_CIDR"
-    exec tail --follow=name --retry /var/log/ovn/ovsdb-server-ic-nb.log
+    tail --follow=name --retry /var/log/ovn/ovsdb-server-ic-nb.log
 fi
 
