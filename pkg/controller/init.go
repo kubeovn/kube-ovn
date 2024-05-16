@@ -501,7 +501,7 @@ func (c *Controller) initDefaultProviderNetwork() error {
 	}
 
 	defer func() {
-		if err == nil {
+		if err != nil {
 			return
 		}
 
