@@ -57,7 +57,7 @@ spec:
         - name: ovn-ic-server
           image: "$REGISTRY/kube-ovn:$VERSION"
           imagePullPolicy: $IMAGE_PULL_POLICY
-          args: ["/kube-ovn/start-ic-db.sh"]
+          command: ["/kube-ovn/start-ic-db.sh"]
           securityContext:
             capabilities:
               add: ["SYS_NICE"]

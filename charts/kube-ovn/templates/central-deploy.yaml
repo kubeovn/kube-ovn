@@ -44,7 +44,7 @@ spec:
         - name: ovn-central
           image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          args: 
+          command: 
           - /kube-ovn/start-db.sh
           securityContext:
             capabilities:

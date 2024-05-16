@@ -25,8 +25,9 @@ spec:
       containers:
         - name: pinger
           image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}
-          args:
+          command:
           - /kube-ovn/kube-ovn-pinger
+          args:
           - --external-address=
           {{- if eq .Values.networking.NET_STACK "dual_stack" -}}
           {{ .Values.dual_stack.PINGER_EXTERNAL_ADDRESS }} 

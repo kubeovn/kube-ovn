@@ -60,4 +60,4 @@ set_sysctl net.ipv4.neigh.default.gc_thresh3 "$gc_thresh3"
 set_sysctl net.ipv4.ip_no_pmtu_disc "$SYSCTL_IPV4_IP_NO_PMTU_DISC"
 set_sysctl net.netfilter.nf_conntrack_tcp_be_liberal "$SYSCTL_NF_CONNTRACK_TCP_BE_LIBERAL"
 
-exec ./kube-ovn-daemon --ovs-socket=${OVS_SOCK} --bind-socket=${CNI_SOCK} "$@"
+./kube-ovn-daemon --ovs-socket=${OVS_SOCK} --bind-socket=${CNI_SOCK} "$@"

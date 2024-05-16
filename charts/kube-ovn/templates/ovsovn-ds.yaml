@@ -47,7 +47,7 @@ spec:
           {{- if .Values.DPDK }}
           command: ["/kube-ovn/start-ovs-dpdk.sh"]
           {{- else }}
-          args: 
+          command: 
           - /kube-ovn/start-ovs.sh
           {{- end }}
           securityContext:

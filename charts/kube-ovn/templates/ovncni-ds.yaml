@@ -45,8 +45,10 @@ spec:
       - name: cni-server
         image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}
         imagePullPolicy: {{ .Values.image.pullPolicy }}
-        args:
+        command:
+          - bash
           - /kube-ovn/start-cniserver.sh
+        args:
           - --enable-mirror={{- .Values.debug.ENABLE_MIRROR }}
           - --mirror-iface={{- .Values.debug.MIRROR_IFACE }}
           - --node-switch={{ .Values.networking.NODE_SUBNET }}
