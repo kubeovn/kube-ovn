@@ -48,7 +48,7 @@ require (
 	k8s.io/klog/v2 v2.100.1
 	k8s.io/kubernetes v1.27.14
 	k8s.io/sample-controller v0.27.14
-	k8s.io/utils v0.0.0-20240102154912-e7106e64919e
+	k8s.io/utils v0.0.0-20240502163921-fe8a2dddb1d0
 	kubevirt.io/client-go v0.58.1
 	sigs.k8s.io/controller-runtime v0.15.3
 )
