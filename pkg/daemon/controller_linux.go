@@ -199,7 +199,10 @@ func (c *Controller) reconcileRouters(event *subnetEvent) error {
 	joinCIDR := make([]string, 0, 2)
 	cidrs := make([]string, 0, len(subnets)*2)
 	for _, subnet := range subnets {
-		if (subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway) || subnet.Spec.Vpc != c.config.ClusterRouter || !subnet.Status.IsReady() {
+		if !subnet.Status.IsReady() ||
+			subnet.Spec.Vpc != c.config.ClusterRouter ||
+			(subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway && !subnet.Spec.U2OInterconnection) ||
+			(subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway && subnet.Spec.U2OInterconnection && (subnet.Spec.EnableLb != nil && *subnet.Spec.EnableLb)) {
 			continue
 		}
 
