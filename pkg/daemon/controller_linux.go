@@ -199,7 +199,10 @@ func (c *Controller) reconcileRouters(event *subnetEvent) error {
 	joinCIDR := make([]string, 0, 2)
 	cidrs := make([]string, 0, len(subnets)*2)
 	for _, subnet := range subnets {
-		if (subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway) || subnet.Spec.Vpc != c.config.ClusterRouter || !subnet.Status.IsReady() {
+		if (subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway && !subnet.Spec.U2OInterconnection) ||
+			(subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway && subnet.Spec.U2OInterconnection && (subnet.Spec.EnableLb != nil && *subnet.Spec.EnableLb)) ||
+			subnet.Spec.Vpc != c.config.ClusterRouter ||
+			!subnet.Status.IsReady() {
 			continue
 		}
 
@@ -292,16 +295,12 @@ func routeDiff(nodeNicRoutes, allRoutes []netlink.Route, cidrs, joinCIDR []strin
 		if !found {
 			toDel = append(toDel, route)
 		}
-		conflict := false
 		for _, ar := range allRoutes {
-			if ar.Dst != nil && ar.Dst.String() == route.Dst.String() && ar.LinkIndex != route.LinkIndex {
+			if ar.Dst != nil && slices.Contains(cidrs, ar.Dst.String()) && ar.LinkIndex != route.LinkIndex {
 				// route conflict
-				conflict = true
+				toDel = append(toDel, ar)
 				break
 			}
-		}
-		if conflict {
-			toDel = append(toDel, route)
 		}
 	}
 	if len(toDel) > 0 {
