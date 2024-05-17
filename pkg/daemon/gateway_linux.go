@@ -1081,15 +1081,20 @@ func (c *Controller) generateNatOutgoingPolicyChainRules(protocol string) ([]uti
 }
 
 func deleteIptablesRule(ipt *iptables.IPTables, rule util.IPTableRule) error {
-	klog.V(3).Infof("delete iptables rule: %v", rule)
 	if rule.Pos != "" {
+		klog.Infof("delete iptables rule by pos %s: %v", rule.Pos, rule)
 		if err := ipt.Delete(rule.Table, rule.Chain, rule.Pos); err != nil {
 			klog.Errorf("failed to delete iptables %s rule %q: %v", rule.Chain, strings.Join(rule.Rule, " "), err)
 			return err
 		}
 		return nil
 	}
-	if err := ipt.DeleteIfExists(rule.Table, rule.Chain, rule.Rule...); err != nil {
+	exists, err := ipt.Exists(rule.Table, rule.Chain, rule.Rule...)
+	if err == nil && exists {
+		klog.Infof("delete iptables rule: %v", rule)
+		err = ipt.Delete(rule.Table, rule.Chain, rule.Rule...)
+	}
+	if err != nil {
 		klog.Errorf("failed to delete iptables rule %q: %v", strings.Join(rule.Rule, " "), err)
 		return err
 	}
