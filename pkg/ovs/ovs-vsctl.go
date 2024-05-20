@@ -59,7 +59,7 @@ func ovsSet(table, record string, values ...string) error {
 	return err
 }
 
-func ovsAdd(table, record string, column string, values ...string) error {
+func ovsAdd(table, record, column string, values ...string) error {
 	args := append([]string{"add", table, record, column}, values...)
 	_, err := Exec(args...)
 	return err
@@ -312,16 +312,16 @@ func ValidatePortVendor(port string) (bool, error) {
 }
 
 // config mirror for interface by pod annotations and install param
-func ConfigInterfaceMirror(globalMirror bool, open string, iface string) error {
+func ConfigInterfaceMirror(globalMirror bool, open, iface string) error {
 	if !globalMirror {
-		//find interface name for port
+		// find interface name for port
 		interfaceList, err := ovsFind("interface", "name", fmt.Sprintf("external-ids:iface-id=%s", iface))
 		if err != nil {
 			return err
 		}
 		for _, ifName := range interfaceList {
-			//ifName example: xxx_h
-			//find port uuid by interface name
+			// ifName example: xxx_h
+			// find port uuid by interface name
 			portUUIDs, err := ovsFind("port", "_uuid", fmt.Sprintf("name=%s", ifName))
 			if err != nil {
 				return err
@@ -331,7 +331,7 @@ func ConfigInterfaceMirror(globalMirror bool, open string, iface string) error {
 			}
 			portId := portUUIDs[0]
 			if open == "true" {
-				//add port to mirror
+				// add port to mirror
 				err = ovsAdd("mirror", util.MirrorDefaultName, "select_dst_port", portId)
 				if err != nil {
 					return err
@@ -349,7 +349,7 @@ func ConfigInterfaceMirror(globalMirror bool, open string, iface string) error {
 				}
 				for _, mirrorPortIds := range mirrorPorts {
 					if strings.Contains(mirrorPortIds, portId) {
-						//remove port from mirror
+						// remove port from mirror
 						_, err := Exec("remove", "mirror", util.MirrorDefaultName, "select_dst_port", portId)
 						if err != nil {
 							return err

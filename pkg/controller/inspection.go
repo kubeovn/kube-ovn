@@ -78,7 +78,6 @@ func (c *Controller) inspectPod() error {
 }
 
 func filterSubnets(pod *v1.Pod, nets []*kubeovnNet) []*kubeovnNet {
-
 	if pod.Annotations == nil {
 		return nets
 	}

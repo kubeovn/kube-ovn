@@ -304,7 +304,6 @@ func (c *Controller) processNextAddPodWorkItem() bool {
 		c.addPodQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -339,7 +338,6 @@ func (c *Controller) processNextDeletePodWorkItem() bool {
 		klog.Infof("take %d ms to handle delete pod %s/%s", last.Milliseconds(), pod.Namespace, pod.Name)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -374,7 +372,6 @@ func (c *Controller) processNextUpdatePodWorkItem() bool {
 		klog.Infof("take %d ms to handle update pod %s", last.Milliseconds(), key)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -406,7 +403,6 @@ func (c *Controller) processNextUpdatePodSecurityWorkItem() bool {
 		c.updatePodSecurityQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -1313,8 +1309,7 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 }
 
 func generatePatchPayload(annotations map[string]string, op string) []byte {
-	patchPayloadTemplate :=
-		`[{
+	patchPayloadTemplate := `[{
         "op": "%s",
         "path": "/metadata/annotations",
         "value": %s

@@ -126,7 +126,6 @@ func (c *Controller) processNextAddNodeWorkItem() bool {
 		c.addNodeQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -157,7 +156,6 @@ func (c *Controller) processNextUpdateNodeWorkItem() bool {
 		c.updateNodeQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -188,7 +186,6 @@ func (c *Controller) processNextDeleteNodeWorkItem() bool {
 		c.deleteNodeQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -294,8 +291,7 @@ func (c *Controller) handleAddNode(key string) error {
 		return err
 	}
 
-	patchPayloadTemplate :=
-		`[{
+	patchPayloadTemplate := `[{
         "op": "%s",
         "path": "/metadata/annotations",
         "value": %s
@@ -872,7 +868,7 @@ func (c *Controller) EnsureChassisConsistency(node *v1.Node) error {
 	return errors.New("deleting dismatch chassis id")
 }
 
-func (c *Controller) retryDelDupChassis(attempts int, sleep int, f func(node *v1.Node) error, node *v1.Node) (err error) {
+func (c *Controller) retryDelDupChassis(attempts, sleep int, f func(node *v1.Node) error, node *v1.Node) (err error) {
 	i := 0
 	for ; ; i++ {
 		err = f(node)
@@ -921,7 +917,6 @@ func (c *Controller) fetchPodsOnNode(nodeName string, pods []*v1.Pod) ([]string,
 }
 
 func (c *Controller) checkPodsChangedOnNode(pgName string, nameIdMap map[string]string, pgPorts, ports []string) (bool, []string, error) {
-
 	toAddPorts := make([]string, 0)
 	for _, port := range ports {
 		if portId, ok := nameIdMap[port]; ok {

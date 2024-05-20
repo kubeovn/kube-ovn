@@ -97,7 +97,6 @@ func (c *Controller) processNextAddVlanWorkItem() bool {
 		c.addVlanQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -131,7 +130,6 @@ func (c *Controller) processNextUpdateVlanWorkItem() bool {
 		c.updateVlanQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -166,7 +164,6 @@ func (c *Controller) processNextDelVlanWorkItem() bool {
 		c.delVlanQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true

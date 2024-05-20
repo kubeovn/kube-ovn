@@ -82,7 +82,6 @@ func (c *Controller) processNextUpdateEndpointWorkItem() bool {
 		c.updateEndpointQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true

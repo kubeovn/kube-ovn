@@ -105,7 +105,6 @@ func (c *Controller) processNextAddNamespaceWorkItem() bool {
 		c.addNamespaceQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true

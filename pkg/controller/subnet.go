@@ -144,7 +144,6 @@ func (c *Controller) processNextAddSubnetWorkItem() bool {
 		c.addOrUpdateSubnetQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -174,7 +173,6 @@ func (c *Controller) processNextDeleteRoutePodWorkItem() bool {
 		c.deleteRouteQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -204,7 +202,6 @@ func (c *Controller) processNextUpdateSubnetStatusWorkItem() bool {
 		c.updateSubnetStatusQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -234,7 +231,6 @@ func (c *Controller) processNextDeleteSubnetWorkItem() bool {
 		c.deleteSubnetQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -420,7 +416,7 @@ func (c *Controller) handleSubnetFinalizer(subnet *kubeovnv1.Subnet) (bool, erro
 	return false, nil
 }
 
-func (c Controller) patchSubnetStatus(subnet *kubeovnv1.Subnet, reason string, errStr string) {
+func (c Controller) patchSubnetStatus(subnet *kubeovnv1.Subnet, reason, errStr string) {
 	if errStr != "" {
 		subnet.Status.SetError(reason, errStr)
 		subnet.Status.NotValidated(reason, errStr)
@@ -1226,7 +1222,6 @@ func (c *Controller) reconcileVlan(subnet *kubeovnv1.Subnet) error {
 }
 
 func (c *Controller) reconcileU2OInterconnectionIP(subnet *kubeovnv1.Subnet) error {
-
 	needCalcIP := false
 	klog.Infof("reconcile underlay subnet %s  to overlay interconnection with U2OInterconnection %v U2OInterconnectionIP %s ",
 		subnet.Name, subnet.Spec.U2OInterconnection, subnet.Status.U2OInterconnectionIP)
@@ -1791,7 +1786,6 @@ func (c *Controller) deletePolicyRouteByGatewayType(subnet *kubeovnv1.Subnet, ga
 }
 
 func (c *Controller) addPolicyRouteForU2OInterconn(subnet *kubeovnv1.Subnet) error {
-
 	var v4Gw, v6Gw string
 	for _, gw := range strings.Split(subnet.Spec.Gateway, ",") {
 		switch util.CheckProtocol(gw) {
@@ -1902,7 +1896,6 @@ func (c *Controller) addPolicyRouteForU2OInterconn(subnet *kubeovnv1.Subnet) err
 }
 
 func (c *Controller) deletePolicyRouteForU2OInterconn(subnet *kubeovnv1.Subnet) error {
-
 	results, err := c.ovnLegacyClient.CustomFindEntity("Logical_Router_Policy", []string{"_uuid", "match", "priority"},
 		"external_ids:isU2ORoutePolicy=\"true\"",
 		fmt.Sprintf("external_ids:vendor=\"%s\"", util.CniTypeName),

@@ -74,8 +74,7 @@ func (c *Controller) removeExternalGateway() error {
 	}
 	for _, orino := range nodes {
 		no := orino.DeepCopy()
-		patchPayloadTemplate :=
-			`[{
+		patchPayloadTemplate := `[{
         "op": "%s",
         "path": "/metadata/labels",
         "value": %s
@@ -123,8 +122,7 @@ func (c *Controller) establishExternalGateway(config map[string]string) error {
 			return err
 		}
 		node := orinode.DeepCopy()
-		patchPayloadTemplate :=
-			`[{
+		patchPayloadTemplate := `[{
         "op": "%s",
         "path": "/metadata/labels",
         "value": %s

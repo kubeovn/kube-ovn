@@ -199,7 +199,6 @@ func (c *Controller) processNextWorkItem(processName string, queue workqueue.Rat
 		queue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("process: %s. err: %v", processName, err))
 		queue.AddRateLimited(obj)
@@ -248,7 +247,6 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 	needToCreate := false
 	_, err = c.config.KubeClient.AppsV1().Deployments(c.config.PodNamespace).
 		Get(context.Background(), genNatGwDpName(gw.Name), metav1.GetOptions{})
-
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			needToCreate = true
@@ -262,7 +260,6 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 	if needToCreate {
 		_, err := c.config.KubeClient.AppsV1().Deployments(c.config.PodNamespace).
 			Create(context.Background(), newDp, metav1.CreateOptions{})
-
 		if err != nil {
 			klog.Errorf("failed to create deployment %s, err: %v", newDp.Name, err)
 			return err
@@ -271,7 +268,6 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 	} else {
 		_, err := c.config.KubeClient.AppsV1().Deployments(c.config.PodNamespace).
 			Update(context.Background(), newDp, metav1.UpdateOptions{})
-
 		if err != nil {
 			klog.Errorf("failed to update deployment %s, err: %v", newDp.Name, err)
 			return err
@@ -683,7 +679,6 @@ func (c *Controller) handleUpdateNatGwSubnetRoute(natGwKey string) error {
 func (c *Controller) execNatGwRules(pod *corev1.Pod, operation string, rules []string) error {
 	stdOutput, errOutput, err := util.ExecuteCommandInContainer(c.config.KubeClient, c.config.KubeRestConfig, pod.Namespace, pod.Name, "vpc-nat-gw",
 		[]string{"/bin/bash", "-c", fmt.Sprintf("bash /kube-ovn/nat-gateway.sh %s %s", operation, strings.Join(rules, " "))}...)
-
 	if err != nil {
 		if len(errOutput) > 0 {
 			klog.Errorf("failed to ExecuteCommandInContainer, errOutput: %v", errOutput)

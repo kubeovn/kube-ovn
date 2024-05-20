@@ -470,7 +470,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 	return nil
 }
 
-func diffPolicyRoute(exist []*ovs.PolicyRoute, target []*kubeovnv1.PolicyRoute) (routeNeedDel []*kubeovnv1.PolicyRoute, routeNeedAdd []*kubeovnv1.PolicyRoute, err error) {
+func diffPolicyRoute(exist []*ovs.PolicyRoute, target []*kubeovnv1.PolicyRoute) (routeNeedDel, routeNeedAdd []*kubeovnv1.PolicyRoute, err error) {
 	existV1 := make([]*kubeovnv1.PolicyRoute, 0, len(exist))
 	for _, item := range exist {
 		existV1 = append(existV1, &kubeovnv1.PolicyRoute{
@@ -504,7 +504,7 @@ func getPolicyRouteItemKey(item *kubeovnv1.PolicyRoute) (key string) {
 	return fmt.Sprintf("%d:%s:%s:%s", item.Priority, item.Match, item.Action, item.NextHopIP)
 }
 
-func diffStaticRoute(exist []*ovs.StaticRoute, target []*kubeovnv1.StaticRoute) (routeNeedDel []*kubeovnv1.StaticRoute, routeNeedAdd []*kubeovnv1.StaticRoute, err error) {
+func diffStaticRoute(exist []*ovs.StaticRoute, target []*kubeovnv1.StaticRoute) (routeNeedDel, routeNeedAdd []*kubeovnv1.StaticRoute, err error) {
 	existV1 := make([]*kubeovnv1.StaticRoute, 0, len(exist))
 	for _, item := range exist {
 		policy := kubeovnv1.PolicyDst
@@ -632,7 +632,6 @@ func (c *Controller) processNextUpdateStatusVpcWorkItem() bool {
 		c.updateVpcStatusQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -662,7 +661,6 @@ func (c *Controller) processNextAddVpcWorkItem() bool {
 		c.addOrUpdateVpcQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		c.addOrUpdateVpcQueue.AddRateLimited(obj)
@@ -693,7 +691,6 @@ func (c *Controller) processNextDeleteVpcWorkItem() bool {
 		c.delVpcQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true

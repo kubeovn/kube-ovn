@@ -163,7 +163,7 @@ func configureHostNic(nicName string) error {
 	return nil
 }
 
-func configureContainerNic(nicName, ifName string, ipAddr, gateway string, isDefaultRoute, detectIPConflict bool, routes []request.Route, macAddr net.HardwareAddr, netns ns.NetNS, mtu int, nicType string, gwCheckMode int, u2oInterconnectionIP string) error {
+func configureContainerNic(nicName, ifName, ipAddr, gateway string, isDefaultRoute, detectIPConflict bool, routes []request.Route, macAddr net.HardwareAddr, netns ns.NetNS, mtu int, nicType string, gwCheckMode int, u2oInterconnectionIP string) error {
 	containerLink, err := netlink.LinkByName(nicName)
 	if err != nil {
 		return fmt.Errorf("can not find container nic %s: %v", nicName, err)
@@ -180,7 +180,6 @@ func configureContainerNic(nicName, ifName string, ipAddr, gateway string, isDef
 	}
 
 	return ns.WithNetNSPath(netns.Path(), func(_ ns.NetNS) error {
-
 		if nicType != util.InternalType {
 			if err = netlink.LinkSetName(containerLink, ifName); err != nil {
 				return err
@@ -968,7 +967,7 @@ func (c *Controller) removeProviderNic(nicName, brName string) error {
 	}
 
 	if err = netlink.LinkSetUp(nic); err != nil {
-		klog.Error("failed to set link %s up: %v", nicName, err)
+		klog.Errorf("failed to set link %s up: %v", nicName, err)
 		return err
 	}
 
@@ -1026,7 +1025,7 @@ func setupVethPair(containerID, ifName string, mtu int) (string, string, error) 
 // Setup sriov interface in the pod
 // https://github.com/ovn-org/ovn-kubernetes/commit/6c96467d0d3e58cab05641293d1c1b75e5914795
 func setupSriovInterface(containerID, deviceID, vfDriver, ifName string, mtu int, mac string) (string, string, error) {
-	var isVfioPciDriver = false
+	isVfioPciDriver := false
 	if vfDriver == "vfio-pci" {
 		matches, err := filepath.Glob(filepath.Join(util.VfioSysDir, "*"))
 		if err != nil {

@@ -4,8 +4,6 @@ package speaker
 import (
 	"context"
 	"fmt"
-	"github.com/vishvananda/netlink"
-	"golang.org/x/sys/unix"
 	"net"
 	"strconv"
 	"strings"
@@ -14,6 +12,8 @@ import (
 	anypb "github.com/golang/protobuf/ptypes/any"
 	bgpapi "github.com/osrg/gobgp/api"
 	"github.com/osrg/gobgp/pkg/packet/bgp"
+	"github.com/vishvananda/netlink"
+	"golang.org/x/sys/unix"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog/v2"
@@ -120,7 +120,7 @@ func (c *Controller) syncSubnetRoutes() {
 	}
 }
 
-func routeDiff(expected, exists []string) (toAdd []string, toDel []string) {
+func routeDiff(expected, exists []string) (toAdd, toDel []string) {
 	expectedMap, existsMap := map[string]bool{}, map[string]bool{}
 	for _, e := range expected {
 		expectedMap[e] = true

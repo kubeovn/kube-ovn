@@ -2,6 +2,7 @@ package ovs
 
 import (
 	"fmt"
+
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/ovn-org/libovsdb/model"
@@ -9,7 +10,8 @@ import (
 )
 
 func (c OvnClient) AddRouterPolicy(lr *ovnnb.LogicalRouter, matchfield string, action ovnnb.LogicalRouterPolicyAction,
-	opts map[string]string, extIDs map[string]string, priority int) error {
+	opts, extIDs map[string]string, priority int,
+) error {
 	lrPolicy := &ovnnb.LogicalRouterPolicy{
 		Action:      action,
 		Match:       matchfield,
@@ -48,7 +50,6 @@ func (c OvnClient) AddRouterPolicy(lr *ovnnb.LogicalRouter, matchfield string, a
 }
 
 func (c OvnClient) DeleteRouterPolicy(lr *ovnnb.LogicalRouter, uuid string) error {
-
 	var ops []ovsdb.Operation
 
 	delOps, err := c.ovnNbClient.Where(lr).Mutate(lr, model.Mutation{
