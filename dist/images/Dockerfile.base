@@ -59,6 +59,8 @@ RUN cd /usr/src/ && git clone -b branch-21.06 --depth=1 https://github.com/ovn-o
     curl -s https://github.com/kubeovn/ovn/commit/71f831b9cc5a6dc923af4ca90286857e2cf8b1d3.patch | git apply && \
     # fix reaching resubmit limit in underlay
     curl -s https://github.com/kubeovn/ovn/commit/0f6fe4202001c0950dc689179e7a4ad9554a51fa.patch | git apply && \
+    # do not remove LB if vips is empty
+    curl -s https://github.com/kubeovn/ovn/commit/472809ebc83588cf321935804f171b271fd81476.patch | git apply && \
     # ovn-controller: do not send GARP on localnet for Kube-OVN ports
     curl -s https://github.com/kubeovn/ovn/commit/60207f7a3d072848936221f1b767722984fd50ae.patch | git apply && \
     # backport tos inherit from inner packet    
@@ -93,10 +95,10 @@ RUN mkdir -p /var/run/openvswitch && \
     mkdir -p /opt/cni/bin
 
 ARG ARCH
-ENV CNI_VERSION=v1.2.0
+ENV CNI_VERSION=v1.4.1
 RUN curl -sSf -L --retry 5 https://github.com/containernetworking/plugins/releases/download/${CNI_VERSION}/cni-plugins-linux-${ARCH}-${CNI_VERSION}.tgz | tar -xz -C . ./loopback ./portmap ./macvlan
 
-ENV KUBE_VERSION="v1.21.1"
+ENV KUBE_VERSION="v1.29.5"
 
 RUN curl -L https://dl.k8s.io/${KUBE_VERSION}/kubernetes-client-linux-${ARCH}.tar.gz | tar -xz -C . && cp ./kubernetes/client/bin/kubectl /usr/bin/kubectl \
  && chmod +x /usr/bin/kubectl && rm -rf ./kubernetes
