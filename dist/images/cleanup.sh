@@ -113,9 +113,6 @@ kubectl delete --ignore-not-found deploy ovn-central -n kube-system
 kubectl delete --ignore-not-found ds ovs-ovn -n kube-system
 kubectl delete --ignore-not-found ds ovs-ovn-dpdk -n kube-system
 kubectl delete --ignore-not-found secret kube-ovn-tls -n kube-system
-kubectl delete --ignore-not-found sa ovn ovn-ovs kube-ovn-cni kube-ovn-app -n kube-system
-kubectl delete --ignore-not-found clusterrole system:ovn system:ovn-ovs system:kube-ovn-cni system:kube-ovn-app
-kubectl delete --ignore-not-found clusterrolebinding ovn ovn ovn-ovs kube-ovn-cni kube-ovn-app
 
 # delete vpc-dns content
 kubectl delete --ignore-not-found cm vpc-dns-config -n kube-system
@@ -189,6 +186,11 @@ while :; do
   fi
   kubectl -n kube-system get pod -l component=network -o wide
 done
+
+# wait for all pods to be deleted before deleting serviceaccount/clusterrole/clusterrolebinding
+kubectl delete --ignore-not-found sa ovn ovn-ovs kube-ovn-cni kube-ovn-app -n kube-system
+kubectl delete --ignore-not-found clusterrole system:ovn system:ovn-ovs system:kube-ovn-cni system:kube-ovn-app
+kubectl delete --ignore-not-found clusterrolebinding ovn ovn ovn-ovs kube-ovn-cni kube-ovn-app
 
 # Remove annotations in all pods of all namespaces
 for ns in $(kubectl get ns -o name | awk -F/ '{print $2}'); do
