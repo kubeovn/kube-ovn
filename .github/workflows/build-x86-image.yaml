@@ -659,6 +659,9 @@ jobs:
 
       - name: Run E2E
         working-directory: ${{ env.E2E_DIR }}
+        env:
+          E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
+          E2E_IP_FAMILY: ${{ matrix.ip-family }}
         run: make kube-ovn-ic-conformance-e2e
 
   chart-installation-test:
