@@ -19,13 +19,13 @@ import (
 
 type fakeControllerInformers struct {
 	vpcInformer     kubeovninformer.VpcInformer
-	sbunetInformer  kubeovninformer.SubnetInformer
+	subnetInformer  kubeovninformer.SubnetInformer
 	serviceInformer coreinformers.ServiceInformer
 }
 
 type fakeController struct {
 	fakeController *Controller
-	fakeinformers  *fakeControllerInformers
+	fakeInformers  *fakeControllerInformers
 	mockOvnClient  *mockovs.MockNbClient
 }
 
@@ -41,11 +41,11 @@ func newFakeController(t *testing.T) *fakeController {
 	kubeovnClient := kubeovnfake.NewSimpleClientset()
 	kubeovnInformerFactory := kubeovninformerfactory.NewSharedInformerFactory(kubeovnClient, 0)
 	vpcInformer := kubeovnInformerFactory.Kubeovn().V1().Vpcs()
-	sbunetInformer := kubeovnInformerFactory.Kubeovn().V1().Subnets()
+	subnetInformer := kubeovnInformerFactory.Kubeovn().V1().Subnets()
 
 	fakeInformers := &fakeControllerInformers{
 		vpcInformer:     vpcInformer,
-		sbunetInformer:  sbunetInformer,
+		subnetInformer:  subnetInformer,
 		serviceInformer: serviceInformer,
 	}
 
@@ -56,7 +56,7 @@ func newFakeController(t *testing.T) *fakeController {
 		servicesLister:        serviceInformer.Lister(),
 		vpcsLister:            vpcInformer.Lister(),
 		vpcSynced:             alwaysReady,
-		subnetsLister:         sbunetInformer.Lister(),
+		subnetsLister:         subnetInformer.Lister(),
 		subnetSynced:          alwaysReady,
 		OVNNbClient:           mockOvnClient,
 		syncVirtualPortsQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), ""),
@@ -64,7 +64,7 @@ func newFakeController(t *testing.T) *fakeController {
 
 	return &fakeController{
 		fakeController: ctrl,
-		fakeinformers:  fakeInformers,
+		fakeInformers:  fakeInformers,
 		mockOvnClient:  mockOvnClient,
 	}
 }
