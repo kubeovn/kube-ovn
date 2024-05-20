@@ -149,6 +149,10 @@ base-arm64:
 image-kube-ovn: image-kube-ovn-debug build-go
 	docker buildx build --platform linux/amd64 -t $(REGISTRY)/kube-ovn:$(RELEASE_TAG) --build-arg VERSION=$(RELEASE_TAG) -o type=docker -f dist/images/Dockerfile dist/images/
 
+.PHONY: image-kube-ovn-arm64
+image-kube-ovn-arm64: build-go-arm
+	docker buildx build --platform linux/arm64 -t $(REGISTRY)/kube-ovn:$(RELEASE_TAG) --build-arg VERSION=$(RELEASE_TAG) -o type=docker -f dist/images/Dockerfile dist/images/
+
 .PHONY: image-kube-ovn-debug
 image-kube-ovn-debug:
 	@DEBUG=1 $(MAKE) build-go
@@ -170,8 +174,7 @@ image-test: build-go
 release: lint ut image-kube-ovn image-vpc-nat-gateway
 
 .PHONY: release-arm
-release-arm: release-arm-debug build-go-arm
-	docker buildx build --platform linux/arm64 -t $(REGISTRY)/kube-ovn:$(RELEASE_TAG) --build-arg VERSION=$(RELEASE_TAG) -o type=docker -f dist/images/Dockerfile dist/images/
+release-arm: release-arm-debug image-kube-ovn-arm64
 	docker buildx build --platform linux/arm64 -t $(REGISTRY)/vpc-nat-gateway:$(RELEASE_TAG) -o type=docker -f dist/images/vpcnatgateway/Dockerfile dist/images/vpcnatgateway
 
 .PHONY: release-arm-debug
