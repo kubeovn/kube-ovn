@@ -201,8 +201,7 @@ func (c *Controller) reconcileRouters(event *subnetEvent) error {
 	for _, subnet := range subnets {
 		if !subnet.Status.IsReady() ||
 			subnet.Spec.Vpc != c.config.ClusterRouter ||
-			(subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway && !subnet.Spec.U2OInterconnection) ||
-			(subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway && subnet.Spec.U2OInterconnection && (subnet.Spec.EnableLb != nil && *subnet.Spec.EnableLb)) {
+			(subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway && (!subnet.Spec.U2OInterconnection || (subnet.Spec.EnableLb != nil && *subnet.Spec.EnableLb))) {
 			continue
 		}
 
