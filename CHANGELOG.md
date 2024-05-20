@@ -1,5 +1,26 @@
 # Changelog
 
+## v1.12.16 (2024-05-20)
+
+ * [dff82c4f](https://github.com/kubeovn/kube-ovn/commit/dff82c4f3c1d94cc7fbc874541a98b5bb5cead22) release v1.12.16
+ * [3957427d](https://github.com/kubeovn/kube-ovn/commit/3957427d71e12599766b85bc40c604ca55bc95fa) wait for all pods to be deleted before deleting serviceaccount/clusterrole/clusterrolebinding (#4035)
+ * [b7727988](https://github.com/kubeovn/kube-ovn/commit/b77279882098824528991f9acce04a8032b16be5) uninstall.sh: delete OVN-POSTROUTING rule in mangle table (#4034)
+ * [3cb62914](https://github.com/kubeovn/kube-ovn/commit/3cb629146b49b2c50e34ea5705fd3e65a55bf095) cleanup.sh: remove sa/clusterrole/clusterrolebinding (#4024)
+ * [70d33bef](https://github.com/kubeovn/kube-ovn/commit/70d33bef63532ee8ea1d4a6c31e54fcffe9ea3ce) do not use exec for start scripts with trap quit EXIT (#4025)
+ * [93e31377](https://github.com/kubeovn/kube-ovn/commit/93e313774c7163d95c0a65511c29308fd37b2dd4) bump k8s to 1.27.14 (#4029)
+ * [85009d5e](https://github.com/kubeovn/kube-ovn/commit/85009d5e3da2e7aa4d3c0d5682253800bdc7298d) fix node annotations not updated when initializing the default provider-network (#4030)
+ * [4de2e094](https://github.com/kubeovn/kube-ovn/commit/4de2e09447eaaefc1e627eaadd47dfbf32d89029) fix container args (#4020)
+ * [2e700adc](https://github.com/kubeovn/kube-ovn/commit/2e700adc02d6f1e4d0819e943921df9b6763290e) fix lsp not updated correctly when logical switch is changed (#4015)
+ * [edee1e54](https://github.com/kubeovn/kube-ovn/commit/edee1e5446a20032d32441a836f14af2951cc838) base: set entrypoint to  dumb-init (#4018)
+ * [03834d80](https://github.com/kubeovn/kube-ovn/commit/03834d807b033d50eceae390dd41352b8e55ad54) fix: Resolved the hidden issue with zombie processes (#4004)
+ * [fcfc0995](https://github.com/kubeovn/kube-ovn/commit/fcfc0995180c49c19b3b084391200241c008b721) simplify file reading (#4010)
+ * [d8c8f8ac](https://github.com/kubeovn/kube-ovn/commit/d8c8f8ac5c98066c7dd3f52046085a13dc2c7b4a) prepare for next release
+
+### Contributors
+
+ * fanriming
+ * 张祖建
+
 ## v1.12.15 (2024-05-13)
 
  * [ad084913](https://github.com/kubeovn/kube-ovn/commit/ad08491359768c16d4ec5a790db7a0875d3e86b7) release v1.12.15
