@@ -1228,7 +1228,7 @@ func (c LegacyClient) GetLoadBalancerVips(lb string) (map[string]string, error) 
 		return nil, err
 	}
 	result := map[string]string{}
-	err = json.Unmarshal([]byte(strings.Replace(output, "=", ":", -1)), &result)
+	err = json.Unmarshal([]byte(strings.ReplaceAll(output, "=", ":")), &result)
 	return result, err
 }
 
