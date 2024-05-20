@@ -69,4 +69,7 @@ git add mkdocs.yml
 git commit -m "update version to ${VERSION}"
 git push
 
+echo "clean up images"
+docker rmi kubeovn/kube-ovn:${VERSION}-x86 kubeovn/kube-ovn:${VERSION}-arm kubeovn/vpc-nat-gateway:${VERSION}-x86 kubeovn/vpc-nat-gateway:${VERSION}-arm kubeovn/kube-ovn:${VERSION}-debug-x86 kubeovn/kube-ovn:${VERSION}-debug-arm
+
 echo "Manually update the release note with the new changelog"
