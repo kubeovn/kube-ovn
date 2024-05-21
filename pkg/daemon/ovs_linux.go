@@ -76,6 +76,7 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 		defer func() {
 			if err != nil {
 				if err := rollBackVethPair(hostNicName); err != nil {
+					klog.Errorf("failed to rollback veth pair %s, %v", hostNicName, err)
 					return
 				}
 			}
@@ -106,6 +107,7 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 	defer func() {
 		if err != nil {
 			if err := csh.rollbackOvsPort(hostNicName, containerNicName, nicType); err != nil {
+				klog.Errorf("failed to rollback ovs port %s, %v", hostNicName, err)
 				return
 			}
 		}
@@ -178,10 +180,16 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 
 	podNS, err := ns.GetNS(netns)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open netns %q: %v", netns, err)
+		err = fmt.Errorf("failed to open netns %q: %v", netns, err)
+		klog.Error(err)
+		return nil, err
 	}
 	finalRoutes, err := configureContainerNic(containerNicName, ifName, ip, gateway, isDefaultRoute, detectIPConflict, routes, macAddr, podNS, mtu, nicType, gwCheckMode, u2oInterconnectionIP)
-	return finalRoutes, err
+	if err != nil {
+		klog.Error(err)
+		return nil, err
+	}
+	return finalRoutes, nil
 }
 
 func (csh cniServerHandler) releaseVf(podName, podNamespace, podNetns, ifName, nicType, provider, deviceID string) error {
@@ -1536,6 +1544,7 @@ func (csh cniServerHandler) configureNicWithInternalPort(podName, podNamespace, 
 	defer func() {
 		if err != nil {
 			if err := csh.rollbackOvsPort("", containerNicName, nicType); err != nil {
+				klog.Errorf("failed to rollback ovs port %s, %v", containerNicName, err)
 				return
 			}
 		}
@@ -1738,18 +1747,20 @@ func linkExists(name string) (bool, error) {
 func rollBackVethPair(nicName string) error {
 	hostLink, err := netlink.LinkByName(nicName)
 	if err != nil {
-		// If link already not exists, return quietly
-		// E.g. Internal port had been deleted by Remove ovs port previously
+		// if link already not exists, return quietly
+		// e.g. Internal port had been deleted by Remove ovs port previously
 		if _, ok := err.(netlink.LinkNotFoundError); ok {
 			return nil
 		}
+		klog.Error(err)
 		return fmt.Errorf("find host link %s failed %v", nicName, err)
 	}
 
 	hostLinkType := hostLink.Type()
-	// Sometimes no deviceID input for vf nic, avoid delete vf nic.
+	// sometimes no deviceID input for vf nic, avoid delete vf nic.
 	if hostLinkType == "veth" {
 		if err = netlink.LinkDel(hostLink); err != nil {
+			klog.Error(err)
 			return fmt.Errorf("delete host link %s failed %v", hostLink, err)
 		}
 	}
