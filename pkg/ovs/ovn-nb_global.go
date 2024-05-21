@@ -49,7 +49,7 @@ func (c *OVNNbClient) GetNbGlobal() (*ovnnb.NBGlobal, error) {
 	}).List(ctx, &nbGlobalList)
 	if err != nil {
 		klog.Error(err)
-		return nil, fmt.Errorf("failed to list nbGlobal: %v", err)
+		return nil, fmt.Errorf("failed to list NB_Global: %v", err)
 	}
 
 	if len(nbGlobalList) == 0 {
