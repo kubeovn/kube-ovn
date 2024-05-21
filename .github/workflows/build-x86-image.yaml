@@ -34,16 +34,6 @@ jobs:
     outputs:
       build-base: ${{ steps.check.outputs.build-base }}
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
-        with:
-          android: true
-          dotnet: true
-          haskell: true
-          docker-images: false
-          large-packages: false
-          tool-cache: false
-          swap-storage: false
-
       - uses: actions/checkout@v4
         with:
           fetch-depth: 2
@@ -56,6 +46,17 @@ jobs:
           if git diff --name-only HEAD^ HEAD | grep -q ^dist/images/Dockerfile.base$; then
             echo build-base=1 >> "$GITHUB_OUTPUT"
           fi
+
+      - uses: jlumbroso/free-disk-space@v1.3.1
+        if: steps.check.outputs.build-base == 1
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          docker-images: false
+          large-packages: false
+          tool-cache: false
+          swap-storage: false
 
       - uses: docker/setup-buildx-action@v3
         if: steps.check.outputs.build-base == 1
@@ -80,16 +81,6 @@ jobs:
     outputs:
       build-dpdk-base: ${{ steps.check.outputs.build-dpdk-base }}
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
-        with:
-          android: true
-          dotnet: true
-          haskell: true
-          docker-images: false
-          large-packages: false
-          tool-cache: false
-          swap-storage: false
-
       - uses: actions/checkout@v4
         with:
           fetch-depth: 2
@@ -102,6 +93,17 @@ jobs:
           if git diff --name-only HEAD^ HEAD | grep -q ^dist/images/Dockerfile.base-dpdk$; then
             echo build-dpdk-base=1 >> "$GITHUB_OUTPUT"
           fi
+
+      - uses: jlumbroso/free-disk-space@v1.3.1
+        if: steps.check.outputs.build-dpdk-base == 1
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          docker-images: false
+          large-packages: false
+          tool-cache: false
+          swap-storage: false
 
       - uses: docker/setup-buildx-action@v3
         if: steps.check.outputs.build-dpdk-base == 1
@@ -263,16 +265,6 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 15
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
-        with:
-          android: true
-          dotnet: true
-          haskell: true
-          docker-images: false
-          large-packages: false
-          tool-cache: false
-          swap-storage: false
-
       - uses: actions/checkout@v4
 
       - name: Create the default branch directory
@@ -315,6 +307,17 @@ jobs:
           key: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
           restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
           lookup-only: true
+
+      - uses: jlumbroso/free-disk-space@v1.3.1
+        if: steps.lookup-go-cache.outputs.cache-hit != 'true'
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          docker-images: false
+          large-packages: false
+          tool-cache: false
+          swap-storage: false
 
       - name: Go cache
         if: steps.lookup-go-cache.outputs.cache-hit != 'true'
