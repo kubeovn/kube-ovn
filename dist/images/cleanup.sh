@@ -179,7 +179,7 @@ kubectl annotate ns --all ovn.kubernetes.io/allocated-
 
 # ensure kube-ovn components have been deleted
 while :; do
-  sleep 1
+  sleep 10
   if [ $(kubectl get pod -n kube-system -l component=network -o name | wc -l) -eq 0 ]; then
     break
   fi
