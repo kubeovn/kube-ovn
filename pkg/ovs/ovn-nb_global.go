@@ -188,7 +188,7 @@ func (c *OVNNbClient) SetNodeLocalDNSIP(nodeLocalDNSIP string) error {
 	nbGlobal.Options = options
 	if err := c.UpdateNbGlobal(nbGlobal, &nbGlobal.Options); err != nil {
 		klog.Error(err)
-		return fmt.Errorf("failed to remove option node_local_dns_ip, %v", err)
+		return fmt.Errorf("failed to remove NB_Global option node_local_dns_ip, %v", err)
 	}
 
 	return nil
