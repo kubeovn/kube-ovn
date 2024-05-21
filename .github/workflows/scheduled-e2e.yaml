@@ -84,7 +84,7 @@ jobs:
       - name: Create kind cluster
         working-directory: test/e2e/k8s-network/branches/${{ matrix.branch }}
         run: |
-          sudo pip3 install jinjanator
+          sudo pip3 install jinjanator j2cli
           sudo PATH=~/.local/bin:$PATH make kind-init-${{ matrix.ip-family }}
           sudo cp -r /root/.kube/ ~/.kube/
           sudo chown -R $(id -un). ~/.kube/
@@ -172,7 +172,7 @@ jobs:
       - name: Create kind cluster
         working-directory: test/e2e/k8s-network/branches/${{ matrix.branch }}
         run: |
-          sudo pip3 install jinjanator
+          sudo pip3 install jinjanator j2cli
           sudo PATH=~/.local/bin:$PATH make kind-init-${{ matrix.ip-family }}
           sudo cp -r /root/.kube/ ~/.kube/
           sudo chown -R $(id -un). ~/.kube/
@@ -233,7 +233,7 @@ jobs:
       - name: Create kind cluster
         working-directory: test/e2e/k8s-network/branches/${{ matrix.branch }}
         run: |
-          sudo pip3 install jinjanator
+          sudo pip3 install jinjanator j2cli
           sudo PATH=~/.local/bin:$PATH make kind-init-${{ matrix.ip-family }}
           sudo cp -r /root/.kube/ ~/.kube/
           sudo chown -R $(id -un). ~/.kube/
@@ -315,7 +315,7 @@ jobs:
       - name: Create kind cluster
         working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
         run: |
-          sudo pip3 install jinjanator
+          sudo pip3 install jinjanator j2cli
           sudo PATH=~/.local/bin:$PATH make kind-init-${{ matrix.ip-family }}
           sudo cp -r /root/.kube/ ~/.kube/
           sudo chown -R $(id -un). ~/.kube/
@@ -393,7 +393,7 @@ jobs:
       - name: Create kind cluster
         working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
         run: |
-          sudo pip3 install jinjanator
+          sudo pip3 install jinjanator j2cli
           sudo PATH=~/.local/bin:$PATH make kind-init-ovn-ic
           sudo cp -r /root/.kube/ ~/.kube/
           sudo chown -R $(id -un). ~/.kube/
@@ -447,7 +447,7 @@ jobs:
       - name: Create kind cluster
         working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
         run: |
-          sudo pip3 install jinjanator
+          sudo pip3 install jinjanator j2cli
           sudo PATH=~/.local/bin:$PATH make kind-init-dual
           sudo cp -r /root/.kube/ ~/.kube/
           sudo chown -R $(id -un). ~/.kube/
@@ -500,7 +500,7 @@ jobs:
       - name: Create kind cluster
         working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
         run: |
-          sudo pip3 install jinjanator
+          sudo pip3 install jinjanator j2cli
           sudo PATH=~/.local/bin:$PATH make kind-init
           sudo cp -r /root/.kube/ ~/.kube/
           sudo chown -R $(id -un). ~/.kube/
@@ -555,7 +555,7 @@ jobs:
       - name: Create kind cluster
         working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
         run: |
-          sudo pip3 install jinjanator
+          sudo pip3 install jinjanator j2cli
           sudo PATH=~/.local/bin:$PATH make kind-init
           sudo cp -r /root/.kube/ ~/.kube/
           sudo chown -R $(id -un). ~/.kube/
@@ -634,7 +634,7 @@ jobs:
       - name: Create kind cluster
         working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
         run: |
-          sudo pip3 install jinjanator
+          sudo pip3 install jinjanator j2cli
           sudo PATH=~/.local/bin:$PATH make kind-init
           sudo cp -r /root/.kube/ ~/.kube/
           sudo chown -R $(id -un). ~/.kube/
@@ -711,7 +711,7 @@ jobs:
       - name: Create kind cluster
         working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
         run: |
-          sudo pip3 install jinjanator
+          sudo pip3 install jinjanator j2cli
           sudo PATH=~/.local/bin:$PATH make kind-init
           sudo cp -r /root/.kube/ ~/.kube/
           sudo chown -R $(id -un). ~/.kube/
@@ -786,7 +786,7 @@ jobs:
       - name: Create kind cluster
         working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
         run: |
-          sudo pip3 install jinjanator
+          sudo pip3 install jinjanator j2cli
           sudo PATH=~/.local/bin:$PATH make kind-init
           sudo cp -r /root/.kube/ ~/.kube/
           sudo chown -R $(id -un). ~/.kube/
@@ -837,7 +837,7 @@ jobs:
 
       - name: Create kind cluster
         run: |
-          sudo pip3 install jinjanator
+          sudo pip3 install jinjanator j2cli
           sudo PATH=~/.local/bin:$PATH k8s_version=v1.23.13 make kind-init
           sudo cp -r /root/.kube/ ~/.kube/
           sudo chown -R $(id -un). ~/.kube/
@@ -921,7 +921,7 @@ jobs:
       - name: Create kind cluster
         working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
         run: |
-          sudo pip3 install jinjanator
+          sudo pip3 install jinjanator j2cli
           sudo PATH=~/.local/bin:$PATH make kind-init-cilium-chaining || \
           sudo PATH=~/.local/bin:$PATH make kind-init
           sudo cp -r /root/.kube/ ~/.kube/
@@ -1013,7 +1013,7 @@ jobs:
       - name: Create kind cluster
         working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
         run: |
-          sudo pip3 install jinjanator
+          sudo pip3 install jinjanator j2cli
           sudo PATH=~/.local/bin:$PATH make kind-init-ha-${{ matrix.ip-family }}
           sudo cp -r /root/.kube/ ~/.kube/
           sudo chown -R $(id -un). ~/.kube/
@@ -1112,7 +1112,7 @@ jobs:
 
       - name: Create kind cluster
         run: |
-          sudo pip3 install jinjanator
+          sudo pip3 install jinjanator j2cli
           sudo PATH=~/.local/bin:$PATH make kind-init-ha
           sudo cp -r /root/.kube/ ~/.kube/
           sudo chown -R $(id -un). ~/.kube/
@@ -1182,7 +1182,7 @@ jobs:
       - name: Create kind cluster
         working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
         run: |
-          sudo pip3 install jinjanator
+          sudo pip3 install jinjanator j2cli
           sudo PATH=~/.local/bin:$PATH make kind-init-ovn-submariner
           sudo cp -r /root/.kube/ ~/.kube/
           sudo chown -R $(id -un). ~/.kube/
@@ -1258,7 +1258,7 @@ jobs:
       - name: Create kind cluster
         working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
         run: |
-          sudo pip3 install jinjanator
+          sudo pip3 install jinjanator j2cli
           sudo PATH=~/.local/bin:$PATH make kind-init
           sudo cp -r /root/.kube/ ~/.kube/
           sudo chown -R $(id -un). ~/.kube/
@@ -1332,7 +1332,7 @@ jobs:
       - name: Create kind cluster
         working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
         run: |
-          sudo pip3 install jinjanator
+          sudo pip3 install jinjanator j2cli
           sudo PATH=~/.local/bin:$PATH make kind-init
           sudo cp -r /root/.kube/ ~/.kube/
           sudo chown -R $(id -un). ~/.kube/
