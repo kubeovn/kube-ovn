@@ -68,7 +68,7 @@ func (c *OVNNbClient) UpdateNbGlobal(nbGlobal *ovnnb.NBGlobal, fields ...interfa
 
 	if err := c.Transact("nb-global-update", op); err != nil {
 		klog.Error(err)
-		return fmt.Errorf("failed to update NBGlobal: %v", err)
+		return fmt.Errorf("failed to update NB_Global: %v", err)
 	}
 
 	return nil
