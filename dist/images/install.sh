@@ -2172,6 +2172,12 @@ spec:
         openAPIV3Schema:
           type: object
           properties:
+            metadata:
+              type: object
+              properties:
+                name:
+                  type: string
+                  pattern: ^[^0-9]
             status:
               type: object
               properties:
