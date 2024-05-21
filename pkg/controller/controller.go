@@ -208,10 +208,10 @@ type Controller struct {
 	updateServiceQueue workqueue.RateLimitingInterface
 	svcKeyMutex        keymutex.KeyMutex
 
-	endpointsLister     v1.EndpointsLister
-	endpointsSynced     cache.InformerSynced
-	updateEndpointQueue workqueue.RateLimitingInterface
-	epKeyMutex          keymutex.KeyMutex
+	endpointsLister          v1.EndpointsLister
+	endpointsSynced          cache.InformerSynced
+	addOrUpdateEndpointQueue workqueue.RateLimitingInterface
+	epKeyMutex               keymutex.KeyMutex
 
 	npsLister     netv1.NetworkPolicyLister
 	npsSynced     cache.InformerSynced
@@ -419,10 +419,10 @@ func Run(ctx context.Context, config *Configuration) {
 		updateServiceQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateService"),
 		svcKeyMutex:        keymutex.NewHashed(numKeyLocks),
 
-		endpointsLister:     endpointInformer.Lister(),
-		endpointsSynced:     endpointInformer.Informer().HasSynced,
-		updateEndpointQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateEndpoint"),
-		epKeyMutex:          keymutex.NewHashed(numKeyLocks),
+		endpointsLister:          endpointInformer.Lister(),
+		endpointsSynced:          endpointInformer.Informer().HasSynced,
+		addOrUpdateEndpointQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateEndpoint"),
+		epKeyMutex:               keymutex.NewHashed(numKeyLocks),
 
 		qosPoliciesLister:    qosPolicyInformer.Lister(),
 		qosPolicySynced:      qosPolicyInformer.Informer().HasSynced,
@@ -667,7 +667,7 @@ func Run(ctx context.Context, config *Configuration) {
 		UpdateFunc: controller.enqueueUpdateOvnEip,
 		DeleteFunc: controller.enqueueDelOvnEip,
 	}); err != nil {
-		util.LogFatalAndExit(err, "failed to add eip event handler")
+		util.LogFatalAndExit(err, "failed to add ovn eip event handler")
 	}
 
 	if _, err = ovnFipInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -822,7 +822,7 @@ func (c *Controller) shutdown() {
 	c.addServiceQueue.ShutDown()
 	c.deleteServiceQueue.ShutDown()
 	c.updateServiceQueue.ShutDown()
-	c.updateEndpointQueue.ShutDown()
+	c.addOrUpdateEndpointQueue.ShutDown()
 
 	c.addVlanQueue.ShutDown()
 	c.delVlanQueue.ShutDown()
@@ -920,7 +920,7 @@ func (c *Controller) startWorkers(ctx context.Context) {
 	go wait.Until(c.runUpdateVpcSnatWorker, time.Second, ctx.Done())
 	go wait.Until(c.runUpdateVpcSubnetWorker, time.Second, ctx.Done())
 
-	// add default/join subnet and wait them ready
+	// add default and join subnet and wait them ready
 	go wait.Until(c.runAddSubnetWorker, time.Second, ctx.Done())
 	go wait.Until(c.runAddIPPoolWorker, time.Second, ctx.Done())
 	go wait.Until(c.runAddVlanWorker, time.Second, ctx.Done())
@@ -932,7 +932,7 @@ func (c *Controller) startWorkers(ctx context.Context) {
 		return c.allSubnetReady(subnets...)
 	})
 	if err != nil {
-		klog.Fatalf("wait default/join subnet ready error: %v", err)
+		klog.Fatalf("wait default and join subnet ready, error: %v", err)
 	}
 
 	go wait.Until(c.runAddSgWorker, time.Second, ctx.Done())

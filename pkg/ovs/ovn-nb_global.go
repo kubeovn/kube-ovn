@@ -14,7 +14,8 @@ import (
 func (c *OVNNbClient) CreateNbGlobal(nbGlobal *ovnnb.NBGlobal) error {
 	op, err := c.ovsDbClient.Create(nbGlobal)
 	if err != nil {
-		return fmt.Errorf("generate operations for creating nb global: %v", err)
+		klog.Error(err)
+		return fmt.Errorf("failed to generate operations for creating nb global: %v", err)
 	}
 
 	return c.Transact("nb-global-create", op)
@@ -48,7 +49,7 @@ func (c *OVNNbClient) GetNbGlobal() (*ovnnb.NBGlobal, error) {
 	}).List(ctx, &nbGlobalList)
 	if err != nil {
 		klog.Error(err)
-		return nil, fmt.Errorf("list nbGlobal: %v", err)
+		return nil, fmt.Errorf("failed to list NB_Global: %v", err)
 	}
 
 	if len(nbGlobalList) == 0 {
@@ -61,11 +62,13 @@ func (c *OVNNbClient) GetNbGlobal() (*ovnnb.NBGlobal, error) {
 func (c *OVNNbClient) UpdateNbGlobal(nbGlobal *ovnnb.NBGlobal, fields ...interface{}) error {
 	op, err := c.Where(nbGlobal).Update(nbGlobal, fields...)
 	if err != nil {
-		return fmt.Errorf("generate operations for updating nb global: %v", err)
+		klog.Error(err)
+		return fmt.Errorf("failed to generate operations for updating nb global: %v", err)
 	}
 
 	if err := c.Transact("nb-global-update", op); err != nil {
-		return fmt.Errorf("update nb global: %v", err)
+		klog.Error(err)
+		return fmt.Errorf("failed to update NB_Global: %v", err)
 	}
 
 	return nil
@@ -74,7 +77,8 @@ func (c *OVNNbClient) UpdateNbGlobal(nbGlobal *ovnnb.NBGlobal, fields ...interfa
 func (c *OVNNbClient) SetAzName(azName string) error {
 	nbGlobal, err := c.GetNbGlobal()
 	if err != nil {
-		return fmt.Errorf("get nb global: %v", err)
+		klog.Error(err)
+		return fmt.Errorf("failed to get nb global: %v", err)
 	}
 	if azName == nbGlobal.Name {
 		return nil // no need to update
@@ -82,6 +86,7 @@ func (c *OVNNbClient) SetAzName(azName string) error {
 
 	nbGlobal.Name = azName
 	if err := c.UpdateNbGlobal(nbGlobal, &nbGlobal.Name); err != nil {
+		klog.Error(err)
 		return fmt.Errorf("set nb_global az name %s: %v", azName, err)
 	}
 
@@ -91,6 +96,7 @@ func (c *OVNNbClient) SetAzName(azName string) error {
 func (c *OVNNbClient) SetNbGlobalOptions(key string, value interface{}) error {
 	nbGlobal, err := c.GetNbGlobal()
 	if err != nil {
+		klog.Error(err)
 		return fmt.Errorf("failed to get nb global: %v", err)
 	}
 
@@ -105,6 +111,7 @@ func (c *OVNNbClient) SetNbGlobalOptions(key string, value interface{}) error {
 	nbGlobal.Options[key] = v
 
 	if err := c.UpdateNbGlobal(nbGlobal, &nbGlobal.Options); err != nil {
+		klog.Error(err)
 		return fmt.Errorf("failed to set nb global option %s to %v: %v", key, value, err)
 	}
 
@@ -118,7 +125,8 @@ func (c *OVNNbClient) SetUseCtInvMatch() error {
 func (c *OVNNbClient) SetICAutoRoute(enable bool, blackList []string) error {
 	nbGlobal, err := c.GetNbGlobal()
 	if err != nil {
-		return fmt.Errorf("get nb global: %v", err)
+		klog.Error(err)
+		return fmt.Errorf("failed to get nb global: %v", err)
 	}
 
 	options := make(map[string]string, len(nbGlobal.Options)+3)
@@ -141,7 +149,8 @@ func (c *OVNNbClient) SetICAutoRoute(enable bool, blackList []string) error {
 
 	nbGlobal.Options = options
 	if err := c.UpdateNbGlobal(nbGlobal, &nbGlobal.Options); err != nil {
-		return fmt.Errorf("enable ovn-ic auto route, %v", err)
+		klog.Error(err)
+		return fmt.Errorf("failed to enable ovn-ic auto route, %v", err)
 	}
 	return nil
 }
@@ -165,7 +174,8 @@ func (c *OVNNbClient) SetNodeLocalDNSIP(nodeLocalDNSIP string) error {
 
 	nbGlobal, err := c.GetNbGlobal()
 	if err != nil {
-		return fmt.Errorf("get nb global: %v", err)
+		klog.Error(err)
+		return fmt.Errorf("failed to get nb global: %v", err)
 	}
 
 	options := make(map[string]string, len(nbGlobal.Options))
@@ -177,7 +187,8 @@ func (c *OVNNbClient) SetNodeLocalDNSIP(nodeLocalDNSIP string) error {
 
 	nbGlobal.Options = options
 	if err := c.UpdateNbGlobal(nbGlobal, &nbGlobal.Options); err != nil {
-		return fmt.Errorf("remove option node_local_dns_ip failed , %v", err)
+		klog.Error(err)
+		return fmt.Errorf("failed to remove NB_Global option node_local_dns_ip, %v", err)
 	}
 
 	return nil

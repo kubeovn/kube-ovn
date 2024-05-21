@@ -90,7 +90,7 @@ func Test_syncVirtualPort(t *testing.T) {
 
 	fakeController := newFakeController(t)
 	ctrl := fakeController.fakeController
-	fakeinformers := fakeController.fakeinformers
+	fakeinformers := fakeController.fakeInformers
 	mockOvnClient := fakeController.mockOvnClient
 
 	lspNamePrefix := "sync-virt-lsp"
@@ -105,7 +105,7 @@ func Test_syncVirtualPort(t *testing.T) {
 		},
 	}
 
-	err := fakeinformers.sbunetInformer.Informer().GetStore().Add(subnet)
+	err := fakeinformers.subnetInformer.Informer().GetStore().Add(subnet)
 	require.NoError(t, err)
 
 	mockLsp := func(lsName, lspName, vips string) ovnnb.LogicalSwitchPort {
