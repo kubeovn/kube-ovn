@@ -30,7 +30,7 @@ import (
 )
 
 // this file contains setup logic to initialize the myriad of places
-// that client-go registers metrics.  We copy the names and formats
+// that client-go registers metrics. we copy the names and formats
 // from Kubernetes so that we match the core controllers.
 
 var (

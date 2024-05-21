@@ -28,7 +28,7 @@ func (c *Controller) enqueueAddEndpoint(obj interface{}) {
 		return
 	}
 	klog.V(3).Infof("enqueue add endpoint %s", key)
-	c.updateEndpointQueue.Add(key)
+	c.addOrUpdateEndpointQueue.Add(key)
 }
 
 func (c *Controller) enqueueUpdateEndpoint(oldObj, newObj interface{}) {
@@ -52,7 +52,7 @@ func (c *Controller) enqueueUpdateEndpoint(oldObj, newObj interface{}) {
 		return
 	}
 	klog.V(3).Infof("enqueue update endpoint %s", key)
-	c.updateEndpointQueue.Add(key)
+	c.addOrUpdateEndpointQueue.Add(key)
 }
 
 func (c *Controller) runUpdateEndpointWorker() {
@@ -61,14 +61,14 @@ func (c *Controller) runUpdateEndpointWorker() {
 }
 
 func (c *Controller) processNextUpdateEndpointWorkItem() bool {
-	obj, shutdown := c.updateEndpointQueue.Get()
+	obj, shutdown := c.addOrUpdateEndpointQueue.Get()
 
 	if shutdown {
 		return false
 	}
 
 	if err := func(obj interface{}) error {
-		defer c.updateEndpointQueue.Done(obj)
+		defer c.addOrUpdateEndpointQueue.Done(obj)
 
 		var (
 			key string
@@ -77,16 +77,16 @@ func (c *Controller) processNextUpdateEndpointWorkItem() bool {
 		)
 
 		if key, ok = obj.(string); !ok {
-			c.updateEndpointQueue.Forget(obj)
+			c.addOrUpdateEndpointQueue.Forget(obj)
 			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
 			return nil
 		}
 
 		if err = c.handleUpdateEndpoint(key); err != nil {
-			c.updateEndpointQueue.AddRateLimited(key)
+			c.addOrUpdateEndpointQueue.AddRateLimited(key)
 			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
 		}
-		c.updateEndpointQueue.Forget(obj)
+		c.addOrUpdateEndpointQueue.Forget(obj)
 		return nil
 	}(obj); err != nil {
 		utilruntime.HandleError(err)
@@ -104,7 +104,7 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 
 	c.epKeyMutex.LockKey(key)
 	defer func() { _ = c.epKeyMutex.UnlockKey(key) }()
-	klog.Infof("update add/update endpoint %s/%s", namespace, name)
+	klog.Infof("handle update endpoint %s", key)
 
 	ep, err := c.endpointsLister.Endpoints(namespace).Get(name)
 	if err != nil {
@@ -162,7 +162,7 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 	)
 
 	if vpc, err = c.vpcsLister.Get(vpcName); err != nil {
-		klog.Errorf("failed to get vpc %s of lb, %v", vpcName, err)
+		klog.Errorf("failed to get vpc %s, %v", vpcName, err)
 		return err
 	}
 
@@ -172,7 +172,7 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 		}
 		svc.Annotations[util.VpcAnnotation] = vpcName
 		if _, err = c.config.KubeClient.CoreV1().Services(namespace).Update(context.Background(), svc, metav1.UpdateOptions{}); err != nil {
-			klog.Errorf("failed to update service %s/%s: %v", namespace, svc.Name, err)
+			klog.Errorf("failed to update service %s: %v", key, err)
 			return err
 		}
 	}
@@ -200,14 +200,12 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 				backends                 []string
 				ipPortMapping, externals map[string]string
 			)
-			vip = util.JoinHostPort(lbVip, port.Port)
 
 			if !ignoreHealthCheck {
 				if checkIP, err = c.getHealthCheckVip(subnetName, lbVip); err != nil {
 					klog.Error(err)
 					return err
 				}
-
 				externals = map[string]string{
 					util.SwitchLBRuleSubnet: subnetName,
 				}
@@ -217,6 +215,7 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 
 			// for performance reason delete lb with no backends
 			if len(backends) != 0 {
+				vip = util.JoinHostPort(lbVip, port.Port)
 				klog.Infof("add vip endpoint %s, backends %v to LB %s", vip, backends, lb)
 				if err = c.OVNNbClient.LoadBalancerAddVip(lb, vip, backends...); err != nil {
 					klog.Errorf("failed to add vip %s with backends %s to LB %s: %v", lbVip, backends, lb, err)
@@ -257,7 +256,6 @@ func (c *Controller) getVpcSubnetName(pods []*v1.Pod, endpoints *v1.Endpoints, s
 		if len(pod.Annotations) == 0 {
 			continue
 		}
-
 		if subnetName == "" {
 			subnetName = pod.Annotations[util.LogicalSwitchAnnotation]
 		}
@@ -269,7 +267,6 @@ func (c *Controller) getVpcSubnetName(pods []*v1.Pod, endpoints *v1.Endpoints, s
 					if vpcName == "" {
 						vpcName = pod.Annotations[util.LogicalRouterAnnotation]
 					}
-
 					if vpcName != "" {
 						break LOOP
 					}
@@ -295,6 +292,8 @@ func (c *Controller) getVpcSubnetName(pods []*v1.Pod, endpoints *v1.Endpoints, s
 	return vpcName, subnetName
 }
 
+// getHealthCheckVip get health check vip for load balancer, the vip name is the subnet name
+// the vip is used to check the health of the backend pod
 func (c *Controller) getHealthCheckVip(subnetName, lbVip string) (string, error) {
 	var (
 		needCreateHealthCheckVip bool
@@ -302,41 +301,41 @@ func (c *Controller) getHealthCheckVip(subnetName, lbVip string) (string, error)
 		checkIP                  string
 		err                      error
 	)
-
-	checkVip, err = c.virtualIpsLister.Get(subnetName)
+	vipName := subnetName
+	checkVip, err = c.virtualIpsLister.Get(vipName)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			needCreateHealthCheckVip = true
 		} else {
-			klog.Errorf("failed to get health check vip %s, %v", subnetName, err)
+			klog.Errorf("failed to get health check vip %s, %v", vipName, err)
 			return "", err
 		}
 	}
 	if needCreateHealthCheckVip {
 		vip := &kubeovnv1.Vip{
 			ObjectMeta: metav1.ObjectMeta{
-				Name: subnetName,
+				Name: vipName,
 			},
 			Spec: kubeovnv1.VipSpec{
 				Subnet: subnetName,
 			},
 		}
 		if _, err = c.config.KubeOvnClient.KubeovnV1().Vips().Create(context.Background(), vip, metav1.CreateOptions{}); err != nil {
-			klog.Errorf("failed to create health check vip %s, %v", subnetName, err)
+			klog.Errorf("failed to create health check vip %s, %v", vipName, err)
 			return "", err
 		}
 
 		// wait for vip created
 		time.Sleep(1 * time.Second)
-		checkVip, err = c.virtualIpsLister.Get(subnetName)
+		checkVip, err = c.virtualIpsLister.Get(vipName)
 		if err != nil {
-			klog.Errorf("failed to get health check vip %s, %v", subnetName, err)
+			klog.Errorf("failed to get health check vip %s, %v", vipName, err)
 			return "", err
 		}
 	}
 
 	if checkVip.Status.V4ip == "" && checkVip.Status.V6ip == "" {
-		err = fmt.Errorf("failed to get health check vip %s address", subnetName)
+		err = fmt.Errorf("vip %s is not ready", vipName)
 		klog.Error(err)
 		return "", err
 	}
@@ -348,7 +347,7 @@ func (c *Controller) getHealthCheckVip(subnetName, lbVip string) (string, error)
 		checkIP = checkVip.Status.V6ip
 	}
 	if checkIP == "" {
-		err = fmt.Errorf("failed to get health check vip subnet %s", subnetName)
+		err = fmt.Errorf("failed to get health check vip subnet %s", vipName)
 		klog.Error(err)
 		return "", err
 	}

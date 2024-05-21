@@ -108,7 +108,7 @@ func ParseFlags() (*Configuration, error) {
 	var (
 		argOvnNbAddr            = pflag.String("ovn-nb-addr", "", "ovn-nb address")
 		argOvnSbAddr            = pflag.String("ovn-sb-addr", "", "ovn-sb address")
-		argOvnTimeout           = pflag.Int("ovn-timeout", 60, "")
+		argOvnTimeout           = pflag.Int("ovn-timeout", 60, "The seconds to wait ovn command timeout")
 		argCustCrdRetryMinDelay = pflag.Int("cust-crd-retry-min-delay", 1, "The min delay seconds between custom crd two retries")
 		argCustCrdRetryMaxDelay = pflag.Int("cust-crd-retry-max-delay", 20, "The max delay seconds between custom crd two retries")
 		argKubeConfigFile       = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.")
@@ -163,7 +163,7 @@ func ParseFlags() (*Configuration, error) {
 		argExternalGatewaySwitch   = pflag.String("external-gateway-switch", "external", "The name of the external gateway switch which is a ovs bridge to provide external network, default: external")
 		argExternalGatewayNet      = pflag.String("external-gateway-net", "external", "The name of the external network which mappings with an ovs bridge, default: external")
 		argExternalGatewayVlanID   = pflag.Int("external-gateway-vlanid", 0, "The vlanId of port ln-ovn-external, default: 0")
-		argNodeLocalDNSIP          = pflag.String("node-local-dns-ip", "", "The node local dns ip , this feature is using the local dns cache in k8s")
+		argNodeLocalDNSIP          = pflag.String("node-local-dns-ip", "", "The node local dns ip, this feature is using the local dns cache in k8s")
 
 		argGCInterval      = pflag.Int("gc-interval", 360, "The interval between GC processes, default 360 seconds")
 		argInspectInterval = pflag.Int("inspect-interval", 20, "The interval between inspect processes, default 20 seconds")
@@ -176,7 +176,7 @@ func ParseFlags() (*Configuration, error) {
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
 	klog.InitFlags(klogFlags)
 
-	// Sync the glog and klog flags.
+	// sync the glog and klog flags.
 	pflag.CommandLine.VisitAll(func(f1 *pflag.Flag) {
 		f2 := klogFlags.Lookup(f1.Name)
 		if f2 != nil {
