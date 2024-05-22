@@ -5,7 +5,7 @@ package util
 
 import (
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"net"
 	"net/netip"
 	"sync"
@@ -14,10 +14,6 @@ import (
 	"github.com/mdlayher/arp"
 	"k8s.io/klog/v2"
 )
-
-func init() {
-	rand.Seed(int64(time.Now().Nanosecond()))
-}
 
 func ArpResolve(nic, srcIP, dstIP string, timeout time.Duration, maxRetry int) (net.HardwareAddr, int, error) {
 	target, err := netip.ParseAddr(dstIP)
@@ -115,12 +111,12 @@ func ArpDetectIPConflict(nic, ip string, mac net.HardwareAddr) (net.HardwareAddr
 	durations := make([]time.Duration, probeNum)
 	// wait for a random time interval selected uniformly in the range zero to
 	// PROBE_WAIT seconds
-	durations[0] = time.Duration(rand.Int63n(int64(probeWait)))
+	durations[0] = time.Duration(rand.Int64N(int64(probeWait)))
 	deadline = deadline.Add(durations[0])
 	for i := 1; i < probeNum; i++ {
 		// send PROBE_NUM probe packets, each of these probe packets spaced
 		// randomly and uniformly, PROBE_MIN to PROBE_MAX seconds apart
-		durations[i] = probeMin + time.Duration(rand.Int63n(int64(probeMax-probeMin)))
+		durations[i] = probeMin + time.Duration(rand.Int64N(int64(probeMax-probeMin)))
 		deadline = deadline.Add(durations[i])
 	}
 
