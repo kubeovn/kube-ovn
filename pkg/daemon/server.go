@@ -13,8 +13,10 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/request"
 )
 
-var requestLogString = "[%s] Incoming %s %s %s request"
-var responseLogString = "[%s] Outgoing response %s %s with %d status code in %vms"
+var (
+	requestLogString  = "[%s] Incoming %s %s %s request"
+	responseLogString = "[%s] Outgoing response %s %s with %d status code in %vms"
+)
 
 // RunServer runs the cniserver
 func RunServer(config *Configuration, controller *Controller) {
@@ -60,7 +62,8 @@ func createHandler(csh *cniServerHandler) http.Handler {
 
 // web-service filter function used for request and response logging.
 func requestAndResponseLogger(request *restful.Request, response *restful.Response,
-	chain *restful.FilterChain) {
+	chain *restful.FilterChain,
+) {
 	klog.Infof(formatRequestLog(request))
 	start := time.Now()
 	chain.ProcessFilter(request, response)

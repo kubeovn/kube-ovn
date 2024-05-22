@@ -52,7 +52,7 @@ func (c *Controller) enqueueDeleteService(obj interface{}) {
 		return
 	}
 	svc := obj.(*v1.Service)
-	//klog.V(3).Infof("enqueue delete service %s/%s", svc.Namespace, svc.Name)
+	// klog.V(3).Infof("enqueue delete service %s/%s", svc.Namespace, svc.Name)
 	klog.Infof("enqueue delete service %s/%s", svc.Namespace, svc.Name)
 	if svc.Spec.ClusterIP != v1.ClusterIPNone && svc.Spec.ClusterIP != "" {
 
@@ -138,7 +138,6 @@ func (c *Controller) processNextDeleteServiceWorkItem() bool {
 		c.deleteServiceQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -169,7 +168,6 @@ func (c *Controller) processNextUpdateServiceWorkItem() bool {
 		c.updateServiceQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true

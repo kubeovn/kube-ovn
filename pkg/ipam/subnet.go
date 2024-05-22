@@ -296,7 +296,7 @@ func (subnet *Subnet) getV6RandomAddress(podName, nicName string, skippedAddrs [
 	return "", ip, subnet.GetRandomMac(podName, nicName), nil
 }
 
-func (subnet *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac string, force bool, checkConflict bool) (IP, string, error) {
+func (subnet *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac string, force, checkConflict bool) (IP, string, error) {
 	subnet.mutex.Lock()
 	defer func() {
 		subnet.pushPodNic(podName, nicName)

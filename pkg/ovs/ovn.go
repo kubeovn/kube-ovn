@@ -127,11 +127,11 @@ func Transact(c client.Client, method string, operations []ovsdb.Operation, time
 	return nil
 }
 
-func ConstructWaitForNameNotExistsOperation(name string, table string) ovsdb.Operation {
+func ConstructWaitForNameNotExistsOperation(name, table string) ovsdb.Operation {
 	return ConstructWaitForUniqueOperation(table, "name", name)
 }
 
-func ConstructWaitForUniqueOperation(table string, column string, value interface{}) ovsdb.Operation {
+func ConstructWaitForUniqueOperation(table, column string, value interface{}) ovsdb.Operation {
 	timeout := OVSDBWaitTimeout
 	return ovsdb.Operation{
 		Op:      ovsdb.OperationWait,

@@ -319,7 +319,6 @@ func (csh cniServerHandler) UpdateIPCr(podRequest request.CniRequest, subnet, ip
 func (csh cniServerHandler) handleDel(req *restful.Request, resp *restful.Response) {
 	podRequest := request.CniRequest{}
 	err := req.ReadEntity(&podRequest)
-
 	if err != nil {
 		errMsg := fmt.Errorf("parse del request failed %v", err)
 		klog.Error(errMsg)

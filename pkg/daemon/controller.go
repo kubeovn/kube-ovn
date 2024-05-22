@@ -80,7 +80,7 @@ type Controller struct {
 }
 
 // NewController init a daemon controller
-func NewController(config *Configuration, podInformerFactory informers.SharedInformerFactory, nodeInformerFactory informers.SharedInformerFactory, kubeovnInformerFactory kubeovninformer.SharedInformerFactory) (*Controller, error) {
+func NewController(config *Configuration, podInformerFactory, nodeInformerFactory informers.SharedInformerFactory, kubeovnInformerFactory kubeovninformer.SharedInformerFactory) (*Controller, error) {
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(klog.Infof)
 	eventBroadcaster.StartRecordingToSink(&typedcorev1.EventSinkImpl{Interface: config.KubeClient.CoreV1().Events("")})
@@ -242,7 +242,6 @@ func (c *Controller) processNextAddOrUpdateProviderNetworkWorkItem() bool {
 		c.addOrUpdateProviderNetworkQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		c.addOrUpdateProviderNetworkQueue.AddRateLimited(obj)
@@ -272,7 +271,6 @@ func (c *Controller) processNextDeleteProviderNetworkWorkItem() bool {
 		c.deleteProviderNetworkQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		c.deleteProviderNetworkQueue.AddRateLimited(obj)
@@ -352,7 +350,7 @@ func (c *Controller) initProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v1
 	return nil
 }
 
-func (c *Controller) recordProviderNetworkErr(providerNetwork string, errMsg string) {
+func (c *Controller) recordProviderNetworkErr(providerNetwork, errMsg string) {
 	var currentPod *v1.Pod
 	var err error
 	if c.localPodName == "" {
@@ -505,7 +503,6 @@ func (c *Controller) processNextSubnetWorkItem() bool {
 		c.subnetQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -688,7 +685,7 @@ func getNicExistRoutes(nic netlink.Link, gateway string) ([]netlink.Route, error
 	return existRoutes, nil
 }
 
-func routeDiff(existRoutes []netlink.Route, cidrs []string) (toAdd []string, toDel []string) {
+func routeDiff(existRoutes []netlink.Route, cidrs []string) (toAdd, toDel []string) {
 	for _, route := range existRoutes {
 		if route.Scope == netlink.SCOPE_LINK || route.Dst == nil || route.Dst.IP.IsLinkLocalUnicast() {
 			continue
@@ -943,7 +940,6 @@ func (c *Controller) processNextPodWorkItem() bool {
 		c.podQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -1270,7 +1266,7 @@ func (c *Controller) getSubnetQosPriority(subnetName string) string {
 	var priority string
 	subnet, err := c.subnetsLister.Get(subnetName)
 	if err != nil {
-		klog.Errorf("failed to get subnet %s: %v", subnet, err)
+		klog.Errorf("failed to get subnet %s: %v", subnetName, err)
 	} else if subnet.Spec.HtbQos != "" {
 		htbQos, err := c.htbQosLister.Get(subnet.Spec.HtbQos)
 		if err != nil {

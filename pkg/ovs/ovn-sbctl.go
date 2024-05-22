@@ -18,11 +18,13 @@ func (c LegacyClient) ovnSbCommand(cmdArgs ...string) (string, error) {
 			fmt.Sprintf("--db=%s", c.OvnSbAddress),
 			"-p", "/var/run/tls/key",
 			"-c", "/var/run/tls/cert",
-			"-C", "/var/run/tls/cacert"}, cmdArgs...)
+			"-C", "/var/run/tls/cacert",
+		}, cmdArgs...)
 	} else {
 		cmdArgs = append([]string{
 			fmt.Sprintf("--timeout=%d", c.OvnTimeout),
-			fmt.Sprintf("--db=%s", c.OvnSbAddress)}, cmdArgs...)
+			fmt.Sprintf("--db=%s", c.OvnSbAddress),
+		}, cmdArgs...)
 	}
 	raw, err := exec.Command(OvnSbCtl, cmdArgs...).CombinedOutput()
 	elapsed := float64((time.Since(start)) / time.Millisecond)

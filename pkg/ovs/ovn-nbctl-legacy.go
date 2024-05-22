@@ -186,7 +186,7 @@ func (c LegacyClient) SetPortSecurity(portSecurity bool, port, mac, ipStr, vips 
 }
 
 // CreatePort create logical switch port in ovn
-func (c LegacyClient) CreatePort(ls, port, ip, mac, pod, namespace string, portSecurity bool, securityGroups string, vips string, liveMigration bool, hasUnknown bool) error {
+func (c LegacyClient) CreatePort(ls, port, ip, mac, pod, namespace string, portSecurity bool, securityGroups, vips string, liveMigration, hasUnknown bool) error {
 	var ovnCommand []string
 	var addresses []string
 	addresses = append(addresses, mac)
@@ -340,11 +340,13 @@ func (c LegacyClient) SetLogicalSwitchConfig(ls, lr, protocol, subnet, gateway s
 			return err
 		}
 		if !exist {
-			cmd = append(cmd, []string{"--", MayExist, "lsp-add", ls, lsTolr, "--",
+			cmd = append(cmd, []string{
+				"--", MayExist, "lsp-add", ls, lsTolr, "--",
 				"set", "logical_switch_port", lsTolr, "type=router", "--",
 				"lsp-set-addresses", lsTolr, "router", "--",
 				"set", "logical_switch_port", lsTolr, fmt.Sprintf("options:router-port=%s", lrTols), "--",
-				"set", "logical_switch_port", lsTolr, fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName)}...)
+				"set", "logical_switch_port", lsTolr, fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName),
+			}...)
 		}
 
 		// check router port exist
@@ -360,19 +362,27 @@ func (c LegacyClient) SetLogicalSwitchConfig(ls, lr, protocol, subnet, gateway s
 			cmd = append(cmd, []string{"--", MayExist, "lrp-add", lr, lrTols, util.GenerateMac()}...)
 			cmd = append(cmd, networkList...)
 		} else {
-			cmd = append(cmd, []string{"--",
-				"set", "logical_router_port", fmt.Sprintf("%s-%s", lr, ls), fmt.Sprintf("networks=%s", networks)}...)
+			cmd = append(cmd, []string{
+				"--",
+				"set", "logical_router_port", fmt.Sprintf("%s-%s", lr, ls), fmt.Sprintf("networks=%s", networks),
+			}...)
 		}
 	}
-	cmd = append(cmd, []string{"--",
-		"set", "logical_switch", ls, fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName)}...)
+	cmd = append(cmd, []string{
+		"--",
+		"set", "logical_switch", ls, fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName),
+	}...)
 
 	if needMulticastSnoop {
-		cmd = append(cmd, []string{"--",
-			"set", "logical_switch", ls, "other_config:mcast_snoop=true", "other_config:mcast_querier=false"}...)
+		cmd = append(cmd, []string{
+			"--",
+			"set", "logical_switch", ls, "other_config:mcast_snoop=true", "other_config:mcast_querier=false",
+		}...)
 	} else {
-		cmd = append(cmd, []string{"--",
-			"remove", "logical_switch", ls, "other_config", "mcast_snoop=true", "mcast_querier=false"}...)
+		cmd = append(cmd, []string{
+			"--",
+			"remove", "logical_switch", ls, "other_config", "mcast_snoop=true", "mcast_querier=false",
+		}...)
 	}
 
 	_, err = c.ovnNbCommand(cmd...)
@@ -388,8 +398,10 @@ func (c LegacyClient) CreateLogicalSwitch(ls, lr, subnet, gateway string, needRo
 	cmd := []string{MayExist, "ls-add", ls, "--", "set", "logical_switch", ls, fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName)}
 
 	if needMulticastSnoop {
-		cmd = append(cmd, []string{"--",
-			"set", "logical_switch", ls, "other_config:mcast_snoop=true", "other_config:mcast_querier=false"}...)
+		cmd = append(cmd, []string{
+			"--",
+			"set", "logical_switch", ls, "other_config:mcast_snoop=true", "other_config:mcast_querier=false",
+		}...)
 	}
 
 	_, err := c.ovnNbCommand(cmd...)
@@ -595,7 +607,7 @@ func (c LegacyClient) CustomFindEntity(entity string, attris []string, args ...s
 	return result, nil
 }
 
-func (c LegacyClient) GetEntityInfo(entity string, index string, attris []string) (result map[string]string, err error) {
+func (c LegacyClient) GetEntityInfo(entity, index string, attris []string) (result map[string]string, err error) {
 	var attrstr strings.Builder
 	for _, e := range attris {
 		attrstr.WriteString(e)
@@ -775,7 +787,6 @@ func (c LegacyClient) CreatePeerRouterPort(localRouter, remoteRouter, localRoute
 
 	_, err = c.ovnNbCommand("set", "logical_router_port", localRouterPort,
 		fmt.Sprintf("networks=\"%s\"", strings.ReplaceAll(localRouterPortIP, ",", " ")))
-
 	if err != nil {
 		klog.Errorf("failed to set router port %s: %v", localRouterPort, err)
 		return err
@@ -807,7 +818,7 @@ func (c LegacyClient) ListStaticRoute() ([]StaticRoute, error) {
 }
 
 // AddStaticRoute add a static route rule in ovn
-func (c LegacyClient) AddStaticRoute(policy, cidr, nextHop, router string, routeType string, isMigrate bool) error {
+func (c LegacyClient) AddStaticRoute(policy, cidr, nextHop, router, routeType string, isMigrate bool) error {
 	if policy == "" {
 		policy = PolicyDstIP
 	}
@@ -914,7 +925,7 @@ func (c LegacyClient) DeletePolicyRoute(router string, priority int32, match str
 	if !exist {
 		return nil
 	}
-	var args = []string{"lr-policy-del", router}
+	args := []string{"lr-policy-del", router}
 	// lr-policy-del ROUTER [PRIORITY [MATCH]]
 	if priority > 0 {
 		args = append(args, strconv.Itoa(int(priority)))
@@ -1456,7 +1467,7 @@ func (c LegacyClient) CreateAddressSetWithAddresses(name string, addresses ...st
 	return err
 }
 
-func (c LegacyClient) AddAddressSetAddresses(name string, address string) error {
+func (c LegacyClient) AddAddressSetAddresses(name, address string) error {
 	output, err := c.ovnNbCommand("add", "address_set", name, "addresses", strings.ReplaceAll(address, ":", `\:`))
 	if err != nil {
 		klog.Errorf("failed to add address %s to address_set %s: %v, %q", address, name, err, output)
@@ -1465,7 +1476,7 @@ func (c LegacyClient) AddAddressSetAddresses(name string, address string) error 
 	return nil
 }
 
-func (c LegacyClient) RemoveAddressSetAddresses(name string, address string) error {
+func (c LegacyClient) RemoveAddressSetAddresses(name, address string) error {
 	output, err := c.ovnNbCommand("remove", "address_set", name, "addresses", strings.ReplaceAll(address, ":", `\:`))
 	if err != nil {
 		klog.Errorf("failed to remove address %s from address_set %s: %v, %q", address, name, err, output)
@@ -2118,6 +2129,7 @@ func (c LegacyClient) UpdateSgACL(sg *kubeovnv1.SecurityGroup, direction AclDire
 	}
 	return nil
 }
+
 func (c LegacyClient) OvnGet(table, record, column, key string) (string, error) {
 	var columnVal string
 	if key == "" {
@@ -2165,6 +2177,7 @@ func (c *LegacyClient) SetLBCIDR(svccidr string) error {
 	}
 	return nil
 }
+
 func (c *LegacyClient) PortGroupExists(pgName string) (bool, error) {
 	results, err := c.CustomFindEntity("port_group", []string{"_uuid"}, fmt.Sprintf("name=%s", pgName))
 	if err != nil {

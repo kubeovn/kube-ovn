@@ -104,7 +104,6 @@ func (c *Controller) processNextSyncSgPortsWorkItem() bool {
 		c.syncSgPortsQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -135,7 +134,6 @@ func (c *Controller) processNextAddOrUpdateSgWorkItem() bool {
 		c.addOrUpdateSgQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -166,7 +164,6 @@ func (c *Controller) processNextDeleteSgWorkItem() bool {
 		c.delSgQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true

@@ -88,7 +88,7 @@ func (ipam *IPAM) GetStaticAddress(podName, nicName, ip, mac, subnetName string,
 	return "", "", "", ErrNoAvailable
 }
 
-func checkAndAppendIpsForDual(ips []IP, podName string, nicName string, subnet *Subnet) ([]IP, error) {
+func checkAndAppendIpsForDual(ips []IP, podName, nicName string, subnet *Subnet) ([]IP, error) {
 	// IP Address for dual-stack should be format of 'IPv4,IPv6'
 	if subnet.Protocol != kubeovnv1.ProtocolDual || len(ips) == 2 {
 		return ips, nil

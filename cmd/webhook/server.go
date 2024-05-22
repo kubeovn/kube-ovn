@@ -3,11 +3,11 @@ package main
 import (
 	"flag"
 
+	"github.com/spf13/pflag"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/klog/v2"
-	"k8s.io/klog/v2/klogr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	ctrlwebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
 
@@ -15,16 +15,13 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	ovnwebhook "github.com/kubeovn/kube-ovn/pkg/webhook"
 	"github.com/kubeovn/kube-ovn/versions"
-	"github.com/spf13/pflag"
 )
 
 const (
 	hookServerCertDir = "/tmp/k8s-webhook-server/serving-certs"
 )
 
-var (
-	scheme = runtime.NewScheme()
-)
+var scheme = runtime.NewScheme()
 
 func init() {
 	if err := corev1.AddToScheme(scheme); err != nil {
@@ -63,7 +60,7 @@ func main() {
 	pflag.Parse()
 
 	// set logger for controller-runtime framework
-	ctrl.SetLogger(klogr.New())
+	ctrl.SetLogger(klog.NewKlogr())
 
 	// Create a webhook server.
 	hookServer := &ctrlwebhook.Server{

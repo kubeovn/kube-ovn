@@ -173,7 +173,7 @@ func (config *Configuration) initNicConfig(nicBridgeMappings map[string]string) 
 		encapIP string
 	)
 
-	//Support to specify node network card separately
+	// Support to specify node network card separately
 	node, err := config.KubeClient.CoreV1().Nodes().Get(context.Background(), config.NodeName, metav1.GetOptions{})
 	if err != nil {
 		klog.Errorf("Failed to find node info, err: %v", err)

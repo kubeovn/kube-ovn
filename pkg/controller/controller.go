@@ -35,7 +35,7 @@ const controllerAgentName = "kube-ovn-controller"
 type Controller struct {
 	config *Configuration
 	vpcs   *sync.Map
-	//subnetVpcMap *sync.Map
+	// subnetVpcMap *sync.Map
 	podSubnetMap *sync.Map
 	ipam         *ovnipam.IPAM
 
