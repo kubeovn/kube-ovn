@@ -194,7 +194,15 @@ if [[ $ENABLE_SSL = "true" ]];then
   echo "[Step 0/6] Generate SSL key and cert"
   exist=$(kubectl get secret -n kube-system kube-ovn-tls --ignore-not-found)
   if [[ $exist == "" ]];then
-    docker run --rm -v "$PWD":/etc/ovn $REGISTRY/kube-ovn:$VERSION bash generate-ssl.sh
+    if command -v docker &> /dev/null; then
+      docker run --rm -v "$PWD":/etc/ovn $REGISTRY/kube-ovn:$VERSION bash generate-ssl.sh
+    elif command -v ctr &> /dev/null; then
+      ctr image pull $REGISTRY/kube-ovn:$VERSION
+      ctr run --rm --mount type=bind,src="$PWD",dst=/etc/ovn,options=rbind:rw $REGISTRY/kube-ovn:$VERSION 0 bash generate-ssl.sh
+    else
+      echo "ERROR: No docker or ctr found"
+      exit 1
+    fi
     kubectl create secret generic -n kube-system kube-ovn-tls --from-file=cacert=cacert.pem --from-file=cert=ovn-cert.pem --from-file=key=ovn-privkey.pem
     rm -rf cacert.pem ovn-cert.pem ovn-privkey.pem ovn-req.pem
   fi
