@@ -183,7 +183,10 @@ while :; do
   if [ $(kubectl get pod -n kube-system -l component=network -o name | wc -l) -eq 0 ]; then
     break
   fi
-  kubectl -n kube-system get pod -l component=network -o wide
+  for pod in `kubectl -n kube-system get pod -l component=network -o name`; do
+    echo "$pod logs:"
+    kubectl -n kube-system logs $pod --timestamps --tail 50
+  done
 done
 
 # wait for all pods to be deleted before deleting serviceaccount/clusterrole/clusterrolebinding
