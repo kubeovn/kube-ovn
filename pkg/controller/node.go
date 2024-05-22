@@ -453,11 +453,13 @@ func (c *Controller) handleDeleteNode(key string) error {
 	portName := fmt.Sprintf("node-%s", key)
 	ok, err := c.ovnLegacyClient.LogicalSwitchPortExists(portName)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 	if ok {
 		addresses, err := c.ovnLegacyClient.GetLogicalSwitchPortAddress(portName)
 		if err != nil {
+			klog.Error(err)
 			return err
 		}
 		ips := make([]string, 0, 2)
@@ -528,6 +530,7 @@ func (c *Controller) handleDeleteNode(key string) error {
 	}
 
 	if err = c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), portName, metav1.DeleteOptions{}); err != nil && !k8serrors.IsNotFound(err) {
+		klog.Errorf("failed to delete ip %s: %v", portName, err)
 		return err
 	}
 
