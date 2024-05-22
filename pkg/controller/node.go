@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"reflect"
 	"strconv"
 	"strings"
@@ -450,18 +451,44 @@ func (c *Controller) handleNodeAnnotationsForProviderNetworks(node *v1.Node) err
 
 func (c *Controller) handleDeleteNode(key string) error {
 	portName := fmt.Sprintf("node-%s", key)
-	klog.Infof("delete logical switch port %s", portName)
-	if err := c.ovnLegacyClient.DeleteLogicalSwitchPort(portName); err != nil {
-		klog.Errorf("failed to delete node switch port node-%s: %v", key, err)
+	ok, err := c.ovnLegacyClient.LogicalSwitchPortExists(portName)
+	if err != nil {
 		return err
 	}
-	if err := c.ovnLegacyClient.DeleteChassisByNode(key); err != nil {
-		klog.Errorf("failed to delete chassis for node %s: %v", key, err)
-		return err
+	if ok {
+		addresses, err := c.ovnLegacyClient.GetLogicalSwitchPortAddress(portName)
+		if err != nil {
+			return err
+		}
+		ips := make([]string, 0, 2)
+		for _, addr := range addresses {
+			fields := strings.Fields(addr)
+			for idx := len(fields) - 1; idx >= 0; idx-- {
+				if ip := net.ParseIP(fields[idx]); ip != nil {
+					ips = append(ips, ip.String())
+					continue
+				}
+				break
+			}
+		}
+
+		for _, ip := range ips {
+			klog.Infof("deleting logical router policy with nexthop %q from %s for node %s", ip, c.config.ClusterRouter, key)
+			if err = c.ovnLegacyClient.DeletePolicyRouteByNexthop(c.config.ClusterRouter, util.NodeRouterPolicyPriority, ip); err != nil {
+				klog.Errorf("failed to delete logical router policy with nexthop %q from %s for node %s: %v", ip, c.config.ClusterRouter, key, err)
+				return err
+			}
+		}
+
+		klog.Infof("delete logical switch port %s", portName)
+		if err = c.ovnLegacyClient.DeleteLogicalSwitchPort(portName); err != nil {
+			klog.Errorf("failed to delete node switch port %s: %v", portName, err)
+			return err
+		}
 	}
 
-	if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), portName, metav1.DeleteOptions{}); err != nil && !k8serrors.IsNotFound(err) {
-		klog.Error(err)
+	if err := c.ovnLegacyClient.DeleteChassisByNode(key); err != nil {
+		klog.Errorf("failed to delete chassis for node %s: %v", key, err)
 		return err
 	}
 
@@ -471,21 +498,11 @@ func (c *Controller) handleDeleteNode(key string) error {
 		klog.Errorf("failed to delete port group %s for node, %v", portName, err)
 		return err
 	}
-	if err := c.deletePolicyRouteForNode(key); err != nil {
+	if err = c.deletePolicyRouteForNode(key, portName); err != nil {
 		klog.Errorf("failed to delete policy route for node %s: %v", key, err)
 		return err
 	}
 
-	addresses := c.ipam.GetPodAddress(portName)
-	for _, addr := range addresses {
-		if addr.Ip == "" {
-			continue
-		}
-		if err := c.ovnLegacyClient.DeletePolicyRouteByNexthop(c.config.ClusterRouter, util.NodeRouterPolicyPriority, addr.Ip); err != nil {
-			klog.Errorf("failed to delete router policy for node %s: %v", key, err)
-			return err
-		}
-	}
 	if err := c.ovnLegacyClient.DeleteAddressSet(nodeUnderlayAddressSetName(key, 4)); err != nil {
 		klog.Errorf("failed to delete address set for node %s: %v", key, err)
 		return err
@@ -508,6 +525,10 @@ func (c *Controller) handleDeleteNode(key string) error {
 			klog.Error(err)
 			return err
 		}
+	}
+
+	if err = c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), portName, metav1.DeleteOptions{}); err != nil && !k8serrors.IsNotFound(err) {
+		return err
 	}
 
 	return nil
@@ -1121,11 +1142,23 @@ func (c *Controller) checkPolicyRouteConsistent(cidr, nexthop string, priority i
 	return false, nil
 }
 
-func (c *Controller) deletePolicyRouteForNode(nodeName string) error {
+func (c *Controller) deletePolicyRouteForNode(nodeName, portName string) error {
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to get subnets %v", err)
 		return err
+	}
+
+	addresses := c.ipam.GetPodAddress(portName)
+	for _, addr := range addresses {
+		if addr.Ip == "" {
+			continue
+		}
+		klog.Infof("deleting logical router policy with nexthop %q from %s for node %s", addr.Ip, c.config.ClusterRouter, nodeName)
+		if err = c.ovnLegacyClient.DeletePolicyRouteByNexthop(c.config.ClusterRouter, util.NodeRouterPolicyPriority, addr.Ip); err != nil {
+			klog.Errorf("failed to delete logical router policy with nexthop %q from %s for node %s: %v", addr.Ip, c.config.ClusterRouter, nodeName, err)
+			return err
+		}
 	}
 
 	for _, subnet := range subnets {
