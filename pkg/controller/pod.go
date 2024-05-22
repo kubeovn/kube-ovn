@@ -533,6 +533,7 @@ func (c *Controller) changeVMSubnet(vmName, namespace, providerName, subnetName 
 				return err
 			}
 		}
+		c.updateSubnetStatusQueue.Add(ipCR.Spec.Subnet)
 		// handleAddOrUpdatePod will create new lsp and new ip cr
 	}
 	return nil
