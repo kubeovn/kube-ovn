@@ -2,9 +2,8 @@ package ipam
 
 import (
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"strings"
-	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -12,10 +11,6 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/ipam"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
-
-func init() {
-	rand.Seed(time.Now().UnixNano())
-}
 
 var _ = Describe("[IPAM]", func() {
 	subnetName := "test"
