@@ -239,6 +239,24 @@ func CleanDuplicatePort(ifaceID, portName string) {
 	}
 }
 
+func DeleteDuplicatePort(deviceID string) {
+	deviceID = strings.Replace(deviceID, ":", "", -1)
+	names, err := ovsFind("Interface", "name", "external-ids:pci_bdf="+deviceID)
+	if err != nil {
+		klog.Errorf("failed to find related port %v", err)
+		return
+	}
+
+	for _, name := range names {
+		klog.Infof("delete duplicate port %s", name)
+		output, err := Exec("--if-exists", "--with-iface", "del-port", name)
+		if err != nil {
+			klog.Errorf("failed to delete ovs port %v, %s", err, output)
+			return
+		}
+	}
+}
+
 func SetPortTag(port, tag string) error {
 	return ovsSet("port", port, fmt.Sprintf("tag=%s", tag))
 }

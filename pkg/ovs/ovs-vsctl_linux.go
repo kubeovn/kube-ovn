@@ -356,6 +356,16 @@ func IsUserspaceDataPath() (is bool, err error) {
 	return len(dp) > 0 && dp[0] == "netdev", nil
 }
 
+func GetOtherConfig(key string) string {
+	config, err := ovsGet("open_vswitch", ".", "other_config", key)
+	if err != nil {
+		klog.Errorf("failed to get other_config for key %s: %v", key, err)
+		return ""
+	}
+
+	return config
+}
+
 func CheckAndUpdateHtbQos(podName, podNamespace, ifaceID string, queueIfaceUidMap map[string]string) error {
 	var queueUid string
 	var ok bool
