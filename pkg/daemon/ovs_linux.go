@@ -11,14 +11,12 @@ import (
 	"strings"
 	"time"
 
-	"bufio"
 	"github.com/Mellanox/sriovnet"
 	sriovutilfs "github.com/Mellanox/sriovnet/pkg/utils/filesystem"
 	"github.com/containernetworking/plugins/pkg/ns"
 	"github.com/containernetworking/plugins/pkg/utils/sysctl"
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
-	"io"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
 	"strconv"
@@ -59,29 +57,15 @@ func (csh cniServerHandler) configureDpdkNic(podName, podNamespace, provider, ne
 
 func getCurrentVfCount(pfNetdevName string) (int, error) {
 	devDirName := filepath.Join(util.NetSysDir, pfNetdevName, "device", "sriov_numvfs")
-	klog.Infof("The pf device dir is %s", devDirName)
-	var vfNums string
-	fileHandle, err := os.OpenFile(devDirName, os.O_RDONLY, 0600)
+	value, err := os.ReadFile(devDirName)
 	if err != nil {
-		klog.Errorf("Read pf device file %s error: %v", pfNetdevName, err)
+		klog.Errorf("read file %s error: %v", devDirName, err)
 		return 0, nil
 	}
 
-	defer fileHandle.Close()
-
-	reader := bufio.NewReader(fileHandle)
-	for {
-		line, _, err := reader.ReadLine()
-		if err == io.EOF {
-			break
-		}
-		vfNums = string(line)
-	}
-	klog.Infof("get current vf number is %s", vfNums)
-	if vfNums != "" {
-		return strconv.Atoi(vfNums)
-	}
-	return 0, nil
+	vfNum := strings.TrimSuffix(string(value), "\n")
+	klog.Infof("get current vf number is %s for %s", vfNum, pfNetdevName)
+	return strconv.Atoi(vfNum)
 }
 
 func getNetDeviceNameFromPci(deviceID string) string {
