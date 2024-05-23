@@ -13,9 +13,15 @@ import (
 )
 
 func ValidateSubnet(subnet kubeovnv1.Subnet) error {
-	if subnet.Spec.Gateway != "" && !CIDRContainIP(subnet.Spec.CIDRBlock, subnet.Spec.Gateway) {
-		return fmt.Errorf(" gateway %s is not in cidr %s", subnet.Spec.Gateway, subnet.Spec.CIDRBlock)
+	if subnet.Spec.Gateway != "" {
+		if !CIDRContainIP(subnet.Spec.CIDRBlock, subnet.Spec.Gateway) {
+			return fmt.Errorf("gateway %s is not in cidr %s", subnet.Spec.Gateway, subnet.Spec.CIDRBlock)
+		}
+		if err := ValidateNetworkBroadcast(subnet.Spec.CIDRBlock, subnet.Spec.Gateway); err != nil {
+			return fmt.Errorf("validate gateway %s for cidr %s failed: %v", subnet.Spec.Gateway, subnet.Spec.CIDRBlock, err)
+		}
 	}
+
 	if err := CIDRGlobalUnicast(subnet.Spec.CIDRBlock); err != nil {
 		return err
 	}
@@ -274,7 +280,7 @@ func ValidatePodNetwork(annotations map[string]string) error {
 	return utilerrors.NewAggregate(errors)
 }
 
-func ValidatePodCidr(cidr, ip string) error {
+func ValidateNetworkBroadcast(cidr, ip string) error {
 	for _, cidrBlock := range strings.Split(cidr, ",") {
 		for _, ipAddr := range strings.Split(ip, ",") {
 			if CheckProtocol(cidrBlock) != CheckProtocol(ipAddr) {

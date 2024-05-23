@@ -622,7 +622,7 @@ func TestValidatePodNetwork(t *testing.T) {
 	}
 }
 
-func TestValidatePodCidr(t *testing.T) {
+func TestValidateNetworkBroadcast(t *testing.T) {
 	tests := []struct {
 		name string
 		cidr string
@@ -656,7 +656,7 @@ func TestValidatePodCidr(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ret := ValidatePodCidr(tt.cidr, tt.ip)
+			ret := ValidateNetworkBroadcast(tt.cidr, tt.ip)
 			if !ErrorContains(ret, tt.err) {
 				t.Errorf("got %v, want a error %v", ret, tt.err)
 			}
