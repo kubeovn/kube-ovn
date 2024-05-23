@@ -11,14 +11,17 @@ import (
 	"strings"
 	"time"
 
+	"bufio"
 	"github.com/Mellanox/sriovnet"
 	sriovutilfs "github.com/Mellanox/sriovnet/pkg/utils/filesystem"
 	"github.com/containernetworking/plugins/pkg/ns"
 	"github.com/containernetworking/plugins/pkg/utils/sysctl"
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
+	"io"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
+	"strconv"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
@@ -52,6 +55,112 @@ func (csh cniServerHandler) configureDpdkNic(podName, podNamespace, provider, ne
 		return err
 	}
 	return nil
+}
+
+func getCurrentVfCount(pfNetdevName string) (int, error) {
+	devDirName := filepath.Join(util.NetSysDir, pfNetdevName, "device", "sriov_numvfs")
+	klog.Infof("The pf device dir is %s", devDirName)
+	var vfNums string
+	fileHandle, err := os.OpenFile(devDirName, os.O_RDONLY, 0644)
+	if err != nil {
+		klog.Errorf("Read pf device file %s error: %v", pfNetdevName, err)
+		return 0, nil
+	}
+
+	defer fileHandle.Close()
+
+	reader := bufio.NewReader(fileHandle)
+	for {
+		line, _, err := reader.ReadLine()
+		if err == io.EOF {
+			break
+		}
+		vfNums = string(line)
+	}
+	klog.Infof("get current vf number is %s", vfNums)
+	if vfNums != "" {
+		return strconv.Atoi(vfNums)
+	}
+	return 0, nil
+}
+
+func getNetDeviceNameFromPci(deviceID string) string {
+	netDevs, err := sriovnet.GetNetDevicesFromPci(deviceID)
+	if err != nil {
+		return ""
+	}
+
+	var netName string
+	if len(netDevs) > 0 {
+		netName = netDevs[0]
+	}
+	klog.Infof("get net device name is %s", netName)
+	return netName
+}
+
+func getRepIndex(vfDeviceID, DpdkDevID string) (int, int, error) {
+	repIndex, vfNums := 0, 0
+	// get vf index
+	vfIndex, err := sriovnet.GetVfIndexByPciAddress(vfDeviceID)
+	if err != nil {
+		klog.Errorf("failed to get vf %s index, %v", vfDeviceID, err)
+		return repIndex, vfNums, err
+	}
+
+	// get vf nums for two pf
+	pfDeviceID, err := sriovnet.GetPfPciFromVfPci(vfDeviceID)
+	if err != nil {
+		return repIndex, vfNums, fmt.Errorf("failed to get pf of device %s %v", vfDeviceID, err)
+	}
+	pf0Name := getNetDeviceNameFromPci(pfDeviceID[:len(pfDeviceID)-1] + "0")
+	pf0VfCount, err := getCurrentVfCount(pf0Name)
+	if err != nil {
+		klog.Errorf("failed to get vf number for %s, %v", pf0Name, err)
+		return repIndex, vfNums, err
+	}
+	pf1Name := getNetDeviceNameFromPci(pfDeviceID[:len(pfDeviceID)-1] + "1")
+	pf1VfCount, err := getCurrentVfCount(pf1Name)
+	if err != nil {
+		klog.Errorf("failed to get vf number for %s, %v", pf1Name, err)
+		return repIndex, vfNums, err
+	}
+	vfNums = pf0VfCount + pf1VfCount
+
+	klog.Infof("get vf device id is %s, index is %d, pf device is %s, pf0 vf num is %d, pf1 vf num is %d",
+		vfDeviceID, vfIndex, pfDeviceID, pf0VfCount, pf1VfCount)
+
+	if pfDeviceID[len(pfDeviceID)-1:] == "1" {
+		repIndex = vfIndex + pf0VfCount
+	} else {
+		repIndex = vfIndex
+	}
+
+	return repIndex, vfNums, nil
+}
+
+func getQueueDesc(vfNums int) (string, string) {
+	RxQueueDesc := ovs.GetOtherConfig("rx-queue-desc")
+	TxQueueDesc := ovs.GetOtherConfig("tx-queue-desc")
+
+	if RxQueueDesc == "" {
+		if vfNums <= 512 {
+			RxQueueDesc = "1024"
+		} else {
+			RxQueueDesc = "512"
+		}
+	}
+
+	if TxQueueDesc == "" {
+		if vfNums <= 128 {
+			TxQueueDesc = "1024"
+		} else if vfNums <= 256 {
+			TxQueueDesc = "512"
+		} else {
+			TxQueueDesc = "256"
+		}
+	}
+
+	return RxQueueDesc, TxQueueDesc
 }
 
 func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns, containerID, vfDriver, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute, detectIPConflict bool, routes []request.Route, dnsServer, dnsSuffix []string, ingress, egress, DeviceID, nicType, latency, limit, loss string, gwCheckMode int, u2oInterconnectionIP string) error {
@@ -132,6 +241,90 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 		klog.Error(err)
 		return err
 	}
+	return nil
+}
+
+func (csh cniServerHandler) configureYunsiliconNic(podName, podNamespace, provider, netns, containerID, vfDriver, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute, detectIPConflict bool, routes []request.Route, dnsServer, dnsSuffix []string, ingress, egress, DeviceID, nicType, latency, limit, loss string, gwCheckMode int, u2oInterconnectionIP string) error {
+	var err error
+	var hostNicName, containerNicName string
+
+	hostNicName, containerNicName, err = setupYunsiliconInterface(containerID, DeviceID, ifName, mac)
+	if err != nil {
+		klog.Errorf("failed to create sriov interfaces %v", err)
+		return err
+	}
+
+	ipStr := util.GetIpWithoutMask(ip)
+	ifaceID := ovs.PodNameToPortName(podName, podNamespace, provider)
+	var cmdArg []string
+	cmdArg = append(cmdArg, ovs.MayExist, "add-port", "br-int", hostNicName, "--",
+		"set", "interface", hostNicName)
+	cmdArg = append(cmdArg, fmt.Sprintf("external_ids:iface-id=%s", ifaceID))
+	cmdArg = append(cmdArg, fmt.Sprintf("external_ids:pod_name=%s", podName))
+	cmdArg = append(cmdArg, fmt.Sprintf("external_ids:pod_namespace=%s", podNamespace))
+	cmdArg = append(cmdArg, fmt.Sprintf("external_ids:ip=%s", ipStr))
+	cmdArg = append(cmdArg, fmt.Sprintf("external_ids:pod_netns=%s", netns))
+
+	ovs.DeleteDuplicatePort(DeviceID)
+
+	DpdkDevID := ovs.GetOtherConfig("dpdk-dev")
+	if DpdkDevID == "" {
+		return fmt.Errorf("failed to get DPDK_DEV from ovs dpdk file")
+	}
+	repIndex, vfNums, err := getRepIndex(DeviceID, DpdkDevID)
+	if err != nil {
+		return err
+	}
+	RxQueueDesc, TxQueueDesc := getQueueDesc(vfNums)
+	cmdArg = append(cmdArg, "type=dpdk")
+	cmdArg = append(cmdArg, fmt.Sprintf("options:dpdk-devargs=%s,representor=[%d]", DpdkDevID, repIndex))
+	cmdArg = append(cmdArg, fmt.Sprintf("options:n_rxq_desc=%s", RxQueueDesc))
+	cmdArg = append(cmdArg, fmt.Sprintf("options:n_txq_desc=%s", TxQueueDesc))
+	cmdArg = append(cmdArg, fmt.Sprintf("mtu_request=%d", mtu))
+	cmdArg = append(cmdArg, fmt.Sprintf("external_ids:pci_bdf=%s", strings.Replace(DeviceID, ":", "", -1)))
+
+	klog.Infof("ovs-vsctl add-port br-int %s type=dpdk options:dpdk-devargs=%s,representor=[%d] external_ids:iface-id=%s,ip=%s,pod_name=%s,pod_netns=%s",
+		hostNicName, DpdkDevID, repIndex, ifaceID, ipStr, podName, netns)
+
+	// Add vf host end to ovs port
+	output, err := ovs.Exec(cmdArg...)
+	if err != nil {
+		return fmt.Errorf("add vf_rep nic to ovs failed %v: %q", err, output)
+	}
+
+	// lsp and container nic must use same mac address, otherwise ovn will reject these packets by default
+	macAddr, err := net.ParseMAC(mac)
+	if err != nil {
+		klog.Error(err)
+		return fmt.Errorf("failed to parse mac %s %v", macAddr, err)
+	}
+
+	klog.Infof("set bw on ifaceID %s", ifaceID)
+	if err = ovs.SetInterfaceBandwidth(podName, podNamespace, ifaceID, egress, ingress); err != nil {
+		klog.Error(err)
+		return err
+	}
+	klog.Infof("set qos on ifaceID=%s, containerNicName=%s", ifaceID, containerNicName)
+	if err = ovs.SetNetemQos(podName, podNamespace, ifaceID, latency, limit, loss); err != nil {
+		klog.Error(err)
+		return err
+	}
+
+	if containerNicName == "" {
+		return nil
+	}
+
+	podNS, err := ns.GetNS(netns)
+	if err != nil {
+		klog.Error(err)
+		return fmt.Errorf("failed to open netns %q: %v", netns, err)
+	}
+
+	if err = configureContainerNic(containerNicName, ifName, ip, gateway, isDefaultRoute, detectIPConflict, routes, macAddr, podNS, mtu, nicType, gwCheckMode, u2oInterconnectionIP); err != nil {
+		klog.Error(err)
+		return err
+	}
+	klog.Infof("configureNic %s ok", containerNicName)
 	return nil
 }
 
@@ -1007,6 +1200,39 @@ func setupSriovInterface(containerID, deviceID, vfDriver, ifName string, mtu int
 	return hostNicName, vfNetdevice, nil
 }
 
+func setupYunsiliconInterface(containerID, deviceID, ifName string, mac string) (string, string, error) {
+	var vfNetdevice string
+	// 1. get VF netdevice from PCI
+	vfNetdevices, err := sriovnet.GetNetDevicesFromPci(deviceID)
+	if err != nil {
+		klog.Errorf("failed to get vf netdevice %s, %v", deviceID, err)
+		return "", "", err
+	}
+
+	// Make sure we have 1 netdevice per pci address
+	if len(vfNetdevices) != 1 {
+		return "", "", fmt.Errorf("failed to get one netdevice interface per %s", deviceID)
+	}
+	vfNetdevice = vfNetdevices[0]
+
+	// 2. get VF index from PCI
+	vfIndex, err := sriovnet.GetVfIndexByPciAddress(deviceID)
+	if err != nil {
+		klog.Errorf("failed to get vf %s index, %v", deviceID, err)
+		return "", "", err
+	}
+
+	// 3. rename the host VF representor
+	hostNicName, _ := generateNicName(containerID, ifName)
+
+	// 4. set MAC address to VF
+	if err = setVfMac(deviceID, vfIndex, mac); err != nil {
+		return "", "", err
+	}
+
+	return hostNicName, vfNetdevice, nil
+}
+
 func renameLink(curName, newName string) error {
 	link, err := netlink.LinkByName(curName)
 	if err != nil {
@@ -1165,6 +1391,10 @@ func setVfMac(deviceID string, vfIndex int, mac string) error {
 			break
 		}
 	}
+	if pfName == "" && len(netDevs) > 0 {
+		pfName = netDevs[0]
+	}
+
 	if pfName == "" {
 		return fmt.Errorf("the PF device was not found in the device list, %v", netDevs)
 	}

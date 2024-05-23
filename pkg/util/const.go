@@ -135,7 +135,8 @@ const (
 	AttachmentNetworkAnnotation = "k8s.v1.cni.cncf.io/networks"
 	DefaultNetworkAnnotation    = "v1.multus-cni.io/default-network"
 
-	SRIOVResourceName = "mellanox.com/cx5_sriov_switchdev"
+	SRIOVResourceName           = "mellanox.com/cx5_sriov_switchdev"
+	YunsiliconSriovResourceName = "yunsilicon.com/xsc_sriov"
 
 	InterconnectionConfig  = "ovn-ic-config"
 	ExternalGatewayConfig  = "ovn-external-gw-config"
