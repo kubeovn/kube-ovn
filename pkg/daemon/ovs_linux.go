@@ -57,7 +57,7 @@ func (csh cniServerHandler) configureDpdkNic(podName, podNamespace, provider, ne
 
 func getCurrentVfCount(pfNetdevName string) (int, error) {
 	devDirName := filepath.Join(util.NetSysDir, pfNetdevName, "device", "sriov_numvfs")
-	value, err := os.ReadFile(devDirName)
+	value, err := os.ReadFile(devDirName) // #nosec G304
 	if err != nil {
 		klog.Errorf("read file %s error: %v", devDirName, err)
 		return 0, nil
