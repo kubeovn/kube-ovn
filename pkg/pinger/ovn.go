@@ -1,6 +1,7 @@
 package pinger
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -9,6 +10,26 @@ import (
 
 	"k8s.io/klog/v2"
 )
+
+// Chassis represents a row in the Chassis table.
+type PortBinging struct {
+	LogicalPort string `json:"logical_port"`
+}
+
+// PortBindingResponse represents the structure of the OVSDB query response.
+type PortBindingResponse struct {
+	Rows []PortBinging `json:"rows"`
+}
+
+// Chassis represents a row in the Chassis table.
+type Chassis struct {
+	UUID [2]string `json:"_uuid"`
+}
+
+// ChassisResponse represents the structure of the OVSDB query response.
+type ChassisResponse struct {
+	Rows []Chassis `json:"rows"`
+}
 
 func checkOvs(config *Configuration, setMetrics bool) error {
 	output, err := exec.Command("/usr/share/openvswitch/scripts/ovs-ctl", "status").CombinedOutput()
@@ -98,80 +119,89 @@ func checkOvsBindings() ([]string, error) {
 	return result, nil
 }
 
-func checkSBBindings(config *Configuration) ([]string, error) {
+func getChassis(hostname string) (string, error) {
 	sbHost := os.Getenv("OVN_SB_SERVICE_HOST")
 	sbPort := os.Getenv("OVN_SB_SERVICE_PORT")
+
+	// Create the OVSDB query with the hostname filter
+	query := fmt.Sprintf(`["OVN_Southbound",{"op":"select","table":"Chassis","where":[["hostname","==","%s"]],"columns":["_uuid"]}]`, hostname)
+
 	command := []string{
-		fmt.Sprintf("--db=tcp:[%s]:%s", sbHost, sbPort),
-		"--format=csv",
-		"--no-heading",
-		"--data=bare",
-		"--columns=_uuid",
-		"--timeout=10",
-		"find",
-		"chassis",
-		fmt.Sprintf("hostname=%s", config.NodeName),
+		"--timeout=10", "query", fmt.Sprintf("tcp:[%s]:%s", sbHost, sbPort), query,
 	}
 	if os.Getenv("ENABLE_SSL") == "true" {
 		command = []string{
 			"-p", "/var/run/tls/key",
 			"-c", "/var/run/tls/cert",
 			"-C", "/var/run/tls/cacert",
-			fmt.Sprintf("--db=ssl:[%s]:%s", sbHost, sbPort),
-			"--format=csv",
-			"--no-heading",
-			"--data=bare",
-			"--columns=_uuid",
-			"--timeout=10",
-			"find",
-			"chassis",
-			fmt.Sprintf("hostname=%s", config.NodeName),
+			"--timeout=10", "query", fmt.Sprintf("ssl:[%s]:%s", sbHost, sbPort), query,
 		}
 	}
-	output, err := exec.Command("ovn-sbctl", command...).CombinedOutput() // #nosec G204
+
+	// Execute the ovsdb-client command and get the JSON output.
+	output, err := exec.Command("ovsdb-client", command...).CombinedOutput() // #nosec G204
 	if err != nil {
-		klog.Errorf("failed to find chassis: %v, %s", err, string(output))
-		return nil, err
-	}
-	if len(output) == 0 {
-		klog.Errorf("chassis for node %s not exist", config.NodeName)
-		return nil, fmt.Errorf("chassis for node %s not exist", config.NodeName)
+		klog.Errorf("failed to find chassis %v", err)
+		return "", err
 	}
 
-	chassis := strings.TrimSpace(string(output))
-	klog.Infof("chassis id is %s", chassis)
-	command = []string{
-		fmt.Sprintf("--db=tcp:[%s]:%s", sbHost, sbPort),
-		"--format=csv",
-		"--no-heading",
-		"--data=bare",
-		"--columns=logical_port",
-		"--timeout=10",
-		"find",
-		"port_binding",
-		fmt.Sprintf("chassis=%s", chassis),
+	// Parse the JSON output.
+	var responses []ChassisResponse
+	err = json.Unmarshal(output, &responses)
+	if err != nil {
+		return "", err
+	}
+
+	if len(responses) == 0 || len(responses[0].Rows) == 0 || len(responses[0].Rows[0].UUID) < 2 {
+		return "", fmt.Errorf("No chassis found for hostname: %s", hostname)
+	}
+	return responses[0].Rows[0].UUID[1], nil
+}
+
+func getLogicalPort(chassis string) ([]string, error) {
+	sbHost := os.Getenv("OVN_SB_SERVICE_HOST")
+	sbPort := os.Getenv("OVN_SB_SERVICE_PORT")
+
+	query := fmt.Sprintf(`["OVN_Southbound",{"op":"select","table":"Port_Binding","where":[["chassis","==",["uuid","%s"]]],"columns":["logical_port"]}]`, chassis)
+
+	command := []string{
+		"--timeout=10", "query", fmt.Sprintf("tcp:[%s]:%s", sbHost, sbPort), query,
 	}
 	if os.Getenv("ENABLE_SSL") == "true" {
 		command = []string{
 			"-p", "/var/run/tls/key",
 			"-c", "/var/run/tls/cert",
 			"-C", "/var/run/tls/cacert",
-			fmt.Sprintf("--db=ssl:[%s]:%s", sbHost, sbPort),
-			"--format=csv",
-			"--no-heading",
-			"--data=bare",
-			"--columns=logical_port",
-			"--timeout=10",
-			"find",
-			"port_binding",
-			fmt.Sprintf("chassis=%s", chassis),
+			"--timeout=10", "query", fmt.Sprintf("ssl:[%s]:%s", sbHost, sbPort), query,
 		}
 	}
-	output, err = exec.Command("ovn-sbctl", command...).CombinedOutput() // #nosec G204
+	output, err := exec.Command("ovsdb-client", command...).CombinedOutput() // #nosec G204
 	if err != nil {
-		klog.Errorf("failed to list port_binding in ovn-sb %v", err)
+		return nil, fmt.Errorf("Failed to query OVSDB: %v, %s", err, output)
+	}
+
+	// Parse the JSON output.
+	var responses []PortBindingResponse
+	err = json.Unmarshal(output, &responses)
+	if err != nil {
 		return nil, err
 	}
 
-	return strings.Split(strings.TrimSpace(string(output)), "\n"), nil
+	if len(responses) == 0 || len(responses[0].Rows) == 0 {
+		return nil, fmt.Errorf("No logical port found for chassis: %s", chassis)
+	}
+
+	var ports []string
+	for _, row := range responses[0].Rows {
+		ports = append(ports, row.LogicalPort)
+	}
+	return ports, nil
+}
+
+func checkSBBindings(config *Configuration) ([]string, error) {
+	chassis, err := getChassis(config.NodeName)
+	if err != nil {
+		return nil, err
+	}
+	return getLogicalPort(chassis)
 }
