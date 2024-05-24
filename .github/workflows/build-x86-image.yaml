@@ -502,6 +502,9 @@ jobs:
           name: k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-ko-log
           path: k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-ko-log.tar.gz
 
+      - name: Check kube ovn pod restarts
+        run: make check-kube-ovn-pod-restarts
+
       - name: Check valgrind result
         run: |
           kubectl -n kube-system rollout restart ds ovs-ovn
@@ -531,9 +534,6 @@ jobs:
               exit 1
             fi;
           done
-
-      - name: Check kube ovn pod restarts
-        run: make check-kube-ovn-pod-restarts
 
   k8s-netpol-e2e:
     name: Kubernetes Network Policy E2E
@@ -661,6 +661,9 @@ jobs:
           name: k8s-netpol-e2e-${{ matrix.ip-family }}-ko-log
           path: k8s-netpol-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
 
+      - name: Check kube ovn pod restarts
+        run: make check-kube-ovn-pod-restarts
+
       - name: Check valgrind result
         run: |
           kubectl -n kube-system rollout restart ds ovs-ovn
@@ -690,9 +693,6 @@ jobs:
               exit 1
             fi;
           done
-
-      - name: Check kube ovn pod restarts
-        run: make check-kube-ovn-pod-restarts
 
   cyclonus-netpol-e2e:
     name: Cyclonus Network Policy E2E
@@ -795,6 +795,9 @@ jobs:
           name: cyclonus-netpol-e2e-${{ matrix.ip-family }}-ko-log
           path: cyclonus-netpol-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
 
+      - name: Check kube ovn pod restarts
+        run: make check-kube-ovn-pod-restarts
+
       - name: Check valgrind result
         run: |
           kubectl -n kube-system rollout restart ds ovs-ovn
@@ -824,9 +827,6 @@ jobs:
               exit 1
             fi;
           done
-
-      - name: Check kube ovn pod restarts
-        run: make check-kube-ovn-pod-restarts
 
   kube-ovn-conformance-e2e:
     name: Kube-OVN Conformance E2E
@@ -955,6 +955,9 @@ jobs:
           name: kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log
           path: kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log.tar.gz
 
+      - name: Check kube ovn pod restarts
+        run: make check-kube-ovn-pod-restarts
+
       - name: Check valgrind result
         run: |
           kubectl -n kube-system rollout restart ds ovs-ovn
@@ -984,9 +987,6 @@ jobs:
               exit 1
             fi;
           done
-
-      - name: Check kube ovn pod restarts
-        run: make check-kube-ovn-pod-restarts
 
       - name: Cleanup
         run: sh -x dist/images/cleanup.sh
