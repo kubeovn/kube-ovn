@@ -446,6 +446,51 @@ func TestGenerateRandomV4IP(t *testing.T) {
 	}
 }
 
+func TestGenerateRandomV6IP(t *testing.T) {
+	tests := []struct {
+		name     string
+		cidr     string
+		wantErr  bool
+		wantIPv6 bool
+	}{
+		{
+			name:     "valid IPv6 CIDR",
+			cidr:     "2001:db8::/64",
+			wantErr:  false,
+			wantIPv6: true,
+		},
+		{
+			name:     "invalid CIDR format",
+			cidr:     "2001:db8::1",
+			wantErr:  true,
+			wantIPv6: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ip := GenerateRandomV6IP(tt.cidr)
+			if tt.wantErr {
+				if ip != "" {
+					t.Errorf("GenerateRandomV6IP(%s) = %s; want empty string", tt.cidr, ip)
+				}
+				return
+			}
+
+			parsedIP, _, err := net.ParseCIDR(ip)
+			if err != nil {
+				t.Errorf("GenerateRandomV6IP(%s) returned invalid IP: %v", tt.cidr, err)
+				return
+			}
+
+			isIPv6 := parsedIP.To4() == nil
+			if isIPv6 != tt.wantIPv6 {
+				t.Errorf("GenerateRandomV6IP(%s) returned %v; want IPv6: %v", tt.cidr, parsedIP, tt.wantIPv6)
+			}
+		})
+	}
+}
+
 func TestIPToString(t *testing.T) {
 	tests := []struct {
 		name string
