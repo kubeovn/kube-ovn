@@ -11,7 +11,7 @@ func TestNewSubnetIPv4(t *testing.T) {
 	excludeIps := []string{"10.0.0.2", "10.0.0.4", "10.0.0.100", "10.0.0.252", "10.0.0.253", "10.0.0.254"}
 	subnet, err := NewSubnet("ipv4Subnet", "10.0.0.0/24", excludeIps)
 	if err != nil {
-		t.Errorf("Failed to create IPv4 subnet: %v", err)
+		t.Errorf("failed to create IPv4 subnet: %v", err)
 	}
 	// check subnet values
 	require.Equal(t, "ipv4Subnet", subnet.Name)
@@ -136,7 +136,7 @@ func TestNewSubnetIPv6(t *testing.T) {
 	excludeIps := []string{"2001:db8::2", "2001:db8::4", "2001:db8::100", "2001:db8::252", "2001:db8::253", "2001:db8::254"}
 	subnet, err := NewSubnet("ipv6Subnet", "2001:db8::/64", excludeIps)
 	if err != nil {
-		t.Errorf("Failed to create IPv6 subnet: %v", err)
+		t.Errorf("failed to create IPv6 subnet: %v", err)
 	}
 	// check subnet values
 	require.Equal(t, "ipv6Subnet", subnet.Name)
@@ -274,7 +274,7 @@ func TestNewSubnetDualStack(t *testing.T) {
 	}
 	subnet, err := NewSubnet("dualSubnet", "10.0.0.0/24,2001:db8::/64", excludeIps)
 	if err != nil {
-		t.Errorf("Failed to create dual stack subnet: %v", err)
+		t.Errorf("failed to create dual stack subnet: %v", err)
 	}
 	// check subnet values
 	require.Equal(t, "dualSubnet", subnet.Name)
@@ -471,49 +471,130 @@ func TestNewSubnetDualStack(t *testing.T) {
 	require.Equal(t, 0, v6Pool.V6Using.Len())
 }
 
-// func TestGetStaticMac(t *testing.T) {
-// 	subnet := &Subnet{}
-// 	podName := "pod1"
-// 	nicName := "nic1"
-// 	mac := "00:11:22:33:44:55"
-// 	err := subnet.GetStaticMac(podName, nicName, mac, true)
-// 	if err != nil {
-// 		t.Errorf("Failed to set static MAC address: %v", err)
-// 	}
-// }
+func TestGetStaticMac(t *testing.T) {
+	excludeIps := []string{
+		"10.0.0.2", "10.0.0.4", "10.0.0.100",
+		"10.0.0.252", "10.0.0.253", "10.0.0.254",
+		"2001:db8::2", "2001:db8::4", "2001:db8::100",
+		"2001:db8::252", "2001:db8::253", "2001:db8::254",
+	}
+	subnet, err := NewSubnet("dualSubnet", "10.0.0.0/24,2001:db8::/64", excludeIps)
+	if err != nil {
+		t.Errorf("failed to create dual stack subnet: %v", err)
+	}
+	podName := "pod1"
+	nicName := "eth0"
+	mac := "00:11:22:33:44:55"
+	err = subnet.GetStaticMac(podName, nicName, mac, true)
+	require.Nil(t, err)
+	require.Equal(t, podName, subnet.MacToPod[mac])
+	require.Equal(t, mac, subnet.NicToMac[nicName])
+	podName = "pod2"
+	err = subnet.GetStaticMac(podName, nicName, mac, true)
+	require.NotNil(t, err)
+}
 
-// func TestPushPopPodNic(t *testing.T) {
-// 	subnet := &Subnet{}
-// 	podName := "pod1"
-// 	nicName := "nic1"
-// 	subnet.pushPodNic(podName, nicName)
-// 	subnet.popPodNic(podName, nicName)
-// }
+func TestGetRandomAddress(t *testing.T) {
+	excludeIps := []string{
+		"10.0.0.2", "10.0.0.4", "10.0.0.100",
+		"10.0.0.252", "10.0.0.253", "10.0.0.254",
+		"2001:db8::2", "2001:db8::4", "2001:db8::100",
+		"2001:db8::252", "2001:db8::253", "2001:db8::254",
+	}
+	subnet, err := NewSubnet("dualSubnet", "10.0.0.0/24,2001:db8::/64", excludeIps)
+	if err != nil {
+		t.Errorf("failed to create dual stack subnet: %v", err)
+	}
+	podName := "pod1"
+	nicName := "pod1.default"
+	mac := "00:11:22:33:44:55"
+	poolName := ""
+	shouldGetV4IP := "10.0.0.3"
+	shouldGetV6IP := "2001:db8::3"
+	skippedAddrs := []string{"10.0.0.1", "10.0.0.5", "2001:db8::1", "2001:db8::5"}
+	v4IP, v6IP, macStr, err := subnet.GetRandomAddress(poolName, podName, nicName, &mac, skippedAddrs, true)
+	require.Nil(t, err)
+	require.Equal(t, shouldGetV4IP, v4IP.String())
+	require.Equal(t, shouldGetV6IP, v6IP.String())
+	require.Equal(t, mac, macStr)
+	require.Equal(t, podName, subnet.MacToPod[mac])
+	require.Equal(t, mac, subnet.NicToMac[nicName])
+	require.Equal(t, shouldGetV4IP, subnet.V4NicToIP[nicName].String())
+	require.Equal(t, shouldGetV6IP, subnet.V6NicToIP[nicName].String())
+	nicList := subnet.PodToNicList[podName]
+	require.Equal(t, 1, len(nicList))
+	require.Contains(t, nicList, nicName)
+	subnet.popPodNic(podName, nicName)
+	require.Equal(t, 0, len(subnet.PodToNicList[podName]))
+}
 
-// func TestGetRandomAddress(t *testing.T) {
-// 	subnet := &Subnet{}
-// 	poolName := "pool1"
-// 	podName := "pod1"
-// 	nicName := "nic1"
-// 	mac := "00:11:22:33:44:55"
-// 	skippedAddrs := []string{"10.0.0.1", "10.0.0.2"}
-// 	_, _, _, err := subnet.GetRandomAddress(poolName, podName, nicName, &mac, skippedAddrs, true)
-// 	if err != nil {
-// 		t.Errorf("Failed to get random address: %v", err)
-// 	}
-// }
+func TestGetStaticAddress(t *testing.T) {
+	excludeIps := []string{
+		"10.0.0.2", "10.0.0.4", "10.0.0.100",
+		"10.0.0.252", "10.0.0.253", "10.0.0.254",
+		"2001:db8::2", "2001:db8::4", "2001:db8::100",
+		"2001:db8::252", "2001:db8::253", "2001:db8::254",
+	}
+	subnet, err := NewSubnet("dualSubnet1", "10.0.0.0/24,2001:db8::/64", excludeIps)
+	if err != nil {
+		t.Errorf("failed to create dual stack subnet: %v", err)
+	}
+	// 1. po1 has v4 ip but no mac
+	podName := "pod1"
+	nicName := "pod1.default"
+	var mac *string
+	v4 := "10.0.0.3"
+	v4IP, err := NewIP(v4)
+	require.Nil(t, err)
+	ip, macStr, err := subnet.GetStaticAddress(podName, nicName, v4IP, mac, false, true)
+	require.Nil(t, err)
+	require.Equal(t, v4, ip.String())
+	require.NotEqual(t, "", macStr)
 
-// func TestGetStaticAddress(t *testing.T) {
-// 	subnet := &Subnet{}
-// 	podName := "pod1"
-// 	nicName := "nic1"
-// 	ip := net.ParseIP("10.0.0.3")
-// 	mac := "00:11:22:33:44:55"
-// 	_, _, err := subnet.GetStaticAddress(podName, nicName, ip, &mac, false, true)
-// 	if err != nil {
-// 		t.Errorf("Failed to get static address: %v", err)
-// 	}
-// }
+	// 2. pod has v6 ip but no mac
+	podName = "pod2"
+	nicName = "pod2.default"
+	v6 := "2001:db8::3"
+	v6IP, err := NewIP(v6)
+	require.Nil(t, err)
+	ip, macStr, err = subnet.GetStaticAddress(podName, nicName, v6IP, mac, false, true)
+	require.Nil(t, err)
+	require.Equal(t, v6, ip.String())
+	require.NotEqual(t, "", macStr)
+
+	// 3. pod has v4 ip and mac
+	podName = "pod3"
+	nicName = "pod3.default"
+	v4 = "10.0.0.33"
+	macIn := "00:11:22:33:44:55"
+	v4IP, err = NewIP(v4)
+	require.Nil(t, err)
+	ip, macOut, err := subnet.GetStaticAddress(podName, nicName, v4IP, &macIn, false, true)
+	require.Nil(t, err)
+	require.Equal(t, v4, ip.String())
+	require.Equal(t, macIn, macOut)
+
+	// 4. pod has v6 ip and mac
+	podName = "pod4"
+	nicName = "pod4.default"
+	v6 = "2001:db8::33"
+	macIn = "00:11:22:33:44:56"
+	v6IP, err = NewIP(v6)
+	require.Nil(t, err)
+	ip, macOut, err = subnet.GetStaticAddress(podName, nicName, v6IP, &macIn, false, true)
+	require.Nil(t, err)
+	require.Equal(t, v6, ip.String())
+	require.Equal(t, macIn, macOut)
+
+	// 5. only has mac
+	podName = "pod5"
+	nicName = "pod5.default"
+	macIn = "00:11:22:33:44:57"
+	ip, macOut, err = subnet.GetStaticAddress(podName, nicName, nil, &macIn, false, true)
+	require.NotNil(nil, err)
+	require.Nil(t, ip)
+	require.Equal(t, "", macOut)
+}
 
 // func TestReleaseAddress(t *testing.T) {
 // 	subnet := &Subnet{}
@@ -551,7 +632,7 @@ func TestNewSubnetDualStack(t *testing.T) {
 // 	ips := []string{"10.0.0.1", "10.0.0.2"}
 // 	err := subnet.AddOrUpdateIPPool(poolName, ips)
 // 	if err != nil {
-// 		t.Errorf("Failed to add or update IP pool: %v", err)
+// 		t.Errorf("failed to add or update IP pool: %v", err)
 // 	}
 // }
 
