@@ -89,6 +89,8 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 	var isDefaultRoute bool
 	var pod *v1.Pod
 	var err error
+	var sriovResource string
+
 	for i := 0; i < 20; i++ {
 		if pod, err = csh.Controller.podsLister.Pods(podRequest.PodNamespace).Get(podRequest.PodName); err != nil {
 			errMsg := fmt.Errorf("get pod %s/%s failed %v", podRequest.PodNamespace, podRequest.PodName, err)
@@ -150,6 +152,12 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 			}
 		} else {
 			nicType = pod.Annotations[fmt.Sprintf(util.PodNicAnnotationTemplate, podRequest.Provider)]
+		}
+
+		for _, container := range pod.Spec.Containers {
+			if _, ok := container.Resources.Requests[util.YunsiliconSriovResourceName]; ok {
+				sriovResource = util.YunsiliconSriovResourceName
+			}
 		}
 
 		switch pod.Annotations[fmt.Sprintf(util.DefaultRouteAnnotationTemplate, podRequest.Provider)] {
@@ -331,7 +339,11 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 			err = csh.configureDpdkNic(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, ifName, macAddr, mtu, ipAddr, gw, ingress, egress, getShortSharedDir(pod.UID, podRequest.VhostUserSocketVolumeName), podRequest.VhostUserSocketName)
 		} else {
 			podNicName = ifName
-			err = csh.configureNic(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, podRequest.VfDriver, ifName, macAddr, mtu, ipAddr, gw, isDefaultRoute, detectIPConflict, allRoutes, podRequest.DNS.Nameservers, podRequest.DNS.Search, ingress, egress, podRequest.DeviceID, nicType, latency, limit, loss, gatewayCheckMode, u2oInterconnectionIP)
+			if sriovResource == util.YunsiliconSriovResourceName {
+				err = csh.configureYunsiliconNic(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, podRequest.VfDriver, ifName, macAddr, mtu, ipAddr, gw, isDefaultRoute, detectIPConflict, allRoutes, podRequest.DNS.Nameservers, podRequest.DNS.Search, ingress, egress, podRequest.DeviceID, nicType, latency, limit, loss, gatewayCheckMode, u2oInterconnectionIP)
+			} else {
+				err = csh.configureNic(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, podRequest.VfDriver, ifName, macAddr, mtu, ipAddr, gw, isDefaultRoute, detectIPConflict, allRoutes, podRequest.DNS.Nameservers, podRequest.DNS.Search, ingress, egress, podRequest.DeviceID, nicType, latency, limit, loss, gatewayCheckMode, u2oInterconnectionIP)
+			}
 		}
 		if err != nil {
 			errMsg := fmt.Errorf("configure nic failed, %v", err)
