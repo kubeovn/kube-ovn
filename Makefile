@@ -871,6 +871,10 @@ kind-clean-ovn-ic: kind-clean
 kind-clean-ovn-submariner: kind-clean
 	kind delete cluster --name=kube-ovn1
 
+.PHONY: check-kube-ovn-pod-restarts
+check-kube-ovn-pod-restarts:
+	bash hack/ci-check-crash.sh
+
 .PHONY: uninstall
 uninstall:
 	bash dist/images/cleanup.sh
