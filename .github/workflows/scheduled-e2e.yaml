@@ -637,12 +637,11 @@ jobs:
           docker pull kubeovn/vpc-nat-gateway:$version
           VERSION=$version make kind-install-lb-svc
 
-      - name: Check kube ovn pod restarts
-        run: |
-          make check-kube-ovn-pod-restarts
-
       - name: Run E2E
         run: make kube-ovn-lb-svc-conformance-e2e
+
+      - name: Check kube ovn pod restarts
+        run: make check-kube-ovn-pod-restarts
 
   kubevirt-e2e:
     name: Kubevirt VM E2E
@@ -713,12 +712,11 @@ jobs:
           VERSION=$version make kind-install
           VERSION=$version make kind-install-kubevirt
 
-      - name: Check kube ovn pod restarts
-        run: |
-          make check-kube-ovn-pod-restarts
-
       - name: Run E2E
         run: make kube-ovn-kubevirt-e2e
+
+      - name: Check kube ovn pod restarts
+        run: make check-kube-ovn-pod-restarts
 
   webhook-e2e:
     name: Webhook E2E
@@ -837,13 +835,12 @@ jobs:
           docker pull kubeovn/kube-ovn:$version
           VERSION=$version make kind-install
 
+      - name: Check kube ovn pod restarts
+        run: make check-kube-ovn-pod-restarts
+
       - name: Cleanup
         working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
         run: sh dist/images/cleanup.sh
-
-      - name: Check kube ovn pod restarts
-        run: |
-          make check-kube-ovn-pod-restarts
 
   cilium-chaining-e2e:
     name: Cilium Chaining E2E

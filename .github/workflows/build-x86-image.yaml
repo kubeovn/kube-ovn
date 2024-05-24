@@ -489,10 +489,6 @@ jobs:
           E2E_NETWORK_MODE: ${{ matrix.mode }}
         run: make k8s-conformance-e2e
 
-      - name: Check kube ovn pod restarts
-        run: |
-          make check-kube-ovn-pod-restarts
-
       - name: kubectl ko log
         if: failure()
         run: |
@@ -505,6 +501,9 @@ jobs:
         with:
           name: k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-ko-log
           path: k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-ko-log.tar.gz
+
+      - name: Check kube ovn pod restarts
+        run: make check-kube-ovn-pod-restarts
 
       - name: Check valgrind result
         run: |
@@ -649,10 +648,6 @@ jobs:
         working-directory: ${{ env.E2E_DIR }}
         run: make k8s-netpol-e2e
 
-      - name: Check kube ovn pod restarts
-        run: |
-          make check-kube-ovn-pod-restarts
-
       - name: kubectl ko log
         if: failure()
         run: |
@@ -665,6 +660,9 @@ jobs:
         with:
           name: k8s-netpol-e2e-${{ matrix.ip-family }}-ko-log
           path: k8s-netpol-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
+
+      - name: Check kube ovn pod restarts
+        run: make check-kube-ovn-pod-restarts
 
       - name: Check valgrind result
         run: |
@@ -784,10 +782,6 @@ jobs:
         working-directory: ${{ env.E2E_DIR }}
         run: make cyclonus-netpol-e2e
 
-      - name: Check kube ovn pod restarts
-        run: |
-          make check-kube-ovn-pod-restarts
-
       - name: kubectl ko log
         if: failure()
         run: |
@@ -800,6 +794,9 @@ jobs:
         with:
           name: cyclonus-netpol-e2e-${{ matrix.ip-family }}-ko-log
           path: cyclonus-netpol-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
+
+      - name: Check kube ovn pod restarts
+        run: make check-kube-ovn-pod-restarts
 
       - name: Check valgrind result
         run: |
@@ -945,10 +942,6 @@ jobs:
           make kind-install-kubevirt
           make kube-ovn-kubevirt-e2e
 
-      - name: Check kube ovn pod restarts
-        run: |
-          make check-kube-ovn-pod-restarts
-
       - name: kubectl ko log
         if: failure()
         run: |
@@ -961,6 +954,9 @@ jobs:
         with:
           name: kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log
           path: kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log.tar.gz
+
+      - name: Check kube ovn pod restarts
+        run: make check-kube-ovn-pod-restarts
 
       - name: Check valgrind result
         run: |
@@ -1099,10 +1095,6 @@ jobs:
           E2E_IP_FAMILY: ${{ matrix.ip-family }}
         run: make kube-ovn-multus-conformance-e2e
 
-      - name: Check kube ovn pod restarts
-        run: |
-          make check-kube-ovn-pod-restarts
-
       - name: kubectl ko log
         if: failure()
         run: |
@@ -1115,6 +1107,9 @@ jobs:
         with:
           name: multus-conformance-e2e-${{ matrix.ip-family }}-ko-log
           path: multus-conformance-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
+
+      - name: Check kube ovn pod restarts
+        run: make check-kube-ovn-pod-restarts
 
   chart-test:
     name: Chart Installation/Uninstallation Test
@@ -1523,10 +1518,6 @@ jobs:
           E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
         run: make kube-ovn-webhook-e2e
 
-      - name: Check kube ovn pod restarts
-        run: |
-          make check-kube-ovn-pod-restarts
-
       - name: kubectl ko log
         if: failure()
         run: |
@@ -1539,6 +1530,9 @@ jobs:
         with:
           name: webhook-e2e-ko-log
           path: webhook-e2e-ko-log.tar.gz
+
+      - name: Check kube ovn pod restarts
+        run: make check-kube-ovn-pod-restarts
 
   installation-compatibility-test:
     name: Installation Compatibility Test
@@ -1712,10 +1706,6 @@ jobs:
           E2E_IP_FAMILY: ${{ matrix.ip-family }}
         run: make k8s-conformance-e2e
 
-      - name: Check kube ovn pod restarts
-        run: |
-          make check-kube-ovn-pod-restarts
-
       - name: kubectl ko log
         if: failure()
         run: |
@@ -1728,6 +1718,9 @@ jobs:
         with:
           name: cilium-chaining-e2e-ko-log
           path: cilium-chaining-e2e-ko-log.tar.gz
+
+      - name: Check kube ovn pod restarts
+        run: make check-kube-ovn-pod-restarts
 
       - name: Cleanup
         run: sh -x dist/images/cleanup.sh
@@ -1845,10 +1838,6 @@ jobs:
           make kube-ovn-security-e2e
           make kube-ovn-ha-e2e
 
-      - name: Check kube ovn pod restarts
-        run: |
-          make check-kube-ovn-pod-restarts
-
       - name: kubectl ko log
         if: failure()
         run: |
@@ -1861,6 +1850,9 @@ jobs:
         with:
           name: kube-ovn-ha-e2e-${{ matrix.ssl }}-${{ matrix.bind-local }}-${{ matrix.ip-family }}-ko-log
           path: kube-ovn-ha-e2e-${{ matrix.ssl }}-${{ matrix.bind-local }}-${{ matrix.ip-family }}-ko-log.tar.gz
+
+      - name: Check kube ovn pod restarts
+        run: make check-kube-ovn-pod-restarts
 
       - name: Cleanup
         run: sh -x dist/images/cleanup.sh
@@ -1938,10 +1930,6 @@ jobs:
         working-directory: ${{ env.E2E_DIR }}
         run: make kube-ovn-submariner-conformance-e2e
 
-      - name: Check kube ovn pod restarts
-        run: |
-          make check-kube-ovn-pod-restarts
-
       - name: kubectl ko log
         if: failure()
         run: |
@@ -1954,6 +1942,9 @@ jobs:
         with:
           name: kube-ovn-submariner-conformance-e2e-ko-log
           path: kube-ovn-submariner-conformance-e2e-ko-log.tar.gz
+
+      - name: Check kube ovn pod restarts
+        run: make check-kube-ovn-pod-restarts
 
       - name: Cleanup
         run: sh -x dist/images/cleanup.sh
@@ -2059,10 +2050,6 @@ jobs:
           E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
         run: make iptables-vpc-nat-gw-conformance-e2e
 
-      - name: Check kube ovn pod restarts
-        run: |
-          make check-kube-ovn-pod-restarts
-
       - name: kubectl ko log
         if: failure()
         run: |
@@ -2075,6 +2062,9 @@ jobs:
         with:
           name: iptables-vpc-nat-gw-conformance-e2e-ko-log
           path: iptables-vpc-nat-gw-conformance-e2e-ko-log.tar.gz
+
+      - name: Check kube ovn pod restarts
+        run: make check-kube-ovn-pod-restarts
 
   ovn-vpc-nat-gw-conformance-e2e:
     name: OVN VPC NAT Gateway E2E
@@ -2174,6 +2164,19 @@ jobs:
         env:
           E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
         run: make ovn-vpc-nat-gw-conformance-e2e
+
+      - name: kubectl ko log
+        if: failure()
+        run: |
+          make kubectl-ko-log
+          mv kubectl-ko-log.tar.gz ovn-vpc-nat-gw-conformance-e2e-ko-log.tar.gz
+
+      - name: upload kubectl ko log
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: ovn-vpc-nat-gw-conformance-e2e-ko-log
+          path: ovn-vpc-nat-gw-conformance-e2e-ko-log.tar.gz
 
       - name: Check kube ovn pod restarts
         run: |
