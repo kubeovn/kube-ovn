@@ -4761,8 +4761,9 @@ for ns in $(kubectl get ns --no-headers -o custom-columns=NAME:.metadata.name); 
   done
 done
 
+kubectl rollout status deployment/coredns -n kube-system --timeout 300s
 kubectl rollout status daemonset/kube-ovn-pinger -n kube-system --timeout 300s
-kubectl rollout status deployment/coredns -n kube-system --timeout 600s
+kubectl wait pod --for=condition=Ready -l app=kube-ovn-pinger -n kube-system --timeout 300s
 echo "-------------------------------"
 echo ""
 
