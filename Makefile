@@ -968,8 +968,8 @@ kind-clean-bgp-ha:
 
 .PHONY: check-kube-ovn-pod-restarts
 check-kube-ovn-pod-restarts:
-	bash dist/images/check-kube-ovn-pod-restarts.sh
-	
+	bash hack/ci-check-crash.sh
+
 .PHONY: uninstall
 uninstall:
 	bash dist/images/cleanup.sh
