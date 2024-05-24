@@ -135,6 +135,10 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 	return fmt.Errorf(`failed to get network adapter "%s" after %d seconds`, adapterName, timeout)
 }
 
+func (csh cniServerHandler) configureYunsiliconNic(podName, podNamespace, provider, netns, containerID, vfDriver, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute, detectIPConflict bool, routes []request.Route, dnsServer, dnsSuffix []string, ingress, egress, DeviceID, nicType, latency, limit, loss string, gwCheckMode int, u2oInterconnectionIP string) error {
+	return fmt.Errorf("Yunsilicon NIC is not supported on windows")
+}
+
 func configureNic(name, ip string, mac net.HardwareAddr, mtu int) error {
 	adapter, err := util.GetNetAdapter(name, false)
 	if err != nil {
