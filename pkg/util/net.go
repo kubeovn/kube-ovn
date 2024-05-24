@@ -202,7 +202,8 @@ func genRandomIP(cidr string, isIPv6 bool) string {
 	}
 	add, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), uint(hostBits)-1))
 	if err != nil {
-		LogFatalAndExit(err, "failed to generate random ip")
+		klog.Errorf("failed to generate random big int with bits %d: %v", hostBits, err)
+		return ""
 	}
 	t := big.NewInt(0).Add(IP2BigInt(ip), add)
 	return fmt.Sprintf("%s/%d", BigInt2Ip(t), netMask)
