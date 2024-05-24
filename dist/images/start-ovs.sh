@@ -44,28 +44,32 @@ cat /proc/cmdline"
 fi
 
 function cgroup_match {
+  if [ $1 -le 0 ]; then
+    return 1
+  fi
   hash1=$(md5sum /proc/"$1"/cgroup | awk '{print $1}')
   hash2=$(md5sum /proc/"$2"/cgroup | awk '{print $1}')
   test -n "$hash1" -a "x$hash1" = "x$hash2"
 }
 
 function quit {
+  set -x
   gen_name=$(kubectl -n "${POD_NAMESPACE}" get pod "${POD_NAME}" -o jsonpath='{.metadata.generateName}')
   revision_hash=$(kubectl -n "${POD_NAMESPACE}" get pod "${POD_NAME}" -o jsonpath='{.metadata.labels.controller-revision-hash}')
-  revision=$(kubectl -n "${POD_NAMESPACE}" get controllerrevision "${gen_name}${revision_hash}" -o jsonpath='{.revision}')
+  revision=$(kubectl -n "${POD_NAMESPACE}" get controllerrevision "${gen_name}${revision_hash}" --ignore-not-found -o jsonpath='{.revision}')
   ds_name=${gen_name%-}
   latest_revision=$(kubectl -n "${POD_NAMESPACE}" get controllerrevision --no-headers | awk '$2 == "daemonset.apps/'$ds_name'" {print $3}' | sort -nr | head -n1)
-  if [ "x$latest_revision" = "x$revision" ]; then
+  if [ "x$revision" = "x" -o "x$latest_revision" = "x$revision" ]; then
     # stop ovn-controller/ovs only when the processes are in the same cgroup
-    pid=$(/usr/share/ovn/scripts/ovn-ctl status_controller | awk '{print $NF}')
+    pid=$((/usr/share/ovn/scripts/ovn-ctl status_controller || printf '\n0') | tail -n1 | awk '{print $NF}')
     if cgroup_match "${pid}" self; then
       /usr/share/ovn/scripts/grace_stop_ovn_controller
     fi
-    pid=$(/usr/share/openvswitch/scripts/ovs-ctl status | grep ovsdb-server | awk '{print $NF}')
+    pid=$((/usr/share/openvswitch/scripts/ovs-ctl status || printf '\novsdb-server 0') | grep ovsdb-server | tail -n1 | awk '{print $NF}')
     if cgroup_match "${pid}" self; then
       /usr/share/openvswitch/scripts/ovs-ctl --no-ovs-vswitchd stop
     fi
-    pid=$(/usr/share/openvswitch/scripts/ovs-ctl status | grep ovs-vswitchd | awk '{print $NF}')
+    pid=$((/usr/share/openvswitch/scripts/ovs-ctl status || printf '\novs-vswitchd 0') | grep ovs-vswitchd | tail -n1 | awk '{print $NF}')
     if cgroup_match "${pid}" self; then
       /usr/share/openvswitch/scripts/ovs-ctl --no-ovsdb-server stop
     fi
