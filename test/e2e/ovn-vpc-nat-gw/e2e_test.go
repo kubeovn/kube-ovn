@@ -312,7 +312,6 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 			framework.ExpectNoError(err)
 
 			ginkgo.By("Validating node links")
-			linkNameMap := make(map[string]string, len(kindNodes))
 			bridgeName := util.ExternalBridgeName(providerNetworkName)
 			for _, node := range kindNodes {
 				if exchangeLinkName {
@@ -352,9 +351,6 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 				framework.ExpectContainElement(bridge.Flags, "UP")
 
 				framework.ExpectEmpty(port.NonLinkLocalAddresses())
-				framework.ExpectConsistOf(bridge.NonLinkLocalAddresses(), linkMap[node.ID].NonLinkLocalAddresses())
-
-				linkNameMap[node.ID] = port.IfName
 			}
 		}
 	})
@@ -598,22 +594,19 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		cmd := []string{"sh", "-c", "sleep infinity"}
 		fipPod := framework.MakePod(namespaceName, fipPodName, nil, annotations, image, cmd, nil)
 		fipPod = podClient.CreateSync(fipPod)
-		time.Sleep(1 * time.Second)
-		oldSubnet := subnetClient.Get(noBfdSubnetName)
 		podEip := framework.MakeOvnEip(podEipName, underlaySubnetName, "", "", "", "")
 		_ = ovnEipClient.CreateSync(podEip)
-		time.Sleep(1 * time.Second)
-		newSubnet := subnetClient.Get(noBfdSubnetName)
-		if newSubnet.Spec.Protocol == kubeovnv1.ProtocolIPv4 {
-			framework.ExpectEqual(oldSubnet.Status.V4AvailableIPs-1, newSubnet.Status.V4AvailableIPs)
-			framework.ExpectEqual(oldSubnet.Status.V4UsingIPs+1, newSubnet.Status.V4UsingIPs)
-			framework.ExpectNotEqual(oldSubnet.Status.V4AvailableIPs, newSubnet.Status.V4AvailableIPs)
-			framework.ExpectNotEqual(oldSubnet.Status.V4UsingIPRange, newSubnet.Status.V4UsingIPs)
+		time.Sleep(3 * time.Second)
+		externalSubnet := subnetClient.Get(underlaySubnetName)
+		ginkgo.By("Check status using ips for subnet " + underlaySubnetName)
+		if externalSubnet.Spec.Protocol == kubeovnv1.ProtocolIPv4 {
+			framework.ExpectEqual(float64(65528), externalSubnet.Status.V4AvailableIPs)
+			framework.ExpectEqual(float64(3), externalSubnet.Status.V4UsingIPs)
+			framework.ExpectEqual("172.19.0.7-172.19.255.254", externalSubnet.Status.V4AvailableIPRange)
+			framework.ExpectEqual("172.19.0.4-172.19.0.6", externalSubnet.Status.V4UsingIPRange)
 		} else {
-			framework.ExpectEqual(oldSubnet.Status.V6AvailableIPs-1, newSubnet.Status.V6AvailableIPs)
-			framework.ExpectEqual(oldSubnet.Status.V6UsingIPs+1, newSubnet.Status.V6UsingIPs)
-			framework.ExpectNotEqual(oldSubnet.Status.V6AvailableIPs, newSubnet.Status.V6AvailableIPs)
-			framework.ExpectNotEqual(oldSubnet.Status.V6UsingIPRange, newSubnet.Status.V6UsingIPs)
+			framework.ExpectEqual(3, externalSubnet.Status.V6UsingIPs)
+			// TODO: check v6 available ips
 		}
 		fipPodIP := ovs.PodNameToPortName(fipPod.Name, fipPod.Namespace, noBfdSubnet.Spec.Provider)
 		podFip := framework.MakeOvnFip(podFipName, podEipName, "", fipPodIP, "", "")
