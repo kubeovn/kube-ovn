@@ -605,12 +605,12 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		time.Sleep(1 * time.Second)
 		newSubnet := subnetClient.Get(noBfdSubnetName)
 		if newSubnet.Spec.Protocol == kubeovnv1.ProtocolIPv4 {
-			framework.ExpectEqual(oldSubnet.Status.V4AvailableIPs+1, newSubnet.Status.V4AvailableIPs)
+			framework.ExpectEqual(oldSubnet.Status.V4AvailableIPs-1, newSubnet.Status.V4AvailableIPs)
 			framework.ExpectEqual(oldSubnet.Status.V4UsingIPs+1, newSubnet.Status.V4UsingIPs)
 			framework.ExpectNotEqual(oldSubnet.Status.V4AvailableIPs, newSubnet.Status.V4AvailableIPs)
 			framework.ExpectNotEqual(oldSubnet.Status.V4UsingIPRange, newSubnet.Status.V4UsingIPs)
 		} else {
-			framework.ExpectEqual(oldSubnet.Status.V6AvailableIPs+1, newSubnet.Status.V6AvailableIPs)
+			framework.ExpectEqual(oldSubnet.Status.V6AvailableIPs-1, newSubnet.Status.V6AvailableIPs)
 			framework.ExpectEqual(oldSubnet.Status.V6UsingIPs+1, newSubnet.Status.V6UsingIPs)
 			framework.ExpectNotEqual(oldSubnet.Status.V6AvailableIPs, newSubnet.Status.V6AvailableIPs)
 			framework.ExpectNotEqual(oldSubnet.Status.V6UsingIPRange, newSubnet.Status.V6UsingIPs)
