@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
@@ -196,10 +197,24 @@ var _ = framework.Describe("[group:vip]", func() {
 
 		ginkgo.By("1. Test allowed address pair vip")
 		// create vip1 and vip2, should have different ip and mac
+		oldSubnet := subnetClient.Get(subnetName)
 		ginkgo.By("Creating allowed address pair vip, should have different ip and mac")
 		ginkgo.By("Creating allowed address pair vip " + vip1Name)
 		vip1 := makeOvnVip(namespaceName, vip1Name, subnetName, "", "", "")
 		vip1 = vipClient.CreateSync(vip1)
+		time.Sleep(1 * time.Second)
+		newSubnet := subnetClient.Get(subnetName)
+		if subnet.Spec.Protocol == apiv1.ProtocolIPv4 {
+			framework.ExpectEqual(oldSubnet.Status.V4AvailableIPs+1, newSubnet.Status.V4AvailableIPs)
+			framework.ExpectEqual(oldSubnet.Status.V4UsingIPs+1, newSubnet.Status.V4UsingIPs)
+			framework.ExpectNotEqual(oldSubnet.Status.V4AvailableIPs, newSubnet.Status.V4AvailableIPs)
+			framework.ExpectNotEqual(oldSubnet.Status.V4UsingIPRange, newSubnet.Status.V4UsingIPs)
+		} else {
+			framework.ExpectEqual(oldSubnet.Status.V6AvailableIPs+1, newSubnet.Status.V6AvailableIPs)
+			framework.ExpectEqual(oldSubnet.Status.V6UsingIPs+1, newSubnet.Status.V6UsingIPs)
+			framework.ExpectNotEqual(oldSubnet.Status.V6AvailableIPs, newSubnet.Status.V6AvailableIPs)
+			framework.ExpectNotEqual(oldSubnet.Status.V6UsingIPRange, newSubnet.Status.V6UsingIPs)
+		}
 		ginkgo.By("Creating allowed address pair vip " + vip2Name)
 		vip2 := makeOvnVip(namespaceName, vip2Name, subnetName, "", "", "")
 		vip2 = vipClient.CreateSync(vip2)
