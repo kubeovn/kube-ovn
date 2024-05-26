@@ -204,7 +204,7 @@ var _ = framework.Describe("[group:vip]", func() {
 		vip1 = vipClient.CreateSync(vip1)
 		time.Sleep(1 * time.Second)
 		newSubnet := subnetClient.Get(subnetName)
-		if subnet.Spec.Protocol == apiv1.ProtocolIPv4 {
+		if newSubnet.Spec.Protocol == apiv1.ProtocolIPv4 {
 			framework.ExpectEqual(oldSubnet.Status.V4AvailableIPs+1, newSubnet.Status.V4AvailableIPs)
 			framework.ExpectEqual(oldSubnet.Status.V4UsingIPs+1, newSubnet.Status.V4UsingIPs)
 			framework.ExpectNotEqual(oldSubnet.Status.V4AvailableIPs, newSubnet.Status.V4AvailableIPs)
