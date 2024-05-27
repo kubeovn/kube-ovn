@@ -114,13 +114,13 @@ func (v *ValidatingHook) PodCreateHook(ctx context.Context, req admission.Reques
 	if staticIP == "" && poolAnno == "" {
 		return ctrlwebhook.Allowed("by pass")
 	}
-	if v.allowLiveMigration(ctx, o.GetAnnotations(), o.GetName(), o.GetNamespace()) {
+	if v.allowLiveMigration(o.GetAnnotations(), o.GetName(), o.GetNamespace()) {
 		return ctrlwebhook.Allowed("by pass")
 	}
 	return v.validateIp(ctx, o.GetAnnotations(), o.Kind, o.GetName(), o.GetNamespace())
 }
 
-func (v *ValidatingHook) allowLiveMigration(ctx context.Context, annotations map[string]string, name, namespace string) bool {
+func (v *ValidatingHook) allowLiveMigration(annotations map[string]string, name, namespace string) bool {
 	var multusNets []*multustypes.NetworkSelectionElement
 	defaultAttachNetworks := annotations[util.DefaultNetworkAnnotation]
 	if defaultAttachNetworks != "" {

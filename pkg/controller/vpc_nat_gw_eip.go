@@ -224,13 +224,13 @@ func (c *Controller) handleAddIptablesEip(key string) error {
 	var v4ip, v6ip, mac, eipV4Cidr, v4Gw string
 	portName := ovs.PodNameToPortName(cachedEip.Name, cachedEip.Namespace, MACVLAN_NAD_PROVIDER)
 	if cachedEip.Spec.V4ip != "" {
-		if v4ip, v6ip, mac, err = c.acquireStaticEip(cachedEip.Name, cachedEip.Namespace, portName, cachedEip.Spec.V4ip); err != nil {
+		if v4ip, v6ip, mac, err = c.acquireStaticEip(cachedEip.Name, portName, cachedEip.Spec.V4ip); err != nil {
 			klog.Errorf("failed to acquire static eip, err: %v", err)
 			return err
 		}
 	} else {
 		// Random allocate
-		if v4ip, v6ip, mac, err = c.acquireEip(cachedEip.Name, cachedEip.Namespace, portName); err != nil {
+		if v4ip, v6ip, mac, err = c.acquireEip(cachedEip.Name, portName); err != nil {
 			klog.Errorf("failed to allocate eip, err: %v", err)
 			return err
 		}
@@ -450,7 +450,7 @@ func (c *Controller) deleteEipInPod(dp, v4Cidr string) error {
 	return nil
 }
 
-func (c *Controller) acquireStaticEip(name, namespace, nicName, ip string) (string, string, string, error) {
+func (c *Controller) acquireStaticEip(name, nicName, ip string) (string, string, string, error) {
 	checkConflict := true
 	var v4ip, v6ip, mac string
 	var err error
@@ -467,7 +467,7 @@ func (c *Controller) acquireStaticEip(name, namespace, nicName, ip string) (stri
 	return v4ip, v6ip, mac, nil
 }
 
-func (c *Controller) acquireEip(name, namespace, nicName string) (string, string, string, error) {
+func (c *Controller) acquireEip(name, nicName string) (string, string, string, error) {
 	var skippedAddrs []string
 	for {
 		ipv4, ipv6, mac, err := c.ipam.GetRandomAddress(name, nicName, "", util.VpcExternalNet, skippedAddrs, true)

@@ -216,7 +216,7 @@ func (c *Controller) handleAddOvnEip(key string) error {
 		return nil
 	}
 	klog.V(3).Infof("handle add ovn eip %s", cachedEip.Name)
-	var v4ip, v6ip, mac, subnetName string
+	var v4ip, mac, subnetName string
 	subnetName = cachedEip.Spec.ExternalSubnet
 	if subnetName == "" {
 		return fmt.Errorf("failed to create ovn eip '%s', subnet should be set", key)
@@ -228,16 +228,16 @@ func (c *Controller) handleAddOvnEip(key string) error {
 	}
 	portName := cachedEip.Name
 	if cachedEip.Spec.V4Ip != "" {
-		v4ip, v6ip, mac, err = c.acquireStaticIpAddress(subnet.Name, cachedEip.Name, portName, cachedEip.Spec.V4Ip)
+		v4ip, _, mac, err = c.acquireStaticIpAddress(subnet.Name, cachedEip.Name, portName, cachedEip.Spec.V4Ip)
 	} else {
 		// random allocate
-		v4ip, v6ip, mac, err = c.acquireIpAddress(subnet.Name, cachedEip.Name, portName)
+		v4ip, _, mac, err = c.acquireIpAddress(subnet.Name, cachedEip.Name, portName)
 	}
 	if err != nil {
 		klog.Errorf("failed to acquire ip address, %v", err)
 		return err
 	}
-	if err = c.createOrUpdateCrdOvnEip(key, subnet.Name, v4ip, v6ip, mac, cachedEip.Spec.Type); err != nil {
+	if err = c.createOrUpdateCrdOvnEip(key, subnet.Name, v4ip, mac, cachedEip.Spec.Type); err != nil {
 		klog.Errorf("failed to create or update ovn eip '%s', %v", cachedEip.Name, err)
 		return err
 	}
@@ -306,7 +306,7 @@ func (c *Controller) handleDelOvnEip(key string) error {
 	return nil
 }
 
-func (c *Controller) createOrUpdateCrdOvnEip(key, subnet, v4ip, v6ip, mac, usage string) error {
+func (c *Controller) createOrUpdateCrdOvnEip(key, subnet, v4ip, mac, usage string) error {
 	cachedEip, err := c.ovnEipsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {

@@ -836,14 +836,14 @@ func (c *Controller) handleAddVpcExternal(key string) error {
 		}
 		needCreateEip = true
 	}
-	var v4ip, v6ip, mac string
+	var v4ip, mac string
 	klog.V(3).Infof("create vpc lrp eip %s", lrpEipName)
 	if needCreateEip {
-		if v4ip, v6ip, mac, err = c.acquireIpAddress(c.config.ExternalGatewaySwitch, lrpEipName, lrpEipName); err != nil {
+		if v4ip, _, mac, err = c.acquireIpAddress(c.config.ExternalGatewaySwitch, lrpEipName, lrpEipName); err != nil {
 			klog.Errorf("failed to acquire ip address for lrp eip %s, %v", lrpEipName, err)
 			return err
 		}
-		if err := c.createOrUpdateCrdOvnEip(lrpEipName, c.config.ExternalGatewaySwitch, v4ip, v6ip, mac, util.LrpUsingEip); err != nil {
+		if err := c.createOrUpdateCrdOvnEip(lrpEipName, c.config.ExternalGatewaySwitch, v4ip, mac, util.LrpUsingEip); err != nil {
 			klog.Errorf("failed to create ovn eip for lrp %s: %v", lrpEipName, err)
 			return err
 		}

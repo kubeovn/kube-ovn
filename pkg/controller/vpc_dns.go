@@ -83,9 +83,6 @@ func hostConfigFromReader() error {
 			hostNameservers = append(hostNameservers, name)
 		}
 	}
-	if err != nil {
-		klog.Error(err)
-	}
 	return nil
 }
 
