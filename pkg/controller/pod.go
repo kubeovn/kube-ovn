@@ -583,7 +583,8 @@ func (c *Controller) handleAddPod(key string) error {
 		pod.Annotations = map[string]string{}
 	}
 	podType := getPodType(pod)
-
+	// todo: isVmPod and getPodType has duplicated logic
+	isVmPod, vmName := isVmPod(pod)
 	// Avoid create lsp for already running pod in ovn-nb when controller restart
 	for _, podNet := range needAllocateSubnets(pod, podNets) {
 		// the subnet may changed when alloc static ip from the latter subnet after ns supports multi subnets
@@ -602,6 +603,9 @@ func (c *Controller) handleAddPod(key string) error {
 		pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)] = "true"
 		if pod.Annotations[fmt.Sprintf(util.PodNicAnnotationTemplate, podNet.ProviderName)] == "" {
 			pod.Annotations[fmt.Sprintf(util.PodNicAnnotationTemplate, podNet.ProviderName)] = c.config.PodNicType
+		}
+		if isVmPod && c.config.EnableKeepVmIP {
+			pod.Annotations[fmt.Sprintf(util.VmTemplate, podNet.ProviderName)] = vmName
 		}
 		if err := util.ValidatePodCidr(podNet.Subnet.Spec.CIDRBlock, ipStr); err != nil {
 			klog.Errorf("validate pod %s/%s failed: %v", namespace, name, err)
