@@ -286,7 +286,6 @@ func (c *Controller) handleUpdateIP(key string) error {
 			klog.Errorf("failed to get subnet %s: %v", cachedIP.Spec.Subnet, err)
 			return err
 		}
-		cleanIPAM := true
 		if isOvnSubnet(subnet) {
 			portName := cachedIP.Name
 			port, err := c.OVNNbClient.GetLogicalSwitchPort(portName, true)
@@ -294,41 +293,33 @@ func (c *Controller) handleUpdateIP(key string) error {
 				klog.Errorf("failed to get logical switch port %s: %v", portName, err)
 				return err
 			}
-			if port != nil && len(port.Addresses) > 0 {
-				address := port.Addresses[0]
-				if strings.Contains(address, cachedIP.Spec.MacAddress) {
-					klog.Infof("delete ip cr lsp %s from switch %s", portName, subnet.Name)
-					if err := c.OVNNbClient.DeleteLogicalSwitchPort(portName); err != nil {
-						klog.Errorf("failed to delete ip cr lsp %s from switch %s: %v", portName, subnet.Name, err)
-						return err
+			if port != nil {
+				klog.Infof("delete ip cr lsp %s from switch %s", portName, subnet.Name)
+				if err := c.OVNNbClient.DeleteLogicalSwitchPort(portName); err != nil {
+					klog.Errorf("failed to delete ip cr lsp %s from switch %s: %v", portName, subnet.Name, err)
+					return err
+				}
+				klog.V(3).Infof("sync sg for deleted port %s", portName)
+				sgList, err := c.getPortSg(port)
+				if err != nil {
+					klog.Errorf("get port sg failed, %v", err)
+					return err
+				}
+				for _, sgName := range sgList {
+					if sgName != "" {
+						c.syncSgPortsQueue.Add(sgName)
 					}
-					klog.V(3).Infof("sync sg for deleted port %s", portName)
-					sgList, err := c.getPortSg(port)
-					if err != nil {
-						klog.Errorf("get port sg failed, %v", err)
-						return err
-					}
-					for _, sgName := range sgList {
-						if sgName != "" {
-							c.syncSgPortsQueue.Add(sgName)
-						}
-					}
-				} else {
-					// ip subnet changed in pod handle add or update pod process
-					klog.Infof("lsp %s ip changed, only delete old ip cr %s", portName, key)
-					cleanIPAM = false
 				}
 			}
 		}
-		if cleanIPAM {
-			podKey := fmt.Sprintf("%s/%s", cachedIP.Spec.Namespace, cachedIP.Spec.PodName)
-			klog.Infof("ip cr %s release ipam pod key %s from subnet %s", cachedIP.Name, podKey, cachedIP.Spec.Subnet)
-			c.ipam.ReleaseAddressByPod(podKey, cachedIP.Spec.Subnet)
-		}
+		podKey := fmt.Sprintf("%s/%s", cachedIP.Spec.Namespace, cachedIP.Spec.PodName)
+		klog.Infof("ip cr %s release ipam pod key %s from subnet %s", cachedIP.Name, podKey, cachedIP.Spec.Subnet)
+		c.ipam.ReleaseAddressByPod(podKey, cachedIP.Spec.Subnet)
 		if err = c.handleDelIPFinalizer(cachedIP); err != nil {
 			klog.Errorf("failed to handle del ip finalizer %v", err)
 			return err
 		}
+		c.updateSubnetStatusQueue.Add(cachedIP.Spec.Subnet)
 	}
 	return nil
 }
