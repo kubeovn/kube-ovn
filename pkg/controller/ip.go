@@ -64,6 +64,19 @@ func (c *Controller) enqueueUpdateIP(oldObj, newObj interface{}) {
 			c.updateSubnetStatusQueue.Add(as)
 		}
 	}
+	// ip can not change these specs below
+	if oldIP.Spec.Subnet != "" && newIP.Spec.Subnet != oldIP.Spec.Subnet {
+		klog.Errorf("ip %s subnet can not change", newIP.Name)
+	}
+	if oldIP.Spec.Namespace != "" && newIP.Spec.Namespace != oldIP.Spec.Namespace {
+		klog.Errorf("ip %s namespace can not change", newIP.Name)
+	}
+	if oldIP.Spec.PodName != "" && newIP.Spec.PodName != oldIP.Spec.PodName {
+		klog.Errorf("ip %s podName can not change", newIP.Name)
+	}
+	if oldIP.Spec.PodType != "" && newIP.Spec.PodType != oldIP.Spec.PodType {
+		klog.Errorf("ip %s podType can not change", newIP.Name)
+	}
 }
 
 func (c *Controller) enqueueDelIP(obj interface{}) {
