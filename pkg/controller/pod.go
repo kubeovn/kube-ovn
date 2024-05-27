@@ -534,42 +534,6 @@ func (c *Controller) getPodKubeovnNets(pod *v1.Pod) ([]*kubeovnNet, error) {
 	return podNets, nil
 }
 
-func (c *Controller) changeVMSubnet(vmName, namespace, providerName, subnetName string) error {
-	ipName := ovs.PodNameToPortName(vmName, namespace, providerName)
-	ipCR, err := c.ipsLister.Get(ipName)
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
-		err := fmt.Errorf("failed to get ip CR %s: %v", ipName, err)
-		klog.Error(err)
-		return err
-	}
-	if ipCR.Spec.Subnet != subnetName {
-		key := fmt.Sprintf("%s/%s", namespace, vmName)
-		klog.Infof("deleting ip change subnet from %s to %s for vm %s", ipCR.Spec.Subnet, subnetName, key)
-		if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), ipName, metav1.DeleteOptions{}); err != nil {
-			if !k8serrors.IsNotFound(err) {
-				klog.Errorf("failed to delete ip %s, %v", ipName, err)
-				return err
-			}
-		}
-		// wait for old ip CR and lsp and its ipam deleted
-		for i := 0; i < 10; i++ {
-			time.Sleep(1 * time.Second)
-			if _, err := c.ipsLister.Get(ipName); err != nil {
-				if k8serrors.IsNotFound(err) {
-					break
-				}
-				klog.Errorf("failed to get ip CR %s: %v", ipName, err)
-				return err
-			}
-			klog.Warningf("waiting for old subnet ip %s to be deleted", ipName)
-		}
-	}
-	return nil
-}
-
 func (c *Controller) handleAddOrUpdatePod(key string) (err error) {
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
@@ -682,15 +646,6 @@ func (c *Controller) reconcileAllocateSubnets(cachedPod, pod *v1.Pod, needAlloca
 			delete(pod.Annotations, fmt.Sprintf(util.PodNicAnnotationTemplate, podNet.ProviderName))
 		}
 		pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)] = "true"
-
-		if vmKey != "" {
-			pod.Annotations[fmt.Sprintf(util.VMAnnotationTemplate, podNet.ProviderName)] = vmName
-			if err := c.changeVMSubnet(vmName, namespace, podNet.ProviderName, subnet.Name); err != nil {
-				klog.Errorf("vm %s change subnet to %s failed: %v", vmKey, subnet.Name, err)
-				return nil, err
-			}
-		}
-
 		if err := util.ValidateNetworkBroadcast(podNet.Subnet.Spec.CIDRBlock, ipStr); err != nil {
 			klog.Errorf("validate pod %s/%s failed: %v", namespace, name, err)
 			c.recorder.Eventf(pod, v1.EventTypeWarning, "ValidatePodNetworkFailed", err.Error())
