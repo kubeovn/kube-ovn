@@ -314,6 +314,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 			framework.ExpectNoError(err)
 
 			ginkgo.By("Validating node links")
+			linkNameMap := make(map[string]string, len(kindNodes))
 			bridgeName := util.ExternalBridgeName(providerNetworkName)
 			for _, node := range kindNodes {
 				if exchangeLinkName {
@@ -353,6 +354,9 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 				framework.ExpectContainElement(bridge.Flags, "UP")
 
 				framework.ExpectEmpty(port.NonLinkLocalAddresses())
+				framework.ExpectConsistOf(bridge.NonLinkLocalAddresses(), linkMap[node.ID].NonLinkLocalAddresses())
+
+				linkNameMap[node.ID] = port.IfName
 			}
 		}
 	})
