@@ -749,7 +749,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 })
 
 func checkU2OItems(f *framework.Framework, subnet *apiv1.Subnet, underlayPod, overlayPod *corev1.Pod, isU2OCustomVpc bool) {
-	ginkgo.By("checking underlay subnet's u2o interconnect ip")
+	ginkgo.By("checking subnet's u2o interconnect ip of underlay subnet " + subnet.Name)
 	if subnet.Spec.U2OInterconnection {
 		framework.ExpectTrue(subnet.Spec.U2OInterconnection)
 		framework.ExpectIPInCIDR(subnet.Status.U2OInterconnectionIP, subnet.Spec.CIDRBlock)
@@ -779,7 +779,7 @@ func checkU2OItems(f *framework.Framework, subnet *apiv1.Subnet, underlayPod, ov
 		if util.CheckProtocol(cidr) == apiv1.ProtocolIPv4 {
 			protocolStr = "ip4"
 			gw = v4gw
-			ginkgo.By("checking underlay subnet's using ips")
+			ginkgo.By("checking subnet's using ips of underlay subnet " + subnet.Name + " " + protocolStr)
 			if subnet.Spec.U2OInterconnection {
 				framework.ExpectEqual(int(subnet.Status.V4UsingIPs), 2)
 			} else {
@@ -788,6 +788,7 @@ func checkU2OItems(f *framework.Framework, subnet *apiv1.Subnet, underlayPod, ov
 		} else {
 			protocolStr = "ip6"
 			gw = v6gw
+			ginkgo.By("checking subnet's using ips of underlay subnet " + subnet.Name + " " + protocolStr)
 			if subnet.Spec.U2OInterconnection {
 				framework.ExpectEqual(int(subnet.Status.V6UsingIPs), 2)
 			} else {
