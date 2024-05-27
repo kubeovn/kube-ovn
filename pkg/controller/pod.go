@@ -646,6 +646,9 @@ func (c *Controller) reconcileAllocateSubnets(cachedPod, pod *v1.Pod, needAlloca
 			delete(pod.Annotations, fmt.Sprintf(util.PodNicAnnotationTemplate, podNet.ProviderName))
 		}
 		pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)] = "true"
+		if vmKey != "" {
+			pod.Annotations[fmt.Sprintf(util.VMAnnotationTemplate, podNet.ProviderName)] = vmName
+		}
 		if err := util.ValidateNetworkBroadcast(podNet.Subnet.Spec.CIDRBlock, ipStr); err != nil {
 			klog.Errorf("validate pod %s/%s failed: %v", namespace, name, err)
 			c.recorder.Eventf(pod, v1.EventTypeWarning, "ValidatePodNetworkFailed", err.Error())
