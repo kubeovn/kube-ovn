@@ -122,7 +122,7 @@ var _ = framework.Describe("[group:vip]", func() {
 	var switchLbVip1Name, switchLbVip2Name string
 
 	// test allowed address pair vip
-	var vip1Name, vip2Name, aapPodName1, aapPodName2, aapPodName3 string
+	var countingVipName, vip1Name, vip2Name, aapPodName1, aapPodName2, aapPodName3 string
 
 	// test allowed address pair connectivity in the security group scenario
 	var securityGroupName string
@@ -141,6 +141,9 @@ var _ = framework.Describe("[group:vip]", func() {
 		randomSuffix := framework.RandomSuffix()
 		switchLbVip1Name = "switch-lb-vip1-" + randomSuffix
 		switchLbVip2Name = "switch-lb-vip2-" + randomSuffix
+
+		// subnet status counting vip
+		countingVipName = "counting-vip-" + randomSuffix
 
 		// should have different mac
 		vip1Name = "vip1-" + randomSuffix
@@ -194,27 +197,46 @@ var _ = framework.Describe("[group:vip]", func() {
 
 	framework.ConformanceIt("Test vip", func() {
 		f.SkipVersionPriorTo(1, 13, "This feature was introduced in v1.13")
-
-		ginkgo.By("1. Test allowed address pair vip")
-		// create vip1 and vip2, should have different ip and mac
+		ginkgo.By("0. Test subnet status counting vip")
 		oldSubnet := subnetClient.Get(subnetName)
-		ginkgo.By("Creating allowed address pair vip, should have different ip and mac")
-		ginkgo.By("Creating allowed address pair vip " + vip1Name)
-		vip1 := makeOvnVip(namespaceName, vip1Name, subnetName, "", "", "")
-		vip1 = vipClient.CreateSync(vip1)
-		time.Sleep(1 * time.Second)
+		countingVip := makeOvnVip(namespaceName, countingVipName, subnetName, "", "", "")
+		_ = vipClient.CreateSync(countingVip)
+		time.Sleep(3 * time.Second)
 		newSubnet := subnetClient.Get(subnetName)
 		if newSubnet.Spec.Protocol == apiv1.ProtocolIPv4 {
 			framework.ExpectEqual(oldSubnet.Status.V4AvailableIPs-1, newSubnet.Status.V4AvailableIPs)
 			framework.ExpectEqual(oldSubnet.Status.V4UsingIPs+1, newSubnet.Status.V4UsingIPs)
-			framework.ExpectNotEqual(oldSubnet.Status.V4AvailableIPs, newSubnet.Status.V4AvailableIPs)
-			framework.ExpectNotEqual(oldSubnet.Status.V4UsingIPRange, newSubnet.Status.V4UsingIPs)
+			framework.ExpectNotEqual(oldSubnet.Status.V4AvailableIPRange, newSubnet.Status.V4AvailableIPRange)
+			framework.ExpectNotEqual(oldSubnet.Status.V4UsingIPRange, newSubnet.Status.V4UsingIPRange)
 		} else {
 			framework.ExpectEqual(oldSubnet.Status.V6AvailableIPs-1, newSubnet.Status.V6AvailableIPs)
 			framework.ExpectEqual(oldSubnet.Status.V6UsingIPs+1, newSubnet.Status.V6UsingIPs)
-			framework.ExpectNotEqual(oldSubnet.Status.V6AvailableIPs, newSubnet.Status.V6AvailableIPs)
-			framework.ExpectNotEqual(oldSubnet.Status.V6UsingIPRange, newSubnet.Status.V6UsingIPs)
+			framework.ExpectNotEqual(oldSubnet.Status.V6AvailableIPRange, newSubnet.Status.V6AvailableIPRange)
+			framework.ExpectNotEqual(oldSubnet.Status.V6UsingIPRange, newSubnet.Status.V6UsingIPRange)
 		}
+		oldSubnet = newSubnet
+		// delete counting vip
+		vipClient.DeleteSync(countingVipName)
+		time.Sleep(3 * time.Second)
+		newSubnet = subnetClient.Get(subnetName)
+		if newSubnet.Spec.Protocol == apiv1.ProtocolIPv4 {
+			framework.ExpectEqual(oldSubnet.Status.V4AvailableIPs+1, newSubnet.Status.V4AvailableIPs)
+			framework.ExpectEqual(oldSubnet.Status.V4UsingIPs-1, newSubnet.Status.V4UsingIPs)
+			framework.ExpectNotEqual(oldSubnet.Status.V4AvailableIPRange, newSubnet.Status.V4AvailableIPRange)
+			framework.ExpectNotEqual(oldSubnet.Status.V4UsingIPRange, newSubnet.Status.V4UsingIPRange)
+		} else {
+			framework.ExpectEqual(oldSubnet.Status.V6AvailableIPs+1, newSubnet.Status.V6AvailableIPs)
+			framework.ExpectEqual(oldSubnet.Status.V6UsingIPs-1, newSubnet.Status.V6UsingIPs)
+			framework.ExpectNotEqual(oldSubnet.Status.V6AvailableIPRange, newSubnet.Status.V6AvailableIPRange)
+			framework.ExpectNotEqual(oldSubnet.Status.V6UsingIPRange, newSubnet.Status.V6UsingIPRange)
+		}
+		ginkgo.By("1. Test allowed address pair vip")
+		// create vip1 and vip2, should have different ip and mac
+		ginkgo.By("Creating allowed address pair vip, should have different ip and mac")
+		ginkgo.By("Creating allowed address pair vip " + vip1Name)
+		vip1 := makeOvnVip(namespaceName, vip1Name, subnetName, "", "", "")
+		vip1 = vipClient.CreateSync(vip1)
+
 		ginkgo.By("Creating allowed address pair vip " + vip2Name)
 		vip2 := makeOvnVip(namespaceName, vip2Name, subnetName, "", "", "")
 		vip2 = vipClient.CreateSync(vip2)
