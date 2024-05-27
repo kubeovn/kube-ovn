@@ -547,38 +547,6 @@ func (c *Controller) getPodKubeovnNets(pod *v1.Pod) ([]*kubeovnNet, error) {
 	return podNets, nil
 }
 
-func (c *Controller) changeVMSubnet(vmName, namespace, providerName, subnetName string) error {
-	ipName := ovs.PodNameToPortName(vmName, namespace, providerName)
-	ipCr, err := c.config.KubeOvnClient.KubeovnV1().IPs().Get(context.Background(), ipName, metav1.GetOptions{})
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
-		err := fmt.Errorf("failed to get ip CR %s: %v", ipName, err)
-		klog.Error(err)
-		return err
-	}
-	if ipCr.Spec.Subnet != subnetName {
-		key := fmt.Sprintf("%s/%s", namespace, vmName)
-		klog.Infof("release ipam for vm %s from old subnet %s", key, ipCr.Spec.Subnet)
-		c.ipam.ReleaseAddressByPod(key, ipCr.Spec.Subnet)
-		klog.Infof("gc logical switch port %s", key)
-		if err := c.ovnLegacyClient.DeleteLogicalSwitchPort(key); err != nil {
-			klog.Errorf("failed to delete lsp %s, %v", key, err)
-			return err
-		}
-		if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), ipName, metav1.DeleteOptions{}); err != nil {
-			if !k8serrors.IsNotFound(err) {
-				klog.Errorf("failed to delete ip %s, %v", ipName, err)
-				return err
-			}
-		}
-		c.updateSubnetStatusQueue.Add(ipCr.Spec.Subnet)
-		// handleAddOrUpdatePod will create new lsp and new ip cr later
-	}
-	return nil
-}
-
 func (c *Controller) handleAddPod(key string) error {
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
@@ -614,9 +582,7 @@ func (c *Controller) handleAddPod(key string) error {
 	if len(pod.Annotations) == 0 {
 		pod.Annotations = map[string]string{}
 	}
-	isVmPod, vmName := isVmPod(pod)
 	podType := getPodType(pod)
-	// todo: isVmPod and getPodType has duplicated logic
 
 	// Avoid create lsp for already running pod in ovn-nb when controller restart
 	for _, podNet := range needAllocateSubnets(pod, podNets) {
@@ -637,14 +603,6 @@ func (c *Controller) handleAddPod(key string) error {
 		if pod.Annotations[fmt.Sprintf(util.PodNicAnnotationTemplate, podNet.ProviderName)] == "" {
 			pod.Annotations[fmt.Sprintf(util.PodNicAnnotationTemplate, podNet.ProviderName)] = c.config.PodNicType
 		}
-		if isVmPod && c.config.EnableKeepVmIP {
-			pod.Annotations[fmt.Sprintf(util.VmTemplate, podNet.ProviderName)] = vmName
-			if err := c.changeVMSubnet(vmName, namespace, podNet.ProviderName, subnet.Name); err != nil {
-				klog.Errorf("change subnet of pod %s/%s to %s failed: %v", namespace, name, subnet.Name, err)
-				return err
-			}
-		}
-
 		if err := util.ValidatePodCidr(podNet.Subnet.Spec.CIDRBlock, ipStr); err != nil {
 			klog.Errorf("validate pod %s/%s failed: %v", namespace, name, err)
 			c.recorder.Eventf(pod, v1.EventTypeWarning, "ValidatePodNetworkFailed", err.Error())

@@ -139,7 +139,7 @@ func (c *Controller) establishExternalGateway(config map[string]string) error {
 	}
 	var lrpIp, lrpMac string
 	if config["nic-ip"] == "" {
-		if lrpIp, lrpMac, err = c.createDefaultVpcLrpEip(config); err != nil {
+		if lrpIp, lrpMac, err = c.createDefaultVpcLrpEip(); err != nil {
 			klog.Errorf("failed to create ovn eip for default vpc lrp: %v", err)
 			return err
 		}
@@ -164,7 +164,7 @@ func (c *Controller) establishExternalGateway(config map[string]string) error {
 	return nil
 }
 
-func (c *Controller) createDefaultVpcLrpEip(config map[string]string) (string, string, error) {
+func (c *Controller) createDefaultVpcLrpEip() (string, string, error) {
 	cachedSubnet, err := c.subnetsLister.Get(c.config.ExternalGatewaySwitch)
 	if err != nil {
 		klog.Errorf("failed to get subnet %s, %v", c.config.ExternalGatewaySwitch, err)
@@ -185,13 +185,12 @@ func (c *Controller) createDefaultVpcLrpEip(config map[string]string) (string, s
 		v4ip = cachedEip.Spec.V4Ip
 		mac = cachedEip.Spec.MacAddress
 	} else {
-		var v6ip string
-		v4ip, v6ip, mac, err = c.acquireIpAddress(c.config.ExternalGatewaySwitch, lrpEipName, lrpEipName)
+		v4ip, _, mac, err = c.acquireIpAddress(c.config.ExternalGatewaySwitch, lrpEipName, lrpEipName)
 		if err != nil {
 			klog.Errorf("failed to acquire ip address for default vpc lrp %s, %v", lrpEipName, err)
 			return "", "", err
 		}
-		if err := c.createOrUpdateCrdOvnEip(lrpEipName, c.config.ExternalGatewaySwitch, v4ip, v6ip, mac, util.LrpUsingEip); err != nil {
+		if err := c.createOrUpdateCrdOvnEip(lrpEipName, c.config.ExternalGatewaySwitch, v4ip, mac, util.LrpUsingEip); err != nil {
 			klog.Errorf("failed to create ovn eip cr for lrp %s, %v", lrpEipName, err)
 			return "", "", err
 		}

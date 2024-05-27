@@ -31,7 +31,7 @@ func InitWorkQueueMetrics() {
 	workqueue.SetProvider(workqueueMetricsProvider{})
 }
 
-func registerWorkqueueMetric(c prometheus.Collector, name, queue string) {
+func registerWorkqueueMetric(c prometheus.Collector) {
 	prometheus.MustRegister(c)
 }
 
@@ -44,7 +44,7 @@ func (workqueueMetricsProvider) NewDepthMetric(queue string) workqueue.GaugeMetr
 		Help:        "Current depth of workqueue",
 		ConstLabels: prometheus.Labels{"name": queue},
 	})
-	registerWorkqueueMetric(m, name, queue)
+	registerWorkqueueMetric(m)
 	return m
 }
 
@@ -55,7 +55,7 @@ func (workqueueMetricsProvider) NewAddsMetric(queue string) workqueue.CounterMet
 		Help:        "Total number of adds handled by workqueue",
 		ConstLabels: prometheus.Labels{"name": queue},
 	})
-	registerWorkqueueMetric(m, name, queue)
+	registerWorkqueueMetric(m)
 	return m
 }
 
@@ -67,7 +67,7 @@ func (workqueueMetricsProvider) NewLatencyMetric(queue string) workqueue.Histogr
 		ConstLabels: prometheus.Labels{"name": queue},
 		Buckets:     prometheus.ExponentialBuckets(10e-9, 10, 10),
 	})
-	registerWorkqueueMetric(m, name, queue)
+	registerWorkqueueMetric(m)
 	return m
 }
 
@@ -79,7 +79,7 @@ func (workqueueMetricsProvider) NewWorkDurationMetric(queue string) workqueue.Hi
 		ConstLabels: prometheus.Labels{"name": queue},
 		Buckets:     prometheus.ExponentialBuckets(10e-9, 10, 10),
 	})
-	registerWorkqueueMetric(m, name, queue)
+	registerWorkqueueMetric(m)
 	return m
 }
 
@@ -93,7 +93,7 @@ func (workqueueMetricsProvider) NewUnfinishedWorkSecondsMetric(queue string) wor
 			"threads by observing the rate at which this increases.",
 		ConstLabels: prometheus.Labels{"name": queue},
 	})
-	registerWorkqueueMetric(m, name, queue)
+	registerWorkqueueMetric(m)
 	return m
 }
 
@@ -105,7 +105,7 @@ func (workqueueMetricsProvider) NewLongestRunningProcessorSecondsMetric(queue st
 			"processor for workqueue been running.",
 		ConstLabels: prometheus.Labels{"name": queue},
 	})
-	registerWorkqueueMetric(m, name, queue)
+	registerWorkqueueMetric(m)
 	return m
 }
 
@@ -116,7 +116,7 @@ func (workqueueMetricsProvider) NewRetriesMetric(queue string) workqueue.Counter
 		Help:        "Total number of retries handled by workqueue",
 		ConstLabels: prometheus.Labels{"name": queue},
 	})
-	registerWorkqueueMetric(m, name, queue)
+	registerWorkqueueMetric(m)
 	return m
 }
 
@@ -131,7 +131,7 @@ func (workqueueMetricsProvider) NewDeprecatedLongestRunningProcessorMicroseconds
 			"processor for workqueue been running.",
 		ConstLabels: prometheus.Labels{"name": queue},
 	})
-	registerWorkqueueMetric(m, name, queue)
+	registerWorkqueueMetric(m)
 	return m
 }
 
