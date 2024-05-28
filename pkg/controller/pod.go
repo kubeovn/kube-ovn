@@ -814,6 +814,11 @@ func (c *Controller) reconcileAllocateSubnets(cachedPod, pod *v1.Pod, needAlloca
 
 // do the same thing as update pod
 func (c *Controller) reconcileRouteSubnets(cachedPod, pod *v1.Pod, needRoutePodNets []*kubeovnNet) error {
+	// the lb-svc pod has dependencies on Running state, check it when pod state get updated
+	if err := c.checkAndReInitLbSvcPod(pod); err != nil {
+		klog.Errorf("failed to init iptable rules for load-balancer pod %s/%s: %v", pod.Namespace, pod.Name, err)
+	}
+
 	if len(needRoutePodNets) == 0 {
 		return nil
 	}
