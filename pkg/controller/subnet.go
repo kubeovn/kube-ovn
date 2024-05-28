@@ -1999,6 +1999,7 @@ func (c *Controller) reconcileU2OInterconnectionIP(subnet *kubeovnv1.Subnet) err
 		klog.Infof("release underlay to overlay interconnection ip address %s for subnet %s", subnet.Status.U2OInterconnectionIP, subnet.Name)
 		c.ipam.ReleaseAddressByPod(u2oInterconnName, subnet.Name)
 		subnet.Status.U2OInterconnectionIP = ""
+		subnet.Status.U2OInterconnectionVPC = ""
 
 		if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), u2oInterconnName, metav1.DeleteOptions{}); err != nil {
 			if !k8serrors.IsNotFound(err) {

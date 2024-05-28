@@ -785,7 +785,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		waitSubnetStatusUpdate(subnetName, subnetClient, 1)
 
 		subnet = subnetClient.Get(subnetName)
-		ginkgo.By("10. waiting for U2OInterconnection status of subnet " + subnetName + " to be true")
+		ginkgo.By("10. waiting for U2OInterconnection status of subnet " + subnetName + " to be false")
 		waitSubnetU2OStatus(subnetName, subnetClient, false)
 		checkU2OItems(f, subnet, underlayPod, overlayPod, false)
 	})
