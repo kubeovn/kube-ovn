@@ -71,18 +71,18 @@ func waitSubnetU2OStatus(subnetName string, subnetClient *framework.SubnetClient
 			if subnet.Status.U2OInterconnectionIP != "" && subnet.Status.U2OInterconnectionVPC != "" {
 				framework.Logf("current enable U2O subnet status: U2OInterconnectionIP = %s, U2OInterconnectionVPC = %s",
 					subnet.Status.U2OInterconnectionIP, subnet.Status.U2OInterconnectionVPC)
-				return false, nil
+				return true, nil
 			}
 			ginkgo.By("Keep waiting for U2O to be true: current enable U2O subnet status: U2OInterconnectionIP = " + subnet.Status.U2OInterconnectionIP + ", U2OInterconnectionVPC = " + subnet.Status.U2OInterconnectionVPC)
 		} else {
 			if subnet.Status.U2OInterconnectionIP == "" && subnet.Status.U2OInterconnectionVPC == "" {
 				framework.Logf("current disable U2O subnet status: U2OInterconnectionIP = %s, U2OInterconnectionVPC = %s",
 					subnet.Status.U2OInterconnectionIP, subnet.Status.U2OInterconnectionVPC)
-				return false, nil
+				return true, nil
 			}
 			ginkgo.By("Keep waiting for U2O to be false: current enable U2O subnet status: U2OInterconnectionIP = " + subnet.Status.U2OInterconnectionIP + ", U2OInterconnectionVPC = " + subnet.Status.U2OInterconnectionVPC)
 		}
-		return true, nil
+		return false, nil
 	}, "")
 }
 
