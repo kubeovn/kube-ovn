@@ -520,6 +520,11 @@ func (c *Controller) createOrUpdateVipCR(key, ns, subnet, v4ip, v6ip, mac, pV4ip
 			vip.Labels[util.SubnetNameLabel] = subnet
 			needUpdateLabel = true
 		}
+		if _, ok := vip.Labels[util.IPReservedLabel]; !ok {
+			op = "add"
+			vip.Labels[util.IPReservedLabel] = ""
+			needUpdateLabel = true
+		}
 		if needUpdateLabel {
 			patchPayloadTemplate := `[{ "op": "%s", "path": "/metadata/labels", "value": %s }]`
 			raw, _ := json.Marshal(vip.Labels)
