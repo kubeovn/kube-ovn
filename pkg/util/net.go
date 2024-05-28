@@ -34,16 +34,17 @@ const (
 )
 
 // GenerateMac generates mac address.
+// Refer from https://github.com/cilium/cilium/blob/8c7e442ccd48b9011a10f34a128ec98751d9a80e/pkg/mac/mac.go#L106
 func GenerateMac() string {
-	prefix := "00:00:00"
-	b := make([]byte, 3)
-	_, err := rand.Read(b)
-	if err != nil {
-		klog.Errorf("generate mac error: %v", err)
+	buf := make([]byte, 6)
+	if _, err := rand.Read(buf); err != nil {
+		klog.Errorf("Unable to retrieve 6 rnd bytes: %v", err)
 	}
 
-	mac := fmt.Sprintf("%s:%02X:%02X:%02X", prefix, b[0], b[1], b[2])
-	return mac
+	// Set locally administered addresses bit and reset multicast bit
+	buf[0] = (buf[0] | 0x02) & 0xfe
+
+	return net.HardwareAddr(buf).String()
 }
 
 func IP2BigInt(ipStr string) *big.Int {
