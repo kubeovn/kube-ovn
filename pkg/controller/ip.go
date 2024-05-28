@@ -77,6 +77,18 @@ func (c *Controller) enqueueUpdateIP(oldObj, newObj interface{}) {
 	if oldIP.Spec.PodType != "" && newIP.Spec.PodType != oldIP.Spec.PodType {
 		klog.Errorf("ip %s podType can not change", newIP.Name)
 	}
+	if oldIP.Spec.MacAddress != "" && newIP.Spec.MacAddress != oldIP.Spec.MacAddress {
+		klog.Errorf("ip %s macAddress can not change", newIP.Name)
+	}
+	if oldIP.Spec.NodeName != "" && newIP.Spec.NodeName != oldIP.Spec.NodeName {
+		klog.Errorf("ip %s nodeName can not change", newIP.Name)
+	}
+	if oldIP.Spec.V4IPAddress != "" && newIP.Spec.V4IPAddress != oldIP.Spec.V4IPAddress {
+		klog.Errorf("ip %s v4IPAddress can not change", newIP.Name)
+	}
+	if oldIP.Spec.V6IPAddress != "" && newIP.Spec.V6IPAddress != oldIP.Spec.V6IPAddress {
+		klog.Errorf("ip %s v6IPAddress can not change", newIP.Name)
+	}
 }
 
 func (c *Controller) enqueueDelIP(obj interface{}) {
