@@ -121,10 +121,8 @@ var _ = framework.Describe("[group:subnet]", func() {
 		}
 	})
 	ginkgo.AfterEach(func() {
-		if deployName != "" {
-			ginkgo.By("Deleting deployment " + deployName)
-			deployClient.DeleteSync(deployName)
-		}
+		ginkgo.By("Deleting deployment " + deployName)
+		deployClient.DeleteSync(deployName)
 
 		for i := 1; i <= podCount; i++ {
 			podName := fmt.Sprintf("%s-%d", podNamePrefix, i)
