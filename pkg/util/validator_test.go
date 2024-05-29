@@ -1021,7 +1021,7 @@ func TestValidateVpc(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			err := ValidateVpc(tt.vpc)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("ValidateVpc() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("got error = %v, but wantErr %v", err, tt.wantErr)
 			}
 		})
 	}
