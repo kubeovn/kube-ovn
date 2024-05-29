@@ -64,7 +64,7 @@ func TestGenNatGwPodName(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			result := GenNatGwPodName(tc.input)
 			if result != tc.expected {
-				t.Errorf("Expected %s, got %s", tc.expected, result)
+				t.Errorf("Expected %s, but got %s", tc.expected, result)
 			}
 		})
 	}
