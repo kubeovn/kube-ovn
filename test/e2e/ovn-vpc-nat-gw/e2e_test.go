@@ -94,8 +94,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 	var ovnSnatRuleClient *framework.OvnSnatRuleClient
 	var ovnDnatRuleClient *framework.OvnDnatRuleClient
 	var podClient *framework.PodClient
-
-	var lrpEipSnatName, lrpExtraEipSnatName string
+	var countingEipName, lrpEipSnatName, lrpExtraEipSnatName string
 	var fipName string
 	var ipDnatVipName, ipDnatEipName, ipDnatName string
 	var ipFipVipName, ipFipEipName, ipFipName string
@@ -134,6 +133,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		// nats use ip crd name or vip crd
 		fipName = "fip-" + framework.RandomSuffix()
 
+		countingEipName = "counting-eip-" + framework.RandomSuffix()
 		noBfdSubnetName = "no-bfd-subnet-" + framework.RandomSuffix()
 		noBfdExtraSubnetName = "no-bfd-extra-subnet-" + framework.RandomSuffix()
 		lrpEipSnatName = "lrp-eip-snat-" + framework.RandomSuffix()
@@ -501,11 +501,42 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		vlanSubnetCidr := strings.Join(cidr, ",")
 		vlanSubnetGw := strings.Join(gateway, ",")
 		underlaySubnet := framework.MakeSubnet(underlaySubnetName, vlanName, vlanSubnetCidr, vlanSubnetGw, "", "", excludeIPs, nil, nil)
-		_ = subnetClient.CreateSync(underlaySubnet)
-		vlanSubnet := subnetClient.Get(underlaySubnetName)
-		ginkgo.By("Checking underlay vlan " + vlanSubnet.Name)
-		framework.ExpectEqual(vlanSubnet.Spec.Vlan, vlanName)
-		framework.ExpectNotEqual(vlanSubnet.Spec.CIDRBlock, "")
+		oldUnderlayExternalSubnet := subnetClient.CreateSync(underlaySubnet)
+		countingEip := makeOvnEip(countingEipName, underlaySubnetName, "", "", "", "")
+		_ = ovnEipClient.CreateSync(countingEip)
+		ginkgo.By("Checking underlay vlan " + oldUnderlayExternalSubnet.Name)
+		framework.ExpectEqual(oldUnderlayExternalSubnet.Spec.Vlan, vlanName)
+		framework.ExpectNotEqual(oldUnderlayExternalSubnet.Spec.CIDRBlock, "")
+		time.Sleep(3 * time.Second)
+		newUnerlayExternalSubnet := subnetClient.Get(underlaySubnetName)
+		ginkgo.By("Check status using ovn eip for subnet " + underlaySubnetName)
+		if newUnerlayExternalSubnet.Spec.Protocol == kubeovnv1.ProtocolIPv4 {
+			framework.ExpectEqual(oldUnderlayExternalSubnet.Status.V4AvailableIPs-1, newUnerlayExternalSubnet.Status.V4AvailableIPs)
+			framework.ExpectEqual(oldUnderlayExternalSubnet.Status.V4UsingIPs+1, newUnerlayExternalSubnet.Status.V4UsingIPs)
+			framework.ExpectNotEqual(oldUnderlayExternalSubnet.Status.V4AvailableIPRange, newUnerlayExternalSubnet.Status.V4AvailableIPRange)
+			framework.ExpectNotEqual(oldUnderlayExternalSubnet.Status.V4UsingIPRange, newUnerlayExternalSubnet.Status.V4UsingIPRange)
+		} else {
+			framework.ExpectEqual(oldUnderlayExternalSubnet.Status.V6AvailableIPs-1, newUnerlayExternalSubnet.Status.V6AvailableIPs)
+			framework.ExpectEqual(oldUnderlayExternalSubnet.Status.V6UsingIPs+1, newUnerlayExternalSubnet.Status.V6UsingIPs)
+			framework.ExpectNotEqual(oldUnderlayExternalSubnet.Status.V6AvailableIPRange, newUnerlayExternalSubnet.Status.V6AvailableIPRange)
+			framework.ExpectNotEqual(oldUnderlayExternalSubnet.Status.V6UsingIPRange, newUnerlayExternalSubnet.Status.V6UsingIPRange)
+		}
+		// delete counting eip
+		oldUnderlayExternalSubnet = newUnerlayExternalSubnet
+		ovnEipClient.DeleteSync(countingEipName)
+		time.Sleep(3 * time.Second)
+		newUnerlayExternalSubnet = subnetClient.Get(underlaySubnetName)
+		if newUnerlayExternalSubnet.Spec.Protocol == kubeovnv1.ProtocolIPv4 {
+			framework.ExpectEqual(oldUnderlayExternalSubnet.Status.V4AvailableIPs+1, newUnerlayExternalSubnet.Status.V4AvailableIPs)
+			framework.ExpectEqual(oldUnderlayExternalSubnet.Status.V4UsingIPs-1, newUnerlayExternalSubnet.Status.V4UsingIPs)
+			framework.ExpectNotEqual(oldUnderlayExternalSubnet.Status.V4AvailableIPRange, newUnerlayExternalSubnet.Status.V4AvailableIPRange)
+			framework.ExpectNotEqual(oldUnderlayExternalSubnet.Status.V4UsingIPRange, newUnerlayExternalSubnet.Status.V4UsingIPRange)
+		} else {
+			framework.ExpectEqual(oldUnderlayExternalSubnet.Status.V6AvailableIPs+1, newUnerlayExternalSubnet.Status.V6AvailableIPs)
+			framework.ExpectEqual(oldUnderlayExternalSubnet.Status.V6UsingIPs-1, newUnerlayExternalSubnet.Status.V6UsingIPs)
+			framework.ExpectNotEqual(oldUnderlayExternalSubnet.Status.V6AvailableIPRange, newUnerlayExternalSubnet.Status.V6AvailableIPRange)
+			framework.ExpectNotEqual(oldUnderlayExternalSubnet.Status.V6UsingIPRange, newUnerlayExternalSubnet.Status.V6UsingIPRange)
+		}
 
 		externalGwNodes := strings.Join(gwNodeNames, ",")
 		ginkgo.By("Creating config map ovn-external-gw-config for centralized case")
