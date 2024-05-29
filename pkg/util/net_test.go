@@ -570,7 +570,7 @@ func TestCheckNodeDNSIP(t *testing.T) {
 		{
 			name:     "Invalid IP",
 			input:    "invalid.ip.address",
-			expected: fmt.Errorf("node dns ip %s is not valid ip", "invalid.ip.address"),
+			expected: fmt.Errorf("node dns ip %s is invalid ip", "invalid.ip.address"),
 		},
 		{
 			name:     "Empty string",
