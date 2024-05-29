@@ -10,6 +10,7 @@ dist/windows/kube-ovn-daemon.exe
 ovnnb_db.*.backup
 ovnsb_db.*.backup
 **/kubectl-ko-log/*
+kubectl-ko-log.tar.gz
 kube-ovn.yaml
 kube-ovn-crd.yaml
 ovn.yaml
