@@ -613,7 +613,7 @@ func TestGetExternalNetwork(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := GetExternalNetwork(tt.externalNet)
 			if result != tt.expected {
-				t.Errorf("got %v, want %v", result, tt.expected)
+				t.Errorf("got %v, but want %v", result, tt.expected)
 			}
 		})
 	}
