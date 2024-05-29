@@ -1011,7 +1011,7 @@ ipam-bench:
 
 .PHONY: kubectl-ko-log
 kubectl-ko-log:
-	kubectl ko log all
+	bash dist/images/kubectl-ko log all
 	tar -zcvf kubectl-ko-log.tar.gz kubectl-ko-log/
 
 .PHONY: clean

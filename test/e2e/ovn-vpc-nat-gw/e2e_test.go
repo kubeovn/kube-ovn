@@ -94,17 +94,12 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 	var ovnSnatRuleClient *framework.OvnSnatRuleClient
 	var ovnDnatRuleClient *framework.OvnDnatRuleClient
 	var podClient *framework.PodClient
-
-	var aapVip1Name, aapVip2Name string
 	var countingEipName, lrpEipSnatName, lrpExtraEipSnatName string
-	var dnatVipName, dnatEipName, dnatName string
-	var fipVipName, fipEipName, fipName string
-	var snatEipName, snatName string
+	var fipName string
 	var ipDnatVipName, ipDnatEipName, ipDnatName string
 	var ipFipVipName, ipFipEipName, ipFipName string
 	var cidrSnatEipName, cidrSnatName, ipSnatVipName, ipSnatEipName, ipSnatName string
 
-	var containerID string
 	var image, namespaceName string
 
 	var sharedVipName, sharedEipDnatName, sharedEipFipShoudOkName, sharedEipFipShoudFailName string
@@ -135,23 +130,10 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		noBfdVpcName = "no-bfd-vpc-" + framework.RandomSuffix()
 		bfdVpcName = "bfd-vpc-" + framework.RandomSuffix()
 
-		// test allow address pair vip
-		aapVip1Name = "aap-vip1-" + framework.RandomSuffix()
-		aapVip2Name = "aap-vip2-" + framework.RandomSuffix()
-
 		// nats use ip crd name or vip crd
-		fipVipName = "fip-vip-" + framework.RandomSuffix()
-		fipEipName = "fip-eip-" + framework.RandomSuffix()
 		fipName = "fip-" + framework.RandomSuffix()
 
 		countingEipName = "counting-eip-" + framework.RandomSuffix()
-
-		dnatVipName = "dnat-vip-" + framework.RandomSuffix()
-		dnatEipName = "dnat-eip-" + framework.RandomSuffix()
-		dnatName = "dnat-" + framework.RandomSuffix()
-
-		snatEipName = "snat-eip-" + framework.RandomSuffix()
-		snatName = "snat-" + framework.RandomSuffix()
 		noBfdSubnetName = "no-bfd-subnet-" + framework.RandomSuffix()
 		noBfdExtraSubnetName = "no-bfd-extra-subnet-" + framework.RandomSuffix()
 		lrpEipSnatName = "lrp-eip-snat-" + framework.RandomSuffix()
@@ -197,7 +179,6 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		ipSnatEipName = "ip-snat-eip-" + framework.RandomSuffix()
 		ipSnatName = "ip-snat-" + framework.RandomSuffix()
 
-		containerID = ""
 		if image == "" {
 			image = framework.GetKubeOvnImage(cs)
 		}
@@ -362,30 +343,8 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 	})
 
 	ginkgo.AfterEach(func() {
-		if containerID != "" {
-			ginkgo.By("Deleting container " + containerID)
-			err := docker.ContainerRemove(containerID)
-			framework.ExpectNoError(err)
-		}
-
 		ginkgo.By("Deleting ovn fip " + fipName)
 		ovnFipClient.DeleteSync(fipName)
-		ginkgo.By("Deleting ovn dnat " + dnatName)
-		ovnDnatRuleClient.DeleteSync(dnatName)
-		ginkgo.By("Deleting ovn snat " + snatName)
-		ovnSnatRuleClient.DeleteSync(snatName)
-
-		ginkgo.By("Deleting ovn fip " + fipEipName)
-		ovnFipClient.DeleteSync(fipEipName)
-		ginkgo.By("Deleting ovn eip " + dnatEipName)
-		ovnEipClient.DeleteSync(dnatEipName)
-		ginkgo.By("Deleting ovn eip " + snatEipName)
-		ovnEipClient.DeleteSync(snatEipName)
-
-		ginkgo.By("Deleting ovn allowed address pair vip " + aapVip1Name)
-		vipClient.DeleteSync(aapVip1Name)
-		ginkgo.By("Deleting ovn allowed address pair vip " + aapVip2Name)
-		vipClient.DeleteSync(aapVip2Name)
 
 		// clean up share eip case resource
 		ginkgo.By("Deleting share ovn dnat " + sharedEipDnatName)
@@ -427,12 +386,6 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		ginkgo.By("Deleting ovn vip " + ipSnatVipName)
 		vipClient.DeleteSync(ipSnatVipName)
 
-		ginkgo.By("Deleting ovn vip " + aapVip2Name)
-		vipClient.DeleteSync(aapVip2Name)
-		ginkgo.By("Deleting ovn vip " + dnatVipName)
-		vipClient.DeleteSync(dnatVipName)
-		ginkgo.By("Deleting ovn vip " + fipVipName)
-		vipClient.DeleteSync(fipVipName)
 		ginkgo.By("Deleting ovn share vip " + sharedVipName)
 		vipClient.DeleteSync(sharedVipName)
 
