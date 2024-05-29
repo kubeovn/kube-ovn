@@ -9,6 +9,8 @@ dist/windows/kube-ovn.exe
 dist/windows/kube-ovn-daemon.exe
 test/e2e/ovnnb_db.*
 test/e2e/ovnsb_db.*
+**/kubectl-ko-log/*
+kubectl-ko-log.tar.gz
 kube-ovn.yaml
 kube-ovn-crd.yaml
 kube-ovn-app-sa.yaml
