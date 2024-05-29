@@ -1514,8 +1514,6 @@ jobs:
 
       - name: Run E2E
         working-directory: ${{ env.E2E_DIR }}
-        env:
-          E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
         run: make kube-ovn-webhook-e2e
 
       - name: kubectl ko log
