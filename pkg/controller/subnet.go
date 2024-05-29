@@ -540,7 +540,7 @@ func (c *Controller) handleSubnetFinalizer(subnet *kubeovnv1.Subnet) (bool, erro
 	return false, nil
 }
 
-func (c Controller) patchSubnetStatus(subnet *kubeovnv1.Subnet, reason, errStr string) {
+func (c Controller) patchSubnetStatus(subnet *kubeovnv1.Subnet, reason, errStr string) error {
 	if errStr != "" {
 		subnet.Status.SetError(reason, errStr)
 		subnet.Status.NotValidated(reason, errStr)
@@ -557,13 +557,16 @@ func (c Controller) patchSubnetStatus(subnet *kubeovnv1.Subnet, reason, errStr s
 		}
 	}
 
-	if bytes, err := subnet.Status.Bytes(); err != nil {
+	bytes, err := subnet.Status.Bytes()
+	if err != nil {
 		klog.Error(err)
-	} else {
-		if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(context.Background(), subnet.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
-			klog.Error("patch subnet status failed", err)
-		}
+		return err
 	}
+	if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(context.Background(), subnet.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
+		klog.Errorf("failed to patch status for subnet %s, %v", subnet.Name, err)
+		return err
+	}
+	return nil
 }
 
 func (c *Controller) validateVpcBySubnet(subnet *kubeovnv1.Subnet) (*kubeovnv1.Vpc, error) {
@@ -621,7 +624,10 @@ func (c *Controller) checkSubnetConflict(subnet *kubeovnv1.Subnet) error {
 		if util.CIDROverlap(sub.Spec.CIDRBlock, subnet.Spec.CIDRBlock) {
 			err = fmt.Errorf("subnet %s cidr %s is conflict with subnet %s cidr %s", subnet.Name, subnet.Spec.CIDRBlock, sub.Name, sub.Spec.CIDRBlock)
 			klog.Error(err)
-			c.patchSubnetStatus(subnet, "ValidateLogicalSwitchFailed", err.Error())
+			if err = c.patchSubnetStatus(subnet, "ValidateLogicalSwitchFailed", err.Error()); err != nil {
+				klog.Error(err)
+				return err
+			}
 			return err
 		}
 
@@ -629,7 +635,10 @@ func (c *Controller) checkSubnetConflict(subnet *kubeovnv1.Subnet) error {
 			subnet.Spec.PolicyRoutingTableID == sub.Spec.PolicyRoutingTableID {
 			err = fmt.Errorf("subnet %s policy routing table ID %d is conflict with subnet %s policy routing table ID %d", subnet.Name, subnet.Spec.PolicyRoutingTableID, sub.Name, sub.Spec.PolicyRoutingTableID)
 			klog.Error(err)
-			c.patchSubnetStatus(subnet, "ValidateLogicalSwitchFailed", err.Error())
+			if err = c.patchSubnetStatus(subnet, "ValidateLogicalSwitchFailed", err.Error()); err != nil {
+				klog.Error(err)
+				return err
+			}
 			return err
 		}
 	}
@@ -645,7 +654,10 @@ func (c *Controller) checkSubnetConflict(subnet *kubeovnv1.Subnet) error {
 				if addr.Type == v1.NodeInternalIP && util.CIDRContainIP(subnet.Spec.CIDRBlock, addr.Address) {
 					err = fmt.Errorf("subnet %s cidr %s conflict with node %s address %s", subnet.Name, subnet.Spec.CIDRBlock, node.Name, addr.Address)
 					klog.Error(err)
-					c.patchSubnetStatus(subnet, "ValidateLogicalSwitchFailed", err.Error())
+					if err = c.patchSubnetStatus(subnet, "ValidateLogicalSwitchFailed", err.Error()); err != nil {
+						klog.Error(err)
+						return err
+					}
 					return err
 				}
 			}
@@ -736,10 +748,16 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 
 	if err = util.ValidateSubnet(*subnet); err != nil {
 		klog.Errorf("failed to validate subnet %s, %v", subnet.Name, err)
-		c.patchSubnetStatus(subnet, "ValidateLogicalSwitchFailed", err.Error())
+		if err = c.patchSubnetStatus(subnet, "ValidateLogicalSwitchFailed", err.Error()); err != nil {
+			klog.Error(err)
+			return err
+		}
 		return err
 	}
-	c.patchSubnetStatus(subnet, "ValidateLogicalSwitchSuccess", "")
+	if err = c.patchSubnetStatus(subnet, "ValidateLogicalSwitchSuccess", ""); err != nil {
+		klog.Error(err)
+		return err
+	}
 
 	if err := c.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps); err != nil {
 		klog.Error(err)
@@ -768,7 +786,10 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 
 	if !isOvnSubnet(subnet) {
 		// subnet provider is not ovn, and vpc is empty, should not reconcile
-		c.patchSubnetStatus(subnet, "SetNonOvnSubnetSuccess", "")
+		if err = c.patchSubnetStatus(subnet, "SetNonOvnSubnetSuccess", ""); err != nil {
+			klog.Error(err)
+			return err
+		}
 
 		subnet.Status.EnsureStandardConditions()
 		klog.Infof("non ovn subnet %s is ready", subnet.Name)
@@ -848,7 +869,10 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		}
 		if subnet.Spec.EnableLb != nil && *subnet.Spec.EnableLb {
 			if err := c.OVNNbClient.LogicalSwitchUpdateLoadBalancers(subnet.Name, ovsdb.MutateOperationInsert, lbs...); err != nil {
-				c.patchSubnetStatus(subnet, "AddLbToLogicalSwitchFailed", err.Error())
+				if err = c.patchSubnetStatus(subnet, "AddLbToLogicalSwitchFailed", err.Error()); err != nil {
+					klog.Error(err)
+					return err
+				}
 				klog.Error(err)
 				return err
 			}
@@ -877,25 +901,40 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 
 	if subnet.Spec.Private {
 		if err := c.OVNNbClient.SetLogicalSwitchPrivate(subnet.Name, subnet.Spec.CIDRBlock, c.config.NodeSwitchCIDR, subnet.Spec.AllowSubnets); err != nil {
-			c.patchSubnetStatus(subnet, "SetPrivateLogicalSwitchFailed", err.Error())
+			if err = c.patchSubnetStatus(subnet, "SetPrivateLogicalSwitchFailed", err.Error()); err != nil {
+				klog.Error(err)
+				return err
+			}
 			klog.Error(err)
 			return err
 		}
 
-		c.patchSubnetStatus(subnet, "SetPrivateLogicalSwitchSuccess", "")
+		if err = c.patchSubnetStatus(subnet, "SetPrivateLogicalSwitchSuccess", ""); err != nil {
+			klog.Error(err)
+			return err
+		}
 	} else {
 		// clear acl when direction is ""
 		if err = c.OVNNbClient.DeleteAcls(subnet.Name, logicalSwitchKey, "", nil); err != nil {
-			c.patchSubnetStatus(subnet, "ResetLogicalSwitchAclFailed", err.Error())
+			if err = c.patchSubnetStatus(subnet, "ResetLogicalSwitchAclFailed", err.Error()); err != nil {
+				klog.Error(err)
+				return err
+			}
 			klog.Error(err)
 			return err
 		}
 
-		c.patchSubnetStatus(subnet, "ResetLogicalSwitchAclSuccess", "")
+		if err = c.patchSubnetStatus(subnet, "ResetLogicalSwitchAclSuccess", ""); err != nil {
+			klog.Error(err)
+			return err
+		}
 	}
 
 	if err := c.OVNNbClient.UpdateLogicalSwitchACL(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Acls, subnet.Spec.AllowEWTraffic); err != nil {
-		c.patchSubnetStatus(subnet, "SetLogicalSwitchAclsFailed", err.Error())
+		if err = c.patchSubnetStatus(subnet, "SetLogicalSwitchAclsFailed", err.Error()); err != nil {
+			klog.Error(err)
+			return err
+		}
 		klog.Error(err)
 		return err
 	}
@@ -1441,7 +1480,10 @@ func (c *Controller) reconcileDistributedSubnetRouteInDefaultVpc(subnet *kubeovn
 			return err
 		}
 		subnet.Status.ActivateGateway = ""
-		c.patchSubnetStatus(subnet, "ChangeToDistributedGw", "")
+		if err := c.patchSubnetStatus(subnet, "ChangeToDistributedGw", ""); err != nil {
+			klog.Error(err)
+			return err
+		}
 	}
 
 	nodes, err := c.nodesLister.List(labels.Everything())
@@ -1592,7 +1634,10 @@ func (c *Controller) reconcileDefaultCentralizedSubnetRouteInDefaultVpc(subnet *
 	if newActivateNode == "" {
 		klog.Warningf("all gateways of subnet %s are not ready", subnet.Name)
 		subnet.Status.ActivateGateway = newActivateNode
-		c.patchSubnetStatus(subnet, "NoActiveGatewayFound", fmt.Sprintf("subnet %s gws are not ready", subnet.Name))
+		if err := c.patchSubnetStatus(subnet, "NoActiveGatewayFound", fmt.Sprintf("subnet %s gws are not ready", subnet.Name)); err != nil {
+			klog.Error(err)
+			return err
+		}
 
 		return fmt.Errorf("subnet %s gws are not ready", subnet.Name)
 	}
@@ -1604,7 +1649,10 @@ func (c *Controller) reconcileDefaultCentralizedSubnetRouteInDefaultVpc(subnet *
 		return err
 	}
 	subnet.Status.ActivateGateway = newActivateNode
-	c.patchSubnetStatus(subnet, "ReconcileCentralizedGatewaySuccess", "")
+	if err := c.patchSubnetStatus(subnet, "ReconcileCentralizedGatewaySuccess", ""); err != nil {
+		klog.Error(err)
+		return err
+	}
 
 	klog.Infof("delete old distributed policy route for subnet %s", subnet.Name)
 	if err := c.deletePolicyRouteByGatewayType(subnet, kubeovnv1.GWDistributedType, false); err != nil {
@@ -1774,8 +1822,10 @@ func (c *Controller) reconcileOvnDefaultVpcRoute(subnet *kubeovnv1.Subnet) error
 			// centralized subnet
 			if subnet.Spec.GatewayNode == "" {
 				subnet.Status.NotReady("NoReadyGateway", "")
-				c.patchSubnetStatus(subnet, "NoReadyGateway", "")
-
+				if err := c.patchSubnetStatus(subnet, "NoReadyGateway", ""); err != nil {
+					klog.Error(err)
+					return err
+				}
 				err := fmt.Errorf("subnet %s Spec.GatewayNode field must be specified for centralized gateway type", subnet.Name)
 				klog.Error(err)
 				return err
@@ -1949,6 +1999,7 @@ func (c *Controller) reconcileU2OInterconnectionIP(subnet *kubeovnv1.Subnet) err
 		klog.Infof("release underlay to overlay interconnection ip address %s for subnet %s", subnet.Status.U2OInterconnectionIP, subnet.Name)
 		c.ipam.ReleaseAddressByPod(u2oInterconnName, subnet.Name)
 		subnet.Status.U2OInterconnectionIP = ""
+		subnet.Status.U2OInterconnectionVPC = ""
 
 		if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), u2oInterconnName, metav1.DeleteOptions{}); err != nil {
 			if !k8serrors.IsNotFound(err) {

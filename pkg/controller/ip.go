@@ -64,6 +64,31 @@ func (c *Controller) enqueueUpdateIP(oldObj, newObj interface{}) {
 			c.updateSubnetStatusQueue.Add(as)
 		}
 	}
+	// ip can not change these specs below
+	if oldIP.Spec.Subnet != "" && newIP.Spec.Subnet != oldIP.Spec.Subnet {
+		klog.Errorf("ip %s subnet can not change", newIP.Name)
+	}
+	if oldIP.Spec.Namespace != "" && newIP.Spec.Namespace != oldIP.Spec.Namespace {
+		klog.Errorf("ip %s namespace can not change", newIP.Name)
+	}
+	if oldIP.Spec.PodName != "" && newIP.Spec.PodName != oldIP.Spec.PodName {
+		klog.Errorf("ip %s podName can not change", newIP.Name)
+	}
+	if oldIP.Spec.PodType != "" && newIP.Spec.PodType != oldIP.Spec.PodType {
+		klog.Errorf("ip %s podType can not change", newIP.Name)
+	}
+	if oldIP.Spec.MacAddress != "" && newIP.Spec.MacAddress != oldIP.Spec.MacAddress {
+		klog.Errorf("ip %s macAddress can not change", newIP.Name)
+	}
+	if oldIP.Spec.NodeName != "" && newIP.Spec.NodeName != oldIP.Spec.NodeName {
+		klog.Errorf("ip %s nodeName can not change", newIP.Name)
+	}
+	if oldIP.Spec.V4IPAddress != "" && newIP.Spec.V4IPAddress != oldIP.Spec.V4IPAddress {
+		klog.Errorf("ip %s v4IPAddress can not change", newIP.Name)
+	}
+	if oldIP.Spec.V6IPAddress != "" && newIP.Spec.V6IPAddress != oldIP.Spec.V6IPAddress {
+		klog.Errorf("ip %s v6IPAddress can not change", newIP.Name)
+	}
 }
 
 func (c *Controller) enqueueDelIP(obj interface{}) {
@@ -286,7 +311,6 @@ func (c *Controller) handleUpdateIP(key string) error {
 			klog.Errorf("failed to get subnet %s: %v", cachedIP.Spec.Subnet, err)
 			return err
 		}
-		cleanIPAM := true
 		if isOvnSubnet(subnet) {
 			portName := cachedIP.Name
 			port, err := c.OVNNbClient.GetLogicalSwitchPort(portName, true)
@@ -294,41 +318,33 @@ func (c *Controller) handleUpdateIP(key string) error {
 				klog.Errorf("failed to get logical switch port %s: %v", portName, err)
 				return err
 			}
-			if port != nil && len(port.Addresses) > 0 {
-				address := port.Addresses[0]
-				if strings.Contains(address, cachedIP.Spec.MacAddress) {
-					klog.Infof("delete ip cr lsp %s from switch %s", portName, subnet.Name)
-					if err := c.OVNNbClient.DeleteLogicalSwitchPort(portName); err != nil {
-						klog.Errorf("failed to delete ip cr lsp %s from switch %s: %v", portName, subnet.Name, err)
-						return err
+			if port != nil {
+				klog.Infof("delete ip cr lsp %s from switch %s", portName, subnet.Name)
+				if err := c.OVNNbClient.DeleteLogicalSwitchPort(portName); err != nil {
+					klog.Errorf("failed to delete ip cr lsp %s from switch %s: %v", portName, subnet.Name, err)
+					return err
+				}
+				klog.V(3).Infof("sync sg for deleted port %s", portName)
+				sgList, err := c.getPortSg(port)
+				if err != nil {
+					klog.Errorf("get port sg failed, %v", err)
+					return err
+				}
+				for _, sgName := range sgList {
+					if sgName != "" {
+						c.syncSgPortsQueue.Add(sgName)
 					}
-					klog.V(3).Infof("sync sg for deleted port %s", portName)
-					sgList, err := c.getPortSg(port)
-					if err != nil {
-						klog.Errorf("get port sg failed, %v", err)
-						return err
-					}
-					for _, sgName := range sgList {
-						if sgName != "" {
-							c.syncSgPortsQueue.Add(sgName)
-						}
-					}
-				} else {
-					// ip subnet changed in pod handle add or update pod process
-					klog.Infof("lsp %s ip changed, only delete old ip cr %s", portName, key)
-					cleanIPAM = false
 				}
 			}
 		}
-		if cleanIPAM {
-			podKey := fmt.Sprintf("%s/%s", cachedIP.Spec.Namespace, cachedIP.Spec.PodName)
-			klog.Infof("ip cr %s release ipam pod key %s from subnet %s", cachedIP.Name, podKey, cachedIP.Spec.Subnet)
-			c.ipam.ReleaseAddressByPod(podKey, cachedIP.Spec.Subnet)
-		}
+		podKey := fmt.Sprintf("%s/%s", cachedIP.Spec.Namespace, cachedIP.Spec.PodName)
+		klog.Infof("ip cr %s release ipam pod key %s from subnet %s", cachedIP.Name, podKey, cachedIP.Spec.Subnet)
+		c.ipam.ReleaseAddressByPod(podKey, cachedIP.Spec.Subnet)
 		if err = c.handleDelIPFinalizer(cachedIP); err != nil {
 			klog.Errorf("failed to handle del ip finalizer %v", err)
 			return err
 		}
+		c.updateSubnetStatusQueue.Add(cachedIP.Spec.Subnet)
 	}
 	return nil
 }

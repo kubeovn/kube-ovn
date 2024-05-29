@@ -1427,6 +1427,9 @@ spec:
       - jsonPath: .status.ready
         name: Ready
         type: boolean
+      - jsonPath: .spec.externalSubnet
+        name: ExternalSubnet
+        type: string
       schema:
         openAPIV3Schema:
           type: object

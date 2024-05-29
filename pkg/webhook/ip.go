@@ -61,6 +61,22 @@ func (v *ValidatingHook) IPUpdateHook(ctx context.Context, req admission.Request
 		err := fmt.Errorf("ip %s podType can not change", ipNew.Name)
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
+	if ipOld.Spec.V4IPAddress != "" && ipNew.Spec.V4IPAddress != ipOld.Spec.V4IPAddress {
+		err := fmt.Errorf("ip %s v4IPAddress can not change", ipNew.Name)
+		return ctrlwebhook.Errored(http.StatusBadRequest, err)
+	}
+	if ipOld.Spec.V6IPAddress != "" && ipNew.Spec.V6IPAddress != ipOld.Spec.V6IPAddress {
+		err := fmt.Errorf("ip %s v6IPAddress can not change", ipNew.Name)
+		return ctrlwebhook.Errored(http.StatusBadRequest, err)
+	}
+	if ipOld.Spec.MacAddress != "" && ipNew.Spec.MacAddress != ipOld.Spec.MacAddress {
+		err := fmt.Errorf("ip %s macAddress can not change", ipNew.Name)
+		return ctrlwebhook.Errored(http.StatusBadRequest, err)
+	}
+	if ipOld.Spec.NodeName != "" && ipNew.Spec.NodeName != ipOld.Spec.NodeName {
+		err := fmt.Errorf("ip %s nodeName can not change", ipNew.Name)
+		return ctrlwebhook.Errored(http.StatusBadRequest, err)
+	}
 	return ctrlwebhook.Allowed("by pass")
 }
 
