@@ -886,7 +886,7 @@ func TestGetIPAddrWithMask(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := GetIPAddrWithMask(tt.ip, tt.cidr)
 			if (err != nil && tt.want != "") || (err == nil && got != tt.want) {
-				t.Errorf("GetIPAddrWithMask(%s, %s) = %v, %v, want %v, %v", tt.ip, tt.cidr, got, err, tt.want, nil)
+				t.Errorf("got %v, %v, but want %v, %v", tt.ip, tt.cidr, got, err, tt.want, nil)
 			}
 		})
 	}
