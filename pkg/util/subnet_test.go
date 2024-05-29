@@ -26,7 +26,7 @@ func TestIsOvnProvider(t *testing.T) {
 			expected: true,
 		},
 		{
-			name:     "non-ovn provider",
+			name:     "non ovn provider",
 			provider: "other-provider",
 			expected: false,
 		},
