@@ -4766,8 +4766,16 @@ for ns in $(kubectl get ns --no-headers -o custom-columns=NAME:.metadata.name); 
 done
 
 kubectl rollout status deployment/coredns -n kube-system --timeout 300s
-kubectl rollout status daemonset/kube-ovn-pinger -n kube-system --timeout 300s
-kubectl wait pod --for=condition=Ready -l app=kube-ovn-pinger -n kube-system --timeout 300s
+while true; do 
+  pods=(`kubectl get pod -n kube-system -l app=kube-ovn-pinger --template '{{range .items}}{{if .metadata.deletionTimestamp}}{{.metadata.name}}{{"\n"}}{{end}}{{end}}'`)
+  if [ ${#pods[@]} -eq 0 ]; then
+    break
+  fi
+  echo "Waiting for ${pods[@]} to be deleted..."
+  sleep 1
+done
+kubectl rollout status daemonset/kube-ovn-pinger -n kube-system --timeout 120s
+kubectl wait pod --for=condition=Ready -l app=kube-ovn-pinger -n kube-system --timeout 120s
 echo "-------------------------------"
 echo ""
 
