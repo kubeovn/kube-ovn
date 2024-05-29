@@ -557,35 +557,38 @@ func TestIsValidIP(t *testing.T) {
 }
 
 func TestCheckNodeDNSIP(t *testing.T) {
-	testCases := []struct {
+	tests := []struct {
 		name     string
-		input    string
+		dnsIP    string
 		expected error
 	}{
 		{
-			name:     "Valid IP",
-			input:    "192.168.1.1",
+			name:     "valid IPv4 address",
+			dnsIP:    "192.168.1.1",
 			expected: nil,
 		},
 		{
-			name:     "Invalid IP",
-			input:    "invalid.ip.address",
-			expected: fmt.Errorf("node dns ip %s is invalid ip", "invalid.ip.address"),
+			name:     "valid IPv6 address",
+			dnsIP:    "2001:db8::1",
+			expected: nil,
 		},
 		{
-			name:     "Empty string",
-			input:    "",
+			name:     "invalid IP address",
+			dnsIP:    "invalid",
+			expected: fmt.Errorf("node dns ip invalid is not valid ip"),
+		},
+		{
+			name:     "empty string",
+			dnsIP:    "",
 			expected: nil,
 		},
 	}
 
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			err := CheckNodeDNSIP(tc.input)
-			if err == nil && tc.expected != nil {
-				t.Errorf("expected error: %v, but got nil", tc.expected)
-			} else if err != nil && err.Error() != tc.expected.Error() {
-				t.Errorf("expected error: %v, but got: %v", tc.expected, err)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := CheckNodeDNSIP(test.dnsIP)
+			if err != nil && test.expected == nil || err == nil && test.expected != nil || (err != nil && test.expected != nil && err.Error() != test.expected.Error()) {
+				t.Errorf("CheckNodeDNSIP(%q) expected error %v, got %v", test.dnsIP, test.expected, err)
 			}
 		})
 	}
