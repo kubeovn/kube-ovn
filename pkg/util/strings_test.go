@@ -71,7 +71,7 @@ func TestSha256Hash(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got := Sha256Hash(tt.input)
 			if got != tt.output {
-				t.Errorf("Sha256Hash(%v) = %v, want %v", tt.input, got, tt.output)
+				t.Errorf("got %v, but want %v", tt.input, got, tt.output)
 			}
 		})
 	}
