@@ -193,8 +193,6 @@ var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 	var iptablesDnatRuleClient *framework.IptablesDnatClient
 
 	var dockerExtNet1Network *dockertypes.NetworkResource
-	var containerID string
-	var image string
 	var net1NicName string
 
 	// multiple external network case
@@ -238,7 +236,6 @@ var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 	net2EipName = "net2-eip-" + framework.RandomSuffix()
 
 	ginkgo.BeforeEach(func() {
-		containerID = ""
 		cs = f.ClientSet
 		attachNetClient = f.NetworkAttachmentDefinitionClientNS(framework.KubeOvnNamespace)
 		subnetClient = f.SubnetClient()
@@ -250,10 +247,6 @@ var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 		iptablesFIPClient = f.IptablesFIPClient()
 		iptablesSnatRuleClient = f.IptablesSnatClient()
 		iptablesDnatRuleClient = f.IptablesDnatClient()
-
-		if image == "" {
-			image = framework.GetKubeOvnImage(cs)
-		}
 
 		if skip {
 			ginkgo.Skip("underlay spec only runs on kind clusters")
@@ -335,12 +328,6 @@ var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 	})
 
 	ginkgo.AfterEach(func() {
-		if containerID != "" {
-			ginkgo.By("Deleting container " + containerID)
-			err := docker.ContainerRemove(containerID)
-			framework.ExpectNoError(err)
-		}
-
 		ginkgo.By("Deleting macvlan underlay subnet " + networkAttachDefName)
 		subnetClient.DeleteSync(networkAttachDefName)
 
@@ -1035,8 +1022,6 @@ var _ = framework.Describe("[group:qos-policy]", func() {
 	var iptablesFIPClient *framework.IptablesFIPClient
 	var qosPolicyClient *framework.QoSPolicyClient
 
-	var containerID string
-	var image string
 	var net1NicName string
 	var dockerExtNetName string
 
@@ -1082,7 +1067,6 @@ var _ = framework.Describe("[group:qos-policy]", func() {
 		vpcQosParams.attachDefName = "qos-ovn-vpc-external-network-" + framework.RandomSuffix()
 		vpcQosParams.subnetProvider = fmt.Sprintf("%s.%s", vpcQosParams.attachDefName, framework.KubeOvnNamespace)
 
-		containerID = ""
 		cs = f.ClientSet
 		podClient = f.PodClient()
 		attachNetClient = f.NetworkAttachmentDefinitionClientNS(framework.KubeOvnNamespace)
@@ -1093,9 +1077,6 @@ var _ = framework.Describe("[group:qos-policy]", func() {
 		ipClient = f.IPClient()
 		iptablesFIPClient = f.IptablesFIPClient()
 		qosPolicyClient = f.QoSPolicyClient()
-		if image == "" {
-			image = framework.GetKubeOvnImage(cs)
-		}
 
 		if skip {
 			ginkgo.Skip("underlay spec only runs on kind clusters")
@@ -1158,12 +1139,6 @@ var _ = framework.Describe("[group:qos-policy]", func() {
 	})
 
 	ginkgo.AfterEach(func() {
-		if containerID != "" {
-			ginkgo.By("Deleting container " + containerID)
-			err := docker.ContainerRemove(containerID)
-			framework.ExpectNoError(err)
-		}
-
 		ginkgo.By("Deleting macvlan underlay subnet " + vpcQosParams.attachDefName)
 		subnetClient.DeleteSync(vpcQosParams.attachDefName)
 

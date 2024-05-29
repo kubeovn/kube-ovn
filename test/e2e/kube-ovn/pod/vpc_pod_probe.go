@@ -56,15 +56,11 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 		ginkgo.By("Deleting subnet " + subnetName)
 		subnetClient.DeleteSync(subnetName)
 
-		if vpcName != "" {
-			ginkgo.By("Deleting custom vpc " + vpcName)
-			vpcClient.DeleteSync(vpcName)
-		}
+		ginkgo.By("Deleting custom vpc " + vpcName)
+		vpcClient.DeleteSync(vpcName)
 
-		if len(extraSubnetNames) != 0 {
-			for _, subnetName := range extraSubnetNames {
-				subnetClient.DeleteSync(subnetName)
-			}
+		for _, subnetName := range extraSubnetNames {
+			subnetClient.DeleteSync(subnetName)
 		}
 	})
 
