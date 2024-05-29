@@ -31,7 +31,7 @@ func TestNodeLspName(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			result := NodeLspName(test.nodeName)
 			if result != test.expected {
-				t.Errorf("NodeLspName(%q) = %q, expected %q", test.nodeName, result, test.expected)
+				t.Errorf("got %q, but expected %q",  result, test.expected)
 			}
 		})
 	}
