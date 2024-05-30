@@ -241,7 +241,8 @@ type SubnetStatus struct {
 	ActivateGateway        string                        `json:"activateGateway"`
 	DHCPv4OptionsUUID      string                        `json:"dhcpV4OptionsUUID"`
 	DHCPv6OptionsUUID      string                        `json:"dhcpV6OptionsUUID"`
-	U2OInterconnectionIP   string                        `json:"u2oInterconnectionIP"`
+	U2OInterconnectionIP   string                        `json:"u2oInterconnectionIP,omitempty"`
+	U2OInterconnectionMAC  string                        `json:"u2oInterconnectionMAC,omitempty"`
 	U2OInterconnectionVPC  string                        `json:"u2oInterconnectionVPC"`
 	NatOutgoingPolicyRules []NatOutgoingPolicyRuleStatus `json:"natOutgoingPolicyRules"`
 }

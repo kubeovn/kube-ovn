@@ -55,6 +55,9 @@ func (c *OVNNbClient) CreateLogicalPatchPort(lsName, lrName, lspName, lrpName, i
 			return err
 		}
 	}
+	if mac == "" {
+		mac = util.GenerateMac()
+	}
 
 	/* create router port */
 	ops, err := c.CreateRouterPortOp(lsName, lrName, lspName, lrpName, ip, mac)

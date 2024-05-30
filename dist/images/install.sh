@@ -2208,6 +2208,8 @@ spec:
                   type: string
                 u2oInterconnectionIP:
                   type: string
+                u2oInterconnectionMAC:
+                  type: string
                 u2oInterconnectionVPC:
                   type: string
                 v4usingIPrange:

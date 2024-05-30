@@ -823,8 +823,10 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 	// 3. underlay subnet use physical gw, vpc has eip, lrp managed in vpc process, lrp ip is random allocation, not subnet gw
 
 	gateway := subnet.Spec.Gateway
+	var gatewayMAC string
 	if subnet.Status.U2OInterconnectionIP != "" && subnet.Spec.U2OInterconnection {
 		gateway = subnet.Status.U2OInterconnectionIP
+		gatewayMAC = subnet.Status.U2OInterconnectionMAC
 	}
 
 	if err := c.clearOldU2OResource(subnet); err != nil {
@@ -833,7 +835,7 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 	}
 
 	// create or update logical switch
-	if err := c.OVNNbClient.CreateLogicalSwitch(subnet.Name, vpc.Status.Router, subnet.Spec.CIDRBlock, gateway, needRouter, randomAllocateGW); err != nil {
+	if err := c.OVNNbClient.CreateLogicalSwitch(subnet.Name, vpc.Status.Router, subnet.Spec.CIDRBlock, gateway, gatewayMAC, needRouter, randomAllocateGW); err != nil {
 		klog.Errorf("create logical switch %s: %v", subnet.Name, err)
 		return err
 	}
@@ -1959,7 +1961,7 @@ func (c *Controller) reconcileU2OInterconnectionIP(subnet *kubeovnv1.Subnet) err
 		u2oInterconnLrpName := fmt.Sprintf("%s-%s", subnet.Spec.Vpc, subnet.Name)
 		var v4ip, v6ip, mac string
 		var err error
-		if subnet.Spec.U2OInterconnectionIP == "" && subnet.Status.U2OInterconnectionIP == "" {
+		if subnet.Spec.U2OInterconnectionIP == "" && (subnet.Status.U2OInterconnectionIP == "" || subnet.Status.U2OInterconnectionMAC == "") {
 			v4ip, v6ip, mac, err = c.acquireIPAddress(subnet.Name, u2oInterconnName, u2oInterconnLrpName)
 			if err != nil {
 				klog.Errorf("failed to acquire underlay to overlay interconnection ip address for subnet %s, %v", subnet.Name, err)
@@ -1992,6 +1994,7 @@ func (c *Controller) reconcileU2OInterconnectionIP(subnet *kubeovnv1.Subnet) err
 				return err
 			}
 
+			subnet.Status.U2OInterconnectionMAC = mac
 			needCalcIP = true
 		}
 	} else if subnet.Status.U2OInterconnectionIP != "" {
@@ -1999,6 +2002,7 @@ func (c *Controller) reconcileU2OInterconnectionIP(subnet *kubeovnv1.Subnet) err
 		klog.Infof("release underlay to overlay interconnection ip address %s for subnet %s", subnet.Status.U2OInterconnectionIP, subnet.Name)
 		c.ipam.ReleaseAddressByPod(u2oInterconnName, subnet.Name)
 		subnet.Status.U2OInterconnectionIP = ""
+		subnet.Status.U2OInterconnectionMAC = ""
 		subnet.Status.U2OInterconnectionVPC = ""
 
 		if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), u2oInterconnName, metav1.DeleteOptions{}); err != nil {
