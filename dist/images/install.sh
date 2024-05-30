@@ -2334,6 +2334,8 @@ spec:
                   type: boolean
                 enableEcmp:
                   type: boolean
+                enableMulticastSnoop:
+                  type: boolean
                 routeTable:
                   type: string
   scope: Cluster
