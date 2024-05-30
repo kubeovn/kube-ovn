@@ -335,3 +335,57 @@ func (c *Controller) updatePodAttachNets(pod *corev1.Pod, svc *corev1.Service) e
 
 	return nil
 }
+
+func (c *Controller) checkAndReInitLbSvcPod(pod *corev1.Pod) error {
+	var exist bool
+	var nsName, svcName string
+
+	// ensure that pod is created by load-balancer service
+	if nsName, exist = pod.Labels["namespace"]; !exist {
+		return nil
+	}
+	if svcName, exist = pod.Labels["service"]; !exist {
+		return nil
+	}
+	if deployName, exist := pod.Labels["app"]; !exist || !strings.HasPrefix(deployName, "lb-svc-") {
+		return nil
+	}
+
+	c.svcKeyMutex.LockKey(svcName)
+	defer func() { _ = c.svcKeyMutex.UnlockKey(svcName) }()
+
+	lbsvc, err := c.servicesLister.Services(nsName).Get(svcName)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		klog.Error(err)
+		return err
+	}
+	if lbsvc.Spec.Type != corev1.ServiceTypeLoadBalancer || !c.config.EnableLbSvc {
+		return nil
+	}
+
+	if pod.Status.Phase == "Running" && len(lbsvc.Status.LoadBalancer.Ingress) == 1 {
+		klog.Infof("LB service pod Running %s/%s for service %s", nsName, pod.Name, svcName)
+		loadBalancerIP, err := c.getPodAttachIP(pod, lbsvc)
+		if err != nil {
+			klog.Errorf("failed to get loadBalancer IP for %s/%s: %v", nsName, svcName, err)
+			return err
+		}
+		lbsvc.Status.LoadBalancer.Ingress[0].IP = loadBalancerIP
+
+		var updateSvc *corev1.Service
+		if updateSvc, err = c.config.KubeClient.CoreV1().Services(nsName).UpdateStatus(context.Background(), lbsvc, metav1.UpdateOptions{}); err != nil {
+			klog.Errorf("failed to update service %s/%s status: %v", nsName, svcName, err)
+			return err
+		}
+
+		if err := c.updatePodAttachNets(pod, updateSvc); err != nil {
+			klog.Errorf("failed to update service %s/%s attachment network: %v", nsName, svcName, err)
+			return err
+		}
+	}
+
+	return nil
+}
