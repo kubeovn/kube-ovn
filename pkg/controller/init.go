@@ -15,6 +15,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
@@ -303,7 +304,7 @@ func (c *Controller) InitIPAM() error {
 		if subnet.Status.U2OInterconnectionIP != "" {
 			var mac *string
 			if subnet.Status.U2OInterconnectionMAC != "" {
-				mac = &subnet.Status.U2OInterconnectionMAC
+				mac = ptr.To(subnet.Status.U2OInterconnectionMAC)
 			} else {
 				lrp, err := c.OVNNbClient.GetLogicalRouterPort(u2oInterconnLrpName, true)
 				if err != nil {
@@ -311,7 +312,7 @@ func (c *Controller) InitIPAM() error {
 					return err
 				}
 				if lrp != nil {
-					mac = &lrp.MAC
+					mac = ptr.To(lrp.MAC)
 				}
 			}
 			if _, _, _, err = c.ipam.GetStaticAddress(u2oInterconnName, u2oInterconnLrpName, subnet.Status.U2OInterconnectionIP, mac, subnet.Name, true); err != nil {
