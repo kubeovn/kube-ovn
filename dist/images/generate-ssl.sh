@@ -6,3 +6,4 @@ cp /var/lib/openvswitch/pki/switchca/cacert.pem /etc/ovn/
 cd /etc/ovn
 ovs-pki req ovn -l /dev/stdout --force
 ovs-pki -b sign ovn -l /dev/stdout --force
+chmod 666 cacert.pem ovn-req.pem ovn-cert.pem ovn-privkey.pem
