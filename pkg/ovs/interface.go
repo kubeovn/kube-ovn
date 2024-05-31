@@ -60,7 +60,7 @@ type BFD interface {
 }
 
 type LogicalSwitch interface {
-	CreateLogicalSwitch(lsName, lrName, cidrBlock, gateway string, needRouter, randomAllocateGW bool) error
+	CreateLogicalSwitch(lsName, lrName, cidrBlock, gateway, gatewayMAC string, needRouter, randomAllocateGW bool) error
 	CreateBareLogicalSwitch(lsName string) error
 	LogicalSwitchUpdateLoadBalancers(lsName string, op ovsdb.Mutator, lbNames ...string) error
 	DeleteLogicalSwitch(lsName string) error
