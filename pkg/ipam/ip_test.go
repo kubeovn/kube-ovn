@@ -146,10 +146,22 @@ func TestIPAdd(t *testing.T) {
 			want: IP(net.ParseIP("192.168.1.2")),
 		},
 		{
+			name: "IPv4 add 2",
+			a:    IP(net.ParseIP("192.168.1.1")),
+			n:    10,
+			want: IP(net.ParseIP("192.168.1.11")),
+		},
+		{
 			name: "IPv6 add",
 			a:    IP(net.ParseIP("2001:db8::1")),
 			n:    1,
 			want: IP(net.ParseIP("2001:db8::2")),
+		},
+		{
+			name: "IPv6 add 2",
+			a:    IP(net.ParseIP("1:db8::1")),
+			n:    1,
+			want: IP(net.ParseIP("1:db8::2")),
 		},
 		{
 			name: "IPv4 add overflow",
@@ -164,6 +176,12 @@ func TestIPAdd(t *testing.T) {
 			want: IP(net.ParseIP("0.0.0.0")),
 		},
 		{
+			name: "IPv4 add overflow 3",
+			a:    IP(net.ParseIP("255.255.255.254")),
+			n:    3,
+			want: IP(net.ParseIP("0.0.0.1")),
+		},
+		{
 			name: "IPv6 add overflow",
 			a:    IP(net.ParseIP("ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff")),
 			n:    1,
@@ -174,6 +192,12 @@ func TestIPAdd(t *testing.T) {
 			a:    IP(net.ParseIP("ffff:ffff:ffff:ffff:ffff:ffff:ffff:fffe")),
 			n:    2,
 			want: IP(net.ParseIP("::")),
+		},
+		{
+			name: "IPv6 add overflow 3",
+			a:    IP(net.ParseIP("ffff:ffff:ffff:ffff:ffff:ffff:ffff:fffe")),
+			n:    3,
+			want: IP(net.ParseIP("::1")),
 		},
 	}
 
@@ -218,6 +242,12 @@ func TestIPSub(t *testing.T) {
 			want: IP(net.ParseIP("255.255.255.255")),
 		},
 		{
+			name: "IPv4 sub underflow 3",
+			a:    IP(net.ParseIP("0.0.0.1")),
+			n:    3,
+			want: IP(net.ParseIP("255.255.255.254")),
+		},
+		{
 			name: "IPv6 sub underflow",
 			a:    IP(net.ParseIP("::")),
 			n:    1,
@@ -228,6 +258,12 @@ func TestIPSub(t *testing.T) {
 			a:    IP(net.ParseIP("::1")),
 			n:    2,
 			want: IP(net.ParseIP("ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff")),
+		},
+		{
+			name: "IPv6 sub underflow 3",
+			a:    IP(net.ParseIP("::1")),
+			n:    3,
+			want: IP(net.ParseIP("ffff:ffff:ffff:ffff:ffff:ffff:ffff:fffe")),
 		},
 	}
 
