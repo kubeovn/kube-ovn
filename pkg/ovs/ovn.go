@@ -112,7 +112,7 @@ func NewOvnNbClient(ovnNbAddr string, ovnNbTimeout, ovsDbConTimeout, ovsDbInacti
 	return c, nil
 }
 
-func NewOvnSbClient(ovnSbAddr string, ovnSbTimeout int, ovsDbConTimeout int, ovsDbInactivityTimeout int) (*OVNSbClient, error) {
+func NewOvnSbClient(ovnSbAddr string, ovnSbTimeout, ovsDbConTimeout, ovsDbInactivityTimeout int) (*OVNSbClient, error) {
 	dbModel, err := ovnsb.FullDatabaseModel()
 	if err != nil {
 		klog.Error(err)
