@@ -107,7 +107,6 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 	var fipExtraPodName, podExtraEipName, podExtraFipName string
 
 	ginkgo.BeforeEach(func() {
-		f.SkipVersionPriorTo(1, 13, "This feature was introduced in v1.13")
 		cs = f.ClientSet
 		subnetClient = f.SubnetClient()
 		vlanClient = f.VlanClient()
@@ -336,6 +335,8 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 				framework.ExpectContainElement(bridge.Flags, "UP")
 
 				framework.ExpectEmpty(port.NonLinkLocalAddresses())
+				framework.ExpectConsistOf(bridge.NonLinkLocalAddresses(), linkMap[node.ID].NonLinkLocalAddresses())
+
 				linkNameMap[node.ID] = port.IfName
 			}
 		}
@@ -460,6 +461,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 	})
 
 	framework.ConformanceIt("Test ovn eip fip snat dnat", func() {
+		f.SkipVersionPriorTo(1, 13, "This feature was introduced in v1.13")
 		ginkgo.By("Getting docker network " + dockerNetworkName)
 		network, err := docker.NetworkInspect(dockerNetworkName)
 		framework.ExpectNoError(err, "getting docker network "+dockerNetworkName)
