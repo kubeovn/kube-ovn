@@ -107,6 +107,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 	var fipExtraPodName, podExtraEipName, podExtraFipName string
 
 	ginkgo.BeforeEach(func() {
+		f.SkipVersionPriorTo(1, 13, "This feature was introduced in v1.13")
 		cs = f.ClientSet
 		subnetClient = f.SubnetClient()
 		vlanClient = f.VlanClient()
