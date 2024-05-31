@@ -53,7 +53,7 @@ func NewLegacyClient(timeout int) *LegacyClient {
 	}
 }
 
-func NewOvnNbClient(ovnNbAddr string, ovnNbTimeout int, ovsDbConTimeout int, ovsDbInactivityTimeout int) (*OVNNbClient, error) {
+func NewOvnNbClient(ovnNbAddr string, ovnNbTimeout, ovsDbConTimeout, ovsDbInactivityTimeout int) (*OVNNbClient, error) {
 	dbModel, err := ovnnb.FullDatabaseModel()
 	if err != nil {
 		klog.Error(err)
