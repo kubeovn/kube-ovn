@@ -327,10 +327,10 @@ func (s *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac *string, f
 		v6 = s.V6CIDR != nil
 	}
 	if v4 && !s.V4CIDR.Contains(net.IP(ip)) {
-		return ip, "", ErrOutOfRange
+		return nil, "", ErrOutOfRange
 	}
 	if v6 && !s.V6CIDR.Contains(net.IP(ip)) {
-		return ip, "", ErrOutOfRange
+		return nil, "", ErrOutOfRange
 	}
 
 	var pool *IPPool
@@ -346,7 +346,7 @@ func (s *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac *string, f
 	}
 
 	if pool == nil {
-		return ip, "", ErrOutOfRange
+		return nil, "", ErrOutOfRange
 	}
 
 	defer func() {
@@ -376,7 +376,7 @@ func (s *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac *string, f
 		}
 	} else {
 		if err := s.GetStaticMac(podName, nicName, *mac, checkConflict); err != nil {
-			return ip, macStr, err
+			return nil, "", err
 		}
 		macStr = *mac
 	}
@@ -391,7 +391,7 @@ func (s *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac *string, f
 					return ip, macStr, nil
 				}
 				klog.Errorf("ip %s has been allocated to %v", ip.String(), pods)
-				return ip, macStr, ErrConflict
+				return nil, "", ErrConflict
 			}
 			if !force {
 				return ip, macStr, nil
@@ -428,7 +428,7 @@ func (s *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac *string, f
 					return ip, macStr, nil
 				}
 				klog.Errorf("ip %s has been allocated to %v", ip.String(), pods)
-				return ip, macStr, ErrConflict
+				return nil, "", ErrConflict
 			}
 			if !force {
 				return ip, macStr, nil
@@ -455,7 +455,7 @@ func (s *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac *string, f
 			return ip, macStr, nil
 		}
 	}
-	return ip, macStr, ErrNoAvailable
+	return nil, "", ErrNoAvailable
 }
 
 func (s *Subnet) releaseAddr(podName, nicName string) {
