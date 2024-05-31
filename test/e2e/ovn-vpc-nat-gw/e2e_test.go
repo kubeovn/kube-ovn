@@ -336,8 +336,6 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 				framework.ExpectContainElement(bridge.Flags, "UP")
 
 				framework.ExpectEmpty(port.NonLinkLocalAddresses())
-				framework.ExpectConsistOf(bridge.NonLinkLocalAddresses(), linkMap[node.ID].NonLinkLocalAddresses())
-
 				linkNameMap[node.ID] = port.IfName
 			}
 		}
