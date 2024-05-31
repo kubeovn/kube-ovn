@@ -663,7 +663,7 @@ kind-install-underlay-u2o-interconnection-dual: kind-disable-hairpin kind-load-i
 		-e 's@^VLAN_ID=.*@VLAN_ID="0"@' \
 		-e 's/VERSION=.*/VERSION=$(VERSION)/' \
 		dist/images/install.sh | \
-		ENABLE_SSL=true DUAL_STACK=true ENABLE_VLAN=true VLAN_NIC=eth0 U2O_INTERCONNECTION=true bash
+		DUAL_STACK=true ENABLE_VLAN=true VLAN_NIC=eth0 U2O_INTERCONNECTION=true bash
 
 .PHONY: kind-install-underlay-hairpin-ipv4
 kind-install-underlay-hairpin-ipv4: kind-enable-hairpin kind-load-image kind-untaint-control-plane
@@ -1022,7 +1022,10 @@ clean:
 	$(RM) ovn.yaml kube-ovn.yaml kube-ovn-crd.yaml
 	$(RM) ovn-ic-0.yaml ovn-ic-1.yaml
 	$(RM) kwok-node.yaml metallb-cr.yaml
+	$(RM) cacert.pem ovn-req.pem ovn-cert.pem ovn-privkey.pem
 	$(RM) kube-ovn.tar kube-ovn-dpdk.tar vpc-nat-gateway.tar image-amd64.tar image-amd64-dpdk.tar image-arm64.tar
+	$(RM) kubectl-ko-log.tar.gz
+	$(RM) -r kubectl-ko-log/
 
 .PHONY: changelog
 changelog:
