@@ -817,3 +817,212 @@ func TestValidateCidrConflict(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateNatOutgoingPolicyRules(t *testing.T) {
+	tests := []struct {
+		name   string
+		subnet kubeovnv1.Subnet
+		err    string
+	}{
+		{
+			name: "valid rules",
+			subnet: kubeovnv1.Subnet{
+				Spec: kubeovnv1.SubnetSpec{
+					NatOutgoingPolicyRules: []kubeovnv1.NatOutgoingPolicyRule{
+						{
+							Match: kubeovnv1.NatOutGoingPolicyMatch{
+								SrcIPs: "10.0.0.0/24",
+								DstIPs: "192.168.0.0/16",
+							},
+						},
+					},
+				},
+			},
+			err: "",
+		},
+		{
+			name: "invalid src ips",
+			subnet: kubeovnv1.Subnet{
+				Spec: kubeovnv1.SubnetSpec{
+					NatOutgoingPolicyRules: []kubeovnv1.NatOutgoingPolicyRule{
+						{
+							Match: kubeovnv1.NatOutGoingPolicyMatch{
+								SrcIPs: "invalid",
+								DstIPs: "192.168.0.0/16",
+							},
+						},
+					},
+				},
+			},
+			err: "validate nat policy rules src ips invalid failed with err",
+		},
+		{
+			name: "invalid dst ips",
+			subnet: kubeovnv1.Subnet{
+				Spec: kubeovnv1.SubnetSpec{
+					NatOutgoingPolicyRules: []kubeovnv1.NatOutgoingPolicyRule{
+						{
+							Match: kubeovnv1.NatOutGoingPolicyMatch{
+								SrcIPs: "10.0.0.0/24",
+								DstIPs: "invalid",
+							},
+						},
+					},
+				},
+			},
+			err: "validate nat policy rules dst ips invalid failed with err",
+		},
+		{
+			name: "mismatched protocols",
+			subnet: kubeovnv1.Subnet{
+				Spec: kubeovnv1.SubnetSpec{
+					NatOutgoingPolicyRules: []kubeovnv1.NatOutgoingPolicyRule{
+						{
+							Match: kubeovnv1.NatOutGoingPolicyMatch{
+								SrcIPs: "10.0.0.0/24",
+								DstIPs: "2001:db8::/64",
+							},
+						},
+					},
+				},
+			},
+			err: "Match.SrcIPS protocol IPv4 not equal to Match.DstIPs protocol IPv6",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateNatOutgoingPolicyRules(tc.subnet)
+			if !ErrorContains(err, tc.err) {
+				t.Errorf("Expected error containing %q, got %v", tc.err, err)
+			}
+		})
+	}
+}
+
+func TestValidateVpc(t *testing.T) {
+	tests := []struct {
+		name    string
+		vpc     *kubeovnv1.Vpc
+		wantErr bool
+	}{
+		{
+			name: "valid vpc",
+			vpc: &kubeovnv1.Vpc{
+				Spec: kubeovnv1.VpcSpec{
+					StaticRoutes: []*kubeovnv1.StaticRoute{
+						{
+							CIDR:      "192.168.0.0/24",
+							NextHopIP: "10.0.0.1",
+						},
+					},
+					PolicyRoutes: []*kubeovnv1.PolicyRoute{
+						{
+							Action:    kubeovnv1.PolicyRouteActionAllow,
+							NextHopIP: "10.0.0.1",
+						},
+					},
+					VpcPeerings: []*kubeovnv1.VpcPeering{
+						{
+							LocalConnectIP: "192.168.1.0/24",
+						},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "invalid static route policy",
+			vpc: &kubeovnv1.Vpc{
+				Spec: kubeovnv1.VpcSpec{
+					StaticRoutes: []*kubeovnv1.StaticRoute{
+						{
+							CIDR:      "192.168.0.0/24",
+							NextHopIP: "10.0.0.1",
+							Policy:    "invalid",
+						},
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "invalid static route CIDR",
+			vpc: &kubeovnv1.Vpc{
+				Spec: kubeovnv1.VpcSpec{
+					StaticRoutes: []*kubeovnv1.StaticRoute{
+						{
+							CIDR:      "invalid",
+							NextHopIP: "10.0.0.1",
+						},
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "invalid static route NextHopIP",
+			vpc: &kubeovnv1.Vpc{
+				Spec: kubeovnv1.VpcSpec{
+					StaticRoutes: []*kubeovnv1.StaticRoute{
+						{
+							CIDR:      "192.168.0.0/24",
+							NextHopIP: "invalid",
+						},
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "invalid policy route action",
+			vpc: &kubeovnv1.Vpc{
+				Spec: kubeovnv1.VpcSpec{
+					PolicyRoutes: []*kubeovnv1.PolicyRoute{
+						{
+							Action:    "invalid",
+							NextHopIP: "10.0.0.1",
+						},
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "invalid policy route NextHopIP",
+			vpc: &kubeovnv1.Vpc{
+				Spec: kubeovnv1.VpcSpec{
+					PolicyRoutes: []*kubeovnv1.PolicyRoute{
+						{
+							Action:    kubeovnv1.PolicyRouteActionReroute,
+							NextHopIP: "invalid",
+						},
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "invalid vpc peering LocalConnectIP",
+			vpc: &kubeovnv1.Vpc{
+				Spec: kubeovnv1.VpcSpec{
+					VpcPeerings: []*kubeovnv1.VpcPeering{
+						{
+							LocalConnectIP: "invalid",
+						},
+					},
+				},
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateVpc(tt.vpc)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("got error = %v, but wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
