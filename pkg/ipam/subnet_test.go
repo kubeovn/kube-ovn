@@ -14,7 +14,7 @@ func TestNewSubnetIPv4(t *testing.T) {
 		t.Errorf("failed to create IPv4 subnet: %v", err)
 	}
 	// check subnet values
-	require.Equal(t, "ipv4Subnet", subnet.Name)
+	require.Equal(t, "v4Subnet", subnet.Name)
 	require.Equal(t, kubeovnv1.ProtocolIPv4, subnet.Protocol)
 	require.Equal(t, "10.0.0.0", subnet.V4CIDR.IP.String())
 	require.Equal(t, "ffffff00", subnet.V4CIDR.Mask.String())
@@ -139,7 +139,7 @@ func TestNewSubnetIPv6(t *testing.T) {
 		t.Errorf("failed to create IPv6 subnet: %v", err)
 	}
 	// check subnet values
-	require.Equal(t, "ipv6Subnet", subnet.Name)
+	require.Equal(t, "v6Subnet", subnet.Name)
 	require.Equal(t, kubeovnv1.ProtocolIPv6, subnet.Protocol)
 	require.Equal(t, "2001:db8::", subnet.V6CIDR.IP.String())
 	require.Equal(t, "ffffffffffffffff0000000000000000", subnet.V6CIDR.Mask.String())
@@ -491,6 +491,11 @@ func TestGetV4StaticAddress(t *testing.T) {
 	require.Nil(t, err)
 	require.Equal(t, v4, ip1.String())
 	require.NotEqual(t, "", macStr1)
+	v4IP, v6IP, m, protocol := subnet.GetPodAddress(nicName)
+	require.Equal(t, v4, v4IP.String())
+	require.Nil(t, v6IP)
+	require.Equal(t, macStr1, m)
+	require.Equal(t, kubeovnv1.ProtocolIPv4, protocol)
 
 	// 3. pod2 has v4 ip and mac, should get specified ip and mac
 	podName = "pod2"
@@ -503,9 +508,13 @@ func TestGetV4StaticAddress(t *testing.T) {
 	require.Nil(t, err)
 	require.Equal(t, v4, ip2.String())
 	require.Equal(t, macIn, macOut2)
+	v4IP, v6IP, m, protocol = subnet.GetPodAddress(nicName)
+	require.Equal(t, v4, v4IP.String())
+	require.Nil(t, v6IP)
+	require.Equal(t, macOut2, m)
+	require.Equal(t, kubeovnv1.ProtocolIPv4, protocol)
 
-	// compare
-	require.NotEqual(t, ip1, ip2)
+	// compare mac
 	require.NotEqual(t, macStr1, macOut2)
 
 	// 3. pod3 only has mac, should get no ip and no mac
@@ -528,6 +537,13 @@ func TestGetV4StaticAddress(t *testing.T) {
 	require.NotNil(nil, err)
 	require.Equal(t, "", macOut)
 	require.Nil(nil, ip)
+
+	// 5. ip is assigned to pod1, should get error
+	podName = "pod5"
+	v4 = "10.0.0.3"
+	usingPod, using := subnet.isIPAssignedToOtherPod(v4, podName)
+	require.True(t, using)
+	require.Equal(t, "pod1", usingPod)
 }
 
 func TestGetV6StaticAddress(t *testing.T) {
@@ -549,6 +565,11 @@ func TestGetV6StaticAddress(t *testing.T) {
 	require.Nil(t, err)
 	require.Equal(t, v6, ip1.String())
 	require.NotEqual(t, "", macStr1)
+	v4IP, v6IP, m, protocol := subnet.GetPodAddress(nicName)
+	require.Nil(t, v4IP)
+	require.Equal(t, v6, v6IP.String())
+	require.Equal(t, macStr1, m)
+	require.Equal(t, kubeovnv1.ProtocolIPv6, protocol)
 
 	// 2. pod2 has v6 ip and mac should get specified ip and mac
 	podName = "pod2"
@@ -561,9 +582,13 @@ func TestGetV6StaticAddress(t *testing.T) {
 	require.Nil(t, err)
 	require.Equal(t, v6, ip2.String())
 	require.Equal(t, macIn, macOut2)
+	v4IP, v6IP, m, protocol = subnet.GetPodAddress(nicName)
+	require.Nil(t, v4IP)
+	require.Equal(t, v6, v6IP.String())
+	require.Equal(t, macOut2, m)
+	require.Equal(t, kubeovnv1.ProtocolIPv6, protocol)
 
-	// compare
-	require.NotEqual(t, ip1, ip2)
+	// compare mac
 	require.NotEqual(t, macStr1, macOut2)
 
 	// 3. pod3 only has mac should get no ip and no mac
@@ -586,6 +611,13 @@ func TestGetV6StaticAddress(t *testing.T) {
 	require.NotNil(nil, err)
 	require.Equal(t, "", macOut)
 	require.Nil(nil, ip)
+
+	// 5. ip is assigned to pod1, should get error
+	podName = "pod5"
+	v6 = "2001:db8::3"
+	usingPod, using := subnet.isIPAssignedToOtherPod(v6, podName)
+	require.True(t, using)
+	require.Equal(t, "pod1", usingPod)
 }
 
 func TestGetDualStaticAddress(t *testing.T) {
@@ -599,73 +631,69 @@ func TestGetDualStaticAddress(t *testing.T) {
 	if err != nil {
 		t.Errorf("failed to create dual stack subnet: %v", err)
 	}
-	// 1. pod1 has v4 ip but no mac, should get specified ip and mac
+	// 1. pod1 has v4 and v6 ip but no mac, should get specified ip and mac
 	podName := "pod1"
 	nicName := "pod1.default"
 	var mac *string
 	v4 := "10.0.0.3"
+	v6 := "2001:db8::3"
 	v4IP, err := NewIP(v4)
 	require.Nil(t, err)
-	ip1, macStr1, err := subnet.GetStaticAddress(podName, nicName, v4IP, mac, false, true)
+	v4Ip1, macStr1, err := subnet.GetStaticAddress(podName, nicName, v4IP, mac, false, true)
 	require.Nil(t, err)
-	require.Equal(t, v4, ip1.String())
+	require.Equal(t, v4, v4Ip1.String())
 	require.NotEqual(t, "", macStr1)
-
-	// 2. pod2 has v6 ip but no mac, should get specified ip and mac
-	podName = "pod2"
-	nicName = "pod2.default"
-	v6 := "2001:db8::3"
 	v6IP, err := NewIP(v6)
 	require.Nil(t, err)
-	ip2, macStr2, err := subnet.GetStaticAddress(podName, nicName, v6IP, mac, false, true)
+	v6Ip1, macStr1, err := subnet.GetStaticAddress(podName, nicName, v6IP, mac, false, true)
 	require.Nil(t, err)
-	require.Equal(t, v6, ip2.String())
-	require.NotEqual(t, "", macStr2)
+	require.Equal(t, v6, v6Ip1.String())
+	require.NotEqual(t, "", macStr1)
+	v4Ip, v6Ip, m, protocol := subnet.GetPodAddress(nicName)
+	require.Equal(t, v4, v4Ip.String())
+	require.Equal(t, v6, v6Ip.String())
+	require.Equal(t, macStr1, m)
+	require.Equal(t, kubeovnv1.ProtocolDual, protocol)
 
-	// 3. pod3 has v4 ip and mac should get specified ip and mac
-	podName = "pod3"
-	nicName = "pod3.default"
-	v4 = "10.0.0.33"
+	// 2. pod2 has v4 and v6 ip and mac should get specified mac
+	podName = "pod2"
+	nicName = "pod2.default"
+	v4 = "10.0.0.22"
+	v6 = "2001:db8::22"
 	macIn := "00:11:22:33:44:55"
 	v4IP, err = NewIP(v4)
 	require.Nil(t, err)
-	ip3, macOut3, err := subnet.GetStaticAddress(podName, nicName, v4IP, &macIn, false, true)
+	v4Ip2, macOut, err := subnet.GetStaticAddress(podName, nicName, v4IP, &macIn, false, true)
 	require.Nil(t, err)
-	require.Equal(t, v4, ip3.String())
-	require.Equal(t, macIn, macOut3)
-
-	// 4. pod4 has v6 ip and mac should get specified ip and mac
-	podName = "pod4"
-	nicName = "pod4.default"
-	v6 = "2001:db8::33"
-	macIn = "00:11:22:33:44:56"
+	require.Equal(t, v4, v4Ip2.String())
+	require.Equal(t, macIn, macOut)
 	v6IP, err = NewIP(v6)
 	require.Nil(t, err)
-	ip4, macOut4, err := subnet.GetStaticAddress(podName, nicName, v6IP, &macIn, false, true)
+	v6Ip2, macOut, err := subnet.GetStaticAddress(podName, nicName, v6IP, &macIn, false, true)
 	require.Nil(t, err)
-	require.Equal(t, v6, ip4.String())
-	require.Equal(t, macIn, macOut4)
+	require.Equal(t, v6, v6Ip2.String())
+	require.Equal(t, macIn, macOut)
+	v4Ip, v6Ip, m, protocol = subnet.GetPodAddress(nicName)
+	require.Equal(t, v4, v4Ip.String())
+	require.Equal(t, v6, v6Ip.String())
+	require.Equal(t, macIn, m)
+	require.Equal(t, kubeovnv1.ProtocolDual, protocol)
 
-	// compare
-	require.NotEqual(t, ip1, ip2)
-	require.NotEqual(t, ip2, ip3)
-	require.NotEqual(t, ip3, ip4)
-	require.NotEqual(t, macStr1, macStr2)
-	require.NotEqual(t, macStr2, macOut3)
-	require.NotEqual(t, macOut3, macOut4)
+	// compare mac
+	require.NotEqual(t, macStr1, macOut)
 
-	// 5. pod5 only has mac should get no ip and no mac
-	podName = "pod5"
-	nicName = "pod5.default"
+	// 3. pod3 only has mac should get no ip and no mac
+	podName = "pod3"
+	nicName = "pod3.default"
 	macIn = "00:11:22:33:44:57"
 	ip, macOut, err := subnet.GetStaticAddress(podName, nicName, nil, &macIn, false, true)
 	require.NotNil(nil, err)
 	require.Nil(t, ip)
 	require.Equal(t, "", macOut)
 
-	// 6. pod6 has the same mac with pod3 should get error
-	podName = "pod6"
-	nicName = "pod6.default"
+	// 4. pod4 has the same mac with pod3 should get error
+	podName = "pod4"
+	nicName = "pod4.default"
 	v6 = "2001:db8::66"
 	macIn = "00:11:22:33:44:55"
 	v6IP, err = NewIP(v6)
@@ -674,6 +702,13 @@ func TestGetDualStaticAddress(t *testing.T) {
 	require.NotNil(nil, err)
 	require.Equal(t, "", macOut)
 	require.Nil(nil, ip)
+
+	// 5. ip is assigned to pod1, should get error
+	podName = "pod5"
+	v4 = "10.0.0.3"
+	usingPod, using := subnet.isIPAssignedToOtherPod(v4, podName)
+	require.True(t, using)
+	require.Equal(t, "pod1", usingPod)
 }
 
 func TestGetGetV4RandomAddress(t *testing.T) {
@@ -784,16 +819,30 @@ func TestReleaseAddrForV4Subnet(t *testing.T) {
 	if err != nil {
 		t.Errorf("failed to create IPv4 subnet: %v", err)
 	}
-	// pod1 get random v4 address
+	// 1. pod1 get random v4 address
 	podName := "pod1"
 	nicName := "pod1.default"
 	poolName := ""
 	v4, _, _, err := subnet.GetRandomAddress(poolName, podName, nicName, nil, nil, false)
 	require.Nil(t, err)
 	require.Equal(t, subnet.V4Using.String(), v4.String())
+	require.True(t, subnet.ContainAddress(v4))
 	// pod1 release random v4 address
 	subnet.ReleaseAddress(podName)
 	require.Equal(t, subnet.V4Using.String(), "")
+	require.False(t, subnet.ContainAddress(v4))
+	// 2. pod2 get random v4 address
+	podName = "pod2"
+	nicName = "pod2.default"
+	poolName = ""
+	v4, _, _, err = subnet.GetRandomAddress(poolName, podName, nicName, nil, nil, false)
+	require.Nil(t, err)
+	require.Equal(t, subnet.V4Using.String(), v4.String())
+	require.True(t, subnet.ContainAddress(v4))
+	// pod2 release random v4 address
+	subnet.ReleaseAddressWithNicName(podName, nicName)
+	require.Equal(t, subnet.V4Using.String(), "")
+	require.False(t, subnet.ContainAddress(v4))
 }
 
 func TestReleaseV6SubnetAddrForV6Subnet(t *testing.T) {
@@ -802,16 +851,30 @@ func TestReleaseV6SubnetAddrForV6Subnet(t *testing.T) {
 	if err != nil {
 		t.Errorf("failed to create IPv6 subnet: %v", err)
 	}
-	// pod1 get random v6 address
+	// 1. pod1 get random v6 address
 	podName := "pod1"
 	nicName := "pod1.default"
 	poolName := ""
 	_, v6, _, err := subnet.GetRandomAddress(poolName, podName, nicName, nil, nil, false)
 	require.Nil(t, err)
 	require.Equal(t, subnet.V6Using.String(), v6.String())
+	require.True(t, subnet.ContainAddress(v6))
 	// pod1 release random v6 address
 	subnet.ReleaseAddress(podName)
 	require.Equal(t, subnet.V6Using.String(), "")
+	require.False(t, subnet.ContainAddress(v6))
+	// 2. pod2 get random v6 address
+	podName = "pod2"
+	nicName = "pod2.default"
+	poolName = ""
+	_, v6, _, err = subnet.GetRandomAddress(poolName, podName, nicName, nil, nil, false)
+	require.Nil(t, err)
+	require.Equal(t, subnet.V6Using.String(), v6.String())
+	require.True(t, subnet.ContainAddress(v6))
+	// pod2 release random v6 address
+	subnet.ReleaseAddressWithNicName(podName, nicName)
+	require.Equal(t, subnet.V6Using.String(), "")
+	require.False(t, subnet.ContainAddress(v6))
 }
 
 func TestReleaseAddrForDualSubnet(t *testing.T) {
@@ -825,36 +888,38 @@ func TestReleaseAddrForDualSubnet(t *testing.T) {
 	if err != nil {
 		t.Errorf("failed to create dual stack subnet: %v", err)
 	}
-	// pod1 get random v4, v6 address
+	// 1. pod1 get random v4, v6 address
 	podName := "pod1"
 	nicName := "pod1.default"
 	poolName := ""
 	v4, v6, _, err := subnet.GetRandomAddress(poolName, podName, nicName, nil, nil, true)
 	require.Nil(t, err)
 	require.Equal(t, subnet.V4Using.String(), v4.String())
+	require.True(t, subnet.ContainAddress(v4))
 	require.Equal(t, subnet.V6Using.String(), v6.String())
+	require.True(t, subnet.ContainAddress(v6))
 	// pod1 release random v4, v6 address
 	subnet.ReleaseAddress(podName)
 	require.Equal(t, subnet.V4Using.String(), "")
 	require.Equal(t, subnet.V6Using.String(), "")
+	require.False(t, subnet.ContainAddress(v4))
+	require.False(t, subnet.ContainAddress(v6))
+	// 2. pod1 get random v4, v6 address
+	podName = "pod2"
+	nicName = "pod2.default"
+	poolName = ""
+	v4, v6, _, err = subnet.GetRandomAddress(poolName, podName, nicName, nil, nil, true)
+	require.Nil(t, err)
+	require.Equal(t, subnet.V4Using.String(), v4.String())
+	require.True(t, subnet.ContainAddress(v4))
+	require.Equal(t, subnet.V6Using.String(), v6.String())
+	require.True(t, subnet.ContainAddress(v6))
+	// pod1 release random v4, v6 address
+	subnet.ReleaseAddressWithNicName(podName, nicName)
+	require.Equal(t, subnet.V4Using.String(), "")
+	require.Equal(t, subnet.V6Using.String(), "")
+	require.False(t, subnet.ContainAddress(v4))
+	require.False(t, subnet.ContainAddress(v6))
 }
 
-func TestReleaseAddress(t *testing.T) {
-
-}
-
-func TestReleaseAddressWithNicName(t *testing.T) {
-
-}
-
-func TestContainAddress(t *testing.T) {
-
-}
-
-func TestGetPodAddress(t *testing.T) {
-
-}
-
-func TestIsIPAssignedToOtherPod(t *testing.T) {
-
-}
+// TODO: ippool
