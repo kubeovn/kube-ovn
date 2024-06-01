@@ -368,7 +368,7 @@ func (c *Controller) handleDelOvnEip(key string) error {
 	return nil
 }
 
-func (c *Controller) createOrUpdateOvnEipCR(key, subnet, v4ip, v6ip, mac, usage string) error {
+func (c *Controller) createOrUpdateOvnEipCR(key, subnet, v4ip, v6ip, mac, usageType string) error {
 	cachedEip, err := c.ovnEipsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -377,8 +377,9 @@ func (c *Controller) createOrUpdateOvnEipCR(key, subnet, v4ip, v6ip, mac, usage 
 					Name: key,
 					Labels: map[string]string{
 						util.SubnetNameLabel: subnet,
-						util.OvnEipTypeLabel: usage,
+						util.OvnEipTypeLabel: usageType,
 						util.EipV4IpLabel:    v4ip,
+						util.EipV6IpLabel:    v6ip,
 					},
 				},
 				Spec: kubeovnv1.OvnEipSpec{
@@ -386,7 +387,7 @@ func (c *Controller) createOrUpdateOvnEipCR(key, subnet, v4ip, v6ip, mac, usage 
 					V4Ip:           v4ip,
 					V6Ip:           v6ip,
 					MacAddress:     mac,
-					Type:           usage,
+					Type:           usageType,
 				},
 			}, metav1.CreateOptions{})
 			if err != nil {
@@ -416,8 +417,8 @@ func (c *Controller) createOrUpdateOvnEipCR(key, subnet, v4ip, v6ip, mac, usage 
 			ovnEip.Spec.V6Ip = v6ip
 			needUpdate = true
 		}
-		if usage != "" && ovnEip.Spec.Type != usage {
-			ovnEip.Spec.Type = usage
+		if usageType != "" && ovnEip.Spec.Type != usageType {
+			ovnEip.Spec.Type = usageType
 			needUpdate = true
 		}
 		if needUpdate {
@@ -440,8 +441,8 @@ func (c *Controller) createOrUpdateOvnEipCR(key, subnet, v4ip, v6ip, mac, usage 
 			ovnEip.Status.MacAddress = mac
 			needPatch = true
 		}
-		if ovnEip.Status.Type == "" && ovnEip.Status.Type != usage {
-			ovnEip.Status.Type = usage
+		if ovnEip.Status.Type == "" && ovnEip.Status.Type != usageType {
+			ovnEip.Status.Type = usageType
 			needPatch = true
 		}
 		if needPatch {
@@ -466,14 +467,18 @@ func (c *Controller) createOrUpdateOvnEipCR(key, subnet, v4ip, v6ip, mac, usage 
 			op = "add"
 			ovnEip.Labels = map[string]string{
 				util.SubnetNameLabel: subnet,
-				util.OvnEipTypeLabel: usage,
+				util.OvnEipTypeLabel: usageType,
 				util.EipV4IpLabel:    v4ip,
+				util.EipV6IpLabel:    v6ip,
 			}
 			needUpdateLabel = true
 		}
 		if ovnEip.Labels[util.SubnetNameLabel] != subnet {
 			op = "replace"
 			ovnEip.Labels[util.SubnetNameLabel] = subnet
+			ovnEip.Labels[util.OvnEipTypeLabel] = usageType
+			ovnEip.Labels[util.EipV4IpLabel] = v4ip
+			ovnEip.Labels[util.EipV6IpLabel] = v6ip
 			needUpdateLabel = true
 		}
 		if needUpdateLabel {
