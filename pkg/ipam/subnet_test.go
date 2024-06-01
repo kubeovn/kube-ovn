@@ -3,7 +3,7 @@ package ipam
 import (
 	"testing"
 
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/stretchr/testify/require"
 )
 
@@ -15,7 +15,7 @@ func TestNewSubnetIPv4(t *testing.T) {
 	}
 	// check subnet values
 	require.Equal(t, "v4Subnet", subnet.Name)
-	require.Equal(t, kubeovnv1.ProtocolIPv4, subnet.Protocol)
+	require.Equal(t, apiv1.ProtocolIPv4, subnet.Protocol)
 	require.Equal(t, "10.0.0.0", subnet.V4CIDR.IP.String())
 	require.Equal(t, "ffffff00", subnet.V4CIDR.Mask.String())
 	require.Equal(t, "", subnet.V4Gw)
@@ -140,7 +140,7 @@ func TestNewSubnetIPv6(t *testing.T) {
 	}
 	// check subnet values
 	require.Equal(t, "v6Subnet", subnet.Name)
-	require.Equal(t, kubeovnv1.ProtocolIPv6, subnet.Protocol)
+	require.Equal(t, apiv1.ProtocolIPv6, subnet.Protocol)
 	require.Equal(t, "2001:db8::", subnet.V6CIDR.IP.String())
 	require.Equal(t, "ffffffffffffffff0000000000000000", subnet.V6CIDR.Mask.String())
 	require.Equal(t, "", subnet.V4Gw)
@@ -278,7 +278,7 @@ func TestNewSubnetDualStack(t *testing.T) {
 	}
 	// check subnet values
 	require.Equal(t, "dualSubnet", subnet.Name)
-	require.Equal(t, kubeovnv1.ProtocolDual, subnet.Protocol)
+	require.Equal(t, apiv1.ProtocolDual, subnet.Protocol)
 	require.Equal(t, "10.0.0.0", subnet.V4CIDR.IP.String())
 	require.Equal(t, "2001:db8::", subnet.V6CIDR.IP.String())
 	require.Equal(t, "ffffff00", subnet.V4CIDR.Mask.String())
@@ -495,7 +495,7 @@ func TestGetV4StaticAddress(t *testing.T) {
 	require.Equal(t, v4, v4IP.String())
 	require.Nil(t, v6IP)
 	require.Equal(t, macStr1, m)
-	require.Equal(t, kubeovnv1.ProtocolIPv4, protocol)
+	require.Equal(t, apiv1.ProtocolIPv4, protocol)
 
 	// 3. pod2 has v4 ip and mac, should get specified ip and mac
 	podName = "pod2"
@@ -512,7 +512,7 @@ func TestGetV4StaticAddress(t *testing.T) {
 	require.Equal(t, v4, v4IP.String())
 	require.Nil(t, v6IP)
 	require.Equal(t, macOut2, m)
-	require.Equal(t, kubeovnv1.ProtocolIPv4, protocol)
+	require.Equal(t, apiv1.ProtocolIPv4, protocol)
 
 	// compare mac
 	require.NotEqual(t, macStr1, macOut2)
@@ -569,7 +569,7 @@ func TestGetV6StaticAddress(t *testing.T) {
 	require.Nil(t, v4IP)
 	require.Equal(t, v6, v6IP.String())
 	require.Equal(t, macStr1, m)
-	require.Equal(t, kubeovnv1.ProtocolIPv6, protocol)
+	require.Equal(t, apiv1.ProtocolIPv6, protocol)
 
 	// 2. pod2 has v6 ip and mac should get specified ip and mac
 	podName = "pod2"
@@ -586,7 +586,7 @@ func TestGetV6StaticAddress(t *testing.T) {
 	require.Nil(t, v4IP)
 	require.Equal(t, v6, v6IP.String())
 	require.Equal(t, macOut2, m)
-	require.Equal(t, kubeovnv1.ProtocolIPv6, protocol)
+	require.Equal(t, apiv1.ProtocolIPv6, protocol)
 
 	// compare mac
 	require.NotEqual(t, macStr1, macOut2)
@@ -653,7 +653,7 @@ func TestGetDualStaticAddress(t *testing.T) {
 	require.Equal(t, v4, v4Ip.String())
 	require.Equal(t, v6, v6Ip.String())
 	require.Equal(t, macStr1, m)
-	require.Equal(t, kubeovnv1.ProtocolDual, protocol)
+	require.Equal(t, apiv1.ProtocolDual, protocol)
 
 	// 2. pod2 has v4 and v6 ip and mac should get specified mac
 	podName = "pod2"
@@ -677,7 +677,7 @@ func TestGetDualStaticAddress(t *testing.T) {
 	require.Equal(t, v4, v4Ip.String())
 	require.Equal(t, v6, v6Ip.String())
 	require.Equal(t, macIn, m)
-	require.Equal(t, kubeovnv1.ProtocolDual, protocol)
+	require.Equal(t, apiv1.ProtocolDual, protocol)
 
 	// compare mac
 	require.NotEqual(t, macStr1, macOut)
