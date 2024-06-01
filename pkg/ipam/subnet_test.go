@@ -3,8 +3,9 @@ package ipam
 import (
 	"testing"
 
-	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/stretchr/testify/require"
+
+	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 )
 
 func TestNewSubnetIPv4(t *testing.T) {
