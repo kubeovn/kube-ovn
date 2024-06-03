@@ -12,4 +12,4 @@ WORKDIR /kube-ovn
 COPY test-server /kube-ovn/test-server
 COPY test-server.sh /kube-ovn/test-server.sh
 RUN chmod +x /kube-ovn/test-server.sh
-CMD bash test-server.sh
+CMD ["bash", "test-server.sh"]
