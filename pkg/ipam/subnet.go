@@ -220,11 +220,13 @@ func (s *Subnet) getV4RandomAddress(ippoolName, podName, nicName string, mac *st
 
 	pool := s.IPPools[ippoolName]
 	if pool == nil {
+		klog.Errorf("no ip pool %s in subnet %s", ippoolName, s.Name)
 		return nil, nil, "", ErrNoAvailable
 	}
 
 	if pool.V4Free.Len() == 0 {
 		if pool.V4Released.Len() == 0 {
+			klog.Errorf("no free v4 ip in ip pool %s", ippoolName)
 			return nil, nil, "", ErrNoAvailable
 		}
 		pool.V4Free = pool.V4Released
@@ -256,6 +258,7 @@ func (s *Subnet) getV4RandomAddress(ippoolName, podName, nicName string, mac *st
 		return ip, nil, s.GetRandomMac(podName, nicName), nil
 	}
 	if err := s.GetStaticMac(podName, nicName, *mac, checkConflict); err != nil {
+		klog.Error(err)
 		return nil, nil, "", err
 	}
 	return ip, nil, *mac, nil
@@ -274,11 +277,13 @@ func (s *Subnet) getV6RandomAddress(ippoolName, podName, nicName string, mac *st
 
 	pool := s.IPPools[ippoolName]
 	if pool == nil {
+		klog.Errorf("no ip pool %s in subnet %s", ippoolName, s.Name)
 		return nil, nil, "", ErrNoAvailable
 	}
 
 	if pool.V6Free.Len() == 0 {
 		if pool.V6Released.Len() == 0 {
+			klog.Errorf("no free v6 ip in ip pool %s", ippoolName)
 			return nil, nil, "", ErrNoAvailable
 		}
 		pool.V6Free = pool.V6Released
@@ -310,6 +315,7 @@ func (s *Subnet) getV6RandomAddress(ippoolName, podName, nicName string, mac *st
 		return nil, ip, s.GetRandomMac(podName, nicName), nil
 	}
 	if err := s.GetStaticMac(podName, nicName, *mac, checkConflict); err != nil {
+		klog.Error(err)
 		return nil, nil, "", err
 	}
 	return nil, ip, *mac, nil
@@ -327,9 +333,11 @@ func (s *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac *string, f
 		v6 = s.V6CIDR != nil
 	}
 	if v4 && !s.V4CIDR.Contains(net.IP(ip)) {
+		klog.Errorf("ip %s is out of range", ip)
 		return nil, "", ErrOutOfRange
 	}
 	if v6 && !s.V6CIDR.Contains(net.IP(ip)) {
+		klog.Errorf("ip %s is out of range", ip)
 		return nil, "", ErrOutOfRange
 	}
 
@@ -346,6 +354,7 @@ func (s *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac *string, f
 	}
 
 	if pool == nil {
+		klog.Errorf("ip %s is out of range", ip)
 		return nil, "", ErrOutOfRange
 	}
 
@@ -376,6 +385,7 @@ func (s *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac *string, f
 		}
 	} else {
 		if err := s.GetStaticMac(podName, nicName, *mac, checkConflict); err != nil {
+			klog.Error(err)
 			return nil, "", err
 		}
 		macStr = *mac
@@ -455,6 +465,7 @@ func (s *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac *string, f
 			return ip, macStr, nil
 		}
 	}
+	klog.Errorf("no available ip")
 	return nil, "", ErrNoAvailable
 }
 
