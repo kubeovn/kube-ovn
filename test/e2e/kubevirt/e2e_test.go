@@ -16,6 +16,7 @@ import (
 
 	"github.com/onsi/ginkgo/v2"
 
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 )
@@ -43,6 +44,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 	var subnetClient *framework.SubnetClient
 	var podClient *framework.PodClient
 	var vmClient *framework.VMClient
+	var ipClient *framework.IPClient
 	ginkgo.BeforeEach(func() {
 		f.SkipVersionPriorTo(1, 12, "This feature was introduced in v1.12.")
 
@@ -52,6 +54,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 		subnetClient = f.SubnetClient()
 		podClient = f.PodClientNS(namespaceName)
 		vmClient = f.VMClientNS(namespaceName)
+		ipClient = f.IPClient()
 
 		ginkgo.By("Creating vm " + vmName)
 		vm := framework.MakeVM(vmName, image, "small", true)
@@ -144,11 +147,11 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 		framework.ExpectEqual(ips, pod.Status.PodIPs)
 	})
 
-	framework.ConformanceIt("should be able to handle subnet change", func() {
+	framework.ConformanceIt("should be able to change vm subnet after deleting the old ip", func() {
 		ginkgo.By("Creating subnet " + subnetName)
 		cidr := framework.RandomCIDR(f.ClusterIPFamily)
 		subnet := framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, []string{namespaceName})
-		_ = subnetClient.CreateSync(subnet)
+		subnet = subnetClient.CreateSync(subnet)
 
 		ginkgo.By("Getting pod of vm " + vmName)
 		labelSelector := fmt.Sprintf("%s=%s", v1.VirtualMachineNameLabel, vmName)
@@ -163,13 +166,25 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.VMAnnotation, vmName)
-		ips := pod.Status.PodIPs
 
 		ginkgo.By("Stopping vm " + vmName)
 		vmClient.StopSync(vmName)
+		portName := ovs.PodNameToPortName(vmName, namespaceName, subnet.Spec.Provider)
+		oldVMIP := ipClient.Get(portName)
+		framework.ExpectNotEmpty(oldVMIP.Spec.IPAddress)
+		ginkgo.By("Updating vm " + vmName + " to use new subnet " + subnetName)
+		// delete old ip, lsp, ipam
+		ipClient.DeleteSync(portName)
+
+		vm := vmClient.Get(vmName).DeepCopy()
+		vm.Spec.Template.ObjectMeta.Annotations[util.LogicalSwitchAnnotation] = subnetName
+		vmClient.UpdateSync(vm)
 
 		ginkgo.By("Starting vm " + vmName)
 		vmClient.StartSync(vmName)
+		// new ip is the same name as the old one
+		newVMIP := ipClient.Get(portName)
+		framework.ExpectNotEmpty(newVMIP.Spec.IPAddress)
 
 		ginkgo.By("Getting pod of vm " + vmName)
 		podList, err = podClient.List(context.TODO(), metav1.ListOptions{
@@ -183,8 +198,9 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.VMAnnotation, vmName)
+		framework.ExpectHaveKeyWithValue(pod.Annotations, util.LogicalSwitchAnnotation, subnetName)
 
 		ginkgo.By("Checking whether pod ips are changed")
-		framework.ExpectNotEqual(ips, pod.Status.PodIPs)
+		framework.ExpectNotEqual(newVMIP.Spec.IPAddress, oldVMIP.Spec.IPAddress)
 	})
 })
