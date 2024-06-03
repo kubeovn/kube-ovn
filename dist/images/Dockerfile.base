@@ -1,5 +1,5 @@
 # syntax = docker/dockerfile:experimental
-FROM ubuntu:22.04 as ovs-builder
+FROM ubuntu:22.04 AS ovs-builder
 
 ARG ARCH
 ARG DEBIAN_FRONTEND=noninteractive
