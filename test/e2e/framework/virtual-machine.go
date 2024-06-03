@@ -47,14 +47,14 @@ func (c *VMClient) Create(vm *v1.VirtualMachine) *v1.VirtualMachine {
 	return c.Get(v.Name)
 }
 
-// Update updates a new vm according to the framework specifications
+// Update updates a vm according to the framework specifications
 func (c *VMClient) Update(vm *v1.VirtualMachine) *v1.VirtualMachine {
 	v, err := c.VirtualMachineInterface.Update(context.TODO(), vm)
-	ExpectNoError(err, "failed to create vm %s", v.Name)
+	ExpectNoError(err, "failed to update vm %s", v.Name)
 	return c.Get(v.Name)
 }
 
-// UpdateSync updates a new vm according to the framework specifications, and waits for it to be ready.
+// UpdateSync updates a vm according to the framework specifications, and waits for it to be ready.
 func (c *VMClient) UpdateSync(vm *v1.VirtualMachine) *v1.VirtualMachine {
 	v := c.Update(vm)
 	ExpectNoError(c.WaitToBeReady(v.Name, timeout))

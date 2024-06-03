@@ -182,7 +182,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 
 		ginkgo.By("Starting vm " + vmName)
 		vmClient.StartSync(vmName)
-		// new ip is the same name as the old one
+		// new ip name is the same as the old one
 		newVMIP := ipClient.Get(portName)
 		framework.ExpectNotEmpty(newVMIP.Spec.IPAddress)
 
