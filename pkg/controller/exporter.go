@@ -95,6 +95,9 @@ func (c *Controller) exportSubnetIPAMInfo(subnet *kubeovnv1.Subnet) {
 		return
 	}
 
+	ipamSubnet.Mutex.RLock()
+	defer ipamSubnet.Mutex.RUnlock()
+
 	switch subnet.Spec.Protocol {
 	case kubeovnv1.ProtocolIPv4:
 		metricSubnetIPAMInfo.WithLabelValues(subnet.Name, subnet.Spec.CIDRBlock, ipamSubnet.V4Free.String(), ipamSubnet.V4Reserved.String(), ipamSubnet.V4Available.String(), ipamSubnet.V4Using.String()).Set(1)
@@ -114,6 +117,9 @@ func (c *Controller) exportSubnetIPAssignedInfo(subnet *kubeovnv1.Subnet) {
 		klog.Errorf("failed to get subnet %s in ipam", subnet.Name)
 		return
 	}
+
+	ipamSubnet.Mutex.RLock()
+	defer ipamSubnet.Mutex.RUnlock()
 
 	if subnet.Spec.Protocol == kubeovnv1.ProtocolIPv4 || subnet.Spec.Protocol == kubeovnv1.ProtocolDual {
 		for ip, pod := range ipamSubnet.V4IPToPod {
