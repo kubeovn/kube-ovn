@@ -92,6 +92,19 @@ var _ = ginkgo.Context("[group:IPAM]", func() {
 			)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			gomega.Expect(v.Equal(expected)).To(gomega.BeTrue())
+
+			// split the range
+			v, err = ipam.NewIPRangeList(
+				newIP("10.0.0.10"), newIP("10.0.0.20"),
+			)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			gomega.Expect(v.Remove(newIP("10.0.0.15"))).To(gomega.BeTrue())
+			expected, err = ipam.NewIPRangeList(
+				newIP("10.0.0.10"), newIP("10.0.0.14"),
+				newIP("10.0.0.16"), newIP("10.0.0.20"),
+			)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			gomega.Expect(v.Equal(expected)).To(gomega.BeTrue())
 		})
 
 		ginkgo.It("Allocate", func() {
