@@ -24,109 +24,192 @@ var _ = ginkgo.Context("[group:IPAM]", func() {
 			return ip
 		}
 
-		ginkgo.It("Contains", func() {
-			v, err := ipam.NewIPRangeList(
+		ginkgo.It("IPv4 Contains", func() {
+			v4, err := ipam.NewIPRangeList(
 				newIP("10.0.0.5"), newIP("10.0.0.5"),
 				newIP("10.0.0.13"), newIP("10.0.0.18"),
 			)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-			gomega.Expect(v.Contains(newIP("10.0.0.4"))).To(gomega.BeFalse())
-			gomega.Expect(v.Contains(newIP("10.0.0.5"))).To(gomega.BeTrue())
-			gomega.Expect(v.Contains(newIP("10.0.0.6"))).To(gomega.BeFalse())
+			gomega.Expect(v4.Contains(newIP("10.0.0.4"))).To(gomega.BeFalse())
+			gomega.Expect(v4.Contains(newIP("10.0.0.5"))).To(gomega.BeTrue())
+			gomega.Expect(v4.Contains(newIP("10.0.0.6"))).To(gomega.BeFalse())
 
-			gomega.Expect(v.Contains(newIP("10.0.0.12"))).To(gomega.BeFalse())
-			gomega.Expect(v.Contains(newIP("10.0.0.13"))).To(gomega.BeTrue())
-			gomega.Expect(v.Contains(newIP("10.0.0.14"))).To(gomega.BeTrue())
-			gomega.Expect(v.Contains(newIP("10.0.0.17"))).To(gomega.BeTrue())
-			gomega.Expect(v.Contains(newIP("10.0.0.18"))).To(gomega.BeTrue())
-			gomega.Expect(v.Contains(newIP("10.0.0.19"))).To(gomega.BeFalse())
+			gomega.Expect(v4.Contains(newIP("10.0.0.12"))).To(gomega.BeFalse())
+			gomega.Expect(v4.Contains(newIP("10.0.0.13"))).To(gomega.BeTrue())
+			gomega.Expect(v4.Contains(newIP("10.0.0.14"))).To(gomega.BeTrue())
+			gomega.Expect(v4.Contains(newIP("10.0.0.17"))).To(gomega.BeTrue())
+			gomega.Expect(v4.Contains(newIP("10.0.0.18"))).To(gomega.BeTrue())
+			gomega.Expect(v4.Contains(newIP("10.0.0.19"))).To(gomega.BeFalse())
 		})
 
-		ginkgo.It("Add", func() {
-			v, err := ipam.NewIPRangeList(
+		ginkgo.It("IPv6 Contains", func() {
+			v6, err := ipam.NewIPRangeList(
+				newIP("2001:db8::5"), newIP("2001:db8::5"),
+				newIP("2001:db8::13"), newIP("2001:db8::18"),
+			)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
+			gomega.Expect(v6.Contains(newIP("2001:db8::4"))).To(gomega.BeFalse())
+			gomega.Expect(v6.Contains(newIP("2001:db8::5"))).To(gomega.BeTrue())
+			gomega.Expect(v6.Contains(newIP("2001:db8::6"))).To(gomega.BeFalse())
+
+			gomega.Expect(v6.Contains(newIP("2001:db8::12"))).To(gomega.BeFalse())
+			gomega.Expect(v6.Contains(newIP("2001:db8::13"))).To(gomega.BeTrue())
+			gomega.Expect(v6.Contains(newIP("2001:db8::14"))).To(gomega.BeTrue())
+			gomega.Expect(v6.Contains(newIP("2001:db8::17"))).To(gomega.BeTrue())
+			gomega.Expect(v6.Contains(newIP("2001:db8::18"))).To(gomega.BeTrue())
+			gomega.Expect(v6.Contains(newIP("2001:db8::19"))).To(gomega.BeFalse())
+		})
+
+		ginkgo.It("IPv4 Add", func() {
+			v4, err := ipam.NewIPRangeList(
 				newIP("10.0.0.5"), newIP("10.0.0.5"),
 				newIP("10.0.0.13"), newIP("10.0.0.18"),
 			)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-			gomega.Expect(v.Add(newIP("10.0.0.4"))).To(gomega.BeTrue())
-			gomega.Expect(v.Add(newIP("10.0.0.5"))).To(gomega.BeFalse())
-			gomega.Expect(v.Add(newIP("10.0.0.6"))).To(gomega.BeTrue())
+			gomega.Expect(v4.Add(newIP("10.0.0.4"))).To(gomega.BeTrue())
+			gomega.Expect(v4.Add(newIP("10.0.0.5"))).To(gomega.BeFalse())
+			gomega.Expect(v4.Add(newIP("10.0.0.6"))).To(gomega.BeTrue())
 
-			gomega.Expect(v.Add(newIP("10.0.0.12"))).To(gomega.BeTrue())
-			gomega.Expect(v.Add(newIP("10.0.0.13"))).To(gomega.BeFalse())
-			gomega.Expect(v.Add(newIP("10.0.0.14"))).To(gomega.BeFalse())
-			gomega.Expect(v.Add(newIP("10.0.0.17"))).To(gomega.BeFalse())
-			gomega.Expect(v.Add(newIP("10.0.0.18"))).To(gomega.BeFalse())
-			gomega.Expect(v.Add(newIP("10.0.0.19"))).To(gomega.BeTrue())
+			gomega.Expect(v4.Add(newIP("10.0.0.12"))).To(gomega.BeTrue())
+			gomega.Expect(v4.Add(newIP("10.0.0.13"))).To(gomega.BeFalse())
+			gomega.Expect(v4.Add(newIP("10.0.0.14"))).To(gomega.BeFalse())
+			gomega.Expect(v4.Add(newIP("10.0.0.17"))).To(gomega.BeFalse())
+			gomega.Expect(v4.Add(newIP("10.0.0.18"))).To(gomega.BeFalse())
+			gomega.Expect(v4.Add(newIP("10.0.0.19"))).To(gomega.BeTrue())
 
 			expected, err := ipam.NewIPRangeList(
 				newIP("10.0.0.4"), newIP("10.0.0.6"),
 				newIP("10.0.0.12"), newIP("10.0.0.19"),
 			)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-			gomega.Expect(v.Equal(expected)).To(gomega.BeTrue())
+			gomega.Expect(v4.Equal(expected)).To(gomega.BeTrue())
 		})
 
-		ginkgo.It("Remove", func() {
-			v, err := ipam.NewIPRangeList(
+		ginkgo.It("IPv6 Add", func() {
+			v6, err := ipam.NewIPRangeList(
+				newIP("2001:db8::5"), newIP("2001:db8::5"),
+				newIP("2001:db8::13"), newIP("2001:db8::18"),
+			)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
+			gomega.Expect(v6.Add(newIP("2001:db8::4"))).To(gomega.BeTrue())
+			gomega.Expect(v6.Add(newIP("2001:db8::5"))).To(gomega.BeFalse())
+			gomega.Expect(v6.Add(newIP("2001:db8::6"))).To(gomega.BeTrue())
+
+			gomega.Expect(v6.Add(newIP("2001:db8::12"))).To(gomega.BeTrue())
+			gomega.Expect(v6.Add(newIP("2001:db8::13"))).To(gomega.BeFalse())
+			gomega.Expect(v6.Add(newIP("2001:db8::14"))).To(gomega.BeFalse())
+			gomega.Expect(v6.Add(newIP("2001:db8::17"))).To(gomega.BeFalse())
+			gomega.Expect(v6.Add(newIP("2001:db8::18"))).To(gomega.BeFalse())
+			gomega.Expect(v6.Add(newIP("2001:db8::19"))).To(gomega.BeTrue())
+
+			expected, err := ipam.NewIPRangeList(
+				newIP("2001:db8::4"), newIP("2001:db8::6"),
+				newIP("2001:db8::12"), newIP("2001:db8::19"),
+			)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			gomega.Expect(v6.Equal(expected)).To(gomega.BeTrue())
+		})
+
+		ginkgo.It("IPv4 Remove", func() {
+			v4, err := ipam.NewIPRangeList(
 				newIP("10.0.0.5"), newIP("10.0.0.5"),
 				newIP("10.0.0.13"), newIP("10.0.0.18"),
 			)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-			gomega.Expect(v.Remove(newIP("10.0.0.4"))).To(gomega.BeFalse())
-			gomega.Expect(v.Remove(newIP("10.0.0.5"))).To(gomega.BeTrue())
-			gomega.Expect(v.Remove(newIP("10.0.0.6"))).To(gomega.BeFalse())
+			gomega.Expect(v4.Remove(newIP("10.0.0.4"))).To(gomega.BeFalse())
+			gomega.Expect(v4.Remove(newIP("10.0.0.5"))).To(gomega.BeTrue())
+			gomega.Expect(v4.Remove(newIP("10.0.0.6"))).To(gomega.BeFalse())
 
-			gomega.Expect(v.Remove(newIP("10.0.0.12"))).To(gomega.BeFalse())
-			gomega.Expect(v.Remove(newIP("10.0.0.13"))).To(gomega.BeTrue())
-			gomega.Expect(v.Remove(newIP("10.0.0.14"))).To(gomega.BeTrue())
-			gomega.Expect(v.Remove(newIP("10.0.0.17"))).To(gomega.BeTrue())
-			gomega.Expect(v.Remove(newIP("10.0.0.18"))).To(gomega.BeTrue())
-			gomega.Expect(v.Remove(newIP("10.0.0.19"))).To(gomega.BeFalse())
+			gomega.Expect(v4.Remove(newIP("10.0.0.12"))).To(gomega.BeFalse())
+			gomega.Expect(v4.Remove(newIP("10.0.0.13"))).To(gomega.BeTrue())
+			gomega.Expect(v4.Remove(newIP("10.0.0.14"))).To(gomega.BeTrue())
+			gomega.Expect(v4.Remove(newIP("10.0.0.17"))).To(gomega.BeTrue())
+			gomega.Expect(v4.Remove(newIP("10.0.0.18"))).To(gomega.BeTrue())
+			gomega.Expect(v4.Remove(newIP("10.0.0.19"))).To(gomega.BeFalse())
 
 			expected, err := ipam.NewIPRangeList(
 				newIP("10.0.0.15"), newIP("10.0.0.16"),
 			)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-			gomega.Expect(v.Equal(expected)).To(gomega.BeTrue())
+			gomega.Expect(v4.Equal(expected)).To(gomega.BeTrue())
 
 			// split the range
-			v, err = ipam.NewIPRangeList(
+			v4, err = ipam.NewIPRangeList(
 				newIP("10.0.0.10"), newIP("10.0.0.20"),
 			)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-			gomega.Expect(v.Remove(newIP("10.0.0.15"))).To(gomega.BeTrue())
+			gomega.Expect(v4.Remove(newIP("10.0.0.15"))).To(gomega.BeTrue())
 			expected, err = ipam.NewIPRangeList(
 				newIP("10.0.0.10"), newIP("10.0.0.14"),
 				newIP("10.0.0.16"), newIP("10.0.0.20"),
 			)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-			gomega.Expect(v.Equal(expected)).To(gomega.BeTrue())
+			gomega.Expect(v4.Equal(expected)).To(gomega.BeTrue())
 		})
 
-		ginkgo.It("Allocate", func() {
-			v, err := ipam.NewIPRangeList(
+		ginkgo.It("IPv6 Remove", func() {
+			v6, err := ipam.NewIPRangeList(
+				newIP("2001:db8::5"), newIP("2001:db8::5"),
+				newIP("2001:db8::13"), newIP("2001:db8::18"),
+			)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
+			gomega.Expect(v6.Remove(newIP("2001:db8::4"))).To(gomega.BeFalse())
+			gomega.Expect(v6.Remove(newIP("2001:db8::5"))).To(gomega.BeTrue())
+			gomega.Expect(v6.Remove(newIP("2001:db8::6"))).To(gomega.BeFalse())
+
+			gomega.Expect(v6.Remove(newIP("2001:db8::12"))).To(gomega.BeFalse())
+			gomega.Expect(v6.Remove(newIP("2001:db8::13"))).To(gomega.BeTrue())
+			gomega.Expect(v6.Remove(newIP("2001:db8::14"))).To(gomega.BeTrue())
+			gomega.Expect(v6.Remove(newIP("2001:db8::17"))).To(gomega.BeTrue())
+			gomega.Expect(v6.Remove(newIP("2001:db8::18"))).To(gomega.BeTrue())
+			gomega.Expect(v6.Remove(newIP("2001:db8::19"))).To(gomega.BeFalse())
+
+			expected, err := ipam.NewIPRangeList(
+				newIP("2001:db8::15"), newIP("2001:db8::16"),
+			)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			gomega.Expect(v6.Equal(expected)).To(gomega.BeTrue())
+
+			// split the range
+			v6, err = ipam.NewIPRangeList(
+				newIP("2001:db8::10"), newIP("2001:db8::20"),
+			)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			gomega.Expect(v6.Remove(newIP("2001:db8::15"))).To(gomega.BeTrue())
+			expected, err = ipam.NewIPRangeList(
+				newIP("2001:db8::10"), newIP("2001:db8::14"),
+				newIP("2001:db8::16"), newIP("2001:db8::20"),
+			)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			gomega.Expect(v6.Equal(expected)).To(gomega.BeTrue())
+		})
+
+		ginkgo.It("IPv4 Allocate", func() {
+			v4, err := ipam.NewIPRangeList(
 				newIP("10.0.0.13"), newIP("10.0.0.16"),
 			)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-			ip := v.Allocate(nil)
+			ip := v4.Allocate(nil)
 			gomega.Expect(ip).NotTo(gomega.BeNil())
 			gomega.Expect(ip.String()).To(gomega.Equal("10.0.0.13"))
 
-			ip = v.Allocate(nil)
+			ip = v4.Allocate(nil)
 			gomega.Expect(ip).NotTo(gomega.BeNil())
 			gomega.Expect(ip.String()).To(gomega.Equal("10.0.0.14"))
 
-			ip = v.Allocate([]ipam.IP{newIP("10.0.0.15"), newIP("10.0.0.16")})
+			ip = v4.Allocate([]ipam.IP{newIP("10.0.0.15"), newIP("10.0.0.16")})
 			gomega.Expect(ip).To(gomega.BeNil())
 		})
 
-		ginkgo.It("Separate", func() {
-			v1, err := ipam.NewIPRangeList(
+		ginkgo.It("IPv4 Separate", func() {
+			v41, err := ipam.NewIPRangeList(
 				newIP("10.0.0.1"), newIP("10.0.0.1"),
 				newIP("10.0.0.5"), newIP("10.0.0.5"),
 				newIP("10.0.0.13"), newIP("10.0.0.18"),
@@ -138,7 +221,7 @@ var _ = ginkgo.Context("[group:IPAM]", func() {
 			)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-			v2, err := ipam.NewIPRangeList(
+			v42, err := ipam.NewIPRangeList(
 				newIP("10.0.0.1"), newIP("10.0.0.1"),
 				newIP("10.0.0.11"), newIP("10.0.0.15"),
 				newIP("10.0.0.17"), newIP("10.0.0.19"),
@@ -158,12 +241,49 @@ var _ = ginkgo.Context("[group:IPAM]", func() {
 			)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-			separated := v1.Separate(v2)
+			separated := v41.Separate(v42)
 			gomega.Expect(separated.Equal(expected)).To(gomega.BeTrue())
 		})
 
-		ginkgo.It("Merge", func() {
-			v1, err := ipam.NewIPRangeList(
+		ginkgo.It("IPv6 Separate", func() {
+			v61, err := ipam.NewIPRangeList(
+				newIP("2001:db8::1"), newIP("2001:db8::1"),
+				newIP("2001:db8::5"), newIP("2001:db8::5"),
+				newIP("2001:db8::13"), newIP("2001:db8::18"),
+				newIP("2001:db8::23"), newIP("2001:db8::28"),
+				newIP("2001:db8::33"), newIP("2001:db8::38"),
+				newIP("2001:db8::43"), newIP("2001:db8::48"),
+				newIP("2001:db8::53"), newIP("2001:db8::58"),
+				newIP("2001:db8::63"), newIP("2001:db8::68"),
+			)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
+			v62, err := ipam.NewIPRangeList(
+				newIP("2001:db8::1"), newIP("2001:db8::1"),
+				newIP("2001:db8::11"), newIP("2001:db8::15"),
+				newIP("2001:db8::17"), newIP("2001:db8::19"),
+				newIP("2001:db8::23"), newIP("2001:db8::25"),
+				newIP("2001:db8::27"), newIP("2001:db8::28"),
+				newIP("2001:db8::33"), newIP("2001:db8::38"),
+				newIP("2001:db8::42"), newIP("2001:db8::49"),
+				newIP("2001:db8::53"), newIP("2001:db8::58"),
+			)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
+			expected, err := ipam.NewIPRangeList(
+				newIP("2001:db8::5"), newIP("2001:db8::5"),
+				newIP("2001:db8::16"), newIP("2001:db8::16"),
+				newIP("2001:db8::26"), newIP("2001:db8::26"),
+				newIP("2001:db8::63"), newIP("2001:db8::68"),
+			)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
+			separated := v61.Separate(v62)
+			gomega.Expect(separated.Equal(expected)).To(gomega.BeTrue())
+		})
+
+		ginkgo.It("IPv4 Merge", func() {
+			v41, err := ipam.NewIPRangeList(
 				newIP("10.0.0.1"), newIP("10.0.0.1"),
 				newIP("10.0.0.3"), newIP("10.0.0.3"),
 				newIP("10.0.0.5"), newIP("10.0.0.5"),
@@ -179,7 +299,7 @@ var _ = ginkgo.Context("[group:IPAM]", func() {
 			)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-			v2, err := ipam.NewIPRangeList(
+			v42, err := ipam.NewIPRangeList(
 				newIP("10.0.0.1"), newIP("10.0.0.1"),
 				newIP("10.0.0.4"), newIP("10.0.0.4"),
 				newIP("10.0.0.11"), newIP("10.0.0.15"),
@@ -208,17 +328,18 @@ var _ = ginkgo.Context("[group:IPAM]", func() {
 			)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-			merged := v1.Merge(v2)
+			merged := v41.Merge(v42)
 			gomega.Expect(merged.Equal(expected)).To(gomega.BeTrue())
 		})
 	})
 
-	ginkgo.It("NewIPRangeListFrom", func() {
+	ginkgo.It("IPv4 NewIPRangeListFrom", func() {
 		n := 40 + rand.IntN(20)
 		cidrList := make([]*net.IPNet, 0, n)
 		cidrSet := u32set.NewWithSize(n * 2)
 		for len(cidrList) != cap(cidrList) {
-			_, cidr, err := net.ParseCIDR(fmt.Sprintf("%s/%d", uint32ToIPv4(rand.Uint32()), 16+rand.IntN(16)))
+			n := rand.Uint32()
+			_, cidr, err := net.ParseCIDR(fmt.Sprintf("%s/%d", uint32ToIPv4(n), 16+rand.IntN(16)))
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			var invalid bool
@@ -348,5 +469,8 @@ var _ = ginkgo.Context("[group:IPAM]", func() {
 				gomega.Expect(list.Contains(end.Sub(1))).To(gomega.BeTrue())
 			}
 		}
+	})
+	ginkgo.It("IPv6 NewIPRangeListFrom", func() {
+		// TODO
 	})
 })
