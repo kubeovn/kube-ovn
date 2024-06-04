@@ -262,7 +262,7 @@ func waitNetworkReady(nic, ipAddr, gateway string, underlayGateway, verbose bool
 	return nil
 }
 
-func configureNodeNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu int) error {
+func configureNodeNic(portName, ip, gw, joinCIDR string, macAddr net.HardwareAddr, mtu int) error {
 	ipStr := util.GetIPWithoutMask(ip)
 	raw, err := ovs.Exec(ovs.MayExist, "add-port", "br-int", util.NodeNic, "--",
 		"set", "interface", util.NodeNic, "type=internal", "--",
@@ -276,6 +276,52 @@ func configureNodeNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu int
 	if err = configureNic(util.NodeNic, ip, macAddr, mtu); err != nil {
 		klog.Error(err)
 		return err
+	}
+
+	// check and add default route for ovn0 in case of can not add automatically
+	// IPv4: 100.64.0.0/16 dev ovn0 proto kernel scope link src 100.64.0.2
+	// IPv6: fd00:100:64::/112 dev ovn0 proto kernel metric 256 pref medium
+	adapter, err := util.GetNetAdapter(util.NodeNic, false)
+	if err != nil {
+		klog.Errorf("failed to get network adapter %s: %v", util.NodeNic, err)
+		return err
+	}
+	routes, err := util.GetNetRoute(adapter.InterfaceIndex)
+	if err != nil {
+		klog.Errorf("failed to get NetIPRoute with index %d: %v", adapter.InterfaceIndex, err)
+		return err
+	}
+
+	var toAddV4, toAddV6 []string
+	for _, cidr := range strings.Split(joinCIDR, ",") {
+		found := false
+		for _, route := range routes {
+			if route.DestinationPrefix == cidr {
+				found = true
+				break
+			}
+			if !found {
+				if util.CheckProtocol(cidr) == kubeovnv1.ProtocolIPv4 {
+					toAddV4 = append(toAddV4, cidr)
+				} else {
+					toAddV6 = append(toAddV6, cidr)
+				}
+			}
+		}
+	}
+	if len(toAddV4) > 0 || len(toAddV6) > 0 {
+		klog.Infof("route to add for nic %s, ipv4 %v, ipv6 %v", util.NodeNic, toAddV4, toAddV6)
+	}
+
+	for _, r := range toAddV4 {
+		if err = util.NewNetRoute(adapter.InterfaceIndex, r, "0.0.0.0"); err != nil {
+			klog.Errorf("failed to add ipv4 route %s: %v", r, err)
+		}
+	}
+	for _, r := range toAddV6 {
+		if err = util.NewNetRoute(adapter.InterfaceIndex, r, "::"); err != nil {
+			klog.Errorf("failed to add ipv6 route %s: %v", r, err)
+		}
 	}
 
 	// ping ovn0 gw to activate the flow

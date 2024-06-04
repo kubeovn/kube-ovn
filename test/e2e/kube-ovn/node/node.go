@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	clientset "k8s.io/client-go/kubernetes"
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
@@ -104,6 +105,91 @@ var _ = framework.OrderedDescribe("[group:node]", func() {
 			err = podClient.Delete(podName)
 			framework.ExpectNoError(err)
 		}
+	})
+
+	framework.ConformanceIt("should add default route on node for join subnet", func() {
+		f.SkipVersionPriorTo(1, 13, "This feature was introduced in v1.13")
+		ginkgo.By("Getting join subnet")
+		join := subnetClient.Get("join")
+
+		ginkgo.By("Getting nodes")
+		nodeList, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
+		framework.ExpectNoError(err)
+
+		ginkgo.By("Validating node annotations")
+		node := nodeList.Items[0]
+		framework.ExpectHaveKeyWithValue(node.Annotations, util.AllocatedAnnotation, "true")
+		framework.ExpectHaveKeyWithValue(node.Annotations, util.CidrAnnotation, join.Spec.CIDRBlock)
+		framework.ExpectHaveKeyWithValue(node.Annotations, util.GatewayAnnotation, join.Spec.Gateway)
+		framework.ExpectIPInCIDR(node.Annotations[util.IPAddressAnnotation], join.Spec.CIDRBlock)
+		framework.ExpectHaveKeyWithValue(node.Annotations, util.LogicalSwitchAnnotation, join.Name)
+
+		podName = "pod-" + framework.RandomSuffix()
+		ginkgo.By("Creating pod " + podName + " with host network")
+		cmd := []string{"sh", "-c", "sleep infinity"}
+		pod := framework.MakePod(namespaceName, podName, nil, nil, image, cmd, nil)
+		pod.Spec.NodeName = node.Name
+		pod.Spec.HostNetwork = true
+		pod = podClient.CreateSync(pod)
+
+		ginkgo.By("Getting node routes")
+		nodeRoutes, err := iproute.RouteShow("", "ovn0", func(cmd ...string) ([]byte, []byte, error) {
+			return framework.KubectlExec(pod.Namespace, pod.Name, cmd...)
+		})
+		framework.ExpectNoError(err)
+		for _, joinCidr := range strings.Split(join.Spec.CIDRBlock, ",") {
+			found := false
+			for _, nodeRoute := range nodeRoutes {
+				if nodeRoute.Dst == joinCidr {
+					ginkgo.By("Getting ovn0 default route for cidr " + nodeRoute.Dst)
+					found = true
+					break
+				}
+				if found {
+					break
+				}
+			}
+			framework.ExpectTrue(found)
+		}
+
+		ginkgo.By("Getting and recreate kube-ovn-cni pod")
+		kubePodClient := f.PodClientNS(framework.KubeOvnNamespace)
+		pods, err := kubePodClient.List(context.Background(), metav1.ListOptions{LabelSelector: metav1.FormatLabelSelector(&metav1.LabelSelector{MatchLabels: map[string]string{"app": "kube-ovn-cni"}}), FieldSelector: fmt.Sprintf("spec.nodeName=%s", node.Name)})
+		framework.ExpectNoError(err)
+		framework.ExpectNotNil(pods)
+		framework.Logf("Delete kube-ovn-cni pod: %s", pods.Items[0].Name)
+		err = kubePodClient.Delete(pods.Items[0].Name)
+		framework.ExpectNoError(err)
+		kubePodClient.WaitForNotFound(pods.Items[0].Name)
+
+		ginkgo.By("Getting new created kube-ovn-cni pod")
+		pods, err = kubePodClient.List(context.Background(), metav1.ListOptions{LabelSelector: metav1.FormatLabelSelector(&metav1.LabelSelector{MatchLabels: map[string]string{"app": "kube-ovn-cni"}}), FieldSelector: fmt.Sprintf("spec.nodeName=%s", node.Name)})
+		framework.ExpectNoError(err)
+		framework.ExpectNotNil(pods)
+		kubePodClient.WaitForRunning(pods.Items[0].Name)
+		framework.Logf("Get new kube-ovn-cni pod: %s", pods.Items[0].Name)
+
+		nodeRoutes, err = iproute.RouteShow("", "ovn0", func(cmd ...string) ([]byte, []byte, error) {
+			return framework.KubectlExec(pod.Namespace, pod.Name, cmd...)
+		})
+		framework.ExpectNoError(err)
+		for _, joinCidr := range strings.Split(join.Spec.CIDRBlock, ",") {
+			found := false
+			for _, nodeRoute := range nodeRoutes {
+				if nodeRoute.Dst == joinCidr {
+					ginkgo.By("Getting ovn0 default route for cidr " + nodeRoute.Dst)
+					found = true
+					break
+				}
+				if found {
+					break
+				}
+			}
+			framework.ExpectTrue(found)
+		}
+
+		err = podClient.Delete(podName)
+		framework.ExpectNoError(err)
 	})
 
 	framework.ConformanceIt("should access overlay pods using node ip", func() {
