@@ -129,8 +129,8 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 
 		// the ip should be exist after vm stopped
 		portName := ovs.PodNameToPortName(vmName, namespaceName, util.OvnProvider)
-		ginkgo.By("should exist stopped vm ip " + portName)
 		oldVMIP := ipClient.Get(portName)
+		ginkgo.By("Should exist stopped vm ip " + oldVMIP.Name)
 		framework.ExpectNotEmpty(oldVMIP.Spec.IPAddress)
 
 		ginkgo.By("Starting vm " + vmName)
