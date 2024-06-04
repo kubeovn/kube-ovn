@@ -162,7 +162,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 		// create a vm within a namespace, the namespace has no subnet, so the vm use ovn-default subnet
 		// create a subnet in the namespace later, the vm should use its own subnet
 		// stop the vm, the vm should delete the vm ip, because of the namespace only has one subnet but not ovn-default
-		// start the vm, the vm should use the namespace owened subnet
+		// start the vm, the vm should use the namespace owned subnet
 		ginkgo.By("Creating subnet " + subnetName)
 		cidr := framework.RandomCIDR(f.ClusterIPFamily)
 		subnet := framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, []string{namespaceName})
@@ -212,6 +212,10 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 	})
 
 	framework.ConformanceIt("restart vm should be able to change vm subnet after deleting the old ip", func() {
+		// case: test change vm subnet after stop vm and delete old ip
+		// stop vm, delete the ip.
+		// create new subnet in the namespace.
+		// make sure ip changed after vm started
 		ginkgo.By("Getting pod of vm " + vmName)
 		labelSelector := fmt.Sprintf("%s=%s", v1.VirtualMachineNameLabel, vmName)
 		podList, err := podClient.List(context.TODO(), metav1.ListOptions{
@@ -239,12 +243,8 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 		subnet := framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, []string{namespaceName})
 		subnet = subnetClient.CreateSync(subnet)
 		ginkgo.By("Updating vm " + vmName + " to use new subnet " + subnet.Name)
-		// delete old ip, lsp, ipam
 
-		vm := vmClient.Get(vmName).DeepCopy()
-		vm.Spec.Template.ObjectMeta.Annotations[util.LogicalSwitchAnnotation] = subnetName
-		vmClient.UpdateSync(vm)
-
+		// the vm should use the new subnet in the namespace
 		ginkgo.By("Starting vm " + vmName)
 		vmClient.StartSync(vmName)
 		// new ip name is the same as the old one

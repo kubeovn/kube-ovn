@@ -1014,7 +1014,7 @@ func (c *Controller) handleDeletePod(key string) error {
 			klog.Infof("delete sts pod %s", podName)
 			toDel := isStatefulSetPodToDel(c.config.KubeClient, pod, sts)
 			if !toDel {
-				klog.Infof("keep ip for sts pod %s", podKey)
+				klog.Infof("try keep ip for sts pod %s", podKey)
 				keepIPCR = true
 			}
 		}
@@ -1048,7 +1048,7 @@ func (c *Controller) handleDeletePod(key string) error {
 			klog.Infof("delete vm pod %s", podName)
 			vmToBeDel := c.isVMToDel(pod, vmName)
 			if !vmToBeDel {
-				klog.Infof("keep ip for vm pod %s", podKey)
+				klog.Infof("try keep ip for vm pod %s", podKey)
 				keepIPCR = true
 			}
 		}
