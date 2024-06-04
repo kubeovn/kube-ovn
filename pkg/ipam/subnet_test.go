@@ -205,7 +205,7 @@ func TestGetV4StaticAddress(t *testing.T) {
 	v4 = "10.0.0.3"
 	usingPod, using := subnet.isIPAssignedToOtherPod(v4, podName)
 	require.True(t, using)
-	require.Equal(t, "pod1", usingPod)
+	require.Equal(t, "pod1.default", usingPod)
 }
 
 func TestGetV6StaticAddress(t *testing.T) {
@@ -278,7 +278,7 @@ func TestGetV6StaticAddress(t *testing.T) {
 	v6 = "2001:db8::3"
 	usingPod, using := subnet.isIPAssignedToOtherPod(v6, podName)
 	require.True(t, using)
-	require.Equal(t, "pod1", usingPod)
+	require.Equal(t, "pod1.default", usingPod)
 }
 
 func TestGetDualStaticAddress(t *testing.T) {
@@ -368,7 +368,7 @@ func TestGetDualStaticAddress(t *testing.T) {
 	v4 = "10.0.0.3"
 	usingPod, using := subnet.isIPAssignedToOtherPod(v4, podName)
 	require.True(t, using)
-	require.Equal(t, "pod1", usingPod)
+	require.Equal(t, "pod1.default", usingPod)
 }
 
 func TestGetGetV4RandomAddress(t *testing.T) {
