@@ -1010,15 +1010,25 @@ func (c *Controller) handleDeletePod(key string) error {
 
 	var keepIPCR bool
 	if ok, sts := isStatefulSetPod(pod); ok {
-		toDel := isStatefulSetPodToDel(c.config.KubeClient, pod, sts)
-		isDelete, err := appendCheckPodToDel(c, pod, sts, util.StatefulSet)
 		if pod.DeletionTimestamp != nil {
-			// triggered by delete event
-			if !(toDel || (isDelete && err == nil)) {
-				return nil
+			klog.Infof("delete sts pod %s", podName)
+			toDel := isStatefulSetPodToDel(c.config.KubeClient, pod, sts)
+			if !toDel {
+				klog.Infof("keep ip for sts pod %s", podKey)
+				keepIPCR = true
 			}
 		}
-		keepIPCR = !toDel && !isDelete && err == nil
+		if keepIPCR {
+			isDelete, err := appendCheckPodToDel(c, pod, sts, util.StatefulSet)
+			if err != nil {
+				klog.Error(err)
+				return err
+			}
+			if isDelete {
+				klog.Infof("not keep ip for sts pod %s", podKey)
+				keepIPCR = false
+			}
+		}
 	}
 	isVMPod, vmName := isVMPod(pod)
 	if isVMPod && c.config.EnableKeepVMIP {
@@ -1028,21 +1038,30 @@ func (c *Controller) handleDeletePod(key string) error {
 			return err
 		}
 		for _, port := range ports {
-			klog.Infof("clean migrate options for vm lsp %s", port.Name)
 			if err := c.OVNNbClient.CleanLogicalSwitchPortMigrateOptions(port.Name); err != nil {
 				err = fmt.Errorf("failed to clean migrate options for vm lsp %s, %v", port.Name, err)
 				klog.Error(err)
 				return err
 			}
 		}
-		vmToBeDel := c.isVMToDel(pod, vmName)
-		isDelete, err := appendCheckPodToDel(c, pod, vmName, util.VMInstance)
 		if pod.DeletionTimestamp != nil {
-			// triggered by delete event
-			if !(vmToBeDel || (isDelete && err == nil)) {
-				return nil
-			}
 			klog.Infof("delete vm pod %s", podName)
+			vmToBeDel := c.isVMToDel(pod, vmName)
+			if !vmToBeDel {
+				klog.Infof("keep ip for vm pod %s", podKey)
+				keepIPCR = true
+			}
+		}
+		if keepIPCR {
+			isDelete, err := appendCheckPodToDel(c, pod, vmName, util.VMInstance)
+			if err != nil {
+				klog.Error(err)
+				return err
+			}
+			if isDelete {
+				klog.Infof("not keep ip for vm pod %s", podKey)
+				keepIPCR = false
+			}
 		}
 	}
 
