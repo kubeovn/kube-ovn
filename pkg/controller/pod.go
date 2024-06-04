@@ -1895,6 +1895,7 @@ func appendCheckPodToDel(c *Controller, pod *v1.Pod, ownerRefName, ownerRefKind 
 		ss, err := c.config.KubeClient.AppsV1().StatefulSets(pod.Namespace).Get(context.Background(), ownerRefName, metav1.GetOptions{})
 		if err != nil {
 			if k8serrors.IsNotFound(err) {
+				klog.Infof("Statefulset %s is not found", ownerRefName)
 				return true, nil
 			}
 			klog.Errorf("failed to get StatefulSet %s, %v", ownerRefName, err)
@@ -1908,6 +1909,7 @@ func appendCheckPodToDel(c *Controller, pod *v1.Pod, ownerRefName, ownerRefKind 
 		vm, err := c.config.KubevirtClient.VirtualMachine(pod.Namespace).Get(context.Background(), ownerRefName, &metav1.GetOptions{})
 		if err != nil {
 			if k8serrors.IsNotFound(err) {
+				klog.Infof("VirtualMachine %s is not found", ownerRefName)
 				return true, nil
 			}
 			klog.Errorf("failed to get VirtualMachine %s, %v", ownerRefName, err)

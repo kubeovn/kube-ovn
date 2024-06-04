@@ -127,6 +127,70 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 		ginkgo.By("Stopping vm " + vmName)
 		vmClient.StopSync(vmName)
 
+		// the ip should be exist after vm stopped
+		portName := ovs.PodNameToPortName(vmName, namespaceName, util.OvnProvider)
+		ginkgo.By("should exist stopped vm ip " + portName)
+		oldVMIP := ipClient.Get(portName)
+		framework.ExpectNotEmpty(oldVMIP.Spec.IPAddress)
+
+		ginkgo.By("Starting vm " + vmName)
+		vmClient.StartSync(vmName)
+
+		// new ip name is the same as the old one
+		newVMIP := ipClient.Get(portName)
+		framework.ExpectNotEmpty(newVMIP.Spec.IPAddress)
+
+		ginkgo.By("Getting pod of vm " + vmName)
+		podList, err = podClient.List(context.TODO(), metav1.ListOptions{
+			LabelSelector: labelSelector,
+		})
+		framework.ExpectNoError(err)
+		framework.ExpectHaveLen(podList.Items, 1)
+
+		ginkgo.By("Validating new pod annotations")
+		pod = &podList.Items[0]
+		framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
+		framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
+		framework.ExpectHaveKeyWithValue(pod.Annotations, util.VMAnnotation, vmName)
+
+		ginkgo.By("Checking whether pod ips are changed")
+		framework.ExpectEqual(ips, pod.Status.PodIPs)
+		framework.ExpectEqual(oldVMIP.Spec.IPAddress, newVMIP.Spec.IPAddress)
+	})
+
+	framework.ConformanceIt("restart vm should be able to handle subnet change after the namespace has its first subnet later", func() {
+		// create a vm within a namespace, the namespace has no subnet, so the vm use ovn-default subnet
+		// create a subnet in the namespace later, the vm should use its own subnet
+		// stop the vm, the vm should delete the vm ip, because of the namespace only has one subnet but not ovn-default
+		// start the vm, the vm should use the namespace owened subnet
+		ginkgo.By("Creating subnet " + subnetName)
+		cidr := framework.RandomCIDR(f.ClusterIPFamily)
+		subnet := framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, []string{namespaceName})
+		_ = subnetClient.CreateSync(subnet)
+
+		ginkgo.By("Getting pod of vm " + vmName)
+		labelSelector := fmt.Sprintf("%s=%s", v1.VirtualMachineNameLabel, vmName)
+		podList, err := podClient.List(context.TODO(), metav1.ListOptions{
+			LabelSelector: labelSelector,
+		})
+		framework.ExpectNoError(err)
+		framework.ExpectHaveLen(podList.Items, 1)
+
+		ginkgo.By("Validating pod annotations")
+		pod := &podList.Items[0]
+		framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
+		framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
+		framework.ExpectHaveKeyWithValue(pod.Annotations, util.VMAnnotation, vmName)
+		ips := pod.Status.PodIPs
+
+		ginkgo.By("Stopping vm " + vmName)
+		vmClient.StopSync(vmName)
+
+		// the ip is deleted
+		portName := ovs.PodNameToPortName(vmName, namespaceName, util.OvnProvider)
+		err = ipClient.TryGet(portName)
+		framework.ExpectError(err)
+
 		ginkgo.By("Starting vm " + vmName)
 		vmClient.StartSync(vmName)
 
@@ -144,15 +208,10 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.VMAnnotation, vmName)
 
 		ginkgo.By("Checking whether pod ips are changed")
-		framework.ExpectEqual(ips, pod.Status.PodIPs)
+		framework.ExpectNotEqual(ips, pod.Status.PodIPs)
 	})
 
-	framework.ConformanceIt("should be able to change vm subnet after deleting the old ip", func() {
-		ginkgo.By("Creating subnet " + subnetName)
-		cidr := framework.RandomCIDR(f.ClusterIPFamily)
-		subnet := framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, []string{namespaceName})
-		subnet = subnetClient.CreateSync(subnet)
-
+	framework.ConformanceIt("restart vm should be able to change vm subnet after deleting the old ip", func() {
 		ginkgo.By("Getting pod of vm " + vmName)
 		labelSelector := fmt.Sprintf("%s=%s", v1.VirtualMachineNameLabel, vmName)
 		podList, err := podClient.List(context.TODO(), metav1.ListOptions{
@@ -166,15 +225,21 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.VMAnnotation, vmName)
-
 		ginkgo.By("Stopping vm " + vmName)
 		vmClient.StopSync(vmName)
-		portName := ovs.PodNameToPortName(vmName, namespaceName, subnet.Spec.Provider)
+		portName := ovs.PodNameToPortName(vmName, namespaceName, util.OvnProvider)
+		// make sure the vm ip is still exist
 		oldVMIP := ipClient.Get(portName)
 		framework.ExpectNotEmpty(oldVMIP.Spec.IPAddress)
-		ginkgo.By("Updating vm " + vmName + " to use new subnet " + subnetName)
-		// delete old ip, lsp, ipam
 		ipClient.DeleteSync(portName)
+		// delete old ip to create the same name ip in other subnet
+
+		ginkgo.By("Creating subnet " + subnetName)
+		cidr := framework.RandomCIDR(f.ClusterIPFamily)
+		subnet := framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, []string{namespaceName})
+		subnet = subnetClient.CreateSync(subnet)
+		ginkgo.By("Updating vm " + vmName + " to use new subnet " + subnet.Name)
+		// delete old ip, lsp, ipam
 
 		vm := vmClient.Get(vmName).DeepCopy()
 		vm.Spec.Template.ObjectMeta.Annotations[util.LogicalSwitchAnnotation] = subnetName
