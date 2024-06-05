@@ -13,8 +13,10 @@ type (
 var (
 	MirrorFilterFromLport MirrorFilter = "from-lport"
 	MirrorFilterToLport   MirrorFilter = "to-lport"
+	MirrorFilterBoth      MirrorFilter = "both"
 	MirrorTypeGre         MirrorType   = "gre"
 	MirrorTypeErspan      MirrorType   = "erspan"
+	MirrorTypeLocal       MirrorType   = "local"
 )
 
 // Mirror defines an object in Mirror table

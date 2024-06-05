@@ -10,9 +10,10 @@ type (
 )
 
 var (
-	DHCPv6OptionsTypeIpv6 DHCPv6OptionsType = "ipv6"
-	DHCPv6OptionsTypeStr  DHCPv6OptionsType = "str"
-	DHCPv6OptionsTypeMAC  DHCPv6OptionsType = "mac"
+	DHCPv6OptionsTypeIpv6   DHCPv6OptionsType = "ipv6"
+	DHCPv6OptionsTypeStr    DHCPv6OptionsType = "str"
+	DHCPv6OptionsTypeMAC    DHCPv6OptionsType = "mac"
+	DHCPv6OptionsTypeDomain DHCPv6OptionsType = "domain"
 )
 
 // DHCPv6Options defines an object in DHCPv6_Options table
