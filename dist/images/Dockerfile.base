@@ -8,49 +8,37 @@ ENV SRC_DIR='/usr/src'
 RUN apt update && apt install -y git curl
 
 RUN cd /usr/src/ && \
-    git clone -b branch-3.1 --depth=1 https://github.com/openvswitch/ovs.git && \
+    git clone -b branch-3.3 --depth=1 https://github.com/openvswitch/ovs.git && \
     cd ovs && \
     # fix memory leak by ofport_usage and trim memory periodically
-    curl -s https://github.com/kubeovn/ovs/commit/25d71867370c9a44c66b973556338de7a4d9bad7.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovs/commit/8ff6820a3db1087a6ea4a28a1f743e079ea87315.patch | git apply && \
     # increase election timer
-    curl -s https://github.com/kubeovn/ovs/commit/31f736fb54cf00e893a23e396958883f54f4080f.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovs/commit/98e1f9081f107205edc40478f61ae79a43c83061.patch | git apply && \
     # add fdb update logging
-    curl -s https://github.com/kubeovn/ovs/commit/119ab5c7e104d25641cdf4506a359c5729acdd9a.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovs/commit/f2ac94a5a1f382fc4b8e2d3d7725d98ebbef13e2.patch | git apply && \
     # fdb: fix mac learning in environments with hairpin enabled
-    curl -s https://github.com/kubeovn/ovs/commit/40d5597a9a3a09015dda2202f6aa81791c5c03f3.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovs/commit/321868c6897b9ebcaad9ce3c012e664f84c99ee9.patch | git apply && \
     # ovsdb-tool: add optional server id parameter for "join-cluster" command
-    curl -s https://github.com/kubeovn/ovs/commit/ebf61515da71fa2e23125a92859fbdb96dcbffe7.patch | git apply && \
-    # Add jitter parameter patch for netem qos
-    curl -s https://github.com/kubeovn/ovs/commit/2eaaf89fbf3ee2172719ed10d045fd79900edc8e.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovs/commit/968b4eb4140b2944d75767aa9ae0625bdcc61596.patch | git apply && \
     # fix memory leak in qos
-    curl -s https://github.com/kubeovn/ovs/commit/6a4dd2f4b9311a227cc26fef7c398ae9b241311b.patch | git apply && \
-    # netdev: reduce cpu utilization for getting device addresses
-    curl -s https://github.com/kubeovn/ovs/commit/181680672eb74e150f8244361468e63167aaea46.patch | git apply && \
-    # ovs-router: skip getting source address for kube-ipvs0
-    curl -s https://github.com/kubeovn/ovs/commit/f9048a894c019cd4cf5587d40cc07054da60ec81.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovs/commit/fd25c5273eed96e8bc9efab46eecbc815e0ce22b.patch | git apply && \
     # ovsdb-tool: add command fix-cluster
-    curl -s https://github.com/kubeovn/ovs/commit/f52c239f5ded40b503e4d217f916b46ca413da4c.patch | git apply
+    curl -s https://github.com/kubeovn/ovs/commit/32f907ae9a1f8efe58dfb58107f02b1442b18edc.patch | git apply && \
+    # netdev: reduce cpu utilization for getting device addresses
+    curl -s https://github.com/kubeovn/ovs/commit/28d41977a26606f324eadd8d907a8fb2e18505d9.patch | git apply && \
+    # ovs-router: skip getting source address for kube-ipvs0
+    curl -s https://github.com/kubeovn/ovs/commit/b7129150cb763d1fd081ee3c6f669da90d46b965.patch | git apply
 
-RUN cd /usr/src/ && git clone -b branch-22.12 --depth=1 https://github.com/ovn-org/ovn.git && \
+RUN cd /usr/src/ && git clone -b branch-24.03 --depth=1 https://github.com/ovn-org/ovn.git && \
     cd ovn && \
     # change hash type from dp_hash to hash with field src_ip
-    curl -s https://github.com/kubeovn/ovn/commit/4ad8763f707ff4088ae61396c7931e8735f71f22.patch | git apply && \
-    # set ether dst addr for dnat on logical switch
-    curl -s https://github.com/kubeovn/ovn/commit/44875725ad6ce3cb38e4d471d540fe69ed204bff.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/4b2d0bffda64fcfca876fe62a02486d7927c1162.patch | git apply && \
     # modify src route priority
-    curl -s https://github.com/kubeovn/ovn/commit/da1388ece89b27012d081c31310fd577b036b071.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/3dbceb75c5e23d8d5b555e5d87238d40cb557424.patch | git apply && \
     # fix reaching resubmit limit in underlay
-    curl -s https://github.com/kubeovn/ovn/commit/6934f1a1eb5986a904eefb560c0d6d57811453d9.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/6bf6df6da5d6fefae742856e6f43dd672360e48d.patch | git apply && \
     # ovn-controller: do not send GARP on localnet for Kube-OVN ports
-    curl -s https://github.com/kubeovn/ovn/commit/8af8751cdb55f582c675db921f2526b06fd3d8c0.patch | git apply && \
-    # fix lr-lb dnat with multiple distributed gateway ports
-    curl -s https://github.com/kubeovn/ovn/commit/80f37c2debbf9f5230403691f791d11cc2b2e277.patch | git apply && \
-    # lflow: do not send direct traffic between lports to conntrack
-    curl -s https://github.com/kubeovn/ovn/commit/54cbe0d1ba2051e640dd3e53498f373362547691.patch | git apply && \
-    # northd: add nb option version_compatibility
-    curl -s https://github.com/kubeovn/ovn/commit/06f5a7c684a6030036e2663eecf934b37c3e666e.patch | git apply && \
-    # northd: skip conntrack when access node local dns ip
-    curl -s https://github.com/kubeovn/ovn/commit/1ea964886da774506962d6bf23f8f894d93a10eb.patch | git apply
+    curl -s https://github.com/kubeovn/ovn/commit/5fd40530728f98011d2cd852d09ee16d4907cc1d.patch | git apply
 
 RUN apt install -y build-essential fakeroot \
     autoconf automake bzip2 debhelper-compat dh-exec dh-python dh-sequence-python3 dh-sequence-sphinxdoc \
@@ -83,7 +71,7 @@ FROM ubuntu:22.04
 
 ARG DEBIAN_FRONTEND=noninteractive
 RUN apt update && apt upgrade -y && apt install ca-certificates python3 hostname libunwind8 netbase \
-        ethtool iproute2 ncat libunbound-dev procps libatomic1 kmod iptables python3-netifaces python3-sortedcontainers \
+        ethtool iproute2 ncat libunbound8 procps libatomic1 kmod iptables python3-netifaces python3-sortedcontainers \
         tcpdump ipset curl uuid-runtime openssl inetutils-ping arping ndisc6 conntrack iputils-tracepath \
         logrotate dnsutils net-tools strongswan strongswan-pki libcharon-extra-plugins libmnl0 \
         libcharon-extauth-plugins libstrongswan-extra-plugins libstrongswan-standard-plugins -y --no-install-recommends && \
