@@ -19,6 +19,7 @@ var (
 type LogicalRouterPolicy struct {
 	UUID        string                    `ovsdb:"_uuid"`
 	Action      LogicalRouterPolicyAction `ovsdb:"action"`
+	BFDSessions []string                  `ovsdb:"bfd_sessions"`
 	ExternalIDs map[string]string         `ovsdb:"external_ids"`
 	Match       string                    `ovsdb:"match"`
 	Nexthop     *string                   `ovsdb:"nexthop"`
