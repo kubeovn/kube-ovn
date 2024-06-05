@@ -37,7 +37,7 @@ require (
 	github.com/stretchr/testify v1.9.0
 	github.com/vishvananda/netlink v1.2.1-beta.2.0.20240713210050-d13535d71ed3
 	go.uber.org/mock v0.4.0
-	golang.org/x/exp v0.0.0-20240808152545-0cdaa3abc0fa
+	golang.org/x/exp v0.0.0-20240823005443-9b4947da3948
 	golang.org/x/mod v0.20.0
 	golang.org/x/sys v0.24.0
 	golang.org/x/time v0.6.0
@@ -186,7 +186,7 @@ require (
 replace (
 	github.com/mdlayher/arp => github.com/kubeovn/arp v0.0.0-20240218024213-d9612a263f68
 	github.com/openshift/client-go => github.com/openshift/client-go v0.0.1
-	github.com/ovn-org/libovsdb => github.com/kubeovn/libovsdb v0.0.0-20240218023647-f0bc3ce57fcd
+	github.com/ovn-org/libovsdb => github.com/kubeovn/libovsdb v0.0.0-20240814054845-978196448fb2
 	k8s.io/api => k8s.io/api v0.30.4
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.30.4
 	k8s.io/apimachinery => k8s.io/apimachinery v0.30.4

@@ -87,10 +87,20 @@ func NewController(config *Configuration) *Controller {
 	}
 
 	var err error
-	if controller.OVNNbClient, err = ovs.NewOvnNbClient(config.OvnNbAddr, config.OvnTimeout); err != nil {
+	if controller.OVNNbClient, err = ovs.NewOvnNbClient(
+		config.OvnNbAddr,
+		config.OvnTimeout,
+		config.OvsDbConnectTimeout,
+		config.OvsDbInactivityTimeout,
+	); err != nil {
 		util.LogFatalAndExit(err, "failed to create ovn nb client")
 	}
-	if controller.OVNSbClient, err = ovs.NewOvnSbClient(config.OvnSbAddr, config.OvnTimeout); err != nil {
+	if controller.OVNSbClient, err = ovs.NewOvnSbClient(
+		config.OvnSbAddr,
+		config.OvnTimeout,
+		config.OvsDbConnectTimeout,
+		config.OvsDbInactivityTimeout,
+	); err != nil {
 		util.LogFatalAndExit(err, "failed to create ovn sb client")
 	}
 

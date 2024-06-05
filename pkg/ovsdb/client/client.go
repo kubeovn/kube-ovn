@@ -25,7 +25,6 @@ const (
 	ICNBDB = "icnbdb"
 	ICSBDB = "icsbdb"
 )
-const timeout = 3 * time.Second
 
 var namedUUIDCounter uint32
 
@@ -42,10 +41,24 @@ func NamedUUID() string {
 }
 
 // NewOvsDbClient creates a new ovsdb client
-func NewOvsDbClient(db, addr string, dbModel model.ClientDBModel, monitors []client.MonitorOption) (client.Client, error) {
+func NewOvsDbClient(
+	db string,
+	addr string,
+	dbModel model.ClientDBModel,
+	monitors []client.MonitorOption,
+	ovsDbConTimeout int,
+	ovsDbInactivityTimeout int,
+) (client.Client, error) {
 	logger := klog.NewKlogr().WithName("libovsdb").WithValues("db", db)
+	connectTimeout := time.Duration(ovsDbConTimeout) * time.Second
+	inactivityTimeout := time.Duration(ovsDbInactivityTimeout) * time.Second
 	options := []client.Option{
-		client.WithReconnect(timeout, &backoff.ConstantBackOff{Interval: time.Second}),
+		// Reading and parsing the DB after reconnect at scale can (unsurprisingly)
+		// take longer than a normal ovsdb operation. Give it a bit more time so
+		// we don't time out and enter a reconnect loop. In addition it also enables
+		// inactivity check on the ovsdb connection.
+		client.WithInactivityCheck(inactivityTimeout, connectTimeout, &backoff.ZeroBackOff{}),
+
 		client.WithLeaderOnly(true),
 		client.WithLogger(&logger),
 	}
@@ -84,7 +97,7 @@ func NewOvsDbClient(db, addr string, dbModel model.ClientDBModel, monitors []cli
 		klog.Error(err)
 		return nil, err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(len(endpoints)+1)*timeout)
+	ctx, cancel := context.WithTimeout(context.Background(), connectTimeout)
 	defer cancel()
 	if err = c.Connect(ctx); err != nil {
 		klog.Errorf("failed to connect to OVN NB server %s: %v", addr, err)

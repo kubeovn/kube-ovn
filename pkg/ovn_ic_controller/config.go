@@ -21,10 +21,12 @@ type Configuration struct {
 	KubeClient     kubernetes.Interface
 	KubeOvnClient  clientset.Interface
 
-	PodNamespace string
-	OvnNbAddr    string
-	OvnSbAddr    string
-	OvnTimeout   int
+	PodNamespace           string
+	OvnNbAddr              string
+	OvnSbAddr              string
+	OvnTimeout             int
+	OvsDbConnectTimeout    int
+	OvsDbInactivityTimeout int
 
 	NodeSwitch     string
 	ClusterRouter  string
@@ -35,9 +37,11 @@ func ParseFlags() (*Configuration, error) {
 	var (
 		argKubeConfigFile = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.")
 
-		argOvnNbAddr  = pflag.String("ovn-nb-addr", "", "ovn-nb address")
-		argOvnSbAddr  = pflag.String("ovn-sb-addr", "", "ovn-sb address")
-		argOvnTimeout = pflag.Int("ovn-timeout", 60, "")
+		argOvnNbAddr              = pflag.String("ovn-nb-addr", "", "ovn-nb address")
+		argOvnSbAddr              = pflag.String("ovn-sb-addr", "", "ovn-sb address")
+		argOvnTimeout             = pflag.Int("ovn-timeout", 60, "")
+		argOvsDbConTimeout        = pflag.Int("ovsdb-con-timeout", 3, "")
+		argOvsDbInactivityTimeout = pflag.Int("ovsdb-inactivity-timeout", 10, "")
 
 		argClusterRouter  = pflag.String("cluster-router", util.DefaultVpc, "The router name for cluster router")
 		argNodeSwitch     = pflag.String("node-switch", "join", "The name of node gateway switch which help node to access pod network")
@@ -71,10 +75,12 @@ func ParseFlags() (*Configuration, error) {
 	config := &Configuration{
 		KubeConfigFile: *argKubeConfigFile,
 
-		PodNamespace: os.Getenv("POD_NAMESPACE"),
-		OvnNbAddr:    *argOvnNbAddr,
-		OvnSbAddr:    *argOvnSbAddr,
-		OvnTimeout:   *argOvnTimeout,
+		PodNamespace:           os.Getenv("POD_NAMESPACE"),
+		OvnNbAddr:              *argOvnNbAddr,
+		OvnSbAddr:              *argOvnSbAddr,
+		OvnTimeout:             *argOvnTimeout,
+		OvsDbConnectTimeout:    *argOvsDbConTimeout,
+		OvsDbInactivityTimeout: *argOvsDbInactivityTimeout,
 
 		ClusterRouter:  *argClusterRouter,
 		NodeSwitch:     *argNodeSwitch,
