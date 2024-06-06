@@ -2,10 +2,10 @@ package ovs
 
 import (
 	"github.com/digitalocean/go-openvswitch/ovs"
-	"github.com/kubeovn/kube-ovn/pkg/util"
 	"k8s.io/klog/v2"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func AddOrUpdateU2OFilterOpenFlow(client *ovs.Client, bridgeName, gatewayIP, u2oIP string) error {
@@ -90,7 +90,7 @@ func AddOrUpdateU2OFilterOpenFlow(client *ovs.Client, bridgeName, gatewayIP, u2o
 	return nil
 }
 
-func DeleteAllU2OFilterOpenFlow(client *ovs.Client, bridgeName string, protocol string) error {
+func DeleteAllU2OFilterOpenFlow(client *ovs.Client, bridgeName, protocol string) error {
 	if protocol == kubeovnv1.ProtocolIPv4 || protocol == kubeovnv1.ProtocolDual {
 		if err := delU2OFilterOpenFlow(client, bridgeName, false); err != nil {
 			return err
@@ -105,7 +105,6 @@ func DeleteAllU2OFilterOpenFlow(client *ovs.Client, bridgeName string, protocol 
 }
 
 func delU2OFilterOpenFlow(client *ovs.Client, bridgeName string, isV6 bool) error {
-
 	cookie := util.U2OFilterOpenFlowCookieV4
 	if isV6 {
 		cookie = util.U2OFilterOpenFlowCookieV6
