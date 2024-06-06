@@ -20,6 +20,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
 
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	clientset "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -40,6 +41,8 @@ type Configuration struct {
 	GrpcPort                    uint32
 	ClusterAs                   uint32
 	RouterID                    string
+	PodIPs                      map[string]net.IP
+	NodeIPs                     map[string]net.IP
 	NeighborAddresses           []string
 	NeighborIPv6Addresses       []string
 	NeighborAs                  uint32
@@ -71,6 +74,7 @@ func ParseFlags() (*Configuration, error) {
 		argGrpcPort                    = pflag.Uint32("grpc-port", DefaultBGPGrpcPort, "The port for grpc to listen, default:50051")
 		argClusterAs                   = pflag.Uint32("cluster-as", DefaultBGPClusterAs, "The as number of container network, default 65000")
 		argRouterID                    = pflag.String("router-id", "", "The address for the speaker to use as router id, default the node ip")
+		argNodeIPs                     = pflag.String("node-ips", "", "The comma-separated list of node IP addresses to use instead of the pod IP address for the next hop router IP address.")
 		argNeighborAddress             = pflag.String("neighbor-address", "", "Comma separated IPv4 router addresses the speaker connects to.")
 		argNeighborIPv6Address         = pflag.String("neighbor-ipv6-address", "", "Comma separated IPv6 router addresses the speaker connects to.")
 		argNeighborAs                  = pflag.Uint32("neighbor-as", DefaultBGPNeighborAs, "The router as number, default 65001")
@@ -111,12 +115,28 @@ func ParseFlags() (*Configuration, error) {
 		return nil, errors.New("the bgp MultihopTtl must be in the range 1 to 255")
 	}
 
+	podIpsEnv := os.Getenv("POD_IPS")
+	if podIpsEnv == "" {
+		podIpsEnv = os.Getenv("POD_IP")
+	}
+	podIPv4, podIPv6 := util.SplitStringIP(podIpsEnv)
+
+	nodeIPv4, nodeIPv6 := util.SplitStringIP(*argNodeIPs)
+
 	config := &Configuration{
-		AnnounceClusterIP:           *argAnnounceClusterIP,
-		GrpcHost:                    *argGrpcHost,
-		GrpcPort:                    *argGrpcPort,
-		ClusterAs:                   *argClusterAs,
-		RouterID:                    *argRouterID,
+		AnnounceClusterIP: *argAnnounceClusterIP,
+		GrpcHost:          *argGrpcHost,
+		GrpcPort:          *argGrpcPort,
+		ClusterAs:         *argClusterAs,
+		RouterID:          *argRouterID,
+		NodeIPs: map[string]net.IP{
+			kubeovnv1.ProtocolIPv4: net.ParseIP(nodeIPv4),
+			kubeovnv1.ProtocolIPv6: net.ParseIP(nodeIPv6),
+		},
+		PodIPs: map[string]net.IP{
+			kubeovnv1.ProtocolIPv4: net.ParseIP(podIPv4),
+			kubeovnv1.ProtocolIPv6: net.ParseIP(podIPv6),
+		},
 		NeighborAs:                  *argNeighborAs,
 		AuthPassword:                *argAuthPassword,
 		HoldTime:                    ht,
@@ -148,9 +168,13 @@ func ParseFlags() (*Configuration, error) {
 	}
 
 	if config.RouterID == "" {
-		config.RouterID = os.Getenv("POD_IP")
+		if podIPv4 != "" {
+			config.RouterID = podIPv4
+		} else {
+			config.RouterID = podIPv6
+		}
 		if config.RouterID == "" {
-			return nil, errors.New("no router id or POD_IP")
+			return nil, errors.New("no router id or POD_IPS")
 		}
 	}
 
