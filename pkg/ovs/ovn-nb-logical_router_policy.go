@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"reflect"
+	"maps"
 	"slices"
 
 	"github.com/ovn-org/libovsdb/client"
@@ -12,6 +12,7 @@ import (
 	"github.com/ovn-org/libovsdb/ovsdb"
 	"github.com/scylladb/go-set/strset"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/ptr"
 
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
@@ -27,24 +28,46 @@ func (c *OVNNbClient) AddLogicalRouterPolicy(lrName string, priority int, match,
 		return fmt.Errorf("get policy priority %d match %s in logical router %s: %v", priority, match, lrName, err)
 	}
 
-	var found bool
 	duplicate := make([]string, 0, len(policyList))
+	var policyFound *ovnnb.LogicalRouterPolicy
 	for _, policy := range policyList {
-		if found || policy.Action != action || !reflect.DeepEqual(policy.ExternalIDs, externalIDs) || (policy.Action == ovnnb.LogicalRouterPolicyActionReroute && !strset.New(nextHops...).IsEqual(strset.New(policy.Nexthops...))) {
+		if policy.Action != action || (policy.Action == ovnnb.LogicalRouterPolicyActionReroute && !strset.New(nextHops...).IsEqual(strset.New(policy.Nexthops...))) {
+			duplicate = append(duplicate, policy.UUID)
+			continue
+		}
+		if policyFound != nil {
 			duplicate = append(duplicate, policy.UUID)
 		} else {
-			found = true
+			policyFound = policy
 		}
 	}
 	for _, uuid := range duplicate {
+		klog.Infof("deleting lr policy by uuid %s", uuid)
 		if err = c.DeleteLogicalRouterPolicyByUUID(lrName, uuid); err != nil {
 			return err
 		}
 	}
-	if len(duplicate) == len(policyList) {
+
+	if policyFound == nil {
+		klog.Infof("creating lr policy with priority = %d, match = %q, action = %q, nextHops = %q", priority, match, action, nextHops)
 		policy := c.newLogicalRouterPolicy(priority, match, action, nextHops, externalIDs)
 		if err := c.CreateLogicalRouterPolicies(lrName, policy); err != nil {
 			return fmt.Errorf("add policy to logical router %s: %v", lrName, err)
+		}
+	} else if !maps.Equal(policyFound.ExternalIDs, externalIDs) {
+		policy := ptr.To(*policyFound)
+		policy.ExternalIDs = externalIDs
+		ops, err := c.Where(policy).Update(policy, &policy.ExternalIDs)
+		if err != nil {
+			err := fmt.Errorf("failed to generate operations for updating logical router policy: %v", err)
+			klog.Error(err)
+			return err
+		}
+
+		if err = c.Transact("lr-policy-update", ops); err != nil {
+			err := fmt.Errorf("failed to update logical router policy: %v", err)
+			klog.Error(err)
+			return err
 		}
 	}
 

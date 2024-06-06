@@ -263,9 +263,9 @@ func (c *Controller) handleAddNode(key string) error {
 			continue
 		}
 
-		nodeIP, af := nodeIPv4, 4
+		nodeIP, protocol, af := nodeIPv4, kubeovnv1.ProtocolIPv4, 4
 		if util.CheckProtocol(ip) == kubeovnv1.ProtocolIPv6 {
-			nodeIP, af = nodeIPv6, 6
+			nodeIP, protocol, af = nodeIPv6, kubeovnv1.ProtocolIPv6, 6
 		}
 		if nodeIP != "" {
 			var (
@@ -292,16 +292,16 @@ func (c *Controller) handleAddNode(key string) error {
 				return err
 			}
 
-			if err = c.deletePolicyRouteForLocalDNSCacheOnNode(node.Name, af); err != nil {
-				klog.Errorf("failed to delete policy route for node %s: %v", node.Name, err)
-				return err
+			dnsIPs := make([]string, 0, len(c.config.NodeLocalDNSIPs))
+			for _, ip := range c.config.NodeLocalDNSIPs {
+				if util.CheckProtocol(ip) == protocol {
+					dnsIPs = append(dnsIPs, ip)
+				}
 			}
 
-			if c.config.NodeLocalDNSIP != "" {
-				if err = c.addPolicyRouteForLocalDNSCacheOnNode(portName, ip, node.Name, af); err != nil {
-					klog.Errorf("failed to add policy route for node %s: %v", node.Name, err)
-					return err
-				}
+			if err = c.addPolicyRouteForLocalDNSCacheOnNode(dnsIPs, portName, ip, node.Name, af); err != nil {
+				klog.Errorf("failed to add policy route for node %s: %v", node.Name, err)
+				return err
 			}
 		}
 	}
@@ -1121,7 +1121,17 @@ func (c *Controller) addPolicyRouteForCentralizedSubnetOnNode(nodeName, nodeIP s
 	return nil
 }
 
-func (c *Controller) addPolicyRouteForLocalDNSCacheOnNode(nodePortName, nodeIP, nodeName string, af int) error {
+func (c *Controller) addPolicyRouteForLocalDNSCacheOnNode(dnsIPs []string, nodePortName, nodeIP, nodeName string, af int) error {
+	if len(dnsIPs) == 0 {
+		return c.deletePolicyRouteForLocalDNSCacheOnNode(nodeName, af)
+	}
+
+	policies, err := c.OVNNbClient.GetLogicalRouterPoliciesByExtID(c.config.ClusterRouter, "node", nodeName)
+	if err != nil {
+		klog.Errorf("failed to list logical router policies with external-ids:node = %q: %v", nodeName, err)
+		return err
+	}
+
 	var (
 		externalIDs = map[string]string{
 			"vendor":          util.CniTypeName,
@@ -1129,24 +1139,48 @@ func (c *Controller) addPolicyRouteForLocalDNSCacheOnNode(nodePortName, nodeIP, 
 			"address-family":  strconv.Itoa(af),
 			"isLocalDnsCache": "true",
 		}
-		pgAs   = strings.ReplaceAll(fmt.Sprintf("%s_ip%d", nodePortName, af), "-", ".")
-		match  = fmt.Sprintf("ip%d.src == $%s && ip%d.dst == %s", af, pgAs, af, c.config.NodeLocalDNSIP)
-		action = kubeovnv1.PolicyRouteActionReroute
+		pgAs     = strings.ReplaceAll(fmt.Sprintf("%s_ip%d", nodePortName, af), "-", ".")
+		action   = kubeovnv1.PolicyRouteActionReroute
+		nextHops = []string{nodeIP}
 	)
-	klog.Infof("add node local dns cache policy route for router: %s, match %s, action %s, nexthop %s, externalID %v", c.config.ClusterRouter, match, action, nodeIP, externalIDs)
-	if err := c.addPolicyRouteToVpc(
-		c.config.ClusterRouter,
-		&kubeovnv1.PolicyRoute{
-			Priority:  util.NodeRouterPolicyPriority,
-			Match:     match,
-			Action:    action,
-			NextHopIP: nodeIP,
-		},
-		externalIDs,
-	); err != nil {
-		klog.Errorf("failed to add logical router policy for node %s: %v", nodeName, err)
-		return err
+	matches := strset.NewWithSize(len(dnsIPs))
+	for _, ip := range dnsIPs {
+		matches.Add(fmt.Sprintf("ip%d.src == $%s && ip%d.dst == %s", af, pgAs, af, ip))
 	}
+
+	for _, policy := range policies {
+		if len(policy.ExternalIDs) == 0 || policy.ExternalIDs["vendor"] != util.CniTypeName || policy.ExternalIDs["isLocalDnsCache"] != "true" {
+			continue
+		}
+		if policy.Priority == util.NodeRouterPolicyPriority && policy.Action == string(action) && slices.Equal(policy.Nexthops, nextHops) && matches.Has(policy.Match) {
+			matches.Remove(policy.Match)
+			continue
+		}
+		// delete unused policy router policy
+		klog.Infof("deleting logical router policy by UUID %s", policy.UUID)
+		if err = c.OVNNbClient.DeleteLogicalRouterPolicyByUUID(c.config.ClusterRouter, policy.UUID); err != nil {
+			klog.Errorf("failed to delete logical router policy by UUID %s: %v", policy.UUID, err)
+			return err
+		}
+	}
+
+	for _, match := range matches.List() {
+		klog.Infof("add node local dns cache policy route for router %s: match %q, action %q, nexthop %q, externalID %v", c.config.ClusterRouter, match, action, nodeIP, externalIDs)
+		if err := c.addPolicyRouteToVpc(
+			c.config.ClusterRouter,
+			&kubeovnv1.PolicyRoute{
+				Priority:  util.NodeRouterPolicyPriority,
+				Match:     match,
+				Action:    action,
+				NextHopIP: nodeIP,
+			},
+			externalIDs,
+		); err != nil {
+			klog.Errorf("failed to add logical router policy for node %s: %v", nodeName, err)
+			return err
+		}
+	}
+
 	return nil
 }
 
