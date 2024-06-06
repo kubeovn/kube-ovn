@@ -147,9 +147,9 @@ func TestGetV4StaticAddress(t *testing.T) {
 	var mac *string
 	v4 := "10.0.0.3"
 	v4IP, err := NewIP(v4)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	ip1, macStr1, err := subnet.GetStaticAddress(podName, nicName, v4IP, mac, false, true)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	require.Equal(t, v4, ip1.String())
 	require.NotEmpty(t, macStr1)
 	v4IP, v6IP, m, protocol := subnet.GetPodAddress(nicName)
@@ -164,9 +164,9 @@ func TestGetV4StaticAddress(t *testing.T) {
 	v4 = "10.0.0.22"
 	macIn := "00:11:22:33:44:55"
 	v4IP, err = NewIP(v4)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	ip2, macOut2, err := subnet.GetStaticAddress(podName, nicName, v4IP, &macIn, false, true)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	require.Equal(t, v4, ip2.String())
 	require.Equal(t, macIn, macOut2)
 	v4IP, v6IP, m, protocol = subnet.GetPodAddress(nicName)
@@ -194,7 +194,7 @@ func TestGetV4StaticAddress(t *testing.T) {
 	v4 = "10.0.0.23"
 	macIn = "00:11:22:33:44:55"
 	v4IP, err = NewIP(v4)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	ip, macOut, err = subnet.GetStaticAddress(podName, nicName, v4IP, &macIn, false, true)
 	require.NotNil(nil, err)
 	require.Empty(t, macOut)
@@ -221,9 +221,9 @@ func TestGetV6StaticAddress(t *testing.T) {
 	nicName := "pod1.default"
 	v6 := "2001:db8::3"
 	v6IP, err := NewIP(v6)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	ip1, macStr1, err := subnet.GetStaticAddress(podName, nicName, v6IP, nil, false, true)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	require.Equal(t, v6, ip1.String())
 	require.NotEmpty(t, macStr1)
 	v4IP, v6IP, m, protocol := subnet.GetPodAddress(nicName)
@@ -238,9 +238,9 @@ func TestGetV6StaticAddress(t *testing.T) {
 	v6 = "2001:db8::4"
 	macIn := "00:11:22:33:44:56"
 	v6IP, err = NewIP(v6)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	ip2, macOut2, err := subnet.GetStaticAddress(podName, nicName, v6IP, &macIn, false, true)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	require.Equal(t, v6, ip2.String())
 	require.Equal(t, macIn, macOut2)
 	v4IP, v6IP, m, protocol = subnet.GetPodAddress(nicName)
@@ -267,7 +267,7 @@ func TestGetV6StaticAddress(t *testing.T) {
 	v6 = "2001:db8::5"
 	macIn = "00:11:22:33:44:56"
 	v6IP, err = NewIP(v6)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	ip, macOut, err = subnet.GetStaticAddress(podName, nicName, v6IP, &macIn, false, true)
 	require.NotNil(nil, err)
 	require.Empty(t, macOut)
@@ -298,15 +298,15 @@ func TestGetDualStaticAddress(t *testing.T) {
 	v4 := "10.0.0.3"
 	v6 := "2001:db8::3"
 	v4IP, err := NewIP(v4)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	v4Ip1, macStr1, err := subnet.GetStaticAddress(podName, nicName, v4IP, mac, false, true)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	require.Equal(t, v4, v4Ip1.String())
 	require.NotEmpty(t, macStr1)
 	v6IP, err := NewIP(v6)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	v6Ip1, macStr1, err := subnet.GetStaticAddress(podName, nicName, v6IP, mac, false, true)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	require.Equal(t, v6, v6Ip1.String())
 	require.NotEmpty(t, macStr1)
 	v4Ip, v6Ip, m, protocol := subnet.GetPodAddress(nicName)
@@ -322,15 +322,15 @@ func TestGetDualStaticAddress(t *testing.T) {
 	v6 = "2001:db8::22"
 	macIn := "00:11:22:33:44:55"
 	v4IP, err = NewIP(v4)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	v4Ip2, macOut, err := subnet.GetStaticAddress(podName, nicName, v4IP, &macIn, false, true)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	require.Equal(t, v4, v4Ip2.String())
 	require.Equal(t, macIn, macOut)
 	v6IP, err = NewIP(v6)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	v6Ip2, macOut, err := subnet.GetStaticAddress(podName, nicName, v6IP, &macIn, false, true)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	require.Equal(t, v6, v6Ip2.String())
 	require.Equal(t, macIn, macOut)
 	v4Ip, v6Ip, m, protocol = subnet.GetPodAddress(nicName)
@@ -357,7 +357,7 @@ func TestGetDualStaticAddress(t *testing.T) {
 	v6 = "2001:db8::66"
 	macIn = "00:11:22:33:44:55"
 	v6IP, err = NewIP(v6)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	ip, macOut, err = subnet.GetStaticAddress(podName, nicName, v6IP, &macIn, false, true)
 	require.NotNil(nil, err)
 	require.Empty(t, macOut)
@@ -383,7 +383,7 @@ func TestGetGetV4RandomAddress(t *testing.T) {
 	podName := "pod1.default"
 	nicName := "pod1.default"
 	v4IP1, v6IP1, mac1, err := subnet.GetRandomAddress("", podName, nicName, nil, nil, false)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	require.NotEmpty(t, v4IP1.String())
 	require.Nil(t, v6IP1)
 	require.NotEmpty(t, mac1)
@@ -392,7 +392,7 @@ func TestGetGetV4RandomAddress(t *testing.T) {
 	nicName = "pod2.default"
 	staticMac2 := "00:11:22:33:44:55"
 	v4IP2, v6IP2, mac2, err := subnet.GetRandomAddress("", podName, nicName, &staticMac2, nil, false)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	require.NotEmpty(t, v4IP2.String())
 	require.Nil(t, v6IP2)
 	require.Equal(t, staticMac2, mac2)
@@ -414,7 +414,7 @@ func TestGetGetV6RandomAddress(t *testing.T) {
 	podName := "pod1.default"
 	nicName := "pod1.default"
 	v4IP1, v6IP1, mac1, err := subnet.GetRandomAddress("", podName, nicName, nil, nil, false)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	require.Nil(t, v4IP1)
 	require.NotEmpty(t, v6IP1.String())
 	require.NotEmpty(t, mac1)
@@ -423,7 +423,7 @@ func TestGetGetV6RandomAddress(t *testing.T) {
 	nicName = "pod2.default"
 	staticMac2 := "00:11:22:33:44:55"
 	v4IP2, v6IP2, mac2, err := subnet.GetRandomAddress("", podName, nicName, &staticMac2, nil, false)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	require.Nil(t, v4IP2)
 	require.NotEmpty(t, v6IP2.String())
 	require.Equal(t, staticMac2, mac2)
@@ -448,7 +448,7 @@ func TestGetRandomDualStackAddress(t *testing.T) {
 	poolName := ""
 	skippedAddrs := []string{"10.0.0.1", "10.0.0.5", "2001:db8::1", "2001:db8::5"}
 	v4IP1, v6IP1, mac1, err := subnet.GetRandomAddress(poolName, podName, nicName, nil, skippedAddrs, true)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	require.NotEmpty(t, v4IP1.String())
 	require.NotEmpty(t, v6IP1.String())
 	require.NotEmpty(t, mac1)
@@ -457,7 +457,7 @@ func TestGetRandomDualStackAddress(t *testing.T) {
 	nicName = "pod2.default"
 	staticMac2 := "00:11:22:33:44:55"
 	v4IP2, v6IP2, mac2, err := subnet.GetRandomAddress(poolName, podName, nicName, &staticMac2, skippedAddrs, true)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	require.NotEmpty(t, v4IP2.String())
 	require.NotEmpty(t, v6IP2.String())
 	require.Equal(t, staticMac2, mac2)
@@ -480,7 +480,7 @@ func TestReleaseAddrForV4Subnet(t *testing.T) {
 	nicName := "pod1.default"
 	poolName := ""
 	v4, _, _, err := subnet.GetRandomAddress(poolName, podName, nicName, nil, nil, false)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	require.Equal(t, subnet.V4Using.String(), v4.String())
 	require.True(t, subnet.ContainAddress(v4))
 	// pod1 release random v4 address
@@ -490,9 +490,8 @@ func TestReleaseAddrForV4Subnet(t *testing.T) {
 	// 2. pod2 get random v4 address
 	podName = "pod2.default"
 	nicName = "pod2.default"
-	poolName = ""
 	v4, _, _, err = subnet.GetRandomAddress(poolName, podName, nicName, nil, nil, false)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	require.Equal(t, subnet.V4Using.String(), v4.String())
 	require.True(t, subnet.ContainAddress(v4))
 	// pod2 release random v4 address
@@ -511,7 +510,7 @@ func TestReleaseV6SubnetAddrForV6Subnet(t *testing.T) {
 	nicName := "pod1.default"
 	poolName := ""
 	_, v6, _, err := subnet.GetRandomAddress(poolName, podName, nicName, nil, nil, false)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	require.Equal(t, subnet.V6Using.String(), v6.String())
 	require.True(t, subnet.ContainAddress(v6))
 	// pod1 release random v6 address
@@ -521,9 +520,8 @@ func TestReleaseV6SubnetAddrForV6Subnet(t *testing.T) {
 	// 2. pod2 get random v6 address
 	podName = "pod2.default"
 	nicName = "pod2.default"
-	poolName = ""
-	_, v6, _, err = subnet.GetRandomAddress(poolName, podName, nicName, nil, nil, false)
-	require.Nil(t, err)
+	_, v6, _, err = subnet.GetRandomAddress("", podName, nicName, nil, nil, false)
+	require.NoError(t, err)
 	require.Equal(t, subnet.V6Using.String(), v6.String())
 	require.True(t, subnet.ContainAddress(v6))
 	// pod2 release random v6 address
@@ -547,7 +545,7 @@ func TestReleaseAddrForDualSubnet(t *testing.T) {
 	nicName := "pod1.default"
 	poolName := ""
 	v4, v6, _, err := subnet.GetRandomAddress(poolName, podName, nicName, nil, nil, true)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	require.Equal(t, subnet.V4Using.String(), v4.String())
 	require.True(t, subnet.ContainAddress(v4))
 	require.Equal(t, subnet.V6Using.String(), v6.String())
@@ -561,9 +559,8 @@ func TestReleaseAddrForDualSubnet(t *testing.T) {
 	// 2. pod1 get random v4, v6 address
 	podName = "pod2.default"
 	nicName = "pod2.default"
-	poolName = ""
-	v4, v6, _, err = subnet.GetRandomAddress(poolName, podName, nicName, nil, nil, true)
-	require.Nil(t, err)
+	v4, v6, _, err = subnet.GetRandomAddress("", podName, nicName, nil, nil, true)
+	require.NoError(t, err)
 	require.Equal(t, subnet.V4Using.String(), v4.String())
 	require.True(t, subnet.ContainAddress(v4))
 	require.Equal(t, subnet.V6Using.String(), v6.String())
