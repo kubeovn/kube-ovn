@@ -15,7 +15,7 @@ import (
 
 type Subnet struct {
 	Name         string
-	mutex        sync.RWMutex
+	Mutex        sync.RWMutex
 	CIDR         string
 	Protocol     string
 	V4CIDR       *net.IPNet
@@ -172,10 +172,10 @@ func (s *Subnet) popPodNic(podName, nicName string) {
 }
 
 func (s *Subnet) GetRandomAddress(poolName, podName, nicName string, mac *string, skippedAddrs []string, checkConflict bool) (IP, IP, string, error) {
-	s.mutex.Lock()
+	s.Mutex.Lock()
 	defer func() {
 		s.pushPodNic(podName, nicName)
-		s.mutex.Unlock()
+		s.Mutex.Unlock()
 	}()
 
 	switch s.Protocol {
@@ -317,8 +317,8 @@ func (s *Subnet) getV6RandomAddress(ippoolName, podName, nicName string, mac *st
 func (s *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac *string, force, checkConflict bool) (IP, string, error) {
 	var v4, v6 bool
 	isAllocated := false
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
+	s.Mutex.Lock()
+	defer s.Mutex.Unlock()
 
 	if ip.To4() != nil {
 		v4 = s.V4CIDR != nil
@@ -543,8 +543,8 @@ func (s *Subnet) releaseAddr(podName, nicName string) {
 }
 
 func (s *Subnet) ReleaseAddress(podName string) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
+	s.Mutex.Lock()
+	defer s.Mutex.Unlock()
 	for _, nicName := range s.PodToNicList[podName] {
 		s.releaseAddr(podName, nicName)
 		s.popPodNic(podName, nicName)
@@ -552,16 +552,16 @@ func (s *Subnet) ReleaseAddress(podName string) {
 }
 
 func (s *Subnet) ReleaseAddressWithNicName(podName, nicName string) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
+	s.Mutex.Lock()
+	defer s.Mutex.Unlock()
 
 	s.releaseAddr(podName, nicName)
 	s.popPodNic(podName, nicName)
 }
 
 func (s *Subnet) ContainAddress(address IP) bool {
-	s.mutex.RLock()
-	defer s.mutex.RUnlock()
+	s.Mutex.RLock()
+	defer s.Mutex.RUnlock()
 
 	if _, ok := s.V4IPToPod[address.String()]; ok {
 		return true
@@ -605,8 +605,8 @@ func (s *Subnet) isIPAssignedToOtherPod(ip, podName string) (string, bool) {
 }
 
 func (s *Subnet) AddOrUpdateIPPool(name string, ips []string) error {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
+	s.Mutex.Lock()
+	defer s.Mutex.Unlock()
 
 	pool := &IPPool{
 		V4IPs:       NewEmptyIPRangeList(),
@@ -700,8 +700,8 @@ func (s *Subnet) AddOrUpdateIPPool(name string, ips []string) error {
 }
 
 func (s *Subnet) RemoveIPPool(name string) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
+	s.Mutex.Lock()
+	defer s.Mutex.Unlock()
 
 	p := s.IPPools[name]
 	if p == nil {
@@ -727,8 +727,8 @@ func (s *Subnet) IPPoolStatistics(ippool string) (
 	v4Available, v4Using, v6Available, v6Using internal.BigInt,
 	v4AvailableRange, v4UsingRange, v6AvailableRange, v6UsingRange string,
 ) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
+	s.Mutex.Lock()
+	defer s.Mutex.Unlock()
 
 	p := s.IPPools[ippool]
 	if p == nil {
