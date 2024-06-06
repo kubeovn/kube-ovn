@@ -331,7 +331,7 @@ func (ipam *IPAM) GetPodAddress(podName string) []*SubnetAddress {
 	defer ipam.mutex.RUnlock()
 	addresses := []*SubnetAddress{}
 	for _, subnet := range ipam.Subnets {
-		subnet.mutex.RLock()
+		subnet.Mutex.RLock()
 		for _, nicName := range subnet.PodToNicList[podName] {
 			v4IP, v6IP, mac, protocol := subnet.GetPodAddress(podName, nicName)
 			switch protocol {
@@ -344,7 +344,7 @@ func (ipam *IPAM) GetPodAddress(podName string) []*SubnetAddress {
 				addresses = append(addresses, &SubnetAddress{Subnet: subnet, IP: v6IP.String(), Mac: mac})
 			}
 		}
-		subnet.mutex.RUnlock()
+		subnet.Mutex.RUnlock()
 	}
 	return addresses
 }
