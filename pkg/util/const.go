@@ -307,4 +307,7 @@ const (
 	MigrationPhaseStarted         = "started"
 	MigrationPhaseSucceeded       = "succeeded"
 	MigrationPhaseFailed          = "failed"
+
+	U2OFilterOpenFlowPriority = 10000
+	U2OFilterOpenFlowCookie   = 0x1000
 )
