@@ -865,41 +865,69 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 })
 
 func checkU2OFilterOpenFlowExist(clusterName string, pn *apiv1.ProviderNetwork, subnet *apiv1.Subnet, expectRuleExist bool) {
-	ginkgo.By("check u2o filter openflow exist")
 	nodes, err := kind.ListNodes(clusterName, "")
 	framework.ExpectNoError(err, "getting nodes in kind cluster")
 	framework.ExpectNotEmpty(nodes)
 
 	for _, node := range nodes {
-		cmd := fmt.Sprintf("kubectl ko ofctl %s dump-flows br-%s | grep 0x%x ", node.Name(), pn.Name, util.U2OFilterOpenFlowCookie)
-		output, _ := exec.Command("bash", "-c", cmd).CombinedOutput()
-		outputStr := string(output)
-
 		gws := strings.Split(subnet.Spec.Gateway, ",")
 		u2oIPs := strings.Split(subnet.Status.U2OInterconnectionIP, ",")
 		for index, gw := range gws {
-			matchStr := fmt.Sprintf("priority=%d,arp,in_port=1,arp_spa=%s,arp_tpa=%s,arp_op=1", util.U2OFilterOpenFlowPriority, gw, u2oIPs[index])
-			framework.Logf("matchStr %s ", matchStr)
-			framework.Logf("outputStr %s ", outputStr)
-			ruleExist := strings.Contains(outputStr, matchStr)
-			framework.ExpectEqual(ruleExist, expectRuleExist)
+			if util.CheckProtocol(gw) == apiv1.ProtocolIPv4 {
+				cmd := fmt.Sprintf("kubectl ko ofctl %s dump-flows br-%s | grep 0x%x ", node.Name(), pn.Name, util.U2OFilterOpenFlowCookieV4)
+				output, _ := exec.Command("bash", "-c", cmd).CombinedOutput()
+				outputStr := string(output)
+
+				if expectRuleExist {
+					matchStr := fmt.Sprintf("priority=%d,arp,in_port=1,arp_spa=%s,arp_tpa=%s,arp_op=1", util.U2OFilterOpenFlowPriority, gw, u2oIPs[index])
+					framework.Logf("matchStr %s ", matchStr)
+					framework.Logf("outputStr %s ", outputStr)
+					ruleExist := strings.Contains(outputStr, matchStr)
+					framework.ExpectTrue(ruleExist)
+				} else {
+					framework.ExpectEqual(outputStr, "")
+				}
+			} else {
+				cmd := fmt.Sprintf("kubectl ko ofctl %s dump-flows br-%s | grep 0x%x ", node.Name(), pn.Name, util.U2OFilterOpenFlowCookieV6)
+				output, _ := exec.Command("bash", "-c", cmd).CombinedOutput()
+				outputStr := string(output)
+
+				if expectRuleExist {
+					matchStr := fmt.Sprintf("priority=%d,icmp6,in_port=1,icmp_type=135,nd_target=%s", util.U2OFilterOpenFlowPriority, u2oIPs[index])
+					framework.Logf("matchStr %s ", matchStr)
+					framework.Logf("outputStr %s ", outputStr)
+					ruleExist := strings.Contains(outputStr, matchStr)
+					framework.ExpectTrue(ruleExist)
+				} else {
+					framework.ExpectEqual(outputStr, "")
+				}
+			}
 		}
 	}
 }
 
 func checkIfU2OArpResponse(subnet *apiv1.Subnet, expectReachable bool) {
-
-	framework.Logf("subnet.Status.U2OInterconnectionIP %s ", subnet.Status.U2OInterconnectionIP)
 	u2oIPs := strings.Split(subnet.Status.U2OInterconnectionIP, ",")
-	framework.Logf("u2oIPs %v ", u2oIPs)
-	// TODO support v6
+	var cmd string
 	for _, u2oIP := range u2oIPs {
-		cmd := fmt.Sprintf("ping -c 1 -w 2 %s", u2oIP)
+		if util.CheckProtocol(u2oIP) == apiv1.ProtocolIPv4 {
+			cmd = fmt.Sprintf("ping -c 1 -w 2 %s", u2oIP)
+		} else {
+			cmd = fmt.Sprintf("ping6 -c 1 -w 2 %s", u2oIP)
+		}
 		output, _ := exec.Command("bash", "-c", cmd).CombinedOutput()
 		outputStr := string(output)
 
 		isReachable := !strings.Contains(outputStr, "0 received")
 		framework.ExpectEqual(isReachable, expectReachable)
+
+		cmd = fmt.Sprintf("ip n | grep %s", u2oIP)
+		output, _ = exec.Command("bash", "-c", cmd).CombinedOutput()
+		outputStr = string(output)
+
+		framework.Logf("outputStr is %s ", outputStr)
+		isNeighExist := strings.Contains(outputStr, "REACHABLE")
+		framework.ExpectEqual(isNeighExist, expectReachable)
 	}
 }
 

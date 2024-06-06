@@ -204,28 +204,31 @@ func (c *Controller) reconcileRouters(event *subnetEvent) error {
 				klog.Errorf("failed to get provider network %s %v", vlan.Spec.Provider, err)
 				return err
 			}
-			bridgeName := util.ExternalBridgeName(pn.Name)
 
-			if newSubnet.Status.U2OInterconnectionIP != "" {
-				u2oIPs := strings.Split(newSubnet.Status.U2OInterconnectionIP, ",")
-				gatewayIPs := strings.Split(newSubnet.Spec.Gateway, ",")
+			if pn.Status.Ready {
+				bridgeName := util.ExternalBridgeName(pn.Name)
 
-				if len(u2oIPs) != len(gatewayIPs) {
-					err := fmt.Errorf("u2o interconnection IPs %v and gateway IPs %v are not matched", u2oIPs, gatewayIPs)
-					klog.Error(err)
-					return err
+				if newSubnet.Status.U2OInterconnectionIP != "" {
+					u2oIPs := strings.Split(newSubnet.Status.U2OInterconnectionIP, ",")
+					gatewayIPs := strings.Split(newSubnet.Spec.Gateway, ",")
 
-				}
-				for index, u2oIP := range u2oIPs {
-					err := ovs.AddOrUpdateU2OFilterOpenFlow(c.ovsClient, bridgeName, gatewayIPs[index], u2oIP)
+					if len(u2oIPs) != len(gatewayIPs) {
+						err := fmt.Errorf("u2o interconnection IPs %v and gateway IPs %v are not matched", u2oIPs, gatewayIPs)
+						klog.Error(err)
+						return err
+
+					}
+					for index, u2oIP := range u2oIPs {
+						err := ovs.AddOrUpdateU2OFilterOpenFlow(c.ovsClient, bridgeName, gatewayIPs[index], u2oIP)
+						if err != nil {
+							return err
+						}
+					}
+				} else {
+					err := ovs.DeleteAllU2OFilterOpenFlow(c.ovsClient, bridgeName, newSubnet.Spec.Protocol)
 					if err != nil {
 						return err
 					}
-				}
-			} else {
-				err := ovs.DelU2OFilterOpenFlow(c.ovsClient, bridgeName)
-				if err != nil {
-					return err
 				}
 			}
 		}
@@ -244,10 +247,12 @@ func (c *Controller) reconcileRouters(event *subnetEvent) error {
 				return err
 			}
 
-			bridgeName := util.ExternalBridgeName(pn.Name)
-			err = ovs.DelU2OFilterOpenFlow(c.ovsClient, bridgeName)
-			if err != nil {
-				return err
+			if pn.Status.Ready {
+				bridgeName := util.ExternalBridgeName(pn.Name)
+				err = ovs.DeleteAllU2OFilterOpenFlow(c.ovsClient, bridgeName, oldSubnet.Spec.Protocol)
+				if err != nil {
+					return err
+				}
 			}
 		}
 	}
