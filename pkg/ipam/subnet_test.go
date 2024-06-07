@@ -27,22 +27,22 @@ func TestNewSubnetIPv4(t *testing.T) {
 	require.NotNil(t, subnet.V4Available)
 	require.Equal(t, "10.0.0.1,10.0.0.3,10.0.0.5-10.0.0.99,10.0.0.101-10.0.0.251", subnet.V4Available.String())
 	require.True(t, subnet.V4Available.Equal(subnet.V4Free))
-	require.Equal(t, 0, subnet.V4Using.Len())
-	require.Equal(t, 0, len(subnet.V4NicToIP))
-	require.Equal(t, 0, len(subnet.V4IPToPod))
+	require.Equal(t, subnet.V4Using.Len(), 0)
+	require.Len(t, subnet.V4NicToIP, 0)
+	require.Len(t, subnet.V4IPToPod, 0)
 	require.NotNil(t, subnet.V4Available)
 	require.True(t, subnet.V4Available.Equal(subnet.V4Free))
 	// check V6
 	require.Nil(t, subnet.V6CIDR)
 	// make sure subnet v6 fields length is 0
 	// TODO:// v6 fields should be nil is better than empty list
-	require.Equal(t, 0, subnet.V6Free.Len())
-	require.Equal(t, 0, subnet.V6Reserved.Len())
-	require.Equal(t, 0, subnet.V6Available.Len())
-	require.Equal(t, 0, subnet.V6Using.Len())
-	require.Equal(t, 0, len(subnet.V6NicToIP))
-	require.Equal(t, 0, len(subnet.V6IPToPod))
-	require.Equal(t, 0, len(subnet.PodToNicList))
+	require.Equal(t, subnet.V6Free.Len(), 0)
+	require.Equal(t, subnet.V6Reserved.Len(), 0)
+	require.Equal(t, subnet.V6Available.Len(), 0)
+	require.Equal(t, subnet.V6Using.Len(), 0)
+	require.Len(t, subnet.V6NicToIP, 0)
+	require.Len(t, subnet.V6IPToPod, 0)
+	require.Len(t, subnet.PodToNicList, 0)
 	// TODO: check pool
 }
 
@@ -67,22 +67,22 @@ func TestNewSubnetIPv6(t *testing.T) {
 	require.NotNil(t, subnet.V6Available)
 	require.Equal(t, "2001:db8::1,2001:db8::3,2001:db8::5-2001:db8::ff,2001:db8::101-2001:db8::251,2001:db8::255-2001:db8::ffff:ffff:ffff:fffe", subnet.V6Available.String())
 	require.True(t, subnet.V6Available.Equal(subnet.V6Free))
-	require.Equal(t, 0, subnet.V6Using.Len())
-	require.Equal(t, 0, len(subnet.V6NicToIP))
-	require.Equal(t, 0, len(subnet.V6IPToPod))
+	require.Equal(t, subnet.V6Using.Len(), 0)
+	require.Len(t, subnet.V6NicToIP, 0)
+	require.Len(t, subnet.V6IPToPod, 0)
 	require.NotNil(t, subnet.V6Available)
 	require.True(t, subnet.V6Available.Equal(subnet.V6Free))
 	// check V4
 	require.Nil(t, subnet.V4CIDR)
 	// make sure subnet v4 fields length is 0
 	// TODO:// v4 fields should be nil is better than empty list
-	require.Equal(t, 0, subnet.V4Free.Len())
-	require.Equal(t, 0, subnet.V4Reserved.Len())
-	require.Equal(t, 0, subnet.V4Available.Len())
-	require.Equal(t, 0, subnet.V4Using.Len())
-	require.Equal(t, 0, len(subnet.V4NicToIP))
-	require.Equal(t, 0, len(subnet.V4IPToPod))
-	require.Equal(t, 0, len(subnet.PodToNicList))
+	require.Equal(t, subnet.V4Free.Len(), 0)
+	require.Equal(t, subnet.V4Reserved.Len(), 0)
+	require.Equal(t, subnet.V4Available.Len(), 0)
+	require.Equal(t, subnet.V4Using.Len(), 0)
+	require.Len(t, subnet.V4NicToIP, 0)
+	require.Len(t, subnet.V4IPToPod, 0)
+	require.Len(t, subnet.PodToNicList, 0)
 	// TODO: check pool
 }
 
@@ -110,9 +110,9 @@ func TestNewSubnetDualStack(t *testing.T) {
 	require.NotNil(t, subnet.V4Available)
 	require.Equal(t, "10.0.0.1,10.0.0.3,10.0.0.5-10.0.0.99,10.0.0.101-10.0.0.251", subnet.V4Available.String())
 	require.True(t, subnet.V4Available.Equal(subnet.V4Free))
-	require.Equal(t, 0, subnet.V4Using.Len())
-	require.Equal(t, 0, len(subnet.V4NicToIP))
-	require.Equal(t, 0, len(subnet.V4IPToPod))
+	require.Equal(t, subnet.V4Using.Len(), 0)
+	require.Len(t, subnet.V4NicToIP, 0)
+	require.Len(t, subnet.V4IPToPod, 0)
 	require.NotNil(t, subnet.V4Available)
 	require.True(t, subnet.V4Available.Equal(subnet.V4Free))
 	// check V6
@@ -125,9 +125,9 @@ func TestNewSubnetDualStack(t *testing.T) {
 	require.NotNil(t, subnet.V6Available)
 	require.Equal(t, "2001:db8::1,2001:db8::3,2001:db8::5-2001:db8::ff,2001:db8::101-2001:db8::251,2001:db8::255-2001:db8::ffff:ffff:ffff:fffe", subnet.V6Available.String())
 	require.True(t, subnet.V6Available.Equal(subnet.V6Free))
-	require.Equal(t, 0, subnet.V6Using.Len())
-	require.Equal(t, 0, len(subnet.V6NicToIP))
-	require.Equal(t, 0, len(subnet.V6IPToPod))
+	require.Equal(t, subnet.V6Using.Len(), 0)
+	require.Len(t, subnet.V6NicToIP, 0)
+	require.Len(t, subnet.V6IPToPod, 0)
 	require.NotNil(t, subnet.V6Available)
 	require.True(t, subnet.V6Available.Equal(subnet.V6Free))
 	// TODO: check pool
