@@ -527,7 +527,7 @@ func (c *Controller) handleDeleteNode(key string) error {
 			return err
 		}
 	}
-
+	klog.Infof("delete node ip %s", portName)
 	if err = c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), portName, metav1.DeleteOptions{}); err != nil && !k8serrors.IsNotFound(err) {
 		return err
 	}

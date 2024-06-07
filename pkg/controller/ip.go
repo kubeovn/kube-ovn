@@ -80,9 +80,6 @@ func (c *Controller) enqueueUpdateIP(oldObj, newObj interface{}) {
 	if oldIP.Spec.MacAddress != "" && newIP.Spec.MacAddress != oldIP.Spec.MacAddress {
 		klog.Errorf("ip %s macAddress can not change", newIP.Name)
 	}
-	if oldIP.Spec.NodeName != "" && newIP.Spec.NodeName != oldIP.Spec.NodeName {
-		klog.Errorf("ip %s nodeName can not change", newIP.Name)
-	}
 	if oldIP.Spec.V4IPAddress != "" && newIP.Spec.V4IPAddress != oldIP.Spec.V4IPAddress {
 		klog.Errorf("ip %s v4IPAddress can not change", newIP.Name)
 	}
