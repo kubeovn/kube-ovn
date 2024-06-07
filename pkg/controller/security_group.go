@@ -215,11 +215,6 @@ func (c *Controller) updateDenyAllSgPorts() error {
 
 	addPorts := make([]string, 0, len(lsps))
 	for _, lsp := range lsps {
-		// skip lsp which only have mac addresses,address is in port.PortSecurity[0]
-		if len(lsp.PortSecurity) == 0 || len(strings.Split(lsp.PortSecurity[0], " ")) < 2 {
-			continue
-		}
-
 		/* skip lsp which security_group does not exist */
 		// sgs format: sg1/sg2/sg3
 		sgs := strings.Split(lsp.ExternalIDs[sgsKey], "/")
@@ -443,14 +438,16 @@ func (c *Controller) syncSgLogicalPort(key string) error {
 		return err
 	}
 
-	var ports, v4s, v6s []string
+	var ports, v4s, v6s, addresses []string
 	for _, lsp := range sgPorts {
 		ports = append(ports, lsp.Name)
-		if len(lsp.PortSecurity) == 0 {
-			continue
+		if len(lsp.PortSecurity) != 0 {
+			addresses = lsp.PortSecurity
+		} else {
+			addresses = lsp.Addresses
 		}
-		for _, ps := range lsp.PortSecurity {
-			fields := strings.Fields(ps)
+		for _, as := range addresses {
+			fields := strings.Fields(as)
 			if len(fields) < 2 {
 				continue
 			}
