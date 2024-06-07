@@ -8,29 +8,38 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-func AddOrUpdateU2OFilterOpenFlow(client *ovs.Client, bridgeName, gatewayIP, u2oIP string) error {
+func AddOrUpdateU2OFilterOpenFlow(client *ovs.Client, bridgeName, gatewayIP, u2oIP, underlayNic string) error {
 	isIPv6 := false
 	if util.CheckProtocol(gatewayIP) == kubeovnv1.ProtocolIPv6 {
 		isIPv6 = true
 	}
 	var match *ovs.MatchFlow
 	var flow *ovs.Flow
+	var inPortID int
+
+	portInfo, err := client.OpenFlow.DumpPort(bridgeName, underlayNic)
+	if err != nil {
+		klog.Errorf("failed to dump bridge %s port %s: %v", bridgeName, underlayNic, err)
+		return err
+	}
+	inPortID = portInfo.PortID
+	klog.V(3).Infof(" underlayNic %s's portID is %d", underlayNic, inPortID)
 
 	if isIPv6 {
 		match = &ovs.MatchFlow{
 			Protocol: ovs.ProtocolICMPv6,
-			InPort:   1,
+			InPort:   inPortID,
 			Matches: []ovs.Match{
 				ovs.ICMP6Type(135),
 				ovs.NeighborDiscoveryTarget(u2oIP),
 			},
 			Cookie: util.U2OFilterOpenFlowCookieV6,
 		}
-		// ovs-ofctl add-flow {underlay bridge } "cookie=0x1000,table=0,priority=10000,in_port=1,arp,arp_spa={gatewayIP},arp_tpa={u2oIP},arp_op=1,actions=drop"
+		// ovs-ofctl add-flow {underlay bridge} "cookie=0x1001,table=0,priority=10000,in_port=1,icmp6,icmp_type=135,nd_target={u2oIP},actions=drop"
 		flow = &ovs.Flow{
 			Priority: util.U2OFilterOpenFlowPriority,
 			Protocol: ovs.ProtocolICMPv6,
-			InPort:   1,
+			InPort:   inPortID,
 			Matches: []ovs.Match{
 				ovs.ICMP6Type(135),
 				ovs.NeighborDiscoveryTarget(u2oIP),
@@ -41,20 +50,19 @@ func AddOrUpdateU2OFilterOpenFlow(client *ovs.Client, bridgeName, gatewayIP, u2o
 	} else {
 		match = &ovs.MatchFlow{
 			Protocol: ovs.ProtocolARP,
-			InPort:   1,
+			InPort:   inPortID,
 			Matches: []ovs.Match{
 				ovs.ARPSourceProtocolAddress(gatewayIP),
 				ovs.ARPTargetProtocolAddress(u2oIP),
-				ovs.ARPOperation(1), // ARP Request
+				ovs.ARPOperation(1),
 			},
 			Cookie: util.U2OFilterOpenFlowCookieV4,
 		}
-
-		// ovs-ofctl add-flow {underlay bridge } "cookie=0x1001,table=0,priority=10000,in_port=1,icmp6,icmp_type=135,nd_target={u2oIP},actions=drop"
+		// ovs-ofctl add-flow {underlay bridge} "cookie=0x1000,table=0,priority=10000,in_port=1,arp,arp_spa={gatewayIP},arp_tpa={u2oIP},arp_op=1,actions=drop"
 		flow = &ovs.Flow{
 			Priority: util.U2OFilterOpenFlowPriority,
 			Protocol: ovs.ProtocolARP,
-			InPort:   1,
+			InPort:   inPortID,
 			Matches: []ovs.Match{
 				ovs.ARPSourceProtocolAddress(gatewayIP),
 				ovs.ARPTargetProtocolAddress(u2oIP),
@@ -111,7 +119,6 @@ func delU2OFilterOpenFlow(client *ovs.Client, bridgeName string, isV6 bool) erro
 	}
 
 	match := &ovs.MatchFlow{
-		InPort: 1,
 		Cookie: uint64(cookie),
 	}
 

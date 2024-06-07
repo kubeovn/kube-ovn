@@ -207,6 +207,13 @@ func (c *Controller) reconcileRouters(event *subnetEvent) error {
 
 			if pn.Status.Ready {
 				bridgeName := util.ExternalBridgeName(pn.Name)
+				underlayNic := pn.Spec.DefaultInterface
+				for _, item := range pn.Spec.CustomInterfaces {
+					if slices.Contains(item.Nodes, c.config.NodeName) {
+						underlayNic = item.Interface
+						break
+					}
+				}
 
 				if newSubnet.Status.U2OInterconnectionIP != "" {
 					u2oIPs := strings.Split(newSubnet.Status.U2OInterconnectionIP, ",")
@@ -219,7 +226,7 @@ func (c *Controller) reconcileRouters(event *subnetEvent) error {
 
 					}
 					for index, u2oIP := range u2oIPs {
-						err := ovs.AddOrUpdateU2OFilterOpenFlow(c.ovsClient, bridgeName, gatewayIPs[index], u2oIP)
+						err := ovs.AddOrUpdateU2OFilterOpenFlow(c.ovsClient, bridgeName, gatewayIPs[index], u2oIP, underlayNic)
 						if err != nil {
 							return err
 						}
