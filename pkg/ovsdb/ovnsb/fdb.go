@@ -7,8 +7,9 @@ const FDBTable = "FDB"
 
 // FDB defines an object in FDB table
 type FDB struct {
-	UUID    string `ovsdb:"_uuid"`
-	DpKey   int    `ovsdb:"dp_key"`
-	MAC     string `ovsdb:"mac"`
-	PortKey int    `ovsdb:"port_key"`
+	UUID      string `ovsdb:"_uuid"`
+	DpKey     int    `ovsdb:"dp_key"`
+	MAC       string `ovsdb:"mac"`
+	PortKey   int    `ovsdb:"port_key"`
+	Timestamp int    `ovsdb:"timestamp"`
 }

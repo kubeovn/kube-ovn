@@ -1,6 +1,7 @@
 package util
 
 import (
+	"fmt"
 	"math/big"
 	"net"
 	"reflect"
@@ -555,6 +556,72 @@ func TestIsValidIP(t *testing.T) {
 	}
 }
 
+func TestCheckNodeDNSIP(t *testing.T) {
+	tests := []struct {
+		name     string
+		dnsIP    string
+		expected error
+	}{
+		{
+			name:     "valid IPv4 address",
+			dnsIP:    "192.168.1.1",
+			expected: nil,
+		},
+		{
+			name:     "valid IPv6 address",
+			dnsIP:    "2001:db8::1",
+			expected: nil,
+		},
+		{
+			name:     "invalid IP address",
+			dnsIP:    "invalid",
+			expected: fmt.Errorf("node dns ip invalid is not valid ip"),
+		},
+		{
+			name:     "empty string",
+			dnsIP:    "",
+			expected: nil,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := CheckNodeDNSIP(test.dnsIP)
+			if err != nil && test.expected == nil || err == nil && test.expected != nil || (err != nil && test.expected != nil && err.Error() != test.expected.Error()) {
+				t.Errorf("CheckNodeDNSIP(%q) expected error %v, got %v", test.dnsIP, test.expected, err)
+			}
+		})
+	}
+}
+
+func TestGetExternalNetwork(t *testing.T) {
+	tests := []struct {
+		name        string
+		externalNet string
+		expected    string
+	}{
+		{
+			name:        "External network specified",
+			externalNet: "custom-external-network",
+			expected:    "custom-external-network",
+		},
+		{
+			name:        "External network not specified",
+			externalNet: "",
+			expected:    "ovn-vpc-external-network",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := GetExternalNetwork(tt.externalNet)
+			if result != tt.expected {
+				t.Errorf("got %v, but want %v", result, tt.expected)
+			}
+		})
+	}
+}
+
 func TestCheckCidrs(t *testing.T) {
 	tests := []struct {
 		name string
@@ -678,6 +745,39 @@ func TestAppendGwByCidr(t *testing.T) {
 	}
 }
 
+func TestGetNatGwExternalNetwork(t *testing.T) {
+	tests := []struct {
+		name         string
+		externalNets []string
+		expected     string
+	}{
+		{
+			name:         "External network specified",
+			externalNets: []string{"custom-external-network"},
+			expected:     "custom-external-network",
+		},
+		{
+			name:         "External network not specified",
+			externalNets: []string{},
+			expected:     "ovn-vpc-external-network",
+		},
+		{
+			name:         "Multiple external networks specified",
+			externalNets: []string{"custom-external-network1", "custom-external-network2"},
+			expected:     "custom-external-network1",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := GetNatGwExternalNetwork(tt.externalNets)
+			if result != tt.expected {
+				t.Errorf("got %v, but want %v", result, tt.expected)
+			}
+		})
+	}
+}
+
 func TestSplitIpsByProtocol(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -754,34 +854,42 @@ func TestGetIPAddrWithMask(t *testing.T) {
 		want string
 	}{
 		{
-			name: "base",
-			ip:   "10.16.0.23",
-			cidr: "10.16.0.0/24",
-			want: "10.16.0.23/24",
+			name: "Single IPv4 address",
+			ip:   "192.168.1.1",
+			cidr: "192.168.1.0/24",
+			want: "192.168.1.1/24",
 		},
 		{
-			name: "v6",
-			ip:   "ffff:ffff:ffff:ffff:ffff::23",
-			cidr: "ffff:ffff:ffff:ffff:ffff:0:ffff:0/96",
-			want: "ffff:ffff:ffff:ffff:ffff::23/96",
+			name: "Single IPv6 address",
+			ip:   "2001:db8::1",
+			cidr: "2001:db8::/32",
+			want: "2001:db8::1/32",
 		},
 		{
-			name: "dual",
-			ip:   "10.16.0.23,ffff:ffff:ffff:ffff:ffff::23",
-			cidr: "10.16.0.0/24,ffff:ffff:ffff:ffff:ffff:0:ffff:0/96",
-			want: "10.16.0.23/24,ffff:ffff:ffff:ffff:ffff::23/96",
+			name: "Dual stack addresses",
+			ip:   "192.168.1.1,2001:db8::1",
+			cidr: "192.168.1.0/24,2001:db8::/32",
+			want: "192.168.1.1/24,2001:db8::1/32",
+		},
+		{
+			name: "Invalid dual stack ip format",
+			ip:   "192.168.1.1",
+			cidr: "192.168.1.0/24,2001:db8::/32",
+			want: "",
+		},
+		{
+			name: "Invalid dual stack cidr format",
+			ip:   "192.168.1.1,2001:db8::1",
+			cidr: "192.168.1.0/24",
+			want: "",
 		},
 	}
-	for _, c := range tests {
-		t.Run(c.name, func(t *testing.T) {
-			ans, err := GetIPAddrWithMask(c.ip, c.cidr)
-			if err != nil {
-				t.Errorf("%v, %v expected %v, but %v got",
-					c.ip, c.cidr, c.want, err)
-			}
-			if c.want != ans {
-				t.Errorf("%v, %v expected %v, but %v got",
-					c.ip, c.cidr, c.want, ans)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := GetIPAddrWithMask(tt.ip, tt.cidr)
+			if (err != nil && tt.want != "") || (err == nil && got != tt.want) {
+				t.Errorf("got %v, but want %v", got, tt.want)
 			}
 		})
 	}

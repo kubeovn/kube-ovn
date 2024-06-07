@@ -53,7 +53,7 @@ func NewLegacyClient(timeout int) *LegacyClient {
 	}
 }
 
-func NewOvnNbClient(ovnNbAddr string, ovnNbTimeout int) (*OVNNbClient, error) {
+func NewOvnNbClient(ovnNbAddr string, ovnNbTimeout, ovsDbConTimeout, ovsDbInactivityTimeout int) (*OVNNbClient, error) {
 	dbModel, err := ovnnb.FullDatabaseModel()
 	if err != nil {
 		klog.Error(err)
@@ -83,7 +83,14 @@ func NewOvnNbClient(ovnNbAddr string, ovnNbTimeout int) (*OVNNbClient, error) {
 	maxRetry := 60
 	var nbClient client.Client
 	for {
-		nbClient, err = ovsclient.NewOvsDbClient(ovsclient.NBDB, ovnNbAddr, dbModel, monitors)
+		nbClient, err = ovsclient.NewOvsDbClient(
+			ovsclient.NBDB,
+			ovnNbAddr,
+			dbModel,
+			monitors,
+			ovsDbConTimeout,
+			ovsDbInactivityTimeout,
+		)
 		if err != nil {
 			klog.Errorf("failed to create OVN NB client: %v", err)
 		} else {
@@ -105,7 +112,7 @@ func NewOvnNbClient(ovnNbAddr string, ovnNbTimeout int) (*OVNNbClient, error) {
 	return c, nil
 }
 
-func NewOvnSbClient(ovnSbAddr string, ovnSbTimeout int) (*OVNSbClient, error) {
+func NewOvnSbClient(ovnSbAddr string, ovnSbTimeout, ovsDbConTimeout, ovsDbInactivityTimeout int) (*OVNSbClient, error) {
 	dbModel, err := ovnsb.FullDatabaseModel()
 	if err != nil {
 		klog.Error(err)
@@ -120,7 +127,14 @@ func NewOvnSbClient(ovnSbAddr string, ovnSbTimeout int) (*OVNSbClient, error) {
 	try := 0
 	var sbClient client.Client
 	for {
-		sbClient, err = ovsclient.NewOvsDbClient(ovsclient.SBDB, ovnSbAddr, dbModel, monitors)
+		sbClient, err = ovsclient.NewOvsDbClient(
+			ovsclient.SBDB,
+			ovnSbAddr,
+			dbModel,
+			monitors,
+			ovsDbConTimeout,
+			ovsDbInactivityTimeout,
+		)
 		if err != nil {
 			klog.Errorf("failed to create OVN SB client: %v", err)
 		} else {

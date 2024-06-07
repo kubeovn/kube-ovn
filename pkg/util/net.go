@@ -300,9 +300,9 @@ func GetStringIP(v4IP, v6IP string) string {
 
 func GetIPAddrWithMask(ip, cidr string) (string, error) {
 	var ipAddr string
+	ips := strings.Split(ip, ",")
 	if CheckProtocol(cidr) == kubeovnv1.ProtocolDual {
 		cidrBlocks := strings.Split(cidr, ",")
-		ips := strings.Split(ip, ",")
 		if len(cidrBlocks) == 2 {
 			if len(ips) == 2 {
 				v4IP := fmt.Sprintf("%s/%s", ips[0], strings.Split(cidrBlocks[0], "/")[1])
@@ -315,7 +315,13 @@ func GetIPAddrWithMask(ip, cidr string) (string, error) {
 			}
 		}
 	} else {
-		ipAddr = fmt.Sprintf("%s/%s", ip, strings.Split(cidr, "/")[1])
+		if len(ips) == 1 {
+			ipAddr = fmt.Sprintf("%s/%s", ip, strings.Split(cidr, "/")[1])
+		} else {
+			err := fmt.Errorf("ip %s should be singlestack", ip)
+			klog.Error(err)
+			return ipAddr, err
+		}
 	}
 	return ipAddr, nil
 }

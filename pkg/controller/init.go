@@ -15,6 +15,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
@@ -301,7 +302,20 @@ func (c *Controller) InitIPAM() error {
 		u2oInterconnName := fmt.Sprintf(util.U2OInterconnName, subnet.Spec.Vpc, subnet.Name)
 		u2oInterconnLrpName := fmt.Sprintf("%s-%s", subnet.Spec.Vpc, subnet.Name)
 		if subnet.Status.U2OInterconnectionIP != "" {
-			if _, _, _, err = c.ipam.GetStaticAddress(u2oInterconnName, u2oInterconnLrpName, subnet.Status.U2OInterconnectionIP, nil, subnet.Name, true); err != nil {
+			var mac *string
+			if subnet.Status.U2OInterconnectionMAC != "" {
+				mac = ptr.To(subnet.Status.U2OInterconnectionMAC)
+			} else {
+				lrp, err := c.OVNNbClient.GetLogicalRouterPort(u2oInterconnLrpName, true)
+				if err != nil {
+					klog.Errorf("failed to get logical router port %s: %v", u2oInterconnLrpName, err)
+					return err
+				}
+				if lrp != nil {
+					mac = ptr.To(lrp.MAC)
+				}
+			}
+			if _, _, _, err = c.ipam.GetStaticAddress(u2oInterconnName, u2oInterconnLrpName, subnet.Status.U2OInterconnectionIP, mac, subnet.Name, true); err != nil {
 				klog.Errorf("failed to init subnet %q u2o interconnection ip to ipam %v", subnet.Name, err)
 			}
 		}

@@ -17,6 +17,7 @@ var (
 	ACLActionAllowStateless ACLAction    = "allow-stateless"
 	ACLActionDrop           ACLAction    = "drop"
 	ACLActionReject         ACLAction    = "reject"
+	ACLActionPass           ACLAction    = "pass"
 	ACLDirectionFromLport   ACLDirection = "from-lport"
 	ACLDirectionToLport     ACLDirection = "to-lport"
 	ACLSeverityAlert        ACLSeverity  = "alert"
@@ -40,4 +41,5 @@ type ACL struct {
 	Options     map[string]string `ovsdb:"options"`
 	Priority    int               `ovsdb:"priority"`
 	Severity    *ACLSeverity      `ovsdb:"severity"`
+	Tier        int               `ovsdb:"tier"`
 }

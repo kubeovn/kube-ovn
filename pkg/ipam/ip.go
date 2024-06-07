@@ -60,11 +60,23 @@ func bytes2IP(buff []byte, length int) IP {
 }
 
 func (a IP) Add(n int64) IP {
-	return bytes2IP(big.NewInt(0).Add(big.NewInt(0).SetBytes([]byte(a)), big.NewInt(n)).Bytes(), len(a))
+	if a.To4() != nil {
+		return bytes2IP(big.NewInt(0).Add(big.NewInt(0).SetBytes([]byte(a.To4())), big.NewInt(n)).Bytes(), len(a.To4()))
+	}
+	return bytes2IP(big.NewInt(0).Add(big.NewInt(0).SetBytes([]byte(a.To16())), big.NewInt(n)).Bytes(), len(a.To16()))
 }
 
 func (a IP) Sub(n int64) IP {
-	return bytes2IP(big.NewInt(0).Sub(big.NewInt(0).SetBytes([]byte(a)), big.NewInt(n)).Bytes(), len(a))
+	ipInt := big.NewInt(0).SetBytes(a.To16())
+	ipInt.Sub(ipInt, big.NewInt(n))
+	if ipInt.Sign() < 0 {
+		ipInt.Add(ipInt, big.NewInt(0).Exp(big.NewInt(2), big.NewInt(128), nil))
+	}
+
+	if a.To4() != nil {
+		return bytes2IP(ipInt.Bytes(), len(a.To4()))
+	}
+	return bytes2IP(ipInt.Bytes(), len(a.To16()))
 }
 
 func (a IP) String() string {

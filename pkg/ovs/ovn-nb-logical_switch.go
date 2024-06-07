@@ -15,7 +15,7 @@ import (
 )
 
 // CreateLogicalSwitch create logical switch
-func (c *OVNNbClient) CreateLogicalSwitch(lsName, lrName, cidrBlock, gateway string, needRouter, randomAllocateGW bool) error {
+func (c *OVNNbClient) CreateLogicalSwitch(lsName, lrName, cidrBlock, gateway, gatewayMAC string, needRouter, randomAllocateGW bool) error {
 	lspName := fmt.Sprintf("%s-%s", lsName, lrName)
 	lrpName := fmt.Sprintf("%s-%s", lrName, lsName)
 
@@ -41,7 +41,12 @@ func (c *OVNNbClient) CreateLogicalSwitch(lsName, lrName, cidrBlock, gateway str
 			Name:     lrpName,
 			Networks: strings.Split(networks, ","),
 		}
-		if err := c.UpdateLogicalRouterPort(lrp, &lrp.Networks); err != nil {
+		fields := []interface{}{&lrp.Networks}
+		if gatewayMAC != "" {
+			lrp.MAC = gatewayMAC
+			fields = append(fields, &lrp.MAC)
+		}
+		if err := c.UpdateLogicalRouterPort(lrp, fields...); err != nil {
 			return fmt.Errorf("update logical router port %s", lrpName)
 		}
 	} else {
@@ -51,7 +56,7 @@ func (c *OVNNbClient) CreateLogicalSwitch(lsName, lrName, cidrBlock, gateway str
 	}
 
 	if needRouter {
-		if err := c.CreateLogicalPatchPort(lsName, lrName, lspName, lrpName, networks, util.GenerateMac()); err != nil {
+		if err := c.CreateLogicalPatchPort(lsName, lrName, lspName, lrpName, networks, gatewayMAC); err != nil {
 			return err
 		}
 	} else {
