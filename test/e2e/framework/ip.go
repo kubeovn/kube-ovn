@@ -32,11 +32,6 @@ func (f *Framework) IPClient() *IPClient {
 	}
 }
 
-func (c *IPClient) TryGet(name string) error {
-	_, err := c.IPInterface.Get(context.TODO(), name, metav1.GetOptions{})
-	return err
-}
-
 func (c *IPClient) Get(name string) *apiv1.IP {
 	IP, err := c.IPInterface.Get(context.TODO(), name, metav1.GetOptions{})
 	ExpectNoError(err)
