@@ -263,9 +263,10 @@ func (c *Controller) handleAddNode(key string) error {
 			continue
 		}
 
-		nodeIP, protocol, af := nodeIPv4, kubeovnv1.ProtocolIPv4, 4
-		if util.CheckProtocol(ip) == kubeovnv1.ProtocolIPv6 {
-			nodeIP, protocol, af = nodeIPv6, kubeovnv1.ProtocolIPv6, 6
+		nodeIP, af := nodeIPv4, 4
+		protocol := util.CheckProtocol(ip)
+		if protocol == kubeovnv1.ProtocolIPv6 {
+			nodeIP, af = nodeIPv6, 6
 		}
 		if nodeIP != "" {
 			var (
