@@ -127,18 +127,18 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 		ginkgo.By("Stopping vm " + vmName)
 		vmClient.StopSync(vmName)
 
-		// the ip should be exist after vm stopped
 		portName := ovs.PodNameToPortName(vmName, namespaceName, util.OvnProvider)
+		ginkgo.By("Check ip resource " + portName)
+		// the ip should exist after vm is stopped
 		oldVMIP := ipClient.Get(portName)
-		ginkgo.By("Should exist stopped vm ip " + oldVMIP.Name)
-		framework.ExpectNotEmpty(oldVMIP.Spec.IPAddress)
-
+		framework.ExpectNil(oldVMIP.DeletionTimestamp)
 		ginkgo.By("Starting vm " + vmName)
 		vmClient.StartSync(vmName)
 
 		// new ip name is the same as the old one
+		ginkgo.By("Check ip resource " + portName)
 		newVMIP := ipClient.Get(portName)
-		framework.ExpectNotEmpty(newVMIP.Spec.IPAddress)
+		framework.ExpectEqual(oldVMIP.Spec, newVMIP.Spec)
 
 		ginkgo.By("Getting pod of vm " + vmName)
 		podList, err = podClient.List(context.TODO(), metav1.ListOptions{
@@ -155,7 +155,6 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 
 		ginkgo.By("Checking whether pod ips are changed")
 		framework.ExpectEqual(ips, pod.Status.PodIPs)
-		framework.ExpectEqual(oldVMIP.Spec.IPAddress, newVMIP.Spec.IPAddress)
 	})
 
 	framework.ConformanceIt("restart vm should be able to handle subnet change after the namespace has its first subnet later", func() {
@@ -188,7 +187,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 
 		// the ip is deleted
 		portName := ovs.PodNameToPortName(vmName, namespaceName, util.OvnProvider)
-		err = ipClient.TryGet(portName)
+		err = ipClient.WaitToDisappear(portName, 2*time.Second, 2*time.Minute)
 		framework.ExpectError(err)
 
 		ginkgo.By("Starting vm " + vmName)
