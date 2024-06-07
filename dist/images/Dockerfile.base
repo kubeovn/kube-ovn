@@ -42,7 +42,9 @@ RUN cd /usr/src/ && git clone -b branch-24.03 --depth=1 https://github.com/ovn-o
     # northd: add nb option version_compatibility
     curl -s https://github.com/kubeovn/ovn/commit/066e2e7da6791327b75110b32c1e47f2bb01fcf8.patch | git apply && \
     # add support for conditionally skipping conntrack
-    curl -s https://github.com/kubeovn/ovn/commit/41b419e54ef5671214eb3b5dfb53301152ce6dd1.patch | git apply
+    curl -s https://github.com/kubeovn/ovn/commit/41b419e54ef5671214eb3b5dfb53301152ce6dd1.patch | git apply && \
+    # northd: skip conntrack when access node local dns ip
+    curl -s https://github.com/kubeovn/ovn/commit/b01a339c3b56eff45b22d414ed9d6e4a37527cd5.patch | git apply
 
 RUN apt install -y build-essential fakeroot \
     autoconf automake bzip2 debhelper-compat dh-exec dh-python dh-sequence-python3 dh-sequence-sphinxdoc \
