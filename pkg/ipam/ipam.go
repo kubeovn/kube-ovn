@@ -333,7 +333,7 @@ func (ipam *IPAM) GetPodAddress(podName string) []*SubnetAddress {
 	for _, subnet := range ipam.Subnets {
 		subnet.Mutex.RLock()
 		for _, nicName := range subnet.PodToNicList[podName] {
-			v4IP, v6IP, mac, protocol := subnet.GetPodAddress(podName, nicName)
+			v4IP, v6IP, mac, protocol := subnet.GetPodAddress(nicName)
 			switch protocol {
 			case kubeovnv1.ProtocolIPv4:
 				addresses = append(addresses, &SubnetAddress{Subnet: subnet, IP: v4IP.String(), Mac: mac})
