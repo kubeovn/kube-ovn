@@ -28,6 +28,12 @@ rules:
       - apps
     resources:
       - daemonsets
+    verbs:
+      - list
+  - apiGroups:
+      - apps
+    resources:
+      - daemonsets
     resourceNames:
       - ovs-ovn
     verbs:

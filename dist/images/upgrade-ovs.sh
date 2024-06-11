@@ -37,9 +37,9 @@ function gen_conn_str {
 nb_addr="$(gen_conn_str 6641)"
 while true; do
   if [ x`ovn-nbctl --db=$nb_addr $SSL_OPTIONS get NB_Global . options | grep -o 'version_compatibility='` != "x" ]; then
-    value=`ovn-nbctl --db=$nb_addr $SSL_OPTIONS get NB_Global . options:version_compatibility`
+    value=`ovn-nbctl --db=$nb_addr $SSL_OPTIONS get NB_Global . options:version_compatibility | sed -e 's/^"//' -e 's/"$//'`
     echo "ovn NB_Global option version_compatibility is set to $value"
-    if [ $value = $OVN_VERSION_COMPATIBILITY -o $value = _$OVN_VERSION_COMPATIBILITY ]; then
+    if [ "$value" = "$OVN_VERSION_COMPATIBILITY" -o "$value" = "_$OVN_VERSION_COMPATIBILITY" ]; then
       break
     fi
   fi
