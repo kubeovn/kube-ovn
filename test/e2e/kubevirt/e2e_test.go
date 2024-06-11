@@ -157,7 +157,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 		framework.ExpectEqual(ips, pod.Status.PodIPs)
 	})
 
-	framework.ConformanceIt("restart vm should be able to handle subnet change after the namespace has its first subnet later", func() {
+	framework.ConformanceIt("restart vm should be able to handle subnet change after the namespace has its first subnet", func() {
 		// create a vm within a namespace, the namespace has no subnet, so the vm use ovn-default subnet
 		// create a subnet in the namespace later, the vm should use its own subnet
 		// stop the vm, the vm should delete the vm ip, because of the namespace only has one subnet but not ovn-default
@@ -188,7 +188,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 		// the ip is deleted
 		portName := ovs.PodNameToPortName(vmName, namespaceName, util.OvnProvider)
 		err = ipClient.WaitToDisappear(portName, 2*time.Second, 2*time.Minute)
-		framework.ExpectError(err)
+		framework.ExpectNoError(err)
 
 		ginkgo.By("Starting vm " + vmName)
 		vmClient.StartSync(vmName)
