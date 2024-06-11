@@ -338,8 +338,7 @@ var _ = ginkgo.Context("[group:IPAM]", func() {
 		cidrList := make([]*net.IPNet, 0, n)
 		cidrSet := u32set.NewWithSize(n * 2)
 		for len(cidrList) != cap(cidrList) {
-			n := rand.Uint32()
-			_, cidr, err := net.ParseCIDR(fmt.Sprintf("%s/%d", uint32ToIPv4(n), 16+rand.IntN(16)))
+			_, cidr, err := net.ParseCIDR(fmt.Sprintf("%s/%d", uint32ToIPv4(rand.Uint32()), 16+rand.IntN(16)))
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			var invalid bool
