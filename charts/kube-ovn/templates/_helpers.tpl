@@ -54,3 +54,24 @@ Number of master nodes
     RollingUpdate
   {{- end -}}
 {{- end -}}
+
+{{- define "kubeovn.ovn.versionCompatibility" -}}
+  {{- $ds := lookup "apps/v1" "DaemonSet" $.Values.namespace "ovs-ovn" -}}
+  {{- if $ds -}}
+    {{- $chartVersion := index $ds.metadata.annotations "chart-version" }}
+    {{- $newChartVersion := printf "%s-%s" .Chart.Name .Chart.Version }}
+    {{- $imageVersion := (index $ds.spec.template.spec.containers 0).image | splitList ":" | last | trimPrefix "v" -}}
+    {{- $versionRegex := `^(?P<major>0|[1-9]\d*)\.(?P<minor>0|[1-9]\d*)\.(?P<patch>0|[1-9]\d*)` -}}
+    {{- if and (ne $newChartVersion $chartVersion) (regexMatch $versionRegex $imageVersion) -}}
+      {{- if regexFind $versionRegex $imageVersion | semverCompare ">= 1.13.0" -}}
+        24.03
+      {{- else if regexFind $versionRegex $imageVersion | semverCompare ">= 1.12.0" -}}
+        22.12
+      {{- else if regexFind $versionRegex $imageVersion | semverCompare ">= 1.11.0" -}}
+        22.03
+      {{- else -}}
+        21.06
+      {{- end -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
