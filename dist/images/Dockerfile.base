@@ -37,11 +37,11 @@ RUN cd /usr/src/ && git clone -b branch-24.03 --depth=1 https://github.com/ovn-o
     # modify src route priority
     curl -s https://github.com/kubeovn/ovn/commit/3dbceb75c5e23d8d5b555e5d87238d40cb557424.patch | git apply && \
     # fix reaching resubmit limit in underlay
-    curl -s https://github.com/kubeovn/ovn/commit/6bf6df6da5d6fefae742856e6f43dd672360e48d.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/37d093c99c4980696cf917a1ad47492881908c90.patch | git apply && \
     # ovn-controller: do not send GARP on localnet for Kube-OVN ports
-    curl -s https://github.com/kubeovn/ovn/commit/5fd40530728f98011d2cd852d09ee16d4907cc1d.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/35efb84d45d2598fc83fabaee8100987dcbc6795.patch | git apply && \
     # northd: add nb option version_compatibility
-    curl -s https://github.com/kubeovn/ovn/commit/066e2e7da6791327b75110b32c1e47f2bb01fcf8.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/ef92cdbc10ee247ea7db7803e86e1d51c9cdaddf.patch | git apply && \
     # add support for conditionally skipping conntrack
     curl -s https://github.com/kubeovn/ovn/commit/41b419e54ef5671214eb3b5dfb53301152ce6dd1.patch | git apply && \
     # northd: skip conntrack when access node local dns ip
