@@ -12,6 +12,7 @@ import (
 	"strings"
 	"syscall"
 
+	ovsutil "github.com/digitalocean/go-openvswitch/ovs"
 	"github.com/kubeovn/felix/ipsets"
 	"github.com/kubeovn/go-iptables/iptables"
 	"github.com/vishvananda/netlink"
@@ -38,7 +39,8 @@ type ControllerRuntime struct {
 	ipsets           map[string]*ipsets.IPSets
 	gwCounters       map[string]*util.GwIPtableCounters
 
-	nmSyncer *networkManagerSyncer
+	nmSyncer  *networkManagerSyncer
+	ovsClient *ovsutil.Client
 }
 
 func evalCommandSymlinks(cmd string) (string, error) {
@@ -82,6 +84,7 @@ func (c *Controller) initRuntime() error {
 	c.gwCounters = make(map[string]*util.GwIPtableCounters)
 	c.k8siptables = make(map[string]k8siptables.Interface)
 	c.k8sipsets = k8sipset.New(c.k8sExec)
+	c.ovsClient = ovsutil.New()
 
 	if c.protocol == kubeovnv1.ProtocolIPv4 || c.protocol == kubeovnv1.ProtocolDual {
 		ipt, err := iptables.NewWithProtocol(iptables.ProtocolIPv4)
@@ -185,6 +188,78 @@ func (c *Controller) reconcileRouters(event *subnetEvent) error {
 			if err = netlink.RouteDel(&r); err != nil && !errors.Is(err, syscall.ENOENT) {
 				klog.Errorf("failed to delete route for subnet %s: %v", oldSubnet.Name, err)
 				return err
+			}
+		}
+
+		// u2o arp filter in underlay subnet bridge to avoid arp request to u2o IP
+		if newSubnet != nil && newSubnet.Spec.Vlan != "" && !newSubnet.Spec.LogicalGateway {
+			vlanName := newSubnet.Spec.Vlan
+			vlan, err := c.vlansLister.Get(vlanName)
+			if err != nil {
+				klog.Errorf("failed to get vlan %s %v", vlanName, err)
+				return err
+			}
+			pn, err := c.providerNetworksLister.Get(vlan.Spec.Provider)
+			if err != nil {
+				klog.Errorf("failed to get provider network %s %v", vlan.Spec.Provider, err)
+				return err
+			}
+
+			if pn.Status.Ready {
+				bridgeName := util.ExternalBridgeName(pn.Name)
+				underlayNic := pn.Spec.DefaultInterface
+				for _, item := range pn.Spec.CustomInterfaces {
+					if slices.Contains(item.Nodes, c.config.NodeName) {
+						underlayNic = item.Interface
+						break
+					}
+				}
+
+				if newSubnet.Status.U2OInterconnectionIP != "" {
+					u2oIPs := strings.Split(newSubnet.Status.U2OInterconnectionIP, ",")
+					gatewayIPs := strings.Split(newSubnet.Spec.Gateway, ",")
+
+					if len(u2oIPs) != len(gatewayIPs) {
+						err := fmt.Errorf("u2o interconnection IPs %v and gateway IPs %v are not matched", u2oIPs, gatewayIPs)
+						klog.Error(err)
+						return err
+
+					}
+					for index, u2oIP := range u2oIPs {
+						err := ovs.AddOrUpdateU2OFilterOpenFlow(c.ovsClient, bridgeName, gatewayIPs[index], u2oIP, underlayNic)
+						if err != nil {
+							return err
+						}
+					}
+				} else {
+					err := ovs.DeleteAllU2OFilterOpenFlow(c.ovsClient, bridgeName, newSubnet.Spec.Protocol)
+					if err != nil {
+						return err
+					}
+				}
+			}
+		}
+
+		// remove subnet need remove u2o filter openflow
+		if newSubnet == nil && oldSubnet.Spec.Vlan != "" && !oldSubnet.Spec.LogicalGateway {
+			vlanName := oldSubnet.Spec.Vlan
+			vlan, err := c.vlansLister.Get(vlanName)
+			if err != nil {
+				klog.Errorf("failed to get vlan %s %v", vlanName, err)
+				return err
+			}
+			pn, err := c.providerNetworksLister.Get(vlan.Spec.Provider)
+			if err != nil {
+				klog.Errorf("failed to get provider network %s %v", vlan.Spec.Provider, err)
+				return err
+			}
+
+			if pn.Status.Ready {
+				bridgeName := util.ExternalBridgeName(pn.Name)
+				err = ovs.DeleteAllU2OFilterOpenFlow(c.ovsClient, bridgeName, oldSubnet.Spec.Protocol)
+				if err != nil {
+					return err
+				}
 			}
 		}
 	}
