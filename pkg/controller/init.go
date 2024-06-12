@@ -294,9 +294,9 @@ func (c *Controller) InitIPAM() error {
 		klog.Errorf("failed to list subnet: %v", err)
 		return err
 	}
-	subnetMaps := map[string]kubeovnv1.Subnet{}
+	subnetProviderMaps := make(map[string]string, len(subnets))
 	for _, subnet := range subnets {
-		subnetMaps[subnet.Name] = *subnet
+		subnetProviderMaps[subnet.Name] = subnet.Spec.Provider
 		if err := c.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps); err != nil {
 			klog.Errorf("failed to init subnet %s: %v", subnet.Name, err)
 		}
@@ -347,11 +347,6 @@ func (c *Controller) InitIPAM() error {
 	}
 
 	for _, ip := range ips {
-		_, ok := subnetMaps[ip.Spec.Subnet]
-		if !ok {
-			klog.Errorf("failed to find subnet %s for vip %s", ip.Spec.Subnet, ip.Name)
-			continue
-		}
 		// recover sts and kubevirt vm ip, other ip recover in later pod loop
 		if ip.Spec.PodType != util.StatefulSet && ip.Spec.PodType != util.VM {
 			continue
@@ -389,11 +384,6 @@ func (c *Controller) InitIPAM() error {
 		podName := c.getNameByPod(pod)
 		key := fmt.Sprintf("%s/%s", pod.Namespace, podName)
 		for _, podNet := range podNets {
-			_, ok := subnetMaps[podNet.Subnet.Name]
-			if !ok {
-				klog.Errorf("failed to find subnet %s for pod %s", podNet.Subnet.Name, key)
-				continue
-			}
 			if pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)] == "true" {
 				portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
 				ip := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, podNet.ProviderName)]
@@ -419,12 +409,12 @@ func (c *Controller) InitIPAM() error {
 		return err
 	}
 	for _, vip := range vips {
-		subnet, ok := subnetMaps[vip.Spec.Subnet]
+		provider, ok := subnetProviderMaps[vip.Spec.Subnet]
 		if !ok {
 			klog.Errorf("failed to find subnet %s for vip %s", vip.Spec.Subnet, vip.Name)
 			continue
 		}
-		portName := ovs.PodNameToPortName(vip.Name, vip.Spec.Namespace, subnet.Spec.Provider)
+		portName := ovs.PodNameToPortName(vip.Name, vip.Spec.Namespace, provider)
 		if _, _, _, err = c.ipam.GetStaticAddress(vip.Name, portName, vip.Status.V4ip, &vip.Status.Mac, vip.Spec.Subnet, true); err != nil {
 			klog.Errorf("failed to init ipam from vip cr %s: %v", vip.Name, err)
 		}
@@ -437,11 +427,6 @@ func (c *Controller) InitIPAM() error {
 	}
 	for _, eip := range eips {
 		externalNetwork := util.GetExternalNetwork(eip.Spec.ExternalSubnet)
-		_, ok := subnetMaps[externalNetwork]
-		if !ok {
-			klog.Errorf("failed to find subnet %s for eip %s", externalNetwork, eip.Name)
-			continue
-		}
 		if _, _, _, err = c.ipam.GetStaticAddress(eip.Name, eip.Name, eip.Status.IP, &eip.Spec.MacAddress, externalNetwork, true); err != nil {
 			klog.Errorf("failed to init ipam from iptables eip cr %s: %v", eip.Name, err)
 		}
@@ -453,11 +438,6 @@ func (c *Controller) InitIPAM() error {
 		return err
 	}
 	for _, oeip := range oeips {
-		_, ok := subnetMaps[oeip.Spec.ExternalSubnet]
-		if !ok {
-			klog.Errorf("failed to find subnet %s for ovn eip %s", oeip.Spec.ExternalSubnet, oeip.Name)
-			continue
-		}
 		if _, _, _, err = c.ipam.GetStaticAddress(oeip.Name, oeip.Name, oeip.Status.V4Ip, &oeip.Status.MacAddress, oeip.Spec.ExternalSubnet, true); err != nil {
 			klog.Errorf("failed to init ipam from ovn eip cr %s: %v", oeip.Name, err)
 		}
