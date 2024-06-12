@@ -383,7 +383,8 @@ func (c *Controller) markAndCleanLSP() error {
 				return err
 			}
 		} else {
-			klog.Errorf("please delete LSP %s manually, its subnet %s is force deleted", lsp.Name, lsp.ExternalIDs[logicalSwitchKey])
+			// lsp change subnet, but not update its ExternalIDs
+			klog.Errorf("LSP %s has no subnet, gc can not handle", lsp.Name, lsp.ExternalIDs[logicalSwitchKey])
 		}
 
 		ipCR, err := c.config.KubeOvnClient.KubeovnV1().IPs().Get(context.Background(), lsp.Name, metav1.GetOptions{})
