@@ -196,7 +196,8 @@ func (c *Controller) reconcileRouters(event *subnetEvent) error {
 	joinCIDR := make([]string, 0, 2)
 	cidrs := make([]string, 0, len(subnets)*2)
 	for _, subnet := range subnets {
-		if (subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway) || subnet.Spec.Vpc != c.config.ClusterRouter || !subnet.Status.IsReady() {
+		// The route for overlay subnet cidr via ovn0 should not be deleted even though subnet.Status has changed to not ready
+		if (subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway) || subnet.Spec.Vpc != c.config.ClusterRouter {
 			continue
 		}
 

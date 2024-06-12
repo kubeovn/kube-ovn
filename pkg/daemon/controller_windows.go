@@ -53,9 +53,9 @@ func (c *Controller) reconcileRouters(_ *subnetEvent) error {
 	gwIPv4, gwIPv6 := util.SplitStringIP(gateway)
 	v4Cidrs, v6Cidrs := make([]string, 0, len(subnets)), make([]string, 0, len(subnets))
 	for _, subnet := range subnets {
+		// The route for overlay subnet cidr via ovn0 should not be deleted even though subnet.Status has changed to not ready
 		if (subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway) ||
-			subnet.Spec.Vpc != c.config.ClusterRouter ||
-			!subnet.Status.IsReady() {
+			subnet.Spec.Vpc != c.config.ClusterRouter {
 			continue
 		}
 

@@ -82,7 +82,7 @@ func InitNodeGateway(config *Configuration) error {
 	}
 
 	ipAddr = util.GetIPAddrWithMask(ip, cidr)
-	return configureNodeNic(portName, ipAddr, gw, mac, config.MTU)
+	return configureNodeNic(portName, ipAddr, gw, cidr, mac, config.MTU)
 }
 
 func InitMirror(config *Configuration) error {
