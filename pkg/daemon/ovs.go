@@ -1,12 +1,14 @@
 package daemon
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/Mellanox/sriovnet"
@@ -363,7 +365,7 @@ func waitNetworkReady(nic, ipAddr, gateway string, underlayGateway, verbose bool
 	return nil
 }
 
-func configureNodeNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu int) error {
+func configureNodeNic(portName, ip, gw, joinCIDR string, macAddr net.HardwareAddr, mtu int) error {
 	ipStr := util.GetIpWithoutMask(ip)
 	raw, err := ovs.Exec(ovs.MayExist, "add-port", "br-int", util.NodeNic, "--",
 		"set", "interface", util.NodeNic, "type=internal", "--",
@@ -385,6 +387,41 @@ func configureNodeNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu int
 
 	if err = netlink.LinkSetTxQLen(hostLink, 1000); err != nil {
 		return fmt.Errorf("can not set host nic %s qlen: %v", util.NodeNic, err)
+	}
+
+	// check and add default route for ovn0 in case of can not add automatically
+	nodeNicRoutes, err := getNicExistRoutes(hostLink, gw)
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
+
+	var toAdd []netlink.Route
+	for _, c := range strings.Split(joinCIDR, ",") {
+		found := false
+		for _, r := range nodeNicRoutes {
+			if r.Dst.String() == c {
+				found = true
+				break
+			}
+		}
+		if !found {
+			_, cidr, _ := net.ParseCIDR(c)
+			toAdd = append(toAdd, netlink.Route{
+				Dst:   cidr,
+				Scope: netlink.SCOPE_UNIVERSE,
+			})
+		}
+	}
+	if len(toAdd) > 0 {
+		klog.Infof("route to add for nic %s, %v", util.NodeNic, toAdd)
+	}
+
+	for _, r := range toAdd {
+		r.LinkIndex = hostLink.Attrs().Index
+		if err = netlink.RouteReplace(&r); err != nil && !errors.Is(err, syscall.EEXIST) {
+			klog.Errorf("failed to replace route %v: %v", r, err)
+		}
 	}
 
 	// ping ovn0 gw to activate the flow
