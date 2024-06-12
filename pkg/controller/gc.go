@@ -371,10 +371,21 @@ func (c *Controller) markAndCleanLSP() error {
 		}
 
 		klog.Infof("gc logical switch port %s", lsp.Name)
-		if err := c.OVNNbClient.DeleteLogicalSwitchPort(lsp.Name); err != nil {
-			klog.Errorf("failed to delete lsp %s: %v", lsp.Name, err)
+		// if logicalSwitch force deleted, can not delete lsp here
+		exist, err := c.OVNNbClient.LogicalSwitchExists(lsp.ExternalIDs[logicalSwitchKey])
+		if err != nil {
+			klog.Error(err)
 			return err
 		}
+		if exist {
+			if err := c.OVNNbClient.DeleteLogicalSwitchPort(lsp.Name); err != nil {
+				klog.Errorf("failed to delete lsp %s: %v", lsp.Name, err)
+				return err
+			}
+		} else {
+			klog.Errorf("please delete LSP %s manually, its subnet %s is force deleted", lsp.Name, lsp.ExternalIDs[logicalSwitchKey])
+		}
+
 		ipCR, err := c.config.KubeOvnClient.KubeovnV1().IPs().Get(context.Background(), lsp.Name, metav1.GetOptions{})
 		if err != nil {
 			if k8serrors.IsNotFound(err) {
