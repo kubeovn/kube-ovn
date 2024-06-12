@@ -47,6 +47,9 @@ type Controller struct {
 	ovnEipsLister kubeovnlister.OvnEipLister
 	ovnEipsSynced cache.InformerSynced
 
+	vlansLister kubeovnlister.VlanLister
+	vlanSynced  cache.InformerSynced
+
 	podsLister listerv1.PodLister
 	podsSynced cache.InformerSynced
 	podQueue   workqueue.RateLimitingInterface
@@ -75,6 +78,7 @@ func NewController(config *Configuration, stopCh <-chan struct{}, podInformerFac
 	providerNetworkInformer := kubeovnInformerFactory.Kubeovn().V1().ProviderNetworks()
 	subnetInformer := kubeovnInformerFactory.Kubeovn().V1().Subnets()
 	ovnEipInformer := kubeovnInformerFactory.Kubeovn().V1().OvnEips()
+	vlanInformer := kubeovnInformerFactory.Kubeovn().V1().Vlans()
 	podInformer := podInformerFactory.Core().V1().Pods()
 	nodeInformer := nodeInformerFactory.Core().V1().Nodes()
 
@@ -92,6 +96,9 @@ func NewController(config *Configuration, stopCh <-chan struct{}, podInformerFac
 
 		ovnEipsLister: ovnEipInformer.Lister(),
 		ovnEipsSynced: ovnEipInformer.Informer().HasSynced,
+
+		vlansLister: vlanInformer.Lister(),
+		vlanSynced:  vlanInformer.Informer().HasSynced,
 
 		podsLister: podInformer.Lister(),
 		podsSynced: podInformer.Informer().HasSynced,
@@ -120,7 +127,7 @@ func NewController(config *Configuration, stopCh <-chan struct{}, podInformerFac
 
 	if !cache.WaitForCacheSync(stopCh,
 		controller.providerNetworksSynced, controller.subnetsSynced,
-		controller.podsSynced, controller.nodesSynced) {
+		controller.podsSynced, controller.nodesSynced, controller.vlanSynced) {
 		util.LogFatalAndExit(nil, "failed to wait for caches to sync")
 	}
 

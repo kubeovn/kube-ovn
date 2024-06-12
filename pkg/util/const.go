@@ -279,4 +279,8 @@ const (
 	TProxyPreroutingMask = 0x90004
 
 	HealthCheckNamedVipTemplate = "%s:%s" // ip name, health check vip
+
+	U2OFilterOpenFlowPriority = 10000
+	U2OFilterOpenFlowCookieV4 = 0x1000
+	U2OFilterOpenFlowCookieV6 = 0x1001
 )
