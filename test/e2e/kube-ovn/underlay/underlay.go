@@ -791,7 +791,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 	})
 
 	framework.ConformanceIt(`should support drop arp request to u2oIP`, func() {
-		f.SkipVersionPriorTo(1, 9, "Support drop arp request to u2oIP in v1.9")
+		f.SkipVersionPriorTo(1, 13, "Support drop arp request to u2oIP in v1.13")
 
 		ginkgo.By("Creating provider network " + providerNetworkName)
 		pn := makeProviderNetwork(providerNetworkName, false, linkMap)
