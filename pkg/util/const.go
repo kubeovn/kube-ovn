@@ -207,4 +207,8 @@ const (
 
 	U2OInterconnName = "u2o-interconnection.%s.%s"
 	U2OExcludeIPAg   = "%s.u2o_exclude_ip.%s"
+
+	U2OFilterOpenFlowPriority = 10000
+	U2OFilterOpenFlowCookieV4 = 0x1000
+	U2OFilterOpenFlowCookieV6 = 0x1001
 )

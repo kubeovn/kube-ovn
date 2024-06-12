@@ -43,6 +43,9 @@ type Controller struct {
 	subnetsSynced cache.InformerSynced
 	subnetQueue   workqueue.RateLimitingInterface
 
+	vlansLister kubeovnlister.VlanLister
+	vlanSynced  cache.InformerSynced
+
 	podsLister listerv1.PodLister
 	podsSynced cache.InformerSynced
 	podQueue   workqueue.RateLimitingInterface
@@ -68,6 +71,7 @@ func NewController(config *Configuration, podInformerFactory informers.SharedInf
 
 	providerNetworkInformer := kubeovnInformerFactory.Kubeovn().V1().ProviderNetworks()
 	subnetInformer := kubeovnInformerFactory.Kubeovn().V1().Subnets()
+	vlanInformer := kubeovnInformerFactory.Kubeovn().V1().Vlans()
 	podInformer := podInformerFactory.Core().V1().Pods()
 	nodeInformer := nodeInformerFactory.Core().V1().Nodes()
 
@@ -82,6 +86,9 @@ func NewController(config *Configuration, podInformerFactory informers.SharedInf
 		subnetsLister: subnetInformer.Lister(),
 		subnetsSynced: subnetInformer.Informer().HasSynced,
 		subnetQueue:   workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "Subnet"),
+
+		vlansLister: vlanInformer.Lister(),
+		vlanSynced:  vlanInformer.Informer().HasSynced,
 
 		podsLister: podInformer.Lister(),
 		podsSynced: podInformer.Informer().HasSynced,
