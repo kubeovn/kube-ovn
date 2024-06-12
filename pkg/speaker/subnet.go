@@ -302,7 +302,7 @@ func (c *Controller) getNlriAndAttrs(route string) (*anypb.Any, [][]*anypb.Any, 
 			Origin: 0,
 		})
 		a2, _ := anypb.New(&bgpapi.NextHopAttribute{
-			NextHop: getNextHopAttribute(addr, c.config.RouterID),
+			NextHop: c.getNextHopAttribute(addr),
 		})
 		attrs = append(attrs, []*anypb.Any{a1, a2})
 	}
@@ -348,11 +348,17 @@ func getNextHopFromPathAttributes(attrs []bgp.PathAttributeInterface) net.IP {
 	return nil
 }
 
-func getNextHopAttribute(neighborAddress, routeID string) string {
-	nextHop := routeID
+func (c *Controller) getNextHopAttribute(neighborAddress string) string {
+	nextHop := c.config.RouterID
 	routes, err := netlink.RouteGet(net.ParseIP(neighborAddress))
 	if err == nil && len(routes) == 1 && routes[0].Src != nil {
 		nextHop = routes[0].Src.String()
+	}
+	proto := util.CheckProtocol(nextHop)
+	nextHopIP := net.ParseIP(nextHop)
+	nodeIP := c.config.NodeIPs[proto]
+	if nodeIP != nil && nextHopIP != nil && nextHopIP.Equal(c.config.PodIPs[proto]) {
+		nextHop = nodeIP.String()
 	}
 	return nextHop
 }
