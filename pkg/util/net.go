@@ -535,8 +535,7 @@ func CheckSystemCIDR(cidrs []string) error {
 
 func CheckNodeDNSIP(nodeLocalDNSIP string) error {
 	if nodeLocalDNSIP != "" && !IsValidIP(nodeLocalDNSIP) {
-		err := fmt.Errorf("node dns ip %s is not valid ip", nodeLocalDNSIP)
-		return err
+		return fmt.Errorf("invalid node local dns ip: %q", nodeLocalDNSIP)
 	}
 	return nil
 }

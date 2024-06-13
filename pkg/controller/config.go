@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	attachnetclientset "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/client/clientset/versioned"
@@ -101,7 +102,7 @@ type Configuration struct {
 	BfdMinRx      int
 	BfdDetectMult int
 
-	NodeLocalDNSIP string
+	NodeLocalDNSIPs []string
 }
 
 // ParseFlags parses cmd args then init kubeclient and conf
@@ -167,7 +168,7 @@ func ParseFlags() (*Configuration, error) {
 		argExternalGatewaySwitch   = pflag.String("external-gateway-switch", "external", "The name of the external gateway switch which is a ovs bridge to provide external network, default: external")
 		argExternalGatewayNet      = pflag.String("external-gateway-net", "external", "The name of the external network which mappings with an ovs bridge, default: external")
 		argExternalGatewayVlanID   = pflag.Int("external-gateway-vlanid", 0, "The vlanId of port ln-ovn-external, default: 0")
-		argNodeLocalDNSIP          = pflag.String("node-local-dns-ip", "", "The node local dns ip, this feature is using the local dns cache in k8s")
+		argNodeLocalDNSIP          = pflag.String("node-local-dns-ip", "", "Comma-separated string of nodelocal DNS ip addresses")
 
 		argGCInterval      = pflag.Int("gc-interval", 360, "The interval between GC processes, default 360 seconds")
 		argInspectInterval = pflag.Int("inspect-interval", 20, "The interval between inspect processes, default 20 seconds")
@@ -254,7 +255,6 @@ func ParseFlags() (*Configuration, error) {
 		BfdMinTx:                       *argBfdMinTx,
 		BfdMinRx:                       *argBfdMinRx,
 		BfdDetectMult:                  *argBfdDetectMult,
-		NodeLocalDNSIP:                 *argNodeLocalDNSIP,
 	}
 
 	if config.NetworkType == util.NetworkTypeVlan && config.DefaultHostInterface == "" {
@@ -298,9 +298,12 @@ func ParseFlags() (*Configuration, error) {
 		return nil, fmt.Errorf("check system cidr failed, %v", err)
 	}
 
-	if err := util.CheckNodeDNSIP(config.NodeLocalDNSIP); err != nil {
-		klog.Error(err)
-		return nil, err
+	for _, ip := range strings.Split(*argNodeLocalDNSIP, ",") {
+		if err := util.CheckNodeDNSIP(ip); err != nil {
+			klog.Error(err)
+			return nil, err
+		}
+		config.NodeLocalDNSIPs = append(config.NodeLocalDNSIPs, ip)
 	}
 
 	klog.Infof("config is %+v", config)
