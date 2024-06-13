@@ -52,7 +52,7 @@ require (
 	k8s.io/pod-security-admission v0.30.2
 	k8s.io/sample-controller v0.30.2
 	k8s.io/utils v0.0.0-20240502163921-fe8a2dddb1d0
-	kubevirt.io/api v1.2.0
+	kubevirt.io/api v1.2.2
 	kubevirt.io/client-go v1.2.0
 	sigs.k8s.io/controller-runtime v0.18.4
 )
