@@ -607,9 +607,19 @@ func configureNodeNic(portName, ip, gw, joinCIDR string, macAddr net.HardwareAdd
 		}
 		if !found {
 			_, cidr, _ := net.ParseCIDR(c)
+			protocol := util.CheckProtocol(c)
+			var src net.IP
+			for _, ip := range strings.Split(ip, ",") {
+				if util.CheckProtocol(ip) == protocol {
+					src = net.ParseIP(ip)
+					break
+				}
+			}
 			toAdd = append(toAdd, netlink.Route{
-				Dst:   cidr,
-				Scope: netlink.SCOPE_UNIVERSE,
+				Dst:      cidr,
+				Src:      src,
+				Protocol: netlink.RouteProtocol(unix.RTPROT_KERNEL),
+				Scope:    netlink.SCOPE_LINK,
 			})
 		}
 	}
@@ -619,6 +629,7 @@ func configureNodeNic(portName, ip, gw, joinCIDR string, macAddr net.HardwareAdd
 
 	for _, r := range toAdd {
 		r.LinkIndex = hostLink.Attrs().Index
+		klog.Infof("adding route %q on %s", r.String(), hostLink.Attrs().Name)
 		if err = netlink.RouteReplace(&r); err != nil && !errors.Is(err, syscall.EEXIST) {
 			klog.Errorf("failed to replace route %v: %v", r, err)
 		}

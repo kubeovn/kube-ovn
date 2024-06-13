@@ -101,8 +101,10 @@ func (e *execer) exec(cmd string, result interface{}) error {
 		return fmt.Errorf("failed to exec cmd %q: %v\nstdout:\n%s\nstderr:\n%s", cmd, err, stdout, stderr)
 	}
 
-	if err = json.Unmarshal(stdout, result); err != nil {
-		return fmt.Errorf("failed to decode json %q: %v", string(stdout), err)
+	if result != nil {
+		if err = json.Unmarshal(stdout, result); err != nil {
+			return fmt.Errorf("failed to decode json %q: %v", string(stdout), err)
+		}
 	}
 
 	return nil
@@ -148,6 +150,16 @@ func RouteShow(table, device string, execFunc ExecFunc) ([]Route, error) {
 	}
 
 	return append(routes, routes6...), nil
+}
+
+func RouteDel(table, dst string, execFunc ExecFunc) error {
+	e := execer{fn: execFunc}
+	args := dst
+	if table != "" {
+		args = " table " + table
+	}
+
+	return e.exec("ip route del "+args, nil)
 }
 
 func RuleShow(device string, execFunc ExecFunc) ([]Rule, error) {
