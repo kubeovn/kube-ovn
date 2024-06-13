@@ -2,6 +2,7 @@
 FROM ubuntu:22.04 AS ovs-builder
 
 ARG ARCH
+ARG LEGACY
 ARG DEBIAN_FRONTEND=noninteractive
 ENV SRC_DIR='/usr/src'
 
@@ -62,7 +63,7 @@ RUN cd /usr/src/ovs && \
     ./configure && \
     rm -rf .git && \
     CONFIGURE_OPTS='CFLAGS="-fPIC"' && \
-    if [ "$ARCH" = "amd64" ]; then CONFIGURE_OPTS='CFLAGS="-O2 -g -msse4.2 -mpopcnt -fPIC"'; fi && \
+    if [ "$ARCH" = "amd64" ] && [ "$LEGACY" != "true" ]; then CONFIGURE_OPTS='CFLAGS="-O2 -g -msse4.2 -mpopcnt -fPIC"'; fi && \
     DATAPATH_CONFIGURE_OPTS='--prefix=/usr' EXTRA_CONFIGURE_OPTS=$CONFIGURE_OPTS make debian-deb
 
 RUN cd /usr/src/ovn && \
@@ -70,7 +71,7 @@ RUN cd /usr/src/ovn && \
     rm -rf .git && \
     ./boot.sh && \
     CONFIGURE_OPTS='--with-ovs-build=/usr/src/ovs/_debian CFLAGS="-fPIC"' && \
-    if [ "$ARCH" = "amd64" ]; then CONFIGURE_OPTS="--with-ovs-build=/usr/src/ovs/_debian CFLAGS='-O2 -g -msse4.2 -mpopcnt -fPIC'"; fi && \
+    if [ "$ARCH" = "amd64" ] && [ "$LEGACY" != "true" ]; then CONFIGURE_OPTS="--with-ovs-build=/usr/src/ovs/_debian CFLAGS='-O2 -g -msse4.2 -mpopcnt -fPIC'"; fi && \
     OVSDIR=/usr/src/ovs EXTRA_CONFIGURE_OPTS=$CONFIGURE_OPTS DEB_BUILD_OPTIONS='parallel=8 nocheck' fakeroot debian/rules binary
 
 RUN mkdir /packages/ && \

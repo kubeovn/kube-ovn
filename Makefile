@@ -6,6 +6,7 @@ REGISTRY = kubeovn
 DEV_TAG = dev
 RELEASE_TAG = $(shell cat VERSION)
 DEBUG_TAG = $(shell cat VERSION)-debug
+LEGACY_TAG = $(shell cat VERSION)-amd64-legacy
 VERSION = $(shell echo $${VERSION:-$(RELEASE_TAG)})
 COMMIT = git-$(shell git rev-parse --short HEAD)
 DATE = $(shell date +"%Y-%m-%d_%H:%M:%S")
@@ -113,6 +114,7 @@ build-go-arm:
 .PHONY: build-kube-ovn
 build-kube-ovn: build-debug build-go
 	docker build -t $(REGISTRY)/kube-ovn:$(RELEASE_TAG) --build-arg VERSION=$(RELEASE_TAG) -f dist/images/Dockerfile dist/images/
+	docker build -t $(REGISTRY)/kube-ovn:$(LEGACY_TAG) --build-arg VERSION=$(LEGACY_TAG) -f dist/images/Dockerfile dist/images/
 
 .PHONY: build-kube-ovn-dpdk
 build-kube-ovn-dpdk: build-go
@@ -130,6 +132,7 @@ build-debug:
 .PHONY: base-amd64
 base-amd64:
 	docker buildx build --platform linux/amd64 --build-arg ARCH=amd64 -t $(REGISTRY)/kube-ovn-base:$(RELEASE_TAG)-amd64 -o type=docker -f dist/images/Dockerfile.base dist/images/
+	docker buildx build --platform linux/amd64 --build-arg ARCH=amd64 --build-arg LEGACY=true -t $(REGISTRY)/kube-ovn-base:$(LEGACY_TAG) -o type=docker -f dist/images/Dockerfile.base dist/images/
 	docker buildx build --platform linux/amd64 --build-arg ARCH=amd64 --build-arg DEBUG=true -t $(REGISTRY)/kube-ovn-base:$(DEBUG_TAG)-amd64 -o type=docker -f dist/images/Dockerfile.base dist/images/
 
 .PHONY: base-amd64-dpdk
@@ -144,6 +147,7 @@ base-arm64:
 .PHONY: image-kube-ovn
 image-kube-ovn: image-kube-ovn-debug build-go
 	docker buildx build --platform linux/amd64 -t $(REGISTRY)/kube-ovn:$(RELEASE_TAG) --build-arg VERSION=$(RELEASE_TAG) -o type=docker -f dist/images/Dockerfile dist/images/
+	docker buildx build --platform linux/amd64 -t $(REGISTRY)/kube-ovn:$(LEGACY_TAG) --build-arg VERSION=$(LEGACY_TAG) -o type=docker -f dist/images/Dockerfile dist/images/
 
 .PHONY: image-kube-ovn-arm64
 image-kube-ovn-arm64: build-go-arm
@@ -188,7 +192,7 @@ push-release: release
 
 .PHONY: tar-kube-ovn
 tar-kube-ovn:
-	docker save $(REGISTRY)/kube-ovn:$(RELEASE_TAG) $(REGISTRY)/kube-ovn:$(DEBUG_TAG) -o kube-ovn.tar
+	docker save $(REGISTRY)/kube-ovn:$(RELEASE_TAG) $(REGISTRY)/kube-ovn:$(LEGACY_TAG) $(REGISTRY)/kube-ovn:$(DEBUG_TAG) -o kube-ovn.tar
 
 .PHONY: tar-kube-ovn-dpdk
 tar-kube-ovn-dpdk:
@@ -203,7 +207,7 @@ tar: tar-kube-ovn tar-vpc-nat-gateway
 
 .PHONY: base-tar-amd64
 base-tar-amd64:
-	docker save $(REGISTRY)/kube-ovn-base:$(RELEASE_TAG)-amd64 $(REGISTRY)/kube-ovn-base:$(DEBUG_TAG)-amd64 -o image-amd64.tar
+	docker save $(REGISTRY)/kube-ovn-base:$(RELEASE_TAG)-amd64 $(REGISTRY)/kube-ovn-base:$(LEGACY_TAG) $(REGISTRY)/kube-ovn-base:$(DEBUG_TAG)-amd64 -o image-amd64.tar
 
 .PHONY: base-tar-amd64-dpdk
 base-tar-amd64-dpdk:
