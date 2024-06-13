@@ -505,24 +505,29 @@ var _ = framework.Describe("[group:subnet]", func() {
 		framework.ExpectNoError(err)
 
 		ginkgo.By("Determine external egress gateway addresses")
-		gateways := make([]string, 0, 2)
+		var gatewayV4, gatewayV6 string
 		for _, config := range network.IPAM.Config {
 			if config.Subnet != "" {
 				switch util.CheckProtocol(config.Subnet) {
 				case apiv1.ProtocolIPv4:
 					if cidrV4 != "" {
-						gateway, err := util.LastIP(config.Subnet)
+						gatewayV4, err = util.LastIP(config.Subnet)
 						framework.ExpectNoError(err)
-						gateways = append(gateways, gateway)
 					}
 				case apiv1.ProtocolIPv6:
 					if cidrV6 != "" {
-						gateway, err := util.LastIP(config.Subnet)
+						gatewayV6, err = util.LastIP(config.Subnet)
 						framework.ExpectNoError(err)
-						gateways = append(gateways, gateway)
 					}
 				}
 			}
+		}
+		gateways := make([]string, 0, 2)
+		if gatewayV4 != "" {
+			gateways = append(gateways, gatewayV4)
+		}
+		if gatewayV6 != "" {
+			gateways = append(gateways, gatewayV6)
 		}
 
 		ginkgo.By("Creating subnet " + subnetName)
@@ -597,27 +602,32 @@ var _ = framework.Describe("[group:subnet]", func() {
 		framework.ExpectNoError(err)
 
 		ginkgo.By("Determine external egress gateway addresses")
-		cidrs := make([]string, 0, 2)
-		gateways := make([]string, 0, 2)
+		var gatewayV4, gatewayV6 string
 		for _, config := range network.IPAM.Config {
 			if config.Subnet != "" {
 				switch util.CheckProtocol(config.Subnet) {
 				case apiv1.ProtocolIPv4:
 					if cidrV4 != "" {
-						gateway, err := util.LastIP(config.Subnet)
+						gatewayV4, err = util.LastIP(config.Subnet)
 						framework.ExpectNoError(err)
-						cidrs = append(cidrs, cidrV4)
-						gateways = append(gateways, gateway)
 					}
 				case apiv1.ProtocolIPv6:
 					if cidrV6 != "" {
-						gateway, err := util.LastIP(config.Subnet)
+						gatewayV6, err = util.LastIP(config.Subnet)
 						framework.ExpectNoError(err)
-						cidrs = append(cidrs, cidrV6)
-						gateways = append(gateways, gateway)
 					}
 				}
 			}
+		}
+		cidrs := make([]string, 0, 2)
+		gateways := make([]string, 0, 2)
+		if gatewayV4 != "" {
+			cidrs = append(cidrs, cidrV4)
+			gateways = append(gateways, gatewayV4)
+		}
+		if gatewayV6 != "" {
+			cidrs = append(cidrs, cidrV6)
+			gateways = append(gateways, gatewayV6)
 		}
 
 		ginkgo.By("Creating subnet " + subnetName)
