@@ -154,9 +154,11 @@ const (
 	DefaultDropPriority = "1000"
 
 	GwChassisMaxPriority = 100
+	AnpMaxRules          = 100
+	AnpAclMaxPriority    = 30000
+	BanpAclMaxPriority   = 1800
 
-	DefaultMTU = 1500
-
+	DefaultMTU         = 1500
 	GeneveHeaderLength = 100
 	VxlanHeaderLength  = 50
 	SttHeaderLength    = 72

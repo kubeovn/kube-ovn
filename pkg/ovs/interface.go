@@ -9,6 +9,7 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
+	v1alpha1 "sigs.k8s.io/network-policy-api/apis/v1alpha1"
 )
 
 type NBGlobal interface {
@@ -149,6 +150,7 @@ type ACL interface {
 	SGLostACL(sg *kubeovnv1.SecurityGroup) (bool, error)
 	DeleteAcls(parentName, parentType, direction string, externalIDs map[string]string) error
 	DeleteAclsOps(parentName, parentType, direction string, externalIDs map[string]string) ([]ovsdb.Operation, error)
+	UpdateAnpRuleACLOps(pgName, asName, protocol string, priority int, aclAction ovnnb.ACLAction, rulePorts []v1alpha1.AdminNetworkPolicyPort, isIngress bool) ([]ovsdb.Operation, error)
 }
 
 type AddressSet interface {

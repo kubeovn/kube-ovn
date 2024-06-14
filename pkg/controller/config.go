@@ -14,6 +14,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
 	"kubevirt.io/client-go/kubecli"
+	anpclientset "sigs.k8s.io/network-policy-api/pkg/client/clientset/versioned"
 
 	clientset "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -34,6 +35,7 @@ type Configuration struct {
 
 	KubeClient      kubernetes.Interface
 	KubeOvnClient   clientset.Interface
+	AnpClient       anpclientset.Interface
 	AttachNetClient attachnetclientset.Interface
 	KubevirtClient  kubecli.KubevirtClient
 
@@ -89,6 +91,7 @@ type Configuration struct {
 	EnableKeepVMIP    bool
 	EnableLbSvc       bool
 	EnableMetrics     bool
+	EnableANP         bool
 
 	ExternalGatewaySwitch   string
 	ExternalGatewayConfigNS string
@@ -163,6 +166,7 @@ func ParseFlags() (*Configuration, error) {
 		argKeepVMIP                = pflag.Bool("keep-vm-ip", true, "Whether to keep ip for kubevirt pod when pod is rebuild")
 		argEnableLbSvc             = pflag.Bool("enable-lb-svc", false, "Whether to support loadbalancer service")
 		argEnableMetrics           = pflag.Bool("enable-metrics", true, "Whether to support metrics query")
+		argEnableANP               = pflag.Bool("enable-anp", false, "Enable support for admin network policy and baseline admin network policy")
 
 		argExternalGatewayConfigNS = pflag.String("external-gateway-config-ns", "kube-system", "The namespace of configmap external-gateway-config, default: kube-system")
 		argExternalGatewaySwitch   = pflag.String("external-gateway-switch", "external", "The name of the external gateway switch which is a ovs bridge to provide external network, default: external")
@@ -255,6 +259,7 @@ func ParseFlags() (*Configuration, error) {
 		BfdMinTx:                       *argBfdMinTx,
 		BfdMinRx:                       *argBfdMinRx,
 		BfdDetectMult:                  *argBfdDetectMult,
+		EnableANP:                      *argEnableANP,
 	}
 
 	if config.NetworkType == util.NetworkTypeVlan && config.DefaultHostInterface == "" {
@@ -349,6 +354,13 @@ func (config *Configuration) initKubeClient() error {
 		return err
 	}
 	config.KubevirtClient = virtClient
+
+	AnpClient, err := anpclientset.NewForConfig(cfg)
+	if err != nil {
+		klog.Errorf("init admin network policy client failed %v", err)
+		return err
+	}
+	config.AnpClient = AnpClient
 
 	kubeOvnClient, err := clientset.NewForConfig(cfg)
 	if err != nil {

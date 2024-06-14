@@ -17,6 +17,7 @@ import (
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
+	v1alpha1 "sigs.k8s.io/network-policy-api/apis/v1alpha1"
 )
 
 // UpdateIngressACLOps return operation that creates an ingress ACL
@@ -1277,4 +1278,103 @@ func (c *OVNNbClient) SGLostACL(sg *kubeovnv1.SecurityGroup) (bool, error) {
 		}
 	}
 	return false, nil
+}
+
+// UpdateAnpRuleACLOps return operation that creates an ingress/egress ACL
+func (c *OVNNbClient) UpdateAnpRuleACLOps(pgName, asName, protocol string, priority int, aclAction ovnnb.ACLAction, rulePorts []v1alpha1.AdminNetworkPolicyPort, isIngress bool) ([]ovsdb.Operation, error) {
+	acls := make([]*ovnnb.ACL, 0)
+
+	options := func(acl *ovnnb.ACL) {
+		if acl.ExternalIDs == nil {
+			acl.ExternalIDs = make(map[string]string)
+		}
+		acl.ExternalIDs[aclParentKey] = pgName
+	}
+
+	var direction ovnnb.ACLDirection
+	if isIngress {
+		direction = ovnnb.ACLDirectionToLport
+	} else {
+		direction = ovnnb.ACLDirectionFromLport
+	}
+
+	matches := newAnpACLMatch(pgName, asName, protocol, direction, rulePorts)
+	for _, m := range matches {
+		strPriority := fmt.Sprintf("%d", priority)
+		setACL, err := c.newACL(pgName, direction, strPriority, m, aclAction, options)
+		if err != nil {
+			return nil, fmt.Errorf("new ingress acl for port group %s: %v", pgName, err)
+		}
+
+		acls = append(acls, setACL)
+	}
+
+	ops, err := c.CreateAclsOps(pgName, portGroupKey, acls...)
+	if err != nil {
+		return nil, err
+	}
+
+	return ops, nil
+}
+
+func newAnpACLMatch(pgName, asName, protocol, direction string, rulePorts []v1alpha1.AdminNetworkPolicyPort) []string {
+	ipSuffix := "ip4"
+	if protocol == kubeovnv1.ProtocolIPv6 {
+		ipSuffix = "ip6"
+	}
+
+	// ingress rule
+	srcOrDst, portDirection := "src", "outport"
+	if direction == ovnnb.ACLDirectionFromLport { // egress rule
+		srcOrDst = "dst"
+		portDirection = "inport"
+	}
+
+	ipKey := ipSuffix + "." + srcOrDst
+
+	// match all traffic to or from pgName
+	allIPMatch := NewAndACLMatch(
+		NewACLMatch(portDirection, "==", "@"+pgName, ""),
+		NewACLMatch("ip", "", "", ""),
+	)
+
+	selectIPMatch := NewAndACLMatch(
+		allIPMatch,
+		NewACLMatch(ipKey, "==", "$"+asName, ""),
+	)
+
+	if len(rulePorts) == 0 {
+		return []string{selectIPMatch.String()}
+	}
+
+	matches := make([]string, 100)
+	for _, port := range rulePorts {
+		// Exactly one field must be set.
+		if port.PortNumber != nil {
+			protocol := strings.ToLower(string((*port.PortNumber).Protocol))
+			protocolKey := protocol + ".dst"
+
+			oneMatch := NewAndACLMatch(
+				selectIPMatch,
+				NewACLMatch(protocolKey, "==", fmt.Sprintf("%d", (*port.PortNumber).Port), ""),
+			)
+			matches = append(matches, oneMatch.String())
+		} else if port.PortRange != nil {
+			protocol := strings.ToLower(string((*port.PortRange).Protocol))
+			protocolKey := protocol + ".dst"
+
+			severalMatch := NewAndACLMatch(
+				selectIPMatch,
+				NewACLMatch(protocolKey, "<=", fmt.Sprintf("%d", (*port.PortRange).Start), fmt.Sprintf("%d", (*port.PortRange).End)),
+			)
+			matches = append(matches, severalMatch.String())
+		} else if port.NamedPort != nil {
+			// TODO: add support for namedport
+		} else {
+			klog.Errorf("failed to check port for anp ingress rule, pg %s, as %s", pgName, asName)
+			continue
+		}
+	}
+
+	return matches
 }

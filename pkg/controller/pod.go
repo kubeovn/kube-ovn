@@ -189,6 +189,10 @@ func (c *Controller) enqueueAddPod(obj interface{}) {
 		}
 	}
 
+	if c.config.EnableANP {
+		c.checkLabelsMatchForAnps(obj.(*v1.Pod).Labels)
+	}
+
 	if p.Spec.HostNetwork {
 		return
 	}
@@ -240,6 +244,10 @@ func (c *Controller) enqueueDeletePod(obj interface{}) {
 		for _, np := range c.podMatchNetworkPolicies(p) {
 			c.updateNpQueue.Add(np)
 		}
+	}
+
+	if c.config.EnableANP {
+		c.checkLabelsMatchForAnps(obj.(*v1.Pod).Labels)
 	}
 
 	if p.Spec.HostNetwork {
@@ -313,6 +321,21 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 					klog.V(3).Infof("enqueue update network policy %s for pod %s", np, key)
 					c.updateNpQueue.Add(np)
 				}
+				break
+			}
+		}
+	}
+
+	if c.config.EnableANP {
+		if !reflect.DeepEqual(oldPod.Labels, newPod.Labels) {
+			c.checkLabelsMatchForAnps(newPod.Labels)
+		}
+
+		for _, podNet := range podNets {
+			oldAllocated := oldPod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)]
+			newAllocated := newPod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)]
+			if oldAllocated != newAllocated {
+				c.checkLabelsMatchForAnps(newPod.Labels)
 				break
 			}
 		}
