@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
 
@@ -30,7 +30,7 @@ func Exec(id string, env []string, cmd ...string) (stdout, stderr []byte, err er
 	defer cli.Close()
 
 	framework.Logf("Executing command %q in container %s", strings.Join(cmd, " "), id)
-	config := types.ExecConfig{
+	config := container.ExecOptions{
 		Privileged:   true,
 		AttachStderr: true,
 		AttachStdout: true,
@@ -42,7 +42,7 @@ func Exec(id string, env []string, cmd ...string) (stdout, stderr []byte, err er
 		return nil, nil, err
 	}
 
-	attachResp, err := cli.ContainerExecAttach(context.Background(), createResp.ID, types.ExecStartCheck{})
+	attachResp, err := cli.ContainerExecAttach(context.Background(), createResp.ID, container.ExecStartOptions{})
 	if err != nil {
 		return nil, nil, err
 	}
