@@ -8,7 +8,6 @@ import (
 	"net"
 	"strconv"
 
-	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
@@ -40,7 +39,7 @@ func generateULASubnetFromName(name string, attempt int32) string {
 	return subnet.String()
 }
 
-func getNetwork(name string, ignoreNotFound bool) (*types.NetworkResource, error) {
+func getNetwork(name string, ignoreNotFound bool) (*network.Inspect, error) {
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		return nil, err
@@ -49,7 +48,7 @@ func getNetwork(name string, ignoreNotFound bool) (*types.NetworkResource, error
 
 	f := filters.NewArgs()
 	f.Add("name", name)
-	networks, err := cli.NetworkList(context.Background(), types.NetworkListOptions{Filters: f})
+	networks, err := cli.NetworkList(context.Background(), network.ListOptions{Filters: f})
 	if err != nil {
 		return nil, err
 	}
@@ -61,18 +60,18 @@ func getNetwork(name string, ignoreNotFound bool) (*types.NetworkResource, error
 		return nil, nil
 	}
 
-	info, err := cli.NetworkInspect(context.Background(), networks[0].ID, types.NetworkInspectOptions{})
+	info, err := cli.NetworkInspect(context.Background(), networks[0].ID, network.InspectOptions{})
 	if err != nil {
 		return nil, err
 	}
 	return &info, nil
 }
 
-func NetworkInspect(name string) (*types.NetworkResource, error) {
+func NetworkInspect(name string) (*network.Inspect, error) {
 	return getNetwork(name, false)
 }
 
-func NetworkCreate(name string, ipv6, skipIfExists bool) (*types.NetworkResource, error) {
+func NetworkCreate(name string, ipv6, skipIfExists bool) (*network.Inspect, error) {
 	if skipIfExists {
 		network, err := getNetwork(name, true)
 		if err != nil {
