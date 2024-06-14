@@ -40,6 +40,9 @@ func (c *Controller) enqueueDeleteNamespace(obj interface{}) {
 			c.updateNpQueue.Add(np)
 		}
 	}
+	if c.config.EnableANP {
+		c.updateAnpsByLabelsMatch(obj.(*v1.Namespace).Labels, nil)
+	}
 }
 
 func (c *Controller) enqueueUpdateNamespace(oldObj, newObj interface{}) {
@@ -49,11 +52,17 @@ func (c *Controller) enqueueUpdateNamespace(oldObj, newObj interface{}) {
 		return
 	}
 
-	if c.config.EnableNP && !reflect.DeepEqual(oldNs.Labels, newNs.Labels) {
-		oldNp := c.namespaceMatchNetworkPolicies(oldNs)
-		newNp := c.namespaceMatchNetworkPolicies(newNs)
-		for _, np := range util.DiffStringSlice(oldNp, newNp) {
-			c.updateNpQueue.Add(np)
+	if !reflect.DeepEqual(oldNs.Labels, newNs.Labels) {
+		if c.config.EnableNP {
+			oldNp := c.namespaceMatchNetworkPolicies(oldNs)
+			newNp := c.namespaceMatchNetworkPolicies(newNs)
+			for _, np := range util.DiffStringSlice(oldNp, newNp) {
+				c.updateNpQueue.Add(np)
+			}
+		}
+
+		if c.config.EnableANP {
+			c.updateAnpsByLabelsMatch(newObj.(*v1.Namespace).Labels, nil)
 		}
 	}
 

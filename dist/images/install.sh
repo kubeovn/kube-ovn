@@ -3084,6 +3084,15 @@ rules:
     verbs:
       - get
       - list
+  - apiGroups:
+      - "policy.networking.k8s.io"
+    resources:
+      - adminnetworkpolicies
+      - baselineadminnetworkpolicies
+    verbs:
+      - get
+      - list
+      - watch
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
