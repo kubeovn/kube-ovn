@@ -2395,6 +2395,7 @@ jobs:
           docker tag kubeovn/vpc-nat-gateway:$TAG kubeovn/vpc-nat-gateway:$TAG-x86
           docker images
           docker push kubeovn/kube-ovn:$TAG-x86
+          docker push kubeovn/kube-ovn:$TAG-amd64-legacy
           docker push kubeovn/kube-ovn-dev:$COMMIT-x86
           docker push kubeovn/kube-ovn:$TAG-debug-x86
           docker push kubeovn/kube-ovn:$TAG-dpdk-x86
