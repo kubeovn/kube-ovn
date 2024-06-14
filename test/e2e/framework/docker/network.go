@@ -12,6 +12,7 @@ import (
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
+	"k8s.io/utils/ptr"
 
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -82,10 +83,9 @@ func NetworkCreate(name string, ipv6, skipIfExists bool) (*types.NetworkResource
 		}
 	}
 
-	options := types.NetworkCreate{
-		CheckDuplicate: true,
-		Driver:         "bridge",
-		Attachable:     true,
+	options := network.CreateOptions{
+		Driver:     "bridge",
+		Attachable: true,
 		IPAM: &network.IPAM{
 			Driver: "default",
 		},
@@ -95,7 +95,7 @@ func NetworkCreate(name string, ipv6, skipIfExists bool) (*types.NetworkResource
 		},
 	}
 	if ipv6 {
-		options.EnableIPv6 = true
+		options.EnableIPv6 = ptr.To(true)
 		subnet := generateULASubnetFromName(name, 0)
 		gateway, err := util.FirstIP(subnet)
 		if err != nil {
