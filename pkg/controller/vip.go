@@ -312,11 +312,19 @@ func (c *Controller) handleUpdateVirtualIP(key string) error {
 		}
 		return nil
 	}
-	// not support change ip
-	if vip.Status.Mac != "" && vip.Status.Mac != vip.Spec.MacAddress ||
-		vip.Status.V4ip != "" && vip.Status.V4ip != vip.Spec.V4ip ||
-		vip.Status.V6ip != "" && vip.Status.V6ip != vip.Spec.V6ip {
-		err = fmt.Errorf("not support change ip of vip")
+	// not support change
+	if vip.Status.Mac != "" && vip.Status.Mac != vip.Spec.MacAddress {
+		err = fmt.Errorf("not support change mac of vip")
+		klog.Errorf("%v", err)
+		return err
+	}
+	if vip.Status.V4ip != "" && vip.Status.V4ip != vip.Spec.V4ip {
+		err = fmt.Errorf("not support change v4 ip of vip")
+		klog.Errorf("%v", err)
+		return err
+	}
+	if vip.Status.V6ip != "" && vip.Status.V6ip != vip.Spec.V6ip {
+		err = fmt.Errorf("not support change v6 ip of vip")
 		klog.Errorf("%v", err)
 		return err
 	}
