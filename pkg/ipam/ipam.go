@@ -19,6 +19,7 @@ var (
 	ErrOutOfRange  = errors.New("AddressOutOfRange")
 	ErrConflict    = errors.New("AddressConflict")
 	ErrNoAvailable = errors.New("NoAvailableAddress")
+	ErrNoSubnet    = errors.New("NoSubnet")
 	ErrInvalidCIDR = errors.New("CIDRInvalid")
 )
 
@@ -46,7 +47,7 @@ func (ipam *IPAM) GetRandomAddress(podName, nicName string, mac *string, subnetN
 	var v4, v6 string
 	subnet, ok := ipam.Subnets[subnetName]
 	if !ok {
-		return "", "", "", ErrNoAvailable
+		return "", "", "", ErrNoSubnet
 	}
 
 	v4IP, v6IP, macStr, err := subnet.GetRandomAddress(poolName, podName, nicName, mac, skippedAddrs, checkConflict)
@@ -71,7 +72,7 @@ func (ipam *IPAM) GetStaticAddress(podName, nicName, ip string, mac *string, sub
 	var ok bool
 	klog.Infof("allocating static ip %s from subnet %s", ip, subnetName)
 	if subnet, ok = ipam.Subnets[subnetName]; !ok {
-		return "", "", "", ErrNoAvailable
+		return "", "", "", ErrNoSubnet
 	}
 
 	var ips []IP

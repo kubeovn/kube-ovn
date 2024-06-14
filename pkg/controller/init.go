@@ -293,7 +293,9 @@ func (c *Controller) InitIPAM() error {
 		klog.Errorf("failed to list subnet: %v", err)
 		return err
 	}
+	subnetProviderMaps := make(map[string]string, len(subnets))
 	for _, subnet := range subnets {
+		subnetProviderMaps[subnet.Name] = subnet.Spec.Provider
 		if err := c.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps); err != nil {
 			klog.Errorf("failed to init subnet %s: %v", subnet.Name, err)
 		}
@@ -406,13 +408,13 @@ func (c *Controller) InitIPAM() error {
 		return err
 	}
 	for _, vip := range vips {
-		var ipamKey string
-		if vip.Spec.Namespace != "" {
-			ipamKey = fmt.Sprintf("%s/%s", vip.Spec.Namespace, vip.Name)
-		} else {
-			ipamKey = vip.Name
+		provider, ok := subnetProviderMaps[vip.Spec.Subnet]
+		if !ok {
+			klog.Errorf("failed to find subnet %s for vip %s", vip.Spec.Subnet, vip.Name)
+			continue
 		}
-		if _, _, _, err = c.ipam.GetStaticAddress(ipamKey, vip.Name, vip.Status.V4ip, &vip.Status.Mac, vip.Spec.Subnet, true); err != nil {
+		portName := ovs.PodNameToPortName(vip.Name, vip.Spec.Namespace, provider)
+		if _, _, _, err = c.ipam.GetStaticAddress(vip.Name, portName, vip.Status.V4ip, &vip.Status.Mac, vip.Spec.Subnet, true); err != nil {
 			klog.Errorf("failed to init ipam from vip cr %s: %v", vip.Name, err)
 		}
 	}
