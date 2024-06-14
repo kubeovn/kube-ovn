@@ -117,11 +117,7 @@ var _ = framework.SerialDescribe("[group:ovn-ic]", func() {
 		}
 
 		for i := range clusters {
-			sourceIPs := make([]string, 0, len(pods[i].Status.PodIPs))
-			for _, podIP := range pods[i].Status.PodIPs {
-				sourceIPs = append(sourceIPs, podIP.IP)
-			}
-
+			sourceIPs := util.PodIPs(*pods[i])
 			for j := range clusters {
 				if j == i {
 					continue

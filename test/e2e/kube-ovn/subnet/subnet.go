@@ -554,10 +554,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 			framework.ExpectNoError(err)
 
 			ginkgo.By("Checking ip rules in node " + node.Name())
-			podIPs := make([]string, 0, len(pod.Status.PodIPs))
-			for _, podIP := range pod.Status.PodIPs {
-				podIPs = append(podIPs, podIP.IP)
-			}
+			podIPs := util.PodIPs(*pod)
 			for _, rule := range rules {
 				if rule.Priority == prPriority &&
 					rule.Table == strconv.Itoa(prTable) {
