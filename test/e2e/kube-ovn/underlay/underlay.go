@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	dockertypes "github.com/docker/docker/api/types"
+	dockernetwork "github.com/docker/docker/api/types/network"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
@@ -112,7 +112,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 	var vpcClient *framework.VpcClient
 	var vlanClient *framework.VlanClient
 	var providerNetworkClient *framework.ProviderNetworkClient
-	var dockerNetwork *dockertypes.NetworkResource
+	var dockerNetwork *dockernetwork.Inspect
 	var containerID string
 	var image string
 

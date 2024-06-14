@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	dockertypes "github.com/docker/docker/api/types"
+	dockernetwork "github.com/docker/docker/api/types/network"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
@@ -70,7 +70,7 @@ type qosParams struct {
 
 func setupNetworkAttachmentDefinition(
 	f *framework.Framework,
-	dockerExtNetNetwork *dockertypes.NetworkResource,
+	dockerExtNetNetwork *dockernetwork.Inspect,
 	attachNetClient *framework.NetworkAttachmentDefinitionClient,
 	subnetClient *framework.SubnetClient,
 	externalNetworkName string,
@@ -140,7 +140,7 @@ func setupNetworkAttachmentDefinition(
 
 func setupVpcNatGwTestEnvironment(
 	f *framework.Framework,
-	dockerExtNetNetwork *dockertypes.NetworkResource,
+	dockerExtNetNetwork *dockernetwork.Inspect,
 	attachNetClient *framework.NetworkAttachmentDefinitionClient,
 	subnetClient *framework.SubnetClient,
 	vpcClient *framework.VpcClient,
@@ -201,11 +201,11 @@ var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 	var iptablesSnatRuleClient *framework.IptablesSnatClient
 	var iptablesDnatRuleClient *framework.IptablesDnatClient
 
-	var dockerExtNet1Network *dockertypes.NetworkResource
+	var dockerExtNet1Network *dockernetwork.Inspect
 	var net1NicName string
 
 	// multiple external network case
-	var dockerExtNet2Network *dockertypes.NetworkResource
+	var dockerExtNet2Network *dockernetwork.Inspect
 	var net2NicName string
 	var net2AttachDefName string
 	var net2SubnetProvider string
@@ -1035,7 +1035,7 @@ var _ = framework.Describe("[group:qos-policy]", func() {
 	var dockerExtNetName string
 
 	// docker network
-	var dockerExtNetNetwork *dockertypes.NetworkResource
+	var dockerExtNetNetwork *dockernetwork.Inspect
 
 	var vpcQosParams *qosParams
 	var vpc1Pod *corev1.Pod
