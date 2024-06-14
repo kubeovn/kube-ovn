@@ -40,7 +40,7 @@ func (c *Controller) enqueueUpdateOvnEip(oldObj, newObj interface{}) {
 		return
 	}
 	newEip := newObj.(*kubeovnv1.OvnEip)
-	if newEip.DeletionTimestamp != nil {
+	if !newEip.DeletionTimestamp.IsZero() {
 		if len(newEip.GetFinalizers()) == 0 {
 			// avoid delete eip twice
 			return
