@@ -1108,6 +1108,30 @@
  * 张祖建
  * 袁又袁
 
+## v1.11.18 (2024-06-14)
+
+ * [6ee9cb66](https://github.com/kubeovn/kube-ovn/commit/6ee9cb668d7fdf1e9f51e609c244545cbbe00899) set release for 1.11.18
+ * [9f8d19ed](https://github.com/kubeovn/kube-ovn/commit/9f8d19ed0f6787147378882c79ac9c2a6020f15d) ci: fix retrieving docker network subnet/gateway (#4161)
+ * [312cca60](https://github.com/kubeovn/kube-ovn/commit/312cca60fa52e9ab6023dda7a4440359fca0a4ca) Drop u2o arp request 1.11 (#4151)
+ * [00f646ac](https://github.com/kubeovn/kube-ovn/commit/00f646ac98661d8c19708e338ae6bfd0d6b5b985) add ovn0 default route (#4127)
+ * [a30e5046](https://github.com/kubeovn/kube-ovn/commit/a30e504633ebc6375561489df800a15c10aaea0c) trivy: ignore unfixed CVEs (#4129)
+ * [094f311d](https://github.com/kubeovn/kube-ovn/commit/094f311d147f1a471b23aa96f672ca9b215378b1) bump go to 1.22.4 (#4121)
+ * [48e97f42](https://github.com/kubeovn/kube-ovn/commit/48e97f42cd0914b0127e4c3233bbb9b4c12462fd) Makefile: run kubectl-ko script when collecting logs (#4100)
+ * [f3411a42](https://github.com/kubeovn/kube-ovn/commit/f3411a42636efb9d5a4a84d98e55a399e6539a4d) fix: ip can not change spec (#4091)
+ * [2e59f0f7](https://github.com/kubeovn/kube-ovn/commit/2e59f0f7211be808ab7cc07b6ee87ba81e6f1a57) remove unused func and parameter (#4090)
+ * [22d6961d](https://github.com/kubeovn/kube-ovn/commit/22d6961d12b579482e175b7e1045c58cc3388166) fix windows build
+ * [d2fb5bfd](https://github.com/kubeovn/kube-ovn/commit/d2fb5bfd8118d57a8bc26b6071e3bc59c3f1e064) Add support for Yunsilicon NIC (#4074)
+ * [3bf87d74](https://github.com/kubeovn/kube-ovn/commit/3bf87d74644700f32b89cc8859f1aa40303b92e6) prepare for next release
+
+### Contributors
+
+ * bobz965
+ * changluyi
+ * hzma
+ * yunsilicon
+ * zhangzujian
+ * 张祖建
+
 ## v1.11.17 (2024-05-23)
 
  * [c8e25835](https://github.com/kubeovn/kube-ovn/commit/c8e258357afa1ba523d7c45f8cc642c28c6bbf34) set release for 1.11.17
