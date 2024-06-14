@@ -474,21 +474,30 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		_ = vlanClient.Create(vlan)
 
 		ginkgo.By("Creating underlay subnet " + underlaySubnetName)
-		cidr := make([]string, 0, 2)
-		gateway := make([]string, 0, 2)
+		var cidrV4, cidrV6, gatewayV4, gatewayV6 string
 		for _, config := range dockerNetwork.IPAM.Config {
 			switch util.CheckProtocol(config.Subnet) {
 			case kubeovnv1.ProtocolIPv4:
 				if f.HasIPv4() {
-					cidr = append(cidr, config.Subnet)
-					gateway = append(gateway, config.Gateway)
+					cidrV4 = config.Subnet
+					gatewayV4 = config.Gateway
 				}
 			case kubeovnv1.ProtocolIPv6:
 				if f.HasIPv6() {
-					cidr = append(cidr, config.Subnet)
-					gateway = append(gateway, config.Gateway)
+					cidrV6 = config.Subnet
+					gatewayV6 = config.Gateway
 				}
 			}
+		}
+		cidr := make([]string, 0, 2)
+		gateway := make([]string, 0, 2)
+		if f.HasIPv4() {
+			cidr = append(cidr, cidrV4)
+			gateway = append(gateway, gatewayV4)
+		}
+		if f.HasIPv6() {
+			cidr = append(cidr, cidrV6)
+			gateway = append(gateway, gatewayV6)
 		}
 		excludeIPs := make([]string, 0, len(network.Containers)*2)
 		for _, container := range network.Containers {
@@ -689,24 +698,32 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		_ = vlanClient.Create(vlan)
 
 		ginkgo.By("Creating extra underlay subnet " + underlayExtraSubnetName)
-		extracidr := make([]string, 0, 2)
-		extragateway := make([]string, 0, 2)
-		gatewayV4 := ""
+		cidrV4, cidrV6, gatewayV4, gatewayV6 = "", "", "", ""
 		for _, config := range dockerExtraNetwork.IPAM.Config {
 			switch util.CheckProtocol(config.Subnet) {
 			case kubeovnv1.ProtocolIPv4:
 				if f.HasIPv4() {
+					cidrV4 = config.Subnet
 					gatewayV4 = config.Gateway
-					extracidr = append(extracidr, config.Subnet)
-					extragateway = append(extragateway, config.Gateway)
 				}
 			case kubeovnv1.ProtocolIPv6:
 				if f.HasIPv6() {
-					extracidr = append(extracidr, config.Subnet)
-					extragateway = append(extragateway, config.Gateway)
+					cidrV6 = config.Subnet
+					gatewayV6 = config.Gateway
 				}
 			}
 		}
+		cidr = make([]string, 0, 2)
+		gateway = make([]string, 0, 2)
+		if f.HasIPv4() {
+			cidr = append(cidr, cidrV4)
+			gateway = append(gateway, gatewayV4)
+		}
+		if f.HasIPv6() {
+			cidr = append(cidr, cidrV6)
+			gateway = append(gateway, gatewayV6)
+		}
+
 		extraExcludeIPs := make([]string, 0, len(extraNetwork.Containers)*2)
 		for _, container := range extraNetwork.Containers {
 			if container.IPv4Address != "" && f.HasIPv4() {
@@ -716,8 +733,8 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 				extraExcludeIPs = append(extraExcludeIPs, strings.Split(container.IPv6Address, "/")[0])
 			}
 		}
-		extraVlanSubnetCidr := strings.Join(extracidr, ",")
-		extraVlanSubnetGw := strings.Join(extragateway, ",")
+		extraVlanSubnetCidr := strings.Join(cidr, ",")
+		extraVlanSubnetGw := strings.Join(gateway, ",")
 		underlayExtraSubnet := framework.MakeSubnet(underlayExtraSubnetName, vlanExtraName, extraVlanSubnetCidr, extraVlanSubnetGw, "", "", extraExcludeIPs, nil, nil)
 		_ = subnetClient.CreateSync(underlayExtraSubnet)
 		vlanExtraSubnet := subnetClient.Get(underlayExtraSubnetName)
