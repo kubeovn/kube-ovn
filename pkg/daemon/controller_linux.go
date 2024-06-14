@@ -360,6 +360,9 @@ func getNicExistRoutes(nic netlink.Link, gateway string) ([]netlink.Route, error
 }
 
 func routeDiff(nodeNicRoutes, allRoutes []netlink.Route, cidrs, joinCIDR []string, joinIPv4, joinIPv6, gateway string, srcIPv4, srcIPv6 net.IP) (toAdd, toDel []netlink.Route) {
+	// joinIPv6 is not used for now
+	_ = joinIPv6
+
 	for _, route := range nodeNicRoutes {
 		if route.Scope == netlink.SCOPE_LINK || route.Dst == nil || route.Dst.IP.IsLinkLocalUnicast() {
 			continue
@@ -428,23 +431,26 @@ func routeDiff(nodeNicRoutes, allRoutes []netlink.Route, cidrs, joinCIDR []strin
 			}
 		}
 		if !found {
-			_, cidr, _ := net.ParseCIDR(c)
-			var proto netlink.RouteProtocol
+			var priority int
 			scope := netlink.SCOPE_UNIVERSE
+			proto := netlink.RouteProtocol(syscall.RTPROT_STATIC)
 			if slices.Contains(joinCIDR, c) {
-				ip := joinIPv4
-				if util.CheckProtocol(c) == kubeovnv1.ProtocolIPv6 {
-					ip = joinIPv6
+				if util.CheckProtocol(c) == kubeovnv1.ProtocolIPv4 {
+					src = net.ParseIP(joinIPv4)
+				} else {
+					src, priority = nil, 256
 				}
-				gw, src, scope = nil, net.ParseIP(ip), netlink.SCOPE_LINK
+				gw, scope = nil, netlink.SCOPE_LINK
 				proto = netlink.RouteProtocol(unix.RTPROT_KERNEL)
 			}
+			_, cidr, _ := net.ParseCIDR(c)
 			toAdd = append(toAdd, netlink.Route{
 				Dst:      cidr,
 				Src:      src,
 				Gw:       gw,
 				Protocol: proto,
 				Scope:    scope,
+				Priority: priority,
 			})
 		}
 	}
@@ -585,9 +591,8 @@ func (c *Controller) getPolicyRouting(subnet *kubeovnv1.Subnet) ([]netlink.Rule,
 	// routes
 	var routes []netlink.Route
 	for i := range protocols {
-		family, _ := util.ProtocolToFamily(protocols[i])
 		routes = append(routes, netlink.Route{
-			Protocol: netlink.RouteProtocol(family),
+			Protocol: netlink.RouteProtocol(syscall.RTPROT_STATIC),
 			Table:    int(subnet.Spec.PolicyRoutingTableID),
 			Gw:       net.ParseIP(egw[i]),
 		})

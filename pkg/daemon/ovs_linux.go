@@ -606,25 +606,31 @@ func configureNodeNic(portName, ip, gw, joinCIDR string, macAddr net.HardwareAdd
 			}
 		}
 		if !found {
-			_, cidr, _ := net.ParseCIDR(c)
 			protocol := util.CheckProtocol(c)
 			var src net.IP
-			for _, ip := range strings.Split(ip, ",") {
-				if util.CheckProtocol(ip) == protocol {
-					src = net.ParseIP(ip)
-					break
+			var priority int
+			if protocol == kubeovnv1.ProtocolIPv4 {
+				for _, ip := range strings.Split(ipStr, ",") {
+					if util.CheckProtocol(ip) == protocol {
+						src = net.ParseIP(ip)
+						break
+					}
 				}
+			} else {
+				priority = 256
 			}
+			_, cidr, _ := net.ParseCIDR(c)
 			toAdd = append(toAdd, netlink.Route{
 				Dst:      cidr,
 				Src:      src,
 				Protocol: netlink.RouteProtocol(unix.RTPROT_KERNEL),
 				Scope:    netlink.SCOPE_LINK,
+				Priority: priority,
 			})
 		}
 	}
 	if len(toAdd) > 0 {
-		klog.Infof("route to add for nic %s, %v", util.NodeNic, toAdd)
+		klog.Infof("routes to be added on nic %s: %v", util.NodeNic, toAdd)
 	}
 
 	for _, r := range toAdd {
