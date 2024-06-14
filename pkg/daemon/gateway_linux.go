@@ -1537,7 +1537,7 @@ func (c *Controller) getLocalPodIPsNeedPR(protocol string) (map[policyRouteMeta]
 	localPodIPs := make(map[policyRouteMeta][]string)
 	for _, pod := range allPods {
 		if pod.Spec.HostNetwork ||
-			pod.DeletionTimestamp != nil ||
+			!pod.DeletionTimestamp.IsZero() ||
 			pod.Spec.NodeName != nodeName ||
 			pod.Annotations[util.LogicalSwitchAnnotation] == "" ||
 			pod.Annotations[util.IPAddressAnnotation] == "" {
@@ -1609,7 +1609,7 @@ func (c *Controller) getSubnetsNeedPR(protocol string) (map[policyRouteMeta]stri
 	}
 
 	for _, subnet := range subnets {
-		if subnet.DeletionTimestamp == nil &&
+		if subnet.DeletionTimestamp.IsZero() &&
 			subnet.Spec.ExternalEgressGateway != "" &&
 			(subnet.Spec.Vlan == "" || subnet.Spec.LogicalGateway) &&
 			subnet.Spec.GatewayType == kubeovnv1.GWCentralizedType &&

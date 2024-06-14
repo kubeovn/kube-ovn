@@ -137,7 +137,7 @@ var _ = ginkgo.Describe("[IPAM]", func() {
 				pod5Nic1 := "pod5Nic1.ns"
 
 				_, _, _, err = im.GetRandomAddress(pod5, pod5Nic1, nil, "invalid_subnet", "", nil, true)
-				gomega.Expect(err).Should(gomega.MatchError(ipam.ErrNoAvailable))
+				gomega.Expect(err).Should(gomega.MatchError(ipam.ErrNoSubnet))
 			})
 
 			ginkgo.It("change cidr", func() {
@@ -312,7 +312,7 @@ var _ = ginkgo.Describe("[IPAM]", func() {
 				pod5Nic1 := "pod5Nic1.ns"
 
 				_, _, _, err = im.GetRandomAddress(pod5, pod5Nic1, nil, "invalid_subnet", "", nil, true)
-				gomega.Expect(err).Should(gomega.MatchError(ipam.ErrNoAvailable))
+				gomega.Expect(err).Should(gomega.MatchError(ipam.ErrNoSubnet))
 			})
 
 			ginkgo.It("change cidr", func() {
@@ -498,7 +498,7 @@ var _ = ginkgo.Describe("[IPAM]", func() {
 				pod5Nic1 := "pod5Nic1.ns"
 
 				_, _, _, err = im.GetRandomAddress(pod5, pod5Nic1, nil, "invalid_subnet", "", nil, true)
-				gomega.Expect(err).Should(gomega.MatchError(ipam.ErrNoAvailable))
+				gomega.Expect(err).Should(gomega.MatchError(ipam.ErrNoSubnet))
 			})
 
 			ginkgo.It("change cidr", func() {

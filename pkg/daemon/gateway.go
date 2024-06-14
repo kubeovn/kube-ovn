@@ -85,7 +85,7 @@ func (c *Controller) setICGateway() error {
 }
 
 func (c *Controller) isSubnetNeedNat(subnet *kubeovnv1.Subnet, protocol string) bool {
-	if subnet.DeletionTimestamp == nil &&
+	if subnet.DeletionTimestamp.IsZero() &&
 		subnet.Spec.NatOutgoing &&
 		(subnet.Spec.Vlan == "" || subnet.Spec.LogicalGateway) &&
 		subnet.Spec.Vpc == c.config.ClusterRouter &&
@@ -138,7 +138,7 @@ func (c *Controller) getSubnetsDistributedGateway(protocol string) ([]string, er
 
 	var result []string
 	for _, subnet := range subnets {
-		if subnet.DeletionTimestamp == nil &&
+		if subnet.DeletionTimestamp.IsZero() &&
 			(subnet.Spec.Vlan == "" || subnet.Spec.LogicalGateway) &&
 			subnet.Spec.Vpc == c.config.ClusterRouter &&
 			subnet.Spec.CIDRBlock != "" &&
