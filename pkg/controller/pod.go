@@ -144,7 +144,7 @@ func (n *NamedPort) GetNamedPortByNs(namespace string) map[string]*util.NamedPor
 }
 
 func isPodAlive(p *v1.Pod) bool {
-	if p.DeletionTimestamp != nil && p.DeletionGracePeriodSeconds != nil {
+	if !p.DeletionTimestamp.IsZero() && p.DeletionGracePeriodSeconds != nil {
 		now := time.Now()
 		deletionTime := p.DeletionTimestamp.Time
 		gracePeriod := time.Duration(*p.DeletionGracePeriodSeconds) * time.Second
@@ -334,14 +334,14 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 	// enqueue delay
 	var delay time.Duration
 	if newPod.Spec.TerminationGracePeriodSeconds != nil {
-		if newPod.DeletionTimestamp != nil {
+		if !newPod.DeletionTimestamp.IsZero() {
 			delay = time.Until(newPod.DeletionTimestamp.Add(time.Duration(*newPod.Spec.TerminationGracePeriodSeconds) * time.Second))
 		} else {
 			delay = time.Duration(*newPod.Spec.TerminationGracePeriodSeconds) * time.Second
 		}
 	}
 
-	if newPod.DeletionTimestamp != nil && !isStateful && !isVMPod {
+	if !newPod.DeletionTimestamp.IsZero() && !isStateful && !isVMPod {
 		go func() {
 			// In case node get lost and pod can not be deleted,
 			// the ip address will not be recycled
@@ -1012,7 +1012,7 @@ func (c *Controller) handleDeletePod(key string) error {
 	if ok, sts := isStatefulSetPod(pod); ok {
 		toDel := isStatefulSetPodToDel(c.config.KubeClient, pod, sts)
 		isDelete, err := appendCheckPodToDel(c, pod, sts, util.StatefulSet)
-		if pod.DeletionTimestamp != nil {
+		if !pod.DeletionTimestamp.IsZero() {
 			// triggered by delete event
 			if !(toDel || (isDelete && err == nil)) {
 				return nil
@@ -1037,7 +1037,7 @@ func (c *Controller) handleDeletePod(key string) error {
 		}
 		vmToBeDel := c.isVMToDel(pod, vmName)
 		isDelete, err := appendCheckPodToDel(c, pod, vmName, util.VMInstance)
-		if pod.DeletionTimestamp != nil {
+		if !pod.DeletionTimestamp.IsZero() {
 			// triggered by delete event
 			if !(vmToBeDel || (isDelete && err == nil)) {
 				return nil
@@ -1327,7 +1327,7 @@ func isStatefulSetPodToDel(c kubernetes.Interface, pod *v1.Pod, statefulSetName 
 	}
 
 	// statefulset is deleting
-	if ss.DeletionTimestamp != nil {
+	if !ss.DeletionTimestamp.IsZero() {
 		return true
 	}
 
@@ -1969,11 +1969,11 @@ func (c *Controller) isVMToDel(pod *v1.Pod, vmiName string) bool {
 	} else {
 		var ownsByVM bool
 		ownsByVM, vmName = isOwnsByTheVM(vmi)
-		if !ownsByVM && vmi.DeletionTimestamp != nil {
+		if !ownsByVM && !vmi.DeletionTimestamp.IsZero() {
 			// deleting ephemeral vmi
 			return true
 		}
-		vmiAlive = (vmi.DeletionTimestamp == nil)
+		vmiAlive = vmi.DeletionTimestamp.IsZero()
 	}
 
 	if vmiAlive {
@@ -1991,12 +1991,7 @@ func (c *Controller) isVMToDel(pod *v1.Pod, vmiName string) bool {
 		return false
 	}
 
-	// vm is deleting
-	if vm.DeletionTimestamp != nil {
-		return true
-	}
-
-	return false
+	return !vm.DeletionTimestamp.IsZero()
 }
 
 func (c *Controller) getNameByPod(pod *v1.Pod) string {
