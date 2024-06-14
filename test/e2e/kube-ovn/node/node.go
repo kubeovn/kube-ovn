@@ -107,87 +107,6 @@ var _ = framework.OrderedDescribe("[group:node]", func() {
 		}
 	})
 
-	framework.ConformanceIt("should add missing routes on node for the join subnet", func() {
-		f.SkipVersionPriorTo(1, 9, "This feature was introduced in v1.9")
-		ginkgo.By("Getting join subnet")
-		join := subnetClient.Get("join")
-
-		ginkgo.By("Getting nodes")
-		nodeList, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
-		framework.ExpectNoError(err)
-
-		ginkgo.By("Validating node annotations")
-		node := nodeList.Items[0]
-		framework.ExpectHaveKeyWithValue(node.Annotations, util.AllocatedAnnotation, "true")
-		framework.ExpectHaveKeyWithValue(node.Annotations, util.CidrAnnotation, join.Spec.CIDRBlock)
-		framework.ExpectHaveKeyWithValue(node.Annotations, util.GatewayAnnotation, join.Spec.Gateway)
-		framework.ExpectIPInCIDR(node.Annotations[util.IPAddressAnnotation], join.Spec.CIDRBlock)
-		framework.ExpectHaveKeyWithValue(node.Annotations, util.LogicalSwitchAnnotation, join.Name)
-
-		podName = "pod-" + framework.RandomSuffix()
-		ginkgo.By("Creating pod " + podName + " with host network")
-		cmd := []string{"sh", "-c", "sleep infinity"}
-		pod := framework.MakePrivilegedPod(namespaceName, podName, nil, nil, image, cmd, nil)
-		pod.Spec.NodeName = node.Name
-		pod.Spec.HostNetwork = true
-		pod = podClient.CreateSync(pod)
-
-		ginkgo.By("Getting node routes on " + util.NodeNic)
-		cidrs := strings.Split(join.Spec.CIDRBlock, ",")
-		execFunc := func(cmd ...string) ([]byte, []byte, error) {
-			return framework.KubectlExec(pod.Namespace, pod.Name, cmd...)
-		}
-		routes, err := iproute.RouteShow("", util.NodeNic, execFunc)
-		framework.ExpectNoError(err)
-		found := make([]bool, len(cidrs))
-		for i, cidr := range cidrs {
-			for _, route := range routes {
-				if route.Dst == cidr {
-					framework.Logf("Found route for cidr " + cidr + " on " + util.NodeNic)
-					found[i] = true
-					break
-				}
-			}
-		}
-		for i, cidr := range cidrs {
-			framework.ExpectTrue(found[i], "Route for cidr "+cidr+" not found on "+util.NodeNic)
-		}
-
-		for _, cidr := range strings.Split(join.Spec.CIDRBlock, ",") {
-			ginkgo.By("Deleting route for " + cidr + " on node " + node.Name)
-			err = iproute.RouteDel("", cidr, execFunc)
-			framework.ExpectNoError(err)
-		}
-
-		ginkgo.By("Waiting for routes for subnet " + join.Name + " to be created")
-		framework.WaitUntil(2*time.Second, 10*time.Second, func(_ context.Context) (bool, error) {
-			if routes, err = iproute.RouteShow("", util.NodeNic, execFunc); err != nil {
-				return false, err
-			}
-
-			found = make([]bool, len(cidrs))
-			for i, cidr := range cidrs {
-				for _, route := range routes {
-					if route.Dst == cidr {
-						framework.Logf("Found route for cidr " + cidr + " on " + util.NodeNic)
-						found[i] = true
-						break
-					}
-				}
-			}
-			for i, cidr := range cidrs {
-				if !found[i] {
-					framework.Logf("Route for cidr " + cidr + " not found on " + util.NodeNic)
-					return false, nil
-				}
-			}
-			return true, nil
-		}, "")
-
-		err = podClient.Delete(podName)
-		framework.ExpectNoError(err)
-	})
-
 	framework.ConformanceIt("should access overlay pods using node ip", func() {
 		f.SkipVersionPriorTo(1, 12, "This feature was introduced in v1.12")
 
@@ -280,5 +199,109 @@ var _ = framework.OrderedDescribe("[group:node]", func() {
 			framework.ExpectNoError(err)
 			framework.ExpectContainElement(nodeIPs, client)
 		}
+	})
+})
+
+var _ = framework.SerialDescribe("[group:node]", func() {
+	f := framework.NewDefaultFramework("node")
+
+	var cs clientset.Interface
+	var podClient *framework.PodClient
+	var subnetClient *framework.SubnetClient
+	var podName, namespaceName, image string
+	ginkgo.BeforeEach(func() {
+		cs = f.ClientSet
+		podClient = f.PodClient()
+		subnetClient = f.SubnetClient()
+		namespaceName = f.Namespace.Name
+		podName = "pod-" + framework.RandomSuffix()
+		if image == "" {
+			image = framework.GetKubeOvnImage(cs)
+		}
+	})
+	ginkgo.AfterEach(func() {
+		ginkgo.By("Deleting pod " + podName)
+		podClient.DeleteSync(podName)
+	})
+
+	framework.ConformanceIt("should add missing routes on node for the join subnet", func() {
+		f.SkipVersionPriorTo(1, 9, "This feature was introduced in v1.9")
+		ginkgo.By("Getting join subnet")
+		join := subnetClient.Get("join")
+
+		ginkgo.By("Getting nodes")
+		nodeList, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
+		framework.ExpectNoError(err)
+
+		ginkgo.By("Validating node annotations")
+		node := nodeList.Items[0]
+		framework.ExpectHaveKeyWithValue(node.Annotations, util.AllocatedAnnotation, "true")
+		framework.ExpectHaveKeyWithValue(node.Annotations, util.CidrAnnotation, join.Spec.CIDRBlock)
+		framework.ExpectHaveKeyWithValue(node.Annotations, util.GatewayAnnotation, join.Spec.Gateway)
+		framework.ExpectIPInCIDR(node.Annotations[util.IPAddressAnnotation], join.Spec.CIDRBlock)
+		framework.ExpectHaveKeyWithValue(node.Annotations, util.LogicalSwitchAnnotation, join.Name)
+
+		podName = "pod-" + framework.RandomSuffix()
+		ginkgo.By("Creating pod " + podName + " with host network")
+		cmd := []string{"sh", "-c", "sleep infinity"}
+		pod := framework.MakePrivilegedPod(namespaceName, podName, nil, nil, image, cmd, nil)
+		pod.Spec.NodeName = node.Name
+		pod.Spec.HostNetwork = true
+		pod = podClient.CreateSync(pod)
+
+		ginkgo.By("Getting node routes on " + util.NodeNic)
+		cidrs := strings.Split(join.Spec.CIDRBlock, ",")
+		execFunc := func(cmd ...string) ([]byte, []byte, error) {
+			return framework.KubectlExec(pod.Namespace, pod.Name, cmd...)
+		}
+		routes, err := iproute.RouteShow("", util.NodeNic, execFunc)
+		framework.ExpectNoError(err)
+		found := make([]bool, len(cidrs))
+		for i, cidr := range cidrs {
+			for _, route := range routes {
+				if route.Dst == cidr {
+					framework.Logf("Found route for cidr " + cidr + " on " + util.NodeNic)
+					found[i] = true
+					break
+				}
+			}
+		}
+		for i, cidr := range cidrs {
+			framework.ExpectTrue(found[i], "Route for cidr "+cidr+" not found on "+util.NodeNic)
+		}
+
+		for _, cidr := range strings.Split(join.Spec.CIDRBlock, ",") {
+			ginkgo.By("Deleting route for " + cidr + " on node " + node.Name)
+			err = iproute.RouteDel("", cidr, execFunc)
+			framework.ExpectNoError(err)
+		}
+
+		ginkgo.By("Waiting for routes for subnet " + join.Name + " to be created")
+		framework.WaitUntil(2*time.Second, 10*time.Second, func(_ context.Context) (bool, error) {
+			if routes, err = iproute.RouteShow("", util.NodeNic, execFunc); err != nil {
+				return false, err
+			}
+
+			found = make([]bool, len(cidrs))
+			for i, cidr := range cidrs {
+				for _, route := range routes {
+					if route.Dst == cidr {
+						framework.Logf("Found route for cidr " + cidr + " on " + util.NodeNic)
+						found[i] = true
+						break
+					}
+				}
+			}
+			for i, cidr := range cidrs {
+				if !found[i] {
+					framework.Logf("Route for cidr " + cidr + " not found on " + util.NodeNic)
+					return false, nil
+				}
+			}
+			return true, nil
+		}, "")
+
+		err = podClient.Delete(podName)
+		framework.ExpectNoError(err)
 	})
 })
