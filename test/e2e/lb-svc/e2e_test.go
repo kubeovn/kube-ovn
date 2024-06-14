@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	dockertypes "github.com/docker/docker/api/types"
+	dockernetwork "github.com/docker/docker/api/types/network"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -60,7 +60,7 @@ var _ = framework.SerialDescribe("[group:lb-svc]", func() {
 	var serviceClient *framework.ServiceClient
 	var deploymentClient *framework.DeploymentClient
 	var clusterName, subnetName, namespaceName, serviceName, deploymentName string
-	var dockerNetwork *dockertypes.NetworkResource
+	var dockerNetwork *dockernetwork.Inspect
 	var cidr, gateway string
 	ginkgo.BeforeEach(func() {
 		cs = f.ClientSet

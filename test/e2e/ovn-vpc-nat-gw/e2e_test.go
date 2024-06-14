@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	dockertypes "github.com/docker/docker/api/types"
+	dockernetwork "github.com/docker/docker/api/types/network"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
@@ -78,7 +78,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 	var skip bool
 	var itFn func(bool, string, map[string]*iproute.Link, *[]string)
 	var cs clientset.Interface
-	var dockerNetwork, dockerExtraNetwork *dockertypes.NetworkResource
+	var dockerNetwork, dockerExtraNetwork *dockernetwork.Inspect
 	var nodeNames, gwNodeNames, providerBridgeIps, extraProviderBridgeIps []string
 	var clusterName, providerNetworkName, vlanName, underlaySubnetName, noBfdVpcName, bfdVpcName, noBfdSubnetName, bfdSubnetName string
 	var providerExtraNetworkName, vlanExtraName, underlayExtraSubnetName, noBfdExtraSubnetName string
