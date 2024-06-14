@@ -7,7 +7,6 @@ import (
 	"math/big"
 	"math/rand/v2"
 	"net"
-	"strings"
 	"testing"
 	"time"
 
@@ -25,6 +24,7 @@ import (
 
 	"github.com/onsi/ginkgo/v2"
 
+	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/docker"
@@ -98,7 +98,7 @@ var _ = framework.SerialDescribe("[group:lb-svc]", func() {
 
 		ginkgo.By("Creating subnet " + subnetName)
 		for _, config := range dockerNetwork.IPAM.Config {
-			if !strings.ContainsRune(config.Subnet, ':') {
+			if util.CheckProtocol(config.Subnet) == apiv1.ProtocolIPv4 {
 				cidr = config.Subnet
 				gateway = config.Gateway
 				break
