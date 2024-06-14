@@ -218,7 +218,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 		ginkgo.By("Checking whether pod ips are changed")
 		framework.ExpectNotEqual(ips, pod.Status.PodIPs)
 
-		ginkgo.By("Checking new lsp ExternalIDs should contains new subnet" + subnetName)
+		ginkgo.By("Checking new lsp ExternalIDs should contains new subnet " + subnetName)
 		conditions = fmt.Sprintf("name=%s", portName)
 		execCmd = "kubectl ko nbctl --format=list --data=bare --no-heading --columns=external_ids find logical-switch-port " + conditions
 		framework.Logf("exec cmd %s", execCmd)
@@ -293,7 +293,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 		ginkgo.By("Checking whether pod ips are changed")
 		framework.ExpectNotEqual(newVMIP.Spec.IPAddress, oldVMIP.Spec.IPAddress)
 
-		ginkgo.By("Checking new lsp ExternalIDs should contains new subnet" + subnetName)
+		ginkgo.By("Checking new lsp ExternalIDs should contains new subnet " + subnetName)
 		conditions = fmt.Sprintf("name=%s", portName)
 		execCmd = "kubectl ko nbctl --format=list --data=bare --no-heading --columns=external_ids find logical-switch-port " + conditions
 		framework.Logf("exec cmd %s", execCmd)

@@ -1011,7 +1011,7 @@ func (c *Controller) handleDeletePod(key string) error {
 	var keepIPCR bool
 	if ok, sts := isStatefulSetPod(pod); ok {
 		if pod.DeletionTimestamp != nil {
-			klog.Infof("handle deletion of delete sts pod %s", podName)
+			klog.Infof("handle deletion of sts pod %s", podName)
 			toDel := isStatefulSetPodToDel(c.config.KubeClient, pod, sts)
 			if !toDel {
 				klog.Infof("try keep ip for sts pod %s", podKey)
