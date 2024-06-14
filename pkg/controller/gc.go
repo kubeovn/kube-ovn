@@ -371,7 +371,6 @@ func (c *Controller) markAndCleanLSP() error {
 		}
 
 		klog.Infof("gc logical switch port %s", lsp.Name)
-		// if logicalSwitch force deleted, can not delete lsp here
 		exist, err := c.OVNNbClient.LogicalSwitchExists(lsp.ExternalIDs[logicalSwitchKey])
 		if err != nil {
 			klog.Error(err)
@@ -384,7 +383,7 @@ func (c *Controller) markAndCleanLSP() error {
 			}
 		} else {
 			// lsp change subnet, but not update its ExternalIDs
-			klog.Errorf("LSP %s has no subnet, gc can not handle", lsp.Name, lsp.ExternalIDs[logicalSwitchKey])
+			klog.Errorf("failed to get subnet %s for LSP %s, gc can not handle", lsp.ExternalIDs[logicalSwitchKey], lsp.Name)
 		}
 
 		ipCR, err := c.config.KubeOvnClient.KubeovnV1().IPs().Get(context.Background(), lsp.Name, metav1.GetOptions{})
