@@ -511,12 +511,14 @@ jobs:
           sudo chown -R $(id -un). ~/.kube/
 
       - name: Install Kube-OVN
+        id: install
         env:
           VERSION: ${{ env.DEBUG_TAG }}
           DEBUG_WRAPPER: valgrind
         run: make kind-install-${{ matrix.mode }}-${{ matrix.ip-family }}
 
       - name: Run E2E
+        id: e2e
         working-directory: ${{ env.E2E_DIR }}
         env:
           E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
@@ -538,6 +540,7 @@ jobs:
           path: k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-ko-log.tar.gz
 
       - name: Check kube ovn pod restarts
+        if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
         run: make check-kube-ovn-pod-restarts
 
       - name: Check valgrind result
@@ -675,12 +678,14 @@ jobs:
           sudo chown -R $(id -un). ~/.kube/
 
       - name: Install Kube-OVN
+        id: install
         env:
           VERSION: ${{ env.DEBUG_TAG }}
           DEBUG_WRAPPER: valgrind
         run: make kind-install-${{ matrix.ip-family }}
 
       - name: Run E2E
+        id: e2e
         working-directory: ${{ env.E2E_DIR }}
         run: make k8s-netpol-e2e
 
@@ -698,6 +703,7 @@ jobs:
           path: k8s-netpol-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: Check kube ovn pod restarts
+        if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
         run: make check-kube-ovn-pod-restarts
 
       - name: Check valgrind result
@@ -959,12 +965,14 @@ jobs:
           sudo chown -R $(id -un). ~/.kube/
 
       - name: Install Kube-OVN
+        id: install
         env:
           VERSION: ${{ env.DEBUG_TAG }}
           DEBUG_WRAPPER: valgrind
         run: make kind-install-${{ matrix.ip-family }}
 
       - name: Run E2E
+        id: e2e
         working-directory: ${{ env.E2E_DIR }}
         run: make cyclonus-netpol-e2e
 
@@ -982,6 +990,7 @@ jobs:
           path: cyclonus-netpol-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: Check kube ovn pod restarts
+        if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
         run: make check-kube-ovn-pod-restarts
 
       - name: Check valgrind result
@@ -1113,12 +1122,14 @@ jobs:
           sudo chown -R $(id -un). ~/.kube/
 
       - name: Install Kube-OVN
+        id: install
         env:
           VERSION: ${{ env.DEBUG_TAG }}
           DEBUG_WRAPPER: valgrind
         run: make kind-install-${{ matrix.mode }}-${{ matrix.ip-family }}
 
       - name: Run E2E
+        id: e2e
         working-directory: ${{ env.E2E_DIR }}
         env:
           E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
@@ -1143,6 +1154,7 @@ jobs:
           path: kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: Check kube ovn pod restarts
+        if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
         run: make check-kube-ovn-pod-restarts
 
       - name: Check valgrind result
@@ -1271,9 +1283,11 @@ jobs:
           sudo chown -R $(id -un). ~/.kube/
 
       - name: Install Kube-OVN
+        id: install
         run: make kind-install-ovn-ic-${{ matrix.ip-family }}
 
       - name: Run E2E
+        id: e2e
         working-directory: ${{ env.E2E_DIR }}
         env:
           E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
@@ -1299,6 +1313,7 @@ jobs:
           path: kube-ovn-ic-conformance-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: Check kube ovn pod restarts
+        if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
         run: make check-kube-ovn-pod-restarts
 
   multus-conformance-e2e:
@@ -1394,12 +1409,14 @@ jobs:
           sudo chown -R $(id -un). ~/.kube/
 
       - name: Install Kube-OVN
+        id: install
         run: make kind-install-${{ matrix.ip-family }}
 
       - name: Install Multus
         run: make kind-install-multus
 
       - name: Run E2E
+        id: e2e
         working-directory: ${{ env.E2E_DIR }}
         env:
           E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
@@ -1420,6 +1437,7 @@ jobs:
           path: multus-conformance-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: Check kube ovn pod restarts
+        if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
         run: make check-kube-ovn-pod-restarts
 
   chart-test:
@@ -1509,9 +1527,11 @@ jobs:
           sudo chown -R $(id -un). ~/.kube/
 
       - name: Install Kube-OVN
+        id: install
         run: make kind-install-underlay-logical-gateway-dual
 
       - name: Check kube ovn pod restarts
+        if: ${{ success() || (failure() && steps.install.conclusion == 'failure') }}
         run: make check-kube-ovn-pod-restarts
 
       - name: Cleanup
@@ -1558,11 +1578,13 @@ jobs:
           sudo chown -R $(id -un). ~/.kube/
 
       - name: Install Kube-OVN without LoadBalancer
+        id: install
         env:
           ENABLE_LB: "false"
         run: make kind-install
 
       - name: Check kube ovn pod restarts
+        if: ${{ success() || (failure() && steps.install.conclusion == 'failure') }}
         run: make check-kube-ovn-pod-restarts
 
       - name: Cleanup
@@ -1609,11 +1631,13 @@ jobs:
           sudo chown -R $(id -un). ~/.kube/
 
       - name: Install Kube-OVN
+        id: install
         env:
           ENABLE_NP: "false"
         run: make kind-install
 
       - name: Check kube ovn pod restarts
+        if: ${{ success() || (failure() && steps.install.conclusion == 'failure') }}
         run: make check-kube-ovn-pod-restarts
 
       - name: Cleanup
@@ -1713,15 +1737,18 @@ jobs:
           sudo chown -R $(id -un). ~/.kube/
 
       - name: Install Multus and Kube-OVN
+        id: install
         run: make kind-install-lb-svc
 
       - name: Run E2E
+        id: e2e
         working-directory: ${{ env.E2E_DIR }}
         env:
           E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
         run: make kube-ovn-lb-svc-conformance-e2e
 
       - name: Check kube ovn pod restarts
+        if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
         run: make check-kube-ovn-pod-restarts
 
   webhook-e2e:
@@ -1810,10 +1837,12 @@ jobs:
           sudo cp -r /root/.kube/ ~/.kube/
           sudo chown -R $(id -un). ~/.kube/
 
-      - name: Install Kube-OVN
+      - name: Install Kube-OVN with webhook
+        id: install
         run: make kind-install-webhook
 
       - name: Run E2E
+        id: e2e
         working-directory: ${{ env.E2E_DIR }}
         env:
           E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
@@ -1833,6 +1862,7 @@ jobs:
           path: webhook-e2e-ko-log.tar.gz
 
       - name: Check kube ovn pod restarts
+        if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
         run: make check-kube-ovn-pod-restarts
 
   installation-compatibility-test:
@@ -1876,7 +1906,12 @@ jobs:
           sudo chown -R $(id -un). ~/.kube/
 
       - name: Install Kube-OVN
+        id: install
         run: make kind-install
+
+      - name: Check kube ovn pod restarts
+        if: ${{ success() || (failure() && steps.install.conclusion == 'failure') }}
+        run: make check-kube-ovn-pod-restarts
 
       - name: kubectl ko log
         if: failure()
@@ -1991,9 +2026,11 @@ jobs:
           sudo chown -R $(id -un). ~/.kube/
 
       - name: Install Kube-OVN with Cilium chaining
+        id: install
         run: make kind-install-cilium-chaining
 
       - name: Run E2E
+        id: e2e
         working-directory: ${{ env.E2E_DIR }}
         env:
           E2E_CILIUM_CHAINING: "true"
@@ -2014,6 +2051,7 @@ jobs:
           path: cilium-chaining-e2e-ko-log.tar.gz
 
       - name: Check kube ovn pod restarts
+        if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
         run: make check-kube-ovn-pod-restarts
 
       - name: Cleanup
@@ -2118,11 +2156,13 @@ jobs:
           sudo chown -R $(id -un). ~/.kube/
 
       - name: Install Kube-OVN
+        id: install
         run: |
           sudo ENABLE_SSL=${{ matrix.ssl }} ENABLE_BIND_LOCAL_IP=${{ matrix.bind-local }} \
             make kind-install-${{ matrix.ip-family }}
 
       - name: Run E2E
+        id: e2e
         working-directory: ${{ env.E2E_DIR }}
         env:
           E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
@@ -2145,6 +2185,7 @@ jobs:
           path: kube-ovn-ha-e2e-${{ matrix.ssl }}-${{ matrix.bind-local }}-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: Check kube ovn pod restarts
+        if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
         run: make check-kube-ovn-pod-restarts
 
       - name: Cleanup
@@ -2217,10 +2258,12 @@ jobs:
           sudo cp -r /root/.kube/ ~/.kube/
           sudo chown -R $(id -un). ~/.kube/
 
-      - name: Install Kube-OVN
+      - name: Install Kube-OVN and Submariner
+        id: install
         run: make kind-install-ovn-submariner
 
       - name: Run E2E
+        id: e2e
         working-directory: ${{ env.E2E_DIR }}
         run: make kube-ovn-submariner-conformance-e2e
 
@@ -2238,6 +2281,7 @@ jobs:
           path: kube-ovn-submariner-conformance-e2e-ko-log.tar.gz
 
       - name: Check kube ovn pod restarts
+        if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
         run: make check-kube-ovn-pod-restarts
 
       - name: Cleanup
@@ -2337,9 +2381,11 @@ jobs:
           sudo chown -R $(id -un). ~/.kube/
 
       - name: Install Kube-OVN with VPC NAT gateway enabled
+        id: install
         run: make kind-install-vpc-nat-gw
 
       - name: Run E2E
+        id: e2e
         working-directory: ${{ env.E2E_DIR }}
         env:
           E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
@@ -2359,6 +2405,7 @@ jobs:
           path: iptables-vpc-nat-gw-conformance-e2e-ko-log.tar.gz
 
       - name: Check kube ovn pod restarts
+        if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
         run: make check-kube-ovn-pod-restarts
 
   ovn-vpc-nat-gw-conformance-e2e:
@@ -2447,15 +2494,18 @@ jobs:
           sudo chown -R $(id -un). ~/.kube/
 
       - name: Install Kube-OVN
+        id: install
         run: make kind-install
 
       - name: Run Vip E2E
+        id: vip-e2e
         working-directory: ${{ env.E2E_DIR }}
         env:
           E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
         run: make vip-conformance-e2e
 
       - name: Run Ovn VPC NAT GW E2E
+        id: vpc-e2e
         working-directory: ${{ env.E2E_DIR }}
         env:
           E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
@@ -2475,6 +2525,7 @@ jobs:
           path: ovn-vpc-nat-gw-conformance-e2e-ko-log.tar.gz
 
       - name: Check kube ovn pod restarts
+        if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.vip-e2e.conclusion == 'failure' || steps.vpc-e2e.conclusion == 'failure')) }}
         run: make check-kube-ovn-pod-restarts
 
   push:
