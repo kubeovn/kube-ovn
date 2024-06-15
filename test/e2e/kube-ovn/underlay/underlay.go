@@ -815,6 +815,94 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		waitSubnetU2OStatus(f, subnetName, subnetClient, false)
 		checkU2OItems(f, subnet, underlayPod, overlayPod, false)
 	})
+
+	framework.ConformanceIt(`should drop ARP/ND request from localnet port to LRP`, func() {
+		f.SkipVersionPriorTo(1, 9, "This feature was introduced in v1.9")
+
+		ginkgo.By("Creating provider network " + providerNetworkName)
+		pn := makeProviderNetwork(providerNetworkName, false, linkMap)
+		_ = providerNetworkClient.CreateSync(pn)
+
+		containerName := "container-" + framework.RandomSuffix()
+		ginkgo.By("Creating container " + containerName)
+		cmd := []string{"sh", "-c", "sleep 600"}
+		containerInfo, err := docker.ContainerCreate(containerName, image, dockerNetworkName, cmd)
+		framework.ExpectNoError(err)
+		containerID = containerInfo.ID
+
+		ginkgo.By("Getting docker network " + dockerNetworkName)
+		network, err := docker.NetworkInspect(dockerNetworkName)
+		framework.ExpectNoError(err, "getting docker network "+dockerNetworkName)
+
+		ginkgo.By("Creating vlan " + vlanName)
+		vlan := framework.MakeVlan(vlanName, providerNetworkName, 0)
+		_ = vlanClient.Create(vlan)
+
+		ginkgo.By("Creating underlay subnet " + subnetName)
+		var cidrV4, cidrV6, gatewayV4, gatewayV6 string
+		for _, config := range dockerNetwork.IPAM.Config {
+			switch util.CheckProtocol(config.Subnet) {
+			case apiv1.ProtocolIPv4:
+				if f.HasIPv4() {
+					cidrV4 = config.Subnet
+					gatewayV4 = config.Gateway
+				}
+			case apiv1.ProtocolIPv6:
+				if f.HasIPv6() {
+					cidrV6 = config.Subnet
+					gatewayV6 = config.Gateway
+				}
+			}
+		}
+		underlayCidr := make([]string, 0, 2)
+		gateway := make([]string, 0, 2)
+		if f.HasIPv4() {
+			underlayCidr = append(underlayCidr, cidrV4)
+			gateway = append(gateway, gatewayV4)
+		}
+		if f.HasIPv6() {
+			underlayCidr = append(underlayCidr, cidrV6)
+			gateway = append(gateway, gatewayV6)
+		}
+
+		excludeIPs := make([]string, 0, len(network.Containers)*2)
+		for _, container := range network.Containers {
+			if container.IPv4Address != "" && f.HasIPv4() {
+				excludeIPs = append(excludeIPs, strings.Split(container.IPv4Address, "/")[0])
+			}
+			if container.IPv6Address != "" && f.HasIPv6() {
+				excludeIPs = append(excludeIPs, strings.Split(container.IPv6Address, "/")[0])
+			}
+		}
+
+		ginkgo.By("Creating subnet " + subnetName + " with u2o interconnection enabled")
+		subnet := framework.MakeSubnet(subnetName, vlanName, strings.Join(underlayCidr, ","), strings.Join(gateway, ","), "", "", excludeIPs, nil, []string{namespaceName})
+		subnet.Spec.U2OInterconnection = true
+		subnet = subnetClient.CreateSync(subnet)
+
+		lrpIPv4, lrpIPv6 := util.SplitStringIP(subnet.Status.U2OInterconnectionIP)
+		if f.HasIPv4() {
+			ginkgo.By("Sending ARP request to " + lrpIPv4 + " from container " + containerName)
+			cmd := strings.Fields("arping -c1 -w1 " + lrpIPv4)
+			_, _, err = docker.Exec(containerID, nil, cmd...)
+			framework.ExpectError(err)
+			framework.ExpectEqual(err, docker.ErrNonZeroExitCode{Cmd: cmd, ExitCode: 1})
+		} else {
+			framework.ExpectEmpty(lrpIPv4)
+		}
+		if f.HasIPv6() {
+			ginkgo.By("Sending ND NS request to " + lrpIPv6 + " from container " + containerName)
+			cmd := strings.Fields("ndisc6 -1 -n -r1 -w1000 " + lrpIPv6 + " eth0")
+			_, _, err = docker.Exec(containerID, nil, cmd...)
+			if err == nil {
+				time.Sleep(time.Hour)
+			}
+			framework.ExpectError(err)
+			framework.ExpectEqual(err, docker.ErrNonZeroExitCode{Cmd: cmd, ExitCode: 2})
+		} else {
+			framework.ExpectEmpty(lrpIPv6)
+		}
+	})
 })
 
 func checkU2OItems(f *framework.Framework, subnet *apiv1.Subnet, underlayPod, overlayPod *corev1.Pod, isU2OCustomVpc bool) {

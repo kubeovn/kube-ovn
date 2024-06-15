@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/docker/docker/api/types/container"
@@ -14,12 +15,12 @@ import (
 )
 
 type ErrNonZeroExitCode struct {
-	cmd  string
-	code int
+	Cmd      []string
+	ExitCode int
 }
 
 func (e ErrNonZeroExitCode) Error() string {
-	return fmt.Sprintf("command %q exited with code %d", e.cmd, e.code)
+	return fmt.Sprintf("command %q exited with code %d", e.Cmd, e.ExitCode)
 }
 
 func Exec(id string, env []string, cmd ...string) (stdout, stderr []byte, err error) {
@@ -60,12 +61,16 @@ func Exec(id string, env []string, cmd ...string) (stdout, stderr []byte, err er
 
 	if inspectResp.ExitCode != 0 {
 		framework.Logf("command exited with code %d", inspectResp.ExitCode)
-		err = ErrNonZeroExitCode{cmd: strings.Join(cmd, " "), code: inspectResp.ExitCode}
+		err = ErrNonZeroExitCode{Cmd: slices.Clone(cmd), ExitCode: inspectResp.ExitCode}
 	}
 
-	stdout, stderr = outBuf.Bytes(), errBuf.Bytes()
-	framework.Logf("stdout: %s", string(stdout))
-	framework.Logf("stderr: %s", string(stderr))
+	stdout, stderr = bytes.TrimSpace(outBuf.Bytes()), bytes.TrimSpace(errBuf.Bytes())
+	if len(stdout) != 0 {
+		framework.Logf("stdout:\n%s", string(stdout))
+	}
+	if len(stderr) != 0 {
+		framework.Logf("stderr:\n%s", string(stderr))
+	}
 
 	return
 }
