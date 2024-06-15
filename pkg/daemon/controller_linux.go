@@ -18,6 +18,7 @@ import (
 	ovsutil "github.com/digitalocean/go-openvswitch/ovs"
 	"github.com/kubeovn/go-iptables/iptables"
 	"github.com/vishvananda/netlink"
+	"golang.org/x/sys/unix"
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
@@ -262,11 +263,17 @@ func (c *Controller) reconcileRouters(event *subnetEvent) error {
 		return err
 	}
 	nodeIPv4, nodeIPv6 := util.GetNodeInternalIP(*node)
+	var joinIPv4, joinIPv6 string
+	if len(node.Annotations) != 0 {
+		joinIPv4, joinIPv6 = util.SplitStringIP(node.Annotations[util.IpAddressAnnotation])
+	}
 
+	joinCIDR := make([]string, 0, 2)
 	cidrs := make([]string, 0, len(subnets)*2)
 	for _, subnet := range subnets {
-		//The route for overlay subnet cidr via ovn0 should not be deleted even though subnet.Status has changed to not ready
-		if (subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway) || subnet.Spec.Vpc != c.config.ClusterRouter {
+		// The route for overlay subnet cidr via ovn0 should not be deleted even though subnet.Status has changed to not ready
+		if (subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway) || subnet.Spec.Vpc != c.config.ClusterRouter ||
+			(subnet.Name != c.config.NodeSwitch && !subnet.Status.IsReady()) {
 			continue
 		}
 
@@ -281,6 +288,9 @@ func (c *Controller) reconcileRouters(event *subnetEvent) error {
 					continue
 				}
 				cidrs = append(cidrs, ipNet.String())
+				if subnet.Name == c.config.NodeSwitch {
+					joinCIDR = append(joinCIDR, ipNet.String())
+				}
 			}
 		}
 	}
@@ -296,29 +306,22 @@ func (c *Controller) reconcileRouters(event *subnetEvent) error {
 		return fmt.Errorf("failed to get nic %s", util.NodeNic)
 	}
 
-	existRoutes, err := getNicExistRoutes(nic, gateway)
+	nodeNicRoutes, err := getNicExistRoutes(nic, gateway)
 	if err != nil {
 		klog.Error(err)
 		return err
 	}
-
-	toAdd, toDel := routeDiff(existRoutes, cidrs)
+	toAdd, toDel := routeDiff(nodeNicRoutes, cidrs, joinCIDR, joinIPv4, joinIPv6, gateway)
 	for _, r := range toDel {
-		_, cidr, _ := net.ParseCIDR(r)
-		if err = netlink.RouteDel(&netlink.Route{Dst: cidr}); err != nil {
+		if err = netlink.RouteDel(&netlink.Route{Dst: r.Dst}); err != nil {
 			klog.Errorf("failed to del route %v", err)
 		}
 	}
 
 	for _, r := range toAdd {
-		_, cidr, _ := net.ParseCIDR(r)
-		for _, gw := range strings.Split(gateway, ",") {
-			if util.CheckProtocol(gw) != util.CheckProtocol(r) {
-				continue
-			}
-			if err = netlink.RouteReplace(&netlink.Route{Dst: cidr, LinkIndex: nic.Attrs().Index, Scope: netlink.SCOPE_UNIVERSE, Gw: net.ParseIP(gw)}); err != nil {
-				klog.Errorf("failed to add route %v", err)
-			}
+		r.LinkIndex = nic.Attrs().Index
+		if err = netlink.RouteReplace(&r); err != nil {
+			klog.Errorf("failed to replace route %v: %v", r, err)
 		}
 	}
 
@@ -342,7 +345,10 @@ func getNicExistRoutes(nic netlink.Link, gateway string) ([]netlink.Route, error
 	return existRoutes, nil
 }
 
-func routeDiff(existRoutes []netlink.Route, cidrs []string) (toAdd []string, toDel []string) {
+func routeDiff(existRoutes []netlink.Route, cidrs, joinCIDR []string, joinIPv4, joinIPv6, gateway string) (toAdd, toDel []netlink.Route) {
+	// joinIPv6 is not used for now
+	_ = joinIPv6
+
 	for _, route := range existRoutes {
 		if route.Scope == netlink.SCOPE_LINK || route.Dst == nil || route.Dst.IP.IsLinkLocalUnicast() {
 			continue
@@ -356,13 +362,15 @@ func routeDiff(existRoutes []netlink.Route, cidrs []string) (toAdd []string, toD
 			}
 		}
 		if !found {
-			toDel = append(toDel, route.Dst.String())
+			toDel = append(toDel, route)
 		}
 	}
 	if len(toDel) > 0 {
-		klog.Infof("route to del %v", toDel)
+		klog.Infof("routes to delete: %v", toDel)
 	}
 
+	ipv4, ipv6 := util.SplitStringIP(gateway)
+	gwV4, gwV6 := net.ParseIP(ipv4), net.ParseIP(ipv6)
 	for _, c := range cidrs {
 		found := false
 		for _, r := range existRoutes {
@@ -372,11 +380,39 @@ func routeDiff(existRoutes []netlink.Route, cidrs []string) (toAdd []string, toD
 			}
 		}
 		if !found {
-			toAdd = append(toAdd, c)
+			var priority int
+			var src, gw net.IP
+			scope := netlink.SCOPE_UNIVERSE
+			proto := netlink.RouteProtocol(syscall.RTPROT_STATIC)
+			if slices.Contains(joinCIDR, c) {
+				if util.CheckProtocol(c) == kubeovnv1.ProtocolIPv4 {
+					src = net.ParseIP(joinIPv4)
+				} else {
+					priority = 256
+				}
+				scope = netlink.SCOPE_LINK
+				proto = netlink.RouteProtocol(unix.RTPROT_KERNEL)
+			} else {
+				switch util.CheckProtocol(c) {
+				case kubeovnv1.ProtocolIPv4:
+					gw = gwV4
+				case kubeovnv1.ProtocolIPv6:
+					gw = gwV6
+				}
+			}
+			_, cidr, _ := net.ParseCIDR(c)
+			toAdd = append(toAdd, netlink.Route{
+				Dst:      cidr,
+				Src:      src,
+				Gw:       gw,
+				Protocol: proto,
+				Scope:    scope,
+				Priority: priority,
+			})
 		}
 	}
 	if len(toAdd) > 0 {
-		klog.Infof("route to add %v", toAdd)
+		klog.Infof("routes to add: %v", toAdd)
 	}
 	return
 }
@@ -512,9 +548,8 @@ func (c *Controller) getPolicyRouting(subnet *kubeovnv1.Subnet) ([]netlink.Rule,
 	// routes
 	var routes []netlink.Route
 	for i := range protocols {
-		family, _ := util.ProtocolToFamily(protocols[i])
 		routes = append(routes, netlink.Route{
-			Protocol: netlink.RouteProtocol(family),
+			Protocol: netlink.RouteProtocol(syscall.RTPROT_STATIC),
 			Table:    int(subnet.Spec.PolicyRoutingTableID),
 			Gw:       net.ParseIP(egw[i]),
 		})
