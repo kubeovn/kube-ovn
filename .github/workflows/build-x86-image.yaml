@@ -225,17 +225,17 @@ jobs:
             case $bin in
               loopback|macvlan)
                 echo "Building $bin from source..."
-                go install -v -mod=mod github.com/containernetworking/plugins/plugins/main/$bin
+                sh -c "cd .. && go install -v -mod=mod github.com/containernetworking/plugins/plugins/main/$bin"
                 echo "COPY $bin /$f" >> "$dockerfile"
                 ;;
               portmap)
                 echo "Building $bin from source..."
-                go install -v -mod=mod github.com/containernetworking/plugins/plugins/meta/$bin
+                sh -c "cd .. && go install -v -mod=mod github.com/containernetworking/plugins/plugins/meta/$bin"
                 echo "COPY $bin /$f" >> "$dockerfile"
                 ;;
               kubectl)
                 echo "Building $bin from source..."
-                go install -v -mod=mod k8s.io/kubernetes/cmd/kubectl
+                sh -c "cd .. && go install -v -mod=mod k8s.io/kubernetes/cmd/kubectl"
                 echo "COPY $bin /$f" >> "$dockerfile"
                 ;;
               *)
