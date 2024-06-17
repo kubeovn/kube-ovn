@@ -130,10 +130,7 @@ var _ = framework.OrderedDescribe("[group:node]", func() {
 		hostPod = podClient.CreateSync(hostPod)
 
 		ginkgo.By("Validating client ip")
-		nodeIPs := make([]string, 0, len(hostPod.Status.PodIPs))
-		for _, podIP := range hostPod.Status.PodIPs {
-			nodeIPs = append(nodeIPs, podIP.IP)
-		}
+		nodeIPs := util.PodIPs(*hostPod)
 		for _, podIP := range pod.Status.PodIPs {
 			ip := podIP.IP
 			protocol := strings.ToLower(util.CheckProtocol(ip))
@@ -184,10 +181,7 @@ var _ = framework.OrderedDescribe("[group:node]", func() {
 		hostPod = podClient.CreateSync(hostPod)
 
 		ginkgo.By("Validating client ip")
-		nodeIPs := make([]string, 0, len(hostPod.Status.PodIPs))
-		for _, podIP := range hostPod.Status.PodIPs {
-			nodeIPs = append(nodeIPs, podIP.IP)
-		}
+		nodeIPs := util.PodIPs(*hostPod)
 		service = serviceClient.Get(serviceName)
 		for _, ip := range util.ServiceClusterIPs(*service) {
 			protocol := strings.ToLower(util.CheckProtocol(ip))

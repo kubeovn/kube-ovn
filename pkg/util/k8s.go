@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -47,12 +48,23 @@ func GetNodeInternalIP(node v1.Node) (ipv4, ipv6 string) {
 	return SplitStringIP(strings.Join(ips, ","))
 }
 
-func ServiceClusterIPs(svc v1.Service) []string {
-	ips := svc.Spec.ClusterIPs
-	if len(ips) == 0 && svc.Spec.ClusterIP != v1.ClusterIPNone && svc.Spec.ClusterIP != "" {
-		ips = []string{svc.Spec.ClusterIP}
+func PodIPs(pod v1.Pod) []string {
+	if len(pod.Status.PodIPs) == 0 && pod.Status.PodIP != "" {
+		return []string{pod.Status.PodIP}
+	}
+
+	ips := make([]string, len(pod.Status.PodIPs))
+	for i := range pod.Status.PodIPs {
+		ips[i] = pod.Status.PodIPs[i].IP
 	}
 	return ips
+}
+
+func ServiceClusterIPs(svc v1.Service) []string {
+	if len(svc.Spec.ClusterIPs) == 0 && svc.Spec.ClusterIP != v1.ClusterIPNone && svc.Spec.ClusterIP != "" {
+		return []string{svc.Spec.ClusterIP}
+	}
+	return slices.Clone(svc.Spec.ClusterIPs)
 }
 
 func LabelSelectorNotEquals(key, value string) (labels.Selector, error) {
