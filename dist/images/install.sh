@@ -3131,7 +3131,6 @@ rules:
       - ovn-eips/status
       - nodes
       - pods
-      - vlans
     verbs:
       - get
       - list

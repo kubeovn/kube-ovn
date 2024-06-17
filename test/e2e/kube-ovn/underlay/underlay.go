@@ -816,12 +816,19 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		checkU2OItems(f, subnet, underlayPod, overlayPod, false)
 	})
 
-	framework.ConformanceIt(`should support drop arp request to u2oIP`, func() {
-		f.SkipVersionPriorTo(1, 9, "Support drop arp request to u2oIP in v1.9")
+	framework.ConformanceIt(`should drop ARP/ND request from localnet port to LRP`, func() {
+		f.SkipVersionPriorTo(1, 9, "This feature was introduced in v1.9")
 
 		ginkgo.By("Creating provider network " + providerNetworkName)
 		pn := makeProviderNetwork(providerNetworkName, false, linkMap)
 		_ = providerNetworkClient.CreateSync(pn)
+
+		containerName := "container-" + framework.RandomSuffix()
+		ginkgo.By("Creating container " + containerName)
+		cmd := []string{"sh", "-c", "sleep 600"}
+		containerInfo, err := docker.ContainerCreate(containerName, image, dockerNetworkName, cmd)
+		framework.ExpectNoError(err)
+		containerID = containerInfo.ID
 
 		ginkgo.By("Getting docker network " + dockerNetworkName)
 		network, err := docker.NetworkInspect(dockerNetworkName)
@@ -868,103 +875,35 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 			}
 		}
 
+		ginkgo.By("Creating subnet " + subnetName + " with u2o interconnection enabled")
 		subnet := framework.MakeSubnet(subnetName, vlanName, strings.Join(underlayCidr, ","), strings.Join(gateway, ","), "", "", excludeIPs, nil, []string{namespaceName})
 		subnet.Spec.U2OInterconnection = true
 		subnet = subnetClient.CreateSync(subnet)
-		ginkgo.By("step1: enable " + subnetName + " u2oInterconnection to be true")
-		waitSubnetU2OStatus(f, subnetName, subnetClient, true)
-		checkU2OFilterOpenFlowExist(clusterName, pn, subnet, true)
-		checkIfU2OArpResponse(subnet, false)
 
-		ginkgo.By("step2: disable " + subnetName + " u2oInterconnection to be false")
-		subnet = subnetClient.Get(subnetName)
-		modifiedSubnet := subnet.DeepCopy()
-		modifiedSubnet.Spec.U2OInterconnection = false
-		subnet = subnetClient.PatchSync(subnet, modifiedSubnet)
-		waitSubnetU2OStatus(f, subnetName, subnetClient, false)
-		checkU2OFilterOpenFlowExist(clusterName, pn, subnet, false)
-
-		ginkgo.By("step3: enable " + subnetName + " u2oInterconnection to be true again")
-		subnet = subnetClient.Get(subnetName)
-		modifiedSubnet = subnet.DeepCopy()
-		modifiedSubnet.Spec.U2OInterconnection = true
-		subnet = subnetClient.PatchSync(subnet, modifiedSubnet)
-		waitSubnetU2OStatus(f, subnetName, subnetClient, true)
-		checkU2OFilterOpenFlowExist(clusterName, pn, subnet, true)
-		checkIfU2OArpResponse(subnet, false)
-
-		ginkgo.By("step4: delete " + subnetName + " subnet")
-		subnetClient.DeleteSync(subnetName)
-		checkU2OFilterOpenFlowExist(clusterName, pn, subnet, false)
+		lrpIPv4, lrpIPv6 := util.SplitStringIP(subnet.Status.U2OInterconnectionIP)
+		if f.HasIPv4() {
+			ginkgo.By("Sending ARP request to " + lrpIPv4 + " from container " + containerName)
+			cmd := strings.Fields("arping -c1 -w1 " + lrpIPv4)
+			_, _, err = docker.Exec(containerID, nil, cmd...)
+			framework.ExpectError(err)
+			framework.ExpectEqual(err, docker.ErrNonZeroExitCode{Cmd: cmd, ExitCode: 1})
+		} else {
+			framework.ExpectEmpty(lrpIPv4)
+		}
+		if f.HasIPv6() {
+			ginkgo.By("Sending ND NS request to " + lrpIPv6 + " from container " + containerName)
+			cmd := strings.Fields("ndisc6 -1 -n -r1 -w1000 " + lrpIPv6 + " eth0")
+			_, _, err = docker.Exec(containerID, nil, cmd...)
+			if err == nil {
+				time.Sleep(time.Hour)
+			}
+			framework.ExpectError(err)
+			framework.ExpectEqual(err, docker.ErrNonZeroExitCode{Cmd: cmd, ExitCode: 2})
+		} else {
+			framework.ExpectEmpty(lrpIPv6)
+		}
 	})
 })
-
-func checkU2OFilterOpenFlowExist(clusterName string, pn *apiv1.ProviderNetwork, subnet *apiv1.Subnet, expectRuleExist bool) {
-	nodes, err := kind.ListNodes(clusterName, "")
-	framework.ExpectNoError(err, "getting nodes in kind cluster")
-	framework.ExpectNotEmpty(nodes)
-
-	for _, node := range nodes {
-		gws := strings.Split(subnet.Spec.Gateway, ",")
-		u2oIPs := strings.Split(subnet.Status.U2OInterconnectionIP, ",")
-		for index, gw := range gws {
-			if util.CheckProtocol(gw) == apiv1.ProtocolIPv4 {
-				cmd := fmt.Sprintf("kubectl ko ofctl %s dump-flows br-%s | grep 0x%x ", node.Name(), pn.Name, util.U2OFilterOpenFlowCookieV4)
-				output, _ := exec.Command("bash", "-c", cmd).CombinedOutput()
-				outputStr := string(output)
-
-				if expectRuleExist {
-					matchStr := fmt.Sprintf("priority=%d,arp,in_port=1,arp_spa=%s,arp_tpa=%s,arp_op=1", util.U2OFilterOpenFlowPriority, gw, u2oIPs[index])
-					framework.Logf("matchStr %s ", matchStr)
-					framework.Logf("outputStr %s ", outputStr)
-					ruleExist := strings.Contains(outputStr, matchStr)
-					framework.ExpectTrue(ruleExist)
-				} else {
-					framework.ExpectEqual(outputStr, "")
-				}
-			} else {
-				cmd := fmt.Sprintf("kubectl ko ofctl %s dump-flows br-%s | grep 0x%x ", node.Name(), pn.Name, util.U2OFilterOpenFlowCookieV6)
-				output, _ := exec.Command("bash", "-c", cmd).CombinedOutput()
-				outputStr := string(output)
-
-				if expectRuleExist {
-					matchStr := fmt.Sprintf("priority=%d,icmp6,in_port=1,icmp_type=135,nd_target=%s", util.U2OFilterOpenFlowPriority, u2oIPs[index])
-					framework.Logf("matchStr %s ", matchStr)
-					framework.Logf("outputStr %s ", outputStr)
-					ruleExist := strings.Contains(outputStr, matchStr)
-					framework.ExpectTrue(ruleExist)
-				} else {
-					framework.ExpectEqual(outputStr, "")
-				}
-			}
-		}
-	}
-}
-
-func checkIfU2OArpResponse(subnet *apiv1.Subnet, expectReachable bool) {
-	u2oIPs := strings.Split(subnet.Status.U2OInterconnectionIP, ",")
-	var cmd string
-	for _, u2oIP := range u2oIPs {
-		if util.CheckProtocol(u2oIP) == apiv1.ProtocolIPv4 {
-			cmd = fmt.Sprintf("ping -c 1 -w 2 %s", u2oIP)
-		} else {
-			cmd = fmt.Sprintf("ping6 -c 1 -w 2 %s", u2oIP)
-		}
-		output, _ := exec.Command("bash", "-c", cmd).CombinedOutput()
-		outputStr := string(output)
-
-		isReachable := !strings.Contains(outputStr, "0 received")
-		framework.ExpectEqual(isReachable, expectReachable)
-
-		cmd = fmt.Sprintf("ip n | grep %s", u2oIP)
-		output, _ = exec.Command("bash", "-c", cmd).CombinedOutput()
-		outputStr = string(output)
-
-		framework.Logf("outputStr is %s ", outputStr)
-		isNeighExist := strings.Contains(outputStr, "REACHABLE")
-		framework.ExpectEqual(isNeighExist, expectReachable)
-	}
-}
 
 func checkU2OItems(f *framework.Framework, subnet *apiv1.Subnet, underlayPod, overlayPod *corev1.Pod, isU2OCustomVpc bool) {
 	ginkgo.By("checking subnet's u2o interconnect ip of underlay subnet " + subnet.Name)
