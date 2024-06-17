@@ -88,11 +88,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.MacAddressAnnotation, mac)
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
 
-		podIPs := make([]string, 0, len(pod.Status.PodIPs))
-		for _, podIP := range pod.Status.PodIPs {
-			podIPs = append(podIPs, podIP.IP)
-		}
-		framework.ExpectConsistOf(podIPs, strings.Split(ip, ","))
+		framework.ExpectConsistOf(util.PodIPs(*pod), strings.Split(ip, ","))
 	})
 
 	framework.ConformanceIt("should allocate static ip for pod with comma separated ippool", func() {
@@ -151,11 +147,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 			framework.ExpectMAC(pod.Annotations[util.MacAddressAnnotation])
 			framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
 
-			podIPs := make([]string, 0, len(pod.Status.PodIPs))
-			for _, podIP := range pod.Status.PodIPs {
-				podIPs = append(podIPs, podIP.IP)
-			}
-			framework.ExpectConsistOf(podIPs, strings.Split(pod.Annotations[util.IPAddressAnnotation], ","))
+			framework.ExpectConsistOf(util.PodIPs(pod), strings.Split(pod.Annotations[util.IPAddressAnnotation], ","))
 		}
 
 		ginkgo.By("Deleting pods for deployment " + deployName)
@@ -183,12 +175,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 			framework.ExpectHaveKeyWithValue(pod.Annotations, util.LogicalSwitchAnnotation, subnet.Name)
 			framework.ExpectMAC(pod.Annotations[util.MacAddressAnnotation])
 			framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
-
-			podIPs := make([]string, 0, len(pod.Status.PodIPs))
-			for _, podIP := range pod.Status.PodIPs {
-				podIPs = append(podIPs, podIP.IP)
-			}
-			framework.ExpectConsistOf(podIPs, strings.Split(pod.Annotations[util.IPAddressAnnotation], ","))
+			framework.ExpectConsistOf(util.PodIPs(pod), strings.Split(pod.Annotations[util.IPAddressAnnotation], ","))
 		}
 	})
 
@@ -212,12 +199,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 			framework.ExpectHaveKeyWithValue(pod.Annotations, util.LogicalSwitchAnnotation, subnet.Name)
 			framework.ExpectMAC(pod.Annotations[util.MacAddressAnnotation])
 			framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
-
-			podIPs := make([]string, 0, len(pod.Status.PodIPs))
-			for _, podIP := range pod.Status.PodIPs {
-				podIPs = append(podIPs, podIP.IP)
-			}
-			framework.ExpectConsistOf(podIPs, strings.Split(pod.Annotations[util.IPAddressAnnotation], ","))
+			framework.ExpectConsistOf(util.PodIPs(pod), strings.Split(pod.Annotations[util.IPAddressAnnotation], ","))
 			ips = append(ips, pod.Annotations[util.IPAddressAnnotation])
 		}
 
@@ -275,12 +257,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 				framework.ExpectHaveKeyWithValue(pod.Annotations, util.LogicalSwitchAnnotation, subnet.Name)
 				framework.ExpectMAC(pod.Annotations[util.MacAddressAnnotation])
 				framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
-
-				podIPs := make([]string, 0, len(pod.Status.PodIPs))
-				for _, podIP := range pod.Status.PodIPs {
-					podIPs = append(podIPs, podIP.IP)
-				}
-				framework.ExpectConsistOf(podIPs, strings.Split(pod.Annotations[util.IPAddressAnnotation], ","))
+				framework.ExpectConsistOf(util.PodIPs(pod), strings.Split(pod.Annotations[util.IPAddressAnnotation], ","))
 				ips = append(ips, pod.Annotations[util.IPAddressAnnotation])
 			}
 			framework.ExpectConsistOf(ips, strings.Split(ippool, ippoolSep))
@@ -305,12 +282,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 				framework.ExpectHaveKeyWithValue(pod.Annotations, util.LogicalSwitchAnnotation, subnet.Name)
 				framework.ExpectMAC(pod.Annotations[util.MacAddressAnnotation])
 				framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
-
-				podIPs := make([]string, 0, len(pod.Status.PodIPs))
-				for _, podIP := range pod.Status.PodIPs {
-					podIPs = append(podIPs, podIP.IP)
-				}
-				framework.ExpectConsistOf(podIPs, strings.Split(pod.Annotations[util.IPAddressAnnotation], ","))
+				framework.ExpectConsistOf(util.PodIPs(pod), strings.Split(pod.Annotations[util.IPAddressAnnotation], ","))
 			}
 
 			ginkgo.By("Deleting statefulset " + stsName)
@@ -347,12 +319,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 			framework.ExpectHaveKeyWithValue(pod.Annotations, util.LogicalSwitchAnnotation, subnet.Name)
 			framework.ExpectMAC(pod.Annotations[util.MacAddressAnnotation])
 			framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
-
-			podIPs := make([]string, 0, len(pod.Status.PodIPs))
-			for _, podIP := range pod.Status.PodIPs {
-				podIPs = append(podIPs, podIP.IP)
-			}
-			framework.ExpectConsistOf(podIPs, strings.Split(pod.Annotations[util.IPAddressAnnotation], ","))
+			framework.ExpectConsistOf(util.PodIPs(pod), strings.Split(pod.Annotations[util.IPAddressAnnotation], ","))
 			ips = append(ips, pod.Annotations[util.IPAddressAnnotation])
 		}
 		framework.ExpectConsistOf(ips, strings.Split(ippool, ippoolSep))
@@ -377,12 +344,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 			framework.ExpectHaveKeyWithValue(pod.Annotations, util.LogicalSwitchAnnotation, subnet.Name)
 			framework.ExpectMAC(pod.Annotations[util.MacAddressAnnotation])
 			framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
-
-			podIPs := make([]string, 0, len(pod.Status.PodIPs))
-			for _, podIP := range pod.Status.PodIPs {
-				podIPs = append(podIPs, podIP.IP)
-			}
-			framework.ExpectConsistOf(podIPs, strings.Split(pod.Annotations[util.IPAddressAnnotation], ","))
+			framework.ExpectConsistOf(util.PodIPs(pod), strings.Split(pod.Annotations[util.IPAddressAnnotation], ","))
 		}
 	})
 

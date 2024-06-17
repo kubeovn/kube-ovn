@@ -388,13 +388,9 @@ func getIPPortMappingBackend(endpoints *v1.Endpoints, pods []*v1.Pod, servicePor
 			var ip string
 			for _, pod := range pods {
 				if pod.Name == address.TargetRef.Name {
-					podIPs := pod.Status.PodIPs
-					if len(podIPs) == 0 && pod.Status.PodIP != "" {
-						podIPs = []v1.PodIP{{IP: pod.Status.PodIP}}
-					}
-					for _, podIP := range podIPs {
-						if util.CheckProtocol(podIP.IP) == protocol {
-							ip = podIP.IP
+					for _, podIP := range util.PodIPs(*pod) {
+						if util.CheckProtocol(podIP) == protocol {
+							ip = podIP
 							break
 						}
 					}
