@@ -894,9 +894,6 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 			ginkgo.By("Sending ND NS request to " + lrpIPv6 + " from container " + containerName)
 			cmd := strings.Fields("ndisc6 -1 -n -r1 -w1000 " + lrpIPv6 + " eth0")
 			_, _, err = docker.Exec(containerID, nil, cmd...)
-			if err == nil {
-				time.Sleep(time.Hour)
-			}
 			framework.ExpectError(err)
 			framework.ExpectEqual(err, docker.ErrNonZeroExitCode{Cmd: cmd, ExitCode: 2})
 		} else {
