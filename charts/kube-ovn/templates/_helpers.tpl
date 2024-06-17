@@ -67,7 +67,7 @@ Number of master nodes
         22.12
       {{- else if and (regexFind $versionRegex $imageVersion | semverCompare ">= 1.11.0") (regexFind $versionRegex $imageVersion | semverCompare "<= 1.11.18") -}}
         22.03
-      {{- else -}}
+      {{- else if regexFind $versionRegex $imageVersion | semverCompare "< 1.11.0" -}}
         21.06
       {{- end -}}
     {{- end -}}
