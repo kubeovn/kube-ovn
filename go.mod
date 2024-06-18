@@ -34,7 +34,7 @@ require (
 	github.com/sirupsen/logrus v1.9.3
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.9.0
-	github.com/vishvananda/netlink v1.2.1-beta.2
+	github.com/vishvananda/netlink v1.2.1-beta.2.0.20240524165444-4d4ba1473f21
 	go.uber.org/mock v0.4.0
 	golang.org/x/mod v0.18.0
 	golang.org/x/sys v0.21.0
@@ -271,7 +271,6 @@ replace (
 	github.com/mdlayher/arp => github.com/kubeovn/arp v0.0.0-20240218024213-d9612a263f68
 	github.com/openshift/client-go => github.com/openshift/client-go v0.0.1
 	github.com/ovn-org/libovsdb => github.com/kubeovn/libovsdb v0.0.0-20240218023647-f0bc3ce57fcd
-	github.com/vishvananda/netlink => github.com/kubeovn/netlink v0.0.0-20240218024530-d3ada5dae96f
 	k8s.io/api => k8s.io/api v0.30.2
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.30.2
 	k8s.io/apimachinery => k8s.io/apimachinery v0.30.2
