@@ -103,7 +103,7 @@ RUN curl -sSf -L --retry 5 -o /usr/bin/dumb-init https://github.com/Yelp/dumb-in
     chmod +x /usr/bin/dumb-init
 
 ARG ARCH
-ARG CNI_VERSION=v1.5.0
+ARG CNI_VERSION=v1.5.1
 RUN curl -sSf -L --retry 5 https://github.com/containernetworking/plugins/releases/download/${CNI_VERSION}/cni-plugins-linux-${ARCH}-${CNI_VERSION}.tgz | tar -xz -C . ./loopback ./portmap ./macvlan
 
 ARG KUBE_VERSION="v1.30.2"
