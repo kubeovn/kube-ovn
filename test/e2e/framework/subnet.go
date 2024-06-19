@@ -15,6 +15,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/kubernetes/test/e2e/framework"
 
+	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -36,6 +37,7 @@ func (f *Framework) SubnetClient() *SubnetClient {
 }
 
 func (c *SubnetClient) Get(name string) *apiv1.Subnet {
+	ginkgo.GinkgoHelper()
 	subnet, err := c.SubnetInterface.Get(context.TODO(), name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return subnet
@@ -43,6 +45,7 @@ func (c *SubnetClient) Get(name string) *apiv1.Subnet {
 
 // Create creates a new subnet according to the framework specifications
 func (c *SubnetClient) Create(subnet *apiv1.Subnet) *apiv1.Subnet {
+	ginkgo.GinkgoHelper()
 	s, err := c.SubnetInterface.Create(context.TODO(), subnet, metav1.CreateOptions{})
 	ExpectNoError(err, "Error creating subnet")
 	return s.DeepCopy()
@@ -50,6 +53,8 @@ func (c *SubnetClient) Create(subnet *apiv1.Subnet) *apiv1.Subnet {
 
 // CreateSync creates a new subnet according to the framework specifications, and waits for it to be ready.
 func (c *SubnetClient) CreateSync(subnet *apiv1.Subnet) *apiv1.Subnet {
+	ginkgo.GinkgoHelper()
+
 	s := c.Create(subnet)
 	ExpectTrue(c.WaitToBeReady(s.Name, timeout))
 	// Get the newest subnet after it becomes ready
@@ -58,6 +63,8 @@ func (c *SubnetClient) CreateSync(subnet *apiv1.Subnet) *apiv1.Subnet {
 
 // Update updates the subnet
 func (c *SubnetClient) Update(subnet *apiv1.Subnet, options metav1.UpdateOptions, timeout time.Duration) *apiv1.Subnet {
+	ginkgo.GinkgoHelper()
+
 	var updatedSubnet *apiv1.Subnet
 	err := wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
 		s, err := c.SubnetInterface.Update(ctx, subnet, options)
@@ -82,6 +89,8 @@ func (c *SubnetClient) Update(subnet *apiv1.Subnet, options metav1.UpdateOptions
 // UpdateSync updates the subnet and waits for the subnet to be ready for `timeout`.
 // If the subnet doesn't become ready before the timeout, it will fail the test.
 func (c *SubnetClient) UpdateSync(subnet *apiv1.Subnet, options metav1.UpdateOptions, timeout time.Duration) *apiv1.Subnet {
+	ginkgo.GinkgoHelper()
+
 	s := c.Update(subnet, options, timeout)
 	ExpectTrue(c.WaitToBeUpdated(s, timeout))
 	ExpectTrue(c.WaitToBeReady(s.Name, timeout))
@@ -91,6 +100,8 @@ func (c *SubnetClient) UpdateSync(subnet *apiv1.Subnet, options metav1.UpdateOpt
 
 // Patch patches the subnet
 func (c *SubnetClient) Patch(original, modified *apiv1.Subnet, timeout time.Duration) *apiv1.Subnet {
+	ginkgo.GinkgoHelper()
+
 	patch, err := util.GenerateMergePatchPayload(original, modified)
 	ExpectNoError(err)
 
@@ -118,6 +129,8 @@ func (c *SubnetClient) Patch(original, modified *apiv1.Subnet, timeout time.Dura
 // PatchSync patches the subnet and waits for the subnet to be ready for `timeout`.
 // If the subnet doesn't become ready before the timeout, it will fail the test.
 func (c *SubnetClient) PatchSync(original, modified *apiv1.Subnet) *apiv1.Subnet {
+	ginkgo.GinkgoHelper()
+
 	s := c.Patch(original, modified, timeout)
 	ExpectTrue(c.WaitToBeUpdated(s, timeout))
 	ExpectTrue(c.WaitToBeReady(s.Name, timeout))
@@ -127,6 +140,7 @@ func (c *SubnetClient) PatchSync(original, modified *apiv1.Subnet) *apiv1.Subnet
 
 // Delete deletes a subnet if the subnet exists
 func (c *SubnetClient) Delete(name string) {
+	ginkgo.GinkgoHelper()
 	err := c.SubnetInterface.Delete(context.TODO(), name, metav1.DeleteOptions{})
 	if err != nil && !apierrors.IsNotFound(err) {
 		Failf("Failed to delete subnet %q: %v", name, err)
@@ -136,6 +150,7 @@ func (c *SubnetClient) Delete(name string) {
 // DeleteSync deletes the subnet and waits for the subnet to disappear for `timeout`.
 // If the subnet doesn't disappear before the timeout, it will fail the test.
 func (c *SubnetClient) DeleteSync(name string) {
+	ginkgo.GinkgoHelper()
 	c.Delete(name)
 	gomega.Expect(c.WaitToDisappear(name, 2*time.Second, timeout)).To(gomega.Succeed(), "wait for subnet %q to disappear", name)
 }
@@ -206,6 +221,8 @@ func (c *SubnetClient) WaitToBeUpdated(subnet *apiv1.Subnet, timeout time.Durati
 
 // WaitUntil waits the given timeout duration for the specified condition to be met.
 func (c *SubnetClient) WaitUntil(name string, cond func(s *apiv1.Subnet) (bool, error), condDesc string, interval, timeout time.Duration) *apiv1.Subnet {
+	ginkgo.GinkgoHelper()
+
 	var subnet *apiv1.Subnet
 	err := wait.PollUntilContextTimeout(context.Background(), interval, timeout, true, func(_ context.Context) (bool, error) {
 		Logf("Waiting for subnet %s to meet condition %q", name, condDesc)

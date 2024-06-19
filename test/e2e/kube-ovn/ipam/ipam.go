@@ -424,6 +424,8 @@ var _ = framework.Describe("[group:ipam]", func() {
 		deploy = deployClient.CreateSync(deploy)
 
 		checkFn := func() {
+			ginkgo.GinkgoHelper()
+
 			ginkgo.By("Getting pods for deployment " + deployName)
 			pods, err := deployClient.GetPods(deploy)
 			framework.ExpectNoError(err, "failed to get pods for deployment "+deployName)

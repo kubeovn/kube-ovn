@@ -14,6 +14,7 @@ import (
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/kubernetes/test/e2e/framework"
 
+	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
 
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -33,6 +34,7 @@ func (f *Framework) NamespaceClient() *NamespaceClient {
 }
 
 func (c *NamespaceClient) Get(name string) *corev1.Namespace {
+	ginkgo.GinkgoHelper()
 	np, err := c.NamespaceInterface.Get(context.TODO(), name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return np
@@ -40,12 +42,15 @@ func (c *NamespaceClient) Get(name string) *corev1.Namespace {
 
 // Create creates a new namespace according to the framework specifications
 func (c *NamespaceClient) Create(ns *corev1.Namespace) *corev1.Namespace {
+	ginkgo.GinkgoHelper()
 	np, err := c.NamespaceInterface.Create(context.TODO(), ns, metav1.CreateOptions{})
 	ExpectNoError(err, "Error creating namespace")
 	return np.DeepCopy()
 }
 
 func (c *NamespaceClient) Patch(original, modified *corev1.Namespace) *corev1.Namespace {
+	ginkgo.GinkgoHelper()
+
 	patch, err := util.GenerateMergePatchPayload(original, modified)
 	ExpectNoError(err)
 
@@ -72,6 +77,7 @@ func (c *NamespaceClient) Patch(original, modified *corev1.Namespace) *corev1.Na
 
 // Delete deletes a namespace if the namespace exists
 func (c *NamespaceClient) Delete(name string) {
+	ginkgo.GinkgoHelper()
 	err := c.NamespaceInterface.Delete(context.TODO(), name, metav1.DeleteOptions{})
 	if err != nil && !apierrors.IsNotFound(err) {
 		Failf("Failed to delete namespace %q: %v", name, err)
@@ -81,6 +87,7 @@ func (c *NamespaceClient) Delete(name string) {
 // DeleteSync deletes the namespace and waits for the namespace to disappear for `timeout`.
 // If the namespace doesn't disappear before the timeout, it will fail the test.
 func (c *NamespaceClient) DeleteSync(name string) {
+	ginkgo.GinkgoHelper()
 	c.Delete(name)
 	gomega.Expect(c.WaitToDisappear(name, 2*time.Second, timeout)).To(gomega.Succeed(), "wait for namespace %q to disappear", name)
 }

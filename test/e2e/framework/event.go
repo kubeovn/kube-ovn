@@ -8,6 +8,8 @@ import (
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/util/wait"
 	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
+
+	"github.com/onsi/ginkgo/v2"
 )
 
 type EventClient struct {
@@ -30,6 +32,8 @@ func (f *Framework) EventClientNS(namespace string) *EventClient {
 
 // WaitToHaveEvent waits the provided resource to have the specified event(s)
 func (c *EventClient) WaitToHaveEvent(kind, name, eventType, reason, sourceComponent, sourceHost string) []corev1.Event {
+	ginkgo.GinkgoHelper()
+
 	var result []corev1.Event
 	err := wait.PollUntilContextTimeout(context.Background(), poll, timeout, false, func(ctx context.Context) (bool, error) {
 		Logf("Waiting for %s %s/%s to have event %s/%s", kind, c.namespace, name, eventType, reason)

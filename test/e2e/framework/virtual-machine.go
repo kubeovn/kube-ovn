@@ -13,6 +13,7 @@ import (
 	v1 "kubevirt.io/api/core/v1"
 	"kubevirt.io/client-go/kubecli"
 
+	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
 	"github.com/onsi/gomega/format"
 )
@@ -35,6 +36,7 @@ func (f *Framework) VMClientNS(namespace string) *VMClient {
 }
 
 func (c *VMClient) Get(name string) *v1.VirtualMachine {
+	ginkgo.GinkgoHelper()
 	vm, err := c.VirtualMachineInterface.Get(context.TODO(), name, &metav1.GetOptions{})
 	ExpectNoError(err)
 	return vm
@@ -42,6 +44,7 @@ func (c *VMClient) Get(name string) *v1.VirtualMachine {
 
 // Create creates a new vm according to the framework specifications
 func (c *VMClient) Create(vm *v1.VirtualMachine) *v1.VirtualMachine {
+	ginkgo.GinkgoHelper()
 	v, err := c.VirtualMachineInterface.Create(context.TODO(), vm)
 	ExpectNoError(err, "failed to create vm %s", v.Name)
 	return c.Get(v.Name)
@@ -49,6 +52,8 @@ func (c *VMClient) Create(vm *v1.VirtualMachine) *v1.VirtualMachine {
 
 // CreateSync creates a new vm according to the framework specifications, and waits for it to be ready.
 func (c *VMClient) CreateSync(vm *v1.VirtualMachine) *v1.VirtualMachine {
+	ginkgo.GinkgoHelper()
+
 	v := c.Create(vm)
 	ExpectNoError(c.WaitToBeReady(v.Name, timeout))
 	// Get the newest vm after it becomes ready
@@ -57,6 +62,8 @@ func (c *VMClient) CreateSync(vm *v1.VirtualMachine) *v1.VirtualMachine {
 
 // Start starts the vm.
 func (c *VMClient) Start(name string) *v1.VirtualMachine {
+	ginkgo.GinkgoHelper()
+
 	vm := c.Get(name)
 	if vm.Spec.Running != nil && *vm.Spec.Running {
 		Logf("vm %s has already been started", name)
@@ -72,6 +79,7 @@ func (c *VMClient) Start(name string) *v1.VirtualMachine {
 
 // StartSync stops the vm and waits for it to be ready.
 func (c *VMClient) StartSync(name string) *v1.VirtualMachine {
+	ginkgo.GinkgoHelper()
 	_ = c.Start(name)
 	ExpectNoError(c.WaitToBeReady(name, 2*time.Minute))
 	return c.Get(name)
@@ -79,6 +87,8 @@ func (c *VMClient) StartSync(name string) *v1.VirtualMachine {
 
 // Stop stops the vm.
 func (c *VMClient) Stop(name string) *v1.VirtualMachine {
+	ginkgo.GinkgoHelper()
+
 	vm := c.Get(name)
 	if vm.Spec.Running != nil && !*vm.Spec.Running {
 		Logf("vm %s has already been stopped", name)
@@ -94,6 +104,7 @@ func (c *VMClient) Stop(name string) *v1.VirtualMachine {
 
 // StopSync stops the vm and waits for it to be stopped.
 func (c *VMClient) StopSync(name string) *v1.VirtualMachine {
+	ginkgo.GinkgoHelper()
 	_ = c.Stop(name)
 	ExpectNoError(c.WaitToBeStopped(name, 2*time.Minute))
 	return c.Get(name)
@@ -101,6 +112,7 @@ func (c *VMClient) StopSync(name string) *v1.VirtualMachine {
 
 // Delete deletes a vm if the vm exists
 func (c *VMClient) Delete(name string) {
+	ginkgo.GinkgoHelper()
 	err := c.VirtualMachineInterface.Delete(context.TODO(), name, &metav1.DeleteOptions{})
 	ExpectNoError(err, "failed to delete vm %s", name)
 }
@@ -108,6 +120,7 @@ func (c *VMClient) Delete(name string) {
 // DeleteSync deletes the vm and waits for the vm to disappear for `timeout`.
 // If the vm doesn't disappear before the timeout, it will fail the test.
 func (c *VMClient) DeleteSync(name string) {
+	ginkgo.GinkgoHelper()
 	c.Delete(name)
 	gomega.Expect(c.WaitToDisappear(name, 2*time.Second, timeout)).To(gomega.Succeed(), "wait for vm %q to disappear", name)
 }

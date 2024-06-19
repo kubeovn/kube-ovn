@@ -50,6 +50,8 @@ func makeProviderNetwork(providerNetworkName string, exchangeLinkName bool, link
 }
 
 func waitSubnetStatusUpdate(subnetName string, subnetClient *framework.SubnetClient, expectedUsingIPs float64) {
+	ginkgo.GinkgoHelper()
+
 	ginkgo.By("Waiting for using ips count of subnet " + subnetName + " to be " + fmt.Sprintf("%.0f", expectedUsingIPs))
 	framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 		subnet := subnetClient.Get(subnetName)
@@ -64,6 +66,8 @@ func waitSubnetStatusUpdate(subnetName string, subnetClient *framework.SubnetCli
 }
 
 func waitSubnetU2OStatus(f *framework.Framework, subnetName string, subnetClient *framework.SubnetClient, enableU2O bool) {
+	ginkgo.GinkgoHelper()
+
 	framework.WaitUntil(1*time.Second, 3*time.Second, func(_ context.Context) (bool, error) {
 		ginkgo.By("Waiting for U2OInterconnection status of subnet " + subnetName + " to be " + strconv.FormatBool(enableU2O))
 		subnet := subnetClient.Get(subnetName)
@@ -214,6 +218,8 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		}
 
 		itFn = func(exchangeLinkName bool) {
+			ginkgo.GinkgoHelper()
+
 			ginkgo.By("Creating provider network " + providerNetworkName)
 			pn := makeProviderNetwork(providerNetworkName, exchangeLinkName, linkMap)
 			pn = providerNetworkClient.CreateSync(pn)
@@ -903,6 +909,8 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 })
 
 func checkU2OItems(f *framework.Framework, subnet *apiv1.Subnet, underlayPod, overlayPod *corev1.Pod, isU2OCustomVpc bool) {
+	ginkgo.GinkgoHelper()
+
 	ginkgo.By("checking subnet's u2o interconnect ip of underlay subnet " + subnet.Name)
 	if subnet.Spec.U2OInterconnection {
 		framework.ExpectTrue(subnet.Spec.U2OInterconnection)
@@ -1043,6 +1051,8 @@ func checkU2OItems(f *framework.Framework, subnet *apiv1.Subnet, underlayPod, ov
 }
 
 func checkReachable(podName, podNamespace, sourceIP, targetIP, targetPort string, expectReachable bool) {
+	ginkgo.GinkgoHelper()
+
 	ginkgo.By("checking curl reachable")
 	cmd := fmt.Sprintf("kubectl exec %s -n %s -- curl -q -s --connect-timeout 5 %s/clientip", podName, podNamespace, net.JoinHostPort(targetIP, targetPort))
 	output, _ := exec.Command("bash", "-c", cmd).CombinedOutput()
@@ -1059,6 +1069,8 @@ func checkReachable(podName, podNamespace, sourceIP, targetIP, targetPort string
 }
 
 func checkPolicy(hitPolicyStr string, expectPolicyExist bool, vpcName string) {
+	ginkgo.GinkgoHelper()
+
 	framework.WaitUntil(time.Second, 10*time.Second, func(_ context.Context) (bool, error) {
 		output, err := exec.Command("bash", "-c", fmt.Sprintf("kubectl ko nbctl lr-policy-list %s", vpcName)).CombinedOutput()
 		if err != nil {

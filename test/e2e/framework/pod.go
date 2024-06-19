@@ -13,6 +13,8 @@ import (
 	psaapi "k8s.io/pod-security-admission/api"
 	"k8s.io/utils/ptr"
 
+	"github.com/onsi/ginkgo/v2"
+
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -31,29 +33,35 @@ func (f *Framework) PodClientNS(namespace string) *PodClient {
 }
 
 func (c *PodClient) GetPod(name string) *corev1.Pod {
+	ginkgo.GinkgoHelper()
 	pod, err := c.PodInterface.Get(context.TODO(), name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return pod
 }
 
 func (c *PodClient) Create(pod *corev1.Pod) *corev1.Pod {
+	ginkgo.GinkgoHelper()
 	return c.PodClient.Create(context.Background(), pod)
 }
 
 func (c *PodClient) CreateSync(pod *corev1.Pod) *corev1.Pod {
+	ginkgo.GinkgoHelper()
 	return c.PodClient.CreateSync(context.Background(), pod)
 }
 
 func (c *PodClient) Delete(name string) error {
+	ginkgo.GinkgoHelper()
 	return c.PodClient.Delete(context.Background(), name, metav1.DeleteOptions{})
 }
 
 func (c *PodClient) DeleteSync(name string) {
-	var gps int64 = 1
-	c.PodClient.DeleteSync(context.Background(), name, metav1.DeleteOptions{GracePeriodSeconds: &gps}, timeout)
+	ginkgo.GinkgoHelper()
+	c.PodClient.DeleteSync(context.Background(), name, metav1.DeleteOptions{GracePeriodSeconds: ptr.To(int64(1))}, timeout)
 }
 
 func (c *PodClient) Patch(original, modified *corev1.Pod) *corev1.Pod {
+	ginkgo.GinkgoHelper()
+
 	patch, err := util.GenerateMergePatchPayload(original, modified)
 	ExpectNoError(err)
 
@@ -79,11 +87,13 @@ func (c *PodClient) Patch(original, modified *corev1.Pod) *corev1.Pod {
 }
 
 func (c *PodClient) WaitForRunning(name string) {
+	ginkgo.GinkgoHelper()
 	err := e2epod.WaitTimeoutForPodRunningInNamespace(context.TODO(), c.f.ClientSet, name, c.namespace, timeout)
 	ExpectNoError(err)
 }
 
 func (c *PodClient) WaitForNotFound(name string) {
+	ginkgo.GinkgoHelper()
 	err := e2epod.WaitForPodNotFoundInNamespace(context.TODO(), c.f.ClientSet, name, c.namespace, timeout)
 	ExpectNoError(err)
 }

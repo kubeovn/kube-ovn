@@ -13,6 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/kubernetes/test/e2e/framework"
 
+	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -34,6 +35,7 @@ func (f *Framework) VpcClient() *VpcClient {
 }
 
 func (c *VpcClient) Get(name string) *kubeovnv1.Vpc {
+	ginkgo.GinkgoHelper()
 	vpc, err := c.VpcInterface.Get(context.TODO(), name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return vpc
@@ -41,6 +43,7 @@ func (c *VpcClient) Get(name string) *kubeovnv1.Vpc {
 
 // Create creates a new vpc according to the framework specifications
 func (c *VpcClient) Create(vpc *kubeovnv1.Vpc) *kubeovnv1.Vpc {
+	ginkgo.GinkgoHelper()
 	vpc, err := c.VpcInterface.Create(context.TODO(), vpc, metav1.CreateOptions{})
 	ExpectNoError(err, "Error creating vpc")
 	return vpc.DeepCopy()
@@ -48,6 +51,8 @@ func (c *VpcClient) Create(vpc *kubeovnv1.Vpc) *kubeovnv1.Vpc {
 
 // CreateSync creates a new vpc according to the framework specifications, and waits for it to be ready.
 func (c *VpcClient) CreateSync(vpc *kubeovnv1.Vpc) *kubeovnv1.Vpc {
+	ginkgo.GinkgoHelper()
+
 	vpc = c.Create(vpc)
 	ExpectTrue(c.WaitToBeReady(vpc.Name, timeout))
 	// Get the newest vpc after it becomes ready
@@ -56,6 +61,8 @@ func (c *VpcClient) CreateSync(vpc *kubeovnv1.Vpc) *kubeovnv1.Vpc {
 
 // Patch patches the vpc
 func (c *VpcClient) Patch(original, modified *kubeovnv1.Vpc) *kubeovnv1.Vpc {
+	ginkgo.GinkgoHelper()
+
 	patch, err := util.GenerateMergePatchPayload(original, modified)
 	ExpectNoError(err)
 
@@ -83,6 +90,8 @@ func (c *VpcClient) Patch(original, modified *kubeovnv1.Vpc) *kubeovnv1.Vpc {
 // PatchSync patches the vpc and waits for the vpc to be ready for `timeout`.
 // If the vpc doesn't become ready before the timeout, it will fail the test.
 func (c *VpcClient) PatchSync(original, modified *kubeovnv1.Vpc, _ []string, timeout time.Duration) *kubeovnv1.Vpc {
+	ginkgo.GinkgoHelper()
+
 	vpc := c.Patch(original, modified)
 	ExpectTrue(c.WaitToBeUpdated(vpc, timeout))
 	ExpectTrue(c.WaitToBeReady(vpc.Name, timeout))
@@ -92,6 +101,7 @@ func (c *VpcClient) PatchSync(original, modified *kubeovnv1.Vpc, _ []string, tim
 
 // Delete deletes a vpc if the vpc exists
 func (c *VpcClient) Delete(name string) {
+	ginkgo.GinkgoHelper()
 	err := c.VpcInterface.Delete(context.TODO(), name, metav1.DeleteOptions{})
 	if err != nil && !apierrors.IsNotFound(err) {
 		Failf("Failed to delete vpc %q: %v", name, err)
@@ -101,6 +111,7 @@ func (c *VpcClient) Delete(name string) {
 // DeleteSync deletes the vpc and waits for the vpc to disappear for `timeout`.
 // If the vpc doesn't disappear before the timeout, it will fail the test.
 func (c *VpcClient) DeleteSync(name string) {
+	ginkgo.GinkgoHelper()
 	c.Delete(name)
 	gomega.Expect(c.WaitToDisappear(name, 2*time.Second, timeout)).To(gomega.Succeed(), "wait for vpc %q to disappear", name)
 }

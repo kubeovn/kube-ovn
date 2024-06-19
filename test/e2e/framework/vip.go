@@ -12,6 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/kubernetes/test/e2e/framework"
 
+	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -33,6 +34,7 @@ func (f *Framework) VipClient() *VipClient {
 }
 
 func (c *VipClient) Get(name string) *apiv1.Vip {
+	ginkgo.GinkgoHelper()
 	vip, err := c.VipInterface.Get(context.TODO(), name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return vip.DeepCopy()
@@ -40,6 +42,7 @@ func (c *VipClient) Get(name string) *apiv1.Vip {
 
 // Create creates a new vip according to the framework specifications
 func (c *VipClient) Create(vip *apiv1.Vip) *apiv1.Vip {
+	ginkgo.GinkgoHelper()
 	vip, err := c.VipInterface.Create(context.TODO(), vip, metav1.CreateOptions{})
 	ExpectNoError(err, "Error creating vip")
 	return vip.DeepCopy()
@@ -47,6 +50,8 @@ func (c *VipClient) Create(vip *apiv1.Vip) *apiv1.Vip {
 
 // CreateSync creates a new ovn vip according to the framework specifications, and waits for it to be ready.
 func (c *VipClient) CreateSync(vip *apiv1.Vip) *apiv1.Vip {
+	ginkgo.GinkgoHelper()
+
 	vip = c.Create(vip)
 	ExpectTrue(c.WaitToBeReady(vip.Name, timeout))
 	// Get the newest ovn vip after it becomes ready
@@ -69,6 +74,8 @@ func (c *VipClient) WaitToBeReady(name string, timeout time.Duration) bool {
 
 // Patch patches the vip
 func (c *VipClient) Patch(original, modified *apiv1.Vip, timeout time.Duration) *apiv1.Vip {
+	ginkgo.GinkgoHelper()
+
 	patch, err := util.GenerateMergePatchPayload(original, modified)
 	ExpectNoError(err)
 
@@ -95,6 +102,7 @@ func (c *VipClient) Patch(original, modified *apiv1.Vip, timeout time.Duration) 
 
 // Delete deletes a vip if the vip exists
 func (c *VipClient) Delete(name string) {
+	ginkgo.GinkgoHelper()
 	err := c.VipInterface.Delete(context.TODO(), name, metav1.DeleteOptions{})
 	if err != nil && !apierrors.IsNotFound(err) {
 		Failf("Failed to delete vip %q: %v", name, err)
@@ -104,6 +112,7 @@ func (c *VipClient) Delete(name string) {
 // DeleteSync deletes the ovn vip and waits for the ovn vip to disappear for `timeout`.
 // If the ovn vip doesn't disappear before the timeout, it will fail the test.
 func (c *VipClient) DeleteSync(name string) {
+	ginkgo.GinkgoHelper()
 	c.Delete(name)
 	gomega.Expect(c.WaitToDisappear(name, 2*time.Second, timeout)).To(gomega.Succeed(), "wait for ovn vip %q to disappear", name)
 }
