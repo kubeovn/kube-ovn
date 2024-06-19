@@ -83,7 +83,7 @@ FROM ubuntu:22.04
 ARG DEBIAN_FRONTEND=noninteractive
 RUN apt update && apt upgrade -y && apt install ca-certificates python3 hostname libunwind8 netbase \
         ethtool iproute2 ncat libunbound8 procps libatomic1 kmod iptables \
-        tcpdump ipset curl uuid-runtime openssl inetutils-ping iputils-tracepath arping ndisc6 \
+        tcpdump ipset curl uuid-runtime openssl inetutils-ping iputils-tracepath arping ndisc6 traceroute \
         logrotate dnsutils net-tools strongswan strongswan-pki libcharon-extra-plugins \
         libcharon-extauth-plugins libstrongswan-extra-plugins libstrongswan-standard-plugins -y --no-install-recommends && \
         rm -rf /var/lib/apt/lists/* && \
