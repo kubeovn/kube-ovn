@@ -23,13 +23,6 @@ const (
 	ChassisAnnotation    = "ovn.kubernetes.io/chassis"
 	VMAnnotation         = "ovn.kubernetes.io/virtualmachine"
 
-	ExternalIPAnnotation         = "ovn.kubernetes.io/external_ip"
-	ExternalMacAnnotation        = "ovn.kubernetes.io/external_mac"
-	ExternalCidrAnnotation       = "ovn.kubernetes.io/external_cidr"
-	ExternalSwitchAnnotation     = "ovn.kubernetes.io/external_switch"
-	ExternalGatewayAnnotation    = "ovn.kubernetes.io/external_gateway"
-	ExternalGwPortNameAnnotation = "ovn.kubernetes.io/external_gw_port_name"
-
 	VpcNatGatewayAnnotation     = "ovn.kubernetes.io/vpc_nat_gw"
 	VpcNatGatewayInitAnnotation = "ovn.kubernetes.io/vpc_nat_gw_init"
 	VpcEipsAnnotation           = "ovn.kubernetes.io/vpc_eips"
@@ -74,7 +67,6 @@ const (
 	IngressRateAnnotationTemplate   = "%s.kubernetes.io/ingress_rate"
 	EgressRateAnnotationTemplate    = "%s.kubernetes.io/egress_rate"
 	SecurityGroupAnnotationTemplate = "%s.kubernetes.io/security_groups"
-	LiveMigrationAnnotationTemplate = "%s.kubernetes.io/allow_live_migration"
 	DefaultRouteAnnotationTemplate  = "%s.kubernetes.io/default_route"
 	VfRepresentorNameTemplate       = "%s.kubernetes.io/vf_representor"
 	VfNameTemplate                  = "%s.kubernetes.io/vf"
@@ -298,7 +290,6 @@ const (
 	ConsumptionKubevirt       = "kubevirt"
 	VhostUserSocketVolumeName = "vhostuser-sockets"
 
-	OVNMigrationAnnotation        = "ovn.kubernetes.io/migrate"         // to control if ovn set lsp migrate options
 	MigrationJobAnnotation        = "kubevirt.io/migrationJobName"      // migration job name
 	MigrationSourceNodeAnnotation = "kubevirt.io/migration-source-node" // target pod has source node name
 	MigrationSourceAnnotation     = "kubevirt.io/migration-source"      // migration source vm: true or false
