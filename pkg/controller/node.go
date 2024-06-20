@@ -76,6 +76,9 @@ func (c *Controller) enqueueDeleteNode(obj interface{}) {
 		return
 	}
 	klog.V(3).Infof("enqueue delete node %s", key)
+
+	n := obj.(*v1.Node)
+	c.deletingNodeObjMap.Store(key, n)
 	c.deleteNodeQueue.Add(key)
 }
 
@@ -174,6 +177,7 @@ func (c *Controller) processNextDeleteNodeWorkItem() bool {
 			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
 		}
 		c.deleteNodeQueue.Forget(obj)
+		c.deletingNodeObjMap.Delete(key)
 		return nil
 	}(obj)
 	if err != nil {
@@ -473,6 +477,17 @@ func (c *Controller) handleDeleteNode(key string) error {
 	c.nodeKeyMutex.LockKey(key)
 	defer func() { _ = c.nodeKeyMutex.UnlockKey(key) }()
 	klog.Infof("handle delete node %s", key)
+
+	nodeObj, ok := c.deletingNodeObjMap.Load(key)
+	if !ok {
+		return nil
+	}
+	node := nodeObj.(*v1.Node)
+	n, _ := c.nodesLister.Get(key)
+	if n != nil && n.UID != node.UID {
+		klog.Warningf("Node %s is adding, skip the node delete handler, but it may leave some gc resources behind", key)
+		return nil
+	}
 
 	portName := util.NodeLspName(key)
 	klog.Infof("delete logical switch port %s", portName)
