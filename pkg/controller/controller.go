@@ -67,6 +67,7 @@ type Controller struct {
 	addOrUpdatePodQueue    workqueue.RateLimitingInterface
 	deletePodQueue         workqueue.RateLimitingInterface
 	deletingPodObjMap      *sync.Map
+	deletingNodeObjMap     *sync.Map
 	updatePodSecurityQueue workqueue.RateLimitingInterface
 	podKeyMutex            keymutex.KeyMutex
 
@@ -298,13 +299,14 @@ func Run(ctx context.Context, config *Configuration) {
 		numKeyLocks = config.WorkerNum * 2
 	}
 	controller := &Controller{
-		config:            config,
-		vpcs:              &sync.Map{},
-		podSubnetMap:      &sync.Map{},
-		deletingPodObjMap: &sync.Map{},
-		ovnLegacyClient:   ovs.NewLegacyClient(config.OvnTimeout),
-		ipam:              ovnipam.NewIPAM(),
-		namedPort:         NewNamedPort(),
+		config:             config,
+		vpcs:               &sync.Map{},
+		podSubnetMap:       &sync.Map{},
+		deletingPodObjMap:  &sync.Map{},
+		deletingNodeObjMap: &sync.Map{},
+		ovnLegacyClient:    ovs.NewLegacyClient(config.OvnTimeout),
+		ipam:               ovnipam.NewIPAM(),
+		namedPort:          NewNamedPort(),
 
 		vpcsLister:           vpcInformer.Lister(),
 		vpcSynced:            vpcInformer.Informer().HasSynced,
