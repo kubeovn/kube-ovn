@@ -98,14 +98,14 @@ func (c *OVNNbClient) CreateLogicalSwitchPort(lsName, lspName, ip, mac, podName,
 	var ops []ovsdb.Operation
 	lsp := buildLogicalSwitchPort(lspName, lsName, ip, mac, podName, namespace, portSecurity, securityGroups, vips, enableDHCP, dhcpOptions, vpc)
 	if existingLsp != nil {
-		if lsp.ExternalIDs[logicalSwitchKey] == lsName {
+		if existingLsp.ExternalIDs[logicalSwitchKey] == lsName {
 			if err := c.UpdateLogicalSwitchPort(lsp, &lsp.Addresses, &lsp.Dhcpv4Options, &lsp.Dhcpv6Options, &lsp.PortSecurity, &lsp.ExternalIDs); err != nil {
 				klog.Error(err)
 				return fmt.Errorf("failed to update logical switch port %s: %v", lspName, err)
 			}
 			return nil
 		}
-		if ops, err = c.LogicalSwitchUpdatePortOp(lsp.ExternalIDs[logicalSwitchKey], existingLsp.UUID, ovsdb.MutateOperationDelete); err != nil {
+		if ops, err = c.LogicalSwitchUpdatePortOp(existingLsp.ExternalIDs[logicalSwitchKey], existingLsp.UUID, ovsdb.MutateOperationDelete); err != nil {
 			klog.Error(err)
 			return err
 		}
