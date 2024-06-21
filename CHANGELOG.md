@@ -1,5 +1,23 @@
 # Changelog
 
+## v1.12.18 (2024-06-21)
+
+ * [8186a8a2](https://github.com/kubeovn/kube-ovn/commit/8186a8a22044e8277731fadfd0a9bb0cdfc8c70a) release v1.12.18
+ * [65641d31](https://github.com/kubeovn/kube-ovn/commit/65641d31daa25e85d46f40d6a5e7f8a36afd4cc8) fix vm not running after changing the subnet (#4199)
+ * [10cd0ce6](https://github.com/kubeovn/kube-ovn/commit/10cd0ce6ad70d735f640920742f44c7b5653291e) pinger: reset interface_rx_multicast_packets (#4198)
+ * [05e2ccb5](https://github.com/kubeovn/kube-ovn/commit/05e2ccb5127ef745183312b0c8089a1949853e8d) fix kube-ovn-cni crash for newly added nodes , due to old legacy event in deleteNodeQueue (#4194)
+ * [ff0a7c53](https://github.com/kubeovn/kube-ovn/commit/ff0a7c535b8f632e4804bb0b0082c0dca3a767ae) base: bump cni plugins to v1.5.1 (#4185)
+ * [4a662e22](https://github.com/kubeovn/kube-ovn/commit/4a662e221ad714a7d9cd1529d52a18a71dfd7a2e) ci: check pod crashes on installation/e2e failure (#4160)
+ * [b7bf4926](https://github.com/kubeovn/kube-ovn/commit/b7bf4926a7676c6a1f93fac7196ff4ab92624438) base: bump kubectl to v1.30.2 (#4163)
+ * [342a2ab8](https://github.com/kubeovn/kube-ovn/commit/342a2ab877940069c326224ffa0ea201cc4e8419) fix reconcile routes (#4168)
+ * [8965ecce](https://github.com/kubeovn/kube-ovn/commit/8965ecce5f0f439c9963e28aed4a5e2099ced4d5) ci: fix retrieving docker network subnet/gateway (#4161)
+ * [63b33691](https://github.com/kubeovn/kube-ovn/commit/63b3369153ad3229c52b8b44be242356e330e970) prepare for next release
+
+### Contributors
+
+ * changluyi
+ * 张祖建
+
 ## v1.12.17 (2024-06-13)
 
  * [2b643c97](https://github.com/kubeovn/kube-ovn/commit/2b643c97dc40b1a7293bb2a80a49208b6d35dc0f) release v1.12.17
@@ -2628,6 +2646,24 @@
  * 张祖建
  * 罗云鹤
  * 范日明
+
+## v1.9.33 (2024-06-14)
+
+ * [0b1187fe](https://github.com/kubeovn/kube-ovn/commit/0b1187febc31d41b638b7d897071416b22ba4b34) set release for 1.9.33
+ * [5301eac2](https://github.com/kubeovn/kube-ovn/commit/5301eac20d1cb6cca17a4803528ed950ab5780d5) keep underlay subnet check same as before (#4167)
+ * [04b45708](https://github.com/kubeovn/kube-ovn/commit/04b45708e336a294e3559496d7c2b9b95bc8014d) ci: fix retrieving docker network subnet/gateway (#4161)
+ * [6e42642a](https://github.com/kubeovn/kube-ovn/commit/6e42642a0ae30af4a34ab0d9edac2e3ef5a81f6f)  Drop u2o arp request 1.9 (#4153)
+ * [324bb6a5](https://github.com/kubeovn/kube-ovn/commit/324bb6a5050c10db429bbf404c5b504f9a546546) add ovn0 default route (#4127)
+ * [65c26c38](https://github.com/kubeovn/kube-ovn/commit/65c26c383319370ef26c7c137e0dedd99c718576) bump base image
+ * [8240b2d0](https://github.com/kubeovn/kube-ovn/commit/8240b2d0434151c83ae8db3c3a7580c67d2f1eb2) prepare for next release
+
+### Contributors
+
+ * changluyi
+ * hzma
+ * zhangzujian
+ * 张祖建
+ * 马洪贞
 
 ## v1.9.32 (2024-05-23)
 
