@@ -607,6 +607,21 @@ func (c *OVNNbClient) DeleteLogicalSwitchPort(lspName string) error {
 		return nil
 	}
 
+	switchName, ok := lsp.ExternalIDs[logicalSwitchKey]
+	if !ok {
+		return nil
+	}
+
+	exist, err := c.LogicalSwitchExists(switchName)
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
+	if !exist {
+		klog.Warningf("failed to get subnet %s for LSP %s, can not handle", switchName, lsp.Name)
+		return nil
+	}
+
 	ops, err := c.DeleteLogicalSwitchPortOp(lspName)
 	if err != nil {
 		klog.Error(err)
