@@ -57,6 +57,8 @@ func TestE2E(t *testing.T) {
 }
 
 func execOrDie(kubeContext, cmd string) string {
+	ginkgo.GinkgoHelper()
+
 	ginkgo.By(`Switching context to ` + kubeContext)
 	e2ekubectl.NewKubectlCommand("", "config", "use-context", kubeContext).ExecOrDie("")
 
@@ -65,6 +67,8 @@ func execOrDie(kubeContext, cmd string) string {
 }
 
 func execPodOrDie(kubeContext, namespace, pod, cmd string) string {
+	ginkgo.GinkgoHelper()
+
 	ginkgo.By(`Switching context to ` + kubeContext)
 	e2ekubectl.NewKubectlCommand("", "config", "use-context", kubeContext).ExecOrDie("")
 
@@ -96,6 +100,8 @@ var _ = framework.SerialDescribe("[group:ovn-ic]", func() {
 	})
 
 	fnCheckPodHTTP := func() {
+		ginkgo.GinkgoHelper()
+
 		podNames := make([]string, len(clusters))
 		pods := make([]*corev1.Pod, len(clusters))
 		ports := make([]string, len(clusters))
@@ -341,6 +347,8 @@ var _ = framework.SerialDescribe("[group:ovn-ic]", func() {
 })
 
 func checkECMPCount(expectCount int) {
+	ginkgo.GinkgoHelper()
+
 	ecmpCount := 0
 	maxRetryTimes := 30
 

@@ -40,6 +40,8 @@ func TestE2E(t *testing.T) {
 }
 
 func checkDeployment(f *framework.Framework, name, process string, ports ...string) {
+	ginkgo.GinkgoHelper()
+
 	ginkgo.By("Getting deployment " + name)
 	deploy, err := f.ClientSet.AppsV1().Deployments(framework.KubeOvnNamespace).Get(context.TODO(), name, metav1.GetOptions{})
 	framework.ExpectNoError(err, "failed to to get deployment")
@@ -55,6 +57,8 @@ func checkDeployment(f *framework.Framework, name, process string, ports ...stri
 }
 
 func checkPods(f *framework.Framework, pods []corev1.Pod, process string, ports ...string) {
+	ginkgo.GinkgoHelper()
+
 	ginkgo.By("Parsing environment variable")
 	var envValue string
 	for _, env := range pods[0].Spec.Containers[0].Env {

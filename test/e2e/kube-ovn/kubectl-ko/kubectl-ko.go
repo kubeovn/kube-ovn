@@ -24,6 +24,7 @@ const (
 )
 
 func execOrDie(cmd string) {
+	ginkgo.GinkgoHelper()
 	ginkgo.By(`Executing "kubectl ` + cmd + `"`)
 	e2ekubectl.NewKubectlCommand("", strings.Fields(cmd)...).ExecOrDie("")
 }

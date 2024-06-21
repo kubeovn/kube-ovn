@@ -13,6 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/kubernetes/test/e2e/framework"
 
+	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -34,6 +35,8 @@ func (f *Framework) IptablesDnatClient() *IptablesDnatClient {
 }
 
 func (c *IptablesDnatClient) Get(name string) *apiv1.IptablesDnatRule {
+	ginkgo.GinkgoHelper()
+
 	dnat, err := c.IptablesDnatRuleInterface.Get(context.TODO(), name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return dnat
@@ -41,6 +44,8 @@ func (c *IptablesDnatClient) Get(name string) *apiv1.IptablesDnatRule {
 
 // Create creates a new iptables dnat according to the framework specifications
 func (c *IptablesDnatClient) Create(dnat *apiv1.IptablesDnatRule) *apiv1.IptablesDnatRule {
+	ginkgo.GinkgoHelper()
+
 	dnat, err := c.IptablesDnatRuleInterface.Create(context.TODO(), dnat, metav1.CreateOptions{})
 	ExpectNoError(err, "Error creating iptables dnat")
 	return dnat.DeepCopy()
@@ -48,6 +53,8 @@ func (c *IptablesDnatClient) Create(dnat *apiv1.IptablesDnatRule) *apiv1.Iptable
 
 // CreateSync creates a new iptables dnat according to the framework specifications, and waits for it to be ready.
 func (c *IptablesDnatClient) CreateSync(dnat *apiv1.IptablesDnatRule) *apiv1.IptablesDnatRule {
+	ginkgo.GinkgoHelper()
+
 	dnat = c.Create(dnat)
 	ExpectTrue(c.WaitToBeReady(dnat.Name, timeout))
 	// Get the newest iptables dnat after it becomes ready
@@ -56,6 +63,8 @@ func (c *IptablesDnatClient) CreateSync(dnat *apiv1.IptablesDnatRule) *apiv1.Ipt
 
 // Patch patches the iptables dnat
 func (c *IptablesDnatClient) Patch(original, modified *apiv1.IptablesDnatRule) *apiv1.IptablesDnatRule {
+	ginkgo.GinkgoHelper()
+
 	patch, err := util.GenerateMergePatchPayload(original, modified)
 	ExpectNoError(err)
 
@@ -83,6 +92,8 @@ func (c *IptablesDnatClient) Patch(original, modified *apiv1.IptablesDnatRule) *
 // PatchSync patches the iptables dnat and waits for the iptables dnat to be ready for `timeout`.
 // If the iptables dnat doesn't become ready before the timeout, it will fail the test.
 func (c *IptablesDnatClient) PatchSync(original, modified *apiv1.IptablesDnatRule, _ []string, timeout time.Duration) *apiv1.IptablesDnatRule {
+	ginkgo.GinkgoHelper()
+
 	dnat := c.Patch(original, modified)
 	ExpectTrue(c.WaitToBeUpdated(dnat, timeout))
 	ExpectTrue(c.WaitToBeReady(dnat.Name, timeout))
@@ -92,6 +103,8 @@ func (c *IptablesDnatClient) PatchSync(original, modified *apiv1.IptablesDnatRul
 
 // Delete deletes a iptables dnat if the iptables dnat exists
 func (c *IptablesDnatClient) Delete(name string) {
+	ginkgo.GinkgoHelper()
+
 	err := c.IptablesDnatRuleInterface.Delete(context.TODO(), name, metav1.DeleteOptions{})
 	if err != nil && !apierrors.IsNotFound(err) {
 		Failf("Failed to delete iptables dnat %q: %v", name, err)
@@ -101,6 +114,7 @@ func (c *IptablesDnatClient) Delete(name string) {
 // DeleteSync deletes the iptables dnat and waits for the iptables dnat to disappear for `timeout`.
 // If the iptables dnat doesn't disappear before the timeout, it will fail the test.
 func (c *IptablesDnatClient) DeleteSync(name string) {
+	ginkgo.GinkgoHelper()
 	c.Delete(name)
 	gomega.Expect(c.WaitToDisappear(name, 2*time.Second, timeout)).To(gomega.Succeed(), "wait for iptables dnat %q to disappear", name)
 }

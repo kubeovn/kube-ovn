@@ -3,10 +3,11 @@ package framework
 import (
 	"context"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
 	apiv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	v1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/client/clientset/versioned/typed/k8s.cni.cncf.io/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/onsi/ginkgo/v2"
 )
 
 // NetworkAttachmentDefinitionClient is a struct for nad client.
@@ -27,6 +28,7 @@ func (f *Framework) NetworkAttachmentDefinitionClientNS(namespace string) *Netwo
 }
 
 func (c *NetworkAttachmentDefinitionClient) Get(name string) *apiv1.NetworkAttachmentDefinition {
+	ginkgo.GinkgoHelper()
 	nad, err := c.NetworkAttachmentDefinitionInterface.Get(context.TODO(), name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return nad
@@ -34,6 +36,7 @@ func (c *NetworkAttachmentDefinitionClient) Get(name string) *apiv1.NetworkAttac
 
 // Create creates a new nad according to the framework specifications
 func (c *NetworkAttachmentDefinitionClient) Create(nad *apiv1.NetworkAttachmentDefinition) *apiv1.NetworkAttachmentDefinition {
+	ginkgo.GinkgoHelper()
 	nad, err := c.NetworkAttachmentDefinitionInterface.Create(context.TODO(), nad, metav1.CreateOptions{})
 	ExpectNoError(err, "Error creating nad")
 	return c.Get(nad.Name)
@@ -41,6 +44,7 @@ func (c *NetworkAttachmentDefinitionClient) Create(nad *apiv1.NetworkAttachmentD
 
 // Delete deletes a nad if the nad exists
 func (c *NetworkAttachmentDefinitionClient) Delete(name string) {
+	ginkgo.GinkgoHelper()
 	err := c.NetworkAttachmentDefinitionInterface.Delete(context.TODO(), name, metav1.DeleteOptions{})
 	ExpectNoError(err, "Error deleting nad")
 }

@@ -6,13 +6,15 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/kubernetes/test/e2e/framework"
+
+	"github.com/onsi/ginkgo/v2"
+	"github.com/onsi/gomega"
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	v1 "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/typed/kubeovn/v1"
@@ -39,6 +41,7 @@ func (f *Framework) SwitchLBRuleClientNS(namespace string) *SwitchLBRuleClient {
 }
 
 func (c *SwitchLBRuleClient) Get(name string) *apiv1.SwitchLBRule {
+	ginkgo.GinkgoHelper()
 	rules, err := c.SwitchLBRuleInterface.Get(context.TODO(), name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return rules
@@ -46,6 +49,7 @@ func (c *SwitchLBRuleClient) Get(name string) *apiv1.SwitchLBRule {
 
 // Create creates a new switch-lb-rule according to the framework specifications
 func (c *SwitchLBRuleClient) Create(rule *apiv1.SwitchLBRule) *apiv1.SwitchLBRule {
+	ginkgo.GinkgoHelper()
 	e, err := c.SwitchLBRuleInterface.Create(context.TODO(), rule, metav1.CreateOptions{})
 	ExpectNoError(err, "error creating switch-lb-rule")
 	return e.DeepCopy()
@@ -53,12 +57,15 @@ func (c *SwitchLBRuleClient) Create(rule *apiv1.SwitchLBRule) *apiv1.SwitchLBRul
 
 // CreateSync creates a new switch-lb-rule according to the framework specifications, and waits for it to be updated.
 func (c *SwitchLBRuleClient) CreateSync(rule *apiv1.SwitchLBRule, cond func(s *apiv1.SwitchLBRule) (bool, error), condDesc string) *apiv1.SwitchLBRule {
+	ginkgo.GinkgoHelper()
 	_ = c.Create(rule)
 	return c.WaitUntil(rule.Name, cond, condDesc, 2*time.Second, timeout)
 }
 
 // Patch patches the switch-lb-rule
 func (c *SwitchLBRuleClient) Patch(original, modified *apiv1.SwitchLBRule) *apiv1.SwitchLBRule {
+	ginkgo.GinkgoHelper()
+
 	patch, err := util.GenerateMergePatchPayload(original, modified)
 	ExpectNoError(err)
 
@@ -85,12 +92,14 @@ func (c *SwitchLBRuleClient) Patch(original, modified *apiv1.SwitchLBRule) *apiv
 
 // PatchSync patches the switch-lb-rule and waits the switch-lb-rule to meet the condition
 func (c *SwitchLBRuleClient) PatchSync(original, modified *apiv1.SwitchLBRule, cond func(s *apiv1.SwitchLBRule) (bool, error), condDesc string) *apiv1.SwitchLBRule {
+	ginkgo.GinkgoHelper()
 	_ = c.Patch(original, modified)
 	return c.WaitUntil(original.Name, cond, condDesc, 2*time.Second, timeout)
 }
 
 // Delete deletes a switch-lb-rule if the switch-lb-rule exists
 func (c *SwitchLBRuleClient) Delete(name string) {
+	ginkgo.GinkgoHelper()
 	err := c.SwitchLBRuleInterface.Delete(context.TODO(), name, metav1.DeleteOptions{})
 	if err != nil && !apierrors.IsNotFound(err) {
 		Failf("Failed to delete switch-lb-rule %q: %v", name, err)
@@ -100,12 +109,15 @@ func (c *SwitchLBRuleClient) Delete(name string) {
 // DeleteSync deletes the switch-lb-rule and waits for the switch-lb-rule to disappear for `timeout`.
 // If the switch-lb-rule doesn't disappear before the timeout, it will fail the test.
 func (c *SwitchLBRuleClient) DeleteSync(name string) {
+	ginkgo.GinkgoHelper()
 	c.Delete(name)
 	gomega.Expect(c.WaitToDisappear(name, 2*time.Second, timeout)).To(gomega.Succeed(), "wait for switch-lb-rule %q to disappear", name)
 }
 
 // WaitUntil waits the given timeout duration for the specified condition to be met.
 func (c *SwitchLBRuleClient) WaitUntil(name string, cond func(s *apiv1.SwitchLBRule) (bool, error), condDesc string, _, timeout time.Duration) *apiv1.SwitchLBRule {
+	ginkgo.GinkgoHelper()
+
 	var rules *apiv1.SwitchLBRule
 	err := wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(_ context.Context) (bool, error) {
 		Logf("Waiting for switch-lb-rule %s to meet condition %q", name, condDesc)

@@ -14,6 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/kubernetes/test/e2e/framework"
 
+	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -35,6 +36,7 @@ func (f *Framework) ProviderNetworkClient() *ProviderNetworkClient {
 }
 
 func (c *ProviderNetworkClient) Get(name string) *apiv1.ProviderNetwork {
+	ginkgo.GinkgoHelper()
 	pn, err := c.ProviderNetworkInterface.Get(context.TODO(), name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return pn
@@ -42,6 +44,7 @@ func (c *ProviderNetworkClient) Get(name string) *apiv1.ProviderNetwork {
 
 // Create creates a new provider network according to the framework specifications
 func (c *ProviderNetworkClient) Create(pn *apiv1.ProviderNetwork) *apiv1.ProviderNetwork {
+	ginkgo.GinkgoHelper()
 	pn, err := c.ProviderNetworkInterface.Create(context.TODO(), pn, metav1.CreateOptions{})
 	ExpectNoError(err, "Error creating provider network")
 	return pn.DeepCopy()
@@ -49,6 +52,8 @@ func (c *ProviderNetworkClient) Create(pn *apiv1.ProviderNetwork) *apiv1.Provide
 
 // CreateSync creates a new provider network according to the framework specifications, and waits for it to be ready.
 func (c *ProviderNetworkClient) CreateSync(pn *apiv1.ProviderNetwork) *apiv1.ProviderNetwork {
+	ginkgo.GinkgoHelper()
+
 	pn = c.Create(pn)
 	ExpectTrue(c.WaitToBeReady(pn.Name, timeout))
 	// Get the newest provider network after it becomes ready
@@ -57,6 +62,8 @@ func (c *ProviderNetworkClient) CreateSync(pn *apiv1.ProviderNetwork) *apiv1.Pro
 
 // Patch patches the provider network
 func (c *ProviderNetworkClient) Patch(original, modified *apiv1.ProviderNetwork) *apiv1.ProviderNetwork {
+	ginkgo.GinkgoHelper()
+
 	patch, err := util.GenerateMergePatchPayload(original, modified)
 	ExpectNoError(err)
 
@@ -84,6 +91,8 @@ func (c *ProviderNetworkClient) Patch(original, modified *apiv1.ProviderNetwork)
 // PatchSync patches the provider network and waits for the provider network to be ready for `timeout`.
 // If the provider network doesn't become ready before the timeout, it will fail the test.
 func (c *ProviderNetworkClient) PatchSync(original, modified *apiv1.ProviderNetwork, _ []string, timeout time.Duration) *apiv1.ProviderNetwork {
+	ginkgo.GinkgoHelper()
+
 	pn := c.Patch(original, modified)
 	ExpectTrue(c.WaitToBeUpdated(pn, timeout))
 	ExpectTrue(c.WaitToBeReady(pn.Name, timeout))
@@ -93,6 +102,7 @@ func (c *ProviderNetworkClient) PatchSync(original, modified *apiv1.ProviderNetw
 
 // Delete deletes a provider network if the provider network exists
 func (c *ProviderNetworkClient) Delete(name string) {
+	ginkgo.GinkgoHelper()
 	err := c.ProviderNetworkInterface.Delete(context.TODO(), name, metav1.DeleteOptions{})
 	if err != nil && !apierrors.IsNotFound(err) {
 		Failf("Failed to delete provider network %q: %v", name, err)
@@ -102,6 +112,7 @@ func (c *ProviderNetworkClient) Delete(name string) {
 // DeleteSync deletes the provider network and waits for the provider network to disappear for `timeout`.
 // If the provider network doesn't disappear before the timeout, it will fail the test.
 func (c *ProviderNetworkClient) DeleteSync(name string) {
+	ginkgo.GinkgoHelper()
 	c.Delete(name)
 	gomega.Expect(c.WaitToDisappear(name, 2*time.Second, timeout)).To(gomega.Succeed(), "wait for provider network %q to disappear", name)
 }

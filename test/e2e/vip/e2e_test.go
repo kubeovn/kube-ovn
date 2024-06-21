@@ -32,6 +32,8 @@ func makeSecurityGroup(name string, allowSameGroupTraffic bool, ingressRules, eg
 }
 
 func testConnectivity(ip, namespaceName, srcPod, dstPod string, f *framework.Framework) {
+	ginkgo.GinkgoHelper()
+
 	// other pods can communicate with the allow address pair pod through vip
 	var addIP, delIP, command string
 	switch util.CheckProtocol(ip) {
@@ -69,6 +71,8 @@ func testConnectivity(ip, namespaceName, srcPod, dstPod string, f *framework.Fra
 }
 
 func testVipWithSG(ip, namespaceName, allowPod, denyPod, aapPod, securityGroupName string, f *framework.Framework) {
+	ginkgo.GinkgoHelper()
+
 	// check if security group working
 	var sgCheck, conditions string
 	switch util.CheckProtocol(ip) {

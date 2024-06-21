@@ -13,6 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/kubernetes/test/e2e/framework"
 
+	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -34,6 +35,7 @@ func (f *Framework) OvnFipClient() *OvnFipClient {
 }
 
 func (c *OvnFipClient) Get(name string) *apiv1.OvnFip {
+	ginkgo.GinkgoHelper()
 	fip, err := c.OvnFipInterface.Get(context.TODO(), name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return fip
@@ -41,6 +43,7 @@ func (c *OvnFipClient) Get(name string) *apiv1.OvnFip {
 
 // Create creates a new ovn fip according to the framework specifications
 func (c *OvnFipClient) Create(fip *apiv1.OvnFip) *apiv1.OvnFip {
+	ginkgo.GinkgoHelper()
 	fip, err := c.OvnFipInterface.Create(context.TODO(), fip, metav1.CreateOptions{})
 	ExpectNoError(err, "Error creating ovn fip")
 	return fip.DeepCopy()
@@ -48,6 +51,8 @@ func (c *OvnFipClient) Create(fip *apiv1.OvnFip) *apiv1.OvnFip {
 
 // CreateSync creates a new ovn fip according to the framework specifications, and waits for it to be ready.
 func (c *OvnFipClient) CreateSync(fip *apiv1.OvnFip) *apiv1.OvnFip {
+	ginkgo.GinkgoHelper()
+
 	fip = c.Create(fip)
 	ExpectTrue(c.WaitToBeReady(fip.Name, timeout))
 	// Get the newest ovn fip after it becomes ready
@@ -56,6 +61,8 @@ func (c *OvnFipClient) CreateSync(fip *apiv1.OvnFip) *apiv1.OvnFip {
 
 // Patch patches the ovn fip
 func (c *OvnFipClient) Patch(original, modified *apiv1.OvnFip) *apiv1.OvnFip {
+	ginkgo.GinkgoHelper()
+
 	patch, err := util.GenerateMergePatchPayload(original, modified)
 	ExpectNoError(err)
 
@@ -83,6 +90,8 @@ func (c *OvnFipClient) Patch(original, modified *apiv1.OvnFip) *apiv1.OvnFip {
 // PatchSync patches the ovn fip and waits for the ovn fip to be ready for `timeout`.
 // If the ovn fip doesn't become ready before the timeout, it will fail the test.
 func (c *OvnFipClient) PatchSync(original, modified *apiv1.OvnFip, _ []string, timeout time.Duration) *apiv1.OvnFip {
+	ginkgo.GinkgoHelper()
+
 	fip := c.Patch(original, modified)
 	ExpectTrue(c.WaitToBeUpdated(fip, timeout))
 	ExpectTrue(c.WaitToBeReady(fip.Name, timeout))
@@ -92,6 +101,7 @@ func (c *OvnFipClient) PatchSync(original, modified *apiv1.OvnFip, _ []string, t
 
 // Delete deletes a ovn fip if the ovn fip exists
 func (c *OvnFipClient) Delete(name string) {
+	ginkgo.GinkgoHelper()
 	err := c.OvnFipInterface.Delete(context.TODO(), name, metav1.DeleteOptions{})
 	if err != nil && !apierrors.IsNotFound(err) {
 		Failf("Failed to delete ovn fip %q: %v", name, err)
@@ -101,6 +111,7 @@ func (c *OvnFipClient) Delete(name string) {
 // DeleteSync deletes the ovn fip and waits for the ovn fip to disappear for `timeout`.
 // If the ovn fip doesn't disappear before the timeout, it will fail the test.
 func (c *OvnFipClient) DeleteSync(name string) {
+	ginkgo.GinkgoHelper()
 	c.Delete(name)
 	gomega.Expect(c.WaitToDisappear(name, 2*time.Second, timeout)).To(gomega.Succeed(), "wait for ovn fip %q to disappear", name)
 }

@@ -10,6 +10,8 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 
+	"github.com/onsi/ginkgo/v2"
+
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	v1 "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/typed/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -29,6 +31,7 @@ func (f *Framework) VlanClient() *VlanClient {
 }
 
 func (c *VlanClient) Get(name string) *apiv1.Vlan {
+	ginkgo.GinkgoHelper()
 	vlan, err := c.VlanInterface.Get(context.TODO(), name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return vlan
@@ -36,6 +39,7 @@ func (c *VlanClient) Get(name string) *apiv1.Vlan {
 
 // Create creates a new vlan according to the framework specifications
 func (c *VlanClient) Create(pn *apiv1.Vlan) *apiv1.Vlan {
+	ginkgo.GinkgoHelper()
 	vlan, err := c.VlanInterface.Create(context.TODO(), pn, metav1.CreateOptions{})
 	ExpectNoError(err, "Error creating vlan")
 	return vlan.DeepCopy()
@@ -43,6 +47,8 @@ func (c *VlanClient) Create(pn *apiv1.Vlan) *apiv1.Vlan {
 
 // Patch patches the vlan
 func (c *VlanClient) Patch(original, modified *apiv1.Vlan, timeout time.Duration) *apiv1.Vlan {
+	ginkgo.GinkgoHelper()
+
 	patch, err := util.GenerateMergePatchPayload(original, modified)
 	ExpectNoError(err)
 
@@ -69,6 +75,7 @@ func (c *VlanClient) Patch(original, modified *apiv1.Vlan, timeout time.Duration
 
 // Delete deletes a vlan if the vlan exists
 func (c *VlanClient) Delete(name string, options metav1.DeleteOptions) {
+	ginkgo.GinkgoHelper()
 	err := c.VlanInterface.Delete(context.TODO(), name, options)
 	if err != nil && !apierrors.IsNotFound(err) {
 		Failf("Failed to delete vlan %q: %v", name, err)

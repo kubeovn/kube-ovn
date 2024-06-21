@@ -193,12 +193,16 @@ func (f *Framework) VersionPriorTo(major, minor uint) bool {
 }
 
 func (f *Framework) SkipVersionPriorTo(major, minor uint, reason string) {
+	ginkgo.GinkgoHelper()
+
 	if f.VersionPriorTo(major, minor) {
 		ginkgo.Skip(reason)
 	}
 }
 
 func (f *Framework) ValidateFinalizers(obj metav1.Object) {
+	ginkgo.GinkgoHelper()
+
 	finalizers := obj.GetFinalizers()
 	if !f.VersionPriorTo(1, 13) {
 		ExpectContainElement(finalizers, util.KubeOVNControllerFinalizer)
@@ -209,22 +213,18 @@ func (f *Framework) ValidateFinalizers(obj metav1.Object) {
 }
 
 func Describe(text string, body func()) bool {
-	return ginkgo.Describe("[CNI:Kube-OVN] "+text, body)
+	return ginkgo.Describe("[CNI:Kube-OVN] "+text, ginkgo.Offset(1), body)
 }
 
 func SerialDescribe(text string, body func()) bool {
-	return ginkgo.Describe("[CNI:Kube-OVN] "+text, ginkgo.Serial, body)
+	return ginkgo.Describe("[CNI:Kube-OVN] "+text, ginkgo.Offset(1), ginkgo.Serial, body)
 }
 
 func OrderedDescribe(text string, body func()) bool {
-	return ginkgo.Describe("[CNI:Kube-OVN] "+text, ginkgo.Ordered, body)
+	return ginkgo.Describe("[CNI:Kube-OVN] "+text, ginkgo.Offset(1), ginkgo.Ordered, body)
 }
 
-// ConformanceIt is wrapper function for ginkgo It.
-// Adds "[Conformance]" tag and makes static analysis easier.
-func ConformanceIt(text string, body interface{}) bool {
-	return framework.ConformanceIt(text, body)
-}
+var ConformanceIt func(args ...interface{}) bool = framework.ConformanceIt
 
 func DisruptiveIt(text string, body interface{}) bool {
 	return framework.It(text, ginkgo.Offset(1), body, framework.WithDisruptive())

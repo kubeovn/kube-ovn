@@ -13,6 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/kubernetes/test/e2e/framework"
 
+	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -34,6 +35,7 @@ func (f *Framework) IptablesEIPClient() *IptablesEIPClient {
 }
 
 func (c *IptablesEIPClient) Get(name string) *apiv1.IptablesEIP {
+	ginkgo.GinkgoHelper()
 	eip, err := c.IptablesEIPInterface.Get(context.TODO(), name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return eip
@@ -41,6 +43,7 @@ func (c *IptablesEIPClient) Get(name string) *apiv1.IptablesEIP {
 
 // Create creates a new iptables eip according to the framework specifications
 func (c *IptablesEIPClient) Create(eip *apiv1.IptablesEIP) *apiv1.IptablesEIP {
+	ginkgo.GinkgoHelper()
 	eip, err := c.IptablesEIPInterface.Create(context.TODO(), eip, metav1.CreateOptions{})
 	ExpectNoError(err, "Error creating iptables eip")
 	return eip.DeepCopy()
@@ -48,6 +51,8 @@ func (c *IptablesEIPClient) Create(eip *apiv1.IptablesEIP) *apiv1.IptablesEIP {
 
 // CreateSync creates a new iptables eip according to the framework specifications, and waits for it to be ready.
 func (c *IptablesEIPClient) CreateSync(eip *apiv1.IptablesEIP) *apiv1.IptablesEIP {
+	ginkgo.GinkgoHelper()
+
 	eip = c.Create(eip)
 	ExpectTrue(c.WaitToBeReady(eip.Name, timeout))
 	// Get the newest iptables eip after it becomes ready
@@ -56,6 +61,8 @@ func (c *IptablesEIPClient) CreateSync(eip *apiv1.IptablesEIP) *apiv1.IptablesEI
 
 // Patch patches the iptables eip
 func (c *IptablesEIPClient) Patch(original, modified *apiv1.IptablesEIP) *apiv1.IptablesEIP {
+	ginkgo.GinkgoHelper()
+
 	patch, err := util.GenerateMergePatchPayload(original, modified)
 	ExpectNoError(err)
 
@@ -83,6 +90,8 @@ func (c *IptablesEIPClient) Patch(original, modified *apiv1.IptablesEIP) *apiv1.
 // PatchSync patches the iptables eip and waits for the iptables eip to be ready for `timeout`.
 // If the iptables eip doesn't become ready before the timeout, it will fail the test.
 func (c *IptablesEIPClient) PatchSync(original, modified *apiv1.IptablesEIP, _ []string, timeout time.Duration) *apiv1.IptablesEIP {
+	ginkgo.GinkgoHelper()
+
 	eip := c.Patch(original, modified)
 	ExpectTrue(c.WaitToBeUpdated(eip, timeout))
 	ExpectTrue(c.WaitToBeReady(eip.Name, timeout))
@@ -93,6 +102,8 @@ func (c *IptablesEIPClient) PatchSync(original, modified *apiv1.IptablesEIP, _ [
 // PatchQoS patches the vpc nat gw and waits for the qos to be ready for `timeout`.
 // If the qos doesn't become ready before the timeout, it will fail the test.
 func (c *IptablesEIPClient) PatchQoSPolicySync(eipName, qosPolicyName string) *apiv1.IptablesEIP {
+	ginkgo.GinkgoHelper()
+
 	eip := c.Get(eipName)
 	modifiedEIP := eip.DeepCopy()
 	modifiedEIP.Spec.QoSPolicy = qosPolicyName
@@ -103,6 +114,7 @@ func (c *IptablesEIPClient) PatchQoSPolicySync(eipName, qosPolicyName string) *a
 
 // Delete deletes a iptables eip if the iptables eip exists
 func (c *IptablesEIPClient) Delete(name string) {
+	ginkgo.GinkgoHelper()
 	err := c.IptablesEIPInterface.Delete(context.TODO(), name, metav1.DeleteOptions{})
 	if err != nil && !apierrors.IsNotFound(err) {
 		Failf("Failed to delete iptables eip %q: %v", name, err)
@@ -112,6 +124,7 @@ func (c *IptablesEIPClient) Delete(name string) {
 // DeleteSync deletes the iptables eip and waits for the iptables eip to disappear for `timeout`.
 // If the iptables eip doesn't disappear before the timeout, it will fail the test.
 func (c *IptablesEIPClient) DeleteSync(name string) {
+	ginkgo.GinkgoHelper()
 	c.Delete(name)
 	gomega.Expect(c.WaitToDisappear(name, 2*time.Second, timeout)).To(gomega.Succeed(), "wait for iptables eip %q to disappear", name)
 }

@@ -31,6 +31,8 @@ func parseConfig(table, config string) map[string]string {
 }
 
 func getOvsPodOnNode(f *framework.Framework, node string) *corev1.Pod {
+	ginkgo.GinkgoHelper()
+
 	daemonSetClient := f.DaemonSetClientNS(framework.KubeOvnNamespace)
 	ds := daemonSetClient.Get("ovs-ovn")
 	pod, err := daemonSetClient.GetPodOnNode(ds, node)
@@ -39,6 +41,8 @@ func getOvsPodOnNode(f *framework.Framework, node string) *corev1.Pod {
 }
 
 func getOvsQosForPod(f *framework.Framework, table string, pod *corev1.Pod) map[string]string {
+	ginkgo.GinkgoHelper()
+
 	ovsPod := getOvsPodOnNode(f, pod.Spec.NodeName)
 	cmd := fmt.Sprintf(`ovs-vsctl --no-heading --columns=other_config --bare find %s external_ids:pod="%s/%s"`, table, pod.Namespace, pod.Name)
 	output := e2epodoutput.RunHostCmdOrDie(ovsPod.Namespace, ovsPod.Name, cmd)
@@ -46,6 +50,8 @@ func getOvsQosForPod(f *framework.Framework, table string, pod *corev1.Pod) map[
 }
 
 func waitOvsQosForPod(f *framework.Framework, table string, pod *corev1.Pod, expected map[string]string) map[string]string {
+	ginkgo.GinkgoHelper()
+
 	ovsPod := getOvsPodOnNode(f, pod.Spec.NodeName)
 	cmd := fmt.Sprintf(`ovs-vsctl --no-heading --columns=other_config --bare find %s external_ids:pod="%s/%s"`, table, pod.Namespace, pod.Name)
 

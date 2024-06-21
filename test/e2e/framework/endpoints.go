@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -14,6 +13,9 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/kubernetes/test/e2e/framework"
+
+	"github.com/onsi/ginkgo/v2"
+	"github.com/onsi/gomega"
 
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -38,6 +40,7 @@ func (f *Framework) EndpointsClientNS(namespace string) *EndpointsClient {
 }
 
 func (c *EndpointsClient) Get(name string) *corev1.Endpoints {
+	ginkgo.GinkgoHelper()
 	endpoints, err := c.EndpointsInterface.Get(context.TODO(), name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return endpoints
@@ -45,6 +48,7 @@ func (c *EndpointsClient) Get(name string) *corev1.Endpoints {
 
 // Create creates a new endpoints according to the framework specifications
 func (c *EndpointsClient) Create(endpoints *corev1.Endpoints) *corev1.Endpoints {
+	ginkgo.GinkgoHelper()
 	e, err := c.EndpointsInterface.Create(context.TODO(), endpoints, metav1.CreateOptions{})
 	ExpectNoError(err, "Error creating endpoints")
 	return e.DeepCopy()
@@ -52,12 +56,15 @@ func (c *EndpointsClient) Create(endpoints *corev1.Endpoints) *corev1.Endpoints 
 
 // CreateSync creates a new endpoints according to the framework specifications, and waits for it to be updated.
 func (c *EndpointsClient) CreateSync(endpoints *corev1.Endpoints, cond func(s *corev1.Endpoints) (bool, error), condDesc string) *corev1.Endpoints {
+	ginkgo.GinkgoHelper()
 	_ = c.Create(endpoints)
 	return c.WaitUntil(endpoints.Name, cond, condDesc, 2*time.Second, timeout)
 }
 
 // Patch patches the endpoints
 func (c *EndpointsClient) Patch(original, modified *corev1.Endpoints) *corev1.Endpoints {
+	ginkgo.GinkgoHelper()
+
 	patch, err := util.GenerateMergePatchPayload(original, modified)
 	ExpectNoError(err)
 
@@ -84,12 +91,14 @@ func (c *EndpointsClient) Patch(original, modified *corev1.Endpoints) *corev1.En
 
 // PatchSync patches the endpoints and waits the endpoints to meet the condition
 func (c *EndpointsClient) PatchSync(original, modified *corev1.Endpoints, cond func(s *corev1.Endpoints) (bool, error), condDesc string) *corev1.Endpoints {
+	ginkgo.GinkgoHelper()
 	_ = c.Patch(original, modified)
 	return c.WaitUntil(original.Name, cond, condDesc, 2*time.Second, timeout)
 }
 
 // Delete deletes a endpoints if the endpoints exists
 func (c *EndpointsClient) Delete(name string) {
+	ginkgo.GinkgoHelper()
 	err := c.EndpointsInterface.Delete(context.TODO(), name, metav1.DeleteOptions{})
 	if err != nil && !apierrors.IsNotFound(err) {
 		Failf("Failed to delete endpoints %q: %v", name, err)
@@ -99,12 +108,15 @@ func (c *EndpointsClient) Delete(name string) {
 // DeleteSync deletes the endpoints and waits for the endpoints to disappear for `timeout`.
 // If the endpoints doesn't disappear before the timeout, it will fail the test.
 func (c *EndpointsClient) DeleteSync(name string) {
+	ginkgo.GinkgoHelper()
 	c.Delete(name)
 	gomega.Expect(c.WaitToDisappear(name, 2*time.Second, timeout)).To(gomega.Succeed(), "wait for endpoints %q to disappear", name)
 }
 
 // WaitUntil waits the given timeout duration for the specified condition to be met.
 func (c *EndpointsClient) WaitUntil(name string, cond func(s *corev1.Endpoints) (bool, error), condDesc string, _, timeout time.Duration) *corev1.Endpoints {
+	ginkgo.GinkgoHelper()
+
 	var endpoints *corev1.Endpoints
 	err := wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(_ context.Context) (bool, error) {
 		Logf("Waiting for endpoints %s to meet condition %q", name, condDesc)
