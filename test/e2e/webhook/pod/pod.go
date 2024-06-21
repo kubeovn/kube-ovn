@@ -7,7 +7,6 @@ import (
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	clientset "k8s.io/client-go/kubernetes"
 
 	"github.com/onsi/ginkgo/v2"
 
@@ -18,14 +17,12 @@ import (
 var _ = framework.Describe("[group:webhook-pod]", func() {
 	f := framework.NewDefaultFramework("webhook-pod")
 
-	var cs clientset.Interface
 	var podClient *framework.PodClient
 	var subnetClient *framework.SubnetClient
 	var namespaceName, subnetName, podName string
-	var cidr, image, conflictName, firstIPv4, lastIPv4 string
+	var cidr, conflictName, firstIPv4, lastIPv4 string
 
 	ginkgo.BeforeEach(func() {
-		cs = f.ClientSet
 		podClient = f.PodClient()
 		subnetClient = f.SubnetClient()
 		namespaceName = f.Namespace.Name
@@ -33,9 +30,6 @@ var _ = framework.Describe("[group:webhook-pod]", func() {
 		podName = "pod-" + framework.RandomSuffix()
 		conflictName = podName + "-conflict"
 		cidr = framework.RandomCIDR(f.ClusterIPFamily)
-		if image == "" {
-			image = framework.GetKubeOvnImage(cs)
-		}
 		cidrV4, _ := util.SplitStringIP(cidr)
 		if cidrV4 == "" {
 			firstIPv4 = ""
@@ -68,7 +62,7 @@ var _ = framework.Describe("[group:webhook-pod]", func() {
 		annotations := map[string]string{
 			util.IPAddressAnnotation: "10.10.10.10.10",
 		}
-		pod := framework.MakePod(namespaceName, podName, nil, annotations, image, cmd, nil)
+		pod := framework.MakePod(namespaceName, podName, nil, annotations, f.KubeOVNImage, cmd, nil)
 		_, err := podClient.PodInterface.Create(context.TODO(), pod, metav1.CreateOptions{})
 		framework.ExpectError(err, "ip %s is not a valid %s", annotations[util.IPAddressAnnotation], util.IPAddressAnnotation)
 
@@ -116,7 +110,7 @@ var _ = framework.Describe("[group:webhook-pod]", func() {
 
 		ginkgo.By("validate pod ip conflict")
 		framework.Logf("validate ip conflict, pod %s, ip cr %s, conflict pod %s", podName, ipCR, conflictName)
-		conflictPod := framework.MakePod(namespaceName, conflictName, nil, annotations, image, cmd, nil)
+		conflictPod := framework.MakePod(namespaceName, conflictName, nil, annotations, f.KubeOVNImage, cmd, nil)
 		_, err = podClient.PodInterface.Create(context.TODO(), conflictPod, metav1.CreateOptions{})
 		framework.ExpectError(err, "annotation static-ip %s is conflict with ip crd %s, ip %s", staticIP, ipCR, staticIP)
 	})

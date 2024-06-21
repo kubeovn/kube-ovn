@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"strings"
 
-	clientset "k8s.io/client-go/kubernetes"
-
 	"github.com/onsi/ginkgo/v2"
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -18,23 +16,18 @@ import (
 var _ = framework.Describe("[group:pod]", func() {
 	f := framework.NewDefaultFramework("pod")
 
-	var cs clientset.Interface
 	var podClient *framework.PodClient
 	var subnetClient *framework.SubnetClient
 	var namespaceName, subnetName, podName string
-	var cidr, image string
+	var cidr string
 
 	ginkgo.BeforeEach(func() {
-		cs = f.ClientSet
 		podClient = f.PodClient()
 		subnetClient = f.SubnetClient()
 		namespaceName = f.Namespace.Name
 		subnetName = "subnet-" + framework.RandomSuffix()
 		podName = "pod-" + framework.RandomSuffix()
 		cidr = framework.RandomCIDR(f.ClusterIPFamily)
-		if image == "" {
-			image = framework.GetKubeOvnImage(cs)
-		}
 	})
 	ginkgo.AfterEach(func() {
 		ginkgo.By("Deleting pod " + podName)
@@ -74,7 +67,7 @@ var _ = framework.Describe("[group:pod]", func() {
 			util.RoutesAnnotation: string(buff),
 		}
 		cmd := []string{"sh", "-c", "sleep infinity"}
-		pod := framework.MakePod(namespaceName, podName, nil, annotations, image, cmd, nil)
+		pod := framework.MakePod(namespaceName, podName, nil, annotations, f.KubeOVNImage, cmd, nil)
 		pod = podClient.CreateSync(pod)
 
 		ginkgo.By("Validating pod annoations")
