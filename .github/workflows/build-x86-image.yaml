@@ -1720,7 +1720,7 @@ jobs:
 
       - name: Install Kube-OVN with Cilium chaining
         id: install
-        run: make kind-install-cilium-chaining-${{ matrix.mode }}-${{ matrix.ip-family }}
+        run: make kind-install-cilium-chaining-${{ matrix.ip-family }}
 
       - name: Run E2E
         id: e2e
