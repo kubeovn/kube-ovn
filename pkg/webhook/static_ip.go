@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"strings"
 
-	multustypes "gopkg.in/k8snetworkplumbingwg/multus-cni.v4/pkg/types"
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -115,40 +114,15 @@ func (v *ValidatingHook) PodCreateHook(ctx context.Context, req admission.Reques
 	if staticIP == "" && poolAnno == "" {
 		return ctrlwebhook.Allowed("by pass")
 	}
-	if v.allowLiveMigration(ctx, o.GetAnnotations(), o.GetName(), o.GetNamespace()) {
+	if v.allowLiveMigration(o.GetAnnotations()) {
 		return ctrlwebhook.Allowed("by pass")
 	}
 	return v.validateIP(ctx, o.GetAnnotations(), o.Kind, o.GetName(), o.GetNamespace())
 }
 
-func (v *ValidatingHook) allowLiveMigration(_ context.Context, annotations map[string]string, name, namespace string) bool {
-	var multusNets []*multustypes.NetworkSelectionElement
-	defaultAttachNetworks := annotations[util.DefaultNetworkAnnotation]
-	if defaultAttachNetworks != "" {
-		attachments, err := util.ParsePodNetworkAnnotation(defaultAttachNetworks, namespace)
-		if err != nil {
-			klog.Errorf("failed to parse default attach net for pod '%s', %v", name, err)
-			return false
-		}
-		multusNets = attachments
-	}
-
-	attachNetworks := annotations[util.AttachmentNetworkAnnotation]
-	if attachNetworks != "" {
-		attachments, err := util.ParsePodNetworkAnnotation(attachNetworks, namespace)
-		if err != nil {
-			klog.Errorf("failed to parse attach net for pod '%s', %v", name, err)
-			return false
-		}
-		multusNets = append(multusNets, attachments...)
-	}
-
-	for _, attach := range multusNets {
-		// allocate kubeovn network
-		providerName := fmt.Sprintf("%s.%s.%s", attach.Name, attach.Namespace, util.OvnProvider)
-		if annotations[fmt.Sprintf(util.LiveMigrationAnnotationTemplate, providerName)] == "true" {
-			return true
-		}
+func (v *ValidatingHook) allowLiveMigration(annotations map[string]string) bool {
+	if _, ok := annotations[util.MigrationJobAnnotation]; ok {
+		return true
 	}
 	return false
 }

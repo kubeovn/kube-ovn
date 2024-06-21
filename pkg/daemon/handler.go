@@ -252,7 +252,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		subnetHasVlan := podSubnet.Spec.Vlan != ""
 		detectIPConflict := csh.Config.EnableArpDetectIPConflict && subnetHasVlan
 		// skip ping check gateway for pods during live migration
-		if pod.Annotations[fmt.Sprintf(util.LiveMigrationAnnotationTemplate, podRequest.Provider)] != "true" {
+		if pod.Annotations[util.MigrationJobAnnotation] == "" {
 			if subnetHasVlan && !podSubnet.Spec.LogicalGateway {
 				if podSubnet.Spec.DisableGatewayCheck {
 					gatewayCheckMode = gatewayCheckModeArpingNotConcerned
