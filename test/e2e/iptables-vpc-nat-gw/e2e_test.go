@@ -78,6 +78,8 @@ func setupNetworkAttachmentDefinition(
 	provider string,
 	dockerExtNetName string,
 ) {
+	ginkgo.GinkgoHelper()
+
 	ginkgo.By("Getting docker network " + dockerExtNetName)
 	network, err := docker.NetworkInspect(dockerExtNetName)
 	framework.ExpectNoError(err, "getting docker network "+dockerExtNetName)
@@ -158,6 +160,8 @@ func setupVpcNatGwTestEnvironment(
 	provider string,
 	skipNADSetup bool,
 ) {
+	ginkgo.GinkgoHelper()
+
 	if !skipNADSetup {
 		setupNetworkAttachmentDefinition(
 			f, dockerExtNetNetwork, attachNetClient,
@@ -558,6 +562,8 @@ var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 })
 
 func iperf(f *framework.Framework, iperfClientPod *corev1.Pod, iperfServerEIP *apiv1.IptablesEIP) string {
+	ginkgo.GinkgoHelper()
+
 	for i := 0; i < 20; i++ {
 		command := fmt.Sprintf("iperf -e -p %s --reportstyle C -i 1 -c %s -t 10", iperf2Port, iperfServerEIP.Status.IP)
 		stdOutput, errOutput, err := framework.ExecShellInPod(context.Background(), f, iperfClientPod.Namespace, iperfClientPod.Name, command)
@@ -577,6 +583,8 @@ func checkQos(f *framework.Framework,
 	vpc1Pod, vpc2Pod *corev1.Pod, vpc1EIP, vpc2EIP *apiv1.IptablesEIP,
 	limit int, expect bool,
 ) {
+	ginkgo.GinkgoHelper()
+
 	if !skipIperf {
 		if expect {
 			output := iperf(f, vpc1Pod, vpc2EIP)
@@ -688,6 +696,8 @@ func defaultQoSCases(f *framework.Framework,
 	vpc2EIP *apiv1.IptablesEIP,
 	natgwName string,
 ) {
+	ginkgo.GinkgoHelper()
+
 	// create nic qos policy
 	qosPolicyName := "default-nic-qos-policy-" + framework.RandomSuffix()
 	ginkgo.By("Creating qos policy " + qosPolicyName)
@@ -734,6 +744,8 @@ func eipQoSCases(f *framework.Framework,
 	eipName string,
 	natgwName string,
 ) {
+	ginkgo.GinkgoHelper()
+
 	// create eip qos policy
 	qosPolicyName := "eip-qos-policy-" + framework.RandomSuffix()
 	ginkgo.By("Creating qos policy " + qosPolicyName)
@@ -803,6 +815,8 @@ func specifyingIPQoSCases(f *framework.Framework,
 	vpc2EIP *apiv1.IptablesEIP,
 	natgwName string,
 ) {
+	ginkgo.GinkgoHelper()
+
 	// create nic qos policy
 	qosPolicyName := "specifying-ip-qos-policy-" + framework.RandomSuffix()
 	ginkgo.By("Creating qos policy " + qosPolicyName)
@@ -840,6 +854,8 @@ func priorityQoSCases(f *framework.Framework,
 	natgwName string,
 	eipName string,
 ) {
+	ginkgo.GinkgoHelper()
+
 	// create nic qos policy
 	natGwQoSPolicyName := "priority-nic-qos-policy-" + framework.RandomSuffix()
 	ginkgo.By("Creating qos policy " + natGwQoSPolicyName)
@@ -923,6 +939,8 @@ func createNatGwAndSetQosCases(f *framework.Framework,
 	lanIP string,
 	attachDefName string,
 ) {
+	ginkgo.GinkgoHelper()
+
 	// delete fip
 	ginkgo.By("Deleting fip " + fipName)
 	fipClient.DeleteSync(fipName)

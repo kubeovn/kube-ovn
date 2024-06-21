@@ -17,6 +17,8 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	v1apps "k8s.io/client-go/kubernetes/typed/apps/v1"
 	"k8s.io/kubectl/pkg/polymorphichelpers"
+
+	"github.com/onsi/ginkgo/v2"
 )
 
 type DaemonSetClient struct {
@@ -38,6 +40,7 @@ func (f *Framework) DaemonSetClientNS(namespace string) *DaemonSetClient {
 }
 
 func (c *DaemonSetClient) Get(name string) *appsv1.DaemonSet {
+	ginkgo.GinkgoHelper()
 	ds, err := c.DaemonSetInterface.Get(context.TODO(), name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return ds
@@ -80,6 +83,8 @@ func (c *DaemonSetClient) GetPodOnNode(ds *appsv1.DaemonSet, node string) (*core
 }
 
 func (c *DaemonSetClient) Patch(daemonset *appsv1.DaemonSet) *appsv1.DaemonSet {
+	ginkgo.GinkgoHelper()
+
 	modifiedBytes, err := json.Marshal(daemonset)
 	if err != nil {
 		Failf("failed to marshal modified DaemonSet: %v", err)
@@ -107,11 +112,14 @@ func (c *DaemonSetClient) Patch(daemonset *appsv1.DaemonSet) *appsv1.DaemonSet {
 }
 
 func (c *DaemonSetClient) PatchSync(modifiedDaemonset *appsv1.DaemonSet) *appsv1.DaemonSet {
+	ginkgo.GinkgoHelper()
 	daemonSet := c.Patch(modifiedDaemonset)
 	return c.RolloutStatus(daemonSet.Name)
 }
 
 func (c *DaemonSetClient) RolloutStatus(name string) *appsv1.DaemonSet {
+	ginkgo.GinkgoHelper()
+
 	var daemonSet *appsv1.DaemonSet
 	WaitUntil(2*time.Second, timeout, func(_ context.Context) (bool, error) {
 		var err error

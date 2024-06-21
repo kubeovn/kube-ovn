@@ -12,6 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/kubernetes/test/e2e/framework"
 
+	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -33,6 +34,7 @@ func (f *Framework) IPClient() *IPClient {
 }
 
 func (c *IPClient) Get(name string) *apiv1.IP {
+	ginkgo.GinkgoHelper()
 	IP, err := c.IPInterface.Get(context.TODO(), name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return IP.DeepCopy()
@@ -40,6 +42,7 @@ func (c *IPClient) Get(name string) *apiv1.IP {
 
 // Create creates a new IP according to the framework specifications
 func (c *IPClient) Create(iP *apiv1.IP) *apiv1.IP {
+	ginkgo.GinkgoHelper()
 	iP, err := c.IPInterface.Create(context.TODO(), iP, metav1.CreateOptions{})
 	ExpectNoError(err, "Error creating IP")
 	return iP.DeepCopy()
@@ -47,6 +50,8 @@ func (c *IPClient) Create(iP *apiv1.IP) *apiv1.IP {
 
 // CreateSync creates a new IP according to the framework specifications, and waits for it to be ready.
 func (c *IPClient) CreateSync(iP *apiv1.IP) *apiv1.IP {
+	ginkgo.GinkgoHelper()
+
 	iP = c.Create(iP)
 	ExpectTrue(c.WaitToBeReady(iP.Name, timeout))
 	// Get the newest IP after it becomes ready
@@ -70,6 +75,8 @@ func (c *IPClient) WaitToBeReady(name string, timeout time.Duration) bool {
 
 // Patch patches the IP
 func (c *IPClient) Patch(original, modified *apiv1.IP, timeout time.Duration) *apiv1.IP {
+	ginkgo.GinkgoHelper()
+
 	patch, err := util.GenerateMergePatchPayload(original, modified)
 	ExpectNoError(err)
 
@@ -96,6 +103,7 @@ func (c *IPClient) Patch(original, modified *apiv1.IP, timeout time.Duration) *a
 
 // Delete deletes a IP if the IP exists
 func (c *IPClient) Delete(name string) {
+	ginkgo.GinkgoHelper()
 	err := c.IPInterface.Delete(context.TODO(), name, metav1.DeleteOptions{})
 	if err != nil && !apierrors.IsNotFound(err) {
 		Failf("Failed to delete IP %q: %v", name, err)
@@ -105,6 +113,7 @@ func (c *IPClient) Delete(name string) {
 // DeleteSync deletes the IP and waits for the IP to disappear for `timeout`.
 // If the IP doesn't disappear before the timeout, it will fail the test.
 func (c *IPClient) DeleteSync(name string) {
+	ginkgo.GinkgoHelper()
 	c.Delete(name)
 	gomega.Expect(c.WaitToDisappear(name, 2*time.Second, timeout)).To(gomega.Succeed(), "wait for ovn eip %q to disappear", name)
 }

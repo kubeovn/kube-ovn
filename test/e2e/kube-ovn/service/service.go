@@ -102,6 +102,8 @@ var _ = framework.Describe("[group:service]", func() {
 
 		nodePort := service.Spec.Ports[0].NodePort
 		fnCheck := func(nodeName, nodeIP string, nodePort int32) {
+			ginkgo.GinkgoHelper()
+
 			if nodeIP == "" {
 				return
 			}
@@ -149,6 +151,8 @@ var _ = framework.Describe("[group:service]", func() {
 		_ = podClient.CreateSync(podBackend)
 
 		checkContainsClusterIP := func(v6ClusterIP string, isContain bool) {
+			ginkgo.GinkgoHelper()
+
 			execCmd := "kubectl ko nbctl --format=csv --data=bare --no-heading --columns=vips find Load_Balancer name=cluster-tcp-loadbalancer"
 			framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 				output, err := exec.Command("bash", "-c", execCmd).CombinedOutput()

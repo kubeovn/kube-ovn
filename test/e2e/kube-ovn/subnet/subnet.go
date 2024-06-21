@@ -30,6 +30,8 @@ import (
 )
 
 func getOvsPodOnNode(f *framework.Framework, node string) *corev1.Pod {
+	ginkgo.GinkgoHelper()
+
 	daemonSetClient := f.DaemonSetClientNS(framework.KubeOvnNamespace)
 	ds := daemonSetClient.Get("ovs-ovn")
 	pod, err := daemonSetClient.GetPodOnNode(ds, node)
@@ -38,6 +40,8 @@ func getOvsPodOnNode(f *framework.Framework, node string) *corev1.Pod {
 }
 
 func checkSubnetNatOutgoingPolicyRuleStatus(subnetClient *framework.SubnetClient, subnetName string, rules []apiv1.NatOutgoingPolicyRule) *apiv1.Subnet {
+	ginkgo.GinkgoHelper()
+
 	ginkgo.By("Waiting for status of subnet " + subnetName + " to be updated")
 	var subnet *apiv1.Subnet
 	framework.WaitUntil(2*time.Second, 10*time.Second, func(_ context.Context) (bool, error) {
@@ -57,8 +61,9 @@ func checkSubnetNatOutgoingPolicyRuleStatus(subnetClient *framework.SubnetClient
 }
 
 func checkIPSetOnNode(f *framework.Framework, node string, expectetIPsets []string, shouldExist bool) {
-	ovsPod := getOvsPodOnNode(f, node)
+	ginkgo.GinkgoHelper()
 
+	ovsPod := getOvsPodOnNode(f, node)
 	cmd := `ipset list | grep '^Name:' | awk '{print $2}'`
 	framework.WaitUntil(3*time.Second, 10*time.Second, func(_ context.Context) (bool, error) {
 		output := e2epodoutput.RunHostCmdOrDie(ovsPod.Namespace, ovsPod.Name, cmd)
@@ -880,6 +885,8 @@ var _ = framework.Describe("[group:subnet]", func() {
 		deploy = deployClient.CreateSync(deploy)
 
 		checkFunc := func(usingIPRange, availableIPRange, startIP, lastIP string, count int64) bool {
+			ginkgo.GinkgoHelper()
+
 			if startIP == "" {
 				return true
 			}
@@ -908,6 +915,8 @@ var _ = framework.Describe("[group:subnet]", func() {
 		_ = deployClient.RestartSync(deploy)
 
 		checkFunc2 := func(usingIPRange, availableIPRange, startIP, lastIP string, count int64) bool {
+			ginkgo.GinkgoHelper()
+
 			if startIP == "" {
 				return true
 			}
@@ -1279,6 +1288,8 @@ var _ = framework.Describe("[group:subnet]", func() {
 })
 
 func checkNatPolicyIPsets(f *framework.Framework, cs clientset.Interface, subnet *apiv1.Subnet, cidrV4, cidrV6 string, shouldExist bool) {
+	ginkgo.GinkgoHelper()
+
 	ginkgo.By(fmt.Sprintf("Checking nat policy rule ipset existed: %v", shouldExist))
 	nodes, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
 	framework.ExpectNoError(err)
@@ -1322,6 +1333,8 @@ func checkNatPolicyIPsets(f *framework.Framework, cs clientset.Interface, subnet
 }
 
 func checkNatPolicyRules(f *framework.Framework, cs clientset.Interface, subnet *apiv1.Subnet, cidrV4, cidrV6 string, shouldExist bool) {
+	ginkgo.GinkgoHelper()
+
 	ginkgo.By(fmt.Sprintf("Checking nat policy rule existed: %v", shouldExist))
 	nodes, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
 	framework.ExpectNoError(err)
@@ -1391,8 +1404,9 @@ func checkNatPolicyRules(f *framework.Framework, cs clientset.Interface, subnet 
 }
 
 func checkAccessExternal(podName, podNamespace, protocol string, expectReachable bool) {
-	ginkgo.By("checking external ip reachable")
+	ginkgo.GinkgoHelper()
 
+	ginkgo.By("checking external ip reachable")
 	if protocol == apiv1.ProtocolIPv4 || protocol == apiv1.ProtocolDual {
 		externalIP := "114.114.114.114"
 		isv4ExternalIPReachable := func() bool {

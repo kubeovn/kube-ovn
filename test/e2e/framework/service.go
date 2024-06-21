@@ -15,6 +15,7 @@ import (
 	"k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/utils/ptr"
 
+	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
 
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -40,6 +41,7 @@ func (f *Framework) ServiceClientNS(namespace string) *ServiceClient {
 }
 
 func (c *ServiceClient) Get(name string) *corev1.Service {
+	ginkgo.GinkgoHelper()
 	service, err := c.ServiceInterface.Get(context.TODO(), name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return service
@@ -47,6 +49,7 @@ func (c *ServiceClient) Get(name string) *corev1.Service {
 
 // Create creates a new service according to the framework specifications
 func (c *ServiceClient) Create(service *corev1.Service) *corev1.Service {
+	ginkgo.GinkgoHelper()
 	s, err := c.ServiceInterface.Create(context.TODO(), service, metav1.CreateOptions{})
 	ExpectNoError(err, "Error creating service")
 	return s.DeepCopy()
@@ -54,12 +57,15 @@ func (c *ServiceClient) Create(service *corev1.Service) *corev1.Service {
 
 // CreateSync creates a new service according to the framework specifications, and waits for it to be updated.
 func (c *ServiceClient) CreateSync(service *corev1.Service, cond func(s *corev1.Service) (bool, error), condDesc string) *corev1.Service {
+	ginkgo.GinkgoHelper()
 	_ = c.Create(service)
 	return c.WaitUntil(service.Name, cond, condDesc, 2*time.Second, timeout)
 }
 
 // Patch patches the service
 func (c *ServiceClient) Patch(original, modified *corev1.Service) *corev1.Service {
+	ginkgo.GinkgoHelper()
+
 	patch, err := util.GenerateMergePatchPayload(original, modified)
 	ExpectNoError(err)
 
@@ -86,12 +92,14 @@ func (c *ServiceClient) Patch(original, modified *corev1.Service) *corev1.Servic
 
 // PatchSync patches the service and waits the service to meet the condition
 func (c *ServiceClient) PatchSync(original, modified *corev1.Service, cond func(s *corev1.Service) (bool, error), condDesc string) *corev1.Service {
+	ginkgo.GinkgoHelper()
 	_ = c.Patch(original, modified)
 	return c.WaitUntil(original.Name, cond, condDesc, 2*time.Second, timeout)
 }
 
 // Delete deletes a service if the service exists
 func (c *ServiceClient) Delete(name string) {
+	ginkgo.GinkgoHelper()
 	err := c.ServiceInterface.Delete(context.TODO(), name, metav1.DeleteOptions{})
 	if err != nil && !apierrors.IsNotFound(err) {
 		Failf("Failed to delete service %q: %v", name, err)
@@ -101,6 +109,7 @@ func (c *ServiceClient) Delete(name string) {
 // DeleteSync deletes the service and waits for the service to disappear for `timeout`.
 // If the service doesn't disappear before the timeout, it will fail the test.
 func (c *ServiceClient) DeleteSync(name string) {
+	ginkgo.GinkgoHelper()
 	c.Delete(name)
 	gomega.Expect(c.WaitToDisappear(name, 2*time.Second, timeout)).To(gomega.Succeed(), "wait for service %q to disappear", name)
 }

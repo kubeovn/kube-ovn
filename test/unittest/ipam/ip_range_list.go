@@ -19,6 +19,7 @@ import (
 var _ = ginkgo.Context("[group:IPAM]", func() {
 	ginkgo.Context("[IPRangeList]", func() {
 		newIP := func(s string) ipam.IP {
+			ginkgo.GinkgoHelper()
 			ip, err := ipam.NewIP(s)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			return ip

@@ -11,6 +11,7 @@ import (
 	v1net "k8s.io/client-go/kubernetes/typed/networking/v1"
 	"k8s.io/kubernetes/test/e2e/framework"
 
+	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
 )
 
@@ -34,6 +35,7 @@ func (f *Framework) NetworkPolicyClientNS(namespace string) *NetworkPolicyClient
 }
 
 func (c *NetworkPolicyClient) Get(name string) *netv1.NetworkPolicy {
+	ginkgo.GinkgoHelper()
 	np, err := c.NetworkPolicyInterface.Get(context.TODO(), name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return np
@@ -41,6 +43,7 @@ func (c *NetworkPolicyClient) Get(name string) *netv1.NetworkPolicy {
 
 // Create creates a new network policy according to the framework specifications
 func (c *NetworkPolicyClient) Create(netpol *netv1.NetworkPolicy) *netv1.NetworkPolicy {
+	ginkgo.GinkgoHelper()
 	np, err := c.NetworkPolicyInterface.Create(context.TODO(), netpol, metav1.CreateOptions{})
 	ExpectNoError(err, "Error creating network policy")
 	return np.DeepCopy()
@@ -48,6 +51,7 @@ func (c *NetworkPolicyClient) Create(netpol *netv1.NetworkPolicy) *netv1.Network
 
 // Delete deletes a network policy if the network policy exists
 func (c *NetworkPolicyClient) Delete(name string) {
+	ginkgo.GinkgoHelper()
 	err := c.NetworkPolicyInterface.Delete(context.TODO(), name, metav1.DeleteOptions{})
 	if err != nil && !apierrors.IsNotFound(err) {
 		Failf("Failed to delete network policy %q: %v", name, err)
@@ -57,6 +61,7 @@ func (c *NetworkPolicyClient) Delete(name string) {
 // DeleteSync deletes the network policy and waits for the network policy to disappear for `timeout`.
 // If the network policy doesn't disappear before the timeout, it will fail the test.
 func (c *NetworkPolicyClient) DeleteSync(name string) {
+	ginkgo.GinkgoHelper()
 	c.Delete(name)
 	gomega.Expect(c.WaitToDisappear(name, 2*time.Second, timeout)).To(gomega.Succeed(), "wait for network policy %q to disappear", name)
 }

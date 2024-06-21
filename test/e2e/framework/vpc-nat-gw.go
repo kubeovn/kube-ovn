@@ -14,6 +14,7 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework"
 
+	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -35,6 +36,7 @@ func (f *Framework) VpcNatGatewayClient() *VpcNatGatewayClient {
 }
 
 func (c *VpcNatGatewayClient) Get(name string) *apiv1.VpcNatGateway {
+	ginkgo.GinkgoHelper()
 	vpcNatGw, err := c.VpcNatGatewayInterface.Get(context.TODO(), name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return vpcNatGw
@@ -42,6 +44,7 @@ func (c *VpcNatGatewayClient) Get(name string) *apiv1.VpcNatGateway {
 
 // Create creates a new vpc nat gw according to the framework specifications
 func (c *VpcNatGatewayClient) Create(vpcNatGw *apiv1.VpcNatGateway) *apiv1.VpcNatGateway {
+	ginkgo.GinkgoHelper()
 	vpcNatGw, err := c.VpcNatGatewayInterface.Create(context.TODO(), vpcNatGw, metav1.CreateOptions{})
 	ExpectNoError(err, "Error creating vpc nat gw")
 	return vpcNatGw.DeepCopy()
@@ -49,6 +52,8 @@ func (c *VpcNatGatewayClient) Create(vpcNatGw *apiv1.VpcNatGateway) *apiv1.VpcNa
 
 // CreateSync creates a new vpc nat gw according to the framework specifications, and waits for it to be ready.
 func (c *VpcNatGatewayClient) CreateSync(vpcNatGw *apiv1.VpcNatGateway, clietSet clientset.Interface) *apiv1.VpcNatGateway {
+	ginkgo.GinkgoHelper()
+
 	vpcNatGw = c.Create(vpcNatGw)
 	// When multiple VPC NAT gateways are being created, it may require more time to wait.
 	timeout := 4 * time.Minute
@@ -59,6 +64,8 @@ func (c *VpcNatGatewayClient) CreateSync(vpcNatGw *apiv1.VpcNatGateway, clietSet
 
 // Patch patches the vpc nat gw
 func (c *VpcNatGatewayClient) Patch(original, modified *apiv1.VpcNatGateway) *apiv1.VpcNatGateway {
+	ginkgo.GinkgoHelper()
+
 	patch, err := util.GenerateMergePatchPayload(original, modified)
 	ExpectNoError(err)
 
@@ -86,6 +93,8 @@ func (c *VpcNatGatewayClient) Patch(original, modified *apiv1.VpcNatGateway) *ap
 // PatchSync patches the vpc nat gw and waits for the vpc nat gw to be ready for `timeout`.
 // If the vpc nat gw doesn't become ready before the timeout, it will fail the test.
 func (c *VpcNatGatewayClient) PatchSync(original, modified *apiv1.VpcNatGateway, timeout time.Duration) *apiv1.VpcNatGateway {
+	ginkgo.GinkgoHelper()
+
 	vpcNatGw := c.Patch(original, modified)
 	ExpectTrue(c.WaitToBeUpdated(vpcNatGw, timeout))
 	ExpectTrue(c.WaitToBeReady(vpcNatGw.Name, timeout))
@@ -96,6 +105,8 @@ func (c *VpcNatGatewayClient) PatchSync(original, modified *apiv1.VpcNatGateway,
 // PatchQoS patches the vpc nat gw and waits for the qos to be ready for `timeout`.
 // If the qos doesn't become ready before the timeout, it will fail the test.
 func (c *VpcNatGatewayClient) PatchQoSPolicySync(natgwName, qosPolicyName string) *apiv1.VpcNatGateway {
+	ginkgo.GinkgoHelper()
+
 	natgw := c.Get(natgwName)
 	modifiedNATGW := natgw.DeepCopy()
 	modifiedNATGW.Spec.QoSPolicy = qosPolicyName
@@ -106,6 +117,7 @@ func (c *VpcNatGatewayClient) PatchQoSPolicySync(natgwName, qosPolicyName string
 
 // Delete deletes a vpc nat gw if the vpc nat gw exists
 func (c *VpcNatGatewayClient) Delete(name string) {
+	ginkgo.GinkgoHelper()
 	err := c.VpcNatGatewayInterface.Delete(context.TODO(), name, metav1.DeleteOptions{})
 	if err != nil && !apierrors.IsNotFound(err) {
 		Failf("Failed to delete vpc nat gw %q: %v", name, err)
@@ -115,6 +127,7 @@ func (c *VpcNatGatewayClient) Delete(name string) {
 // DeleteSync deletes the vpc nat gw and waits for the vpc nat gw to disappear for `timeout`.
 // If the vpc nat gw doesn't disappear before the timeout, it will fail the test.
 func (c *VpcNatGatewayClient) DeleteSync(name string) {
+	ginkgo.GinkgoHelper()
 	c.Delete(name)
 	gomega.Expect(c.WaitToDisappear(name, 2*time.Second, timeout)).To(gomega.Succeed(), "wait for vpc nat gw %q to disappear", name)
 }

@@ -13,6 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/kubernetes/test/e2e/framework"
 
+	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -34,6 +35,7 @@ func (f *Framework) IptablesFIPClient() *IptablesFIPClient {
 }
 
 func (c *IptablesFIPClient) Get(name string) *apiv1.IptablesFIPRule {
+	ginkgo.GinkgoHelper()
 	fip, err := c.IptablesFIPRuleInterface.Get(context.TODO(), name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return fip
@@ -41,6 +43,7 @@ func (c *IptablesFIPClient) Get(name string) *apiv1.IptablesFIPRule {
 
 // Create creates a new iptables fip according to the framework specifications
 func (c *IptablesFIPClient) Create(fip *apiv1.IptablesFIPRule) *apiv1.IptablesFIPRule {
+	ginkgo.GinkgoHelper()
 	fip, err := c.IptablesFIPRuleInterface.Create(context.TODO(), fip, metav1.CreateOptions{})
 	ExpectNoError(err, "Error creating iptables fip")
 	return fip.DeepCopy()
@@ -48,6 +51,8 @@ func (c *IptablesFIPClient) Create(fip *apiv1.IptablesFIPRule) *apiv1.IptablesFI
 
 // CreateSync creates a new iptables fip according to the framework specifications, and waits for it to be ready.
 func (c *IptablesFIPClient) CreateSync(fip *apiv1.IptablesFIPRule) *apiv1.IptablesFIPRule {
+	ginkgo.GinkgoHelper()
+
 	fip = c.Create(fip)
 	ExpectTrue(c.WaitToBeReady(fip.Name, timeout))
 	// Get the newest iptables fip after it becomes ready
@@ -56,6 +61,8 @@ func (c *IptablesFIPClient) CreateSync(fip *apiv1.IptablesFIPRule) *apiv1.Iptabl
 
 // Patch patches the iptables fip
 func (c *IptablesFIPClient) Patch(original, modified *apiv1.IptablesFIPRule) *apiv1.IptablesFIPRule {
+	ginkgo.GinkgoHelper()
+
 	patch, err := util.GenerateMergePatchPayload(original, modified)
 	ExpectNoError(err)
 
@@ -83,6 +90,8 @@ func (c *IptablesFIPClient) Patch(original, modified *apiv1.IptablesFIPRule) *ap
 // PatchSync patches the iptables fip and waits for the iptables fip to be ready for `timeout`.
 // If the iptables fip doesn't become ready before the timeout, it will fail the test.
 func (c *IptablesFIPClient) PatchSync(original, modified *apiv1.IptablesFIPRule, _ []string, timeout time.Duration) *apiv1.IptablesFIPRule {
+	ginkgo.GinkgoHelper()
+
 	fip := c.Patch(original, modified)
 	ExpectTrue(c.WaitToBeUpdated(fip, timeout))
 	ExpectTrue(c.WaitToBeReady(fip.Name, timeout))
@@ -92,6 +101,7 @@ func (c *IptablesFIPClient) PatchSync(original, modified *apiv1.IptablesFIPRule,
 
 // Delete deletes a iptables fip if the iptables fip exists
 func (c *IptablesFIPClient) Delete(name string) {
+	ginkgo.GinkgoHelper()
 	err := c.IptablesFIPRuleInterface.Delete(context.TODO(), name, metav1.DeleteOptions{})
 	if err != nil && !apierrors.IsNotFound(err) {
 		Failf("Failed to delete iptables fip %q: %v", name, err)
@@ -101,6 +111,7 @@ func (c *IptablesFIPClient) Delete(name string) {
 // DeleteSync deletes the iptables fip and waits for the iptables fip to disappear for `timeout`.
 // If the iptables fip doesn't disappear before the timeout, it will fail the test.
 func (c *IptablesFIPClient) DeleteSync(name string) {
+	ginkgo.GinkgoHelper()
 	c.Delete(name)
 	gomega.Expect(c.WaitToDisappear(name, 2*time.Second, timeout)).To(gomega.Succeed(), "wait for iptables fip %q to disappear", name)
 }

@@ -21,6 +21,7 @@ import (
 	"k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/kubernetes/test/e2e/framework/deployment"
 
+	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
 
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -45,6 +46,7 @@ func (f *Framework) DeploymentClientNS(namespace string) *DeploymentClient {
 }
 
 func (c *DeploymentClient) Get(name string) *appsv1.Deployment {
+	ginkgo.GinkgoHelper()
 	deploy, err := c.DeploymentInterface.Get(context.TODO(), name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return deploy
@@ -65,6 +67,7 @@ func (c *DeploymentClient) GetAllPods(deploy *appsv1.Deployment) (*corev1.PodLis
 
 // Create creates a new deployment according to the framework specifications
 func (c *DeploymentClient) Create(deploy *appsv1.Deployment) *appsv1.Deployment {
+	ginkgo.GinkgoHelper()
 	d, err := c.DeploymentInterface.Create(context.TODO(), deploy, metav1.CreateOptions{})
 	ExpectNoError(err, "Error creating deployment")
 	return d.DeepCopy()
@@ -72,6 +75,8 @@ func (c *DeploymentClient) Create(deploy *appsv1.Deployment) *appsv1.Deployment 
 
 // CreateSync creates a new deployment according to the framework specifications, and waits for it to complete.
 func (c *DeploymentClient) CreateSync(deploy *appsv1.Deployment) *appsv1.Deployment {
+	ginkgo.GinkgoHelper()
+
 	d := c.Create(deploy)
 	err := c.WaitToComplete(d)
 	ExpectNoError(err, "deployment failed to complete")
@@ -80,6 +85,8 @@ func (c *DeploymentClient) CreateSync(deploy *appsv1.Deployment) *appsv1.Deploym
 }
 
 func (c *DeploymentClient) RolloutStatus(name string) *appsv1.Deployment {
+	ginkgo.GinkgoHelper()
+
 	var deploy *appsv1.Deployment
 	WaitUntil(2*time.Second, timeout, func(_ context.Context) (bool, error) {
 		var err error
@@ -106,6 +113,8 @@ func (c *DeploymentClient) RolloutStatus(name string) *appsv1.Deployment {
 }
 
 func (c *DeploymentClient) Patch(original, modified *appsv1.Deployment) *appsv1.Deployment {
+	ginkgo.GinkgoHelper()
+
 	patch, err := util.GenerateMergePatchPayload(original, modified)
 	ExpectNoError(err)
 
@@ -131,12 +140,15 @@ func (c *DeploymentClient) Patch(original, modified *appsv1.Deployment) *appsv1.
 }
 
 func (c *DeploymentClient) PatchSync(original, modified *appsv1.Deployment) *appsv1.Deployment {
+	ginkgo.GinkgoHelper()
 	deploy := c.Patch(original, modified)
 	return c.RolloutStatus(deploy.Name)
 }
 
 // Restart restarts the deployment as kubectl does
 func (c *DeploymentClient) Restart(deploy *appsv1.Deployment) *appsv1.Deployment {
+	ginkgo.GinkgoHelper()
+
 	buf, err := polymorphichelpers.ObjectRestarterFn(deploy)
 	ExpectNoError(err)
 
@@ -156,11 +168,14 @@ func (c *DeploymentClient) Restart(deploy *appsv1.Deployment) *appsv1.Deployment
 
 // RestartSync restarts the deployment and wait it to be ready
 func (c *DeploymentClient) RestartSync(deploy *appsv1.Deployment) *appsv1.Deployment {
+	ginkgo.GinkgoHelper()
 	_ = c.Restart(deploy)
 	return c.RolloutStatus(deploy.Name)
 }
 
 func (c *DeploymentClient) SetScale(deployment string, replicas int32) {
+	ginkgo.GinkgoHelper()
+
 	scale, err := c.GetScale(context.Background(), deployment, metav1.GetOptions{})
 	framework.ExpectNoError(err)
 	if scale.Spec.Replicas == replicas {
@@ -175,6 +190,7 @@ func (c *DeploymentClient) SetScale(deployment string, replicas int32) {
 
 // Delete deletes a deployment if the deployment exists
 func (c *DeploymentClient) Delete(name string) {
+	ginkgo.GinkgoHelper()
 	err := c.DeploymentInterface.Delete(context.TODO(), name, metav1.DeleteOptions{})
 	if err != nil && !apierrors.IsNotFound(err) {
 		Failf("Failed to delete deployment %q: %v", name, err)
@@ -184,6 +200,7 @@ func (c *DeploymentClient) Delete(name string) {
 // DeleteSync deletes the deployment and waits for the deployment to disappear for `timeout`.
 // If the deployment doesn't disappear before the timeout, it will fail the test.
 func (c *DeploymentClient) DeleteSync(name string) {
+	ginkgo.GinkgoHelper()
 	c.Delete(name)
 	gomega.Expect(c.WaitToDisappear(name, 2*time.Second, timeout)).To(gomega.Succeed(), "wait for deployment %q to disappear", name)
 }

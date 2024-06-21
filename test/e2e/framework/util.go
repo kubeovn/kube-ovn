@@ -7,8 +7,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/onsi/ginkgo/v2"
 	"github.com/scylladb/go-set/strset"
+
+	"github.com/onsi/ginkgo/v2"
 
 	"github.com/kubeovn/kube-ovn/pkg/ipam"
 	"github.com/kubeovn/kube-ovn/pkg/util"

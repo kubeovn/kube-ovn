@@ -16,6 +16,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/kubernetes/test/e2e/framework"
 
+	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -37,6 +38,7 @@ func (f *Framework) QoSPolicyClient() *QoSPolicyClient {
 }
 
 func (c *QoSPolicyClient) Get(name string) *apiv1.QoSPolicy {
+	ginkgo.GinkgoHelper()
 	qosPolicy, err := c.QoSPolicyInterface.Get(context.TODO(), name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return qosPolicy
@@ -44,6 +46,7 @@ func (c *QoSPolicyClient) Get(name string) *apiv1.QoSPolicy {
 
 // Create creates a new qosPolicy according to the framework specifications
 func (c *QoSPolicyClient) Create(qosPolicy *apiv1.QoSPolicy) *apiv1.QoSPolicy {
+	ginkgo.GinkgoHelper()
 	s, err := c.QoSPolicyInterface.Create(context.TODO(), qosPolicy, metav1.CreateOptions{})
 	ExpectNoError(err, "Error creating qosPolicy")
 	return s.DeepCopy()
@@ -51,6 +54,8 @@ func (c *QoSPolicyClient) Create(qosPolicy *apiv1.QoSPolicy) *apiv1.QoSPolicy {
 
 // CreateSync creates a new qosPolicy according to the framework specifications, and waits for it to be ready.
 func (c *QoSPolicyClient) CreateSync(qosPolicy *apiv1.QoSPolicy) *apiv1.QoSPolicy {
+	ginkgo.GinkgoHelper()
+
 	s := c.Create(qosPolicy)
 	ExpectTrue(c.WaitToQoSReady(s.Name))
 	// Get the newest qosPolicy after it becomes ready
@@ -59,6 +64,8 @@ func (c *QoSPolicyClient) CreateSync(qosPolicy *apiv1.QoSPolicy) *apiv1.QoSPolic
 
 // Update updates the qosPolicy
 func (c *QoSPolicyClient) Update(qosPolicy *apiv1.QoSPolicy, options metav1.UpdateOptions, timeout time.Duration) *apiv1.QoSPolicy {
+	ginkgo.GinkgoHelper()
+
 	var updatedQoSPolicy *apiv1.QoSPolicy
 	err := wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
 		s, err := c.QoSPolicyInterface.Update(ctx, qosPolicy, options)
@@ -83,6 +90,8 @@ func (c *QoSPolicyClient) Update(qosPolicy *apiv1.QoSPolicy, options metav1.Upda
 // UpdateSync updates the qosPolicy and waits for the qosPolicy to be ready for `timeout`.
 // If the qosPolicy doesn't become ready before the timeout, it will fail the test.
 func (c *QoSPolicyClient) UpdateSync(qosPolicy *apiv1.QoSPolicy, options metav1.UpdateOptions, timeout time.Duration) *apiv1.QoSPolicy {
+	ginkgo.GinkgoHelper()
+
 	s := c.Update(qosPolicy, options, timeout)
 	ExpectTrue(c.WaitToBeUpdated(s, timeout))
 	ExpectTrue(c.WaitToBeReady(s.Name, timeout))
@@ -92,6 +101,8 @@ func (c *QoSPolicyClient) UpdateSync(qosPolicy *apiv1.QoSPolicy, options metav1.
 
 // Patch patches the qosPolicy
 func (c *QoSPolicyClient) Patch(original, modified *apiv1.QoSPolicy) *apiv1.QoSPolicy {
+	ginkgo.GinkgoHelper()
+
 	patch, err := util.GenerateMergePatchPayload(original, modified)
 	ExpectNoError(err)
 
@@ -119,6 +130,8 @@ func (c *QoSPolicyClient) Patch(original, modified *apiv1.QoSPolicy) *apiv1.QoSP
 // PatchSync patches the qosPolicy and waits for the qosPolicy to be ready for `timeout`.
 // If the qosPolicy doesn't become ready before the timeout, it will fail the test.
 func (c *QoSPolicyClient) PatchSync(original, modified *apiv1.QoSPolicy) *apiv1.QoSPolicy {
+	ginkgo.GinkgoHelper()
+
 	s := c.Patch(original, modified)
 	ExpectTrue(c.WaitToBeUpdated(s, timeout))
 	ExpectTrue(c.WaitToBeReady(s.Name, timeout))
@@ -128,6 +141,7 @@ func (c *QoSPolicyClient) PatchSync(original, modified *apiv1.QoSPolicy) *apiv1.
 
 // Delete deletes a qosPolicy if the qosPolicy exists
 func (c *QoSPolicyClient) Delete(name string) {
+	ginkgo.GinkgoHelper()
 	err := c.QoSPolicyInterface.Delete(context.TODO(), name, metav1.DeleteOptions{})
 	if err != nil && !apierrors.IsNotFound(err) {
 		Failf("Failed to delete qosPolicy %q: %v", name, err)
@@ -137,6 +151,7 @@ func (c *QoSPolicyClient) Delete(name string) {
 // DeleteSync deletes the qosPolicy and waits for the qosPolicy to disappear for `timeout`.
 // If the qosPolicy doesn't disappear before the timeout, it will fail the test.
 func (c *QoSPolicyClient) DeleteSync(name string) {
+	ginkgo.GinkgoHelper()
 	c.Delete(name)
 	gomega.Expect(c.WaitToDisappear(name, 2*time.Second, timeout)).To(gomega.Succeed(), "wait for qosPolicy %q to disappear", name)
 }

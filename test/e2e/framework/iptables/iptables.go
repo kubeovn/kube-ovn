@@ -6,9 +6,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	e2epodoutput "k8s.io/kubernetes/test/e2e/framework/pod/output"
+
+	"github.com/onsi/ginkgo/v2"
+	"github.com/onsi/gomega"
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
@@ -41,6 +43,8 @@ func CheckIptablesRulesOnNode(f *framework.Framework, node, table, chain, protoc
 }
 
 func getOvsPodOnNode(f *framework.Framework, node string) *corev1.Pod {
+	ginkgo.GinkgoHelper()
+
 	daemonSetClient := f.DaemonSetClientNS(framework.KubeOvnNamespace)
 	ds := daemonSetClient.Get("ovs-ovn")
 	pod, err := daemonSetClient.GetPodOnNode(ds, node)
