@@ -59,7 +59,7 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 	var podClient *framework.PodClient
 	var subnetClient *framework.SubnetClient
 	var nadClient *framework.NetworkAttachmentDefinitionClient
-	var nadName, podName, subnetName, namespaceName, image string
+	var nadName, podName, subnetName, namespaceName string
 	var cidr string
 	var subnet *apiv1.Subnet
 	ginkgo.BeforeEach(func() {
@@ -71,10 +71,6 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 		podClient = f.PodClient()
 		subnetClient = f.SubnetClient()
 		nadClient = f.NetworkAttachmentDefinitionClientNS(namespaceName)
-
-		if image == "" {
-			image = framework.GetKubeOvnImage(f.ClientSet)
-		}
 	})
 	ginkgo.AfterEach(func() {
 		ginkgo.By("Deleting pod " + podName)
@@ -115,7 +111,7 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 		ginkgo.By("Creating pod " + podName)
 		annotations := map[string]string{nadv1.NetworkAttachmentAnnot: fmt.Sprintf("%s/%s", nad.Namespace, nad.Name)}
 		cmd := []string{"sh", "-c", "sleep infinity"}
-		pod := framework.MakePod(namespaceName, podName, nil, annotations, image, cmd, nil)
+		pod := framework.MakePod(namespaceName, podName, nil, annotations, f.KubeOVNImage, cmd, nil)
 		pod = podClient.CreateSync(pod)
 
 		ginkgo.By("Validating pod annotations")
@@ -205,7 +201,7 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 		ginkgo.By("Creating pod " + podName)
 		annotations := map[string]string{nadv1.NetworkAttachmentAnnot: fmt.Sprintf("%s/%s", nad.Namespace, nad.Name)}
 		cmd := []string{"sh", "-c", "sleep infinity"}
-		pod := framework.MakePod(namespaceName, podName, nil, annotations, image, cmd, nil)
+		pod := framework.MakePod(namespaceName, podName, nil, annotations, f.KubeOVNImage, cmd, nil)
 		pod = podClient.CreateSync(pod)
 
 		ginkgo.By("Validating pod annotations")
@@ -281,7 +277,7 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 		ginkgo.By("Creating pod " + podName)
 		annotations := map[string]string{nadv1.NetworkAttachmentAnnot: fmt.Sprintf("%s/%s", nad.Namespace, nad.Name)}
 		cmd := []string{"sh", "-c", "sleep infinity"}
-		pod := framework.MakePod(namespaceName, podName, nil, annotations, image, cmd, nil)
+		pod := framework.MakePod(namespaceName, podName, nil, annotations, f.KubeOVNImage, cmd, nil)
 		pod = podClient.CreateSync(pod)
 
 		ginkgo.By("Validating pod annotations")
@@ -379,7 +375,7 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 		ginkgo.By("Creating pod " + podName)
 		annotations := map[string]string{nadv1.NetworkAttachmentAnnot: fmt.Sprintf("%s/%s", nad.Namespace, nad.Name)}
 		cmd := []string{"sh", "-c", "sleep infinity"}
-		pod := framework.MakePod(namespaceName, podName, nil, annotations, image, cmd, nil)
+		pod := framework.MakePod(namespaceName, podName, nil, annotations, f.KubeOVNImage, cmd, nil)
 		pod = podClient.CreateSync(pod)
 
 		ginkgo.By("Validating pod annotations")

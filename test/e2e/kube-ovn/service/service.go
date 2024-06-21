@@ -29,7 +29,7 @@ var _ = framework.Describe("[group:service]", func() {
 	var serviceClient *framework.ServiceClient
 	var podClient *framework.PodClient
 	var subnetClient *framework.SubnetClient
-	var namespaceName, serviceName, podName, hostPodName, subnetName, cidr, image string
+	var namespaceName, serviceName, podName, hostPodName, subnetName, cidr string
 
 	ginkgo.BeforeEach(func() {
 		cs = f.ClientSet
@@ -42,9 +42,6 @@ var _ = framework.Describe("[group:service]", func() {
 		hostPodName = "pod-" + framework.RandomSuffix()
 		subnetName = "subnet-" + framework.RandomSuffix()
 		cidr = framework.RandomCIDR(f.ClusterIPFamily)
-		if image == "" {
-			image = framework.GetKubeOvnImage(cs)
-		}
 	})
 	ginkgo.AfterEach(func() {
 		ginkgo.By("Deleting service " + serviceName)
@@ -92,7 +89,7 @@ var _ = framework.Describe("[group:service]", func() {
 
 		ginkgo.By("Creating pod " + hostPodName + " with host network")
 		cmd := []string{"sh", "-c", "sleep infinity"}
-		hostPod := framework.MakePod(namespaceName, hostPodName, nil, nil, image, cmd, nil)
+		hostPod := framework.MakePod(namespaceName, hostPodName, nil, nil, f.KubeOVNImage, cmd, nil)
 		hostPod.Spec.HostNetwork = true
 		_ = podClient.CreateSync(hostPod)
 

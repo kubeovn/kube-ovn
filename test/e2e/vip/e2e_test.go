@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/test/e2e"
 	k8sframework "k8s.io/kubernetes/test/e2e/framework"
@@ -110,8 +109,6 @@ func testVipWithSG(ip, namespaceName, allowPod, denyPod, aapPod, securityGroupNa
 var _ = framework.Describe("[group:vip]", func() {
 	f := framework.NewDefaultFramework("vip")
 
-	var cs clientset.Interface
-
 	var vpcClient *framework.VpcClient
 	var subnetClient *framework.SubnetClient
 	var vipClient *framework.VipClient
@@ -119,7 +116,7 @@ var _ = framework.Describe("[group:vip]", func() {
 	var subnet *apiv1.Subnet
 	var podClient *framework.PodClient
 	var securityGroupClient *framework.SecurityGroupClient
-	var image, namespaceName, vpcName, subnetName, cidr string
+	var namespaceName, vpcName, subnetName, cidr string
 
 	// test switch lb vip, which ip is in the vpc subnet cidr
 	// switch lb vip use gw mac to trigger lb nat flows
@@ -132,7 +129,6 @@ var _ = framework.Describe("[group:vip]", func() {
 	var securityGroupName string
 
 	ginkgo.BeforeEach(func() {
-		cs = f.ClientSet
 		vpcClient = f.VpcClient()
 		subnetClient = f.SubnetClient()
 		vipClient = f.VipClient()
@@ -167,10 +163,6 @@ var _ = framework.Describe("[group:vip]", func() {
 		ginkgo.By("Creating subnet " + subnetName)
 		subnet = framework.MakeSubnet(subnetName, "", cidr, "", vpcName, "", nil, nil, []string{namespaceName})
 		subnet = subnetClient.CreateSync(subnet)
-
-		if image == "" {
-			image = framework.GetKubeOvnImage(cs)
-		}
 	})
 
 	ginkgo.AfterEach(func() {
@@ -252,10 +244,10 @@ var _ = framework.Describe("[group:vip]", func() {
 		annotations := map[string]string{util.AAPsAnnotation: vip1Name}
 		cmd := []string{"sh", "-c", "sleep infinity"}
 		ginkgo.By("Creating pod1 support allowed address pair using " + vip1Name)
-		aapPod1 := framework.MakePrivilegedPod(namespaceName, aapPodName1, nil, annotations, image, cmd, nil)
+		aapPod1 := framework.MakePrivilegedPod(namespaceName, aapPodName1, nil, annotations, f.KubeOVNImage, cmd, nil)
 		aapPod1 = podClient.CreateSync(aapPod1)
 		ginkgo.By("Creating pod2 support allowed address pair using " + vip1Name)
-		aapPod2 := framework.MakePrivilegedPod(namespaceName, aapPodName2, nil, annotations, image, cmd, nil)
+		aapPod2 := framework.MakePrivilegedPod(namespaceName, aapPodName2, nil, annotations, f.KubeOVNImage, cmd, nil)
 		_ = podClient.CreateSync(aapPod2)
 		// logical switch port with type virtual should be created
 		conditions := fmt.Sprintf("type=virtual name=%s options:virtual-ip=\\\"%s\\\" ", vip1Name, virtualIP1)
@@ -340,7 +332,7 @@ var _ = framework.Describe("[group:vip]", func() {
 		ginkgo.By("Creating pod3 support allowed address pair with security group")
 		annotations[util.PortSecurityAnnotation] = "true"
 		annotations[fmt.Sprintf(util.SecurityGroupAnnotationTemplate, "ovn")] = securityGroupName
-		aapPod3 := framework.MakePod(namespaceName, aapPodName3, nil, annotations, image, cmd, nil)
+		aapPod3 := framework.MakePod(namespaceName, aapPodName3, nil, annotations, f.KubeOVNImage, cmd, nil)
 		aapPod3 = podClient.CreateSync(aapPod3)
 		v4ip, v6ip := util.SplitStringIP(aapPod3.Annotations[util.IPAddressAnnotation])
 		if f.HasIPv4() {

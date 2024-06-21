@@ -100,7 +100,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 	var ipFipVipName, ipFipEipName, ipFipName string
 	var cidrSnatEipName, cidrSnatName, ipSnatVipName, ipSnatEipName, ipSnatName string
 
-	var image, namespaceName string
+	var namespaceName string
 
 	var sharedVipName, sharedEipDnatName, sharedEipFipShoudOkName, sharedEipFipShoudFailName string
 	var fipPodName, podEipName, podFipName string
@@ -178,10 +178,6 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		ipSnatVipName = "ip-snat-vip-" + framework.RandomSuffix()
 		ipSnatEipName = "ip-snat-eip-" + framework.RandomSuffix()
 		ipSnatName = "ip-snat-" + framework.RandomSuffix()
-
-		if image == "" {
-			image = framework.GetKubeOvnImage(cs)
-		}
 
 		if skip {
 			ginkgo.Skip("underlay spec only runs on kind clusters")
@@ -585,7 +581,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 			ginkgo.By("Creating no bfd pod " + podOnNodeName + " with subnet " + noBfdSubnetName)
 			annotations := map[string]string{util.LogicalSwitchAnnotation: noBfdSubnetName}
 			cmd := []string{"sh", "-c", "sleep infinity"}
-			pod := framework.MakePod(namespaceName, podOnNodeName, nil, annotations, image, cmd, nil)
+			pod := framework.MakePod(namespaceName, podOnNodeName, nil, annotations, f.KubeOVNImage, cmd, nil)
 			pod.Spec.NodeName = node
 			_ = podClient.CreateSync(pod)
 		}
@@ -593,7 +589,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		ginkgo.By("Creating pod with fip")
 		annotations := map[string]string{util.LogicalSwitchAnnotation: noBfdSubnetName}
 		cmd := []string{"sh", "-c", "sleep infinity"}
-		fipPod := framework.MakePod(namespaceName, fipPodName, nil, annotations, image, cmd, nil)
+		fipPod := framework.MakePod(namespaceName, fipPodName, nil, annotations, f.KubeOVNImage, cmd, nil)
 		fipPod = podClient.CreateSync(fipPod)
 		podEip := framework.MakeOvnEip(podEipName, underlaySubnetName, "", "", "", "")
 		_ = ovnEipClient.CreateSync(podEip)
@@ -769,14 +765,14 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 			ginkgo.By("Creating no bfd extra pod " + podOnNodeName + " with subnet " + noBfdExtraSubnetName)
 			annotations := map[string]string{util.LogicalSwitchAnnotation: noBfdExtraSubnetName}
 			cmd := []string{"sh", "-c", "sleep infinity"}
-			pod := framework.MakePod(namespaceName, podOnNodeName, nil, annotations, image, cmd, nil)
+			pod := framework.MakePod(namespaceName, podOnNodeName, nil, annotations, f.KubeOVNImage, cmd, nil)
 			pod.Spec.NodeName = node
 			_ = podClient.CreateSync(pod)
 		}
 
 		ginkgo.By("Creating pod with fip")
 		annotations = map[string]string{util.LogicalSwitchAnnotation: noBfdExtraSubnetName}
-		fipPod = framework.MakePod(namespaceName, fipExtraPodName, nil, annotations, image, cmd, nil)
+		fipPod = framework.MakePod(namespaceName, fipExtraPodName, nil, annotations, f.KubeOVNImage, cmd, nil)
 		fipPod = podClient.CreateSync(fipPod)
 		podEip = framework.MakeOvnEip(podExtraEipName, underlayExtraSubnetName, "", "", "", "")
 		_ = ovnEipClient.CreateSync(podEip)
@@ -932,7 +928,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 			ginkgo.By("Creating bfd pod " + podOnNodeName + " with subnet " + bfdSubnetName)
 			annotations := map[string]string{util.LogicalSwitchAnnotation: bfdSubnetName}
 			cmd := []string{"sh", "-c", "sleep infinity"}
-			pod := framework.MakePod(namespaceName, podOnNodeName, nil, annotations, image, cmd, nil)
+			pod := framework.MakePod(namespaceName, podOnNodeName, nil, annotations, f.KubeOVNImage, cmd, nil)
 			pod.Spec.NodeName = node
 			_ = podClient.CreateSync(pod)
 		}

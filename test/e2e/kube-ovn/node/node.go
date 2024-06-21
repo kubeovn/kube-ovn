@@ -31,7 +31,7 @@ var _ = framework.OrderedDescribe("[group:node]", func() {
 	var podClient *framework.PodClient
 	var serviceClient *framework.ServiceClient
 	var subnetClient *framework.SubnetClient
-	var podName, hostPodName, serviceName, namespaceName, subnetName, image string
+	var podName, hostPodName, serviceName, namespaceName, subnetName string
 	var cidr string
 	ginkgo.BeforeEach(func() {
 		cs = f.ClientSet
@@ -44,10 +44,6 @@ var _ = framework.OrderedDescribe("[group:node]", func() {
 		serviceName = "service-" + framework.RandomSuffix()
 		subnetName = "subnet-" + framework.RandomSuffix()
 		cidr = framework.RandomCIDR(f.ClusterIPFamily)
-
-		if image == "" {
-			image = framework.GetKubeOvnImage(cs)
-		}
 	})
 	ginkgo.AfterEach(func() {
 		ginkgo.By("Deleting service " + serviceName)
@@ -85,7 +81,7 @@ var _ = framework.OrderedDescribe("[group:node]", func() {
 			podName = "pod-" + framework.RandomSuffix()
 			ginkgo.By("Creating pod " + podName + " with host network")
 			cmd := []string{"sh", "-c", "sleep infinity"}
-			pod := framework.MakePod(namespaceName, podName, nil, nil, image, cmd, nil)
+			pod := framework.MakePod(namespaceName, podName, nil, nil, f.KubeOVNImage, cmd, nil)
 			pod.Spec.NodeName = node.Name
 			pod.Spec.HostNetwork = true
 			pod = podClient.CreateSync(pod)
@@ -125,7 +121,7 @@ var _ = framework.OrderedDescribe("[group:node]", func() {
 
 		ginkgo.By("Creating pod " + hostPodName + " with host network")
 		cmd := []string{"sh", "-c", "sleep infinity"}
-		hostPod := framework.MakePod(namespaceName, hostPodName, nil, nil, image, cmd, nil)
+		hostPod := framework.MakePod(namespaceName, hostPodName, nil, nil, f.KubeOVNImage, cmd, nil)
 		hostPod.Spec.HostNetwork = true
 		hostPod = podClient.CreateSync(hostPod)
 
@@ -176,7 +172,7 @@ var _ = framework.OrderedDescribe("[group:node]", func() {
 
 		ginkgo.By("Creating pod " + hostPodName + " with host network")
 		cmd := []string{"sh", "-c", "sleep infinity"}
-		hostPod := framework.MakePod(namespaceName, hostPodName, nil, nil, image, cmd, nil)
+		hostPod := framework.MakePod(namespaceName, hostPodName, nil, nil, f.KubeOVNImage, cmd, nil)
 		hostPod.Spec.HostNetwork = true
 		hostPod = podClient.CreateSync(hostPod)
 
@@ -202,16 +198,13 @@ var _ = framework.SerialDescribe("[group:node]", func() {
 	var cs clientset.Interface
 	var podClient *framework.PodClient
 	var subnetClient *framework.SubnetClient
-	var podName, namespaceName, image string
+	var podName, namespaceName string
 	ginkgo.BeforeEach(func() {
 		cs = f.ClientSet
 		podClient = f.PodClient()
 		subnetClient = f.SubnetClient()
 		namespaceName = f.Namespace.Name
 		podName = "pod-" + framework.RandomSuffix()
-		if image == "" {
-			image = framework.GetKubeOvnImage(cs)
-		}
 	})
 	ginkgo.AfterEach(func() {
 		ginkgo.By("Deleting pod " + podName)
@@ -238,7 +231,7 @@ var _ = framework.SerialDescribe("[group:node]", func() {
 		podName = "pod-" + framework.RandomSuffix()
 		ginkgo.By("Creating pod " + podName + " with host network")
 		cmd := []string{"sh", "-c", "sleep infinity"}
-		pod := framework.MakePrivilegedPod(namespaceName, podName, nil, nil, image, cmd, nil)
+		pod := framework.MakePrivilegedPod(namespaceName, podName, nil, nil, f.KubeOVNImage, cmd, nil)
 		pod.Spec.NodeName = node.Name
 		pod.Spec.HostNetwork = true
 		pod = podClient.CreateSync(pod)

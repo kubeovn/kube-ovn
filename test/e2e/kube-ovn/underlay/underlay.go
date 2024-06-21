@@ -14,6 +14,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
+	e2epodoutput "k8s.io/kubernetes/test/e2e/framework/pod/output"
 
 	"github.com/onsi/ginkgo/v2"
 
@@ -110,7 +111,6 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 	var providerNetworkClient *framework.ProviderNetworkClient
 	var dockerNetwork *dockernetwork.Inspect
 	var containerID string
-	var image string
 
 	ginkgo.BeforeEach(func() {
 		cs = f.ClientSet
@@ -132,9 +132,6 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		providerNetworkName = "pn-" + framework.RandomSuffix()
 		vpcName = "vpc-" + framework.RandomSuffix()
 		containerID = ""
-		if image == "" {
-			image = framework.GetKubeOvnImage(cs)
-		}
 
 		if skip {
 			ginkgo.Skip("underlay spec only runs on kind clusters")
@@ -430,7 +427,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 
 		ginkgo.By("Creating pod " + podName)
 		cmd := []string{"sh", "-c", "sleep 600"}
-		pod := framework.MakePod(namespaceName, podName, nil, nil, image, cmd, nil)
+		pod := framework.MakePod(namespaceName, podName, nil, nil, f.KubeOVNImage, cmd, nil)
 		_ = podClient.CreateSync(pod)
 
 		ginkgo.By("Validating pod MTU")
@@ -459,7 +456,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		containerName := "container-" + framework.RandomSuffix()
 		ginkgo.By("Creating container " + containerName)
 		cmd := []string{"sh", "-c", "sleep 600"}
-		containerInfo, err := docker.ContainerCreate(containerName, image, dockerNetworkName, cmd)
+		containerInfo, err := docker.ContainerCreate(containerName, f.KubeOVNImage, dockerNetworkName, cmd)
 		framework.ExpectNoError(err)
 		containerID = containerInfo.ID
 
@@ -490,7 +487,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		mac := containerInfo.NetworkSettings.Networks[dockerNetworkName].MacAddress
 		ginkgo.By("Creating pod " + podName + " with IP address " + ip)
 		annotations := map[string]string{util.IPAddressAnnotation: ip}
-		pod := framework.MakePod(namespaceName, podName, nil, annotations, image, cmd, nil)
+		pod := framework.MakePod(namespaceName, podName, nil, annotations, f.KubeOVNImage, cmd, nil)
 		pod.Spec.TerminationGracePeriodSeconds = nil
 		_ = podClient.Create(pod)
 
@@ -810,7 +807,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 
 		subnet = subnetClient.Get(subnetName)
 		ginkgo.By("10. waiting for U2OInterconnection status of subnet " + subnetName + " to be false")
-		waitSubnetU2OStatus(subnetName, subnetClient, false)
+		waitSubnetU2OStatus(f, subnetName, subnetClient, false)
 		checkU2OItems(f, subnet, underlayPod, overlayPod, false)
 	})
 })
@@ -961,17 +958,16 @@ func checkReachable(podName, podNamespace, sourceIP, targetIP, targetPort string
 	ginkgo.GinkgoHelper()
 
 	ginkgo.By("checking curl reachable")
-	cmd := fmt.Sprintf("kubectl exec %s -n %s -- curl -q -s --connect-timeout 5 %s/clientip", podName, podNamespace, net.JoinHostPort(targetIP, targetPort))
-	output, _ := exec.Command("bash", "-c", cmd).CombinedOutput()
-	outputStr := string(output)
+	cmd := fmt.Sprintf("curl -q -s --connect-timeout 5 %s/clientip", net.JoinHostPort(targetIP, targetPort))
+	output, err := e2epodoutput.RunHostCmd(podNamespace, podName, cmd)
 	if expectReachable {
-		client, _, err := net.SplitHostPort(strings.TrimSpace(outputStr))
+		framework.ExpectNoError(err)
+		client, _, err := net.SplitHostPort(strings.TrimSpace(output))
 		framework.ExpectNoError(err)
 		// check packet has not SNAT
 		framework.ExpectEqual(sourceIP, client)
 	} else {
-		isReachable := !strings.Contains(outputStr, "terminated with exit code")
-		framework.ExpectEqual(isReachable, expectReachable)
+		framework.ExpectError(err)
 	}
 }
 

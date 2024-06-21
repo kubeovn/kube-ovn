@@ -51,7 +51,7 @@ K8S_CONFORMANCE_E2E_SKIP += "sig-network.*Services.*should serve endpoints on sa
 endif
 
 GINKGO_OUTPUT_OPT =
-GINKGO_PARALLEL_OPT = -p
+GINKGO_PARALLEL_OPT =
 ifeq ($(shell echo $${CI:-false}),true)
 GINKGO_OUTPUT_OPT = --github-output --silence-skips
 GINKGO_PARALLEL_OPT = --procs $$(($$(nproc) * $(GINKGO_PARALLEL_MULTIPLIER)))
