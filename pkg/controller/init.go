@@ -607,8 +607,12 @@ func (c *Controller) initSyncCrdSubnets() error {
 		klog.Error(err)
 		return err
 	}
-	for _, orisubnet := range subnets {
-		subnet := orisubnet.DeepCopy()
+	for _, cachedSubnet := range subnets {
+		subnet := cachedSubnet.DeepCopy()
+		if !subnet.Status.IsReady() {
+			klog.Warningf("subnet %s is not ready", subnet.Name)
+			continue
+		}
 		if util.CheckProtocol(subnet.Spec.CIDRBlock) == kubeovnv1.ProtocolDual {
 			err = calcDualSubnetStatusIP(subnet, c)
 		} else {
