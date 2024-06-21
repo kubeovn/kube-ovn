@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os/exec"
+	"strings"
 	"testing"
 	"time"
 
@@ -158,7 +159,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 		framework.ExpectEqual(ips, pod.Status.PodIPs)
 	})
 
-	framework.ConformanceIt("restart vm should be able to handle subnet change after the namespace has its first subnet", func() {
+	framework.ConformanceIt("should be able to handle vm restart when subnet changes before the vm is stopped", func() {
 		// create a vm within a namespace, the namespace has no subnet, so the vm use ovn-default subnet
 		// create a subnet in the namespace later, the vm should use its own subnet
 		// stop the vm, the vm should delete the vm ip, because of the namespace only has one subnet but not ovn-default
@@ -183,19 +184,11 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.VMAnnotation, vmName)
 		ips := pod.Status.PodIPs
 
-		ginkgo.By("Checking old lsp ExternalIDs contains should contains default subnet " + util.DefaultSubnet)
-		portName := ovs.PodNameToPortName(vmName, namespaceName, util.OvnProvider)
-		conditions := fmt.Sprintf("name=%s", portName)
-		execCmd := "kubectl ko nbctl --format=list --data=bare --no-heading --columns=external_ids find logical-switch-port " + conditions
-		framework.Logf("exec cmd %s", execCmd)
-		output, err := exec.Command("bash", "-c", execCmd).CombinedOutput()
-		framework.ExpectNoError(err)
-		framework.ExpectContainSubstring(string(output), util.DefaultSubnet)
-
 		ginkgo.By("Stopping vm " + vmName)
 		vmClient.StopSync(vmName)
 
 		// the ip is deleted
+		portName := ovs.PodNameToPortName(vmName, namespaceName, util.OvnProvider)
 		err = ipClient.WaitToDisappear(portName, 2*time.Second, 2*time.Minute)
 		framework.ExpectNoError(err)
 
@@ -218,13 +211,64 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 		ginkgo.By("Checking whether pod ips are changed")
 		framework.ExpectNotEqual(ips, pod.Status.PodIPs)
 
-		ginkgo.By("Checking new lsp ExternalIDs should contains new subnet " + subnetName)
-		conditions = fmt.Sprintf("name=%s", portName)
-		execCmd = "kubectl ko nbctl --format=list --data=bare --no-heading --columns=external_ids find logical-switch-port " + conditions
-		framework.Logf("exec cmd %s", execCmd)
-		output, err = exec.Command("bash", "-c", execCmd).CombinedOutput()
+		ginkgo.By("Checking external-ids of LSP " + portName)
+		cmd := "kubectl ko nbctl --format=list --data=bare --no-heading --columns=external_ids list logical-switch-port " + portName
+		framework.Logf("exec cmd %q", cmd)
+		output, err := exec.Command("bash", "-c", cmd).CombinedOutput()
 		framework.ExpectNoError(err)
-		framework.ExpectContainSubstring(string(output), subnetName)
+		framework.ExpectContainElement(strings.Fields(string(output)), "ls="+subnetName)
+	})
+
+	framework.ConformanceIt("should be able to handle vm restart when subnet changes after the vm is stopped", func() {
+		ginkgo.By("Getting pod of vm " + vmName)
+		labelSelector := fmt.Sprintf("%s=%s", v1.VirtualMachineNameLabel, vmName)
+		podList, err := podClient.List(context.TODO(), metav1.ListOptions{
+			LabelSelector: labelSelector,
+		})
+		framework.ExpectNoError(err)
+		framework.ExpectHaveLen(podList.Items, 1)
+
+		ginkgo.By("Validating pod annotations")
+		pod := &podList.Items[0]
+		framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
+		framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
+		framework.ExpectHaveKeyWithValue(pod.Annotations, util.VMAnnotation, vmName)
+		ips := pod.Status.PodIPs
+
+		ginkgo.By("Stopping vm " + vmName)
+		vmClient.StopSync(vmName)
+
+		ginkgo.By("Creating subnet " + subnetName)
+		cidr := framework.RandomCIDR(f.ClusterIPFamily)
+		subnet := framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, []string{namespaceName})
+		_ = subnetClient.CreateSync(subnet)
+
+		ginkgo.By("Starting vm " + vmName)
+		vmClient.StartSync(vmName)
+
+		ginkgo.By("Getting pod of vm " + vmName)
+		podList, err = podClient.List(context.TODO(), metav1.ListOptions{
+			LabelSelector: labelSelector,
+		})
+		framework.ExpectNoError(err)
+		framework.ExpectHaveLen(podList.Items, 1)
+
+		ginkgo.By("Validating new pod annotations")
+		pod = &podList.Items[0]
+		framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
+		framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
+		framework.ExpectHaveKeyWithValue(pod.Annotations, util.VMAnnotation, vmName)
+
+		ginkgo.By("Checking whether pod ips are changed")
+		framework.ExpectNotEqual(ips, pod.Status.PodIPs)
+
+		portName := ovs.PodNameToPortName(vmName, namespaceName, util.OvnProvider)
+		ginkgo.By("Checking external-ids of LSP " + portName)
+		cmd := "kubectl ko nbctl --format=list --data=bare --no-heading --columns=external_ids list logical-switch-port " + portName
+		framework.Logf("exec cmd %q", cmd)
+		output, err := exec.Command("bash", "-c", cmd).CombinedOutput()
+		framework.ExpectNoError(err)
+		framework.ExpectContainElement(strings.Fields(string(output)), "ls="+subnetName)
 	})
 
 	framework.ConformanceIt("restart vm should be able to change vm subnet after deleting the old ip", func() {
@@ -247,17 +291,9 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.VMAnnotation, vmName)
 		ginkgo.By("Stopping vm " + vmName)
 		vmClient.StopSync(vmName)
-		portName := ovs.PodNameToPortName(vmName, namespaceName, util.OvnProvider)
-
-		ginkgo.By("Checking old lsp ExternalIDs contains should contains default subnet " + util.DefaultSubnet)
-		conditions := fmt.Sprintf("name=%s", portName)
-		execCmd := "kubectl ko nbctl --format=list --data=bare --no-heading --columns=external_ids find logical-switch-port " + conditions
-		framework.Logf("exec cmd %s", execCmd)
-		output, err := exec.Command("bash", "-c", execCmd).CombinedOutput()
-		framework.ExpectNoError(err)
-		framework.ExpectContainSubstring(string(output), util.DefaultSubnet)
 
 		// make sure the vm ip is still exist
+		portName := ovs.PodNameToPortName(vmName, namespaceName, util.OvnProvider)
 		oldVMIP := ipClient.Get(portName)
 		framework.ExpectNotEmpty(oldVMIP.Spec.IPAddress)
 		ipClient.DeleteSync(portName)
@@ -293,12 +329,11 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 		ginkgo.By("Checking whether pod ips are changed")
 		framework.ExpectNotEqual(newVMIP.Spec.IPAddress, oldVMIP.Spec.IPAddress)
 
-		ginkgo.By("Checking new lsp ExternalIDs should contains new subnet " + subnetName)
-		conditions = fmt.Sprintf("name=%s", portName)
-		execCmd = "kubectl ko nbctl --format=list --data=bare --no-heading --columns=external_ids find logical-switch-port " + conditions
-		framework.Logf("exec cmd %s", execCmd)
-		output, err = exec.Command("bash", "-c", execCmd).CombinedOutput()
+		ginkgo.By("Checking external-ids of LSP " + portName)
+		cmd := "kubectl ko nbctl --format=list --data=bare --no-heading --columns=external_ids list logical-switch-port " + portName
+		framework.Logf("exec cmd %q", cmd)
+		output, err := exec.Command("bash", "-c", cmd).CombinedOutput()
 		framework.ExpectNoError(err)
-		framework.ExpectContainSubstring(string(output), subnetName)
+		framework.ExpectContainElement(strings.Fields(string(output)), "ls="+subnetName)
 	})
 })
