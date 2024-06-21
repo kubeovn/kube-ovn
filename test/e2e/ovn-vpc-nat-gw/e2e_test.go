@@ -309,8 +309,12 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 						port = &links[i]
 					} else if link.IfName == bridgeName {
 						bridge = &links[i]
-						ginkgo.By("get provider bridge v4 ip " + bridge.AddrInfo[0].Local)
-						*bridgeIps = append(*bridgeIps, bridge.AddrInfo[0].Local)
+						for _, addr := range bridge.NonLinkLocalAddresses() {
+							if util.CheckProtocol(addr) == kubeovnv1.ProtocolIPv4 {
+								ginkgo.By("get provider bridge v4 ip " + addr)
+								*bridgeIps = append(*bridgeIps, addr)
+							}
+						}
 					}
 					if port != nil && bridge != nil {
 						break
