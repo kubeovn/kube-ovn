@@ -10,7 +10,6 @@ import (
 	"github.com/onsi/ginkgo/v2"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	clientset "k8s.io/client-go/kubernetes"
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -21,18 +20,16 @@ import (
 var _ = framework.SerialDescribe("[group:pod]", func() {
 	f := framework.NewDefaultFramework("vpc-pod-probe")
 
-	var cs clientset.Interface
 	var podClient *framework.PodClient
 	var eventClient *framework.EventClient
 	var subnetClient *framework.SubnetClient
 	var vpcClient *framework.VpcClient
 	var namespaceName, subnetName, podName, vpcName string
 	var subnet *apiv1.Subnet
-	var cidr, image string
+	var cidr string
 	var extraSubnetNames []string
 
 	ginkgo.BeforeEach(func() {
-		cs = f.ClientSet
 		podClient = f.PodClient()
 		eventClient = f.EventClient()
 		subnetClient = f.SubnetClient()
@@ -41,9 +38,6 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 		podName = "pod-" + framework.RandomSuffix()
 		cidr = framework.RandomCIDR(f.ClusterIPFamily)
 		vpcClient = f.VpcClient()
-		if image == "" {
-			image = framework.GetKubeOvnImage(cs)
-		}
 
 		ginkgo.By("Creating subnet " + subnetName)
 		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, []string{namespaceName})

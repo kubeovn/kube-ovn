@@ -47,6 +47,7 @@ type Framework struct {
 	ClusterIPFamily string
 	// overlay/underlay/underlay-hairpin
 	ClusterNetworkMode string
+	KubeOVNImage       string
 }
 
 func NewDefaultFramework(baseName string) *Framework {
@@ -102,8 +103,9 @@ func (f *Framework) useContext() error {
 func NewFrameworkWithContext(baseName, kubeContext string) *Framework {
 	f := &Framework{KubeContext: kubeContext}
 	ginkgo.BeforeEach(f.BeforeEach)
-
 	f.Framework = framework.NewDefaultFramework(baseName)
+	ginkgo.BeforeEach(f.BeforeEach)
+
 	f.NamespacePodSecurityEnforceLevel = admissionapi.LevelPrivileged
 	f.NamespacePodSecurityWarnLevel = admissionapi.LevelPrivileged
 	f.ClusterIPFamily = os.Getenv("E2E_IP_FAMILY")
@@ -119,10 +121,6 @@ func NewFrameworkWithContext(baseName, kubeContext string) *Framework {
 	} else {
 		f.ClusterVersionMajor, f.ClusterVersionMinor = 999, 999
 	}
-
-	ginkgo.BeforeEach(func() {
-		framework.TestContext.Host = ""
-	})
 
 	return f
 }
@@ -183,6 +181,12 @@ func (f *Framework) BeforeEach() {
 		config.Burst = f.Options.ClientBurst
 		f.AttachNetClient, err = nad.NewForConfig(config)
 		ExpectNoError(err)
+	}
+
+	if f.KubeOVNImage == "" && f.ClientSet != nil {
+		framework.Logf("Getting Kube-OVN image")
+		f.KubeOVNImage = GetKubeOvnImage(f.ClientSet)
+		framework.Logf("Got Kube-OVN image: %s", f.KubeOVNImage)
 	}
 
 	framework.TestContext.Host = ""

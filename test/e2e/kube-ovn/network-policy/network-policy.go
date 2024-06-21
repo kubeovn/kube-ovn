@@ -34,7 +34,7 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 	var netpolClient *framework.NetworkPolicyClient
 	var daemonSetClient *framework.DaemonSetClient
 	var namespaceName, netpolName, subnetName, podName string
-	var cidr, image string
+	var cidr string
 
 	ginkgo.BeforeEach(func() {
 		cs = f.ClientSet
@@ -48,10 +48,6 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 		podName = "pod-" + framework.RandomSuffix()
 		subnetName = "subnet-" + framework.RandomSuffix()
 		cidr = framework.RandomCIDR(f.ClusterIPFamily)
-
-		if image == "" {
-			image = framework.GetKubeOvnImage(cs)
-		}
 	})
 	ginkgo.AfterEach(func() {
 		ginkgo.By("Deleting pod " + podName)
