@@ -640,6 +640,10 @@ func (c *Controller) syncSubnetCR() error {
 	}
 	for _, cachedSubnet := range subnets {
 		subnet := cachedSubnet.DeepCopy()
+		if !subnet.Status.IsReady() {
+			klog.Warningf("subnet %s is not ready", subnet.Name)
+			continue
+		}
 		if util.CheckProtocol(subnet.Spec.CIDRBlock) == kubeovnv1.ProtocolDual {
 			subnet, err = c.calcDualSubnetStatusIP(subnet)
 		} else {
