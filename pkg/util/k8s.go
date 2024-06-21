@@ -46,9 +46,19 @@ func GetNodeInternalIP(node v1.Node) (ipv4, ipv6 string) {
 }
 
 func ServiceClusterIPs(svc v1.Service) []string {
-	ips := svc.Spec.ClusterIPs
-	if len(ips) == 0 && svc.Spec.ClusterIP != v1.ClusterIPNone && svc.Spec.ClusterIP != "" {
-		ips = []string{svc.Spec.ClusterIP}
+	if len(svc.Spec.ClusterIPs) == 0 && svc.Spec.ClusterIP != v1.ClusterIPNone && svc.Spec.ClusterIP != "" {
+		return []string{svc.Spec.ClusterIP}
+	}
+
+	ips := make([]string, 0, len(svc.Spec.ClusterIPs))
+	for _, ip := range svc.Spec.ClusterIPs {
+		if net.ParseIP(ip) == nil {
+			if ip != "" && ip != v1.ClusterIPNone {
+				klog.Warningf("invalid cluster IP %q for service %s/%s", ip, svc.Namespace, svc.Name)
+			}
+			continue
+		}
+		ips = append(ips, ip)
 	}
 	return ips
 }
