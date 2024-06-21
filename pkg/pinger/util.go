@@ -274,4 +274,5 @@ func resetOvsInterfaceMetrics() {
 	interfaceStatTxDropped.Reset()
 	interfaceStatTxErrorsTotal.Reset()
 	interfaceStatCollisions.Reset()
+	interfaceStatRxMulticastPackets.Reset()
 }
