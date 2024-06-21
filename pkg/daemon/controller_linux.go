@@ -29,6 +29,7 @@ import (
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/util"
+	multustypes "gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/types"
 )
 
 // ControllerRuntime represents runtime specific controller members
@@ -605,12 +606,28 @@ func (c *Controller) handlePod(key string) error {
 	}
 
 	// set multus-nic bandwidth
-	attachNets, err := util.ParsePodNetworkAnnotation(pod.Annotations[util.AttachmentNetworkAnnotation], pod.Namespace)
-	if err != nil {
-		klog.Error(err)
-		return err
+	var multusNets []*multustypes.NetworkSelectionElement
+	defaultAttachNetworks := pod.Annotations[util.DefaultNetworkAnnotation]
+	if defaultAttachNetworks != "" {
+		attachments, err := util.ParsePodNetworkAnnotation(defaultAttachNetworks, pod.Namespace)
+		if err != nil {
+			klog.Error(err)
+			return err
+		}
+		multusNets = attachments
 	}
-	for _, multiNet := range attachNets {
+
+	attachNetworks := pod.Annotations[util.AttachmentNetworkAnnotation]
+	if attachNetworks != "" {
+		attachments, err := util.ParsePodNetworkAnnotation(attachNetworks, pod.Namespace)
+		if err != nil {
+			klog.Error(err)
+			return err
+		}
+		multusNets = append(multusNets, attachments...)
+	}
+
+	for _, multiNet := range multusNets {
 		provider := fmt.Sprintf("%s.%s.ovn", multiNet.Name, multiNet.Namespace)
 		if pod.Annotations[fmt.Sprintf(util.VmTemplate, provider)] != "" {
 			podName = pod.Annotations[fmt.Sprintf(util.VmTemplate, provider)]
