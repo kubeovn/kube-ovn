@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net"
 	"net/url"
-	"slices"
 	"strings"
 	"time"
 
@@ -64,7 +63,18 @@ func ServiceClusterIPs(svc v1.Service) []string {
 	if len(svc.Spec.ClusterIPs) == 0 && svc.Spec.ClusterIP != v1.ClusterIPNone && svc.Spec.ClusterIP != "" {
 		return []string{svc.Spec.ClusterIP}
 	}
-	return slices.Clone(svc.Spec.ClusterIPs)
+
+	ips := make([]string, 0, len(svc.Spec.ClusterIPs))
+	for _, ip := range svc.Spec.ClusterIPs {
+		if net.ParseIP(ip) == nil {
+			if ip != "" && ip != v1.ClusterIPNone {
+				klog.Warningf("invalid cluster IP %q for service %s/%s", ip, svc.Namespace, svc.Name)
+			}
+			continue
+		}
+		ips = append(ips, ip)
+	}
+	return ips
 }
 
 func LabelSelectorNotEquals(key, value string) (labels.Selector, error) {
