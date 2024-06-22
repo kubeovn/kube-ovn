@@ -47,19 +47,18 @@ func (c LegacyClient) GetTsSubnet(ts string) (string, error) {
 }
 
 func (c LegacyClient) GetTs() ([]string, error) {
-	cmd := []string{"--format=csv", "--data=bare", "--no-heading", "--columns=name", "find", "Transit_Switch"}
+	cmd := []string{"--format=csv", "--data=bare", "--no-heading", "--columns=name", "list", "Transit_Switch"}
 	output, err := c.ovnIcNbCommand(cmd...)
 	if err != nil {
-		klog.Errorf("failed to list logical switch port, %v", err)
+		klog.Errorf("failed to list transit switch: %v", err)
 		return nil, err
 	}
 	lines := strings.Split(output, "\n")
 	result := make([]string, 0, len(lines))
 	for _, l := range lines {
-		if len(strings.TrimSpace(l)) == 0 {
-			continue
+		if l = strings.TrimSpace(l); len(l) != 0 {
+			result = append(result, l)
 		}
-		result = append(result, strings.TrimSpace(l))
 	}
 	return result, nil
 }

@@ -378,8 +378,8 @@ kind-init-ovn-ic: kind-init-ovn-ic-ipv4
 
 .PHONY: kind-init-ovn-ic-%
 kind-init-ovn-ic-%: kind-clean-ovn-ic
-	@ha=true $(MAKE) kind-init-$*
-	@ovn_ic=true ip_family=$* $(MAKE) kind-generate-config
+	@n_worker=2 $(MAKE) kind-init-$*
+	@n_worker=3 ip_family=$* $(MAKE) kind-generate-config
 	$(call kind_create_cluster,yamls/kind.yaml,kube-ovn1,1)
 
 .PHONY: kind-init-cilium-chaining
@@ -548,14 +548,20 @@ kind-install-ovn-ic-ipv4:
 	kubectl config use-context kind-kube-ovn
 	sed 's/VERSION=.*/VERSION=$(VERSION)/' dist/images/install-ic-server.sh | bash
 
-	@set -e; \
-	ic_db_host=$$(kubectl get deployment ovn-ic-server -n kube-system -o jsonpath='{range .spec.template.spec.containers[0].env[?(@.name=="NODE_IPS")]}{.value}{end}'); \
-	ic_db_host=$${ic_db_host%?}; \
-	zone=az0 ic_db_host=$$ic_db_host gateway_node_name='kube-ovn-worker,kube-ovn-worker2,kube-ovn-control-plane' jinjanate yamls/ovn-ic.yaml.j2 -o ovn-ic-0.yaml; \
-	zone=az1 ic_db_host=$$ic_db_host gateway_node_name='kube-ovn1-worker,kube-ovn1-worker2,kube-ovn1-control-plane' jinjanate yamls/ovn-ic.yaml.j2 -o ovn-ic-1.yaml
-	kubectl apply -f ovn-ic-0.yaml
-	kubectl config use-context kind-kube-ovn1
-	kubectl apply -f ovn-ic-1.yaml
+	@$(MAKE) kind-config-ovn-ic
+
+define kind_config_ovn_ic
+	kubectl config use-context kind-$(1)
+	$(eval IC_GATEWAY_NODES=$(shell kind get nodes -n $(1) | sort -r | head -n3 | tr '\n' ',' | sed 's/,$$//'))
+	ic_db_host=$(2) zone=$(3) gateway_nodes=$(IC_GATEWAY_NODES) jinjanate yamls/ovn-ic-config.yaml.j2 -o ovn-ic-config.yaml
+	kubectl apply -f ovn-ic-config.yaml
+endef
+
+.PHONY: kind-config-ovn-ic
+kind-config-ovn-ic:
+	$(eval IC_DB_IPS=$(shell kubectl config use-context kind-kube-ovn >/dev/null && kubectl get deploy/ovn-ic-server -n kube-system -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="NODE_IPS")].value}'))
+	$(call kind_config_ovn_ic,kube-ovn,$(IC_DB_IPS),az0)
+	$(call kind_config_ovn_ic,kube-ovn1,$(IC_DB_IPS),az1)
 
 .PHONY: kind-install-ovn-ic-ipv6
 kind-install-ovn-ic-ipv6:
@@ -574,14 +580,7 @@ kind-install-ovn-ic-ipv6:
 	kubectl config use-context kind-kube-ovn
 	sed 's/VERSION=.*/VERSION=$(VERSION)/' dist/images/install-ic-server.sh | bash
 
-	@set -e; \
-	ic_db_host=$$(kubectl get deployment ovn-ic-server -n kube-system -o jsonpath='{range .spec.template.spec.containers[0].env[?(@.name=="NODE_IPS")]}{.value}{end}'); \
-	ic_db_host=$${ic_db_host%?}; \
-	zone=az0 ic_db_host=$$ic_db_host gateway_node_name='kube-ovn-worker,kube-ovn-worker2,kube-ovn-control-plane' jinjanate yamls/ovn-ic.yaml.j2 -o ovn-ic-0.yaml; \
-	zone=az1 ic_db_host=$$ic_db_host gateway_node_name='kube-ovn1-worker,kube-ovn1-worker2,kube-ovn1-control-plane' jinjanate yamls/ovn-ic.yaml.j2 -o ovn-ic-1.yaml
-	kubectl apply -f ovn-ic-0.yaml
-	kubectl config use-context kind-kube-ovn1
-	kubectl apply -f ovn-ic-1.yaml
+	@$(MAKE) kind-config-ovn-ic
 
 .PHONY: kind-install-ovn-ic-dual
 kind-install-ovn-ic-dual:
@@ -603,14 +602,7 @@ kind-install-ovn-ic-dual:
 	kubectl config use-context kind-kube-ovn
 	sed 's/VERSION=.*/VERSION=$(VERSION)/' dist/images/install-ic-server.sh | bash
 
-	@set -e; \
-	ic_db_host=$$(kubectl get deployment ovn-ic-server -n kube-system -o jsonpath='{range .spec.template.spec.containers[0].env[?(@.name=="NODE_IPS")]}{.value}{end}'); \
-	ic_db_host=$${ic_db_host%?}; \
-	zone=az0 ic_db_host=$$ic_db_host gateway_node_name='kube-ovn-worker,kube-ovn-worker2,kube-ovn-control-plane' jinjanate yamls/ovn-ic.yaml.j2 -o ovn-ic-0.yaml; \
-	zone=az1 ic_db_host=$$ic_db_host gateway_node_name='kube-ovn1-worker,kube-ovn1-worker2,kube-ovn1-control-plane' jinjanate yamls/ovn-ic.yaml.j2 -o ovn-ic-1.yaml
-	kubectl apply -f ovn-ic-0.yaml
-	kubectl config use-context kind-kube-ovn1
-	kubectl apply -f ovn-ic-1.yaml
+	@$(MAKE) kind-config-ovn-ic
 
 .PHONY: kind-install-ovn-submariner
 kind-install-ovn-submariner: kind-install
@@ -1020,7 +1012,7 @@ clean:
 	$(RM) yamls/kind.yaml
 	$(RM) yamls/clab-bgp.yaml yamls/clab-bgp-ha.yaml
 	$(RM) ovn.yaml kube-ovn.yaml kube-ovn-crd.yaml
-	$(RM) ovn-ic-0.yaml ovn-ic-1.yaml
+	$(RM) ovn-ic-config.yaml ovn-ic-0.yaml ovn-ic-1.yaml
 	$(RM) kwok-node.yaml metallb-cr.yaml
 	$(RM) cacert.pem ovn-req.pem ovn-cert.pem ovn-privkey.pem
 	$(RM) kube-ovn.tar kube-ovn-dpdk.tar vpc-nat-gateway.tar image-amd64.tar image-amd64-dpdk.tar image-arm64.tar

@@ -38,16 +38,16 @@ const (
 
 func (c *Controller) disableOVNIC(azName string) error {
 	if err := c.removeInterConnection(azName); err != nil {
-		klog.Errorf("failed to remove ovn-ic, %v", err)
+		klog.Errorf("failed to remove ovn-ic: %v", err)
 		return err
 	}
 	if err := c.delLearnedRoute(); err != nil {
-		klog.Errorf("failed to remove learned static routes, %v", err)
+		klog.Errorf("failed to remove learned static routes: %v", err)
 		return err
 	}
 
 	if err := c.RemoveOldChassisInSbDB(azName); err != nil {
-		klog.Errorf("failed to remove remote chassis: %v", err)
+		klog.Errorf("failed to remove remote chassis for az %q: %v", azName, err)
 		return err
 	}
 	return nil
@@ -282,12 +282,12 @@ func (c *Controller) removeInterConnection(azName string) error {
 
 func (c *Controller) establishInterConnection(config map[string]string) error {
 	if err := c.OVNNbClient.SetAzName(config["az-name"]); err != nil {
-		klog.Errorf("failed to set az name. %v", err)
+		klog.Errorf("failed to set az name: %v", err)
 		return err
 	}
 
 	if err := c.startOVNIC(config["ic-db-host"], config["ic-nb-port"], config["ic-sb-port"]); err != nil {
-		klog.Errorf("failed to start ovn-ic, %v", err)
+		klog.Errorf("failed to start ovn-ic: %v", err)
 		return err
 	}
 
@@ -299,26 +299,26 @@ func (c *Controller) establishInterConnection(config map[string]string) error {
 
 	sort.Strings(tsNames)
 
-	gwNodes := strings.Split(config["gw-nodes"], ",")
+	gwNodes := strings.Split(strings.Trim(config["gw-nodes"], ","), ",")
 	chassises := make([]string, len(gwNodes))
 
 	for i, tsName := range tsNames {
-		gwNodesOrdered := generateNewOrdergwNodes(gwNodes, i)
+		gwNodesOrdered := generateNewOrderGwNodes(gwNodes, i)
 		for j, gw := range gwNodesOrdered {
 			gw = strings.TrimSpace(gw)
 			chassis, err := c.OVNSbClient.GetChassisByHost(gw)
 			if err != nil {
-				klog.Errorf("failed to get gw %s chassis: %v", gw, err)
+				klog.Errorf("failed to get gw %q chassis: %v", gw, err)
 				return err
 			}
 			if chassis.Name == "" {
-				return fmt.Errorf("no chassis for gw %s", gw)
+				return fmt.Errorf("no chassis for gw %q", gw)
 			}
 			chassises[j] = chassis.Name
 
 			cachedNode, err := c.nodesLister.Get(gw)
 			if err != nil {
-				klog.Errorf("failed to get gw node %s, %v", gw, err)
+				klog.Errorf("failed to get gw node %q: %v", gw, err)
 				return err
 			}
 			node := cachedNode.DeepCopy()
@@ -336,7 +336,7 @@ func (c *Controller) establishInterConnection(config map[string]string) error {
 				raw, _ := json.Marshal(node.Labels)
 				patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
 				if _, err = c.config.KubeClient.CoreV1().Nodes().Patch(context.Background(), gw, types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{}, ""); err != nil {
-					klog.Errorf("patch gw node %s failed %v", gw, err)
+					klog.Errorf("failed to patch gw node %q: %v", gw, err)
 					return err
 				}
 			}
@@ -345,7 +345,7 @@ func (c *Controller) establishInterConnection(config map[string]string) error {
 		tsPort := fmt.Sprintf("%s-%s", tsName, config["az-name"])
 		exist, err := c.OVNNbClient.LogicalSwitchPortExists(tsPort)
 		if err != nil {
-			klog.Errorf("failed to list logical switch ports, %v", err)
+			klog.Errorf("failed to check logical switch port %q: %v", tsPort, err)
 			return err
 		}
 		if exist {
@@ -355,7 +355,7 @@ func (c *Controller) establishInterConnection(config map[string]string) error {
 
 		lrpAddr, err := c.acquireLrpAddress(tsName)
 		if err != nil {
-			klog.Errorf("failed to acquire lrp address, %v", err)
+			klog.Errorf("failed to acquire lrp address for ts %q: %v", tsName, err)
 			return err
 		}
 
@@ -377,7 +377,7 @@ func (c *Controller) acquireLrpAddress(ts string) (string, error) {
 	}
 	existAddress, err := c.listRemoteLogicalSwitchPortAddress()
 	if err != nil {
-		klog.Errorf("failed to list remote port address, %v", err)
+		klog.Errorf("failed to list remote port address: %v", err)
 		return "", err
 	}
 
@@ -388,7 +388,6 @@ func (c *Controller) acquireLrpAddress(ts string) (string, error) {
 		if v4Cidr != "" {
 			ips = append(ips, util.GenerateRandomV4IP(v4Cidr))
 		}
-
 		if v6Cidr != "" {
 			ips = append(ips, util.GenerateRandomV6IP(v6Cidr))
 		}
@@ -398,7 +397,7 @@ func (c *Controller) acquireLrpAddress(ts string) (string, error) {
 			return random, nil
 		}
 		klog.Infof("random ip %s already exists", random)
-		time.Sleep(1 * time.Second)
+		time.Sleep(time.Second)
 	}
 }
 
@@ -506,7 +505,7 @@ func (c *Controller) deleteStaticRouteFromVpc(name, table, cidr, nextHop string,
 }
 
 func genHostAddress(host, port string) (hostAddress string) {
-	hostList := strings.Split(host, ",")
+	hostList := strings.Split(strings.Trim(host, ","), ",")
 	if len(hostList) == 1 {
 		hostAddress = fmt.Sprintf("tcp:[%s]:%s", hostList[0], port)
 	} else {
@@ -685,7 +684,7 @@ func (c *Controller) listRemoteLogicalSwitchPortAddress() (*strset.Set, error) {
 	return existAddress, nil
 }
 
-func generateNewOrdergwNodes(arr []string, order int) []string {
+func generateNewOrderGwNodes(arr []string, order int) []string {
 	if order >= len(arr) {
 		order %= len(arr)
 	}
