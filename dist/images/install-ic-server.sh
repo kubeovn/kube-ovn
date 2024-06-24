@@ -5,7 +5,7 @@ REGISTRY="kubeovn"
 VERSION="v1.13.0"
 TS_NUM=${TS_NUM:-3}
 IMAGE_PULL_POLICY="IfNotPresent"
-addresses=$(kubectl get no -lkube-ovn/role=master --no-headers -o wide | awk '{print $6}' | tr \\n ',')
+addresses=$(kubectl get no -lkube-ovn/role=master --no-headers -o wide | awk '{print $6}' | tr \\n ',' | sed 's/,$//')
 count=$(kubectl get no -lkube-ovn/role=master --no-headers | wc -l)
 OVN_LEADER_PROBE_INTERVAL=${OVN_LEADER_PROBE_INTERVAL:-5}
 
