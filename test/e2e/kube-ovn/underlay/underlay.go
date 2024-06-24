@@ -79,6 +79,8 @@ func waitSubnetU2OStatus(subnetName string, subnetClient *framework.SubnetClient
 				return true, nil
 			}
 			ginkgo.By("Keep waiting for U2O to be true: current enable U2O subnet status: U2OInterconnectionIP = " + subnet.Status.U2OInterconnectionIP + ", U2OInterconnectionVPC = " + subnet.Status.U2OInterconnectionVPC)
+		} else if subnet.Status.U2OInterconnectionIP == "" && subnet.Status.U2OInterconnectionVPC == "" {
+			return true, nil
 		}
 		return false, nil
 	}, "")
