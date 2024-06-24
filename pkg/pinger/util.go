@@ -230,7 +230,7 @@ func (e *Exporter) setOvsInterfaceStatisticsMetric(intf *ovsdb.OvsInterface) {
 		case "rx_multicast_packets":
 			interfaceStatRxMulticastPackets.WithLabelValues(e.Client.System.Hostname, intf.Name).Set(float64(value))
 		default:
-			klog.Warningf("unknown statistics %s with value %d on OVS interface %s", key, value, intf.Name)
+			klog.V(3).Infof("unknown statistics %s with value %d on OVS interface %s", key, value, intf.Name)
 		}
 	}
 }
