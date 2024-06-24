@@ -1,4 +1,3 @@
-build.sh
 install.sh
 install-cilium-cli.sh
 ovn-ic-db-docker.sh
