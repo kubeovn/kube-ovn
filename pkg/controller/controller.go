@@ -54,8 +54,6 @@ type Controller struct {
 	ipam         *ovnipam.IPAM
 	namedPort    *NamedPort
 
-	ovnLegacyClient *ovs.LegacyClient
-
 	OVNNbClient ovs.NbClient
 	OVNSbClient ovs.SbClient
 
@@ -304,7 +302,6 @@ func Run(ctx context.Context, config *Configuration) {
 		podSubnetMap:       &sync.Map{},
 		deletingPodObjMap:  &sync.Map{},
 		deletingNodeObjMap: &sync.Map{},
-		ovnLegacyClient:    ovs.NewLegacyClient(config.OvnTimeout),
 		ipam:               ovnipam.NewIPAM(),
 		namedPort:          NewNamedPort(),
 

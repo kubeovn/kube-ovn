@@ -2,7 +2,6 @@
 set -eo pipefail
 
 LOCAL_IP=${LOCAL_IP:-$POD_IP}
-TS_NUM=${TS_NUM:-ts}
 ENABLE_BIND_LOCAL_IP=${ENABLE_BIND_LOCAL_IP:-true}
 ENABLE_OVN_LEADER_CHECK=${ENABLE_OVN_LEADER_CHECK:-true}
 
@@ -86,7 +85,10 @@ function ovn_db_pre_start() {
     cp "$db_file" "$db_bak" || return 1
 
     echo "detected database corruption for file $db_file, try to fix it."
-    ovsdb-tool fix-cluster "$db_file" && return
+    if ovsdb-tool fix-cluster "$db_file"; then
+        echo "checking whether database file $db_file has been fixed."
+        ovsdb-tool check-cluster "$db_file" && return
+    fi
 
     echo "failed to fix database file $db_file, rebuild it."
     local sid=$(ovsdb-tool db-sid "$db_file")
