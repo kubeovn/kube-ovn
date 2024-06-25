@@ -42,24 +42,32 @@ func getOvsPodOnNode(f *framework.Framework, node string) *corev1.Pod {
 func checkNatOutgoingRoutes(f *framework.Framework, ns, pod string, gateways []string) {
 	ginkgo.GinkgoHelper()
 
-	gwIPv4, gwIPv6 := util.SplitIpsByProtocol(gateways)
+	afs := make([]int, 0, 2)
+	dst := make([]string, 0, 2)
 	if f.HasIPv4() {
-		ginkgo.By("Checking IPv4 routes of NAT outgoing")
-		output := e2epodoutput.RunHostCmdOrDie(ns, pod, "traceroute -4 -n -f2 -m2 1.1.1.1")
-		// traceroute to 1.1.1.1 (1.1.1.1), 2 hops max, 60 byte packets
-		// 2  172.19.0.2  0.663 ms  0.613 ms  0.605 ms
-		lines := strings.Split(strings.TrimSpace(output), "\n")
-		fields := strings.Fields(lines[len(lines)-1])
-		framework.ExpectTrue(len(fields) > 2, "traceroute output should have at least 3 fields, but got %v", len(fields))
-		framework.ExpectContainElement(gwIPv4, fields[1], "the node gateway should be within %v, but got %s", gwIPv4, fields[1])
+		afs = append(afs, 4)
+		dst = append(dst, "1.1.1.1")
 	}
 	if f.HasIPv6() {
-		ginkgo.By("Checking IPv6 routes of NAT outgoing")
-		output := e2epodoutput.RunHostCmdOrDie(ns, pod, "traceroute -6 -n -f2 -m2 2606:4700:4700::1111")
-		lines := strings.Split(strings.TrimSpace(output), "\n")
-		fields := strings.Fields(lines[len(lines)-1])
-		framework.ExpectTrue(len(fields) > 2, "traceroute output should have at least 3 fields, but got %v", len(fields))
-		framework.ExpectContainElement(gwIPv6, fields[1], "the node gateway should be within %v, but got %s", gwIPv6, fields[1])
+		afs = append(afs, 6)
+		dst = append(dst, "2606:4700:4700::1111")
+	}
+
+	for i, af := range afs {
+		ginkgo.By(fmt.Sprintf("Checking IPv%d NAT outgoing routes of %s/%s", af, ns, pod))
+		cmd := fmt.Sprintf("traceroute -%d -n -f2 -m2 %s", af, dst[i])
+		framework.WaitUntil(3*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+			// traceroute to 1.1.1.1 (1.1.1.1), 2 hops max, 60 byte packets
+			// 2  172.19.0.2  0.663 ms  0.613 ms  0.605 ms
+			output, err := e2epodoutput.RunHostCmd(ns, pod, cmd)
+			if err != nil {
+				return false, nil
+			}
+
+			lines := strings.Split(strings.TrimSpace(output), "\n")
+			fields := strings.Fields(lines[len(lines)-1])
+			return len(fields) > 2 && slices.Contains(gateways, fields[1]), nil
+		}, "")
 	}
 }
 
