@@ -79,7 +79,7 @@ var _ = framework.OrderedDescribe("[group:node]", func() {
 			framework.ExpectHaveKeyWithValue(node.Annotations, util.PortNameAnnotation, util.NodeLspName(node.Name))
 
 			podName = "pod-" + framework.RandomSuffix()
-			ginkgo.By("Creating pod " + podName + " with host network")
+			ginkgo.By("Creating pod " + podName + " with host network on node " + node.Name)
 			cmd := []string{"sh", "-c", "sleep infinity"}
 			pod := framework.MakePod(namespaceName, podName, nil, nil, f.KubeOVNImage, cmd, nil)
 			pod.Spec.NodeName = node.Name
@@ -92,9 +92,9 @@ var _ = framework.OrderedDescribe("[group:node]", func() {
 			})
 			framework.ExpectNoError(err)
 			framework.ExpectHaveLen(links, 1)
-			framework.Logf(util.GetIPAddrWithMask(node.Annotations[util.IPAddressAnnotation], join.Spec.CIDRBlock))
 			ipCIDRs, err := util.GetIPAddrWithMask(node.Annotations[util.IPAddressAnnotation], join.Spec.CIDRBlock)
 			framework.ExpectNoError(err)
+			framework.Logf("node %q join ip address with prefix: %q", node.Name, ipCIDRs)
 			ips := strings.Split(ipCIDRs, ",")
 			framework.ExpectConsistOf(links[0].NonLinkLocalAddresses(), ips)
 
