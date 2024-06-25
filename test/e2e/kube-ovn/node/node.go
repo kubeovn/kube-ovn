@@ -131,7 +131,7 @@ var _ = framework.OrderedDescribe("[group:node]", func() {
 			ip := podIP.IP
 			protocol := strings.ToLower(util.CheckProtocol(ip))
 			ginkgo.By("Checking connection from " + hostPodName + " to " + podName + " via " + protocol)
-			cmd := fmt.Sprintf("curl -q -s --connect-timeout 5 %s/clientip", net.JoinHostPort(ip, port))
+			cmd := fmt.Sprintf("curl -q -s --connect-timeout 2 --max-time 2 %s/clientip", net.JoinHostPort(ip, port))
 			ginkgo.By(fmt.Sprintf(`Executing %q in pod %s/%s`, cmd, namespaceName, hostPodName))
 			output := e2epodoutput.RunHostCmdOrDie(namespaceName, hostPodName, cmd)
 			client, _, err := net.SplitHostPort(strings.TrimSpace(output))
@@ -182,7 +182,7 @@ var _ = framework.OrderedDescribe("[group:node]", func() {
 		for _, ip := range util.ServiceClusterIPs(*service) {
 			protocol := strings.ToLower(util.CheckProtocol(ip))
 			ginkgo.By("Checking connection from " + hostPodName + " to " + serviceName + " via " + protocol)
-			cmd := fmt.Sprintf("curl -q -s --connect-timeout 5 %s/clientip", net.JoinHostPort(ip, portStr))
+			cmd := fmt.Sprintf("curl -q -s --connect-timeout 2 --max-time 2 %s/clientip", net.JoinHostPort(ip, portStr))
 			ginkgo.By(fmt.Sprintf(`Executing %q in pod %s/%s`, cmd, namespaceName, hostPodName))
 			output := e2epodoutput.RunHostCmdOrDie(namespaceName, hostPodName, cmd)
 			client, _, err := net.SplitHostPort(strings.TrimSpace(output))

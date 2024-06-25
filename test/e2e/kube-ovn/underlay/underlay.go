@@ -968,7 +968,7 @@ func checkReachable(podName, podNamespace, sourceIP, targetIP, targetPort string
 	ginkgo.GinkgoHelper()
 
 	ginkgo.By("checking curl reachable")
-	cmd := fmt.Sprintf("curl -q -s --connect-timeout 5 %s/clientip", net.JoinHostPort(targetIP, targetPort))
+	cmd := fmt.Sprintf("curl -q -s --connect-timeout 2 --max-time 2 %s/clientip", net.JoinHostPort(targetIP, targetPort))
 	output, err := e2epodoutput.RunHostCmd(podNamespace, podName, cmd)
 	if expectReachable {
 		framework.ExpectNoError(err)

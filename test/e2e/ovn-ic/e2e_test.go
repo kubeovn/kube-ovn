@@ -133,7 +133,7 @@ var _ = framework.OrderedDescribe("[group:ovn-ic]", func() {
 					ip := podIP.IP
 					protocol := strings.ToLower(util.CheckProtocol(ip))
 					ginkgo.By("Checking connection from cluster " + clusters[i] + " to cluster " + clusters[j] + " via " + protocol)
-					cmd := fmt.Sprintf("curl -q -s --connect-timeout 5 %s/clientip", net.JoinHostPort(ip, ports[j]))
+					cmd := fmt.Sprintf("curl -q -s --connect-timeout 2 --max-time 2 %s/clientip", net.JoinHostPort(ip, ports[j]))
 					output := execPodOrDie(frameworks[i].KubeContext, pods[i].Namespace, pods[i].Name, cmd)
 					client, _, err := net.SplitHostPort(strings.TrimSpace(output))
 					framework.ExpectNoError(err)
