@@ -28,6 +28,7 @@ import (
 	kubeovnlister "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/util"
+	multustypes "gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/types"
 )
 
 // Controller watch pod and namespace changes to update iptables, ipset and ovs qos
@@ -486,11 +487,26 @@ func (c *Controller) enqueuePod(old, new interface{}) {
 		c.podQueue.Add(key)
 	}
 
-	attachNets, err := util.ParsePodNetworkAnnotation(newPod.Annotations[util.AttachmentNetworkAnnotation], newPod.Namespace)
-	if err != nil {
-		return
+	var multusNets []*multustypes.NetworkSelectionElement
+	defaultAttachNetworks := newPod.Annotations[util.DefaultNetworkAnnotation]
+	if defaultAttachNetworks != "" {
+		attachments, err := util.ParsePodNetworkAnnotation(defaultAttachNetworks, newPod.Namespace)
+		if err != nil {
+			return
+		}
+		multusNets = attachments
 	}
-	for _, multiNet := range attachNets {
+
+	attachNetworks := newPod.Annotations[util.AttachmentNetworkAnnotation]
+	if attachNetworks != "" {
+		attachments, err := util.ParsePodNetworkAnnotation(attachNetworks, newPod.Namespace)
+		if err != nil {
+			return
+		}
+		multusNets = append(multusNets, attachments...)
+	}
+
+	for _, multiNet := range multusNets {
 		provider := fmt.Sprintf("%s.%s.ovn", multiNet.Name, multiNet.Namespace)
 		if newPod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, provider)] == "true" {
 			if oldPod.Annotations[fmt.Sprintf(util.IngressRateAnnotationTemplate, provider)] != newPod.Annotations[fmt.Sprintf(util.IngressRateAnnotationTemplate, provider)] ||
