@@ -269,8 +269,8 @@ func checkECMPCount(expectCount int) {
 		ginkgo.By("Checking logical router route count")
 		for i := 0; i < maxRetryTimes; i++ {
 			time.Sleep(3 * time.Second)
-			execCmd := "kubectl ko nbctl lr-route-list ovn-cluster "
-			output, err := exec.Command("bash", "-c", execCmd).CombinedOutput()
+			cmd := "ovn-nbctl lr-route-list " + util.DefaultVpc
+			output, _, err := framework.NBExec(cmd)
 			framework.ExpectNoError(err)
 			ecmpCount = strings.Count(string(output), "ecmp")
 			if ecmpCount == expectCount {

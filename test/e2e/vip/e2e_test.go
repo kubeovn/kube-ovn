@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"os/exec"
 	"sort"
 	"strings"
 	"testing"
@@ -91,16 +90,16 @@ func testVipWithSG(ip, namespaceName, allowPod, denyPod, aapPod, securityGroupNa
 
 	ginkgo.By("Checking ovn address_set and lsp port_security")
 	// address_set should have allow address pair ip
-	execCmd := "kubectl ko nbctl --format=list --data=bare --no-heading --columns=addresses find address_set " + conditions
-	output, err := exec.Command("bash", "-c", execCmd).CombinedOutput()
-	addressSet := strings.Split(strings.ReplaceAll(string(output), "\n", ""), " ")
+	cmd := "ovn-nbctl --format=list --data=bare --no-heading --columns=addresses find Address_Set " + conditions
+	output, _, err := framework.NBExec(cmd)
 	framework.ExpectNoError(err)
+	addressSet := strings.Split(strings.ReplaceAll(string(output), "\n", ""), " ")
 	framework.ExpectContainElement(addressSet, ip)
 	// port_security should have allow address pair IP
-	execCmd = fmt.Sprintf("kubectl ko nbctl --format=list --data=bare --no-heading --columns=port_security find logical-switch-port name=%s.%s", aapPod, namespaceName)
-	output, err = exec.Command("bash", "-c", execCmd).CombinedOutput()
-	portSecurity := strings.Split(strings.ReplaceAll(string(output), "\n", ""), " ")
+	cmd = fmt.Sprintf("ovn-nbctl --format=list --data=bare --no-heading --columns=port_security list Logical_Switch_Port %s.%s", aapPod, namespaceName)
+	output, _, err = framework.NBExec(cmd)
 	framework.ExpectNoError(err)
+	portSecurity := strings.Split(strings.ReplaceAll(string(output), "\n", ""), " ")
 	framework.ExpectContainElement(portSecurity, ip)
 	// TODO: Checking allow address pair connectivity with security group
 	// AAP does not work fine with security group in kind test env for now
@@ -250,10 +249,9 @@ var _ = framework.Describe("[group:vip]", func() {
 		aapPod2 := framework.MakePrivilegedPod(namespaceName, aapPodName2, nil, annotations, f.KubeOVNImage, cmd, nil)
 		_ = podClient.CreateSync(aapPod2)
 		// logical switch port with type virtual should be created
-		conditions := fmt.Sprintf("type=virtual name=%s options:virtual-ip=\\\"%s\\\" ", vip1Name, virtualIP1)
-		execCmd := "kubectl ko nbctl --format=list --data=bare --no-heading --columns=options find logical-switch-port " + conditions
-		framework.Logf("exec cmd %s", execCmd)
-		output, err := exec.Command("bash", "-c", execCmd).CombinedOutput()
+		conditions := fmt.Sprintf("type=virtual name=%s options:virtual-ip=%q", vip1Name, virtualIP1)
+		nbctlCmd := "ovn-nbctl --format=list --data=bare --no-heading --columns=options find logical-switch-port " + conditions
+		output, _, err := framework.NBExec(nbctlCmd)
 		framework.ExpectNoError(err)
 		framework.ExpectNotEmpty(strings.TrimSpace(string(output)))
 		// virtual parents should be set correctlly

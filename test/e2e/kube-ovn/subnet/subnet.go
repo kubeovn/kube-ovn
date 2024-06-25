@@ -533,8 +533,8 @@ var _ = framework.Describe("[group:subnet]", func() {
 		subnet = subnetClient.PatchSync(subnet, modifiedSubnet)
 
 		ginkgo.By("Validating active gateway")
-		execCmd := "kubectl ko nbctl --format=csv --data=bare --no-heading --columns=nexthops find logical-router-policy " + fmt.Sprintf("external_ids:subnet=%s", subnetName)
-		output, err := exec.Command("bash", "-c", execCmd).CombinedOutput()
+		nbctlCmd := fmt.Sprintf("ovn-nbctl --format=csv --data=bare --no-heading --columns=nexthops find logical-router-policy external_ids:subnet=%s", subnetName)
+		output, _, err := framework.NBExec(nbctlCmd)
 		framework.ExpectNoError(err)
 
 		lines := strings.Split(string(output), "\n")
@@ -1037,8 +1037,8 @@ var _ = framework.Describe("[group:subnet]", func() {
 		f.ValidateFinalizers(subnet)
 
 		ginkgo.By("Validating subnet load-balancer records exist")
-		execCmd := "kubectl ko nbctl --format=csv --data=bare --no-heading --columns=load_balancer find logical-switch " + fmt.Sprintf("name=%s", subnetName)
-		output, err := exec.Command("bash", "-c", execCmd).CombinedOutput()
+		cmd := "ovn-nbctl --format=csv --data=bare --no-heading --columns=load_balancer list Logical_Switch " + subnetName
+		output, _, err := framework.NBExec(cmd)
 		framework.ExpectNoError(err)
 		framework.ExpectNotEmpty(strings.TrimSpace(string(output)))
 
@@ -1048,9 +1048,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		modifiedSubnet.Spec.EnableLb = &enableLb
 		subnet = subnetClient.PatchSync(subnet, modifiedSubnet)
 		framework.WaitUntil(2*time.Second, time.Minute, func(_ context.Context) (bool, error) {
-			execCmd = "kubectl ko nbctl --format=csv --data=bare --no-heading --columns=load_balancer find logical-switch " + fmt.Sprintf("name=%s", subnetName)
-			output, err = exec.Command("bash", "-c", execCmd).CombinedOutput()
-			if err != nil {
+			if output, _, err = framework.NBExec(cmd); err != nil {
 				return false, err
 			}
 			if strings.TrimSpace(string(output)) == "" {
@@ -1064,9 +1062,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		modifiedSubnet.Spec.EnableLb = nil
 		subnet = subnetClient.PatchSync(subnet, modifiedSubnet)
 		framework.WaitUntil(2*time.Second, time.Minute, func(_ context.Context) (bool, error) {
-			execCmd = "kubectl ko nbctl --format=csv --data=bare --no-heading --columns=load_balancer find logical-switch " + fmt.Sprintf("name=%s", subnetName)
-			output, err = exec.Command("bash", "-c", execCmd).CombinedOutput()
-			if err != nil {
+			if output, _, err = framework.NBExec(cmd); err != nil {
 				return false, err
 			}
 			if strings.TrimSpace(string(output)) != "" {
