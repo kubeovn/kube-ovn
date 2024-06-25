@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"os/exec"
 	"strings"
 	"testing"
 	"time"
@@ -212,9 +211,8 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 		framework.ExpectNotEqual(ips, pod.Status.PodIPs)
 
 		ginkgo.By("Checking external-ids of LSP " + portName)
-		cmd := "kubectl ko nbctl --format=list --data=bare --no-heading --columns=external_ids list logical-switch-port " + portName
-		framework.Logf("exec cmd %q", cmd)
-		output, err := exec.Command("bash", "-c", cmd).CombinedOutput()
+		cmd := "ovn-nbctl --format=list --data=bare --no-heading --columns=external_ids list Logical_Switch_Port " + portName
+		output, _, err := framework.NBExec(cmd)
 		framework.ExpectNoError(err)
 		framework.ExpectContainElement(strings.Fields(string(output)), "ls="+subnetName)
 	})
@@ -264,9 +262,8 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 
 		portName := ovs.PodNameToPortName(vmName, namespaceName, util.OvnProvider)
 		ginkgo.By("Checking external-ids of LSP " + portName)
-		cmd := "kubectl ko nbctl --format=list --data=bare --no-heading --columns=external_ids list logical-switch-port " + portName
-		framework.Logf("exec cmd %q", cmd)
-		output, err := exec.Command("bash", "-c", cmd).CombinedOutput()
+		cmd := "ovn-nbctl --format=list --data=bare --no-heading --columns=external_ids list Logical_Switch_Port " + portName
+		output, _, err := framework.NBExec(cmd)
 		framework.ExpectNoError(err)
 		framework.ExpectContainElement(strings.Fields(string(output)), "ls="+subnetName)
 	})
@@ -330,9 +327,8 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 		framework.ExpectNotEqual(newVMIP.Spec.IPAddress, oldVMIP.Spec.IPAddress)
 
 		ginkgo.By("Checking external-ids of LSP " + portName)
-		cmd := "kubectl ko nbctl --format=list --data=bare --no-heading --columns=external_ids list logical-switch-port " + portName
-		framework.Logf("exec cmd %q", cmd)
-		output, err := exec.Command("bash", "-c", cmd).CombinedOutput()
+		cmd := "ovn-nbctl --format=list --data=bare --no-heading --columns=external_ids list Logical_Switch_Port " + portName
+		output, _, err := framework.NBExec(cmd)
 		framework.ExpectNoError(err)
 		framework.ExpectContainElement(strings.Fields(string(output)), "ls="+subnetName)
 	})

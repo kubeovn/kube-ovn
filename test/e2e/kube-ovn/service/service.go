@@ -1,10 +1,10 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"math/rand/v2"
-	"os/exec"
 	"strconv"
 	"strings"
 	"time"
@@ -150,12 +150,16 @@ var _ = framework.Describe("[group:service]", func() {
 		checkContainsClusterIP := func(v6ClusterIP string, isContain bool) {
 			ginkgo.GinkgoHelper()
 
-			execCmd := "kubectl ko nbctl --format=csv --data=bare --no-heading --columns=vips find Load_Balancer name=cluster-tcp-loadbalancer"
+			cmd := "ovn-nbctl --format=csv --data=bare --no-heading --columns=vips list Load_Balancer cluster-tcp-loadbalancer"
 			framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
-				output, err := exec.Command("bash", "-c", execCmd).CombinedOutput()
+				output, _, err := framework.NBExec(cmd)
 				framework.ExpectNoError(err)
-				framework.Logf("output is %q", output)
-				framework.Logf("v6ClusterIP is %q", v6ClusterIP)
+				output = bytes.TrimSpace(output)
+				if output[0] == '"' {
+					output = output[1 : len(output)-1]
+				}
+				framework.Logf("cluster-tcp-loadbalancer vips is %q", output)
+				framework.Logf("IPv6 cluster ip is %q", v6ClusterIP)
 				vips := strings.Fields(string(output))
 				prefix := util.JoinHostPort(v6ClusterIP, port) + "="
 				var found bool
@@ -171,7 +175,7 @@ var _ = framework.Describe("[group:service]", func() {
 				return false, nil
 			}, "")
 
-			output, err := exec.Command("bash", "-c", execCmd).CombinedOutput()
+			output, _, err := framework.NBExec(cmd)
 			framework.ExpectNoError(err)
 			framework.ExpectEqual(strings.Contains(string(output), v6ClusterIP), isContain)
 		}

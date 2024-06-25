@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"os/exec"
 	"strconv"
 	"strings"
 	"time"
@@ -1068,7 +1067,8 @@ func checkPolicy(hitPolicyStr string, expectPolicyExist bool, vpcName string) {
 	ginkgo.GinkgoHelper()
 
 	framework.WaitUntil(time.Second, 10*time.Second, func(_ context.Context) (bool, error) {
-		output, err := exec.Command("bash", "-c", fmt.Sprintf("kubectl ko nbctl lr-policy-list %s", vpcName)).CombinedOutput()
+		cmd := "ovn-nbctl lr-policy-list " + vpcName
+		output, _, err := framework.NBExec(cmd)
 		if err != nil {
 			return false, err
 		}
