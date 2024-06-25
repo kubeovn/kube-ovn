@@ -204,20 +204,20 @@ func ExpectNotZero(actual interface{}, explain ...interface{}) {
 // ExpectUUID expects that the given string is a UUID.
 func ExpectUUID(s string) {
 	ginkgo.GinkgoHelper()
-	ginkgo.By("verifying the string " + s + " is an UUID")
+	ginkgo.By(fmt.Sprintf("verifying the string %q is an UUID", s))
 	expectTrueWithOffset(1, uuidRegex.MatchString(s))
 }
 
 // ExpectMAC expects that the given string is a MAC address.
 func ExpectMAC(s string) {
 	ginkgo.GinkgoHelper()
-	ginkgo.By("verifying the string " + s + " is a MAC address")
+	ginkgo.By(fmt.Sprintf("verifying the string %q is a MAC address", s))
 	expectTrueWithOffset(1, macRegex.MatchString(s))
 }
 
 // ExpectIPInCIDR expects that the given IP address in within the CIDR.
 func ExpectIPInCIDR(ip, cidr string) {
 	ginkgo.GinkgoHelper()
-	ginkgo.By("verifying IP address " + ip + " is within the CIDR " + cidr)
+	ginkgo.By(fmt.Sprintf("verifying IP address %q is within the CIDR %q", ip, cidr))
 	expectTrueWithOffset(1, util.CIDRContainIP(cidr, ip))
 }
