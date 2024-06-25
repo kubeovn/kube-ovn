@@ -36,7 +36,7 @@ func generateSubnetName(name string) string {
 
 func curlSvc(f *framework.Framework, clientPodName, vip string, port int32) {
 	ginkgo.GinkgoHelper()
-	cmd := fmt.Sprintf("curl -q -s --connect-timeout 5 %s", util.JoinHostPort(vip, port))
+	cmd := fmt.Sprintf("curl -q -s --connect-timeout 2 --max-time 2 %s", util.JoinHostPort(vip, port))
 	ginkgo.By(fmt.Sprintf(`Executing %q in pod %s/%s`, cmd, f.Namespace.Name, clientPodName))
 	e2epodoutput.RunHostCmdOrDie(f.Namespace.Name, clientPodName, cmd)
 }

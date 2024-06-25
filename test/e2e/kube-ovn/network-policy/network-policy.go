@@ -102,7 +102,7 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 		for _, podIP := range pod.Status.PodIPs {
 			ip := podIP.IP
 			protocol := strings.ToLower(util.CheckProtocol(ip))
-			cmd := fmt.Sprintf("curl -q -s --connect-timeout 2 %s", net.JoinHostPort(ip, port))
+			cmd := fmt.Sprintf("curl -q -s --connect-timeout 2 --max-time 2 %s", net.JoinHostPort(ip, port))
 
 			var podSameNode *corev1.Pod
 			for _, hostPod := range pods {
