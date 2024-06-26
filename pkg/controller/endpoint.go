@@ -106,7 +106,7 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 	defer func() { _ = c.epKeyMutex.UnlockKey(key) }()
 	klog.Infof("handle update endpoint %s", key)
 
-	ep, err := c.endpointsLister.Endpoints(namespace).Get(name)
+	cachedEndpoint, err := c.endpointsLister.Endpoints(namespace).Get(name)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return nil
@@ -114,6 +114,7 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 		klog.Error(err)
 		return err
 	}
+	ep := cachedEndpoint.DeepCopy()
 
 	cachedService, err := c.servicesLister.Services(namespace).Get(name)
 	if err != nil {
@@ -152,6 +153,30 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 	if pods, err = c.podsLister.Pods(namespace).List(labels.Set(svc.Spec.Selector).AsSelector()); err != nil {
 		klog.Errorf("failed to get pods for service %s in namespace %s: %v", name, namespace, err)
 		return err
+	}
+	for i, pod := range pods {
+		if pod.Status.PodIP != "" || len(pod.Status.PodIPs) != 0 {
+			continue
+		}
+
+		for _, subset := range ep.Subsets {
+			for _, addr := range subset.Addresses {
+				if addr.TargetRef == nil || addr.TargetRef.Kind != "Pod" || addr.TargetRef.Name != pod.Name {
+					continue
+				}
+
+				p, err := c.config.KubeClient.CoreV1().Pods(pod.Namespace).Get(context.Background(), pod.Name, metav1.GetOptions{})
+				if err != nil {
+					klog.Errorf("failed to get pod %s/%s: %v", pod.Namespace, pod.Name, err)
+					return err
+				}
+				pods[i] = p.DeepCopy()
+				break
+			}
+			if pods[i] != pod {
+				break
+			}
+		}
 	}
 
 	vpcName, subnetName = c.getVpcSubnetName(pods, ep, svc)
