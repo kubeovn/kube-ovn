@@ -116,7 +116,6 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 					_, err := e2epodoutput.RunHostCmd(hostPod.Namespace, hostPod.Name, cmd)
 					return err != nil, nil
 				}, "")
-				framework.ExpectNoError(err)
 			}
 
 			ginkgo.By("Checking connection from node " + podSameNode.Spec.NodeName + " to " + podName + " via " + protocol)
@@ -125,7 +124,6 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 				_, err := e2epodoutput.RunHostCmd(podSameNode.Namespace, podSameNode.Name, cmd)
 				return err == nil, nil
 			}, "")
-			framework.ExpectNoError(err)
 
 			// check one more time
 			for _, hostPod := range pods {
@@ -140,5 +138,46 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 				framework.ExpectError(err)
 			}
 		}
+	})
+
+	framework.ConformanceIt("should be able to access svc with backend host network pod after any other ingress network policy rules created", func() {
+		ginkgo.By("Creating network policy " + netpolName)
+		netpol := &netv1.NetworkPolicy{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: netpolName,
+			},
+			Spec: netv1.NetworkPolicySpec{
+				Ingress: []netv1.NetworkPolicyIngressRule{
+					{
+						From: []netv1.NetworkPolicyPeer{
+							{
+								PodSelector:       nil,
+								NamespaceSelector: nil,
+								IPBlock:           &netv1.IPBlock{CIDR: "0.0.0.0/0", Except: []string{"127.0.0.1/32"}},
+							},
+						},
+					},
+				},
+				PolicyTypes: []netv1.PolicyType{netv1.PolicyTypeIngress},
+			},
+		}
+		_ = netpolClient.Create(netpol)
+
+		ginkgo.By("Creating pod " + podName)
+		pod := framework.MakePod(namespaceName, podName, nil, nil, framework.AgnhostImage, nil, nil)
+		pod = podClient.CreateSync(pod)
+
+		svc := defaultServiceClient.Get("kubernetes")
+		clusterIP := svc.Spec.ClusterIP
+
+		ginkgo.By("Checking connection from pod " + podName + " to " + clusterIP + " via TCP")
+
+		cmd := fmt.Sprintf("curl -k -q -s --connect-timeout 2 https://%s", net.JoinHostPort(clusterIP, "443"))
+		ginkgo.By(fmt.Sprintf(`Executing %q in pod %s/%s`, cmd, pod.Namespace, pod.Name))
+
+		framework.WaitUntil(2*time.Second, time.Minute, func(_ context.Context) (bool, error) {
+			_, err := e2epodoutput.RunHostCmd(pod.Namespace, pod.Name, cmd)
+			return err == nil, nil
+		}, "")
 	})
 })
