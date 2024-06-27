@@ -152,6 +152,30 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 		klog.Errorf("failed to get pods for service %s in namespace %s: %v", name, namespace, err)
 		return err
 	}
+	for i, pod := range pods {
+		if pod.Status.PodIP != "" || len(pod.Status.PodIPs) != 0 {
+			continue
+		}
+
+		for _, subset := range ep.Subsets {
+			for _, addr := range subset.Addresses {
+				if addr.TargetRef == nil || addr.TargetRef.Kind != "Pod" || addr.TargetRef.Name != pod.Name {
+					continue
+				}
+
+				p, err := c.config.KubeClient.CoreV1().Pods(pod.Namespace).Get(context.Background(), pod.Name, metav1.GetOptions{})
+				if err != nil {
+					klog.Errorf("failed to get pod %s/%s: %v", pod.Namespace, pod.Name, err)
+					return err
+				}
+				pods[i] = p.DeepCopy()
+				break
+			}
+			if pods[i] != pod {
+				break
+			}
+		}
+	}
 
 	vpcName, subnetName = c.getVpcSubnetName(pods, ep, svc)
 
