@@ -355,7 +355,6 @@ func (c *Controller) handleUpdateService(key string) error {
 			if _, ok := vips[vip]; !ok {
 				klog.Infof("add vip %s to LB %s", vip, lb)
 				c.updateEndpointQueue.Add(key)
-				break
 			}
 		}
 		for vip := range vips {
