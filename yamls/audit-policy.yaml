@@ -1,0 +1,81 @@
+apiVersion: audit.k8s.io/v1
+kind: Policy
+omitManagedFields: true
+omitStages:
+  - RequestReceived
+  - ResponseStarted
+  - Panic
+rules:
+  - level: RequestResponse
+    resources:
+      - group: ""
+        resources:
+          - nodes
+          - namespaces
+          - pods
+    verbs:
+      - patch
+      - update
+  - level: RequestResponse
+    resources:
+      - group: ""
+        resources:
+          - services
+          - services/status
+          - endpoints
+      - group: networking.k8s.io
+        resources:
+          - networkpolicies
+      - group: k8s.cni.cncf.io
+        resources:
+          - network-attachment-definitions
+      - group: kubevirt.io
+        resources:
+          - virtualmachines
+          - virtualmachineinstances
+      - group: kubeovn.io
+        resources:
+          - vpcs
+          - vpcs/status
+          - vpc-nat-gateways
+          - vpc-nat-gateways/status
+          - vpc-dnses
+          - vpc-dnses/status
+          - subnets
+          - subnets/status
+          - ippools
+          - ippools/status
+          - ips
+          - vips
+          - vips/status
+          - vlans
+          - vlans/status
+          - provider-networks
+          - provider-networks/status
+          - security-groups
+          - security-groups/status
+          - iptables-eips
+          - iptables-eips/status
+          - iptables-fip-rules
+          - iptables-fip-rules/status
+          - iptables-dnat-rules
+          - iptables-dnat-rules/status
+          - iptables-snat-rules
+          - iptables-snat-rules/status
+          - ovn-eips
+          - ovn-eips/status
+          - ovn-fips
+          - ovn-fips/status
+          - ovn-snat-rules
+          - ovn-snat-rules/status
+          - ovn-dnat-rules
+          - ovn-dnat-rules/status
+          - switch-lb-rules
+          - switch-lb-rules/status
+          - qos-policies
+          - qos-policies/status
+    verbs:
+      - create
+      - patch
+      - update
+      - delete

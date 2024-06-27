@@ -88,6 +88,11 @@ ifneq ($(VLAN_ID),)
 E2E_NETWORK = kube-ovn-vlan
 endif
 
+KIND_AUDITING = $(shell echo $${KIND_AUDITING:-false})
+ifeq ($(shell echo $${CI:-false}),true)
+KIND_AUDITING = true
+endif
+
 # ARCH could be amd64,arm64
 ARCH = amd64
 
@@ -370,7 +375,7 @@ kind-init: kind-init-ipv4
 
 .PHONY: kind-init-%
 kind-init-%: kind-clean
-	@ip_family=$* $(MAKE) kind-generate-config
+	@auditing=$(KIND_AUDITING) ip_family=$* $(MAKE) kind-generate-config
 	@$(MAKE) kind-create
 
 .PHONY: kind-init-ovn-ic

@@ -4,6 +4,9 @@
 {%- if kube_proxy_mode is not defined -%}
   {%- set kube_proxy_mode = "ipvs" -%}
 {%- endif -%}
+{%- if auditing is not defined -%}
+  {%- set auditing = "false" -%}
+{%- endif -%}
 {%- if ip_family is not defined -%}
   {%- set ip_family = "ipv4" -%}
 {%- endif -%}
@@ -59,7 +62,6 @@ kubeadmConfigPatches:
     etcd:
       local:
         dataDir: "/tmp/lib/etcd"
-
 nodes:
   - role: control-plane
     image: kindest/node:{{ k8s_version }}
@@ -75,6 +77,29 @@ nodes:
 {%- endif %}
 {%- if ip_family != "ipv4" %}
             node-cidr-mask-size-ipv6: "120"
+{%- endif %}
+{%- if auditing is equalto "true" %}
+      - |
+        kind: ClusterConfiguration
+        apiServer:
+          extraArgs:
+            audit-log-path: /var/log/kubernetes/kube-apiserver-audit.log
+            audit-policy-file: /etc/kubernetes/policies/audit-policy.yaml
+          extraVolumes:
+            - name: audit-policies
+              hostPath: /etc/kubernetes/policies
+              mountPath: /etc/kubernetes/policies
+              readOnly: true
+              pathType: DirectoryOrCreate
+            - name: audit-logs
+              hostPath: /var/log/kubernetes
+              mountPath: /var/log/kubernetes
+              readOnly: false
+              pathType: DirectoryOrCreate
+    extraMounts:
+      - hostPath: ./yamls/audit-policy.yaml
+        containerPath: /etc/kubernetes/policies/audit-policy.yaml
+        readOnly: true
 {%- endif %}
 {%- if mapped_ports is defined %}
     extraPortMappings:
