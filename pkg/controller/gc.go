@@ -502,12 +502,7 @@ func (c *Controller) gcLoadBalancer() error {
 	)
 
 	for _, svc := range svcs {
-		ips := util.ServiceClusterIPs(*svc)
-		if v, ok := svc.Annotations[util.SwitchLBRuleVipsAnnotation]; ok {
-			ips = strings.Split(v, ",")
-		}
-
-		for _, ip := range ips {
+		for _, ip := range getVipIps(svc) {
 			for _, port := range svc.Spec.Ports {
 				vip := util.JoinHostPort(ip, port.Port)
 				switch port.Protocol {
