@@ -118,7 +118,6 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 					_, err := e2epodoutput.RunHostCmd(hostPod.Namespace, hostPod.Name, cmd)
 					return err != nil, nil
 				}, "")
-				framework.ExpectNoError(err)
 			}
 
 			ginkgo.By("Checking connection from node " + podSameNode.Spec.NodeName + " to " + podName + " via " + protocol)
@@ -127,7 +126,6 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 				_, err := e2epodoutput.RunHostCmd(podSameNode.Namespace, podSameNode.Name, cmd)
 				return err == nil, nil
 			}, "")
-			framework.ExpectNoError(err)
 
 			// check one more time
 			for _, hostPod := range pods {
@@ -179,13 +177,9 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 		cmd := fmt.Sprintf("curl -k -q -s --connect-timeout 2 https://%s", net.JoinHostPort(clusterIP, "443"))
 		ginkgo.By(fmt.Sprintf(`Executing %q in pod %s/%s`, cmd, pod.Namespace, pod.Name))
 
-		var retErr error
 		framework.WaitUntil(2*time.Second, time.Minute, func(_ context.Context) (bool, error) {
 			_, err := e2epodoutput.RunHostCmd(pod.Namespace, pod.Name, cmd)
-			retErr = err
 			return err == nil, nil
 		}, "")
-
-		framework.ExpectNoError(retErr)
 	})
 })
