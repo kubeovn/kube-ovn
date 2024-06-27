@@ -137,15 +137,18 @@ var _ = framework.Describe("[group:service]", func() {
 		selector := map[string]string{"app": "svc-dual"}
 		service := framework.MakeService(serviceName, corev1.ServiceTypeClusterIP, nil, selector, ports, corev1.ServiceAffinityNone)
 		service.Namespace = namespaceName
+		service.Spec.IPFamilyPolicy = ptr.To(corev1.IPFamilyPolicyRequireDualStack)
 		service = serviceClient.CreateSync(service, func(s *corev1.Service) (bool, error) {
-			return len(s.Spec.ClusterIPs) != 0, nil
-		}, "cluster ips are not empty")
+			return len(util.ServiceClusterIPs(*s)) == 2, nil
+		}, "both ipv4 and ipv6 cluster ips are allocated")
 		v6ClusterIP := service.Spec.ClusterIPs[1]
 		originService := service.DeepCopy()
+		framework.Logf("created service %s with cluster ips %s", serviceName, strings.Join(util.ServiceClusterIPs(*service), ","))
 
 		ginkgo.By("Creating pod " + podName)
 		podBackend := framework.MakePod(namespaceName, podName, selector, nil, framework.PauseImage, nil, nil)
-		_ = podClient.CreateSync(podBackend)
+		podBackend = podClient.CreateSync(podBackend)
+		framework.Logf("created pod %s with ips %s", podName, strings.Join(util.PodIPs(*podBackend), ","))
 
 		checkContainsClusterIP := func(v6ClusterIP string, isContain bool) {
 			ginkgo.GinkgoHelper()

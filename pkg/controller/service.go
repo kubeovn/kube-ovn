@@ -382,11 +382,9 @@ func (c *Controller) handleUpdateService(key string) error {
 				return err
 			}
 
-			if !needUpdateEndpointQueue {
-				if _, ok := lb.Vips[vip]; !ok {
-					klog.Infof("add vip %s to LB %s", vip, lbName)
-					needUpdateEndpointQueue = true
-				}
+			if _, ok := lb.Vips[vip]; !ok {
+				klog.Infof("add vip %s to LB %s", vip, lbName)
+				needUpdateEndpointQueue = true
 			}
 		}
 		for vip := range lb.Vips {
