@@ -106,7 +106,7 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 	defer func() { _ = c.epKeyMutex.UnlockKey(key) }()
 	klog.Infof("handle update endpoint %s", key)
 
-	cachedEndpoint, err := c.endpointsLister.Endpoints(namespace).Get(name)
+	ep, err := c.endpointsLister.Endpoints(namespace).Get(name)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return nil
@@ -114,7 +114,6 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 		klog.Error(err)
 		return err
 	}
-	ep := cachedEndpoint.DeepCopy()
 
 	cachedService, err := c.servicesLister.Services(namespace).Get(name)
 	if err != nil {
