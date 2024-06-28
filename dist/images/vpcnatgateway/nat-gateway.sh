@@ -5,7 +5,7 @@ function exec_cmd() {
     $cmd
     ret=$?
     if [ $ret -ne 0 ]; then
-        echo "failed to exec \"$cmd\""
+        >&2 echo "failed to exec command \"$cmd\""
         exit $ret
     fi
 }
@@ -13,7 +13,7 @@ function exec_cmd() {
 function check_inited() {
     iptables-save -t nat | grep  SNAT_FILTER | grep SHARED_SNAT
     if [ $? -ne 0 ]; then
-        echo "nat gateway not inited"
+        >&2 echo "nat gateway not initialized"
         exit 1
     fi
 }
