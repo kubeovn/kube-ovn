@@ -674,6 +674,14 @@ func (c *Controller) syncSubnetCR() error {
 
 func (c *Controller) syncVpcNatGatewayCR() error {
 	klog.Info("start to sync crd vpc nat gw")
+	gws, err := c.vpcNatGatewayLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list vpc nat gateway, %v", err)
+		return err
+	}
+	if len(gws) == 0 {
+		return nil
+	}
 	// get vpc nat gateway enable state
 	cm, err := c.configMapsLister.ConfigMaps(c.config.PodNamespace).Get(util.VpcNatGatewayConfig)
 	if err != nil && !k8serrors.IsNotFound(err) {
@@ -700,11 +708,6 @@ func (c *Controller) syncVpcNatGatewayCR() error {
 		return err
 	}
 
-	gws, err := c.vpcNatGatewayLister.List(labels.Everything())
-	if err != nil {
-		klog.Errorf("failed to list vpc nat gateway, %v", err)
-		return err
-	}
 	for _, gw := range gws {
 		if err := c.updateCrdNatGwLabels(gw.Name, ""); err != nil {
 			klog.Errorf("failed to update nat gw %s: %v", gw.Name, err)
