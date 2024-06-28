@@ -1126,6 +1126,27 @@
  * 张祖建
  * 袁又袁
 
+## v1.11.19 (2024-06-28)
+
+ * [a53ad663](https://github.com/kubeovn/kube-ovn/commit/a53ad663383bfff1a48f115cc11ea19a1b92014d) prepare for next release
+ * [6001c921](https://github.com/kubeovn/kube-ovn/commit/6001c921eaecb56555099913d033239d2d133357) fix ipv6 service ip not added to ovn lb vips due to pod cache not synced (#4223)
+ * [8067217b](https://github.com/kubeovn/kube-ovn/commit/8067217b38a05978b5bcc603292bc4fec2e50d85) support to set nic bandwidth and mirror when pod is annotated with DefaultNetworkAnnotation (#4208)
+ * [054263b4](https://github.com/kubeovn/kube-ovn/commit/054263b44ba17b3af93652bfab9edb8f1067fdf3) fix getting service cluster ips (#4206)
+ * [34dea54a](https://github.com/kubeovn/kube-ovn/commit/34dea54abe2f6e7805919b111f0320ade0dd9987) base: add traceroute
+ * [2d3cee6c](https://github.com/kubeovn/kube-ovn/commit/2d3cee6cce7b2932cb55409b874eece4f35f9f41) pinger: reset interface_rx_multicast_packets (#4198)
+ * [60b29849](https://github.com/kubeovn/kube-ovn/commit/60b298496b6586324a3fac35459ead566c565063) base: bump kubectl to v1.30.2 (#4163)
+ * [a984e455](https://github.com/kubeovn/kube-ovn/commit/a984e45549e4683f37be1727f9dbe392ba528395) base: bump cni plugins to v1.5.1 (#4185)
+ * [15952c63](https://github.com/kubeovn/kube-ovn/commit/15952c63c763a05473472a093df4fcc718c4d547) fix reconcile routes (#4168)
+ * [d3a8296c](https://github.com/kubeovn/kube-ovn/commit/d3a8296cd371912a3b73f8ff34334664fd36eba4) ci: bump actions
+ * [2dcd7459](https://github.com/kubeovn/kube-ovn/commit/2dcd74596d1d29469280e8876ba47fca93e1c2d2) replace util.DefaultVpc with c.config.ClusterRouter (#2782)
+ * [76c827b2](https://github.com/kubeovn/kube-ovn/commit/76c827b27bdb48c6ed403444e74afd4e80ebab6f) prepare for next release
+
+### Contributors
+
+ * yunsilicon
+ * zhangzujian
+ * 张祖建
+
 ## v1.11.18 (2024-06-14)
 
  * [6ee9cb66](https://github.com/kubeovn/kube-ovn/commit/6ee9cb668d7fdf1e9f51e609c244545cbbe00899) set release for 1.11.18
