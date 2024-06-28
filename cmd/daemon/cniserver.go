@@ -1,8 +1,6 @@
 package daemon
 
 import (
-	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/pprof"
@@ -13,7 +11,6 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	kubeinformers "k8s.io/client-go/informers"
 	"k8s.io/klog/v2"
 	"k8s.io/sample-controller/pkg/signals"
@@ -159,41 +156,18 @@ func initChassisAnno(cfg *daemon.Configuration) error {
 		return err
 	}
 
-	hostname := cfg.NodeName
-	node, err := cfg.KubeClient.CoreV1().Nodes().Get(context.Background(), hostname, v1.GetOptions{})
-	if err != nil {
-		klog.Errorf("failed to get node %s %v", hostname, err)
-		return err
-	}
-
-	chassistr := string(chassisID)
-	chassesName := strings.TrimSpace(chassistr)
+	chassesName := strings.TrimSpace(string(chassisID))
 	if chassesName == "" {
 		// not ready yet
 		err = fmt.Errorf("chassis id is empty")
 		klog.Error(err)
 		return err
 	}
-	if annoChassesName, ok := node.Annotations[util.ChassisAnnotation]; ok {
-		if annoChassesName == chassesName {
-			return nil
-		}
-		klog.Infof("chassis id changed, old: %s, new: %s", annoChassesName, chassesName)
-	}
-	node.Annotations[util.ChassisAnnotation] = chassesName
-	patchPayloadTemplate := `[{
-        "op": "%s",
-        "path": "/metadata/annotations",
-        "value": %s
-    }]`
-	op := "add"
-	raw, _ := json.Marshal(node.Annotations)
-	patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
-	_, err = cfg.KubeClient.CoreV1().Nodes().Patch(context.Background(), hostname, types.JSONPatchType, []byte(patchPayload), v1.PatchOptions{}, "")
-	if err != nil {
-		klog.Errorf("patch node %s failed %v", hostname, err)
+	annotations := map[string]any{util.ChassisAnnotation: chassesName}
+	if err = util.UpdateNodeAnnotations(cfg.KubeClient.CoreV1().Nodes(), cfg.NodeName, annotations); err != nil {
+		klog.Errorf("failed to update chassis annotation of node %s: %v", cfg.NodeName, err)
 		return err
 	}
-	klog.Infof("finish adding chassis annotation")
+
 	return nil
 }

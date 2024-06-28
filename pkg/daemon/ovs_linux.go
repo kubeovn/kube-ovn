@@ -3,7 +3,6 @@ package daemon
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -12,6 +11,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -742,8 +742,8 @@ func (c *Controller) loopOvnExt0Check() {
 			klog.Error(err)
 			return
 		}
-		if err = c.patchNodeExternalGwLabel(node.Name, false); err != nil {
-			klog.Errorf("failed to patch label on node %s, %v", node, err)
+		if err = c.patchNodeExternalGwLabel(false); err != nil {
+			klog.Errorf("failed to patch labels of node %s: %v", node.Name, err)
 			return
 		}
 		return
@@ -791,8 +791,8 @@ func (c *Controller) loopOvnExt0Check() {
 		klog.Errorf("failed to setup ovnext0, %v", err)
 		return
 	}
-	if err = c.patchNodeExternalGwLabel(portName, true); err != nil {
-		klog.Errorf("failed to patch label on node %s, %v", node, err)
+	if err = c.patchNodeExternalGwLabel(true); err != nil {
+		klog.Errorf("failed to patch labels of node %s: %v", node.Name, err)
 		return
 	}
 	if err = c.patchOvnEipStatus(portName, true); err != nil {
@@ -828,31 +828,19 @@ func (c *Controller) patchOvnEipStatus(key string, ready bool) error {
 	return nil
 }
 
-func (c *Controller) patchNodeExternalGwLabel(key string, enabled bool) error {
+func (c *Controller) patchNodeExternalGwLabel(enabled bool) error {
 	node, err := c.nodesLister.Get(c.config.NodeName)
 	if err != nil {
 		klog.Errorf("failed to get node %s: %v", c.config.NodeName, err)
 		return err
 	}
 
-	if enabled {
-		node.Labels[util.NodeExtGwLabel] = "true"
-	} else {
-		node.Labels[util.NodeExtGwLabel] = "false"
-	}
-
-	patchPayloadTemplate := `[{ "op": "%s", "path": "/metadata/labels", "value": %s }]`
-	op := "replace"
-	if len(node.Labels) == 0 {
-		op = "add"
-	}
-
-	raw, _ := json.Marshal(node.Labels)
-	patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
-	if _, err = c.config.KubeClient.CoreV1().Nodes().Patch(context.Background(), key, types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{}); err != nil {
-		klog.Errorf("failed to patch node %s: %v", node.Name, err)
+	labels := map[string]any{util.NodeExtGwLabel: strconv.FormatBool(enabled)}
+	if err = util.UpdateNodeLabels(c.config.KubeClient.CoreV1().Nodes(), node.Name, labels); err != nil {
+		klog.Errorf("failed to update labels of node %s: %v", node.Name, err)
 		return err
 	}
+
 	return nil
 }
 

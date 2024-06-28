@@ -2,7 +2,6 @@ package daemon
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os/exec"
 	"strconv"
@@ -279,43 +278,30 @@ func (c *Controller) initProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v1
 		}
 	}
 
+	labels := map[string]any{
+		fmt.Sprintf(util.ProviderNetworkReadyTemplate, pn.Name):     nil,
+		fmt.Sprintf(util.ProviderNetworkInterfaceTemplate, pn.Name): nil,
+		fmt.Sprintf(util.ProviderNetworkMtuTemplate, pn.Name):       nil,
+		fmt.Sprintf(util.ProviderNetworkExcludeTemplate, pn.Name):   nil,
+	}
+
 	var mtu int
 	var err error
 	klog.V(3).Infof("ovs init provider network %s", pn.Name)
 	if mtu, err = c.ovsInitProviderNetwork(pn.Name, nic, pn.Spec.ExchangeLinkName, c.config.MacLearningFallback); err != nil {
-		if oldLen := len(node.Labels); oldLen != 0 {
-			delete(node.Labels, fmt.Sprintf(util.ProviderNetworkReadyTemplate, pn.Name))
-			delete(node.Labels, fmt.Sprintf(util.ProviderNetworkInterfaceTemplate, pn.Name))
-			delete(node.Labels, fmt.Sprintf(util.ProviderNetworkMtuTemplate, pn.Name))
-			if len(node.Labels) != oldLen {
-				raw, _ := json.Marshal(node.Labels)
-				patchPayload := fmt.Sprintf(`[{ "op": "replace", "path": "/metadata/labels", "value": %s }]`, raw)
-				_, err1 := c.config.KubeClient.CoreV1().Nodes().Patch(context.Background(), node.Name, types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{})
-				if err1 != nil {
-					klog.Errorf("failed to patch node %s: %v", node.Name, err1)
-				}
-			}
+		delete(labels, fmt.Sprintf(util.ProviderNetworkExcludeTemplate, pn.Name))
+		if err1 := util.UpdateNodeLabels(c.config.KubeClient.CoreV1().Nodes(), node.Name, labels); err1 != nil {
+			klog.Errorf("failed to update annotations of node %s: %v", node.Name, err1)
 		}
 		c.recordProviderNetworkErr(pn.Name, err.Error())
 		return err
 	}
 
-	delete(node.Labels, fmt.Sprintf(util.ProviderNetworkExcludeTemplate, pn.Name))
-	node.Labels[fmt.Sprintf(util.ProviderNetworkReadyTemplate, pn.Name)] = "true"
-	node.Labels[fmt.Sprintf(util.ProviderNetworkInterfaceTemplate, pn.Name)] = nic
-	node.Labels[fmt.Sprintf(util.ProviderNetworkMtuTemplate, pn.Name)] = strconv.Itoa(mtu)
-
-	patchPayloadTemplate := `[{ "op": "%s", "path": "/metadata/labels", "value": %s }]`
-	op := "replace"
-	if len(node.Labels) == 0 {
-		op = "add"
-	}
-
-	raw, _ := json.Marshal(node.Labels)
-	patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
-	_, err = c.config.KubeClient.CoreV1().Nodes().Patch(context.Background(), node.Name, types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{})
-	if err != nil {
-		klog.Errorf("failed to patch node %s: %v", node.Name, err)
+	labels[fmt.Sprintf(util.ProviderNetworkReadyTemplate, pn.Name)] = "true"
+	labels[fmt.Sprintf(util.ProviderNetworkInterfaceTemplate, pn.Name)] = nic
+	labels[fmt.Sprintf(util.ProviderNetworkMtuTemplate, pn.Name)] = strconv.Itoa(mtu)
+	if err = util.UpdateNodeLabels(c.config.KubeClient.CoreV1().Nodes(), node.Name, labels); err != nil {
+		klog.Errorf("failed to update labels of node %s: %v", node.Name, err)
 		return err
 	}
 	c.recordProviderNetworkErr(pn.Name, "")
@@ -377,22 +363,14 @@ func (c *Controller) recordProviderNetworkErr(providerNetwork, errMsg string) {
 }
 
 func (c *Controller) cleanProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v1.Node) error {
-	patchPayloadTemplate := `[{ "op": "%s", "path": "/metadata/labels", "value": %s }]`
-	op := "replace"
-	if len(node.Labels) == 0 {
-		op = "add"
+	labels := map[string]any{
+		fmt.Sprintf(util.ProviderNetworkReadyTemplate, pn.Name):     nil,
+		fmt.Sprintf(util.ProviderNetworkInterfaceTemplate, pn.Name): nil,
+		fmt.Sprintf(util.ProviderNetworkMtuTemplate, pn.Name):       nil,
+		fmt.Sprintf(util.ProviderNetworkExcludeTemplate, pn.Name):   "true",
 	}
-
-	var err error
-	delete(node.Labels, fmt.Sprintf(util.ProviderNetworkReadyTemplate, pn.Name))
-	delete(node.Labels, fmt.Sprintf(util.ProviderNetworkInterfaceTemplate, pn.Name))
-	delete(node.Labels, fmt.Sprintf(util.ProviderNetworkMtuTemplate, pn.Name))
-	node.Labels[fmt.Sprintf(util.ProviderNetworkExcludeTemplate, pn.Name)] = "true"
-	raw, _ := json.Marshal(node.Labels)
-	patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
-	_, err = c.config.KubeClient.CoreV1().Nodes().Patch(context.Background(), node.Name, types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{})
-	if err != nil {
-		klog.Errorf("failed to patch node %s: %v", node.Name, err)
+	if err := util.UpdateNodeLabels(c.config.KubeClient.CoreV1().Nodes(), node.Name, labels); err != nil {
+		klog.Errorf("failed to update labels of node %s: %v", node.Name, err)
 		return err
 	}
 
@@ -412,17 +390,14 @@ func (c *Controller) handleDeleteProviderNetwork(pn *kubeovnv1.ProviderNetwork) 
 		return nil
 	}
 
-	newNode := node.DeepCopy()
-	delete(newNode.Labels, fmt.Sprintf(util.ProviderNetworkReadyTemplate, pn.Name))
-	delete(newNode.Labels, fmt.Sprintf(util.ProviderNetworkExcludeTemplate, pn.Name))
-	delete(newNode.Labels, fmt.Sprintf(util.ProviderNetworkInterfaceTemplate, pn.Name))
-	delete(newNode.Labels, fmt.Sprintf(util.ProviderNetworkMtuTemplate, pn.Name))
-	raw, _ := json.Marshal(newNode.Labels)
-	patchPayloadTemplate := `[{ "op": "replace", "path": "/metadata/labels", "value": %s }]`
-	patchPayload := fmt.Sprintf(patchPayloadTemplate, raw)
-	_, err = c.config.KubeClient.CoreV1().Nodes().Patch(context.Background(), node.Name, types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{})
-	if err != nil {
-		klog.Errorf("failed to patch node %s: %v", node.Name, err)
+	labels := map[string]any{
+		fmt.Sprintf(util.ProviderNetworkReadyTemplate, pn.Name):     nil,
+		fmt.Sprintf(util.ProviderNetworkInterfaceTemplate, pn.Name): nil,
+		fmt.Sprintf(util.ProviderNetworkMtuTemplate, pn.Name):       nil,
+		fmt.Sprintf(util.ProviderNetworkExcludeTemplate, pn.Name):   nil,
+	}
+	if err = util.UpdateNodeLabels(c.config.KubeClient.CoreV1().Nodes(), node.Name, labels); err != nil {
+		klog.Errorf("failed to update labels of node %s: %v", node.Name, err)
 		return err
 	}
 

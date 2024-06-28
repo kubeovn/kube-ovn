@@ -2,7 +2,6 @@ package controller
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"reflect"
 	"strconv"
@@ -314,29 +313,17 @@ func (c *Controller) handleAddNode(key string) error {
 		return err
 	}
 
-	patchPayloadTemplate := `[{
-        "op": "%s",
-        "path": "/metadata/annotations",
-        "value": %s
-    }]`
-	op := "replace"
-	if len(node.Annotations) == 0 {
-		node.Annotations = map[string]string{}
-		op = "add"
+	annotations := map[string]any{
+		util.IPAddressAnnotation:     ipStr,
+		util.MacAddressAnnotation:    mac,
+		util.CidrAnnotation:          subnet.Spec.CIDRBlock,
+		util.GatewayAnnotation:       subnet.Spec.Gateway,
+		util.LogicalSwitchAnnotation: c.config.NodeSwitch,
+		util.AllocatedAnnotation:     "true",
+		util.PortNameAnnotation:      portName,
 	}
-
-	node.Annotations[util.IPAddressAnnotation] = ipStr
-	node.Annotations[util.MacAddressAnnotation] = mac
-	node.Annotations[util.CidrAnnotation] = subnet.Spec.CIDRBlock
-	node.Annotations[util.GatewayAnnotation] = subnet.Spec.Gateway
-	node.Annotations[util.LogicalSwitchAnnotation] = c.config.NodeSwitch
-	node.Annotations[util.AllocatedAnnotation] = "true"
-	node.Annotations[util.PortNameAnnotation] = portName
-	raw, _ := json.Marshal(node.Annotations)
-	patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
-	_, err = c.config.KubeClient.CoreV1().Nodes().Patch(context.Background(), key, types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{}, "")
-	if err != nil {
-		klog.Errorf("patch node %s failed: %v", key, err)
+	if err = util.UpdateNodeAnnotations(c.config.KubeClient.CoreV1().Nodes(), node.Name, annotations); err != nil {
+		klog.Errorf("failed to update annotations of node %s: %v", node.Name, err)
 		return err
 	}
 
@@ -362,7 +349,7 @@ func (c *Controller) handleAddNode(key string) error {
 	}
 
 	// ovn acl doesn't support address_set name with '-', so replace '-' by '.'
-	pgName := strings.ReplaceAll(node.Annotations[util.PortNameAnnotation], "-", ".")
+	pgName := strings.ReplaceAll(portName, "-", ".")
 	if err = c.OVNNbClient.CreatePortGroup(pgName, map[string]string{networkPolicyKey: "node" + "/" + key}); err != nil {
 		klog.Errorf("create port group %s for node %s: %v", pgName, key, err)
 		return err
