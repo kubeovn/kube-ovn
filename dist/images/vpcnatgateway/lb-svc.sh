@@ -7,7 +7,7 @@ function exec_cmd() {
     $cmd
     ret=$?
     if [ $ret -ne 0 ]; then
-        echo "failed to exec \"$cmd\""
+        >&2 echo "failed to exec command \"$cmd\""
         exit $ret
     fi
 }
