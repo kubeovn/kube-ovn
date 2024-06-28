@@ -384,7 +384,7 @@ kind-init-ovn-ic: kind-init-ovn-ic-ipv4
 .PHONY: kind-init-ovn-ic-%
 kind-init-ovn-ic-%: kind-clean-ovn-ic
 	@n_worker=2 $(MAKE) kind-init-$*
-	@n_worker=3 ip_family=$* $(MAKE) kind-generate-config
+	@n_worker=3 ip_family=$* auditing=$(KIND_AUDITING) $(MAKE) kind-generate-config
 	$(call kind_create_cluster,yamls/kind.yaml,kube-ovn1,1)
 
 .PHONY: kind-init-cilium-chaining
