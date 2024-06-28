@@ -20,6 +20,7 @@ import (
 	"k8s.io/kubectl/pkg/polymorphichelpers"
 	"k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/kubernetes/test/e2e/framework/deployment"
+	testutils "k8s.io/kubernetes/test/utils"
 
 	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
@@ -206,7 +207,7 @@ func (c *DeploymentClient) DeleteSync(name string) {
 }
 
 func (c *DeploymentClient) WaitToComplete(deploy *appsv1.Deployment) error {
-	return deployment.WaitForDeploymentComplete(c.f.ClientSet, deploy)
+	return testutils.WaitForDeploymentComplete(c.f.ClientSet, deploy, Logf, 2*time.Second, 2*time.Minute)
 }
 
 // WaitToDisappear waits the given timeout duration for the specified deployment to disappear.

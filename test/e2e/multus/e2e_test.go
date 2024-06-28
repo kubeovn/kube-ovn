@@ -70,7 +70,7 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 		cidr = framework.RandomCIDR(f.ClusterIPFamily)
 		podClient = f.PodClient()
 		subnetClient = f.SubnetClient()
-		nadClient = f.NetworkAttachmentDefinitionClientNS(namespaceName)
+		nadClient = f.NetworkAttachmentDefinitionClient()
 	})
 	ginkgo.AfterEach(func() {
 		ginkgo.By("Deleting pod " + podName)
