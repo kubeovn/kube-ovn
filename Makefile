@@ -379,13 +379,8 @@ kind-init-ovn-ic: kind-init-ovn-ic-ipv4
 
 .PHONY: kind-init-ovn-ic-%
 kind-init-ovn-ic-%: kind-clean-ovn-ic
-<<<<<<< HEAD
-	@ha=true $(MAKE) kind-init-$*
-	@ovn_ic=true ip_family=$* $(MAKE) kind-generate-config
-=======
 	@n_worker=2 $(MAKE) kind-init-$*
 	@n_worker=3 ip_family=$* auditing=$(KIND_AUDITING) $(MAKE) kind-generate-config
->>>>>>> 06fd80b4 (ci: dump/upload events on e2e test failure (#4231))
 	$(call kind_create_cluster,yamls/kind.yaml,kube-ovn1,1)
 
 .PHONY: kind-init-cilium-chaining
