@@ -379,7 +379,7 @@ jobs:
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-22.04
-    timeout-minutes: 20
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
@@ -471,7 +471,7 @@ jobs:
       - name: Create kind cluster
         run: |
           sudo pip3 install jinjanator
-          sudo PATH=~/.local/bin:$PATH make kind-init-${{ matrix.ip-family }}
+          sudo --preserve-env=CI PATH=~/.local/bin:$PATH make kind-init-${{ matrix.ip-family }}
           sudo cp -r /root/.kube/ ~/.kube/
           sudo chown -R $(id -un). ~/.kube/
 
@@ -491,15 +491,28 @@ jobs:
           E2E_NETWORK_MODE: ${{ matrix.mode }}
         run: make k8s-conformance-e2e
 
+      - name: Collect apiserver audit logs
+        if: failure() && steps.e2e.conclusion == 'failure'
+        run: |
+          docker cp kube-ovn-control-plane:/var/log/kubernetes/kube-apiserver-audit.log .
+          tar zcf k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-audit-log.tar.gz kube-apiserver-audit.log
+
+      - name: Upload apiserver audit logs
+        uses: actions/upload-artifact@v4
+        if: failure() && steps.e2e.conclusion == 'failure'
+        with:
+          name: k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-audit-log
+          path: k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-audit-log.tar.gz
+
       - name: kubectl ko log
-        if: failure()
+        if: failure() && steps.e2e.conclusion == 'failure'
         run: |
           make kubectl-ko-log
           mv kubectl-ko-log.tar.gz k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
         uses: actions/upload-artifact@v4
-        if: failure()
+        if: failure() && steps.e2e.conclusion == 'failure'
         with:
           name: k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-ko-log
           path: k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-ko-log.tar.gz
@@ -637,7 +650,7 @@ jobs:
       - name: Create kind cluster
         run: |
           sudo pip3 install jinjanator
-          sudo PATH=~/.local/bin:$PATH make kind-init-${{ matrix.ip-family }}
+          sudo --preserve-env=CI PATH=~/.local/bin:$PATH make kind-init-${{ matrix.ip-family }}
           sudo cp -r /root/.kube/ ~/.kube/
           sudo chown -R $(id -un). ~/.kube/
 
@@ -653,15 +666,28 @@ jobs:
         working-directory: ${{ env.E2E_DIR }}
         run: make k8s-netpol-e2e
 
+      - name: Collect apiserver audit logs
+        if: failure() && steps.e2e.conclusion == 'failure'
+        run: |
+          docker cp kube-ovn-control-plane:/var/log/kubernetes/kube-apiserver-audit.log .
+          tar zcf k8s-netpol-e2e-${{ matrix.ip-family }}-audit-log.tar.gz kube-apiserver-audit.log
+
+      - name: Upload apiserver audit logs
+        uses: actions/upload-artifact@v4
+        if: failure() && steps.e2e.conclusion == 'failure'
+        with:
+          name: k8s-netpol-e2e-${{ matrix.ip-family }}-audit-log
+          path: k8s-netpol-e2e-${{ matrix.ip-family }}-audit-log.tar.gz
+
       - name: kubectl ko log
-        if: failure()
+        if: failure() && steps.e2e.conclusion == 'failure'
         run: |
           make kubectl-ko-log
           mv kubectl-ko-log.tar.gz k8s-netpol-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
         uses: actions/upload-artifact@v4
-        if: failure()
+        if: failure() && steps.e2e.conclusion == 'failure'
         with:
           name: k8s-netpol-e2e-${{ matrix.ip-family }}-ko-log
           path: k8s-netpol-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
@@ -774,7 +800,7 @@ jobs:
       - name: Create kind cluster
         run: |
           sudo pip3 install jinjanator
-          sudo PATH=~/.local/bin:$PATH make kind-init-${{ matrix.ip-family }}
+          sudo --preserve-env=CI PATH=~/.local/bin:$PATH make kind-init-${{ matrix.ip-family }}
           sudo cp -r /root/.kube/ ~/.kube/
           sudo chown -R $(id -un). ~/.kube/
 
@@ -790,15 +816,28 @@ jobs:
         working-directory: ${{ env.E2E_DIR }}
         run: make cyclonus-netpol-e2e
 
+      - name: Collect apiserver audit logs
+        if: failure() && steps.e2e.conclusion == 'failure'
+        run: |
+          docker cp kube-ovn-control-plane:/var/log/kubernetes/kube-apiserver-audit.log .
+          tar zcf cyclonus-netpol-e2e-${{ matrix.ip-family }}-audit-log.tar.gz kube-apiserver-audit.log
+
+      - name: Upload apiserver audit logs
+        uses: actions/upload-artifact@v4
+        if: failure() && steps.e2e.conclusion == 'failure'
+        with:
+          name: cyclonus-netpol-e2e-${{ matrix.ip-family }}-audit-log
+          path: cyclonus-netpol-e2e-${{ matrix.ip-family }}-audit-log.tar.gz
+
       - name: kubectl ko log
-        if: failure()
+        if: failure() && steps.e2e.conclusion == 'failure'
         run: |
           make kubectl-ko-log
           mv kubectl-ko-log.tar.gz cyclonus-netpol-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
         uses: actions/upload-artifact@v4
-        if: failure()
+        if: failure() && steps.e2e.conclusion == 'failure'
         with:
           name: cyclonus-netpol-e2e-${{ matrix.ip-family }}-ko-log
           path: cyclonus-netpol-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
@@ -930,7 +969,7 @@ jobs:
       - name: Create kind cluster
         run: |
           sudo pip3 install jinjanator
-          sudo PATH=~/.local/bin:$PATH make kind-init-${{ matrix.ip-family }}
+          sudo --preserve-env=CI PATH=~/.local/bin:$PATH make kind-init-${{ matrix.ip-family }}
           sudo cp -r /root/.kube/ ~/.kube/
           sudo chown -R $(id -un). ~/.kube/
 
@@ -953,15 +992,28 @@ jobs:
           make kind-install-kubevirt
           make kube-ovn-kubevirt-e2e
 
+      - name: Collect apiserver audit logs
+        if: failure() && steps.e2e.conclusion == 'failure'
+        run: |
+          docker cp kube-ovn-control-plane:/var/log/kubernetes/kube-apiserver-audit.log .
+          tar zcf kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-audit-log.tar.gz kube-apiserver-audit.log
+
+      - name: Upload apiserver audit logs
+        uses: actions/upload-artifact@v4
+        if: failure() && steps.e2e.conclusion == 'failure'
+        with:
+          name: kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-audit-log
+          path: kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-audit-log.tar.gz
+
       - name: kubectl ko log
-        if: failure()
+        if: failure() && steps.e2e.conclusion == 'failure'
         run: |
           make kubectl-ko-log
           mv kubectl-ko-log.tar.gz kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
         uses: actions/upload-artifact@v4
-        if: failure()
+        if: failure() && steps.e2e.conclusion == 'failure'
         with:
           name: kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log
           path: kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log.tar.gz
@@ -1090,7 +1142,7 @@ jobs:
       - name: Create kind cluster
         run: |
           sudo pip3 install jinjanator
-          sudo PATH=~/.local/bin:$PATH make kind-init-${{ matrix.ip-family }}
+          sudo --preserve-env=CI PATH=~/.local/bin:$PATH make kind-init-${{ matrix.ip-family }}
           sudo cp -r /root/.kube/ ~/.kube/
           sudo chown -R $(id -un). ~/.kube/
 
@@ -1109,15 +1161,28 @@ jobs:
           E2E_IP_FAMILY: ${{ matrix.ip-family }}
         run: make kube-ovn-multus-conformance-e2e
 
+      - name: Collect apiserver audit logs
+        if: failure() && steps.e2e.conclusion == 'failure'
+        run: |
+          docker cp kube-ovn-control-plane:/var/log/kubernetes/kube-apiserver-audit.log .
+          tar zcf multus-conformance-e2e-${{ matrix.ip-family }}-audit-log.tar.gz kube-apiserver-audit.log
+
+      - name: Upload apiserver audit logs
+        uses: actions/upload-artifact@v4
+        if: failure() && steps.e2e.conclusion == 'failure'
+        with:
+          name: multus-conformance-e2e-${{ matrix.ip-family }}-audit-log
+          path: multus-conformance-e2e-${{ matrix.ip-family }}-audit-log.tar.gz
+
       - name: kubectl ko log
-        if: failure()
+        if: failure() && steps.e2e.conclusion == 'failure'
         run: |
           make kubectl-ko-log
           mv kubectl-ko-log.tar.gz multus-conformance-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
         uses: actions/upload-artifact@v4
-        if: failure()
+        if: failure() && steps.e2e.conclusion == 'failure'
         with:
           name: multus-conformance-e2e-${{ matrix.ip-family }}-ko-log
           path: multus-conformance-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
@@ -1167,7 +1232,7 @@ jobs:
       - name: Create kind cluster
         run: |
           sudo pip3 install jinjanator
-          sudo PATH=~/.local/bin:$PATH make kind-init
+          sudo --preserve-env=CI PATH=~/.local/bin:$PATH make kind-init
           sudo cp -r /root/.kube/ ~/.kube/
           sudo chown -R $(id -un). ~/.kube/
 
@@ -1219,7 +1284,7 @@ jobs:
       - name: Create kind cluster
         run: |
           sudo pip3 install jinjanator
-          sudo PATH=~/.local/bin:$PATH make kind-init-dual
+          sudo --preserve-env=CI PATH=~/.local/bin:$PATH make kind-init-dual
           sudo cp -r /root/.kube/ ~/.kube/
           sudo chown -R $(id -un). ~/.kube/
 
@@ -1269,7 +1334,7 @@ jobs:
       - name: Create kind cluster
         run: |
           sudo pip3 install jinjanator
-          sudo PATH=~/.local/bin:$PATH make kind-init
+          sudo --preserve-env=CI PATH=~/.local/bin:$PATH make kind-init
           sudo cp -r /root/.kube/ ~/.kube/
           sudo chown -R $(id -un). ~/.kube/
 
@@ -1321,7 +1386,7 @@ jobs:
       - name: Create kind cluster
         run: |
           sudo pip3 install jinjanator
-          sudo PATH=~/.local/bin:$PATH make kind-init
+          sudo --preserve-env=CI PATH=~/.local/bin:$PATH make kind-init
           sudo cp -r /root/.kube/ ~/.kube/
           sudo chown -R $(id -un). ~/.kube/
 
@@ -1426,7 +1491,7 @@ jobs:
       - name: Create kind cluster
         run: |
           sudo pip3 install jinjanator
-          sudo PATH=~/.local/bin:$PATH make kind-init
+          sudo --preserve-env=CI PATH=~/.local/bin:$PATH make kind-init
           sudo cp -r /root/.kube/ ~/.kube/
           sudo chown -R $(id -un). ~/.kube/
 
@@ -1440,6 +1505,32 @@ jobs:
         env:
           E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
         run: make kube-ovn-lb-svc-conformance-e2e
+
+      - name: Collect apiserver audit logs
+        if: failure() && steps.e2e.conclusion == 'failure'
+        run: |
+          docker cp kube-ovn-control-plane:/var/log/kubernetes/kube-apiserver-audit.log .
+          tar zcf lb-svc-e2e-audit-log.tar.gz kube-apiserver-audit.log
+
+      - name: Upload apiserver audit logs
+        uses: actions/upload-artifact@v4
+        if: failure() && steps.e2e.conclusion == 'failure'
+        with:
+          name: lb-svc-e2e-audit-log
+          path: lb-svc-e2e-audit-log.tar.gz
+
+      - name: kubectl ko log
+        if: failure() && steps.e2e.conclusion == 'failure'
+        run: |
+          make kubectl-ko-log
+          mv kubectl-ko-log.tar.gz lb-svc-e2e-ko-log.tar.gz
+
+      - name: upload kubectl ko log
+        uses: actions/upload-artifact@v4
+        if: failure() && steps.e2e.conclusion == 'failure'
+        with:
+          name: lb-svc-e2e-ko-log
+          path: lb-svc-e2e-ko-log.tar.gz
 
       - name: Check kube ovn pod restarts
         if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
@@ -1526,7 +1617,7 @@ jobs:
       - name: Create kind cluster
         run: |
           sudo pip3 install jinjanator
-          sudo PATH=~/.local/bin:$PATH make kind-init
+          sudo --preserve-env=CI PATH=~/.local/bin:$PATH make kind-init
           sudo cp -r /root/.kube/ ~/.kube/
           sudo chown -R $(id -un). ~/.kube/
 
@@ -1540,14 +1631,14 @@ jobs:
         run: make kube-ovn-webhook-e2e
 
       - name: kubectl ko log
-        if: failure()
+        if: failure() && steps.e2e.conclusion == 'failure'
         run: |
           make kubectl-ko-log
           mv kubectl-ko-log.tar.gz webhook-e2e-ko-log.tar.gz
 
       - name: upload kubectl ko log
         uses: actions/upload-artifact@v4
-        if: failure()
+        if: failure() && steps.e2e.conclusion == 'failure'
         with:
           name: webhook-e2e-ko-log
           path: webhook-e2e-ko-log.tar.gz
@@ -1589,9 +1680,11 @@ jobs:
         run: docker load --input kube-ovn.tar
 
       - name: Create kind cluster
+        env:
+          k8s_version: v1.23.17
         run: |
           sudo pip3 install jinjanator
-          sudo PATH=~/.local/bin:$PATH k8s_version=v1.23.17 make kind-init
+          sudo --preserve-env=CI PATH=~/.local/bin:$PATH make kind-init
           sudo cp -r /root/.kube/ ~/.kube/
           sudo chown -R $(id -un). ~/.kube/
 
@@ -1604,14 +1697,14 @@ jobs:
         run: make check-kube-ovn-pod-restarts
 
       - name: kubectl ko log
-        if: failure()
+        if: failure() && steps.install.conclusion == 'failure'
         run: |
           make kubectl-ko-log
           mv kubectl-ko-log.tar.gz installation-compatibility-test-ko-log.tar.gz
 
       - name: upload kubectl ko log
         uses: actions/upload-artifact@v4
-        if: failure()
+        if: failure() && steps.install.conclusion == 'failure'
         with:
           name: installation-compatibility-test-ko-log
           path: installation-compatibility-test-ko-log.tar.gz
@@ -1714,7 +1807,7 @@ jobs:
       - name: Create kind cluster
         run: |
           sudo pip3 install jinjanator
-          sudo PATH=~/.local/bin:$PATH make kind-init-cilium-chaining-${{ matrix.ip-family }}
+          sudo --preserve-env=CI PATH=~/.local/bin:$PATH make kind-init-cilium-chaining-${{ matrix.ip-family }}
           sudo cp -r /root/.kube/ ~/.kube/
           sudo chown -R $(id -un). ~/.kube/
 
@@ -1731,18 +1824,31 @@ jobs:
           E2E_IP_FAMILY: ${{ matrix.ip-family }}
         run: make k8s-conformance-e2e
 
+      - name: Collect apiserver audit logs
+        if: failure() && steps.e2e.conclusion == 'failure'
+        run: |
+          docker cp kube-ovn-control-plane:/var/log/kubernetes/kube-apiserver-audit.log .
+          tar zcf cilium-chaining-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-audit-log.tar.gz kube-apiserver-audit.log
+
+      - name: Upload apiserver audit logs
+        uses: actions/upload-artifact@v4
+        if: failure() && steps.e2e.conclusion == 'failure'
+        with:
+          name: cilium-chaining-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-audit-log
+          path: cilium-chaining-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-audit-log.tar.gz
+
       - name: kubectl ko log
-        if: failure()
+        if: failure() && steps.e2e.conclusion == 'failure'
         run: |
           make kubectl-ko-log
-          mv kubectl-ko-log.tar.gz cilium-chaining-e2e-ko-log.tar.gz
+          mv kubectl-ko-log.tar.gz cilium-chaining-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
         uses: actions/upload-artifact@v4
-        if: failure()
+        if: failure() && steps.e2e.conclusion == 'failure'
         with:
           name: cilium-chaining-e2e-ko-log
-          path: cilium-chaining-e2e-ko-log.tar.gz
+          path: cilium-chaining-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: Check kube ovn pod restarts
         if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
@@ -1844,7 +1950,7 @@ jobs:
       - name: Create kind cluster
         run: |
           sudo pip3 install jinjanator
-          sudo PATH=~/.local/bin:$PATH make kind-init-ha-${{ matrix.ip-family }}
+          sudo --preserve-env=CI PATH=~/.local/bin:$PATH make kind-init-ha-${{ matrix.ip-family }}
           sudo cp -r /root/.kube/ ~/.kube/
           sudo chown -R $(id -un). ~/.kube/
 
@@ -1867,14 +1973,14 @@ jobs:
           make kube-ovn-ha-e2e
 
       - name: kubectl ko log
-        if: failure()
+        if: failure() && steps.e2e.conclusion == 'failure'
         run: |
           make kubectl-ko-log
           mv kubectl-ko-log.tar.gz kube-ovn-ha-e2e-${{ matrix.ssl }}-${{ matrix.bind-local }}-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
         uses: actions/upload-artifact@v4
-        if: failure()
+        if: failure() && steps.e2e.conclusion == 'failure'
         with:
           name: kube-ovn-ha-e2e-${{ matrix.ssl }}-${{ matrix.bind-local }}-${{ matrix.ip-family }}-ko-log
           path: kube-ovn-ha-e2e-${{ matrix.ssl }}-${{ matrix.bind-local }}-${{ matrix.ip-family }}-ko-log.tar.gz
@@ -1948,7 +2054,7 @@ jobs:
       - name: Create kind cluster
         run: |
           sudo pip3 install jinjanator
-          sudo PATH=~/.local/bin:$PATH make kind-init-ovn-submariner
+          sudo --preserve-env=CI PATH=~/.local/bin:$PATH make kind-init-ovn-submariner
           sudo cp -r /root/.kube/ ~/.kube/
           sudo chown -R $(id -un). ~/.kube/
 
@@ -1962,14 +2068,14 @@ jobs:
         run: make kube-ovn-submariner-conformance-e2e
 
       - name: kubectl ko log
-        if: failure()
+        if: failure() && steps.e2e.conclusion == 'failure'
         run: |
           make kubectl-ko-log
           mv kubectl-ko-log.tar.gz kube-ovn-submariner-conformance-e2e-ko-log.tar.gz
 
       - name: upload kubectl ko log
         uses: actions/upload-artifact@v4
-        if: failure()
+        if: failure() && steps.e2e.conclusion == 'failure'
         with:
           name: kube-ovn-submariner-conformance-e2e-ko-log
           path: kube-ovn-submariner-conformance-e2e-ko-log.tar.gz
@@ -2069,7 +2175,7 @@ jobs:
       - name: Create kind cluster
         run: |
           sudo pip3 install jinjanator
-          sudo PATH=~/.local/bin:$PATH make kind-init
+          sudo --preserve-env=CI PATH=~/.local/bin:$PATH make kind-init
           sudo cp -r /root/.kube/ ~/.kube/
           sudo chown -R $(id -un). ~/.kube/
 
@@ -2084,15 +2190,28 @@ jobs:
           E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
         run: make iptables-vpc-nat-gw-conformance-e2e
 
+      - name: Collect apiserver audit logs
+        if: failure() && steps.e2e.conclusion == 'failure'
+        run: |
+          docker cp kube-ovn-control-plane:/var/log/kubernetes/kube-apiserver-audit.log .
+          tar zcf iptables-vpc-nat-gw-conformance-e2e-audit-log.tar.gz kube-apiserver-audit.log
+
+      - name: Upload apiserver audit logs
+        uses: actions/upload-artifact@v4
+        if: failure() && steps.e2e.conclusion == 'failure'
+        with:
+          name: iptables-vpc-nat-gw-conformance-e2e-audit-log
+          path: iptables-vpc-nat-gw-conformance-e2e-audit-log.tar.gz
+
       - name: kubectl ko log
-        if: failure()
+        if: failure() && steps.e2e.conclusion == 'failure'
         run: |
           make kubectl-ko-log
           mv kubectl-ko-log.tar.gz iptables-vpc-nat-gw-conformance-e2e-ko-log.tar.gz
 
       - name: upload kubectl ko log
         uses: actions/upload-artifact@v4
-        if: failure()
+        if: failure() && steps.e2e.conclusion == 'failure'
         with:
           name: iptables-vpc-nat-gw-conformance-e2e-ko-log
           path: iptables-vpc-nat-gw-conformance-e2e-ko-log.tar.gz
@@ -2181,7 +2300,7 @@ jobs:
       - name: Create kind cluster
         run: |
           sudo pip3 install jinjanator
-          sudo PATH=~/.local/bin:$PATH make kind-init
+          sudo --preserve-env=CI PATH=~/.local/bin:$PATH make kind-init
           sudo cp -r /root/.kube/ ~/.kube/
           sudo chown -R $(id -un). ~/.kube/
 
@@ -2203,15 +2322,28 @@ jobs:
           E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
         run: make ovn-vpc-nat-gw-conformance-e2e
 
+      - name: Collect apiserver audit logs
+        if: failure() && (steps.vip-e2e.conclusion == 'failure' || steps.vpc-e2e.conclusion == 'failure')
+        run: |
+          docker cp kube-ovn-control-plane:/var/log/kubernetes/kube-apiserver-audit.log .
+          tar zcf ovn-vpc-nat-gw-conformance-e2e-audit-log.tar.gz kube-apiserver-audit.log
+
+      - name: Upload apiserver audit logs
+        uses: actions/upload-artifact@v4
+        if: failure() && (steps.vip-e2e.conclusion == 'failure' || steps.vpc-e2e.conclusion == 'failure')
+        with:
+          name: ovn-vpc-nat-gw-conformance-e2e-audit-log
+          path: ovn-vpc-nat-gw-conformance-e2e-audit-log.tar.gz
+
       - name: kubectl ko log
-        if: failure()
+        if: failure() && (steps.vip-e2e.conclusion == 'failure' || steps.vpc-e2e.conclusion == 'failure')
         run: |
           make kubectl-ko-log
           mv kubectl-ko-log.tar.gz ovn-vpc-nat-gw-conformance-e2e-ko-log.tar.gz
 
       - name: upload kubectl ko log
         uses: actions/upload-artifact@v4
-        if: failure()
+        if: failure() && (steps.vip-e2e.conclusion == 'failure' || steps.vpc-e2e.conclusion == 'failure')
         with:
           name: ovn-vpc-nat-gw-conformance-e2e-ko-log
           path: ovn-vpc-nat-gw-conformance-e2e-ko-log.tar.gz
