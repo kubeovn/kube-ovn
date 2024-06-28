@@ -11,6 +11,8 @@ ovnnb_db.*.backup
 ovnsb_db.*.backup
 **/kubectl-ko-log/*
 kubectl-ko-log.tar.gz
+kube-apiserver-audit.log
+kube-apiserver-audit.json
 kube-ovn.yaml
 kube-ovn-crd.yaml
 ovn.yaml
