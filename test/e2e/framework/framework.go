@@ -1,6 +1,7 @@
 package framework
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/kubernetes/test/e2e/framework"
+	"k8s.io/kubernetes/test/utils/format"
 	admissionapi "k8s.io/pod-security-admission/api"
 	"kubevirt.io/client-go/kubecli"
 
@@ -50,12 +52,26 @@ type Framework struct {
 	KubeOVNImage       string
 }
 
+func dumpEvents(ctx context.Context, f *framework.Framework, namespace string) {
+	ginkgo.By("Dumping events in namespace " + namespace)
+	events, err := f.ClientSet.CoreV1().Events(namespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		Logf("Failed to get events: %v", err)
+		return
+	}
+	for _, event := range events.Items {
+		event.ManagedFields = nil
+		fmt.Fprintln(ginkgo.GinkgoWriter, format.Object(event, 2))
+	}
+}
+
 func NewDefaultFramework(baseName string) *Framework {
 	f := &Framework{
 		Framework: framework.NewDefaultFramework(baseName),
 	}
 	f.NamespacePodSecurityEnforceLevel = admissionapi.LevelPrivileged
 	f.NamespacePodSecurityWarnLevel = admissionapi.LevelPrivileged
+	f.DumpAllNamespaceInfo = dumpEvents
 	f.ClusterIPFamily = os.Getenv("E2E_IP_FAMILY")
 	f.ClusterVersion = os.Getenv("E2E_BRANCH")
 	f.ClusterNetworkMode = os.Getenv("E2E_NETWORK_MODE")
@@ -108,6 +124,7 @@ func NewFrameworkWithContext(baseName, kubeContext string) *Framework {
 
 	f.NamespacePodSecurityEnforceLevel = admissionapi.LevelPrivileged
 	f.NamespacePodSecurityWarnLevel = admissionapi.LevelPrivileged
+	f.DumpAllNamespaceInfo = dumpEvents
 	f.ClusterIPFamily = os.Getenv("E2E_IP_FAMILY")
 	f.ClusterVersion = os.Getenv("E2E_BRANCH")
 	f.ClusterNetworkMode = os.Getenv("E2E_NETWORK_MODE")
