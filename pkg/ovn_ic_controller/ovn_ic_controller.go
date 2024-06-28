@@ -2,7 +2,6 @@ package ovn_ic_controller
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -15,7 +14,6 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -243,25 +241,11 @@ func (c *Controller) removeInterConnection(azName string) error {
 		klog.Errorf("failed to list nodes, %v", err)
 		return err
 	}
-	for _, cachedNode := range nodes {
-		no := cachedNode.DeepCopy()
-		patchPayloadTemplate := `[{
-        "op": "%s",
-        "path": "/metadata/labels",
-        "value": %s
-    	}]`
-		op := "replace"
-		if len(no.Labels) == 0 {
-			op = "add"
-		}
-		if no.Labels[util.ICGatewayLabel] != "false" {
-			no.Labels[util.ICGatewayLabel] = "false"
-			raw, _ := json.Marshal(no.Labels)
-			patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
-			if _, err = c.config.KubeClient.CoreV1().Nodes().Patch(context.Background(), no.Name, types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{}, ""); err != nil {
-				klog.Errorf("patch ic gw node %s failed %v", no.Name, err)
-				return err
-			}
+	for _, node := range nodes {
+		labels := map[string]any{util.ICGatewayLabel: "false"}
+		if err = util.UpdateNodeLabels(c.config.KubeClient.CoreV1().Nodes(), node.Name, labels); err != nil {
+			klog.Errorf("failed to patch ic gw node %s: %v", node.Name, err)
+			return err
 		}
 	}
 
@@ -316,29 +300,15 @@ func (c *Controller) establishInterConnection(config map[string]string) error {
 			}
 			chassises[j] = chassis.Name
 
-			cachedNode, err := c.nodesLister.Get(gw)
+			node, err := c.nodesLister.Get(gw)
 			if err != nil {
 				klog.Errorf("failed to get gw node %q: %v", gw, err)
 				return err
 			}
-			node := cachedNode.DeepCopy()
-			patchPayloadTemplate := `[{
-			"op": "%s",
-			"path": "/metadata/labels",
-			"value": %s
-			}]`
-			op := "replace"
-			if len(node.Labels) == 0 {
-				op = "add"
-			}
-			if node.Labels[util.ICGatewayLabel] != "true" {
-				node.Labels[util.ICGatewayLabel] = "true"
-				raw, _ := json.Marshal(node.Labels)
-				patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
-				if _, err = c.config.KubeClient.CoreV1().Nodes().Patch(context.Background(), gw, types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{}, ""); err != nil {
-					klog.Errorf("failed to patch gw node %q: %v", gw, err)
-					return err
-				}
+			labels := map[string]any{util.ICGatewayLabel: "true"}
+			if err = util.UpdateNodeLabels(c.config.KubeClient.CoreV1().Nodes(), node.Name, labels); err != nil {
+				klog.Errorf("failed to patch ic gw node %s: %v", node.Name, err)
+				return err
 			}
 		}
 
