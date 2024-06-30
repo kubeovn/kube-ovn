@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"reflect"
 	"regexp"
 	"slices"
@@ -21,8 +22,10 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/ptr"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/request"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -271,14 +274,13 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 	oldSts, err := c.config.KubeClient.AppsV1().StatefulSets(c.config.PodNamespace).
 		Get(context.Background(), util.GenNatGwStsName(gw.Name), metav1.GetOptions{})
 	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			needToCreate = true
-		} else {
+		if !k8serrors.IsNotFound(err) {
 			klog.Error(err)
 			return err
 		}
+		needToCreate, oldSts = true, nil
 	}
-	newSts := c.genNatGwStatefulSet(gw, oldSts.DeepCopy())
+	newSts := c.genNatGwStatefulSet(gw, oldSts)
 	if !needToCreate && isVpcNatGwChanged(gw) {
 		needToUpdate = true
 	}
@@ -744,18 +746,15 @@ func (c *Controller) execNatGwRules(pod *corev1.Pod, operation string, rules []s
 	return nil
 }
 
-func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1.StatefulSet) (newSts *v1.StatefulSet) {
-	replicas := int32(1)
+func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1.StatefulSet) *v1.StatefulSet {
 	name := util.GenNatGwStsName(gw.Name)
-	allowPrivilegeEscalation := true
-	privileged := true
 	labels := map[string]string{
 		"app":                   name,
 		util.VpcNatGatewayLabel: "true",
 	}
 	newPodAnnotations := map[string]string{}
 	if oldSts != nil && len(oldSts.Annotations) != 0 {
-		newPodAnnotations = oldSts.Annotations
+		newPodAnnotations = maps.Clone(oldSts.Annotations)
 	}
 	externalNetwork := util.GetNatGwExternalNetwork(gw.Spec.ExternalSubnets)
 	podAnnotations := map[string]string{
@@ -777,14 +776,31 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 		selectors[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
 	}
 	klog.V(3).Infof("prepare for vpc nat gateway pod, node selector: %v", selectors)
-	v4SubnetGw, _, _ := c.GetGwBySubnet(gw.Spec.Subnet)
-	newSts = &v1.StatefulSet{
+	v4Gateway, v6Gateway, err := c.GetGwBySubnet(gw.Spec.Subnet)
+	if err != nil {
+		klog.Errorf("failed to get gateway ips for subnet %s: %v", gw.Spec.Subnet, err)
+	}
+	v4ClusterIPRange, v6ClusterIPRange := util.SplitStringIP(c.config.ServiceClusterIPRange)
+	routes := make([]request.Route, 0, 2)
+	if v4Gateway != "" && v4ClusterIPRange != "" {
+		routes = append(routes, request.Route{Destination: v4ClusterIPRange, Gateway: v4Gateway})
+	}
+	if v6Gateway != "" && v6ClusterIPRange != "" {
+		routes = append(routes, request.Route{Destination: v6ClusterIPRange, Gateway: v6Gateway})
+	}
+	buf, err := json.Marshal(routes)
+	if err != nil {
+		klog.Errorf("failed to marshal routes %+v: %v", routes, err)
+	} else {
+		newPodAnnotations[util.RoutesAnnotation] = string(buf)
+	}
+	return &v1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   name,
 			Labels: labels,
 		},
 		Spec: v1.StatefulSetSpec{
-			Replicas: &replicas,
+			Replicas: ptr.To(int32(1)),
 			Selector: &metav1.LabelSelector{
 				MatchLabels: labels,
 			},
@@ -794,29 +810,16 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 					Annotations: newPodAnnotations,
 				},
 				Spec: corev1.PodSpec{
+					TerminationGracePeriodSeconds: ptr.To(int64(0)),
 					Containers: []corev1.Container{
 						{
 							Name:            "vpc-nat-gw",
 							Image:           vpcNatImage,
-							Command:         []string{"bash"},
-							Args:            []string{"-c", "while true; do sleep 10000; done"},
+							Command:         []string{"sleep", "infinity"},
 							ImagePullPolicy: corev1.PullIfNotPresent,
 							SecurityContext: &corev1.SecurityContext{
-								Privileged:               &privileged,
-								AllowPrivilegeEscalation: &allowPrivilegeEscalation,
-							},
-						},
-					},
-					InitContainers: []corev1.Container{
-						{
-							Name:            "vpc-nat-gw-init",
-							Image:           vpcNatImage,
-							Command:         []string{"bash"},
-							Args:            []string{"-c", fmt.Sprintf("bash /kube-ovn/nat-gateway.sh init %s,%s", c.config.ServiceClusterIPRange, v4SubnetGw)},
-							ImagePullPolicy: corev1.PullIfNotPresent,
-							SecurityContext: &corev1.SecurityContext{
-								Privileged:               &privileged,
-								AllowPrivilegeEscalation: &allowPrivilegeEscalation,
+								Privileged:               ptr.To(true),
+								AllowPrivilegeEscalation: ptr.To(true),
 							},
 						},
 					},
@@ -830,7 +833,6 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 			},
 		},
 	}
-	return
 }
 
 func (c *Controller) cleanUpVpcNatGw() error {
