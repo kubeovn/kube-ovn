@@ -24,8 +24,6 @@ function init() {
     # add static chain
     # this also a flag to make sure init once
     iptables -t nat -N DNAT_FILTER
-    ip link set net1 up
-    ip link set dev net1 arp off
 
     # add static chain
     iptables -t nat -N SNAT_FILTER
@@ -41,15 +39,6 @@ function init() {
     iptables -t nat -A POSTROUTING -j SNAT_FILTER
     iptables -t nat -A SNAT_FILTER -j EXCLUSIVE_SNAT
     iptables -t nat -A SNAT_FILTER -j SHARED_SNAT
-
-    for rule in $@
-    do
-        arr=(${rule//,/ })
-        cidr=${arr[0]}
-        nextHop=${arr[1]}
-
-        exec_cmd "ip route replace $cidr via $nextHop dev eth0"
-    done
 }
 
 

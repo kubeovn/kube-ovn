@@ -73,10 +73,7 @@ func (c *Controller) genLbSvcDeployment(svc *corev1.Service) (dp *v1.Deployment)
 		klog.Errorf("failed to resync vpc nat config, err: %v", err)
 		return nil
 	}
-	replicas := int32(1)
 	name := genLbSvcDpName(svc.Name)
-	allowPrivilegeEscalation := true
-	privileged := true
 	labels := map[string]string{
 		"app":       name,
 		"namespace": svc.Namespace,
@@ -103,7 +100,7 @@ func (c *Controller) genLbSvcDeployment(svc *corev1.Service) (dp *v1.Deployment)
 			Name: name,
 		},
 		Spec: v1.DeploymentSpec{
-			Replicas: &replicas,
+			Replicas: ptr.To(int32(1)),
 			Selector: &metav1.LabelSelector{
 				MatchLabels: labels,
 			},
@@ -117,12 +114,11 @@ func (c *Controller) genLbSvcDeployment(svc *corev1.Service) (dp *v1.Deployment)
 						{
 							Name:            "lb-svc",
 							Image:           vpcNatImage,
-							Command:         []string{"bash"},
-							Args:            []string{"-c", "sleep infinity"},
+							Command:         []string{"sleep", "infinity"},
 							ImagePullPolicy: corev1.PullIfNotPresent,
 							SecurityContext: &corev1.SecurityContext{
-								Privileged:               &privileged,
-								AllowPrivilegeEscalation: &allowPrivilegeEscalation,
+								Privileged:               ptr.To(true),
+								AllowPrivilegeEscalation: ptr.To(true),
 							},
 						},
 					},
