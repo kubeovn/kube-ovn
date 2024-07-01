@@ -30,6 +30,7 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 	var cs clientset.Interface
 	var podClient *framework.PodClient
 	var subnetClient *framework.SubnetClient
+	var defaultServiceClient *framework.ServiceClient
 	var netpolClient *framework.NetworkPolicyClient
 	var daemonSetClient *framework.DaemonSetClient
 	var namespaceName, netpolName, subnetName, podName string
@@ -39,6 +40,7 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 		cs = f.ClientSet
 		podClient = f.PodClient()
 		subnetClient = f.SubnetClient()
+		defaultServiceClient = f.ServiceClientNS("default")
 		netpolClient = f.NetworkPolicyClient()
 		daemonSetClient = f.DaemonSetClientNS(framework.KubeOvnNamespace)
 		namespaceName = f.Namespace.Name
