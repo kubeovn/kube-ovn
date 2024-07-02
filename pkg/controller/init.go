@@ -368,7 +368,7 @@ func (c *Controller) InitIPAM() error {
 		}
 
 		isAlive := isPodAlive(pod)
-		isStsPod, _ := isStatefulSetPod(pod)
+		isStsPod, _, _ := isStatefulSetPod(pod)
 		if !isAlive && !isStsPod {
 			continue
 		}
