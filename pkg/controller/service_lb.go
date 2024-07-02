@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"net"
 	"strings"
 	"time"
@@ -13,6 +14,7 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/ptr"
 
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -116,7 +118,7 @@ func (c *Controller) genLbSvcDeployment(svc *corev1.Service) (dp *v1.Deployment)
 							Name:            "lb-svc",
 							Image:           vpcNatImage,
 							Command:         []string{"bash"},
-							Args:            []string{"-c", "while true; do sleep 10000; done"},
+							Args:            []string{"-c", "sleep infinity"},
 							ImagePullPolicy: corev1.PullIfNotPresent,
 							SecurityContext: &corev1.SecurityContext{
 								Privileged:               &privileged,
@@ -124,6 +126,7 @@ func (c *Controller) genLbSvcDeployment(svc *corev1.Service) (dp *v1.Deployment)
 							},
 						},
 					},
+					TerminationGracePeriodSeconds: ptr.To(int64(0)),
 				},
 			},
 			Strategy: v1.DeploymentStrategy{
@@ -146,32 +149,39 @@ func (c *Controller) updateLbSvcDeployment(svc *corev1.Service, dp *v1.Deploymen
 	if svc.Spec.LoadBalancerIP != "" {
 		podAnnotations[attachIPAnnotation] = svc.Spec.LoadBalancerIP
 	}
-	dp.Spec.Template.Annotations = podAnnotations
+	if maps.Equal(podAnnotations, dp.Spec.Template.Annotations) {
+		return nil
+	}
 
+	dp.Spec.Template.Annotations = podAnnotations
 	return dp
 }
 
 func (c *Controller) createLbSvcPod(svc *corev1.Service) error {
-	var deploy *v1.Deployment
-	var err error
-	needToCreate := false
-	if deploy, err = c.config.KubeClient.AppsV1().Deployments(svc.Namespace).Get(context.Background(), genLbSvcDpName(svc.Name), metav1.GetOptions{}); err != nil {
-		if k8serrors.IsNotFound(err) {
-			needToCreate = true
-		} else {
+	deployName := genLbSvcDpName(svc.Name)
+	deploy, err := c.config.KubeClient.AppsV1().Deployments(svc.Namespace).Get(context.Background(), deployName, metav1.GetOptions{})
+	if err != nil {
+		if !k8serrors.IsNotFound(err) {
+			klog.Error(err)
 			return err
 		}
+		deploy = nil
 	}
 
-	if needToCreate {
-		newDp := c.genLbSvcDeployment(svc)
-		if _, err := c.config.KubeClient.AppsV1().Deployments(svc.Namespace).Create(context.Background(), newDp, metav1.CreateOptions{}); err != nil {
-			klog.Errorf("failed to create deployment %s, err: %v", newDp.Name, err)
+	if deploy == nil {
+		deploy = c.genLbSvcDeployment(svc)
+		klog.Infof("creating deployment %s/%s", deploy.Namespace, deploy.Name)
+		if _, err := c.config.KubeClient.AppsV1().Deployments(svc.Namespace).Create(context.Background(), deploy, metav1.CreateOptions{}); err != nil {
+			klog.Errorf("failed to create deployment %s/%s: err: %v", deploy.Namespace, deploy.Name, err)
 			return err
 		}
 	} else {
-		deploy = c.updateLbSvcDeployment(svc, deploy)
-		if _, err := c.config.KubeClient.AppsV1().Deployments(svc.Namespace).Update(context.Background(), deploy, metav1.UpdateOptions{}); err != nil {
+		newDeploy := c.updateLbSvcDeployment(svc, deploy)
+		if newDeploy == nil {
+			klog.V(3).Infof("no need to update deployment %s/%s", deploy.Namespace, deploy.Name)
+			return nil
+		}
+		if _, err := c.config.KubeClient.AppsV1().Deployments(svc.Namespace).Update(context.Background(), newDeploy, metav1.UpdateOptions{}); err != nil {
 			klog.Errorf("failed to update deployment %s, err: %v", deploy.Name, err)
 			return err
 		}
@@ -192,13 +202,13 @@ func (c *Controller) getLbSvcPod(svcName, svcNamespace string) (*corev1.Pod, err
 		return nil, err
 	case len(pods) == 0:
 		time.Sleep(2 * time.Second)
-		return nil, fmt.Errorf("pod '%s' not exist", genLbSvcDpName(svcName))
+		return nil, fmt.Errorf("pod of deployment %s/%s not found", svcNamespace, genLbSvcDpName(svcName))
 	case len(pods) != 1:
 		time.Sleep(2 * time.Second)
-		return nil, fmt.Errorf("too many pod")
-	case pods[0].Status.Phase != "Running":
+		return nil, fmt.Errorf("too many pods")
+	case pods[0].Status.Phase != corev1.PodRunning:
 		time.Sleep(2 * time.Second)
-		return nil, fmt.Errorf("pod is not active now")
+		return nil, fmt.Errorf("pod %s/%s is not running", pods[0].Namespace, pods[0].Name)
 	}
 
 	return pods[0], nil

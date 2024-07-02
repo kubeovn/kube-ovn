@@ -851,7 +851,7 @@ func (c *Controller) getNatGwPod(name string) (*corev1.Pod, error) {
 	case len(pods) != 1:
 		time.Sleep(5 * time.Second)
 		return nil, fmt.Errorf("too many pod")
-	case pods[0].Status.Phase != "Running":
+	case pods[0].Status.Phase != corev1.PodRunning:
 		time.Sleep(5 * time.Second)
 		return nil, fmt.Errorf("pod is not active now")
 	}

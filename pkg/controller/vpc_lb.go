@@ -11,6 +11,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/ptr"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -137,7 +138,7 @@ func (c *Controller) genVpcLbDeployment(vpc *kubeovnv1.Vpc) (*v1.Deployment, err
 							Name:            "vpc-lb",
 							Image:           vpcNatImage,
 							Command:         []string{"bash"},
-							Args:            []string{"-c", "while true; do sleep 10000; done"},
+							Args:            []string{"-c", "sleep infinity"},
 							ImagePullPolicy: corev1.PullIfNotPresent,
 							SecurityContext: &corev1.SecurityContext{
 								Privileged:               &privileged,
@@ -145,6 +146,7 @@ func (c *Controller) genVpcLbDeployment(vpc *kubeovnv1.Vpc) (*v1.Deployment, err
 							},
 						},
 					},
+					TerminationGracePeriodSeconds: ptr.To(int64(0)),
 				},
 			},
 			Strategy: v1.DeploymentStrategy{
