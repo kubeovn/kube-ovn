@@ -1,12 +1,10 @@
 package multus
 
 import (
-	"encoding/json"
 	"flag"
 	"fmt"
 	"testing"
 
-	"github.com/containernetworking/cni/pkg/types"
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/test/e2e"
@@ -16,28 +14,11 @@ import (
 	"github.com/onsi/ginkgo/v2"
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	"github.com/kubeovn/kube-ovn/pkg/netconf"
 	"github.com/kubeovn/kube-ovn/pkg/request"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/iproute"
 )
-
-const CNIVersion = "0.3.1"
-
-// https://github.com/containernetworking/plugins/blob/main/plugins/main/macvlan/macvlan.go#L37
-type MacvlanNetConf struct {
-	netconf.NetConf
-	Master     string `json:"master"`
-	Mode       string `json:"mode"`
-	MTU        int    `json:"mtu"`
-	Mac        string `json:"mac,omitempty"`
-	LinkContNs bool   `json:"linkInContainer,omitempty"`
-
-	RuntimeConfig struct {
-		Mac string `json:"mac,omitempty"`
-	} `json:"runtimeConfig,omitempty"`
-}
 
 func init() {
 	klog.SetOutput(ginkgo.GinkgoWriter)
@@ -86,20 +67,8 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 	framework.ConformanceIt("should be able to create attachment interface", func() {
 		provider := fmt.Sprintf("%s.%s.%s", nadName, namespaceName, util.OvnProvider)
 
-		ginkgo.By("Constructing network attachment definition config")
-		config := &netconf.NetConf{
-			NetConf: types.NetConf{
-				CNIVersion: CNIVersion,
-				Type:       util.CniTypeName,
-			},
-			ServerSocket: "/run/openvswitch/kube-ovn-daemon.sock",
-			Provider:     provider,
-		}
-		buf, err := json.MarshalIndent(config, "", "  ")
-		framework.ExpectNoError(err)
-
 		ginkgo.By("Creating network attachment definition " + nadName)
-		nad := framework.MakeNetworkAttachmentDefinition(nadName, namespaceName, string(buf))
+		nad := framework.MakeOVNNetworkAttachmentDefinition(nadName, namespaceName, provider, nil)
 		nad = nadClient.Create(nad)
 		framework.Logf("created network attachment definition config:\n%s", nad.Spec.Config)
 
@@ -181,20 +150,8 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 			routes = append(routes, request.Route{Destination: ipv6RouteDst, Gateway: ipv6RouteGw})
 		}
 
-		config := &netconf.NetConf{
-			NetConf: types.NetConf{
-				CNIVersion: CNIVersion,
-				Type:       util.CniTypeName,
-			},
-			ServerSocket: "/run/openvswitch/kube-ovn-daemon.sock",
-			Provider:     provider,
-			Routes:       routes,
-		}
-		buf, err := json.MarshalIndent(config, "", "  ")
-		framework.ExpectNoError(err)
-
 		ginkgo.By("Creating network attachment definition " + nadName)
-		nad := framework.MakeNetworkAttachmentDefinition(nadName, namespaceName, string(buf))
+		nad := framework.MakeOVNNetworkAttachmentDefinition(nadName, namespaceName, provider, routes)
 		nad = nadClient.Create(nad)
 		framework.Logf("created network attachment definition config:\n%s", nad.Spec.Config)
 
@@ -244,28 +201,8 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 	framework.ConformanceIt("should be able to provide IPAM for macvlan", func() {
 		provider := fmt.Sprintf("%s.%s", nadName, namespaceName)
 
-		ginkgo.By("Constructing network attachment definition config")
-		config := &MacvlanNetConf{
-			NetConf: netconf.NetConf{
-				NetConf: types.NetConf{
-					CNIVersion: CNIVersion,
-					Type:       "macvlan",
-				},
-				IPAM: &netconf.IPAMConf{
-					Type:         util.CniTypeName,
-					ServerSocket: "/run/openvswitch/kube-ovn-daemon.sock",
-					Provider:     provider,
-				},
-			},
-			Master:     "eth0",
-			Mode:       "bridge",
-			LinkContNs: true,
-		}
-		buf, err := json.MarshalIndent(config, "", "  ")
-		framework.ExpectNoError(err)
-
 		ginkgo.By("Creating network attachment definition " + nadName)
-		nad := framework.MakeNetworkAttachmentDefinition(nadName, namespaceName, string(buf))
+		nad := framework.MakeMacvlanNetworkAttachmentDefinition(nadName, namespaceName, "eth0", "bridge", provider, nil)
 		nad = nadClient.Create(nad)
 		framework.Logf("created network attachment definition config:\n%s", nad.Spec.Config)
 
@@ -347,28 +284,8 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 			routes = append(routes, request.Route{Destination: ipv6RouteDst, Gateway: ipv6RouteGw})
 		}
 
-		config := &MacvlanNetConf{
-			NetConf: netconf.NetConf{
-				NetConf: types.NetConf{
-					CNIVersion: CNIVersion,
-					Type:       "macvlan",
-				},
-				IPAM: &netconf.IPAMConf{
-					Type:         util.CniTypeName,
-					ServerSocket: "/run/openvswitch/kube-ovn-daemon.sock",
-					Provider:     provider,
-					Routes:       routes,
-				},
-			},
-			Master:     "eth0",
-			Mode:       "bridge",
-			LinkContNs: true,
-		}
-		buf, err := json.MarshalIndent(config, "", "  ")
-		framework.ExpectNoError(err)
-
 		ginkgo.By("Creating network attachment definition " + nadName)
-		nad := framework.MakeNetworkAttachmentDefinition(nadName, namespaceName, string(buf))
+		nad := framework.MakeMacvlanNetworkAttachmentDefinition(nadName, namespaceName, "eth0", "bridge", provider, routes)
 		nad = nadClient.Create(nad)
 		framework.Logf("created network attachment definition config:\n%s", nad.Spec.Config)
 
