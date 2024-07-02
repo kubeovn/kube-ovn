@@ -43,6 +43,9 @@ func (c *OVNNbClient) UpdateDHCPOptions(subnet *kubeovnv1.Subnet, mtu int) (*DHC
 	lsName := subnet.Name
 	cidrBlock := subnet.Spec.CIDRBlock
 	gateway := subnet.Spec.Gateway
+	if subnet.Status.U2OInterconnectionIP != "" && subnet.Spec.U2OInterconnection {
+		gateway = subnet.Status.U2OInterconnectionIP
+	}
 	enableDHCP := subnet.Spec.EnableDHCP
 
 	/* delete dhcp options */
