@@ -25,6 +25,15 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
+type ErrChassisNotFound struct {
+	Chassis string
+	Node    string
+}
+
+func (e *ErrChassisNotFound) Error() string {
+	return fmt.Sprintf("chassis %s not found for node %s", e.Chassis, e.Node)
+}
+
 func (c *Controller) enqueueAddNode(obj interface{}) {
 	var key string
 	var err error
@@ -892,21 +901,21 @@ func (c *Controller) UpdateChassisTag(node *v1.Node) error {
 	}
 	chassis, err := c.OVNSbClient.GetChassis(annoChassisName, true)
 	if err != nil {
-		klog.Errorf("failed to get node %s chassis: %s, %v", node.Name, annoChassisName, err)
+		klog.Errorf("failed to get chassis %s for node %s: %v", annoChassisName, node.Name, err)
 		return err
 	}
 	if chassis == nil {
-		klog.Infof("chassis not registered for node %s, do chassis gc once", node.Name)
+		klog.Infof("chassis %q not registered for node %s, do chassis gc once", annoChassisName, node.Name)
 		// chassis name conflict, do GC
 		if err = c.gcChassis(); err != nil {
 			klog.Errorf("failed to gc chassis: %v", err)
 			return err
 		}
-		return fmt.Errorf("chassis not registered for node %s, will try again later", node.Name)
+		return &ErrChassisNotFound{Chassis: annoChassisName, Node: node.Name}
 	}
 
 	if chassis.ExternalIDs == nil || chassis.ExternalIDs["vendor"] != util.CniTypeName {
-		klog.Infof("init tag %s for node %s chassis", util.CniTypeName, node.Name)
+		klog.Infof("init tag %s for node %s chassis %s", util.CniTypeName, node.Name, chassis.Name)
 		if err = c.OVNSbClient.UpdateChassisTag(chassis.Name, node.Name); err != nil {
 			return fmt.Errorf("failed to init chassis tag, %v", err)
 		}
