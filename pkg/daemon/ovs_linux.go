@@ -186,7 +186,7 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 		klog.Error(err)
 		return nil, err
 	}
-	finalRoutes, err := configureContainerNic(containerNicName, ifName, ip, gateway, isDefaultRoute, detectIPConflict, routes, macAddr, podNS, mtu, nicType, gwCheckMode, u2oInterconnectionIP)
+	finalRoutes, err := csh.configureContainerNic(podName, podNamespace, containerNicName, ifName, ip, gateway, isDefaultRoute, detectIPConflict, routes, macAddr, podNS, mtu, nicType, gwCheckMode, u2oInterconnectionIP)
 	if err != nil {
 		klog.Error(err)
 		return nil, err
@@ -355,7 +355,7 @@ func configureHostNic(nicName string) error {
 	return nil
 }
 
-func configureContainerNic(nicName, ifName, ipAddr, gateway string, isDefaultRoute, detectIPConflict bool, routes []request.Route, macAddr net.HardwareAddr, netns ns.NetNS, mtu int, nicType string, gwCheckMode int, u2oInterconnectionIP string) ([]request.Route, error) {
+func (csh cniServerHandler) configureContainerNic(podName, podNamespace, nicName, ifName, ipAddr, gateway string, isDefaultRoute, detectIPConflict bool, routes []request.Route, macAddr net.HardwareAddr, netns ns.NetNS, mtu int, nicType string, gwCheckMode int, u2oInterconnectionIP string) ([]request.Route, error) {
 	containerLink, err := netlink.LinkByName(nicName)
 	if err != nil {
 		return nil, fmt.Errorf("can not find container nic %s: %v", nicName, err)
@@ -500,12 +500,12 @@ func configureContainerNic(nicName, ifName, ipAddr, gateway string, isDefaultRou
 			}
 
 			if u2oInterconnectionIP != "" {
-				if err := checkGatewayReady(gwCheckMode, interfaceName, ipAddr, u2oInterconnectionIP, false, true); err != nil {
+				if err := csh.checkGatewayReady(podName, podNamespace, gwCheckMode, interfaceName, ipAddr, u2oInterconnectionIP, false, true); err != nil {
 					klog.Error(err)
 					return err
 				}
 			}
-			return checkGatewayReady(gwCheckMode, interfaceName, ipAddr, gateway, underlayGateway, true)
+			return csh.checkGatewayReady(podName, podNamespace, gwCheckMode, interfaceName, ipAddr, gateway, underlayGateway, true)
 		}
 
 		return nil
@@ -514,26 +514,53 @@ func configureContainerNic(nicName, ifName, ipAddr, gateway string, isDefaultRou
 	return finalRoutes, err
 }
 
-func checkGatewayReady(gwCheckMode int, intr, ipAddr, gateway string, underlayGateway, verbose bool) error {
-	var err error
-
+func (csh cniServerHandler) checkGatewayReady(podName, podNamespace string, gwCheckMode int, intr, ipAddr, gateway string, underlayGateway, verbose bool) error {
 	if gwCheckMode == gatewayCheckModeArpingNotConcerned || gwCheckMode == gatewayCheckModePingNotConcerned {
 		// ignore error if disableGatewayCheck=true
-		if err = waitNetworkReady(intr, ipAddr, gateway, underlayGateway, verbose, 1); err != nil {
-			err = nil
-		}
-	} else {
-		err = waitNetworkReady(intr, ipAddr, gateway, underlayGateway, verbose, gatewayCheckMaxRetry)
+		_ = waitNetworkReady(intr, ipAddr, gateway, underlayGateway, verbose, 1, nil)
+		return nil
 	}
-	return err
+
+	done := make(chan struct{}, 1)
+	go func() {
+		interval := 5 * time.Second
+		timer := time.NewTimer(interval)
+		for {
+			select {
+			case <-done:
+				return
+			case <-timer.C:
+			}
+
+			pod, err := csh.KubeClient.CoreV1().Pods(podNamespace).Get(context.Background(), podName, metav1.GetOptions{})
+			if err != nil {
+				if !k8serrors.IsNotFound(err) {
+					klog.Errorf("failed to get pod %s/%s: %v", podNamespace, podName, err)
+					continue
+				}
+				pod = nil
+			}
+			if pod == nil || !pod.DeletionTimestamp.IsZero() {
+				// TODO: check pod UID
+				select {
+				case <-done:
+				case done <- struct{}{}:
+				}
+				return
+			}
+			timer.Reset(interval)
+		}
+	}()
+
+	return waitNetworkReady(intr, ipAddr, gateway, underlayGateway, verbose, gatewayCheckMaxRetry, done)
 }
 
-func waitNetworkReady(nic, ipAddr, gateway string, underlayGateway, verbose bool, maxRetry int) error {
+func waitNetworkReady(nic, ipAddr, gateway string, underlayGateway, verbose bool, maxRetry int, done chan struct{}) error {
 	ips := strings.Split(ipAddr, ",")
 	for i, gw := range strings.Split(gateway, ",") {
 		src := strings.Split(ips[i], "/")[0]
 		if underlayGateway && util.CheckProtocol(gw) == kubeovnv1.ProtocolIPv4 {
-			mac, count, err := util.ArpResolve(nic, src, gw, time.Second, maxRetry)
+			mac, count, err := util.ArpResolve(nic, gw, time.Second, maxRetry, done)
 			cniConnectivityResult.WithLabelValues(nodeName).Add(float64(count))
 			if err != nil {
 				err = fmt.Errorf("network %s with gateway %s is not ready for interface %s after %d checks: %v", ips[i], gw, nic, count, err)
@@ -545,7 +572,7 @@ func waitNetworkReady(nic, ipAddr, gateway string, underlayGateway, verbose bool
 				klog.Infof("network %s with gateway %s is ready for interface %s after %d checks", ips[i], gw, nic, count)
 			}
 		} else {
-			_, err := pingGateway(gw, src, verbose, maxRetry)
+			_, err := pingGateway(gw, src, verbose, maxRetry, done)
 			if err != nil {
 				klog.Error(err)
 				return err
@@ -643,7 +670,7 @@ func configureNodeNic(portName, ip, gw, joinCIDR string, macAddr net.HardwareAdd
 
 	// ping ovn0 gw to activate the flow
 	klog.Infof("wait ovn0 gw ready")
-	if err := waitNetworkReady(util.NodeNic, ip, gw, false, true, gatewayCheckMaxRetry); err != nil {
+	if err := waitNetworkReady(util.NodeNic, ip, gw, false, true, gatewayCheckMaxRetry, nil); err != nil {
 		klog.Errorf("failed to init ovn0 check: %v", err)
 		return err
 	}
@@ -669,7 +696,7 @@ func (c *Controller) loopOvn0Check() {
 	}
 	ip := node.Annotations[util.IPAddressAnnotation]
 	gw := node.Annotations[util.GatewayAnnotation]
-	if err := waitNetworkReady(util.NodeNic, ip, gw, false, false, 5); err != nil {
+	if err := waitNetworkReady(util.NodeNic, ip, gw, false, false, 5, nil); err != nil {
 		util.LogFatalAndExit(err, "failed to ping ovn0 gateway %s", gw)
 	}
 }
@@ -693,7 +720,7 @@ func (c *Controller) checkNodeGwNicInNs(nodeExtIP, ip, gw string, gwNS ns.NetNS)
 	}
 	if exists {
 		return ns.WithNetNSPath(gwNS.Path(), func(_ ns.NetNS) error {
-			err = waitNetworkReady(util.NodeGwNic, ip, gw, true, true, 3)
+			err = waitNetworkReady(util.NodeGwNic, ip, gw, true, true, 3, nil)
 			if err == nil {
 				cmd := exec.Command("sh", "-c", "bfdd-control status")
 				if err := cmd.Run(); err != nil {
@@ -834,7 +861,7 @@ func configureNodeGwNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu i
 			klog.Error(err)
 			return err
 		}
-		return waitNetworkReady(util.NodeGwNic, ip, gw, true, true, 3)
+		return waitNetworkReady(util.NodeGwNic, ip, gw, true, true, 3, nil)
 	})
 }
 
@@ -1610,7 +1637,7 @@ func (csh cniServerHandler) configureNicWithInternalPort(podName, podNamespace, 
 	if err != nil {
 		return containerNicName, nil, fmt.Errorf("failed to open netns %q: %v", netns, err)
 	}
-	routes, err = configureContainerNic(containerNicName, ifName, ip, gateway, isDefaultRoute, detectIPConflict, routes, macAddr, podNS, mtu, nicType, gwCheckMode, u2oInterconnectionIP)
+	routes, err = csh.configureContainerNic(podName, podNamespace, containerNicName, ifName, ip, gateway, isDefaultRoute, detectIPConflict, routes, macAddr, podNS, mtu, nicType, gwCheckMode, u2oInterconnectionIP)
 	return containerNicName, routes, err
 }
 
