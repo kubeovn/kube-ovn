@@ -567,7 +567,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		ginkgo.By("Creating underlay subnet " + subnetName)
 		subnet := framework.MakeSubnet(subnetName, vlanName, strings.Join(underlayCidr, ","), strings.Join(gateway, ","), "", "", excludeIPs, nil, []string{namespaceName})
 		subnet.Spec.U2OInterconnection = true
-		// only ipv4 needs to verify that the gateway address is consistent with U2OInterconnectionIP when enabling DHCP and U20
+		// only ipv4 needs to verify that the gateway address is consistent with U2OInterconnectionIP when enabling DHCP and U2O
 		if f.HasIPv4() {
 			subnet.Spec.EnableDHCP = true
 		}
