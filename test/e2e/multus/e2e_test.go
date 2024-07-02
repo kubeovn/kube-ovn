@@ -17,6 +17,7 @@ import (
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/netconf"
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/request"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
@@ -56,11 +57,11 @@ func TestE2E(t *testing.T) {
 var _ = framework.SerialDescribe("[group:multus]", func() {
 	f := framework.NewDefaultFramework("multus")
 
+	var ipClient *framework.IPClient
 	var podClient *framework.PodClient
 	var subnetClient *framework.SubnetClient
 	var nadClient *framework.NetworkAttachmentDefinitionClient
-	var nadName, podName, subnetName, namespaceName string
-	var cidr string
+	var nadName, podName, subnetName, namespaceName, cidr string
 	var subnet *apiv1.Subnet
 	ginkgo.BeforeEach(func() {
 		namespaceName = f.Namespace.Name
@@ -68,6 +69,7 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 		podName = "pod-" + framework.RandomSuffix()
 		subnetName = "subnet-" + framework.RandomSuffix()
 		cidr = framework.RandomCIDR(f.ClusterIPFamily)
+		ipClient = f.IPClient()
 		podClient = f.PodClient()
 		subnetClient = f.SubnetClient()
 		nadClient = f.NetworkAttachmentDefinitionClient()
@@ -115,9 +117,32 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 		pod = podClient.CreateSync(pod)
 
 		ginkgo.By("Validating pod annotations")
-		framework.ExpectNotEmpty(pod.Annotations)
 		framework.ExpectHaveKey(pod.Annotations, nadv1.NetworkStatusAnnot)
 		framework.Logf("pod network status:\n%s", pod.Annotations[nadv1.NetworkStatusAnnot])
+		cidr := pod.Annotations[fmt.Sprintf(util.CidrAnnotationTemplate, provider)]
+		ip := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, provider)]
+		gateway := pod.Annotations[fmt.Sprintf(util.GatewayAnnotationTemplate, provider)]
+		mac := pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, provider)]
+		framework.ExpectIPInCIDR(ip, cidr)
+		framework.ExpectIPInCIDR(gateway, cidr)
+		framework.ExpectMAC(mac)
+
+		ipName := ovs.PodNameToPortName(podName, namespaceName, provider)
+		ginkgo.By("Validating IP resource " + ipName)
+		ipCR := ipClient.Get(ipName)
+		framework.ExpectEqual(ipCR.Spec.Subnet, subnetName)
+		framework.ExpectEqual(ipCR.Spec.PodName, podName)
+		framework.ExpectEqual(ipCR.Spec.Namespace, namespaceName)
+		framework.ExpectEqual(ipCR.Spec.NodeName, pod.Spec.NodeName)
+		framework.ExpectEqual(ipCR.Spec.IPAddress, ip)
+		framework.ExpectEqual(ipCR.Spec.MacAddress, mac)
+		ipv4, ipv6 := util.SplitStringIP(ip)
+		framework.ExpectEqual(ipCR.Spec.V4IPAddress, ipv4)
+		framework.ExpectEqual(ipCR.Spec.V6IPAddress, ipv6)
+		framework.ExpectHaveKeyWithValue(ipCR.Labels, subnetName, "")
+		framework.ExpectHaveKeyWithValue(ipCR.Labels, util.IPReservedLabel, "false")
+		framework.ExpectHaveKeyWithValue(ipCR.Labels, util.SubnetNameLabel, subnetName)
+		framework.ExpectHaveKeyWithValue(ipCR.Labels, util.NodeNameLabel, pod.Spec.NodeName)
 
 		ginkgo.By("Retrieving pod routes")
 		podRoutes, err := iproute.RouteShow("", "", func(cmd ...string) ([]byte, []byte, error) {
@@ -205,9 +230,32 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 		pod = podClient.CreateSync(pod)
 
 		ginkgo.By("Validating pod annotations")
-		framework.ExpectNotEmpty(pod.Annotations)
 		framework.ExpectHaveKey(pod.Annotations, nadv1.NetworkStatusAnnot)
 		framework.Logf("pod network status:\n%s", pod.Annotations[nadv1.NetworkStatusAnnot])
+		cidr := pod.Annotations[fmt.Sprintf(util.CidrAnnotationTemplate, provider)]
+		ip := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, provider)]
+		gateway := pod.Annotations[fmt.Sprintf(util.GatewayAnnotationTemplate, provider)]
+		mac := pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, provider)]
+		framework.ExpectIPInCIDR(ip, cidr)
+		framework.ExpectIPInCIDR(gateway, cidr)
+		framework.ExpectMAC(mac)
+
+		ipName := ovs.PodNameToPortName(podName, namespaceName, provider)
+		ginkgo.By("Validating IP resource " + ipName)
+		ipCR := ipClient.Get(ipName)
+		framework.ExpectEqual(ipCR.Spec.Subnet, subnetName)
+		framework.ExpectEqual(ipCR.Spec.PodName, podName)
+		framework.ExpectEqual(ipCR.Spec.Namespace, namespaceName)
+		framework.ExpectEqual(ipCR.Spec.NodeName, pod.Spec.NodeName)
+		framework.ExpectEqual(ipCR.Spec.IPAddress, ip)
+		framework.ExpectEqual(ipCR.Spec.MacAddress, mac)
+		ipv4, ipv6 := util.SplitStringIP(ip)
+		framework.ExpectEqual(ipCR.Spec.V4IPAddress, ipv4)
+		framework.ExpectEqual(ipCR.Spec.V6IPAddress, ipv6)
+		framework.ExpectHaveKeyWithValue(ipCR.Labels, subnetName, "")
+		framework.ExpectHaveKeyWithValue(ipCR.Labels, util.IPReservedLabel, "false")
+		framework.ExpectHaveKeyWithValue(ipCR.Labels, util.SubnetNameLabel, subnetName)
+		framework.ExpectHaveKeyWithValue(ipCR.Labels, util.NodeNameLabel, pod.Spec.NodeName)
 
 		ginkgo.By("Retrieving pod routes")
 		podRoutes, err := iproute.RouteShow("", "", func(cmd ...string) ([]byte, []byte, error) {
@@ -281,9 +329,31 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 		pod = podClient.CreateSync(pod)
 
 		ginkgo.By("Validating pod annotations")
-		framework.ExpectNotEmpty(pod.Annotations)
 		framework.ExpectHaveKey(pod.Annotations, nadv1.NetworkStatusAnnot)
 		framework.Logf("pod network status:\n%s", pod.Annotations[nadv1.NetworkStatusAnnot])
+		cidr := pod.Annotations[fmt.Sprintf(util.CidrAnnotationTemplate, provider)]
+		ip := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, provider)]
+		gateway := pod.Annotations[fmt.Sprintf(util.GatewayAnnotationTemplate, provider)]
+		framework.ExpectIPInCIDR(ip, cidr)
+		framework.ExpectIPInCIDR(gateway, cidr)
+		framework.ExpectNotHaveKey(pod.Annotations, fmt.Sprintf(util.MacAddressAnnotationTemplate, provider))
+
+		ipName := ovs.PodNameToPortName(podName, namespaceName, provider)
+		ginkgo.By("Validating IP resource " + ipName)
+		ipCR := ipClient.Get(ipName)
+		framework.ExpectEqual(ipCR.Spec.Subnet, subnetName)
+		framework.ExpectEqual(ipCR.Spec.PodName, podName)
+		framework.ExpectEqual(ipCR.Spec.Namespace, namespaceName)
+		framework.ExpectEqual(ipCR.Spec.NodeName, pod.Spec.NodeName)
+		framework.ExpectEqual(ipCR.Spec.IPAddress, ip)
+		framework.ExpectEmpty(ipCR.Spec.MacAddress)
+		ipv4, ipv6 := util.SplitStringIP(ip)
+		framework.ExpectEqual(ipCR.Spec.V4IPAddress, ipv4)
+		framework.ExpectEqual(ipCR.Spec.V6IPAddress, ipv6)
+		framework.ExpectHaveKeyWithValue(ipCR.Labels, subnetName, "")
+		framework.ExpectHaveKeyWithValue(ipCR.Labels, util.IPReservedLabel, "false")
+		framework.ExpectHaveKeyWithValue(ipCR.Labels, util.SubnetNameLabel, subnetName)
+		framework.ExpectHaveKeyWithValue(ipCR.Labels, util.NodeNameLabel, pod.Spec.NodeName)
 
 		ginkgo.By("Retrieving pod routes")
 		podRoutes, err := iproute.RouteShow("", "", func(cmd ...string) ([]byte, []byte, error) {
@@ -379,9 +449,31 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 		pod = podClient.CreateSync(pod)
 
 		ginkgo.By("Validating pod annotations")
-		framework.ExpectNotEmpty(pod.Annotations)
 		framework.ExpectHaveKey(pod.Annotations, nadv1.NetworkStatusAnnot)
 		framework.Logf("pod network status:\n%s", pod.Annotations[nadv1.NetworkStatusAnnot])
+		cidr := pod.Annotations[fmt.Sprintf(util.CidrAnnotationTemplate, provider)]
+		ip := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, provider)]
+		gateway := pod.Annotations[fmt.Sprintf(util.GatewayAnnotationTemplate, provider)]
+		framework.ExpectIPInCIDR(ip, cidr)
+		framework.ExpectIPInCIDR(gateway, cidr)
+		framework.ExpectNotHaveKey(pod.Annotations, fmt.Sprintf(util.MacAddressAnnotationTemplate, provider))
+
+		ipName := ovs.PodNameToPortName(podName, namespaceName, provider)
+		ginkgo.By("Validating IP resource " + ipName)
+		ipCR := ipClient.Get(ipName)
+		framework.ExpectEqual(ipCR.Spec.Subnet, subnetName)
+		framework.ExpectEqual(ipCR.Spec.PodName, podName)
+		framework.ExpectEqual(ipCR.Spec.Namespace, namespaceName)
+		framework.ExpectEqual(ipCR.Spec.NodeName, pod.Spec.NodeName)
+		framework.ExpectEqual(ipCR.Spec.IPAddress, ip)
+		framework.ExpectEmpty(ipCR.Spec.MacAddress)
+		ipv4, ipv6 := util.SplitStringIP(ip)
+		framework.ExpectEqual(ipCR.Spec.V4IPAddress, ipv4)
+		framework.ExpectEqual(ipCR.Spec.V6IPAddress, ipv6)
+		framework.ExpectHaveKeyWithValue(ipCR.Labels, subnetName, "")
+		framework.ExpectHaveKeyWithValue(ipCR.Labels, util.IPReservedLabel, "false")
+		framework.ExpectHaveKeyWithValue(ipCR.Labels, util.SubnetNameLabel, subnetName)
+		framework.ExpectHaveKeyWithValue(ipCR.Labels, util.NodeNameLabel, pod.Spec.NodeName)
 
 		ginkgo.By("Retrieving pod routes")
 		podRoutes, err := iproute.RouteShow("", "", func(cmd ...string) ([]byte, []byte, error) {

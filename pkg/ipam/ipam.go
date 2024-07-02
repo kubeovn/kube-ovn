@@ -98,12 +98,6 @@ func (ipam *IPAM) GetStaticAddress(podName, nicName, ip string, mac *string, sub
 		return "", "", "", err
 	}
 
-	if macStr == "" {
-		err := fmt.Errorf("failed to allocate static mac for %s", podName)
-		klog.Error(err)
-		return "", "", "", ErrNoAvailable
-	}
-
 	switch subnet.Protocol {
 	case kubeovnv1.ProtocolIPv4:
 		klog.Infof("allocate v4 %s, mac %s for %s from subnet %s", ip, macStr, podName, subnetName)
