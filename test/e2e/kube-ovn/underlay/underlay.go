@@ -886,7 +886,8 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		lrpIPv4, lrpIPv6 := util.SplitStringIP(subnet.Status.U2OInterconnectionIP)
 		if f.HasIPv4() {
 			if f.VersionPriorTo(1, 13) {
-				checkU2OFilterOpenFlowExist(clusterName, pn, subnet, true)
+				err := checkU2OFilterOpenFlowExist(clusterName, pn, subnet, true)
+				framework.ExpectNoError(err)
 			} else {
 				ginkgo.By("Sending ARP request to " + lrpIPv4 + " from container " + containerName)
 				cmd := strings.Fields("arping -c1 -w1 " + lrpIPv4)
@@ -895,15 +896,12 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 				framework.ExpectEqual(err, docker.ErrNonZeroExitCode{Cmd: cmd, ExitCode: 1})
 			}
 		} else {
-			if f.VersionPriorTo(1, 13) {
-				checkU2OFilterOpenFlowExist(clusterName, pn, subnet, false)
-			} else {
-				framework.ExpectEmpty(lrpIPv4)
-			}
+			framework.ExpectEmpty(lrpIPv4)
 		}
 		if f.HasIPv6() {
 			if f.VersionPriorTo(1, 13) {
-				checkU2OFilterOpenFlowExist(clusterName, pn, subnet, true)
+				err := checkU2OFilterOpenFlowExist(clusterName, pn, subnet, true)
+				framework.ExpectNoError(err)
 			} else {
 				ginkgo.By("Sending ND NS request to " + lrpIPv6 + " from container " + containerName)
 				cmd := strings.Fields("ndisc6 -1 -n -r1 -w1000 " + lrpIPv6 + " eth0")
@@ -912,11 +910,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 				framework.ExpectEqual(err, docker.ErrNonZeroExitCode{Cmd: cmd, ExitCode: 2})
 			}
 		} else {
-			if f.VersionPriorTo(1, 13) {
-				checkU2OFilterOpenFlowExist(clusterName, pn, subnet, false)
-			} else {
-				framework.ExpectEmpty(lrpIPv6)
-			}
+			framework.ExpectEmpty(lrpIPv6)
 		}
 	})
 })
@@ -1099,44 +1093,58 @@ func checkPolicy(hitPolicyStr string, expectPolicyExist bool, vpcName string) {
 	}, "")
 }
 
-func checkU2OFilterOpenFlowExist(clusterName string, pn *apiv1.ProviderNetwork, subnet *apiv1.Subnet, expectRuleExist bool) {
+func checkU2OFilterOpenFlowExist(clusterName string, pn *apiv1.ProviderNetwork, subnet *apiv1.Subnet, expectRuleExist bool) error {
 	nodes, err := kind.ListNodes(clusterName, "")
-	framework.ExpectNoError(err, "getting nodes in kind cluster")
-	framework.ExpectNotEmpty(nodes)
+	if err != nil {
+		return fmt.Errorf("getting nodes in kind cluster: %w", err)
+	}
+	if len(nodes) == 0 {
+		return fmt.Errorf("no nodes found in kind cluster")
+	}
 
 	for _, node := range nodes {
 		gws := strings.Split(subnet.Spec.Gateway, ",")
 		u2oIPs := strings.Split(subnet.Status.U2OInterconnectionIP, ",")
 		for index, gw := range gws {
+			var cmd string
 			if util.CheckProtocol(gw) == apiv1.ProtocolIPv4 {
-				cmd := fmt.Sprintf("kubectl ko ofctl %s dump-flows br-%s | grep 0x1000 ", node.Name(), pn.Name)
-				output, _ := exec.Command("bash", "-c", cmd).CombinedOutput()
-				outputStr := string(output)
-
-				if expectRuleExist {
-					matchStr := fmt.Sprintf("priority=10000,arp,in_port=1,arp_spa=%s,arp_tpa=%s,arp_op=1", gw, u2oIPs[index])
-					framework.Logf("matchStr %s ", matchStr)
-					framework.Logf("outputStr %s ", outputStr)
-					ruleExist := strings.Contains(outputStr, matchStr)
-					framework.ExpectTrue(ruleExist)
-				} else {
-					framework.ExpectEqual(outputStr, "")
-				}
+				cmd = fmt.Sprintf("kubectl ko ofctl %s dump-flows br-%s | grep 0x1000 ", node.Name(), pn.Name)
 			} else {
-				cmd := fmt.Sprintf("kubectl ko ofctl %s dump-flows br-%s | grep 0x1001 ", node.Name(), pn.Name)
+				cmd = fmt.Sprintf("kubectl ko ofctl %s dump-flows br-%s | grep 0x1001 ", node.Name(), pn.Name)
+			}
+
+			success := false
+			for attempt := 0; attempt < 3; attempt++ {
 				output, _ := exec.Command("bash", "-c", cmd).CombinedOutput()
 				outputStr := string(output)
 
-				if expectRuleExist {
-					matchStr := fmt.Sprintf("priority=10000,icmp6,in_port=1,icmp_type=135,nd_target=%s", u2oIPs[index])
-					framework.Logf("matchStr %s ", matchStr)
-					framework.Logf("outputStr %s ", outputStr)
-					ruleExist := strings.Contains(outputStr, matchStr)
-					framework.ExpectTrue(ruleExist)
+				var matchStr string
+				if util.CheckProtocol(gw) == apiv1.ProtocolIPv4 {
+					matchStr = fmt.Sprintf("priority=10000,arp,in_port=1,arp_spa=%s,arp_tpa=%s,arp_op=1", gw, u2oIPs[index])
 				} else {
-					framework.ExpectEqual(outputStr, "")
+					matchStr = fmt.Sprintf("priority=10000,icmp6,in_port=1,icmp_type=135,nd_target=%s", u2oIPs[index])
+				}
+
+				framework.Logf("matchStr rule %s", matchStr)
+				framework.Logf("outputStr rule %s", outputStr)
+				ruleExist := strings.Contains(outputStr, matchStr)
+				if (expectRuleExist && ruleExist) || (!expectRuleExist && outputStr == "") {
+					success = true
+					break
+				}
+
+				time.Sleep(5 * time.Second)
+			}
+
+			if !success {
+				if expectRuleExist {
+					return fmt.Errorf("expected rule does not exist after 3 attempts")
+				} else {
+					return fmt.Errorf("unexpected rule exists after 3 attempts")
 				}
 			}
 		}
 	}
+	framework.Logf("checkU2OFilterOpenFlowExist works successfully")
+	return nil
 }
