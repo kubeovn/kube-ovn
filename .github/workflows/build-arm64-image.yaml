@@ -39,8 +39,10 @@ jobs:
           check-latest: true
           cache: false
 
-      - name: Export Go full version
-        run: echo "GO_FULL_VER=$(go env GOVERSION)" >> "$GITHUB_ENV"
+      - name: Setup environment variables
+        run: |
+          echo "TAG=$(cat VERSION)" >> "$GITHUB_ENV"
+          echo "GO_FULL_VER=$(go env GOVERSION)" >> "$GITHUB_ENV"
 
       - name: Go Cache
         uses: actions/cache@v4
@@ -50,6 +52,46 @@ jobs:
             ~/go/pkg/mod
           key: ${{ runner.os }}-${{ env.GO_FULL_VER }}-arm64-${{ hashFiles('**/go.sum') }}
           restore-keys: ${{ runner.os }}-${{ env.GO_FULL_VER }}-arm64-
+
+      - name: Scan base image
+        uses: aquasecurity/trivy-action@0.23.0
+        with:
+          scan-type: image
+          scanners: vuln
+          image-ref: docker.io/kubeovn/kube-ovn-base:${{ env.TAG }}
+          format: json
+          output: trivy-result.json
+          ignore-unfixed: true
+          trivyignores: .trivyignore
+          vuln-type: library
+
+      - name: Build kubectl and CNI plugins from source
+        run: |
+          cat trivy-result.json
+          dockerfile=${{ github.workspace }}/dist/images/Dockerfile
+          export GOBIN=`dirname "$dockerfile"`
+          jq -r '.Results[] | select((.Type=="gobinary") and (.Vulnerabilities!=null)) | .Target' trivy-result.json | while read f; do
+            bin=`basename $f`
+            case $bin in
+              loopback|macvlan)
+                echo "Building $bin from source..."
+                sh -c "cd .. && go install -v -mod=mod github.com/containernetworking/plugins/plugins/main/$bin"
+                echo "COPY $bin /$f" >> "$dockerfile"
+                ;;
+              portmap)
+                echo "Building $bin from source..."
+                sh -c "cd .. && go install -v -mod=mod github.com/containernetworking/plugins/plugins/meta/$bin"
+                echo "COPY $bin /$f" >> "$dockerfile"
+                ;;
+              kubectl)
+                echo "Building $bin from source..."
+                go install -v -mod=mod k8s.io/kubernetes/cmd/kubectl
+                echo "COPY $bin /$f" >> "$dockerfile"
+                ;;
+              *)
+                ;;
+            esac
+          done
 
       - name: Build
         run: make release-arm || make release-arm
