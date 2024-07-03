@@ -202,8 +202,7 @@ jobs:
           docker tag kubeovn/kube-ovn-base:$TAG-amd64-dpdk kubeovn/kube-ovn-base:$TAG-dpdk
 
       - name: Scan base image
-        uses: aquasecurity/trivy-action@0.21.0
-        if: github.event_name == 'pull_request'
+        uses: aquasecurity/trivy-action@0.23.0
         with:
           scan-type: image
           scanners: vuln
@@ -215,7 +214,6 @@ jobs:
           vuln-type: library
 
       - name: Build kubectl and CNI plugins from source
-        if: github.event_name == 'pull_request'
         run: |
           cat trivy-result.json
           dockerfile=${{ github.workspace }}/dist/images/Dockerfile
@@ -235,7 +233,7 @@ jobs:
                 ;;
               kubectl)
                 echo "Building $bin from source..."
-                sh -c "cd .. && go install -v -mod=mod k8s.io/kubernetes/cmd/kubectl"
+                go install -v -mod=mod k8s.io/kubernetes/cmd/kubectl
                 echo "COPY $bin /$f" >> "$dockerfile"
                 ;;
               *)
