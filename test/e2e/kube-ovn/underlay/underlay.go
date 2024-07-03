@@ -1139,9 +1139,8 @@ func checkU2OFilterOpenFlowExist(clusterName string, pn *apiv1.ProviderNetwork, 
 			if !success {
 				if expectRuleExist {
 					return fmt.Errorf("expected rule does not exist after 3 attempts")
-				} else {
-					return fmt.Errorf("unexpected rule exists after 3 attempts")
 				}
+				return fmt.Errorf("unexpected rule exists after 3 attempts")
 			}
 		}
 	}
