@@ -1095,8 +1095,6 @@ github.com/kubeovn/kubevirt-client-go v0.0.0-20240430072310-d367a71d7cd7 h1:1wXN
 github.com/kubeovn/kubevirt-client-go v0.0.0-20240430072310-d367a71d7cd7/go.mod h1:tZBpCFmVsbw2W/Q1kkQ7T9dllhsID5JCWuQJoqYx6iM=
 github.com/kubeovn/libovsdb v0.0.0-20240218023647-f0bc3ce57fcd h1:GhgvSBFKEkVNgDq8IslC04NVuoznreZH/Imz/cr6bhs=
 github.com/kubeovn/libovsdb v0.0.0-20240218023647-f0bc3ce57fcd/go.mod h1:pTnlGt1JZrncr6pJn/Fhnp3FFTMQRaTVxiSKBLVGa5s=
-github.com/kubeovn/netlink v0.0.0-20240218024530-d3ada5dae96f h1:3hH6U+CRilak3SxAX9YykAXxxAY25GTEJANLlJNE2jU=
-github.com/kubeovn/netlink v0.0.0-20240218024530-d3ada5dae96f/go.mod h1:KjTlcXwJZNXDSeBgPMWF8yKVqYrIP1cpe5HfyfEi4Ls=
 github.com/kubeovn/ovsdb v0.0.0-20240410091831-5dd26006c475 h1:KZba2Kj9TXCUdUSqOR3eiy4VvkkIyhDVImYmYs6GQWU=
 github.com/kubeovn/ovsdb v0.0.0-20240410091831-5dd26006c475/go.mod h1:LAd0qoeAAm/QyZcpxN2BnpndM2/dhZt+/kokPvcxKcE=
 github.com/kubernetes-csi/external-snapshotter/client/v4 v4.2.0 h1:nHHjmvjitIiyPlUHk/ofpgvBcNcawJLtf4PYHORLjAA=
@@ -1356,6 +1354,9 @@ github.com/syndtr/gocapability v0.0.0-20200815063812-42c35b437635 h1:kdXcSzyDtse
 github.com/syndtr/gocapability v0.0.0-20200815063812-42c35b437635/go.mod h1:hkRG7XYTFWNJGYcbNJQlaLq0fg1yr4J4t/NcTQtrfww=
 github.com/tmc/grpc-websocket-proxy v0.0.0-20220101234140-673ab2c3ae75 h1:6fotK7otjonDflCTK0BCfls4SPy3NcCVb5dqqmbRknE=
 github.com/tmc/grpc-websocket-proxy v0.0.0-20220101234140-673ab2c3ae75/go.mod h1:KO6IkyS8Y3j8OdNO85qEYBsRPuteD+YciPomcXdrMnk=
+github.com/vishvananda/netlink v1.2.1-beta.2.0.20240524165444-4d4ba1473f21 h1:tcHUxOT8j/R+0S+A1j8D2InqguXFNxAiij+8QFOlX7Y=
+github.com/vishvananda/netlink v1.2.1-beta.2.0.20240524165444-4d4ba1473f21/go.mod h1:whJevzBpTrid75eZy99s3DqCmy05NfibNaF2Ol5Ox5A=
+github.com/vishvananda/netns v0.0.0-20200728191858-db3c7e526aae/go.mod h1:DD4vA1DwXk04H54A1oHXtwZmA0grkVMdPxx/VGLCah0=
 github.com/vishvananda/netns v0.0.4 h1:Oeaw1EM2JMxD51g9uhtC0D7erkIjgmj8+JZc26m1YX8=
 github.com/vishvananda/netns v0.0.4/go.mod h1:SpkAiCQRtJ6TvvxPnOSyH3BMl6unz3xZlaprSwhNNJM=
 github.com/x448/float16 v0.8.4/go.mod h1:14CWIYCyZA/cWjXOioeEpHeN/83MdbZDRQHoFcYsOfg=
@@ -1682,6 +1683,7 @@ golang.org/x/sys v0.0.0-20200116001909-b77594299b42/go.mod h1:h1NjWce9XRLGQEsW7w
 golang.org/x/sys v0.0.0-20200122134326-e047566fdf82/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
 golang.org/x/sys v0.0.0-20200202164722-d101bd2416d5/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
 golang.org/x/sys v0.0.0-20200212091648-12a6c2dcc1e4/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
+golang.org/x/sys v0.0.0-20200217220822-9197077df867/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
 golang.org/x/sys v0.0.0-20200223170610-d5e6a3e2c0ae/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
 golang.org/x/sys v0.0.0-20200302150141-5c8b2ff67527/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
 golang.org/x/sys v0.0.0-20200323222414-85ca7c5b95cd/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
