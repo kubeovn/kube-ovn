@@ -148,8 +148,10 @@ jobs:
           check-latest: true
           cache: false
 
-      - name: Export Go full version
-        run: echo "GO_FULL_VER=$(go env GOVERSION)" >> "$GITHUB_ENV"
+      - name: Setup environment variables
+        run: |
+          echo "TAG=$(cat VERSION)" >> "$GITHUB_ENV"
+          echo "GO_FULL_VER=$(go env GOVERSION)" >> "$GITHUB_ENV"
 
       - name: Go cache
         uses: actions/cache@v4
@@ -182,7 +184,10 @@ jobs:
 
       - name: Load base images
         if: needs.build-kube-ovn-base.outputs.build-base == 1
-        run: docker load --input image-amd64.tar
+        run: |
+          docker load --input image-amd64.tar
+          docker tag kubeovn/kube-ovn-base:$TAG-amd64 kubeovn/kube-ovn-base:$TAG
+          docker tag kubeovn/kube-ovn-base:$TAG-debug-amd64 kubeovn/kube-ovn-base:$TAG-debug
 
       - name: Download dpdk base images
         if: needs.build-kube-ovn-dpdk-base.outputs.build-dpdk-base == 1
@@ -192,17 +197,56 @@ jobs:
 
       - name: Load dpdk base images
         if: needs.build-kube-ovn-dpdk-base.outputs.build-dpdk-base == 1
-        run: docker load --input image-amd64-dpdk.tar
+        run: |
+          docker load --input image-amd64-dpdk.tar
+          docker tag kubeovn/kube-ovn-base:$TAG-amd64-dpdk kubeovn/kube-ovn-base:$TAG-dpdk
+
+      - name: Scan base image
+        uses: aquasecurity/trivy-action@0.23.0
+        with:
+          scan-type: image
+          scanners: vuln
+          image-ref: docker.io/kubeovn/kube-ovn-base:${{ env.TAG }}
+          format: json
+          output: trivy-result.json
+          ignore-unfixed: true
+          trivyignores: .trivyignore
+          vuln-type: library
+
+      - name: Build kubectl and CNI plugins from source
+        run: |
+          cat trivy-result.json
+          dockerfile=${{ github.workspace }}/dist/images/Dockerfile
+          export GOBIN=`dirname "$dockerfile"`
+          jq -r '.Results[] | select((.Type=="gobinary") and (.Vulnerabilities!=null)) | .Target' trivy-result.json | while read f; do
+            bin=`basename $f`
+            case $bin in
+              loopback|macvlan)
+                echo "Building $bin from source..."
+                sh -c "cd .. && go install -v -mod=mod github.com/containernetworking/plugins/plugins/main/$bin"
+                echo "COPY $bin /$f" >> "$dockerfile"
+                ;;
+              portmap)
+                echo "Building $bin from source..."
+                sh -c "cd .. && go install -v -mod=mod github.com/containernetworking/plugins/plugins/meta/$bin"
+                echo "COPY $bin /$f" >> "$dockerfile"
+                ;;
+              kubectl)
+                echo "Building $bin from source..."
+                go install -v -mod=mod k8s.io/kubernetes/cmd/kubectl
+                echo "COPY $bin /$f" >> "$dockerfile"
+                ;;
+              *)
+                ;;
+            esac
+          done
 
       - name: Build
         run: |
           go mod tidy
-          git diff --exit-code
+          git diff --exit-code go.mod go.sum
           make lint
           if [ ${{ needs.build-kube-ovn-base.outputs.build-base || 0 }} = 1 ]; then
-            TAG=$(cat VERSION)
-            docker tag kubeovn/kube-ovn-base:$TAG-amd64 kubeovn/kube-ovn-base:$TAG
-            docker tag kubeovn/kube-ovn-base:$TAG-debug-amd64 kubeovn/kube-ovn-base:$TAG-debug
             make build-kube-ovn
           else
             make image-kube-ovn
@@ -212,8 +256,6 @@ jobs:
       - name: Build dpdk
         run: |
           if [ ${{ needs.build-kube-ovn-dpdk-base.outputs.build-dpdk-base || 0 }} = 1 ]; then
-            TAG=$(cat VERSION)
-            docker tag kubeovn/kube-ovn-base:$TAG-amd64-dpdk kubeovn/kube-ovn-base:$TAG-dpdk
             make build-kube-ovn-dpdk
           else
             make image-kube-ovn-dpdk
