@@ -462,7 +462,11 @@ func (c *Controller) handleSubnetFinalizer(subnet *kubeovnv1.Subnet) (bool, erro
 func (c Controller) patchSubnetStatus(subnet *kubeovnv1.Subnet, reason string, errStr string) {
 	if errStr != "" {
 		subnet.Status.SetError(reason, errStr)
-		subnet.Status.NotValidated(reason, errStr)
+		if reason == "ValidateLogicalSwitchFailed" {
+			subnet.Status.NotValidated(reason, errStr)
+		} else {
+			subnet.Status.Validated(reason, "")
+		}
 		subnet.Status.NotReady(reason, errStr)
 		c.recorder.Eventf(subnet, v1.EventTypeWarning, reason, errStr)
 	} else {
