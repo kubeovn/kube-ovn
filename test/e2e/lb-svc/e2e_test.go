@@ -226,6 +226,10 @@ var _ = framework.SerialDescribe("[group:lb-svc]", func() {
 		ginkgo.By(fmt.Sprintf(`Executing %q in pod %s/%s`, curlCmd, clientPod.Namespace, clientPod.Name))
 		_ = e2epodoutput.RunHostCmdOrDie(clientPod.Namespace, clientPod.Name, curlCmd)
 
+		if f.VersionPriorTo(1, 13) {
+			return
+		}
+
 		ginkgo.By("Deleting lb svc pod " + pod.Name)
 		podClient.DeleteSync(pod.Name)
 
@@ -328,6 +332,10 @@ var _ = framework.SerialDescribe("[group:lb-svc]", func() {
 		curlCmd := fmt.Sprintf("curl -q -s --connect-timeout 2 --max-time 2 %s/clientip", util.JoinHostPort(lbIP, port))
 		ginkgo.By(fmt.Sprintf(`Executing %q in pod %s/%s`, curlCmd, clientPod.Namespace, clientPod.Name))
 		_ = e2epodoutput.RunHostCmdOrDie(clientPod.Namespace, clientPod.Name, curlCmd)
+
+		if f.VersionPriorTo(1, 13) {
+			return
+		}
 
 		ginkgo.By("Deleting lb svc pod " + pod.Name)
 		podClient.DeleteSync(pod.Name)
