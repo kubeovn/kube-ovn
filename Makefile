@@ -784,7 +784,6 @@ kind-install-lb-svc:
 	$(call kind_load_image,kube-ovn,$(VPC_NAT_GW_IMG))
 	@$(MAKE) ENABLE_LB_SVC=true CNI_CONFIG_PRIORITY=10 kind-install
 	@$(MAKE) kind-install-multus
-	kubectl apply -f yamls/lb-svc-attachment.yaml
 
 .PHONY: kind-install-webhook
 kind-install-webhook: kind-install
