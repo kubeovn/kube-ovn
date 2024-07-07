@@ -376,6 +376,7 @@ func (csh cniServerHandler) UpdateIPCr(podRequest request.CniRequest, subnet, ip
 			ipCr.Spec.NodeName = csh.Config.NodeName
 			ipCr.Spec.AttachIPs = []string{}
 			ipCr.Labels[subnet] = ""
+			ipCr.Labels[util.NodeNameLabel] = csh.Config.NodeName
 			ipCr.Spec.AttachSubnets = []string{}
 			ipCr.Spec.AttachMacs = []string{}
 			if _, err := csh.KubeOvnClient.KubeovnV1().IPs().Update(context.Background(), ipCr, metav1.UpdateOptions{}); err != nil {
