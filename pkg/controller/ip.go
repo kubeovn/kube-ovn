@@ -14,6 +14,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
@@ -574,6 +575,15 @@ func (c *Controller) ipAcquireAddress(ip *kubeovnv1.IP, subnet *kubeovnv1.Subnet
 
 	var v4IP, v6IP, mac string
 	var err error
+	var macPtr *string
+	if isOvnSubnet(subnet) {
+		if ip.Spec.MacAddress != "" {
+			macPtr = &ip.Spec.MacAddress
+		}
+	} else {
+		macPtr = ptr.To("")
+	}
+
 	if ipStr == "" {
 		// allocate address
 		v4IP, v6IP, mac, err = c.acquireIPAddress(subnet.Name, ip.Name, portName)
@@ -583,11 +593,7 @@ func (c *Controller) ipAcquireAddress(ip *kubeovnv1.IP, subnet *kubeovnv1.Subnet
 		err = fmt.Errorf("failed to get random address for ip %s, %v", ip.Name, err)
 	} else {
 		// static address
-		if ip.Spec.MacAddress == "" {
-			v4IP, v6IP, mac, err = c.acquireStaticAddress(key, portName, ipStr, nil, subnet.Name, true)
-		} else {
-			v4IP, v6IP, mac, err = c.acquireStaticAddress(key, portName, ipStr, &ip.Spec.MacAddress, subnet.Name, true)
-		}
+		v4IP, v6IP, mac, err = c.acquireStaticAddress(key, portName, ipStr, macPtr, subnet.Name, true)
 		if err == nil {
 			return v4IP, v6IP, mac, nil
 		}
