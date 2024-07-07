@@ -109,9 +109,11 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 		framework.ExpectEqual(ipCR.Spec.V4IPAddress, ipv4)
 		framework.ExpectEqual(ipCR.Spec.V6IPAddress, ipv6)
 		framework.ExpectHaveKeyWithValue(ipCR.Labels, subnetName, "")
-		framework.ExpectHaveKeyWithValue(ipCR.Labels, util.IPReservedLabel, "false")
 		framework.ExpectHaveKeyWithValue(ipCR.Labels, util.SubnetNameLabel, subnetName)
 		framework.ExpectHaveKeyWithValue(ipCR.Labels, util.NodeNameLabel, pod.Spec.NodeName)
+		if !f.VersionPriorTo(1, 13) {
+			framework.ExpectHaveKeyWithValue(ipCR.Labels, util.IPReservedLabel, "false")
+		}
 
 		ginkgo.By("Retrieving pod routes")
 		podRoutes, err := iproute.RouteShow("", "", func(cmd ...string) ([]byte, []byte, error) {
@@ -210,9 +212,11 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 		framework.ExpectEqual(ipCR.Spec.V4IPAddress, ipv4)
 		framework.ExpectEqual(ipCR.Spec.V6IPAddress, ipv6)
 		framework.ExpectHaveKeyWithValue(ipCR.Labels, subnetName, "")
-		framework.ExpectHaveKeyWithValue(ipCR.Labels, util.IPReservedLabel, "false")
 		framework.ExpectHaveKeyWithValue(ipCR.Labels, util.SubnetNameLabel, subnetName)
 		framework.ExpectHaveKeyWithValue(ipCR.Labels, util.NodeNameLabel, pod.Spec.NodeName)
+		if !f.VersionPriorTo(1, 13) {
+			framework.ExpectHaveKeyWithValue(ipCR.Labels, util.IPReservedLabel, "false")
+		}
 
 		ginkgo.By("Retrieving pod routes")
 		podRoutes, err := iproute.RouteShow("", "", func(cmd ...string) ([]byte, []byte, error) {
@@ -288,9 +292,11 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 		framework.ExpectEqual(ipCR.Spec.V4IPAddress, ipv4)
 		framework.ExpectEqual(ipCR.Spec.V6IPAddress, ipv6)
 		framework.ExpectHaveKeyWithValue(ipCR.Labels, subnetName, "")
-		framework.ExpectHaveKeyWithValue(ipCR.Labels, util.IPReservedLabel, "false")
 		framework.ExpectHaveKeyWithValue(ipCR.Labels, util.SubnetNameLabel, subnetName)
 		framework.ExpectHaveKeyWithValue(ipCR.Labels, util.NodeNameLabel, pod.Spec.NodeName)
+		if !f.VersionPriorTo(1, 13) {
+			framework.ExpectHaveKeyWithValue(ipCR.Labels, util.IPReservedLabel, "false")
+		}
 
 		ginkgo.By("Retrieving pod routes")
 		podRoutes, err := iproute.RouteShow("", "", func(cmd ...string) ([]byte, []byte, error) {
@@ -388,9 +394,11 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 		framework.ExpectEqual(ipCR.Spec.V4IPAddress, ipv4)
 		framework.ExpectEqual(ipCR.Spec.V6IPAddress, ipv6)
 		framework.ExpectHaveKeyWithValue(ipCR.Labels, subnetName, "")
-		framework.ExpectHaveKeyWithValue(ipCR.Labels, util.IPReservedLabel, "false")
 		framework.ExpectHaveKeyWithValue(ipCR.Labels, util.SubnetNameLabel, subnetName)
 		framework.ExpectHaveKeyWithValue(ipCR.Labels, util.NodeNameLabel, pod.Spec.NodeName)
+		if !f.VersionPriorTo(1, 13) {
+			framework.ExpectHaveKeyWithValue(ipCR.Labels, util.IPReservedLabel, "false")
+		}
 
 		ginkgo.By("Retrieving pod routes")
 		podRoutes, err := iproute.RouteShow("", "", func(cmd ...string) ([]byte, []byte, error) {
