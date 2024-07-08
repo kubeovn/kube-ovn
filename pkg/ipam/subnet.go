@@ -211,7 +211,7 @@ func (s *Subnet) getV4RandomAddress(ippoolName, podName, nicName string, mac *st
 	// After 'macAdd' introduced to support only static mac address, pod restart will run into error mac AddressConflict
 	// controller will re-enqueue the new pod then wait for old pod deleted and address released.
 	// here will return only if both ip and mac exist, otherwise only ip without mac returned will trigger CreatePort error.
-	if s.V4NicToIP[nicName] != nil && s.NicToMac[nicName] != "" {
+	if s.V4NicToIP[nicName] != nil && (s.NicToMac[nicName] != "" || (mac != nil && *mac == "")) {
 		if !slices.Contains(skippedAddrs, s.V4NicToIP[nicName].String()) {
 			return s.V4NicToIP[nicName], nil, s.NicToMac[nicName], nil
 		}
@@ -268,7 +268,7 @@ func (s *Subnet) getV6RandomAddress(ippoolName, podName, nicName string, mac *st
 	// After 'macAdd' introduced to support only static mac address, pod restart will run into error mac AddressConflict
 	// controller will re-enqueue the new pod then wait for old pod deleted and address released.
 	// here will return only if both ip and mac exist, otherwise only ip without mac returned will trigger CreatePort error.
-	if s.V6NicToIP[nicName] != nil && s.NicToMac[nicName] != "" {
+	if s.V6NicToIP[nicName] != nil && (s.NicToMac[nicName] != "" || (mac != nil && *mac == "")) {
 		if !slices.Contains(skippedAddrs, s.V6NicToIP[nicName].String()) {
 			return nil, s.V6NicToIP[nicName], s.NicToMac[nicName], nil
 		}
