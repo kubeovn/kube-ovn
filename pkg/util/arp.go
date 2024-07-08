@@ -15,19 +15,36 @@ import (
 	"k8s.io/klog/v2"
 )
 
-func ArpResolve(nic, _, dstIP string, timeout time.Duration, maxRetry int) (net.HardwareAddr, int, error) {
+func ArpResolve(nic, dstIP string, timeout time.Duration, maxRetry int, done chan struct{}) (net.HardwareAddr, int, error) {
 	target, err := netip.ParseAddr(dstIP)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to parse target address %s: %v", dstIP, err)
 	}
 
-	var count int
+	if done != nil {
+		defer func() {
+			select {
+			case done <- struct{}{}:
+			default:
+				// do nothing
+			}
+		}()
+	}
+
+	count := 1
 	var ifi *net.Interface
-	for ; count < maxRetry; count++ {
+	timer := time.NewTimer(timeout)
+	for ; count <= maxRetry; count++ {
 		if ifi, err = net.InterfaceByName(nic); err == nil {
 			break
 		}
-		time.Sleep(timeout)
+		select {
+		case <-timer.C:
+			timer.Reset(timeout)
+			continue
+		case <-done:
+			return nil, count, fmt.Errorf("operation canceled after %d retries", count)
+		}
 	}
 	if err != nil {
 		return nil, count, fmt.Errorf("failed to get interface %s: %v", nic, err)
@@ -39,7 +56,13 @@ func ArpResolve(nic, _, dstIP string, timeout time.Duration, maxRetry int) (net.
 			defer client.Close()
 			break
 		}
-		time.Sleep(timeout)
+		select {
+		case <-timer.C:
+			timer.Reset(timeout)
+			continue
+		case <-done:
+			return nil, count, fmt.Errorf("operation canceled after %d retries", count)
+		}
 	}
 	if err != nil {
 		return nil, count, fmt.Errorf("failed to set up ARP client: %v", err)
@@ -52,6 +75,13 @@ func ArpResolve(nic, _, dstIP string, timeout time.Duration, maxRetry int) (net.
 		}
 		if mac, err = client.Resolve(target); err == nil {
 			return mac, count + 1, nil
+		}
+		select {
+		case <-timer.C:
+			timer.Reset(timeout)
+			continue
+		case <-done:
+			return nil, count, fmt.Errorf("operation canceled after %d retries", count)
 		}
 	}
 

@@ -14,7 +14,7 @@ import (
 
 const gatewayCheckMaxRetry = 200
 
-func pingGateway(gw, src string, verbose bool, maxRetry int) (count int, err error) {
+func pingGateway(gw, src string, verbose bool, maxRetry int, done chan struct{}) (count int, err error) {
 	pinger, err := goping.NewPinger(gw)
 	if err != nil {
 		return 0, fmt.Errorf("failed to init pinger: %v", err)
@@ -35,19 +35,45 @@ func pingGateway(gw, src string, verbose bool, maxRetry int) (count int, err err
 		}
 	}
 
+	if done != nil {
+		defer func() {
+			select {
+			case done <- struct{}{}:
+			default:
+			}
+		}()
+
+		finish := make(chan struct{}, 1)
+		pinger.OnFinish = func(_ *goping.Statistics) {
+			finish <- struct{}{}
+		}
+		go func() {
+			// stop pinger when cancel signal received
+			select {
+			case <-done:
+				pinger.Stop()
+			case <-finish:
+				// do nothing here
+			}
+		}()
+	}
+
 	if err = pinger.Run(); err != nil {
 		klog.Errorf("failed to run pinger for destination %s: %v", gw, err)
 		return 0, err
 	}
 
 	if pinger.PacketsRecv == 0 {
-		klog.Warningf("%s network not ready after %d ping, gw %s", src, pinger.PacketsSent, gw)
+		if pinger.PacketsSent < maxRetry {
+			return pinger.PacketsSent, fmt.Errorf("gateway check of %s canceled after %d retries", gw, pinger.PacketsSent)
+		}
+		klog.Warningf("%s network not ready after %d ping to gateway %s", src, pinger.PacketsSent, gw)
 		return pinger.PacketsSent, fmt.Errorf("no packets received from gateway %s", gw)
 	}
 
 	cniConnectivityResult.WithLabelValues(nodeName).Add(float64(pinger.PacketsSent))
 	if verbose {
-		klog.Infof("%s network ready after %d ping, gw %s", src, pinger.PacketsSent, gw)
+		klog.Infof("%s network ready after %d ping to gateway %s", src, pinger.PacketsSent, gw)
 	}
 
 	return pinger.PacketsSent, nil

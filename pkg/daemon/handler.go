@@ -313,7 +313,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 			routes, err = csh.configureNic(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, podRequest.VfDriver, ifName, macAddr, mtu, ipAddr, gw, isDefaultRoute, detectIPConflict, routes, podRequest.DNS.Nameservers, podRequest.DNS.Search, ingress, egress, podRequest.DeviceID, nicType, latency, limit, loss, jitter, gatewayCheckMode, u2oInterconnectionIP, oldPodName)
 		}
 		if err != nil {
-			errMsg := fmt.Errorf("configure nic failed %v", err)
+			errMsg := fmt.Errorf("configure nic %s for pod %s/%s failed: %v", ifName, podRequest.PodName, podRequest.PodNamespace, err)
 			klog.Error(errMsg)
 			if err := resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()}); err != nil {
 				klog.Errorf("failed to write response, %v", err)
