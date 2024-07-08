@@ -1026,9 +1026,13 @@ func (c *Controller) startWorkers(ctx context.Context) {
 		// maintain l3 ha about the vpc external lrp binding to the gw chassis
 		c.OVNNbClient.MonitorBFD()
 	}
-
+	// TODO: we should merge these two vpc nat config into one config and resync them together
 	go wait.Until(func() {
 		c.resyncVpcNatGwConfig()
+	}, time.Second, ctx.Done())
+
+	go wait.Until(func() {
+		c.resyncVpcNatImage()
 	}, time.Second, ctx.Done())
 
 	go wait.Until(func() {

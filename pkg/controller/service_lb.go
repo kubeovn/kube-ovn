@@ -69,10 +69,6 @@ func (c *Controller) checkAttachNetwork(svc *corev1.Service) error {
 }
 
 func (c *Controller) genLbSvcDeployment(svc *corev1.Service) (dp *v1.Deployment) {
-	if err := c.resyncVpcNatImage(); err != nil {
-		klog.Errorf("failed to resync vpc nat config, err: %v", err)
-		return nil
-	}
 	name := genLbSvcDpName(svc.Name)
 	labels := map[string]string{
 		"app":       name,
