@@ -207,7 +207,7 @@ func (c *Controller) reconcileRouters(event *subnetEvent) error {
 		// The route for overlay subnet cidr via ovn0 should not be deleted even though subnet.Status has changed to not ready
 		if subnet.Spec.Vpc != c.config.ClusterRouter ||
 			(subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway && (!subnet.Spec.U2OInterconnection || (subnet.Spec.EnableLb != nil && *subnet.Spec.EnableLb))) ||
-			(subnet.Name != c.config.NodeSwitch && !subnet.Status.IsReady()) {
+			!subnet.Status.IsValidated() {
 			continue
 		}
 
