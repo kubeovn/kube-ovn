@@ -36,7 +36,6 @@ func (c *Controller) runGateway() {
 		klog.Errorf("failed to set ex gateway, %v", err)
 	}
 	c.gcIPSet()
-	c.appendMssRule()
 }
 
 func (c *Controller) setGatewayBandwidth() error {
