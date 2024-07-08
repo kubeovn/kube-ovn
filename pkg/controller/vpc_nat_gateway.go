@@ -83,10 +83,6 @@ func (c *Controller) resyncVpcNatGwConfig() {
 		klog.Errorf("failed to get vpc nat gateway, %v", err)
 		return
 	}
-	if err = c.resyncVpcNatImage(); err != nil {
-		klog.Errorf("failed to resync vpc nat config, err: %v", err)
-		return
-	}
 	vpcNatEnabled = "true"
 	VpcNatCmVersion = cm.ResourceVersion
 	for _, gw := range gws {

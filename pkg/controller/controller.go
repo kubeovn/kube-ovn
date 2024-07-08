@@ -1008,6 +1008,10 @@ func (c *Controller) startWorkers(ctx context.Context) {
 	}, time.Second, ctx.Done())
 
 	go wait.Until(func() {
+		c.resyncVpcNatImage()
+	}, time.Second, ctx.Done())
+
+	go wait.Until(func() {
 		if err := c.markAndCleanLSP(); err != nil {
 			klog.Errorf("gc lsp error: %v", err)
 		}
