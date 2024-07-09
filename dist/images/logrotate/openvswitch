@@ -8,6 +8,7 @@
 /var/log/openvswitch/*.log {
     daily
     rotate 7
+    size 100M
     compress
     sharedscripts
     missingok

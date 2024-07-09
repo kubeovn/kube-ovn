@@ -6,7 +6,7 @@ FROM kubeovn/kube-ovn-base:$BASE_TAG
 COPY *.sh /kube-ovn/
 COPY kubectl-ko /kube-ovn/kubectl-ko
 COPY 01-kube-ovn.conflist /kube-ovn/01-kube-ovn.conflist
-COPY logrotate/* /etc/logrotate.d/
+COPY --chmod=0644 logrotate/* /etc/logrotate.d/
 COPY grace_stop_ovn_controller /usr/share/ovn/scripts/grace_stop_ovn_controller
 
 WORKDIR /kube-ovn
