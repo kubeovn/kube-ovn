@@ -127,8 +127,7 @@ spec:
               {{- else }}
               command:
                 - bash
-                - -c
-                - LOG_ROTATE=true /kube-ovn/ovs-healthcheck.sh
+                - /kube-ovn/ovs-healthcheck.sh
               {{- end }}
             initialDelaySeconds: 10
             periodSeconds: 5
