@@ -77,7 +77,7 @@ spec:
             - --gc-interval=360
             - --inspect-interval=20
             - --log_file=/var/log/kube-ovn/kube-ovn-controller.log
-            - --log_file_max_size=0
+            - --log_file_max_size=200
             - --enable-lb-svc=false
             - --keep-vm-ip=true
             - --node-local-dns-ip=
@@ -214,7 +214,7 @@ spec:
             - --logtostderr=false
             - --alsologtostderr=true
             - --log_file=/var/log/kube-ovn/kube-ovn-cni.log
-            - --log_file_max_size=0
+            - --log_file_max_size=200
             - --enable-tproxy=false
             - --ovs-vsctl-concurrency=100
           securityContext:
@@ -383,7 +383,7 @@ spec:
             - --logtostderr=false
             - --alsologtostderr=true
             - --log_file=/var/log/kube-ovn/kube-ovn-pinger.log
-            - --log_file_max_size=0
+            - --log_file_max_size=200
           imagePullPolicy: IfNotPresent
           securityContext:
             runAsUser: 0
@@ -512,7 +512,7 @@ spec:
             - --log_file=/var/log/kube-ovn/kube-ovn-monitor.log
             - --logtostderr=false
             - --alsologtostderr=true
-            - --log_file_max_size=0
+            - --log_file_max_size=200
           securityContext:
             runAsUser: 0
             privileged: false
