@@ -134,10 +134,15 @@ func (c *OVNNbClient) UpdateLogicalRouterStaticRoute(route *ovnnb.LogicalRouterS
 	return nil
 }
 
-// DeleteLogicalRouterStaticRoute add a logical router static route
+// DeleteLogicalRouterStaticRoute delete a logical router static route
 func (c *OVNNbClient) DeleteLogicalRouterStaticRoute(lrName string, routeTable, policy *string, ipPrefix, nexthop string) error {
 	if policy == nil || len(*policy) == 0 {
 		policy = &ovnnb.LogicalRouterStaticRoutePolicyDstIP
+	}
+
+	lr, err := c.GetLogicalRouter(lrName, true)
+	if lr == nil && err == nil {
+		return nil
 	}
 
 	routes, err := c.ListLogicalRouterStaticRoutes(lrName, routeTable, policy, ipPrefix, nil)
