@@ -3039,7 +3039,7 @@ spec:
           - --gc-interval=$GC_INTERVAL
           - --inspect-interval=$INSPECT_INTERVAL
           - --log_file=/var/log/kube-ovn/kube-ovn-controller.log
-          - --log_file_max_size=0
+          - --log_file_max_size=200
           - --enable-lb-svc=$ENABLE_LB_SVC
           - --keep-vm-ip=$ENABLE_KEEP_VM_IP
           - --pod-default-fip-type=$POD_DEFAULT_FIP_TYPE
@@ -3177,7 +3177,7 @@ spec:
           - --logtostderr=false
           - --alsologtostderr=true
           - --log_file=/var/log/kube-ovn/kube-ovn-cni.log
-          - --log_file_max_size=0
+          - --log_file_max_size=200
           - --kubelet-dir=$KUBELET_DIR
         securityContext:
           runAsUser: 0
@@ -3344,7 +3344,7 @@ spec:
           - --logtostderr=false
           - --alsologtostderr=true
           - --log_file=/var/log/kube-ovn/kube-ovn-pinger.log
-          - --log_file_max_size=0
+          - --log_file_max_size=200
           imagePullPolicy: $IMAGE_PULL_POLICY
           securityContext:
             runAsUser: 0
@@ -3685,7 +3685,7 @@ spec:
           command: ["/kube-ovn/start-ic-controller.sh"]
           args:
           - --log_file=/var/log/kube-ovn/kube-ovn-ic-controller.log
-          - --log_file_max_size=0
+          - --log_file_max_size=200
           - --logtostderr=false
           - --alsologtostderr=true
           securityContext:

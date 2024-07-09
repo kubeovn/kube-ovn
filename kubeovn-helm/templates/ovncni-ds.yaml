@@ -71,7 +71,7 @@ spec:
           - --logtostderr=false
           - --alsologtostderr=true
           - --log_file=/var/log/kube-ovn/kube-ovn-cni.log
-          - --log_file_max_size=0
+          - --log_file_max_size=200
           - --kubelet-dir={{ .Values.kubelet_conf.KUBELET_DIR }}
         securityContext:
           runAsUser: 0

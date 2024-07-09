@@ -104,7 +104,7 @@ spec:
           - --gc-interval={{- .Values.performance.GC_INTERVAL }}
           - --inspect-interval={{- .Values.performance.INSPECT_INTERVAL }}
           - --log_file=/var/log/kube-ovn/kube-ovn-controller.log
-          - --log_file_max_size=0
+          - --log_file_max_size=200
           - --enable-lb-svc={{- .Values.func.ENABLE_LB_SVC }}
           - --keep-vm-ip={{- .Values.func.ENABLE_KEEP_VM_IP }}
           - --pod-default-fip-type={{- .Values.networking.POD_DEFAULT_FIP_TYPE }}
