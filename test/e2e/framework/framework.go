@@ -233,6 +233,10 @@ func Describe(text string, body func()) bool {
 	return ginkgo.Describe("[CNI:Kube-OVN] "+text, ginkgo.Offset(1), body)
 }
 
+func FDescribe(text string, body func()) bool {
+	return ginkgo.FDescribe("[CNI:Kube-OVN] "+text, ginkgo.Offset(1), body)
+}
+
 func SerialDescribe(text string, body func()) bool {
 	return ginkgo.Describe("[CNI:Kube-OVN] "+text, ginkgo.Offset(1), ginkgo.Serial, body)
 }

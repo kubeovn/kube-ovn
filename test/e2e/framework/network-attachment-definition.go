@@ -5,6 +5,7 @@ import (
 
 	apiv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	v1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/client/clientset/versioned/typed/k8s.cni.cncf.io/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/onsi/ginkgo/v2"
@@ -46,6 +47,9 @@ func (c *NetworkAttachmentDefinitionClient) Create(nad *apiv1.NetworkAttachmentD
 func (c *NetworkAttachmentDefinitionClient) Delete(name string) {
 	ginkgo.GinkgoHelper()
 	err := c.NetworkAttachmentDefinitionInterface.Delete(context.TODO(), name, metav1.DeleteOptions{})
+	if k8serrors.IsNotFound(err) {
+		return
+	}
 	ExpectNoError(err, "Error deleting nad")
 }
 

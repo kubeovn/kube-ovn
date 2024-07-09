@@ -186,7 +186,28 @@ func setupVpcNatGwTestEnvironment(
 	_ = vpcNatGwClient.CreateSync(vpcNatGw, f.ClientSet)
 }
 
-var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
+func cleanVpcNatGwTestEnvironment(
+	subnetClient *framework.SubnetClient,
+	vpcClient *framework.VpcClient,
+	vpcNatGwClient *framework.VpcNatGatewayClient,
+	vpcName string,
+	overlaySubnetName string,
+	vpcNatGwName string,
+) {
+	ginkgo.GinkgoHelper()
+
+	ginkgo.By("start to clean custom vpc nat gw      " + vpcNatGwName)
+	ginkgo.By("clean custom vpc nat gw " + vpcNatGwName)
+	vpcNatGwClient.DeleteSync(vpcNatGwName)
+
+	ginkgo.By("clean custom overlay subnet " + overlaySubnetName)
+	subnetClient.DeleteSync(overlaySubnetName)
+
+	ginkgo.By("clean custom vpc " + vpcName)
+	vpcClient.DeleteSync(vpcName)
+}
+
+var _ = framework.SerialDescribe("[group:iptables-vpc-nat-gw]", func() {
 	f := framework.NewDefaultFramework("iptables-vpc-nat-gw")
 
 	var skip bool
@@ -198,7 +219,7 @@ var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 	var subnetClient *framework.SubnetClient
 	var fipVipName, fipEipName, fipName, dnatVipName, dnatEipName, dnatName, snatEipName, snatName string
 	// sharing case
-	var sharedVipName, sharedEipName, sharedEipDnatName, sharedEipSnatName, sharedEipFipShoudOkName, sharedEipFipShoudFailName string
+	var sharedVipName, sharedEipName, sharedEipDnatName, sharedEipSnatName, sharedEipFipShouldOkName, sharedEipFipShouldFailName string
 	var vipClient *framework.VipClient
 	var ipClient *framework.IPClient
 	var iptablesEIPClient *framework.IptablesEIPClient
@@ -235,8 +256,8 @@ var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 	sharedEipName = "shared-eip-" + framework.RandomSuffix()
 	sharedEipDnatName = "shared-eip-dnat-" + framework.RandomSuffix()
 	sharedEipSnatName = "shared-eip-snat-" + framework.RandomSuffix()
-	sharedEipFipShoudOkName = "shared-eip-fip-should-ok-" + framework.RandomSuffix()
-	sharedEipFipShoudFailName = "shared-eip-fip-should-fail-" + framework.RandomSuffix()
+	sharedEipFipShouldOkName = "shared-eip-fip-should-ok-" + framework.RandomSuffix()
+	sharedEipFipShouldFailName = "shared-eip-fip-should-fail-" + framework.RandomSuffix()
 
 	snatEipName = "snat-eip-" + framework.RandomSuffix()
 	snatName = "snat-" + framework.RandomSuffix()
@@ -283,6 +304,7 @@ var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 			ginkgo.By("Ensuring docker network " + dockerExtNet1Name + " exists")
 			network1, err := docker.NetworkCreate(dockerExtNet1Name, true, true)
 			framework.ExpectNoError(err, "creating docker network "+dockerExtNet1Name)
+
 			dockerExtNet1Network = network1
 		}
 
@@ -342,6 +364,7 @@ var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 	})
 
 	ginkgo.AfterEach(func() {
+		cleanVpcNatGwTestEnvironment(subnetClient, vpcClient, vpcNatGwClient, vpcName, overlaySubnetName, vpcNatGwName)
 		ginkgo.By("Deleting macvlan underlay subnet " + networkAttachDefName)
 		subnetClient.DeleteSync(networkAttachDefName)
 
@@ -453,10 +476,10 @@ var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 		shareEip := framework.MakeIptablesEIP(sharedEipName, "", "", "", vpcNatGwName, "", "")
 		_ = iptablesEIPClient.CreateSync(shareEip)
 		ginkgo.By("Creating the first iptables fip with share eip vip should be ok")
-		shareFipShouldOk := framework.MakeIptablesFIPRule(sharedEipFipShoudOkName, sharedEipName, fipVip.Status.V4ip)
+		shareFipShouldOk := framework.MakeIptablesFIPRule(sharedEipFipShouldOkName, sharedEipName, fipVip.Status.V4ip)
 		_ = iptablesFIPClient.CreateSync(shareFipShouldOk)
 		ginkgo.By("Creating the second iptables fip with share eip vip should be failed")
-		shareFipShouldFail := framework.MakeIptablesFIPRule(sharedEipFipShoudFailName, sharedEipName, fipVip.Status.V4ip)
+		shareFipShouldFail := framework.MakeIptablesFIPRule(sharedEipFipShouldFailName, sharedEipName, fipVip.Status.V4ip)
 		_ = iptablesFIPClient.Create(shareFipShouldFail)
 		ginkgo.By("Creating iptables dnat for dnat with share eip vip")
 		shareDnat := framework.MakeIptablesDnatRule(sharedEipDnatName, sharedEipName, "80", "tcp", fipVip.Status.V4ip, "8080")
@@ -472,9 +495,9 @@ var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 		ginkgo.By("Get share snat")
 		shareSnat = iptablesSnatRuleClient.Get(sharedEipSnatName)
 		ginkgo.By("Get share fip should ok")
-		shareFipShouldOk = iptablesFIPClient.Get(sharedEipFipShoudOkName)
+		shareFipShouldOk = iptablesFIPClient.Get(sharedEipFipShouldOkName)
 		ginkgo.By("Get share fip should fail")
-		shareFipShouldFail = iptablesFIPClient.Get(sharedEipFipShoudFailName)
+		shareFipShouldFail = iptablesFIPClient.Get(sharedEipFipShouldFailName)
 
 		ginkgo.By("Check share eip should has the external ip label")
 		framework.ExpectHaveKeyWithValue(shareEip.Labels, util.EipV4IpLabel, shareEip.Spec.V4ip)
@@ -491,10 +514,10 @@ var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 		nats := []string{util.DnatUsingEip, util.FipUsingEip, util.SnatUsingEip}
 		framework.ExpectEqual(shareEip.Status.Nat, strings.Join(nats, ","))
 
-		ginkgo.By("Deleting share iptables fip " + sharedEipFipShoudOkName)
-		iptablesFIPClient.DeleteSync(sharedEipFipShoudOkName)
-		ginkgo.By("Deleting share iptables fip " + sharedEipFipShoudFailName)
-		iptablesFIPClient.DeleteSync(sharedEipFipShoudFailName)
+		ginkgo.By("Deleting share iptables fip " + sharedEipFipShouldOkName)
+		iptablesFIPClient.DeleteSync(sharedEipFipShouldOkName)
+		ginkgo.By("Deleting share iptables fip " + sharedEipFipShouldFailName)
+		iptablesFIPClient.DeleteSync(sharedEipFipShouldFailName)
 		ginkgo.By("Deleting share iptables dnat " + dnatName)
 		iptablesDnatRuleClient.DeleteSync(dnatName)
 		ginkgo.By("Deleting share iptables snat " + snatName)
@@ -621,20 +644,20 @@ func checkQos(f *framework.Framework,
 	if !skipIperf {
 		if expect {
 			output := iperf(f, vpc1Pod, vpc2EIP)
-			framework.ExpectTrue(vaildRateLimit(output, limit))
+			framework.ExpectTrue(validRateLimit(output, limit))
 			output = iperf(f, vpc2Pod, vpc1EIP)
-			framework.ExpectTrue(vaildRateLimit(output, limit))
+			framework.ExpectTrue(validRateLimit(output, limit))
 		} else {
 			output := iperf(f, vpc1Pod, vpc2EIP)
-			framework.ExpectFalse(vaildRateLimit(output, limit))
+			framework.ExpectFalse(validRateLimit(output, limit))
 			output = iperf(f, vpc2Pod, vpc1EIP)
-			framework.ExpectFalse(vaildRateLimit(output, limit))
+			framework.ExpectFalse(validRateLimit(output, limit))
 		}
 	}
 }
 
 func newVPCQoSParamsInit() *qosParams {
-	qosParames := &qosParams{
+	qosParams := &qosParams{
 		vpc1Name:       "qos-vpc1-" + framework.RandomSuffix(),
 		vpc2Name:       "qos-vpc2-" + framework.RandomSuffix(),
 		vpc1SubnetName: "qos-vpc1-subnet-" + framework.RandomSuffix(),
@@ -649,8 +672,8 @@ func newVPCQoSParamsInit() *qosParams {
 		vpc2PodName:    "qos-vpc2-pod-" + framework.RandomSuffix(),
 		attachDefName:  "qos-ovn-vpc-external-network-" + framework.RandomSuffix(),
 	}
-	qosParames.subnetProvider = fmt.Sprintf("%s.%s", qosParames.attachDefName, framework.KubeOvnNamespace)
-	return qosParames
+	qosParams.subnetProvider = fmt.Sprintf("%s.%s", qosParams.attachDefName, framework.KubeOvnNamespace)
+	return qosParams
 }
 
 func getNicDefaultQoSPolicy(limit int) apiv1.QoSPolicyBandwidthLimitRules {
@@ -749,7 +772,7 @@ func defaultQoSCases(f *framework.Framework,
 	natGwPodName := util.GenNatGwPodName(natgwName)
 	podClient.DeleteSync(natGwPodName)
 
-	ginkgo.By("Wait for natgw " + natgwName + "qos rebuid")
+	ginkgo.By("Wait for natgw " + natgwName + "qos rebuild")
 	time.Sleep(5 * time.Second)
 
 	ginkgo.By("Check qos " + qosPolicyName + " is limited to " + strconv.Itoa(defaultNicLimit) + "Mbps")
@@ -1045,21 +1068,20 @@ func createNatGwAndSetQosCases(f *framework.Framework,
 	qosPolicyClient.DeleteSync(eipQoSPolicyName)
 }
 
-func vaildRateLimit(text string, limit int) bool {
+func validRateLimit(text string, limit int) bool {
+	maxValue := float64(limit) * 1024 * 1024 * 1.2
+	minValue := float64(limit) * 1024 * 1024 * 0.8
 	lines := strings.Split(text, "\n")
 	for _, line := range lines {
 		if line == "" {
 			continue
 		}
 		fields := strings.Split(line, ",")
-		lastField := fields[len(fields)-1]
-		number, err := strconv.Atoi(lastField)
+		number, err := strconv.Atoi(fields[len(fields)-1])
 		if err != nil {
 			continue
 		}
-		max := float64(limit) * 1024 * 1024 * 1.2
-		min := float64(limit) * 1024 * 1024 * 0.8
-		if min <= float64(number) && float64(number) <= max {
+		if v := float64(number); v >= minValue && v <= maxValue {
 			return true
 		}
 	}
@@ -1348,7 +1370,7 @@ var _ = framework.Describe("[group:qos-policy]", func() {
 			// case 4: rebuild qos when natgw pod restart
 			eipQoSCases(f, iptablesEIPClient, podClient, qosPolicyClient, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, vpcQosParams.vpc1EIPName, vpcQosParams.vpcNat1GwName)
 		})
-		framework.ConformanceIt("specofying ip qos", func() {
+		framework.ConformanceIt("specifying ip qos", func() {
 			// case 1: set specific ip qos policy for natgw
 			specifyingIPQoSCases(f, vpcNatGwClient, qosPolicyClient, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, vpcQosParams.vpcNat1GwName)
 		})
