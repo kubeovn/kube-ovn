@@ -66,27 +66,56 @@ jobs:
           vuln-type: library
 
       - name: Build kubectl and CNI plugins from source
+        env:
+          CGO_ENABLED: "0"
+          GOARCH: arm64
+          GO_INSTALL: "go install -v -mod=mod -trimpath"
         run: |
           cat trivy-result.json
           dockerfile=${{ github.workspace }}/dist/images/Dockerfile
-          export GOBIN=`dirname "$dockerfile"`
+          cni_plugins_version=`go list -m -f '{{.Version}}' github.com/containernetworking/plugins`
+          cni_plugins_build_flags="-ldflags '-extldflags -static -X github.com/containernetworking/plugins/pkg/utils/buildversion.BuildVersion=$cni_plugins_version'"
           jq -r '.Results[] | select((.Type=="gobinary") and (.Vulnerabilities!=null)) | .Target' trivy-result.json | while read f; do
             bin=`basename $f`
+            go_bin_dir=`go env GOPATH`/bin/linux_arm64
             case $bin in
               loopback|macvlan)
-                echo "Building $bin from source..."
-                sh -c "cd .. && go install -v -mod=mod github.com/containernetworking/plugins/plugins/main/$bin"
+                echo "Building $bin@$cni_plugins_version from source..."
+                sh -c "cd /tmp && $GO_INSTALL $cni_plugins_build_flags github.com/containernetworking/plugins/plugins/main/$bin@$cni_plugins_version"
                 echo "COPY $bin /$f" >> "$dockerfile"
+                cp -a $go_bin_dir/$bin `dirname "$dockerfile"`
                 ;;
               portmap)
-                echo "Building $bin from source..."
-                sh -c "cd .. && go install -v -mod=mod github.com/containernetworking/plugins/plugins/meta/$bin"
+                echo "Building $bin@$cni_plugins_version from source..."
+                sh -c "cd /tmp && $GO_INSTALL $cni_plugins_build_flags github.com/containernetworking/plugins/plugins/meta/$bin@$cni_plugins_version"
                 echo "COPY $bin /$f" >> "$dockerfile"
+                cp -a $go_bin_dir/$bin `dirname "$dockerfile"`
                 ;;
               kubectl)
-                echo "Building $bin from source..."
-                go install -v -mod=mod k8s.io/kubernetes/cmd/kubectl
+                version=`go list -m -f '{{.Version}}' k8s.io/kubernetes`
+                mod_dir=`go list -m -f '{{.Dir}}' k8s.io/kubernetes`
+                source "$mod_dir/hack/lib/util.sh"
+                source "$mod_dir/hack/lib/logging.sh"
+                source "$mod_dir/hack/lib/version.sh"
+                repo=kubernetes/kubernetes
+                commit=unknown
+                read type tag_sha < <(echo $(curl -s "https://api.github.com/repos/$repo/git/ref/tags/$version" |
+                  jq -r '.object.type,.object.sha'))
+                if [ $type = "commit" ]; then
+                  commit=$tag_sha
+                else
+                  commit=$(curl -s "https://api.github.com/repos/$repo/git/tags/$tag_sha" | jq -r '.object.sha')
+                fi
+                export KUBE_GIT_COMMIT="${commit}"
+                export KUBE_GIT_TREE_STATE='clean'
+                export KUBE_GIT_VERSION="${version}"
+                export KUBE_GIT_MAJOR=`echo $KUBE_GIT_VERSION | cut -d. -f1 | sed 's/$v//'`
+                export KUBE_GIT_MINOR=`echo $KUBE_GIT_VERSION | cut -d. -f2`
+                goldflags="all=$(kube::version::ldflags) -s -w"
+                echo "Building $bin@$version from source..."
+                $GO_INSTALL -ldflags="${goldflags}" k8s.io/kubernetes/cmd/kubectl
                 echo "COPY $bin /$f" >> "$dockerfile"
+                cp -a $go_bin_dir/$bin `dirname "$dockerfile"`
                 ;;
               *)
                 ;;
