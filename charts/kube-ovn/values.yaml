@@ -71,6 +71,7 @@ func:
   U2O_INTERCONNECTION: false
   ENABLE_TPROXY: false
   ENABLE_IC: false
+  ENABLE_NAT_GW: true
 
 ipv4:
   POD_CIDR: "10.16.0.0/16"
