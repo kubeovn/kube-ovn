@@ -98,6 +98,7 @@ spec:
           - --logtostderr=false
           - --alsologtostderr=true
           - --log_file=/var/log/kube-ovn/kube-ovn-controller.log
+          - --log_file_max_size=200
           - --keep-vm-ip={{- .Values.func.ENABLE_KEEP_VM_IP }}
           env:
             - name: ENABLE_SSL

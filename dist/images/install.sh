@@ -1970,6 +1970,7 @@ spec:
           - --logtostderr=false
           - --alsologtostderr=true
           - --log_file=/var/log/kube-ovn/kube-ovn-controller.log
+          - --log_file_max_size=200
           - --keep-vm-ip=$ENABLE_KEEP_VM_IP
           env:
             - name: ENABLE_SSL
@@ -2095,6 +2096,7 @@ spec:
           - --logtostderr=false
           - --alsologtostderr=true
           - --log_file=/var/log/kube-ovn/kube-ovn-cni.log
+          - --log_file_max_size=200
         securityContext:
           runAsUser: 0
           privileged: true
@@ -2231,6 +2233,7 @@ spec:
           - --logtostderr=false
           - --alsologtostderr=true
           - --log_file=/var/log/kube-ovn/kube-ovn-pinger.log
+          - --log_file_max_size=200
           imagePullPolicy: $IMAGE_PULL_POLICY
           securityContext:
             runAsUser: 0

@@ -46,6 +46,7 @@ spec:
           - --logtostderr=false
           - --alsologtostderr=true
           - --log_file=/var/log/kube-ovn/kube-ovn-pinger.log
+          - --log_file_max_size=200
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           securityContext:
             runAsUser: 0
