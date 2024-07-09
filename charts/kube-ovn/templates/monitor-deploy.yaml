@@ -47,7 +47,7 @@ spec:
           - --log_file=/var/log/kube-ovn/kube-ovn-monitor.log
           - --logtostderr=false
           - --alsologtostderr=true
-          - --log_file_max_size=0
+          - --log_file_max_size=200
           securityContext:
             runAsUser: 0
             privileged: false
