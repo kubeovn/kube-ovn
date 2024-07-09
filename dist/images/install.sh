@@ -3719,8 +3719,7 @@ spec:
             exec:
               command:
                 - bash
-                - -c
-                - LOG_ROTATE=true /kube-ovn/ovs-healthcheck.sh
+                - /kube-ovn/ovs-healthcheck.sh
             initialDelaySeconds: 10
             periodSeconds: 5
             timeoutSeconds: 45
@@ -3877,8 +3876,7 @@ spec:
             exec:
               command:
                 - bash
-                - -c
-                - LOG_ROTATE=true /kube-ovn/ovs-healthcheck.sh
+                - /kube-ovn/ovs-healthcheck.sh
             periodSeconds: 5
             timeoutSeconds: 45
           livenessProbe:
