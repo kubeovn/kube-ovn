@@ -102,8 +102,19 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	}
 
 	klog.Info("Started workers")
-	go wait.Until(c.syncSubnetRoutes, 5*time.Second, stopCh)
+	go wait.Until(c.Reconcile, 5*time.Second, stopCh)
 
 	<-stopCh
 	klog.Info("Shutting down workers")
+}
+
+func (c *Controller) Reconcile() {
+	if c.config.EIPAnnouncement {
+		err := c.syncEIPRoutes()
+		if err != nil {
+			klog.Errorf("failed to reconcile EIPs: %s", err.Error())
+		}
+	} else {
+		c.syncSubnetRoutes()
+	}
 }

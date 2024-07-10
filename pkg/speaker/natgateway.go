@@ -6,10 +6,7 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
-)
-
-const (
-	HostnameEnvVariable = "HOSTNAME"
+	"k8s.io/klog/v2"
 )
 
 // syncEIPRoutes retrieves all the EIPs attached to our GWs and starts announcing their route
@@ -19,6 +16,8 @@ func (c *Controller) syncEIPRoutes() error {
 	if gatewayName == "" {
 		return fmt.Errorf("failed to retrieve the name of the gateway, might not be running in a gateway pod")
 	}
+
+	klog.Infof("gw name is: %s", gatewayName)
 
 	// Create label requirements to only get EIPs attached to our NAT GW
 	requirements, err := labels.NewRequirement(util.VpcNatGatewayLabel, selection.Equals, []string{gatewayName})
@@ -32,13 +31,17 @@ func (c *Controller) syncEIPRoutes() error {
 		return fmt.Errorf("failed to list EIPs attached to our GW: %w", err)
 	}
 
+	klog.Infof("%v", eips)
+
 	return c.announceEIPs(eips)
 }
 
+// announceEIPs announce all the prefixes related to EIPs attached to a GW
 func (c *Controller) announceEIPs(eips []*v1.IptablesEIP) error {
 	expectedPrefixes := make(prefixMap)
 	for _, eip := range eips {
-		if !eip.Status.Ready { // Only announce EIPs marked as "ready"
+		// Only announce EIPs marked as "ready" and with the BGP annotation set to true
+		if eip.Annotations[util.BgpAnnotation] != "true" || !eip.Status.Ready {
 			continue
 		}
 

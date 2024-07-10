@@ -847,6 +847,12 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 								Privileged:               ptr.To(true),
 								AllowPrivilegeEscalation: ptr.To(true),
 							},
+							Env: []corev1.EnvVar{
+								{
+									Name:  "GATEWAY_NAME",
+									Value: gw.Name,
+								},
+							},
 						},
 					},
 					NodeSelector: selectors,

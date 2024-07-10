@@ -11,6 +11,10 @@ import (
 	"strings"
 )
 
+const (
+	GatewayNameEnvVariable = "GATEWAY_NAME"
+)
+
 // prefixMap is a map associating an IP family (IPv4 or IPv6) and an IP
 type prefixMap map[string][]string
 
@@ -90,17 +94,7 @@ func parseRoute(route string) (string, uint32, error) {
 
 // getGatewayName returns the name of the NAT GW hosting this speaker
 func getGatewayName() string {
-	hostname := os.Getenv(HostnameEnvVariable)
-	hostnameSplit := strings.Split(hostname, "-")
-	splitLength := len(hostnameSplit)
-
-	// The name of the GW is right before the index in the name of the pod
-	// For example: "vpc-nat-gw-gw1-0" is the name of the pod hosting the NAT GW "gw1"
-	if splitLength < 2 {
-		return ""
-	}
-
-	return hostnameSplit[splitLength-2]
+	return os.Getenv(GatewayNameEnvVariable)
 }
 
 // kubeOvnFamilyToAFI converts an IP family to its associated AFI

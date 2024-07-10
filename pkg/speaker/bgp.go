@@ -70,7 +70,7 @@ func (c *Controller) reconciliateIPFamily(ipFamily string, expectedPrefixes pref
 		}
 	}
 
-	// Ask the BGP speaker what routes we're announcing for the IP family selected
+	// Ask the BGP speaker what route we're announcing for the IP family selected
 	if err := c.config.BgpServer.ListPath(context.Background(), listPathRequest, fn); err != nil {
 		return fmt.Errorf("failed to list existing %s routes: %w", ipFamily, err)
 	}
