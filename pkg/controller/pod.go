@@ -30,6 +30,7 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/ipam"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/request"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -2194,4 +2195,22 @@ func (c *Controller) migrateVM(pod *v1.Pod, vmKey string) (bool, bool, bool, str
 	}
 
 	return false, false, false, "", "", nil
+}
+
+func setPodRoutesAnnotation(annotations map[string]string, provider string, routes []request.Route) error {
+	key := fmt.Sprintf(util.RoutesAnnotationTemplate, provider)
+	if len(routes) == 0 {
+		delete(annotations, key)
+		return nil
+	}
+
+	buf, err := json.Marshal(routes)
+	if err != nil {
+		err = fmt.Errorf("failed to marshal routes %+v: %v", routes, err)
+		klog.Error(err)
+		return err
+	}
+	annotations[key] = string(buf)
+
+	return nil
 }

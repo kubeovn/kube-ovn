@@ -3241,3 +3241,37 @@ func (c *Controller) deletePolicyRouteForU2ONoLoadBalancer(subnet *kubeovnv1.Sub
 	}
 	return nil
 }
+
+func (c *Controller) findSubnetByNetworkAttachmentDefinition(ns, name string, subnets []*kubeovnv1.Subnet) (*kubeovnv1.Subnet, error) {
+	nadClient := c.config.AttachNetClient.K8sCniCncfIoV1().NetworkAttachmentDefinitions(ns)
+	nad, err := nadClient.Get(context.Background(), name, metav1.GetOptions{})
+	if err != nil {
+		klog.Errorf("failed to get net-attach-def %s/%s: %v", ns, name, err)
+		return nil, err
+	}
+	netCfg, err := loadNetConf([]byte(nad.Spec.Config))
+	if err != nil {
+		klog.Errorf("failed to parse config of net-attach-def %s/%s: %v", ns, name, err)
+		return nil, err
+	}
+
+	var provder string
+	if netCfg.Conf.Type == util.CniTypeName {
+		provder = fmt.Sprintf("%s.%s.%s", name, ns, util.OvnProvider)
+	} else {
+		provder = fmt.Sprintf("%s.%s", name, ns)
+	}
+	var subnet *kubeovnv1.Subnet
+	for _, s := range subnets {
+		if s.Spec.Provider == provder {
+			subnet = s.DeepCopy()
+			break
+		}
+	}
+	if subnet == nil {
+		err = fmt.Errorf("failed to get subnet for net-attach-def %s/%s", ns, name)
+		return nil, err
+	}
+
+	return subnet, nil
+}

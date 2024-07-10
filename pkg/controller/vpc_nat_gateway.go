@@ -36,24 +36,23 @@ var (
 )
 
 const (
-	natGwInit              = "init"
-	natGwEipAdd            = "eip-add"
-	natGwEipDel            = "eip-del"
-	natGwDnatAdd           = "dnat-add"
-	natGwDnatDel           = "dnat-del"
-	natGwSnatAdd           = "snat-add"
-	natGwSnatDel           = "snat-del"
-	natGwEipIngressQoSAdd  = "eip-ingress-qos-add"
-	natGwEipIngressQoSDel  = "eip-ingress-qos-del"
-	QoSAdd                 = "qos-add"
-	QoSDel                 = "qos-del"
-	natGwEipEgressQoSAdd   = "eip-egress-qos-add"
-	natGwEipEgressQoSDel   = "eip-egress-qos-del"
-	natGwSubnetFipAdd      = "floating-ip-add"
-	natGwSubnetFipDel      = "floating-ip-del"
-	natGwSubnetRouteAdd    = "subnet-route-add"
-	natGwSubnetRouteDel    = "subnet-route-del"
-	natGwExtSubnetRouteAdd = "ext-subnet-route-add"
+	natGwInit             = "init"
+	natGwEipAdd           = "eip-add"
+	natGwEipDel           = "eip-del"
+	natGwDnatAdd          = "dnat-add"
+	natGwDnatDel          = "dnat-del"
+	natGwSnatAdd          = "snat-add"
+	natGwSnatDel          = "snat-del"
+	natGwEipIngressQoSAdd = "eip-ingress-qos-add"
+	natGwEipIngressQoSDel = "eip-ingress-qos-del"
+	QoSAdd                = "qos-add"
+	QoSDel                = "qos-del"
+	natGwEipEgressQoSAdd  = "eip-egress-qos-add"
+	natGwEipEgressQoSDel  = "eip-egress-qos-del"
+	natGwSubnetFipAdd     = "floating-ip-add"
+	natGwSubnetFipDel     = "floating-ip-del"
+	natGwSubnetRouteAdd   = "subnet-route-add"
+	natGwSubnetRouteDel   = "subnet-route-del"
 
 	getIptablesVersion = "get-iptables-version"
 )
@@ -276,7 +275,11 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 		}
 		needToCreate, oldSts = true, nil
 	}
-	newSts := c.genNatGwStatefulSet(gw, oldSts)
+	newSts, err := c.genNatGwStatefulSet(gw, oldSts)
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
 	if !needToCreate && isVpcNatGwChanged(gw) {
 		needToUpdate = true
 	}
@@ -367,7 +370,7 @@ func (c *Controller) handleInitVpcNatGw(key string) error {
 
 	if pod.Status.Phase != corev1.PodRunning {
 		time.Sleep(10 * time.Second)
-		return fmt.Errorf("failed to init vpc nat gateway, pod is not ready")
+		return fmt.Errorf("failed to init vpc nat gateway %s, pod is not ready", key)
 	}
 
 	if _, hasInit := pod.Annotations[util.VpcNatGatewayInitAnnotation]; hasInit {
@@ -375,7 +378,7 @@ func (c *Controller) handleInitVpcNatGw(key string) error {
 	}
 	natGwCreatedAT = pod.CreationTimestamp.Format("2006-01-02T15:04:05")
 	klog.V(3).Infof("nat gw pod '%s' inited at %s", key, natGwCreatedAT)
-	if err = c.execNatGwRules(pod, natGwInit, []string{fmt.Sprintf("%s,%s", c.config.ServiceClusterIPRange, pod.Annotations[util.GatewayAnnotation])}); err != nil {
+	if err = c.execNatGwRules(pod, natGwInit, nil); err != nil {
 		err = fmt.Errorf("failed to init vpc nat gateway, %v", err)
 		klog.Error(err)
 		return err
@@ -609,30 +612,16 @@ func (c *Controller) handleUpdateNatGwSubnetRoute(natGwKey string) error {
 	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(natGwKey) }()
 	klog.Infof("handle update subnet route for nat gateway %s", natGwKey)
 
-	oriPod, err := c.getNatGwPod(natGwKey)
+	cachedPod, err := c.getNatGwPod(natGwKey)
 	if err != nil {
 		err = fmt.Errorf("failed to get nat gw '%s' pod, %v", natGwKey, err)
 		klog.Error(err)
 		return err
 	}
-	pod := oriPod.DeepCopy()
-	var extRules []string
-	var v4ExternalGw, v4InternalGw, v4ExternalCidr string
-	externalNetwork := util.GetNatGwExternalNetwork(gw.Spec.ExternalSubnets)
-	if subnet, ok := c.ipam.Subnets[externalNetwork]; ok {
-		v4ExternalGw = subnet.V4Gw
-		v4ExternalCidr = subnet.V4CIDR.String()
-	} else {
-		return fmt.Errorf("failed to get external subnet %s", externalNetwork)
-	}
-	extRules = append(extRules, fmt.Sprintf("%s,%s", v4ExternalCidr, v4ExternalGw))
-	if err = c.execNatGwRules(pod, natGwExtSubnetRouteAdd, extRules); err != nil {
-		err = fmt.Errorf("failed to exec nat gateway rule, err: %v", err)
-		klog.Error(err)
-		return err
-	}
+	pod := cachedPod.DeepCopy()
 
-	if v4InternalGw, _, err = c.GetGwBySubnet(gw.Spec.Subnet); err != nil {
+	v4InternalGw, _, err := c.GetGwBySubnet(gw.Spec.Subnet)
+	if err != nil {
 		err = fmt.Errorf("failed to get gw, err: %v", err)
 		klog.Error(err)
 		return err
@@ -648,13 +637,15 @@ func (c *Controller) handleUpdateNatGwSubnetRoute(natGwKey string) error {
 	var newCIDRS, oldCIDRs, toBeDelCIDRs []string
 	if len(vpc.Status.Subnets) > 0 {
 		for _, s := range vpc.Status.Subnets {
-			subnet, ok := c.ipam.Subnets[s]
-			if !ok {
+			subnet, err := c.subnetsLister.Get(s)
+			if err != nil {
 				err = fmt.Errorf("failed to get subnet, err: %v", err)
 				klog.Error(err)
 				return err
 			}
-			newCIDRS = append(newCIDRS, subnet.V4CIDR.String())
+			if v4Cidr, _ := util.SplitStringIP(subnet.Spec.CIDRBlock); v4Cidr != "" {
+				newCIDRS = append(newCIDRS, v4Cidr)
+			}
 		}
 	}
 	if cidrs, ok := pod.Annotations[util.VpcCIDRsAnnotation]; ok {
@@ -701,7 +692,7 @@ func (c *Controller) handleUpdateNatGwSubnetRoute(natGwKey string) error {
 		return err
 	}
 	pod.Annotations[util.VpcCIDRsAnnotation] = string(cidrBytes)
-	patch, err := util.GenerateStrategicMergePatchPayload(oriPod, pod)
+	patch, err := util.GenerateStrategicMergePatchPayload(cachedPod, pod)
 	if err != nil {
 		klog.Error(err)
 		return err
@@ -742,36 +733,27 @@ func (c *Controller) execNatGwRules(pod *corev1.Pod, operation string, rules []s
 	return nil
 }
 
-func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1.StatefulSet) *v1.StatefulSet {
-	name := util.GenNatGwStsName(gw.Name)
-	labels := map[string]string{
-		"app":                   name,
-		util.VpcNatGatewayLabel: "true",
-	}
-	newPodAnnotations := map[string]string{}
+func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1.StatefulSet) (*v1.StatefulSet, error) {
+	annotations := make(map[string]string, 7)
 	if oldSts != nil && len(oldSts.Annotations) != 0 {
-		newPodAnnotations = maps.Clone(oldSts.Annotations)
+		annotations = maps.Clone(oldSts.Annotations)
 	}
-	externalNetwork := util.GetNatGwExternalNetwork(gw.Spec.ExternalSubnets)
+	nadName := util.GetNatGwExternalNetwork(gw.Spec.ExternalSubnets)
 	podAnnotations := map[string]string{
 		util.VpcNatGatewayAnnotation:     gw.Name,
-		util.AttachmentNetworkAnnotation: fmt.Sprintf("%s/%s", c.config.PodNamespace, externalNetwork),
+		util.AttachmentNetworkAnnotation: fmt.Sprintf("%s/%s", c.config.PodNamespace, nadName),
 		util.LogicalSwitchAnnotation:     gw.Spec.Subnet,
 		util.IPAddressAnnotation:         gw.Spec.LanIP,
 	}
 	for key, value := range podAnnotations {
-		newPodAnnotations[key] = value
+		annotations[key] = value
 	}
 
-	selectors := make(map[string]string)
-	for _, v := range gw.Spec.Selector {
-		parts := strings.Split(strings.TrimSpace(v), ":")
-		if len(parts) != 2 {
-			continue
-		}
-		selectors[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
+	subnets, err := c.subnetsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list subnets: %v", err)
+		return nil, err
 	}
-	klog.V(3).Infof("prepare for vpc nat gateway pod, node selector: %v", selectors)
 	v4Gateway, v6Gateway, err := c.GetGwBySubnet(gw.Spec.Subnet)
 	if err != nil {
 		klog.Errorf("failed to get gateway ips for subnet %s: %v", gw.Spec.Subnet, err)
@@ -784,13 +766,59 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 	if v6Gateway != "" && v6ClusterIPRange != "" {
 		routes = append(routes, request.Route{Destination: v6ClusterIPRange, Gateway: v6Gateway})
 	}
-	buf, err := json.Marshal(routes)
-	if err != nil {
-		klog.Errorf("failed to marshal routes %+v: %v", routes, err)
-	} else {
-		newPodAnnotations[util.RoutesAnnotation] = string(buf)
+	for _, subnet := range subnets {
+		if subnet.Spec.Vpc != gw.Spec.Vpc || subnet.Name == gw.Spec.Subnet ||
+			!isOvnSubnet(subnet) || !subnet.Status.IsValidated() ||
+			(subnet.Spec.Vlan != "" && !subnet.Spec.U2OInterconnection) {
+			continue
+		}
+		cidrV4, cidrV6 := util.SplitStringIP(subnet.Spec.CIDRBlock)
+		if cidrV4 != "" && v4Gateway != "" {
+			routes = append(routes, request.Route{Destination: cidrV4, Gateway: v4Gateway})
+		}
+		if cidrV6 != "" && v6Gateway != "" {
+			routes = append(routes, request.Route{Destination: cidrV6, Gateway: v6Gateway})
+		}
 	}
-	return &v1.StatefulSet{
+	if err = setPodRoutesAnnotation(annotations, util.OvnProvider, routes); err != nil {
+		klog.Error(err)
+		return nil, err
+	}
+
+	subnet, err := c.findSubnetByNetworkAttachmentDefinition(c.config.PodNamespace, nadName, subnets)
+	if err != nil {
+		klog.Error(err)
+		return nil, err
+	}
+	routes = routes[0:0]
+	v4Gateway, v6Gateway = util.SplitStringIP(subnet.Spec.Gateway)
+	if v4Gateway != "" {
+		routes = append(routes, request.Route{Destination: "0.0.0.0/0", Gateway: v4Gateway})
+	}
+	if v6Gateway != "" {
+		routes = append(routes, request.Route{Destination: "::/0", Gateway: v6Gateway})
+	}
+	if err = setPodRoutesAnnotation(annotations, subnet.Spec.Provider, routes); err != nil {
+		klog.Error(err)
+		return nil, err
+	}
+
+	selectors := make(map[string]string, len(gw.Spec.Selector))
+	for _, v := range gw.Spec.Selector {
+		parts := strings.Split(strings.TrimSpace(v), ":")
+		if len(parts) != 2 {
+			continue
+		}
+		selectors[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
+	}
+	klog.V(3).Infof("prepare for vpc nat gateway pod, node selector: %v", selectors)
+
+	name := util.GenNatGwStsName(gw.Name)
+	labels := map[string]string{
+		"app":                   name,
+		util.VpcNatGatewayLabel: "true",
+	}
+	sts := &v1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   name,
 			Labels: labels,
@@ -803,7 +831,7 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels:      labels,
-					Annotations: newPodAnnotations,
+					Annotations: annotations,
 				},
 				Spec: corev1.PodSpec{
 					TerminationGracePeriodSeconds: ptr.To(int64(0)),
@@ -829,6 +857,7 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 			},
 		},
 	}
+	return sts, nil
 }
 
 func (c *Controller) cleanUpVpcNatGw() error {

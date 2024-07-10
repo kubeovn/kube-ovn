@@ -197,10 +197,10 @@ func (c *VpcNatGatewayClient) WaitToQoSReady(name string) bool {
 	for start := time.Now(); time.Since(start) < timeout; time.Sleep(poll) {
 		natgw := c.Get(name)
 		if natgw.Status.QoSPolicy == natgw.Spec.QoSPolicy {
-			Logf("qos %s is ready", name)
+			Logf("qos %s of vpc nat gateway %s is ready", natgw.Spec.QoSPolicy, name)
 			return true
 		}
-		Logf("qos %s is not ready", name)
+		Logf("qos %s of vpc nat gateway %s is not ready", natgw.Spec.QoSPolicy, name)
 	}
 	return false
 }
