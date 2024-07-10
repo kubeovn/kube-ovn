@@ -1067,8 +1067,12 @@ func (c *Controller) getVpcSubnets(vpc *kubeovnv1.Vpc) (subnets []string, defaul
 		}
 
 		subnets = append(subnets, subnet.Name)
-		if subnet.Spec.Default || vpc.Spec.DefaultSubnet == subnet.Name {
+		if subnet.Spec.Default {
 			defaultSubnet = subnet.Name
+		}
+
+		if vpc.Name != util.DefaultVpc && vpc.Spec.DefaultSubnet != "" && vpc.Spec.DefaultSubnet == subnet.Name {
+			defaultSubnet = vpc.Spec.DefaultSubnet
 		}
 	}
 	return
