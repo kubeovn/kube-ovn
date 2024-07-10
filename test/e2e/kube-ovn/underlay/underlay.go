@@ -555,6 +555,10 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		ginkgo.By("Creating underlay subnet " + subnetName)
 		subnet := framework.MakeSubnet(subnetName, vlanName, strings.Join(underlayCidr, ","), strings.Join(gateway, ","), "", "", excludeIPs, nil, []string{namespaceName})
 		subnet.Spec.U2OInterconnection = true
+		// only ipv4 needs to verify that the gateway address is consistent with U2OInterconnectionIP when enabling DHCP and U2O
+		if f.HasIPv4() {
+			subnet.Spec.EnableDHCP = true
+		}
 		_ = subnetClient.CreateSync(subnet)
 
 		ginkgo.By("Creating underlay pod " + u2oPodNameUnderlay)
@@ -820,6 +824,17 @@ func checkU2OItems(f *framework.Framework, subnet *apiv1.Subnet, underlayPod, ov
 		if !f.VersionPriorTo(1, 9) {
 			if subnet.Spec.U2OInterconnectionIP != "" {
 				framework.ExpectEqual(subnet.Spec.U2OInterconnectionIP, subnet.Status.U2OInterconnectionIP)
+			}
+		}
+		if f.HasIPv4() && subnet.Spec.EnableDHCP {
+			if !f.VersionPriorTo(1, 12) {
+				ginkgo.By("checking u2o dhcp gateway ip of underlay subnet " + subnet.Name)
+				v4Cidr, _ := util.SplitStringIP(subnet.Spec.CIDRBlock)
+				v4Gateway, _ := util.SplitStringIP(subnet.Status.U2OInterconnectionIP)
+				nbctlCmd := fmt.Sprintf("ovn-nbctl --bare --columns=options find Dhcp_Options cidr=%s", v4Cidr)
+				output, _, err := framework.NBExec(nbctlCmd)
+				framework.ExpectNoError(err)
+				framework.ExpectContainElement(strings.Fields(string(output)), "router="+v4Gateway)
 			}
 		}
 	} else {
