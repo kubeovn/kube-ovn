@@ -178,6 +178,7 @@ jobs:
                 echo "COPY $bin /$f" >> "$dockerfile"
                 ;;
               kubectl)
+                go mod tidy
                 version=`go list -m -f '{{.Version}}' k8s.io/kubernetes`
                 mod_dir=`go list -m -f '{{.Dir}}' k8s.io/kubernetes`
                 source "$mod_dir/hack/lib/util.sh"
