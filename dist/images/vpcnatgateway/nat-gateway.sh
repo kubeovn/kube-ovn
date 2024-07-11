@@ -71,27 +71,6 @@ function del_vpc_internal_route() {
     done
 }
 
-function add_vpc_external_route() {
-    # make sure inited
-    check_inited
-    for rule in $@
-    do
-        arr=(${rule//,/ })
-        cidr=${arr[0]}
-        nextHop=${arr[1]}
-
-        exec_cmd "ip route replace default via $nextHop dev net1"
-        # replace default route to dev net1 to access public network
-        # TODO: use multus macvlan to provider eth0 to skip this external route
-        sleep 1
-        ip route | grep "default via $nextHop dev net1"
-        # make sure route is added
-        # gw lost probably occurred when you create >10 nat gw pod at the same time
-        # so add the same logic again in every eip add process
-
-    done
-}
-
 function del_vpc_external_route() {
     # make sure inited
     check_inited
@@ -112,18 +91,9 @@ function add_eip() {
    check_inited
     for rule in $@
     do
-        arr=(${rule//,/ })
-        eip=${arr[0]}
+        eip=${rule}
         eip_without_prefix=(${eip//\// })
-        eip_network=$(ipcalc -n $eip | awk -F '=' '{print $2}')
-        eip_prefix=$(ipcalc -p $eip | awk -F '=' '{print $2}')
-        gateway=${arr[1]}
-
         exec_cmd "ip addr replace $eip dev net1"
-        ip link set dev net1 arp on
-        # gw may lost, even if add_vpc_external_route add route successfully
-        exec_cmd "ip route replace default via $gateway dev net1"
-        ip route | grep "default via $gateway dev net1"
         exec_cmd "arping -I net1 -c 3 -D $eip_without_prefix"
     done
 }
@@ -254,7 +224,6 @@ function delete_tc_u32_filter() {
     qdisc_id=$2
     cidr=$3
     matchDirection=$4
-    
 
     # tc -p -s -d filter show dev net1 parent $qdisc_id
     # filter protocol ip pref 10 u32 chain 0
@@ -283,7 +252,7 @@ function delete_tc_u32_filter() {
 }
 
 function eip_ingress_qos_add() {
-    # ingress: 
+    # ingress:
     # external --> net1 --> qos -->
     # dst ip is iptables eip on net1
     for rule in $@
@@ -308,7 +277,7 @@ function eip_ingress_qos_add() {
 }
 
 function eip_egress_qos_add() {
-    # egress: 
+    # egress:
     # net1 --> qos --> external
     # src ip is iptables eip on net1
     for rule in $@
@@ -433,87 +402,79 @@ function eip_egress_qos_del() {
 rules=${@:2:${#}}
 opt=$1
 case $opt in
- init)
+    init)
         echo "init $rules"
         init $rules
         ;;
- subnet-route-add)
+    subnet-route-add)
         echo "subnet-route-add $rules"
         add_vpc_internal_route $rules
         ;;
- subnet-route-del)
+    subnet-route-del)
         echo "subnet-route-del $rules"
         del_vpc_internal_route $rules
         ;;
- ext-subnet-route-add)
-        echo "ext-subnet-route-add $rules"
-        add_vpc_external_route $rules
-        ;;
- ext-subnet-route-del)
-        echo "ext-subnet-route-del $rules"
-        del_vpc_external_route $rules
-        ;;
- eip-add)
+    eip-add)
         echo "eip-add $rules"
         add_eip $rules
         ;;
- eip-del)
+    eip-del)
         echo "eip-del $rules"
         del_eip $rules
         ;;
- dnat-add)
+    dnat-add)
         echo "dnat-add $rules"
         add_dnat $rules
         ;;
- dnat-del)
+    dnat-del)
         echo "dnat-del $rules"
         del_dnat $rules
         ;;
- snat-add)
+    snat-add)
         echo "snat-add $rules"
         add_snat $rules
         ;;
- snat-del)
+    snat-del)
         echo "snat-del $rules"
         del_snat $rules
         ;;
- floating-ip-add)
+    floating-ip-add)
         echo "floating-ip-add $rules"
         add_floating_ip $rules
         ;;
- floating-ip-del)
+    floating-ip-del)
         echo "floating-ip-del $rules"
         del_floating_ip $rules
         ;;
- get-iptables-version)
+    get-iptables-version)
         echo "get-iptables-version $rules"
         get_iptables_version $rules
         ;;
- eip-ingress-qos-add)
+    eip-ingress-qos-add)
         echo "eip-ingress-qos-add $rules"
         eip_ingress_qos_add $rules
         ;;
- eip-egress-qos-add)
+    eip-egress-qos-add)
         echo "eip-egress-qos-add $rules"
         eip_egress_qos_add $rules
         ;;
- eip-ingress-qos-del)
+    eip-ingress-qos-del)
         echo "eip-ingress-qos-del $rules"
         eip_ingress_qos_del $rules
         ;;
- eip-egress-qos-del)
+    eip-egress-qos-del)
         echo "eip-egress-qos-del $rules"
         eip_egress_qos_del $rules
         ;;
- qos-add)
+    qos-add)
         echo "qos-add $rules"
         qos_add $rules
         ;;
- qos-del)
+    qos-del)
         echo "qos-del $rules"
         qos_del $rules
         ;;
- *)
+    *)
         echo "Usage: $0 [init|subnet-route-add|subnet-route-del|eip-add|eip-del|floating-ip-add|floating-ip-del|dnat-add|dnat-del|snat-add|snat-del] ..."
         exit 1
         ;;
