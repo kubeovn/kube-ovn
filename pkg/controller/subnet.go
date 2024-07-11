@@ -3270,6 +3270,7 @@ func (c *Controller) findSubnetByNetworkAttachmentDefinition(ns, name string, su
 	}
 	if subnet == nil {
 		err = fmt.Errorf("failed to get subnet for net-attach-def %s/%s", ns, name)
+		klog.Error(err)
 		return nil, err
 	}
 

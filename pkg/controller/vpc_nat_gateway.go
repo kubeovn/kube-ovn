@@ -370,7 +370,9 @@ func (c *Controller) handleInitVpcNatGw(key string) error {
 
 	if pod.Status.Phase != corev1.PodRunning {
 		time.Sleep(10 * time.Second)
-		return fmt.Errorf("failed to init vpc nat gateway %s, pod is not ready", key)
+		err = fmt.Errorf("failed to init vpc nat gateway %s, pod is not ready", key)
+		klog.Error(err)
+		return err
 	}
 
 	if _, hasInit := pod.Annotations[util.VpcNatGatewayInitAnnotation]; hasInit {
