@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
@@ -130,4 +131,146 @@ func Test_syncVirtualPort(t *testing.T) {
 
 	err = ctrl.syncVirtualPort(subnet.Name)
 	require.NoError(t, err)
+}
+
+func Test_formatSubnet(t *testing.T) {
+	t.Parallel()
+
+	fakeController := newFakeController(t)
+	ctrl := fakeController.fakeController
+	// enable := true
+	disable := false
+
+	tests := map[string]struct {
+		input  *kubeovnv1.Subnet
+		output *kubeovnv1.Subnet
+	}{
+		"simple subnet with cidr block only": {
+			input: &kubeovnv1.Subnet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "simple",
+				},
+				Spec: kubeovnv1.SubnetSpec{
+					CIDRBlock: "192.168.0.1/24",
+				},
+			},
+			output: &kubeovnv1.Subnet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "simple",
+				},
+				Spec: kubeovnv1.SubnetSpec{
+					CIDRBlock:   "192.168.0.0/24",
+					Protocol:    kubeovnv1.ProtocolIPv4,
+					Gateway:     "192.168.0.1",
+					Vpc:         ctrl.config.ClusterRouter,
+					ExcludeIps:  []string{"192.168.0.1"},
+					Provider:    "ovn",
+					GatewayType: kubeovnv1.GWDistributedType,
+					EnableLb:    &ctrl.config.EnableLb,
+				},
+			},
+		},
+		"complete subnet that do not need to be formatted": {
+			input: &kubeovnv1.Subnet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "complete",
+				},
+				Spec: kubeovnv1.SubnetSpec{
+					CIDRBlock:   "192.168.0.0/24",
+					Protocol:    kubeovnv1.ProtocolIPv4,
+					Gateway:     "192.168.0.255",
+					Vpc:         "test-vpc",
+					ExcludeIps:  []string{"192.168.0.1", "192.168.0.255"},
+					Provider:    "ovn.test-provider",
+					GatewayType: kubeovnv1.GWCentralizedType,
+					EnableLb:    &disable,
+				},
+			},
+			output: &kubeovnv1.Subnet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "complete",
+				},
+				Spec: kubeovnv1.SubnetSpec{
+					CIDRBlock:   "192.168.0.0/24",
+					Protocol:    kubeovnv1.ProtocolIPv4,
+					Gateway:     "192.168.0.255",
+					Vpc:         "test-vpc",
+					ExcludeIps:  []string{"192.168.0.1", "192.168.0.255"},
+					Provider:    "ovn.test-provider",
+					GatewayType: kubeovnv1.GWCentralizedType,
+					EnableLb:    &disable,
+				},
+			},
+		},
+		"do not format gatewayType for custom VPC subnet": {
+			input: &kubeovnv1.Subnet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "custom-vpc",
+				},
+				Spec: kubeovnv1.SubnetSpec{
+					CIDRBlock:  "192.168.0.0/24",
+					Protocol:   kubeovnv1.ProtocolIPv4,
+					Gateway:    "192.168.0.255",
+					Vpc:        "test-vpc",
+					ExcludeIps: []string{"192.168.0.1", "192.168.0.255"},
+					Provider:   "ovn.test-provider",
+					EnableLb:   &disable,
+				},
+			},
+			output: &kubeovnv1.Subnet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "custom-vpc",
+				},
+				Spec: kubeovnv1.SubnetSpec{
+					CIDRBlock:  "192.168.0.0/24",
+					Protocol:   kubeovnv1.ProtocolIPv4,
+					Gateway:    "192.168.0.255",
+					Vpc:        "test-vpc",
+					ExcludeIps: []string{"192.168.0.1", "192.168.0.255"},
+					Provider:   "ovn.test-provider",
+					EnableLb:   &disable,
+				},
+			},
+		},
+		"do not format gatewayType for non ovn subnet": {
+			input: &kubeovnv1.Subnet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "external",
+				},
+				Spec: kubeovnv1.SubnetSpec{
+					CIDRBlock:  "192.168.0.0/24",
+					Protocol:   kubeovnv1.ProtocolIPv4,
+					Gateway:    "192.168.0.255",
+					ExcludeIps: []string{"192.168.0.1", "192.168.0.255"},
+					Provider:   "test-provider",
+					EnableLb:   &disable,
+				},
+			},
+			output: &kubeovnv1.Subnet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "external",
+				},
+				Spec: kubeovnv1.SubnetSpec{
+					CIDRBlock:  "192.168.0.0/24",
+					Protocol:   kubeovnv1.ProtocolIPv4,
+					Gateway:    "192.168.0.255",
+					ExcludeIps: []string{"192.168.0.1", "192.168.0.255"},
+					Provider:   "test-provider",
+					EnableLb:   &disable,
+				},
+			},
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			_, err := ctrl.config.KubeOvnClient.KubeovnV1().Subnets().Create(context.Background(), tc.input, metav1.CreateOptions{})
+			require.NoError(t, err)
+			formattedSubnet, err := ctrl.formatSubnet(tc.input)
+			require.NoError(t, err)
+			require.Equal(t, tc.output, formattedSubnet)
+			err = ctrl.config.KubeOvnClient.KubeovnV1().Subnets().Delete(context.Background(), tc.input.Name, metav1.DeleteOptions{})
+			require.NoError(t, err)
+		})
+	}
 }

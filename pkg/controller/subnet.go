@@ -290,36 +290,36 @@ func (c *Controller) formatSubnet(subnet *kubeovnv1.Subnet) (*kubeovnv1.Subnet, 
 		klog.Error(err)
 		return nil, err
 	}
+
 	if subnet.Spec.Provider == "" {
 		subnet.Spec.Provider = util.OvnProvider
 		changed = true
 	}
-	newCIDRBlock := subnet.Spec.CIDRBlock
-	if subnet.Spec.Protocol != util.CheckProtocol(newCIDRBlock) {
-		subnet.Spec.Protocol = util.CheckProtocol(subnet.Spec.CIDRBlock)
-		changed = true
-	}
-	if subnet.Spec.GatewayType == "" {
-		subnet.Spec.GatewayType = kubeovnv1.GWDistributedType
-		changed = true
-	}
+
 	if subnet.Spec.Vpc == "" {
-		if !isOvnSubnet(subnet) {
-			klog.Infof("subnet %s is not ovn subnet, no vpc", subnet.Name)
-		} else {
-			changed = true
+		if isOvnSubnet(subnet) {
 			subnet.Spec.Vpc = c.config.ClusterRouter
+			changed = true
 		}
-		// Some features only work in the default VPC
+	}
+
+	if subnet.Spec.Vpc == c.config.ClusterRouter && subnet.Name != c.config.NodeSwitch {
+		// Some format only needed in the default VPC
+		if subnet.Spec.GatewayType == "" {
+			subnet.Spec.GatewayType = kubeovnv1.GWDistributedType
+			changed = true
+		}
 		if subnet.Spec.Default && subnet.Name != c.config.DefaultLogicalSwitch {
 			subnet.Spec.Default = false
+			changed = true
 		}
-		if subnet.Spec.Vlan != "" {
-			if _, err := c.vlansLister.Get(subnet.Spec.Vlan); err != nil {
-				err = fmt.Errorf("failed to get vlan %s: %s", subnet.Spec.Vlan, err)
-				klog.Error(err)
-				return nil, err
-			}
+	}
+
+	if subnet.Spec.Vlan != "" {
+		if _, err := c.vlansLister.Get(subnet.Spec.Vlan); err != nil {
+			err = fmt.Errorf("failed to get vlan %s: %s", subnet.Spec.Vlan, err)
+			klog.Error(err)
+			return nil, err
 		}
 	}
 
@@ -404,6 +404,12 @@ func checkSubnetChanged(subnet *kubeovnv1.Subnet) (bool, error) {
 	if changed = checkAndUpdateExcludeIPs(subnet); changed {
 		ret = true
 	}
+
+	if subnet.Spec.Protocol != util.CheckProtocol(subnet.Spec.CIDRBlock) {
+		subnet.Spec.Protocol = util.CheckProtocol(subnet.Spec.CIDRBlock)
+		ret = true
+	}
+
 	return ret, nil
 }
 
