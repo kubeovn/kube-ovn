@@ -773,7 +773,7 @@ func (c *Controller) reconcileRouteSubnets(cachedPod, pod *v1.Pod, needRoutePodN
 				}
 
 				if err := c.addStaticRouteToVpc(
-					c.config.ClusterRouter,
+					subnet.Spec.Vpc,
 					&kubeovnv1.StaticRoute{
 						Policy:     kubeovnv1.PolicySrc,
 						CIDR:       podIP,
@@ -823,7 +823,7 @@ func (c *Controller) reconcileRouteSubnets(cachedPod, pod *v1.Pod, needRoutePodN
 
 				if pod.Annotations[util.NorthGatewayAnnotation] != "" {
 					if err := c.addStaticRouteToVpc(
-						subnet.Spec.RouteTable,
+						subnet.Spec.Vpc,
 						&kubeovnv1.StaticRoute{
 							Policy:     kubeovnv1.PolicySrc,
 							CIDR:       podIP,
