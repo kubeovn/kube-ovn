@@ -11,7 +11,6 @@ rules:
       - group: ""
         resources:
           - nodes
-          - namespaces
           - pods
     verbs:
       - patch
@@ -20,6 +19,7 @@ rules:
     resources:
       - group: ""
         resources:
+          - namespaces
           - services
           - services/status
           - endpoints
