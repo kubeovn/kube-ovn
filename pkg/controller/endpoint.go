@@ -184,17 +184,6 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 		return err
 	}
 
-	if svcVpc := svc.Annotations[util.VpcAnnotation]; svcVpc != vpcName {
-		if svc.Annotations == nil {
-			svc.Annotations = make(map[string]string, 1)
-		}
-		svc.Annotations[util.VpcAnnotation] = vpcName
-		if _, err = c.config.KubeClient.CoreV1().Services(namespace).Update(context.Background(), svc, metav1.UpdateOptions{}); err != nil {
-			klog.Errorf("failed to update service %s/%s: %v", namespace, svc.Name, err)
-			return err
-		}
-	}
-
 	tcpLb, udpLb, sctpLb := vpc.Status.TcpLoadBalancer, vpc.Status.UdpLoadBalancer, vpc.Status.SctpLoadBalancer
 	oldTcpLb, oldUdpLb, oldSctpLb := vpc.Status.TcpSessionLoadBalancer, vpc.Status.UdpSessionLoadBalancer, vpc.Status.SctpSessionLoadBalancer
 	if svc.Spec.SessionAffinity == v1.ServiceAffinityClientIP {
@@ -233,6 +222,17 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 					return err
 				}
 			}
+		}
+	}
+
+	if svcVpc := svc.Annotations[util.VpcAnnotation]; svcVpc != vpcName {
+		if svc.Annotations == nil {
+			svc.Annotations = make(map[string]string, 1)
+		}
+		svc.Annotations[util.VpcAnnotation] = vpcName
+		if _, err = c.config.KubeClient.CoreV1().Services(namespace).Update(context.Background(), svc, metav1.UpdateOptions{}); err != nil {
+			klog.Errorf("failed to update service %s/%s: %v", namespace, svc.Name, err)
+			return err
 		}
 	}
 
