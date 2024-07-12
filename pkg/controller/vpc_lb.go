@@ -47,7 +47,6 @@ func (c *Controller) createVpcLb(vpc *kubeovnv1.Vpc) error {
 
 func (c *Controller) deleteVpcLb(vpc *kubeovnv1.Vpc) error {
 	name := vpcLbDeploymentName(vpc.Name)
-	klog.Infof("delete vpc lb deployment for %s", name)
 	_, err := c.config.KubeClient.AppsV1().Deployments(c.config.PodNamespace).Get(context.Background(), name, metav1.GetOptions{})
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -57,6 +56,7 @@ func (c *Controller) deleteVpcLb(vpc *kubeovnv1.Vpc) error {
 		return err
 	}
 
+	klog.Infof("delete vpc lb deployment for %s", name)
 	if err = c.config.KubeClient.AppsV1().Deployments(c.config.PodNamespace).Delete(context.Background(), name, metav1.DeleteOptions{}); err != nil {
 		klog.Errorf("failed to delete LB deployment of VPC %s: %v", vpc.Name, err)
 		return err
