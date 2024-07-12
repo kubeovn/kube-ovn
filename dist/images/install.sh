@@ -1846,12 +1846,17 @@ spec:
         - jsonPath: .spec.namespaces
           name: Namespaces
           type: string
+        - jsonPath: .status.defaultLogicalSwitch
+          name: DefaultLogicalSwitch
+          type: string
       name: v1
       schema:
         openAPIV3Schema:
           properties:
             spec:
               properties:
+                defaultSubnet:
+                  type: string
                 enableExternal:
                   type: boolean
                 enableBfd:
