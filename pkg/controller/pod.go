@@ -1534,6 +1534,14 @@ func (c *Controller) getPodDefaultSubnet(pod *v1.Pod) (*kubeovnv1.Subnet, error)
 			klog.Error(err)
 			return nil, err
 		}
+		if _, ok := ns.Annotations[util.DefaultVPCSubnetAnnotation]; ok {
+			subnet, err = c.subnetsLister.Get(ns.Annotations[util.DefaultVPCSubnetAnnotation])
+			if err != nil {
+				klog.Errorf("failed to get subnet %v", err)
+				return nil, err
+			}
+			return subnet, nil
+		}
 
 		subnetNames := ns.Annotations[util.LogicalSwitchAnnotation]
 		for _, subnetName := range strings.Split(subnetNames, ",") {

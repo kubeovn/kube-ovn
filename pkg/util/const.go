@@ -89,8 +89,9 @@ const (
 	IngressRateAnnotation = "ovn.kubernetes.io/ingress_rate"
 	EgressRateAnnotation  = "ovn.kubernetes.io/egress_rate"
 
-	PortNameAnnotation      = "ovn.kubernetes.io/port_name"
-	LogicalSwitchAnnotation = "ovn.kubernetes.io/logical_switch"
+	PortNameAnnotation         = "ovn.kubernetes.io/port_name"
+	LogicalSwitchAnnotation    = "ovn.kubernetes.io/logical_switch"
+	DefaultVPCSubnetAnnotation = "ovn.kubernetes.io/default_vpc_subnet"
 
 	TunnelInterfaceAnnotation = "ovn.kubernetes.io/tunnel_interface"
 
