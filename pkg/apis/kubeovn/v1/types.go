@@ -524,6 +524,12 @@ type VpcNatSpec struct {
 	Tolerations     []corev1.Toleration `json:"tolerations"`
 	Affinity        corev1.Affinity     `json:"affinity"`
 	QoSPolicy       string              `json:"qosPolicy"`
+	BgpSpeaker      VpcBgpSpeaker       `json:"bgpSpeaker"`
+}
+
+type VpcBgpSpeaker struct {
+	Enabled    bool     `json:"enabled"`
+	Parameters []string `json:"parameters"`
 }
 
 type VpcNatStatus struct {

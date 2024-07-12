@@ -503,6 +503,15 @@ spec:
                     type: string
                 qosPolicy:
                   type: string
+                bgpSpeaker:
+                  type: object
+                  properties:
+                    enabled:
+                      type: boolean
+                    parameters:
+                      type: array
+                      items:
+                        type: string
                 tolerations:
                   type: array
                   items:

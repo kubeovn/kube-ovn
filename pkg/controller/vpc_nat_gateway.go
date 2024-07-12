@@ -782,7 +782,7 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 		util.IPAddressAnnotation:         gw.Spec.LanIP,
 	}
 
-	if vpcNatGwEnableBgpSpeaker { // Add an interface that can reach the API server
+	if vpcNatGwEnableBgpSpeaker && gw.Spec.BgpSpeaker.Enabled { // Add an interface that can reach the API server
 		defaultSubnet, err := c.subnetsLister.Get(c.config.DefaultLogicalSwitch)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get default subnet %s: %v", c.config.DefaultLogicalSwitch, err)
@@ -905,8 +905,16 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 		},
 	}
 
-	if vpcNatGwEnableBgpSpeaker {
+	// BGP speaker for GWs must be enabled globally and for this specific instance
+	if vpcNatGwEnableBgpSpeaker && gw.Spec.BgpSpeaker.Enabled {
 		containers := sts.Spec.Template.Spec.Containers
+
+		args := []string{
+			"--nat-gw-mode",
+			"-v5",
+		}
+
+		args = append(args, gw.Spec.BgpSpeaker.Parameters...)
 
 		sts.Spec.Template.Spec.ServiceAccountName = "vpc-nat-gw"
 		speakerContainer := corev1.Container{
@@ -928,13 +936,7 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 					},
 				},
 			},
-			Args: []string{
-				"--neighbor-address=100.127.4.161",
-				"--neighbor-as=65500",
-				"--cluster-as=65000",
-				"--nat-gw-mode",
-				"-v5",
-			},
+			Args: args,
 		}
 
 		sts.Spec.Template.Spec.Containers = append(containers, speakerContainer)
