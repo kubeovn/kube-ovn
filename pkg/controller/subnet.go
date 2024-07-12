@@ -1610,7 +1610,7 @@ func (c *Controller) reconcileDistributedSubnetRouteInDefaultVpc(subnet *kubeovn
 
 			if pod.Annotations[util.NorthGatewayAnnotation] != "" {
 				if err := c.addStaticRouteToVpc(
-					c.config.ClusterRouter,
+					subnet.Spec.Vpc,
 					&kubeovnv1.StaticRoute{
 						Policy:     kubeovnv1.PolicySrc,
 						CIDR:       pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, podNet.ProviderName)],
