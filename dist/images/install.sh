@@ -1807,12 +1807,17 @@ spec:
         - jsonPath: .spec.namespaces
           name: Namespaces
           type: string
+        - jsonPath: .status.defaultLogicalSwitch
+          name: DefaultLogicalSwitch
+          type: string
       name: v1
       schema:
         openAPIV3Schema:
           properties:
             spec:
               properties:
+                defaultSubnet:
+                  type: string
                 enableExternal:
                   type: boolean
                 enableBfd:
@@ -3361,7 +3366,7 @@ spec:
             - name: PROBE_INTERVAL
               value: "180000"
             - name: OVN_NORTHD_PROBE_INTERVAL
-              value: "5000" 
+              value: "5000"
             - name: OVN_LEADER_PROBE_INTERVAL
               value: "5"
             - name: OVN_NORTHD_N_THREADS
@@ -4766,7 +4771,7 @@ for ns in $(kubectl get ns --no-headers -o custom-columns=NAME:.metadata.name); 
 done
 
 kubectl rollout status deployment/coredns -n kube-system --timeout 300s
-while true; do 
+while true; do
   pods=(`kubectl get pod -n kube-system -l app=kube-ovn-pinger --template '{{range .items}}{{if .metadata.deletionTimestamp}}{{.metadata.name}}{{"\n"}}{{end}}{{end}}'`)
   if [ ${#pods[@]} -eq 0 ]; then
     break
