@@ -62,6 +62,13 @@ func newFakeController(t *testing.T) *fakeController {
 		syncVirtualPortsQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), ""),
 	}
 
+	ctrl.config = &Configuration{
+		ClusterRouter:        "ovn-cluster",
+		DefaultLogicalSwitch: "ovn-default",
+		NodeSwitch:           "join",
+		KubeOvnClient:        kubeovnClient,
+	}
+
 	return &fakeController{
 		fakeController: ctrl,
 		fakeInformers:  fakeInformers,
