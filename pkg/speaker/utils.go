@@ -79,7 +79,7 @@ func parseRoute(route string) (string, uint32, error) {
 	if strings.Contains(route, "/") {
 		prefix = strings.Split(route, "/")[0]
 		strLen := strings.Split(route, "/")[1]
-		intLen, err := strconv.Atoi(strLen)
+		intLen, err := strconv.ParseInt(strLen, 10, 32)
 		if err != nil {
 			return "", 0, err
 		}
@@ -96,11 +96,12 @@ func getGatewayName() string {
 // kubeOvnFamilyToAFI converts an IP family to its associated AFI
 func kubeOvnFamilyToAFI(ipFamily string) (bgpapi.Family_Afi, error) {
 	var family bgpapi.Family_Afi
-	if ipFamily == kubeovnv1.ProtocolIPv6 {
-		family = bgpapi.Family_AFI_IP6
-	} else if ipFamily == kubeovnv1.ProtocolIPv4 {
+	switch ipFamily {
+	case kubeovnv1.ProtocolIPv4:
 		family = bgpapi.Family_AFI_IP
-	} else {
+	case kubeovnv1.ProtocolIPv6:
+		family = bgpapi.Family_AFI_IP6
+	default:
 		return bgpapi.Family_AFI_UNKNOWN, fmt.Errorf("ip family is invalid")
 	}
 

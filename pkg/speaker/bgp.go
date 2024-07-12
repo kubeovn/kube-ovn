@@ -112,7 +112,7 @@ func (c *Controller) addRoute(route string) error {
 	// Get NLRI and attributes to announce all the next hops possible
 	nlri, attrs, err := c.getNlriAndAttrs(route)
 	if err != nil {
-		return fmt.Errorf("failed to get NLRI and attributes: %w", nlri)
+		return fmt.Errorf("failed to get NLRI and attributes: %w", err)
 	}
 
 	// Announce every next hop we have
@@ -144,7 +144,7 @@ func (c *Controller) delRoute(route string) error {
 	// Get NLRI and attributes to announce all the next hops possible
 	nlri, attrs, err := c.getNlriAndAttrs(route)
 	if err != nil {
-		return fmt.Errorf("failed to get NLRI and attributes: %w", nlri)
+		return fmt.Errorf("failed to get NLRI and attributes: %w", err)
 	}
 
 	// Withdraw every next hop we have

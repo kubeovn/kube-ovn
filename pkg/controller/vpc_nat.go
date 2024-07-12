@@ -29,7 +29,6 @@ func (c *Controller) resyncVpcNatImage() {
 
 	enableBgpSpeaker, exist := cm.Data["enableBgpSpeaker"]
 	if exist && enableBgpSpeaker == "true" {
-		klog.V(5).Infof("experimental BGP speaker enabled")
 		vpcNatEnableBgpSpeaker = true
 	}
 }
