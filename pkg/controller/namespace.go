@@ -119,7 +119,7 @@ func (c *Controller) handleAddNamespace(key string) error {
 	}
 	namespace := cachedNs.DeepCopy()
 
-	var ls, ippool string
+	var ls, ds, ippool string
 	var lss, cidrs, excludeIps []string
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
@@ -140,6 +140,17 @@ func (c *Controller) handleAddNamespace(key string) error {
 				cidrs = append(cidrs, s.Spec.CIDRBlock)
 				excludeIps = append(excludeIps, strings.Join(s.Spec.ExcludeIps, ","))
 				break
+			}
+		}
+
+		if s.Spec.Vpc != "" || s.Spec.Vpc != c.config.ClusterRouter {
+			vpc, err := c.vpcsLister.Get(s.Spec.Vpc)
+			if err != nil {
+				klog.Errorf("failed to get custom vpc %v", err)
+				return err
+			}
+			if s.Name == vpc.Spec.DefaultSubnet {
+				ds = s.Name
 			}
 		}
 	}
@@ -190,10 +201,14 @@ func (c *Controller) handleAddNamespace(key string) error {
 	} else if namespace.Annotations[util.LogicalSwitchAnnotation] == strings.Join(lss, ",") &&
 		namespace.Annotations[util.CidrAnnotation] == strings.Join(cidrs, ";") &&
 		namespace.Annotations[util.ExcludeIpsAnnotation] == strings.Join(excludeIps, ";") &&
+		namespace.Annotations[util.DefaultVPCSubnetAnnotation] == ds &&
 		namespace.Annotations[util.IPPoolAnnotation] == ippool {
 		return nil
 	}
 
+	if ds != "" {
+		namespace.Annotations[util.DefaultVPCSubnetAnnotation] = ds
+	}
 	namespace.Annotations[util.LogicalSwitchAnnotation] = strings.Join(lss, ",")
 	namespace.Annotations[util.CidrAnnotation] = strings.Join(cidrs, ";")
 	namespace.Annotations[util.ExcludeIpsAnnotation] = strings.Join(excludeIps, ";")
