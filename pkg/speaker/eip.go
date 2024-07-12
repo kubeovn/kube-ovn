@@ -6,7 +6,6 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
-	"k8s.io/klog/v2"
 )
 
 // syncEIPRoutes retrieves all the EIPs attached to our GWs and starts announcing their route
@@ -17,10 +16,8 @@ func (c *Controller) syncEIPRoutes() error {
 		return fmt.Errorf("failed to retrieve the name of the gateway, might not be running in a gateway pod")
 	}
 
-	klog.Infof("gw name is: %s", gatewayName)
-
 	// Create label requirements to only get EIPs attached to our NAT GW
-	requirements, err := labels.NewRequirement(util.VpcNatGatewayLabel, selection.Equals, []string{gatewayName})
+	requirements, err := labels.NewRequirement(util.VpcNatGatewayNameLabel, selection.Equals, []string{gatewayName})
 	if err != nil {
 		return fmt.Errorf("failed to create label selector requirement: %w", err)
 	}
@@ -30,8 +27,6 @@ func (c *Controller) syncEIPRoutes() error {
 	if err != nil {
 		return fmt.Errorf("failed to list EIPs attached to our GW: %w", err)
 	}
-
-	klog.Infof("%v", eips)
 
 	return c.announceEIPs(eips)
 }

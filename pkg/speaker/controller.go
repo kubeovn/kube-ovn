@@ -1,6 +1,7 @@
 package speaker
 
 import (
+	"github.com/kubeovn/kube-ovn/pkg/util"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -18,7 +19,6 @@ import (
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	kubeovninformer "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions"
 	kubeovnlister "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
-	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 const controllerAgentName = "ovn-speaker"
@@ -109,7 +109,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 }
 
 func (c *Controller) Reconcile() {
-	if c.config.EIPAnnouncement {
+	if c.config.NatGwMode {
 		err := c.syncEIPRoutes()
 		if err != nil {
 			klog.Errorf("failed to reconcile EIPs: %s", err.Error())

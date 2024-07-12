@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"os"
 	"reflect"
 	"regexp"
 	"slices"
@@ -735,6 +736,39 @@ func (c *Controller) execNatGwRules(pod *corev1.Pod, operation string, rules []s
 	return nil
 }
 
+func (c *Controller) setNatGwInterface(annotations map[string]string, externalNetwork string, defaultSubnet *kubeovnv1.Subnet) {
+	nad := fmt.Sprintf("%s/%s, %s/%s", c.config.PodNamespace, externalNetwork, corev1.NamespaceDefault, nadName)
+	annotations[util.AttachmentNetworkAnnotation] = nad
+
+	setNatGwRoute(annotations, defaultSubnet.Spec.Gateway)
+}
+
+func setNatGwRoute(annotations map[string]string, subnetGw string) {
+	dst := os.Getenv("KUBERNETES_SERVICE_HOST")
+
+	protocol := util.CheckProtocol(dst)
+	if !strings.ContainsRune(dst, '/') {
+		switch protocol {
+		case kubeovnv1.ProtocolIPv4:
+			dst = fmt.Sprintf("%s/32", dst)
+		case kubeovnv1.ProtocolIPv6:
+			dst = fmt.Sprintf("%s/128", dst)
+		}
+	}
+	for _, gw := range strings.Split(subnetGw, ",") {
+		if util.CheckProtocol(gw) == protocol {
+			routes := []request.Route{{Destination: dst, Gateway: gw}}
+			buf, err := json.Marshal(routes)
+			if err != nil {
+				klog.Errorf("failed to marshal routes %+v: %v", routes, err)
+			} else {
+				annotations[fmt.Sprintf(util.RoutesAnnotationTemplate, nadProvider)] = string(buf)
+			}
+			break
+		}
+	}
+}
+
 func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1.StatefulSet) (*v1.StatefulSet, error) {
 	annotations := make(map[string]string, 7)
 	if oldSts != nil && len(oldSts.Annotations) != 0 {
@@ -747,6 +781,15 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 		util.LogicalSwitchAnnotation:     gw.Spec.Subnet,
 		util.IPAddressAnnotation:         gw.Spec.LanIP,
 	}
+
+	if vpcNatEnableBgpSpeaker { // Add an interface that can reach the API server
+		defaultSubnet, err := c.subnetsLister.Get(c.config.DefaultLogicalSwitch)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get default subnet %s: %v", c.config.DefaultLogicalSwitch, err)
+		}
+		c.setNatGwInterface(podAnnotations, nadName, defaultSubnet)
+	}
+
 	for key, value := range podAnnotations {
 		annotations[key] = value
 	}
@@ -782,6 +825,7 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 			routes = append(routes, request.Route{Destination: cidrV6, Gateway: v6Gateway})
 		}
 	}
+
 	if err = setPodRoutesAnnotation(annotations, util.OvnProvider, routes); err != nil {
 		klog.Error(err)
 		return nil, err
@@ -820,6 +864,7 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 		"app":                   name,
 		util.VpcNatGatewayLabel: "true",
 	}
+
 	sts := &v1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   name,
@@ -847,12 +892,6 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 								Privileged:               ptr.To(true),
 								AllowPrivilegeEscalation: ptr.To(true),
 							},
-							Env: []corev1.EnvVar{
-								{
-									Name:  "GATEWAY_NAME",
-									Value: gw.Name,
-								},
-							},
 						},
 					},
 					NodeSelector: selectors,
@@ -865,6 +904,42 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 			},
 		},
 	}
+
+	if vpcNatEnableBgpSpeaker {
+		containers := sts.Spec.Template.Spec.Containers
+
+		sts.Spec.Template.Spec.ServiceAccountName = "vpc-nat-gw"
+		speakerContainer := corev1.Container{
+			Name:            "vpc-nat-gw-speaker",
+			Image:           "superphenix.net/kubeovn:latest",
+			Command:         []string{"/kube-ovn/kube-ovn-speaker"},
+			ImagePullPolicy: corev1.PullIfNotPresent,
+			Env: []corev1.EnvVar{
+				{
+					Name:  util.GatewayNameEnv,
+					Value: gw.Name,
+				},
+				{
+					Name: "POD_IP",
+					ValueFrom: &corev1.EnvVarSource{
+						FieldRef: &corev1.ObjectFieldSelector{
+							FieldPath: "status.podIP",
+						},
+					},
+				},
+			},
+			Args: []string{
+				"--neighbor-address=100.127.4.161",
+				"--neighbor-as=65500",
+				"--cluster-as=65000",
+				"--nat-gw-mode",
+				"-v5",
+			},
+		}
+
+		sts.Spec.Template.Spec.Containers = append(containers, speakerContainer)
+	}
+
 	return sts, nil
 }
 

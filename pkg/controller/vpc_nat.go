@@ -2,13 +2,14 @@ package controller
 
 import (
 	"fmt"
-
-	"k8s.io/klog/v2"
-
 	"github.com/kubeovn/kube-ovn/pkg/util"
+	"k8s.io/klog/v2"
 )
 
-var vpcNatImage = ""
+var (
+	vpcNatImage            = ""
+	vpcNatEnableBgpSpeaker = false
+)
 
 func (c *Controller) resyncVpcNatImage() {
 	cm, err := c.configMapsLister.ConfigMaps(c.config.PodNamespace).Get(util.VpcNatConfig)
@@ -17,6 +18,7 @@ func (c *Controller) resyncVpcNatImage() {
 		klog.Error(err)
 		return
 	}
+
 	image, exist := cm.Data["image"]
 	if !exist {
 		err = fmt.Errorf("%s should have image field", util.VpcNatConfig)
@@ -24,4 +26,10 @@ func (c *Controller) resyncVpcNatImage() {
 		return
 	}
 	vpcNatImage = image
+
+	enableBgpSpeaker, exist := cm.Data["enableBgpSpeaker"]
+	if exist && enableBgpSpeaker == "true" {
+		klog.V(5).Infof("experimental BGP speaker enabled")
+		vpcNatEnableBgpSpeaker = true
+	}
 }

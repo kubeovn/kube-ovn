@@ -55,7 +55,7 @@ type Configuration struct {
 	GracefulRestartTime         time.Duration
 	PassiveMode                 bool
 	EbgpMultihopTTL             uint8
-	EIPAnnouncement             bool
+	NatGwMode                   bool
 
 	NodeName       string
 	KubeConfigFile string
@@ -86,7 +86,7 @@ func ParseFlags() (*Configuration, error) {
 		argKubeConfigFile              = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.")
 		argPassiveMode                 = pflag.BoolP("passivemode", "", false, "Set BGP Speaker to passive model, do not actively initiate connections to peers")
 		argEbgpMultihopTTL             = pflag.Uint8("ebgp-multihop", DefaultEbgpMultiHop, "The TTL value of EBGP peer, default: 1")
-		argEIPAnnouncement             = pflag.BoolP("eip-announcement", "", false, "Make the BGP speaker announce EIPs from gateways")
+		argNatGwMode                   = pflag.BoolP("nat-gw-mode", "", false, "Make the BGP speaker announce EIPs from inside a NAT gateway, Pod IP/Service/Subnet announcements will be disabled")
 	)
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
 	klog.InitFlags(klogFlags)
@@ -150,7 +150,7 @@ func ParseFlags() (*Configuration, error) {
 		GracefulRestartTime:         *argDefaultGracefulTime,
 		PassiveMode:                 *argPassiveMode,
 		EbgpMultihopTTL:             *argEbgpMultihopTTL,
-		EIPAnnouncement:             *argEIPAnnouncement,
+		NatGwMode:                   *argNatGwMode,
 	}
 
 	if *argNeighborAddress != "" {

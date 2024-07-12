@@ -11,10 +11,6 @@ import (
 	"strings"
 )
 
-const (
-	GatewayNameEnvVariable = "GATEWAY_NAME"
-)
-
 // prefixMap is a map associating an IP family (IPv4 or IPv6) and an IP
 type prefixMap map[string][]string
 
@@ -94,7 +90,7 @@ func parseRoute(route string) (string, uint32, error) {
 
 // getGatewayName returns the name of the NAT GW hosting this speaker
 func getGatewayName() string {
-	return os.Getenv(GatewayNameEnvVariable)
+	return os.Getenv(util.GatewayNameEnv)
 }
 
 // kubeOvnFamilyToAFI converts an IP family to its associated AFI
