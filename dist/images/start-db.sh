@@ -139,6 +139,7 @@ function is_clustered {
 function set_nb_version_compatibility() {
     if [ -n "$OVN_VERSION_COMPATIBILITY" ]; then
         if ! ovn-nbctl --db=$(gen_conn_str 6641) $SSL_OPTIONS get NB_Global . options | grep -q version_compatibility=; then
+            echo "ovn nb global option version_compatibility is set to ${OVN_VERSION_COMPATIBILITY}"
             ovn-nbctl --db=$(gen_conn_str 6641) $SSL_OPTIONS set NB_Global . options:version_compatibility=${OVN_VERSION_COMPATIBILITY}
             return
         fi
@@ -147,6 +148,9 @@ function set_nb_version_compatibility() {
         if [ "$value" != "_$OVN_VERSION_COMPATIBILITY" ]; then
             ovn-nbctl --db=$(gen_conn_str 6641) $SSL_OPTIONS set NB_Global . options:version_compatibility=${OVN_VERSION_COMPATIBILITY}
         fi
+    else
+        echo "ovn nb global option version_compatibility is set to _$OVN_VERSION_COMPATIBILITY"
+        ovn-nbctl --db=$(gen_conn_str 6641) $SSL_OPTIONS set NB_Global . options:version_compatibility=_${OVN_VERSION_COMPATIBILITY}
     fi
 }
 
