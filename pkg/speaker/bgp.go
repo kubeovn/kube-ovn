@@ -3,6 +3,8 @@ package speaker
 import (
 	"context"
 	"fmt"
+	"net"
+
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	bgpapi "github.com/osrg/gobgp/v3/api"
@@ -12,7 +14,6 @@ import (
 	"golang.org/x/sys/unix"
 	"google.golang.org/protobuf/types/known/anypb"
 	"k8s.io/klog/v2"
-	"net"
 )
 
 var (

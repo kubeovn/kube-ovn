@@ -2,13 +2,14 @@ package speaker
 
 import (
 	"fmt"
+	"os"
+	"strconv"
+	"strings"
+
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	bgpapi "github.com/osrg/gobgp/v3/api"
 	v1 "k8s.io/api/core/v1"
-	"os"
-	"strconv"
-	"strings"
 )
 
 // prefixMap is a map associating an IP family (IPv4 or IPv6) and an IP

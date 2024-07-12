@@ -782,7 +782,7 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 		util.IPAddressAnnotation:         gw.Spec.LanIP,
 	}
 
-	if vpcNatEnableBgpSpeaker { // Add an interface that can reach the API server
+	if vpcNatGwEnableBgpSpeaker { // Add an interface that can reach the API server
 		defaultSubnet, err := c.subnetsLister.Get(c.config.DefaultLogicalSwitch)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get default subnet %s: %v", c.config.DefaultLogicalSwitch, err)
@@ -905,13 +905,13 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 		},
 	}
 
-	if vpcNatEnableBgpSpeaker {
+	if vpcNatGwEnableBgpSpeaker {
 		containers := sts.Spec.Template.Spec.Containers
 
 		sts.Spec.Template.Spec.ServiceAccountName = "vpc-nat-gw"
 		speakerContainer := corev1.Container{
 			Name:            "vpc-nat-gw-speaker",
-			Image:           "superphenix.net/kubeovn:latest",
+			Image:           vpcNatGwBgpSpeakerImage,
 			Command:         []string{"/kube-ovn/kube-ovn-speaker"},
 			ImagePullPolicy: corev1.PullIfNotPresent,
 			Env: []corev1.EnvVar{
