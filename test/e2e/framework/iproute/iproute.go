@@ -1,11 +1,11 @@
 package iproute
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net"
 	"reflect"
-	"strings"
 
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/docker"
 )
@@ -82,15 +82,16 @@ type Rule struct {
 	SrcLen   int    `json:"srclen,omitempty"`
 }
 
-type ExecFunc func(cmd ...string) (stdout, stderr []byte, err error)
+type ExecFunc func(ctx context.Context, cmd string) (stdout, stderr []byte, err error)
 
 type execer struct {
+	ctx           context.Context
 	fn            ExecFunc
 	ignoredErrors []reflect.Type
 }
 
 func (e *execer) exec(cmd string, result interface{}) error {
-	stdout, stderr, err := e.fn(strings.Fields(cmd)...)
+	stdout, stderr, err := e.fn(e.ctx, cmd)
 	if err != nil {
 		t := reflect.TypeOf(err)
 		for _, err := range e.ignoredErrors {
@@ -117,9 +118,9 @@ func devArg(device string) string {
 	return " dev " + device
 }
 
-func AddressShow(device string, execFunc ExecFunc) ([]Link, error) {
+func AddressShow(ctx context.Context, device string, execFunc ExecFunc) ([]Link, error) {
 	var links []Link
-	e := execer{fn: execFunc}
+	e := execer{ctx: ctx, fn: execFunc}
 	if err := e.exec("ip -d -j address show"+devArg(device), &links); err != nil {
 		return nil, err
 	}
@@ -127,8 +128,8 @@ func AddressShow(device string, execFunc ExecFunc) ([]Link, error) {
 	return links, nil
 }
 
-func RouteShow(table, device string, execFunc ExecFunc) ([]Route, error) {
-	e := execer{fn: execFunc}
+func RouteShow(ctx context.Context, table, device string, execFunc ExecFunc) ([]Route, error) {
+	e := execer{ctx: ctx, fn: execFunc}
 	var args string
 	if table != "" {
 		// ignore the following error:
@@ -152,8 +153,8 @@ func RouteShow(table, device string, execFunc ExecFunc) ([]Route, error) {
 	return append(routes, routes6...), nil
 }
 
-func RouteDel(table, dst string, execFunc ExecFunc) error {
-	e := execer{fn: execFunc}
+func RouteDel(ctx context.Context, table, dst string, execFunc ExecFunc) error {
+	e := execer{ctx: ctx, fn: execFunc}
 	args := dst
 	if table != "" {
 		args = " table " + table
@@ -162,8 +163,8 @@ func RouteDel(table, dst string, execFunc ExecFunc) error {
 	return e.exec("ip route del "+args, nil)
 }
 
-func RuleShow(device string, execFunc ExecFunc) ([]Rule, error) {
-	e := execer{fn: execFunc}
+func RuleShow(ctx context.Context, device string, execFunc ExecFunc) ([]Rule, error) {
+	e := execer{ctx: ctx, fn: execFunc}
 
 	var rules []Rule
 	if err := e.exec("ip -d -j rule show"+devArg(device), &rules); err != nil {

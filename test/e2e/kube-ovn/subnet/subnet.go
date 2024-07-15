@@ -1,6 +1,7 @@
 package subnet
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"math/big"
@@ -15,7 +16,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
-	e2epodoutput "k8s.io/kubernetes/test/e2e/framework/pod/output"
 
 	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
@@ -29,17 +29,17 @@ import (
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/kind"
 )
 
-func getOvsPodOnNode(f *framework.Framework, node string) *corev1.Pod {
+func getOvsPodOnNode(ctx context.Context, f *framework.Framework, node string) *corev1.Pod {
 	ginkgo.GinkgoHelper()
 
 	daemonSetClient := f.DaemonSetClientNS(framework.KubeOvnNamespace)
-	ds := daemonSetClient.Get("ovs-ovn")
-	pod, err := daemonSetClient.GetPodOnNode(ds, node)
+	ds := daemonSetClient.Get(ctx, "ovs-ovn")
+	pod, err := daemonSetClient.GetPodOnNode(ctx, ds, node)
 	framework.ExpectNoError(err)
 	return pod
 }
 
-func checkNatOutgoingRoutes(f *framework.Framework, ns, pod string, gateways []string) {
+func checkNatOutgoingRoutes(ctx context.Context, f *framework.Framework, ns, pod string, gateways []string) {
 	ginkgo.GinkgoHelper()
 
 	afs := make([]int, 0, 2)
@@ -56,28 +56,28 @@ func checkNatOutgoingRoutes(f *framework.Framework, ns, pod string, gateways []s
 	for i, af := range afs {
 		ginkgo.By(fmt.Sprintf("Checking IPv%d NAT outgoing routes of %s/%s", af, ns, pod))
 		cmd := fmt.Sprintf("traceroute -%d -n -f2 -m2 %s", af, dst[i])
-		framework.WaitUntil(3*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(ctx, 30*time.Second, func(ctx context.Context) (bool, error) {
 			// traceroute to 1.1.1.1 (1.1.1.1), 2 hops max, 60 byte packets
 			// 2  172.19.0.2  0.663 ms  0.613 ms  0.605 ms
-			output, err := e2epodoutput.RunHostCmd(ns, pod, cmd)
+			output, _, err := framework.KubectlExec(ctx, ns, pod, cmd)
 			if err != nil {
 				return false, nil
 			}
 
-			lines := strings.Split(strings.TrimSpace(output), "\n")
+			lines := strings.Split(strings.TrimSpace(string(output)), "\n")
 			fields := strings.Fields(lines[len(lines)-1])
 			return len(fields) > 2 && slices.Contains(gateways, fields[1]), nil
 		}, "")
 	}
 }
 
-func checkSubnetNatOutgoingPolicyRuleStatus(subnetClient *framework.SubnetClient, subnetName string, rules []apiv1.NatOutgoingPolicyRule) *apiv1.Subnet {
+func checkSubnetNatOutgoingPolicyRuleStatus(ctx context.Context, subnetClient *framework.SubnetClient, subnetName string, rules []apiv1.NatOutgoingPolicyRule) *apiv1.Subnet {
 	ginkgo.GinkgoHelper()
 
 	ginkgo.By("Waiting for status of subnet " + subnetName + " to be updated")
 	var subnet *apiv1.Subnet
-	framework.WaitUntil(2*time.Second, 10*time.Second, func(_ context.Context) (bool, error) {
-		s := subnetClient.Get(subnetName)
+	framework.WaitUntil(ctx, 10*time.Second, func(ctx context.Context) (bool, error) {
+		s := subnetClient.Get(ctx, subnetName)
 		if len(s.Status.NatOutgoingPolicyRules) != len(rules) {
 			return false, nil
 		}
@@ -92,14 +92,15 @@ func checkSubnetNatOutgoingPolicyRuleStatus(subnetClient *framework.SubnetClient
 	return subnet
 }
 
-func checkIPSetOnNode(f *framework.Framework, node string, expectetIPsets []string, shouldExist bool) {
+func checkIPSetOnNode(ctx context.Context, f *framework.Framework, node string, expectetIPsets []string, shouldExist bool) {
 	ginkgo.GinkgoHelper()
 
-	ovsPod := getOvsPodOnNode(f, node)
+	ovsPod := getOvsPodOnNode(ctx, f, node)
 	cmd := `ipset list | grep '^Name:' | awk '{print $2}'`
-	framework.WaitUntil(3*time.Second, 10*time.Second, func(_ context.Context) (bool, error) {
-		output := e2epodoutput.RunHostCmdOrDie(ovsPod.Namespace, ovsPod.Name, cmd)
-		exitIPsets := strings.Split(output, "\n")
+	framework.WaitUntil(ctx, 10*time.Second, func(ctx context.Context) (bool, error) {
+		stdout, _, err := framework.KubectlExec(ctx, ovsPod.Namespace, ovsPod.Name, cmd)
+		framework.ExpectNoError(err)
+		exitIPsets := strings.Split(string(bytes.TrimSpace(stdout)), "\n")
 		for _, r := range expectetIPsets {
 			framework.Logf("checking ipset %s: %v", r, shouldExist)
 			ok, err := gomega.ContainElement(r).Match(exitIPsets)
@@ -125,7 +126,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 	var gateways []string
 	var podCount int
 
-	ginkgo.BeforeEach(func() {
+	ginkgo.BeforeEach(ginkgo.NodeTimeout(time.Second), func(_ ginkgo.SpecContext) {
 		cs = f.ClientSet
 		podClient = f.PodClient()
 		deployClient = f.DeploymentClient()
@@ -157,30 +158,30 @@ var _ = framework.Describe("[group:subnet]", func() {
 			gateways = append(gateways, firstIPv6)
 		}
 	})
-	ginkgo.AfterEach(func() {
+	ginkgo.AfterEach(ginkgo.NodeTimeout(45*time.Second), func(ctx ginkgo.SpecContext) {
 		ginkgo.By("Deleting deployment " + deployName)
-		deployClient.DeleteSync(deployName)
+		deployClient.DeleteSync(ctx, deployName)
 
 		for i := 1; i <= podCount; i++ {
 			podName := fmt.Sprintf("%s-%d", podNamePrefix, i)
 			ginkgo.By("Deleting pod " + podName)
-			podClient.DeleteSync(podName)
+			podClient.DeleteSync(ctx, podName)
 		}
 
 		ginkgo.By("Deleting pod " + podName)
-		podClient.DeleteSync(podName)
+		podClient.DeleteSync(ctx, podName)
 
 		ginkgo.By("Deleting subnet " + fakeSubnetName)
-		subnetClient.DeleteSync(fakeSubnetName)
+		subnetClient.DeleteSync(ctx, fakeSubnetName)
 
 		ginkgo.By("Deleting subnet " + subnetName)
-		subnetClient.DeleteSync(subnetName)
+		subnetClient.DeleteSync(ctx, subnetName)
 	})
 
-	framework.ConformanceIt("should create subnet with only cidr provided", func() {
+	framework.ConformanceIt("should create subnet with only cidr provided", ginkgo.SpecTimeout(20*time.Second), func(ctx ginkgo.SpecContext) {
 		ginkgo.By("Creating subnet " + subnetName)
 		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, nil)
-		subnet = subnetClient.CreateSync(subnet)
+		subnet = subnetClient.CreateSync(ctx, subnet)
 
 		ginkgo.By("Validating subnet finalizers")
 		f.ValidateFinalizers(subnet)
@@ -218,7 +219,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		// TODO: check routes on ovn0
 	})
 
-	framework.ConformanceIt("should format subnet cidr", func() {
+	framework.ConformanceIt("should format subnet cidr", ginkgo.SpecTimeout(20*time.Second), func(ctx ginkgo.SpecContext) {
 		fn := func(cidr string) string {
 			if cidr == "" {
 				return ""
@@ -238,7 +239,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 
 		subnet = framework.MakeSubnet(subnetName, "", strings.Join(s, ","), "", "", "", nil, nil, nil)
 		ginkgo.By("Creating subnet " + subnetName + " with cidr " + subnet.Spec.CIDRBlock)
-		subnet = subnetClient.CreateSync(subnet)
+		subnet = subnetClient.CreateSync(ctx, subnet)
 
 		ginkgo.By("Validating subnet finalizers")
 		f.ValidateFinalizers(subnet)
@@ -276,14 +277,14 @@ var _ = framework.Describe("[group:subnet]", func() {
 		// TODO: check routes on ovn0
 	})
 
-	framework.ConformanceIt("should create subnet with exclude ips", func() {
+	framework.ConformanceIt("should create subnet with exclude ips", ginkgo.SpecTimeout(20*time.Second), func(ctx ginkgo.SpecContext) {
 		excludeIPv4 := framework.RandomExcludeIPs(cidrV4, rand.IntN(10)+1)
 		excludeIPv6 := framework.RandomExcludeIPs(cidrV6, rand.IntN(10)+1)
 		excludeIPs := append(excludeIPv4, excludeIPv6...)
 
 		ginkgo.By(fmt.Sprintf("Creating subnet %s with exclude ips %v", subnetName, excludeIPs))
 		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", "", excludeIPs, nil, nil)
-		subnet = subnetClient.CreateSync(subnet)
+		subnet = subnetClient.CreateSync(ctx, subnet)
 
 		ginkgo.By("Validating subnet finalizers")
 		f.ValidateFinalizers(subnet)
@@ -321,9 +322,9 @@ var _ = framework.Describe("[group:subnet]", func() {
 		}
 	})
 
-	framework.ConformanceIt("should create subnet with centralized gateway", func() {
+	framework.ConformanceIt("should create subnet with centralized gateway", ginkgo.SpecTimeout(40*time.Second), func(ctx ginkgo.SpecContext) {
 		ginkgo.By("Getting nodes")
-		nodes, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
+		nodes, err := e2enode.GetReadySchedulableNodes(ctx, cs)
 		framework.ExpectNoError(err)
 		framework.ExpectNotEmpty(nodes.Items)
 
@@ -342,7 +343,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 			nodeIPs = append(nodeIPs, strings.Split(strings.Trim(ipv4+","+ipv6, ","), ",")...)
 		}
 		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, gatewayNodes, []string{namespaceName})
-		subnet = subnetClient.CreateSync(subnet)
+		subnet = subnetClient.CreateSync(ctx, subnet)
 
 		ginkgo.By("Validating subnet finalizers")
 		f.ValidateFinalizers(subnet)
@@ -378,22 +379,22 @@ var _ = framework.Describe("[group:subnet]", func() {
 		}
 
 		ginkgo.By("Creating pod " + podName)
-		cmd := []string{"sh", "-c", "sleep infinity"}
+		cmd := []string{"sleep", "infinity"}
 		pod := framework.MakePod(namespaceName, podName, nil, nil, f.KubeOVNImage, cmd, nil)
-		_ = podClient.CreateSync(pod)
+		_ = podClient.CreateSync(ctx, pod)
 
-		checkNatOutgoingRoutes(f, namespaceName, podName, nodeIPs)
+		checkNatOutgoingRoutes(ctx, f, namespaceName, podName, nodeIPs)
 	})
 
-	framework.ConformanceIt("should be able to switch gateway mode to centralized", func() {
+	framework.ConformanceIt("should be able to switch gateway mode to centralized", ginkgo.SpecTimeout(time.Minute), func(ctx ginkgo.SpecContext) {
 		ginkgo.By("Getting nodes")
-		nodes, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
+		nodes, err := e2enode.GetReadySchedulableNodes(ctx, cs)
 		framework.ExpectNoError(err)
 		framework.ExpectNotEmpty(nodes.Items)
 
 		ginkgo.By("Creating subnet " + subnetName)
 		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, []string{namespaceName})
-		subnet = subnetClient.CreateSync(subnet)
+		subnet = subnetClient.CreateSync(ctx, subnet)
 
 		ginkgo.By("Validating subnet finalizers")
 		f.ValidateFinalizers(subnet)
@@ -445,7 +446,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		modifiedSubnet := subnet.DeepCopy()
 		modifiedSubnet.Spec.GatewayNode = strings.Join(gatewayNodes, ",")
 		modifiedSubnet.Spec.GatewayType = apiv1.GWCentralizedType
-		subnet = subnetClient.PatchSync(subnet, modifiedSubnet)
+		subnet = subnetClient.PatchSync(ctx, subnet, modifiedSubnet)
 
 		ginkgo.By("Validating subnet finalizers")
 		f.ValidateFinalizers(subnet)
@@ -463,7 +464,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		framework.ExpectEmpty(subnet.Spec.AllowSubnets)
 
 		ginkgo.By("Validating subnet status fields")
-		subnet = subnetClient.WaitUntil(subnetName, func(s *apiv1.Subnet) (bool, error) {
+		subnet = subnetClient.WaitUntil(ctx, subnetName, func(s *apiv1.Subnet) (bool, error) {
 			return gomega.ContainElement(s.Status.ActivateGateway).Match(gatewayNodes)
 		}, fmt.Sprintf("field .status.activateGateway is within %v", gatewayNodes),
 			2*time.Second, time.Minute,
@@ -485,18 +486,18 @@ var _ = framework.Describe("[group:subnet]", func() {
 		}
 
 		ginkgo.By("Creating pod " + podName)
-		cmd := []string{"sh", "-c", "sleep infinity"}
+		cmd := []string{"sleep", "infinity"}
 		pod := framework.MakePod(namespaceName, podName, nil, nil, f.KubeOVNImage, cmd, nil)
-		_ = podClient.CreateSync(pod)
+		_ = podClient.CreateSync(ctx, pod)
 
-		checkNatOutgoingRoutes(f, namespaceName, podName, nodeIPs)
+		checkNatOutgoingRoutes(ctx, f, namespaceName, podName, nodeIPs)
 	})
 
-	framework.ConformanceIt("create centralized subnet without enableEcmp", func() {
+	framework.ConformanceIt("create centralized subnet without enableEcmp", ginkgo.SpecTimeout(time.Minute), func(ctx ginkgo.SpecContext) {
 		f.SkipVersionPriorTo(1, 12, "Support for enableEcmp in subnet is introduced in v1.12")
 
 		ginkgo.By("Getting nodes")
-		nodes, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
+		nodes, err := e2enode.GetReadySchedulableNodes(ctx, cs)
 		framework.ExpectNoError(err)
 		framework.ExpectNotEmpty(nodes.Items)
 
@@ -512,7 +513,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 			nodeIPs = append(nodeIPs, nodes.Items[i].Annotations[util.IPAddressAnnotation])
 		}
 		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, gatewayNodes, []string{namespaceName})
-		subnet = subnetClient.CreateSync(subnet)
+		subnet = subnetClient.CreateSync(ctx, subnet)
 
 		ginkgo.By("Validating subnet finalizers")
 		f.ValidateFinalizers(subnet)
@@ -523,9 +524,9 @@ var _ = framework.Describe("[group:subnet]", func() {
 		framework.ExpectConsistOf(strings.Split(subnet.Spec.GatewayNode, ","), gatewayNodes)
 
 		ginkgo.By("Creating pod " + podName)
-		cmd := []string{"sh", "-c", "sleep infinity"}
+		cmd := []string{"sleep", "infinity"}
 		pod := framework.MakePod(namespaceName, podName, nil, nil, f.KubeOVNImage, cmd, nil)
-		_ = podClient.CreateSync(pod)
+		_ = podClient.CreateSync(ctx, pod)
 
 		var gwIPv4, gwIPv6 string
 		if f.VersionPriorTo(1, 12) {
@@ -533,16 +534,16 @@ var _ = framework.Describe("[group:subnet]", func() {
 		} else {
 			gwIPv4, gwIPv6 = util.GetNodeInternalIP(nodes.Items[0])
 		}
-		checkNatOutgoingRoutes(f, namespaceName, podName, strings.Split(strings.Trim(gwIPv4+","+gwIPv6, ","), ","))
+		checkNatOutgoingRoutes(ctx, f, namespaceName, podName, strings.Split(strings.Trim(gwIPv4+","+gwIPv6, ","), ","))
 
 		ginkgo.By("Change subnet spec field enableEcmp to true")
 		modifiedSubnet := subnet.DeepCopy()
 		modifiedSubnet.Spec.EnableEcmp = true
-		subnet = subnetClient.PatchSync(subnet, modifiedSubnet)
+		subnet = subnetClient.PatchSync(ctx, subnet, modifiedSubnet)
 
 		ginkgo.By("Validating active gateway")
 		nbctlCmd := fmt.Sprintf("ovn-nbctl --format=csv --data=bare --no-heading --columns=nexthops find logical-router-policy external_ids:subnet=%s", subnetName)
-		output, _, err := framework.NBExec(nbctlCmd)
+		output, _, err := framework.NBExec(ctx, nbctlCmd)
 		framework.ExpectNoError(err)
 
 		lines := strings.Split(string(output), "\n")
@@ -573,9 +574,9 @@ var _ = framework.Describe("[group:subnet]", func() {
 		}
 	})
 
-	framework.ConformanceIt("should support distributed external egress gateway", func() {
+	framework.ConformanceIt("should support distributed external egress gateway", ginkgo.SpecTimeout(30*time.Second), func(ctx ginkgo.SpecContext) {
 		ginkgo.By("Getting nodes")
-		nodes, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
+		nodes, err := e2enode.GetReadySchedulableNodes(ctx, cs)
 		framework.ExpectNoError(err)
 		framework.ExpectNotEmpty(nodes.Items)
 
@@ -585,7 +586,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		}
 
 		ginkgo.By("Getting docker network used by kind")
-		network, err := docker.NetworkInspect(kind.NetworkName)
+		network, err := docker.NetworkInspect(ctx, kind.NetworkName)
 		framework.ExpectNoError(err)
 
 		ginkgo.By("Determine external egress gateway addresses")
@@ -621,21 +622,21 @@ var _ = framework.Describe("[group:subnet]", func() {
 		subnet.Spec.ExternalEgressGateway = strings.Join(gateways, ",")
 		subnet.Spec.PolicyRoutingPriority = uint32(prPriority)
 		subnet.Spec.PolicyRoutingTableID = uint32(prTable)
-		subnet = subnetClient.CreateSync(subnet)
+		subnet = subnetClient.CreateSync(ctx, subnet)
 
 		ginkgo.By("Creating pod " + podName)
-		cmd := []string{"sh", "-c", "sleep infinity"}
+		cmd := []string{"sleep", "infinity"}
 		pod := framework.MakePod(namespaceName, podName, nil, nil, f.KubeOVNImage, cmd, nil)
-		pod = podClient.CreateSync(pod)
+		pod = podClient.CreateSync(ctx, pod)
 
 		ginkgo.By("Getting kind nodes")
-		kindNodes, err := kind.ListNodes(clusterName, "")
+		kindNodes, err := kind.ListNodes(ctx, clusterName, "")
 		framework.ExpectNoError(err)
 		framework.ExpectNotEmpty(kindNodes)
 
 		for _, node := range kindNodes {
 			ginkgo.By("Getting ip rules in node " + node.Name())
-			rules, err := iproute.RuleShow("", node.Exec)
+			rules, err := iproute.RuleShow(ctx, "", node.Exec)
 			framework.ExpectNoError(err)
 
 			ginkgo.By("Checking ip rules in node " + node.Name())
@@ -654,7 +655,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 			}
 
 			ginkgo.By("Getting ip routes in node " + node.Name())
-			routes, err := iproute.RouteShow(strconv.Itoa(prTable), "", node.Exec)
+			routes, err := iproute.RouteShow(ctx, strconv.Itoa(prTable), "", node.Exec)
 			framework.ExpectNoError(err)
 
 			ginkgo.By("Checking ip routes in node " + node.Name())
@@ -668,9 +669,9 @@ var _ = framework.Describe("[group:subnet]", func() {
 		}
 	})
 
-	framework.ConformanceIt("should support centralized external egress gateway", func() {
+	framework.ConformanceIt("should support centralized external egress gateway", ginkgo.SpecTimeout(30*time.Second), func(ctx ginkgo.SpecContext) {
 		ginkgo.By("Getting nodes")
-		nodes, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
+		nodes, err := e2enode.GetReadySchedulableNodes(ctx, cs)
 		framework.ExpectNoError(err)
 		framework.ExpectNotEmpty(nodes.Items)
 
@@ -680,7 +681,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		}
 
 		ginkgo.By("Getting docker network used by kind")
-		network, err := docker.NetworkInspect(kind.NetworkName)
+		network, err := docker.NetworkInspect(ctx, kind.NetworkName)
 		framework.ExpectNoError(err)
 
 		ginkgo.By("Determine external egress gateway addresses")
@@ -724,17 +725,17 @@ var _ = framework.Describe("[group:subnet]", func() {
 		subnet.Spec.ExternalEgressGateway = strings.Join(gateways, ",")
 		subnet.Spec.PolicyRoutingPriority = uint32(prPriority)
 		subnet.Spec.PolicyRoutingTableID = uint32(prTable)
-		subnet = subnetClient.CreateSync(subnet)
+		subnet = subnetClient.CreateSync(ctx, subnet)
 
 		ginkgo.By("Getting kind nodes")
-		kindNodes, err := kind.ListNodes(clusterName, "")
+		kindNodes, err := kind.ListNodes(ctx, clusterName, "")
 		framework.ExpectNoError(err)
 		framework.ExpectNotEmpty(kindNodes)
 
 		for _, node := range kindNodes {
 			shouldHavePolicyRoute := slices.Contains(gatewayNodes, node.Name())
 			ginkgo.By("Getting ip rules in node " + node.Name())
-			rules, err := iproute.RuleShow("", node.Exec)
+			rules, err := iproute.RuleShow(ctx, "", node.Exec)
 			framework.ExpectNoError(err)
 
 			ginkgo.By("Checking ip rules in node " + node.Name())
@@ -753,7 +754,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 			framework.ExpectEqual(found, len(gateways))
 
 			ginkgo.By("Getting ip routes in node " + node.Name())
-			routes, err := iproute.RouteShow(strconv.Itoa(prTable), "", node.Exec)
+			routes, err := iproute.RouteShow(ctx, strconv.Itoa(prTable), "", node.Exec)
 			framework.ExpectNoError(err)
 
 			ginkgo.By("Checking ip routes in node " + node.Name())
@@ -767,114 +768,120 @@ var _ = framework.Describe("[group:subnet]", func() {
 		}
 	})
 
-	framework.ConformanceIt("should support subnet AvailableIPRange and UsingIPRange creating pod no specify ip", func() {
-		f.SkipVersionPriorTo(1, 12, "Support for display AvailableIPRange and UsingIPRange in v1.12")
-		podCount = 5
-		var startIPv4, startIPv6 string
-		if firstIPv4 != "" {
-			startIPv4 = util.BigInt2Ip(big.NewInt(0).Add(util.IP2BigInt(firstIPv4), big.NewInt(1)))
-		}
-		if firstIPv6 != "" {
-			startIPv6 = util.BigInt2Ip(big.NewInt(0).Add(util.IP2BigInt(firstIPv6), big.NewInt(1)))
-		}
+	framework.ConformanceIt(
+		"should support subnet AvailableIPRange and UsingIPRange creating pod no specify ip",
+		ginkgo.SpecTimeout(time.Minute),
+		func(ctx ginkgo.SpecContext) {
+			f.SkipVersionPriorTo(1, 12, "Support for display AvailableIPRange and UsingIPRange in v1.12")
 
-		ginkgo.By("Creating subnet " + subnetName)
-		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, nil)
-		subnet = subnetClient.CreateSync(subnet)
+			podCount = 5
+			var startIPv4, startIPv6 string
+			if firstIPv4 != "" {
+				startIPv4 = util.BigInt2Ip(big.NewInt(0).Add(util.IP2BigInt(firstIPv4), big.NewInt(1)))
+			}
+			if firstIPv6 != "" {
+				startIPv6 = util.BigInt2Ip(big.NewInt(0).Add(util.IP2BigInt(firstIPv6), big.NewInt(1)))
+			}
 
-		ginkgo.By("Creating pod with no specify pod ip")
-		annotations := map[string]string{
-			util.LogicalSwitchAnnotation: subnetName,
-		}
-		for i := 1; i <= podCount; i++ {
-			podName := fmt.Sprintf("%s-%d", podNamePrefix, i)
-			ginkgo.By("Creating pod " + podName)
-			pod := framework.MakePod("", podName, nil, annotations, "", nil, nil)
-			podClient.Create(pod)
-		}
-		for i := 1; i <= podCount; i++ {
-			podName := fmt.Sprintf("%s-%d", podNamePrefix, i)
-			ginkgo.By("Waiting pod " + podName + " to be running")
-			podClient.WaitForRunning(podName)
-		}
+			ginkgo.By("Creating subnet " + subnetName)
+			subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, nil)
+			subnet = subnetClient.CreateSync(ctx, subnet)
 
-		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
-			subnet = subnetClient.Get(subnetName)
+			ginkgo.By("Creating pod with no specify pod ip")
+			annotations := map[string]string{
+				util.LogicalSwitchAnnotation: subnetName,
+			}
+			for i := 1; i <= podCount; i++ {
+				podName := fmt.Sprintf("%s-%d", podNamePrefix, i)
+				ginkgo.By("Creating pod " + podName)
+				pod := framework.MakePod("", podName, nil, annotations, "", nil, nil)
+				podClient.Create(ctx, pod)
+			}
+			for i := 1; i <= podCount; i++ {
+				podName := fmt.Sprintf("%s-%d", podNamePrefix, i)
+				ginkgo.By("Waiting pod " + podName + " to be running")
+				podClient.WaitForRunning(ctx, podName)
+			}
+
+			framework.WaitUntil(ctx, 30*time.Second, func(ctx context.Context) (bool, error) {
+				subnet = subnetClient.Get(ctx, subnetName)
+				if cidrV4 != "" {
+					v4UsingIPEnd := util.BigInt2Ip(big.NewInt(0).Add(util.IP2BigInt(startIPv4), big.NewInt(int64(podCount-1))))
+					v4AvailableIPStart := util.BigInt2Ip(big.NewInt(0).Add(util.IP2BigInt(v4UsingIPEnd), big.NewInt(1)))
+					framework.Logf("V4UsingIPRange: expected %q, current %q",
+						fmt.Sprintf("%s-%s", startIPv4, v4UsingIPEnd),
+						subnet.Status.V4UsingIPRange,
+					)
+					framework.Logf("V4AvailableIPRange: expected %q, current %q",
+						fmt.Sprintf("%s-%s", v4AvailableIPStart, lastIPv4),
+						subnet.Status.V4AvailableIPRange,
+					)
+					if subnet.Status.V4UsingIPRange != fmt.Sprintf("%s-%s", startIPv4, v4UsingIPEnd) ||
+						subnet.Status.V4AvailableIPRange != fmt.Sprintf("%s-%s", v4AvailableIPStart, lastIPv4) {
+						return false, nil
+					}
+				}
+				if cidrV6 != "" {
+					v6UsingIPEnd := util.BigInt2Ip(big.NewInt(0).Add(util.IP2BigInt(startIPv6), big.NewInt(int64(podCount-1))))
+					v6AvailableIPStart := util.BigInt2Ip(big.NewInt(0).Add(util.IP2BigInt(v6UsingIPEnd), big.NewInt(1)))
+					framework.Logf("V6UsingIPRange: expected %q, current %q",
+						fmt.Sprintf("%s-%s", startIPv6, v6UsingIPEnd),
+						subnet.Status.V6UsingIPRange,
+					)
+					framework.Logf("V6AvailableIPRange: expected %q, current %q",
+						fmt.Sprintf("%s-%s", v6AvailableIPStart, lastIPv6),
+						subnet.Status.V6AvailableIPRange,
+					)
+					if subnet.Status.V6UsingIPRange != fmt.Sprintf("%s-%s", startIPv6, v6UsingIPEnd) ||
+						subnet.Status.V6AvailableIPRange != fmt.Sprintf("%s-%s", v6AvailableIPStart, lastIPv6) {
+						return false, nil
+					}
+				}
+				return true, nil
+			}, "")
+
+			for i := 1; i <= podCount; i++ {
+				podName := fmt.Sprintf("%s-%d", podNamePrefix, i)
+				ginkgo.By("Deleting pod " + podName)
+				err := podClient.Delete(ctx, podName)
+				framework.ExpectNoError(err)
+			}
+			for i := 1; i <= podCount; i++ {
+				podName := fmt.Sprintf("%s-%d", podNamePrefix, i)
+				ginkgo.By("Waiting pod " + podName + " to be deleted")
+				podClient.WaitForNotFound(ctx, podName)
+			}
+
+			framework.WaitUntil(ctx, 30*time.Second, func(ctx context.Context) (bool, error) {
+				subnet = subnetClient.Get(ctx, subnetName)
+				if cidrV4 != "" {
+					if subnet.Status.V4UsingIPRange != "" || subnet.Status.V4AvailableIPRange != fmt.Sprintf("%s-%s", startIPv4, lastIPv4) {
+						return false, nil
+					}
+				}
+				if cidrV6 != "" {
+					if subnet.Status.V6UsingIPRange != "" || subnet.Status.V6AvailableIPRange != fmt.Sprintf("%s-%s", startIPv6, lastIPv6) {
+						return false, nil
+					}
+				}
+				return true, nil
+			}, "")
+
 			if cidrV4 != "" {
-				v4UsingIPEnd := util.BigInt2Ip(big.NewInt(0).Add(util.IP2BigInt(startIPv4), big.NewInt(int64(podCount-1))))
-				v4AvailableIPStart := util.BigInt2Ip(big.NewInt(0).Add(util.IP2BigInt(v4UsingIPEnd), big.NewInt(1)))
-				framework.Logf("V4UsingIPRange: expected %q, current %q",
-					fmt.Sprintf("%s-%s", startIPv4, v4UsingIPEnd),
-					subnet.Status.V4UsingIPRange,
-				)
-				framework.Logf("V4AvailableIPRange: expected %q, current %q",
-					fmt.Sprintf("%s-%s", v4AvailableIPStart, lastIPv4),
-					subnet.Status.V4AvailableIPRange,
-				)
-				if subnet.Status.V4UsingIPRange != fmt.Sprintf("%s-%s", startIPv4, v4UsingIPEnd) ||
-					subnet.Status.V4AvailableIPRange != fmt.Sprintf("%s-%s", v4AvailableIPStart, lastIPv4) {
-					return false, nil
-				}
+				framework.ExpectEqual(subnet.Status.V4UsingIPRange, "")
+				framework.ExpectEqual(subnet.Status.V4AvailableIPRange, fmt.Sprintf("%s-%s", startIPv4, lastIPv4))
 			}
+
 			if cidrV6 != "" {
-				v6UsingIPEnd := util.BigInt2Ip(big.NewInt(0).Add(util.IP2BigInt(startIPv6), big.NewInt(int64(podCount-1))))
-				v6AvailableIPStart := util.BigInt2Ip(big.NewInt(0).Add(util.IP2BigInt(v6UsingIPEnd), big.NewInt(1)))
-				framework.Logf("V6UsingIPRange: expected %q, current %q",
-					fmt.Sprintf("%s-%s", startIPv6, v6UsingIPEnd),
-					subnet.Status.V6UsingIPRange,
-				)
-				framework.Logf("V6AvailableIPRange: expected %q, current %q",
-					fmt.Sprintf("%s-%s", v6AvailableIPStart, lastIPv6),
-					subnet.Status.V6AvailableIPRange,
-				)
-				if subnet.Status.V6UsingIPRange != fmt.Sprintf("%s-%s", startIPv6, v6UsingIPEnd) ||
-					subnet.Status.V6AvailableIPRange != fmt.Sprintf("%s-%s", v6AvailableIPStart, lastIPv6) {
-					return false, nil
-				}
+				framework.ExpectEqual(subnet.Status.V6UsingIPRange, "")
+				framework.ExpectEqual(subnet.Status.V6AvailableIPRange, fmt.Sprintf("%s-%s", startIPv6, lastIPv6))
 			}
-			return true, nil
-		}, "")
+		},
+	)
 
-		for i := 1; i <= podCount; i++ {
-			podName := fmt.Sprintf("%s-%d", podNamePrefix, i)
-			ginkgo.By("Deleting pod " + podName)
-			err := podClient.Delete(podName)
-			framework.ExpectNoError(err)
-		}
-		for i := 1; i <= podCount; i++ {
-			podName := fmt.Sprintf("%s-%d", podNamePrefix, i)
-			ginkgo.By("Waiting pod " + podName + " to be deleted")
-			podClient.WaitForNotFound(podName)
-		}
-
-		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
-			subnet = subnetClient.Get(subnetName)
-			if cidrV4 != "" {
-				if subnet.Status.V4UsingIPRange != "" || subnet.Status.V4AvailableIPRange != fmt.Sprintf("%s-%s", startIPv4, lastIPv4) {
-					return false, nil
-				}
-			}
-			if cidrV6 != "" {
-				if subnet.Status.V6UsingIPRange != "" || subnet.Status.V6AvailableIPRange != fmt.Sprintf("%s-%s", startIPv6, lastIPv6) {
-					return false, nil
-				}
-			}
-			return true, nil
-		}, "")
-
-		if cidrV4 != "" {
-			framework.ExpectEqual(subnet.Status.V4UsingIPRange, "")
-			framework.ExpectEqual(subnet.Status.V4AvailableIPRange, fmt.Sprintf("%s-%s", startIPv4, lastIPv4))
-		}
-
-		if cidrV6 != "" {
-			framework.ExpectEqual(subnet.Status.V6UsingIPRange, "")
-			framework.ExpectEqual(subnet.Status.V6AvailableIPRange, fmt.Sprintf("%s-%s", startIPv6, lastIPv6))
-		}
-	})
-
-	framework.ConformanceIt("should support subnet AvailableIPRange and UsingIPRange creating pod specify ip", func() {
+	framework.ConformanceIt("should support subnet AvailableIPRange and UsingIPRange creating pod specify ip", ginkgo.SpecTimeout(time.Minute), func(ctx ginkgo.SpecContext) {
 		f.SkipVersionPriorTo(1, 12, "Support for display AvailableIPRange and UsingIPRange in v1.12")
+
 		podCount = 5
 		var startIPv4, startIPv6, usingIPv4Str, availableIPv4Str, usingIPv6Str, availableIPv6Str string
 
@@ -887,10 +894,10 @@ var _ = framework.Describe("[group:subnet]", func() {
 
 		ginkgo.By("Creating subnet " + subnetName)
 		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, nil)
-		subnet = subnetClient.CreateSync(subnet)
+		subnet = subnetClient.CreateSync(ctx, subnet)
 		ginkgo.By("Creating pod with specify pod ip")
-		podIPv4s, podIPv6s := createPodsByRandomIPs(podClient, subnetClient, subnetName, podNamePrefix, podCount, startIPv4, startIPv6)
-		subnet = subnetClient.Get(subnetName)
+		podIPv4s, podIPv6s := createPodsByRandomIPs(ctx, podClient, subnetClient, subnetName, podNamePrefix, podCount, startIPv4, startIPv6)
+		subnet = subnetClient.Get(ctx, subnetName)
 
 		if podIPv4s != nil {
 			usingIPv4Str, availableIPv4Str = calcuIPRangeListStr(podIPv4s, startIPv4, lastIPv4)
@@ -907,17 +914,17 @@ var _ = framework.Describe("[group:subnet]", func() {
 		for i := 1; i <= podCount; i++ {
 			podName := fmt.Sprintf("%s-%d", podNamePrefix, i)
 			ginkgo.By("Deleting pod " + podName)
-			err := podClient.Delete(podName)
+			err := podClient.Delete(ctx, podName)
 			framework.ExpectNoError(err)
 		}
 		for i := 1; i <= podCount; i++ {
 			podName := fmt.Sprintf("%s-%d", podNamePrefix, i)
 			ginkgo.By("Waiting pod " + podName + " to be deleted")
-			podClient.WaitForNotFound(podName)
+			podClient.WaitForNotFound(ctx, podName)
 		}
 
-		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
-			subnet = subnetClient.Get(subnetName)
+		framework.WaitUntil(ctx, 30*time.Second, func(ctx context.Context) (bool, error) {
+			subnet = subnetClient.Get(ctx, subnetName)
 			if cidrV4 != "" {
 				if subnet.Status.V4UsingIPRange != "" || subnet.Status.V4AvailableIPRange != fmt.Sprintf("%s-%s", startIPv4, lastIPv4) {
 					return false, nil
@@ -942,7 +949,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		}
 	})
 
-	framework.ConformanceIt("should support subnet AvailableIPRange and UsingIPRange is correct when restart deployment", func() {
+	framework.ConformanceIt("should support subnet AvailableIPRange and UsingIPRange is correct when restart deployment", ginkgo.SpecTimeout(time.Minute), func(ctx ginkgo.SpecContext) {
 		f.SkipVersionPriorTo(1, 12, "Support for display AvailableIPRange and UsingIPRange in v1.12")
 
 		var startIPv4, startIPv6 string
@@ -955,7 +962,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 
 		ginkgo.By("Creating subnet " + subnetName)
 		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, nil)
-		subnet = subnetClient.CreateSync(subnet)
+		subnet = subnetClient.CreateSync(ctx, subnet)
 
 		deployName = "deployment-" + framework.RandomSuffix()
 		ginkgo.By("Creating deployment " + deployName)
@@ -963,7 +970,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		labels := map[string]string{"app": deployName}
 		annotations := map[string]string{util.LogicalSwitchAnnotation: subnetName}
 		deploy := framework.MakeDeployment(deployName, int32(replicas), labels, annotations, "pause", framework.PauseImage, "")
-		deploy = deployClient.CreateSync(deploy)
+		deploy = deployClient.CreateSync(ctx, deploy)
 
 		checkFunc := func(usingIPRange, availableIPRange, startIP, lastIP string, count int64) bool {
 			ginkgo.GinkgoHelper()
@@ -984,8 +991,8 @@ var _ = framework.Describe("[group:subnet]", func() {
 		}
 
 		ginkgo.By("Checking subnet status")
-		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
-			subnet = subnetClient.Get(subnetName)
+		framework.WaitUntil(ctx, 30*time.Second, func(ctx context.Context) (bool, error) {
+			subnet = subnetClient.Get(ctx, subnetName)
 			if !checkFunc(subnet.Status.V4UsingIPRange, subnet.Status.V4AvailableIPRange, startIPv4, lastIPv4, replicas) {
 				return false, nil
 			}
@@ -993,7 +1000,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		}, "")
 
 		ginkgo.By("Restarting deployment " + deployName)
-		_ = deployClient.RestartSync(deploy)
+		_ = deployClient.RestartSync(ctx, deploy)
 
 		checkFunc2 := func(usingIPRange, availableIPRange, startIP, lastIP string, count int64) bool {
 			ginkgo.GinkgoHelper()
@@ -1022,9 +1029,9 @@ var _ = framework.Describe("[group:subnet]", func() {
 		}
 
 		ginkgo.By("Checking subnet status")
-		subnet = subnetClient.Get(subnetName)
-		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
-			subnet = subnetClient.Get(subnetName)
+		subnet = subnetClient.Get(ctx, subnetName)
+		framework.WaitUntil(ctx, 30*time.Second, func(ctx context.Context) (bool, error) {
+			subnet = subnetClient.Get(ctx, subnetName)
 			if !checkFunc2(subnet.Status.V4UsingIPRange, subnet.Status.V4AvailableIPRange, startIPv4, lastIPv4, replicas) {
 				return false, nil
 			}
@@ -1032,21 +1039,21 @@ var _ = framework.Describe("[group:subnet]", func() {
 		}, "")
 	})
 
-	framework.ConformanceIt("create subnet with enableLb option", func() {
+	framework.ConformanceIt("create subnet with enableLb option", ginkgo.SpecTimeout(30*time.Second), func(ctx ginkgo.SpecContext) {
 		f.SkipVersionPriorTo(1, 12, "Support for enableLb in subnet is introduced in v1.12")
 
 		enableLb := true
 		ginkgo.By("Creating subnet " + subnetName)
 		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, nil)
 		subnet.Spec.EnableLb = &enableLb
-		subnet = subnetClient.CreateSync(subnet)
+		subnet = subnetClient.CreateSync(ctx, subnet)
 
 		ginkgo.By("Validating subnet finalizers")
 		f.ValidateFinalizers(subnet)
 
 		ginkgo.By("Validating subnet load-balancer records exist")
 		cmd := "ovn-nbctl --format=csv --data=bare --no-heading --columns=load_balancer list Logical_Switch " + subnetName
-		output, _, err := framework.NBExec(cmd)
+		output, _, err := framework.NBExec(ctx, cmd)
 		framework.ExpectNoError(err)
 		framework.ExpectNotEmpty(strings.TrimSpace(string(output)))
 
@@ -1054,9 +1061,9 @@ var _ = framework.Describe("[group:subnet]", func() {
 		enableLb = false
 		modifiedSubnet := subnet.DeepCopy()
 		modifiedSubnet.Spec.EnableLb = &enableLb
-		subnet = subnetClient.PatchSync(subnet, modifiedSubnet)
-		framework.WaitUntil(2*time.Second, time.Minute, func(_ context.Context) (bool, error) {
-			if output, _, err = framework.NBExec(cmd); err != nil {
+		subnet = subnetClient.PatchSync(ctx, subnet, modifiedSubnet)
+		framework.WaitUntil(ctx, time.Minute, func(ctx context.Context) (bool, error) {
+			if output, _, err = framework.NBExec(ctx, cmd); err != nil {
 				return false, err
 			}
 			if strings.TrimSpace(string(output)) == "" {
@@ -1068,9 +1075,9 @@ var _ = framework.Describe("[group:subnet]", func() {
 		ginkgo.By("Validating empty subnet spec enableLb field, should keep same value as args enableLb")
 		modifiedSubnet = subnet.DeepCopy()
 		modifiedSubnet.Spec.EnableLb = nil
-		subnet = subnetClient.PatchSync(subnet, modifiedSubnet)
-		framework.WaitUntil(2*time.Second, time.Minute, func(_ context.Context) (bool, error) {
-			if output, _, err = framework.NBExec(cmd); err != nil {
+		subnet = subnetClient.PatchSync(ctx, subnet, modifiedSubnet)
+		framework.WaitUntil(ctx, time.Minute, func(ctx context.Context) (bool, error) {
+			if output, _, err = framework.NBExec(ctx, cmd); err != nil {
 				return false, err
 			}
 			if strings.TrimSpace(string(output)) != "" {
@@ -1080,15 +1087,15 @@ var _ = framework.Describe("[group:subnet]", func() {
 		}, fmt.Sprintf("OVN LB record for subnet %s to sync", subnet.Name))
 	})
 
-	framework.ConformanceIt("should support subnet add gateway event and metrics", func() {
+	framework.ConformanceIt("should support subnet add gateway event and metrics", ginkgo.SpecTimeout(time.Minute), func(ctx ginkgo.SpecContext) {
 		f.SkipVersionPriorTo(1, 12, "Support for subnet add gateway event and metrics is introduced in v1.12")
 
 		ginkgo.By("Creating subnet " + subnetName)
 		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, nil)
-		subnet = subnetClient.CreateSync(subnet)
+		subnet = subnetClient.CreateSync(ctx, subnet)
 
 		ginkgo.By("Getting nodes")
-		nodes, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
+		nodes, err := e2enode.GetReadySchedulableNodes(ctx, cs)
 		framework.ExpectNoError(err)
 		framework.ExpectNotEmpty(nodes.Items)
 
@@ -1101,14 +1108,14 @@ var _ = framework.Describe("[group:subnet]", func() {
 					fmt.Sprintf(`-A %s -s %s -m comment --comment "%s,%s"`, "FORWARD", cidrV4, util.OvnSubnetGatewayIptables, subnetName),
 				}
 
-				iptables.CheckIptablesRulesOnNode(f, node.Name, "filter", "FORWARD", apiv1.ProtocolIPv4, expectedRules, true)
+				iptables.CheckIptablesRulesOnNode(ctx, f, node.Name, "filter", "FORWARD", apiv1.ProtocolIPv4, expectedRules, true)
 			}
 			if cidrV6 != "" {
 				expectedRules := []string{
 					fmt.Sprintf(`-A %s -d %s -m comment --comment "%s,%s"`, "FORWARD", cidrV6, util.OvnSubnetGatewayIptables, subnetName),
 					fmt.Sprintf(`-A %s -s %s -m comment --comment "%s,%s"`, "FORWARD", cidrV6, util.OvnSubnetGatewayIptables, subnetName),
 				}
-				iptables.CheckIptablesRulesOnNode(f, node.Name, "filter", "FORWARD", apiv1.ProtocolIPv6, expectedRules, true)
+				iptables.CheckIptablesRulesOnNode(ctx, f, node.Name, "filter", "FORWARD", apiv1.ProtocolIPv6, expectedRules, true)
 			}
 		}
 
@@ -1122,9 +1129,9 @@ var _ = framework.Describe("[group:subnet]", func() {
 		modifiedSubnet.Spec.GatewayType = apiv1.GWCentralizedType
 		modifiedSubnet.Spec.GatewayNode = strings.Join(gatewayNodes, ",")
 
-		subnet = subnetClient.PatchSync(subnet, modifiedSubnet)
+		subnet = subnetClient.PatchSync(ctx, subnet, modifiedSubnet)
 		eventClient = f.EventClientNS("default")
-		events := eventClient.WaitToHaveEvent("Subnet", subnetName, "Normal", "SubnetGatewayTypeChanged", "kube-ovn-controller", "")
+		events := eventClient.WaitToHaveEvent(ctx, "Subnet", subnetName, "Normal", "SubnetGatewayTypeChanged", "kube-ovn-controller", "")
 
 		message := fmt.Sprintf("subnet gateway type changes from %q to %q", apiv1.GWDistributedType, apiv1.GWCentralizedType)
 		found := false
@@ -1136,7 +1143,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		}
 		framework.ExpectTrue(found, "no SubnetGatewayTypeChanged event")
 		found = false
-		events = eventClient.WaitToHaveEvent("Subnet", subnetName, "Normal", "SubnetGatewayNodeChanged", "kube-ovn-controller", "")
+		events = eventClient.WaitToHaveEvent(ctx, "Subnet", subnetName, "Normal", "SubnetGatewayNodeChanged", "kube-ovn-controller", "")
 		message = fmt.Sprintf("gateway node changes from %q to %q", "", modifiedSubnet.Spec.GatewayNode)
 		for _, event := range events {
 			if event.Message == message {
@@ -1146,7 +1153,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		}
 		framework.ExpectTrue(found, "no SubnetGatewayNodeChanged event")
 		ginkgo.By("when remove subnet the iptables rules will remove")
-		subnetClient.DeleteSync(subnetName)
+		subnetClient.DeleteSync(ctx, subnetName)
 
 		for _, node := range nodes.Items {
 			ginkgo.By("Checking iptables rules on node " + node.Name + " for subnet " + subnetName)
@@ -1156,24 +1163,24 @@ var _ = framework.Describe("[group:subnet]", func() {
 					fmt.Sprintf(`-A %s -s %s -m comment --comment "%s,%s"`, "FORWARD", cidrV4, util.OvnSubnetGatewayIptables, subnetName),
 				}
 
-				iptables.CheckIptablesRulesOnNode(f, node.Name, "filter", "FORWARD", apiv1.ProtocolIPv4, expectedRules, false)
+				iptables.CheckIptablesRulesOnNode(ctx, f, node.Name, "filter", "FORWARD", apiv1.ProtocolIPv4, expectedRules, false)
 			}
 			if cidrV6 != "" {
 				expectedRules := []string{
 					fmt.Sprintf(`-A %s -d %s -m comment --comment "%s,%s"`, "FORWARD", cidrV6, util.OvnSubnetGatewayIptables, subnetName),
 					fmt.Sprintf(`-A %s -s %s -m comment --comment "%s,%s"`, "FORWARD", cidrV6, util.OvnSubnetGatewayIptables, subnetName),
 				}
-				iptables.CheckIptablesRulesOnNode(f, node.Name, "filter", "FORWARD", apiv1.ProtocolIPv6, expectedRules, false)
+				iptables.CheckIptablesRulesOnNode(ctx, f, node.Name, "filter", "FORWARD", apiv1.ProtocolIPv6, expectedRules, false)
 			}
 		}
 	})
 
-	framework.ConformanceIt("should support subnet add nat outgoing policy rules", func() {
+	framework.ConformanceIt("should support subnet add nat outgoing policy rules", ginkgo.SpecTimeout(6*time.Minute), func(ctx ginkgo.SpecContext) {
 		f.SkipVersionPriorTo(1, 12, "Support for subnet add nat outgoing policy rules in v1.12")
 
 		ginkgo.By("Creating subnet " + subnetName)
 		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, nil)
-		subnet = subnetClient.CreateSync(subnet)
+		subnet = subnetClient.CreateSync(ctx, subnet)
 
 		ginkgo.By("Creating pod " + podName)
 		annotations := map[string]string{
@@ -1181,7 +1188,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		}
 
 		pod := framework.MakePod(namespaceName, podName, nil, annotations, framework.AgnhostImage, nil, nil)
-		_ = podClient.CreateSync(pod)
+		_ = podClient.CreateSync(ctx, pod)
 
 		fakeV4Rules := []apiv1.NatOutgoingPolicyRule{
 			{
@@ -1215,7 +1222,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 			},
 		}
 
-		subnet = subnetClient.Get(subnetName)
+		subnet = subnetClient.Get(ctx, subnetName)
 		modifiedSubnet := subnet.DeepCopy()
 
 		rules := make([]apiv1.NatOutgoingPolicyRule, 0, 6)
@@ -1244,7 +1251,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		ginkgo.By("Step1: Creating nat outgoing policy rules for subnet " + subnetName)
 		modifiedSubnet.Spec.NatOutgoing = true
 		modifiedSubnet.Spec.NatOutgoingPolicyRules = rules
-		_ = subnetClient.PatchSync(subnet, modifiedSubnet)
+		_ = subnetClient.PatchSync(ctx, subnet, modifiedSubnet)
 
 		ginkgo.By("Creating another subnet with the same rules: " + fakeSubnetName)
 		fakeCidr := framework.RandomCIDR(f.ClusterIPFamily)
@@ -1252,17 +1259,17 @@ var _ = framework.Describe("[group:subnet]", func() {
 		fakeSubnet := framework.MakeSubnet(fakeSubnetName, "", fakeCidr, "", "", "", nil, nil, nil)
 		fakeSubnet.Spec.NatOutgoingPolicyRules = rules
 		fakeSubnet.Spec.NatOutgoing = true
-		_ = subnetClient.CreateSync(fakeSubnet)
+		_ = subnetClient.CreateSync(ctx, fakeSubnet)
 
-		subnet = checkSubnetNatOutgoingPolicyRuleStatus(subnetClient, subnetName, rules)
-		fakeSubnet = checkSubnetNatOutgoingPolicyRuleStatus(subnetClient, fakeSubnetName, rules)
-		checkNatPolicyIPsets(f, cs, subnet, cidrV4, cidrV6, true)
-		checkNatPolicyRules(f, cs, subnet, cidrV4, cidrV6, true)
-		checkNatPolicyIPsets(f, cs, fakeSubnet, fakeCidrV4, fakeCidrV6, true)
-		checkNatPolicyRules(f, cs, fakeSubnet, fakeCidrV4, fakeCidrV6, true)
+		subnet = checkSubnetNatOutgoingPolicyRuleStatus(ctx, subnetClient, subnetName, rules)
+		fakeSubnet = checkSubnetNatOutgoingPolicyRuleStatus(ctx, subnetClient, fakeSubnetName, rules)
+		checkNatPolicyIPsets(ctx, f, cs, subnet, cidrV4, cidrV6, true)
+		checkNatPolicyRules(ctx, f, cs, subnet, cidrV4, cidrV6, true)
+		checkNatPolicyIPsets(ctx, f, cs, fakeSubnet, fakeCidrV4, fakeCidrV6, true)
+		checkNatPolicyRules(ctx, f, cs, fakeSubnet, fakeCidrV4, fakeCidrV6, true)
 
 		ginkgo.By("Checking accessible to external")
-		checkAccessExternal(podName, namespaceName, subnet.Spec.Protocol, false)
+		checkAccessExternal(ctx, podName, namespaceName, subnet.Spec.Protocol, false)
 
 		ginkgo.By("Step2: Change nat policy rules action to nat")
 		rules = make([]apiv1.NatOutgoingPolicyRule, 0, 6)
@@ -1288,64 +1295,65 @@ var _ = framework.Describe("[group:subnet]", func() {
 			rules = append(rules, fakeV6Rules...)
 		}
 
-		subnet = subnetClient.Get(subnetName)
+		subnet = subnetClient.Get(ctx, subnetName)
 		modifiedSubnet = subnet.DeepCopy()
 		modifiedSubnet.Spec.NatOutgoing = true
 		modifiedSubnet.Spec.NatOutgoingPolicyRules = rules
-		_ = subnetClient.PatchSync(subnet, modifiedSubnet)
+		_ = subnetClient.PatchSync(ctx, subnet, modifiedSubnet)
 
-		cachedSubnet := checkSubnetNatOutgoingPolicyRuleStatus(subnetClient, subnetName, rules)
-		checkNatPolicyIPsets(f, cs, cachedSubnet, cidrV4, cidrV6, true)
-		checkNatPolicyRules(f, cs, cachedSubnet, cidrV4, cidrV6, true)
-		checkNatPolicyIPsets(f, cs, fakeSubnet, fakeCidrV4, fakeCidrV6, true)
-		checkNatPolicyRules(f, cs, fakeSubnet, fakeCidrV4, fakeCidrV6, true)
+		cachedSubnet := checkSubnetNatOutgoingPolicyRuleStatus(ctx, subnetClient, subnetName, rules)
+		checkNatPolicyIPsets(ctx, f, cs, cachedSubnet, cidrV4, cidrV6, true)
+		checkNatPolicyRules(ctx, f, cs, cachedSubnet, cidrV4, cidrV6, true)
+		checkNatPolicyIPsets(ctx, f, cs, fakeSubnet, fakeCidrV4, fakeCidrV6, true)
+		checkNatPolicyRules(ctx, f, cs, fakeSubnet, fakeCidrV4, fakeCidrV6, true)
 
 		ginkgo.By("Checking accessible to external")
-		checkAccessExternal(podName, namespaceName, subnet.Spec.Protocol, true)
+		checkAccessExternal(ctx, podName, namespaceName, subnet.Spec.Protocol, true)
 
 		ginkgo.By("Step3: When natoutgoing disable, natoutgoing policy rule not work")
-		subnet = subnetClient.Get(subnetName)
+		subnet = subnetClient.Get(ctx, subnetName)
 		modifiedSubnet = subnet.DeepCopy()
 		modifiedSubnet.Spec.NatOutgoing = false
-		_ = subnetClient.PatchSync(subnet, modifiedSubnet)
+		_ = subnetClient.PatchSync(ctx, subnet, modifiedSubnet)
 
-		_ = checkSubnetNatOutgoingPolicyRuleStatus(subnetClient, subnetName, nil)
-		checkNatPolicyRules(f, cs, cachedSubnet, cidrV4, cidrV6, false)
-		checkNatPolicyIPsets(f, cs, cachedSubnet, cidrV4, cidrV6, false)
-		checkNatPolicyIPsets(f, cs, fakeSubnet, fakeCidrV4, fakeCidrV6, true)
-		checkNatPolicyRules(f, cs, fakeSubnet, fakeCidrV4, fakeCidrV6, true)
+		_ = checkSubnetNatOutgoingPolicyRuleStatus(ctx, subnetClient, subnetName, nil)
+		checkNatPolicyRules(ctx, f, cs, cachedSubnet, cidrV4, cidrV6, false)
+		checkNatPolicyIPsets(ctx, f, cs, cachedSubnet, cidrV4, cidrV6, false)
+		checkNatPolicyIPsets(ctx, f, cs, fakeSubnet, fakeCidrV4, fakeCidrV6, true)
+		checkNatPolicyRules(ctx, f, cs, fakeSubnet, fakeCidrV4, fakeCidrV6, true)
 
 		ginkgo.By("Checking accessible to external")
-		checkAccessExternal(podName, namespaceName, subnet.Spec.Protocol, false)
+		checkAccessExternal(ctx, podName, namespaceName, subnet.Spec.Protocol, false)
 
 		ginkgo.By("Step4: Remove network policy rules")
-		subnet = subnetClient.Get(subnetName)
+		subnet = subnetClient.Get(ctx, subnetName)
 		modifiedSubnet = subnet.DeepCopy()
 		modifiedSubnet.Spec.NatOutgoing = true
 		modifiedSubnet.Spec.NatOutgoingPolicyRules = nil
-		_ = subnetClient.PatchSync(subnet, modifiedSubnet)
+		_ = subnetClient.PatchSync(ctx, subnet, modifiedSubnet)
 
-		_ = checkSubnetNatOutgoingPolicyRuleStatus(subnetClient, subnetName, nil)
-		checkNatPolicyRules(f, cs, cachedSubnet, cidrV4, cidrV6, false)
-		checkNatPolicyIPsets(f, cs, cachedSubnet, cidrV4, cidrV6, false)
-		checkNatPolicyIPsets(f, cs, fakeSubnet, fakeCidrV4, fakeCidrV6, true)
-		checkNatPolicyRules(f, cs, fakeSubnet, fakeCidrV4, fakeCidrV6, true)
+		_ = checkSubnetNatOutgoingPolicyRuleStatus(ctx, subnetClient, subnetName, nil)
+		checkNatPolicyRules(ctx, f, cs, cachedSubnet, cidrV4, cidrV6, false)
+		checkNatPolicyIPsets(ctx, f, cs, cachedSubnet, cidrV4, cidrV6, false)
+		checkNatPolicyIPsets(ctx, f, cs, fakeSubnet, fakeCidrV4, fakeCidrV6, true)
+		checkNatPolicyRules(ctx, f, cs, fakeSubnet, fakeCidrV4, fakeCidrV6, true)
 
 		ginkgo.By("Checking accessible to external")
-		checkAccessExternal(podName, namespaceName, subnet.Spec.Protocol, true)
+		checkAccessExternal(ctx, podName, namespaceName, subnet.Spec.Protocol, true)
 
 		ginkgo.By("Deleting subnet " + fakeSubnetName)
-		subnetClient.DeleteSync(fakeSubnetName)
-		checkNatPolicyRules(f, cs, fakeSubnet, fakeCidrV4, fakeCidrV6, false)
-		checkNatPolicyIPsets(f, cs, fakeSubnet, fakeCidrV4, fakeCidrV6, false)
+		subnetClient.DeleteSync(ctx, fakeSubnetName)
+		checkNatPolicyRules(ctx, f, cs, fakeSubnet, fakeCidrV4, fakeCidrV6, false)
+		checkNatPolicyIPsets(ctx, f, cs, fakeSubnet, fakeCidrV4, fakeCidrV6, false)
 	})
 
-	framework.ConformanceIt("should support customize mtu of all pods in subnet", func() {
+	framework.ConformanceIt("should support customize mtu of all pods in subnet", ginkgo.SpecTimeout(30*time.Second), func(ctx ginkgo.SpecContext) {
 		f.SkipVersionPriorTo(1, 9, "Support for subnet mtu in v1.9")
+
 		ginkgo.By("Creating subnet " + subnetName)
 		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, nil)
 		subnet.Spec.Mtu = 1600
-		subnet = subnetClient.CreateSync(subnet)
+		subnet = subnetClient.CreateSync(ctx, subnet)
 
 		ginkgo.By("Creating pod " + podName)
 		annotations := map[string]string{
@@ -1353,11 +1361,11 @@ var _ = framework.Describe("[group:subnet]", func() {
 		}
 
 		pod := framework.MakePod(namespaceName, podName, nil, annotations, framework.AgnhostImage, nil, nil)
-		_ = podClient.CreateSync(pod)
+		_ = podClient.CreateSync(ctx, pod)
 
 		ginkgo.By("Validating pod MTU")
-		links, err := iproute.AddressShow("eth0", func(cmd ...string) ([]byte, []byte, error) {
-			return framework.KubectlExec(namespaceName, podName, cmd...)
+		links, err := iproute.AddressShow(ctx, "eth0", func(ctx context.Context, cmd string) ([]byte, []byte, error) {
+			return framework.KubectlExec(ctx, namespaceName, podName, cmd)
 		})
 		framework.ExpectNoError(err)
 		framework.ExpectHaveLen(links, 1, "should get eth0 information")
@@ -1365,11 +1373,11 @@ var _ = framework.Describe("[group:subnet]", func() {
 	})
 })
 
-func checkNatPolicyIPsets(f *framework.Framework, cs clientset.Interface, subnet *apiv1.Subnet, cidrV4, cidrV6 string, shouldExist bool) {
+func checkNatPolicyIPsets(ctx context.Context, f *framework.Framework, cs clientset.Interface, subnet *apiv1.Subnet, cidrV4, cidrV6 string, shouldExist bool) {
 	ginkgo.GinkgoHelper()
 
 	ginkgo.By(fmt.Sprintf("Checking nat policy rule ipset existed: %v", shouldExist))
-	nodes, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
+	nodes, err := e2enode.GetReadySchedulableNodes(ctx, cs)
 	framework.ExpectNoError(err)
 	framework.ExpectNotEmpty(nodes.Items)
 	for _, node := range nodes.Items {
@@ -1406,15 +1414,15 @@ func checkNatPolicyIPsets(f *framework.Framework, cs clientset.Interface, subnet
 				}
 			}
 		}
-		checkIPSetOnNode(f, node.Name, expectedIPsets, shouldExist)
+		checkIPSetOnNode(ctx, f, node.Name, expectedIPsets, shouldExist)
 	}
 }
 
-func checkNatPolicyRules(f *framework.Framework, cs clientset.Interface, subnet *apiv1.Subnet, cidrV4, cidrV6 string, shouldExist bool) {
+func checkNatPolicyRules(ctx context.Context, f *framework.Framework, cs clientset.Interface, subnet *apiv1.Subnet, cidrV4, cidrV6 string, shouldExist bool) {
 	ginkgo.GinkgoHelper()
 
 	ginkgo.By(fmt.Sprintf("Checking nat policy rule existed: %v", shouldExist))
-	nodes, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
+	nodes, err := e2enode.GetReadySchedulableNodes(ctx, cs)
 	framework.ExpectNoError(err)
 	framework.ExpectNotEmpty(nodes.Items)
 
@@ -1471,17 +1479,17 @@ func checkNatPolicyRules(f *framework.Framework, cs clientset.Interface, subnet 
 		}
 
 		if cidrV4 != "" {
-			iptables.CheckIptablesRulesOnNode(f, node.Name, "nat", "", apiv1.ProtocolIPv4, staticV4Rules, true)
-			iptables.CheckIptablesRulesOnNode(f, node.Name, "nat", "", apiv1.ProtocolIPv4, expectV4Rules, shouldExist)
+			iptables.CheckIptablesRulesOnNode(ctx, f, node.Name, "nat", "", apiv1.ProtocolIPv4, staticV4Rules, true)
+			iptables.CheckIptablesRulesOnNode(ctx, f, node.Name, "nat", "", apiv1.ProtocolIPv4, expectV4Rules, shouldExist)
 		}
 		if cidrV6 != "" {
-			iptables.CheckIptablesRulesOnNode(f, node.Name, "nat", "", apiv1.ProtocolIPv6, staticV6Rules, true)
-			iptables.CheckIptablesRulesOnNode(f, node.Name, "nat", "", apiv1.ProtocolIPv6, expectV6Rules, shouldExist)
+			iptables.CheckIptablesRulesOnNode(ctx, f, node.Name, "nat", "", apiv1.ProtocolIPv6, staticV6Rules, true)
+			iptables.CheckIptablesRulesOnNode(ctx, f, node.Name, "nat", "", apiv1.ProtocolIPv6, expectV6Rules, shouldExist)
 		}
 	}
 }
 
-func checkAccessExternal(podName, podNamespace, protocol string, expectReachable bool) {
+func checkAccessExternal(ctx context.Context, podName, podNamespace, protocol string, expectReachable bool) {
 	ginkgo.GinkgoHelper()
 
 	ginkgo.By("checking external ip reachable")
@@ -1489,13 +1497,13 @@ func checkAccessExternal(podName, podNamespace, protocol string, expectReachable
 		externalIP := "1.1.1.1"
 		isv4ExternalIPReachable := func() bool {
 			cmd := fmt.Sprintf("ping %s -w 1", externalIP)
-			output, _ := exec.Command("bash", "-c", cmd).CombinedOutput()
+			output, _ := exec.CommandContext(ctx, "bash", "-c", cmd).CombinedOutput()
 			outputStr := string(output)
 			return strings.Contains(outputStr, "1 received")
 		}
 		if isv4ExternalIPReachable() {
 			cmd := fmt.Sprintf("kubectl exec %s -n %s -- nc -vz -w 5 %s 53", podName, podNamespace, externalIP)
-			output, _ := exec.Command("bash", "-c", cmd).CombinedOutput()
+			output, _ := exec.CommandContext(ctx, "bash", "-c", cmd).CombinedOutput()
 			outputStr := string(output)
 			framework.ExpectEqual(strings.Contains(outputStr, "succeeded"), expectReachable)
 		}
@@ -1505,27 +1513,27 @@ func checkAccessExternal(podName, podNamespace, protocol string, expectReachable
 		externalIP := "2606:4700:4700::1111"
 		isv6ExternalIPReachable := func() bool {
 			cmd := fmt.Sprintf("ping6 %s -w 1", externalIP)
-			output, _ := exec.Command("bash", "-c", cmd).CombinedOutput()
+			output, _ := exec.CommandContext(ctx, "bash", "-c", cmd).CombinedOutput()
 			outputStr := string(output)
 			return strings.Contains(outputStr, "1 received")
 		}
 
 		if isv6ExternalIPReachable() {
 			cmd := fmt.Sprintf("kubectl exec %s -n %s -- nc -6 -vz -w 5 %s 53", podName, podNamespace, externalIP)
-			output, _ := exec.Command("bash", "-c", cmd).CombinedOutput()
+			output, _ := exec.CommandContext(ctx, "bash", "-c", cmd).CombinedOutput()
 			outputStr := string(output)
 			framework.ExpectEqual(strings.Contains(outputStr, "succeeded"), expectReachable)
 		}
 	}
 }
 
-func createPodsByRandomIPs(podClient *framework.PodClient, subnetClient *framework.SubnetClient, subnetName, podNamePrefix string, podCount int, startIPv4, startIPv6 string) ([]string, []string) {
+func createPodsByRandomIPs(ctx context.Context, podClient *framework.PodClient, subnetClient *framework.SubnetClient, subnetName, podNamePrefix string, podCount int, startIPv4, startIPv6 string) ([]string, []string) {
 	var allocIP string
 	var podIPv4s, podIPv6s []string
 	podv4IP := startIPv4
 	podv6IP := startIPv6
 
-	subnet := subnetClient.Get(subnetName)
+	subnet := subnetClient.Get(ctx, subnetName)
 	for i := 1; i <= podCount; i++ {
 		step := rand.Int64()%10 + 2
 		switch subnet.Spec.Protocol {
@@ -1548,7 +1556,7 @@ func createPodsByRandomIPs(podClient *framework.PodClient, subnetClient *framewo
 
 		podName := fmt.Sprintf("%s-%d", podNamePrefix, i)
 		pod := framework.MakePod("", podName, nil, annotations, "", nil, nil)
-		podClient.CreateSync(pod)
+		podClient.CreateSync(ctx, pod)
 
 		if podv4IP != "" {
 			podIPv4s = append(podIPv4s, podv4IP)

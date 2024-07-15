@@ -567,7 +567,7 @@ func (c *Controller) getIptablesVersion(pod *corev1.Pod) (version string, err er
 	operation := getIptablesVersion
 	cmd := fmt.Sprintf("bash /kube-ovn/nat-gateway.sh %s", operation)
 	klog.V(3).Infof(cmd)
-	stdOutput, errOutput, err := util.ExecuteCommandInContainer(c.config.KubeClient, c.config.KubeRestConfig, pod.Namespace, pod.Name, "vpc-nat-gw", []string{"/bin/bash", "-c", cmd}...)
+	stdOutput, errOutput, err := util.ExecuteCommandInContainer(context.Background(), c.config.KubeClient, c.config.KubeRestConfig, pod.Namespace, pod.Name, "vpc-nat-gw", []string{"/bin/bash", "-c", cmd}...)
 	if err != nil {
 		if len(errOutput) > 0 {
 			klog.Errorf("failed to ExecuteCommandInContainer, errOutput: %v", errOutput)
@@ -712,7 +712,7 @@ func (c *Controller) handleUpdateNatGwSubnetRoute(natGwKey string) error {
 func (c *Controller) execNatGwRules(pod *corev1.Pod, operation string, rules []string) error {
 	cmd := fmt.Sprintf("bash /kube-ovn/nat-gateway.sh %s %s", operation, strings.Join(rules, " "))
 	klog.V(3).Infof(cmd)
-	stdOutput, errOutput, err := util.ExecuteCommandInContainer(c.config.KubeClient, c.config.KubeRestConfig, pod.Namespace, pod.Name, "vpc-nat-gw", []string{"/bin/bash", "-c", cmd}...)
+	stdOutput, errOutput, err := util.ExecuteCommandInContainer(context.Background(), c.config.KubeClient, c.config.KubeRestConfig, pod.Namespace, pod.Name, "vpc-nat-gw", []string{"/bin/bash", "-c", cmd}...)
 	if err != nil {
 		if len(errOutput) > 0 {
 			klog.Errorf("failed to ExecuteCommandInContainer, errOutput: %v", errOutput)

@@ -34,25 +34,25 @@ func (f *Framework) NetworkPolicyClientNS(namespace string) *NetworkPolicyClient
 	}
 }
 
-func (c *NetworkPolicyClient) Get(name string) *netv1.NetworkPolicy {
+func (c *NetworkPolicyClient) Get(ctx context.Context, name string) *netv1.NetworkPolicy {
 	ginkgo.GinkgoHelper()
-	np, err := c.NetworkPolicyInterface.Get(context.TODO(), name, metav1.GetOptions{})
+	np, err := c.NetworkPolicyInterface.Get(ctx, name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return np
 }
 
 // Create creates a new network policy according to the framework specifications
-func (c *NetworkPolicyClient) Create(netpol *netv1.NetworkPolicy) *netv1.NetworkPolicy {
+func (c *NetworkPolicyClient) Create(ctx context.Context, netpol *netv1.NetworkPolicy) *netv1.NetworkPolicy {
 	ginkgo.GinkgoHelper()
-	np, err := c.NetworkPolicyInterface.Create(context.TODO(), netpol, metav1.CreateOptions{})
+	np, err := c.NetworkPolicyInterface.Create(ctx, netpol, metav1.CreateOptions{})
 	ExpectNoError(err, "Error creating network policy")
 	return np.DeepCopy()
 }
 
 // Delete deletes a network policy if the network policy exists
-func (c *NetworkPolicyClient) Delete(name string) {
+func (c *NetworkPolicyClient) Delete(ctx context.Context, name string) {
 	ginkgo.GinkgoHelper()
-	err := c.NetworkPolicyInterface.Delete(context.TODO(), name, metav1.DeleteOptions{})
+	err := c.NetworkPolicyInterface.Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil && !apierrors.IsNotFound(err) {
 		Failf("Failed to delete network policy %q: %v", name, err)
 	}
@@ -60,15 +60,15 @@ func (c *NetworkPolicyClient) Delete(name string) {
 
 // DeleteSync deletes the network policy and waits for the network policy to disappear for `timeout`.
 // If the network policy doesn't disappear before the timeout, it will fail the test.
-func (c *NetworkPolicyClient) DeleteSync(name string) {
+func (c *NetworkPolicyClient) DeleteSync(ctx context.Context, name string) {
 	ginkgo.GinkgoHelper()
-	c.Delete(name)
-	gomega.Expect(c.WaitToDisappear(name, 2*time.Second, timeout)).To(gomega.Succeed(), "wait for network policy %q to disappear", name)
+	c.Delete(ctx, name)
+	gomega.Expect(c.WaitToDisappear(ctx, name, timeout)).To(gomega.Succeed(), "wait for network policy %q to disappear", name)
 }
 
 // WaitToDisappear waits the given timeout duration for the specified network policy to disappear.
-func (c *NetworkPolicyClient) WaitToDisappear(name string, _, timeout time.Duration) error {
-	err := framework.Gomega().Eventually(context.Background(), framework.HandleRetry(func(ctx context.Context) (*netv1.NetworkPolicy, error) {
+func (c *NetworkPolicyClient) WaitToDisappear(ctx context.Context, name string, timeout time.Duration) error {
+	err := framework.Gomega().Eventually(ctx, framework.HandleRetry(func(ctx context.Context) (*netv1.NetworkPolicy, error) {
 		policy, err := c.NetworkPolicyInterface.Get(ctx, name, metav1.GetOptions{})
 		if apierrors.IsNotFound(err) {
 			return nil, nil

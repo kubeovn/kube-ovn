@@ -39,7 +39,7 @@ func generateULASubnetFromName(name string, attempt int32) string {
 	return subnet.String()
 }
 
-func getNetwork(name string, ignoreNotFound bool) (*network.Inspect, error) {
+func getNetwork(ctx context.Context, name string, ignoreNotFound bool) (*network.Inspect, error) {
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		return nil, err
@@ -48,7 +48,7 @@ func getNetwork(name string, ignoreNotFound bool) (*network.Inspect, error) {
 
 	f := filters.NewArgs()
 	f.Add("name", name)
-	networks, err := cli.NetworkList(context.Background(), network.ListOptions{Filters: f})
+	networks, err := cli.NetworkList(ctx, network.ListOptions{Filters: f})
 	if err != nil {
 		return nil, err
 	}
@@ -60,20 +60,20 @@ func getNetwork(name string, ignoreNotFound bool) (*network.Inspect, error) {
 		return nil, nil
 	}
 
-	info, err := cli.NetworkInspect(context.Background(), networks[0].ID, network.InspectOptions{})
+	info, err := cli.NetworkInspect(ctx, networks[0].ID, network.InspectOptions{})
 	if err != nil {
 		return nil, err
 	}
 	return &info, nil
 }
 
-func NetworkInspect(name string) (*network.Inspect, error) {
-	return getNetwork(name, false)
+func NetworkInspect(ctx context.Context, name string) (*network.Inspect, error) {
+	return getNetwork(ctx, name, false)
 }
 
-func NetworkCreate(name string, ipv6, skipIfExists bool) (*network.Inspect, error) {
+func NetworkCreate(ctx context.Context, name string, ipv6, skipIfExists bool) (*network.Inspect, error) {
 	if skipIfExists {
-		network, err := getNetwork(name, true)
+		network, err := getNetwork(ctx, name, true)
 		if err != nil {
 			return nil, err
 		}
@@ -113,38 +113,38 @@ func NetworkCreate(name string, ipv6, skipIfExists bool) (*network.Inspect, erro
 	}
 	defer cli.Close()
 
-	if _, err = cli.NetworkCreate(context.Background(), name, options); err != nil {
+	if _, err = cli.NetworkCreate(ctx, name, options); err != nil {
 		return nil, err
 	}
 
-	return getNetwork(name, false)
+	return getNetwork(ctx, name, false)
 }
 
-func NetworkConnect(networkID, containerID string) error {
+func NetworkConnect(ctx context.Context, networkID, containerID string) error {
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		return err
 	}
 	defer cli.Close()
 
-	return cli.NetworkConnect(context.Background(), networkID, containerID, nil)
+	return cli.NetworkConnect(ctx, networkID, containerID, nil)
 }
 
-func NetworkDisconnect(networkID, containerID string) error {
+func NetworkDisconnect(ctx context.Context, networkID, containerID string) error {
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		return err
 	}
 	defer cli.Close()
 
-	return cli.NetworkDisconnect(context.Background(), networkID, containerID, false)
+	return cli.NetworkDisconnect(ctx, networkID, containerID, false)
 }
 
-func NetworkRemove(networkID string) error {
+func NetworkRemove(ctx context.Context, networkID string) error {
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		return err
 	}
 	defer cli.Close()
-	return cli.NetworkRemove(context.Background(), networkID)
+	return cli.NetworkRemove(ctx, networkID)
 }

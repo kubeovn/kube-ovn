@@ -33,36 +33,36 @@ func (f *Framework) VipClient() *VipClient {
 	}
 }
 
-func (c *VipClient) Get(name string) *apiv1.Vip {
+func (c *VipClient) Get(ctx context.Context, name string) *apiv1.Vip {
 	ginkgo.GinkgoHelper()
-	vip, err := c.VipInterface.Get(context.TODO(), name, metav1.GetOptions{})
+	vip, err := c.VipInterface.Get(ctx, name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return vip.DeepCopy()
 }
 
 // Create creates a new vip according to the framework specifications
-func (c *VipClient) Create(vip *apiv1.Vip) *apiv1.Vip {
+func (c *VipClient) Create(ctx context.Context, vip *apiv1.Vip) *apiv1.Vip {
 	ginkgo.GinkgoHelper()
-	vip, err := c.VipInterface.Create(context.TODO(), vip, metav1.CreateOptions{})
+	vip, err := c.VipInterface.Create(ctx, vip, metav1.CreateOptions{})
 	ExpectNoError(err, "Error creating vip")
 	return vip.DeepCopy()
 }
 
 // CreateSync creates a new ovn vip according to the framework specifications, and waits for it to be ready.
-func (c *VipClient) CreateSync(vip *apiv1.Vip) *apiv1.Vip {
+func (c *VipClient) CreateSync(ctx context.Context, vip *apiv1.Vip) *apiv1.Vip {
 	ginkgo.GinkgoHelper()
 
-	vip = c.Create(vip)
-	ExpectTrue(c.WaitToBeReady(vip.Name, timeout))
+	vip = c.Create(ctx, vip)
+	ExpectTrue(c.WaitToBeReady(ctx, vip.Name, timeout))
 	// Get the newest ovn vip after it becomes ready
-	return c.Get(vip.Name).DeepCopy()
+	return c.Get(ctx, vip.Name).DeepCopy()
 }
 
 // WaitToBeReady returns whether the ovn vip is ready within timeout.
-func (c *VipClient) WaitToBeReady(name string, timeout time.Duration) bool {
+func (c *VipClient) WaitToBeReady(ctx context.Context, name string, timeout time.Duration) bool {
 	Logf("Waiting up to %v for ovn vip %s to be ready", timeout, name)
 	for start := time.Now(); time.Since(start) < timeout; time.Sleep(poll) {
-		if c.Get(name).Status.Ready {
+		if c.Get(ctx, name).Status.Ready {
 			Logf("ovn vip %s is ready", name)
 			return true
 		}
@@ -73,14 +73,14 @@ func (c *VipClient) WaitToBeReady(name string, timeout time.Duration) bool {
 }
 
 // Patch patches the vip
-func (c *VipClient) Patch(original, modified *apiv1.Vip, timeout time.Duration) *apiv1.Vip {
+func (c *VipClient) Patch(ctx context.Context, original, modified *apiv1.Vip, timeout time.Duration) *apiv1.Vip {
 	ginkgo.GinkgoHelper()
 
 	patch, err := util.GenerateMergePatchPayload(original, modified)
 	ExpectNoError(err)
 
 	var patchedVip *apiv1.Vip
-	err = wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+	err = wait.PollUntilContextTimeout(ctx, 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
 		p, err := c.VipInterface.Patch(ctx, original.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
 		if err != nil {
 			return handleWaitingAPIError(err, false, "patch vip %q", original.Name)
@@ -101,9 +101,9 @@ func (c *VipClient) Patch(original, modified *apiv1.Vip, timeout time.Duration) 
 }
 
 // Delete deletes a vip if the vip exists
-func (c *VipClient) Delete(name string) {
+func (c *VipClient) Delete(ctx context.Context, name string) {
 	ginkgo.GinkgoHelper()
-	err := c.VipInterface.Delete(context.TODO(), name, metav1.DeleteOptions{})
+	err := c.VipInterface.Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil && !apierrors.IsNotFound(err) {
 		Failf("Failed to delete vip %q: %v", name, err)
 	}
@@ -111,15 +111,15 @@ func (c *VipClient) Delete(name string) {
 
 // DeleteSync deletes the ovn vip and waits for the ovn vip to disappear for `timeout`.
 // If the ovn vip doesn't disappear before the timeout, it will fail the test.
-func (c *VipClient) DeleteSync(name string) {
+func (c *VipClient) DeleteSync(ctx context.Context, name string) {
 	ginkgo.GinkgoHelper()
-	c.Delete(name)
-	gomega.Expect(c.WaitToDisappear(name, 2*time.Second, timeout)).To(gomega.Succeed(), "wait for ovn vip %q to disappear", name)
+	c.Delete(ctx, name)
+	gomega.Expect(c.WaitToDisappear(ctx, name, timeout)).To(gomega.Succeed(), "wait for ovn vip %q to disappear", name)
 }
 
 // WaitToDisappear waits the given timeout duration for the specified OVN VIP to disappear.
-func (c *VipClient) WaitToDisappear(name string, _, timeout time.Duration) error {
-	err := framework.Gomega().Eventually(context.Background(), framework.HandleRetry(func(ctx context.Context) (*apiv1.Vip, error) {
+func (c *VipClient) WaitToDisappear(ctx context.Context, name string, timeout time.Duration) error {
+	err := framework.Gomega().Eventually(ctx, framework.HandleRetry(func(ctx context.Context) (*apiv1.Vip, error) {
 		vip, err := c.VipInterface.Get(ctx, name, metav1.GetOptions{})
 		if apierrors.IsNotFound(err) {
 			return nil, nil

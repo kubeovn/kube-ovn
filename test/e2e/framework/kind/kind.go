@@ -32,34 +32,34 @@ func (n *Node) Name() string {
 	return strings.TrimPrefix(n.Names[0], "/")
 }
 
-func (n *Node) Exec(cmd ...string) (stdout, stderr []byte, err error) {
-	return docker.Exec(n.ID, nil, cmd...)
+func (n *Node) Exec(ctx context.Context, cmd string) (stdout, stderr []byte, err error) {
+	return docker.Exec(ctx, n.ID, nil, cmd)
 }
 
-func (n *Node) NetworkConnect(networkID string) error {
+func (n *Node) NetworkConnect(ctx context.Context, networkID string) error {
 	for _, settings := range n.NetworkSettings.Networks {
 		if settings.NetworkID == networkID {
 			return nil
 		}
 	}
-	return docker.NetworkConnect(networkID, n.ID)
+	return docker.NetworkConnect(ctx, networkID, n.ID)
 }
 
-func (n *Node) NetworkDisconnect(networkID string) error {
+func (n *Node) NetworkDisconnect(ctx context.Context, networkID string) error {
 	for _, settings := range n.NetworkSettings.Networks {
 		if settings.NetworkID == networkID {
-			return docker.NetworkDisconnect(networkID, n.ID)
+			return docker.NetworkDisconnect(ctx, networkID, n.ID)
 		}
 	}
 	return nil
 }
 
-func (n *Node) ListLinks() ([]iproute.Link, error) {
-	return iproute.AddressShow("", n.Exec)
+func (n *Node) ListLinks(ctx context.Context) ([]iproute.Link, error) {
+	return iproute.AddressShow(ctx, "", n.Exec)
 }
 
-func (n *Node) ListRoutes(nonLinkLocalUnicast bool) ([]iproute.Route, error) {
-	routes, err := iproute.RouteShow("", "", n.Exec)
+func (n *Node) ListRoutes(ctx context.Context, nonLinkLocalUnicast bool) ([]iproute.Route, error) {
+	routes, err := iproute.RouteShow(ctx, "", "", n.Exec)
 	if err != nil {
 		return nil, err
 	}
@@ -80,10 +80,10 @@ func (n *Node) ListRoutes(nonLinkLocalUnicast bool) ([]iproute.Route, error) {
 	return result, nil
 }
 
-func (n *Node) WaitLinkToDisappear(linkName string, interval time.Duration, deadline time.Time) error {
-	err := wait.PollUntilContextTimeout(context.Background(), interval, time.Until(deadline), false, func(_ context.Context) (bool, error) {
+func (n *Node) WaitLinkToDisappear(ctx context.Context, linkName string, interval time.Duration, deadline time.Time) error {
+	err := wait.PollUntilContextTimeout(ctx, interval, time.Until(deadline), false, func(ctx context.Context) (bool, error) {
 		framework.Logf("Waiting for link %s in node %s to disappear", linkName, n.Name())
-		links, err := n.ListLinks()
+		links, err := n.ListLinks(ctx)
 		if err != nil {
 			return false, err
 		}
@@ -108,9 +108,9 @@ func (n *Node) WaitLinkToDisappear(linkName string, interval time.Duration, dead
 	return err
 }
 
-func ListClusters() ([]string, error) {
+func ListClusters(ctx context.Context) ([]string, error) {
 	filters := map[string][]string{"label": {labelCluster}}
-	nodeList, err := docker.ContainerList(filters)
+	nodeList, err := docker.ContainerList(ctx, filters)
 	if err != nil {
 		return nil, err
 	}
@@ -125,7 +125,7 @@ func ListClusters() ([]string, error) {
 	return clusters, nil
 }
 
-func ListNodes(cluster, role string) ([]Node, error) {
+func ListNodes(ctx context.Context, cluster, role string) ([]Node, error) {
 	labels := []string{labelCluster + "=" + cluster}
 	if role != "" {
 		// control-plane or worker
@@ -133,7 +133,7 @@ func ListNodes(cluster, role string) ([]Node, error) {
 	}
 
 	filters := map[string][]string{"label": labels}
-	nodeList, err := docker.ContainerList(filters)
+	nodeList, err := docker.ContainerList(ctx, filters)
 	if err != nil {
 		return nil, err
 	}
@@ -160,18 +160,18 @@ func IsKindProvided(providerID string) (string, bool) {
 	return fields[0], true
 }
 
-func NetworkConnect(networkID string, nodes []Node) error {
+func NetworkConnect(ctx context.Context, networkID string, nodes []Node) error {
 	for _, node := range nodes {
-		if err := node.NetworkConnect(networkID); err != nil {
+		if err := node.NetworkConnect(ctx, networkID); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func NetworkDisconnect(networkID string, nodes []Node) error {
+func NetworkDisconnect(ctx context.Context, networkID string, nodes []Node) error {
 	for _, node := range nodes {
-		if err := node.NetworkDisconnect(networkID); err != nil {
+		if err := node.NetworkDisconnect(ctx, networkID); err != nil {
 			return err
 		}
 	}

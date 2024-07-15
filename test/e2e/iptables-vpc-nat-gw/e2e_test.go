@@ -70,6 +70,7 @@ type qosParams struct {
 }
 
 func setupNetworkAttachmentDefinition(
+	ctx context.Context,
 	f *framework.Framework,
 	dockerExtNetNetwork *dockernetwork.Inspect,
 	attachNetClient *framework.NetworkAttachmentDefinitionClient,
@@ -82,7 +83,7 @@ func setupNetworkAttachmentDefinition(
 	ginkgo.GinkgoHelper()
 
 	ginkgo.By("Getting docker network " + dockerExtNetName)
-	network, err := docker.NetworkInspect(dockerExtNetName)
+	network, err := docker.NetworkInspect(ctx, dockerExtNetName)
 	framework.ExpectNoError(err, "getting docker network "+dockerExtNetName)
 	ginkgo.By("Getting network attachment definition " + externalNetworkName)
 	attachConf := fmt.Sprintf(`{
@@ -97,8 +98,8 @@ func setupNetworkAttachmentDefinition(
 		}
 	  }`, nicName, provider)
 	attachNet := framework.MakeNetworkAttachmentDefinition(externalNetworkName, framework.KubeOvnNamespace, attachConf)
-	attachNetClient.Create(attachNet)
-	nad := attachNetClient.Get(externalNetworkName)
+	attachNetClient.Create(ctx, attachNet)
+	nad := attachNetClient.Get(ctx, externalNetworkName)
 
 	ginkgo.By("Got network attachment definition " + nad.Name)
 
@@ -138,10 +139,11 @@ func setupNetworkAttachmentDefinition(
 		}
 	}
 	macvlanSubnet := framework.MakeSubnet(externalNetworkName, "", strings.Join(cidr, ","), strings.Join(gateway, ","), "", provider, excludeIPs, nil, nil)
-	_ = subnetClient.CreateSync(macvlanSubnet)
+	_ = subnetClient.CreateSync(ctx, macvlanSubnet)
 }
 
 func setupVpcNatGwTestEnvironment(
+	ctx context.Context,
 	f *framework.Framework,
 	dockerExtNetNetwork *dockernetwork.Inspect,
 	attachNetClient *framework.NetworkAttachmentDefinitionClient,
@@ -165,28 +167,29 @@ func setupVpcNatGwTestEnvironment(
 
 	if !skipNADSetup {
 		setupNetworkAttachmentDefinition(
-			f, dockerExtNetNetwork, attachNetClient,
+			ctx, f, dockerExtNetNetwork, attachNetClient,
 			subnetClient, externalNetworkName, nicName, provider, dockerExtNetName)
 	}
 
 	ginkgo.By("Getting config map " + vpcNatGWConfigMapName)
-	_, err := f.ClientSet.CoreV1().ConfigMaps(framework.KubeOvnNamespace).Get(context.Background(), vpcNatGWConfigMapName, metav1.GetOptions{})
+	_, err := f.ClientSet.CoreV1().ConfigMaps(framework.KubeOvnNamespace).Get(ctx, vpcNatGWConfigMapName, metav1.GetOptions{})
 	framework.ExpectNoError(err, "failed to get ConfigMap")
 
 	ginkgo.By("Creating custom vpc " + vpcName)
 	vpc := framework.MakeVpc(vpcName, lanIP, false, false, nil)
-	_ = vpcClient.CreateSync(vpc)
+	_ = vpcClient.CreateSync(ctx, vpc)
 
 	ginkgo.By("Creating custom overlay subnet " + overlaySubnetName)
 	overlaySubnet := framework.MakeSubnet(overlaySubnetName, "", overlaySubnetV4Cidr, overlaySubnetV4Gw, vpcName, "", nil, nil, nil)
-	_ = subnetClient.CreateSync(overlaySubnet)
+	_ = subnetClient.CreateSync(ctx, overlaySubnet)
 
 	ginkgo.By("Creating custom vpc nat gw " + vpcNatGwName)
 	vpcNatGw := framework.MakeVpcNatGateway(vpcNatGwName, vpcName, overlaySubnetName, lanIP, externalNetworkName, natGwQosPolicy)
-	_ = vpcNatGwClient.CreateSync(vpcNatGw, f.ClientSet)
+	_ = vpcNatGwClient.CreateSync(ctx, vpcNatGw, f.ClientSet)
 }
 
 func cleanVpcNatGwTestEnvironment(
+	ctx context.Context,
 	subnetClient *framework.SubnetClient,
 	vpcClient *framework.VpcClient,
 	vpcNatGwClient *framework.VpcNatGatewayClient,
@@ -198,13 +201,13 @@ func cleanVpcNatGwTestEnvironment(
 
 	ginkgo.By("start to clean custom vpc nat gw      " + vpcNatGwName)
 	ginkgo.By("clean custom vpc nat gw " + vpcNatGwName)
-	vpcNatGwClient.DeleteSync(vpcNatGwName)
+	vpcNatGwClient.DeleteSync(ctx, vpcNatGwName)
 
 	ginkgo.By("clean custom overlay subnet " + overlaySubnetName)
-	subnetClient.DeleteSync(overlaySubnetName)
+	subnetClient.DeleteSync(ctx, overlaySubnetName)
 
 	ginkgo.By("clean custom vpc " + vpcName)
-	vpcClient.DeleteSync(vpcName)
+	vpcClient.DeleteSync(ctx, vpcName)
 }
 
 var _ = framework.SerialDescribe("[group:iptables-vpc-nat-gw]", func() {
@@ -242,11 +245,9 @@ var _ = framework.SerialDescribe("[group:iptables-vpc-nat-gw]", func() {
 
 	vpcName = "vpc-" + framework.RandomSuffix()
 	vpcNatGwName = "gw-" + framework.RandomSuffix()
-
 	fipVipName = "fip-vip-" + framework.RandomSuffix()
 	fipEipName = "fip-eip-" + framework.RandomSuffix()
 	fipName = "fip-" + framework.RandomSuffix()
-
 	dnatVipName = "dnat-vip-" + framework.RandomSuffix()
 	dnatEipName = "dnat-eip-" + framework.RandomSuffix()
 	dnatName = "dnat-" + framework.RandomSuffix()
@@ -270,7 +271,7 @@ var _ = framework.SerialDescribe("[group:iptables-vpc-nat-gw]", func() {
 	net2VpcName = "net2-vpc-" + framework.RandomSuffix()
 	net2EipName = "net2-eip-" + framework.RandomSuffix()
 
-	ginkgo.BeforeEach(func() {
+	ginkgo.BeforeEach(ginkgo.NodeTimeout(5*time.Second), func(ctx ginkgo.SpecContext) {
 		cs = f.ClientSet
 		attachNetClient = f.NetworkAttachmentDefinitionClientNS(framework.KubeOvnNamespace)
 		subnetClient = f.SubnetClient()
@@ -289,7 +290,7 @@ var _ = framework.SerialDescribe("[group:iptables-vpc-nat-gw]", func() {
 
 		if clusterName == "" {
 			ginkgo.By("Getting k8s nodes")
-			k8sNodes, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
+			k8sNodes, err := e2enode.GetReadySchedulableNodes(ctx, cs)
 			framework.ExpectNoError(err)
 
 			cluster, ok := kind.IsKindProvided(k8sNodes.Items[0].Spec.ProviderID)
@@ -302,7 +303,7 @@ var _ = framework.SerialDescribe("[group:iptables-vpc-nat-gw]", func() {
 
 		if dockerExtNet1Network == nil {
 			ginkgo.By("Ensuring docker network " + dockerExtNet1Name + " exists")
-			network1, err := docker.NetworkCreate(dockerExtNet1Name, true, true)
+			network1, err := docker.NetworkCreate(ctx, dockerExtNet1Name, true, true)
 			framework.ExpectNoError(err, "creating docker network "+dockerExtNet1Name)
 
 			dockerExtNet1Network = network1
@@ -310,36 +311,36 @@ var _ = framework.SerialDescribe("[group:iptables-vpc-nat-gw]", func() {
 
 		if dockerExtNet2Network == nil {
 			ginkgo.By("Ensuring docker network " + dockerExtNet2Name + " exists")
-			network2, err := docker.NetworkCreate(dockerExtNet2Name, true, true)
+			network2, err := docker.NetworkCreate(ctx, dockerExtNet2Name, true, true)
 			framework.ExpectNoError(err, "creating docker network "+dockerExtNet2Name)
 			dockerExtNet2Network = network2
 		}
 
 		ginkgo.By("Getting kind nodes")
-		nodes, err := kind.ListNodes(clusterName, "")
+		nodes, err := kind.ListNodes(ctx, clusterName, "")
 		framework.ExpectNoError(err, "getting nodes in kind cluster")
 		framework.ExpectNotEmpty(nodes)
 
 		ginkgo.By("Connecting nodes to the docker network")
-		err = kind.NetworkConnect(dockerExtNet1Network.ID, nodes)
+		err = kind.NetworkConnect(ctx, dockerExtNet1Network.ID, nodes)
 		framework.ExpectNoError(err, "connecting nodes to network "+dockerExtNet1Name)
 
 		ginkgo.By("Connecting nodes to the docker network")
-		err = kind.NetworkConnect(dockerExtNet2Network.ID, nodes)
+		err = kind.NetworkConnect(ctx, dockerExtNet2Network.ID, nodes)
 		framework.ExpectNoError(err, "connecting nodes to network "+dockerExtNet2Name)
 
 		ginkgo.By("Getting node links that belong to the docker network")
-		nodes, err = kind.ListNodes(clusterName, "")
+		nodes, err = kind.ListNodes(ctx, clusterName, "")
 		framework.ExpectNoError(err, "getting nodes in kind cluster")
 
 		ginkgo.By("Validating node links")
-		network1, err := docker.NetworkInspect(dockerExtNet1Name)
+		network1, err := docker.NetworkInspect(ctx, dockerExtNet1Name)
 		framework.ExpectNoError(err)
-		network2, err := docker.NetworkInspect(dockerExtNet2Name)
+		network2, err := docker.NetworkInspect(ctx, dockerExtNet2Name)
 		framework.ExpectNoError(err)
 		var eth0Exist, net1Exist, net2Exist bool
 		for _, node := range nodes {
-			links, err := node.ListLinks()
+			links, err := node.ListLinks(ctx)
 			framework.ExpectNoError(err, "failed to list links on node %s: %v", node.Name(), err)
 			net1Mac := network1.Containers[node.ID].MacAddress
 			net2Mac := network2.Containers[node.ID].MacAddress
@@ -363,48 +364,48 @@ var _ = framework.SerialDescribe("[group:iptables-vpc-nat-gw]", func() {
 		}
 	})
 
-	ginkgo.AfterEach(func() {
-		cleanVpcNatGwTestEnvironment(subnetClient, vpcClient, vpcNatGwClient, vpcName, overlaySubnetName, vpcNatGwName)
+	ginkgo.AfterEach(ginkgo.NodeTimeout(15*time.Second), func(ctx ginkgo.SpecContext) {
+		cleanVpcNatGwTestEnvironment(ctx, subnetClient, vpcClient, vpcNatGwClient, vpcName, overlaySubnetName, vpcNatGwName)
 		ginkgo.By("Deleting macvlan underlay subnet " + networkAttachDefName)
-		subnetClient.DeleteSync(networkAttachDefName)
+		subnetClient.DeleteSync(ctx, networkAttachDefName)
 
 		// delete net1 attachment definition
 		ginkgo.By("Deleting nad " + networkAttachDefName)
-		attachNetClient.Delete(networkAttachDefName)
+		attachNetClient.Delete(ctx, networkAttachDefName)
 		// delete net2 attachment definition
 		ginkgo.By("Deleting nad " + net2AttachDefName)
-		attachNetClient.Delete(net2AttachDefName)
+		attachNetClient.Delete(ctx, net2AttachDefName)
 
 		ginkgo.By("Getting nodes")
-		nodes, err := kind.ListNodes(clusterName, "")
+		nodes, err := kind.ListNodes(ctx, clusterName, "")
 		framework.ExpectNoError(err, "getting nodes in cluster")
 
 		if dockerExtNet1Network != nil {
 			ginkgo.By("Disconnecting nodes from the docker network")
-			err = kind.NetworkDisconnect(dockerExtNet1Network.ID, nodes)
+			err = kind.NetworkDisconnect(ctx, dockerExtNet1Network.ID, nodes)
 			framework.ExpectNoError(err, "disconnecting nodes from network "+dockerExtNet1Name)
 		}
 		if dockerExtNet2Network != nil {
 			ginkgo.By("Disconnecting nodes from the docker network")
-			err = kind.NetworkDisconnect(dockerExtNet2Network.ID, nodes)
+			err = kind.NetworkDisconnect(ctx, dockerExtNet2Network.ID, nodes)
 			framework.ExpectNoError(err, "disconnecting nodes from network "+dockerExtNet2Name)
 		}
 	})
 
-	framework.ConformanceIt("change gateway image", func() {
+	framework.ConformanceIt("change gateway image", ginkgo.SpecTimeout(time.Minute), func(ctx ginkgo.SpecContext) {
 		overlaySubnetV4Cidr := "10.0.0.0/24"
 		overlaySubnetV4Gw := "10.0.0.1"
 		lanIP := "10.0.0.254"
 		natgwQoS := ""
-		cm, err := f.ClientSet.CoreV1().ConfigMaps(framework.KubeOvnNamespace).Get(context.Background(), vpcNatConfigName, metav1.GetOptions{})
+		cm, err := f.ClientSet.CoreV1().ConfigMaps(framework.KubeOvnNamespace).Get(ctx, vpcNatConfigName, metav1.GetOptions{})
 		framework.ExpectNoError(err)
 		oldImage := cm.Data["image"]
 		cm.Data["image"] = "docker.io/kubeovn/vpc-nat-gateway:v1.12.18"
-		cm, err = f.ClientSet.CoreV1().ConfigMaps(framework.KubeOvnNamespace).Update(context.Background(), cm, metav1.UpdateOptions{})
+		cm, err = f.ClientSet.CoreV1().ConfigMaps(framework.KubeOvnNamespace).Update(ctx, cm, metav1.UpdateOptions{})
 		framework.ExpectNoError(err)
 		time.Sleep(3 * time.Second)
 		setupVpcNatGwTestEnvironment(
-			f, dockerExtNet1Network, attachNetClient,
+			ctx, f, dockerExtNet1Network, attachNetClient,
 			subnetClient, vpcClient, vpcNatGwClient,
 			vpcName, overlaySubnetName, vpcNatGwName, natgwQoS,
 			overlaySubnetV4Cidr, overlaySubnetV4Gw, lanIP,
@@ -413,23 +414,23 @@ var _ = framework.SerialDescribe("[group:iptables-vpc-nat-gw]", func() {
 			false,
 		)
 		vpcNatGwPodName := util.GenNatGwPodName(vpcNatGwName)
-		pod := f.PodClientNS("kube-system").GetPod(vpcNatGwPodName)
+		pod := f.PodClientNS("kube-system").Get(ctx, vpcNatGwPodName)
 		framework.ExpectNotNil(pod)
 		framework.ExpectEqual(pod.Spec.Containers[0].Image, cm.Data["image"])
 
 		// recover the image
 		cm.Data["image"] = oldImage
-		_, err = f.ClientSet.CoreV1().ConfigMaps(framework.KubeOvnNamespace).Update(context.Background(), cm, metav1.UpdateOptions{})
+		_, err = f.ClientSet.CoreV1().ConfigMaps(framework.KubeOvnNamespace).Update(ctx, cm, metav1.UpdateOptions{})
 		framework.ExpectNoError(err)
 	})
 
-	framework.ConformanceIt("iptables eip fip snat dnat", func() {
+	framework.ConformanceIt("iptables eip fip snat dnat", ginkgo.SpecTimeout(2*time.Minute), func(ctx ginkgo.SpecContext) {
 		overlaySubnetV4Cidr := "10.0.1.0/24"
 		overlaySubnetV4Gw := "10.0.1.1"
 		lanIP := "10.0.1.254"
 		natgwQoS := ""
 		setupVpcNatGwTestEnvironment(
-			f, dockerExtNet1Network, attachNetClient,
+			ctx, f, dockerExtNet1Network, attachNetClient,
 			subnetClient, vpcClient, vpcNatGwClient,
 			vpcName, overlaySubnetName, vpcNatGwName, natgwQoS,
 			overlaySubnetV4Cidr, overlaySubnetV4Gw, lanIP,
@@ -440,64 +441,64 @@ var _ = framework.SerialDescribe("[group:iptables-vpc-nat-gw]", func() {
 
 		ginkgo.By("Creating iptables vip for fip")
 		fipVip := framework.MakeVip(f.Namespace.Name, fipVipName, overlaySubnetName, "", "", "")
-		_ = vipClient.CreateSync(fipVip)
-		fipVip = vipClient.Get(fipVipName)
+		_ = vipClient.CreateSync(ctx, fipVip)
+		fipVip = vipClient.Get(ctx, fipVipName)
 		ginkgo.By("Creating iptables eip for fip")
 		fipEip := framework.MakeIptablesEIP(fipEipName, "", "", "", vpcNatGwName, "", "")
-		_ = iptablesEIPClient.CreateSync(fipEip)
+		_ = iptablesEIPClient.CreateSync(ctx, fipEip)
 		ginkgo.By("Creating iptables fip")
 		fip := framework.MakeIptablesFIPRule(fipName, fipEipName, fipVip.Status.V4ip)
-		_ = iptablesFIPClient.CreateSync(fip)
+		_ = iptablesFIPClient.CreateSync(ctx, fip)
 
 		ginkgo.By("Creating iptables eip for snat")
 		snatEip := framework.MakeIptablesEIP(snatEipName, "", "", "", vpcNatGwName, "", "")
-		_ = iptablesEIPClient.CreateSync(snatEip)
+		_ = iptablesEIPClient.CreateSync(ctx, snatEip)
 		ginkgo.By("Creating iptables snat")
 		snat := framework.MakeIptablesSnatRule(snatName, snatEipName, overlaySubnetV4Cidr)
-		_ = iptablesSnatRuleClient.CreateSync(snat)
+		_ = iptablesSnatRuleClient.CreateSync(ctx, snat)
 
 		ginkgo.By("Creating iptables vip for dnat")
 		dnatVip := framework.MakeVip(f.Namespace.Name, dnatVipName, overlaySubnetName, "", "", "")
-		_ = vipClient.CreateSync(dnatVip)
-		dnatVip = vipClient.Get(dnatVipName)
+		_ = vipClient.CreateSync(ctx, dnatVip)
+		dnatVip = vipClient.Get(ctx, dnatVipName)
 		ginkgo.By("Creating iptables eip for dnat")
 		dnatEip := framework.MakeIptablesEIP(dnatEipName, "", "", "", vpcNatGwName, "", "")
-		_ = iptablesEIPClient.CreateSync(dnatEip)
+		_ = iptablesEIPClient.CreateSync(ctx, dnatEip)
 		ginkgo.By("Creating iptables dnat")
 		dnat := framework.MakeIptablesDnatRule(dnatName, dnatEipName, "80", "tcp", dnatVip.Status.V4ip, "8080")
-		_ = iptablesDnatRuleClient.CreateSync(dnat)
+		_ = iptablesDnatRuleClient.CreateSync(ctx, dnat)
 
 		// share eip case
 		ginkgo.By("Creating share vip")
 		shareVip := framework.MakeVip(f.Namespace.Name, sharedVipName, overlaySubnetName, "", "", "")
-		_ = vipClient.CreateSync(shareVip)
-		fipVip = vipClient.Get(fipVipName)
+		_ = vipClient.CreateSync(ctx, shareVip)
+		fipVip = vipClient.Get(ctx, fipVipName)
 		ginkgo.By("Creating share iptables eip")
 		shareEip := framework.MakeIptablesEIP(sharedEipName, "", "", "", vpcNatGwName, "", "")
-		_ = iptablesEIPClient.CreateSync(shareEip)
+		_ = iptablesEIPClient.CreateSync(ctx, shareEip)
 		ginkgo.By("Creating the first iptables fip with share eip vip should be ok")
 		shareFipShouldOk := framework.MakeIptablesFIPRule(sharedEipFipShouldOkName, sharedEipName, fipVip.Status.V4ip)
-		_ = iptablesFIPClient.CreateSync(shareFipShouldOk)
+		_ = iptablesFIPClient.CreateSync(ctx, shareFipShouldOk)
 		ginkgo.By("Creating the second iptables fip with share eip vip should be failed")
 		shareFipShouldFail := framework.MakeIptablesFIPRule(sharedEipFipShouldFailName, sharedEipName, fipVip.Status.V4ip)
-		_ = iptablesFIPClient.Create(shareFipShouldFail)
+		_ = iptablesFIPClient.Create(ctx, shareFipShouldFail)
 		ginkgo.By("Creating iptables dnat for dnat with share eip vip")
 		shareDnat := framework.MakeIptablesDnatRule(sharedEipDnatName, sharedEipName, "80", "tcp", fipVip.Status.V4ip, "8080")
-		_ = iptablesDnatRuleClient.CreateSync(shareDnat)
+		_ = iptablesDnatRuleClient.CreateSync(ctx, shareDnat)
 		ginkgo.By("Creating iptables snat with share eip vip")
 		shareSnat := framework.MakeIptablesSnatRule(sharedEipSnatName, sharedEipName, overlaySubnetV4Cidr)
-		_ = iptablesSnatRuleClient.CreateSync(shareSnat)
+		_ = iptablesSnatRuleClient.CreateSync(ctx, shareSnat)
 
 		ginkgo.By("Get share eip")
-		shareEip = iptablesEIPClient.Get(sharedEipName)
+		shareEip = iptablesEIPClient.Get(ctx, sharedEipName)
 		ginkgo.By("Get share dnat")
-		shareDnat = iptablesDnatRuleClient.Get(sharedEipDnatName)
+		shareDnat = iptablesDnatRuleClient.Get(ctx, sharedEipDnatName)
 		ginkgo.By("Get share snat")
-		shareSnat = iptablesSnatRuleClient.Get(sharedEipSnatName)
+		shareSnat = iptablesSnatRuleClient.Get(ctx, sharedEipSnatName)
 		ginkgo.By("Get share fip should ok")
-		shareFipShouldOk = iptablesFIPClient.Get(sharedEipFipShouldOkName)
+		shareFipShouldOk = iptablesFIPClient.Get(ctx, sharedEipFipShouldOkName)
 		ginkgo.By("Get share fip should fail")
-		shareFipShouldFail = iptablesFIPClient.Get(sharedEipFipShouldFailName)
+		shareFipShouldFail = iptablesFIPClient.Get(ctx, sharedEipFipShouldFailName)
 
 		ginkgo.By("Check share eip should has the external ip label")
 		framework.ExpectHaveKeyWithValue(shareEip.Labels, util.EipV4IpLabel, shareEip.Spec.V4ip)
@@ -515,58 +516,58 @@ var _ = framework.SerialDescribe("[group:iptables-vpc-nat-gw]", func() {
 		framework.ExpectEqual(shareEip.Status.Nat, strings.Join(nats, ","))
 
 		ginkgo.By("Deleting share iptables fip " + sharedEipFipShouldOkName)
-		iptablesFIPClient.DeleteSync(sharedEipFipShouldOkName)
+		iptablesFIPClient.DeleteSync(ctx, sharedEipFipShouldOkName)
 		ginkgo.By("Deleting share iptables fip " + sharedEipFipShouldFailName)
-		iptablesFIPClient.DeleteSync(sharedEipFipShouldFailName)
+		iptablesFIPClient.DeleteSync(ctx, sharedEipFipShouldFailName)
 		ginkgo.By("Deleting share iptables dnat " + dnatName)
-		iptablesDnatRuleClient.DeleteSync(dnatName)
+		iptablesDnatRuleClient.DeleteSync(ctx, dnatName)
 		ginkgo.By("Deleting share iptables snat " + snatName)
-		iptablesSnatRuleClient.DeleteSync(snatName)
+		iptablesSnatRuleClient.DeleteSync(ctx, snatName)
 
 		ginkgo.By("Deleting iptables fip " + fipName)
-		iptablesFIPClient.DeleteSync(fipName)
+		iptablesFIPClient.DeleteSync(ctx, fipName)
 		ginkgo.By("Deleting iptables dnat " + dnatName)
-		iptablesDnatRuleClient.DeleteSync(dnatName)
+		iptablesDnatRuleClient.DeleteSync(ctx, dnatName)
 		ginkgo.By("Deleting iptables snat " + snatName)
-		iptablesSnatRuleClient.DeleteSync(snatName)
+		iptablesSnatRuleClient.DeleteSync(ctx, snatName)
 
 		ginkgo.By("Deleting iptables eip " + fipEipName)
-		iptablesEIPClient.DeleteSync(fipEipName)
+		iptablesEIPClient.DeleteSync(ctx, fipEipName)
 		ginkgo.By("Deleting iptables eip " + dnatEipName)
-		iptablesEIPClient.DeleteSync(dnatEipName)
+		iptablesEIPClient.DeleteSync(ctx, dnatEipName)
 		ginkgo.By("Deleting iptables eip " + snatEipName)
-		iptablesEIPClient.DeleteSync(snatEipName)
+		iptablesEIPClient.DeleteSync(ctx, snatEipName)
 		ginkgo.By("Deleting iptables share eip " + sharedEipName)
-		iptablesEIPClient.DeleteSync(sharedEipName)
+		iptablesEIPClient.DeleteSync(ctx, sharedEipName)
 
 		ginkgo.By("Deleting vip " + fipVipName)
-		vipClient.DeleteSync(fipVipName)
+		vipClient.DeleteSync(ctx, fipVipName)
 		ginkgo.By("Deleting vip " + dnatVipName)
-		vipClient.DeleteSync(dnatVipName)
+		vipClient.DeleteSync(ctx, dnatVipName)
 		ginkgo.By("Deleting vip " + sharedVipName)
-		vipClient.DeleteSync(sharedVipName)
+		vipClient.DeleteSync(ctx, sharedVipName)
 
 		ginkgo.By("Deleting custom vpc " + vpcName)
-		vpcClient.DeleteSync(vpcName)
+		vpcClient.DeleteSync(ctx, vpcName)
 
 		ginkgo.By("Deleting custom vpc nat gw")
-		vpcNatGwClient.DeleteSync(vpcNatGwName)
+		vpcNatGwClient.DeleteSync(ctx, vpcNatGwName)
 
 		// the only pod for vpc nat gateway
 		vpcNatGwPodName := util.GenNatGwPodName(vpcNatGwName)
 
 		// delete vpc nat gw statefulset remaining ip for eth0 and net1
-		overlaySubnet := subnetClient.Get(overlaySubnetName)
-		macvlanSubnet := subnetClient.Get(networkAttachDefName)
+		overlaySubnet := subnetClient.Get(ctx, overlaySubnetName)
+		macvlanSubnet := subnetClient.Get(ctx, networkAttachDefName)
 		eth0IpName := ovs.PodNameToPortName(vpcNatGwPodName, framework.KubeOvnNamespace, overlaySubnet.Spec.Provider)
 		net1IpName := ovs.PodNameToPortName(vpcNatGwPodName, framework.KubeOvnNamespace, macvlanSubnet.Spec.Provider)
 		ginkgo.By("Deleting vpc nat gw eth0 ip " + eth0IpName)
-		ipClient.DeleteSync(eth0IpName)
+		ipClient.DeleteSync(ctx, eth0IpName)
 		ginkgo.By("Deleting vpc nat gw net1 ip " + net1IpName)
-		ipClient.DeleteSync(net1IpName)
+		ipClient.DeleteSync(ctx, net1IpName)
 
 		ginkgo.By("Deleting overlay subnet " + overlaySubnetName)
-		subnetClient.DeleteSync(overlaySubnetName)
+		subnetClient.DeleteSync(ctx, overlaySubnetName)
 
 		// multiple external network case
 		net2OverlaySubnetV4Cidr := "10.0.1.0/24"
@@ -574,7 +575,7 @@ var _ = framework.SerialDescribe("[group:iptables-vpc-nat-gw]", func() {
 		net2LanIP := "10.0.1.254"
 		natgwQoS = ""
 		setupVpcNatGwTestEnvironment(
-			f, dockerExtNet2Network, attachNetClient,
+			ctx, f, dockerExtNet2Network, attachNetClient,
 			subnetClient, vpcClient, vpcNatGwClient,
 			net2VpcName, net2OverlaySubnetName, net2VpcNatGwName, natgwQoS,
 			net2OverlaySubnetV4Cidr, net2OoverlaySubnetV4Gw, net2LanIP,
@@ -585,44 +586,44 @@ var _ = framework.SerialDescribe("[group:iptables-vpc-nat-gw]", func() {
 
 		ginkgo.By("Creating iptables eip of net2")
 		net2Eip := framework.MakeIptablesEIP(net2EipName, "", "", "", net2VpcNatGwName, net2AttachDefName, "")
-		_ = iptablesEIPClient.CreateSync(net2Eip)
+		_ = iptablesEIPClient.CreateSync(ctx, net2Eip)
 
 		ginkgo.By("Deleting iptables eip " + net2EipName)
-		iptablesEIPClient.DeleteSync(net2EipName)
+		iptablesEIPClient.DeleteSync(ctx, net2EipName)
 
 		ginkgo.By("Deleting custom vpc " + net2VpcName)
-		vpcClient.DeleteSync(net2VpcName)
+		vpcClient.DeleteSync(ctx, net2VpcName)
 
 		ginkgo.By("Deleting custom vpc nat gw")
-		vpcNatGwClient.DeleteSync(net2VpcNatGwName)
+		vpcNatGwClient.DeleteSync(ctx, net2VpcNatGwName)
 
 		// the only pod for vpc nat gateway
 		vpcNatGwPodName = util.GenNatGwPodName(net2VpcNatGwName)
 
 		// delete vpc nat gw statefulset remaining ip for eth0 and net2
-		overlaySubnet = subnetClient.Get(net2OverlaySubnetName)
-		macvlanSubnet = subnetClient.Get(net2AttachDefName)
+		overlaySubnet = subnetClient.Get(ctx, net2OverlaySubnetName)
+		macvlanSubnet = subnetClient.Get(ctx, net2AttachDefName)
 		eth0IpName = ovs.PodNameToPortName(vpcNatGwPodName, framework.KubeOvnNamespace, overlaySubnet.Spec.Provider)
 		net2IpName := ovs.PodNameToPortName(vpcNatGwPodName, framework.KubeOvnNamespace, macvlanSubnet.Spec.Provider)
 		ginkgo.By("Deleting vpc nat gw eth0 ip " + eth0IpName)
-		ipClient.DeleteSync(eth0IpName)
+		ipClient.DeleteSync(ctx, eth0IpName)
 		ginkgo.By("Deleting vpc nat gw net2 ip " + net2IpName)
-		ipClient.DeleteSync(net2IpName)
+		ipClient.DeleteSync(ctx, net2IpName)
 
 		ginkgo.By("Deleting macvlan underlay subnet " + net2AttachDefName)
-		subnetClient.DeleteSync(net2AttachDefName)
+		subnetClient.DeleteSync(ctx, net2AttachDefName)
 
 		ginkgo.By("Deleting overlay subnet " + net2OverlaySubnetName)
-		subnetClient.DeleteSync(net2OverlaySubnetName)
+		subnetClient.DeleteSync(ctx, net2OverlaySubnetName)
 	})
 })
 
-func iperf(f *framework.Framework, iperfClientPod *corev1.Pod, iperfServerEIP *apiv1.IptablesEIP) string {
+func iperf(ctx context.Context, f *framework.Framework, iperfClientPod *corev1.Pod, iperfServerEIP *apiv1.IptablesEIP) string {
 	ginkgo.GinkgoHelper()
 
 	for i := 0; i < 20; i++ {
 		command := fmt.Sprintf("iperf -e -p %s --reportstyle C -i 1 -c %s -t 10", iperf2Port, iperfServerEIP.Status.IP)
-		stdOutput, errOutput, err := framework.ExecShellInPod(context.Background(), f, iperfClientPod.Namespace, iperfClientPod.Name, command)
+		stdOutput, errOutput, err := framework.ExecShellInPod(ctx, f, iperfClientPod.Namespace, iperfClientPod.Name, command)
 		framework.Logf("output from exec on client pod %s (eip %s)\n", iperfClientPod.Name, iperfServerEIP.Name)
 		if stdOutput != "" && err == nil {
 			framework.Logf("output:\n%s", stdOutput)
@@ -635,7 +636,7 @@ func iperf(f *framework.Framework, iperfClientPod *corev1.Pod, iperfServerEIP *a
 	return ""
 }
 
-func checkQos(f *framework.Framework,
+func checkQos(ctx context.Context, f *framework.Framework,
 	vpc1Pod, vpc2Pod *corev1.Pod, vpc1EIP, vpc2EIP *apiv1.IptablesEIP,
 	limit int, expect bool,
 ) {
@@ -643,14 +644,14 @@ func checkQos(f *framework.Framework,
 
 	if !skipIperf {
 		if expect {
-			output := iperf(f, vpc1Pod, vpc2EIP)
+			output := iperf(ctx, f, vpc1Pod, vpc2EIP)
 			framework.ExpectTrue(validRateLimit(output, limit))
-			output = iperf(f, vpc2Pod, vpc1EIP)
+			output = iperf(ctx, f, vpc2Pod, vpc1EIP)
 			framework.ExpectTrue(validRateLimit(output, limit))
 		} else {
-			output := iperf(f, vpc1Pod, vpc2EIP)
+			output := iperf(ctx, f, vpc1Pod, vpc2EIP)
 			framework.ExpectFalse(validRateLimit(output, limit))
-			output = iperf(f, vpc2Pod, vpc1EIP)
+			output = iperf(ctx, f, vpc2Pod, vpc1EIP)
 			framework.ExpectFalse(validRateLimit(output, limit))
 		}
 	}
@@ -742,7 +743,9 @@ func getSpecialQoSRule(limit int, ip string) apiv1.QoSPolicyBandwidthLimitRules 
 }
 
 // defaultQoSCases test default qos policy=
-func defaultQoSCases(f *framework.Framework,
+func defaultQoSCases(
+	ctx context.Context,
+	f *framework.Framework,
 	vpcNatGwClient *framework.VpcNatGatewayClient,
 	podClient *framework.PodClient,
 	qosPolicyClient *framework.QoSPolicyClient,
@@ -760,36 +763,38 @@ func defaultQoSCases(f *framework.Framework,
 	rules := getNicDefaultQoSPolicy(defaultNicLimit)
 
 	qosPolicy := framework.MakeQoSPolicy(qosPolicyName, true, apiv1.QoSBindingTypeNatGw, rules)
-	_ = qosPolicyClient.CreateSync(qosPolicy)
+	_ = qosPolicyClient.CreateSync(ctx, qosPolicy)
 
 	ginkgo.By("Patch natgw " + natgwName + " with qos policy " + qosPolicyName)
-	_ = vpcNatGwClient.PatchQoSPolicySync(natgwName, qosPolicyName)
+	_ = vpcNatGwClient.PatchQoSPolicySync(ctx, natgwName, qosPolicyName)
 
 	ginkgo.By("Check qos " + qosPolicyName + " is limited to " + fmt.Sprint(defaultNicLimit) + "Mbps")
-	checkQos(f, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, defaultNicLimit, true)
+	checkQos(ctx, f, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, defaultNicLimit, true)
 
 	ginkgo.By("Delete natgw pod " + natgwName + "-0")
 	natGwPodName := util.GenNatGwPodName(natgwName)
-	podClient.DeleteSync(natGwPodName)
+	podClient.DeleteSync(ctx, natGwPodName)
 
 	ginkgo.By("Wait for natgw " + natgwName + "qos rebuild")
 	time.Sleep(5 * time.Second)
 
 	ginkgo.By("Check qos " + qosPolicyName + " is limited to " + fmt.Sprint(defaultNicLimit) + "Mbps")
-	checkQos(f, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, defaultNicLimit, true)
+	checkQos(ctx, f, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, defaultNicLimit, true)
 
 	ginkgo.By("Remove qos policy " + qosPolicyName + " from natgw " + natgwName)
-	_ = vpcNatGwClient.PatchQoSPolicySync(natgwName, "")
+	_ = vpcNatGwClient.PatchQoSPolicySync(ctx, natgwName, "")
 
 	ginkgo.By("Deleting qos policy " + qosPolicyName)
-	qosPolicyClient.DeleteSync(qosPolicyName)
+	qosPolicyClient.DeleteSync(ctx, qosPolicyName)
 
 	ginkgo.By("Check qos " + qosPolicyName + " is not limited to " + fmt.Sprint(defaultNicLimit) + "Mbps")
-	checkQos(f, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, defaultNicLimit, false)
+	checkQos(ctx, f, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, defaultNicLimit, false)
 }
 
 // eipQoSCases test default qos policy
-func eipQoSCases(f *framework.Framework,
+func eipQoSCases(
+	ctx context.Context,
+	f *framework.Framework,
 	eipClient *framework.IptablesEIPClient,
 	podClient *framework.PodClient,
 	qosPolicyClient *framework.QoSPolicyClient,
@@ -808,61 +813,63 @@ func eipQoSCases(f *framework.Framework,
 	rules := getEIPQoSRule(eipLimit)
 
 	qosPolicy := framework.MakeQoSPolicy(qosPolicyName, false, apiv1.QoSBindingTypeEIP, rules)
-	qosPolicy = qosPolicyClient.CreateSync(qosPolicy)
+	qosPolicy = qosPolicyClient.CreateSync(ctx, qosPolicy)
 
 	ginkgo.By("Patch eip " + eipName + " with qos policy " + qosPolicyName)
-	_ = eipClient.PatchQoSPolicySync(eipName, qosPolicyName)
+	_ = eipClient.PatchQoSPolicySync(ctx, eipName, qosPolicyName)
 
 	ginkgo.By("Check qos " + qosPolicyName + " is limited to " + fmt.Sprint(eipLimit) + "Mbps")
-	checkQos(f, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, eipLimit, true)
+	checkQos(ctx, f, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, eipLimit, true)
 
 	ginkgo.By("Update qos policy " + qosPolicyName + " with new rate limit")
 
 	rules = getEIPQoSRule(updatedEIPLimit)
 	modifiedqosPolicy := qosPolicy.DeepCopy()
 	modifiedqosPolicy.Spec.BandwidthLimitRules = rules
-	qosPolicyClient.Patch(qosPolicy, modifiedqosPolicy)
-	qosPolicyClient.WaitToQoSReady(qosPolicyName)
+	qosPolicyClient.Patch(ctx, qosPolicy, modifiedqosPolicy)
+	qosPolicyClient.WaitToQoSReady(ctx, qosPolicyName)
 
 	ginkgo.By("Check qos " + qosPolicyName + " is changed to " + fmt.Sprint(updatedEIPLimit) + "Mbps")
-	checkQos(f, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, updatedEIPLimit, true)
+	checkQos(ctx, f, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, updatedEIPLimit, true)
 
 	ginkgo.By("Delete natgw pod " + natgwName + "-0")
 	natGwPodName := util.GenNatGwPodName(natgwName)
-	podClient.DeleteSync(natGwPodName)
+	podClient.DeleteSync(ctx, natGwPodName)
 
-	ginkgo.By("Wait for natgw " + natgwName + "qos rebuid")
+	ginkgo.By("Wait for natgw " + natgwName + "qos rebuild")
 	time.Sleep(5 * time.Second)
 
 	ginkgo.By("Check qos " + qosPolicyName + " is limited to " + fmt.Sprint(updatedEIPLimit) + "Mbps")
-	checkQos(f, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, updatedEIPLimit, true)
+	checkQos(ctx, f, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, updatedEIPLimit, true)
 
 	newQoSPolicyName := "new-eip-qos-policy-" + framework.RandomSuffix()
 	newRules := getEIPQoSRule(newEIPLimit)
 	newQoSPolicy := framework.MakeQoSPolicy(newQoSPolicyName, false, apiv1.QoSBindingTypeEIP, newRules)
-	_ = qosPolicyClient.CreateSync(newQoSPolicy)
+	_ = qosPolicyClient.CreateSync(ctx, newQoSPolicy)
 
 	ginkgo.By("Change qos policy of eip " + eipName + " to " + newQoSPolicyName)
-	_ = eipClient.PatchQoSPolicySync(eipName, newQoSPolicyName)
+	_ = eipClient.PatchQoSPolicySync(ctx, eipName, newQoSPolicyName)
 
 	ginkgo.By("Check qos " + qosPolicyName + " is limited to " + fmt.Sprint(newEIPLimit) + "Mbps")
-	checkQos(f, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, newEIPLimit, true)
+	checkQos(ctx, f, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, newEIPLimit, true)
 
 	ginkgo.By("Remove qos policy " + qosPolicyName + " from natgw " + eipName)
-	_ = eipClient.PatchQoSPolicySync(eipName, "")
+	_ = eipClient.PatchQoSPolicySync(ctx, eipName, "")
 
 	ginkgo.By("Deleting qos policy " + qosPolicyName)
-	qosPolicyClient.DeleteSync(qosPolicyName)
+	qosPolicyClient.DeleteSync(ctx, qosPolicyName)
 
 	ginkgo.By("Deleting qos policy " + newQoSPolicyName)
-	qosPolicyClient.DeleteSync(newQoSPolicyName)
+	qosPolicyClient.DeleteSync(ctx, newQoSPolicyName)
 
 	ginkgo.By("Check qos " + qosPolicyName + " is not limited to " + fmt.Sprint(newEIPLimit) + "Mbps")
-	checkQos(f, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, newEIPLimit, false)
+	checkQos(ctx, f, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, newEIPLimit, false)
 }
 
 // specifyingIPQoSCases test default qos policy
-func specifyingIPQoSCases(f *framework.Framework,
+func specifyingIPQoSCases(
+	ctx context.Context,
+	f *framework.Framework,
 	vpcNatGwClient *framework.VpcNatGatewayClient,
 	qosPolicyClient *framework.QoSPolicyClient,
 	vpc1Pod *corev1.Pod,
@@ -880,26 +887,28 @@ func specifyingIPQoSCases(f *framework.Framework,
 	rules := getSpecialQoSRule(specificIPLimit, vpc2EIP.Status.IP)
 
 	qosPolicy := framework.MakeQoSPolicy(qosPolicyName, true, apiv1.QoSBindingTypeNatGw, rules)
-	_ = qosPolicyClient.CreateSync(qosPolicy)
+	_ = qosPolicyClient.CreateSync(ctx, qosPolicy)
 
 	ginkgo.By("Patch natgw " + natgwName + " with qos policy " + qosPolicyName)
-	_ = vpcNatGwClient.PatchQoSPolicySync(natgwName, qosPolicyName)
+	_ = vpcNatGwClient.PatchQoSPolicySync(ctx, natgwName, qosPolicyName)
 
 	ginkgo.By("Check qos " + qosPolicyName + " is limited to " + fmt.Sprint(specificIPLimit) + "Mbps")
-	checkQos(f, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, specificIPLimit, true)
+	checkQos(ctx, f, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, specificIPLimit, true)
 
 	ginkgo.By("Remove qos policy " + qosPolicyName + " from natgw " + natgwName)
-	_ = vpcNatGwClient.PatchQoSPolicySync(natgwName, "")
+	_ = vpcNatGwClient.PatchQoSPolicySync(ctx, natgwName, "")
 
 	ginkgo.By("Deleting qos policy " + qosPolicyName)
-	qosPolicyClient.DeleteSync(qosPolicyName)
+	qosPolicyClient.DeleteSync(ctx, qosPolicyName)
 
 	ginkgo.By("Check qos " + qosPolicyName + " is not limited to " + fmt.Sprint(specificIPLimit) + "Mbps")
-	checkQos(f, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, specificIPLimit, false)
+	checkQos(ctx, f, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, specificIPLimit, false)
 }
 
 // priorityQoSCases test qos match priority
-func priorityQoSCases(f *framework.Framework,
+func priorityQoSCases(
+	ctx context.Context,
+	f *framework.Framework,
 	vpcNatGwClient *framework.VpcNatGatewayClient,
 	eipClient *framework.IptablesEIPClient,
 	qosPolicyClient *framework.QoSPolicyClient,
@@ -920,34 +929,34 @@ func priorityQoSCases(f *framework.Framework,
 	natgwRules = append(natgwRules, getSpecialQoSRule(specificIPLimit, vpc2EIP.Status.IP)...)
 
 	natgwQoSPolicy := framework.MakeQoSPolicy(natGwQoSPolicyName, true, apiv1.QoSBindingTypeNatGw, natgwRules)
-	_ = qosPolicyClient.CreateSync(natgwQoSPolicy)
+	_ = qosPolicyClient.CreateSync(ctx, natgwQoSPolicy)
 
 	ginkgo.By("Patch natgw " + natgwName + " with qos policy " + natGwQoSPolicyName)
-	_ = vpcNatGwClient.PatchQoSPolicySync(natgwName, natGwQoSPolicyName)
+	_ = vpcNatGwClient.PatchQoSPolicySync(ctx, natgwName, natGwQoSPolicyName)
 
 	eipQoSPolicyName := "eip-qos-policy-" + framework.RandomSuffix()
 	ginkgo.By("Creating qos policy " + eipQoSPolicyName)
 	eipRules := getEIPQoSRule(eipLimit)
 
 	eipQoSPolicy := framework.MakeQoSPolicy(eipQoSPolicyName, false, apiv1.QoSBindingTypeEIP, eipRules)
-	_ = qosPolicyClient.CreateSync(eipQoSPolicy)
+	_ = qosPolicyClient.CreateSync(ctx, eipQoSPolicy)
 
 	ginkgo.By("Patch eip " + eipName + " with qos policy " + eipQoSPolicyName)
-	_ = eipClient.PatchQoSPolicySync(eipName, eipQoSPolicyName)
+	_ = eipClient.PatchQoSPolicySync(ctx, eipName, eipQoSPolicyName)
 
 	// match qos of priority 1
 	ginkgo.By("Check qos to match priority 1 is limited to " + fmt.Sprint(eipLimit) + "Mbps")
-	checkQos(f, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, eipLimit, true)
+	checkQos(ctx, f, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, eipLimit, true)
 
 	ginkgo.By("Remove qos policy " + eipQoSPolicyName + " from natgw " + eipName)
-	_ = eipClient.PatchQoSPolicySync(eipName, "")
+	_ = eipClient.PatchQoSPolicySync(ctx, eipName, "")
 
 	ginkgo.By("Deleting qos policy " + eipQoSPolicyName)
-	qosPolicyClient.DeleteSync(eipQoSPolicyName)
+	qosPolicyClient.DeleteSync(ctx, eipQoSPolicyName)
 
 	// match qos of priority 2
 	ginkgo.By("Check qos to match priority 2 is limited to " + fmt.Sprint(specificIPLimit) + "Mbps")
-	checkQos(f, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, specificIPLimit, true)
+	checkQos(ctx, f, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, specificIPLimit, true)
 
 	// change qos policy of natgw
 	newNatGwQoSPolicyName := "new-priority-nic-qos-policy-" + framework.RandomSuffix()
@@ -955,29 +964,31 @@ func priorityQoSCases(f *framework.Framework,
 	newNatgwRules := getNicDefaultQoSPolicy(defaultNicLimit)
 
 	newNatgwQoSPolicy := framework.MakeQoSPolicy(newNatGwQoSPolicyName, true, apiv1.QoSBindingTypeNatGw, newNatgwRules)
-	_ = qosPolicyClient.CreateSync(newNatgwQoSPolicy)
+	_ = qosPolicyClient.CreateSync(ctx, newNatgwQoSPolicy)
 
 	ginkgo.By("Change qos policy of natgw " + natgwName + " to " + newNatGwQoSPolicyName)
-	_ = vpcNatGwClient.PatchQoSPolicySync(natgwName, newNatGwQoSPolicyName)
+	_ = vpcNatGwClient.PatchQoSPolicySync(ctx, natgwName, newNatGwQoSPolicyName)
 
 	// match qos of priority 3
 	ginkgo.By("Check qos to match priority 3 is limited to " + fmt.Sprint(specificIPLimit) + "Mbps")
-	checkQos(f, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, defaultNicLimit, true)
+	checkQos(ctx, f, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, defaultNicLimit, true)
 
 	ginkgo.By("Remove qos policy " + natGwQoSPolicyName + " from natgw " + natgwName)
-	_ = vpcNatGwClient.PatchQoSPolicySync(natgwName, "")
+	_ = vpcNatGwClient.PatchQoSPolicySync(ctx, natgwName, "")
 
 	ginkgo.By("Deleting qos policy " + natGwQoSPolicyName)
-	qosPolicyClient.DeleteSync(natGwQoSPolicyName)
+	qosPolicyClient.DeleteSync(ctx, natGwQoSPolicyName)
 
 	ginkgo.By("Deleting qos policy " + newNatGwQoSPolicyName)
-	qosPolicyClient.DeleteSync(newNatGwQoSPolicyName)
+	qosPolicyClient.DeleteSync(ctx, newNatGwQoSPolicyName)
 
 	ginkgo.By("Check qos " + natGwQoSPolicyName + " is not limited to " + fmt.Sprint(defaultNicLimit) + "Mbps")
-	checkQos(f, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, defaultNicLimit, false)
+	checkQos(ctx, f, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, defaultNicLimit, false)
 }
 
-func createNatGwAndSetQosCases(f *framework.Framework,
+func createNatGwAndSetQosCases(
+	ctx context.Context,
+	f *framework.Framework,
 	vpcNatGwClient *framework.VpcNatGatewayClient,
 	ipClient *framework.IPClient,
 	eipClient *framework.IptablesEIPClient,
@@ -999,73 +1010,73 @@ func createNatGwAndSetQosCases(f *framework.Framework,
 
 	// delete fip
 	ginkgo.By("Deleting fip " + fipName)
-	fipClient.DeleteSync(fipName)
+	fipClient.DeleteSync(ctx, fipName)
 
 	ginkgo.By("Deleting eip " + eipName)
-	eipClient.DeleteSync(eipName)
+	eipClient.DeleteSync(ctx, eipName)
 
 	// the only pod for vpc nat gateway
 	vpcNatGw1PodName := util.GenNatGwPodName(natgwName)
 
 	// delete vpc nat gw statefulset remaining ip for eth0 and net2
 	ginkgo.By("Deleting custom vpc nat gw " + natgwName)
-	vpcNatGwClient.DeleteSync(natgwName)
+	vpcNatGwClient.DeleteSync(ctx, natgwName)
 
-	overlaySubnet1 := subnetClient.Get(overlaySubnetName)
-	macvlanSubnet := subnetClient.Get(attachDefName)
+	overlaySubnet1 := subnetClient.Get(ctx, overlaySubnetName)
+	macvlanSubnet := subnetClient.Get(ctx, attachDefName)
 	eth0IpName := ovs.PodNameToPortName(vpcNatGw1PodName, framework.KubeOvnNamespace, overlaySubnet1.Spec.Provider)
 	net1IpName := ovs.PodNameToPortName(vpcNatGw1PodName, framework.KubeOvnNamespace, macvlanSubnet.Spec.Provider)
 	ginkgo.By("Deleting vpc nat gw eth0 ip " + eth0IpName)
-	ipClient.DeleteSync(eth0IpName)
+	ipClient.DeleteSync(ctx, eth0IpName)
 	ginkgo.By("Deleting vpc nat gw net1 ip " + net1IpName)
-	ipClient.DeleteSync(net1IpName)
+	ipClient.DeleteSync(ctx, net1IpName)
 
 	natgwQoSPolicyName := "default-nic-qos-policy-" + framework.RandomSuffix()
 	ginkgo.By("Creating qos policy " + natgwQoSPolicyName)
 	rules := getNicDefaultQoSPolicy(defaultNicLimit)
 
 	qosPolicy := framework.MakeQoSPolicy(natgwQoSPolicyName, true, apiv1.QoSBindingTypeNatGw, rules)
-	_ = qosPolicyClient.CreateSync(qosPolicy)
+	_ = qosPolicyClient.CreateSync(ctx, qosPolicy)
 
 	ginkgo.By("Creating custom vpc nat gw")
 	vpcNatGw := framework.MakeVpcNatGateway(natgwName, vpcName, overlaySubnetName, lanIP, attachDefName, natgwQoSPolicyName)
-	_ = vpcNatGwClient.CreateSync(vpcNatGw, f.ClientSet)
+	_ = vpcNatGwClient.CreateSync(ctx, vpcNatGw, f.ClientSet)
 
 	eipQoSPolicyName := "eip-qos-policy-" + framework.RandomSuffix()
 	ginkgo.By("Creating qos policy " + eipQoSPolicyName)
 	rules = getEIPQoSRule(eipLimit)
 
 	eipQoSPolicy := framework.MakeQoSPolicy(eipQoSPolicyName, false, apiv1.QoSBindingTypeEIP, rules)
-	_ = qosPolicyClient.CreateSync(eipQoSPolicy)
+	_ = qosPolicyClient.CreateSync(ctx, eipQoSPolicy)
 
 	ginkgo.By("Creating eip " + eipName)
 	vpc1EIP := framework.MakeIptablesEIP(eipName, "", "", "", natgwName, attachDefName, eipQoSPolicyName)
-	vpc1EIP = eipClient.CreateSync(vpc1EIP)
+	vpc1EIP = eipClient.CreateSync(ctx, vpc1EIP)
 
 	ginkgo.By("Creating fip " + fipName)
 	fip := framework.MakeIptablesFIPRule(fipName, eipName, vpc1Pod.Status.PodIP)
-	_ = fipClient.CreateSync(fip)
+	_ = fipClient.CreateSync(ctx, fip)
 
 	ginkgo.By("Check qos " + eipQoSPolicyName + " is limited to " + fmt.Sprint(eipLimit) + "Mbps")
-	checkQos(f, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, eipLimit, true)
+	checkQos(ctx, f, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, eipLimit, true)
 
 	ginkgo.By("Remove qos policy " + eipQoSPolicyName + " from natgw " + natgwName)
-	_ = eipClient.PatchQoSPolicySync(eipName, "")
+	_ = eipClient.PatchQoSPolicySync(ctx, eipName, "")
 
 	ginkgo.By("Check qos " + natgwQoSPolicyName + " is limited to " + fmt.Sprint(defaultNicLimit) + "Mbps")
-	checkQos(f, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, defaultNicLimit, true)
+	checkQos(ctx, f, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, defaultNicLimit, true)
 
 	ginkgo.By("Remove qos policy " + natgwQoSPolicyName + " from natgw " + natgwName)
-	_ = vpcNatGwClient.PatchQoSPolicySync(natgwName, "")
+	_ = vpcNatGwClient.PatchQoSPolicySync(ctx, natgwName, "")
 
 	ginkgo.By("Check qos " + natgwQoSPolicyName + " is not limited to " + fmt.Sprint(defaultNicLimit) + "Mbps")
-	checkQos(f, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, defaultNicLimit, false)
+	checkQos(ctx, f, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, defaultNicLimit, false)
 
 	ginkgo.By("Deleting qos policy " + natgwQoSPolicyName)
-	qosPolicyClient.DeleteSync(natgwQoSPolicyName)
+	qosPolicyClient.DeleteSync(ctx, natgwQoSPolicyName)
 
 	ginkgo.By("Deleting qos policy " + eipQoSPolicyName)
-	qosPolicyClient.DeleteSync(eipQoSPolicyName)
+	qosPolicyClient.DeleteSync(ctx, eipQoSPolicyName)
 }
 
 func validRateLimit(text string, limit int) bool {
@@ -1127,28 +1138,10 @@ var _ = framework.Describe("[group:qos-policy]", func() {
 	var annotations2 map[string]string
 	var iperfServerCmd []string
 
-	ginkgo.BeforeEach(func() {
-		vpcQosParams = newVPCQoSParamsInit()
-
-		dockerExtNetName = "kube-ovn-qos-" + framework.RandomSuffix()
-
-		vpcQosParams.vpc1SubnetName = "qos-vpc1-subnet-" + framework.RandomSuffix()
-		vpcQosParams.vpc2SubnetName = "qos-vpc2-subnet-" + framework.RandomSuffix()
-
-		vpcQosParams.vpcNat1GwName = "qos-gw1-" + framework.RandomSuffix()
-		vpcQosParams.vpcNat2GwName = "qos-gw2-" + framework.RandomSuffix()
-
-		vpcQosParams.vpc1EIPName = "qos-vpc1-eip-" + framework.RandomSuffix()
-		vpcQosParams.vpc2EIPName = "qos-vpc2-eip-" + framework.RandomSuffix()
-
-		vpcQosParams.vpc1FIPName = "qos-vpc1-fip-" + framework.RandomSuffix()
-		vpcQosParams.vpc2FIPName = "qos-vpc2-fip-" + framework.RandomSuffix()
-
-		vpcQosParams.vpc1PodName = "qos-vpc1-pod-" + framework.RandomSuffix()
-		vpcQosParams.vpc2PodName = "qos-vpc2-pod-" + framework.RandomSuffix()
-
-		vpcQosParams.attachDefName = "qos-ovn-vpc-external-network-" + framework.RandomSuffix()
-		vpcQosParams.subnetProvider = fmt.Sprintf("%s.%s", vpcQosParams.attachDefName, framework.KubeOvnNamespace)
+	ginkgo.BeforeEach(ginkgo.NodeTimeout(10*time.Second), func(ctx ginkgo.SpecContext) {
+		if skip {
+			ginkgo.Skip("underlay spec only runs on kind clusters")
+		}
 
 		cs = f.ClientSet
 		podClient = f.PodClient()
@@ -1161,13 +1154,24 @@ var _ = framework.Describe("[group:qos-policy]", func() {
 		iptablesFIPClient = f.IptablesFIPClient()
 		qosPolicyClient = f.QoSPolicyClient()
 
-		if skip {
-			ginkgo.Skip("underlay spec only runs on kind clusters")
-		}
+		vpcQosParams = newVPCQoSParamsInit()
+		dockerExtNetName = "kube-ovn-qos-" + framework.RandomSuffix()
+		vpcQosParams.vpc1SubnetName = "qos-vpc1-subnet-" + framework.RandomSuffix()
+		vpcQosParams.vpc2SubnetName = "qos-vpc2-subnet-" + framework.RandomSuffix()
+		vpcQosParams.vpcNat1GwName = "qos-gw1-" + framework.RandomSuffix()
+		vpcQosParams.vpcNat2GwName = "qos-gw2-" + framework.RandomSuffix()
+		vpcQosParams.vpc1EIPName = "qos-vpc1-eip-" + framework.RandomSuffix()
+		vpcQosParams.vpc2EIPName = "qos-vpc2-eip-" + framework.RandomSuffix()
+		vpcQosParams.vpc1FIPName = "qos-vpc1-fip-" + framework.RandomSuffix()
+		vpcQosParams.vpc2FIPName = "qos-vpc2-fip-" + framework.RandomSuffix()
+		vpcQosParams.vpc1PodName = "qos-vpc1-pod-" + framework.RandomSuffix()
+		vpcQosParams.vpc2PodName = "qos-vpc2-pod-" + framework.RandomSuffix()
+		vpcQosParams.attachDefName = "qos-ovn-vpc-external-network-" + framework.RandomSuffix()
+		vpcQosParams.subnetProvider = fmt.Sprintf("%s.%s", vpcQosParams.attachDefName, framework.KubeOvnNamespace)
 
 		if clusterName == "" {
 			ginkgo.By("Getting k8s nodes")
-			k8sNodes, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
+			k8sNodes, err := e2enode.GetReadySchedulableNodes(ctx, cs)
 			framework.ExpectNoError(err)
 
 			cluster, ok := kind.IsKindProvided(k8sNodes.Items[0].Spec.ProviderID)
@@ -1179,28 +1183,28 @@ var _ = framework.Describe("[group:qos-policy]", func() {
 		}
 
 		ginkgo.By("Ensuring docker network " + dockerExtNetName + " exists")
-		network, err := docker.NetworkCreate(dockerExtNetName, true, true)
+		network, err := docker.NetworkCreate(ctx, dockerExtNetName, true, true)
 		framework.ExpectNoError(err, "creating docker network "+dockerExtNetName)
 		dockerExtNetNetwork = network
 
 		ginkgo.By("Getting kind nodes")
-		nodes, err := kind.ListNodes(clusterName, "")
+		nodes, err := kind.ListNodes(ctx, clusterName, "")
 		framework.ExpectNoError(err, "getting nodes in kind cluster")
 		framework.ExpectNotEmpty(nodes)
 
 		ginkgo.By("Connecting nodes to the docker network")
-		err = kind.NetworkConnect(dockerExtNetNetwork.ID, nodes)
+		err = kind.NetworkConnect(ctx, dockerExtNetNetwork.ID, nodes)
 		framework.ExpectNoError(err, "connecting nodes to network "+dockerExtNetName)
 
 		ginkgo.By("Getting node links that belong to the docker network")
-		nodes, err = kind.ListNodes(clusterName, "")
+		nodes, err = kind.ListNodes(ctx, clusterName, "")
 		framework.ExpectNoError(err, "getting nodes in kind cluster")
 
 		ginkgo.By("Validating node links")
-		network1, err := docker.NetworkInspect(dockerExtNetName)
+		network1, err := docker.NetworkInspect(ctx, dockerExtNetName)
 		framework.ExpectNoError(err)
 		for _, node := range nodes {
-			links, err := node.ListLinks()
+			links, err := node.ListLinks(ctx)
 			framework.ExpectNoError(err, "failed to list links on node %s: %v", node.Name(), err)
 			net1Mac := network1.Containers[node.ID].MacAddress
 			for _, link := range links {
@@ -1217,41 +1221,41 @@ var _ = framework.Describe("[group:qos-policy]", func() {
 			framework.ExpectTrue(net1Exist)
 		}
 		setupNetworkAttachmentDefinition(
-			f, dockerExtNetNetwork, attachNetClient,
+			ctx, f, dockerExtNetNetwork, attachNetClient,
 			subnetClient, vpcQosParams.attachDefName, net1NicName, vpcQosParams.subnetProvider, dockerExtNetName)
 	})
 
-	ginkgo.AfterEach(func() {
+	ginkgo.AfterEach(ginkgo.NodeTimeout(15*time.Second), func(ctx ginkgo.SpecContext) {
 		ginkgo.By("Deleting macvlan underlay subnet " + vpcQosParams.attachDefName)
-		subnetClient.DeleteSync(vpcQosParams.attachDefName)
+		subnetClient.DeleteSync(ctx, vpcQosParams.attachDefName)
 
 		// delete net1 attachment definition
 		ginkgo.By("Deleting nad " + vpcQosParams.attachDefName)
-		attachNetClient.Delete(vpcQosParams.attachDefName)
+		attachNetClient.Delete(ctx, vpcQosParams.attachDefName)
 
 		ginkgo.By("Getting nodes")
-		nodes, err := kind.ListNodes(clusterName, "")
+		nodes, err := kind.ListNodes(ctx, clusterName, "")
 		framework.ExpectNoError(err, "getting nodes in cluster")
 
 		if dockerExtNetNetwork != nil {
 			ginkgo.By("Disconnecting nodes from the docker network")
-			err = kind.NetworkDisconnect(dockerExtNetNetwork.ID, nodes)
+			err = kind.NetworkDisconnect(ctx, dockerExtNetNetwork.ID, nodes)
 			framework.ExpectNoError(err, "disconnecting nodes from network "+dockerExtNetName)
 			ginkgo.By("Deleting docker network " + dockerExtNetName + " exists")
-			err := docker.NetworkRemove(dockerExtNetNetwork.ID)
+			err := docker.NetworkRemove(ctx, dockerExtNetNetwork.ID)
 			framework.ExpectNoError(err, "deleting docker network "+dockerExtNetName)
 		}
 	})
 
 	_ = framework.Describe("vpc qos", func() {
-		ginkgo.BeforeEach(func() {
+		ginkgo.BeforeEach(ginkgo.NodeTimeout(2*time.Minute), func(ctx ginkgo.SpecContext) {
 			iperfServerCmd = []string{"iperf", "-s", "-i", "1", "-p", iperf2Port}
 			overlaySubnetV4Cidr = "10.0.0.0/24"
 			overlaySubnetV4Gw = "10.0.0.1"
 			lanIP = "10.0.0.254"
 			natgwQoS := ""
 			setupVpcNatGwTestEnvironment(
-				f, dockerExtNetNetwork, attachNetClient,
+				ctx, f, dockerExtNetNetwork, attachNetClient,
 				subnetClient, vpcClient, vpcNatGwClient,
 				vpcQosParams.vpc1Name, vpcQosParams.vpc1SubnetName, vpcQosParams.vpcNat1GwName,
 				natgwQoS, overlaySubnetV4Cidr, overlaySubnetV4Gw, lanIP,
@@ -1264,18 +1268,18 @@ var _ = framework.Describe("[group:qos-policy]", func() {
 			}
 			ginkgo.By("Creating pod " + vpcQosParams.vpc1PodName)
 			vpc1Pod = framework.MakePod(f.Namespace.Name, vpcQosParams.vpc1PodName, nil, annotations1, framework.AgnhostImage, iperfServerCmd, nil)
-			vpc1Pod = podClient.CreateSync(vpc1Pod)
+			vpc1Pod = podClient.CreateSync(ctx, vpc1Pod)
 
 			ginkgo.By("Creating eip " + vpcQosParams.vpc1EIPName)
 			vpc1EIP = framework.MakeIptablesEIP(vpcQosParams.vpc1EIPName, "", "", "", vpcQosParams.vpcNat1GwName, vpcQosParams.attachDefName, "")
-			vpc1EIP = iptablesEIPClient.CreateSync(vpc1EIP)
+			vpc1EIP = iptablesEIPClient.CreateSync(ctx, vpc1EIP)
 
 			ginkgo.By("Creating fip " + vpcQosParams.vpc1FIPName)
 			vpc1FIP = framework.MakeIptablesFIPRule(vpcQosParams.vpc1FIPName, vpcQosParams.vpc1EIPName, vpc1Pod.Status.PodIP)
-			_ = iptablesFIPClient.CreateSync(vpc1FIP)
+			_ = iptablesFIPClient.CreateSync(ctx, vpc1FIP)
 
 			setupVpcNatGwTestEnvironment(
-				f, dockerExtNetNetwork, attachNetClient,
+				ctx, f, dockerExtNetNetwork, attachNetClient,
 				subnetClient, vpcClient, vpcNatGwClient,
 				vpcQosParams.vpc2Name, vpcQosParams.vpc2SubnetName, vpcQosParams.vpcNat2GwName,
 				natgwQoS, overlaySubnetV4Cidr, overlaySubnetV4Gw, lanIP,
@@ -1290,100 +1294,100 @@ var _ = framework.Describe("[group:qos-policy]", func() {
 
 			ginkgo.By("Creating pod " + vpcQosParams.vpc2PodName)
 			vpc2Pod = framework.MakePod(f.Namespace.Name, vpcQosParams.vpc2PodName, nil, annotations2, framework.AgnhostImage, iperfServerCmd, nil)
-			vpc2Pod = podClient.CreateSync(vpc2Pod)
+			vpc2Pod = podClient.CreateSync(ctx, vpc2Pod)
 
 			ginkgo.By("Creating eip " + vpcQosParams.vpc2EIPName)
 			vpc2EIP = framework.MakeIptablesEIP(vpcQosParams.vpc2EIPName, "", "", "", vpcQosParams.vpcNat2GwName, vpcQosParams.attachDefName, "")
-			vpc2EIP = iptablesEIPClient.CreateSync(vpc2EIP)
+			vpc2EIP = iptablesEIPClient.CreateSync(ctx, vpc2EIP)
 
 			ginkgo.By("Creating fip " + vpcQosParams.vpc2FIPName)
 			vpc2FIP = framework.MakeIptablesFIPRule(vpcQosParams.vpc2FIPName, vpcQosParams.vpc2EIPName, vpc2Pod.Status.PodIP)
-			_ = iptablesFIPClient.CreateSync(vpc2FIP)
+			_ = iptablesFIPClient.CreateSync(ctx, vpc2FIP)
 		})
-		ginkgo.AfterEach(func() {
+		ginkgo.AfterEach(ginkgo.NodeTimeout(2*time.Minute), func(ctx ginkgo.SpecContext) {
 			ginkgo.By("Deleting fip " + vpcQosParams.vpc1FIPName)
-			iptablesFIPClient.DeleteSync(vpcQosParams.vpc1FIPName)
+			iptablesFIPClient.DeleteSync(ctx, vpcQosParams.vpc1FIPName)
 
 			ginkgo.By("Deleting fip " + vpcQosParams.vpc2FIPName)
-			iptablesFIPClient.DeleteSync(vpcQosParams.vpc2FIPName)
+			iptablesFIPClient.DeleteSync(ctx, vpcQosParams.vpc2FIPName)
 
 			ginkgo.By("Deleting eip " + vpcQosParams.vpc1EIPName)
-			iptablesEIPClient.DeleteSync(vpcQosParams.vpc1EIPName)
+			iptablesEIPClient.DeleteSync(ctx, vpcQosParams.vpc1EIPName)
 
 			ginkgo.By("Deleting eip " + vpcQosParams.vpc2EIPName)
-			iptablesEIPClient.DeleteSync(vpcQosParams.vpc2EIPName)
+			iptablesEIPClient.DeleteSync(ctx, vpcQosParams.vpc2EIPName)
 
 			ginkgo.By("Deleting pod " + vpcQosParams.vpc1PodName)
-			podClient.DeleteSync(vpcQosParams.vpc1PodName)
+			podClient.DeleteSync(ctx, vpcQosParams.vpc1PodName)
 
 			ginkgo.By("Deleting pod " + vpcQosParams.vpc2PodName)
-			podClient.DeleteSync(vpcQosParams.vpc2PodName)
+			podClient.DeleteSync(ctx, vpcQosParams.vpc2PodName)
 
 			ginkgo.By("Deleting custom vpc " + vpcQosParams.vpc1Name)
-			vpcClient.DeleteSync(vpcQosParams.vpc1Name)
+			vpcClient.DeleteSync(ctx, vpcQosParams.vpc1Name)
 
 			ginkgo.By("Deleting custom vpc " + vpcQosParams.vpc2Name)
-			vpcClient.DeleteSync(vpcQosParams.vpc2Name)
+			vpcClient.DeleteSync(ctx, vpcQosParams.vpc2Name)
 
 			ginkgo.By("Deleting custom vpc nat gw " + vpcQosParams.vpcNat1GwName)
-			vpcNatGwClient.DeleteSync(vpcQosParams.vpcNat1GwName)
+			vpcNatGwClient.DeleteSync(ctx, vpcQosParams.vpcNat1GwName)
 
 			ginkgo.By("Deleting custom vpc nat gw " + vpcQosParams.vpcNat2GwName)
-			vpcNatGwClient.DeleteSync(vpcQosParams.vpcNat2GwName)
+			vpcNatGwClient.DeleteSync(ctx, vpcQosParams.vpcNat2GwName)
 
 			// the only pod for vpc nat gateway
 			vpcNatGw1PodName := util.GenNatGwPodName(vpcQosParams.vpcNat1GwName)
 
 			// delete vpc nat gw statefulset remaining ip for eth0 and net2
-			overlaySubnet1 := subnetClient.Get(vpcQosParams.vpc1SubnetName)
-			macvlanSubnet := subnetClient.Get(vpcQosParams.attachDefName)
+			overlaySubnet1 := subnetClient.Get(ctx, vpcQosParams.vpc1SubnetName)
+			macvlanSubnet := subnetClient.Get(ctx, vpcQosParams.attachDefName)
 			eth0IpName := ovs.PodNameToPortName(vpcNatGw1PodName, framework.KubeOvnNamespace, overlaySubnet1.Spec.Provider)
 			net1IpName := ovs.PodNameToPortName(vpcNatGw1PodName, framework.KubeOvnNamespace, macvlanSubnet.Spec.Provider)
 			ginkgo.By("Deleting vpc nat gw eth0 ip " + eth0IpName)
-			ipClient.DeleteSync(eth0IpName)
+			ipClient.DeleteSync(ctx, eth0IpName)
 			ginkgo.By("Deleting vpc nat gw net1 ip " + net1IpName)
-			ipClient.DeleteSync(net1IpName)
+			ipClient.DeleteSync(ctx, net1IpName)
 			ginkgo.By("Deleting overlay subnet " + vpcQosParams.vpc1SubnetName)
-			subnetClient.DeleteSync(vpcQosParams.vpc1SubnetName)
+			subnetClient.DeleteSync(ctx, vpcQosParams.vpc1SubnetName)
 
 			ginkgo.By("Getting overlay subnet " + vpcQosParams.vpc2SubnetName)
-			overlaySubnet2 := subnetClient.Get(vpcQosParams.vpc2SubnetName)
+			overlaySubnet2 := subnetClient.Get(ctx, vpcQosParams.vpc2SubnetName)
 
 			vpcNatGw2PodName := util.GenNatGwPodName(vpcQosParams.vpcNat2GwName)
 			eth0IpName = ovs.PodNameToPortName(vpcNatGw2PodName, framework.KubeOvnNamespace, overlaySubnet2.Spec.Provider)
 			net1IpName = ovs.PodNameToPortName(vpcNatGw2PodName, framework.KubeOvnNamespace, macvlanSubnet.Spec.Provider)
 			ginkgo.By("Deleting vpc nat gw eth0 ip " + eth0IpName)
-			ipClient.DeleteSync(eth0IpName)
+			ipClient.DeleteSync(ctx, eth0IpName)
 			ginkgo.By("Deleting vpc nat gw net1 ip " + net1IpName)
-			ipClient.DeleteSync(net1IpName)
+			ipClient.DeleteSync(ctx, net1IpName)
 			ginkgo.By("Deleting overlay subnet " + vpcQosParams.vpc2SubnetName)
-			subnetClient.DeleteSync(vpcQosParams.vpc2SubnetName)
+			subnetClient.DeleteSync(ctx, vpcQosParams.vpc2SubnetName)
 		})
-		framework.ConformanceIt("default nic qos", func() {
+		framework.ConformanceIt("default nic qos", ginkgo.SpecTimeout(4*time.Minute), func(ctx ginkgo.SpecContext) {
 			// case 1: set qos policy for natgw
 			// case 2: rebuild qos when natgw pod restart
-			defaultQoSCases(f, vpcNatGwClient, podClient, qosPolicyClient, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, vpcQosParams.vpcNat1GwName)
+			defaultQoSCases(ctx, f, vpcNatGwClient, podClient, qosPolicyClient, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, vpcQosParams.vpcNat1GwName)
 		})
-		framework.ConformanceIt("eip qos", func() {
+		framework.ConformanceIt("eip qos", ginkgo.SpecTimeout(4*time.Minute), func(ctx ginkgo.SpecContext) {
 			// case 1: set qos policy for eip
 			// case 2: update qos policy for eip
 			// case 3: change qos policy of eip
 			// case 4: rebuild qos when natgw pod restart
-			eipQoSCases(f, iptablesEIPClient, podClient, qosPolicyClient, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, vpcQosParams.vpc1EIPName, vpcQosParams.vpcNat1GwName)
+			eipQoSCases(ctx, f, iptablesEIPClient, podClient, qosPolicyClient, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, vpcQosParams.vpc1EIPName, vpcQosParams.vpcNat1GwName)
 		})
-		framework.ConformanceIt("specifying ip qos", func() {
+		framework.ConformanceIt("specifying ip qos", ginkgo.SpecTimeout(3*time.Minute), func(ctx ginkgo.SpecContext) {
 			// case 1: set specific ip qos policy for natgw
-			specifyingIPQoSCases(f, vpcNatGwClient, qosPolicyClient, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, vpcQosParams.vpcNat1GwName)
+			specifyingIPQoSCases(ctx, f, vpcNatGwClient, qosPolicyClient, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, vpcQosParams.vpcNat1GwName)
 		})
-		framework.ConformanceIt("qos priority matching", func() {
+		framework.ConformanceIt("qos priority matching", ginkgo.SpecTimeout(4*time.Minute), func(ctx ginkgo.SpecContext) {
 			// case 1: test qos match priority
 			// case 2: change qos policy of natgw
-			priorityQoSCases(f, vpcNatGwClient, iptablesEIPClient, qosPolicyClient, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, vpcQosParams.vpcNat1GwName, vpcQosParams.vpc1EIPName)
+			priorityQoSCases(ctx, f, vpcNatGwClient, iptablesEIPClient, qosPolicyClient, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, vpcQosParams.vpcNat1GwName, vpcQosParams.vpc1EIPName)
 		})
-		framework.ConformanceIt("create resource with qos policy", func() {
+		framework.ConformanceIt("create resource with qos policy", ginkgo.SpecTimeout(4*time.Minute), func(ctx ginkgo.SpecContext) {
 			// case 1: test qos when create natgw with qos policy
 			// case 2: test qos when create eip with qos policy
-			createNatGwAndSetQosCases(f,
+			createNatGwAndSetQosCases(ctx, f,
 				vpcNatGwClient, ipClient, iptablesEIPClient, iptablesFIPClient,
 				subnetClient, qosPolicyClient, vpc1Pod, vpc2Pod, vpc2EIP, vpcQosParams.vpcNat1GwName,
 				vpcQosParams.vpc1EIPName, vpcQosParams.vpc1FIPName, vpcQosParams.vpc1Name,

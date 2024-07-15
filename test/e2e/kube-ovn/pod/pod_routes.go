@@ -1,8 +1,10 @@
 package pod
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
+	"time"
 
 	"github.com/onsi/ginkgo/v2"
 
@@ -21,7 +23,7 @@ var _ = framework.Describe("[group:pod]", func() {
 	var namespaceName, subnetName, podName string
 	var cidr string
 
-	ginkgo.BeforeEach(func() {
+	ginkgo.BeforeEach(ginkgo.NodeTimeout(time.Second), func(_ ginkgo.SpecContext) {
 		podClient = f.PodClient()
 		subnetClient = f.SubnetClient()
 		namespaceName = f.Namespace.Name
@@ -29,15 +31,15 @@ var _ = framework.Describe("[group:pod]", func() {
 		podName = "pod-" + framework.RandomSuffix()
 		cidr = framework.RandomCIDR(f.ClusterIPFamily)
 	})
-	ginkgo.AfterEach(func() {
+	ginkgo.AfterEach(ginkgo.NodeTimeout(20*time.Second), func(ctx ginkgo.SpecContext) {
 		ginkgo.By("Deleting pod " + podName)
-		podClient.DeleteSync(podName)
+		podClient.DeleteSync(ctx, podName)
 
 		ginkgo.By("Deleting subnet " + subnetName)
-		subnetClient.DeleteSync(subnetName)
+		subnetClient.DeleteSync(ctx, subnetName)
 	})
 
-	framework.ConformanceIt("should support configuring routes via pod annotation", func() {
+	framework.ConformanceIt("should support configuring routes via pod annotation", ginkgo.SpecTimeout(40*time.Second), func(ctx ginkgo.SpecContext) {
 		f.SkipVersionPriorTo(1, 12, "This feature was introduced in v1.12")
 
 		ginkgo.By("Generating routes")
@@ -60,15 +62,15 @@ var _ = framework.Describe("[group:pod]", func() {
 
 		ginkgo.By("Creating subnet " + subnetName)
 		subnet := framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, []string{namespaceName})
-		subnet = subnetClient.CreateSync(subnet)
+		subnet = subnetClient.CreateSync(ctx, subnet)
 
 		ginkgo.By("Creating pod " + podName)
 		annotations := map[string]string{
 			util.RoutesAnnotation: string(buff),
 		}
-		cmd := []string{"sh", "-c", "sleep infinity"}
+		cmd := []string{"sleep", "infinity"}
 		pod := framework.MakePod(namespaceName, podName, nil, annotations, f.KubeOVNImage, cmd, nil)
-		pod = podClient.CreateSync(pod)
+		pod = podClient.CreateSync(ctx, pod)
 
 		ginkgo.By("Validating pod annoations")
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
@@ -79,8 +81,8 @@ var _ = framework.Describe("[group:pod]", func() {
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
 
 		ginkgo.By("Getting pod routes")
-		podRoutes, err := iproute.RouteShow("", "eth0", func(cmd ...string) ([]byte, []byte, error) {
-			return framework.KubectlExec(pod.Namespace, pod.Name, cmd...)
+		podRoutes, err := iproute.RouteShow(ctx, "", "eth0", func(ctx context.Context, cmd string) ([]byte, []byte, error) {
+			return framework.KubectlExec(ctx, pod.Namespace, pod.Name, cmd)
 		})
 		framework.ExpectNoError(err)
 

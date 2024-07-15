@@ -31,11 +31,11 @@ func (f *Framework) EventClientNS(namespace string) *EventClient {
 }
 
 // WaitToHaveEvent waits the provided resource to have the specified event(s)
-func (c *EventClient) WaitToHaveEvent(kind, name, eventType, reason, sourceComponent, sourceHost string) []corev1.Event {
+func (c *EventClient) WaitToHaveEvent(ctx context.Context, kind, name, eventType, reason, sourceComponent, sourceHost string) []corev1.Event {
 	ginkgo.GinkgoHelper()
 
 	var result []corev1.Event
-	err := wait.PollUntilContextTimeout(context.Background(), poll, timeout, false, func(ctx context.Context) (bool, error) {
+	err := wait.PollUntilContextTimeout(ctx, poll, timeout, false, func(ctx context.Context) (bool, error) {
 		Logf("Waiting for %s %s/%s to have event %s/%s", kind, c.namespace, name, eventType, reason)
 		selector := fields.Set{
 			"involvedObject.kind": kind,

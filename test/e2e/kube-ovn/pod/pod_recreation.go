@@ -2,8 +2,8 @@ package pod
 
 import (
 	"cmp"
-	"context"
 	"strings"
+	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -20,20 +20,20 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 	var podClient *framework.PodClient
 	var namespaceName, podName string
 
-	ginkgo.BeforeEach(func() {
+	ginkgo.BeforeEach(ginkgo.NodeTimeout(time.Second), func(_ ginkgo.SpecContext) {
 		podClient = f.PodClient()
 		namespaceName = f.Namespace.Name
 		podName = "pod-" + framework.RandomSuffix()
 	})
-	ginkgo.AfterEach(func() {
+	ginkgo.AfterEach(ginkgo.NodeTimeout(15*time.Second), func(ctx ginkgo.SpecContext) {
 		ginkgo.By("Deleting pod " + podName)
-		podClient.DeleteSync(podName)
+		podClient.DeleteSync(ctx, podName)
 	})
 
-	framework.ConformanceIt("should handle pod creation during kube-ovn-controller is down", func() {
+	framework.ConformanceIt("should handle pod creation during kube-ovn-controller is down", ginkgo.SpecTimeout(time.Minute), func(ctx ginkgo.SpecContext) {
 		ginkgo.By("Creating pod " + podName)
 		pod := framework.MakePod(namespaceName, podName, nil, nil, framework.PauseImage, nil, nil)
-		pod = podClient.CreateSync(pod)
+		pod = podClient.CreateSync(ctx, pod)
 
 		ginkgo.By("Validating pod annoations")
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
@@ -44,7 +44,7 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 		portName := ovs.PodNameToPortName(podName, pod.Namespace, util.OvnProvider)
 		ginkgo.By("Getting ips " + portName)
 		ipClient := f.IPClient()
-		ip := ipClient.Get(portName)
+		ip := ipClient.Get(ctx, portName)
 
 		ginkgo.By("Validating ips " + ip.Name)
 		framework.ExpectEqual(ip.Spec.MacAddress, mac)
@@ -52,14 +52,13 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 
 		ginkgo.By("Getting deployment kube-ovn-controller")
 		deployClient := f.DeploymentClientNS(framework.KubeOvnNamespace)
-		deploy := deployClient.Get("kube-ovn-controller")
+		deploy := deployClient.Get(ctx, "kube-ovn-controller")
 		framework.ExpectNotNil(deploy.Spec.Replicas)
 
 		ginkgo.By("Getting kube-ovn-controller pods")
 		kubePodClient := f.PodClientNS(framework.KubeOvnNamespace)
 		framework.ExpectNotNil(deploy.Spec.Replicas)
-		pods, err := kubePodClient.List(context.Background(), metav1.ListOptions{LabelSelector: metav1.FormatLabelSelector(deploy.Spec.Selector)})
-		framework.ExpectNoError(err, "failed to list kube-ovn-controller pods")
+		pods := kubePodClient.List(ctx, metav1.ListOptions{LabelSelector: metav1.FormatLabelSelector(deploy.Spec.Selector)})
 		framework.ExpectNotNil(pods)
 		podNames := make([]string, 0, len(pods.Items))
 		for _, pod := range pods.Items {
@@ -68,39 +67,39 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 		framework.Logf("Got kube-ovn-controller pods: %s", strings.Join(podNames, ", "))
 
 		ginkgo.By("Stopping kube-ovn-controller by setting its replicas to zero")
-		deployClient.SetScale(deploy.Name, 0)
+		deployClient.SetScale(ctx, deploy.Name, 0)
 
 		ginkgo.By("Waiting for kube-ovn-controller pods to disappear")
 		for _, pod := range podNames {
 			ginkgo.By("Waiting for pod " + pod + " to disappear")
-			kubePodClient.WaitForNotFound(pod)
+			kubePodClient.WaitForNotFound(ctx, pod)
 		}
 
 		ginkgo.By("Deleting pod " + podName)
-		podClient.DeleteSync(podName)
+		podClient.DeleteSync(ctx, podName)
 
 		ginkgo.By("Recreating pod " + podName)
 		pod = framework.MakePod(namespaceName, podName, nil, nil, framework.PauseImage, nil, nil)
-		_ = podClient.Create(pod)
+		_ = podClient.Create(ctx, pod)
 
 		ginkgo.By("Starting kube-ovn-controller by restore its replicas")
-		deployClient.SetScale(deploy.Name, cmp.Or(*deploy.Spec.Replicas, 1))
+		deployClient.SetScale(ctx, deploy.Name, cmp.Or(*deploy.Spec.Replicas, 1))
 
 		ginkgo.By("Waiting for kube-ovn-controller to be ready")
-		_ = deployClient.RolloutStatus(deploy.Name)
+		_ = deployClient.RolloutStatus(ctx, deploy.Name)
 
 		ginkgo.By("Waiting for pod " + podName + " to be running")
-		podClient.WaitForRunning(podName)
+		podClient.WaitForRunning(ctx, podName)
 
 		ginkgo.By("Validating pod annoations")
-		pod = podClient.GetPod(podName)
+		pod = podClient.Get(ctx, podName)
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
 		framework.ExpectMAC(pod.Annotations[util.MacAddressAnnotation])
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
 		framework.ExpectNotEqual(pod.Annotations[util.MacAddressAnnotation], mac)
 
 		ginkgo.By("Getting ips " + portName)
-		ip = ipClient.Get(portName)
+		ip = ipClient.Get(ctx, portName)
 
 		ginkgo.By("Validating ips " + ip.Name)
 		framework.ExpectEqual(ip.Spec.MacAddress, pod.Annotations[util.MacAddressAnnotation])

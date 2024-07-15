@@ -39,20 +39,20 @@ func (f *Framework) DaemonSetClientNS(namespace string) *DaemonSetClient {
 	}
 }
 
-func (c *DaemonSetClient) Get(name string) *appsv1.DaemonSet {
+func (c *DaemonSetClient) Get(ctx context.Context, name string) *appsv1.DaemonSet {
 	ginkgo.GinkgoHelper()
-	ds, err := c.DaemonSetInterface.Get(context.TODO(), name, metav1.GetOptions{})
+	ds, err := c.DaemonSetInterface.Get(ctx, name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return ds
 }
 
-func (c *DaemonSetClient) GetPods(ds *appsv1.DaemonSet) (*corev1.PodList, error) {
+func (c *DaemonSetClient) GetPods(ctx context.Context, ds *appsv1.DaemonSet) (*corev1.PodList, error) {
 	podSelector, err := metav1.LabelSelectorAsSelector(ds.Spec.Selector)
 	if err != nil {
 		return nil, err
 	}
 	podListOptions := metav1.ListOptions{LabelSelector: podSelector.String()}
-	allPods, err := c.f.ClientSet.CoreV1().Pods(ds.Namespace).List(context.TODO(), podListOptions)
+	allPods, err := c.f.ClientSet.CoreV1().Pods(ds.Namespace).List(ctx, podListOptions)
 	if err != nil {
 		return nil, err
 	}
@@ -68,8 +68,8 @@ func (c *DaemonSetClient) GetPods(ds *appsv1.DaemonSet) (*corev1.PodList, error)
 	return ownedPods, nil
 }
 
-func (c *DaemonSetClient) GetPodOnNode(ds *appsv1.DaemonSet, node string) (*corev1.Pod, error) {
-	pods, err := c.GetPods(ds)
+func (c *DaemonSetClient) GetPodOnNode(ctx context.Context, ds *appsv1.DaemonSet, node string) (*corev1.Pod, error) {
+	pods, err := c.GetPods(ctx, ds)
 	if err != nil {
 		return nil, err
 	}
@@ -82,7 +82,7 @@ func (c *DaemonSetClient) GetPodOnNode(ds *appsv1.DaemonSet, node string) (*core
 	return nil, fmt.Errorf("pod for daemonset %s/%s on node %s not found", ds.Namespace, ds.Name, node)
 }
 
-func (c *DaemonSetClient) Patch(daemonset *appsv1.DaemonSet) *appsv1.DaemonSet {
+func (c *DaemonSetClient) Patch(ctx context.Context, daemonset *appsv1.DaemonSet) *appsv1.DaemonSet {
 	ginkgo.GinkgoHelper()
 
 	modifiedBytes, err := json.Marshal(daemonset)
@@ -91,7 +91,7 @@ func (c *DaemonSetClient) Patch(daemonset *appsv1.DaemonSet) *appsv1.DaemonSet {
 	}
 	ExpectNoError(err)
 	var patchedDaemonSet *appsv1.DaemonSet
-	err = wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+	err = wait.PollUntilContextTimeout(ctx, 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
 		daemonSet, err := c.DaemonSetInterface.Patch(ctx, daemonset.Name, types.MergePatchType, modifiedBytes, metav1.PatchOptions{}, "")
 		if err != nil {
 			return handleWaitingAPIError(err, false, "patch daemonset %s/%s", daemonset.Namespace, daemonset.Name)
@@ -111,19 +111,19 @@ func (c *DaemonSetClient) Patch(daemonset *appsv1.DaemonSet) *appsv1.DaemonSet {
 	return nil
 }
 
-func (c *DaemonSetClient) PatchSync(modifiedDaemonset *appsv1.DaemonSet) *appsv1.DaemonSet {
+func (c *DaemonSetClient) PatchSync(ctx context.Context, modifiedDaemonset *appsv1.DaemonSet) *appsv1.DaemonSet {
 	ginkgo.GinkgoHelper()
-	daemonSet := c.Patch(modifiedDaemonset)
-	return c.RolloutStatus(daemonSet.Name)
+	daemonSet := c.Patch(ctx, modifiedDaemonset)
+	return c.RolloutStatus(ctx, daemonSet.Name)
 }
 
-func (c *DaemonSetClient) RolloutStatus(name string) *appsv1.DaemonSet {
+func (c *DaemonSetClient) RolloutStatus(ctx context.Context, name string) *appsv1.DaemonSet {
 	ginkgo.GinkgoHelper()
 
 	var daemonSet *appsv1.DaemonSet
-	WaitUntil(2*time.Second, timeout, func(_ context.Context) (bool, error) {
+	WaitUntil(ctx, timeout, func(ctx context.Context) (bool, error) {
 		var err error
-		daemonSet = c.Get(name)
+		daemonSet = c.Get(ctx, name)
 		unstructured := &unstructured.Unstructured{}
 		if unstructured.Object, err = runtime.DefaultUnstructuredConverter.ToUnstructured(daemonSet); err != nil {
 			return false, err

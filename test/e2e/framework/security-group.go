@@ -33,36 +33,36 @@ func (f *Framework) SecurityGroupClient() *SecurityGroupClient {
 	}
 }
 
-func (c *SecurityGroupClient) Get(name string) *apiv1.SecurityGroup {
+func (c *SecurityGroupClient) Get(ctx context.Context, name string) *apiv1.SecurityGroup {
 	ginkgo.GinkgoHelper()
-	sg, err := c.SecurityGroupInterface.Get(context.TODO(), name, metav1.GetOptions{})
+	sg, err := c.SecurityGroupInterface.Get(ctx, name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return sg.DeepCopy()
 }
 
 // Create creates a new security group according to the framework specifications
-func (c *SecurityGroupClient) Create(sg *apiv1.SecurityGroup) *apiv1.SecurityGroup {
+func (c *SecurityGroupClient) Create(ctx context.Context, sg *apiv1.SecurityGroup) *apiv1.SecurityGroup {
 	ginkgo.GinkgoHelper()
-	sg, err := c.SecurityGroupInterface.Create(context.TODO(), sg, metav1.CreateOptions{})
+	sg, err := c.SecurityGroupInterface.Create(ctx, sg, metav1.CreateOptions{})
 	ExpectNoError(err, "Error creating security group")
 	return sg.DeepCopy()
 }
 
 // CreateSync creates a new security group according to the framework specifications, and waits for it to be ready.
-func (c *SecurityGroupClient) CreateSync(sg *apiv1.SecurityGroup) *apiv1.SecurityGroup {
+func (c *SecurityGroupClient) CreateSync(ctx context.Context, sg *apiv1.SecurityGroup) *apiv1.SecurityGroup {
 	ginkgo.GinkgoHelper()
 
-	sg = c.Create(sg)
-	ExpectTrue(c.WaitToBeReady(sg.Name, timeout))
+	sg = c.Create(ctx, sg)
+	ExpectTrue(c.WaitToBeReady(ctx, sg.Name, timeout))
 	// Get the newest ovn security group after it becomes ready
-	return c.Get(sg.Name).DeepCopy()
+	return c.Get(ctx, sg.Name).DeepCopy()
 }
 
 // WaitToBeReady returns whether the security group is ready within timeout.
-func (c *SecurityGroupClient) WaitToBeReady(name string, timeout time.Duration) bool {
+func (c *SecurityGroupClient) WaitToBeReady(ctx context.Context, name string, timeout time.Duration) bool {
 	Logf("Waiting up to %v for security group %s to be ready", timeout, name)
 	for start := time.Now(); time.Since(start) < timeout; time.Sleep(poll) {
-		if c.Get(name).Status.PortGroup != "" {
+		if c.Get(ctx, name).Status.PortGroup != "" {
 			Logf("security group %s is ready", name)
 			return true
 		}
@@ -73,14 +73,14 @@ func (c *SecurityGroupClient) WaitToBeReady(name string, timeout time.Duration) 
 }
 
 // Patch patches the security group
-func (c *SecurityGroupClient) Patch(original, modified *apiv1.SecurityGroup, timeout time.Duration) *apiv1.SecurityGroup {
+func (c *SecurityGroupClient) Patch(ctx context.Context, original, modified *apiv1.SecurityGroup, timeout time.Duration) *apiv1.SecurityGroup {
 	ginkgo.GinkgoHelper()
 
 	patch, err := util.GenerateMergePatchPayload(original, modified)
 	ExpectNoError(err)
 
 	var patchedSg *apiv1.SecurityGroup
-	err = wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+	err = wait.PollUntilContextTimeout(ctx, 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
 		p, err := c.SecurityGroupInterface.Patch(ctx, original.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
 		if err != nil {
 			return handleWaitingAPIError(err, false, "patch security group %q", original.Name)
@@ -101,9 +101,9 @@ func (c *SecurityGroupClient) Patch(original, modified *apiv1.SecurityGroup, tim
 }
 
 // Delete deletes a security group if the security group exists
-func (c *SecurityGroupClient) Delete(name string) {
+func (c *SecurityGroupClient) Delete(ctx context.Context, name string) {
 	ginkgo.GinkgoHelper()
-	err := c.SecurityGroupInterface.Delete(context.TODO(), name, metav1.DeleteOptions{})
+	err := c.SecurityGroupInterface.Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil && !apierrors.IsNotFound(err) {
 		Failf("Failed to delete security group %q: %v", name, err)
 	}
@@ -111,15 +111,15 @@ func (c *SecurityGroupClient) Delete(name string) {
 
 // DeleteSync deletes the security group and waits for the security group to disappear for `timeout`.
 // If the security group doesn't disappear before the timeout, it will fail the test.
-func (c *SecurityGroupClient) DeleteSync(name string) {
+func (c *SecurityGroupClient) DeleteSync(ctx context.Context, name string) {
 	ginkgo.GinkgoHelper()
-	c.Delete(name)
-	gomega.Expect(c.WaitToDisappear(name, 2*time.Second, timeout)).To(gomega.Succeed(), "wait for security group %q to disappear", name)
+	c.Delete(ctx, name)
+	gomega.Expect(c.WaitToDisappear(ctx, name, timeout)).To(gomega.Succeed(), "wait for security group %q to disappear", name)
 }
 
 // WaitToDisappear waits the given timeout duration for the specified Security Group to disappear.
-func (c *SecurityGroupClient) WaitToDisappear(name string, _, timeout time.Duration) error {
-	err := framework.Gomega().Eventually(context.Background(), framework.HandleRetry(func(ctx context.Context) (*apiv1.SecurityGroup, error) {
+func (c *SecurityGroupClient) WaitToDisappear(ctx context.Context, name string, timeout time.Duration) error {
+	err := framework.Gomega().Eventually(ctx, framework.HandleRetry(func(ctx context.Context) (*apiv1.SecurityGroup, error) {
 		sg, err := c.SecurityGroupInterface.Get(ctx, name, metav1.GetOptions{})
 		if apierrors.IsNotFound(err) {
 			return nil, nil

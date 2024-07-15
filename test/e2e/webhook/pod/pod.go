@@ -22,7 +22,7 @@ var _ = framework.Describe("[group:webhook-pod]", func() {
 	var namespaceName, subnetName, podName string
 	var cidr, conflictName, firstIPv4, lastIPv4 string
 
-	ginkgo.BeforeEach(func() {
+	ginkgo.BeforeEach(ginkgo.NodeTimeout(10*time.Second), func(ctx ginkgo.SpecContext) {
 		podClient = f.PodClient()
 		subnetClient = f.SubnetClient()
 		namespaceName = f.Namespace.Name
@@ -41,29 +41,29 @@ var _ = framework.Describe("[group:webhook-pod]", func() {
 
 		ginkgo.By("Creating subnet " + subnetName)
 		subnet := framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, []string{namespaceName})
-		_ = subnetClient.CreateSync(subnet)
+		_ = subnetClient.CreateSync(ctx, subnet)
 	})
-	ginkgo.AfterEach(func() {
+	ginkgo.AfterEach(ginkgo.NodeTimeout(30*time.Second), func(ctx ginkgo.SpecContext) {
 		ginkgo.By("Deleting pod " + podName)
-		podClient.DeleteSync(podName)
+		podClient.DeleteSync(ctx, podName)
 
 		ginkgo.By("Deleting pod " + conflictName)
-		podClient.DeleteSync(conflictName)
+		podClient.DeleteSync(ctx, conflictName)
 
 		ginkgo.By("Deleting subnet " + subnetName)
-		subnetClient.DeleteSync(subnetName)
+		subnetClient.DeleteSync(ctx, subnetName)
 	})
 
-	framework.ConformanceIt("validate static ip by pod annotation", func() {
+	framework.ConformanceIt("validate static ip by pod annotation", ginkgo.SpecTimeout(30*time.Second), func(ctx ginkgo.SpecContext) {
 		ginkgo.By("Creating pod " + podName)
-		cmd := []string{"sh", "-c", "sleep infinity"}
+		cmd := []string{"sleep", "infinity"}
 
 		ginkgo.By("validate ip validation")
 		annotations := map[string]string{
 			util.IPAddressAnnotation: "10.10.10.10.10",
 		}
 		pod := framework.MakePod(namespaceName, podName, nil, annotations, f.KubeOVNImage, cmd, nil)
-		_, err := podClient.PodInterface.Create(context.TODO(), pod, metav1.CreateOptions{})
+		_, err := podClient.PodInterface.Create(ctx, pod, metav1.CreateOptions{})
 		framework.ExpectError(err, "ip %s is not a valid %s", annotations[util.IPAddressAnnotation], util.IPAddressAnnotation)
 
 		ginkgo.By("validate pod ip not in subnet cidr")
@@ -75,7 +75,7 @@ var _ = framework.Describe("[group:webhook-pod]", func() {
 		framework.Logf("validate ip not in subnet range, cidr %s, staticip %s", cidr, staticIP)
 		pod.Annotations = annotations
 
-		_, err = podClient.PodInterface.Create(context.TODO(), pod, metav1.CreateOptions{})
+		_, err = podClient.PodInterface.Create(ctx, pod, metav1.CreateOptions{})
 		framework.ExpectError(err, "%s not in cidr %s", staticIP, cidr)
 
 		ginkgo.By("validate pod ippool not in subnet cidr")
@@ -88,7 +88,7 @@ var _ = framework.Describe("[group:webhook-pod]", func() {
 		}
 		framework.Logf("validate ippool not in subnet range, cidr %s, ippool %s", cidr, ipPool)
 		pod.Annotations = annotations
-		_, err = podClient.PodInterface.Create(context.TODO(), pod, metav1.CreateOptions{})
+		_, err = podClient.PodInterface.Create(ctx, pod, metav1.CreateOptions{})
 		framework.ExpectError(err, "%s not in cidr %s", ipPool, cidr)
 
 		ginkgo.By("validate pod static ip success")
@@ -99,10 +99,10 @@ var _ = framework.Describe("[group:webhook-pod]", func() {
 			util.IPAddressAnnotation:     staticIP,
 		}
 		pod.Annotations = annotations
-		_ = podClient.CreateSync(pod)
+		_ = podClient.CreateSync(ctx, pod)
 		ipCR := podName + "." + namespaceName
 
-		framework.WaitUntil(2*time.Second, time.Minute, func(ctx context.Context) (bool, error) {
+		framework.WaitUntil(ctx, time.Minute, func(ctx context.Context) (bool, error) {
 			checkPod, err := podClient.PodInterface.Get(ctx, podName, metav1.GetOptions{})
 			framework.ExpectNoError(err)
 			return checkPod.Annotations[util.RoutedAnnotation] == "true", nil
@@ -111,7 +111,7 @@ var _ = framework.Describe("[group:webhook-pod]", func() {
 		ginkgo.By("validate pod ip conflict")
 		framework.Logf("validate ip conflict, pod %s, ip cr %s, conflict pod %s", podName, ipCR, conflictName)
 		conflictPod := framework.MakePod(namespaceName, conflictName, nil, annotations, f.KubeOVNImage, cmd, nil)
-		_, err = podClient.PodInterface.Create(context.TODO(), conflictPod, metav1.CreateOptions{})
+		_, err = podClient.PodInterface.Create(ctx, conflictPod, metav1.CreateOptions{})
 		framework.ExpectError(err, "annotation static-ip %s is conflict with ip crd %s, ip %s", staticIP, ipCR, staticIP)
 	})
 })

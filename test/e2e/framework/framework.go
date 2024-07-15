@@ -86,7 +86,7 @@ func NewDefaultFramework(baseName string) *Framework {
 		f.ClusterVersionMajor, f.ClusterVersionMinor = 999, 999
 	}
 
-	ginkgo.BeforeEach(f.BeforeEach)
+	ginkgo.BeforeEach(ginkgo.NodeTimeout(3*time.Second), f.BeforeEach)
 
 	return f
 }
@@ -118,9 +118,9 @@ func (f *Framework) useContext() error {
 
 func NewFrameworkWithContext(baseName, kubeContext string) *Framework {
 	f := &Framework{KubeContext: kubeContext}
-	ginkgo.BeforeEach(f.BeforeEach)
+	ginkgo.BeforeEach(ginkgo.NodeTimeout(3*time.Second), f.BeforeEach)
 	f.Framework = framework.NewDefaultFramework(baseName)
-	ginkgo.BeforeEach(f.BeforeEach)
+	ginkgo.BeforeEach(ginkgo.NodeTimeout(3*time.Second), f.BeforeEach)
 
 	f.NamespacePodSecurityEnforceLevel = admissionapi.LevelPrivileged
 	f.NamespacePodSecurityWarnLevel = admissionapi.LevelPrivileged
@@ -163,7 +163,7 @@ func (f *Framework) HasIPv6() bool {
 }
 
 // BeforeEach gets a kube-ovn client
-func (f *Framework) BeforeEach() {
+func (f *Framework) BeforeEach(ctx ginkgo.SpecContext) {
 	ginkgo.By("Setting kubernetes context")
 	ExpectNoError(f.useContext())
 
@@ -202,7 +202,7 @@ func (f *Framework) BeforeEach() {
 
 	if f.KubeOVNImage == "" && f.ClientSet != nil {
 		framework.Logf("Getting Kube-OVN image")
-		f.KubeOVNImage = GetKubeOvnImage(f.ClientSet)
+		f.KubeOVNImage = GetKubeOvnImage(ctx, f.ClientSet)
 		framework.Logf("Got Kube-OVN image: %s", f.KubeOVNImage)
 	}
 
@@ -251,6 +251,6 @@ func OrderedDescribe(text string, body func()) bool {
 
 var ConformanceIt func(args ...interface{}) bool = framework.ConformanceIt
 
-func DisruptiveIt(text string, body interface{}) bool {
-	return framework.It(text, ginkgo.Offset(1), body, framework.WithDisruptive())
+func DisruptiveIt(text string, timeout ginkgo.SpecTimeout, body interface{}) bool {
+	return framework.It(text, ginkgo.Offset(1), timeout, body, framework.WithDisruptive())
 }

@@ -34,40 +34,40 @@ func (f *Framework) VpcClient() *VpcClient {
 	}
 }
 
-func (c *VpcClient) Get(name string) *kubeovnv1.Vpc {
+func (c *VpcClient) Get(ctx context.Context, name string) *kubeovnv1.Vpc {
 	ginkgo.GinkgoHelper()
-	vpc, err := c.VpcInterface.Get(context.TODO(), name, metav1.GetOptions{})
+	vpc, err := c.VpcInterface.Get(ctx, name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return vpc
 }
 
 // Create creates a new vpc according to the framework specifications
-func (c *VpcClient) Create(vpc *kubeovnv1.Vpc) *kubeovnv1.Vpc {
+func (c *VpcClient) Create(ctx context.Context, vpc *kubeovnv1.Vpc) *kubeovnv1.Vpc {
 	ginkgo.GinkgoHelper()
-	vpc, err := c.VpcInterface.Create(context.TODO(), vpc, metav1.CreateOptions{})
+	vpc, err := c.VpcInterface.Create(ctx, vpc, metav1.CreateOptions{})
 	ExpectNoError(err, "Error creating vpc")
 	return vpc.DeepCopy()
 }
 
 // CreateSync creates a new vpc according to the framework specifications, and waits for it to be ready.
-func (c *VpcClient) CreateSync(vpc *kubeovnv1.Vpc) *kubeovnv1.Vpc {
+func (c *VpcClient) CreateSync(ctx context.Context, vpc *kubeovnv1.Vpc) *kubeovnv1.Vpc {
 	ginkgo.GinkgoHelper()
 
-	vpc = c.Create(vpc)
-	ExpectTrue(c.WaitToBeReady(vpc.Name, timeout))
+	vpc = c.Create(ctx, vpc)
+	ExpectTrue(c.WaitToBeReady(ctx, vpc.Name, timeout))
 	// Get the newest vpc after it becomes ready
-	return c.Get(vpc.Name).DeepCopy()
+	return c.Get(ctx, vpc.Name).DeepCopy()
 }
 
 // Patch patches the vpc
-func (c *VpcClient) Patch(original, modified *kubeovnv1.Vpc) *kubeovnv1.Vpc {
+func (c *VpcClient) Patch(ctx context.Context, original, modified *kubeovnv1.Vpc) *kubeovnv1.Vpc {
 	ginkgo.GinkgoHelper()
 
 	patch, err := util.GenerateMergePatchPayload(original, modified)
 	ExpectNoError(err)
 
 	var patchedVpc *kubeovnv1.Vpc
-	err = wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+	err = wait.PollUntilContextTimeout(ctx, 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
 		vpc, err := c.VpcInterface.Patch(ctx, original.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
 		if err != nil {
 			return handleWaitingAPIError(err, false, "patch vpc %q", original.Name)
@@ -89,20 +89,20 @@ func (c *VpcClient) Patch(original, modified *kubeovnv1.Vpc) *kubeovnv1.Vpc {
 
 // PatchSync patches the vpc and waits for the vpc to be ready for `timeout`.
 // If the vpc doesn't become ready before the timeout, it will fail the test.
-func (c *VpcClient) PatchSync(original, modified *kubeovnv1.Vpc, _ []string, timeout time.Duration) *kubeovnv1.Vpc {
+func (c *VpcClient) PatchSync(ctx context.Context, original, modified *kubeovnv1.Vpc, timeout time.Duration) *kubeovnv1.Vpc {
 	ginkgo.GinkgoHelper()
 
-	vpc := c.Patch(original, modified)
-	ExpectTrue(c.WaitToBeUpdated(vpc, timeout))
-	ExpectTrue(c.WaitToBeReady(vpc.Name, timeout))
+	vpc := c.Patch(ctx, original, modified)
+	ExpectTrue(c.WaitToBeUpdated(ctx, vpc, timeout))
+	ExpectTrue(c.WaitToBeReady(ctx, vpc.Name, timeout))
 	// Get the newest subnet after it becomes ready
-	return c.Get(vpc.Name).DeepCopy()
+	return c.Get(ctx, vpc.Name).DeepCopy()
 }
 
 // Delete deletes a vpc if the vpc exists
-func (c *VpcClient) Delete(name string) {
+func (c *VpcClient) Delete(ctx context.Context, name string) {
 	ginkgo.GinkgoHelper()
-	err := c.VpcInterface.Delete(context.TODO(), name, metav1.DeleteOptions{})
+	err := c.VpcInterface.Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil && !apierrors.IsNotFound(err) {
 		Failf("Failed to delete vpc %q: %v", name, err)
 	}
@@ -110,16 +110,16 @@ func (c *VpcClient) Delete(name string) {
 
 // DeleteSync deletes the vpc and waits for the vpc to disappear for `timeout`.
 // If the vpc doesn't disappear before the timeout, it will fail the test.
-func (c *VpcClient) DeleteSync(name string) {
+func (c *VpcClient) DeleteSync(ctx context.Context, name string) {
 	ginkgo.GinkgoHelper()
-	c.Delete(name)
-	gomega.Expect(c.WaitToDisappear(name, 2*time.Second, timeout)).To(gomega.Succeed(), "wait for vpc %q to disappear", name)
+	c.Delete(ctx, name)
+	gomega.Expect(c.WaitToDisappear(ctx, name, timeout)).To(gomega.Succeed(), "wait for vpc %q to disappear", name)
 }
 
 // WaitToBeReady returns whether the vpc is ready within timeout.
-func (c *VpcClient) WaitToBeReady(name string, timeout time.Duration) bool {
+func (c *VpcClient) WaitToBeReady(ctx context.Context, name string, timeout time.Duration) bool {
 	for start := time.Now(); time.Since(start) < timeout; time.Sleep(poll) {
-		if c.Get(name).Status.Standby {
+		if c.Get(ctx, name).Status.Standby {
 			// standby means the vpc is ready
 			return true
 		}
@@ -128,11 +128,11 @@ func (c *VpcClient) WaitToBeReady(name string, timeout time.Duration) bool {
 }
 
 // WaitToBeUpdated returns whether the vpc is updated within timeout.
-func (c *VpcClient) WaitToBeUpdated(vpc *kubeovnv1.Vpc, timeout time.Duration) bool {
+func (c *VpcClient) WaitToBeUpdated(ctx context.Context, vpc *kubeovnv1.Vpc, timeout time.Duration) bool {
 	Logf("Waiting up to %v for vpc %s to be updated", timeout, vpc.Name)
 	rv, _ := big.NewInt(0).SetString(vpc.ResourceVersion, 10)
 	for start := time.Now(); time.Since(start) < timeout; time.Sleep(poll) {
-		s := c.Get(vpc.Name)
+		s := c.Get(ctx, vpc.Name)
 		if current, _ := big.NewInt(0).SetString(s.ResourceVersion, 10); current.Cmp(rv) > 0 {
 			return true
 		}
@@ -142,8 +142,8 @@ func (c *VpcClient) WaitToBeUpdated(vpc *kubeovnv1.Vpc, timeout time.Duration) b
 }
 
 // WaitToDisappear waits the given timeout duration for the specified VPC to disappear.
-func (c *VpcClient) WaitToDisappear(name string, _, timeout time.Duration) error {
-	err := framework.Gomega().Eventually(context.Background(), framework.HandleRetry(func(ctx context.Context) (*kubeovnv1.Vpc, error) {
+func (c *VpcClient) WaitToDisappear(ctx context.Context, name string, timeout time.Duration) error {
+	err := framework.Gomega().Eventually(ctx, framework.HandleRetry(func(ctx context.Context) (*kubeovnv1.Vpc, error) {
 		vpc, err := c.VpcInterface.Get(ctx, name, metav1.GetOptions{})
 		if apierrors.IsNotFound(err) {
 			return nil, nil

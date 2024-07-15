@@ -34,40 +34,40 @@ func (f *Framework) OvnEipClient() *OvnEipClient {
 	}
 }
 
-func (c *OvnEipClient) Get(name string) *apiv1.OvnEip {
+func (c *OvnEipClient) Get(ctx context.Context, name string) *apiv1.OvnEip {
 	ginkgo.GinkgoHelper()
-	eip, err := c.OvnEipInterface.Get(context.TODO(), name, metav1.GetOptions{})
+	eip, err := c.OvnEipInterface.Get(ctx, name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return eip
 }
 
 // Create creates a new ovn eip according to the framework specifications
-func (c *OvnEipClient) Create(eip *apiv1.OvnEip) *apiv1.OvnEip {
+func (c *OvnEipClient) Create(ctx context.Context, eip *apiv1.OvnEip) *apiv1.OvnEip {
 	ginkgo.GinkgoHelper()
-	eip, err := c.OvnEipInterface.Create(context.TODO(), eip, metav1.CreateOptions{})
+	eip, err := c.OvnEipInterface.Create(ctx, eip, metav1.CreateOptions{})
 	ExpectNoError(err, "Error creating ovn eip")
 	return eip.DeepCopy()
 }
 
 // CreateSync creates a new ovn eip according to the framework specifications, and waits for it to be ready.
-func (c *OvnEipClient) CreateSync(eip *apiv1.OvnEip) *apiv1.OvnEip {
+func (c *OvnEipClient) CreateSync(ctx context.Context, eip *apiv1.OvnEip) *apiv1.OvnEip {
 	ginkgo.GinkgoHelper()
 
-	eip = c.Create(eip)
-	ExpectTrue(c.WaitToBeReady(eip.Name, timeout))
+	eip = c.Create(ctx, eip)
+	ExpectTrue(c.WaitToBeReady(ctx, eip.Name, timeout))
 	// Get the newest ovn eip after it becomes ready
-	return c.Get(eip.Name).DeepCopy()
+	return c.Get(ctx, eip.Name).DeepCopy()
 }
 
 // Patch patches the ovn eip
-func (c *OvnEipClient) Patch(original, modified *apiv1.OvnEip) *apiv1.OvnEip {
+func (c *OvnEipClient) Patch(ctx context.Context, original, modified *apiv1.OvnEip) *apiv1.OvnEip {
 	ginkgo.GinkgoHelper()
 
 	patch, err := util.GenerateMergePatchPayload(original, modified)
 	ExpectNoError(err)
 
 	var patchedOvnEip *apiv1.OvnEip
-	err = wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+	err = wait.PollUntilContextTimeout(ctx, 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
 		eip, err := c.OvnEipInterface.Patch(ctx, original.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
 		if err != nil {
 			return handleWaitingAPIError(err, false, "patch ovn eip %q", original.Name)
@@ -89,20 +89,20 @@ func (c *OvnEipClient) Patch(original, modified *apiv1.OvnEip) *apiv1.OvnEip {
 
 // PatchSync patches the ovn eip and waits for the ovn eip to be ready for `timeout`.
 // If the ovn eip doesn't become ready before the timeout, it will fail the test.
-func (c *OvnEipClient) PatchSync(original, modified *apiv1.OvnEip, _ []string, timeout time.Duration) *apiv1.OvnEip {
+func (c *OvnEipClient) PatchSync(ctx context.Context, original, modified *apiv1.OvnEip, timeout time.Duration) *apiv1.OvnEip {
 	ginkgo.GinkgoHelper()
 
-	eip := c.Patch(original, modified)
-	ExpectTrue(c.WaitToBeUpdated(eip, timeout))
-	ExpectTrue(c.WaitToBeReady(eip.Name, timeout))
+	eip := c.Patch(ctx, original, modified)
+	ExpectTrue(c.WaitToBeUpdated(ctx, eip, timeout))
+	ExpectTrue(c.WaitToBeReady(ctx, eip.Name, timeout))
 	// Get the newest ovn eip after it becomes ready
-	return c.Get(eip.Name).DeepCopy()
+	return c.Get(ctx, eip.Name).DeepCopy()
 }
 
 // Delete deletes a ovn eip if the ovn eip exists
-func (c *OvnEipClient) Delete(name string) {
+func (c *OvnEipClient) Delete(ctx context.Context, name string) {
 	ginkgo.GinkgoHelper()
-	err := c.OvnEipInterface.Delete(context.TODO(), name, metav1.DeleteOptions{})
+	err := c.OvnEipInterface.Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil && !apierrors.IsNotFound(err) {
 		Failf("Failed to delete ovn eip %q: %v", name, err)
 	}
@@ -110,17 +110,17 @@ func (c *OvnEipClient) Delete(name string) {
 
 // DeleteSync deletes the ovn eip and waits for the ovn eip to disappear for `timeout`.
 // If the ovn eip doesn't disappear before the timeout, it will fail the test.
-func (c *OvnEipClient) DeleteSync(name string) {
+func (c *OvnEipClient) DeleteSync(ctx context.Context, name string) {
 	ginkgo.GinkgoHelper()
-	c.Delete(name)
-	gomega.Expect(c.WaitToDisappear(name, 2*time.Second, timeout)).To(gomega.Succeed(), "wait for ovn eip %q to disappear", name)
+	c.Delete(ctx, name)
+	gomega.Expect(c.WaitToDisappear(ctx, name, timeout)).To(gomega.Succeed(), "wait for ovn eip %q to disappear", name)
 }
 
 // WaitToBeReady returns whether the ovn eip is ready within timeout.
-func (c *OvnEipClient) WaitToBeReady(name string, timeout time.Duration) bool {
+func (c *OvnEipClient) WaitToBeReady(ctx context.Context, name string, timeout time.Duration) bool {
 	Logf("Waiting up to %v for ovn eip %s to be ready", timeout, name)
 	for start := time.Now(); time.Since(start) < timeout; time.Sleep(poll) {
-		if c.Get(name).Status.Ready {
+		if c.Get(ctx, name).Status.Ready {
 			Logf("ovn eip %s is ready", name)
 			return true
 		}
@@ -131,11 +131,11 @@ func (c *OvnEipClient) WaitToBeReady(name string, timeout time.Duration) bool {
 }
 
 // WaitToBeUpdated returns whether the ovn eip is updated within timeout.
-func (c *OvnEipClient) WaitToBeUpdated(eip *apiv1.OvnEip, timeout time.Duration) bool {
+func (c *OvnEipClient) WaitToBeUpdated(ctx context.Context, eip *apiv1.OvnEip, timeout time.Duration) bool {
 	Logf("Waiting up to %v for ovn eip %s to be updated", timeout, eip.Name)
 	rv, _ := big.NewInt(0).SetString(eip.ResourceVersion, 10)
 	for start := time.Now(); time.Since(start) < timeout; time.Sleep(poll) {
-		s := c.Get(eip.Name)
+		s := c.Get(ctx, eip.Name)
 		if current, _ := big.NewInt(0).SetString(s.ResourceVersion, 10); current.Cmp(rv) > 0 {
 			return true
 		}
@@ -145,8 +145,8 @@ func (c *OvnEipClient) WaitToBeUpdated(eip *apiv1.OvnEip, timeout time.Duration)
 }
 
 // WaitToDisappear waits the given timeout duration for the specified OVN EIP to disappear.
-func (c *OvnEipClient) WaitToDisappear(name string, _, timeout time.Duration) error {
-	err := framework.Gomega().Eventually(context.Background(), framework.HandleRetry(func(ctx context.Context) (*apiv1.OvnEip, error) {
+func (c *OvnEipClient) WaitToDisappear(ctx context.Context, name string, timeout time.Duration) error {
+	err := framework.Gomega().Eventually(ctx, framework.HandleRetry(func(ctx context.Context) (*apiv1.OvnEip, error) {
 		eip, err := c.OvnEipInterface.Get(ctx, name, metav1.GetOptions{})
 		if apierrors.IsNotFound(err) {
 			return nil, nil
