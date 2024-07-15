@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/scylladb/go-set/strset"
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -46,8 +47,9 @@ type Controller struct {
 	ovnEipsLister kubeovnlister.OvnEipLister
 	ovnEipsSynced cache.InformerSynced
 
-	vlansLister kubeovnlister.VlanLister
-	vlanSynced  cache.InformerSynced
+	vlansLister     kubeovnlister.VlanLister
+	vlanSynced      cache.InformerSynced
+	updateVlanQueue workqueue.RateLimitingInterface
 
 	podsLister listerv1.PodLister
 	podsSynced cache.InformerSynced
@@ -96,8 +98,9 @@ func NewController(config *Configuration, stopCh <-chan struct{}, podInformerFac
 		ovnEipsLister: ovnEipInformer.Lister(),
 		ovnEipsSynced: ovnEipInformer.Informer().HasSynced,
 
-		vlansLister: vlanInformer.Lister(),
-		vlanSynced:  vlanInformer.Informer().HasSynced,
+		vlansLister:     vlanInformer.Lister(),
+		vlanSynced:      vlanInformer.Informer().HasSynced,
+		updateVlanQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateVlan"),
 
 		podsLister: podInformer.Lister(),
 		podsSynced: podInformer.Informer().HasSynced,
@@ -134,6 +137,11 @@ func NewController(config *Configuration, stopCh <-chan struct{}, podInformerFac
 		AddFunc:    controller.enqueueAddProviderNetwork,
 		UpdateFunc: controller.enqueueUpdateProviderNetwork,
 		DeleteFunc: controller.enqueueDeleteProviderNetwork,
+	}); err != nil {
+		return nil, err
+	}
+	if _, err = vlanInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		UpdateFunc: controller.enqueueUpdateVlan,
 	}); err != nil {
 		return nil, err
 	}
@@ -285,10 +293,26 @@ func (c *Controller) initProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v1
 		fmt.Sprintf(util.ProviderNetworkExcludeTemplate, pn.Name):   nil,
 	}
 
+	vlans := strset.NewWithSize(len(pn.Status.Vlans) + 1)
+	for _, vlanName := range pn.Status.Vlans {
+		vlan, err := c.vlansLister.Get(vlanName)
+		if err != nil {
+			if k8serrors.IsNotFound(err) {
+				klog.Infof("vlan %s not found", vlanName)
+				continue
+			}
+			klog.Errorf("failed to get vlan %q: %v", vlanName, err)
+			return err
+		}
+		vlans.Add(strconv.Itoa(vlan.Spec.ID))
+	}
+	// always add trunk 0 so that the ovs bridge can communicate with the external network
+	vlans.Add("0")
+
 	var mtu int
 	var err error
 	klog.V(3).Infof("ovs init provider network %s", pn.Name)
-	if mtu, err = c.ovsInitProviderNetwork(pn.Name, nic, pn.Spec.ExchangeLinkName, c.config.MacLearningFallback); err != nil {
+	if mtu, err = c.ovsInitProviderNetwork(pn.Name, nic, vlans.List(), pn.Spec.ExchangeLinkName, c.config.MacLearningFallback); err != nil {
 		delete(labels, fmt.Sprintf(util.ProviderNetworkExcludeTemplate, pn.Name))
 		if err1 := util.UpdateNodeLabels(c.config.KubeClient.CoreV1().Nodes(), node.Name, labels); err1 != nil {
 			klog.Errorf("failed to update annotations of node %s: %v", node.Name, err1)
@@ -402,6 +426,15 @@ func (c *Controller) handleDeleteProviderNetwork(pn *kubeovnv1.ProviderNetwork) 
 	}
 
 	return nil
+}
+
+func (c *Controller) enqueueUpdateVlan(oldObj, newObj interface{}) {
+	oldVlan := oldObj.(*kubeovnv1.Vlan)
+	newVlan := newObj.(*kubeovnv1.Vlan)
+	if oldVlan.Spec.ID != newVlan.Spec.ID {
+		klog.V(3).Infof("enqueue update provider network %q", newVlan.Spec.Provider)
+		c.addOrUpdateProviderNetworkQueue.Add(newVlan.Spec.Provider)
+	}
 }
 
 type subnetEvent struct {
