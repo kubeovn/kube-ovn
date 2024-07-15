@@ -3118,6 +3118,7 @@ rules:
       - "kubeovn.io"
     resources:
       - subnets
+      - vlans
       - provider-networks
     verbs:
       - get
