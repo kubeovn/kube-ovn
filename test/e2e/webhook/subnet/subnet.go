@@ -1,7 +1,7 @@
 package subnet
 
 import (
-	"context"
+	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -19,7 +19,7 @@ var _ = framework.Describe("[group:webhook-subnet]", func() {
 	var gateways []string
 	var subnetClient *framework.SubnetClient
 
-	ginkgo.BeforeEach(func() {
+	ginkgo.BeforeEach(ginkgo.NodeTimeout(time.Second), func(_ ginkgo.SpecContext) {
 		subnetClient = f.SubnetClient()
 		subnetName = "subnet-" + framework.RandomSuffix()
 		cidr = framework.RandomCIDR(f.ClusterIPFamily)
@@ -39,55 +39,55 @@ var _ = framework.Describe("[group:webhook-subnet]", func() {
 			gateways = append(gateways, firstIPv6)
 		}
 	})
-	ginkgo.AfterEach(func() {
+	ginkgo.AfterEach(ginkgo.NodeTimeout(15*time.Second), func(ctx ginkgo.SpecContext) {
 		ginkgo.By("Deleting subnet " + subnetName)
-		subnetClient.DeleteSync(subnetName)
+		subnetClient.DeleteSync(ctx, subnetName)
 	})
 
-	framework.ConformanceIt("check create subnet with different errors", func() {
+	framework.ConformanceIt("check create subnet with different errors", ginkgo.SpecTimeout(10*time.Second), func(ctx ginkgo.SpecContext) {
 		ginkgo.By("Creating subnet " + subnetName)
 		subnet := framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, nil)
 
 		ginkgo.By("Validating subnet gateway")
 		subnet.Spec.Gateway = "100.16.0.1"
-		_, err := subnetClient.SubnetInterface.Create(context.TODO(), subnet, metav1.CreateOptions{})
+		_, err := subnetClient.SubnetInterface.Create(ctx, subnet, metav1.CreateOptions{})
 		framework.ExpectError(err, "gateway %s is not in cidr %s", subnet.Spec.Gateway, subnet.Spec.CIDRBlock)
 
 		ginkgo.By("Validating subnet cidr conflict with known addresses")
 		subnet.Spec.Gateway = ""
 		subnet.Spec.CIDRBlock = util.IPv4Loopback
-		_, err = subnetClient.SubnetInterface.Create(context.TODO(), subnet, metav1.CreateOptions{})
+		_, err = subnetClient.SubnetInterface.Create(ctx, subnet, metav1.CreateOptions{})
 		framework.ExpectError(err, "%s conflict with v4 loopback cidr %s", subnet.Spec.CIDRBlock, util.IPv4Loopback)
 
 		ginkgo.By("Validating subnet excludeIPs")
 		subnet.Spec.CIDRBlock = cidr
 		ipr := "10.1.1.11..10.1.1.30..10.1.1.50"
 		subnet.Spec.ExcludeIps = []string{ipr}
-		_, err = subnetClient.SubnetInterface.Create(context.TODO(), subnet, metav1.CreateOptions{})
+		_, err = subnetClient.SubnetInterface.Create(ctx, subnet, metav1.CreateOptions{})
 		framework.ExpectError(err, "%s in excludeIps is not a valid ip range", ipr)
 
 		ginkgo.By("Validating subnet gateway type")
 		subnet.Spec.ExcludeIps = []string{}
 		subnet.Spec.GatewayType = "test"
-		_, err = subnetClient.SubnetInterface.Create(context.TODO(), subnet, metav1.CreateOptions{})
+		_, err = subnetClient.SubnetInterface.Create(ctx, subnet, metav1.CreateOptions{})
 		framework.ExpectError(err, "%s is not a valid gateway type", subnet.Spec.GatewayType)
 
 		ginkgo.By("Validating subnet protocol")
 		subnet.Spec.GatewayType = apiv1.GWDistributedType
 		subnet.Spec.Protocol = "test"
-		_, err = subnetClient.SubnetInterface.Create(context.TODO(), subnet, metav1.CreateOptions{})
+		_, err = subnetClient.SubnetInterface.Create(ctx, subnet, metav1.CreateOptions{})
 		framework.ExpectError(err, "%s is not a valid protocol", subnet.Spec.Protocol)
 
 		ginkgo.By("Validating subnet allowSubnets")
 		subnet.Spec.Protocol = ""
 		subnet.Spec.AllowSubnets = []string{"10.1.1.302/24"}
-		_, err = subnetClient.SubnetInterface.Create(context.TODO(), subnet, metav1.CreateOptions{})
+		_, err = subnetClient.SubnetInterface.Create(ctx, subnet, metav1.CreateOptions{})
 		framework.ExpectError(err, "%s in allowSubnets is not a valid address", subnet.Spec.AllowSubnets[0])
 
 		ginkgo.By("Validating subnet cidr")
 		subnet.Spec.AllowSubnets = []string{}
 		subnet.Spec.CIDRBlock = "10.1.1.32/24,"
-		_, err = subnetClient.SubnetInterface.Create(context.TODO(), subnet, metav1.CreateOptions{})
+		_, err = subnetClient.SubnetInterface.Create(ctx, subnet, metav1.CreateOptions{})
 		framework.ExpectError(err, "subnet %s cidr %s is invalid", subnet.Name, subnet.Spec.CIDRBlock)
 	})
 })

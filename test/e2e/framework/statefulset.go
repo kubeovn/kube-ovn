@@ -44,42 +44,42 @@ func (f *Framework) StatefulSetClientNS(namespace string) *StatefulSetClient {
 	}
 }
 
-func (c *StatefulSetClient) Get(name string) *appsv1.StatefulSet {
+func (c *StatefulSetClient) Get(ctx context.Context, name string) *appsv1.StatefulSet {
 	ginkgo.GinkgoHelper()
-	sts, err := c.StatefulSetInterface.Get(context.TODO(), name, metav1.GetOptions{})
+	sts, err := c.StatefulSetInterface.Get(ctx, name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return sts
 }
 
-func (c *StatefulSetClient) GetPods(sts *appsv1.StatefulSet) *corev1.PodList {
+func (c *StatefulSetClient) GetPods(ctx context.Context, sts *appsv1.StatefulSet) *corev1.PodList {
 	ginkgo.GinkgoHelper()
-	pods := statefulset.GetPodList(context.Background(), c.f.ClientSet, sts)
+	pods := statefulset.GetPodList(ctx, c.f.ClientSet, sts)
 	statefulset.SortStatefulPods(pods)
 	return pods
 }
 
 // Create creates a new statefulset according to the framework specifications
-func (c *StatefulSetClient) Create(sts *appsv1.StatefulSet) *appsv1.StatefulSet {
+func (c *StatefulSetClient) Create(ctx context.Context, sts *appsv1.StatefulSet) *appsv1.StatefulSet {
 	ginkgo.GinkgoHelper()
-	s, err := c.StatefulSetInterface.Create(context.TODO(), sts, metav1.CreateOptions{})
+	s, err := c.StatefulSetInterface.Create(ctx, sts, metav1.CreateOptions{})
 	ExpectNoError(err, "Error creating statefulset")
 	return s.DeepCopy()
 }
 
 // CreateSync creates a new statefulset according to the framework specifications, and waits for it to complete.
-func (c *StatefulSetClient) CreateSync(sts *appsv1.StatefulSet) *appsv1.StatefulSet {
+func (c *StatefulSetClient) CreateSync(ctx context.Context, sts *appsv1.StatefulSet) *appsv1.StatefulSet {
 	ginkgo.GinkgoHelper()
 
-	s := c.Create(sts)
-	c.WaitForRunningAndReady(s)
+	s := c.Create(ctx, sts)
+	c.WaitForRunningAndReady(ctx, s)
 	// Get the newest statefulset
-	return c.Get(s.Name).DeepCopy()
+	return c.Get(ctx, s.Name).DeepCopy()
 }
 
 // Delete deletes a statefulset if the statefulset exists
-func (c *StatefulSetClient) Delete(name string) {
+func (c *StatefulSetClient) Delete(ctx context.Context, name string) {
 	ginkgo.GinkgoHelper()
-	err := c.StatefulSetInterface.Delete(context.TODO(), name, metav1.DeleteOptions{})
+	err := c.StatefulSetInterface.Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil && !apierrors.IsNotFound(err) {
 		Failf("Failed to delete statefulset %q: %v", name, err)
 	}
@@ -87,21 +87,21 @@ func (c *StatefulSetClient) Delete(name string) {
 
 // DeleteSync deletes the statefulset and waits for the statefulset to disappear for `timeout`.
 // If the statefulset doesn't disappear before the timeout, it will fail the test.
-func (c *StatefulSetClient) DeleteSync(name string) {
+func (c *StatefulSetClient) DeleteSync(ctx context.Context, name string) {
 	ginkgo.GinkgoHelper()
-	c.Delete(name)
-	gomega.Expect(c.WaitToDisappear(name, 2*time.Second, timeout)).To(gomega.Succeed(), "wait for statefulset %q to disappear", name)
+	c.Delete(ctx, name)
+	gomega.Expect(c.WaitToDisappear(ctx, name, timeout)).To(gomega.Succeed(), "wait for statefulset %q to disappear", name)
 }
 
-func (c *StatefulSetClient) WaitForRunningAndReady(sts *appsv1.StatefulSet) {
+func (c *StatefulSetClient) WaitForRunningAndReady(ctx context.Context, sts *appsv1.StatefulSet) {
 	ginkgo.GinkgoHelper()
 	Logf("Waiting up to %v for statefulset %s to be running and ready", timeout, sts.Name)
-	statefulset.WaitForRunningAndReady(context.Background(), c.f.ClientSet, *sts.Spec.Replicas, sts)
+	statefulset.WaitForRunningAndReady(ctx, c.f.ClientSet, *sts.Spec.Replicas, sts)
 }
 
 // WaitToDisappear waits the given timeout duration for the specified statefulset to disappear.
-func (c *StatefulSetClient) WaitToDisappear(name string, _, timeout time.Duration) error {
-	err := framework.Gomega().Eventually(context.Background(), framework.HandleRetry(func(ctx context.Context) (*appsv1.StatefulSet, error) {
+func (c *StatefulSetClient) WaitToDisappear(ctx context.Context, name string, timeout time.Duration) error {
+	err := framework.Gomega().Eventually(ctx, framework.HandleRetry(func(ctx context.Context) (*appsv1.StatefulSet, error) {
 		sts, err := c.StatefulSetInterface.Get(ctx, name, metav1.GetOptions{})
 		if apierrors.IsNotFound(err) {
 			return nil, nil
@@ -114,20 +114,20 @@ func (c *StatefulSetClient) WaitToDisappear(name string, _, timeout time.Duratio
 	return nil
 }
 
-func (c *StatefulSetClient) PatchSync(original, modified *appsv1.StatefulSet) *appsv1.StatefulSet {
+func (c *StatefulSetClient) PatchSync(ctx context.Context, original, modified *appsv1.StatefulSet) *appsv1.StatefulSet {
 	ginkgo.GinkgoHelper()
-	sts := c.Patch(original, modified)
-	return c.RolloutStatus(sts.Name)
+	sts := c.Patch(ctx, original, modified)
+	return c.RolloutStatus(ctx, sts.Name)
 }
 
-func (c *StatefulSetClient) Patch(original, modified *appsv1.StatefulSet) *appsv1.StatefulSet {
+func (c *StatefulSetClient) Patch(ctx context.Context, original, modified *appsv1.StatefulSet) *appsv1.StatefulSet {
 	ginkgo.GinkgoHelper()
 
 	patch, err := util.GenerateMergePatchPayload(original, modified)
 	ExpectNoError(err)
 
 	var patchedSts *appsv1.StatefulSet
-	err = wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+	err = wait.PollUntilContextTimeout(ctx, 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
 		sts, err := c.StatefulSetInterface.Patch(ctx, original.Name, types.StrategicMergePatchType, patch, metav1.PatchOptions{}, "")
 		if err != nil {
 			return handleWaitingAPIError(err, false, "patch StatefulSet %s/%s", original.Namespace, original.Name)
@@ -147,11 +147,11 @@ func (c *StatefulSetClient) Patch(original, modified *appsv1.StatefulSet) *appsv
 	return nil
 }
 
-func (c *StatefulSetClient) RolloutStatus(name string) *appsv1.StatefulSet {
+func (c *StatefulSetClient) RolloutStatus(ctx context.Context, name string) *appsv1.StatefulSet {
 	var sts *appsv1.StatefulSet
-	WaitUntil(2*time.Second, timeout, func(_ context.Context) (bool, error) {
+	WaitUntil(ctx, timeout, func(ctx context.Context) (bool, error) {
 		var err error
-		sts = c.Get(name)
+		sts = c.Get(ctx, name)
 		unstructured := &unstructured.Unstructured{}
 		if unstructured.Object, err = runtime.DefaultUnstructuredConverter.ToUnstructured(sts); err != nil {
 			return false, err

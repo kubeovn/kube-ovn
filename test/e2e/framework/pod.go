@@ -32,41 +32,48 @@ func (f *Framework) PodClientNS(namespace string) *PodClient {
 	return &PodClient{f, e2epod.PodClientNS(f.Framework, namespace), namespace}
 }
 
-func (c *PodClient) GetPod(name string) *corev1.Pod {
+func (c *PodClient) List(ctx context.Context, options metav1.ListOptions) *corev1.PodList {
 	ginkgo.GinkgoHelper()
-	pod, err := c.PodInterface.Get(context.TODO(), name, metav1.GetOptions{})
+	pods, err := c.PodInterface.List(ctx, options)
+	ExpectNoError(err)
+	return pods
+}
+
+func (c *PodClient) Get(ctx context.Context, name string) *corev1.Pod {
+	ginkgo.GinkgoHelper()
+	pod, err := c.PodInterface.Get(ctx, name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return pod
 }
 
-func (c *PodClient) Create(pod *corev1.Pod) *corev1.Pod {
+func (c *PodClient) Create(ctx context.Context, pod *corev1.Pod) *corev1.Pod {
 	ginkgo.GinkgoHelper()
-	return c.PodClient.Create(context.Background(), pod)
+	return c.PodClient.Create(ctx, pod)
 }
 
-func (c *PodClient) CreateSync(pod *corev1.Pod) *corev1.Pod {
+func (c *PodClient) CreateSync(ctx context.Context, pod *corev1.Pod) *corev1.Pod {
 	ginkgo.GinkgoHelper()
-	return c.PodClient.CreateSync(context.Background(), pod)
+	return c.PodClient.CreateSync(ctx, pod)
 }
 
-func (c *PodClient) Delete(name string) error {
+func (c *PodClient) Delete(ctx context.Context, name string) error {
 	ginkgo.GinkgoHelper()
-	return c.PodClient.Delete(context.Background(), name, metav1.DeleteOptions{})
+	return c.PodClient.Delete(ctx, name, metav1.DeleteOptions{})
 }
 
-func (c *PodClient) DeleteSync(name string) {
+func (c *PodClient) DeleteSync(ctx context.Context, name string) {
 	ginkgo.GinkgoHelper()
-	c.PodClient.DeleteSync(context.Background(), name, metav1.DeleteOptions{GracePeriodSeconds: ptr.To(int64(1))}, timeout)
+	c.PodClient.DeleteSync(ctx, name, metav1.DeleteOptions{GracePeriodSeconds: ptr.To(int64(1))}, timeout)
 }
 
-func (c *PodClient) Patch(original, modified *corev1.Pod) *corev1.Pod {
+func (c *PodClient) Patch(ctx context.Context, original, modified *corev1.Pod) *corev1.Pod {
 	ginkgo.GinkgoHelper()
 
 	patch, err := util.GenerateMergePatchPayload(original, modified)
 	ExpectNoError(err)
 
 	var patchedPod *corev1.Pod
-	err = wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+	err = wait.PollUntilContextTimeout(ctx, 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
 		p, err := c.PodInterface.Patch(ctx, original.Name, types.StrategicMergePatchType, patch, metav1.PatchOptions{}, "")
 		if err != nil {
 			return handleWaitingAPIError(err, false, "patch pod %s/%s", original.Namespace, original.Name)
@@ -86,15 +93,15 @@ func (c *PodClient) Patch(original, modified *corev1.Pod) *corev1.Pod {
 	return nil
 }
 
-func (c *PodClient) WaitForRunning(name string) {
+func (c *PodClient) WaitForRunning(ctx context.Context, name string) {
 	ginkgo.GinkgoHelper()
-	err := e2epod.WaitTimeoutForPodRunningInNamespace(context.TODO(), c.f.ClientSet, name, c.namespace, timeout)
+	err := e2epod.WaitTimeoutForPodRunningInNamespace(ctx, c.f.ClientSet, name, c.namespace, timeout)
 	ExpectNoError(err)
 }
 
-func (c *PodClient) WaitForNotFound(name string) {
+func (c *PodClient) WaitForNotFound(ctx context.Context, name string) {
 	ginkgo.GinkgoHelper()
-	err := e2epod.WaitForPodNotFoundInNamespace(context.TODO(), c.f.ClientSet, name, c.namespace, timeout)
+	err := e2epod.WaitForPodNotFoundInNamespace(ctx, c.f.ClientSet, name, c.namespace, timeout)
 	ExpectNoError(err)
 }
 
@@ -122,7 +129,7 @@ func makePod(ns, name string, labels, annotations map[string]string, image strin
 				},
 			},
 			SecurityContext:               e2epod.GeneratePodSecurityContext(nil, nil),
-			TerminationGracePeriodSeconds: ptr.To(int64(3)),
+			TerminationGracePeriodSeconds: ptr.To(int64(0)),
 		},
 	}
 	if securityLevel == psaapi.LevelRestricted {

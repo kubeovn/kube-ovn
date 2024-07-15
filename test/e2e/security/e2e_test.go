@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -39,24 +40,24 @@ func TestE2E(t *testing.T) {
 	e2e.RunE2ETests(t)
 }
 
-func checkDeployment(f *framework.Framework, name, process string, ports ...string) {
+func checkDeployment(ctx context.Context, f *framework.Framework, name, process string, ports ...string) {
 	ginkgo.GinkgoHelper()
 
 	ginkgo.By("Getting deployment " + name)
-	deploy, err := f.ClientSet.AppsV1().Deployments(framework.KubeOvnNamespace).Get(context.TODO(), name, metav1.GetOptions{})
+	deploy, err := f.ClientSet.AppsV1().Deployments(framework.KubeOvnNamespace).Get(ctx, name, metav1.GetOptions{})
 	framework.ExpectNoError(err, "failed to to get deployment")
 	err = deployment.WaitForDeploymentComplete(f.ClientSet, deploy)
 	framework.ExpectNoError(err, "deployment failed to complete")
 
 	ginkgo.By("Getting pods")
-	pods, err := deployment.GetPodsForDeployment(context.Background(), f.ClientSet, deploy)
+	pods, err := deployment.GetPodsForDeployment(ctx, f.ClientSet, deploy)
 	framework.ExpectNoError(err, "failed to get pods")
 	framework.ExpectNotEmpty(pods.Items)
 
-	checkPods(f, pods.Items, process, ports...)
+	checkPods(ctx, f, pods.Items, process, ports...)
 }
 
-func checkPods(f *framework.Framework, pods []corev1.Pod, process string, ports ...string) {
+func checkPods(ctx context.Context, f *framework.Framework, pods []corev1.Pod, process string, ports ...string) {
 	ginkgo.GinkgoHelper()
 
 	ginkgo.By("Parsing environment variable")
@@ -84,7 +85,7 @@ func checkPods(f *framework.Framework, pods []corev1.Pod, process string, ports 
 		cmd += fmt.Sprintf(`| grep -E ':%s$'`, strings.Join(ports, `$|:`))
 	}
 	for _, pod := range pods {
-		stdout, _, err := framework.KubectlExec(pod.Namespace, pod.Name, cmd)
+		stdout, _, err := framework.KubectlExec(ctx, pod.Namespace, pod.Name, cmd)
 		framework.ExpectNoError(err)
 
 		listenAddresses := strings.Split(string(bytes.TrimSpace(stdout)), "\n")
@@ -118,41 +119,41 @@ var _ = framework.Describe("[group:security]", func() {
 	f.SkipNamespaceCreation = true
 
 	var cs clientset.Interface
-	ginkgo.BeforeEach(func() {
+	ginkgo.BeforeEach(ginkgo.NodeTimeout(time.Second), func(_ ginkgo.SpecContext) {
 		f.SkipVersionPriorTo(1, 9, "Support for listening on Pod IP was introduced in v1.9")
 		cs = f.ClientSet
 	})
 
-	framework.ConformanceIt("ovn db should listen on specified addresses for client connections", func() {
-		checkDeployment(f, "ovn-central", "ovsdb-server", "6641", "6642")
+	framework.ConformanceIt("ovn db should listen on specified addresses for client connections", ginkgo.SpecTimeout(5*time.Second), func(ctx ginkgo.SpecContext) {
+		checkDeployment(ctx, f, "ovn-central", "ovsdb-server", "6641", "6642")
 	})
 
-	framework.ConformanceIt("kube-ovn-controller should listen on specified addresses", func() {
-		checkDeployment(f, "kube-ovn-controller", "kube-ovn-controller")
+	framework.ConformanceIt("kube-ovn-controller should listen on specified addresses", ginkgo.SpecTimeout(5*time.Second), func(ctx ginkgo.SpecContext) {
+		checkDeployment(ctx, f, "kube-ovn-controller", "kube-ovn-controller")
 	})
 
-	framework.ConformanceIt("kube-ovn-monitor should listen on specified addresses", func() {
-		checkDeployment(f, "kube-ovn-monitor", "kube-ovn-monitor")
+	framework.ConformanceIt("kube-ovn-monitor should listen on specified addresses", ginkgo.SpecTimeout(5*time.Second), func(ctx ginkgo.SpecContext) {
+		checkDeployment(ctx, f, "kube-ovn-monitor", "kube-ovn-monitor")
 	})
 
-	framework.ConformanceIt("kube-ovn-cni should listen on specified addresses", func() {
+	framework.ConformanceIt("kube-ovn-cni should listen on specified addresses", ginkgo.SpecTimeout(5*time.Second), func(ctx ginkgo.SpecContext) {
 		ginkgo.By("Getting nodes")
-		nodeList, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
+		nodeList, err := e2enode.GetReadySchedulableNodes(ctx, cs)
 		framework.ExpectNoError(err)
 		framework.ExpectNotEmpty(nodeList.Items)
 
 		ginkgo.By("Getting daemonset kube-ovn-cni")
 		daemonSetClient := f.DaemonSetClientNS(framework.KubeOvnNamespace)
-		ds := daemonSetClient.Get("kube-ovn-cni")
+		ds := daemonSetClient.Get(ctx, "kube-ovn-cni")
 
 		ginkgo.By("Getting kube-ovn-cni pods")
 		pods := make([]corev1.Pod, 0, len(nodeList.Items))
 		for _, node := range nodeList.Items {
-			pod, err := daemonSetClient.GetPodOnNode(ds, node.Name)
+			pod, err := daemonSetClient.GetPodOnNode(ctx, ds, node.Name)
 			framework.ExpectNoError(err, "failed to get kube-ovn-cni pod running on node %s", node.Name)
 			pods = append(pods, *pod)
 		}
 
-		checkPods(f, pods, "kube-ovn-daemon")
+		checkPods(ctx, f, pods, "kube-ovn-daemon")
 	})
 })

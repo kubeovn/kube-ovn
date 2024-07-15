@@ -10,7 +10,7 @@ import (
 	"github.com/docker/docker/client"
 )
 
-func ContainerList(filters map[string][]string) ([]types.Container, error) {
+func ContainerList(ctx context.Context, filters map[string][]string) ([]types.Container, error) {
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		return nil, err
@@ -23,10 +23,10 @@ func ContainerList(filters map[string][]string) ([]types.Container, error) {
 			f.Add(k, v1)
 		}
 	}
-	return cli.ContainerList(context.Background(), container.ListOptions{All: true, Filters: f})
+	return cli.ContainerList(ctx, container.ListOptions{All: true, Filters: f})
 }
 
-func ContainerCreate(name, image, networkName string, cmd []string) (*types.ContainerJSON, error) {
+func ContainerCreate(ctx context.Context, name, image, networkName string, cmd []string) (*types.ContainerJSON, error) {
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		return nil, err
@@ -44,16 +44,16 @@ func ContainerCreate(name, image, networkName string, cmd []string) (*types.Cont
 		},
 	}
 
-	resp, err := cli.ContainerCreate(context.Background(), containerConfig, nil, networkConfig, nil, name)
+	resp, err := cli.ContainerCreate(ctx, containerConfig, nil, networkConfig, nil, name)
 	if err != nil {
 		return nil, err
 	}
 
-	if err = cli.ContainerStart(context.Background(), resp.ID, container.StartOptions{}); err != nil {
+	if err = cli.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
 		return nil, err
 	}
 
-	info, err := cli.ContainerInspect(context.Background(), resp.ID)
+	info, err := cli.ContainerInspect(ctx, resp.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -61,14 +61,14 @@ func ContainerCreate(name, image, networkName string, cmd []string) (*types.Cont
 	return &info, nil
 }
 
-func ContainerInspect(id string) (*types.ContainerJSON, error) {
+func ContainerInspect(ctx context.Context, id string) (*types.ContainerJSON, error) {
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		return nil, err
 	}
 	defer cli.Close()
 
-	result, err := cli.ContainerInspect(context.Background(), id)
+	result, err := cli.ContainerInspect(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -76,12 +76,12 @@ func ContainerInspect(id string) (*types.ContainerJSON, error) {
 	return &result, nil
 }
 
-func ContainerRemove(id string) error {
+func ContainerRemove(ctx context.Context, id string) error {
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		return err
 	}
 	defer cli.Close()
 
-	return cli.ContainerRemove(context.Background(), id, container.RemoveOptions{Force: true})
+	return cli.ContainerRemove(ctx, id, container.RemoveOptions{Force: true})
 }

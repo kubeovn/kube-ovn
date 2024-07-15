@@ -13,7 +13,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	clientset "k8s.io/client-go/kubernetes"
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
-	e2epodoutput "k8s.io/kubernetes/test/e2e/framework/pod/output"
 	"k8s.io/utils/ptr"
 
 	"github.com/onsi/ginkgo/v2"
@@ -31,7 +30,7 @@ var _ = framework.Describe("[group:service]", func() {
 	var subnetClient *framework.SubnetClient
 	var namespaceName, serviceName, podName, hostPodName, subnetName, cidr string
 
-	ginkgo.BeforeEach(func() {
+	ginkgo.BeforeEach(ginkgo.NodeTimeout(time.Second), func(_ ginkgo.SpecContext) {
 		cs = f.ClientSet
 		serviceClient = f.ServiceClient()
 		podClient = f.PodClient()
@@ -43,25 +42,26 @@ var _ = framework.Describe("[group:service]", func() {
 		subnetName = "subnet-" + framework.RandomSuffix()
 		cidr = framework.RandomCIDR(f.ClusterIPFamily)
 	})
-	ginkgo.AfterEach(func() {
+	ginkgo.AfterEach(ginkgo.NodeTimeout(30*time.Second), func(ctx ginkgo.SpecContext) {
 		ginkgo.By("Deleting service " + serviceName)
-		serviceClient.DeleteSync(serviceName)
+		serviceClient.DeleteSync(ctx, serviceName)
 
 		ginkgo.By("Deleting pod " + podName)
-		podClient.DeleteSync(podName)
+		podClient.DeleteSync(ctx, podName)
 
 		ginkgo.By("Deleting pod " + hostPodName)
-		podClient.DeleteSync(hostPodName)
+		podClient.DeleteSync(ctx, hostPodName)
 
 		ginkgo.By("Deleting subnet " + subnetName)
-		subnetClient.DeleteSync(subnetName)
+		subnetClient.DeleteSync(ctx, subnetName)
 	})
 
-	framework.ConformanceIt("should be able to connect to NodePort service with external traffic policy set to Local from other nodes", func() {
+	framework.ConformanceIt("should be able to connect to NodePort service with external traffic policy set to Local from other nodes", ginkgo.SpecTimeout(time.Minute), func(ctx ginkgo.SpecContext) {
 		f.SkipVersionPriorTo(1, 9, "This case is not adapted before v1.9")
+
 		ginkgo.By("Creating subnet " + subnetName)
 		subnet := framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, nil)
-		_ = subnetClient.CreateSync(subnet)
+		_ = subnetClient.CreateSync(ctx, subnet)
 
 		ginkgo.By("Creating pod " + podName)
 		podLabels := map[string]string{"app": podName}
@@ -72,7 +72,7 @@ var _ = framework.Describe("[group:service]", func() {
 		portStr := strconv.Itoa(int(port))
 		args := []string{"netexec", "--http-port", portStr}
 		pod := framework.MakePod(namespaceName, podName, podLabels, annotations, framework.AgnhostImage, nil, args)
-		_ = podClient.CreateSync(pod)
+		_ = podClient.CreateSync(ctx, pod)
 
 		ginkgo.By("Creating service " + serviceName)
 		ports := []corev1.ServicePort{{
@@ -83,18 +83,18 @@ var _ = framework.Describe("[group:service]", func() {
 		}}
 		service := framework.MakeService(serviceName, corev1.ServiceTypeNodePort, nil, podLabels, ports, "")
 		service.Spec.ExternalTrafficPolicy = corev1.ServiceExternalTrafficPolicyLocal
-		service = serviceClient.CreateSync(service, func(s *corev1.Service) (bool, error) {
+		service = serviceClient.CreateSync(ctx, service, func(s *corev1.Service) (bool, error) {
 			return len(s.Spec.Ports) != 0 && s.Spec.Ports[0].NodePort != 0, nil
 		}, "node port is allocated")
 
 		ginkgo.By("Creating pod " + hostPodName + " with host network")
-		cmd := []string{"sh", "-c", "sleep infinity"}
+		cmd := []string{"sleep", "infinity"}
 		hostPod := framework.MakePod(namespaceName, hostPodName, nil, nil, f.KubeOVNImage, cmd, nil)
 		hostPod.Spec.HostNetwork = true
-		_ = podClient.CreateSync(hostPod)
+		_ = podClient.CreateSync(ctx, hostPod)
 
 		ginkgo.By("Getting nodes")
-		nodeList, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
+		nodeList, err := e2enode.GetReadySchedulableNodes(ctx, cs)
 		framework.ExpectNoError(err)
 
 		nodePort := service.Spec.Ports[0].NodePort
@@ -107,9 +107,9 @@ var _ = framework.Describe("[group:service]", func() {
 			protocol := strings.ToLower(util.CheckProtocol(nodeIP))
 			ginkgo.By("Checking " + protocol + " connection via node " + nodeName)
 			cmd := fmt.Sprintf("curl -q -s --connect-timeout 2 --max-time 2 %s/clientip", util.JoinHostPort(nodeIP, nodePort))
-			framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+			framework.WaitUntil(ctx, 30*time.Second, func(ctx context.Context) (bool, error) {
 				ginkgo.By(fmt.Sprintf(`Executing %q in pod %s/%s`, cmd, namespaceName, hostPodName))
-				_, err := e2epodoutput.RunHostCmd(namespaceName, hostPodName, cmd)
+				_, _, err := framework.KubectlExec(ctx, namespaceName, hostPodName, cmd)
 				return err == nil, nil
 			}, "")
 		}
@@ -120,11 +120,12 @@ var _ = framework.Describe("[group:service]", func() {
 		}
 	})
 
-	framework.ConformanceIt("should ovn nb change vip when dual-stack service removes the cluster ip", func() {
+	framework.ConformanceIt("should ovn nb change vip when dual-stack service removes the cluster ip", ginkgo.SpecTimeout(40*time.Second), func(ctx ginkgo.SpecContext) {
 		if !f.IsDual() {
 			ginkgo.Skip("this case only support dual mode")
 		}
 		f.SkipVersionPriorTo(1, 11, "This case is support in v1.11")
+
 		ginkgo.By("Creating service " + serviceName)
 		port := 8000 + rand.Int32N(1000)
 		ports := []corev1.ServicePort{{
@@ -138,7 +139,7 @@ var _ = framework.Describe("[group:service]", func() {
 		service := framework.MakeService(serviceName, corev1.ServiceTypeClusterIP, nil, selector, ports, corev1.ServiceAffinityNone)
 		service.Namespace = namespaceName
 		service.Spec.IPFamilyPolicy = ptr.To(corev1.IPFamilyPolicyRequireDualStack)
-		service = serviceClient.CreateSync(service, func(s *corev1.Service) (bool, error) {
+		service = serviceClient.CreateSync(ctx, service, func(s *corev1.Service) (bool, error) {
 			return len(util.ServiceClusterIPs(*s)) == 2, nil
 		}, "both ipv4 and ipv6 cluster ips are allocated")
 		v6ClusterIP := service.Spec.ClusterIPs[1]
@@ -147,15 +148,15 @@ var _ = framework.Describe("[group:service]", func() {
 
 		ginkgo.By("Creating pod " + podName)
 		podBackend := framework.MakePod(namespaceName, podName, selector, nil, framework.PauseImage, nil, nil)
-		podBackend = podClient.CreateSync(podBackend)
+		podBackend = podClient.CreateSync(ctx, podBackend)
 		framework.Logf("created pod %s with ips %s", podName, strings.Join(util.PodIPs(*podBackend), ","))
 
 		checkContainsClusterIP := func(v6ClusterIP string, isContain bool) {
 			ginkgo.GinkgoHelper()
 
 			cmd := "ovn-nbctl --format=csv --data=bare --no-heading --columns=vips list Load_Balancer cluster-tcp-loadbalancer"
-			framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
-				output, _, err := framework.NBExec(cmd)
+			framework.WaitUntil(ctx, 30*time.Second, func(ctx context.Context) (bool, error) {
+				output, _, err := framework.NBExec(ctx, cmd)
 				framework.ExpectNoError(err)
 				output = bytes.TrimSpace(output)
 				if output[0] == '"' {
@@ -178,7 +179,7 @@ var _ = framework.Describe("[group:service]", func() {
 				return false, nil
 			}, "")
 
-			output, _, err := framework.NBExec(cmd)
+			output, _, err := framework.NBExec(ctx, cmd)
 			framework.ExpectNoError(err)
 			framework.ExpectEqual(strings.Contains(string(output), v6ClusterIP), isContain)
 		}
@@ -191,7 +192,7 @@ var _ = framework.Describe("[group:service]", func() {
 		modifyService.Spec.IPFamilyPolicy = ptr.To(corev1.IPFamilyPolicySingleStack)
 		modifyService.Spec.IPFamilies = []corev1.IPFamily{corev1.IPv4Protocol}
 		modifyService.Spec.ClusterIPs = []string{service.Spec.ClusterIP}
-		service = serviceClient.Patch(service, modifyService)
+		service = serviceClient.Patch(ctx, service, modifyService)
 		checkContainsClusterIP(v6ClusterIP, false)
 
 		ginkgo.By("recover service from single stack to dual stack")
@@ -199,7 +200,7 @@ var _ = framework.Describe("[group:service]", func() {
 		recoverService.Spec.IPFamilyPolicy = ptr.To(*originService.Spec.IPFamilyPolicy)
 		recoverService.Spec.IPFamilies = originService.Spec.IPFamilies
 		recoverService.Spec.ClusterIPs = originService.Spec.ClusterIPs
-		_ = serviceClient.Patch(service, recoverService)
+		_ = serviceClient.Patch(ctx, service, recoverService)
 		checkContainsClusterIP(v6ClusterIP, true)
 	})
 })

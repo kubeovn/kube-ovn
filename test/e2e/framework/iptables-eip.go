@@ -34,40 +34,40 @@ func (f *Framework) IptablesEIPClient() *IptablesEIPClient {
 	}
 }
 
-func (c *IptablesEIPClient) Get(name string) *apiv1.IptablesEIP {
+func (c *IptablesEIPClient) Get(ctx context.Context, name string) *apiv1.IptablesEIP {
 	ginkgo.GinkgoHelper()
-	eip, err := c.IptablesEIPInterface.Get(context.TODO(), name, metav1.GetOptions{})
+	eip, err := c.IptablesEIPInterface.Get(ctx, name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return eip
 }
 
 // Create creates a new iptables eip according to the framework specifications
-func (c *IptablesEIPClient) Create(eip *apiv1.IptablesEIP) *apiv1.IptablesEIP {
+func (c *IptablesEIPClient) Create(ctx context.Context, eip *apiv1.IptablesEIP) *apiv1.IptablesEIP {
 	ginkgo.GinkgoHelper()
-	eip, err := c.IptablesEIPInterface.Create(context.TODO(), eip, metav1.CreateOptions{})
+	eip, err := c.IptablesEIPInterface.Create(ctx, eip, metav1.CreateOptions{})
 	ExpectNoError(err, "Error creating iptables eip")
 	return eip.DeepCopy()
 }
 
 // CreateSync creates a new iptables eip according to the framework specifications, and waits for it to be ready.
-func (c *IptablesEIPClient) CreateSync(eip *apiv1.IptablesEIP) *apiv1.IptablesEIP {
+func (c *IptablesEIPClient) CreateSync(ctx context.Context, eip *apiv1.IptablesEIP) *apiv1.IptablesEIP {
 	ginkgo.GinkgoHelper()
 
-	eip = c.Create(eip)
-	ExpectTrue(c.WaitToBeReady(eip.Name, timeout))
+	eip = c.Create(ctx, eip)
+	ExpectTrue(c.WaitToBeReady(ctx, eip.Name, timeout))
 	// Get the newest iptables eip after it becomes ready
-	return c.Get(eip.Name).DeepCopy()
+	return c.Get(ctx, eip.Name).DeepCopy()
 }
 
 // Patch patches the iptables eip
-func (c *IptablesEIPClient) Patch(original, modified *apiv1.IptablesEIP) *apiv1.IptablesEIP {
+func (c *IptablesEIPClient) Patch(ctx context.Context, original, modified *apiv1.IptablesEIP) *apiv1.IptablesEIP {
 	ginkgo.GinkgoHelper()
 
 	patch, err := util.GenerateMergePatchPayload(original, modified)
 	ExpectNoError(err)
 
 	var patchedIptablesEIP *apiv1.IptablesEIP
-	err = wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+	err = wait.PollUntilContextTimeout(ctx, 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
 		eip, err := c.IptablesEIPInterface.Patch(ctx, original.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
 		if err != nil {
 			return handleWaitingAPIError(err, false, "patch iptables eip %q", original.Name)
@@ -89,33 +89,33 @@ func (c *IptablesEIPClient) Patch(original, modified *apiv1.IptablesEIP) *apiv1.
 
 // PatchSync patches the iptables eip and waits for the iptables eip to be ready for `timeout`.
 // If the iptables eip doesn't become ready before the timeout, it will fail the test.
-func (c *IptablesEIPClient) PatchSync(original, modified *apiv1.IptablesEIP, _ []string, timeout time.Duration) *apiv1.IptablesEIP {
+func (c *IptablesEIPClient) PatchSync(ctx context.Context, original, modified *apiv1.IptablesEIP, timeout time.Duration) *apiv1.IptablesEIP {
 	ginkgo.GinkgoHelper()
 
-	eip := c.Patch(original, modified)
-	ExpectTrue(c.WaitToBeUpdated(eip, timeout))
-	ExpectTrue(c.WaitToBeReady(eip.Name, timeout))
+	eip := c.Patch(ctx, original, modified)
+	ExpectTrue(c.WaitToBeUpdated(ctx, eip, timeout))
+	ExpectTrue(c.WaitToBeReady(ctx, eip.Name, timeout))
 	// Get the newest iptables eip after it becomes ready
-	return c.Get(eip.Name).DeepCopy()
+	return c.Get(ctx, eip.Name).DeepCopy()
 }
 
 // PatchQoS patches the vpc nat gw and waits for the qos to be ready for `timeout`.
 // If the qos doesn't become ready before the timeout, it will fail the test.
-func (c *IptablesEIPClient) PatchQoSPolicySync(eipName, qosPolicyName string) *apiv1.IptablesEIP {
+func (c *IptablesEIPClient) PatchQoSPolicySync(ctx context.Context, eipName, qosPolicyName string) *apiv1.IptablesEIP {
 	ginkgo.GinkgoHelper()
 
-	eip := c.Get(eipName)
+	eip := c.Get(ctx, eipName)
 	modifiedEIP := eip.DeepCopy()
 	modifiedEIP.Spec.QoSPolicy = qosPolicyName
-	_ = c.Patch(eip, modifiedEIP)
-	ExpectTrue(c.WaitToQoSReady(eipName))
-	return c.Get(eipName).DeepCopy()
+	_ = c.Patch(ctx, eip, modifiedEIP)
+	ExpectTrue(c.WaitToQoSReady(ctx, eipName))
+	return c.Get(ctx, eipName).DeepCopy()
 }
 
 // Delete deletes a iptables eip if the iptables eip exists
-func (c *IptablesEIPClient) Delete(name string) {
+func (c *IptablesEIPClient) Delete(ctx context.Context, name string) {
 	ginkgo.GinkgoHelper()
-	err := c.IptablesEIPInterface.Delete(context.TODO(), name, metav1.DeleteOptions{})
+	err := c.IptablesEIPInterface.Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil && !apierrors.IsNotFound(err) {
 		Failf("Failed to delete iptables eip %q: %v", name, err)
 	}
@@ -123,16 +123,16 @@ func (c *IptablesEIPClient) Delete(name string) {
 
 // DeleteSync deletes the iptables eip and waits for the iptables eip to disappear for `timeout`.
 // If the iptables eip doesn't disappear before the timeout, it will fail the test.
-func (c *IptablesEIPClient) DeleteSync(name string) {
+func (c *IptablesEIPClient) DeleteSync(ctx context.Context, name string) {
 	ginkgo.GinkgoHelper()
-	c.Delete(name)
-	gomega.Expect(c.WaitToDisappear(name, 2*time.Second, timeout)).To(gomega.Succeed(), "wait for iptables eip %q to disappear", name)
+	c.Delete(ctx, name)
+	gomega.Expect(c.WaitToDisappear(ctx, name, timeout)).To(gomega.Succeed(), "wait for iptables eip %q to disappear", name)
 }
 
 // WaitToBeReady returns whether the iptables eip is ready within timeout.
-func (c *IptablesEIPClient) WaitToBeReady(name string, timeout time.Duration) bool {
+func (c *IptablesEIPClient) WaitToBeReady(ctx context.Context, name string, timeout time.Duration) bool {
 	for start := time.Now(); time.Since(start) < timeout; time.Sleep(poll) {
-		eip := c.Get(name)
+		eip := c.Get(ctx, name)
 		if eip.Status.Ready && eip.Status.IP != "" && eip.Spec.V4ip != "" {
 			Logf("eip %s is ready", name)
 			return true
@@ -143,9 +143,9 @@ func (c *IptablesEIPClient) WaitToBeReady(name string, timeout time.Duration) bo
 }
 
 // WaitToQoSReady returns whether the qos is ready within timeout.
-func (c *IptablesEIPClient) WaitToQoSReady(name string) bool {
+func (c *IptablesEIPClient) WaitToQoSReady(ctx context.Context, name string) bool {
 	for start := time.Now(); time.Since(start) < timeout; time.Sleep(poll) {
-		eip := c.Get(name)
+		eip := c.Get(ctx, name)
 		if eip.Status.QoSPolicy == eip.Spec.QoSPolicy {
 			Logf("qos %s of eip %s is ready", eip.Spec.QoSPolicy, name)
 			return true
@@ -156,11 +156,11 @@ func (c *IptablesEIPClient) WaitToQoSReady(name string) bool {
 }
 
 // WaitToBeUpdated returns whether the iptables eip is updated within timeout.
-func (c *IptablesEIPClient) WaitToBeUpdated(eip *apiv1.IptablesEIP, timeout time.Duration) bool {
+func (c *IptablesEIPClient) WaitToBeUpdated(ctx context.Context, eip *apiv1.IptablesEIP, timeout time.Duration) bool {
 	Logf("Waiting up to %v for iptables eip %s to be updated", timeout, eip.Name)
 	rv, _ := big.NewInt(0).SetString(eip.ResourceVersion, 10)
 	for start := time.Now(); time.Since(start) < timeout; time.Sleep(poll) {
-		s := c.Get(eip.Name)
+		s := c.Get(ctx, eip.Name)
 		if current, _ := big.NewInt(0).SetString(s.ResourceVersion, 10); current.Cmp(rv) > 0 {
 			return true
 		}
@@ -170,8 +170,8 @@ func (c *IptablesEIPClient) WaitToBeUpdated(eip *apiv1.IptablesEIP, timeout time
 }
 
 // WaitToDisappear waits the given timeout duration for the specified iptables eip to disappear.
-func (c *IptablesEIPClient) WaitToDisappear(name string, _, timeout time.Duration) error {
-	err := framework.Gomega().Eventually(context.Background(), framework.HandleRetry(func(ctx context.Context) (*apiv1.IptablesEIP, error) {
+func (c *IptablesEIPClient) WaitToDisappear(ctx context.Context, name string, timeout time.Duration) error {
+	err := framework.Gomega().Eventually(ctx, framework.HandleRetry(func(ctx context.Context) (*apiv1.IptablesEIP, error) {
 		eip, err := c.IptablesEIPInterface.Get(ctx, name, metav1.GetOptions{})
 		if apierrors.IsNotFound(err) {
 			return nil, nil

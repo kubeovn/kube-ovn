@@ -33,29 +33,29 @@ func (f *Framework) NamespaceClient() *NamespaceClient {
 	}
 }
 
-func (c *NamespaceClient) Get(name string) *corev1.Namespace {
+func (c *NamespaceClient) Get(ctx context.Context, name string) *corev1.Namespace {
 	ginkgo.GinkgoHelper()
-	np, err := c.NamespaceInterface.Get(context.TODO(), name, metav1.GetOptions{})
+	np, err := c.NamespaceInterface.Get(ctx, name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return np
 }
 
 // Create creates a new namespace according to the framework specifications
-func (c *NamespaceClient) Create(ns *corev1.Namespace) *corev1.Namespace {
+func (c *NamespaceClient) Create(ctx context.Context, ns *corev1.Namespace) *corev1.Namespace {
 	ginkgo.GinkgoHelper()
-	np, err := c.NamespaceInterface.Create(context.TODO(), ns, metav1.CreateOptions{})
+	np, err := c.NamespaceInterface.Create(ctx, ns, metav1.CreateOptions{})
 	ExpectNoError(err, "Error creating namespace")
 	return np.DeepCopy()
 }
 
-func (c *NamespaceClient) Patch(original, modified *corev1.Namespace) *corev1.Namespace {
+func (c *NamespaceClient) Patch(ctx context.Context, original, modified *corev1.Namespace) *corev1.Namespace {
 	ginkgo.GinkgoHelper()
 
 	patch, err := util.GenerateMergePatchPayload(original, modified)
 	ExpectNoError(err)
 
 	var patchedNS *corev1.Namespace
-	err = wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+	err = wait.PollUntilContextTimeout(ctx, 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
 		ns, err := c.NamespaceInterface.Patch(ctx, original.Name, types.StrategicMergePatchType, patch, metav1.PatchOptions{}, "")
 		if err != nil {
 			return handleWaitingAPIError(err, false, "patch namespace %s", original.Name)
@@ -76,9 +76,9 @@ func (c *NamespaceClient) Patch(original, modified *corev1.Namespace) *corev1.Na
 }
 
 // Delete deletes a namespace if the namespace exists
-func (c *NamespaceClient) Delete(name string) {
+func (c *NamespaceClient) Delete(ctx context.Context, name string) {
 	ginkgo.GinkgoHelper()
-	err := c.NamespaceInterface.Delete(context.TODO(), name, metav1.DeleteOptions{})
+	err := c.NamespaceInterface.Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil && !apierrors.IsNotFound(err) {
 		Failf("Failed to delete namespace %q: %v", name, err)
 	}
@@ -86,15 +86,15 @@ func (c *NamespaceClient) Delete(name string) {
 
 // DeleteSync deletes the namespace and waits for the namespace to disappear for `timeout`.
 // If the namespace doesn't disappear before the timeout, it will fail the test.
-func (c *NamespaceClient) DeleteSync(name string) {
+func (c *NamespaceClient) DeleteSync(ctx context.Context, name string) {
 	ginkgo.GinkgoHelper()
-	c.Delete(name)
-	gomega.Expect(c.WaitToDisappear(name, 2*time.Second, timeout)).To(gomega.Succeed(), "wait for namespace %q to disappear", name)
+	c.Delete(ctx, name)
+	gomega.Expect(c.WaitToDisappear(ctx, name, timeout)).To(gomega.Succeed(), "wait for namespace %q to disappear", name)
 }
 
 // WaitToDisappear waits the given timeout duration for the specified namespace to disappear.
-func (c *NamespaceClient) WaitToDisappear(name string, _, timeout time.Duration) error {
-	err := framework.Gomega().Eventually(context.Background(), framework.HandleRetry(func(ctx context.Context) (*corev1.Namespace, error) {
+func (c *NamespaceClient) WaitToDisappear(ctx context.Context, name string, timeout time.Duration) error {
+	err := framework.Gomega().Eventually(ctx, framework.HandleRetry(func(ctx context.Context) (*corev1.Namespace, error) {
 		policy, err := c.NamespaceInterface.Get(ctx, name, metav1.GetOptions{})
 		if apierrors.IsNotFound(err) {
 			return nil, nil

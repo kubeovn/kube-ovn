@@ -14,7 +14,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
-	e2epodoutput "k8s.io/kubernetes/test/e2e/framework/pod/output"
 
 	"github.com/onsi/ginkgo/v2"
 
@@ -50,12 +49,12 @@ func makeProviderNetwork(providerNetworkName string, exchangeLinkName bool, link
 	return framework.MakeProviderNetwork(providerNetworkName, exchangeLinkName, defaultInterface, customInterfaces, nil)
 }
 
-func waitSubnetStatusUpdate(subnetName string, subnetClient *framework.SubnetClient, expectedUsingIPs float64) {
+func waitSubnetStatusUpdate(ctx context.Context, subnetName string, subnetClient *framework.SubnetClient, expectedUsingIPs float64) {
 	ginkgo.GinkgoHelper()
 
 	ginkgo.By("Waiting for using ips count of subnet " + subnetName + " to be " + fmt.Sprintf("%.0f", expectedUsingIPs))
-	framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
-		subnet := subnetClient.Get(subnetName)
+	framework.WaitUntil(ctx, 30*time.Second, func(ctx context.Context) (bool, error) {
+		subnet := subnetClient.Get(ctx, subnetName)
 		if (subnet.Status.V4AvailableIPs != 0 && subnet.Status.V4UsingIPs != expectedUsingIPs) ||
 			(subnet.Status.V6AvailableIPs != 0 && subnet.Status.V6UsingIPs != expectedUsingIPs) {
 			framework.Logf("current subnet status: v4AvailableIPs = %.0f, v4UsingIPs = %.0f, v6AvailableIPs = %.0f, v6UsingIPs = %.0f",
@@ -66,12 +65,12 @@ func waitSubnetStatusUpdate(subnetName string, subnetClient *framework.SubnetCli
 	}, "")
 }
 
-func waitSubnetU2OStatus(f *framework.Framework, subnetName string, subnetClient *framework.SubnetClient, enableU2O bool) {
+func waitSubnetU2OStatus(ctx context.Context, f *framework.Framework, subnetName string, subnetClient *framework.SubnetClient, enableU2O bool) {
 	ginkgo.GinkgoHelper()
 
-	framework.WaitUntil(1*time.Second, 3*time.Second, func(_ context.Context) (bool, error) {
+	framework.WaitUntil(ctx, 3*time.Second, func(ctx context.Context) (bool, error) {
 		ginkgo.By("Waiting for U2OInterconnection status of subnet " + subnetName + " to be " + strconv.FormatBool(enableU2O))
-		subnet := subnetClient.Get(subnetName)
+		subnet := subnetClient.Get(ctx, subnetName)
 		if enableU2O {
 			if !f.VersionPriorTo(1, 11) {
 				if subnet.Status.U2OInterconnectionIP != "" && subnet.Status.U2OInterconnectionVPC != "" {
@@ -103,7 +102,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 	f := framework.NewDefaultFramework("underlay")
 
 	var skip bool
-	var itFn func(bool)
+	var itFn func(context.Context, bool)
 	var cs clientset.Interface
 	var nodeNames []string
 	var clusterName, providerNetworkName, vlanName, subnetName, podName, namespaceName string
@@ -120,7 +119,11 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 	var dockerNetwork *dockernetwork.Inspect
 	var containerID string
 
-	ginkgo.BeforeEach(func() {
+	ginkgo.BeforeEach(ginkgo.NodeTimeout(5*time.Second), func(ctx ginkgo.SpecContext) {
+		if skip {
+			ginkgo.Skip("underlay spec only runs on kind clusters")
+		}
+
 		cs = f.ClientSet
 		eventClient = f.EventClient()
 		podClient = f.PodClient()
@@ -141,13 +144,9 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		vpcName = "vpc-" + framework.RandomSuffix()
 		containerID = ""
 
-		if skip {
-			ginkgo.Skip("underlay spec only runs on kind clusters")
-		}
-
 		if clusterName == "" {
 			ginkgo.By("Getting k8s nodes")
-			k8sNodes, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
+			k8sNodes, err := e2enode.GetReadySchedulableNodes(ctx, cs)
 			framework.ExpectNoError(err)
 
 			cluster, ok := kind.IsKindProvided(k8sNodes.Items[0].Spec.ProviderID)
@@ -160,31 +159,31 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 
 		if dockerNetwork == nil {
 			ginkgo.By("Ensuring docker network " + dockerNetworkName + " exists")
-			network, err := docker.NetworkCreate(dockerNetworkName, true, true)
+			network, err := docker.NetworkCreate(ctx, dockerNetworkName, true, true)
 			framework.ExpectNoError(err, "creating docker network "+dockerNetworkName)
 			dockerNetwork = network
 		}
 
 		ginkgo.By("Getting kind nodes")
-		nodes, err := kind.ListNodes(clusterName, "")
+		nodes, err := kind.ListNodes(ctx, clusterName, "")
 		framework.ExpectNoError(err, "getting nodes in kind cluster")
 		framework.ExpectNotEmpty(nodes)
 
 		ginkgo.By("Connecting nodes to the docker network")
-		err = kind.NetworkConnect(dockerNetwork.ID, nodes)
+		err = kind.NetworkConnect(ctx, dockerNetwork.ID, nodes)
 		framework.ExpectNoError(err, "connecting nodes to network "+dockerNetworkName)
 
 		ginkgo.By("Getting node links that belong to the docker network")
-		nodes, err = kind.ListNodes(clusterName, "")
+		nodes, err = kind.ListNodes(ctx, clusterName, "")
 		framework.ExpectNoError(err, "getting nodes in kind cluster")
 		linkMap = make(map[string]*iproute.Link, len(nodes))
 		routeMap = make(map[string][]iproute.Route, len(nodes))
 		nodeNames = make([]string, 0, len(nodes))
 		for _, node := range nodes {
-			links, err := node.ListLinks()
+			links, err := node.ListLinks(ctx)
 			framework.ExpectNoError(err, "failed to list links on node %s: %v", node.Name(), err)
 
-			routes, err := node.ListRoutes(true)
+			routes, err := node.ListRoutes(ctx, true)
 			framework.ExpectNoError(err, "failed to list routes on node %s: %v", node.Name(), err)
 
 			for _, link := range links {
@@ -214,15 +213,15 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 			nodeNames = append(nodeNames, node.Name())
 		}
 
-		itFn = func(exchangeLinkName bool) {
+		itFn = func(ctx context.Context, exchangeLinkName bool) {
 			ginkgo.GinkgoHelper()
 
 			ginkgo.By("Creating provider network " + providerNetworkName)
 			pn := makeProviderNetwork(providerNetworkName, exchangeLinkName, linkMap)
-			pn = providerNetworkClient.CreateSync(pn)
+			pn = providerNetworkClient.CreateSync(ctx, pn)
 
 			ginkgo.By("Getting k8s nodes")
-			k8sNodes, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
+			k8sNodes, err := e2enode.GetReadySchedulableNodes(ctx, cs)
 			framework.ExpectNoError(err)
 
 			ginkgo.By("Validating node labels")
@@ -240,7 +239,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 			framework.ExpectEmpty(pn.Status.Vlans)
 
 			ginkgo.By("Getting kind nodes")
-			kindNodes, err := kind.ListNodes(clusterName, "")
+			kindNodes, err := kind.ListNodes(ctx, clusterName, "")
 			framework.ExpectNoError(err)
 
 			ginkgo.By("Validating node links")
@@ -251,7 +250,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 					bridgeName = linkMap[node.ID].IfName
 				}
 
-				links, err := node.ListLinks()
+				links, err := node.ListLinks(ctx)
 				framework.ExpectNoError(err, "failed to list links on node %s: %v", node.Name(), err)
 
 				var port, bridge *iproute.Link
@@ -293,7 +292,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 					bridgeName = linkMap[node.ID].IfName
 				}
 
-				routes, err := node.ListRoutes(true)
+				routes, err := node.ListRoutes(ctx, true)
 				framework.ExpectNoError(err, "failed to list routes on node %s: %v", node.Name(), err)
 
 				var portRoutes, bridgeRoutes []iproute.Route
@@ -317,83 +316,82 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 			}
 		}
 	})
-	ginkgo.AfterEach(func() {
+	ginkgo.AfterEach(ginkgo.NodeTimeout(time.Minute), func(ctx ginkgo.SpecContext) {
 		if containerID != "" {
 			ginkgo.By("Deleting container " + containerID)
-			err := docker.ContainerRemove(containerID)
+			err := docker.ContainerRemove(ctx, containerID)
 			framework.ExpectNoError(err)
 		}
 
 		ginkgo.By("Deleting pod " + podName)
-		podClient.DeleteSync(podName)
+		podClient.DeleteSync(ctx, podName)
 
 		ginkgo.By("Deleting pod " + u2oPodNameUnderlay)
-		podClient.DeleteSync(u2oPodNameUnderlay)
+		podClient.DeleteSync(ctx, u2oPodNameUnderlay)
 
 		ginkgo.By("Deleting pod " + u2oPodNameOverlay)
-		podClient.DeleteSync(u2oPodNameOverlay)
+		podClient.DeleteSync(ctx, u2oPodNameOverlay)
 
 		ginkgo.By("Deleting pod " + u2oPodOverlayCustomVPC)
-		podClient.DeleteSync(u2oPodOverlayCustomVPC)
+		podClient.DeleteSync(ctx, u2oPodOverlayCustomVPC)
 
 		ginkgo.By("Deleting subnet " + u2oOverlaySubnetNameCustomVPC)
-		subnetClient.DeleteSync(u2oOverlaySubnetNameCustomVPC)
+		subnetClient.DeleteSync(ctx, u2oOverlaySubnetNameCustomVPC)
 
 		ginkgo.By("Deleting subnet " + u2oOverlaySubnetName)
-		subnetClient.DeleteSync(u2oOverlaySubnetName)
+		subnetClient.DeleteSync(ctx, u2oOverlaySubnetName)
 
 		ginkgo.By("Deleting subnet " + subnetName)
-		subnetClient.DeleteSync(subnetName)
+		subnetClient.DeleteSync(ctx, subnetName)
 
 		ginkgo.By("Deleting vpc " + vpcName)
-		vpcClient.DeleteSync(vpcName)
+		vpcClient.DeleteSync(ctx, vpcName)
 
 		ginkgo.By("Deleting vlan " + vlanName)
-		vlanClient.Delete(vlanName, metav1.DeleteOptions{})
+		vlanClient.Delete(ctx, vlanName, metav1.DeleteOptions{})
 
 		ginkgo.By("Deleting provider network " + providerNetworkName)
-		providerNetworkClient.DeleteSync(providerNetworkName)
+		providerNetworkClient.DeleteSync(ctx, providerNetworkName)
 
 		ginkgo.By("Getting nodes")
-		nodes, err := kind.ListNodes(clusterName, "")
+		nodes, err := kind.ListNodes(ctx, clusterName, "")
 		framework.ExpectNoError(err, "getting nodes in cluster")
 
 		ginkgo.By("Waiting for ovs bridge to disappear")
 		deadline := time.Now().Add(time.Minute)
 		for _, node := range nodes {
-			err = node.WaitLinkToDisappear(util.ExternalBridgeName(providerNetworkName), 2*time.Second, deadline)
+			err = node.WaitLinkToDisappear(ctx, util.ExternalBridgeName(providerNetworkName), 2*time.Second, deadline)
 			framework.ExpectNoError(err, "timed out waiting for ovs bridge to disappear in node %s", node.Name())
 		}
 
 		if dockerNetwork != nil {
 			ginkgo.By("Disconnecting nodes from the docker network")
-			err = kind.NetworkDisconnect(dockerNetwork.ID, nodes)
+			err = kind.NetworkDisconnect(ctx, dockerNetwork.ID, nodes)
 			framework.ExpectNoError(err, "disconnecting nodes from network "+dockerNetworkName)
 		}
 	})
 
-	framework.ConformanceIt(`should be able to create provider network`, func() {
-		itFn(false)
+	framework.ConformanceIt(`should be able to create provider network`, ginkgo.SpecTimeout(time.Minute), func(ctx ginkgo.SpecContext) {
+		itFn(ctx, false)
 	})
 
-	framework.ConformanceIt(`should exchange link names`, func() {
+	framework.ConformanceIt(`should exchange link names`, ginkgo.SpecTimeout(time.Minute), func(ctx ginkgo.SpecContext) {
 		f.SkipVersionPriorTo(1, 9, "Support for exchanging link names was introduced in v1.9")
-
-		itFn(true)
+		itFn(ctx, true)
 	})
 
-	framework.ConformanceIt("should keep pod mtu the same with node interface", func() {
+	framework.ConformanceIt("should keep pod mtu the same with node interface", ginkgo.SpecTimeout(time.Minute), func(ctx ginkgo.SpecContext) {
 		ginkgo.By("Creating provider network " + providerNetworkName)
 		pn := makeProviderNetwork(providerNetworkName, false, linkMap)
-		_ = providerNetworkClient.CreateSync(pn)
+		_ = providerNetworkClient.CreateSync(ctx, pn)
 
 		ginkgo.By("Getting docker network " + dockerNetworkName)
-		network, err := docker.NetworkInspect(dockerNetworkName)
+		network, err := docker.NetworkInspect(ctx, dockerNetworkName)
 		framework.ExpectNoError(err, "getting docker network "+dockerNetworkName)
 
 		ginkgo.By("Creating vlan " + vlanName)
 		vlan := framework.MakeVlan(vlanName, providerNetworkName, 0)
-		_ = vlanClient.Create(vlan)
+		_ = vlanClient.Create(ctx, vlan)
 
 		ginkgo.By("Creating subnet " + subnetName)
 		var cidrV4, cidrV6, gatewayV4, gatewayV6 string
@@ -431,23 +429,23 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 			}
 		}
 		subnet := framework.MakeSubnet(subnetName, vlanName, strings.Join(cidr, ","), strings.Join(gateway, ","), "", "", excludeIPs, nil, []string{namespaceName})
-		_ = subnetClient.CreateSync(subnet)
+		_ = subnetClient.CreateSync(ctx, subnet)
 
 		ginkgo.By("Creating pod " + podName)
 		cmd := []string{"sh", "-c", "sleep 600"}
 		pod := framework.MakePod(namespaceName, podName, nil, nil, f.KubeOVNImage, cmd, nil)
-		_ = podClient.CreateSync(pod)
+		_ = podClient.CreateSync(ctx, pod)
 
 		ginkgo.By("Validating pod MTU")
-		links, err := iproute.AddressShow("eth0", func(cmd ...string) ([]byte, []byte, error) {
-			return framework.KubectlExec(namespaceName, podName, cmd...)
+		links, err := iproute.AddressShow(ctx, "eth0", func(ctx context.Context, cmd string) ([]byte, []byte, error) {
+			return framework.KubectlExec(ctx, namespaceName, podName, cmd)
 		})
 		framework.ExpectNoError(err)
 		framework.ExpectHaveLen(links, 1, "should get eth0 information")
 		framework.ExpectEqual(links[0].Mtu, docker.MTU)
 	})
 
-	framework.ConformanceIt("should be able to detect IPv4 address conflict", func() {
+	framework.ConformanceIt("should be able to detect IPv4 address conflict", ginkgo.SpecTimeout(90*time.Second), func(ctx ginkgo.SpecContext) {
 		if !f.IsIPv4() {
 			ginkgo.Skip("Address conflict detection only supports IPv4")
 		}
@@ -455,22 +453,22 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 
 		ginkgo.By("Creating provider network " + providerNetworkName)
 		pn := makeProviderNetwork(providerNetworkName, false, linkMap)
-		_ = providerNetworkClient.CreateSync(pn)
+		_ = providerNetworkClient.CreateSync(ctx, pn)
 
 		ginkgo.By("Getting docker network " + dockerNetworkName)
-		network, err := docker.NetworkInspect(dockerNetworkName)
+		network, err := docker.NetworkInspect(ctx, dockerNetworkName)
 		framework.ExpectNoError(err, "getting docker network "+dockerNetworkName)
 
 		containerName := "container-" + framework.RandomSuffix()
 		ginkgo.By("Creating container " + containerName)
 		cmd := []string{"sh", "-c", "sleep 600"}
-		containerInfo, err := docker.ContainerCreate(containerName, f.KubeOVNImage, dockerNetworkName, cmd)
+		containerInfo, err := docker.ContainerCreate(ctx, containerName, f.KubeOVNImage, dockerNetworkName, cmd)
 		framework.ExpectNoError(err)
 		containerID = containerInfo.ID
 
 		ginkgo.By("Creating vlan " + vlanName)
 		vlan := framework.MakeVlan(vlanName, providerNetworkName, 0)
-		_ = vlanClient.Create(vlan)
+		_ = vlanClient.Create(ctx, vlan)
 
 		ginkgo.By("Creating subnet " + subnetName)
 		cidr := make([]string, 0, 2)
@@ -489,7 +487,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 			}
 		}
 		subnet := framework.MakeSubnet(subnetName, vlanName, strings.Join(cidr, ","), strings.Join(gateway, ","), "", "", excludeIPs, nil, []string{namespaceName})
-		_ = subnetClient.CreateSync(subnet)
+		_ = subnetClient.CreateSync(ctx, subnet)
 
 		ip := containerInfo.NetworkSettings.Networks[dockerNetworkName].IPAddress
 		mac := containerInfo.NetworkSettings.Networks[dockerNetworkName].MacAddress
@@ -497,10 +495,10 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		annotations := map[string]string{util.IPAddressAnnotation: ip}
 		pod := framework.MakePod(namespaceName, podName, nil, annotations, f.KubeOVNImage, cmd, nil)
 		pod.Spec.TerminationGracePeriodSeconds = nil
-		_ = podClient.Create(pod)
+		_ = podClient.Create(ctx, pod)
 
 		ginkgo.By("Waiting for pod events")
-		events := eventClient.WaitToHaveEvent("Pod", podName, "Warning", "FailedCreatePodSandBox", "kubelet", "")
+		events := eventClient.WaitToHaveEvent(ctx, "Pod", podName, "Warning", "FailedCreatePodSandBox", "kubelet", "")
 		message := fmt.Sprintf("IP address %s has already been used by host with MAC %s", ip, mac)
 		var found bool
 		for _, event := range events {
@@ -513,20 +511,20 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		framework.ExpectTrue(found, "Address conflict should be reported in pod events")
 	})
 
-	framework.ConformanceIt("should support underlay to overlay subnet interconnection", func() {
+	framework.ConformanceIt("should support underlay to overlay subnet interconnection", ginkgo.SpecTimeout(8*time.Minute), func(ctx ginkgo.SpecContext) {
 		f.SkipVersionPriorTo(1, 9, "This feature was introduced in v1.9")
 
 		ginkgo.By("Creating provider network " + providerNetworkName)
 		pn := makeProviderNetwork(providerNetworkName, false, linkMap)
-		_ = providerNetworkClient.CreateSync(pn)
+		_ = providerNetworkClient.CreateSync(ctx, pn)
 
 		ginkgo.By("Getting docker network " + dockerNetworkName)
-		network, err := docker.NetworkInspect(dockerNetworkName)
+		network, err := docker.NetworkInspect(ctx, dockerNetworkName)
 		framework.ExpectNoError(err, "getting docker network "+dockerNetworkName)
 
 		ginkgo.By("Creating vlan " + vlanName)
 		vlan := framework.MakeVlan(vlanName, providerNetworkName, 0)
-		_ = vlanClient.Create(vlan)
+		_ = vlanClient.Create(ctx, vlan)
 
 		ginkgo.By("Creating underlay subnet " + subnetName)
 		var cidrV4, cidrV6, gatewayV4, gatewayV6 string
@@ -572,7 +570,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		if f.HasIPv4() {
 			subnet.Spec.EnableDHCP = true
 		}
-		_ = subnetClient.CreateSync(subnet)
+		_ = subnetClient.CreateSync(ctx, subnet)
 
 		ginkgo.By("Creating underlay pod " + u2oPodNameUnderlay)
 		annotations := map[string]string{
@@ -580,13 +578,13 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		}
 		args := []string{"netexec", "--http-port", strconv.Itoa(curlListenPort)}
 		originUnderlayPod := framework.MakePod(namespaceName, u2oPodNameUnderlay, nil, annotations, framework.AgnhostImage, nil, args)
-		underlayPod := podClient.CreateSync(originUnderlayPod)
-		waitSubnetStatusUpdate(subnetName, subnetClient, 2)
+		underlayPod := podClient.CreateSync(ctx, originUnderlayPod)
+		waitSubnetStatusUpdate(ctx, subnetName, subnetClient, 2)
 
 		ginkgo.By("Creating overlay subnet " + u2oOverlaySubnetName)
 		cidr := framework.RandomCIDR(f.ClusterIPFamily)
 		overlaySubnet := framework.MakeSubnet(u2oOverlaySubnetName, "", cidr, "", "", "", nil, nil, nil)
-		overlaySubnet = subnetClient.CreateSync(overlaySubnet)
+		overlaySubnet = subnetClient.CreateSync(ctx, overlaySubnet)
 
 		ginkgo.By("Creating overlay pod " + u2oPodNameOverlay)
 		overlayAnnotations := map[string]string{
@@ -594,105 +592,105 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		}
 		args = []string{"netexec", "--http-port", strconv.Itoa(curlListenPort)}
 		overlayPod := framework.MakePod(namespaceName, u2oPodNameOverlay, nil, overlayAnnotations, framework.AgnhostImage, nil, args)
-		overlayPod = podClient.CreateSync(overlayPod)
+		overlayPod = podClient.CreateSync(ctx, overlayPod)
 
 		ginkgo.By("step1: Enable u2o check")
-		subnet = subnetClient.Get(subnetName)
+		subnet = subnetClient.Get(ctx, subnetName)
 		ginkgo.By("1. waiting for U2OInterconnection status of subnet " + subnetName + " to be true")
-		waitSubnetU2OStatus(f, subnetName, subnetClient, true)
-		checkU2OItems(f, subnet, underlayPod, overlayPod, false)
+		waitSubnetU2OStatus(ctx, f, subnetName, subnetClient, true)
+		checkU2OItems(ctx, f, subnet, underlayPod, overlayPod, false)
 
 		ginkgo.By("step2: Disable u2o check")
 
 		ginkgo.By("Deleting underlay pod " + u2oPodNameUnderlay)
-		podClient.DeleteSync(u2oPodNameUnderlay)
+		podClient.DeleteSync(ctx, u2oPodNameUnderlay)
 
 		ginkgo.By("Turning off U2OInterconnection of subnet " + subnetName)
-		subnet = subnetClient.Get(subnetName)
+		subnet = subnetClient.Get(ctx, subnetName)
 		modifiedSubnet := subnet.DeepCopy()
 		modifiedSubnet.Spec.U2OInterconnection = false
-		subnetClient.PatchSync(subnet, modifiedSubnet)
+		subnetClient.PatchSync(ctx, subnet, modifiedSubnet)
 
 		ginkgo.By("Creating underlay pod " + u2oPodNameUnderlay)
-		underlayPod = podClient.CreateSync(originUnderlayPod)
-		waitSubnetStatusUpdate(subnetName, subnetClient, 1)
+		underlayPod = podClient.CreateSync(ctx, originUnderlayPod)
+		waitSubnetStatusUpdate(ctx, subnetName, subnetClient, 1)
 
-		subnet = subnetClient.Get(subnetName)
+		subnet = subnetClient.Get(ctx, subnetName)
 		ginkgo.By("2. waiting for U2OInterconnection status of subnet " + subnetName + " to be false")
-		waitSubnetU2OStatus(f, subnetName, subnetClient, false)
-		checkU2OItems(f, subnet, underlayPod, overlayPod, false)
+		waitSubnetU2OStatus(ctx, f, subnetName, subnetClient, false)
+		checkU2OItems(ctx, f, subnet, underlayPod, overlayPod, false)
 
 		ginkgo.By("step3: Recover enable u2o check")
 
 		ginkgo.By("Deleting underlay pod " + u2oPodNameUnderlay)
-		podClient.DeleteSync(u2oPodNameUnderlay)
+		podClient.DeleteSync(ctx, u2oPodNameUnderlay)
 
 		ginkgo.By("Turning on U2OInterconnection of subnet " + subnetName)
-		subnet = subnetClient.Get(subnetName)
+		subnet = subnetClient.Get(ctx, subnetName)
 		modifiedSubnet = subnet.DeepCopy()
 		modifiedSubnet.Spec.U2OInterconnection = true
-		subnetClient.PatchSync(subnet, modifiedSubnet)
+		subnetClient.PatchSync(ctx, subnet, modifiedSubnet)
 
 		ginkgo.By("Creating underlay pod " + u2oPodNameUnderlay)
-		underlayPod = podClient.CreateSync(originUnderlayPod)
-		waitSubnetStatusUpdate(subnetName, subnetClient, 2)
+		underlayPod = podClient.CreateSync(ctx, originUnderlayPod)
+		waitSubnetStatusUpdate(ctx, subnetName, subnetClient, 2)
 
-		subnet = subnetClient.Get(subnetName)
+		subnet = subnetClient.Get(ctx, subnetName)
 		ginkgo.By("3. waiting for U2OInterconnection status of subnet " + subnetName + " to be true")
-		waitSubnetU2OStatus(f, subnetName, subnetClient, true)
-		checkU2OItems(f, subnet, underlayPod, overlayPod, false)
+		waitSubnetU2OStatus(ctx, f, subnetName, subnetClient, true)
+		checkU2OItems(ctx, f, subnet, underlayPod, overlayPod, false)
 
 		ginkgo.By("step4: Check if kube-ovn-controller restart")
 
 		ginkgo.By("Restarting kube-ovn-controller")
 		deployClient := f.DeploymentClientNS(framework.KubeOvnNamespace)
-		deploy := deployClient.Get("kube-ovn-controller")
-		deployClient.RestartSync(deploy)
+		deploy := deployClient.Get(ctx, "kube-ovn-controller")
+		deployClient.RestartSync(ctx, deploy)
 
-		subnet = subnetClient.Get(subnetName)
+		subnet = subnetClient.Get(ctx, subnetName)
 		ginkgo.By("4. waiting for U2OInterconnection status of subnet " + subnetName + " to be true")
-		waitSubnetU2OStatus(f, subnetName, subnetClient, true)
-		checkU2OItems(f, subnet, underlayPod, overlayPod, false)
+		waitSubnetU2OStatus(ctx, f, subnetName, subnetClient, true)
+		checkU2OItems(ctx, f, subnet, underlayPod, overlayPod, false)
 
 		ginkgo.By("step5: Disable u2o check after restart kube-controller")
 
 		ginkgo.By("Deleting underlay pod " + u2oPodNameUnderlay)
-		podClient.DeleteSync(u2oPodNameUnderlay)
+		podClient.DeleteSync(ctx, u2oPodNameUnderlay)
 
 		ginkgo.By("Turning off U2OInterconnection of subnet " + subnetName)
-		subnet = subnetClient.Get(subnetName)
+		subnet = subnetClient.Get(ctx, subnetName)
 		modifiedSubnet = subnet.DeepCopy()
 		modifiedSubnet.Spec.U2OInterconnection = false
-		subnetClient.PatchSync(subnet, modifiedSubnet)
+		subnetClient.PatchSync(ctx, subnet, modifiedSubnet)
 
 		ginkgo.By("Creating underlay pod " + u2oPodNameUnderlay)
-		underlayPod = podClient.CreateSync(originUnderlayPod)
-		waitSubnetStatusUpdate(subnetName, subnetClient, 1)
+		underlayPod = podClient.CreateSync(ctx, originUnderlayPod)
+		waitSubnetStatusUpdate(ctx, subnetName, subnetClient, 1)
 
-		subnet = subnetClient.Get(subnetName)
+		subnet = subnetClient.Get(ctx, subnetName)
 		ginkgo.By("5. waiting for U2OInterconnection status of subnet " + subnetName + " to be false")
-		waitSubnetU2OStatus(f, subnetName, subnetClient, false)
-		checkU2OItems(f, subnet, underlayPod, overlayPod, false)
+		waitSubnetU2OStatus(ctx, f, subnetName, subnetClient, false)
+		checkU2OItems(ctx, f, subnet, underlayPod, overlayPod, false)
 
 		ginkgo.By("step6: Recover enable u2o check after restart kube-ovn-controller")
 
 		ginkgo.By("Deleting underlay pod " + u2oPodNameUnderlay)
-		podClient.DeleteSync(u2oPodNameUnderlay)
+		podClient.DeleteSync(ctx, u2oPodNameUnderlay)
 
 		ginkgo.By("Turning on U2OInterconnection of subnet " + subnetName)
-		subnet = subnetClient.Get(subnetName)
+		subnet = subnetClient.Get(ctx, subnetName)
 		modifiedSubnet = subnet.DeepCopy()
 		modifiedSubnet.Spec.U2OInterconnection = true
-		subnetClient.PatchSync(subnet, modifiedSubnet)
+		subnetClient.PatchSync(ctx, subnet, modifiedSubnet)
 
 		ginkgo.By("Creating underlay pod " + u2oPodNameUnderlay)
-		underlayPod = podClient.CreateSync(originUnderlayPod)
-		waitSubnetStatusUpdate(subnetName, subnetClient, 2)
+		underlayPod = podClient.CreateSync(ctx, originUnderlayPod)
+		waitSubnetStatusUpdate(ctx, subnetName, subnetClient, 2)
 
-		subnet = subnetClient.Get(subnetName)
+		subnet = subnetClient.Get(ctx, subnetName)
 		ginkgo.By("6. waiting for U2OInterconnection status of subnet " + subnetName + " to be true")
-		waitSubnetU2OStatus(f, subnetName, subnetClient, true)
-		checkU2OItems(f, subnet, underlayPod, overlayPod, false)
+		waitSubnetU2OStatus(ctx, f, subnetName, subnetClient, true)
+		checkU2OItems(ctx, f, subnet, underlayPod, overlayPod, false)
 
 		if f.VersionPriorTo(1, 9) {
 			return
@@ -718,25 +716,25 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 				return strings.Join(availIPs, ",")
 			}
 
-			subnet = subnetClient.Get(subnetName)
+			subnet = subnetClient.Get(ctx, subnetName)
 			u2oIP := getAvailableIPs(subnet)
 			ginkgo.By("Setting U2OInterconnectionIP to " + u2oIP + " for subnet " + subnetName)
 			modifiedSubnet = subnet.DeepCopy()
 			modifiedSubnet.Spec.U2OInterconnectionIP = u2oIP
 			modifiedSubnet.Spec.U2OInterconnection = true
-			subnetClient.PatchSync(subnet, modifiedSubnet)
+			subnetClient.PatchSync(ctx, subnet, modifiedSubnet)
 
 			ginkgo.By("Deleting underlay pod " + u2oPodNameUnderlay)
-			podClient.DeleteSync(u2oPodNameUnderlay)
+			podClient.DeleteSync(ctx, u2oPodNameUnderlay)
 
 			ginkgo.By("Creating underlay pod " + u2oPodNameUnderlay)
-			underlayPod = podClient.CreateSync(originUnderlayPod)
-			waitSubnetStatusUpdate(subnetName, subnetClient, 2)
+			underlayPod = podClient.CreateSync(ctx, originUnderlayPod)
+			waitSubnetStatusUpdate(ctx, subnetName, subnetClient, 2)
 
-			subnet = subnetClient.Get(subnetName)
+			subnet = subnetClient.Get(ctx, subnetName)
 			ginkgo.By("7. waiting for U2OInterconnection status of subnet " + subnetName + " to be true")
-			waitSubnetU2OStatus(f, subnetName, subnetClient, true)
-			checkU2OItems(f, subnet, underlayPod, overlayPod, false)
+			waitSubnetU2OStatus(ctx, f, subnetName, subnetClient, true)
+			checkU2OItems(ctx, f, subnet, underlayPod, overlayPod, false)
 		}
 
 		if f.VersionPriorTo(1, 11) {
@@ -746,16 +744,16 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		ginkgo.By("step8: Change underlay subnet interconnection to overlay subnet in custom vpc")
 
 		ginkgo.By("Deleting underlay pod " + u2oPodNameUnderlay)
-		podClient.DeleteSync(u2oPodNameUnderlay)
+		podClient.DeleteSync(ctx, u2oPodNameUnderlay)
 
 		ginkgo.By("Creating VPC " + vpcName)
 		customVPC := framework.MakeVpc(vpcName, "", false, false, []string{namespaceName})
-		vpcClient.CreateSync(customVPC)
+		vpcClient.CreateSync(ctx, customVPC)
 
 		ginkgo.By("Creating subnet " + u2oOverlaySubnetNameCustomVPC)
 		cidr = framework.RandomCIDR(f.ClusterIPFamily)
 		overlaySubnetCustomVpc := framework.MakeSubnet(u2oOverlaySubnetNameCustomVPC, "", cidr, "", vpcName, "", nil, nil, []string{namespaceName})
-		_ = subnetClient.CreateSync(overlaySubnetCustomVpc)
+		_ = subnetClient.CreateSync(ctx, overlaySubnetCustomVpc)
 
 		ginkgo.By("Creating overlay pod " + u2oPodOverlayCustomVPC)
 		args = []string{"netexec", "--http-port", strconv.Itoa(curlListenPort)}
@@ -763,87 +761,87 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 			util.LogicalSwitchAnnotation: u2oOverlaySubnetNameCustomVPC,
 		}
 		podOverlayCustomVPC := framework.MakePod(namespaceName, u2oPodOverlayCustomVPC, nil, u2oPodOverlayCustomVPCAnnotations, framework.AgnhostImage, nil, args)
-		podOverlayCustomVPC = podClient.CreateSync(podOverlayCustomVPC)
+		podOverlayCustomVPC = podClient.CreateSync(ctx, podOverlayCustomVPC)
 
 		ginkgo.By("Turning on U2OInterconnection and set VPC to " + vpcName + " for subnet " + subnetName)
-		subnet = subnetClient.Get(subnetName)
+		subnet = subnetClient.Get(ctx, subnetName)
 		modifiedSubnet = subnet.DeepCopy()
 		modifiedSubnet.Spec.Vpc = vpcName
 		modifiedSubnet.Spec.U2OInterconnection = true
-		subnetClient.PatchSync(subnet, modifiedSubnet)
+		subnetClient.PatchSync(ctx, subnet, modifiedSubnet)
 
 		ginkgo.By("Creating underlay pod " + u2oPodNameUnderlay)
-		underlayPod = podClient.CreateSync(originUnderlayPod)
-		waitSubnetStatusUpdate(subnetName, subnetClient, 2)
+		underlayPod = podClient.CreateSync(ctx, originUnderlayPod)
+		waitSubnetStatusUpdate(ctx, subnetName, subnetClient, 2)
 
-		subnet = subnetClient.Get(subnetName)
+		subnet = subnetClient.Get(ctx, subnetName)
 		ginkgo.By("8. waiting for U2OInterconnection status of subnet " + subnetName + " to be true")
-		waitSubnetU2OStatus(f, subnetName, subnetClient, true)
-		checkU2OItems(f, subnet, underlayPod, podOverlayCustomVPC, true)
+		waitSubnetU2OStatus(ctx, f, subnetName, subnetClient, true)
+		checkU2OItems(ctx, f, subnet, underlayPod, podOverlayCustomVPC, true)
 
 		ginkgo.By("step9: Change underlay subnet interconnection to overlay subnet in default vpc")
 
 		ginkgo.By("Deleting underlay pod " + u2oPodNameUnderlay)
-		podClient.DeleteSync(u2oPodNameUnderlay)
+		podClient.DeleteSync(ctx, u2oPodNameUnderlay)
 
 		ginkgo.By("Setting VPC to " + util.DefaultVpc + " for subnet " + subnetName)
-		subnet = subnetClient.Get(subnetName)
+		subnet = subnetClient.Get(ctx, subnetName)
 		modifiedSubnet = subnet.DeepCopy()
 		modifiedSubnet.Spec.Vpc = util.DefaultVpc
 		modifiedSubnet.Spec.Namespaces = nil
-		subnetClient.PatchSync(subnet, modifiedSubnet)
+		subnetClient.PatchSync(ctx, subnet, modifiedSubnet)
 
 		ginkgo.By("Creating underlay pod " + u2oPodNameUnderlay)
-		underlayPod = podClient.CreateSync(originUnderlayPod)
-		waitSubnetStatusUpdate(subnetName, subnetClient, 2)
+		underlayPod = podClient.CreateSync(ctx, originUnderlayPod)
+		waitSubnetStatusUpdate(ctx, subnetName, subnetClient, 2)
 
-		subnet = subnetClient.Get(subnetName)
+		subnet = subnetClient.Get(ctx, subnetName)
 		ginkgo.By("9. waiting for U2OInterconnection status of subnet " + subnetName + " to be true")
-		waitSubnetU2OStatus(f, subnetName, subnetClient, true)
-		checkU2OItems(f, subnet, underlayPod, overlayPod, false)
+		waitSubnetU2OStatus(ctx, f, subnetName, subnetClient, true)
+		checkU2OItems(ctx, f, subnet, underlayPod, overlayPod, false)
 
 		ginkgo.By("step10: Disable u2o")
 
 		ginkgo.By("Deleting underlay pod " + u2oPodNameUnderlay)
-		podClient.DeleteSync(u2oPodNameUnderlay)
+		podClient.DeleteSync(ctx, u2oPodNameUnderlay)
 
 		ginkgo.By("Turning off U2OInterconnection of subnet " + subnetName)
-		subnet = subnetClient.Get(subnetName)
+		subnet = subnetClient.Get(ctx, subnetName)
 		modifiedSubnet = subnet.DeepCopy()
 		modifiedSubnet.Spec.U2OInterconnection = false
-		subnetClient.PatchSync(subnet, modifiedSubnet)
+		subnetClient.PatchSync(ctx, subnet, modifiedSubnet)
 
 		ginkgo.By("Creating underlay pod " + u2oPodNameUnderlay)
-		underlayPod = podClient.CreateSync(originUnderlayPod)
-		waitSubnetStatusUpdate(subnetName, subnetClient, 1)
+		underlayPod = podClient.CreateSync(ctx, originUnderlayPod)
+		waitSubnetStatusUpdate(ctx, subnetName, subnetClient, 1)
 
-		subnet = subnetClient.Get(subnetName)
+		subnet = subnetClient.Get(ctx, subnetName)
 		ginkgo.By("10. waiting for U2OInterconnection status of subnet " + subnetName + " to be false")
-		waitSubnetU2OStatus(f, subnetName, subnetClient, false)
-		checkU2OItems(f, subnet, underlayPod, overlayPod, false)
+		waitSubnetU2OStatus(ctx, f, subnetName, subnetClient, false)
+		checkU2OItems(ctx, f, subnet, underlayPod, overlayPod, false)
 	})
 
-	framework.ConformanceIt(`should drop ARP/ND request from localnet port to LRP`, func() {
+	framework.ConformanceIt(`should drop ARP/ND request from localnet port to LRP`, ginkgo.SpecTimeout(time.Minute), func(ctx ginkgo.SpecContext) {
 		f.SkipVersionPriorTo(1, 9, "This feature was introduced in v1.9")
 
 		ginkgo.By("Creating provider network " + providerNetworkName)
 		pn := makeProviderNetwork(providerNetworkName, false, linkMap)
-		_ = providerNetworkClient.CreateSync(pn)
+		_ = providerNetworkClient.CreateSync(ctx, pn)
 
 		containerName := "container-" + framework.RandomSuffix()
 		ginkgo.By("Creating container " + containerName)
 		cmd := []string{"sh", "-c", "sleep 600"}
-		containerInfo, err := docker.ContainerCreate(containerName, f.KubeOVNImage, dockerNetworkName, cmd)
+		containerInfo, err := docker.ContainerCreate(ctx, containerName, f.KubeOVNImage, dockerNetworkName, cmd)
 		framework.ExpectNoError(err)
 		containerID = containerInfo.ID
 
 		ginkgo.By("Getting docker network " + dockerNetworkName)
-		network, err := docker.NetworkInspect(dockerNetworkName)
+		network, err := docker.NetworkInspect(ctx, dockerNetworkName)
 		framework.ExpectNoError(err, "getting docker network "+dockerNetworkName)
 
 		ginkgo.By("Creating vlan " + vlanName)
 		vlan := framework.MakeVlan(vlanName, providerNetworkName, 0)
-		_ = vlanClient.Create(vlan)
+		_ = vlanClient.Create(ctx, vlan)
 
 		ginkgo.By("Creating underlay subnet " + subnetName)
 		var cidrV4, cidrV6, gatewayV4, gatewayV6 string
@@ -885,17 +883,17 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		ginkgo.By("Creating subnet " + subnetName + " with u2o interconnection enabled")
 		subnet := framework.MakeSubnet(subnetName, vlanName, strings.Join(underlayCidr, ","), strings.Join(gateway, ","), "", "", excludeIPs, nil, []string{namespaceName})
 		subnet.Spec.U2OInterconnection = true
-		subnet = subnetClient.CreateSync(subnet)
+		subnet = subnetClient.CreateSync(ctx, subnet)
 
 		lrpIPv4, lrpIPv6 := util.SplitStringIP(subnet.Status.U2OInterconnectionIP)
 		if f.HasIPv4() {
 			if f.VersionPriorTo(1, 13) {
-				err := checkU2OFilterOpenFlowExist(clusterName, pn, subnet, true)
+				err := checkU2OFilterOpenFlowExist(ctx, clusterName, pn, subnet, true)
 				framework.ExpectNoError(err)
 			} else {
 				ginkgo.By("Sending ARP request to " + lrpIPv4 + " from container " + containerName)
-				cmd := strings.Fields("arping -c1 -w1 " + lrpIPv4)
-				_, _, err = docker.Exec(containerID, nil, cmd...)
+				cmd := "arping -c1 -w1 " + lrpIPv4
+				_, _, err = docker.Exec(ctx, containerID, nil, cmd)
 				framework.ExpectError(err)
 				framework.ExpectEqual(err, docker.ErrNonZeroExitCode{Cmd: cmd, ExitCode: 1})
 			}
@@ -904,12 +902,12 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		}
 		if f.HasIPv6() {
 			if f.VersionPriorTo(1, 13) {
-				err := checkU2OFilterOpenFlowExist(clusterName, pn, subnet, true)
+				err := checkU2OFilterOpenFlowExist(ctx, clusterName, pn, subnet, true)
 				framework.ExpectNoError(err)
 			} else {
 				ginkgo.By("Sending ND NS request to " + lrpIPv6 + " from container " + containerName)
-				cmd := strings.Fields("ndisc6 -1 -n -r1 -w1000 " + lrpIPv6 + " eth0")
-				_, _, err = docker.Exec(containerID, nil, cmd...)
+				cmd := "ndisc6 -1 -n -r1 -w1000 " + lrpIPv6 + " eth0"
+				_, _, err = docker.Exec(ctx, containerID, nil, cmd)
 				framework.ExpectError(err)
 				framework.ExpectEqual(err, docker.ErrNonZeroExitCode{Cmd: cmd, ExitCode: 2})
 			}
@@ -919,7 +917,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 	})
 })
 
-func checkU2OItems(f *framework.Framework, subnet *apiv1.Subnet, underlayPod, overlayPod *corev1.Pod, isU2OCustomVpc bool) {
+func checkU2OItems(ctx context.Context, f *framework.Framework, subnet *apiv1.Subnet, underlayPod, overlayPod *corev1.Pod, isU2OCustomVpc bool) {
 	ginkgo.GinkgoHelper()
 
 	ginkgo.By("checking subnet's u2o interconnect ip of underlay subnet " + subnet.Name)
@@ -940,7 +938,7 @@ func checkU2OItems(f *framework.Framework, subnet *apiv1.Subnet, underlayPod, ov
 				v4Cidr, _ := util.SplitStringIP(subnet.Spec.CIDRBlock)
 				v4Gateway, _ := util.SplitStringIP(subnet.Status.U2OInterconnectionIP)
 				nbctlCmd := fmt.Sprintf("ovn-nbctl --bare --columns=options find Dhcp_Options cidr=%s", v4Cidr)
-				output, _, err := framework.NBExec(nbctlCmd)
+				output, _, err := framework.NBExec(ctx, nbctlCmd)
 				framework.ExpectNoError(err)
 				framework.ExpectContainElement(strings.Fields(string(output)), "router="+v4Gateway)
 			}
@@ -984,21 +982,21 @@ func checkU2OItems(f *framework.Framework, subnet *apiv1.Subnet, underlayPod, ov
 		if !isU2OCustomVpc {
 			ginkgo.By(fmt.Sprintf("checking underlay subnet's policy1 route %s", protocolStr))
 			hitPolicyStr := fmt.Sprintf("%d %s.dst == %s allow", util.U2OSubnetPolicyPriority, protocolStr, cidr)
-			checkPolicy(hitPolicyStr, subnet.Spec.U2OInterconnection, subnet.Spec.Vpc)
+			checkPolicy(ctx, hitPolicyStr, subnet.Spec.U2OInterconnection, subnet.Spec.Vpc)
 
 			ginkgo.By(fmt.Sprintf("checking underlay subnet's policy2 route %s", protocolStr))
 			hitPolicyStr = fmt.Sprintf("%d %s.dst == $%s && %s.src == %s reroute %s", util.SubnetRouterPolicyPriority, protocolStr, asName, protocolStr, cidr, gw)
-			checkPolicy(hitPolicyStr, subnet.Spec.U2OInterconnection, subnet.Spec.Vpc)
+			checkPolicy(ctx, hitPolicyStr, subnet.Spec.U2OInterconnection, subnet.Spec.Vpc)
 		}
 
 		ginkgo.By(fmt.Sprintf("checking underlay subnet's policy3 route %s", protocolStr))
 		hitPolicyStr := fmt.Sprintf("%d %s.src == %s reroute %s", util.GatewayRouterPolicyPriority, protocolStr, cidr, gw)
-		checkPolicy(hitPolicyStr, subnet.Spec.U2OInterconnection, subnet.Spec.Vpc)
+		checkPolicy(ctx, hitPolicyStr, subnet.Spec.U2OInterconnection, subnet.Spec.Vpc)
 	}
 
 	ginkgo.By("checking underlay pod's ip route's nexthop equal the u2o interconnection ip")
-	routes, err := iproute.RouteShow("", "eth0", func(cmd ...string) ([]byte, []byte, error) {
-		return framework.KubectlExec(underlayPod.Namespace, underlayPod.Name, cmd...)
+	routes, err := iproute.RouteShow(ctx, "", "eth0", func(ctx context.Context, cmd string) ([]byte, []byte, error) {
+		return framework.KubectlExec(ctx, underlayPod.Namespace, underlayPod.Name, cmd)
 	})
 	framework.ExpectNoError(err)
 	framework.ExpectNotEmpty(routes)
@@ -1057,30 +1055,30 @@ func checkU2OItems(f *framework.Framework, subnet *apiv1.Subnet, underlayPod, ov
 
 	if v4UPodIP != "" && v4OPodIP != "" {
 		ginkgo.By("checking underlay pod access to overlay pod v4")
-		checkReachable(underlayPod.Name, underlayPod.Namespace, v4UPodIP, v4OPodIP, strconv.Itoa(curlListenPort), subnet.Spec.U2OInterconnection)
+		checkReachable(ctx, underlayPod.Name, underlayPod.Namespace, v4UPodIP, v4OPodIP, strconv.Itoa(curlListenPort), subnet.Spec.U2OInterconnection)
 
 		ginkgo.By("checking overlay pod access to underlay pod v4")
-		checkReachable(overlayPod.Name, overlayPod.Namespace, v4OPodIP, v4UPodIP, strconv.Itoa(curlListenPort), subnet.Spec.U2OInterconnection)
+		checkReachable(ctx, overlayPod.Name, overlayPod.Namespace, v4OPodIP, v4UPodIP, strconv.Itoa(curlListenPort), subnet.Spec.U2OInterconnection)
 	}
 
 	if v6UPodIP != "" && v6OPodIP != "" {
 		ginkgo.By("checking underlay pod access to overlay pod v6")
-		checkReachable(underlayPod.Name, underlayPod.Namespace, v6UPodIP, v6OPodIP, strconv.Itoa(curlListenPort), subnet.Spec.U2OInterconnection)
+		checkReachable(ctx, underlayPod.Name, underlayPod.Namespace, v6UPodIP, v6OPodIP, strconv.Itoa(curlListenPort), subnet.Spec.U2OInterconnection)
 
 		ginkgo.By("checking overlay pod access to underlay pod v6")
-		checkReachable(overlayPod.Name, overlayPod.Namespace, v6OPodIP, v6UPodIP, strconv.Itoa(curlListenPort), subnet.Spec.U2OInterconnection)
+		checkReachable(ctx, overlayPod.Name, overlayPod.Namespace, v6OPodIP, v6UPodIP, strconv.Itoa(curlListenPort), subnet.Spec.U2OInterconnection)
 	}
 }
 
-func checkReachable(podName, podNamespace, sourceIP, targetIP, targetPort string, expectReachable bool) {
+func checkReachable(ctx context.Context, podName, podNamespace, sourceIP, targetIP, targetPort string, expectReachable bool) {
 	ginkgo.GinkgoHelper()
 
 	ginkgo.By("checking curl reachable")
 	cmd := fmt.Sprintf("curl -q -s --connect-timeout 2 --max-time 2 %s/clientip", net.JoinHostPort(targetIP, targetPort))
-	output, err := e2epodoutput.RunHostCmd(podNamespace, podName, cmd)
+	output, _, err := framework.KubectlExec(ctx, podNamespace, podName, cmd)
 	if expectReachable {
 		framework.ExpectNoError(err)
-		client, _, err := net.SplitHostPort(strings.TrimSpace(output))
+		client, _, err := net.SplitHostPort(strings.TrimSpace(string(output)))
 		framework.ExpectNoError(err)
 		// check packet has not SNAT
 		framework.ExpectEqual(sourceIP, client)
@@ -1089,12 +1087,12 @@ func checkReachable(podName, podNamespace, sourceIP, targetIP, targetPort string
 	}
 }
 
-func checkPolicy(hitPolicyStr string, expectPolicyExist bool, vpcName string) {
+func checkPolicy(ctx context.Context, hitPolicyStr string, expectPolicyExist bool, vpcName string) {
 	ginkgo.GinkgoHelper()
 
-	framework.WaitUntil(time.Second, 10*time.Second, func(_ context.Context) (bool, error) {
+	framework.WaitUntil(ctx, 10*time.Second, func(ctx context.Context) (bool, error) {
 		cmd := "ovn-nbctl lr-policy-list " + vpcName
-		output, _, err := framework.NBExec(cmd)
+		output, _, err := framework.NBExec(ctx, cmd)
 		if err != nil {
 			return false, err
 		}
@@ -1108,8 +1106,8 @@ func checkPolicy(hitPolicyStr string, expectPolicyExist bool, vpcName string) {
 	}, "")
 }
 
-func checkU2OFilterOpenFlowExist(clusterName string, pn *apiv1.ProviderNetwork, subnet *apiv1.Subnet, expectRuleExist bool) error {
-	nodes, err := kind.ListNodes(clusterName, "")
+func checkU2OFilterOpenFlowExist(ctx context.Context, clusterName string, pn *apiv1.ProviderNetwork, subnet *apiv1.Subnet, expectRuleExist bool) error {
+	nodes, err := kind.ListNodes(ctx, clusterName, "")
 	if err != nil {
 		return fmt.Errorf("getting nodes in kind cluster: %w", err)
 	}
@@ -1130,7 +1128,7 @@ func checkU2OFilterOpenFlowExist(clusterName string, pn *apiv1.ProviderNetwork, 
 
 			success := false
 			for attempt := 0; attempt < 3; attempt++ {
-				output, _ := exec.Command("bash", "-c", cmd).CombinedOutput()
+				output, _ := exec.CommandContext(ctx, "bash", "-c", cmd).CombinedOutput()
 				outputStr := string(output)
 
 				var matchStr string

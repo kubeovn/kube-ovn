@@ -35,42 +35,42 @@ func (f *Framework) VpcNatGatewayClient() *VpcNatGatewayClient {
 	}
 }
 
-func (c *VpcNatGatewayClient) Get(name string) *apiv1.VpcNatGateway {
+func (c *VpcNatGatewayClient) Get(ctx context.Context, name string) *apiv1.VpcNatGateway {
 	ginkgo.GinkgoHelper()
-	vpcNatGw, err := c.VpcNatGatewayInterface.Get(context.TODO(), name, metav1.GetOptions{})
+	vpcNatGw, err := c.VpcNatGatewayInterface.Get(ctx, name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return vpcNatGw
 }
 
 // Create creates a new vpc nat gw according to the framework specifications
-func (c *VpcNatGatewayClient) Create(vpcNatGw *apiv1.VpcNatGateway) *apiv1.VpcNatGateway {
+func (c *VpcNatGatewayClient) Create(ctx context.Context, vpcNatGw *apiv1.VpcNatGateway) *apiv1.VpcNatGateway {
 	ginkgo.GinkgoHelper()
-	vpcNatGw, err := c.VpcNatGatewayInterface.Create(context.TODO(), vpcNatGw, metav1.CreateOptions{})
+	vpcNatGw, err := c.VpcNatGatewayInterface.Create(ctx, vpcNatGw, metav1.CreateOptions{})
 	ExpectNoError(err, "Error creating vpc nat gw")
 	return vpcNatGw.DeepCopy()
 }
 
 // CreateSync creates a new vpc nat gw according to the framework specifications, and waits for it to be ready.
-func (c *VpcNatGatewayClient) CreateSync(vpcNatGw *apiv1.VpcNatGateway, clientSet clientset.Interface) *apiv1.VpcNatGateway {
+func (c *VpcNatGatewayClient) CreateSync(ctx context.Context, vpcNatGw *apiv1.VpcNatGateway, clientSet clientset.Interface) *apiv1.VpcNatGateway {
 	ginkgo.GinkgoHelper()
 
-	vpcNatGw = c.Create(vpcNatGw)
+	vpcNatGw = c.Create(ctx, vpcNatGw)
 	// When multiple VPC NAT gateways are being created, it may require more time to wait.
 	timeout := 4 * time.Minute
-	ExpectTrue(c.WaitGwPodReady(vpcNatGw.Name, timeout, clientSet))
+	ExpectTrue(c.WaitGwPodReady(ctx, vpcNatGw.Name, timeout, clientSet))
 	// Get the newest vpc nat gw after it becomes ready
-	return c.Get(vpcNatGw.Name).DeepCopy()
+	return c.Get(ctx, vpcNatGw.Name).DeepCopy()
 }
 
 // Patch patches the vpc nat gw
-func (c *VpcNatGatewayClient) Patch(original, modified *apiv1.VpcNatGateway) *apiv1.VpcNatGateway {
+func (c *VpcNatGatewayClient) Patch(ctx context.Context, original, modified *apiv1.VpcNatGateway) *apiv1.VpcNatGateway {
 	ginkgo.GinkgoHelper()
 
 	patch, err := util.GenerateMergePatchPayload(original, modified)
 	ExpectNoError(err)
 
 	var patchedVpcNatGateway *apiv1.VpcNatGateway
-	err = wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+	err = wait.PollUntilContextTimeout(ctx, 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
 		vpcNatGw, err := c.VpcNatGatewayInterface.Patch(ctx, original.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
 		if err != nil {
 			return handleWaitingAPIError(err, false, "patch vpc nat gw %q", original.Name)
@@ -92,33 +92,33 @@ func (c *VpcNatGatewayClient) Patch(original, modified *apiv1.VpcNatGateway) *ap
 
 // PatchSync patches the vpc nat gw and waits for the vpc nat gw to be ready for `timeout`.
 // If the vpc nat gw doesn't become ready before the timeout, it will fail the test.
-func (c *VpcNatGatewayClient) PatchSync(original, modified *apiv1.VpcNatGateway, timeout time.Duration) *apiv1.VpcNatGateway {
+func (c *VpcNatGatewayClient) PatchSync(ctx context.Context, original, modified *apiv1.VpcNatGateway, timeout time.Duration) *apiv1.VpcNatGateway {
 	ginkgo.GinkgoHelper()
 
-	vpcNatGw := c.Patch(original, modified)
-	ExpectTrue(c.WaitToBeUpdated(vpcNatGw, timeout))
-	ExpectTrue(c.WaitToBeReady(vpcNatGw.Name, timeout))
+	vpcNatGw := c.Patch(ctx, original, modified)
+	ExpectTrue(c.WaitToBeUpdated(ctx, vpcNatGw, timeout))
+	ExpectTrue(c.WaitToBeReady(ctx, vpcNatGw.Name, timeout))
 	// Get the newest vpc nat gw after it becomes ready
-	return c.Get(vpcNatGw.Name).DeepCopy()
+	return c.Get(ctx, vpcNatGw.Name).DeepCopy()
 }
 
 // PatchQoS patches the vpc nat gw and waits for the qos to be ready for `timeout`.
 // If the qos doesn't become ready before the timeout, it will fail the test.
-func (c *VpcNatGatewayClient) PatchQoSPolicySync(natgwName, qosPolicyName string) *apiv1.VpcNatGateway {
+func (c *VpcNatGatewayClient) PatchQoSPolicySync(ctx context.Context, natgwName, qosPolicyName string) *apiv1.VpcNatGateway {
 	ginkgo.GinkgoHelper()
 
-	natgw := c.Get(natgwName)
+	natgw := c.Get(ctx, natgwName)
 	modifiedNATGW := natgw.DeepCopy()
 	modifiedNATGW.Spec.QoSPolicy = qosPolicyName
-	_ = c.Patch(natgw, modifiedNATGW)
-	ExpectTrue(c.WaitToQoSReady(natgwName))
-	return c.Get(natgwName).DeepCopy()
+	_ = c.Patch(ctx, natgw, modifiedNATGW)
+	ExpectTrue(c.WaitToQoSReady(ctx, natgwName))
+	return c.Get(ctx, natgwName).DeepCopy()
 }
 
 // Delete deletes a vpc nat gw if the vpc nat gw exists
-func (c *VpcNatGatewayClient) Delete(name string) {
+func (c *VpcNatGatewayClient) Delete(ctx context.Context, name string) {
 	ginkgo.GinkgoHelper()
-	err := c.VpcNatGatewayInterface.Delete(context.TODO(), name, metav1.DeleteOptions{})
+	err := c.VpcNatGatewayInterface.Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil && !apierrors.IsNotFound(err) {
 		Failf("Failed to delete vpc nat gw %q: %v", name, err)
 	}
@@ -126,16 +126,16 @@ func (c *VpcNatGatewayClient) Delete(name string) {
 
 // DeleteSync deletes the vpc nat gw and waits for the vpc nat gw to disappear for `timeout`.
 // If the vpc nat gw doesn't disappear before the timeout, it will fail the test.
-func (c *VpcNatGatewayClient) DeleteSync(name string) {
+func (c *VpcNatGatewayClient) DeleteSync(ctx context.Context, name string) {
 	ginkgo.GinkgoHelper()
-	c.Delete(name)
-	gomega.Expect(c.WaitToDisappear(name, 2*time.Second, timeout)).To(gomega.Succeed(), "wait for vpc nat gw %q to disappear", name)
+	c.Delete(ctx, name)
+	gomega.Expect(c.WaitToDisappear(ctx, name, timeout)).To(gomega.Succeed(), "wait for vpc nat gw %q to disappear", name)
 }
 
 // WaitToBeReady returns whether the vpc nat gw is ready within timeout.
-func (c *VpcNatGatewayClient) WaitToBeReady(name string, timeout time.Duration) bool {
+func (c *VpcNatGatewayClient) WaitToBeReady(ctx context.Context, name string, timeout time.Duration) bool {
 	for start := time.Now(); time.Since(start) < timeout; time.Sleep(poll) {
-		if c.Get(name).Spec.LanIP != "" {
+		if c.Get(ctx, name).Spec.LanIP != "" {
 			return true
 		}
 	}
@@ -143,10 +143,10 @@ func (c *VpcNatGatewayClient) WaitToBeReady(name string, timeout time.Duration) 
 }
 
 // WaitGwPodReady returns whether the vpc nat gw pod is ready within timeout.
-func (c *VpcNatGatewayClient) WaitGwPodReady(name string, timeout time.Duration, clientSet clientset.Interface) bool {
+func (c *VpcNatGatewayClient) WaitGwPodReady(ctx context.Context, name string, timeout time.Duration, clientSet clientset.Interface) bool {
 	podName := util.GenNatGwPodName(name)
 	for start := time.Now(); time.Since(start) < timeout; time.Sleep(poll) {
-		pod, err := clientSet.CoreV1().Pods("kube-system").Get(context.Background(), podName, metav1.GetOptions{})
+		pod, err := clientSet.CoreV1().Pods("kube-system").Get(ctx, podName, metav1.GetOptions{})
 		if err != nil {
 			if apierrors.IsNotFound(err) {
 				Logf("natgw %s is not ready err: %s", name, err)
@@ -164,11 +164,11 @@ func (c *VpcNatGatewayClient) WaitGwPodReady(name string, timeout time.Duration,
 }
 
 // WaitToBeUpdated returns whether the vpc nat gw is updated within timeout.
-func (c *VpcNatGatewayClient) WaitToBeUpdated(vpcNatGw *apiv1.VpcNatGateway, timeout time.Duration) bool {
+func (c *VpcNatGatewayClient) WaitToBeUpdated(ctx context.Context, vpcNatGw *apiv1.VpcNatGateway, timeout time.Duration) bool {
 	Logf("Waiting up to %v for vpc nat gw %s to be updated", timeout, vpcNatGw.Name)
 	rv, _ := big.NewInt(0).SetString(vpcNatGw.ResourceVersion, 10)
 	for start := time.Now(); time.Since(start) < timeout; time.Sleep(poll) {
-		s := c.Get(vpcNatGw.Name)
+		s := c.Get(ctx, vpcNatGw.Name)
 		if current, _ := big.NewInt(0).SetString(s.ResourceVersion, 10); current.Cmp(rv) > 0 {
 			return true
 		}
@@ -178,8 +178,8 @@ func (c *VpcNatGatewayClient) WaitToBeUpdated(vpcNatGw *apiv1.VpcNatGateway, tim
 }
 
 // WaitToDisappear waits the given timeout duration for the specified VPC NAT gateway to disappear.
-func (c *VpcNatGatewayClient) WaitToDisappear(name string, _, timeout time.Duration) error {
-	err := framework.Gomega().Eventually(context.Background(), framework.HandleRetry(func(ctx context.Context) (*apiv1.VpcNatGateway, error) {
+func (c *VpcNatGatewayClient) WaitToDisappear(ctx context.Context, name string, timeout time.Duration) error {
+	err := framework.Gomega().Eventually(ctx, framework.HandleRetry(func(ctx context.Context) (*apiv1.VpcNatGateway, error) {
 		gw, err := c.VpcNatGatewayInterface.Get(ctx, name, metav1.GetOptions{})
 		if apierrors.IsNotFound(err) {
 			return nil, nil
@@ -193,9 +193,9 @@ func (c *VpcNatGatewayClient) WaitToDisappear(name string, _, timeout time.Durat
 }
 
 // WaitToQoSReady returns whether the qos is ready within timeout.
-func (c *VpcNatGatewayClient) WaitToQoSReady(name string) bool {
+func (c *VpcNatGatewayClient) WaitToQoSReady(ctx context.Context, name string) bool {
 	for start := time.Now(); time.Since(start) < timeout; time.Sleep(poll) {
-		natgw := c.Get(name)
+		natgw := c.Get(ctx, name)
 		if natgw.Status.QoSPolicy == natgw.Spec.QoSPolicy {
 			Logf("qos %s of vpc nat gateway %s is ready", natgw.Spec.QoSPolicy, name)
 			return true

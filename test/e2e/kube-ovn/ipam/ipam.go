@@ -31,7 +31,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 	var subnet *apiv1.Subnet
 	var cidr string
 
-	ginkgo.BeforeEach(func() {
+	ginkgo.BeforeEach(ginkgo.NodeTimeout(10*time.Second), func(ctx ginkgo.SpecContext) {
 		cs = f.ClientSet
 		nsClient = f.NamespaceClient()
 		podClient = f.PodClient()
@@ -39,6 +39,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 		stsClient = f.StatefulSetClient()
 		subnetClient = f.SubnetClient()
 		ippoolClient = f.IPPoolClient()
+
 		namespaceName = f.Namespace.Name
 		subnetName = "subnet-" + framework.RandomSuffix()
 		ippoolName = "ippool-" + framework.RandomSuffix()
@@ -49,26 +50,26 @@ var _ = framework.Describe("[group:ipam]", func() {
 
 		ginkgo.By("Creating subnet " + subnetName)
 		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, []string{namespaceName})
-		subnet = subnetClient.CreateSync(subnet)
+		subnet = subnetClient.CreateSync(ctx, subnet)
 	})
-	ginkgo.AfterEach(func() {
+	ginkgo.AfterEach(ginkgo.NodeTimeout(30*time.Second), func(ctx ginkgo.SpecContext) {
 		ginkgo.By("Deleting pod " + podName)
-		podClient.DeleteSync(podName)
+		podClient.DeleteSync(ctx, podName)
 
 		ginkgo.By("Deleting deployment " + deployName)
-		deployClient.DeleteSync(deployName)
+		deployClient.DeleteSync(ctx, deployName)
 
 		ginkgo.By("Deleting statefulset " + stsName)
-		stsClient.DeleteSync(stsName)
+		stsClient.DeleteSync(ctx, stsName)
 
 		ginkgo.By("Deleting ippool " + ippoolName)
-		ippoolClient.DeleteSync(ippoolName)
+		ippoolClient.DeleteSync(ctx, ippoolName)
 
 		ginkgo.By("Deleting subnet " + subnetName)
-		subnetClient.DeleteSync(subnetName)
+		subnetClient.DeleteSync(ctx, subnetName)
 	})
 
-	framework.ConformanceIt("should allocate static ipv4 and mac for pod", func() {
+	framework.ConformanceIt("should allocate static ipv4 and mac for pod", ginkgo.SpecTimeout(30*time.Second), func(ctx ginkgo.SpecContext) {
 		mac := util.GenerateMac()
 		ip := framework.RandomIPs(cidr, ";", 1)
 
@@ -78,7 +79,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 			util.MacAddressAnnotation: mac,
 		}
 		pod := framework.MakePod(namespaceName, podName, nil, annotations, "", nil, nil)
-		pod = podClient.CreateSync(pod)
+		pod = podClient.CreateSync(ctx, pod)
 
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.CidrAnnotation, subnet.Spec.CIDRBlock)
@@ -91,7 +92,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 		framework.ExpectConsistOf(util.PodIPs(*pod), strings.Split(ip, ","))
 	})
 
-	framework.ConformanceIt("should allocate static ip for pod with comma separated ippool", func() {
+	framework.ConformanceIt("should allocate static ip for pod with comma separated ippool", ginkgo.SpecTimeout(30*time.Second), func(ctx ginkgo.SpecContext) {
 		if f.IsDual() {
 			ginkgo.Skip("Comma separated ippool is not supported for dual stack")
 		}
@@ -100,7 +101,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 		ginkgo.By("Creating pod " + podName + " with ippool " + pool)
 		annotations := map[string]string{util.IPPoolAnnotation: pool}
 		pod := framework.MakePod(namespaceName, podName, nil, annotations, "", nil, nil)
-		pod = podClient.CreateSync(pod)
+		pod = podClient.CreateSync(ctx, pod)
 
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.CidrAnnotation, subnet.Spec.CIDRBlock)
@@ -113,7 +114,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 		framework.ExpectContainElement(strings.Split(pool, ","), pod.Status.PodIP)
 	})
 
-	framework.ConformanceIt("should allocate static ip for deployment with ippool", func() {
+	framework.ConformanceIt("should allocate static ip for deployment with ippool", ginkgo.SpecTimeout(time.Minute), func(ctx ginkgo.SpecContext) {
 		ippoolSep := ";"
 		if f.VersionPriorTo(1, 11) {
 			if f.IsDual() {
@@ -129,10 +130,10 @@ var _ = framework.Describe("[group:ipam]", func() {
 		labels := map[string]string{"app": deployName}
 		annotations := map[string]string{util.IPPoolAnnotation: ippool}
 		deploy := framework.MakeDeployment(deployName, int32(replicas), labels, annotations, "pause", framework.PauseImage, "")
-		deploy = deployClient.CreateSync(deploy)
+		deploy = deployClient.CreateSync(ctx, deploy)
 
 		ginkgo.By("Getting pods for deployment " + deployName)
-		pods, err := deployClient.GetPods(deploy)
+		pods, err := deployClient.GetPods(ctx, deploy)
 		framework.ExpectNoError(err, "failed to get pods for deployment "+deployName)
 		framework.ExpectHaveLen(pods.Items, replicas)
 
@@ -152,18 +153,18 @@ var _ = framework.Describe("[group:ipam]", func() {
 
 		ginkgo.By("Deleting pods for deployment " + deployName)
 		for _, pod := range pods.Items {
-			err = podClient.Delete(pod.Name)
+			err = podClient.Delete(ctx, pod.Name)
 			framework.ExpectNoError(err, "failed to delete pod "+pod.Name)
 		}
 		err = deployClient.WaitToComplete(deploy)
 		framework.ExpectNoError(err)
 
 		ginkgo.By("Waiting for new pods to be ready")
-		err = e2epod.WaitForPodsRunningReady(context.Background(), cs, namespaceName, *deploy.Spec.Replicas, 0, time.Minute)
+		err = e2epod.WaitForPodsRunningReady(ctx, cs, namespaceName, *deploy.Spec.Replicas, 0, time.Minute)
 		framework.ExpectNoError(err, "timed out waiting for pods to be ready")
 
 		ginkgo.By("Getting pods for deployment " + deployName + " after deletion")
-		pods, err = deployClient.GetPods(deploy)
+		pods, err = deployClient.GetPods(ctx, deploy)
 		framework.ExpectNoError(err, "failed to get pods for deployment "+deployName)
 		framework.ExpectHaveLen(pods.Items, replicas)
 		for _, pod := range pods.Items {
@@ -179,16 +180,16 @@ var _ = framework.Describe("[group:ipam]", func() {
 		}
 	})
 
-	framework.ConformanceIt("should allocate static ip for statefulset", func() {
+	framework.ConformanceIt("should allocate static ip for statefulset", ginkgo.SpecTimeout(time.Minute), func(ctx ginkgo.SpecContext) {
 		replicas := 3
 		labels := map[string]string{"app": stsName}
 
 		ginkgo.By("Creating statefulset " + stsName)
 		sts := framework.MakeStatefulSet(stsName, stsName, int32(replicas), labels, framework.PauseImage)
-		sts = stsClient.CreateSync(sts)
+		sts = stsClient.CreateSync(ctx, sts)
 
 		ginkgo.By("Getting pods for statefulset " + stsName)
-		pods := stsClient.GetPods(sts)
+		pods := stsClient.GetPods(ctx, sts)
 		framework.ExpectHaveLen(pods.Items, replicas)
 
 		ips := make([]string, 0, replicas)
@@ -205,13 +206,13 @@ var _ = framework.Describe("[group:ipam]", func() {
 
 		ginkgo.By("Deleting pods for statefulset " + stsName)
 		for _, pod := range pods.Items {
-			err := podClient.Delete(pod.Name)
+			err := podClient.Delete(ctx, pod.Name)
 			framework.ExpectNoError(err, "failed to delete pod "+pod.Name)
 		}
-		stsClient.WaitForRunningAndReady(sts)
+		stsClient.WaitForRunningAndReady(ctx, sts)
 
 		ginkgo.By("Getting pods for statefulset " + stsName)
-		pods = stsClient.GetPods(sts)
+		pods = stsClient.GetPods(ctx, sts)
 		framework.ExpectHaveLen(pods.Items, replicas)
 
 		for i, pod := range pods.Items {
@@ -225,7 +226,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 		}
 	})
 
-	framework.ConformanceIt("should allocate static ip for statefulset with ippool", func() {
+	framework.ConformanceIt("should allocate static ip for statefulset with ippool", ginkgo.SpecTimeout(2*time.Minute), func(ctx ginkgo.SpecContext) {
 		ippoolSep := ";"
 		if f.VersionPriorTo(1, 11) {
 			if f.IsDual() {
@@ -242,10 +243,10 @@ var _ = framework.Describe("[group:ipam]", func() {
 			ginkgo.By("Creating statefulset " + stsName + " with ippool " + ippool)
 			sts := framework.MakeStatefulSet(stsName, stsName, int32(replicas), labels, framework.PauseImage)
 			sts.Spec.Template.Annotations = map[string]string{util.IPPoolAnnotation: ippool}
-			sts = stsClient.CreateSync(sts)
+			sts = stsClient.CreateSync(ctx, sts)
 
 			ginkgo.By("Getting pods for statefulset " + stsName)
-			pods := stsClient.GetPods(sts)
+			pods := stsClient.GetPods(ctx, sts)
 			framework.ExpectHaveLen(pods.Items, replicas)
 
 			ips := make([]string, 0, replicas)
@@ -264,13 +265,13 @@ var _ = framework.Describe("[group:ipam]", func() {
 
 			ginkgo.By("Deleting pods for statefulset " + stsName)
 			for _, pod := range pods.Items {
-				err := podClient.Delete(pod.Name)
+				err := podClient.Delete(ctx, pod.Name)
 				framework.ExpectNoError(err, "failed to delete pod "+pod.Name)
 			}
-			stsClient.WaitForRunningAndReady(sts)
+			stsClient.WaitForRunningAndReady(ctx, sts)
 
 			ginkgo.By("Getting pods for statefulset " + stsName)
-			pods = stsClient.GetPods(sts)
+			pods = stsClient.GetPods(ctx, sts)
 			framework.ExpectHaveLen(pods.Items, replicas)
 
 			for i, pod := range pods.Items {
@@ -286,12 +287,12 @@ var _ = framework.Describe("[group:ipam]", func() {
 			}
 
 			ginkgo.By("Deleting statefulset " + stsName)
-			stsClient.DeleteSync(stsName)
+			stsClient.DeleteSync(ctx, stsName)
 		}
 	})
 
 	// separate ippool annotation by comma
-	framework.ConformanceIt("should allocate static ip for statefulset with ippool separated by comma", func() {
+	framework.ConformanceIt("should allocate static ip for statefulset with ippool separated by comma", ginkgo.SpecTimeout(2*time.Minute), func(ctx ginkgo.SpecContext) {
 		if f.IsDual() {
 			ginkgo.Skip("Comma separated ippool is not supported for dual stack")
 		}
@@ -304,10 +305,10 @@ var _ = framework.Describe("[group:ipam]", func() {
 		ginkgo.By("Creating statefulset " + stsName + " with ippool " + ippool)
 		sts := framework.MakeStatefulSet(stsName, stsName, int32(replicas), labels, framework.PauseImage)
 		sts.Spec.Template.Annotations = map[string]string{util.IPPoolAnnotation: ippool}
-		sts = stsClient.CreateSync(sts)
+		sts = stsClient.CreateSync(ctx, sts)
 
 		ginkgo.By("Getting pods for statefulset " + stsName)
-		pods := stsClient.GetPods(sts)
+		pods := stsClient.GetPods(ctx, sts)
 		framework.ExpectHaveLen(pods.Items, replicas)
 
 		ips := make([]string, 0, replicas)
@@ -326,13 +327,13 @@ var _ = framework.Describe("[group:ipam]", func() {
 
 		ginkgo.By("Deleting pods for statefulset " + stsName)
 		for _, pod := range pods.Items {
-			err := podClient.Delete(pod.Name)
+			err := podClient.Delete(ctx, pod.Name)
 			framework.ExpectNoError(err, "failed to delete pod "+pod.Name)
 		}
-		stsClient.WaitForRunningAndReady(sts)
+		stsClient.WaitForRunningAndReady(ctx, sts)
 
 		ginkgo.By("Getting pods for statefulset " + stsName)
-		pods = stsClient.GetPods(sts)
+		pods = stsClient.GetPods(ctx, sts)
 		framework.ExpectHaveLen(pods.Items, replicas)
 
 		for i, pod := range pods.Items {
@@ -348,7 +349,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 		}
 	})
 
-	framework.ConformanceIt("should support IPPool feature", func() {
+	framework.ConformanceIt("should support IPPool feature", ginkgo.SpecTimeout(2*time.Minute), func(ctx ginkgo.SpecContext) {
 		f.SkipVersionPriorTo(1, 12, "Support for IPPool feature was introduced in v1.12")
 
 		ipsCount := 12
@@ -377,10 +378,11 @@ var _ = framework.Describe("[group:ipam]", func() {
 
 		ginkgo.By(fmt.Sprintf("Creating ippool %s with ips %v", ippoolName, ips))
 		ippool := framework.MakeIPPool(ippoolName, subnetName, ips, nil)
-		ippool = ippoolClient.CreateSync(ippool)
+		ippool = ippoolClient.CreateSync(ctx, ippool)
 
 		ginkgo.By("Validating ippool status")
-		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(ctx, 30*time.Second, func(ctx context.Context) (bool, error) {
+			ippool = ippoolClient.Get(ctx, ippoolName)
 			if !ippool.Status.V4UsingIPs.EqualInt64(0) {
 				framework.Logf("unexpected .status.v4UsingIPs: %s", ippool.Status.V4UsingIPs)
 				return false, nil
@@ -421,13 +423,13 @@ var _ = framework.Describe("[group:ipam]", func() {
 		labels := map[string]string{"app": deployName}
 		annotations := map[string]string{util.IPPoolAnnotation: ippoolName}
 		deploy := framework.MakeDeployment(deployName, int32(replicas), labels, annotations, "pause", framework.PauseImage, "")
-		deploy = deployClient.CreateSync(deploy)
+		deploy = deployClient.CreateSync(ctx, deploy)
 
 		checkFn := func() {
 			ginkgo.GinkgoHelper()
 
 			ginkgo.By("Getting pods for deployment " + deployName)
-			pods, err := deployClient.GetPods(deploy)
+			pods, err := deployClient.GetPods(ctx, deploy)
 			framework.ExpectNoError(err, "failed to get pods for deployment "+deployName)
 			framework.ExpectHaveLen(pods.Items, replicas)
 
@@ -447,8 +449,8 @@ var _ = framework.Describe("[group:ipam]", func() {
 			}
 
 			ginkgo.By("Validating ippool status")
-			framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
-				ippool = ippoolClient.Get(ippoolName)
+			framework.WaitUntil(ctx, 30*time.Second, func(ctx context.Context) (bool, error) {
+				ippool = ippoolClient.Get(ctx, ippoolName)
 				v4Available, v6Available := ipv4Range.Separate(v4Using), ipv6Range.Separate(v6Using)
 				if !ippool.Status.V4UsingIPs.Equal(v4Using.Count()) {
 					framework.Logf(".status.v4UsingIPs mismatch: expect %s, actual %s", v4Using.Count(), ippool.Status.V4UsingIPs)
@@ -488,25 +490,25 @@ var _ = framework.Describe("[group:ipam]", func() {
 		checkFn()
 
 		ginkgo.By("Restarting deployment " + deployName)
-		deploy = deployClient.RestartSync(deploy)
+		deploy = deployClient.RestartSync(ctx, deploy)
 		checkFn()
 
 		ginkgo.By("Adding namespace " + namespaceName + " to ippool " + ippoolName)
 		patchedIPPool := ippool.DeepCopy()
 		patchedIPPool.Spec.Namespaces = []string{namespaceName}
-		ippool = ippoolClient.Patch(ippool, patchedIPPool, 10*time.Second)
+		ippool = ippoolClient.Patch(ctx, ippool, patchedIPPool, 10*time.Second)
 
 		ginkgo.By("Validating namespace annotations")
-		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
-			ns := nsClient.Get(namespaceName)
+		framework.WaitUntil(ctx, 30*time.Second, func(ctx context.Context) (bool, error) {
+			ns := nsClient.Get(ctx, namespaceName)
 			return len(ns.Annotations) != 0 && ns.Annotations[util.IPPoolAnnotation] == ippoolName, nil
 		}, "")
 
 		ginkgo.By("Patching deployment " + deployName)
-		deploy = deployClient.RestartSync(deploy)
+		deploy = deployClient.RestartSync(ctx, deploy)
 		patchedDeploy := deploy.DeepCopy()
 		patchedDeploy.Spec.Template.Annotations = nil
-		deploy = deployClient.PatchSync(deploy, patchedDeploy)
+		deploy = deployClient.PatchSync(ctx, deploy, patchedDeploy)
 		checkFn()
 	})
 })

@@ -30,30 +30,30 @@ func (f *Framework) VlanClient() *VlanClient {
 	}
 }
 
-func (c *VlanClient) Get(name string) *apiv1.Vlan {
+func (c *VlanClient) Get(ctx context.Context, name string) *apiv1.Vlan {
 	ginkgo.GinkgoHelper()
-	vlan, err := c.VlanInterface.Get(context.TODO(), name, metav1.GetOptions{})
+	vlan, err := c.VlanInterface.Get(ctx, name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return vlan
 }
 
 // Create creates a new vlan according to the framework specifications
-func (c *VlanClient) Create(pn *apiv1.Vlan) *apiv1.Vlan {
+func (c *VlanClient) Create(ctx context.Context, pn *apiv1.Vlan) *apiv1.Vlan {
 	ginkgo.GinkgoHelper()
-	vlan, err := c.VlanInterface.Create(context.TODO(), pn, metav1.CreateOptions{})
+	vlan, err := c.VlanInterface.Create(ctx, pn, metav1.CreateOptions{})
 	ExpectNoError(err, "Error creating vlan")
 	return vlan.DeepCopy()
 }
 
 // Patch patches the vlan
-func (c *VlanClient) Patch(original, modified *apiv1.Vlan, timeout time.Duration) *apiv1.Vlan {
+func (c *VlanClient) Patch(ctx context.Context, original, modified *apiv1.Vlan, timeout time.Duration) *apiv1.Vlan {
 	ginkgo.GinkgoHelper()
 
 	patch, err := util.GenerateMergePatchPayload(original, modified)
 	ExpectNoError(err)
 
 	var patchedVlan *apiv1.Vlan
-	err = wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+	err = wait.PollUntilContextTimeout(ctx, 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
 		pn, err := c.VlanInterface.Patch(ctx, original.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
 		if err != nil {
 			return handleWaitingAPIError(err, false, "patch vlan %q", original.Name)
@@ -74,9 +74,9 @@ func (c *VlanClient) Patch(original, modified *apiv1.Vlan, timeout time.Duration
 }
 
 // Delete deletes a vlan if the vlan exists
-func (c *VlanClient) Delete(name string, options metav1.DeleteOptions) {
+func (c *VlanClient) Delete(ctx context.Context, name string, options metav1.DeleteOptions) {
 	ginkgo.GinkgoHelper()
-	err := c.VlanInterface.Delete(context.TODO(), name, options)
+	err := c.VlanInterface.Delete(ctx, name, options)
 	if err != nil && !apierrors.IsNotFound(err) {
 		Failf("Failed to delete vlan %q: %v", name, err)
 	}

@@ -1,9 +1,11 @@
 package multus
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"testing"
+	"time"
 
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	"k8s.io/klog/v2"
@@ -44,46 +46,47 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 	var nadClient *framework.NetworkAttachmentDefinitionClient
 	var nadName, podName, subnetName, namespaceName, cidr string
 	var subnet *apiv1.Subnet
-	ginkgo.BeforeEach(func() {
+
+	ginkgo.BeforeEach(ginkgo.NodeTimeout(time.Second), func(_ ginkgo.SpecContext) {
+		ipClient = f.IPClient()
+		podClient = f.PodClient()
+		subnetClient = f.SubnetClient()
+		nadClient = f.NetworkAttachmentDefinitionClient()
 		namespaceName = f.Namespace.Name
 		nadName = "nad-" + framework.RandomSuffix()
 		podName = "pod-" + framework.RandomSuffix()
 		subnetName = "subnet-" + framework.RandomSuffix()
 		cidr = framework.RandomCIDR(f.ClusterIPFamily)
-		ipClient = f.IPClient()
-		podClient = f.PodClient()
-		subnetClient = f.SubnetClient()
-		nadClient = f.NetworkAttachmentDefinitionClient()
 	})
-	ginkgo.AfterEach(func() {
+	ginkgo.AfterEach(ginkgo.NodeTimeout(20*time.Second), func(ctx ginkgo.SpecContext) {
 		ginkgo.By("Deleting pod " + podName)
-		podClient.DeleteSync(podName)
+		podClient.DeleteSync(ctx, podName)
 
 		ginkgo.By("Deleting subnet " + subnetName)
-		subnetClient.DeleteSync(subnetName)
+		subnetClient.DeleteSync(ctx, subnetName)
 
 		ginkgo.By("Deleting network attachment definition " + nadName)
-		nadClient.Delete(nadName)
+		nadClient.Delete(ctx, nadName)
 	})
 
-	framework.ConformanceIt("should be able to create attachment interface", func() {
+	framework.ConformanceIt("should be able to create attachment interface", ginkgo.SpecTimeout(30*time.Second), func(ctx ginkgo.SpecContext) {
 		provider := fmt.Sprintf("%s.%s.%s", nadName, namespaceName, util.OvnProvider)
 
 		ginkgo.By("Creating network attachment definition " + nadName)
 		nad := framework.MakeOVNNetworkAttachmentDefinition(nadName, namespaceName, provider, nil)
-		nad = nadClient.Create(nad)
+		nad = nadClient.Create(ctx, nad)
 		framework.Logf("created network attachment definition config:\n%s", nad.Spec.Config)
 
 		ginkgo.By("Creating subnet " + subnetName)
 		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, nil)
 		subnet.Spec.Provider = provider
-		subnet = subnetClient.CreateSync(subnet)
+		subnet = subnetClient.CreateSync(ctx, subnet)
 
 		ginkgo.By("Creating pod " + podName)
 		annotations := map[string]string{nadv1.NetworkAttachmentAnnot: fmt.Sprintf("%s/%s", nad.Namespace, nad.Name)}
-		cmd := []string{"sh", "-c", "sleep infinity"}
+		cmd := []string{"sleep", "infinity"}
 		pod := framework.MakePod(namespaceName, podName, nil, annotations, f.KubeOVNImage, cmd, nil)
-		pod = podClient.CreateSync(pod)
+		pod = podClient.CreateSync(ctx, pod)
 
 		ginkgo.By("Validating pod annotations")
 		framework.ExpectHaveKey(pod.Annotations, nadv1.NetworkStatusAnnot)
@@ -98,7 +101,7 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 
 		ipName := ovs.PodNameToPortName(podName, namespaceName, provider)
 		ginkgo.By("Validating IP resource " + ipName)
-		ipCR := ipClient.Get(ipName)
+		ipCR := ipClient.Get(ctx, ipName)
 		framework.ExpectEqual(ipCR.Spec.Subnet, subnetName)
 		framework.ExpectEqual(ipCR.Spec.PodName, podName)
 		framework.ExpectEqual(ipCR.Spec.Namespace, namespaceName)
@@ -116,8 +119,8 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 		}
 
 		ginkgo.By("Retrieving pod routes")
-		podRoutes, err := iproute.RouteShow("", "", func(cmd ...string) ([]byte, []byte, error) {
-			return framework.KubectlExec(namespaceName, podName, cmd...)
+		podRoutes, err := iproute.RouteShow(ctx, "", "", func(ctx context.Context, cmd string) ([]byte, []byte, error) {
+			return framework.KubectlExec(ctx, namespaceName, podName, cmd)
 		})
 		framework.ExpectNoError(err)
 
@@ -146,13 +149,13 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 		}
 	})
 
-	framework.ConformanceIt("should be able to create attachment interface with custom routes", func() {
+	framework.ConformanceIt("should be able to create attachment interface with custom routes", ginkgo.SpecTimeout(30*time.Second), func(ctx ginkgo.SpecContext) {
 		provider := fmt.Sprintf("%s.%s.%s", nadName, namespaceName, util.OvnProvider)
 
 		ginkgo.By("Creating subnet " + subnetName)
 		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, nil)
 		subnet.Spec.Provider = provider
-		subnet = subnetClient.CreateSync(subnet)
+		subnet = subnetClient.CreateSync(ctx, subnet)
 
 		ginkgo.By("Constructing network attachment definition config")
 		var routeDst string
@@ -179,14 +182,14 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 
 		ginkgo.By("Creating network attachment definition " + nadName)
 		nad := framework.MakeOVNNetworkAttachmentDefinition(nadName, namespaceName, provider, routes)
-		nad = nadClient.Create(nad)
+		nad = nadClient.Create(ctx, nad)
 		framework.Logf("created network attachment definition config:\n%s", nad.Spec.Config)
 
 		ginkgo.By("Creating pod " + podName)
 		annotations := map[string]string{nadv1.NetworkAttachmentAnnot: fmt.Sprintf("%s/%s", nad.Namespace, nad.Name)}
-		cmd := []string{"sh", "-c", "sleep infinity"}
+		cmd := []string{"sleep", "infinity"}
 		pod := framework.MakePod(namespaceName, podName, nil, annotations, f.KubeOVNImage, cmd, nil)
-		pod = podClient.CreateSync(pod)
+		pod = podClient.CreateSync(ctx, pod)
 
 		ginkgo.By("Validating pod annotations")
 		framework.ExpectHaveKey(pod.Annotations, nadv1.NetworkStatusAnnot)
@@ -201,7 +204,7 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 
 		ipName := ovs.PodNameToPortName(podName, namespaceName, provider)
 		ginkgo.By("Validating IP resource " + ipName)
-		ipCR := ipClient.Get(ipName)
+		ipCR := ipClient.Get(ctx, ipName)
 		framework.ExpectEqual(ipCR.Spec.Subnet, subnetName)
 		framework.ExpectEqual(ipCR.Spec.PodName, podName)
 		framework.ExpectEqual(ipCR.Spec.Namespace, namespaceName)
@@ -219,8 +222,8 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 		}
 
 		ginkgo.By("Retrieving pod routes")
-		podRoutes, err := iproute.RouteShow("", "", func(cmd ...string) ([]byte, []byte, error) {
-			return framework.KubectlExec(namespaceName, podName, cmd...)
+		podRoutes, err := iproute.RouteShow(ctx, "", "", func(ctx context.Context, cmd string) ([]byte, []byte, error) {
+			return framework.KubectlExec(ctx, namespaceName, podName, cmd)
 		})
 		framework.ExpectNoError(err)
 
@@ -250,24 +253,24 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 		}
 	})
 
-	framework.ConformanceIt("should be able to provide IPAM for macvlan", func() {
+	framework.ConformanceIt("should be able to provide IPAM for macvlan", ginkgo.SpecTimeout(30*time.Second), func(ctx ginkgo.SpecContext) {
 		provider := fmt.Sprintf("%s.%s", nadName, namespaceName)
 
 		ginkgo.By("Creating network attachment definition " + nadName)
 		nad := framework.MakeMacvlanNetworkAttachmentDefinition(nadName, namespaceName, "eth0", "bridge", provider, nil)
-		nad = nadClient.Create(nad)
+		nad = nadClient.Create(ctx, nad)
 		framework.Logf("created network attachment definition config:\n%s", nad.Spec.Config)
 
 		ginkgo.By("Creating subnet " + subnetName)
 		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, nil)
 		subnet.Spec.Provider = provider
-		subnet = subnetClient.CreateSync(subnet)
+		subnet = subnetClient.CreateSync(ctx, subnet)
 
 		ginkgo.By("Creating pod " + podName)
 		annotations := map[string]string{nadv1.NetworkAttachmentAnnot: fmt.Sprintf("%s/%s", nad.Namespace, nad.Name)}
-		cmd := []string{"sh", "-c", "sleep infinity"}
+		cmd := []string{"sleep", "infinity"}
 		pod := framework.MakePod(namespaceName, podName, nil, annotations, f.KubeOVNImage, cmd, nil)
-		pod = podClient.CreateSync(pod)
+		pod = podClient.CreateSync(ctx, pod)
 
 		ginkgo.By("Validating pod annotations")
 		framework.ExpectHaveKey(pod.Annotations, nadv1.NetworkStatusAnnot)
@@ -281,7 +284,7 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 
 		ipName := ovs.PodNameToPortName(podName, namespaceName, provider)
 		ginkgo.By("Validating IP resource " + ipName)
-		ipCR := ipClient.Get(ipName)
+		ipCR := ipClient.Get(ctx, ipName)
 		framework.ExpectEqual(ipCR.Spec.Subnet, subnetName)
 		framework.ExpectEqual(ipCR.Spec.PodName, podName)
 		framework.ExpectEqual(ipCR.Spec.Namespace, namespaceName)
@@ -299,8 +302,8 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 		}
 
 		ginkgo.By("Retrieving pod routes")
-		podRoutes, err := iproute.RouteShow("", "", func(cmd ...string) ([]byte, []byte, error) {
-			return framework.KubectlExec(namespaceName, podName, cmd...)
+		podRoutes, err := iproute.RouteShow(ctx, "", "", func(ctx context.Context, cmd string) ([]byte, []byte, error) {
+			return framework.KubectlExec(ctx, namespaceName, podName, cmd)
 		})
 		framework.ExpectNoError(err)
 
@@ -329,13 +332,13 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 		}
 	})
 
-	framework.ConformanceIt("should be able to provide IPAM with custom routes for macvlan", func() {
+	framework.ConformanceIt("should be able to provide IPAM with custom routes for macvlan", ginkgo.SpecTimeout(30*time.Second), func(ctx ginkgo.SpecContext) {
 		provider := fmt.Sprintf("%s.%s", nadName, namespaceName)
 
 		ginkgo.By("Creating subnet " + subnetName)
 		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, nil)
 		subnet.Spec.Provider = provider
-		subnet = subnetClient.CreateSync(subnet)
+		subnet = subnetClient.CreateSync(ctx, subnet)
 
 		ginkgo.By("Constructing network attachment definition config")
 		var routeDst string
@@ -362,14 +365,14 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 
 		ginkgo.By("Creating network attachment definition " + nadName)
 		nad := framework.MakeMacvlanNetworkAttachmentDefinition(nadName, namespaceName, "eth0", "bridge", provider, routes)
-		nad = nadClient.Create(nad)
+		nad = nadClient.Create(ctx, nad)
 		framework.Logf("created network attachment definition config:\n%s", nad.Spec.Config)
 
 		ginkgo.By("Creating pod " + podName)
 		annotations := map[string]string{nadv1.NetworkAttachmentAnnot: fmt.Sprintf("%s/%s", nad.Namespace, nad.Name)}
-		cmd := []string{"sh", "-c", "sleep infinity"}
+		cmd := []string{"sleep", "infinity"}
 		pod := framework.MakePod(namespaceName, podName, nil, annotations, f.KubeOVNImage, cmd, nil)
-		pod = podClient.CreateSync(pod)
+		pod = podClient.CreateSync(ctx, pod)
 
 		ginkgo.By("Validating pod annotations")
 		framework.ExpectHaveKey(pod.Annotations, nadv1.NetworkStatusAnnot)
@@ -383,7 +386,7 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 
 		ipName := ovs.PodNameToPortName(podName, namespaceName, provider)
 		ginkgo.By("Validating IP resource " + ipName)
-		ipCR := ipClient.Get(ipName)
+		ipCR := ipClient.Get(ctx, ipName)
 		framework.ExpectEqual(ipCR.Spec.Subnet, subnetName)
 		framework.ExpectEqual(ipCR.Spec.PodName, podName)
 		framework.ExpectEqual(ipCR.Spec.Namespace, namespaceName)
@@ -401,8 +404,8 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 		}
 
 		ginkgo.By("Retrieving pod routes")
-		podRoutes, err := iproute.RouteShow("", "", func(cmd ...string) ([]byte, []byte, error) {
-			return framework.KubectlExec(namespaceName, podName, cmd...)
+		podRoutes, err := iproute.RouteShow(ctx, "", "", func(ctx context.Context, cmd string) ([]byte, []byte, error) {
+			return framework.KubectlExec(ctx, namespaceName, podName, cmd)
 		})
 		framework.ExpectNoError(err)
 

@@ -40,37 +40,37 @@ func (f *Framework) ServiceClientNS(namespace string) *ServiceClient {
 	}
 }
 
-func (c *ServiceClient) Get(name string) *corev1.Service {
+func (c *ServiceClient) Get(ctx context.Context, name string) *corev1.Service {
 	ginkgo.GinkgoHelper()
-	service, err := c.ServiceInterface.Get(context.TODO(), name, metav1.GetOptions{})
+	service, err := c.ServiceInterface.Get(ctx, name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return service
 }
 
 // Create creates a new service according to the framework specifications
-func (c *ServiceClient) Create(service *corev1.Service) *corev1.Service {
+func (c *ServiceClient) Create(ctx context.Context, service *corev1.Service) *corev1.Service {
 	ginkgo.GinkgoHelper()
-	s, err := c.ServiceInterface.Create(context.TODO(), service, metav1.CreateOptions{})
+	s, err := c.ServiceInterface.Create(ctx, service, metav1.CreateOptions{})
 	ExpectNoError(err, "Error creating service")
 	return s.DeepCopy()
 }
 
 // CreateSync creates a new service according to the framework specifications, and waits for it to be updated.
-func (c *ServiceClient) CreateSync(service *corev1.Service, cond func(s *corev1.Service) (bool, error), condDesc string) *corev1.Service {
+func (c *ServiceClient) CreateSync(ctx context.Context, service *corev1.Service, cond func(s *corev1.Service) (bool, error), condDesc string) *corev1.Service {
 	ginkgo.GinkgoHelper()
-	_ = c.Create(service)
-	return c.WaitUntil(service.Name, cond, condDesc, 2*time.Second, timeout)
+	_ = c.Create(ctx, service)
+	return c.WaitUntil(ctx, service.Name, cond, condDesc, 2*time.Second, timeout)
 }
 
 // Patch patches the service
-func (c *ServiceClient) Patch(original, modified *corev1.Service) *corev1.Service {
+func (c *ServiceClient) Patch(ctx context.Context, original, modified *corev1.Service) *corev1.Service {
 	ginkgo.GinkgoHelper()
 
 	patch, err := util.GenerateMergePatchPayload(original, modified)
 	ExpectNoError(err)
 
 	var patchedService *corev1.Service
-	err = wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+	err = wait.PollUntilContextTimeout(ctx, 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
 		s, err := c.ServiceInterface.Patch(ctx, original.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
 		if err != nil {
 			return handleWaitingAPIError(err, false, "patch service %q", original.Name)
@@ -91,16 +91,16 @@ func (c *ServiceClient) Patch(original, modified *corev1.Service) *corev1.Servic
 }
 
 // PatchSync patches the service and waits the service to meet the condition
-func (c *ServiceClient) PatchSync(original, modified *corev1.Service, cond func(s *corev1.Service) (bool, error), condDesc string) *corev1.Service {
+func (c *ServiceClient) PatchSync(ctx context.Context, original, modified *corev1.Service, cond func(s *corev1.Service) (bool, error), condDesc string) *corev1.Service {
 	ginkgo.GinkgoHelper()
-	_ = c.Patch(original, modified)
-	return c.WaitUntil(original.Name, cond, condDesc, 2*time.Second, timeout)
+	_ = c.Patch(ctx, original, modified)
+	return c.WaitUntil(ctx, original.Name, cond, condDesc, 2*time.Second, timeout)
 }
 
 // Delete deletes a service if the service exists
-func (c *ServiceClient) Delete(name string) {
+func (c *ServiceClient) Delete(ctx context.Context, name string) {
 	ginkgo.GinkgoHelper()
-	err := c.ServiceInterface.Delete(context.TODO(), name, metav1.DeleteOptions{})
+	err := c.ServiceInterface.Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil && !apierrors.IsNotFound(err) {
 		Failf("Failed to delete service %q: %v", name, err)
 	}
@@ -108,18 +108,18 @@ func (c *ServiceClient) Delete(name string) {
 
 // DeleteSync deletes the service and waits for the service to disappear for `timeout`.
 // If the service doesn't disappear before the timeout, it will fail the test.
-func (c *ServiceClient) DeleteSync(name string) {
+func (c *ServiceClient) DeleteSync(ctx context.Context, name string) {
 	ginkgo.GinkgoHelper()
-	c.Delete(name)
-	gomega.Expect(c.WaitToDisappear(name, 2*time.Second, timeout)).To(gomega.Succeed(), "wait for service %q to disappear", name)
+	c.Delete(ctx, name)
+	gomega.Expect(c.WaitToDisappear(ctx, name, timeout)).To(gomega.Succeed(), "wait for service %q to disappear", name)
 }
 
 // WaitUntil waits the given timeout duration for the specified condition to be met.
-func (c *ServiceClient) WaitUntil(name string, cond func(s *corev1.Service) (bool, error), condDesc string, interval, timeout time.Duration) *corev1.Service {
+func (c *ServiceClient) WaitUntil(ctx context.Context, name string, cond func(s *corev1.Service) (bool, error), condDesc string, interval, timeout time.Duration) *corev1.Service {
 	var service *corev1.Service
-	err := wait.PollUntilContextTimeout(context.Background(), interval, timeout, false, func(_ context.Context) (bool, error) {
+	err := wait.PollUntilContextTimeout(ctx, interval, timeout, false, func(ctx context.Context) (bool, error) {
 		Logf("Waiting for service %s to meet condition %q", name, condDesc)
-		service = c.Get(name).DeepCopy()
+		service = c.Get(ctx, name).DeepCopy()
 		met, err := cond(service)
 		if err != nil {
 			return false, fmt.Errorf("failed to check condition for service %s: %v", name, err)
@@ -144,8 +144,8 @@ func (c *ServiceClient) WaitUntil(name string, cond func(s *corev1.Service) (boo
 }
 
 // WaitToDisappear waits the given timeout duration for the specified service to disappear.
-func (c *ServiceClient) WaitToDisappear(name string, _, timeout time.Duration) error {
-	err := framework.Gomega().Eventually(context.Background(), framework.HandleRetry(func(ctx context.Context) (*corev1.Service, error) {
+func (c *ServiceClient) WaitToDisappear(ctx context.Context, name string, timeout time.Duration) error {
+	err := framework.Gomega().Eventually(ctx, framework.HandleRetry(func(ctx context.Context) (*corev1.Service, error) {
 		svc, err := c.ServiceInterface.Get(ctx, name, metav1.GetOptions{})
 		if apierrors.IsNotFound(err) {
 			return nil, nil

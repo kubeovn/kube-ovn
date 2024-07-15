@@ -35,40 +35,40 @@ func (f *Framework) ProviderNetworkClient() *ProviderNetworkClient {
 	}
 }
 
-func (c *ProviderNetworkClient) Get(name string) *apiv1.ProviderNetwork {
+func (c *ProviderNetworkClient) Get(ctx context.Context, name string) *apiv1.ProviderNetwork {
 	ginkgo.GinkgoHelper()
-	pn, err := c.ProviderNetworkInterface.Get(context.TODO(), name, metav1.GetOptions{})
+	pn, err := c.ProviderNetworkInterface.Get(ctx, name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return pn
 }
 
 // Create creates a new provider network according to the framework specifications
-func (c *ProviderNetworkClient) Create(pn *apiv1.ProviderNetwork) *apiv1.ProviderNetwork {
+func (c *ProviderNetworkClient) Create(ctx context.Context, pn *apiv1.ProviderNetwork) *apiv1.ProviderNetwork {
 	ginkgo.GinkgoHelper()
-	pn, err := c.ProviderNetworkInterface.Create(context.TODO(), pn, metav1.CreateOptions{})
+	pn, err := c.ProviderNetworkInterface.Create(ctx, pn, metav1.CreateOptions{})
 	ExpectNoError(err, "Error creating provider network")
 	return pn.DeepCopy()
 }
 
 // CreateSync creates a new provider network according to the framework specifications, and waits for it to be ready.
-func (c *ProviderNetworkClient) CreateSync(pn *apiv1.ProviderNetwork) *apiv1.ProviderNetwork {
+func (c *ProviderNetworkClient) CreateSync(ctx context.Context, pn *apiv1.ProviderNetwork) *apiv1.ProviderNetwork {
 	ginkgo.GinkgoHelper()
 
-	pn = c.Create(pn)
-	ExpectTrue(c.WaitToBeReady(pn.Name, timeout))
+	pn = c.Create(ctx, pn)
+	ExpectTrue(c.WaitToBeReady(ctx, pn.Name, timeout))
 	// Get the newest provider network after it becomes ready
-	return c.Get(pn.Name).DeepCopy()
+	return c.Get(ctx, pn.Name).DeepCopy()
 }
 
 // Patch patches the provider network
-func (c *ProviderNetworkClient) Patch(original, modified *apiv1.ProviderNetwork) *apiv1.ProviderNetwork {
+func (c *ProviderNetworkClient) Patch(ctx context.Context, original, modified *apiv1.ProviderNetwork) *apiv1.ProviderNetwork {
 	ginkgo.GinkgoHelper()
 
 	patch, err := util.GenerateMergePatchPayload(original, modified)
 	ExpectNoError(err)
 
 	var patchedProviderNetwork *apiv1.ProviderNetwork
-	err = wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+	err = wait.PollUntilContextTimeout(ctx, 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
 		pn, err := c.ProviderNetworkInterface.Patch(ctx, original.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
 		if err != nil {
 			return handleWaitingAPIError(err, false, "patch provider network %q", original.Name)
@@ -90,20 +90,20 @@ func (c *ProviderNetworkClient) Patch(original, modified *apiv1.ProviderNetwork)
 
 // PatchSync patches the provider network and waits for the provider network to be ready for `timeout`.
 // If the provider network doesn't become ready before the timeout, it will fail the test.
-func (c *ProviderNetworkClient) PatchSync(original, modified *apiv1.ProviderNetwork, _ []string, timeout time.Duration) *apiv1.ProviderNetwork {
+func (c *ProviderNetworkClient) PatchSync(ctx context.Context, original, modified *apiv1.ProviderNetwork, timeout time.Duration) *apiv1.ProviderNetwork {
 	ginkgo.GinkgoHelper()
 
-	pn := c.Patch(original, modified)
-	ExpectTrue(c.WaitToBeUpdated(pn, timeout))
-	ExpectTrue(c.WaitToBeReady(pn.Name, timeout))
+	pn := c.Patch(ctx, original, modified)
+	ExpectTrue(c.WaitToBeUpdated(ctx, pn, timeout))
+	ExpectTrue(c.WaitToBeReady(ctx, pn.Name, timeout))
 	// Get the newest subnet after it becomes ready
-	return c.Get(pn.Name).DeepCopy()
+	return c.Get(ctx, pn.Name).DeepCopy()
 }
 
 // Delete deletes a provider network if the provider network exists
-func (c *ProviderNetworkClient) Delete(name string) {
+func (c *ProviderNetworkClient) Delete(ctx context.Context, name string) {
 	ginkgo.GinkgoHelper()
-	err := c.ProviderNetworkInterface.Delete(context.TODO(), name, metav1.DeleteOptions{})
+	err := c.ProviderNetworkInterface.Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil && !apierrors.IsNotFound(err) {
 		Failf("Failed to delete provider network %q: %v", name, err)
 	}
@@ -111,10 +111,10 @@ func (c *ProviderNetworkClient) Delete(name string) {
 
 // DeleteSync deletes the provider network and waits for the provider network to disappear for `timeout`.
 // If the provider network doesn't disappear before the timeout, it will fail the test.
-func (c *ProviderNetworkClient) DeleteSync(name string) {
+func (c *ProviderNetworkClient) DeleteSync(ctx context.Context, name string) {
 	ginkgo.GinkgoHelper()
-	c.Delete(name)
-	gomega.Expect(c.WaitToDisappear(name, 2*time.Second, timeout)).To(gomega.Succeed(), "wait for provider network %q to disappear", name)
+	c.Delete(ctx, name)
+	gomega.Expect(c.WaitToDisappear(ctx, name, timeout)).To(gomega.Succeed(), "wait for provider network %q to disappear", name)
 }
 
 func isProviderNetworkConditionSetAsExpected(pn *apiv1.ProviderNetwork, node string, conditionType apiv1.ConditionType, wantTrue, silent bool) bool {
@@ -146,11 +146,11 @@ func IsProviderNetworkConditionSetAsExpected(pn *apiv1.ProviderNetwork, node str
 // within timeout. If wantTrue is true, it will ensure the provider network condition status is
 // ConditionTrue; if it's false, it ensures the provider network condition is in any state other
 // than ConditionTrue (e.g. not true or unknown).
-func (c *ProviderNetworkClient) WaitConditionToBe(name, node string, conditionType apiv1.ConditionType, wantTrue bool, deadline time.Time) bool {
+func (c *ProviderNetworkClient) WaitConditionToBe(ctx context.Context, name, node string, conditionType apiv1.ConditionType, wantTrue bool, deadline time.Time) bool {
 	timeout := time.Until(deadline)
 	Logf("Waiting up to %v for provider network %s condition %s of node %s to be %t", timeout, name, conditionType, node, wantTrue)
 	for ; time.Now().Before(deadline); time.Sleep(poll) {
-		if pn := c.Get(name); IsProviderNetworkConditionSetAsExpected(pn, node, conditionType, wantTrue) {
+		if pn := c.Get(ctx, name); IsProviderNetworkConditionSetAsExpected(pn, node, conditionType, wantTrue) {
 			return true
 		}
 	}
@@ -159,9 +159,9 @@ func (c *ProviderNetworkClient) WaitConditionToBe(name, node string, conditionTy
 }
 
 // WaitToBeReady returns whether the provider network is ready within timeout.
-func (c *ProviderNetworkClient) WaitToBeReady(name string, timeout time.Duration) bool {
+func (c *ProviderNetworkClient) WaitToBeReady(ctx context.Context, name string, timeout time.Duration) bool {
 	for start := time.Now(); time.Since(start) < timeout; time.Sleep(poll) {
-		if c.Get(name).Status.Ready {
+		if c.Get(ctx, name).Status.Ready {
 			return true
 		}
 	}
@@ -169,11 +169,11 @@ func (c *ProviderNetworkClient) WaitToBeReady(name string, timeout time.Duration
 }
 
 // WaitToBeUpdated returns whether the provider network is updated within timeout.
-func (c *ProviderNetworkClient) WaitToBeUpdated(pn *apiv1.ProviderNetwork, timeout time.Duration) bool {
+func (c *ProviderNetworkClient) WaitToBeUpdated(ctx context.Context, pn *apiv1.ProviderNetwork, timeout time.Duration) bool {
 	Logf("Waiting up to %v for provider network %s to be updated", timeout, pn.Name)
 	rv, _ := big.NewInt(0).SetString(pn.ResourceVersion, 10)
 	for start := time.Now(); time.Since(start) < timeout; time.Sleep(poll) {
-		s := c.Get(pn.Name)
+		s := c.Get(ctx, pn.Name)
 		if current, _ := big.NewInt(0).SetString(s.ResourceVersion, 10); current.Cmp(rv) > 0 {
 			return true
 		}
@@ -183,8 +183,8 @@ func (c *ProviderNetworkClient) WaitToBeUpdated(pn *apiv1.ProviderNetwork, timeo
 }
 
 // WaitToDisappear waits the given timeout duration for the specified provider network to disappear.
-func (c *ProviderNetworkClient) WaitToDisappear(name string, _, timeout time.Duration) error {
-	err := framework.Gomega().Eventually(context.Background(), framework.HandleRetry(func(ctx context.Context) (*apiv1.ProviderNetwork, error) {
+func (c *ProviderNetworkClient) WaitToDisappear(ctx context.Context, name string, timeout time.Duration) error {
+	err := framework.Gomega().Eventually(ctx, framework.HandleRetry(func(ctx context.Context) (*apiv1.ProviderNetwork, error) {
 		pn, err := c.ProviderNetworkInterface.Get(ctx, name, metav1.GetOptions{})
 		if apierrors.IsNotFound(err) {
 			return nil, nil

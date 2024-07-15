@@ -37,37 +37,37 @@ func (f *Framework) QoSPolicyClient() *QoSPolicyClient {
 	}
 }
 
-func (c *QoSPolicyClient) Get(name string) *apiv1.QoSPolicy {
+func (c *QoSPolicyClient) Get(ctx context.Context, name string) *apiv1.QoSPolicy {
 	ginkgo.GinkgoHelper()
-	qosPolicy, err := c.QoSPolicyInterface.Get(context.TODO(), name, metav1.GetOptions{})
+	qosPolicy, err := c.QoSPolicyInterface.Get(ctx, name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return qosPolicy
 }
 
 // Create creates a new qosPolicy according to the framework specifications
-func (c *QoSPolicyClient) Create(qosPolicy *apiv1.QoSPolicy) *apiv1.QoSPolicy {
+func (c *QoSPolicyClient) Create(ctx context.Context, qosPolicy *apiv1.QoSPolicy) *apiv1.QoSPolicy {
 	ginkgo.GinkgoHelper()
-	s, err := c.QoSPolicyInterface.Create(context.TODO(), qosPolicy, metav1.CreateOptions{})
+	s, err := c.QoSPolicyInterface.Create(ctx, qosPolicy, metav1.CreateOptions{})
 	ExpectNoError(err, "Error creating qosPolicy")
 	return s.DeepCopy()
 }
 
 // CreateSync creates a new qosPolicy according to the framework specifications, and waits for it to be ready.
-func (c *QoSPolicyClient) CreateSync(qosPolicy *apiv1.QoSPolicy) *apiv1.QoSPolicy {
+func (c *QoSPolicyClient) CreateSync(ctx context.Context, qosPolicy *apiv1.QoSPolicy) *apiv1.QoSPolicy {
 	ginkgo.GinkgoHelper()
 
-	s := c.Create(qosPolicy)
-	ExpectTrue(c.WaitToQoSReady(s.Name))
+	s := c.Create(ctx, qosPolicy)
+	ExpectTrue(c.WaitToQoSReady(ctx, s.Name))
 	// Get the newest qosPolicy after it becomes ready
-	return c.Get(s.Name).DeepCopy()
+	return c.Get(ctx, s.Name).DeepCopy()
 }
 
 // Update updates the qosPolicy
-func (c *QoSPolicyClient) Update(qosPolicy *apiv1.QoSPolicy, options metav1.UpdateOptions, timeout time.Duration) *apiv1.QoSPolicy {
+func (c *QoSPolicyClient) Update(ctx context.Context, qosPolicy *apiv1.QoSPolicy, options metav1.UpdateOptions, timeout time.Duration) *apiv1.QoSPolicy {
 	ginkgo.GinkgoHelper()
 
 	var updatedQoSPolicy *apiv1.QoSPolicy
-	err := wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+	err := wait.PollUntilContextTimeout(ctx, 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
 		s, err := c.QoSPolicyInterface.Update(ctx, qosPolicy, options)
 		if err != nil {
 			return handleWaitingAPIError(err, false, "update qosPolicy %q", qosPolicy.Name)
@@ -89,25 +89,25 @@ func (c *QoSPolicyClient) Update(qosPolicy *apiv1.QoSPolicy, options metav1.Upda
 
 // UpdateSync updates the qosPolicy and waits for the qosPolicy to be ready for `timeout`.
 // If the qosPolicy doesn't become ready before the timeout, it will fail the test.
-func (c *QoSPolicyClient) UpdateSync(qosPolicy *apiv1.QoSPolicy, options metav1.UpdateOptions, timeout time.Duration) *apiv1.QoSPolicy {
+func (c *QoSPolicyClient) UpdateSync(ctx context.Context, qosPolicy *apiv1.QoSPolicy, options metav1.UpdateOptions, timeout time.Duration) *apiv1.QoSPolicy {
 	ginkgo.GinkgoHelper()
 
-	s := c.Update(qosPolicy, options, timeout)
-	ExpectTrue(c.WaitToBeUpdated(s, timeout))
-	ExpectTrue(c.WaitToBeReady(s.Name, timeout))
+	s := c.Update(ctx, qosPolicy, options, timeout)
+	ExpectTrue(c.WaitToBeUpdated(ctx, s, timeout))
+	ExpectTrue(c.WaitToBeReady(ctx, s.Name, timeout))
 	// Get the newest qosPolicy after it becomes ready
-	return c.Get(s.Name).DeepCopy()
+	return c.Get(ctx, s.Name).DeepCopy()
 }
 
 // Patch patches the qosPolicy
-func (c *QoSPolicyClient) Patch(original, modified *apiv1.QoSPolicy) *apiv1.QoSPolicy {
+func (c *QoSPolicyClient) Patch(ctx context.Context, original, modified *apiv1.QoSPolicy) *apiv1.QoSPolicy {
 	ginkgo.GinkgoHelper()
 
 	patch, err := util.GenerateMergePatchPayload(original, modified)
 	ExpectNoError(err)
 
 	var patchedQoSPolicy *apiv1.QoSPolicy
-	err = wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+	err = wait.PollUntilContextTimeout(ctx, 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
 		s, err := c.QoSPolicyInterface.Patch(ctx, original.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
 		if err != nil {
 			return handleWaitingAPIError(err, false, "patch qosPolicy %q", original.Name)
@@ -129,20 +129,20 @@ func (c *QoSPolicyClient) Patch(original, modified *apiv1.QoSPolicy) *apiv1.QoSP
 
 // PatchSync patches the qosPolicy and waits for the qosPolicy to be ready for `timeout`.
 // If the qosPolicy doesn't become ready before the timeout, it will fail the test.
-func (c *QoSPolicyClient) PatchSync(original, modified *apiv1.QoSPolicy) *apiv1.QoSPolicy {
+func (c *QoSPolicyClient) PatchSync(ctx context.Context, original, modified *apiv1.QoSPolicy) *apiv1.QoSPolicy {
 	ginkgo.GinkgoHelper()
 
-	s := c.Patch(original, modified)
-	ExpectTrue(c.WaitToBeUpdated(s, timeout))
-	ExpectTrue(c.WaitToBeReady(s.Name, timeout))
+	s := c.Patch(ctx, original, modified)
+	ExpectTrue(c.WaitToBeUpdated(ctx, s, timeout))
+	ExpectTrue(c.WaitToBeReady(ctx, s.Name, timeout))
 	// Get the newest qosPolicy after it becomes ready
-	return c.Get(s.Name).DeepCopy()
+	return c.Get(ctx, s.Name).DeepCopy()
 }
 
 // Delete deletes a qosPolicy if the qosPolicy exists
-func (c *QoSPolicyClient) Delete(name string) {
+func (c *QoSPolicyClient) Delete(ctx context.Context, name string) {
 	ginkgo.GinkgoHelper()
-	err := c.QoSPolicyInterface.Delete(context.TODO(), name, metav1.DeleteOptions{})
+	err := c.QoSPolicyInterface.Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil && !apierrors.IsNotFound(err) {
 		Failf("Failed to delete qosPolicy %q: %v", name, err)
 	}
@@ -150,10 +150,10 @@ func (c *QoSPolicyClient) Delete(name string) {
 
 // DeleteSync deletes the qosPolicy and waits for the qosPolicy to disappear for `timeout`.
 // If the qosPolicy doesn't disappear before the timeout, it will fail the test.
-func (c *QoSPolicyClient) DeleteSync(name string) {
+func (c *QoSPolicyClient) DeleteSync(ctx context.Context, name string) {
 	ginkgo.GinkgoHelper()
-	c.Delete(name)
-	gomega.Expect(c.WaitToDisappear(name, 2*time.Second, timeout)).To(gomega.Succeed(), "wait for qosPolicy %q to disappear", name)
+	c.Delete(ctx, name)
+	gomega.Expect(c.WaitToDisappear(ctx, name, timeout)).To(gomega.Succeed(), "wait for qosPolicy %q to disappear", name)
 }
 
 func isQoSPolicyConditionSetAsExpected(qosPolicy *apiv1.QoSPolicy, conditionType apiv1.ConditionType, wantTrue, silent bool) bool {
@@ -185,10 +185,10 @@ func IsQoSPolicyConditionSetAsExpected(qosPolicy *apiv1.QoSPolicy, conditionType
 // within timeout. If wantTrue is true, it will ensure the qosPolicy condition status is
 // ConditionTrue; if it's false, it ensures the qosPolicy condition is in any state other
 // than ConditionTrue (e.g. not true or unknown).
-func (c *QoSPolicyClient) WaitConditionToBe(name string, conditionType apiv1.ConditionType, wantTrue bool, timeout time.Duration) bool {
+func (c *QoSPolicyClient) WaitConditionToBe(ctx context.Context, name string, conditionType apiv1.ConditionType, wantTrue bool, timeout time.Duration) bool {
 	Logf("Waiting up to %v for qosPolicy %s condition %s to be %t", timeout, name, conditionType, wantTrue)
 	for start := time.Now(); time.Since(start) < timeout; time.Sleep(poll) {
-		qosPolicy := c.Get(name)
+		qosPolicy := c.Get(ctx, name)
 		if IsQoSPolicyConditionSetAsExpected(qosPolicy, conditionType, wantTrue) {
 			Logf("QoSPolicy %s reach desired %t condition status", name, wantTrue)
 			return true
@@ -200,16 +200,16 @@ func (c *QoSPolicyClient) WaitConditionToBe(name string, conditionType apiv1.Con
 }
 
 // WaitToBeReady returns whether the qosPolicy is ready within timeout.
-func (c *QoSPolicyClient) WaitToBeReady(name string, timeout time.Duration) bool {
-	return c.WaitConditionToBe(name, apiv1.Ready, true, timeout)
+func (c *QoSPolicyClient) WaitToBeReady(ctx context.Context, name string, timeout time.Duration) bool {
+	return c.WaitConditionToBe(ctx, name, apiv1.Ready, true, timeout)
 }
 
 // WaitToBeUpdated returns whether the qosPolicy is updated within timeout.
-func (c *QoSPolicyClient) WaitToBeUpdated(qosPolicy *apiv1.QoSPolicy, timeout time.Duration) bool {
+func (c *QoSPolicyClient) WaitToBeUpdated(ctx context.Context, qosPolicy *apiv1.QoSPolicy, timeout time.Duration) bool {
 	Logf("Waiting up to %v for qosPolicy %s to be updated", timeout, qosPolicy.Name)
 	rv, _ := big.NewInt(0).SetString(qosPolicy.ResourceVersion, 10)
 	for start := time.Now(); time.Since(start) < timeout; time.Sleep(poll) {
-		s := c.Get(qosPolicy.Name)
+		s := c.Get(ctx, qosPolicy.Name)
 		if current, _ := big.NewInt(0).SetString(s.ResourceVersion, 10); current.Cmp(rv) > 0 {
 			Logf("QoSPolicy %s updated", qosPolicy.Name)
 			return true
@@ -221,11 +221,11 @@ func (c *QoSPolicyClient) WaitToBeUpdated(qosPolicy *apiv1.QoSPolicy, timeout ti
 }
 
 // WaitUntil waits the given timeout duration for the specified condition to be met.
-func (c *QoSPolicyClient) WaitUntil(name string, cond func(s *apiv1.QoSPolicy) (bool, error), condDesc string, interval, timeout time.Duration) *apiv1.QoSPolicy {
+func (c *QoSPolicyClient) WaitUntil(ctx context.Context, name string, cond func(s *apiv1.QoSPolicy) (bool, error), condDesc string, interval, timeout time.Duration) *apiv1.QoSPolicy {
 	var qosPolicy *apiv1.QoSPolicy
-	err := wait.PollUntilContextTimeout(context.Background(), interval, timeout, true, func(_ context.Context) (bool, error) {
+	err := wait.PollUntilContextTimeout(ctx, interval, timeout, true, func(ctx context.Context) (bool, error) {
 		Logf("Waiting for qosPolicy %s to meet condition %q", name, condDesc)
-		qosPolicy = c.Get(name).DeepCopy()
+		qosPolicy = c.Get(ctx, name).DeepCopy()
 		met, err := cond(qosPolicy)
 		if err != nil {
 			return false, fmt.Errorf("failed to check condition for qosPolicy %s: %v", name, err)
@@ -245,8 +245,8 @@ func (c *QoSPolicyClient) WaitUntil(name string, cond func(s *apiv1.QoSPolicy) (
 }
 
 // WaitToDisappear waits the given timeout duration for the specified qosPolicy to disappear.
-func (c *QoSPolicyClient) WaitToDisappear(name string, _, timeout time.Duration) error {
-	err := framework.Gomega().Eventually(context.Background(), framework.HandleRetry(func(ctx context.Context) (*apiv1.QoSPolicy, error) {
+func (c *QoSPolicyClient) WaitToDisappear(ctx context.Context, name string, timeout time.Duration) error {
+	err := framework.Gomega().Eventually(ctx, framework.HandleRetry(func(ctx context.Context) (*apiv1.QoSPolicy, error) {
 		qosPolicy, err := c.QoSPolicyInterface.Get(ctx, name, metav1.GetOptions{})
 		if apierrors.IsNotFound(err) {
 			return nil, nil
@@ -260,9 +260,9 @@ func (c *QoSPolicyClient) WaitToDisappear(name string, _, timeout time.Duration)
 }
 
 // WaitToQoSReady returns whether the qos is ready within timeout.
-func (c *QoSPolicyClient) WaitToQoSReady(name string) bool {
+func (c *QoSPolicyClient) WaitToQoSReady(ctx context.Context, name string) bool {
 	for start := time.Now(); time.Since(start) < timeout; time.Sleep(poll) {
-		qos := c.Get(name)
+		qos := c.Get(ctx, name)
 		if len(qos.Spec.BandwidthLimitRules) != len(qos.Status.BandwidthLimitRules) {
 			Logf("qos %s is not ready", name)
 			continue

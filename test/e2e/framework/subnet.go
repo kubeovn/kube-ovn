@@ -36,37 +36,37 @@ func (f *Framework) SubnetClient() *SubnetClient {
 	}
 }
 
-func (c *SubnetClient) Get(name string) *apiv1.Subnet {
+func (c *SubnetClient) Get(ctx context.Context, name string) *apiv1.Subnet {
 	ginkgo.GinkgoHelper()
-	subnet, err := c.SubnetInterface.Get(context.TODO(), name, metav1.GetOptions{})
+	subnet, err := c.SubnetInterface.Get(ctx, name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return subnet
 }
 
 // Create creates a new subnet according to the framework specifications
-func (c *SubnetClient) Create(subnet *apiv1.Subnet) *apiv1.Subnet {
+func (c *SubnetClient) Create(ctx context.Context, subnet *apiv1.Subnet) *apiv1.Subnet {
 	ginkgo.GinkgoHelper()
-	s, err := c.SubnetInterface.Create(context.TODO(), subnet, metav1.CreateOptions{})
+	s, err := c.SubnetInterface.Create(ctx, subnet, metav1.CreateOptions{})
 	ExpectNoError(err, "Error creating subnet")
 	return s.DeepCopy()
 }
 
 // CreateSync creates a new subnet according to the framework specifications, and waits for it to be ready.
-func (c *SubnetClient) CreateSync(subnet *apiv1.Subnet) *apiv1.Subnet {
+func (c *SubnetClient) CreateSync(ctx context.Context, subnet *apiv1.Subnet) *apiv1.Subnet {
 	ginkgo.GinkgoHelper()
 
-	s := c.Create(subnet)
-	ExpectTrue(c.WaitToBeReady(s.Name, timeout))
+	s := c.Create(ctx, subnet)
+	ExpectTrue(c.WaitToBeReady(ctx, s.Name, timeout))
 	// Get the newest subnet after it becomes ready
-	return c.Get(s.Name).DeepCopy()
+	return c.Get(ctx, s.Name).DeepCopy()
 }
 
 // Update updates the subnet
-func (c *SubnetClient) Update(subnet *apiv1.Subnet, options metav1.UpdateOptions, timeout time.Duration) *apiv1.Subnet {
+func (c *SubnetClient) Update(ctx context.Context, subnet *apiv1.Subnet, options metav1.UpdateOptions, timeout time.Duration) *apiv1.Subnet {
 	ginkgo.GinkgoHelper()
 
 	var updatedSubnet *apiv1.Subnet
-	err := wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+	err := wait.PollUntilContextTimeout(ctx, 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
 		s, err := c.SubnetInterface.Update(ctx, subnet, options)
 		if err != nil {
 			return handleWaitingAPIError(err, false, "update subnet %q", subnet.Name)
@@ -88,25 +88,25 @@ func (c *SubnetClient) Update(subnet *apiv1.Subnet, options metav1.UpdateOptions
 
 // UpdateSync updates the subnet and waits for the subnet to be ready for `timeout`.
 // If the subnet doesn't become ready before the timeout, it will fail the test.
-func (c *SubnetClient) UpdateSync(subnet *apiv1.Subnet, options metav1.UpdateOptions, timeout time.Duration) *apiv1.Subnet {
+func (c *SubnetClient) UpdateSync(ctx context.Context, subnet *apiv1.Subnet, options metav1.UpdateOptions, timeout time.Duration) *apiv1.Subnet {
 	ginkgo.GinkgoHelper()
 
-	s := c.Update(subnet, options, timeout)
-	ExpectTrue(c.WaitToBeUpdated(s, timeout))
-	ExpectTrue(c.WaitToBeReady(s.Name, timeout))
+	s := c.Update(ctx, subnet, options, timeout)
+	ExpectTrue(c.WaitToBeUpdated(ctx, s, timeout))
+	ExpectTrue(c.WaitToBeReady(ctx, s.Name, timeout))
 	// Get the newest subnet after it becomes ready
-	return c.Get(s.Name).DeepCopy()
+	return c.Get(ctx, s.Name).DeepCopy()
 }
 
 // Patch patches the subnet
-func (c *SubnetClient) Patch(original, modified *apiv1.Subnet, timeout time.Duration) *apiv1.Subnet {
+func (c *SubnetClient) Patch(ctx context.Context, original, modified *apiv1.Subnet, timeout time.Duration) *apiv1.Subnet {
 	ginkgo.GinkgoHelper()
 
 	patch, err := util.GenerateMergePatchPayload(original, modified)
 	ExpectNoError(err)
 
 	var patchedSubnet *apiv1.Subnet
-	err = wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+	err = wait.PollUntilContextTimeout(ctx, 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
 		s, err := c.SubnetInterface.Patch(ctx, original.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
 		if err != nil {
 			return handleWaitingAPIError(err, false, "patch subnet %q", original.Name)
@@ -128,20 +128,20 @@ func (c *SubnetClient) Patch(original, modified *apiv1.Subnet, timeout time.Dura
 
 // PatchSync patches the subnet and waits for the subnet to be ready for `timeout`.
 // If the subnet doesn't become ready before the timeout, it will fail the test.
-func (c *SubnetClient) PatchSync(original, modified *apiv1.Subnet) *apiv1.Subnet {
+func (c *SubnetClient) PatchSync(ctx context.Context, original, modified *apiv1.Subnet) *apiv1.Subnet {
 	ginkgo.GinkgoHelper()
 
-	s := c.Patch(original, modified, timeout)
-	ExpectTrue(c.WaitToBeUpdated(s, timeout))
-	ExpectTrue(c.WaitToBeReady(s.Name, timeout))
+	s := c.Patch(ctx, original, modified, timeout)
+	ExpectTrue(c.WaitToBeUpdated(ctx, s, timeout))
+	ExpectTrue(c.WaitToBeReady(ctx, s.Name, timeout))
 	// Get the newest subnet after it becomes ready
-	return c.Get(s.Name).DeepCopy()
+	return c.Get(ctx, s.Name).DeepCopy()
 }
 
 // Delete deletes a subnet if the subnet exists
-func (c *SubnetClient) Delete(name string) {
+func (c *SubnetClient) Delete(ctx context.Context, name string) {
 	ginkgo.GinkgoHelper()
-	err := c.SubnetInterface.Delete(context.TODO(), name, metav1.DeleteOptions{})
+	err := c.SubnetInterface.Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil && !apierrors.IsNotFound(err) {
 		Failf("Failed to delete subnet %q: %v", name, err)
 	}
@@ -149,10 +149,10 @@ func (c *SubnetClient) Delete(name string) {
 
 // DeleteSync deletes the subnet and waits for the subnet to disappear for `timeout`.
 // If the subnet doesn't disappear before the timeout, it will fail the test.
-func (c *SubnetClient) DeleteSync(name string) {
+func (c *SubnetClient) DeleteSync(ctx context.Context, name string) {
 	ginkgo.GinkgoHelper()
-	c.Delete(name)
-	gomega.Expect(c.WaitToDisappear(name, 2*time.Second, timeout)).To(gomega.Succeed(), "wait for subnet %q to disappear", name)
+	c.Delete(ctx, name)
+	gomega.Expect(c.WaitToDisappear(ctx, name, timeout)).To(gomega.Succeed(), "wait for subnet %q to disappear", name)
 }
 
 func isSubnetConditionSetAsExpected(subnet *apiv1.Subnet, conditionType apiv1.ConditionType, wantTrue, silent bool) bool {
@@ -184,10 +184,10 @@ func IsSubnetConditionSetAsExpected(subnet *apiv1.Subnet, conditionType apiv1.Co
 // within timeout. If wantTrue is true, it will ensure the subnet condition status is
 // ConditionTrue; if it's false, it ensures the subnet condition is in any state other
 // than ConditionTrue (e.g. not true or unknown).
-func (c *SubnetClient) WaitConditionToBe(name string, conditionType apiv1.ConditionType, wantTrue bool, timeout time.Duration) bool {
+func (c *SubnetClient) WaitConditionToBe(ctx context.Context, name string, conditionType apiv1.ConditionType, wantTrue bool, timeout time.Duration) bool {
 	Logf("Waiting up to %v for subnet %s condition %s to be %t", timeout, name, conditionType, wantTrue)
 	for start := time.Now(); time.Since(start) < timeout; time.Sleep(poll) {
-		subnet := c.Get(name)
+		subnet := c.Get(ctx, name)
 		if IsSubnetConditionSetAsExpected(subnet, conditionType, wantTrue) {
 			Logf("Subnet %s reach desired %t condition status", name, wantTrue)
 			return true
@@ -199,16 +199,16 @@ func (c *SubnetClient) WaitConditionToBe(name string, conditionType apiv1.Condit
 }
 
 // WaitToBeReady returns whether the subnet is ready within timeout.
-func (c *SubnetClient) WaitToBeReady(name string, timeout time.Duration) bool {
-	return c.WaitConditionToBe(name, apiv1.Ready, true, timeout)
+func (c *SubnetClient) WaitToBeReady(ctx context.Context, name string, timeout time.Duration) bool {
+	return c.WaitConditionToBe(ctx, name, apiv1.Ready, true, timeout)
 }
 
 // WaitToBeUpdated returns whether the subnet is updated within timeout.
-func (c *SubnetClient) WaitToBeUpdated(subnet *apiv1.Subnet, timeout time.Duration) bool {
+func (c *SubnetClient) WaitToBeUpdated(ctx context.Context, subnet *apiv1.Subnet, timeout time.Duration) bool {
 	Logf("Waiting up to %v for subnet %s to be updated", timeout, subnet.Name)
 	rv, _ := big.NewInt(0).SetString(subnet.ResourceVersion, 10)
 	for start := time.Now(); time.Since(start) < timeout; time.Sleep(poll) {
-		s := c.Get(subnet.Name)
+		s := c.Get(ctx, subnet.Name)
 		if current, _ := big.NewInt(0).SetString(s.ResourceVersion, 10); current.Cmp(rv) > 0 {
 			Logf("Subnet %s updated", subnet.Name)
 			return true
@@ -220,13 +220,13 @@ func (c *SubnetClient) WaitToBeUpdated(subnet *apiv1.Subnet, timeout time.Durati
 }
 
 // WaitUntil waits the given timeout duration for the specified condition to be met.
-func (c *SubnetClient) WaitUntil(name string, cond func(s *apiv1.Subnet) (bool, error), condDesc string, interval, timeout time.Duration) *apiv1.Subnet {
+func (c *SubnetClient) WaitUntil(ctx context.Context, name string, cond func(s *apiv1.Subnet) (bool, error), condDesc string, interval, timeout time.Duration) *apiv1.Subnet {
 	ginkgo.GinkgoHelper()
 
 	var subnet *apiv1.Subnet
-	err := wait.PollUntilContextTimeout(context.Background(), interval, timeout, true, func(_ context.Context) (bool, error) {
+	err := wait.PollUntilContextTimeout(ctx, interval, timeout, true, func(ctx context.Context) (bool, error) {
 		Logf("Waiting for subnet %s to meet condition %q", name, condDesc)
-		subnet = c.Get(name).DeepCopy()
+		subnet = c.Get(ctx, name).DeepCopy()
 		met, err := cond(subnet)
 		if err != nil {
 			return false, fmt.Errorf("failed to check condition for subnet %s: %v", name, err)
@@ -246,8 +246,8 @@ func (c *SubnetClient) WaitUntil(name string, cond func(s *apiv1.Subnet) (bool, 
 }
 
 // WaitToDisappear waits the given timeout duration for the specified subnet to disappear.
-func (c *SubnetClient) WaitToDisappear(name string, _, timeout time.Duration) error {
-	err := framework.Gomega().Eventually(context.Background(), framework.HandleRetry(func(ctx context.Context) (*apiv1.Subnet, error) {
+func (c *SubnetClient) WaitToDisappear(ctx context.Context, name string, timeout time.Duration) error {
+	err := framework.Gomega().Eventually(ctx, framework.HandleRetry(func(ctx context.Context) (*apiv1.Subnet, error) {
 		subnet, err := c.SubnetInterface.Get(ctx, name, metav1.GetOptions{})
 		if apierrors.IsNotFound(err) {
 			return nil, nil

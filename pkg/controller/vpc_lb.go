@@ -132,8 +132,7 @@ func (c *Controller) genVpcLbDeployment(vpc *kubeovnv1.Vpc) (*v1.Deployment, err
 						{
 							Name:            "vpc-lb",
 							Image:           vpcNatImage,
-							Command:         []string{"bash"},
-							Args:            []string{"-c", "sleep infinity"},
+							Command:         []string{"sleep", "infinity"},
 							ImagePullPolicy: corev1.PullIfNotPresent,
 							SecurityContext: &corev1.SecurityContext{
 								Privileged:               &privileged,

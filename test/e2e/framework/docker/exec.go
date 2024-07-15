@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"slices"
-	"strings"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
@@ -15,7 +13,7 @@ import (
 )
 
 type ErrNonZeroExitCode struct {
-	Cmd      []string
+	Cmd      string
 	ExitCode int
 }
 
@@ -23,27 +21,27 @@ func (e ErrNonZeroExitCode) Error() string {
 	return fmt.Sprintf("command %q exited with code %d", e.Cmd, e.ExitCode)
 }
 
-func Exec(id string, env []string, cmd ...string) (stdout, stderr []byte, err error) {
+func Exec(ctx context.Context, id string, env []string, cmd string) (stdout, stderr []byte, err error) {
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		return nil, nil, err
 	}
 	defer cli.Close()
 
-	framework.Logf("Executing command %q in container %s", strings.Join(cmd, " "), id)
+	framework.Logf("Executing command %q in container %s", cmd, id)
 	config := container.ExecOptions{
 		Privileged:   true,
 		AttachStderr: true,
 		AttachStdout: true,
 		Env:          env,
-		Cmd:          cmd,
+		Cmd:          []string{"sh", "-c", cmd},
 	}
-	createResp, err := cli.ContainerExecCreate(context.Background(), id, config)
+	createResp, err := cli.ContainerExecCreate(ctx, id, config)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	attachResp, err := cli.ContainerExecAttach(context.Background(), createResp.ID, container.ExecStartOptions{})
+	attachResp, err := cli.ContainerExecAttach(ctx, createResp.ID, container.ExecStartOptions{})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -54,14 +52,14 @@ func Exec(id string, env []string, cmd ...string) (stdout, stderr []byte, err er
 		return nil, nil, err
 	}
 
-	inspectResp, err := cli.ContainerExecInspect(context.Background(), createResp.ID)
+	inspectResp, err := cli.ContainerExecInspect(ctx, createResp.ID)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	if inspectResp.ExitCode != 0 {
 		framework.Logf("command exited with code %d", inspectResp.ExitCode)
-		err = ErrNonZeroExitCode{Cmd: slices.Clone(cmd), ExitCode: inspectResp.ExitCode}
+		err = ErrNonZeroExitCode{Cmd: cmd, ExitCode: inspectResp.ExitCode}
 	}
 
 	stdout, stderr = bytes.TrimSpace(outBuf.Bytes()), bytes.TrimSpace(errBuf.Bytes())

@@ -29,7 +29,7 @@ func makeSecurityGroup(name string, allowSameGroupTraffic bool, ingressRules, eg
 	return framework.MakeSecurityGroup(name, allowSameGroupTraffic, ingressRules, egressRules)
 }
 
-func testConnectivity(ip, namespaceName, srcPod, dstPod string, f *framework.Framework) {
+func testConnectivity(ctx context.Context, ip, namespaceName, srcPod, dstPod string, f *framework.Framework) {
 	ginkgo.GinkgoHelper()
 
 	// other pods can communicate with the allow address pair pod through vip
@@ -47,28 +47,28 @@ func testConnectivity(ip, namespaceName, srcPod, dstPod string, f *framework.Fra
 		framework.Failf("unexpected ip address: %q", ip)
 	}
 	// check srcPod ping dstPod through vip
-	stdout, stderr, err := framework.ExecShellInPod(context.Background(), f, namespaceName, dstPod, addIP)
+	stdout, stderr, err := framework.ExecShellInPod(ctx, f, namespaceName, dstPod, addIP)
 	framework.ExpectNoError(err, "exec %q failed, err: %q, stderr: %q, stdout: %q", addIP, err, stderr, stdout)
-	stdout, stderr, err = framework.ExecShellInPod(context.Background(), f, namespaceName, srcPod, command)
+	stdout, stderr, err = framework.ExecShellInPod(ctx, f, namespaceName, srcPod, command)
 	framework.ExpectNoError(err, "exec %q failed, err: %q, stderr: %q, stdout: %q", command, err, stderr, stdout)
 	// srcPod can not ping dstPod vip when ip is deleted
-	stdout, stderr, err = framework.ExecShellInPod(context.Background(), f, namespaceName, dstPod, delIP)
+	stdout, stderr, err = framework.ExecShellInPod(ctx, f, namespaceName, dstPod, delIP)
 	framework.ExpectNoError(err, "exec %q failed, err: %q, stderr: %q, stdout: %q", delIP, err, stderr, stdout)
-	_, _, err = framework.ExecShellInPod(context.Background(), f, namespaceName, srcPod, command)
+	_, _, err = framework.ExecShellInPod(ctx, f, namespaceName, srcPod, command)
 	framework.ExpectError(err)
 	// check dstPod ping srcPod through vip
-	stdout, stderr, err = framework.ExecShellInPod(context.Background(), f, namespaceName, srcPod, addIP)
+	stdout, stderr, err = framework.ExecShellInPod(ctx, f, namespaceName, srcPod, addIP)
 	framework.ExpectNoError(err, "exec %q failed, err: %q, stderr: %q, stdout: %q", addIP, err, stderr, stdout)
-	stdout, stderr, err = framework.ExecShellInPod(context.Background(), f, namespaceName, dstPod, command)
+	stdout, stderr, err = framework.ExecShellInPod(ctx, f, namespaceName, dstPod, command)
 	framework.ExpectNoError(err, "exec %q failed, err: %q, stderr: %q, stdout: %q", command, err, stderr, stdout)
 	// dstPod can not ping srcPod vip when ip is deleted
-	stdout, stderr, err = framework.ExecShellInPod(context.Background(), f, namespaceName, srcPod, delIP)
+	stdout, stderr, err = framework.ExecShellInPod(ctx, f, namespaceName, srcPod, delIP)
 	framework.ExpectNoError(err, "exec %q failed, err: %q, stderr: %q, stdout: %q", delIP, err, stderr, stdout)
-	_, _, err = framework.ExecShellInPod(context.Background(), f, namespaceName, dstPod, command)
+	_, _, err = framework.ExecShellInPod(ctx, f, namespaceName, dstPod, command)
 	framework.ExpectError(err)
 }
 
-func testVipWithSG(ip, namespaceName, allowPod, denyPod, aapPod, securityGroupName string, f *framework.Framework) {
+func testVipWithSG(ctx context.Context, ip, namespaceName, allowPod, denyPod, aapPod, securityGroupName string, f *framework.Framework) {
 	ginkgo.GinkgoHelper()
 
 	// check if security group working
@@ -82,22 +82,22 @@ func testVipWithSG(ip, namespaceName, allowPod, denyPod, aapPod, securityGroupNa
 		conditions = fmt.Sprintf("name=ovn.sg.%s.associated.v6", strings.ReplaceAll(securityGroupName, "-", "."))
 	}
 	// allowPod can ping aapPod with security group
-	stdout, stderr, err := framework.ExecShellInPod(context.Background(), f, namespaceName, allowPod, sgCheck)
+	stdout, stderr, err := framework.ExecShellInPod(ctx, f, namespaceName, allowPod, sgCheck)
 	framework.ExpectNoError(err, "exec %q failed, err: %q, stderr: %q, stdout: %q", sgCheck, err, stderr, stdout)
 	// denyPod can not ping aapPod with security group
-	_, _, err = framework.ExecShellInPod(context.Background(), f, namespaceName, denyPod, sgCheck)
+	_, _, err = framework.ExecShellInPod(ctx, f, namespaceName, denyPod, sgCheck)
 	framework.ExpectError(err)
 
 	ginkgo.By("Checking ovn address_set and lsp port_security")
 	// address_set should have allow address pair ip
 	cmd := "ovn-nbctl --format=list --data=bare --no-heading --columns=addresses find Address_Set " + conditions
-	output, _, err := framework.NBExec(cmd)
+	output, _, err := framework.NBExec(ctx, cmd)
 	framework.ExpectNoError(err)
 	addressSet := strings.Split(strings.ReplaceAll(string(output), "\n", ""), " ")
 	framework.ExpectContainElement(addressSet, ip)
 	// port_security should have allow address pair IP
 	cmd = fmt.Sprintf("ovn-nbctl --format=list --data=bare --no-heading --columns=port_security list Logical_Switch_Port %s.%s", aapPod, namespaceName)
-	output, _, err = framework.NBExec(cmd)
+	output, _, err = framework.NBExec(ctx, cmd)
 	framework.ExpectNoError(err)
 	portSecurity := strings.Split(strings.ReplaceAll(string(output), "\n", ""), " ")
 	framework.ExpectContainElement(portSecurity, ip)
@@ -127,12 +127,13 @@ var _ = framework.Describe("[group:vip]", func() {
 	// test allowed address pair connectivity in the security group scenario
 	var securityGroupName string
 
-	ginkgo.BeforeEach(func() {
+	ginkgo.BeforeEach(ginkgo.NodeTimeout(10*time.Second), func(ctx ginkgo.SpecContext) {
 		vpcClient = f.VpcClient()
 		subnetClient = f.SubnetClient()
 		vipClient = f.VipClient()
 		podClient = f.PodClient()
 		securityGroupClient = f.SecurityGroupClient()
+
 		namespaceName = f.Namespace.Name
 		cidr = framework.RandomCIDR(f.ClusterIPFamily)
 
@@ -158,46 +159,47 @@ var _ = framework.Describe("[group:vip]", func() {
 		subnetName = "subnet-" + randomSuffix
 		ginkgo.By("Creating vpc " + vpcName)
 		vpc = framework.MakeVpc(vpcName, "", false, false, []string{namespaceName})
-		vpc = vpcClient.CreateSync(vpc)
+		vpc = vpcClient.CreateSync(ctx, vpc)
 		ginkgo.By("Creating subnet " + subnetName)
 		subnet = framework.MakeSubnet(subnetName, "", cidr, "", vpcName, "", nil, nil, []string{namespaceName})
-		subnet = subnetClient.CreateSync(subnet)
+		subnet = subnetClient.CreateSync(ctx, subnet)
 	})
 
-	ginkgo.AfterEach(func() {
+	ginkgo.AfterEach(ginkgo.NodeTimeout(45*time.Second), func(ctx ginkgo.SpecContext) {
 		ginkgo.By("Deleting switch lb vip " + switchLbVip1Name)
-		vipClient.DeleteSync(switchLbVip1Name)
+		vipClient.DeleteSync(ctx, switchLbVip1Name)
 		ginkgo.By("Deleting switch lb vip " + switchLbVip2Name)
-		vipClient.DeleteSync(switchLbVip2Name)
+		vipClient.DeleteSync(ctx, switchLbVip2Name)
 		ginkgo.By("Deleting allowed address pair vip " + vip1Name)
-		vipClient.DeleteSync(vip1Name)
+		vipClient.DeleteSync(ctx, vip1Name)
 		ginkgo.By("Deleting allowed address pair vip " + vip2Name)
-		vipClient.DeleteSync(vip2Name)
+		vipClient.DeleteSync(ctx, vip2Name)
 
 		// clean fip pod
 		ginkgo.By("Deleting pod " + aapPodName1)
-		podClient.DeleteSync(aapPodName1)
+		podClient.DeleteSync(ctx, aapPodName1)
 		ginkgo.By("Deleting pod " + aapPodName2)
-		podClient.DeleteSync(aapPodName2)
+		podClient.DeleteSync(ctx, aapPodName2)
 		ginkgo.By("Deleting pod " + aapPodName3)
-		podClient.DeleteSync(aapPodName3)
+		podClient.DeleteSync(ctx, aapPodName3)
 		ginkgo.By("Deleting subnet " + subnetName)
-		subnetClient.DeleteSync(subnetName)
+		subnetClient.DeleteSync(ctx, subnetName)
 		ginkgo.By("Deleting vpc " + vpcName)
-		vpcClient.DeleteSync(vpcName)
+		vpcClient.DeleteSync(ctx, vpcName)
 		// clean security group
 		ginkgo.By("Deleting security group " + securityGroupName)
-		securityGroupClient.DeleteSync(securityGroupName)
+		securityGroupClient.DeleteSync(ctx, securityGroupName)
 	})
 
-	framework.ConformanceIt("Test vip", func() {
+	framework.ConformanceIt("Test vip", ginkgo.SpecTimeout(90*time.Second), func(ctx ginkgo.SpecContext) {
 		f.SkipVersionPriorTo(1, 13, "This feature was introduced in v1.13")
+
 		ginkgo.By("0. Test subnet status counting vip")
-		oldSubnet := subnetClient.Get(subnetName)
+		oldSubnet := subnetClient.Get(ctx, subnetName)
 		countingVip := makeOvnVip(namespaceName, countingVipName, subnetName, "", "", "")
-		_ = vipClient.CreateSync(countingVip)
+		_ = vipClient.CreateSync(ctx, countingVip)
 		time.Sleep(3 * time.Second)
-		newSubnet := subnetClient.Get(subnetName)
+		newSubnet := subnetClient.Get(ctx, subnetName)
 		if newSubnet.Spec.Protocol == apiv1.ProtocolIPv4 {
 			framework.ExpectEqual(oldSubnet.Status.V4AvailableIPs-1, newSubnet.Status.V4AvailableIPs)
 			framework.ExpectEqual(oldSubnet.Status.V4UsingIPs+1, newSubnet.Status.V4UsingIPs)
@@ -211,9 +213,9 @@ var _ = framework.Describe("[group:vip]", func() {
 		}
 		oldSubnet = newSubnet
 		// delete counting vip
-		vipClient.DeleteSync(countingVipName)
+		vipClient.DeleteSync(ctx, countingVipName)
 		time.Sleep(3 * time.Second)
-		newSubnet = subnetClient.Get(subnetName)
+		newSubnet = subnetClient.Get(ctx, subnetName)
 		if newSubnet.Spec.Protocol == apiv1.ProtocolIPv4 {
 			framework.ExpectEqual(oldSubnet.Status.V4AvailableIPs+1, newSubnet.Status.V4AvailableIPs)
 			framework.ExpectEqual(oldSubnet.Status.V4UsingIPs-1, newSubnet.Status.V4UsingIPs)
@@ -230,28 +232,28 @@ var _ = framework.Describe("[group:vip]", func() {
 		ginkgo.By("Creating allowed address pair vip, should have different ip and mac")
 		ginkgo.By("Creating allowed address pair vip " + vip1Name)
 		vip1 := makeOvnVip(namespaceName, vip1Name, subnetName, "", "", "")
-		vip1 = vipClient.CreateSync(vip1)
+		vip1 = vipClient.CreateSync(ctx, vip1)
 
 		ginkgo.By("Creating allowed address pair vip " + vip2Name)
 		vip2 := makeOvnVip(namespaceName, vip2Name, subnetName, "", "", "")
-		vip2 = vipClient.CreateSync(vip2)
+		vip2 = vipClient.CreateSync(ctx, vip2)
 		virtualIP1 := util.GetStringIP(vip1.Status.V4ip, vip1.Status.V6ip)
 		virtualIP2 := util.GetStringIP(vip2.Status.V4ip, vip2.Status.V6ip)
 		framework.ExpectNotEqual(virtualIP1, virtualIP2)
 		framework.ExpectNotEqual(vip1.Status.Mac, vip2.Status.Mac)
 
 		annotations := map[string]string{util.AAPsAnnotation: vip1Name}
-		cmd := []string{"sh", "-c", "sleep infinity"}
+		cmd := []string{"sleep", "infinity"}
 		ginkgo.By("Creating pod1 support allowed address pair using " + vip1Name)
 		aapPod1 := framework.MakePrivilegedPod(namespaceName, aapPodName1, nil, annotations, f.KubeOVNImage, cmd, nil)
-		aapPod1 = podClient.CreateSync(aapPod1)
+		aapPod1 = podClient.CreateSync(ctx, aapPod1)
 		ginkgo.By("Creating pod2 support allowed address pair using " + vip1Name)
 		aapPod2 := framework.MakePrivilegedPod(namespaceName, aapPodName2, nil, annotations, f.KubeOVNImage, cmd, nil)
-		_ = podClient.CreateSync(aapPod2)
+		_ = podClient.CreateSync(ctx, aapPod2)
 		// logical switch port with type virtual should be created
 		conditions := fmt.Sprintf("type=virtual name=%s options:virtual-ip=%q", vip1Name, virtualIP1)
 		nbctlCmd := "ovn-nbctl --format=list --data=bare --no-heading --columns=options find logical-switch-port " + conditions
-		output, _, err := framework.NBExec(nbctlCmd)
+		output, _, err := framework.NBExec(ctx, nbctlCmd)
 		framework.ExpectNoError(err)
 		framework.ExpectNotEmpty(strings.TrimSpace(string(output)))
 		// virtual parents should be set correctlly
@@ -272,11 +274,11 @@ var _ = framework.Describe("[group:vip]", func() {
 		ginkgo.By("Test allow address pair connectivity")
 		if f.HasIPv4() {
 			ginkgo.By("Test pod ping allow address pair " + vip1.Status.V4ip)
-			testConnectivity(vip1.Status.V4ip, namespaceName, aapPodName2, aapPodName1, f)
+			testConnectivity(ctx, vip1.Status.V4ip, namespaceName, aapPodName2, aapPodName1, f)
 		}
 		if f.HasIPv6() {
 			ginkgo.By("Test pod ping allow address pair " + vip1.Status.V6ip)
-			testConnectivity(vip1.Status.V6ip, namespaceName, aapPodName2, aapPodName1, f)
+			testConnectivity(ctx, vip1.Status.V6ip, namespaceName, aapPodName2, aapPodName1, f)
 		}
 
 		ginkgo.By("3. Test vip with security group")
@@ -325,31 +327,31 @@ var _ = framework.Describe("[group:vip]", func() {
 			})
 		}
 		sg := makeSecurityGroup(securityGroupName, true, rules, rules)
-		_ = securityGroupClient.CreateSync(sg)
+		_ = securityGroupClient.CreateSync(ctx, sg)
 
 		ginkgo.By("Creating pod3 support allowed address pair with security group")
 		annotations[util.PortSecurityAnnotation] = "true"
 		annotations[fmt.Sprintf(util.SecurityGroupAnnotationTemplate, "ovn")] = securityGroupName
 		aapPod3 := framework.MakePod(namespaceName, aapPodName3, nil, annotations, f.KubeOVNImage, cmd, nil)
-		aapPod3 = podClient.CreateSync(aapPod3)
+		aapPod3 = podClient.CreateSync(ctx, aapPod3)
 		v4ip, v6ip := util.SplitStringIP(aapPod3.Annotations[util.IPAddressAnnotation])
 		if f.HasIPv4() {
 			ginkgo.By("Test allow address pair with security group for ipv4")
-			testVipWithSG(v4ip, namespaceName, aapPodName1, aapPodName2, aapPodName3, securityGroupName, f)
+			testVipWithSG(ctx, v4ip, namespaceName, aapPodName1, aapPodName2, aapPodName3, securityGroupName, f)
 		}
 		if f.HasIPv6() {
 			ginkgo.By("Test allow address pair with security group for ipv6")
-			testVipWithSG(v6ip, namespaceName, aapPodName1, aapPodName2, aapPodName3, securityGroupName, f)
+			testVipWithSG(ctx, v6ip, namespaceName, aapPodName1, aapPodName2, aapPodName3, securityGroupName, f)
 		}
 
 		ginkgo.By("3. Test switch lb vip")
 		ginkgo.By("Creating two arp proxy vips, should have the same mac which is from gw subnet mac")
 		ginkgo.By("Creating arp proxy switch lb vip " + switchLbVip1Name)
 		switchLbVip1 := makeOvnVip(namespaceName, switchLbVip1Name, subnetName, "", "", util.SwitchLBRuleVip)
-		switchLbVip1 = vipClient.CreateSync(switchLbVip1)
+		switchLbVip1 = vipClient.CreateSync(ctx, switchLbVip1)
 		ginkgo.By("Creating arp proxy switch lb vip " + switchLbVip2Name)
 		switchLbVip2 := makeOvnVip(namespaceName, switchLbVip2Name, subnetName, "", "", util.SwitchLBRuleVip)
-		switchLbVip2 = vipClient.CreateSync(switchLbVip2)
+		switchLbVip2 = vipClient.CreateSync(ctx, switchLbVip2)
 		// arp proxy vip only used in switch lb rule, the lb vip use the subnet gw mac to use lb nat flow
 		framework.ExpectEqual(switchLbVip1.Status.Mac, switchLbVip2.Status.Mac)
 		if vip1.Status.V4ip != "" {

@@ -13,7 +13,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	clientset "k8s.io/client-go/kubernetes"
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
-	e2epodoutput "k8s.io/kubernetes/test/e2e/framework/pod/output"
 
 	"github.com/onsi/ginkgo/v2"
 
@@ -33,7 +32,7 @@ var _ = framework.OrderedDescribe("[group:node]", func() {
 	var subnetClient *framework.SubnetClient
 	var podName, hostPodName, serviceName, namespaceName, subnetName string
 	var cidr string
-	ginkgo.BeforeEach(func() {
+	ginkgo.BeforeEach(ginkgo.NodeTimeout(time.Second), func(_ ginkgo.SpecContext) {
 		cs = f.ClientSet
 		podClient = f.PodClient()
 		serviceClient = f.ServiceClient()
@@ -45,26 +44,26 @@ var _ = framework.OrderedDescribe("[group:node]", func() {
 		subnetName = "subnet-" + framework.RandomSuffix()
 		cidr = framework.RandomCIDR(f.ClusterIPFamily)
 	})
-	ginkgo.AfterEach(func() {
+	ginkgo.AfterEach(ginkgo.NodeTimeout(30*time.Second), func(ctx ginkgo.SpecContext) {
 		ginkgo.By("Deleting service " + serviceName)
-		serviceClient.DeleteSync(serviceName)
+		serviceClient.DeleteSync(ctx, serviceName)
 
 		ginkgo.By("Deleting pod " + podName)
-		podClient.DeleteSync(podName)
+		podClient.DeleteSync(ctx, podName)
 
 		ginkgo.By("Deleting pod " + hostPodName)
-		podClient.DeleteSync(hostPodName)
+		podClient.DeleteSync(ctx, hostPodName)
 
 		ginkgo.By("Deleting subnet " + subnetName)
-		subnetClient.DeleteSync(subnetName)
+		subnetClient.DeleteSync(ctx, subnetName)
 	})
 
-	framework.ConformanceIt("should allocate ip in join subnet to node", func() {
+	framework.ConformanceIt("should allocate ip in join subnet to node", ginkgo.SpecTimeout(20*time.Second), func(ctx ginkgo.SpecContext) {
 		ginkgo.By("Getting join subnet")
-		join := subnetClient.Get("join")
+		join := subnetClient.Get(ctx, "join")
 
 		ginkgo.By("Getting nodes")
-		nodeList, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
+		nodeList, err := e2enode.GetReadySchedulableNodes(ctx, cs)
 		framework.ExpectNoError(err)
 
 		ginkgo.By("Validating node annotations")
@@ -80,15 +79,15 @@ var _ = framework.OrderedDescribe("[group:node]", func() {
 
 			podName = "pod-" + framework.RandomSuffix()
 			ginkgo.By("Creating pod " + podName + " with host network on node " + node.Name)
-			cmd := []string{"sh", "-c", "sleep infinity"}
+			cmd := []string{"sleep", "infinity"}
 			pod := framework.MakePod(namespaceName, podName, nil, nil, f.KubeOVNImage, cmd, nil)
 			pod.Spec.NodeName = node.Name
 			pod.Spec.HostNetwork = true
-			pod = podClient.CreateSync(pod)
+			pod = podClient.CreateSync(ctx, pod)
 
 			ginkgo.By("Checking ip addresses on " + util.NodeNic)
-			links, err := iproute.AddressShow(util.NodeNic, func(cmd ...string) ([]byte, []byte, error) {
-				return framework.KubectlExec(pod.Namespace, pod.Name, cmd...)
+			links, err := iproute.AddressShow(ctx, util.NodeNic, func(ctx context.Context, cmd string) ([]byte, []byte, error) {
+				return framework.KubectlExec(ctx, pod.Namespace, pod.Name, cmd)
 			})
 			framework.ExpectNoError(err)
 			framework.ExpectHaveLen(links, 1)
@@ -98,17 +97,17 @@ var _ = framework.OrderedDescribe("[group:node]", func() {
 			ips := strings.Split(ipCIDRs, ",")
 			framework.ExpectConsistOf(links[0].NonLinkLocalAddresses(), ips)
 
-			err = podClient.Delete(podName)
+			err = podClient.Delete(ctx, podName)
 			framework.ExpectNoError(err)
 		}
 	})
 
-	framework.ConformanceIt("should access overlay pods using node ip", func() {
+	framework.ConformanceIt("should access overlay pods using node ip", ginkgo.SpecTimeout(45*time.Second), func(ctx ginkgo.SpecContext) {
 		f.SkipVersionPriorTo(1, 12, "This feature was introduced in v1.12")
 
 		ginkgo.By("Creating subnet " + subnetName)
 		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, nil)
-		subnet = subnetClient.CreateSync(subnet)
+		subnet = subnetClient.CreateSync(ctx, subnet)
 
 		ginkgo.By("Creating pod " + podName)
 		annotations := map[string]string{
@@ -117,13 +116,13 @@ var _ = framework.OrderedDescribe("[group:node]", func() {
 		port := strconv.Itoa(8000 + rand.IntN(1000))
 		args := []string{"netexec", "--http-port", port}
 		pod := framework.MakePod(namespaceName, podName, nil, annotations, framework.AgnhostImage, nil, args)
-		pod = podClient.CreateSync(pod)
+		pod = podClient.CreateSync(ctx, pod)
 
 		ginkgo.By("Creating pod " + hostPodName + " with host network")
-		cmd := []string{"sh", "-c", "sleep infinity"}
+		cmd := []string{"sleep", "infinity"}
 		hostPod := framework.MakePod(namespaceName, hostPodName, nil, nil, f.KubeOVNImage, cmd, nil)
 		hostPod.Spec.HostNetwork = true
-		hostPod = podClient.CreateSync(hostPod)
+		hostPod = podClient.CreateSync(ctx, hostPod)
 
 		ginkgo.By("Validating client ip")
 		nodeIPs := util.PodIPs(*hostPod)
@@ -133,19 +132,19 @@ var _ = framework.OrderedDescribe("[group:node]", func() {
 			ginkgo.By("Checking connection from " + hostPodName + " to " + podName + " via " + protocol)
 			cmd := fmt.Sprintf("curl -q -s --connect-timeout 2 --max-time 2 %s/clientip", net.JoinHostPort(ip, port))
 			ginkgo.By(fmt.Sprintf(`Executing %q in pod %s/%s`, cmd, namespaceName, hostPodName))
-			output := e2epodoutput.RunHostCmdOrDie(namespaceName, hostPodName, cmd)
-			client, _, err := net.SplitHostPort(strings.TrimSpace(output))
+			output, _ := framework.KubectlExecOrDie(ctx, namespaceName, hostPodName, cmd)
+			client, _, err := net.SplitHostPort(strings.TrimSpace(string(output)))
 			framework.ExpectNoError(err)
 			framework.ExpectContainElement(nodeIPs, client)
 		}
 	})
 
-	framework.ConformanceIt("should access overlay services using node ip", func() {
+	framework.ConformanceIt("should access overlay services using node ip", ginkgo.SpecTimeout(time.Minute), func(ctx ginkgo.SpecContext) {
 		f.SkipVersionPriorTo(1, 12, "This feature was introduced in v1.12")
 
 		ginkgo.By("Creating subnet " + subnetName)
 		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, nil)
-		subnet = subnetClient.CreateSync(subnet)
+		subnet = subnetClient.CreateSync(ctx, subnet)
 
 		ginkgo.By("Creating pod " + podName)
 		podLabels := map[string]string{"app": podName}
@@ -156,7 +155,7 @@ var _ = framework.OrderedDescribe("[group:node]", func() {
 		portStr := strconv.Itoa(int(port))
 		args := []string{"netexec", "--http-port", portStr}
 		pod := framework.MakePod(namespaceName, podName, podLabels, annotations, framework.AgnhostImage, nil, args)
-		_ = podClient.CreateSync(pod)
+		_ = podClient.CreateSync(ctx, pod)
 
 		ginkgo.By("Creating service " + serviceName)
 		ports := []corev1.ServicePort{{
@@ -166,26 +165,26 @@ var _ = framework.OrderedDescribe("[group:node]", func() {
 			TargetPort: intstr.FromInt32(port),
 		}}
 		service := framework.MakeService(serviceName, "", nil, podLabels, ports, "")
-		_ = serviceClient.CreateSync(service, func(s *corev1.Service) (bool, error) {
+		_ = serviceClient.CreateSync(ctx, service, func(s *corev1.Service) (bool, error) {
 			return len(s.Spec.ClusterIPs) != 0, nil
 		}, "cluster ips are not empty")
 
 		ginkgo.By("Creating pod " + hostPodName + " with host network")
-		cmd := []string{"sh", "-c", "sleep infinity"}
+		cmd := []string{"sleep", "infinity"}
 		hostPod := framework.MakePod(namespaceName, hostPodName, nil, nil, f.KubeOVNImage, cmd, nil)
 		hostPod.Spec.HostNetwork = true
-		hostPod = podClient.CreateSync(hostPod)
+		hostPod = podClient.CreateSync(ctx, hostPod)
 
 		ginkgo.By("Validating client ip")
 		nodeIPs := util.PodIPs(*hostPod)
-		service = serviceClient.Get(serviceName)
+		service = serviceClient.Get(ctx, serviceName)
 		for _, ip := range util.ServiceClusterIPs(*service) {
 			protocol := strings.ToLower(util.CheckProtocol(ip))
 			ginkgo.By("Checking connection from " + hostPodName + " to " + serviceName + " via " + protocol)
 			cmd := fmt.Sprintf("curl -q -s --connect-timeout 2 --max-time 2 %s/clientip", net.JoinHostPort(ip, portStr))
 			ginkgo.By(fmt.Sprintf(`Executing %q in pod %s/%s`, cmd, namespaceName, hostPodName))
-			output := e2epodoutput.RunHostCmdOrDie(namespaceName, hostPodName, cmd)
-			client, _, err := net.SplitHostPort(strings.TrimSpace(output))
+			output, _ := framework.KubectlExecOrDie(ctx, namespaceName, hostPodName, cmd)
+			client, _, err := net.SplitHostPort(strings.TrimSpace(string(output)))
 			framework.ExpectNoError(err)
 			framework.ExpectContainElement(nodeIPs, client)
 		}
@@ -199,25 +198,27 @@ var _ = framework.SerialDescribe("[group:node]", func() {
 	var podClient *framework.PodClient
 	var subnetClient *framework.SubnetClient
 	var podName, namespaceName string
-	ginkgo.BeforeEach(func() {
+
+	ginkgo.BeforeEach(ginkgo.NodeTimeout(time.Second), func(_ ginkgo.SpecContext) {
 		cs = f.ClientSet
 		podClient = f.PodClient()
 		subnetClient = f.SubnetClient()
 		namespaceName = f.Namespace.Name
 		podName = "pod-" + framework.RandomSuffix()
 	})
-	ginkgo.AfterEach(func() {
+	ginkgo.AfterEach(ginkgo.NodeTimeout(15*time.Second), func(ctx ginkgo.SpecContext) {
 		ginkgo.By("Deleting pod " + podName)
-		podClient.DeleteSync(podName)
+		podClient.DeleteSync(ctx, podName)
 	})
 
-	framework.ConformanceIt("should add missing routes on node for the join subnet", func() {
+	framework.ConformanceIt("should add missing routes on node for the join subnet", ginkgo.SpecTimeout(20*time.Second), func(ctx ginkgo.SpecContext) {
 		f.SkipVersionPriorTo(1, 9, "This feature was introduced in v1.9")
+
 		ginkgo.By("Getting join subnet")
-		join := subnetClient.Get("join")
+		join := subnetClient.Get(ctx, "join")
 
 		ginkgo.By("Getting nodes")
-		nodeList, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
+		nodeList, err := e2enode.GetReadySchedulableNodes(ctx, cs)
 		framework.ExpectNoError(err)
 
 		ginkgo.By("Validating node annotations")
@@ -230,18 +231,18 @@ var _ = framework.SerialDescribe("[group:node]", func() {
 
 		podName = "pod-" + framework.RandomSuffix()
 		ginkgo.By("Creating pod " + podName + " with host network")
-		cmd := []string{"sh", "-c", "sleep infinity"}
+		cmd := []string{"sleep", "infinity"}
 		pod := framework.MakePrivilegedPod(namespaceName, podName, nil, nil, f.KubeOVNImage, cmd, nil)
 		pod.Spec.NodeName = node.Name
 		pod.Spec.HostNetwork = true
-		pod = podClient.CreateSync(pod)
+		pod = podClient.CreateSync(ctx, pod)
 
 		ginkgo.By("Getting node routes on " + util.NodeNic)
 		cidrs := strings.Split(join.Spec.CIDRBlock, ",")
-		execFunc := func(cmd ...string) ([]byte, []byte, error) {
-			return framework.KubectlExec(pod.Namespace, pod.Name, cmd...)
+		execFunc := func(ctx context.Context, cmd string) ([]byte, []byte, error) {
+			return framework.KubectlExec(ctx, pod.Namespace, pod.Name, cmd)
 		}
-		routes, err := iproute.RouteShow("", util.NodeNic, execFunc)
+		routes, err := iproute.RouteShow(ctx, "", util.NodeNic, execFunc)
 		framework.ExpectNoError(err)
 		found := make([]bool, len(cidrs))
 		for i, cidr := range cidrs {
@@ -259,13 +260,13 @@ var _ = framework.SerialDescribe("[group:node]", func() {
 
 		for _, cidr := range strings.Split(join.Spec.CIDRBlock, ",") {
 			ginkgo.By("Deleting route for " + cidr + " on node " + node.Name)
-			err = iproute.RouteDel("", cidr, execFunc)
+			err = iproute.RouteDel(ctx, "", cidr, execFunc)
 			framework.ExpectNoError(err)
 		}
 
 		ginkgo.By("Waiting for routes for subnet " + join.Name + " to be created")
-		framework.WaitUntil(2*time.Second, 10*time.Second, func(_ context.Context) (bool, error) {
-			if routes, err = iproute.RouteShow("", util.NodeNic, execFunc); err != nil {
+		framework.WaitUntil(ctx, 10*time.Second, func(ctx context.Context) (bool, error) {
+			if routes, err = iproute.RouteShow(ctx, "", util.NodeNic, execFunc); err != nil {
 				return false, err
 			}
 
@@ -288,7 +289,7 @@ var _ = framework.SerialDescribe("[group:node]", func() {
 			return true, nil
 		}, "")
 
-		err = podClient.Delete(podName)
+		err = podClient.Delete(ctx, podName)
 		framework.ExpectNoError(err)
 	})
 })

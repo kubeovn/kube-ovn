@@ -33,36 +33,36 @@ func (f *Framework) IPClient() *IPClient {
 	}
 }
 
-func (c *IPClient) Get(name string) *apiv1.IP {
+func (c *IPClient) Get(ctx context.Context, name string) *apiv1.IP {
 	ginkgo.GinkgoHelper()
-	IP, err := c.IPInterface.Get(context.TODO(), name, metav1.GetOptions{})
+	IP, err := c.IPInterface.Get(ctx, name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return IP.DeepCopy()
 }
 
 // Create creates a new IP according to the framework specifications
-func (c *IPClient) Create(iP *apiv1.IP) *apiv1.IP {
+func (c *IPClient) Create(ctx context.Context, iP *apiv1.IP) *apiv1.IP {
 	ginkgo.GinkgoHelper()
-	iP, err := c.IPInterface.Create(context.TODO(), iP, metav1.CreateOptions{})
+	iP, err := c.IPInterface.Create(ctx, iP, metav1.CreateOptions{})
 	ExpectNoError(err, "Error creating IP")
 	return iP.DeepCopy()
 }
 
 // CreateSync creates a new IP according to the framework specifications, and waits for it to be ready.
-func (c *IPClient) CreateSync(iP *apiv1.IP) *apiv1.IP {
+func (c *IPClient) CreateSync(ctx context.Context, iP *apiv1.IP) *apiv1.IP {
 	ginkgo.GinkgoHelper()
 
-	iP = c.Create(iP)
-	ExpectTrue(c.WaitToBeReady(iP.Name, timeout))
+	iP = c.Create(ctx, iP)
+	ExpectTrue(c.WaitToBeReady(ctx, iP.Name, timeout))
 	// Get the newest IP after it becomes ready
-	return c.Get(iP.Name).DeepCopy()
+	return c.Get(ctx, iP.Name).DeepCopy()
 }
 
 // WaitToBeReady returns whether the IP is ready within timeout.
-func (c *IPClient) WaitToBeReady(name string, timeout time.Duration) bool {
+func (c *IPClient) WaitToBeReady(ctx context.Context, name string, timeout time.Duration) bool {
 	Logf("Waiting up to %v for IP %s to be ready", timeout, name)
 	for start := time.Now(); time.Since(start) < timeout; time.Sleep(poll) {
-		ip := c.Get(name)
+		ip := c.Get(ctx, name)
 		if ip.Spec.V4IPAddress != "" || ip.Spec.V6IPAddress != "" {
 			Logf("IP %s is ready", name)
 			return true
@@ -74,14 +74,14 @@ func (c *IPClient) WaitToBeReady(name string, timeout time.Duration) bool {
 }
 
 // Patch patches the IP
-func (c *IPClient) Patch(original, modified *apiv1.IP, timeout time.Duration) *apiv1.IP {
+func (c *IPClient) Patch(ctx context.Context, original, modified *apiv1.IP, timeout time.Duration) *apiv1.IP {
 	ginkgo.GinkgoHelper()
 
 	patch, err := util.GenerateMergePatchPayload(original, modified)
 	ExpectNoError(err)
 
 	var patchedIP *apiv1.IP
-	err = wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+	err = wait.PollUntilContextTimeout(ctx, 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
 		p, err := c.IPInterface.Patch(ctx, original.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
 		if err != nil {
 			return handleWaitingAPIError(err, false, "patch IP %q", original.Name)
@@ -102,9 +102,9 @@ func (c *IPClient) Patch(original, modified *apiv1.IP, timeout time.Duration) *a
 }
 
 // Delete deletes a IP if the IP exists
-func (c *IPClient) Delete(name string) {
+func (c *IPClient) Delete(ctx context.Context, name string) {
 	ginkgo.GinkgoHelper()
-	err := c.IPInterface.Delete(context.TODO(), name, metav1.DeleteOptions{})
+	err := c.IPInterface.Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil && !apierrors.IsNotFound(err) {
 		Failf("Failed to delete IP %q: %v", name, err)
 	}
@@ -112,15 +112,15 @@ func (c *IPClient) Delete(name string) {
 
 // DeleteSync deletes the IP and waits for the IP to disappear for `timeout`.
 // If the IP doesn't disappear before the timeout, it will fail the test.
-func (c *IPClient) DeleteSync(name string) {
+func (c *IPClient) DeleteSync(ctx context.Context, name string) {
 	ginkgo.GinkgoHelper()
-	c.Delete(name)
-	gomega.Expect(c.WaitToDisappear(name, 2*time.Second, timeout)).To(gomega.Succeed(), "wait for ovn eip %q to disappear", name)
+	c.Delete(ctx, name)
+	gomega.Expect(c.WaitToDisappear(ctx, name, timeout)).To(gomega.Succeed(), "wait for ovn eip %q to disappear", name)
 }
 
 // WaitToDisappear waits the given timeout duration for the specified IP to disappear.
-func (c *IPClient) WaitToDisappear(name string, _, timeout time.Duration) error {
-	err := framework.Gomega().Eventually(context.Background(), framework.HandleRetry(func(ctx context.Context) (*apiv1.IP, error) {
+func (c *IPClient) WaitToDisappear(ctx context.Context, name string, timeout time.Duration) error {
+	err := framework.Gomega().Eventually(ctx, framework.HandleRetry(func(ctx context.Context) (*apiv1.IP, error) {
 		ip, err := c.IPInterface.Get(ctx, name, metav1.GetOptions{})
 		if apierrors.IsNotFound(err) {
 			return nil, nil

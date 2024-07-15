@@ -1,8 +1,8 @@
 package vip
 
 import (
-	"context"
 	"math/big"
+	"time"
 
 	"github.com/onsi/ginkgo/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -22,7 +22,8 @@ var _ = framework.Describe("[group:webhook-vip]", func() {
 	var vipName, subnetName, namespaceName string
 	var cidr, lastIPv4 string
 
-	ginkgo.BeforeEach(func() {
+	ginkgo.BeforeEach(ginkgo.NodeTimeout(10*time.Second), func(ctx ginkgo.SpecContext) {
+		vipClient = f.VipClient()
 		subnetClient = f.SubnetClient()
 		subnetName = "subnet-" + framework.RandomSuffix()
 		cidr = framework.RandomCIDR(f.ClusterIPFamily)
@@ -33,54 +34,52 @@ var _ = framework.Describe("[group:webhook-vip]", func() {
 			lastIPv4, _ = util.LastIP(cidrV4)
 		}
 
-		vipClient = f.VipClient()
-		subnetClient = f.SubnetClient()
 		vipName = "vip-" + framework.RandomSuffix()
 		namespaceName = f.Namespace.Name
 
 		ginkgo.By("Creating subnet " + subnetName)
 		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, []string{namespaceName})
-		subnet = subnetClient.CreateSync(subnet)
+		subnet = subnetClient.CreateSync(ctx, subnet)
 	})
 
-	ginkgo.AfterEach(func() {
+	ginkgo.AfterEach(ginkgo.NodeTimeout(15*time.Second), func(ctx ginkgo.SpecContext) {
 		ginkgo.By("Deleting vip " + vipName)
-		vipClient.Delete(vipName)
+		vipClient.Delete(ctx, vipName)
 
 		ginkgo.By("Deleting subnet " + subnetName)
-		subnetClient.DeleteSync(subnetName)
+		subnetClient.DeleteSync(ctx, subnetName)
 	})
 
-	framework.ConformanceIt("check create vip with different errors", func() {
+	framework.ConformanceIt("check create vip with different errors", ginkgo.SpecTimeout(10*time.Second), func(ctx ginkgo.SpecContext) {
 		ginkgo.By("Creating vip " + vipName)
 		vip = framework.MakeVip(namespaceName, vipName, "", "", "", "")
 
 		ginkgo.By("validating subnet")
 		vip.Spec.Subnet = ""
-		_, err := vipClient.VipInterface.Create(context.TODO(), vip, metav1.CreateOptions{})
+		_, err := vipClient.VipInterface.Create(ctx, vip, metav1.CreateOptions{})
 		framework.ExpectError(err, "subnet parameter cannot be empty")
 
 		ginkgo.By("validating wrong subnet")
 		vip.Spec.Subnet = "abc"
-		_, err = vipClient.VipInterface.Create(context.TODO(), vip, metav1.CreateOptions{})
+		_, err = vipClient.VipInterface.Create(ctx, vip, metav1.CreateOptions{})
 		framework.ExpectError(err, `Subnet.kubeovn.io "%s" not found`, vip.Spec.Subnet)
 
 		ginkgo.By("Validating vip usage with wrong v4ip")
 		vip.Spec.Subnet = subnetName
 		vip.Spec.V4ip = "10.10.10.10.10"
-		_, err = vipClient.VipInterface.Create(context.TODO(), vip, metav1.CreateOptions{})
+		_, err = vipClient.VipInterface.Create(ctx, vip, metav1.CreateOptions{})
 		framework.ExpectError(err, "%s is not a valid ip", vip.Spec.V4ip)
 
 		ginkgo.By("Validating vip usage with wrong v6ip")
 		vip.Spec.V4ip = ""
 		vip.Spec.V6ip = "2001:250:207::eff2::2"
-		_, err = vipClient.VipInterface.Create(context.TODO(), vip, metav1.CreateOptions{})
+		_, err = vipClient.VipInterface.Create(ctx, vip, metav1.CreateOptions{})
 		framework.ExpectError(err, "%s is not a valid ip", vip.Spec.V6ip)
 
 		ginkgo.By("validate ip not in subnet cidr")
 		vip.Spec.V6ip = ""
 		vip.Spec.V4ip = util.BigInt2Ip(big.NewInt(0).Add(util.IP2BigInt(lastIPv4), big.NewInt(10)))
-		_, err = vipClient.VipInterface.Create(context.TODO(), vip, metav1.CreateOptions{})
+		_, err = vipClient.VipInterface.Create(ctx, vip, metav1.CreateOptions{})
 		framework.ExpectError(err, "%s is not in the range of subnet %s", vip.Spec.V4ip, vip.Spec.Subnet)
 	})
 })

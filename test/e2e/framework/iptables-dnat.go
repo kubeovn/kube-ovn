@@ -34,42 +34,42 @@ func (f *Framework) IptablesDnatClient() *IptablesDnatClient {
 	}
 }
 
-func (c *IptablesDnatClient) Get(name string) *apiv1.IptablesDnatRule {
+func (c *IptablesDnatClient) Get(ctx context.Context, name string) *apiv1.IptablesDnatRule {
 	ginkgo.GinkgoHelper()
 
-	dnat, err := c.IptablesDnatRuleInterface.Get(context.TODO(), name, metav1.GetOptions{})
+	dnat, err := c.IptablesDnatRuleInterface.Get(ctx, name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return dnat
 }
 
 // Create creates a new iptables dnat according to the framework specifications
-func (c *IptablesDnatClient) Create(dnat *apiv1.IptablesDnatRule) *apiv1.IptablesDnatRule {
+func (c *IptablesDnatClient) Create(ctx context.Context, dnat *apiv1.IptablesDnatRule) *apiv1.IptablesDnatRule {
 	ginkgo.GinkgoHelper()
 
-	dnat, err := c.IptablesDnatRuleInterface.Create(context.TODO(), dnat, metav1.CreateOptions{})
+	dnat, err := c.IptablesDnatRuleInterface.Create(ctx, dnat, metav1.CreateOptions{})
 	ExpectNoError(err, "Error creating iptables dnat")
 	return dnat.DeepCopy()
 }
 
 // CreateSync creates a new iptables dnat according to the framework specifications, and waits for it to be ready.
-func (c *IptablesDnatClient) CreateSync(dnat *apiv1.IptablesDnatRule) *apiv1.IptablesDnatRule {
+func (c *IptablesDnatClient) CreateSync(ctx context.Context, dnat *apiv1.IptablesDnatRule) *apiv1.IptablesDnatRule {
 	ginkgo.GinkgoHelper()
 
-	dnat = c.Create(dnat)
-	ExpectTrue(c.WaitToBeReady(dnat.Name, timeout))
+	dnat = c.Create(ctx, dnat)
+	ExpectTrue(c.WaitToBeReady(ctx, dnat.Name, timeout))
 	// Get the newest iptables dnat after it becomes ready
-	return c.Get(dnat.Name).DeepCopy()
+	return c.Get(ctx, dnat.Name).DeepCopy()
 }
 
 // Patch patches the iptables dnat
-func (c *IptablesDnatClient) Patch(original, modified *apiv1.IptablesDnatRule) *apiv1.IptablesDnatRule {
+func (c *IptablesDnatClient) Patch(ctx context.Context, original, modified *apiv1.IptablesDnatRule) *apiv1.IptablesDnatRule {
 	ginkgo.GinkgoHelper()
 
 	patch, err := util.GenerateMergePatchPayload(original, modified)
 	ExpectNoError(err)
 
 	var patchedIptablesDnatRule *apiv1.IptablesDnatRule
-	err = wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+	err = wait.PollUntilContextTimeout(ctx, 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
 		dnat, err := c.IptablesDnatRuleInterface.Patch(ctx, original.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
 		if err != nil {
 			return handleWaitingAPIError(err, false, "patch iptables dnat %q", original.Name)
@@ -91,21 +91,21 @@ func (c *IptablesDnatClient) Patch(original, modified *apiv1.IptablesDnatRule) *
 
 // PatchSync patches the iptables dnat and waits for the iptables dnat to be ready for `timeout`.
 // If the iptables dnat doesn't become ready before the timeout, it will fail the test.
-func (c *IptablesDnatClient) PatchSync(original, modified *apiv1.IptablesDnatRule, _ []string, timeout time.Duration) *apiv1.IptablesDnatRule {
+func (c *IptablesDnatClient) PatchSync(ctx context.Context, original, modified *apiv1.IptablesDnatRule, timeout time.Duration) *apiv1.IptablesDnatRule {
 	ginkgo.GinkgoHelper()
 
-	dnat := c.Patch(original, modified)
-	ExpectTrue(c.WaitToBeUpdated(dnat, timeout))
-	ExpectTrue(c.WaitToBeReady(dnat.Name, timeout))
+	dnat := c.Patch(ctx, original, modified)
+	ExpectTrue(c.WaitToBeUpdated(ctx, dnat, timeout))
+	ExpectTrue(c.WaitToBeReady(ctx, dnat.Name, timeout))
 	// Get the newest iptables dnat after it becomes ready
-	return c.Get(dnat.Name).DeepCopy()
+	return c.Get(ctx, dnat.Name).DeepCopy()
 }
 
 // Delete deletes a iptables dnat if the iptables dnat exists
-func (c *IptablesDnatClient) Delete(name string) {
+func (c *IptablesDnatClient) Delete(ctx context.Context, name string) {
 	ginkgo.GinkgoHelper()
 
-	err := c.IptablesDnatRuleInterface.Delete(context.TODO(), name, metav1.DeleteOptions{})
+	err := c.IptablesDnatRuleInterface.Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil && !apierrors.IsNotFound(err) {
 		Failf("Failed to delete iptables dnat %q: %v", name, err)
 	}
@@ -113,16 +113,16 @@ func (c *IptablesDnatClient) Delete(name string) {
 
 // DeleteSync deletes the iptables dnat and waits for the iptables dnat to disappear for `timeout`.
 // If the iptables dnat doesn't disappear before the timeout, it will fail the test.
-func (c *IptablesDnatClient) DeleteSync(name string) {
+func (c *IptablesDnatClient) DeleteSync(ctx context.Context, name string) {
 	ginkgo.GinkgoHelper()
-	c.Delete(name)
-	gomega.Expect(c.WaitToDisappear(name, 2*time.Second, timeout)).To(gomega.Succeed(), "wait for iptables dnat %q to disappear", name)
+	c.Delete(ctx, name)
+	gomega.Expect(c.WaitToDisappear(ctx, name, timeout)).To(gomega.Succeed(), "wait for iptables dnat %q to disappear", name)
 }
 
 // WaitToBeReady returns whether the iptables dnat is ready within timeout.
-func (c *IptablesDnatClient) WaitToBeReady(name string, timeout time.Duration) bool {
+func (c *IptablesDnatClient) WaitToBeReady(ctx context.Context, name string, timeout time.Duration) bool {
 	for start := time.Now(); time.Since(start) < timeout; time.Sleep(poll) {
-		if c.Get(name).Status.Ready {
+		if c.Get(ctx, name).Status.Ready {
 			Logf("dnat %s is ready", name)
 			return true
 		}
@@ -132,11 +132,11 @@ func (c *IptablesDnatClient) WaitToBeReady(name string, timeout time.Duration) b
 }
 
 // WaitToBeUpdated returns whether the iptables dnat is updated within timeout.
-func (c *IptablesDnatClient) WaitToBeUpdated(dnat *apiv1.IptablesDnatRule, timeout time.Duration) bool {
+func (c *IptablesDnatClient) WaitToBeUpdated(ctx context.Context, dnat *apiv1.IptablesDnatRule, timeout time.Duration) bool {
 	Logf("Waiting up to %v for iptables dnat %s to be updated", timeout, dnat.Name)
 	rv, _ := big.NewInt(0).SetString(dnat.ResourceVersion, 10)
 	for start := time.Now(); time.Since(start) < timeout; time.Sleep(poll) {
-		s := c.Get(dnat.Name)
+		s := c.Get(ctx, dnat.Name)
 		if current, _ := big.NewInt(0).SetString(s.ResourceVersion, 10); current.Cmp(rv) > 0 {
 			return true
 		}
@@ -146,8 +146,8 @@ func (c *IptablesDnatClient) WaitToBeUpdated(dnat *apiv1.IptablesDnatRule, timeo
 }
 
 // WaitToDisappear waits the given timeout duration for the specified iptables DNAT rule to disappear.
-func (c *IptablesDnatClient) WaitToDisappear(name string, _, timeout time.Duration) error {
-	err := framework.Gomega().Eventually(context.Background(), framework.HandleRetry(func(ctx context.Context) (*apiv1.IptablesDnatRule, error) {
+func (c *IptablesDnatClient) WaitToDisappear(ctx context.Context, name string, timeout time.Duration) error {
+	err := framework.Gomega().Eventually(ctx, framework.HandleRetry(func(ctx context.Context) (*apiv1.IptablesDnatRule, error) {
 		rule, err := c.IptablesDnatRuleInterface.Get(ctx, name, metav1.GetOptions{})
 		if apierrors.IsNotFound(err) {
 			return nil, nil

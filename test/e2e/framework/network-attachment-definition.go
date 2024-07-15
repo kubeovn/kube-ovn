@@ -28,25 +28,25 @@ func (f *Framework) NetworkAttachmentDefinitionClientNS(namespace string) *Netwo
 	}
 }
 
-func (c *NetworkAttachmentDefinitionClient) Get(name string) *apiv1.NetworkAttachmentDefinition {
+func (c *NetworkAttachmentDefinitionClient) Get(ctx context.Context, name string) *apiv1.NetworkAttachmentDefinition {
 	ginkgo.GinkgoHelper()
-	nad, err := c.NetworkAttachmentDefinitionInterface.Get(context.TODO(), name, metav1.GetOptions{})
+	nad, err := c.NetworkAttachmentDefinitionInterface.Get(ctx, name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return nad
 }
 
 // Create creates a new nad according to the framework specifications
-func (c *NetworkAttachmentDefinitionClient) Create(nad *apiv1.NetworkAttachmentDefinition) *apiv1.NetworkAttachmentDefinition {
+func (c *NetworkAttachmentDefinitionClient) Create(ctx context.Context, nad *apiv1.NetworkAttachmentDefinition) *apiv1.NetworkAttachmentDefinition {
 	ginkgo.GinkgoHelper()
-	nad, err := c.NetworkAttachmentDefinitionInterface.Create(context.TODO(), nad, metav1.CreateOptions{})
+	nad, err := c.NetworkAttachmentDefinitionInterface.Create(ctx, nad, metav1.CreateOptions{})
 	ExpectNoError(err, "Error creating nad")
-	return c.Get(nad.Name)
+	return c.Get(ctx, nad.Name)
 }
 
 // Delete deletes a nad if the nad exists
-func (c *NetworkAttachmentDefinitionClient) Delete(name string) {
+func (c *NetworkAttachmentDefinitionClient) Delete(ctx context.Context, name string) {
 	ginkgo.GinkgoHelper()
-	err := c.NetworkAttachmentDefinitionInterface.Delete(context.TODO(), name, metav1.DeleteOptions{})
+	err := c.NetworkAttachmentDefinitionInterface.Delete(ctx, name, metav1.DeleteOptions{})
 	if k8serrors.IsNotFound(err) {
 		return
 	}
