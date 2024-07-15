@@ -6,10 +6,11 @@ import (
 	"strconv"
 	"strings"
 
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	"github.com/kubeovn/kube-ovn/pkg/util"
 	bgpapi "github.com/osrg/gobgp/v3/api"
 	v1 "k8s.io/api/core/v1"
+
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 // prefixMap is a map associating an IP family (IPv4 or IPv6) and an IP
@@ -80,7 +81,7 @@ func parseRoute(route string) (string, uint32, error) {
 	if strings.Contains(route, "/") {
 		prefix = strings.Split(route, "/")[0]
 		strLen := strings.Split(route, "/")[1]
-		intLen, err := strconv.ParseInt(strLen, 10, 32)
+		intLen, err := strconv.ParseUint(strLen, 10, 32)
 		if err != nil {
 			return "", 0, err
 		}

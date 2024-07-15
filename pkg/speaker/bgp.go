@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"net"
 
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	"github.com/kubeovn/kube-ovn/pkg/util"
 	bgpapi "github.com/osrg/gobgp/v3/api"
 	bgpapiutil "github.com/osrg/gobgp/v3/pkg/apiutil"
 	"github.com/osrg/gobgp/v3/pkg/packet/bgp"
@@ -14,11 +12,12 @@ import (
 	"golang.org/x/sys/unix"
 	"google.golang.org/protobuf/types/known/anypb"
 	"k8s.io/klog/v2"
+
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-var (
-	maskMap = map[string]int{kubeovnv1.ProtocolIPv4: 32, kubeovnv1.ProtocolIPv6: 128}
-)
+var maskMap = map[string]int{kubeovnv1.ProtocolIPv4: 32, kubeovnv1.ProtocolIPv6: 128}
 
 // reconciliateRoutes configures the BGP speaker to announce only the routes we are expected to announce
 // and to withdraw the ones that should not be announced anymore
@@ -125,7 +124,6 @@ func (c *Controller) addRoute(route string) error {
 				Pattrs: attr,
 			},
 		})
-
 		if err != nil {
 			return err
 		}
