@@ -229,7 +229,7 @@ func (c *Controller) changeProvideNicName(current, target string) (bool, error) 
 	return true, nil
 }
 
-func (c *Controller) ovsInitProviderNetwork(provider, nic string, exchangeLinkName, macLearningFallback bool) (int, error) {
+func (c *Controller) ovsInitProviderNetwork(provider, nic string, trunks []string, exchangeLinkName, macLearningFallback bool) (int, error) {
 	// create and configure external bridge
 	brName := util.ExternalBridgeName(provider)
 	if exchangeLinkName {
@@ -258,7 +258,7 @@ func (c *Controller) ovsInitProviderNetwork(provider, nic string, exchangeLinkNa
 
 	// add host nic to the external bridge
 	klog.Infof("config provider nic %s on bridge %s", nic, brName)
-	mtu, err := c.configProviderNic(nic, brName)
+	mtu, err := c.configProviderNic(nic, brName, trunks)
 	if err != nil {
 		errMsg := fmt.Errorf("failed to add nic %s to external bridge %s: %v", nic, brName, err)
 		klog.Error(errMsg)

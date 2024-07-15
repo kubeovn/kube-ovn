@@ -919,7 +919,7 @@ func (c *Controller) transferAddrsAndRoutes(nicName, brName string, delNonExiste
 
 // Add host nic to external bridge
 // Mac address, MTU, IP addresses & routes will be copied/transferred to the external bridge
-func (c *Controller) configProviderNic(nicName, brName string) (int, error) {
+func (c *Controller) configProviderNic(nicName, brName string, trunks []string) (int, error) {
 	sysctlDisableIPv6 := fmt.Sprintf("net.ipv6.conf.%s.disable_ipv6", brName)
 	disableIPv6, err := sysctl.Sysctl(sysctlDisableIPv6)
 	if err != nil {
@@ -937,7 +937,7 @@ func (c *Controller) configProviderNic(nicName, brName string) (int, error) {
 	}
 
 	if _, err = ovs.Exec(ovs.MayExist, "add-port", brName, nicName,
-		"--", "set", "port", nicName, "external_ids:vendor="+util.CniTypeName); err != nil {
+		"--", "set", "port", nicName, "trunks="+strings.Join(trunks, ","), "external_ids:vendor="+util.CniTypeName); err != nil {
 		return 0, fmt.Errorf("failed to add %s to OVS bridge %s: %v", nicName, brName, err)
 	}
 	klog.V(3).Infof("ovs port %s has been added to bridge %s", nicName, brName)
