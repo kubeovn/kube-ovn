@@ -137,6 +137,10 @@ func checkAndAppendIpsForDual(ips []IP, mac, podName, nicName string, subnet *Su
 		newIps = append(newIps, ips...)
 	}
 
+	if err != nil {
+		klog.Error(err)
+		return nil, err
+	}
 	return newIps, err
 }
 
@@ -345,6 +349,7 @@ func (ipam *IPAM) GetPodAddress(podName string) []*SubnetAddress {
 }
 
 func (ipam *IPAM) ContainAddress(address string) bool {
+	// check if pod is using the address in any subnet of ipam
 	ipam.mutex.RLock()
 	defer ipam.mutex.RUnlock()
 	ip, err := NewIP(address)
@@ -367,6 +372,7 @@ func (ipam *IPAM) IsIPAssignedToOtherPod(ip, subnetName, podName string) (string
 
 	subnet, ok := ipam.Subnets[subnetName]
 	if !ok {
+		klog.Warningf("failed to get subnet %s", subnetName)
 		return "", false
 	}
 	return subnet.isIPAssignedToOtherPod(ip, podName)

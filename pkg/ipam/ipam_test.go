@@ -39,31 +39,33 @@ func TestGetRandomAddress(t *testing.T) {
 		"2001:db8::2", "2001:db8::4", "2001:db8::100",
 		"2001:db8::252", "2001:db8::253", "2001:db8::254",
 	}
-	v6Subnet, err := NewSubnet("v6Subnet", "2001:db8::/64", v6ExcludeIps)
+	v6SubnetName := "v6Subnet"
+	v6Subnet, err := NewSubnet(v6SubnetName, "2001:db8::/64", v6ExcludeIps)
 	require.NoError(t, err)
 	require.NotNil(t, v6Subnet)
-	ipam.Subnets["v6Subnet"] = v6Subnet
+	ipam.Subnets[v6SubnetName] = v6Subnet
 	v6PodName := "pod2.default"
 	v6NicName := "pod2.default"
-	v4, v6, macStr, err = ipam.GetRandomAddress(v6PodName, v6NicName, mac, "v6Subnet", "", nil, true)
+	v4, v6, macStr, err = ipam.GetRandomAddress(v6PodName, v6NicName, mac, v6SubnetName, "", nil, true)
 	require.NoError(t, err)
 	require.Empty(t, v4)
 	require.Equal(t, "2001:db8::1", v6)
 	require.NotEmpty(t, macStr)
 	// test dual stack subnet
+	dualSubnetName := "dualSubnet"
 	dualExcludeIps := []string{
 		"10.0.0.2", "10.0.0.4", "10.0.0.100",
 		"10.0.0.252", "10.0.0.253", "10.0.0.254",
 		"2001:db8::2", "2001:db8::4", "2001:db8::100",
 		"2001:db8::252", "2001:db8::253", "2001:db8::254",
 	}
-	dualSubnet, err := NewSubnet("dualSubnet1", "10.0.0.0/24,2001:db8::/64", dualExcludeIps)
+	dualSubnet, err := NewSubnet(dualSubnetName, "10.0.0.0/24,2001:db8::/64", dualExcludeIps)
 	require.NoError(t, err)
 	require.NotNil(t, dualSubnet)
-	ipam.Subnets["dualSubnet1"] = dualSubnet
+	ipam.Subnets[dualSubnetName] = dualSubnet
 	dualPodName := "pod3.default"
 	dualNicName := "pod3.default"
-	v4, v6, macStr, err = ipam.GetRandomAddress(dualPodName, dualNicName, mac, "dualSubnet1", "", nil, true)
+	v4, v6, macStr, err = ipam.GetRandomAddress(dualPodName, dualNicName, mac, dualSubnetName, "", nil, true)
 	require.NoError(t, err)
 	require.Equal(t, "10.0.0.1", v4)
 	require.Equal(t, "2001:db8::1", v6)
@@ -87,37 +89,39 @@ func TestGetRandomAddress(t *testing.T) {
 	require.Empty(t, v6)
 	require.NotEmpty(t, macStr)
 	// test v6 subnet with skipped addresses
+	v6SubnetName = "v6Subnet"
 	v6ExcludeIps = []string{
 		"2001:db8::2", "2001:db8::4", "2001:db8::100",
 		"2001:db8::252", "2001:db8::253", "2001:db8::254",
 	}
-	v6Subnet, err = NewSubnet("v6Subnet", "2001:db8::/64", v6ExcludeIps)
+	v6Subnet, err = NewSubnet(v6SubnetName, "2001:db8::/64", v6ExcludeIps)
 	require.NoError(t, err)
 	require.NotNil(t, v6Subnet)
-	ipam.Subnets["v6Subnet"] = v6Subnet
+	ipam.Subnets[v6SubnetName] = v6Subnet
 	v6PodName = "pod5.default"
 	v6NicName = "pod5.default"
 	skippedAddrs = []string{"2001:db8::1", "2001:db8::3"}
-	v4, v6, macStr, err = ipam.GetRandomAddress(v6PodName, v6NicName, mac, "v6Subnet", "", skippedAddrs, true)
+	v4, v6, macStr, err = ipam.GetRandomAddress(v6PodName, v6NicName, mac, v6SubnetName, "", skippedAddrs, true)
 	require.NoError(t, err)
 	require.Empty(t, v4)
 	require.Equal(t, "2001:db8::5", v6)
 	require.NotEmpty(t, macStr)
 	// test dual stack subnet with skipped addresses
+	dualSubnetName = "dualSubnet2"
 	dualExcludeIps = []string{
 		"10.0.0.2", "10.0.0.4", "10.0.0.100",
 		"10.0.0.252", "10.0.0.253", "10.0.0.254",
 		"2001:db8::2", "2001:db8::4", "2001:db8::100",
 		"2001:db8::252", "2001:db8::253", "2001:db8::254",
 	}
-	dualSubnet, err = NewSubnet("dualSubnet2", "10.0.0.0/24,2001:db8::/64", dualExcludeIps)
+	dualSubnet, err = NewSubnet(dualSubnetName, "10.0.0.0/24,2001:db8::/64", dualExcludeIps)
 	require.NoError(t, err)
 	require.NotNil(t, dualSubnet)
-	ipam.Subnets["dualSubnet2"] = dualSubnet
+	ipam.Subnets[dualSubnetName] = dualSubnet
 	dualPodName = "pod6.default"
 	dualNicName = "pod6.default"
 	skippedAddrs = []string{"10.0.0.1", "10.0.0.3", "2001:db8::1", "2001:db8::3"}
-	v4, v6, macStr, err = ipam.GetRandomAddress(dualPodName, dualNicName, mac, "dualSubnet2", "", skippedAddrs, true)
+	v4, v6, macStr, err = ipam.GetRandomAddress(dualPodName, dualNicName, mac, dualSubnetName, "", skippedAddrs, true)
 	require.NoError(t, err)
 	require.Equal(t, "10.0.0.5", v4)
 	require.Equal(t, "2001:db8::5", v6)
@@ -155,18 +159,19 @@ func TestGetStaticAddress(t *testing.T) {
 	require.Empty(t, v6)
 	require.Empty(t, macStr)
 	// test v6 subnet
+	v6SubnetName := "v6Subnet1"
 	v6ExcludeIps := []string{
 		"2001:db8::2", "2001:db8::4", "2001:db8::100",
 		"2001:db8::252", "2001:db8::253", "2001:db8::254",
 	}
-	v6Subnet, err := NewSubnet("v6Subnet", "2001:db8::/64", v6ExcludeIps)
+	v6Subnet, err := NewSubnet(v6SubnetName, "2001:db8::/64", v6ExcludeIps)
 	require.NoError(t, err)
 	require.NotNil(t, v6Subnet)
-	ipam.Subnets["v6Subnet"] = v6Subnet
+	ipam.Subnets[v6SubnetName] = v6Subnet
 	v6PodName := "pod3.default"
 	v6NicName := "pod3.default"
 	v6StaticIP := "2001:db8::1"
-	v4, v6, macStr, err = ipam.GetStaticAddress(v6PodName, v6NicName, v6StaticIP, mac, "v6Subnet", true)
+	v4, v6, macStr, err = ipam.GetStaticAddress(v6PodName, v6NicName, v6StaticIP, mac, v6SubnetName, true)
 	require.NoError(t, err)
 	require.Empty(t, v4)
 	require.Equal(t, v6StaticIP, v6)
@@ -175,27 +180,28 @@ func TestGetStaticAddress(t *testing.T) {
 	v6PodName = "pod4.default"
 	v6NicName = "pod4.default"
 	v6StaticIP = "2001:db8::1"
-	v4, v6, macStr, err = ipam.GetStaticAddress(v6PodName, v6NicName, v6StaticIP, mac, "v6Subnet", true)
+	v4, v6, macStr, err = ipam.GetStaticAddress(v6PodName, v6NicName, v6StaticIP, mac, v6SubnetName, true)
 	require.Error(t, err)
 	require.Empty(t, v4)
 	require.Empty(t, v6)
 	require.Empty(t, macStr)
 
 	// test dual stack subnet
+	dualSubnetName := "dualSubnet1"
 	dualExcludeIps := []string{
 		"10.0.0.2", "10.0.0.4", "10.0.0.100",
 		"10.0.0.252", "10.0.0.253", "10.0.0.254",
 		"2001:db8::2", "2001:db8::4", "2001:db8::100",
 		"2001:db8::252", "2001:db8::253", "2001:db8::254",
 	}
-	dualSubnet, err := NewSubnet("dualSubnet1", "10.0.0.0/24,2001:db8::/64", dualExcludeIps)
+	dualSubnet, err := NewSubnet(dualSubnetName, "10.0.0.0/24,2001:db8::/64", dualExcludeIps)
 	require.NoError(t, err)
 	require.NotNil(t, dualSubnet)
-	ipam.Subnets["dualSubnet1"] = dualSubnet
+	ipam.Subnets[dualSubnetName] = dualSubnet
 	dualPodName := "pod5.default"
 	dualNicName := "pod5.default"
 	dualStaticIP := "10.0.0.1,2001:db8::1"
-	v4, v6, macStr, err = ipam.GetStaticAddress(dualPodName, dualNicName, dualStaticIP, mac, "dualSubnet1", true)
+	v4, v6, macStr, err = ipam.GetStaticAddress(dualPodName, dualNicName, dualStaticIP, mac, dualSubnetName, true)
 	require.NoError(t, err)
 	require.Equal(t, v4StaticIP, v4)
 	require.Equal(t, v6StaticIP, v6)
@@ -204,7 +210,7 @@ func TestGetStaticAddress(t *testing.T) {
 	dualPodName = "pod6.default"
 	dualNicName = "pod6.default"
 	dualStaticIP = "10.0.0.1,2001:db8::3"
-	v4, v6, macStr, err = ipam.GetStaticAddress(dualPodName, dualNicName, dualStaticIP, mac, "dualSubnet1", true)
+	v4, v6, macStr, err = ipam.GetStaticAddress(dualPodName, dualNicName, dualStaticIP, mac, dualSubnetName, true)
 	require.Error(t, err)
 	require.Empty(t, v4)
 	require.Empty(t, v6)
@@ -213,7 +219,7 @@ func TestGetStaticAddress(t *testing.T) {
 	dualPodName = "pod7.default"
 	dualNicName = "pod7.default"
 	dualStaticIP = "10.0.0.3,2001:db8::1"
-	v4, v6, macStr, err = ipam.GetStaticAddress(dualPodName, dualNicName, dualStaticIP, mac, "dualSubnet1", true)
+	v4, v6, macStr, err = ipam.GetStaticAddress(dualPodName, dualNicName, dualStaticIP, mac, dualSubnetName, true)
 	require.Error(t, err)
 	require.Empty(t, v4)
 	require.Empty(t, v6)
@@ -228,11 +234,12 @@ func TestCheckAndAppendIpsForDual(t *testing.T) {
 		"2001:db8::2", "2001:db8::4", "2001:db8::100",
 		"2001:db8::252", "2001:db8::253", "2001:db8::254",
 	}
-	dualSubnet, err := NewSubnet("dualSubnet1", "10.0.0.0/24,2001:db8::/64", dualExcludeIps)
+	dualSubnetName := "dualSubnet1"
+	dualSubnet, err := NewSubnet(dualSubnetName, "10.0.0.0/24,2001:db8::/64", dualExcludeIps)
 	require.NoError(t, err)
 	require.NotNil(t, dualSubnet)
-	ipam.Subnets["dualSubnet1"] = dualSubnet
-	// test only v4 ip given
+	ipam.Subnets[dualSubnetName] = dualSubnet
+	// test only v4 ip
 	v4PodName := "pod1.default"
 	v4NicName := "pod1.default"
 	var onlyV4Ips []IP
@@ -243,7 +250,7 @@ func TestCheckAndAppendIpsForDual(t *testing.T) {
 	require.Len(t, newIps, 2)
 	require.Contains(t, newIps[0].String(), "10.0.0.1")
 	require.Contains(t, newIps[1].String(), "2001:db8::1")
-	// test only v6 ip given
+	// test only v6 ip
 	v6PodName := "pod2.default"
 	v6NicName := "pod2.default"
 	var onlyV6Ips []IP
@@ -263,4 +270,355 @@ func TestCheckAndAppendIpsForDual(t *testing.T) {
 	newIps, err = checkAndAppendIpsForDual(v4Ips, mac, v4PodName, v4NicName, dualSubnet, true)
 	require.Error(t, err)
 	require.Len(t, newIps, 0)
+}
+
+func TestReleaseAddressByPod(t *testing.T) {
+	ipam := NewIPAM()
+	// test v4 subnet
+	v4ExcludeIps := []string{
+		"10.0.0.2", "10.0.0.4", "10.0.0.100",
+		"10.0.0.252", "10.0.0.253", "10.0.0.254",
+	}
+	v4SubnetName := "v4Subnet"
+	v4Subnet, err := NewSubnet(v4SubnetName, "10.0.0.0/24", v4ExcludeIps)
+	require.NoError(t, err)
+	require.NotNil(t, v4Subnet)
+	ipam.Subnets[v4SubnetName] = v4Subnet
+	v4PodName := "pod1.default"
+	v4NicName := "pod1.default"
+	var mac *string
+	v4, v6, macStr, err := ipam.GetRandomAddress(v4PodName, v4NicName, mac, v4SubnetName, "", nil, true)
+	require.NoError(t, err)
+	require.Equal(t, "10.0.0.1", v4)
+	require.Empty(t, v6)
+	require.NotEmpty(t, macStr)
+	require.Equal(t, 1, v4Subnet.V4Using.Len())
+	ipam.ReleaseAddressByPod(v4PodName, v4SubnetName)
+	require.Equal(t, 0, v4Subnet.V4Using.Len())
+
+	// test v6 subnet
+	v6ExcludeIps := []string{
+		"2001:db8::2", "2001:db8::4", "2001:db8::100",
+		"2001:db8::252", "2001:db8::253", "2001:db8::254",
+	}
+	v6SubnetName := "v6Subnet"
+	v6Subnet, err := NewSubnet("v6Subnet", "2001:db8::/64", v6ExcludeIps)
+	require.NoError(t, err)
+	require.NotNil(t, v6Subnet)
+	ipam.Subnets[v6SubnetName] = v6Subnet
+	v6PodName := "pod2.default"
+	v6NicName := "pod2.default"
+	v4, v6, macStr, err = ipam.GetRandomAddress(v6PodName, v6NicName, mac, v6SubnetName, "", nil, true)
+	require.NoError(t, err)
+	require.Empty(t, v4)
+	require.Equal(t, "2001:db8::1", v6)
+	require.NotEmpty(t, macStr)
+	require.Equal(t, 1, v6Subnet.V6Using.Len())
+	ipam.ReleaseAddressByPod(v6PodName, "v6Subnet")
+	require.Equal(t, 0, v6Subnet.V6Using.Len())
+
+	// test dual stack subnet
+	dualExcludeIps := []string{
+		"10.0.0.2", "10.0.0.4", "10.0.0.100",
+		"10.0.0.252", "10.0.0.253", "10.0.0.254",
+		"2001:db8::2", "2001:db8::4", "2001:db8::100",
+		"2001:db8::252", "2001:db8::253", "2001:db8::254",
+	}
+	dualSubnetName := "dualSubnet"
+	dualSubnet, err := NewSubnet(dualSubnetName, "10.0.0.0/24,2001:db8::/64", dualExcludeIps)
+	require.NoError(t, err)
+	require.NotNil(t, dualSubnet)
+	ipam.Subnets[dualSubnetName] = dualSubnet
+	dualPodName := "pod3.default"
+	dualNicName := "pod3.default"
+	v4, v6, macStr, err = ipam.GetRandomAddress(dualPodName, dualNicName, mac, dualSubnetName, "", nil, true)
+	require.NoError(t, err)
+	require.Equal(t, "10.0.0.1", v4)
+	require.Equal(t, "2001:db8::1", v6)
+	require.NotEmpty(t, macStr)
+	require.Equal(t, 1, dualSubnet.V4Using.Len())
+	require.Equal(t, 1, dualSubnet.V6Using.Len())
+	ipam.ReleaseAddressByPod(dualPodName, dualSubnetName)
+	require.Equal(t, 0, dualSubnet.V4Using.Len())
+	require.Equal(t, 0, dualSubnet.V6Using.Len())
+}
+
+func TestDeleteSubnet(t *testing.T) {
+	ipam := NewIPAM()
+	// new v4 subnet
+	v4ExcludeIps := []string{
+		"10.0.0.2", "10.0.0.4", "10.0.0.100",
+		"10.0.0.252", "10.0.0.253", "10.0.0.254",
+	}
+	v4SubnetName := "v4Subnet"
+	v4Subnet, err := NewSubnet(v4SubnetName, "10.0.0.0/24", v4ExcludeIps)
+	require.NoError(t, err)
+	require.NotNil(t, v4Subnet)
+	ipam.Subnets[v4SubnetName] = v4Subnet
+
+	// new v6 subnet
+	v6ExcludeIps := []string{
+		"2001:db8::2", "2001:db8::4", "2001:db8::100",
+		"2001:db8::252", "2001:db8::253", "2001:db8::254",
+	}
+	v6SubnetName := "v6Subnet"
+	v6Subnet, err := NewSubnet("v6Subnet", "2001:db8::/64", v6ExcludeIps)
+	require.NoError(t, err)
+	require.NotNil(t, v6Subnet)
+	ipam.Subnets[v6SubnetName] = v6Subnet
+
+	// new dual stack subnet
+	dualExcludeIps := []string{
+		"10.0.0.2", "10.0.0.4", "10.0.0.100",
+		"10.0.0.252", "10.0.0.253", "10.0.0.254",
+		"2001:db8::2", "2001:db8::4", "2001:db8::100",
+		"2001:db8::252", "2001:db8::253", "2001:db8::254",
+	}
+	dualSubnetName := "dualSubnet"
+	dualSubnet, err := NewSubnet(dualSubnetName, "10.0.0.0/24,2001:db8::/64", dualExcludeIps)
+	require.NoError(t, err)
+	require.NotNil(t, dualSubnet)
+	ipam.Subnets[dualSubnetName] = dualSubnet
+
+	// test delete subnet
+	require.Len(t, ipam.Subnets, 3)
+	ipam.DeleteSubnet(v4SubnetName)
+	require.Len(t, ipam.Subnets, 2)
+	ipam.DeleteSubnet(v6SubnetName)
+	require.Len(t, ipam.Subnets, 1)
+	ipam.DeleteSubnet(dualSubnetName)
+	require.Len(t, ipam.Subnets, 0)
+}
+
+func TestGetPodAddress(t *testing.T) {
+	ipam := NewIPAM()
+	// test v4 subnet
+	v4ExcludeIps := []string{
+		"10.0.0.2", "10.0.0.4", "10.0.0.100",
+		"10.0.0.252", "10.0.0.253", "10.0.0.254",
+	}
+	v4SubnetName := "v4Subnet"
+	v4Subnet, err := NewSubnet(v4SubnetName, "10.0.0.0/24", v4ExcludeIps)
+	require.NoError(t, err)
+	require.NotNil(t, v4Subnet)
+	ipam.Subnets[v4SubnetName] = v4Subnet
+	v4PodName := "pod1.default"
+	v4NicName := "pod1.default"
+	var mac *string
+	v4, v6, macStr, err := ipam.GetRandomAddress(v4PodName, v4NicName, mac, v4SubnetName, "", nil, true)
+	require.NoError(t, err)
+	require.Equal(t, "10.0.0.1", v4)
+	require.Empty(t, v6)
+	require.NotEmpty(t, macStr)
+	addresses := ipam.GetPodAddress(v4PodName)
+	require.Len(t, addresses, 1)
+
+	// test v6 subnet
+	v6ExcludeIps := []string{
+		"2001:db8::2", "2001:db8::4", "2001:db8::100",
+		"2001:db8::252", "2001:db8::253", "2001:db8::254",
+	}
+	v6SubnetName := "v6Subnet"
+	v6Subnet, err := NewSubnet("v6Subnet", "2001:db8::/64", v6ExcludeIps)
+	require.NoError(t, err)
+	require.NotNil(t, v6Subnet)
+	ipam.Subnets[v6SubnetName] = v6Subnet
+	v6PodName := "pod2.default"
+	v6NicName := "pod2.default"
+	v4, v6, macStr, err = ipam.GetRandomAddress(v6PodName, v6NicName, mac, v6SubnetName, "", nil, true)
+	require.NoError(t, err)
+	require.Empty(t, v4)
+	require.Equal(t, "2001:db8::1", v6)
+	require.NotEmpty(t, macStr)
+	v6Addresses := ipam.GetPodAddress(v6PodName)
+	require.Len(t, v6Addresses, 1)
+
+	// test dual stack subnet
+	dualExcludeIps := []string{
+		"10.0.0.2", "10.0.0.4", "10.0.0.100",
+		"10.0.0.252", "10.0.0.253", "10.0.0.254",
+		"2001:db8::2", "2001:db8::4", "2001:db8::100",
+		"2001:db8::252", "2001:db8::253", "2001:db8::254",
+	}
+	dualSubnetName := "dualSubnet"
+	dualSubnet, err := NewSubnet(dualSubnetName, "10.0.0.0/24,2001:db8::/64", dualExcludeIps)
+	require.NoError(t, err)
+	require.NotNil(t, dualSubnet)
+	ipam.Subnets[dualSubnetName] = dualSubnet
+	dualPodName := "pod3.default"
+	dualNicName := "pod3.default"
+	v4, v6, macStr, err = ipam.GetRandomAddress(dualPodName, dualNicName, mac, dualSubnetName, "", nil, true)
+	require.NoError(t, err)
+	require.Equal(t, "10.0.0.1", v4)
+	require.Equal(t, "2001:db8::1", v6)
+	require.NotEmpty(t, macStr)
+	dualAddresses := ipam.GetPodAddress(dualPodName)
+	require.Len(t, dualAddresses, 2)
+}
+
+func TestContainAddress(t *testing.T) {
+	ipam := NewIPAM()
+	// test v4 subnet
+	v4ExcludeIps := []string{
+		"10.0.0.2", "10.0.0.4", "10.0.0.100",
+		"10.0.0.252", "10.0.0.253", "10.0.0.254",
+	}
+	v4SubnetName := "v4Subnet"
+	v4Subnet, err := NewSubnet(v4SubnetName, "10.0.0.0/24", v4ExcludeIps)
+	require.NoError(t, err)
+	require.NotNil(t, v4Subnet)
+	ipam.Subnets[v4SubnetName] = v4Subnet
+	v4PodName := "pod1.default"
+	v4NicName := "pod1.default"
+	var mac *string
+	v4, v6, macStr, err := ipam.GetRandomAddress(v4PodName, v4NicName, mac, v4SubnetName, "", nil, true)
+	require.NoError(t, err)
+	require.Equal(t, "10.0.0.1", v4)
+	require.Empty(t, v6)
+	require.NotEmpty(t, macStr)
+	isContained := ipam.ContainAddress(v4)
+	require.True(t, isContained)
+	notExistV4 := "10.0.0.10"
+	isContained = ipam.ContainAddress(notExistV4)
+	require.False(t, isContained)
+	invalidV4 := "10.0.0.10.10"
+	isContained = ipam.ContainAddress(invalidV4)
+	require.False(t, isContained)
+
+	// test v6 subnet
+	v6ExcludeIps := []string{
+		"2001:db8::2", "2001:db8::4", "2001:db8::100",
+		"2001:db8::252", "2001:db8::253", "2001:db8::254",
+	}
+	v6SubnetName := "v6Subnet"
+	v6Subnet, err := NewSubnet("v6Subnet", "2001:db8::/64", v6ExcludeIps)
+	require.NoError(t, err)
+	require.NotNil(t, v6Subnet)
+	ipam.Subnets[v6SubnetName] = v6Subnet
+	v6PodName := "pod2.default"
+	v6NicName := "pod2.default"
+	v4, v6, macStr, err = ipam.GetRandomAddress(v6PodName, v6NicName, mac, v6SubnetName, "", nil, true)
+	require.NoError(t, err)
+	require.Empty(t, v4)
+	require.Equal(t, "2001:db8::1", v6)
+	require.NotEmpty(t, macStr)
+	isContained = ipam.ContainAddress(v6)
+	require.True(t, isContained)
+	notExistV6 := "2001:db8::10"
+	isContained = ipam.ContainAddress(notExistV6)
+	require.False(t, isContained)
+	invalidV6 := "2001:db8::10.10"
+	isContained = ipam.ContainAddress(invalidV6)
+	require.False(t, isContained)
+
+	// test dual stack subnet
+	dualExcludeIps := []string{
+		"10.10.0.2", "10.10.0.4", "10.10.0.100",
+		"10.10.0.252", "10.10.0.253", "10.10.0.254",
+		"2001:db88::2", "2001:db88::4", "2001:db88::100",
+		"2001:db88::252", "2001:db88::253", "2001:db88::254",
+	}
+	dualSubnetName := "dualSubnet"
+	dualSubnet, err := NewSubnet(dualSubnetName, "10.10.0.0/24,2001:db88::/64", dualExcludeIps)
+	require.NoError(t, err)
+	require.NotNil(t, dualSubnet)
+	ipam.Subnets[dualSubnetName] = dualSubnet
+	dualPodName := "pod3.default"
+	dualNicName := "pod3.default"
+	v4, v6, macStr, err = ipam.GetRandomAddress(dualPodName, dualNicName, mac, dualSubnetName, "", nil, true)
+	require.NoError(t, err)
+	require.Equal(t, "10.10.0.1", v4)
+	require.Equal(t, "2001:db88::1", v6)
+	require.NotEmpty(t, macStr)
+	isContained = ipam.ContainAddress(v4)
+	require.True(t, isContained)
+	isContained = ipam.ContainAddress(v6)
+	require.True(t, isContained)
+	notExistDual := "10.10.0.10"
+	isContained = ipam.ContainAddress(notExistDual)
+	require.False(t, isContained)
+	notExistDual = "2001:db88::10"
+	isContained = ipam.ContainAddress(notExistDual)
+	require.False(t, isContained)
+	invalidDual := "10.10.0.10.10"
+	isContained = ipam.ContainAddress(invalidDual)
+	require.False(t, isContained)
+}
+
+func TestIsIPAssignedToOtherPod(t *testing.T) {
+	ipam := NewIPAM()
+	// test v4 subnet
+	v4ExcludeIps := []string{
+		"10.0.0.2", "10.0.0.4", "10.0.0.100",
+		"10.0.0.252", "10.0.0.253", "10.0.0.254",
+	}
+	v4SubnetName := "v4Subnet"
+	v4Subnet, err := NewSubnet(v4SubnetName, "10.0.0.0/24", v4ExcludeIps)
+	require.NoError(t, err)
+	require.NotNil(t, v4Subnet)
+	ipam.Subnets[v4SubnetName] = v4Subnet
+	v4PodName := "v4pod.default"
+	v4NicName := "v4pod.default"
+	var mac *string
+	v4, _, _, err := ipam.GetRandomAddress(v4PodName, v4NicName, mac, v4SubnetName, "", nil, true)
+	require.NoError(t, err)
+	v4Pod2Name := "pod2.default"
+	assignedPod, ok := ipam.IsIPAssignedToOtherPod(v4, v4SubnetName, v4Pod2Name)
+	require.True(t, ok)
+	require.Equal(t, v4PodName, assignedPod)
+	notUsingV4 := "10.0.0.10"
+	_, ok = ipam.IsIPAssignedToOtherPod(notUsingV4, v4SubnetName, v4Pod2Name)
+	require.False(t, ok)
+
+	// test v6 subnet
+	v6ExcludeIps := []string{
+		"2001:db8::2", "2001:db8::4", "2001:db8::100",
+		"2001:db8::252", "2001:db8::253", "2001:db8::254",
+	}
+	v6SubnetName := "v6Subnet"
+	v6Subnet, err := NewSubnet("v6Subnet", "2001:db8::/64", v6ExcludeIps)
+	require.NoError(t, err)
+	require.NotNil(t, v6Subnet)
+	ipam.Subnets[v6SubnetName] = v6Subnet
+	v6PodName := "v6pod.default"
+	v6NicName := "v6pod.default"
+	_, v6, _, err := ipam.GetRandomAddress(v6PodName, v6NicName, mac, v6SubnetName, "", nil, true)
+	require.NoError(t, err)
+	v6Pod2Name := "pod2.default"
+	assignedPod, ok = ipam.IsIPAssignedToOtherPod(v6, v6SubnetName, v6Pod2Name)
+	require.True(t, ok)
+	require.Equal(t, v6PodName, assignedPod)
+	notUsingV6 := "2001:db8::10"
+	_, ok = ipam.IsIPAssignedToOtherPod(notUsingV6, v6SubnetName, v6Pod2Name)
+	require.False(t, ok)
+
+	// test dual stack subnet
+	dualExcludeIps := []string{
+		"10.10.0.2", "10.10.0.4", "10.10.0.100",
+		"10.10.0.252", "10.10.0.253", "10.10.0.254",
+		"2001:db88::2", "2001:db88::4", "2001:db88::100",
+		"2001:db88::252", "2001:db88::253", "2001:db88::254",
+	}
+	dualSubnetName := "dualSubnet"
+	dualSubnet, err := NewSubnet(dualSubnetName, "10.10.0.0/24,2001:db88::/64", dualExcludeIps)
+	require.NoError(t, err)
+	require.NotNil(t, dualSubnet)
+	ipam.Subnets[dualSubnetName] = dualSubnet
+	dualPodName := "dualpod.default"
+	dualNicName := "dualpod.default"
+	v4, v6, _, err = ipam.GetRandomAddress(dualPodName, dualNicName, mac, dualSubnetName, "", nil, true)
+	require.NoError(t, err)
+	dualPod2Name := "pod2.default"
+	assignedPod, ok = ipam.IsIPAssignedToOtherPod(v4, dualSubnetName, dualPod2Name)
+	require.True(t, ok)
+	require.Equal(t, dualPodName, assignedPod)
+	assignedPod, ok = ipam.IsIPAssignedToOtherPod(v6, dualSubnetName, dualPod2Name)
+	require.True(t, ok)
+	require.Equal(t, dualPodName, assignedPod)
+	notUsingDualV4 := "10.10.0.10"
+	_, ok = ipam.IsIPAssignedToOtherPod(notUsingDualV4, dualSubnetName, dualPod2Name)
+	require.False(t, ok)
+	notUsingDualV6 := "2001:db88::10"
+	_, ok = ipam.IsIPAssignedToOtherPod(notUsingDualV6, dualSubnetName, dualPod2Name)
+	require.False(t, ok)
 }
