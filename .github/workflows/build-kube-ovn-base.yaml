@@ -27,7 +27,7 @@ jobs:
         - release-1.9
         - release-1.12-mc
     name: Build AMD64
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         if: (github.event.inputs.branch || matrix.branch) == matrix.branch
@@ -62,7 +62,7 @@ jobs:
         - release-1.9
         - release-1.12-mc
     name: Build ARM64
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         if:  (github.event.inputs.branch || matrix.branch) == matrix.branch
@@ -105,7 +105,7 @@ jobs:
       - build-arm64
       - build-amd64
     name: push
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         if:  (github.event.inputs.branch || matrix.branch) == matrix.branch
