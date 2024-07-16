@@ -1,5 +1,5 @@
 # syntax = docker/dockerfile:experimental
-FROM ubuntu:22.04 AS ovs-builder
+FROM ubuntu:24.04 AS ovs-builder
 
 ARG ARCH
 ARG LEGACY
@@ -82,7 +82,7 @@ RUN mkdir /packages/ && \
     cp /usr/src/ovn-*deb /packages && \
     cd /packages && rm -f *source* *doc* *datapath* *docker* *vtep* *test* *dev*
 
-FROM ubuntu:22.04
+FROM ubuntu:24.04
 
 ARG DEBIAN_FRONTEND=noninteractive
 RUN apt update && apt upgrade -y && apt install ca-certificates python3 hostname libunwind8 netbase \
@@ -115,13 +115,6 @@ ARG BFDD_VERSION="v0.5.4"
 RUN curl -sSf -L --retry 3 -o /usr/local/bin/bfdd-control https://github.com/bobz965/bfd-binary-for-kube-ovn-cni/releases/download/${BFDD_VERSION}/bfdd-control && \
     curl -sSf -L --retry 3 -o /usr/local/bin/bfdd-beacon https://github.com/bobz965/bfd-binary-for-kube-ovn-cni/releases/download/${BFDD_VERSION}/bfdd-beacon && \
     chmod +x /usr/local/bin/bfdd-control /usr/local/bin/bfdd-beacon
-
-RUN curl -sSf -L --retry 3 -O https://launchpad.net/ubuntu/+archive/primary/+files/libipset13_7.17-1ubuntu1_${ARCH}.deb && \
-    dpkg -i libipset13_7.17-1ubuntu1_${ARCH}.deb && \
-    rm -f libipset13_7.17-1ubuntu1_${ARCH}.deb
-RUN curl -sSf -L --retry 3 -O https://launchpad.net/ubuntu/+archive/primary/+files/ipset_7.17-1ubuntu1_${ARCH}.deb && \
-    dpkg -i ipset_7.17-1ubuntu1_${ARCH}.deb && \
-    rm -f ipset_7.17-1ubuntu1_${ARCH}.deb
 
 RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages  \
     dpkg -i /packages/openvswitch-*.deb /packages/python3-openvswitch*.deb && \
