@@ -474,7 +474,7 @@ func (csh cniServerHandler) configureContainerNic(podName, podNamespace, nicName
 			finalRoutes = append(finalRoutes, route)
 		}
 
-		if gwCheckMode != gatewayModeDisabled {
+		if gwCheckMode != gatewayCheckModeDisabled {
 			var (
 				underlayGateway = gwCheckMode == gatewayCheckModeArping || gwCheckMode == gatewayCheckModeArpingNotConcerned
 				interfaceName   = nicName

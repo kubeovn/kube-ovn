@@ -1002,6 +1002,20 @@ func (mr *MockLogicalSwitchPortMockRecorder) ResetLogicalSwitchPortMigrateOption
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResetLogicalSwitchPortMigrateOptions", reflect.TypeOf((*MockLogicalSwitchPort)(nil).ResetLogicalSwitchPortMigrateOptions), lspName, srcNodeName, targetNodeName, migratedFail)
 }
 
+// SetLogicalSwitchPortActivationStrategy mocks base method.
+func (m *MockLogicalSwitchPort) SetLogicalSwitchPortActivationStrategy(lspName, chassis string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetLogicalSwitchPortActivationStrategy", lspName, chassis)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetLogicalSwitchPortActivationStrategy indicates an expected call of SetLogicalSwitchPortActivationStrategy.
+func (mr *MockLogicalSwitchPortMockRecorder) SetLogicalSwitchPortActivationStrategy(lspName, chassis any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLogicalSwitchPortActivationStrategy", reflect.TypeOf((*MockLogicalSwitchPort)(nil).SetLogicalSwitchPortActivationStrategy), lspName, chassis)
+}
+
 // SetLogicalSwitchPortArpProxy mocks base method.
 func (m *MockLogicalSwitchPort) SetLogicalSwitchPortArpProxy(lspName string, enableArpProxy bool) error {
 	m.ctrl.T.Helper()
@@ -4172,6 +4186,20 @@ func (m *MockNbClient) SetLoadBalancerAffinityTimeout(lbName string, timeout int
 func (mr *MockNbClientMockRecorder) SetLoadBalancerAffinityTimeout(lbName, timeout any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLoadBalancerAffinityTimeout", reflect.TypeOf((*MockNbClient)(nil).SetLoadBalancerAffinityTimeout), lbName, timeout)
+}
+
+// SetLogicalSwitchPortActivationStrategy mocks base method.
+func (m *MockNbClient) SetLogicalSwitchPortActivationStrategy(lspName, chassis string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetLogicalSwitchPortActivationStrategy", lspName, chassis)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetLogicalSwitchPortActivationStrategy indicates an expected call of SetLogicalSwitchPortActivationStrategy.
+func (mr *MockNbClientMockRecorder) SetLogicalSwitchPortActivationStrategy(lspName, chassis any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLogicalSwitchPortActivationStrategy", reflect.TypeOf((*MockNbClient)(nil).SetLogicalSwitchPortActivationStrategy), lspName, chassis)
 }
 
 // SetLogicalSwitchPortArpProxy mocks base method.

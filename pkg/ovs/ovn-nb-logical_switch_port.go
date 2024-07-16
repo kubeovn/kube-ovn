@@ -840,6 +840,37 @@ func getLogicalSwitchPortSgs(lsp *ovnnb.LogicalSwitchPort) *strset.Set {
 	return sgs
 }
 
+// SetLogicalSwitchPortActivationStrategy sets activation-strategy to rarp for the logical switch port
+func (c *OVNNbClient) SetLogicalSwitchPortActivationStrategy(lspName, chassis string) error {
+	lsp, err := c.GetLogicalSwitchPort(lspName, false)
+	if err != nil {
+		klog.Errorf("failed to get logical switch port %s: %v", lspName, err)
+		return err
+	}
+
+	if lsp.Options != nil && lsp.Options["requested-chassis"] != "" {
+		delete(lsp.Options, "requested-chassis")
+		delete(lsp.Options, "activation-strategy")
+		if err = c.UpdateLogicalSwitchPort(lsp, &lsp.Options); err != nil {
+			klog.Errorf("failed to clear activation strategy for the logical switch port %s: %v", lspName, err)
+			return err
+		}
+	}
+
+	requestedChassis := fmt.Sprintf("%s,%s", chassis, chassis)
+	if lsp.Options == nil {
+		lsp.Options = make(map[string]string, 2)
+	}
+	lsp.Options["requested-chassis"] = requestedChassis
+	lsp.Options["activation-strategy"] = "rarp"
+	if err = c.UpdateLogicalSwitchPort(lsp, &lsp.Options); err != nil {
+		klog.Errorf("failed to set activation strategy to rarp for the logical switch port %s: %v", lspName, err)
+		return err
+	}
+
+	return nil
+}
+
 // SetLogicalSwitchPortMigrateOptions set logical switch port options of migrate
 func (c *OVNNbClient) SetLogicalSwitchPortMigrateOptions(lspName, srcNodeName, targetNodeName string) error {
 	// to facilitate the migration of the VM: ovn-nbctl lsp-set-options migrator requested-chassis=src,target activation-strategy=rarp
@@ -873,7 +904,7 @@ func (c *OVNNbClient) SetLogicalSwitchPortMigrateOptions(lspName, srcNodeName, t
 
 	requestedChassis := fmt.Sprintf("%s,%s", srcNodeName, targetNodeName)
 	if lsp.Options == nil {
-		lsp.Options = make(map[string]string)
+		lsp.Options = make(map[string]string, 2)
 	}
 	lsp.Options["requested-chassis"] = requestedChassis
 	lsp.Options["activation-strategy"] = "rarp"
