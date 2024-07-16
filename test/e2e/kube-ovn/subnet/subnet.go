@@ -13,6 +13,7 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
 	e2epodoutput "k8s.io/kubernetes/test/e2e/framework/pod/output"
@@ -274,6 +275,88 @@ var _ = framework.Describe("[group:subnet]", func() {
 		}
 
 		// TODO: check routes on ovn0
+	})
+
+	framework.ConformanceIt("should be able to extend subnet cidr", func() {
+		ginkgo.By("Getting nodes")
+		nodes, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
+		framework.ExpectNoError(err)
+		framework.ExpectNotEmpty(nodes.Items)
+
+		var prefixV4, prefixV4S, prefixV6, prefixV6S int
+		if cidrV4 != "" {
+			prefixV4, err = strconv.Atoi(strings.Split(cidrV4, "/")[1])
+			framework.ExpectNoError(err)
+			prefixV4S = (prefixV4 + 32) / 2
+		}
+		if cidrV6 != "" {
+			prefixV6, err = strconv.Atoi(strings.Split(cidrV6, "/")[1])
+			framework.ExpectNoError(err)
+			prefixV6S = (prefixV6 + 128) / 2
+		}
+
+		cidrV4S := strings.ReplaceAll(cidrV4, fmt.Sprintf("/%d", prefixV4), fmt.Sprintf("/%d", prefixV4S))
+		cidrV6S := strings.ReplaceAll(cidrV6, fmt.Sprintf("/%d", prefixV6), fmt.Sprintf("/%d", prefixV6S))
+		cidrS := strings.Trim(fmt.Sprintf("%s,%s", cidrV4S, cidrV6S), ",")
+
+		ginkgo.By("Creating subnet " + subnetName + " with cidr " + cidrS)
+		subnet = framework.MakeSubnet(subnetName, "", cidrS, "", "", "", nil, nil, []string{namespaceName})
+		_ = subnetClient.CreateSync(subnet)
+
+		ginkgo.By("Creating pod " + podName)
+		cmd := []string{"sh", "-c", "sleep infinity"}
+		pod := framework.MakePod(namespaceName, podName, nil, nil, f.KubeOVNImage, cmd, nil)
+		pod = podClient.CreateSync(pod)
+
+		ginkgo.By("Extending subnet " + subnetName + " with cidr " + cidr)
+		subnet = subnetClient.Get(subnetName)
+		subnet.Spec.CIDRBlock = cidr
+		subnet = subnetClient.UpdateSync(subnet, metav1.UpdateOptions{}, 30*time.Second)
+
+		ginkgo.By("Validating subnet finalizers")
+		f.ValidateFinalizers(subnet)
+
+		ginkgo.By("Validating subnet spec fields")
+		framework.ExpectEqual(subnet.Spec.Protocol, util.CheckProtocol(cidr))
+		// do NOT check gateways and exclude ips
+
+		ginkgo.By("Validating subnet status fields")
+		if cidrV4 == "" {
+			framework.ExpectZero(subnet.Status.V4AvailableIPs)
+			framework.ExpectZero(subnet.Status.V4UsingIPs)
+		} else {
+			_, ipnet, _ := net.ParseCIDR(cidrV4)
+			framework.ExpectEqual(subnet.Status.V4AvailableIPs, util.AddressCount(ipnet)-2)
+			framework.ExpectEqual(subnet.Status.V4UsingIPs, float64(1))
+		}
+		if cidrV6 == "" {
+			framework.ExpectZero(subnet.Status.V6AvailableIPs)
+			framework.ExpectZero(subnet.Status.V6UsingIPs)
+		} else {
+			_, ipnet, _ := net.ParseCIDR(cidrV6)
+			framework.ExpectEqual(subnet.Status.V6AvailableIPs, util.AddressCount(ipnet)-2)
+			framework.ExpectEqual(subnet.Status.V6UsingIPs, float64(1))
+		}
+
+		ginkgo.By("Getting node " + pod.Spec.NodeName)
+		var node *corev1.Node
+		for _, n := range nodes.Items {
+			if n.Name == pod.Spec.NodeName {
+				node = n.DeepCopy()
+				break
+			}
+		}
+		framework.ExpectNotNil(node)
+
+		var gwIPv4, gwIPv6 string
+		if f.VersionPriorTo(1, 12) {
+			gwIPv4, gwIPv6 = util.SplitStringIP(node.Annotations[util.IPAddressAnnotation])
+		} else {
+			gwIPv4, gwIPv6 = util.GetNodeInternalIP(*node)
+		}
+		checkNatOutgoingRoutes(f, namespaceName, podName, strings.Split(strings.Trim(gwIPv4+","+gwIPv6, ","), ","))
+
+		// TODO: check ovn logical router policy
 	})
 
 	framework.ConformanceIt("should create subnet with exclude ips", func() {
