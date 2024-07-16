@@ -380,21 +380,6 @@ func (csh cniServerHandler) configureContainerNic(podName, podNamespace, nicName
 			}
 		}
 
-		if util.CheckProtocol(ipAddr) == kubeovnv1.ProtocolDual || util.CheckProtocol(ipAddr) == kubeovnv1.ProtocolIPv6 {
-			// For docker version >=17.x the "none" network will disable ipv6 by default.
-			// We have to enable ipv6 here to add v6 address and gateway.
-			// See https://github.com/containernetworking/cni/issues/531
-			value, err := sysctl.Sysctl("net.ipv6.conf.all.disable_ipv6")
-			if err != nil {
-				return fmt.Errorf("failed to get sysctl net.ipv6.conf.all.disable_ipv6: %v", err)
-			}
-			if value != "0" {
-				if _, err = sysctl.Sysctl("net.ipv6.conf.all.disable_ipv6", "0"); err != nil {
-					return fmt.Errorf("failed to enable ipv6 on all nic: %v", err)
-				}
-			}
-		}
-
 		if nicType == util.InternalType {
 			if err = addAdditionalNic(ifName); err != nil {
 				klog.Error(err)
@@ -785,21 +770,6 @@ func configureNodeGwNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu i
 		klog.V(3).Infof("node external nic %q already in ns %s", util.NodeGwNic, util.NodeGwNsPath)
 	}
 	return ns.WithNetNSPath(gwNS.Path(), func(_ ns.NetNS) error {
-		if util.CheckProtocol(ip) == kubeovnv1.ProtocolDual || util.CheckProtocol(ip) == kubeovnv1.ProtocolIPv6 {
-			// For docker version >=17.x the "none" network will disable ipv6 by default.
-			// We have to enable ipv6 here to add v6 address and gateway.
-			// See https://github.com/containernetworking/cni/issues/531
-			value, err := sysctl.Sysctl("net.ipv6.conf.all.disable_ipv6")
-			if err != nil {
-				return fmt.Errorf("failed to get sysctl net.ipv6.conf.all.disable_ipv6: %v", err)
-			}
-			if value != "0" {
-				if _, err = sysctl.Sysctl("net.ipv6.conf.all.disable_ipv6", "0"); err != nil {
-					return fmt.Errorf("failed to enable ipv6 on all nic: %v", err)
-				}
-			}
-		}
-
 		if err = configureNic(util.NodeGwNic, ip, macAddr, mtu, true); err != nil {
 			klog.Errorf("failed to congigure node gw nic %s, %v", util.NodeGwNic, err)
 			return err
