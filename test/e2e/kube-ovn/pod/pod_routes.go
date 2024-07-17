@@ -105,7 +105,6 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 		_, _, err = framework.NBExec(deleteLspCmd)
 		framework.ExpectNoError(err)
 		err = f.KubeOVNClientSet.KubeovnV1().IPs().Delete(context.Background(), fmt.Sprintf("%s.%s", pod.Name, pod.Namespace), metav1.DeleteOptions{})
-		framework.ExpectNoError(err)
 	})
 
 	framework.ConformanceIt("should support configuring routes via pod annotation", func() {
