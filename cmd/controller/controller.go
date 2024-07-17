@@ -13,6 +13,7 @@ import (
 	v1 "k8s.io/api/authorization/v1"
 	apiv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/leaderelection"
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
@@ -52,6 +53,7 @@ func CmdMain() {
 	if err := checkPermission(config); err != nil {
 		util.LogFatalAndExit(err, "failed to check permission")
 	}
+	utilruntime.Must(kubeovnv1.AddToScheme(scheme.Scheme))
 
 	go func() {
 		mux := http.NewServeMux()
