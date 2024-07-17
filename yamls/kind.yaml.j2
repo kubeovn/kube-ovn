@@ -41,16 +41,18 @@ apiVersion: kind.x-k8s.io/v1alpha4
 networking:
   kubeProxyMode: {{ kube_proxy_mode }}
   disableDefaultCNI: true
-  ipFamily: {{ ip_family }}
   apiServerAddress: {{ api_server_address }}
   apiServerPort: {{ api_server_port }}
-{%- if ip_family is equalto "ipv4" %}
+{%- if "ipv4" in ip_family  %}
+  ipFamily: ipv4
   podSubnet: {{ pod_cidr_v4 }}
   serviceSubnet: {{ svc_cidr_v4 }}
-{%- elif ip_family is equalto "ipv6" %}
+{%- elif "ipv6" in ip_family %}
+  ipFamily: ipv6
   podSubnet: "fd00:10:16::/112"
   serviceSubnet: "fd00:10:96::/108"
 {%- else %}
+  ipFamily: dual
   podSubnet: "10.16.0.0/16,fd00:10:16::/112"
   serviceSubnet: "10.96.0.0/12,fd00:10:96::/108"
 {%- endif %}
