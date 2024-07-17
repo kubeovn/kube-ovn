@@ -38,6 +38,7 @@ ENABLE_BIND_LOCAL_IP=${ENABLE_BIND_LOCAL_IP:-true}
 ENABLE_TPROXY=${ENABLE_TPROXY:-false}
 OVS_VSCTL_CONCURRENCY=${OVS_VSCTL_CONCURRENCY:-100}
 ENABLE_COMPACT=${ENABLE_COMPACT:-false}
+SECURE_SERVING=${SECURE_SERVING:-false}
 
 # debug
 DEBUG_WRAPPER=${DEBUG_WRAPPER:-}
@@ -4077,6 +4078,7 @@ spec:
           - --enable-lb-svc=$ENABLE_LB_SVC
           - --keep-vm-ip=$ENABLE_KEEP_VM_IP
           - --node-local-dns-ip=$NODE_LOCAL_DNS_IP
+          - --secure-serving=${SECURE_SERVING}
           securityContext:
             runAsUser: 0
             privileged: false
@@ -4090,6 +4092,10 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
             - name: KUBE_NAMESPACE
               valueFrom:
                 fieldRef:
@@ -4100,6 +4106,10 @@ spec:
                   fieldPath: spec.nodeName
             - name: OVN_DB_IPS
               value: $addresses
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
             - name: POD_IPS
               valueFrom:
                 fieldRef:
@@ -4224,6 +4234,7 @@ spec:
           - --kubelet-dir=$KUBELET_DIR
           - --enable-tproxy=$ENABLE_TPROXY
           - --ovs-vsctl-concurrency=$OVS_VSCTL_CONCURRENCY
+          - --secure-serving=${SECURE_SERVING}
         securityContext:
           runAsUser: 0
           privileged: false
@@ -4248,6 +4259,14 @@ spec:
             valueFrom:
               fieldRef:
                 fieldPath: status.podIPs
+          - name: POD_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+          - name: POD_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
           - name: ENABLE_BIND_LOCAL_IP
             value: "$ENABLE_BIND_LOCAL_IP"
           - name: DBUS_SYSTEM_BUS_ADDRESS
@@ -4513,6 +4532,7 @@ spec:
           imagePullPolicy: $IMAGE_PULL_POLICY
           command: ["/kube-ovn/start-ovn-monitor.sh"]
           args:
+          - --secure-serving=${SECURE_SERVING}
           - --log_file=/var/log/kube-ovn/kube-ovn-monitor.log
           - --logtostderr=false
           - --alsologtostderr=true
@@ -4527,6 +4547,18 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
             - name: POD_IPS
               valueFrom:
                 fieldRef:
