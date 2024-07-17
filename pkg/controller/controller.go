@@ -28,7 +28,6 @@ import (
 	anpinformer "sigs.k8s.io/network-policy-api/pkg/client/informers/externalversions"
 	anplister "sigs.k8s.io/network-policy-api/pkg/client/listers/apis/v1alpha1"
 
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	kubeovninformer "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions"
 	kubeovnlister "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
 	ovnipam "github.com/kubeovn/kube-ovn/pkg/ipam"
@@ -265,7 +264,6 @@ type Controller struct {
 
 // Run creates and runs a new ovn controller
 func Run(ctx context.Context, config *Configuration) {
-	utilruntime.Must(kubeovnv1.AddToScheme(scheme.Scheme))
 	klog.V(4).Info("Creating event broadcaster")
 	eventBroadcaster := record.NewBroadcasterWithCorrelatorOptions(record.CorrelatorOptions{BurstSize: 100})
 	eventBroadcaster.StartLogging(klog.Infof)
