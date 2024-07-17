@@ -3170,6 +3170,18 @@ rules:
       - get
       - list
       - watch
+  - apiGroups:
+      - authentication.k8s.io
+    resources:
+      - tokenreviews
+    verbs:
+      - create
+  - apiGroups:
+      - authorization.k8s.io
+    resources:
+      - subjectaccessreviews
+    verbs:
+      - create
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -3179,6 +3191,20 @@ roleRef:
   name: system:kube-ovn-cni
   kind: ClusterRole
   apiGroup: rbac.authorization.k8s.io
+subjects:
+  - kind: ServiceAccount
+    name: kube-ovn-cni
+    namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: kube-ovn-cni
+  namespace: kube-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: extension-apiserver-authentication-reader
 subjects:
   - kind: ServiceAccount
     name: kube-ovn-cni
@@ -3214,6 +3240,18 @@ rules:
       - daemonsets
     verbs:
       - get
+  - apiGroups:
+      - authentication.k8s.io
+    resources:
+      - tokenreviews
+    verbs:
+      - create
+  - apiGroups:
+      - authorization.k8s.io
+    resources:
+      - subjectaccessreviews
+    verbs:
+      - create
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -3223,6 +3261,20 @@ roleRef:
   name: system:kube-ovn-app
   kind: ClusterRole
   apiGroup: rbac.authorization.k8s.io
+subjects:
+  - kind: ServiceAccount
+    name: kube-ovn-app
+    namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: kube-ovn-app
+  namespace: kube-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: extension-apiserver-authentication-reader
 subjects:
   - kind: ServiceAccount
     name: kube-ovn-app

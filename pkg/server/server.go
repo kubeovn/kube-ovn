@@ -8,9 +8,14 @@ import (
 	"strconv"
 	"strings"
 
+	"k8s.io/apiserver/pkg/endpoints/filters"
+	"k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/apiserver/pkg/server"
 	"k8s.io/apiserver/pkg/server/options"
+	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
+
+	"github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/scheme"
 )
 
 func SecureServing(addr, svcName string, handler http.Handler) (<-chan struct{}, error) {
@@ -31,9 +36,15 @@ func SecureServing(addr, svcName string, handler http.Handler) (<-chan struct{},
 		}
 	}
 
-	opt := options.NewSecureServingOptions()
+	var clientConfig *rest.Config
+	opt := options.NewSecureServingOptions().WithLoopback()
+	authnOpt := options.NewDelegatingAuthenticationOptions()
+	authzOpt := options.NewDelegatingAuthorizationOptions()
 	opt.ServerCert.PairName = svcName
 	opt.ServerCert.CertDirectory = ""
+	authnOpt.RemoteKubeConfigFileOptional = true
+	authzOpt.RemoteKubeConfigFileOptional = true
+
 	if host != "" {
 		ip := net.ParseIP(host)
 		if ip == nil {
@@ -55,14 +66,32 @@ func SecureServing(addr, svcName string, handler http.Handler) (<-chan struct{},
 		return nil, fmt.Errorf("failed to genarate self signed certificates: %v", err)
 	}
 
-	var c *server.SecureServingInfo
-	if err = opt.ApplyTo(&c); err != nil {
+	var serving *server.SecureServingInfo
+	var authn server.AuthenticationInfo
+	var authz server.AuthorizationInfo
+	if err = opt.ApplyTo(&serving, &clientConfig); err != nil {
 		klog.Error(err)
 		return nil, fmt.Errorf("failed to apply secure serving options to secure serving info: %v", err)
 	}
+	if err = authnOpt.ApplyTo(&authn, serving, nil); err != nil {
+		klog.Error(err)
+		return nil, fmt.Errorf("failed to apply authn options to authn info: %v", err)
+	}
+	if err = authzOpt.ApplyTo(&authz); err != nil {
+		klog.Error(err)
+		return nil, fmt.Errorf("failed to apply authz options to authz info: %v", err)
+	}
+
+	handler = filters.WithAuthorization(handler, authz.Authorizer, scheme.Codecs)
+	handler = filters.WithAuthentication(handler, authn.Authenticator, filters.Unauthorized(scheme.Codecs), nil, nil)
+
+	requestInfoResolver := &request.RequestInfoFactory{}
+	handler = filters.WithRequestInfo(handler, requestInfoResolver)
+	handler = filters.WithCacheControl(handler)
+	server.AuthorizeClientBearerToken(clientConfig, &authn, &authz)
 
 	stopCh := make(chan struct{}, 1)
-	_, listenerStoppedCh, err := c.Serve(handler, 0, stopCh)
+	_, listenerStoppedCh, err := serving.Serve(handler, 0, stopCh)
 	if err != nil {
 		klog.Error(err)
 		return nil, fmt.Errorf("failed to serve on %s: %v", addr, err)
