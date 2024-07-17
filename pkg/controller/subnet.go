@@ -1546,24 +1546,9 @@ func (c *Controller) reconcileDistributedSubnetRouteInDefaultVpc(subnet *kubeovn
 				continue
 			}
 
-			if pod.Annotations[util.NorthGatewayAnnotation] != "" {
-				if err := c.addStaticRouteToVpc(
-					subnet.Spec.Vpc,
-					&kubeovnv1.StaticRoute{
-						Policy:     kubeovnv1.PolicySrc,
-						CIDR:       pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, podNet.ProviderName)],
-						NextHopIP:  pod.Annotations[util.NorthGatewayAnnotation],
-						RouteTable: util.MainRouteTable,
-					},
-				); err != nil {
-					klog.Errorf("add static route failed, %v", err)
-					return err
-				}
-			} else {
-				podName := c.getNameByPod(pod)
-				portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
-				podPorts = append(podPorts, portName)
-			}
+			podName := c.getNameByPod(pod)
+			portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
+			podPorts = append(podPorts, portName)
 		}
 
 		if pod.Annotations[util.NorthGatewayAnnotation] != "" {
