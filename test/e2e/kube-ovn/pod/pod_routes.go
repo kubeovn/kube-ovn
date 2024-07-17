@@ -1,10 +1,14 @@
 package pod
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
+	"time"
 
 	"github.com/onsi/ginkgo/v2"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/request"
@@ -13,7 +17,7 @@ import (
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/iproute"
 )
 
-var _ = framework.Describe("[group:pod]", func() {
+var _ = framework.SerialDescribe("[group:pod]", func() {
 	f := framework.NewDefaultFramework("pod")
 
 	var podClient *framework.PodClient
@@ -35,6 +39,73 @@ var _ = framework.Describe("[group:pod]", func() {
 
 		ginkgo.By("Deleting subnet " + subnetName)
 		subnetClient.DeleteSync(subnetName)
+	})
+
+	framework.ConformanceIt("should support north gateway via pod annotation", func() {
+		if f.ClusterNetworkMode == "underlay" {
+			ginkgo.Skip("This test is only for overlay network")
+		}
+
+		ginkgo.By("Creating pod " + podName + " with north gateway annotation")
+		northGateway := "100.64.0.100"
+		ipSuffix := "ip4"
+		if f.ClusterIPFamily == "ipv6" {
+			northGateway = "fd00:100:64::100"
+			ipSuffix = "ip6"
+		}
+
+		annotations := map[string]string{
+			util.NorthGatewayAnnotation: northGateway,
+		}
+		cmd := []string{"sh", "-c", "sleep infinity"}
+		pod := framework.MakePod(namespaceName, podName, nil, annotations, f.KubeOVNImage, cmd, nil)
+		pod = podClient.CreateSync(pod)
+
+		podIP := pod.Status.PodIP
+		nbCmd := fmt.Sprintf("ovn-nbctl --format=csv --data=bare --no-heading --columns=match,action,nexthops find logical_router_policy priority=%d", util.NorthGatewayRoutePolicyPriority)
+		out, _, err := framework.NBExec(nbCmd)
+		framework.ExpectNoError(err)
+		framework.ExpectEqual(strings.TrimSpace(string(out)), fmt.Sprintf("%s.src == %s,reroute,%s", ipSuffix, podIP, northGateway))
+
+		ginkgo.By("Deleting pod " + podName + " with north gateway annotation")
+		f.PodClientNS(namespaceName).DeleteSync(podName)
+		framework.WaitUntil(2*time.Second, 2*time.Minute, func(_ context.Context) (bool, error) {
+			out, _, err = framework.NBExec(nbCmd)
+			if err == nil && strings.TrimSpace(string(out)) == "" {
+				return true, nil
+			}
+			return false, err
+		}, "policy has been gc")
+
+		ginkgo.By("gc policy route")
+		podClient.CreateSync(framework.MakePod(namespaceName, podName, nil, annotations, f.KubeOVNImage, cmd, nil))
+
+		ginkgo.By("restart kube-ovn-controller")
+		deployClient := f.DeploymentClientNS(framework.KubeOvnNamespace)
+		deploy := deployClient.Get("kube-ovn-controller")
+		framework.ExpectNotNil(deploy.Spec.Replicas)
+		deployClient.SetScale(deploy.Name, 0)
+		deployClient.RolloutStatus(deploy.Name)
+
+		f.PodClientNS(namespaceName).DeleteSync(podName)
+
+		deployClient.SetScale(deploy.Name, 1)
+		deployClient.RolloutStatus(deploy.Name)
+
+		framework.WaitUntil(2*time.Second, 2*time.Minute, func(_ context.Context) (bool, error) {
+			out, _, err = framework.NBExec(nbCmd)
+			if err == nil && strings.TrimSpace(string(out)) == "" {
+				return true, nil
+			}
+			return false, err
+		}, "policy has been gc")
+
+		ginkgo.By("remove legacy lsp")
+		deleteLspCmd := fmt.Sprintf("ovn-nbctl --if-exists lsp-del %s.%s", pod.Name, pod.Namespace)
+		_, _, err = framework.NBExec(deleteLspCmd)
+		framework.ExpectNoError(err)
+		err = f.KubeOVNClientSet.KubeovnV1().IPs().Delete(context.Background(), fmt.Sprintf("%s.%s", pod.Name, pod.Namespace), metav1.DeleteOptions{})
+		framework.ExpectNoError(err)
 	})
 
 	framework.ConformanceIt("should support configuring routes via pod annotation", func() {
@@ -70,7 +141,7 @@ var _ = framework.Describe("[group:pod]", func() {
 		pod := framework.MakePod(namespaceName, podName, nil, annotations, f.KubeOVNImage, cmd, nil)
 		pod = podClient.CreateSync(pod)
 
-		ginkgo.By("Validating pod annoations")
+		ginkgo.By("Validating pod annotations")
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.CidrAnnotation, subnet.Spec.CIDRBlock)
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.GatewayAnnotation, subnet.Spec.Gateway)

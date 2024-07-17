@@ -898,18 +898,32 @@ func (c *Controller) reconcileRouteSubnets(cachedPod, pod *v1.Pod, needRoutePodN
 					}
 				}
 
-				if pod.Annotations[util.NorthGatewayAnnotation] != "" {
-					if err := c.addStaticRouteToVpc(
-						subnet.Spec.Vpc,
-						&kubeovnv1.StaticRoute{
-							Policy:     kubeovnv1.PolicySrc,
-							CIDR:       podIP,
-							NextHopIP:  pod.Annotations[util.NorthGatewayAnnotation],
-							RouteTable: subnet.Spec.RouteTable,
-						},
-					); err != nil {
-						klog.Errorf("failed to add static route, %v", err)
-						return err
+				if pod.Annotations[util.NorthGatewayAnnotation] != "" && pod.Annotations[util.IPAddressAnnotation] != "" {
+					for _, podAddr := range strings.Split(pod.Annotations[util.IPAddressAnnotation], ",") {
+						if util.CheckProtocol(podAddr) != util.CheckProtocol(pod.Annotations[util.NorthGatewayAnnotation]) {
+							continue
+						}
+						ipSuffix := "ip4"
+						if util.CheckProtocol(podAddr) == kubeovnv1.ProtocolIPv6 {
+							ipSuffix = "ip6"
+						}
+
+						if err := c.addPolicyRouteToVpc(
+							subnet.Spec.Vpc,
+							&kubeovnv1.PolicyRoute{
+								Priority:  util.NorthGatewayRoutePolicyPriority,
+								Match:     fmt.Sprintf("%s.src == %s", ipSuffix, podAddr),
+								Action:    kubeovnv1.PolicyRouteActionReroute,
+								NextHopIP: pod.Annotations[util.NorthGatewayAnnotation],
+							},
+							map[string]string{
+								"vendor": util.CniTypeName,
+								"subnet": subnet.Name,
+							},
+						); err != nil {
+							klog.Errorf("failed to add policy route, %v", err)
+							return err
+						}
 					}
 				} else if c.config.EnableEipSnat {
 					if err = c.deleteStaticRouteFromVpc(
@@ -1093,19 +1107,20 @@ func (c *Controller) handleDeletePod(key string) error {
 					klog.Error(err)
 					return err
 				}
-				// If pod has snat or eip, also need delete staticRoute when delete pod
-				if vpc.Name == c.config.ClusterRouter {
-					if err = c.deleteStaticRouteFromVpc(
-						vpc.Name,
-						subnet.Spec.RouteTable,
-						address.IP,
-						"",
-						kubeovnv1.PolicyDst,
-					); err != nil {
-						klog.Errorf("failed to delete static route, %v", err)
-						return err
-					}
+
+				ipSuffix := "ip4"
+				if util.CheckProtocol(address.IP) == kubeovnv1.ProtocolIPv6 {
+					ipSuffix = "ip6"
 				}
+				if err = c.deletePolicyRouteFromVpc(
+					vpc.Name,
+					util.NorthGatewayRoutePolicyPriority,
+					fmt.Sprintf("%s.src == %s", ipSuffix, address.IP),
+				); err != nil {
+					klog.Errorf("failed to delete static route, %v", err)
+					return err
+				}
+
 				if c.config.EnableEipSnat {
 					if pod.Annotations[util.EipAnnotation] != "" {
 						if err = c.OVNNbClient.DeleteNat(c.config.ClusterRouter, ovnnb.NATTypeDNATAndSNAT, pod.Annotations[util.EipAnnotation], address.IP); err != nil {
@@ -1122,7 +1137,7 @@ func (c *Controller) handleDeletePod(key string) error {
 		}
 		for _, port := range ports {
 			// when lsp is deleted, the port of pod is deleted from any port-group automatically.
-			klog.Infof("gc logical switch port %s", port.Name)
+			klog.Infof("delete logical switch port %s", port.Name)
 			if err := c.OVNNbClient.DeleteLogicalSwitchPort(port.Name); err != nil {
 				klog.Errorf("failed to delete lsp %s, %v", port.Name, err)
 				return err

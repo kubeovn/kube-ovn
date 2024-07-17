@@ -180,7 +180,7 @@ func (c *DeploymentClient) SetScale(deployment string, replicas int32) {
 	scale, err := c.GetScale(context.Background(), deployment, metav1.GetOptions{})
 	framework.ExpectNoError(err)
 	if scale.Spec.Replicas == replicas {
-		Logf("repliacs of deployment %s/%s has already been set to %d", c.namespace, deployment, replicas)
+		Logf("replicas of deployment %s/%s has already been set to %d", c.namespace, deployment, replicas)
 		return
 	}
 

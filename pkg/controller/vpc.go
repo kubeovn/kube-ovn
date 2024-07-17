@@ -348,27 +348,27 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		}
 		gatewayV4, gatewayV6 := util.SplitStringIP(joinSubnet.Spec.Gateway)
 		if gatewayV4 != "" {
-			for tabele := range staticRouteMapping {
+			for table := range staticRouteMapping {
 				staticTargetRoutes = append(
 					staticTargetRoutes,
 					&kubeovnv1.StaticRoute{
 						Policy:     kubeovnv1.PolicyDst,
 						CIDR:       "0.0.0.0/0",
 						NextHopIP:  gatewayV4,
-						RouteTable: tabele,
+						RouteTable: table,
 					},
 				)
 			}
 		}
 		if gatewayV6 != "" {
-			for tabele := range staticRouteMapping {
+			for table := range staticRouteMapping {
 				staticTargetRoutes = append(
 					staticTargetRoutes,
 					&kubeovnv1.StaticRoute{
 						Policy:     kubeovnv1.PolicyDst,
 						CIDR:       "::/0",
 						NextHopIP:  gatewayV6,
-						RouteTable: tabele,
+						RouteTable: table,
 					},
 				)
 			}
@@ -563,7 +563,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 				return err
 			}
 			if externalSubnet.Spec.LogicalGateway {
-				klog.Infof("no need to hanlde external connection for logical gw external subnet %s", c.config.ExternalGatewaySwitch)
+				klog.Infof("no need to handle external connection for logical gw external subnet %s", c.config.ExternalGatewaySwitch)
 				return nil
 			}
 			if !cachedVpc.Status.EnableExternal {
@@ -672,7 +672,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 	return nil
 }
 
-func (c *Controller) addPolicyRouteToVpc(name string, policy *kubeovnv1.PolicyRoute, externalIDs map[string]string) error {
+func (c *Controller) addPolicyRouteToVpc(vpcName string, policy *kubeovnv1.PolicyRoute, externalIDs map[string]string) error {
 	var (
 		nextHops []string
 		err      error
@@ -682,25 +682,25 @@ func (c *Controller) addPolicyRouteToVpc(name string, policy *kubeovnv1.PolicyRo
 		nextHops = strings.Split(policy.NextHopIP, ",")
 	}
 
-	if err = c.OVNNbClient.AddLogicalRouterPolicy(name, policy.Priority, policy.Match, string(policy.Action), nextHops, externalIDs); err != nil {
-		klog.Errorf("add policy route to vpc %s failed, %v", name, err)
+	if err = c.OVNNbClient.AddLogicalRouterPolicy(vpcName, policy.Priority, policy.Match, string(policy.Action), nextHops, externalIDs); err != nil {
+		klog.Errorf("add policy route to vpc %s failed, %v", vpcName, err)
 		return err
 	}
 	return nil
 }
 
-func (c *Controller) deletePolicyRouteFromVpc(name string, priority int, match string) error {
+func (c *Controller) deletePolicyRouteFromVpc(vpcName string, priority int, match string) error {
 	var (
 		vpc, cachedVpc *kubeovnv1.Vpc
 		err            error
 	)
 
-	if err = c.OVNNbClient.DeleteLogicalRouterPolicy(name, priority, match); err != nil {
+	if err = c.OVNNbClient.DeleteLogicalRouterPolicy(vpcName, priority, match); err != nil {
 		klog.Error(err)
 		return err
 	}
 
-	cachedVpc, err = c.vpcsLister.Get(name)
+	cachedVpc, err = c.vpcsLister.Get(vpcName)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil

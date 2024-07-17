@@ -1614,28 +1614,9 @@ func (c *Controller) reconcileDistributedSubnetRouteInDefaultVpc(subnet *kubeovn
 				continue
 			}
 
-			if pod.Annotations[util.NorthGatewayAnnotation] != "" {
-				if err := c.addStaticRouteToVpc(
-					subnet.Spec.Vpc,
-					&kubeovnv1.StaticRoute{
-						Policy:     kubeovnv1.PolicySrc,
-						CIDR:       pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, podNet.ProviderName)],
-						NextHopIP:  pod.Annotations[util.NorthGatewayAnnotation],
-						RouteTable: util.MainRouteTable,
-					},
-				); err != nil {
-					klog.Errorf("add static route failed, %v", err)
-					return err
-				}
-			} else {
-				podName := c.getNameByPod(pod)
-				portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
-				podPorts = append(podPorts, portName)
-			}
-		}
-
-		if pod.Annotations[util.NorthGatewayAnnotation] != "" {
-			continue
+			podName := c.getNameByPod(pod)
+			portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
+			podPorts = append(podPorts, portName)
 		}
 
 		pgName := getOverlaySubnetsPortGroupName(subnet.Name, pod.Spec.NodeName)
@@ -2795,13 +2776,13 @@ func (c *Controller) addPolicyRouteForU2OInterconn(subnet *kubeovnv1.Subnet) err
 
 		/*
 			policy1:
-			prio 29400 match: "ip4.dst == underlay subnet cidr"                         action: allow
+			priority 29400 match: "ip4.dst == underlay subnet cidr"                         action: allow
 
 			policy2:
-			prio 31000 match: "ip4.dst == node ips && ip4.src == underlay subnet cidr"  action: reroute physical gw
+			priority 31000 match: "ip4.dst == node ips && ip4.src == underlay subnet cidr"  action: reroute physical gw
 
 			policy3:
-			prio 29000 match: "ip4.src == underlay subnet cidr"                         action: reroute physical gw
+			priority 29000 match: "ip4.src == underlay subnet cidr"                         action: reroute physical gw
 
 			comment:
 			policy1 and policy2 allow overlay pod access underlay but when overlay pod access node ip, it should go join subnet,
@@ -3192,15 +3173,15 @@ func (c *Controller) findSubnetByNetworkAttachmentDefinition(ns, name string, su
 		return nil, err
 	}
 
-	var provder string
+	var provider string
 	if netCfg.Conf.Type == util.CniTypeName {
-		provder = fmt.Sprintf("%s.%s.%s", name, ns, util.OvnProvider)
+		provider = fmt.Sprintf("%s.%s.%s", name, ns, util.OvnProvider)
 	} else {
-		provder = fmt.Sprintf("%s.%s", name, ns)
+		provider = fmt.Sprintf("%s.%s", name, ns)
 	}
 	var subnet *kubeovnv1.Subnet
 	for _, s := range subnets {
-		if s.Spec.Provider == provder {
+		if s.Spec.Provider == provider {
 			subnet = s.DeepCopy()
 			break
 		}
