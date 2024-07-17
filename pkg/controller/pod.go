@@ -181,6 +181,10 @@ func (c *Controller) enqueueAddPod(obj interface{}) {
 	}
 
 	p := obj.(*v1.Pod)
+	if p.Spec.HostNetwork {
+		return
+	}
+
 	// TODO: we need to find a way to reduce duplicated np added to the queue
 	if c.config.EnableNP {
 		c.namedPort.AddNamedPortByPod(p)
@@ -189,10 +193,6 @@ func (c *Controller) enqueueAddPod(obj interface{}) {
 				c.updateNpQueue.Add(np)
 			}
 		}
-	}
-
-	if p.Spec.HostNetwork {
-		return
 	}
 
 	if !isPodAlive(p) {
@@ -237,6 +237,10 @@ func (c *Controller) enqueueDeletePod(obj interface{}) {
 	}
 
 	p := obj.(*v1.Pod)
+	if p.Spec.HostNetwork {
+		return
+	}
+
 	if c.config.EnableNP {
 		c.namedPort.DeleteNamedPortByPod(p)
 		for _, np := range c.podMatchNetworkPolicies(p) {
@@ -244,8 +248,9 @@ func (c *Controller) enqueueDeletePod(obj interface{}) {
 		}
 	}
 
-	if p.Spec.HostNetwork {
-		return
+	if c.config.EnableANP {
+		podNs, _ := c.namespacesLister.Get(obj.(*v1.Pod).Namespace)
+		c.updateAnpsByLabelsMatch(podNs.Labels, obj.(*v1.Pod).Labels)
 	}
 
 	klog.Infof("enqueue delete pod %s", key)
@@ -284,6 +289,9 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 	if oldPod.ResourceVersion == newPod.ResourceVersion {
 		return
 	}
+	if newPod.Spec.HostNetwork {
+		return
+	}
 
 	key, err := cache.MetaNamespaceKeyFunc(newObj)
 	if err != nil {
@@ -320,8 +328,20 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 		}
 	}
 
-	if newPod.Spec.HostNetwork {
-		return
+	if c.config.EnableANP {
+		podNs, _ := c.namespacesLister.Get(newPod.Namespace)
+		if !reflect.DeepEqual(oldPod.Labels, newPod.Labels) {
+			c.updateAnpsByLabelsMatch(podNs.Labels, newPod.Labels)
+		}
+
+		for _, podNet := range podNets {
+			oldAllocated := oldPod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)]
+			newAllocated := newPod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)]
+			if oldAllocated != newAllocated {
+				c.updateAnpsByLabelsMatch(podNs.Labels, newPod.Labels)
+				break
+			}
+		}
 	}
 
 	isStateful, statefulSetName, statefulSetUID := isStatefulSetPod(newPod)

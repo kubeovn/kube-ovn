@@ -25,6 +25,9 @@ import (
 	"k8s.io/klog/v2"
 	"k8s.io/utils/keymutex"
 
+	anpinformer "sigs.k8s.io/network-policy-api/pkg/client/informers/externalversions"
+	anplister "sigs.k8s.io/network-policy-api/pkg/client/listers/apis/v1alpha1"
+
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	kubeovninformer "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions"
 	kubeovnlister "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
@@ -36,14 +39,16 @@ import (
 const controllerAgentName = "kube-ovn-controller"
 
 const (
-	logicalSwitchKey      = "ls"
-	logicalRouterKey      = "lr"
-	portGroupKey          = "pg"
-	networkPolicyKey      = "np"
-	sgKey                 = "sg"
-	associatedSgKeyPrefix = "associated_sg_"
-	sgsKey                = "security_groups"
-	u2oKey                = "u2o"
+	logicalSwitchKey              = "ls"
+	logicalRouterKey              = "lr"
+	portGroupKey                  = "pg"
+	networkPolicyKey              = "np"
+	sgKey                         = "sg"
+	associatedSgKeyPrefix         = "associated_sg_"
+	sgsKey                        = "security_groups"
+	u2oKey                        = "u2o"
+	adminNetworkPolicyKey         = "anp"
+	baselineAdminNetworkPolicyKey = "banp"
 )
 
 // Controller is kube-ovn main controller that watch ns/pod/node/svc/ep and operate ovn
@@ -52,9 +57,11 @@ type Controller struct {
 	vpcs   *sync.Map
 
 	// subnetVpcMap *sync.Map
-	podSubnetMap *sync.Map
-	ipam         *ovnipam.IPAM
-	namedPort    *NamedPort
+	podSubnetMap   *sync.Map
+	ipam           *ovnipam.IPAM
+	namedPort      *NamedPort
+	anpPrioNameMap map[int32]string
+	anpNamePrioMap map[string]int32
 
 	OVNNbClient ovs.NbClient
 	OVNSbClient ovs.SbClient
@@ -235,10 +242,25 @@ type Controller struct {
 	configMapsLister v1.ConfigMapLister
 	configMapsSynced cache.InformerSynced
 
+	anpsLister     anplister.AdminNetworkPolicyLister
+	anpsSynced     cache.InformerSynced
+	addAnpQueue    workqueue.RateLimitingInterface
+	updateAnpQueue workqueue.RateLimitingInterface
+	deleteAnpQueue workqueue.RateLimitingInterface
+	anpKeyMutex    keymutex.KeyMutex
+
+	banpsLister     anplister.BaselineAdminNetworkPolicyLister
+	banpsSynced     cache.InformerSynced
+	addBanpQueue    workqueue.RateLimitingInterface
+	updateBanpQueue workqueue.RateLimitingInterface
+	deleteBanpQueue workqueue.RateLimitingInterface
+	banpKeyMutex    keymutex.KeyMutex
+
 	recorder               record.EventRecorder
 	informerFactory        kubeinformers.SharedInformerFactory
 	cmInformerFactory      kubeinformers.SharedInformerFactory
 	kubeovnInformerFactory kubeovninformer.SharedInformerFactory
+	anpInformerFactory     anpinformer.SharedInformerFactory
 }
 
 // Run creates and runs a new ovn controller
@@ -264,6 +286,10 @@ func Run(ctx context.Context, config *Configuration) {
 		}), kubeinformers.WithNamespace(config.PodNamespace))
 	kubeovnInformerFactory := kubeovninformer.NewSharedInformerFactoryWithOptions(config.KubeOvnFactoryClient, 0,
 		kubeovninformer.WithTweakListOptions(func(listOption *metav1.ListOptions) {
+			listOption.AllowWatchBookmarks = true
+		}))
+	anpInformerFactory := anpinformer.NewSharedInformerFactoryWithOptions(config.AnpClient, 0,
+		anpinformer.WithTweakListOptions(func(listOption *metav1.ListOptions) {
 			listOption.AllowWatchBookmarks = true
 		}))
 
@@ -294,6 +320,8 @@ func Run(ctx context.Context, config *Configuration) {
 	ovnFipInformer := kubeovnInformerFactory.Kubeovn().V1().OvnFips()
 	ovnSnatRuleInformer := kubeovnInformerFactory.Kubeovn().V1().OvnSnatRules()
 	ovnDnatRuleInformer := kubeovnInformerFactory.Kubeovn().V1().OvnDnatRules()
+	anpInformer := anpInformerFactory.Policy().V1alpha1().AdminNetworkPolicies()
+	banpInformer := anpInformerFactory.Policy().V1alpha1().BaselineAdminNetworkPolicies()
 
 	numKeyLocks := runtime.NumCPU() * 2
 	if numKeyLocks < config.WorkerNum*2 {
@@ -469,6 +497,7 @@ func Run(ctx context.Context, config *Configuration) {
 		informerFactory:        informerFactory,
 		cmInformerFactory:      cmInformerFactory,
 		kubeovnInformerFactory: kubeovnInformerFactory,
+		anpInformerFactory:     anpInformerFactory,
 	}
 
 	var err error
@@ -508,6 +537,22 @@ func Run(ctx context.Context, config *Configuration) {
 		controller.npKeyMutex = keymutex.NewHashed(numKeyLocks)
 	}
 
+	if config.EnableANP {
+		controller.anpsLister = anpInformer.Lister()
+		controller.anpsSynced = anpInformer.Informer().HasSynced
+		controller.addAnpQueue = workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddAnp")
+		controller.updateAnpQueue = workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateAnp")
+		controller.deleteAnpQueue = workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteAnp")
+		controller.anpKeyMutex = keymutex.NewHashed(numKeyLocks)
+
+		controller.banpsLister = banpInformer.Lister()
+		controller.banpsSynced = banpInformer.Informer().HasSynced
+		controller.addBanpQueue = workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddBanp")
+		controller.updateBanpQueue = workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateBanp")
+		controller.deleteBanpQueue = workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteBanp")
+		controller.banpKeyMutex = keymutex.NewHashed(numKeyLocks)
+	}
+
 	defer controller.shutdown()
 	klog.Info("Starting OVN controller")
 
@@ -515,6 +560,7 @@ func Run(ctx context.Context, config *Configuration) {
 	controller.informerFactory.Start(ctx.Done())
 	controller.cmInformerFactory.Start(ctx.Done())
 	controller.kubeovnInformerFactory.Start(ctx.Done())
+	controller.anpInformerFactory.Start(ctx.Done())
 
 	klog.Info("Waiting for informer caches to sync")
 	cacheSyncs := []cache.InformerSynced{
@@ -531,6 +577,9 @@ func Run(ctx context.Context, config *Configuration) {
 	}
 	if controller.config.EnableNP {
 		cacheSyncs = append(cacheSyncs, controller.npsSynced)
+	}
+	if controller.config.EnableANP {
+		cacheSyncs = append(cacheSyncs, controller.anpsSynced, controller.banpsSynced)
 	}
 	if !cache.WaitForCacheSync(ctx.Done(), cacheSyncs...) {
 		util.LogFatalAndExit(nil, "failed to wait for caches to sync")
@@ -739,6 +788,29 @@ func Run(ctx context.Context, config *Configuration) {
 		}
 	}
 
+	if config.EnableANP {
+		if _, err = anpInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc:    controller.enqueueAddAnp,
+			UpdateFunc: controller.enqueueUpdateAnp,
+			DeleteFunc: controller.enqueueDeleteAnp,
+		}); err != nil {
+			util.LogFatalAndExit(err, "failed to add admin network policy event handler")
+		}
+
+		if _, err = banpInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc:    controller.enqueueAddBanp,
+			UpdateFunc: controller.enqueueUpdateBanp,
+			DeleteFunc: controller.enqueueDeleteBanp,
+		}); err != nil {
+			util.LogFatalAndExit(err, "failed to add baseline admin network policy event handler")
+		}
+
+		if controller.anpPrioNameMap == nil {
+			controller.anpPrioNameMap = make(map[int32]string, 100)
+			controller.anpNamePrioMap = make(map[string]int32, 100)
+		}
+	}
+
 	controller.Run(ctx)
 }
 
@@ -910,6 +982,16 @@ func (c *Controller) shutdown() {
 		c.updateNpQueue.ShutDown()
 		c.deleteNpQueue.ShutDown()
 	}
+	if c.config.EnableANP {
+		c.addAnpQueue.ShutDown()
+		c.updateAnpQueue.ShutDown()
+		c.deleteAnpQueue.ShutDown()
+
+		c.addBanpQueue.ShutDown()
+		c.updateBanpQueue.ShutDown()
+		c.deleteBanpQueue.ShutDown()
+	}
+
 	c.addOrUpdateSgQueue.ShutDown()
 	c.delSgQueue.ShutDown()
 	c.syncSgPortsQueue.ShutDown()
@@ -1107,6 +1189,16 @@ func (c *Controller) startWorkers(ctx context.Context) {
 	go wait.Until(c.runAddQoSPolicyWorker, time.Second, ctx.Done())
 	go wait.Until(c.runUpdateQoSPolicyWorker, time.Second, ctx.Done())
 	go wait.Until(c.runDelQoSPolicyWorker, time.Second, ctx.Done())
+
+	if c.config.EnableANP {
+		go wait.Until(c.runAddAnpWorker, time.Second, ctx.Done())
+		go wait.Until(c.runUpdateAnpWorker, time.Second, ctx.Done())
+		go wait.Until(c.runDeleteAnpWorker, time.Second, ctx.Done())
+
+		go wait.Until(c.runAddBanpWorker, time.Second, ctx.Done())
+		go wait.Until(c.runUpdateBanpWorker, time.Second, ctx.Done())
+		go wait.Until(c.runDeleteBanpWorker, time.Second, ctx.Done())
+	}
 }
 
 func (c *Controller) allSubnetReady(subnets ...string) (bool, error) {
