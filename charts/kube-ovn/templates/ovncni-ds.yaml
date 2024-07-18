@@ -82,7 +82,13 @@ spec:
           - --ovs-vsctl-concurrency={{ .Values.performance.OVS_VSCTL_CONCURRENCY }}
         securityContext:
           runAsUser: 0
-          privileged: true
+          privileged: false
+          capabilities:
+            add:
+              - NET_ADMIN
+              - NET_BIND_SERVICE
+              - NET_RAW
+              - SYS_ADMIN
         env:
           - name: ENABLE_SSL
             value: "{{ .Values.networking.ENABLE_SSL }}"
@@ -119,7 +125,7 @@ spec:
             name: cni-conf
           - mountPath: /run/openvswitch
             name: host-run-ovs
-            mountPropagation: Bidirectional
+            mountPropagation: HostToContainer
           - mountPath: /run/ovn
             name: host-run-ovn
           - mountPath: /host/var/run/dbus

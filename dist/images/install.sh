@@ -3278,8 +3278,12 @@ spec:
           command:
           - /kube-ovn/start-db.sh
           securityContext:
+            runAsUser: 0
+            privileged: false
             capabilities:
-              add: ["SYS_NICE"]
+              add:
+                - NET_BIND_SERVICE
+                - SYS_NICE
           env:
             - name: ENABLE_SSL
               value: "$ENABLE_SSL"
@@ -3609,7 +3613,13 @@ spec:
           - /kube-ovn/start-ovs.sh
           securityContext:
             runAsUser: 0
-            privileged: true
+            privileged: false
+            capabilities:
+              add:
+                - NET_ADMIN
+                - NET_BIND_SERVICE
+                - SYS_MODULE
+                - SYS_NICE
           env:
             - name: ENABLE_SSL
               value: "$ENABLE_SSL"
@@ -4016,6 +4026,12 @@ spec:
           - --enable-lb-svc=$ENABLE_LB_SVC
           - --keep-vm-ip=$ENABLE_KEEP_VM_IP
           - --node-local-dns-ip=$NODE_LOCAL_DNS_IP
+          securityContext:
+            runAsUser: 0
+            privileged: false
+            capabilities:
+              add:
+                - NET_BIND_SERVICE
           env:
             - name: ENABLE_SSL
               value: "$ENABLE_SSL"
@@ -4159,7 +4175,13 @@ spec:
           - --ovs-vsctl-concurrency=$OVS_VSCTL_CONCURRENCY
         securityContext:
           runAsUser: 0
-          privileged: true
+          privileged: false
+          capabilities:
+            add:
+              - NET_ADMIN
+              - NET_BIND_SERVICE
+              - NET_RAW
+              - SYS_ADMIN
         env:
           - name: ENABLE_SSL
             value: "$ENABLE_SSL"
@@ -4196,7 +4218,7 @@ spec:
             name: cni-conf
           - mountPath: /run/openvswitch
             name: host-run-ovs
-            mountPropagation: Bidirectional
+            mountPropagation: HostToContainer
           - mountPath: /run/ovn
             name: host-run-ovn
           - mountPath: /host/var/run/dbus
@@ -4204,7 +4226,7 @@ spec:
             mountPropagation: HostToContainer
           - mountPath: /var/run/netns
             name: host-ns
-            mountPropagation: Bidirectional
+            mountPropagation: HostToContainer
           - mountPath: /var/log/kube-ovn
             name: kube-ovn-log
           - mountPath: /var/log/openvswitch

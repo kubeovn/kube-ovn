@@ -116,6 +116,12 @@ spec:
           - --keep-vm-ip={{- .Values.func.ENABLE_KEEP_VM_IP }}
           - --enable-metrics={{- .Values.networking.ENABLE_METRICS }}
           - --node-local-dns-ip={{- .Values.networking.NODE_LOCAL_DNS_IP }}
+          securityContext:
+            runAsUser: 0
+            privileged: false
+            capabilities:
+              add:
+                - NET_BIND_SERVICE
           env:
             - name: ENABLE_SSL
               value: "{{ .Values.networking.ENABLE_SSL }}"
