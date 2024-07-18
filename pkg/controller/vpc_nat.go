@@ -9,9 +9,8 @@ import (
 )
 
 var (
-	vpcNatImage              = ""
-	vpcNatGwEnableBgpSpeaker = false
-	vpcNatGwBgpSpeakerImage  = ""
+	vpcNatImage             = ""
+	vpcNatGwBgpSpeakerImage = ""
 )
 
 func (c *Controller) resyncVpcNatImage() {
@@ -30,16 +29,5 @@ func (c *Controller) resyncVpcNatImage() {
 	}
 	vpcNatImage = image
 
-	// Check BGP is enabled on the NAT GW, if yes, verify required parameters are present
-	enableBgpSpeaker, exist := cm.Data["enableBgpSpeaker"]
-	if exist && enableBgpSpeaker == "true" {
-		vpcNatGwEnableBgpSpeaker = true
-
-		vpcNatGwBgpSpeakerImage, exist = cm.Data["bgpSpeakerImage"]
-		if !exist {
-			err = fmt.Errorf("%s should have bgp speaker image field if bgp enabled", util.VpcNatConfig)
-			klog.Error(err)
-			return
-		}
-	}
+	vpcNatGwBgpSpeakerImage = cm.Data["bgpSpeakerImage"]
 }

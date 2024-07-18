@@ -782,7 +782,7 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 		util.IPAddressAnnotation:         gw.Spec.LanIP,
 	}
 
-	if vpcNatGwEnableBgpSpeaker && gw.Spec.BgpSpeaker.Enabled { // Add an interface that can reach the API server
+	if gw.Spec.BgpSpeaker.Enabled { // Add an interface that can reach the API server
 		defaultSubnet, err := c.subnetsLister.Get(c.config.DefaultLogicalSwitch)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get default subnet %s: %v", c.config.DefaultLogicalSwitch, err)
@@ -906,8 +906,13 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 	}
 
 	// BGP speaker for GWs must be enabled globally and for this specific instance
-	if vpcNatGwEnableBgpSpeaker && gw.Spec.BgpSpeaker.Enabled {
+	if gw.Spec.BgpSpeaker.Enabled {
 		containers := sts.Spec.Template.Spec.Containers
+
+		// We need a speaker image configured in the NAT GW ConfigMap
+		if vpcNatGwBgpSpeakerImage == "" {
+			return nil, fmt.Errorf("%s should have bgp speaker image field if bgp enabled", util.VpcNatConfig)
+		}
 
 		args := []string{
 			"--nat-gw-mode",
