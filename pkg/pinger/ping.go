@@ -107,13 +107,13 @@ func pingNodes(config *Configuration, setMetrics bool) error {
 			if addr.Type == v1.NodeInternalIP && slices.Contains(config.PodProtocols, util.CheckProtocol(addr.Address)) {
 				func(nodeIP, nodeName string) {
 					if config.EnableVerboseConnCheck {
-						if err := util.TCPConnectivityCheck(fmt.Sprintf("%s:%d", nodeIP, config.TCPConnCheckPort)); err != nil {
+						if err := util.TCPConnectivityCheck(util.JoinHostPort(nodeIP, config.TCPConnCheckPort)); err != nil {
 							klog.Infof("TCP connectivity to node %s %s failed", nodeName, nodeIP)
 							pingErr = err
 						} else {
 							klog.Infof("TCP connectivity to node %s %s success", nodeName, nodeIP)
 						}
-						if err := util.UDPConnectivityCheck(fmt.Sprintf("%s:%d", nodeIP, config.UDPConnCheckPort)); err != nil {
+						if err := util.UDPConnectivityCheck(util.JoinHostPort(nodeIP, config.UDPConnCheckPort)); err != nil {
 							klog.Infof("UDP connectivity to node %s %s failed", nodeName, nodeIP)
 							pingErr = err
 						} else {
@@ -180,14 +180,14 @@ func pingPods(config *Configuration, setMetrics bool) error {
 			if slices.Contains(config.PodProtocols, util.CheckProtocol(podIP.IP)) {
 				func(podIP, podName, nodeIP, nodeName string) {
 					if config.EnableVerboseConnCheck {
-						if err := util.TCPConnectivityCheck(fmt.Sprintf("%s:%d", podIP, config.TCPConnCheckPort)); err != nil {
+						if err := util.TCPConnectivityCheck(util.JoinHostPort(podIP, config.TCPConnCheckPort)); err != nil {
 							klog.Infof("TCP connectivity to pod %s %s failed", podName, podIP)
 							pingErr = err
 						} else {
 							klog.Infof("TCP connectivity to pod %s %s success", podName, podIP)
 						}
 
-						if err := util.UDPConnectivityCheck(fmt.Sprintf("%s:%d", podIP, config.UDPConnCheckPort)); err != nil {
+						if err := util.UDPConnectivityCheck(util.JoinHostPort(podIP, config.UDPConnCheckPort)); err != nil {
 							klog.Infof("UDP connectivity to pod %s %s failed", podName, podIP)
 							pingErr = err
 						} else {

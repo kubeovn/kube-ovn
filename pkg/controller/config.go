@@ -21,7 +21,6 @@ import (
 
 // Configuration is the controller conf
 type Configuration struct {
-	BindAddress            string
 	OvnNbAddr              string
 	OvnSbAddr              string
 	OvnTimeout             int
@@ -68,8 +67,9 @@ type Configuration struct {
 	PodNicType   string
 
 	WorkerNum       int
-	PprofPort       int
+	PprofPort       int32
 	EnablePprof     bool
+	SecureServing   bool
 	NodePgProbeTime int
 
 	NetworkType             string
@@ -143,7 +143,8 @@ func ParseFlags() (*Configuration, error) {
 
 		argWorkerNum       = pflag.Int("worker-num", 3, "The parallelism of each worker")
 		argEnablePprof     = pflag.Bool("enable-pprof", false, "Enable pprof")
-		argPprofPort       = pflag.Int("pprof-port", 10660, "The port to get profiling data")
+		argPprofPort       = pflag.Int32("pprof-port", 10660, "The port to get profiling data")
+		argSecureServing   = pflag.Bool("secure-serving", false, "Enable secure serving")
 		argNodePgProbeTime = pflag.Int("nodepg-probe-time", 1, "The probe interval for node port-group, the unit is minute")
 
 		argNetworkType             = pflag.String("network-type", util.NetworkTypeGeneve, "The ovn network type")
@@ -226,6 +227,7 @@ func ParseFlags() (*Configuration, error) {
 		WorkerNum:                      *argWorkerNum,
 		EnablePprof:                    *argEnablePprof,
 		PprofPort:                      *argPprofPort,
+		SecureServing:                  *argSecureServing,
 		NetworkType:                    *argNetworkType,
 		DefaultVlanID:                  *argDefaultVlanID,
 		LsDnatModDlDst:                 *argLsDnatModDlDst,
