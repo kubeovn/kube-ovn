@@ -10,7 +10,20 @@ subjects:
   - kind: ServiceAccount
     name: ovn
     namespace: {{ .Values.namespace }}
-
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ovn
+  namespace: {{ .Values.namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: extension-apiserver-authentication-reader
+subjects:
+  - kind: ServiceAccount
+    name: ovn
+    namespace: {{ .Values.namespace }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -43,7 +56,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: kube-ovn-cni
-  namespace: kube-system
+  namespace: {{ .Values.namespace }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
@@ -51,7 +64,7 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: kube-ovn-cni
-    namespace: kube-system
+    namespace: {{ .Values.namespace }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -70,7 +83,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: kube-ovn-app
-  namespace: kube-system
+  namespace: {{ .Values.namespace }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
@@ -78,4 +91,4 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: kube-ovn-app
-    namespace: kube-system
+    namespace: {{ .Values.namespace }}
