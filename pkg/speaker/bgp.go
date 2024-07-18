@@ -19,29 +19,29 @@ import (
 
 var maskMap = map[string]int{kubeovnv1.ProtocolIPv4: 32, kubeovnv1.ProtocolIPv6: 128}
 
-// reconciliateRoutes configures the BGP speaker to announce only the routes we are expected to announce
+// reconcileRoutes configures the BGP speaker to announce only the routes we are expected to announce
 // and to withdraw the ones that should not be announced anymore
-func (c *Controller) reconciliateRoutes(expectedPrefixes prefixMap) error {
+func (c *Controller) reconcileRoutes(expectedPrefixes prefixMap) error {
 	if len(c.config.NeighborAddresses) != 0 {
-		err := c.reconciliateIPFamily(kubeovnv1.ProtocolIPv4, expectedPrefixes)
+		err := c.reconcileIPFamily(kubeovnv1.ProtocolIPv4, expectedPrefixes)
 		if err != nil {
-			return fmt.Errorf("failed to reconciliate IPv4 routes: %w", err)
+			return fmt.Errorf("failed to reconcile IPv4 routes: %w", err)
 		}
 	}
 
 	if len(c.config.NeighborIPv6Addresses) != 0 {
-		err := c.reconciliateIPFamily(kubeovnv1.ProtocolIPv6, expectedPrefixes)
+		err := c.reconcileIPFamily(kubeovnv1.ProtocolIPv6, expectedPrefixes)
 		if err != nil {
-			return fmt.Errorf("failed to reconciliate IPv6 routes: %w", err)
+			return fmt.Errorf("failed to reconcile IPv6 routes: %w", err)
 		}
 	}
 
 	return nil
 }
 
-// reconciliateIPFamily announces prefixes we are not currently announcing and withdraws prefixes we should
+// reconcileIPFamily announces prefixes we are not currently announcing and withdraws prefixes we should
 // not be announcing for a given IP family (IPv4/IPv6)
-func (c *Controller) reconciliateIPFamily(ipFamily string, expectedPrefixes prefixMap) error {
+func (c *Controller) reconcileIPFamily(ipFamily string, expectedPrefixes prefixMap) error {
 	// Get the address family associated with the Kube-OVN family
 	afi, err := kubeOvnFamilyToAFI(ipFamily)
 	if err != nil {

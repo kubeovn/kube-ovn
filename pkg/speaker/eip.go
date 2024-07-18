@@ -51,5 +51,5 @@ func (c *Controller) announceEIPs(eips []*v1.IptablesEIP) error {
 		}
 	}
 
-	return c.reconciliateRoutes(expectedPrefixes)
+	return c.reconcileRoutes(expectedPrefixes)
 }

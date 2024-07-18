@@ -915,11 +915,68 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 		}
 
 		args := []string{
-			"--nat-gw-mode",
-			"-v5",
+			"--nat-gw-mode", // Force to run in  NAT GW mode, we're not announcing Pod IPs or Services, only EIPs
 		}
 
-		args = append(args, gw.Spec.BgpSpeaker.Parameters...)
+		speakerParams := gw.Spec.BgpSpeaker
+
+		if speakerParams.RouterID != "" { // Override default auto-selected RouterID
+			args = append(args, fmt.Sprintf("--router-id=%s", speakerParams.RouterID))
+		}
+
+		if speakerParams.Password != "" { // Password for TCP MD5 BGP
+			args = append(args, fmt.Sprintf("--auth-password=%s", speakerParams.Password))
+		}
+
+		if speakerParams.EnableGracefulRestart { // Enable graceful restart
+			args = append(args, "--graceful-restart")
+		}
+
+		if speakerParams.HoldTime != (metav1.Duration{}) { // Hold time
+			args = append(args, fmt.Sprintf("--holdtime=%s", speakerParams.HoldTime.Duration.String()))
+		}
+
+		if speakerParams.ASN == 0 { // The ASN we use to speak
+			return nil, fmt.Errorf("ASN not set, but must be non-zero value")
+		}
+
+		if speakerParams.RemoteASN == 0 { // The ASN we speak to
+			return nil, fmt.Errorf("remote ASN not set, but must be non-zero value")
+		}
+
+		args = append(args, fmt.Sprintf("--cluster-as=%d", speakerParams.ASN))
+		args = append(args, fmt.Sprintf("--neighbor-as=%d", speakerParams.RemoteASN))
+
+		if len(speakerParams.Neighbors) == 0 {
+			return nil, fmt.Errorf("no BGP neighbors specified")
+		}
+
+		var neighIPv4 []string
+		var neighIPv6 []string
+		for _, neighbor := range speakerParams.Neighbors {
+			switch util.CheckProtocol(neighbor) {
+			case kubeovnv1.ProtocolIPv4:
+				neighIPv4 = append(neighIPv4, neighbor)
+			case kubeovnv1.ProtocolIPv6:
+				neighIPv6 = append(neighIPv6, neighbor)
+			}
+		}
+
+		argNeighIPv4 := strings.Join(neighIPv4, ",")
+		argNeighIPv6 := strings.Join(neighIPv6, ",")
+		argNeighIPv4 = fmt.Sprintf("--neighbor-address=%s", argNeighIPv4)
+		argNeighIPv6 = fmt.Sprintf("--neighbor-ipv6-address=%s", argNeighIPv6)
+
+		if len(neighIPv4) > 0 {
+			args = append(args, argNeighIPv4)
+		}
+
+		if len(neighIPv6) > 0 {
+			args = append(args, argNeighIPv6)
+		}
+
+		// Extra args to start the speaker with, for example, logging levels...
+		args = append(args, speakerParams.ExtraArgs...)
 
 		sts.Spec.Template.Spec.ServiceAccountName = "vpc-nat-gw"
 		speakerContainer := corev1.Container{

@@ -746,7 +746,23 @@ spec:
                   properties:
                     enabled:
                       type: boolean
-                    parameters:
+                    asn:
+                      type: integer
+                    remoteAsn:
+                      type: integer
+                    neighbors:
+                      type: array
+                      items:
+                        type: string
+                    holdTime:
+                      type: string
+                    routerId:
+                      type: string
+                    password:
+                      type: string
+                    enableGracefulRestart:
+                      type: boolean
+                    extraArgs:
                       type: array
                       items:
                         type: string

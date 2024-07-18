@@ -528,8 +528,15 @@ type VpcNatSpec struct {
 }
 
 type VpcBgpSpeaker struct {
-	Enabled    bool     `json:"enabled"`
-	Parameters []string `json:"parameters"`
+	Enabled               bool            `json:"enabled"`
+	ASN                   uint32          `json:"asn"`
+	RemoteASN             uint32          `json:"remoteAsn"`
+	Neighbors             []string        `json:"neighbors"`
+	HoldTime              metav1.Duration `json:"holdTime"`
+	RouterID              string          `json:"routerId"`
+	Password              string          `json:"password"`
+	EnableGracefulRestart bool            `json:"enableGracefulRestart"`
+	ExtraArgs             []string        `json:"extraArgs"`
 }
 
 type VpcNatStatus struct {

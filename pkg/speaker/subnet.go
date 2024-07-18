@@ -115,7 +115,7 @@ func (c *Controller) syncSubnetRoutes() {
 		}
 	}
 
-	if err := c.reconciliateRoutes(bgpExpected); err != nil {
-		klog.Errorf("failed to reconciliate routes: %s", err.Error())
+	if err := c.reconcileRoutes(bgpExpected); err != nil {
+		klog.Errorf("failed to reconcile routes: %s", err.Error())
 	}
 }
