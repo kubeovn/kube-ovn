@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"net/http/pprof"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -23,11 +22,15 @@ import (
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/controller"
+	"github.com/kubeovn/kube-ovn/pkg/server"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/versions"
 )
 
-const ovnLeaderResource = "kube-ovn-controller"
+const (
+	svcName           = "kube-ovn-controller"
+	ovnLeaderResource = "kube-ovn-controller"
+)
 
 func CmdMain() {
 	defer klog.Flush()
@@ -68,27 +71,21 @@ func CmdMain() {
 			mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
 		}
 
-		addr := "0.0.0.0"
-		if os.Getenv("ENABLE_BIND_LOCAL_IP") == "true" {
-			podIpsEnv := os.Getenv("POD_IPS")
-			podIps := strings.Split(podIpsEnv, ",")
-			// when pod in dual mode, golang can't support bind v4 and v6 address in the same time,
-			// so not support bind local ip when in dual mode
-			if len(podIps) == 1 {
-				addr = podIps[0]
-				if util.CheckProtocol(podIps[0]) == kubeovnv1.ProtocolIPv6 {
-					addr = fmt.Sprintf("[%s]", podIps[0])
-				}
+		addr := util.JoinHostPort(util.GetDefaultListenAddr(), config.PprofPort)
+		if !config.SecureServing {
+			server := &http.Server{
+				Addr:              addr,
+				ReadHeaderTimeout: 3 * time.Second,
+				Handler:           mux,
 			}
+			util.LogFatalAndExit(server.ListenAndServe(), "failed to listen and server on %s", server.Addr)
+		} else {
+			ch, err := server.SecureServing(addr, svcName, mux)
+			if err != nil {
+				util.LogFatalAndExit(err, "failed to serve on %s", addr)
+			}
+			<-ch
 		}
-		// conform to Gosec G114
-		// https://github.com/securego/gosec#available-rules
-		server := &http.Server{
-			Addr:              fmt.Sprintf("%s:%d", addr, config.PprofPort),
-			ReadHeaderTimeout: 3 * time.Second,
-			Handler:           mux,
-		}
-		util.LogFatalAndExit(server.ListenAndServe(), "failed to listen and server on %s", server.Addr)
 	}()
 
 	//	ctx, cancel := context.WithCancel(context.Background())

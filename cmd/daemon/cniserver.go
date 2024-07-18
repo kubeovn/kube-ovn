@@ -18,9 +18,12 @@ import (
 	kubeovninformer "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions"
 	"github.com/kubeovn/kube-ovn/pkg/daemon"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/server"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/versions"
 )
+
+const svcName = "kube-ovn-cni"
 
 func CmdMain() {
 	defer klog.Flush()
@@ -97,31 +100,37 @@ func CmdMain() {
 	}
 
 	addr := util.GetDefaultListenAddr()
-
 	if config.EnableVerboseConnCheck {
 		go func() {
-			connListenaddr := fmt.Sprintf("%s:%d", addr, config.TCPConnCheckPort)
+			connListenaddr := util.JoinHostPort(addr, config.TCPConnCheckPort)
 			if err := util.TCPConnectivityListen(connListenaddr); err != nil {
 				util.LogFatalAndExit(err, "failed to start TCP listen on addr %s", addr)
 			}
 		}()
 
 		go func() {
-			connListenaddr := fmt.Sprintf("%s:%d", addr, config.UDPConnCheckPort)
+			connListenaddr := util.JoinHostPort(addr, config.UDPConnCheckPort)
 			if err := util.UDPConnectivityListen(connListenaddr); err != nil {
 				util.LogFatalAndExit(err, "failed to start UDP listen on addr %s", addr)
 			}
 		}()
 	}
 
-	// conform to Gosec G114
-	// https://github.com/securego/gosec#available-rules
-	server := &http.Server{
-		Addr:              fmt.Sprintf("%s:%d", addr, config.PprofPort),
-		ReadHeaderTimeout: 3 * time.Second,
-		Handler:           mux,
+	listenAddr := util.JoinHostPort(addr, config.PprofPort)
+	if !config.SecureServing {
+		server := &http.Server{
+			Addr:              listenAddr,
+			ReadHeaderTimeout: 3 * time.Second,
+			Handler:           mux,
+		}
+		util.LogFatalAndExit(server.ListenAndServe(), "failed to listen and server on %s", server.Addr)
+	} else {
+		ch, err := server.SecureServing(listenAddr, svcName, mux)
+		if err != nil {
+			util.LogFatalAndExit(err, "failed to serve on %s", listenAddr)
+		}
+		<-ch
 	}
-	util.LogFatalAndExit(server.ListenAndServe(), "failed to listen and serve on %s", server.Addr)
 }
 
 func mvCNIConf(configDir, configFile, confName string) error {
