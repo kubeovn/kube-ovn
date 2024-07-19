@@ -52,8 +52,8 @@ require (
 	k8s.io/pod-security-admission v0.30.3
 	k8s.io/sample-controller v0.30.3
 	k8s.io/utils v0.0.0-20240711033017-18e509b52bc8
-	kubevirt.io/api v1.2.0
-	kubevirt.io/client-go v1.2.0
+	kubevirt.io/api v1.3.0
+	kubevirt.io/client-go v1.3.0
 	sigs.k8s.io/controller-runtime v0.18.4
 )
 
@@ -249,7 +249,7 @@ require (
 	k8s.io/csi-translation-lib v0.30.3 // indirect
 	k8s.io/dynamic-resource-allocation v0.0.0 // indirect
 	k8s.io/kms v0.30.3 // indirect
-	k8s.io/kube-openapi v0.0.0-20240430033511-f0e62f92d13f // indirect
+	k8s.io/kube-openapi v0.30.0 // indirect
 	k8s.io/kube-scheduler v0.0.0 // indirect
 	k8s.io/kubelet v0.30.3 // indirect
 	k8s.io/legacy-cloud-providers v0.0.0 // indirect
@@ -286,6 +286,7 @@ replace (
 	k8s.io/endpointslice => k8s.io/endpointslice v0.30.3
 	k8s.io/kube-aggregator => k8s.io/kube-aggregator v0.30.3
 	k8s.io/kube-controller-manager => k8s.io/kube-controller-manager v0.30.3
+	k8s.io/kube-openapi => k8s.io/kube-openapi v0.0.0-20240430033511-f0e62f92d13f
 	k8s.io/kube-proxy => k8s.io/kube-proxy v0.30.3
 	k8s.io/kube-scheduler => k8s.io/kube-scheduler v0.30.3
 	k8s.io/kubectl => k8s.io/kubectl v0.30.3
@@ -295,5 +296,5 @@ replace (
 	k8s.io/mount-utils => k8s.io/mount-utils v0.30.3
 	k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.30.3
 	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.30.3
-	kubevirt.io/client-go => github.com/kubeovn/kubevirt-client-go v0.0.0-20240430072310-d367a71d7cd7
+	kubevirt.io/client-go => github.com/kubeovn/kubevirt-client-go v0.0.0-20240719051923-4613ee8d79ec
 )
