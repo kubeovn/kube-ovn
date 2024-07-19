@@ -37,7 +37,7 @@ func (f *Framework) VMClientNS(namespace string) *VMClient {
 
 func (c *VMClient) Get(name string) *v1.VirtualMachine {
 	ginkgo.GinkgoHelper()
-	vm, err := c.VirtualMachineInterface.Get(context.TODO(), name, &metav1.GetOptions{})
+	vm, err := c.VirtualMachineInterface.Get(context.TODO(), name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return vm
 }
@@ -45,7 +45,7 @@ func (c *VMClient) Get(name string) *v1.VirtualMachine {
 // Create creates a new vm according to the framework specifications
 func (c *VMClient) Create(vm *v1.VirtualMachine) *v1.VirtualMachine {
 	ginkgo.GinkgoHelper()
-	v, err := c.VirtualMachineInterface.Create(context.TODO(), vm)
+	v, err := c.VirtualMachineInterface.Create(context.TODO(), vm, metav1.CreateOptions{})
 	ExpectNoError(err, "failed to create vm %s", v.Name)
 	return c.Get(v.Name)
 }
@@ -72,7 +72,7 @@ func (c *VMClient) Start(name string) *v1.VirtualMachine {
 
 	running := true
 	vm.Spec.Running = &running
-	_, err := c.VirtualMachineInterface.Update(context.TODO(), vm)
+	_, err := c.VirtualMachineInterface.Update(context.TODO(), vm, metav1.UpdateOptions{})
 	ExpectNoError(err, "failed to update vm %s", name)
 	return c.Get(name)
 }
@@ -97,7 +97,7 @@ func (c *VMClient) Stop(name string) *v1.VirtualMachine {
 
 	running := false
 	vm.Spec.Running = &running
-	_, err := c.VirtualMachineInterface.Update(context.TODO(), vm)
+	_, err := c.VirtualMachineInterface.Update(context.TODO(), vm, metav1.UpdateOptions{})
 	ExpectNoError(err, "failed to update vm %s", name)
 	return c.Get(name)
 }
@@ -113,7 +113,7 @@ func (c *VMClient) StopSync(name string) *v1.VirtualMachine {
 // Delete deletes a vm if the vm exists
 func (c *VMClient) Delete(name string) {
 	ginkgo.GinkgoHelper()
-	err := c.VirtualMachineInterface.Delete(context.TODO(), name, &metav1.DeleteOptions{})
+	err := c.VirtualMachineInterface.Delete(context.TODO(), name, metav1.DeleteOptions{})
 	ExpectNoError(err, "failed to delete vm %s", name)
 }
 
@@ -128,7 +128,7 @@ func (c *VMClient) DeleteSync(name string) {
 // WaitToDisappear waits the given timeout duration for the specified vm to be ready.
 func (c *VMClient) WaitToBeReady(name string, timeout time.Duration) error {
 	err := k8sframework.Gomega().Eventually(context.TODO(), k8sframework.RetryNotFound(func(ctx context.Context) (*v1.VirtualMachine, error) {
-		return c.VirtualMachineInterface.Get(ctx, name, &metav1.GetOptions{})
+		return c.VirtualMachineInterface.Get(ctx, name, metav1.GetOptions{})
 	})).WithTimeout(timeout).Should(
 		k8sframework.MakeMatcher(func(vm *v1.VirtualMachine) (func() string, error) {
 			if vm.Status.Ready {
@@ -147,7 +147,7 @@ func (c *VMClient) WaitToBeReady(name string, timeout time.Duration) error {
 // WaitToDisappear waits the given timeout duration for the specified vm to be stopped.
 func (c *VMClient) WaitToBeStopped(name string, timeout time.Duration) error {
 	err := k8sframework.Gomega().Eventually(context.TODO(), k8sframework.RetryNotFound(func(ctx context.Context) (*v1.VirtualMachine, error) {
-		return c.VirtualMachineInterface.Get(ctx, name, &metav1.GetOptions{})
+		return c.VirtualMachineInterface.Get(ctx, name, metav1.GetOptions{})
 	})).WithTimeout(timeout).Should(
 		k8sframework.MakeMatcher(func(vm *v1.VirtualMachine) (func() string, error) {
 			if !vm.Status.Created {
@@ -166,7 +166,7 @@ func (c *VMClient) WaitToBeStopped(name string, timeout time.Duration) error {
 // WaitToDisappear waits the given timeout duration for the specified vm to disappear.
 func (c *VMClient) WaitToDisappear(name string, _, timeout time.Duration) error {
 	err := k8sframework.Gomega().Eventually(context.Background(), k8sframework.HandleRetry(func(ctx context.Context) (*v1.VirtualMachine, error) {
-		vm, err := c.VirtualMachineInterface.Get(ctx, name, &metav1.GetOptions{})
+		vm, err := c.VirtualMachineInterface.Get(ctx, name, metav1.GetOptions{})
 		if apierrors.IsNotFound(err) {
 			return nil, nil
 		}
