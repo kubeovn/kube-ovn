@@ -1173,7 +1173,7 @@ jobs:
           done
 
       - name: Cleanup
-        run: sh -x dist/images/cleanup.sh
+        run: timeout -k 10 180 sh -x dist/images/cleanup.sh
 
   multus-conformance-e2e:
     name: Multus Conformance E2E
@@ -1430,7 +1430,7 @@ jobs:
         run: make check-kube-ovn-pod-restarts
 
       - name: Cleanup
-        run: sh -x dist/images/cleanup.sh
+        run: timeout -k 10 180 sh -x dist/images/cleanup.sh
 
   no-ovn-lb-test:
     name: Disable OVN LB Test
@@ -1482,7 +1482,7 @@ jobs:
         run: make check-kube-ovn-pod-restarts
 
       - name: Cleanup
-        run: sh -x dist/images/cleanup.sh
+        run: timeout -k 10 180 sh -x dist/images/cleanup.sh
 
   no-np-test:
     name: Disable Network Policy Test
@@ -1534,7 +1534,7 @@ jobs:
         run: make check-kube-ovn-pod-restarts
 
       - name: Cleanup
-        run: sh -x dist/images/cleanup.sh
+        run: timeout -k 10 180 sh -x dist/images/cleanup.sh
 
   lb-svc-e2e:
     name: LB Service E2E
@@ -1856,7 +1856,7 @@ jobs:
           path: installation-compatibility-test-ko-log.tar.gz
 
       - name: Cleanup
-        run: sh -x dist/images/cleanup.sh
+        run: timeout -k 10 180 sh -x dist/images/cleanup.sh
 
   cilium-chaining-e2e:
     name: Cilium Chaining E2E
@@ -2014,7 +2014,7 @@ jobs:
         run: make check-kube-ovn-pod-restarts
 
       - name: Cleanup
-        run: sh -x dist/images/cleanup.sh
+        run: timeout -k 10 180 sh -x dist/images/cleanup.sh
 
   kube-ovn-ha-e2e:
     name: Kube-OVN HA E2E
@@ -2149,7 +2149,7 @@ jobs:
         run: make check-kube-ovn-pod-restarts
 
       - name: Cleanup
-        run: sh -x dist/images/cleanup.sh
+        run: timeout -k 10 180 sh -x dist/images/cleanup.sh
 
   kube-ovn-submariner-conformance-e2e:
     name: Kube-OVN Submariner Conformance E2E
@@ -2244,7 +2244,7 @@ jobs:
         run: make check-kube-ovn-pod-restarts
 
       - name: Cleanup
-        run: sh -x dist/images/cleanup.sh
+        run: timeout -k 10 180 sh -x dist/images/cleanup.sh
 
   iptables-vpc-nat-gw-conformance-e2e:
     name: Iptables VPC NAT Gateway E2E
