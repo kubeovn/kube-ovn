@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -265,7 +266,7 @@ func ParseFlags() (*Configuration, error) {
 	}
 
 	if config.NetworkType == util.NetworkTypeVlan && config.DefaultHostInterface == "" {
-		return nil, fmt.Errorf("no host nic for vlan")
+		return nil, errors.New("no host nic for vlan")
 	}
 
 	if config.DefaultGateway == "" {
@@ -302,7 +303,7 @@ func ParseFlags() (*Configuration, error) {
 
 	if err := util.CheckSystemCIDR([]string{config.NodeSwitchCIDR, config.DefaultCIDR, config.ServiceClusterIPRange}); err != nil {
 		klog.Error(err)
-		return nil, fmt.Errorf("check system cidr failed, %v", err)
+		return nil, fmt.Errorf("check system cidr failed, %w", err)
 	}
 
 	for _, ip := range strings.Split(*argNodeLocalDNSIP, ",") {

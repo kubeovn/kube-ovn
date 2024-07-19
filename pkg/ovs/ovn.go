@@ -2,7 +2,7 @@ package ovs
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"reflect"
 	"time"
 
@@ -229,7 +229,7 @@ func (c *ovsDbClient) GetEntityInfo(entity interface{}) error {
 
 	entityPtr := reflect.ValueOf(entity)
 	if entityPtr.Kind() != reflect.Pointer {
-		return fmt.Errorf("entity must be pointer")
+		return errors.New("entity must be pointer")
 	}
 
 	err := c.Get(ctx, entity)

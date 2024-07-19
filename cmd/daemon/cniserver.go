@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -175,7 +176,7 @@ func initChassisAnno(cfg *daemon.Configuration) error {
 	chassesName := strings.TrimSpace(string(chassisID))
 	if chassesName == "" {
 		// not ready yet
-		err = fmt.Errorf("chassis id is empty")
+		err = errors.New("chassis id is empty")
 		klog.Error(err)
 		return err
 	}

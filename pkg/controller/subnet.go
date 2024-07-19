@@ -3,11 +3,13 @@ package controller
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"reflect"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -87,7 +89,6 @@ func (c *Controller) enqueueUpdateSubnet(oldObj, newObj interface{}) {
 
 	if oldSubnet.Spec.Vpc != newSubnet.Spec.Vpc &&
 		!(oldSubnet.Spec.Vpc == "" && newSubnet.Spec.Vpc == c.config.ClusterRouter || oldSubnet.Spec.Vpc == c.config.ClusterRouter && newSubnet.Spec.Vpc == "") {
-
 		if newSubnet.Annotations == nil {
 			newSubnet.Annotations = make(map[string]string)
 		}
@@ -130,7 +131,6 @@ func (c *Controller) enqueueUpdateSubnet(oldObj, newObj interface{}) {
 		oldSubnet.Spec.EnableMulticastSnoop != newSubnet.Spec.EnableMulticastSnoop ||
 		!reflect.DeepEqual(oldSubnet.Spec.NatOutgoingPolicyRules, newSubnet.Spec.NatOutgoingPolicyRules) ||
 		(newSubnet.Spec.U2OInterconnection && newSubnet.Spec.U2OInterconnectionIP != "" && oldSubnet.Spec.U2OInterconnectionIP != newSubnet.Spec.U2OInterconnectionIP) {
-
 		klog.V(3).Infof("enqueue update subnet %s", key)
 
 		if oldSubnet.Spec.GatewayType != newSubnet.Spec.GatewayType {
@@ -317,7 +317,7 @@ func (c *Controller) formatSubnet(subnet *kubeovnv1.Subnet) (*kubeovnv1.Subnet, 
 
 	if subnet.Spec.Vlan != "" {
 		if _, err := c.vlansLister.Get(subnet.Spec.Vlan); err != nil {
-			err = fmt.Errorf("failed to get vlan %s: %s", subnet.Spec.Vlan, err)
+			err = fmt.Errorf("failed to get vlan %s: %w", subnet.Spec.Vlan, err)
 			klog.Error(err)
 			return nil, err
 		}
@@ -359,7 +359,7 @@ func (c *Controller) updateNatOutgoingPolicyRulesStatus(subnet *kubeovnv1.Subnet
 				klog.Error(err)
 				return err
 			}
-			priority := fmt.Sprintf("%d", index)
+			priority := strconv.Itoa(index)
 			// hash code generate by subnetName, rule and priority
 			var retBytes []byte
 			retBytes = append(retBytes, []byte(subnet.Name)...)
@@ -1369,7 +1369,7 @@ func (c *Controller) reconcileCustomVpcBfdStaticRoute(vpcName, subnetName string
 	lrpEipName = fmt.Sprintf("%s-%s", vpcName, c.config.ExternalGatewaySwitch)
 	lrpEip, err := c.ovnEipsLister.Get(lrpEipName)
 	if err != nil {
-		err := fmt.Errorf("failed to get lrp eip %s, %v", lrpEipName, err)
+		err := fmt.Errorf("failed to get lrp eip %s, %w", lrpEipName, err)
 		klog.Error(err)
 		return err
 	}
@@ -1792,7 +1792,6 @@ func (c *Controller) reconcileOvnDefaultVpcRoute(subnet *kubeovnv1.Subnet) error
 				return err
 			}
 		}
-
 	} else {
 		// It's difficult to update policy route when subnet cidr is changed, add check for cidr changed situation
 		if err := c.reconcilePolicyRouteForCidrChangedSubnet(subnet, true); err != nil {
@@ -1827,7 +1826,7 @@ func (c *Controller) reconcileOvnDefaultVpcRoute(subnet *kubeovnv1.Subnet) error
 			gwNodeExists := c.checkGwNodeExists(subnet.Spec.GatewayNode)
 			if !gwNodeExists {
 				klog.Errorf("failed to init centralized gateway for subnet %s, no gateway node exists", subnet.Name)
-				return fmt.Errorf("failed to add ecmp policy route, no gateway node exists")
+				return errors.New("failed to add ecmp policy route, no gateway node exists")
 			}
 
 			if err := c.reconcilePolicyRouteForCidrChangedSubnet(subnet, false); err != nil {

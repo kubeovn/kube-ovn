@@ -3,6 +3,7 @@ package daemon
 import (
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/emicklei/go-restful/v3"
@@ -69,7 +70,7 @@ func requestAndResponseLogger(request *restful.Request, response *restful.Respon
 	cniOperationHistogram.WithLabelValues(
 		nodeName,
 		getRequestURI(request),
-		fmt.Sprintf("%d", response.StatusCode())).Observe(elapsed / 1000)
+		strconv.Itoa(response.StatusCode())).Observe(elapsed / 1000)
 	klog.Infof(formatResponseLog(response, request, elapsed))
 }
 

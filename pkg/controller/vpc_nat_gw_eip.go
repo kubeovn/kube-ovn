@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"strings"
@@ -211,7 +212,7 @@ func (c *Controller) handleAddIptablesEip(key string) error {
 	}
 
 	if vpcNatEnabled != "true" {
-		return fmt.Errorf("iptables nat gw not enable")
+		return errors.New("iptables nat gw not enable")
 	}
 
 	c.vpcNatGwKeyMutex.LockKey(key)
@@ -258,7 +259,7 @@ func (c *Controller) handleAddIptablesEip(key string) error {
 	}
 	addrV4, err := util.GetIPAddrWithMask(v4ip, eipV4Cidr)
 	if err != nil {
-		err = fmt.Errorf("failed to get eip %s with mask by cidr %s: %v", v4ip, eipV4Cidr, err)
+		err = fmt.Errorf("failed to get eip %s with mask by cidr %s: %w", v4ip, eipV4Cidr, err)
 		klog.Error(err)
 		return err
 	}
@@ -364,7 +365,7 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 	}
 	// make sure vpc nat enabled
 	if vpcNatEnabled != "true" {
-		err := fmt.Errorf("iptables nat gw not enable")
+		err := errors.New("iptables nat gw not enable")
 		klog.Error(err)
 		return err
 	}
@@ -414,7 +415,7 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 		}
 		addrV4, err := util.GetIPAddrWithMask(cachedEip.Status.IP, v4Cidr)
 		if err != nil {
-			err = fmt.Errorf("failed to get eip %s with mask by cidr %s: %v", cachedEip.Status.IP, v4Cidr, err)
+			err = fmt.Errorf("failed to get eip %s with mask by cidr %s: %w", cachedEip.Status.IP, v4Cidr, err)
 			klog.Error(err)
 			return err
 		}
@@ -488,7 +489,7 @@ func (c *Controller) deleteEipInPod(dp, v4Cidr string) error {
 	return nil
 }
 
-func (c *Controller) addOrUpdateEIPBandtithLimitRules(eip *kubeovnv1.IptablesEIP, v4ip string, rules kubeovnv1.QoSPolicyBandwidthLimitRules) error {
+func (c *Controller) addOrUpdateEIPBandwidthLimitRules(eip *kubeovnv1.IptablesEIP, v4ip string, rules kubeovnv1.QoSPolicyBandwidthLimitRules) error {
 	var err error
 	for _, rule := range rules {
 		if err = c.addEipQoSInPod(eip.Spec.NatGwDp, v4ip, rule.Direction, rule.Priority, rule.RateMax, rule.BurstMax); err != nil {
@@ -525,7 +526,7 @@ func (c *Controller) addEipQoS(eip *kubeovnv1.IptablesEIP, v4ip string) error {
 			}
 		}
 	}
-	return c.addOrUpdateEIPBandtithLimitRules(eip, v4ip, qosPolicy.Status.BandwidthLimitRules)
+	return c.addOrUpdateEIPBandwidthLimitRules(eip, v4ip, qosPolicy.Status.BandwidthLimitRules)
 }
 
 func (c *Controller) delEIPBandtithLimitRules(eip *kubeovnv1.IptablesEIP, v4ip string, rules kubeovnv1.QoSPolicyBandwidthLimitRules) error {
@@ -656,7 +657,7 @@ func (c *Controller) eipChangeIP(eip *kubeovnv1.IptablesEIP) bool {
 func (c *Controller) GetGwBySubnet(name string) (string, string, error) {
 	subnet, err := c.subnetsLister.Get(name)
 	if err != nil {
-		err = fmt.Errorf("faile to get subnet %q: %v", name, err)
+		err = fmt.Errorf("faile to get subnet %q: %w", name, err)
 		klog.Error(err)
 		return "", "", err
 	}
@@ -695,7 +696,7 @@ func (c *Controller) createOrUpdateEipCR(key, v4ip, v6ip, mac, natGwDp, qos, ext
 			},
 		}, metav1.CreateOptions{})
 		if err != nil {
-			errMsg := fmt.Errorf("failed to create eip crd %s, %v", key, err)
+			errMsg := fmt.Errorf("failed to create eip crd %s, %w", key, err)
 			klog.Error(errMsg)
 			return errMsg
 		}
@@ -708,7 +709,7 @@ func (c *Controller) createOrUpdateEipCR(key, v4ip, v6ip, mac, natGwDp, qos, ext
 			eip.Spec.NatGwDp = natGwDp
 			eip.Spec.MacAddress = mac
 			if _, err := c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().Update(context.Background(), eip, metav1.UpdateOptions{}); err != nil {
-				errMsg := fmt.Errorf("failed to update eip crd %s, %v", key, err)
+				errMsg := fmt.Errorf("failed to update eip crd %s, %w", key, err)
 				klog.Error(errMsg)
 				return errMsg
 			}
@@ -934,7 +935,7 @@ func (c *Controller) patchEipStatus(key, v4ip, redo, qos string, ready bool) err
 
 	nat, err := c.getIptablesEipNat(oriEip.Spec.V4ip)
 	if err != nil {
-		err := fmt.Errorf("failed to get eip nat")
+		err := errors.New("failed to get eip nat")
 		klog.Error(err)
 		return err
 	}

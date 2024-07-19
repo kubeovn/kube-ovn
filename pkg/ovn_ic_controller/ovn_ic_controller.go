@@ -393,7 +393,7 @@ func (c *Controller) startOVNIC(icHost, icNbPort, icSbPort string) error {
 	}
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("output: %s, err: %v", output, err)
+		return fmt.Errorf("output: %s, err: %w", output, err)
 	}
 	return nil
 }
@@ -402,7 +402,7 @@ func (c *Controller) stopOVNIC() error {
 	cmd := exec.Command("/usr/share/ovn/scripts/ovn-ctl", "stop_ic")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("output: %s, err: %v", output, err)
+		return fmt.Errorf("output: %s, err: %w", output, err)
 	}
 	return nil
 }
@@ -435,7 +435,6 @@ func (c *Controller) delLearnedRoute() error {
 				klog.Errorf("failed to delete learned static route %#v on logical router %s: %v", r, lr.Name, err)
 				return err
 			}
-
 		}
 	}
 
@@ -632,7 +631,7 @@ func (c *Controller) listRemoteLogicalSwitchPortAddress() (*strset.Set, error) {
 	})
 	if err != nil {
 		klog.Error(err)
-		return nil, fmt.Errorf("list remote logical switch ports: %v", err)
+		return nil, fmt.Errorf("list remote logical switch ports: %w", err)
 	}
 
 	existAddress := strset.NewWithSize(len(lsps))

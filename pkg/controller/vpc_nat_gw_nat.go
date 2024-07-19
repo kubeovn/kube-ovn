@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -488,7 +489,7 @@ func (c *Controller) handleAddIptablesFip(key string) error {
 	}
 
 	if vpcNatEnabled != "true" {
-		return fmt.Errorf("iptables nat gw not enable")
+		return errors.New("iptables nat gw not enable")
 	}
 
 	c.vpcNatGwKeyMutex.LockKey(key)
@@ -503,7 +504,7 @@ func (c *Controller) handleAddIptablesFip(key string) error {
 	// get eip
 	eipName := fip.Spec.EIP
 	if eipName == "" {
-		return fmt.Errorf("failed to create fip rule, should set eip")
+		return errors.New("failed to create fip rule, should set eip")
 	}
 	eip, err := c.GetEip(eipName)
 	if err != nil {
@@ -512,7 +513,7 @@ func (c *Controller) handleAddIptablesFip(key string) error {
 	}
 
 	if err = c.fipTryUseEip(key, eip.Spec.V4ip); err != nil {
-		err = fmt.Errorf("failed to create fip %s, %v", key, err)
+		err = fmt.Errorf("failed to create fip %s, %w", key, err)
 		klog.Error(err)
 		return err
 	}
@@ -595,11 +596,11 @@ func (c *Controller) handleUpdateIptablesFip(key string) error {
 	klog.V(3).Infof("handle update fip %s", key)
 	// add or update should make sure vpc nat enabled
 	if vpcNatEnabled != "true" {
-		return fmt.Errorf("iptables nat gw not enable")
+		return errors.New("iptables nat gw not enable")
 	}
 	eipName := cachedFip.Spec.EIP
 	if eipName == "" {
-		return fmt.Errorf("failed to update fip rule, should set eip")
+		return errors.New("failed to update fip rule, should set eip")
 	}
 	eip, err := c.GetEip(eipName)
 	if err != nil {
@@ -608,7 +609,7 @@ func (c *Controller) handleUpdateIptablesFip(key string) error {
 	}
 
 	if err = c.fipTryUseEip(key, eip.Spec.V4ip); err != nil {
-		err = fmt.Errorf("failed to update fip %s, %v", key, err)
+		err = fmt.Errorf("failed to update fip %s, %w", key, err)
 		klog.Error(err)
 		return err
 	}
@@ -690,7 +691,7 @@ func (c *Controller) handleAddIptablesDnatRule(key string) error {
 	}
 
 	if vpcNatEnabled != "true" {
-		return fmt.Errorf("iptables nat gw not enable")
+		return errors.New("iptables nat gw not enable")
 	}
 
 	c.vpcNatGwKeyMutex.LockKey(key)
@@ -704,7 +705,7 @@ func (c *Controller) handleAddIptablesDnatRule(key string) error {
 	klog.V(3).Infof("handle add iptables dnat %s", key)
 	eipName := dnat.Spec.EIP
 	if eipName == "" {
-		return fmt.Errorf("failed to create dnat rule, should set eip")
+		return errors.New("failed to create dnat rule, should set eip")
 	}
 
 	eip, err := c.GetEip(eipName)
@@ -780,7 +781,7 @@ func (c *Controller) handleUpdateIptablesDnatRule(key string) error {
 	klog.V(3).Infof("handle update dnat %s", key)
 	eipName := cachedDnat.Spec.EIP
 	if eipName == "" {
-		return fmt.Errorf("failed to update fip rule, should set eip")
+		return errors.New("failed to update fip rule, should set eip")
 	}
 	eip, err := c.GetEip(eipName)
 	if err != nil {
@@ -793,7 +794,7 @@ func (c *Controller) handleUpdateIptablesDnatRule(key string) error {
 	}
 	// add or update should make sure vpc nat enabled
 	if vpcNatEnabled != "true" {
-		return fmt.Errorf("iptables nat gw not enable")
+		return errors.New("iptables nat gw not enable")
 	}
 
 	if err = c.deleteDnatInPod(cachedDnat.Status.NatGwDp, cachedDnat.Status.Protocol,
@@ -878,7 +879,7 @@ func (c *Controller) handleAddIptablesSnatRule(key string) error {
 	}
 
 	if vpcNatEnabled != "true" {
-		return fmt.Errorf("iptables nat gw not enable")
+		return errors.New("iptables nat gw not enable")
 	}
 
 	c.vpcNatGwKeyMutex.LockKey(key)
@@ -892,7 +893,7 @@ func (c *Controller) handleAddIptablesSnatRule(key string) error {
 	klog.V(3).Infof("handle add iptables snat %s", key)
 	eipName := snat.Spec.EIP
 	if eipName == "" {
-		return fmt.Errorf("failed to create snat rule, should set eip")
+		return errors.New("failed to create snat rule, should set eip")
 	}
 
 	eip, err := c.GetEip(eipName)
@@ -975,7 +976,7 @@ func (c *Controller) handleUpdateIptablesSnatRule(key string) error {
 	klog.V(3).Infof("handle update snat %s", key)
 	eipName := cachedSnat.Spec.EIP
 	if eipName == "" {
-		return fmt.Errorf("failed to update fip rule, should set eip")
+		return errors.New("failed to update fip rule, should set eip")
 	}
 	eip, err := c.GetEip(eipName)
 	if err != nil {
@@ -985,7 +986,7 @@ func (c *Controller) handleUpdateIptablesSnatRule(key string) error {
 
 	// add or update should make sure vpc nat enabled
 	if vpcNatEnabled != "true" {
-		return fmt.Errorf("iptables nat gw not enable")
+		return errors.New("iptables nat gw not enable")
 	}
 
 	klog.V(3).Infof("snat change ip, old ip %s, new ip %s", cachedSnat.Status.V4ip, eip.Status.IP)
@@ -1381,18 +1382,18 @@ func (c *Controller) redoFip(key, redo string, eipReady bool) error {
 	if redo != "" && redo != fip.Status.Redo {
 		if !eipReady {
 			if err = c.patchEipLabel(fip.Spec.EIP); err != nil {
-				err = fmt.Errorf("failed to patch eip %s, %v", fip.Spec.EIP, err)
+				err = fmt.Errorf("failed to patch eip %s, %w", fip.Spec.EIP, err)
 				klog.Error(err)
 				return err
 			}
 			if err = c.patchEipStatus(fip.Spec.EIP, "", redo, "", false); err != nil {
-				err = fmt.Errorf("failed to patch eip %s, %v", fip.Spec.EIP, err)
+				err = fmt.Errorf("failed to patch eip %s, %w", fip.Spec.EIP, err)
 				klog.Error(err)
 				return err
 			}
 		}
 		if err = c.patchFipStatus(key, "", "", "", redo, false); err != nil {
-			err = fmt.Errorf("failed to patch fip %s, %v", fip.Name, err)
+			err = fmt.Errorf("failed to patch fip %s, %w", fip.Name, err)
 			klog.Error(err)
 			return err
 		}
@@ -1527,13 +1528,13 @@ func (c *Controller) redoDnat(key, redo string, eipReady bool) error {
 	if redo != "" && redo != dnat.Status.Redo {
 		if !eipReady {
 			if err = c.patchEipStatus(dnat.Spec.EIP, "", redo, "", false); err != nil {
-				err = fmt.Errorf("failed to patch eip %s, %v", dnat.Spec.EIP, err)
+				err = fmt.Errorf("failed to patch eip %s, %w", dnat.Spec.EIP, err)
 				klog.Error(err)
 				return err
 			}
 		}
 		if err = c.patchDnatStatus(key, "", "", "", redo, false); err != nil {
-			err = fmt.Errorf("failed to patch dnat %s, %v", key, err)
+			err = fmt.Errorf("failed to patch dnat %s, %w", key, err)
 			klog.Error(err)
 			return err
 		}
@@ -1660,13 +1661,13 @@ func (c *Controller) redoSnat(key, redo string, eipReady bool) error {
 	if redo != "" && redo != snat.Status.Redo {
 		if !eipReady {
 			if err = c.patchEipStatus(snat.Spec.EIP, "", redo, "", false); err != nil {
-				err = fmt.Errorf("failed to patch eip %s, %v", snat.Spec.EIP, err)
+				err = fmt.Errorf("failed to patch eip %s, %w", snat.Spec.EIP, err)
 				klog.Error(err)
 				return err
 			}
 		}
 		if err = c.patchSnatStatus(key, "", "", "", redo, false); err != nil {
-			err = fmt.Errorf("failed to patch snat %s, %v", key, err)
+			err = fmt.Errorf("failed to patch snat %s, %w", key, err)
 			klog.Error(err)
 			return err
 		}

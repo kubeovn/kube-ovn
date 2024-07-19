@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -17,7 +18,7 @@ const gatewayCheckMaxRetry = 200
 func pingGateway(gw, src string, verbose bool, maxRetry int, done chan struct{}) (count int, err error) {
 	pinger, err := goping.NewPinger(gw)
 	if err != nil {
-		return 0, fmt.Errorf("failed to init pinger: %v", err)
+		return 0, fmt.Errorf("failed to init pinger: %w", err)
 	}
 	pinger.SetPrivileged(true)
 	// CNITimeoutSec = 220, cannot exceed
@@ -96,7 +97,7 @@ func configureGlobalMirror(portName string, mtu int) error {
 			"add", "bridge", "br-int", "mirrors", "@m")
 		if err != nil {
 			klog.Errorf("failed to configure mirror nic %s, %q, %v", portName, raw, err)
-			return fmt.Errorf(raw)
+			return errors.New(raw)
 		}
 	} else {
 		klog.Infof("nic %s exist, configure it", portName)
@@ -107,7 +108,7 @@ func configureGlobalMirror(portName string, mtu int) error {
 			"add", "bridge", "br-int", "mirrors", "@m")
 		if err != nil {
 			klog.Errorf("failed to configure mirror nic %s, %q, %v", portName, raw, err)
-			return fmt.Errorf(raw)
+			return errors.New(raw)
 		}
 	}
 
@@ -131,7 +132,7 @@ func configureEmptyMirror(portName string, mtu int) error {
 			"add", "bridge", "br-int", "mirrors", "@m")
 		if err != nil {
 			klog.Errorf("failed to configure mirror nic %s %q, %v", portName, raw, err)
-			return fmt.Errorf(raw)
+			return errors.New(raw)
 		}
 	} else {
 		klog.Infof("nic %s exist, configure it", portName)
@@ -142,7 +143,7 @@ func configureEmptyMirror(portName string, mtu int) error {
 			"add", "bridge", "br-int", "mirrors", "@m")
 		if err != nil {
 			klog.Errorf("failed to configure mirror nic %s %q", portName, raw)
-			return fmt.Errorf(raw)
+			return errors.New(raw)
 		}
 	}
 	return configureMirrorLink(portName, mtu)
@@ -181,7 +182,7 @@ func encodeOvnMappings(mappings map[string]string) string {
 func getOvnMappings(name string) (map[string]string, error) {
 	output, err := ovs.Exec(ovs.IfExists, "get", "open", ".", "external-ids:"+name)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get %s, %v: %q", name, err, output)
+		return nil, fmt.Errorf("failed to get %s, %w: %q", name, err, output)
 	}
 
 	return decodeOvnMappings(output), nil
@@ -196,7 +197,7 @@ func setOvnMappings(name string, mappings map[string]string) error {
 		output, err = ovs.Exec("set", "open", ".", fmt.Sprintf("external-ids:%s=%s", name, s))
 	}
 	if err != nil {
-		return fmt.Errorf("failed to set %s, %v: %q", name, err, output)
+		return fmt.Errorf("failed to set %s, %w: %q", name, err, output)
 	}
 
 	return nil
@@ -235,7 +236,7 @@ func removeOvnMapping(name, key string) error {
 func (c *Controller) configExternalBridge(provider, bridge, nic string, exchangeLinkName, macLearningFallback bool) error {
 	brExists, err := ovs.BridgeExists(bridge)
 	if err != nil {
-		return fmt.Errorf("failed to check OVS bridge existence: %v", err)
+		return fmt.Errorf("failed to check OVS bridge existence: %w", err)
 	}
 	cmd := []string{
 		ovs.MayExist, "add-br", bridge,
@@ -249,21 +250,21 @@ func (c *Controller) configExternalBridge(provider, bridge, nic string, exchange
 	}
 	output, err := ovs.Exec(cmd...)
 	if err != nil {
-		return fmt.Errorf("failed to create OVS bridge %s, %v: %q", bridge, err, output)
+		return fmt.Errorf("failed to create OVS bridge %s, %w: %q", bridge, err, output)
 	}
 	if output, err = ovs.Exec("list-ports", bridge); err != nil {
-		return fmt.Errorf("failed to list ports of OVS bridge %s, %v: %q", bridge, err, output)
+		return fmt.Errorf("failed to list ports of OVS bridge %s, %w: %q", bridge, err, output)
 	}
 	if output != "" {
 		for _, port := range strings.Split(output, "\n") {
 			if port != nic {
 				ok, err := ovs.ValidatePortVendor(port)
 				if err != nil {
-					return fmt.Errorf("failed to check vendor of port %s: %v", port, err)
+					return fmt.Errorf("failed to check vendor of port %s: %w", port, err)
 				}
 				if ok {
 					if err = c.removeProviderNic(port, bridge); err != nil {
-						return fmt.Errorf("failed to remove port %s from OVS bridge %s: %v", port, bridge, err)
+						return fmt.Errorf("failed to remove port %s from OVS bridge %s: %w", port, bridge, err)
 					}
 				}
 			}

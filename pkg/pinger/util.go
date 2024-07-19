@@ -44,7 +44,7 @@ func (e *Exporter) getOvsDatapath() ([]string, error) {
 	cmd := exec.Command("sh", "-c", cmdstr) // #nosec G204
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get output of dpctl/dump-dps: %v", err)
+		return nil, fmt.Errorf("failed to get output of dpctl/dump-dps: %w", err)
 	}
 
 	for _, kvPair := range strings.Split(string(output), "\n") {
@@ -70,7 +70,7 @@ func (e *Exporter) setOvsDpIfMetric(datapathName string) error {
 	cmd := exec.Command("sh", "-c", cmdstr) // #nosec G204
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("failed to get output of dpctl/show %s: %v", datapathName, err)
+		return fmt.Errorf("failed to get output of dpctl/show %s: %w", datapathName, err)
 	}
 
 	var datapathPortCount float64

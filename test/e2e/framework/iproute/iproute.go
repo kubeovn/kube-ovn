@@ -98,12 +98,12 @@ func (e *execer) exec(cmd string, result interface{}) error {
 				return nil
 			}
 		}
-		return fmt.Errorf("failed to exec cmd %q: %v\nstdout:\n%s\nstderr:\n%s", cmd, err, stdout, stderr)
+		return fmt.Errorf("failed to exec cmd %q: %w\nstdout:\n%s\nstderr:\n%s", cmd, err, stdout, stderr)
 	}
 
 	if result != nil {
 		if err = json.Unmarshal(stdout, result); err != nil {
-			return fmt.Errorf("failed to decode json %q: %v", string(stdout), err)
+			return fmt.Errorf("failed to decode json %q: %w", string(stdout), err)
 		}
 	}
 

@@ -13,10 +13,10 @@ import (
 func SetLinkUp(name string) error {
 	link, err := netlink.LinkByName(name)
 	if err != nil {
-		return fmt.Errorf("failed to get link %s: %v", name, err)
+		return fmt.Errorf("failed to get link %s: %w", name, err)
 	}
 	if err = netlink.LinkSetUp(link); err != nil {
-		return fmt.Errorf("failed to set link %s up: %v", name, err)
+		return fmt.Errorf("failed to set link %s up: %w", name, err)
 	}
 
 	return nil

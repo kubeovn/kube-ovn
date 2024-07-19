@@ -131,7 +131,7 @@ func (c *Controller) processSwitchLBRuleWorkItem(processName string, queue workq
 		queue.Forget(obj)
 		return nil
 	}(obj); err != nil {
-		utilruntime.HandleError(fmt.Errorf("process: %s. err: %v", processName, err))
+		utilruntime.HandleError(fmt.Errorf("process: %s. err: %w", processName, err))
 		queue.AddRateLimited(obj)
 		return true
 	}
@@ -203,13 +203,13 @@ func (c *Controller) handleAddOrUpdateSwitchLBRule(key string) error {
 		eps = generateEndpoints(slr, oldEps)
 		if needToCreateEps {
 			if _, err = c.config.KubeClient.CoreV1().Endpoints(slr.Spec.Namespace).Create(context.Background(), eps, metav1.CreateOptions{}); err != nil {
-				err = fmt.Errorf("failed to create endpoints '%s', err: %v", eps, err)
+				err = fmt.Errorf("failed to create endpoints '%s', err: %w", eps, err)
 				klog.Error(err)
 				return err
 			}
 		} else {
 			if _, err = c.config.KubeClient.CoreV1().Endpoints(slr.Spec.Namespace).Update(context.Background(), eps, metav1.UpdateOptions{}); err != nil {
-				err = fmt.Errorf("failed to update endpoints '%s', err: %v", eps, err)
+				err = fmt.Errorf("failed to update endpoints '%s', err: %w", eps, err)
 				klog.Error(err)
 				return err
 			}
@@ -221,13 +221,13 @@ func (c *Controller) handleAddOrUpdateSwitchLBRule(key string) error {
 	svc = generateHeadlessService(slr, oldSvc)
 	if needToCreateSvc {
 		if _, err = c.config.KubeClient.CoreV1().Services(slr.Spec.Namespace).Create(context.Background(), svc, metav1.CreateOptions{}); err != nil {
-			err = fmt.Errorf("failed to create service '%s', err: %v", svc, err)
+			err = fmt.Errorf("failed to create service '%s', err: %w", svc, err)
 			klog.Error(err)
 			return err
 		}
 	} else {
 		if _, err = c.config.KubeClient.CoreV1().Services(slr.Spec.Namespace).Update(context.Background(), svc, metav1.UpdateOptions{}); err != nil {
-			err = fmt.Errorf("failed to update service '%s', err: %v", svc, err)
+			err = fmt.Errorf("failed to update service '%s', err: %w", svc, err)
 			klog.Error(err)
 			return err
 		}
@@ -249,7 +249,7 @@ func (c *Controller) handleAddOrUpdateSwitchLBRule(key string) error {
 	newSlr.Status.Ports = strings.TrimPrefix(formatPorts, ",")
 
 	if _, err = c.config.KubeOvnClient.KubeovnV1().SwitchLBRules().UpdateStatus(context.Background(), newSlr, metav1.UpdateOptions{}); err != nil {
-		err = fmt.Errorf("failed to update switch lb rule status, %v", err)
+		err = fmt.Errorf("failed to update switch lb rule status, %w", err)
 		klog.Error(err)
 		return err
 	}

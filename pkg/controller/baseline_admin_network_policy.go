@@ -173,7 +173,7 @@ func (c *Controller) processNextUpdateBanpWorkItem() bool {
 		}
 		if err := c.handleUpdateBanp(key); err != nil {
 			c.updateBanpQueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing banp %s: %v, requeuing", key.key, err)
+			return fmt.Errorf("error syncing banp %s: %w, requeuing", key.key, err)
 		}
 		c.updateBanpQueue.Forget(obj)
 		return nil
@@ -319,10 +319,10 @@ func (c *Controller) handleAddBanp(key string) (err error) {
 	}
 
 	if err := c.OVNNbClient.Transact("add-ingress-acls", ingressACLOps); err != nil {
-		return fmt.Errorf("failed to add ingress acls for banp %s: %v", key, err)
+		return fmt.Errorf("failed to add ingress acls for banp %s: %w", key, err)
 	}
 	if err := c.deleteUnusedAddrSetForAnp(curIngressAddrSet, desiredIngressAddrSet); err != nil {
-		return fmt.Errorf("failed to delete unused ingress address set for banp %s: %v", key, err)
+		return fmt.Errorf("failed to delete unused ingress address set for banp %s: %w", key, err)
 	}
 
 	egressACLOps, err := c.OVNNbClient.DeleteAclsOps(pgName, portGroupKey, "from-lport", nil)
@@ -384,10 +384,10 @@ func (c *Controller) handleAddBanp(key string) (err error) {
 	}
 
 	if err := c.OVNNbClient.Transact("add-egress-acls", egressACLOps); err != nil {
-		return fmt.Errorf("failed to add egress acls for banp %s: %v", key, err)
+		return fmt.Errorf("failed to add egress acls for banp %s: %w", key, err)
 	}
 	if err := c.deleteUnusedAddrSetForAnp(curEgressAddrSet, desiredEgressAddrSet); err != nil {
-		return fmt.Errorf("failed to delete unused egress address set for banp %s: %v", key, err)
+		return fmt.Errorf("failed to delete unused egress address set for banp %s: %w", key, err)
 	}
 
 	return nil

@@ -75,12 +75,12 @@ func NewOvsDbClient(
 		cert, err := tls.LoadX509KeyPair("/var/run/tls/cert", "/var/run/tls/key")
 		if err != nil {
 			klog.Error(err)
-			return nil, fmt.Errorf("failed to load x509 cert key pair: %v", err)
+			return nil, fmt.Errorf("failed to load x509 cert key pair: %w", err)
 		}
 		caCert, err := os.ReadFile("/var/run/tls/cacert")
 		if err != nil {
 			klog.Error(err)
-			return nil, fmt.Errorf("failed to read ca cert: %v", err)
+			return nil, fmt.Errorf("failed to read ca cert: %w", err)
 		}
 		certPool := x509.NewCertPool()
 		certPool.AppendCertsFromPEM(caCert)

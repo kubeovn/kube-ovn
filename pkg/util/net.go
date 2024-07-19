@@ -570,7 +570,7 @@ func TCPConnectivityCheck(address string) error {
 func TCPConnectivityListen(address string) error {
 	listener, err := net.Listen("tcp", address)
 	if err != nil {
-		return fmt.Errorf("listen failed with err %v", err)
+		return fmt.Errorf("listen failed with err %w", err)
 	}
 
 	go func() {
@@ -589,7 +589,7 @@ func TCPConnectivityListen(address string) error {
 func UDPConnectivityCheck(address string) error {
 	udpAddr, err := net.ResolveUDPAddr("udp", address)
 	if err != nil {
-		return fmt.Errorf("resolve udp addr failed with err %v", err)
+		return fmt.Errorf("resolve udp addr failed with err %w", err)
 	}
 
 	conn, err := net.DialUDP("udp", nil, udpAddr)
@@ -606,13 +606,13 @@ func UDPConnectivityCheck(address string) error {
 
 	_, err = conn.Write([]byte("health check"))
 	if err != nil {
-		return fmt.Errorf("send udp packet failed with err %v", err)
+		return fmt.Errorf("send udp packet failed with err %w", err)
 	}
 
 	buffer := make([]byte, 1024)
 	_, err = conn.Read(buffer)
 	if err != nil {
-		return fmt.Errorf("read udp packet from remote failed %v", err)
+		return fmt.Errorf("read udp packet from remote failed %w", err)
 	}
 
 	return nil
@@ -621,12 +621,12 @@ func UDPConnectivityCheck(address string) error {
 func UDPConnectivityListen(address string) error {
 	listenAddr, err := net.ResolveUDPAddr("udp", address)
 	if err != nil {
-		return fmt.Errorf("resolve udp addr failed with err %v", err)
+		return fmt.Errorf("resolve udp addr failed with err %w", err)
 	}
 
 	conn, err := net.ListenUDP("udp", listenAddr)
 	if err != nil {
-		return fmt.Errorf("listen udp address failed with %v", err)
+		return fmt.Errorf("listen udp address failed with %w", err)
 	}
 
 	buffer := make([]byte, 1024)

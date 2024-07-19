@@ -18,7 +18,7 @@ import (
 func ArpResolve(nic, dstIP string, timeout time.Duration, maxRetry int, done chan struct{}) (net.HardwareAddr, int, error) {
 	target, err := netip.ParseAddr(dstIP)
 	if err != nil {
-		return nil, 0, fmt.Errorf("failed to parse target address %s: %v", dstIP, err)
+		return nil, 0, fmt.Errorf("failed to parse target address %s: %w", dstIP, err)
 	}
 
 	if done != nil {
@@ -47,7 +47,7 @@ func ArpResolve(nic, dstIP string, timeout time.Duration, maxRetry int, done cha
 		}
 	}
 	if err != nil {
-		return nil, count, fmt.Errorf("failed to get interface %s: %v", nic, err)
+		return nil, count, fmt.Errorf("failed to get interface %s: %w", nic, err)
 	}
 
 	var client *arp.Client
@@ -65,7 +65,7 @@ func ArpResolve(nic, dstIP string, timeout time.Duration, maxRetry int, done cha
 		}
 	}
 	if err != nil {
-		return nil, count, fmt.Errorf("failed to set up ARP client: %v", err)
+		return nil, count, fmt.Errorf("failed to set up ARP client: %w", err)
 	}
 
 	var mac net.HardwareAddr
@@ -85,7 +85,7 @@ func ArpResolve(nic, dstIP string, timeout time.Duration, maxRetry int, done cha
 		}
 	}
 
-	return nil, count, fmt.Errorf("resolve MAC address of %s timeout: %v", dstIP, err)
+	return nil, count, fmt.Errorf("resolve MAC address of %s timeout: %w", dstIP, err)
 }
 
 func macEqual(a, b net.HardwareAddr) bool {
@@ -115,7 +115,7 @@ func ArpDetectIPConflict(nic, ip string, mac net.HardwareAddr) (net.HardwareAddr
 
 	tpa, err := netip.ParseAddr(ip)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse IP address %s: %v", ip, err)
+		return nil, fmt.Errorf("failed to parse IP address %s: %w", ip, err)
 	}
 	ip = tpa.String()
 

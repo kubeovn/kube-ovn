@@ -2,6 +2,7 @@ package underlay
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"os/exec"
@@ -1114,7 +1115,7 @@ func checkU2OFilterOpenFlowExist(clusterName string, pn *apiv1.ProviderNetwork, 
 		return fmt.Errorf("getting nodes in kind cluster: %w", err)
 	}
 	if len(nodes) == 0 {
-		return fmt.Errorf("no nodes found in kind cluster")
+		return errors.New("no nodes found in kind cluster")
 	}
 
 	for _, node := range nodes {
@@ -1153,9 +1154,9 @@ func checkU2OFilterOpenFlowExist(clusterName string, pn *apiv1.ProviderNetwork, 
 
 			if !success {
 				if expectRuleExist {
-					return fmt.Errorf("expected rule does not exist after 3 attempts")
+					return errors.New("expected rule does not exist after 3 attempts")
 				}
-				return fmt.Errorf("unexpected rule exists after 3 attempts")
+				return errors.New("unexpected rule exists after 3 attempts")
 			}
 		}
 	}
