@@ -3,12 +3,12 @@ package controller
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/pprof"
 	"os"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	v1 "k8s.io/api/authorization/v1"
 	apiv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -18,36 +18,25 @@ import (
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
+	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/controller"
-	"github.com/kubeovn/kube-ovn/pkg/server"
+	"github.com/kubeovn/kube-ovn/pkg/metrics"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/versions"
 )
 
-const (
-	svcName           = "kube-ovn-controller"
-	ovnLeaderResource = "kube-ovn-controller"
-)
+const ovnLeaderResource = "kube-ovn-controller"
 
 func CmdMain() {
 	defer klog.Flush()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go func() {
-		stopCh := signals.SetupSignalHandler().Done()
-		<-stopCh
-		cancel()
-	}()
+	ctx := signals.SetupSignalHandler()
 
 	klog.Infof(versions.String())
 
-	controller.InitClientGoMetrics()
-	controller.InitWorkQueueMetrics()
-	util.InitKlogMetrics()
 	config, err := controller.ParseFlags()
 	if err != nil {
 		util.LogFatalAndExit(err, "failed to parse config")
@@ -59,36 +48,47 @@ func CmdMain() {
 	utilruntime.Must(kubeovnv1.AddToScheme(scheme.Scheme))
 
 	go func() {
-		mux := http.NewServeMux()
-		if config.EnableMetrics {
-			mux.Handle("/metrics", promhttp.Handler())
-		}
 		if config.EnablePprof {
+			mux := http.NewServeMux()
 			mux.HandleFunc("/debug/pprof/", pprof.Index)
 			mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
 			mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
 			mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
 			mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+
+			listerner, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: int(config.PprofPort)})
+			if err != nil {
+				util.LogFatalAndExit(err, "failed to listen on %s", util.JoinHostPort("127.0.0.1", config.PprofPort))
+			}
+			svr := manager.Server{
+				Name: "pprof",
+				Server: &http.Server{
+					Handler:           mux,
+					MaxHeaderBytes:    1 << 20,
+					IdleTimeout:       90 * time.Second,
+					ReadHeaderTimeout: 32 * time.Second,
+				},
+				Listener: listerner,
+			}
+			go func() {
+				if err = svr.Start(ctx); err != nil {
+					util.LogFatalAndExit(err, "failed to run pprof server")
+				}
+			}()
 		}
 
-		addr := util.JoinHostPort(util.GetDefaultListenAddr(), config.PprofPort)
-		if !config.SecureServing {
-			server := &http.Server{
-				Addr:              addr,
-				ReadHeaderTimeout: 3 * time.Second,
-				Handler:           mux,
-			}
-			util.LogFatalAndExit(server.ListenAndServe(), "failed to listen and server on %s", server.Addr)
-		} else {
-			ch, err := server.SecureServing(addr, svcName, mux)
-			if err != nil {
-				util.LogFatalAndExit(err, "failed to serve on %s", addr)
-			}
-			<-ch
+		if !config.EnableMetrics {
+			return
 		}
+		metrics.InitKlogMetrics()
+		metrics.InitClientGoMetrics()
+		addr := util.JoinHostPort(util.GetDefaultListenAddr(), config.PprofPort)
+		if err := metrics.Run(ctx, config.KubeRestConfig, addr, config.SecureServing); err != nil {
+			util.LogFatalAndExit(err, "failed to run metrics server")
+		}
+		<-ctx.Done()
 	}()
 
-	//	ctx, cancel := context.WithCancel(context.Background())
 	recorder := record.NewBroadcaster().NewRecorder(scheme.Scheme, apiv1.EventSource{
 		Component: ovnLeaderResource,
 		Host:      os.Getenv(util.HostnameEnv),

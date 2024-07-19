@@ -1,6 +1,9 @@
 package ovnmonitor
 
-import "github.com/prometheus/client_golang/prometheus"
+import (
+	"github.com/prometheus/client_golang/prometheus"
+	"sigs.k8s.io/controller-runtime/pkg/metrics"
+)
 
 var (
 	// OVN basic info
@@ -476,48 +479,48 @@ var (
 
 func registerOvnMetrics() {
 	// ovn status metrics
-	prometheus.MustRegister(metricOvnHealthyStatus)
-	prometheus.MustRegister(metricOvnHealthyStatusContent)
-	prometheus.MustRegister(metricRequestErrorNums)
-	prometheus.MustRegister(metricLogFileSize)
-	prometheus.MustRegister(metricDBFileSize)
-	prometheus.MustRegister(metricDBStatus)
+	metrics.Registry.MustRegister(metricOvnHealthyStatus)
+	metrics.Registry.MustRegister(metricOvnHealthyStatusContent)
+	metrics.Registry.MustRegister(metricRequestErrorNums)
+	metrics.Registry.MustRegister(metricLogFileSize)
+	metrics.Registry.MustRegister(metricDBFileSize)
+	metrics.Registry.MustRegister(metricDBStatus)
 
 	// ovn chassis metrics
-	prometheus.MustRegister(metricChassisInfo)
-	prometheus.MustRegister(metricLogicalSwitchInfo)
-	prometheus.MustRegister(metricLogicalSwitchExternalIDs)
-	prometheus.MustRegister(metricLogicalSwitchPortBinding)
-	prometheus.MustRegister(metricLogicalSwitchTunnelKey)
-	prometheus.MustRegister(metricLogicalSwitchPortsNum)
-	prometheus.MustRegister(metricLogicalSwitchPortInfo)
-	prometheus.MustRegister(metricLogicalSwitchPortTunnelKey)
+	metrics.Registry.MustRegister(metricChassisInfo)
+	metrics.Registry.MustRegister(metricLogicalSwitchInfo)
+	metrics.Registry.MustRegister(metricLogicalSwitchExternalIDs)
+	metrics.Registry.MustRegister(metricLogicalSwitchPortBinding)
+	metrics.Registry.MustRegister(metricLogicalSwitchTunnelKey)
+	metrics.Registry.MustRegister(metricLogicalSwitchPortsNum)
+	metrics.Registry.MustRegister(metricLogicalSwitchPortInfo)
+	metrics.Registry.MustRegister(metricLogicalSwitchPortTunnelKey)
 
 	// OVN Cluster basic info metrics
-	prometheus.MustRegister(metricClusterEnabled)
-	prometheus.MustRegister(metricClusterRole)
-	prometheus.MustRegister(metricClusterStatus)
-	prometheus.MustRegister(metricClusterTerm)
+	metrics.Registry.MustRegister(metricClusterEnabled)
+	metrics.Registry.MustRegister(metricClusterRole)
+	metrics.Registry.MustRegister(metricClusterStatus)
+	metrics.Registry.MustRegister(metricClusterTerm)
 
-	prometheus.MustRegister(metricClusterLeaderSelf)
-	prometheus.MustRegister(metricClusterVoteSelf)
-	prometheus.MustRegister(metricClusterElectionTimer)
-	prometheus.MustRegister(metricClusterNotCommittedEntryCount)
-	prometheus.MustRegister(metricClusterNotAppliedEntryCount)
+	metrics.Registry.MustRegister(metricClusterLeaderSelf)
+	metrics.Registry.MustRegister(metricClusterVoteSelf)
+	metrics.Registry.MustRegister(metricClusterElectionTimer)
+	metrics.Registry.MustRegister(metricClusterNotCommittedEntryCount)
+	metrics.Registry.MustRegister(metricClusterNotAppliedEntryCount)
 
-	prometheus.MustRegister(metricClusterLogIndexStart)
-	prometheus.MustRegister(metricClusterLogIndexNext)
-	prometheus.MustRegister(metricClusterInConnTotal)
-	prometheus.MustRegister(metricClusterOutConnTotal)
-	prometheus.MustRegister(metricClusterInConnErrTotal)
-	prometheus.MustRegister(metricClusterOutConnErrTotal)
+	metrics.Registry.MustRegister(metricClusterLogIndexStart)
+	metrics.Registry.MustRegister(metricClusterLogIndexNext)
+	metrics.Registry.MustRegister(metricClusterInConnTotal)
+	metrics.Registry.MustRegister(metricClusterOutConnTotal)
+	metrics.Registry.MustRegister(metricClusterInConnErrTotal)
+	metrics.Registry.MustRegister(metricClusterOutConnErrTotal)
 
 	// to be implemented
-	prometheus.MustRegister(metricClusterPeerNextIndex)
-	prometheus.MustRegister(metricClusterPeerMatchIndex)
-	prometheus.MustRegister(metricClusterNextIndex)
-	prometheus.MustRegister(metricClusterMatchIndex)
-	prometheus.MustRegister(metricClusterPeerInConnInfo)
-	prometheus.MustRegister(metricClusterPeerOutConnInfo)
-	prometheus.MustRegister(metricClusterPeerCount)
+	metrics.Registry.MustRegister(metricClusterPeerNextIndex)
+	metrics.Registry.MustRegister(metricClusterPeerMatchIndex)
+	metrics.Registry.MustRegister(metricClusterNextIndex)
+	metrics.Registry.MustRegister(metricClusterMatchIndex)
+	metrics.Registry.MustRegister(metricClusterPeerInConnInfo)
+	metrics.Registry.MustRegister(metricClusterPeerOutConnInfo)
+	metrics.Registry.MustRegister(metricClusterPeerCount)
 }
