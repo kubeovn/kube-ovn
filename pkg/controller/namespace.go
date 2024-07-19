@@ -210,7 +210,6 @@ func (c *Controller) handleAddNamespace(key string) error {
 	} else if namespace.Annotations[util.LogicalSwitchAnnotation] == strings.Join(lss, ",") &&
 		namespace.Annotations[util.CidrAnnotation] == strings.Join(cidrs, ";") &&
 		namespace.Annotations[util.ExcludeIpsAnnotation] == strings.Join(excludeIps, ";") &&
-		namespace.Annotations[util.DefaultVPCSubnetAnnotation] == ds &&
 		namespace.Annotations[util.IPPoolAnnotation] == ippool {
 		return nil
 	}
