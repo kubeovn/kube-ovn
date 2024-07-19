@@ -34,7 +34,7 @@ METALLB_CONTROLLER_IMAGE = quay.io/metallb/controller:v$(METALLB_VERSION)
 METALLB_SPEAKER_IMAGE = quay.io/metallb/speaker:v$(METALLB_VERSION)
 METALLB_FRR_IMAGE = quay.io/frrouting/frr:8.5.2
 
-KUBEVIRT_VERSION = v0.59.2
+KUBEVIRT_VERSION = v1.3.0
 KUBEVIRT_OPERATOR_IMAGE = quay.io/kubevirt/virt-operator:$(KUBEVIRT_VERSION)
 KUBEVIRT_API_IMAGE = quay.io/kubevirt/virt-api:$(KUBEVIRT_VERSION)
 KUBEVIRT_CONTROLLER_IMAGE = quay.io/kubevirt/virt-controller:$(KUBEVIRT_VERSION)
@@ -869,7 +869,7 @@ lint:
 	@GOOS=linux gosec -exclude=G204,G301,G306,G402,G404,G601 -exclude-dir=test -exclude-dir=pkg/client ./...
 
 .PHONY: gofumpt
-gofumpt: gofumpt
+gofumpt:
 	gofumpt -w -extra .
 
 .PHONY: lint-windows

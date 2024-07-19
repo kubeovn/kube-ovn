@@ -338,7 +338,7 @@ func compactOvnDatabase(db string) {
 	}
 
 	if len(output) != 0 {
-		klog.V(5).Infof("compact ovn%s database: %s", string(output))
+		klog.V(5).Infof("compact ovn%s database: %s", db, string(output))
 	}
 }
 

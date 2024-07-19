@@ -114,18 +114,18 @@ func (c *Controller) reconcileTProxyRoutes(protocol string) {
 	}
 
 	if err := addRuleIfNotExist(family, TProxyOutputMark, TProxyOutputMask, util.TProxyRouteTable); err != nil {
-		klog.Error("add output rule failed err:%v ", err)
+		klog.Errorf("failed to add output rule: %v", err)
 		return
 	}
 
 	if err := addRuleIfNotExist(family, TProxyPreroutingMark, TProxyPreroutingMask, util.TProxyRouteTable); err != nil {
-		klog.Error("add prerouting rule failed err:%v ", err)
+		klog.Errorf("failed to add prerouting rule: %v", err)
 		return
 	}
 
 	dst := GetDefaultRouteDst(protocol)
 	if err := addRouteIfNotExist(family, util.TProxyRouteTable, &dst); err != nil {
-		klog.Error("add tproxy route failed err:%v ", err)
+		klog.Errorf("failed to add tproxy route: %v", err)
 		return
 	}
 }
@@ -233,7 +233,7 @@ func addRouteIfNotExist(family, table int, dst *net.IPNet) error {
 func delRouteIfExist(family, table int, dst *net.IPNet) error {
 	curRoutes, err := netlink.RouteListFiltered(family, &netlink.Route{Table: table}, netlink.RT_FILTER_TABLE)
 	if err != nil {
-		klog.Error("list routes with table %d failed with err: %v", table, err)
+		klog.Errorf("list routes with table %d failed with err: %v", table, err)
 		return err
 	}
 

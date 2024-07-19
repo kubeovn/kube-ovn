@@ -21,7 +21,7 @@ var (
 
 type ValidatingHook struct {
 	client  client.Client
-	decoder *admission.Decoder
+	decoder admission.Decoder
 	cache   cache.Cache
 }
 

@@ -21,10 +21,9 @@ package fake
 import (
 	"context"
 
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	labels "k8s.io/apimachinery/pkg/labels"
-	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	types "k8s.io/apimachinery/pkg/types"
 	watch "k8s.io/apimachinery/pkg/watch"
 	testing "k8s.io/client-go/testing"
@@ -35,24 +34,24 @@ type FakeOvnSnatRules struct {
 	Fake *FakeKubeovnV1
 }
 
-var ovnsnatrulesResource = schema.GroupVersionResource{Group: "kubeovn.io", Version: "v1", Resource: "ovn-snat-rules"}
+var ovnsnatrulesResource = v1.SchemeGroupVersion.WithResource("ovn-snat-rules")
 
-var ovnsnatrulesKind = schema.GroupVersionKind{Group: "kubeovn.io", Version: "v1", Kind: "OvnSnatRule"}
+var ovnsnatrulesKind = v1.SchemeGroupVersion.WithKind("OvnSnatRule")
 
 // Get takes name of the ovnSnatRule, and returns the corresponding ovnSnatRule object, and an error if there is any.
-func (c *FakeOvnSnatRules) Get(ctx context.Context, name string, options v1.GetOptions) (result *kubeovnv1.OvnSnatRule, err error) {
+func (c *FakeOvnSnatRules) Get(ctx context.Context, name string, options metav1.GetOptions) (result *v1.OvnSnatRule, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootGetAction(ovnsnatrulesResource, name), &kubeovnv1.OvnSnatRule{})
+		Invokes(testing.NewRootGetAction(ovnsnatrulesResource, name), &v1.OvnSnatRule{})
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*kubeovnv1.OvnSnatRule), err
+	return obj.(*v1.OvnSnatRule), err
 }
 
 // List takes label and field selectors, and returns the list of OvnSnatRules that match those selectors.
-func (c *FakeOvnSnatRules) List(ctx context.Context, opts v1.ListOptions) (result *kubeovnv1.OvnSnatRuleList, err error) {
+func (c *FakeOvnSnatRules) List(ctx context.Context, opts metav1.ListOptions) (result *v1.OvnSnatRuleList, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootListAction(ovnsnatrulesResource, ovnsnatrulesKind, opts), &kubeovnv1.OvnSnatRuleList{})
+		Invokes(testing.NewRootListAction(ovnsnatrulesResource, ovnsnatrulesKind, opts), &v1.OvnSnatRuleList{})
 	if obj == nil {
 		return nil, err
 	}
@@ -61,8 +60,8 @@ func (c *FakeOvnSnatRules) List(ctx context.Context, opts v1.ListOptions) (resul
 	if label == nil {
 		label = labels.Everything()
 	}
-	list := &kubeovnv1.OvnSnatRuleList{ListMeta: obj.(*kubeovnv1.OvnSnatRuleList).ListMeta}
-	for _, item := range obj.(*kubeovnv1.OvnSnatRuleList).Items {
+	list := &v1.OvnSnatRuleList{ListMeta: obj.(*v1.OvnSnatRuleList).ListMeta}
+	for _, item := range obj.(*v1.OvnSnatRuleList).Items {
 		if label.Matches(labels.Set(item.Labels)) {
 			list.Items = append(list.Items, item)
 		}
@@ -71,63 +70,63 @@ func (c *FakeOvnSnatRules) List(ctx context.Context, opts v1.ListOptions) (resul
 }
 
 // Watch returns a watch.Interface that watches the requested ovnSnatRules.
-func (c *FakeOvnSnatRules) Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error) {
+func (c *FakeOvnSnatRules) Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error) {
 	return c.Fake.
 		InvokesWatch(testing.NewRootWatchAction(ovnsnatrulesResource, opts))
 }
 
 // Create takes the representation of a ovnSnatRule and creates it.  Returns the server's representation of the ovnSnatRule, and an error, if there is any.
-func (c *FakeOvnSnatRules) Create(ctx context.Context, ovnSnatRule *kubeovnv1.OvnSnatRule, opts v1.CreateOptions) (result *kubeovnv1.OvnSnatRule, err error) {
+func (c *FakeOvnSnatRules) Create(ctx context.Context, ovnSnatRule *v1.OvnSnatRule, opts metav1.CreateOptions) (result *v1.OvnSnatRule, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootCreateAction(ovnsnatrulesResource, ovnSnatRule), &kubeovnv1.OvnSnatRule{})
+		Invokes(testing.NewRootCreateAction(ovnsnatrulesResource, ovnSnatRule), &v1.OvnSnatRule{})
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*kubeovnv1.OvnSnatRule), err
+	return obj.(*v1.OvnSnatRule), err
 }
 
 // Update takes the representation of a ovnSnatRule and updates it. Returns the server's representation of the ovnSnatRule, and an error, if there is any.
-func (c *FakeOvnSnatRules) Update(ctx context.Context, ovnSnatRule *kubeovnv1.OvnSnatRule, opts v1.UpdateOptions) (result *kubeovnv1.OvnSnatRule, err error) {
+func (c *FakeOvnSnatRules) Update(ctx context.Context, ovnSnatRule *v1.OvnSnatRule, opts metav1.UpdateOptions) (result *v1.OvnSnatRule, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootUpdateAction(ovnsnatrulesResource, ovnSnatRule), &kubeovnv1.OvnSnatRule{})
+		Invokes(testing.NewRootUpdateAction(ovnsnatrulesResource, ovnSnatRule), &v1.OvnSnatRule{})
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*kubeovnv1.OvnSnatRule), err
+	return obj.(*v1.OvnSnatRule), err
 }
 
 // UpdateStatus was generated because the type contains a Status member.
 // Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-func (c *FakeOvnSnatRules) UpdateStatus(ctx context.Context, ovnSnatRule *kubeovnv1.OvnSnatRule, opts v1.UpdateOptions) (*kubeovnv1.OvnSnatRule, error) {
+func (c *FakeOvnSnatRules) UpdateStatus(ctx context.Context, ovnSnatRule *v1.OvnSnatRule, opts metav1.UpdateOptions) (*v1.OvnSnatRule, error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootUpdateSubresourceAction(ovnsnatrulesResource, "status", ovnSnatRule), &kubeovnv1.OvnSnatRule{})
+		Invokes(testing.NewRootUpdateSubresourceAction(ovnsnatrulesResource, "status", ovnSnatRule), &v1.OvnSnatRule{})
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*kubeovnv1.OvnSnatRule), err
+	return obj.(*v1.OvnSnatRule), err
 }
 
 // Delete takes name of the ovnSnatRule and deletes it. Returns an error if one occurs.
-func (c *FakeOvnSnatRules) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
+func (c *FakeOvnSnatRules) Delete(ctx context.Context, name string, opts metav1.DeleteOptions) error {
 	_, err := c.Fake.
-		Invokes(testing.NewRootDeleteActionWithOptions(ovnsnatrulesResource, name, opts), &kubeovnv1.OvnSnatRule{})
+		Invokes(testing.NewRootDeleteActionWithOptions(ovnsnatrulesResource, name, opts), &v1.OvnSnatRule{})
 	return err
 }
 
 // DeleteCollection deletes a collection of objects.
-func (c *FakeOvnSnatRules) DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error {
+func (c *FakeOvnSnatRules) DeleteCollection(ctx context.Context, opts metav1.DeleteOptions, listOpts metav1.ListOptions) error {
 	action := testing.NewRootDeleteCollectionAction(ovnsnatrulesResource, listOpts)
 
-	_, err := c.Fake.Invokes(action, &kubeovnv1.OvnSnatRuleList{})
+	_, err := c.Fake.Invokes(action, &v1.OvnSnatRuleList{})
 	return err
 }
 
 // Patch applies the patch and returns the patched ovnSnatRule.
-func (c *FakeOvnSnatRules) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *kubeovnv1.OvnSnatRule, err error) {
+func (c *FakeOvnSnatRules) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *v1.OvnSnatRule, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootPatchSubresourceAction(ovnsnatrulesResource, name, pt, data, subresources...), &kubeovnv1.OvnSnatRule{})
+		Invokes(testing.NewRootPatchSubresourceAction(ovnsnatrulesResource, name, pt, data, subresources...), &v1.OvnSnatRule{})
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*kubeovnv1.OvnSnatRule), err
+	return obj.(*v1.OvnSnatRule), err
 }

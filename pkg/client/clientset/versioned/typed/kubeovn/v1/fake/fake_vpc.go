@@ -21,10 +21,9 @@ package fake
 import (
 	"context"
 
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	labels "k8s.io/apimachinery/pkg/labels"
-	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	types "k8s.io/apimachinery/pkg/types"
 	watch "k8s.io/apimachinery/pkg/watch"
 	testing "k8s.io/client-go/testing"
@@ -35,24 +34,24 @@ type FakeVpcs struct {
 	Fake *FakeKubeovnV1
 }
 
-var vpcsResource = schema.GroupVersionResource{Group: "kubeovn.io", Version: "v1", Resource: "vpcs"}
+var vpcsResource = v1.SchemeGroupVersion.WithResource("vpcs")
 
-var vpcsKind = schema.GroupVersionKind{Group: "kubeovn.io", Version: "v1", Kind: "Vpc"}
+var vpcsKind = v1.SchemeGroupVersion.WithKind("Vpc")
 
 // Get takes name of the vpc, and returns the corresponding vpc object, and an error if there is any.
-func (c *FakeVpcs) Get(ctx context.Context, name string, options v1.GetOptions) (result *kubeovnv1.Vpc, err error) {
+func (c *FakeVpcs) Get(ctx context.Context, name string, options metav1.GetOptions) (result *v1.Vpc, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootGetAction(vpcsResource, name), &kubeovnv1.Vpc{})
+		Invokes(testing.NewRootGetAction(vpcsResource, name), &v1.Vpc{})
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*kubeovnv1.Vpc), err
+	return obj.(*v1.Vpc), err
 }
 
 // List takes label and field selectors, and returns the list of Vpcs that match those selectors.
-func (c *FakeVpcs) List(ctx context.Context, opts v1.ListOptions) (result *kubeovnv1.VpcList, err error) {
+func (c *FakeVpcs) List(ctx context.Context, opts metav1.ListOptions) (result *v1.VpcList, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootListAction(vpcsResource, vpcsKind, opts), &kubeovnv1.VpcList{})
+		Invokes(testing.NewRootListAction(vpcsResource, vpcsKind, opts), &v1.VpcList{})
 	if obj == nil {
 		return nil, err
 	}
@@ -61,8 +60,8 @@ func (c *FakeVpcs) List(ctx context.Context, opts v1.ListOptions) (result *kubeo
 	if label == nil {
 		label = labels.Everything()
 	}
-	list := &kubeovnv1.VpcList{ListMeta: obj.(*kubeovnv1.VpcList).ListMeta}
-	for _, item := range obj.(*kubeovnv1.VpcList).Items {
+	list := &v1.VpcList{ListMeta: obj.(*v1.VpcList).ListMeta}
+	for _, item := range obj.(*v1.VpcList).Items {
 		if label.Matches(labels.Set(item.Labels)) {
 			list.Items = append(list.Items, item)
 		}
@@ -71,63 +70,63 @@ func (c *FakeVpcs) List(ctx context.Context, opts v1.ListOptions) (result *kubeo
 }
 
 // Watch returns a watch.Interface that watches the requested vpcs.
-func (c *FakeVpcs) Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error) {
+func (c *FakeVpcs) Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error) {
 	return c.Fake.
 		InvokesWatch(testing.NewRootWatchAction(vpcsResource, opts))
 }
 
 // Create takes the representation of a vpc and creates it.  Returns the server's representation of the vpc, and an error, if there is any.
-func (c *FakeVpcs) Create(ctx context.Context, vpc *kubeovnv1.Vpc, opts v1.CreateOptions) (result *kubeovnv1.Vpc, err error) {
+func (c *FakeVpcs) Create(ctx context.Context, vpc *v1.Vpc, opts metav1.CreateOptions) (result *v1.Vpc, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootCreateAction(vpcsResource, vpc), &kubeovnv1.Vpc{})
+		Invokes(testing.NewRootCreateAction(vpcsResource, vpc), &v1.Vpc{})
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*kubeovnv1.Vpc), err
+	return obj.(*v1.Vpc), err
 }
 
 // Update takes the representation of a vpc and updates it. Returns the server's representation of the vpc, and an error, if there is any.
-func (c *FakeVpcs) Update(ctx context.Context, vpc *kubeovnv1.Vpc, opts v1.UpdateOptions) (result *kubeovnv1.Vpc, err error) {
+func (c *FakeVpcs) Update(ctx context.Context, vpc *v1.Vpc, opts metav1.UpdateOptions) (result *v1.Vpc, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootUpdateAction(vpcsResource, vpc), &kubeovnv1.Vpc{})
+		Invokes(testing.NewRootUpdateAction(vpcsResource, vpc), &v1.Vpc{})
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*kubeovnv1.Vpc), err
+	return obj.(*v1.Vpc), err
 }
 
 // UpdateStatus was generated because the type contains a Status member.
 // Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-func (c *FakeVpcs) UpdateStatus(ctx context.Context, vpc *kubeovnv1.Vpc, opts v1.UpdateOptions) (*kubeovnv1.Vpc, error) {
+func (c *FakeVpcs) UpdateStatus(ctx context.Context, vpc *v1.Vpc, opts metav1.UpdateOptions) (*v1.Vpc, error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootUpdateSubresourceAction(vpcsResource, "status", vpc), &kubeovnv1.Vpc{})
+		Invokes(testing.NewRootUpdateSubresourceAction(vpcsResource, "status", vpc), &v1.Vpc{})
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*kubeovnv1.Vpc), err
+	return obj.(*v1.Vpc), err
 }
 
 // Delete takes name of the vpc and deletes it. Returns an error if one occurs.
-func (c *FakeVpcs) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
+func (c *FakeVpcs) Delete(ctx context.Context, name string, opts metav1.DeleteOptions) error {
 	_, err := c.Fake.
-		Invokes(testing.NewRootDeleteActionWithOptions(vpcsResource, name, opts), &kubeovnv1.Vpc{})
+		Invokes(testing.NewRootDeleteActionWithOptions(vpcsResource, name, opts), &v1.Vpc{})
 	return err
 }
 
 // DeleteCollection deletes a collection of objects.
-func (c *FakeVpcs) DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error {
+func (c *FakeVpcs) DeleteCollection(ctx context.Context, opts metav1.DeleteOptions, listOpts metav1.ListOptions) error {
 	action := testing.NewRootDeleteCollectionAction(vpcsResource, listOpts)
 
-	_, err := c.Fake.Invokes(action, &kubeovnv1.VpcList{})
+	_, err := c.Fake.Invokes(action, &v1.VpcList{})
 	return err
 }
 
 // Patch applies the patch and returns the patched vpc.
-func (c *FakeVpcs) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *kubeovnv1.Vpc, err error) {
+func (c *FakeVpcs) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *v1.Vpc, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootPatchSubresourceAction(vpcsResource, name, pt, data, subresources...), &kubeovnv1.Vpc{})
+		Invokes(testing.NewRootPatchSubresourceAction(vpcsResource, name, pt, data, subresources...), &v1.Vpc{})
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*kubeovnv1.Vpc), err
+	return obj.(*v1.Vpc), err
 }

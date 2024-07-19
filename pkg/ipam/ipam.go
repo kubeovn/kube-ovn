@@ -93,7 +93,7 @@ func (ipam *IPAM) GetStaticAddress(podName, nicName, ip string, mac *string, sub
 	}
 	ips, err = checkAndAppendIpsForDual(ips, macStr, podName, nicName, subnet, checkConflict)
 	if err != nil {
-		klog.Errorf("failed to append allocate ip %v mac %s for %s", ips, mac, podName)
+		klog.Errorf("failed to append allocate ip %v mac %v for %s", ips, mac, podName)
 		return "", "", "", err
 	}
 

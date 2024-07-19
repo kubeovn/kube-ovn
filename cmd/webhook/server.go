@@ -9,9 +9,9 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/klog/v2"
-	"k8s.io/klog/v2/klogr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
+	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	ctrlwebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	ovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -61,7 +61,7 @@ func main() {
 	pflag.Parse()
 
 	// set logger for controller-runtime framework
-	ctrl.SetLogger(klogr.New())
+	ctrl.SetLogger(klog.NewKlogr())
 
 	// Create a webhook server.
 	hookServer := ctrlwebhook.NewServer(ctrlwebhook.Options{
@@ -72,7 +72,9 @@ func main() {
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme: scheme,
 		// disable metrics to avoid port conflict
-		MetricsBindAddress:     "0",
+		Metrics: server.Options{
+			BindAddress: "0",
+		},
 		HealthProbeBindAddress: util.JoinHostPort(os.Getenv("POD_IP"), *healthProbePort),
 	})
 	if err != nil {
