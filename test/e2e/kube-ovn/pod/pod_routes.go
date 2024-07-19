@@ -42,6 +42,7 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 	})
 
 	framework.ConformanceIt("should support north gateway via pod annotation", func() {
+		f.SkipVersionPriorTo(1, 12, "This feature was introduced in v1.12")
 		if f.ClusterNetworkMode == "underlay" {
 			ginkgo.Skip("This test is only for overlay network")
 		}
