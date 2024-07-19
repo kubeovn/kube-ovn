@@ -6,7 +6,6 @@ import (
 	"io"
 	"net"
 	"strconv"
-	"strings"
 	"sync"
 	"syscall"
 
@@ -23,23 +22,18 @@ import (
 )
 
 var (
-	tcpListener net.Listener
-
 	customVPCPodIPToNs         sync.Map
 	customVPCPodTCPProbeIPPort sync.Map
 )
 
 func (c *Controller) StartTProxyForwarding() {
-	var err error
-	addr := util.GetDefaultListenAddr()
-
 	protocol := "tcp"
-	if strings.HasPrefix(addr, "[") && strings.HasSuffix(addr, "]") {
-		addr = addr[1 : len(addr)-1]
+	addr := util.GetDefaultListenAddr()
+	if util.CheckProtocol(addr) == kubeovnv1.ProtocolIPv6 {
 		protocol = "tcp6"
 	}
 
-	tcpListener, err = goTProxy.ListenTCP(protocol, &net.TCPAddr{IP: net.ParseIP(addr), Port: util.TProxyListenPort})
+	tcpListener, err := goTProxy.ListenTCP(protocol, &net.TCPAddr{IP: net.ParseIP(addr), Port: util.TProxyListenPort})
 	if err != nil {
 		klog.Fatalf("Encountered error while binding listener: %s", err)
 		return

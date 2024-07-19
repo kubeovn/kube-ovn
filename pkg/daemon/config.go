@@ -48,7 +48,8 @@ type Configuration struct {
 	EncapChecksum             bool
 	EnablePprof               bool
 	MacLearningFallback       bool
-	PprofPort                 int
+	PprofPort                 int32
+	SecureServing             bool
 	NetworkType               string
 	CniConfDir                string
 	CniConfFile               string
@@ -61,8 +62,8 @@ type Configuration struct {
 	EnableArpDetectIPConflict bool
 	KubeletDir                string
 	EnableVerboseConnCheck    bool
-	TCPConnCheckPort          int
-	UDPConnCheckPort          int
+	TCPConnCheckPort          int32
+	UDPConnCheckPort          int32
 	EnableTProxy              bool
 	OVSVsctlConcurrency       int32
 }
@@ -85,7 +86,8 @@ func ParseFlags() *Configuration {
 		argNodeSwitch            = pflag.String("node-switch", "join", "The name of node gateway switch which help node to access pod network")
 		argEncapChecksum         = pflag.Bool("encap-checksum", true, "Enable checksum")
 		argEnablePprof           = pflag.Bool("enable-pprof", false, "Enable pprof")
-		argPprofPort             = pflag.Int("pprof-port", 10665, "The port to get profiling data")
+		argPprofPort             = pflag.Int32("pprof-port", 10665, "The port to get profiling data")
+		argSecureServing         = pflag.Bool("secure-serving", false, "Enable secure serving")
 		argMacLearningFallback   = pflag.Bool("mac-learning-fallback", false, "Fallback to the legacy MAC learning mode")
 
 		argsNetworkType              = pflag.String("network-type", util.NetworkTypeGeneve, "Tunnel encapsulation protocol in overlay networks")
@@ -100,8 +102,8 @@ func ParseFlags() *Configuration {
 		argEnableArpDetectIPConflict = pflag.Bool("enable-arp-detect-ip-conflict", true, "Whether to support arp detect ip conflict in vlan network")
 		argKubeletDir                = pflag.String("kubelet-dir", "/var/lib/kubelet", "Path of the kubelet dir, default: /var/lib/kubelet")
 		argEnableVerboseConnCheck    = pflag.Bool("enable-verbose-conn-check", false, "enable TCP/UDP connectivity check listen port")
-		argTCPConnectivityCheckPort  = pflag.Int("tcp-conn-check-port", 8100, "TCP connectivity Check Port")
-		argUDPConnectivityCheckPort  = pflag.Int("udp-conn-check-port", 8101, "UDP connectivity Check Port")
+		argTCPConnectivityCheckPort  = pflag.Int32("tcp-conn-check-port", 8100, "TCP connectivity Check Port")
+		argUDPConnectivityCheckPort  = pflag.Int32("udp-conn-check-port", 8101, "UDP connectivity Check Port")
 		argEnableTProxy              = pflag.Bool("enable-tproxy", false, "enable tproxy for vpc pod liveness or readiness probe")
 		argOVSVsctlConcurrency       = pflag.Int32("ovs-vsctl-concurrency", 100, "concurrency limit of ovs-vsctl")
 	)
@@ -137,6 +139,7 @@ func ParseFlags() *Configuration {
 		OvsSocket:                 *argOvsSocket,
 		KubeConfigFile:            *argKubeConfigFile,
 		EnablePprof:               *argEnablePprof,
+		SecureServing:             *argSecureServing,
 		PprofPort:                 *argPprofPort,
 		MacLearningFallback:       *argMacLearningFallback,
 		NodeName:                  strings.ToLower(*argNodeName),

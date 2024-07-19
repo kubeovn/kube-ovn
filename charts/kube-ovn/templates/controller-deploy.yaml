@@ -116,6 +116,7 @@ spec:
           - --keep-vm-ip={{- .Values.func.ENABLE_KEEP_VM_IP }}
           - --enable-metrics={{- .Values.networking.ENABLE_METRICS }}
           - --node-local-dns-ip={{- .Values.networking.NODE_LOCAL_DNS_IP }}
+          - --secure-serving={{- .Values.func.SECURE_SERVING }}
           securityContext:
             runAsUser: 0
             privileged: false
@@ -129,6 +130,10 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
             - name: KUBE_NAMESPACE
               valueFrom:
                 fieldRef:
@@ -139,6 +144,10 @@ spec:
                   fieldPath: spec.nodeName
             - name: OVN_DB_IPS
               value: "{{ .Values.MASTER_NODES }}"
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
             - name: POD_IPS
               valueFrom:
                 fieldRef:

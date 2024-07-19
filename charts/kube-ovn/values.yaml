@@ -64,6 +64,7 @@ func:
   LS_DNAT_MOD_DL_DST: true
   LS_CT_SKIP_DST_LPORT_IPS: true
   ENABLE_BIND_LOCAL_IP: true
+  SECURE_SERVING: false
   U2O_INTERCONNECTION: false
   ENABLE_TPROXY: false
   ENABLE_IC: false
