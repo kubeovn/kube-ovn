@@ -4209,12 +4209,14 @@ spec:
             exec:
               command:
                 - /kube-ovn/kube-ovn-controller-healthcheck
+                - --tls=${SECURE_SERVING}
             periodSeconds: 3
             timeoutSeconds: 45
           livenessProbe:
             exec:
               command:
                 - /kube-ovn/kube-ovn-controller-healthcheck
+                - --tls=${SECURE_SERVING}
             initialDelaySeconds: 300
             periodSeconds: 7
             failureThreshold: 5
