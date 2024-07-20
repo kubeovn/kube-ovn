@@ -2,6 +2,7 @@ package util
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -18,24 +19,46 @@ import (
 	"k8s.io/klog/v2"
 )
 
-func DialAPIServer(host string) error {
+func DialTCP(host string, timeout time.Duration, verbose bool) error {
 	u, err := url.Parse(host)
 	if err != nil {
 		return fmt.Errorf("failed to parse host %q: %v", host, err)
 	}
 
+	var conn net.Conn
 	address := net.JoinHostPort(u.Hostname(), u.Port())
-	timer := time.NewTimer(3 * time.Second)
+	switch u.Scheme {
+	case "tcp", "http":
+		conn, err = net.DialTimeout("tcp", address, timeout)
+	case "tls", "https":
+		config := &tls.Config{InsecureSkipVerify: true} // #nosec G402
+		conn, err = tls.DialWithDialer(&net.Dialer{Timeout: timeout}, "tcp", address, config)
+	default:
+		return fmt.Errorf("unsupported scheme %q", u.Scheme)
+	}
+
+	if err == nil {
+		if verbose {
+			klog.Infof("succeeded to dial host %q", host)
+		}
+		_ = conn.Close()
+		return nil
+	}
+
+	return fmt.Errorf("timed out dialing host %q", host)
+}
+
+func DialAPIServer(host string) error {
+	interval := 3 * time.Second
+	timer := time.NewTimer(interval)
 	for i := 0; i < 10; i++ {
-		conn, err := net.DialTimeout("tcp", address, 3*time.Second)
+		err := DialTCP(host, interval, true)
 		if err == nil {
-			klog.Infof("succeeded to dial apiserver %q", address)
-			_ = conn.Close()
 			return nil
 		}
-		klog.Warningf("failed to dial apiserver %q: %v", address, err)
+		klog.Warningf("failed to dial apiserver %q: %v", host, err)
 		<-timer.C
-		timer.Reset(3 * time.Second)
+		timer.Reset(interval)
 	}
 
 	return fmt.Errorf("timed out dialing apiserver %q", host)
