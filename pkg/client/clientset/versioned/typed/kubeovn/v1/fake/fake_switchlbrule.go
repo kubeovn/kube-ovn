@@ -21,10 +21,9 @@ package fake
 import (
 	"context"
 
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	labels "k8s.io/apimachinery/pkg/labels"
-	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	types "k8s.io/apimachinery/pkg/types"
 	watch "k8s.io/apimachinery/pkg/watch"
 	testing "k8s.io/client-go/testing"
@@ -35,24 +34,24 @@ type FakeSwitchLBRules struct {
 	Fake *FakeKubeovnV1
 }
 
-var switchlbrulesResource = schema.GroupVersionResource{Group: "kubeovn.io", Version: "v1", Resource: "switch-lb-rules"}
+var switchlbrulesResource = v1.SchemeGroupVersion.WithResource("switch-lb-rules")
 
-var switchlbrulesKind = schema.GroupVersionKind{Group: "kubeovn.io", Version: "v1", Kind: "SwitchLBRule"}
+var switchlbrulesKind = v1.SchemeGroupVersion.WithKind("SwitchLBRule")
 
 // Get takes name of the switchLBRule, and returns the corresponding switchLBRule object, and an error if there is any.
-func (c *FakeSwitchLBRules) Get(ctx context.Context, name string, options v1.GetOptions) (result *kubeovnv1.SwitchLBRule, err error) {
+func (c *FakeSwitchLBRules) Get(ctx context.Context, name string, options metav1.GetOptions) (result *v1.SwitchLBRule, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootGetAction(switchlbrulesResource, name), &kubeovnv1.SwitchLBRule{})
+		Invokes(testing.NewRootGetAction(switchlbrulesResource, name), &v1.SwitchLBRule{})
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*kubeovnv1.SwitchLBRule), err
+	return obj.(*v1.SwitchLBRule), err
 }
 
 // List takes label and field selectors, and returns the list of SwitchLBRules that match those selectors.
-func (c *FakeSwitchLBRules) List(ctx context.Context, opts v1.ListOptions) (result *kubeovnv1.SwitchLBRuleList, err error) {
+func (c *FakeSwitchLBRules) List(ctx context.Context, opts metav1.ListOptions) (result *v1.SwitchLBRuleList, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootListAction(switchlbrulesResource, switchlbrulesKind, opts), &kubeovnv1.SwitchLBRuleList{})
+		Invokes(testing.NewRootListAction(switchlbrulesResource, switchlbrulesKind, opts), &v1.SwitchLBRuleList{})
 	if obj == nil {
 		return nil, err
 	}
@@ -61,8 +60,8 @@ func (c *FakeSwitchLBRules) List(ctx context.Context, opts v1.ListOptions) (resu
 	if label == nil {
 		label = labels.Everything()
 	}
-	list := &kubeovnv1.SwitchLBRuleList{ListMeta: obj.(*kubeovnv1.SwitchLBRuleList).ListMeta}
-	for _, item := range obj.(*kubeovnv1.SwitchLBRuleList).Items {
+	list := &v1.SwitchLBRuleList{ListMeta: obj.(*v1.SwitchLBRuleList).ListMeta}
+	for _, item := range obj.(*v1.SwitchLBRuleList).Items {
 		if label.Matches(labels.Set(item.Labels)) {
 			list.Items = append(list.Items, item)
 		}
@@ -71,63 +70,63 @@ func (c *FakeSwitchLBRules) List(ctx context.Context, opts v1.ListOptions) (resu
 }
 
 // Watch returns a watch.Interface that watches the requested switchLBRules.
-func (c *FakeSwitchLBRules) Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error) {
+func (c *FakeSwitchLBRules) Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error) {
 	return c.Fake.
 		InvokesWatch(testing.NewRootWatchAction(switchlbrulesResource, opts))
 }
 
 // Create takes the representation of a switchLBRule and creates it.  Returns the server's representation of the switchLBRule, and an error, if there is any.
-func (c *FakeSwitchLBRules) Create(ctx context.Context, switchLBRule *kubeovnv1.SwitchLBRule, opts v1.CreateOptions) (result *kubeovnv1.SwitchLBRule, err error) {
+func (c *FakeSwitchLBRules) Create(ctx context.Context, switchLBRule *v1.SwitchLBRule, opts metav1.CreateOptions) (result *v1.SwitchLBRule, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootCreateAction(switchlbrulesResource, switchLBRule), &kubeovnv1.SwitchLBRule{})
+		Invokes(testing.NewRootCreateAction(switchlbrulesResource, switchLBRule), &v1.SwitchLBRule{})
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*kubeovnv1.SwitchLBRule), err
+	return obj.(*v1.SwitchLBRule), err
 }
 
 // Update takes the representation of a switchLBRule and updates it. Returns the server's representation of the switchLBRule, and an error, if there is any.
-func (c *FakeSwitchLBRules) Update(ctx context.Context, switchLBRule *kubeovnv1.SwitchLBRule, opts v1.UpdateOptions) (result *kubeovnv1.SwitchLBRule, err error) {
+func (c *FakeSwitchLBRules) Update(ctx context.Context, switchLBRule *v1.SwitchLBRule, opts metav1.UpdateOptions) (result *v1.SwitchLBRule, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootUpdateAction(switchlbrulesResource, switchLBRule), &kubeovnv1.SwitchLBRule{})
+		Invokes(testing.NewRootUpdateAction(switchlbrulesResource, switchLBRule), &v1.SwitchLBRule{})
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*kubeovnv1.SwitchLBRule), err
+	return obj.(*v1.SwitchLBRule), err
 }
 
 // UpdateStatus was generated because the type contains a Status member.
 // Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-func (c *FakeSwitchLBRules) UpdateStatus(ctx context.Context, switchLBRule *kubeovnv1.SwitchLBRule, opts v1.UpdateOptions) (*kubeovnv1.SwitchLBRule, error) {
+func (c *FakeSwitchLBRules) UpdateStatus(ctx context.Context, switchLBRule *v1.SwitchLBRule, opts metav1.UpdateOptions) (*v1.SwitchLBRule, error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootUpdateSubresourceAction(switchlbrulesResource, "status", switchLBRule), &kubeovnv1.SwitchLBRule{})
+		Invokes(testing.NewRootUpdateSubresourceAction(switchlbrulesResource, "status", switchLBRule), &v1.SwitchLBRule{})
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*kubeovnv1.SwitchLBRule), err
+	return obj.(*v1.SwitchLBRule), err
 }
 
 // Delete takes name of the switchLBRule and deletes it. Returns an error if one occurs.
-func (c *FakeSwitchLBRules) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
+func (c *FakeSwitchLBRules) Delete(ctx context.Context, name string, opts metav1.DeleteOptions) error {
 	_, err := c.Fake.
-		Invokes(testing.NewRootDeleteActionWithOptions(switchlbrulesResource, name, opts), &kubeovnv1.SwitchLBRule{})
+		Invokes(testing.NewRootDeleteActionWithOptions(switchlbrulesResource, name, opts), &v1.SwitchLBRule{})
 	return err
 }
 
 // DeleteCollection deletes a collection of objects.
-func (c *FakeSwitchLBRules) DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error {
+func (c *FakeSwitchLBRules) DeleteCollection(ctx context.Context, opts metav1.DeleteOptions, listOpts metav1.ListOptions) error {
 	action := testing.NewRootDeleteCollectionAction(switchlbrulesResource, listOpts)
 
-	_, err := c.Fake.Invokes(action, &kubeovnv1.SwitchLBRuleList{})
+	_, err := c.Fake.Invokes(action, &v1.SwitchLBRuleList{})
 	return err
 }
 
 // Patch applies the patch and returns the patched switchLBRule.
-func (c *FakeSwitchLBRules) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *kubeovnv1.SwitchLBRule, err error) {
+func (c *FakeSwitchLBRules) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *v1.SwitchLBRule, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootPatchSubresourceAction(switchlbrulesResource, name, pt, data, subresources...), &kubeovnv1.SwitchLBRule{})
+		Invokes(testing.NewRootPatchSubresourceAction(switchlbrulesResource, name, pt, data, subresources...), &v1.SwitchLBRule{})
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*kubeovnv1.SwitchLBRule), err
+	return obj.(*v1.SwitchLBRule), err
 }

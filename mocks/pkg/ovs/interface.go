@@ -606,7 +606,7 @@ func (m *MockLogicalSwitch) LogicalSwitchUpdateOtherConfig(lsName string, op ovs
 }
 
 // LogicalSwitchUpdateOtherConfig indicates an expected call of LogicalSwitchUpdateOtherConfig.
-func (mr *MockLogicalSwitchMockRecorder) LogicalSwitchUpdateOtherConfig(lsName, op, otherConfig interface{}) *gomock.Call {
+func (mr *MockLogicalSwitchMockRecorder) LogicalSwitchUpdateOtherConfig(lsName, op, otherConfig any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LogicalSwitchUpdateOtherConfig", reflect.TypeOf((*MockLogicalSwitch)(nil).LogicalSwitchUpdateOtherConfig), lsName, op, otherConfig)
 }
@@ -3655,7 +3655,7 @@ func (m *MockNbClient) LogicalSwitchUpdateOtherConfig(lsName string, op ovsdb.Mu
 }
 
 // LogicalSwitchUpdateOtherConfig indicates an expected call of LogicalSwitchUpdateOtherConfig.
-func (mr *MockNbClientMockRecorder) LogicalSwitchUpdateOtherConfig(lsName, op, otherConfig interface{}) *gomock.Call {
+func (mr *MockNbClientMockRecorder) LogicalSwitchUpdateOtherConfig(lsName, op, otherConfig any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LogicalSwitchUpdateOtherConfig", reflect.TypeOf((*MockNbClient)(nil).LogicalSwitchUpdateOtherConfig), lsName, op, otherConfig)
 }

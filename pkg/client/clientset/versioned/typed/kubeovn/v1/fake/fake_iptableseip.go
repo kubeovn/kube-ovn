@@ -21,10 +21,9 @@ package fake
 import (
 	"context"
 
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	labels "k8s.io/apimachinery/pkg/labels"
-	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	types "k8s.io/apimachinery/pkg/types"
 	watch "k8s.io/apimachinery/pkg/watch"
 	testing "k8s.io/client-go/testing"
@@ -35,24 +34,24 @@ type FakeIptablesEIPs struct {
 	Fake *FakeKubeovnV1
 }
 
-var iptableseipsResource = schema.GroupVersionResource{Group: "kubeovn.io", Version: "v1", Resource: "iptables-eips"}
+var iptableseipsResource = v1.SchemeGroupVersion.WithResource("iptables-eips")
 
-var iptableseipsKind = schema.GroupVersionKind{Group: "kubeovn.io", Version: "v1", Kind: "IptablesEIP"}
+var iptableseipsKind = v1.SchemeGroupVersion.WithKind("IptablesEIP")
 
 // Get takes name of the iptablesEIP, and returns the corresponding iptablesEIP object, and an error if there is any.
-func (c *FakeIptablesEIPs) Get(ctx context.Context, name string, options v1.GetOptions) (result *kubeovnv1.IptablesEIP, err error) {
+func (c *FakeIptablesEIPs) Get(ctx context.Context, name string, options metav1.GetOptions) (result *v1.IptablesEIP, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootGetAction(iptableseipsResource, name), &kubeovnv1.IptablesEIP{})
+		Invokes(testing.NewRootGetAction(iptableseipsResource, name), &v1.IptablesEIP{})
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*kubeovnv1.IptablesEIP), err
+	return obj.(*v1.IptablesEIP), err
 }
 
 // List takes label and field selectors, and returns the list of IptablesEIPs that match those selectors.
-func (c *FakeIptablesEIPs) List(ctx context.Context, opts v1.ListOptions) (result *kubeovnv1.IptablesEIPList, err error) {
+func (c *FakeIptablesEIPs) List(ctx context.Context, opts metav1.ListOptions) (result *v1.IptablesEIPList, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootListAction(iptableseipsResource, iptableseipsKind, opts), &kubeovnv1.IptablesEIPList{})
+		Invokes(testing.NewRootListAction(iptableseipsResource, iptableseipsKind, opts), &v1.IptablesEIPList{})
 	if obj == nil {
 		return nil, err
 	}
@@ -61,8 +60,8 @@ func (c *FakeIptablesEIPs) List(ctx context.Context, opts v1.ListOptions) (resul
 	if label == nil {
 		label = labels.Everything()
 	}
-	list := &kubeovnv1.IptablesEIPList{ListMeta: obj.(*kubeovnv1.IptablesEIPList).ListMeta}
-	for _, item := range obj.(*kubeovnv1.IptablesEIPList).Items {
+	list := &v1.IptablesEIPList{ListMeta: obj.(*v1.IptablesEIPList).ListMeta}
+	for _, item := range obj.(*v1.IptablesEIPList).Items {
 		if label.Matches(labels.Set(item.Labels)) {
 			list.Items = append(list.Items, item)
 		}
@@ -71,63 +70,63 @@ func (c *FakeIptablesEIPs) List(ctx context.Context, opts v1.ListOptions) (resul
 }
 
 // Watch returns a watch.Interface that watches the requested iptablesEIPs.
-func (c *FakeIptablesEIPs) Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error) {
+func (c *FakeIptablesEIPs) Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error) {
 	return c.Fake.
 		InvokesWatch(testing.NewRootWatchAction(iptableseipsResource, opts))
 }
 
 // Create takes the representation of a iptablesEIP and creates it.  Returns the server's representation of the iptablesEIP, and an error, if there is any.
-func (c *FakeIptablesEIPs) Create(ctx context.Context, iptablesEIP *kubeovnv1.IptablesEIP, opts v1.CreateOptions) (result *kubeovnv1.IptablesEIP, err error) {
+func (c *FakeIptablesEIPs) Create(ctx context.Context, iptablesEIP *v1.IptablesEIP, opts metav1.CreateOptions) (result *v1.IptablesEIP, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootCreateAction(iptableseipsResource, iptablesEIP), &kubeovnv1.IptablesEIP{})
+		Invokes(testing.NewRootCreateAction(iptableseipsResource, iptablesEIP), &v1.IptablesEIP{})
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*kubeovnv1.IptablesEIP), err
+	return obj.(*v1.IptablesEIP), err
 }
 
 // Update takes the representation of a iptablesEIP and updates it. Returns the server's representation of the iptablesEIP, and an error, if there is any.
-func (c *FakeIptablesEIPs) Update(ctx context.Context, iptablesEIP *kubeovnv1.IptablesEIP, opts v1.UpdateOptions) (result *kubeovnv1.IptablesEIP, err error) {
+func (c *FakeIptablesEIPs) Update(ctx context.Context, iptablesEIP *v1.IptablesEIP, opts metav1.UpdateOptions) (result *v1.IptablesEIP, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootUpdateAction(iptableseipsResource, iptablesEIP), &kubeovnv1.IptablesEIP{})
+		Invokes(testing.NewRootUpdateAction(iptableseipsResource, iptablesEIP), &v1.IptablesEIP{})
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*kubeovnv1.IptablesEIP), err
+	return obj.(*v1.IptablesEIP), err
 }
 
 // UpdateStatus was generated because the type contains a Status member.
 // Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-func (c *FakeIptablesEIPs) UpdateStatus(ctx context.Context, iptablesEIP *kubeovnv1.IptablesEIP, opts v1.UpdateOptions) (*kubeovnv1.IptablesEIP, error) {
+func (c *FakeIptablesEIPs) UpdateStatus(ctx context.Context, iptablesEIP *v1.IptablesEIP, opts metav1.UpdateOptions) (*v1.IptablesEIP, error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootUpdateSubresourceAction(iptableseipsResource, "status", iptablesEIP), &kubeovnv1.IptablesEIP{})
+		Invokes(testing.NewRootUpdateSubresourceAction(iptableseipsResource, "status", iptablesEIP), &v1.IptablesEIP{})
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*kubeovnv1.IptablesEIP), err
+	return obj.(*v1.IptablesEIP), err
 }
 
 // Delete takes name of the iptablesEIP and deletes it. Returns an error if one occurs.
-func (c *FakeIptablesEIPs) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
+func (c *FakeIptablesEIPs) Delete(ctx context.Context, name string, opts metav1.DeleteOptions) error {
 	_, err := c.Fake.
-		Invokes(testing.NewRootDeleteActionWithOptions(iptableseipsResource, name, opts), &kubeovnv1.IptablesEIP{})
+		Invokes(testing.NewRootDeleteActionWithOptions(iptableseipsResource, name, opts), &v1.IptablesEIP{})
 	return err
 }
 
 // DeleteCollection deletes a collection of objects.
-func (c *FakeIptablesEIPs) DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error {
+func (c *FakeIptablesEIPs) DeleteCollection(ctx context.Context, opts metav1.DeleteOptions, listOpts metav1.ListOptions) error {
 	action := testing.NewRootDeleteCollectionAction(iptableseipsResource, listOpts)
 
-	_, err := c.Fake.Invokes(action, &kubeovnv1.IptablesEIPList{})
+	_, err := c.Fake.Invokes(action, &v1.IptablesEIPList{})
 	return err
 }
 
 // Patch applies the patch and returns the patched iptablesEIP.
-func (c *FakeIptablesEIPs) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *kubeovnv1.IptablesEIP, err error) {
+func (c *FakeIptablesEIPs) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *v1.IptablesEIP, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootPatchSubresourceAction(iptableseipsResource, name, pt, data, subresources...), &kubeovnv1.IptablesEIP{})
+		Invokes(testing.NewRootPatchSubresourceAction(iptableseipsResource, name, pt, data, subresources...), &v1.IptablesEIP{})
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*kubeovnv1.IptablesEIP), err
+	return obj.(*v1.IptablesEIP), err
 }

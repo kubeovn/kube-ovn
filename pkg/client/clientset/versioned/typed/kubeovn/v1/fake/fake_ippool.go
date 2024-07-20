@@ -21,10 +21,9 @@ package fake
 import (
 	"context"
 
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	labels "k8s.io/apimachinery/pkg/labels"
-	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	types "k8s.io/apimachinery/pkg/types"
 	watch "k8s.io/apimachinery/pkg/watch"
 	testing "k8s.io/client-go/testing"
@@ -35,24 +34,24 @@ type FakeIPPools struct {
 	Fake *FakeKubeovnV1
 }
 
-var ippoolsResource = schema.GroupVersionResource{Group: "kubeovn.io", Version: "v1", Resource: "ippools"}
+var ippoolsResource = v1.SchemeGroupVersion.WithResource("ippools")
 
-var ippoolsKind = schema.GroupVersionKind{Group: "kubeovn.io", Version: "v1", Kind: "IPPool"}
+var ippoolsKind = v1.SchemeGroupVersion.WithKind("IPPool")
 
 // Get takes name of the iPPool, and returns the corresponding iPPool object, and an error if there is any.
-func (c *FakeIPPools) Get(ctx context.Context, name string, options v1.GetOptions) (result *kubeovnv1.IPPool, err error) {
+func (c *FakeIPPools) Get(ctx context.Context, name string, options metav1.GetOptions) (result *v1.IPPool, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootGetAction(ippoolsResource, name), &kubeovnv1.IPPool{})
+		Invokes(testing.NewRootGetAction(ippoolsResource, name), &v1.IPPool{})
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*kubeovnv1.IPPool), err
+	return obj.(*v1.IPPool), err
 }
 
 // List takes label and field selectors, and returns the list of IPPools that match those selectors.
-func (c *FakeIPPools) List(ctx context.Context, opts v1.ListOptions) (result *kubeovnv1.IPPoolList, err error) {
+func (c *FakeIPPools) List(ctx context.Context, opts metav1.ListOptions) (result *v1.IPPoolList, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootListAction(ippoolsResource, ippoolsKind, opts), &kubeovnv1.IPPoolList{})
+		Invokes(testing.NewRootListAction(ippoolsResource, ippoolsKind, opts), &v1.IPPoolList{})
 	if obj == nil {
 		return nil, err
 	}
@@ -61,8 +60,8 @@ func (c *FakeIPPools) List(ctx context.Context, opts v1.ListOptions) (result *ku
 	if label == nil {
 		label = labels.Everything()
 	}
-	list := &kubeovnv1.IPPoolList{ListMeta: obj.(*kubeovnv1.IPPoolList).ListMeta}
-	for _, item := range obj.(*kubeovnv1.IPPoolList).Items {
+	list := &v1.IPPoolList{ListMeta: obj.(*v1.IPPoolList).ListMeta}
+	for _, item := range obj.(*v1.IPPoolList).Items {
 		if label.Matches(labels.Set(item.Labels)) {
 			list.Items = append(list.Items, item)
 		}
@@ -71,63 +70,63 @@ func (c *FakeIPPools) List(ctx context.Context, opts v1.ListOptions) (result *ku
 }
 
 // Watch returns a watch.Interface that watches the requested iPPools.
-func (c *FakeIPPools) Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error) {
+func (c *FakeIPPools) Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error) {
 	return c.Fake.
 		InvokesWatch(testing.NewRootWatchAction(ippoolsResource, opts))
 }
 
 // Create takes the representation of a iPPool and creates it.  Returns the server's representation of the iPPool, and an error, if there is any.
-func (c *FakeIPPools) Create(ctx context.Context, iPPool *kubeovnv1.IPPool, opts v1.CreateOptions) (result *kubeovnv1.IPPool, err error) {
+func (c *FakeIPPools) Create(ctx context.Context, iPPool *v1.IPPool, opts metav1.CreateOptions) (result *v1.IPPool, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootCreateAction(ippoolsResource, iPPool), &kubeovnv1.IPPool{})
+		Invokes(testing.NewRootCreateAction(ippoolsResource, iPPool), &v1.IPPool{})
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*kubeovnv1.IPPool), err
+	return obj.(*v1.IPPool), err
 }
 
 // Update takes the representation of a iPPool and updates it. Returns the server's representation of the iPPool, and an error, if there is any.
-func (c *FakeIPPools) Update(ctx context.Context, iPPool *kubeovnv1.IPPool, opts v1.UpdateOptions) (result *kubeovnv1.IPPool, err error) {
+func (c *FakeIPPools) Update(ctx context.Context, iPPool *v1.IPPool, opts metav1.UpdateOptions) (result *v1.IPPool, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootUpdateAction(ippoolsResource, iPPool), &kubeovnv1.IPPool{})
+		Invokes(testing.NewRootUpdateAction(ippoolsResource, iPPool), &v1.IPPool{})
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*kubeovnv1.IPPool), err
+	return obj.(*v1.IPPool), err
 }
 
 // UpdateStatus was generated because the type contains a Status member.
 // Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-func (c *FakeIPPools) UpdateStatus(ctx context.Context, iPPool *kubeovnv1.IPPool, opts v1.UpdateOptions) (*kubeovnv1.IPPool, error) {
+func (c *FakeIPPools) UpdateStatus(ctx context.Context, iPPool *v1.IPPool, opts metav1.UpdateOptions) (*v1.IPPool, error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootUpdateSubresourceAction(ippoolsResource, "status", iPPool), &kubeovnv1.IPPool{})
+		Invokes(testing.NewRootUpdateSubresourceAction(ippoolsResource, "status", iPPool), &v1.IPPool{})
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*kubeovnv1.IPPool), err
+	return obj.(*v1.IPPool), err
 }
 
 // Delete takes name of the iPPool and deletes it. Returns an error if one occurs.
-func (c *FakeIPPools) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
+func (c *FakeIPPools) Delete(ctx context.Context, name string, opts metav1.DeleteOptions) error {
 	_, err := c.Fake.
-		Invokes(testing.NewRootDeleteActionWithOptions(ippoolsResource, name, opts), &kubeovnv1.IPPool{})
+		Invokes(testing.NewRootDeleteActionWithOptions(ippoolsResource, name, opts), &v1.IPPool{})
 	return err
 }
 
 // DeleteCollection deletes a collection of objects.
-func (c *FakeIPPools) DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error {
+func (c *FakeIPPools) DeleteCollection(ctx context.Context, opts metav1.DeleteOptions, listOpts metav1.ListOptions) error {
 	action := testing.NewRootDeleteCollectionAction(ippoolsResource, listOpts)
 
-	_, err := c.Fake.Invokes(action, &kubeovnv1.IPPoolList{})
+	_, err := c.Fake.Invokes(action, &v1.IPPoolList{})
 	return err
 }
 
 // Patch applies the patch and returns the patched iPPool.
-func (c *FakeIPPools) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *kubeovnv1.IPPool, err error) {
+func (c *FakeIPPools) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *v1.IPPool, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootPatchSubresourceAction(ippoolsResource, name, pt, data, subresources...), &kubeovnv1.IPPool{})
+		Invokes(testing.NewRootPatchSubresourceAction(ippoolsResource, name, pt, data, subresources...), &v1.IPPool{})
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*kubeovnv1.IPPool), err
+	return obj.(*v1.IPPool), err
 }

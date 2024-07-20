@@ -131,7 +131,7 @@ func (c *Controller) changeProvideNicName(current, target string) (bool, error) 
 		return false, err
 	}
 
-	if util.ContainsString(link.Attrs().Properties.AlternativeIfnames, current) {
+	if util.ContainsString(link.Attrs().AltNames, current) {
 		if err = netlink.LinkDelAltName(link, current); err != nil {
 			klog.Errorf("failed to delete alternative name %s from link %s: %v", current, link.Attrs().Name, err)
 			return false, err

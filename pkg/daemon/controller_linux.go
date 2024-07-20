@@ -14,8 +14,8 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/alauda/felix/ipsets"
 	ovsutil "github.com/digitalocean/go-openvswitch/ovs"
+	"github.com/kubeovn/felix/ipsets"
 	"github.com/kubeovn/go-iptables/iptables"
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
@@ -25,7 +25,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
-	k8sipset "k8s.io/kubernetes/pkg/util/ipset"
+	k8sipset "k8s.io/kubernetes/pkg/proxy/ipvs/ipset"
 	k8siptables "k8s.io/kubernetes/pkg/util/iptables"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"

@@ -25,8 +25,12 @@ func main() {
 	// must ensure that the goroutine does not jump from OS thread to thread
 	runtime.LockOSThread()
 
+	funcs := skel.CNIFuncs{
+		Add: cmdAdd,
+		Del: cmdDel,
+	}
 	about := fmt.Sprintf("CNI kube-ovn plugin %s", versions.VERSION)
-	skel.PluginMain(cmdAdd, nil, cmdDel, version.All, about)
+	skel.PluginMainFuncs(funcs, version.All, about)
 }
 
 func cmdAdd(args *skel.CmdArgs) error {
