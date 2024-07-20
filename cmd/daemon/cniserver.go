@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/pprof"
 	"os"
@@ -9,27 +10,25 @@ import (
 	"strings"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubeinformers "k8s.io/client-go/informers"
 	"k8s.io/klog/v2"
-	"k8s.io/sample-controller/pkg/signals"
+	"sigs.k8s.io/controller-runtime/pkg/manager"
+	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
 
 	kubeovninformer "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions"
 	"github.com/kubeovn/kube-ovn/pkg/daemon"
+	"github.com/kubeovn/kube-ovn/pkg/metrics"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
-	"github.com/kubeovn/kube-ovn/pkg/server"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/versions"
 )
-
-const svcName = "kube-ovn-cni"
 
 func CmdMain() {
 	defer klog.Flush()
 
 	daemon.InitMetrics()
-	util.InitKlogMetrics()
+	metrics.InitKlogMetrics()
 
 	config := daemon.ParseFlags()
 	klog.Infof(versions.String())
@@ -61,7 +60,8 @@ func CmdMain() {
 		util.LogFatalAndExit(err, "failed to do the OS initialization")
 	}
 
-	stopCh := signals.SetupSignalHandler().Done()
+	ctx := signals.SetupSignalHandler()
+	stopCh := ctx.Done()
 	podInformerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(config.KubeClient, 0,
 		kubeinformers.WithTweakListOptions(func(listOption *v1.ListOptions) {
 			listOption.FieldSelector = fmt.Sprintf("spec.nodeName=%s", config.NodeName)
@@ -86,18 +86,6 @@ func CmdMain() {
 		util.LogFatalAndExit(err, "failed to mv cni config file")
 	}
 
-	mux := http.NewServeMux()
-	if config.EnableMetrics {
-		mux.Handle("/metrics", promhttp.Handler())
-	}
-	if config.EnablePprof {
-		mux.HandleFunc("/debug/pprof/", pprof.Index)
-		mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
-		mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
-		mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
-		mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
-	}
-
 	addr := util.GetDefaultListenAddr()
 	if config.EnableVerboseConnCheck {
 		go func() {
@@ -115,21 +103,40 @@ func CmdMain() {
 		}()
 	}
 
-	listenAddr := util.JoinHostPort(addr, config.PprofPort)
-	if !config.SecureServing {
-		server := &http.Server{
-			Addr:              listenAddr,
-			ReadHeaderTimeout: 3 * time.Second,
-			Handler:           mux,
-		}
-		util.LogFatalAndExit(server.ListenAndServe(), "failed to listen and server on %s", server.Addr)
-	} else {
-		ch, err := server.SecureServing(listenAddr, svcName, mux)
+	if config.EnablePprof {
+		mux := http.NewServeMux()
+		mux.HandleFunc("/debug/pprof/", pprof.Index)
+		mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+		mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+		mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+		mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+
+		listerner, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: int(config.PprofPort)})
 		if err != nil {
-			util.LogFatalAndExit(err, "failed to serve on %s", listenAddr)
+			util.LogFatalAndExit(err, "failed to listen on %s", util.JoinHostPort("127.0.0.1", config.PprofPort))
 		}
-		<-ch
+		svr := manager.Server{
+			Name: "pprof",
+			Server: &http.Server{
+				Handler:           mux,
+				MaxHeaderBytes:    1 << 20,
+				IdleTimeout:       90 * time.Second,
+				ReadHeaderTimeout: 32 * time.Second,
+			},
+			Listener: listerner,
+		}
+		go func() {
+			if err = svr.Start(ctx); err != nil {
+				util.LogFatalAndExit(err, "failed to run pprof server")
+			}
+		}()
 	}
+
+	listenAddr := util.JoinHostPort(addr, config.PprofPort)
+	if err = metrics.Run(ctx, nil, listenAddr, config.SecureServing); err != nil {
+		util.LogFatalAndExit(err, "failed to run metrics server")
+	}
+	<-stopCh
 }
 
 func mvCNIConf(configDir, configFile, confName string) error {
