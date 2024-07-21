@@ -758,7 +758,7 @@ func setNatGwRoute(annotations map[string]string, subnetGw string) error {
 
 	// Check the API NetworkAttachmentDefinition exists, otherwise we won't be able to attach
 	// the BGP speaker to a network that has access to the K8S apiserver (and won't be able to detect EIPs)
-	if vpcNatApiNadProvider == "" {
+	if vpcNatAPINadProvider == "" {
 		return fmt.Errorf("no NetworkAttachmentDefinition provided to access apiserver, check configmap ovn-vpc-nat-config and field 'apiNadProvider'")
 	}
 
@@ -768,9 +768,9 @@ func setNatGwRoute(annotations map[string]string, subnetGw string) error {
 			buf, err := json.Marshal(routes)
 			if err != nil {
 				return fmt.Errorf("failed to marshal routes %+v: %v", routes, err)
-			} else {
-				annotations[fmt.Sprintf(util.RoutesAnnotationTemplate, vpcNatApiNadProvider)] = string(buf)
 			}
+
+			annotations[fmt.Sprintf(util.RoutesAnnotationTemplate, vpcNatAPINadProvider)] = string(buf)
 			break
 		}
 	}
