@@ -736,14 +736,14 @@ func (c *Controller) execNatGwRules(pod *corev1.Pod, operation string, rules []s
 	return nil
 }
 
-func (c *Controller) setNatGwInterface(annotations map[string]string, externalNetwork string, defaultSubnet *kubeovnv1.Subnet) {
+func (c *Controller) setNatGwInterface(annotations map[string]string, externalNetwork string, defaultSubnet *kubeovnv1.Subnet) error {
 	nad := fmt.Sprintf("%s/%s, %s/%s", c.config.PodNamespace, externalNetwork, corev1.NamespaceDefault, nadName)
 	annotations[util.AttachmentNetworkAnnotation] = nad
 
-	setNatGwRoute(annotations, defaultSubnet.Spec.Gateway)
+	return setNatGwRoute(annotations, defaultSubnet.Spec.Gateway)
 }
 
-func setNatGwRoute(annotations map[string]string, subnetGw string) {
+func setNatGwRoute(annotations map[string]string, subnetGw string) error {
 	dst := os.Getenv("KUBERNETES_SERVICE_HOST")
 
 	protocol := util.CheckProtocol(dst)
@@ -755,18 +755,27 @@ func setNatGwRoute(annotations map[string]string, subnetGw string) {
 			dst = fmt.Sprintf("%s/128", dst)
 		}
 	}
+
+	// Check the API NetworkAttachmentDefinition exists, otherwise we won't be able to attach
+	// the BGP speaker to a network that has access to the K8S apiserver (and won't be able to detect EIPs)
+	if vpcNatApiNadProvider == "" {
+		return fmt.Errorf("no NetworkAttachmentDefinition provided to access apiserver, check configmap ovn-vpc-nat-config and field 'apiNadProvider'")
+	}
+
 	for _, gw := range strings.Split(subnetGw, ",") {
 		if util.CheckProtocol(gw) == protocol {
 			routes := []request.Route{{Destination: dst, Gateway: gw}}
 			buf, err := json.Marshal(routes)
 			if err != nil {
-				klog.Errorf("failed to marshal routes %+v: %v", routes, err)
+				return fmt.Errorf("failed to marshal routes %+v: %v", routes, err)
 			} else {
-				annotations[fmt.Sprintf(util.RoutesAnnotationTemplate, nadProvider)] = string(buf)
+				annotations[fmt.Sprintf(util.RoutesAnnotationTemplate, vpcNatApiNadProvider)] = string(buf)
 			}
 			break
 		}
 	}
+
+	return nil
 }
 
 func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1.StatefulSet) (*v1.StatefulSet, error) {
@@ -787,7 +796,10 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 		if err != nil {
 			return nil, fmt.Errorf("failed to get default subnet %s: %v", c.config.DefaultLogicalSwitch, err)
 		}
-		c.setNatGwInterface(podAnnotations, nadName, defaultSubnet)
+
+		if err := c.setNatGwInterface(podAnnotations, nadName, defaultSubnet); err != nil {
+			return nil, err
+		}
 	}
 
 	for key, value := range podAnnotations {
