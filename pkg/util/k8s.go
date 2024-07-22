@@ -22,7 +22,7 @@ import (
 func DialTCP(host string, timeout time.Duration, verbose bool) error {
 	u, err := url.Parse(host)
 	if err != nil {
-		return fmt.Errorf("failed to parse host %q: %v", host, err)
+		return fmt.Errorf("failed to parse host %q: %w", host, err)
 	}
 
 	var conn net.Conn

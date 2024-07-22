@@ -162,7 +162,7 @@ func (c *Controller) cleanTProxyRoutes(protocol string) {
 func addRuleIfNotExist(family, mark, mask, table int) error {
 	curRules, err := netlink.RuleListFiltered(family, &netlink.Rule{Mark: mark}, netlink.RT_FILTER_MARK)
 	if err != nil {
-		return fmt.Errorf("list rules with mark %x failed err: %v", mark, err)
+		return fmt.Errorf("list rules with mark %x failed err: %w", mark, err)
 	}
 
 	if len(curRules) != 0 {
@@ -186,13 +186,13 @@ func addRuleIfNotExist(family, mark, mask, table int) error {
 func deleteRuleIfExists(family, mark int) error {
 	curRules, err := netlink.RuleListFiltered(family, &netlink.Rule{Mark: mark}, netlink.RT_FILTER_MARK)
 	if err != nil {
-		return fmt.Errorf("list rules with mark %x failed err: %v", mark, err)
+		return fmt.Errorf("list rules with mark %x failed err: %w", mark, err)
 	}
 
 	if len(curRules) != 0 {
 		for _, r := range curRules {
 			if err := netlink.RuleDel(&r); err != nil && !errors.Is(err, syscall.ENOENT) {
-				return fmt.Errorf("delete rule %v failed with err: %v", r, err)
+				return fmt.Errorf("delete rule %v failed with err: %w", r, err)
 			}
 		}
 	}
@@ -202,7 +202,7 @@ func deleteRuleIfExists(family, mark int) error {
 func addRouteIfNotExist(family, table int, dst *net.IPNet) error {
 	curRoutes, err := netlink.RouteListFiltered(family, &netlink.Route{Table: table, Dst: dst}, netlink.RT_FILTER_TABLE|netlink.RT_FILTER_DST)
 	if err != nil {
-		return fmt.Errorf("list routes with table %d failed with err: %v", table, err)
+		return fmt.Errorf("list routes with table %d failed with err: %w", table, err)
 	}
 
 	if len(curRoutes) != 0 {
@@ -243,7 +243,7 @@ func delRouteIfExist(family, table int, dst *net.IPNet) error {
 
 	link, err := netlink.LinkByName("lo")
 	if err != nil {
-		return fmt.Errorf("can't find device lo")
+		return errors.New("can't find device lo")
 	}
 
 	route := netlink.Route{

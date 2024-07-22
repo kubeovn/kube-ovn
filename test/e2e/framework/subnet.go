@@ -229,7 +229,7 @@ func (c *SubnetClient) WaitUntil(name string, cond func(s *apiv1.Subnet) (bool, 
 		subnet = c.Get(name).DeepCopy()
 		met, err := cond(subnet)
 		if err != nil {
-			return false, fmt.Errorf("failed to check condition for subnet %s: %v", name, err)
+			return false, fmt.Errorf("failed to check condition for subnet %s: %w", name, err)
 		}
 		return met, nil
 	})

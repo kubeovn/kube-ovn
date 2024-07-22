@@ -13,11 +13,11 @@ const defaultBindSocket = "/run/openvswitch/kube-ovn-daemon.sock"
 func getSrcIPsByRoutes(iface *net.Interface) ([]string, error) {
 	link, err := netlink.LinkByName(iface.Name)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get link %s: %v", iface.Name, err)
+		return nil, fmt.Errorf("failed to get link %s: %w", iface.Name, err)
 	}
 	routes, err := netlink.RouteList(link, netlink.FAMILY_ALL)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get routes on link %s: %v", iface.Name, err)
+		return nil, fmt.Errorf("failed to get routes on link %s: %w", iface.Name, err)
 	}
 
 	srcIPs := make([]string, 0, 2)
@@ -38,7 +38,7 @@ func getIfaceByIP(ip string) (string, int, error) {
 	for _, link := range links {
 		addrs, err := netlink.AddrList(link, netlink.FAMILY_ALL)
 		if err != nil {
-			return "", 0, fmt.Errorf("failed to get addresses of link %s: %v", link.Attrs().Name, err)
+			return "", 0, fmt.Errorf("failed to get addresses of link %s: %w", link.Attrs().Name, err)
 		}
 		for _, addr := range addrs {
 			if addr.IPNet.Contains(net.ParseIP(ip)) && addr.IP.String() == ip {

@@ -64,20 +64,20 @@ func (c *Controller) setICGateway() error {
 	if enable == "true" {
 		icEnabled, err := ovs.Exec(ovs.IfExists, "get", "open", ".", "external_ids:ovn-is-interconn")
 		if err != nil {
-			return fmt.Errorf("failed to get if ic enabled, %v", err)
+			return fmt.Errorf("failed to get if ic enabled, %w", err)
 		}
 		if strings.Trim(icEnabled, "\"") != "true" {
 			if _, err := ovs.Exec("set", "open", ".", "external_ids:ovn-is-interconn=true"); err != nil {
-				return fmt.Errorf("failed to enable ic gateway, %v", err)
+				return fmt.Errorf("failed to enable ic gateway, %w", err)
 			}
 			output, err := exec.Command("/usr/share/ovn/scripts/ovn-ctl", "restart_controller").CombinedOutput()
 			if err != nil {
-				return fmt.Errorf("failed to restart ovn-controller, %v, %q", err, output)
+				return fmt.Errorf("failed to restart ovn-controller, %w, %q", err, output)
 			}
 		}
 	} else {
 		if _, err := ovs.Exec("set", "open", ".", "external_ids:ovn-is-interconn=false"); err != nil {
-			return fmt.Errorf("failed to disable ic gateway, %v", err)
+			return fmt.Errorf("failed to disable ic gateway, %w", err)
 		}
 	}
 	return nil
@@ -271,8 +271,7 @@ func (c *Controller) getTProxyConditionPod(needSort bool) ([]*v1.Pod, error) {
 
 		subnet, err := c.subnetsLister.Get(subnetName)
 		if err != nil {
-			err = fmt.Errorf("failed to get subnet '%s', err: %v", subnetName, err)
-			return nil, err
+			return nil, fmt.Errorf("failed to get subnet '%s', err: %w", subnetName, err)
 		}
 
 		if subnet.Spec.Vpc == c.config.ClusterRouter {

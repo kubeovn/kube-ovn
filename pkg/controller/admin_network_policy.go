@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -200,7 +201,7 @@ func (c *Controller) processNextUpdateAnpWorkItem() bool {
 		}
 		if err := c.handleUpdateAnp(key); err != nil {
 			c.updateAnpQueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing admin network policy %s: %v, requeuing", key.key, err)
+			return fmt.Errorf("error syncing admin network policy %s: %w, requeuing", key.key, err)
 		}
 		c.updateAnpQueue.Forget(obj)
 		return nil
@@ -358,10 +359,10 @@ func (c *Controller) handleAddAnp(key string) (err error) {
 	}
 
 	if err := c.OVNNbClient.Transact("add-ingress-acls", ingressACLOps); err != nil {
-		return fmt.Errorf("failed to add ingress acls for anp %s: %v", key, err)
+		return fmt.Errorf("failed to add ingress acls for anp %s: %w", key, err)
 	}
 	if err := c.deleteUnusedAddrSetForAnp(curIngressAddrSet, desiredIngressAddrSet); err != nil {
-		return fmt.Errorf("failed to delete unused ingress address set for anp %s: %v", key, err)
+		return fmt.Errorf("failed to delete unused ingress address set for anp %s: %w", key, err)
 	}
 
 	egressACLOps, err := c.OVNNbClient.DeleteAclsOps(pgName, portGroupKey, "from-lport", nil)
@@ -423,10 +424,10 @@ func (c *Controller) handleAddAnp(key string) (err error) {
 	}
 
 	if err := c.OVNNbClient.Transact("add-egress-acls", egressACLOps); err != nil {
-		return fmt.Errorf("failed to add egress acls for anp %s: %v", key, err)
+		return fmt.Errorf("failed to add egress acls for anp %s: %w", key, err)
 	}
 	if err := c.deleteUnusedAddrSetForAnp(curEgressAddrSet, desiredEgressAddrSet); err != nil {
-		return fmt.Errorf("failed to delete unused egress address set for anp %s: %v", key, err)
+		return fmt.Errorf("failed to delete unused egress address set for anp %s: %w", key, err)
 	}
 
 	return nil
@@ -600,26 +601,26 @@ func (c *Controller) fetchSelectedPods(anpSubject *v1alpha1.AdminNetworkPolicySu
 	if anpSubject.Namespaces != nil {
 		nsSelector, err := metav1.LabelSelectorAsSelector(anpSubject.Namespaces)
 		if err != nil {
-			return nil, fmt.Errorf("error creating ns label selector, %v", err)
+			return nil, fmt.Errorf("error creating ns label selector, %w", err)
 		}
 
 		ports, _, _, err = c.fetchPods(nsSelector, labels.Everything())
 		if err != nil {
-			return nil, fmt.Errorf("failed to fetch pods, %v", err)
+			return nil, fmt.Errorf("failed to fetch pods, %w", err)
 		}
 	} else {
 		nsSelector, err := metav1.LabelSelectorAsSelector(&anpSubject.Pods.NamespaceSelector)
 		if err != nil {
-			return nil, fmt.Errorf("error creating ns label selector, %v", err)
+			return nil, fmt.Errorf("error creating ns label selector, %w", err)
 		}
 		podSelector, err := metav1.LabelSelectorAsSelector(&anpSubject.Pods.PodSelector)
 		if err != nil {
-			return nil, fmt.Errorf("error creating pod label selector, %v", err)
+			return nil, fmt.Errorf("error creating pod label selector, %w", err)
 		}
 
 		ports, _, _, err = c.fetchPods(nsSelector, podSelector)
 		if err != nil {
-			return nil, fmt.Errorf("failed to fetch pods, %v", err)
+			return nil, fmt.Errorf("failed to fetch pods, %w", err)
 		}
 	}
 	klog.Infof("get selected ports for subject, %v", ports)
@@ -641,7 +642,7 @@ func (c *Controller) fetchPods(nsSelector, podSelector labels.Selector) ([]strin
 	for _, namespace := range namespaces {
 		pods, err := c.podsLister.Pods(namespace.Name).List(podSelector)
 		if err != nil {
-			return nil, nil, nil, fmt.Errorf("failed to list pods, %v", err)
+			return nil, nil, nil, fmt.Errorf("failed to list pods, %w", err)
 		}
 
 		for _, pod := range pods {
@@ -652,7 +653,7 @@ func (c *Controller) fetchPods(nsSelector, podSelector labels.Selector) ([]strin
 
 			podNets, err := c.getPodKubeovnNets(pod)
 			if err != nil {
-				return nil, nil, nil, fmt.Errorf("failed to get pod networks, %v", err)
+				return nil, nil, nil, fmt.Errorf("failed to get pod networks, %w", err)
 			}
 
 			for _, podNet := range podNets {
@@ -688,26 +689,26 @@ func (c *Controller) fetchIngressSelectedAddresses(ingressPeer *v1alpha1.AdminNe
 	if ingressPeer.Namespaces != nil {
 		nsSelector, err := metav1.LabelSelectorAsSelector(ingressPeer.Namespaces)
 		if err != nil {
-			return nil, nil, fmt.Errorf("error creating ns label selector, %v", err)
+			return nil, nil, fmt.Errorf("error creating ns label selector, %w", err)
 		}
 
 		_, v4Addresses, v6Addresses, err = c.fetchPods(nsSelector, labels.Everything())
 		if err != nil {
-			return nil, nil, fmt.Errorf("failed to fetch ingress peer addresses, %v", err)
+			return nil, nil, fmt.Errorf("failed to fetch ingress peer addresses, %w", err)
 		}
 	} else if ingressPeer.Pods != nil {
 		nsSelector, err := metav1.LabelSelectorAsSelector(&ingressPeer.Pods.NamespaceSelector)
 		if err != nil {
-			return nil, nil, fmt.Errorf("error creating ns label selector, %v", err)
+			return nil, nil, fmt.Errorf("error creating ns label selector, %w", err)
 		}
 		podSelector, err := metav1.LabelSelectorAsSelector(&ingressPeer.Pods.PodSelector)
 		if err != nil {
-			return nil, nil, fmt.Errorf("error creating pod label selector, %v", err)
+			return nil, nil, fmt.Errorf("error creating pod label selector, %w", err)
 		}
 
 		_, v4Addresses, v6Addresses, err = c.fetchPods(nsSelector, podSelector)
 		if err != nil {
-			return nil, nil, fmt.Errorf("failed to fetch ingress peer addresses, %v", err)
+			return nil, nil, fmt.Errorf("failed to fetch ingress peer addresses, %w", err)
 		}
 	}
 
@@ -723,29 +724,29 @@ func (c *Controller) fetchEgressSelectedAddresses(egressPeer *v1alpha1.AdminNetw
 	case egressPeer.Namespaces != nil:
 		nsSelector, err := metav1.LabelSelectorAsSelector(egressPeer.Namespaces)
 		if err != nil {
-			return nil, nil, fmt.Errorf("error creating ns label selector, %v", err)
+			return nil, nil, fmt.Errorf("error creating ns label selector, %w", err)
 		}
 
 		_, v4Addresses, v6Addresses, err = c.fetchPods(nsSelector, labels.Everything())
 		if err != nil {
-			return nil, nil, fmt.Errorf("failed to fetch egress peer addresses, %v", err)
+			return nil, nil, fmt.Errorf("failed to fetch egress peer addresses, %w", err)
 		}
 	case egressPeer.Pods != nil:
 		nsSelector, err := metav1.LabelSelectorAsSelector(&egressPeer.Pods.NamespaceSelector)
 		if err != nil {
-			return nil, nil, fmt.Errorf("error creating ns label selector, %v", err)
+			return nil, nil, fmt.Errorf("error creating ns label selector, %w", err)
 		}
 		podSelector, err := metav1.LabelSelectorAsSelector(&egressPeer.Pods.PodSelector)
 		if err != nil {
-			return nil, nil, fmt.Errorf("error creating pod label selector, %v", err)
+			return nil, nil, fmt.Errorf("error creating pod label selector, %w", err)
 		}
 
 		_, v4Addresses, v6Addresses, err = c.fetchPods(nsSelector, podSelector)
 		if err != nil {
-			return nil, nil, fmt.Errorf("failed to fetch egress peer addresses, %v", err)
+			return nil, nil, fmt.Errorf("failed to fetch egress peer addresses, %w", err)
 		}
 	default:
-		return nil, nil, fmt.Errorf("either Namespaces or Pods must be specified in egressPeer")
+		return nil, nil, errors.New("either Namespaces or Pods must be specified in egressPeer")
 	}
 
 	return v4Addresses, v6Addresses, nil

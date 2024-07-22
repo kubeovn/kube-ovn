@@ -2,6 +2,7 @@ package util
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"regexp"
@@ -28,7 +29,7 @@ func parsePodNetworkObjectName(podNetwork string) (string, string, string, error
 		networkName = slashItems[0]
 	default:
 		klog.Errorf("parsePodNetworkObjectName: Invalid network object (failed at '/')")
-		return "", "", "", fmt.Errorf("parsePodNetworkObjectName: Invalid network object (failed at '/')")
+		return "", "", "", errors.New("parsePodNetworkObjectName: Invalid network object (failed at '/')")
 	}
 
 	atItems := strings.Split(networkName, "@")
@@ -37,7 +38,7 @@ func parsePodNetworkObjectName(podNetwork string) (string, string, string, error
 		netIfName = strings.TrimSpace(atItems[1])
 	} else if len(atItems) != 1 {
 		klog.Errorf("parsePodNetworkObjectName: Invalid network object (failed at '@')")
-		return "", "", "", fmt.Errorf("parsePodNetworkObjectName: Invalid network object (failed at '@')")
+		return "", "", "", errors.New("parsePodNetworkObjectName: Invalid network object (failed at '@')")
 	}
 
 	// Check and see if each item matches the specification for valid attachment name.
@@ -51,9 +52,9 @@ func parsePodNetworkObjectName(podNetwork string) (string, string, string, error
 			klog.Errorf(fmt.Sprintf("parsePodNetworkObjectName: Failed to parse: "+
 				"one or more items did not match comma-delimited format (must consist of lower case alphanumeric characters). "+
 				"Must start and end with an alphanumeric character), mismatch @ '%v'", allItems[i]))
-			return "", "", "", fmt.Errorf(fmt.Sprintf("parsePodNetworkObjectName: Failed to parse: "+
+			return "", "", "", fmt.Errorf("parsePodNetworkObjectName: Failed to parse: "+
 				"one or more items did not match comma-delimited format (must consist of lower case alphanumeric characters). "+
-				"Must start and end with an alphanumeric character), mismatch @ '%v'", allItems[i]))
+				"Must start and end with an alphanumeric character), mismatch @ '%v'", allItems[i])
 		}
 	}
 
@@ -72,7 +73,7 @@ func ParsePodNetworkAnnotation(podNetworks, defaultNamespace string) ([]*types.N
 	if strings.ContainsAny(podNetworks, "[{\"") {
 		if err := json.Unmarshal([]byte(podNetworks), &networks); err != nil {
 			klog.Errorf("parsePodNetworkAnnotation: failed to parse pod Network Attachment Selection Annotation JSON format: %v", err)
-			return nil, fmt.Errorf("parsePodNetworkAnnotation: failed to parse pod Network Attachment Selection Annotation JSON format: %v", err)
+			return nil, fmt.Errorf("parsePodNetworkAnnotation: failed to parse pod Network Attachment Selection Annotation JSON format: %w", err)
 		}
 	} else {
 		// Comma-delimited list of network attachment object names
@@ -84,7 +85,7 @@ func ParsePodNetworkAnnotation(podNetworks, defaultNamespace string) ([]*types.N
 			netNsName, networkName, netIfName, err := parsePodNetworkObjectName(item)
 			if err != nil {
 				klog.Errorf("parsePodNetworkAnnotation: %v", err)
-				return nil, fmt.Errorf("parsePodNetworkAnnotation: %v", err)
+				return nil, fmt.Errorf("parsePodNetworkAnnotation: %w", err)
 			}
 
 			networks = append(networks, &types.NetworkSelectionElement{
@@ -103,7 +104,7 @@ func ParsePodNetworkAnnotation(podNetworks, defaultNamespace string) ([]*types.N
 			// validate MAC address
 			if _, err := net.ParseMAC(n.MacRequest); err != nil {
 				klog.Errorf("parsePodNetworkAnnotation: failed to mac: %v", err)
-				return nil, fmt.Errorf("parsePodNetworkAnnotation: failed to mac: %v", err)
+				return nil, fmt.Errorf("parsePodNetworkAnnotation: failed to mac: %w", err)
 			}
 		}
 		if n.IPRequest != nil {
@@ -112,7 +113,7 @@ func ParsePodNetworkAnnotation(podNetworks, defaultNamespace string) ([]*types.N
 				if strings.Contains(ip, "/") {
 					if _, _, err := net.ParseCIDR(ip); err != nil {
 						klog.Errorf("failed to parse CIDR %q: %v", ip, err)
-						return nil, fmt.Errorf("failed to parse CIDR %q: %v", ip, err)
+						return nil, fmt.Errorf("failed to parse CIDR %q: %w", ip, err)
 					}
 				} else if net.ParseIP(ip) == nil {
 					klog.Errorf("failed to parse IP address %q", ip)

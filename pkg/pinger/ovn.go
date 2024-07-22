@@ -177,7 +177,7 @@ func getLogicalPort(chassis string) ([]string, error) {
 	}
 	output, err := exec.Command("ovsdb-client", command...).CombinedOutput() // #nosec G204
 	if err != nil {
-		return nil, fmt.Errorf("Failed to query OVSDB: %v, %s", err, output)
+		return nil, fmt.Errorf("Failed to query OVSDB: %w, %s", err, output)
 	}
 
 	// Parse the JSON output.

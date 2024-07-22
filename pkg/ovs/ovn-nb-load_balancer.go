@@ -49,11 +49,11 @@ func (c *OVNNbClient) CreateLoadBalancer(lbName, protocol, selectFields string) 
 	}
 
 	if ops, err = c.ovsDbClient.Create(lb); err != nil {
-		return fmt.Errorf("generate operations for creating load balancer %s: %v", lbName, err)
+		return fmt.Errorf("generate operations for creating load balancer %s: %w", lbName, err)
 	}
 
 	if err = c.Transact("lb-add", ops); err != nil {
-		return fmt.Errorf("create load balancer %s: %v", lbName, err)
+		return fmt.Errorf("create load balancer %s: %w", lbName, err)
 	}
 	return nil
 }
@@ -66,11 +66,11 @@ func (c *OVNNbClient) UpdateLoadBalancer(lb *ovnnb.LoadBalancer, fields ...inter
 	)
 
 	if ops, err = c.ovsDbClient.Where(lb).Update(lb, fields...); err != nil {
-		return fmt.Errorf("generate operations for updating load balancer %s: %v", lb.Name, err)
+		return fmt.Errorf("generate operations for updating load balancer %s: %w", lb.Name, err)
 	}
 
 	if err = c.Transact("lb-update", ops); err != nil {
-		return fmt.Errorf("update load balancer %s: %v", lb.Name, err)
+		return fmt.Errorf("update load balancer %s: %w", lb.Name, err)
 	}
 	return nil
 }
@@ -120,12 +120,12 @@ func (c *OVNNbClient) LoadBalancerAddVip(lbName, vip string, backends ...string)
 			return mutations
 		},
 	); err != nil {
-		return fmt.Errorf("failed to generate operations when adding vip %s with backends %v to load balancers %s: %v", vip, backends, lbName, err)
+		return fmt.Errorf("failed to generate operations when adding vip %s with backends %v to load balancers %s: %w", vip, backends, lbName, err)
 	}
 
 	if ops != nil {
 		if err = c.Transact("lb-add", ops); err != nil {
-			return fmt.Errorf("failed to add vip %s with backends %v to load balancers %s: %v", vip, backends, lbName, err)
+			return fmt.Errorf("failed to add vip %s with backends %v to load balancers %s: %w", vip, backends, lbName, err)
 		}
 	}
 	return nil
@@ -177,14 +177,14 @@ func (c *OVNNbClient) LoadBalancerDeleteVip(lbName, vipEndpoint string, ignoreHe
 		},
 	)
 	if err != nil {
-		return fmt.Errorf("failed to generate operations when deleting vip %s from load balancers %s: %v", vipEndpoint, lbName, err)
+		return fmt.Errorf("failed to generate operations when deleting vip %s from load balancers %s: %w", vipEndpoint, lbName, err)
 	}
 	if len(ops) == 0 {
 		return nil
 	}
 
 	if err = c.Transact("lb-add", ops); err != nil {
-		return fmt.Errorf("failed to delete vip %s from load balancers %s: %v", vipEndpoint, lbName, err)
+		return fmt.Errorf("failed to delete vip %s from load balancers %s: %w", vipEndpoint, lbName, err)
 	}
 	return nil
 }
@@ -215,7 +215,7 @@ func (c *OVNNbClient) SetLoadBalancerAffinityTimeout(lbName string, timeout int)
 
 	lb.Options = options
 	if err = c.UpdateLoadBalancer(lb, &lb.Options); err != nil {
-		return fmt.Errorf("failed to set affinity timeout of lb %s to %d: %v", lbName, timeout, err)
+		return fmt.Errorf("failed to set affinity timeout of lb %s to %d: %w", lbName, timeout, err)
 	}
 	return nil
 }
@@ -235,12 +235,12 @@ func (c *OVNNbClient) DeleteLoadBalancers(filter func(lb *ovnnb.LoadBalancer) bo
 			return true
 		},
 	).Delete(); err != nil {
-		return fmt.Errorf("generate operations for delete load balancers: %v", err)
+		return fmt.Errorf("generate operations for delete load balancers: %w", err)
 	}
 
 	if err = c.Transact("lb-del", ops); err != nil {
 		klog.Errorf("failed to del lbs: %v", err)
-		return fmt.Errorf("delete load balancers : %v", err)
+		return fmt.Errorf("delete load balancers : %w", err)
 	}
 	return nil
 }
@@ -260,7 +260,7 @@ func (c *OVNNbClient) DeleteLoadBalancer(lbName string) error {
 
 	if err = c.Transact("lb-del", ops); err != nil {
 		klog.Errorf("failed to del lb: %v", err)
-		return fmt.Errorf("delete load balancer %s: %v", lbName, err)
+		return fmt.Errorf("delete load balancer %s: %w", lbName, err)
 	}
 	return nil
 }
@@ -282,7 +282,7 @@ func (c *OVNNbClient) GetLoadBalancer(lbName string, ignoreNotFound bool) (*ovnn
 			return lb.Name == lbName
 		},
 	).List(ctx, &lbList); err != nil {
-		return nil, fmt.Errorf("failed to list load balancer %q: %v", lbName, err)
+		return nil, fmt.Errorf("failed to list load balancer %q: %w", lbName, err)
 	}
 
 	switch {
@@ -325,7 +325,7 @@ func (c *OVNNbClient) ListLoadBalancers(filter func(lb *ovnnb.LoadBalancer) bool
 			return true
 		},
 	).List(ctx, &lbList); err != nil {
-		return nil, fmt.Errorf("failed to list load balancer: %v", err)
+		return nil, fmt.Errorf("failed to list load balancer: %w", err)
 	}
 	return lbList, nil
 }
@@ -359,7 +359,7 @@ func (c *OVNNbClient) LoadBalancerOp(lbName string, mutationsFunc ...func(lb *ov
 
 	if ops, err = c.ovsDbClient.Where(lb).Mutate(lb, mutations...); err != nil {
 		klog.Error(err)
-		return nil, fmt.Errorf("generate operations for mutating load balancer %s: %v", lb.Name, err)
+		return nil, fmt.Errorf("generate operations for mutating load balancer %s: %w", lb.Name, err)
 	}
 	return ops, nil
 }
@@ -411,11 +411,11 @@ func (c *OVNNbClient) LoadBalancerAddIPPortMapping(lbName, vipEndpoint string, m
 			}
 		},
 	); err != nil {
-		return fmt.Errorf("failed to generate operations when adding ip port mapping with vip %v to load balancers %s: %v", vipEndpoint, lbName, err)
+		return fmt.Errorf("failed to generate operations when adding ip port mapping with vip %v to load balancers %s: %w", vipEndpoint, lbName, err)
 	}
 
 	if err = c.Transact("lb-add", ops); err != nil {
-		return fmt.Errorf("failed to add ip port mapping with vip %v to load balancers %s: %v", vipEndpoint, lbName, err)
+		return fmt.Errorf("failed to add ip port mapping with vip %v to load balancers %s: %w", vipEndpoint, lbName, err)
 	}
 	return nil
 }
@@ -445,7 +445,7 @@ func (c *OVNNbClient) LoadBalancerDeleteIPPortMapping(lbName, vipEndpoint string
 	}
 
 	if vip, _, err = net.SplitHostPort(vipEndpoint); err != nil {
-		err := fmt.Errorf("failed to split host port: %v", err)
+		err := fmt.Errorf("failed to split host port: %w", err)
 		klog.Error(err)
 		return err
 	}
@@ -470,13 +470,13 @@ func (c *OVNNbClient) LoadBalancerDeleteIPPortMapping(lbName, vipEndpoint string
 			}
 		},
 	); err != nil {
-		return fmt.Errorf("failed to generate operations when deleting ip port mapping %s from load balancers %s: %v", vipEndpoint, lbName, err)
+		return fmt.Errorf("failed to generate operations when deleting ip port mapping %s from load balancers %s: %w", vipEndpoint, lbName, err)
 	}
 	if len(ops) == 0 {
 		return nil
 	}
 	if err = c.Transact("lb-del", ops); err != nil {
-		return fmt.Errorf("failed to delete ip port mappings %s from load balancer %s: %v", vipEndpoint, lbName, err)
+		return fmt.Errorf("failed to delete ip port mappings %s from load balancer %s: %w", vipEndpoint, lbName, err)
 	}
 	return nil
 }
@@ -497,10 +497,10 @@ func (c *OVNNbClient) LoadBalancerUpdateIPPortMapping(lbName, vipEndpoint string
 			},
 		)
 		if err != nil {
-			return fmt.Errorf("failed to generate operations when adding ip port mapping with vip %v to load balancers %s: %v", vipEndpoint, lbName, err)
+			return fmt.Errorf("failed to generate operations when adding ip port mapping with vip %v to load balancers %s: %w", vipEndpoint, lbName, err)
 		}
 		if err = c.Transact("lb-add", ops); err != nil {
-			return fmt.Errorf("failed to add ip port mapping with vip %v to load balancers %s: %v", vipEndpoint, lbName, err)
+			return fmt.Errorf("failed to add ip port mapping with vip %v to load balancers %s: %w", vipEndpoint, lbName, err)
 		}
 	}
 	return nil
@@ -550,13 +550,13 @@ func (c *OVNNbClient) LoadBalancerDeleteHealthCheck(lbName, uuid string) error {
 			},
 		)
 		if err != nil {
-			return fmt.Errorf("failed to generate operations when deleting health check %s from load balancers %s: %v", uuid, lbName, err)
+			return fmt.Errorf("failed to generate operations when deleting health check %s from load balancers %s: %w", uuid, lbName, err)
 		}
 		if len(ops) == 0 {
 			return nil
 		}
 		if err = c.Transact("lb-hc-del", ops); err != nil {
-			return fmt.Errorf("failed to delete health check %s from load balancers %s: %v", uuid, lbName, err)
+			return fmt.Errorf("failed to delete health check %s from load balancers %s: %w", uuid, lbName, err)
 		}
 	}
 

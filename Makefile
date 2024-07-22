@@ -972,16 +972,7 @@ uninstall:
 
 .PHONY: lint
 lint:
-	@gofmt -d .
-	@if [ $$(gofmt -l . | wc -l) -ne 0 ]; then \
-		echo "Code differs from gofmt's style" 1>&2 && exit 1; \
-	fi
-	@GOOS=linux go vet ./...
-	@GOOS=linux gosec -exclude-dir=test -exclude-dir=pkg/client ./...
-
-.PHONY: gofumpt
-gofumpt:
-	gofumpt -w -extra .
+	golangci-lint run -v
 
 .PHONY: lint-windows
 lint-windows:

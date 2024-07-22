@@ -228,7 +228,7 @@ func (c *QoSPolicyClient) WaitUntil(name string, cond func(s *apiv1.QoSPolicy) (
 		qosPolicy = c.Get(name).DeepCopy()
 		met, err := cond(qosPolicy)
 		if err != nil {
-			return false, fmt.Errorf("failed to check condition for qosPolicy %s: %v", name, err)
+			return false, fmt.Errorf("failed to check condition for qosPolicy %s: %w", name, err)
 		}
 		return met, nil
 	})

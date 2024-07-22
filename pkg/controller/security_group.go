@@ -2,6 +2,8 @@ package controller
 
 import (
 	"context"
+	"encoding/hex"
+	"errors"
 	"fmt"
 	"net"
 	"reflect"
@@ -192,7 +194,7 @@ func (c *Controller) syncSecurityGroup() error {
 	for _, sg := range sgs {
 		lost, err := c.OVNNbClient.SGLostACL(sg)
 		if err != nil {
-			err = fmt.Errorf("failed to check if security group %s lost acl: %v", sg.Name, err)
+			err = fmt.Errorf("failed to check if security group %s lost acl: %w", sg.Name, err)
 			klog.Error(err)
 			return err
 		}
@@ -303,12 +305,12 @@ func (c *Controller) handleAddOrUpdateSg(key string, force bool) error {
 		egressNeedUpdate = true
 	} else {
 		// check md5
-		newIngressMd5 = fmt.Sprintf("%x", structhash.Md5(sg.Spec.IngressRules, 1))
+		newIngressMd5 = hex.EncodeToString(structhash.Md5(sg.Spec.IngressRules, 1))
 		if !sg.Status.IngressLastSyncSuccess || newIngressMd5 != sg.Status.IngressMd5 {
 			klog.Infof("ingress need update, sg:%s", sg.Name)
 			ingressNeedUpdate = true
 		}
-		newEgressMd5 = fmt.Sprintf("%x", structhash.Md5(sg.Spec.EgressRules, 1))
+		newEgressMd5 = hex.EncodeToString(structhash.Md5(sg.Spec.EgressRules, 1))
 		if !sg.Status.EgressLastSyncSuccess || newEgressMd5 != sg.Status.EgressMd5 {
 			klog.Infof("egress need update, sg:%s", sg.Name)
 			egressNeedUpdate = true
@@ -370,7 +372,7 @@ func (c *Controller) validateSgRule(sg *kubeovnv1.SecurityGroup) error {
 	allRules := append(sg.Spec.IngressRules, sg.Spec.EgressRules...)
 	for _, rule := range allRules {
 		if rule.IPVersion != "ipv4" && rule.IPVersion != "ipv6" {
-			return fmt.Errorf("IPVersion should be 'ipv4' or 'ipv6'")
+			return errors.New("IPVersion should be 'ipv4' or 'ipv6'")
 		}
 
 		if rule.Priority < 1 || rule.Priority > 200 {
@@ -391,7 +393,7 @@ func (c *Controller) validateSgRule(sg *kubeovnv1.SecurityGroup) error {
 		case kubeovnv1.SgRemoteTypeSg:
 			_, err := c.sgsLister.Get(rule.RemoteSecurityGroup)
 			if err != nil {
-				return fmt.Errorf("failed to get remote sg '%s', %v", rule.RemoteSecurityGroup, err)
+				return fmt.Errorf("failed to get remote sg '%s', %w", rule.RemoteSecurityGroup, err)
 			}
 		default:
 			return fmt.Errorf("not support sgRemoteType '%s'", rule.RemoteType)
@@ -399,10 +401,10 @@ func (c *Controller) validateSgRule(sg *kubeovnv1.SecurityGroup) error {
 
 		if rule.Protocol == kubeovnv1.ProtocolTCP || rule.Protocol == kubeovnv1.ProtocolUDP {
 			if rule.PortRangeMin < 1 || rule.PortRangeMin > 65535 || rule.PortRangeMax < 1 || rule.PortRangeMax > 65535 {
-				return fmt.Errorf("portRange is out of range")
+				return errors.New("portRange is out of range")
 			}
 			if rule.PortRangeMin > rule.PortRangeMax {
-				return fmt.Errorf("portRange err, range Minimum value greater than maximum value")
+				return errors.New("portRange err, range Minimum value greater than maximum value")
 			}
 		}
 	}

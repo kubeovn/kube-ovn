@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -190,7 +191,7 @@ func (c *Controller) handleAddOvnSnatRule(key string) error {
 	// check eip
 	eipName := cachedSnat.Spec.OvnEip
 	if eipName == "" {
-		err := fmt.Errorf("failed to create ovn snat rule, should set eip")
+		err := errors.New("failed to create ovn snat rule, should set eip")
 		klog.Error(err)
 		return err
 	}
@@ -305,7 +306,7 @@ func (c *Controller) handleUpdateOvnSnatRule(key string) error {
 	// check eip
 	eipName := cachedSnat.Spec.OvnEip
 	if eipName == "" {
-		err := fmt.Errorf("failed to create ovn snat rule, should set eip")
+		err := errors.New("failed to create ovn snat rule, should set eip")
 		klog.Error(err)
 		return err
 	}
