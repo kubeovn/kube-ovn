@@ -138,7 +138,6 @@ func (c *Controller) syncSubnetRoutes() {
 	}
 
 	if c.config.NeighborIPv6Address != "" {
-
 		listIPv6PathRequest := &bgpapi.ListPathRequest{
 			TableType: bgpapi.TableType_GLOBAL,
 			Family:    &bgpapi.Family{Afi: bgpapi.Family_AFI_IP6, Safi: bgpapi.Family_SAFI_UNICAST},

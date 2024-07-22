@@ -1115,39 +1115,3 @@ func (c *Controller) execNatGwQoSInPod(
 	}
 	return nil
 }
-
-func (c *Controller) initVpcNatGw() error {
-	klog.Infof("init all vpc nat gateways")
-	gws, err := c.vpcNatGatewayLister.List(labels.Everything())
-	if err != nil {
-		err = fmt.Errorf("failed to get vpc nat gw list, %w", err)
-		klog.Error(err)
-		return err
-	}
-	if len(gws) == 0 {
-		return nil
-	}
-
-	if vpcNatEnabled != "true" {
-		err := errors.New("iptables nat gw not enable")
-		klog.Warning(err)
-		return nil
-	}
-
-	for _, gw := range gws {
-		pod, err := c.getNatGwPod(gw.Name)
-		if err != nil {
-			// the nat gw maybe deleted
-			err := fmt.Errorf("failed to get nat gw %s pod: %w", gw.Name, err)
-			klog.Error(err)
-			continue
-		}
-		if vpcGwName, isVpcNatGw := pod.Annotations[util.VpcNatGatewayAnnotation]; isVpcNatGw {
-			if _, hasInit := pod.Annotations[util.VpcNatGatewayInitAnnotation]; hasInit {
-				return nil
-			}
-			c.initVpcNatGatewayQueue.Add(vpcGwName)
-		}
-	}
-	return nil
-}

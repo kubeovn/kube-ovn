@@ -385,11 +385,11 @@ func (csh cniServerHandler) configureContainerNic(podName, podNamespace, nicName
 			// See https://github.com/containernetworking/cni/issues/531
 			value, err := sysctl.Sysctl("net.ipv6.conf.all.disable_ipv6")
 			if err != nil {
-				return fmt.Errorf("failed to get sysctl net.ipv6.conf.all.disable_ipv6: %v", err)
+				return fmt.Errorf("failed to get sysctl net.ipv6.conf.all.disable_ipv6: %w", err)
 			}
 			if value != "0" {
 				if _, err = sysctl.Sysctl("net.ipv6.conf.all.disable_ipv6", "0"); err != nil {
-					return fmt.Errorf("failed to enable ipv6 on all nic: %v", err)
+					return fmt.Errorf("failed to enable ipv6 on all nic: %w", err)
 				}
 			}
 		}
@@ -789,11 +789,11 @@ func configureNodeGwNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu i
 			// See https://github.com/containernetworking/cni/issues/531
 			value, err := sysctl.Sysctl("net.ipv6.conf.all.disable_ipv6")
 			if err != nil {
-				return fmt.Errorf("failed to get sysctl net.ipv6.conf.all.disable_ipv6: %v", err)
+				return fmt.Errorf("failed to get sysctl net.ipv6.conf.all.disable_ipv6: %w", err)
 			}
 			if value != "0" {
 				if _, err = sysctl.Sysctl("net.ipv6.conf.all.disable_ipv6", "0"); err != nil {
-					return fmt.Errorf("failed to enable ipv6 on all nic: %v", err)
+					return fmt.Errorf("failed to enable ipv6 on all nic: %w", err)
 				}
 			}
 		}

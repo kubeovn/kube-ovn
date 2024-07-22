@@ -252,7 +252,6 @@ func (config *Configuration) initBgpServer() error {
 			peer.Conf.AuthPassword = config.AuthPassword
 		}
 		if config.GracefulRestart {
-
 			if err := config.checkGracefulRestartOptions(); err != nil {
 				return err
 			}
