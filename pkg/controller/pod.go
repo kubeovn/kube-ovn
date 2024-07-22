@@ -829,13 +829,13 @@ func (c *Controller) reconcileRouteSubnets(cachedPod, pod *v1.Pod, needRoutePodN
 			return fmt.Errorf("NodeSwitch subnet %s is unavailable for pod", subnet.Name)
 		}
 
+		portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
 		if (!c.config.EnableLb || !(subnet.Spec.EnableLb != nil && *subnet.Spec.EnableLb)) &&
 			subnet.Spec.Vpc == c.config.ClusterRouter &&
 			subnet.Spec.U2OInterconnection &&
 			subnet.Spec.Vlan != "" &&
 			!subnet.Spec.LogicalGateway {
 			pgName := getOverlaySubnetsPortGroupName(subnet.Name, pod.Spec.NodeName)
-			portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
 			if err := c.OVNNbClient.PortGroupAddPorts(pgName, portName); err != nil {
 				klog.Errorf("failed to add port to u2o port group %s: %v", pgName, err)
 				return err
@@ -887,7 +887,6 @@ func (c *Controller) reconcileRouteSubnets(cachedPod, pod *v1.Pod, needRoutePodN
 				}
 
 				// remove lsp from port group to make EIP/SNAT work
-				portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
 				if err = c.OVNNbClient.PortGroupRemovePorts(pgName, portName); err != nil {
 					klog.Error(err)
 					return err
@@ -908,7 +907,6 @@ func (c *Controller) reconcileRouteSubnets(cachedPod, pod *v1.Pod, needRoutePodN
 								continue
 							}
 
-							portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
 							if err := c.OVNNbClient.PortGroupAddPorts(pgName, portName); err != nil {
 								klog.Errorf("add port to port group %s: %v", pgName, err)
 								return err
@@ -987,6 +985,13 @@ func (c *Controller) reconcileRouteSubnets(cachedPod, pod *v1.Pod, needRoutePodN
 						}
 					}
 				}
+			}
+		}
+
+		if pod.Annotations[fmt.Sprintf(util.ActivationStrategyTemplate, podNet.ProviderName)] != "" {
+			if err := c.OVNNbClient.SetLogicalSwitchPortActivationStrategy(portName, pod.Spec.NodeName); err != nil {
+				klog.Errorf("failed to set activation strategy for lsp %s: %v", portName, err)
+				return err
 			}
 		}
 

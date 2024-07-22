@@ -26,7 +26,7 @@ import (
 )
 
 const (
-	gatewayModeDisabled = iota
+	gatewayCheckModeDisabled = iota
 	gatewayCheckModePing
 	gatewayCheckModeArping
 	gatewayCheckModePingNotConcerned
@@ -269,6 +269,9 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		} else {
 			// do not perform ipv4 conflict detection during VM live migration
 			detectIPConflict = false
+		}
+		if pod.Annotations[fmt.Sprintf(util.ActivationStrategyTemplate, podRequest.Provider)] != "" {
+			gatewayCheckMode = gatewayCheckModeDisabled
 		}
 
 		if podSubnet.Spec.Mtu > 0 {
