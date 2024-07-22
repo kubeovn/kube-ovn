@@ -61,7 +61,7 @@ func (csh cniServerHandler) configureDpdkNic(podName, podNamespace, provider, ne
 		fmt.Sprintf("external_ids:ip=%s", ipStr),
 		fmt.Sprintf("external_ids:pod_netns=%s", netns))
 	if err != nil {
-		return fmt.Errorf("add nic to ovs failed %v: %q", err, output)
+		return fmt.Errorf("add nic to ovs failed %w: %q", err, output)
 	}
 	return ovs.SetInterfaceBandwidth(podName, podNamespace, ifaceID, egress, ingress)
 }
@@ -83,7 +83,6 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 				}
 			}
 		}()
-
 	} else {
 		hostNicName, containerNicName, err = setupSriovInterface(containerID, deviceID, vfDriver, ifName, mtu, mac)
 		if err != nil {
@@ -104,7 +103,7 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 		fmt.Sprintf("external_ids:ip=%s", ipStr),
 		fmt.Sprintf("external_ids:pod_netns=%s", netns))
 	if err != nil {
-		return nil, fmt.Errorf("add nic to ovs failed %v: %q", err, output)
+		return nil, fmt.Errorf("add nic to ovs failed %w: %q", err, output)
 	}
 	defer func() {
 		if err != nil {
@@ -148,7 +147,7 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 	// lsp and container nic must use same mac address, otherwise ovn will reject these packets by default
 	macAddr, err := net.ParseMAC(mac)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse mac %s %v", macAddr, err)
+		return nil, fmt.Errorf("failed to parse mac %s %w", macAddr, err)
 	}
 	if err = configureHostNic(hostNicName); err != nil {
 		klog.Error(err)
@@ -182,7 +181,7 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 
 	podNS, err := ns.GetNS(netns)
 	if err != nil {
-		err = fmt.Errorf("failed to open netns %q: %v", netns, err)
+		err = fmt.Errorf("failed to open netns %q: %w", netns, err)
 		klog.Error(err)
 		return nil, err
 	}
@@ -203,13 +202,13 @@ func (csh cniServerHandler) releaseVf(podName, podNamespace, podNetns, ifName, n
 	klog.Infof("Tear down interface %s", podDesc)
 	netns, err := ns.GetNS(podNetns)
 	if err != nil {
-		return fmt.Errorf("failed to get container namespace %s: %v", podDesc, err)
+		return fmt.Errorf("failed to get container namespace %s: %w", podDesc, err)
 	}
 	defer netns.Close()
 
 	hostNS, err := ns.GetCurrentNS()
 	if err != nil {
-		return fmt.Errorf("failed to get host namespace %s: %v", podDesc, err)
+		return fmt.Errorf("failed to get host namespace %s: %w", podDesc, err)
 	}
 	defer hostNS.Close()
 
@@ -217,10 +216,10 @@ func (csh cniServerHandler) releaseVf(podName, podNamespace, podNetns, ifName, n
 		// container side interface deletion
 		link, err := netlink.LinkByName(ifName)
 		if err != nil {
-			return fmt.Errorf("failed to get container interface %s %s: %v", ifName, podDesc, err)
+			return fmt.Errorf("failed to get container interface %s %s: %w", ifName, podDesc, err)
 		}
 		if err = netlink.LinkSetDown(link); err != nil {
-			return fmt.Errorf("failed to bring down container interface %s %s: %v", ifName, podDesc, err)
+			return fmt.Errorf("failed to bring down container interface %s %s: %w", ifName, podDesc, err)
 		}
 		// rename VF device back to its original name in the host namespace:
 		pod, err := csh.Controller.podsLister.Pods(podNamespace).Get(podName)
@@ -230,12 +229,12 @@ func (csh cniServerHandler) releaseVf(podName, podNamespace, podNetns, ifName, n
 		}
 		vfName := pod.Annotations[fmt.Sprintf(util.VfNameTemplate, provider)]
 		if err = netlink.LinkSetName(link, vfName); err != nil {
-			return fmt.Errorf("failed to rename container interface %s to %s %s: %v",
+			return fmt.Errorf("failed to rename container interface %s to %s %s: %w",
 				ifName, vfName, podDesc, err)
 		}
 		// move VF device to host netns
 		if err = netlink.LinkSetNsFd(link, int(hostNS.Fd())); err != nil {
-			return fmt.Errorf("failed to move container interface %s back to host namespace %s: %v",
+			return fmt.Errorf("failed to move container interface %s back to host namespace %s: %w",
 				ifName, podDesc, err)
 		}
 		return nil
@@ -250,7 +249,7 @@ func (csh cniServerHandler) releaseVf(podName, podNamespace, podNetns, ifName, n
 func (csh cniServerHandler) deleteNic(podName, podNamespace, containerID, netns, deviceID, ifName, nicType, provider string) error {
 	if err := csh.releaseVf(podName, podNamespace, netns, ifName, nicType, provider, deviceID); err != nil {
 		return fmt.Errorf("failed to release VF %s assigned to the Pod %s/%s back to the host network namespace: "+
-			"%v", ifName, podName, podNamespace, err)
+			"%w", ifName, podName, podNamespace, err)
 	}
 
 	var nicName string
@@ -265,7 +264,7 @@ func (csh cniServerHandler) deleteNic(podName, podNamespace, containerID, netns,
 	// Remove ovs port
 	output, err := ovs.Exec(ovs.IfExists, "--with-iface", "del-port", "br-int", nicName)
 	if err != nil {
-		return fmt.Errorf("failed to delete ovs port %v, %q", err, output)
+		return fmt.Errorf("failed to delete ovs port %w, %q", err, output)
 	}
 
 	if err = ovs.ClearPodBandwidth(podName, podNamespace, ""); err != nil {
@@ -285,14 +284,14 @@ func (csh cniServerHandler) deleteNic(podName, podNamespace, containerID, netns,
 			if _, ok := err.(netlink.LinkNotFoundError); ok {
 				return nil
 			}
-			return fmt.Errorf("find host link %s failed %v", nicName, err)
+			return fmt.Errorf("find host link %s failed %w", nicName, err)
 		}
 
 		hostLinkType := hostLink.Type()
 		// Sometimes no deviceID input for vf nic, avoid delete vf nic.
 		if hostLinkType == "veth" {
 			if err = netlink.LinkDel(hostLink); err != nil {
-				return fmt.Errorf("delete host link %s failed %v", hostLink, err)
+				return fmt.Errorf("delete host link %s failed %w", hostLink, err)
 			}
 		}
 	} else if pciAddrRegexp.MatchString(deviceID) {
@@ -340,16 +339,16 @@ func generateNicName(containerID, ifname string) (string, string) {
 func configureHostNic(nicName string) error {
 	hostLink, err := netlink.LinkByName(nicName)
 	if err != nil {
-		return fmt.Errorf("can not find host nic %s: %v", nicName, err)
+		return fmt.Errorf("can not find host nic %s: %w", nicName, err)
 	}
 
 	if hostLink.Attrs().OperState != netlink.OperUp {
 		if err = netlink.LinkSetUp(hostLink); err != nil {
-			return fmt.Errorf("can not set host nic %s up: %v", nicName, err)
+			return fmt.Errorf("can not set host nic %s up: %w", nicName, err)
 		}
 	}
 	if err = netlink.LinkSetTxQLen(hostLink, 1000); err != nil {
-		return fmt.Errorf("can not set host nic %s qlen: %v", nicName, err)
+		return fmt.Errorf("can not set host nic %s qlen: %w", nicName, err)
 	}
 
 	return nil
@@ -358,7 +357,7 @@ func configureHostNic(nicName string) error {
 func (csh cniServerHandler) configureContainerNic(podName, podNamespace, nicName, ifName, ipAddr, gateway string, isDefaultRoute, detectIPConflict bool, routes []request.Route, macAddr net.HardwareAddr, netns ns.NetNS, mtu int, nicType string, gwCheckMode int, u2oInterconnectionIP string) ([]request.Route, error) {
 	containerLink, err := netlink.LinkByName(nicName)
 	if err != nil {
-		return nil, fmt.Errorf("can not find container nic %s: %v", nicName, err)
+		return nil, fmt.Errorf("can not find container nic %s: %w", nicName, err)
 	}
 
 	// Set link alias to its origin link name for fastpath to recognize and bypass netfilter
@@ -368,7 +367,7 @@ func (csh cniServerHandler) configureContainerNic(podName, podNamespace, nicName
 	}
 
 	if err = netlink.LinkSetNsFd(containerLink, int(netns.Fd())); err != nil {
-		return nil, fmt.Errorf("failed to move link to netns: %v", err)
+		return nil, fmt.Errorf("failed to move link to netns: %w", err)
 	}
 
 	var finalRoutes []request.Route
@@ -428,7 +427,7 @@ func (csh cniServerHandler) configureContainerNic(podName, podNamespace, nicName
 					Scope:     netlink.SCOPE_UNIVERSE,
 					Gw:        net.ParseIP(gw),
 				}); err != nil {
-					return fmt.Errorf("failed to configure default gateway %s: %v", gw, err)
+					return fmt.Errorf("failed to configure default gateway %s: %w", gw, err)
 				}
 			}
 		}
@@ -462,7 +461,7 @@ func (csh cniServerHandler) configureContainerNic(podName, podNamespace, nicName
 
 		linkRoutes, err := netlink.RouteList(containerLink, netlink.FAMILY_ALL)
 		if err != nil {
-			return fmt.Errorf("failed to get routes on interface %s: %v", ifName, err)
+			return fmt.Errorf("failed to get routes on interface %s: %w", ifName, err)
 		}
 
 		for _, r := range linkRoutes {
@@ -563,7 +562,7 @@ func waitNetworkReady(nic, ipAddr, gateway string, underlayGateway, verbose bool
 			mac, count, err := util.ArpResolve(nic, gw, time.Second, maxRetry, done)
 			cniConnectivityResult.WithLabelValues(nodeName).Add(float64(count))
 			if err != nil {
-				err = fmt.Errorf("network %s with gateway %s is not ready for interface %s after %d checks: %v", ips[i], gw, nic, count, err)
+				err = fmt.Errorf("network %s with gateway %s is not ready for interface %s after %d checks: %w", ips[i], gw, nic, count, err)
 				klog.Warning(err)
 				return err
 			}
@@ -590,14 +589,14 @@ func configureNodeNic(portName, ip, gw, joinCIDR string, macAddr net.HardwareAdd
 		fmt.Sprintf("external_ids:ip=%s", ipStr))
 	if err != nil {
 		klog.Errorf("failed to configure node nic %s: %v, %q", portName, err, raw)
-		return fmt.Errorf(raw)
+		return errors.New(raw)
 	}
 
 	value, err := sysctl.Sysctl(fmt.Sprintf("net.ipv6.conf.%s.addr_gen_mode", util.NodeNic))
 	if err == nil {
 		if value != "0" {
 			if _, err = sysctl.Sysctl(fmt.Sprintf("net.ipv6.conf.%s.addr_gen_mode", util.NodeNic), "0"); err != nil {
-				return fmt.Errorf("failed to set ovn0 addr_gen_mode: %v", err)
+				return fmt.Errorf("failed to set ovn0 addr_gen_mode: %w", err)
 			}
 		}
 	}
@@ -609,11 +608,11 @@ func configureNodeNic(portName, ip, gw, joinCIDR string, macAddr net.HardwareAdd
 
 	hostLink, err := netlink.LinkByName(util.NodeNic)
 	if err != nil {
-		return fmt.Errorf("can not find nic %s: %v", util.NodeNic, err)
+		return fmt.Errorf("can not find nic %s: %w", util.NodeNic, err)
 	}
 
 	if err = netlink.LinkSetTxQLen(hostLink, 1000); err != nil {
-		return fmt.Errorf("can not set host nic %s qlen: %v", util.NodeNic, err)
+		return fmt.Errorf("can not set host nic %s qlen: %w", util.NodeNic, err)
 	}
 
 	// check and add default route for ovn0 in case of can not add automatically
@@ -724,7 +723,7 @@ func (c *Controller) checkNodeGwNicInNs(nodeExtIP, ip, gw string, gwNS ns.NetNS)
 			if err == nil {
 				cmd := exec.Command("sh", "-c", "bfdd-control status")
 				if err := cmd.Run(); err != nil {
-					err := fmt.Errorf("failed to get bfdd status, %v", err)
+					err := fmt.Errorf("failed to get bfdd status, %w", err)
 					klog.Error(err)
 					return err
 				}
@@ -741,7 +740,7 @@ func (c *Controller) checkNodeGwNicInNs(nodeExtIP, ip, gw string, gwNS ns.NetNS)
 								// not exist
 								cmd = exec.Command("sh", "-c", fmt.Sprintf("bfdd-control allow %s", eip.Spec.V4Ip)) // #nosec G204
 								if err := cmd.Run(); err != nil {
-									err := fmt.Errorf("failed to add lrp %s ip %s into bfd listening list, %v", eip.Name, eip.Status.V4Ip, err)
+									err := fmt.Errorf("failed to add lrp %s ip %s into bfd listening list, %w", eip.Name, eip.Status.V4Ip, err)
 									klog.Error(err)
 									return err
 								}
@@ -751,7 +750,6 @@ func (c *Controller) checkNodeGwNicInNs(nodeExtIP, ip, gw string, gwNS ns.NetNS)
 							klog.Error(err)
 							return err
 						}
-
 					}
 				}
 			}
@@ -759,7 +757,7 @@ func (c *Controller) checkNodeGwNicInNs(nodeExtIP, ip, gw string, gwNS ns.NetNS)
 		})
 	}
 
-	err = fmt.Errorf("node external gw not ready")
+	err = errors.New("node external gw not ready")
 	klog.Error(err)
 	return err
 }
@@ -773,7 +771,7 @@ func configureNodeGwNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu i
 		fmt.Sprintf("external_ids:pod_netns=%s", util.NodeGwNsPath))
 	if err != nil {
 		klog.Errorf("failed to configure node external nic %s: %v, %q", portName, err, output)
-		return fmt.Errorf(output)
+		return errors.New(output)
 	}
 	gwLink, err := netlink.LinkByName(util.NodeGwNic)
 	if err == nil {
@@ -801,7 +799,7 @@ func configureNodeGwNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu i
 		}
 
 		if err = configureNic(util.NodeGwNic, ip, macAddr, mtu, true); err != nil {
-			klog.Errorf("failed to congigure node gw nic %s, %v", util.NodeGwNic, err)
+			klog.Errorf("failed to configure node gw nic %s, %v", util.NodeGwNic, err)
 			return err
 		}
 
@@ -841,7 +839,7 @@ func configureNodeGwNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu i
 				Gw:        net.ParseIP(gws[0]),
 			})
 			if err != nil {
-				return fmt.Errorf("config v4 gateway failed: %v", err)
+				return fmt.Errorf("config v4 gateway failed: %w", err)
 			}
 
 			_, defaultNet, _ = net.ParseCIDR("::/0")
@@ -853,11 +851,11 @@ func configureNodeGwNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu i
 			})
 		}
 		if err != nil {
-			return fmt.Errorf("failed to configure gateway: %v", err)
+			return fmt.Errorf("failed to configure gateway: %w", err)
 		}
 		cmd := exec.Command("sh", "-c", "/usr/local/bin/bfdd-beacon --listen=0.0.0.0")
 		if err := cmd.Run(); err != nil {
-			err := fmt.Errorf("failed to get start bfd listen, %v", err)
+			err := fmt.Errorf("failed to get start bfd listen, %w", err)
 			klog.Error(err)
 			return err
 		}
@@ -867,7 +865,7 @@ func configureNodeGwNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu i
 
 func removeNodeGwNic() error {
 	if _, err := ovs.Exec(ovs.IfExists, "del-port", "br-int", util.NodeGwNic); err != nil {
-		return fmt.Errorf("failed to remove ecmp external port %s from OVS bridge %s: %v", "br-int", util.NodeGwNic, err)
+		return fmt.Errorf("failed to remove ecmp external port %s from OVS bridge %s: %w", "br-int", util.NodeGwNic, err)
 	}
 	klog.Infof("removed node external gw nic %q", util.NodeGwNic)
 	return nil
@@ -875,7 +873,7 @@ func removeNodeGwNic() error {
 
 func removeNodeGwNs() error {
 	if err := DeleteNamedNs(util.NodeGwNs); err != nil {
-		return fmt.Errorf("failed to remove node external gw ns %s: %v", util.NodeGwNs, err)
+		return fmt.Errorf("failed to remove node external gw ns %s: %w", util.NodeGwNs, err)
 	}
 	klog.Infof("node external gw ns %s removed", util.NodeGwNs)
 	return nil
@@ -948,12 +946,12 @@ func (c *Controller) loopOvnExt0Check() {
 		// ns not exist, create node external gw ns
 		cmd := exec.Command("sh", "-c", fmt.Sprintf("/usr/sbin/ip netns add %s", util.NodeGwNs)) // #nosec G204
 		if err := cmd.Run(); err != nil {
-			err := fmt.Errorf("failed to get create gw ns %s, %v", util.NodeGwNs, err)
+			err := fmt.Errorf("failed to get create gw ns %s, %w", util.NodeGwNs, err)
 			klog.Error(err)
 			return
 		}
 		if gwNS, err = ns.GetNS(util.NodeGwNsPath); err != nil {
-			err := fmt.Errorf("failed to get node gw ns %s, %v", util.NodeGwNs, err)
+			err := fmt.Errorf("failed to get node gw ns %s, %w", util.NodeGwNs, err)
 			klog.Error(err)
 			return
 		}
@@ -1030,13 +1028,13 @@ func configureMirrorLink(portName string, _ int) error {
 	mirrorLink, err := netlink.LinkByName(portName)
 	if err != nil {
 		klog.Error(err)
-		return fmt.Errorf("can not find mirror nic %s: %v", portName, err)
+		return fmt.Errorf("can not find mirror nic %s: %w", portName, err)
 	}
 
 	if mirrorLink.Attrs().OperState != netlink.OperUp {
 		if err = netlink.LinkSetUp(mirrorLink); err != nil {
 			klog.Error(err)
-			return fmt.Errorf("can not set mirror nic %s up: %v", portName, err)
+			return fmt.Errorf("can not set mirror nic %s up: %w", portName, err)
 		}
 	}
 
@@ -1047,12 +1045,12 @@ func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPCo
 	nodeLink, err := netlink.LinkByName(link)
 	if err != nil {
 		klog.Error(err)
-		return fmt.Errorf("can not find nic %s: %v", link, err)
+		return fmt.Errorf("can not find nic %s: %w", link, err)
 	}
 
 	if err = netlink.LinkSetHardwareAddr(nodeLink, macAddr); err != nil {
 		klog.Error(err)
-		return fmt.Errorf("can not set mac address to nic %s: %v", link, err)
+		return fmt.Errorf("can not set mac address to nic %s: %w", link, err)
 	}
 
 	if mtu > 0 {
@@ -1062,14 +1060,14 @@ func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPCo
 			err = netlink.LinkSetMTU(nodeLink, mtu)
 		}
 		if err != nil {
-			return fmt.Errorf("failed to set nic %s mtu: %v", link, err)
+			return fmt.Errorf("failed to set nic %s mtu: %w", link, err)
 		}
 	}
 
 	if nodeLink.Attrs().OperState != netlink.OperUp {
 		if err = netlink.LinkSetUp(nodeLink); err != nil {
 			klog.Error(err)
-			return fmt.Errorf("can not set node nic %s up: %v", link, err)
+			return fmt.Errorf("can not set node nic %s up: %w", link, err)
 		}
 	}
 
@@ -1078,7 +1076,7 @@ func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPCo
 	ipAddrs, err := netlink.AddrList(nodeLink, unix.AF_UNSPEC)
 	if err != nil {
 		klog.Error(err)
-		return fmt.Errorf("can not get addr %s: %v", nodeLink, err)
+		return fmt.Errorf("can not get addr %s: %w", nodeLink, err)
 	}
 	for _, ipAddr := range ipAddrs {
 		if ipAddr.IP.IsLinkLocalUnicast() {
@@ -1097,7 +1095,7 @@ func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPCo
 
 		ipAddr, err := netlink.ParseAddr(ipStr)
 		if err != nil {
-			return fmt.Errorf("can not parse address %s: %v", ipStr, err)
+			return fmt.Errorf("can not parse address %s: %w", ipStr, err)
 		}
 		ipAddMap[ipStr] = *ipAddr
 	}
@@ -1106,7 +1104,7 @@ func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPCo
 		klog.Infof("delete ip address %s on %s", ip, link)
 		if err = netlink.AddrDel(nodeLink, &addr); err != nil {
 			klog.Error(err)
-			return fmt.Errorf("delete address %s: %v", addr, err)
+			return fmt.Errorf("delete address %s: %w", addr, err)
 		}
 	}
 	for ip, addr := range ipAddMap {
@@ -1114,7 +1112,7 @@ func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPCo
 			ip := addr.IP.String()
 			mac, err := util.ArpDetectIPConflict(link, ip, macAddr)
 			if err != nil {
-				err = fmt.Errorf("failed to detect address conflict for %s on link %s: %v", ip, link, err)
+				err = fmt.Errorf("failed to detect address conflict for %s on link %s: %w", ip, link, err)
 				klog.Error(err)
 				return err
 			}
@@ -1132,7 +1130,7 @@ func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPCo
 		klog.Infof("add ip address %s to %s", ip, link)
 		if err = netlink.AddrAdd(nodeLink, &addr); err != nil {
 			klog.Error(err)
-			return fmt.Errorf("can not add address %v to nic %s: %v", addr, link, err)
+			return fmt.Errorf("can not add address %s to nic %s: %w", addr, link, err)
 		}
 	}
 
@@ -1142,14 +1140,14 @@ func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPCo
 func configureLoNic() error {
 	loLink, err := netlink.LinkByName(util.LoNic)
 	if err != nil {
-		err := fmt.Errorf("can not find nic %s, %v", util.LoNic, err)
+		err := fmt.Errorf("can not find nic %s, %w", util.LoNic, err)
 		klog.Error(err)
 		return err
 	}
 
 	if loLink.Attrs().OperState != netlink.OperUp {
 		if err = netlink.LinkSetUp(loLink); err != nil {
-			err := fmt.Errorf("failed to set up nic %s, %v", util.LoNic, err)
+			err := fmt.Errorf("failed to set up nic %s, %w", util.LoNic, err)
 			klog.Error(err)
 			return err
 		}
@@ -1161,25 +1159,25 @@ func configureLoNic() error {
 func (c *Controller) transferAddrsAndRoutes(nicName, brName string, delNonExistent bool) (int, error) {
 	nic, err := netlink.LinkByName(nicName)
 	if err != nil {
-		return 0, fmt.Errorf("failed to get nic by name %s: %v", nicName, err)
+		return 0, fmt.Errorf("failed to get nic by name %s: %w", nicName, err)
 	}
 	bridge, err := netlink.LinkByName(brName)
 	if err != nil {
-		return 0, fmt.Errorf("failed to get bridge by name %s: %v", brName, err)
+		return 0, fmt.Errorf("failed to get bridge by name %s: %w", brName, err)
 	}
 
 	addrs, err := netlink.AddrList(nic, netlink.FAMILY_ALL)
 	if err != nil {
-		return 0, fmt.Errorf("failed to get addresses on nic %s: %v", nicName, err)
+		return 0, fmt.Errorf("failed to get addresses on nic %s: %w", nicName, err)
 	}
 	routes, err := netlink.RouteList(nic, netlink.FAMILY_ALL)
 	if err != nil {
-		return 0, fmt.Errorf("failed to get routes on nic %s: %v", nicName, err)
+		return 0, fmt.Errorf("failed to get routes on nic %s: %w", nicName, err)
 	}
 
 	brAddrs, err := netlink.AddrList(bridge, netlink.FAMILY_ALL)
 	if err != nil {
-		return 0, fmt.Errorf("failed to get addresses on OVS bridge %s: %v", brName, err)
+		return 0, fmt.Errorf("failed to get addresses on OVS bridge %s: %w", brName, err)
 	}
 
 	var delAddrs []netlink.Addr
@@ -1222,7 +1220,7 @@ func (c *Controller) transferAddrsAndRoutes(nicName, brName string, delNonExiste
 		count++
 
 		if err = netlink.AddrDel(nic, &addr); err != nil {
-			errMsg := fmt.Errorf("failed to delete address %q on nic %s: %v", addr.String(), nicName, err)
+			errMsg := fmt.Errorf("failed to delete address %q on nic %s: %w", addr.String(), nicName, err)
 			klog.Error(errMsg)
 			return 0, errMsg
 		}
@@ -1231,7 +1229,7 @@ func (c *Controller) transferAddrsAndRoutes(nicName, brName string, delNonExiste
 		addr.Label = ""
 		addr.PreferedLft, addr.ValidLft = 0, 0
 		if err = netlink.AddrReplace(bridge, &addr); err != nil {
-			return 0, fmt.Errorf("failed to replace address %q on OVS bridge %s: %v", addr.String(), brName, err)
+			return 0, fmt.Errorf("failed to replace address %q on OVS bridge %s: %w", addr.String(), brName, err)
 		}
 		klog.Infof("address %q has been added/replaced to link %s", addr.String(), brName)
 	}
@@ -1239,7 +1237,7 @@ func (c *Controller) transferAddrsAndRoutes(nicName, brName string, delNonExiste
 	if count != 0 {
 		for _, addr := range delAddrs {
 			if err = netlink.AddrDel(bridge, &addr); err != nil {
-				errMsg := fmt.Errorf("failed to delete address %q on OVS bridge %s: %v", addr.String(), brName, err)
+				errMsg := fmt.Errorf("failed to delete address %q on OVS bridge %s: %w", addr.String(), brName, err)
 				klog.Error(errMsg)
 				return 0, errMsg
 			}
@@ -1255,12 +1253,12 @@ func (c *Controller) transferAddrsAndRoutes(nicName, brName string, delNonExiste
 	}
 	if !albBond {
 		if _, err = ovs.Exec("set", "bridge", brName, fmt.Sprintf(`other-config:hwaddr="%s"`, nic.Attrs().HardwareAddr.String())); err != nil {
-			return 0, fmt.Errorf("failed to set MAC address of OVS bridge %s: %v", brName, err)
+			return 0, fmt.Errorf("failed to set MAC address of OVS bridge %s: %w", brName, err)
 		}
 	}
 
 	if err = netlink.LinkSetUp(bridge); err != nil {
-		return 0, fmt.Errorf("failed to set OVS bridge %s up: %v", brName, err)
+		return 0, fmt.Errorf("failed to set OVS bridge %s up: %w", brName, err)
 	}
 
 	for _, scope := range routeScopeOrders {
@@ -1272,7 +1270,7 @@ func (c *Controller) transferAddrsAndRoutes(nicName, brName string, delNonExiste
 			if route.Scope == scope {
 				route.LinkIndex = bridge.Attrs().Index
 				if err = netlink.RouteReplace(&route); err != nil {
-					return 0, fmt.Errorf("failed to add/replace route %s to OVS bridge %s: %v", route.String(), brName, err)
+					return 0, fmt.Errorf("failed to add/replace route %s to OVS bridge %s: %w", route.String(), brName, err)
 				}
 				klog.Infof("route %q has been added/replaced to OVS bridge %s", route.String(), brName)
 			}
@@ -1281,7 +1279,7 @@ func (c *Controller) transferAddrsAndRoutes(nicName, brName string, delNonExiste
 
 	brRoutes, err := netlink.RouteList(bridge, netlink.FAMILY_ALL)
 	if err != nil {
-		return 0, fmt.Errorf("failed to get routes on OVS bridge %s: %v", brName, err)
+		return 0, fmt.Errorf("failed to get routes on OVS bridge %s: %w", brName, err)
 	}
 
 	var delRoutes []netlink.Route
@@ -1311,7 +1309,7 @@ func (c *Controller) transferAddrsAndRoutes(nicName, brName string, delNonExiste
 		for _, route := range delRoutes {
 			if route.Scope == routeScopeOrders[i] {
 				if err = netlink.RouteDel(&route); err != nil {
-					return 0, fmt.Errorf("failed to delete route %s from OVS bridge %s: %v", route.String(), brName, err)
+					return 0, fmt.Errorf("failed to delete route %s from OVS bridge %s: %w", route.String(), brName, err)
 				}
 				klog.Infof("route %q has been deleted from OVS bridge %s", route.String(), brName)
 			}
@@ -1319,7 +1317,7 @@ func (c *Controller) transferAddrsAndRoutes(nicName, brName string, delNonExiste
 	}
 
 	if err = netlink.LinkSetUp(nic); err != nil {
-		return 0, fmt.Errorf("failed to set link %s up: %v", nicName, err)
+		return 0, fmt.Errorf("failed to set link %s up: %w", nicName, err)
 	}
 
 	return nic.Attrs().MTU, nil
@@ -1331,22 +1329,22 @@ func (c *Controller) configProviderNic(nicName, brName string, trunks []string) 
 	sysctlDisableIPv6 := fmt.Sprintf("net.ipv6.conf.%s.disable_ipv6", brName)
 	disableIPv6, err := sysctl.Sysctl(sysctlDisableIPv6)
 	if err != nil {
-		return 0, fmt.Errorf("failed to get sysctl %s: %v", sysctlDisableIPv6, err)
+		return 0, fmt.Errorf("failed to get sysctl %s: %w", sysctlDisableIPv6, err)
 	}
 	if disableIPv6 != "0" {
 		if _, err = sysctl.Sysctl(sysctlDisableIPv6, "0"); err != nil {
-			return 0, fmt.Errorf("failed to enable ipv6 on OVS bridge %s: %v", brName, err)
+			return 0, fmt.Errorf("failed to enable ipv6 on OVS bridge %s: %w", brName, err)
 		}
 	}
 
 	mtu, err := c.transferAddrsAndRoutes(nicName, brName, false)
 	if err != nil {
-		return 0, fmt.Errorf("failed to transfer addresess and routes from %s to %s: %v", nicName, brName, err)
+		return 0, fmt.Errorf("failed to transfer addresses and routes from %s to %s: %w", nicName, brName, err)
 	}
 
 	if _, err = ovs.Exec(ovs.MayExist, "add-port", brName, nicName,
 		"--", "set", "port", nicName, "trunks="+strings.Join(trunks, ","), "external_ids:vendor="+util.CniTypeName); err != nil {
-		return 0, fmt.Errorf("failed to add %s to OVS bridge %s: %v", nicName, brName, err)
+		return 0, fmt.Errorf("failed to add %s to OVS bridge %s: %w", nicName, brName, err)
 	}
 	klog.V(3).Infof("ovs port %s has been added to bridge %s", nicName, brName)
 
@@ -1387,24 +1385,24 @@ func (c *Controller) removeProviderNic(nicName, brName string) error {
 			klog.Warningf("failed to get nic by name %s: %v", nicName, err)
 			return nil
 		}
-		return fmt.Errorf("failed to get nic by name %s: %v", nicName, err)
+		return fmt.Errorf("failed to get nic by name %s: %w", nicName, err)
 	}
 	bridge, err := netlink.LinkByName(brName)
 	if err != nil {
-		return fmt.Errorf("failed to get bridge by name %s: %v", brName, err)
+		return fmt.Errorf("failed to get bridge by name %s: %w", brName, err)
 	}
 
 	addrs, err := netlink.AddrList(bridge, netlink.FAMILY_ALL)
 	if err != nil {
-		return fmt.Errorf("failed to get addresses on bridge %s: %v", brName, err)
+		return fmt.Errorf("failed to get addresses on bridge %s: %w", brName, err)
 	}
 	routes, err := netlink.RouteList(bridge, netlink.FAMILY_ALL)
 	if err != nil {
-		return fmt.Errorf("failed to get routes on bridge %s: %v", brName, err)
+		return fmt.Errorf("failed to get routes on bridge %s: %w", brName, err)
 	}
 
 	if _, err = ovs.Exec(ovs.IfExists, "del-port", brName, nicName); err != nil {
-		return fmt.Errorf("failed to remove %s from OVS bridge %s: %v", nicName, brName, err)
+		return fmt.Errorf("failed to remove %s from OVS bridge %s: %w", nicName, brName, err)
 	}
 	klog.V(3).Infof("ovs port %s has been removed from bridge %s", nicName, brName)
 
@@ -1415,7 +1413,7 @@ func (c *Controller) removeProviderNic(nicName, brName string) error {
 		}
 
 		if err = netlink.AddrDel(bridge, &addr); err != nil {
-			errMsg := fmt.Errorf("failed to delete address %q on OVS bridge %s: %v", addr.String(), brName, err)
+			errMsg := fmt.Errorf("failed to delete address %q on OVS bridge %s: %w", addr.String(), brName, err)
 			klog.Error(errMsg)
 			return errMsg
 		}
@@ -1423,7 +1421,7 @@ func (c *Controller) removeProviderNic(nicName, brName string) error {
 
 		addr.Label = ""
 		if err = netlink.AddrReplace(nic, &addr); err != nil {
-			return fmt.Errorf("failed to replace address %q on nic %s: %v", addr.String(), nicName, err)
+			return fmt.Errorf("failed to replace address %q on nic %s: %w", addr.String(), nicName, err)
 		}
 		klog.Infof("address %q has been added/replaced to link %s", addr.String(), nicName)
 	}
@@ -1448,7 +1446,7 @@ func (c *Controller) removeProviderNic(nicName, brName string) error {
 			if route.Scope == scope {
 				route.LinkIndex = nic.Attrs().Index
 				if err = netlink.RouteReplace(&route); err != nil {
-					return fmt.Errorf("failed to add/replace route %s: %v", route.String(), err)
+					return fmt.Errorf("failed to add/replace route %s: %w", route.String(), err)
 				}
 				klog.Infof("route %q has been added/replaced to link %s", route.String(), nicName)
 			}
@@ -1456,7 +1454,7 @@ func (c *Controller) removeProviderNic(nicName, brName string) error {
 	}
 
 	if err = netlink.LinkSetDown(bridge); err != nil {
-		return fmt.Errorf("failed to set OVS bridge %s down: %v", brName, err)
+		return fmt.Errorf("failed to set OVS bridge %s down: %w", brName, err)
 	}
 	klog.V(3).Infof("link %s has been set down", brName)
 
@@ -1479,7 +1477,7 @@ func setupVethPair(containerID, ifName string, mtu int) (string, string, error) 
 			klog.Errorf("failed to delete veth %v", err)
 			return "", "", err
 		}
-		return "", "", fmt.Errorf("failed to create veth for %v", err)
+		return "", "", fmt.Errorf("failed to create veth for %w", err)
 	}
 	return hostNicName, containerNicName, nil
 }
@@ -1491,7 +1489,7 @@ func setupSriovInterface(containerID, deviceID, vfDriver, ifName string, mtu int
 	if vfDriver == "vfio-pci" {
 		matches, err := filepath.Glob(filepath.Join(util.VfioSysDir, "*"))
 		if err != nil {
-			return "", "", fmt.Errorf("failed to check %s 'vfio-pci' driver path, %v", deviceID, err)
+			return "", "", fmt.Errorf("failed to check %s 'vfio-pci' driver path, %w", deviceID, err)
 		}
 
 		for _, match := range matches {
@@ -1551,7 +1549,7 @@ func setupSriovInterface(containerID, deviceID, vfDriver, ifName string, mtu int
 	// 5. rename the host VF representor
 	hostNicName, _ := generateNicName(containerID, ifName)
 	if err = renameLink(oldHostRepName, hostNicName); err != nil {
-		return "", "", fmt.Errorf("failed to rename %s to %s: %v", oldHostRepName, hostNicName, err)
+		return "", "", fmt.Errorf("failed to rename %s to %s: %w", oldHostRepName, hostNicName, err)
 	}
 
 	link, err := netlink.LinkByName(hostNicName)
@@ -1561,7 +1559,7 @@ func setupSriovInterface(containerID, deviceID, vfDriver, ifName string, mtu int
 
 	// 6. set MTU on VF representor
 	if err = netlink.LinkSetMTU(link, mtu); err != nil {
-		return "", "", fmt.Errorf("failed to set MTU on %s: %v", hostNicName, err)
+		return "", "", fmt.Errorf("failed to set MTU on %s: %w", hostNicName, err)
 	}
 
 	// 7. set MAC address to VF
@@ -1606,7 +1604,7 @@ func (csh cniServerHandler) configureNicWithInternalPort(podName, podNamespace, 
 		fmt.Sprintf("external_ids:ip=%s", ipStr),
 		fmt.Sprintf("external_ids:pod_netns=%s", netns))
 	if err != nil {
-		err := fmt.Errorf("add nic to ovs failed %v: %q", err, output)
+		err := fmt.Errorf("add nic to ovs failed %w: %q", err, output)
 		klog.Error(err)
 		return containerNicName, nil, err
 	}
@@ -1622,7 +1620,7 @@ func (csh cniServerHandler) configureNicWithInternalPort(podName, podNamespace, 
 	// container nic must use same mac address from pod annotation, otherwise ovn will reject these packets by default
 	macAddr, err := net.ParseMAC(mac)
 	if err != nil {
-		return containerNicName, nil, fmt.Errorf("failed to parse mac %s %v", macAddr, err)
+		return containerNicName, nil, fmt.Errorf("failed to parse mac %s %w", macAddr, err)
 	}
 
 	if err = ovs.SetInterfaceBandwidth(podName, podNamespace, ifaceID, egress, ingress); err != nil {
@@ -1635,7 +1633,7 @@ func (csh cniServerHandler) configureNicWithInternalPort(podName, podNamespace, 
 
 	podNS, err := ns.GetNS(netns)
 	if err != nil {
-		return containerNicName, nil, fmt.Errorf("failed to open netns %q: %v", netns, err)
+		return containerNicName, nil, fmt.Errorf("failed to open netns %q: %w", netns, err)
 	}
 	routes, err = csh.configureContainerNic(podName, podNamespace, containerNicName, ifName, ip, gateway, isDefaultRoute, detectIPConflict, routes, macAddr, podNS, mtu, nicType, gwCheckMode, u2oInterconnectionIP)
 	return containerNicName, routes, err
@@ -1644,13 +1642,13 @@ func (csh cniServerHandler) configureNicWithInternalPort(podName, podNamespace, 
 func (csh cniServerHandler) removeDefaultRoute(netns string, ipv4, ipv6 bool) error {
 	podNS, err := ns.GetNS(netns)
 	if err != nil {
-		return fmt.Errorf("failed to open netns %q: %v", netns, err)
+		return fmt.Errorf("failed to open netns %q: %w", netns, err)
 	}
 
 	return ns.WithNetNSPath(podNS.Path(), func(_ ns.NetNS) error {
 		routes, err := netlink.RouteList(nil, netlink.FAMILY_ALL)
 		if err != nil {
-			return fmt.Errorf("failed to get all routes: %v", err)
+			return fmt.Errorf("failed to get all routes: %w", err)
 		}
 
 		for _, r := range routes {
@@ -1662,14 +1660,14 @@ func (csh cniServerHandler) removeDefaultRoute(netns string, ipv4, ipv6 bool) er
 			if ipv4 && r.Family == netlink.FAMILY_V4 {
 				klog.Infof("deleting default ipv4 route %+v", r)
 				if err = netlink.RouteDel(&r); err != nil {
-					return fmt.Errorf("failed to delete route %+v: %v", r, err)
+					return fmt.Errorf("failed to delete route %+v: %w", r, err)
 				}
 				continue
 			}
 			if ipv6 && r.Family == netlink.FAMILY_V6 {
 				klog.Infof("deleting default ipv6 route %+v", r)
 				if err = netlink.RouteDel(&r); err != nil {
-					return fmt.Errorf("failed to delete route %+v: %v", r, err)
+					return fmt.Errorf("failed to delete route %+v: %w", r, err)
 				}
 			}
 		}
@@ -1681,14 +1679,14 @@ func (csh cniServerHandler) removeDefaultRoute(netns string, ipv4, ipv6 bool) er
 func configureAdditionalNic(link, ip string) error {
 	nodeLink, err := netlink.LinkByName(link)
 	if err != nil {
-		return fmt.Errorf("can not find nic %s %v", link, err)
+		return fmt.Errorf("can not find nic %s %w", link, err)
 	}
 
 	ipDelMap := make(map[string]netlink.Addr)
 	ipAddMap := make(map[string]netlink.Addr)
 	ipAddrs, err := netlink.AddrList(nodeLink, 0x0)
 	if err != nil {
-		return fmt.Errorf("can not get addr %s %v", nodeLink, err)
+		return fmt.Errorf("can not get addr %s %w", nodeLink, err)
 	}
 	for _, ipAddr := range ipAddrs {
 		if ipAddr.IP.IsLinkLocalUnicast() {
@@ -1707,19 +1705,19 @@ func configureAdditionalNic(link, ip string) error {
 
 		ipAddr, err := netlink.ParseAddr(ipStr)
 		if err != nil {
-			return fmt.Errorf("can not parse %s %v", ipStr, err)
+			return fmt.Errorf("can not parse %s %w", ipStr, err)
 		}
 		ipAddMap[ipStr] = *ipAddr
 	}
 
 	for _, addr := range ipDelMap {
 		if err = netlink.AddrDel(nodeLink, &addr); err != nil {
-			return fmt.Errorf("delete address %s %v", addr, err)
+			return fmt.Errorf("delete address %s %w", addr, err)
 		}
 	}
 	for _, addr := range ipAddMap {
 		if err = netlink.AddrAdd(nodeLink, &addr); err != nil {
-			return fmt.Errorf("can not add address %v to nic %s, %v", addr, link, err)
+			return fmt.Errorf("can not add address %v to nic %s, %w", addr, link, err)
 		}
 	}
 
@@ -1738,7 +1736,7 @@ func addAdditionalNic(ifName string) error {
 			klog.Errorf("failed to delete static iface %v, err %v", ifName, err)
 			return err
 		}
-		return fmt.Errorf("failed to create static iface %v, err %v", ifName, err)
+		return fmt.Errorf("failed to create static iface %v, err %w", ifName, err)
 	}
 	return nil
 }
@@ -1746,17 +1744,17 @@ func addAdditionalNic(ifName string) error {
 func setVfMac(deviceID string, vfIndex int, mac string) error {
 	macAddr, err := net.ParseMAC(mac)
 	if err != nil {
-		return fmt.Errorf("failed to parse mac %s %v", macAddr, err)
+		return fmt.Errorf("failed to parse mac %s %w", macAddr, err)
 	}
 
 	pfPci, err := sriovnet.GetPfPciFromVfPci(deviceID)
 	if err != nil {
-		return fmt.Errorf("failed to get pf of device %s %v", deviceID, err)
+		return fmt.Errorf("failed to get pf of device %s %w", deviceID, err)
 	}
 
 	netDevs, err := sriovnet.GetNetDevicesFromPci(pfPci)
 	if err != nil {
-		return fmt.Errorf("failed to get pf of device %s %v", deviceID, err)
+		return fmt.Errorf("failed to get pf of device %s %w", deviceID, err)
 	}
 
 	// get real pf
@@ -1779,10 +1777,10 @@ func setVfMac(deviceID string, vfIndex int, mac string) error {
 
 	pfLink, err := netlink.LinkByName(pfName)
 	if err != nil {
-		return fmt.Errorf("failed to lookup pf %s: %v", pfName, err)
+		return fmt.Errorf("failed to lookup pf %s: %w", pfName, err)
 	}
 	if err := netlink.LinkSetVfHardwareAddr(pfLink, vfIndex, macAddr); err != nil {
-		return fmt.Errorf("can not set mac address to vf nic:%s vf:%d %v", pfName, vfIndex, err)
+		return fmt.Errorf("can not set mac address to vf nic:%s vf:%d %w", pfName, vfIndex, err)
 	}
 	return nil
 }
@@ -1822,7 +1820,7 @@ func rollBackVethPair(nicName string) error {
 			return nil
 		}
 		klog.Error(err)
-		return fmt.Errorf("find host link %s failed %v", nicName, err)
+		return fmt.Errorf("find host link %s failed %w", nicName, err)
 	}
 
 	hostLinkType := hostLink.Type()
@@ -1830,7 +1828,7 @@ func rollBackVethPair(nicName string) error {
 	if hostLinkType == "veth" {
 		if err = netlink.LinkDel(hostLink); err != nil {
 			klog.Error(err)
-			return fmt.Errorf("delete host link %s failed %v", hostLink, err)
+			return fmt.Errorf("delete host link %s failed %w", hostLink, err)
 		}
 	}
 	klog.Infof("rollback veth success %s", nicName)

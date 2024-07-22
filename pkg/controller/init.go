@@ -140,7 +140,7 @@ func (c *Controller) initDefaultLogicalSwitch() error {
 	if c.config.NetworkType == util.NetworkTypeVlan {
 		defaultSubnet.Spec.Vlan = c.config.DefaultVlanName
 		if c.config.DefaultLogicalGateway && c.config.DefaultU2OInterconnection {
-			err = fmt.Errorf("logicalGateway and u2oInterconnection can't be opened at the same time")
+			err = errors.New("logicalGateway and u2oInterconnection can't be opened at the same time")
 			klog.Error(err)
 			return err
 		}
@@ -568,7 +568,7 @@ func (c *Controller) initDefaultVlan() error {
 	}
 
 	if c.config.DefaultVlanID < 0 || c.config.DefaultVlanID > 4095 {
-		return fmt.Errorf("the default vlan id is not between 1-4095")
+		return errors.New("the default vlan id is not between 1-4095")
 	}
 
 	defaultVlan := kubeovnv1.Vlan{

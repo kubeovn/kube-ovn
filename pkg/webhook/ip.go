@@ -2,6 +2,7 @@ package webhook
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -78,8 +79,7 @@ func (v *ValidatingHook) IPUpdateHook(ctx context.Context, req admission.Request
 
 func (v *ValidatingHook) ValidateIP(ctx context.Context, ip *ovnv1.IP) error {
 	if ip.Spec.Subnet == "" {
-		err := fmt.Errorf("subnet parameter cannot be empty")
-		return err
+		return errors.New("subnet parameter cannot be empty")
 	}
 
 	subnet := &ovnv1.Subnet{}
@@ -115,13 +115,11 @@ func (v *ValidatingHook) ValidateIP(ctx context.Context, ip *ovnv1.IP) error {
 	}
 
 	if ip.Spec.Subnet == "" {
-		err := fmt.Errorf("subnet parameter cannot be empty")
-		return err
+		return errors.New("subnet parameter cannot be empty")
 	}
 
 	if ip.Spec.PodType != "" && ip.Spec.PodType != util.VM && ip.Spec.PodType != util.StatefulSet {
-		err := fmt.Errorf("podType %s is not supported", ip.Spec.PodType)
-		return err
+		return fmt.Errorf("podType %s is not supported", ip.Spec.PodType)
 	}
 
 	return nil

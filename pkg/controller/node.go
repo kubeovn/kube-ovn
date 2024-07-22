@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"slices"
@@ -695,7 +696,7 @@ func (c *Controller) checkGatewayReady() error {
 					if util.GatewayContains(subnet.Spec.GatewayNode, node.Name) {
 						pinger, err := goping.NewPinger(ip)
 						if err != nil {
-							return fmt.Errorf("failed to init pinger, %v", err)
+							return fmt.Errorf("failed to init pinger, %w", err)
 						}
 						pinger.SetPrivileged(true)
 
@@ -793,7 +794,7 @@ func (c *Controller) retryDelDupChassis(attempts, sleep int, f func(node *v1.Nod
 		time.Sleep(time.Duration(sleep) * time.Second)
 	}
 	if i >= (attempts - 1) {
-		errMsg := fmt.Errorf("exhausting all attempts")
+		errMsg := errors.New("exhausting all attempts")
 		klog.Error(errMsg)
 		return errMsg
 	}
@@ -917,7 +918,7 @@ func (c *Controller) UpdateChassisTag(node *v1.Node) error {
 	if chassis.ExternalIDs == nil || chassis.ExternalIDs["vendor"] != util.CniTypeName {
 		klog.Infof("init tag %s for node %s chassis %s", util.CniTypeName, node.Name, chassis.Name)
 		if err = c.OVNSbClient.UpdateChassisTag(chassis.Name, node.Name); err != nil {
-			return fmt.Errorf("failed to init chassis tag, %v", err)
+			return fmt.Errorf("failed to init chassis tag, %w", err)
 		}
 	}
 	return nil

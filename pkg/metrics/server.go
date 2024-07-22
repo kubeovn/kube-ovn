@@ -18,7 +18,7 @@ func Run(ctx context.Context, config *rest.Config, addr string, secureServing bo
 	client, err := rest.HTTPClientFor(config)
 	if err != nil {
 		klog.Error(err)
-		return fmt.Errorf("failed to create http client: %v", err)
+		return fmt.Errorf("failed to create http client: %w", err)
 	}
 
 	options := server.Options{
@@ -31,7 +31,7 @@ func Run(ctx context.Context, config *rest.Config, addr string, secureServing bo
 	svr, err := server.NewServer(options, config, client)
 	if err != nil {
 		klog.Error(err)
-		return fmt.Errorf("failed to create metrics server: %v", err)
+		return fmt.Errorf("failed to create metrics server: %w", err)
 	}
 
 	return svr.Start(ctx)

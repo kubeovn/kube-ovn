@@ -44,6 +44,7 @@ require (
 	gopkg.in/k8snetworkplumbingwg/multus-cni.v4 v4.0.2
 	k8s.io/api v0.30.3
 	k8s.io/apimachinery v0.30.3
+	k8s.io/apiserver v0.30.3
 	k8s.io/client-go v12.0.0+incompatible
 	k8s.io/klog/v2 v2.130.1
 	k8s.io/kubectl v0.30.3
@@ -54,6 +55,7 @@ require (
 	kubevirt.io/api v1.3.0
 	kubevirt.io/client-go v1.3.0
 	sigs.k8s.io/controller-runtime v0.18.4
+	sigs.k8s.io/network-policy-api v0.1.5
 )
 
 require (
@@ -238,7 +240,6 @@ require (
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	k8s.io/apiextensions-apiserver v0.30.3 // indirect
-	k8s.io/apiserver v0.30.3 // indirect
 	k8s.io/cli-runtime v0.30.3 // indirect
 	k8s.io/cloud-provider v0.30.3 // indirect
 	k8s.io/cluster-bootstrap v0.30.3 // indirect

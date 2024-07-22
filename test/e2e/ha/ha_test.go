@@ -75,7 +75,7 @@ var _ = framework.Describe("[group:ha]", func() {
 		}, "")
 
 		db := "/etc/ovn/ovnnb_db.db"
-		checkCmd := fmt.Sprintf("ovsdb-tool check-cluster " + db)
+		checkCmd := fmt.Sprintf("ovsdb-tool check-cluster %s", db)
 		corruptCmd := fmt.Sprintf(`bash -c 'dd if=/dev/zero of="%s" bs=1 count=$((10+$RANDOM%%10)) seek=$(stat -c %%s "%s")'`, db, db)
 		for _, node := range nodes {
 			ginkgo.By("Getting ovs-ovn pod running on node " + node)

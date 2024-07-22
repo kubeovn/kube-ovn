@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"reflect"
@@ -706,14 +707,14 @@ func (c *Controller) reconcileAllocateSubnets(cachedPod, pod *v1.Pod, needAlloca
 				if migrated {
 					klog.Infof("migrate end reset options for lsp %s from %s to %s, migrated fail: %t", portName, srcNodeName, targetNodeName, migratedFail)
 					if err := c.OVNNbClient.ResetLogicalSwitchPortMigrateOptions(portName, srcNodeName, targetNodeName, migratedFail); err != nil {
-						err = fmt.Errorf("failed to clean migrate options for lsp %s, %v", portName, err)
+						err = fmt.Errorf("failed to clean migrate options for lsp %s, %w", portName, err)
 						klog.Error(err)
 						return nil, err
 					}
 				} else {
 					klog.Infof("migrate start set options for lsp %s from %s to %s", portName, srcNodeName, targetNodeName)
 					if err := c.OVNNbClient.SetLogicalSwitchPortMigrateOptions(portName, srcNodeName, targetNodeName); err != nil {
-						err = fmt.Errorf("failed to set migrate options for lsp %s, %v", portName, err)
+						err = fmt.Errorf("failed to set migrate options for lsp %s, %w", portName, err)
 						klog.Error(err)
 						return nil, err
 					}
@@ -744,7 +745,7 @@ func (c *Controller) reconcileAllocateSubnets(cachedPod, pod *v1.Pod, needAlloca
 		// CreatePort may fail, so put ip CR creation after CreatePort
 		ipCRName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
 		if err := c.createOrUpdateIPCR(ipCRName, podName, ipStr, mac, subnet.Name, pod.Namespace, pod.Spec.NodeName, podType); err != nil {
-			err = fmt.Errorf("failed to create ips CR %s.%s: %v", podName, pod.Namespace, err)
+			err = fmt.Errorf("failed to create ips CR %s.%s: %w", podName, pod.Namespace, err)
 			klog.Error(err)
 			return nil, err
 		}
@@ -841,7 +842,7 @@ func (c *Controller) reconcileRouteSubnets(cachedPod, pod *v1.Pod, needRoutePodN
 					nextHop = externalSubnet.Spec.Gateway
 					if nextHop == "" {
 						klog.Errorf("no available gateway address")
-						return fmt.Errorf("no available gateway address")
+						return errors.New("no available gateway address")
 					}
 				}
 				if strings.Contains(nextHop, "/") {
@@ -867,7 +868,6 @@ func (c *Controller) reconcileRouteSubnets(cachedPod, pod *v1.Pod, needRoutePodN
 					klog.Error(err)
 					return err
 				}
-
 			} else {
 				if subnet.Spec.GatewayType == kubeovnv1.GWDistributedType && pod.Annotations[util.NorthGatewayAnnotation] == "" {
 					nodeTunlIPAddr, err := getNodeTunlIP(node)
@@ -1050,7 +1050,7 @@ func (c *Controller) handleDeletePod(key string) error {
 		}
 		for _, port := range ports {
 			if err := c.OVNNbClient.CleanLogicalSwitchPortMigrateOptions(port.Name); err != nil {
-				err = fmt.Errorf("failed to clean migrate options for vm lsp %s, %v", port.Name, err)
+				err = fmt.Errorf("failed to clean migrate options for vm lsp %s, %w", port.Name, err)
 				klog.Error(err)
 				return err
 			}
@@ -1378,7 +1378,7 @@ func getNodeTunlIP(node *v1.Node) ([]net.IP, error) {
 	var nodeTunlIPAddr []net.IP
 	nodeTunlIP := node.Annotations[util.IPAddressAnnotation]
 	if nodeTunlIP == "" {
-		return nil, fmt.Errorf("node has no tunnel ip annotation")
+		return nil, errors.New("node has no tunnel ip annotation")
 	}
 
 	for _, ip := range strings.Split(nodeTunlIP, ",") {
@@ -1444,7 +1444,7 @@ func (c *Controller) podNeedSync(pod *v1.Pod) (bool, error) {
 		}
 		ipName := ovs.PodNameToPortName(pod.Name, pod.Namespace, n.ProviderName)
 		if _, err = c.ipsLister.Get(ipName); err != nil {
-			err = fmt.Errorf("pod has no ip %s: %v", ipName, err)
+			err = fmt.Errorf("pod has no ip %s: %w", ipName, err)
 			// need to sync to create ip
 			klog.Error(err)
 			return true, nil
@@ -2216,7 +2216,7 @@ func setPodRoutesAnnotation(annotations map[string]string, provider string, rout
 
 	buf, err := json.Marshal(routes)
 	if err != nil {
-		err = fmt.Errorf("failed to marshal routes %+v: %v", routes, err)
+		err = fmt.Errorf("failed to marshal routes %+v: %w", routes, err)
 		klog.Error(err)
 		return err
 	}

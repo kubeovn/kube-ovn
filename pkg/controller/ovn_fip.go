@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 
@@ -209,7 +210,7 @@ func (c *Controller) handleAddOvnFip(key string) error {
 	// check eip
 	eipName := cachedFip.Spec.OvnEip
 	if eipName == "" {
-		err := fmt.Errorf("failed to create fip rule, should set eip")
+		err := errors.New("failed to create fip rule, should set eip")
 		klog.Error(err)
 		return err
 	}
@@ -228,7 +229,7 @@ func (c *Controller) handleAddOvnFip(key string) error {
 	v4Eip = cachedEip.Status.V4Ip
 	v6Eip = cachedEip.Status.V6Ip
 	if err = c.isOvnFipDuplicated(key, cachedEip.Spec.V4Ip); err != nil {
-		err = fmt.Errorf("failed to add fip %s, %v", key, err)
+		err = fmt.Errorf("failed to add fip %s, %w", key, err)
 		klog.Error(err)
 		return err
 	}
@@ -271,7 +272,7 @@ func (c *Controller) handleAddOvnFip(key string) error {
 		}
 		vpcName = subnet.Spec.Vpc
 		if err = c.isOvnFipDuplicated(key, cachedEip.Spec.V4Ip); err != nil {
-			err = fmt.Errorf("failed to update fip %s, %v", key, err)
+			err = fmt.Errorf("failed to update fip %s, %w", key, err)
 			klog.Error(err)
 			return err
 		}
@@ -349,7 +350,7 @@ func (c *Controller) handleUpdateOvnFip(key string) error {
 	// check eip
 	eipName := cachedFip.Spec.OvnEip
 	if eipName == "" {
-		err := fmt.Errorf("failed to create fip rule, should set eip")
+		err := errors.New("failed to create fip rule, should set eip")
 		klog.Error(err)
 		return err
 	}
@@ -368,7 +369,7 @@ func (c *Controller) handleUpdateOvnFip(key string) error {
 	v4Eip = cachedEip.Status.V4Ip
 	v6Eip = cachedEip.Status.V6Ip
 	if err = c.isOvnFipDuplicated(key, cachedEip.Spec.V4Ip); err != nil {
-		err = fmt.Errorf("failed to add fip %s, %v", key, err)
+		err = fmt.Errorf("failed to add fip %s, %w", key, err)
 		klog.Error(err)
 		return err
 	}
@@ -408,7 +409,7 @@ func (c *Controller) handleUpdateOvnFip(key string) error {
 		}
 		vpcName = subnet.Spec.Vpc
 		if err = c.isOvnFipDuplicated(key, cachedEip.Spec.V4Ip); err != nil {
-			err = fmt.Errorf("failed to update fip %s, %v", key, err)
+			err = fmt.Errorf("failed to update fip %s, %w", key, err)
 			klog.Error(err)
 			return err
 		}

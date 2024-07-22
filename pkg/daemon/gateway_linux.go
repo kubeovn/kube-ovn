@@ -329,7 +329,7 @@ func (c *Controller) addPolicyRouting(family int, gateway string, priority, tabl
 		Table:    int(tableID),
 	}
 	if err := netlink.RouteReplace(route); err != nil && !errors.Is(err, syscall.EEXIST) {
-		err = fmt.Errorf("failed to replace route in table %d: %+v", tableID, err)
+		err = fmt.Errorf("failed to replace route in table %d: %w", tableID, err)
 		klog.Error(err)
 		return err
 	}
@@ -350,7 +350,7 @@ func (c *Controller) addPolicyRouting(family int, gateway string, priority, tabl
 			var err error
 			if rule.Src, err = netlink.ParseIPNet(ip); err != nil {
 				klog.Errorf("unexpected CIDR: %s", ip)
-				err = fmt.Errorf("failed to add route in table %d: %+v", tableID, err)
+				err = fmt.Errorf("failed to add route in table %d: %w", tableID, err)
 				klog.Error(err)
 				return err
 			}
@@ -359,7 +359,7 @@ func (c *Controller) addPolicyRouting(family int, gateway string, priority, tabl
 		}
 
 		if err := netlink.RuleAdd(rule); err != nil && !errors.Is(err, syscall.EEXIST) {
-			err = fmt.Errorf("failed to add network rule: %+v", err)
+			err = fmt.Errorf("failed to add network rule: %w", err)
 			klog.Error(err)
 			return err
 		}
@@ -385,7 +385,7 @@ func (c *Controller) deletePolicyRouting(family int, _ string, priority, tableID
 			var err error
 			if rule.Src, err = netlink.ParseIPNet(ip); err != nil {
 				klog.Errorf("unexpected CIDR: %s", ip)
-				err = fmt.Errorf("failed to delete route in table %d: %+v", tableID, err)
+				err = fmt.Errorf("failed to delete route in table %d: %w", tableID, err)
 				klog.Error(err)
 				return err
 			}
@@ -394,7 +394,7 @@ func (c *Controller) deletePolicyRouting(family int, _ string, priority, tableID
 		}
 
 		if err := netlink.RuleDel(rule); err != nil && !errors.Is(err, syscall.ENOENT) {
-			err = fmt.Errorf("failed to delete network rule: %+v", err)
+			err = fmt.Errorf("failed to delete network rule: %w", err)
 			klog.Error(err)
 			return err
 		}
@@ -1435,7 +1435,7 @@ func (c *Controller) setExGateway() error {
 
 		linkName, exist := cm.Data["external-gw-nic"]
 		if !exist || len(linkName) == 0 {
-			err = fmt.Errorf("external-gw-nic not configured in ovn-external-gw-config")
+			err = errors.New("external-gw-nic not configured in ovn-external-gw-config")
 			klog.Error(err)
 			return err
 		}
@@ -1456,7 +1456,7 @@ func (c *Controller) setExGateway() error {
 			} else {
 				klog.Infof("external bridge should change from %s to %s, delete external bridge %s", existBr, externalBridge, existBr)
 				if _, err := ovs.Exec(ovs.IfExists, "del-br", existBr); err != nil {
-					err = fmt.Errorf("failed to del external br %s, %v", existBr, err)
+					err = fmt.Errorf("failed to del external br %s, %w", existBr, err)
 					klog.Error(err)
 					return err
 				}
@@ -1469,7 +1469,7 @@ func (c *Controller) setExGateway() error {
 				ovs.MayExist, "add-br", externalBridge, "--",
 				ovs.MayExist, "add-port", externalBridge, linkName,
 			); err != nil {
-				err = fmt.Errorf("failed to enable external gateway, %v", err)
+				err = fmt.Errorf("failed to enable external gateway, %w", err)
 				klog.Error(err)
 			}
 		}
@@ -1480,7 +1480,7 @@ func (c *Controller) setExGateway() error {
 	} else {
 		brExists, err := ovs.BridgeExists(externalBridge)
 		if err != nil {
-			return fmt.Errorf("failed to check OVS bridge existence: %v", err)
+			return fmt.Errorf("failed to check OVS bridge existence: %w", err)
 		}
 		if !brExists {
 			return nil
@@ -1519,7 +1519,7 @@ func (c *Controller) setExGateway() error {
 			klog.Infof("delete external bridge %s", externalBridge)
 			if _, err := ovs.Exec(
 				ovs.IfExists, "del-br", externalBridge); err != nil {
-				err = fmt.Errorf("failed to disable external gateway, %v", err)
+				err = fmt.Errorf("failed to disable external gateway, %w", err)
 				klog.Error(err)
 				return err
 			}
@@ -1669,7 +1669,7 @@ func (c *Controller) deleteObsoleteSnatRules(ipt *iptables.IPTables, table, chai
 func (c *Controller) ipsetExists(name string) (bool, error) {
 	sets, err := c.k8sipsets.ListSets()
 	if err != nil {
-		return false, fmt.Errorf("failed to list ipset names: %v", err)
+		return false, fmt.Errorf("failed to list ipset names: %w", err)
 	}
 
 	return slices.Contains(sets, name), nil

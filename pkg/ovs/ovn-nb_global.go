@@ -2,6 +2,7 @@ package ovs
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -15,7 +16,7 @@ func (c *OVNNbClient) CreateNbGlobal(nbGlobal *ovnnb.NBGlobal) error {
 	op, err := c.ovsDbClient.Create(nbGlobal)
 	if err != nil {
 		klog.Error(err)
-		return fmt.Errorf("failed to generate operations for creating nb global: %v", err)
+		return fmt.Errorf("failed to generate operations for creating nb global: %w", err)
 	}
 
 	return c.Transact("nb-global-create", op)
@@ -49,11 +50,11 @@ func (c *OVNNbClient) GetNbGlobal() (*ovnnb.NBGlobal, error) {
 	}).List(ctx, &nbGlobalList)
 	if err != nil {
 		klog.Error(err)
-		return nil, fmt.Errorf("failed to list NB_Global: %v", err)
+		return nil, fmt.Errorf("failed to list NB_Global: %w", err)
 	}
 
 	if len(nbGlobalList) == 0 {
-		return nil, fmt.Errorf("not found nb_global")
+		return nil, errors.New("not found nb_global")
 	}
 
 	return &nbGlobalList[0], nil
@@ -63,12 +64,12 @@ func (c *OVNNbClient) UpdateNbGlobal(nbGlobal *ovnnb.NBGlobal, fields ...interfa
 	op, err := c.Where(nbGlobal).Update(nbGlobal, fields...)
 	if err != nil {
 		klog.Error(err)
-		return fmt.Errorf("failed to generate operations for updating nb global: %v", err)
+		return fmt.Errorf("failed to generate operations for updating nb global: %w", err)
 	}
 
 	if err := c.Transact("nb-global-update", op); err != nil {
 		klog.Error(err)
-		return fmt.Errorf("failed to update NB_Global: %v", err)
+		return fmt.Errorf("failed to update NB_Global: %w", err)
 	}
 
 	return nil
@@ -78,7 +79,7 @@ func (c *OVNNbClient) SetAzName(azName string) error {
 	nbGlobal, err := c.GetNbGlobal()
 	if err != nil {
 		klog.Error(err)
-		return fmt.Errorf("failed to get nb global: %v", err)
+		return fmt.Errorf("failed to get nb global: %w", err)
 	}
 	if azName == nbGlobal.Name {
 		return nil // no need to update
@@ -87,7 +88,7 @@ func (c *OVNNbClient) SetAzName(azName string) error {
 	nbGlobal.Name = azName
 	if err := c.UpdateNbGlobal(nbGlobal, &nbGlobal.Name); err != nil {
 		klog.Error(err)
-		return fmt.Errorf("set nb_global az name %s: %v", azName, err)
+		return fmt.Errorf("set nb_global az name %s: %w", azName, err)
 	}
 
 	return nil
@@ -97,7 +98,7 @@ func (c *OVNNbClient) SetNbGlobalOptions(key string, value interface{}) error {
 	nbGlobal, err := c.GetNbGlobal()
 	if err != nil {
 		klog.Error(err)
-		return fmt.Errorf("failed to get nb global: %v", err)
+		return fmt.Errorf("failed to get nb global: %w", err)
 	}
 
 	v := fmt.Sprintf("%v", value)
@@ -112,7 +113,7 @@ func (c *OVNNbClient) SetNbGlobalOptions(key string, value interface{}) error {
 
 	if err := c.UpdateNbGlobal(nbGlobal, &nbGlobal.Options); err != nil {
 		klog.Error(err)
-		return fmt.Errorf("failed to set nb global option %s to %v: %v", key, value, err)
+		return fmt.Errorf("failed to set nb global option %s to %v: %w", key, value, err)
 	}
 
 	return nil
@@ -126,7 +127,7 @@ func (c *OVNNbClient) SetICAutoRoute(enable bool, blackList []string) error {
 	nbGlobal, err := c.GetNbGlobal()
 	if err != nil {
 		klog.Error(err)
-		return fmt.Errorf("failed to get nb global: %v", err)
+		return fmt.Errorf("failed to get nb global: %w", err)
 	}
 
 	options := make(map[string]string, len(nbGlobal.Options)+3)
@@ -150,7 +151,7 @@ func (c *OVNNbClient) SetICAutoRoute(enable bool, blackList []string) error {
 	nbGlobal.Options = options
 	if err := c.UpdateNbGlobal(nbGlobal, &nbGlobal.Options); err != nil {
 		klog.Error(err)
-		return fmt.Errorf("failed to enable ovn-ic auto route, %v", err)
+		return fmt.Errorf("failed to enable ovn-ic auto route, %w", err)
 	}
 	return nil
 }
@@ -175,7 +176,7 @@ func (c *OVNNbClient) SetNodeLocalDNSIP(nodeLocalDNSIP string) error {
 	nbGlobal, err := c.GetNbGlobal()
 	if err != nil {
 		klog.Error(err)
-		return fmt.Errorf("failed to get nb global: %v", err)
+		return fmt.Errorf("failed to get nb global: %w", err)
 	}
 
 	options := make(map[string]string, len(nbGlobal.Options))
@@ -188,7 +189,7 @@ func (c *OVNNbClient) SetNodeLocalDNSIP(nodeLocalDNSIP string) error {
 	nbGlobal.Options = options
 	if err := c.UpdateNbGlobal(nbGlobal, &nbGlobal.Options); err != nil {
 		klog.Error(err)
-		return fmt.Errorf("failed to remove NB_Global option node_local_dns_ip, %v", err)
+		return fmt.Errorf("failed to remove NB_Global option node_local_dns_ip, %w", err)
 	}
 
 	return nil

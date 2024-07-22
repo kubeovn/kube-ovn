@@ -175,7 +175,7 @@ func (config *Configuration) Init(nicBridgeMappings map[string]string) error {
 			klog.Info("node name not specified in environment variables, fall back to the hostname")
 			hostname, err := os.Hostname()
 			if err != nil {
-				return fmt.Errorf("failed to get hostname: %v", err)
+				return fmt.Errorf("failed to get hostname: %w", err)
 			}
 			config.NodeName = strings.ToLower(hostname)
 		}
@@ -233,11 +233,11 @@ func (config *Configuration) initNicConfig(nicBridgeMappings map[string]string) 
 		}
 		srcIPs, err := getSrcIPsByRoutes(iface)
 		if err != nil {
-			return fmt.Errorf("failed to get src IPs by routes on interface %s: %v", iface.Name, err)
+			return fmt.Errorf("failed to get src IPs by routes on interface %s: %w", iface.Name, err)
 		}
 		addrs, err := iface.Addrs()
 		if err != nil {
-			return fmt.Errorf("failed to get iface addr. %v", err)
+			return fmt.Errorf("failed to get iface addr. %w", err)
 		}
 		for _, addr := range addrs {
 			_, ipCidr, err := net.ParseCIDR(addr.String())

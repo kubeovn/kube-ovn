@@ -123,7 +123,7 @@ func (c *EndpointsClient) WaitUntil(name string, cond func(s *corev1.Endpoints) 
 		endpoints = c.Get(name).DeepCopy()
 		met, err := cond(endpoints)
 		if err != nil {
-			return false, fmt.Errorf("failed to check condition for endpoints %s: %v", name, err)
+			return false, fmt.Errorf("failed to check condition for endpoints %s: %w", name, err)
 		}
 		if met {
 			Logf("endpoints %s met condition %q", name, condDesc)

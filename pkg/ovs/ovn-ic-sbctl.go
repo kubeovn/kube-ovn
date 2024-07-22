@@ -1,6 +1,7 @@
 package ovs
 
 import (
+	"errors"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -30,7 +31,7 @@ func (c LegacyClient) ovnIcSbCommand(cmdArgs ...string) (string, error) {
 	if err != nil {
 		code = "1"
 		klog.Warningf("ovn-ic-sbctl command error: %s %s in %vms", OVNIcSbCtl, strings.Join(cmdArgs, " "), elapsed)
-		return "", fmt.Errorf("%s, %q", raw, err)
+		return "", fmt.Errorf("%s, %w", raw, err)
 	} else if elapsed > 500 {
 		klog.Warningf("ovn-ic-sbctl command took too long: %s %s in %vms", OVNIcSbCtl, strings.Join(cmdArgs, " "), elapsed)
 	}
@@ -41,7 +42,7 @@ func (c LegacyClient) FindUUIDWithAttrInTable(attribute, value, table string) ([
 	key := attribute + "=" + value
 	output, err := c.ovnIcSbCommand("--format=csv", "--no-heading", "--data=bare", "--columns=_uuid", "find", table, key)
 	if err != nil {
-		err := fmt.Errorf("failed to find ovn-ic-sb db, %v", err)
+		err := fmt.Errorf("failed to find ovn-ic-sb db, %w", err)
 		klog.Error(err)
 		return nil, err
 	}
@@ -60,7 +61,7 @@ func (c LegacyClient) DestroyTableWithUUID(uuid, table string) error {
 	_, err := c.ovnIcSbCommand("destroy", table, uuid)
 	if err != nil {
 		klog.Error(err)
-		return fmt.Errorf("failed to destroy record %s in table %s: %v", uuid, table, err)
+		return fmt.Errorf("failed to destroy record %s in table %s: %w", uuid, table, err)
 	}
 	return nil
 }
@@ -69,21 +70,21 @@ func (c LegacyClient) GetAzUUID(az string) (string, error) {
 	uuids, err := c.FindUUIDWithAttrInTable("name", az, "availability_zone")
 	if err != nil {
 		klog.Error(err)
-		return "", fmt.Errorf("failed to get ovn-ic-sb availability_zone uuid: %v", err)
+		return "", fmt.Errorf("failed to get ovn-ic-sb availability_zone uuid: %w", err)
 	}
 	if len(uuids) == 1 {
 		return uuids[0], nil
 	} else if len(uuids) == 0 {
 		return "", nil
 	}
-	return "", fmt.Errorf("two same-name chassises in one db is insane")
+	return "", errors.New("two same-name chassises in one db is insane")
 }
 
 func (c LegacyClient) GetGatewayUUIDsInOneAZ(uuid string) ([]string, error) {
 	gateways, err := c.FindUUIDWithAttrInTable("availability_zone", uuid, "gateway")
 	if err != nil {
 		klog.Error(err)
-		return nil, fmt.Errorf("failed to get ovn-ic-sb gateways with uuid %v: %v", uuid, err)
+		return nil, fmt.Errorf("failed to get ovn-ic-sb gateways with uuid %v: %w", uuid, err)
 	}
 	return gateways, nil
 }
@@ -92,15 +93,23 @@ func (c LegacyClient) GetRouteUUIDsInOneAZ(uuid string) ([]string, error) {
 	routes, err := c.FindUUIDWithAttrInTable("availability_zone", uuid, "route")
 	if err != nil {
 		klog.Error(err)
-		return nil, fmt.Errorf("failed to get ovn-ic-sb routes with uuid %v: %v", uuid, err)
+		return nil, fmt.Errorf("failed to get ovn-ic-sb routes with uuid %v: %w", uuid, err)
 	}
 	return routes, nil
 }
 
-func (c LegacyClient) DestroyGateways(uuids []string) {
+func (c LegacyClient) GetPortBindingUUIDsInOneAZ(uuid string) ([]string, error) {
+	portBindings, err := c.FindUUIDWithAttrInTable("availability_zone", uuid, "Port_Binding")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get ovn-ic-sb Port_Binding with uuid %v: %w", uuid, err)
+	}
+	return portBindings, nil
+}
+
+func (c LegacyClient) DestroyGateways(uuids []string) error {
 	for _, uuid := range uuids {
 		if err := c.DestroyTableWithUUID(uuid, "gateway"); err != nil {
-			klog.Errorf("failed to delete gateway %v: %v", uuid, err)
+			return fmt.Errorf("failed to delete gateway %v: %w", uuid, err)
 		}
 		continue
 	}

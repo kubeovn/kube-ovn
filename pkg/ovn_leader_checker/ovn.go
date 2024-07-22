@@ -2,6 +2,7 @@ package ovn_leader_checker
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"net"
@@ -89,7 +90,7 @@ func ParseFlags() (*Configuration, error) {
 // KubeClientInit funcs to check apiserver alive
 func KubeClientInit(cfg *Configuration) error {
 	if cfg == nil {
-		return fmt.Errorf("invalid cfg")
+		return errors.New("invalid cfg")
 	}
 
 	// init kubeconfig here

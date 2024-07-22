@@ -1115,7 +1115,7 @@ func (c *Controller) allSubnetReady(subnets ...string) (bool, error) {
 		exist, err := c.OVNNbClient.LogicalSwitchExists(lsName)
 		if err != nil {
 			klog.Error(err)
-			return false, fmt.Errorf("check logical switch %s exist: %v", lsName, err)
+			return false, fmt.Errorf("check logical switch %s exist: %w", lsName, err)
 		}
 
 		if !exist {

@@ -122,7 +122,7 @@ func (c *ServiceClient) WaitUntil(name string, cond func(s *corev1.Service) (boo
 		service = c.Get(name).DeepCopy()
 		met, err := cond(service)
 		if err != nil {
-			return false, fmt.Errorf("failed to check condition for service %s: %v", name, err)
+			return false, fmt.Errorf("failed to check condition for service %s: %w", name, err)
 		}
 		if met {
 			Logf("service %s met condition %q", name, condDesc)

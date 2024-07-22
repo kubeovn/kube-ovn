@@ -2,6 +2,7 @@ package webhook
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -47,7 +48,7 @@ func (v *ValidatingHook) VipUpdateHook(ctx context.Context, req admission.Reques
 				return ctrlwebhook.Errored(http.StatusBadRequest, err)
 			}
 		} else {
-			err := fmt.Errorf("vip has been assigned, not support change")
+			err := errors.New("vip has been assigned, not support change")
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		}
 	}
@@ -56,8 +57,7 @@ func (v *ValidatingHook) VipUpdateHook(ctx context.Context, req admission.Reques
 
 func (v *ValidatingHook) ValidateVip(ctx context.Context, vip *ovnv1.Vip) error {
 	if vip.Spec.Subnet == "" {
-		err := fmt.Errorf("subnet parameter cannot be empty")
-		return err
+		return errors.New("subnet parameter cannot be empty")
 	}
 
 	subnet := &ovnv1.Subnet{}

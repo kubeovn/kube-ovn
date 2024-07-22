@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"reflect"
@@ -221,7 +222,7 @@ func (c *Controller) handleAddReservedIP(key string) error {
 	}
 	klog.V(3).Infof("handle add reserved ip %s", ip.Name)
 	if ip.Spec.Subnet == "" {
-		err := fmt.Errorf("subnet parameter cannot be empty")
+		err := errors.New("subnet parameter cannot be empty")
 		klog.Error(err)
 		return err
 	}
@@ -233,7 +234,7 @@ func (c *Controller) handleAddReservedIP(key string) error {
 
 	subnet, err := c.subnetsLister.Get(ip.Spec.Subnet)
 	if err != nil {
-		err = fmt.Errorf("failed to get subnet %s: %v", ip.Spec.Subnet, err)
+		err = fmt.Errorf("failed to get subnet %s: %w", ip.Spec.Subnet, err)
 		klog.Error(err)
 		return err
 	}
@@ -259,13 +260,13 @@ func (c *Controller) handleAddReservedIP(key string) error {
 
 	v4IP, v6IP, mac, err := c.ipAcquireAddress(ip, subnet)
 	if err != nil {
-		err = fmt.Errorf("failed to acquire ip address %v", err)
+		err = fmt.Errorf("failed to acquire ip address %w", err)
 		klog.Error(err)
 		return err
 	}
 	ipStr := util.GetStringIP(v4IP, v6IP)
 	if err := c.createOrUpdateIPCR(ip.Name, ip.Spec.PodName, ipStr, mac, subnet.Name, ip.Spec.Namespace, ip.Spec.NodeName, ip.Spec.PodType); err != nil {
-		err = fmt.Errorf("failed to create ips CR %s.%s: %v", ip.Spec.PodName, ip.Spec.Namespace, err)
+		err = fmt.Errorf("failed to create ips CR %s.%s: %w", ip.Spec.PodName, ip.Spec.Namespace, err)
 		klog.Error(err)
 		return err
 	}
@@ -489,7 +490,7 @@ func (c *Controller) createOrUpdateIPCR(ipCRName, podName, ip, mac, subnetName, 
 	ipCR, err = c.ipsLister.Get(ipName)
 	if err != nil {
 		if !k8serrors.IsNotFound(err) {
-			err := fmt.Errorf("failed to get ip CR %s: %v", ipName, err)
+			err := fmt.Errorf("failed to get ip CR %s: %w", ipName, err)
 			klog.Error(err)
 			return err
 		}
@@ -525,7 +526,7 @@ func (c *Controller) createOrUpdateIPCR(ipCRName, podName, ip, mac, subnetName, 
 			},
 		}, metav1.CreateOptions{})
 		if err != nil {
-			errMsg := fmt.Errorf("failed to create ip CR %s: %v", ipName, err)
+			errMsg := fmt.Errorf("failed to create ip CR %s: %w", ipName, err)
 			klog.Error(errMsg)
 			return errMsg
 		}
@@ -559,11 +560,10 @@ func (c *Controller) createOrUpdateIPCR(ipCRName, podName, ip, mac, subnetName, 
 
 		ipCR, err = c.config.KubeOvnClient.KubeovnV1().IPs().Update(context.Background(), newIPCR, metav1.UpdateOptions{})
 		if err != nil {
-			err := fmt.Errorf("failed to update ip CR %s: %v", ipCRName, err)
+			err := fmt.Errorf("failed to update ip CR %s: %w", ipCRName, err)
 			klog.Error(err)
 			return err
 		}
-
 	}
 	if err := c.handleAddIPFinalizer(ipCR); err != nil {
 		klog.Errorf("failed to handle add ip finalizer %v", err)
@@ -594,14 +594,14 @@ func (c *Controller) ipAcquireAddress(ip *kubeovnv1.IP, subnet *kubeovnv1.Subnet
 		if err == nil {
 			return v4IP, v6IP, mac, err
 		}
-		err = fmt.Errorf("failed to get random address for ip %s, %v", ip.Name, err)
+		err = fmt.Errorf("failed to get random address for ip %s, %w", ip.Name, err)
 	} else {
 		// static address
 		v4IP, v6IP, mac, err = c.acquireStaticAddress(key, portName, ipStr, macPtr, subnet.Name, true)
 		if err == nil {
 			return v4IP, v6IP, mac, nil
 		}
-		err = fmt.Errorf("failed to get static address for ip %s, %v", ip.Name, err)
+		err = fmt.Errorf("failed to get static address for ip %s, %w", ip.Name, err)
 	}
 	klog.Error(err)
 	return "", "", "", err

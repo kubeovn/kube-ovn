@@ -88,7 +88,7 @@ func (c *Controller) processNextUpdateNpWorkItem() bool {
 		}
 		if err := c.handleUpdateNp(key); err != nil {
 			c.updateNpQueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing network policy %s: %v, requeuing", key, err)
+			return fmt.Errorf("error syncing network policy %s: %w, requeuing", key, err)
 		}
 		c.updateNpQueue.Forget(obj)
 		return nil
@@ -295,7 +295,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 			}
 		}
 		if err := c.OVNNbClient.Transact("add-ingress-acls", ingressACLOps); err != nil {
-			return fmt.Errorf("add ingress acls to %s: %v", pgName, err)
+			return fmt.Errorf("add ingress acls to %s: %w", pgName, err)
 		}
 
 		if err := c.OVNNbClient.SetACLLog(pgName, logEnable, true); err != nil {
@@ -419,11 +419,10 @@ func (c *Controller) handleUpdateNp(key string) error {
 
 					egressACLOps = append(egressACLOps, ops...)
 				}
-
 			}
 		}
 		if err := c.OVNNbClient.Transact("add-egress-acls", egressACLOps); err != nil {
-			return fmt.Errorf("add egress acls to %s: %v", pgName, err)
+			return fmt.Errorf("add egress acls to %s: %w", pgName, err)
 		}
 
 		if err := c.OVNNbClient.SetACLLog(pgName, logEnable, false); err != nil {
@@ -531,11 +530,11 @@ func (c *Controller) fetchSelectedPorts(namespace string, selector *metav1.Label
 	var subnets []string
 	sel, err := metav1.LabelSelectorAsSelector(selector)
 	if err != nil {
-		return nil, nil, fmt.Errorf("error creating label selector, %v", err)
+		return nil, nil, fmt.Errorf("error creating label selector, %w", err)
 	}
 	pods, err := c.podsLister.Pods(namespace).List(sel)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to list pods, %v", err)
+		return nil, nil, fmt.Errorf("failed to list pods, %w", err)
 	}
 
 	ports := make([]string, 0, len(pods))
@@ -546,7 +545,7 @@ func (c *Controller) fetchSelectedPorts(namespace string, selector *metav1.Label
 		podName := c.getNameByPod(pod)
 		podNets, err := c.getPodKubeovnNets(pod)
 		if err != nil {
-			return nil, nil, fmt.Errorf("failed to get pod networks, %v", err)
+			return nil, nil, fmt.Errorf("failed to get pod networks, %w", err)
 		}
 
 		for _, podNet := range podNets {
@@ -604,11 +603,11 @@ func (c *Controller) fetchPolicySelectedAddresses(namespace, protocol string, np
 	} else {
 		sel, err := metav1.LabelSelectorAsSelector(npp.NamespaceSelector)
 		if err != nil {
-			return nil, nil, fmt.Errorf("error creating label selector, %v", err)
+			return nil, nil, fmt.Errorf("error creating label selector, %w", err)
 		}
 		nss, err := c.namespacesLister.List(sel)
 		if err != nil {
-			return nil, nil, fmt.Errorf("failed to list ns, %v", err)
+			return nil, nil, fmt.Errorf("failed to list ns, %w", err)
 		}
 		for _, ns := range nss {
 			selectedNs = append(selectedNs, ns.Name)
@@ -625,12 +624,12 @@ func (c *Controller) fetchPolicySelectedAddresses(namespace, protocol string, np
 	for _, ns := range selectedNs {
 		pods, err := c.podsLister.Pods(ns).List(sel)
 		if err != nil {
-			return nil, nil, fmt.Errorf("failed to list pod, %v", err)
+			return nil, nil, fmt.Errorf("failed to list pod, %w", err)
 		}
 		svcs, err := c.servicesLister.Services(ns).List(labels.Everything())
 		if err != nil {
 			klog.Errorf("failed to list svc, %v", err)
-			return nil, nil, fmt.Errorf("failed to list svc, %v", err)
+			return nil, nil, fmt.Errorf("failed to list svc, %w", err)
 		}
 
 		for _, pod := range pods {
@@ -695,7 +694,7 @@ func isSvcMatchPod(svc *corev1.Service, pod *corev1.Pod) (bool, error) {
 	ss := metav1.SetAsLabelSelector(svc.Spec.Selector)
 	sel, err := metav1.LabelSelectorAsSelector(ss)
 	if err != nil {
-		return false, fmt.Errorf("error fetch label selector, %v", err)
+		return false, fmt.Errorf("error fetch label selector, %w", err)
 	}
 	if pod.Labels == nil {
 		return false, nil
@@ -734,13 +733,13 @@ func (c *Controller) svcMatchNetworkPolicies(svc *corev1.Service) ([]string, err
 	// find all match pod
 	pods, err := c.podsLister.Pods(svc.Namespace).List(labels.Everything())
 	if err != nil {
-		return nil, fmt.Errorf("failed to list pods, %v", err)
+		return nil, fmt.Errorf("failed to list pods, %w", err)
 	}
 
 	// find all match netpol
 	nps, err := c.npsLister.NetworkPolicies(corev1.NamespaceAll).List(labels.Everything())
 	if err != nil {
-		return nil, fmt.Errorf("failed to list netpols, %v", err)
+		return nil, fmt.Errorf("failed to list netpols, %w", err)
 	}
 	match := []string{}
 	for _, pod := range pods {

@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -390,7 +391,7 @@ func (c *Controller) createOrUpdateOvnEipCR(key, subnet, v4ip, v6ip, mac, usage 
 				},
 			}, metav1.CreateOptions{})
 			if err != nil {
-				err := fmt.Errorf("failed to create crd ovn eip '%s', %v", key, err)
+				err := fmt.Errorf("failed to create crd ovn eip '%s', %w", key, err)
 				klog.Error(err)
 				return err
 			}
@@ -422,7 +423,7 @@ func (c *Controller) createOrUpdateOvnEipCR(key, subnet, v4ip, v6ip, mac, usage 
 		}
 		if needUpdate {
 			if _, err := c.config.KubeOvnClient.KubeovnV1().OvnEips().Update(context.Background(), ovnEip, metav1.UpdateOptions{}); err != nil {
-				errMsg := fmt.Errorf("failed to update ovn eip '%s', %v", key, err)
+				errMsg := fmt.Errorf("failed to update ovn eip '%s', %w", key, err)
 				klog.Error(errMsg)
 				return errMsg
 			}
@@ -515,7 +516,7 @@ func (c *Controller) patchOvnEipStatus(key string, ready bool) error {
 	}
 	nat, err := c.getOvnEipNat(ovnEip.Spec.V4Ip)
 	if err != nil {
-		err := fmt.Errorf("failed to get ovn eip nat")
+		err := errors.New("failed to get ovn eip nat")
 		klog.Error(err)
 		return err
 	}
@@ -641,7 +642,7 @@ func (c *Controller) handleDelOvnEipFinalizer(cachedEip *kubeovnv1.OvnEip) error
 	var err error
 	nat, err := c.getOvnEipNat(cachedEip.Spec.V4Ip)
 	if err != nil {
-		err := fmt.Errorf("failed to get ovn eip nat")
+		err := errors.New("failed to get ovn eip nat")
 		klog.Error(err)
 		return err
 	}

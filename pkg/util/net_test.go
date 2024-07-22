@@ -434,7 +434,6 @@ func TestGenerateRandomV4IP(t *testing.T) {
 					t.Errorf("%v expected %v, but %v got",
 						c.cidr, c.want, ans)
 				}
-
 			} else {
 				ans := GenerateRandomV4IP(c.cidr)
 				if IPNets.Contains(net.ParseIP(GenerateRandomV4IP(c.cidr))) {

@@ -2,6 +2,7 @@ package webhook
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -52,7 +53,7 @@ func (v *ValidatingHook) ovnEipUpdateHook(ctx context.Context, req admission.Req
 
 	if eipOld.Spec != eipNew.Spec {
 		if eipOld.Status.Ready {
-			err := fmt.Errorf("OvnEip not support change")
+			err := errors.New("OvnEip not support change")
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		}
 		if err := v.ValidateOvnEip(ctx, &eipNew); err != nil {
@@ -142,7 +143,7 @@ func (v *ValidatingHook) ovnDnatUpdateHook(ctx context.Context, req admission.Re
 
 	if dnatOld.Spec != dnatNew.Spec {
 		if dnatOld.Status.Ready {
-			err := fmt.Errorf("OvnDnat not support change")
+			err := errors.New("OvnDnat not support change")
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		}
 		if err := v.ValidateOvnDnat(ctx, &dnatNew); err != nil {
@@ -179,7 +180,7 @@ func (v *ValidatingHook) ovnSnatUpdateHook(ctx context.Context, req admission.Re
 
 	if snatOld.Spec != snatNew.Spec {
 		if snatOld.Status.Ready {
-			err := fmt.Errorf("OvnSnat not support change")
+			err := errors.New("OvnSnat not support change")
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		}
 		if err := v.ValidateOvnSnat(ctx, &snatNew); err != nil {
@@ -216,7 +217,7 @@ func (v *ValidatingHook) ovnFipUpdateHook(ctx context.Context, req admission.Req
 
 	if fipNew.Spec != fipOld.Spec {
 		if fipOld.Status.Ready {
-			err := fmt.Errorf("OvnFip not support change")
+			err := errors.New("OvnFip not support change")
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		}
 		if err := v.ValidateOvnFip(ctx, &fipNew); err != nil {
@@ -265,11 +266,11 @@ func (v *ValidatingHook) ValidateOvnEip(ctx context.Context, eip *ovnv1.OvnEip) 
 
 func (v *ValidatingHook) ValidateOvnDnat(ctx context.Context, dnat *ovnv1.OvnDnatRule) error {
 	if dnat.Spec.OvnEip == "" {
-		err := fmt.Errorf("should set spec ovnEip")
+		err := errors.New("should set spec ovnEip")
 		return err
 	}
 	if dnat.Spec.IPName == "" && dnat.Spec.V4Ip == "" && dnat.Spec.V6Ip == "" {
-		err := fmt.Errorf("should set spec ipName or v4 or v6 Ip")
+		err := errors.New("should set spec ipName or v4 or v6 Ip")
 		return err
 	}
 	eip := &ovnv1.OvnEip{}
@@ -279,17 +280,17 @@ func (v *ValidatingHook) ValidateOvnDnat(ctx context.Context, dnat *ovnv1.OvnDna
 	}
 
 	if dnat.Spec.ExternalPort == "" {
-		err := fmt.Errorf("should set spec externalPort")
+		err := errors.New("should set spec externalPort")
 		return err
 	}
 
 	if dnat.Spec.InternalPort == "" {
-		err := fmt.Errorf("should set spec internalPort")
+		err := errors.New("should set spec internalPort")
 		return err
 	}
 
 	if port, err := strconv.Atoi(dnat.Spec.ExternalPort); err != nil {
-		errMsg := fmt.Errorf("failed to parse spec externalPort %s: %v", dnat.Spec.ExternalPort, err)
+		errMsg := fmt.Errorf("failed to parse spec externalPort %s: %w", dnat.Spec.ExternalPort, err)
 		return errMsg
 	} else if port < 0 || port > 65535 {
 		err := fmt.Errorf("spec externalPort %s is not a valid port", dnat.Spec.ExternalPort)
@@ -297,7 +298,7 @@ func (v *ValidatingHook) ValidateOvnDnat(ctx context.Context, dnat *ovnv1.OvnDna
 	}
 
 	if port, err := strconv.Atoi(dnat.Spec.InternalPort); err != nil {
-		errMsg := fmt.Errorf("failed to parse spec internalIP %s: %v", dnat.Spec.InternalPort, err)
+		errMsg := fmt.Errorf("failed to parse spec internalIP %s: %w", dnat.Spec.InternalPort, err)
 		return errMsg
 	} else if port < 0 || port > 65535 {
 		err := fmt.Errorf("spec internalIP %s is not a valid port", dnat.Spec.InternalPort)
@@ -306,7 +307,7 @@ func (v *ValidatingHook) ValidateOvnDnat(ctx context.Context, dnat *ovnv1.OvnDna
 
 	if !strings.EqualFold(dnat.Spec.Protocol, "tcp") &&
 		!strings.EqualFold(dnat.Spec.Protocol, "udp") {
-		err := fmt.Errorf("invaild dnat protocol: %s, support tcp or udp", dnat.Spec.Protocol)
+		err := fmt.Errorf("invalid dnat protocol: %s, support tcp or udp", dnat.Spec.Protocol)
 		return err
 	}
 
@@ -315,28 +316,23 @@ func (v *ValidatingHook) ValidateOvnDnat(ctx context.Context, dnat *ovnv1.OvnDna
 
 func (v *ValidatingHook) ValidateOvnSnat(ctx context.Context, snat *ovnv1.OvnSnatRule) error {
 	if snat.Spec.OvnEip == "" {
-		err := fmt.Errorf("should set spec OvnEip")
-		return err
+		return errors.New("should set spec OvnEip")
 	}
 
 	if snat.Spec.VpcSubnet != "" && snat.Spec.IPName != "" {
-		err := fmt.Errorf("should not set spec vpcSubnet and ipName at the same time")
-		return err
+		return errors.New("should not set spec vpcSubnet and ipName at the same time")
 	}
 
 	if snat.Spec.Vpc != "" && snat.Spec.V4IpCidr == "" && snat.Spec.V6IpCidr == "" {
-		err := fmt.Errorf("should set spec v4 or v6 IpCidr (subnet cidr or ip address) when spec vpc is set")
-		return err
+		return errors.New("should set spec v4 or v6 IpCidr (subnet cidr or ip address) when spec vpc is set")
 	}
 
 	if snat.Spec.Vpc == "" && snat.Spec.V4IpCidr != "" && snat.Spec.V6IpCidr != "" {
-		err := fmt.Errorf("should set spec vpc while spec v4 or v6 IpCidr is not set")
-		return err
+		return errors.New("should set spec vpc while spec v4 or v6 IpCidr is not set")
 	}
 
 	if snat.Spec.VpcSubnet == "" && snat.Spec.IPName == "" && snat.Spec.Vpc == "" && snat.Spec.V4IpCidr == "" && snat.Spec.V6IpCidr == "" {
-		err := fmt.Errorf("should set spec vpcSubnet or ipName or vpc and v4 and v6 IpCidr at least")
-		return err
+		return errors.New("should set spec vpcSubnet or ipName or vpc and v4 and v6 IpCidr at least")
 	}
 
 	eip := &ovnv1.OvnEip{}
@@ -346,11 +342,11 @@ func (v *ValidatingHook) ValidateOvnSnat(ctx context.Context, snat *ovnv1.OvnSna
 
 func (v *ValidatingHook) ValidateOvnFip(ctx context.Context, fip *ovnv1.OvnFip) error {
 	if fip.Spec.OvnEip == "" {
-		err := fmt.Errorf("should set spec ovnEip")
+		err := errors.New("should set spec ovnEip")
 		return err
 	}
 	if fip.Spec.IPName == "" && fip.Spec.V4Ip == "" && fip.Spec.V6Ip == "" {
-		err := fmt.Errorf("should set spec ipName or ip")
+		err := errors.New("should set spec ipName or ip")
 		return err
 	}
 	eip := &ovnv1.OvnEip{}

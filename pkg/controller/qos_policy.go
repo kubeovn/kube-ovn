@@ -340,13 +340,13 @@ func (c *Controller) reconcileEIPBandtithLimitRules(
 		}
 	}
 	if len(added) > 0 {
-		if err = c.addOrUpdateEIPBandtithLimitRules(eip, eip.Status.IP, added); err != nil {
+		if err = c.addOrUpdateEIPBandwidthLimitRules(eip, eip.Status.IP, added); err != nil {
 			klog.Errorf("failed to add eip %s bandwidth limit rules, %v", eip.Name, err)
 			return err
 		}
 	}
 	if len(updated) > 0 {
-		if err = c.addOrUpdateEIPBandtithLimitRules(eip, eip.Status.IP, updated); err != nil {
+		if err = c.addOrUpdateEIPBandwidthLimitRules(eip, eip.Status.IP, updated); err != nil {
 			klog.Errorf("failed to update eip %s bandwidth limit rules, %v", eip.Name, err)
 			return err
 		}

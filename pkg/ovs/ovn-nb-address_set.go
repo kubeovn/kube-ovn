@@ -2,6 +2,7 @@ package ovs
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"strings"
@@ -39,11 +40,11 @@ func (c *OVNNbClient) CreateAddressSet(asName string, externalIDs map[string]str
 	ops, err := c.ovsDbClient.Create(as)
 	if err != nil {
 		klog.Error(err)
-		return fmt.Errorf("generate operations for creating address set %s: %v", asName, err)
+		return fmt.Errorf("generate operations for creating address set %s: %w", asName, err)
 	}
 
 	if err = c.Transact("as-add", ops); err != nil {
-		return fmt.Errorf("create address set %s: %v", asName, err)
+		return fmt.Errorf("create address set %s: %w", asName, err)
 	}
 
 	return nil
@@ -55,7 +56,7 @@ func (c *OVNNbClient) AddressSetUpdateAddress(asName string, addresses ...string
 	as, err := c.GetAddressSet(asName, false)
 	if err != nil {
 		klog.Error(err)
-		return fmt.Errorf("get address set %s: %v", asName, err)
+		return fmt.Errorf("get address set %s: %w", asName, err)
 	}
 
 	// format CIDR to keep addresses the same in both nb and sb
@@ -77,7 +78,7 @@ func (c *OVNNbClient) AddressSetUpdateAddress(asName string, addresses ...string
 	as.Addresses = addresses
 
 	if err := c.UpdateAddressSet(as, &as.Addresses); err != nil {
-		return fmt.Errorf("set address set %s addresses %v: %v", asName, addresses, err)
+		return fmt.Errorf("set address set %s addresses %v: %w", asName, addresses, err)
 	}
 
 	return nil
@@ -86,18 +87,18 @@ func (c *OVNNbClient) AddressSetUpdateAddress(asName string, addresses ...string
 // UpdateAddressSet update address set
 func (c *OVNNbClient) UpdateAddressSet(as *ovnnb.AddressSet, fields ...interface{}) error {
 	if as == nil {
-		return fmt.Errorf("address_set is nil")
+		return errors.New("address_set is nil")
 	}
 
 	op, err := c.Where(as).Update(as, fields...)
 	if err != nil {
 		klog.Error(err)
-		return fmt.Errorf("generate operations for updating address set %s: %v", as.Name, err)
+		return fmt.Errorf("generate operations for updating address set %s: %w", as.Name, err)
 	}
 
 	if err = c.Transact("as-update", op); err != nil {
 		klog.Error(err)
-		return fmt.Errorf("update address set %s: %v", as.Name, err)
+		return fmt.Errorf("update address set %s: %w", as.Name, err)
 	}
 
 	return nil
@@ -107,7 +108,7 @@ func (c *OVNNbClient) DeleteAddressSet(asName string) error {
 	as, err := c.GetAddressSet(asName, true)
 	if err != nil {
 		klog.Error(err)
-		return fmt.Errorf("get address set %s: %v", asName, err)
+		return fmt.Errorf("get address set %s: %w", asName, err)
 	}
 
 	// not found, skip
@@ -122,7 +123,7 @@ func (c *OVNNbClient) DeleteAddressSet(asName string) error {
 	}
 
 	if err := c.Transact("as-del", op); err != nil {
-		return fmt.Errorf("delete address set %s: %v", asName, err)
+		return fmt.Errorf("delete address set %s: %w", asName, err)
 	}
 
 	return nil
@@ -138,11 +139,11 @@ func (c *OVNNbClient) DeleteAddressSets(externalIDs map[string]string) error {
 	op, err := c.WhereCache(addressSetFilter(externalIDs)).Delete()
 	if err != nil {
 		klog.Error(err)
-		return fmt.Errorf("generate operation for deleting address sets with external IDs %v: %v", externalIDs, err)
+		return fmt.Errorf("generate operation for deleting address sets with external IDs %v: %w", externalIDs, err)
 	}
 
 	if err := c.Transact("ass-del", op); err != nil {
-		return fmt.Errorf("delete address sets with external IDs %v: %v", externalIDs, err)
+		return fmt.Errorf("delete address sets with external IDs %v: %w", externalIDs, err)
 	}
 
 	return nil
@@ -155,11 +156,11 @@ func (c *OVNNbClient) GetAddressSet(asName string, ignoreNotFound bool) (*ovnnb.
 
 	as := &ovnnb.AddressSet{Name: asName}
 	if err := c.ovsDbClient.Get(ctx, as); err != nil {
-		if ignoreNotFound && err == client.ErrNotFound {
+		if ignoreNotFound && errors.Is(err, client.ErrNotFound) {
 			return nil, nil
 		}
 		klog.Error(err)
-		return nil, fmt.Errorf("get address set %s: %v", asName, err)
+		return nil, fmt.Errorf("get address set %s: %w", asName, err)
 	}
 
 	return as, nil
@@ -178,7 +179,7 @@ func (c *OVNNbClient) ListAddressSets(externalIDs map[string]string) ([]ovnnb.Ad
 	asList := make([]ovnnb.AddressSet, 0)
 
 	if err := c.WhereCache(addressSetFilter(externalIDs)).List(ctx, &asList); err != nil {
-		return nil, fmt.Errorf("list address set: %v", err)
+		return nil, fmt.Errorf("list address set: %w", err)
 	}
 
 	return asList, nil

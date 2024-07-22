@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"reflect"
@@ -386,7 +387,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 					nextHop = externalSubnet.Spec.Gateway
 					if nextHop == "" {
 						klog.Errorf("no available gateway address")
-						return fmt.Errorf("no available gateway address")
+						return errors.New("no available gateway address")
 					}
 				}
 				if strings.Contains(nextHop, "/") {
@@ -1145,7 +1146,7 @@ func (c *Controller) handleAddVpcExternalSubnet(key, subnet string) error {
 	}
 
 	if len(chassises) == 0 {
-		err := fmt.Errorf("no external gw nodes")
+		err := errors.New("no external gw nodes")
 		klog.Error(err)
 		return err
 	}
@@ -1181,13 +1182,13 @@ func (c *Controller) handleAddVpcExternalSubnet(key, subnet string) error {
 		}
 		if _, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Patch(context.Background(),
 			vpc.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
-			err := fmt.Errorf("failed to patch vpc %s status, %v", vpc.Name, err)
+			err := fmt.Errorf("failed to patch vpc %s status, %w", vpc.Name, err)
 			klog.Error(err)
 			return err
 		}
 	}
 	if _, err = c.ovnEipsLister.Get(lrpEipName); err != nil {
-		err := fmt.Errorf("failed to get ovn eip %s, %v", lrpEipName, err)
+		err := fmt.Errorf("failed to get ovn eip %s, %w", lrpEipName, err)
 		klog.Error(err)
 		return err
 	}
