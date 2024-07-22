@@ -1,6 +1,7 @@
 package speaker
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -104,7 +105,7 @@ func kubeOvnFamilyToAFI(ipFamily string) (bgpapi.Family_Afi, error) {
 	case kubeovnv1.ProtocolIPv6:
 		family = bgpapi.Family_AFI_IP6
 	default:
-		return bgpapi.Family_AFI_UNKNOWN, fmt.Errorf("ip family is invalid")
+		return bgpapi.Family_AFI_UNKNOWN, errors.New("ip family is invalid")
 	}
 
 	return family, nil

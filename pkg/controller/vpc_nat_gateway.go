@@ -759,7 +759,7 @@ func setNatGwRoute(annotations map[string]string, subnetGw string) error {
 	// Check the API NetworkAttachmentDefinition exists, otherwise we won't be able to attach
 	// the BGP speaker to a network that has access to the K8S apiserver (and won't be able to detect EIPs)
 	if vpcNatAPINadProvider == "" {
-		return fmt.Errorf("no NetworkAttachmentDefinition provided to access apiserver, check configmap ovn-vpc-nat-config and field 'apiNadProvider'")
+		return errors.New("no NetworkAttachmentDefinition provided to access apiserver, check configmap ovn-vpc-nat-config and field 'apiNadProvider'")
 	}
 
 	for _, gw := range strings.Split(subnetGw, ",") {
@@ -767,7 +767,7 @@ func setNatGwRoute(annotations map[string]string, subnetGw string) error {
 			routes := []request.Route{{Destination: dst, Gateway: gw}}
 			buf, err := json.Marshal(routes)
 			if err != nil {
-				return fmt.Errorf("failed to marshal routes %+v: %v", routes, err)
+				return fmt.Errorf("failed to marshal routes %+v: %w", routes, err)
 			}
 
 			annotations[fmt.Sprintf(util.RoutesAnnotationTemplate, vpcNatAPINadProvider)] = string(buf)
@@ -794,7 +794,7 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 	if gw.Spec.BgpSpeaker.Enabled { // Add an interface that can reach the API server
 		defaultSubnet, err := c.subnetsLister.Get(c.config.DefaultLogicalSwitch)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get default subnet %s: %v", c.config.DefaultLogicalSwitch, err)
+			return nil, fmt.Errorf("failed to get default subnet %s: %w", c.config.DefaultLogicalSwitch, err)
 		}
 
 		if err := c.setNatGwInterface(podAnnotations, nadName, defaultSubnet); err != nil {
@@ -949,18 +949,18 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 		}
 
 		if speakerParams.ASN == 0 { // The ASN we use to speak
-			return nil, fmt.Errorf("ASN not set, but must be non-zero value")
+			return nil, errors.New("ASN not set, but must be non-zero value")
 		}
 
 		if speakerParams.RemoteASN == 0 { // The ASN we speak to
-			return nil, fmt.Errorf("remote ASN not set, but must be non-zero value")
+			return nil, errors.New("remote ASN not set, but must be non-zero value")
 		}
 
 		args = append(args, fmt.Sprintf("--cluster-as=%d", speakerParams.ASN))
 		args = append(args, fmt.Sprintf("--neighbor-as=%d", speakerParams.RemoteASN))
 
 		if len(speakerParams.Neighbors) == 0 {
-			return nil, fmt.Errorf("no BGP neighbors specified")
+			return nil, errors.New("no BGP neighbors specified")
 		}
 
 		var neighIPv4 []string

@@ -1,6 +1,7 @@
 package speaker
 
 import (
+	"errors"
 	"fmt"
 
 	"k8s.io/apimachinery/pkg/labels"
@@ -15,7 +16,7 @@ func (c *Controller) syncEIPRoutes() error {
 	// Retrieve the name of our gateway
 	gatewayName := getGatewayName()
 	if gatewayName == "" {
-		return fmt.Errorf("failed to retrieve the name of the gateway, might not be running in a gateway pod")
+		return errors.New("failed to retrieve the name of the gateway, might not be running in a gateway pod")
 	}
 
 	// Create label requirements to only get EIPs attached to our NAT GW
