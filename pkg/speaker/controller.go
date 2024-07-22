@@ -38,6 +38,9 @@ type Controller struct {
 	eipLister kubeovnlister.IptablesEIPLister
 	eipSynced cache.InformerSynced
 
+	natgatewayLister kubeovnlister.VpcNatGatewayLister
+	natgatewaySynced cache.InformerSynced
+
 	informerFactory        kubeinformers.SharedInformerFactory
 	kubeovnInformerFactory kubeovninformer.SharedInformerFactory
 	recorder               record.EventRecorder
@@ -64,18 +67,21 @@ func NewController(config *Configuration) *Controller {
 	subnetInformer := kubeovnInformerFactory.Kubeovn().V1().Subnets()
 	serviceInformer := informerFactory.Core().V1().Services()
 	eipInformer := kubeovnInformerFactory.Kubeovn().V1().IptablesEIPs()
+	natgatewayInformer := kubeovnInformerFactory.Kubeovn().V1().VpcNatGateways()
 
 	controller := &Controller{
 		config: config,
 
-		podsLister:     podInformer.Lister(),
-		podsSynced:     podInformer.Informer().HasSynced,
-		subnetsLister:  subnetInformer.Lister(),
-		subnetSynced:   subnetInformer.Informer().HasSynced,
-		servicesLister: serviceInformer.Lister(),
-		servicesSynced: serviceInformer.Informer().HasSynced,
-		eipLister:      eipInformer.Lister(),
-		eipSynced:      eipInformer.Informer().HasSynced,
+		podsLister:       podInformer.Lister(),
+		podsSynced:       podInformer.Informer().HasSynced,
+		subnetsLister:    subnetInformer.Lister(),
+		subnetSynced:     subnetInformer.Informer().HasSynced,
+		servicesLister:   serviceInformer.Lister(),
+		servicesSynced:   serviceInformer.Informer().HasSynced,
+		eipLister:        eipInformer.Lister(),
+		eipSynced:        eipInformer.Informer().HasSynced,
+		natgatewayLister: natgatewayInformer.Lister(),
+		natgatewaySynced: natgatewayInformer.Informer().HasSynced,
 
 		informerFactory:        informerFactory,
 		kubeovnInformerFactory: kubeovnInformerFactory,

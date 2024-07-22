@@ -6,12 +6,100 @@ import (
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	bgpapi "github.com/osrg/gobgp/v3/api"
+	bgpapiutil "github.com/osrg/gobgp/v3/pkg/apiutil"
 	"github.com/osrg/gobgp/v3/pkg/packet/bgp"
 	"github.com/vishvananda/netlink"
+	"golang.org/x/sys/unix"
 	"google.golang.org/protobuf/types/known/anypb"
 	"k8s.io/klog/v2"
 	"net"
 )
+
+var (
+	maskMap = map[string]int{kubeovnv1.ProtocolIPv4: 32, kubeovnv1.ProtocolIPv6: 128}
+)
+
+// reconciliateRoutes configures the BGP speaker to announce only the routes we are expected to announce
+// and to withdraw the ones that should not be announced anymore
+func (c *Controller) reconciliateRoutes(expectedPrefixes prefixMap) error {
+	if len(c.config.NeighborAddresses) != 0 {
+		err := c.reconciliateIPFamily(kubeovnv1.ProtocolIPv4, expectedPrefixes)
+		if err != nil {
+			return fmt.Errorf("failed to reconciliate IPv4 routes: %w", err)
+		}
+	}
+
+	if len(c.config.NeighborIPv6Addresses) != 0 {
+		err := c.reconciliateIPFamily(kubeovnv1.ProtocolIPv6, expectedPrefixes)
+		if err != nil {
+			return fmt.Errorf("failed to reconciliate IPv6 routes: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// reconciliateIPFamily announces prefixes we are not currently announcing and withdraws prefixes we should
+// not be announcing for a given IP family (IPv4/IPv6)
+func (c *Controller) reconciliateIPFamily(ipFamily string, expectedPrefixes prefixMap) error {
+	// Get the address family associated with the Kube-OVN family
+	afi, err := kubeOvnFamilyToAFI(ipFamily)
+	if err != nil {
+		return fmt.Errorf("couldn't convert family to afi: %w", err)
+	}
+
+	// Craft a BGP path listing request for this AFI
+	listPathRequest := &bgpapi.ListPathRequest{
+		TableType: bgpapi.TableType_GLOBAL,
+		Family:    &bgpapi.Family{Afi: afi, Safi: bgpapi.Family_SAFI_UNICAST},
+	}
+
+	// Anonymous function that stores the prefixes we are announcing for this AFI
+	var existingPrefixes []string
+	fn := func(d *bgpapi.Destination) {
+		for _, path := range d.Paths {
+			attrInterfaces, _ := bgpapiutil.UnmarshalPathAttributes(path.Pattrs)
+			nextHop := getNextHopFromPathAttributes(attrInterfaces)
+			klog.V(5).Infof("announcing route with prefix %s and nexthop: %s", d.Prefix, nextHop.String())
+
+			route, _ := netlink.RouteGet(nextHop)
+			if len(route) == 1 && route[0].Type == unix.RTN_LOCAL || nextHop.String() == c.config.RouterID {
+				existingPrefixes = append(existingPrefixes, d.Prefix)
+				return
+			}
+		}
+	}
+
+	// Ask the BGP speaker what routes we're announcing for the IP family selected
+	if err := c.config.BgpServer.ListPath(context.Background(), listPathRequest, fn); err != nil {
+		return fmt.Errorf("failed to list existing %s routes: %w", ipFamily, err)
+	}
+
+	klog.V(5).Infof("currently announcing %s routes: %v", ipFamily, existingPrefixes)
+
+	// Announce routes we should be announcing and withdraw the ones that are no longer valid
+	c.announceAndWithdraw(routeDiff(expectedPrefixes[ipFamily], existingPrefixes))
+	return nil
+}
+
+// announceAndWithdraw commands the BGP speaker to start announcing new routes and to withdraw others
+func (c *Controller) announceAndWithdraw(toAdd, toDel []string) {
+	// Announce routes that need to be added
+	klog.V(5).Infof("new routes we will announce: %v", toAdd)
+	for _, route := range toAdd {
+		if err := c.addRoute(route); err != nil {
+			klog.Error(err)
+		}
+	}
+
+	// Withdraw routes that should be deleted
+	klog.V(5).Infof("announced routes we will withdraw: %v", toDel)
+	for _, route := range toDel {
+		if err := c.delRoute(route); err != nil {
+			klog.Error(err)
+		}
+	}
+}
 
 // addRoute adds a new route to advertise from our BGP speaker
 func (c *Controller) addRoute(route string) error {
@@ -38,7 +126,6 @@ func (c *Controller) addRoute(route string) error {
 		})
 
 		if err != nil {
-			klog.Errorf("add path failed, %v", err)
 			return err
 		}
 	}
@@ -70,7 +157,6 @@ func (c *Controller) delRoute(route string) error {
 			},
 		})
 		if err != nil {
-			klog.Errorf("del path failed, %v", err)
 			return err
 		}
 	}
@@ -80,7 +166,7 @@ func (c *Controller) delRoute(route string) error {
 // getNlriAndAttrs returns the Network Layer Reachability Information (NLRI) and the BGP attributes for a particular route
 func (c *Controller) getNlriAndAttrs(route string) (*anypb.Any, [][]*anypb.Any, error) {
 	// Should this route be advertised to IPv4 or IPv6 peers
-	// GoBGP supports extended-nexthop, we should be able to advertise IPv4 NRLI to IPv6 peer and the opposite to
+	// GoBGP supports extended-nexthop, we should be able to advertise IPv4 NLRI to IPv6 peer and the opposite to
 	// Is this check really necessary?
 	neighborAddresses := c.config.NeighborAddresses
 	if util.CheckProtocol(route) == kubeovnv1.ProtocolIPv6 {

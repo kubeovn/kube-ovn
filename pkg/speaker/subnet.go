@@ -2,19 +2,11 @@
 package speaker
 
 import (
-	"context"
-	"fmt"
 	"strings"
 
-	bgpapi "github.com/osrg/gobgp/v3/api"
-	bgpapiutil "github.com/osrg/gobgp/v3/pkg/apiutil"
-
-	"github.com/vishvananda/netlink"
-	"golang.org/x/sys/unix"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog/v2"
 
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -31,8 +23,7 @@ const (
 )
 
 func (c *Controller) syncSubnetRoutes() {
-	maskMap := map[string]int{kubeovnv1.ProtocolIPv4: 32, kubeovnv1.ProtocolIPv6: 128}
-	bgpExpected, bgpExists := make(map[string][]string), make(map[string][]string)
+	bgpExpected := make(prefixMap)
 
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
@@ -54,8 +45,7 @@ func (c *Controller) syncSubnetRoutes() {
 		for _, svc := range services {
 			if svc.Annotations != nil && svc.Annotations[util.BgpAnnotation] == "true" && isClusterIPService(svc) {
 				for _, clusterIP := range svc.Spec.ClusterIPs {
-					ipFamily := util.CheckProtocol(clusterIP)
-					bgpExpected[ipFamily] = append(bgpExpected[ipFamily], fmt.Sprintf("%s/%d", clusterIP, maskMap[ipFamily]))
+					addExpectedPrefix(clusterIP, bgpExpected)
 				}
 			}
 		}
@@ -120,79 +110,12 @@ func (c *Controller) syncSubnetRoutes() {
 			}
 		}
 
-		for ipFamily, ip := range ips {
-			bgpExpected[ipFamily] = append(bgpExpected[ipFamily], fmt.Sprintf("%s/%d", ip, maskMap[ipFamily]))
+		for _, ip := range ips {
+			addExpectedPrefix(ip, bgpExpected)
 		}
 	}
 
-	klog.V(5).Infof("expected announce ipv4 routes: %v, ipv6 routes: %v", bgpExpected[kubeovnv1.ProtocolIPv4], bgpExpected[kubeovnv1.ProtocolIPv6])
-
-	fn := func(d *bgpapi.Destination) {
-		for _, path := range d.Paths {
-			attrInterfaces, _ := bgpapiutil.UnmarshalPathAttributes(path.Pattrs)
-			nextHop := getNextHopFromPathAttributes(attrInterfaces)
-			klog.V(5).Infof("the route Prefix is %s, NextHop is %s", d.Prefix, nextHop.String())
-			ipFamily := util.CheckProtocol(nextHop.String())
-			route, _ := netlink.RouteGet(nextHop)
-			if len(route) == 1 && route[0].Type == unix.RTN_LOCAL || nextHop.String() == c.config.RouterID {
-				bgpExists[ipFamily] = append(bgpExists[ipFamily], d.Prefix)
-				return
-			}
-		}
-	}
-
-	if len(c.config.NeighborAddresses) != 0 {
-		listPathRequest := &bgpapi.ListPathRequest{
-			TableType: bgpapi.TableType_GLOBAL,
-			Family:    &bgpapi.Family{Afi: bgpapi.Family_AFI_IP, Safi: bgpapi.Family_SAFI_UNICAST},
-		}
-		if err := c.config.BgpServer.ListPath(context.Background(), listPathRequest, fn); err != nil {
-			klog.Errorf("failed to list exist route, %v", err)
-			return
-		}
-
-		klog.V(5).Infof("exists ipv4 routes %v", bgpExists[kubeovnv1.ProtocolIPv4])
-		toAdd, toDel := routeDiff(bgpExpected[kubeovnv1.ProtocolIPv4], bgpExists[kubeovnv1.ProtocolIPv4])
-		klog.V(5).Infof("toAdd ipv4 routes %v", toAdd)
-		for _, route := range toAdd {
-			if err := c.addRoute(route); err != nil {
-				klog.Error(err)
-			}
-		}
-
-		klog.V(5).Infof("toDel ipv4 routes %v", toDel)
-		for _, route := range toDel {
-			if err := c.delRoute(route); err != nil {
-				klog.Error(err)
-			}
-		}
-	}
-
-	if len(c.config.NeighborIPv6Addresses) != 0 {
-		listIPv6PathRequest := &bgpapi.ListPathRequest{
-			TableType: bgpapi.TableType_GLOBAL,
-			Family:    &bgpapi.Family{Afi: bgpapi.Family_AFI_IP6, Safi: bgpapi.Family_SAFI_UNICAST},
-		}
-
-		if err := c.config.BgpServer.ListPath(context.Background(), listIPv6PathRequest, fn); err != nil {
-			klog.Errorf("failed to list exist route, %v", err)
-			return
-		}
-
-		klog.V(5).Infof("exists ipv6 routes %v", bgpExists[kubeovnv1.ProtocolIPv6])
-		toAdd, toDel := routeDiff(bgpExpected[kubeovnv1.ProtocolIPv6], bgpExists[kubeovnv1.ProtocolIPv6])
-		klog.V(5).Infof("toAdd ipv6 routes %v", toAdd)
-
-		for _, route := range toAdd {
-			if err := c.addRoute(route); err != nil {
-				klog.Error(err)
-			}
-		}
-		klog.V(5).Infof("toDel ipv6 routes %v", toDel)
-		for _, route := range toDel {
-			if err := c.delRoute(route); err != nil {
-				klog.Error(err)
-			}
-		}
+	if err := c.reconciliateRoutes(bgpExpected); err != nil {
+		klog.Errorf("failed to reconciliate routes: %s", err.Error())
 	}
 }
