@@ -40,6 +40,9 @@ OVS_VSCTL_CONCURRENCY=${OVS_VSCTL_CONCURRENCY:-100}
 ENABLE_COMPACT=${ENABLE_COMPACT:-false}
 SECURE_SERVING=${SECURE_SERVING:-false}
 
+# ovn version
+versionCompatibility=24.03
+
 # debug
 DEBUG_WRAPPER=${DEBUG_WRAPPER:-}
 
@@ -3462,6 +3465,8 @@ spec:
               value: "1"
             - name: ENABLE_COMPACT
               value: "$ENABLE_COMPACT"
+            - name: OVN_VERSION_COMPATIBILITY
+              value: "$versionCompatibility"
           resources:
             requests:
               cpu: 300m
