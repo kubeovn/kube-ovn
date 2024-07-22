@@ -26,12 +26,17 @@ const controllerAgentName = "ovn-speaker"
 type Controller struct {
 	config *Configuration
 
-	podsLister     listerv1.PodLister
-	podsSynced     cache.InformerSynced
-	subnetsLister  kubeovnlister.SubnetLister
-	subnetSynced   cache.InformerSynced
+	podsLister listerv1.PodLister
+	podsSynced cache.InformerSynced
+
+	subnetsLister kubeovnlister.SubnetLister
+	subnetSynced  cache.InformerSynced
+
 	servicesLister listerv1.ServiceLister
 	servicesSynced cache.InformerSynced
+
+	eipLister kubeovnlister.IptablesEIPLister
+	eipSynced cache.InformerSynced
 
 	informerFactory        kubeinformers.SharedInformerFactory
 	kubeovnInformerFactory kubeovninformer.SharedInformerFactory
@@ -58,6 +63,7 @@ func NewController(config *Configuration) *Controller {
 	podInformer := informerFactory.Core().V1().Pods()
 	subnetInformer := kubeovnInformerFactory.Kubeovn().V1().Subnets()
 	serviceInformer := informerFactory.Core().V1().Services()
+	eipInformer := kubeovnInformerFactory.Kubeovn().V1().IptablesEIPs()
 
 	controller := &Controller{
 		config: config,
@@ -68,6 +74,8 @@ func NewController(config *Configuration) *Controller {
 		subnetSynced:   subnetInformer.Informer().HasSynced,
 		servicesLister: serviceInformer.Lister(),
 		servicesSynced: serviceInformer.Informer().HasSynced,
+		eipLister:      eipInformer.Lister(),
+		eipSynced:      eipInformer.Informer().HasSynced,
 
 		informerFactory:        informerFactory,
 		kubeovnInformerFactory: kubeovnInformerFactory,
@@ -82,7 +90,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	c.informerFactory.Start(stopCh)
 	c.kubeovnInformerFactory.Start(stopCh)
 
-	if !cache.WaitForCacheSync(stopCh, c.podsSynced, c.subnetSynced, c.servicesSynced) {
+	if !cache.WaitForCacheSync(stopCh, c.podsSynced, c.subnetSynced, c.servicesSynced, c.eipSynced) {
 		util.LogFatalAndExit(nil, "failed to wait for caches to sync")
 		return
 	}
