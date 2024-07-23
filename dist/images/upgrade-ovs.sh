@@ -10,7 +10,7 @@ OVN_VERSION_COMPATIBILITY=${OVN_VERSION_COMPATIBILITY:-}
 UPDATE_STRATEGY=`kubectl -n kube-system get ds ovs-ovn -o jsonpath='{.spec.updateStrategy.type}'`
 
 SSL_OPTIONS=
-if "$ENABLE_SSL" != "false" ]; then
+if [ "$ENABLE_SSL" != "false" ]; then
     SSL_OPTIONS="-p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert"
 fi
 
