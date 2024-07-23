@@ -3418,6 +3418,7 @@ spec:
           image: "$REGISTRY/kube-ovn:$VERSION"
           imagePullPolicy: $IMAGE_PULL_POLICY
           command:
+          - bash
           - /kube-ovn/start-db.sh
           securityContext:
             capabilities:

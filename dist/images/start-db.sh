@@ -41,6 +41,9 @@ SB_CLUSTER_PORT=${SB_CLUSTER_PORT:-6644}
 ENABLE_SSL=${ENABLE_SSL:-false}
 ENABLE_BIND_LOCAL_IP=${ENABLE_BIND_LOCAL_IP:-false}
 
+echo "ENABLE_SSL is set to $ENABLE_SSL"
+echo "ENABLE_BIND_LOCAL_IP is set to $ENABLE_BIND_LOCAL_IP"
+
 DB_ADDR=::
 DB_ADDRESSES=::
 if [[ $ENABLE_BIND_LOCAL_IP == "true" ]]; then
@@ -49,11 +52,9 @@ if [[ $ENABLE_BIND_LOCAL_IP == "true" ]]; then
 fi
 
 SSL_OPTIONS=
-function ssl_options() {
-    if "$ENABLE_SSL" != "false" ]; then
-        SSL_OPTIONS="-p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert"
-    fi
-}
+if [ "$ENABLE_SSL" != "false" ]; then
+    SSL_OPTIONS="-p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert"
+fi
 
 . /usr/share/openvswitch/scripts/ovs-lib || exit 1
 
@@ -138,7 +139,14 @@ function is_clustered {
 
 function set_nb_version_compatibility() {
     if [ -n "$OVN_VERSION_COMPATIBILITY" ]; then
-        if ! ovn-nbctl --db=$(gen_conn_str 6641) $SSL_OPTIONS get NB_Global . options | grep -qw version_compatibility=; then
+        if ! ovn-nbctl --db=$(gen_conn_str 6641) $SSL_OPTIONS get NB_Global . options | grep -q version_compatibility=; then
+            echo "setting ovn NB_Global option version_compatibility to ${OVN_VERSION_COMPATIBILITY}"
+            ovn-nbctl --db=$(gen_conn_str 6641) $SSL_OPTIONS set NB_Global . options:version_compatibility=${OVN_VERSION_COMPATIBILITY}
+            return
+        fi
+        value=`ovn-nbctl --db=$(gen_conn_str 6641) $SSL_OPTIONS get NB_Global . options:version_compatibility | sed -e 's/^"//' -e 's/"$//'`
+        echo "ovn nb global option version_compatibility is set to $value"
+        if [ "$value" != "_$OVN_VERSION_COMPATIBILITY" ]; then
             ovn-nbctl --db=$(gen_conn_str 6641) $SSL_OPTIONS set NB_Global . options:version_compatibility=${OVN_VERSION_COMPATIBILITY}
         fi
     fi
