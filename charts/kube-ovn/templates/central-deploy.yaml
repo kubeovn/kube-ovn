@@ -45,6 +45,7 @@ spec:
           image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           command: 
+          - bash
           - /kube-ovn/start-db.sh
           securityContext:
             runAsUser: 0
