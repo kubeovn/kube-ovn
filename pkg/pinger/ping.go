@@ -21,10 +21,14 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-func StartPinger(config *Configuration) {
+func StartPinger(config *Configuration, stopCh <-chan struct{}) {
 	errHappens := false
 	var exporter *Exporter
 	withMetrics := config.Mode == "server" && config.EnableMetrics
+	internval := time.Duration(config.Interval) * time.Second
+	timer := time.NewTimer(internval)
+	timer.Stop()
+LOOP:
 	for {
 		if config.NetworkMode == "kube-ovn" {
 			if checkOvs(config, withMetrics) != nil {
@@ -49,8 +53,15 @@ func StartPinger(config *Configuration) {
 		if config.Mode != "server" {
 			break
 		}
-		time.Sleep(time.Duration(config.Interval) * time.Second)
+
+		timer.Reset(internval)
+		select {
+		case <-stopCh:
+			break LOOP
+		case <-timer.C:
+		}
 	}
+	timer.Stop()
 	if errHappens && config.ExitCode != 0 {
 		os.Exit(config.ExitCode)
 	}

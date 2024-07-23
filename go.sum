@@ -2302,8 +2302,6 @@ k8s.io/pod-security-admission v0.30.3 h1:UDGZWR3ry/XrN/Ki/w7qrp49OwgQsKyh+6xWbex
 k8s.io/pod-security-admission v0.30.3/go.mod h1:T1EQSOLl9YyDMnXNJfsq2jeci6uoymY0mrRkkKihd98=
 k8s.io/sample-apiserver v0.30.3 h1:SGlc1FvY+5CGolD0Qn1iGuhbhBWMUru/kcjQ9ki2iEs=
 k8s.io/sample-apiserver v0.30.3/go.mod h1:P4g1Jw2lq2wtCiibqVX3KIRAfXtHpw6pOD/dzwmVG/w=
-k8s.io/sample-controller v0.30.3 h1:oZTxERF8U3gANT2H5VxpkW32asgmW0IYGyUv9Opspvs=
-k8s.io/sample-controller v0.30.3/go.mod h1:yhy/cWCzevQLa2+7Gvj0J9+xzmNExypunffSNANBy7o=
 k8s.io/utils v0.0.0-20230726121419-3b25d923346b/go.mod h1:OLgZIPagt7ERELqWJFomSt595RzquPNLL48iOWgYOg0=
 k8s.io/utils v0.0.0-20240711033017-18e509b52bc8 h1:pUdcCO1Lk/tbT5ztQWOBi5HBgbBP1J8+AsQnQCKsi8A=
 k8s.io/utils v0.0.0-20240711033017-18e509b52bc8/go.mod h1:OLgZIPagt7ERELqWJFomSt595RzquPNLL48iOWgYOg0=
