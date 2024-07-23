@@ -10,14 +10,19 @@
 {%- if ip_family is not defined -%}
   {%- set ip_family = "ipv4" -%}
 {%- endif -%}
-{%- if ha is not defined -%}
-  {%- set ha = "false" -%}
-{%- endif -%}
-{%- if ovn_ic is not defined -%}
-  {%- set ovn_ic = "false" -%}
+{%- if n_worker is not defined -%}
+  {%- set n_worker = 1 -%}
 {%- endif -%}
 {%- if single is not defined -%}
   {%- set single = "false" -%}
+{%- endif -%}
+{%- if ha is not defined -%}
+  {%- set ha = "false" -%}
+{%- endif -%}
+{%- if ha is equalto "true" -%}
+  {%- set n_worker = 2 -%}
+{%- elif single is equalto "true" -%}
+  {%- set n_worker = 0 -%}
 {%- endif -%}
 {%- if api_server_address is not defined -%}
   {%- set api_server_address = "127.0.0.1" -%}
@@ -43,11 +48,11 @@ networking:
   podSubnet: {{ pod_cidr_v4 }}
   serviceSubnet: {{ svc_cidr_v4 }}
 {%- elif ip_family is equalto "ipv6" %}
-  podSubnet: "fd00:10:16::/64"
-  serviceSubnet: "fd00:10:96::/112"
+  podSubnet: "fd00:10:16::/112"
+  serviceSubnet: "fd00:10:96::/108"
 {%- else %}
-  podSubnet: "10.16.0.0/16,fd00:10:16::/64"
-  serviceSubnet: "10.96.0.0/12,fd00:10:96::/112"
+  podSubnet: "10.16.0.0/16,fd00:10:16::/112"
+  serviceSubnet: "10.96.0.0/12,fd00:10:96::/108"
 {%- endif %}
 kubeadmConfigPatches:
   - |
@@ -109,26 +114,12 @@ nodes:
         protocol: TCP
   {%- endfor %}
 {%- endif %}
-{%- if single is equalto "false" %}
+{%- for i in range(n_worker | int) %}
   - role: worker
     image: kindest/node:{{ k8s_version }}
     labels:
       type: kind
   {%- if ha is equalto "true" %}
       kube-ovn/role: master
-  - role: worker
-    image: kindest/node:{{ k8s_version }}
-    labels:
-      type: kind
-      kube-ovn/role: master
-  {%- elif ovn_ic is equalto "true" %}
-  - role: worker
-    image: kindest/node:{{ k8s_version }}
-    labels:
-      type: kind
-  - role: worker
-    image: kindest/node:{{ k8s_version }}
-    labels:
-      type: kind
   {%- endif %}
-{%- endif %}
+{%- endfor %}
