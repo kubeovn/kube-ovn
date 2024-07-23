@@ -149,9 +149,6 @@ function set_nb_version_compatibility() {
         if [ "$value" != "_$OVN_VERSION_COMPATIBILITY" ]; then
             ovn-nbctl --db=$(gen_conn_str 6641) $SSL_OPTIONS set NB_Global . options:version_compatibility=${OVN_VERSION_COMPATIBILITY}
         fi
-    else
-        echo "OVN_VERSION_COMPATIBILITY is not set"
-        return 1
     fi
 }
 
