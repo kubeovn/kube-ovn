@@ -2,7 +2,7 @@ package ovn_ic_controller
 
 import (
 	"k8s.io/klog/v2"
-	"k8s.io/sample-controller/pkg/signals"
+	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovn_ic_controller"
 	"github.com/kubeovn/kube-ovn/pkg/util"
