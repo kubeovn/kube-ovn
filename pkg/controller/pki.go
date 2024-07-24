@@ -14,7 +14,7 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-func (c *Controller) InitOVNIPSecCA() error {
+func (c *Controller) InitDefaultOVNIPsecCA() error {
 	_, err := c.config.KubeClient.CoreV1().Secrets("kube-system").Get(context.TODO(), util.DefaultOVNIPSecCA, metav1.GetOptions{})
 	if err == nil {
 		klog.Infof("ovn ipsec CA secret already exists, skip")

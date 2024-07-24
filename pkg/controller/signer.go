@@ -11,7 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
-	mathrand "math/rand/v2"
+	mathrand "math/rand"
 	"time"
 
 	csrv1 "k8s.io/api/certificates/v1"
