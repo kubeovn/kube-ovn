@@ -141,7 +141,7 @@ func checkAndAppendIpsForDual(ips []IP, mac, podName, nicName string, subnet *Su
 		klog.Error(err)
 		return nil, err
 	}
-	return newIps, err
+	return newIps, nil
 }
 
 func (ipam *IPAM) ReleaseAddressByPod(podName, subnetName string) {
