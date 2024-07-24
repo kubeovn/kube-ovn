@@ -125,7 +125,8 @@ func (c *Controller) handleAddOrUpdateCsr(key string) (err error) {
 			Type:    csrv1.CertificateApproved,
 			Status:  "True",
 			Reason:  "AutoApproved",
-			Message: "Automatically approved by " + util.SignerName})
+			Message: "Automatically approved by " + util.SignerName,
+		})
 		// Update status to "Approved"
 		_, err = c.config.KubeClient.CertificatesV1().CertificateSigningRequests().UpdateApproval(context.TODO(), csr.Name, csr, metav1.UpdateOptions{})
 		if err != nil {
@@ -196,18 +197,19 @@ func (c *Controller) handleAddOrUpdateCsr(key string) (err error) {
 
 // Something has gone wrong with the signer controller so we update the statusmanager, the csr
 // and log.
-func (c *Controller) signerFailure(csr *csrv1.CertificateSigningRequest, reason string, message string) {
+func (c *Controller) signerFailure(csr *csrv1.CertificateSigningRequest, reason, message string) {
 	klog.Errorf("%s: %s", reason, message)
 	c.updateCSRStatusConditions(csr, reason, message)
 }
 
 // Update the status conditions on the CSR object
-func (c *Controller) updateCSRStatusConditions(csr *csrv1.CertificateSigningRequest, reason string, message string) error {
+func (c *Controller) updateCSRStatusConditions(csr *csrv1.CertificateSigningRequest, reason, message string) error {
 	csr.Status.Conditions = append(csr.Status.Conditions, csrv1.CertificateSigningRequestCondition{
 		Type:    csrv1.CertificateFailed,
 		Status:  "True",
 		Reason:  reason,
-		Message: message})
+		Message: message,
+	})
 
 	if err := c.updateCsrStatus(csr); err != nil {
 		return err
@@ -232,7 +234,7 @@ func isCertificateRequestApproved(csr *csrv1.CertificateSigningRequest) bool {
 	return approved && !denied
 }
 
-func getCertApprovalCondition(status *csrv1.CertificateSigningRequestStatus) (approved bool, denied bool) {
+func getCertApprovalCondition(status *csrv1.CertificateSigningRequestStatus) (approved, denied bool) {
 	for _, c := range status.Conditions {
 		if c.Type == csrv1.CertificateApproved {
 			approved = true

@@ -28,7 +28,6 @@ const (
 )
 
 func getOVSSystemID() (string, error) {
-
 	cmd := exec.Command("ovs-vsctl", "--retry", "-t", "60", "get", "Open_vSwitch", ".", "external-ids:system-id")
 	output, err := cmd.Output()
 	if err != nil {
@@ -105,11 +104,9 @@ func generateCSRCode() ([]byte, error) {
 	}
 
 	return csrBytes, nil
-
 }
 
 func (c *Controller) createCSR(csrBytes []byte) error {
-
 	csr := &v1.CertificateSigningRequest{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "certificates.k8s.io/v1",
@@ -164,7 +161,7 @@ func (c *Controller) createCSR(csrBytes []byte) error {
 	}
 
 	output := []byte(secret.Data["cacert"])
-	if err := os.WriteFile(ipsecCACertPath, output, 0644); err != nil {
+	if err := os.WriteFile(ipsecCACertPath, output, 0o644); err != nil {
 		return err
 	}
 
@@ -223,7 +220,7 @@ func clearCACertToIPSecDir() error {
 }
 
 func initIPSecKeysDir() error {
-	if err := os.MkdirAll(ipsecKeyDir, 0755); err != nil {
+	if err := os.MkdirAll(ipsecKeyDir, 0o755); err != nil {
 		return err
 	}
 	return nil
@@ -246,7 +243,6 @@ func clearIPSecKeysDir() error {
 }
 
 func (c *Controller) ManageIPSecKeys() error {
-
 	_, err := os.Stat(ipsecCertPath)
 	if os.IsNotExist(err) {
 		if err := c.CreateIPSecKeys(); err != nil {
@@ -280,7 +276,6 @@ func (c *Controller) ManageIPSecKeys() error {
 }
 
 func (c *Controller) CreateIPSecKeys() error {
-
 	err := initIPSecKeysDir()
 	if err != nil {
 		return err
@@ -311,7 +306,6 @@ func (c *Controller) CreateIPSecKeys() error {
 }
 
 func (c *Controller) RemoveIPSecKeys() error {
-
 	err := clearIPSecKeysDir()
 	if err != nil {
 		return err
