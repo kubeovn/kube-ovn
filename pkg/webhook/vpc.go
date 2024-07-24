@@ -2,7 +2,7 @@ package webhook
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"net/http"
 
 	ctrlwebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
@@ -24,7 +24,7 @@ func (v *ValidatingHook) VpcCreateHook(ctx context.Context, req admission.Reques
 	}
 	for _, item := range subnetList.Items {
 		if item.Name == vpc.Name {
-			err := fmt.Errorf("vpc and subnet cannot have the same name")
+			err := errors.New("vpc and subnet cannot have the same name")
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		}
 	}
@@ -55,8 +55,7 @@ func (v *ValidatingHook) VpcDeleteHook(_ context.Context, req admission.Request)
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 	if len(vpc.Status.Subnets) != 0 {
-		err := fmt.Errorf("can't delete vpc when any subnet in the vpc")
-		return ctrlwebhook.Denied(err.Error())
+		return ctrlwebhook.Denied("can't delete vpc when any subnet in the vpc")
 	}
 	return ctrlwebhook.Allowed("by pass")
 }

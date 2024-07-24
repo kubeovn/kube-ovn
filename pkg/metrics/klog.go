@@ -1,7 +1,9 @@
-package util
+package metrics
 
 import (
 	"time"
+
+	"sigs.k8s.io/controller-runtime/pkg/metrics"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -25,8 +27,8 @@ func InitKlogMetrics() {
 }
 
 func registerKlogMetrics() {
-	prometheus.MustRegister(klogLinesGaugeVec)
-	prometheus.MustRegister(klogBytesGaugeVec)
+	metrics.Registry.MustRegister(klogLinesGaugeVec)
+	metrics.Registry.MustRegister(klogBytesGaugeVec)
 }
 
 func fetchKlogMetrics() {

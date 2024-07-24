@@ -2,6 +2,7 @@ package ovs
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -146,7 +147,7 @@ func (m AndACLMatch) Match() (string, error) {
 	for _, r := range m.matches {
 		match, err := r.Match()
 		if err != nil {
-			return "", fmt.Errorf("generate match %s: %v", match, err)
+			return "", fmt.Errorf("generate match %s: %w", match, err)
 		}
 		matches = append(matches, match)
 	}
@@ -175,7 +176,7 @@ func (m OrACLMatch) Match() (string, error) {
 	for _, specification := range m.matches {
 		match, err := specification.Match()
 		if err != nil {
-			return "", fmt.Errorf("generate match %s: %v", match, err)
+			return "", fmt.Errorf("generate match %s: %w", match, err)
 		}
 
 		// has more then one rule
@@ -219,7 +220,7 @@ func NewACLMatch(key, effect, value, maxValue string) ACLMatch {
 func (m aclMatch) Match() (string, error) {
 	// key must exist at least
 	if len(m.key) == 0 {
-		return "", fmt.Errorf("acl rule key is required")
+		return "", errors.New("acl rule key is required")
 	}
 
 	// like 'ip'
@@ -262,7 +263,7 @@ func (l *Limiter) Wait(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			return fmt.Errorf("context canceled by timeout")
+			return errors.New("context canceled by timeout")
 		default:
 			if l.limit == 0 {
 				atomic.AddInt32(&l.current, 1)

@@ -20,6 +20,7 @@ import (
 	ovsdb "github.com/ovn-org/libovsdb/ovsdb"
 	gomock "go.uber.org/mock/gomock"
 	v10 "k8s.io/api/networking/v1"
+	v1alpha1 "sigs.k8s.io/network-policy-api/apis/v1alpha1"
 )
 
 // MockNBGlobal is a mock of NBGlobal interface.
@@ -1001,6 +1002,20 @@ func (mr *MockLogicalSwitchPortMockRecorder) ResetLogicalSwitchPortMigrateOption
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResetLogicalSwitchPortMigrateOptions", reflect.TypeOf((*MockLogicalSwitchPort)(nil).ResetLogicalSwitchPortMigrateOptions), lspName, srcNodeName, targetNodeName, migratedFail)
 }
 
+// SetLogicalSwitchPortActivationStrategy mocks base method.
+func (m *MockLogicalSwitchPort) SetLogicalSwitchPortActivationStrategy(lspName, chassis string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetLogicalSwitchPortActivationStrategy", lspName, chassis)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetLogicalSwitchPortActivationStrategy indicates an expected call of SetLogicalSwitchPortActivationStrategy.
+func (mr *MockLogicalSwitchPortMockRecorder) SetLogicalSwitchPortActivationStrategy(lspName, chassis any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLogicalSwitchPortActivationStrategy", reflect.TypeOf((*MockLogicalSwitchPort)(nil).SetLogicalSwitchPortActivationStrategy), lspName, chassis)
+}
+
 // SetLogicalSwitchPortArpProxy mocks base method.
 func (m *MockLogicalSwitchPort) SetLogicalSwitchPortArpProxy(lspName string, enableArpProxy bool) error {
 	m.ctrl.T.Helper()
@@ -1753,6 +1768,21 @@ func (m *MockACL) SetLogicalSwitchPrivate(lsName, cidrBlock, nodeSwitchCIDR stri
 func (mr *MockACLMockRecorder) SetLogicalSwitchPrivate(lsName, cidrBlock, nodeSwitchCIDR, allowSubnets any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLogicalSwitchPrivate", reflect.TypeOf((*MockACL)(nil).SetLogicalSwitchPrivate), lsName, cidrBlock, nodeSwitchCIDR, allowSubnets)
+}
+
+// UpdateAnpRuleACLOps mocks base method.
+func (m *MockACL) UpdateAnpRuleACLOps(pgName, asName, protocol string, priority int, aclAction ovnnb.ACLAction, rulePorts []v1alpha1.AdminNetworkPolicyPort, isIngress, isBanp bool) ([]ovsdb.Operation, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateAnpRuleACLOps", pgName, asName, protocol, priority, aclAction, rulePorts, isIngress, isBanp)
+	ret0, _ := ret[0].([]ovsdb.Operation)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UpdateAnpRuleACLOps indicates an expected call of UpdateAnpRuleACLOps.
+func (mr *MockACLMockRecorder) UpdateAnpRuleACLOps(pgName, asName, protocol, priority, aclAction, rulePorts, isIngress, isBanp any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateAnpRuleACLOps", reflect.TypeOf((*MockACL)(nil).UpdateAnpRuleACLOps), pgName, asName, protocol, priority, aclAction, rulePorts, isIngress, isBanp)
 }
 
 // UpdateEgressACLOps mocks base method.
@@ -4158,6 +4188,20 @@ func (mr *MockNbClientMockRecorder) SetLoadBalancerAffinityTimeout(lbName, timeo
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLoadBalancerAffinityTimeout", reflect.TypeOf((*MockNbClient)(nil).SetLoadBalancerAffinityTimeout), lbName, timeout)
 }
 
+// SetLogicalSwitchPortActivationStrategy mocks base method.
+func (m *MockNbClient) SetLogicalSwitchPortActivationStrategy(lspName, chassis string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetLogicalSwitchPortActivationStrategy", lspName, chassis)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetLogicalSwitchPortActivationStrategy indicates an expected call of SetLogicalSwitchPortActivationStrategy.
+func (mr *MockNbClientMockRecorder) SetLogicalSwitchPortActivationStrategy(lspName, chassis any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLogicalSwitchPortActivationStrategy", reflect.TypeOf((*MockNbClient)(nil).SetLogicalSwitchPortActivationStrategy), lspName, chassis)
+}
+
 // SetLogicalSwitchPortArpProxy mocks base method.
 func (m *MockNbClient) SetLogicalSwitchPortArpProxy(lspName string, enableArpProxy bool) error {
 	m.ctrl.T.Helper()
@@ -4357,6 +4401,21 @@ func (m *MockNbClient) Transact(method string, operations []ovsdb.Operation) err
 func (mr *MockNbClientMockRecorder) Transact(method, operations any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Transact", reflect.TypeOf((*MockNbClient)(nil).Transact), method, operations)
+}
+
+// UpdateAnpRuleACLOps mocks base method.
+func (m *MockNbClient) UpdateAnpRuleACLOps(pgName, asName, protocol string, priority int, aclAction ovnnb.ACLAction, rulePorts []v1alpha1.AdminNetworkPolicyPort, isIngress, isBanp bool) ([]ovsdb.Operation, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateAnpRuleACLOps", pgName, asName, protocol, priority, aclAction, rulePorts, isIngress, isBanp)
+	ret0, _ := ret[0].([]ovsdb.Operation)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UpdateAnpRuleACLOps indicates an expected call of UpdateAnpRuleACLOps.
+func (mr *MockNbClientMockRecorder) UpdateAnpRuleACLOps(pgName, asName, protocol, priority, aclAction, rulePorts, isIngress, isBanp any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateAnpRuleACLOps", reflect.TypeOf((*MockNbClient)(nil).UpdateAnpRuleACLOps), pgName, asName, protocol, priority, aclAction, rulePorts, isIngress, isBanp)
 }
 
 // UpdateBFD mocks base method.

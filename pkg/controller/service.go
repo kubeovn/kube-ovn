@@ -60,7 +60,6 @@ func (c *Controller) enqueueDeleteService(obj interface{}) {
 
 	vip, ok := svc.Annotations[util.SwitchLBRuleVipsAnnotation]
 	if ok || svc.Spec.ClusterIP != v1.ClusterIPNone && svc.Spec.ClusterIP != "" {
-
 		if c.config.EnableNP {
 			var netpols []string
 			var err error
@@ -234,7 +233,7 @@ func (c *Controller) handleDeleteService(service *vpcService) error {
 	key, err := cache.MetaNamespaceKeyFunc(service.Svc)
 	if err != nil {
 		klog.Error(err)
-		utilruntime.HandleError(fmt.Errorf("failed to get meta namespace key of %#v: %v", service.Svc, err))
+		utilruntime.HandleError(fmt.Errorf("failed to get meta namespace key of %#v: %w", service.Svc, err))
 		return nil
 	}
 

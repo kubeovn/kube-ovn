@@ -6,38 +6,40 @@ const (
 	DepreciatedFinalizerName   = "kube-ovn-controller"
 	KubeOVNControllerFinalizer = "kubeovn.io/kube-ovn-controller"
 
-	AllocatedAnnotation  = "ovn.kubernetes.io/allocated"
-	RoutedAnnotation     = "ovn.kubernetes.io/routed"
-	RoutesAnnotation     = "ovn.kubernetes.io/routes"
-	MacAddressAnnotation = "ovn.kubernetes.io/mac_address"
-	IPAddressAnnotation  = "ovn.kubernetes.io/ip_address"
-	CidrAnnotation       = "ovn.kubernetes.io/cidr"
-	GatewayAnnotation    = "ovn.kubernetes.io/gateway"
-	IPPoolAnnotation     = "ovn.kubernetes.io/ip_pool"
-	BgpAnnotation        = "ovn.kubernetes.io/bgp"
-	SnatAnnotation       = "ovn.kubernetes.io/snat"
-	EipAnnotation        = "ovn.kubernetes.io/eip"
-	FipFinalizer         = "ovn.kubernetes.io/fip"
-	VipAnnotation        = "ovn.kubernetes.io/vip"
-	AAPsAnnotation       = "ovn.kubernetes.io/aaps"
-	ChassisAnnotation    = "ovn.kubernetes.io/chassis"
-	VMAnnotation         = "ovn.kubernetes.io/virtualmachine"
+	AllocatedAnnotation          = "ovn.kubernetes.io/allocated"
+	RoutedAnnotation             = "ovn.kubernetes.io/routed"
+	RoutesAnnotation             = "ovn.kubernetes.io/routes"
+	MacAddressAnnotation         = "ovn.kubernetes.io/mac_address"
+	IPAddressAnnotation          = "ovn.kubernetes.io/ip_address"
+	CidrAnnotation               = "ovn.kubernetes.io/cidr"
+	GatewayAnnotation            = "ovn.kubernetes.io/gateway"
+	IPPoolAnnotation             = "ovn.kubernetes.io/ip_pool"
+	BgpAnnotation                = "ovn.kubernetes.io/bgp"
+	SnatAnnotation               = "ovn.kubernetes.io/snat"
+	EipAnnotation                = "ovn.kubernetes.io/eip"
+	FipFinalizer                 = "ovn.kubernetes.io/fip"
+	VipAnnotation                = "ovn.kubernetes.io/vip"
+	AAPsAnnotation               = "ovn.kubernetes.io/aaps"
+	ChassisAnnotation            = "ovn.kubernetes.io/chassis"
+	VMAnnotation                 = "ovn.kubernetes.io/virtualmachine"
+	ActivationStrategyAnnotation = "ovn.kubernetes.io/activation_strategy"
 
-	VpcNatGatewayAnnotation     = "ovn.kubernetes.io/vpc_nat_gw"
-	VpcNatGatewayInitAnnotation = "ovn.kubernetes.io/vpc_nat_gw_init"
-	VpcEipsAnnotation           = "ovn.kubernetes.io/vpc_eips"
-	VpcFloatingIPMd5Annotation  = "ovn.kubernetes.io/vpc_floating_ips"
-	VpcDnatMd5Annotation        = "ovn.kubernetes.io/vpc_dnat_md5"
-	VpcSnatMd5Annotation        = "ovn.kubernetes.io/vpc_snat_md5"
-	VpcCIDRsAnnotation          = "ovn.kubernetes.io/vpc_cidrs"
-	VpcLbAnnotation             = "ovn.kubernetes.io/vpc_lb"
-	VpcExternalLabel            = "ovn.kubernetes.io/vpc_external"
-	VpcEipAnnotation            = "ovn.kubernetes.io/vpc_eip"
-	VpcDnatEPortLabel           = "ovn.kubernetes.io/vpc_dnat_eport"
-	VpcNatAnnotation            = "ovn.kubernetes.io/vpc_nat"
-	OvnEipTypeLabel             = "ovn.kubernetes.io/ovn_eip_type"
-	EipV4IpLabel                = "ovn.kubernetes.io/eip_v4_ip"
-	EipV6IpLabel                = "ovn.kubernetes.io/eip_v6_ip"
+	VpcNatGatewayAnnotation          = "ovn.kubernetes.io/vpc_nat_gw"
+	VpcNatGatewayInitAnnotation      = "ovn.kubernetes.io/vpc_nat_gw_init"
+	VpcNatGatewayActivatedAnnotation = "ovn.kubernetes.io/vpc_nat_gw_activated"
+	VpcEipsAnnotation                = "ovn.kubernetes.io/vpc_eips"
+	VpcFloatingIPMd5Annotation       = "ovn.kubernetes.io/vpc_floating_ips"
+	VpcDnatMd5Annotation             = "ovn.kubernetes.io/vpc_dnat_md5"
+	VpcSnatMd5Annotation             = "ovn.kubernetes.io/vpc_snat_md5"
+	VpcCIDRsAnnotation               = "ovn.kubernetes.io/vpc_cidrs"
+	VpcLbAnnotation                  = "ovn.kubernetes.io/vpc_lb"
+	VpcExternalLabel                 = "ovn.kubernetes.io/vpc_external"
+	VpcEipAnnotation                 = "ovn.kubernetes.io/vpc_eip"
+	VpcDnatEPortLabel                = "ovn.kubernetes.io/vpc_dnat_eport"
+	VpcNatAnnotation                 = "ovn.kubernetes.io/vpc_nat"
+	OvnEipTypeLabel                  = "ovn.kubernetes.io/ovn_eip_type"
+	EipV4IpLabel                     = "ovn.kubernetes.io/eip_v4_ip"
+	EipV6IpLabel                     = "ovn.kubernetes.io/eip_v6_ip"
 
 	SwitchLBRuleVipsAnnotation = "ovn.kubernetes.io/switch_lb_vip"
 	SwitchLBRuleVip            = "switch_lb_vip"
@@ -70,6 +72,7 @@ const (
 	DefaultRouteAnnotationTemplate  = "%s.kubernetes.io/default_route"
 	VfRepresentorNameTemplate       = "%s.kubernetes.io/vf_representor"
 	VfNameTemplate                  = "%s.kubernetes.io/vf"
+	ActivationStrategyTemplate      = "%s.kubernetes.io/activation_strategy"
 
 	ProviderNetworkTemplate           = "%s.kubernetes.io/provider_network"
 	ProviderNetworkErrMessageTemplate = "%s.provider-network.kubernetes.io/err_mesg"
@@ -147,9 +150,15 @@ const (
 	DefaultDropPriority = "1000"
 
 	GwChassisMaxPriority = 100
+	AnpMaxRules          = 100
+	AnpMaxPriority       = 99
+	AnpACLMaxPriority    = 30000
+	BanpACLMaxPriority   = 1800
+	AnpACLTier           = 1
+	NetpolACLTier        = 2
+	BanpACLTier          = 3
 
-	DefaultMTU = 1500
-
+	DefaultMTU         = 1500
 	GeneveHeaderLength = 100
 	VxlanHeaderLength  = 50
 	SttHeaderLength    = 72
@@ -193,12 +202,13 @@ const (
 	OvnFip      = "ovn"
 	IptablesFip = "iptables"
 
-	U2OSubnetPolicyPriority     = 29400
-	GatewayRouterPolicyPriority = 29000
-	OvnICPolicyPriority         = 29500
-	NodeRouterPolicyPriority    = 30000
-	NodeLocalDNSPolicyPriority  = 30100
-	SubnetRouterPolicyPriority  = 31000
+	U2OSubnetPolicyPriority         = 29400
+	GatewayRouterPolicyPriority     = 29000
+	NorthGatewayRoutePolicyPriority = 29250
+	OvnICPolicyPriority             = 29500
+	NodeRouterPolicyPriority        = 30000
+	NodeLocalDNSPolicyPriority      = 30100
+	SubnetRouterPolicyPriority      = 31000
 
 	OffloadType  = "offload-port"
 	InternalType = "internal-port"

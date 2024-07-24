@@ -2,6 +2,7 @@ package webhook
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -320,8 +321,7 @@ func (v *ValidatingHook) iptablesFipUpdateHook(ctx context.Context, req admissio
 
 func (v *ValidatingHook) ValidateVpcNatGW(ctx context.Context, gw *ovnv1.VpcNatGateway) error {
 	if gw.Spec.Vpc == "" {
-		err := fmt.Errorf("parameter \"vpc\" cannot be empty")
-		return err
+		return errors.New("parameter \"vpc\" cannot be empty")
 	}
 	vpc := &ovnv1.Vpc{}
 	key := types.NamespacedName{Name: gw.Spec.Vpc}
@@ -330,8 +330,7 @@ func (v *ValidatingHook) ValidateVpcNatGW(ctx context.Context, gw *ovnv1.VpcNatG
 	}
 
 	if gw.Spec.Subnet == "" {
-		err := fmt.Errorf("parameter \"subnet\" cannot be empty")
-		return err
+		return errors.New("parameter \"subnet\" cannot be empty")
 	}
 
 	subnet := &ovnv1.Subnet{}
@@ -354,14 +353,14 @@ func (v *ValidatingHook) ValidateVpcNatGW(ctx context.Context, gw *ovnv1.VpcNatG
 	for _, t := range gw.Spec.Tolerations {
 		if t.Operator != corev1.TolerationOpExists &&
 			t.Operator != corev1.TolerationOpEqual {
-			err := fmt.Errorf("invaild taint operator: %s, supported params: \"Equal\", \"Exists\"", t.Operator)
+			err := fmt.Errorf("invalid taint operator: %s, supported params: \"Equal\", \"Exists\"", t.Operator)
 			return err
 		}
 
 		if t.Effect != corev1.TaintEffectNoSchedule &&
 			t.Effect != corev1.TaintEffectNoExecute &&
 			t.Effect != corev1.TaintEffectPreferNoSchedule {
-			err := fmt.Errorf("invaild taint effect: %s, supported params: \"NoSchedule\", \"PreferNoSchedule\", \"NoExecute\"", t.Effect)
+			err := fmt.Errorf("invalid taint effect: %s, supported params: \"NoSchedule\", \"PreferNoSchedule\", \"NoExecute\"", t.Effect)
 			return err
 		}
 	}
@@ -397,8 +396,7 @@ func (v *ValidatingHook) ValidateVpcNatGatewayConfig(ctx context.Context) error 
 
 func (v *ValidatingHook) ValidateIptablesEIP(ctx context.Context, eip *ovnv1.IptablesEIP) error {
 	if eip.Spec.NatGwDp == "" {
-		err := fmt.Errorf("parameter \"natGwDp\" cannot be empty")
-		return err
+		return errors.New("parameter \"natGwDp\" cannot be empty")
 	}
 
 	subnet := &ovnv1.Subnet{}
@@ -410,8 +408,7 @@ func (v *ValidatingHook) ValidateIptablesEIP(ctx context.Context, eip *ovnv1.Ipt
 
 	if eip.Spec.V4ip != "" {
 		if net.ParseIP(eip.Spec.V4ip) == nil {
-			err := fmt.Errorf("v4ip %s is not a valid", eip.Spec.V4ip)
-			return err
+			return fmt.Errorf("v4ip %s is not a valid", eip.Spec.V4ip)
 		}
 
 		if !util.CIDRContainIP(subnet.Spec.CIDRBlock, eip.Spec.V4ip) {
@@ -439,8 +436,7 @@ func (v *ValidatingHook) ValidateIptablesEIP(ctx context.Context, eip *ovnv1.Ipt
 
 func (v *ValidatingHook) ValidateIptablesDnat(ctx context.Context, dnat *ovnv1.IptablesDnatRule) error {
 	if dnat.Spec.EIP == "" {
-		err := fmt.Errorf("parameter \"eip\" cannot be empty")
-		return err
+		return errors.New("parameter \"eip\" cannot be empty")
 	}
 	eip := &ovnv1.IptablesEIP{}
 	key := types.NamespacedName{Name: dnat.Spec.EIP}
@@ -449,17 +445,15 @@ func (v *ValidatingHook) ValidateIptablesDnat(ctx context.Context, dnat *ovnv1.I
 	}
 
 	if dnat.Spec.ExternalPort == "" {
-		err := fmt.Errorf("parameter \"externalPort\" cannot be empty")
-		return err
+		return errors.New("parameter \"externalPort\" cannot be empty")
 	}
 
 	if dnat.Spec.InternalPort == "" {
-		err := fmt.Errorf("parameter \"internalPort\" cannot be empty")
-		return err
+		return errors.New("parameter \"internalPort\" cannot be empty")
 	}
 
 	if port, err := strconv.Atoi(dnat.Spec.ExternalPort); err != nil {
-		errMsg := fmt.Errorf("failed to parse externalPort %s: %v", dnat.Spec.ExternalPort, err)
+		errMsg := fmt.Errorf("failed to parse externalPort %s: %w", dnat.Spec.ExternalPort, err)
 		return errMsg
 	} else if port < 0 || port > 65535 {
 		err := fmt.Errorf("externalPort %s is not a valid port", dnat.Spec.ExternalPort)
@@ -467,7 +461,7 @@ func (v *ValidatingHook) ValidateIptablesDnat(ctx context.Context, dnat *ovnv1.I
 	}
 
 	if port, err := strconv.Atoi(dnat.Spec.InternalPort); err != nil {
-		errMsg := fmt.Errorf("failed to parse internalIP %s: %v", dnat.Spec.InternalPort, err)
+		errMsg := fmt.Errorf("failed to parse internalIP %s: %w", dnat.Spec.InternalPort, err)
 		return errMsg
 	} else if port < 0 || port > 65535 {
 		err := fmt.Errorf("internalIP %s is not a valid port", dnat.Spec.InternalPort)
@@ -481,7 +475,7 @@ func (v *ValidatingHook) ValidateIptablesDnat(ctx context.Context, dnat *ovnv1.I
 
 	if !strings.EqualFold(dnat.Spec.Protocol, "tcp") &&
 		!strings.EqualFold(dnat.Spec.Protocol, "udp") {
-		err := fmt.Errorf("invaild iptable protocol: %s,supported params: \"tcp\", \"udp\"", dnat.Spec.Protocol)
+		err := fmt.Errorf("invalid iptable protocol: %s,supported params: \"tcp\", \"udp\"", dnat.Spec.Protocol)
 		return err
 	}
 
@@ -490,8 +484,7 @@ func (v *ValidatingHook) ValidateIptablesDnat(ctx context.Context, dnat *ovnv1.I
 
 func (v *ValidatingHook) ValidateIptablesSnat(ctx context.Context, snat *ovnv1.IptablesSnatRule) error {
 	if snat.Spec.EIP == "" {
-		err := fmt.Errorf("parameter \"eip\" cannot be empty")
-		return err
+		return errors.New("parameter \"eip\" cannot be empty")
 	}
 	eip := &ovnv1.IptablesEIP{}
 	key := types.NamespacedName{Name: snat.Spec.EIP}
@@ -508,7 +501,7 @@ func (v *ValidatingHook) ValidateIptablesSnat(ctx context.Context, snat *ovnv1.I
 
 func (v *ValidatingHook) ValidateIptablesFip(ctx context.Context, fip *ovnv1.IptablesFIPRule) error {
 	if fip.Spec.EIP == "" {
-		err := fmt.Errorf("parameter \"eip\" cannot be empty")
+		err := errors.New("parameter \"eip\" cannot be empty")
 		return err
 	}
 	eip := &ovnv1.IptablesEIP{}

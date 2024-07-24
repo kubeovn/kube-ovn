@@ -73,7 +73,7 @@ func Exec(args ...string) (string, error) {
 	if err != nil {
 		code = "1"
 		klog.Warningf("ovs-vsctl command error: %s %s in %vms", OvsVsCtl, strings.Join(args, " "), elapsed)
-		return "", fmt.Errorf("failed to run '%s %s': %v\n  %q", OvsVsCtl, strings.Join(args, " "), err, output)
+		return "", fmt.Errorf("failed to run '%s %s': %w\n  %q", OvsVsCtl, strings.Join(args, " "), err, output)
 	} else if elapsed > 500 {
 		klog.Warningf("ovs-vsctl command took too long: %s %s in %vms", OvsVsCtl, strings.Join(args, " "), elapsed)
 	}
@@ -332,7 +332,7 @@ func ConfigInterfaceMirror(globalMirror bool, open, iface string) error {
 			return err
 		}
 		if len(portUUIDs) != 1 {
-			return fmt.Errorf(fmt.Sprintf("find port failed, portName=%s", ifName))
+			return fmt.Errorf("find port failed, portName=%s", ifName)
 		}
 		portID := portUUIDs[0]
 		if open == "true" {
@@ -349,10 +349,10 @@ func ConfigInterfaceMirror(globalMirror bool, open, iface string) error {
 				return err
 			}
 			if len(mirrorPorts) == 0 {
-				return fmt.Errorf("find mirror failed, mirror name=" + util.MirrorDefaultName)
+				return fmt.Errorf("find mirror failed, mirror name=%s", util.MirrorDefaultName)
 			}
 			if len(mirrorPorts) > 1 {
-				return fmt.Errorf("repeated mirror data, mirror name=" + util.MirrorDefaultName)
+				return fmt.Errorf("repeated mirror data, mirror name=%s", util.MirrorDefaultName)
 			}
 			for _, mirrorPortIDs := range mirrorPorts {
 				if strings.Contains(mirrorPortIDs, portID) {

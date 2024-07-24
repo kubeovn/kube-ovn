@@ -244,7 +244,7 @@ func (c *Controller) processNextDeleteProviderNetworkWorkItem() bool {
 			return nil
 		}
 		if err := c.handleDeleteProviderNetwork(pn); err != nil {
-			return fmt.Errorf("error syncing '%s': %v, requeuing", pn.Name, err)
+			return fmt.Errorf("error syncing '%s': %w, requeuing", pn.Name, err)
 		}
 		c.deleteProviderNetworkQueue.Forget(obj)
 		return nil
@@ -590,7 +590,7 @@ func (c *Controller) markAndCleanInternalPort() error {
 			// Remove ovs port
 			output, err := ovs.Exec(ovs.IfExists, "--with-iface", "del-port", "br-int", portName)
 			if err != nil {
-				return fmt.Errorf("failed to delete ovs port %v, %q", err, output)
+				return fmt.Errorf("failed to delete ovs port %w, %q", err, output)
 			}
 		}
 	}

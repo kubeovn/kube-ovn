@@ -1,13 +1,12 @@
 package pinger
 
 import (
-	"net/http"
 	_ "net/http/pprof" // #nosec
-	"time"
 
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"k8s.io/klog/v2"
+	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
 
+	"github.com/kubeovn/kube-ovn/pkg/metrics"
 	"github.com/kubeovn/kube-ovn/pkg/pinger"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/versions"
@@ -21,22 +20,17 @@ func CmdMain() {
 	if err != nil {
 		util.LogFatalAndExit(err, "failed to parse config")
 	}
+
+	ctx := signals.SetupSignalHandler()
 	if config.Mode == "server" {
 		if config.EnableMetrics {
-			pinger.InitPingerMetrics()
-			util.InitKlogMetrics()
-
-			mux := http.NewServeMux()
-			mux.Handle("/metrics", promhttp.Handler())
 			go func() {
-				// conform to Gosec G114
-				// https://github.com/securego/gosec#available-rules
-				server := &http.Server{
-					Addr:              util.JoinHostPort("0.0.0.0", config.Port),
-					ReadHeaderTimeout: 3 * time.Second,
-					Handler:           mux,
+				pinger.InitPingerMetrics()
+				metrics.InitKlogMetrics()
+				if err := metrics.Run(ctx, nil, util.JoinHostPort("0.0.0.0", config.Port), false); err != nil {
+					util.LogFatalAndExit(err, "failed to run metrics server")
 				}
-				util.LogFatalAndExit(server.ListenAndServe(), "failed to listen and serve on %s", server.Addr)
+				<-ctx.Done()
 			}()
 		}
 
@@ -52,5 +46,5 @@ func CmdMain() {
 			}
 		}
 	}
-	pinger.StartPinger(config)
+	pinger.StartPinger(config, ctx.Done())
 }

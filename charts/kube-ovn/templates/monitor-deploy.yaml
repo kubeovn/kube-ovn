@@ -44,6 +44,7 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           command: ["/kube-ovn/start-ovn-monitor.sh"]
           args:
+          - --secure-serving={{- .Values.func.SECURE_SERVING }}
           - --log_file=/var/log/kube-ovn/kube-ovn-monitor.log
           - --logtostderr=false
           - --alsologtostderr=true
@@ -58,6 +59,18 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
             - name: POD_IPS
               valueFrom:
                 fieldRef:

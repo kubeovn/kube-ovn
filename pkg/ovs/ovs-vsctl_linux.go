@@ -71,7 +71,7 @@ func SetInterfaceBandwidth(podName, podNamespace, iface, ingress, egress string)
 				}
 
 				if _, err := Exec("remove", "queue", queueID, "other_config", "max-rate"); err != nil {
-					return fmt.Errorf("failed to remove rate limit for queue in pod %v/%v, %v", podNamespace, podName, err)
+					return fmt.Errorf("failed to remove rate limit for queue in pod %v/%v, %w", podNamespace, podName, err)
 				}
 			}
 		}

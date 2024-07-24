@@ -142,7 +142,7 @@ func (c *Controller) handleAddOrUpdateVPCDNS(key string) error {
 	if !enableCoredns {
 		time.Sleep(10 * time.Second)
 		if !enableCoredns {
-			return fmt.Errorf("failed to add or update vpc-dns, not enabled")
+			return errors.New("failed to add or update vpc-dns, not enabled")
 		}
 	}
 
@@ -163,55 +163,55 @@ func (c *Controller) handleAddOrUpdateVPCDNS(key string) error {
 
 		if _, err = c.config.KubeOvnClient.KubeovnV1().VpcDnses().UpdateStatus(context.Background(),
 			newVPCDNS, metav1.UpdateOptions{}); err != nil {
-			err := fmt.Errorf("failed to update vpc dns status, %v", err)
+			err := fmt.Errorf("failed to update vpc dns status, %w", err)
 			klog.Error(err)
 		}
 	}()
 
 	if len(corednsImage) == 0 {
-		err := fmt.Errorf("vpc-dns coredns image should be set")
+		err := errors.New("vpc-dns coredns image should be set")
 		klog.Error(err)
 		return err
 	}
 
 	if len(corednsVip) == 0 {
-		err := fmt.Errorf("vpc-dns corednsVip should be set")
+		err := errors.New("vpc-dns corednsVip should be set")
 		klog.Error(err)
 		return err
 	}
 
 	if _, err := c.vpcsLister.Get(vpcDNS.Spec.Vpc); err != nil {
-		err := fmt.Errorf("failed to get vpc '%s', err: %v", vpcDNS.Spec.Vpc, err)
+		err := fmt.Errorf("failed to get vpc '%s', err: %w", vpcDNS.Spec.Vpc, err)
 		klog.Error(err)
 		return err
 	}
 
 	if _, err := c.subnetsLister.Get(vpcDNS.Spec.Subnet); err != nil {
-		err := fmt.Errorf("failed to get subnet '%s', err: %v", vpcDNS.Spec.Subnet, err)
+		err := fmt.Errorf("failed to get subnet '%s', err: %w", vpcDNS.Spec.Subnet, err)
 		klog.Error(err)
 		return err
 	}
 
 	if err := c.checkOvnNad(); err != nil {
-		err := fmt.Errorf("failed to check nad, %v", err)
+		err := fmt.Errorf("failed to check nad, %w", err)
 		klog.Error(err)
 		return err
 	}
 
 	if err := c.checkVpcDNSDuplicated(vpcDNS); err != nil {
-		err = fmt.Errorf("failed to deploy %s, %v", vpcDNS.Name, err)
+		err = fmt.Errorf("failed to deploy %s, %w", vpcDNS.Name, err)
 		klog.Error(err)
 		return err
 	}
 
 	if err := c.createOrUpdateVpcDNSDep(vpcDNS); err != nil {
-		err = fmt.Errorf("failed to create or update vpc dns %s, %v", vpcDNS.Name, err)
+		err = fmt.Errorf("failed to create or update vpc dns %s, %w", vpcDNS.Name, err)
 		klog.Error(err)
 		return err
 	}
 
 	if err := c.createOrUpdateVpcDNSSlr(vpcDNS); err != nil {
-		err = fmt.Errorf("failed to create or update slr for vpc dns %s, %v", vpcDNS.Name, err)
+		err = fmt.Errorf("failed to create or update slr for vpc dns %s, %w", vpcDNS.Name, err)
 		klog.Error(err)
 		return err
 	}
@@ -224,14 +224,14 @@ func (c *Controller) handleDelVpcDNS(key string) error {
 	name := genVpcDNSDpName(key)
 	err := c.config.KubeClient.AppsV1().Deployments(c.config.PodNamespace).Delete(context.Background(), name, metav1.DeleteOptions{})
 	if err != nil && !k8serrors.IsNotFound(err) {
-		err := fmt.Errorf("failed to delete vpc dns deployment: %v", err)
+		err := fmt.Errorf("failed to delete vpc dns deployment: %w", err)
 		klog.Error(err)
 		return err
 	}
 
 	err = c.config.KubeOvnClient.KubeovnV1().SwitchLBRules().Delete(context.Background(), name, metav1.DeleteOptions{})
 	if err != nil && !k8serrors.IsNotFound(err) {
-		err := fmt.Errorf("failed to delete switch lb rule: %v", err)
+		err := fmt.Errorf("failed to delete switch lb rule: %w", err)
 		klog.Error(err)
 		return err
 	}
@@ -251,7 +251,7 @@ func (c *Controller) checkVpcDNSDuplicated(vpcDNS *kubeovnv1.VpcDns) error {
 		if item.Status.Active &&
 			item.Name != vpcDNS.Name &&
 			item.Spec.Vpc == vpcDNS.Spec.Vpc {
-			err = fmt.Errorf("only one vpc-dns can be deployed in a vpc")
+			err = errors.New("only one vpc-dns can be deployed in a vpc")
 			return err
 		}
 	}
@@ -582,7 +582,7 @@ func (c *Controller) getDefaultCoreDNSImage() (string, error) {
 		}
 	}
 
-	return "", fmt.Errorf("coredns container no found")
+	return "", errors.New("coredns container no found")
 }
 
 func (c *Controller) initVpcDNSConfig() error {

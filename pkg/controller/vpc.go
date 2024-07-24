@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"reflect"
@@ -348,27 +349,27 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		}
 		gatewayV4, gatewayV6 := util.SplitStringIP(joinSubnet.Spec.Gateway)
 		if gatewayV4 != "" {
-			for tabele := range staticRouteMapping {
+			for table := range staticRouteMapping {
 				staticTargetRoutes = append(
 					staticTargetRoutes,
 					&kubeovnv1.StaticRoute{
 						Policy:     kubeovnv1.PolicyDst,
 						CIDR:       "0.0.0.0/0",
 						NextHopIP:  gatewayV4,
-						RouteTable: tabele,
+						RouteTable: table,
 					},
 				)
 			}
 		}
 		if gatewayV6 != "" {
-			for tabele := range staticRouteMapping {
+			for table := range staticRouteMapping {
 				staticTargetRoutes = append(
 					staticTargetRoutes,
 					&kubeovnv1.StaticRoute{
 						Policy:     kubeovnv1.PolicyDst,
 						CIDR:       "::/0",
 						NextHopIP:  gatewayV6,
-						RouteTable: tabele,
+						RouteTable: table,
 					},
 				)
 			}
@@ -386,7 +387,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 					nextHop = externalSubnet.Spec.Gateway
 					if nextHop == "" {
 						klog.Errorf("no available gateway address")
-						return fmt.Errorf("no available gateway address")
+						return errors.New("no available gateway address")
 					}
 				}
 				if strings.Contains(nextHop, "/") {
@@ -563,7 +564,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 				return err
 			}
 			if externalSubnet.Spec.LogicalGateway {
-				klog.Infof("no need to hanlde external connection for logical gw external subnet %s", c.config.ExternalGatewaySwitch)
+				klog.Infof("no need to handle external connection for logical gw external subnet %s", c.config.ExternalGatewaySwitch)
 				return nil
 			}
 			if !cachedVpc.Status.EnableExternal {
@@ -664,7 +665,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 	return nil
 }
 
-func (c *Controller) addPolicyRouteToVpc(name string, policy *kubeovnv1.PolicyRoute, externalIDs map[string]string) error {
+func (c *Controller) addPolicyRouteToVpc(vpcName string, policy *kubeovnv1.PolicyRoute, externalIDs map[string]string) error {
 	var (
 		nextHops []string
 		err      error
@@ -674,25 +675,25 @@ func (c *Controller) addPolicyRouteToVpc(name string, policy *kubeovnv1.PolicyRo
 		nextHops = strings.Split(policy.NextHopIP, ",")
 	}
 
-	if err = c.OVNNbClient.AddLogicalRouterPolicy(name, policy.Priority, policy.Match, string(policy.Action), nextHops, externalIDs); err != nil {
-		klog.Errorf("add policy route to vpc %s failed, %v", name, err)
+	if err = c.OVNNbClient.AddLogicalRouterPolicy(vpcName, policy.Priority, policy.Match, string(policy.Action), nextHops, externalIDs); err != nil {
+		klog.Errorf("add policy route to vpc %s failed, %v", vpcName, err)
 		return err
 	}
 	return nil
 }
 
-func (c *Controller) deletePolicyRouteFromVpc(name string, priority int, match string) error {
+func (c *Controller) deletePolicyRouteFromVpc(vpcName string, priority int, match string) error {
 	var (
 		vpc, cachedVpc *kubeovnv1.Vpc
 		err            error
 	)
 
-	if err = c.OVNNbClient.DeleteLogicalRouterPolicy(name, priority, match); err != nil {
+	if err = c.OVNNbClient.DeleteLogicalRouterPolicy(vpcName, priority, match); err != nil {
 		klog.Error(err)
 		return err
 	}
 
-	cachedVpc, err = c.vpcsLister.Get(name)
+	cachedVpc, err = c.vpcsLister.Get(vpcName)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
@@ -1141,7 +1142,7 @@ func (c *Controller) handleAddVpcExternalSubnet(key, subnet string) error {
 	}
 
 	if len(chassises) == 0 {
-		err := fmt.Errorf("no external gw nodes")
+		err := errors.New("no external gw nodes")
 		klog.Error(err)
 		return err
 	}
@@ -1177,13 +1178,13 @@ func (c *Controller) handleAddVpcExternalSubnet(key, subnet string) error {
 		}
 		if _, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Patch(context.Background(),
 			vpc.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
-			err := fmt.Errorf("failed to patch vpc %s status, %v", vpc.Name, err)
+			err := fmt.Errorf("failed to patch vpc %s status, %w", vpc.Name, err)
 			klog.Error(err)
 			return err
 		}
 	}
 	if _, err = c.ovnEipsLister.Get(lrpEipName); err != nil {
-		err := fmt.Errorf("failed to get ovn eip %s, %v", lrpEipName, err)
+		err := fmt.Errorf("failed to get ovn eip %s, %w", lrpEipName, err)
 		klog.Error(err)
 		return err
 	}

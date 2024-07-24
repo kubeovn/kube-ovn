@@ -179,11 +179,11 @@ func ParseFlags() (*Configuration, error) {
 	}
 
 	if err := config.initKubeClient(); err != nil {
-		return nil, fmt.Errorf("failed to init kube client, %v", err)
+		return nil, fmt.Errorf("failed to init kube client, %w", err)
 	}
 
 	if err := config.initBgpServer(); err != nil {
-		return nil, fmt.Errorf("failed to init bgp server, %v", err)
+		return nil, fmt.Errorf("failed to init bgp server, %w", err)
 	}
 
 	return config, nil

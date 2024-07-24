@@ -68,6 +68,7 @@ func:
   CHECK_GATEWAY: true
   LOGICAL_GATEWAY: false
   ENABLE_BIND_LOCAL_IP: true
+  SECURE_SERVING: false
   U2O_INTERCONNECTION: false
   ENABLE_TPROXY: false
   ENABLE_IC: false

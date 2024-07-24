@@ -1,6 +1,7 @@
 package util
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -18,7 +19,7 @@ func ValidateSubnet(subnet kubeovnv1.Subnet) error {
 			return fmt.Errorf("gateway %s is not in cidr %s", subnet.Spec.Gateway, subnet.Spec.CIDRBlock)
 		}
 		if err := ValidateNetworkBroadcast(subnet.Spec.CIDRBlock, subnet.Spec.Gateway); err != nil {
-			return fmt.Errorf("validate gateway %s for cidr %s failed: %v", subnet.Spec.Gateway, subnet.Spec.CIDRBlock, err)
+			return fmt.Errorf("validate gateway %s for cidr %s failed: %w", subnet.Spec.Gateway, subnet.Spec.CIDRBlock, err)
 		}
 	}
 
@@ -87,11 +88,11 @@ func ValidateSubnet(subnet kubeovnv1.Subnet) error {
 
 	if egw := subnet.Spec.ExternalEgressGateway; egw != "" {
 		if subnet.Spec.NatOutgoing {
-			return fmt.Errorf("conflict configuration: natOutgoing and externalEgressGateway")
+			return errors.New("conflict configuration: natOutgoing and externalEgressGateway")
 		}
 		ips := strings.Split(egw, ",")
 		if len(ips) > 2 {
-			return fmt.Errorf("invalid external egress gateway configuration")
+			return errors.New("invalid external egress gateway configuration")
 		}
 		for _, ip := range ips {
 			if net.ParseIP(ip) == nil {
@@ -100,7 +101,7 @@ func ValidateSubnet(subnet kubeovnv1.Subnet) error {
 		}
 		egwProtocol, cidrProtocol := CheckProtocol(egw), CheckProtocol(subnet.Spec.CIDRBlock)
 		if egwProtocol != cidrProtocol && cidrProtocol != kubeovnv1.ProtocolDual {
-			return fmt.Errorf("invalid external egress gateway configuration: address family is conflict with CIDR")
+			return errors.New("invalid external egress gateway configuration: address family is conflict with CIDR")
 		}
 	}
 
@@ -113,7 +114,7 @@ func ValidateSubnet(subnet kubeovnv1.Subnet) error {
 	}
 
 	if subnet.Spec.LogicalGateway && subnet.Spec.U2OInterconnection {
-		return fmt.Errorf("logicalGateway and u2oInterconnection can't be opened at the same time")
+		return errors.New("logicalGateway and u2oInterconnection can't be opened at the same time")
 	}
 
 	if len(subnet.Spec.NatOutgoingPolicyRules) != 0 {
@@ -140,12 +141,12 @@ func validateNatOutgoingPolicyRules(subnet kubeovnv1.Subnet) error {
 
 		if rule.Match.SrcIPs != "" {
 			if srcProtocol, err = validateNatOutGoingPolicyRuleIPs(rule.Match.SrcIPs); err != nil {
-				return fmt.Errorf("validate nat policy rules src ips %s failed with err %v", rule.Match.SrcIPs, err)
+				return fmt.Errorf("validate nat policy rules src ips %s failed with err %w", rule.Match.SrcIPs, err)
 			}
 		}
 		if rule.Match.DstIPs != "" {
 			if dstProtocol, err = validateNatOutGoingPolicyRuleIPs(rule.Match.DstIPs); err != nil {
-				return fmt.Errorf("validate nat policy rules dst ips %s failed with err %v", rule.Match.DstIPs, err)
+				return fmt.Errorf("validate nat policy rules dst ips %s failed with err %w", rule.Match.DstIPs, err)
 			}
 		}
 
@@ -159,7 +160,7 @@ func validateNatOutgoingPolicyRules(subnet kubeovnv1.Subnet) error {
 func validateNatOutGoingPolicyRuleIPs(matchIPStr string) (string, error) {
 	ipItems := strings.Split(matchIPStr, ",")
 	if len(ipItems) == 0 {
-		return "", fmt.Errorf("MatchIPStr format error")
+		return "", errors.New("MatchIPStr format error")
 	}
 	lastProtocol := ""
 	checkProtocolConsistent := func(ipCidr string) bool {

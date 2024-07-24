@@ -30,7 +30,7 @@ func (c LegacyClient) ovnIcNbCommand(cmdArgs ...string) (string, error) {
 	if err != nil {
 		code = "1"
 		klog.Warningf("ovn-ic-nbctl command error: %s %s in %vms", OVNIcNbCtl, strings.Join(cmdArgs, " "), elapsed)
-		return "", fmt.Errorf("%s, %q", raw, err)
+		return "", fmt.Errorf("%s, %w", raw, err)
 	} else if elapsed > 500 {
 		klog.Warningf("ovn-ic-nbctl command took too long: %s %s in %vms", OVNIcNbCtl, strings.Join(cmdArgs, " "), elapsed)
 	}
@@ -41,7 +41,7 @@ func (c LegacyClient) GetTsSubnet(ts string) (string, error) {
 	subnet, err := c.ovnIcNbCommand("get", "Transit_Switch", ts, "external_ids:subnet")
 	if err != nil {
 		klog.Error(err)
-		return "", fmt.Errorf("failed to get ts subnet, %v", err)
+		return "", fmt.Errorf("failed to get ts subnet, %w", err)
 	}
 	return subnet, nil
 }

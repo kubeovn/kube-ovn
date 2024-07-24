@@ -2,6 +2,7 @@ package webhook
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"slices"
@@ -37,7 +38,7 @@ func (v *ValidatingHook) SubnetCreateHook(ctx context.Context, req admission.Req
 	}
 	for _, item := range vpcList.Items {
 		if item.Name == o.Name {
-			err := fmt.Errorf("vpc and subnet cannot have the same name")
+			err := errors.New("vpc and subnet cannot have the same name")
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		}
 
@@ -65,8 +66,7 @@ func (v *ValidatingHook) SubnetUpdateHook(ctx context.Context, req admission.Req
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 	if (o.Spec.Gateway != oldSubnet.Spec.Gateway) && (o.Status.V4UsingIPs != 0 || o.Status.V6UsingIPs != 0) {
-		err := fmt.Errorf("can't update gateway of cidr when any IPs in Using")
-		return ctrlwebhook.Denied(err.Error())
+		return ctrlwebhook.Denied("can't update gateway of cidr when any IPs in Using")
 	}
 
 	if err := util.ValidateSubnet(o); err != nil {
@@ -90,8 +90,7 @@ func (v *ValidatingHook) SubnetDeleteHook(_ context.Context, req admission.Reque
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 	if subnet.Status.V4UsingIPs != 0 || subnet.Status.V6UsingIPs != 0 {
-		err := fmt.Errorf("can't delete subnet when any IPs in Using")
-		return ctrlwebhook.Denied(err.Error())
+		return ctrlwebhook.Denied("can't delete subnet when any IPs in Using")
 	}
 	return ctrlwebhook.Allowed("by pass")
 }

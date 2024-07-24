@@ -57,7 +57,7 @@ func parseAttachNetworkProvider(svc *corev1.Service) (string, string) {
 func (c *Controller) checkAttachNetwork(svc *corev1.Service) error {
 	attachmentName, attachmentNs := parseAttachNetworkProvider(svc)
 	if attachmentName == "" && attachmentNs == "" {
-		return fmt.Errorf("the provider name should be consisted of name and namespace")
+		return errors.New("the provider name should be consisted of name and namespace")
 	}
 
 	_, err := c.config.AttachNetClient.K8sCniCncfIoV1().NetworkAttachmentDefinitions(attachmentNs).Get(context.Background(), attachmentName, metav1.GetOptions{})
@@ -197,7 +197,7 @@ func (c *Controller) getLbSvcPod(svcName, svcNamespace string) (*corev1.Pod, err
 		return nil, fmt.Errorf("pod of deployment %s/%s not found", svcNamespace, genLbSvcDpName(svcName))
 	case len(pods) != 1:
 		time.Sleep(2 * time.Second)
-		return nil, fmt.Errorf("too many pods")
+		return nil, errors.New("too many pods")
 	case pods[0].Status.Phase != corev1.PodRunning:
 		time.Sleep(2 * time.Second)
 		return nil, fmt.Errorf("pod %s/%s is not running", pods[0].Namespace, pods[0].Name)
@@ -240,7 +240,7 @@ func (c *Controller) getPodAttachIP(pod *corev1.Pod, svc *corev1.Service) (strin
 	if pod.Annotations[attachIPAnnotation] != "" {
 		loadBalancerIP = pod.Annotations[attachIPAnnotation]
 	} else {
-		err = fmt.Errorf("failed to get attachment ip from pod's annotation")
+		err = errors.New("failed to get attachment ip from pod's annotation")
 	}
 
 	return loadBalancerIP, err

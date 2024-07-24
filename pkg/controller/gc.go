@@ -33,6 +33,7 @@ func (c *Controller) gc() error {
 		// The lsp gc is processed periodically by markAndCleanLSP, will not gc lsp when init
 		c.gcLoadBalancer,
 		c.gcPortGroup,
+		c.gcRoutePolicy,
 		c.gcStaticRoute,
 		c.gcVpcNatGateway,
 		c.gcLogicalRouterPort,
@@ -686,6 +687,45 @@ func (c *Controller) gcPortGroup() error {
 	return nil
 }
 
+func (c *Controller) gcRoutePolicy() error {
+	klog.Infof("start to gc route policy")
+
+	policies, err := c.OVNNbClient.ListLogicalRouterPolicies(c.config.ClusterRouter, util.NorthGatewayRoutePolicyPriority, nil, true)
+	if err != nil {
+		klog.Errorf("failed to list route policy, %v", err)
+		return err
+	}
+
+	podIPs := []string{}
+	pods, err := c.podsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list pods, %v", err)
+		return err
+	}
+	for _, pod := range pods {
+		if pod.Annotations != nil && pod.Annotations[util.NorthGatewayAnnotation] != "" {
+			podIPs = append(podIPs, strings.Split(pod.Annotations[util.IPAddressAnnotation], ",")...)
+		}
+	}
+
+	for _, policy := range policies {
+		parts := strings.Split(policy.Match, "==")
+		if len(parts) != 2 {
+			continue
+		}
+		srcIP := strings.TrimSpace(parts[1])
+		if !slices.Contains(podIPs, srcIP) {
+			klog.Infof("gc route policy %s", policy.Match)
+			if err := c.OVNNbClient.DeleteLogicalRouterPolicy(c.config.ClusterRouter, policy.Priority, policy.Match); err != nil {
+				klog.Errorf("failed to delete route policy %s: %v", policy.Match, err)
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
 func (c *Controller) gcStaticRoute() error {
 	klog.Infof("start to gc static routes")
 	routes, err := c.OVNNbClient.ListLogicalRouterStaticRoutes(c.config.ClusterRouter, nil, nil, "", nil)
@@ -810,7 +850,7 @@ func (c *Controller) getVMLsps() []string {
 	}
 
 	for _, ns := range nss {
-		vms, err := c.config.KubevirtClient.VirtualMachine(ns.Name).List(context.Background(), &metav1.ListOptions{})
+		vms, err := c.config.KubevirtClient.VirtualMachine(ns.Name).List(context.Background(), metav1.ListOptions{})
 		if err != nil {
 			if !k8serrors.IsNotFound(err) {
 				klog.Errorf("failed to list vm in namespace %s, %v", ns, err)

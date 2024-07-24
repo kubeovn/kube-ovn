@@ -570,7 +570,7 @@ func TCPConnectivityCheck(address string) error {
 func TCPConnectivityListen(address string) error {
 	listener, err := net.Listen("tcp", address)
 	if err != nil {
-		return fmt.Errorf("listen failed with err %v", err)
+		return fmt.Errorf("listen failed with err %w", err)
 	}
 
 	go func() {
@@ -589,7 +589,7 @@ func TCPConnectivityListen(address string) error {
 func UDPConnectivityCheck(address string) error {
 	udpAddr, err := net.ResolveUDPAddr("udp", address)
 	if err != nil {
-		return fmt.Errorf("resolve udp addr failed with err %v", err)
+		return fmt.Errorf("resolve udp addr failed with err %w", err)
 	}
 
 	conn, err := net.DialUDP("udp", nil, udpAddr)
@@ -606,13 +606,13 @@ func UDPConnectivityCheck(address string) error {
 
 	_, err = conn.Write([]byte("health check"))
 	if err != nil {
-		return fmt.Errorf("send udp packet failed with err %v", err)
+		return fmt.Errorf("send udp packet failed with err %w", err)
 	}
 
 	buffer := make([]byte, 1024)
 	_, err = conn.Read(buffer)
 	if err != nil {
-		return fmt.Errorf("read udp packet from remote failed %v", err)
+		return fmt.Errorf("read udp packet from remote failed %w", err)
 	}
 
 	return nil
@@ -621,12 +621,12 @@ func UDPConnectivityCheck(address string) error {
 func UDPConnectivityListen(address string) error {
 	listenAddr, err := net.ResolveUDPAddr("udp", address)
 	if err != nil {
-		return fmt.Errorf("resolve udp addr failed with err %v", err)
+		return fmt.Errorf("resolve udp addr failed with err %w", err)
 	}
 
 	conn, err := net.ListenUDP("udp", listenAddr)
 	if err != nil {
-		return fmt.Errorf("listen udp address failed with %v", err)
+		return fmt.Errorf("listen udp address failed with %w", err)
 	}
 
 	buffer := make([]byte, 1024)
@@ -649,18 +649,10 @@ func UDPConnectivityListen(address string) error {
 }
 
 func GetDefaultListenAddr() string {
-	addr := "0.0.0.0"
 	if os.Getenv("ENABLE_BIND_LOCAL_IP") == "true" {
-		podIpsEnv := os.Getenv("POD_IPS")
-		podIps := strings.Split(podIpsEnv, ",")
-		// when pod in dual mode, golang can't support bind v4 and v6 address in the same time,
-		// so not support bind local ip when in dual mode
-		if len(podIps) == 1 {
-			addr = podIps[0]
-			if CheckProtocol(podIps[0]) == kubeovnv1.ProtocolIPv6 {
-				addr = fmt.Sprintf("[%s]", podIps[0])
-			}
+		if ips := strings.Split(os.Getenv("POD_IPS"), ","); len(ips) == 1 {
+			return ips[0]
 		}
 	}
-	return addr
+	return "0.0.0.0"
 }

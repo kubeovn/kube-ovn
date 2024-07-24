@@ -681,16 +681,16 @@ func getNicDefaultQoSPolicy(limit int) apiv1.QoSPolicyBandwidthLimitRules {
 		&apiv1.QoSPolicyBandwidthLimitRule{
 			Name:      "net1-ingress",
 			Interface: "net1",
-			RateMax:   fmt.Sprint(limit),
-			BurstMax:  fmt.Sprint(limit),
+			RateMax:   strconv.Itoa(limit),
+			BurstMax:  strconv.Itoa(limit),
 			Priority:  3,
 			Direction: apiv1.DirectionIngress,
 		},
 		&apiv1.QoSPolicyBandwidthLimitRule{
 			Name:      "net1-egress",
 			Interface: "net1",
-			RateMax:   fmt.Sprint(limit),
-			BurstMax:  fmt.Sprint(limit),
+			RateMax:   strconv.Itoa(limit),
+			BurstMax:  strconv.Itoa(limit),
 			Priority:  3,
 			Direction: apiv1.DirectionEgress,
 		},
@@ -701,15 +701,15 @@ func getEIPQoSRule(limit int) apiv1.QoSPolicyBandwidthLimitRules {
 	return apiv1.QoSPolicyBandwidthLimitRules{
 		&apiv1.QoSPolicyBandwidthLimitRule{
 			Name:      "eip-ingress",
-			RateMax:   fmt.Sprint(limit),
-			BurstMax:  fmt.Sprint(limit),
+			RateMax:   strconv.Itoa(limit),
+			BurstMax:  strconv.Itoa(limit),
 			Priority:  1,
 			Direction: apiv1.DirectionIngress,
 		},
 		&apiv1.QoSPolicyBandwidthLimitRule{
 			Name:      "eip-egress",
-			RateMax:   fmt.Sprint(limit),
-			BurstMax:  fmt.Sprint(limit),
+			RateMax:   strconv.Itoa(limit),
+			BurstMax:  strconv.Itoa(limit),
 			Priority:  1,
 			Direction: apiv1.DirectionEgress,
 		},
@@ -721,8 +721,8 @@ func getSpecialQoSRule(limit int, ip string) apiv1.QoSPolicyBandwidthLimitRules 
 		&apiv1.QoSPolicyBandwidthLimitRule{
 			Name:       "net1-extip-ingress",
 			Interface:  "net1",
-			RateMax:    fmt.Sprint(limit),
-			BurstMax:   fmt.Sprint(limit),
+			RateMax:    strconv.Itoa(limit),
+			BurstMax:   strconv.Itoa(limit),
 			Priority:   2,
 			Direction:  apiv1.DirectionIngress,
 			MatchType:  apiv1.MatchTypeIP,
@@ -731,8 +731,8 @@ func getSpecialQoSRule(limit int, ip string) apiv1.QoSPolicyBandwidthLimitRules 
 		&apiv1.QoSPolicyBandwidthLimitRule{
 			Name:       "net1-extip-egress",
 			Interface:  "net1",
-			RateMax:    fmt.Sprint(limit),
-			BurstMax:   fmt.Sprint(limit),
+			RateMax:    strconv.Itoa(limit),
+			BurstMax:   strconv.Itoa(limit),
 			Priority:   2,
 			Direction:  apiv1.DirectionEgress,
 			MatchType:  apiv1.MatchTypeIP,
@@ -765,7 +765,7 @@ func defaultQoSCases(f *framework.Framework,
 	ginkgo.By("Patch natgw " + natgwName + " with qos policy " + qosPolicyName)
 	_ = vpcNatGwClient.PatchQoSPolicySync(natgwName, qosPolicyName)
 
-	ginkgo.By("Check qos " + qosPolicyName + " is limited to " + fmt.Sprint(defaultNicLimit) + "Mbps")
+	ginkgo.By("Check qos " + qosPolicyName + " is limited to " + strconv.Itoa(defaultNicLimit) + "Mbps")
 	checkQos(f, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, defaultNicLimit, true)
 
 	ginkgo.By("Delete natgw pod " + natgwName + "-0")
@@ -775,7 +775,7 @@ func defaultQoSCases(f *framework.Framework,
 	ginkgo.By("Wait for natgw " + natgwName + "qos rebuild")
 	time.Sleep(5 * time.Second)
 
-	ginkgo.By("Check qos " + qosPolicyName + " is limited to " + fmt.Sprint(defaultNicLimit) + "Mbps")
+	ginkgo.By("Check qos " + qosPolicyName + " is limited to " + strconv.Itoa(defaultNicLimit) + "Mbps")
 	checkQos(f, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, defaultNicLimit, true)
 
 	ginkgo.By("Remove qos policy " + qosPolicyName + " from natgw " + natgwName)
@@ -784,7 +784,7 @@ func defaultQoSCases(f *framework.Framework,
 	ginkgo.By("Deleting qos policy " + qosPolicyName)
 	qosPolicyClient.DeleteSync(qosPolicyName)
 
-	ginkgo.By("Check qos " + qosPolicyName + " is not limited to " + fmt.Sprint(defaultNicLimit) + "Mbps")
+	ginkgo.By("Check qos " + qosPolicyName + " is not limited to " + strconv.Itoa(defaultNicLimit) + "Mbps")
 	checkQos(f, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, defaultNicLimit, false)
 }
 
@@ -813,7 +813,7 @@ func eipQoSCases(f *framework.Framework,
 	ginkgo.By("Patch eip " + eipName + " with qos policy " + qosPolicyName)
 	_ = eipClient.PatchQoSPolicySync(eipName, qosPolicyName)
 
-	ginkgo.By("Check qos " + qosPolicyName + " is limited to " + fmt.Sprint(eipLimit) + "Mbps")
+	ginkgo.By("Check qos " + qosPolicyName + " is limited to " + strconv.Itoa(eipLimit) + "Mbps")
 	checkQos(f, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, eipLimit, true)
 
 	ginkgo.By("Update qos policy " + qosPolicyName + " with new rate limit")
@@ -824,7 +824,7 @@ func eipQoSCases(f *framework.Framework,
 	qosPolicyClient.Patch(qosPolicy, modifiedqosPolicy)
 	qosPolicyClient.WaitToQoSReady(qosPolicyName)
 
-	ginkgo.By("Check qos " + qosPolicyName + " is changed to " + fmt.Sprint(updatedEIPLimit) + "Mbps")
+	ginkgo.By("Check qos " + qosPolicyName + " is changed to " + strconv.Itoa(updatedEIPLimit) + "Mbps")
 	checkQos(f, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, updatedEIPLimit, true)
 
 	ginkgo.By("Delete natgw pod " + natgwName + "-0")
@@ -834,7 +834,7 @@ func eipQoSCases(f *framework.Framework,
 	ginkgo.By("Wait for natgw " + natgwName + "qos rebuid")
 	time.Sleep(5 * time.Second)
 
-	ginkgo.By("Check qos " + qosPolicyName + " is limited to " + fmt.Sprint(updatedEIPLimit) + "Mbps")
+	ginkgo.By("Check qos " + qosPolicyName + " is limited to " + strconv.Itoa(updatedEIPLimit) + "Mbps")
 	checkQos(f, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, updatedEIPLimit, true)
 
 	newQoSPolicyName := "new-eip-qos-policy-" + framework.RandomSuffix()
@@ -845,7 +845,7 @@ func eipQoSCases(f *framework.Framework,
 	ginkgo.By("Change qos policy of eip " + eipName + " to " + newQoSPolicyName)
 	_ = eipClient.PatchQoSPolicySync(eipName, newQoSPolicyName)
 
-	ginkgo.By("Check qos " + qosPolicyName + " is limited to " + fmt.Sprint(newEIPLimit) + "Mbps")
+	ginkgo.By("Check qos " + qosPolicyName + " is limited to " + strconv.Itoa(newEIPLimit) + "Mbps")
 	checkQos(f, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, newEIPLimit, true)
 
 	ginkgo.By("Remove qos policy " + qosPolicyName + " from natgw " + eipName)
@@ -857,7 +857,7 @@ func eipQoSCases(f *framework.Framework,
 	ginkgo.By("Deleting qos policy " + newQoSPolicyName)
 	qosPolicyClient.DeleteSync(newQoSPolicyName)
 
-	ginkgo.By("Check qos " + qosPolicyName + " is not limited to " + fmt.Sprint(newEIPLimit) + "Mbps")
+	ginkgo.By("Check qos " + qosPolicyName + " is not limited to " + strconv.Itoa(newEIPLimit) + "Mbps")
 	checkQos(f, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, newEIPLimit, false)
 }
 
@@ -885,7 +885,7 @@ func specifyingIPQoSCases(f *framework.Framework,
 	ginkgo.By("Patch natgw " + natgwName + " with qos policy " + qosPolicyName)
 	_ = vpcNatGwClient.PatchQoSPolicySync(natgwName, qosPolicyName)
 
-	ginkgo.By("Check qos " + qosPolicyName + " is limited to " + fmt.Sprint(specificIPLimit) + "Mbps")
+	ginkgo.By("Check qos " + qosPolicyName + " is limited to " + strconv.Itoa(specificIPLimit) + "Mbps")
 	checkQos(f, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, specificIPLimit, true)
 
 	ginkgo.By("Remove qos policy " + qosPolicyName + " from natgw " + natgwName)
@@ -894,7 +894,7 @@ func specifyingIPQoSCases(f *framework.Framework,
 	ginkgo.By("Deleting qos policy " + qosPolicyName)
 	qosPolicyClient.DeleteSync(qosPolicyName)
 
-	ginkgo.By("Check qos " + qosPolicyName + " is not limited to " + fmt.Sprint(specificIPLimit) + "Mbps")
+	ginkgo.By("Check qos " + qosPolicyName + " is not limited to " + strconv.Itoa(specificIPLimit) + "Mbps")
 	checkQos(f, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, specificIPLimit, false)
 }
 
@@ -936,7 +936,7 @@ func priorityQoSCases(f *framework.Framework,
 	_ = eipClient.PatchQoSPolicySync(eipName, eipQoSPolicyName)
 
 	// match qos of priority 1
-	ginkgo.By("Check qos to match priority 1 is limited to " + fmt.Sprint(eipLimit) + "Mbps")
+	ginkgo.By("Check qos to match priority 1 is limited to " + strconv.Itoa(eipLimit) + "Mbps")
 	checkQos(f, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, eipLimit, true)
 
 	ginkgo.By("Remove qos policy " + eipQoSPolicyName + " from natgw " + eipName)
@@ -946,7 +946,7 @@ func priorityQoSCases(f *framework.Framework,
 	qosPolicyClient.DeleteSync(eipQoSPolicyName)
 
 	// match qos of priority 2
-	ginkgo.By("Check qos to match priority 2 is limited to " + fmt.Sprint(specificIPLimit) + "Mbps")
+	ginkgo.By("Check qos to match priority 2 is limited to " + strconv.Itoa(specificIPLimit) + "Mbps")
 	checkQos(f, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, specificIPLimit, true)
 
 	// change qos policy of natgw
@@ -961,7 +961,7 @@ func priorityQoSCases(f *framework.Framework,
 	_ = vpcNatGwClient.PatchQoSPolicySync(natgwName, newNatGwQoSPolicyName)
 
 	// match qos of priority 3
-	ginkgo.By("Check qos to match priority 3 is limited to " + fmt.Sprint(specificIPLimit) + "Mbps")
+	ginkgo.By("Check qos to match priority 3 is limited to " + strconv.Itoa(specificIPLimit) + "Mbps")
 	checkQos(f, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, defaultNicLimit, true)
 
 	ginkgo.By("Remove qos policy " + natGwQoSPolicyName + " from natgw " + natgwName)
@@ -973,7 +973,7 @@ func priorityQoSCases(f *framework.Framework,
 	ginkgo.By("Deleting qos policy " + newNatGwQoSPolicyName)
 	qosPolicyClient.DeleteSync(newNatGwQoSPolicyName)
 
-	ginkgo.By("Check qos " + natGwQoSPolicyName + " is not limited to " + fmt.Sprint(defaultNicLimit) + "Mbps")
+	ginkgo.By("Check qos " + natGwQoSPolicyName + " is not limited to " + strconv.Itoa(defaultNicLimit) + "Mbps")
 	checkQos(f, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, defaultNicLimit, false)
 }
 
@@ -1046,19 +1046,19 @@ func createNatGwAndSetQosCases(f *framework.Framework,
 	fip := framework.MakeIptablesFIPRule(fipName, eipName, vpc1Pod.Status.PodIP)
 	_ = fipClient.CreateSync(fip)
 
-	ginkgo.By("Check qos " + eipQoSPolicyName + " is limited to " + fmt.Sprint(eipLimit) + "Mbps")
+	ginkgo.By("Check qos " + eipQoSPolicyName + " is limited to " + strconv.Itoa(eipLimit) + "Mbps")
 	checkQos(f, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, eipLimit, true)
 
 	ginkgo.By("Remove qos policy " + eipQoSPolicyName + " from natgw " + natgwName)
 	_ = eipClient.PatchQoSPolicySync(eipName, "")
 
-	ginkgo.By("Check qos " + natgwQoSPolicyName + " is limited to " + fmt.Sprint(defaultNicLimit) + "Mbps")
+	ginkgo.By("Check qos " + natgwQoSPolicyName + " is limited to " + strconv.Itoa(defaultNicLimit) + "Mbps")
 	checkQos(f, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, defaultNicLimit, true)
 
 	ginkgo.By("Remove qos policy " + natgwQoSPolicyName + " from natgw " + natgwName)
 	_ = vpcNatGwClient.PatchQoSPolicySync(natgwName, "")
 
-	ginkgo.By("Check qos " + natgwQoSPolicyName + " is not limited to " + fmt.Sprint(defaultNicLimit) + "Mbps")
+	ginkgo.By("Check qos " + natgwQoSPolicyName + " is not limited to " + strconv.Itoa(defaultNicLimit) + "Mbps")
 	checkQos(f, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, defaultNicLimit, false)
 
 	ginkgo.By("Deleting qos policy " + natgwQoSPolicyName)

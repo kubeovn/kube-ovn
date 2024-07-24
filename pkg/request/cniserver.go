@@ -2,6 +2,7 @@ package request
 
 import (
 	"fmt"
+	"net/http"
 
 	"github.com/containernetworking/cni/pkg/types"
 	"github.com/parnurzeal/gorequest"
@@ -60,7 +61,7 @@ func (csc CniServerClient) Add(podRequest CniRequest) (*CniResponse, error) {
 	if len(errors) != 0 {
 		return nil, errors[0]
 	}
-	if res.StatusCode != 200 {
+	if res.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("request ip return %d %s", res.StatusCode, resp.Err)
 	}
 	return &resp, nil
@@ -72,7 +73,7 @@ func (csc CniServerClient) Del(podRequest CniRequest) error {
 	if len(errors) != 0 {
 		return errors[0]
 	}
-	if res.StatusCode != 204 {
+	if res.StatusCode != http.StatusNoContent {
 		return fmt.Errorf("delete ip return %d %s", res.StatusCode, body)
 	}
 	return nil

@@ -124,7 +124,7 @@ func (c *SwitchLBRuleClient) WaitUntil(name string, cond func(s *apiv1.SwitchLBR
 		rules = c.Get(name).DeepCopy()
 		met, err := cond(rules)
 		if err != nil {
-			return false, fmt.Errorf("failed to check condition for switch-lb-rule %s: %v", name, err)
+			return false, fmt.Errorf("failed to check condition for switch-lb-rule %s: %w", name, err)
 		}
 		if met {
 			Logf("switch-lb-rule %s met condition %q", name, condDesc)
@@ -160,7 +160,7 @@ func (c *SwitchLBRuleClient) WaitToDisappear(name string, _, timeout time.Durati
 	return nil
 }
 
-func MakeSwitchLBRule(name, namespace, vip string, sessionAffinity corev1.ServiceAffinity, annotations map[string]string, slector, endpoints []string, ports []apiv1.SlrPort) *apiv1.SwitchLBRule {
+func MakeSwitchLBRule(name, namespace, vip string, sessionAffinity corev1.ServiceAffinity, annotations map[string]string, selector, endpoints []string, ports []apiv1.SlrPort) *apiv1.SwitchLBRule {
 	return &apiv1.SwitchLBRule{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        name,
@@ -170,7 +170,7 @@ func MakeSwitchLBRule(name, namespace, vip string, sessionAffinity corev1.Servic
 		Spec: apiv1.SwitchLBRuleSpec{
 			Vip:             vip,
 			Namespace:       namespace,
-			Selector:        slector,
+			Selector:        selector,
 			Endpoints:       endpoints,
 			SessionAffinity: string(sessionAffinity),
 			Ports:           ports,

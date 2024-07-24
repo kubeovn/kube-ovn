@@ -2,6 +2,7 @@ package ovs
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -28,12 +29,12 @@ func (c *OVNNbClient) CreateDHCPOptions(lsName, cidr, options string) error {
 	op, err := c.ovsDbClient.Create(dhcpOpt)
 	if err != nil {
 		klog.Error(err)
-		return fmt.Errorf("generate operations for creating dhcp options 'cidr %s options %s': %v", cidr, options, err)
+		return fmt.Errorf("generate operations for creating dhcp options 'cidr %s options %s': %w", cidr, options, err)
 	}
 
 	if err = c.Transact("dhcp-create", op); err != nil {
 		klog.Error(err)
-		return fmt.Errorf("create dhcp options with cidr %q options %q: %v", cidr, options, err)
+		return fmt.Errorf("create dhcp options with cidr %q options %q: %w", cidr, options, err)
 	}
 
 	return nil
@@ -51,7 +52,7 @@ func (c *OVNNbClient) UpdateDHCPOptions(subnet *kubeovnv1.Subnet, mtu int) (*DHC
 	/* delete dhcp options */
 	if !enableDHCP {
 		if err := c.DeleteDHCPOptions(lsName, subnet.Spec.Protocol); err != nil {
-			return nil, fmt.Errorf("delete dhcp options for logical switch %s: %v", lsName, err)
+			return nil, fmt.Errorf("delete dhcp options for logical switch %s: %w", lsName, err)
 		}
 		return &DHCPOptionsUUIDs{}, nil
 	}
@@ -77,7 +78,7 @@ func (c *OVNNbClient) UpdateDHCPOptions(subnet *kubeovnv1.Subnet, mtu int) (*DHC
 		dhcpV4OptUUID, err := c.updateDHCPv4Options(lsName, v4CIDR, v4Gateway, subnet.Spec.DHCPv4Options, mtu)
 		if err != nil {
 			klog.Error(err)
-			return nil, fmt.Errorf("update IPv4 dhcp options for logical switch %s: %v", lsName, err)
+			return nil, fmt.Errorf("update IPv4 dhcp options for logical switch %s: %w", lsName, err)
 		}
 		dhcpOptionsUUIDs.DHCPv4OptionsUUID = dhcpV4OptUUID
 	}
@@ -86,7 +87,7 @@ func (c *OVNNbClient) UpdateDHCPOptions(subnet *kubeovnv1.Subnet, mtu int) (*DHC
 		dhcpV6OptUUID, err := c.updateDHCPv6Options(lsName, v6CIDR, subnet.Spec.DHCPv6Options)
 		if err != nil {
 			klog.Error(err)
-			return nil, fmt.Errorf("update IPv6 dhcp options for logical switch %s: %v", lsName, err)
+			return nil, fmt.Errorf("update IPv6 dhcp options for logical switch %s: %w", lsName, err)
 		}
 		dhcpOptionsUUIDs.DHCPv6OptionsUUID = dhcpV6OptUUID
 	}
@@ -135,7 +136,7 @@ func (c *OVNNbClient) updateDHCPv4Options(lsName, cidr, gateway, options string,
 
 	/* create */
 	if err := c.CreateDHCPOptions(lsName, cidr, options); err != nil {
-		return "", fmt.Errorf("create dhcp options: %v", err)
+		return "", fmt.Errorf("create dhcp options: %w", err)
 	}
 
 	dhcpOpt, err = c.GetDHCPOptions(lsName, protocol, false)
@@ -188,7 +189,7 @@ func (c *OVNNbClient) updateDHCPv6Options(lsName, cidr, options string) (uuid st
 
 	/* create */
 	if err := c.CreateDHCPOptions(lsName, cidr, options); err != nil {
-		return "", fmt.Errorf("create dhcp options: %v", err)
+		return "", fmt.Errorf("create dhcp options: %w", err)
 	}
 
 	dhcpOpt, err = c.GetDHCPOptions(lsName, protocol, false)
@@ -203,17 +204,17 @@ func (c *OVNNbClient) updateDHCPv6Options(lsName, cidr, options string) (uuid st
 // updateDHCPOptions update dhcp options
 func (c *OVNNbClient) updateDHCPOptions(dhcpOpt *ovnnb.DHCPOptions, fields ...interface{}) error {
 	if dhcpOpt == nil {
-		return fmt.Errorf("dhcp_options is nil")
+		return errors.New("dhcp_options is nil")
 	}
 
 	op, err := c.ovsDbClient.Where(dhcpOpt).Update(dhcpOpt, fields...)
 	if err != nil {
 		klog.Error(err)
-		return fmt.Errorf("generate operations for updating dhcp options %s: %v", dhcpOpt.UUID, err)
+		return fmt.Errorf("generate operations for updating dhcp options %s: %w", dhcpOpt.UUID, err)
 	}
 
 	if err = c.Transact("dhcp-options-update", op); err != nil {
-		return fmt.Errorf("update dhcp options %s: %v", dhcpOpt.UUID, err)
+		return fmt.Errorf("update dhcp options %s: %w", dhcpOpt.UUID, err)
 	}
 
 	return nil
@@ -236,7 +237,7 @@ func (c *OVNNbClient) DeleteDHCPOptionsByUUIDs(uuidList ...string) error {
 	}
 
 	if err := c.Transact("dhcp-options-del", ops); err != nil {
-		return fmt.Errorf("delete dhcp options %v: %v", uuidList, err)
+		return fmt.Errorf("delete dhcp options %v: %w", uuidList, err)
 	}
 
 	return nil
@@ -255,12 +256,12 @@ func (c *OVNNbClient) DeleteDHCPOptions(lsName, protocol string) error {
 	op, err := c.WhereCache(dhcpOptionsFilter(true, externalIDs)).Delete()
 	if err != nil {
 		klog.Error(err)
-		return fmt.Errorf("generate operation for deleting dhcp options: %v", err)
+		return fmt.Errorf("generate operation for deleting dhcp options: %w", err)
 	}
 
 	if err = c.Transact("dhcp-options-del", op); err != nil {
 		klog.Error(err)
-		return fmt.Errorf("delete logical switch %s dhcp options: %v", lsName, err)
+		return fmt.Errorf("delete logical switch %s dhcp options: %w", lsName, err)
 	}
 
 	return nil
@@ -270,11 +271,11 @@ func (c *OVNNbClient) DeleteDHCPOptions(lsName, protocol string) error {
 // a dhcp options is uniquely identified by switch(lsName) and protocol
 func (c *OVNNbClient) GetDHCPOptions(lsName, protocol string, ignoreNotFound bool) (*ovnnb.DHCPOptions, error) {
 	if len(lsName) == 0 {
-		return nil, fmt.Errorf("the logical router name is required")
+		return nil, errors.New("the logical router name is required")
 	}
 
 	if protocol != kubeovnv1.ProtocolIPv4 && protocol != kubeovnv1.ProtocolIPv6 {
-		return nil, fmt.Errorf("protocol must be IPv4 or IPv6")
+		return nil, errors.New("protocol must be IPv4 or IPv6")
 	}
 
 	dhcpOptList, err := c.ListDHCPOptions(true, map[string]string{
@@ -283,7 +284,7 @@ func (c *OVNNbClient) GetDHCPOptions(lsName, protocol string, ignoreNotFound boo
 	})
 	if err != nil {
 		klog.Error(err)
-		return nil, fmt.Errorf("get logical switch %s %s dhcp options: %v", lsName, protocol, err)
+		return nil, fmt.Errorf("get logical switch %s %s dhcp options: %w", lsName, protocol, err)
 	}
 
 	// not found
@@ -292,7 +293,7 @@ func (c *OVNNbClient) GetDHCPOptions(lsName, protocol string, ignoreNotFound boo
 			return nil, nil
 		}
 
-		return nil, fmt.Errorf("not found logical switch %s %s dhcp options: %v", lsName, protocol, err)
+		return nil, fmt.Errorf("not found logical switch %s %s dhcp options: %w", lsName, protocol, err)
 	}
 
 	if len(dhcpOptList) > 1 {
@@ -310,7 +311,7 @@ func (c *OVNNbClient) ListDHCPOptions(needVendorFilter bool, externalIDs map[str
 	dhcpOptList := make([]ovnnb.DHCPOptions, 0)
 
 	if err := c.WhereCache(dhcpOptionsFilter(needVendorFilter, externalIDs)).List(ctx, &dhcpOptList); err != nil {
-		return nil, fmt.Errorf("list dhcp options with external IDs %v: %v", externalIDs, err)
+		return nil, fmt.Errorf("list dhcp options with external IDs %v: %w", externalIDs, err)
 	}
 
 	return dhcpOptList, nil

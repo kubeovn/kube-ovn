@@ -23,9 +23,9 @@ concurrency:
 env:
   GO_VERSION: ''
   KIND_VERSION: v0.23.0
-  GOSEC_VERSION: '2.20.0'
-  HELM_VERSION: v3.14.4
-  SUBMARINER_VERSION: '0.17.1'
+  GOLANGCI_LINT_VERSION: 'v1.59.1'
+  HELM_VERSION: v3.15.3
+  SUBMARINER_VERSION: '0.18.0'
 
 jobs:
   build-kube-ovn-base:
@@ -167,14 +167,9 @@ jobs:
           go install -mod=mod github.com/onsi/ginkgo/v2/ginkgo
           make ut
 
-      - name: Install gosec
+      - name: Install golangci-lint
         run: |
-          tmp=$(mktemp -d)
-          archive="gosec_${{ env.GOSEC_VERSION }}_$(go env GOHOSTOS)_$(go env GOHOSTARCH).tar.gz"
-          wget -q -O "$tmp/$archive" https://github.com/securego/gosec/releases/download/v${{ env.GOSEC_VERSION }}/$archive
-          tar --no-same-owner -C "$tmp" -xzf "$tmp/$archive"
-          install "$tmp/gosec" /usr/local/bin
-          rm -rf $tmp
+          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin $GOLANGCI_LINT_VERSION
 
       - name: Download base images
         if: needs.build-kube-ovn-base.outputs.build-base == 1
@@ -1165,7 +1160,7 @@ jobs:
           done
 
       - name: Cleanup
-        run: sh -x dist/images/cleanup.sh
+        run: timeout -k 10 180 sh -x dist/images/cleanup.sh
 
   kube-ovn-ic-conformance-e2e:
     name: Kube-OVN IC Conformance E2E
@@ -1573,7 +1568,7 @@ jobs:
         run: make check-kube-ovn-pod-restarts
 
       - name: Cleanup
-        run: sh -x dist/images/cleanup.sh
+        run: timeout -k 10 180 sh -x dist/images/cleanup.sh
 
   no-ovn-lb-test:
     name: Disable OVN LB Test
@@ -1623,7 +1618,7 @@ jobs:
         run: make check-kube-ovn-pod-restarts
 
       - name: Cleanup
-        run: sh -x dist/images/cleanup.sh
+        run: timeout -k 10 180 sh -x dist/images/cleanup.sh
 
   no-np-test:
     name: Disable Network Policy Test
@@ -1673,7 +1668,7 @@ jobs:
         run: make check-kube-ovn-pod-restarts
 
       - name: Cleanup
-        run: sh -x dist/images/cleanup.sh
+        run: timeout -k 10 180 sh -x dist/images/cleanup.sh
 
   lb-svc-e2e:
     name: LB Service E2E
@@ -1991,7 +1986,7 @@ jobs:
           path: installation-compatibility-test-ko-log.tar.gz
 
       - name: Cleanup
-        run: sh -x dist/images/cleanup.sh
+        run: timeout -k 10 180 sh -x dist/images/cleanup.sh
 
   cilium-chaining-e2e:
     name: Cilium Chaining E2E
@@ -2151,7 +2146,7 @@ jobs:
         run: make check-kube-ovn-pod-restarts
 
       - name: Cleanup
-        run: sh -x dist/images/cleanup.sh
+        run: timeout -k 10 180 sh -x dist/images/cleanup.sh
 
   kube-ovn-ha-e2e:
     name: Kube-OVN HA E2E
@@ -2284,7 +2279,7 @@ jobs:
         run: make check-kube-ovn-pod-restarts
 
       - name: Cleanup
-        run: sh -x dist/images/cleanup.sh
+        run: timeout -k 10 180 sh -x dist/images/cleanup.sh
 
   kube-ovn-submariner-conformance-e2e:
     name: Kube-OVN Submariner Conformance E2E
@@ -2377,7 +2372,7 @@ jobs:
         run: make check-kube-ovn-pod-restarts
 
       - name: Cleanup
-        run: sh -x dist/images/cleanup.sh
+        run: timeout -k 10 180 sh -x dist/images/cleanup.sh
 
   iptables-vpc-nat-gw-conformance-e2e:
     name: Iptables VPC NAT Gateway E2E

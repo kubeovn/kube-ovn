@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"slices"
@@ -254,7 +255,7 @@ func (c *Controller) getGatewayChassis(config map[string]string) ([]string, erro
 		chassises = append(chassises, chassis.Name)
 	}
 	if len(chassises) == 0 {
-		err := fmt.Errorf("no available external gw chassis")
+		err := errors.New("no available external gw chassis")
 		klog.Error(err)
 		return nil, err
 	}
@@ -271,7 +272,7 @@ func (c *Controller) updateDefaultVpcExternal(enableExternal bool) error {
 	if vpc.Spec.EnableExternal != enableExternal {
 		vpc.Spec.EnableExternal = enableExternal
 		if _, err := c.config.KubeOvnClient.KubeovnV1().Vpcs().Update(context.Background(), vpc, metav1.UpdateOptions{}); err != nil {
-			err := fmt.Errorf("failed to update vpc enable external %s, %v", vpc.Name, err)
+			err := fmt.Errorf("failed to update vpc enable external %s, %w", vpc.Name, err)
 			klog.Error(err)
 			return err
 		}

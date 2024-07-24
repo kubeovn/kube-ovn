@@ -88,7 +88,7 @@ func ParseFlags() (*Configuration, error) {
 	}
 
 	if err := config.initKubeClient(); err != nil {
-		return nil, fmt.Errorf("failed to init kube client, %v", err)
+		return nil, fmt.Errorf("failed to init kube client, %w", err)
 	}
 
 	return config, nil

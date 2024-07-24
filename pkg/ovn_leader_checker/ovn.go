@@ -2,6 +2,7 @@ package ovn_leader_checker
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"net"
@@ -94,7 +95,7 @@ func ParseFlags() (*Configuration, error) {
 // KubeClientInit funcs to check apiserver alive
 func KubeClientInit(cfg *Configuration) error {
 	if cfg == nil {
-		return fmt.Errorf("invalid cfg")
+		return errors.New("invalid cfg")
 	}
 
 	// init kubeconfig here
@@ -453,7 +454,7 @@ func updateTS() error {
 	cmd := exec.Command("ovn-ic-nbctl", "show")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("ovn-ic-nbctl show output: %s, err: %v", output, err)
+		return fmt.Errorf("ovn-ic-nbctl show output: %s, err: %w", output, err)
 	}
 	var existTSCount int
 	if lines := strings.TrimSpace(string(output)); lines != "" {
@@ -461,7 +462,7 @@ func updateTS() error {
 	}
 	expectTSCount, err := strconv.Atoi(os.Getenv("TS_NUM"))
 	if err != nil {
-		return fmt.Errorf("expectTSCount atoi failed output: %s, err: %v", output, err)
+		return fmt.Errorf("expectTSCount atoi failed output: %s, err: %w", output, err)
 	}
 	if expectTSCount == existTSCount {
 		klog.V(3).Infof("expectTSCount %d no changes required.", expectTSCount)
@@ -490,7 +491,7 @@ func updateTS() error {
 			}
 			output, err := cmd.CombinedOutput()
 			if err != nil {
-				return fmt.Errorf("output: %s, err: %v", output, err)
+				return fmt.Errorf("output: %s, err: %w", output, err)
 			}
 		}
 	} else {
@@ -507,7 +508,7 @@ func updateTS() error {
 			}
 			output, err := cmd.CombinedOutput()
 			if err != nil {
-				return fmt.Errorf("output: %s, err: %v", output, err)
+				return fmt.Errorf("output: %s, err: %w", output, err)
 			}
 		}
 	}

@@ -213,7 +213,6 @@ func (c *Controller) syncSubnetRoutes() {
 				klog.Error(err)
 			}
 		}
-
 	}
 }
 

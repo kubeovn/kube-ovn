@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -14,6 +15,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
 	"kubevirt.io/client-go/kubecli"
+	anpclientset "sigs.k8s.io/network-policy-api/pkg/client/clientset/versioned"
 
 	clientset "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -21,7 +23,6 @@ import (
 
 // Configuration is the controller conf
 type Configuration struct {
-	BindAddress            string
 	OvnNbAddr              string
 	OvnSbAddr              string
 	OvnTimeout             int
@@ -34,6 +35,7 @@ type Configuration struct {
 
 	KubeClient      kubernetes.Interface
 	KubeOvnClient   clientset.Interface
+	AnpClient       anpclientset.Interface
 	AttachNetClient attachnetclientset.Interface
 	KubevirtClient  kubecli.KubevirtClient
 
@@ -68,8 +70,9 @@ type Configuration struct {
 	PodNicType   string
 
 	WorkerNum       int
-	PprofPort       int
+	PprofPort       int32
 	EnablePprof     bool
+	SecureServing   bool
 	NodePgProbeTime int
 
 	NetworkType             string
@@ -89,6 +92,7 @@ type Configuration struct {
 	EnableKeepVMIP    bool
 	EnableLbSvc       bool
 	EnableMetrics     bool
+	EnableANP         bool
 
 	ExternalGatewaySwitch   string
 	ExternalGatewayConfigNS string
@@ -143,7 +147,8 @@ func ParseFlags() (*Configuration, error) {
 
 		argWorkerNum       = pflag.Int("worker-num", 3, "The parallelism of each worker")
 		argEnablePprof     = pflag.Bool("enable-pprof", false, "Enable pprof")
-		argPprofPort       = pflag.Int("pprof-port", 10660, "The port to get profiling data")
+		argPprofPort       = pflag.Int32("pprof-port", 10660, "The port to get profiling data")
+		argSecureServing   = pflag.Bool("secure-serving", false, "Enable secure serving")
 		argNodePgProbeTime = pflag.Int("nodepg-probe-time", 1, "The probe interval for node port-group, the unit is minute")
 
 		argNetworkType             = pflag.String("network-type", util.NetworkTypeGeneve, "The ovn network type")
@@ -163,6 +168,7 @@ func ParseFlags() (*Configuration, error) {
 		argKeepVMIP                = pflag.Bool("keep-vm-ip", true, "Whether to keep ip for kubevirt pod when pod is rebuild")
 		argEnableLbSvc             = pflag.Bool("enable-lb-svc", false, "Whether to support loadbalancer service")
 		argEnableMetrics           = pflag.Bool("enable-metrics", true, "Whether to support metrics query")
+		argEnableANP               = pflag.Bool("enable-anp", false, "Enable support for admin network policy and baseline admin network policy")
 
 		argExternalGatewayConfigNS = pflag.String("external-gateway-config-ns", "kube-system", "The namespace of configmap external-gateway-config, default: kube-system")
 		argExternalGatewaySwitch   = pflag.String("external-gateway-switch", "external", "The name of the external gateway switch which is a ovs bridge to provide external network, default: external")
@@ -226,6 +232,7 @@ func ParseFlags() (*Configuration, error) {
 		WorkerNum:                      *argWorkerNum,
 		EnablePprof:                    *argEnablePprof,
 		PprofPort:                      *argPprofPort,
+		SecureServing:                  *argSecureServing,
 		NetworkType:                    *argNetworkType,
 		DefaultVlanID:                  *argDefaultVlanID,
 		LsDnatModDlDst:                 *argLsDnatModDlDst,
@@ -255,10 +262,11 @@ func ParseFlags() (*Configuration, error) {
 		BfdMinTx:                       *argBfdMinTx,
 		BfdMinRx:                       *argBfdMinRx,
 		BfdDetectMult:                  *argBfdDetectMult,
+		EnableANP:                      *argEnableANP,
 	}
 
 	if config.NetworkType == util.NetworkTypeVlan && config.DefaultHostInterface == "" {
-		return nil, fmt.Errorf("no host nic for vlan")
+		return nil, errors.New("no host nic for vlan")
 	}
 
 	if config.DefaultGateway == "" {
@@ -295,7 +303,7 @@ func ParseFlags() (*Configuration, error) {
 
 	if err := util.CheckSystemCIDR([]string{config.NodeSwitchCIDR, config.DefaultCIDR, config.ServiceClusterIPRange}); err != nil {
 		klog.Error(err)
-		return nil, fmt.Errorf("check system cidr failed, %v", err)
+		return nil, fmt.Errorf("check system cidr failed, %w", err)
 	}
 
 	for _, ip := range strings.Split(*argNodeLocalDNSIP, ",") {
@@ -349,6 +357,13 @@ func (config *Configuration) initKubeClient() error {
 		return err
 	}
 	config.KubevirtClient = virtClient
+
+	AnpClient, err := anpclientset.NewForConfig(cfg)
+	if err != nil {
+		klog.Errorf("init admin network policy client failed %v", err)
+		return err
+	}
+	config.AnpClient = AnpClient
 
 	kubeOvnClient, err := clientset.NewForConfig(cfg)
 	if err != nil {

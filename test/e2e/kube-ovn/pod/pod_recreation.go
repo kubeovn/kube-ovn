@@ -35,7 +35,7 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 		pod := framework.MakePod(namespaceName, podName, nil, nil, framework.PauseImage, nil, nil)
 		pod = podClient.CreateSync(pod)
 
-		ginkgo.By("Validating pod annoations")
+		ginkgo.By("Validating pod annotations")
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
 		framework.ExpectMAC(pod.Annotations[util.MacAddressAnnotation])
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
@@ -92,7 +92,7 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 		ginkgo.By("Waiting for pod " + podName + " to be running")
 		podClient.WaitForRunning(podName)
 
-		ginkgo.By("Validating pod annoations")
+		ginkgo.By("Validating pod annotations")
 		pod = podClient.GetPod(podName)
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
 		framework.ExpectMAC(pod.Annotations[util.MacAddressAnnotation])

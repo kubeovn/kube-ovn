@@ -1,6 +1,9 @@
 package controller
 
-import "github.com/prometheus/client_golang/prometheus"
+import (
+	"github.com/prometheus/client_golang/prometheus"
+	"sigs.k8s.io/controller-runtime/pkg/metrics"
+)
 
 var (
 	metricSubnetAvailableIPs = prometheus.NewGaugeVec(
@@ -66,9 +69,9 @@ var (
 )
 
 func registerMetrics() {
-	prometheus.MustRegister(metricSubnetAvailableIPs)
-	prometheus.MustRegister(metricSubnetUsedIPs)
-	prometheus.MustRegister(metricCentralSubnetInfo)
-	prometheus.MustRegister(metricSubnetIPAMInfo)
-	prometheus.MustRegister(metricSubnetIPAssignedInfo)
+	metrics.Registry.MustRegister(metricSubnetAvailableIPs)
+	metrics.Registry.MustRegister(metricSubnetUsedIPs)
+	metrics.Registry.MustRegister(metricCentralSubnetInfo)
+	metrics.Registry.MustRegister(metricSubnetIPAMInfo)
+	metrics.Registry.MustRegister(metricSubnetIPAssignedInfo)
 }

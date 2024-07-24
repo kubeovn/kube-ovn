@@ -46,14 +46,14 @@ func createShortSharedDir(pod *v1.Pod, volumeName, socketConsumption, kubeletDir
 			err = os.MkdirAll(newSharedDir, 0o777) // #nosec G301
 			if err != nil {
 				klog.Error(err)
-				return fmt.Errorf("createSharedDir: Failed to create dir (%s): %v", newSharedDir, err)
+				return fmt.Errorf("createSharedDir: Failed to create dir (%s): %w", newSharedDir, err)
 			}
 
 			if strings.Contains(newSharedDir, util.DefaultHostVhostuserBaseDir) {
 				klog.Infof("createSharedDir: Mount from %s to %s", originSharedDir, newSharedDir)
 				err = unix.Mount(originSharedDir, newSharedDir, "", unix.MS_BIND, "")
 				if err != nil {
-					return fmt.Errorf("createSharedDir: Failed to bind mount: %s", err)
+					return fmt.Errorf("createSharedDir: Failed to bind mount: %w", err)
 				}
 			}
 			return nil
@@ -76,11 +76,11 @@ func removeShortSharedDir(pod *v1.Pod, volumeName, socketConsumption string) (er
 		return nil
 	}
 
-	// keep mount util dpdk sock not used by kuebvirt
+	// keep mount util dpdk sock not used by kubevirt
 	if socketConsumption == util.ConsumptionKubevirt {
 		files, err := os.ReadDir(sharedDir)
 		if err != nil {
-			return fmt.Errorf("read file from dpdk share dir error: %s", err)
+			return fmt.Errorf("read file from dpdk share dir error: %w", err)
 		}
 		if len(files) != 0 {
 			return nil

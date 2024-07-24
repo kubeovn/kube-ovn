@@ -5,6 +5,8 @@ import (
 
 	"github.com/ovn-org/libovsdb/ovsdb"
 
+	v1alpha1 "sigs.k8s.io/network-policy-api/apis/v1alpha1"
+
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
@@ -92,6 +94,7 @@ type LogicalSwitchPort interface {
 	ListLogicalSwitchPortsWithLegacyExternalIDs() ([]ovnnb.LogicalSwitchPort, error)
 	GetLogicalSwitchPort(lspName string, ignoreNotFound bool) (*ovnnb.LogicalSwitchPort, error)
 	LogicalSwitchPortExists(name string) (bool, error)
+	SetLogicalSwitchPortActivationStrategy(lspName, chassis string) error
 	// vm live migrate
 	SetLogicalSwitchPortMigrateOptions(lspName, srcNodeName, targetNodeName string) error
 	ResetLogicalSwitchPortMigrateOptions(lspName, srcNodeName, targetNodeName string, migratedFail bool) error
@@ -149,6 +152,7 @@ type ACL interface {
 	SGLostACL(sg *kubeovnv1.SecurityGroup) (bool, error)
 	DeleteAcls(parentName, parentType, direction string, externalIDs map[string]string) error
 	DeleteAclsOps(parentName, parentType, direction string, externalIDs map[string]string) ([]ovsdb.Operation, error)
+	UpdateAnpRuleACLOps(pgName, asName, protocol string, priority int, aclAction ovnnb.ACLAction, rulePorts []v1alpha1.AdminNetworkPolicyPort, isIngress, isBanp bool) ([]ovsdb.Operation, error)
 }
 
 type AddressSet interface {

@@ -1,6 +1,9 @@
 package ovs
 
-import "github.com/prometheus/client_golang/prometheus"
+import (
+	"github.com/prometheus/client_golang/prometheus"
+	"sigs.k8s.io/controller-runtime/pkg/metrics"
+)
 
 // OVN NB metrics
 var ovsClientRequestLatency = prometheus.NewHistogramVec(
@@ -16,5 +19,5 @@ func init() {
 }
 
 func registerOvsClientMetrics() {
-	prometheus.MustRegister(ovsClientRequestLatency)
+	metrics.Registry.MustRegister(ovsClientRequestLatency)
 }

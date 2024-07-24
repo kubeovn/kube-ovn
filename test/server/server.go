@@ -96,7 +96,7 @@ func main() {
 	config := parseFlag()
 
 	go func() {
-		output, err := exec.Command("ping", "-D", "-O", "-c", fmt.Sprintf("%d", config.DurationSeconds*100), "-i", "0.01", config.RemoteAddress).CombinedOutput()
+		output, err := exec.Command("ping", "-D", "-O", "-c", strconv.Itoa(int(config.DurationSeconds*100)), "-i", "0.01", config.RemoteAddress).CombinedOutput()
 		if err != nil {
 			klog.Errorf("%s, %v", output, err)
 		}

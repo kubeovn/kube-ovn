@@ -45,11 +45,11 @@ type ControllerRuntime struct {
 func evalCommandSymlinks(cmd string) (string, error) {
 	path, err := exec.LookPath(cmd)
 	if err != nil {
-		return "", fmt.Errorf("failed to search for command %q: %v", cmd, err)
+		return "", fmt.Errorf("failed to search for command %q: %w", cmd, err)
 	}
 	file, err := filepath.EvalSymlinks(path)
 	if err != nil {
-		return "", fmt.Errorf("failed to read evaluate symbolic links for file %q: %v", path, err)
+		return "", fmt.Errorf("failed to read evaluate symbolic links for file %q: %w", path, err)
 	}
 
 	return file, nil
@@ -232,7 +232,7 @@ func (c *Controller) reconcileRouters(event *subnetEvent) error {
 	gateway, ok := node.Annotations[util.GatewayAnnotation]
 	if !ok {
 		klog.Errorf("annotation for node %s ovn.kubernetes.io/gateway not exists", node.Name)
-		return fmt.Errorf("annotation for node ovn.kubernetes.io/gateway not exists")
+		return errors.New("annotation for node ovn.kubernetes.io/gateway not exists")
 	}
 	nic, err := netlink.LinkByName(util.NodeNic)
 	if err != nil {

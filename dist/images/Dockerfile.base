@@ -53,7 +53,9 @@ RUN cd /usr/src/ && git clone -b branch-24.03 --depth=1 https://github.com/ovn-o
     # fix lr-lb dnat with multiple distributed gateway ports
     curl -s https://github.com/kubeovn/ovn/commit/c092b1f74ab2dfcc8d814e7a96d0ed99a1d4ec22.patch | git apply && \
     # northd: skip arp/nd request for lrp addresses from localnet ports
-    curl -s https://github.com/kubeovn/ovn/commit/1aa952f2f1b348739d2585618a6f2afff2ed4501.patch | git apply
+    curl -s https://github.com/kubeovn/ovn/commit/1aa952f2f1b348739d2585618a6f2afff2ed4501.patch | git apply && \
+    # ovn-controller: make activation strategy work for single chassis
+    curl -s https://github.com/kubeovn/ovn/commit/487cd1c6c0cc9def7cedaaaf3dd4bc99c23974c4.patch | git apply
 
 RUN apt install -y build-essential fakeroot \
     autoconf automake bzip2 debhelper-compat dh-exec dh-python dh-sequence-python3 dh-sequence-sphinxdoc \
@@ -106,7 +108,7 @@ ARG ARCH
 ARG CNI_VERSION=v1.5.1
 RUN curl -sSf -L --retry 5 https://github.com/containernetworking/plugins/releases/download/${CNI_VERSION}/cni-plugins-linux-${ARCH}-${CNI_VERSION}.tgz | tar -xz -C . ./loopback ./portmap ./macvlan
 
-ARG KUBE_VERSION="v1.30.2"
+ARG KUBE_VERSION="v1.30.3"
 
 RUN curl -L https://dl.k8s.io/${KUBE_VERSION}/kubernetes-client-linux-${ARCH}.tar.gz | tar -xz -C . && cp ./kubernetes/client/bin/kubectl /usr/bin/kubectl \
  && chmod +x /usr/bin/kubectl && rm -rf ./kubernetes

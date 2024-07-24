@@ -2,7 +2,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.15.0
   labels:
     app: kwok-controller
   name: attaches.kwok.x-k8s.io
@@ -127,7 +127,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.15.0
   labels:
     app: kwok-controller
   name: clusterattaches.kwok.x-k8s.io
@@ -267,7 +267,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.15.0
   labels:
     app: kwok-controller
   name: clusterexecs.kwok.x-k8s.io
@@ -449,7 +449,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.15.0
   labels:
     app: kwok-controller
   name: clusterlogs.kwok.x-k8s.io
@@ -596,7 +596,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.15.0
   labels:
     app: kwok-controller
   name: clusterportforwards.kwok.x-k8s.io
@@ -763,7 +763,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.15.0
   labels:
     app: kwok-controller
   name: clusterresourceusages.kwok.x-k8s.io
@@ -920,7 +920,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.15.0
   labels:
     app: kwok-controller
   name: execs.kwok.x-k8s.io
@@ -1084,7 +1084,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.15.0
   labels:
     app: kwok-controller
   name: logs.kwok.x-k8s.io
@@ -1213,7 +1213,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.15.0
   labels:
     app: kwok-controller
   name: metrics.kwok.x-k8s.io
@@ -1406,7 +1406,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.15.0
   labels:
     app: kwok-controller
   name: portforwards.kwok.x-k8s.io
@@ -1556,7 +1556,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.15.0
   labels:
     app: kwok-controller
   name: resourceusages.kwok.x-k8s.io
@@ -1695,7 +1695,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.15.0
   labels:
     app: kwok-controller
   name: stages.kwok.x-k8s.io
@@ -1829,12 +1829,53 @@ spec:
                           type: object
                         type: array
                     type: object
+                  patches:
+                    description: Patches means that the resource will be patched.
+                    items:
+                      description: StagePatch describes the patch for the resource.
+                      properties:
+                        impersonation:
+                          description: |-
+                            Impersonation indicates the impersonating configuration for client when patching status.
+                            In most cases this will be empty, in which case the default client service account will be used.
+                            When this is not empty, a corresponding rbac change is required to grant `impersonate` privilege.
+                            The support for this field is not available in Pod and Node resources.
+                          properties:
+                            username:
+                              description: Username the target username for the client
+                                to impersonate
+                              type: string
+                          required:
+                          - username
+                          type: object
+                        root:
+                          description: Root indicates the root of the template calculated
+                            by the patch.
+                          type: string
+                        subresource:
+                          description: Subresource indicates the name of the subresource
+                            that will be patched.
+                          type: string
+                        template:
+                          description: Template indicates the template for modifying
+                            the resource in the next.
+                          type: string
+                        type:
+                          description: Type indicates the type of the patch.
+                          enum:
+                          - json
+                          - merge
+                          - strategic
+                          type: string
+                      type: object
+                    type: array
                   statusPatchAs:
                     description: |-
                       StatusPatchAs indicates the impersonating configuration for client when patching status.
                       In most cases this will be empty, in which case the default client service account will be used.
                       When this is not empty, a corresponding rbac change is required to grant `impersonate` privilege.
                       The support for this field is not available in Pod and Node resources.
+                      Deprecated: Use Patches instead.
                     properties:
                       username:
                         description: Username the target username for the client to
@@ -1848,10 +1889,12 @@ spec:
                     description: |-
                       StatusSubresource indicates the name of the subresource that will be patched. The support for
                       this field is not available in Pod and Node resources.
+                      Deprecated: Use Patches instead.
                     type: string
                   statusTemplate:
-                    description: StatusTemplate indicates the template for modifying
-                      the status of the resource in the next.
+                    description: |-
+                      StatusTemplate indicates the template for modifying the status of the resource in the next.
+                      Deprecated: Use Patches instead.
                     type: string
                 type: object
               resourceRef:
@@ -1924,6 +1967,17 @@ spec:
                   a random stage will be matched as the next stage based on the weight.
                 minimum: 0
                 type: integer
+              weightFrom:
+                description: |-
+                  WeightFrom means is the expression used to get the value.
+                  If it is a number type, convert to int.
+                  If it is a string type, the value get will be parsed by strconv.ParseInt.
+                properties:
+                  expressionFrom:
+                    description: ExpressionFrom is the expression used to get the
+                      value.
+                    type: string
+                type: object
             required:
             - next
             - resourceRef
@@ -2347,8 +2401,6 @@ spec:
         - --manage-nodes-with-annotation-selector=kwok.x-k8s.io/node=fake
         - --manage-nodes-with-label-selector=
         - --manage-single-node=
-        - --disregard-status-with-annotation-selector=kwok.x-k8s.io/status=custom
-        - --disregard-status-with-label-selector=
         - --node-ip=$(POD_IP)
         - --node-port=10247
         - --cidr=10.0.0.1/24
@@ -2374,7 +2426,7 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: status.hostIP
-        image: registry.k8s.io/kwok/kwok:v0.5.1
+        image: registry.k8s.io/kwok/kwok:v0.6.0
         imagePullPolicy: IfNotPresent
         livenessProbe:
           failureThreshold: 10

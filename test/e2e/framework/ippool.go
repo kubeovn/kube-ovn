@@ -228,7 +228,7 @@ func (c *IPPoolClient) WaitUntil(name string, cond func(s *apiv1.IPPool) (bool, 
 		ippool = c.Get(name).DeepCopy()
 		met, err := cond(ippool)
 		if err != nil {
-			return false, fmt.Errorf("failed to check condition for ippool %s: %v", name, err)
+			return false, fmt.Errorf("failed to check condition for ippool %s: %w", name, err)
 		}
 		return met, nil
 	})

@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"reflect"
 	"slices"
@@ -261,19 +262,19 @@ func (c *Controller) handleAddVirtualIP(key string) error {
 		mac = lrp.MAC
 		ipStr := util.GetStringIP(v4ip, v6ip)
 		if err := c.OVNNbClient.CreateLogicalSwitchPort(subnet.Name, portName, ipStr, mac, vip.Name, vip.Spec.Namespace, false, "", "", false, nil, subnet.Spec.Vpc); err != nil {
-			err = fmt.Errorf("failed to create lsp %s: %v", portName, err)
+			err = fmt.Errorf("failed to create lsp %s: %w", portName, err)
 			klog.Error(err)
 			return err
 		}
 		if err := c.OVNNbClient.SetLogicalSwitchPortArpProxy(portName, true); err != nil {
-			err = fmt.Errorf("failed to enable lsp arp proxy for vip %s: %v", portName, err)
+			err = fmt.Errorf("failed to enable lsp arp proxy for vip %s: %w", portName, err)
 			klog.Error(err)
 			return err
 		}
 	}
 	if vip.Spec.ParentMac != "" {
 		if vip.Spec.Type == util.SwitchLBRuleVip {
-			err = fmt.Errorf("invalid usage of vip")
+			err = errors.New("invalid usage of vip")
 			klog.Error(err)
 			return err
 		}
@@ -314,17 +315,17 @@ func (c *Controller) handleUpdateVirtualIP(key string) error {
 	}
 	// not support change
 	if vip.Status.Mac != "" && vip.Status.Mac != vip.Spec.MacAddress {
-		err = fmt.Errorf("not support change mac of vip")
+		err = errors.New("not support change mac of vip")
 		klog.Errorf("%v", err)
 		return err
 	}
 	if vip.Status.V4ip != "" && vip.Status.V4ip != vip.Spec.V4ip {
-		err = fmt.Errorf("not support change v4 ip of vip")
+		err = errors.New("not support change v4 ip of vip")
 		klog.Errorf("%v", err)
 		return err
 	}
 	if vip.Status.V6ip != "" && vip.Status.V6ip != vip.Spec.V6ip {
-		err = fmt.Errorf("not support change v6 ip of vip")
+		err = errors.New("not support change v6 ip of vip")
 		klog.Errorf("%v", err)
 		return err
 	}
@@ -362,7 +363,7 @@ func (c *Controller) handleDelVirtualIP(vip *kubeovnv1.Vip) error {
 		portName := ovs.PodNameToPortName(vip.Name, vip.Spec.Namespace, subnet.Spec.Provider)
 		klog.Infof("delete vip arp proxy lsp %s", portName)
 		if err := c.OVNNbClient.DeleteLogicalSwitchPort(portName); err != nil {
-			err = fmt.Errorf("failed to delete lsp %s: %v", vip.Name, err)
+			err = fmt.Errorf("failed to delete lsp %s: %w", vip.Name, err)
 			klog.Error(err)
 			return err
 		}
@@ -478,12 +479,12 @@ func (c *Controller) createOrUpdateVipCR(key, ns, subnet, v4ip, v6ip, mac, pV4ip
 					ParentMac:  pmac,
 				},
 			}, metav1.CreateOptions{}); err != nil {
-				err := fmt.Errorf("failed to create crd vip '%s', %v", key, err)
+				err := fmt.Errorf("failed to create crd vip '%s', %w", key, err)
 				klog.Error(err)
 				return err
 			}
 		} else {
-			err := fmt.Errorf("failed to get crd vip '%s', %v", key, err)
+			err := fmt.Errorf("failed to get crd vip '%s', %w", key, err)
 			klog.Error(err)
 			return err
 		}
@@ -508,7 +509,7 @@ func (c *Controller) createOrUpdateVipCR(key, ns, subnet, v4ip, v6ip, mac, pV4ip
 			vip.Status.Pmac = pmac
 			vip.Status.Type = vip.Spec.Type
 			if _, err := c.config.KubeOvnClient.KubeovnV1().Vips().Update(context.Background(), vip, metav1.UpdateOptions{}); err != nil {
-				err := fmt.Errorf("failed to update vip '%s', %v", key, err)
+				err := fmt.Errorf("failed to update vip '%s', %w", key, err)
 				klog.Error(err)
 				return err
 			}

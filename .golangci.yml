@@ -15,6 +15,13 @@ linters:
     - unconvert
     - unused
     - errcheck
+    - gosec
+    - govet
+    - perfsprint
+    - usestdlibvars
+    - loggercheck
+    - whitespace
+    - errorlint
 
 issues:
   max-same-issues: 0
@@ -31,10 +38,20 @@ issues:
     - linters:
         - revive
       text: "VpcDnsList should be VpcDNSList" # api param not change
+    - linters:
+        - gosec
+      path: _test\.go
+    - linters:
+        - gosec
+      path: test/
 
 linters-settings:
   goimports:
     local-prefixes: github.com/kubeovn/kube-ovn
   gofumpt:
     extra-rules: true
+  perfsprint:
+    strconcat: false
+  errorlint:
+    asserts: false
 

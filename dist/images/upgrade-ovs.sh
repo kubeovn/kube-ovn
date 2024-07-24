@@ -10,11 +10,9 @@ OVN_VERSION_COMPATIBILITY=${OVN_VERSION_COMPATIBILITY:-}
 UPDATE_STRATEGY=`kubectl -n kube-system get ds ovs-ovn -o jsonpath='{.spec.updateStrategy.type}'`
 
 SSL_OPTIONS=
-function ssl_options() {
-    if "$ENABLE_SSL" != "false" ]; then
-        SSL_OPTIONS="-p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert"
-    fi
-}
+if [ "$ENABLE_SSL" != "false" ]; then
+    SSL_OPTIONS="-p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert"
+fi
 
 function gen_conn_str {
   if [[ -z "${OVN_DB_IPS}" ]]; then
@@ -38,7 +36,7 @@ nb_addr="$(gen_conn_str 6641)"
 while true; do
   if [ x`ovn-nbctl --db=$nb_addr $SSL_OPTIONS get NB_Global . options | grep -o 'version_compatibility='` != "x" ]; then
     value=`ovn-nbctl --db=$nb_addr $SSL_OPTIONS get NB_Global . options:version_compatibility | sed -e 's/^"//' -e 's/"$//'`
-    echo "ovn NB_Global option version_compatibility is set to $value"
+    echo "ovn NB_Global option version_compatibility is already set to $value"
     if [ "$value" = "$OVN_VERSION_COMPATIBILITY" -o "$value" = "_$OVN_VERSION_COMPATIBILITY" ]; then
       break
     fi

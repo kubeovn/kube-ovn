@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"reflect"
@@ -181,6 +182,10 @@ func (c *Controller) enqueueAddPod(obj interface{}) {
 	}
 
 	p := obj.(*v1.Pod)
+	if p.Spec.HostNetwork {
+		return
+	}
+
 	// TODO: we need to find a way to reduce duplicated np added to the queue
 	if c.config.EnableNP {
 		c.namedPort.AddNamedPortByPod(p)
@@ -189,10 +194,6 @@ func (c *Controller) enqueueAddPod(obj interface{}) {
 				c.updateNpQueue.Add(np)
 			}
 		}
-	}
-
-	if p.Spec.HostNetwork {
-		return
 	}
 
 	if !isPodAlive(p) {
@@ -237,6 +238,10 @@ func (c *Controller) enqueueDeletePod(obj interface{}) {
 	}
 
 	p := obj.(*v1.Pod)
+	if p.Spec.HostNetwork {
+		return
+	}
+
 	if c.config.EnableNP {
 		c.namedPort.DeleteNamedPortByPod(p)
 		for _, np := range c.podMatchNetworkPolicies(p) {
@@ -244,8 +249,9 @@ func (c *Controller) enqueueDeletePod(obj interface{}) {
 		}
 	}
 
-	if p.Spec.HostNetwork {
-		return
+	if c.config.EnableANP {
+		podNs, _ := c.namespacesLister.Get(obj.(*v1.Pod).Namespace)
+		c.updateAnpsByLabelsMatch(podNs.Labels, obj.(*v1.Pod).Labels)
 	}
 
 	klog.Infof("enqueue delete pod %s", key)
@@ -284,6 +290,9 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 	if oldPod.ResourceVersion == newPod.ResourceVersion {
 		return
 	}
+	if newPod.Spec.HostNetwork {
+		return
+	}
 
 	key, err := cache.MetaNamespaceKeyFunc(newObj)
 	if err != nil {
@@ -320,8 +329,20 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 		}
 	}
 
-	if newPod.Spec.HostNetwork {
-		return
+	if c.config.EnableANP {
+		podNs, _ := c.namespacesLister.Get(newPod.Namespace)
+		if !reflect.DeepEqual(oldPod.Labels, newPod.Labels) {
+			c.updateAnpsByLabelsMatch(podNs.Labels, newPod.Labels)
+		}
+
+		for _, podNet := range podNets {
+			oldAllocated := oldPod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)]
+			newAllocated := newPod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)]
+			if oldAllocated != newAllocated {
+				c.updateAnpsByLabelsMatch(podNs.Labels, newPod.Labels)
+				break
+			}
+		}
 	}
 
 	isStateful, statefulSetName, statefulSetUID := isStatefulSetPod(newPod)
@@ -706,14 +727,14 @@ func (c *Controller) reconcileAllocateSubnets(cachedPod, pod *v1.Pod, needAlloca
 				if migrated {
 					klog.Infof("migrate end reset options for lsp %s from %s to %s, migrated fail: %t", portName, srcNodeName, targetNodeName, migratedFail)
 					if err := c.OVNNbClient.ResetLogicalSwitchPortMigrateOptions(portName, srcNodeName, targetNodeName, migratedFail); err != nil {
-						err = fmt.Errorf("failed to clean migrate options for lsp %s, %v", portName, err)
+						err = fmt.Errorf("failed to clean migrate options for lsp %s, %w", portName, err)
 						klog.Error(err)
 						return nil, err
 					}
 				} else {
 					klog.Infof("migrate start set options for lsp %s from %s to %s", portName, srcNodeName, targetNodeName)
 					if err := c.OVNNbClient.SetLogicalSwitchPortMigrateOptions(portName, srcNodeName, targetNodeName); err != nil {
-						err = fmt.Errorf("failed to set migrate options for lsp %s, %v", portName, err)
+						err = fmt.Errorf("failed to set migrate options for lsp %s, %w", portName, err)
 						klog.Error(err)
 						return nil, err
 					}
@@ -744,7 +765,7 @@ func (c *Controller) reconcileAllocateSubnets(cachedPod, pod *v1.Pod, needAlloca
 		// CreatePort may fail, so put ip CR creation after CreatePort
 		ipCRName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
 		if err := c.createOrUpdateIPCR(ipCRName, podName, ipStr, mac, subnet.Name, pod.Namespace, pod.Spec.NodeName, podType); err != nil {
-			err = fmt.Errorf("failed to create ips CR %s.%s: %v", podName, pod.Namespace, err)
+			err = fmt.Errorf("failed to create ips CR %s.%s: %w", podName, pod.Namespace, err)
 			klog.Error(err)
 			return nil, err
 		}
@@ -809,13 +830,13 @@ func (c *Controller) reconcileRouteSubnets(cachedPod, pod *v1.Pod, needRoutePodN
 			return fmt.Errorf("NodeSwitch subnet %s is unavailable for pod", subnet.Name)
 		}
 
+		portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
 		if (!c.config.EnableLb || !(subnet.Spec.EnableLb != nil && *subnet.Spec.EnableLb)) &&
 			subnet.Spec.Vpc == c.config.ClusterRouter &&
 			subnet.Spec.U2OInterconnection &&
 			subnet.Spec.Vlan != "" &&
 			!subnet.Spec.LogicalGateway {
 			pgName := getOverlaySubnetsPortGroupName(subnet.Name, pod.Spec.NodeName)
-			portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
 			if err := c.OVNNbClient.PortGroupAddPorts(pgName, portName); err != nil {
 				klog.Errorf("failed to add port to u2o port group %s: %v", pgName, err)
 				return err
@@ -846,7 +867,7 @@ func (c *Controller) reconcileRouteSubnets(cachedPod, pod *v1.Pod, needRoutePodN
 					nextHop = externalSubnet.Spec.Gateway
 					if nextHop == "" {
 						klog.Errorf("no available gateway address")
-						return fmt.Errorf("no available gateway address")
+						return errors.New("no available gateway address")
 					}
 				}
 				if strings.Contains(nextHop, "/") {
@@ -867,12 +888,10 @@ func (c *Controller) reconcileRouteSubnets(cachedPod, pod *v1.Pod, needRoutePodN
 				}
 
 				// remove lsp from port group to make EIP/SNAT work
-				portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
 				if err = c.OVNNbClient.PortGroupRemovePorts(pgName, portName); err != nil {
 					klog.Error(err)
 					return err
 				}
-
 			} else {
 				if subnet.Spec.GatewayType == kubeovnv1.GWDistributedType && pod.Annotations[util.NorthGatewayAnnotation] == "" {
 					nodeTunlIPAddr, err := getNodeTunlIP(node)
@@ -888,7 +907,6 @@ func (c *Controller) reconcileRouteSubnets(cachedPod, pod *v1.Pod, needRoutePodN
 								continue
 							}
 
-							portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
 							if err := c.OVNNbClient.PortGroupAddPorts(pgName, portName); err != nil {
 								klog.Errorf("add port to port group %s: %v", pgName, err)
 								return err
@@ -903,18 +921,32 @@ func (c *Controller) reconcileRouteSubnets(cachedPod, pod *v1.Pod, needRoutePodN
 					}
 				}
 
-				if pod.Annotations[util.NorthGatewayAnnotation] != "" {
-					if err := c.addStaticRouteToVpc(
-						subnet.Spec.Vpc,
-						&kubeovnv1.StaticRoute{
-							Policy:     kubeovnv1.PolicySrc,
-							CIDR:       podIP,
-							NextHopIP:  pod.Annotations[util.NorthGatewayAnnotation],
-							RouteTable: subnet.Spec.RouteTable,
-						},
-					); err != nil {
-						klog.Errorf("failed to add static route, %v", err)
-						return err
+				if pod.Annotations[util.NorthGatewayAnnotation] != "" && pod.Annotations[util.IPAddressAnnotation] != "" {
+					for _, podAddr := range strings.Split(pod.Annotations[util.IPAddressAnnotation], ",") {
+						if util.CheckProtocol(podAddr) != util.CheckProtocol(pod.Annotations[util.NorthGatewayAnnotation]) {
+							continue
+						}
+						ipSuffix := "ip4"
+						if util.CheckProtocol(podAddr) == kubeovnv1.ProtocolIPv6 {
+							ipSuffix = "ip6"
+						}
+
+						if err := c.addPolicyRouteToVpc(
+							subnet.Spec.Vpc,
+							&kubeovnv1.PolicyRoute{
+								Priority:  util.NorthGatewayRoutePolicyPriority,
+								Match:     fmt.Sprintf("%s.src == %s", ipSuffix, podAddr),
+								Action:    kubeovnv1.PolicyRouteActionReroute,
+								NextHopIP: pod.Annotations[util.NorthGatewayAnnotation],
+							},
+							map[string]string{
+								"vendor": util.CniTypeName,
+								"subnet": subnet.Name,
+							},
+						); err != nil {
+							klog.Errorf("failed to add policy route, %v", err)
+							return err
+						}
 					}
 				} else if c.config.EnableEipSnat {
 					if err = c.deleteStaticRouteFromVpc(
@@ -953,6 +985,13 @@ func (c *Controller) reconcileRouteSubnets(cachedPod, pod *v1.Pod, needRoutePodN
 						}
 					}
 				}
+			}
+		}
+
+		if pod.Annotations[fmt.Sprintf(util.ActivationStrategyTemplate, podNet.ProviderName)] != "" {
+			if err := c.OVNNbClient.SetLogicalSwitchPortActivationStrategy(portName, pod.Spec.NodeName); err != nil {
+				klog.Errorf("failed to set activation strategy for lsp %s: %v", portName, err)
+				return err
 			}
 		}
 
@@ -1041,7 +1080,7 @@ func (c *Controller) handleDeletePod(key string) error {
 		}
 		for _, port := range ports {
 			if err := c.OVNNbClient.CleanLogicalSwitchPortMigrateOptions(port.Name); err != nil {
-				err = fmt.Errorf("failed to clean migrate options for vm lsp %s, %v", port.Name, err)
+				err = fmt.Errorf("failed to clean migrate options for vm lsp %s, %w", port.Name, err)
 				klog.Error(err)
 				return err
 			}
@@ -1098,19 +1137,20 @@ func (c *Controller) handleDeletePod(key string) error {
 					klog.Error(err)
 					return err
 				}
-				// If pod has snat or eip, also need delete staticRoute when delete pod
-				if vpc.Name == c.config.ClusterRouter {
-					if err = c.deleteStaticRouteFromVpc(
-						vpc.Name,
-						subnet.Spec.RouteTable,
-						address.IP,
-						"",
-						kubeovnv1.PolicyDst,
-					); err != nil {
-						klog.Errorf("failed to delete static route, %v", err)
-						return err
-					}
+
+				ipSuffix := "ip4"
+				if util.CheckProtocol(address.IP) == kubeovnv1.ProtocolIPv6 {
+					ipSuffix = "ip6"
 				}
+				if err = c.deletePolicyRouteFromVpc(
+					vpc.Name,
+					util.NorthGatewayRoutePolicyPriority,
+					fmt.Sprintf("%s.src == %s", ipSuffix, address.IP),
+				); err != nil {
+					klog.Errorf("failed to delete static route, %v", err)
+					return err
+				}
+
 				if c.config.EnableEipSnat {
 					if pod.Annotations[util.EipAnnotation] != "" {
 						if err = c.OVNNbClient.DeleteNat(c.config.ClusterRouter, ovnnb.NATTypeDNATAndSNAT, pod.Annotations[util.EipAnnotation], address.IP); err != nil {
@@ -1127,7 +1167,7 @@ func (c *Controller) handleDeletePod(key string) error {
 		}
 		for _, port := range ports {
 			// when lsp is deleted, the port of pod is deleted from any port-group automatically.
-			klog.Infof("gc logical switch port %s", port.Name)
+			klog.Infof("delete logical switch port %s", port.Name)
 			if err := c.OVNNbClient.DeleteLogicalSwitchPort(port.Name); err != nil {
 				klog.Errorf("failed to delete lsp %s, %v", port.Name, err)
 				return err
@@ -1368,7 +1408,7 @@ func getNodeTunlIP(node *v1.Node) ([]net.IP, error) {
 	var nodeTunlIPAddr []net.IP
 	nodeTunlIP := node.Annotations[util.IPAddressAnnotation]
 	if nodeTunlIP == "" {
-		return nil, fmt.Errorf("node has no tunnel ip annotation")
+		return nil, errors.New("node has no tunnel ip annotation")
 	}
 
 	for _, ip := range strings.Split(nodeTunlIP, ",") {
@@ -1434,7 +1474,7 @@ func (c *Controller) podNeedSync(pod *v1.Pod) (bool, error) {
 		}
 		ipName := ovs.PodNameToPortName(pod.Name, pod.Namespace, n.ProviderName)
 		if _, err = c.ipsLister.Get(ipName); err != nil {
-			err = fmt.Errorf("pod has no ip %s: %v", ipName, err)
+			err = fmt.Errorf("pod has no ip %s: %w", ipName, err)
 			// need to sync to create ip
 			klog.Error(err)
 			return true, nil
@@ -1916,7 +1956,7 @@ func appendCheckPodToDel(c *Controller, pod *v1.Pod, ownerRefName, ownerRefKind 
 		}
 
 	case util.VMInstance:
-		vm, err := c.config.KubevirtClient.VirtualMachine(pod.Namespace).Get(context.Background(), ownerRefName, &metav1.GetOptions{})
+		vm, err := c.config.KubevirtClient.VirtualMachine(pod.Namespace).Get(context.Background(), ownerRefName, metav1.GetOptions{})
 		if err != nil {
 			if k8serrors.IsNotFound(err) {
 				klog.Infof("VirtualMachine %s is not found", ownerRefName)
@@ -1986,7 +2026,7 @@ func (c *Controller) isVMToDel(pod *v1.Pod, vmiName string) bool {
 		vmName   string
 	)
 	// The vmi is also deleted when pod is deleted, only left vm exists.
-	vmi, err := c.config.KubevirtClient.VirtualMachineInstance(pod.Namespace).Get(context.Background(), vmiName, &metav1.GetOptions{})
+	vmi, err := c.config.KubevirtClient.VirtualMachineInstance(pod.Namespace).Get(context.Background(), vmiName, metav1.GetOptions{})
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			vmiAlive = false
@@ -2011,7 +2051,7 @@ func (c *Controller) isVMToDel(pod *v1.Pod, vmiName string) bool {
 		return false
 	}
 
-	vm, err := c.config.KubevirtClient.VirtualMachine(pod.Namespace).Get(context.Background(), vmName, &metav1.GetOptions{})
+	vm, err := c.config.KubevirtClient.VirtualMachine(pod.Namespace).Get(context.Background(), vmName, metav1.GetOptions{})
 	if err != nil {
 		// the vm has gone
 		if k8serrors.IsNotFound(err) {
@@ -2214,7 +2254,7 @@ func setPodRoutesAnnotation(annotations map[string]string, provider string, rout
 
 	buf, err := json.Marshal(routes)
 	if err != nil {
-		err = fmt.Errorf("failed to marshal routes %+v: %v", routes, err)
+		err = fmt.Errorf("failed to marshal routes %+v: %w", routes, err)
 		klog.Error(err)
 		return err
 	}
