@@ -90,6 +90,7 @@ func main() {
 	if err != nil {
 		util.LogFatalAndExit(err, "failed to create controller")
 	}
+	klog.Info("start daemon controller")
 	go ctl.Run(stopCh)
 	go daemon.RunServer(config, ctl)
 
