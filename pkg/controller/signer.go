@@ -11,7 +11,6 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
-	mathrand "math/rand"
 	"time"
 
 	csrv1 "k8s.io/api/certificates/v1"
@@ -203,7 +202,6 @@ func (c *Controller) signerFailure(csr *csrv1.CertificateSigningRequest, reason,
 	if err := c.updateCSRStatusConditions(csr, reason, message); err != nil {
 		klog.Error(err)
 	}
-
 }
 
 // Update the status conditions on the CSR object
@@ -251,7 +249,10 @@ func getCertApprovalCondition(status *csrv1.CertificateSigningRequestStatus) (ap
 }
 
 func newCertificateTemplate(certReq *x509.CertificateRequest) *x509.Certificate {
-	serialNumber := mathrand.New(mathrand.NewSource(time.Now().UTC().UnixNano())).Int63()
+	serialNumber, err := rand.Int(rand.Reader, big.NewInt(1<<62))
+	if err != nil {
+		return nil
+	}
 
 	template := &x509.Certificate{
 		Subject: certReq.Subject,
@@ -260,7 +261,7 @@ func newCertificateTemplate(certReq *x509.CertificateRequest) *x509.Certificate 
 
 		NotBefore:    time.Now().Add(-1 * time.Second),
 		NotAfter:     time.Now().Add(10 * oneYear),
-		SerialNumber: big.NewInt(serialNumber),
+		SerialNumber: serialNumber,
 
 		DNSNames:              certReq.DNSNames,
 		BasicConstraintsValid: true,

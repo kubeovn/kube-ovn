@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"bytes"
 	"context"
 	"crypto/x509"
 	"encoding/pem"
@@ -52,7 +53,7 @@ func checkCertExpired() (bool, error) {
 
 	block, _ := pem.Decode(certBytes)
 	if block == nil {
-		return false, fmt.Errorf("failed to decode PEM block containing certificate")
+		return false, errors.New("failed to decode PEM block containing certificate")
 	}
 
 	cert, err := x509.ParseCertificate(block.Bytes)
@@ -149,7 +150,11 @@ func (c *Controller) createCSR(csrBytes []byte) error {
 	}
 
 	klog.Infof("ipsec get certitfcate \n %s ", certificateStr)
-	cmd := exec.Command("sh", "-c", "echo -n \""+certificateStr+"\" | openssl x509 -outform pem -text -out "+ipsecCertPath)
+	cmd := exec.Command("openssl", "x509", "-outform", "pem", "-text", "-out", ipsecCertPath)
+	var stdinBuf bytes.Buffer
+	stdinBuf.WriteString(certificateStr)
+	cmd.Stdin = &stdinBuf
+
 	_, err := cmd.CombinedOutput()
 	if err != nil {
 		return err
@@ -161,8 +166,8 @@ func (c *Controller) createCSR(csrBytes []byte) error {
 		return err
 	}
 
-	output := []byte(secret.Data["cacert"])
-	if err := os.WriteFile(ipsecCACertPath, output, 0o644); err != nil {
+	output := secret.Data["cacert"]
+	if err := os.WriteFile(ipsecCACertPath, output, 0o600); err != nil {
 		return err
 	}
 

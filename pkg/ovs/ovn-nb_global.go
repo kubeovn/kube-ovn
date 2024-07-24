@@ -98,7 +98,7 @@ func (c *OVNNbClient) SetOVNIPSec(enable bool) error {
 	nbGlobal, err := c.GetNbGlobal()
 	if err != nil {
 		klog.Error(err)
-		return fmt.Errorf("failed to get nb global: %v", err)
+		return fmt.Errorf("failed to get nb global: %w", err)
 	}
 	if enable == nbGlobal.Ipsec {
 		return nil
