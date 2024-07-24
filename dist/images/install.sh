@@ -1538,7 +1538,11 @@ spec:
                   type: boolean
                 v4Eip:
                   type: string
+                v6Eip:
+                  type: string
                 v4Ip:
+                  type: string
+                v6Ip:
                   type: string
                 vpc:
                   type: string
@@ -1731,7 +1735,11 @@ spec:
                   type: boolean
                 v4Eip:
                   type: string
+                v6Eip:
+                  type: string
                 v4Ip:
+                  type: string
+                v6Ip:
                   type: string
                 vpc:
                   type: string
