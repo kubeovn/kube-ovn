@@ -372,7 +372,7 @@ func (ipam *IPAM) IsIPAssignedToOtherPod(ip, subnetName, podName string) (string
 
 	subnet, ok := ipam.Subnets[subnetName]
 	if !ok {
-		klog.Warningf("failed to get subnet %s", subnetName)
+		klog.Warningf("subnet %q not found", subnetName)
 		return "", false
 	}
 	return subnet.isIPAssignedToOtherPod(ip, podName)
