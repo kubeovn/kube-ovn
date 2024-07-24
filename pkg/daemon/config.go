@@ -29,6 +29,11 @@ import (
 
 // Configuration is the daemon conf
 type Configuration struct {
+	InstallCNIConfig bool
+	CniConfDir       string
+	CniConfFile      string
+	CniConfName      string
+
 	// interface being used for tunnel
 	tunnelIface               string
 	Iface                     string
@@ -52,9 +57,6 @@ type Configuration struct {
 	PprofPort                 int32
 	SecureServing             bool
 	NetworkType               string
-	CniConfDir                string
-	CniConfFile               string
-	CniConfName               string
 	DefaultProviderName       string
 	DefaultInterfaceName      string
 	ExternalGatewayConfigNS   string
@@ -73,6 +75,11 @@ type Configuration struct {
 // TODO: validate configuration
 func ParseFlags() *Configuration {
 	var (
+		argInstallCNIConfig = pflag.Bool("install-cni-config", false, "Install CNI config")
+		argCniConfDir       = pflag.String("cni-conf-dir", "/etc/cni/net.d", "Path of the CNI config directory.")
+		argCniConfFile      = pflag.String("cni-conf-file", "/kube-ovn/01-kube-ovn.conflist", "Path of the CNI config file.")
+		argsCniConfName     = pflag.String("cni-conf-name", "01-kube-ovn.conflist", "Specify the name of kube ovn conflist name in dir /etc/cni/net.d/, default: 01-kube-ovn.conflist")
+
 		argNodeName              = pflag.String("node-name", "", "Name of the node on which the daemon is running on.")
 		argIface                 = pflag.String("iface", "", "The iface used to inter-host pod communication, can be a nic name or a group of regex separated by comma (default the default route iface)")
 		argDPDKTunnelIface       = pflag.String("dpdk-tunnel-iface", "br-phy", "Specifies the name of the dpdk tunnel iface.")
@@ -92,9 +99,6 @@ func ParseFlags() *Configuration {
 		argMacLearningFallback   = pflag.Bool("mac-learning-fallback", false, "Fallback to the legacy MAC learning mode")
 
 		argsNetworkType              = pflag.String("network-type", util.NetworkTypeGeneve, "Tunnel encapsulation protocol in overlay networks")
-		argCniConfDir                = pflag.String("cni-conf-dir", "/etc/cni/net.d", "Path of the CNI config directory.")
-		argCniConfFile               = pflag.String("cni-conf-file", "/kube-ovn/01-kube-ovn.conflist", "Path of the CNI config file.")
-		argsCniConfName              = pflag.String("cni-conf-name", "01-kube-ovn.conflist", "Specify the name of kube ovn conflist name in dir /etc/cni/net.d/, default: 01-kube-ovn.conflist")
 		argsDefaultProviderName      = pflag.String("default-provider-name", "provider", "The vlan or vxlan type default provider interface name")
 		argsDefaultInterfaceName     = pflag.String("default-interface-name", "", "The default host interface name in the vlan/vxlan type")
 		argExternalGatewayConfigNS   = pflag.String("external-gateway-config-ns", "kube-system", "The namespace of configmap external-gateway-config, default: kube-system")
@@ -131,6 +135,10 @@ func ParseFlags() *Configuration {
 	pflag.Parse()
 
 	config := &Configuration{
+		InstallCNIConfig:          *argInstallCNIConfig,
+		CniConfDir:                *argCniConfDir,
+		CniConfFile:               *argCniConfFile,
+		CniConfName:               *argsCniConfName,
 		Iface:                     *argIface,
 		DPDKTunnelIface:           *argDPDKTunnelIface,
 		MTU:                       *argMTU,
@@ -149,9 +157,6 @@ func ParseFlags() *Configuration {
 		NodeSwitch:                *argNodeSwitch,
 		EncapChecksum:             *argEncapChecksum,
 		NetworkType:               *argsNetworkType,
-		CniConfDir:                *argCniConfDir,
-		CniConfFile:               *argCniConfFile,
-		CniConfName:               *argsCniConfName,
 		DefaultProviderName:       *argsDefaultProviderName,
 		DefaultInterfaceName:      *argsDefaultInterfaceName,
 		ExternalGatewayConfigNS:   *argExternalGatewayConfigNS,

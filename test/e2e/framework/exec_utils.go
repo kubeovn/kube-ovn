@@ -14,6 +14,7 @@ import (
 
 // ExecCommandInContainer executes a command in the specified container.
 func ExecCommandInContainer(f *Framework, namespace, pod, container string, cmd ...string) (string, string, error) {
+	framework.Logf("Executing command %q in container %s/%s/%s", cmd, namespace, pod, container)
 	return util.ExecuteCommandInContainer(f.ClientSet, f.ClientConfig(), namespace, pod, container, cmd...)
 }
 

@@ -528,8 +528,13 @@ jobs:
       - name: Load image
         run: docker load --input kube-ovn.tar
 
-      - name: Export debug image tag
-        run: echo "DEBUG_TAG='$(cat VERSION)-debug'" >> "$GITHUB_ENV"
+      - name: Set environment variables
+        run: |
+          if [ $(($RANDOM%2)) -ne 0 ]; then
+            # run as root and use valgrind to debug memory leak
+            echo "VERSION=$(cat VERSION)-debug" >> "$GITHUB_ENV"
+            echo "DEBUG_WRAPPER=valgrind" >> "$GITHUB_ENV"
+          fi
 
       - name: Create kind cluster
         run: |
@@ -538,9 +543,6 @@ jobs:
 
       - name: Install Kube-OVN
         id: install
-        env:
-          VERSION: ${{ env.DEBUG_TAG }}
-          DEBUG_WRAPPER: valgrind
         run: make kind-install-${{ matrix.mode }}-${{ matrix.ip-family }}
 
       - name: Run E2E
@@ -597,6 +599,10 @@ jobs:
 
       - name: Check valgrind result
         run: |
+          if [ "x$DEBUG_WRAPPER" != "xvalgrind" ]; then
+            exit
+          fi
+
           kubectl -n kube-system rollout restart ds ovs-ovn
           kubectl -n kube-system rollout status ds ovs-ovn
           sleep 10
@@ -718,8 +724,13 @@ jobs:
       - name: Load image
         run: docker load --input kube-ovn.tar
 
-      - name: Export debug image tag
-        run: echo "DEBUG_TAG='$(cat VERSION)-debug'" >> "$GITHUB_ENV"
+      - name: Set environment variables
+        run: |
+          if [ $(($RANDOM%2)) -ne 0 ]; then
+            # run as root and use valgrind to debug memory leak
+            echo "VERSION=$(cat VERSION)-debug" >> "$GITHUB_ENV"
+            echo "DEBUG_WRAPPER=valgrind" >> "$GITHUB_ENV"
+          fi
 
       - name: Create kind cluster
         run: |
@@ -728,9 +739,6 @@ jobs:
 
       - name: Install Kube-OVN
         id: install
-        env:
-          VERSION: ${{ env.DEBUG_TAG }}
-          DEBUG_WRAPPER: valgrind
         run: make kind-install-${{ matrix.ip-family }}
 
       - name: Run E2E
@@ -783,6 +791,10 @@ jobs:
 
       - name: Check valgrind result
         run: |
+          if [ "x$DEBUG_WRAPPER" != "xvalgrind" ]; then
+            exit
+          fi
+
           kubectl -n kube-system rollout restart ds ovs-ovn
           kubectl -n kube-system rollout status ds ovs-ovn
           sleep 10
@@ -879,8 +891,13 @@ jobs:
       - name: Load image
         run: docker load --input kube-ovn.tar
 
-      - name: Export debug image tag
-        run: echo "DEBUG_TAG='$(cat VERSION)-debug'" >> "$GITHUB_ENV"
+      - name: Set environment variables
+        run: |
+          if [ $(($RANDOM%2)) -ne 0 ]; then
+            # run as root and use valgrind to debug memory leak
+            echo "VERSION=$(cat VERSION)-debug" >> "$GITHUB_ENV"
+            echo "DEBUG_WRAPPER=valgrind" >> "$GITHUB_ENV"
+          fi
 
       - name: Create kind cluster
         run: |
@@ -889,9 +906,6 @@ jobs:
 
       - name: Install Kube-OVN
         id: install
-        env:
-          VERSION: ${{ env.DEBUG_TAG }}
-          DEBUG_WRAPPER: valgrind
         run: make kind-install-${{ matrix.ip-family }}
 
       - name: Run E2E
@@ -944,6 +958,10 @@ jobs:
 
       - name: Check valgrind result
         run: |
+          if [ "x$DEBUG_WRAPPER" != "xvalgrind" ]; then
+            exit
+          fi
+
           kubectl -n kube-system rollout restart ds ovs-ovn
           kubectl -n kube-system rollout status ds ovs-ovn
           sleep 10
@@ -1059,8 +1077,13 @@ jobs:
       - name: Load image
         run: docker load --input kube-ovn.tar
 
-      - name: Export debug image tag
-        run: echo "DEBUG_TAG='$(cat VERSION)-debug'" >> "$GITHUB_ENV"
+      - name: Set environment variables
+        run: |
+          if [ $(($RANDOM%2)) -ne 0 ]; then
+            # run as root and use valgrind to debug memory leak
+            echo "VERSION=$(cat VERSION)-debug" >> "$GITHUB_ENV"
+            echo "DEBUG_WRAPPER=valgrind" >> "$GITHUB_ENV"
+          fi
 
       - name: Create kind cluster
         run: |
@@ -1069,9 +1092,6 @@ jobs:
 
       - name: Install Kube-OVN
         id: install
-        env:
-          VERSION: ${{ env.DEBUG_TAG }}
-          DEBUG_WRAPPER: valgrind
         run: make kind-install-${{ matrix.mode }}-${{ matrix.ip-family }}
 
       - name: Run E2E
@@ -1131,6 +1151,10 @@ jobs:
 
       - name: Check valgrind result
         run: |
+          if [ "x$DEBUG_WRAPPER" != "xvalgrind" ]; then
+            exit
+          fi
+
           kubectl -n kube-system rollout restart ds ovs-ovn
           kubectl -n kube-system rollout status ds ovs-ovn
           sleep 10

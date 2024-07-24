@@ -16,6 +16,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/containerd/containerd/pkg/netns"
 	"github.com/containernetworking/plugins/pkg/ns"
 	"github.com/containernetworking/plugins/pkg/utils/sysctl"
 	"github.com/k8snetworkplumbingwg/sriovnet"
@@ -173,7 +174,7 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 	}
 	if isUserspaceDP {
 		// turn off tx checksum
-		if err = turnOffNicTxChecksum(containerNicName); err != nil {
+		if err = TurnOffNicTxChecksum(containerNicName); err != nil {
 			klog.Error(err)
 			return nil, err
 		}
@@ -706,9 +707,8 @@ func (c *Controller) checkNodeGwNicInNs(nodeExtIP, ip, gw string, gwNS ns.NetNS)
 		return ns.WithNetNSPath(gwNS.Path(), func(_ ns.NetNS) error {
 			err = waitNetworkReady(util.NodeGwNic, ip, gw, true, true, 3, nil)
 			if err == nil {
-				cmd := exec.Command("sh", "-c", "bfdd-control status")
-				if err := cmd.Run(); err != nil {
-					err := fmt.Errorf("failed to get bfdd status, %w", err)
+				if output, err := exec.Command("sh", "-c", "bfdd-control status").CombinedOutput(); err != nil {
+					err := fmt.Errorf("failed to get bfdd status, %w, %s", err, output)
 					klog.Error(err)
 					return err
 				}
@@ -823,7 +823,7 @@ func configureNodeGwNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu i
 		if err != nil {
 			return fmt.Errorf("failed to configure gateway: %w", err)
 		}
-		cmd := exec.Command("sh", "-c", "/usr/local/bin/bfdd-beacon --listen=0.0.0.0")
+		cmd := exec.Command("sh", "-c", "bfdd-beacon --listen=0.0.0.0")
 		if err := cmd.Run(); err != nil {
 			err := fmt.Errorf("failed to get start bfd listen, %w", err)
 			klog.Error(err)
@@ -842,8 +842,15 @@ func removeNodeGwNic() error {
 }
 
 func removeNodeGwNs() error {
-	if err := DeleteNamedNs(util.NodeGwNs); err != nil {
+	ns := netns.LoadNetNS(util.NodeGwNsPath)
+	ok, err := ns.Closed()
+	if err != nil {
 		return fmt.Errorf("failed to remove node external gw ns %s: %w", util.NodeGwNs, err)
+	}
+	if !ok {
+		if err = ns.Remove(); err != nil {
+			return fmt.Errorf("failed to remove node external gw ns %s: %w", util.NodeGwNs, err)
+		}
 	}
 	klog.Infof("node external gw ns %s removed", util.NodeGwNs)
 	return nil
@@ -913,16 +920,16 @@ func (c *Controller) loopOvnExt0Check() {
 	}
 	gwNS, err := ns.GetNS(util.NodeGwNsPath)
 	if err != nil {
-		// ns not exist, create node external gw ns
-		cmd := exec.Command("sh", "-c", fmt.Sprintf("/usr/sbin/ip netns add %s", util.NodeGwNs)) // #nosec G204
-		if err := cmd.Run(); err != nil {
-			err := fmt.Errorf("failed to get create gw ns %s, %w", util.NodeGwNs, err)
-			klog.Error(err)
+		if _, ok := err.(ns.NSPathNotExistErr); !ok {
+			klog.Errorf("failed to get netns from path %s: %v", util.NodeGwNsPath, err)
+			return
+		}
+		if err = newNetNS(util.NodeGwNsPath); err != nil {
+			klog.Error(fmt.Errorf("failed to create gw ns %s: %w", util.NodeGwNs, err))
 			return
 		}
 		if gwNS, err = ns.GetNS(util.NodeGwNsPath); err != nil {
-			err := fmt.Errorf("failed to get node gw ns %s, %w", util.NodeGwNs, err)
-			klog.Error(err)
+			klog.Errorf("failed to get netns from path %s: %v", util.NodeGwNsPath, err)
 			return
 		}
 	}
@@ -1755,7 +1762,7 @@ func setVfMac(deviceID string, vfIndex int, mac string) error {
 	return nil
 }
 
-func turnOffNicTxChecksum(nicName string) (err error) {
+func TurnOffNicTxChecksum(nicName string) error {
 	start := time.Now()
 	args := []string{"-K", nicName, "tx", "off"}
 	output, err := exec.Command("ethtool", args...).CombinedOutput() // #nosec G204
