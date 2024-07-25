@@ -94,6 +94,11 @@ func (c *Controller) enqueueUpdateAnp(oldObj, newObj interface{}) {
 			return
 		}
 	}
+
+	if oldAnpObj.Annotations[util.ACLActionsLogAnnotation] != newAnpObj.Annotations[util.ACLActionsLogAnnotation] {
+		c.addAnpQueue.Add(newAnpObj.Name)
+		return
+	}
 	klog.V(3).Infof("enqueue update anp %s", newAnpObj.Name)
 
 	// The remaining changes do not affect the acls. The port-group or address-set should be updated.
@@ -270,6 +275,10 @@ func (c *Controller) handleAddAnp(key string) (err error) {
 	c.anpNamePrioMap[anp.Name] = anp.Spec.Priority
 
 	anpName := getAnpName(anp.Name)
+	var logActions []string
+	if anp.Annotations[util.ACLActionsLogAnnotation] != "" {
+		logActions = strings.Split(anp.Annotations[util.ACLActionsLogAnnotation], ",")
+	}
 
 	// ovn portGroup/addressSet doesn't support name with '-', so we replace '-' by '.'.
 	// This may cause conflict if two anp with name test-anp and test.anp, maybe hash is a better solution, but we do not want to lost the readability now.
@@ -340,7 +349,8 @@ func (c *Controller) handleAddAnp(key string) (err error) {
 		}
 
 		if len(v4Addrs) != 0 {
-			ops, err := c.OVNNbClient.UpdateAnpRuleACLOps(pgName, ingressAsV4Name, kubeovnv1.ProtocolIPv4, aclPriority, aclAction, rulePorts, true, false)
+			aclName := fmt.Sprintf("anp/%s/ingress/%s/%d", anpName, kubeovnv1.ProtocolIPv4, index)
+			ops, err := c.OVNNbClient.UpdateAnpRuleACLOps(pgName, ingressAsV4Name, kubeovnv1.ProtocolIPv4, aclName, aclPriority, aclAction, logActions, rulePorts, true, false)
 			if err != nil {
 				klog.Errorf("failed to add v4 ingress acls for anp %s: %v", key, err)
 				return err
@@ -349,7 +359,8 @@ func (c *Controller) handleAddAnp(key string) (err error) {
 		}
 
 		if len(v6Addrs) != 0 {
-			ops, err := c.OVNNbClient.UpdateAnpRuleACLOps(pgName, ingressAsV6Name, kubeovnv1.ProtocolIPv6, aclPriority, aclAction, rulePorts, true, false)
+			aclName := fmt.Sprintf("anp/%s/ingress/%s/%d", anpName, kubeovnv1.ProtocolIPv6, index)
+			ops, err := c.OVNNbClient.UpdateAnpRuleACLOps(pgName, ingressAsV6Name, kubeovnv1.ProtocolIPv6, aclName, aclPriority, aclAction, logActions, rulePorts, true, false)
 			if err != nil {
 				klog.Errorf("failed to add v6 ingress acls for anp %s: %v", key, err)
 				return err
@@ -405,7 +416,8 @@ func (c *Controller) handleAddAnp(key string) (err error) {
 		}
 
 		if len(v4Addrs) != 0 {
-			ops, err := c.OVNNbClient.UpdateAnpRuleACLOps(pgName, egressAsV4Name, kubeovnv1.ProtocolIPv4, aclPriority, aclAction, rulePorts, false, false)
+			aclName := fmt.Sprintf("anp/%s/egress/%s/%d", anpName, kubeovnv1.ProtocolIPv4, index)
+			ops, err := c.OVNNbClient.UpdateAnpRuleACLOps(pgName, egressAsV4Name, kubeovnv1.ProtocolIPv4, aclName, aclPriority, aclAction, logActions, rulePorts, false, false)
 			if err != nil {
 				klog.Errorf("failed to add v4 egress acls for anp %s: %v", key, err)
 				return err
@@ -414,7 +426,8 @@ func (c *Controller) handleAddAnp(key string) (err error) {
 		}
 
 		if len(v6Addrs) != 0 {
-			ops, err := c.OVNNbClient.UpdateAnpRuleACLOps(pgName, egressAsV6Name, kubeovnv1.ProtocolIPv6, aclPriority, aclAction, rulePorts, false, false)
+			aclName := fmt.Sprintf("anp/%s/egress/%s/%d", anpName, kubeovnv1.ProtocolIPv6, index)
+			ops, err := c.OVNNbClient.UpdateAnpRuleACLOps(pgName, egressAsV6Name, kubeovnv1.ProtocolIPv6, aclName, aclPriority, aclAction, logActions, rulePorts, false, false)
 			if err != nil {
 				klog.Errorf("failed to add v6 egress acls for anp %s: %v", key, err)
 				return err
