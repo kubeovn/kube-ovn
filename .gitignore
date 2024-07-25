@@ -4,6 +4,8 @@
 dist/images/test-server
 dist/images/kube-ovn
 dist/images/kube-ovn-cmd
+dist/images/kube-ovn-daemon
+dist/images/kube-ovn-pinger
 dist/images/kube-ovn-webhook
 dist/windows/kube-ovn.exe
 dist/windows/kube-ovn-daemon.exe

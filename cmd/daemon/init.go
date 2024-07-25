@@ -1,22 +1,32 @@
 //go:build !windows
 // +build !windows
 
-package daemon
+package main
 
 import (
-	"fmt"
-	"os/exec"
-
+	"github.com/vishvananda/netlink"
 	"k8s.io/klog/v2"
+	"kernel.org/pub/linux/libs/security/libcap/cap"
+
+	"github.com/kubeovn/kube-ovn/pkg/daemon"
 )
 
+const geneveLinkName = "genev_sys_6081"
+
+func printCaps() {
+	currentCaps := cap.GetProc()
+	klog.Infof("current capabilities: %s", currentCaps.String())
+}
+
 func initForOS() error {
-	// disable checksum for genev_sys_6081 as default
-	cmd := exec.Command("sh", "-c", "ethtool -K genev_sys_6081 tx off")
-	if err := cmd.Run(); err != nil {
-		err := fmt.Errorf("failed to set checksum off for genev_sys_6081, %w", err)
-		// should not affect cni pod running if failed, just record err log
-		klog.Error(err)
+	if _, err := netlink.LinkByName(geneveLinkName); err != nil {
+		if _, ok := err.(netlink.LinkNotFoundError); ok {
+			return nil
+		}
+		klog.Errorf("failed to get link %s: %v", geneveLinkName, err)
+		return err
 	}
-	return nil
+
+	// disable checksum for genev_sys_6081 as default
+	return daemon.TurnOffNicTxChecksum(geneveLinkName)
 }

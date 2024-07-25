@@ -82,7 +82,7 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 		ginkgo.By("Creating pod " + podName)
 		annotations := map[string]string{nadv1.NetworkAttachmentAnnot: fmt.Sprintf("%s/%s", nad.Namespace, nad.Name)}
 		cmd := []string{"sh", "-c", "sleep infinity"}
-		pod := framework.MakePod(namespaceName, podName, nil, annotations, f.KubeOVNImage, cmd, nil)
+		pod := framework.MakePrivilegedPod(namespaceName, podName, nil, annotations, f.KubeOVNImage, cmd, nil)
 		pod = podClient.CreateSync(pod)
 
 		ginkgo.By("Validating pod annotations")
@@ -185,7 +185,7 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 		ginkgo.By("Creating pod " + podName)
 		annotations := map[string]string{nadv1.NetworkAttachmentAnnot: fmt.Sprintf("%s/%s", nad.Namespace, nad.Name)}
 		cmd := []string{"sh", "-c", "sleep infinity"}
-		pod := framework.MakePod(namespaceName, podName, nil, annotations, f.KubeOVNImage, cmd, nil)
+		pod := framework.MakePrivilegedPod(namespaceName, podName, nil, annotations, f.KubeOVNImage, cmd, nil)
 		pod = podClient.CreateSync(pod)
 
 		ginkgo.By("Validating pod annotations")
@@ -266,7 +266,7 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 		ginkgo.By("Creating pod " + podName)
 		annotations := map[string]string{nadv1.NetworkAttachmentAnnot: fmt.Sprintf("%s/%s", nad.Namespace, nad.Name)}
 		cmd := []string{"sh", "-c", "sleep infinity"}
-		pod := framework.MakePod(namespaceName, podName, nil, annotations, f.KubeOVNImage, cmd, nil)
+		pod := framework.MakePrivilegedPod(namespaceName, podName, nil, annotations, f.KubeOVNImage, cmd, nil)
 		pod = podClient.CreateSync(pod)
 
 		ginkgo.By("Validating pod annotations")
@@ -368,7 +368,7 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 		ginkgo.By("Creating pod " + podName)
 		annotations := map[string]string{nadv1.NetworkAttachmentAnnot: fmt.Sprintf("%s/%s", nad.Namespace, nad.Name)}
 		cmd := []string{"sh", "-c", "sleep infinity"}
-		pod := framework.MakePod(namespaceName, podName, nil, annotations, f.KubeOVNImage, cmd, nil)
+		pod := framework.MakePrivilegedPod(namespaceName, podName, nil, annotations, f.KubeOVNImage, cmd, nil)
 		pod = podClient.CreateSync(pod)
 
 		ginkgo.By("Validating pod annotations")

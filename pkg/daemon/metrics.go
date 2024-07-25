@@ -84,15 +84,6 @@ var (
 		},
 		[]string{"hostname"})
 
-	metricCniConfig = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "cni_config_file",
-		Help: "cni config file in /etc/cni/net.d/",
-	}, []string{
-		"hostname",
-		"ovn",
-		"other",
-	})
-
 	metricDNSSearch = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "dns_search_domain",
 		Help: "search domain in /etc/resolv.conf",
@@ -163,7 +154,6 @@ func registerOvnSubnetGatewayMetrics() {
 func registerSystemParameterMetrics() {
 	metrics.Registry.MustRegister(metricIPLocalPortRange)
 	metrics.Registry.MustRegister(metricCheckSumErr)
-	metrics.Registry.MustRegister(metricCniConfig)
 	metrics.Registry.MustRegister(metricDNSSearch)
 	metrics.Registry.MustRegister(metricTCPTwRecycle)
 	metrics.Registry.MustRegister(metricTCPMtuProbing)

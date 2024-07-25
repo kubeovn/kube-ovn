@@ -1,4 +1,4 @@
-package daemon
+package main
 
 import (
 	"errors"
@@ -25,7 +25,7 @@ import (
 	"github.com/kubeovn/kube-ovn/versions"
 )
 
-func CmdMain() {
+func main() {
 	defer klog.Flush()
 
 	daemon.InitMetrics()
@@ -33,6 +33,15 @@ func CmdMain() {
 
 	config := daemon.ParseFlags()
 	klog.Infof(versions.String())
+
+	if config.InstallCNIConfig {
+		if err := mvCNIConf(config.CniConfDir, config.CniConfFile, config.CniConfName); err != nil {
+			util.LogFatalAndExit(err, "failed to mv cni config file")
+		}
+		return
+	}
+
+	printCaps()
 
 	ovs.UpdateOVSVsctlLimiter(config.OVSVsctlConcurrency)
 
@@ -84,9 +93,6 @@ func CmdMain() {
 	klog.Info("start daemon controller")
 	go ctl.Run(stopCh)
 	go daemon.RunServer(config, ctl)
-	if err := mvCNIConf(config.CniConfDir, config.CniConfFile, config.CniConfName); err != nil {
-		util.LogFatalAndExit(err, "failed to mv cni config file")
-	}
 
 	addr := util.GetDefaultListenAddr()
 	if config.EnableVerboseConnCheck {
@@ -149,6 +155,7 @@ func mvCNIConf(configDir, configFile, confName string) error {
 	}
 
 	cniConfPath := filepath.Join(configDir, confName)
+	klog.Infof("Installing cni config file %q to %q", configFile, cniConfPath)
 	return os.WriteFile(cniConfPath, data, 0o644) // #nosec G306
 }
 

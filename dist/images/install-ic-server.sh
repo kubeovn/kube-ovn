@@ -53,14 +53,40 @@ spec:
       priorityClassName: system-cluster-critical
       serviceAccountName: ovn
       hostNetwork: true
+      initContainers:
+        - name: hostpath-init
+          image: "$REGISTRY/kube-ovn:$VERSION"
+          imagePullPolicy: $IMAGE_PULL_POLICY
+          command:
+            - sh
+            - -c
+            - "chown -R nobody: /var/run/ovn /etc/ovn /var/log/ovn"
+          securityContext:
+            allowPrivilegeEscalation: true
+            capabilities:
+              drop:
+                - ALL
+            privileged: true
+            runAsUser: 0
+          volumeMounts:
+            - mountPath: /var/run/ovn
+              name: host-run-ovn
+            - mountPath: /etc/ovn
+              name: host-config-ovn
+            - mountPath: /var/log/ovn
+              name: host-log-ovn
       containers:
         - name: ovn-ic-server
           image: "$REGISTRY/kube-ovn:$VERSION"
           imagePullPolicy: $IMAGE_PULL_POLICY
           command: ["/kube-ovn/start-ic-db.sh"]
           securityContext:
+            privileged: false
+            runAsUser: 65534
             capabilities:
-              add: ["SYS_NICE"]
+              add:
+                - NET_BIND_SERVICE
+                - SYS_NICE
           env:
             - name: ENABLE_SSL
               value: "false"

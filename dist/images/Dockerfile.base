@@ -121,7 +121,22 @@ RUN curl -sSf -L --retry 3 -o /usr/local/bin/bfdd-control https://github.com/bob
 RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages  \
     dpkg -i /packages/openvswitch-*.deb /packages/python3-openvswitch*.deb && \
     dpkg -i --ignore-depends=openvswitch-switch,openvswitch-common /packages/ovn-*.deb && \
-    rm -rf /var/lib/openvswitch/pki/
+    rm -rf /var/lib/openvswitch/pki/ && \
+    chown -R nobody: /var/lib/logrotate && \
+    setcap CAP_SYS_NICE+eip $(readlink -f $(which nice)) && \
+    setcap CAP_NET_RAW+eip $(readlink -f $(which arping)) && \
+    setcap CAP_NET_RAW+eip $(readlink -f $(which ndisc6)) && \
+    setcap CAP_NET_RAW+eip $(readlink -f $(which tcpdump)) && \
+    setcap CAP_NET_ADMIN+eip $(readlink -f $(which ethtool)) && \
+    setcap CAP_SYS_ADMIN+eip $(readlink -f $(which nsenter)) && \
+    setcap CAP_SYS_MODULE+eip $(readlink -f $(which modprobe)) && \
+    setcap CAP_NET_ADMIN+eip $(readlink -f $(which conntrack)) && \
+    setcap CAP_NET_RAW,CAP_NET_ADMIN,CAP_SYS_MODULE+eip $(readlink -f $(which ipset)) && \
+    setcap CAP_NET_RAW,CAP_NET_ADMIN,CAP_SYS_MODULE+eip $(readlink -f $(which xtables-legacy-multi)) && \
+    setcap CAP_NET_RAW,CAP_NET_ADMIN,CAP_SYS_MODULE+eip $(readlink -f $(which xtables-nft-multi)) && \
+    setcap CAP_NET_RAW,CAP_NET_ADMIN,CAP_SYS_MODULE,CAP_SYS_ADMIN+eip $(readlink -f $(which ip)) && \
+    setcap CAP_NET_BIND_SERVICE+eip $(readlink -f $(which bfdd-beacon)) && \
+    setcap CAP_NET_ADMIN+eip $(readlink -f $(which ovs-dpctl))
 
 ARG DEBUG=false
 RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages \
@@ -129,6 +144,9 @@ RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages \
         apt update && apt install -y --no-install-recommends gdb valgrind && \
         rm -rf /var/lib/apt/lists/* && \
         dpkg -i --ignore-depends=openvswitch-switch,openvswitch-common /packages/*.ddeb; \
+    else \
+        setcap CAP_NET_BIND_SERVICE+eip $(readlink -f $(which ovsdb-server)) && \
+        setcap CAP_NET_ADMIN,CAP_NET_BIND_SERVICE,CAP_SYS_MODULE,CAP_SYS_ADMIN+eip $(readlink -f $(which ovs-vswitchd)); \
     fi
 
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]

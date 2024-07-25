@@ -18,6 +18,7 @@ import (
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
+	"kernel.org/pub/linux/libs/security/libcap/cap"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
 
@@ -33,9 +34,10 @@ const ovnLeaderResource = "kube-ovn-controller"
 func CmdMain() {
 	defer klog.Flush()
 
-	ctx := signals.SetupSignalHandler()
-
 	klog.Infof(versions.String())
+
+	currentCaps := cap.GetProc()
+	klog.Infof("current capabilities: %s", currentCaps.String())
 
 	config, err := controller.ParseFlags()
 	if err != nil {
@@ -47,6 +49,7 @@ func CmdMain() {
 	}
 	utilruntime.Must(kubeovnv1.AddToScheme(scheme.Scheme))
 
+	ctx := signals.SetupSignalHandler()
 	go func() {
 		if config.EnablePprof {
 			mux := http.NewServeMux()

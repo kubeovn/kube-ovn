@@ -436,7 +436,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 
 		ginkgo.By("Creating pod " + podName)
 		cmd := []string{"sh", "-c", "sleep 600"}
-		pod := framework.MakePod(namespaceName, podName, nil, nil, f.KubeOVNImage, cmd, nil)
+		pod := framework.MakePrivilegedPod(namespaceName, podName, nil, nil, f.KubeOVNImage, cmd, nil)
 		_ = podClient.CreateSync(pod)
 
 		ginkgo.By("Validating pod MTU")
