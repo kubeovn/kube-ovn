@@ -737,7 +737,11 @@ func (c *Controller) execNatGwRules(pod *corev1.Pod, operation string, rules []s
 }
 
 func (c *Controller) setNatGwInterface(annotations map[string]string, externalNetwork string, defaultSubnet *kubeovnv1.Subnet) error {
-	nad := fmt.Sprintf("%s/%s, %s/%s", c.config.PodNamespace, externalNetwork, corev1.NamespaceDefault, nadName)
+	if vpcNatAPINadName == "" {
+		return errors.New("no NetworkAttachmentDefinition provided to access apiserver, check configmap ovn-vpc-nat-config and field 'apiNadName'")
+	}
+
+	nad := fmt.Sprintf("%s/%s, %s/%s", c.config.PodNamespace, externalNetwork, corev1.NamespaceDefault, vpcNatAPINadName)
 	annotations[util.AttachmentNetworkAnnotation] = nad
 
 	return setNatGwRoute(annotations, defaultSubnet.Spec.Gateway)
@@ -759,7 +763,7 @@ func setNatGwRoute(annotations map[string]string, subnetGw string) error {
 	// Check the API NetworkAttachmentDefinition exists, otherwise we won't be able to attach
 	// the BGP speaker to a network that has access to the K8S apiserver (and won't be able to detect EIPs)
 	if vpcNatAPINadProvider == "" {
-		return errors.New("no NetworkAttachmentDefinition provided to access apiserver, check configmap ovn-vpc-nat-config and field 'apiNadProvider'")
+		return errors.New("no NetworkAttachmentDefinition provided to access apiserver, check configmap ovn-vpc-nat-config and field 'apiNadName'")
 	}
 
 	for _, gw := range strings.Split(subnetGw, ",") {
