@@ -23,7 +23,7 @@ import (
 )
 
 // UpdateIngressACLOps return operation that creates an ingress ACL
-func (c *OVNNbClient) UpdateIngressACLOps(pgName, asIngressName, asExceptName, protocol string, npp []netv1.NetworkPolicyPort, logEnable bool, namedPortMap map[string]*util.NamedPortInfo) ([]ovsdb.Operation, error) {
+func (c *OVNNbClient) UpdateIngressACLOps(pgName, asIngressName, asExceptName, protocol, aclName string, npp []netv1.NetworkPolicyPort, logEnable bool, logACLActions []ovnnb.ACLAction, namedPortMap map[string]*util.NamedPortInfo) ([]ovsdb.Operation, error) {
 	acls := make([]*ovnnb.ACL, 0)
 
 	if strings.HasSuffix(asIngressName, ".0") || strings.HasSuffix(asIngressName, ".all") {
@@ -51,7 +51,14 @@ func (c *OVNNbClient) UpdateIngressACLOps(pgName, asIngressName, asExceptName, p
 	/* allow acl */
 	matches := newNetworkPolicyACLMatch(pgName, asIngressName, asExceptName, protocol, ovnnb.ACLDirectionToLport, npp, namedPortMap)
 	for _, m := range matches {
-		allowACL, err := c.newACLWithoutCheck(pgName, ovnnb.ACLDirectionToLport, util.IngressAllowPriority, m, ovnnb.ACLActionAllowRelated, util.NetpolACLTier)
+		options := func(acl *ovnnb.ACL) {
+			if logEnable && slices.Contains(logACLActions, ovnnb.ACLActionAllow) {
+				acl.Name = &aclName
+				acl.Log = true
+			}
+		}
+
+		allowACL, err := c.newACLWithoutCheck(pgName, ovnnb.ACLDirectionToLport, util.IngressAllowPriority, m, ovnnb.ACLActionAllowRelated, util.NetpolACLTier, options)
 		if err != nil {
 			return nil, fmt.Errorf("new allow ingress acl for port group %s: %w", pgName, err)
 		}
@@ -68,7 +75,7 @@ func (c *OVNNbClient) UpdateIngressACLOps(pgName, asIngressName, asExceptName, p
 }
 
 // UpdateEgressACLOps return operation that creates an egress ACL
-func (c *OVNNbClient) UpdateEgressACLOps(pgName, asEgressName, asExceptName, protocol string, npp []netv1.NetworkPolicyPort, logEnable bool, namedPortMap map[string]*util.NamedPortInfo) ([]ovsdb.Operation, error) {
+func (c *OVNNbClient) UpdateEgressACLOps(pgName, asEgressName, asExceptName, protocol, aclName string, npp []netv1.NetworkPolicyPort, logEnable bool, logACLActions []ovnnb.ACLAction, namedPortMap map[string]*util.NamedPortInfo) ([]ovsdb.Operation, error) {
 	acls := make([]*ovnnb.ACL, 0)
 
 	if strings.HasSuffix(asEgressName, ".0") || strings.HasSuffix(asEgressName, ".all") {
@@ -107,6 +114,11 @@ func (c *OVNNbClient) UpdateEgressACLOps(pgName, asEgressName, asExceptName, pro
 				acl.Options = make(map[string]string)
 			}
 			acl.Options["apply-after-lb"] = "true"
+
+			if logEnable && slices.Contains(logACLActions, ovnnb.ACLActionAllow) {
+				acl.Name = &aclName
+				acl.Log = true
+			}
 		})
 		if err != nil {
 			klog.Error(err)
@@ -1284,7 +1296,7 @@ func (c *OVNNbClient) SGLostACL(sg *kubeovnv1.SecurityGroup) (bool, error) {
 }
 
 // UpdateAnpRuleACLOps return operation that creates an ingress/egress ACL
-func (c *OVNNbClient) UpdateAnpRuleACLOps(pgName, asName, protocol string, priority int, aclAction ovnnb.ACLAction, rulePorts []v1alpha1.AdminNetworkPolicyPort, isIngress, isBanp bool) ([]ovsdb.Operation, error) {
+func (c *OVNNbClient) UpdateAnpRuleACLOps(pgName, asName, protocol, aclName string, priority int, aclAction ovnnb.ACLAction, logACLActions []ovnnb.ACLAction, rulePorts []v1alpha1.AdminNetworkPolicyPort, isIngress, isBanp bool) ([]ovsdb.Operation, error) {
 	acls := make([]*ovnnb.ACL, 0, 10)
 
 	options := func(acl *ovnnb.ACL) {
@@ -1297,6 +1309,14 @@ func (c *OVNNbClient) UpdateAnpRuleACLOps(pgName, asName, protocol string, prior
 			acl.Options = make(map[string]string)
 		}
 		acl.Options["apply-after-lb"] = "true"
+
+		if slices.Contains(logACLActions, aclAction) {
+			acl.Name = &aclName
+			acl.Log = true
+			if aclAction == ovnnb.ACLActionDrop {
+				acl.Severity = &ovnnb.ACLSeverityWarning
+			}
+		}
 	}
 
 	var direction ovnnb.ACLDirection
