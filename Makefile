@@ -50,7 +50,7 @@ KUBEVIRT_LAUNCHER_IMAGE = quay.io/kubevirt/virt-launcher:$(KUBEVIRT_VERSION)
 KUBEVIRT_OPERATOR_YAML = https://github.com/kubevirt/kubevirt/releases/download/$(KUBEVIRT_VERSION)/kubevirt-operator.yaml
 KUBEVIRT_CR_YAML = https://github.com/kubevirt/kubevirt/releases/download/$(KUBEVIRT_VERSION)/kubevirt-cr.yaml
 
-CILIUM_VERSION = 1.15.7
+CILIUM_VERSION = 1.16.0
 CILIUM_IMAGE_REPO = quay.io/cilium
 
 CERT_MANAGER_VERSION = v1.15.1
@@ -741,7 +741,7 @@ kind-install-multus:
 	kubectl -n kube-system rollout status ds kube-multus-ds
 
 .PHONY: kind-install-metallb
-kind-install-metallb: kind-install
+kind-install-metallb:
 	$(call docker_network_info,kind)
 	$(call kind_load_image,kube-ovn,$(METALLB_CONTROLLER_IMAGE),1)
 	$(call kind_load_image,kube-ovn,$(METALLB_SPEAKER_IMAGE),1)
@@ -819,13 +819,12 @@ kind-install-cilium-chaining-%:
 		--namespace kube-system \
 		--set k8sServiceHost=$(KUBERNETES_SERVICE_HOST) \
 		--set k8sServicePort=6443 \
-		--set kubeProxyReplacement=partial \
+		--set kubeProxyReplacement=true \
 		--set operator.replicas=1 \
 		--set socketLB.enabled=true \
 		--set nodePort.enabled=true \
 		--set externalIPs.enabled=true \
 		--set hostPort.enabled=false \
-		--set routingMode=native \
 		--set sessionAffinity=true \
 		--set enableIPv4Masquerade=false \
 		--set enableIPv6Masquerade=false \
@@ -833,6 +832,9 @@ kind-install-cilium-chaining-%:
 		--set sctp.enabled=true \
 		--set ipv4.enabled=$(shell if echo $* | grep -q ipv6; then echo false; else echo true; fi) \
 		--set ipv6.enabled=$(shell if echo $* | grep -q ipv4; then echo false; else echo true; fi) \
+		--set routingMode=native \
+		--set devices="eth+ ovn0 br-+" \
+		--set forceDeviceDetection=true \
 		--set ipam.mode=cluster-pool \
 		--set-json ipam.operator.clusterPoolIPv4PodCIDRList='["100.65.0.0/16"]' \
 		--set-json ipam.operator.clusterPoolIPv6PodCIDRList='["fd00:100:65::/112"]' \
