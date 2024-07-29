@@ -62,6 +62,5 @@ var _ = framework.SerialDescribe("[group:ipsec]", func() {
 		}
 
 		ginkgo.By("Rollout restart ovs-ovn Pod ")
-
 	})
 })
