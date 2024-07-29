@@ -1594,7 +1594,7 @@ func (c *Controller) reconcileDistributedSubnetRouteInDefaultVpc(subnet *kubeovn
 		return err
 	}
 	for _, pod := range pods {
-		if !isPodAlive(pod) || c.config.EnableEipSnat && (pod.Annotations[util.EipAnnotation] != "" || pod.Annotations[util.SnatAnnotation] != "") || pod.Spec.NodeName == "" {
+		if !isPodAlive(pod) || pod.Spec.NodeName == "" {
 			continue
 		}
 

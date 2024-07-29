@@ -849,16 +849,20 @@ func (c *Controller) reconcileRouteSubnets(cachedPod, pod *v1.Pod, needRoutePodN
 					nextHop = strings.Split(nextHop, "/")[0]
 				}
 
-				if err := c.addStaticRouteToVpc(
+				if err := c.addPolicyRouteToVpc(
 					subnet.Spec.Vpc,
-					&kubeovnv1.StaticRoute{
-						Policy:     kubeovnv1.PolicySrc,
-						CIDR:       podIP,
-						NextHopIP:  nextHop,
-						RouteTable: subnet.Spec.RouteTable,
+					&kubeovnv1.PolicyRoute{
+						Priority:  util.NorthGatewayRoutePolicyPriority,
+						Match:     fmt.Sprintf("ip4.src == %s", podIP),
+						Action:    kubeovnv1.PolicyRouteActionReroute,
+						NextHopIP: nextHop,
+					},
+					map[string]string{
+						"vendor": util.CniTypeName,
+						"subnet": subnet.Name,
 					},
 				); err != nil {
-					klog.Errorf("failed to add static route, %v", err)
+					klog.Errorf("failed to add policy route, %v", err)
 					return err
 				}
 
@@ -877,6 +881,7 @@ func (c *Controller) reconcileRouteSubnets(cachedPod, pod *v1.Pod, needRoutePodN
 					}
 
 					var added bool
+
 					for _, nodeAddr := range nodeTunlIPAddr {
 						for _, podAddr := range strings.Split(podIP, ",") {
 							if util.CheckProtocol(nodeAddr.String()) != util.CheckProtocol(podAddr) {
