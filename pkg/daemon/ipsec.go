@@ -94,7 +94,7 @@ func generateCSRCode() ([]byte, error) {
 		"-addext", "subjectAltName = DNS:"+cn,
 		"-subj", fmt.Sprintf("/C=CN/O=kubeovn/OU=kind/CN=%s", cn),
 		"-key", ipsecPrivKeyPath,
-		"-out", ipsecReqPath)
+		"-out", ipsecReqPath) // #nosec
 	err = cmd.Run()
 	if err != nil {
 		return nil, err

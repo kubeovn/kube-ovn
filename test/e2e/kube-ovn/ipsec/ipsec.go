@@ -5,12 +5,13 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 	"github.com/onsi/ginkgo/v2"
 	corev1 "k8s.io/api/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
 	e2epodoutput "k8s.io/kubernetes/test/e2e/framework/pod/output"
+
+	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 )
 
 var _ = framework.SerialDescribe("[group:ipsec]", func() {
@@ -59,5 +60,8 @@ var _ = framework.SerialDescribe("[group:ipsec]", func() {
 			output = strings.TrimSpace(e2epodoutput.RunHostCmdOrDie(pod.Namespace, pod.Name, cmd))
 			framework.ExpectEqual(output, "2")
 		}
+
+		ginkgo.By("Rollout restart ovs-ovn Pod ")
+
 	})
 })
