@@ -770,10 +770,6 @@ func (c *Controller) Run(ctx context.Context) {
 		util.LogFatalAndExit(err, "failed to initialize ovn resources")
 	}
 
-	if err := c.InitDefaultVpc(); err != nil {
-		util.LogFatalAndExit(err, "failed to initialize default vpc")
-	}
-
 	// sync ip crd before initIPAM since ip crd will be used to restore vm and statefulset pod in initIPAM
 	if err := c.syncIPCR(); err != nil {
 		util.LogFatalAndExit(err, "failed to sync crd ips")
