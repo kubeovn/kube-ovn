@@ -11,7 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
-	mathrand "math/rand"
+	mathrand "math/rand/v2"
 	"time"
 
 	csrv1 "k8s.io/api/certificates/v1"
@@ -138,7 +138,7 @@ func (c *Controller) handleAddOrUpdateCsr(key string) (err error) {
 	}
 	// From this, point we are dealing with an approved CSR
 	// Get CA in from ovn-ipsec-ca
-	caSecret, err := c.config.KubeClient.CoreV1().Secrets("kube-system").Get(context.TODO(), util.OVNIPSecCASecret, metav1.GetOptions{})
+	caSecret, err := c.config.KubeClient.CoreV1().Secrets("kube-system").Get(context.TODO(), util.DefaultOVNIPSecCA, metav1.GetOptions{})
 	if err != nil {
 		c.signerFailure(csr, "CAFailure",
 			fmt.Sprintf("Could not get CA certificate and key: %v", err))
@@ -150,8 +150,9 @@ func (c *Controller) handleAddOrUpdateCsr(key string) (err error) {
 	if err != nil {
 		// We dont degrade the status of the controller as this is due to a
 		// malformed CSR rather than an issue with the controller.
-		c.updateCSRStatusConditions(csr, "CSRDecodeFailure",
-			fmt.Sprintf("Could not decode Certificate Request: %v", err))
+		if err := c.updateCSRStatusConditions(csr, "CSRDecodeFailure", fmt.Sprintf("Could not decode Certificate Request: %v", err)); err != nil {
+			klog.Error(err)
+		}
 		return nil
 	}
 
@@ -199,7 +200,10 @@ func (c *Controller) handleAddOrUpdateCsr(key string) (err error) {
 // and log.
 func (c *Controller) signerFailure(csr *csrv1.CertificateSigningRequest, reason, message string) {
 	klog.Errorf("%s: %s", reason, message)
-	c.updateCSRStatusConditions(csr, reason, message)
+	if err := c.updateCSRStatusConditions(csr, reason, message); err != nil {
+		klog.Error(err)
+	}
+
 }
 
 // Update the status conditions on the CSR object

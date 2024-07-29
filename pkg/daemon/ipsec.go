@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/x509"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -37,7 +38,7 @@ func getOVSSystemID() (string, error) {
 	systemID = systemID[:len(systemID)-1]
 
 	if systemID == "" {
-		return "", fmt.Errorf("empty system-id")
+		return "", errors.New("empty system-id")
 	}
 
 	return systemID, nil
@@ -155,7 +156,7 @@ func (c *Controller) createCSR(csrBytes []byte) error {
 	}
 
 	klog.Infof("ipsec Cert file %s generated", ipsecCertPath)
-	secret, err := c.config.KubeClient.CoreV1().Secrets("kube-system").Get(context.Background(), util.OVNIPSecCASecret, metav1.GetOptions{})
+	secret, err := c.config.KubeClient.CoreV1().Secrets("kube-system").Get(context.Background(), util.DefaultOVNIPSecCA, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
@@ -179,7 +180,7 @@ func configureOVSWithIPSecKeys() error {
 	cmd := exec.Command("ovs-vsctl", "--retry", "-t", "60", "set", "Open_vSwitch", ".", "other_config:certificate="+ipsecCertPath, "other_config:private_key="+ipsecPrivKeyPath, "other_config:ca_cert="+ipsecCACertPath)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("failed to configure OVS with IPSec keys: %q: %s", string(output), err)
+		return fmt.Errorf("failed to configure OVS with IPSec keys: %q: %w", string(output), err)
 	}
 	return nil
 }
@@ -187,17 +188,17 @@ func configureOVSWithIPSecKeys() error {
 func unconfigureOVSWithIPSecKeys() error {
 	cmd := exec.Command("ovs-vsctl", "--retry", "-t", "60", "remove", "Open_vSwitch", ".", "other_config", "certificate")
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to unset OVS certificate: %s", err)
+		return fmt.Errorf("failed to unset OVS certificate: %w", err)
 	}
 
 	cmd = exec.Command("ovs-vsctl", "--retry", "-t", "60", "remove", "Open_vSwitch", ".", "other_config", "private_key")
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to unset OVS private key: %s", err)
+		return fmt.Errorf("failed to unset OVS private key: %w", err)
 	}
 
 	cmd = exec.Command("ovs-vsctl", "--retry", "-t", "60", "remove", "Open_vSwitch", ".", "other_config", "ca_cert")
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to unset OVS CA certificate: %s", err)
+		return fmt.Errorf("failed to unset OVS CA certificate: %w", err)
 	}
 	return nil
 }

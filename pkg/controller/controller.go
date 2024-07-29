@@ -900,7 +900,7 @@ func (c *Controller) Run(ctx context.Context) {
 	}
 
 	if c.config.EnableOVNIPSec {
-		if err := c.InitOVNIPsecCA(); err != nil {
+		if err := c.InitDefaultOVNIPSecCA(); err != nil {
 			util.LogFatalAndExit(err, "failed to init ovn ipsec CA")
 		}
 	}
