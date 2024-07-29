@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"os"
 	"reflect"
 	"regexp"
 	"slices"
@@ -735,6 +736,52 @@ func (c *Controller) execNatGwRules(pod *corev1.Pod, operation string, rules []s
 	return nil
 }
 
+func (c *Controller) setNatGwInterface(annotations map[string]string, externalNetwork string, defaultSubnet *kubeovnv1.Subnet) error {
+	if vpcNatAPINadName == "" {
+		return errors.New("no NetworkAttachmentDefinition provided to access apiserver, check configmap ovn-vpc-nat-config and field 'apiNadName'")
+	}
+
+	nad := fmt.Sprintf("%s/%s, %s/%s", c.config.PodNamespace, externalNetwork, corev1.NamespaceDefault, vpcNatAPINadName)
+	annotations[util.AttachmentNetworkAnnotation] = nad
+
+	return setNatGwRoute(annotations, defaultSubnet.Spec.Gateway)
+}
+
+func setNatGwRoute(annotations map[string]string, subnetGw string) error {
+	dst := os.Getenv("KUBERNETES_SERVICE_HOST")
+
+	protocol := util.CheckProtocol(dst)
+	if !strings.ContainsRune(dst, '/') {
+		switch protocol {
+		case kubeovnv1.ProtocolIPv4:
+			dst = fmt.Sprintf("%s/32", dst)
+		case kubeovnv1.ProtocolIPv6:
+			dst = fmt.Sprintf("%s/128", dst)
+		}
+	}
+
+	// Check the API NetworkAttachmentDefinition exists, otherwise we won't be able to attach
+	// the BGP speaker to a network that has access to the K8S apiserver (and won't be able to detect EIPs)
+	if vpcNatAPINadProvider == "" {
+		return errors.New("no NetworkAttachmentDefinition provided to access apiserver, check configmap ovn-vpc-nat-config and field 'apiNadName'")
+	}
+
+	for _, gw := range strings.Split(subnetGw, ",") {
+		if util.CheckProtocol(gw) == protocol {
+			routes := []request.Route{{Destination: dst, Gateway: gw}}
+			buf, err := json.Marshal(routes)
+			if err != nil {
+				return fmt.Errorf("failed to marshal routes %+v: %w", routes, err)
+			}
+
+			annotations[fmt.Sprintf(util.RoutesAnnotationTemplate, vpcNatAPINadProvider)] = string(buf)
+			break
+		}
+	}
+
+	return nil
+}
+
 func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1.StatefulSet) (*v1.StatefulSet, error) {
 	annotations := make(map[string]string, 7)
 	if oldSts != nil && len(oldSts.Annotations) != 0 {
@@ -747,6 +794,18 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 		util.LogicalSwitchAnnotation:     gw.Spec.Subnet,
 		util.IPAddressAnnotation:         gw.Spec.LanIP,
 	}
+
+	if gw.Spec.BgpSpeaker.Enabled { // Add an interface that can reach the API server
+		defaultSubnet, err := c.subnetsLister.Get(c.config.DefaultLogicalSwitch)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get default subnet %s: %w", c.config.DefaultLogicalSwitch, err)
+		}
+
+		if err := c.setNatGwInterface(podAnnotations, nadName, defaultSubnet); err != nil {
+			return nil, err
+		}
+	}
+
 	for key, value := range podAnnotations {
 		annotations[key] = value
 	}
@@ -782,6 +841,7 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 			routes = append(routes, request.Route{Destination: cidrV6, Gateway: v6Gateway})
 		}
 	}
+
 	if err = setPodRoutesAnnotation(annotations, util.OvnProvider, routes); err != nil {
 		klog.Error(err)
 		return nil, err
@@ -820,6 +880,7 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 		"app":                   name,
 		util.VpcNatGatewayLabel: "true",
 	}
+
 	sts := &v1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   name,
@@ -859,6 +920,106 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 			},
 		},
 	}
+
+	// BGP speaker for GWs must be enabled globally and for this specific instance
+	if gw.Spec.BgpSpeaker.Enabled {
+		containers := sts.Spec.Template.Spec.Containers
+
+		// We need a speaker image configured in the NAT GW ConfigMap
+		if vpcNatGwBgpSpeakerImage == "" {
+			return nil, fmt.Errorf("%s should have bgp speaker image field if bgp enabled", util.VpcNatConfig)
+		}
+
+		args := []string{
+			"--nat-gw-mode", // Force to run in  NAT GW mode, we're not announcing Pod IPs or Services, only EIPs
+		}
+
+		speakerParams := gw.Spec.BgpSpeaker
+
+		if speakerParams.RouterID != "" { // Override default auto-selected RouterID
+			args = append(args, fmt.Sprintf("--router-id=%s", speakerParams.RouterID))
+		}
+
+		if speakerParams.Password != "" { // Password for TCP MD5 BGP
+			args = append(args, fmt.Sprintf("--auth-password=%s", speakerParams.Password))
+		}
+
+		if speakerParams.EnableGracefulRestart { // Enable graceful restart
+			args = append(args, "--graceful-restart")
+		}
+
+		if speakerParams.HoldTime != (metav1.Duration{}) { // Hold time
+			args = append(args, fmt.Sprintf("--holdtime=%s", speakerParams.HoldTime.Duration.String()))
+		}
+
+		if speakerParams.ASN == 0 { // The ASN we use to speak
+			return nil, errors.New("ASN not set, but must be non-zero value")
+		}
+
+		if speakerParams.RemoteASN == 0 { // The ASN we speak to
+			return nil, errors.New("remote ASN not set, but must be non-zero value")
+		}
+
+		args = append(args, fmt.Sprintf("--cluster-as=%d", speakerParams.ASN))
+		args = append(args, fmt.Sprintf("--neighbor-as=%d", speakerParams.RemoteASN))
+
+		if len(speakerParams.Neighbors) == 0 {
+			return nil, errors.New("no BGP neighbors specified")
+		}
+
+		var neighIPv4 []string
+		var neighIPv6 []string
+		for _, neighbor := range speakerParams.Neighbors {
+			switch util.CheckProtocol(neighbor) {
+			case kubeovnv1.ProtocolIPv4:
+				neighIPv4 = append(neighIPv4, neighbor)
+			case kubeovnv1.ProtocolIPv6:
+				neighIPv6 = append(neighIPv6, neighbor)
+			}
+		}
+
+		argNeighIPv4 := strings.Join(neighIPv4, ",")
+		argNeighIPv6 := strings.Join(neighIPv6, ",")
+		argNeighIPv4 = fmt.Sprintf("--neighbor-address=%s", argNeighIPv4)
+		argNeighIPv6 = fmt.Sprintf("--neighbor-ipv6-address=%s", argNeighIPv6)
+
+		if len(neighIPv4) > 0 {
+			args = append(args, argNeighIPv4)
+		}
+
+		if len(neighIPv6) > 0 {
+			args = append(args, argNeighIPv6)
+		}
+
+		// Extra args to start the speaker with, for example, logging levels...
+		args = append(args, speakerParams.ExtraArgs...)
+
+		sts.Spec.Template.Spec.ServiceAccountName = "vpc-nat-gw"
+		speakerContainer := corev1.Container{
+			Name:            "vpc-nat-gw-speaker",
+			Image:           vpcNatGwBgpSpeakerImage,
+			Command:         []string{"/kube-ovn/kube-ovn-speaker"},
+			ImagePullPolicy: corev1.PullIfNotPresent,
+			Env: []corev1.EnvVar{
+				{
+					Name:  util.GatewayNameEnv,
+					Value: gw.Name,
+				},
+				{
+					Name: "POD_IP",
+					ValueFrom: &corev1.EnvVarSource{
+						FieldRef: &corev1.ObjectFieldSelector{
+							FieldPath: "status.podIP",
+						},
+					},
+				},
+			},
+			Args: args,
+		}
+
+		sts.Spec.Template.Spec.Containers = append(containers, speakerContainer)
+	}
+
 	return sts, nil
 }
 

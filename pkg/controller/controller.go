@@ -1033,7 +1033,7 @@ func (c *Controller) startWorkers(ctx context.Context) {
 	}, time.Second, ctx.Done())
 
 	go wait.Until(func() {
-		c.resyncVpcNatImage()
+		c.resyncVpcNatConfig()
 	}, time.Second, ctx.Done())
 
 	go wait.Until(func() {

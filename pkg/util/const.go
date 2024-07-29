@@ -204,7 +204,8 @@ const (
 	InternalType = "internal-port"
 	DpdkType     = "dpdk-port"
 
-	HostnameEnv = "KUBE_NODE_NAME"
+	HostnameEnv    = "KUBE_NODE_NAME"
+	GatewayNameEnv = "GATEWAY_NAME"
 
 	MirrosRetryMaxTimes = 5
 	MirrosRetryInterval = 1
