@@ -803,12 +803,9 @@ func Run(ctx context.Context, config *Configuration) {
 			util.LogFatalAndExit(err, "failed to add baseline admin network policy event handler")
 		}
 
-		if controller.anpPrioNameMap == nil {
-			controller.anpPrioNameMap = make(map[int32]string, 100)
-			controller.anpNamePrioMap = make(map[string]int32, 100)
-		}
+		controller.anpPrioNameMap = make(map[int32]string, 100)
+		controller.anpNamePrioMap = make(map[string]int32, 100)
 	}
-
 	controller.Run(ctx)
 }
 
@@ -837,10 +834,6 @@ func (c *Controller) Run(ctx context.Context) {
 
 	if err := c.InitOVN(); err != nil {
 		util.LogFatalAndExit(err, "failed to initialize ovn resources")
-	}
-
-	if err := c.InitDefaultVpc(); err != nil {
-		util.LogFatalAndExit(err, "failed to initialize default vpc")
 	}
 
 	// sync ip crd before initIPAM since ip crd will be used to restore vm and statefulset pod in initIPAM
