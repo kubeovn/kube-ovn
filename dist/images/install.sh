@@ -745,6 +745,31 @@ spec:
                     type: string
                 qosPolicy:
                   type: string
+                bgpSpeaker:
+                  type: object
+                  properties:
+                    enabled:
+                      type: boolean
+                    asn:
+                      type: integer
+                    remoteAsn:
+                      type: integer
+                    neighbors:
+                      type: array
+                      items:
+                        type: string
+                    holdTime:
+                      type: string
+                    routerId:
+                      type: string
+                    password:
+                      type: string
+                    enableGracefulRestart:
+                      type: boolean
+                    extraArgs:
+                      type: array
+                      items:
+                        type: string
                 tolerations:
                   type: array
                   items:

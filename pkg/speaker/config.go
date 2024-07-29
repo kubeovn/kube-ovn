@@ -55,6 +55,7 @@ type Configuration struct {
 	GracefulRestartTime         time.Duration
 	PassiveMode                 bool
 	EbgpMultihopTTL             uint8
+	NatGwMode                   bool
 
 	NodeName       string
 	KubeConfigFile string
@@ -68,11 +69,11 @@ func ParseFlags() (*Configuration, error) {
 	var (
 		argDefaultGracefulTime         = pflag.Duration("graceful-restart-time", DefaultGracefulRestartTime, "BGP Graceful restart time according to RFC4724 3, maximum 4095s.")
 		argGracefulRestartDeferralTime = pflag.Duration("graceful-restart-deferral-time", DefaultGracefulRestartDeferralTime, "BGP Graceful restart deferral time according to RFC4724 4.1, maximum 18h.")
-		argGracefulRestart             = pflag.BoolP("graceful-restart", "", false, "Enables the BGP Graceful Restart  so that routes are preserved on unexpected restarts")
-		argAnnounceClusterIP           = pflag.BoolP("announce-cluster-ip", "", false, "The Cluster IP of the service to  announce to the BGP peers.")
+		argGracefulRestart             = pflag.BoolP("graceful-restart", "", false, "Enables the BGP Graceful Restart so that routes are preserved on unexpected restarts")
+		argAnnounceClusterIP           = pflag.BoolP("announce-cluster-ip", "", false, "The Cluster IP of the service to announce to the BGP peers.")
 		argGrpcHost                    = pflag.String("grpc-host", "127.0.0.1", "The host address for grpc to listen, default: 127.0.0.1")
 		argGrpcPort                    = pflag.Uint32("grpc-port", DefaultBGPGrpcPort, "The port for grpc to listen, default:50051")
-		argClusterAs                   = pflag.Uint32("cluster-as", DefaultBGPClusterAs, "The as number of container network, default 65000")
+		argClusterAs                   = pflag.Uint32("cluster-as", DefaultBGPClusterAs, "The AS number of container network, default 65000")
 		argRouterID                    = pflag.String("router-id", "", "The address for the speaker to use as router id, default the node ip")
 		argNodeIPs                     = pflag.String("node-ips", "", "The comma-separated list of node IP addresses to use instead of the pod IP address for the next hop router IP address.")
 		argNeighborAddress             = pflag.String("neighbor-address", "", "Comma separated IPv4 router addresses the speaker connects to.")
@@ -83,8 +84,9 @@ func ParseFlags() (*Configuration, error) {
 		argPprofPort                   = pflag.Uint32("pprof-port", DefaultPprofPort, "The port to get profiling data, default: 10667")
 		argNodeName                    = pflag.String("node-name", os.Getenv(util.HostnameEnv), "Name of the node on which the speaker is running on.")
 		argKubeConfigFile              = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.")
-		argPassiveMode                 = pflag.BoolP("passivemode", "", false, "Set BGP Speaker to passive model,do not actively initiate connections to peers")
+		argPassiveMode                 = pflag.BoolP("passivemode", "", false, "Set BGP Speaker to passive model, do not actively initiate connections to peers")
 		argEbgpMultihopTTL             = pflag.Uint8("ebgp-multihop", DefaultEbgpMultiHop, "The TTL value of EBGP peer, default: 1")
+		argNatGwMode                   = pflag.BoolP("nat-gw-mode", "", false, "Make the BGP speaker announce EIPs from inside a NAT gateway, Pod IP/Service/Subnet announcements will be disabled")
 	)
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
 	klog.InitFlags(klogFlags)
@@ -148,6 +150,7 @@ func ParseFlags() (*Configuration, error) {
 		GracefulRestartTime:         *argDefaultGracefulTime,
 		PassiveMode:                 *argPassiveMode,
 		EbgpMultihopTTL:             *argEbgpMultihopTTL,
+		NatGwMode:                   *argNatGwMode,
 	}
 
 	if *argNeighborAddress != "" {

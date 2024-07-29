@@ -524,6 +524,19 @@ type VpcNatSpec struct {
 	Tolerations     []corev1.Toleration `json:"tolerations"`
 	Affinity        corev1.Affinity     `json:"affinity"`
 	QoSPolicy       string              `json:"qosPolicy"`
+	BgpSpeaker      VpcBgpSpeaker       `json:"bgpSpeaker"`
+}
+
+type VpcBgpSpeaker struct {
+	Enabled               bool            `json:"enabled"`
+	ASN                   uint32          `json:"asn"`
+	RemoteASN             uint32          `json:"remoteAsn"`
+	Neighbors             []string        `json:"neighbors"`
+	HoldTime              metav1.Duration `json:"holdTime"`
+	RouterID              string          `json:"routerId"`
+	Password              string          `json:"password"`
+	EnableGracefulRestart bool            `json:"enableGracefulRestart"`
+	ExtraArgs             []string        `json:"extraArgs"`
 }
 
 type VpcNatStatus struct {
