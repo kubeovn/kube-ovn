@@ -83,6 +83,10 @@ KWOK_IMAGE = registry.k8s.io/kwok/kwok:$(KWOK_VERSION)
 
 VPC_NAT_GW_IMG = $(REGISTRY)/vpc-nat-gateway:$(VERSION)
 
+ANP_TEST_IMAGE = registry.k8s.io/e2e-test-images/agnhost:2.45
+ANP_CR_YAML = https://raw.githubusercontent.com/kubernetes-sigs/network-policy-api/main/config/crd/standard/policy.networking.k8s.io_adminnetworkpolicies.yaml
+BANP_CR_YAML = https://raw.githubusercontent.com/kubernetes-sigs/network-policy-api/main/config/crd/standard/policy.networking.k8s.io_baselineadminnetworkpolicies.yaml
+
 E2E_NETWORK = bridge
 ifneq ($(VLAN_ID),)
 E2E_NETWORK = kube-ovn-vlan
@@ -910,6 +914,15 @@ kind-install-kwok:
 		kwok_node_name=fake-node-$$i jinjanate yamls/kwok-node.yaml.j2 -o kwok-node.yaml; \
 		kubectl apply -f kwok-node.yaml; \
 	done
+
+.PHONY: kind-install-anp
+kind-install-anp: kind-load-image
+	$(call kind_load_image,kube-ovn,$(ANP_TEST_IMAGE),1)
+	kubectl apply -f "$(ANP_CR_YAML)"
+	kubectl apply -f "$(BANP_CR_YAML)"
+	$(MAKE) kind-install
+	kubectl patch deployment/kube-ovn-controller -n kube-system --type='json' -p='[{"op": "add", "path": "/spec/template/spec/containers/0/args/-", "value": "--enable-anp=true"}]'
+	$(call kubectl_wait_exist_and_ready,kube-system,deployment,kube-ovn-controller)
 
 .PHONY: kind-reload
 kind-reload: kind-reload-ovs
