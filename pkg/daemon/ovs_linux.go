@@ -403,12 +403,12 @@ func (csh cniServerHandler) configureContainerNic(podName, podNamespace, nicName
 				klog.Error(err)
 				return err
 			}
-			if err = configureNic(nicName, ipAddr, macAddr, mtu, detectIPConflict); err != nil {
+			if err = configureNic(nicName, ipAddr, macAddr, mtu, detectIPConflict, false); err != nil {
 				klog.Error(err)
 				return err
 			}
 		} else {
-			if err = configureNic(ifName, ipAddr, macAddr, mtu, detectIPConflict); err != nil {
+			if err = configureNic(ifName, ipAddr, macAddr, mtu, detectIPConflict, true); err != nil {
 				klog.Error(err)
 				return err
 			}
@@ -601,7 +601,7 @@ func configureNodeNic(portName, ip, gw, joinCIDR string, macAddr net.HardwareAdd
 		}
 	}
 
-	if err = configureNic(util.NodeNic, ip, macAddr, mtu, false); err != nil {
+	if err = configureNic(util.NodeNic, ip, macAddr, mtu, false, false); err != nil {
 		klog.Error(err)
 		return err
 	}
@@ -783,22 +783,7 @@ func configureNodeGwNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu i
 		klog.V(3).Infof("node external nic %q already in ns %s", util.NodeGwNic, util.NodeGwNsPath)
 	}
 	return ns.WithNetNSPath(gwNS.Path(), func(_ ns.NetNS) error {
-		if util.CheckProtocol(ip) == kubeovnv1.ProtocolDual || util.CheckProtocol(ip) == kubeovnv1.ProtocolIPv6 {
-			// For docker version >=17.x the "none" network will disable ipv6 by default.
-			// We have to enable ipv6 here to add v6 address and gateway.
-			// See https://github.com/containernetworking/cni/issues/531
-			value, err := sysctl.Sysctl("net.ipv6.conf.all.disable_ipv6")
-			if err != nil {
-				return fmt.Errorf("failed to get sysctl net.ipv6.conf.all.disable_ipv6: %w", err)
-			}
-			if value != "0" {
-				if _, err = sysctl.Sysctl("net.ipv6.conf.all.disable_ipv6", "0"); err != nil {
-					return fmt.Errorf("failed to enable ipv6 on all nic: %w", err)
-				}
-			}
-		}
-
-		if err = configureNic(util.NodeGwNic, ip, macAddr, mtu, true); err != nil {
+		if err = configureNic(util.NodeGwNic, ip, macAddr, mtu, true, false); err != nil {
 			klog.Errorf("failed to configure node gw nic %s, %v", util.NodeGwNic, err)
 			return err
 		}
@@ -1041,7 +1026,7 @@ func configureMirrorLink(portName string, _ int) error {
 	return nil
 }
 
-func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPConflict bool) error {
+func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPConflict, setUfoOff bool) error {
 	nodeLink, err := netlink.LinkByName(link)
 	if err != nil {
 		klog.Error(err)
@@ -1131,6 +1116,14 @@ func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPCo
 		if err = netlink.AddrAdd(nodeLink, &addr); err != nil {
 			klog.Error(err)
 			return fmt.Errorf("can not add address %s to nic %s: %w", addr, link, err)
+		}
+	}
+
+	if setUfoOff {
+		cmd := fmt.Sprintf("if ethtool -k %s | grep -q ^udp-fragmentation-offload; then ethtool -K %s ufo off; fi", link, link)
+		if output, err := exec.Command("sh", "-xc", cmd).CombinedOutput(); err != nil {
+			klog.Error(err)
+			return fmt.Errorf("failed to disable udp-fragmentation-offload feature of device %s to off: %w, %s", link, err, output)
 		}
 	}
 
