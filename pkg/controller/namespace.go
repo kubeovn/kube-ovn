@@ -152,7 +152,7 @@ func (c *Controller) handleAddNamespace(key string) error {
 			}
 		}
 
-		if s.Spec.Vpc != "" || s.Spec.Vpc != c.config.ClusterRouter {
+		if s.Spec.Vpc != "" && s.Spec.Vpc != c.config.ClusterRouter {
 			vpc, err := c.vpcsLister.Get(s.Spec.Vpc)
 			if err != nil {
 				klog.Errorf("failed to get custom vpc %v", err)
