@@ -453,12 +453,12 @@ func configureContainerNic(nicName, ifName string, ipAddr, gateway string, isDef
 				klog.Error(err)
 				return err
 			}
-			if err = configureNic(nicName, ipAddr, macAddr, mtu, detectIPConflict); err != nil {
+			if err = configureNic(nicName, ipAddr, macAddr, mtu, detectIPConflict, false); err != nil {
 				klog.Error(err)
 				return err
 			}
 		} else {
-			if err = configureNic(ifName, ipAddr, macAddr, mtu, detectIPConflict); err != nil {
+			if err = configureNic(ifName, ipAddr, macAddr, mtu, detectIPConflict, true); err != nil {
 				klog.Error(err)
 				return err
 			}
@@ -621,7 +621,7 @@ func configureNodeNic(portName, ip, gw, joinCIDR string, macAddr net.HardwareAdd
 		return fmt.Errorf(raw)
 	}
 
-	if err = configureNic(util.NodeNic, ip, macAddr, mtu, false); err != nil {
+	if err = configureNic(util.NodeNic, ip, macAddr, mtu, false, false); err != nil {
 		return err
 	}
 
@@ -735,7 +735,7 @@ func configureMirrorLink(portName string, mtu int) error {
 	return nil
 }
 
-func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPConflict bool) error {
+func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPConflict, setUfoOff bool) error {
 	nodeLink, err := netlink.LinkByName(link)
 	if err != nil {
 		return fmt.Errorf("can not find nic %s: %v", link, err)
@@ -819,6 +819,14 @@ func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPCo
 		klog.Infof("add ip address %s to %s", ip, link)
 		if err = netlink.AddrAdd(nodeLink, &addr); err != nil {
 			return fmt.Errorf("can not add address %v to nic %s: %v", addr, link, err)
+		}
+	}
+
+	if setUfoOff {
+		cmd := fmt.Sprintf("if ethtool -k %s | grep -q ^udp-fragmentation-offload; then ethtool -K %s ufo off; fi", link, link)
+		if output, err := exec.Command("sh", "-xc", cmd).CombinedOutput(); err != nil {
+			klog.Error(err)
+			return fmt.Errorf("failed to disable udp-fragmentation-offload feature of device %s to off: %w, %s", link, err, output)
 		}
 	}
 
