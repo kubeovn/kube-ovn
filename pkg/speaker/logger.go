@@ -34,8 +34,7 @@ func (k bgpLogger) Debug(msg string, fields bgplog.Fields) {
 	klog.V(5).Infof("%s %v", msg, fields)
 }
 
-func (k bgpLogger) SetLevel(level bgplog.LogLevel) {
-	return
+func (k bgpLogger) SetLevel(_ bgplog.LogLevel) {
 }
 
 func (k bgpLogger) GetLevel() bgplog.LogLevel {
