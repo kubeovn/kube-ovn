@@ -7,8 +7,7 @@ import (
 
 // bgpLogger is a struct implementing the GoBGP logger interface
 // This is useful to inject our custom klog logger into the GoBGP speaker
-type bgpLogger struct {
-}
+type bgpLogger struct{}
 
 func (k bgpLogger) Panic(msg string, fields bgplog.Fields) {
 	klog.Fatalf("%s %v", msg, fields)
