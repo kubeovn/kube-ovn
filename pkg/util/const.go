@@ -110,6 +110,7 @@ const (
 	QoSLabel                   = "ovn.kubernetes.io/qos"
 	NodeNameLabel              = "ovn.kubernetes.io/node-name"
 	NetworkPolicyLogAnnotation = "ovn.kubernetes.io/enable_log"
+	ACLActionsLogAnnotation    = "ovn.kubernetes.io/log_acl_actions"
 
 	VpcLastName     = "ovn.kubernetes.io/last_vpc_name"
 	VpcLastPolicies = "ovn.kubernetes.io/last_policies"
@@ -214,7 +215,8 @@ const (
 	InternalType = "internal-port"
 	DpdkType     = "dpdk-port"
 
-	HostnameEnv = "KUBE_NODE_NAME"
+	HostnameEnv    = "KUBE_NODE_NAME"
+	GatewayNameEnv = "GATEWAY_NAME"
 
 	MirrosRetryMaxTimes = 5
 	MirrosRetryInterval = 1

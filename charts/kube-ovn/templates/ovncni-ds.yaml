@@ -29,16 +29,52 @@ spec:
       hostNetwork: true
       hostPID: true
       initContainers:
+      - name: hostpath-init
+        image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        command:
+          - sh
+          - -xec
+          - |
+            chown -R nobody: /var/log/kube-ovn
+            chmod g+r /run/xtables.lock
+            chmod g+w /var/run/netns
+            iptables -V
+        securityContext:
+          allowPrivilegeEscalation: true
+          capabilities:
+            drop:
+              - ALL
+          privileged: true
+          runAsUser: 0
+          runAsGroup: 0
+        volumeMounts:
+          - name: usr-local-sbin
+            mountPath: /usr/local/sbin
+          - mountPath: /run/xtables.lock
+            name: xtables-lock
+            readOnly: false
+          - mountPath: /var/run/netns
+            name: host-ns
+            readOnly: false
+          - name: kube-ovn-log
+            mountPath: /var/log/kube-ovn
       - name: install-cni
         image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}
         imagePullPolicy: {{ .Values.image.pullPolicy }}
-        command: ["/kube-ovn/install-cni.sh"]
+        command:
+          - /kube-ovn/install-cni.sh
+          - --cni-conf-dir={{ .Values.cni_conf.CNI_CONF_DIR }}
+          - --cni-conf-file={{ .Values.cni_conf.CNI_CONF_FILE }}
+          - --cni-conf-name={{- .Values.cni_conf.CNI_CONFIG_PRIORITY -}}-kube-ovn.conflist
         securityContext:
           runAsUser: 0
           privileged: true
         volumeMounts:
           - mountPath: /opt/cni/bin
             name: cni-bin
+          - mountPath: /etc/cni/net.d
+            name: cni-conf
           {{- if .Values.cni_conf.MOUNT_LOCAL_BIN_DIR }}
           - mountPath: /usr/local/bin
             name: local-bin
@@ -71,9 +107,6 @@ spec:
           - --dpdk-tunnel-iface={{- .Values.networking.DPDK_TUNNEL_IFACE }}
           - --network-type={{- .Values.networking.TUNNEL_TYPE }}
           - --default-interface-name={{- .Values.networking.vlan.VLAN_INTERFACE_NAME }}
-          - --cni-conf-dir={{ .Values.cni_conf.CNI_CONF_DIR }}
-          - --cni-conf-file={{ .Values.cni_conf.CNI_CONF_FILE }}
-          - --cni-conf-name={{- .Values.cni_conf.CNI_CONFIG_PRIORITY -}}-kube-ovn.conflist
           - --logtostderr=false
           - --alsologtostderr=true
           - --log_file=/var/log/kube-ovn/kube-ovn-cni.log
@@ -84,7 +117,8 @@ spec:
           - --ovs-vsctl-concurrency={{ .Values.performance.OVS_VSCTL_CONCURRENCY }}
           - --secure-serving={{- .Values.func.SECURE_SERVING }}
         securityContext:
-          runAsUser: 0
+          runAsUser: 65534
+          runAsGroup: 0
           privileged: false
           capabilities:
             add:
@@ -92,6 +126,8 @@ spec:
               - NET_BIND_SERVICE
               - NET_RAW
               - SYS_ADMIN
+              - SYS_MODULE
+              - SYS_NICE
         env:
           - name: ENABLE_SSL
             value: "{{ .Values.networking.ENABLE_SSL }}"
@@ -120,16 +156,19 @@ spec:
           - name: DBUS_SYSTEM_BUS_ADDRESS
             value: "unix:path=/host/var/run/dbus/system_bus_socket"
         volumeMounts:
+          - name: usr-local-sbin
+            mountPath: /usr/local/sbin
           - name: host-modules
             mountPath: /lib/modules
             readOnly: true
+          - mountPath: /run/xtables.lock
+            name: xtables-lock
+            readOnly: false
           - name: shared-dir
             mountPath: {{ .Values.kubelet_conf.KUBELET_DIR }}/pods
           - mountPath: /etc/openvswitch
             name: systemid
             readOnly: true
-          - mountPath: /etc/cni/net.d
-            name: cni-conf
           - mountPath: /run/openvswitch
             name: host-run-ovs
             mountPropagation: HostToContainer
@@ -175,9 +214,15 @@ spec:
       nodeSelector:
         kubernetes.io/os: "linux"
       volumes:
+        - name: usr-local-sbin
+          emptyDir: {}
         - name: host-modules
           hostPath:
             path: /lib/modules
+        - name: xtables-lock
+          hostPath:
+            path: /run/xtables.lock
+            type: FileOrCreate
         - name: shared-dir
           hostPath:
             path: {{ .Values.kubelet_conf.KUBELET_DIR }}/pods

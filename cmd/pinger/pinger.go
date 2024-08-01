@@ -1,9 +1,10 @@
-package pinger
+package main
 
 import (
 	_ "net/http/pprof" // #nosec
 
 	"k8s.io/klog/v2"
+	"kernel.org/pub/linux/libs/security/libcap/cap"
 	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
 
 	"github.com/kubeovn/kube-ovn/pkg/metrics"
@@ -12,10 +13,14 @@ import (
 	"github.com/kubeovn/kube-ovn/versions"
 )
 
-func CmdMain() {
+func main() {
 	defer klog.Flush()
 
 	klog.Infof(versions.String())
+
+	currentCaps := cap.GetProc()
+	klog.Infof("current capabilities: %s", currentCaps.String())
+
 	config, err := pinger.ParseFlags()
 	if err != nil {
 		util.LogFatalAndExit(err, "failed to parse config")

@@ -42,6 +42,10 @@ SECURE_SERVING=${SECURE_SERVING:-false}
 
 # debug
 DEBUG_WRAPPER=${DEBUG_WRAPPER:-}
+RUN_AS_USER=65534 # run as nobody
+if [ -n "$DEBUG_WRAPPER" ]; then
+  RUN_AS_USER=0
+fi
 
 KUBELET_DIR=${KUBELET_DIR:-/var/lib/kubelet}
 LOG_DIR=${LOG_DIR:-/var/log}
@@ -741,6 +745,31 @@ spec:
                     type: string
                 qosPolicy:
                   type: string
+                bgpSpeaker:
+                  type: object
+                  properties:
+                    enabled:
+                      type: boolean
+                    asn:
+                      type: integer
+                    remoteAsn:
+                      type: integer
+                    neighbors:
+                      type: array
+                      items:
+                        type: string
+                    holdTime:
+                      type: string
+                    routerId:
+                      type: string
+                    password:
+                      type: string
+                    enableGracefulRestart:
+                      type: boolean
+                    extraArgs:
+                      type: array
+                      items:
+                        type: string
                 tolerations:
                   type: array
                   items:
@@ -1538,7 +1567,11 @@ spec:
                   type: boolean
                 v4Eip:
                   type: string
+                v6Eip:
+                  type: string
                 v4Ip:
+                  type: string
+                v6Ip:
                   type: string
                 vpc:
                   type: string
@@ -1731,7 +1764,11 @@ spec:
                   type: boolean
                 v4Eip:
                   type: string
+                v6Eip:
+                  type: string
                 v4Ip:
+                  type: string
+                v6Ip:
                   type: string
                 vpc:
                   type: string
@@ -3418,6 +3455,27 @@ spec:
       priorityClassName: system-cluster-critical
       serviceAccountName: ovn-ovs
       hostNetwork: true
+      initContainers:
+        - name: hostpath-init
+          image: "$REGISTRY/kube-ovn:$VERSION"
+          command:
+            - sh
+            - -c
+            - "chown -R nobody: /var/run/ovn /etc/ovn /var/log/ovn"
+          securityContext:
+            allowPrivilegeEscalation: true
+            capabilities:
+              drop:
+                - ALL
+            privileged: true
+            runAsUser: 0
+          volumeMounts:
+            - mountPath: /var/run/ovn
+              name: host-run-ovn
+            - mountPath: /etc/ovn
+              name: host-config-ovn
+            - mountPath: /var/log/ovn
+              name: host-log-ovn
       containers:
         - name: ovn-central
           image: "$REGISTRY/kube-ovn:$VERSION"
@@ -3426,7 +3484,7 @@ spec:
           - bash
           - /kube-ovn/start-db.sh
           securityContext:
-            runAsUser: 0
+            runAsUser: ${RUN_AS_USER}
             privileged: false
             capabilities:
               add:
@@ -3475,16 +3533,10 @@ spec:
               cpu: 4
               memory: 4Gi
           volumeMounts:
-            - mountPath: /var/run/openvswitch
-              name: host-run-ovs
             - mountPath: /var/run/ovn
               name: host-run-ovn
-            - mountPath: /etc/openvswitch
-              name: host-config-openvswitch
             - mountPath: /etc/ovn
               name: host-config-ovn
-            - mountPath: /var/log/openvswitch
-              name: host-log-ovs
             - mountPath: /var/log/ovn
               name: host-log-ovn
             - mountPath: /etc/localtime
@@ -3512,21 +3564,12 @@ spec:
         kubernetes.io/os: "linux"
         kube-ovn/role: "master"
       volumes:
-        - name: host-run-ovs
-          hostPath:
-            path: /run/openvswitch
         - name: host-run-ovn
           hostPath:
             path: /run/ovn
-        - name: host-config-openvswitch
-          hostPath:
-            path: /etc/origin/openvswitch
         - name: host-config-ovn
           hostPath:
             path: /etc/origin/ovn
-        - name: host-log-ovs
-          hostPath:
-            path: $LOG_DIR/openvswitch
         - name: host-log-ovn
           hostPath:
             path: $LOG_DIR/ovn
@@ -3747,6 +3790,35 @@ spec:
       serviceAccountName: ovn-ovs
       hostNetwork: true
       hostPID: true
+      initContainers:
+        - name: hostpath-init
+          image: "$REGISTRY/kube-ovn:$VERSION"
+          command:
+            - sh
+            - -xec
+            - |
+              chown -R nobody: /var/run/ovn /var/log/ovn /etc/openvswitch /var/run/openvswitch /var/log/openvswitch
+              iptables -V
+          securityContext:
+            allowPrivilegeEscalation: true
+            capabilities:
+              drop:
+                - ALL
+            privileged: true
+            runAsUser: 0
+          volumeMounts:
+            - mountPath: /usr/local/sbin
+              name: usr-local-sbin
+            - mountPath: /var/log/ovn
+              name: host-log-ovn
+            - mountPath: /var/run/ovn
+              name: host-run-ovn
+            - mountPath: /etc/openvswitch
+              name: host-config-openvswitch
+            - mountPath: /var/run/openvswitch
+              name: host-run-ovs
+            - mountPath: /var/log/openvswitch
+              name: host-log-ovs
       containers:
         - name: openvswitch
           image: "$REGISTRY/kube-ovn:$VERSION"
@@ -3754,7 +3826,7 @@ spec:
           command:
           - /kube-ovn/start-ovs.sh
           securityContext:
-            runAsUser: 0
+            runAsUser: ${RUN_AS_USER}
             privileged: false
             capabilities:
               add:
@@ -3762,6 +3834,7 @@ spec:
                 - NET_BIND_SERVICE
                 - SYS_MODULE
                 - SYS_NICE
+                - SYS_ADMIN
           env:
             - name: ENABLE_SSL
               value: "$ENABLE_SSL"
@@ -3794,9 +3867,8 @@ spec:
             - name: OVN_REMOTE_OPENFLOW_INTERVAL
               value: "180"
           volumeMounts:
-            - mountPath: /var/run/netns
-              name: host-ns
-              mountPropagation: HostToContainer
+            - mountPath: /usr/local/sbin
+              name: usr-local-sbin
             - mountPath: /lib/modules
               name: host-modules
               readOnly: true
@@ -3806,8 +3878,6 @@ spec:
               name: host-run-ovn
             - mountPath: /etc/openvswitch
               name: host-config-openvswitch
-            - mountPath: /etc/ovn
-              name: host-config-ovn
             - mountPath: /var/log/openvswitch
               name: host-log-ovs
             - mountPath: /var/log/ovn
@@ -3847,6 +3917,8 @@ spec:
       nodeSelector:
         kubernetes.io/os: "linux"
       volumes:
+        - name: usr-local-sbin
+          emptyDir: {}
         - name: host-modules
           hostPath:
             path: /lib/modules
@@ -3856,15 +3928,9 @@ spec:
         - name: host-run-ovn
           hostPath:
             path: /run/ovn
-        - name: host-ns
-          hostPath:
-            path: /var/run/netns
         - name: host-config-openvswitch
           hostPath:
             path: /etc/origin/openvswitch
-        - name: host-config-ovn
-          hostPath:
-            path: /etc/origin/ovn
         - name: host-log-ovs
           hostPath:
             path: $LOG_DIR/openvswitch
@@ -4128,6 +4194,23 @@ spec:
       priorityClassName: system-cluster-critical
       serviceAccountName: ovn
       hostNetwork: true
+      initContainers:
+        - name: hostpath-init
+          image: "$REGISTRY/kube-ovn:$VERSION"
+          command:
+            - sh
+            - -c
+            - "chown -R nobody: /var/log/kube-ovn"
+          securityContext:
+            allowPrivilegeEscalation: true
+            capabilities:
+              drop:
+                - ALL
+            privileged: true
+            runAsUser: 0
+          volumeMounts:
+            - name: kube-ovn-log
+              mountPath: /var/log/kube-ovn
       containers:
         - name: kube-ovn-controller
           image: "$REGISTRY/kube-ovn:$VERSION"
@@ -4164,7 +4247,7 @@ spec:
           - --node-local-dns-ip=$NODE_LOCAL_DNS_IP
           - --secure-serving=${SECURE_SERVING}
           securityContext:
-            runAsUser: 0
+            runAsUser: ${RUN_AS_USER}
             privileged: false
             capabilities:
               add:
@@ -4284,16 +4367,49 @@ spec:
       hostNetwork: true
       hostPID: true
       initContainers:
+      - name: hostpath-init
+        image: "$REGISTRY/kube-ovn:$VERSION"
+        command:
+          - sh
+          - -xec
+          - |
+            chown -R nobody: /var/log/kube-ovn
+            chmod g+r /run/xtables.lock
+            chmod g+w /var/run/netns
+            iptables -V
+        securityContext:
+          allowPrivilegeEscalation: true
+          capabilities:
+            drop:
+              - ALL
+          privileged: true
+          runAsUser: 0
+          runAsGroup: 0
+        volumeMounts:
+          - name: usr-local-sbin
+            mountPath: /usr/local/sbin
+          - mountPath: /run/xtables.lock
+            name: xtables-lock
+            readOnly: false
+          - mountPath: /var/run/netns
+            name: host-ns
+            readOnly: false
+          - name: kube-ovn-log
+            mountPath: /var/log/kube-ovn
       - name: install-cni
         image: "$REGISTRY/kube-ovn:$VERSION"
         imagePullPolicy: $IMAGE_PULL_POLICY
-        command: ["/kube-ovn/install-cni.sh"]
+        command:
+          - /kube-ovn/install-cni.sh
+          - --cni-conf-name=${CNI_CONFIG_PRIORITY}-kube-ovn.conflist
         securityContext:
           runAsUser: 0
           privileged: true
         volumeMounts:
           - mountPath: /opt/cni/bin
             name: cni-bin
+          - mountPath: /etc/cni/net.d
+            name: cni-conf
           - mountPath: /usr/local/bin
             name: local-bin
       containers:
@@ -4312,7 +4428,6 @@ spec:
           - --dpdk-tunnel-iface=${DPDK_TUNNEL_IFACE}
           - --network-type=$TUNNEL_TYPE
           - --default-interface-name=$VLAN_INTERFACE_NAME
-          - --cni-conf-name=${CNI_CONFIG_PRIORITY}-kube-ovn.conflist
           - --logtostderr=false
           - --alsologtostderr=true
           - --log_file=/var/log/kube-ovn/kube-ovn-cni.log
@@ -4322,7 +4437,8 @@ spec:
           - --ovs-vsctl-concurrency=$OVS_VSCTL_CONCURRENCY
           - --secure-serving=${SECURE_SERVING}
         securityContext:
-          runAsUser: 0
+          runAsUser: ${RUN_AS_USER}
+          runAsGroup: 0
           privileged: false
           capabilities:
             add:
@@ -4330,6 +4446,8 @@ spec:
               - NET_BIND_SERVICE
               - NET_RAW
               - SYS_ADMIN
+              - SYS_MODULE
+              - SYS_NICE
         env:
           - name: ENABLE_SSL
             value: "$ENABLE_SSL"
@@ -4358,16 +4476,19 @@ spec:
           - name: DBUS_SYSTEM_BUS_ADDRESS
             value: "unix:path=/host/var/run/dbus/system_bus_socket"
         volumeMounts:
+          - name: usr-local-sbin
+            mountPath: /usr/local/sbin
           - name: host-modules
             mountPath: /lib/modules
             readOnly: true
+          - mountPath: /run/xtables.lock
+            name: xtables-lock
+            readOnly: false
           - name: shared-dir
             mountPath: $KUBELET_DIR/pods
           - mountPath: /etc/openvswitch
             name: systemid
             readOnly: true
-          - mountPath: /etc/cni/net.d
-            name: cni-conf
           - mountPath: /run/openvswitch
             name: host-run-ovs
             mountPropagation: HostToContainer
@@ -4413,9 +4534,15 @@ spec:
       nodeSelector:
         kubernetes.io/os: "linux"
       volumes:
+        - name: usr-local-sbin
+          emptyDir: {}
         - name: host-modules
           hostPath:
             path: /lib/modules
+        - name: xtables-lock
+          hostPath:
+            path: /run/xtables.lock
+            type: FileOrCreate
         - name: shared-dir
           hostPath:
             path: $KUBELET_DIR/pods
@@ -4481,6 +4608,23 @@ spec:
       priorityClassName: system-node-critical
       serviceAccountName: kube-ovn-app
       hostPID: true
+      initContainers:
+        - name: hostpath-init
+          image: "$REGISTRY/kube-ovn:$VERSION"
+          command:
+            - sh
+            - -c
+            - "chown -R nobody: /var/log/kube-ovn"
+          securityContext:
+            allowPrivilegeEscalation: true
+            capabilities:
+              drop:
+                - ALL
+            privileged: true
+            runAsUser: 0
+          volumeMounts:
+            - name: kube-ovn-log
+              mountPath: /var/log/kube-ovn
       containers:
         - name: pinger
           image: "$REGISTRY/kube-ovn:$VERSION"
@@ -4495,8 +4639,12 @@ spec:
           - --log_file_max_size=200
           imagePullPolicy: $IMAGE_PULL_POLICY
           securityContext:
-            runAsUser: 0
+            runAsUser: ${RUN_AS_USER}
             privileged: false
+            capabilities:
+              add:
+                - NET_BIND_SERVICE
+                - NET_RAW
           env:
             - name: ENABLE_SSL
               value: "$ENABLE_SSL"
@@ -4612,6 +4760,23 @@ spec:
       priorityClassName: system-cluster-critical
       serviceAccountName: kube-ovn-app
       hostNetwork: true
+      initContainers:
+        - name: hostpath-init
+          image: "$REGISTRY/kube-ovn:$VERSION"
+          command:
+            - sh
+            - -c
+            - "chown -R nobody: /var/log/kube-ovn"
+          securityContext:
+            allowPrivilegeEscalation: true
+            capabilities:
+              drop:
+                - ALL
+            privileged: true
+            runAsUser: 0
+          volumeMounts:
+            - name: kube-ovn-log
+              mountPath: /var/log/kube-ovn
       containers:
         - name: kube-ovn-monitor
           image: "$REGISTRY/kube-ovn:$VERSION"
@@ -4624,8 +4789,11 @@ spec:
           - --alsologtostderr=true
           - --log_file_max_size=200
           securityContext:
-            runAsUser: 0
+            runAsUser: ${RUN_AS_USER}
             privileged: false
+            capabilities:
+              add:
+                - NET_BIND_SERVICE
           env:
             - name: ENABLE_SSL
               value: "$ENABLE_SSL"
@@ -4659,12 +4827,8 @@ spec:
               cpu: 200m
               memory: 200Mi
           volumeMounts:
-            - mountPath: /var/run/openvswitch
-              name: host-run-ovs
             - mountPath: /var/run/ovn
               name: host-run-ovn
-            - mountPath: /etc/openvswitch
-              name: host-config-openvswitch
             - mountPath: /etc/ovn
               name: host-config-ovn
             - mountPath: /var/log/ovn
@@ -4697,15 +4861,9 @@ spec:
         kubernetes.io/os: "linux"
         kube-ovn/role: "master"
       volumes:
-        - name: host-run-ovs
-          hostPath:
-            path: /run/openvswitch
         - name: host-run-ovn
           hostPath:
             path: /run/ovn
-        - name: host-config-openvswitch
-          hostPath:
-            path: /etc/origin/openvswitch
         - name: host-config-ovn
           hostPath:
             path: /etc/origin/ovn
@@ -4846,8 +5004,12 @@ spec:
           - --logtostderr=false
           - --alsologtostderr=true
           securityContext:
+            runAsUser: ${RUN_AS_USER}
+            privileged: false
             capabilities:
-              add: ["SYS_NICE"]
+              add:
+                - NET_BIND_SERVICE
+                - SYS_NICE
           env:
             - name: ENABLE_SSL
               value: "$ENABLE_SSL"
@@ -4867,8 +5029,6 @@ spec:
           volumeMounts:
             - mountPath: /var/run/ovn
               name: host-run-ovn
-            - mountPath: /etc/ovn
-              name: host-config-ovn
             - mountPath: /var/log/ovn
               name: host-log-ovn
             - mountPath: /etc/localtime
@@ -4884,9 +5044,6 @@ spec:
         - name: host-run-ovn
           hostPath:
             path: /run/ovn
-        - name: host-config-ovn
-          hostPath:
-            path: /etc/origin/ovn
         - name: host-log-ovn
           hostPath:
             path: /var/log/ovn

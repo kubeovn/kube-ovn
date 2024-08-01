@@ -138,7 +138,7 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 			util.RoutesAnnotation: string(buff),
 		}
 		cmd := []string{"sh", "-c", "sleep infinity"}
-		pod := framework.MakePod(namespaceName, podName, nil, annotations, f.KubeOVNImage, cmd, nil)
+		pod := framework.MakePrivilegedPod(namespaceName, podName, nil, annotations, f.KubeOVNImage, cmd, nil)
 		pod = podClient.CreateSync(pod)
 
 		ginkgo.By("Validating pod annotations")

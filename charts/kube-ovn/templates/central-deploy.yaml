@@ -40,6 +40,28 @@ spec:
       priorityClassName: system-cluster-critical
       serviceAccountName: ovn-ovs
       hostNetwork: true
+      initContainers:
+        - name: hostpath-init
+          image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - sh
+            - -c
+            - "chown -R nobody: /var/run/ovn /etc/ovn /var/log/ovn"
+          securityContext:
+            allowPrivilegeEscalation: true
+            capabilities:
+              drop:
+                - ALL
+            privileged: true
+            runAsUser: 0
+          volumeMounts:
+            - mountPath: /var/run/ovn
+              name: host-run-ovn
+            - mountPath: /etc/ovn
+              name: host-config-ovn
+            - mountPath: /var/log/ovn
+              name: host-log-ovn
       containers:
         - name: ovn-central
           image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}
@@ -48,7 +70,7 @@ spec:
           - bash
           - /kube-ovn/start-db.sh
           securityContext:
-            runAsUser: 0
+            runAsUser: 65534
             privileged: false
             capabilities:
               add:
@@ -97,16 +119,10 @@ spec:
               cpu: {{ index .Values "ovn-central" "limits" "cpu" }}
               memory: {{ index .Values "ovn-central" "limits" "memory" }}
           volumeMounts:
-            - mountPath: /var/run/openvswitch
-              name: host-run-ovs
             - mountPath: /var/run/ovn
               name: host-run-ovn
-            - mountPath: /etc/openvswitch
-              name: host-config-openvswitch
             - mountPath: /etc/ovn
               name: host-config-ovn
-            - mountPath: /var/log/openvswitch
-              name: host-log-ovs
             - mountPath: /var/log/ovn
               name: host-log-ovn
             - mountPath: /etc/localtime
@@ -136,21 +152,12 @@ spec:
         {{ index . 0 }}: "{{ if eq (len .) 2 }}{{ index . 1 }}{{ end }}"
         {{- end }}
       volumes:
-        - name: host-run-ovs
-          hostPath:
-            path: /run/openvswitch
         - name: host-run-ovn
           hostPath:
             path: /run/ovn
-        - name: host-config-openvswitch
-          hostPath:
-            path: {{ .Values.OPENVSWITCH_DIR }}
         - name: host-config-ovn
           hostPath:
             path: {{ .Values.OVN_DIR }}
-        - name: host-log-ovs
-          hostPath:
-            path: {{ .Values.log_conf.LOG_DIR }}/openvswitch
         - name: host-log-ovn
           hostPath:
             path: {{ .Values.log_conf.LOG_DIR }}/ovn

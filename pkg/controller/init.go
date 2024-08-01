@@ -30,6 +30,11 @@ import (
 func (c *Controller) InitOVN() error {
 	var err error
 
+	if err := c.InitDefaultVpc(); err != nil {
+		klog.Errorf("init default vpc failed: %v", err)
+		return err
+	}
+
 	if err = c.initClusterRouter(); err != nil {
 		klog.Errorf("init cluster router failed: %v", err)
 		return err
@@ -62,39 +67,33 @@ func (c *Controller) InitOVN() error {
 
 func (c *Controller) InitDefaultVpc() error {
 	cachedVpc, err := c.vpcsLister.Get(c.config.ClusterRouter)
-	if err != nil {
-		cachedVpc = &kubeovnv1.Vpc{}
-		cachedVpc.Name = c.config.ClusterRouter
-		cachedVpc, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Create(context.Background(), cachedVpc, metav1.CreateOptions{})
+	if !k8serrors.IsNotFound(err) {
+		klog.Errorf("get default vpc %s failed: %v", c.config.DefaultLogicalSwitch, err)
+		return err
+	}
+
+	if k8serrors.IsNotFound(err) {
+		vpc := &kubeovnv1.Vpc{
+			ObjectMeta: metav1.ObjectMeta{Name: c.config.ClusterRouter},
+		}
+		cachedVpc, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Create(context.Background(), vpc, metav1.CreateOptions{})
 		if err != nil {
 			klog.Errorf("init default vpc failed: %v", err)
 			return err
 		}
 	}
+
 	vpc := cachedVpc.DeepCopy()
 	vpc.Status.DefaultLogicalSwitch = c.config.DefaultLogicalSwitch
 	vpc.Status.Router = c.config.ClusterRouter
-	if c.config.EnableLb {
-		vpc.Status.TCPLoadBalancer = c.config.ClusterTCPLoadBalancer
-		vpc.Status.TCPSessionLoadBalancer = c.config.ClusterTCPSessionLoadBalancer
-		vpc.Status.UDPLoadBalancer = c.config.ClusterUDPLoadBalancer
-		vpc.Status.UDPSessionLoadBalancer = c.config.ClusterUDPSessionLoadBalancer
-		vpc.Status.SctpLoadBalancer = c.config.ClusterSctpLoadBalancer
-		vpc.Status.SctpSessionLoadBalancer = c.config.ClusterSctpSessionLoadBalancer
-	}
 	vpc.Status.Standby = true
 	vpc.Status.Default = true
 
-	bytes, err := vpc.Status.Bytes()
-	if err != nil {
-		klog.Error(err)
-		return err
-	}
-	_, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Patch(context.Background(), vpc.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status")
-	if err != nil {
+	if _, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().UpdateStatus(context.Background(), vpc, metav1.UpdateOptions{}); err != nil {
 		klog.Errorf("init default vpc failed: %v", err)
 		return err
 	}
+
 	return nil
 }
 

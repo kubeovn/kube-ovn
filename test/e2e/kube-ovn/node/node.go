@@ -81,7 +81,7 @@ var _ = framework.OrderedDescribe("[group:node]", func() {
 			podName = "pod-" + framework.RandomSuffix()
 			ginkgo.By("Creating pod " + podName + " with host network on node " + node.Name)
 			cmd := []string{"sh", "-c", "sleep infinity"}
-			pod := framework.MakePod(namespaceName, podName, nil, nil, f.KubeOVNImage, cmd, nil)
+			pod := framework.MakePrivilegedPod(namespaceName, podName, nil, nil, f.KubeOVNImage, cmd, nil)
 			pod.Spec.NodeName = node.Name
 			pod.Spec.HostNetwork = true
 			pod = podClient.CreateSync(pod)

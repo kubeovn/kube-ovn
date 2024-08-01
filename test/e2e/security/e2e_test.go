@@ -23,6 +23,7 @@ import (
 	"github.com/onsi/ginkgo/v2"
 
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
+	"github.com/kubeovn/kube-ovn/test/e2e/framework/docker"
 )
 
 func init() {
@@ -84,7 +85,11 @@ func checkPods(f *framework.Framework, pods []corev1.Pod, process string, ports 
 		cmd += fmt.Sprintf(`| grep -E ':%s$'`, strings.Join(ports, `$|:`))
 	}
 	for _, pod := range pods {
-		stdout, _, err := framework.KubectlExec(pod.Namespace, pod.Name, cmd)
+		framework.ExpectTrue(pod.Spec.HostNetwork, "pod %s/%s is not using host network", pod.Namespace, pod.Name)
+
+		c, err := docker.ContainerInspect(pod.Spec.NodeName)
+		framework.ExpectNoError(err)
+		stdout, _, err := docker.Exec(c.ID, nil, "sh", "-c", cmd)
 		framework.ExpectNoError(err)
 
 		listenAddresses := strings.Split(string(bytes.TrimSpace(stdout)), "\n")

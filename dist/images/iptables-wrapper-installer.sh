@@ -155,8 +155,8 @@ EOF
 cat >> "${sbin}/iptables-wrapper" <<EOF
 # Update links to point to the selected binaries
 for cmd in iptables iptables-save iptables-restore ip6tables ip6tables-save ip6tables-restore; do
-    rm -f "${sbin}/\${cmd}"
-    ln -s "${sbin}/xtables-\${mode}-multi" "${sbin}/\${cmd}"
+    rm -f "/usr/local/sbin/\${cmd}"
+    ln -s "${sbin}/xtables-\${mode}-multi" "/usr/local/sbin/\${cmd}"
 done 2>/dev/null || failed=1
 EOF
     ;;
@@ -171,7 +171,7 @@ if [ "\${failed:-0}" = 1 ]; then
 fi
 
 # Now re-exec the original command with the newly-selected alternative
-exec "\$0" "\$@"
+exec "/usr/local/sbin/\$(basename \$0)" "\$@"
 EOF
 chmod +x "${sbin}/iptables-wrapper"
 

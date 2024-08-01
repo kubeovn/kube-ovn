@@ -1,4 +1,4 @@
-package main
+package webhook
 
 import (
 	"flag"
@@ -36,7 +36,7 @@ func init() {
 	}
 }
 
-func main() {
+func CmdMain() {
 	klog.Infof(versions.String())
 
 	port := pflag.Int("port", 8443, "The port webhook listen on.")

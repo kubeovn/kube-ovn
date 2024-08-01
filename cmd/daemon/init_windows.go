@@ -1,4 +1,4 @@
-package daemon
+package main
 
 // https://github.com/kubernetes/kubernetes/blob/master/cmd/kubelet/app/init_windows.go
 
@@ -8,6 +8,10 @@ import (
 
 	"golang.org/x/sys/windows"
 )
+
+func printCaps() {
+	// do nothing
+}
 
 // createWindowsJobObject creates a new Job Object
 // (https://docs.microsoft.com/en-us/windows/win32/procthread/job-objects),

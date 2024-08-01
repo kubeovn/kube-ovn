@@ -3,62 +3,77 @@ package daemon
 import (
 	"fmt"
 	"os"
-	"path"
+	"runtime"
+	"sync"
 
+	"github.com/containernetworking/plugins/pkg/ns"
 	"golang.org/x/sys/unix"
-	"k8s.io/klog/v2"
-
-	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-// NsHandle is a handle to a network namespace. It can be cast directly
-// to an int and used as a file descriptor.
-type NsHandle int
+// this file is copied from https://github.com/containerd/containerd/blob/main/pkg/netns/netns_linux.go
 
-// GetFromPath gets a handle to a network namespace
-// identified by the path
-func GetNsFromPath(path string) (NsHandle, error) {
-	fd, err := unix.Open(path, unix.O_RDONLY|unix.O_CLOEXEC, 0)
+// getCurrentThreadNetNSPath copied from pkg/ns
+func getCurrentThreadNetNSPath() string {
+	// /proc/self/ns/net returns the namespace of the main thread, not
+	// of whatever thread this goroutine is running on.  Make sure we
+	// use the thread's net namespace since the thread is switching around
+	return fmt.Sprintf("/proc/%d/task/%d/ns/net", os.Getpid(), unix.Gettid())
+}
+
+func newNetNS(path string) error {
+	mountPointFd, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o666)
 	if err != nil {
-		return -1, err
-	}
-	return NsHandle(fd), nil
-}
-
-// GetFromThread gets a handle to the network namespace of a given pid and tid.
-func GetNsFromThread(pid, tid int) (NsHandle, error) {
-	return GetNsFromPath(fmt.Sprintf("/proc/%d/task/%d/ns/net", pid, tid))
-}
-
-// Get gets a handle to the current threads network namespace.
-func GetNs() (NsHandle, error) {
-	return GetNsFromThread(os.Getpid(), unix.Gettid())
-}
-
-// GetFromName gets a handle to a named network namespace such as one
-// created by `ip netns add`.
-func GetNsFromName(name string) (NsHandle, error) {
-	return GetNsFromPath(fmt.Sprintf("/var/run/netns/%s", name))
-}
-
-// None gets an empty (closed) NsHandle.
-func ClosedNs() NsHandle {
-	return NsHandle(-1)
-}
-
-// DeleteNamed deletes a named network namespace
-// ip netns del
-func DeleteNamedNs(name string) error {
-	namedPath := path.Join(util.BindMountPath, name)
-	if _, err := os.Stat(namedPath); os.IsNotExist(err) {
-		// already deleted
-		return nil
-	}
-	err := unix.Unmount(namedPath, unix.MNT_DETACH)
-	if err != nil {
-		klog.Error(err)
 		return err
 	}
+	mountPointFd.Close()
 
-	return os.Remove(namedPath)
+	defer func() {
+		// Ensure the mount point is cleaned up on errors
+		if err != nil {
+			os.RemoveAll(path)
+		}
+	}()
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	// do namespace work in a dedicated goroutine, so that we can safely
+	// Lock/Unlock OSThread without upsetting the lock/unlock state of
+	// the caller of this function
+	go (func() {
+		defer wg.Done()
+		runtime.LockOSThread()
+		// Don't unlock. By not unlocking, golang will kill the OS thread when the
+		// goroutine is done (for go1.10+)
+
+		var origNS ns.NetNS
+		if origNS, err = ns.GetNS(getCurrentThreadNetNSPath()); err != nil {
+			return
+		}
+		defer origNS.Close()
+
+		// create a new netns on the current thread
+		err = unix.Unshare(unix.CLONE_NEWNET)
+		if err != nil {
+			return
+		}
+
+		// Put this thread back to the orig ns, since it might get reused (pre go1.10)
+		defer func() { _ = origNS.Set() }()
+
+		// bind mount the netns from the current thread (from /proc) onto the
+		// mount point. This causes the namespace to persist, even when there
+		// are no threads in the ns.
+		err = unix.Mount(getCurrentThreadNetNSPath(), path, "none", unix.MS_BIND, "")
+		if err != nil {
+			err = fmt.Errorf("failed to bind mount ns at %s: %w", path, err)
+		}
+	})()
+	wg.Wait()
+
+	if err != nil {
+		return fmt.Errorf("failed to create namespace: %w", err)
+	}
+
+	return nil
 }

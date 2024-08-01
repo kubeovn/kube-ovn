@@ -39,28 +39,22 @@ var _ = framework.Describe("[group:ha]", func() {
 	framework.DisruptiveIt("ovn db should recover automatically from db file corruption", func() {
 		f.SkipVersionPriorTo(1, 11, "This feature was introduced in v1.11")
 
-		ginkgo.By("Getting daemonset ovs-ovn")
-		dsClient := f.DaemonSetClientNS(framework.KubeOvnNamespace)
-		ds := dsClient.Get("ovs-ovn")
+		ginkgo.By("Getting deployment kube-ovn-monitor")
+		deployClient := f.DeploymentClientNS(framework.KubeOvnNamespace)
+		monitorDeploy := deployClient.Get("kube-ovn-monitor")
+
+		ginkgo.By("Getting all pods of deployment kube-ovn-monitor")
+		pods, err := deployClient.GetPods(monitorDeploy)
+		framework.ExpectNoError(err)
+		framework.ExpectNotEmpty(pods.Items)
 
 		ginkgo.By("Getting deployment ovn-central")
-		deployClient := f.DeploymentClientNS(framework.KubeOvnNamespace)
 		deploy := deployClient.Get("ovn-central")
 		replicas := *deploy.Spec.Replicas
 		framework.ExpectNotZero(replicas)
 
 		ginkgo.By("Ensuring deployment ovn-central is ready")
 		deployClient.RolloutStatus(deploy.Name)
-
-		ginkgo.By("Getting nodes running deployment ovn-central")
-		deployClient.RolloutStatus(deploy.Name)
-		pods, err := deployClient.GetPods(deploy)
-		framework.ExpectNoError(err)
-		framework.ExpectHaveLen(pods.Items, int(replicas))
-		nodes := make([]string, 0, int(replicas))
-		for _, pod := range pods.Items {
-			nodes = append(nodes, pod.Spec.NodeName)
-		}
 
 		ginkgo.By("Setting size of deployment ovn-central to 0")
 		deployClient.SetScale(deploy.Name, 0)
@@ -77,11 +71,8 @@ var _ = framework.Describe("[group:ha]", func() {
 		db := "/etc/ovn/ovnnb_db.db"
 		checkCmd := fmt.Sprintf("ovsdb-tool check-cluster %s", db)
 		corruptCmd := fmt.Sprintf(`bash -c 'dd if=/dev/zero of="%s" bs=1 count=$((10+$RANDOM%%10)) seek=$(stat -c %%s "%s")'`, db, db)
-		for _, node := range nodes {
-			ginkgo.By("Getting ovs-ovn pod running on node " + node)
-			pod, err := dsClient.GetPodOnNode(ds, node)
-			framework.ExpectNoError(err)
-
+		for _, pod := range pods.Items {
+			node := pod.Spec.NodeName
 			ginkgo.By("Ensuring db file " + db + " on node " + node + " is ok")
 			stdout, stderr, err := framework.ExecShellInPod(context.Background(), f, pod.Namespace, pod.Name, checkCmd)
 			framework.ExpectNoError(err, fmt.Sprintf("failed to check db file %q: stdout = %q, stderr = %q", db, stdout, stderr))
