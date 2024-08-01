@@ -252,6 +252,7 @@ func (c *Controller) ManageIPSecKeys() error {
 	_, err := os.Stat(ipsecCertPath)
 	if os.IsNotExist(err) {
 		if err := c.CreateIPSecKeys(); err != nil {
+			klog.Errorf("create ipsec keys error: %v", err)
 			return err
 		}
 	} else {
@@ -269,6 +270,7 @@ func (c *Controller) ManageIPSecKeys() error {
 		}
 
 		if err := c.CreateIPSecKeys(); err != nil {
+			klog.Errorf("create ipsec keys error: %v", err)
 			return err
 		}
 	}
@@ -284,27 +286,32 @@ func (c *Controller) ManageIPSecKeys() error {
 func (c *Controller) CreateIPSecKeys() error {
 	err := initIPSecKeysDir()
 	if err != nil {
+		klog.Errorf("init ipsec keys dir error: %v", err)
 		return err
 	}
 
 	csr64, err := generateCSRCode()
 	if err != nil {
+		klog.Errorf("generate csr code error: %v", err)
 		return err
 	}
 
 	err = c.createCSR(csr64)
 	if err != nil {
+		klog.Errorf("create csr error: %v", err)
 		return err
 	}
 
 	err = configureOVSWithIPSecKeys()
 	if err != nil {
+		klog.Errorf("configure ovs with ipsec keys error: %v", err)
 		return err
 	}
 
 	// ipsec can't use the specified dir in /etc/openvswitch/keys/ipsec-cacert.pem, so link it to the default dir /etc/ipsec.d/cacerts/
 	err = linkCACertToIPSecDir()
 	if err != nil {
+		klog.Errorf("link cacert to ipsec dir error: %v", err)
 		return err
 	}
 
@@ -314,16 +321,19 @@ func (c *Controller) CreateIPSecKeys() error {
 func (c *Controller) RemoveIPSecKeys() error {
 	err := clearIPSecKeysDir()
 	if err != nil {
+		klog.Errorf("clear ipsec keys dir error: %v", err)
 		return err
 	}
 
 	err = unconfigureOVSWithIPSecKeys()
 	if err != nil {
+		klog.Errorf("unconfigure ovs with ipsec keys error: %v", err)
 		return err
 	}
 
 	err = clearCACertToIPSecDir()
 	if err != nil {
+		klog.Errorf("clear cacert to ipsec dir error: %v", err)
 		return err
 	}
 
@@ -344,11 +354,13 @@ func (c *Controller) StopAndClearIPSecResouce() error {
 func (c *Controller) StartIPSecService() error {
 	cmd := exec.Command("service", "openvswitch-ipsec", "restart")
 	if err := cmd.Run(); err != nil {
+		klog.Errorf("start ipsec service error: %v", err)
 		return err
 	}
 
 	cmd = exec.Command("service", "ipsec", "restart")
 	if err := cmd.Run(); err != nil {
+		klog.Errorf("start ipsec service error: %v", err)
 		return err
 	}
 
@@ -358,11 +370,13 @@ func (c *Controller) StartIPSecService() error {
 func (c *Controller) StopIPSecService() error {
 	cmd := exec.Command("service", "openvswitch-ipsec", "stop")
 	if err := cmd.Run(); err != nil {
+		klog.Errorf("stop ipsec service error: %v", err)
 		return err
 	}
 
 	cmd = exec.Command("service", "ipsec", "stop")
 	if err := cmd.Run(); err != nil {
+		klog.Errorf("stop ipsec service error: %v", err)
 		return err
 	}
 
