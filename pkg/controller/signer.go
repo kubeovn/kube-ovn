@@ -23,10 +23,6 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-const (
-	oneYear = 365 * 24 * time.Hour
-)
-
 func (c *Controller) enqueueAddCsr(obj interface{}) {
 	var key string
 	var err error
@@ -260,7 +256,7 @@ func newCertificateTemplate(certReq *x509.CertificateRequest) *x509.Certificate 
 		SignatureAlgorithm: x509.SHA512WithRSA,
 
 		NotBefore:    time.Now().Add(-1 * time.Second),
-		NotAfter:     time.Now().Add(10 * oneYear),
+		NotAfter:     time.Now().Add(10 * 365 * 24 * time.Hour), // CA expire Time 10 year
 		SerialNumber: serialNumber,
 
 		DNSNames:              certReq.DNSNames,
