@@ -824,6 +824,17 @@ func Run(ctx context.Context, config *Configuration) {
 		}); err != nil {
 			util.LogFatalAndExit(err, "failed to add csr event handler")
 		}
+
+	}
+
+	if config.EnableOVNIPSec {
+		if _, err = csrInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc:    controller.enqueueAddCsr,
+			UpdateFunc: controller.enqueueUpdateCsr,
+			// no need to add delete func for csr
+		}); err != nil {
+			util.LogFatalAndExit(err, "failed to add csr event handler")
+		}
 	}
 	controller.Run(ctx)
 }
