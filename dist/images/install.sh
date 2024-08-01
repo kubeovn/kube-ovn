@@ -1808,8 +1808,8 @@ spec:
         - jsonPath: .spec.namespaces
           name: Namespaces
           type: string
-        - jsonPath: .status.defaultLogicalSwitch
-          name: DefaultLogicalSwitch
+        - jsonPath: .status.defaultSubnet
+          name: DefaultSubnet
           type: string
       name: v1
       schema:

@@ -215,7 +215,7 @@ func (c *Controller) handleAddNamespace(key string) error {
 	}
 
 	if ds != "" {
-		namespace.Annotations[util.DefaultVPCSubnetAnnotation] = ds
+		namespace.Annotations[util.DefaultSubnetAnnotation] = ds
 	}
 	namespace.Annotations[util.LogicalSwitchAnnotation] = strings.Join(lss, ",")
 	namespace.Annotations[util.CidrAnnotation] = strings.Join(cidrs, ";")
