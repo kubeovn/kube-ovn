@@ -17,6 +17,7 @@ import (
 	kubeinformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/scheme"
 	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
+	certListerv1 "k8s.io/client-go/listers/certificates/v1"
 	v1 "k8s.io/client-go/listers/core/v1"
 	netv1 "k8s.io/client-go/listers/networking/v1"
 	"k8s.io/client-go/tools/cache"
@@ -248,12 +249,15 @@ type Controller struct {
 	deleteAnpQueue workqueue.RateLimitingInterface
 	anpKeyMutex    keymutex.KeyMutex
 
-	banpsLister     anplister.BaselineAdminNetworkPolicyLister
-	banpsSynced     cache.InformerSynced
-	addBanpQueue    workqueue.RateLimitingInterface
-	updateBanpQueue workqueue.RateLimitingInterface
-	deleteBanpQueue workqueue.RateLimitingInterface
-	banpKeyMutex    keymutex.KeyMutex
+	banpsLister         anplister.BaselineAdminNetworkPolicyLister
+	banpsSynced         cache.InformerSynced
+	addBanpQueue        workqueue.RateLimitingInterface
+	updateBanpQueue     workqueue.RateLimitingInterface
+	deleteBanpQueue     workqueue.RateLimitingInterface
+	banpKeyMutex        keymutex.KeyMutex
+	csrLister           certListerv1.CertificateSigningRequestLister
+	csrSynced           cache.InformerSynced
+	addOrUpdateCsrQueue workqueue.RateLimitingInterface
 
 	recorder               record.EventRecorder
 	informerFactory        kubeinformers.SharedInformerFactory
@@ -320,6 +324,7 @@ func Run(ctx context.Context, config *Configuration) {
 	ovnDnatRuleInformer := kubeovnInformerFactory.Kubeovn().V1().OvnDnatRules()
 	anpInformer := anpInformerFactory.Policy().V1alpha1().AdminNetworkPolicies()
 	banpInformer := anpInformerFactory.Policy().V1alpha1().BaselineAdminNetworkPolicies()
+	csrInformer := informerFactory.Certificates().V1().CertificateSigningRequests()
 
 	numKeyLocks := runtime.NumCPU() * 2
 	if numKeyLocks < config.WorkerNum*2 {
@@ -490,6 +495,10 @@ func Run(ctx context.Context, config *Configuration) {
 		addOvnDnatRuleQueue:    workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "AddOvnDnatRule"),
 		updateOvnDnatRuleQueue: workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "UpdateOvnDnatRule"),
 		delOvnDnatRuleQueue:    workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "DeleteOvnDnatRule"),
+
+		csrLister:           csrInformer.Lister(),
+		csrSynced:           csrInformer.Informer().HasSynced,
+		addOrUpdateCsrQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddOrUpdateCsr"),
 
 		recorder:               recorder,
 		informerFactory:        informerFactory,
@@ -806,6 +815,16 @@ func Run(ctx context.Context, config *Configuration) {
 		controller.anpPrioNameMap = make(map[int32]string, 100)
 		controller.anpNamePrioMap = make(map[string]int32, 100)
 	}
+
+	if config.EnableOVNIPSec {
+		if _, err = csrInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc:    controller.enqueueAddCsr,
+			UpdateFunc: controller.enqueueUpdateCsr,
+			// no need to add delete func for csr
+		}); err != nil {
+			util.LogFatalAndExit(err, "failed to add csr event handler")
+		}
+	}
 	controller.Run(ctx)
 }
 
@@ -830,6 +849,10 @@ func (c *Controller) Run(ctx context.Context) {
 
 	if err := c.OVNNbClient.SetNodeLocalDNSIP(strings.Join(c.config.NodeLocalDNSIPs, ",")); err != nil {
 		util.LogFatalAndExit(err, "failed to set NB_Global option node_local_dns_ip")
+	}
+
+	if err := c.OVNNbClient.SetOVNIPSec(c.config.EnableOVNIPSec); err != nil {
+		util.LogFatalAndExit(err, "failed to set NB_Global ipsec")
 	}
 
 	if err := c.InitOVN(); err != nil {
@@ -859,6 +882,16 @@ func (c *Controller) Run(ctx context.Context) {
 
 	if err := c.syncVlanCR(); err != nil {
 		util.LogFatalAndExit(err, "failed to sync crd vlans")
+	}
+
+	if err := c.syncVlanCR(); err != nil {
+		util.LogFatalAndExit(err, "failed to sync crd vlans")
+	}
+
+	if c.config.EnableOVNIPSec {
+		if err := c.InitOVNIPsecCA(); err != nil {
+			util.LogFatalAndExit(err, "failed to init ovn ipsec CA")
+		}
 	}
 
 	// start workers to do all the network operations
@@ -986,6 +1019,8 @@ func (c *Controller) shutdown() {
 	c.addOrUpdateSgQueue.ShutDown()
 	c.delSgQueue.ShutDown()
 	c.syncSgPortsQueue.ShutDown()
+
+	c.addOrUpdateCsrQueue.ShutDown()
 }
 
 func (c *Controller) startWorkers(ctx context.Context) {
@@ -1001,6 +1036,7 @@ func (c *Controller) startWorkers(ctx context.Context) {
 	go wait.Until(c.runUpdateVpcDnatWorker, time.Second, ctx.Done())
 	go wait.Until(c.runUpdateVpcSnatWorker, time.Second, ctx.Done())
 	go wait.Until(c.runUpdateVpcSubnetWorker, time.Second, ctx.Done())
+	go wait.Until(c.runAddOrUpdateCsrWorker, time.Second, ctx.Done())
 
 	// add default and join subnet and wait them ready
 	go wait.Until(c.runAddSubnetWorker, time.Second, ctx.Done())

@@ -135,6 +135,7 @@ spec:
           - --enable-metrics={{- .Values.networking.ENABLE_METRICS }}
           - --node-local-dns-ip={{- .Values.networking.NODE_LOCAL_DNS_IP }}
           - --secure-serving={{- .Values.func.SECURE_SERVING }}
+          - --enable-ovn-ipsec={{- .Values.func.ENABLE_OVN_IPSEC }}
           securityContext:
             runAsUser: 65534
             privileged: false

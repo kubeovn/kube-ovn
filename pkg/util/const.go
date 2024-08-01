@@ -310,4 +310,10 @@ const (
 	MigrationPhaseStarted         = "started"
 	MigrationPhaseSucceeded       = "succeeded"
 	MigrationPhaseFailed          = "failed"
+
+	OVNIPSecCASecret        = "ovn-ipsec-ca"
+	DefaultOVSCACertPath    = "/var/lib/openvswitch/pki/switchca/cacert.pem"
+	DefaultOVSCACertKeyPath = "/var/lib/openvswitch/pki/switchca/private/cakey.pem"
+
+	SignerName = "kubeovn.io/signer"
 )

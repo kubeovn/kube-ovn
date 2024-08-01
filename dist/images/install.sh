@@ -39,6 +39,7 @@ ENABLE_TPROXY=${ENABLE_TPROXY:-false}
 OVS_VSCTL_CONCURRENCY=${OVS_VSCTL_CONCURRENCY:-100}
 ENABLE_COMPACT=${ENABLE_COMPACT:-false}
 SECURE_SERVING=${SECURE_SERVING:-false}
+ENABLE_OVN_IPSEC=${ENABLE_OVN_IPSEC:-false}
 
 # debug
 DEBUG_WRAPPER=${DEBUG_WRAPPER:-}
@@ -3143,6 +3144,37 @@ rules:
       - subjectaccessreviews
     verbs:
       - create
+  - apiGroups: 
+      - "certificates.k8s.io"
+    resources: 
+      - "certificatesigningrequests"
+    verbs: 
+      - "get"
+      - "list"
+      - "watch"
+  - apiGroups:
+    - certificates.k8s.io
+    resources:
+    - certificatesigningrequests/status
+    - certificatesigningrequests/approval
+    verbs:
+    - update
+  - apiGroups:
+    - ""
+    resources:
+    - secrets
+    verbs:
+    - get
+    - create
+  - apiGroups:
+    - certificates.k8s.io
+    resourceNames:
+    - kubeovn.io/signer
+    resources:
+    - signers
+    verbs:
+    - approve
+    - sign
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -3245,6 +3277,22 @@ rules:
       - subjectaccessreviews
     verbs:
       - create
+  - apiGroups: 
+      - "certificates.k8s.io"
+    resources: 
+      - "certificatesigningrequests"
+    verbs: 
+      - "create" 
+      - "get"
+      - "list"
+      - "watch"
+      - "delete"
+  - apiGroups:
+      - ""
+    resources:
+      - "secrets"
+    verbs:
+      - "get"
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -4240,6 +4288,7 @@ spec:
           - --enable-lb-svc=$ENABLE_LB_SVC
           - --keep-vm-ip=$ENABLE_KEEP_VM_IP
           - --node-local-dns-ip=$NODE_LOCAL_DNS_IP
+          - --enable-ovn-ipsec=$ENABLE_OVN_IPSEC
           - --secure-serving=${SECURE_SERVING}
           securityContext:
             runAsUser: ${RUN_AS_USER}
@@ -4431,6 +4480,7 @@ spec:
           - --enable-tproxy=$ENABLE_TPROXY
           - --ovs-vsctl-concurrency=$OVS_VSCTL_CONCURRENCY
           - --secure-serving=${SECURE_SERVING}
+          - --enable-ovn-ipsec=$ENABLE_OVN_IPSEC
         securityContext:
           runAsUser: ${RUN_AS_USER}
           runAsGroup: 0
@@ -4484,6 +4534,10 @@ spec:
           - mountPath: /etc/openvswitch
             name: systemid
             readOnly: true
+          - mountPath: /etc/ovs_ipsec_keys
+            name: ovs-ipsec-keys
+          - mountPath: /etc/cni/net.d
+            name: cni-conf
           - mountPath: /run/openvswitch
             name: host-run-ovs
             mountPropagation: HostToContainer
@@ -4544,6 +4598,9 @@ spec:
         - name: systemid
           hostPath:
             path: /etc/origin/openvswitch
+        - name: ovs-ipsec-keys
+          hostPath:
+            path: /etc/origin/ovs_ipsec_keys
         - name: host-run-ovs
           hostPath:
             path: /run/openvswitch
