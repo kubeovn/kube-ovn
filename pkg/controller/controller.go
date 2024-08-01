@@ -825,16 +825,6 @@ func Run(ctx context.Context, config *Configuration) {
 			util.LogFatalAndExit(err, "failed to add csr event handler")
 		}
 	}
-
-	if config.EnableOVNIPSec {
-		if _, err = csrInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-			AddFunc:    controller.enqueueAddCsr,
-			UpdateFunc: controller.enqueueUpdateCsr,
-			// no need to add delete func for csr
-		}); err != nil {
-			util.LogFatalAndExit(err, "failed to add csr event handler")
-		}
-	}
 	controller.Run(ctx)
 }
 
@@ -888,10 +878,6 @@ func (c *Controller) Run(ctx context.Context) {
 
 	if err := c.syncSubnetCR(); err != nil {
 		util.LogFatalAndExit(err, "failed to sync crd subnets")
-	}
-
-	if err := c.syncVlanCR(); err != nil {
-		util.LogFatalAndExit(err, "failed to sync crd vlans")
 	}
 
 	if err := c.syncVlanCR(); err != nil {

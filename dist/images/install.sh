@@ -4536,8 +4536,6 @@ spec:
             readOnly: true
           - mountPath: /etc/ovs_ipsec_keys
             name: ovs-ipsec-keys
-          - mountPath: /etc/cni/net.d
-            name: cni-conf
           - mountPath: /run/openvswitch
             name: host-run-ovs
             mountPropagation: HostToContainer
