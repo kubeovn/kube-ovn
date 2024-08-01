@@ -824,7 +824,6 @@ func Run(ctx context.Context, config *Configuration) {
 		}); err != nil {
 			util.LogFatalAndExit(err, "failed to add csr event handler")
 		}
-
 	}
 
 	if config.EnableOVNIPSec {
