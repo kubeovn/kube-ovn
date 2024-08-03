@@ -38,10 +38,15 @@ fi
 
 function quit {
   set +e
-  for netns in /var/run/netns/*; do
-    nsenter --net=$netns sysctl -w net.ipv4.neigh.eth0.base_reachable_time_ms=180000;
-    nsenter --net=$netns sysctl -w net.ipv4.neigh.eth0.gc_stale_time=180;
-  done
+  if [ -z "$(ls -A /var/run/netns)" ]; then  
+      echo "no ns in /var/run/netns"  
+  else  
+    for netns in /var/run/netns/*; do
+      nsenter --net=$netns sysctl -w net.ipv4.neigh.eth0.base_reachable_time_ms=180000;
+      nsenter --net=$netns sysctl -w net.ipv4.neigh.eth0.gc_stale_time=180;
+    done 
+  fi
+
   # If the arp is in stale or delay status, stop vswitchd will lead prob failed.
   # Wait a while for prob ready.
   # As the timeout has been increased existing entry will not change to stale or delay at the moment
@@ -154,10 +159,14 @@ set -e
 ovs-vsctl --no-wait set open_vswitch . other_config:flow-restore-wait="false"
 
 set +e
-for netns in /var/run/netns/*; do
-  nsenter --net=$netns sysctl -w net.ipv4.neigh.eth0.base_reachable_time_ms=30000;
-  nsenter --net=$netns sysctl -w net.ipv4.neigh.eth0.gc_stale_time=60;
-done
+if [ -z "$(ls -A /var/run/netns)" ]; then  
+    echo "no ns in /var/run/netns"  
+else  
+  for netns in /var/run/netns/*; do
+    nsenter --net=$netns sysctl -w net.ipv4.neigh.eth0.base_reachable_time_ms=30000;
+    nsenter --net=$netns sysctl -w net.ipv4.neigh.eth0.gc_stale_time=60;
+  done
+fi 
 set -e
 
 chmod 600 /etc/openvswitch/*
