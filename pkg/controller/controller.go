@@ -249,12 +249,13 @@ type Controller struct {
 	deleteAnpQueue workqueue.RateLimitingInterface
 	anpKeyMutex    keymutex.KeyMutex
 
-	banpsLister         anplister.BaselineAdminNetworkPolicyLister
-	banpsSynced         cache.InformerSynced
-	addBanpQueue        workqueue.RateLimitingInterface
-	updateBanpQueue     workqueue.RateLimitingInterface
-	deleteBanpQueue     workqueue.RateLimitingInterface
-	banpKeyMutex        keymutex.KeyMutex
+	banpsLister     anplister.BaselineAdminNetworkPolicyLister
+	banpsSynced     cache.InformerSynced
+	addBanpQueue    workqueue.RateLimitingInterface
+	updateBanpQueue workqueue.RateLimitingInterface
+	deleteBanpQueue workqueue.RateLimitingInterface
+	banpKeyMutex    keymutex.KeyMutex
+
 	csrLister           certListerv1.CertificateSigningRequestLister
 	csrSynced           cache.InformerSynced
 	addOrUpdateCsrQueue workqueue.RateLimitingInterface
