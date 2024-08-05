@@ -126,7 +126,9 @@ spec:
               - NET_BIND_SERVICE
               - NET_RAW
               - SYS_ADMIN
+              {{- if not .Values.DISABLE_MODULES_MANAGEMENT }}
               - SYS_MODULE
+              {{- end }}
               - SYS_NICE
         env:
           - name: ENABLE_SSL

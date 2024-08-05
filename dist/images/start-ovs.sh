@@ -15,13 +15,15 @@ OVN_REMOTE_OPENFLOW_INTERVAL=${OVN_REMOTE_OPENFLOW_INTERVAL:-180}
 echo "OVN_REMOTE_PROBE_INTERVAL is set to $OVN_REMOTE_PROBE_INTERVAL"
 echo "OVN_REMOTE_OPENFLOW_INTERVAL is set to $OVN_REMOTE_OPENFLOW_INTERVAL"
 
-# Check required kernel module
-modinfo -m openvswitch
-modinfo -m geneve
-
-# CentOS 8 might not load iptables module by default, which will hurt nat function
-if modinfo -m ip_tables; then
-  modprobe ip_tables
+if [ "${DISABLE_MODULES_MANAGEMENT:-false}" != "true" ]; then
+  # Check required kernel module
+  modinfo -m openvswitch
+  modinfo -m geneve
+  
+  # CentOS 8 might not load iptables module by default, which will hurt nat function
+  if modinfo -m ip_tables; then
+    modprobe ip_tables
+  fi
 fi
 
 # https://bugs.launchpad.net/neutron/+bug/1776778

@@ -81,18 +81,7 @@ spec:
           {{- if .Values.DPDK }}
           command: ["/kube-ovn/start-ovs-dpdk.sh"]
           {{- else }}
-          command:
-          {{- if .Values.DISABLE_MODULES_MANAGEMENT }}
-          - /bin/sh
-          - -ec
-          - |
-              ln -sf /bin/true /usr/sbin/modprobe
-              ln -sf /bin/true /usr/sbin/modinfo
-              ln -sf /bin/true /usr/sbin/rmmod
-              exec /kube-ovn/start-ovs.sh
-          {{- else }}
-          - /kube-ovn/start-ovs.sh
-          {{- end }}
+          command: ["/kube-ovn/start-ovs.sh"]
           {{- end }}
           securityContext:
             runAsUser: 65534
@@ -101,7 +90,9 @@ spec:
               add:
                 - NET_ADMIN
                 - NET_BIND_SERVICE
+                {{- if not .Values.DISABLE_MODULES_MANAGEMENT }}
                 - SYS_MODULE
+                {{- end }}
                 - SYS_NICE
                 - SYS_ADMIN
           env:
@@ -133,6 +124,10 @@ spec:
               value: "{{ .Values.networking.OVN_REMOTE_PROBE_INTERVAL }}"
             - name: OVN_REMOTE_OPENFLOW_INTERVAL
               value: "{{ .Values.networking.OVN_REMOTE_OPENFLOW_INTERVAL }}"
+            {{- if .Values.DISABLE_MODULES_MANAGEMENT }}
+            - name: DISABLE_MODULES_MANAGEMENT
+              value: "true"
+            {{- end }}
           volumeMounts:
             - mountPath: /usr/local/sbin
               name: usr-local-sbin
