@@ -140,11 +140,11 @@ var _ = framework.Describe("[group:vip]", func() {
 		cidr = framework.RandomCIDR(f.ClusterIPFamily)
 
 		// should create lower case static ipv6 address vip in ovn-defualt
-		lowerCaseStaticIpv6VipName := "lower-case-static-ipv6-vip-" + framework.RandomSuffix()
-		lowerCaseV6IP := "fd00:10:16::a1"
+		lowerCaseStaticIpv6VipName = "lower-case-static-ipv6-vip-" + framework.RandomSuffix()
+		lowerCaseV6IP = "fd00:10:16::a1"
 		// should not create upper case static ipv6 address vip in ovn-defualt
-		upperCaseStaticIpv6VipName := "Upper-Case-Static-Ipv6-Vip-" + framework.RandomSuffix()
-		upperCaseV6IP := "fd00:10:16::A1"
+		upperCaseStaticIpv6VipName = "Upper-Case-Static-Ipv6-Vip-" + framework.RandomSuffix()
+		upperCaseV6IP = "fd00:10:16::A1"
 
 		// should have the same mac, which mac is the same as its vpc overlay subnet gw mac
 		randomSuffix := framework.RandomSuffix()
