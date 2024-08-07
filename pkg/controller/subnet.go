@@ -813,11 +813,9 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		return err
 	}
 
-	if subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway {
-		if err := c.reconcileU2OInterconnectionIP(subnet); err != nil {
-			klog.Errorf("failed to reconcile underlay subnet %s to overlay interconnection %v", subnet.Name, err)
-			return err
-		}
+	if err := c.reconcileCustomIPs(subnet); err != nil {
+		klog.Errorf("failed to reconcile subnet %s Custom IPs %v", subnet.Name, err)
+		return err
 	}
 
 	if err := c.checkSubnetConflict(subnet); err != nil {
@@ -850,15 +848,30 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		return err
 	}
 
-	multicastSnoopFlag := map[string]string{"mcast_snoop": "true", "mcast_querier": "false"}
 	if subnet.Spec.EnableMulticastSnoop {
+		multicastSnoopFlag := map[string]string{"mcast_snoop": "true", "mcast_querier": "true", "mcast_ip4_src": subnet.Status.McastQuerierIP, "mcast_eth_src": subnet.Status.McastQuerierMAC}
+		mcastQuerierLspName := fmt.Sprintf(util.McastQuerierName, subnet.Name)
+		if err := c.OVNNbClient.CreateLogicalSwitchPort(subnet.Name, mcastQuerierLspName, subnet.Status.McastQuerierIP, subnet.Status.McastQuerierMAC, mcastQuerierLspName, "default", false, "", "", false, nil, ""); err != nil {
+			err = fmt.Errorf("failed to create mcast querier lsp %s: %w", mcastQuerierLspName, err)
+			klog.Error(err)
+			return err
+		}
+
 		if err := c.OVNNbClient.LogicalSwitchUpdateOtherConfig(subnet.Name, ovsdb.MutateOperationInsert, multicastSnoopFlag); err != nil {
 			klog.Errorf("enable logical switch multicast snoop %s: %v", subnet.Name, err)
 			return err
 		}
 	} else {
-		if err := c.OVNNbClient.LogicalSwitchUpdateOtherConfig(subnet.Name, ovsdb.MutateOperationDelete, multicastSnoopFlag); err != nil {
+		multicastSnoopFlag := map[string]string{"mcast_snoop": "false", "mcast_querier": "false", "mcast_ip4_src": "", "mcast_eth_src": ""}
+		mcastQuerierLspName := fmt.Sprintf(util.McastQuerierName, subnet.Name)
+		if err := c.OVNNbClient.LogicalSwitchUpdateOtherConfig(subnet.Name, ovsdb.MutateOperationInsert, multicastSnoopFlag); err != nil {
 			klog.Errorf("disable logical switch multicast snoop %s: %v", subnet.Name, err)
+			return err
+		}
+
+		if err := c.OVNNbClient.DeleteLogicalSwitchPort(mcastQuerierLspName); err != nil {
+			err = fmt.Errorf("failed to delete mcast querier lsp %s: %w", mcastQuerierLspName, err)
+			klog.Error(err)
 			return err
 		}
 	}
@@ -1944,28 +1957,82 @@ func (c *Controller) reconcileVlan(subnet *kubeovnv1.Subnet) error {
 	return nil
 }
 
-func (c *Controller) reconcileU2OInterconnectionIP(subnet *kubeovnv1.Subnet) error {
+func (c *Controller) reconcileCustomIPs(subnet *kubeovnv1.Subnet) error {
 	needCalcIP := false
-	if subnet.Spec.U2OInterconnection {
-		u2oInterconnName := fmt.Sprintf(util.U2OInterconnName, subnet.Spec.Vpc, subnet.Name)
-		u2oInterconnLrpName := fmt.Sprintf("%s-%s", subnet.Spec.Vpc, subnet.Name)
-		var v4ip, v6ip, mac string
-		var err error
-		if subnet.Spec.U2OInterconnectionIP == "" && (subnet.Status.U2OInterconnectionIP == "" || subnet.Status.U2OInterconnectionMAC == "") {
-			v4ip, v6ip, mac, err = c.acquireIPAddress(subnet.Name, u2oInterconnName, u2oInterconnLrpName)
-			if err != nil {
-				klog.Errorf("failed to acquire underlay to overlay interconnection ip address for subnet %s, %v", subnet.Name, err)
-				return err
-			}
-		} else if subnet.Spec.U2OInterconnectionIP != "" && subnet.Status.U2OInterconnectionIP != subnet.Spec.U2OInterconnectionIP {
-			if subnet.Status.U2OInterconnectionIP != "" {
-				klog.Infof("release underlay to overlay interconnection ip address %s for subnet %s", subnet.Status.U2OInterconnectionIP, subnet.Name)
-				c.ipam.ReleaseAddressByPod(u2oInterconnName, subnet.Name)
+
+	if subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway {
+		if subnet.Spec.U2OInterconnection {
+			u2oInterconnName := fmt.Sprintf(util.U2OInterconnName, subnet.Spec.Vpc, subnet.Name)
+			u2oInterconnLrpName := fmt.Sprintf("%s-%s", subnet.Spec.Vpc, subnet.Name)
+			var v4ip, v6ip, mac string
+			var err error
+			if subnet.Spec.U2OInterconnectionIP == "" && (subnet.Status.U2OInterconnectionIP == "" || subnet.Status.U2OInterconnectionMAC == "") {
+				v4ip, v6ip, mac, err = c.acquireIPAddress(subnet.Name, u2oInterconnName, u2oInterconnLrpName)
+				if err != nil {
+					klog.Errorf("failed to acquire underlay to overlay interconnection ip address for subnet %s, %v", subnet.Name, err)
+					return err
+				}
+			} else if subnet.Spec.U2OInterconnectionIP != "" && subnet.Status.U2OInterconnectionIP != subnet.Spec.U2OInterconnectionIP {
+				if subnet.Status.U2OInterconnectionIP != "" {
+					klog.Infof("release underlay to overlay interconnection ip address %s for subnet %s", subnet.Status.U2OInterconnectionIP, subnet.Name)
+					c.ipam.ReleaseAddressByPod(u2oInterconnName, subnet.Name)
+				}
+
+				v4ip, v6ip, mac, err = c.acquireStaticIPAddress(subnet.Name, u2oInterconnName, u2oInterconnLrpName, subnet.Spec.U2OInterconnectionIP)
+				if err != nil {
+					klog.Errorf("failed to acquire static underlay to overlay interconnection ip address for subnet %s, %v", subnet.Name, err)
+					return err
+				}
 			}
 
-			v4ip, v6ip, mac, err = c.acquireStaticIPAddress(subnet.Name, u2oInterconnName, u2oInterconnLrpName, subnet.Spec.U2OInterconnectionIP)
+			if v4ip != "" || v6ip != "" {
+				switch subnet.Spec.Protocol {
+				case kubeovnv1.ProtocolIPv4:
+					subnet.Status.U2OInterconnectionIP = v4ip
+				case kubeovnv1.ProtocolIPv6:
+					subnet.Status.U2OInterconnectionIP = v6ip
+				case kubeovnv1.ProtocolDual:
+					subnet.Status.U2OInterconnectionIP = fmt.Sprintf("%s,%s", v4ip, v6ip)
+				}
+				if err := c.createOrUpdateIPCR("", u2oInterconnName, subnet.Status.U2OInterconnectionIP, mac, subnet.Name, "default", "", ""); err != nil {
+					klog.Errorf("failed to create or update IPs of %s : %v", u2oInterconnLrpName, err)
+					return err
+				}
+
+				subnet.Status.U2OInterconnectionMAC = mac
+				needCalcIP = true
+			}
+		} else if subnet.Status.U2OInterconnectionIP != "" {
+			u2oInterconnName := fmt.Sprintf(util.U2OInterconnName, subnet.Spec.Vpc, subnet.Name)
+			klog.Infof("release underlay to overlay interconnection ip address %s for subnet %s", subnet.Status.U2OInterconnectionIP, subnet.Name)
+			c.ipam.ReleaseAddressByPod(u2oInterconnName, subnet.Name)
+			subnet.Status.U2OInterconnectionIP = ""
+			subnet.Status.U2OInterconnectionMAC = ""
+			subnet.Status.U2OInterconnectionVPC = ""
+
+			if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), u2oInterconnName, metav1.DeleteOptions{}); err != nil {
+				if !k8serrors.IsNotFound(err) {
+					klog.Errorf("failed to delete ip %s, %v", u2oInterconnName, err)
+					return err
+				}
+			}
+			needCalcIP = true
+		}
+
+		if needCalcIP {
+			klog.Infof("reconcile underlay subnet %s to overlay interconnection with U2OInterconnection %v U2OInterconnectionIP %s",
+				subnet.Name, subnet.Spec.U2OInterconnection, subnet.Status.U2OInterconnectionIP)
+		}
+	}
+
+	if subnet.Spec.EnableMulticastSnoop {
+		mcastQuerierLspName := fmt.Sprintf(util.McastQuerierName, subnet.Name)
+		var v4ip, v6ip, mac string
+		var err error
+		if subnet.Status.McastQuerierIP == "" || subnet.Status.McastQuerierMAC == "" {
+			v4ip, v6ip, mac, err = c.acquireIPAddress(subnet.Name, mcastQuerierLspName, mcastQuerierLspName)
 			if err != nil {
-				klog.Errorf("failed to acquire static underlay to overlay interconnection ip address for subnet %s, %v", subnet.Name, err)
+				klog.Errorf("failed to acquire mcast querier ip address for subnet %s, %v", subnet.Name, err)
 				return err
 			}
 		}
@@ -1973,41 +2040,44 @@ func (c *Controller) reconcileU2OInterconnectionIP(subnet *kubeovnv1.Subnet) err
 		if v4ip != "" || v6ip != "" {
 			switch subnet.Spec.Protocol {
 			case kubeovnv1.ProtocolIPv4:
-				subnet.Status.U2OInterconnectionIP = v4ip
+				subnet.Status.McastQuerierIP = v4ip
 			case kubeovnv1.ProtocolIPv6:
-				subnet.Status.U2OInterconnectionIP = v6ip
+				subnet.Status.McastQuerierIP = v6ip
 			case kubeovnv1.ProtocolDual:
-				subnet.Status.U2OInterconnectionIP = fmt.Sprintf("%s,%s", v4ip, v6ip)
+				subnet.Status.McastQuerierIP = fmt.Sprintf("%s,%s", v4ip, v6ip)
 			}
-			if err := c.createOrUpdateIPCR("", u2oInterconnName, subnet.Status.U2OInterconnectionIP, mac, subnet.Name, "default", "", ""); err != nil {
-				klog.Errorf("failed to create or update IPs of %s : %v", u2oInterconnLrpName, err)
+			if err := c.createOrUpdateIPCR("", mcastQuerierLspName, subnet.Status.McastQuerierIP, mac, subnet.Name, "default", "", ""); err != nil {
+				klog.Errorf("failed to create or update IPs of %s : %v", mcastQuerierLspName, err)
 				return err
 			}
 
-			subnet.Status.U2OInterconnectionMAC = mac
+			subnet.Status.McastQuerierMAC = mac
 			needCalcIP = true
 		}
-	} else if subnet.Status.U2OInterconnectionIP != "" {
-		u2oInterconnName := fmt.Sprintf(util.U2OInterconnName, subnet.Spec.Vpc, subnet.Name)
-		klog.Infof("release underlay to overlay interconnection ip address %s for subnet %s", subnet.Status.U2OInterconnectionIP, subnet.Name)
-		c.ipam.ReleaseAddressByPod(u2oInterconnName, subnet.Name)
-		subnet.Status.U2OInterconnectionIP = ""
-		subnet.Status.U2OInterconnectionMAC = ""
-		subnet.Status.U2OInterconnectionVPC = ""
+	} else {
+		if subnet.Status.McastQuerierIP != "" {
+			mcastQuerierLspName := fmt.Sprintf(util.McastQuerierName, subnet.Name)
+			klog.Infof("release mcast querier ip address %s for subnet %s", subnet.Status.McastQuerierIP, subnet.Name)
+			c.ipam.ReleaseAddressByPod(mcastQuerierLspName, subnet.Name)
+			subnet.Status.McastQuerierIP = ""
+			subnet.Status.McastQuerierMAC = ""
 
-		if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), u2oInterconnName, metav1.DeleteOptions{}); err != nil {
-			if !k8serrors.IsNotFound(err) {
-				klog.Errorf("failed to delete ip %s, %v", u2oInterconnName, err)
-				return err
+			if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), mcastQuerierLspName, metav1.DeleteOptions{}); err != nil {
+				if !k8serrors.IsNotFound(err) {
+					klog.Errorf("failed to delete ip %s, %v", mcastQuerierLspName, err)
+					return err
+				}
 			}
+			needCalcIP = true
 		}
 
-		needCalcIP = true
+		if needCalcIP {
+			klog.Infof("reconcile subnet %s mcast querier IP %s mac %s",
+				subnet.Name, subnet.Status.McastQuerierIP, subnet.Status.McastQuerierMAC)
+		}
 	}
 
 	if needCalcIP {
-		klog.Infof("reconcile underlay subnet %s to overlay interconnection with U2OInterconnection %v U2OInterconnectionIP %s",
-			subnet.Name, subnet.Spec.U2OInterconnection, subnet.Status.U2OInterconnectionIP)
 		if subnet.Spec.Protocol == kubeovnv1.ProtocolDual {
 			if _, err := c.calcDualSubnetStatusIP(subnet); err != nil {
 				klog.Error(err)
