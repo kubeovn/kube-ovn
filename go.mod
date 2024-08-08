@@ -24,7 +24,7 @@ require (
 	github.com/kubeovn/ovsdb v0.0.0-20240410091831-5dd26006c475
 	github.com/mdlayher/arp v0.0.0-20220512170110-6706a2966875
 	github.com/moby/sys/mountinfo v0.7.2
-	github.com/onsi/ginkgo/v2 v2.19.1
+	github.com/onsi/ginkgo/v2 v2.20.0
 	github.com/onsi/gomega v1.34.1
 	github.com/osrg/gobgp/v3 v3.29.0
 	github.com/ovn-org/libovsdb v0.7.0
@@ -41,7 +41,7 @@ require (
 	golang.org/x/time v0.6.0
 	google.golang.org/grpc v1.65.0
 	google.golang.org/protobuf v1.34.2
-	gopkg.in/k8snetworkplumbingwg/multus-cni.v4 v4.0.2
+	gopkg.in/k8snetworkplumbingwg/multus-cni.v4 v4.1.0
 	k8s.io/api v0.30.3
 	k8s.io/apimachinery v0.30.3
 	k8s.io/apiserver v0.30.3
