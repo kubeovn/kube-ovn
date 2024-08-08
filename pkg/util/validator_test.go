@@ -481,7 +481,7 @@ func TestValidateSubnet(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			ret := ValidateSubnet(tt.asubnet)
 			if !ErrorContains(ret, tt.err) {
-				t.Errorf("got %v, want a %v", ret, tt.err)
+				t.Errorf("got: %v, want: %v", ret, tt.err)
 			}
 		})
 	}

@@ -83,7 +83,7 @@ func ValidateSubnet(subnet kubeovnv1.Subnet) error {
 			return err
 		}
 		if _, _, err := net.ParseCIDR(cidr); err != nil {
-			return fmt.Errorf("subnet %s allowSubnets cidr %s is not a valid address", subnet.Name, cidr)
+			return fmt.Errorf("%s in allowSubnets is not a valid address", cidr)
 		}
 	}
 
