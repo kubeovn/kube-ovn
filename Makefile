@@ -32,11 +32,11 @@ FRR_IMAGE = quay.io/frrouting/frr:$(FRR_VERSION)
 
 CLAB_IMAGE = ghcr.io/srl-labs/clab:0.56.0
 
-MULTUS_VERSION = v4.0.2
+MULTUS_VERSION = v4.1.0
 MULTUS_IMAGE = ghcr.io/k8snetworkplumbingwg/multus-cni:$(MULTUS_VERSION)-thick
 MULTUS_YAML = https://raw.githubusercontent.com/k8snetworkplumbingwg/multus-cni/$(MULTUS_VERSION)/deployments/multus-daemonset-thick.yml
 
-METALLB_VERSION = 0.14.7
+METALLB_VERSION = 0.14.8
 METALLB_CHART_REPO = https://metallb.github.io/metallb
 METALLB_CONTROLLER_IMAGE = quay.io/metallb/controller:v$(METALLB_VERSION)
 METALLB_SPEAKER_IMAGE = quay.io/metallb/speaker:v$(METALLB_VERSION)
@@ -53,7 +53,7 @@ KUBEVIRT_CR_YAML = https://github.com/kubevirt/kubevirt/releases/download/$(KUBE
 CILIUM_VERSION = 1.15.7
 CILIUM_IMAGE_REPO = quay.io/cilium
 
-CERT_MANAGER_VERSION = v1.15.1
+CERT_MANAGER_VERSION = v1.15.2
 CERT_MANAGER_CONTROLLER = quay.io/jetstack/cert-manager-controller:$(CERT_MANAGER_VERSION)
 CERT_MANAGER_CAINJECTOR = quay.io/jetstack/cert-manager-cainjector:$(CERT_MANAGER_VERSION)
 CERT_MANAGER_WEBHOOK = quay.io/jetstack/cert-manager-webhook:$(CERT_MANAGER_VERSION)
