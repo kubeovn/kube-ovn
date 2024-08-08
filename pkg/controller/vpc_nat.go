@@ -11,7 +11,6 @@ import (
 var (
 	vpcNatImage             = ""
 	vpcNatGwBgpSpeakerImage = ""
-	vpcNatAPINadName        = ""
 	vpcNatAPINadProvider    = ""
 )
 
@@ -34,9 +33,6 @@ func (c *Controller) resyncVpcNatConfig() {
 
 	// Image for the BGP sidecar of the gateway (optional)
 	vpcNatGwBgpSpeakerImage = cm.Data["bgpSpeakerImage"]
-
-	// NetworkAttachmentDefinition name for the BGP speaker to call the API server
-	vpcNatAPINadName = cm.Data["apiNadName"]
 
 	// NetworkAttachmentDefinition provider for the BGP speaker to call the API server
 	vpcNatAPINadProvider = cm.Data["apiNadProvider"]
