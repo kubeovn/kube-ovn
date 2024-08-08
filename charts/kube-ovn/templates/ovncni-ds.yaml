@@ -39,7 +39,9 @@ spec:
             chown -R nobody: /var/log/kube-ovn
             chmod g+r /run/xtables.lock
             chmod g+w /var/run/netns
+            {{- if not .Values.DISABLE_MODULES_MANAGEMENT }}
             iptables -V
+            {{- end }}
         securityContext:
           allowPrivilegeEscalation: true
           capabilities:
@@ -126,7 +128,9 @@ spec:
               - NET_BIND_SERVICE
               - NET_RAW
               - SYS_ADMIN
+              {{- if not .Values.DISABLE_MODULES_MANAGEMENT }}
               - SYS_MODULE
+              {{- end }}
               - SYS_NICE
         env:
           - name: ENABLE_SSL
