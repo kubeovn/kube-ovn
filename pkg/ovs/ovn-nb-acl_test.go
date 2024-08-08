@@ -1867,3 +1867,180 @@ func (suite *OvnClientTestSuite) testSgRuleNoACL() {
 		require.False(t, noACL)
 	})
 }
+
+func (suite *OvnClientTestSuite) testSGLostACL() {
+	t := suite.T()
+	t.Parallel()
+
+	ovnClient := suite.ovnClient
+
+	t.Run("no lost ACLs", func(t *testing.T) {
+		t.Parallel()
+		sg := &kubeovnv1.SecurityGroup{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "test-sg-no-lost-acl",
+			},
+			Spec: kubeovnv1.SecurityGroupSpec{
+				IngressRules: []*kubeovnv1.SgRule{
+					{
+						IPVersion:     "ipv4",
+						Protocol:      "tcp",
+						RemoteType:    kubeovnv1.SgRemoteTypeAddress,
+						RemoteAddress: "192.168.0.0/24",
+						PortRangeMin:  80,
+						PortRangeMax:  80,
+						Priority:      1,
+						Policy:        "allow",
+					},
+				},
+				EgressRules: []*kubeovnv1.SgRule{
+					{
+						IPVersion:     "ipv6",
+						Protocol:      "udp",
+						RemoteType:    kubeovnv1.SgRemoteTypeAddress,
+						RemoteAddress: "fd00::/64",
+						PortRangeMin:  53,
+						PortRangeMax:  53,
+						Priority:      1,
+						Policy:        "allow",
+					},
+				},
+			},
+		}
+
+		pgName := GetSgPortGroupName(sg.Name)
+		err := ovnClient.CreatePortGroup(pgName, nil)
+		require.NoError(t, err)
+
+		ingressACL, err := ovnClient.newACL(pgName, ovnnb.ACLDirectionToLport, "2299", "outport == @ovn.sg.test.sg.no.lost.acl && ip4 && ip4.src == 192.168.0.0/24 && 80 <= tcp.dst <= 80", ovnnb.ACLActionAllowRelated, util.NetpolACLTier)
+		require.NoError(t, err)
+		err = ovnClient.CreateAcls(pgName, portGroupKey, ingressACL)
+		require.NoError(t, err)
+
+		egressACL, err := ovnClient.newACL(pgName, ovnnb.ACLDirectionFromLport, "2299", "inport == @ovn.sg.test.sg.no.lost.acl && ip6 && ip6.dst == fd00::/64 && 53 <= udp.dst <= 53", ovnnb.ACLActionAllowRelated, util.NetpolACLTier)
+		require.NoError(t, err)
+		err = ovnClient.CreateAcls(pgName, portGroupKey, egressACL)
+		require.NoError(t, err)
+
+		lost, err := ovnClient.SGLostACL(sg)
+		require.NoError(t, err)
+		require.False(t, lost)
+	})
+
+	t.Run("lost ingress ACL", func(t *testing.T) {
+		t.Parallel()
+		sg := &kubeovnv1.SecurityGroup{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "test-sg-lost-ingress-acl",
+			},
+			Spec: kubeovnv1.SecurityGroupSpec{
+				IngressRules: []*kubeovnv1.SgRule{
+					{
+						IPVersion:     "ipv4",
+						Protocol:      "tcp",
+						RemoteType:    kubeovnv1.SgRemoteTypeAddress,
+						RemoteAddress: "192.168.0.0/24",
+						PortRangeMin:  80,
+						PortRangeMax:  80,
+						Priority:      1,
+						Policy:        "allow",
+					},
+				},
+				EgressRules: []*kubeovnv1.SgRule{
+					{
+						IPVersion:     "ipv6",
+						Protocol:      "udp",
+						RemoteType:    kubeovnv1.SgRemoteTypeAddress,
+						RemoteAddress: "fd00::/64",
+						PortRangeMin:  53,
+						PortRangeMax:  53,
+						Priority:      1,
+						Policy:        "allow",
+					},
+				},
+			},
+		}
+
+		pgName := GetSgPortGroupName(sg.Name)
+		err := ovnClient.CreatePortGroup(pgName, nil)
+		require.NoError(t, err)
+
+		egressACL, err := ovnClient.newACL(pgName, ovnnb.ACLDirectionFromLport, "2299", "inport == @ovn.sg.test.sg.lost.ingress.acl && ip6 && ip6.dst == fd00::/64 && 53 <= udp.dst <= 53", ovnnb.ACLActionAllowRelated, util.NetpolACLTier)
+		require.NoError(t, err)
+		err = ovnClient.CreateAcls(pgName, portGroupKey, egressACL)
+		require.NoError(t, err)
+
+		lost, err := ovnClient.SGLostACL(sg)
+		require.NoError(t, err)
+		require.True(t, lost)
+	})
+
+	t.Run("lost egress ACL", func(t *testing.T) {
+		t.Parallel()
+		sg := &kubeovnv1.SecurityGroup{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "test-sg-lost-egress-acl",
+			},
+			Spec: kubeovnv1.SecurityGroupSpec{
+				IngressRules: []*kubeovnv1.SgRule{
+					{
+						IPVersion:     "ipv4",
+						Protocol:      "tcp",
+						RemoteType:    kubeovnv1.SgRemoteTypeAddress,
+						RemoteAddress: "192.168.0.0/24",
+						PortRangeMin:  80,
+						PortRangeMax:  80,
+						Priority:      1,
+						Policy:        "allow",
+					},
+				},
+				EgressRules: []*kubeovnv1.SgRule{
+					{
+						IPVersion:     "ipv6",
+						Protocol:      "udp",
+						RemoteType:    kubeovnv1.SgRemoteTypeAddress,
+						RemoteAddress: "fd00::/64",
+						PortRangeMin:  53,
+						PortRangeMax:  53,
+						Priority:      1,
+						Policy:        "allow",
+					},
+				},
+			},
+		}
+
+		pgName := GetSgPortGroupName(sg.Name)
+		err := ovnClient.CreatePortGroup(pgName, nil)
+		require.NoError(t, err)
+
+		ingressACL, err := ovnClient.newACL(pgName, ovnnb.ACLDirectionToLport, "2299", "outport == @ovn.sg.test.sg.lost.egress.acl && ip4 && ip4.src == 192.168.0.0/24 && 80 <= tcp.dst <= 80", ovnnb.ACLActionAllowRelated, util.NetpolACLTier)
+		require.NoError(t, err)
+		err = ovnClient.CreateAcls(pgName, portGroupKey, ingressACL)
+		require.NoError(t, err)
+
+		lost, err := ovnClient.SGLostACL(sg)
+		require.NoError(t, err)
+		require.True(t, lost)
+	})
+
+	t.Run("empty security group", func(t *testing.T) {
+		t.Parallel()
+		sg := &kubeovnv1.SecurityGroup{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "test-sg-empty",
+			},
+			Spec: kubeovnv1.SecurityGroupSpec{
+				IngressRules: []*kubeovnv1.SgRule{},
+				EgressRules:  []*kubeovnv1.SgRule{},
+			},
+		}
+
+		pgName := GetSgPortGroupName(sg.Name)
+		err := ovnClient.CreatePortGroup(pgName, nil)
+		require.NoError(t, err)
+
+		lost, err := ovnClient.SGLostACL(sg)
+		require.NoError(t, err)
+		require.False(t, lost)
+	})
+}
