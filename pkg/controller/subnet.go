@@ -813,7 +813,8 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		return err
 	}
 
-	if err := c.reconcileCustomIPs(subnet); err != nil {
+	isMcastQuerierChanged, err := c.reconcileCustomIPs(subnet)
+	if err != nil {
 		klog.Errorf("failed to reconcile subnet %s Custom IPs %v", subnet.Name, err)
 		return err
 	}
@@ -848,31 +849,41 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		return err
 	}
 
-	if subnet.Spec.EnableMulticastSnoop {
-		multicastSnoopFlag := map[string]string{"mcast_snoop": "true", "mcast_querier": "true", "mcast_ip4_src": subnet.Status.McastQuerierIP, "mcast_eth_src": subnet.Status.McastQuerierMAC}
-		mcastQuerierLspName := fmt.Sprintf(util.McastQuerierName, subnet.Name)
-		if err := c.OVNNbClient.CreateLogicalSwitchPort(subnet.Name, mcastQuerierLspName, subnet.Status.McastQuerierIP, subnet.Status.McastQuerierMAC, mcastQuerierLspName, "default", false, "", "", false, nil, ""); err != nil {
-			err = fmt.Errorf("failed to create mcast querier lsp %s: %w", mcastQuerierLspName, err)
-			klog.Error(err)
-			return err
-		}
+	if isMcastQuerierChanged {
+		if subnet.Spec.EnableMulticastSnoop {
+			multicastSnoopFlag := map[string]string{"mcast_snoop": "true", "mcast_querier": "true", "mcast_ip4_src": subnet.Status.McastQuerierIP, "mcast_eth_src": subnet.Status.McastQuerierMAC}
+			mcastQuerierLspName := fmt.Sprintf(util.McastQuerierName, subnet.Name)
+			if err := c.OVNNbClient.CreateLogicalSwitchPort(subnet.Name, mcastQuerierLspName, subnet.Status.McastQuerierIP, subnet.Status.McastQuerierMAC, mcastQuerierLspName, "default", false, "", "", false, nil, ""); err != nil {
+				err = fmt.Errorf("failed to create mcast querier lsp %s: %w", mcastQuerierLspName, err)
+				klog.Error(err)
+				return err
+			}
 
-		if err := c.OVNNbClient.LogicalSwitchUpdateOtherConfig(subnet.Name, ovsdb.MutateOperationInsert, multicastSnoopFlag); err != nil {
-			klog.Errorf("enable logical switch multicast snoop %s: %v", subnet.Name, err)
-			return err
-		}
-	} else {
-		multicastSnoopFlag := map[string]string{"mcast_snoop": "false", "mcast_querier": "false", "mcast_ip4_src": "", "mcast_eth_src": ""}
-		mcastQuerierLspName := fmt.Sprintf(util.McastQuerierName, subnet.Name)
-		if err := c.OVNNbClient.LogicalSwitchUpdateOtherConfig(subnet.Name, ovsdb.MutateOperationInsert, multicastSnoopFlag); err != nil {
-			klog.Errorf("disable logical switch multicast snoop %s: %v", subnet.Name, err)
-			return err
-		}
+			if err := c.OVNNbClient.LogicalSwitchUpdateOtherConfig(subnet.Name, ovsdb.MutateOperationInsert, multicastSnoopFlag); err != nil {
+				klog.Errorf("enable logical switch multicast snoop %s: %v", subnet.Name, err)
+				return err
+			}
+		} else {
+			lss, err := c.OVNNbClient.ListLogicalSwitch(false, func(ls *ovnnb.LogicalSwitch) bool {
+				return ls.Name == subnet.Name
+			})
+			if err != nil || len(lss) == 0 {
+				klog.Errorf("failed to list logical switch %s: %v", subnet.Name, err)
+				return err
+			}
 
-		if err := c.OVNNbClient.DeleteLogicalSwitchPort(mcastQuerierLspName); err != nil {
-			err = fmt.Errorf("failed to delete mcast querier lsp %s: %w", mcastQuerierLspName, err)
-			klog.Error(err)
-			return err
+			multicastSnoopFlag := map[string]string{"mcast_snoop": lss[0].OtherConfig["mcast_snoop"], "mcast_querier": lss[0].OtherConfig["mcast_querier"], "mcast_ip4_src": lss[0].OtherConfig["mcast_ip4_src"], "mcast_eth_src": lss[0].OtherConfig["mcast_eth_src"]}
+			mcastQuerierLspName := fmt.Sprintf(util.McastQuerierName, subnet.Name)
+			if err := c.OVNNbClient.LogicalSwitchUpdateOtherConfig(subnet.Name, ovsdb.MutateOperationDelete, multicastSnoopFlag); err != nil {
+				klog.Errorf("disable logical switch multicast snoop %s: %v", subnet.Name, err)
+				return err
+			}
+
+			if err := c.OVNNbClient.DeleteLogicalSwitchPort(mcastQuerierLspName); err != nil {
+				err = fmt.Errorf("failed to delete mcast querier lsp %s: %w", mcastQuerierLspName, err)
+				klog.Error(err)
+				return err
+			}
 		}
 	}
 
@@ -1957,8 +1968,9 @@ func (c *Controller) reconcileVlan(subnet *kubeovnv1.Subnet) error {
 	return nil
 }
 
-func (c *Controller) reconcileCustomIPs(subnet *kubeovnv1.Subnet) error {
+func (c *Controller) reconcileCustomIPs(subnet *kubeovnv1.Subnet) (bool, error) {
 	needCalcIP := false
+	isMcastQuerierChanged := false
 
 	if subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway {
 		if subnet.Spec.U2OInterconnection {
@@ -1970,7 +1982,7 @@ func (c *Controller) reconcileCustomIPs(subnet *kubeovnv1.Subnet) error {
 				v4ip, v6ip, mac, err = c.acquireIPAddress(subnet.Name, u2oInterconnName, u2oInterconnLrpName)
 				if err != nil {
 					klog.Errorf("failed to acquire underlay to overlay interconnection ip address for subnet %s, %v", subnet.Name, err)
-					return err
+					return isMcastQuerierChanged, err
 				}
 			} else if subnet.Spec.U2OInterconnectionIP != "" && subnet.Status.U2OInterconnectionIP != subnet.Spec.U2OInterconnectionIP {
 				if subnet.Status.U2OInterconnectionIP != "" {
@@ -1981,7 +1993,7 @@ func (c *Controller) reconcileCustomIPs(subnet *kubeovnv1.Subnet) error {
 				v4ip, v6ip, mac, err = c.acquireStaticIPAddress(subnet.Name, u2oInterconnName, u2oInterconnLrpName, subnet.Spec.U2OInterconnectionIP)
 				if err != nil {
 					klog.Errorf("failed to acquire static underlay to overlay interconnection ip address for subnet %s, %v", subnet.Name, err)
-					return err
+					return isMcastQuerierChanged, err
 				}
 			}
 
@@ -1996,7 +2008,7 @@ func (c *Controller) reconcileCustomIPs(subnet *kubeovnv1.Subnet) error {
 				}
 				if err := c.createOrUpdateIPCR("", u2oInterconnName, subnet.Status.U2OInterconnectionIP, mac, subnet.Name, "default", "", ""); err != nil {
 					klog.Errorf("failed to create or update IPs of %s : %v", u2oInterconnLrpName, err)
-					return err
+					return isMcastQuerierChanged, err
 				}
 
 				subnet.Status.U2OInterconnectionMAC = mac
@@ -2013,7 +2025,7 @@ func (c *Controller) reconcileCustomIPs(subnet *kubeovnv1.Subnet) error {
 			if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), u2oInterconnName, metav1.DeleteOptions{}); err != nil {
 				if !k8serrors.IsNotFound(err) {
 					klog.Errorf("failed to delete ip %s, %v", u2oInterconnName, err)
-					return err
+					return isMcastQuerierChanged, err
 				}
 			}
 			needCalcIP = true
@@ -2033,10 +2045,9 @@ func (c *Controller) reconcileCustomIPs(subnet *kubeovnv1.Subnet) error {
 			v4ip, v6ip, mac, err = c.acquireIPAddress(subnet.Name, mcastQuerierLspName, mcastQuerierLspName)
 			if err != nil {
 				klog.Errorf("failed to acquire mcast querier ip address for subnet %s, %v", subnet.Name, err)
-				return err
+				return isMcastQuerierChanged, err
 			}
 		}
-
 		if v4ip != "" || v6ip != "" {
 			switch subnet.Spec.Protocol {
 			case kubeovnv1.ProtocolIPv4:
@@ -2048,11 +2059,14 @@ func (c *Controller) reconcileCustomIPs(subnet *kubeovnv1.Subnet) error {
 			}
 			if err := c.createOrUpdateIPCR("", mcastQuerierLspName, subnet.Status.McastQuerierIP, mac, subnet.Name, "default", "", ""); err != nil {
 				klog.Errorf("failed to create or update IPs of %s : %v", mcastQuerierLspName, err)
-				return err
+				return isMcastQuerierChanged, err
 			}
 
 			subnet.Status.McastQuerierMAC = mac
 			needCalcIP = true
+			isMcastQuerierChanged = true
+			klog.Infof("reconcile subnet %s mcast querier IP %s mac %s",
+				subnet.Name, subnet.Status.McastQuerierIP, subnet.Status.McastQuerierMAC)
 		}
 	} else {
 		if subnet.Status.McastQuerierIP != "" {
@@ -2065,13 +2079,11 @@ func (c *Controller) reconcileCustomIPs(subnet *kubeovnv1.Subnet) error {
 			if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), mcastQuerierLspName, metav1.DeleteOptions{}); err != nil {
 				if !k8serrors.IsNotFound(err) {
 					klog.Errorf("failed to delete ip %s, %v", mcastQuerierLspName, err)
-					return err
+					return isMcastQuerierChanged, err
 				}
 			}
 			needCalcIP = true
-		}
-
-		if needCalcIP {
+			isMcastQuerierChanged = true
 			klog.Infof("reconcile subnet %s mcast querier IP %s mac %s",
 				subnet.Name, subnet.Status.McastQuerierIP, subnet.Status.McastQuerierMAC)
 		}
@@ -2081,16 +2093,16 @@ func (c *Controller) reconcileCustomIPs(subnet *kubeovnv1.Subnet) error {
 		if subnet.Spec.Protocol == kubeovnv1.ProtocolDual {
 			if _, err := c.calcDualSubnetStatusIP(subnet); err != nil {
 				klog.Error(err)
-				return err
+				return isMcastQuerierChanged, err
 			}
 		} else {
 			if _, err := c.calcSubnetStatusIP(subnet); err != nil {
 				klog.Error(err)
-				return err
+				return isMcastQuerierChanged, err
 			}
 		}
 	}
-	return nil
+	return isMcastQuerierChanged, nil
 }
 
 func (c *Controller) calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv1.Subnet, error) {

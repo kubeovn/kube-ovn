@@ -1168,6 +1168,33 @@ var _ = framework.Describe("[group:subnet]", func() {
 		}
 	})
 
+	framework.ConformanceIt("Should support subnet multicast snoop", func() {
+		f.SkipVersionPriorTo(1, 13, "subnet multicast snoop is introduced in v1.13")
+		ginkgo.By("Creating subnet " + subnetName)
+		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, nil)
+		subnet = subnetClient.CreateSync(subnet)
+
+		ginkgo.By("Checking subnet multicast snoop enable " + subnetName)
+		subnet = subnetClient.Get(subnetName)
+		modifiedSubnet := subnet.DeepCopy()
+		modifiedSubnet.Spec.EnableMulticastSnoop = true
+		subnetClient.PatchSync(subnet, modifiedSubnet)
+
+		subnet = subnetClient.Get(subnetName)
+		framework.ExpectNotEmpty(subnet.Status.McastQuerierIP)
+		framework.ExpectNotEmpty(subnet.Status.McastQuerierMAC)
+
+		ginkgo.By("Checking subnet multicast snoop disable " + subnetName)
+		subnet = subnetClient.Get(subnetName)
+		modifiedSubnet = subnet.DeepCopy()
+		modifiedSubnet.Spec.EnableMulticastSnoop = false
+		subnetClient.PatchSync(subnet, modifiedSubnet)
+
+		subnet = subnetClient.Get(subnetName)
+		framework.ExpectEmpty(subnet.Status.McastQuerierIP)
+		framework.ExpectEmpty(subnet.Status.McastQuerierMAC)
+	})
+
 	framework.ConformanceIt("should support subnet add nat outgoing policy rules", func() {
 		f.SkipVersionPriorTo(1, 12, "Support for subnet add nat outgoing policy rules in v1.12")
 
