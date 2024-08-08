@@ -1236,7 +1236,9 @@ func (c *OVNNbClient) sgRuleNoACL(sgName, direction string, rule *kubeovnv1.SgRu
 		)
 	}
 
-	exists, err := c.ACLExists(pgName, direction, strconv.Itoa(rule.Priority), match.String())
+	securityGroupHighestPriority, _ := strconv.Atoi(util.SecurityGroupHighestPriority)
+	priority := securityGroupHighestPriority - rule.Priority
+	exists, err := c.ACLExists(pgName, direction, strconv.Itoa(priority), match.String())
 	if err != nil {
 		err = fmt.Errorf("failed to check acl rule for security group %s: %w", sgName, err)
 		klog.Error(err)

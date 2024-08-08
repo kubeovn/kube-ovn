@@ -1782,3 +1782,82 @@ func (suite *OvnClientTestSuite) testACLFilter() {
 		require.False(t, filterFunc(acl))
 	})
 }
+
+func (suite *OvnClientTestSuite) testSgRuleNoACL() {
+	t := suite.T()
+	t.Parallel()
+
+	ovnClient := suite.ovnClient
+	sgName := "test-sg"
+	pgName := GetSgPortGroupName(sgName)
+
+	err := ovnClient.CreatePortGroup(pgName, nil)
+	require.NoError(t, err)
+
+	t.Run("ipv4 ingress rule", func(t *testing.T) {
+		rule := &kubeovnv1.SgRule{
+			IPVersion:     "ipv4",
+			Protocol:      kubeovnv1.ProtocolTCP,
+			RemoteType:    kubeovnv1.SgRemoteTypeAddress,
+			RemoteAddress: "192.168.1.0/24",
+			PortRangeMin:  80,
+			PortRangeMax:  80,
+			Priority:      200,
+		}
+		noACL, err := ovnClient.sgRuleNoACL(sgName, ovnnb.ACLDirectionToLport, rule)
+		require.NoError(t, err)
+		require.True(t, noACL)
+	})
+
+	t.Run("ipv6 egress rule", func(t *testing.T) {
+		rule := &kubeovnv1.SgRule{
+			IPVersion:           "ipv6",
+			Protocol:            kubeovnv1.ProtocolUDP,
+			RemoteType:          kubeovnv1.SgRemoteTypeSg,
+			RemoteSecurityGroup: "remote-sg",
+			PortRangeMin:        53,
+			PortRangeMax:        53,
+			Priority:            199,
+		}
+		noACL, err := ovnClient.sgRuleNoACL(sgName, ovnnb.ACLDirectionFromLport, rule)
+		require.NoError(t, err)
+		require.True(t, noACL)
+	})
+
+	t.Run("icmp rule", func(t *testing.T) {
+		rule := &kubeovnv1.SgRule{
+			IPVersion:     "ipv4",
+			Protocol:      kubeovnv1.ProtocolICMP,
+			RemoteType:    kubeovnv1.SgRemoteTypeAddress,
+			RemoteAddress: "10.0.0.0/8",
+			Priority:      198,
+		}
+		noACL, err := ovnClient.sgRuleNoACL(sgName, ovnnb.ACLDirectionToLport, rule)
+		require.NoError(t, err)
+		require.True(t, noACL)
+	})
+
+	t.Run("existing ACL", func(t *testing.T) {
+		rule := &kubeovnv1.SgRule{
+			IPVersion:     "ipv4",
+			Protocol:      kubeovnv1.ProtocolTCP,
+			RemoteType:    kubeovnv1.SgRemoteTypeAddress,
+			RemoteAddress: "172.16.0.0/16",
+			PortRangeMin:  443,
+			PortRangeMax:  443,
+			Priority:      197,
+		}
+
+		match := fmt.Sprintf("inport == @%s && ip4 && ip4.dst == 172.16.0.0/16 && 443 <= tcp.dst <= 443", pgName)
+		securityGroupHighestPriority, _ := strconv.Atoi(util.SecurityGroupHighestPriority)
+		priority := securityGroupHighestPriority - rule.Priority
+		acl, err := ovnClient.newACL(pgName, ovnnb.ACLDirectionFromLport, strconv.Itoa(priority), match, ovnnb.ACLActionAllowRelated, util.NetpolACLTier)
+		require.NoError(t, err)
+		err = ovnClient.CreateAcls(pgName, portGroupKey, acl)
+		require.NoError(t, err)
+
+		noACL, err := ovnClient.sgRuleNoACL(sgName, ovnnb.ACLDirectionFromLport, rule)
+		require.NoError(t, err)
+		require.False(t, noACL)
+	})
+}
