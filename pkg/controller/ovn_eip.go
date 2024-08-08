@@ -232,6 +232,12 @@ func (c *Controller) handleAddOvnEip(key string) error {
 		klog.Errorf("failed to get external subnet, %v", err)
 		return err
 	}
+	// v6 ip address can not use upper case
+	if util.ContainsUppercase(cachedEip.Spec.V6Ip) {
+		err := fmt.Errorf("eip %s v6 ip address %s can not contain upper case", cachedEip.Name, cachedEip.Spec.V6Ip)
+		klog.Error(err)
+		return err
+	}
 	portName := cachedEip.Name
 	if cachedEip.Spec.V4Ip != "" {
 		v4ip, v6ip, mac, err = c.acquireStaticIPAddress(subnet.Name, cachedEip.Name, portName, cachedEip.Spec.V4Ip)
@@ -295,6 +301,12 @@ func (c *Controller) handleUpdateOvnEip(key string) error {
 	// not support change
 	if cachedEip.Status.V4Ip != cachedEip.Spec.V4Ip {
 		err := fmt.Errorf("not support change v4 ip for ovn eip %s", cachedEip.Name)
+		klog.Error(err)
+		return err
+	}
+	// v6 ip address can not use upper case
+	if util.ContainsUppercase(cachedEip.Spec.V6Ip) {
+		err := fmt.Errorf("eip %s v6 ip address %s can not contain upper case", cachedEip.Name, cachedEip.Spec.V6Ip)
 		klog.Error(err)
 		return err
 	}

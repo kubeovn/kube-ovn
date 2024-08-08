@@ -15,6 +15,11 @@ import (
 
 func ValidateSubnet(subnet kubeovnv1.Subnet) error {
 	if subnet.Spec.Gateway != "" {
+		// v6 ip address can not use upper case
+		if ContainsUppercase(subnet.Spec.Gateway) {
+			err := fmt.Errorf("subnet gateway %s v6 ip address can not contain upper case", subnet.Spec.Gateway)
+			return err
+		}
 		if !CIDRContainIP(subnet.Spec.CIDRBlock, subnet.Spec.Gateway) {
 			return fmt.Errorf("gateway %s is not in cidr %s", subnet.Spec.Gateway, subnet.Spec.CIDRBlock)
 		}
@@ -31,6 +36,11 @@ func ValidateSubnet(subnet kubeovnv1.Subnet) error {
 	}
 	excludeIps := subnet.Spec.ExcludeIps
 	for _, ipr := range excludeIps {
+		// v6 ip address can not use upper case
+		if ContainsUppercase(ipr) {
+			err := fmt.Errorf("subnet exclude ip %s can not contain upper case", ipr)
+			return err
+		}
 		ips := strings.Split(ipr, "..")
 		if len(ips) > 2 {
 			return fmt.Errorf("%s in excludeIps is not a valid ip range", ipr)
@@ -55,6 +65,11 @@ func ValidateSubnet(subnet kubeovnv1.Subnet) error {
 	}
 
 	for _, cidr := range strings.Split(subnet.Spec.CIDRBlock, ",") {
+		// v6 ip address can not use upper case
+		if ContainsUppercase(subnet.Spec.CIDRBlock) {
+			err := fmt.Errorf("subnet cidr block %s v6 ip address can not contain upper case", subnet.Spec.Gateway)
+			return err
+		}
 		if _, _, err := net.ParseCIDR(cidr); err != nil {
 			return fmt.Errorf("subnet %s cidr %s is invalid", subnet.Name, cidr)
 		}
@@ -62,6 +77,11 @@ func ValidateSubnet(subnet kubeovnv1.Subnet) error {
 
 	allow := subnet.Spec.AllowSubnets
 	for _, cidr := range allow {
+		// v6 ip address can not use upper case
+		if ContainsUppercase(subnet.Spec.CIDRBlock) {
+			err := fmt.Errorf("subnet %s allow subnet %s v6 ip address can not contain upper case", subnet.Name, cidr)
+			return err
+		}
 		if _, _, err := net.ParseCIDR(cidr); err != nil {
 			return fmt.Errorf("%s in allowSubnets is not a valid address", cidr)
 		}
@@ -90,6 +110,11 @@ func ValidateSubnet(subnet kubeovnv1.Subnet) error {
 		if subnet.Spec.NatOutgoing {
 			return errors.New("conflict configuration: natOutgoing and externalEgressGateway")
 		}
+		// v6 ip address can not use upper case
+		if ContainsUppercase(egw) {
+			err := fmt.Errorf("subnet %s external egress gateway %s v6 ip address can not contain upper case", subnet.Name, egw)
+			return err
+		}
 		ips := strings.Split(egw, ",")
 		if len(ips) > 2 {
 			return errors.New("invalid external egress gateway configuration")
@@ -107,6 +132,11 @@ func ValidateSubnet(subnet kubeovnv1.Subnet) error {
 
 	if len(subnet.Spec.Vips) != 0 {
 		for _, vip := range subnet.Spec.Vips {
+			// v6 ip address can not use upper case
+			if ContainsUppercase(vip) {
+				err := fmt.Errorf("subnet %s vips %s v6 ip address can not contain upper case", subnet.Name, vip)
+				return err
+			}
 			if !CIDRContainIP(subnet.Spec.CIDRBlock, vip) {
 				return fmt.Errorf("vip %s conflicts with subnet %s cidr %s", vip, subnet.Name, subnet.Spec.CIDRBlock)
 			}
@@ -124,6 +154,11 @@ func ValidateSubnet(subnet kubeovnv1.Subnet) error {
 	}
 
 	if subnet.Spec.U2OInterconnectionIP != "" {
+		// v6 ip address can not use upper case
+		if ContainsUppercase(subnet.Spec.U2OInterconnectionIP) {
+			err := fmt.Errorf("subnet %s U2O interconnection ip %s v6 ip address can not contain upper case", subnet.Name, subnet.Spec.U2OInterconnectionIP)
+			return err
+		}
 		if !CIDRContainIP(subnet.Spec.CIDRBlock, subnet.Spec.U2OInterconnectionIP) {
 			return fmt.Errorf("u2oInterconnectionIP %s is not in subnet %s cidr %s",
 				subnet.Spec.U2OInterconnectionIP,

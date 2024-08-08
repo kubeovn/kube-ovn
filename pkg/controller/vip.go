@@ -232,6 +232,12 @@ func (c *Controller) handleAddVirtualIP(key string) error {
 	portName := ovs.PodNameToPortName(vip.Name, vip.Spec.Namespace, subnet.Spec.Provider)
 	sourceV4Ip = vip.Spec.V4ip
 	sourceV6Ip = vip.Spec.V6ip
+	// v6 ip address can not use upper case
+	if util.ContainsUppercase(vip.Spec.V6ip) {
+		err := fmt.Errorf("vip %s v6 ip address %s can not contain upper case", vip.Name, vip.Spec.V6ip)
+		klog.Error(err)
+		return err
+	}
 	ipStr := util.GetStringIP(sourceV4Ip, sourceV6Ip)
 	if ipStr != "" {
 		v4ip, v6ip, mac, err = c.acquireStaticIPAddress(subnet.Name, vip.Name, portName, ipStr)
@@ -312,6 +318,12 @@ func (c *Controller) handleUpdateVirtualIP(key string) error {
 			return err
 		}
 		return nil
+	}
+	// v6 ip address can not use upper case
+	if util.ContainsUppercase(vip.Spec.V6ip) {
+		err := fmt.Errorf("vip %s v6 ip address %s can not contain upper case", vip.Name, vip.Spec.V6ip)
+		klog.Error(err)
+		return err
 	}
 	// not support change
 	if vip.Status.Mac != "" && vip.Status.Mac != vip.Spec.MacAddress {
