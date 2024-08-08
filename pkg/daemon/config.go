@@ -62,6 +62,7 @@ type Configuration struct {
 	ExternalGatewayConfigNS   string
 	ExternalGatewaySwitch     string // provider network underlay vlan subnet
 	EnableMetrics             bool
+	EnableOVNIPSec            bool
 	EnableArpDetectIPConflict bool
 	KubeletDir                string
 	EnableVerboseConnCheck    bool
@@ -111,6 +112,7 @@ func ParseFlags() *Configuration {
 		argUDPConnectivityCheckPort  = pflag.Int32("udp-conn-check-port", 8101, "UDP connectivity Check Port")
 		argEnableTProxy              = pflag.Bool("enable-tproxy", false, "enable tproxy for vpc pod liveness or readiness probe")
 		argOVSVsctlConcurrency       = pflag.Int32("ovs-vsctl-concurrency", 100, "concurrency limit of ovs-vsctl")
+		argEnableOVNIPSec            = pflag.Bool("enable-ovn-ipsec", false, "Whether to enable ovn ipsec")
 	)
 
 	// mute info log for ipset lib
@@ -162,6 +164,7 @@ func ParseFlags() *Configuration {
 		ExternalGatewayConfigNS:   *argExternalGatewayConfigNS,
 		ExternalGatewaySwitch:     *argExternalGatewaySwitch,
 		EnableMetrics:             *argEnableMetrics,
+		EnableOVNIPSec:            *argEnableOVNIPSec,
 		EnableArpDetectIPConflict: *argEnableArpDetectIPConflict,
 		KubeletDir:                *argKubeletDir,
 		EnableVerboseConnCheck:    *argEnableVerboseConnCheck,

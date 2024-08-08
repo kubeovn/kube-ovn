@@ -73,6 +73,7 @@ func:
   ENABLE_TPROXY: false
   ENABLE_IC: false
   ENABLE_NAT_GW: true
+  ENABLE_OVN_IPSEC: false
 
 ipv4:
   POD_CIDR: "10.16.0.0/16"

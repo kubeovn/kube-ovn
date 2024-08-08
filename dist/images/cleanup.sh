@@ -195,6 +195,7 @@ kubectl delete --ignore-not-found clusterrole system:ovn system:ovn-ovs system:k
 kubectl delete --ignore-not-found clusterrolebinding ovn ovn ovn-ovs kube-ovn-cni kube-ovn-app
 
 kubectl delete --ignore-not-found -n kube-system lease kube-ovn-controller
+kubectl delete --ignore-not-found -n kube-system secret ovn-ipsec-ca
 
 # Remove annotations in all pods of all namespaces
 for ns in $(kubectl get ns -o name | awk -F/ '{print $2}'); do

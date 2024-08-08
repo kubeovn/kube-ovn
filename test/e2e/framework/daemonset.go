@@ -144,3 +144,31 @@ func (c *DaemonSetClient) RolloutStatus(name string) *appsv1.DaemonSet {
 
 	return daemonSet
 }
+
+// Restart restarts the daemonset as kubectl does
+func (c *DaemonSetClient) Restart(ds *appsv1.DaemonSet) *appsv1.DaemonSet {
+	ginkgo.GinkgoHelper()
+
+	buf, err := polymorphichelpers.ObjectRestarterFn(ds)
+	ExpectNoError(err)
+
+	m := make(map[string]interface{})
+	err = json.Unmarshal(buf, &m)
+	ExpectNoError(err)
+
+	ds = new(appsv1.DaemonSet)
+	err = runtime.DefaultUnstructuredConverter.FromUnstructured(m, ds)
+	ExpectNoError(err)
+
+	ds, err = c.DaemonSetInterface.Update(context.TODO(), ds, metav1.UpdateOptions{})
+	ExpectNoError(err)
+
+	return ds.DeepCopy()
+}
+
+// RestartSync restarts the DaemonSet and wait it to be ready
+func (c *DaemonSetClient) RestartSync(ds *appsv1.DaemonSet) *appsv1.DaemonSet {
+	ginkgo.GinkgoHelper()
+	_ = c.Restart(ds)
+	return c.RolloutStatus(ds.Name)
+}

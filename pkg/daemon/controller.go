@@ -647,6 +647,18 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 		c.cleanTProxyConfig()
 	}
 
+	if c.config.EnableOVNIPSec {
+		go wait.Until(func() {
+			if err := c.ManageIPSecKeys(); err != nil {
+				klog.Errorf("manage ipsec keys error: %v", err)
+			}
+		}, 24*time.Hour, stopCh)
+	} else {
+		if err := c.StopAndClearIPSecResouce(); err != nil {
+			klog.Errorf("stop and clear ipsec resource error: %v", err)
+		}
+	}
+
 	<-stopCh
 	klog.Info("Shutting down workers")
 }

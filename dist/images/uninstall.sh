@@ -90,6 +90,8 @@ rm -rf /etc/openvswitch/*
 rm -rf /etc/ovn/*
 rm -rf /var/log/openvswitch/*
 rm -rf /var/log/ovn/*
+rm -rf /etc/ovs_ipsec_keys/*
+
 # default
 rm -rf /etc/cni/net.d/00-kube-ovn.conflist
 # default
