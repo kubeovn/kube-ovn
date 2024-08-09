@@ -6,8 +6,10 @@ import (
 
 	"k8s.io/klog/v2"
 	"kernel.org/pub/linux/libs/security/libcap/cap"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
 
+	"github.com/kubeovn/kube-ovn/pkg/healthz"
 	"github.com/kubeovn/kube-ovn/pkg/metrics"
 	ovn "github.com/kubeovn/kube-ovn/pkg/ovnmonitor"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -43,7 +45,13 @@ func CmdMain() {
 	}
 	exporter.StartOvnMetrics()
 
+	ctrl.SetLogger(klog.NewKlogr())
 	ctx := signals.SetupSignalHandler()
+	go func() {
+		if err := healthz.Run(ctx, port, nil); err != nil {
+			util.LogFatalAndExit(err, "failed to run health probe server")
+		}
+	}()
 	if err = metrics.Run(ctx, nil, addr, config.SecureServing); err != nil {
 		util.LogFatalAndExit(err, "failed to run metrics server")
 	}

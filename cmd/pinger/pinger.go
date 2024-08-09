@@ -5,6 +5,7 @@ import (
 
 	"k8s.io/klog/v2"
 	"kernel.org/pub/linux/libs/security/libcap/cap"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
 
 	"github.com/kubeovn/kube-ovn/pkg/metrics"
@@ -26,6 +27,7 @@ func main() {
 		util.LogFatalAndExit(err, "failed to parse config")
 	}
 
+	ctrl.SetLogger(klog.NewKlogr())
 	ctx := signals.SetupSignalHandler()
 	if config.Mode == "server" {
 		if config.EnableMetrics {

@@ -3,7 +3,6 @@ package main
 import (
 	"errors"
 	"fmt"
-	"net"
 	"net/http"
 	"net/http/pprof"
 	"os"
@@ -14,11 +13,12 @@ import (
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubeinformers "k8s.io/client-go/informers"
 	"k8s.io/klog/v2"
-	"sigs.k8s.io/controller-runtime/pkg/manager"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
 
 	kubeovninformer "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions"
 	"github.com/kubeovn/kube-ovn/pkg/daemon"
+	"github.com/kubeovn/kube-ovn/pkg/healthz"
 	"github.com/kubeovn/kube-ovn/pkg/metrics"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -71,6 +71,7 @@ func main() {
 		util.LogFatalAndExit(err, "failed to do the OS initialization")
 	}
 
+	ctrl.SetLogger(klog.NewKlogr())
 	ctx := signals.SetupSignalHandler()
 	stopCh := ctx.Done()
 	podInformerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(config.KubeClient, 0,
@@ -111,34 +112,21 @@ func main() {
 		}()
 	}
 
-	if config.EnablePprof {
-		mux := http.NewServeMux()
-		mux.HandleFunc("/debug/pprof/", pprof.Index)
-		mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
-		mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
-		mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
-		mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
-
-		listerner, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: int(config.PprofPort)})
-		if err != nil {
-			util.LogFatalAndExit(err, "failed to listen on %s", util.JoinHostPort("127.0.0.1", config.PprofPort))
-		}
-		svr := manager.Server{
-			Name: "pprof",
-			Server: &http.Server{
-				Handler:           mux,
-				MaxHeaderBytes:    1 << 20,
-				IdleTimeout:       90 * time.Second,
-				ReadHeaderTimeout: 32 * time.Second,
-			},
-			Listener: listerner,
-		}
-		go func() {
-			if err = svr.Start(ctx); err != nil {
-				util.LogFatalAndExit(err, "failed to run pprof server")
+	go func() {
+		var pprofHanlders map[string]http.Handler
+		if config.EnablePprof {
+			pprofHanlders = map[string]http.Handler{
+				"/debug/pprof/":        http.HandlerFunc(pprof.Index),
+				"/debug/pprof/cmdline": http.HandlerFunc(pprof.Cmdline),
+				"/debug/pprof/profile": http.HandlerFunc(pprof.Profile),
+				"/debug/pprof/symbol":  http.HandlerFunc(pprof.Symbol),
+				"/debug/pprof/trace":   http.HandlerFunc(pprof.Trace),
 			}
-		}()
-	}
+		}
+		if err := healthz.Run(ctx, config.PprofPort, pprofHanlders); err != nil {
+			util.LogFatalAndExit(err, "failed to run health probe server")
+		}
+	}()
 
 	listenAddr := util.JoinHostPort(addr, config.PprofPort)
 	if err = metrics.Run(ctx, nil, listenAddr, config.SecureServing); err != nil {
