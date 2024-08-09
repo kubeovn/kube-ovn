@@ -19,6 +19,7 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 	"kernel.org/pub/linux/libs/security/libcap/cap"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
 
@@ -49,6 +50,7 @@ func CmdMain() {
 	}
 	utilruntime.Must(kubeovnv1.AddToScheme(scheme.Scheme))
 
+	ctrl.SetLogger(klog.NewKlogr())
 	ctx := signals.SetupSignalHandler()
 	go func() {
 		if config.EnablePprof {
