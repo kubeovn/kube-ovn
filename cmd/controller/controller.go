@@ -3,7 +3,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"net"
 	"net/http"
 	"net/http/pprof"
 	"os"
@@ -20,11 +19,11 @@ import (
 	"k8s.io/klog/v2"
 	"kernel.org/pub/linux/libs/security/libcap/cap"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/controller"
+	"github.com/kubeovn/kube-ovn/pkg/healthz"
 	"github.com/kubeovn/kube-ovn/pkg/metrics"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/versions"
@@ -53,35 +52,21 @@ func CmdMain() {
 	ctrl.SetLogger(klog.NewKlogr())
 	ctx := signals.SetupSignalHandler()
 	go func() {
+		var pprofHanlders map[string]http.Handler
 		if config.EnablePprof {
-			mux := http.NewServeMux()
-			mux.HandleFunc("/debug/pprof/", pprof.Index)
-			mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
-			mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
-			mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
-			mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
-
-			listerner, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: int(config.PprofPort)})
-			if err != nil {
-				util.LogFatalAndExit(err, "failed to listen on %s", util.JoinHostPort("127.0.0.1", config.PprofPort))
+			pprofHanlders = map[string]http.Handler{
+				"/debug/pprof/":        http.HandlerFunc(pprof.Index),
+				"/debug/pprof/cmdline": http.HandlerFunc(pprof.Cmdline),
+				"/debug/pprof/profile": http.HandlerFunc(pprof.Profile),
+				"/debug/pprof/symbol":  http.HandlerFunc(pprof.Symbol),
+				"/debug/pprof/trace":   http.HandlerFunc(pprof.Trace),
 			}
-			svr := manager.Server{
-				Name: "pprof",
-				Server: &http.Server{
-					Handler:           mux,
-					MaxHeaderBytes:    1 << 20,
-					IdleTimeout:       90 * time.Second,
-					ReadHeaderTimeout: 32 * time.Second,
-				},
-				Listener: listerner,
-			}
-			go func() {
-				if err = svr.Start(ctx); err != nil {
-					util.LogFatalAndExit(err, "failed to run pprof server")
-				}
-			}()
 		}
-
+		if err := healthz.Run(ctx, config.PprofPort, pprofHanlders); err != nil {
+			util.LogFatalAndExit(err, "failed to run health probe server")
+		}
+	}()
+	go func() {
 		if !config.EnableMetrics {
 			return
 		}

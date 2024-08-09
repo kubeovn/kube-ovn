@@ -197,7 +197,9 @@ spec:
           failureThreshold: 3
           periodSeconds: 7
           successThreshold: 1
-          tcpSocket:
+          httpGet:
+            host: 127.0.0.1
+            path: /readyz
             port: 10665
           timeoutSeconds: 3
         livenessProbe:
@@ -205,7 +207,9 @@ spec:
           initialDelaySeconds: 30
           periodSeconds: 7
           successThreshold: 1
-          tcpSocket:
+          httpGet:
+            host: 127.0.0.1
+            path: /healthz
             port: 10665
           timeoutSeconds: 3
         resources:

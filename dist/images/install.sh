@@ -4290,17 +4290,17 @@ spec:
             - mountPath: /var/run/tls
               name: kube-ovn-tls
           readinessProbe:
-            exec:
-              command:
-                - /kube-ovn/kube-ovn-controller-healthcheck
-                - --tls=${SECURE_SERVING}
+            httpGet:
+              host: 127.0.0.1
+              path: /readyz
+              port: 10660
             periodSeconds: 3
             timeoutSeconds: 45
           livenessProbe:
-            exec:
-              command:
-                - /kube-ovn/kube-ovn-controller-healthcheck
-                - --tls=${SECURE_SERVING}
+            httpGet:
+              host: 127.0.0.1
+              path: /healthz
+              port: 10660
             initialDelaySeconds: 300
             periodSeconds: 7
             failureThreshold: 5
@@ -4509,14 +4509,18 @@ spec:
           initialDelaySeconds: 30
           periodSeconds: 7
           successThreshold: 1
-          tcpSocket:
+          httpGet:
+            host: 127.0.0.1
+            path: /healthz
             port: 10665
           timeoutSeconds: 3
         readinessProbe:
           failureThreshold: 3
           periodSeconds: 7
           successThreshold: 1
-          tcpSocket:
+          httpGet:
+            host: 127.0.0.1
+            path: /readyz
             port: 10665
           timeoutSeconds: 3
         resources:
@@ -4841,7 +4845,9 @@ spec:
             initialDelaySeconds: 30
             periodSeconds: 7
             successThreshold: 1
-            tcpSocket:
+            httpGet:
+              host: 127.0.0.1
+              path: /healthz
               port: 10661
             timeoutSeconds: 3
           readinessProbe:
@@ -4849,7 +4855,9 @@ spec:
             initialDelaySeconds: 30
             periodSeconds: 7
             successThreshold: 1
-            tcpSocket:
+            httpGet:
+              host: 127.0.0.1
+              path: /readyz
               port: 10661
             timeoutSeconds: 3
       nodeSelector:
