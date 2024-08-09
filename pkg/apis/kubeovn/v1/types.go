@@ -245,6 +245,8 @@ type SubnetStatus struct {
 	U2OInterconnectionMAC  string                        `json:"u2oInterconnectionMAC"`
 	U2OInterconnectionVPC  string                        `json:"u2oInterconnectionVPC"`
 	NatOutgoingPolicyRules []NatOutgoingPolicyRuleStatus `json:"natOutgoingPolicyRules"`
+	McastQuerierIP         string                        `json:"mcastQuerierIP"`
+	McastQuerierMAC        string                        `json:"mcastQuerierMAC"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
