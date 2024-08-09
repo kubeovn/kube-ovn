@@ -812,13 +812,11 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		klog.Errorf("failed to get subnet's vpc '%s', %v", subnet.Spec.Vpc, err)
 		return err
 	}
-
 	_, isMcastQuerierChanged, err := c.reconcileSubnetSpecialIPs(subnet)
 	if err != nil {
 		klog.Errorf("failed to reconcile subnet %s Custom IPs %v", subnet.Name, err)
 		return err
 	}
-
 	if err := c.checkSubnetConflict(subnet); err != nil {
 		klog.Errorf("failed to check subnet %s, %v", subnet.Name, err)
 		return err
@@ -1944,12 +1942,11 @@ func (c *Controller) reconcileSubnetSpecialIPs(subnet *kubeovnv1.Subnet) (bool, 
 
 	// reconcile u2o IP
 	if subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway {
-		isU2OIPChanged := false
 		u2oInterconnName := fmt.Sprintf(util.U2OInterconnName, subnet.Spec.Vpc, subnet.Name)
 		u2oInterconnLrpName := fmt.Sprintf("%s-%s", subnet.Spec.Vpc, subnet.Name)
 		var v4ip, v6ip string
 		if subnet.Spec.U2OInterconnection {
-			v4ip, v6ip, _, err = c.acquireU2OIPAddress(subnet, u2oInterconnName, u2oInterconnLrpName)
+			v4ip, v6ip, _, err = c.acquireU2OIP(subnet, u2oInterconnName, u2oInterconnLrpName)
 			if err != nil {
 				return isU2OIPChanged, isMcastQuerierIPChanged, err
 			}
@@ -1958,7 +1955,7 @@ func (c *Controller) reconcileSubnetSpecialIPs(subnet *kubeovnv1.Subnet) (bool, 
 				isU2OIPChanged = true
 			}
 		} else if subnet.Status.U2OInterconnectionIP != "" {
-			err = c.releaseU2OIPAddress(subnet, u2oInterconnName)
+			err = c.releaseU2OIP(subnet, u2oInterconnName)
 			if err != nil {
 				return isU2OIPChanged, isMcastQuerierIPChanged, err
 			}
@@ -2002,10 +1999,9 @@ func (c *Controller) reconcileSubnetSpecialIPs(subnet *kubeovnv1.Subnet) (bool, 
 	return isU2OIPChanged, isMcastQuerierIPChanged, nil
 }
 
-func (c *Controller) acquireU2OIPAddress(subnet *kubeovnv1.Subnet, u2oInterconnName, u2oInterconnLrpName string) (string, string, string, error) {
+func (c *Controller) acquireU2OIP(subnet *kubeovnv1.Subnet, u2oInterconnName, u2oInterconnLrpName string) (string, string, string, error) {
 	var v4ip, v6ip, mac string
 	var err error
-
 	if subnet.Spec.U2OInterconnectionIP == "" && (subnet.Status.U2OInterconnectionIP == "" || subnet.Status.U2OInterconnectionMAC == "") {
 		v4ip, v6ip, mac, err = c.acquireIPAddress(subnet.Name, u2oInterconnName, u2oInterconnLrpName)
 		if err != nil {
@@ -2017,33 +2013,32 @@ func (c *Controller) acquireU2OIPAddress(subnet *kubeovnv1.Subnet, u2oInterconnN
 			klog.Infof("release underlay to overlay interconnection ip address %s for subnet %s", subnet.Status.U2OInterconnectionIP, subnet.Name)
 			c.ipam.ReleaseAddressByPod(u2oInterconnName, subnet.Name)
 		}
-
 		v4ip, v6ip, mac, err = c.acquireStaticIPAddress(subnet.Name, u2oInterconnName, u2oInterconnLrpName, subnet.Spec.U2OInterconnectionIP)
 		if err != nil {
 			klog.Errorf("failed to acquire static underlay to overlay interconnection ip address for subnet %s, %v", subnet.Name, err)
 			return "", "", "", err
 		}
 	}
-
-	switch subnet.Spec.Protocol {
-	case kubeovnv1.ProtocolIPv4:
-		subnet.Status.U2OInterconnectionIP = v4ip
-	case kubeovnv1.ProtocolIPv6:
-		subnet.Status.U2OInterconnectionIP = v6ip
-	case kubeovnv1.ProtocolDual:
-		subnet.Status.U2OInterconnectionIP = fmt.Sprintf("%s,%s", v4ip, v6ip)
+	if v4ip != "" || v6ip != "" {
+		switch subnet.Spec.Protocol {
+		case kubeovnv1.ProtocolIPv4:
+			subnet.Status.U2OInterconnectionIP = v4ip
+		case kubeovnv1.ProtocolIPv6:
+			subnet.Status.U2OInterconnectionIP = v6ip
+		case kubeovnv1.ProtocolDual:
+			subnet.Status.U2OInterconnectionIP = fmt.Sprintf("%s,%s", v4ip, v6ip)
+		}
+		err = c.createOrUpdateIPCR("", u2oInterconnName, subnet.Status.U2OInterconnectionIP, mac, subnet.Name, "default", "", "")
+		if err != nil {
+			klog.Errorf("failed to create or update IPs of %s : %v", u2oInterconnLrpName, err)
+			return "", "", "", err
+		}
+		subnet.Status.U2OInterconnectionMAC = mac
 	}
-
-	err = c.createOrUpdateIPCR("", u2oInterconnName, subnet.Status.U2OInterconnectionIP, mac, subnet.Name, "default", "", "")
-	if err != nil {
-		klog.Errorf("failed to create or update IPs of %s : %v", u2oInterconnLrpName, err)
-		return "", "", "", err
-	}
-	subnet.Status.U2OInterconnectionMAC = mac
 	return v4ip, v6ip, mac, nil
 }
 
-func (c *Controller) releaseU2OIPAddress(subnet *kubeovnv1.Subnet, u2oInterconnName string) error {
+func (c *Controller) releaseU2OIP(subnet *kubeovnv1.Subnet, u2oInterconnName string) error {
 	klog.Infof("release underlay to overlay interconnection ip address %s for subnet %s", subnet.Status.U2OInterconnectionIP, subnet.Name)
 	c.ipam.ReleaseAddressByPod(u2oInterconnName, subnet.Name)
 	subnet.Status.U2OInterconnectionIP = ""
