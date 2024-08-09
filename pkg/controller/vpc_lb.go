@@ -157,7 +157,7 @@ func (c *Controller) genVpcLbDeployment(vpc *kubeovnv1.Vpc) (*v1.Deployment, err
 			Name:            "init-ipv4-route",
 			Image:           vpcNatImage,
 			Command:         []string{"ip"},
-			Args:            strings.Fields(fmt.Sprintf("-4 route add %s via %s", v4Svc, v4Gw)),
+			Args:            strings.Fields(fmt.Sprintf("-4 route replace %s via %s", v4Svc, v4Gw)),
 			ImagePullPolicy: corev1.PullIfNotPresent,
 			SecurityContext: &corev1.SecurityContext{
 				Privileged:               &privileged,
@@ -180,7 +180,7 @@ func (c *Controller) genVpcLbDeployment(vpc *kubeovnv1.Vpc) (*v1.Deployment, err
 			Name:            "init-ipv6-route",
 			Image:           vpcNatImage,
 			Command:         []string{"ip"},
-			Args:            strings.Fields(fmt.Sprintf("-6 route add %s via %s", v6Svc, v6Gw)),
+			Args:            strings.Fields(fmt.Sprintf("-6 route replace %s via %s", v6Svc, v6Gw)),
 			ImagePullPolicy: corev1.PullIfNotPresent,
 			SecurityContext: &corev1.SecurityContext{
 				Privileged:               &privileged,

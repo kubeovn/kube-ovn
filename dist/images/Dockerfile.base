@@ -51,7 +51,7 @@ RUN cd /usr/src/ && git clone -b branch-24.03 --depth=1 https://github.com/ovn-o
     # set ether dst addr for dnat on logical switch
     curl -s https://github.com/kubeovn/ovn/commit/759803ccf2f5823029ed5909ab2cd99b20c6d557.patch | git apply && \
     # fix lr-lb dnat with multiple distributed gateway ports
-    curl -s https://github.com/kubeovn/ovn/commit/c092b1f74ab2dfcc8d814e7a96d0ed99a1d4ec22.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/3eb25ce85393e97814c6a2b70101afdc66c6626c.patch | git apply && \
     # northd: skip arp/nd request for lrp addresses from localnet ports
     curl -s https://github.com/kubeovn/ovn/commit/1aa952f2f1b348739d2585618a6f2afff2ed4501.patch | git apply && \
     # ovn-controller: make activation strategy work for single chassis

@@ -421,6 +421,18 @@ func (c *Controller) markAndCleanLSP() error {
 
 func (c *Controller) gcLoadBalancer() error {
 	klog.Infof("start to gc load balancers")
+
+	dnats, err := c.ovnDnatRulesLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list dnats, %v", err)
+		return err
+	}
+
+	vpcLbs := strset.NewWithSize(len(dnats))
+	for _, dnat := range dnats {
+		vpcLbs.Add(dnat.Name)
+	}
+
 	if !c.config.EnableLb {
 		// remove lb from logical switch
 		vpcs, err := c.vpcsLister.List(labels.Everything())
@@ -467,7 +479,9 @@ func (c *Controller) gcLoadBalancer() error {
 			}
 		}
 		// lbs will remove from logical switch automatically when delete lbs
-		if err = c.OVNNbClient.DeleteLoadBalancers(nil); err != nil {
+		if err = c.OVNNbClient.DeleteLoadBalancers(func(lb *ovnnb.LoadBalancer) bool {
+			return !vpcLbs.Has(lb.Name)
+		}); err != nil {
 			klog.Errorf("delete all load balancers: %v", err)
 			return err
 		}
@@ -477,12 +491,6 @@ func (c *Controller) gcLoadBalancer() error {
 	svcs, err := c.servicesLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list svc, %v", err)
-		return err
-	}
-
-	dnats, err := c.ovnDnatRulesLister.List(labels.Everything())
-	if err != nil {
-		klog.Errorf("failed to list dnats, %v", err)
 		return err
 	}
 
@@ -531,13 +539,8 @@ func (c *Controller) gcLoadBalancer() error {
 
 	var (
 		removeVip         func(lbName string, svcVips *strset.Set) error
-		vpcLbs            []string
 		ignoreHealthCheck = true
 	)
-
-	for _, dnat := range dnats {
-		vpcLbs = append(vpcLbs, dnat.Name)
-	}
 
 	removeVip = func(lbName string, svcVips *strset.Set) error {
 		if lbName == "" {
@@ -576,7 +579,7 @@ func (c *Controller) gcLoadBalancer() error {
 			tcpSessLb, udpSessLb, sctpSessLb = vpc.Status.TCPSessionLoadBalancer, vpc.Status.UDPSessionLoadBalancer, vpc.Status.SctpSessionLoadBalancer
 		)
 
-		vpcLbs = append(vpcLbs, tcpLb, udpLb, sctpLb, tcpSessLb, udpSessLb, sctpSessLb)
+		vpcLbs.Add(tcpLb, udpLb, sctpLb, tcpSessLb, udpSessLb, sctpSessLb)
 		if err = removeVip(tcpLb, tcpVips); err != nil {
 			klog.Error(err)
 			return err
@@ -606,7 +609,7 @@ func (c *Controller) gcLoadBalancer() error {
 	// delete lbs
 	if err = c.OVNNbClient.DeleteLoadBalancers(
 		func(lb *ovnnb.LoadBalancer) bool {
-			return !slices.Contains(vpcLbs, lb.Name)
+			return !vpcLbs.Has(lb.Name)
 		},
 	); err != nil {
 		klog.Errorf("delete load balancers: %v", err)

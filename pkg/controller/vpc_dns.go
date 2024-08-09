@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -33,59 +32,25 @@ import (
 )
 
 var (
-	corednsImage    = ""
-	corednsVip      = ""
-	nadName         = ""
-	nadProvider     = ""
-	cmVersion       = ""
-	k8sServiceHost  = ""
-	k8sServicePort  = ""
-	enableCoredns   = false
-	hostNameservers []string
+	corednsImage   = ""
+	corednsVip     = ""
+	nadName        = ""
+	nadProvider    = ""
+	cmVersion      = ""
+	k8sServiceHost = ""
+	k8sServicePort = ""
+	enableCoreDNS  = false
 
-	corednsTemplateContent = kubeovnyaml.CorednsTemplateContent
+	corednsTemplateContent = string(kubeovnyaml.CorednsTemplateContent)
 )
 
 const (
 	CorednsContainerName = "coredns"
 	CorednsLabelKey      = "k8s-app"
-	CorednsTemplateDep   = "coredns-template.yaml"
 )
 
 func genVpcDNSDpName(name string) string {
 	return fmt.Sprintf("vpc-dns-%s", name)
-}
-
-func hostConfigFromReader() error {
-	file, err := os.Open("/etc/resolv.conf")
-	if err != nil {
-		klog.Error(err)
-		return err
-	}
-	defer func(file *os.File) {
-		if err := file.Close(); err != nil {
-			klog.Errorf("failed to close file, %s", err)
-		}
-	}(file)
-
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		if err := scanner.Err(); err != nil {
-			klog.Error(err)
-			return err
-		}
-		line := scanner.Text()
-		f := strings.Fields(line)
-		if len(f) < 1 {
-			continue
-		}
-		if f[0] == "nameserver" && len(f) > 1 {
-			name := f[1]
-			hostNameservers = append(hostNameservers, name)
-		}
-	}
-
-	return err
 }
 
 func (c *Controller) enqueueAddVpcDNS(obj interface{}) {
@@ -139,9 +104,9 @@ func (c *Controller) runDelVPCDNSWorker() {
 
 func (c *Controller) handleAddOrUpdateVPCDNS(key string) error {
 	klog.V(3).Infof("handleAddOrUpdateVPCDNS %s", key)
-	if !enableCoredns {
+	if !enableCoreDNS {
 		time.Sleep(10 * time.Second)
-		if !enableCoredns {
+		if !enableCoreDNS {
 			return errors.New("failed to add or update vpc-dns, not enabled")
 		}
 	}
@@ -338,12 +303,7 @@ func (c *Controller) createOrUpdateVpcDNSSlr(vpcDNS *kubeovnv1.VpcDns) error {
 }
 
 func (c *Controller) genVpcDNSDeployment(vpcDNS *kubeovnv1.VpcDns, oldDeploy *v1.Deployment) (*v1.Deployment, error) {
-	if _, err := os.Stat(CorednsTemplateDep); errors.Is(err, os.ErrNotExist) {
-		klog.Errorf("failed to get coredns template file %q: %v", CorednsTemplateDep, err)
-		return nil, err
-	}
-
-	tmp, err := template.ParseFiles(CorednsTemplateDep)
+	tmp, err := template.ParseGlob(corednsTemplateContent)
 	if err != nil {
 		klog.Errorf("failed to parse coredns template file, %v", err)
 		return nil, err
@@ -532,29 +492,23 @@ func (c *Controller) resyncVpcDNSConfig() {
 		klog.V(3).Infof("use the cluster default coredns image version, %s", corednsImage)
 	}
 
-	err = os.WriteFile(CorednsTemplateDep, corednsTemplateContent, 0o600)
-	if err != nil {
-		klog.Errorf("failed to write coredns template to file %q: %v", CorednsTemplateDep, err)
-		return
-	}
-
 	nadName = getValue("nad-name")
 	nadProvider = getValue("nad-provider")
 	corednsVip = getValue("coredns-vip")
 	k8sServiceHost = getValue("k8s-service-host")
 	k8sServicePort = getValue("k8s-service-port")
 
-	newEnableCoredns := true
+	newEnableCoreDNS := true
 	if v, ok := cm.Data["enable-vpc-dns"]; ok {
 		raw, err := strconv.ParseBool(v)
 		if err != nil {
 			klog.Errorf("failed to parse cm enable, %v", err)
 			return
 		}
-		newEnableCoredns = raw
+		newEnableCoreDNS = raw
 	}
 
-	if enableCoredns && !newEnableCoredns {
+	if enableCoreDNS && !newEnableCoreDNS {
 		if err := c.cleanVpcDNS(); err != nil {
 			klog.Errorf("failed to clear all vpc-dns, %v", err)
 			return
@@ -565,7 +519,7 @@ func (c *Controller) resyncVpcDNSConfig() {
 			return
 		}
 	}
-	enableCoredns = newEnableCoredns
+	enableCoreDNS = newEnableCoreDNS
 }
 
 func (c *Controller) getDefaultCoreDNSImage() (string, error) {
@@ -586,11 +540,6 @@ func (c *Controller) getDefaultCoreDNSImage() (string, error) {
 }
 
 func (c *Controller) initVpcDNSConfig() error {
-	if err := hostConfigFromReader(); err != nil {
-		klog.Errorf("failed to get get host nameserver, %v", err)
-		return err
-	}
-
 	c.resyncVpcDNSConfig()
 	return nil
 }

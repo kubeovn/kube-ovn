@@ -117,6 +117,13 @@ func (c *Controller) handleDelVpc(vpc *kubeovnv1.Vpc) error {
 	defer func() { _ = c.vpcKeyMutex.UnlockKey(vpc.Name) }()
 	klog.Infof("handle delete vpc %s", vpc.Name)
 
+	// should delete vpc subnets first
+	if len(vpc.Status.Subnets) != 0 {
+		err := fmt.Errorf("failed to delete vpc %s, still has subnets %v", vpc.Name, vpc.Status.Subnets)
+		klog.Error(err)
+		return err
+	}
+
 	if err := c.deleteVpcLb(vpc); err != nil {
 		klog.Error(err)
 		return err
