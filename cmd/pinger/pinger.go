@@ -4,6 +4,7 @@ import (
 	_ "net/http/pprof" // #nosec
 
 	"k8s.io/klog/v2"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
 
 	"github.com/kubeovn/kube-ovn/pkg/metrics"
@@ -21,6 +22,7 @@ func CmdMain() {
 		util.LogFatalAndExit(err, "failed to parse config")
 	}
 
+	ctrl.SetLogger(klog.NewKlogr())
 	ctx := signals.SetupSignalHandler()
 	if config.Mode == "server" {
 		if config.EnableMetrics {

@@ -15,7 +15,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
-	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -896,7 +895,6 @@ func migrateFinalizers(c client.Client, list client.ObjectList, getObjectItem fu
 }
 
 func (c *Controller) syncFinalizers() error {
-	ctrl.SetLogger(klog.NewKlogr())
 	cl, err := client.New(config.GetConfigOrDie(), client.Options{})
 	if err != nil {
 		klog.Errorf("failed to create client: %v", err)

@@ -18,6 +18,7 @@ import (
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
 
@@ -33,8 +34,6 @@ const ovnLeaderResource = "kube-ovn-controller"
 func CmdMain() {
 	defer klog.Flush()
 
-	ctx := signals.SetupSignalHandler()
-
 	klog.Infof(versions.String())
 
 	config, err := controller.ParseFlags()
@@ -47,6 +46,8 @@ func CmdMain() {
 	}
 	utilruntime.Must(kubeovnv1.AddToScheme(scheme.Scheme))
 
+	ctrl.SetLogger(klog.NewKlogr())
+	ctx := signals.SetupSignalHandler()
 	go func() {
 		if config.EnablePprof {
 			mux := http.NewServeMux()
