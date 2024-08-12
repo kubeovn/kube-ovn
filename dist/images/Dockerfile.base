@@ -28,7 +28,9 @@ RUN cd /usr/src/ && \
     # netdev: reduce cpu utilization for getting device addresses
     curl -s https://github.com/kubeovn/ovs/commit/28d41977a26606f324eadd8d907a8fb2e18505d9.patch | git apply && \
     # ovs-router: skip getting source address for kube-ipvs0
-    curl -s https://github.com/kubeovn/ovs/commit/b7129150cb763d1fd081ee3c6f669da90d46b965.patch | git apply
+    curl -s https://github.com/kubeovn/ovs/commit/b7129150cb763d1fd081ee3c6f669da90d46b965.patch | git apply && \
+    # increase the default probe interval for large cluster
+    curl -s https://github.com/kubeovn/ovs/commit/7e894a0bda966e746f81b2ebe262a62cd91bf269.patch | git apply
 
 RUN cd /usr/src/ && git clone -b branch-24.03 --depth=1 https://github.com/ovn-org/ovn.git && \
     cd ovn && \
