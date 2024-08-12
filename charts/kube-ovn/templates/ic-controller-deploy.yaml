@@ -74,7 +74,7 @@ spec:
           - --logtostderr=false
           - --alsologtostderr=true
           securityContext:
-            runAsUser: 65534
+            runAsUser: {{ include "kubeovn.runAsUser" . }}
             privileged: false
             capabilities:
               add:

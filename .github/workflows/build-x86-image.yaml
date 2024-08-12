@@ -2820,6 +2820,7 @@ jobs:
       - name: Check kube ovn pod restarts
         if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.kube-ovn-ipsec-e2e.conclusion == 'failure')) }}
         run: make check-kube-ovn-pod-restarts
+
   push:
     name: Push Images
     needs:
@@ -2828,6 +2829,7 @@ jobs:
       - cyclonus-netpol-e2e
       - kube-ovn-conformance-e2e
       - kube-ovn-ic-conformance-e2e
+      - kube-ovn-ipsec-e2e
       - multus-conformance-e2e
       - ovn-vpc-nat-gw-conformance-e2e
       - iptables-vpc-nat-gw-conformance-e2e
