@@ -91,7 +91,6 @@ const (
 
 	PortNameAnnotation      = "ovn.kubernetes.io/port_name"
 	LogicalSwitchAnnotation = "ovn.kubernetes.io/logical_switch"
-	DefaultSubnetAnnotation = "ovn.kubernetes.io/default_vpc_subnet"
 
 	TunnelInterfaceAnnotation = "ovn.kubernetes.io/tunnel_interface"
 

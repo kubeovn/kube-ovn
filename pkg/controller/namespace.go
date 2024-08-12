@@ -128,7 +128,7 @@ func (c *Controller) handleAddNamespace(key string) error {
 	}
 	namespace := cachedNs.DeepCopy()
 
-	var ls, ds, ippool string
+	var ls, ippool string
 	var lss, cidrs, excludeIps []string
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
@@ -159,7 +159,7 @@ func (c *Controller) handleAddNamespace(key string) error {
 				return err
 			}
 			if s.Name == vpc.Spec.DefaultSubnet {
-				ds = s.Name
+				lss = []string{s.Name}
 			}
 		}
 	}
@@ -214,9 +214,6 @@ func (c *Controller) handleAddNamespace(key string) error {
 		return nil
 	}
 
-	if ds != "" {
-		namespace.Annotations[util.DefaultSubnetAnnotation] = ds
-	}
 	namespace.Annotations[util.LogicalSwitchAnnotation] = strings.Join(lss, ",")
 	namespace.Annotations[util.CidrAnnotation] = strings.Join(cidrs, ";")
 	namespace.Annotations[util.ExcludeIpsAnnotation] = strings.Join(excludeIps, ";")
