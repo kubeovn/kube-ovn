@@ -12,8 +12,8 @@ import (
 	"k8s.io/klog/v2"
 
 	"github.com/kubeovn/kube-ovn/cmd/controller"
-	"github.com/kubeovn/kube-ovn/cmd/controller_health_check"
 	"github.com/kubeovn/kube-ovn/cmd/daemon"
+	"github.com/kubeovn/kube-ovn/cmd/health_check"
 	"github.com/kubeovn/kube-ovn/cmd/ovn_ic_controller"
 	"github.com/kubeovn/kube-ovn/cmd/ovn_leader_checker"
 	"github.com/kubeovn/kube-ovn/cmd/ovn_monitor"
@@ -23,14 +23,14 @@ import (
 )
 
 const (
-	CmdController            = "kube-ovn-controller"
-	CmdDaemon                = "kube-ovn-daemon"
-	CmdMonitor               = "kube-ovn-monitor"
-	CmdPinger                = "kube-ovn-pinger"
-	CmdSpeaker               = "kube-ovn-speaker"
-	CmdControllerHealthCheck = "kube-ovn-controller-healthcheck"
-	CmdOvnLeaderChecker      = "kube-ovn-leader-checker"
-	CmdOvnICController       = "kube-ovn-ic-controller"
+	CmdController       = "kube-ovn-controller"
+	CmdDaemon           = "kube-ovn-daemon"
+	CmdMonitor          = "kube-ovn-monitor"
+	CmdPinger           = "kube-ovn-pinger"
+	CmdSpeaker          = "kube-ovn-speaker"
+	CmdHealthCheck      = "kube-ovn-healthcheck"
+	CmdOvnLeaderChecker = "kube-ovn-leader-checker"
+	CmdOvnICController  = "kube-ovn-ic-controller"
 )
 
 const timeFormat = "2006-01-02_15:04:05"
@@ -93,8 +93,8 @@ func main() {
 	case CmdSpeaker:
 		dumpProfile()
 		speaker.CmdMain()
-	case CmdControllerHealthCheck:
-		controller_health_check.CmdMain()
+	case CmdHealthCheck:
+		health_check.CmdMain()
 	case CmdOvnLeaderChecker:
 		ovn_leader_checker.CmdMain()
 	case CmdOvnICController:

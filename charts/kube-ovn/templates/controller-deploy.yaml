@@ -168,19 +168,21 @@ spec:
           readinessProbe:
             exec:
               command:
-                - /kube-ovn/kube-ovn-controller-healthcheck
+                - /kube-ovn/kube-ovn-healthcheck
+                - --port=10660
                 - --tls={{- .Values.func.SECURE_SERVING }}
             periodSeconds: 3
-            timeoutSeconds: 45
+            timeoutSeconds: 1
           livenessProbe:
             exec:
               command:
-                - /kube-ovn/kube-ovn-controller-healthcheck
+                - /kube-ovn/kube-ovn-healthcheck
+                - --port=10660
                 - --tls={{- .Values.func.SECURE_SERVING }}
             initialDelaySeconds: 300
             periodSeconds: 7
             failureThreshold: 5
-            timeoutSeconds: 45
+            timeoutSeconds: 1
           resources:
             requests:
             {{- if .Release.IsUpgrade }}

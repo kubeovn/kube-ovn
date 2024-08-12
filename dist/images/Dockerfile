@@ -25,6 +25,6 @@ RUN ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn-controller && \
     ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn-monitor && \
     ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn-pinger && \
     ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn-speaker && \
-    ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn-controller-healthcheck && \
+    ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn-healthcheck && \
     ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn-leader-checker && \
     ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn-ic-controller
