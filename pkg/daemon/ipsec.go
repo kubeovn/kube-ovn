@@ -149,10 +149,13 @@ func (c *Controller) createCSR(csrBytes []byte) error {
 		}
 	}
 
-	klog.Infof("ipsec get certitfcate \n %s ", certificateStr)
+	klog.V(3).Infof("ipsec get certitfcate\n%s", certificateStr)
 	cmd := exec.Command("openssl", "x509", "-outform", "pem", "-text", "-out", ipsecCertPath)
 	var stdinBuf bytes.Buffer
-	stdinBuf.WriteString(certificateStr)
+	if _, err := stdinBuf.WriteString(certificateStr); err != nil {
+		klog.Error(err)
+		return fmt.Errorf("failed to write certificate: %w", err)
+	}
 	cmd.Stdin = &stdinBuf
 
 	_, err := cmd.CombinedOutput()

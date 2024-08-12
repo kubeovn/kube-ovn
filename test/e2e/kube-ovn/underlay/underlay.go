@@ -1124,9 +1124,9 @@ func checkU2OFilterOpenFlowExist(clusterName string, pn *apiv1.ProviderNetwork, 
 		for index, gw := range gws {
 			var cmd string
 			if util.CheckProtocol(gw) == apiv1.ProtocolIPv4 {
-				cmd = fmt.Sprintf("kubectl ko ofctl %s dump-flows br-%s | grep 0x1000 ", node.Name(), pn.Name)
+				cmd = fmt.Sprintf("kubectl ko ofctl %s dump-flows br-%s | grep 0x1000", node.Name(), pn.Name)
 			} else {
-				cmd = fmt.Sprintf("kubectl ko ofctl %s dump-flows br-%s | grep 0x1001 ", node.Name(), pn.Name)
+				cmd = fmt.Sprintf("kubectl ko ofctl %s dump-flows br-%s | grep 0x1001", node.Name(), pn.Name)
 			}
 
 			success := false
