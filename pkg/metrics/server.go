@@ -3,6 +3,8 @@ package metrics
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"net/http/pprof"
 
 	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
@@ -11,7 +13,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
 )
 
-func Run(ctx context.Context, config *rest.Config, addr string, secureServing bool) error {
+func Run(ctx context.Context, config *rest.Config, addr string, secureServing, withPprof bool) error {
 	if config == nil {
 		config = ctrl.GetConfigOrDie()
 	}
@@ -27,6 +29,15 @@ func Run(ctx context.Context, config *rest.Config, addr string, secureServing bo
 	}
 	if secureServing {
 		options.FilterProvider = filters.WithAuthenticationAndAuthorization
+	}
+	if withPprof {
+		options.ExtraHandlers = map[string]http.Handler{
+			"/debug/pprof/":        http.HandlerFunc(pprof.Index),
+			"/debug/pprof/cmdline": http.HandlerFunc(pprof.Cmdline),
+			"/debug/pprof/profile": http.HandlerFunc(pprof.Profile),
+			"/debug/pprof/symbol":  http.HandlerFunc(pprof.Symbol),
+			"/debug/pprof/trace":   http.HandlerFunc(pprof.Trace),
+		}
 	}
 	svr, err := server.NewServer(options, config, client)
 	if err != nil {

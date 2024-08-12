@@ -46,7 +46,7 @@ func CmdMain() {
 
 	ctrl.SetLogger(klog.NewKlogr())
 	ctx := signals.SetupSignalHandler()
-	if err = metrics.Run(ctx, nil, addr, config.SecureServing); err != nil {
+	if err = metrics.Run(ctx, nil, addr, config.SecureServing, false); err != nil {
 		util.LogFatalAndExit(err, "failed to run metrics server")
 	}
 	<-ctx.Done()
