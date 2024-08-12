@@ -1,7 +1,8 @@
-package controller_health_check
+package health_check
 
 import (
 	"flag"
+	"net"
 	"os"
 	"time"
 
@@ -12,7 +13,8 @@ import (
 )
 
 func CmdMain() {
-	tls := pflag.Bool("tls", false, "Whether kube-ovn-controller uses TLS")
+	port := pflag.Int32("port", 0, "Target port")
+	tls := pflag.Bool("tls", false, "Dial the server with TLS")
 
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
 	klog.InitFlags(klogFlags)
@@ -32,18 +34,24 @@ func CmdMain() {
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
 	pflag.Parse()
 
-	addr := "127.0.0.1:10660"
-	if os.Getenv("ENABLE_BIND_LOCAL_IP") == "true" {
-		addr = util.JoinHostPort(os.Getenv("POD_IP"), 10660)
+	if *port <= 0 {
+		klog.Errorf("invalid port: %d", port)
+		os.Exit(1)
 	}
 
+	ip := os.Getenv("POD_IP")
+	if net.ParseIP(ip) == nil {
+		klog.Errorf("invalid ip: %q", ip)
+		os.Exit(1)
+	}
+
+	addr := util.JoinHostPort(ip, *port)
 	if *tls {
 		addr = "tls://" + addr
 	} else {
 		addr = "tcp://" + addr
 	}
-
-	if err := util.DialTCP(addr, time.Second, false); err != nil {
+	if err := util.DialTCP(addr, 100*time.Millisecond, false); err != nil {
 		util.LogFatalAndExit(err, "failed to probe the socket")
 	}
 }

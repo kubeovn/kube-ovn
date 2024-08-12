@@ -125,17 +125,23 @@ spec:
             initialDelaySeconds: 30
             periodSeconds: 7
             successThreshold: 1
-            tcpSocket:
-              port: 10661
-            timeoutSeconds: 3
+            exec:
+              command:
+                - /kube-ovn/kube-ovn-healthcheck
+                - --port=10661
+                - --tls={{- .Values.func.SECURE_SERVING }}
+            timeoutSeconds: 1
           readinessProbe:
             failureThreshold: 3
             initialDelaySeconds: 30
             periodSeconds: 7
             successThreshold: 1
-            tcpSocket:
-              port: 10661
-            timeoutSeconds: 3
+            exec:
+              command:
+                - /kube-ovn/kube-ovn-healthcheck
+                - --port=10661
+                - --tls={{- .Values.func.SECURE_SERVING }}
+            timeoutSeconds: 1
       nodeSelector:
         kubernetes.io/os: "linux"
         {{- with splitList "=" .Values.MASTER_NODES_LABEL }}
