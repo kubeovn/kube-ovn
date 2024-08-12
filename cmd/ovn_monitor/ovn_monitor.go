@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"k8s.io/klog/v2"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
 
 	"github.com/kubeovn/kube-ovn/pkg/metrics"
@@ -38,6 +39,7 @@ func CmdMain() {
 	}
 	exporter.StartOvnMetrics()
 
+	ctrl.SetLogger(klog.NewKlogr())
 	ctx := signals.SetupSignalHandler()
 	if err = metrics.Run(ctx, nil, addr, config.SecureServing); err != nil {
 		util.LogFatalAndExit(err, "failed to run metrics server")
