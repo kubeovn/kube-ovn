@@ -107,7 +107,8 @@ func CmdMain() {
 		}()
 	}
 
-	if config.EnablePprof {
+	servePprofInMetricsServer := config.EnableMetrics && addr == "0.0.0.0"
+	if config.EnablePprof && !servePprofInMetricsServer {
 		mux := http.NewServeMux()
 		mux.HandleFunc("/debug/pprof/", pprof.Index)
 		mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
@@ -137,7 +138,7 @@ func CmdMain() {
 	}
 
 	listenAddr := util.JoinHostPort(addr, config.PprofPort)
-	if err = metrics.Run(ctx, nil, listenAddr, config.SecureServing); err != nil {
+	if err = metrics.Run(ctx, nil, listenAddr, config.SecureServing, servePprofInMetricsServer); err != nil {
 		util.LogFatalAndExit(err, "failed to run metrics server")
 	}
 	<-stopCh

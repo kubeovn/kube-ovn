@@ -29,7 +29,7 @@ func CmdMain() {
 			go func() {
 				pinger.InitPingerMetrics()
 				metrics.InitKlogMetrics()
-				if err := metrics.Run(ctx, nil, util.JoinHostPort("0.0.0.0", config.Port), false); err != nil {
+				if err := metrics.Run(ctx, nil, util.JoinHostPort("0.0.0.0", config.Port), false, false); err != nil {
 					util.LogFatalAndExit(err, "failed to run metrics server")
 				}
 				<-ctx.Done()

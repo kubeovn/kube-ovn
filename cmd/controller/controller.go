@@ -49,7 +49,9 @@ func CmdMain() {
 	ctrl.SetLogger(klog.NewKlogr())
 	ctx := signals.SetupSignalHandler()
 	go func() {
-		if config.EnablePprof {
+		metricsAddr := util.GetDefaultListenAddr()
+		servePprofInMetricsServer := config.EnableMetrics && metricsAddr == "0.0.0.0"
+		if config.EnablePprof && !servePprofInMetricsServer {
 			mux := http.NewServeMux()
 			mux.HandleFunc("/debug/pprof/", pprof.Index)
 			mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
@@ -83,8 +85,8 @@ func CmdMain() {
 		}
 		metrics.InitKlogMetrics()
 		metrics.InitClientGoMetrics()
-		addr := util.JoinHostPort(util.GetDefaultListenAddr(), config.PprofPort)
-		if err := metrics.Run(ctx, config.KubeRestConfig, addr, config.SecureServing); err != nil {
+		addr := util.JoinHostPort(metricsAddr, config.PprofPort)
+		if err := metrics.Run(ctx, config.KubeRestConfig, addr, config.SecureServing, servePprofInMetricsServer); err != nil {
 			util.LogFatalAndExit(err, "failed to run metrics server")
 		}
 		<-ctx.Done()
