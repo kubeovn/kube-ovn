@@ -175,6 +175,37 @@ rules:
       - subjectaccessreviews
     verbs:
       - create
+  - apiGroups: 
+      - "certificates.k8s.io"
+    resources: 
+      - "certificatesigningrequests"
+    verbs: 
+      - "get"
+      - "list"
+      - "watch"
+  - apiGroups:
+    - certificates.k8s.io
+    resources:
+    - certificatesigningrequests/status
+    - certificatesigningrequests/approval
+    verbs:
+    - update
+  - apiGroups:
+    - ""
+    resources:
+    - secrets
+    verbs:
+    - get
+    - create
+  - apiGroups:
+    - certificates.k8s.io
+    resourceNames:
+    - kubeovn.io/signer
+    resources:
+    - signers
+    verbs:
+    - approve
+    - sign
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -271,6 +302,22 @@ rules:
       - subjectaccessreviews
     verbs:
       - create
+  - apiGroups: 
+      - "certificates.k8s.io"
+    resources: 
+      - "certificatesigningrequests"
+    verbs: 
+      - "create" 
+      - "get"
+      - "list"
+      - "watch"
+      - "delete"
+  - apiGroups:
+      - ""
+    resources:
+      - "secrets"
+    verbs:
+      - "get"
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole

@@ -118,6 +118,7 @@ spec:
           - --enable-tproxy={{ .Values.func.ENABLE_TPROXY }}
           - --ovs-vsctl-concurrency={{ .Values.performance.OVS_VSCTL_CONCURRENCY }}
           - --secure-serving={{- .Values.func.SECURE_SERVING }}
+          - --enable-ovn-ipsec={{- .Values.func.ENABLE_OVN_IPSEC }}
         securityContext:
           runAsUser: 65534
           runAsGroup: 0

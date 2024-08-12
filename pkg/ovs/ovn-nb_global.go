@@ -94,6 +94,25 @@ func (c *OVNNbClient) SetAzName(azName string) error {
 	return nil
 }
 
+func (c *OVNNbClient) SetOVNIPSec(enable bool) error {
+	nbGlobal, err := c.GetNbGlobal()
+	if err != nil {
+		klog.Error(err)
+		return fmt.Errorf("failed to get nb global: %w", err)
+	}
+	if enable == nbGlobal.Ipsec {
+		return nil
+	}
+
+	nbGlobal.Ipsec = enable
+	if err := c.UpdateNbGlobal(nbGlobal, &nbGlobal.Ipsec); err != nil {
+		klog.Error(err)
+		return fmt.Errorf("set nb_global ipsec %v: %w", enable, err)
+	}
+
+	return nil
+}
+
 func (c *OVNNbClient) SetNbGlobalOptions(key string, value interface{}) error {
 	nbGlobal, err := c.GetNbGlobal()
 	if err != nil {

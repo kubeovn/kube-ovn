@@ -20,6 +20,7 @@ type NBGlobal interface {
 	SetICAutoRoute(enable bool, blackList []string) error
 	SetLsDnatModDlDst(enabled bool) error
 	SetLsCtSkipDstLportIPs(enabled bool) error
+	SetOVNIPSec(enabled bool) error
 	SetNodeLocalDNSIP(nodeLocalDNSIP string) error
 	GetNbGlobal() (*ovnnb.NBGlobal, error)
 }

@@ -93,6 +93,7 @@ type Configuration struct {
 	EnableLbSvc       bool
 	EnableMetrics     bool
 	EnableANP         bool
+	EnableOVNIPSec    bool
 
 	ExternalGatewaySwitch   string
 	ExternalGatewayConfigNS string
@@ -169,6 +170,7 @@ func ParseFlags() (*Configuration, error) {
 		argEnableLbSvc             = pflag.Bool("enable-lb-svc", false, "Whether to support loadbalancer service")
 		argEnableMetrics           = pflag.Bool("enable-metrics", true, "Whether to support metrics query")
 		argEnableANP               = pflag.Bool("enable-anp", false, "Enable support for admin network policy and baseline admin network policy")
+		argEnableOVNIPSec          = pflag.Bool("enable-ovn-ipsec", false, "Whether to enable ovn ipsec")
 
 		argExternalGatewayConfigNS = pflag.String("external-gateway-config-ns", "kube-system", "The namespace of configmap external-gateway-config, default: kube-system")
 		argExternalGatewaySwitch   = pflag.String("external-gateway-switch", "external", "The name of the external gateway switch which is a ovs bridge to provide external network, default: external")
@@ -259,6 +261,7 @@ func ParseFlags() (*Configuration, error) {
 		InspectInterval:                *argInspectInterval,
 		EnableLbSvc:                    *argEnableLbSvc,
 		EnableMetrics:                  *argEnableMetrics,
+		EnableOVNIPSec:                 *argEnableOVNIPSec,
 		BfdMinTx:                       *argBfdMinTx,
 		BfdMinRx:                       *argBfdMinRx,
 		BfdDetectMult:                  *argBfdDetectMult,

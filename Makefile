@@ -913,6 +913,11 @@ kind-install-kwok:
 		kubectl apply -f kwok-node.yaml; \
 	done
 
+.PHONY: kind-install-ovn-ipsec
+kind-install-ovn-ipsec: kind-load-image
+	kubectl config use-context kind-kube-ovn
+	@$(MAKE) ENABLE_OVN_IPSEC=true DEBUG_WRAPPER=true kind-install
+
 .PHONY: kind-reload
 kind-reload: kind-reload-ovs
 	kubectl delete pod -n kube-system -l app=kube-ovn-controller
