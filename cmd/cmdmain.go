@@ -12,8 +12,8 @@ import (
 	"k8s.io/klog/v2"
 
 	"github.com/kubeovn/kube-ovn/cmd/controller"
-	"github.com/kubeovn/kube-ovn/cmd/controller_health_check"
 	"github.com/kubeovn/kube-ovn/cmd/daemon"
+	"github.com/kubeovn/kube-ovn/cmd/health_check"
 	"github.com/kubeovn/kube-ovn/cmd/ovn_leader_checker"
 	"github.com/kubeovn/kube-ovn/cmd/ovn_monitor"
 	"github.com/kubeovn/kube-ovn/cmd/pinger"
@@ -23,14 +23,14 @@ import (
 )
 
 const (
-	CmdController            = "kube-ovn-controller"
-	CmdDaemon                = "kube-ovn-daemon"
-	CmdMonitor               = "kube-ovn-monitor"
-	CmdPinger                = "kube-ovn-pinger"
-	CmdSpeaker               = "kube-ovn-speaker"
-	CmdWebhook               = "kube-ovn-webhook"
-	CmdControllerHealthCheck = "kube-ovn-controller-healthcheck"
-	CmdOvnLeaderChecker      = "kube-ovn-leader-checker"
+	CmdController       = "kube-ovn-controller"
+	CmdDaemon           = "kube-ovn-daemon"
+	CmdMonitor          = "kube-ovn-monitor"
+	CmdPinger           = "kube-ovn-pinger"
+	CmdSpeaker          = "kube-ovn-speaker"
+	CmdWebhook          = "kube-ovn-webhook"
+	CmdHealthCheck      = "kube-ovn-healthcheck"
+	CmdOvnLeaderChecker = "kube-ovn-leader-checker"
 )
 
 const timeFormat = "2006-01-02_15:04:05"
@@ -110,8 +110,8 @@ func main() {
 		speaker.CmdMain()
 	case CmdWebhook:
 		webhook.CmdMain()
-	case CmdControllerHealthCheck:
-		controller_health_check.CmdMain()
+	case CmdHealthCheck:
+		health_check.CmdMain()
 	case CmdOvnLeaderChecker:
 		ovn_leader_checker.CmdMain()
 	default:

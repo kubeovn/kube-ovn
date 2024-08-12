@@ -4232,19 +4232,21 @@ spec:
           readinessProbe:
             exec:
               command:
-                - /kube-ovn/kube-ovn-controller-healthcheck
+                - /kube-ovn/kube-ovn-healthcheck
+                - --port=10660
                 - --tls=${SECURE_SERVING}
             periodSeconds: 3
-            timeoutSeconds: 45
+            timeoutSeconds: 1
           livenessProbe:
             exec:
               command:
-                - /kube-ovn/kube-ovn-controller-healthcheck
+                - /kube-ovn/kube-ovn-healthcheck
+                - --port=10660
                 - --tls=${SECURE_SERVING}
             initialDelaySeconds: 300
             periodSeconds: 7
             failureThreshold: 5
-            timeoutSeconds: 45
+            timeoutSeconds: 1
           resources:
             requests:
               cpu: 200m
@@ -4409,16 +4411,22 @@ spec:
           initialDelaySeconds: 30
           periodSeconds: 7
           successThreshold: 1
-          tcpSocket:
-            port: 10665
-          timeoutSeconds: 3
+          exec:
+            command:
+              - /kube-ovn/kube-ovn-healthcheck
+              - --port=10665
+              - --tls=${SECURE_SERVING}
+          timeoutSeconds: 1
         readinessProbe:
           failureThreshold: 3
           periodSeconds: 7
           successThreshold: 1
-          tcpSocket:
-            port: 10665
-          timeoutSeconds: 3
+          exec:
+            command:
+              - /kube-ovn/kube-ovn-healthcheck
+              - --port=10665
+              - --tls=${SECURE_SERVING}
+          timeoutSeconds: 1
         resources:
           requests:
             cpu: 100m
@@ -4698,17 +4706,23 @@ spec:
             initialDelaySeconds: 30
             periodSeconds: 7
             successThreshold: 1
-            tcpSocket:
-              port: 10661
-            timeoutSeconds: 3
+            exec:
+              command:
+                - /kube-ovn/kube-ovn-healthcheck
+                - --port=10661
+                - --tls=${SECURE_SERVING}
+            timeoutSeconds: 1
           readinessProbe:
             failureThreshold: 3
             initialDelaySeconds: 30
             periodSeconds: 7
             successThreshold: 1
-            tcpSocket:
-              port: 10661
-            timeoutSeconds: 3
+            exec:
+              command:
+                - /kube-ovn/kube-ovn-healthcheck
+                - --port=10661
+                - --tls=${SECURE_SERVING}
+            timeoutSeconds: 1
       nodeSelector:
         kubernetes.io/os: "linux"
         kube-ovn/role: "master"

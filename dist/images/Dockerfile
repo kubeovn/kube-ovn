@@ -15,7 +15,7 @@ RUN ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn-controller && \
     ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn-pinger && \
     ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn-speaker && \
     ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn-webhook && \
-    ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn-controller-healthcheck && \
+    ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn-healthcheck && \
     ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn-leader-checker
 
 FROM kubeovn/kube-ovn-base:$BASE_TAG
