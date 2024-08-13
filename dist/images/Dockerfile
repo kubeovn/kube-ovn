@@ -12,12 +12,10 @@ COPY kube-ovn-cmd /kube-ovn/kube-ovn-cmd
 COPY kube-ovn-daemon /kube-ovn/kube-ovn-daemon
 COPY kube-ovn-pinger /kube-ovn/kube-ovn-pinger
 RUN ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn-controller && \
-    ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn-daemon && \
     ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn-monitor && \
-    ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn-pinger && \
     ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn-speaker && \
     ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn-webhook && \
-    ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn-controller-healthcheck && \
+    ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn-healthcheck && \
     ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn-leader-checker && \
     setcap CAP_NET_BIND_SERVICE+eip /kube-ovn/kube-ovn-cmd && \
     setcap CAP_NET_RAW,CAP_NET_BIND_SERVICE+eip /kube-ovn/kube-ovn-pinger && \
