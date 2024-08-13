@@ -1,5 +1,49 @@
 # Changelog
 
+## v1.12.20 (2024-08-13)
+
+ * [918652d6](https://github.com/kubeovn/kube-ovn/commit/918652d6044ba686ed59d71991a41ca007b13d63) release v1.12.20
+ * [b867a33f](https://github.com/kubeovn/kube-ovn/commit/b867a33f34964425a0b741fd3b85efa3c872cc46) increase the default probe interval for large cluster
+ * [1562b228](https://github.com/kubeovn/kube-ovn/commit/1562b228101ead4caba0eda31d0c18ed3c8416d4) install.sh: add option SECURE_SERVING
+ * [87e75659](https://github.com/kubeovn/kube-ovn/commit/87e756598835ae7e40d646d7e82fc8fe64250b39) fix EOF during TLS handshake caused by health check (#4381)
+ * [39980fb0](https://github.com/kubeovn/kube-ovn/commit/39980fb0eba7f64d0c4e25fcf961581651715f2c) fix controller-runtime logger not set (#4380)
+ * [fa2316a9](https://github.com/kubeovn/kube-ovn/commit/fa2316a9c0a3b1c7c5d82b030e9a13fb4a686207) bump go to 1.22.6 (#4373)
+ * [fe218b09](https://github.com/kubeovn/kube-ovn/commit/fe218b09f6cfd92c94f59c204306b87635ec2ec4) replace protocol check in netpol update (#4356)
+ * [3133267c](https://github.com/kubeovn/kube-ovn/commit/3133267c7087afdcc0c2ddca10e9e2bd14daa45a) build(deps): bump github.com/prometheus-community/pro-bing (#4339)
+ * [541d5f45](https://github.com/kubeovn/kube-ovn/commit/541d5f4508d0914229f6f901276e2404396c318d) cni-server: disable udp-fragmentation-offload (#4342)
+ * [258408ec](https://github.com/kubeovn/kube-ovn/commit/258408ec606fa1e6cdcebec11206d11a788b85b2) build(deps): bump github.com/onsi/gomega from 1.34.0 to 1.34.1 (#4350)
+ * [a9784c7b](https://github.com/kubeovn/kube-ovn/commit/a9784c7b6b59e823f9859c169f701666431c5153) build(deps): bump github.com/onsi/ginkgo/v2 from 2.19.0 to 2.19.1 (#4340)
+ * [7c503107](https://github.com/kubeovn/kube-ovn/commit/7c5031071e3d932096d4f67e3d663df2156c8cb5) build(deps): bump github.com/onsi/gomega from 1.33.1 to 1.34.0 (#4341)
+ * [642c2fc7](https://github.com/kubeovn/kube-ovn/commit/642c2fc7110f846db3daa89c35b4e7b0d012c8f9) build(deps): bump github.com/docker/docker (#4336)
+ * [756c47a7](https://github.com/kubeovn/kube-ovn/commit/756c47a7c0ad72631306119029fa91c72ccd1489) build(deps): bump github.com/containernetworking/cni from 1.2.2 to 1.2.3 (#4328)
+ * [341ff27f](https://github.com/kubeovn/kube-ovn/commit/341ff27ffec7a7267181ad19c38a84de820b7c39) build(deps): bump github.com/docker/docker (#4327)
+ * [2e76fe9c](https://github.com/kubeovn/kube-ovn/commit/2e76fe9c1bc98592a1eac1a20d6489a04cc65042) pinger: fix process not terminated on sigkill (#4329)
+ * [7719ce57](https://github.com/kubeovn/kube-ovn/commit/7719ce5746134d7ef518975039a6d8cc8dfa4c2f) fix: scripts (#4291)
+ * [4e39bd85](https://github.com/kubeovn/kube-ovn/commit/4e39bd85781de4fde4954feabc8d37bbc7292b1f) fix dialing https server (#4324)
+ * [8cd578c6](https://github.com/kubeovn/kube-ovn/commit/8cd578c683ff35ccc94c5b2b564add3bd778a08b) refactor metrics (#4313)
+ * [e0d1dbdb](https://github.com/kubeovn/kube-ovn/commit/e0d1dbdbfce08bbc869ab32ee3f080590c928929) bump k8s to v1.30.3 (#4317)
+ * [68797a10](https://github.com/kubeovn/kube-ovn/commit/68797a10328a5646700f7dafc76e8912d71061f1) metrics: fix missing rbac for sa ovn (#4312)
+ * [10781730](https://github.com/kubeovn/kube-ovn/commit/10781730cbc9b06325fe9a4655d1782f621ecb30) metrics: add support for secure serving (#4297)
+ * [b5772112](https://github.com/kubeovn/kube-ovn/commit/b57721129731cf7be0bf604159ff1b917b228a8a) security: run as unprivileged (#3040)
+ * [3e52a0ee](https://github.com/kubeovn/kube-ovn/commit/3e52a0ee6489b7fec0221821183430d8e749a8ba) bump k8s to v1.27.16 (#4306)
+ * [b88ed8d2](https://github.com/kubeovn/kube-ovn/commit/b88ed8d21a4f7bac6646e194c13fdf8637dada92) fix map concurrent read and write crash (#4302)
+ * [2ded787a](https://github.com/kubeovn/kube-ovn/commit/2ded787af86caf1cd60b9250b55681eabc50087a) use route policy to reimplement northGateway
+ * [69befe33](https://github.com/kubeovn/kube-ovn/commit/69befe33ed200a1d133f632ded5b6c5b207d1aba) underlay: set trunks of host nic port (#4282)
+ * [79cf2098](https://github.com/kubeovn/kube-ovn/commit/79cf20988f45ba1bb645337c79686c4d48919359) fix using route table name as vpc name
+ * [bf5a554e](https://github.com/kubeovn/kube-ovn/commit/bf5a554eca05944a0a96faa932582d1bcd9f1789) fix: set dhcp gateway to U2OInterconnectionIP when enabling dhcp and u2o (#4228)
+ * [54aa76f0](https://github.com/kubeovn/kube-ovn/commit/54aa76f00266c51ae969a5355af1165857c1f267) fix ovn lb not updated due to service update failure (#4280)
+ * [e4b4142c](https://github.com/kubeovn/kube-ovn/commit/e4b4142c745342faa7f7b855dc0d7b0bfb808e09) build(deps): bump aquasecurity/trivy-action from 0.23.0 to 0.24.0 (#4275)
+ * [0691a894](https://github.com/kubeovn/kube-ovn/commit/0691a89436af6a3c41483544207928047efd7a46) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * Zhao Congqi
+ * dependabot[bot]
+ * hzma
+ * zhangzujian
+ * 张祖建
+
 ## v1.12.19 (2024-07-10)
 
  * [93095c8c](https://github.com/kubeovn/kube-ovn/commit/93095c8c932bbcaa92d428900f29ff4af02b682f) release v1.12.19
@@ -2712,6 +2756,35 @@
  * 张祖建
  * 罗云鹤
  * 范日明
+
+## v1.9.35 (2024-07-19)
+
+ * [358416ca](https://github.com/kubeovn/kube-ovn/commit/358416caa77467edc387d7b9cea769d69e88a261) prepare for next release
+ * [43d7349d](https://github.com/kubeovn/kube-ovn/commit/43d7349dbd57eaac9b446c380de9fb83fe280b67) bump kubectl to v1.30.3 (#4308)
+ * [30ab09d5](https://github.com/kubeovn/kube-ovn/commit/30ab09d56807e05dce9eff472b47d7c26f3b3015) underlay: set trunks of host nic port (#4282)
+ * [769ef7b9](https://github.com/kubeovn/kube-ovn/commit/769ef7b9854d15cf1359da3b2340da9a04718dfe) fix ovn lb not updated due to service update failure (#4280)
+ * [07785463](https://github.com/kubeovn/kube-ovn/commit/07785463b44a73d7af6563cc8e11afca644c053c) klog: set log file max size to 200MB (#4272)
+ * [f347ed0b](https://github.com/kubeovn/kube-ovn/commit/f347ed0b607f609fd525f211680c7421bf12b1a6) logrotate: set file size limit to 100M (#4271)
+ * [866b9a01](https://github.com/kubeovn/kube-ovn/commit/866b9a011e021144f469b65f1093749cfb0c0b49) bump base image
+ * [c56ad42d](https://github.com/kubeovn/kube-ovn/commit/c56ad42d2b7665ce1ff78447ce112c0e23071d7d) prepare for next release
+ * [a8b527c2](https://github.com/kubeovn/kube-ovn/commit/a8b527c2deda637f054d857154d9e2f28055e462) set release 1.9.34
+ * [bb99e0d7](https://github.com/kubeovn/kube-ovn/commit/bb99e0d7126528659180f3b3f05040008e6c717a) ifx (#4261)
+ * [0e06139b](https://github.com/kubeovn/kube-ovn/commit/0e06139b708ab3c59edb06fb75d1132e884a8f5c) fix getting service cluster ips (#4206)
+ * [ccdfa94a](https://github.com/kubeovn/kube-ovn/commit/ccdfa94a99aab99e46ce22576fb8e1d3f65524bb) bump base image
+ * [9a328b1c](https://github.com/kubeovn/kube-ovn/commit/9a328b1ce9d6d136e0e88fe5034f0455f256c648) base: add traceroute
+ * [e2f991a9](https://github.com/kubeovn/kube-ovn/commit/e2f991a9c8b14d373a2710cc5b85e46a953974cf) base: bump kubectl to v1.30.2 (#4163)
+ * [812589f6](https://github.com/kubeovn/kube-ovn/commit/812589f6845f53d9685314c6eace2c4b75382e8d) base: bump cni plugins to v1.5.1 (#4185)
+ * [a1669f33](https://github.com/kubeovn/kube-ovn/commit/a1669f33b1826c824ad024550c3ca69a1797c761) bump go to 1.22.4 (#4121)
+ * [480a2aa4](https://github.com/kubeovn/kube-ovn/commit/480a2aa4eb189ce0ebb37802ccec30bf737aa2ae) fix reconcile routes (#4168)
+ * [25b6f47f](https://github.com/kubeovn/kube-ovn/commit/25b6f47f9e2f53f20c3573f5d412123284de477b) replace util.DefaultVpc with c.config.ClusterRouter (#2782)
+ * [9fbdcb74](https://github.com/kubeovn/kube-ovn/commit/9fbdcb74ae92433ad8c0ffc674f3cf8d50d77be0) ci: bump actions
+ * [3d5ed6ee](https://github.com/kubeovn/kube-ovn/commit/3d5ed6eeb0b2400830094ba12b1e1c77e66c672c) prepare for next release
+
+### Contributors
+
+ * changluyi
+ * zhangzujian
+ * 张祖建
 
 ## v1.9.33 (2024-06-14)
 
