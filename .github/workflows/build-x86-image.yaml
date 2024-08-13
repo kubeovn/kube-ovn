@@ -43,7 +43,7 @@ jobs:
           if [ ${{ github.event_name }} != 'pull_request' ]; then
             exit
           fi
-          if git diff --name-only HEAD^ HEAD | grep -q ^dist/images/Dockerfile.base$; then
+          if ! git diff --exit-code HEAD^...HEAD -- dist/images/Dockerfile.base; then
             echo build-base=1 >> "$GITHUB_OUTPUT"
           fi
 
@@ -90,7 +90,7 @@ jobs:
           if [ ${{ github.event_name }} != 'pull_request' ]; then
             exit
           fi
-          if git diff --name-only HEAD^ HEAD | grep -q ^dist/images/Dockerfile.base-dpdk$; then
+          if ! git diff --exit-code HEAD^...HEAD -- dist/images/Dockerfile.base-dpdk; then
             echo build-dpdk-base=1 >> "$GITHUB_OUTPUT"
           fi
 
@@ -265,7 +265,7 @@ jobs:
       - name: Build
         run: |
           go mod tidy
-          git diff --exit-code go.mod go.sum
+          git diff --exit-code -- go.mod go.sum
           make lint
           if [ ${{ needs.build-kube-ovn-base.outputs.build-base || 0 }} = 1 ]; then
             make build-kube-ovn
