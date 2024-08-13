@@ -139,10 +139,10 @@ var _ = framework.Describe("[group:vip]", func() {
 		namespaceName = f.Namespace.Name
 		cidr = framework.RandomCIDR(f.ClusterIPFamily)
 
-		// should create lower case static ipv6 address vip in ovn-defualt
+		// should create lower case static ipv6 address vip in ovn-default
 		lowerCaseStaticIpv6VipName = "lower-case-static-ipv6-vip-" + framework.RandomSuffix()
 		lowerCaseV6IP = "fd00:10:16::a1"
-		// should not create upper case static ipv6 address vip in ovn-defualt
+		// should not create upper case static ipv6 address vip in ovn-default
 		upperCaseStaticIpv6VipName = "Upper-Case-Static-Ipv6-Vip-" + framework.RandomSuffix()
 		upperCaseV6IP = "fd00:10:16::A1"
 
@@ -243,7 +243,7 @@ var _ = framework.Describe("[group:vip]", func() {
 			framework.ExpectEqual(lowerCaseStaticIpv6Vip.Status.V6ip, lowerCaseV6IP)
 			ginkgo.By("Should not create upper case static ipv6 address vip " + upperCaseStaticIpv6VipName)
 			upperCaseStaticIpv6Vip := makeOvnVip(namespaceName, upperCaseStaticIpv6VipName, util.DefaultSubnet, "", upperCaseV6IP, "")
-			upperCaseStaticIpv6Vip = vipClient.Create(upperCaseStaticIpv6Vip)
+			_ = vipClient.Create(upperCaseStaticIpv6Vip)
 			time.Sleep(10 * time.Second)
 			upperCaseStaticIpv6Vip = vipClient.Get(upperCaseStaticIpv6VipName)
 			framework.ExpectEqual(upperCaseStaticIpv6Vip.Status.V6ip, "")
