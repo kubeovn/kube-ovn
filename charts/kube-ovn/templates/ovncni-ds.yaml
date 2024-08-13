@@ -203,7 +203,7 @@ spec:
               - /kube-ovn/kube-ovn-healthcheck
               - --port=10665
               - --tls={{- .Values.func.SECURE_SERVING }}
-          timeoutSeconds: 1
+          timeoutSeconds: 5
         livenessProbe:
           failureThreshold: 3
           initialDelaySeconds: 30
@@ -214,7 +214,7 @@ spec:
               - /kube-ovn/kube-ovn-healthcheck
               - --port=10665
               - --tls={{- .Values.func.SECURE_SERVING }}
-          timeoutSeconds: 1
+          timeoutSeconds: 5
         resources:
           requests:
             cpu: {{ index .Values "kube-ovn-cni" "requests" "cpu" }}
