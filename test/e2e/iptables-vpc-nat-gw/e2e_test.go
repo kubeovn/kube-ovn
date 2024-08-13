@@ -367,10 +367,42 @@ var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 		}
 	})
 
+	framework.ConformanceIt("change gateway image", func() {
+		overlaySubnetV4Cidr := "10.0.2.0/24"
+		overlaySubnetV4Gw := "10.0.2.1"
+		lanIP := "10.0.2.254"
+		natgwQoS := ""
+		cm, err := f.ClientSet.CoreV1().ConfigMaps(framework.KubeOvnNamespace).Get(context.Background(), vpcNatConfigName, metav1.GetOptions{})
+		framework.ExpectNoError(err)
+		oldImage := cm.Data["image"]
+		cm.Data["image"] = "docker.io/kubeovn/vpc-nat-gateway:v1.12.18"
+		cm, err = f.ClientSet.CoreV1().ConfigMaps(framework.KubeOvnNamespace).Update(context.Background(), cm, metav1.UpdateOptions{})
+		framework.ExpectNoError(err)
+		time.Sleep(3 * time.Second)
+		setupVpcNatGwTestEnvironment(
+			f, dockerExtNet1Network, attachNetClient,
+			subnetClient, vpcClient, vpcNatGwClient,
+			vpcName, overlaySubnetName+"image", vpcNatGwName, natgwQoS,
+			overlaySubnetV4Cidr, overlaySubnetV4Gw, lanIP,
+			dockerExtNet1Name, networkAttachDefName, net1NicName,
+			externalSubnetProvider,
+			false,
+		)
+		vpcNatGwPodName := util.GenNatGwPodName(vpcNatGwName)
+		pod := f.PodClientNS("kube-system").GetPod(vpcNatGwPodName)
+		framework.ExpectNotNil(pod)
+		framework.ExpectEqual(pod.Spec.Containers[0].Image, cm.Data["image"])
+
+		// recover the image
+		cm.Data["image"] = oldImage
+		_, err = f.ClientSet.CoreV1().ConfigMaps(framework.KubeOvnNamespace).Update(context.Background(), cm, metav1.UpdateOptions{})
+		framework.ExpectNoError(err)
+	})
+
 	framework.ConformanceIt("iptables eip fip snat dnat", func() {
-		overlaySubnetV4Cidr := "10.0.0.0/24"
-		overlaySubnetV4Gw := "10.0.0.1"
-		lanIP := "10.0.0.254"
+		overlaySubnetV4Cidr := "10.0.1.0/24"
+		overlaySubnetV4Gw := "10.0.1.1"
+		lanIP := "10.0.1.254"
 		natgwQoS := ""
 		setupVpcNatGwTestEnvironment(
 			f, dockerExtNet1Network, attachNetClient,
