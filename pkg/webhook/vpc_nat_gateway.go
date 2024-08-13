@@ -419,6 +419,11 @@ func (v *ValidatingHook) ValidateIptablesEIP(ctx context.Context, eip *ovnv1.Ipt
 	}
 
 	if eip.Spec.V6ip != "" {
+		// v6 ip address can not use upper case
+		if util.ContainsUppercase(eip.Spec.V6ip) {
+			err := fmt.Errorf("eip %s v6 ip address %s can not contain upper case", eip.Name, eip.Spec.V6ip)
+			return err
+		}
 		if net.ParseIP(eip.Spec.V6ip) == nil {
 			err := fmt.Errorf("v6ip %s is not a valid", eip.Spec.V6ip)
 			return err

@@ -188,6 +188,12 @@ func (v *ValidatingHook) checkIPConflict(ipAddress, annoSubnet, name string, ipL
 			}
 
 			v4IP, v6IP := util.SplitStringIP(ipCR.Spec.IPAddress)
+			// v6 ip address can not use upper case
+			if util.ContainsUppercase(v6IP) {
+				err := fmt.Errorf("v6 ip address %s can not contain upper case", v6IP)
+				klog.Error(err)
+				return err
+			}
 			if ipAddr.String() == v4IP || ipAddr.String() == v6IP {
 				if name == ipCR.Spec.PodName {
 					klog.Infof("get same ip crd for %s", name)

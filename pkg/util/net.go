@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"k8s.io/klog/v2"
 
@@ -655,4 +656,13 @@ func GetDefaultListenAddr() string {
 		}
 	}
 	return "0.0.0.0"
+}
+
+func ContainsUppercase(s string) bool {
+	for _, char := range s {
+		if unicode.IsUpper(char) {
+			return true
+		}
+	}
+	return false
 }

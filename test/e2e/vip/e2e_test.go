@@ -124,6 +124,9 @@ var _ = framework.Describe("[group:vip]", func() {
 	// test allowed address pair vip
 	var countingVipName, vip1Name, vip2Name, aapPodName1, aapPodName2, aapPodName3 string
 
+	// test ipv6 vip
+	var lowerCaseStaticIpv6VipName, upperCaseStaticIpv6VipName, lowerCaseV6IP, upperCaseV6IP string
+
 	// test allowed address pair connectivity in the security group scenario
 	var securityGroupName string
 
@@ -135,6 +138,13 @@ var _ = framework.Describe("[group:vip]", func() {
 		securityGroupClient = f.SecurityGroupClient()
 		namespaceName = f.Namespace.Name
 		cidr = framework.RandomCIDR(f.ClusterIPFamily)
+
+		// should create lower case static ipv6 address vip in ovn-default
+		lowerCaseStaticIpv6VipName = "lower-case-static-ipv6-vip-" + framework.RandomSuffix()
+		lowerCaseV6IP = "fd00:10:16::a1"
+		// should not create upper case static ipv6 address vip in ovn-default
+		upperCaseStaticIpv6VipName = "Upper-Case-Static-Ipv6-Vip-" + framework.RandomSuffix()
+		upperCaseV6IP = "fd00:10:16::A1"
 
 		// should have the same mac, which mac is the same as its vpc overlay subnet gw mac
 		randomSuffix := framework.RandomSuffix()
@@ -226,6 +236,19 @@ var _ = framework.Describe("[group:vip]", func() {
 			framework.ExpectNotEqual(oldSubnet.Status.V6UsingIPRange, newSubnet.Status.V6UsingIPRange)
 		}
 		ginkgo.By("1. Test allowed address pair vip")
+		if f.IsIPv6() {
+			ginkgo.By("Should create lower case static ipv6 address vip " + lowerCaseStaticIpv6VipName)
+			lowerCaseStaticIpv6Vip := makeOvnVip(namespaceName, lowerCaseStaticIpv6VipName, util.DefaultSubnet, "", lowerCaseV6IP, "")
+			lowerCaseStaticIpv6Vip = vipClient.CreateSync(lowerCaseStaticIpv6Vip)
+			framework.ExpectEqual(lowerCaseStaticIpv6Vip.Status.V6ip, lowerCaseV6IP)
+			ginkgo.By("Should not create upper case static ipv6 address vip " + upperCaseStaticIpv6VipName)
+			upperCaseStaticIpv6Vip := makeOvnVip(namespaceName, upperCaseStaticIpv6VipName, util.DefaultSubnet, "", upperCaseV6IP, "")
+			_ = vipClient.Create(upperCaseStaticIpv6Vip)
+			time.Sleep(10 * time.Second)
+			upperCaseStaticIpv6Vip = vipClient.Get(upperCaseStaticIpv6VipName)
+			framework.ExpectEqual(upperCaseStaticIpv6Vip.Status.V6ip, "")
+			framework.ExpectFalse(upperCaseStaticIpv6Vip.Status.Ready)
+		}
 		// create vip1 and vip2, should have different ip and mac
 		ginkgo.By("Creating allowed address pair vip, should have different ip and mac")
 		ginkgo.By("Creating allowed address pair vip " + vip1Name)
