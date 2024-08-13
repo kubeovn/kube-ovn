@@ -277,7 +277,7 @@ func (c *Controller) ManageIPSecKeys() error {
 	} else {
 		checkCertExpired, err := checkCertExpired()
 		if err != nil {
-			klog.Errorf("check ipsec cert expired error: %v", err)
+			klog.Errorf("failed to check ipsec cert expired: %v", err)
 			return err
 		}
 		if !checkCertExpired {
