@@ -237,6 +237,12 @@ func (c *Controller) handleAddIptablesEip(key string) error {
 		return err
 	}
 
+	// v6 ip address can not use upper case
+	if util.ContainsUppercase(cachedEip.Spec.V6ip) {
+		err := fmt.Errorf("eip %s v6 ip address %s can not contain upper case", cachedEip.Name, cachedEip.Spec.V6ip)
+		klog.Error(err)
+		return err
+	}
 	var v4ip, v6ip, mac string
 	portName := ovs.PodNameToPortName(cachedEip.Name, cachedEip.Namespace, subnet.Spec.Provider)
 	if cachedEip.Spec.V4ip != "" {
@@ -357,6 +363,12 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 		return nil
 	}
 	klog.Infof("handle update eip %s", key)
+	// v6 ip address can not use upper case
+	if util.ContainsUppercase(cachedEip.Spec.V6ip) {
+		err := fmt.Errorf("eip %s v6 ip address %s can not contain upper case", cachedEip.Name, cachedEip.Spec.V6ip)
+		klog.Error(err)
+		return err
+	}
 	// eip change ip
 	if c.eipChangeIP(cachedEip) {
 		err := fmt.Errorf("not support eip change ip, old ip '%s', new ip '%s'", cachedEip.Status.IP, cachedEip.Spec.V4ip)
