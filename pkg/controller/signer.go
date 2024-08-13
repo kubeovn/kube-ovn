@@ -247,6 +247,7 @@ func getCertApprovalCondition(status *csrv1.CertificateSigningRequestStatus) (ap
 func newCertificateTemplate(certReq *x509.CertificateRequest) *x509.Certificate {
 	serialNumber, err := rand.Int(rand.Reader, big.NewInt(1<<62))
 	if err != nil {
+		klog.Errorf("failed to generate serial number: %v", err)
 		return nil
 	}
 
@@ -269,10 +270,12 @@ func newCertificateTemplate(certReq *x509.CertificateRequest) *x509.Certificate 
 func signCSR(template *x509.Certificate, requestKey c.PublicKey, issuer *x509.Certificate, issuerKey c.PrivateKey) (*x509.Certificate, error) {
 	derBytes, err := x509.CreateCertificate(rand.Reader, template, issuer, requestKey, issuerKey)
 	if err != nil {
+		klog.Error(err)
 		return nil, err
 	}
 	certs, err := x509.ParseCertificates(derBytes)
 	if err != nil {
+		klog.Errorf("failed to parse certificate: %v", err)
 		return nil, err
 	}
 	if len(certs) != 1 {
@@ -311,6 +314,7 @@ func decodePrivateKey(pemBytes []byte) (*rsa.PrivateKey, error) {
 
 	key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
 	if err != nil {
+		klog.Error(err)
 		return nil, err
 	}
 
