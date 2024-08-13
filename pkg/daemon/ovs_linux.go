@@ -18,7 +18,6 @@ import (
 
 	"github.com/containerd/containerd/pkg/netns"
 	"github.com/containernetworking/plugins/pkg/ns"
-	"github.com/containernetworking/plugins/pkg/utils/sysctl"
 	"github.com/k8snetworkplumbingwg/sriovnet"
 	sriovutilfs "github.com/k8snetworkplumbingwg/sriovnet/pkg/utils/filesystem"
 	"github.com/vishvananda/netlink"
@@ -576,15 +575,6 @@ func configureNodeNic(portName, ip, gw, joinCIDR string, macAddr net.HardwareAdd
 	if err != nil {
 		klog.Errorf("failed to configure node nic %s: %v, %q", portName, err, raw)
 		return errors.New(raw)
-	}
-
-	value, err := sysctl.Sysctl(fmt.Sprintf("net.ipv6.conf.%s.addr_gen_mode", util.NodeNic))
-	if err == nil {
-		if value != "0" {
-			if _, err = sysctl.Sysctl(fmt.Sprintf("net.ipv6.conf.%s.addr_gen_mode", util.NodeNic), "0"); err != nil {
-				return fmt.Errorf("failed to set ovn0 addr_gen_mode: %w", err)
-			}
-		}
 	}
 
 	if err = configureNic(util.NodeNic, ip, macAddr, mtu, false, false); err != nil {
@@ -1311,17 +1301,6 @@ func (c *Controller) transferAddrsAndRoutes(nicName, brName string, delNonExiste
 // Add host nic to external bridge
 // Mac address, MTU, IP addresses & routes will be copied/transferred to the external bridge
 func (c *Controller) configProviderNic(nicName, brName string, trunks []string) (int, error) {
-	sysctlDisableIPv6 := fmt.Sprintf("net.ipv6.conf.%s.disable_ipv6", brName)
-	disableIPv6, err := sysctl.Sysctl(sysctlDisableIPv6)
-	if err != nil {
-		return 0, fmt.Errorf("failed to get sysctl %s: %w", sysctlDisableIPv6, err)
-	}
-	if disableIPv6 != "0" {
-		if _, err = sysctl.Sysctl(sysctlDisableIPv6, "0"); err != nil {
-			return 0, fmt.Errorf("failed to enable ipv6 on OVS bridge %s: %w", brName, err)
-		}
-	}
-
 	mtu, err := c.transferAddrsAndRoutes(nicName, brName, false)
 	if err != nil {
 		return 0, fmt.Errorf("failed to transfer addresses and routes from %s to %s: %w", nicName, brName, err)
