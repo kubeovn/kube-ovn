@@ -276,7 +276,7 @@ func signCSR(template *x509.Certificate, requestKey c.PublicKey, issuer *x509.Ce
 		return nil, err
 	}
 	if len(certs) != 1 {
-		return nil, errors.New("Expected a single certificate")
+		return nil, errors.New("expected a single certificate")
 	}
 	return certs[0], nil
 }
@@ -284,7 +284,7 @@ func signCSR(template *x509.Certificate, requestKey c.PublicKey, issuer *x509.Ce
 func decodeCertificateRequest(pemBytes []byte) (*x509.CertificateRequest, error) {
 	block, _ := pem.Decode(pemBytes)
 	if block == nil || block.Type != "CERTIFICATE REQUEST" {
-		err := errors.New("PEM block type must be CERTIFICATE_REQUEST")
+		err := errors.New("certificate PEM block type must be CERTIFICATE_REQUEST")
 		return nil, err
 	}
 
@@ -294,7 +294,7 @@ func decodeCertificateRequest(pemBytes []byte) (*x509.CertificateRequest, error)
 func decodeCertificate(pemBytes []byte) (*x509.Certificate, error) {
 	block, _ := pem.Decode(pemBytes)
 	if block == nil || block.Type != "CERTIFICATE" {
-		err := errors.New("PEM block type must be CERTIFICATE")
+		err := errors.New("certificate PEM block type must be CERTIFICATE")
 		return nil, err
 	}
 
@@ -305,7 +305,7 @@ func decodePrivateKey(pemBytes []byte) (*rsa.PrivateKey, error) {
 	block, _ := pem.Decode(pemBytes)
 	if block == nil || block.Type != "PRIVATE KEY" {
 		fmt.Println(block.Type)
-		err := errors.New("PEM block type must be PRIVATE KEY")
+		err := errors.New("certificate PEM block type must be PRIVATE KEY")
 		return nil, err
 	}
 
@@ -316,7 +316,7 @@ func decodePrivateKey(pemBytes []byte) (*rsa.PrivateKey, error) {
 
 	rsaKey, ok := key.(*rsa.PrivateKey)
 	if !ok {
-		err := errors.New("Failed to convert private key to RSA private key")
+		err := errors.New("failed to convert private key to RSA private key")
 		return nil, err
 	}
 

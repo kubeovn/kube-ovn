@@ -44,7 +44,7 @@ ENABLE_OVN_IPSEC=${ENABLE_OVN_IPSEC:-false}
 # debug
 DEBUG_WRAPPER=${DEBUG_WRAPPER:-}
 RUN_AS_USER=65534 # run as nobody
-if [ -n "$DEBUG_WRAPPER" ]; then
+if [ "$ENABLE_OVN_IPSEC" = "true" -o -n "$DEBUG_WRAPPER" ]; then
   RUN_AS_USER=0
 fi
 

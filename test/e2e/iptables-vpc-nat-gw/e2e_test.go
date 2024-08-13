@@ -392,9 +392,9 @@ var _ = framework.SerialDescribe("[group:iptables-vpc-nat-gw]", func() {
 	})
 
 	framework.ConformanceIt("change gateway image", func() {
-		overlaySubnetV4Cidr := "10.0.0.0/24"
-		overlaySubnetV4Gw := "10.0.0.1"
-		lanIP := "10.0.0.254"
+		overlaySubnetV4Cidr := "10.0.2.0/24"
+		overlaySubnetV4Gw := "10.0.2.1"
+		lanIP := "10.0.2.254"
 		natgwQoS := ""
 		cm, err := f.ClientSet.CoreV1().ConfigMaps(framework.KubeOvnNamespace).Get(context.Background(), vpcNatConfigName, metav1.GetOptions{})
 		framework.ExpectNoError(err)
@@ -406,7 +406,7 @@ var _ = framework.SerialDescribe("[group:iptables-vpc-nat-gw]", func() {
 		setupVpcNatGwTestEnvironment(
 			f, dockerExtNet1Network, attachNetClient,
 			subnetClient, vpcClient, vpcNatGwClient,
-			vpcName, overlaySubnetName, vpcNatGwName, natgwQoS,
+			vpcName, overlaySubnetName+"image", vpcNatGwName, natgwQoS,
 			overlaySubnetV4Cidr, overlaySubnetV4Gw, lanIP,
 			dockerExtNet1Name, networkAttachDefName, net1NicName,
 			externalSubnetProvider,

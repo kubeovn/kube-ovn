@@ -68,7 +68,7 @@ spec:
           - --alsologtostderr=true
           - --log_file_max_size=200
           securityContext:
-            runAsUser: 65534
+            runAsUser: {{ include "kubeovn.runAsUser" . }}
             privileged: false
             capabilities:
               add:
