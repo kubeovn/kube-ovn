@@ -149,10 +149,13 @@ func (c *Controller) createCSR(csrBytes []byte) error {
 		}
 	}
 
-	klog.Infof("ipsec get certitfcate \n %s ", certificateStr)
+	klog.V(3).Infof("ipsec get certitfcate\n%s", certificateStr)
 	cmd := exec.Command("openssl", "x509", "-outform", "pem", "-text", "-out", ipsecCertPath)
 	var stdinBuf bytes.Buffer
-	stdinBuf.WriteString(certificateStr)
+	if _, err := stdinBuf.WriteString(certificateStr); err != nil {
+		klog.Error(err)
+		return fmt.Errorf("failed to write certificate: %w", err)
+	}
 	cmd.Stdin = &stdinBuf
 
 	_, err := cmd.CombinedOutput()
@@ -177,7 +180,7 @@ func (c *Controller) createCSR(csrBytes []byte) error {
 		return err
 	}
 
-	klog.Infof("node %s' ipsec init successfully ", os.Getenv("HOSTNAME"))
+	klog.Infof("node %s' ipsec init successfully", os.Getenv("HOSTNAME"))
 	return nil
 }
 
@@ -217,10 +220,9 @@ func linkCACertToIPSecDir() error {
 }
 
 func clearCACertToIPSecDir() error {
-	// clear /etc/openvswitch/keys/ipsec-cacert.pem
-	cmd := exec.Command("rm", "-f", "/etc/openvswitch/keys/ipsec-cacert.pem")
-	if err := cmd.Run(); err != nil {
-		return err
+	if err := os.Remove("/etc/ipsec.d/cacerts/ipsec-cacert.pem"); err != nil && !os.IsNotExist(err) {
+		klog.Error(err)
+		return fmt.Errorf("failed to remove ipsec-cacert.pem: %w", err)
 	}
 	return nil
 }
@@ -249,8 +251,7 @@ func clearIPSecKeysDir() error {
 }
 
 func (c *Controller) ManageIPSecKeys() error {
-	_, err := os.Stat(ipsecCertPath)
-	if os.IsNotExist(err) {
+	if _, err := os.Stat(ipsecCertPath); os.IsNotExist(err) {
 		if err := c.CreateIPSecKeys(); err != nil {
 			klog.Errorf("create ipsec keys error: %v", err)
 			return err

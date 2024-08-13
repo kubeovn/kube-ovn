@@ -120,7 +120,7 @@ spec:
           - --secure-serving={{- .Values.func.SECURE_SERVING }}
           - --enable-ovn-ipsec={{- .Values.func.ENABLE_OVN_IPSEC }}
         securityContext:
-          runAsUser: 65534
+          runAsUser: {{ include "kubeovn.runAsUser" . }}
           runAsGroup: 0
           privileged: false
           capabilities:

@@ -25,22 +25,19 @@ func (c *Controller) InitDefaultOVNIPsecCA() error {
 		return err
 	}
 
-	cmd := exec.Command("ovs-pki", "init", "--force")
-	_, err = cmd.Output()
+	output, err := exec.Command("ovs-pki", "init", "--force").CombinedOutput()
 	if err != nil {
+		klog.Errorf("ovs-pki init failed: %s", string(output))
 		return err
 	}
 
-	_, err = os.Stat(util.DefaultOVSCACertPath)
-	if err != nil {
+	if _, err = os.Stat(util.DefaultOVSCACertPath); err != nil {
 		if os.IsNotExist(err) {
 			return fmt.Errorf("CA Cert not exist: %s", util.DefaultOVSCACertPath)
 		}
 		return err
 	}
-
-	_, err = os.Stat(util.DefaultOVSCACertKeyPath)
-	if err != nil {
+	if _, err = os.Stat(util.DefaultOVSCACertKeyPath); err != nil {
 		if os.IsNotExist(err) {
 			return fmt.Errorf("CA Cert Key not exist: %s", util.DefaultOVSCACertKeyPath)
 		}
@@ -67,8 +64,7 @@ func (c *Controller) InitDefaultOVNIPsecCA() error {
 		},
 	}
 
-	_, err = c.config.KubeClient.CoreV1().Secrets("kube-system").Create(context.TODO(), secret, metav1.CreateOptions{})
-	if err != nil {
+	if _, err = c.config.KubeClient.CoreV1().Secrets("kube-system").Create(context.TODO(), secret, metav1.CreateOptions{}); err != nil {
 		return err
 	}
 
