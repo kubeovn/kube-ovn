@@ -902,7 +902,7 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 						{
 							Name:            "vpc-nat-gw",
 							Image:           vpcNatImage,
-							Command:         []string{"sleep", "infinity"},
+							Command:         []string{"sh", "-exc", "iptables -V; sleep infinity"},
 							ImagePullPolicy: corev1.PullIfNotPresent,
 							SecurityContext: &corev1.SecurityContext{
 								Privileged:               ptr.To(true),

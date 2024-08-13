@@ -110,7 +110,7 @@ func (c *Controller) genLbSvcDeployment(svc *corev1.Service) (dp *v1.Deployment)
 						{
 							Name:            "lb-svc",
 							Image:           vpcNatImage,
-							Command:         []string{"sleep", "infinity"},
+							Command:         []string{"sh", "-exc", "iptables -V; sleep infinity"},
 							ImagePullPolicy: corev1.PullIfNotPresent,
 							SecurityContext: &corev1.SecurityContext{
 								Privileged:               ptr.To(true),

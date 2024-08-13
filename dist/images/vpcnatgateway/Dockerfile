@@ -12,5 +12,5 @@ RUN set -ex \
     conntrack-tools
 
 WORKDIR /kube-ovn
-COPY nat-gateway.sh /kube-ovn/
-COPY lb-svc.sh /kube-ovn/
+COPY *.sh /kube-ovn/
+RUN /kube-ovn/iptables-wrapper-installer.sh --no-sanity-check
