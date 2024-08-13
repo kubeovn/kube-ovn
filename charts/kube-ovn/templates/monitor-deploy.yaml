@@ -113,7 +113,7 @@ spec:
                 - /kube-ovn/kube-ovn-healthcheck
                 - --port=10661
                 - --tls={{- .Values.func.SECURE_SERVING }}
-            timeoutSeconds: 1
+            timeoutSeconds: 5
           readinessProbe:
             failureThreshold: 3
             initialDelaySeconds: 30
@@ -124,7 +124,7 @@ spec:
                 - /kube-ovn/kube-ovn-healthcheck
                 - --port=10661
                 - --tls={{- .Values.func.SECURE_SERVING }}
-            timeoutSeconds: 1
+            timeoutSeconds: 5
       nodeSelector:
         kubernetes.io/os: "linux"
         {{- with splitList "=" .Values.MASTER_NODES_LABEL }}
