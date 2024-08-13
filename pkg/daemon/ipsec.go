@@ -33,6 +33,7 @@ func getOVSSystemID() (string, error) {
 	cmd := exec.Command("ovs-vsctl", "--retry", "-t", "60", "get", "Open_vSwitch", ".", "external-ids:system-id")
 	output, err := cmd.Output()
 	if err != nil {
+		klog.Errorf("failed to get ovs system id: %v", err)
 		return "", err
 	}
 	systemID := strings.ReplaceAll(string(output), "\"", "")
@@ -71,6 +72,7 @@ func checkCertExpired() (bool, error) {
 func generateCSRCode() ([]byte, error) {
 	cn, err := getOVSSystemID()
 	if err != nil {
+		klog.Errorf("failed to get ovs system id: %v", err)
 		return nil, err
 	}
 
@@ -78,6 +80,7 @@ func generateCSRCode() ([]byte, error) {
 	cmd := exec.Command("openssl", "genrsa", "-out", ipsecPrivKeyPath, "2048")
 	err = cmd.Run()
 	if err != nil {
+		klog.Errorf("failed to generate private key: %v", err)
 		return nil, err
 	}
 
@@ -97,11 +100,13 @@ func generateCSRCode() ([]byte, error) {
 		"-out", ipsecReqPath) // #nosec
 	err = cmd.Run()
 	if err != nil {
+		klog.Errorf("failed to generate csr: %v", err)
 		return nil, err
 	}
 
 	csrBytes, err := os.ReadFile(ipsecReqPath)
 	if err != nil {
+		klog.Errorf("failed to read csr: %v", err)
 		return nil, err
 	}
 
@@ -127,6 +132,7 @@ func (c *Controller) createCSR(csrBytes []byte) error {
 	}
 
 	if _, err := c.config.KubeClient.CertificatesV1().CertificateSigningRequests().Create(context.Background(), csr, metav1.CreateOptions{}); err != nil {
+		klog.Errorf("failed to create csr: %v", err)
 		return err
 	}
 
@@ -136,6 +142,7 @@ func (c *Controller) createCSR(csrBytes []byte) error {
 	for {
 		csr, err := c.config.KubeClient.CertificatesV1().CertificateSigningRequests().Get(context.Background(), csr.Name, metav1.GetOptions{})
 		if err != nil {
+			klog.Errorf("failed to get csr: %v", err)
 			return err
 		}
 		if len(csr.Status.Certificate) != 0 {
@@ -145,6 +152,7 @@ func (c *Controller) createCSR(csrBytes []byte) error {
 		counter++
 		time.Sleep(time.Second)
 		if counter > 300 {
+			klog.Errorf("failed to sign certificate after %d seconds", counter)
 			return fmt.Errorf("unable to sign certificate after %d seconds", counter)
 		}
 	}
@@ -160,23 +168,27 @@ func (c *Controller) createCSR(csrBytes []byte) error {
 
 	_, err := cmd.CombinedOutput()
 	if err != nil {
+		klog.Errorf("failed to generate cert: %v", err)
 		return err
 	}
 
 	klog.Infof("ipsec Cert file %s generated", ipsecCertPath)
 	secret, err := c.config.KubeClient.CoreV1().Secrets("kube-system").Get(context.Background(), util.DefaultOVNIPSecCA, metav1.GetOptions{})
 	if err != nil {
+		klog.Errorf("failed to get secret: %v", err)
 		return err
 	}
 
 	output := secret.Data["cacert"]
 	if err := os.WriteFile(ipsecCACertPath, output, 0o600); err != nil {
+		klog.Errorf("failed to write file: %v", err)
 		return err
 	}
 
 	klog.Infof("ipsec CA Cert file %s generated", ipsecCACertPath)
 	// the csr is no longer needed
 	if err := c.config.KubeClient.CertificatesV1().CertificateSigningRequests().Delete(context.Background(), csr.Name, metav1.DeleteOptions{}); err != nil {
+		klog.Errorf("failed to delete csr: %v", err)
 		return err
 	}
 
@@ -214,6 +226,7 @@ func unconfigureOVSWithIPSecKeys() error {
 func linkCACertToIPSecDir() error {
 	cmd := exec.Command("ln", "-s", ipsecCACertPath, "/etc/ipsec.d/cacerts/")
 	if err := cmd.Run(); err != nil {
+		klog.Errorf("failed to link cacert: %v", err)
 		return err
 	}
 	return nil
@@ -229,6 +242,7 @@ func clearCACertToIPSecDir() error {
 
 func initIPSecKeysDir() error {
 	if err := os.MkdirAll(ipsecKeyDir, 0o755); err != nil {
+		klog.Errorf("failed to create %s: %v", ipsecKeyDir, err)
 		return err
 	}
 	return nil
@@ -236,15 +250,19 @@ func initIPSecKeysDir() error {
 
 func clearIPSecKeysDir() error {
 	if err := os.Remove(ipsecPrivKeyPath); err != nil && !os.IsNotExist(err) {
+		klog.Errorf("failed to remove %s: %v", ipsecPrivKeyPath, err)
 		return err
 	}
 	if err := os.Remove(ipsecReqPath); err != nil && !os.IsNotExist(err) {
+		klog.Errorf("failed to remove %s: %v", ipsecReqPath, err)
 		return err
 	}
 	if err := os.Remove(ipsecCACertPath); err != nil && !os.IsNotExist(err) {
+		klog.Errorf("failed to remove %s: %v", ipsecCACertPath, err)
 		return err
 	}
 	if err := os.Remove(ipsecCertPath); err != nil && !os.IsNotExist(err) {
+		klog.Errorf("failed to remove %s: %v", ipsecCertPath, err)
 		return err
 	}
 	return nil
@@ -259,6 +277,7 @@ func (c *Controller) ManageIPSecKeys() error {
 	} else {
 		checkCertExpired, err := checkCertExpired()
 		if err != nil {
+			klog.Errorf("failed to check ipsec cert expired: %v", err)
 			return err
 		}
 		if !checkCertExpired {
