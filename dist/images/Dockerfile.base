@@ -29,7 +29,9 @@ RUN cd /usr/src/ && \
     # ovs-router: skip getting source address for kube-ipvs0
     curl -s https://github.com/kubeovn/ovs/commit/f9048a894c019cd4cf5587d40cc07054da60ec81.patch | git apply && \
     # ovsdb-tool: add command fix-cluster
-    curl -s https://github.com/kubeovn/ovs/commit/f52c239f5ded40b503e4d217f916b46ca413da4c.patch | git apply
+    curl -s https://github.com/kubeovn/ovs/commit/f52c239f5ded40b503e4d217f916b46ca413da4c.patch | git apply && \
+    # increase the default probe interval for large cluster
+    curl -s https://github.com/kubeovn/ovs/commit/79180bb0a90a44f73f8c985c4f2f3b5afbc09dc5.patch | git apply
 
 RUN cd /usr/src/ && git clone -b branch-22.12 --depth=1 https://github.com/ovn-org/ovn.git && \
     cd ovn && \
@@ -46,9 +48,7 @@ RUN cd /usr/src/ && git clone -b branch-22.12 --depth=1 https://github.com/ovn-o
     # lflow: do not send direct traffic between lports to conntrack
     curl -s https://github.com/kubeovn/ovn/commit/54cbe0d1ba2051e640dd3e53498f373362547691.patch | git apply && \
     # northd: add nb option version_compatibility
-    curl -s https://github.com/kubeovn/ovn/commit/06f5a7c684a6030036e2663eecf934b37c3e666e.patch | git apply && \
-    # increase the default probe interval for large cluster
-    curl -s https://github.com/kubeovn/ovs/commit/79180bb0a90a44f73f8c985c4f2f3b5afbc09dc5.patch | git apply
+    curl -s https://github.com/kubeovn/ovn/commit/06f5a7c684a6030036e2663eecf934b37c3e666e.patch | git apply
 
 RUN apt install -y build-essential fakeroot \
     autoconf automake bzip2 debhelper-compat dh-exec dh-python dh-sequence-python3 dh-sequence-sphinxdoc \
