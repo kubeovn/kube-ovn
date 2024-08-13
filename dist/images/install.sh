@@ -4161,7 +4161,7 @@ spec:
                 - --port=10660
                 - --tls=${SECURE_SERVING}
             periodSeconds: 3
-            timeoutSeconds: 1
+            timeoutSeconds: 5
           livenessProbe:
             exec:
               command:
@@ -4171,7 +4171,7 @@ spec:
             initialDelaySeconds: 300
             periodSeconds: 7
             failureThreshold: 5
-            timeoutSeconds: 1
+            timeoutSeconds: 5
           resources:
             requests:
               cpu: 200m
@@ -4349,7 +4349,7 @@ spec:
               - /kube-ovn/kube-ovn-healthcheck
               - --port=10665
               - --tls=${SECURE_SERVING}
-          timeoutSeconds: 1
+          timeoutSeconds: 5
         readinessProbe:
           failureThreshold: 3
           periodSeconds: 7
@@ -4359,7 +4359,7 @@ spec:
               - /kube-ovn/kube-ovn-healthcheck
               - --port=10665
               - --tls=${SECURE_SERVING}
-          timeoutSeconds: 1
+          timeoutSeconds: 5
         resources:
           requests:
             cpu: 100m
@@ -4647,7 +4647,7 @@ spec:
                 - /kube-ovn/kube-ovn-healthcheck
                 - --port=10661
                 - --tls=${SECURE_SERVING}
-            timeoutSeconds: 1
+            timeoutSeconds: 5
           readinessProbe:
             failureThreshold: 3
             initialDelaySeconds: 30
@@ -4658,7 +4658,7 @@ spec:
                 - /kube-ovn/kube-ovn-healthcheck
                 - --port=10661
                 - --tls=${SECURE_SERVING}
-            timeoutSeconds: 1
+            timeoutSeconds: 5
       nodeSelector:
         kubernetes.io/os: "linux"
         kube-ovn/role: "master"
