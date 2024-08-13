@@ -151,7 +151,7 @@ func (c *Controller) handleAddNamespace(key string) error {
 				break
 			}
 		}
-
+		// check if subnet is in custom vpc with configured defaultSubnet, then annotate the namespace with this subnet
 		if s.Spec.Vpc != "" && s.Spec.Vpc != c.config.ClusterRouter {
 			vpc, err := c.vpcsLister.Get(s.Spec.Vpc)
 			if err != nil {
