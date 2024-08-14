@@ -17,7 +17,7 @@ import (
 func main() {
 	defer klog.Flush()
 
-	klog.Infof(versions.String())
+	klog.Info(versions.String())
 
 	currentCaps := cap.GetProc()
 	klog.Infof("current capabilities: %s", currentCaps.String())

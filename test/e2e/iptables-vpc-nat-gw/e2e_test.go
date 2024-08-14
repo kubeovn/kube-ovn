@@ -1069,20 +1069,19 @@ func createNatGwAndSetQosCases(f *framework.Framework,
 }
 
 func validRateLimit(text string, limit int) bool {
+	maxValue := float64(limit) * 1024 * 1024 * 1.2
+	minValue := float64(limit) * 1024 * 1024 * 0.8
 	lines := strings.Split(text, "\n")
 	for _, line := range lines {
 		if line == "" {
 			continue
 		}
 		fields := strings.Split(line, ",")
-		lastField := fields[len(fields)-1]
-		number, err := strconv.Atoi(lastField)
+		number, err := strconv.Atoi(fields[len(fields)-1])
 		if err != nil {
 			continue
 		}
-		max := float64(limit) * 1024 * 1024 * 1.2
-		min := float64(limit) * 1024 * 1024 * 0.8
-		if min <= float64(number) && float64(number) <= max {
+		if v := float64(number); v >= minValue && v <= maxValue {
 			return true
 		}
 	}
