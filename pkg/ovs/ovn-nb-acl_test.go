@@ -84,13 +84,14 @@ func (suite *OvnClientTestSuite) testUpdateIngressACLOps() {
 		asIngressName := "test.default.ingress.allow.ipv4.all"
 		asExceptName := "test.default.ingress.except.ipv4.all"
 		protocol := kubeovnv1.ProtocolIPv4
+		aclName := "test_create_v4_ingress_acl_pg"
 
 		err := ovnClient.CreatePortGroup(pgName, nil)
 		require.NoError(t, err)
 
 		npp := mockNetworkPolicyPort()
 
-		ops, err := ovnClient.UpdateIngressACLOps(pgName, asIngressName, asExceptName, protocol, npp, true, nil)
+		ops, err := ovnClient.UpdateIngressACLOps(pgName, asIngressName, asExceptName, protocol, aclName, npp, true, nil, nil)
 		require.NoError(t, err)
 		require.Len(t, ops, 4)
 
@@ -112,11 +113,12 @@ func (suite *OvnClientTestSuite) testUpdateIngressACLOps() {
 		asIngressName := "test.default.ingress.allow.ipv6.all"
 		asExceptName := "test.default.ingress.except.ipv6.all"
 		protocol := kubeovnv1.ProtocolIPv6
+		aclName := "test_create_v6_ingress_acl_pg"
 
 		err := ovnClient.CreatePortGroup(pgName, nil)
 		require.NoError(t, err)
 
-		ops, err := ovnClient.UpdateIngressACLOps(pgName, asIngressName, asExceptName, protocol, nil, true, nil)
+		ops, err := ovnClient.UpdateIngressACLOps(pgName, asIngressName, asExceptName, protocol, aclName, nil, true, nil, nil)
 		require.NoError(t, err)
 		require.Len(t, ops, 3)
 
@@ -154,13 +156,14 @@ func (suite *OvnClientTestSuite) testUpdateEgressACLOps() {
 		asEgressName := "test.default.egress.allow.ipv4.all"
 		asExceptName := "test.default.egress.except.ipv4.all"
 		protocol := kubeovnv1.ProtocolIPv4
+		aclName := "test_create_v4_egress_acl_pg"
 
 		err := ovnClient.CreatePortGroup(pgName, nil)
 		require.NoError(t, err)
 
 		npp := mockNetworkPolicyPort()
 
-		ops, err := ovnClient.UpdateEgressACLOps(pgName, asEgressName, asExceptName, protocol, npp, true, nil)
+		ops, err := ovnClient.UpdateEgressACLOps(pgName, asEgressName, asExceptName, protocol, aclName, npp, true, nil, nil)
 		require.NoError(t, err)
 		require.Len(t, ops, 4)
 
@@ -182,11 +185,12 @@ func (suite *OvnClientTestSuite) testUpdateEgressACLOps() {
 		asEgressName := "test.default.egress.allow.ipv6.all"
 		asExceptName := "test.default.egress.except.ipv6.all"
 		protocol := kubeovnv1.ProtocolIPv6
+		aclName := "test_create_v6_egress_acl_pg"
 
 		err := ovnClient.CreatePortGroup(pgName, nil)
 		require.NoError(t, err)
 
-		ops, err := ovnClient.UpdateEgressACLOps(pgName, asEgressName, asExceptName, protocol, nil, true, nil)
+		ops, err := ovnClient.UpdateEgressACLOps(pgName, asEgressName, asExceptName, protocol, aclName, nil, true, nil, nil)
 		require.NoError(t, err)
 		require.Len(t, ops, 3)
 
