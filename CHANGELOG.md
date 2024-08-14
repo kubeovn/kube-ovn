@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.12.21 (2024-08-14)
+
+ * [40ef8d6b](https://github.com/kubeovn/kube-ovn/commit/40ef8d6bcd2edd4d8e52630e41787c70ebf1c0ba) release v1.12.21
+ * [d4692dfe](https://github.com/kubeovn/kube-ovn/commit/d4692dfe591053c6dec5c18573786d0ea00c778f) increase health probe timeout (#4397)
+ * [909991a3](https://github.com/kubeovn/kube-ovn/commit/909991a3feaaedbfa31159389a668a16d572ac85) cni-server: do not set sysctl variables (#4395)
+ * [912177f3](https://github.com/kubeovn/kube-ovn/commit/912177f3c52b5a088dec71a414334aa359217749) fix ovs patch
+ * [cf95de51](https://github.com/kubeovn/kube-ovn/commit/cf95de51f51518f4077faf339bb09c8877858ff7) prepare for next release
+
+### Contributors
+
+ * 张祖建
+
 ## v1.12.20 (2024-08-13)
 
  * [918652d6](https://github.com/kubeovn/kube-ovn/commit/918652d6044ba686ed59d71991a41ca007b13d63) release v1.12.20
