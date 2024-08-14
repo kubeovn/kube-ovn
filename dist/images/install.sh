@@ -4275,6 +4275,7 @@ spec:
               - NET_BIND_SERVICE
               - NET_RAW
               - SYS_ADMIN
+              - CAP_SYS_PTRACE
         env:
           - name: ENABLE_SSL
             value: "$ENABLE_SSL"
