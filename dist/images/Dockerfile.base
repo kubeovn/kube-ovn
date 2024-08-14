@@ -142,9 +142,6 @@ RUN curl -sSf -L --retry 3 -O https://launchpad.net/ubuntu/+archive/primary/+fil
 RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages  \
     dpkg -i /packages/openvswitch-*.deb /packages/python3-openvswitch*.deb && \
     dpkg -i --ignore-depends=openvswitch-switch,openvswitch-common /packages/ovn-*.deb && \
-<<<<<<< HEAD
-    rm -rf /var/lib/openvswitch/pki/
-=======
     rm -rf /var/lib/openvswitch/pki/ && \
     chown -R nobody: /var/lib/logrotate && \
     setcap CAP_NET_ADMIN+eip $(readlink -f $(which ovs-dpctl)) && \
@@ -152,7 +149,6 @@ RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages  \
         setcap CAP_NET_BIND_SERVICE+eip $(readlink -f $(which ovsdb-server)) && \
         setcap CAP_NET_ADMIN,CAP_NET_BIND_SERVICE,CAP_SYS_MODULE,CAP_SYS_ADMIN+eip $(readlink -f $(which ovs-vswitchd)); \
     fi
->>>>>>> fa429125 (reduce image size by merging layers (#4346))
 
 RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages \
     if [ "${DEBUG}" = "true" ]; then \
