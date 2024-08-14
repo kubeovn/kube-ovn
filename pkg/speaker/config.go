@@ -113,7 +113,7 @@ func ParseFlags() (*Configuration, error) {
 	if *argRouterID != "" && net.ParseIP(*argRouterID) == nil {
 		return nil, fmt.Errorf("invalid router-id format: %s", *argRouterID)
 	}
-	if *argEbgpMultihopTTL < 1 || *argEbgpMultihopTTL > 255 {
+	if *argEbgpMultihopTTL == 0 {
 		return nil, errors.New("the bgp MultihopTtl must be in the range 1 to 255")
 	}
 

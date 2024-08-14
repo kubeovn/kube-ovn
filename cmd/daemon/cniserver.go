@@ -33,7 +33,7 @@ func CmdMain() {
 	metrics.InitKlogMetrics()
 
 	config := daemon.ParseFlags()
-	klog.Infof(versions.String())
+	klog.Info(versions.String())
 
 	ovs.UpdateOVSVsctlLimiter(config.OVSVsctlConcurrency)
 
