@@ -37,7 +37,7 @@ func init() {
 }
 
 func CmdMain() {
-	klog.Infof(versions.String())
+	klog.Info(versions.String())
 
 	port := pflag.Int("port", 8443, "The port webhook listen on.")
 	healthProbePort := pflag.Int32("health-probe-port", 8080, "The port health probes listen on.")

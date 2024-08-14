@@ -262,7 +262,7 @@ func (csh cniServerHandler) releaseVf(podName, podNamespace, podNetns, ifName, n
 		return nil
 	})
 	if err != nil {
-		klog.Errorf(err.Error())
+		klog.Error(err)
 	}
 
 	return nil
