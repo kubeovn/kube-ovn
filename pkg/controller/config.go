@@ -291,7 +291,7 @@ func ParseFlags() (*Configuration, error) {
 		return nil, fmt.Errorf("check system cidr failed, %v", err)
 	}
 
-	klog.Infof("config is  %+v", config)
+	klog.Infof("config is %+v", config)
 	return config, nil
 }
 
@@ -299,7 +299,7 @@ func (config *Configuration) initKubeClient() error {
 	var cfg *rest.Config
 	var err error
 	if config.KubeConfigFile == "" {
-		klog.Infof("no --kubeconfig, use in-cluster kubernetes config")
+		klog.Info("no --kubeconfig, use in-cluster kubernetes config")
 		cfg, err = rest.InClusterConfig()
 	} else {
 		cfg, err = clientcmd.BuildConfigFromFlags("", config.KubeConfigFile)

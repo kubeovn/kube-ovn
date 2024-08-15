@@ -39,7 +39,7 @@ func checkOvs(config *Configuration, setMetrics bool) error {
 		SetOvsDownMetrics(config.NodeName)
 		return err
 	}
-	klog.Infof("ovs-vswitchd and ovsdb are up")
+	klog.Info("ovs-vswitchd and ovsdb are up")
 	if setMetrics {
 		SetOvsUpMetrics(config.NodeName)
 	}
@@ -53,7 +53,7 @@ func checkOvnController(config *Configuration, setMetrics bool) error {
 		SetOvnControllerDownMetrics(config.NodeName)
 		return err
 	}
-	klog.Infof("ovn_controller is up")
+	klog.Info("ovn_controller is up")
 	if setMetrics {
 		SetOvnControllerUpMetrics(config.NodeName)
 	}
@@ -61,7 +61,7 @@ func checkOvnController(config *Configuration, setMetrics bool) error {
 }
 
 func checkPortBindings(config *Configuration, setMetrics bool) error {
-	klog.Infof("start to check port binding")
+	klog.Info("start to check port binding")
 	ovsBindings, err := checkOvsBindings()
 	if err != nil {
 		klog.Error(err)
@@ -86,7 +86,7 @@ func checkPortBindings(config *Configuration, setMetrics bool) error {
 		return fmt.Errorf("%d port %v not exist in sb-bindings", len(misMatch), misMatch)
 	}
 
-	klog.Infof("ovs and ovn-sb binding check passed")
+	klog.Info("ovs and ovn-sb binding check passed")
 	if setMetrics {
 		inconsistentPortBindingGauge.WithLabelValues(config.NodeName).Set(0)
 	}

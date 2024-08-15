@@ -15,7 +15,7 @@ import (
 )
 
 func (c *Controller) inspectPod() error {
-	klog.V(4).Infof("start inspection")
+	klog.V(4).Info("start inspection")
 	pods, err := c.podsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list ip, %v", err)

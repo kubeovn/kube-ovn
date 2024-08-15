@@ -347,7 +347,7 @@ func (config *Configuration) initKubeClient() error {
 	var cfg *rest.Config
 	var err error
 	if config.KubeConfigFile == "" {
-		klog.Infof("no --kubeconfig, use in-cluster kubernetes config")
+		klog.Info("no --kubeconfig, use in-cluster kubernetes config")
 		cfg, err = rest.InClusterConfig()
 		if err != nil {
 			klog.Errorf("use in cluster config failed %v", err)

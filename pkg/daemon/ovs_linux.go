@@ -398,7 +398,7 @@ func configureNodeNic(portName, ip, gw, joinCIDR string, macAddr net.HardwareAdd
 		fmt.Sprintf("external_ids:ip=%s", ipStr))
 	if err != nil {
 		klog.Errorf("failed to configure node nic %s: %v, %q", portName, err, raw)
-		return fmt.Errorf(raw)
+		return errors.New(raw)
 	}
 
 	if err = configureNic(util.NodeNic, ip, macAddr, mtu, false, false); err != nil {
@@ -467,7 +467,7 @@ func configureNodeNic(portName, ip, gw, joinCIDR string, macAddr net.HardwareAdd
 	}
 
 	// ping ovn0 gw to activate the flow
-	klog.Infof("wait ovn0 gw ready")
+	klog.Info("wait ovn0 gw ready")
 	if err := waitNetworkReady(util.NodeNic, ip, gw, false, true, gatewayCheckMaxRetry); err != nil {
 		klog.Errorf("failed to init ovn0 check: %v", err)
 		return err
@@ -570,7 +570,7 @@ func configureNodeGwNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu i
 		fmt.Sprintf("external_ids:pod_netns=%s", util.NodeGwNsPath))
 	if err != nil {
 		klog.Errorf("failed to configure node external nic %s: %v, %q", portName, err, output)
-		return fmt.Errorf(output)
+		return errors.New(output)
 	}
 	gwLink, err := netlink.LinkByName(util.NodeGwNic)
 	if err == nil {

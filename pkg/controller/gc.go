@@ -50,7 +50,7 @@ func (c *Controller) gc() error {
 }
 
 func (c *Controller) gcLogicalRouterPort() error {
-	klog.Infof("start to gc logical router port")
+	klog.Info("start to gc logical router port")
 	vpcs, err := c.vpcsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list vpc, %v", err)
@@ -116,7 +116,7 @@ func (c *Controller) gcVpcNatGateway() error {
 }
 
 func (c *Controller) gcLogicalSwitch() error {
-	klog.Infof("start to gc logical switch")
+	klog.Info("start to gc logical switch")
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list subnet, %v", err)
@@ -154,7 +154,7 @@ func (c *Controller) gcLogicalSwitch() error {
 		}
 	}
 
-	klog.Infof("start to gc dhcp options")
+	klog.Info("start to gc dhcp options")
 	dhcpOptions, err := c.OVNNbClient.ListDHCPOptions(c.config.EnableExternalVpc, nil)
 	if err != nil {
 		klog.Errorf("failed to list dhcp options, %v", err)
@@ -177,7 +177,7 @@ func (c *Controller) gcLogicalSwitch() error {
 }
 
 func (c *Controller) gcCustomLogicalRouter() error {
-	klog.Infof("start to gc logical router")
+	klog.Info("start to gc logical router")
 	vpcs, err := c.vpcsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list vpc, %v", err)
@@ -213,7 +213,7 @@ func (c *Controller) gcCustomLogicalRouter() error {
 }
 
 func (c *Controller) gcNode() error {
-	klog.Infof("start to gc nodes")
+	klog.Info("start to gc nodes")
 	nodes, err := c.nodesLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list node, %v", err)
@@ -261,7 +261,7 @@ func (c *Controller) gcNode() error {
 }
 
 func (c *Controller) gcVip() error {
-	klog.Infof("start to gc vips")
+	klog.Info("start to gc vips")
 	selector, err := util.LabelSelectorNotEmpty(util.IPReservedLabel)
 	if err != nil {
 		klog.Errorf("failed to generate selector for label %s: %v", util.IPReservedLabel, err)
@@ -303,7 +303,7 @@ func (c *Controller) gcLogicalSwitchPort() error {
 }
 
 func (c *Controller) markAndCleanLSP() error {
-	klog.V(4).Infof("start to gc logical switch ports")
+	klog.V(4).Info("start to gc logical switch ports")
 	pods, err := c.podsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list ip, %v", err)
@@ -423,7 +423,7 @@ func (c *Controller) markAndCleanLSP() error {
 }
 
 func (c *Controller) gcLoadBalancer() error {
-	klog.Infof("start to gc load balancers")
+	klog.Info("start to gc load balancers")
 	if !c.config.EnableLb {
 		// remove lb from logical switch
 		vpcs, err := c.vpcsLister.List(labels.Everything())
@@ -602,7 +602,7 @@ func (c *Controller) gcLoadBalancer() error {
 }
 
 func (c *Controller) gcPortGroup() error {
-	klog.Infof("start to gc network policy")
+	klog.Info("start to gc network policy")
 
 	npNames := strset.New()
 
@@ -674,7 +674,7 @@ func (c *Controller) gcPortGroup() error {
 }
 
 func (c *Controller) gcRoutePolicy() error {
-	klog.Infof("start to gc route policy")
+	klog.Info("start to gc route policy")
 
 	policies, err := c.OVNNbClient.ListLogicalRouterPolicies(c.config.ClusterRouter, util.NorthGatewayRoutePolicyPriority, nil, true)
 	if err != nil {
@@ -713,7 +713,7 @@ func (c *Controller) gcRoutePolicy() error {
 }
 
 func (c *Controller) gcStaticRoute() error {
-	klog.Infof("start to gc static routes")
+	klog.Info("start to gc static routes")
 	routes, err := c.OVNNbClient.ListLogicalRouterStaticRoutes(c.config.ClusterRouter, nil, nil, "", nil)
 	if err != nil {
 		klog.Errorf("failed to list static route %v", err)
@@ -761,7 +761,7 @@ func (c *Controller) gcStaticRoute() error {
 }
 
 func (c *Controller) gcChassis() error {
-	klog.Infof("start to gc chassis")
+	klog.Info("start to gc chassis")
 	chassises, err := c.OVNSbClient.ListChassis()
 	if err != nil {
 		klog.Errorf("failed to get all chassis, %v", err)
@@ -876,7 +876,7 @@ func (c *Controller) getVMLsps() []string {
 }
 
 func (c *Controller) gcLbSvcPods() error {
-	klog.Infof("start to gc lb svc pods")
+	klog.Info("start to gc lb svc pods")
 	nss, err := c.namespacesLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list namespaces, %v", err)
@@ -920,7 +920,7 @@ func (c *Controller) gcVPCDNS() error {
 		return nil
 	}
 
-	klog.Infof("start to gc vpc dns")
+	klog.Info("start to gc vpc dns")
 	vds, err := c.vpcDNSLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list vpc-dns, %v", err)

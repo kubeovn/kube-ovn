@@ -1025,7 +1025,7 @@ func (c *Controller) addNodeGwStaticRoute() error {
 			klog.Errorf("failed to get vpc %s static route list, %v", c.config.ClusterRouter, err)
 		}
 		if len(existRoute) != 0 {
-			klog.Infof("skip add static route for node gw")
+			klog.Info("skip add static route for node gw")
 			return nil
 		}
 	}

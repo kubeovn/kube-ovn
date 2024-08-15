@@ -62,7 +62,7 @@ func createHandler(csh *cniServerHandler) http.Handler {
 func requestAndResponseLogger(request *restful.Request, response *restful.Response,
 	chain *restful.FilterChain,
 ) {
-	klog.Infof(formatRequestLog(request))
+	klog.Info(formatRequestLog(request))
 	start := time.Now()
 	chain.ProcessFilter(request, response)
 	elapsed := float64((time.Since(start)) / time.Millisecond)
@@ -70,7 +70,7 @@ func requestAndResponseLogger(request *restful.Request, response *restful.Respon
 		nodeName,
 		getRequestURI(request),
 		fmt.Sprintf("%d", response.StatusCode())).Observe(elapsed / 1000)
-	klog.Infof(formatResponseLog(response, request, elapsed))
+	klog.Info(formatResponseLog(response, request, elapsed))
 }
 
 // formatRequestLog formats request log string.

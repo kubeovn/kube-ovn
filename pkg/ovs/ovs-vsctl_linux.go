@@ -290,7 +290,7 @@ func SetNetemQos(podName, podNamespace, iface, latency, limit, loss, jitter stri
 					}
 
 					if latencyVal == strconv.Itoa(latencyUs) && limitVal == limit && lossVal == loss && jitterVal == strconv.Itoa(jitterUs) {
-						klog.Infof("no value changed for netem qos, ignore")
+						klog.Info("no value changed for netem qos, ignore")
 						continue
 					}
 
