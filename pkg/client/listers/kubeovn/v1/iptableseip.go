@@ -20,8 +20,8 @@ package v1
 
 import (
 	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/client-go/listers"
 	"k8s.io/client-go/tools/cache"
 )
 
@@ -39,30 +39,10 @@ type IptablesEIPLister interface {
 
 // iptablesEIPLister implements the IptablesEIPLister interface.
 type iptablesEIPLister struct {
-	indexer cache.Indexer
+	listers.ResourceIndexer[*v1.IptablesEIP]
 }
 
 // NewIptablesEIPLister returns a new IptablesEIPLister.
 func NewIptablesEIPLister(indexer cache.Indexer) IptablesEIPLister {
-	return &iptablesEIPLister{indexer: indexer}
-}
-
-// List lists all IptablesEIPs in the indexer.
-func (s *iptablesEIPLister) List(selector labels.Selector) (ret []*v1.IptablesEIP, err error) {
-	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
-		ret = append(ret, m.(*v1.IptablesEIP))
-	})
-	return ret, err
-}
-
-// Get retrieves the IptablesEIP from the index for a given name.
-func (s *iptablesEIPLister) Get(name string) (*v1.IptablesEIP, error) {
-	obj, exists, err := s.indexer.GetByKey(name)
-	if err != nil {
-		return nil, err
-	}
-	if !exists {
-		return nil, errors.NewNotFound(v1.Resource("iptableseip"), name)
-	}
-	return obj.(*v1.IptablesEIP), nil
+	return &iptablesEIPLister{listers.New[*v1.IptablesEIP](indexer, v1.Resource("iptableseip"))}
 }

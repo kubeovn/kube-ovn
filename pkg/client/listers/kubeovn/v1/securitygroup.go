@@ -20,8 +20,8 @@ package v1
 
 import (
 	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/client-go/listers"
 	"k8s.io/client-go/tools/cache"
 )
 
@@ -39,30 +39,10 @@ type SecurityGroupLister interface {
 
 // securityGroupLister implements the SecurityGroupLister interface.
 type securityGroupLister struct {
-	indexer cache.Indexer
+	listers.ResourceIndexer[*v1.SecurityGroup]
 }
 
 // NewSecurityGroupLister returns a new SecurityGroupLister.
 func NewSecurityGroupLister(indexer cache.Indexer) SecurityGroupLister {
-	return &securityGroupLister{indexer: indexer}
-}
-
-// List lists all SecurityGroups in the indexer.
-func (s *securityGroupLister) List(selector labels.Selector) (ret []*v1.SecurityGroup, err error) {
-	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
-		ret = append(ret, m.(*v1.SecurityGroup))
-	})
-	return ret, err
-}
-
-// Get retrieves the SecurityGroup from the index for a given name.
-func (s *securityGroupLister) Get(name string) (*v1.SecurityGroup, error) {
-	obj, exists, err := s.indexer.GetByKey(name)
-	if err != nil {
-		return nil, err
-	}
-	if !exists {
-		return nil, errors.NewNotFound(v1.Resource("securitygroup"), name)
-	}
-	return obj.(*v1.SecurityGroup), nil
+	return &securityGroupLister{listers.New[*v1.SecurityGroup](indexer, v1.Resource("securitygroup"))}
 }

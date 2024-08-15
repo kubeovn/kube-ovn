@@ -20,8 +20,8 @@ package v1
 
 import (
 	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/client-go/listers"
 	"k8s.io/client-go/tools/cache"
 )
 
@@ -39,30 +39,10 @@ type ProviderNetworkLister interface {
 
 // providerNetworkLister implements the ProviderNetworkLister interface.
 type providerNetworkLister struct {
-	indexer cache.Indexer
+	listers.ResourceIndexer[*v1.ProviderNetwork]
 }
 
 // NewProviderNetworkLister returns a new ProviderNetworkLister.
 func NewProviderNetworkLister(indexer cache.Indexer) ProviderNetworkLister {
-	return &providerNetworkLister{indexer: indexer}
-}
-
-// List lists all ProviderNetworks in the indexer.
-func (s *providerNetworkLister) List(selector labels.Selector) (ret []*v1.ProviderNetwork, err error) {
-	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
-		ret = append(ret, m.(*v1.ProviderNetwork))
-	})
-	return ret, err
-}
-
-// Get retrieves the ProviderNetwork from the index for a given name.
-func (s *providerNetworkLister) Get(name string) (*v1.ProviderNetwork, error) {
-	obj, exists, err := s.indexer.GetByKey(name)
-	if err != nil {
-		return nil, err
-	}
-	if !exists {
-		return nil, errors.NewNotFound(v1.Resource("providernetwork"), name)
-	}
-	return obj.(*v1.ProviderNetwork), nil
+	return &providerNetworkLister{listers.New[*v1.ProviderNetwork](indexer, v1.Resource("providernetwork"))}
 }

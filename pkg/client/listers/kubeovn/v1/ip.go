@@ -20,8 +20,8 @@ package v1
 
 import (
 	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/client-go/listers"
 	"k8s.io/client-go/tools/cache"
 )
 
@@ -39,30 +39,10 @@ type IPLister interface {
 
 // iPLister implements the IPLister interface.
 type iPLister struct {
-	indexer cache.Indexer
+	listers.ResourceIndexer[*v1.IP]
 }
 
 // NewIPLister returns a new IPLister.
 func NewIPLister(indexer cache.Indexer) IPLister {
-	return &iPLister{indexer: indexer}
-}
-
-// List lists all IPs in the indexer.
-func (s *iPLister) List(selector labels.Selector) (ret []*v1.IP, err error) {
-	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
-		ret = append(ret, m.(*v1.IP))
-	})
-	return ret, err
-}
-
-// Get retrieves the IP from the index for a given name.
-func (s *iPLister) Get(name string) (*v1.IP, error) {
-	obj, exists, err := s.indexer.GetByKey(name)
-	if err != nil {
-		return nil, err
-	}
-	if !exists {
-		return nil, errors.NewNotFound(v1.Resource("ip"), name)
-	}
-	return obj.(*v1.IP), nil
+	return &iPLister{listers.New[*v1.IP](indexer, v1.Resource("ip"))}
 }

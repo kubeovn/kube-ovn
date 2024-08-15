@@ -20,14 +20,13 @@ package v1
 
 import (
 	"context"
-	"time"
 
 	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	scheme "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/scheme"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	types "k8s.io/apimachinery/pkg/types"
 	watch "k8s.io/apimachinery/pkg/watch"
-	rest "k8s.io/client-go/rest"
+	gentype "k8s.io/client-go/gentype"
 )
 
 // OvnFipsGetter has a method to return a OvnFipInterface.
@@ -40,6 +39,7 @@ type OvnFipsGetter interface {
 type OvnFipInterface interface {
 	Create(ctx context.Context, ovnFip *v1.OvnFip, opts metav1.CreateOptions) (*v1.OvnFip, error)
 	Update(ctx context.Context, ovnFip *v1.OvnFip, opts metav1.UpdateOptions) (*v1.OvnFip, error)
+	// Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
 	UpdateStatus(ctx context.Context, ovnFip *v1.OvnFip, opts metav1.UpdateOptions) (*v1.OvnFip, error)
 	Delete(ctx context.Context, name string, opts metav1.DeleteOptions) error
 	DeleteCollection(ctx context.Context, opts metav1.DeleteOptions, listOpts metav1.ListOptions) error
@@ -52,133 +52,18 @@ type OvnFipInterface interface {
 
 // ovnFips implements OvnFipInterface
 type ovnFips struct {
-	client rest.Interface
+	*gentype.ClientWithList[*v1.OvnFip, *v1.OvnFipList]
 }
 
 // newOvnFips returns a OvnFips
 func newOvnFips(c *KubeovnV1Client) *ovnFips {
 	return &ovnFips{
-		client: c.RESTClient(),
+		gentype.NewClientWithList[*v1.OvnFip, *v1.OvnFipList](
+			"ovn-fips",
+			c.RESTClient(),
+			scheme.ParameterCodec,
+			"",
+			func() *v1.OvnFip { return &v1.OvnFip{} },
+			func() *v1.OvnFipList { return &v1.OvnFipList{} }),
 	}
-}
-
-// Get takes name of the ovnFip, and returns the corresponding ovnFip object, and an error if there is any.
-func (c *ovnFips) Get(ctx context.Context, name string, options metav1.GetOptions) (result *v1.OvnFip, err error) {
-	result = &v1.OvnFip{}
-	err = c.client.Get().
-		Resource("ovn-fips").
-		Name(name).
-		VersionedParams(&options, scheme.ParameterCodec).
-		Do(ctx).
-		Into(result)
-	return
-}
-
-// List takes label and field selectors, and returns the list of OvnFips that match those selectors.
-func (c *ovnFips) List(ctx context.Context, opts metav1.ListOptions) (result *v1.OvnFipList, err error) {
-	var timeout time.Duration
-	if opts.TimeoutSeconds != nil {
-		timeout = time.Duration(*opts.TimeoutSeconds) * time.Second
-	}
-	result = &v1.OvnFipList{}
-	err = c.client.Get().
-		Resource("ovn-fips").
-		VersionedParams(&opts, scheme.ParameterCodec).
-		Timeout(timeout).
-		Do(ctx).
-		Into(result)
-	return
-}
-
-// Watch returns a watch.Interface that watches the requested ovnFips.
-func (c *ovnFips) Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error) {
-	var timeout time.Duration
-	if opts.TimeoutSeconds != nil {
-		timeout = time.Duration(*opts.TimeoutSeconds) * time.Second
-	}
-	opts.Watch = true
-	return c.client.Get().
-		Resource("ovn-fips").
-		VersionedParams(&opts, scheme.ParameterCodec).
-		Timeout(timeout).
-		Watch(ctx)
-}
-
-// Create takes the representation of a ovnFip and creates it.  Returns the server's representation of the ovnFip, and an error, if there is any.
-func (c *ovnFips) Create(ctx context.Context, ovnFip *v1.OvnFip, opts metav1.CreateOptions) (result *v1.OvnFip, err error) {
-	result = &v1.OvnFip{}
-	err = c.client.Post().
-		Resource("ovn-fips").
-		VersionedParams(&opts, scheme.ParameterCodec).
-		Body(ovnFip).
-		Do(ctx).
-		Into(result)
-	return
-}
-
-// Update takes the representation of a ovnFip and updates it. Returns the server's representation of the ovnFip, and an error, if there is any.
-func (c *ovnFips) Update(ctx context.Context, ovnFip *v1.OvnFip, opts metav1.UpdateOptions) (result *v1.OvnFip, err error) {
-	result = &v1.OvnFip{}
-	err = c.client.Put().
-		Resource("ovn-fips").
-		Name(ovnFip.Name).
-		VersionedParams(&opts, scheme.ParameterCodec).
-		Body(ovnFip).
-		Do(ctx).
-		Into(result)
-	return
-}
-
-// UpdateStatus was generated because the type contains a Status member.
-// Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-func (c *ovnFips) UpdateStatus(ctx context.Context, ovnFip *v1.OvnFip, opts metav1.UpdateOptions) (result *v1.OvnFip, err error) {
-	result = &v1.OvnFip{}
-	err = c.client.Put().
-		Resource("ovn-fips").
-		Name(ovnFip.Name).
-		SubResource("status").
-		VersionedParams(&opts, scheme.ParameterCodec).
-		Body(ovnFip).
-		Do(ctx).
-		Into(result)
-	return
-}
-
-// Delete takes name of the ovnFip and deletes it. Returns an error if one occurs.
-func (c *ovnFips) Delete(ctx context.Context, name string, opts metav1.DeleteOptions) error {
-	return c.client.Delete().
-		Resource("ovn-fips").
-		Name(name).
-		Body(&opts).
-		Do(ctx).
-		Error()
-}
-
-// DeleteCollection deletes a collection of objects.
-func (c *ovnFips) DeleteCollection(ctx context.Context, opts metav1.DeleteOptions, listOpts metav1.ListOptions) error {
-	var timeout time.Duration
-	if listOpts.TimeoutSeconds != nil {
-		timeout = time.Duration(*listOpts.TimeoutSeconds) * time.Second
-	}
-	return c.client.Delete().
-		Resource("ovn-fips").
-		VersionedParams(&listOpts, scheme.ParameterCodec).
-		Timeout(timeout).
-		Body(&opts).
-		Do(ctx).
-		Error()
-}
-
-// Patch applies the patch and returns the patched ovnFip.
-func (c *ovnFips) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *v1.OvnFip, err error) {
-	result = &v1.OvnFip{}
-	err = c.client.Patch(pt).
-		Resource("ovn-fips").
-		Name(name).
-		SubResource(subresources...).
-		VersionedParams(&opts, scheme.ParameterCodec).
-		Body(data).
-		Do(ctx).
-		Into(result)
-	return
 }
