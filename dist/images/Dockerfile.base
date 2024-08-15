@@ -148,10 +148,7 @@ RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages  \
     if [ "${DEBUG}" != "true" ]; then \
         setcap CAP_NET_BIND_SERVICE+eip $(readlink -f $(which ovsdb-server)) && \
         setcap CAP_NET_ADMIN,CAP_NET_BIND_SERVICE,CAP_SYS_MODULE,CAP_SYS_ADMIN+eip $(readlink -f $(which ovs-vswitchd)); \
-    fi
-
-RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages \
-    if [ "${DEBUG}" = "true" ]; then \
+    else \
         apt update && apt install -y --no-install-recommends gdb valgrind && \
         rm -rf /var/lib/apt/lists/* && \
         dpkg -i --ignore-depends=openvswitch-switch,openvswitch-common /packages/*.ddeb; \
