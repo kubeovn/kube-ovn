@@ -2,7 +2,6 @@ package controller
 
 import (
 	"context"
-	"fmt"
 	"slices"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -49,118 +48,6 @@ func (c *Controller) enqueueDelVlan(obj interface{}) {
 
 	klog.V(3).Infof("enqueue delete vlan %s", key)
 	c.delVlanQueue.Add(key)
-}
-
-func (c *Controller) runAddVlanWorker() {
-	for c.processNextAddVlanWorkItem() {
-	}
-}
-
-func (c *Controller) runUpdateVlanWorker() {
-	for c.processNextUpdateVlanWorkItem() {
-	}
-}
-
-func (c *Controller) runDelVlanWorker() {
-	for c.processNextDelVlanWorkItem() {
-	}
-}
-
-func (c *Controller) processNextAddVlanWorkItem() bool {
-	obj, shutdown := c.addVlanQueue.Get()
-	if shutdown {
-		return false
-	}
-
-	err := func(obj interface{}) error {
-		defer c.addVlanQueue.Done(obj)
-		var key string
-		var ok bool
-		if key, ok = obj.(string); !ok {
-			c.addVlanQueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
-			return nil
-		}
-		if err := c.handleAddVlan(key); err != nil {
-			c.addVlanQueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
-		}
-		c.addVlanQueue.Forget(obj)
-		return nil
-	}(obj)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return true
-	}
-	return true
-}
-
-func (c *Controller) processNextUpdateVlanWorkItem() bool {
-	obj, shutdown := c.updateVlanQueue.Get()
-
-	if shutdown {
-		return false
-	}
-
-	err := func(obj interface{}) error {
-		defer c.updateVlanQueue.Done(obj)
-		var key string
-		var ok bool
-
-		if key, ok = obj.(string); !ok {
-			c.updateVlanQueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
-			return nil
-		}
-
-		if err := c.handleUpdateVlan(key); err != nil {
-			c.updateVlanQueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
-		}
-
-		c.updateVlanQueue.Forget(obj)
-		return nil
-	}(obj)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return true
-	}
-
-	return true
-}
-
-func (c *Controller) processNextDelVlanWorkItem() bool {
-	obj, shutdown := c.delVlanQueue.Get()
-
-	if shutdown {
-		return false
-	}
-
-	err := func(obj interface{}) error {
-		defer c.delVlanQueue.Done(obj)
-		var key string
-		var ok bool
-
-		if key, ok = obj.(string); !ok {
-			c.delVlanQueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
-			return nil
-		}
-
-		if err := c.handleDelVlan(key); err != nil {
-			c.delVlanQueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
-		}
-
-		c.delVlanQueue.Forget(obj)
-		return nil
-	}(obj)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return true
-	}
-
-	return true
 }
 
 func (c *Controller) handleAddVlan(key string) error {

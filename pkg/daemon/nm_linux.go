@@ -22,7 +22,7 @@ const (
 
 type networkManagerSyncer struct {
 	manager   gonetworkmanager.NetworkManager
-	workqueue workqueue.Interface
+	workqueue workqueue.TypedInterface[string]
 	devices   *strset.Set
 	bridgeMap map[string]string
 	lock      sync.Mutex
@@ -48,7 +48,7 @@ func newNetworkManagerSyncer() *networkManagerSyncer {
 	}
 
 	syncer.manager = manager
-	syncer.workqueue = workqueue.NewNamed("NetworkManagerSyncer")
+	syncer.workqueue = workqueue.NewTypedWithConfig(workqueue.TypedQueueConfig[string]{Name: "NetworkManagerSyncer"})
 	syncer.devices = strset.New()
 	syncer.bridgeMap = make(map[string]string)
 	return syncer
@@ -134,15 +134,14 @@ func (n *networkManagerSyncer) Run(handler func(nic, bridge string, delNonExiste
 }
 
 func (n *networkManagerSyncer) ProcessNextItem(handler func(nic, bridge string, delNonExistent bool) (int, error)) bool {
-	item, shutdown := n.workqueue.Get()
+	nic, shutdown := n.workqueue.Get()
 	if shutdown {
 		return false
 	}
-	defer n.workqueue.Done(item)
+	defer n.workqueue.Done(nic)
 
-	klog.Infof("process device %v", item)
+	klog.Infof("process device %v", nic)
 
-	nic := item.(string)
 	var bridge string
 	n.lock.Lock()
 	if !n.devices.Has(nic) {

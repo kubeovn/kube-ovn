@@ -53,43 +53,6 @@ func (c *Controller) enqueueUpdateCsr(oldObj, newObj interface{}) {
 	c.addOrUpdateCsrQueue.Add(key)
 }
 
-func (c *Controller) runAddOrUpdateCsrWorker() {
-	for c.processNextAddOrUpdateCsrWorkItem() {
-	}
-}
-
-func (c *Controller) processNextAddOrUpdateCsrWorkItem() bool {
-	obj, shutdown := c.addOrUpdateCsrQueue.Get()
-	if shutdown {
-		return false
-	}
-	now := time.Now()
-
-	err := func(obj interface{}) error {
-		defer c.addOrUpdateCsrQueue.Done(obj)
-		var key string
-		var ok bool
-		if key, ok = obj.(string); !ok {
-			c.addOrUpdateCsrQueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
-			return nil
-		}
-		if err := c.handleAddOrUpdateCsr(key); err != nil {
-			c.addOrUpdateCsrQueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
-		}
-		last := time.Since(now)
-		klog.Infof("take %d ms to handle sync csr %s", last.Milliseconds(), key)
-		c.addOrUpdateCsrQueue.Forget(obj)
-		return nil
-	}(obj)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return true
-	}
-	return true
-}
-
 func (c *Controller) handleAddOrUpdateCsr(key string) (err error) {
 	csr, err := c.csrLister.Get(key)
 	if err != nil {

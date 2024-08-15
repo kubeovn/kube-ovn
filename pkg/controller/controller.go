@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"runtime"
 	"strings"
-	"sync"
 	"time"
 
+	"github.com/puzpuzpuz/xsync/v3"
 	"golang.org/x/time/rate"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -25,10 +25,11 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/keymutex"
-
+	v1alpha1 "sigs.k8s.io/network-policy-api/apis/v1alpha1"
 	anpinformer "sigs.k8s.io/network-policy-api/pkg/client/informers/externalversions"
 	anplister "sigs.k8s.io/network-policy-api/pkg/client/listers/apis/v1alpha1"
 
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	kubeovninformer "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions"
 	kubeovnlister "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
 	ovnipam "github.com/kubeovn/kube-ovn/pkg/ipam"
@@ -68,200 +69,207 @@ type Controller struct {
 
 	podsLister             v1.PodLister
 	podsSynced             cache.InformerSynced
-	addOrUpdatePodQueue    workqueue.RateLimitingInterface
-	deletePodQueue         workqueue.RateLimitingInterface
-	deletingPodObjMap      *sync.Map
-	deletingNodeObjMap     *sync.Map
-	updatePodSecurityQueue workqueue.RateLimitingInterface
+	addOrUpdatePodQueue    workqueue.TypedRateLimitingInterface[string]
+	deletePodQueue         workqueue.TypedRateLimitingInterface[string]
+	deletingPodObjMap      *xsync.MapOf[string, *corev1.Pod]
+	deletingNodeObjMap     *xsync.MapOf[string, *corev1.Node]
+	updatePodSecurityQueue workqueue.TypedRateLimitingInterface[string]
 	podKeyMutex            keymutex.KeyMutex
 
 	vpcsLister           kubeovnlister.VpcLister
 	vpcSynced            cache.InformerSynced
-	addOrUpdateVpcQueue  workqueue.RateLimitingInterface
-	delVpcQueue          workqueue.RateLimitingInterface
-	updateVpcStatusQueue workqueue.RateLimitingInterface
+	addOrUpdateVpcQueue  workqueue.TypedRateLimitingInterface[string]
+	delVpcQueue          workqueue.TypedRateLimitingInterface[*kubeovnv1.Vpc]
+	updateVpcStatusQueue workqueue.TypedRateLimitingInterface[string]
 	vpcKeyMutex          keymutex.KeyMutex
 
 	vpcNatGatewayLister           kubeovnlister.VpcNatGatewayLister
 	vpcNatGatewaySynced           cache.InformerSynced
-	addOrUpdateVpcNatGatewayQueue workqueue.RateLimitingInterface
-	delVpcNatGatewayQueue         workqueue.RateLimitingInterface
-	initVpcNatGatewayQueue        workqueue.RateLimitingInterface
-	updateVpcEipQueue             workqueue.RateLimitingInterface
-	updateVpcFloatingIPQueue      workqueue.RateLimitingInterface
-	updateVpcDnatQueue            workqueue.RateLimitingInterface
-	updateVpcSnatQueue            workqueue.RateLimitingInterface
-	updateVpcSubnetQueue          workqueue.RateLimitingInterface
+	addOrUpdateVpcNatGatewayQueue workqueue.TypedRateLimitingInterface[string]
+	delVpcNatGatewayQueue         workqueue.TypedRateLimitingInterface[string]
+	initVpcNatGatewayQueue        workqueue.TypedRateLimitingInterface[string]
+	updateVpcEipQueue             workqueue.TypedRateLimitingInterface[string]
+	updateVpcFloatingIPQueue      workqueue.TypedRateLimitingInterface[string]
+	updateVpcDnatQueue            workqueue.TypedRateLimitingInterface[string]
+	updateVpcSnatQueue            workqueue.TypedRateLimitingInterface[string]
+	updateVpcSubnetQueue          workqueue.TypedRateLimitingInterface[string]
 	vpcNatGwKeyMutex              keymutex.KeyMutex
 
 	switchLBRuleLister      kubeovnlister.SwitchLBRuleLister
 	switchLBRuleSynced      cache.InformerSynced
-	addSwitchLBRuleQueue    workqueue.RateLimitingInterface
-	UpdateSwitchLBRuleQueue workqueue.RateLimitingInterface
-	delSwitchLBRuleQueue    workqueue.RateLimitingInterface
+	addSwitchLBRuleQueue    workqueue.TypedRateLimitingInterface[string]
+	updateSwitchLBRuleQueue workqueue.TypedRateLimitingInterface[*SlrInfo]
+	delSwitchLBRuleQueue    workqueue.TypedRateLimitingInterface[*SlrInfo]
 
 	vpcDNSLister           kubeovnlister.VpcDnsLister
 	vpcDNSSynced           cache.InformerSynced
-	addOrUpdateVpcDNSQueue workqueue.RateLimitingInterface
-	delVpcDNSQueue         workqueue.RateLimitingInterface
+	addOrUpdateVpcDNSQueue workqueue.TypedRateLimitingInterface[string]
+	delVpcDNSQueue         workqueue.TypedRateLimitingInterface[string]
 
 	subnetsLister           kubeovnlister.SubnetLister
 	subnetSynced            cache.InformerSynced
-	addOrUpdateSubnetQueue  workqueue.RateLimitingInterface
-	deleteSubnetQueue       workqueue.RateLimitingInterface
-	updateSubnetStatusQueue workqueue.RateLimitingInterface
-	syncVirtualPortsQueue   workqueue.RateLimitingInterface
+	addOrUpdateSubnetQueue  workqueue.TypedRateLimitingInterface[string]
+	deleteSubnetQueue       workqueue.TypedRateLimitingInterface[*kubeovnv1.Subnet]
+	updateSubnetStatusQueue workqueue.TypedRateLimitingInterface[string]
+	syncVirtualPortsQueue   workqueue.TypedRateLimitingInterface[string]
 	subnetKeyMutex          keymutex.KeyMutex
 
 	ippoolLister            kubeovnlister.IPPoolLister
 	ippoolSynced            cache.InformerSynced
-	addOrUpdateIPPoolQueue  workqueue.RateLimitingInterface
-	updateIPPoolStatusQueue workqueue.RateLimitingInterface
-	deleteIPPoolQueue       workqueue.RateLimitingInterface
+	addOrUpdateIPPoolQueue  workqueue.TypedRateLimitingInterface[string]
+	updateIPPoolStatusQueue workqueue.TypedRateLimitingInterface[string]
+	deleteIPPoolQueue       workqueue.TypedRateLimitingInterface[*kubeovnv1.IPPool]
 	ippoolKeyMutex          keymutex.KeyMutex
 
 	ipsLister     kubeovnlister.IPLister
 	ipSynced      cache.InformerSynced
-	addIPQueue    workqueue.RateLimitingInterface
-	updateIPQueue workqueue.RateLimitingInterface
-	delIPQueue    workqueue.RateLimitingInterface
+	addIPQueue    workqueue.TypedRateLimitingInterface[string]
+	updateIPQueue workqueue.TypedRateLimitingInterface[string]
+	delIPQueue    workqueue.TypedRateLimitingInterface[*kubeovnv1.IP]
 
 	virtualIpsLister          kubeovnlister.VipLister
 	virtualIpsSynced          cache.InformerSynced
-	addVirtualIPQueue         workqueue.RateLimitingInterface
-	updateVirtualIPQueue      workqueue.RateLimitingInterface
-	updateVirtualParentsQueue workqueue.RateLimitingInterface
-	delVirtualIPQueue         workqueue.RateLimitingInterface
+	addVirtualIPQueue         workqueue.TypedRateLimitingInterface[string]
+	updateVirtualIPQueue      workqueue.TypedRateLimitingInterface[string]
+	updateVirtualParentsQueue workqueue.TypedRateLimitingInterface[string]
+	delVirtualIPQueue         workqueue.TypedRateLimitingInterface[*kubeovnv1.Vip]
 
 	iptablesEipsLister     kubeovnlister.IptablesEIPLister
 	iptablesEipSynced      cache.InformerSynced
-	addIptablesEipQueue    workqueue.RateLimitingInterface
-	updateIptablesEipQueue workqueue.RateLimitingInterface
-	resetIptablesEipQueue  workqueue.RateLimitingInterface
-	delIptablesEipQueue    workqueue.RateLimitingInterface
+	addIptablesEipQueue    workqueue.TypedRateLimitingInterface[string]
+	updateIptablesEipQueue workqueue.TypedRateLimitingInterface[string]
+	resetIptablesEipQueue  workqueue.TypedRateLimitingInterface[string]
+	delIptablesEipQueue    workqueue.TypedRateLimitingInterface[string]
 
 	iptablesFipsLister     kubeovnlister.IptablesFIPRuleLister
 	iptablesFipSynced      cache.InformerSynced
-	addIptablesFipQueue    workqueue.RateLimitingInterface
-	updateIptablesFipQueue workqueue.RateLimitingInterface
-	delIptablesFipQueue    workqueue.RateLimitingInterface
+	addIptablesFipQueue    workqueue.TypedRateLimitingInterface[string]
+	updateIptablesFipQueue workqueue.TypedRateLimitingInterface[string]
+	delIptablesFipQueue    workqueue.TypedRateLimitingInterface[string]
 
 	iptablesDnatRulesLister     kubeovnlister.IptablesDnatRuleLister
 	iptablesDnatRuleSynced      cache.InformerSynced
-	addIptablesDnatRuleQueue    workqueue.RateLimitingInterface
-	updateIptablesDnatRuleQueue workqueue.RateLimitingInterface
-	delIptablesDnatRuleQueue    workqueue.RateLimitingInterface
+	addIptablesDnatRuleQueue    workqueue.TypedRateLimitingInterface[string]
+	updateIptablesDnatRuleQueue workqueue.TypedRateLimitingInterface[string]
+	delIptablesDnatRuleQueue    workqueue.TypedRateLimitingInterface[string]
 
 	iptablesSnatRulesLister     kubeovnlister.IptablesSnatRuleLister
 	iptablesSnatRuleSynced      cache.InformerSynced
-	addIptablesSnatRuleQueue    workqueue.RateLimitingInterface
-	updateIptablesSnatRuleQueue workqueue.RateLimitingInterface
-	delIptablesSnatRuleQueue    workqueue.RateLimitingInterface
+	addIptablesSnatRuleQueue    workqueue.TypedRateLimitingInterface[string]
+	updateIptablesSnatRuleQueue workqueue.TypedRateLimitingInterface[string]
+	delIptablesSnatRuleQueue    workqueue.TypedRateLimitingInterface[string]
 
 	ovnEipsLister     kubeovnlister.OvnEipLister
 	ovnEipSynced      cache.InformerSynced
-	addOvnEipQueue    workqueue.RateLimitingInterface
-	updateOvnEipQueue workqueue.RateLimitingInterface
-	resetOvnEipQueue  workqueue.RateLimitingInterface
-	delOvnEipQueue    workqueue.RateLimitingInterface
+	addOvnEipQueue    workqueue.TypedRateLimitingInterface[string]
+	updateOvnEipQueue workqueue.TypedRateLimitingInterface[string]
+	resetOvnEipQueue  workqueue.TypedRateLimitingInterface[string]
+	delOvnEipQueue    workqueue.TypedRateLimitingInterface[string]
 
 	ovnFipsLister     kubeovnlister.OvnFipLister
 	ovnFipSynced      cache.InformerSynced
-	addOvnFipQueue    workqueue.RateLimitingInterface
-	updateOvnFipQueue workqueue.RateLimitingInterface
-	delOvnFipQueue    workqueue.RateLimitingInterface
+	addOvnFipQueue    workqueue.TypedRateLimitingInterface[string]
+	updateOvnFipQueue workqueue.TypedRateLimitingInterface[string]
+	delOvnFipQueue    workqueue.TypedRateLimitingInterface[string]
 
 	ovnSnatRulesLister     kubeovnlister.OvnSnatRuleLister
 	ovnSnatRuleSynced      cache.InformerSynced
-	addOvnSnatRuleQueue    workqueue.RateLimitingInterface
-	updateOvnSnatRuleQueue workqueue.RateLimitingInterface
-	delOvnSnatRuleQueue    workqueue.RateLimitingInterface
+	addOvnSnatRuleQueue    workqueue.TypedRateLimitingInterface[string]
+	updateOvnSnatRuleQueue workqueue.TypedRateLimitingInterface[string]
+	delOvnSnatRuleQueue    workqueue.TypedRateLimitingInterface[string]
 
 	ovnDnatRulesLister     kubeovnlister.OvnDnatRuleLister
 	ovnDnatRuleSynced      cache.InformerSynced
-	addOvnDnatRuleQueue    workqueue.RateLimitingInterface
-	updateOvnDnatRuleQueue workqueue.RateLimitingInterface
-	delOvnDnatRuleQueue    workqueue.RateLimitingInterface
+	addOvnDnatRuleQueue    workqueue.TypedRateLimitingInterface[string]
+	updateOvnDnatRuleQueue workqueue.TypedRateLimitingInterface[string]
+	delOvnDnatRuleQueue    workqueue.TypedRateLimitingInterface[string]
 
 	providerNetworksLister kubeovnlister.ProviderNetworkLister
 	providerNetworkSynced  cache.InformerSynced
 
 	vlansLister     kubeovnlister.VlanLister
 	vlanSynced      cache.InformerSynced
-	addVlanQueue    workqueue.RateLimitingInterface
-	delVlanQueue    workqueue.RateLimitingInterface
-	updateVlanQueue workqueue.RateLimitingInterface
+	addVlanQueue    workqueue.TypedRateLimitingInterface[string]
+	delVlanQueue    workqueue.TypedRateLimitingInterface[string]
+	updateVlanQueue workqueue.TypedRateLimitingInterface[string]
 	vlanKeyMutex    keymutex.KeyMutex
 
 	namespacesLister  v1.NamespaceLister
 	namespacesSynced  cache.InformerSynced
-	addNamespaceQueue workqueue.RateLimitingInterface
+	addNamespaceQueue workqueue.TypedRateLimitingInterface[string]
 	nsKeyMutex        keymutex.KeyMutex
 
 	nodesLister     v1.NodeLister
 	nodesSynced     cache.InformerSynced
-	addNodeQueue    workqueue.RateLimitingInterface
-	updateNodeQueue workqueue.RateLimitingInterface
-	deleteNodeQueue workqueue.RateLimitingInterface
+	addNodeQueue    workqueue.TypedRateLimitingInterface[string]
+	updateNodeQueue workqueue.TypedRateLimitingInterface[string]
+	deleteNodeQueue workqueue.TypedRateLimitingInterface[string]
 	nodeKeyMutex    keymutex.KeyMutex
 
 	servicesLister     v1.ServiceLister
 	serviceSynced      cache.InformerSynced
-	addServiceQueue    workqueue.RateLimitingInterface
-	deleteServiceQueue workqueue.RateLimitingInterface
-	updateServiceQueue workqueue.RateLimitingInterface
+	addServiceQueue    workqueue.TypedRateLimitingInterface[string]
+	deleteServiceQueue workqueue.TypedRateLimitingInterface[*vpcService]
+	updateServiceQueue workqueue.TypedRateLimitingInterface[string]
 	svcKeyMutex        keymutex.KeyMutex
 
 	endpointsLister          v1.EndpointsLister
 	endpointsSynced          cache.InformerSynced
-	addOrUpdateEndpointQueue workqueue.RateLimitingInterface
+	addOrUpdateEndpointQueue workqueue.TypedRateLimitingInterface[string]
 	epKeyMutex               keymutex.KeyMutex
 
 	npsLister     netv1.NetworkPolicyLister
 	npsSynced     cache.InformerSynced
-	updateNpQueue workqueue.RateLimitingInterface
-	deleteNpQueue workqueue.RateLimitingInterface
+	updateNpQueue workqueue.TypedRateLimitingInterface[string]
+	deleteNpQueue workqueue.TypedRateLimitingInterface[string]
 	npKeyMutex    keymutex.KeyMutex
 
 	sgsLister          kubeovnlister.SecurityGroupLister
 	sgSynced           cache.InformerSynced
-	addOrUpdateSgQueue workqueue.RateLimitingInterface
-	delSgQueue         workqueue.RateLimitingInterface
-	syncSgPortsQueue   workqueue.RateLimitingInterface
+	addOrUpdateSgQueue workqueue.TypedRateLimitingInterface[string]
+	delSgQueue         workqueue.TypedRateLimitingInterface[string]
+	syncSgPortsQueue   workqueue.TypedRateLimitingInterface[string]
 	sgKeyMutex         keymutex.KeyMutex
 
 	qosPoliciesLister    kubeovnlister.QoSPolicyLister
 	qosPolicySynced      cache.InformerSynced
-	addQoSPolicyQueue    workqueue.RateLimitingInterface
-	updateQoSPolicyQueue workqueue.RateLimitingInterface
-	delQoSPolicyQueue    workqueue.RateLimitingInterface
+	addQoSPolicyQueue    workqueue.TypedRateLimitingInterface[string]
+	updateQoSPolicyQueue workqueue.TypedRateLimitingInterface[string]
+	delQoSPolicyQueue    workqueue.TypedRateLimitingInterface[string]
 
 	configMapsLister v1.ConfigMapLister
 	configMapsSynced cache.InformerSynced
 
 	anpsLister     anplister.AdminNetworkPolicyLister
 	anpsSynced     cache.InformerSynced
-	addAnpQueue    workqueue.RateLimitingInterface
-	updateAnpQueue workqueue.RateLimitingInterface
-	deleteAnpQueue workqueue.RateLimitingInterface
+	addAnpQueue    workqueue.TypedRateLimitingInterface[string]
+	updateAnpQueue workqueue.TypedRateLimitingInterface[*AdminNetworkPolicyChangedDelta]
+	deleteAnpQueue workqueue.TypedRateLimitingInterface[*v1alpha1.AdminNetworkPolicy]
 	anpKeyMutex    keymutex.KeyMutex
 
 	banpsLister     anplister.BaselineAdminNetworkPolicyLister
 	banpsSynced     cache.InformerSynced
-	addBanpQueue    workqueue.RateLimitingInterface
-	updateBanpQueue workqueue.RateLimitingInterface
-	deleteBanpQueue workqueue.RateLimitingInterface
+	addBanpQueue    workqueue.TypedRateLimitingInterface[string]
+	updateBanpQueue workqueue.TypedRateLimitingInterface[*AdminNetworkPolicyChangedDelta]
+	deleteBanpQueue workqueue.TypedRateLimitingInterface[*v1alpha1.BaselineAdminNetworkPolicy]
 	banpKeyMutex    keymutex.KeyMutex
 
 	csrLister           certListerv1.CertificateSigningRequestLister
 	csrSynced           cache.InformerSynced
-	addOrUpdateCsrQueue workqueue.RateLimitingInterface
+	addOrUpdateCsrQueue workqueue.TypedRateLimitingInterface[string]
 
 	recorder               record.EventRecorder
 	informerFactory        kubeinformers.SharedInformerFactory
 	cmInformerFactory      kubeinformers.SharedInformerFactory
 	kubeovnInformerFactory kubeovninformer.SharedInformerFactory
 	anpInformerFactory     anpinformer.SharedInformerFactory
+}
+
+func newTypedRateLimitingQueue[T comparable](name string, rateLimiter workqueue.TypedRateLimiter[T]) workqueue.TypedRateLimitingInterface[T] {
+	if rateLimiter == nil {
+		rateLimiter = workqueue.DefaultTypedControllerRateLimiter[T]()
+	}
+	return workqueue.NewTypedRateLimitingQueueWithConfig(rateLimiter, workqueue.TypedRateLimitingQueueConfig[T]{Name: name})
 }
 
 // Run creates and runs a new ovn controller
@@ -271,9 +279,9 @@ func Run(ctx context.Context, config *Configuration) {
 	eventBroadcaster.StartLogging(klog.Infof)
 	eventBroadcaster.StartRecordingToSink(&typedcorev1.EventSinkImpl{Interface: config.KubeFactoryClient.CoreV1().Events("")})
 	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: controllerAgentName})
-	custCrdRateLimiter := workqueue.NewMaxOfRateLimiter(
-		workqueue.NewItemExponentialFailureRateLimiter(time.Duration(config.CustCrdRetryMinDelay)*time.Second, time.Duration(config.CustCrdRetryMaxDelay)*time.Second),
-		&workqueue.BucketRateLimiter{Limiter: rate.NewLimiter(rate.Limit(10), 100)},
+	custCrdRateLimiter := workqueue.NewTypedMaxOfRateLimiter(
+		workqueue.NewTypedItemExponentialFailureRateLimiter[string](time.Duration(config.CustCrdRetryMinDelay)*time.Second, time.Duration(config.CustCrdRetryMaxDelay)*time.Second),
+		&workqueue.TypedBucketRateLimiter[string]{Limiter: rate.NewLimiter(rate.Limit(10), 100)},
 	)
 
 	informerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(config.KubeFactoryClient, 0,
@@ -330,88 +338,88 @@ func Run(ctx context.Context, config *Configuration) {
 	}
 	controller := &Controller{
 		config:             config,
-		deletingPodObjMap:  &sync.Map{},
-		deletingNodeObjMap: &sync.Map{},
+		deletingPodObjMap:  xsync.NewMapOf[string, *corev1.Pod](),
+		deletingNodeObjMap: xsync.NewMapOf[string, *corev1.Node](),
 		ipam:               ovnipam.NewIPAM(),
 		namedPort:          NewNamedPort(),
 
 		vpcsLister:           vpcInformer.Lister(),
 		vpcSynced:            vpcInformer.Informer().HasSynced,
-		addOrUpdateVpcQueue:  workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddOrUpdateVpc"),
-		delVpcQueue:          workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteVpc"),
-		updateVpcStatusQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateVpcStatus"),
+		addOrUpdateVpcQueue:  newTypedRateLimitingQueue[string]("AddOrUpdateVpc", nil),
+		delVpcQueue:          newTypedRateLimitingQueue[*kubeovnv1.Vpc]("DeleteVpc", nil),
+		updateVpcStatusQueue: newTypedRateLimitingQueue[string]("UpdateVpcStatus", nil),
 		vpcKeyMutex:          keymutex.NewHashed(numKeyLocks),
 
 		vpcNatGatewayLister:           vpcNatGatewayInformer.Lister(),
 		vpcNatGatewaySynced:           vpcNatGatewayInformer.Informer().HasSynced,
-		addOrUpdateVpcNatGatewayQueue: workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "AddOrUpdateVpcNatGw"),
-		initVpcNatGatewayQueue:        workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "InitVpcNatGw"),
-		delVpcNatGatewayQueue:         workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "DeleteVpcNatGw"),
-		updateVpcEipQueue:             workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "UpdateVpcEip"),
-		updateVpcFloatingIPQueue:      workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "UpdateVpcFloatingIp"),
-		updateVpcDnatQueue:            workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "UpdateVpcDnat"),
-		updateVpcSnatQueue:            workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "UpdateVpcSnat"),
-		updateVpcSubnetQueue:          workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "UpdateVpcSubnet"),
+		addOrUpdateVpcNatGatewayQueue: newTypedRateLimitingQueue("AddOrUpdateVpcNatGw", custCrdRateLimiter),
+		initVpcNatGatewayQueue:        newTypedRateLimitingQueue("InitVpcNatGw", custCrdRateLimiter),
+		delVpcNatGatewayQueue:         newTypedRateLimitingQueue("DeleteVpcNatGw", custCrdRateLimiter),
+		updateVpcEipQueue:             newTypedRateLimitingQueue("UpdateVpcEip", custCrdRateLimiter),
+		updateVpcFloatingIPQueue:      newTypedRateLimitingQueue("UpdateVpcFloatingIp", custCrdRateLimiter),
+		updateVpcDnatQueue:            newTypedRateLimitingQueue("UpdateVpcDnat", custCrdRateLimiter),
+		updateVpcSnatQueue:            newTypedRateLimitingQueue("UpdateVpcSnat", custCrdRateLimiter),
+		updateVpcSubnetQueue:          newTypedRateLimitingQueue("UpdateVpcSubnet", custCrdRateLimiter),
 		vpcNatGwKeyMutex:              keymutex.NewHashed(numKeyLocks),
 
 		subnetsLister:           subnetInformer.Lister(),
 		subnetSynced:            subnetInformer.Informer().HasSynced,
-		addOrUpdateSubnetQueue:  workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddSubnet"),
-		deleteSubnetQueue:       workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteSubnet"),
-		updateSubnetStatusQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateSubnetStatus"),
-		syncVirtualPortsQueue:   workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "SyncVirtualPort"),
+		addOrUpdateSubnetQueue:  newTypedRateLimitingQueue[string]("AddSubnet", nil),
+		deleteSubnetQueue:       newTypedRateLimitingQueue[*kubeovnv1.Subnet]("DeleteSubnet", nil),
+		updateSubnetStatusQueue: newTypedRateLimitingQueue[string]("UpdateSubnetStatus", nil),
+		syncVirtualPortsQueue:   newTypedRateLimitingQueue[string]("SyncVirtualPort", nil),
 		subnetKeyMutex:          keymutex.NewHashed(numKeyLocks),
 
 		ippoolLister:            ippoolInformer.Lister(),
 		ippoolSynced:            ippoolInformer.Informer().HasSynced,
-		addOrUpdateIPPoolQueue:  workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddIPPool"),
-		updateIPPoolStatusQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateIPPoolStatus"),
-		deleteIPPoolQueue:       workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteIPPool"),
+		addOrUpdateIPPoolQueue:  newTypedRateLimitingQueue[string]("AddIPPool", nil),
+		updateIPPoolStatusQueue: newTypedRateLimitingQueue[string]("UpdateIPPoolStatus", nil),
+		deleteIPPoolQueue:       newTypedRateLimitingQueue[*kubeovnv1.IPPool]("DeleteIPPool", nil),
 		ippoolKeyMutex:          keymutex.NewHashed(numKeyLocks),
 
 		ipsLister:     ipInformer.Lister(),
 		ipSynced:      ipInformer.Informer().HasSynced,
-		addIPQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddIP"),
-		updateIPQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateIP"),
-		delIPQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteIP"),
+		addIPQueue:    newTypedRateLimitingQueue[string]("AddIP", nil),
+		updateIPQueue: newTypedRateLimitingQueue[string]("UpdateIP", nil),
+		delIPQueue:    newTypedRateLimitingQueue[*kubeovnv1.IP]("DeleteIP", nil),
 
 		virtualIpsLister:          virtualIPInformer.Lister(),
 		virtualIpsSynced:          virtualIPInformer.Informer().HasSynced,
-		addVirtualIPQueue:         workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddVirtualIp"),
-		updateVirtualIPQueue:      workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateVirtualIp"),
-		updateVirtualParentsQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateVirtualParents"),
-		delVirtualIPQueue:         workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteVirtualIp"),
+		addVirtualIPQueue:         newTypedRateLimitingQueue[string]("AddVirtualIP", nil),
+		updateVirtualIPQueue:      newTypedRateLimitingQueue[string]("UpdateVirtualIP", nil),
+		updateVirtualParentsQueue: newTypedRateLimitingQueue[string]("UpdateVirtualParents", nil),
+		delVirtualIPQueue:         newTypedRateLimitingQueue[*kubeovnv1.Vip]("DeleteVirtualIP", nil),
 
 		iptablesEipsLister:     iptablesEipInformer.Lister(),
 		iptablesEipSynced:      iptablesEipInformer.Informer().HasSynced,
-		addIptablesEipQueue:    workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "AddIptablesEip"),
-		updateIptablesEipQueue: workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "UpdateIptablesEip"),
-		resetIptablesEipQueue:  workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "ResetIptablesEip"),
-		delIptablesEipQueue:    workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "DeleteIptablesEip"),
+		addIptablesEipQueue:    newTypedRateLimitingQueue("AddIptablesEip", custCrdRateLimiter),
+		updateIptablesEipQueue: newTypedRateLimitingQueue("UpdateIptablesEip", custCrdRateLimiter),
+		resetIptablesEipQueue:  newTypedRateLimitingQueue("ResetIptablesEip", custCrdRateLimiter),
+		delIptablesEipQueue:    newTypedRateLimitingQueue("DeleteIptablesEip", custCrdRateLimiter),
 
 		iptablesFipsLister:     iptablesFipInformer.Lister(),
 		iptablesFipSynced:      iptablesFipInformer.Informer().HasSynced,
-		addIptablesFipQueue:    workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "AddIptablesFip"),
-		updateIptablesFipQueue: workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "UpdateIptablesFip"),
-		delIptablesFipQueue:    workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "DeleteIptablesFip"),
+		addIptablesFipQueue:    newTypedRateLimitingQueue("AddIptablesFip", custCrdRateLimiter),
+		updateIptablesFipQueue: newTypedRateLimitingQueue("UpdateIptablesFip", custCrdRateLimiter),
+		delIptablesFipQueue:    newTypedRateLimitingQueue("DeleteIptablesFip", custCrdRateLimiter),
 
 		iptablesDnatRulesLister:     iptablesDnatRuleInformer.Lister(),
 		iptablesDnatRuleSynced:      iptablesDnatRuleInformer.Informer().HasSynced,
-		addIptablesDnatRuleQueue:    workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "AddIptablesDnatRule"),
-		updateIptablesDnatRuleQueue: workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "UpdateIptablesDnatRule"),
-		delIptablesDnatRuleQueue:    workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "DeleteIptablesDnatRule"),
+		addIptablesDnatRuleQueue:    newTypedRateLimitingQueue("AddIptablesDnatRule", custCrdRateLimiter),
+		updateIptablesDnatRuleQueue: newTypedRateLimitingQueue("UpdateIptablesDnatRule", custCrdRateLimiter),
+		delIptablesDnatRuleQueue:    newTypedRateLimitingQueue("DeleteIptablesDnatRule", custCrdRateLimiter),
 
 		iptablesSnatRulesLister:     iptablesSnatRuleInformer.Lister(),
 		iptablesSnatRuleSynced:      iptablesSnatRuleInformer.Informer().HasSynced,
-		addIptablesSnatRuleQueue:    workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "AddIptablesSnatRule"),
-		updateIptablesSnatRuleQueue: workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "UpdateIptablesSnatRule"),
-		delIptablesSnatRuleQueue:    workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "DeleteIptablesSnatRule"),
+		addIptablesSnatRuleQueue:    newTypedRateLimitingQueue("AddIptablesSnatRule", custCrdRateLimiter),
+		updateIptablesSnatRuleQueue: newTypedRateLimitingQueue("UpdateIptablesSnatRule", custCrdRateLimiter),
+		delIptablesSnatRuleQueue:    newTypedRateLimitingQueue("DeleteIptablesSnatRule", custCrdRateLimiter),
 
 		vlansLister:     vlanInformer.Lister(),
 		vlanSynced:      vlanInformer.Informer().HasSynced,
-		addVlanQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddVlan"),
-		delVlanQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DelVlan"),
-		updateVlanQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateVlan"),
+		addVlanQueue:    newTypedRateLimitingQueue[string]("AddVlan", nil),
+		delVlanQueue:    newTypedRateLimitingQueue[string]("DeleteVlan", nil),
+		updateVlanQueue: newTypedRateLimitingQueue[string]("UpdateVlan", nil),
 		vlanKeyMutex:    keymutex.NewHashed(numKeyLocks),
 
 		providerNetworksLister: providerNetworkInformer.Lister(),
@@ -419,43 +427,46 @@ func Run(ctx context.Context, config *Configuration) {
 
 		podsLister:          podInformer.Lister(),
 		podsSynced:          podInformer.Informer().HasSynced,
-		addOrUpdatePodQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddOrUpdatePod"),
-		deletePodQueue: workqueue.NewRateLimitingQueueWithDelayingInterface(
-			workqueue.NewNamedDelayingQueue("DeletePod"),
-			workqueue.DefaultControllerRateLimiter(),
+		addOrUpdatePodQueue: newTypedRateLimitingQueue[string]("AddOrUpdatePod", nil),
+		deletePodQueue: workqueue.NewTypedRateLimitingQueueWithConfig(
+			workqueue.DefaultTypedControllerRateLimiter[string](),
+			workqueue.TypedRateLimitingQueueConfig[string]{
+				Name:          "DeletePod",
+				DelayingQueue: workqueue.TypedNewDelayingQueue[string](),
+			},
 		),
-		updatePodSecurityQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdatePodSecurity"),
+		updatePodSecurityQueue: newTypedRateLimitingQueue[string]("UpdatePodSecurity", nil),
 		podKeyMutex:            keymutex.NewHashed(numKeyLocks),
 
 		namespacesLister:  namespaceInformer.Lister(),
 		namespacesSynced:  namespaceInformer.Informer().HasSynced,
-		addNamespaceQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddNamespace"),
+		addNamespaceQueue: newTypedRateLimitingQueue[string]("AddNamespace", nil),
 		nsKeyMutex:        keymutex.NewHashed(numKeyLocks),
 
 		nodesLister:     nodeInformer.Lister(),
 		nodesSynced:     nodeInformer.Informer().HasSynced,
-		addNodeQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddNode"),
-		updateNodeQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateNode"),
-		deleteNodeQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteNode"),
+		addNodeQueue:    newTypedRateLimitingQueue[string]("AddNode", nil),
+		updateNodeQueue: newTypedRateLimitingQueue[string]("UpdateNode", nil),
+		deleteNodeQueue: newTypedRateLimitingQueue[string]("DeleteNode", nil),
 		nodeKeyMutex:    keymutex.NewHashed(numKeyLocks),
 
 		servicesLister:     serviceInformer.Lister(),
 		serviceSynced:      serviceInformer.Informer().HasSynced,
-		addServiceQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddService"),
-		deleteServiceQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteService"),
-		updateServiceQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateService"),
+		addServiceQueue:    newTypedRateLimitingQueue[string]("AddService", nil),
+		deleteServiceQueue: newTypedRateLimitingQueue[*vpcService]("DeleteService", nil),
+		updateServiceQueue: newTypedRateLimitingQueue[string]("UpdateService", nil),
 		svcKeyMutex:        keymutex.NewHashed(numKeyLocks),
 
 		endpointsLister:          endpointInformer.Lister(),
 		endpointsSynced:          endpointInformer.Informer().HasSynced,
-		addOrUpdateEndpointQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateEndpoint"),
+		addOrUpdateEndpointQueue: newTypedRateLimitingQueue[string]("UpdateEndpoint", nil),
 		epKeyMutex:               keymutex.NewHashed(numKeyLocks),
 
 		qosPoliciesLister:    qosPolicyInformer.Lister(),
 		qosPolicySynced:      qosPolicyInformer.Informer().HasSynced,
-		addQoSPolicyQueue:    workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "AddQoSPolicy"),
-		updateQoSPolicyQueue: workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "UpdateQoSPolicy"),
-		delQoSPolicyQueue:    workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "DeleteQoSPolicy"),
+		addQoSPolicyQueue:    newTypedRateLimitingQueue("AddQoSPolicy", custCrdRateLimiter),
+		updateQoSPolicyQueue: newTypedRateLimitingQueue("UpdateQoSPolicy", custCrdRateLimiter),
+		delQoSPolicyQueue:    newTypedRateLimitingQueue("DeleteQoSPolicy", custCrdRateLimiter),
 
 		configMapsLister: configMapInformer.Lister(),
 		configMapsSynced: configMapInformer.Informer().HasSynced,
@@ -463,38 +474,38 @@ func Run(ctx context.Context, config *Configuration) {
 		sgKeyMutex:         keymutex.NewHashed(numKeyLocks),
 		sgsLister:          sgInformer.Lister(),
 		sgSynced:           sgInformer.Informer().HasSynced,
-		addOrUpdateSgQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateSg"),
-		delSgQueue:         workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteSg"),
-		syncSgPortsQueue:   workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "SyncSgPorts"),
+		addOrUpdateSgQueue: newTypedRateLimitingQueue[string]("UpdateSecurityGroup", nil),
+		delSgQueue:         newTypedRateLimitingQueue[string]("DeleteSecurityGroup", nil),
+		syncSgPortsQueue:   newTypedRateLimitingQueue[string]("SyncSecurityGroupPorts", nil),
 
 		ovnEipsLister:     ovnEipInformer.Lister(),
 		ovnEipSynced:      ovnEipInformer.Informer().HasSynced,
-		addOvnEipQueue:    workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "AddOvnEip"),
-		updateOvnEipQueue: workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "UpdateOvnEip"),
-		resetOvnEipQueue:  workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "ResetOvnEip"),
-		delOvnEipQueue:    workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "DelOvnEip"),
+		addOvnEipQueue:    newTypedRateLimitingQueue("AddOvnEip", custCrdRateLimiter),
+		updateOvnEipQueue: newTypedRateLimitingQueue("UpdateOvnEip", custCrdRateLimiter),
+		resetOvnEipQueue:  newTypedRateLimitingQueue("ResetOvnEip", custCrdRateLimiter),
+		delOvnEipQueue:    newTypedRateLimitingQueue("DeleteOvnEip", custCrdRateLimiter),
 
 		ovnFipsLister:     ovnFipInformer.Lister(),
 		ovnFipSynced:      ovnFipInformer.Informer().HasSynced,
-		addOvnFipQueue:    workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "AddOvnFip"),
-		updateOvnFipQueue: workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "UpdateOvnFip"),
-		delOvnFipQueue:    workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "DeleteOvnFip"),
+		addOvnFipQueue:    newTypedRateLimitingQueue("AddOvnFip", custCrdRateLimiter),
+		updateOvnFipQueue: newTypedRateLimitingQueue("UpdateOvnFip", custCrdRateLimiter),
+		delOvnFipQueue:    newTypedRateLimitingQueue("DeleteOvnFip", custCrdRateLimiter),
 
 		ovnSnatRulesLister:     ovnSnatRuleInformer.Lister(),
 		ovnSnatRuleSynced:      ovnSnatRuleInformer.Informer().HasSynced,
-		addOvnSnatRuleQueue:    workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "AddOvnSnatRule"),
-		updateOvnSnatRuleQueue: workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "UpdateOvnSnatRule"),
-		delOvnSnatRuleQueue:    workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "DelOvnSnatRule"),
+		addOvnSnatRuleQueue:    newTypedRateLimitingQueue("AddOvnSnatRule", custCrdRateLimiter),
+		updateOvnSnatRuleQueue: newTypedRateLimitingQueue("UpdateOvnSnatRule", custCrdRateLimiter),
+		delOvnSnatRuleQueue:    newTypedRateLimitingQueue("DeleteOvnSnatRule", custCrdRateLimiter),
 
 		ovnDnatRulesLister:     ovnDnatRuleInformer.Lister(),
 		ovnDnatRuleSynced:      ovnDnatRuleInformer.Informer().HasSynced,
-		addOvnDnatRuleQueue:    workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "AddOvnDnatRule"),
-		updateOvnDnatRuleQueue: workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "UpdateOvnDnatRule"),
-		delOvnDnatRuleQueue:    workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "DeleteOvnDnatRule"),
+		addOvnDnatRuleQueue:    newTypedRateLimitingQueue("AddOvnDnatRule", custCrdRateLimiter),
+		updateOvnDnatRuleQueue: newTypedRateLimitingQueue("UpdateOvnDnatRule", custCrdRateLimiter),
+		delOvnDnatRuleQueue:    newTypedRateLimitingQueue("DeleteOvnDnatRule", custCrdRateLimiter),
 
 		csrLister:           csrInformer.Lister(),
 		csrSynced:           csrInformer.Informer().HasSynced,
-		addOrUpdateCsrQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddOrUpdateCsr"),
+		addOrUpdateCsrQueue: newTypedRateLimitingQueue[string]("AddOrUpdateCSR", nil),
 
 		recorder:               recorder,
 		informerFactory:        informerFactory,
@@ -522,37 +533,49 @@ func Run(ctx context.Context, config *Configuration) {
 	if config.EnableLb {
 		controller.switchLBRuleLister = switchLBRuleInformer.Lister()
 		controller.switchLBRuleSynced = switchLBRuleInformer.Informer().HasSynced
-		controller.addSwitchLBRuleQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "addSwitchLBRule")
-		controller.delSwitchLBRuleQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "delSwitchLBRule")
-		controller.UpdateSwitchLBRuleQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "updateSwitchLBRule")
+		controller.addSwitchLBRuleQueue = newTypedRateLimitingQueue("AddSwitchLBRule", custCrdRateLimiter)
+		controller.delSwitchLBRuleQueue = newTypedRateLimitingQueue(
+			"DeleteSwitchLBRule",
+			workqueue.NewTypedMaxOfRateLimiter(
+				workqueue.NewTypedItemExponentialFailureRateLimiter[*SlrInfo](time.Duration(config.CustCrdRetryMinDelay)*time.Second, time.Duration(config.CustCrdRetryMaxDelay)*time.Second),
+				&workqueue.TypedBucketRateLimiter[*SlrInfo]{Limiter: rate.NewLimiter(rate.Limit(10), 100)},
+			),
+		)
+		controller.updateSwitchLBRuleQueue = newTypedRateLimitingQueue(
+			"UpdateSwitchLBRule",
+			workqueue.NewTypedMaxOfRateLimiter(
+				workqueue.NewTypedItemExponentialFailureRateLimiter[*SlrInfo](time.Duration(config.CustCrdRetryMinDelay)*time.Second, time.Duration(config.CustCrdRetryMaxDelay)*time.Second),
+				&workqueue.TypedBucketRateLimiter[*SlrInfo]{Limiter: rate.NewLimiter(rate.Limit(10), 100)},
+			),
+		)
 
 		controller.vpcDNSLister = vpcDNSInformer.Lister()
 		controller.vpcDNSSynced = vpcDNSInformer.Informer().HasSynced
-		controller.addOrUpdateVpcDNSQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "AddOrUpdateVpcDns")
-		controller.delVpcDNSQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "DeleteVpcDns")
+		controller.addOrUpdateVpcDNSQueue = newTypedRateLimitingQueue("AddOrUpdateVpcDns", custCrdRateLimiter)
+		controller.delVpcDNSQueue = newTypedRateLimitingQueue("DeleteVpcDns", custCrdRateLimiter)
 	}
 
 	if config.EnableNP {
 		controller.npsLister = npInformer.Lister()
 		controller.npsSynced = npInformer.Informer().HasSynced
-		controller.updateNpQueue = workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateNp")
-		controller.deleteNpQueue = workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteNp")
+		controller.updateNpQueue = newTypedRateLimitingQueue[string]("UpdateNetworkPolicy", nil)
+		controller.deleteNpQueue = newTypedRateLimitingQueue[string]("DeleteNetworkPolicy", nil)
 		controller.npKeyMutex = keymutex.NewHashed(numKeyLocks)
 	}
 
 	if config.EnableANP {
 		controller.anpsLister = anpInformer.Lister()
 		controller.anpsSynced = anpInformer.Informer().HasSynced
-		controller.addAnpQueue = workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddAnp")
-		controller.updateAnpQueue = workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateAnp")
-		controller.deleteAnpQueue = workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteAnp")
+		controller.addAnpQueue = newTypedRateLimitingQueue[string]("AddAdminNetworkPolicy", nil)
+		controller.updateAnpQueue = newTypedRateLimitingQueue[*AdminNetworkPolicyChangedDelta]("UpdateAdminNetworkPolicy", nil)
+		controller.deleteAnpQueue = newTypedRateLimitingQueue[*v1alpha1.AdminNetworkPolicy]("DeleteAdminNetworkPolicy", nil)
 		controller.anpKeyMutex = keymutex.NewHashed(numKeyLocks)
 
 		controller.banpsLister = banpInformer.Lister()
 		controller.banpsSynced = banpInformer.Informer().HasSynced
-		controller.addBanpQueue = workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddBanp")
-		controller.updateBanpQueue = workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateBanp")
-		controller.deleteBanpQueue = workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteBanp")
+		controller.addBanpQueue = newTypedRateLimitingQueue[string]("AddBaseAdminNetworkPolicy", nil)
+		controller.updateBanpQueue = newTypedRateLimitingQueue[*AdminNetworkPolicyChangedDelta]("UpdateBaseAdminNetworkPolicy", nil)
+		controller.deleteBanpQueue = newTypedRateLimitingQueue[*v1alpha1.BaselineAdminNetworkPolicy]("DeleteBaseAdminNetworkPolicy", nil)
 		controller.banpKeyMutex = keymutex.NewHashed(numKeyLocks)
 	}
 
@@ -941,7 +964,7 @@ func (c *Controller) shutdown() {
 	if c.config.EnableLb {
 		c.addSwitchLBRuleQueue.ShutDown()
 		c.delSwitchLBRuleQueue.ShutDown()
-		c.UpdateSwitchLBRuleQueue.ShutDown()
+		c.updateSwitchLBRuleQueue.ShutDown()
 
 		c.addOrUpdateVpcDNSQueue.ShutDown()
 		c.delVpcDNSQueue.ShutDown()
@@ -1018,23 +1041,23 @@ func (c *Controller) shutdown() {
 func (c *Controller) startWorkers(ctx context.Context) {
 	klog.Info("Starting workers")
 
-	go wait.Until(c.runAddVpcWorker, time.Second, ctx.Done())
+	go wait.Until(runWorker("add/update vpc", c.addOrUpdateVpcQueue, c.handleAddOrUpdateVpc), time.Second, ctx.Done())
 
-	go wait.Until(c.runAddOrUpdateVpcNatGwWorker, time.Second, ctx.Done())
-	go wait.Until(c.runInitVpcNatGwWorker, time.Second, ctx.Done())
-	go wait.Until(c.runDelVpcNatGwWorker, time.Second, ctx.Done())
-	go wait.Until(c.runUpdateVpcFloatingIPWorker, time.Second, ctx.Done())
-	go wait.Until(c.runUpdateVpcEipWorker, time.Second, ctx.Done())
-	go wait.Until(c.runUpdateVpcDnatWorker, time.Second, ctx.Done())
-	go wait.Until(c.runUpdateVpcSnatWorker, time.Second, ctx.Done())
-	go wait.Until(c.runUpdateVpcSubnetWorker, time.Second, ctx.Done())
-	go wait.Until(c.runAddOrUpdateCsrWorker, time.Second, ctx.Done())
+	go wait.Until(runWorker("add/update vpc nat gateway", c.addOrUpdateVpcNatGatewayQueue, c.handleAddOrUpdateVpcNatGw), time.Second, ctx.Done())
+	go wait.Until(runWorker("init vpc nat gateway", c.initVpcNatGatewayQueue, c.handleInitVpcNatGw), time.Second, ctx.Done())
+	go wait.Until(runWorker("delete vpc nat gateway", c.delVpcNatGatewayQueue, c.handleDelVpcNatGw), time.Second, ctx.Done())
+	go wait.Until(runWorker("update fip for vpc nat gateway", c.updateVpcFloatingIPQueue, c.handleUpdateVpcFloatingIP), time.Second, ctx.Done())
+	go wait.Until(runWorker("update eip for vpc nat gateway", c.updateVpcEipQueue, c.handleUpdateVpcEip), time.Second, ctx.Done())
+	go wait.Until(runWorker("update dnat for vpc nat gateway", c.updateVpcDnatQueue, c.handleUpdateVpcDnat), time.Second, ctx.Done())
+	go wait.Until(runWorker("update snat for vpc nat gateway", c.updateVpcSnatQueue, c.handleUpdateVpcSnat), time.Second, ctx.Done())
+	go wait.Until(runWorker("update subnet route for vpc nat gateway", c.updateVpcSubnetQueue, c.handleUpdateNatGwSubnetRoute), time.Second, ctx.Done())
+	go wait.Until(runWorker("add/update csr", c.addOrUpdateCsrQueue, c.handleAddOrUpdateCsr), time.Second, ctx.Done())
 
 	// add default and join subnet and wait them ready
-	go wait.Until(c.runAddSubnetWorker, time.Second, ctx.Done())
-	go wait.Until(c.runAddIPPoolWorker, time.Second, ctx.Done())
-	go wait.Until(c.runAddVlanWorker, time.Second, ctx.Done())
-	go wait.Until(c.runAddNamespaceWorker, time.Second, ctx.Done())
+	go wait.Until(runWorker("add/update subnet", c.addOrUpdateSubnetQueue, c.handleAddOrUpdateSubnet), time.Second, ctx.Done())
+	go wait.Until(runWorker("add/update ippool", c.addOrUpdateIPPoolQueue, c.handleAddOrUpdateIPPool), time.Second, ctx.Done())
+	go wait.Until(runWorker("add vlan", c.addVlanQueue, c.handleAddVlan), time.Second, ctx.Done())
+	go wait.Until(runWorker("add namespace", c.addNamespaceQueue, c.handleAddNamespace), time.Second, ctx.Done())
 	err := wait.PollUntilContextCancel(ctx, 3*time.Second, true, func(_ context.Context) (done bool, err error) {
 		subnets := []string{c.config.DefaultLogicalSwitch, c.config.NodeSwitch}
 		klog.Infof("wait for subnets %v ready", subnets)
@@ -1045,15 +1068,15 @@ func (c *Controller) startWorkers(ctx context.Context) {
 		klog.Fatalf("wait default and join subnet ready, error: %v", err)
 	}
 
-	go wait.Until(c.runAddSgWorker, time.Second, ctx.Done())
-	go wait.Until(c.runDelSgWorker, time.Second, ctx.Done())
-	go wait.Until(c.runSyncSgPortsWorker, time.Second, ctx.Done())
+	go wait.Until(runWorker("add/update security group", c.addOrUpdateSgQueue, func(key string) error { return c.handleAddOrUpdateSg(key, false) }), time.Second, ctx.Done())
+	go wait.Until(runWorker("delete security group", c.delSgQueue, c.handleDeleteSg), time.Second, ctx.Done())
+	go wait.Until(runWorker("ports for security group", c.syncSgPortsQueue, c.syncSgLogicalPort), time.Second, ctx.Done())
 
 	// run node worker before handle any pods
 	for i := 0; i < c.config.WorkerNum; i++ {
-		go wait.Until(c.runAddNodeWorker, time.Second, ctx.Done())
-		go wait.Until(c.runUpdateNodeWorker, time.Second, ctx.Done())
-		go wait.Until(c.runDeleteNodeWorker, time.Second, ctx.Done())
+		go wait.Until(runWorker("add node", c.addNodeQueue, c.handleAddNode), time.Second, ctx.Done())
+		go wait.Until(runWorker("update node", c.updateNodeQueue, c.handleUpdateNode), time.Second, ctx.Done())
+		go wait.Until(runWorker("delete node", c.deleteNodeQueue, c.handleDeleteNode), time.Second, ctx.Done())
 	}
 	for {
 		ready := true
@@ -1074,48 +1097,48 @@ func (c *Controller) startWorkers(ctx context.Context) {
 		}
 	}
 
-	go wait.Until(c.runDelVpcWorker, time.Second, ctx.Done())
-	go wait.Until(c.runUpdateVpcStatusWorker, time.Second, ctx.Done())
+	go wait.Until(runWorker("delete vpc", c.delVpcQueue, c.handleDelVpc), time.Second, ctx.Done())
+	go wait.Until(runWorker("update status of vpc", c.updateVpcStatusQueue, c.handleUpdateVpcStatus), time.Second, ctx.Done())
 
 	if c.config.EnableLb {
-		go wait.Until(c.runAddServiceWorker, time.Second, ctx.Done())
+		go wait.Until(runWorker("add service", c.addServiceQueue, c.handleAddService), time.Second, ctx.Done())
 		// run in a single worker to avoid delete the last vip, which will lead ovn to delete the loadbalancer
-		go wait.Until(c.runDeleteServiceWorker, time.Second, ctx.Done())
+		go wait.Until(runWorker("delete service", c.deleteServiceQueue, c.handleDeleteService), time.Second, ctx.Done())
 
-		go wait.Until(c.runAddSwitchLBRuleWorker, time.Second, ctx.Done())
-		go wait.Until(c.runDelSwitchLBRuleWorker, time.Second, ctx.Done())
-		go wait.Until(c.runUpdateSwitchLBRuleWorker, time.Second, ctx.Done())
+		go wait.Until(runWorker("add/update switch lb rule", c.addSwitchLBRuleQueue, c.handleAddOrUpdateSwitchLBRule), time.Second, ctx.Done())
+		go wait.Until(runWorker("delete switch lb rule", c.delSwitchLBRuleQueue, c.handleDelSwitchLBRule), time.Second, ctx.Done())
+		go wait.Until(runWorker("delete switch lb rule", c.updateSwitchLBRuleQueue, c.handleUpdateSwitchLBRule), time.Second, ctx.Done())
 
-		go wait.Until(c.runAddOrUpdateVPCDNSWorker, time.Second, ctx.Done())
-		go wait.Until(c.runDelVPCDNSWorker, time.Second, ctx.Done())
+		go wait.Until(runWorker("add/update vpc dns", c.addOrUpdateVpcDNSQueue, c.handleAddOrUpdateVPCDNS), time.Second, ctx.Done())
+		go wait.Until(runWorker("delete vpc dns", c.delVpcDNSQueue, c.handleDelVpcDNS), time.Second, ctx.Done())
 		go wait.Until(func() {
 			c.resyncVpcDNSConfig()
 		}, 5*time.Second, ctx.Done())
 	}
 
 	for i := 0; i < c.config.WorkerNum; i++ {
-		go wait.Until(c.runDeletePodWorker, time.Second, ctx.Done())
-		go wait.Until(c.runAddOrUpdatePodWorker, time.Second, ctx.Done())
-		go wait.Until(c.runUpdatePodSecurityWorker, time.Second, ctx.Done())
+		go wait.Until(runWorker("delete pod", c.deletePodQueue, c.handleDeletePod), time.Second, ctx.Done())
+		go wait.Until(runWorker("add/update pod", c.addOrUpdatePodQueue, c.handleAddOrUpdatePod), time.Second, ctx.Done())
+		go wait.Until(runWorker("update pod security", c.updatePodSecurityQueue, c.handleUpdatePodSecurity), time.Second, ctx.Done())
 
-		go wait.Until(c.runDeleteSubnetWorker, time.Second, ctx.Done())
-		go wait.Until(c.runDeleteIPPoolWorker, time.Second, ctx.Done())
-		go wait.Until(c.runUpdateSubnetStatusWorker, time.Second, ctx.Done())
-		go wait.Until(c.runUpdateIPPoolStatusWorker, time.Second, ctx.Done())
-		go wait.Until(c.runSyncVirtualPortsWorker, time.Second, ctx.Done())
+		go wait.Until(runWorker("delete subnet", c.deleteSubnetQueue, c.handleDeleteSubnet), time.Second, ctx.Done())
+		go wait.Until(runWorker("delete ippool", c.deleteIPPoolQueue, c.handleDeleteIPPool), time.Second, ctx.Done())
+		go wait.Until(runWorker("update status of subnet", c.updateSubnetStatusQueue, c.handleUpdateSubnetStatus), time.Second, ctx.Done())
+		go wait.Until(runWorker("update status of ippool", c.updateIPPoolStatusQueue, c.handleUpdateIPPoolStatus), time.Second, ctx.Done())
+		go wait.Until(runWorker("virtual port for subnet", c.syncVirtualPortsQueue, c.syncVirtualPort), time.Second, ctx.Done())
 
 		if c.config.EnableLb {
-			go wait.Until(c.runUpdateServiceWorker, time.Second, ctx.Done())
-			go wait.Until(c.runUpdateEndpointWorker, time.Second, ctx.Done())
+			go wait.Until(runWorker("update service", c.updateServiceQueue, c.handleUpdateService), time.Second, ctx.Done())
+			go wait.Until(runWorker("add/update endpoint", c.addOrUpdateEndpointQueue, c.handleUpdateEndpoint), time.Second, ctx.Done())
 		}
 
 		if c.config.EnableNP {
-			go wait.Until(c.runUpdateNpWorker, time.Second, ctx.Done())
-			go wait.Until(c.runDeleteNpWorker, time.Second, ctx.Done())
+			go wait.Until(runWorker("update network policy", c.updateNpQueue, c.handleUpdateNp), time.Second, ctx.Done())
+			go wait.Until(runWorker("delete network policy", c.deleteNpQueue, c.handleDeleteNp), time.Second, ctx.Done())
 		}
 
-		go wait.Until(c.runDelVlanWorker, time.Second, ctx.Done())
-		go wait.Until(c.runUpdateVlanWorker, time.Second, ctx.Done())
+		go wait.Until(runWorker("delete vlan", c.delVlanQueue, c.handleDelVlan), time.Second, ctx.Done())
+		go wait.Until(runWorker("update vlan", c.updateVlanQueue, c.handleUpdateVlan), time.Second, ctx.Done())
 	}
 
 	if c.config.EnableEipSnat {
@@ -1158,65 +1181,65 @@ func (c *Controller) startWorkers(ctx context.Context) {
 	go wait.Until(c.exportSubnetMetrics, 30*time.Second, ctx.Done())
 	go wait.Until(c.CheckGatewayReady, 5*time.Second, ctx.Done())
 
-	go wait.Until(c.runAddOvnEipWorker, time.Second, ctx.Done())
-	go wait.Until(c.runUpdateOvnEipWorker, time.Second, ctx.Done())
-	go wait.Until(c.runResetOvnEipWorker, time.Second, ctx.Done())
-	go wait.Until(c.runDelOvnEipWorker, time.Second, ctx.Done())
+	go wait.Until(runWorker("add ovn eip", c.addOvnEipQueue, c.handleAddOvnEip), time.Second, ctx.Done())
+	go wait.Until(runWorker("update ovn eip", c.updateOvnEipQueue, c.handleUpdateOvnEip), time.Second, ctx.Done())
+	go wait.Until(runWorker("reset ovn eip", c.resetOvnEipQueue, c.handleResetOvnEip), time.Second, ctx.Done())
+	go wait.Until(runWorker("delete ovn eip", c.delOvnEipQueue, c.handleDelOvnEip), time.Second, ctx.Done())
 
-	go wait.Until(c.runAddOvnFipWorker, time.Second, ctx.Done())
-	go wait.Until(c.runUpdateOvnFipWorker, time.Second, ctx.Done())
-	go wait.Until(c.runDelOvnFipWorker, time.Second, ctx.Done())
+	go wait.Until(runWorker("add ovn fip", c.addOvnFipQueue, c.handleAddOvnFip), time.Second, ctx.Done())
+	go wait.Until(runWorker("update ovn fip", c.updateOvnFipQueue, c.handleUpdateOvnFip), time.Second, ctx.Done())
+	go wait.Until(runWorker("delete ovn fip", c.delOvnFipQueue, c.handleDelOvnFip), time.Second, ctx.Done())
 
-	go wait.Until(c.runAddOvnSnatRuleWorker, time.Second, ctx.Done())
-	go wait.Until(c.runUpdateOvnSnatRuleWorker, time.Second, ctx.Done())
-	go wait.Until(c.runDelOvnSnatRuleWorker, time.Second, ctx.Done())
+	go wait.Until(runWorker("add ovn snat rule", c.addOvnSnatRuleQueue, c.handleAddOvnSnatRule), time.Second, ctx.Done())
+	go wait.Until(runWorker("update ovn snat rule", c.updateOvnSnatRuleQueue, c.handleUpdateOvnSnatRule), time.Second, ctx.Done())
+	go wait.Until(runWorker("delete ovn snat rule", c.delOvnSnatRuleQueue, c.handleDelOvnSnatRule), time.Second, ctx.Done())
 
-	go wait.Until(c.runAddOvnDnatRuleWorker, time.Second, ctx.Done())
-	go wait.Until(c.runUpdateOvnDnatRuleWorker, time.Second, ctx.Done())
-	go wait.Until(c.runDelOvnDnatRuleWorker, time.Second, ctx.Done())
+	go wait.Until(runWorker("add ovn dnat", c.addOvnDnatRuleQueue, c.handleAddOvnDnatRule), time.Second, ctx.Done())
+	go wait.Until(runWorker("update ovn dnat", c.updateOvnDnatRuleQueue, c.handleUpdateOvnDnatRule), time.Second, ctx.Done())
+	go wait.Until(runWorker("delete ovn dnat", c.delOvnDnatRuleQueue, c.handleDelOvnDnatRule), time.Second, ctx.Done())
 
 	if c.config.EnableNP {
 		go wait.Until(c.CheckNodePortGroup, time.Duration(c.config.NodePgProbeTime)*time.Minute, ctx.Done())
 	}
 
-	go wait.Until(c.runAddIPWorker, time.Second, ctx.Done())
-	go wait.Until(c.runUpdateIPWorker, time.Second, ctx.Done())
-	go wait.Until(c.runDelIPWorker, time.Second, ctx.Done())
+	go wait.Until(runWorker("add ip", c.addIPQueue, c.handleAddReservedIP), time.Second, ctx.Done())
+	go wait.Until(runWorker("update ip", c.updateIPQueue, c.handleUpdateIP), time.Second, ctx.Done())
+	go wait.Until(runWorker("delete ip", c.delIPQueue, c.handleDelIP), time.Second, ctx.Done())
 
-	go wait.Until(c.runAddVirtualIPWorker, time.Second, ctx.Done())
-	go wait.Until(c.runUpdateVirtualIPWorker, time.Second, ctx.Done())
-	go wait.Until(c.runUpdateVirtualParentsWorker, time.Second, ctx.Done())
-	go wait.Until(c.runDelVirtualIPWorker, time.Second, ctx.Done())
+	go wait.Until(runWorker("add vip", c.addVirtualIPQueue, c.handleAddVirtualIP), time.Second, ctx.Done())
+	go wait.Until(runWorker("update vip", c.updateVirtualIPQueue, c.handleUpdateVirtualIP), time.Second, ctx.Done())
+	go wait.Until(runWorker("update virtual parent for vip", c.updateVirtualParentsQueue, c.handleUpdateVirtualParents), time.Second, ctx.Done())
+	go wait.Until(runWorker("delete vip", c.delVirtualIPQueue, c.handleDelVirtualIP), time.Second, ctx.Done())
 
-	go wait.Until(c.runAddIptablesEipWorker, time.Second, ctx.Done())
-	go wait.Until(c.runUpdateIptablesEipWorker, time.Second, ctx.Done())
-	go wait.Until(c.runResetIptablesEipWorker, time.Second, ctx.Done())
-	go wait.Until(c.runDelIptablesEipWorker, time.Second, ctx.Done())
+	go wait.Until(runWorker("add iptables eip", c.addIptablesEipQueue, c.handleAddIptablesEip), time.Second, ctx.Done())
+	go wait.Until(runWorker("update iptables eip", c.updateIptablesEipQueue, c.handleUpdateIptablesEip), time.Second, ctx.Done())
+	go wait.Until(runWorker("reset iptables eip", c.resetIptablesEipQueue, c.handleResetIptablesEip), time.Second, ctx.Done())
+	go wait.Until(runWorker("delete iptables eip", c.delIptablesEipQueue, c.handleDelIptablesEip), time.Second, ctx.Done())
 
-	go wait.Until(c.runAddIptablesFipWorker, time.Second, ctx.Done())
-	go wait.Until(c.runUpdateIptablesFipWorker, time.Second, ctx.Done())
-	go wait.Until(c.runDelIptablesFipWorker, time.Second, ctx.Done())
+	go wait.Until(runWorker("add iptables fip", c.addIptablesFipQueue, c.handleAddIptablesFip), time.Second, ctx.Done())
+	go wait.Until(runWorker("update iptables fip", c.updateIptablesFipQueue, c.handleUpdateIptablesFip), time.Second, ctx.Done())
+	go wait.Until(runWorker("delete iptables fip", c.delIptablesFipQueue, c.handleDelIptablesFip), time.Second, ctx.Done())
 
-	go wait.Until(c.runAddIptablesDnatRuleWorker, time.Second, ctx.Done())
-	go wait.Until(c.runUpdateIptablesDnatRuleWorker, time.Second, ctx.Done())
-	go wait.Until(c.runDelIptablesDnatRuleWorker, time.Second, ctx.Done())
+	go wait.Until(runWorker("add iptables dnat rule", c.addIptablesDnatRuleQueue, c.handleAddIptablesDnatRule), time.Second, ctx.Done())
+	go wait.Until(runWorker("update iptables dnat rule", c.updateIptablesDnatRuleQueue, c.handleUpdateIptablesDnatRule), time.Second, ctx.Done())
+	go wait.Until(runWorker("delete iptables dnat rule", c.delIptablesDnatRuleQueue, c.handleDelIptablesDnatRule), time.Second, ctx.Done())
 
-	go wait.Until(c.runAddIptablesSnatRuleWorker, time.Second, ctx.Done())
-	go wait.Until(c.runUpdateIptablesSnatRuleWorker, time.Second, ctx.Done())
-	go wait.Until(c.runDelIptablesSnatRuleWorker, time.Second, ctx.Done())
+	go wait.Until(runWorker("add iptables snat rule", c.addIptablesSnatRuleQueue, c.handleAddIptablesSnatRule), time.Second, ctx.Done())
+	go wait.Until(runWorker("update iptables snat rule", c.updateIptablesSnatRuleQueue, c.handleUpdateIptablesSnatRule), time.Second, ctx.Done())
+	go wait.Until(runWorker("delete iptables snat rule", c.delIptablesSnatRuleQueue, c.handleDelIptablesSnatRule), time.Second, ctx.Done())
 
-	go wait.Until(c.runAddQoSPolicyWorker, time.Second, ctx.Done())
-	go wait.Until(c.runUpdateQoSPolicyWorker, time.Second, ctx.Done())
-	go wait.Until(c.runDelQoSPolicyWorker, time.Second, ctx.Done())
+	go wait.Until(runWorker("add qos policy", c.addQoSPolicyQueue, c.handleAddQoSPolicy), time.Second, ctx.Done())
+	go wait.Until(runWorker("update qos policy", c.updateQoSPolicyQueue, c.handleUpdateQoSPolicy), time.Second, ctx.Done())
+	go wait.Until(runWorker("delete qos policy", c.delQoSPolicyQueue, c.handleDelQoSPolicy), time.Second, ctx.Done())
 
 	if c.config.EnableANP {
-		go wait.Until(c.runAddAnpWorker, time.Second, ctx.Done())
-		go wait.Until(c.runUpdateAnpWorker, time.Second, ctx.Done())
-		go wait.Until(c.runDeleteAnpWorker, time.Second, ctx.Done())
+		go wait.Until(runWorker("add admin network policy", c.addAnpQueue, c.handleAddAnp), time.Second, ctx.Done())
+		go wait.Until(runWorker("update admin network policy", c.updateAnpQueue, c.handleUpdateAnp), time.Second, ctx.Done())
+		go wait.Until(runWorker("delete admin network policy", c.deleteAnpQueue, c.handleDeleteAnp), time.Second, ctx.Done())
 
-		go wait.Until(c.runAddBanpWorker, time.Second, ctx.Done())
-		go wait.Until(c.runUpdateBanpWorker, time.Second, ctx.Done())
-		go wait.Until(c.runDeleteBanpWorker, time.Second, ctx.Done())
+		go wait.Until(runWorker("add base admin network policy", c.addBanpQueue, c.handleAddBanp), time.Second, ctx.Done())
+		go wait.Until(runWorker("update base admin network policy", c.updateBanpQueue, c.handleUpdateBanp), time.Second, ctx.Done())
+		go wait.Until(runWorker("delete base admin network policy", c.deleteBanpQueue, c.handleDeleteBanp), time.Second, ctx.Done())
 	}
 }
 
@@ -1267,5 +1290,54 @@ func (c *Controller) initResourceOnce() {
 	// process gc at last in case of affecting other init process
 	if err := c.gc(); err != nil {
 		util.LogFatalAndExit(err, "failed to run gc")
+	}
+}
+
+func processNextWorkItem[T comparable](action string, queue workqueue.TypedRateLimitingInterface[T], handler func(T) error, getItemKey func(any) string) bool {
+	item, shutdown := queue.Get()
+	if shutdown {
+		return false
+	}
+
+	err := func(item T) error {
+		defer queue.Done(item)
+		if err := handler(item); err != nil {
+			queue.AddRateLimited(item)
+			return fmt.Errorf("error syncing %s %q: %w, requeuing", action, getItemKey(item), err)
+		}
+		queue.Forget(item)
+		return nil
+	}(item)
+	if err != nil {
+		utilruntime.HandleError(err)
+		return true
+	}
+	return true
+}
+
+func getWorkItemKey(obj any) string {
+	switch v := obj.(type) {
+	case string:
+		return v
+	case *vpcService:
+		return fmt.Sprintf("%s/%s", v.Svc.Namespace, v.Svc.Name)
+	case *AdminNetworkPolicyChangedDelta:
+		return v.key
+	case *SlrInfo:
+		return v.Name
+	default:
+		key, err := cache.MetaNamespaceKeyFunc(obj)
+		if err != nil {
+			utilruntime.HandleError(err)
+			return ""
+		}
+		return key
+	}
+}
+
+func runWorker[T comparable](action string, queue workqueue.TypedRateLimitingInterface[T], handler func(T) error) func() {
+	return func() {
+		for processNextWorkItem(action, queue, handler, getWorkItemKey) {
+		}
 	}
 }
