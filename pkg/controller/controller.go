@@ -54,10 +54,7 @@ const (
 // Controller is kube-ovn main controller that watch ns/pod/node/svc/ep and operate ovn
 type Controller struct {
 	config *Configuration
-	vpcs   *sync.Map
 
-	// subnetVpcMap *sync.Map
-	podSubnetMap   *sync.Map
 	ipam           *ovnipam.IPAM
 	namedPort      *NamedPort
 	anpPrioNameMap map[int32]string
@@ -333,8 +330,6 @@ func Run(ctx context.Context, config *Configuration) {
 	}
 	controller := &Controller{
 		config:             config,
-		vpcs:               &sync.Map{},
-		podSubnetMap:       &sync.Map{},
 		deletingPodObjMap:  &sync.Map{},
 		deletingNodeObjMap: &sync.Map{},
 		ipam:               ovnipam.NewIPAM(),
