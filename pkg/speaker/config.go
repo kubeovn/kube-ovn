@@ -110,7 +110,7 @@ func ParseFlags() (*Configuration, error) {
 	if *argNeighborIPv6Address != "" && net.ParseIP(*argNeighborIPv6Address).To16() == nil {
 		return nil, fmt.Errorf("invalid neighbor-ipv6-address format: %s", *argNeighborIPv6Address)
 	}
-	if *argEbgpMultihopTTL < 1 || *argEbgpMultihopTTL > 255 {
+	if *argEbgpMultihopTTL == 0 {
 		return nil, errors.New("the bgp MultihopTtl must be in the range 1 to 255")
 	}
 
@@ -156,7 +156,7 @@ func (config *Configuration) initKubeClient() error {
 	var cfg *rest.Config
 	var err error
 	if config.KubeConfigFile == "" {
-		klog.Infof("no --kubeconfig, use in-cluster kubernetes config")
+		klog.Info("no --kubeconfig, use in-cluster kubernetes config")
 		cfg, err = rest.InClusterConfig()
 		if err != nil {
 			klog.Errorf("use in cluster config failed %v", err)

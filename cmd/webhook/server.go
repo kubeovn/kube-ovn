@@ -37,7 +37,7 @@ func init() {
 }
 
 func main() {
-	klog.Infof(versions.String())
+	klog.Info(versions.String())
 
 	port := pflag.Int("port", 8443, "The port webhook listen on.")
 	healthProbePort := pflag.Int32("health-probe-port", 8080, "The port health probes listen on.")
@@ -86,7 +86,7 @@ func main() {
 		panic(err)
 	}
 
-	klog.Infof("register path /validating")
+	klog.Info("register path /validating")
 	// Register the webhooks in the server.
 	hookServer.Register("/validating", &ctrlwebhook.Admission{Handler: validatingHook})
 

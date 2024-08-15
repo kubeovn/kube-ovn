@@ -183,7 +183,7 @@ func (c *Controller) handleAddNamespace(key string) error {
 		excludeIps = append(excludeIps, strings.Join(subnet.Spec.ExcludeIps, ","))
 	}
 
-	if namespace.Annotations == nil || len(namespace.Annotations) == 0 {
+	if len(namespace.Annotations) == 0 {
 		namespace.Annotations = map[string]string{}
 	} else if namespace.Annotations[util.LogicalSwitchAnnotation] == strings.Join(lss, ",") &&
 		namespace.Annotations[util.CidrAnnotation] == strings.Join(cidrs, ";") &&

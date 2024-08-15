@@ -101,7 +101,7 @@ func KubeClientInit(cfg *Configuration) error {
 	var kubeCfg *rest.Config
 	var err error
 	if cfg.KubeConfigFile == "" {
-		klog.Infof("no --kubeconfig, use in-cluster kubernetes config")
+		klog.Info("no --kubeconfig, use in-cluster kubernetes config")
 		kubeCfg, err = rest.InClusterConfig()
 	} else {
 		kubeCfg, err = clientcmd.BuildConfigFromFlags("", cfg.KubeConfigFile)

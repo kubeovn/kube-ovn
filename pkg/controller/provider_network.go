@@ -13,7 +13,7 @@ import (
 )
 
 func (c *Controller) resyncProviderNetworkStatus() {
-	klog.V(3).Infof("start to sync ProviderNetwork status")
+	klog.V(3).Info("start to sync ProviderNetwork status")
 	pns, err := c.providerNetworksLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list provider network: %v", err)

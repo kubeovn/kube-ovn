@@ -437,7 +437,7 @@ func (c *Controller) delLearnedRoute() error {
 		}
 	}
 
-	klog.V(5).Infof("finish removing learned routes")
+	klog.V(5).Info("finish removing learned routes")
 	return nil
 }
 

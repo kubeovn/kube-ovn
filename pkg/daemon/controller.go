@@ -570,7 +570,7 @@ func (c *Controller) processNextPodWorkItem() bool {
 var lastNoPodOvsPort map[string]bool
 
 func (c *Controller) markAndCleanInternalPort() error {
-	klog.V(4).Infof("start to gc ovs internal ports")
+	klog.V(4).Info("start to gc ovs internal ports")
 	residualPorts := ovs.GetResidualInternalPorts()
 	if len(residualPorts) == 0 {
 		return nil

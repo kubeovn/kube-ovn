@@ -493,7 +493,7 @@ func (c *Controller) resyncVpcDNSConfig() {
 	}
 
 	if k8serrors.IsNotFound(err) {
-		klog.V(3).Infof("the vpc-dns configuration is not set ")
+		klog.V(3).Info("the vpc-dns configuration is not set")
 		if len(cmVersion) != 0 {
 			if err := c.cleanVpcDNS(); err != nil {
 				klog.Errorf("failed to clear all vpc-dns, %v", err)
@@ -508,7 +508,7 @@ func (c *Controller) resyncVpcDNSConfig() {
 		return
 	}
 	cmVersion = cm.ResourceVersion
-	klog.V(3).Infof("the vpc-dns ConfigMap update")
+	klog.V(3).Info("the vpc-dns ConfigMap update")
 
 	getValue := func(key string) string {
 		if v, ok := cm.Data[key]; ok {
@@ -591,7 +591,7 @@ func (c *Controller) initVpcDNSConfig() error {
 }
 
 func (c *Controller) cleanVpcDNS() error {
-	klog.Infof("clear all vpc-dns")
+	klog.Info("clear all vpc-dns")
 	err := c.config.KubeOvnClient.KubeovnV1().VpcDnses().DeleteCollection(context.Background(), metav1.DeleteOptions{},
 		metav1.ListOptions{})
 	if err != nil {

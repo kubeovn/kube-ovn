@@ -34,7 +34,7 @@ const ovnLeaderResource = "kube-ovn-controller"
 func CmdMain() {
 	defer klog.Flush()
 
-	klog.Infof(versions.String())
+	klog.Info(versions.String())
 
 	config, err := controller.ParseFlags()
 	if err != nil {

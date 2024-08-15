@@ -104,7 +104,7 @@ func ping(config *Configuration, withMetrics bool) error {
 }
 
 func pingNodes(config *Configuration, setMetrics bool) error {
-	klog.Infof("start to check node connectivity")
+	klog.Info("start to check node connectivity")
 	nodes, err := config.KubeClient.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
 	if err != nil {
 		klog.Errorf("failed to list nodes, %v", err)
@@ -172,7 +172,7 @@ func pingNodes(config *Configuration, setMetrics bool) error {
 }
 
 func pingPods(config *Configuration, setMetrics bool) error {
-	klog.Infof("start to check pod connectivity")
+	klog.Info("start to check pod connectivity")
 	ds, err := config.KubeClient.AppsV1().DaemonSets(config.DaemonSetNamespace).Get(context.Background(), config.DaemonSetName, metav1.GetOptions{})
 	if err != nil {
 		klog.Errorf("failed to get peer ds: %v", err)
@@ -294,7 +294,7 @@ func pingExternal(config *Configuration, setMetrics bool) error {
 }
 
 func checkAccessTargetIPPorts(config *Configuration) error {
-	klog.Infof("start to check Service or externalIPPort connectivity")
+	klog.Info("start to check Service or externalIPPort connectivity")
 	if config.TargetIPPorts == "" {
 		return nil
 	}
@@ -304,7 +304,7 @@ func checkAccessTargetIPPorts(config *Configuration) error {
 		klog.Infof("checking targetIPPort %s ", targetIPPort)
 		items := strings.Split(targetIPPort, "-")
 		if len(items) != 3 {
-			klog.Infof("targetIPPort format failed")
+			klog.Info("targetIPPort format failed")
 			continue
 		}
 		proto := items[0]
@@ -342,7 +342,7 @@ func checkAccessTargetIPPorts(config *Configuration) error {
 }
 
 func internalNslookup(config *Configuration, setMetrics bool) error {
-	klog.Infof("start to check dns connectivity")
+	klog.Info("start to check dns connectivity")
 	t1 := time.Now()
 	ctx, cancel := context.WithTimeout(context.TODO(), 10*time.Second)
 	defer cancel()
@@ -364,7 +364,7 @@ func internalNslookup(config *Configuration, setMetrics bool) error {
 }
 
 func externalNslookup(config *Configuration, setMetrics bool) error {
-	klog.Infof("start to check dns connectivity")
+	klog.Info("start to check dns connectivity")
 	t1 := time.Now()
 	ctx, cancel := context.WithTimeout(context.TODO(), 10*time.Second)
 	defer cancel()
@@ -386,7 +386,7 @@ func externalNslookup(config *Configuration, setMetrics bool) error {
 }
 
 func checkAPIServer(config *Configuration, setMetrics bool) error {
-	klog.Infof("start to check apiserver connectivity")
+	klog.Info("start to check apiserver connectivity")
 	t1 := time.Now()
 	_, err := config.KubeClient.Discovery().ServerVersion()
 	elapsed := time.Since(t1)
