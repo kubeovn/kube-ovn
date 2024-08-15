@@ -20,8 +20,8 @@ package v1
 
 import (
 	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/client-go/listers"
 	"k8s.io/client-go/tools/cache"
 )
 
@@ -39,30 +39,10 @@ type IptablesFIPRuleLister interface {
 
 // iptablesFIPRuleLister implements the IptablesFIPRuleLister interface.
 type iptablesFIPRuleLister struct {
-	indexer cache.Indexer
+	listers.ResourceIndexer[*v1.IptablesFIPRule]
 }
 
 // NewIptablesFIPRuleLister returns a new IptablesFIPRuleLister.
 func NewIptablesFIPRuleLister(indexer cache.Indexer) IptablesFIPRuleLister {
-	return &iptablesFIPRuleLister{indexer: indexer}
-}
-
-// List lists all IptablesFIPRules in the indexer.
-func (s *iptablesFIPRuleLister) List(selector labels.Selector) (ret []*v1.IptablesFIPRule, err error) {
-	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
-		ret = append(ret, m.(*v1.IptablesFIPRule))
-	})
-	return ret, err
-}
-
-// Get retrieves the IptablesFIPRule from the index for a given name.
-func (s *iptablesFIPRuleLister) Get(name string) (*v1.IptablesFIPRule, error) {
-	obj, exists, err := s.indexer.GetByKey(name)
-	if err != nil {
-		return nil, err
-	}
-	if !exists {
-		return nil, errors.NewNotFound(v1.Resource("iptablesfiprule"), name)
-	}
-	return obj.(*v1.IptablesFIPRule), nil
+	return &iptablesFIPRuleLister{listers.New[*v1.IptablesFIPRule](indexer, v1.Resource("iptablesfiprule"))}
 }

@@ -40,20 +40,22 @@ var qospoliciesKind = v1.SchemeGroupVersion.WithKind("QoSPolicy")
 
 // Get takes name of the qoSPolicy, and returns the corresponding qoSPolicy object, and an error if there is any.
 func (c *FakeQoSPolicies) Get(ctx context.Context, name string, options metav1.GetOptions) (result *v1.QoSPolicy, err error) {
+	emptyResult := &v1.QoSPolicy{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootGetAction(qospoliciesResource, name), &v1.QoSPolicy{})
+		Invokes(testing.NewRootGetActionWithOptions(qospoliciesResource, name, options), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v1.QoSPolicy), err
 }
 
 // List takes label and field selectors, and returns the list of QoSPolicies that match those selectors.
 func (c *FakeQoSPolicies) List(ctx context.Context, opts metav1.ListOptions) (result *v1.QoSPolicyList, err error) {
+	emptyResult := &v1.QoSPolicyList{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootListAction(qospoliciesResource, qospoliciesKind, opts), &v1.QoSPolicyList{})
+		Invokes(testing.NewRootListActionWithOptions(qospoliciesResource, qospoliciesKind, opts), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 
 	label, _, _ := testing.ExtractFromListOptions(opts)
@@ -72,36 +74,39 @@ func (c *FakeQoSPolicies) List(ctx context.Context, opts metav1.ListOptions) (re
 // Watch returns a watch.Interface that watches the requested qoSPolicies.
 func (c *FakeQoSPolicies) Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error) {
 	return c.Fake.
-		InvokesWatch(testing.NewRootWatchAction(qospoliciesResource, opts))
+		InvokesWatch(testing.NewRootWatchActionWithOptions(qospoliciesResource, opts))
 }
 
 // Create takes the representation of a qoSPolicy and creates it.  Returns the server's representation of the qoSPolicy, and an error, if there is any.
 func (c *FakeQoSPolicies) Create(ctx context.Context, qoSPolicy *v1.QoSPolicy, opts metav1.CreateOptions) (result *v1.QoSPolicy, err error) {
+	emptyResult := &v1.QoSPolicy{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootCreateAction(qospoliciesResource, qoSPolicy), &v1.QoSPolicy{})
+		Invokes(testing.NewRootCreateActionWithOptions(qospoliciesResource, qoSPolicy, opts), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v1.QoSPolicy), err
 }
 
 // Update takes the representation of a qoSPolicy and updates it. Returns the server's representation of the qoSPolicy, and an error, if there is any.
 func (c *FakeQoSPolicies) Update(ctx context.Context, qoSPolicy *v1.QoSPolicy, opts metav1.UpdateOptions) (result *v1.QoSPolicy, err error) {
+	emptyResult := &v1.QoSPolicy{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootUpdateAction(qospoliciesResource, qoSPolicy), &v1.QoSPolicy{})
+		Invokes(testing.NewRootUpdateActionWithOptions(qospoliciesResource, qoSPolicy, opts), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v1.QoSPolicy), err
 }
 
 // UpdateStatus was generated because the type contains a Status member.
 // Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-func (c *FakeQoSPolicies) UpdateStatus(ctx context.Context, qoSPolicy *v1.QoSPolicy, opts metav1.UpdateOptions) (*v1.QoSPolicy, error) {
+func (c *FakeQoSPolicies) UpdateStatus(ctx context.Context, qoSPolicy *v1.QoSPolicy, opts metav1.UpdateOptions) (result *v1.QoSPolicy, err error) {
+	emptyResult := &v1.QoSPolicy{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootUpdateSubresourceAction(qospoliciesResource, "status", qoSPolicy), &v1.QoSPolicy{})
+		Invokes(testing.NewRootUpdateSubresourceActionWithOptions(qospoliciesResource, "status", qoSPolicy, opts), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v1.QoSPolicy), err
 }
@@ -115,7 +120,7 @@ func (c *FakeQoSPolicies) Delete(ctx context.Context, name string, opts metav1.D
 
 // DeleteCollection deletes a collection of objects.
 func (c *FakeQoSPolicies) DeleteCollection(ctx context.Context, opts metav1.DeleteOptions, listOpts metav1.ListOptions) error {
-	action := testing.NewRootDeleteCollectionAction(qospoliciesResource, listOpts)
+	action := testing.NewRootDeleteCollectionActionWithOptions(qospoliciesResource, opts, listOpts)
 
 	_, err := c.Fake.Invokes(action, &v1.QoSPolicyList{})
 	return err
@@ -123,10 +128,11 @@ func (c *FakeQoSPolicies) DeleteCollection(ctx context.Context, opts metav1.Dele
 
 // Patch applies the patch and returns the patched qoSPolicy.
 func (c *FakeQoSPolicies) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *v1.QoSPolicy, err error) {
+	emptyResult := &v1.QoSPolicy{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootPatchSubresourceAction(qospoliciesResource, name, pt, data, subresources...), &v1.QoSPolicy{})
+		Invokes(testing.NewRootPatchSubresourceActionWithOptions(qospoliciesResource, name, pt, data, opts, subresources...), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v1.QoSPolicy), err
 }

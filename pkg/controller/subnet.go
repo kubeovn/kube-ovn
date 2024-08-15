@@ -47,17 +47,9 @@ func (c *Controller) enqueueAddSubnet(obj interface{}) {
 }
 
 func (c *Controller) enqueueDeleteSubnet(obj interface{}) {
-	var (
-		key string
-		err error
-	)
-
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
-	klog.V(3).Infof("enqueue delete subnet %s", key)
-	c.deleteSubnetQueue.Add(obj)
+	subnet := obj.(*kubeovnv1.Subnet)
+	klog.V(3).Infof("enqueue delete subnet %s", subnet.Name)
+	c.deleteSubnetQueue.Add(subnet)
 }
 
 func (c *Controller) enqueueUpdateSubnet(oldObj, newObj interface{}) {
@@ -145,139 +137,6 @@ func (c *Controller) enqueueUpdateSubnet(oldObj, newObj interface{}) {
 
 		c.addOrUpdateSubnetQueue.Add(key)
 	}
-}
-
-func (c *Controller) runAddSubnetWorker() {
-	for c.processNextAddSubnetWorkItem() {
-	}
-}
-
-func (c *Controller) runUpdateSubnetStatusWorker() {
-	for c.processNextUpdateSubnetStatusWorkItem() {
-	}
-}
-
-func (c *Controller) runDeleteSubnetWorker() {
-	for c.processNextDeleteSubnetWorkItem() {
-	}
-}
-
-func (c *Controller) runSyncVirtualPortsWorker() {
-	for c.processNextSyncVirtualPortsWorkItem() {
-	}
-}
-
-func (c *Controller) processNextSyncVirtualPortsWorkItem() bool {
-	obj, shutdown := c.syncVirtualPortsQueue.Get()
-	if shutdown {
-		return false
-	}
-
-	err := func(obj interface{}) error {
-		defer c.syncVirtualPortsQueue.Done(obj)
-		var key string
-		var ok bool
-		if key, ok = obj.(string); !ok {
-			c.syncVirtualPortsQueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
-			return nil
-		}
-		if err := c.syncVirtualPort(key); err != nil {
-			c.syncVirtualPortsQueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
-		}
-		c.syncVirtualPortsQueue.Forget(obj)
-		return nil
-	}(obj)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return true
-	}
-	return true
-}
-
-func (c *Controller) processNextAddSubnetWorkItem() bool {
-	obj, shutdown := c.addOrUpdateSubnetQueue.Get()
-	if shutdown {
-		return false
-	}
-
-	if err := func(obj interface{}) error {
-		defer c.addOrUpdateSubnetQueue.Done(obj)
-		var key string
-		var ok bool
-		if key, ok = obj.(string); !ok {
-			c.addOrUpdateSubnetQueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
-			return nil
-		}
-		if err := c.handleAddOrUpdateSubnet(key); err != nil {
-			c.addOrUpdateSubnetQueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
-		}
-		c.addOrUpdateSubnetQueue.Forget(obj)
-		return nil
-	}(obj); err != nil {
-		utilruntime.HandleError(err)
-		return true
-	}
-	return true
-}
-
-func (c *Controller) processNextUpdateSubnetStatusWorkItem() bool {
-	obj, shutdown := c.updateSubnetStatusQueue.Get()
-	if shutdown {
-		return false
-	}
-
-	if err := func(obj interface{}) error {
-		defer c.updateSubnetStatusQueue.Done(obj)
-		var key string
-		var ok bool
-		if key, ok = obj.(string); !ok {
-			c.updateSubnetStatusQueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
-			return nil
-		}
-		if err := c.handleUpdateSubnetStatus(key); err != nil {
-			c.updateSubnetStatusQueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
-		}
-		c.updateSubnetStatusQueue.Forget(obj)
-		return nil
-	}(obj); err != nil {
-		utilruntime.HandleError(err)
-		return true
-	}
-	return true
-}
-
-func (c *Controller) processNextDeleteSubnetWorkItem() bool {
-	obj, shutdown := c.deleteSubnetQueue.Get()
-	if shutdown {
-		return false
-	}
-
-	if err := func(obj interface{}) error {
-		defer c.deleteSubnetQueue.Done(obj)
-		var subnet *kubeovnv1.Subnet
-		var ok bool
-		if subnet, ok = obj.(*kubeovnv1.Subnet); !ok {
-			c.deleteSubnetQueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected subnet in workqueue but got %#v", obj))
-			return nil
-		}
-		if err := c.handleDeleteSubnet(subnet); err != nil {
-			c.deleteSubnetQueue.AddRateLimited(obj)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", subnet.Name, err.Error())
-		}
-		c.deleteSubnetQueue.Forget(obj)
-		return nil
-	}(obj); err != nil {
-		utilruntime.HandleError(err)
-		return true
-	}
-	return true
 }
 
 func (c *Controller) formatSubnet(subnet *kubeovnv1.Subnet) (*kubeovnv1.Subnet, error) {

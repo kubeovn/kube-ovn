@@ -12,7 +12,6 @@ import (
 	"strconv"
 	"strings"
 	"text/template"
-	"time"
 
 	v1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -92,23 +91,10 @@ func (c *Controller) enqueueDeleteVPCDNS(obj interface{}) {
 	c.delVpcDNSQueue.Add(key)
 }
 
-func (c *Controller) runAddOrUpdateVPCDNSWorker() {
-	for c.processNextWorkItem("addOrUpdateVpcDns", c.addOrUpdateVpcDNSQueue, c.handleAddOrUpdateVPCDNS) {
-	}
-}
-
-func (c *Controller) runDelVPCDNSWorker() {
-	for c.processNextWorkItem("delVpcDns", c.delVpcDNSQueue, c.handleDelVpcDNS) {
-	}
-}
-
 func (c *Controller) handleAddOrUpdateVPCDNS(key string) error {
-	klog.V(3).Infof("handleAddOrUpdateVPCDNS %s", key)
+	klog.Infof("handle add or update vpc dns %s", key)
 	if !enableCoreDNS {
-		time.Sleep(10 * time.Second)
-		if !enableCoreDNS {
-			return errors.New("failed to add or update vpc-dns, not enabled")
-		}
+		return errors.New("failed to add or update vpc-dns, not enabled")
 	}
 
 	vpcDNS, err := c.vpcDNSLister.Get(key)

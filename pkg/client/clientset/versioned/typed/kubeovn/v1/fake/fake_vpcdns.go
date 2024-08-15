@@ -40,20 +40,22 @@ var vpcdnsesKind = v1.SchemeGroupVersion.WithKind("VpcDns")
 
 // Get takes name of the vpcDns, and returns the corresponding vpcDns object, and an error if there is any.
 func (c *FakeVpcDnses) Get(ctx context.Context, name string, options metav1.GetOptions) (result *v1.VpcDns, err error) {
+	emptyResult := &v1.VpcDns{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootGetAction(vpcdnsesResource, name), &v1.VpcDns{})
+		Invokes(testing.NewRootGetActionWithOptions(vpcdnsesResource, name, options), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v1.VpcDns), err
 }
 
 // List takes label and field selectors, and returns the list of VpcDnses that match those selectors.
 func (c *FakeVpcDnses) List(ctx context.Context, opts metav1.ListOptions) (result *v1.VpcDnsList, err error) {
+	emptyResult := &v1.VpcDnsList{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootListAction(vpcdnsesResource, vpcdnsesKind, opts), &v1.VpcDnsList{})
+		Invokes(testing.NewRootListActionWithOptions(vpcdnsesResource, vpcdnsesKind, opts), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 
 	label, _, _ := testing.ExtractFromListOptions(opts)
@@ -72,36 +74,39 @@ func (c *FakeVpcDnses) List(ctx context.Context, opts metav1.ListOptions) (resul
 // Watch returns a watch.Interface that watches the requested vpcDnses.
 func (c *FakeVpcDnses) Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error) {
 	return c.Fake.
-		InvokesWatch(testing.NewRootWatchAction(vpcdnsesResource, opts))
+		InvokesWatch(testing.NewRootWatchActionWithOptions(vpcdnsesResource, opts))
 }
 
 // Create takes the representation of a vpcDns and creates it.  Returns the server's representation of the vpcDns, and an error, if there is any.
 func (c *FakeVpcDnses) Create(ctx context.Context, vpcDns *v1.VpcDns, opts metav1.CreateOptions) (result *v1.VpcDns, err error) {
+	emptyResult := &v1.VpcDns{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootCreateAction(vpcdnsesResource, vpcDns), &v1.VpcDns{})
+		Invokes(testing.NewRootCreateActionWithOptions(vpcdnsesResource, vpcDns, opts), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v1.VpcDns), err
 }
 
 // Update takes the representation of a vpcDns and updates it. Returns the server's representation of the vpcDns, and an error, if there is any.
 func (c *FakeVpcDnses) Update(ctx context.Context, vpcDns *v1.VpcDns, opts metav1.UpdateOptions) (result *v1.VpcDns, err error) {
+	emptyResult := &v1.VpcDns{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootUpdateAction(vpcdnsesResource, vpcDns), &v1.VpcDns{})
+		Invokes(testing.NewRootUpdateActionWithOptions(vpcdnsesResource, vpcDns, opts), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v1.VpcDns), err
 }
 
 // UpdateStatus was generated because the type contains a Status member.
 // Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-func (c *FakeVpcDnses) UpdateStatus(ctx context.Context, vpcDns *v1.VpcDns, opts metav1.UpdateOptions) (*v1.VpcDns, error) {
+func (c *FakeVpcDnses) UpdateStatus(ctx context.Context, vpcDns *v1.VpcDns, opts metav1.UpdateOptions) (result *v1.VpcDns, err error) {
+	emptyResult := &v1.VpcDns{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootUpdateSubresourceAction(vpcdnsesResource, "status", vpcDns), &v1.VpcDns{})
+		Invokes(testing.NewRootUpdateSubresourceActionWithOptions(vpcdnsesResource, "status", vpcDns, opts), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v1.VpcDns), err
 }
@@ -115,7 +120,7 @@ func (c *FakeVpcDnses) Delete(ctx context.Context, name string, opts metav1.Dele
 
 // DeleteCollection deletes a collection of objects.
 func (c *FakeVpcDnses) DeleteCollection(ctx context.Context, opts metav1.DeleteOptions, listOpts metav1.ListOptions) error {
-	action := testing.NewRootDeleteCollectionAction(vpcdnsesResource, listOpts)
+	action := testing.NewRootDeleteCollectionActionWithOptions(vpcdnsesResource, opts, listOpts)
 
 	_, err := c.Fake.Invokes(action, &v1.VpcDnsList{})
 	return err
@@ -123,10 +128,11 @@ func (c *FakeVpcDnses) DeleteCollection(ctx context.Context, opts metav1.DeleteO
 
 // Patch applies the patch and returns the patched vpcDns.
 func (c *FakeVpcDnses) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *v1.VpcDns, err error) {
+	emptyResult := &v1.VpcDns{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootPatchSubresourceAction(vpcdnsesResource, name, pt, data, subresources...), &v1.VpcDns{})
+		Invokes(testing.NewRootPatchSubresourceActionWithOptions(vpcdnsesResource, name, pt, data, opts, subresources...), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v1.VpcDns), err
 }

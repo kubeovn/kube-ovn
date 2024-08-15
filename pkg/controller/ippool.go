@@ -2,7 +2,6 @@ package controller
 
 import (
 	"context"
-	"fmt"
 	"reflect"
 
 	corev1 "k8s.io/api/core/v1"
@@ -29,13 +28,9 @@ func (c *Controller) enqueueAddIPPool(obj interface{}) {
 }
 
 func (c *Controller) enqueueDeleteIPPool(obj interface{}) {
-	key, err := cache.MetaNamespaceKeyFunc(obj)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
-	klog.V(3).Infof("enqueue delete ippool %s", key)
-	c.deleteIPPoolQueue.Add(obj)
+	ippool := obj.(*kubeovnv1.IPPool)
+	klog.V(3).Infof("enqueue delete ippool %s", ippool.Name)
+	c.deleteIPPoolQueue.Add(ippool)
 }
 
 func (c *Controller) enqueueUpdateIPPool(oldObj, newObj interface{}) {
@@ -52,105 +47,6 @@ func (c *Controller) enqueueUpdateIPPool(oldObj, newObj interface{}) {
 		klog.V(3).Infof("enqueue update ippool %s", key)
 		c.addOrUpdateIPPoolQueue.Add(key)
 	}
-}
-
-func (c *Controller) runAddIPPoolWorker() {
-	for c.processNextAddIPPoolWorkItem() {
-	}
-}
-
-func (c *Controller) runUpdateIPPoolStatusWorker() {
-	for c.processNextUpdateIPPoolStatusWorkItem() {
-	}
-}
-
-func (c *Controller) runDeleteIPPoolWorker() {
-	for c.processNextDeleteIPPoolWorkItem() {
-	}
-}
-
-func (c *Controller) processNextAddIPPoolWorkItem() bool {
-	obj, shutdown := c.addOrUpdateIPPoolQueue.Get()
-	if shutdown {
-		return false
-	}
-
-	err := func(obj interface{}) error {
-		defer c.addOrUpdateIPPoolQueue.Done(obj)
-		key, ok := obj.(string)
-		if !ok {
-			c.addOrUpdateIPPoolQueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
-			return nil
-		}
-		if err := c.handleAddOrUpdateIPPool(key); err != nil {
-			c.addOrUpdateIPPoolQueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing ippool %q: %s, requeuing", key, err.Error())
-		}
-		c.addOrUpdateIPPoolQueue.Forget(obj)
-		return nil
-	}(obj)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return true
-	}
-	return true
-}
-
-func (c *Controller) processNextUpdateIPPoolStatusWorkItem() bool {
-	obj, shutdown := c.updateIPPoolStatusQueue.Get()
-	if shutdown {
-		return false
-	}
-
-	err := func(obj interface{}) error {
-		defer c.updateIPPoolStatusQueue.Done(obj)
-		var key string
-		var ok bool
-		if key, ok = obj.(string); !ok {
-			c.updateIPPoolStatusQueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
-			return nil
-		}
-		if err := c.handleUpdateIPPoolStatus(key); err != nil {
-			c.updateIPPoolStatusQueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
-		}
-		return nil
-	}(obj)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return true
-	}
-	return true
-}
-
-func (c *Controller) processNextDeleteIPPoolWorkItem() bool {
-	obj, shutdown := c.deleteIPPoolQueue.Get()
-	if shutdown {
-		return false
-	}
-
-	err := func(obj interface{}) error {
-		defer c.deleteIPPoolQueue.Done(obj)
-		ippool, ok := obj.(*kubeovnv1.IPPool)
-		if !ok {
-			c.deleteIPPoolQueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected ippool in workqueue but got %#v", obj))
-			return nil
-		}
-		if err := c.handleDeleteIPPool(ippool); err != nil {
-			c.deleteIPPoolQueue.AddRateLimited(obj)
-			return fmt.Errorf("error syncing ippool %q: %s, requeuing", ippool.Name, err.Error())
-		}
-		c.deleteIPPoolQueue.Forget(obj)
-		return nil
-	}(obj)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return true
-	}
-	return true
 }
 
 func (c *Controller) handleAddOrUpdateIPPool(key string) error {

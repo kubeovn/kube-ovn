@@ -20,8 +20,8 @@ package v1
 
 import (
 	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/client-go/listers"
 	"k8s.io/client-go/tools/cache"
 )
 
@@ -39,30 +39,10 @@ type OvnFipLister interface {
 
 // ovnFipLister implements the OvnFipLister interface.
 type ovnFipLister struct {
-	indexer cache.Indexer
+	listers.ResourceIndexer[*v1.OvnFip]
 }
 
 // NewOvnFipLister returns a new OvnFipLister.
 func NewOvnFipLister(indexer cache.Indexer) OvnFipLister {
-	return &ovnFipLister{indexer: indexer}
-}
-
-// List lists all OvnFips in the indexer.
-func (s *ovnFipLister) List(selector labels.Selector) (ret []*v1.OvnFip, err error) {
-	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
-		ret = append(ret, m.(*v1.OvnFip))
-	})
-	return ret, err
-}
-
-// Get retrieves the OvnFip from the index for a given name.
-func (s *ovnFipLister) Get(name string) (*v1.OvnFip, error) {
-	obj, exists, err := s.indexer.GetByKey(name)
-	if err != nil {
-		return nil, err
-	}
-	if !exists {
-		return nil, errors.NewNotFound(v1.Resource("ovnfip"), name)
-	}
-	return obj.(*v1.OvnFip), nil
+	return &ovnFipLister{listers.New[*v1.OvnFip](indexer, v1.Resource("ovnfip"))}
 }

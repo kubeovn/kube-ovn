@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
-	"time"
 
 	"github.com/scylladb/go-set/strset"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -29,14 +28,9 @@ func (c *Controller) enqueueAddBanp(obj interface{}) {
 }
 
 func (c *Controller) enqueueDeleteBanp(obj interface{}) {
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
-	klog.V(3).Infof("enqueue delete banp %s", key)
-	c.deleteBanpQueue.Add(obj)
+	banp := obj.(*v1alpha1.BaselineAdminNetworkPolicy)
+	klog.V(3).Infof("enqueue delete banp %s", banp.Name)
+	c.deleteBanpQueue.Add(banp)
 }
 
 func (c *Controller) enqueueUpdateBanp(oldObj, newObj interface{}) {
@@ -75,7 +69,7 @@ func (c *Controller) enqueueUpdateBanp(oldObj, newObj interface{}) {
 	// The remaining changes do not affect the acls. The port-group or address-set should be updated.
 	// The port-group for anp should be updated
 	if !reflect.DeepEqual(oldBanp.Spec.Subject, newBanp.Spec.Subject) {
-		c.updateBanpQueue.Add(ChangedDelta{key: newBanp.Name, field: ChangedSubject})
+		c.updateBanpQueue.Add(&AdminNetworkPolicyChangedDelta{key: newBanp.Name, field: ChangedSubject})
 	}
 
 	// Rule name or peer selector in ingress/egress rule has changed, the corresponding address-set need be updated
@@ -94,7 +88,7 @@ func (c *Controller) enqueueUpdateBanp(oldObj, newObj interface{}) {
 		}
 	}
 	if ruleChanged {
-		c.updateBanpQueue.Add(ChangedDelta{key: newBanp.Name, ruleNames: changedIngressRuleNames, field: ChangedIngressRule})
+		c.updateBanpQueue.Add(&AdminNetworkPolicyChangedDelta{key: newBanp.Name, ruleNames: changedIngressRuleNames, field: ChangedIngressRule})
 	}
 
 	ruleChanged = false
@@ -110,113 +104,8 @@ func (c *Controller) enqueueUpdateBanp(oldObj, newObj interface{}) {
 		}
 	}
 	if ruleChanged {
-		c.updateBanpQueue.Add(ChangedDelta{key: newBanp.Name, ruleNames: changedEgressRuleNames, field: ChangedEgressRule})
+		c.updateBanpQueue.Add(&AdminNetworkPolicyChangedDelta{key: newBanp.Name, ruleNames: changedEgressRuleNames, field: ChangedEgressRule})
 	}
-}
-
-func (c *Controller) runAddBanpWorker() {
-	for c.processNextAddBanpWorkItem() {
-	}
-}
-
-func (c *Controller) runUpdateBanpWorker() {
-	for c.processNextUpdateBanpWorkItem() {
-	}
-}
-
-func (c *Controller) runDeleteBanpWorker() {
-	for c.processNextDeleteBanpWorkItem() {
-	}
-}
-
-func (c *Controller) processNextAddBanpWorkItem() bool {
-	obj, shutdown := c.addBanpQueue.Get()
-	if shutdown {
-		return false
-	}
-	now := time.Now()
-
-	err := func(obj interface{}) error {
-		defer c.addBanpQueue.Done(obj)
-		var key string
-		var ok bool
-		if key, ok = obj.(string); !ok {
-			c.addBanpQueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
-			return nil
-		}
-		if err := c.handleAddBanp(key); err != nil {
-			c.addBanpQueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
-		}
-		last := time.Since(now)
-		klog.Infof("take %d ms to handle add banp %s", last.Milliseconds(), key)
-		c.addBanpQueue.Forget(obj)
-		return nil
-	}(obj)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return true
-	}
-	return true
-}
-
-func (c *Controller) processNextUpdateBanpWorkItem() bool {
-	obj, shutdown := c.updateBanpQueue.Get()
-	if shutdown {
-		return false
-	}
-
-	err := func(obj interface{}) error {
-		defer c.updateBanpQueue.Done(obj)
-		var key ChangedDelta
-		var ok bool
-		if key, ok = obj.(ChangedDelta); !ok {
-			c.updateBanpQueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected ChangedDelta in workqueue but got %#v", obj))
-			return nil
-		}
-		if err := c.handleUpdateBanp(key); err != nil {
-			c.updateBanpQueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing banp %s: %w, requeuing", key.key, err)
-		}
-		c.updateBanpQueue.Forget(obj)
-		return nil
-	}(obj)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return true
-	}
-	return true
-}
-
-func (c *Controller) processNextDeleteBanpWorkItem() bool {
-	obj, shutdown := c.deleteBanpQueue.Get()
-	if shutdown {
-		return false
-	}
-
-	err := func(obj interface{}) error {
-		defer c.deleteBanpQueue.Done(obj)
-		var banp *v1alpha1.BaselineAdminNetworkPolicy
-		var ok bool
-		if banp, ok = obj.(*v1alpha1.BaselineAdminNetworkPolicy); !ok {
-			c.deleteBanpQueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected banp object in workqueue but got %#v", obj))
-			return nil
-		}
-		if err := c.handleDeleteBanp(banp); err != nil {
-			c.deleteBanpQueue.AddRateLimited(obj)
-			return fmt.Errorf("error syncing banp '%s': %s, requeuing", banp.Name, err.Error())
-		}
-		c.deleteBanpQueue.Forget(obj)
-		return nil
-	}(obj)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return true
-	}
-	return true
 }
 
 func (c *Controller) handleAddBanp(key string) (err error) {
@@ -436,7 +325,7 @@ func (c *Controller) handleDeleteBanp(banp *v1alpha1.BaselineAdminNetworkPolicy)
 	return nil
 }
 
-func (c *Controller) handleUpdateBanp(changed ChangedDelta) error {
+func (c *Controller) handleUpdateBanp(changed *AdminNetworkPolicyChangedDelta) error {
 	// Only handle updates that do not affect acls.
 	c.banpKeyMutex.LockKey(changed.key)
 	defer func() { _ = c.banpKeyMutex.UnlockKey(changed.key) }()

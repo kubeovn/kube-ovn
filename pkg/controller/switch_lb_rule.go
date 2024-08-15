@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"reflect"
 	"slices"
-	"strconv"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
@@ -14,7 +13,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
-	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -34,30 +32,20 @@ func generateSvcName(name string) string {
 }
 
 func NewSlrInfo(slr *kubeovnv1.SwitchLBRule) *SlrInfo {
-	var (
-		vips      []string
-		namespace string
-	)
-
-	if namespace = slr.Spec.Namespace; namespace == "" {
+	namespace := slr.Spec.Namespace
+	if namespace == "" {
 		namespace = "default"
 	}
 
+	vips := make([]string, 0, len(slr.Spec.Ports))
 	for _, port := range slr.Spec.Ports {
-		vips = append(
-			vips,
-			strings.Join(
-				[]string{slr.Spec.Vip, strconv.Itoa(int(port.Port))},
-				":",
-			),
-		)
+		vips = append(vips, util.JoinHostPort(slr.Spec.Vip, port.Port))
 	}
 
 	return &SlrInfo{
-		Name:       slr.Name,
-		Namespace:  namespace,
-		IsRecreate: false,
-		Vips:       vips,
+		Name:      slr.Name,
+		Namespace: namespace,
+		Vips:      vips,
 	}
 }
 
@@ -93,7 +81,7 @@ func (c *Controller) enqueueUpdateSwitchLBRule(oldObj, newObj interface{}) {
 		info.IsRecreate = true
 	}
 
-	c.UpdateSwitchLBRuleQueue.Add(info)
+	c.updateSwitchLBRuleQueue.Add(info)
 }
 
 func (c *Controller) enqueueDeleteSwitchLBRule(obj interface{}) {
@@ -109,48 +97,6 @@ func (c *Controller) enqueueDeleteSwitchLBRule(obj interface{}) {
 
 	klog.Infof("enqueue del SwitchLBRule %s", key)
 	c.delSwitchLBRuleQueue.Add(NewSlrInfo(obj.(*kubeovnv1.SwitchLBRule)))
-}
-
-func (c *Controller) processSwitchLBRuleWorkItem(processName string, queue workqueue.RateLimitingInterface, handler func(key *SlrInfo) error) bool {
-	obj, shutdown := queue.Get()
-	if shutdown {
-		return false
-	}
-
-	if err := func(obj interface{}) error {
-		defer queue.Done(obj)
-		key, ok := obj.(*SlrInfo)
-		if !ok {
-			queue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected switchLBRule in workqueue but got %#v", obj))
-			return nil
-		}
-		if err := handler(key); err != nil {
-			return fmt.Errorf("error syncing '%s': %s, requeuing", key.Name, err.Error())
-		}
-		queue.Forget(obj)
-		return nil
-	}(obj); err != nil {
-		utilruntime.HandleError(fmt.Errorf("process: %s. err: %w", processName, err))
-		queue.AddRateLimited(obj)
-		return true
-	}
-	return true
-}
-
-func (c *Controller) runDelSwitchLBRuleWorker() {
-	for c.processSwitchLBRuleWorkItem("delSwitchLBRule", c.delSwitchLBRuleQueue, c.handleDelSwitchLBRule) {
-	}
-}
-
-func (c *Controller) runUpdateSwitchLBRuleWorker() {
-	for c.processSwitchLBRuleWorkItem("updateSwitchLBRule", c.UpdateSwitchLBRuleQueue, c.handleUpdateSwitchLBRule) {
-	}
-}
-
-func (c *Controller) runAddSwitchLBRuleWorker() {
-	for c.processNextWorkItem("addSwitchLBRule", c.addSwitchLBRuleQueue, c.handleAddOrUpdateSwitchLBRule) {
-	}
 }
 
 func (c *Controller) handleAddOrUpdateSwitchLBRule(key string) error {
