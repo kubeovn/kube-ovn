@@ -19,6 +19,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
@@ -847,6 +848,9 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 			},
 			UpdateStrategy: v1.StatefulSetUpdateStrategy{
 				Type: v1.RollingUpdateStatefulSetStrategyType,
+				RollingUpdate: &v1.RollingUpdateStatefulSetStrategy{
+					MaxUnavailable: intstr.FromString("100%"),
+				},
 			},
 		},
 	}
