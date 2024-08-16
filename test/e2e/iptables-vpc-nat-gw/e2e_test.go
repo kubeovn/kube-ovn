@@ -34,6 +34,7 @@ const (
 	dockerExtNet1Name      = "kube-ovn-ext-net1"
 	dockerExtNet2Name      = "kube-ovn-ext-net2"
 	vpcNatGWConfigMapName  = "ovn-vpc-nat-gw-config"
+	vpcNatConfigName       = "ovn-vpc-nat-config"
 	networkAttachDefName   = "ovn-vpc-external-network"
 	externalSubnetProvider = "ovn-vpc-external-network.kube-system"
 )
