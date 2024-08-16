@@ -1847,11 +1847,15 @@ func (suite *OvnClientTestSuite) testSgRuleNoACL() {
 			PortRangeMax:  443,
 			Priority:      197,
 		}
-
+		options := func(acl *ovnnb.ACL) {
+			acl.Log = true
+			acl.Severity = &ovnnb.ACLSeverityWarning
+			acl.Name = &pgName
+		}
 		match := fmt.Sprintf("inport == @%s && ip4 && ip4.dst == 172.16.0.0/16 && 443 <= tcp.dst <= 443", pgName)
 		securityGroupHighestPriority, _ := strconv.Atoi(util.SecurityGroupHighestPriority)
 		priority := securityGroupHighestPriority - rule.Priority
-		acl, err := ovnClient.newACL(pgName, ovnnb.ACLDirectionFromLport, strconv.Itoa(priority), match, ovnnb.ACLActionAllowRelated, util.NetpolACLTier)
+		acl, err := ovnClient.newACL(pgName, ovnnb.ACLDirectionFromLport, strconv.Itoa(priority), match, ovnnb.ACLActionAllowRelated, options)
 		require.NoError(t, err)
 		err = ovnClient.CreateAcls(pgName, portGroupKey, acl)
 		require.NoError(t, err)
@@ -1903,15 +1907,20 @@ func (suite *OvnClientTestSuite) testSGLostACL() {
 		}
 
 		pgName := GetSgPortGroupName(sg.Name)
+		options := func(acl *ovnnb.ACL) {
+			acl.Log = true
+			acl.Severity = &ovnnb.ACLSeverityWarning
+			acl.Name = &pgName
+		}
 		err := ovnClient.CreatePortGroup(pgName, nil)
 		require.NoError(t, err)
 
-		ingressACL, err := ovnClient.newACL(pgName, ovnnb.ACLDirectionToLport, "2299", "outport == @ovn.sg.test.sg.no.lost.acl && ip4 && ip4.src == 192.168.0.0/24 && 80 <= tcp.dst <= 80", ovnnb.ACLActionAllowRelated, util.NetpolACLTier)
+		ingressACL, err := ovnClient.newACL(pgName, ovnnb.ACLDirectionToLport, "2299", "outport == @ovn.sg.test.sg.no.lost.acl && ip4 && ip4.src == 192.168.0.0/24 && 80 <= tcp.dst <= 80", ovnnb.ACLActionAllowRelated, options)
 		require.NoError(t, err)
 		err = ovnClient.CreateAcls(pgName, portGroupKey, ingressACL)
 		require.NoError(t, err)
 
-		egressACL, err := ovnClient.newACL(pgName, ovnnb.ACLDirectionFromLport, "2299", "inport == @ovn.sg.test.sg.no.lost.acl && ip6 && ip6.dst == fd00::/64 && 53 <= udp.dst <= 53", ovnnb.ACLActionAllowRelated, util.NetpolACLTier)
+		egressACL, err := ovnClient.newACL(pgName, ovnnb.ACLDirectionFromLport, "2299", "inport == @ovn.sg.test.sg.no.lost.acl && ip6 && ip6.dst == fd00::/64 && 53 <= udp.dst <= 53", ovnnb.ACLActionAllowRelated, options)
 		require.NoError(t, err)
 		err = ovnClient.CreateAcls(pgName, portGroupKey, egressACL)
 		require.NoError(t, err)
@@ -1956,10 +1965,15 @@ func (suite *OvnClientTestSuite) testSGLostACL() {
 		}
 
 		pgName := GetSgPortGroupName(sg.Name)
+		options := func(acl *ovnnb.ACL) {
+			acl.Log = true
+			acl.Severity = &ovnnb.ACLSeverityWarning
+			acl.Name = &pgName
+		}
 		err := ovnClient.CreatePortGroup(pgName, nil)
 		require.NoError(t, err)
 
-		egressACL, err := ovnClient.newACL(pgName, ovnnb.ACLDirectionFromLport, "2299", "inport == @ovn.sg.test.sg.lost.ingress.acl && ip6 && ip6.dst == fd00::/64 && 53 <= udp.dst <= 53", ovnnb.ACLActionAllowRelated, util.NetpolACLTier)
+		egressACL, err := ovnClient.newACL(pgName, ovnnb.ACLDirectionFromLport, "2299", "inport == @ovn.sg.test.sg.lost.ingress.acl && ip6 && ip6.dst == fd00::/64 && 53 <= udp.dst <= 53", ovnnb.ACLActionAllowRelated, options)
 		require.NoError(t, err)
 		err = ovnClient.CreateAcls(pgName, portGroupKey, egressACL)
 		require.NoError(t, err)
@@ -2004,10 +2018,15 @@ func (suite *OvnClientTestSuite) testSGLostACL() {
 		}
 
 		pgName := GetSgPortGroupName(sg.Name)
+		options := func(acl *ovnnb.ACL) {
+			acl.Log = true
+			acl.Severity = &ovnnb.ACLSeverityWarning
+			acl.Name = &pgName
+		}
 		err := ovnClient.CreatePortGroup(pgName, nil)
 		require.NoError(t, err)
 
-		ingressACL, err := ovnClient.newACL(pgName, ovnnb.ACLDirectionToLport, "2299", "outport == @ovn.sg.test.sg.lost.egress.acl && ip4 && ip4.src == 192.168.0.0/24 && 80 <= tcp.dst <= 80", ovnnb.ACLActionAllowRelated, util.NetpolACLTier)
+		ingressACL, err := ovnClient.newACL(pgName, ovnnb.ACLDirectionToLport, "2299", "outport == @ovn.sg.test.sg.lost.egress.acl && ip4 && ip4.src == 192.168.0.0/24 && 80 <= tcp.dst <= 80", ovnnb.ACLActionAllowRelated, options)
 		require.NoError(t, err)
 		err = ovnClient.CreateAcls(pgName, portGroupKey, ingressACL)
 		require.NoError(t, err)
