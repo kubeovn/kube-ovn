@@ -1846,7 +1846,7 @@ spec:
         - jsonPath: .spec.namespaces
           name: Namespaces
           type: string
-        - jsonPath: .status.defaultSubnet
+        - jsonPath: .status.defaultLogicalSwitch
           name: DefaultSubnet
           type: string
       name: v1
@@ -3149,11 +3149,11 @@ rules:
       - subjectaccessreviews
     verbs:
       - create
-  - apiGroups: 
+  - apiGroups:
       - "certificates.k8s.io"
-    resources: 
+    resources:
       - "certificatesigningrequests"
-    verbs: 
+    verbs:
       - "get"
       - "list"
       - "watch"
@@ -3282,12 +3282,12 @@ rules:
       - subjectaccessreviews
     verbs:
       - create
-  - apiGroups: 
+  - apiGroups:
       - "certificates.k8s.io"
-    resources: 
+    resources:
       - "certificatesigningrequests"
-    verbs: 
-      - "create" 
+    verbs:
+      - "create"
       - "get"
       - "list"
       - "watch"

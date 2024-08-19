@@ -1603,7 +1603,7 @@ spec:
         - jsonPath: .spec.namespaces
           name: Namespaces
           type: string
-        - jsonPath: .status.defaultSubnet
+        - jsonPath: .status.defaultLogicalSwitch
           name: DefaultSubnet
           type: string
       name: v1
