@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/containernetworking/plugins/pkg/ns"
+	"github.com/containernetworking/plugins/pkg/utils/sysctl"
 	"github.com/k8snetworkplumbingwg/sriovnet"
 	sriovutilfs "github.com/k8snetworkplumbingwg/sriovnet/pkg/utils/filesystem"
 	"github.com/vishvananda/netlink"
@@ -233,6 +234,21 @@ func configureContainerNic(nicName, ifName, ipAddr, gateway string, isDefaultRou
 		if nicType != util.InternalType {
 			if err = netlink.LinkSetName(containerLink, ifName); err != nil {
 				return err
+			}
+		}
+
+		if util.CheckProtocol(ipAddr) == kubeovnv1.ProtocolDual || util.CheckProtocol(ipAddr) == kubeovnv1.ProtocolIPv6 {
+			// For docker version >=17.x the "none" network will disable ipv6 by default.
+			// We have to enable ipv6 here to add v6 address and gateway.
+			// See https://github.com/containernetworking/cni/issues/531
+			value, err := sysctl.Sysctl("net.ipv6.conf.all.disable_ipv6")
+			if err != nil {
+				return fmt.Errorf("failed to get sysctl net.ipv6.conf.all.disable_ipv6: %v", err)
+			}
+			if value != "0" {
+				if _, err = sysctl.Sysctl("net.ipv6.conf.all.disable_ipv6", "0"); err != nil {
+					return fmt.Errorf("failed to enable ipv6 on all nic: %v", err)
+				}
 			}
 		}
 
