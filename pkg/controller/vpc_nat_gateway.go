@@ -576,6 +576,12 @@ func (c *Controller) handleUpdateNatGwSubnetRoute(natGwKey string) error {
 				klog.Error(err)
 				return err
 			}
+			if subnet.Spec.Vlan != "" && !subnet.Spec.U2OInterconnection {
+				continue
+			}
+			if !isOvnSubnet(subnet) || !subnet.Status.IsValidated() {
+				continue
+			}
 			if v4Cidr, _ := util.SplitStringIP(subnet.Spec.CIDRBlock); v4Cidr != "" {
 				newCIDRS = append(newCIDRS, v4Cidr)
 			}
