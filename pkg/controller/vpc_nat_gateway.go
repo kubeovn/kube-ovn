@@ -747,7 +747,7 @@ func (c *Controller) setNatGwAPIAccess(annotations map[string]string, externalNe
 
 	// Subdivide provider so we can infer the name of the NetworkAttachmentDefinition
 	providerSplit := strings.Split(vpcNatAPINadProvider, ".")
-	if len(providerSplit) < 3 {
+	if len(providerSplit) != 3 || providerSplit[2] != util.OvnProvider {
 		return fmt.Errorf("name of the provider must have syntax 'name.namespace.ovn', got %s", vpcNatAPINadProvider)
 	}
 
@@ -822,7 +822,7 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 		util.IPAddressAnnotation:         gw.Spec.LanIP,
 	}
 
-	// Add an interface that can reach the API server, we access to it to probe Kube-OVN resources
+	// Add an interface that can reach the API server, we need access to it to probe Kube-OVN resources
 	if gw.Spec.BgpSpeaker.Enabled {
 		if err := c.setNatGwAPIAccess(podAnnotations, externalNetworkNad); err != nil {
 			return nil, err

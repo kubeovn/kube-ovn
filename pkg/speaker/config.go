@@ -271,7 +271,7 @@ func (config *Configuration) initBgpServer() error {
 		listenPort = bgp.BGP_PORT
 	}
 
-	klog.V(5).Infof("Starting bgp server with asn %d, routerId %s on port %d",
+	klog.Infof("Starting bgp server with asn %d, routerId %s on port %d",
 		config.ClusterAs,
 		config.RouterID,
 		listenPort)
