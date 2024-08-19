@@ -20,8 +20,8 @@ package v1
 
 import (
 	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/client-go/listers"
 	"k8s.io/client-go/tools/cache"
 )
 
@@ -39,30 +39,10 @@ type SwitchLBRuleLister interface {
 
 // switchLBRuleLister implements the SwitchLBRuleLister interface.
 type switchLBRuleLister struct {
-	indexer cache.Indexer
+	listers.ResourceIndexer[*v1.SwitchLBRule]
 }
 
 // NewSwitchLBRuleLister returns a new SwitchLBRuleLister.
 func NewSwitchLBRuleLister(indexer cache.Indexer) SwitchLBRuleLister {
-	return &switchLBRuleLister{indexer: indexer}
-}
-
-// List lists all SwitchLBRules in the indexer.
-func (s *switchLBRuleLister) List(selector labels.Selector) (ret []*v1.SwitchLBRule, err error) {
-	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
-		ret = append(ret, m.(*v1.SwitchLBRule))
-	})
-	return ret, err
-}
-
-// Get retrieves the SwitchLBRule from the index for a given name.
-func (s *switchLBRuleLister) Get(name string) (*v1.SwitchLBRule, error) {
-	obj, exists, err := s.indexer.GetByKey(name)
-	if err != nil {
-		return nil, err
-	}
-	if !exists {
-		return nil, errors.NewNotFound(v1.Resource("switchlbrule"), name)
-	}
-	return obj.(*v1.SwitchLBRule), nil
+	return &switchLBRuleLister{listers.New[*v1.SwitchLBRule](indexer, v1.Resource("switchlbrule"))}
 }

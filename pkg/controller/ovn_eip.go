@@ -75,138 +75,6 @@ func (c *Controller) enqueueDelOvnEip(obj interface{}) {
 	c.delOvnEipQueue.Add(key)
 }
 
-func (c *Controller) runAddOvnEipWorker() {
-	for c.processNextAddOvnEipWorkItem() {
-	}
-}
-
-func (c *Controller) runUpdateOvnEipWorker() {
-	for c.processNextUpdateOvnEipWorkItem() {
-	}
-}
-
-func (c *Controller) runResetOvnEipWorker() {
-	for c.processNextResetOvnEipWorkItem() {
-	}
-}
-
-func (c *Controller) runDelOvnEipWorker() {
-	for c.processNextDeleteOvnEipWorkItem() {
-	}
-}
-
-func (c *Controller) processNextAddOvnEipWorkItem() bool {
-	obj, shutdown := c.addOvnEipQueue.Get()
-	if shutdown {
-		return false
-	}
-	err := func(obj interface{}) error {
-		defer c.addOvnEipQueue.Done(obj)
-		var key string
-		var ok bool
-		if key, ok = obj.(string); !ok {
-			c.addOvnEipQueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
-			return nil
-		}
-		if err := c.handleAddOvnEip(key); err != nil {
-			c.addOvnEipQueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
-		}
-		c.addOvnEipQueue.Forget(obj)
-		return nil
-	}(obj)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return true
-	}
-	return true
-}
-
-func (c *Controller) processNextUpdateOvnEipWorkItem() bool {
-	obj, shutdown := c.updateOvnEipQueue.Get()
-	if shutdown {
-		return false
-	}
-	err := func(obj interface{}) error {
-		defer c.updateOvnEipQueue.Done(obj)
-		var key string
-		var ok bool
-		if key, ok = obj.(string); !ok {
-			c.updateOvnEipQueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
-			return nil
-		}
-		if err := c.handleUpdateOvnEip(key); err != nil {
-			c.updateOvnEipQueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
-		}
-		c.updateOvnEipQueue.Forget(obj)
-		return nil
-	}(obj)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return true
-	}
-	return true
-}
-
-func (c *Controller) processNextResetOvnEipWorkItem() bool {
-	obj, shutdown := c.resetOvnEipQueue.Get()
-	if shutdown {
-		return false
-	}
-	err := func(obj interface{}) error {
-		defer c.resetOvnEipQueue.Done(obj)
-		var key string
-		var ok bool
-		if key, ok = obj.(string); !ok {
-			c.resetOvnEipQueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
-			return nil
-		}
-		if err := c.handleResetOvnEip(key); err != nil {
-			c.resetOvnEipQueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
-		}
-		c.resetOvnEipQueue.Forget(obj)
-		return nil
-	}(obj)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return true
-	}
-	return true
-}
-
-func (c *Controller) processNextDeleteOvnEipWorkItem() bool {
-	obj, shutdown := c.delOvnEipQueue.Get()
-	if shutdown {
-		return false
-	}
-	err := func(obj interface{}) error {
-		defer c.delOvnEipQueue.Done(obj)
-		var key string
-		var ok bool
-		if key, ok = obj.(string); !ok {
-			c.delOvnEipQueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected ovn eip in workqueue but got %#v", obj))
-			return nil
-		}
-		if err := c.handleDelOvnEip(key); err != nil {
-			c.delOvnEipQueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
-		}
-		c.delOvnEipQueue.Forget(obj)
-		return nil
-	}(obj)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return true
-	}
-	return true
-}
-
 func (c *Controller) handleAddOvnEip(key string) error {
 	cachedEip, err := c.ovnEipsLister.Get(key)
 	if err != nil {
@@ -230,6 +98,12 @@ func (c *Controller) handleAddOvnEip(key string) error {
 	subnet, err := c.subnetsLister.Get(subnetName)
 	if err != nil {
 		klog.Errorf("failed to get external subnet, %v", err)
+		return err
+	}
+	// v6 ip address can not use upper case
+	if util.ContainsUppercase(cachedEip.Spec.V6Ip) {
+		err := fmt.Errorf("eip %s v6 ip address %s can not contain upper case", cachedEip.Name, cachedEip.Spec.V6Ip)
+		klog.Error(err)
 		return err
 	}
 	portName := cachedEip.Name
@@ -295,6 +169,12 @@ func (c *Controller) handleUpdateOvnEip(key string) error {
 	// not support change
 	if cachedEip.Status.V4Ip != cachedEip.Spec.V4Ip {
 		err := fmt.Errorf("not support change v4 ip for ovn eip %s", cachedEip.Name)
+		klog.Error(err)
+		return err
+	}
+	// v6 ip address can not use upper case
+	if util.ContainsUppercase(cachedEip.Spec.V6Ip) {
+		err := fmt.Errorf("eip %s v6 ip address %s can not contain upper case", cachedEip.Name, cachedEip.Spec.V6Ip)
 		klog.Error(err)
 		return err
 	}

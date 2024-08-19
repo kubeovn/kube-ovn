@@ -120,7 +120,7 @@ spec:
           - --secure-serving={{- .Values.func.SECURE_SERVING }}
           - --enable-ovn-ipsec={{- .Values.func.ENABLE_OVN_IPSEC }}
         securityContext:
-          runAsUser: 65534
+          runAsUser: {{ include "kubeovn.runAsUser" . }}
           runAsGroup: 0
           privileged: false
           capabilities:
@@ -129,6 +129,7 @@ spec:
               - NET_BIND_SERVICE
               - NET_RAW
               - SYS_ADMIN
+              - CAP_SYS_PTRACE
               {{- if not .Values.DISABLE_MODULES_MANAGEMENT }}
               - SYS_MODULE
               {{- end }}
@@ -203,7 +204,7 @@ spec:
               - /kube-ovn/kube-ovn-healthcheck
               - --port=10665
               - --tls={{- .Values.func.SECURE_SERVING }}
-          timeoutSeconds: 1
+          timeoutSeconds: 5
         livenessProbe:
           failureThreshold: 3
           initialDelaySeconds: 30
@@ -214,7 +215,7 @@ spec:
               - /kube-ovn/kube-ovn-healthcheck
               - --port=10665
               - --tls={{- .Values.func.SECURE_SERVING }}
-          timeoutSeconds: 1
+          timeoutSeconds: 5
         resources:
           requests:
             cpu: {{ index .Values "kube-ovn-cni" "requests" "cpu" }}

@@ -40,20 +40,22 @@ var vpcsKind = v1.SchemeGroupVersion.WithKind("Vpc")
 
 // Get takes name of the vpc, and returns the corresponding vpc object, and an error if there is any.
 func (c *FakeVpcs) Get(ctx context.Context, name string, options metav1.GetOptions) (result *v1.Vpc, err error) {
+	emptyResult := &v1.Vpc{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootGetAction(vpcsResource, name), &v1.Vpc{})
+		Invokes(testing.NewRootGetActionWithOptions(vpcsResource, name, options), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v1.Vpc), err
 }
 
 // List takes label and field selectors, and returns the list of Vpcs that match those selectors.
 func (c *FakeVpcs) List(ctx context.Context, opts metav1.ListOptions) (result *v1.VpcList, err error) {
+	emptyResult := &v1.VpcList{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootListAction(vpcsResource, vpcsKind, opts), &v1.VpcList{})
+		Invokes(testing.NewRootListActionWithOptions(vpcsResource, vpcsKind, opts), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 
 	label, _, _ := testing.ExtractFromListOptions(opts)
@@ -72,36 +74,39 @@ func (c *FakeVpcs) List(ctx context.Context, opts metav1.ListOptions) (result *v
 // Watch returns a watch.Interface that watches the requested vpcs.
 func (c *FakeVpcs) Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error) {
 	return c.Fake.
-		InvokesWatch(testing.NewRootWatchAction(vpcsResource, opts))
+		InvokesWatch(testing.NewRootWatchActionWithOptions(vpcsResource, opts))
 }
 
 // Create takes the representation of a vpc and creates it.  Returns the server's representation of the vpc, and an error, if there is any.
 func (c *FakeVpcs) Create(ctx context.Context, vpc *v1.Vpc, opts metav1.CreateOptions) (result *v1.Vpc, err error) {
+	emptyResult := &v1.Vpc{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootCreateAction(vpcsResource, vpc), &v1.Vpc{})
+		Invokes(testing.NewRootCreateActionWithOptions(vpcsResource, vpc, opts), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v1.Vpc), err
 }
 
 // Update takes the representation of a vpc and updates it. Returns the server's representation of the vpc, and an error, if there is any.
 func (c *FakeVpcs) Update(ctx context.Context, vpc *v1.Vpc, opts metav1.UpdateOptions) (result *v1.Vpc, err error) {
+	emptyResult := &v1.Vpc{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootUpdateAction(vpcsResource, vpc), &v1.Vpc{})
+		Invokes(testing.NewRootUpdateActionWithOptions(vpcsResource, vpc, opts), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v1.Vpc), err
 }
 
 // UpdateStatus was generated because the type contains a Status member.
 // Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-func (c *FakeVpcs) UpdateStatus(ctx context.Context, vpc *v1.Vpc, opts metav1.UpdateOptions) (*v1.Vpc, error) {
+func (c *FakeVpcs) UpdateStatus(ctx context.Context, vpc *v1.Vpc, opts metav1.UpdateOptions) (result *v1.Vpc, err error) {
+	emptyResult := &v1.Vpc{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootUpdateSubresourceAction(vpcsResource, "status", vpc), &v1.Vpc{})
+		Invokes(testing.NewRootUpdateSubresourceActionWithOptions(vpcsResource, "status", vpc, opts), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v1.Vpc), err
 }
@@ -115,7 +120,7 @@ func (c *FakeVpcs) Delete(ctx context.Context, name string, opts metav1.DeleteOp
 
 // DeleteCollection deletes a collection of objects.
 func (c *FakeVpcs) DeleteCollection(ctx context.Context, opts metav1.DeleteOptions, listOpts metav1.ListOptions) error {
-	action := testing.NewRootDeleteCollectionAction(vpcsResource, listOpts)
+	action := testing.NewRootDeleteCollectionActionWithOptions(vpcsResource, opts, listOpts)
 
 	_, err := c.Fake.Invokes(action, &v1.VpcList{})
 	return err
@@ -123,10 +128,11 @@ func (c *FakeVpcs) DeleteCollection(ctx context.Context, opts metav1.DeleteOptio
 
 // Patch applies the patch and returns the patched vpc.
 func (c *FakeVpcs) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *v1.Vpc, err error) {
+	emptyResult := &v1.Vpc{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootPatchSubresourceAction(vpcsResource, name, pt, data, subresources...), &v1.Vpc{})
+		Invokes(testing.NewRootPatchSubresourceActionWithOptions(vpcsResource, name, pt, data, opts, subresources...), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v1.Vpc), err
 }

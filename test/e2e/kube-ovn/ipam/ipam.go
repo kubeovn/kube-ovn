@@ -159,7 +159,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 		framework.ExpectNoError(err)
 
 		ginkgo.By("Waiting for new pods to be ready")
-		err = e2epod.WaitForPodsRunningReady(context.Background(), cs, namespaceName, *deploy.Spec.Replicas, 0, time.Minute)
+		err = e2epod.WaitForPodsRunningReady(context.Background(), cs, namespaceName, int(*deploy.Spec.Replicas), time.Minute)
 		framework.ExpectNoError(err, "timed out waiting for pods to be ready")
 
 		ginkgo.By("Getting pods for deployment " + deployName + " after deletion")

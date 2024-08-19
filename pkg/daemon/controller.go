@@ -38,23 +38,22 @@ type Controller struct {
 
 	providerNetworksLister          kubeovnlister.ProviderNetworkLister
 	providerNetworksSynced          cache.InformerSynced
-	addOrUpdateProviderNetworkQueue workqueue.RateLimitingInterface
-	deleteProviderNetworkQueue      workqueue.RateLimitingInterface
+	addOrUpdateProviderNetworkQueue workqueue.TypedRateLimitingInterface[string]
+	deleteProviderNetworkQueue      workqueue.TypedRateLimitingInterface[*kubeovnv1.ProviderNetwork]
 
-	vlansLister     kubeovnlister.VlanLister
-	vlansSynced     cache.InformerSynced
-	updateVlanQueue workqueue.RateLimitingInterface
+	vlansLister kubeovnlister.VlanLister
+	vlansSynced cache.InformerSynced
 
 	subnetsLister kubeovnlister.SubnetLister
 	subnetsSynced cache.InformerSynced
-	subnetQueue   workqueue.RateLimitingInterface
+	subnetQueue   workqueue.TypedRateLimitingInterface[*subnetEvent]
 
 	ovnEipsLister kubeovnlister.OvnEipLister
 	ovnEipsSynced cache.InformerSynced
 
 	podsLister listerv1.PodLister
 	podsSynced cache.InformerSynced
-	podQueue   workqueue.RateLimitingInterface
+	podQueue   workqueue.TypedRateLimitingInterface[string]
 
 	nodesLister listerv1.NodeLister
 	nodesSynced cache.InformerSynced
@@ -68,6 +67,13 @@ type Controller struct {
 	localNamespace string
 
 	k8sExec k8sexec.Interface
+}
+
+func newTypedRateLimitingQueue[T comparable](name string, rateLimiter workqueue.TypedRateLimiter[T]) workqueue.TypedRateLimitingInterface[T] {
+	if rateLimiter == nil {
+		rateLimiter = workqueue.DefaultTypedControllerRateLimiter[T]()
+	}
+	return workqueue.NewTypedRateLimitingQueueWithConfig(rateLimiter, workqueue.TypedRateLimitingQueueConfig[T]{Name: name})
 }
 
 // NewController init a daemon controller
@@ -89,23 +95,22 @@ func NewController(config *Configuration, stopCh <-chan struct{}, podInformerFac
 
 		providerNetworksLister:          providerNetworkInformer.Lister(),
 		providerNetworksSynced:          providerNetworkInformer.Informer().HasSynced,
-		addOrUpdateProviderNetworkQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddOrUpdateProviderNetwork"),
-		deleteProviderNetworkQueue:      workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteProviderNetwork"),
+		addOrUpdateProviderNetworkQueue: newTypedRateLimitingQueue[string]("AddOrUpdateProviderNetwork", nil),
+		deleteProviderNetworkQueue:      newTypedRateLimitingQueue[*kubeovnv1.ProviderNetwork]("DeleteProviderNetwork", nil),
 
-		vlansLister:     vlanInformer.Lister(),
-		vlansSynced:     vlanInformer.Informer().HasSynced,
-		updateVlanQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateVlan"),
+		vlansLister: vlanInformer.Lister(),
+		vlansSynced: vlanInformer.Informer().HasSynced,
 
 		subnetsLister: subnetInformer.Lister(),
 		subnetsSynced: subnetInformer.Informer().HasSynced,
-		subnetQueue:   workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "Subnet"),
+		subnetQueue:   newTypedRateLimitingQueue[*subnetEvent]("Subnet", nil),
 
 		ovnEipsLister: ovnEipInformer.Lister(),
 		ovnEipsSynced: ovnEipInformer.Informer().HasSynced,
 
 		podsLister: podInformer.Lister(),
 		podsSynced: podInformer.Informer().HasSynced,
-		podQueue:   workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "Pod"),
+		podQueue:   newTypedRateLimitingQueue[string]("Pod", nil),
 
 		nodesLister: nodeInformer.Lister(),
 		nodesSynced: nodeInformer.Informer().HasSynced,
@@ -185,8 +190,9 @@ func (c *Controller) enqueueUpdateProviderNetwork(_, newObj interface{}) {
 }
 
 func (c *Controller) enqueueDeleteProviderNetwork(obj interface{}) {
-	klog.V(3).Infof("enqueue delete provider network %s", obj.(*kubeovnv1.ProviderNetwork).Name)
-	c.deleteProviderNetworkQueue.Add(obj)
+	pn := obj.(*kubeovnv1.ProviderNetwork)
+	klog.V(3).Infof("enqueue delete provider network %s", pn.Name)
+	c.deleteProviderNetworkQueue.Add(pn)
 }
 
 func (c *Controller) runAddOrUpdateProviderNetworkWorker() {
@@ -200,29 +206,22 @@ func (c *Controller) runDeleteProviderNetworkWorker() {
 }
 
 func (c *Controller) processNextAddOrUpdateProviderNetworkWorkItem() bool {
-	obj, shutdown := c.addOrUpdateProviderNetworkQueue.Get()
+	key, shutdown := c.addOrUpdateProviderNetworkQueue.Get()
 	if shutdown {
 		return false
 	}
 
-	err := func(obj interface{}) error {
-		defer c.addOrUpdateProviderNetworkQueue.Done(obj)
-		var key string
-		var ok bool
-		if key, ok = obj.(string); !ok {
-			c.addOrUpdateProviderNetworkQueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
-			return nil
-		}
+	err := func(key string) error {
+		defer c.addOrUpdateProviderNetworkQueue.Done(key)
 		if err := c.handleAddOrUpdateProviderNetwork(key); err != nil {
-			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
+			return fmt.Errorf("error syncing %q: %w, requeuing", key, err)
 		}
-		c.addOrUpdateProviderNetworkQueue.Forget(obj)
+		c.addOrUpdateProviderNetworkQueue.Forget(key)
 		return nil
-	}(obj)
+	}(key)
 	if err != nil {
 		utilruntime.HandleError(err)
-		c.addOrUpdateProviderNetworkQueue.AddRateLimited(obj)
+		c.addOrUpdateProviderNetworkQueue.AddRateLimited(key)
 		return true
 	}
 	return true
@@ -234,17 +233,10 @@ func (c *Controller) processNextDeleteProviderNetworkWorkItem() bool {
 		return false
 	}
 
-	err := func(obj interface{}) error {
+	err := func(obj *kubeovnv1.ProviderNetwork) error {
 		defer c.deleteProviderNetworkQueue.Done(obj)
-		var pn *kubeovnv1.ProviderNetwork
-		var ok bool
-		if pn, ok = obj.(*kubeovnv1.ProviderNetwork); !ok {
-			c.deleteProviderNetworkQueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected ProviderNetwork in workqueue but got %#v", obj))
-			return nil
-		}
-		if err := c.handleDeleteProviderNetwork(pn); err != nil {
-			return fmt.Errorf("error syncing '%s': %w, requeuing", pn.Name, err)
+		if err := c.handleDeleteProviderNetwork(obj); err != nil {
+			return fmt.Errorf("error syncing %q: %w, requeuing", obj.Name, err)
 		}
 		c.deleteProviderNetworkQueue.Forget(obj)
 		return nil
@@ -447,15 +439,15 @@ type subnetEvent struct {
 }
 
 func (c *Controller) enqueueAddSubnet(obj interface{}) {
-	c.subnetQueue.Add(subnetEvent{newObj: obj})
+	c.subnetQueue.Add(&subnetEvent{newObj: obj})
 }
 
 func (c *Controller) enqueueUpdateSubnet(oldObj, newObj interface{}) {
-	c.subnetQueue.Add(subnetEvent{oldObj: oldObj, newObj: newObj})
+	c.subnetQueue.Add(&subnetEvent{oldObj: oldObj, newObj: newObj})
 }
 
 func (c *Controller) enqueueDeleteSubnet(obj interface{}) {
-	c.subnetQueue.Add(subnetEvent{oldObj: obj})
+	c.subnetQueue.Add(&subnetEvent{oldObj: obj})
 }
 
 func (c *Controller) runSubnetWorker() {
@@ -469,17 +461,11 @@ func (c *Controller) processNextSubnetWorkItem() bool {
 		return false
 	}
 
-	err := func(obj interface{}) error {
+	err := func(obj *subnetEvent) error {
 		defer c.subnetQueue.Done(obj)
-		event, ok := obj.(subnetEvent)
-		if !ok {
-			c.subnetQueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected subnetEvent in workqueue but got %#v", obj))
-			return nil
-		}
-		if err := c.reconcileRouters(&event); err != nil {
-			c.subnetQueue.AddRateLimited(event)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", event, err.Error())
+		if err := c.reconcileRouters(obj); err != nil {
+			c.subnetQueue.AddRateLimited(obj)
+			return fmt.Errorf("error syncing %v: %w, requeuing", obj, err)
 		}
 		c.subnetQueue.Forget(obj)
 		return nil
@@ -543,28 +529,20 @@ func (c *Controller) runPodWorker() {
 }
 
 func (c *Controller) processNextPodWorkItem() bool {
-	obj, shutdown := c.podQueue.Get()
-
+	key, shutdown := c.podQueue.Get()
 	if shutdown {
 		return false
 	}
 
-	err := func(obj interface{}) error {
-		defer c.podQueue.Done(obj)
-		var key string
-		var ok bool
-		if key, ok = obj.(string); !ok {
-			c.podQueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
-			return nil
-		}
+	err := func(key string) error {
+		defer c.podQueue.Done(key)
 		if err := c.handlePod(key); err != nil {
 			c.podQueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
+			return fmt.Errorf("error syncing %q: %w, requeuing", key, err)
 		}
-		c.podQueue.Forget(obj)
+		c.podQueue.Forget(key)
 		return nil
-	}(obj)
+	}(key)
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true

@@ -51,7 +51,7 @@ func CmdMain() {
 	} else {
 		addr = "tcp://" + addr
 	}
-	if err := util.DialTCP(addr, 100*time.Millisecond, false); err != nil {
+	if err := util.DialTCP(addr, time.Second, false); err != nil {
 		util.LogFatalAndExit(err, "failed to probe the socket")
 	}
 }

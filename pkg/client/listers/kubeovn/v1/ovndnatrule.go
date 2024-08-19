@@ -20,8 +20,8 @@ package v1
 
 import (
 	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/client-go/listers"
 	"k8s.io/client-go/tools/cache"
 )
 
@@ -39,30 +39,10 @@ type OvnDnatRuleLister interface {
 
 // ovnDnatRuleLister implements the OvnDnatRuleLister interface.
 type ovnDnatRuleLister struct {
-	indexer cache.Indexer
+	listers.ResourceIndexer[*v1.OvnDnatRule]
 }
 
 // NewOvnDnatRuleLister returns a new OvnDnatRuleLister.
 func NewOvnDnatRuleLister(indexer cache.Indexer) OvnDnatRuleLister {
-	return &ovnDnatRuleLister{indexer: indexer}
-}
-
-// List lists all OvnDnatRules in the indexer.
-func (s *ovnDnatRuleLister) List(selector labels.Selector) (ret []*v1.OvnDnatRule, err error) {
-	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
-		ret = append(ret, m.(*v1.OvnDnatRule))
-	})
-	return ret, err
-}
-
-// Get retrieves the OvnDnatRule from the index for a given name.
-func (s *ovnDnatRuleLister) Get(name string) (*v1.OvnDnatRule, error) {
-	obj, exists, err := s.indexer.GetByKey(name)
-	if err != nil {
-		return nil, err
-	}
-	if !exists {
-		return nil, errors.NewNotFound(v1.Resource("ovndnatrule"), name)
-	}
-	return obj.(*v1.OvnDnatRule), nil
+	return &ovnDnatRuleLister{listers.New[*v1.OvnDnatRule](indexer, v1.Resource("ovndnatrule"))}
 }

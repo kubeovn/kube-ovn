@@ -33,7 +33,7 @@ func main() {
 	metrics.InitKlogMetrics()
 
 	config := daemon.ParseFlags()
-	klog.Infof(versions.String())
+	klog.Info(versions.String())
 
 	if config.InstallCNIConfig {
 		if err := mvCNIConf(config.CniConfDir, config.CniConfFile, config.CniConfName); err != nil {

@@ -79,36 +79,10 @@ func (c *Controller) enqueueUpdateVpc(oldObj, newObj interface{}) {
 }
 
 func (c *Controller) enqueueDelVpc(obj interface{}) {
-	var (
-		key string
-		err error
-	)
-
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
-
 	vpc := obj.(*kubeovnv1.Vpc)
-	_, ok := vpc.Labels[util.VpcExternalLabel]
-	if !vpc.Status.Default || !ok {
-		klog.V(3).Infof("enqueue delete vpc %s", key)
-		c.delVpcQueue.Add(obj)
-	}
-}
-
-func (c *Controller) runAddVpcWorker() {
-	for c.processNextAddVpcWorkItem() {
-	}
-}
-
-func (c *Controller) runUpdateVpcStatusWorker() {
-	for c.processNextUpdateStatusVpcWorkItem() {
-	}
-}
-
-func (c *Controller) runDelVpcWorker() {
-	for c.processNextDeleteVpcWorkItem() {
+	if _, ok := vpc.Labels[util.VpcExternalLabel]; !vpc.Status.Default || !ok {
+		klog.V(3).Infof("enqueue delete vpc %s", vpc.Name)
+		c.delVpcQueue.Add(vpc)
 	}
 }
 
@@ -966,91 +940,6 @@ func reversePolicy(origin ovnnb.LogicalRouterStaticRoutePolicy) kubeovnv1.RouteP
 		return kubeovnv1.PolicyDst
 	}
 	return kubeovnv1.PolicySrc
-}
-
-func (c *Controller) processNextUpdateStatusVpcWorkItem() bool {
-	obj, shutdown := c.updateVpcStatusQueue.Get()
-	if shutdown {
-		return false
-	}
-
-	if err := func(obj interface{}) error {
-		defer c.updateVpcStatusQueue.Done(obj)
-		var key string
-		var ok bool
-		if key, ok = obj.(string); !ok {
-			c.updateVpcStatusQueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
-			return nil
-		}
-		if err := c.handleUpdateVpcStatus(key); err != nil {
-			c.updateVpcStatusQueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
-		}
-		c.updateVpcStatusQueue.Forget(obj)
-		return nil
-	}(obj); err != nil {
-		utilruntime.HandleError(err)
-		return true
-	}
-	return true
-}
-
-func (c *Controller) processNextAddVpcWorkItem() bool {
-	obj, shutdown := c.addOrUpdateVpcQueue.Get()
-	if shutdown {
-		return false
-	}
-
-	if err := func(obj interface{}) error {
-		defer c.addOrUpdateVpcQueue.Done(obj)
-		var key string
-		var ok bool
-		if key, ok = obj.(string); !ok {
-			c.addOrUpdateVpcQueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
-			return nil
-		}
-		if err := c.handleAddOrUpdateVpc(key); err != nil {
-			// c.addOrUpdateVpcQueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
-		}
-		c.addOrUpdateVpcQueue.Forget(obj)
-		return nil
-	}(obj); err != nil {
-		utilruntime.HandleError(err)
-		c.addOrUpdateVpcQueue.AddRateLimited(obj)
-		return true
-	}
-	return true
-}
-
-func (c *Controller) processNextDeleteVpcWorkItem() bool {
-	obj, shutdown := c.delVpcQueue.Get()
-	if shutdown {
-		return false
-	}
-
-	if err := func(obj interface{}) error {
-		defer c.delVpcQueue.Done(obj)
-		var vpc *kubeovnv1.Vpc
-		var ok bool
-		if vpc, ok = obj.(*kubeovnv1.Vpc); !ok {
-			c.delVpcQueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
-			return nil
-		}
-		if err := c.handleDelVpc(vpc); err != nil {
-			c.delVpcQueue.AddRateLimited(obj)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", vpc.Name, err.Error())
-		}
-		c.delVpcQueue.Forget(obj)
-		return nil
-	}(obj); err != nil {
-		utilruntime.HandleError(err)
-		return true
-	}
-	return true
 }
 
 func (c *Controller) getVpcSubnets(vpc *kubeovnv1.Vpc) (subnets []string, defaultSubnet string, err error) {

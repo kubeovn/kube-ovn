@@ -20,14 +20,13 @@ package v1
 
 import (
 	"context"
-	"time"
 
 	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	scheme "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/scheme"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	types "k8s.io/apimachinery/pkg/types"
 	watch "k8s.io/apimachinery/pkg/watch"
-	rest "k8s.io/client-go/rest"
+	gentype "k8s.io/client-go/gentype"
 )
 
 // IptablesSnatRulesGetter has a method to return a IptablesSnatRuleInterface.
@@ -40,6 +39,7 @@ type IptablesSnatRulesGetter interface {
 type IptablesSnatRuleInterface interface {
 	Create(ctx context.Context, iptablesSnatRule *v1.IptablesSnatRule, opts metav1.CreateOptions) (*v1.IptablesSnatRule, error)
 	Update(ctx context.Context, iptablesSnatRule *v1.IptablesSnatRule, opts metav1.UpdateOptions) (*v1.IptablesSnatRule, error)
+	// Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
 	UpdateStatus(ctx context.Context, iptablesSnatRule *v1.IptablesSnatRule, opts metav1.UpdateOptions) (*v1.IptablesSnatRule, error)
 	Delete(ctx context.Context, name string, opts metav1.DeleteOptions) error
 	DeleteCollection(ctx context.Context, opts metav1.DeleteOptions, listOpts metav1.ListOptions) error
@@ -52,133 +52,18 @@ type IptablesSnatRuleInterface interface {
 
 // iptablesSnatRules implements IptablesSnatRuleInterface
 type iptablesSnatRules struct {
-	client rest.Interface
+	*gentype.ClientWithList[*v1.IptablesSnatRule, *v1.IptablesSnatRuleList]
 }
 
 // newIptablesSnatRules returns a IptablesSnatRules
 func newIptablesSnatRules(c *KubeovnV1Client) *iptablesSnatRules {
 	return &iptablesSnatRules{
-		client: c.RESTClient(),
+		gentype.NewClientWithList[*v1.IptablesSnatRule, *v1.IptablesSnatRuleList](
+			"iptables-snat-rules",
+			c.RESTClient(),
+			scheme.ParameterCodec,
+			"",
+			func() *v1.IptablesSnatRule { return &v1.IptablesSnatRule{} },
+			func() *v1.IptablesSnatRuleList { return &v1.IptablesSnatRuleList{} }),
 	}
-}
-
-// Get takes name of the iptablesSnatRule, and returns the corresponding iptablesSnatRule object, and an error if there is any.
-func (c *iptablesSnatRules) Get(ctx context.Context, name string, options metav1.GetOptions) (result *v1.IptablesSnatRule, err error) {
-	result = &v1.IptablesSnatRule{}
-	err = c.client.Get().
-		Resource("iptables-snat-rules").
-		Name(name).
-		VersionedParams(&options, scheme.ParameterCodec).
-		Do(ctx).
-		Into(result)
-	return
-}
-
-// List takes label and field selectors, and returns the list of IptablesSnatRules that match those selectors.
-func (c *iptablesSnatRules) List(ctx context.Context, opts metav1.ListOptions) (result *v1.IptablesSnatRuleList, err error) {
-	var timeout time.Duration
-	if opts.TimeoutSeconds != nil {
-		timeout = time.Duration(*opts.TimeoutSeconds) * time.Second
-	}
-	result = &v1.IptablesSnatRuleList{}
-	err = c.client.Get().
-		Resource("iptables-snat-rules").
-		VersionedParams(&opts, scheme.ParameterCodec).
-		Timeout(timeout).
-		Do(ctx).
-		Into(result)
-	return
-}
-
-// Watch returns a watch.Interface that watches the requested iptablesSnatRules.
-func (c *iptablesSnatRules) Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error) {
-	var timeout time.Duration
-	if opts.TimeoutSeconds != nil {
-		timeout = time.Duration(*opts.TimeoutSeconds) * time.Second
-	}
-	opts.Watch = true
-	return c.client.Get().
-		Resource("iptables-snat-rules").
-		VersionedParams(&opts, scheme.ParameterCodec).
-		Timeout(timeout).
-		Watch(ctx)
-}
-
-// Create takes the representation of a iptablesSnatRule and creates it.  Returns the server's representation of the iptablesSnatRule, and an error, if there is any.
-func (c *iptablesSnatRules) Create(ctx context.Context, iptablesSnatRule *v1.IptablesSnatRule, opts metav1.CreateOptions) (result *v1.IptablesSnatRule, err error) {
-	result = &v1.IptablesSnatRule{}
-	err = c.client.Post().
-		Resource("iptables-snat-rules").
-		VersionedParams(&opts, scheme.ParameterCodec).
-		Body(iptablesSnatRule).
-		Do(ctx).
-		Into(result)
-	return
-}
-
-// Update takes the representation of a iptablesSnatRule and updates it. Returns the server's representation of the iptablesSnatRule, and an error, if there is any.
-func (c *iptablesSnatRules) Update(ctx context.Context, iptablesSnatRule *v1.IptablesSnatRule, opts metav1.UpdateOptions) (result *v1.IptablesSnatRule, err error) {
-	result = &v1.IptablesSnatRule{}
-	err = c.client.Put().
-		Resource("iptables-snat-rules").
-		Name(iptablesSnatRule.Name).
-		VersionedParams(&opts, scheme.ParameterCodec).
-		Body(iptablesSnatRule).
-		Do(ctx).
-		Into(result)
-	return
-}
-
-// UpdateStatus was generated because the type contains a Status member.
-// Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-func (c *iptablesSnatRules) UpdateStatus(ctx context.Context, iptablesSnatRule *v1.IptablesSnatRule, opts metav1.UpdateOptions) (result *v1.IptablesSnatRule, err error) {
-	result = &v1.IptablesSnatRule{}
-	err = c.client.Put().
-		Resource("iptables-snat-rules").
-		Name(iptablesSnatRule.Name).
-		SubResource("status").
-		VersionedParams(&opts, scheme.ParameterCodec).
-		Body(iptablesSnatRule).
-		Do(ctx).
-		Into(result)
-	return
-}
-
-// Delete takes name of the iptablesSnatRule and deletes it. Returns an error if one occurs.
-func (c *iptablesSnatRules) Delete(ctx context.Context, name string, opts metav1.DeleteOptions) error {
-	return c.client.Delete().
-		Resource("iptables-snat-rules").
-		Name(name).
-		Body(&opts).
-		Do(ctx).
-		Error()
-}
-
-// DeleteCollection deletes a collection of objects.
-func (c *iptablesSnatRules) DeleteCollection(ctx context.Context, opts metav1.DeleteOptions, listOpts metav1.ListOptions) error {
-	var timeout time.Duration
-	if listOpts.TimeoutSeconds != nil {
-		timeout = time.Duration(*listOpts.TimeoutSeconds) * time.Second
-	}
-	return c.client.Delete().
-		Resource("iptables-snat-rules").
-		VersionedParams(&listOpts, scheme.ParameterCodec).
-		Timeout(timeout).
-		Body(&opts).
-		Do(ctx).
-		Error()
-}
-
-// Patch applies the patch and returns the patched iptablesSnatRule.
-func (c *iptablesSnatRules) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *v1.IptablesSnatRule, err error) {
-	result = &v1.IptablesSnatRule{}
-	err = c.client.Patch(pt).
-		Resource("iptables-snat-rules").
-		Name(name).
-		SubResource(subresources...).
-		VersionedParams(&opts, scheme.ParameterCodec).
-		Body(data).
-		Do(ctx).
-		Into(result)
-	return
 }

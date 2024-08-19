@@ -86,114 +86,8 @@ func (c *Controller) enqueueDeleteNode(obj interface{}) {
 	}
 	klog.V(3).Infof("enqueue delete node %s", key)
 
-	n := obj.(*v1.Node)
-	c.deletingNodeObjMap.Store(key, n)
+	c.deletingNodeObjMap.Store(key, obj.(*v1.Node))
 	c.deleteNodeQueue.Add(key)
-}
-
-func (c *Controller) runAddNodeWorker() {
-	for c.processNextAddNodeWorkItem() {
-	}
-}
-
-func (c *Controller) runUpdateNodeWorker() {
-	for c.processNextUpdateNodeWorkItem() {
-	}
-}
-
-func (c *Controller) runDeleteNodeWorker() {
-	for c.processNextDeleteNodeWorkItem() {
-	}
-}
-
-func (c *Controller) processNextAddNodeWorkItem() bool {
-	obj, shutdown := c.addNodeQueue.Get()
-	if shutdown {
-		return false
-	}
-
-	err := func(obj interface{}) error {
-		defer c.addNodeQueue.Done(obj)
-		var key string
-		var ok bool
-		if key, ok = obj.(string); !ok {
-			c.addNodeQueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
-			return nil
-		}
-		if err := c.handleAddNode(key); err != nil {
-			c.addNodeQueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
-		}
-		c.addNodeQueue.Forget(obj)
-		return nil
-	}(obj)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return true
-	}
-	return true
-}
-
-func (c *Controller) processNextUpdateNodeWorkItem() bool {
-	obj, shutdown := c.updateNodeQueue.Get()
-
-	if shutdown {
-		return false
-	}
-
-	err := func(obj interface{}) error {
-		defer c.updateNodeQueue.Done(obj)
-		var key string
-		var ok bool
-		if key, ok = obj.(string); !ok {
-			c.updateNodeQueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
-			return nil
-		}
-		if err := c.handleUpdateNode(key); err != nil {
-			c.updateNodeQueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
-		}
-		c.updateNodeQueue.Forget(obj)
-		return nil
-	}(obj)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return true
-	}
-	return true
-}
-
-func (c *Controller) processNextDeleteNodeWorkItem() bool {
-	obj, shutdown := c.deleteNodeQueue.Get()
-
-	if shutdown {
-		return false
-	}
-
-	err := func(obj interface{}) error {
-		defer c.deleteNodeQueue.Done(obj)
-		var key string
-		var ok bool
-		if key, ok = obj.(string); !ok {
-			c.deleteNodeQueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
-			return nil
-		}
-		if err := c.handleDeleteNode(key); err != nil {
-			c.deleteNodeQueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
-		}
-		c.deleteNodeQueue.Forget(obj)
-		c.deletingNodeObjMap.Delete(key)
-		return nil
-	}(obj)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return true
-	}
-	return true
 }
 
 func nodeUnderlayAddressSetName(node string, af int) string {
@@ -470,16 +364,20 @@ func (c *Controller) handleNodeAnnotationsForProviderNetworks(node *v1.Node) err
 	return nil
 }
 
-func (c *Controller) handleDeleteNode(key string) error {
+func (c *Controller) handleDeleteNode(key string) (err error) {
 	c.nodeKeyMutex.LockKey(key)
-	defer func() { _ = c.nodeKeyMutex.UnlockKey(key) }()
+	defer func() {
+		_ = c.nodeKeyMutex.UnlockKey(key)
+		if err == nil {
+			c.deletingNodeObjMap.Delete(key)
+		}
+	}()
 	klog.Infof("handle delete node %s", key)
 
-	nodeObj, ok := c.deletingNodeObjMap.Load(key)
+	node, ok := c.deletingNodeObjMap.Load(key)
 	if !ok {
 		return nil
 	}
-	node := nodeObj.(*v1.Node)
 	n, _ := c.nodesLister.Get(key)
 	if n != nil && n.UID != node.UID {
 		klog.Warningf("Node %s is adding, skip the node delete handler, but it may leave some gc resources behind", key)

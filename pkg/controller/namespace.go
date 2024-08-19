@@ -2,7 +2,6 @@ package controller
 
 import (
 	"context"
-	"fmt"
 	"reflect"
 	"slices"
 	"strings"
@@ -75,42 +74,6 @@ func (c *Controller) enqueueUpdateNamespace(oldObj, newObj interface{}) {
 	if newNs.Annotations != nil && newNs.Annotations[util.LogicalSwitchAnnotation] != "" && !reflect.DeepEqual(oldNs.Annotations, newNs.Annotations) {
 		c.addNamespaceQueue.Add(newNs.Name)
 	}
-}
-
-func (c *Controller) runAddNamespaceWorker() {
-	for c.processNextAddNamespaceWorkItem() {
-	}
-}
-
-func (c *Controller) processNextAddNamespaceWorkItem() bool {
-	obj, shutdown := c.addNamespaceQueue.Get()
-
-	if shutdown {
-		return false
-	}
-
-	err := func(obj interface{}) error {
-		defer c.addNamespaceQueue.Done(obj)
-		var key string
-		var ok bool
-		if key, ok = obj.(string); !ok {
-			c.addNamespaceQueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
-			return nil
-		}
-		if err := c.handleAddNamespace(key); err != nil {
-			c.addNamespaceQueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
-		}
-		c.addNamespaceQueue.Forget(obj)
-		return nil
-	}(obj)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return true
-	}
-
-	return true
 }
 
 func (c *Controller) handleAddNamespace(key string) error {
@@ -205,7 +168,7 @@ func (c *Controller) handleAddNamespace(key string) error {
 		excludeIps = append(excludeIps, strings.Join(subnet.Spec.ExcludeIps, ","))
 	}
 
-	if namespace.Annotations == nil || len(namespace.Annotations) == 0 {
+	if len(namespace.Annotations) == 0 {
 		namespace.Annotations = map[string]string{}
 	} else if namespace.Annotations[util.LogicalSwitchAnnotation] == strings.Join(lss, ",") &&
 		namespace.Annotations[util.CidrAnnotation] == strings.Join(cidrs, ";") &&

@@ -53,43 +53,6 @@ func (c *Controller) enqueueUpdateCsr(oldObj, newObj interface{}) {
 	c.addOrUpdateCsrQueue.Add(key)
 }
 
-func (c *Controller) runAddOrUpdateCsrWorker() {
-	for c.processNextAddOrUpdateCsrWorkItem() {
-	}
-}
-
-func (c *Controller) processNextAddOrUpdateCsrWorkItem() bool {
-	obj, shutdown := c.addOrUpdateCsrQueue.Get()
-	if shutdown {
-		return false
-	}
-	now := time.Now()
-
-	err := func(obj interface{}) error {
-		defer c.addOrUpdateCsrQueue.Done(obj)
-		var key string
-		var ok bool
-		if key, ok = obj.(string); !ok {
-			c.addOrUpdateCsrQueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
-			return nil
-		}
-		if err := c.handleAddOrUpdateCsr(key); err != nil {
-			c.addOrUpdateCsrQueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
-		}
-		last := time.Since(now)
-		klog.Infof("take %d ms to handle sync csr %s", last.Milliseconds(), key)
-		c.addOrUpdateCsrQueue.Forget(obj)
-		return nil
-	}(obj)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return true
-	}
-	return true
-}
-
 func (c *Controller) handleAddOrUpdateCsr(key string) (err error) {
 	csr, err := c.csrLister.Get(key)
 	if err != nil {
@@ -247,6 +210,7 @@ func getCertApprovalCondition(status *csrv1.CertificateSigningRequestStatus) (ap
 func newCertificateTemplate(certReq *x509.CertificateRequest) *x509.Certificate {
 	serialNumber, err := rand.Int(rand.Reader, big.NewInt(1<<62))
 	if err != nil {
+		klog.Errorf("failed to generate serial number: %v", err)
 		return nil
 	}
 
@@ -269,14 +233,16 @@ func newCertificateTemplate(certReq *x509.CertificateRequest) *x509.Certificate 
 func signCSR(template *x509.Certificate, requestKey c.PublicKey, issuer *x509.Certificate, issuerKey c.PrivateKey) (*x509.Certificate, error) {
 	derBytes, err := x509.CreateCertificate(rand.Reader, template, issuer, requestKey, issuerKey)
 	if err != nil {
+		klog.Error(err)
 		return nil, err
 	}
 	certs, err := x509.ParseCertificates(derBytes)
 	if err != nil {
+		klog.Errorf("failed to parse certificate: %v", err)
 		return nil, err
 	}
 	if len(certs) != 1 {
-		return nil, errors.New("Expected a single certificate")
+		return nil, errors.New("expected a single certificate")
 	}
 	return certs[0], nil
 }
@@ -284,7 +250,7 @@ func signCSR(template *x509.Certificate, requestKey c.PublicKey, issuer *x509.Ce
 func decodeCertificateRequest(pemBytes []byte) (*x509.CertificateRequest, error) {
 	block, _ := pem.Decode(pemBytes)
 	if block == nil || block.Type != "CERTIFICATE REQUEST" {
-		err := errors.New("PEM block type must be CERTIFICATE_REQUEST")
+		err := errors.New("certificate PEM block type must be CERTIFICATE_REQUEST")
 		return nil, err
 	}
 
@@ -294,7 +260,7 @@ func decodeCertificateRequest(pemBytes []byte) (*x509.CertificateRequest, error)
 func decodeCertificate(pemBytes []byte) (*x509.Certificate, error) {
 	block, _ := pem.Decode(pemBytes)
 	if block == nil || block.Type != "CERTIFICATE" {
-		err := errors.New("PEM block type must be CERTIFICATE")
+		err := errors.New("certificate PEM block type must be CERTIFICATE")
 		return nil, err
 	}
 
@@ -305,18 +271,19 @@ func decodePrivateKey(pemBytes []byte) (*rsa.PrivateKey, error) {
 	block, _ := pem.Decode(pemBytes)
 	if block == nil || block.Type != "PRIVATE KEY" {
 		fmt.Println(block.Type)
-		err := errors.New("PEM block type must be PRIVATE KEY")
+		err := errors.New("certificate PEM block type must be PRIVATE KEY")
 		return nil, err
 	}
 
 	key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
 	if err != nil {
+		klog.Error(err)
 		return nil, err
 	}
 
 	rsaKey, ok := key.(*rsa.PrivateKey)
 	if !ok {
-		err := errors.New("Failed to convert private key to RSA private key")
+		err := errors.New("failed to convert private key to RSA private key")
 		return nil, err
 	}
 

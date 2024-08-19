@@ -55,46 +55,6 @@ func (c *Controller) enqueueUpdateEndpoint(oldObj, newObj interface{}) {
 	c.addOrUpdateEndpointQueue.Add(key)
 }
 
-func (c *Controller) runUpdateEndpointWorker() {
-	for c.processNextUpdateEndpointWorkItem() {
-	}
-}
-
-func (c *Controller) processNextUpdateEndpointWorkItem() bool {
-	obj, shutdown := c.addOrUpdateEndpointQueue.Get()
-
-	if shutdown {
-		return false
-	}
-
-	if err := func(obj interface{}) error {
-		defer c.addOrUpdateEndpointQueue.Done(obj)
-
-		var (
-			key string
-			ok  bool
-			err error
-		)
-
-		if key, ok = obj.(string); !ok {
-			c.addOrUpdateEndpointQueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
-			return nil
-		}
-
-		if err = c.handleUpdateEndpoint(key); err != nil {
-			c.addOrUpdateEndpointQueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
-		}
-		c.addOrUpdateEndpointQueue.Forget(obj)
-		return nil
-	}(obj); err != nil {
-		utilruntime.HandleError(err)
-		return true
-	}
-	return true
-}
-
 func (c *Controller) handleUpdateEndpoint(key string) error {
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {

@@ -22,9 +22,9 @@ concurrency:
 
 env:
   GO_VERSION: ''
-  KIND_VERSION: v0.23.0
-  GOLANGCI_LINT_VERSION: 'v1.59.1'
-  HELM_VERSION: v3.15.3
+  KIND_VERSION: v0.24.0
+  GOLANGCI_LINT_VERSION: 'v1.60.1'
+  HELM_VERSION: v3.15.4
   SUBMARINER_VERSION: '0.18.0'
 
 jobs:
@@ -43,7 +43,7 @@ jobs:
           if [ ${{ github.event_name }} != 'pull_request' ]; then
             exit
           fi
-          if git diff --name-only HEAD^ HEAD | grep -q ^dist/images/Dockerfile.base$; then
+          if ! git diff --exit-code HEAD^...HEAD -- dist/images/Dockerfile.base; then
             echo build-base=1 >> "$GITHUB_OUTPUT"
           fi
 
@@ -90,7 +90,7 @@ jobs:
           if [ ${{ github.event_name }} != 'pull_request' ]; then
             exit
           fi
-          if git diff --name-only HEAD^ HEAD | grep -q ^dist/images/Dockerfile.base-dpdk$; then
+          if ! git diff --exit-code HEAD^...HEAD -- dist/images/Dockerfile.base-dpdk; then
             echo build-dpdk-base=1 >> "$GITHUB_OUTPUT"
           fi
 
@@ -265,7 +265,7 @@ jobs:
       - name: Build
         run: |
           go mod tidy
-          git diff --exit-code go.mod go.sum
+          git diff --exit-code -- go.mod go.sum
           make lint
           if [ ${{ needs.build-kube-ovn-base.outputs.build-base || 0 }} = 1 ]; then
             make build-kube-ovn
@@ -2820,6 +2820,7 @@ jobs:
       - name: Check kube ovn pod restarts
         if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.kube-ovn-ipsec-e2e.conclusion == 'failure')) }}
         run: make check-kube-ovn-pod-restarts
+
   push:
     name: Push Images
     needs:
@@ -2828,6 +2829,7 @@ jobs:
       - cyclonus-netpol-e2e
       - kube-ovn-conformance-e2e
       - kube-ovn-ic-conformance-e2e
+      - kube-ovn-ipsec-e2e
       - multus-conformance-e2e
       - ovn-vpc-nat-gw-conformance-e2e
       - iptables-vpc-nat-gw-conformance-e2e

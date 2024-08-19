@@ -412,125 +412,6 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 	}
 }
 
-func (c *Controller) runAddOrUpdatePodWorker() {
-	for c.processNextAddOrUpdatePodWorkItem() {
-	}
-}
-
-func (c *Controller) runDeletePodWorker() {
-	for c.processNextDeletePodWorkItem() {
-	}
-}
-
-func (c *Controller) runUpdatePodSecurityWorker() {
-	for c.processNextUpdatePodSecurityWorkItem() {
-	}
-}
-
-func (c *Controller) processNextAddOrUpdatePodWorkItem() bool {
-	obj, shutdown := c.addOrUpdatePodQueue.Get()
-	if shutdown {
-		return false
-	}
-	now := time.Now()
-
-	err := func(obj interface{}) error {
-		defer c.addOrUpdatePodQueue.Done(obj)
-		var key string
-		var ok bool
-		if key, ok = obj.(string); !ok {
-			c.addOrUpdatePodQueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
-			return nil
-		}
-		if err := c.handleAddOrUpdatePod(key); err != nil {
-			c.addOrUpdatePodQueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
-		}
-		last := time.Since(now)
-		klog.Infof("take %d ms to handle sync pod %s", last.Milliseconds(), key)
-		c.addOrUpdatePodQueue.Forget(obj)
-		return nil
-	}(obj)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return true
-	}
-	return true
-}
-
-func (c *Controller) processNextDeletePodWorkItem() bool {
-	obj, shutdown := c.deletePodQueue.Get()
-
-	if shutdown {
-		return false
-	}
-
-	now := time.Now()
-	err := func(obj interface{}) error {
-		defer c.deletePodQueue.Done(obj)
-		var key string
-		var ok bool
-		if key, ok = obj.(string); !ok {
-			c.deletePodQueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
-			return nil
-		}
-		if _, ok := c.deletingPodObjMap.Load(key); !ok {
-			return nil
-		}
-
-		if err := c.handleDeletePod(key); err != nil {
-			c.deletePodQueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
-		}
-		c.deletePodQueue.Forget(obj)
-		last := time.Since(now)
-		klog.Infof("take %d ms to handle delete pod %s", last.Milliseconds(), key)
-		// gc pod obj in c.deletingPodObjMap
-		go func() {
-			time.Sleep(5 * time.Minute)
-			c.deletingPodObjMap.Delete(key)
-		}()
-		return nil
-	}(obj)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return true
-	}
-	return true
-}
-
-func (c *Controller) processNextUpdatePodSecurityWorkItem() bool {
-	obj, shutdown := c.updatePodSecurityQueue.Get()
-
-	if shutdown {
-		return false
-	}
-
-	err := func(obj interface{}) error {
-		defer c.updatePodSecurityQueue.Done(obj)
-		var key string
-		var ok bool
-		if key, ok = obj.(string); !ok {
-			c.updatePodSecurityQueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
-			return nil
-		}
-		if err := c.handleUpdatePodSecurity(key); err != nil {
-			c.updatePodSecurityQueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
-		}
-		c.updatePodSecurityQueue.Forget(obj)
-		return nil
-	}(obj)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return true
-	}
-	return true
-}
-
 func (c *Controller) getPodKubeovnNets(pod *v1.Pod) ([]*kubeovnNet, error) {
 	defaultSubnet, err := c.getPodDefaultSubnet(pod)
 	if err != nil {
@@ -1023,15 +904,19 @@ func (c *Controller) reconcileRouteSubnets(cachedPod, pod *v1.Pod, needRoutePodN
 	return nil
 }
 
-func (c *Controller) handleDeletePod(key string) error {
-	podObj, ok := c.deletingPodObjMap.Load(key)
+func (c *Controller) handleDeletePod(key string) (err error) {
+	pod, ok := c.deletingPodObjMap.Load(key)
 	if !ok {
 		return nil
 	}
-	pod := podObj.(*v1.Pod)
 	podName := c.getNameByPod(pod)
 	c.podKeyMutex.LockKey(key)
-	defer func() { _ = c.podKeyMutex.UnlockKey(key) }()
+	defer func() {
+		_ = c.podKeyMutex.UnlockKey(key)
+		if err == nil {
+			c.deletingPodObjMap.Delete(key)
+		}
+	}()
 	klog.Infof("handle delete pod %s", key)
 
 	p, _ := c.podsLister.Pods(pod.Namespace).Get(pod.Name)

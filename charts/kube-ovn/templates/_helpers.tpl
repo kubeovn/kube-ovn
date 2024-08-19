@@ -75,3 +75,11 @@ Number of master nodes
     {{- end -}}
   {{- end -}}
 {{- end -}}
+
+{{- define "kubeovn.runAsUser" -}}
+  {{- if $.Values.func.ENABLE_OVN_IPSEC -}}
+    0
+  {{- else -}}
+    65534
+  {{- end -}}
+{{- end -}}

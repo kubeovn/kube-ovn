@@ -70,140 +70,6 @@ func (c *Controller) enqueueDelVirtualIP(obj interface{}) {
 	c.delVirtualIPQueue.Add(vip)
 }
 
-func (c *Controller) runAddVirtualIPWorker() {
-	for c.processNextAddVirtualIPWorkItem() {
-	}
-}
-
-func (c *Controller) runUpdateVirtualIPWorker() {
-	for c.processNextUpdateVirtualIPWorkItem() {
-	}
-}
-
-func (c *Controller) runUpdateVirtualParentsWorker() {
-	for c.processNextUpdateVirtualParentsWorkItem() {
-	}
-}
-
-func (c *Controller) runDelVirtualIPWorker() {
-	for c.processNextDeleteVirtualIPWorkItem() {
-	}
-}
-
-func (c *Controller) processNextAddVirtualIPWorkItem() bool {
-	obj, shutdown := c.addVirtualIPQueue.Get()
-	if shutdown {
-		return false
-	}
-
-	err := func(obj interface{}) error {
-		defer c.addVirtualIPQueue.Done(obj)
-		var key string
-		var ok bool
-		if key, ok = obj.(string); !ok {
-			c.addVirtualIPQueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
-			return nil
-		}
-		if err := c.handleAddVirtualIP(key); err != nil {
-			c.addVirtualIPQueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
-		}
-		c.addVirtualIPQueue.Forget(obj)
-		return nil
-	}(obj)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return true
-	}
-	return true
-}
-
-func (c *Controller) processNextUpdateVirtualIPWorkItem() bool {
-	obj, shutdown := c.updateVirtualIPQueue.Get()
-	if shutdown {
-		return false
-	}
-	err := func(obj interface{}) error {
-		defer c.updateVirtualIPQueue.Done(obj)
-		var key string
-		var ok bool
-		if key, ok = obj.(string); !ok {
-			c.updateVirtualIPQueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
-			return nil
-		}
-		if err := c.handleUpdateVirtualIP(key); err != nil {
-			c.updateVirtualIPQueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
-		}
-		c.updateVirtualIPQueue.Forget(obj)
-		return nil
-	}(obj)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return true
-	}
-	return true
-}
-
-func (c *Controller) processNextUpdateVirtualParentsWorkItem() bool {
-	obj, shutdown := c.updateVirtualParentsQueue.Get()
-	if shutdown {
-		return false
-	}
-	err := func(obj interface{}) error {
-		defer c.updateVirtualParentsQueue.Done(obj)
-		var key string
-		var ok bool
-		if key, ok = obj.(string); !ok {
-			c.updateVirtualParentsQueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
-			return nil
-		}
-		if err := c.handleUpdateVirtualParents(key); err != nil {
-			c.updateVirtualParentsQueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
-		}
-		c.updateVirtualParentsQueue.Forget(obj)
-		return nil
-	}(obj)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return true
-	}
-	return true
-}
-
-func (c *Controller) processNextDeleteVirtualIPWorkItem() bool {
-	obj, shutdown := c.delVirtualIPQueue.Get()
-	if shutdown {
-		return false
-	}
-
-	err := func(obj interface{}) error {
-		defer c.delVirtualIPQueue.Done(obj)
-		var vip *kubeovnv1.Vip
-		var ok bool
-		if vip, ok = obj.(*kubeovnv1.Vip); !ok {
-			c.delVirtualIPQueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected vip in workqueue but got %#v", obj))
-			return nil
-		}
-		if err := c.handleDelVirtualIP(vip); err != nil {
-			c.delVirtualIPQueue.AddRateLimited(obj)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", vip.Name, err.Error())
-		}
-		c.delVirtualIPQueue.Forget(obj)
-		return nil
-	}(obj)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return true
-	}
-	return true
-}
-
 func (c *Controller) handleAddVirtualIP(key string) error {
 	cachedVip, err := c.virtualIpsLister.Get(key)
 	if err != nil {
@@ -232,6 +98,12 @@ func (c *Controller) handleAddVirtualIP(key string) error {
 	portName := ovs.PodNameToPortName(vip.Name, vip.Spec.Namespace, subnet.Spec.Provider)
 	sourceV4Ip = vip.Spec.V4ip
 	sourceV6Ip = vip.Spec.V6ip
+	// v6 ip address can not use upper case
+	if util.ContainsUppercase(vip.Spec.V6ip) {
+		err := fmt.Errorf("vip %s v6 ip address %s can not contain upper case", vip.Name, vip.Spec.V6ip)
+		klog.Error(err)
+		return err
+	}
 	ipStr := util.GetStringIP(sourceV4Ip, sourceV6Ip)
 	if ipStr != "" {
 		v4ip, v6ip, mac, err = c.acquireStaticIPAddress(subnet.Name, vip.Name, portName, ipStr)
@@ -312,6 +184,12 @@ func (c *Controller) handleUpdateVirtualIP(key string) error {
 			return err
 		}
 		return nil
+	}
+	// v6 ip address can not use upper case
+	if util.ContainsUppercase(vip.Spec.V6ip) {
+		err := fmt.Errorf("vip %s v6 ip address %s can not contain upper case", vip.Name, vip.Spec.V6ip)
+		klog.Error(err)
+		return err
 	}
 	// not support change
 	if vip.Status.Mac != "" && vip.Status.Mac != vip.Spec.MacAddress {

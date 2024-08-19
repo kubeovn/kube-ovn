@@ -50,7 +50,7 @@ KUBEVIRT_LAUNCHER_IMAGE = quay.io/kubevirt/virt-launcher:$(KUBEVIRT_VERSION)
 KUBEVIRT_OPERATOR_YAML = https://github.com/kubevirt/kubevirt/releases/download/$(KUBEVIRT_VERSION)/kubevirt-operator.yaml
 KUBEVIRT_CR_YAML = https://github.com/kubevirt/kubevirt/releases/download/$(KUBEVIRT_VERSION)/kubevirt-cr.yaml
 
-CILIUM_VERSION = 1.15.7
+CILIUM_VERSION = 1.15.8
 CILIUM_IMAGE_REPO = quay.io/cilium
 
 CERT_MANAGER_VERSION = v1.15.2
@@ -475,6 +475,7 @@ kind-install-chart: kind-load-image kind-untaint-control-plane
 		--set networking.NET_STACK=$(shell echo $${NET_STACK:-ipv4} | sed 's/^dual$$/dual_stack/') \
 		--set networking.ENABLE_SSL=$(shell echo $${ENABLE_SSL:-false}) \
 		--set func.ENABLE_BIND_LOCAL_IP=$(shell echo $${ENABLE_BIND_LOCAL_IP:-true}) \
+		--set func.ENABLE_OVN_IPSEC=$(shell echo $${ENABLE_OVN_IPSEC:-false}) \
 		--set func.ENABLE_IC=$(shell kubectl get node --show-labels | grep -qw "ovn.kubernetes.io/ic-gw" && echo true || echo false)
 
 .PHONY: kind-install-chart-ssl
@@ -485,6 +486,10 @@ kind-install-chart-ssl:
 kind-upgrade-chart: kind-load-image
 	helm upgrade kubeovn ./charts/kube-ovn --wait \
 		--set global.images.kubeovn.tag=$(VERSION) \
+		--set networking.NET_STACK=$(shell echo $${NET_STACK:-ipv4} | sed 's/^dual$$/dual_stack/') \
+		--set networking.ENABLE_SSL=$(shell echo $${ENABLE_SSL:-false}) \
+		--set func.ENABLE_BIND_LOCAL_IP=$(shell echo $${ENABLE_BIND_LOCAL_IP:-true}) \
+		--set func.ENABLE_OVN_IPSEC=$(shell echo $${ENABLE_OVN_IPSEC:-false}) \
 		--set func.ENABLE_IC=$(shell kubectl get node --show-labels | grep -qw "ovn.kubernetes.io/ic-gw" && echo true || echo false)
 	kubectl -n kube-system wait pod --for=condition=ready -l app=ovs --timeout=60s
 
@@ -914,9 +919,8 @@ kind-install-kwok:
 	done
 
 .PHONY: kind-install-ovn-ipsec
-kind-install-ovn-ipsec: kind-load-image
-	kubectl config use-context kind-kube-ovn
-	@$(MAKE) ENABLE_OVN_IPSEC=true DEBUG_WRAPPER=true kind-install
+kind-install-ovn-ipsec:
+	@$(MAKE) ENABLE_OVN_IPSEC=true kind-install
 
 .PHONY: kind-reload
 kind-reload: kind-reload-ovs
@@ -979,7 +983,13 @@ uninstall:
 
 .PHONY: lint
 lint:
-	golangci-lint run -v
+    ifeq ($(CI),true)
+		@echo "Running in GitHub Actions"
+		golangci-lint run -v
+    else
+		@echo "Running in local environment"
+		golangci-lint run -v --fix
+    endif
 
 .PHONY: lint-windows
 lint-windows:
@@ -1026,7 +1036,8 @@ changelog:
 	./hack/changelog.sh > CHANGELOG.md
 
 .PHONY: local-dev
-local-dev: build-go
+local-dev:
+	@DEBUG=1 $(MAKE) build-go
 	docker buildx build --platform linux/amd64 -t $(REGISTRY)/kube-ovn:$(RELEASE_TAG) --build-arg VERSION=$(RELEASE_TAG) -o type=docker -f dist/images/Dockerfile dist/images/
 	docker buildx build --platform linux/amd64 -t $(REGISTRY)/vpc-nat-gateway:$(RELEASE_TAG) -o type=docker -f dist/images/vpcnatgateway/Dockerfile dist/images/vpcnatgateway
 	@$(MAKE) kind-init kind-install

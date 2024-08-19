@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
-	"time"
 	"unicode"
 
 	"github.com/scylladb/go-set/strset"
@@ -38,7 +37,7 @@ type ChangedName struct {
 	curRuleName string
 }
 
-type ChangedDelta struct {
+type AdminNetworkPolicyChangedDelta struct {
 	key       string
 	ruleNames [util.AnpMaxRules]ChangedName
 	field     ChangedField
@@ -56,14 +55,9 @@ func (c *Controller) enqueueAddAnp(obj interface{}) {
 }
 
 func (c *Controller) enqueueDeleteAnp(obj interface{}) {
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
-	klog.V(3).Infof("enqueue delete anp %s", key)
-	c.deleteAnpQueue.Add(obj)
+	anp := obj.(*v1alpha1.AdminNetworkPolicy)
+	klog.V(3).Infof("enqueue delete anp %s", anp.Name)
+	c.deleteAnpQueue.Add(anp)
 }
 
 func (c *Controller) enqueueUpdateAnp(oldObj, newObj interface{}) {
@@ -104,7 +98,7 @@ func (c *Controller) enqueueUpdateAnp(oldObj, newObj interface{}) {
 	// The remaining changes do not affect the acls. The port-group or address-set should be updated.
 	// The port-group for anp should be updated
 	if !reflect.DeepEqual(oldAnpObj.Spec.Subject, newAnpObj.Spec.Subject) {
-		c.updateAnpQueue.Add(ChangedDelta{key: newAnpObj.Name, field: ChangedSubject})
+		c.updateAnpQueue.Add(&AdminNetworkPolicyChangedDelta{key: newAnpObj.Name, field: ChangedSubject})
 	}
 
 	// Rule name or peer selector in ingress/egress rule has changed, the corresponding address-set need be updated
@@ -122,7 +116,7 @@ func (c *Controller) enqueueUpdateAnp(oldObj, newObj interface{}) {
 		}
 	}
 	if ruleChanged {
-		c.updateAnpQueue.Add(ChangedDelta{key: newAnpObj.Name, ruleNames: changedIngressRuleNames, field: ChangedIngressRule})
+		c.updateAnpQueue.Add(&AdminNetworkPolicyChangedDelta{key: newAnpObj.Name, ruleNames: changedIngressRuleNames, field: ChangedIngressRule})
 	}
 
 	ruleChanged = false
@@ -138,113 +132,8 @@ func (c *Controller) enqueueUpdateAnp(oldObj, newObj interface{}) {
 		}
 	}
 	if ruleChanged {
-		c.updateAnpQueue.Add(ChangedDelta{key: newAnpObj.Name, ruleNames: changedEgressRuleNames, field: ChangedEgressRule})
+		c.updateAnpQueue.Add(&AdminNetworkPolicyChangedDelta{key: newAnpObj.Name, ruleNames: changedEgressRuleNames, field: ChangedEgressRule})
 	}
-}
-
-func (c *Controller) runAddAnpWorker() {
-	for c.processNextAddAnpWorkItem() {
-	}
-}
-
-func (c *Controller) runUpdateAnpWorker() {
-	for c.processNextUpdateAnpWorkItem() {
-	}
-}
-
-func (c *Controller) runDeleteAnpWorker() {
-	for c.processNextDeleteAnpWorkItem() {
-	}
-}
-
-func (c *Controller) processNextAddAnpWorkItem() bool {
-	obj, shutdown := c.addAnpQueue.Get()
-	if shutdown {
-		return false
-	}
-	now := time.Now()
-
-	err := func(obj interface{}) error {
-		defer c.addAnpQueue.Done(obj)
-		var key string
-		var ok bool
-		if key, ok = obj.(string); !ok {
-			c.addAnpQueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
-			return nil
-		}
-		if err := c.handleAddAnp(key); err != nil {
-			c.addAnpQueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
-		}
-		last := time.Since(now)
-		klog.Infof("take %d ms to handle add anp %s", last.Milliseconds(), key)
-		c.addAnpQueue.Forget(obj)
-		return nil
-	}(obj)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return true
-	}
-	return true
-}
-
-func (c *Controller) processNextUpdateAnpWorkItem() bool {
-	obj, shutdown := c.updateAnpQueue.Get()
-	if shutdown {
-		return false
-	}
-
-	err := func(obj interface{}) error {
-		defer c.updateAnpQueue.Done(obj)
-		var key ChangedDelta
-		var ok bool
-		if key, ok = obj.(ChangedDelta); !ok {
-			c.updateAnpQueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected ChangedDelta in workqueue but got %#v", obj))
-			return nil
-		}
-		if err := c.handleUpdateAnp(key); err != nil {
-			c.updateAnpQueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing admin network policy %s: %w, requeuing", key.key, err)
-		}
-		c.updateAnpQueue.Forget(obj)
-		return nil
-	}(obj)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return true
-	}
-	return true
-}
-
-func (c *Controller) processNextDeleteAnpWorkItem() bool {
-	obj, shutdown := c.deleteAnpQueue.Get()
-	if shutdown {
-		return false
-	}
-
-	err := func(obj interface{}) error {
-		defer c.deleteAnpQueue.Done(obj)
-		var anp *v1alpha1.AdminNetworkPolicy
-		var ok bool
-		if anp, ok = obj.(*v1alpha1.AdminNetworkPolicy); !ok {
-			c.deleteAnpQueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected anp object in workqueue but got %#v", obj))
-			return nil
-		}
-		if err := c.handleDeleteAnp(anp); err != nil {
-			c.deleteAnpQueue.AddRateLimited(obj)
-			return fmt.Errorf("error syncing anp '%s': %s, requeuing", anp.Name, err.Error())
-		}
-		c.deleteAnpQueue.Forget(obj)
-		return nil
-	}(obj)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return true
-	}
-	return true
 }
 
 func (c *Controller) handleAddAnp(key string) (err error) {
@@ -479,7 +368,7 @@ func (c *Controller) handleDeleteAnp(anp *v1alpha1.AdminNetworkPolicy) error {
 	return nil
 }
 
-func (c *Controller) handleUpdateAnp(changed ChangedDelta) error {
+func (c *Controller) handleUpdateAnp(changed *AdminNetworkPolicyChangedDelta) error {
 	// Only handle updates that do not affect acls.
 	c.anpKeyMutex.LockKey(changed.key)
 	defer func() { _ = c.anpKeyMutex.UnlockKey(changed.key) }()
@@ -899,7 +788,7 @@ func (c *Controller) setAddrSetForAnpRule(anpName, pgName, ruleName string, inde
 func (c *Controller) updateAnpsByLabelsMatch(nsLabels, podLabels map[string]string) {
 	anps, _ := c.anpsLister.List(labels.Everything())
 	for _, anp := range anps {
-		changed := ChangedDelta{
+		changed := &AdminNetworkPolicyChangedDelta{
 			key: anp.Name,
 		}
 
@@ -927,7 +816,7 @@ func (c *Controller) updateAnpsByLabelsMatch(nsLabels, podLabels map[string]stri
 
 	banps, _ := c.banpsLister.List(labels.Everything())
 	for _, banp := range banps {
-		changed := ChangedDelta{
+		changed := &AdminNetworkPolicyChangedDelta{
 			key: banp.Name,
 		}
 

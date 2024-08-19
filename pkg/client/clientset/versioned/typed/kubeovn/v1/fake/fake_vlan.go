@@ -40,20 +40,22 @@ var vlansKind = v1.SchemeGroupVersion.WithKind("Vlan")
 
 // Get takes name of the vlan, and returns the corresponding vlan object, and an error if there is any.
 func (c *FakeVlans) Get(ctx context.Context, name string, options metav1.GetOptions) (result *v1.Vlan, err error) {
+	emptyResult := &v1.Vlan{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootGetAction(vlansResource, name), &v1.Vlan{})
+		Invokes(testing.NewRootGetActionWithOptions(vlansResource, name, options), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v1.Vlan), err
 }
 
 // List takes label and field selectors, and returns the list of Vlans that match those selectors.
 func (c *FakeVlans) List(ctx context.Context, opts metav1.ListOptions) (result *v1.VlanList, err error) {
+	emptyResult := &v1.VlanList{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootListAction(vlansResource, vlansKind, opts), &v1.VlanList{})
+		Invokes(testing.NewRootListActionWithOptions(vlansResource, vlansKind, opts), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 
 	label, _, _ := testing.ExtractFromListOptions(opts)
@@ -72,36 +74,39 @@ func (c *FakeVlans) List(ctx context.Context, opts metav1.ListOptions) (result *
 // Watch returns a watch.Interface that watches the requested vlans.
 func (c *FakeVlans) Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error) {
 	return c.Fake.
-		InvokesWatch(testing.NewRootWatchAction(vlansResource, opts))
+		InvokesWatch(testing.NewRootWatchActionWithOptions(vlansResource, opts))
 }
 
 // Create takes the representation of a vlan and creates it.  Returns the server's representation of the vlan, and an error, if there is any.
 func (c *FakeVlans) Create(ctx context.Context, vlan *v1.Vlan, opts metav1.CreateOptions) (result *v1.Vlan, err error) {
+	emptyResult := &v1.Vlan{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootCreateAction(vlansResource, vlan), &v1.Vlan{})
+		Invokes(testing.NewRootCreateActionWithOptions(vlansResource, vlan, opts), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v1.Vlan), err
 }
 
 // Update takes the representation of a vlan and updates it. Returns the server's representation of the vlan, and an error, if there is any.
 func (c *FakeVlans) Update(ctx context.Context, vlan *v1.Vlan, opts metav1.UpdateOptions) (result *v1.Vlan, err error) {
+	emptyResult := &v1.Vlan{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootUpdateAction(vlansResource, vlan), &v1.Vlan{})
+		Invokes(testing.NewRootUpdateActionWithOptions(vlansResource, vlan, opts), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v1.Vlan), err
 }
 
 // UpdateStatus was generated because the type contains a Status member.
 // Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-func (c *FakeVlans) UpdateStatus(ctx context.Context, vlan *v1.Vlan, opts metav1.UpdateOptions) (*v1.Vlan, error) {
+func (c *FakeVlans) UpdateStatus(ctx context.Context, vlan *v1.Vlan, opts metav1.UpdateOptions) (result *v1.Vlan, err error) {
+	emptyResult := &v1.Vlan{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootUpdateSubresourceAction(vlansResource, "status", vlan), &v1.Vlan{})
+		Invokes(testing.NewRootUpdateSubresourceActionWithOptions(vlansResource, "status", vlan, opts), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v1.Vlan), err
 }
@@ -115,7 +120,7 @@ func (c *FakeVlans) Delete(ctx context.Context, name string, opts metav1.DeleteO
 
 // DeleteCollection deletes a collection of objects.
 func (c *FakeVlans) DeleteCollection(ctx context.Context, opts metav1.DeleteOptions, listOpts metav1.ListOptions) error {
-	action := testing.NewRootDeleteCollectionAction(vlansResource, listOpts)
+	action := testing.NewRootDeleteCollectionActionWithOptions(vlansResource, opts, listOpts)
 
 	_, err := c.Fake.Invokes(action, &v1.VlanList{})
 	return err
@@ -123,10 +128,11 @@ func (c *FakeVlans) DeleteCollection(ctx context.Context, opts metav1.DeleteOpti
 
 // Patch applies the patch and returns the patched vlan.
 func (c *FakeVlans) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *v1.Vlan, err error) {
+	emptyResult := &v1.Vlan{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootPatchSubresourceAction(vlansResource, name, pt, data, subresources...), &v1.Vlan{})
+		Invokes(testing.NewRootPatchSubresourceActionWithOptions(vlansResource, name, pt, data, opts, subresources...), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v1.Vlan), err
 }

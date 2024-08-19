@@ -392,9 +392,9 @@ var _ = framework.SerialDescribe("[group:iptables-vpc-nat-gw]", func() {
 	})
 
 	framework.ConformanceIt("change gateway image", func() {
-		overlaySubnetV4Cidr := "10.0.0.0/24"
-		overlaySubnetV4Gw := "10.0.0.1"
-		lanIP := "10.0.0.254"
+		overlaySubnetV4Cidr := "10.0.2.0/24"
+		overlaySubnetV4Gw := "10.0.2.1"
+		lanIP := "10.0.2.254"
 		natgwQoS := ""
 		cm, err := f.ClientSet.CoreV1().ConfigMaps(framework.KubeOvnNamespace).Get(context.Background(), vpcNatConfigName, metav1.GetOptions{})
 		framework.ExpectNoError(err)
@@ -406,7 +406,7 @@ var _ = framework.SerialDescribe("[group:iptables-vpc-nat-gw]", func() {
 		setupVpcNatGwTestEnvironment(
 			f, dockerExtNet1Network, attachNetClient,
 			subnetClient, vpcClient, vpcNatGwClient,
-			vpcName, overlaySubnetName, vpcNatGwName, natgwQoS,
+			vpcName, overlaySubnetName+"image", vpcNatGwName, natgwQoS,
 			overlaySubnetV4Cidr, overlaySubnetV4Gw, lanIP,
 			dockerExtNet1Name, networkAttachDefName, net1NicName,
 			externalSubnetProvider,
@@ -1069,20 +1069,19 @@ func createNatGwAndSetQosCases(f *framework.Framework,
 }
 
 func validRateLimit(text string, limit int) bool {
+	maxValue := float64(limit) * 1024 * 1024 * 1.2
+	minValue := float64(limit) * 1024 * 1024 * 0.8
 	lines := strings.Split(text, "\n")
 	for _, line := range lines {
 		if line == "" {
 			continue
 		}
 		fields := strings.Split(line, ",")
-		lastField := fields[len(fields)-1]
-		number, err := strconv.Atoi(lastField)
+		number, err := strconv.Atoi(fields[len(fields)-1])
 		if err != nil {
 			continue
 		}
-		max := float64(limit) * 1024 * 1024 * 1.2
-		min := float64(limit) * 1024 * 1024 * 0.8
-		if min <= float64(number) && float64(number) <= max {
+		if v := float64(number); v >= minValue && v <= maxValue {
 			return true
 		}
 	}

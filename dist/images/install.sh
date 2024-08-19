@@ -44,7 +44,7 @@ ENABLE_OVN_IPSEC=${ENABLE_OVN_IPSEC:-false}
 # debug
 DEBUG_WRAPPER=${DEBUG_WRAPPER:-}
 RUN_AS_USER=65534 # run as nobody
-if [ -n "$DEBUG_WRAPPER" ]; then
+if [ "$ENABLE_OVN_IPSEC" = "true" -o -n "$DEBUG_WRAPPER" ]; then
   RUN_AS_USER=0
 fi
 
@@ -4350,7 +4350,7 @@ spec:
                 - --port=10660
                 - --tls=${SECURE_SERVING}
             periodSeconds: 3
-            timeoutSeconds: 1
+            timeoutSeconds: 5
           livenessProbe:
             exec:
               command:
@@ -4360,7 +4360,7 @@ spec:
             initialDelaySeconds: 300
             periodSeconds: 7
             failureThreshold: 5
-            timeoutSeconds: 1
+            timeoutSeconds: 5
           resources:
             requests:
               cpu: 200m
@@ -4500,6 +4500,7 @@ spec:
               - SYS_ADMIN
               - SYS_MODULE
               - SYS_NICE
+              - CAP_SYS_PTRACE
         env:
           - name: ENABLE_SSL
             value: "$ENABLE_SSL"
@@ -4573,7 +4574,7 @@ spec:
               - /kube-ovn/kube-ovn-healthcheck
               - --port=10665
               - --tls=${SECURE_SERVING}
-          timeoutSeconds: 1
+          timeoutSeconds: 5
         readinessProbe:
           failureThreshold: 3
           periodSeconds: 7
@@ -4583,7 +4584,7 @@ spec:
               - /kube-ovn/kube-ovn-healthcheck
               - --port=10665
               - --tls=${SECURE_SERVING}
-          timeoutSeconds: 1
+          timeoutSeconds: 5
         resources:
           requests:
             cpu: 100m
@@ -4914,7 +4915,7 @@ spec:
                 - /kube-ovn/kube-ovn-healthcheck
                 - --port=10661
                 - --tls=${SECURE_SERVING}
-            timeoutSeconds: 1
+            timeoutSeconds: 5
           readinessProbe:
             failureThreshold: 3
             initialDelaySeconds: 30
@@ -4925,7 +4926,7 @@ spec:
                 - /kube-ovn/kube-ovn-healthcheck
                 - --port=10661
                 - --tls=${SECURE_SERVING}
-            timeoutSeconds: 1
+            timeoutSeconds: 5
       nodeSelector:
         kubernetes.io/os: "linux"
         kube-ovn/role: "master"

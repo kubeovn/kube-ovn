@@ -126,7 +126,7 @@ ARG ARCH
 ARG CNI_VERSION=v1.5.1
 RUN curl -sSf -L --retry 5 https://github.com/containernetworking/plugins/releases/download/${CNI_VERSION}/cni-plugins-linux-${ARCH}-${CNI_VERSION}.tgz | tar -xz -C . ./loopback ./portmap ./macvlan
 
-ARG KUBE_VERSION="v1.30.3"
+ARG KUBE_VERSION="v1.31.0"
 
 RUN curl -L https://dl.k8s.io/${KUBE_VERSION}/kubernetes-client-linux-${ARCH}.tar.gz | tar -xz -C . && cp ./kubernetes/client/bin/kubectl /usr/bin/kubectl \
  && chmod +x /usr/bin/kubectl && rm -rf ./kubernetes
@@ -148,10 +148,7 @@ RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages  \
     if [ "${DEBUG}" != "true" ]; then \
         setcap CAP_NET_BIND_SERVICE+eip $(readlink -f $(which ovsdb-server)) && \
         setcap CAP_NET_ADMIN,CAP_NET_BIND_SERVICE,CAP_SYS_MODULE,CAP_SYS_ADMIN+eip $(readlink -f $(which ovs-vswitchd)); \
-    fi
-
-RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages \
-    if [ "${DEBUG}" = "true" ]; then \
+    else \
         apt update && apt install -y --no-install-recommends gdb valgrind && \
         rm -rf /var/lib/apt/lists/* && \
         dpkg -i --ignore-depends=openvswitch-switch,openvswitch-common /packages/*.ddeb; \

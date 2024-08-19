@@ -137,7 +137,7 @@ spec:
           - --secure-serving={{- .Values.func.SECURE_SERVING }}
           - --enable-ovn-ipsec={{- .Values.func.ENABLE_OVN_IPSEC }}
           securityContext:
-            runAsUser: 65534
+            runAsUser: {{ include "kubeovn.runAsUser" . }}
             privileged: false
             capabilities:
               add:
@@ -191,7 +191,7 @@ spec:
                 - --port=10660
                 - --tls={{- .Values.func.SECURE_SERVING }}
             periodSeconds: 3
-            timeoutSeconds: 1
+            timeoutSeconds: 5
           livenessProbe:
             exec:
               command:
@@ -201,7 +201,7 @@ spec:
             initialDelaySeconds: 300
             periodSeconds: 7
             failureThreshold: 5
-            timeoutSeconds: 1
+            timeoutSeconds: 5
           resources:
             requests:
               cpu: {{ index .Values "kube-ovn-controller" "requests" "cpu" }}

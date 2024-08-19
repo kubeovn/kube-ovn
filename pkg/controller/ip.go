@@ -54,18 +54,6 @@ func (c *Controller) enqueueUpdateIP(oldObj, newObj interface{}) {
 	}
 	oldIP := oldObj.(*kubeovnv1.IP)
 	newIP := newObj.(*kubeovnv1.IP)
-	if !newIP.DeletionTimestamp.IsZero() {
-		klog.V(3).Infof("enqueue update ip %s", key)
-		c.updateIPQueue.Add(key)
-		return
-	}
-	if !reflect.DeepEqual(oldIP.Spec.AttachSubnets, newIP.Spec.AttachSubnets) {
-		klog.V(3).Infof("enqueue update status subnet %s", newIP.Spec.Subnet)
-		for _, as := range newIP.Spec.AttachSubnets {
-			klog.V(3).Infof("enqueue update status for attach subnet %s", as)
-			c.updateSubnetStatusQueue.Add(as)
-		}
-	}
 	// ip can not change these specs below
 	if oldIP.Spec.Subnet != "" && newIP.Spec.Subnet != oldIP.Spec.Subnet {
 		klog.Errorf("ip %s subnet can not change", newIP.Name)
@@ -85,8 +73,27 @@ func (c *Controller) enqueueUpdateIP(oldObj, newObj interface{}) {
 	if oldIP.Spec.V4IPAddress != "" && newIP.Spec.V4IPAddress != oldIP.Spec.V4IPAddress {
 		klog.Errorf("ip %s v4IPAddress can not change", newIP.Name)
 	}
-	if oldIP.Spec.V6IPAddress != "" && newIP.Spec.V6IPAddress != oldIP.Spec.V6IPAddress {
-		klog.Errorf("ip %s v6IPAddress can not change", newIP.Name)
+	if oldIP.Spec.V6IPAddress != "" {
+		// v6 ip address can not use upper case
+		if util.ContainsUppercase(newIP.Spec.V6IPAddress) {
+			err := fmt.Errorf("ip %s v6 ip address %s can not contain upper case", newIP.Name, newIP.Spec.V6IPAddress)
+			klog.Error(err)
+		}
+		if newIP.Spec.V6IPAddress != oldIP.Spec.V6IPAddress {
+			klog.Errorf("ip %s v6IPAddress can not change", newIP.Name)
+		}
+	}
+	if !newIP.DeletionTimestamp.IsZero() {
+		klog.V(3).Infof("enqueue update ip %s", key)
+		c.updateIPQueue.Add(key)
+		return
+	}
+	if !reflect.DeepEqual(oldIP.Spec.AttachSubnets, newIP.Spec.AttachSubnets) {
+		klog.V(3).Infof("enqueue update status subnet %s", newIP.Spec.Subnet)
+		for _, as := range newIP.Spec.AttachSubnets {
+			klog.V(3).Infof("enqueue update status for attach subnet %s", as)
+			c.updateSubnetStatusQueue.Add(as)
+		}
 	}
 }
 
@@ -103,108 +110,6 @@ func (c *Controller) enqueueDelIP(obj interface{}) {
 	}
 	klog.V(3).Infof("enqueue del ip %s", key)
 	c.delIPQueue.Add(ipObj)
-}
-
-func (c *Controller) runAddIPWorker() {
-	for c.processNextAddIPWorkItem() {
-	}
-}
-
-func (c *Controller) runUpdateIPWorker() {
-	for c.processNextUpdateIPWorkItem() {
-	}
-}
-
-func (c *Controller) runDelIPWorker() {
-	for c.processNextDeleteIPWorkItem() {
-	}
-}
-
-func (c *Controller) processNextAddIPWorkItem() bool {
-	obj, shutdown := c.addIPQueue.Get()
-	if shutdown {
-		return false
-	}
-
-	err := func(obj interface{}) error {
-		defer c.addIPQueue.Done(obj)
-		var key string
-		var ok bool
-		if key, ok = obj.(string); !ok {
-			c.addIPQueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
-			return nil
-		}
-		if err := c.handleAddReservedIP(key); err != nil {
-			c.addIPQueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
-		}
-		c.addIPQueue.Forget(obj)
-		return nil
-	}(obj)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return true
-	}
-	return true
-}
-
-func (c *Controller) processNextUpdateIPWorkItem() bool {
-	obj, shutdown := c.updateIPQueue.Get()
-	if shutdown {
-		return false
-	}
-
-	err := func(obj interface{}) error {
-		defer c.updateIPQueue.Done(obj)
-		var key string
-		var ok bool
-		if key, ok = obj.(string); !ok {
-			c.updateIPQueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
-			return nil
-		}
-		if err := c.handleUpdateIP(key); err != nil {
-			c.updateIPQueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
-		}
-		c.updateIPQueue.Forget(obj)
-		return nil
-	}(obj)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return true
-	}
-	return true
-}
-
-func (c *Controller) processNextDeleteIPWorkItem() bool {
-	obj, shutdown := c.delIPQueue.Get()
-	if shutdown {
-		return false
-	}
-
-	err := func(obj interface{}) error {
-		defer c.delIPQueue.Done(obj)
-		var ip *kubeovnv1.IP
-		var ok bool
-		if ip, ok = obj.(*kubeovnv1.IP); !ok {
-			c.delIPQueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected ip in workqueue but got %#v", obj))
-			return nil
-		}
-		if err := c.handleDelIP(ip); err != nil {
-			c.delIPQueue.AddRateLimited(obj)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", ip.Name, err.Error())
-		}
-		c.delIPQueue.Forget(obj)
-		return nil
-	}(obj)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return true
-	}
-	return true
 }
 
 func (c *Controller) handleAddReservedIP(key string) error {
@@ -254,6 +159,12 @@ func (c *Controller) handleAddReservedIP(key string) error {
 		return nil
 	}
 
+	// v6 ip address can not use upper case
+	if util.ContainsUppercase(ip.Spec.V6IPAddress) {
+		err := fmt.Errorf("ip %s v6 ip address %s can not contain upper case", ip.Name, ip.Spec.V6IPAddress)
+		klog.Error(err)
+		return err
+	}
 	v4IP, v6IP, mac, err := c.ipAcquireAddress(ip, subnet)
 	if err != nil {
 		err = fmt.Errorf("failed to acquire ip address %w", err)

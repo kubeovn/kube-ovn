@@ -18,7 +18,6 @@ import (
 
 	"github.com/containerd/containerd/pkg/netns"
 	"github.com/containernetworking/plugins/pkg/ns"
-	"github.com/containernetworking/plugins/pkg/utils/sysctl"
 	"github.com/k8snetworkplumbingwg/sriovnet"
 	sriovutilfs "github.com/k8snetworkplumbingwg/sriovnet/pkg/utils/filesystem"
 	"github.com/vishvananda/netlink"
@@ -31,6 +30,7 @@ import (
 	"k8s.io/klog/v2"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/net/yusur"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/request"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -69,7 +69,8 @@ func (csh cniServerHandler) configureDpdkNic(podName, podNamespace, provider, ne
 
 func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns, containerID, vfDriver, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute, detectIPConflict bool, routes []request.Route, _, _ []string, ingress, egress, deviceID, nicType, latency, limit, loss, jitter string, gwCheckMode int, u2oInterconnectionIP, oldPodName string) ([]request.Route, error) {
 	var err error
-	var hostNicName, containerNicName string
+	var hostNicName, containerNicName, pfPci string
+	var vfID int
 	if deviceID == "" {
 		hostNicName, containerNicName, err = setupVethPair(containerID, ifName, mtu)
 		if err != nil {
@@ -85,7 +86,7 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 			}
 		}()
 	} else {
-		hostNicName, containerNicName, err = setupSriovInterface(containerID, deviceID, vfDriver, ifName, mtu, mac)
+		hostNicName, containerNicName, pfPci, vfID, err = setupSriovInterface(containerID, deviceID, vfDriver, ifName, mtu, mac)
 		if err != nil {
 			klog.Errorf("failed to create sriov interfaces %v", err)
 			return nil, err
@@ -95,16 +96,34 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 	ipStr := util.GetIPWithoutMask(ip)
 	ifaceID := ovs.PodNameToPortName(podName, podNamespace, provider)
 	ovs.CleanDuplicatePort(ifaceID, hostNicName)
-	// Add veth pair host end to ovs port
-	output, err := ovs.Exec(ovs.MayExist, "add-port", "br-int", hostNicName, "--",
-		"set", "interface", hostNicName, fmt.Sprintf("external_ids:iface-id=%s", ifaceID),
-		fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName),
-		fmt.Sprintf("external_ids:pod_name=%s", podName),
-		fmt.Sprintf("external_ids:pod_namespace=%s", podNamespace),
-		fmt.Sprintf("external_ids:ip=%s", ipStr),
-		fmt.Sprintf("external_ids:pod_netns=%s", netns))
-	if err != nil {
-		return nil, fmt.Errorf("add nic to ovs failed %w: %q", err, output)
+	if yusur.IsYusurSmartNic(deviceID) {
+		klog.Infof("add Yusur smartnic vfr %s to ovs", hostNicName)
+		// Add yusur ovs port
+		output, err := ovs.Exec(ovs.MayExist, "add-port", "br-int", hostNicName, "--",
+			"set", "interface", hostNicName, "type=dpdk",
+			fmt.Sprintf("options:dpdk-devargs=%s,representor=[%d]", pfPci, vfID),
+			fmt.Sprintf("mtu_request=%d", mtu),
+			fmt.Sprintf("external_ids:iface-id=%s", ifaceID),
+			fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName),
+			fmt.Sprintf("external_ids:pod_name=%s", podName),
+			fmt.Sprintf("external_ids:pod_namespace=%s", podNamespace),
+			fmt.Sprintf("external_ids:ip=%s", ipStr),
+			fmt.Sprintf("external_ids:pod_netns=%s", netns))
+		if err != nil {
+			return nil, fmt.Errorf("add nic to ovs failed %w: %q", err, output)
+		}
+	} else {
+		// Add veth pair host end to ovs port
+		output, err := ovs.Exec(ovs.MayExist, "add-port", "br-int", hostNicName, "--",
+			"set", "interface", hostNicName, fmt.Sprintf("external_ids:iface-id=%s", ifaceID),
+			fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName),
+			fmt.Sprintf("external_ids:pod_name=%s", podName),
+			fmt.Sprintf("external_ids:pod_namespace=%s", podNamespace),
+			fmt.Sprintf("external_ids:ip=%s", ipStr),
+			fmt.Sprintf("external_ids:pod_netns=%s", netns))
+		if err != nil {
+			return nil, fmt.Errorf("add nic to ovs failed %w: %q", err, output)
+		}
 	}
 	defer func() {
 		if err != nil {
@@ -150,9 +169,11 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse mac %s %w", macAddr, err)
 	}
-	if err = configureHostNic(hostNicName); err != nil {
-		klog.Error(err)
-		return nil, err
+	if !yusur.IsYusurSmartNic(deviceID) {
+		if err = configureHostNic(hostNicName); err != nil {
+			klog.Error(err)
+			return nil, err
+		}
 	}
 	if err = ovs.SetInterfaceBandwidth(podName, podNamespace, ifaceID, egress, ingress); err != nil {
 		klog.Error(err)
@@ -241,7 +262,7 @@ func (csh cniServerHandler) releaseVf(podName, podNamespace, podNetns, ifName, n
 		return nil
 	})
 	if err != nil {
-		klog.Errorf(err.Error())
+		klog.Error(err)
 	}
 
 	return nil
@@ -254,14 +275,32 @@ func (csh cniServerHandler) deleteNic(podName, podNamespace, containerID, netns,
 	}
 
 	var nicName string
-	hostNicName, containerNicName := generateNicName(containerID, ifName)
+	if yusur.IsYusurSmartNic(deviceID) {
+		pfPci, err := yusur.GetYusurNicPfPciFromVfPci(deviceID)
+		if err != nil {
+			return fmt.Errorf("failed to get pf pci %w, %s", err, deviceID)
+		}
 
-	if nicType == util.InternalType {
-		nicName = containerNicName
+		pfIndex, err := yusur.GetYusurNicPfIndexByPciAddress(pfPci)
+		if err != nil {
+			return fmt.Errorf("failed to get pf index %w, %s", err, deviceID)
+		}
+
+		vfIndex, err := yusur.GetYusurNicVfIndexByPciAddress(deviceID)
+		if err != nil {
+			return fmt.Errorf("failed to get vf index %w, %s", err, deviceID)
+		}
+
+		nicName = yusur.GetYusurNicVfRepresentor(pfIndex, vfIndex)
 	} else {
-		nicName = hostNicName
-	}
+		hostNicName, containerNicName := generateNicName(containerID, ifName)
 
+		if nicType == util.InternalType {
+			nicName = containerNicName
+		} else {
+			nicName = hostNicName
+		}
+	}
 	// Remove ovs port
 	output, err := ovs.Exec(ovs.IfExists, "--with-iface", "del-port", "br-int", nicName)
 	if err != nil {
@@ -295,7 +334,7 @@ func (csh cniServerHandler) deleteNic(podName, podNamespace, containerID, netns,
 				return fmt.Errorf("delete host link %s failed %w", hostLink, err)
 			}
 		}
-	} else if pciAddrRegexp.MatchString(deviceID) {
+	} else if pciAddrRegexp.MatchString(deviceID) && !yusur.IsYusurSmartNic(deviceID) {
 		// Ret VF index from PCI
 		vfIndex, err := sriovnet.GetVfIndexByPciAddress(deviceID)
 		if err != nil {
@@ -576,15 +615,6 @@ func configureNodeNic(portName, ip, gw, joinCIDR string, macAddr net.HardwareAdd
 	if err != nil {
 		klog.Errorf("failed to configure node nic %s: %v, %q", portName, err, raw)
 		return errors.New(raw)
-	}
-
-	value, err := sysctl.Sysctl(fmt.Sprintf("net.ipv6.conf.%s.addr_gen_mode", util.NodeNic))
-	if err == nil {
-		if value != "0" {
-			if _, err = sysctl.Sysctl(fmt.Sprintf("net.ipv6.conf.%s.addr_gen_mode", util.NodeNic), "0"); err != nil {
-				return fmt.Errorf("failed to set ovn0 addr_gen_mode: %w", err)
-			}
-		}
 	}
 
 	if err = configureNic(util.NodeNic, ip, macAddr, mtu, false, false); err != nil {
@@ -1311,17 +1341,6 @@ func (c *Controller) transferAddrsAndRoutes(nicName, brName string, delNonExiste
 // Add host nic to external bridge
 // Mac address, MTU, IP addresses & routes will be copied/transferred to the external bridge
 func (c *Controller) configProviderNic(nicName, brName string, trunks []string) (int, error) {
-	sysctlDisableIPv6 := fmt.Sprintf("net.ipv6.conf.%s.disable_ipv6", brName)
-	disableIPv6, err := sysctl.Sysctl(sysctlDisableIPv6)
-	if err != nil {
-		return 0, fmt.Errorf("failed to get sysctl %s: %w", sysctlDisableIPv6, err)
-	}
-	if disableIPv6 != "0" {
-		if _, err = sysctl.Sysctl(sysctlDisableIPv6, "0"); err != nil {
-			return 0, fmt.Errorf("failed to enable ipv6 on OVS bridge %s: %w", brName, err)
-		}
-	}
-
 	mtu, err := c.transferAddrsAndRoutes(nicName, brName, false)
 	if err != nil {
 		return 0, fmt.Errorf("failed to transfer addresses and routes from %s to %s: %w", nicName, brName, err)
@@ -1469,12 +1488,12 @@ func setupVethPair(containerID, ifName string, mtu int) (string, string, error) 
 
 // Setup sriov interface in the pod
 // https://github.com/ovn-org/ovn-kubernetes/commit/6c96467d0d3e58cab05641293d1c1b75e5914795
-func setupSriovInterface(containerID, deviceID, vfDriver, ifName string, mtu int, mac string) (string, string, error) {
+func setupSriovInterface(containerID, deviceID, vfDriver, ifName string, mtu int, mac string) (string, string, string, int, error) {
 	isVfioPciDriver := false
 	if vfDriver == "vfio-pci" {
 		matches, err := filepath.Glob(filepath.Join(util.VfioSysDir, "*"))
 		if err != nil {
-			return "", "", fmt.Errorf("failed to check %s 'vfio-pci' driver path, %w", deviceID, err)
+			return "", "", "", -1, fmt.Errorf("failed to check %s 'vfio-pci' driver path, %w", deviceID, err)
 		}
 
 		for _, match := range matches {
@@ -1489,7 +1508,7 @@ func setupSriovInterface(containerID, deviceID, vfDriver, ifName string, mtu int
 		}
 
 		if !isVfioPciDriver {
-			return "", "", fmt.Errorf("driver of device %s is not 'vfio-pci'", deviceID)
+			return "", "", "", -1, fmt.Errorf("driver of device %s is not 'vfio-pci'", deviceID)
 		}
 	}
 
@@ -1499,60 +1518,91 @@ func setupSriovInterface(containerID, deviceID, vfDriver, ifName string, mtu int
 		vfNetdevices, err := sriovnet.GetNetDevicesFromPci(deviceID)
 		if err != nil {
 			klog.Errorf("failed to get vf netdevice %s, %v", deviceID, err)
-			return "", "", err
+			return "", "", "", -1, err
 		}
 
 		// Make sure we have 1 netdevice per pci address
 		if len(vfNetdevices) != 1 {
-			return "", "", fmt.Errorf("failed to get one netdevice interface per %s", deviceID)
+			return "", "", "", -1, fmt.Errorf("failed to get one netdevice interface per %s", deviceID)
 		}
 		vfNetdevice = vfNetdevices[0]
+	}
+
+	if yusur.IsYusurSmartNic(deviceID) {
+		// 2. get PF PCI
+		pfPci, err := yusur.GetYusurNicPfPciFromVfPci(deviceID)
+		if err != nil {
+			return "", "", "", -1, err
+		}
+
+		// 3. get PF index from Pci
+		pfIndex, err := yusur.GetYusurNicPfIndexByPciAddress(pfPci)
+		if err != nil {
+			klog.Errorf("failed to get up %s link device, %v", deviceID, err)
+			return "", "", "", -1, err
+		}
+
+		// 4. get VF index from PCI
+		vfIndex, err := yusur.GetYusurNicVfIndexByPciAddress(deviceID)
+		if err != nil {
+			return "", "", "", -1, err
+		}
+
+		// 5. get vf representor
+		rep := yusur.GetYusurNicVfRepresentor(pfIndex, vfIndex)
+
+		_, err = netlink.LinkByName(rep)
+		if err != nil {
+			klog.Infof("vfr not exist %s", rep)
+		}
+
+		return rep, vfNetdevice, pfPci, vfIndex, nil
 	}
 
 	// 2. get Uplink netdevice
 	uplink, err := sriovnet.GetUplinkRepresentor(deviceID)
 	if err != nil {
 		klog.Errorf("failed to get up %s link device, %v", deviceID, err)
-		return "", "", err
+		return "", "", "", -1, err
 	}
 
 	// 3. get VF index from PCI
 	vfIndex, err := sriovnet.GetVfIndexByPciAddress(deviceID)
 	if err != nil {
 		klog.Errorf("failed to get vf %s index, %v", deviceID, err)
-		return "", "", err
+		return "", "", "", -1, err
 	}
 
 	// 4. lookup representor
 	rep, err := sriovnet.GetVfRepresentor(uplink, vfIndex)
 	if err != nil {
 		klog.Errorf("failed to get vf %d representor, %v", vfIndex, err)
-		return "", "", err
+		return "", "", "", -1, err
 	}
 	oldHostRepName := rep
 
 	// 5. rename the host VF representor
 	hostNicName, _ := generateNicName(containerID, ifName)
 	if err = renameLink(oldHostRepName, hostNicName); err != nil {
-		return "", "", fmt.Errorf("failed to rename %s to %s: %w", oldHostRepName, hostNicName, err)
+		return "", "", "", -1, fmt.Errorf("failed to rename %s to %s: %w", oldHostRepName, hostNicName, err)
 	}
 
 	link, err := netlink.LinkByName(hostNicName)
 	if err != nil {
-		return "", "", err
+		return "", "", "", -1, err
 	}
 
 	// 6. set MTU on VF representor
 	if err = netlink.LinkSetMTU(link, mtu); err != nil {
-		return "", "", fmt.Errorf("failed to set MTU on %s: %w", hostNicName, err)
+		return "", "", "", -1, fmt.Errorf("failed to set MTU on %s: %w", hostNicName, err)
 	}
 
 	// 7. set MAC address to VF
 	if err = setVfMac(deviceID, vfIndex, mac); err != nil {
-		return "", "", err
+		return "", "", "", -1, err
 	}
 
-	return hostNicName, vfNetdevice, nil
+	return hostNicName, vfNetdevice, "", -1, nil
 }
 
 func renameLink(curName, newName string) error {

@@ -77,7 +77,7 @@ spec:
           - --enable-metrics={{- .Values.networking.ENABLE_METRICS }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           securityContext:
-            runAsUser: 65534
+            runAsUser: {{ include "kubeovn.runAsUser" . }}
             privileged: false
             capabilities:
               add:

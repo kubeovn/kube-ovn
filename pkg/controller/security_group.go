@@ -62,110 +62,6 @@ func (c *Controller) enqueueDeleteSg(obj interface{}) {
 	c.delSgQueue.Add(key)
 }
 
-func (c *Controller) runAddSgWorker() {
-	for c.processNextAddOrUpdateSgWorkItem() {
-	}
-}
-
-func (c *Controller) runDelSgWorker() {
-	for c.processNextDeleteSgWorkItem() {
-	}
-}
-
-func (c *Controller) runSyncSgPortsWorker() {
-	for c.processNextSyncSgPortsWorkItem() {
-	}
-}
-
-func (c *Controller) processNextSyncSgPortsWorkItem() bool {
-	obj, shutdown := c.syncSgPortsQueue.Get()
-	if shutdown {
-		return false
-	}
-
-	err := func(obj interface{}) error {
-		defer c.syncSgPortsQueue.Done(obj)
-		var key string
-		var ok bool
-		if key, ok = obj.(string); !ok {
-			c.syncSgPortsQueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
-			return nil
-		}
-		if err := c.syncSgLogicalPort(key); err != nil {
-			c.syncSgPortsQueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
-		}
-		c.syncSgPortsQueue.Forget(obj)
-		return nil
-	}(obj)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return true
-	}
-	return true
-}
-
-func (c *Controller) processNextAddOrUpdateSgWorkItem() bool {
-	obj, shutdown := c.addOrUpdateSgQueue.Get()
-
-	if shutdown {
-		return false
-	}
-
-	err := func(obj interface{}) error {
-		defer c.addOrUpdateSgQueue.Done(obj)
-		var key string
-		var ok bool
-		if key, ok = obj.(string); !ok {
-			c.addOrUpdateSgQueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
-			return nil
-		}
-		if err := c.handleAddOrUpdateSg(key, false); err != nil {
-			c.addOrUpdateSgQueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
-		}
-		c.addOrUpdateSgQueue.Forget(obj)
-		return nil
-	}(obj)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return true
-	}
-	return true
-}
-
-func (c *Controller) processNextDeleteSgWorkItem() bool {
-	obj, shutdown := c.delSgQueue.Get()
-
-	if shutdown {
-		return false
-	}
-
-	err := func(obj interface{}) error {
-		defer c.delSgQueue.Done(obj)
-		var key string
-		var ok bool
-		if key, ok = obj.(string); !ok {
-			c.delSgQueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
-			return nil
-		}
-		if err := c.handleDeleteSg(key); err != nil {
-			c.delSgQueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
-		}
-		c.delSgQueue.Forget(obj)
-		return nil
-	}(obj)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return true
-	}
-	return true
-}
-
 func (c *Controller) initDefaultDenyAllSecurityGroup() error {
 	pgName := ovs.GetSgPortGroupName(util.DenyAllSecurityGroup)
 	if err := c.OVNNbClient.CreatePortGroup(pgName, map[string]string{
@@ -472,7 +368,7 @@ func (c *Controller) syncSgLogicalPort(key string) error {
 	sg, err := c.sgsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
-			klog.Warningf("no security group %s ", key)
+			klog.Warningf("no security group %s", key)
 			return nil
 		}
 		klog.Errorf("failed to get security group %s: %v", key, err)

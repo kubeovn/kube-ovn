@@ -5,11 +5,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
-
 	"k8s.io/client-go/informers"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/kubernetes/fake"
-	"k8s.io/client-go/util/workqueue"
 
 	mockovs "github.com/kubeovn/kube-ovn/mocks/pkg/ovs"
 	kubeovnfake "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/fake"
@@ -59,7 +57,7 @@ func newFakeController(t *testing.T) *fakeController {
 		subnetsLister:         subnetInformer.Lister(),
 		subnetSynced:          alwaysReady,
 		OVNNbClient:           mockOvnClient,
-		syncVirtualPortsQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), ""),
+		syncVirtualPortsQueue: newTypedRateLimitingQueue[string]("SyncVirtualPort", nil),
 	}
 
 	ctrl.config = &Configuration{

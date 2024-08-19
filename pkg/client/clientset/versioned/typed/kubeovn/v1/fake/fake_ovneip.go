@@ -40,20 +40,22 @@ var ovneipsKind = v1.SchemeGroupVersion.WithKind("OvnEip")
 
 // Get takes name of the ovnEip, and returns the corresponding ovnEip object, and an error if there is any.
 func (c *FakeOvnEips) Get(ctx context.Context, name string, options metav1.GetOptions) (result *v1.OvnEip, err error) {
+	emptyResult := &v1.OvnEip{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootGetAction(ovneipsResource, name), &v1.OvnEip{})
+		Invokes(testing.NewRootGetActionWithOptions(ovneipsResource, name, options), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v1.OvnEip), err
 }
 
 // List takes label and field selectors, and returns the list of OvnEips that match those selectors.
 func (c *FakeOvnEips) List(ctx context.Context, opts metav1.ListOptions) (result *v1.OvnEipList, err error) {
+	emptyResult := &v1.OvnEipList{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootListAction(ovneipsResource, ovneipsKind, opts), &v1.OvnEipList{})
+		Invokes(testing.NewRootListActionWithOptions(ovneipsResource, ovneipsKind, opts), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 
 	label, _, _ := testing.ExtractFromListOptions(opts)
@@ -72,36 +74,39 @@ func (c *FakeOvnEips) List(ctx context.Context, opts metav1.ListOptions) (result
 // Watch returns a watch.Interface that watches the requested ovnEips.
 func (c *FakeOvnEips) Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error) {
 	return c.Fake.
-		InvokesWatch(testing.NewRootWatchAction(ovneipsResource, opts))
+		InvokesWatch(testing.NewRootWatchActionWithOptions(ovneipsResource, opts))
 }
 
 // Create takes the representation of a ovnEip and creates it.  Returns the server's representation of the ovnEip, and an error, if there is any.
 func (c *FakeOvnEips) Create(ctx context.Context, ovnEip *v1.OvnEip, opts metav1.CreateOptions) (result *v1.OvnEip, err error) {
+	emptyResult := &v1.OvnEip{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootCreateAction(ovneipsResource, ovnEip), &v1.OvnEip{})
+		Invokes(testing.NewRootCreateActionWithOptions(ovneipsResource, ovnEip, opts), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v1.OvnEip), err
 }
 
 // Update takes the representation of a ovnEip and updates it. Returns the server's representation of the ovnEip, and an error, if there is any.
 func (c *FakeOvnEips) Update(ctx context.Context, ovnEip *v1.OvnEip, opts metav1.UpdateOptions) (result *v1.OvnEip, err error) {
+	emptyResult := &v1.OvnEip{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootUpdateAction(ovneipsResource, ovnEip), &v1.OvnEip{})
+		Invokes(testing.NewRootUpdateActionWithOptions(ovneipsResource, ovnEip, opts), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v1.OvnEip), err
 }
 
 // UpdateStatus was generated because the type contains a Status member.
 // Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-func (c *FakeOvnEips) UpdateStatus(ctx context.Context, ovnEip *v1.OvnEip, opts metav1.UpdateOptions) (*v1.OvnEip, error) {
+func (c *FakeOvnEips) UpdateStatus(ctx context.Context, ovnEip *v1.OvnEip, opts metav1.UpdateOptions) (result *v1.OvnEip, err error) {
+	emptyResult := &v1.OvnEip{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootUpdateSubresourceAction(ovneipsResource, "status", ovnEip), &v1.OvnEip{})
+		Invokes(testing.NewRootUpdateSubresourceActionWithOptions(ovneipsResource, "status", ovnEip, opts), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v1.OvnEip), err
 }
@@ -115,7 +120,7 @@ func (c *FakeOvnEips) Delete(ctx context.Context, name string, opts metav1.Delet
 
 // DeleteCollection deletes a collection of objects.
 func (c *FakeOvnEips) DeleteCollection(ctx context.Context, opts metav1.DeleteOptions, listOpts metav1.ListOptions) error {
-	action := testing.NewRootDeleteCollectionAction(ovneipsResource, listOpts)
+	action := testing.NewRootDeleteCollectionActionWithOptions(ovneipsResource, opts, listOpts)
 
 	_, err := c.Fake.Invokes(action, &v1.OvnEipList{})
 	return err
@@ -123,10 +128,11 @@ func (c *FakeOvnEips) DeleteCollection(ctx context.Context, opts metav1.DeleteOp
 
 // Patch applies the patch and returns the patched ovnEip.
 func (c *FakeOvnEips) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *v1.OvnEip, err error) {
+	emptyResult := &v1.OvnEip{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootPatchSubresourceAction(ovneipsResource, name, pt, data, subresources...), &v1.OvnEip{})
+		Invokes(testing.NewRootPatchSubresourceActionWithOptions(ovneipsResource, name, pt, data, opts, subresources...), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v1.OvnEip), err
 }

@@ -21,7 +21,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
-	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
 
@@ -126,75 +125,6 @@ func (c *Controller) enqueueDeleteVpcNatGw(obj interface{}) {
 	}
 	klog.V(3).Infof("enqueue del vpc-nat-gw %s", key)
 	c.delVpcNatGatewayQueue.Add(key)
-}
-
-func (c *Controller) runAddOrUpdateVpcNatGwWorker() {
-	for c.processNextWorkItem("addOrUpdateVpcNatGateway", c.addOrUpdateVpcNatGatewayQueue, c.handleAddOrUpdateVpcNatGw) {
-	}
-}
-
-func (c *Controller) runInitVpcNatGwWorker() {
-	for c.processNextWorkItem("initVpcNatGateway", c.initVpcNatGatewayQueue, c.handleInitVpcNatGw) {
-	}
-}
-
-func (c *Controller) runDelVpcNatGwWorker() {
-	for c.processNextWorkItem("delVpcNatGateway", c.delVpcNatGatewayQueue, c.handleDelVpcNatGw) {
-	}
-}
-
-func (c *Controller) runUpdateVpcFloatingIPWorker() {
-	for c.processNextWorkItem("updateVpcFloatingIp", c.updateVpcFloatingIPQueue, c.handleUpdateVpcFloatingIP) {
-	}
-}
-
-func (c *Controller) runUpdateVpcEipWorker() {
-	for c.processNextWorkItem("UpdateVpcEip", c.updateVpcEipQueue, c.handleUpdateVpcEip) {
-	}
-}
-
-func (c *Controller) runUpdateVpcDnatWorker() {
-	for c.processNextWorkItem("updateVpcDnat", c.updateVpcDnatQueue, c.handleUpdateVpcDnat) {
-	}
-}
-
-func (c *Controller) runUpdateVpcSnatWorker() {
-	for c.processNextWorkItem("updateVpcSnat", c.updateVpcSnatQueue, c.handleUpdateVpcSnat) {
-	}
-}
-
-func (c *Controller) runUpdateVpcSubnetWorker() {
-	for c.processNextWorkItem("updateVpcSubnet", c.updateVpcSubnetQueue, c.handleUpdateNatGwSubnetRoute) {
-	}
-}
-
-func (c *Controller) processNextWorkItem(processName string, queue workqueue.RateLimitingInterface, handler func(key string) error) bool {
-	obj, shutdown := queue.Get()
-	if shutdown {
-		return false
-	}
-
-	err := func(obj interface{}) error {
-		defer queue.Done(obj)
-		var key string
-		var ok bool
-		if key, ok = obj.(string); !ok {
-			queue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
-			return nil
-		}
-		if err := handler(key); err != nil {
-			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
-		}
-		queue.Forget(obj)
-		return nil
-	}(obj)
-	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("process: %s. err: %w", processName, err))
-		queue.AddRateLimited(obj)
-		return true
-	}
-	return true
 }
 
 func (c *Controller) handleDelVpcNatGw(key string) error {
@@ -567,7 +497,7 @@ func (c *Controller) handleUpdateVpcDnat(natGwKey string) error {
 func (c *Controller) getIptablesVersion(pod *corev1.Pod) (version string, err error) {
 	operation := getIptablesVersion
 	cmd := fmt.Sprintf("bash /kube-ovn/nat-gateway.sh %s", operation)
-	klog.V(3).Infof(cmd)
+	klog.V(3).Info(cmd)
 	stdOutput, errOutput, err := util.ExecuteCommandInContainer(c.config.KubeClient, c.config.KubeRestConfig, pod.Namespace, pod.Name, "vpc-nat-gw", []string{"/bin/bash", "-c", cmd}...)
 	if err != nil {
 		if len(errOutput) > 0 {
@@ -712,7 +642,7 @@ func (c *Controller) handleUpdateNatGwSubnetRoute(natGwKey string) error {
 
 func (c *Controller) execNatGwRules(pod *corev1.Pod, operation string, rules []string) error {
 	cmd := fmt.Sprintf("bash /kube-ovn/nat-gateway.sh %s %s", operation, strings.Join(rules, " "))
-	klog.V(3).Infof(cmd)
+	klog.V(3).Info(cmd)
 	stdOutput, errOutput, err := util.ExecuteCommandInContainer(c.config.KubeClient, c.config.KubeRestConfig, pod.Namespace, pod.Name, "vpc-nat-gw", []string{"/bin/bash", "-c", cmd}...)
 	if err != nil {
 		if len(errOutput) > 0 {

@@ -67,140 +67,6 @@ func (c *Controller) enqueueDelIptablesEip(obj interface{}) {
 	c.updateSubnetStatusQueue.Add(externalNetwork)
 }
 
-func (c *Controller) runAddIptablesEipWorker() {
-	for c.processNextAddIptablesEipWorkItem() {
-	}
-}
-
-func (c *Controller) runUpdateIptablesEipWorker() {
-	for c.processNextUpdateIptablesEipWorkItem() {
-	}
-}
-
-func (c *Controller) runResetIptablesEipWorker() {
-	for c.processNextResetIptablesEipWorkItem() {
-	}
-}
-
-func (c *Controller) runDelIptablesEipWorker() {
-	for c.processNextDeleteIptablesEipWorkItem() {
-	}
-}
-
-func (c *Controller) processNextAddIptablesEipWorkItem() bool {
-	obj, shutdown := c.addIptablesEipQueue.Get()
-	if shutdown {
-		return false
-	}
-
-	err := func(obj interface{}) error {
-		defer c.addIptablesEipQueue.Done(obj)
-		var key string
-		var ok bool
-		if key, ok = obj.(string); !ok {
-			c.addIptablesEipQueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
-			return nil
-		}
-		if err := c.handleAddIptablesEip(key); err != nil {
-			c.addIptablesEipQueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
-		}
-		c.addIptablesEipQueue.Forget(obj)
-		return nil
-	}(obj)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return true
-	}
-	return true
-}
-
-func (c *Controller) processNextResetIptablesEipWorkItem() bool {
-	obj, shutdown := c.resetIptablesEipQueue.Get()
-	if shutdown {
-		return false
-	}
-
-	err := func(obj interface{}) error {
-		defer c.resetIptablesEipQueue.Done(obj)
-		var key string
-		var ok bool
-		if key, ok = obj.(string); !ok {
-			c.resetIptablesEipQueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
-			return nil
-		}
-		if err := c.handleResetIptablesEip(key); err != nil {
-			c.resetIptablesEipQueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
-		}
-		c.resetIptablesEipQueue.Forget(obj)
-		return nil
-	}(obj)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return true
-	}
-	return true
-}
-
-func (c *Controller) processNextUpdateIptablesEipWorkItem() bool {
-	obj, shutdown := c.updateIptablesEipQueue.Get()
-	if shutdown {
-		return false
-	}
-	err := func(obj interface{}) error {
-		defer c.updateIptablesEipQueue.Done(obj)
-		var key string
-		var ok bool
-		if key, ok = obj.(string); !ok {
-			c.updateIptablesEipQueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
-			return nil
-		}
-		if err := c.handleUpdateIptablesEip(key); err != nil {
-			c.updateIptablesEipQueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
-		}
-		c.updateIptablesEipQueue.Forget(obj)
-		return nil
-	}(obj)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return true
-	}
-	return true
-}
-
-func (c *Controller) processNextDeleteIptablesEipWorkItem() bool {
-	obj, shutdown := c.delIptablesEipQueue.Get()
-	if shutdown {
-		return false
-	}
-	err := func(obj interface{}) error {
-		defer c.delIptablesEipQueue.Done(obj)
-		var key string
-		var ok bool
-		if key, ok = obj.(string); !ok {
-			c.delIptablesEipQueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected eip in workqueue but got %#v", obj))
-			return nil
-		}
-		if err := c.handleDelIptablesEip(key); err != nil {
-			c.delIptablesEipQueue.AddRateLimited(obj)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
-		}
-		c.delIptablesEipQueue.Forget(obj)
-		return nil
-	}(obj)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return true
-	}
-	return true
-}
-
 func (c *Controller) handleAddIptablesEip(key string) error {
 	cachedEip, err := c.iptablesEipsLister.Get(key)
 	if err != nil {
@@ -237,6 +103,12 @@ func (c *Controller) handleAddIptablesEip(key string) error {
 		return err
 	}
 
+	// v6 ip address can not use upper case
+	if util.ContainsUppercase(cachedEip.Spec.V6ip) {
+		err := fmt.Errorf("eip %s v6 ip address %s can not contain upper case", cachedEip.Name, cachedEip.Spec.V6ip)
+		klog.Error(err)
+		return err
+	}
 	var v4ip, v6ip, mac string
 	portName := ovs.PodNameToPortName(cachedEip.Name, cachedEip.Namespace, subnet.Spec.Provider)
 	if cachedEip.Spec.V4ip != "" {
@@ -357,6 +229,12 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 		return nil
 	}
 	klog.Infof("handle update eip %s", key)
+	// v6 ip address can not use upper case
+	if util.ContainsUppercase(cachedEip.Spec.V6ip) {
+		err := fmt.Errorf("eip %s v6 ip address %s can not contain upper case", cachedEip.Name, cachedEip.Spec.V6ip)
+		klog.Error(err)
+		return err
+	}
 	// eip change ip
 	if c.eipChangeIP(cachedEip) {
 		err := fmt.Errorf("not support eip change ip, old ip '%s', new ip '%s'", cachedEip.Status.IP, cachedEip.Spec.V4ip)
