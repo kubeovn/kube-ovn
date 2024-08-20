@@ -4268,14 +4268,7 @@ spec:
           - --secure-serving=${SECURE_SERVING}
         securityContext:
           runAsUser: 0
-          privileged: false
-          capabilities:
-            add:
-              - NET_ADMIN
-              - NET_BIND_SERVICE
-              - NET_RAW
-              - SYS_ADMIN
-              - CAP_SYS_PTRACE
+          privileged: true
         env:
           - name: ENABLE_SSL
             value: "$ENABLE_SSL"
