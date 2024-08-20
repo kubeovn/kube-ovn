@@ -612,17 +612,6 @@ kind-install-underlay-ipv4: kind-disable-hairpin kind-load-image kind-untaint-co
 		ENABLE_VLAN=true VLAN_NIC=eth0 bash
 	kubectl describe no
 
-.PHONY: kind-install-underlay-u2o-interconnection-dual
-kind-install-underlay-u2o-interconnection-dual: kind-disable-hairpin kind-load-image kind-untaint-control-plane
-	$(call docker_network_info,kind)
-	@sed -e 's@^[[:space:]]*POD_CIDR=.*@POD_CIDR="$(KIND_IPV4_SUBNET),$(KIND_IPV6_SUBNET)"@' \
-		-e 's@^[[:space:]]*POD_GATEWAY=.*@POD_GATEWAY="$(KIND_IPV4_GATEWAY),$(KIND_IPV6_GATEWAY)"@' \
-		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$(KIND_IPV4_EXCLUDE_IPS),$(KIND_IPV6_EXCLUDE_IPS)"@' \
-		-e 's@^VLAN_ID=.*@VLAN_ID="0"@' \
-		-e 's/VERSION=.*/VERSION=$(VERSION)/' \
-		dist/images/install.sh | \
-		ENABLE_SSL=true DUAL_STACK=true ENABLE_VLAN=true VLAN_NIC=eth0 U2O_INTERCONNECTION=true bash
-
 .PHONY: kind-install-underlay-hairpin-ipv4
 kind-install-underlay-hairpin-ipv4: kind-enable-hairpin kind-load-image kind-untaint-control-plane
 	$(call docker_network_info,kind)
@@ -692,6 +681,13 @@ kind-install-underlay-hairpin-dual: kind-enable-hairpin kind-load-image kind-unt
 		-e 's/VERSION=.*/VERSION=$(VERSION)/' \
 		dist/images/install.sh | \
 		DUAL_STACK=true ENABLE_VLAN=true VLAN_NIC=eth0 bash
+
+.PHONY: kind-install-underlay-u2o
+kind-install-underlay-u2o: kind-install-underlay-u2o-ipv4
+
+.PHONY: kind-install-underlay-u2o-%
+kind-install-underlay-u2o-%:
+	@$(MAKE) U2O_INTERCONNECTION=true kind-install-underlay-$*
 
 .PHONY: kind-install-underlay-logical-gateway-dual
 kind-install-underlay-logical-gateway-dual: kind-disable-hairpin kind-load-image kind-untaint-control-plane
