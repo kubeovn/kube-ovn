@@ -637,13 +637,24 @@ func (c *Controller) handleUpdateNatGwSubnetRoute(natGwKey string) error {
 	var newCIDRS, oldCIDRs, toBeDelCIDRs []string
 	if len(vpc.Status.Subnets) > 0 {
 		for _, s := range vpc.Status.Subnets {
-			subnet, ok := c.ipam.Subnets[s]
-			if !ok {
-				err = fmt.Errorf("failed to get subnet, err: %v", err)
+			subnet, err := c.subnetsLister.Get(s)
+			if err != nil {
+				if k8serrors.IsNotFound(err) {
+					continue
+				}
+				err = fmt.Errorf("failed to get subnet %s: %w", s, err)
 				klog.Error(err)
 				return err
 			}
-			newCIDRS = append(newCIDRS, subnet.V4CIDR.String())
+			if subnet.Spec.Vlan != "" && !subnet.Spec.U2OInterconnection {
+				continue
+			}
+			if !isOvnSubnet(subnet) || !subnet.Status.IsValidated() {
+				continue
+			}
+			if v4Cidr, _ := util.SplitStringIP(subnet.Spec.CIDRBlock); v4Cidr != "" {
+				newCIDRS = append(newCIDRS, v4Cidr)
+			}
 		}
 	}
 	if cidrs, ok := pod.Annotations[util.VpcCIDRsAnnotation]; ok {
