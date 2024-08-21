@@ -8,6 +8,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/scylladb/go-set/strset"
 	corev1 "k8s.io/api/core/v1"
 	netv1 "k8s.io/api/networking/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -16,8 +17,6 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
-
-	"github.com/scylladb/go-set/strset"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
@@ -423,7 +422,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 	}
 
 	for _, subnet := range subnets {
-		if err = c.OVNNbClient.CreateGatewayACL("", pgName, subnet.Spec.Gateway); err != nil {
+		if err = c.OVNNbClient.CreateGatewayACL("", pgName, subnet.Spec.Gateway, subnet.Status.U2OInterconnectionIP); err != nil {
 			klog.Errorf("create gateway acl: %v", err)
 			return err
 		}
