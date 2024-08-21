@@ -17,6 +17,7 @@ import (
 	"golang.org/x/exp/slices"
 	netv1 "k8s.io/api/networking/v1"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/set"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -1972,9 +1973,14 @@ func (c LegacyClient) DeleteACL(pgName, direction string) (err error) {
 	return
 }
 
-func (c LegacyClient) CreateGatewayACL(ls, pgName, gateway, cidr string) error {
+func (c LegacyClient) CreateGatewayACL(ls, pgName, gateway, u2oInterconnectionIP, cidr string) error {
 	for _, cidrBlock := range strings.Split(cidr, ",") {
-		for _, gw := range strings.Split(gateway, ",") {
+		gateways := set.New(strings.Split(gateway, ",")...)
+		if u2oInterconnectionIP != "" {
+			gateways.Insert(strings.Split(u2oInterconnectionIP, ",")...)
+		}
+
+		for gw := range gateways {
 			if util.CheckProtocol(cidrBlock) != util.CheckProtocol(gw) {
 				continue
 			}
