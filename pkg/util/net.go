@@ -110,8 +110,10 @@ func LastIP(subnet string) (string, error) {
 	maskLength, _ := cidr.Mask.Size()
 	ipInt := IP2BigInt(cidr.IP.String())
 	size := big.NewInt(0).Lsh(big.NewInt(1), length-uint(maskLength))
-	if maskLength != 31 {
+	if maskLength != 31 && maskLength != 127 {
 		size = big.NewInt(0).Sub(size, big.NewInt(2))
+	} else if maskLength != 31 {
+		size = big.NewInt(0).Sub(size, big.NewInt(1))
 	}
 	return BigInt2Ip(ipInt.Add(ipInt, size)), nil
 }

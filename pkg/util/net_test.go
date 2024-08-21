@@ -272,7 +272,7 @@ func TestLastIP(t *testing.T) {
 		err    string
 	}{
 		{
-			name:   "base",
+			name:   "base31netmask",
 			subnet: "192.168.0.23/31",
 			expect: "192.168.0.24",
 			err:    "",
@@ -293,6 +293,12 @@ func TestLastIP(t *testing.T) {
 			name:   "v6",
 			subnet: "ffff:ffff:ffff:ffff:ffff:0:ffff:0/96",
 			expect: "ffff:ffff:ffff:ffff:ffff:0:ffff:fffe",
+			err:    "",
+		},
+		{
+			name:   "v6127netmask",
+			subnet: "ffff:ffff:ffff:ffff:ffff:0:ffff:0/127",
+			expect: "ffff:ffff:ffff:ffff:ffff:0:ffff:1",
 			err:    "",
 		},
 	}
