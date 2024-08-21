@@ -39,6 +39,7 @@ require (
 	k8s.io/client-go v12.0.0+incompatible
 	k8s.io/klog/v2 v2.120.1
 	k8s.io/sample-controller v0.23.17
+	k8s.io/utils v0.0.0-20240711033017-18e509b52bc8
 	kubevirt.io/client-go v0.50.0
 	sigs.k8s.io/controller-runtime v0.11.0
 )
@@ -134,7 +135,6 @@ require (
 	k8s.io/apiextensions-apiserver v0.23.17 // indirect
 	k8s.io/component-base v0.23.17 // indirect
 	k8s.io/kube-openapi v0.0.0-20211115234752-e816edb12b65 // indirect
-	k8s.io/utils v0.0.0-20211116205334-6203023598ed // indirect
 	kubevirt.io/api v0.50.0 // indirect
 	kubevirt.io/containerized-data-importer-api v1.42.0 // indirect
 	kubevirt.io/controller-lifecycle-operator-sdk v0.2.1 // indirect

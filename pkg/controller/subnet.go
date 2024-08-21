@@ -71,6 +71,18 @@ func (c *Controller) enqueueUpdateSubnet(old, new interface{}) {
 		return
 	}
 
+	if newSubnet.Spec.Gateway != oldSubnet.Spec.Gateway ||
+		newSubnet.Status.U2OInterconnectionIP != oldSubnet.Status.U2OInterconnectionIP {
+		policies, err := c.npsLister.List(labels.Everything())
+		if err != nil {
+			klog.Errorf("failed to list network policies: %v", err)
+		} else {
+			for _, np := range policies {
+				c.enqueueAddNp(np)
+			}
+		}
+	}
+
 	var usingIPs float64
 	if newSubnet.Spec.Protocol == kubeovnv1.ProtocolIPv6 {
 		usingIPs = newSubnet.Status.V6UsingIPs
