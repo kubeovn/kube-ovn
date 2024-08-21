@@ -556,7 +556,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 	}
 
 	for _, subnet := range subnets {
-		if err = c.OVNNbClient.CreateGatewayACL("", pgName, subnet.Spec.Gateway); err != nil {
+		if err = c.OVNNbClient.CreateGatewayACL("", pgName, subnet.Spec.Gateway, subnet.Status.U2OInterconnectionIP); err != nil {
 			klog.Errorf("create gateway acl: %v", err)
 			return err
 		}

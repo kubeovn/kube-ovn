@@ -1411,17 +1411,17 @@ func (m *MockACL) EXPECT() *MockACLMockRecorder {
 }
 
 // CreateGatewayACL mocks base method.
-func (m *MockACL) CreateGatewayACL(lsName, pgName, gateway string) error {
+func (m *MockACL) CreateGatewayACL(lsName, pgName, gateway, u2oInterconnectionIP string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateGatewayACL", lsName, pgName, gateway)
+	ret := m.ctrl.Call(m, "CreateGatewayACL", lsName, pgName, gateway, u2oInterconnectionIP)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // CreateGatewayACL indicates an expected call of CreateGatewayACL.
-func (mr *MockACLMockRecorder) CreateGatewayACL(lsName, pgName, gateway any) *gomock.Call {
+func (mr *MockACLMockRecorder) CreateGatewayACL(lsName, pgName, gateway, u2oInterconnectionIP any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateGatewayACL", reflect.TypeOf((*MockACL)(nil).CreateGatewayACL), lsName, pgName, gateway)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateGatewayACL", reflect.TypeOf((*MockACL)(nil).CreateGatewayACL), lsName, pgName, gateway, u2oInterconnectionIP)
 }
 
 // CreateNodeACL mocks base method.
@@ -2374,17 +2374,17 @@ func (mr *MockNbClientMockRecorder) CreateBareLogicalSwitchPort(lsName, lspName,
 }
 
 // CreateGatewayACL mocks base method.
-func (m *MockNbClient) CreateGatewayACL(lsName, pgName, gateway string) error {
+func (m *MockNbClient) CreateGatewayACL(lsName, pgName, gateway, u2oInterconnectionIP string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateGatewayACL", lsName, pgName, gateway)
+	ret := m.ctrl.Call(m, "CreateGatewayACL", lsName, pgName, gateway, u2oInterconnectionIP)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // CreateGatewayACL indicates an expected call of CreateGatewayACL.
-func (mr *MockNbClientMockRecorder) CreateGatewayACL(lsName, pgName, gateway any) *gomock.Call {
+func (mr *MockNbClientMockRecorder) CreateGatewayACL(lsName, pgName, gateway, u2oInterconnectionIP any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateGatewayACL", reflect.TypeOf((*MockNbClient)(nil).CreateGatewayACL), lsName, pgName, gateway)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateGatewayACL", reflect.TypeOf((*MockNbClient)(nil).CreateGatewayACL), lsName, pgName, gateway, u2oInterconnectionIP)
 }
 
 // CreateGatewayLogicalSwitch mocks base method.

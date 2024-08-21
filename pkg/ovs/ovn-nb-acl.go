@@ -12,6 +12,7 @@ import (
 	netv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/set"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
@@ -133,7 +134,7 @@ func (c *OVNNbClient) UpdateEgressACLOps(pgName, asEgressName, asExceptName, pro
 }
 
 // CreateGatewayACL create allow acl for subnet gateway
-func (c *OVNNbClient) CreateGatewayACL(lsName, pgName, gateway string) error {
+func (c *OVNNbClient) CreateGatewayACL(lsName, pgName, gateway, u2oInterconnectionIP string) error {
 	acls := make([]*ovnnb.ACL, 0)
 
 	var parentName, parentType string
@@ -146,7 +147,12 @@ func (c *OVNNbClient) CreateGatewayACL(lsName, pgName, gateway string) error {
 		return fmt.Errorf("one of port group name and logical switch name must be specified")
 	}
 
-	for _, gw := range strings.Split(gateway, ",") {
+	gateways := set.New(strings.Split(gateway, ",")...)
+	if u2oInterconnectionIP != "" {
+		gateways = gateways.Insert(strings.Split(u2oInterconnectionIP, ",")...)
+	}
+
+	for gw := range gateways {
 		protocol := util.CheckProtocol(gw)
 		ipSuffix := "ip4"
 		if protocol == kubeovnv1.ProtocolIPv6 {

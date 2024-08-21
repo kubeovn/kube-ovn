@@ -274,7 +274,7 @@ func (suite *OvnClientTestSuite) testCreateGatewayACL() {
 			err := ovnClient.CreatePortGroup(pgName, nil)
 			require.NoError(t, err)
 
-			err = ovnClient.CreateGatewayACL("", pgName, gateway)
+			err = ovnClient.CreateGatewayACL("", pgName, gateway, "")
 			require.NoError(t, err)
 
 			pg, err := ovnClient.GetPortGroup(pgName, false)
@@ -293,7 +293,7 @@ func (suite *OvnClientTestSuite) testCreateGatewayACL() {
 			err := ovnClient.CreatePortGroup(pgName, nil)
 			require.NoError(t, err)
 
-			err = ovnClient.CreateGatewayACL("", pgName, gateway)
+			err = ovnClient.CreateGatewayACL("", pgName, gateway, "")
 			require.NoError(t, err)
 
 			pg, err := ovnClient.GetPortGroup(pgName, false)
@@ -312,7 +312,7 @@ func (suite *OvnClientTestSuite) testCreateGatewayACL() {
 			err := ovnClient.CreatePortGroup(pgName, nil)
 			require.NoError(t, err)
 
-			err = ovnClient.CreateGatewayACL("", pgName, gateway)
+			err = ovnClient.CreateGatewayACL("", pgName, gateway, "")
 			require.NoError(t, err)
 
 			pg, err := ovnClient.GetPortGroup(pgName, false)
@@ -335,7 +335,7 @@ func (suite *OvnClientTestSuite) testCreateGatewayACL() {
 			err := ovnClient.CreateBareLogicalSwitch(lsName)
 			require.NoError(t, err)
 
-			err = ovnClient.CreateGatewayACL(lsName, "", gateway)
+			err = ovnClient.CreateGatewayACL(lsName, "", gateway, "")
 			require.NoError(t, err)
 
 			ls, err := ovnClient.GetLogicalSwitch(lsName, false)
@@ -348,7 +348,7 @@ func (suite *OvnClientTestSuite) testCreateGatewayACL() {
 
 	t.Run("has no pg name and ls name", func(t *testing.T) {
 		t.Parallel()
-		err := ovnClient.CreateGatewayACL("", "", "")
+		err := ovnClient.CreateGatewayACL("", "", "", "")
 		require.EqualError(t, err, "one of port group name and logical switch name must be specified")
 	})
 }
