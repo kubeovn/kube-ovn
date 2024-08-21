@@ -51,8 +51,12 @@ func TestIPRangeClone(t *testing.T) {
 	}
 
 	clone.SetStart(IP(net.ParseIP("10.0.0.1")))
+	clone.SetEnd(IP(net.ParseIP("10.0.0.10")))
 	if r.Start().Equal(clone.Start()) {
-		t.Errorf("Clone() should create a new copy, but it modified the original range")
+		t.Errorf("Clone() should create a new copy, but it modified the original range start")
+	}
+	if r.Start().Equal(clone.End()) {
+		t.Errorf("Clone() should create a new copy, but it modified the original range end")
 	}
 }
 
