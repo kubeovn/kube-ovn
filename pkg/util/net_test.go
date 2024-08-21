@@ -235,9 +235,9 @@ func TestFirstIP(t *testing.T) {
 			err:    "",
 		},
 		{
-			name:   "controversy",
-			subnet: "192.168.0.23/32",
-			expect: "192.168.0.24",
+			name:   "base31netmask",
+			subnet: "192.168.0.23/31",
+			expect: "192.168.0.23",
 			err:    "",
 		},
 		{
@@ -271,6 +271,12 @@ func TestLastIP(t *testing.T) {
 		expect string
 		err    string
 	}{
+		{
+			name:   "base",
+			subnet: "192.168.0.23/31",
+			expect: "192.168.0.24",
+			err:    "",
+		},
 		{
 			name:   "base",
 			subnet: "192.168.0.23/24",
