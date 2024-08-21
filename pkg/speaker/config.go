@@ -11,6 +11,7 @@ import (
 	"time"
 
 	api "github.com/osrg/gobgp/v3/api"
+	bgplog "github.com/osrg/gobgp/v3/pkg/log"
 	"github.com/osrg/gobgp/v3/pkg/packet/bgp"
 	gobgp "github.com/osrg/gobgp/v3/pkg/server"
 	"github.com/spf13/pflag"
@@ -244,10 +245,21 @@ func (config *Configuration) checkGracefulRestartOptions() error {
 func (config *Configuration) initBgpServer() error {
 	maxSize := 256 << 20
 	var listenPort int32 = -1
+
+	// Set logger options for GoBGP based on klog's verbosity
+	var logger bgpLogger
+	if klog.V(3).Enabled() {
+		logger.SetLevel(bgplog.TraceLevel)
+	} else {
+		logger.SetLevel(bgplog.InfoLevel)
+	}
+
 	grpcOpts := []grpc.ServerOption{grpc.MaxRecvMsgSize(maxSize), grpc.MaxSendMsgSize(maxSize)}
 	s := gobgp.NewBgpServer(
 		gobgp.GrpcListenAddress(fmt.Sprintf("%s:%d", config.GrpcHost, config.GrpcPort)),
-		gobgp.GrpcOption(grpcOpts))
+		gobgp.GrpcOption(grpcOpts),
+		gobgp.LoggerOption(logger),
+	)
 	go s.Serve()
 
 	peersMap := map[api.Family_Afi][]string{
@@ -258,6 +270,12 @@ func (config *Configuration) initBgpServer() error {
 	if config.PassiveMode {
 		listenPort = bgp.BGP_PORT
 	}
+
+	klog.Infof("Starting bgp server with asn %d, routerId %s on port %d",
+		config.ClusterAs,
+		config.RouterID,
+		listenPort)
+
 	if err := s.StartBgp(context.Background(), &api.StartBgpRequest{
 		Global: &api.Global{
 			Asn:              config.ClusterAs,

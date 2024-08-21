@@ -142,7 +142,7 @@ type PortGroup interface {
 type ACL interface {
 	UpdateIngressACLOps(pgName, asIngressName, asExceptName, protocol, aclName string, npp []netv1.NetworkPolicyPort, logEnable bool, logACLActions []ovnnb.ACLAction, namedPortMap map[string]*util.NamedPortInfo) ([]ovsdb.Operation, error)
 	UpdateEgressACLOps(pgName, asEgressName, asExceptName, protocol, aclName string, npp []netv1.NetworkPolicyPort, logEnable bool, logACLActions []ovnnb.ACLAction, namedPortMap map[string]*util.NamedPortInfo) ([]ovsdb.Operation, error)
-	CreateGatewayACL(lsName, pgName, gateway string) error
+	CreateGatewayACL(lsName, pgName, gateway, u2oInterconnectionIP string) error
 	CreateNodeACL(pgName, nodeIPStr, joinIPStr string) error
 	CreateSgDenyAllACL(sgName string) error
 	CreateSgBaseACL(sgName, direction string) error

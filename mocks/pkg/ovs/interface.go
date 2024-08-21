@@ -103,20 +103,6 @@ func (mr *MockNBGlobalMockRecorder) SetLsCtSkipDstLportIPs(enabled any) *gomock.
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLsCtSkipDstLportIPs", reflect.TypeOf((*MockNBGlobal)(nil).SetLsCtSkipDstLportIPs), enabled)
 }
 
-// SetOVNIPSec mocks base method.
-func (m *MockNBGlobal) SetOVNIPSec(enabled bool) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetOVNIPSec", enabled)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// SetOVNIPSec indicates an expected call of SetOVNIPSec.
-func (mr *MockNBGlobalMockRecorder) SetOVNIPSec(enabled any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetOVNIPSec", reflect.TypeOf((*MockNBGlobal)(nil).SetOVNIPSec), enabled)
-}
-
 // SetLsDnatModDlDst mocks base method.
 func (m *MockNBGlobal) SetLsDnatModDlDst(enabled bool) error {
 	m.ctrl.T.Helper()
@@ -143,6 +129,20 @@ func (m *MockNBGlobal) SetNodeLocalDNSIP(nodeLocalDNSIP string) error {
 func (mr *MockNBGlobalMockRecorder) SetNodeLocalDNSIP(nodeLocalDNSIP any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetNodeLocalDNSIP", reflect.TypeOf((*MockNBGlobal)(nil).SetNodeLocalDNSIP), nodeLocalDNSIP)
+}
+
+// SetOVNIPSec mocks base method.
+func (m *MockNBGlobal) SetOVNIPSec(enabled bool) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetOVNIPSec", enabled)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetOVNIPSec indicates an expected call of SetOVNIPSec.
+func (mr *MockNBGlobalMockRecorder) SetOVNIPSec(enabled any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetOVNIPSec", reflect.TypeOf((*MockNBGlobal)(nil).SetOVNIPSec), enabled)
 }
 
 // SetUseCtInvMatch mocks base method.
@@ -1657,17 +1657,17 @@ func (m *MockACL) EXPECT() *MockACLMockRecorder {
 }
 
 // CreateGatewayACL mocks base method.
-func (m *MockACL) CreateGatewayACL(lsName, pgName, gateway string) error {
+func (m *MockACL) CreateGatewayACL(lsName, pgName, gateway, u2oInterconnectionIP string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateGatewayACL", lsName, pgName, gateway)
+	ret := m.ctrl.Call(m, "CreateGatewayACL", lsName, pgName, gateway, u2oInterconnectionIP)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // CreateGatewayACL indicates an expected call of CreateGatewayACL.
-func (mr *MockACLMockRecorder) CreateGatewayACL(lsName, pgName, gateway any) *gomock.Call {
+func (mr *MockACLMockRecorder) CreateGatewayACL(lsName, pgName, gateway, u2oInterconnectionIP any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateGatewayACL", reflect.TypeOf((*MockACL)(nil).CreateGatewayACL), lsName, pgName, gateway)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateGatewayACL", reflect.TypeOf((*MockACL)(nil).CreateGatewayACL), lsName, pgName, gateway, u2oInterconnectionIP)
 }
 
 // CreateNodeACL mocks base method.
@@ -2649,17 +2649,17 @@ func (mr *MockNbClientMockRecorder) CreateBareLogicalSwitchPort(lsName, lspName,
 }
 
 // CreateGatewayACL mocks base method.
-func (m *MockNbClient) CreateGatewayACL(lsName, pgName, gateway string) error {
+func (m *MockNbClient) CreateGatewayACL(lsName, pgName, gateway, u2oInterconnectionIP string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateGatewayACL", lsName, pgName, gateway)
+	ret := m.ctrl.Call(m, "CreateGatewayACL", lsName, pgName, gateway, u2oInterconnectionIP)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // CreateGatewayACL indicates an expected call of CreateGatewayACL.
-func (mr *MockNbClientMockRecorder) CreateGatewayACL(lsName, pgName, gateway any) *gomock.Call {
+func (mr *MockNbClientMockRecorder) CreateGatewayACL(lsName, pgName, gateway, u2oInterconnectionIP any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateGatewayACL", reflect.TypeOf((*MockNbClient)(nil).CreateGatewayACL), lsName, pgName, gateway)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateGatewayACL", reflect.TypeOf((*MockNbClient)(nil).CreateGatewayACL), lsName, pgName, gateway, u2oInterconnectionIP)
 }
 
 // CreateGatewayLogicalSwitch mocks base method.
@@ -4347,20 +4347,6 @@ func (mr *MockNbClientMockRecorder) SetLsCtSkipDstLportIPs(enabled any) *gomock.
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLsCtSkipDstLportIPs", reflect.TypeOf((*MockNbClient)(nil).SetLsCtSkipDstLportIPs), enabled)
 }
 
-// SetOVNIPSec mocks base method.
-func (m *MockNbClient) SetOVNIPSec(enabled bool) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetOVNIPSec", enabled)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// SetOVNIPSec indicates an expected call of SetOVNIPSec.
-func (mr *MockNbClientMockRecorder) SetOVNIPSec(enabled any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetOVNIPSec", reflect.TypeOf((*MockNbClient)(nil).SetOVNIPSec), enabled)
-}
-
 // SetLsDnatModDlDst mocks base method.
 func (m *MockNbClient) SetLsDnatModDlDst(enabled bool) error {
 	m.ctrl.T.Helper()
@@ -4387,6 +4373,20 @@ func (m *MockNbClient) SetNodeLocalDNSIP(nodeLocalDNSIP string) error {
 func (mr *MockNbClientMockRecorder) SetNodeLocalDNSIP(nodeLocalDNSIP any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetNodeLocalDNSIP", reflect.TypeOf((*MockNbClient)(nil).SetNodeLocalDNSIP), nodeLocalDNSIP)
+}
+
+// SetOVNIPSec mocks base method.
+func (m *MockNbClient) SetOVNIPSec(enabled bool) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetOVNIPSec", enabled)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetOVNIPSec indicates an expected call of SetOVNIPSec.
+func (mr *MockNbClientMockRecorder) SetOVNIPSec(enabled any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetOVNIPSec", reflect.TypeOf((*MockNbClient)(nil).SetOVNIPSec), enabled)
 }
 
 // SetUseCtInvMatch mocks base method.
