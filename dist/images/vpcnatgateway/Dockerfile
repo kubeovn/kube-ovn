@@ -6,7 +6,7 @@ RUN set -ex \
     && apk add --no-cache \
     bash \
     iproute2 \
-    iptables \
+    iptables iptables-legacy \
     iputils \
     tcpdump \
     conntrack-tools
