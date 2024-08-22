@@ -66,31 +66,37 @@ func (c *Controller) InitOVN() error {
 
 func (c *Controller) InitDefaultVpc() error {
 	cachedVpc, err := c.vpcsLister.Get(c.config.ClusterRouter)
-	if !k8serrors.IsNotFound(err) {
-		klog.Errorf("get default vpc %s failed: %v", c.config.DefaultLogicalSwitch, err)
-		return err
-	}
-
-	if k8serrors.IsNotFound(err) {
-		vpc := &kubeovnv1.Vpc{
-			ObjectMeta: metav1.ObjectMeta{Name: c.config.ClusterRouter},
-		}
-		cachedVpc, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Create(context.Background(), vpc, metav1.CreateOptions{})
-		if err != nil {
-			klog.Errorf("init default vpc failed: %v", err)
+	if err != nil {
+		if !k8serrors.IsNotFound(err) {
+			klog.Errorf("failed to get default vpc %q: %v", c.config.ClusterRouter, err)
 			return err
+		}
+
+		if k8serrors.IsNotFound(err) {
+			vpc := &kubeovnv1.Vpc{
+				ObjectMeta: metav1.ObjectMeta{Name: c.config.ClusterRouter},
+			}
+			cachedVpc, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Create(context.Background(), vpc, metav1.CreateOptions{})
+			if err != nil {
+				klog.Errorf("failed to create default vpc %q: %v", c.config.ClusterRouter, err)
+				return err
+			}
 		}
 	}
 
 	vpc := cachedVpc.DeepCopy()
-	vpc.Status.DefaultLogicalSwitch = c.config.DefaultLogicalSwitch
-	vpc.Status.Router = c.config.ClusterRouter
-	vpc.Status.Standby = true
-	vpc.Status.Default = true
+	if !vpc.Status.Default || !vpc.Status.Standby ||
+		vpc.Status.Router != c.config.ClusterRouter ||
+		vpc.Status.DefaultLogicalSwitch != c.config.DefaultLogicalSwitch {
+		vpc.Status.Standby = true
+		vpc.Status.Default = true
+		vpc.Status.Router = c.config.ClusterRouter
+		vpc.Status.DefaultLogicalSwitch = c.config.DefaultLogicalSwitch
 
-	if _, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().UpdateStatus(context.Background(), vpc, metav1.UpdateOptions{}); err != nil {
-		klog.Errorf("init default vpc failed: %v", err)
-		return err
+		if _, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().UpdateStatus(context.Background(), vpc, metav1.UpdateOptions{}); err != nil {
+			klog.Errorf("failed to update default vpc %q: %v", c.config.ClusterRouter, err)
+			return err
+		}
 	}
 
 	return nil
