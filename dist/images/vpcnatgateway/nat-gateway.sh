@@ -1,5 +1,13 @@
 #!/usr/bin/env bash
 
+iptables_cmd=$(which iptables)
+iptables_save_cmd=$(which iptables-save)
+if iptables-legacy -t nat -S INPUT 1 2>/dev/null; then
+    # use iptables-legacy for centos 7
+    iptables_cmd=$(which iptables-legacy)
+    iptables_save_cmd=$(which iptables-legacy-save)
+fi
+
 function exec_cmd() {
     cmd=${@:1:${#}}
     $cmd
@@ -11,7 +19,7 @@ function exec_cmd() {
 }
 
 function check_inited() {
-    iptables-save -t nat | grep  SNAT_FILTER | grep SHARED_SNAT
+    $iptables_save_cmd -t nat | grep SNAT_FILTER | grep SHARED_SNAT
     if [ $? -ne 0 ]; then
         >&2 echo "nat gateway not initialized"
         exit 1
@@ -20,30 +28,30 @@ function check_inited() {
 
 function init() {
     # run once is enough
-    iptables-save | grep DNAT_FILTER && exit 0
+    $iptables_save_cmd | grep DNAT_FILTER && exit 0
     # add static chain
     # this also a flag to make sure init once
-    iptables -t nat -N DNAT_FILTER
+    $iptables_cmd -t nat -N DNAT_FILTER
 
     # add static chain
-    iptables -t nat -N SNAT_FILTER
-    iptables -t nat -N EXCLUSIVE_DNAT # floatingIp DNAT
-    iptables -t nat -N EXCLUSIVE_SNAT # floatingIp SNAT
-    iptables -t nat -N SHARED_DNAT
-    iptables -t nat -N SHARED_SNAT
+    $iptables_cmd -t nat -N SNAT_FILTER
+    $iptables_cmd -t nat -N EXCLUSIVE_DNAT # floatingIp DNAT
+    $iptables_cmd -t nat -N EXCLUSIVE_SNAT # floatingIp SNAT
+    $iptables_cmd -t nat -N SHARED_DNAT
+    $iptables_cmd -t nat -N SHARED_SNAT
 
-    iptables -t nat -A PREROUTING -j DNAT_FILTER
-    iptables -t nat -A DNAT_FILTER -j EXCLUSIVE_DNAT
-    iptables -t nat -A DNAT_FILTER -j SHARED_DNAT
+    $iptables_cmd -t nat -A PREROUTING -j DNAT_FILTER
+    $iptables_cmd -t nat -A DNAT_FILTER -j EXCLUSIVE_DNAT
+    $iptables_cmd -t nat -A DNAT_FILTER -j SHARED_DNAT
 
-    iptables -t nat -A POSTROUTING -j SNAT_FILTER
-    iptables -t nat -A SNAT_FILTER -j EXCLUSIVE_SNAT
-    iptables -t nat -A SNAT_FILTER -j SHARED_SNAT
+    $iptables_cmd -t nat -A POSTROUTING -j SNAT_FILTER
+    $iptables_cmd -t nat -A SNAT_FILTER -j EXCLUSIVE_SNAT
+    $iptables_cmd -t nat -A SNAT_FILTER -j SHARED_SNAT
 }
 
 
 function get_iptables_version() {
-  exec_cmd "iptables --version"
+  exec_cmd "$iptables_cmd --version"
 }
 
 function add_vpc_internal_route() {
@@ -121,9 +129,9 @@ function add_floating_ip() {
         eip=(${arr[0]//\// })
         internalIp=${arr[1]}
         # check if already exist
-        iptables-save  | grep "EXCLUSIVE_DNAT" | grep -w "\-d $eip/32" | grep  "destination" && exit 0
-        exec_cmd "iptables -t nat -A EXCLUSIVE_DNAT -d $eip -j DNAT --to-destination $internalIp"
-        exec_cmd "iptables -t nat -A EXCLUSIVE_SNAT -s $internalIp -j SNAT --to-source $eip"
+        $iptables_save_cmd | grep EXCLUSIVE_DNAT | grep -w "\-d $eip/32" | grep destination && exit 0
+        exec_cmd "$iptables_cmd -t nat -A EXCLUSIVE_DNAT -d $eip -j DNAT --to-destination $internalIp"
+        exec_cmd "$iptables_cmd -t nat -A EXCLUSIVE_SNAT -s $internalIp -j SNAT --to-source $eip"
     done
 }
 
@@ -136,10 +144,10 @@ function del_floating_ip() {
         eip=(${arr[0]//\// })
         internalIp=${arr[1]}
         # check if already exist
-        iptables-save  | grep "EXCLUSIVE_DNAT" | grep -w "\-d $eip/32" | grep  "destination"
+        $iptables_save_cmd  | grep EXCLUSIVE_DNAT | grep -w "\-d $eip/32" | grep destination
         if [ "$?" -eq 0 ];then
-            exec_cmd "iptables -t nat -D EXCLUSIVE_DNAT -d $eip -j DNAT --to-destination $internalIp"
-            exec_cmd "iptables -t nat -D EXCLUSIVE_SNAT -s $internalIp -j SNAT --to-source $eip"
+            exec_cmd "$iptables_cmd -t nat -D EXCLUSIVE_DNAT -d $eip -j DNAT --to-destination $internalIp"
+            exec_cmd "$iptables_cmd -t nat -D EXCLUSIVE_SNAT -s $internalIp -j SNAT --to-source $eip"
             conntrack -D -d $eip 2>/dev/nul || true
         fi
     done
@@ -156,8 +164,8 @@ function add_snat() {
         internalCIDR=${arr[1]}
         randomFullyOption=${arr[2]}
         # check if already exist
-        iptables-save  | grep "SHARED_SNAT" | grep "\-s $internalCIDR" | grep "source $eip" && exit 0
-        exec_cmd "iptables -t nat -A SHARED_SNAT -o net1 -s $internalCIDR -j SNAT --to-source $eip $randomFullyOption"
+        $iptables_save_cmd | grep SHARED_SNAT | grep "\-s $internalCIDR" | grep "source $eip" && exit 0
+        exec_cmd "$iptables_cmd -t nat -A SHARED_SNAT -o net1 -s $internalCIDR -j SNAT --to-source $eip $randomFullyOption"
     done
 }
 function del_snat() {
@@ -170,10 +178,10 @@ function del_snat() {
         eip=(${arr[0]//\// })
         internalCIDR=${arr[1]}
         # check if already exist
-        ruleMatch=$(iptables-save  | grep "SHARED_SNAT" | grep "\-s $internalCIDR" | grep "source $eip")
+        ruleMatch=$($iptables_save_cmd | grep SHARED_SNAT | grep "\-s $internalCIDR" | grep "source $eip")
         if [ "$?" -eq 0 ];then
           ruleMatch=$(echo $ruleMatch | sed 's/-A //')
-          exec_cmd "iptables -t nat -D $ruleMatch"
+          exec_cmd "$iptables_cmd -t nat -D $ruleMatch"
         fi
     done
 }
@@ -191,8 +199,8 @@ function add_dnat() {
         internalIp=${arr[3]}
         internalPort=${arr[4]}
         # check if already exist
-        iptables-save  | grep "SHARED_DNAT" | grep -w "\-d $eip/32" | grep "p $protocol" | grep -w "dport $dport"| grep  -w "destination $internalIp:$internalPort"  && exit 0
-        exec_cmd "iptables -t nat -A SHARED_DNAT -p $protocol -d $eip --dport $dport -j DNAT --to-destination $internalIp:$internalPort"
+        $iptables_save_cmd | grep SHARED_DNAT | grep -w "\-d $eip/32" | grep "p $protocol" | grep -w "dport $dport"| grep -w "destination $internalIp:$internalPort" && exit 0
+        exec_cmd "$iptables_cmd -t nat -A SHARED_DNAT -p $protocol -d $eip --dport $dport -j DNAT --to-destination $internalIp:$internalPort"
     done
 }
 
@@ -209,9 +217,9 @@ function del_dnat() {
         internalIp=${arr[3]}
         internalPort=${arr[4]}
         # check if already exist
-        iptables-save  | grep "SHARED_DNAT" | grep -w "\-d $eip/32" | grep "p $protocol" | grep -w "dport $dport"| grep  -w "destination $internalIp:$internalPort"
+        $iptables_save_cmd | grep SHARED_DNAT | grep -w "\-d $eip/32" | grep "p $protocol" | grep -w "dport $dport"| grep -w "destination $internalIp:$internalPort"
         if [ "$?" -eq 0 ];then
-          exec_cmd "iptables -t nat -D SHARED_DNAT -p $protocol -d $eip --dport $dport -j DNAT --to-destination $internalIp:$internalPort"
+          exec_cmd "$iptables_cmd -t nat -D SHARED_DNAT -p $protocol -d $eip --dport $dport -j DNAT --to-destination $internalIp:$internalPort"
         fi
     done
 }
