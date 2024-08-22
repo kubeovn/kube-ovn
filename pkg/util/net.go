@@ -81,21 +81,32 @@ func SubnetBroadcast(subnet string) string {
 		length = 128
 	}
 	maskLength, _ := cidr.Mask.Size()
+	if maskLength == 31 || maskLength == 127 {
+		return ""
+	}
 	ipInt := IP2BigInt(cidr.IP.String())
 	size := big.NewInt(0).Lsh(big.NewInt(1), length-uint(maskLength))
 	size = big.NewInt(0).Sub(size, big.NewInt(1))
 	return BigInt2Ip(ipInt.Add(ipInt, size))
 }
 
+// FirstIP returns first usable ip address in the subnet
 func FirstIP(subnet string) (string, error) {
 	_, cidr, err := net.ParseCIDR(subnet)
 	if err != nil {
 		return "", fmt.Errorf("%s is not a valid cidr", subnet)
 	}
+	// Handle ptp network case specially
+	prefixSize, _ := cidr.Mask.Size()
+	if prefixSize == 31 || prefixSize == 127 {
+		return cidr.IP.String(), nil
+	}
+
 	ipInt := IP2BigInt(cidr.IP.String())
 	return BigInt2Ip(ipInt.Add(ipInt, big.NewInt(1))), nil
 }
 
+// LastIP returns last usable ip address in the subnet
 func LastIP(subnet string) (string, error) {
 	_, cidr, err := net.ParseCIDR(subnet)
 	if err != nil {
@@ -115,10 +126,7 @@ func LastIP(subnet string) (string, error) {
 
 func getCIDRSize(length uint, maskLength int) *big.Int {
 	size := big.NewInt(0).Lsh(big.NewInt(1), length-uint(maskLength))
-	if maskLength == 31 {
-		return size
-	}
-	if maskLength == 127 {
+	if maskLength == 31 || maskLength == 127 {
 		return big.NewInt(0).Sub(size, big.NewInt(1))
 	}
 	return big.NewInt(0).Sub(size, big.NewInt(2))
@@ -196,8 +204,11 @@ func CheckProtocol(address string) string {
 
 func AddressCount(network *net.IPNet) float64 {
 	prefixLen, bits := network.Mask.Size()
-	if bits-prefixLen < 2 {
-		return 0
+	// Special case handling for /31 and /32 subnets
+	if bits-prefixLen == 1 {
+		return 2 // /31 subnet
+	} else if bits-prefixLen == 0 {
+		return 1 // /32 subnet
 	}
 	return math.Pow(2, float64(bits-prefixLen)) - 2
 }

@@ -206,6 +206,11 @@ func TestSubnetBroadcast(t *testing.T) {
 			expect: "192.129.255.255",
 		},
 		{
+			name:   "v4",
+			subnet: "192.128.23.0/31",
+			expect: "",
+		},
+		{
 			name:   "v6",
 			subnet: "ffff:ffff:ffff:ffff:ffff:0:ffff:ffff/96",
 			expect: "ffff:ffff:ffff:ffff:ffff:0:ffff:ffff",
@@ -237,7 +242,13 @@ func TestFirstIP(t *testing.T) {
 		{
 			name:   "base31netmask",
 			subnet: "192.168.0.23/31",
-			expect: "192.168.0.23",
+			expect: "192.168.0.22",
+			err:    "",
+		},
+		{
+			name:   "base31netmask",
+			subnet: "192.168.0.0/31",
+			expect: "192.168.0.0",
 			err:    "",
 		},
 		{
@@ -250,6 +261,12 @@ func TestFirstIP(t *testing.T) {
 			name:   "v6",
 			subnet: "ffff:ffff:ffff:ffff:ffff:0:ffff:0/96",
 			expect: "ffff:ffff:ffff:ffff:ffff::1",
+			err:    "",
+		},
+		{
+			name:   "v6127netmask",
+			subnet: "ffff:ffff:ffff:ffff:ffff:0:ffff:0/127",
+			expect: "ffff:ffff:ffff:ffff:ffff:0:ffff:0",
 			err:    "",
 		},
 	}
@@ -273,8 +290,8 @@ func TestLastIP(t *testing.T) {
 	}{
 		{
 			name:   "base31netmask",
-			subnet: "192.168.0.23/31",
-			expect: "192.168.0.24",
+			subnet: "192.168.0.2/31",
+			expect: "192.168.0.3",
 			err:    "",
 		},
 		{
@@ -323,6 +340,12 @@ func TestCIDRContainIP(t *testing.T) {
 	}{
 		{
 			name:    "base",
+			cidrStr: "192.168.0.23/31",
+			ipStr:   "192.168.0.23,192.168.0.22",
+			want:    true,
+		},
+		{
+			name:    "base",
 			cidrStr: "192.168.0.23/24",
 			ipStr:   "192.168.0.23,192.168.0.254",
 			want:    true,
@@ -337,6 +360,12 @@ func TestCIDRContainIP(t *testing.T) {
 			name:    "v6",
 			cidrStr: "ffff:ffff:ffff:ffff:ffff:0:ffff:0/96",
 			ipStr:   "ffff:ffff:ffff:ffff:ffff:0:ffff:fffe",
+			want:    true,
+		},
+		{
+			name:    "v6",
+			cidrStr: "ffff:ffff:ffff:ffff:ffff:0:ffff:4/127",
+			ipStr:   "ffff:ffff:ffff:ffff:ffff:0:ffff:4,ffff:ffff:ffff:ffff:ffff:0:ffff:5",
 			want:    true,
 		},
 	}
@@ -407,7 +436,7 @@ func TestAddressCount(t *testing.T) {
 				IP:   net.ParseIP("192.168.1.0"),
 				Mask: net.IPMask{255, 255, 255, 254},
 			},
-			want: 0,
+			want: 2,
 		},
 	}
 	for _, c := range tests {
@@ -681,6 +710,12 @@ func TestGetGwByCidr(t *testing.T) {
 			name: "v4",
 			cidr: "10.16.0.112/24",
 			want: "10.16.0.1",
+			err:  "",
+		},
+		{
+			name: "v4",
+			cidr: "10.16.0.112/31",
+			want: "10.16.0.112",
 			err:  "",
 		},
 		{

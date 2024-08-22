@@ -653,6 +653,12 @@ func TestValidateNetworkBroadcast(t *testing.T) {
 			ip:   "10.16.0.0",
 			err:  "10.16.0.0 is the network number ip in cidr 10.16.0.0/16",
 		},
+		{
+			name: "boardV4/31subnet",
+			cidr: "10.16.0.0/31",
+			ip:   "",
+			err:  "",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
