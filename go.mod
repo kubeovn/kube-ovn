@@ -54,7 +54,7 @@ require (
 	k8s.io/utils v0.0.0-20240711033017-18e509b52bc8
 	kernel.org/pub/linux/libs/security/libcap/cap v1.2.70
 	kubevirt.io/api v1.3.0
-	kubevirt.io/client-go v1.3.0
+	kubevirt.io/client-go v1.3.1
 	sigs.k8s.io/controller-runtime v0.19.0
 	sigs.k8s.io/network-policy-api v0.1.5
 )
@@ -222,7 +222,7 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/crypto v0.26.0 // indirect
-	golang.org/x/exp v0.0.0-20240808152545-0cdaa3abc0fa // indirect
+	golang.org/x/exp v0.0.0-20240823005443-9b4947da3948 // indirect
 	golang.org/x/net v0.28.0 // indirect
 	golang.org/x/oauth2 v0.22.0 // indirect
 	golang.org/x/sync v0.8.0 // indirect
@@ -300,5 +300,5 @@ replace (
 	k8s.io/mount-utils => k8s.io/mount-utils v0.31.0
 	k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.31.0
 	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.31.0
-	kubevirt.io/client-go => github.com/kubeovn/kubevirt-client-go v0.0.0-20240814055642-5a8ca1345f4a
+	kubevirt.io/client-go => github.com/kubeovn/kubevirt-client-go v0.0.0-20240823060554-65405ba5499d
 )
