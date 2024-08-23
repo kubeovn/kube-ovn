@@ -29,7 +29,7 @@ spec:
       hostNetwork: true
       containers:
         - name: kube-ovn-speaker
-          image: "kubeovn/kube-ovn:v1.12.1"
+          image: "kubeovn/kube-ovn:v1.12.7-mc"
           imagePullPolicy: IfNotPresent
           command:
             - /kube-ovn/kube-ovn-speaker
@@ -38,10 +38,18 @@ spec:
             - --neighbor-as=65030
             - --cluster-as=65000
           env:
+            - name: KUBE_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
             - name: POD_IP
               valueFrom:
                 fieldRef:
                   fieldPath: status.podIP
+            - name: POD_IPS
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIPs
           resources:
             requests:
               cpu: 500m
