@@ -18,22 +18,63 @@ func (suite *OvnClientTestSuite) testCreatePortGroup() {
 	t.Parallel()
 
 	ovnClient := suite.ovnClient
-	pgName := "test-create-pg"
 
-	err := ovnClient.CreatePortGroup(pgName, map[string]string{
-		"type": "security_group",
-		sgKey:  "test-sg",
+	t.Run("create new port group", func(t *testing.T) {
+		pgName := "test-create-new-pg"
+		externalIDs := map[string]string{
+			"type": "test",
+			"key":  "value",
+		}
+
+		err := ovnClient.CreatePortGroup(pgName, externalIDs)
+		require.NoError(t, err)
+
+		pg, err := ovnClient.GetPortGroup(pgName, false)
+		require.NoError(t, err)
+		require.Equal(t, pgName, pg.Name)
+		require.Equal(t, externalIDs, pg.ExternalIDs)
 	})
-	require.NoError(t, err)
 
-	pg, err := ovnClient.GetPortGroup(pgName, false)
-	require.NoError(t, err)
-	require.NotEmpty(t, pg.UUID)
-	require.Equal(t, pgName, pg.Name)
-	require.Equal(t, map[string]string{
-		"type": "security_group",
-		sgKey:  "test-sg",
-	}, pg.ExternalIDs)
+	t.Run("create existing port group", func(t *testing.T) {
+		pgName := "test-create-existing-pg"
+		externalIDs := map[string]string{
+			"type": "test",
+			"key":  "value",
+		}
+
+		err := ovnClient.CreatePortGroup(pgName, externalIDs)
+		require.NoError(t, err)
+
+		err = ovnClient.CreatePortGroup(pgName, map[string]string{"new": "data"})
+		require.NoError(t, err)
+
+		pg, err := ovnClient.GetPortGroup(pgName, false)
+		require.NoError(t, err)
+		require.Equal(t, pgName, pg.Name)
+		require.Equal(t, externalIDs, pg.ExternalIDs)
+	})
+
+	t.Run("create port group with nil externalIDs", func(t *testing.T) {
+		pgName := "test-create-pg-nil-externalids"
+		err := ovnClient.CreatePortGroup(pgName, nil)
+		require.NoError(t, err)
+
+		pg, err := ovnClient.GetPortGroup(pgName, false)
+		require.NoError(t, err)
+		require.Equal(t, pgName, pg.Name)
+		require.Empty(t, pg.ExternalIDs)
+	})
+
+	t.Run("create port group with empty externalIDs", func(t *testing.T) {
+		pgName := "test-create-pg-empty-externalids"
+		err := ovnClient.CreatePortGroup(pgName, map[string]string{})
+		require.NoError(t, err)
+
+		pg, err := ovnClient.GetPortGroup(pgName, false)
+		require.NoError(t, err)
+		require.Equal(t, pgName, pg.Name)
+		require.Empty(t, pg.ExternalIDs)
+	})
 }
 
 func (suite *OvnClientTestSuite) testPortGroupResetPorts() {
@@ -493,4 +534,322 @@ func (suite *OvnClientTestSuite) testPortGroupOp() {
 			},
 		},
 	}, ops[0].Mutations)
+}
+
+func (suite *OvnClientTestSuite) testPortGroupRemovePorts() {
+	t := suite.T()
+	t.Parallel()
+
+	ovnClient := suite.ovnClient
+	pgName := "test-remove-ports-pg"
+	lsName := "test-remove-ports-ls"
+	prefix := "test-remove-lsp"
+	lspNames := make([]string, 0, 5)
+
+	err := ovnClient.CreateBareLogicalSwitch(lsName)
+	require.NoError(t, err)
+
+	err = ovnClient.CreatePortGroup(pgName, map[string]string{
+		"type": "security_group",
+		sgKey:  "test-sg",
+	})
+	require.NoError(t, err)
+
+	for i := 1; i <= 5; i++ {
+		lspName := fmt.Sprintf("%s-%d", prefix, i)
+		lspNames = append(lspNames, lspName)
+		err := ovnClient.CreateBareLogicalSwitchPort(lsName, lspName, "", "")
+		require.NoError(t, err)
+	}
+
+	err = ovnClient.PortGroupAddPorts(pgName, lspNames...)
+	require.NoError(t, err)
+
+	t.Run("remove some ports from port group", func(t *testing.T) {
+		portsToRemove := lspNames[0:3]
+		err = ovnClient.PortGroupRemovePorts(pgName, portsToRemove...)
+		require.NoError(t, err)
+
+		pg, err := ovnClient.GetPortGroup(pgName, false)
+		require.NoError(t, err)
+
+		for _, lspName := range portsToRemove {
+			lsp, err := ovnClient.GetLogicalSwitchPort(lspName, false)
+			require.NoError(t, err)
+			require.NotContains(t, pg.Ports, lsp.UUID)
+		}
+
+		for _, lspName := range lspNames[3:] {
+			lsp, err := ovnClient.GetLogicalSwitchPort(lspName, false)
+			require.NoError(t, err)
+			require.Contains(t, pg.Ports, lsp.UUID)
+		}
+	})
+
+	t.Run("remove all remaining ports from port group", func(t *testing.T) {
+		err = ovnClient.PortGroupRemovePorts(pgName, lspNames[3:]...)
+		require.NoError(t, err)
+
+		pg, err := ovnClient.GetPortGroup(pgName, false)
+		require.NoError(t, err)
+		require.Empty(t, pg.Ports)
+	})
+
+	t.Run("remove non-existent ports from port group", func(t *testing.T) {
+		err = ovnClient.PortGroupRemovePorts(pgName, "non-existent-lsp-1", "non-existent-lsp-2")
+		require.NoError(t, err)
+
+		pg, err := ovnClient.GetPortGroup(pgName, false)
+		require.NoError(t, err)
+		require.Empty(t, pg.Ports)
+	})
+
+	t.Run("remove ports from non-existent port group", func(t *testing.T) {
+		err = ovnClient.PortGroupRemovePorts("non-existent-pg", lspNames...)
+		require.ErrorContains(t, err, "object not found")
+	})
+
+	t.Run("remove no ports from port group", func(t *testing.T) {
+		err = ovnClient.PortGroupRemovePorts(pgName)
+		require.NoError(t, err)
+
+		pg, err := ovnClient.GetPortGroup(pgName, false)
+		require.NoError(t, err)
+		require.Empty(t, pg.Ports)
+	})
+}
+
+func (suite *OvnClientTestSuite) testUpdatePortGroup() {
+	t := suite.T()
+	t.Parallel()
+
+	ovnClient := suite.ovnClient
+
+	t.Run("update external_ids", func(t *testing.T) {
+		pgName := "test-update-external"
+
+		err := ovnClient.CreatePortGroup(pgName, map[string]string{
+			"type": "security_group",
+			sgKey:  "test-sg",
+		})
+		require.NoError(t, err)
+
+		pg, err := ovnClient.GetPortGroup(pgName, false)
+		require.NoError(t, err)
+
+		newExternalIDs := map[string]string{
+			"type": "security_group",
+			sgKey:  "updated-sg",
+			"new":  "value",
+		}
+		pg.ExternalIDs = newExternalIDs
+
+		err = ovnClient.UpdatePortGroup(pg, &pg.ExternalIDs)
+		require.NoError(t, err)
+
+		updatedPg, err := ovnClient.GetPortGroup(pgName, false)
+		require.NoError(t, err)
+		require.Equal(t, newExternalIDs, updatedPg.ExternalIDs)
+	})
+
+	t.Run("update name", func(t *testing.T) {
+		pgName := "test-update-name"
+
+		err := ovnClient.CreatePortGroup(pgName, map[string]string{
+			"type": "security_group",
+			sgKey:  "test-sg",
+		})
+		require.NoError(t, err)
+
+		pg, err := ovnClient.GetPortGroup(pgName, false)
+		require.NoError(t, err)
+
+		newName := "updated-" + pgName
+		pg.Name = newName
+
+		err = ovnClient.UpdatePortGroup(pg, &pg.Name)
+		require.NoError(t, err)
+
+		_, err = ovnClient.GetPortGroup(pgName, false)
+		require.Error(t, err)
+
+		updatedPg, err := ovnClient.GetPortGroup(newName, false)
+		require.NoError(t, err)
+		require.Equal(t, newName, updatedPg.Name)
+	})
+
+	t.Run("update multiple fields", func(t *testing.T) {
+		pgName := "test-update-multiple"
+
+		err := ovnClient.CreatePortGroup(pgName, map[string]string{
+			"type": "security_group",
+			sgKey:  "test-sg",
+		})
+		require.NoError(t, err)
+
+		pg, err := ovnClient.GetPortGroup(pgName, false)
+		require.NoError(t, err)
+
+		pg.Name = pgName
+		pg.ExternalIDs = map[string]string{"key": "value"}
+
+		err = ovnClient.UpdatePortGroup(pg, &pg.Name, &pg.ExternalIDs)
+		require.NoError(t, err)
+
+		updatedPg, err := ovnClient.GetPortGroup(pgName, false)
+		require.NoError(t, err)
+		require.Equal(t, pgName, updatedPg.Name)
+		require.Equal(t, map[string]string{"key": "value"}, updatedPg.ExternalIDs)
+	})
+
+	t.Run("update port group with no changes", func(t *testing.T) {
+		pgName := "test-update-no-changes"
+
+		err := ovnClient.CreatePortGroup(pgName, map[string]string{
+			"type": "security_group",
+			sgKey:  "test-sg",
+		})
+		require.NoError(t, err)
+
+		pg, err := ovnClient.GetPortGroup(pgName, false)
+		require.NoError(t, err)
+
+		err = ovnClient.UpdatePortGroup(pg)
+		require.NoError(t, err)
+
+		updatedPg, err := ovnClient.GetPortGroup(pgName, false)
+		require.NoError(t, err)
+		require.Equal(t, pg, updatedPg)
+	})
+
+	t.Run("update port group with invalid field", func(t *testing.T) {
+		pgName := "test-update-invalid-field"
+
+		err := ovnClient.CreatePortGroup(pgName, nil)
+		require.NoError(t, err)
+
+		pg, err := ovnClient.GetPortGroup(pgName, false)
+		require.NoError(t, err)
+
+		err = ovnClient.UpdatePortGroup(pg, "InvalidField")
+		require.Error(t, err)
+	})
+
+	t.Run("update port group with nil value", func(t *testing.T) {
+		pgName := "test-update-nil-value"
+
+		err := ovnClient.CreatePortGroup(pgName, map[string]string{"key": "value"})
+		require.NoError(t, err)
+
+		pg, err := ovnClient.GetPortGroup(pgName, false)
+		require.NoError(t, err)
+
+		pg.ExternalIDs = nil
+		err = ovnClient.UpdatePortGroup(pg, &pg.ExternalIDs)
+		require.NoError(t, err)
+
+		updatedPg, err := ovnClient.GetPortGroup(pgName, false)
+		require.NoError(t, err)
+		require.Empty(t, updatedPg.ExternalIDs)
+	})
+}
+
+func (suite *OvnClientTestSuite) testPortGroupSetPorts() {
+	t := suite.T()
+	t.Parallel()
+
+	ovnClient := suite.ovnClient
+	pgName := "test-set-ports-pg"
+	lsName := "test-set-ports-ls"
+	prefix := "test-set-lsp"
+	lspNames := make([]string, 0, 5)
+
+	err := ovnClient.CreateBareLogicalSwitch(lsName)
+	require.NoError(t, err)
+
+	err = ovnClient.CreatePortGroup(pgName, map[string]string{
+		"type": "security_group",
+		sgKey:  "test-sg",
+	})
+	require.NoError(t, err)
+
+	for i := 1; i <= 5; i++ {
+		lspName := fmt.Sprintf("%s-%d", prefix, i)
+		lspNames = append(lspNames, lspName)
+		err := ovnClient.CreateBareLogicalSwitchPort(lsName, lspName, "", "")
+		require.NoError(t, err)
+	}
+
+	t.Run("set ports to empty port group", func(t *testing.T) {
+		portsToSet := lspNames[0:3]
+		err = ovnClient.PortGroupSetPorts(pgName, portsToSet)
+		require.NoError(t, err)
+
+		pg, err := ovnClient.GetPortGroup(pgName, false)
+		require.NoError(t, err)
+		require.Len(t, pg.Ports, 3)
+
+		for _, lspName := range portsToSet {
+			lsp, err := ovnClient.GetLogicalSwitchPort(lspName, false)
+			require.NoError(t, err)
+			require.Contains(t, pg.Ports, lsp.UUID)
+		}
+	})
+
+	t.Run("set ports to non-empty port group", func(t *testing.T) {
+		portsToSet := lspNames[2:5]
+		err = ovnClient.PortGroupSetPorts(pgName, portsToSet)
+		require.NoError(t, err)
+
+		pg, err := ovnClient.GetPortGroup(pgName, false)
+		require.NoError(t, err)
+		require.Len(t, pg.Ports, 3)
+
+		for _, lspName := range portsToSet {
+			lsp, err := ovnClient.GetLogicalSwitchPort(lspName, false)
+			require.NoError(t, err)
+			require.Contains(t, pg.Ports, lsp.UUID)
+		}
+
+		for _, lspName := range lspNames[0:2] {
+			lsp, err := ovnClient.GetLogicalSwitchPort(lspName, false)
+			require.NoError(t, err)
+			require.NotContains(t, pg.Ports, lsp.UUID)
+		}
+	})
+
+	t.Run("set ports to empty list", func(t *testing.T) {
+		err = ovnClient.PortGroupSetPorts(pgName, []string{})
+		require.NoError(t, err)
+
+		pg, err := ovnClient.GetPortGroup(pgName, false)
+		require.NoError(t, err)
+		require.Empty(t, pg.Ports)
+	})
+
+	t.Run("set ports with non-existent logical switch ports", func(t *testing.T) {
+		portsToSet := append(lspNames[0:2], "non-existent-lsp")
+		err = ovnClient.PortGroupSetPorts(pgName, portsToSet)
+		require.NoError(t, err)
+
+		pg, err := ovnClient.GetPortGroup(pgName, false)
+		require.NoError(t, err)
+		require.Len(t, pg.Ports, 2)
+
+		for _, lspName := range lspNames[0:2] {
+			lsp, err := ovnClient.GetLogicalSwitchPort(lspName, false)
+			require.NoError(t, err)
+			require.Contains(t, pg.Ports, lsp.UUID)
+		}
+	})
+
+	t.Run("set ports to non-existent port group", func(t *testing.T) {
+		err = ovnClient.PortGroupSetPorts("non-existent-pg", lspNames)
+		require.Error(t, err)
+	})
+
+	t.Run("set ports with empty port group name", func(t *testing.T) {
+		err = ovnClient.PortGroupSetPorts("", lspNames)
+		require.Error(t, err)
+	})
 }
