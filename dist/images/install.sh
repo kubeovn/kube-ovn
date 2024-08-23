@@ -1846,12 +1846,17 @@ spec:
         - jsonPath: .spec.namespaces
           name: Namespaces
           type: string
+        - jsonPath: .status.defaultLogicalSwitch
+          name: DefaultSubnet
+          type: string
       name: v1
       schema:
         openAPIV3Schema:
           properties:
             spec:
               properties:
+                defaultSubnet:
+                  type: string
                 enableExternal:
                   type: boolean
                 enableBfd:
@@ -3144,11 +3149,11 @@ rules:
       - subjectaccessreviews
     verbs:
       - create
-  - apiGroups: 
+  - apiGroups:
       - "certificates.k8s.io"
-    resources: 
+    resources:
       - "certificatesigningrequests"
-    verbs: 
+    verbs:
       - "get"
       - "list"
       - "watch"
@@ -3277,12 +3282,12 @@ rules:
       - subjectaccessreviews
     verbs:
       - create
-  - apiGroups: 
+  - apiGroups:
       - "certificates.k8s.io"
-    resources: 
+    resources:
       - "certificatesigningrequests"
-    verbs: 
-      - "create" 
+    verbs:
+      - "create"
       - "get"
       - "list"
       - "watch"

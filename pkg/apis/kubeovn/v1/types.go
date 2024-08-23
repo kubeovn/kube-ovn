@@ -418,6 +418,7 @@ type Vpc struct {
 }
 
 type VpcSpec struct {
+	DefaultSubnet        string         `json:"defaultSubnet,omitempty"`
 	Namespaces           []string       `json:"namespaces,omitempty"`
 	StaticRoutes         []*StaticRoute `json:"staticRoutes,omitempty"`
 	PolicyRoutes         []*PolicyRoute `json:"policyRoutes,omitempty"`

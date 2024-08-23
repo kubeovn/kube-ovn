@@ -114,6 +114,17 @@ func (c *Controller) handleAddNamespace(key string) error {
 				break
 			}
 		}
+		// check if subnet is in custom vpc with configured defaultSubnet, then annotate the namespace with this subnet
+		if s.Spec.Vpc != "" && s.Spec.Vpc != c.config.ClusterRouter {
+			vpc, err := c.vpcsLister.Get(s.Spec.Vpc)
+			if err != nil {
+				klog.Errorf("failed to get custom vpc %v", err)
+				return err
+			}
+			if s.Name == vpc.Spec.DefaultSubnet {
+				lss = []string{s.Name}
+			}
+		}
 	}
 
 	for _, p := range ippools {
