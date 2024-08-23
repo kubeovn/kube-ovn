@@ -71,18 +71,18 @@ func (c *Controller) InitDefaultVpc() error {
 			klog.Errorf("failed to get default vpc %q: %v", c.config.ClusterRouter, err)
 			return err
 		}
-
-			vpc := &kubeovnv1.Vpc{
-				ObjectMeta: metav1.ObjectMeta{Name: c.config.ClusterRouter},
-			}
-			cachedVpc, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Create(context.Background(), vpc, metav1.CreateOptions{})
-			if err != nil {
-				klog.Errorf("failed to create default vpc %q: %v", c.config.ClusterRouter, err)
-				return err
-			}
+		// create default vpc
+		vpc := &kubeovnv1.Vpc{
+			ObjectMeta: metav1.ObjectMeta{Name: c.config.ClusterRouter},
+		}
+		cachedVpc, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Create(context.Background(), vpc, metav1.CreateOptions{})
+		if err != nil {
+			klog.Errorf("failed to create default vpc %q: %v", c.config.ClusterRouter, err)
+			return err
 		}
 	}
 
+	// update default vpc status
 	vpc := cachedVpc.DeepCopy()
 	if !vpc.Status.Default || !vpc.Status.Standby ||
 		vpc.Status.Router != c.config.ClusterRouter ||
