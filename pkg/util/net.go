@@ -75,12 +75,18 @@ func SubnetNumber(subnet string) string {
 func SubnetBroadcast(subnet string) string {
 	_, cidr, _ := net.ParseCIDR(subnet)
 	var length uint
+	maskLength, _ := cidr.Mask.Size()
 	if CheckProtocol(subnet) == kubeovnv1.ProtocolIPv4 {
+		if maskLength == 31 {
+			return ""
+		}
 		length = 32
 	} else {
+		if maskLength == 127 {
+			return ""
+		}
 		length = 128
 	}
-	maskLength, _ := cidr.Mask.Size()
 	if maskLength == 31 || maskLength == 127 {
 		return ""
 	}
@@ -98,10 +104,16 @@ func FirstIP(subnet string) (string, error) {
 	}
 	// Handle ptp network case specially
 	prefixSize, _ := cidr.Mask.Size()
-	if prefixSize == 31 || prefixSize == 127 {
-		return cidr.IP.String(), nil
+	switch CheckProtocol(subnet) {
+	case kubeovnv1.ProtocolIPv6:
+		if prefixSize == 127 {
+			return cidr.IP.String(), nil
+		}
+	default:
+		if prefixSize == 31 {
+			return cidr.IP.String(), nil
+		}
 	}
-
 	ipInt := IP2BigInt(cidr.IP.String())
 	return BigInt2Ip(ipInt.Add(ipInt, big.NewInt(1))), nil
 }
@@ -113,22 +125,31 @@ func LastIP(subnet string) (string, error) {
 		return "", fmt.Errorf("%s is not a valid cidr", subnet)
 	}
 	var length uint
-	if CheckProtocol(subnet) == kubeovnv1.ProtocolIPv4 {
+	proto := CheckProtocol(subnet)
+	if proto == kubeovnv1.ProtocolIPv4 {
 		length = 32
 	} else {
 		length = 128
 	}
 	maskLength, _ := cidr.Mask.Size()
 	ipInt := IP2BigInt(cidr.IP.String())
-	size := getCIDRSize(length, maskLength)
+	size := getCIDRSize(length, maskLength, proto)
 	return BigInt2Ip(ipInt.Add(ipInt, size)), nil
 }
 
-func getCIDRSize(length uint, maskLength int) *big.Int {
+func getCIDRSize(length uint, maskLength int, proto string) *big.Int {
 	size := big.NewInt(0).Lsh(big.NewInt(1), length-uint(maskLength))
-	if maskLength == 31 || maskLength == 127 {
-		return big.NewInt(0).Sub(size, big.NewInt(1))
+	switch proto {
+	case kubeovnv1.ProtocolIPv6:
+		if maskLength == 127 {
+			return big.NewInt(0).Sub(size, big.NewInt(1))
+		}
+	default:
+		if maskLength == 31 {
+			return big.NewInt(0).Sub(size, big.NewInt(1))
+		}
 	}
+
 	return big.NewInt(0).Sub(size, big.NewInt(2))
 }
 
