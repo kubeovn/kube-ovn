@@ -14,6 +14,7 @@ import (
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/ptr"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
@@ -159,7 +160,7 @@ func (c *Controller) cleanTProxyRoutes(protocol string) {
 	}
 }
 
-func addRuleIfNotExist(family, mark, mask, table int) error {
+func addRuleIfNotExist(family int, mark, mask uint32, table int) error {
 	curRules, err := netlink.RuleListFiltered(family, &netlink.Rule{Mark: mark}, netlink.RT_FILTER_MARK)
 	if err != nil {
 		return fmt.Errorf("list rules with mark %x failed err: %w", mark, err)
@@ -171,7 +172,7 @@ func addRuleIfNotExist(family, mark, mask, table int) error {
 
 	rule := netlink.NewRule()
 	rule.Mark = mark
-	rule.Mask = mask
+	rule.Mask = ptr.To(mask)
 	rule.Table = table
 	rule.Family = family
 
@@ -183,7 +184,7 @@ func addRuleIfNotExist(family, mark, mask, table int) error {
 	return nil
 }
 
-func deleteRuleIfExists(family, mark int) error {
+func deleteRuleIfExists(family int, mark uint32) error {
 	curRules, err := netlink.RuleListFiltered(family, &netlink.Rule{Mark: mark}, netlink.RT_FILTER_MARK)
 	if err != nil {
 		return fmt.Errorf("list rules with mark %x failed err: %w", mark, err)
