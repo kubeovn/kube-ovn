@@ -36,7 +36,7 @@ require (
 	github.com/sirupsen/logrus v1.9.3
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.9.0
-	github.com/vishvananda/netlink v1.2.1-beta.2.0.20240713210050-d13535d71ed3
+	github.com/vishvananda/netlink v1.2.1
 	go.uber.org/mock v0.4.0
 	golang.org/x/mod v0.20.0
 	golang.org/x/sys v0.24.0
