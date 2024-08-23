@@ -12,6 +12,7 @@ import (
 	netv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	v1alpha1 "sigs.k8s.io/network-policy-api/apis/v1alpha1"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
@@ -2056,4 +2057,104 @@ func (suite *OvnClientTestSuite) testSGLostACL() {
 		require.NoError(t, err)
 		require.False(t, lost)
 	})
+}
+
+func (suite *OvnClientTestSuite) testNewAnpACLMatch() {
+	t := suite.T()
+	t.Parallel()
+
+	testCases := []struct {
+		name      string
+		pgName    string
+		asName    string
+		protocol  string
+		direction string
+		rulePorts []v1alpha1.AdminNetworkPolicyPort
+		expected  []string
+	}{
+		{
+			name:      "IPv4 ingress no ports",
+			pgName:    "pg1",
+			asName:    "as1",
+			protocol:  kubeovnv1.ProtocolIPv4,
+			direction: ovnnb.ACLDirectionToLport,
+			rulePorts: []v1alpha1.AdminNetworkPolicyPort{},
+			expected:  []string{"outport == @pg1 && ip && ip4.src == $as1"},
+		},
+		{
+			name:      "IPv6 egress no ports",
+			pgName:    "pg2",
+			asName:    "as2",
+			protocol:  kubeovnv1.ProtocolIPv6,
+			direction: ovnnb.ACLDirectionFromLport,
+			rulePorts: []v1alpha1.AdminNetworkPolicyPort{},
+			expected:  []string{"inport == @pg2 && ip && ip6.dst == $as2"},
+		},
+		{
+			name:      "IPv4 ingress with port number",
+			pgName:    "pg3",
+			asName:    "as3",
+			protocol:  kubeovnv1.ProtocolIPv4,
+			direction: ovnnb.ACLDirectionToLport,
+			rulePorts: []v1alpha1.AdminNetworkPolicyPort{
+				{
+					PortNumber: &v1alpha1.Port{
+						Protocol: v1.ProtocolTCP,
+						Port:     80,
+					},
+				},
+			},
+			expected: []string{"outport == @pg3 && ip && ip4.src == $as3 && tcp.dst == 80"},
+		},
+		{
+			name:      "IPv6 egress with port range",
+			pgName:    "pg4",
+			asName:    "as4",
+			protocol:  kubeovnv1.ProtocolIPv6,
+			direction: ovnnb.ACLDirectionFromLport,
+			rulePorts: []v1alpha1.AdminNetworkPolicyPort{
+				{
+					PortRange: &v1alpha1.PortRange{
+						Protocol: v1.ProtocolUDP,
+						Start:    1024,
+						End:      2048,
+					},
+				},
+			},
+			expected: []string{"inport == @pg4 && ip && ip6.dst == $as4 && 1024 <= udp.dst <= 2048"},
+		},
+		{
+			name:      "IPv4 ingress with multiple ports",
+			pgName:    "pg5",
+			asName:    "as5",
+			protocol:  kubeovnv1.ProtocolIPv4,
+			direction: ovnnb.ACLDirectionToLport,
+			rulePorts: []v1alpha1.AdminNetworkPolicyPort{
+				{
+					PortNumber: &v1alpha1.Port{
+						Protocol: v1.ProtocolTCP,
+						Port:     80,
+					},
+				},
+				{
+					PortRange: &v1alpha1.PortRange{
+						Protocol: v1.ProtocolUDP,
+						Start:    1024,
+						End:      2048,
+					},
+				},
+			},
+			expected: []string{
+				"outport == @pg5 && ip && ip4.src == $as5 && tcp.dst == 80",
+				"outport == @pg5 && ip && ip4.src == $as5 && 1024 <= udp.dst <= 2048",
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := newAnpACLMatch(tc.pgName, tc.asName, tc.protocol, tc.direction, tc.rulePorts)
+			require.Equal(t, tc.expected, result)
+		})
+	}
 }
