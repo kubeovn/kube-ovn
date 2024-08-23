@@ -87,9 +87,6 @@ func SubnetBroadcast(subnet string) string {
 		}
 		length = 128
 	}
-	if maskLength == 31 || maskLength == 127 {
-		return ""
-	}
 	ipInt := IP2BigInt(cidr.IP.String())
 	size := big.NewInt(0).Lsh(big.NewInt(1), length-uint(maskLength))
 	size = big.NewInt(0).Sub(size, big.NewInt(1))
