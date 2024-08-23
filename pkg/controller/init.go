@@ -72,7 +72,6 @@ func (c *Controller) InitDefaultVpc() error {
 			return err
 		}
 
-		if k8serrors.IsNotFound(err) {
 			vpc := &kubeovnv1.Vpc{
 				ObjectMeta: metav1.ObjectMeta{Name: c.config.ClusterRouter},
 			}
