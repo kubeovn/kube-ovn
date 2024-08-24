@@ -155,7 +155,7 @@ ovsOvn:
   # ref: https://kubeovn.github.io/docs/v1.12.x/en/advance/dpdk/
   dpdk:
     # -- Enables DPDK support on OVS
-    enabled: true
+    enabled: false
     # -- Version of the DPDK image
     version: "19.11"
 
