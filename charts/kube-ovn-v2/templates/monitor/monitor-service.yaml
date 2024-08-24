@@ -1,0 +1,25 @@
+kind: Service
+apiVersion: v1
+metadata:
+  name: kube-ovn-monitor
+  namespace: {{ .Values.namespace }}
+  {{- with .Values.monitor.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.monitor.labels }}
+  labels:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  ports:
+    - name: metrics
+      port: {{ .Values.monitor.metrics.port }}
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: kube-ovn-monitor
+    app.kubernetes.io/part-of: kube-ovn
+  sessionAffinity: None
+  {{- if eq .Values.networking.stack "Dual" }}
+  ipFamilyPolicy: PreferDualStack
+  {{- end }}

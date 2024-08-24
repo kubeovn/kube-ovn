@@ -1,0 +1,47 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    kubernetes.io/bootstrapping: rbac-defaults
+  name: system:vpc-nat-gw
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - services
+      - pods
+    verbs:
+      - list
+      - watch
+  - apiGroups:
+      - kubeovn.io
+    resources:
+      - iptables-eips
+      - subnets
+      - vpc-nat-gateways
+    verbs:
+      - list
+      - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  annotations:
+    rbac.authorization.kubernetes.io/autoupdate: "true"
+  labels:
+    kubernetes.io/bootstrapping: rbac-defaults
+  name: vpc-nat-gw
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:vpc-nat-gw
+subjects:
+  - kind: ServiceAccount
+    name: vpc-nat-gw
+    namespace: {{ .Values.namespace }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vpc-nat-gw
+  namespace: {{ .Values.namespace }}

@@ -1,0 +1,11 @@
+{{- if .Values.apiNad.enabled }}
+apiVersion: kubeovn.io/v1
+kind: Subnet
+metadata:
+  name: {{ .Values.apiNad.subnet.name }}
+  namespace: {{ .Values.namespace }}
+spec:
+  protocol: {{ .Values.apiNad.subnet.protocol }}
+  cidrBlock: {{ .Values.apiNad.subnet.cidrBlock }}
+  provider: {{ tpl .Values.apiNad.provider . }}
+{{- end }}

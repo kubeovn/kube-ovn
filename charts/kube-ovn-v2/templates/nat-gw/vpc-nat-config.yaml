@@ -1,0 +1,25 @@
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: ovn-vpc-nat-config
+  namespace: {{ .Values.namespace }}
+data:
+  image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.vpcRepository }}:{{ .Values.global.images.kubeovn.tag }}
+  {{- with .Values.natGw.bgpSpeaker.image }}
+  bgpSpeakerImage: {{ .repository }}:{{ .tag }}
+  {{- end }}
+  {{- with .Values.natGw.bgpSpeaker.apiNadProvider }}
+  apiNadProvider: {{ tpl . $ }}
+  {{- end }}
+  {{- with .Values.natGw.namePrefix }}
+  natGwNamePrefix: {{ . | quote }}
+  {{- end }}
+
+---
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: ovn-vpc-nat-gw-config
+  namespace: {{ .Values.namespace }}
+data:
+  enable-vpc-nat-gw: "{{ .Values.features.ENABLE_NAT_GW }}"

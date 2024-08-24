@@ -22,22 +22,7 @@ metadata:
 imagePullSecrets:
 {{- range $index, $secret := .Values.global.registry.imagePullSecrets }}
 {{- if $secret }}
-- name: {{ $secret | quote}}
-{{- end }}
-{{- end }}
-{{- end }}
-
----
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: kube-ovn-cni
-  namespace: {{ .Values.namespace }}
-{{-  if .Values.global.registry.imagePullSecrets }}
-imagePullSecrets:
-{{- range $index, $secret := .Values.global.registry.imagePullSecrets }}
-{{- if $secret }}
-- name: {{ $secret | quote}}
+  - name: {{ $secret | quote}}
 {{- end }}
 {{- end }}
 {{- end }}
@@ -52,7 +37,7 @@ metadata:
 imagePullSecrets:
 {{- range $index, $secret := .Values.global.registry.imagePullSecrets }}
 {{- if $secret }}
-- name: {{ $secret | quote}}
+  - name: {{ $secret | quote}}
 {{- end }}
 {{- end }}
 {{- end }}

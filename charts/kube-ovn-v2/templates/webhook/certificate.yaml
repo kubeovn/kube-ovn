@@ -1,0 +1,41 @@
+{{- if .Values.validatingWebhook.enabled }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: kube-ovn-webhook-serving-cert
+  namespace: {{ .Values.namespace }}
+  {{- with .Values.validatingWebhook.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.validatingWebhook.labels }}
+  labels:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  dnsNames:
+    - kube-ovn-webhook.kube-system
+    - kube-ovn-webhook.kube-system.svc
+    - kube-ovn-webhook.kube-system.svc.cluster.local
+  issuerRef:
+    kind: Issuer
+    name: kube-ovn-webhook-selfsigned-issuer
+    group: cert-manager.io
+  secretName: kube-ovn-webhook-secret
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: kube-ovn-webhook-selfsigned-issuer
+  namespace: {{ .Values.namespace }}
+  {{- with .Values.validatingWebhook.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.validatingWebhook.labels }}
+  labels:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  selfSigned: {}
+{{- end }}

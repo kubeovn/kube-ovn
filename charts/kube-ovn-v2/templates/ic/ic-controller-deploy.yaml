@@ -1,4 +1,4 @@
-{{- if .Values.func.ENABLE_IC }}
+{{- if .Values.features.ENABLE_IC }}
 kind: Deployment
 apiVersion: apps/v1
 metadata:
@@ -82,13 +82,13 @@ spec:
                 - SYS_NICE
           env:
             - name: ENABLE_SSL
-              value: "{{ .Values.networking.ENABLE_SSL }}"
+              value: "{{ .Values.networking.enableSsl }}"
             - name: POD_NAMESPACE
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
             - name: OVN_DB_IPS
-              value: "{{ .Values.MASTER_NODES | default (include "kubeovn.nodeIPs" .) }}"
+              value: "{{ .Values.masterNodes| default (include "kubeovn.nodeIPs" .) }}"
           resources:
             requests:
               cpu: 300m

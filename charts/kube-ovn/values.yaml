@@ -10,7 +10,7 @@ global:
       repository: kube-ovn
       dpdkRepository: kube-ovn-dpdk
       vpcRepository: vpc-nat-gateway
-      tag: v1.13.0
+      tag: v1.14.0
       support_arm: true
       thirdparty: true
 
@@ -58,7 +58,6 @@ networking:
 func:
   ENABLE_LB: true
   ENABLE_NP: true
-  ENABLE_EIP_SNAT: true
   ENABLE_EXTERNAL_VPC: true
   HW_OFFLOAD: false
   ENABLE_LB_SVC: false
@@ -74,6 +73,12 @@ func:
   ENABLE_IC: false
   ENABLE_NAT_GW: true
   ENABLE_OVN_IPSEC: false
+  ENABLE_ANP: false
+  SET_VXLAN_TX_OFF: false
+  OVSDB_CON_TIMEOUT: 3
+  OVSDB_INACTIVITY_TIMEOUT: 10
+  ENABLE_LIVE_MIGRATION_OPTIMIZE: true
+  ENABLE_OVN_LB_PREFER_LOCAL: false
 
 ipv4:
   POD_CIDR: "10.16.0.0/16"
@@ -125,21 +130,20 @@ log_conf:
 OPENVSWITCH_DIR: "/etc/origin/openvswitch"
 OVN_DIR: "/etc/origin/ovn"
 DISABLE_MODULES_MANAGEMENT: false
-  
-imagePullSecrets: []
+
 nameOverride: ""
 fullnameOverride: ""
 
 # hybrid dpdk
 HYBRID_DPDK: false
-HUGEPAGE_SIZE_TYPE: hugepages-2Mi # Default 
+HUGEPAGE_SIZE_TYPE: hugepages-2Mi # Default
 HUGEPAGES: 1Gi
 
 # DPDK
 DPDK: false
 DPDK_VERSION: "19.11"
-DPDK_CPU: "1000m"                        # Default CPU configuration
-DPDK_MEMORY: "2Gi"                       # Default Memory configuration
+DPDK_CPU: "1000m" # Default CPU configuration
+DPDK_MEMORY: "2Gi" # Default Memory configuration
 
 ovn-central:
   requests:

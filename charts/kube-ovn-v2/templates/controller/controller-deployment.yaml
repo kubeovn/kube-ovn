@@ -1,0 +1,246 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kube-ovn-controller
+  namespace: {{ .Values.namespace }}
+  {{- with .Values.controller.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.controller.labels }}
+  labels:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  replicas: {{ include "kubeovn.nodeCount" . }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kube-ovn-controller
+      app.kubernetes.io/part-of: kube-ovn
+  strategy:
+    rollingUpdate:
+      maxSurge: 0%
+      maxUnavailable: 100%
+    type: RollingUpdate
+  template:
+    metadata:
+      {{- with .Values.controller.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        app.kubernetes.io/name: kube-ovn-controller
+        app.kubernetes.io/part-of: kube-ovn
+        {{- with .Values.controller.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        # Legacy labels
+        app: kube-ovn-controller
+        component: network
+        type: infra
+    spec:
+      tolerations:
+        - effect: NoSchedule
+          operator: Exists
+        - key: CriticalAddonsOnly
+          operator: Exists
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - preference:
+                matchExpressions:
+                  - key: "ovn.kubernetes.io/ic-gw"
+                    operator: NotIn
+                    values:
+                      - "true"
+              weight: 100
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: kube-ovn-controller
+              topologyKey: kubernetes.io/hostname
+      priorityClassName: system-cluster-critical
+      serviceAccountName: ovn
+      hostNetwork: true
+      initContainers:
+        - name: hostpath-init
+          image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - sh
+            - -c
+            - "chown -R nobody: /var/log/kube-ovn"
+          securityContext:
+            allowPrivilegeEscalation: true
+            capabilities:
+              drop:
+                - ALL
+            privileged: true
+            runAsUser: 0
+          volumeMounts:
+            - name: kube-ovn-log
+              mountPath: /var/log/kube-ovn
+      containers:
+        - name: kube-ovn-controller
+          image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+          - /kube-ovn/start-controller.sh
+          - --default-ls={{ .Values.networking.pods.subnetName }}
+          - --default-cidr=
+          {{- if eq .Values.networking.stack "Dual" -}}
+          {{ .Values.networking.pods.cidr.v4 }},{{ .Values.networking.pods.cidr.v6 }}
+          {{- else if eq .Values.networking.stack "IPv4" -}}
+          { .Values.networking.pods.cidr.v4 }}
+          {{- else if eq .Values.networking.stack "IPv6" -}}
+          { .Values.networking.pods.cidr.v6 }}
+          {{- end }}
+          - --default-gateway=
+          {{- if eq .Values.networking.stack "Dual" -}}
+          {{ .Values.networking.pods.gateways.v4 }},{{ .Values.networking.pods.gateways.v6 }}
+          {{- else if eq .Values.networking.stack "IPv4" -}}
+          {{ .Values.networking.pods.gateways.v4 }}
+          {{- else if eq .Values.networking.stack "IPv6" -}}
+          {{ .Values.networking.pods.gateways.v6 }}
+          {{- end }}
+          - --default-gateway-check={{- .Values.features.CHECK_GATEWAY }}
+          - --default-logical-gateway={{- .Values.features.LOGICAL_GATEWAY }}
+          - --default-u2o-interconnection={{- .Values.features.U2O_INTERCONNECTION }}
+          - --default-exclude-ips={{- .Values.networking.excludeIps }}
+          - --cluster-router={{ .Values.networking.defaultVpcName }}
+          - --node-switch={{ .Values.networking.join.subnetName }}
+          - --node-switch-cidr=
+          {{- if eq .Values.networking.stack "Dual" -}}
+          {{ .Values.networking.join.cidr.v4 }},{{ .Values.networking.join.cidr.v6 }}
+          {{- else if eq .Values.networking.stack "IPv4" -}}
+          {{ .Values.networking.join.cidr.v4 }}
+          {{- else if eq .Values.networking.stack "IPv6" -}}
+          {{ .Values.networking.join.cidr.v6 }}
+          {{- end }}
+          - --service-cluster-ip-range=
+          {{- if eq .Values.networking.stack "Dual" -}}
+          {{ .Values.networking.services.cidr.v4 }},{{ .Values.networking.services.cidr.v6 }}
+          {{- else if eq .Values.networking.stack "IPv4" -}}
+          {{ .Values.networking.services.cidr.v4 }}
+          {{- else if eq .Values.networking.stack "IPv6" -}}
+          {{ .Values.networking.services.cidr.v6 }}
+          {{- end }}
+          - --network-type={{- .Values.networking.networkType }}
+          - --default-provider-name={{ .Values.networking.vlan.providerName }}
+          - --default-interface-name={{- .Values.networking.vlan.interfaceName }}
+          - --default-exchange-link-name={{- .Values.networking.exchangeLinkName }}
+          - --default-vlan-name={{- .Values.networking.vlan.name }}
+          - --default-vlan-id={{- .Values.networking.vlan.id }}
+          - --ls-dnat-mod-dl-dst={{- .Values.features.LS_DNAT_MOD_DL_DST }}
+          - --ls-ct-skip-dst-lport-ips={{- .Values.features.LS_CT_SKIP_DST_LPORT_IPS }}
+          - --pod-nic-type={{- .Values.networking.podNicType }}
+          - --enable-lb={{- .Values.features.ENABLE_LB }}
+          - --enable-np={{- .Values.features.ENABLE_NP }}
+          - --enable-eip-snat={{- .Values.networking.enableEipSnat }}
+          - --enable-external-vpc={{- .Values.features.ENABLE_EXTERNAL_VPC }}
+          - --enable-ecmp={{- .Values.networking.enableEcmp }}
+          - --logtostderr=false
+          - --alsologtostderr=true
+          - --gc-interval={{- .Values.performance.gcInterval }}
+          - --inspect-interval={{- .Values.performance.inspectInterval }}
+          - --log_file=/var/log/kube-ovn/kube-ovn-controller.log
+          - --log_file_max_size=200
+          - --enable-lb-svc={{- .Values.features.ENABLE_LB_SVC }}
+          - --keep-vm-ip={{- .Values.features.ENABLE_KEEP_VM_IP }}
+          - --enable-metrics={{- .Values.networking.enableMetrics }}
+          - --node-local-dns-ip={{- .Values.networking.nodeLocalDnsIp }}
+          - --secure-serving={{- .Values.features.SECURE_SERVING }}
+          - --enable-ovn-ipsec={{- .Values.features.ENABLE_OVN_IPSEC }}
+          - --enable-anp={{- .Values.features.ENABLE_ANP }}
+          - --ovsdb-con-timeout={{- .Values.features.OVSDB_CON_TIMEOUT }}
+          - --ovsdb-inactivity-timeout={{- .Values.features.OVSDB_INACTIVITY_TIMEOUT }}
+          - --enable-live-migration-optimize={{- .Values.features.ENABLE_LIVE_MIGRATION_OPTIMIZE }}
+          - --enable-ovn-lb-prefer-local={{- .Values.features.ENABLE_OVN_LB_PREFER_LOCAL }}
+          - --image={{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}
+          securityContext:
+            runAsUser: {{ include "kubeovn.runAsUser" . }}
+            privileged: false
+            capabilities:
+              add:
+                - NET_BIND_SERVICE
+                - NET_RAW
+          env:
+            - name: ENABLE_SSL
+              value: "{{ .Values.networking.enableSsl }}"
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: KUBE_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: KUBE_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: OVN_DB_IPS
+              value: "{{ .Values.masterNodes| default (include "kubeovn.nodeIPs" .) }}"
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: POD_IPS
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIPs
+            - name: ENABLE_BIND_LOCAL_IP
+              value: "{{- .Values.features.ENABLE_BIND_LOCAL_IP }}"
+          volumeMounts:
+            - mountPath: /etc/localtime
+              name: localtime
+              readOnly: true
+            - mountPath: /var/log/kube-ovn
+              name: kube-ovn-log
+            # ovn-ic log directory
+            - mountPath: /var/log/ovn
+              name: ovn-log
+            - mountPath: /var/run/tls
+              name: kube-ovn-tls
+          readinessProbe:
+            httpGet:
+              port: 10660
+              path: /readyz
+              scheme: '{{ ternary "HTTPS" "HTTP" .Values.features.SECURE_SERVING }}'
+            periodSeconds: 3
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              port: 10660
+              path: /readyz
+              scheme: '{{ ternary "HTTPS" "HTTP" .Values.features.SECURE_SERVING }}'
+            initialDelaySeconds: 300
+            periodSeconds: 7
+            failureThreshold: 5
+            timeoutSeconds: 5
+          {{- with .Values.controller.resources }}
+          resources:
+            {{- toYaml . | trim | nindent 12 }}
+          {{- end }}
+      nodeSelector:
+        kubernetes.io/os: "linux"
+      volumes:
+        - name: localtime
+          hostPath:
+            path: /etc/localtime
+        - name: kube-ovn-log
+          hostPath:
+            path: {{ .Values.logging.directory }}/kube-ovn
+        - name: ovn-log
+          hostPath:
+            path: {{ .Values.logging.directory }}/ovn
+        - name: kube-ovn-tls
+          secret:
+            optional: true
+            secretName: kube-ovn-tls
+

@@ -1,0 +1,488 @@
+global:
+  registry:
+    address: docker.io/kubeovn
+    imagePullSecrets: []
+  images:
+    kubeovn:
+      repository: kube-ovn
+      dpdkRepository: kube-ovn-dpdk
+      vpcRepository: vpc-nat-gateway
+      tag: v1.14.0
+      support_arm: true
+      thirdparty: true
+
+image:
+  pullPolicy: IfNotPresent
+
+nameOverride: ""
+fullnameOverride: ""
+
+# -- Namespace in which the CNI is deployed
+namespace: kube-system
+
+# -- General configuration of the network created by Kube-OVN
+networking:
+  # -- Protocol(s) used by Kube-OVN to allocate IPs to pods and services
+  # Can be either IPv4, IPv6 or Dual
+  stack: "IPv4"
+  # -- Configuration for the default pod subnet
+  # If .networking.stack is set to IPv4, only the .v4 key is used
+  # If .networking.stack is set to IPv6, only the .v6 key is used
+  # If .networking.stack is set to Dual, both keys are used
+  pods:
+    # -- Name of the pod subnet once it gets generated in the cluster
+    subnetName: "ovn-default"
+    cidr:
+      v4: "10.16.0.0/16"
+      v6: "fd00:10:16::/112"
+    gateways:
+      v4: "10.16.0.1"
+      v6: "fd00:10:16::1"
+  # -- Configuration for the service subnet
+  # If .networking.stack is set to IPv4, only the .v4 key is used
+  # If .networking.stack is set to IPv6, only the .v6 key is used
+  # If .networking.stack is set to Dual, both keys are used
+  services:
+    cidr:
+      v4: "10.96.0.0/12"
+      v6: "fd00:10:96::/112"
+  # -- Configuration of the "join" subnet, used by the nodes to contact (join) the pods in the default subnet
+  # If .networking.stack is set to IPv4, only the .v4 key is used
+  # If .networking.stack is set to IPv6, only the .v6 key is used
+  # If .networking.stack is set to Dual, both keys are used
+  join:
+    # -- Name of the join subnet once it gets generated in the cluster
+    subnetName: "join"
+    cidr:
+      v4: "100.64.0.0/16"
+      v6: "fd00:100:64::/112"
+
+  # -- Name of the default VPC once it is generated in the cluster
+  # Pods in the default subnet live in this VPC
+  defaultVpcName: "ovn-cluster"
+  # -- Deploy the CNI with SSL encryption in between components
+  enableSsl: false
+  # -- Network type can be geneve or vlan
+  networkType: geneve
+  # -- Tunnel type can be geneve, vxlan or stt
+  tunnelType: geneve
+  # -- IPs to exclude from IPAM in the default subnet
+  excludeIps: ""
+  # -- NIC type used on pods to connect them to the CNI
+  podNicType: "veth-pair"
+  # -- Enable EIP and SNAT
+  enableEipSnat: true
+  # -- Comma-separated string of NodeLocal DNS IP addresses
+  nodeLocalDnsIp: ""
+  # -- Enable listening on the metrics endpoint for the CNI daemons
+  enableMetrics: true
+
+  # -- Configuration if we're running on top of a VLAN
+  vlan:
+    providerName: "provider"
+    interfaceName: ""
+    name: "ovn-vlan"
+    id: "100"
+
+  exchangeLinkName: false
+  enableEcmp: false
+  enableCompact: false
+
+# -- Comma-separated list of IPs for each master node
+masterNodes: ""
+# -- Label used to auto-identify masters
+masterNodesLabel: "kube-ovn/role=master"
+
+# -- Features of Kube-OVN we wish to enable/disable
+features:
+  ENABLE_LB: true
+  ENABLE_NP: true
+  ENABLE_EXTERNAL_VPC: true
+  HW_OFFLOAD: false
+  ENABLE_LB_SVC: false
+  ENABLE_KEEP_VM_IP: true
+  LS_DNAT_MOD_DL_DST: true
+  LS_CT_SKIP_DST_LPORT_IPS: true
+  CHECK_GATEWAY: true
+  LOGICAL_GATEWAY: false
+  ENABLE_BIND_LOCAL_IP: true
+  SECURE_SERVING: false
+  U2O_INTERCONNECTION: false
+  ENABLE_TPROXY: false
+  ENABLE_IC: false
+  ENABLE_NAT_GW: true
+  ENABLE_OVN_IPSEC: false
+  ENABLE_ANP: false
+  SET_VXLAN_TX_OFF: false
+  OVSDB_CON_TIMEOUT: 3
+  OVSDB_INACTIVITY_TIMEOUT: 10
+  ENABLE_LIVE_MIGRATION_OPTIMIZE: true
+  ENABLE_OVN_LB_PREFER_LOCAL: false
+
+# -- CNI binary/configuration injected on the nodes
+cni:
+  # -- Location of the CNI configuration on the node
+  configDirectory: "/etc/cni/net.d"
+  # -- Location on the node where the agent will inject the Kube-OVN binary
+  binaryDirectory: "/opt/cni/bin"
+  # -- Location of the CNI configuration inside the agent's pod
+  localConfigFile: "/kube-ovn/01-kube-ovn.conflist"
+  # -- Location on the node where the CNI will install Kube-OVN's tooling
+  toolingDirectory: "/usr/local/bin"
+  # -- Whether to mount the node's tooling directory into the pod
+  mountToolingDirectory: false
+  # -- Priority of Kube-OVN within the CNI configuration directory on the node
+  # Should be a string representing a double-digit integer
+  configPriority: "01"
+
+# -- Configuration of the validating webhook used to verify custom resources before they are pushed to Kubernetes.
+# Make sure cert-manager is installed for the generation of certificates for the webhook
+# See https://kubeovn.github.io/docs/stable/en/guide/webhook/
+validatingWebhook:
+  # -- Enable the deployment of the validating webhook
+  enabled: false
+  # -- Annotations to be added to all top-level kube-ovn-webhook objects (resources under templates/webhook)
+  annotations: {}
+  # -- Labels to be added to all top-level kube-ovn-webhook objects (resources under templates/webhook)
+  labels: {}
+  # -- Annotations to be added to kube-ovn-webhook pods
+  podAnnotations: {}
+  # -- Labels to be added to kube-ovn-webhook pods
+  podLabels: {}
+
+# -- Configuration for the NAT gateways
+natGw:
+  # -- Prefix appended to the name of the NAT gateways when generating the Pods
+  # If this value is changed after NAT GWs have been provisioned, every NAT gateway will need to be
+  # manually destroyed and recreated
+  namePrefix: "vpc-nat-gw"
+  # -- Configuration of the BGP sidecar for when a NAT gateway is running in BGP mode
+  bgpSpeaker:
+    # -- Image used by the NAT gateway sidecar
+    image:
+      repository: docker.io/kubeovn/kube-ovn
+      tag: v1.14.0
+      pullPolicy: IfNotPresent
+    # -- Network attachment definition used to reach the API server when running on BGP mode
+    # By default, equals the value set at ".apiNad.provider", you will need to set ".apiNad.enabled" to true
+    # See https://kubeovn.github.io/docs/stable/en/advance/with-bgp/
+    apiNadProvider: "{{ .Values.apiNad.name }}.{{ .Values.namespace }}.ovn"
+
+# -- API NetworkAttachmentDefinition to give some pods (CoreDNS, NAT GW) in custom VPCs access to the K8S API
+# This requires Multus to be installed
+apiNad:
+  # -- Enable the creation of the API NAD
+  enabled: false
+  # -- Name of the NAD
+  name: ovn-kubernetes-api
+  # -- Name of the provider, must be in the form "nadName.nadNamespace.ovn"
+  provider: "{{ .Values.apiNad.name }}.{{ .Values.namespace }}.ovn"
+  # -- Subnet associated with the NAD, it will have full access to the API server
+  subnet:
+    # -- Name of the subnet
+    name: ovn-kubernetes-api
+    # -- Protocol for the API subnet
+    protocol: Dual
+    # -- CIDR block used by the API subnet
+    cidrBlock: 100.100.0.0/16,fd00:100:100::/112
+
+# -- Configuration for ovs-ovn, the Open vSwitch/Open Virtual Network daemons
+ovsOvn:
+  # -- Annotations to be added to all top-level ovs-ovn objects (resources under templates/ovs-ovn)
+  annotations: {}
+  # -- Labels to be added to all top-level ovs-ovn objects (resources under templates/ovs-ovn)
+  labels: {}
+  # -- Annotations to be added to ovs-ovn pods
+  podAnnotations: {}
+  # -- Labels to be added to ovs-ovn pods
+  podLabels: {}
+
+  # -- ovs-ovn resource limits & requests, overridden if DPDK is enabled
+  # ref: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+  resources:
+    requests:
+      cpu: "200m"
+      memory: "200Mi"
+    limits:
+      cpu: "2"
+      memory: "1000Mi"
+
+  # -- Disable auto-loading of kernel modules by OVS
+  # If this is disabled, you will have to enable the Open vSwitch kernel module yourself
+  disableModulesManagement: false
+
+  # -- Directory on the node where Open vSwitch (OVS) lives
+  ovsDirectory: "/etc/origin/openvswitch"
+  # -- Directory on the node where Open Virtual Network (OVN) lives
+  ovnDirectory: "/etc/origin/ovn"
+
+  ovnRemoteProbeInterval: 10000
+  ovnRemoteOpenflowInterval: 180
+  probeInterval: 180000
+
+  # -- DPDK support for OVS
+  # ref: https://kubeovn.github.io/docs/v1.12.x/en/advance/dpdk/
+  dpdk:
+    # -- Enables DPDK support on OVS
+    enabled: false
+    # -- Version of the DPDK image
+    version: "19.11"
+
+    # -- ovs-ovn resource limits & requests when DPDK is enabled
+    # ref: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+    resources:
+      requests:
+        cpu: "1000m"
+        memory: "200Mi"
+      limits:
+        hugepages-1Gi: 1Gi
+        cpu: "1000m"
+        memory: "1000Mi"
+
+  # -- DPDK-hybrid support for OVS
+  # ref: https://kubeovn.github.io/docs/v1.12.x/en/advance/dpdk/
+  dpdkHybrid:
+    # -- Enables DPDK-hybrid support on OVS
+    enabled: false
+    # -- ovs-ovn resource limits & requests when DPDK-hybrid is enabled
+    # ref: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+    resources:
+      requests:
+        cpu: "200m"
+        memory: "200Mi"
+      limits:
+        hugepages-2Mi: 1Gi
+        cpu: "2"
+        memory: "1000Mi"
+
+# -- Configuration for kube-ovn-speaker, the BGP speaker announcing routes to the external world
+speaker:
+  # -- Enable the kube-ovn-speaker
+  enabled: false
+  # -- Annotations to be added to all top-level kube-ovn-speaker objects (resources under templates/speaker)
+  annotations: {}
+  # -- Labels to be added to all top-level kube-ovn-speaker objects (resources under templates/speaker)
+  labels: {}
+  # -- Annotations to be added to kube-ovn-speaker pods
+  podAnnotations: {}
+  # -- Labels to be added to kube-ovn-speaker pods
+  podLabels: {}
+
+  # -- kube-ovn-speaker resource limits & requests
+  # ref: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "300Mi"
+    limits: {}
+
+  # -- Node selector to restrict the deployment of the speaker to specific nodes
+  nodeSelector: {}
+  #  kubernetes.io/os: "linux"
+  #  ovn.kubernetes.io/bgp: "true"
+
+  # Args passed to the kube-ovn-speaker pod
+  args: []
+  #  - --neighbor-address=10.32.32.1
+  #  - --neighbor-as=65030
+  #  - --cluster-as=65000
+
+# -- Configuration for kube-ovn-pinger, the agent monitoring and returning metrics for OVS/external connectivity
+pinger:
+  # -- Annotations to be added to all top-level kube-ovn-pinger objects (resources under templates/pinger)
+  annotations: {}
+  # -- Labels to be added to all top-level kube-ovn-pinger objects (resources under templates/pinger)
+  labels: {}
+  # -- Annotations to be added to kube-ovn-pinger pods
+  podAnnotations: {}
+  # -- Labels to be added to kube-ovn-pinger pods
+  podLabels: {}
+
+  # -- kube-ovn-pinger resource limits & requests
+  # ref: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "100Mi"
+    limits:
+      cpu: "200m"
+      memory: "400Mi"
+
+  # -- kube-ovn-pinger metrics configuration
+  metrics:
+    # -- Configure the port on which the kube-ovn-monitor service will serve metrics
+    port: 8080
+
+  # -- Remote targets used by the pinger daemon to determine if the CNI works and has external connectivity
+  targets:
+    # -- Raw IPv4/6 on which to issue pings
+    externalAddresses:
+      v4: "1.1.1.1"
+      v6: "2606:4700:4700::1111"
+    # -- Domains to resolve and to ping
+    # Make sure the v6 domain resolves both A and AAAA records, while the v4 only resolves A records
+    externalDomain:
+      v4: "kube-ovn.io."
+      v6: "google.com."
+
+# -- Configuration for kube-ovn-monitor, the agent monitoring and returning metrics for the northbound/southbound DBs and northd
+monitor:
+  # -- Annotations to be added to all top-level kube-ovn-monitor objects (resources under templates/monitor)
+  annotations: {}
+  # -- Labels to be added to all top-level kube-ovn-monitor objects (resources under templates/monitor)
+  labels: {}
+  # -- Annotations to be added to kube-ovn-monitor pods
+  podAnnotations: {}
+  # -- Labels to be added to kube-ovn-monitor pods
+  podLabels: {}
+
+  # -- kube-ovn-monitor resource limits & requests
+  # ref: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+  resources:
+    requests:
+      cpu: "200m"
+      memory: "200Mi"
+    limits:
+      cpu: "200m"
+      memory: "200Mi"
+
+  # -- kube-ovn-monitor metrics configuration
+  metrics:
+    # -- Configure the port on which the kube-ovn-monitor service will serve metrics
+    port: 10661
+
+# -- Configuration for kube-ovn-controller, the controller responsible for syncing K8s with OVN
+controller:
+  # -- Annotations to be added to all top-level kube-ovn-controller objects (resources under templates/controller)
+  annotations: {}
+  # -- Labels to be added to all top-level kube-ovn-controller objects (resources under templates/controller)
+  labels: {}
+  # -- Annotations to be added to kube-ovn-controller pods
+  podAnnotations: {}
+  # -- Labels to be added to kube-ovn-controller pods
+  podLabels: {}
+
+  # -- kube-ovn-controller resource limits & requests
+  # ref: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+  resources:
+    requests:
+      cpu: "200m"
+      memory: "200Mi"
+    limits:
+      cpu: "1000m"
+      memory: "1Gi"
+
+  # -- Controller metrics configuration
+  metrics:
+    # -- Configure the port on which the controller service will serve metrics
+    port: 10660
+
+# -- Configuration for ovn-central, the daemon containing the northbound/southbound DBs and northd
+central:
+  # -- Annotations to be added to all top-level ovn-central objects (resources under templates/central)
+  annotations: {}
+  # -- Labels to be added to all top-level ovn-central objects (resources under templates/central)
+  labels: {}
+  # -- Annotations to be added to ovn-central pods
+  podAnnotations: {}
+  # -- Labels to be added to ovn-central pods
+  podLabels: {}
+
+  # -- ovn-central resource limits & requests
+  # ref: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+  resources:
+    requests:
+      cpu: "300m"
+      memory: "200Mi"
+    limits:
+      cpu: "3"
+      memory: "4Gi"
+
+  ovnNorthdProbeInterval: 5000
+  ovnNorthdNThreads: 1
+  ovnLeaderProbeInterval: 5
+
+# -- Configuration for kube-ovn-cni, the agent responsible for handling CNI requests from the CRI
+agent:
+  # -- Annotations to be added to all top-level agent objects (resources under templates/agent)
+  annotations: {}
+  # -- Labels to be added to all top-level agent objects (resources under templates/agent)
+  labels: {}
+  # -- Annotations to be added to the agent pods (kube-ovn-cni)
+  podAnnotations: {}
+  # -- Labels to be added to the agent pods (kube-ovn-cni)
+  podLabels: {}
+
+  # -- Agent daemon resource limits & requests
+  # ref: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "100Mi"
+    limits:
+      cpu: "1000m"
+      memory: "1Gi"
+
+  # -- Agent metrics configuration
+  metrics:
+    # -- Configure the port on which the agent service will serve metrics
+    port: 10665
+
+  # -- Mirroring of the traffic for debug or analysis
+  # https://kubeovn.github.io/docs/stable/en/guide/mirror/
+  mirroring:
+    # -- Enable mirroring of the traffic
+    enabled: false
+    # -- Interface on which to send the mirrored traffic
+    interface: mirror0
+
+  interface: ""
+  dpdkTunnelInterface: "br-phy"
+
+# -- Kubelet configuration
+kubelet:
+  # -- Directory in which the kubelet operates
+  directory: "/var/lib/kubelet"
+
+# -- Logging configuration for all the daemons
+logging:
+  # -- Directory in which to write the logs
+  directory: "/var/log"
+
+# -- Performance tuning parameters
+performance:
+  gcInterval: 360
+  inspectInterval: 20
+  ovsVsctlConcurrency: 100
+
+# -- Array of extra K8s manifests to deploy
+## Note: Supports use of custom Helm templates (Go templating)
+extraObjects: []
+# - apiVersion: v1
+#   kind: ConfigMap
+#   metadata:
+#     name: cilium-chaining
+#   data:
+#     cni-config: |-
+#       {
+#         "name": "generic-veth",
+#         "cniVersion": "0.3.1",
+#         "plugins": [
+#           {
+#             "type": "kube-ovn",
+#             "server_socket": "/run/openvswitch/kube-ovn-daemon.sock",
+#             "ipam": {
+#               "type": "kube-ovn",
+#               "server_socket": "/run/openvswitch/kube-ovn-daemon.sock"
+#             }
+#           },
+#           {
+#             "type": "portmap",
+#             "snat": true,
+#             "capabilities": {"portMappings": true}
+#           },
+#           {
+#             "type": "cilium-cni"
+#           }
+#         ]
+#       }

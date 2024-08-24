@@ -1,0 +1,23 @@
+kind: Service
+apiVersion: v1
+metadata:
+  name: kube-ovn-pinger
+  namespace: {{ .Values.namespace }}
+  {{- with .Values.pinger.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.pinger.labels }}
+  labels:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  selector:
+    app.kubernetes.io/name: kube-ovn-pinger
+    app.kubernetes.io/part-of: kube-ovn
+  ports:
+    - name: metrics
+      port: {{ .Values.pinger.metrics.port }}
+  {{- if eq .Values.networking.stack "Dual" }}
+  ipFamilyPolicy: PreferDualStack
+  {{- end }}
