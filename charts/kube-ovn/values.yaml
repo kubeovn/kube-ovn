@@ -130,56 +130,215 @@ imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""
 
-# hybrid dpdk
-HYBRID_DPDK: false
-HUGEPAGE_SIZE_TYPE: hugepages-2Mi # Default 
-HUGEPAGES: 1Gi
+# -- Configuration for ovs-ovn, the Open vSwitch daemon
+ovsOvn:
+  # -- Annotations to be added to all top-level ovs-ovn objects (resources under templates/ovs-ovn)
+  annotations: {}
+  # -- Labels to be added to all top-level ovs-ovn objects (resources under templates/ovs-ovn)
+  labels: {}
+  # -- Annotations to be added to ovs-ovn pods
+  podAnnotations: {}
+  # -- Labels to be added to ovs-ovn pods
+  podLabels: {}
 
-# DPDK
-DPDK: false
-DPDK_VERSION: "19.11"
-DPDK_CPU: "1000m"                        # Default CPU configuration
-DPDK_MEMORY: "2Gi"                       # Default Memory configuration
+  # -- ovs-ovn resource limits & requests, overridden if DPDK is enabled
+  # ref: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+  resources:
+    requests:
+      cpu: "200m"
+      memory: "200Mi"
+    limits:
+      cpu: "2"
+      memory: "1000Mi"
 
-ovn-central:
-  requests:
-    cpu: "300m"
-    memory: "200Mi"
-  limits:
-    cpu: "3"
-    memory: "4Gi"
-ovs-ovn:
-  requests:
-    cpu: "200m"
-    memory: "200Mi"
-  limits:
-    cpu: "2"
-    memory: "1000Mi"
-kube-ovn-controller:
-  requests:
-    cpu: "200m"
-    memory: "200Mi"
-  limits:
-    cpu: "1000m"
-    memory: "1Gi"
-kube-ovn-cni:
-  requests:
-    cpu: "100m"
-    memory: "100Mi"
-  limits:
-    cpu: "1000m"
-    memory: "1Gi"
-kube-ovn-pinger:
-  requests:
-    cpu: "100m"
-    memory: "100Mi"
-  limits:
-    cpu: "200m"
-    memory: "400Mi"
-kube-ovn-monitor:
-  requests:
-    cpu: "200m"
-    memory: "200Mi"
-  limits:
-    cpu: "200m"
-    memory: "200Mi"
+  # -- DPDK support for OVS
+  # ref: https://kubeovn.github.io/docs/v1.12.x/en/advance/dpdk/
+  dpdk:
+    # -- Enables DPDK support on OVS
+    enabled: true
+    # -- Version of the DPDK image
+    version: "19.11"
+
+    # -- ovs-ovn resource limits & requests when DPDK is enabled
+    # ref: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+    resources:
+      requests:
+        cpu: "1000m"
+        memory: "200Mi"
+      limits:
+        hugepages-1Gi: 1Gi
+        cpu: "1000m"
+        memory: "1000Mi"
+
+  # -- DPDK-hybrid support for OVS
+  # ref: https://kubeovn.github.io/docs/v1.12.x/en/advance/dpdk/
+  dpdkHybrid:
+    # -- Enables DPDK-hybrid support on OVS
+    enabled: false
+    # -- ovs-ovn resource limits & requests when DPDK-hybrid is enabled
+    # ref: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+    resources:
+      requests:
+        cpu: "200m"
+        memory: "200Mi"
+      limits:
+        hugepages-2Mi: 1Gi
+        cpu: "2"
+        memory: "1000Mi"
+
+# -- Configuration for kube-ovn-pinger, the agent monitoring and returning metrics for OVS/external connectivity
+pinger:
+  # -- Annotations to be added to all top-level kube-ovn-pinger objects (resources under templates/pinger)
+  annotations: {}
+  # -- Labels to be added to all top-level kube-ovn-pinger objects (resources under templates/pinger)
+  labels: {}
+  # -- Annotations to be added to kube-ovn-pinger pods
+  podAnnotations: {}
+  # -- Labels to be added to kube-ovn-pinger pods
+  podLabels: {}
+
+  # -- kube-ovn-pinger resource limits & requests
+  # ref: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "100Mi"
+    limits:
+      cpu: "200m"
+      memory: "400Mi"
+
+  # -- kube-ovn-pinger metrics configuration
+  metrics:
+    # -- Configure the port on which the kube-ovn-monitor service will serve metrics
+    port: 8080
+
+# -- Configuration for kube-ovn-monitors, the agent monitoring and returning metrics for the northbound/southbound DBs and northd
+monitor:
+  # -- Annotations to be added to all top-level kube-ovn-monitors objects (resources under templates/monitors)
+  annotations: {}
+  # -- Labels to be added to all top-level kube-ovn-monitors objects (resources under templates/monitors)
+  labels: {}
+  # -- Annotations to be added to kube-ovn-monitor pods
+  podAnnotations: {}
+  # -- Labels to be added to kube-ovn-monitor pods
+  podLabels: {}
+
+  # -- kube-ovn-monitor resource limits & requests
+  # ref: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+  resources:
+    requests:
+      cpu: "200m"
+      memory: "200Mi"
+    limits:
+      cpu: "200m"
+      memory: "200Mi"
+
+  # -- kube-ovn-monitor metrics configuration
+  metrics:
+    # -- Configure the port on which the kube-ovn-monitor service will serve metrics
+    port: 10661
+
+# -- Configuration for kube-ovn-controller, the controller responsible for syncing K8s with OVN
+controller:
+  # -- Annotations to be added to all top-level kube-ovn-controller objects (resources under templates/controller)
+  annotations: {}
+  # -- Labels to be added to all top-level kube-ovn-controller objects (resources under templates/controller)
+  labels: {}
+  # -- Annotations to be added to kube-ovn-controller pods
+  podAnnotations: {}
+  # -- Labels to be added to kube-ovn-controller pods
+  podLabels: {}
+
+  # -- kube-ovn-controller resource limits & requests
+  # ref: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+  resources:
+    requests:
+      cpu: "200m"
+      memory: "200Mi"
+    limits:
+      cpu: "1000m"
+      memory: "1Gi"
+
+  # -- Controller metrics configuration
+  metrics:
+    # -- Configure the port on which the controller service will serve metrics
+    port: 10660
+
+# -- Configuration for ovn-central, the daemon containing the northbound/southbound DBs and northd
+central:
+  # -- Annotations to be added to all top-level ovn-central objects (resources under templates/central)
+  annotations: {}
+  # -- Labels to be added to all top-level ovn-central objects (resources under templates/central)
+  labels: {}
+  # -- Annotations to be added to ovn-central pods
+  podAnnotations: {}
+  # -- Labels to be added to ovn-central pods
+  podLabels: {}
+
+  # -- ovn-central resource limits & requests
+  # ref: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+  resources:
+    requests:
+      cpu: "300m"
+      memory: "200Mi"
+    limits:
+      cpu: "3"
+      memory: "4Gi"
+
+# -- Configuration for kube-ovn-cni, the agent responsible for handling CNI requests from the CRI
+agent:
+  # -- Annotations to be added to all top-level agent objects (resources under templates/agent)
+  annotations: {}
+  # -- Labels to be added to all top-level agent objects (resources under templates/agent)
+  labels: {}
+  # -- Annotations to be added to the agent pods (kube-ovn-cni)
+  podAnnotations: {}
+  # -- Labels to be added to the agent pods (kube-ovn-cni)
+  podLabels: {}
+
+  # -- Agent daemon resource limits & requests
+  # ref: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "100Mi"
+    limits:
+      cpu: "1000m"
+      memory: "1Gi"
+
+  # -- Agent metrics configuration
+  metrics:
+    # -- Configure the port on which the agent service will serve metrics
+    port: 10665
+
+# -- Array of extra K8s manifests to deploy
+## Note: Supports use of custom Helm templates
+extraObjects: []
+# - apiVersion: v1
+#   kind: ConfigMap
+#   metadata:
+#     name: cni-config
+#   data:
+#     cni-config: |-
+#       {
+#         "name": "generic-veth",
+#         "cniVersion": "0.3.1",
+#         "plugins": [
+#           {
+#             "type": "kube-ovn",
+#             "server_socket": "/run/openvswitch/kube-ovn-daemon.sock",
+#             "ipam": {
+#               "type": "kube-ovn",
+#               "server_socket": "/run/openvswitch/kube-ovn-daemon.sock"
+#             }
+#           },
+#           {
+#             "type": "portmap",
+#             "snat": true,
+#             "capabilities": {"portMappings": true}
+#           },
+#           {
+#             "type": "cilium-cni"
+#           }
+#         ]
+#       }

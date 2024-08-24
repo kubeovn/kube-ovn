@@ -3,14 +3,19 @@ apiVersion: apps/v1
 metadata:
   name: ovs-ovn
   namespace: {{ .Values.namespace }}
+  {{- with .Values.ovsOvn.annotations }}
   annotations:
-    kubernetes.io/description: |
-      This daemon set launches the openvswitch daemon.
-    chart-version: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.ovsOvn.labels }}
+  labels:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 spec:
   selector:
     matchLabels:
-      app: ovs
+      app.kubernetes.io/name: kube-ovn-ovs
+      app.kubernetes.io/part-of: kube-ovn
   updateStrategy:
     type: {{ include "kubeovn.ovs-ovn.updateStrategy" . }}
     rollingUpdate:
@@ -18,12 +23,16 @@ spec:
       maxUnavailable: 0
   template:
     metadata:
-      labels:
-        app: ovs
-        component: network
-        type: infra
+      {{- with .Values.ovsOvn.podAnnotations }}
       annotations:
-        chart-version: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        app.kubernetes.io/name: kube-ovn-ovs
+        app.kubernetes.io/part-of: kube-ovn
+        {{- with .Values.ovsOvn.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
     spec:
       tolerations:
         - effect: NoSchedule
@@ -38,8 +47,8 @@ spec:
       hostPID: true
       initContainers:
         - name: hostpath-init
-          {{- if .Values.DPDK }}
-          image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.dpdkRepository }}:{{ .Values.DPDK_VERSION }}-{{ .Values.global.images.kubeovn.tag }}
+          {{- if .Values.ovsOvn.dpdk.enabled }}
+          image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.dpdkRepository }}:{{ .Values.ovsOvn.dpdk.version }}-{{ .Values.global.images.kubeovn.tag }}
           {{- else }}
           image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}
           {{- end }}
@@ -78,13 +87,13 @@ spec:
               name: host-log-ovs
       containers:
         - name: openvswitch
-          {{- if .Values.DPDK }}
-          image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.dpdkRepository }}:{{ .Values.DPDK_VERSION }}-{{ .Values.global.images.kubeovn.tag }}
+          {{- if .Values.ovsOvn.dpdk.enabled }}
+          image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.dpdkRepository }}:{{ .Values.ovsOvn.dpdk.version }}-{{ .Values.global.images.kubeovn.tag }}
           {{- else }}
           image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}
           {{- end }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          {{- if .Values.DPDK }}
+          {{- if .Values.ovsOvn.dpdk.enabled }}
           command: ["/kube-ovn/start-ovs-dpdk.sh"]
           {{- else }}
           command: ["/kube-ovn/start-ovs.sh"]
@@ -154,7 +163,7 @@ spec:
             - mountPath: /var/run/containerd
               name: cruntime
               readOnly: true
-            {{- if .Values.DPDK }}
+            {{- if .Values.ovsOvn.dpdk.enabled }}
             - mountPath: /opt/ovs-config
               name: host-config-ovs
             - mountPath: /dev/hugepages
@@ -162,7 +171,7 @@ spec:
             {{- end }}
           readinessProbe:
             exec:
-              {{- if .Values.DPDK }}
+              {{- if .Values.ovsOvn.dpdk.enabled }}
               command:
                 - bash
                 - /kube-ovn/ovs-dpdk-healthcheck.sh
@@ -176,7 +185,7 @@ spec:
             timeoutSeconds: 45
           livenessProbe:
             exec:
-              {{- if .Values.DPDK }}
+              {{- if .Values.ovsOvn.dpdk.enabled }}
               command:
                 - bash
                 - /kube-ovn/ovs-dpdk-healthcheck.sh
@@ -189,24 +198,15 @@ spec:
             periodSeconds: 5
             failureThreshold: 5
             timeoutSeconds: 45
+          {{- if and .Values.ovsOvn.dpdk.enabled .Values.ovsOvn.resources }}
           resources:
-            requests:
-              {{- if .Values.DPDK }}
-              cpu: {{ .Values.DPDK_CPU }}
-              memory: {{ .Values.DPDK_MEMORY }}
-              {{- else }}
-              cpu: {{ index .Values "ovs-ovn" "requests" "cpu" }}
-              memory: {{ index .Values "ovs-ovn" "requests" "memory" }}
-              {{- end }}
-            limits:
-              {{- if .Values.DPDK }}
-              cpu: {{ .Values.DPDK_CPU }}
-              memory: {{ .Values.DPDK_MEMORY }}
-              hugepages-1Gi: 1Gi
-              {{- else }}
-              cpu: {{ index .Values "ovs-ovn" "limits" "cpu" }}
-              memory: {{ index .Values "ovs-ovn" "limits" "memory" }}
-              {{- end }}
+            {{- toYaml .Values.ovsOvn.dpdk.resources | trim | nindent 12 }}
+          {{- else }}
+          {{- with .Values.ovsOvn.resources }}
+          resources:
+            {{- toYaml . | trim | nindent 12 }}
+          {{- end }}
+          {{- end }}
       nodeSelector:
         kubernetes.io/os: "linux"
       volumes:
@@ -240,7 +240,7 @@ spec:
         - hostPath:
             path: /var/run/containerd
           name: cruntime
-        {{- if .Values.DPDK }}
+        {{- if .Values.ovsOvn.dpdk.enabled }}
         - name: host-config-ovs
           hostPath:
             path: /opt/ovs-config
