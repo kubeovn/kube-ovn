@@ -1,21 +1,33 @@
-kind: DaemonSet
 apiVersion: apps/v1
+kind: DaemonSet
 metadata:
   name: kube-ovn-cni
   namespace: {{ .Values.namespace }}
+  {{- with .Values.agent.annotations }}
   annotations:
-    kubernetes.io/description: |
-      This daemon set launches the kube-ovn cni daemon.
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.agent.labels }}
+  labels:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 spec:
   selector:
     matchLabels:
-      app: kube-ovn-cni
+      app.kubernetes.io/name: kube-ovn-cni
+      app.kubernetes.io/part-of: kube-ovn
   template:
     metadata:
+      {{- with .Values.agent.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       labels:
-        app: kube-ovn-cni
-        component: network
-        type: infra
+        app.kubernetes.io/name: kube-ovn-cni
+        app.kubernetes.io/part-of: kube-ovn
+        {{- with .Values.agent.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
     spec:
       tolerations:
         - effect: NoSchedule
@@ -216,13 +228,10 @@ spec:
               - --port=10665
               - --tls={{- .Values.func.SECURE_SERVING }}
           timeoutSeconds: 5
+        {{- with .Values.agent.resources }}
         resources:
-          requests:
-            cpu: {{ index .Values "kube-ovn-cni" "requests" "cpu" }}
-            memory: {{ index .Values "kube-ovn-cni" "requests" "memory" }}
-          limits:
-            cpu: {{ index .Values "kube-ovn-cni" "limits" "cpu" }}
-            memory: {{ index .Values "kube-ovn-cni" "limits" "memory" }}
+          {{- toYaml . | trim | nindent 10 }}
+        {{- end }}
       nodeSelector:
         kubernetes.io/os: "linux"
       volumes:
