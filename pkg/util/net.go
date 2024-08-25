@@ -100,16 +100,8 @@ func FirstIP(subnet string) (string, error) {
 		return "", fmt.Errorf("%s is not a valid cidr", subnet)
 	}
 	// Handle ptp network case specially
-	prefixSize, _ := cidr.Mask.Size()
-	switch CheckProtocol(subnet) {
-	case kubeovnv1.ProtocolIPv6:
-		if prefixSize == 127 {
-			return cidr.IP.String(), nil
-		}
-	default:
-		if prefixSize == 31 {
-			return cidr.IP.String(), nil
-		}
+	if ones, bits := cidr.Mask.Size(); ones + 1 == bits {
+		return cidr.IP.String(), nil
 	}
 	ipInt := IP2BigInt(cidr.IP.String())
 	return BigInt2Ip(ipInt.Add(ipInt, big.NewInt(1))), nil
