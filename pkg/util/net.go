@@ -100,7 +100,7 @@ func FirstIP(subnet string) (string, error) {
 		return "", fmt.Errorf("%s is not a valid cidr", subnet)
 	}
 	// Handle ptp network case specially
-	if ones, bits := cidr.Mask.Size(); ones + 1 == bits {
+	if ones, bits := cidr.Mask.Size(); ones+1 == bits {
 		return cidr.IP.String(), nil
 	}
 	ipInt := IP2BigInt(cidr.IP.String())
