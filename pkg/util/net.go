@@ -74,21 +74,12 @@ func SubnetNumber(subnet string) string {
 
 func SubnetBroadcast(subnet string) string {
 	_, cidr, _ := net.ParseCIDR(subnet)
-	var length uint
-	maskLength, _ := cidr.Mask.Size()
-	if CheckProtocol(subnet) == kubeovnv1.ProtocolIPv4 {
-		if maskLength == 31 {
-			return ""
-		}
-		length = 32
-	} else {
-		if maskLength == 127 {
-			return ""
-		}
-		length = 128
+	maskLength, length := cidr.Mask.Size()
+	if maskLength+1 == length {
+		return ""
 	}
 	ipInt := IP2BigInt(cidr.IP.String())
-	size := big.NewInt(0).Lsh(big.NewInt(1), length-uint(maskLength))
+	size := big.NewInt(0).Lsh(big.NewInt(1), uint(length-maskLength))
 	size = big.NewInt(0).Sub(size, big.NewInt(1))
 	return BigInt2Ip(ipInt.Add(ipInt, size))
 }
@@ -113,7 +104,7 @@ func LastIP(subnet string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("%s is not a valid cidr", subnet)
 	}
-	var length uint
+	var length int
 	proto := CheckProtocol(subnet)
 	if proto == kubeovnv1.ProtocolIPv4 {
 		length = 32
@@ -122,23 +113,15 @@ func LastIP(subnet string) (string, error) {
 	}
 	maskLength, _ := cidr.Mask.Size()
 	ipInt := IP2BigInt(cidr.IP.String())
-	size := getCIDRSize(length, maskLength, proto)
+	size := getCIDRSize(length, maskLength)
 	return BigInt2Ip(ipInt.Add(ipInt, size)), nil
 }
 
-func getCIDRSize(length uint, maskLength int, proto string) *big.Int {
-	size := big.NewInt(0).Lsh(big.NewInt(1), length-uint(maskLength))
-	switch proto {
-	case kubeovnv1.ProtocolIPv6:
-		if maskLength == 127 {
-			return big.NewInt(0).Sub(size, big.NewInt(1))
-		}
-	default:
-		if maskLength == 31 {
-			return big.NewInt(0).Sub(size, big.NewInt(1))
-		}
+func getCIDRSize(length int, maskLength int) *big.Int {
+	size := big.NewInt(0).Lsh(big.NewInt(1), uint(length-maskLength))
+	if maskLength+1 == length {
+		return big.NewInt(0).Sub(size, big.NewInt(1))
 	}
-
 	return big.NewInt(0).Sub(size, big.NewInt(2))
 }
 
