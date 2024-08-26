@@ -117,7 +117,7 @@ func LastIP(subnet string) (string, error) {
 	return BigInt2Ip(ipInt.Add(ipInt, size)), nil
 }
 
-func getCIDRSize(length int, maskLength int) *big.Int {
+func getCIDRSize(length, maskLength int) *big.Int {
 	size := big.NewInt(0).Lsh(big.NewInt(1), uint(length-maskLength))
 	if maskLength+1 == length {
 		return big.NewInt(0).Sub(size, big.NewInt(1))
