@@ -65,31 +65,36 @@ func (c *Controller) InitOVN() error {
 
 func (c *Controller) InitDefaultVpc() error {
 	cachedVpc, err := c.vpcsLister.Get(c.config.ClusterRouter)
-	if !k8serrors.IsNotFound(err) {
-		klog.Errorf("get default vpc %s failed: %v", c.config.DefaultLogicalSwitch, err)
-		return err
-	}
-
-	if k8serrors.IsNotFound(err) {
+	if err != nil {
+		if !k8serrors.IsNotFound(err) {
+			klog.Errorf("failed to get default vpc %q: %v", c.config.ClusterRouter, err)
+			return err
+		}
+		// create default vpc
 		vpc := &kubeovnv1.Vpc{
 			ObjectMeta: metav1.ObjectMeta{Name: c.config.ClusterRouter},
 		}
 		cachedVpc, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Create(context.Background(), vpc, metav1.CreateOptions{})
 		if err != nil {
-			klog.Errorf("init default vpc failed: %v", err)
+			klog.Errorf("failed to create default vpc %q: %v", c.config.ClusterRouter, err)
 			return err
 		}
 	}
 
+	// update default vpc status
 	vpc := cachedVpc.DeepCopy()
-	vpc.Status.DefaultLogicalSwitch = c.config.DefaultLogicalSwitch
-	vpc.Status.Router = c.config.ClusterRouter
-	vpc.Status.Standby = true
-	vpc.Status.Default = true
+	if !vpc.Status.Default || !vpc.Status.Standby ||
+		vpc.Status.Router != c.config.ClusterRouter ||
+		vpc.Status.DefaultLogicalSwitch != c.config.DefaultLogicalSwitch {
+		vpc.Status.Standby = true
+		vpc.Status.Default = true
+		vpc.Status.Router = c.config.ClusterRouter
+		vpc.Status.DefaultLogicalSwitch = c.config.DefaultLogicalSwitch
 
-	if _, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().UpdateStatus(context.Background(), vpc, metav1.UpdateOptions{}); err != nil {
-		klog.Errorf("init default vpc failed: %v", err)
-		return err
+		if _, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().UpdateStatus(context.Background(), vpc, metav1.UpdateOptions{}); err != nil {
+			klog.Errorf("failed to update default vpc %q: %v", c.config.ClusterRouter, err)
+			return err
+		}
 	}
 
 	return nil
@@ -146,8 +151,11 @@ func (c *Controller) initDefaultLogicalSwitch() error {
 		defaultSubnet.Spec.U2OInterconnection = c.config.DefaultU2OInterconnection
 	}
 
-	_, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Create(context.Background(), &defaultSubnet, metav1.CreateOptions{})
-	return err
+	if _, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Create(context.Background(), &defaultSubnet, metav1.CreateOptions{}); err != nil {
+		klog.Errorf("failed to create default subnet %q: %v", c.config.DefaultLogicalSwitch, err)
+		return err
+	}
+	return nil
 }
 
 // InitNodeSwitch init node switch to connect host and pod
@@ -188,9 +196,8 @@ func (c *Controller) initNodeSwitch() error {
 		},
 	}
 
-	_, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Create(context.Background(), &nodeSubnet, metav1.CreateOptions{})
-	if err != nil {
-		klog.Errorf("failed to create subnet %s: %v", c.config.NodeSwitch, err)
+	if _, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Create(context.Background(), &nodeSubnet, metav1.CreateOptions{}); err != nil {
+		klog.Errorf("failed to create node subnet %q: %v", c.config.NodeSwitch, err)
 		return err
 	}
 	return nil
@@ -275,8 +282,7 @@ func (c *Controller) initLoadBalancer() error {
 			klog.Error(err)
 			return err
 		}
-		_, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Patch(context.Background(), vpc.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status")
-		if err != nil {
+		if _, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Patch(context.Background(), vpc.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
 			klog.Error(err)
 			return err
 		}
@@ -683,7 +689,7 @@ func (c *Controller) syncVpcNatGatewayCR() error {
 	// get vpc nat gateway enable state
 	cm, err := c.configMapsLister.ConfigMaps(c.config.PodNamespace).Get(util.VpcNatGatewayConfig)
 	if err != nil && !k8serrors.IsNotFound(err) {
-		klog.Errorf("failed to get %s, %v", util.VpcNatGatewayConfig, err)
+		klog.Errorf("failed to get config map %s, %v", util.VpcNatGatewayConfig, err)
 		return err
 	}
 	if k8serrors.IsNotFound(err) || cm.Data["enable-vpc-nat-gw"] == "false" {
@@ -693,15 +699,15 @@ func (c *Controller) syncVpcNatGatewayCR() error {
 	cm, err = c.configMapsLister.ConfigMaps(c.config.PodNamespace).Get(util.VpcNatConfig)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
-			klog.Errorf("configMap of %s not set, %v", util.VpcNatConfig, err)
+			klog.Errorf("should set config map for vpc-nat-gateway %s, %v", util.VpcNatConfig, err)
 			return err
 		}
-		klog.Errorf("failed to get %s, %v", util.VpcNatConfig, err)
+		klog.Errorf("failed to get config map %s, %v", util.VpcNatConfig, err)
 		return err
 	}
 
 	if cm.Data["image"] == "" {
-		err = errors.New("image of vpc-nat-gateway not set")
+		err = errors.New("should set image for vpc-nat-gateway pod")
 		klog.Error(err)
 		return err
 	}
