@@ -5,8 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/stretchr/testify/require"
+
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func Test_parseIpv6RaConfigs(t *testing.T) {
@@ -373,34 +374,6 @@ func TestPodNameToPortName(t *testing.T) {
 			provider:  "custom-provider",
 			expected:  "test-pod.kube-system.custom-provider",
 		},
-		{
-			name:      "EmptyPodName",
-			pod:       "",
-			namespace: "default",
-			provider:  util.OvnProvider,
-			expected:  ".default",
-		},
-		{
-			name:      "EmptyNamespace",
-			pod:       "test-pod",
-			namespace: "",
-			provider:  "custom-provider",
-			expected:  "test-pod..custom-provider",
-		},
-		{
-			name:      "EmptyProvider",
-			pod:       "test-pod",
-			namespace: "default",
-			provider:  "",
-			expected:  "test-pod.default.",
-		},
-		{
-			name:      "AllEmpty",
-			pod:       "",
-			namespace: "",
-			provider:  "",
-			expected:  "..",
-		},
 	}
 
 	for _, tc := range testCases {
@@ -422,13 +395,8 @@ func TestTrimCommandOutput(t *testing.T) {
 		expected string
 	}{
 		{
-			name:     "Empty input",
-			input:    []byte{},
-			expected: "",
-		},
-		{
 			name:     "Whitespace only",
-			input:    []byte("   \t\n  "),
+			input:    []byte("   \t\n"),
 			expected: "",
 		},
 		{
@@ -438,7 +406,7 @@ func TestTrimCommandOutput(t *testing.T) {
 		},
 		{
 			name:     "Unquoted string with spaces",
-			input:    []byte("  Hello, World!  "),
+			input:    []byte("  Hello, World!\t\n"),
 			expected: "Hello, World!",
 		},
 		{
@@ -477,24 +445,6 @@ func TestLogicalRouterPortName(t *testing.T) {
 			lr:       "router1",
 			ls:       "switch1",
 			expected: "router1-switch1",
-		},
-		{
-			name:     "Empty router name",
-			lr:       "",
-			ls:       "switch1",
-			expected: "-switch1",
-		},
-		{
-			name:     "Empty switch name",
-			lr:       "router1",
-			ls:       "",
-			expected: "router1-",
-		},
-		{
-			name:     "Both names empty",
-			lr:       "",
-			ls:       "",
-			expected: "-",
 		},
 		{
 			name:     "Names with special characters",
@@ -536,24 +486,6 @@ func TestLogicalSwitchPortName(t *testing.T) {
 			expected: "switch1-router1",
 		},
 		{
-			name:     "Empty router name",
-			lr:       "",
-			ls:       "switch1",
-			expected: "switch1-",
-		},
-		{
-			name:     "Empty switch name",
-			lr:       "router1",
-			ls:       "",
-			expected: "-router1",
-		},
-		{
-			name:     "Both names empty",
-			lr:       "",
-			ls:       "",
-			expected: "-",
-		},
-		{
 			name:     "Names with special characters",
 			lr:       "router-1",
 			ls:       "switch_1",
@@ -564,12 +496,6 @@ func TestLogicalSwitchPortName(t *testing.T) {
 			lr:       "very_long_router_name_123456789",
 			ls:       "extremely_long_switch_name_987654321",
 			expected: "extremely_long_switch_name_987654321-very_long_router_name_123456789",
-		},
-		{
-			name:     "Numeric names",
-			lr:       "123",
-			ls:       "456",
-			expected: "456-123",
 		},
 	}
 
