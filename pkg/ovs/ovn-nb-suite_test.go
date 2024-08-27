@@ -469,6 +469,10 @@ func (suite *OvnClientTestSuite) Test_addressSetFilter() {
 	suite.testAddressSetFilter()
 }
 
+func (suite *OvnClientTestSuite) Test_UpdateAddressSet() {
+	suite.testUpdateAddressSet()
+}
+
 /* acl unit test */
 func (suite *OvnClientTestSuite) Test_testUpdateIngressAclOps() {
 	suite.testUpdateIngressACLOps()
