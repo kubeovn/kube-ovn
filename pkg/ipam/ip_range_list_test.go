@@ -874,9 +874,9 @@ func TestMergeRange(t *testing.T) {
 	require.NoError(t, err)
 	v4RangeEnd1, err := NewIP(v4EndIP1)
 	require.NoError(t, err)
-	v4MergedRange := rl.MergeRange(NewIPRange(v4RangeStart1, v4RangeEnd1))
-	require.Equal(t, v4MergedRange.Len(), 1)
-	require.Equal(t, v4MergedRange.String(), "10.0.0.50-10.0.0.100")
+	v4MergedRangeList := rl.MergeRange(NewIPRange(v4RangeStart1, v4RangeEnd1))
+	require.Equal(t, v4MergedRangeList.Len(), 1)
+	require.Equal(t, v4MergedRangeList.String(), "10.0.0.50-10.0.0.100")
 	// tail append ipv4
 	v4StartIP2 := "10.0.0.101"
 	v4EndIP2 := "10.0.0.200"
@@ -884,9 +884,9 @@ func TestMergeRange(t *testing.T) {
 	require.NoError(t, err)
 	v4RangeEnd2, err := NewIP(v4EndIP2)
 	require.NoError(t, err)
-	v4MergedRange = v4MergedRange.MergeRange(NewIPRange(v4RangeStart2, v4RangeEnd2))
-	require.Equal(t, v4MergedRange.Len(), 1)
-	require.Equal(t, v4MergedRange.String(), "10.0.0.50-10.0.0.200")
+	v4MergedRangeList = v4MergedRangeList.MergeRange(NewIPRange(v4RangeStart2, v4RangeEnd2))
+	require.Equal(t, v4MergedRangeList.Len(), 1)
+	require.Equal(t, v4MergedRangeList.String(), "10.0.0.50-10.0.0.200")
 	// head append ipv4
 	v4StartIP3 := "10.0.0.20"
 	v4EndIP3 := "10.0.0.49"
@@ -894,9 +894,9 @@ func TestMergeRange(t *testing.T) {
 	require.NoError(t, err)
 	v4RangeEnd3, err := NewIP(v4EndIP3)
 	require.NoError(t, err)
-	v4MergedRange = v4MergedRange.MergeRange(NewIPRange(v4RangeStart3, v4RangeEnd3))
-	require.Equal(t, v4MergedRange.Len(), 1)
-	require.Equal(t, v4MergedRange.String(), "10.0.0.20-10.0.0.200")
+	v4MergedRangeList = v4MergedRangeList.MergeRange(NewIPRange(v4RangeStart3, v4RangeEnd3))
+	require.Equal(t, v4MergedRangeList.Len(), 1)
+	require.Equal(t, v4MergedRangeList.String(), "10.0.0.20-10.0.0.200")
 	// ipv6
 	v6StartIP1 := "2001:db8::50"
 	v6EndIP1 := "2001:db8::100"
@@ -904,9 +904,9 @@ func TestMergeRange(t *testing.T) {
 	require.NoError(t, err)
 	v6RangeEnd1, err := NewIP(v6EndIP1)
 	require.NoError(t, err)
-	v6MergedRange := rl.MergeRange(NewIPRange(v6RangeStart1, v6RangeEnd1))
-	require.Equal(t, v6MergedRange.Len(), 1)
-	require.Equal(t, v6MergedRange.String(), "2001:db8::50-2001:db8::100")
+	v6MergedRangeList := rl.MergeRange(NewIPRange(v6RangeStart1, v6RangeEnd1))
+	require.Equal(t, v6MergedRangeList.Len(), 1)
+	require.Equal(t, v6MergedRangeList.String(), "2001:db8::50-2001:db8::100")
 	// tail append ipv6
 	v6StartIP2 := "2001:db8::101"
 	v6EndIP2 := "2001:db8::200"
@@ -914,9 +914,9 @@ func TestMergeRange(t *testing.T) {
 	require.NoError(t, err)
 	v6RangeEnd2, err := NewIP(v6EndIP2)
 	require.NoError(t, err)
-	v6MergedRange = v6MergedRange.MergeRange(NewIPRange(v6RangeStart2, v6RangeEnd2))
-	require.Equal(t, v6MergedRange.Len(), 1)
-	require.Equal(t, v6MergedRange.String(), "2001:db8::50-2001:db8::200")
+	v6MergedRangeList = v6MergedRangeList.MergeRange(NewIPRange(v6RangeStart2, v6RangeEnd2))
+	require.Equal(t, v6MergedRangeList.Len(), 1)
+	require.Equal(t, v6MergedRangeList.String(), "2001:db8::50-2001:db8::200")
 	// head append ipv6
 	v6StartIP3 := "2001:db8::20"
 	v6EndIP3 := "2001:db8::4f"
@@ -924,7 +924,55 @@ func TestMergeRange(t *testing.T) {
 	require.NoError(t, err)
 	v6RangeEnd3, err := NewIP(v6EndIP3)
 	require.NoError(t, err)
-	v6MergedRange = v6MergedRange.MergeRange(NewIPRange(v6RangeStart3, v6RangeEnd3))
-	require.Equal(t, v6MergedRange.Len(), 1)
-	require.Equal(t, v6MergedRange.String(), "2001:db8::20-2001:db8::200")
+	v6MergedRangeList = v6MergedRangeList.MergeRange(NewIPRange(v6RangeStart3, v6RangeEnd3))
+	require.Equal(t, v6MergedRangeList.Len(), 1)
+	require.Equal(t, v6MergedRangeList.String(), "2001:db8::20-2001:db8::200")
+}
+
+func TestIntersect(t *testing.T) {
+	// ipv4
+	v4StartIP1 := "10.0.0.50"
+	v4EndIP1 := "10.0.0.100"
+	v4RangeStart1, err := NewIP(v4StartIP1)
+	require.NoError(t, err)
+	v4RangeEnd1, err := NewIP(v4EndIP1)
+	require.NoError(t, err)
+	rl := NewEmptyIPRangeList()
+	v4MergedRangeList1 := rl.MergeRange(NewIPRange(v4RangeStart1, v4RangeEnd1))
+
+	v4StartIP2 := "10.0.0.50"
+	v4EndIP2 := "10.0.0.60"
+	v4RangeStart2, err := NewIP(v4StartIP2)
+	require.NoError(t, err)
+	v4RangeEnd2, err := NewIP(v4EndIP2)
+	require.NoError(t, err)
+	r2 := NewEmptyIPRangeList()
+	v4MergedRangeList2 := r2.MergeRange(NewIPRange(v4RangeStart2, v4RangeEnd2))
+	v4Intersect2 := v4MergedRangeList1.Intersect(v4MergedRangeList2)
+	require.Equal(t, v4Intersect2.Len(), 1)
+	require.Equal(t, v4Intersect2.String(), "10.0.0.50-10.0.0.60")
+
+	v4StartIP3 := "10.0.0.90"
+	v4EndIP3 := "10.0.0.100"
+	v4RangeStart3, err := NewIP(v4StartIP3)
+	require.NoError(t, err)
+	v4RangeEnd3, err := NewIP(v4EndIP3)
+	require.NoError(t, err)
+	r3 := NewEmptyIPRangeList()
+	v4MergedRangeList3 := r3.MergeRange(NewIPRange(v4RangeStart3, v4RangeEnd3))
+	v4Intersect3 := v4MergedRangeList1.Intersect(v4MergedRangeList3)
+	require.Equal(t, v4Intersect3.Len(), 1)
+	require.Equal(t, v4Intersect3.String(), "10.0.0.90-10.0.0.100")
+
+	v4StartIP4 := "10.0.0.70"
+	v4EndIP4 := "10.0.0.80"
+	v4RangeStart4, err := NewIP(v4StartIP4)
+	require.NoError(t, err)
+	v4RangeEnd4, err := NewIP(v4EndIP4)
+	require.NoError(t, err)
+	r4 := NewEmptyIPRangeList()
+	v4MergedRangeList4 := r4.MergeRange(NewIPRange(v4RangeStart4, v4RangeEnd4))
+	v4Intersect4 := v4MergedRangeList1.Intersect(v4MergedRangeList4)
+	require.Equal(t, v4Intersect4.Len(), 1)
+	require.Equal(t, v4Intersect4.String(), "10.0.0.70-10.0.0.80")
 }
