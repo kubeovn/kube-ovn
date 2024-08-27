@@ -1,8 +1,16 @@
 package ipam
 
 import (
+	"fmt"
+	"math/rand/v2"
+	"net"
+	"sort"
+	"strings"
 	"testing"
 
+	"github.com/kubeovn/kube-ovn/pkg/util"
+	"github.com/scylladb/go-set/strset"
+	"github.com/scylladb/go-set/u32set"
 	"github.com/stretchr/testify/require"
 )
 
@@ -687,4 +695,236 @@ func TestNewIPRangeList(t *testing.T) {
 	require.NoError(t, err)
 	merged := v41.Merge(v42)
 	require.True(t, merged.Equal(expected))
+}
+
+func TestNewIPRangeListFrom(t *testing.T) {
+	n := 40 + rand.IntN(20)
+	cidrList := make([]*net.IPNet, 0, n)
+	cidrSet := u32set.NewWithSize(n * 2)
+	for len(cidrList) != cap(cidrList) {
+		_, cidr, err := net.ParseCIDR(fmt.Sprintf("%s/%d", util.Uint32ToIPv4(rand.Uint32()), 16+rand.IntN(16)))
+		require.NoError(t, err)
+
+		var invalid bool
+		for _, c := range cidrList {
+			if c.Contains(cidr.IP) || cidr.Contains(c.IP) {
+				invalid = true
+				break
+			}
+		}
+		if !invalid {
+			cidrList = append(cidrList, cidr)
+			cidrSet.Add(util.IPv4ToUint32(cidr.IP))
+			bcast := make(net.IP, len(cidr.IP))
+			for i := 0; i < len(bcast); i++ {
+				bcast[i] = cidr.IP[i] | ^cidr.Mask[i]
+			}
+			cidrSet.Add(util.IPv4ToUint32(bcast))
+		}
+	}
+
+	n = 80 + rand.IntN(40)
+	set := u32set.NewWithSize(cidrSet.Size() + n)
+	for set.Size() != n {
+		v := rand.Uint32()
+		ip := net.ParseIP(util.Uint32ToIPv4(v))
+		var invalid bool
+		for _, cidr := range cidrList {
+			if cidr.Contains(ip) {
+				invalid = true
+				break
+			}
+		}
+		if !invalid {
+			set.Add(v)
+		}
+	}
+	set.Merge(cidrSet)
+
+	ints := set.List()
+	sort.Slice(ints, func(i, j int) bool { return ints[i] < ints[j] })
+
+	ips := make([]string, 0, len(cidrList)+set.Size())
+	mergedInts := make([]uint32, 0, set.Size()*2)
+	var expectedCount uint32
+	for i := 0; i < len(ints); i++ {
+		if cidrSet.Has(ints[i]) {
+			expectedCount += ints[i+1] - ints[i] + 1
+			if i != 0 && ints[i] == ints[i-1]+1 {
+				mergedInts[len(mergedInts)-1] = ints[i+1]
+			} else {
+				mergedInts = append(mergedInts, ints[i], ints[i+1])
+			}
+			i++
+			continue
+		}
+
+		start := util.Uint32ToIPv4(ints[i])
+		if cidrSet.Has(ints[i]) || (rand.Int()%2 == 0 && i+1 != len(ints) && !cidrSet.Has(ints[i+1])) {
+			if !cidrSet.Has(ints[i]) {
+				end := util.Uint32ToIPv4(ints[i+1])
+				ips = append(ips, fmt.Sprintf("%s..%s", start, end))
+			}
+			if i != 0 && ints[i] == ints[i-1]+1 {
+				mergedInts[len(mergedInts)-1] = ints[i+1]
+			} else {
+				mergedInts = append(mergedInts, ints[i], ints[i+1])
+			}
+			expectedCount += ints[i+1] - ints[i] + 1
+			i++
+		} else {
+			if rand.Int()%8 == 0 {
+				start += "/32"
+			}
+			ips = append(ips, start)
+			if i != 0 && ints[i] == ints[i-1]+1 {
+				mergedInts[len(mergedInts)-1] = ints[i]
+			} else {
+				mergedInts = append(mergedInts, ints[i], ints[i])
+			}
+			expectedCount++
+		}
+	}
+
+	for _, cidr := range cidrList {
+		ips = append(ips, cidr.String())
+	}
+
+	mergedIPs := make([]string, len(mergedInts)/2)
+	for i := 0; i < len(mergedInts)/2; i++ {
+		if mergedInts[i*2] == mergedInts[i*2+1] {
+			mergedIPs[i] = util.Uint32ToIPv4(mergedInts[i*2])
+		} else {
+			mergedIPs[i] = fmt.Sprintf("%s-%s", util.Uint32ToIPv4(mergedInts[i*2]), util.Uint32ToIPv4(mergedInts[i*2+1]))
+		}
+	}
+
+	ipList, err := NewIPRangeListFrom(strset.New(ips...).List()...)
+	require.NoError(t, err)
+	require.Equal(t, ipList.Len(), len(mergedIPs))
+	require.Equal(t, ipList.String(), strings.Join(mergedIPs, ","))
+
+	count := ipList.Count()
+	require.Equal(t, count.Int64(), int64(expectedCount))
+
+	for _, s := range mergedIPs {
+		fields := strings.Split(s, "-")
+		start, err := NewIP(fields[0])
+		require.NoError(t, err)
+		require.True(t, ipList.Contains(start))
+
+		end := start
+		if len(fields) != 1 {
+			end, err = NewIP(fields[1])
+			require.NoError(t, err)
+			require.True(t, ipList.Contains(end))
+		}
+
+		if start.String() != "0.0.0.0" {
+			require.False(t, ipList.Contains(start.Sub(1)))
+		}
+		if end.String() != "255.255.255.255" {
+			require.False(t, ipList.Contains(end.Add(1)))
+		}
+
+		if !start.Equal(end) {
+			require.True(t, ipList.Contains(start.Add(1)))
+			require.True(t, ipList.Contains(end.Sub(1)))
+		}
+	}
+}
+
+func TestRemove(t *testing.T) {
+	// ipv4
+	v4Cidr := "10.0.0.0/24"
+	_, v4IPNet, err := net.ParseCIDR(v4Cidr)
+	require.NoError(t, err)
+	v4IPRange := NewIPRangeFromCIDR(*v4IPNet)
+	require.Equal(t, v4IPRange.start.String(), "10.0.0.0")
+	require.Equal(t, v4IPRange.end.String(), "10.0.0.255")
+	v4Start, v4End := v4IPRange.Start(), v4IPRange.End()
+	removed, ok := v4IPRange.Remove(v4Start)
+	require.True(t, ok)
+	require.Equal(t, removed[0].start.String(), "10.0.0.1")
+	removed, ok = v4IPRange.Remove(v4End)
+	require.True(t, ok)
+	require.Equal(t, removed[0].end.String(), "10.0.0.254")
+	// ipv6
+	v6Cidr := "2001:db8::/120"
+	_, v6IPNet, err := net.ParseCIDR(v6Cidr)
+	require.NoError(t, err)
+	v6IPRange := NewIPRangeFromCIDR(*v6IPNet)
+	require.Equal(t, v6IPRange.start.String(), "2001:db8::")
+	require.Equal(t, v6IPRange.end.String(), "2001:db8::ff")
+	v6Start, v6End := v6IPRange.Start(), v6IPRange.End()
+	removed, ok = v6IPRange.Remove(v6Start)
+	require.True(t, ok)
+	require.Equal(t, removed[0].start.String(), "2001:db8::1")
+	removed, ok = v6IPRange.Remove(v6End)
+	require.True(t, ok)
+	require.Equal(t, removed[0].end.String(), "2001:db8::fe")
+}
+
+func TestMergeRange(t *testing.T) {
+	// ipv4
+	v4StartIP1 := "10.0.0.50"
+	v4EndIP1 := "10.0.0.100"
+	rl := NewEmptyIPRangeList()
+	v4RangeStart1, err := NewIP(v4StartIP1)
+	require.NoError(t, err)
+	v4RangeEnd1, err := NewIP(v4EndIP1)
+	require.NoError(t, err)
+	v4MergedRange := rl.MergeRange(NewIPRange(v4RangeStart1, v4RangeEnd1))
+	require.Equal(t, v4MergedRange.Len(), 1)
+	require.Equal(t, v4MergedRange.String(), "10.0.0.50-10.0.0.100")
+	// tail append ipv4
+	v4StartIP2 := "10.0.0.101"
+	v4EndIP2 := "10.0.0.200"
+	v4RangeStart2, err := NewIP(v4StartIP2)
+	require.NoError(t, err)
+	v4RangeEnd2, err := NewIP(v4EndIP2)
+	require.NoError(t, err)
+	v4MergedRange = v4MergedRange.MergeRange(NewIPRange(v4RangeStart2, v4RangeEnd2))
+	require.Equal(t, v4MergedRange.Len(), 1)
+	require.Equal(t, v4MergedRange.String(), "10.0.0.50-10.0.0.200")
+	// head append ipv4
+	v4StartIP3 := "10.0.0.20"
+	v4EndIP3 := "10.0.0.49"
+	v4RangeStart3, err := NewIP(v4StartIP3)
+	require.NoError(t, err)
+	v4RangeEnd3, err := NewIP(v4EndIP3)
+	require.NoError(t, err)
+	v4MergedRange = v4MergedRange.MergeRange(NewIPRange(v4RangeStart3, v4RangeEnd3))
+	require.Equal(t, v4MergedRange.Len(), 1)
+	require.Equal(t, v4MergedRange.String(), "10.0.0.20-10.0.0.200")
+	// ipv6
+	v6StartIP1 := "2001:db8::50"
+	v6EndIP1 := "2001:db8::100"
+	v6RangeStart1, err := NewIP(v6StartIP1)
+	require.NoError(t, err)
+	v6RangeEnd1, err := NewIP(v6EndIP1)
+	require.NoError(t, err)
+	v6MergedRange := rl.MergeRange(NewIPRange(v6RangeStart1, v6RangeEnd1))
+	require.Equal(t, v6MergedRange.Len(), 1)
+	require.Equal(t, v6MergedRange.String(), "2001:db8::50-2001:db8::100")
+	// tail append ipv6
+	v6StartIP2 := "2001:db8::101"
+	v6EndIP2 := "2001:db8::200"
+	v6RangeStart2, err := NewIP(v6StartIP2)
+	require.NoError(t, err)
+	v6RangeEnd2, err := NewIP(v6EndIP2)
+	require.NoError(t, err)
+	v6MergedRange = v6MergedRange.MergeRange(NewIPRange(v6RangeStart2, v6RangeEnd2))
+	require.Equal(t, v6MergedRange.Len(), 1)
+	require.Equal(t, v6MergedRange.String(), "2001:db8::50-2001:db8::200")
+	// head append ipv6
+	v6StartIP3 := "2001:db8::20"
+	v6EndIP3 := "2001:db8::4f"
+	v6RangeStart3, err := NewIP(v6StartIP3)
+	require.NoError(t, err)
+	v6RangeEnd3, err := NewIP(v6EndIP3)
+	require.NoError(t, err)
+	v6MergedRange = v6MergedRange.MergeRange(NewIPRange(v6RangeStart3, v6RangeEnd3))
+	require.Equal(t, v6MergedRange.Len(), 1)
+	require.Equal(t, v6MergedRange.String(), "2001:db8::20-2001:db8::200")
 }
