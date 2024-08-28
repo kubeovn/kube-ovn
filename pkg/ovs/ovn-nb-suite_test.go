@@ -562,6 +562,18 @@ func (suite *OvnClientTestSuite) Test_newAnpACLMatch() {
 	suite.testNewAnpACLMatch()
 }
 
+func (suite *OvnClientTestSuite) Test_CreateBareACL() {
+	suite.testCreateBareACL()
+}
+
+func (suite *OvnClientTestSuite) Test_UpdateAnpRuleACLOps() {
+	suite.testUpdateAnpRuleACLOps()
+}
+
+func (suite *OvnClientTestSuite) Test_UpdateACL() {
+	suite.testUpdateACL()
+}
+
 /* logical_router_policy unit test */
 func (suite *OvnClientTestSuite) Test_AddLogicalRouterPolicy() {
 	suite.testAddLogicalRouterPolicy()

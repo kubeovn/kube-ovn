@@ -360,9 +360,6 @@ func (suite *OvnClientTestSuite) testCreateNodeACL() {
 	t.Parallel()
 
 	ovnClient := suite.ovnClient
-	pgName := "test_create_node_acl_pg"
-	nodeIP := "192.168.20.3"
-	joinIP := "100.64.0.2,fd00:100:64::2"
 
 	checkACL := func(pg *ovnnb.PortGroup, direction, priority, match string, options map[string]string) {
 		acl, err := ovnClient.GetACL(pg.Name, direction, priority, match, false)
@@ -376,7 +373,7 @@ func (suite *OvnClientTestSuite) testCreateNodeACL() {
 		require.Contains(t, pg.ACLs, acl.UUID)
 	}
 
-	expect := func(pg *ovnnb.PortGroup, _ string) {
+	expect := func(pg *ovnnb.PortGroup, nodeIP, pgName string) {
 		for _, ip := range strings.Split(nodeIP, ",") {
 			protocol := util.CheckProtocol(ip)
 			ipSuffix := "ip4"
@@ -396,17 +393,41 @@ func (suite *OvnClientTestSuite) testCreateNodeACL() {
 		}
 	}
 
-	err := ovnClient.CreatePortGroup(pgName, nil)
-	require.NoError(t, err)
+	t.Run("create node ACL with single stack nodeIP and dual stack joinIP", func(t *testing.T) {
+		pgName := "test_create_node_acl_pg"
+		nodeIP := "192.168.20.3"
+		joinIP := "100.64.0.2,fd00:100:64::2"
 
-	err = ovnClient.CreateNodeACL(pgName, nodeIP, joinIP)
-	require.NoError(t, err)
+		err := ovnClient.CreatePortGroup(pgName, nil)
+		require.NoError(t, err)
 
-	pg, err := ovnClient.GetPortGroup(pgName, false)
-	require.NoError(t, err)
-	require.Len(t, pg.ACLs, 2)
+		err = ovnClient.CreateNodeACL(pgName, nodeIP, joinIP)
+		require.NoError(t, err)
 
-	expect(pg, nodeIP)
+		pg, err := ovnClient.GetPortGroup(pgName, false)
+		require.NoError(t, err)
+		require.Len(t, pg.ACLs, 2)
+
+		expect(pg, nodeIP, pgName)
+	})
+
+	t.Run("create node ACL with dual stack nodeIP and join IP", func(t *testing.T) {
+		pgName := "test-pg-overlap"
+		nodeIP := "192.168.20.4,fd00::4"
+		joinIP := "100.64.0.3,fd00:100:64::3"
+
+		err := ovnClient.CreatePortGroup(pgName, nil)
+		require.NoError(t, err)
+
+		err = ovnClient.CreateNodeACL(pgName, nodeIP, joinIP)
+		require.NoError(t, err)
+
+		pg, err := ovnClient.GetPortGroup(pgName, false)
+		require.NoError(t, err)
+		require.Len(t, pg.ACLs, 4)
+
+		expect(pg, nodeIP, pgName)
+	})
 }
 
 func (suite *OvnClientTestSuite) testCreateSgDenyAllACL() {
@@ -2144,4 +2165,90 @@ func (suite *OvnClientTestSuite) testNewAnpACLMatch() {
 			require.Equal(t, tc.expected, result)
 		})
 	}
+}
+
+func (suite *OvnClientTestSuite) testCreateBareACL() {
+	t := suite.T()
+	t.Parallel()
+
+	ovnClient := suite.ovnClient
+
+	t.Run("create bare ACL successfully", func(t *testing.T) {
+		err := ovnClient.CreateBareACL("test-parent", "from-lport", "1000", "ip4.src == 10.0.0.1", "allow")
+		require.NoError(t, err)
+	})
+
+	t.Run("create bare ACL with empty match", func(t *testing.T) {
+		err := ovnClient.CreateBareACL("test-parent", "from-lport", "1000", "", "allow")
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "new acl direction from-lport priority 1000 match")
+	})
+}
+
+func (suite *OvnClientTestSuite) testUpdateAnpRuleACLOps() {
+	t := suite.T()
+	t.Parallel()
+
+	ovnClient := suite.ovnClient
+
+	expect := func(row ovsdb.Row, action, direction, match, priority string) {
+		intPriority, err := strconv.Atoi(priority)
+		require.NoError(t, err)
+		require.Equal(t, action, row["action"])
+		require.Equal(t, direction, row["direction"])
+		require.Equal(t, match, row["match"])
+		require.Equal(t, intPriority, row["priority"])
+	}
+
+	t.Run("ingress ACL for ANP", func(t *testing.T) {
+		pgName := "test-pg-ingress"
+		asName := "test-as-ingress"
+		protocol := "tcp"
+		aclName := "test-acl"
+		priority := 1000
+		aclAction := ovnnb.ACLActionAllow
+		logACLActions := []ovnnb.ACLAction{ovnnb.ACLActionAllow}
+		rulePorts := []v1alpha1.AdminNetworkPolicyPort{}
+		isIngress := true
+		isBanp := false
+
+		err := ovnClient.CreatePortGroup(pgName, nil)
+		require.NoError(t, err)
+		ops, err := ovnClient.UpdateAnpRuleACLOps(pgName, asName, protocol, aclName, priority, aclAction, logACLActions, rulePorts, isIngress, isBanp)
+		require.NoError(t, err)
+		require.NotEmpty(t, ops)
+		expect(ops[0].Row, ovnnb.ACLActionAllow, ovnnb.ACLDirectionToLport, fmt.Sprintf("outport == @%s && ip && ip4.src == $%s", pgName, asName), "1000")
+	})
+
+	t.Run("egress ACL for BANP", func(t *testing.T) {
+		pgName := "test-pg-egress"
+		asName := "test-as-egress"
+		protocol := "udp"
+		aclName := "test-acl"
+		priority := 2000
+		aclAction := ovnnb.ACLActionDrop
+		logACLActions := []ovnnb.ACLAction{ovnnb.ACLActionDrop}
+		rulePorts := []v1alpha1.AdminNetworkPolicyPort{}
+		isIngress := false
+		isBanp := true
+
+		err := ovnClient.CreatePortGroup(pgName, nil)
+		require.NoError(t, err)
+		ops, err := ovnClient.UpdateAnpRuleACLOps(pgName, asName, protocol, aclName, priority, aclAction, logACLActions, rulePorts, isIngress, isBanp)
+		require.NoError(t, err)
+		require.NotEmpty(t, ops)
+		expect(ops[0].Row, ovnnb.ACLActionDrop, ovnnb.ACLDirectionFromLport, fmt.Sprintf("inport == @%s && ip && ip4.dst == $%s", pgName, asName), "2000")
+	})
+}
+
+func (suite *OvnClientTestSuite) testUpdateACL() {
+	t := suite.T()
+
+	ovnClient := suite.ovnClient
+
+	t.Run("update ACL with nil input", func(t *testing.T) {
+		err := ovnClient.UpdateACL(nil)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "address_set is nil")
+	})
 }
