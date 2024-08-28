@@ -121,6 +121,7 @@ func CIDRContainIP(cidrStr, ipStr string) bool {
 	if len(cidrs) == 1 {
 		for _, ip := range ips {
 			if CheckProtocol(cidrStr) != CheckProtocol(ip) {
+				klog.Errorf("ip %s and cidr %s should be the same protocol", ip, cidrStr)
 				return false
 			}
 		}
@@ -129,6 +130,7 @@ func CIDRContainIP(cidrStr, ipStr string) bool {
 	for _, cidr := range cidrs {
 		_, cidrNet, err := net.ParseCIDR(cidr)
 		if err != nil {
+			klog.Error(err)
 			return false
 		}
 
@@ -138,10 +140,12 @@ func CIDRContainIP(cidrStr, ipStr string) bool {
 			}
 			ipAddr := net.ParseIP(ip)
 			if ipAddr == nil {
+				klog.Errorf("invalid ip %s", ip)
 				return false
 			}
 
 			if !cidrNet.Contains(ipAddr) {
+				klog.Errorf("ip %s is not in cidr %s", ip, cidr)
 				return false
 			}
 		}
@@ -161,6 +165,8 @@ func CheckProtocol(address string) string {
 		if IP2.To4() != nil && IP1.To4() == nil && IP1.To16() != nil {
 			return kubeovnv1.ProtocolDual
 		}
+		err := fmt.Errorf("invalid address %s", address)
+		klog.Error(err)
 		return ""
 	}
 
@@ -172,7 +178,9 @@ func CheckProtocol(address string) string {
 		return kubeovnv1.ProtocolIPv6
 	}
 
-	// cidr formal error
+	// cidr format error
+	err := fmt.Errorf("invalid address %s", address)
+	klog.Error(err)
 	return ""
 }
 
@@ -397,6 +405,8 @@ func ExpandExcludeIPs(excludeIPs []string, cidr string) []string {
 					rv = append(rv, BigInt2Ip(s1))
 				} else if c < 0 {
 					rv = append(rv, BigInt2Ip(s1)+".."+BigInt2Ip(e1))
+				} else {
+					klog.Errorf("invalid exclude ip range %s, start ip should smaller than end", excludeIP)
 				}
 			}
 		} else {
@@ -405,6 +415,7 @@ func ExpandExcludeIPs(excludeIPs []string, cidr string) []string {
 					rv = append(rv, excludeIP)
 					break
 				}
+				klog.Errorf("CIDR %s not contains the exclude ip %s", cidrBlock, excludeIP)
 			}
 		}
 	}
@@ -665,4 +676,19 @@ func ContainsUppercase(s string) bool {
 		}
 	}
 	return false
+}
+
+func InvalidCIDR(s string) error {
+	// 0.0.0.0 and 255.255.255.255 only using in special case
+	if strings.HasPrefix(s, "0.0.0.0") {
+		err := fmt.Errorf("invalid zero cidr %q", s)
+		klog.Error(err)
+		return err
+	}
+	if strings.Contains(s, "255.255.255.255") {
+		err := fmt.Errorf("invalid broadcast cidr %q", s)
+		klog.Error(err)
+		return err
+	}
+	return nil
 }

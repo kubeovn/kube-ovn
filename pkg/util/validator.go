@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
+	"k8s.io/klog/v2"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 )
@@ -18,6 +19,7 @@ func ValidateSubnet(subnet kubeovnv1.Subnet) error {
 		// v6 ip address can not use upper case
 		if ContainsUppercase(subnet.Spec.Gateway) {
 			err := fmt.Errorf("subnet gateway %s v6 ip address can not contain upper case", subnet.Spec.Gateway)
+			klog.Error(err)
 			return err
 		}
 		if !CIDRContainIP(subnet.Spec.CIDRBlock, subnet.Spec.Gateway) {
@@ -29,6 +31,7 @@ func ValidateSubnet(subnet kubeovnv1.Subnet) error {
 	}
 
 	if err := CIDRGlobalUnicast(subnet.Spec.CIDRBlock); err != nil {
+		klog.Error(err)
 		return err
 	}
 	if CheckProtocol(subnet.Spec.CIDRBlock) == "" {
@@ -68,6 +71,11 @@ func ValidateSubnet(subnet kubeovnv1.Subnet) error {
 		// v6 ip address can not use upper case
 		if ContainsUppercase(subnet.Spec.CIDRBlock) {
 			err := fmt.Errorf("subnet cidr block %s v6 ip address can not contain upper case", subnet.Spec.Gateway)
+			klog.Error(err)
+			return err
+		}
+		if err := InvalidCIDR(cidr); err != nil {
+			klog.Errorf("invalid subnet %s cidr %s, %s", subnet.Name, cidr, err)
 			return err
 		}
 		if _, _, err := net.ParseCIDR(cidr); err != nil {
@@ -80,6 +88,7 @@ func ValidateSubnet(subnet kubeovnv1.Subnet) error {
 		// v6 ip address can not use upper case
 		if ContainsUppercase(subnet.Spec.CIDRBlock) {
 			err := fmt.Errorf("subnet %s allow subnet %s v6 ip address can not contain upper case", subnet.Name, cidr)
+			klog.Error(err)
 			return err
 		}
 		if _, _, err := net.ParseCIDR(cidr); err != nil {
@@ -113,6 +122,7 @@ func ValidateSubnet(subnet kubeovnv1.Subnet) error {
 		// v6 ip address can not use upper case
 		if ContainsUppercase(egw) {
 			err := fmt.Errorf("subnet %s external egress gateway %s v6 ip address can not contain upper case", subnet.Name, egw)
+			klog.Error(err)
 			return err
 		}
 		ips := strings.Split(egw, ",")
@@ -135,6 +145,7 @@ func ValidateSubnet(subnet kubeovnv1.Subnet) error {
 			// v6 ip address can not use upper case
 			if ContainsUppercase(vip) {
 				err := fmt.Errorf("subnet %s vips %s v6 ip address can not contain upper case", subnet.Name, vip)
+				klog.Error(err)
 				return err
 			}
 			if !CIDRContainIP(subnet.Spec.CIDRBlock, vip) {
@@ -157,6 +168,7 @@ func ValidateSubnet(subnet kubeovnv1.Subnet) error {
 		// v6 ip address can not use upper case
 		if ContainsUppercase(subnet.Spec.U2OInterconnectionIP) {
 			err := fmt.Errorf("subnet %s U2O interconnection ip %s v6 ip address can not contain upper case", subnet.Name, subnet.Spec.U2OInterconnectionIP)
+			klog.Error(err)
 			return err
 		}
 		if !CIDRContainIP(subnet.Spec.CIDRBlock, subnet.Spec.U2OInterconnectionIP) {
