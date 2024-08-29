@@ -1,5 +1,25 @@
 # Changelog
 
+## v1.12.22 (2024-08-29)
+
+ * [61870105](https://github.com/kubeovn/kube-ovn/commit/618701059e376430a280c1403aebf1628d6bfae6) release v1.12.22
+ * [820d95d0](https://github.com/kubeovn/kube-ovn/commit/820d95d04d9ccbbc016169d29df5506276a86f9d) vpc-nat-gateway: use iptables-legacy for centos 7 (#4428)
+ * [b2b55a1c](https://github.com/kubeovn/kube-ovn/commit/b2b55a1c941808fe775fa9433a1149fa02e25eca) netpol: add allow acl rules for u2o logical gateway (#4420)
+ * [1ecbd591](https://github.com/kubeovn/kube-ovn/commit/1ecbd59121d7526ca71bc315870016b83157ac93) Makefile: simplify underlay u2o installation (#4419)
+ * [b2e6a7a5](https://github.com/kubeovn/kube-ovn/commit/b2e6a7a51171e73ffd04449abc1edbec26b498f0) vpc-nat-gateway: do not add routes for underlay subnets (#4416)
+ * [c03dfd2e](https://github.com/kubeovn/kube-ovn/commit/c03dfd2eaceaa52461c4032b34ac0265856daf89) cni-server: fix failure in ipv6/dual clusters running in docker (#4417)
+ * [786eb0ab](https://github.com/kubeovn/kube-ovn/commit/786eb0ab2a375527310cbcc349a33dc34320cb04) add acl log annotation (#4414)
+ * [6d066646](https://github.com/kubeovn/kube-ovn/commit/6d0666469d5a82a7b4e65e7c934c908a475ff0b2) bump k8s to v1.30.4 (#4410)
+ * [1827b650](https://github.com/kubeovn/kube-ovn/commit/1827b650edd49e8222a62ca00fa20d3f7febea30) fix kube-ovn-cni run fail on docker (#4406)
+ * [ebd55782](https://github.com/kubeovn/kube-ovn/commit/ebd55782a05227e450b4423c49faa64b7b896cda) prepare for next release
+
+### Contributors
+
+ * changluyi
+ * hzma
+ * zhangzujian
+ * 张祖建
+
 ## v1.12.21 (2024-08-14)
 
  * [40ef8d6b](https://github.com/kubeovn/kube-ovn/commit/40ef8d6bcd2edd4d8e52630e41787c70ebf1c0ba) release v1.12.21
