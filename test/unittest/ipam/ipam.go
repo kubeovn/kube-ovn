@@ -35,7 +35,7 @@ var _ = ginkgo.Describe("[IPAM]", func() {
 	dualCIDR := fmt.Sprintf("%s,%s", ipv4CIDR, ipv6CIDR)
 	dualExcludeIPs := append(ipv4ExcludeIPs, ipv6ExcludeIPs...)
 
-	// TODO test case use random ip and ipcidr, and input test data should separate from test case
+	// TODO test case use random ip and ip cidr, and input test data should separate from test case
 
 	ginkgo.Context("[Subnet]", func() {
 		ginkgo.Context("[IPv4]", func() {
