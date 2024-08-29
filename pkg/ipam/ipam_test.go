@@ -621,6 +621,98 @@ func TestIsIPAssignedToOtherPod(t *testing.T) {
 	notUsingDualV6 := "2001:db88::10"
 	_, ok = ipam.IsIPAssignedToOtherPod(notUsingDualV6, dualSubnetName, dualPod2Name)
 	require.False(t, ok)
+	// test subnet not exist
+	notExistSubnet := "notExistSubnet"
+	_, ok = ipam.IsIPAssignedToOtherPod(v4, notExistSubnet, dualPod2Name)
+	require.False(t, ok)
+}
+
+func TestIPAMAddOrUpdateSubnet(t *testing.T) {
+	// test v4 subnet
+	ipam := NewIPAM()
+	v4ExcludeIps := []string{
+		"10.0.0.2", "10.0.0.4", "10.0.0.100",
+		"10.0.0.252", "10.0.0.253", "10.0.0.254",
+	}
+	v4SubnetName := "v4Subnet"
+	ipv4CIDR := "10.0.0.0/24"
+	v4Gw := "10.0.0.1"
+	err := ipam.AddOrUpdateSubnet(v4SubnetName, ipv4CIDR, v4Gw, v4ExcludeIps)
+	require.NoError(t, err)
+	// test valid empty exclude ips
+	v4ExcludeIps = []string{}
+	err = ipam.AddOrUpdateSubnet(v4SubnetName, ipv4CIDR, v4Gw, v4ExcludeIps)
+	require.NoError(t, err)
+	// test valid empty gw
+	v4Gw = ""
+	err = ipam.AddOrUpdateSubnet(v4SubnetName, ipv4CIDR, v4Gw, v4ExcludeIps)
+	require.NoError(t, err)
+	// test invalid ipv4 cidr
+	ipv4CIDR = "10.0.0./24"
+	err = ipam.AddOrUpdateSubnet(v4SubnetName, ipv4CIDR, v4Gw, v4ExcludeIps)
+	require.Equal(t, err, ErrInvalidCIDR)
+
+	// test v6 subnet
+	v6ExcludeIps := []string{
+		"2001:db8::2", "2001:db8::4", "2001:db8::100",
+		"2001:db8::252", "2001:db8::253", "2001:db8::254",
+	}
+	v6SubnetName := "v6Subnet"
+	ipv6CIDR := "2001:db8::/64"
+	v6Gw := "2001:db8::1"
+	err = ipam.AddOrUpdateSubnet(v6SubnetName, ipv6CIDR, v6Gw, v6ExcludeIps)
+	require.NoError(t, err)
+
+	// test valid empty exclude ips
+	v6ExcludeIps = []string{}
+	err = ipam.AddOrUpdateSubnet(v6SubnetName, ipv6CIDR, v6Gw, v6ExcludeIps)
+	require.NoError(t, err)
+
+	// test valid empty gw
+	v6Gw = ""
+	err = ipam.AddOrUpdateSubnet(v6SubnetName, ipv6CIDR, v6Gw, v6ExcludeIps)
+	require.NoError(t, err)
+
+	// test invalid ipv6 cidr
+	ipv6CIDR = "2001:g6::/64"
+	err = ipam.AddOrUpdateSubnet(v6SubnetName, ipv6CIDR, v6Gw, v6ExcludeIps)
+	require.Equal(t, err, ErrInvalidCIDR)
+
+	// test dual stack subnet
+	dualSubnetName := "dualSubnet"
+	dualExcludeIps := []string{
+		"10.0.0.2", "10.0.0.4", "10.0.0.100",
+		"10.0.0.252", "10.0.0.253", "10.0.0.254",
+		"2001:db8::2", "2001:db8::4", "2001:db8::100",
+		"2001:db8::252", "2001:db8::253", "2001:db8::254",
+	}
+	cidr := "10.0.0.0/24,2001:db8::/64"
+	gw := "10.0.0.1,2001:db8::1"
+	err = ipam.AddOrUpdateSubnet(dualSubnetName, cidr, gw, dualExcludeIps)
+	require.NoError(t, err)
+
+	// test valid empty exclude ips
+	dualExcludeIps = []string{}
+	err = ipam.AddOrUpdateSubnet(dualSubnetName, cidr, gw, dualExcludeIps)
+	require.NoError(t, err)
+
+	// test invalid empty gw
+	gw = ""
+	err = ipam.AddOrUpdateSubnet(dualSubnetName, cidr, gw, dualExcludeIps)
+	require.Error(t, err)
+
+	// test invalid empty cidr
+	cidr = ""
+	err = ipam.AddOrUpdateSubnet(dualSubnetName, cidr, gw, dualExcludeIps)
+	require.Error(t, err)
+	// test invalid v4 cidr
+	cidr = "10.0.0./24,2001:db8::/64"
+	err = ipam.AddOrUpdateSubnet(dualSubnetName, cidr, gw, dualExcludeIps)
+	require.Error(t, err)
+	// test invalid v6 cidr
+	cidr = "10.0.0./24,2001:db8::/64"
+	err = ipam.AddOrUpdateSubnet(dualSubnetName, cidr, gw, dualExcludeIps)
+	require.Error(t, err)
 }
 
 func TestAddOrUpdateIPPool(t *testing.T) {
@@ -772,4 +864,28 @@ func TestIPPoolStatistics(t *testing.T) {
 	require.Empty(t, v4UsingRange)
 	require.Empty(t, v6AvailableRange)
 	require.Empty(t, v6UsingRange)
+}
+
+func TestGetSubnetV4Mask(t *testing.T) {
+	ipam := NewIPAM()
+	// get mask for exist subnet
+	v4ExcludeIps := []string{
+		"10.0.0.2", "10.0.0.4", "10.0.0.100",
+		"10.0.0.252", "10.0.0.253", "10.0.0.254",
+	}
+	v4SubnetName := "v4Subnet"
+	ipv4CIDR := "10.0.0.0/24"
+	v4Gw := "10.0.0.1"
+	v4SubnetMask := "24"
+	err := ipam.AddOrUpdateSubnet(v4SubnetName, ipv4CIDR, v4Gw, v4ExcludeIps)
+	require.NoError(t, err)
+	mask, err := ipam.GetSubnetV4Mask(v4SubnetName)
+	require.NoError(t, err)
+	require.Equal(t, mask, v4SubnetMask)
+
+	// get mask for non-exist subnet
+	nonExistSubnetName := "nonExistSubnet"
+	mask, err = ipam.GetSubnetV4Mask(nonExistSubnetName)
+	require.Equal(t, err, ErrNoAvailable)
+	require.Empty(t, mask)
 }
