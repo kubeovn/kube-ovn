@@ -596,6 +596,10 @@ func TestAddOrUpdateIPPool(t *testing.T) {
 	require.NotNil(t, defaultPool.V6Reserved)
 	require.NotNil(t, defaultPool.V4IPs)
 	require.NotNil(t, defaultPool.V4IPs)
+	require.NotNil(t, defaultPool.V4Released)
+	require.NotNil(t, defaultPool.V6Released)
+	require.NotNil(t, defaultPool.V4Using)
+	require.NotNil(t, defaultPool.V6Using)
 	require.Equal(t, defaultPool.V4IPs.String(), "10.0.0.1-10.0.255.254")
 	require.Equal(t, defaultPool.V6IPs.String(), "2001:db8::1-2001:db8::ffff:ffff:ffff:fffe")
 	require.Equal(t, defaultPool.V4Free.String(), "10.0.0.1,10.0.0.3,10.0.0.5-10.0.0.99,10.0.0.101-10.0.0.251,10.0.0.255-10.0.255.254")
@@ -604,6 +608,10 @@ func TestAddOrUpdateIPPool(t *testing.T) {
 	require.Equal(t, defaultPool.V6Available.String(), "2001:db8::1,2001:db8::3,2001:db8::5-2001:db8::ff,2001:db8::101-2001:db8::251,2001:db8::255-2001:db8::ffff:ffff:ffff:fffe")
 	require.Equal(t, defaultPool.V4Reserved.String(), "10.0.0.2,10.0.0.4,10.0.0.100,10.0.0.252-10.0.0.254")
 	require.Equal(t, defaultPool.V6Reserved.String(), "2001:db8::2,2001:db8::4,2001:db8::100,2001:db8::252-2001:db8::254")
+	require.Equal(t, defaultPool.V4Released.String(), "")
+	require.Equal(t, defaultPool.V6Released.String(), "")
+	require.Equal(t, defaultPool.V4Using.String(), "")
+	require.Equal(t, defaultPool.V6Using.String(), "")
 
 	// check V4 valid pool
 	v4ValidPoolName := "v4ValidPool"
@@ -623,7 +631,11 @@ func TestAddOrUpdateIPPool(t *testing.T) {
 	require.NotNil(t, v4ValidPool.V4Reserved)
 	require.NotNil(t, v4ValidPool.V6Reserved)
 	require.NotNil(t, v4ValidPool.V4IPs)
-	require.NotNil(t, v4ValidPool.V4IPs)
+	require.NotNil(t, v4ValidPool.V6IPs)
+	require.NotNil(t, v4ValidPool.V4Released)
+	require.NotNil(t, v4ValidPool.V6Released)
+	require.NotNil(t, v4ValidPool.V4Using)
+	require.NotNil(t, v4ValidPool.V6Using)
 
 	require.Equal(t, v4ValidPool.V4IPs.String(), "10.0.0.20,10.0.0.90,10.0.0.170,10.0.0.240,10.0.0.250")
 	require.Equal(t, v4ValidPool.V6IPs.String(), "")
@@ -633,6 +645,10 @@ func TestAddOrUpdateIPPool(t *testing.T) {
 	require.Equal(t, v4ValidPool.V6Available.String(), "")
 	require.Equal(t, v4ValidPool.V4Reserved.String(), "")
 	require.Equal(t, v4ValidPool.V6Reserved.String(), "")
+	require.Equal(t, v4ValidPool.V4Released.String(), "")
+	require.Equal(t, v4ValidPool.V6Released.String(), "")
+	require.Equal(t, v4ValidPool.V4Using.String(), "")
+	require.Equal(t, v4ValidPool.V6Using.String(), "")
 
 	// check V4 invalid pool
 	v4InvalidPoolName := "v4InvalidPool"
@@ -664,10 +680,14 @@ func TestAddOrUpdateIPPool(t *testing.T) {
 	require.NotNil(t, v6ValidPool.V4Available)
 	require.NotNil(t, v6ValidPool.V6Available)
 	require.NotNil(t, v6ValidPool.V4Reserved)
-	require.NotNil(t, v4ValidPool.V4Reserved)
-	require.NotNil(t, v4ValidPool.V6Reserved)
-	require.NotNil(t, v4ValidPool.V4IPs)
-	require.NotNil(t, v4ValidPool.V4IPs)
+	require.NotNil(t, v6ValidPool.V4Reserved)
+	require.NotNil(t, v6ValidPool.V6Reserved)
+	require.NotNil(t, v6ValidPool.V4IPs)
+	require.NotNil(t, v6ValidPool.V4IPs)
+	require.NotNil(t, v6ValidPool.V4Released)
+	require.NotNil(t, v6ValidPool.V6Released)
+	require.NotNil(t, v6ValidPool.V4Using)
+	require.NotNil(t, v6ValidPool.V6Using)
 
 	require.Equal(t, v6ValidPool.V4IPs.String(), "")
 	require.Equal(t, v6ValidPool.V6IPs.String(), "2001:db8::20,2001:db8::90,2001:db8::170,2001:db8::240,2001:db8::250")
@@ -677,6 +697,10 @@ func TestAddOrUpdateIPPool(t *testing.T) {
 	require.Equal(t, v6ValidPool.V6Available.String(), "2001:db8::20,2001:db8::90,2001:db8::170,2001:db8::240,2001:db8::250")
 	require.Equal(t, v6ValidPool.V4Reserved.String(), "")
 	require.Equal(t, v6ValidPool.V6Reserved.String(), "")
+	require.Equal(t, v6ValidPool.V4Released.String(), "")
+	require.Equal(t, v6ValidPool.V6Released.String(), "")
+	require.Equal(t, v6ValidPool.V4Using.String(), "")
+	require.Equal(t, v6ValidPool.V6Using.String(), "")
 
 	// check V6 invalid pool
 	v6InvalidPoolName := "v6InvalidPool"
@@ -711,6 +735,10 @@ func TestAddOrUpdateIPPool(t *testing.T) {
 	require.NotNil(t, dualValidPool.V6Reserved)
 	require.NotNil(t, dualValidPool.V4IPs)
 	require.NotNil(t, dualValidPool.V4IPs)
+	require.NotNil(t, dualValidPool.V4Released)
+	require.NotNil(t, dualValidPool.V6Released)
+	require.NotNil(t, dualValidPool.V4Using)
+	require.NotNil(t, dualValidPool.V6Using)
 
 	require.Equal(t, dualValidPool.V4IPs.String(), "10.0.0.30,10.0.0.80")
 	require.Equal(t, dualValidPool.V6IPs.String(), "2001:db8::30,2001:db8::80")
@@ -720,6 +748,10 @@ func TestAddOrUpdateIPPool(t *testing.T) {
 	require.Equal(t, dualValidPool.V6Available.String(), "2001:db8::30,2001:db8::80")
 	require.Equal(t, dualValidPool.V4Reserved.String(), "")
 	require.Equal(t, dualValidPool.V6Reserved.String(), "")
+	require.Equal(t, dualValidPool.V4Released.String(), "")
+	require.Equal(t, dualValidPool.V6Released.String(), "")
+	require.Equal(t, dualValidPool.V4Using.String(), "")
+	require.Equal(t, dualValidPool.V6Using.String(), "")
 
 	// check dualstack invalid pool
 	dualInvalidPoolName := "dualInvalidPool"
@@ -756,6 +788,11 @@ func TestAddOrUpdateIPPool(t *testing.T) {
 	require.NotNil(t, defaultPool.V6Reserved)
 	require.NotNil(t, defaultPool.V4IPs)
 	require.NotNil(t, defaultPool.V4IPs)
+	require.NotNil(t, defaultPool.V4Released)
+	require.NotNil(t, defaultPool.V6Released)
+	require.NotNil(t, defaultPool.V4Using)
+	require.NotNil(t, defaultPool.V6Using)
+
 	require.Equal(t, defaultPool.V4IPs.String(), "10.0.0.1-10.0.0.19,10.0.0.21-10.0.0.29,10.0.0.31-10.0.0.79,10.0.0.81-10.0.0.89,10.0.0.91-10.0.0.169,10.0.0.171-10.0.0.239,10.0.0.241-10.0.0.249,10.0.0.251-10.0.255.254")
 	require.Equal(t, defaultPool.V6IPs.String(), "2001:db8::1-2001:db8::1f,2001:db8::21-2001:db8::2f,2001:db8::31-2001:db8::7f,2001:db8::81-2001:db8::8f,2001:db8::91-2001:db8::16f,2001:db8::171-2001:db8::23f,2001:db8::241-2001:db8::24f,2001:db8::251-2001:db8::ffff:ffff:ffff:fffe")
 	require.Equal(t, defaultPool.V4Free.String(), "10.0.0.1,10.0.0.3,10.0.0.5-10.0.0.19,10.0.0.21-10.0.0.29,10.0.0.31-10.0.0.79,10.0.0.81-10.0.0.89,10.0.0.91-10.0.0.99,10.0.0.101-10.0.0.169,10.0.0.171-10.0.0.239,10.0.0.241-10.0.0.249,10.0.0.251,10.0.0.255-10.0.255.254")
@@ -764,4 +801,8 @@ func TestAddOrUpdateIPPool(t *testing.T) {
 	require.Equal(t, defaultPool.V6Available.String(), "2001:db8::1,2001:db8::3,2001:db8::5-2001:db8::1f,2001:db8::21-2001:db8::2f,2001:db8::31-2001:db8::7f,2001:db8::81-2001:db8::8f,2001:db8::91-2001:db8::ff,2001:db8::101-2001:db8::16f,2001:db8::171-2001:db8::23f,2001:db8::241-2001:db8::24f,2001:db8::251,2001:db8::255-2001:db8::ffff:ffff:ffff:fffe")
 	require.Equal(t, defaultPool.V4Reserved.String(), "10.0.0.2,10.0.0.4,10.0.0.100,10.0.0.252-10.0.0.254")
 	require.Equal(t, defaultPool.V6Reserved.String(), "2001:db8::2,2001:db8::4,2001:db8::100,2001:db8::252-2001:db8::254")
+	require.Equal(t, defaultPool.V4Released.String(), "")
+	require.Equal(t, defaultPool.V6Released.String(), "")
+	require.Equal(t, defaultPool.V4Using.String(), "")
+	require.Equal(t, defaultPool.V6Using.String(), "")
 }
