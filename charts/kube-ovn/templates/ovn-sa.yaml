@@ -23,12 +23,5 @@ metadata:
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: kube-ovn-cni
-  namespace: {{ .Values.namespace }}
-
----
-apiVersion: v1
-kind: ServiceAccount
-metadata:
   name: kube-ovn-app
   namespace: {{ .Values.namespace }}

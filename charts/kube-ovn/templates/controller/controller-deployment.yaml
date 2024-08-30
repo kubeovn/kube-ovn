@@ -1,16 +1,22 @@
-kind: Deployment
 apiVersion: apps/v1
+kind: Deployment
 metadata:
   name: kube-ovn-controller
   namespace: {{ .Values.namespace }}
+  {{- with .Values.controller.annotations }}
   annotations:
-    kubernetes.io/description: |
-      kube-ovn controller
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.controller.labels }}
+  labels:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 spec:
   replicas: {{ include "kubeovn.nodeCount" . }}
   selector:
     matchLabels:
-      app: kube-ovn-controller
+      app.kubernetes.io/name: kube-ovn-controller
+      app.kubernetes.io/part-of: kube-ovn
   strategy:
     rollingUpdate:
       maxSurge: 0%
@@ -18,10 +24,16 @@ spec:
     type: RollingUpdate
   template:
     metadata:
+      {{- with .Values.controller.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       labels:
-        app: kube-ovn-controller
-        component: network
-        type: infra
+        app.kubernetes.io/name: kube-ovn-controller
+        app.kubernetes.io/part-of: kube-ovn
+        {{- with .Values.controller.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
     spec:
       tolerations:
         - effect: NoSchedule
@@ -42,7 +54,7 @@ spec:
           requiredDuringSchedulingIgnoredDuringExecution:
             - labelSelector:
                 matchLabels:
-                  app: kube-ovn-controller
+                  app.kubernetes.io/name: kube-ovn-controller
               topologyKey: kubernetes.io/hostname
       priorityClassName: system-cluster-critical
       serviceAccountName: ovn
@@ -202,13 +214,10 @@ spec:
             periodSeconds: 7
             failureThreshold: 5
             timeoutSeconds: 5
+          {{- with .Values.controller.resources }}
           resources:
-            requests:
-              cpu: {{ index .Values "kube-ovn-controller" "requests" "cpu" }}
-              memory: {{ index .Values "kube-ovn-controller" "requests" "memory" }}
-            limits:
-              cpu: {{ index .Values "kube-ovn-controller" "limits" "cpu" }}
-              memory: {{ index .Values "kube-ovn-controller" "limits" "memory" }}
+            {{- toYaml . | trim | nindent 12 }}
+          {{- end }}
       nodeSelector:
         kubernetes.io/os: "linux"
       volumes:

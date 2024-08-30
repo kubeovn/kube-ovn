@@ -1,16 +1,22 @@
-{{- if .Values.HYBRID_DPDK }}
+{{- if .Values.ovsOvn.dpdkHybrid.enabled }}
 kind: DaemonSet
 apiVersion: apps/v1
 metadata:
   name: ovs-ovn-dpdk
   namespace: {{ .Values.namespace }}
+  {{- with .Values.ovsOvn.annotations }}
   annotations:
-    kubernetes.io/description: |
-      This daemon set launches the openvswitch daemon.
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.ovsOvn.labels }}
+  labels:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 spec:
   selector:
     matchLabels:
-      app: ovs-dpdk
+      app.kubernetes.io/name: kube-ovnOvs-dpdk
+      app.kubernetes.io/part-of: kube-ovn
   updateStrategy:
     type: RollingUpdate
     rollingUpdate:
@@ -18,10 +24,16 @@ spec:
       maxUnavailable: 0
   template:
     metadata:
+      {{- with .Values.ovsOvn.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       labels:
-        app: ovs-dpdk
-        component: network
-        type: infra
+        app.kubernetes.io/name: kube-ovn-ovs
+        app.kubernetes.io/part-of: kube-ovn
+        {{- with .Values.ovsOvn.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
     spec:
       tolerations:
       - operator: Exists
@@ -106,14 +118,10 @@ spec:
             periodSeconds: 5
             failureThreshold: 5
             timeoutSeconds: 45
+          {{- with .Values.ovsOvn.dpdkHybrid.resources }}
           resources:
-            requests:
-              cpu: {{ index .Values "ovs-ovn" "requests" "cpu" }}
-              memory: {{ index .Values "ovs-ovn" "requests" "memory" }}
-            limits:
-              cpu: {{ index .Values "ovs-ovn" "limits" "cpu" }}
-              {{.Values.HUGEPAGE_SIZE_TYPE}}: {{.Values.HUGEPAGES}}
-              memory: {{ index .Values "ovs-ovn" "limits" "memory" }}
+            {{- toYaml . | trim | nindent 12 }}
+          {{- end }}
       nodeSelector:
         kubernetes.io/os: "linux"
         ovn.kubernetes.io/ovs_dp_type: "userspace"
