@@ -151,6 +151,7 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 		oriPod := pod.DeepCopy()
 		pod.Annotations[fmt.Sprintf(util.VfRepresentorNameTemplate, provider)] = hostNicName
 		pod.Annotations[fmt.Sprintf(util.VfNameTemplate, provider)] = containerNicName
+		pod.Annotations[fmt.Sprintf(util.PodNicAnnotationTemplate, provider)] = util.SriovNicType
 		var patch []byte
 		patch, err = util.GenerateMergePatchPayload(oriPod, pod)
 		if err != nil {
