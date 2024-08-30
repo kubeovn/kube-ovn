@@ -39,6 +39,7 @@ image-amd64.tar
 image-amd64-dpdk.tar
 image-arm64.tar
 test/**/*.test
+cover.out
 kube-ovn-app-sa.yaml
 kube-ovn-cni-sa.yaml
 kube-ovn-sa.yaml

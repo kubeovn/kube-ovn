@@ -11,6 +11,7 @@ import (
 	"github.com/onsi/gomega"
 
 	"github.com/kubeovn/kube-ovn/pkg/ipam"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 var _ = ginkgo.Context("[group:IPAM]", func() {
@@ -21,9 +22,9 @@ var _ = ginkgo.Context("[group:IPAM]", func() {
 				n1, n2 = n2, n1
 			}
 			n := n1 + uint32(rand.Int64N(int64(n2-n1+1)))
-			startStr := uint32ToIPv4(n1)
-			endStr := uint32ToIPv4(n2)
-			ipStr := uint32ToIPv4(n)
+			startStr := util.Uint32ToIPv4(n1)
+			endStr := util.Uint32ToIPv4(n2)
+			ipStr := util.Uint32ToIPv4(n)
 
 			start, err := ipam.NewIP(startStr)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
@@ -103,9 +104,9 @@ var _ = ginkgo.Context("[group:IPAM]", func() {
 				n[i] = n1[i] + uint32(rand.Int64N(int64(n2[i]-n1[i]+1)))
 			}
 
-			startStr := uint32ToIPv6(n1)
-			endStr := uint32ToIPv6(n2)
-			ipStr := uint32ToIPv6(n)
+			startStr := util.Uint32ToIPv6(n1)
+			endStr := util.Uint32ToIPv6(n2)
+			ipStr := util.Uint32ToIPv6(n)
 
 			start, err := ipam.NewIP(startStr)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())

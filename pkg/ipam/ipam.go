@@ -169,6 +169,7 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr, gw string, excludeIps []strin
 	for _, cidrBlock := range strings.Split(cidrStr, ",") {
 		_, cidr, err := net.ParseCIDR(cidrBlock)
 		if err != nil {
+			klog.Errorf("subnet %s invalid cidr %s: %s", name, cidrStr, err)
 			return ErrInvalidCIDR
 		}
 		cidrs = append(cidrs, cidr)
@@ -187,6 +188,9 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr, gw string, excludeIps []strin
 	case kubeovnv1.ProtocolIPv6:
 		v6cidrStr = cidrs[0].String()
 		v6Gw = gw
+	case "":
+		klog.Errorf("subnet %s invalid cidr %s", name, cidrStr)
+		return ErrInvalidCIDR
 	}
 
 	// subnet.Spec.ExcludeIps contains both v4 and v6 addresses

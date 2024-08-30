@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func Test_parseIpv6RaConfigs(t *testing.T) {
@@ -55,6 +57,16 @@ func Test_parseDHCPOptions(t *testing.T) {
 		t.Parallel()
 		dhcpOpt := parseDHCPOptions("router=,test")
 		require.Empty(t, dhcpOpt)
+	})
+
+	t.Run("dns_server option with semicolons", func(t *testing.T) {
+		t.Parallel()
+		result := parseDHCPOptions("dns_server=8.8.8.8;8.8.4.4,server_id=192.168.1.1")
+		expected := map[string]string{
+			"dns_server": "8.8.8.8,8.8.4.4",
+			"server_id":  "192.168.1.1",
+		}
+		require.Equal(t, expected, result)
 	})
 }
 
@@ -230,6 +242,16 @@ func Test_OrAclMatch_Match(t *testing.T) {
 		_, err := match.Match()
 		require.ErrorContains(t, err, "acl rule key is required")
 	})
+
+	t.Run("error propagation", func(t *testing.T) {
+		t.Parallel()
+		match := NewOrACLMatch(
+			NewACLMatch("", "", "", ""),
+		)
+		_, err := match.Match()
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "acl rule key is required")
+	})
 }
 
 func Test_Limiter(t *testing.T) {
@@ -319,4 +341,170 @@ func Test_Limiter(t *testing.T) {
 		require.ErrorContains(t, err, "context canceled by timeout")
 		require.Equal(t, int32(2), limiter.Current())
 	})
+
+	t.Run("default limit", func(t *testing.T) {
+		t.Parallel()
+
+		limiter := new(Limiter)
+		require.Equal(t, int32(0), limiter.Limit())
+	})
+}
+
+func TestPodNameToPortName(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name      string
+		pod       string
+		namespace string
+		provider  string
+		expected  string
+	}{
+		{
+			name:      "OvnProvider",
+			pod:       "test-pod",
+			namespace: "default",
+			provider:  util.OvnProvider,
+			expected:  "test-pod.default",
+		},
+		{
+			name:      "NonOvnProvider",
+			pod:       "test-pod",
+			namespace: "kube-system",
+			provider:  "custom-provider",
+			expected:  "test-pod.kube-system.custom-provider",
+		},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			result := PodNameToPortName(tc.pod, tc.namespace, tc.provider)
+			require.Equal(t, tc.expected, result)
+		})
+	}
+}
+
+func TestTrimCommandOutput(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name     string
+		input    []byte
+		expected string
+	}{
+		{
+			name:     "Whitespace only",
+			input:    []byte("   \t\n"),
+			expected: "",
+		},
+		{
+			name:     "Quoted string",
+			input:    []byte(`"Hello, World!"`),
+			expected: "Hello, World!",
+		},
+		{
+			name:     "Unquoted string with spaces",
+			input:    []byte("  Hello, World!\t\n"),
+			expected: "Hello, World!",
+		},
+		{
+			name:     "Single quotes",
+			input:    []byte(`'Hello, World!'`),
+			expected: "'Hello, World!'",
+		},
+		{
+			name:     "Newlines and tabs",
+			input:    []byte("\t\"Hello,\nWorld!\"\n"),
+			expected: "Hello,\nWorld!",
+		},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			result := trimCommandOutput(tc.input)
+			require.Equal(t, tc.expected, result)
+		})
+	}
+}
+
+func TestLogicalRouterPortName(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name     string
+		lr       string
+		ls       string
+		expected string
+	}{
+		{
+			name:     "Standard case",
+			lr:       "router1",
+			ls:       "switch1",
+			expected: "router1-switch1",
+		},
+		{
+			name:     "Names with special characters",
+			lr:       "router-1",
+			ls:       "switch_1",
+			expected: "router-1-switch_1",
+		},
+		{
+			name:     "Long names",
+			lr:       "very_long_router_name_123456789",
+			ls:       "extremely_long_switch_name_987654321",
+			expected: "very_long_router_name_123456789-extremely_long_switch_name_987654321",
+		},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			result := LogicalRouterPortName(tc.lr, tc.ls)
+			require.Equal(t, tc.expected, result)
+		})
+	}
+}
+
+func TestLogicalSwitchPortName(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name     string
+		lr       string
+		ls       string
+		expected string
+	}{
+		{
+			name:     "Standard case",
+			lr:       "router1",
+			ls:       "switch1",
+			expected: "switch1-router1",
+		},
+		{
+			name:     "Names with special characters",
+			lr:       "router-1",
+			ls:       "switch_1",
+			expected: "switch_1-router-1",
+		},
+		{
+			name:     "Long names",
+			lr:       "very_long_router_name_123456789",
+			ls:       "extremely_long_switch_name_987654321",
+			expected: "extremely_long_switch_name_987654321-very_long_router_name_123456789",
+		},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			result := LogicalSwitchPortName(tc.lr, tc.ls)
+			require.Equal(t, tc.expected, result)
+		})
+	}
 }

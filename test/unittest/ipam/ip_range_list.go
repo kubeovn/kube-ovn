@@ -14,6 +14,7 @@ import (
 	"github.com/onsi/gomega"
 
 	"github.com/kubeovn/kube-ovn/pkg/ipam"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 var _ = ginkgo.Context("[group:IPAM]", func() {
@@ -339,7 +340,7 @@ var _ = ginkgo.Context("[group:IPAM]", func() {
 		cidrList := make([]*net.IPNet, 0, n)
 		cidrSet := u32set.NewWithSize(n * 2)
 		for len(cidrList) != cap(cidrList) {
-			_, cidr, err := net.ParseCIDR(fmt.Sprintf("%s/%d", uint32ToIPv4(rand.Uint32()), 16+rand.IntN(16)))
+			_, cidr, err := net.ParseCIDR(fmt.Sprintf("%s/%d", util.Uint32ToIPv4(rand.Uint32()), 16+rand.IntN(16)))
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			var invalid bool
@@ -351,12 +352,12 @@ var _ = ginkgo.Context("[group:IPAM]", func() {
 			}
 			if !invalid {
 				cidrList = append(cidrList, cidr)
-				cidrSet.Add(ipv4ToUint32(cidr.IP))
+				cidrSet.Add(util.IPv4ToUint32(cidr.IP))
 				bcast := make(net.IP, len(cidr.IP))
 				for i := 0; i < len(bcast); i++ {
 					bcast[i] = cidr.IP[i] | ^cidr.Mask[i]
 				}
-				cidrSet.Add(ipv4ToUint32(bcast))
+				cidrSet.Add(util.IPv4ToUint32(bcast))
 			}
 		}
 
@@ -364,7 +365,7 @@ var _ = ginkgo.Context("[group:IPAM]", func() {
 		set := u32set.NewWithSize(cidrSet.Size() + n)
 		for set.Size() != n {
 			v := rand.Uint32()
-			ip := net.ParseIP(uint32ToIPv4(v))
+			ip := net.ParseIP(util.Uint32ToIPv4(v))
 			var invalid bool
 			for _, cidr := range cidrList {
 				if cidr.Contains(ip) {
@@ -396,10 +397,10 @@ var _ = ginkgo.Context("[group:IPAM]", func() {
 				continue
 			}
 
-			start := uint32ToIPv4(ints[i])
+			start := util.Uint32ToIPv4(ints[i])
 			if cidrSet.Has(ints[i]) || (rand.Int()%2 == 0 && i+1 != len(ints) && !cidrSet.Has(ints[i+1])) {
 				if !cidrSet.Has(ints[i]) {
-					end := uint32ToIPv4(ints[i+1])
+					end := util.Uint32ToIPv4(ints[i+1])
 					ips = append(ips, fmt.Sprintf("%s..%s", start, end))
 				}
 				if i != 0 && ints[i] == ints[i-1]+1 {
@@ -430,9 +431,9 @@ var _ = ginkgo.Context("[group:IPAM]", func() {
 		mergedIPs := make([]string, len(mergedInts)/2)
 		for i := 0; i < len(mergedInts)/2; i++ {
 			if mergedInts[i*2] == mergedInts[i*2+1] {
-				mergedIPs[i] = uint32ToIPv4(mergedInts[i*2])
+				mergedIPs[i] = util.Uint32ToIPv4(mergedInts[i*2])
 			} else {
-				mergedIPs[i] = fmt.Sprintf("%s-%s", uint32ToIPv4(mergedInts[i*2]), uint32ToIPv4(mergedInts[i*2+1]))
+				mergedIPs[i] = fmt.Sprintf("%s-%s", util.Uint32ToIPv4(mergedInts[i*2]), util.Uint32ToIPv4(mergedInts[i*2+1]))
 			}
 		}
 

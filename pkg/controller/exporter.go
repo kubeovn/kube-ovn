@@ -39,6 +39,10 @@ func (c *Controller) exportSubnetMetrics() {
 
 	resetSubnetMetrics()
 	for _, subnet := range subnets {
+		if !subnet.Status.IsValidated() {
+			continue
+		}
+
 		c.exportSubnetAvailableIPsGauge(subnet)
 		c.exportSubnetUsedIPsGauge(subnet)
 		c.exportSubnetIPAMInfo(subnet)
