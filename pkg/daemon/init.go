@@ -159,42 +159,50 @@ func (c *Controller) ovsCleanProviderNetwork(provider string) error {
 		return nil
 	}
 
-	// get host nic
-	if output, err = ovs.Exec("list-ports", brName); err != nil {
-		return fmt.Errorf("failed to list ports of OVS bridge %s, %w: %q", brName, err, output)
+	isUserspaceDP, err := ovs.IsUserspaceDataPath()
+	if err != nil {
+		klog.Error(err)
+		return err
 	}
 
-	// remove host nic from the external bridge
-	if output != "" {
-		for _, port := range strings.Split(output, "\n") {
-			// patch port created by ovn-controller has an external ID ovn-localnet-port=localnet.<SUBNET>
-			if output, err = ovs.Exec("--data=bare", "--no-heading", "--columns=_uuid", "find", "port", "name="+port, `external-ids:ovn-localnet-port!=""`); err != nil {
-				return fmt.Errorf("failed to find ovs port %s, %w: %q", port, err, output)
-			}
-			if output != "" {
-				continue
-			}
-			klog.V(3).Infof("removing ovs port %s from bridge %s", port, brName)
-			if err = c.removeProviderNic(port, brName); err != nil {
-				errMsg := fmt.Errorf("failed to remove port %s from external bridge %s: %w", port, brName, err)
-				klog.Error(errMsg)
-				return errMsg
-			}
-			klog.V(3).Infof("ovs port %s has been removed from bridge %s", port, brName)
+	if !isUserspaceDP {
+		// get host nic
+		if output, err = ovs.Exec("list-ports", brName); err != nil {
+			return fmt.Errorf("failed to list ports of OVS bridge %s, %w: %q", brName, err, output)
 		}
-	}
 
-	// remove OVS bridge
-	klog.Infof("delete external bridge %s", brName)
-	if output, err = ovs.Exec(ovs.IfExists, "del-br", brName); err != nil {
-		return fmt.Errorf("failed to remove OVS bridge %s, %w: %q", brName, err, output)
-	}
-	klog.V(3).Infof("ovs bridge %s has been deleted", brName)
+		// remove host nic from the external bridge
+		if output != "" {
+			for _, port := range strings.Split(output, "\n") {
+				// patch port created by ovn-controller has an external ID ovn-localnet-port=localnet.<SUBNET>
+				if output, err = ovs.Exec("--data=bare", "--no-heading", "--columns=_uuid", "find", "port", "name="+port, `external-ids:ovn-localnet-port!=""`); err != nil {
+					return fmt.Errorf("failed to find ovs port %s, %w: %q", port, err, output)
+				}
+				if output != "" {
+					continue
+				}
+				klog.V(3).Infof("removing ovs port %s from bridge %s", port, brName)
+				if err = c.removeProviderNic(port, brName); err != nil {
+					errMsg := fmt.Errorf("failed to remove port %s from external bridge %s: %w", port, brName, err)
+					klog.Error(errMsg)
+					return errMsg
+				}
+				klog.V(3).Infof("ovs port %s has been removed from bridge %s", port, brName)
+			}
+		}
 
-	if br := util.ExternalBridgeName(provider); br != brName {
-		if _, err = c.changeProvideNicName(br, brName); err != nil {
-			klog.Errorf("failed to change provider nic name from %s to %s: %v", br, brName, err)
-			return err
+		// remove OVS bridge
+		klog.Infof("delete external bridge %s", brName)
+		if output, err = ovs.Exec(ovs.IfExists, "del-br", brName); err != nil {
+			return fmt.Errorf("failed to remove OVS bridge %s, %w: %q", brName, err, output)
+		}
+		klog.V(3).Infof("ovs bridge %s has been deleted", brName)
+
+		if br := util.ExternalBridgeName(provider); br != brName {
+			if _, err = c.changeProvideNicName(br, brName); err != nil {
+				klog.Errorf("failed to change provider nic name from %s to %s: %v", br, brName, err)
+				return err
+			}
 		}
 	}
 

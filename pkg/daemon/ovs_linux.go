@@ -1341,16 +1341,27 @@ func (c *Controller) transferAddrsAndRoutes(nicName, brName string, delNonExiste
 // Add host nic to external bridge
 // Mac address, MTU, IP addresses & routes will be copied/transferred to the external bridge
 func (c *Controller) configProviderNic(nicName, brName string, trunks []string) (int, error) {
-	mtu, err := c.transferAddrsAndRoutes(nicName, brName, false)
+	isUserspaceDP, err := ovs.IsUserspaceDataPath()
 	if err != nil {
-		return 0, fmt.Errorf("failed to transfer addresses and routes from %s to %s: %w", nicName, brName, err)
+		klog.Error(err)
+		return 0, err
 	}
 
-	if _, err = ovs.Exec(ovs.MayExist, "add-port", brName, nicName,
-		"--", "set", "port", nicName, "trunks="+strings.Join(trunks, ","), "external_ids:vendor="+util.CniTypeName); err != nil {
-		return 0, fmt.Errorf("failed to add %s to OVS bridge %s: %w", nicName, brName, err)
+	var mtu int
+	if !isUserspaceDP {
+		mtu, err = c.transferAddrsAndRoutes(nicName, brName, false)
+		if err != nil {
+			return 0, fmt.Errorf("failed to transfer addresses and routes from %s to %s: %w", nicName, brName, err)
+		}
+
+		if _, err = ovs.Exec(ovs.MayExist, "add-port", brName, nicName,
+			"--", "set", "port", nicName, "trunks="+strings.Join(trunks, ","), "external_ids:vendor="+util.CniTypeName); err != nil {
+			return 0, fmt.Errorf("failed to add %s to OVS bridge %s: %w", nicName, brName, err)
+		}
+		klog.V(3).Infof("ovs port %s has been added to bridge %s", nicName, brName)
+	} else {
+		mtu = c.config.MTU
 	}
-	klog.V(3).Infof("ovs port %s has been added to bridge %s", nicName, brName)
 
 	return mtu, nil
 }
