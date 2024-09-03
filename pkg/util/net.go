@@ -69,6 +69,10 @@ func BigInt2Ip(ipInt *big.Int) string {
 
 func SubnetNumber(subnet string) string {
 	_, cidr, _ := net.ParseCIDR(subnet)
+	maskLength, length := cidr.Mask.Size()
+	if maskLength+1 == length {
+		return ""
+	}
 	return cidr.IP.String()
 }
 

@@ -476,6 +476,50 @@ func TestValidateSubnet(t *testing.T) {
 			},
 			err: "ip 10.16.1 in excludeIps is not a valid address",
 		},
+		{
+			name: "ValidPTPSubnet",
+			asubnet: kubeovnv1.Subnet{
+				TypeMeta: metav1.TypeMeta{Kind: "Subnet", APIVersion: "kubeovn.io/v1"},
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "utest-ptpsubnet",
+				},
+				Spec: kubeovnv1.SubnetSpec{
+					Default:     true,
+					Vpc:         "ovn-cluster",
+					Protocol:    kubeovnv1.ProtocolIPv4,
+					Namespaces:  nil,
+					CIDRBlock:   "10.16.0.0/31",
+					Gateway:     "10.16.0.0",
+					ExcludeIps:  []string{"10.16.0.0"},
+					Provider:    OvnProvider,
+					GatewayType: kubeovnv1.GWDistributedType,
+				},
+				Status: kubeovnv1.SubnetStatus{},
+			},
+			err: "",
+		},
+		{
+			name: "Invalid/32Subnet",
+			asubnet: kubeovnv1.Subnet{
+				TypeMeta: metav1.TypeMeta{Kind: "Subnet", APIVersion: "kubeovn.io/v1"},
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "utest-ptpsubnet",
+				},
+				Spec: kubeovnv1.SubnetSpec{
+					Default:     true,
+					Vpc:         "ovn-cluster",
+					Protocol:    kubeovnv1.ProtocolIPv4,
+					Namespaces:  nil,
+					CIDRBlock:   "10.16.0.0/32",
+					Gateway:     "10.16.0.0",
+					ExcludeIps:  []string{"10.16.0.0"},
+					Provider:    OvnProvider,
+					GatewayType: kubeovnv1.GWDistributedType,
+				},
+				Status: kubeovnv1.SubnetStatus{},
+			},
+			err: "validate gateway 10.16.0.0 for cidr 10.16.0.0/32 failed: subnet 10.16.0.0/32 is configured with /32 netmask",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

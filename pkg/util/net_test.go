@@ -206,8 +206,13 @@ func TestSubnetBroadcast(t *testing.T) {
 			expect: "192.129.255.255",
 		},
 		{
-			name:   "v4",
+			name:   "v4/31",
 			subnet: "192.128.23.0/31",
+			expect: "",
+		},
+		{
+			name:   "v4/32",
+			subnet: "192.128.23.0/32",
 			expect: "",
 		},
 		{
