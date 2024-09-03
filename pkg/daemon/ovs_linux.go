@@ -1351,12 +1351,14 @@ func (c *Controller) configProviderNic(nicName, brName string, trunks []string) 
 	if !isUserspaceDP {
 		mtu, err = c.transferAddrsAndRoutes(nicName, brName, false)
 		if err != nil {
-			return 0, fmt.Errorf("failed to transfer addresses and routes from %s to %s: %w", nicName, brName, err)
+			klog.Errorf("failed to transfer addresses and routes from %s to %s: %w", nicName, brName, err)
+			return 0, err
 		}
 
 		if _, err = ovs.Exec(ovs.MayExist, "add-port", brName, nicName,
 			"--", "set", "port", nicName, "trunks="+strings.Join(trunks, ","), "external_ids:vendor="+util.CniTypeName); err != nil {
-			return 0, fmt.Errorf("failed to add %s to OVS bridge %s: %w", nicName, brName, err)
+			klog.Errorf("failed to add %s to OVS bridge %s: %w", nicName, brName, err)
+			return 0, err
 		}
 		klog.V(3).Infof("ovs port %s has been added to bridge %s", nicName, brName)
 	} else {
