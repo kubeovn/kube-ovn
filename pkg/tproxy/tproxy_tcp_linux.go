@@ -81,13 +81,14 @@ func listenTCP(device, network string, laddr *net.TCPAddr) (net.Listener, error)
 		}
 	}()
 
+	fd := int(fileDescriptorSource.Fd()) // #nosec G115
 	if device != "" {
-		if err = syscall.BindToDevice(int(fileDescriptorSource.Fd()), device); err != nil {
+		if err = syscall.BindToDevice(fd, device); err != nil {
 			return nil, &net.OpError{Op: "listen", Net: network, Source: nil, Addr: laddr, Err: fmt.Errorf("set socket option: SO_BINDTODEVICE(%s): %w", device, err)}
 		}
 	}
 
-	if err = syscall.SetsockoptInt(int(fileDescriptorSource.Fd()), syscall.SOL_IP, syscall.IP_TRANSPARENT, 1); err != nil {
+	if err = syscall.SetsockoptInt(fd, syscall.SOL_IP, syscall.IP_TRANSPARENT, 1); err != nil {
 		return nil, &net.OpError{Op: "listen", Net: network, Source: nil, Addr: laddr, Err: fmt.Errorf("set socket option: IP_TRANSPARENT: %w", err)}
 	}
 
