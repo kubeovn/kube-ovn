@@ -945,7 +945,7 @@ func getAnpAddressSetName(pgName, ruleName string, index int, isIngress bool) (s
 func convertAction(anpRuleAction v1alpha1.AdminNetworkPolicyRuleAction, banpRuleAction v1alpha1.BaselineAdminNetworkPolicyRuleAction) (aclAction ovnnb.ACLAction) {
 	switch anpRuleAction {
 	case v1alpha1.AdminNetworkPolicyRuleActionAllow:
-		aclAction = ovnnb.ACLActionAllow
+		aclAction = ovnnb.ACLActionAllowRelated
 	case v1alpha1.AdminNetworkPolicyRuleActionDeny:
 		aclAction = ovnnb.ACLActionDrop
 	case v1alpha1.AdminNetworkPolicyRuleActionPass:
@@ -954,7 +954,7 @@ func convertAction(anpRuleAction v1alpha1.AdminNetworkPolicyRuleAction, banpRule
 
 	switch banpRuleAction {
 	case v1alpha1.BaselineAdminNetworkPolicyRuleActionAllow:
-		aclAction = ovnnb.ACLActionAllow
+		aclAction = ovnnb.ACLActionAllowRelated
 	case v1alpha1.BaselineAdminNetworkPolicyRuleActionDeny:
 		aclAction = ovnnb.ACLActionDrop
 	}
