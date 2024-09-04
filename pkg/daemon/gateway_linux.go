@@ -1437,15 +1437,25 @@ func (c *Controller) setExGateway() error {
 			klog.Error(err)
 			return err
 		}
-		link, err := netlink.LinkByName(linkName)
+
+		isUserspaceDP, err := ovs.IsUserspaceDataPath()
 		if err != nil {
-			klog.Errorf("failed to get nic %s, %v", linkName, err)
+			klog.Error(err)
 			return err
 		}
-		if err := netlink.LinkSetUp(link); err != nil {
-			klog.Errorf("failed to set gateway nic %s up, %v", linkName, err)
-			return err
+
+		if !isUserspaceDP {
+			link, err := netlink.LinkByName(linkName)
+			if err != nil {
+				klog.Errorf("failed to get nic %s, %v", linkName, err)
+				return err
+			}
+			if err := netlink.LinkSetUp(link); err != nil {
+				klog.Errorf("failed to set gateway nic %s up, %v", linkName, err)
+				return err
+			}
 		}
+
 		externalBrReady := false
 		// if external nic already attached into another bridge
 		if existBr, err := ovs.Exec("port-to-br", linkName); err == nil {
