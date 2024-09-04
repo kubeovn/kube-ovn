@@ -40,6 +40,7 @@ OVS_VSCTL_CONCURRENCY=${OVS_VSCTL_CONCURRENCY:-100}
 ENABLE_COMPACT=${ENABLE_COMPACT:-false}
 SECURE_SERVING=${SECURE_SERVING:-false}
 ENABLE_OVN_IPSEC=${ENABLE_OVN_IPSEC:-false}
+ENABLE_ANP=${ENABLE_ANP:-false}
 
 # debug
 DEBUG_WRAPPER=${DEBUG_WRAPPER:-}
@@ -4295,6 +4296,7 @@ spec:
           - --node-local-dns-ip=$NODE_LOCAL_DNS_IP
           - --enable-ovn-ipsec=$ENABLE_OVN_IPSEC
           - --secure-serving=${SECURE_SERVING}
+          - --enable-anp=$ENABLE_ANP
           securityContext:
             runAsUser: ${RUN_AS_USER}
             privileged: false
