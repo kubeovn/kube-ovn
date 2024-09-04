@@ -289,7 +289,8 @@ func (c *Controller) createOrUpdateVpcDNSSlr(vpcDNS *kubeovnv1.VpcDns) error {
 }
 
 func (c *Controller) genVpcDNSDeployment(vpcDNS *kubeovnv1.VpcDns, oldDeploy *v1.Deployment) (*v1.Deployment, error) {
-	tmp, err := template.ParseGlob(corednsTemplateContent)
+	tmp := template.New("coredns")
+	tmp, err := tmp.Parse(corednsTemplateContent)
 	if err != nil {
 		klog.Errorf("failed to parse coredns template file, %v", err)
 		return nil, err
