@@ -160,6 +160,8 @@ const (
 
 	SRIOVResourceName = "mellanox.com/cx5_sriov_switchdev"
 
+	SriovNicType = "sriov"
+
 	InterconnectionConfig  = "ovn-ic-config"
 	ExternalGatewayConfig  = "ovn-external-gw-config"
 	InterconnectionSwitch  = "ts"
