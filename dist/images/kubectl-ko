@@ -156,28 +156,28 @@ tcpdump(){
     exit 1
   fi
 
-  ovnCni=$(kubectl get pod -n $KUBE_OVN_NS -l app=kube-ovn-cni -o 'jsonpath={.items[?(@.spec.nodeName=="'$nodeName'")].metadata.name}')
-  if [ -z "$ovnCni" ]; then
-    echo "kube-ovn-cni not exist on node $nodeName"
+  ovsPod=$(kubectl get pod -n $KUBE_OVN_NS -l app=ovs -o 'jsonpath={.items[?(@.spec.nodeName=="'$nodeName'")].metadata.name}')
+  if [ -z "$ovsPod" ]; then
+    echo "ovs-ovn not exist on node $nodeName"
     exit 1
   fi
 
   if [ "$hostNetwork" = "true" ]; then
     set -x
-    kubectl exec "$ovnCni" -n $KUBE_OVN_NS -- tcpdump -nn "$@"
+    kubectl exec "$ovsPod" -n $KUBE_OVN_NS -- tcpdump -nn "$@"
   else
-    nicName=$(kubectl exec "$ovnCni" -n $KUBE_OVN_NS -- ovs-vsctl --data=bare --no-heading --columns=name find interface external-ids:iface-id="$podName"."$namespace" | tr -d '\r')
+    nicName=$(kubectl exec "$ovsPod" -n $KUBE_OVN_NS -- ovs-vsctl --data=bare --no-heading --columns=name find interface external-ids:iface-id="$podName"."$namespace" | tr -d '\r')
     if [ -z "$nicName" ]; then
       echo "nic doesn't exist on node $nodeName"
       exit 1
     fi
     podNicType=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.metadata.annotations.ovn\\.kubernetes\\.io/pod_nic_type})
-    podNetNs=$(kubectl exec "$ovnCni" -n $KUBE_OVN_NS -- ovs-vsctl --data=bare --no-heading get interface "$nicName" external-ids:pod_netns | tr -d '\r' | sed -e 's/^"//' -e 's/"$//')
+    podNetNs=$(kubectl exec "$ovsPod" -n $KUBE_OVN_NS -- ovs-vsctl --data=bare --no-heading get interface "$nicName" external-ids:pod_netns | tr -d '\r' | sed -e 's/^"//' -e 's/"$//')
     set -x
     if [ "$podNicType" = "internal-port" ]; then
-      kubectl exec "$ovnCni" -n $KUBE_OVN_NS -- nsenter --net="$podNetNs" tcpdump -nn -i "$nicName" "$@"
+      kubectl exec "$ovsPod" -n $KUBE_OVN_NS -- nsenter --net="$podNetNs" tcpdump -nn -i "$nicName" "$@"
     else
-      kubectl exec "$ovnCni" -n $KUBE_OVN_NS -- nsenter --net="$podNetNs" tcpdump -nn -i eth0 "$@"
+      kubectl exec "$ovsPod" -n $KUBE_OVN_NS -- nsenter --net="$podNetNs" tcpdump -nn -i eth0 "$@"
     fi
   fi
 }
@@ -273,9 +273,9 @@ trace(){
     exit 1
   fi
 
-  local ovnCni=$(kubectl get pod -n $KUBE_OVN_NS -l app=kube-ovn-cni -o 'jsonpath={.items[?(@.spec.nodeName=="'$node'")].metadata.name}')
-  if [ -z "$ovnCni" ]; then
-    echo "Error: no kube-ovn-cni Pod running on node $nodeName"
+  local ovsPod=$(kubectl get pod -n $KUBE_OVN_NS -l app=ovs -o 'jsonpath={.items[?(@.spec.nodeName=="'$node'")].metadata.name}')
+  if [ -z "$ovsPod" ]; then
+    echo "Error: no ovs-ovn Pod running on node $nodeName"
     exit 1
   fi
 
@@ -322,28 +322,28 @@ trace(){
           fi
         fi
 
-        local nicName=$(kubectl exec "$ovnCni" -c cni-server -n $KUBE_OVN_NS -- ovs-vsctl --data=bare --no-heading --columns=name find interface external-ids:iface-id="$lsp" | tr -d '\r')
+        local nicName=$(kubectl exec "$ovsPod" -c openvswitch -n $KUBE_OVN_NS -- ovs-vsctl --data=bare --no-heading --columns=name find interface external-ids:iface-id="$lsp" | tr -d '\r')
         if [ -z "$nicName" ]; then
           echo "Error: failed to find ovs interface for LSP $lsp"
           exit 1
         fi
 
         local podNicType=$(kubectl get "$typedName" $optNamespace -o jsonpath={.metadata.annotations.ovn\\.kubernetes\\.io/pod_nic_type})
-        local podNetNs=$(kubectl exec "$ovnCni" -c cni-server -n $KUBE_OVN_NS -- ovs-vsctl --data=bare --no-heading get interface "$nicName" external-ids:pod_netns | tr -d '\r' | sed -e 's/^"//' -e 's/"$//')
+        local podNetNs=$(kubectl exec "$ovsPod" -c openvswitch -n $KUBE_OVN_NS -- ovs-vsctl --data=bare --no-heading get interface "$nicName" external-ids:pod_netns | tr -d '\r' | sed -e 's/^"//' -e 's/"$//')
         local nicName= nsenterCmd=
         if [ ! -z $podNetNs ]; then
           nsenterCmd="nsenter --net='$podNetNs'"
         fi
         if [ "$podNicType" != "internal-port" ]; then
-          local interface=$(kubectl exec "$ovnCni" -c cni-server -n $KUBE_OVN_NS -- ovs-vsctl --format=csv --data=bare --no-heading --columns=name find interface external_id:iface-id="$lsp")
-          local peer=$(kubectl exec "$ovnCni" -c cni-server -n $KUBE_OVN_NS -- ip link show $interface | grep -oE "^[0-9]+:\\s$interface@if[0-9]+" | awk -F @ '{print $2}')
+          local interface=$(kubectl exec "$ovsPod" -c openvswitch -n $KUBE_OVN_NS -- ovs-vsctl --format=csv --data=bare --no-heading --columns=name find interface external_id:iface-id="$lsp")
+          local peer=$(kubectl exec "$ovsPod" -c openvswitch -n $KUBE_OVN_NS -- ip link show $interface | grep -oE "^[0-9]+:\\s$interface@if[0-9]+" | awk -F @ '{print $2}')
           local peerIndex=${peer//if/}
-          local peer=$(kubectl exec "$ovnCni" -c cni-server -n $KUBE_OVN_NS -- sh -c "$nsenterCmd ip link show type veth" | grep "^$peerIndex:" | awk -F @ '{print $1}')
+          local peer=$(kubectl exec "$ovsPod" -c openvswitch -n $KUBE_OVN_NS -- sh -c "$nsenterCmd ip link show type veth" | grep "^$peerIndex:" | awk -F @ '{print $1}')
           nicName=$(echo $peer | awk '{print $2}')
         fi
 
         set +o pipefail
-        local master=$(kubectl exec "$ovnCni" -c cni-server -n $KUBE_OVN_NS -- sh -c "$nsenterCmd ip link show $nicName" | grep -Eo '\smaster\s\w+\s' | awk '{print $2}')
+        local master=$(kubectl exec "$ovsPod" -c openvswitch -n $KUBE_OVN_NS -- sh -c "$nsenterCmd ip link show $nicName" | grep -Eo '\smaster\s\w+\s' | awk '{print $2}')
         set -o pipefail
         if [ ! -z "$master" ]; then
           echo "Error: Pod nic $nicName is a slave of $master, please set the destination mac address."
@@ -353,10 +353,10 @@ trace(){
         local cmd= output=
         if [[ "$gateway" =~ .*:.* ]]; then
           cmd="ndisc6 -q $gateway $nicName"
-          output=$(kubectl exec "$ovnCni" -c cni-server -n $KUBE_OVN_NS -- sh -c "$nsenterCmd ndisc6 -q $gateway $nicName")
+          output=$(kubectl exec "$ovsPod" -c openvswitch -n $KUBE_OVN_NS -- sh -c "$nsenterCmd ndisc6 -q $gateway $nicName")
         else
           cmd="arping -c3 -C1 -i1 -I $nicName $gateway"
-          output=$(kubectl exec "$ovnCni" -c cni-server -n $KUBE_OVN_NS -- sh -c "$nsenterCmd arping -c3 -C1 -i1 -I $nicName $gateway")
+          output=$(kubectl exec "$ovsPod" -c openvswitch -n $KUBE_OVN_NS -- sh -c "$nsenterCmd arping -c3 -C1 -i1 -I $nicName $gateway")
         fi
 
         if [ $? -ne 0 ]; then
@@ -449,25 +449,25 @@ trace(){
   echo ""
   echo ""
 
-  local inPort=$(kubectl exec "$ovnCni" -c cni-server -n $KUBE_OVN_NS -- ovs-vsctl --format=csv --data=bare --no-heading --columns=ofport find interface external_id:iface-id="$lsp")
+  local inPort=$(kubectl exec "$ovsPod" -c openvswitch -n $KUBE_OVN_NS -- ovs-vsctl --format=csv --data=bare --no-heading --columns=ofport find interface external_id:iface-id="$lsp")
   case $type in
     icmp)
       set -x
-      kubectl exec "$ovnCni" -c cni-server -n $KUBE_OVN_NS -- ovs-appctl ofproto/trace br-int "in_port=$inPort,icmp$proto,nw_ttl=64,${nw}_src=$srcIP,${nw}_dst=$dst,dl_src=$mac,dl_dst=$dstMac"
+      kubectl exec "$ovsPod" -c openvswitch -n $KUBE_OVN_NS -- ovs-appctl ofproto/trace br-int "in_port=$inPort,icmp$proto,nw_ttl=64,${nw}_src=$srcIP,${nw}_dst=$dst,dl_src=$mac,dl_dst=$dstMac"
       ;;
     tcp|udp)
       set -x
-      kubectl exec "$ovnCni" -c cni-server -n $KUBE_OVN_NS -- ovs-appctl ofproto/trace br-int "in_port=$inPort,$type$proto,nw_ttl=64,${nw}_src=$srcIP,${nw}_dst=$dst,dl_src=$mac,dl_dst=$dstMac,${type}_src=1000,${type}_dst=$4"
+      kubectl exec "$ovsPod" -c openvswitch -n $KUBE_OVN_NS -- ovs-appctl ofproto/trace br-int "in_port=$inPort,$type$proto,nw_ttl=64,${nw}_src=$srcIP,${nw}_dst=$dst,dl_src=$mac,dl_dst=$dstMac,${type}_src=1000,${type}_dst=$4"
       ;;
     arp)
       case "$4" in
         ""|request)
           set -x
-          kubectl exec "$ovnCni" -c cni-server -n $KUBE_OVN_NS -- ovs-appctl ofproto/trace br-int "in_port=$inPort,arp,arp_op=1,dl_src=$mac,dl_dst=$dstMac,arp_spa=$srcIP,arp_tpa=$dst,arp_sha=$mac,arp_tha=00:00:00:00:00:00"
+          kubectl exec "$ovsPod" -c openvswitch -n $KUBE_OVN_NS -- ovs-appctl ofproto/trace br-int "in_port=$inPort,arp,arp_op=1,dl_src=$mac,dl_dst=$dstMac,arp_spa=$srcIP,arp_tpa=$dst,arp_sha=$mac,arp_tha=00:00:00:00:00:00"
           ;;
         reply)
           set -x
-          kubectl exec "$ovnCni" -c cni-server -n $KUBE_OVN_NS -- ovs-appctl ofproto/trace br-int "in_port=$inPort,arp,arp_op=2,dl_src=$mac,dl_dst=$dstMac,arp_spa=$srcIP,arp_tpa=$dst,arp_sha=$mac,arp_tha=$dstMac"
+          kubectl exec "$ovsPod" -c openvswitch -n $KUBE_OVN_NS -- ovs-appctl ofproto/trace br-int "in_port=$inPort,arp,arp_op=2,dl_src=$mac,dl_dst=$dstMac,arp_spa=$srcIP,arp_tpa=$dst,arp_sha=$mac,arp_tha=$dstMac"
           ;;
       esac
       ;;
