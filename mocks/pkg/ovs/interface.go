@@ -676,6 +676,20 @@ func (mr *MockLogicalSwitchPortMockRecorder) CreateLogicalSwitchPort(lsName, lsp
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateLogicalSwitchPort", reflect.TypeOf((*MockLogicalSwitchPort)(nil).CreateLogicalSwitchPort), lsName, lspName, ip, mac, podName, namespace, portSecurity, securityGroups, vips, enableDHCP, dhcpOptions, vpc)
 }
 
+// CreateVirtualLogicalSwitchPort mocks base method.
+func (m *MockLogicalSwitchPort) CreateVirtualLogicalSwitchPort(lspName, lsName, ip string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateVirtualLogicalSwitchPort", lspName, lsName, ip)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// CreateVirtualLogicalSwitchPort indicates an expected call of CreateVirtualLogicalSwitchPort.
+func (mr *MockLogicalSwitchPortMockRecorder) CreateVirtualLogicalSwitchPort(lspName, lsName, ip any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateVirtualLogicalSwitchPort", reflect.TypeOf((*MockLogicalSwitchPort)(nil).CreateVirtualLogicalSwitchPort), lspName, lsName, ip)
+}
+
 // CreateVirtualLogicalSwitchPorts mocks base method.
 func (m *MockLogicalSwitchPort) CreateVirtualLogicalSwitchPorts(lsName string, ips ...string) error {
 	m.ctrl.T.Helper()
@@ -2591,6 +2605,20 @@ func (m *MockNbClient) CreateSgDenyAllACL(sgName string) error {
 func (mr *MockNbClientMockRecorder) CreateSgDenyAllACL(sgName any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateSgDenyAllACL", reflect.TypeOf((*MockNbClient)(nil).CreateSgDenyAllACL), sgName)
+}
+
+// CreateVirtualLogicalSwitchPort mocks base method.
+func (m *MockNbClient) CreateVirtualLogicalSwitchPort(lspName, lsName, ip string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateVirtualLogicalSwitchPort", lspName, lsName, ip)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// CreateVirtualLogicalSwitchPort indicates an expected call of CreateVirtualLogicalSwitchPort.
+func (mr *MockNbClientMockRecorder) CreateVirtualLogicalSwitchPort(lspName, lsName, ip any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateVirtualLogicalSwitchPort", reflect.TypeOf((*MockNbClient)(nil).CreateVirtualLogicalSwitchPort), lspName, lsName, ip)
 }
 
 // CreateVirtualLogicalSwitchPorts mocks base method.

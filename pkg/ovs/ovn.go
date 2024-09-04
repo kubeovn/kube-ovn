@@ -133,7 +133,7 @@ func ConstructWaitForUniqueOperation(table, column string, value interface{}) ov
 		Timeout: &timeout,
 		Where:   []ovsdb.Condition{{Column: column, Function: ovsdb.ConditionEqual, Value: value}},
 		Columns: []string{column},
-		Until:   "!=",
+		Until:   string(ovsdb.WaitConditionNotEqual),
 		Rows:    []ovsdb.Row{{column: value}},
 	}
 }

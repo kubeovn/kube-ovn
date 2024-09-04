@@ -33,7 +33,6 @@ func buildLogicalSwitchPort(lspName, lsName, ip, mac, podName, namespace string,
 
 	// addresses is the first element of addresses
 	lsp.Addresses = []string{strings.TrimSpace(strings.Join(addresses, " "))}
-	lsp.ExternalIDs["vendor"] = util.CniTypeName
 
 	lsp.PortSecurity = nil
 	if portSecurity {
@@ -225,6 +224,41 @@ func (c *OVNNbClient) CreateVirtualLogicalSwitchPorts(lsName string, ips ...stri
 	return nil
 }
 
+// CreateVirtualLogicalSwitchPort create one virtual type logical switch port for allowed-address-pair
+func (c *OVNNbClient) CreateVirtualLogicalSwitchPort(lspName, lsName, ip string) error {
+	exist, err := c.LogicalSwitchPortExists(lspName)
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
+
+	// ignore
+	if exist {
+		return nil
+	}
+
+	lsp := &ovnnb.LogicalSwitchPort{
+		UUID: ovsclient.NamedUUID(),
+		Name: lspName,
+		Type: "virtual",
+		Options: map[string]string{
+			"virtual-ip": ip,
+		},
+	}
+
+	op, err := c.CreateLogicalSwitchPortOp(lsp, lsName)
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
+
+	if err := c.Transact("lsp-add", op); err != nil {
+		return fmt.Errorf("create virtual logical switch port %s for logical switch %s: %w", lspName, lsName, err)
+	}
+
+	return nil
+}
+
 // CreateBareLogicalSwitchPort create logical switch port with basic configuration
 func (c *OVNNbClient) CreateBareLogicalSwitchPort(lsName, lspName, ip, mac string) error {
 	exist, err := c.LogicalSwitchPortExists(lspName)
@@ -247,7 +281,7 @@ func (c *OVNNbClient) CreateBareLogicalSwitchPort(lsName, lspName, ip, mac strin
 	lsp := &ovnnb.LogicalSwitchPort{
 		UUID:      ovsclient.NamedUUID(),
 		Name:      lspName,
-		Addresses: []string{strings.Join(addresses, " ")}, // addresses is the first element of addresses
+		Addresses: []string{strings.TrimSpace(strings.Join(addresses, " "))}, // addresses is the first element of addresses
 	}
 
 	ops, err := c.CreateLogicalSwitchPortOp(lsp, lsName)
@@ -342,7 +376,7 @@ func (c *OVNNbClient) SetLogicalSwitchPortSecurity(portSecurity bool, lspName, m
 		}
 
 		// addresses is the first element of port_security
-		lsp.PortSecurity = []string{strings.Join(addresses, " ")}
+		lsp.PortSecurity = []string{strings.TrimSpace(strings.Join(addresses, " "))}
 	}
 
 	if vips != "" {
@@ -464,7 +498,7 @@ func (c *OVNNbClient) SetLogicalSwitchPortsSecurityGroup(sgName, op string) erro
 	return nil
 }
 
-// EnablePortLayer2forward set logical switch port addresses as 'unknown'
+// EnablePortLayer2forward adds "unknown" to logical switch port's addresses
 func (c *OVNNbClient) EnablePortLayer2forward(lspName string) error {
 	lsp, err := c.GetLogicalSwitchPort(lspName, false)
 	if err != nil {
@@ -472,8 +506,11 @@ func (c *OVNNbClient) EnablePortLayer2forward(lspName string) error {
 		return fmt.Errorf("get logical switch port %s: %v", lspName, err)
 	}
 
-	lsp.Addresses = []string{"unknown"}
+	if util.ContainsString(lsp.Addresses, "unknown") {
+		return nil
+	}
 
+	lsp.Addresses = append(lsp.Addresses, "unknown")
 	if err := c.UpdateLogicalSwitchPort(lsp, &lsp.Addresses); err != nil {
 		return fmt.Errorf("set logical switch port %s addressed=unknown: %v", lspName, err)
 	}
@@ -531,6 +568,15 @@ func (c *OVNNbClient) UpdateLogicalSwitchPort(lsp *ovnnb.LogicalSwitchPort, fiel
 
 // DeleteLogicalSwitchPort delete logical switch port in ovn
 func (c *OVNNbClient) DeleteLogicalSwitchPort(lspName string) error {
+	lsp, err := c.GetLogicalSwitchPort(lspName, true)
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
+	if lsp == nil {
+		return nil
+	}
+
 	ops, err := c.DeleteLogicalSwitchPortOp(lspName)
 	if err != nil {
 		klog.Error(err)

@@ -47,7 +47,6 @@ func (suite *OvnClientTestSuite) testUpdateLogicalRouter() {
 
 	ovnClient := suite.ovnClient
 	lrName := "test-update-lr"
-	policies := []string{ovsclient.NamedUUID(), ovsclient.NamedUUID()}
 
 	err := ovnClient.CreateLogicalRouter(lrName)
 	require.NoError(t, err)
@@ -55,26 +54,25 @@ func (suite *OvnClientTestSuite) testUpdateLogicalRouter() {
 	lr, err := ovnClient.GetLogicalRouter(lrName, false)
 	require.NoError(t, err)
 
-	t.Run("update policy", func(t *testing.T) {
-		lr.Policies = policies
-
+	t.Run("update external-ids", func(t *testing.T) {
+		lr.ExternalIDs = map[string]string{"foo": "bar"}
 		err = ovnClient.UpdateLogicalRouter(lr)
 		require.NoError(t, err)
 
 		lr, err := ovnClient.GetLogicalRouter(lrName, false)
 		require.NoError(t, err)
-		require.ElementsMatch(t, lr.Policies, policies)
+		require.Equal(t, map[string]string{"foo": "bar"}, lr.ExternalIDs)
 	})
 
-	t.Run("clear policy", func(t *testing.T) {
-		lr.Policies = nil
+	t.Run("clear external-ids", func(t *testing.T) {
+		lr.ExternalIDs = nil
 
-		err = ovnClient.UpdateLogicalRouter(lr, &lr.Policies)
+		err = ovnClient.UpdateLogicalRouter(lr, &lr.ExternalIDs)
 		require.NoError(t, err)
 
 		lr, err := ovnClient.GetLogicalRouter(lrName, false)
 		require.NoError(t, err)
-		require.Empty(t, lr.Policies)
+		require.Empty(t, lr.ExternalIDs)
 	})
 }
 

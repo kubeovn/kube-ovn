@@ -1015,8 +1015,8 @@ github.com/kubeovn/go-iptables v0.0.0-20230322103850-8619a8ab3dca h1:fTMjoho2et9
 github.com/kubeovn/go-iptables v0.0.0-20230322103850-8619a8ab3dca/go.mod h1:jY1XeGzkx8ASNJ+SqQSxTESNXARkjvt+I6IJOTnzIjw=
 github.com/kubeovn/gonetworkmanager/v2 v2.0.0-20230905082151-e28c4d73a589 h1:y9exo1hjCsq7jsGUzt11kxhTiEGrGSQ0ZqibAiZk2PQ=
 github.com/kubeovn/gonetworkmanager/v2 v2.0.0-20230905082151-e28c4d73a589/go.mod h1:49upX+/hUyppWIqu58cumojyIwXdkA8k6reA/mQlKuI=
-github.com/kubeovn/libovsdb v0.0.0-20230517064328-9d5a1383643f h1:HDjnbJZN+2T3XH7usjtO2+PYDA2fyrLGYjypEA/87pM=
-github.com/kubeovn/libovsdb v0.0.0-20230517064328-9d5a1383643f/go.mod h1:NHoQwGSKygdpFb8y7HBS6b1HP4EtJ14zzLrnd/A1fmY=
+github.com/kubeovn/libovsdb v0.0.0-20240218023647-f0bc3ce57fcd h1:GhgvSBFKEkVNgDq8IslC04NVuoznreZH/Imz/cr6bhs=
+github.com/kubeovn/libovsdb v0.0.0-20240218023647-f0bc3ce57fcd/go.mod h1:pTnlGt1JZrncr6pJn/Fhnp3FFTMQRaTVxiSKBLVGa5s=
 github.com/kubeovn/ovsdb v0.0.0-20240410091831-5dd26006c475 h1:KZba2Kj9TXCUdUSqOR3eiy4VvkkIyhDVImYmYs6GQWU=
 github.com/kubeovn/ovsdb v0.0.0-20240410091831-5dd26006c475/go.mod h1:LAd0qoeAAm/QyZcpxN2BnpndM2/dhZt+/kokPvcxKcE=
 github.com/kubernetes-csi/external-snapshotter/client/v4 v4.2.0 h1:nHHjmvjitIiyPlUHk/ofpgvBcNcawJLtf4PYHORLjAA=
