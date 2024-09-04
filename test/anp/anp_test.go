@@ -62,7 +62,7 @@ func TestAdminNetworkPolicyConformance(t *testing.T) {
 				CleanupBaseResources: true,
 				SupportedFeatures:    suite.CoreFeatures,
 				BaseManifests:        baseManifests,
-				TimeoutConfig:        netpolv1config.TimeoutConfig{GetTimeout: 300 * time.Second},
+				TimeoutConfig:        netpolv1config.TimeoutConfig{GetTimeout: 300 * time.Second, RequestTimeout: 10 * time.Second},
 			},
 			ConformanceProfiles: profiles,
 		})
