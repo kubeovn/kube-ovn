@@ -136,6 +136,7 @@ spec:
           - --node-local-dns-ip={{- .Values.networking.NODE_LOCAL_DNS_IP }}
           - --secure-serving={{- .Values.func.SECURE_SERVING }}
           - --enable-ovn-ipsec={{- .Values.func.ENABLE_OVN_IPSEC }}
+          - --enable-anp={{- .Values.func.ENABLE_ANP }}
           securityContext:
             runAsUser: {{ include "kubeovn.runAsUser" . }}
             privileged: false
