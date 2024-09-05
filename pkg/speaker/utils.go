@@ -86,7 +86,7 @@ func parseRoute(route string) (string, uint32, error) {
 		if err != nil {
 			return "", 0, err
 		}
-		prefixLen = uint32(intLen)
+		prefixLen = uint32(intLen) // #nosec G115
 	}
 	return prefix, prefixLen, nil
 }
