@@ -136,7 +136,7 @@ func CIDRContainIP(cidrStr, ipStr string) bool {
 	if len(cidrs) == 1 {
 		for _, ip := range ips {
 			if CheckProtocol(cidrStr) != CheckProtocol(ip) {
-				klog.Errorf("ip %s and cidr %s should be the same protocol", ip, cidrStr)
+				klog.Warningf("ip %q and cidr %q should be the same protocol", ip, cidrStr)
 				return false
 			}
 		}
@@ -155,12 +155,10 @@ func CIDRContainIP(cidrStr, ipStr string) bool {
 			}
 			ipAddr := net.ParseIP(ip)
 			if ipAddr == nil {
-				klog.Errorf("invalid ip %s", ip)
+				klog.Errorf("invalid ip %q", ip)
 				return false
 			}
-
 			if !cidrNet.Contains(ipAddr) {
-				klog.Errorf("ip %s is not in cidr %s", ip, cidr)
 				return false
 			}
 		}
@@ -170,6 +168,10 @@ func CIDRContainIP(cidrStr, ipStr string) bool {
 }
 
 func CheckProtocol(address string) string {
+	if address == "" {
+		return ""
+	}
+
 	ips := strings.Split(address, ",")
 	if len(ips) == 2 {
 		IP1 := net.ParseIP(strings.Split(ips[0], "/")[0])
@@ -180,7 +182,7 @@ func CheckProtocol(address string) string {
 		if IP2.To4() != nil && IP1.To4() == nil && IP1.To16() != nil {
 			return kubeovnv1.ProtocolDual
 		}
-		err := fmt.Errorf("invalid address %s", address)
+		err := fmt.Errorf("invalid address %q", address)
 		klog.Error(err)
 		return ""
 	}
@@ -194,7 +196,7 @@ func CheckProtocol(address string) string {
 	}
 
 	// cidr format error
-	err := fmt.Errorf("invalid address %s", address)
+	err := fmt.Errorf("invalid address %q", address)
 	klog.Error(err)
 	return ""
 }

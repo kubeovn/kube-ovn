@@ -83,6 +83,10 @@ KWOK_IMAGE = registry.k8s.io/kwok/kwok:$(KWOK_VERSION)
 
 VPC_NAT_GW_IMG = $(REGISTRY)/vpc-nat-gateway:$(VERSION)
 
+ANP_TEST_IMAGE = registry.k8s.io/e2e-test-images/agnhost:2.45
+ANP_CR_YAML = https://raw.githubusercontent.com/kubernetes-sigs/network-policy-api/main/config/crd/standard/policy.networking.k8s.io_adminnetworkpolicies.yaml
+BANP_CR_YAML = https://raw.githubusercontent.com/kubernetes-sigs/network-policy-api/main/config/crd/standard/policy.networking.k8s.io_baselineadminnetworkpolicies.yaml
+
 E2E_NETWORK = bridge
 ifneq ($(VLAN_ID),)
 E2E_NETWORK = kube-ovn-vlan
@@ -476,6 +480,7 @@ kind-install-chart: kind-load-image kind-untaint-control-plane
 		--set networking.ENABLE_SSL=$(shell echo $${ENABLE_SSL:-false}) \
 		--set func.ENABLE_BIND_LOCAL_IP=$(shell echo $${ENABLE_BIND_LOCAL_IP:-true}) \
 		--set func.ENABLE_OVN_IPSEC=$(shell echo $${ENABLE_OVN_IPSEC:-false}) \
+		--set func.ENABLE_ANP=$(shell echo $${ENABLE_ANP:-false}) \
 		--set func.ENABLE_IC=$(shell kubectl get node --show-labels | grep -qw "ovn.kubernetes.io/ic-gw" && echo true || echo false)
 
 .PHONY: kind-install-chart-ssl
@@ -490,6 +495,7 @@ kind-upgrade-chart: kind-load-image
 		--set networking.ENABLE_SSL=$(shell echo $${ENABLE_SSL:-false}) \
 		--set func.ENABLE_BIND_LOCAL_IP=$(shell echo $${ENABLE_BIND_LOCAL_IP:-true}) \
 		--set func.ENABLE_OVN_IPSEC=$(shell echo $${ENABLE_OVN_IPSEC:-false}) \
+		--set func.ENABLE_ANP=$(shell echo $${ENABLE_ANP:-false}) \
 		--set func.ENABLE_IC=$(shell kubectl get node --show-labels | grep -qw "ovn.kubernetes.io/ic-gw" && echo true || echo false)
 	kubectl -n kube-system wait pod --for=condition=ready -l app=ovs --timeout=60s
 
@@ -917,6 +923,13 @@ kind-install-kwok:
 .PHONY: kind-install-ovn-ipsec
 kind-install-ovn-ipsec:
 	@$(MAKE) ENABLE_OVN_IPSEC=true kind-install
+
+.PHONY: kind-install-anp
+kind-install-anp: kind-load-image
+	$(call kind_load_image,kube-ovn,$(ANP_TEST_IMAGE),1)
+	kubectl apply -f "$(ANP_CR_YAML)"
+	kubectl apply -f "$(BANP_CR_YAML)"
+	@$(MAKE) ENABLE_ANP=true kind-install
 
 .PHONY: kind-reload
 kind-reload: kind-reload-ovs

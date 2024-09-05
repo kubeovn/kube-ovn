@@ -151,6 +151,7 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 		oriPod := pod.DeepCopy()
 		pod.Annotations[fmt.Sprintf(util.VfRepresentorNameTemplate, provider)] = hostNicName
 		pod.Annotations[fmt.Sprintf(util.VfNameTemplate, provider)] = containerNicName
+		pod.Annotations[fmt.Sprintf(util.PodNicAnnotationTemplate, provider)] = util.SriovNicType
 		var patch []byte
 		patch, err = util.GenerateMergePatchPayload(oriPod, pod)
 		if err != nil {
@@ -255,7 +256,8 @@ func (csh cniServerHandler) releaseVf(podName, podNamespace, podNetns, ifName, n
 				ifName, vfName, podDesc, err)
 		}
 		// move VF device to host netns
-		if err = netlink.LinkSetNsFd(link, int(hostNS.Fd())); err != nil {
+		fd := int(netns.Fd()) // #nosec G115
+		if err = netlink.LinkSetNsFd(link, fd); err != nil {
 			return fmt.Errorf("failed to move container interface %s back to host namespace %s: %w",
 				ifName, podDesc, err)
 		}
@@ -406,7 +408,8 @@ func (csh cniServerHandler) configureContainerNic(podName, podNamespace, nicName
 		return nil, err
 	}
 
-	if err = netlink.LinkSetNsFd(containerLink, int(netns.Fd())); err != nil {
+	fd := int(netns.Fd()) // #nosec G115
+	if err = netlink.LinkSetNsFd(containerLink, fd); err != nil {
 		return nil, fmt.Errorf("failed to move link to netns: %w", err)
 	}
 
@@ -790,7 +793,8 @@ func configureNodeGwNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu i
 	}
 	gwLink, err := netlink.LinkByName(util.NodeGwNic)
 	if err == nil {
-		if err = netlink.LinkSetNsFd(gwLink, int(gwNS.Fd())); err != nil {
+		fd := int(gwNS.Fd()) // #nosec G115
+		if err = netlink.LinkSetNsFd(gwLink, fd); err != nil {
 			klog.Errorf("failed to move link into netns: %v", err)
 			return err
 		}
