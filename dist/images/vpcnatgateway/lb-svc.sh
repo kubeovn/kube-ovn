@@ -38,7 +38,7 @@ function add_eip() {
         exec_cmd "ip route replace $eip_network/$eip_prefix dev net1 table $ROUTE_TABLE"
         exec_cmd "ip route replace default via $gateway dev net1 table $ROUTE_TABLE"
         ip link set dev net1 arp on
-        exec_cmd "arping -c 3 -s $eip_without_prefix $gateway"
+        exec_cmd "arping -f -c 3 -s $eip_without_prefix $gateway"
     done
 }
 
