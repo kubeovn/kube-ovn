@@ -436,7 +436,8 @@ func TestGetGetV4RandomAddress(t *testing.T) {
 
 func TestGetGetV4RandomAddressPTP(t *testing.T) {
 	excludeIps := []string{
-		"10.0.0.0"}
+		"10.0.0.0",
+	}
 	subnet, err := NewSubnet("randomAddressV4Subnet1", "10.0.0.0/31", excludeIps)
 	require.NoError(t, err)
 	require.NotNil(t, subnet)
