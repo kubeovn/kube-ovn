@@ -1422,6 +1422,12 @@ func (c *Controller) setExGateway() error {
 		klog.Errorf("failed to get node, %v", err)
 		return err
 	}
+	var isUserspaceDP bool
+	isUserspaceDP, err = ovs.IsUserspaceDataPath()
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
 	enable := node.Labels[util.ExGatewayLabel]
 	externalBridge := util.ExternalBridgeName(c.config.ExternalGatewaySwitch)
 	if enable == "true" {
@@ -1434,12 +1440,6 @@ func (c *Controller) setExGateway() error {
 		linkName, exist := cm.Data["external-gw-nic"]
 		if !exist || len(linkName) == 0 {
 			err = errors.New("external-gw-nic not configured in ovn-external-gw-config")
-			klog.Error(err)
-			return err
-		}
-
-		isUserspaceDP, err := ovs.IsUserspaceDataPath()
-		if err != nil {
 			klog.Error(err)
 			return err
 		}
@@ -1523,7 +1523,7 @@ func (c *Controller) setExGateway() error {
 			}
 		}
 
-		if !keepExternalSubnet {
+		if !isUserspaceDP && !keepExternalSubnet {
 			klog.Infof("delete external bridge %s", externalBridge)
 			if _, err := ovs.Exec(
 				ovs.IfExists, "del-br", externalBridge); err != nil {
