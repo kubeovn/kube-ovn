@@ -24,17 +24,21 @@ endif
 
 CONTROL_PLANE_TAINTS = node-role.kubernetes.io/master node-role.kubernetes.io/control-plane
 
-MULTUS_VERSION = v4.0.2
+FRR_VERSION = 9.1.1
+FRR_IMAGE = quay.io/frrouting/frr:$(FRR_VERSION)
+
+CLAB_IMAGE = ghcr.io/srl-labs/clab:0.56.0
+
+MULTUS_VERSION = v4.1.0
 MULTUS_IMAGE = ghcr.io/k8snetworkplumbingwg/multus-cni:$(MULTUS_VERSION)-thick
 MULTUS_YAML = https://raw.githubusercontent.com/k8snetworkplumbingwg/multus-cni/$(MULTUS_VERSION)/deployments/multus-daemonset-thick.yml
 
-METALLB_VERSION = 0.14.3
+METALLB_VERSION = 0.14.8
 METALLB_CHART_REPO = https://metallb.github.io/metallb
 METALLB_CONTROLLER_IMAGE = quay.io/metallb/controller:v$(METALLB_VERSION)
 METALLB_SPEAKER_IMAGE = quay.io/metallb/speaker:v$(METALLB_VERSION)
-METALLB_FRR_IMAGE = quay.io/frrouting/frr:8.5.2
 
-KUBEVIRT_VERSION = v1.3.0
+KUBEVIRT_VERSION = v1.3.1
 KUBEVIRT_OPERATOR_IMAGE = quay.io/kubevirt/virt-operator:$(KUBEVIRT_VERSION)
 KUBEVIRT_API_IMAGE = quay.io/kubevirt/virt-api:$(KUBEVIRT_VERSION)
 KUBEVIRT_CONTROLLER_IMAGE = quay.io/kubevirt/virt-controller:$(KUBEVIRT_VERSION)
@@ -43,16 +47,16 @@ KUBEVIRT_LAUNCHER_IMAGE = quay.io/kubevirt/virt-launcher:$(KUBEVIRT_VERSION)
 KUBEVIRT_OPERATOR_YAML = https://github.com/kubevirt/kubevirt/releases/download/$(KUBEVIRT_VERSION)/kubevirt-operator.yaml
 KUBEVIRT_CR_YAML = https://github.com/kubevirt/kubevirt/releases/download/$(KUBEVIRT_VERSION)/kubevirt-cr.yaml
 
-CILIUM_VERSION = 1.14.6
-CILIUM_IMAGE_REPO = quay.io/cilium/cilium
+CILIUM_VERSION = 1.16.1
+CILIUM_IMAGE_REPO = quay.io/cilium
 
-CERT_MANAGER_VERSION = v1.14.1
+CERT_MANAGER_VERSION = v1.15.2
 CERT_MANAGER_CONTROLLER = quay.io/jetstack/cert-manager-controller:$(CERT_MANAGER_VERSION)
 CERT_MANAGER_CAINJECTOR = quay.io/jetstack/cert-manager-cainjector:$(CERT_MANAGER_VERSION)
 CERT_MANAGER_WEBHOOK = quay.io/jetstack/cert-manager-webhook:$(CERT_MANAGER_VERSION)
 CERT_MANAGER_YAML = https://github.com/cert-manager/cert-manager/releases/download/$(CERT_MANAGER_VERSION)/cert-manager.yaml
 
-SUBMARINER_VERSION = $(shell echo $${SUBMARINER_VERSION:-0.16.3})
+SUBMARINER_VERSION = $(shell echo $${SUBMARINER_VERSION:-0.18.0})
 SUBMARINER_OPERATOR = quay.io/submariner/submariner-operator:$(SUBMARINER_VERSION)
 SUBMARINER_GATEWAY = quay.io/submariner/submariner-gateway:$(SUBMARINER_VERSION)
 SUBMARINER_LIGHTHOUSE_AGENT = quay.io/submariner/lighthouse-agent:$(SUBMARINER_VERSION)
@@ -60,19 +64,41 @@ SUBMARINER_LIGHTHOUSE_COREDNS = quay.io/submariner/lighthouse-coredns:$(SUBMARIN
 SUBMARINER_ROUTE_AGENT = quay.io/submariner/submariner-route-agent:$(SUBMARINER_VERSION)
 SUBMARINER_NETTEST = quay.io/submariner/nettest:$(SUBMARINER_VERSION)
 
-DEEPFLOW_CHART_VERSION = 6.2.6
+DEEPFLOW_VERSION = v6.4
+DEEPFLOW_CHART_VERSION = 6.4.013
 DEEPFLOW_CHART_REPO = https://deepflow-ce.oss-cn-beijing.aliyuncs.com/chart/stable
 DEEPFLOW_IMAGE_REPO = registry.cn-beijing.aliyuncs.com/deepflow-ce
-DEEPFLOW_GRAFANA_PORT = 30080
+DEEPFLOW_SERVER_NODE_PORT = 30417
+DEEPFLOW_SERVER_GRPC_PORT = 30035
+DEEPFLOW_SERVER_HTTP_PORT = 20417
+DEEPFLOW_GRAFANA_NODE_PORT = 30080
+DEEPFLOW_MAPPED_PORTS = $(DEEPFLOW_SERVER_NODE_PORT),$(DEEPFLOW_SERVER_GRPC_PORT),$(DEEPFLOW_SERVER_HTTP_PORT),$(DEEPFLOW_GRAFANA_NODE_PORT)
+DEEPFLOW_CTL_URL = https://deepflow-ce.oss-cn-beijing.aliyuncs.com/bin/ctl/$(DEEPFLOW_VERSION)/linux/$(shell arch | sed 's|x86_64|amd64|' | sed 's|aarch64|arm64|')/deepflow-ctl
 
-KWOK_VERSION = v0.5.0
+KWOK_VERSION = v0.6.0
 KWOK_IMAGE = registry.k8s.io/kwok/kwok:$(KWOK_VERSION)
 
 VPC_NAT_GW_IMG = $(REGISTRY)/vpc-nat-gateway:$(VERSION)
 
-E2E_NETWORK = bridge
-ifneq ($(VLAN_ID),)
 E2E_NETWORK = kube-ovn-vlan
+
+KIND_NETWORK_UNDERLAY = $(shell echo $${KIND_NETWORK_UNDERLAY:-kind})
+UNDERLAY_VAR_PREFIX = $(shell echo $(KIND_NETWORK_UNDERLAY) | tr '[:lower:]-' '[:upper:]_')
+UNDERLAY_IPV4_SUBNET = $(UNDERLAY_VAR_PREFIX)_IPV4_SUBNET
+UNDERLAY_IPV6_SUBNET = $(UNDERLAY_VAR_PREFIX)_IPV6_SUBNET
+UNDERLAY_IPV4_GATEWAY = $(UNDERLAY_VAR_PREFIX)_IPV4_GATEWAY
+UNDERLAY_IPV6_GATEWAY = $(UNDERLAY_VAR_PREFIX)_IPV6_GATEWAY
+UNDERLAY_IPV4_EXCLUDE_IPS = $(UNDERLAY_VAR_PREFIX)_IPV4_EXCLUDE_IPS
+UNDERLAY_IPV6_EXCLUDE_IPS = $(UNDERLAY_VAR_PREFIX)_IPV6_EXCLUDE_IPS
+
+VLAN_NIC = $(shell echo $${VLAN_NIC:-eth0})
+ifneq ($(KIND_NETWORK_UNDERLAY),kind)
+VLAN_NIC = eth1
+endif
+
+KIND_AUDITING = $(shell echo $${KIND_AUDITING:-false})
+ifeq ($(shell echo $${CI:-false}),true)
+KIND_AUDITING = true
 endif
 
 # ARCH could be amd64,arm64
@@ -219,28 +245,18 @@ define docker_ensure_image_exists
 endef
 
 define docker_rm_container
-	@docker ps -a -f name="$(1)" --format "{{.ID}}" | while read c; do docker rm -f $$c; done
+	@docker ps -a -f name="^$(1)$$" --format "{{.ID}}" | while read c; do docker rm -f $$c; done
 endef
 
 define docker_network_info
-	$(eval VAR_PREFIX = $(shell echo $(1) | tr '[:lower:]' '[:upper:]'))
+	$(eval VAR_PREFIX = $(shell echo $(1) | tr '[:lower:]-' '[:upper:]_'))
 	$(eval $(VAR_PREFIX)_IPV4_SUBNET = $(shell docker network inspect $(1) -f "{{range .IPAM.Config}}{{println .Subnet}}{{end}}" | grep -v :))
 	$(eval $(VAR_PREFIX)_IPV6_SUBNET = $(shell docker network inspect $(1) -f "{{range .IPAM.Config}}{{println .Subnet}}{{end}}" | grep :))
 	$(eval $(VAR_PREFIX)_IPV4_GATEWAY = $(shell docker network inspect $(1) -f "{{range .IPAM.Config}}{{println .Gateway}}{{end}}" | grep -v :))
 	$(eval $(VAR_PREFIX)_IPV6_GATEWAY = $(shell docker network inspect $(1) -f "{{range .IPAM.Config}}{{println .Gateway}}{{end}}" | grep :))
-	$(eval $(VAR_PREFIX)_IPV6_GATEWAY := $(shell docker exec kube-ovn-control-plane ip -6 route show default | awk '{print $$3}'))
+	$(eval $(VAR_PREFIX)_IPV6_GATEWAY := $(if $($(VAR_PREFIX)_IPV6_GATEWAY),$($(VAR_PREFIX)_IPV6_GATEWAY),$(shell docker exec kube-ovn-control-plane ip -6 route show default | awk '{print $$3}')))
 	$(eval $(VAR_PREFIX)_IPV4_EXCLUDE_IPS = $(shell docker network inspect $(1) -f '{{range .Containers}},{{index (split .IPv4Address "/") 0}}{{end}}' | sed 's/^,//'))
 	$(eval $(VAR_PREFIX)_IPV6_EXCLUDE_IPS = $(shell docker network inspect $(1) -f '{{range .Containers}},{{index (split .IPv6Address "/") 0}}{{end}}' | sed 's/^,//'))
-endef
-
-define docker_create_vlan_network
-	$(eval VLAN_NETWORK_ID = $(shell docker network ls -f name=$(E2E_NETWORK) --format '{{.ID}}'))
-	@if [ ! -z "$(VLAN_ID)" -a -z "$(VLAN_NETWORK_ID)" ]; then \
-		docker network create --attachable -d bridge \
-			--ipv6 --subnet fc00:adb1:b29b:608d::/64 --gateway fc00:adb1:b29b:608d::1 \
-			-o com.docker.network.bridge.enable_ip_masquerade=true \
-			-o com.docker.network.driver.mtu=1500 $(E2E_NETWORK); \
-	fi
 endef
 
 define docker_config_bridge
@@ -276,6 +292,10 @@ define docker_config_bridge
 					bridge vlan add vid $(3) dev $$brif; \
 				done'; \
 		fi
+endef
+
+define add_docker_iptables_rule
+	@sudo $(1) -t filter -C DOCKER-USER $(2) 2>/dev/null || sudo $(1) -I DOCKER-USER $(2)
 endef
 
 define kind_create_cluster
@@ -344,17 +364,43 @@ define subctl_join
 	$(call kubectl_wait_submariner_ready)
 endef
 
+.PHONY: kind-network-create-underlay
+kind-network-create-underlay:
+	$(eval UNDERLAY_NETWORK_ID = $(shell docker network ls -f name='^kind-underlay$$' --format '{{.ID}}'))
+	@if [ -z "$(UNDERLAY_NETWORK_ID)" ]; then \
+		docker network create --attachable -d bridge \
+			--ipv6 --subnet fc00:adb1:b29b:608d::/64 --gateway fc00:adb1:b29b:608d::1 \
+			-o com.docker.network.bridge.enable_ip_masquerade=true \
+			-o com.docker.network.driver.mtu=1500 kind-underlay; \
+	fi
+
+.PHONY: kind-network-connect-underlay
+kind-network-connect-underlay:
+	@for node in `kind -n kube-ovn get nodes`; do \
+		docker network connect kind-underlay $$node; \
+		docker exec $$node ip address flush dev eth1; \
+	done
+
+.PHONY: kind-iptables-accepct-underlay
+kind-iptables-accepct-underlay:
+	$(call docker_network_info,kind)
+	$(call docker_network_info,kind-underlay)
+	$(call add_docker_iptables_rule,iptables,-s $(KIND_UNDERLAY_IPV4_SUBNET) -d $(KIND_IPV4_SUBNET) -j ACCEPT)
+	$(call add_docker_iptables_rule,iptables,-d $(KIND_UNDERLAY_IPV4_SUBNET) -s $(KIND_IPV4_SUBNET) -j ACCEPT)
+	$(call add_docker_iptables_rule,ip6tables,-s $(KIND_UNDERLAY_IPV6_SUBNET) -d $(KIND_IPV6_SUBNET) -j ACCEPT)
+	$(call add_docker_iptables_rule,ip6tables,-d $(KIND_UNDERLAY_IPV6_SUBNET) -s $(KIND_IPV6_SUBNET) -j ACCEPT)
+
 .PHONY: kind-generate-config
 kind-generate-config:
 	j2 yamls/kind.yaml.j2 -o yamls/kind.yaml
 
 .PHONY: kind-disable-hairpin
 kind-disable-hairpin:
-	$(call docker_config_bridge,kind,0,)
+	$(call docker_config_bridge,$(KIND_NETWORK_UNDERLAY),0,)
 
 .PHONY: kind-enable-hairpin
 kind-enable-hairpin:
-	$(call docker_config_bridge,kind,1,)
+	$(call docker_config_bridge,$(KIND_NETWORK_UNDERLAY),1,)
 
 .PHONY: kind-create
 kind-create:
@@ -363,9 +409,9 @@ kind-create:
 .PHONY: kind-init
 kind-init: kind-init-ipv4
 
-.PHONY: kind-init-ipv4
-kind-init-ipv4: kind-clean
-	@$(MAKE) kind-generate-config
+.PHONY: kind-init-%
+kind-init-%: kind-clean
+	@auditing=$(KIND_AUDITING) ip_family=$* $(MAKE) kind-generate-config
 	@$(MAKE) kind-create
 
 .PHONY: kind-init-ovn-ic
@@ -374,8 +420,17 @@ kind-init-ovn-ic: kind-init-ovn-ic-ipv4
 .PHONY: kind-init-ovn-ic-%
 kind-init-ovn-ic-%: kind-clean-ovn-ic
 	@n_worker=2 $(MAKE) kind-init-$*
-	@n_worker=3 ip_family=$* $(MAKE) kind-generate-config
+	@n_worker=3 ip_family=$* auditing=$(KIND_AUDITING) $(MAKE) kind-generate-config
 	$(call kind_create_cluster,yamls/kind.yaml,kube-ovn1,1)
+
+.PHONY: kind-init-cilium-chaining
+kind-init-cilium-chaining: kind-init-cilium-chaining-ipv4
+
+.PHONY: kind-init-cilium-chaining-%
+kind-init-cilium-chaining-%: kind-network-create-underlay
+	@kube_proxy_mode=none $(MAKE) kind-init-$*
+	@$(MAKE) kind-iptables-accepct-underlay
+	@$(MAKE) kind-network-connect-underlay
 
 .PHONY: kind-init-ovn-submariner
 kind-init-ovn-submariner: kind-clean-ovn-submariner kind-init
@@ -384,7 +439,7 @@ kind-init-ovn-submariner: kind-clean-ovn-submariner kind-init
 
 .PHONY: kind-init-deepflow
 kind-init-deepflow: kind-clean
-	@port_mapping=$(DEEPFLOW_GRAFANA_PORT):$(DEEPFLOW_GRAFANA_PORT) $(MAKE) kind-generate-config
+	@mapped_ports=$(DEEPFLOW_MAPPED_PORTS) $(MAKE) kind-generate-config
 	$(call kind_create_cluster,yamls/kind.yaml,kube-ovn,0)
 
 .PHONY: kind-init-iptables
@@ -394,29 +449,42 @@ kind-init-iptables:
 .PHONY: kind-init-ha
 kind-init-ha: kind-init-ha-ipv4
 
-.PHONY: kind-init-ha-ipv4
-kind-init-ha-ipv4:
-	@ha=true $(MAKE) kind-init
-
-.PHONY: kind-init-ha-ipv6
-kind-init-ha-ipv6:
-	@ip_family=ipv6 $(MAKE) kind-init-ha
-
-.PHONY: kind-init-ha-dual
-kind-init-ha-dual:
-	@ip_family=dual $(MAKE) kind-init-ha
+.PHONY: kind-init-ha-%
+kind-init-ha-%:
+	@ha=true $(MAKE) kind-init-$*
 
 .PHONY: kind-init-single
-kind-init-single:
-	@single=true $(MAKE) kind-init
+kind-init-single: kind-init-single-ipv4
 
-.PHONY: kind-init-ipv6
-kind-init-ipv6:
-	@ip_family=ipv6 $(MAKE) kind-init
+.PHONY: kind-init-single-%
+kind-init-single-%:
+	@single=true $(MAKE) kind-init-$*
 
-.PHONY: kind-init-dual
-kind-init-dual:
-	@ip_family=dual $(MAKE) kind-init
+.PHONY: kind-init-bgp
+kind-init-bgp: kind-clean-bgp kind-init
+	kube_ovn_version=$(VERSION) frr_image=$(FRR_IMAGE) j2 yamls/clab-bgp.yaml.j2 -o yamls/clab-bgp.yaml
+	docker run --rm --privileged \
+		--name kube-ovn-bgp \
+		--network host \
+		--pid host \
+		-v /var/run/docker.sock:/var/run/docker.sock \
+		-v /var/run/netns:/var/run/netns \
+		-v /var/lib/docker/containers:/var/lib/docker/containers \
+		-v $(CURDIR)/yamls/clab-bgp.yaml:/clab-bgp/clab.yaml \
+		$(CLAB_IMAGE) clab deploy -t /clab-bgp/clab.yaml
+
+.PHONY: kind-init-bgp-ha
+kind-init-bgp-ha: kind-clean-bgp kind-init
+	kube_ovn_version=$(VERSION) frr_image=$(FRR_IMAGE) j2 yamls/clab-bgp-ha.yaml.j2 -o yamls/clab-bgp-ha.yaml
+	docker run --rm --privileged \
+		--name kube-ovn-bgp \
+		--network host \
+		--pid host \
+		-v /var/run/docker.sock:/var/run/docker.sock \
+		-v /var/run/netns:/var/run/netns \
+		-v /var/lib/docker/containers:/var/lib/docker/containers \
+		-v $(CURDIR)/yamls/clab-bgp-ha.yaml:/clab-bgp/clab.yaml \
+		$(CLAB_IMAGE) clab deploy -t /clab-bgp/clab.yaml
 
 .PHONY: kind-load-image
 kind-load-image:
@@ -424,7 +492,7 @@ kind-load-image:
 
 .PHONY: kind-untaint-control-plane
 kind-untaint-control-plane:
-	@for node in $$(kubectl get no -o jsonpath='{.items[*].metadata.name}'); do \
+	@for node in $(shell kubectl get no -o jsonpath='{.items[*].metadata.name}'); do \
 		for key in $(CONTROL_PLANE_TAINTS); do \
 			taint=$$(kubectl get no $$node -o jsonpath="{.spec.taints[?(@.key==\"$$key\")]}"); \
 			if [ -n "$$taint" ]; then \
@@ -439,32 +507,26 @@ kind-install-chart: kind-load-image kind-untaint-control-plane
 	kubectl label node -lnode-role.kubernetes.io/control-plane kube-ovn/role=master --overwrite
 	kubectl label node -lovn.kubernetes.io/ovs_dp_type!=userspace ovn.kubernetes.io/ovs_dp_type=kernel --overwrite
 	ips=$$(kubectl get node -lkube-ovn/role=master --no-headers -o wide | awk '{print $$6}' | tr '\n' ',' | sed 's/,$$//') && \
-	helm install kubeovn ./charts/kube-ovn \
+	helm install kubeovn ./charts/kube-ovn --wait \
 		--set global.images.kubeovn.tag=$(VERSION) \
 		--set replicaCount=$$(echo $$ips | awk -F ',' '{print NF}') \
 		--set MASTER_NODES="$$(echo $$ips | sed 's/,/\\,/g')" \
 		--set func.ENABLE_IC=$$(kubectl get node --show-labels | grep -q "ovn.kubernetes.io/ic-gw" && echo true || echo false)
-	sleep 60
-	kubectl -n kube-system rollout status --timeout=1s deployment/ovn-central
-	kubectl -n kube-system rollout status --timeout=1s daemonset/ovs-ovn
-	kubectl -n kube-system rollout status --timeout=1s deployment/kube-ovn-controller
-	kubectl -n kube-system rollout status --timeout=1s daemonset/kube-ovn-cni
-	kubectl -n kube-system rollout status --timeout=1s daemonset/kube-ovn-pinger
+
+.PHONY: kind-install-chart-ssl
+kind-install-chart-ssl:
+	@ENABLE_SSL=true $(MAKE) kind-install-chart
 
 .PHONY: kind-upgrade-chart
 kind-upgrade-chart: kind-load-image
 	$(eval OVN_DB_IPS = $(shell kubectl get node -lkube-ovn/role=master --no-headers -o wide | awk '{print $$6}' | tr '\n' ',' | sed -e 's/,$$//' -e 's/,/\\,/g'))
-	helm upgrade kubeovn ./charts/kube-ovn \
+	helm upgrade kubeovn ./charts/kube-ovn --wait \
 		--set global.images.kubeovn.tag=$(VERSION) \
 		--set replicaCount=$$(echo $(OVN_DB_IPS) | awk -F ',' '{print NF}') \
 		--set MASTER_NODES='$(OVN_DB_IPS)' \
 		--set func.ENABLE_IC=$$(kubectl get node --show-labels | grep -q "ovn.kubernetes.io/ic-gw" && echo true || echo false)
 	sleep 90
-	kubectl -n kube-system rollout status --timeout=1s deployment/ovn-central
-	kubectl -n kube-system wait pod --for=condition=ready -l app=ovs
-	kubectl -n kube-system rollout status --timeout=1s deployment/kube-ovn-controller
-	kubectl -n kube-system rollout status --timeout=1s daemonset/kube-ovn-cni
-	kubectl -n kube-system rollout status --timeout=1s daemonset/kube-ovn-pinger
+	kubectl -n kube-system wait pod --for=condition=ready -l app=ovs --timeout=60s
 
 .PHONY: kind-uninstall-chart
 kind-uninstall-chart:
@@ -477,23 +539,42 @@ kind-install: kind-load-image
 	sed 's/VERSION=.*/VERSION=$(VERSION)/' dist/images/install.sh | bash
 	kubectl describe no
 
+.PHONY: kind-install-ipv4
+kind-install-ipv4: kind-install
+
+.PHONY: kind-install-ipv6
+kind-install-ipv6:
+	@IPV6=true $(MAKE) kind-install
+
+.PHONY: kind-install-dual
+kind-install-dual:
+	@DUAL_STACK=true $(MAKE) kind-install
+
+.PHONY: kind-install-overlay-%
+kind-install-overlay-%:
+	@$(MAKE) kind-install-$*
+
 .PHONY: kind-install-dev
-kind-install-dev:
-	@VERSION=$(DEV_TAG) $(MAKE) kind-install
+kind-install-dev: kind-install-dev-ipv4
+
+.PHONY: kind-install-dev-%
+kind-install-dev-%:
+	@VERSION=$(DEV_TAG) $(MAKE) kind-install-$*
 
 .PHONY: kind-install-debug
-kind-install-debug:
-	@VERSION=$(DEBUG_TAG) $(MAKE) kind-install
+kind-install-debug: kind-install-debug-ipv4
+
+.PHONY: kind-install-debug-%
+kind-install-debug-%:
+	@VERSION=$(DEBUG_TAG) $(MAKE) kind-install-$*
 
 .PHONY: kind-install-debug-valgrind
-kind-install-debug-valgrind:
+kind-install-debug-valgrind: kind-install-debug-valgrind-ipv4
 	@DEBUG_WRAPPER=valgrind $(MAKE) kind-install-debug
 
-.PHONY: kind-install-ipv4
-kind-install-ipv4: kind-install-overlay-ipv4
-
-.PHONY: kind-install-overlay-ipv4
-kind-install-overlay-ipv4: kind-install
+.PHONY: kind-install-debug-valgrind-%
+kind-install-debug-valgrind-%:
+	@DEBUG_WRAPPER=valgrind $(MAKE) kind-install-debug-$*
 
 .PHONY: kind-install-ovn-ic
 kind-install-ovn-ic: kind-install-ovn-ic-ipv4
@@ -503,7 +584,7 @@ kind-install-ovn-ic-ipv4:
 	@ENABLE_IC=true $(MAKE) kind-install
 	$(call kind_load_image,kube-ovn1,$(REGISTRY)/kube-ovn:$(VERSION))
 	kubectl config use-context kind-kube-ovn1
-	$(MAKE) kind-untaint-control-plane
+	@$(MAKE) kind-untaint-control-plane
 	sed -e 's/10.16.0/10.18.0/g' \
 		-e 's/10.96.0/10.98.0/g' \
 		-e 's/100.64.0/100.68.0/g' \
@@ -602,85 +683,71 @@ kind-install-underlay-hairpin: kind-install-underlay-hairpin-ipv4
 
 .PHONY: kind-install-underlay-ipv4
 kind-install-underlay-ipv4: kind-disable-hairpin kind-load-image kind-untaint-control-plane
-	$(call docker_network_info,kind)
-	@sed -e 's@^[[:space:]]*POD_CIDR=.*@POD_CIDR="$(KIND_IPV4_SUBNET)"@' \
-		-e 's@^[[:space:]]*POD_GATEWAY=.*@POD_GATEWAY="$(KIND_IPV4_GATEWAY)"@' \
-		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$(KIND_IPV4_EXCLUDE_IPS)"@' \
+	$(call docker_network_info,$(KIND_NETWORK_UNDERLAY))
+	@sed -e 's@^[[:space:]]*POD_CIDR=.*@POD_CIDR="$($(UNDERLAY_IPV4_SUBNET))"@' \
+		-e 's@^[[:space:]]*POD_GATEWAY=.*@POD_GATEWAY="$($(UNDERLAY_IPV4_GATEWAY))"@' \
+		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$($(UNDERLAY_IPV4_EXCLUDE_IPS))"@' \
 		-e 's@^VLAN_ID=.*@VLAN_ID="0"@' \
 		-e 's/VERSION=.*/VERSION=$(VERSION)/' \
 		dist/images/install.sh | \
-		ENABLE_VLAN=true VLAN_NIC=eth0 bash
+		ENABLE_VLAN=true VLAN_NIC=$(VLAN_NIC) bash
 	kubectl describe no
 
 .PHONY: kind-install-underlay-hairpin-ipv4
 kind-install-underlay-hairpin-ipv4: kind-enable-hairpin kind-load-image kind-untaint-control-plane
-	$(call docker_network_info,kind)
-	@sed -e 's@^[[:space:]]*POD_CIDR=.*@POD_CIDR="$(KIND_IPV4_SUBNET)"@' \
-		-e 's@^[[:space:]]*POD_GATEWAY=.*@POD_GATEWAY="$(KIND_IPV4_GATEWAY)"@' \
-		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$(KIND_IPV4_EXCLUDE_IPS)"@' \
+	$(call docker_network_info,$(KIND_NETWORK_UNDERLAY))
+	@sed -e 's@^[[:space:]]*POD_CIDR=.*@POD_CIDR="$($(UNDERLAY_IPV4_SUBNET))"@' \
+		-e 's@^[[:space:]]*POD_GATEWAY=.*@POD_GATEWAY="$($(UNDERLAY_IPV4_GATEWAY))"@' \
+		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$($(UNDERLAY_IPV4_EXCLUDE_IPS))"@' \
 		-e 's@^VLAN_ID=.*@VLAN_ID="0"@' \
 		-e 's/VERSION=.*/VERSION=$(VERSION)/' \
 		dist/images/install.sh | \
-		ENABLE_VLAN=true VLAN_NIC=eth0 bash
+		ENABLE_VLAN=true VLAN_NIC=$(VLAN_NIC) bash
 	kubectl describe no
-
-.PHONY: kind-install-ipv6
-kind-install-ipv6: kind-install-overlay-ipv6
-
-.PHONY: kind-install-overlay-ipv6
-kind-install-overlay-ipv6:
-	@IPV6=true $(MAKE) kind-install
 
 .PHONY: kind-install-underlay-ipv6
 kind-install-underlay-ipv6: kind-disable-hairpin kind-load-image kind-untaint-control-plane
-	$(call docker_network_info,kind)
-	@sed -e 's@^[[:space:]]*POD_CIDR=.*@POD_CIDR="$(KIND_IPV6_SUBNET)"@' \
-		-e 's@^[[:space:]]*POD_GATEWAY=.*@POD_GATEWAY="$(KIND_IPV6_GATEWAY)"@' \
-		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$(KIND_IPV6_EXCLUDE_IPS)"@' \
+	$(call docker_network_info,$(KIND_NETWORK_UNDERLAY))
+	@sed -e 's@^[[:space:]]*POD_CIDR=.*@POD_CIDR="$($(UNDERLAY_IPV6_SUBNET))"@' \
+		-e 's@^[[:space:]]*POD_GATEWAY=.*@POD_GATEWAY="$($(UNDERLAY_IPV6_GATEWAY))"@' \
+		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$($(UNDERLAY_IPV6_EXCLUDE_IPS))"@' \
 		-e 's@^VLAN_ID=.*@VLAN_ID="0"@' \
 		-e 's/VERSION=.*/VERSION=$(VERSION)/' \
 		dist/images/install.sh | \
-		IPV6=true ENABLE_VLAN=true VLAN_NIC=eth0 bash
+		IPV6=true ENABLE_VLAN=true VLAN_NIC=$(VLAN_NIC) bash
 
 .PHONY: kind-install-underlay-hairpin-ipv6
 kind-install-underlay-hairpin-ipv6: kind-enable-hairpin kind-load-image kind-untaint-control-plane
-	$(call docker_network_info,kind)
-	@sed -e 's@^[[:space:]]*POD_CIDR=.*@POD_CIDR="$(KIND_IPV6_SUBNET)"@' \
-		-e 's@^[[:space:]]*POD_GATEWAY=.*@POD_GATEWAY="$(KIND_IPV6_GATEWAY)"@' \
-		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$(KIND_IPV6_EXCLUDE_IPS)"@' \
+	$(call docker_network_info,$(KIND_NETWORK_UNDERLAY))
+	@sed -e 's@^[[:space:]]*POD_CIDR=.*@POD_CIDR="$($(UNDERLAY_IPV6_SUBNET))"@' \
+		-e 's@^[[:space:]]*POD_GATEWAY=.*@POD_GATEWAY="$($(UNDERLAY_IPV6_GATEWAY))"@' \
+		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$($(UNDERLAY_IPV6_EXCLUDE_IPS))"@' \
 		-e 's@^VLAN_ID=.*@VLAN_ID="0"@' \
 		-e 's/VERSION=.*/VERSION=$(VERSION)/' \
 		dist/images/install.sh | \
-		IPV6=true ENABLE_VLAN=true VLAN_NIC=eth0 bash
-
-.PHONY: kind-install-dual
-kind-install-dual: kind-install-overlay-dual
-
-.PHONY: kind-install-overlay-dual
-kind-install-overlay-dual:
-	@DUAL_STACK=true $(MAKE) kind-install
+		IPV6=true ENABLE_VLAN=true VLAN_NIC=$(VLAN_NIC) bash
 
 .PHONY: kind-install-underlay-dual
 kind-install-underlay-dual: kind-disable-hairpin kind-load-image kind-untaint-control-plane
-	$(call docker_network_info,kind)
-	@sed -e 's@^[[:space:]]*POD_CIDR=.*@POD_CIDR="$(KIND_IPV4_SUBNET),$(KIND_IPV6_SUBNET)"@' \
-		-e 's@^[[:space:]]*POD_GATEWAY=.*@POD_GATEWAY="$(KIND_IPV4_GATEWAY),$(KIND_IPV6_GATEWAY)"@' \
-		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$(KIND_IPV4_EXCLUDE_IPS),$(KIND_IPV6_EXCLUDE_IPS)"@' \
+	$(call docker_network_info,$(KIND_NETWORK_UNDERLAY))
+	@sed -e 's@^[[:space:]]*POD_CIDR=.*@POD_CIDR="$($(UNDERLAY_IPV4_SUBNET)),$($(UNDERLAY_IPV6_SUBNET))"@' \
+		-e 's@^[[:space:]]*POD_GATEWAY=.*@POD_GATEWAY="$($(UNDERLAY_IPV4_GATEWAY)),$($(UNDERLAY_IPV6_GATEWAY))"@' \
+		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$($(UNDERLAY_IPV4_EXCLUDE_IPS)),$($(UNDERLAY_IPV6_EXCLUDE_IPS))"@' \
 		-e 's@^VLAN_ID=.*@VLAN_ID="0"@' \
 		-e 's/VERSION=.*/VERSION=$(VERSION)/' \
 		dist/images/install.sh | \
-		DUAL_STACK=true ENABLE_VLAN=true VLAN_NIC=eth0 bash
+		DUAL_STACK=true ENABLE_VLAN=true VLAN_NIC=$(VLAN_NIC) bash
 
 .PHONY: kind-install-underlay-hairpin-dual
 kind-install-underlay-hairpin-dual: kind-enable-hairpin kind-load-image kind-untaint-control-plane
-	$(call docker_network_info,kind)
-	@sed -e 's@^[[:space:]]*POD_CIDR=.*@POD_CIDR="$(KIND_IPV4_SUBNET),$(KIND_IPV6_SUBNET)"@' \
-		-e 's@^[[:space:]]*POD_GATEWAY=.*@POD_GATEWAY="$(KIND_IPV4_GATEWAY),$(KIND_IPV6_GATEWAY)"@' \
-		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$(KIND_IPV4_EXCLUDE_IPS),$(KIND_IPV6_EXCLUDE_IPS)"@' \
+	$(call docker_network_info,$(KIND_NETWORK_UNDERLAY))
+	@sed -e 's@^[[:space:]]*POD_CIDR=.*@POD_CIDR="$($(UNDERLAY_IPV4_SUBNET)),$($(UNDERLAY_IPV6_SUBNET))"@' \
+		-e 's@^[[:space:]]*POD_GATEWAY=.*@POD_GATEWAY="$($(UNDERLAY_IPV4_GATEWAY)),$($(UNDERLAY_IPV6_GATEWAY))"@' \
+		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$($(UNDERLAY_IPV4_EXCLUDE_IPS)),$($(UNDERLAY_IPV6_EXCLUDE_IPS))"@' \
 		-e 's@^VLAN_ID=.*@VLAN_ID="0"@' \
 		-e 's/VERSION=.*/VERSION=$(VERSION)/' \
 		dist/images/install.sh | \
-		DUAL_STACK=true ENABLE_VLAN=true VLAN_NIC=eth0 bash
+		DUAL_STACK=true ENABLE_VLAN=true VLAN_NIC=$(VLAN_NIC) bash
 
 .PHONY: kind-install-underlay-u2o
 kind-install-underlay-u2o: kind-install-underlay-u2o-ipv4
@@ -691,15 +758,15 @@ kind-install-underlay-u2o-%:
 
 .PHONY: kind-install-underlay-logical-gateway-dual
 kind-install-underlay-logical-gateway-dual: kind-disable-hairpin kind-load-image kind-untaint-control-plane
-	$(call docker_network_info,kind)
-	@sed -e 's@^[[:space:]]*POD_CIDR=.*@POD_CIDR="$(KIND_IPV4_SUBNET),$(KIND_IPV6_SUBNET)"@' \
-		-e 's@^[[:space:]]*POD_GATEWAY=.*@POD_GATEWAY="$(KIND_IPV4_GATEWAY)9,$(KIND_IPV6_GATEWAY)f"@' \
-		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$(KIND_IPV4_GATEWAY),$(KIND_IPV4_EXCLUDE_IPS),$(KIND_IPV6_GATEWAY),$(KIND_IPV6_EXCLUDE_IPS)"@' \
+	$(call docker_network_info,$(KIND_NETWORK_UNDERLAY))
+	@sed -e 's@^[[:space:]]*POD_CIDR=.*@POD_CIDR="$($(UNDERLAY_IPV4_SUBNET)),$($(UNDERLAY_IPV6_SUBNET))"@' \
+		-e 's@^[[:space:]]*POD_GATEWAY=.*@POD_GATEWAY="$($(UNDERLAY_IPV4_GATEWAY))9,$($(UNDERLAY_IPV6_GATEWAY))f"@' \
+		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$($(UNDERLAY_IPV4_GATEWAY)),$($(UNDERLAY_IPV4_EXCLUDE_IPS)),$($(UNDERLAY_IPV6_GATEWAY)),$($(UNDERLAY_IPV6_EXCLUDE_IPS))"@' \
 		-e 's@^VLAN_ID=.*@VLAN_ID="0"@' \
 		-e 's/VERSION=.*/VERSION=$(VERSION)/' \
 		dist/images/install.sh | \
 		DUAL_STACK=true ENABLE_VLAN=true \
-		VLAN_NIC=eth0 LOGICAL_GATEWAY=true bash
+		VLAN_NIC=$(VLAN_NIC) LOGICAL_GATEWAY=true bash
 
 .PHONY: kind-install-multus
 kind-install-multus:
@@ -708,17 +775,18 @@ kind-install-multus:
 	kubectl -n kube-system rollout status ds kube-multus-ds
 
 .PHONY: kind-install-metallb
-kind-install-metallb: kind-install
+kind-install-metallb:
 	$(call docker_network_info,kind)
 	$(call kind_load_image,kube-ovn,$(METALLB_CONTROLLER_IMAGE),1)
 	$(call kind_load_image,kube-ovn,$(METALLB_SPEAKER_IMAGE),1)
-	$(call kind_load_image,kube-ovn,$(METALLB_FRR_IMAGE),1)
+	$(call kind_load_image,kube-ovn,$(FRR_IMAGE),1)
 	helm repo add metallb $(METALLB_CHART_REPO)
-	helm repo update
+	helm repo update metallb
 	helm install metallb metallb/metallb --wait \
 		--version $(METALLB_VERSION) \
 		--namespace metallb-system \
-		--create-namespace
+		--create-namespace \
+		--set speaker.frr.image.tag=$(FRR_VERSION)
 	$(call kubectl_wait_exist_and_ready,metallb-system,deployment,metallb-controller)
 	$(call kubectl_wait_exist_and_ready,metallb-system,daemonset,metallb-speaker)
 	@metallb_pool=$(shell echo $(KIND_IPV4_SUBNET) | sed 's/.[^.]\+$$/.201/')-$(shell echo $(KIND_IPV4_SUBNET) | sed 's/.[^.]\+$$/.250/') \
@@ -754,7 +822,6 @@ kind-install-lb-svc:
 	$(call kind_load_image,kube-ovn,$(VPC_NAT_GW_IMG))
 	@$(MAKE) ENABLE_LB_SVC=true CNI_CONFIG_PRIORITY=10 kind-install
 	@$(MAKE) kind-install-multus
-	kubectl apply -f yamls/lb-svc-attachment.yaml
 
 .PHONY: kind-install-webhook
 kind-install-webhook: kind-install
@@ -771,50 +838,111 @@ kind-install-webhook: kind-install
 	kubectl rollout status deployment/kube-ovn-webhook -n kube-system --timeout 120s
 
 .PHONY: kind-install-cilium-chaining
-kind-install-cilium-chaining: kind-load-image kind-untaint-control-plane
+kind-install-cilium-chaining: kind-install-cilium-chaining-ipv4
+
+.PHONY: kind-install-cilium-chaining-%
+kind-install-cilium-chaining-%:
 	$(eval KUBERNETES_SERVICE_HOST = $(shell kubectl get nodes kube-ovn-control-plane -o jsonpath='{.status.addresses[0].address}'))
-	$(call kind_load_image,kube-ovn,$(CILIUM_IMAGE_REPO):v$(CILIUM_VERSION),1)
+	$(call kind_load_image,kube-ovn,$(CILIUM_IMAGE_REPO)/cilium:v$(CILIUM_VERSION),1)
+	$(call kind_load_image,kube-ovn,$(CILIUM_IMAGE_REPO)/operator-generic:v$(CILIUM_VERSION),1)
 	kubectl apply -f yamls/cilium-chaining.yaml
 	helm repo add cilium https://helm.cilium.io/
-	helm install cilium cilium/cilium \
+	helm repo update cilium
+	helm install cilium cilium/cilium --wait \
 		--version $(CILIUM_VERSION) \
-		--namespace=kube-system \
+		--namespace kube-system \
 		--set k8sServiceHost=$(KUBERNETES_SERVICE_HOST) \
 		--set k8sServicePort=6443 \
-		--set tunnel=disabled \
+		--set kubeProxyReplacement=false \
+		--set operator.replicas=1 \
+		--set socketLB.enabled=true \
+		--set nodePort.enabled=true \
+		--set externalIPs.enabled=true \
+		--set hostPort.enabled=false \
 		--set sessionAffinity=true \
 		--set enableIPv4Masquerade=false \
+		--set enableIPv6Masquerade=false \
+		--set hubble.enabled=true \
+		--set sctp.enabled=true \
+		--set ipv4.enabled=$(shell if echo $* | grep -q ipv6; then echo false; else echo true; fi) \
+		--set ipv6.enabled=$(shell if echo $* | grep -q ipv4; then echo false; else echo true; fi) \
+		--set routingMode=native \
+		--set devices="eth+ ovn0" \
+		--set forceDeviceDetection=true \
+		--set ipam.mode=cluster-pool \
+		--set-json ipam.operator.clusterPoolIPv4PodCIDRList='["100.65.0.0/16"]' \
+		--set-json ipam.operator.clusterPoolIPv6PodCIDRList='["fd00:100:65::/112"]' \
 		--set cni.chainingMode=generic-veth \
+		--set cni.chainingTarget=kube-ovn \
 		--set cni.customConf=true \
 		--set cni.configMap=cni-configuration
-	kubectl -n kube-system rollout status ds cilium --timeout 300s
-	bash dist/images/install-cilium-cli.sh
-	sed 's/VERSION=.*/VERSION=$(VERSION)/' dist/images/install.sh | \
-		ENABLE_LB=false ENABLE_NP=false CNI_CONFIG_PRIORITY=10 bash
+	kubectl -n kube-system rollout status ds cilium --timeout 120s
+	@$(MAKE) ENABLE_LB=false ENABLE_NP=false \
+		CNI_CONFIG_PRIORITY=10 WITHOUT_KUBE_PROXY=true \
+		KIND_NETWORK_UNDERLAY=kind-underlay \
+		kind-install-$*
 	kubectl describe no
+
+.PHONY: kind-install-bgp
+kind-install-bgp: kind-install
+	kubectl label node --all ovn.kubernetes.io/bgp=true
+	kubectl annotate subnet ovn-default ovn.kubernetes.io/bgp=local
+	sed -e 's#image: .*#image: $(REGISTRY)/kube-ovn:$(VERSION)#' \
+		-e 's/--neighbor-address=.*/--neighbor-address=10.0.1.1/' \
+		-e 's/--neighbor-as=.*/--neighbor-as=65001/' \
+		-e 's/--cluster-as=.*/--cluster-as=65002/' yamls/speaker.yaml | \
+		kubectl apply -f -
+	kubectl -n kube-system rollout status ds kube-ovn-speaker --timeout 60s
+	docker exec clab-bgp-router vtysh -c "show ip route bgp"
+
+.PHONY: kind-install-bgp-ha
+kind-install-bgp-ha: kind-install
+	kubectl label node --all ovn.kubernetes.io/bgp=true
+	kubectl annotate subnet ovn-default ovn.kubernetes.io/bgp=local
+	sed -e 's#image: .*#image: $(REGISTRY)/kube-ovn:$(VERSION)#' \
+		-e 's/--neighbor-address=.*/--neighbor-address=10.0.1.1,10.0.1.2/' \
+		-e 's/--neighbor-as=.*/--neighbor-as=65001/' \
+		-e 's/--cluster-as=.*/--cluster-as=65002/' yamls/speaker.yaml | \
+		kubectl apply -f -
+	kubectl -n kube-system rollout status ds kube-ovn-speaker --timeout 60s
+	docker exec clab-bgp-router-1 vtysh -c "show ip route bgp"
+	docker exec clab-bgp-router-2 vtysh -c "show ip route bgp"
 
 .PHONY: kind-install-deepflow
 kind-install-deepflow: kind-install
 	helm repo add deepflow $(DEEPFLOW_CHART_REPO)
 	helm repo update deepflow
 	$(eval CLICKHOUSE_PERSISTENCE = $(shell helm show values --version $(DEEPFLOW_CHART_VERSION) --jsonpath '{.clickhouse.storageConfig.persistence}' deepflow/deepflow | sed 's/0Gi/Gi/g'))
-	helm install deepflow -n deepflow deepflow/deepflow \
-		--create-namespace --version $(DEEPFLOW_CHART_VERSION) \
+	helm install deepflow deepflow/deepflow --wait \
+		--version $(DEEPFLOW_CHART_VERSION) \
+		--namespace deepflow \
+		--create-namespace \
 		--set global.image.repository=$(DEEPFLOW_IMAGE_REPO) \
-		--set grafana.image.repository=$(DEEPFLOW_IMAGE_REPO)/grafana \
-		--set deepflow-agent.sysctlInitContainer.enabled=false \
-		--set 'mysql.storageConfig.persistence.size=5Gi' \
+		--set global.image.pullPolicy=IfNotPresent \
+		--set deepflow-agent.clusterNAME=kind-kube-ovn \
+		--set grafana.image.registry=$(DEEPFLOW_IMAGE_REPO) \
+		--set grafana.image.pullPolicy=IfNotPresent \
+		--set grafana.service.nodePort=$(DEEPFLOW_GRAFANA_NODE_PORT) \
+		--set mysql.storageConfig.persistence.size=5Gi \
+		--set mysql.image.pullPolicy=IfNotPresent \
+		--set clickhouse.image.pullPolicy=IfNotPresent \
 		--set-json 'clickhouse.storageConfig.persistence=$(CLICKHOUSE_PERSISTENCE)'
-	kubectl -n deepflow patch svc deepflow-grafana --type=json \
-		-p '[{"op": "replace", "path": "/spec/ports/0/nodePort", "value": $(DEEPFLOW_GRAFANA_PORT)}]'
-	echo -e "\nGrafana URL: http://127.0.0.1:$(DEEPFLOW_GRAFANA_PORT)\nGrafana auth: admin:deepflow\n"
+	echo -e "\nGrafana URL: http://127.0.0.1:$(DEEPFLOW_GRAFANA_NODE_PORT)\nGrafana auth: admin:deepflow\n"
+
+.PHONY: kind-install-deepflow-ctl
+kind-install-deepflow-ctl:
+	curl -so /usr/local/bin/deepflow-ctl $(DEEPFLOW_CTL_URL)
+	chmod a+x /usr/local/bin/deepflow-ctl
+	/usr/local/bin/deepflow-ctl -v
 
 .PHONY: kind-install-kwok
 kind-install-kwok:
-	kubectl label node --overwrite -l type!=kwok type=kind
 	kubectl -n kube-system patch ds kube-proxy -p '{"spec":{"template":{"spec":{"nodeSelector":{"type":"kind"}}}}}'
 	kubectl -n kube-system patch ds ovs-ovn -p '{"spec":{"template":{"spec":{"nodeSelector":{"type":"kind"}}}}}'
 	kubectl -n kube-system patch ds kube-ovn-cni -p '{"spec":{"template":{"spec":{"nodeSelector":{"type":"kind"}}}}}'
+	kubectl -n kube-system patch ds kube-ovn-pinger -p '{"spec":{"template":{"spec":{"nodeSelector":{"type":"kind"}}}}}'
+	kubectl -n kube-system patch deploy kube-ovn-monitor -p '{"spec":{"template":{"spec":{"nodeSelector":{"type":"kind"}}}}}'
+	kubectl -n kube-system patch deploy coredns -p '{"spec":{"template":{"spec":{"nodeSelector":{"type":"kind"}}}}}'
 	$(call kind_load_kwok_image,kube-ovn)
 	kubectl apply -f yamls/kwok.yaml
 	kubectl apply -f yamls/kwok-stage.yaml
@@ -846,6 +974,34 @@ kind-clean-ovn-ic: kind-clean
 .PHONY: kind-clean-ovn-submariner
 kind-clean-ovn-submariner: kind-clean
 	kind delete cluster --name=kube-ovn1
+
+.PHONY: kind-clean-bgp
+kind-clean-bgp: kind-clean-bgp-ha
+	kube_ovn_version=$(VERSION) frr_image=$(FRR_IMAGE) j2 yamls/clab-bgp.yaml.j2 -o yamls/clab-bgp.yaml
+	docker run --rm --privileged \
+		--name kube-ovn-bgp \
+		--network host \
+		--pid host \
+		-v /var/run/docker.sock:/var/run/docker.sock \
+		-v /var/run/netns:/var/run/netns \
+		-v /var/lib/docker/containers:/var/lib/docker/containers \
+		-v $(CURDIR)/yamls/clab-bgp.yaml:/clab-bgp/clab.yaml \
+		$(CLAB_IMAGE) clab destroy -t /clab-bgp/clab.yaml
+	@$(MAKE) kind-clean
+
+.PHONY: kind-clean-bgp-ha
+kind-clean-bgp-ha:
+	kube_ovn_version=$(VERSION) frr_image=$(FRR_IMAGE) j2 yamls/clab-bgp-ha.yaml.j2 -o yamls/clab-bgp-ha.yaml
+	docker run --rm --privileged \
+		--name kube-ovn-bgp \
+		--network host \
+		--pid host \
+		-v /var/run/docker.sock:/var/run/docker.sock \
+		-v /var/run/netns:/var/run/netns \
+		-v /var/lib/docker/containers:/var/lib/docker/containers \
+		-v $(CURDIR)/yamls/clab-bgp-ha.yaml:/clab-bgp/clab.yaml \
+		$(CLAB_IMAGE) clab destroy -t /clab-bgp/clab.yaml
+	@$(MAKE) kind-clean
 
 .PHONY: check-kube-ovn-pod-restarts
 check-kube-ovn-pod-restarts:
@@ -899,10 +1055,14 @@ kubectl-ko-log:
 clean:
 	$(RM) dist/images/kube-ovn dist/images/kube-ovn-cmd
 	$(RM) yamls/kind.yaml
+	$(RM) yamls/clab-bgp.yaml yamls/clab-bgp-ha.yaml
 	$(RM) ovn.yaml kube-ovn.yaml kube-ovn-crd.yaml
 	$(RM) ovn-ic-config.yaml ovn-ic-0.yaml ovn-ic-1.yaml
 	$(RM) kwok-node.yaml metallb-cr.yaml
+	$(RM) cacert.pem ovn-req.pem ovn-cert.pem ovn-privkey.pem
 	$(RM) kube-ovn.tar kube-ovn-dpdk.tar vpc-nat-gateway.tar image-amd64.tar image-amd64-dpdk.tar image-arm64.tar
+	$(RM) kubectl-ko-log.tar.gz
+	$(RM) -r kubectl-ko-log/
 
 .PHONY: changelog
 changelog:
