@@ -49,7 +49,7 @@ KUBEVIRT_LAUNCHER_IMAGE = quay.io/kubevirt/virt-launcher:$(KUBEVIRT_VERSION)
 KUBEVIRT_OPERATOR_YAML = https://github.com/kubevirt/kubevirt/releases/download/$(KUBEVIRT_VERSION)/kubevirt-operator.yaml
 KUBEVIRT_CR_YAML = https://github.com/kubevirt/kubevirt/releases/download/$(KUBEVIRT_VERSION)/kubevirt-cr.yaml
 
-CILIUM_VERSION = 1.15.8
+CILIUM_VERSION = 1.16.1
 CILIUM_IMAGE_REPO = quay.io/cilium
 
 CERT_MANAGER_VERSION = v1.15.2
@@ -82,9 +82,24 @@ KWOK_IMAGE = registry.k8s.io/kwok/kwok:$(KWOK_VERSION)
 
 VPC_NAT_GW_IMG = $(REGISTRY)/vpc-nat-gateway:$(VERSION)
 
-E2E_NETWORK = bridge
-ifneq ($(VLAN_ID),)
+ANP_TEST_IMAGE = registry.k8s.io/e2e-test-images/agnhost:2.45
+ANP_CR_YAML = https://raw.githubusercontent.com/kubernetes-sigs/network-policy-api/main/config/crd/standard/policy.networking.k8s.io_adminnetworkpolicies.yaml
+BANP_CR_YAML = https://raw.githubusercontent.com/kubernetes-sigs/network-policy-api/main/config/crd/standard/policy.networking.k8s.io_baselineadminnetworkpolicies.yaml
+
 E2E_NETWORK = kube-ovn-vlan
+
+KIND_NETWORK_UNDERLAY = $(shell echo $${KIND_NETWORK_UNDERLAY:-kind})
+UNDERLAY_VAR_PREFIX = $(shell echo $(KIND_NETWORK_UNDERLAY) | tr '[:lower:]-' '[:upper:]_')
+UNDERLAY_IPV4_SUBNET = $(UNDERLAY_VAR_PREFIX)_IPV4_SUBNET
+UNDERLAY_IPV6_SUBNET = $(UNDERLAY_VAR_PREFIX)_IPV6_SUBNET
+UNDERLAY_IPV4_GATEWAY = $(UNDERLAY_VAR_PREFIX)_IPV4_GATEWAY
+UNDERLAY_IPV6_GATEWAY = $(UNDERLAY_VAR_PREFIX)_IPV6_GATEWAY
+UNDERLAY_IPV4_EXCLUDE_IPS = $(UNDERLAY_VAR_PREFIX)_IPV4_EXCLUDE_IPS
+UNDERLAY_IPV6_EXCLUDE_IPS = $(UNDERLAY_VAR_PREFIX)_IPV6_EXCLUDE_IPS
+
+VLAN_NIC = $(shell echo $${VLAN_NIC:-eth0})
+ifneq ($(KIND_NETWORK_UNDERLAY),kind)
+VLAN_NIC = eth1
 endif
 
 KIND_AUDITING = $(shell echo $${KIND_AUDITING:-false})
@@ -223,28 +238,18 @@ define docker_ensure_image_exists
 endef
 
 define docker_rm_container
-	@docker ps -a -f name="$(1)" --format "{{.ID}}" | while read c; do docker rm -f $$c; done
+	@docker ps -a -f name="^$(1)$$" --format "{{.ID}}" | while read c; do docker rm -f $$c; done
 endef
 
 define docker_network_info
-	$(eval VAR_PREFIX = $(shell echo $(1) | tr '[:lower:]' '[:upper:]'))
+	$(eval VAR_PREFIX = $(shell echo $(1) | tr '[:lower:]-' '[:upper:]_'))
 	$(eval $(VAR_PREFIX)_IPV4_SUBNET = $(shell docker network inspect $(1) -f "{{range .IPAM.Config}}{{println .Subnet}}{{end}}" | grep -v :))
 	$(eval $(VAR_PREFIX)_IPV6_SUBNET = $(shell docker network inspect $(1) -f "{{range .IPAM.Config}}{{println .Subnet}}{{end}}" | grep :))
 	$(eval $(VAR_PREFIX)_IPV4_GATEWAY = $(shell docker network inspect $(1) -f "{{range .IPAM.Config}}{{println .Gateway}}{{end}}" | grep -v :))
 	$(eval $(VAR_PREFIX)_IPV6_GATEWAY = $(shell docker network inspect $(1) -f "{{range .IPAM.Config}}{{println .Gateway}}{{end}}" | grep :))
-	$(eval $(VAR_PREFIX)_IPV6_GATEWAY := $(shell docker exec kube-ovn-control-plane ip -6 route show default | awk '{print $$3}'))
+	$(eval $(VAR_PREFIX)_IPV6_GATEWAY := $(if $($(VAR_PREFIX)_IPV6_GATEWAY),$($(VAR_PREFIX)_IPV6_GATEWAY),$(shell docker exec kube-ovn-control-plane ip -6 route show default | awk '{print $$3}')))
 	$(eval $(VAR_PREFIX)_IPV4_EXCLUDE_IPS = $(shell docker network inspect $(1) -f '{{range .Containers}},{{index (split .IPv4Address "/") 0}}{{end}}' | sed 's/^,//'))
 	$(eval $(VAR_PREFIX)_IPV6_EXCLUDE_IPS = $(shell docker network inspect $(1) -f '{{range .Containers}},{{index (split .IPv6Address "/") 0}}{{end}}' | sed 's/^,//'))
-endef
-
-define docker_create_vlan_network
-	$(eval VLAN_NETWORK_ID = $(shell docker network ls -f name=$(E2E_NETWORK) --format '{{.ID}}'))
-	@if [ ! -z "$(VLAN_ID)" -a -z "$(VLAN_NETWORK_ID)" ]; then \
-		docker network create --attachable -d bridge \
-			--ipv6 --subnet fc00:adb1:b29b:608d::/64 --gateway fc00:adb1:b29b:608d::1 \
-			-o com.docker.network.bridge.enable_ip_masquerade=true \
-			-o com.docker.network.driver.mtu=1500 $(E2E_NETWORK); \
-	fi
 endef
 
 define docker_config_bridge
@@ -280,6 +285,10 @@ define docker_config_bridge
 					bridge vlan add vid $(3) dev $$brif; \
 				done'; \
 		fi
+endef
+
+define add_docker_iptables_rule
+	@sudo $(1) -t filter -C DOCKER-USER $(2) 2>/dev/null || sudo $(1) -I DOCKER-USER $(2)
 endef
 
 define kind_create_cluster
@@ -348,17 +357,43 @@ define subctl_join
 	$(call kubectl_wait_submariner_ready)
 endef
 
+.PHONY: kind-network-create-underlay
+kind-network-create-underlay:
+	$(eval UNDERLAY_NETWORK_ID = $(shell docker network ls -f name='^kind-underlay$$' --format '{{.ID}}'))
+	@if [ -z "$(UNDERLAY_NETWORK_ID)" ]; then \
+		docker network create --attachable -d bridge \
+			--ipv6 --subnet fc00:adb1:b29b:608d::/64 --gateway fc00:adb1:b29b:608d::1 \
+			-o com.docker.network.bridge.enable_ip_masquerade=true \
+			-o com.docker.network.driver.mtu=1500 kind-underlay; \
+	fi
+
+.PHONY: kind-network-connect-underlay
+kind-network-connect-underlay:
+	@for node in `kind -n kube-ovn get nodes`; do \
+		docker network connect kind-underlay $$node; \
+		docker exec $$node ip address flush dev eth1; \
+	done
+
+.PHONY: kind-iptables-accepct-underlay
+kind-iptables-accepct-underlay:
+	$(call docker_network_info,kind)
+	$(call docker_network_info,kind-underlay)
+	$(call add_docker_iptables_rule,iptables,-s $(KIND_UNDERLAY_IPV4_SUBNET) -d $(KIND_IPV4_SUBNET) -j ACCEPT)
+	$(call add_docker_iptables_rule,iptables,-d $(KIND_UNDERLAY_IPV4_SUBNET) -s $(KIND_IPV4_SUBNET) -j ACCEPT)
+	$(call add_docker_iptables_rule,ip6tables,-s $(KIND_UNDERLAY_IPV6_SUBNET) -d $(KIND_IPV6_SUBNET) -j ACCEPT)
+	$(call add_docker_iptables_rule,ip6tables,-d $(KIND_UNDERLAY_IPV6_SUBNET) -s $(KIND_IPV6_SUBNET) -j ACCEPT)
+
 .PHONY: kind-generate-config
 kind-generate-config:
 	jinjanate yamls/kind.yaml.j2 -o yamls/kind.yaml
 
 .PHONY: kind-disable-hairpin
 kind-disable-hairpin:
-	$(call docker_config_bridge,kind,0,)
+	$(call docker_config_bridge,$(KIND_NETWORK_UNDERLAY),0,)
 
 .PHONY: kind-enable-hairpin
 kind-enable-hairpin:
-	$(call docker_config_bridge,kind,1,)
+	$(call docker_config_bridge,$(KIND_NETWORK_UNDERLAY),1,)
 
 .PHONY: kind-create
 kind-create:
@@ -385,8 +420,10 @@ kind-init-ovn-ic-%: kind-clean-ovn-ic
 kind-init-cilium-chaining: kind-init-cilium-chaining-ipv4
 
 .PHONY: kind-init-cilium-chaining-%
-kind-init-cilium-chaining-%:
+kind-init-cilium-chaining-%: kind-network-create-underlay
 	@kube_proxy_mode=none $(MAKE) kind-init-$*
+	@$(MAKE) kind-iptables-accepct-underlay
+	@$(MAKE) kind-network-connect-underlay
 
 .PHONY: kind-init-ovn-submariner
 kind-init-ovn-submariner: kind-clean-ovn-submariner kind-init
@@ -636,71 +673,71 @@ kind-install-underlay-hairpin: kind-install-underlay-hairpin-ipv4
 
 .PHONY: kind-install-underlay-ipv4
 kind-install-underlay-ipv4: kind-disable-hairpin kind-load-image kind-untaint-control-plane
-	$(call docker_network_info,kind)
-	@sed -e 's@^[[:space:]]*POD_CIDR=.*@POD_CIDR="$(KIND_IPV4_SUBNET)"@' \
-		-e 's@^[[:space:]]*POD_GATEWAY=.*@POD_GATEWAY="$(KIND_IPV4_GATEWAY)"@' \
-		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$(KIND_IPV4_EXCLUDE_IPS)"@' \
+	$(call docker_network_info,$(KIND_NETWORK_UNDERLAY))
+	@sed -e 's@^[[:space:]]*POD_CIDR=.*@POD_CIDR="$($(UNDERLAY_IPV4_SUBNET))"@' \
+		-e 's@^[[:space:]]*POD_GATEWAY=.*@POD_GATEWAY="$($(UNDERLAY_IPV4_GATEWAY))"@' \
+		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$($(UNDERLAY_IPV4_EXCLUDE_IPS))"@' \
 		-e 's@^VLAN_ID=.*@VLAN_ID="0"@' \
 		-e 's/VERSION=.*/VERSION=$(VERSION)/' \
 		dist/images/install.sh | \
-		ENABLE_VLAN=true VLAN_NIC=eth0 bash
+		ENABLE_VLAN=true VLAN_NIC=$(VLAN_NIC) bash
 	kubectl describe no
 
 .PHONY: kind-install-underlay-hairpin-ipv4
 kind-install-underlay-hairpin-ipv4: kind-enable-hairpin kind-load-image kind-untaint-control-plane
-	$(call docker_network_info,kind)
-	@sed -e 's@^[[:space:]]*POD_CIDR=.*@POD_CIDR="$(KIND_IPV4_SUBNET)"@' \
-		-e 's@^[[:space:]]*POD_GATEWAY=.*@POD_GATEWAY="$(KIND_IPV4_GATEWAY)"@' \
-		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$(KIND_IPV4_EXCLUDE_IPS)"@' \
+	$(call docker_network_info,$(KIND_NETWORK_UNDERLAY))
+	@sed -e 's@^[[:space:]]*POD_CIDR=.*@POD_CIDR="$($(UNDERLAY_IPV4_SUBNET))"@' \
+		-e 's@^[[:space:]]*POD_GATEWAY=.*@POD_GATEWAY="$($(UNDERLAY_IPV4_GATEWAY))"@' \
+		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$($(UNDERLAY_IPV4_EXCLUDE_IPS))"@' \
 		-e 's@^VLAN_ID=.*@VLAN_ID="0"@' \
 		-e 's/VERSION=.*/VERSION=$(VERSION)/' \
 		dist/images/install.sh | \
-		ENABLE_VLAN=true VLAN_NIC=eth0 bash
+		ENABLE_VLAN=true VLAN_NIC=$(VLAN_NIC) bash
 	kubectl describe no
 
 .PHONY: kind-install-underlay-ipv6
 kind-install-underlay-ipv6: kind-disable-hairpin kind-load-image kind-untaint-control-plane
-	$(call docker_network_info,kind)
-	@sed -e 's@^[[:space:]]*POD_CIDR=.*@POD_CIDR="$(KIND_IPV6_SUBNET)"@' \
-		-e 's@^[[:space:]]*POD_GATEWAY=.*@POD_GATEWAY="$(KIND_IPV6_GATEWAY)"@' \
-		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$(KIND_IPV6_EXCLUDE_IPS)"@' \
+	$(call docker_network_info,$(KIND_NETWORK_UNDERLAY))
+	@sed -e 's@^[[:space:]]*POD_CIDR=.*@POD_CIDR="$($(UNDERLAY_IPV6_SUBNET))"@' \
+		-e 's@^[[:space:]]*POD_GATEWAY=.*@POD_GATEWAY="$($(UNDERLAY_IPV6_GATEWAY))"@' \
+		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$($(UNDERLAY_IPV6_EXCLUDE_IPS))"@' \
 		-e 's@^VLAN_ID=.*@VLAN_ID="0"@' \
 		-e 's/VERSION=.*/VERSION=$(VERSION)/' \
 		dist/images/install.sh | \
-		IPV6=true ENABLE_VLAN=true VLAN_NIC=eth0 bash
+		IPV6=true ENABLE_VLAN=true VLAN_NIC=$(VLAN_NIC) bash
 
 .PHONY: kind-install-underlay-hairpin-ipv6
 kind-install-underlay-hairpin-ipv6: kind-enable-hairpin kind-load-image kind-untaint-control-plane
-	$(call docker_network_info,kind)
-	@sed -e 's@^[[:space:]]*POD_CIDR=.*@POD_CIDR="$(KIND_IPV6_SUBNET)"@' \
-		-e 's@^[[:space:]]*POD_GATEWAY=.*@POD_GATEWAY="$(KIND_IPV6_GATEWAY)"@' \
-		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$(KIND_IPV6_EXCLUDE_IPS)"@' \
+	$(call docker_network_info,$(KIND_NETWORK_UNDERLAY))
+	@sed -e 's@^[[:space:]]*POD_CIDR=.*@POD_CIDR="$($(UNDERLAY_IPV6_SUBNET))"@' \
+		-e 's@^[[:space:]]*POD_GATEWAY=.*@POD_GATEWAY="$($(UNDERLAY_IPV6_GATEWAY))"@' \
+		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$($(UNDERLAY_IPV6_EXCLUDE_IPS))"@' \
 		-e 's@^VLAN_ID=.*@VLAN_ID="0"@' \
 		-e 's/VERSION=.*/VERSION=$(VERSION)/' \
 		dist/images/install.sh | \
-		IPV6=true ENABLE_VLAN=true VLAN_NIC=eth0 bash
+		IPV6=true ENABLE_VLAN=true VLAN_NIC=$(VLAN_NIC) bash
 
 .PHONY: kind-install-underlay-dual
 kind-install-underlay-dual: kind-disable-hairpin kind-load-image kind-untaint-control-plane
-	$(call docker_network_info,kind)
-	@sed -e 's@^[[:space:]]*POD_CIDR=.*@POD_CIDR="$(KIND_IPV4_SUBNET),$(KIND_IPV6_SUBNET)"@' \
-		-e 's@^[[:space:]]*POD_GATEWAY=.*@POD_GATEWAY="$(KIND_IPV4_GATEWAY),$(KIND_IPV6_GATEWAY)"@' \
-		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$(KIND_IPV4_EXCLUDE_IPS),$(KIND_IPV6_EXCLUDE_IPS)"@' \
+	$(call docker_network_info,$(KIND_NETWORK_UNDERLAY))
+	@sed -e 's@^[[:space:]]*POD_CIDR=.*@POD_CIDR="$($(UNDERLAY_IPV4_SUBNET)),$($(UNDERLAY_IPV6_SUBNET))"@' \
+		-e 's@^[[:space:]]*POD_GATEWAY=.*@POD_GATEWAY="$($(UNDERLAY_IPV4_GATEWAY)),$($(UNDERLAY_IPV6_GATEWAY))"@' \
+		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$($(UNDERLAY_IPV4_EXCLUDE_IPS)),$($(UNDERLAY_IPV6_EXCLUDE_IPS))"@' \
 		-e 's@^VLAN_ID=.*@VLAN_ID="0"@' \
 		-e 's/VERSION=.*/VERSION=$(VERSION)/' \
 		dist/images/install.sh | \
-		DUAL_STACK=true ENABLE_VLAN=true VLAN_NIC=eth0 bash
+		DUAL_STACK=true ENABLE_VLAN=true VLAN_NIC=$(VLAN_NIC) bash
 
 .PHONY: kind-install-underlay-hairpin-dual
 kind-install-underlay-hairpin-dual: kind-enable-hairpin kind-load-image kind-untaint-control-plane
-	$(call docker_network_info,kind)
-	@sed -e 's@^[[:space:]]*POD_CIDR=.*@POD_CIDR="$(KIND_IPV4_SUBNET),$(KIND_IPV6_SUBNET)"@' \
-		-e 's@^[[:space:]]*POD_GATEWAY=.*@POD_GATEWAY="$(KIND_IPV4_GATEWAY),$(KIND_IPV6_GATEWAY)"@' \
-		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$(KIND_IPV4_EXCLUDE_IPS),$(KIND_IPV6_EXCLUDE_IPS)"@' \
+	$(call docker_network_info,$(KIND_NETWORK_UNDERLAY))
+	@sed -e 's@^[[:space:]]*POD_CIDR=.*@POD_CIDR="$($(UNDERLAY_IPV4_SUBNET)),$($(UNDERLAY_IPV6_SUBNET))"@' \
+		-e 's@^[[:space:]]*POD_GATEWAY=.*@POD_GATEWAY="$($(UNDERLAY_IPV4_GATEWAY)),$($(UNDERLAY_IPV6_GATEWAY))"@' \
+		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$($(UNDERLAY_IPV4_EXCLUDE_IPS)),$($(UNDERLAY_IPV6_EXCLUDE_IPS))"@' \
 		-e 's@^VLAN_ID=.*@VLAN_ID="0"@' \
 		-e 's/VERSION=.*/VERSION=$(VERSION)/' \
 		dist/images/install.sh | \
-		DUAL_STACK=true ENABLE_VLAN=true VLAN_NIC=eth0 bash
+		DUAL_STACK=true ENABLE_VLAN=true VLAN_NIC=$(VLAN_NIC) bash
 
 .PHONY: kind-install-underlay-u2o
 kind-install-underlay-u2o: kind-install-underlay-u2o-ipv4
@@ -711,15 +748,15 @@ kind-install-underlay-u2o-%:
 
 .PHONY: kind-install-underlay-logical-gateway-dual
 kind-install-underlay-logical-gateway-dual: kind-disable-hairpin kind-load-image kind-untaint-control-plane
-	$(call docker_network_info,kind)
-	@sed -e 's@^[[:space:]]*POD_CIDR=.*@POD_CIDR="$(KIND_IPV4_SUBNET),$(KIND_IPV6_SUBNET)"@' \
-		-e 's@^[[:space:]]*POD_GATEWAY=.*@POD_GATEWAY="$(KIND_IPV4_GATEWAY)9,$(KIND_IPV6_GATEWAY)f"@' \
-		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$(KIND_IPV4_GATEWAY),$(KIND_IPV4_EXCLUDE_IPS),$(KIND_IPV6_GATEWAY),$(KIND_IPV6_EXCLUDE_IPS)"@' \
+	$(call docker_network_info,$(KIND_NETWORK_UNDERLAY))
+	@sed -e 's@^[[:space:]]*POD_CIDR=.*@POD_CIDR="$($(UNDERLAY_IPV4_SUBNET)),$($(UNDERLAY_IPV6_SUBNET))"@' \
+		-e 's@^[[:space:]]*POD_GATEWAY=.*@POD_GATEWAY="$($(UNDERLAY_IPV4_GATEWAY))9,$($(UNDERLAY_IPV6_GATEWAY))f"@' \
+		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$($(UNDERLAY_IPV4_GATEWAY)),$($(UNDERLAY_IPV4_EXCLUDE_IPS)),$($(UNDERLAY_IPV6_GATEWAY)),$($(UNDERLAY_IPV6_EXCLUDE_IPS))"@' \
 		-e 's@^VLAN_ID=.*@VLAN_ID="0"@' \
 		-e 's/VERSION=.*/VERSION=$(VERSION)/' \
 		dist/images/install.sh | \
 		DUAL_STACK=true ENABLE_VLAN=true \
-		VLAN_NIC=eth0 LOGICAL_GATEWAY=true bash
+		VLAN_NIC=$(VLAN_NIC) LOGICAL_GATEWAY=true bash
 
 .PHONY: kind-install-multus
 kind-install-multus:
@@ -728,7 +765,7 @@ kind-install-multus:
 	kubectl -n kube-system rollout status ds kube-multus-ds
 
 .PHONY: kind-install-metallb
-kind-install-metallb: kind-install
+kind-install-metallb:
 	$(call docker_network_info,kind)
 	$(call kind_load_image,kube-ovn,$(METALLB_CONTROLLER_IMAGE),1)
 	$(call kind_load_image,kube-ovn,$(METALLB_SPEAKER_IMAGE),1)
@@ -806,21 +843,25 @@ kind-install-cilium-chaining-%:
 		--namespace kube-system \
 		--set k8sServiceHost=$(KUBERNETES_SERVICE_HOST) \
 		--set k8sServicePort=6443 \
-		--set kubeProxyReplacement=partial \
-        --set socketLB.enabled=true \
+		--set kubeProxyReplacement=false \
+		--set operator.replicas=1 \
+		--set socketLB.enabled=true \
 		--set nodePort.enabled=true \
 		--set externalIPs.enabled=true \
 		--set hostPort.enabled=false \
-		--set routingMode=native \
 		--set sessionAffinity=true \
 		--set enableIPv4Masquerade=false \
 		--set enableIPv6Masquerade=false \
 		--set hubble.enabled=true \
 		--set sctp.enabled=true \
-		--set ipv4.enabled=$(shell [ $* = ipv6 ] && echo false ||  echo true) \
-		--set ipv6.enabled=$(shell [ $* = ipv4 ] && echo false ||  echo true) \
-		--set k8s.requireIPv4PodCIDR=$(shell [ $* = ipv6 ] && echo false ||  echo true) \
-		--set k8s.requireIPv6PodCIDR=$(shell [ $* = ipv4 ] && echo false ||  echo true) \
+		--set ipv4.enabled=$(shell if echo $* | grep -q ipv6; then echo false; else echo true; fi) \
+		--set ipv6.enabled=$(shell if echo $* | grep -q ipv4; then echo false; else echo true; fi) \
+		--set routingMode=native \
+		--set devices="eth+ ovn0" \
+		--set forceDeviceDetection=true \
+		--set ipam.mode=cluster-pool \
+		--set-json ipam.operator.clusterPoolIPv4PodCIDRList='["100.65.0.0/16"]' \
+		--set-json ipam.operator.clusterPoolIPv6PodCIDRList='["fd00:100:65::/112"]' \
 		--set cni.chainingMode=generic-veth \
 		--set cni.chainingTarget=kube-ovn \
 		--set cni.customConf=true \
@@ -828,6 +869,7 @@ kind-install-cilium-chaining-%:
 	kubectl -n kube-system rollout status ds cilium --timeout 300s
 	@$(MAKE) ENABLE_LB=false ENABLE_NP=false \
 		CNI_CONFIG_PRIORITY=10 WITHOUT_KUBE_PROXY=true \
+		KIND_NETWORK_UNDERLAY=kind-underlay \
 		kind-install-$*
 	kubectl describe no
 
