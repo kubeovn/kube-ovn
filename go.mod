@@ -30,7 +30,7 @@ require (
 	github.com/ovn-org/libovsdb v0.7.0
 	github.com/parnurzeal/gorequest v0.3.0
 	github.com/prometheus-community/pro-bing v0.4.1
-	github.com/prometheus/client_golang v1.20.2
+	github.com/prometheus/client_golang v1.20.3
 	github.com/puzpuzpuz/xsync/v3 v3.4.0
 	github.com/scylladb/go-set v1.0.2
 	github.com/sirupsen/logrus v1.9.3
@@ -38,7 +38,7 @@ require (
 	github.com/stretchr/testify v1.9.0
 	github.com/vishvananda/netlink v1.3.0
 	go.uber.org/mock v0.4.0
-	golang.org/x/mod v0.20.0
+	golang.org/x/mod v0.21.0
 	golang.org/x/sys v0.25.0
 	golang.org/x/time v0.6.0
 	google.golang.org/grpc v1.66.0
