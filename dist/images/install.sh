@@ -4955,6 +4955,7 @@ while true; do
   sleep 1
 done
 kubectl rollout status daemonset/kube-ovn-pinger -n kube-system --timeout 120s
+sleep 1
 kubectl wait pod --for=condition=Ready -l app=kube-ovn-pinger -n kube-system --timeout 120s
 echo "-------------------------------"
 echo ""
