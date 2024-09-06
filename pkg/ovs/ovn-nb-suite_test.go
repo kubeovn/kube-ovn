@@ -781,7 +781,7 @@ func newNbClient(addr string, timeout int) (client.Client, error) {
 	stdr.SetVerbosity(1)
 
 	options := []client.Option{
-		client.WithReconnect(time.Duration(timeout)*time.Second, &backoff.ZeroBackOff{}),
+		client.WithReconnect(time.Duration(timeout)*time.Second, backoff.NewExponentialBackOff()),
 		client.WithLeaderOnly(false),
 		client.WithLogger(&logger),
 	}

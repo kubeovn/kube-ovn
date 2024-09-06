@@ -57,7 +57,7 @@ func NewOvsDbClient(
 		// take longer than a normal ovsdb operation. Give it a bit more time so
 		// we don't time out and enter a reconnect loop. In addition it also enables
 		// inactivity check on the ovsdb connection.
-		client.WithInactivityCheck(inactivityTimeout, connectTimeout, &backoff.ZeroBackOff{}),
+		client.WithInactivityCheck(inactivityTimeout, connectTimeout, backoff.NewExponentialBackOff()),
 
 		client.WithLeaderOnly(true),
 		client.WithLogger(&logger),
