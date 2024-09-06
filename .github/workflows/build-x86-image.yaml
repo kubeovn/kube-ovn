@@ -2065,9 +2065,13 @@ jobs:
             echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
           fi
 
-      - name: Remove DNS search domain
+      - name: Configure docker
         run: |
+          # enable addition of ip6tables rules
+          sudo sh -c "echo '{\"experimental\": true, \"ip6tables\": true}' > /etc/docker/daemon.json"
+          # remove DNS search domain
           sudo sed -i '/^search/d' /etc/resolv.conf
+          # restart docker
           sudo systemctl restart docker
 
       - uses: actions/setup-go@v5
