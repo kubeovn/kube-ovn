@@ -1422,6 +1422,12 @@ func (c *Controller) setExGateway() error {
 		klog.Errorf("failed to get node, %v", err)
 		return err
 	}
+	var isUserspaceDP bool
+	isUserspaceDP, err = ovs.IsUserspaceDataPath()
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
 	enable := node.Labels[util.ExGatewayLabel]
 	externalBridge := util.ExternalBridgeName(c.config.ExternalGatewaySwitch)
 	if enable == "true" {
@@ -1437,15 +1443,19 @@ func (c *Controller) setExGateway() error {
 			klog.Error(err)
 			return err
 		}
-		link, err := netlink.LinkByName(linkName)
-		if err != nil {
-			klog.Errorf("failed to get nic %s, %v", linkName, err)
-			return err
+
+		if !isUserspaceDP {
+			link, err := netlink.LinkByName(linkName)
+			if err != nil {
+				klog.Errorf("failed to get nic %s, %v", linkName, err)
+				return err
+			}
+			if err := netlink.LinkSetUp(link); err != nil {
+				klog.Errorf("failed to set gateway nic %s up, %v", linkName, err)
+				return err
+			}
 		}
-		if err := netlink.LinkSetUp(link); err != nil {
-			klog.Errorf("failed to set gateway nic %s up, %v", linkName, err)
-			return err
-		}
+
 		externalBrReady := false
 		// if external nic already attached into another bridge
 		if existBr, err := ovs.Exec("port-to-br", linkName); err == nil {
@@ -1513,7 +1523,7 @@ func (c *Controller) setExGateway() error {
 			}
 		}
 
-		if !keepExternalSubnet {
+		if !isUserspaceDP && !keepExternalSubnet {
 			klog.Infof("delete external bridge %s", externalBridge)
 			if _, err := ovs.Exec(
 				ovs.IfExists, "del-br", externalBridge); err != nil {
