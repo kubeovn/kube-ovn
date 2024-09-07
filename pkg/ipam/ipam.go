@@ -180,8 +180,14 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr, gw string, excludeIps []strin
 		v4cidrStr = cidrs[0].String()
 		v6cidrStr = cidrs[1].String()
 		gws := strings.Split(gw, ",")
-		v4Gw = gws[0]
-		v6Gw = gws[1]
+		if len(gws) == 2 {
+			v4Gw = gws[0]
+			v6Gw = gws[1]
+		} else {
+			err := fmt.Errorf("dual subnet %s invalid gw %s", name, gw)
+			klog.Error(err)
+			return err
+		}
 	case kubeovnv1.ProtocolIPv4:
 		v4cidrStr = cidrs[0].String()
 		v4Gw = gw
