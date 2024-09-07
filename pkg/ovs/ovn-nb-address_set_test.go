@@ -44,6 +44,27 @@ func (suite *OvnClientTestSuite) testCreateAddressSet() {
 		})
 		require.Error(t, err)
 	})
+
+	t.Run("create address set that already exists", func(t *testing.T) {
+		asName := "existing_address_set"
+		err := ovnClient.CreateAddressSet(asName, nil)
+		require.NoError(t, err)
+
+		// Attempt to create the same address set again
+		err = ovnClient.CreateAddressSet(asName, nil)
+		require.NoError(t, err)
+
+		// Verify that only one address set exists
+		ass, err := ovnClient.ListAddressSets(nil)
+		require.NoError(t, err)
+		count := 0
+		for _, as := range ass {
+			if as.Name == asName {
+				count++
+			}
+		}
+		require.Equal(t, 1, count)
+	})
 }
 
 func (suite *OvnClientTestSuite) testAddressSetUpdateAddress() {
@@ -85,6 +106,62 @@ func (suite *OvnClientTestSuite) testAddressSetUpdateAddress() {
 		as, err := ovnClient.GetAddressSet(asName, false)
 		require.NoError(t, err)
 		require.Empty(t, as.Addresses)
+	})
+
+	t.Run("update with mixed IPv4 and IPv6 addresses", func(t *testing.T) {
+		addresses := []string{"192.168.1.1", "2001:db8::1", "10.0.0.1", "fe80::1"}
+		err := ovnClient.AddressSetUpdateAddress(asName, addresses...)
+		require.NoError(t, err)
+
+		as, err := ovnClient.GetAddressSet(asName, false)
+		require.NoError(t, err)
+		require.ElementsMatch(t, addresses, as.Addresses)
+	})
+
+	t.Run("update with CIDR notation", func(t *testing.T) {
+		addresses := []string{"192.168.1.0/24", "2001:db8::/64"}
+		err := ovnClient.AddressSetUpdateAddress(asName, addresses...)
+		require.NoError(t, err)
+
+		as, err := ovnClient.GetAddressSet(asName, false)
+		require.NoError(t, err)
+		require.ElementsMatch(t, []string{"192.168.1.0/24", "2001:db8::/64"}, as.Addresses)
+	})
+
+	t.Run("update with duplicate addresses", func(t *testing.T) {
+		addresses := []string{"192.168.1.1", "192.168.1.1", "2001:db8::1", "2001:db8::1"}
+		err := ovnClient.AddressSetUpdateAddress(asName, addresses...)
+		require.NoError(t, err)
+
+		as, err := ovnClient.GetAddressSet(asName, false)
+		require.NoError(t, err)
+		require.ElementsMatch(t, []string{"192.168.1.1", "2001:db8::1"}, as.Addresses)
+	})
+
+	t.Run("update with invalid CIDR", func(t *testing.T) {
+		addresses := []string{"192.168.1.1", "invalid_cidr", "2001:db8::1"}
+		err := ovnClient.AddressSetUpdateAddress(asName, addresses...)
+		require.NoError(t, err)
+
+		as, err := ovnClient.GetAddressSet(asName, false)
+		require.NoError(t, err)
+		require.ElementsMatch(t, []string{"192.168.1.1", "invalid_cidr", "2001:db8::1"}, as.Addresses)
+	})
+
+	t.Run("update with empty address list", func(t *testing.T) {
+		err := ovnClient.AddressSetUpdateAddress(asName)
+		require.NoError(t, err)
+
+		as, err := ovnClient.GetAddressSet(asName, false)
+		require.NoError(t, err)
+		require.Empty(t, as.Addresses)
+	})
+
+	t.Run("update non-existent address set", func(t *testing.T) {
+		nonExistentAS := "non_existent_as"
+		err := ovnClient.AddressSetUpdateAddress(nonExistentAS, "192.168.1.1")
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "get address set")
 	})
 }
 
@@ -146,6 +223,10 @@ func (suite *OvnClientTestSuite) testDeleteAddressSets() {
 	ass, err := ovnClient.ListAddressSets(externalIDs)
 	require.NoError(t, err)
 	require.Empty(t, ass)
+
+	// delete address sets with empty externalIDs
+	err = ovnClient.DeleteAddressSets(map[string]string{})
+	require.NoError(t, err)
 }
 
 func (suite *OvnClientTestSuite) testListAddressSets() {
@@ -237,5 +318,18 @@ func (suite *OvnClientTestSuite) testAddressSetFilter() {
 		filterFunc := addressSetFilter(map[string]string{sgKey: pgName, "direction": "to-lport"})
 		out := filterFunc(as)
 		require.False(t, out)
+	})
+}
+
+func (suite *OvnClientTestSuite) testUpdateAddressSet() {
+	t := suite.T()
+	t.Parallel()
+
+	ovnClient := suite.ovnClient
+
+	t.Run("update with nil address set", func(t *testing.T) {
+		err := ovnClient.UpdateAddressSet(nil)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "address_set is nil")
 	})
 }

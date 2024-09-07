@@ -288,6 +288,7 @@ func (suite *OvnClientTestSuite) Test_logicalRouterPortFilter() {
 	suite.testlogicalRouterPortFilter()
 }
 
+/* bfd unit test */
 func (suite *OvnClientTestSuite) Test_CreateBFD() {
 	suite.testCreateBFD()
 }
@@ -298,6 +299,30 @@ func (suite *OvnClientTestSuite) Test_ListBFD() {
 
 func (suite *OvnClientTestSuite) Test_DeleteBFD() {
 	suite.testDeleteBFD()
+}
+
+func (suite *OvnClientTestSuite) Test_ListDownBFDs() {
+	suite.testListDownBFDs()
+}
+
+func (suite *OvnClientTestSuite) Test_ListUpBFDs() {
+	suite.testListUpBFDs()
+}
+
+func (suite *OvnClientTestSuite) Test_isLrpBfdUp() {
+	suite.testIsLrpBfdUp()
+}
+
+func (suite *OvnClientTestSuite) Test_BfdAddL3HAHandler() {
+	suite.testBfdAddL3HAHandler()
+}
+
+func (suite *OvnClientTestSuite) Test_BfdUpdateL3HAHandler() {
+	suite.testBfdUpdateL3HAHandler()
+}
+
+func (suite *OvnClientTestSuite) Test_BfdDelL3HAHandler() {
+	suite.testBfdDelL3HAHandler()
 }
 
 /* gateway_chassis unit test */
@@ -469,6 +494,10 @@ func (suite *OvnClientTestSuite) Test_addressSetFilter() {
 	suite.testAddressSetFilter()
 }
 
+func (suite *OvnClientTestSuite) Test_UpdateAddressSet() {
+	suite.testUpdateAddressSet()
+}
+
 /* acl unit test */
 func (suite *OvnClientTestSuite) Test_testUpdateIngressAclOps() {
 	suite.testUpdateIngressACLOps()
@@ -556,6 +585,18 @@ func (suite *OvnClientTestSuite) Test_SGLostACL() {
 
 func (suite *OvnClientTestSuite) Test_newAnpACLMatch() {
 	suite.testNewAnpACLMatch()
+}
+
+func (suite *OvnClientTestSuite) Test_CreateBareACL() {
+	suite.testCreateBareACL()
+}
+
+func (suite *OvnClientTestSuite) Test_UpdateAnpRuleACLOps() {
+	suite.testUpdateAnpRuleACLOps()
+}
+
+func (suite *OvnClientTestSuite) Test_UpdateACL() {
+	suite.testUpdateACL()
 }
 
 /* logical_router_policy unit test */
