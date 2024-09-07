@@ -137,6 +137,10 @@ RUN curl -sSf -L --retry 3 -o /usr/local/bin/bfdd-control https://github.com/bob
     chmod +x /usr/local/bin/bfdd-control /usr/local/bin/bfdd-beacon && \
     setcap CAP_NET_BIND_SERVICE+eip $(readlink -f $(which bfdd-beacon))
 
+ARG GOBGP_VERSION="3.29.0"
+RUN curl -sSf -L --retry 5 https://github.com/osrg/gobgp/releases/download/v${GOBGP_VERSION}/gobgp_${GOBGP_VERSION}_linux_${ARCH}.tar.gz | tar -xz -C /usr/bin gobgp && \
+    chmod +x /usr/bin/gobgp
+
 ARG DEBUG=false
 
 RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages  \
