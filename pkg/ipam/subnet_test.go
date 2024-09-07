@@ -573,4 +573,393 @@ func TestReleaseAddrForDualSubnet(t *testing.T) {
 	require.False(t, subnet.ContainAddress(v6))
 }
 
-// TODO: ippool
+func TestAddOrUpdateIPPool(t *testing.T) {
+	excludeIps := []string{
+		"10.0.0.2", "10.0.0.4", "10.0.0.100",
+		"10.0.0.252", "10.0.0.253", "10.0.0.254",
+		"2001:db8::2", "2001:db8::4", "2001:db8::100",
+		"2001:db8::252", "2001:db8::253", "2001:db8::254",
+	}
+	subnetName := "dualSubnet"
+	subnet, err := NewSubnet(subnetName, "10.0.0.0/16,2001:db8::/64", excludeIps)
+	require.NoError(t, err)
+	// check default pool
+	defaultPool := subnet.IPPools[""]
+	require.NotNil(t, defaultPool)
+	require.NotNil(t, defaultPool.V4IPs)
+	require.NotNil(t, defaultPool.V6IPs)
+	require.NotNil(t, defaultPool.V4Free)
+	require.NotNil(t, defaultPool.V6Free)
+	require.NotNil(t, defaultPool.V4Available)
+	require.NotNil(t, defaultPool.V6Available)
+	require.NotNil(t, defaultPool.V4Reserved)
+	require.NotNil(t, defaultPool.V6Reserved)
+	require.NotNil(t, defaultPool.V4IPs)
+	require.NotNil(t, defaultPool.V4IPs)
+	require.NotNil(t, defaultPool.V4Released)
+	require.NotNil(t, defaultPool.V6Released)
+	require.NotNil(t, defaultPool.V4Using)
+	require.NotNil(t, defaultPool.V6Using)
+	require.Equal(t, defaultPool.V4IPs.String(), "10.0.0.1-10.0.255.254")
+	require.Equal(t, defaultPool.V6IPs.String(), "2001:db8::1-2001:db8::ffff:ffff:ffff:fffe")
+	require.Equal(t, defaultPool.V4Free.String(), "10.0.0.1,10.0.0.3,10.0.0.5-10.0.0.99,10.0.0.101-10.0.0.251,10.0.0.255-10.0.255.254")
+	require.Equal(t, defaultPool.V6Free.String(), "2001:db8::1,2001:db8::3,2001:db8::5-2001:db8::ff,2001:db8::101-2001:db8::251,2001:db8::255-2001:db8::ffff:ffff:ffff:fffe")
+	require.Equal(t, defaultPool.V4Available.String(), "10.0.0.1,10.0.0.3,10.0.0.5-10.0.0.99,10.0.0.101-10.0.0.251,10.0.0.255-10.0.255.254")
+	require.Equal(t, defaultPool.V6Available.String(), "2001:db8::1,2001:db8::3,2001:db8::5-2001:db8::ff,2001:db8::101-2001:db8::251,2001:db8::255-2001:db8::ffff:ffff:ffff:fffe")
+	require.Equal(t, defaultPool.V4Reserved.String(), "10.0.0.2,10.0.0.4,10.0.0.100,10.0.0.252-10.0.0.254")
+	require.Equal(t, defaultPool.V6Reserved.String(), "2001:db8::2,2001:db8::4,2001:db8::100,2001:db8::252-2001:db8::254")
+	require.Equal(t, defaultPool.V4Released.String(), "")
+	require.Equal(t, defaultPool.V6Released.String(), "")
+	require.Equal(t, defaultPool.V4Using.String(), "")
+	require.Equal(t, defaultPool.V6Using.String(), "")
+
+	// check V4 valid pool
+	v4ValidPoolName := "v4ValidPool"
+	validV4IPs := []string{"10.0.0.20", "10.0.0.90", "10.0.0.170", "10.0.0.240", "10.0.0.250"}
+	err = subnet.AddOrUpdateIPPool(v4ValidPoolName, validV4IPs)
+	require.NoError(t, err)
+	require.NotNil(t, subnet.IPPools[v4ValidPoolName])
+	v4ValidPool, ok := subnet.IPPools[v4ValidPoolName]
+	require.True(t, ok)
+	require.NotNil(t, v4ValidPool)
+	require.NotNil(t, v4ValidPool.V4IPs)
+	require.NotNil(t, v4ValidPool.V6IPs)
+	require.NotNil(t, v4ValidPool.V4Free)
+	require.NotNil(t, v4ValidPool.V6Free)
+	require.NotNil(t, v4ValidPool.V4Available)
+	require.NotNil(t, v4ValidPool.V6Available)
+	require.NotNil(t, v4ValidPool.V4Reserved)
+	require.NotNil(t, v4ValidPool.V6Reserved)
+	require.NotNil(t, v4ValidPool.V4IPs)
+	require.NotNil(t, v4ValidPool.V6IPs)
+	require.NotNil(t, v4ValidPool.V4Released)
+	require.NotNil(t, v4ValidPool.V6Released)
+	require.NotNil(t, v4ValidPool.V4Using)
+	require.NotNil(t, v4ValidPool.V6Using)
+
+	require.Equal(t, v4ValidPool.V4IPs.String(), "10.0.0.20,10.0.0.90,10.0.0.170,10.0.0.240,10.0.0.250")
+	require.Equal(t, v4ValidPool.V6IPs.String(), "")
+	require.Equal(t, v4ValidPool.V4Free.String(), "10.0.0.20,10.0.0.90,10.0.0.170,10.0.0.240,10.0.0.250")
+	require.Equal(t, v4ValidPool.V6Free.String(), "")
+	require.Equal(t, v4ValidPool.V4Available.String(), "10.0.0.20,10.0.0.90,10.0.0.170,10.0.0.240,10.0.0.250")
+	require.Equal(t, v4ValidPool.V6Available.String(), "")
+	require.Equal(t, v4ValidPool.V4Reserved.String(), "")
+	require.Equal(t, v4ValidPool.V6Reserved.String(), "")
+	require.Equal(t, v4ValidPool.V4Released.String(), "")
+	require.Equal(t, v4ValidPool.V6Released.String(), "")
+	require.Equal(t, v4ValidPool.V4Using.String(), "")
+	require.Equal(t, v4ValidPool.V6Using.String(), "")
+
+	// check V4 invalid pool
+	v4InvalidPoolName := "v4InvalidPool"
+	invalidV4IPs := []string{"10.0.0.21", "10.0.0.9", "10.0.0.17", "10.0.0.241", "10.0.0.261"}
+	err = subnet.AddOrUpdateIPPool(v4InvalidPoolName, invalidV4IPs)
+	require.Error(t, err)
+	require.Nil(t, subnet.IPPools[v4InvalidPoolName])
+
+	// check V4 different pool has the same ip
+	v4ConflictPoolName := "v4ConflictPool"
+	conflictV4IPs := []string{"10.0.0.20", "10.0.0.92", "10.0.0.172", "10.0.0.242"}
+	err = subnet.AddOrUpdateIPPool(v4ConflictPoolName, conflictV4IPs)
+	require.Error(t, err)
+	require.Nil(t, subnet.IPPools[v4ConflictPoolName])
+
+	// check V6 valid pool
+	v6ValidPoolName := "v6ValidPool"
+	validV6IPs := []string{"2001:db8::20", "2001:db8::90", "2001:db8::170", "2001:db8::240", "2001:db8::250"}
+	err = subnet.AddOrUpdateIPPool(v6ValidPoolName, validV6IPs)
+	require.NoError(t, err)
+	require.NotNil(t, subnet.IPPools[v6ValidPoolName])
+	v6ValidPool, ok := subnet.IPPools[v6ValidPoolName]
+	require.True(t, ok)
+	require.NotNil(t, v6ValidPool)
+	require.NotNil(t, v6ValidPool.V4IPs)
+	require.NotNil(t, v6ValidPool.V6IPs)
+	require.NotNil(t, v6ValidPool.V4Free)
+	require.NotNil(t, v6ValidPool.V6Free)
+	require.NotNil(t, v6ValidPool.V4Available)
+	require.NotNil(t, v6ValidPool.V6Available)
+	require.NotNil(t, v6ValidPool.V4Reserved)
+	require.NotNil(t, v6ValidPool.V4Reserved)
+	require.NotNil(t, v6ValidPool.V6Reserved)
+	require.NotNil(t, v6ValidPool.V4IPs)
+	require.NotNil(t, v6ValidPool.V4IPs)
+	require.NotNil(t, v6ValidPool.V4Released)
+	require.NotNil(t, v6ValidPool.V6Released)
+	require.NotNil(t, v6ValidPool.V4Using)
+	require.NotNil(t, v6ValidPool.V6Using)
+
+	require.Equal(t, v6ValidPool.V4IPs.String(), "")
+	require.Equal(t, v6ValidPool.V6IPs.String(), "2001:db8::20,2001:db8::90,2001:db8::170,2001:db8::240,2001:db8::250")
+	require.Equal(t, v6ValidPool.V4Free.String(), "")
+	require.Equal(t, v6ValidPool.V6Free.String(), "2001:db8::20,2001:db8::90,2001:db8::170,2001:db8::240,2001:db8::250")
+	require.Equal(t, v6ValidPool.V4Available.String(), "")
+	require.Equal(t, v6ValidPool.V6Available.String(), "2001:db8::20,2001:db8::90,2001:db8::170,2001:db8::240,2001:db8::250")
+	require.Equal(t, v6ValidPool.V4Reserved.String(), "")
+	require.Equal(t, v6ValidPool.V6Reserved.String(), "")
+	require.Equal(t, v6ValidPool.V4Released.String(), "")
+	require.Equal(t, v6ValidPool.V6Released.String(), "")
+	require.Equal(t, v6ValidPool.V4Using.String(), "")
+	require.Equal(t, v6ValidPool.V6Using.String(), "")
+
+	// check V6 invalid pool
+	v6InvalidPoolName := "v6InvalidPool"
+	invalidV6IPs := []string{"2001:db8::21", "2001:db8::9", "2001:db8::17", "2001:db8::241", "2001:db8::g61"}
+	err = subnet.AddOrUpdateIPPool(v6InvalidPoolName, invalidV6IPs)
+	require.Error(t, err)
+	require.Nil(t, subnet.IPPools[v6InvalidPoolName])
+
+	// check V6 different pool has the same ip
+	v6ConflictPoolName := "v6ConflictPool"
+	conflictV6IPs := []string{"2001:db8::20", "2001:db8::92", "2001:db8::172", "2001:db8::242"}
+	err = subnet.AddOrUpdateIPPool(v6ConflictPoolName, conflictV6IPs)
+	require.Error(t, err)
+	require.Nil(t, subnet.IPPools[v6ConflictPoolName])
+
+	// check dualstack valid pool
+	dualValidPoolName := "dualValidPool"
+	validDualIPs := []string{"10.0.0.30", "10.0.0.80", "2001:db8::30", "2001:db8::80"}
+	err = subnet.AddOrUpdateIPPool(dualValidPoolName, validDualIPs)
+	require.NoError(t, err)
+	require.NotNil(t, subnet.IPPools[dualValidPoolName])
+	dualValidPool, ok := subnet.IPPools[dualValidPoolName]
+	require.True(t, ok)
+	require.NotNil(t, dualValidPool)
+	require.NotNil(t, dualValidPool.V4IPs)
+	require.NotNil(t, dualValidPool.V6IPs)
+	require.NotNil(t, dualValidPool.V4Free)
+	require.NotNil(t, dualValidPool.V6Free)
+	require.NotNil(t, dualValidPool.V4Available)
+	require.NotNil(t, dualValidPool.V6Available)
+	require.NotNil(t, dualValidPool.V4Reserved)
+	require.NotNil(t, dualValidPool.V6Reserved)
+	require.NotNil(t, dualValidPool.V4IPs)
+	require.NotNil(t, dualValidPool.V4IPs)
+	require.NotNil(t, dualValidPool.V4Released)
+	require.NotNil(t, dualValidPool.V6Released)
+	require.NotNil(t, dualValidPool.V4Using)
+	require.NotNil(t, dualValidPool.V6Using)
+
+	require.Equal(t, dualValidPool.V4IPs.String(), "10.0.0.30,10.0.0.80")
+	require.Equal(t, dualValidPool.V6IPs.String(), "2001:db8::30,2001:db8::80")
+	require.Equal(t, dualValidPool.V4Free.String(), "10.0.0.30,10.0.0.80")
+	require.Equal(t, dualValidPool.V6Free.String(), "2001:db8::30,2001:db8::80")
+	require.Equal(t, dualValidPool.V4Available.String(), "10.0.0.30,10.0.0.80")
+	require.Equal(t, dualValidPool.V6Available.String(), "2001:db8::30,2001:db8::80")
+	require.Equal(t, dualValidPool.V4Reserved.String(), "")
+	require.Equal(t, dualValidPool.V6Reserved.String(), "")
+	require.Equal(t, dualValidPool.V4Released.String(), "")
+	require.Equal(t, dualValidPool.V6Released.String(), "")
+	require.Equal(t, dualValidPool.V4Using.String(), "")
+	require.Equal(t, dualValidPool.V6Using.String(), "")
+
+	// check dualstack invalid pool
+	dualInvalidPoolName := "dualInvalidPool"
+	invalidDualIPs := []string{"10.0.0.31", "10.0.0.256", "2001:db8::31", "2001:db8::79"}
+	err = subnet.AddOrUpdateIPPool(dualInvalidPoolName, invalidDualIPs)
+	require.Error(t, err)
+	require.Nil(t, subnet.IPPools[dualInvalidPoolName])
+	invalidDualIPs = []string{"10.0.0.31", "10.0.0.25", "2001:db8::31", "2001:db8::g9"}
+	err = subnet.AddOrUpdateIPPool(dualInvalidPoolName, invalidDualIPs)
+	require.Error(t, err)
+	require.Nil(t, subnet.IPPools[dualInvalidPoolName])
+
+	// check dualstack different pool has the same ip
+	dualConflictPoolName := "dualConflictPool"
+	conflictDualIPs := []string{"10.0.0.30", "10.0.0.92", "2001:db8::35", "2001:db8::92"}
+	err = subnet.AddOrUpdateIPPool(dualConflictPoolName, conflictDualIPs)
+	require.Error(t, err)
+	require.Nil(t, subnet.IPPools[dualConflictPoolName])
+	conflictDualIPs = []string{"10.0.0.30", "10.0.0.93", "2001:db8::30", "2001:db8::92"}
+	err = subnet.AddOrUpdateIPPool(dualConflictPoolName, conflictDualIPs)
+	require.Error(t, err)
+	require.Nil(t, subnet.IPPools[dualConflictPoolName])
+
+	// re check default pool
+	defaultPool = subnet.IPPools[""]
+	require.NotNil(t, defaultPool)
+	require.NotNil(t, defaultPool.V4IPs)
+	require.NotNil(t, defaultPool.V6IPs)
+	require.NotNil(t, defaultPool.V4Free)
+	require.NotNil(t, defaultPool.V6Free)
+	require.NotNil(t, defaultPool.V4Available)
+	require.NotNil(t, defaultPool.V6Available)
+	require.NotNil(t, defaultPool.V4Reserved)
+	require.NotNil(t, defaultPool.V6Reserved)
+	require.NotNil(t, defaultPool.V4IPs)
+	require.NotNil(t, defaultPool.V4IPs)
+	require.NotNil(t, defaultPool.V4Released)
+	require.NotNil(t, defaultPool.V6Released)
+	require.NotNil(t, defaultPool.V4Using)
+	require.NotNil(t, defaultPool.V6Using)
+
+	require.Equal(t, defaultPool.V4IPs.String(), "10.0.0.1-10.0.0.19,10.0.0.21-10.0.0.29,10.0.0.31-10.0.0.79,10.0.0.81-10.0.0.89,10.0.0.91-10.0.0.169,10.0.0.171-10.0.0.239,10.0.0.241-10.0.0.249,10.0.0.251-10.0.255.254")
+	require.Equal(t, defaultPool.V6IPs.String(), "2001:db8::1-2001:db8::1f,2001:db8::21-2001:db8::2f,2001:db8::31-2001:db8::7f,2001:db8::81-2001:db8::8f,2001:db8::91-2001:db8::16f,2001:db8::171-2001:db8::23f,2001:db8::241-2001:db8::24f,2001:db8::251-2001:db8::ffff:ffff:ffff:fffe")
+	require.Equal(t, defaultPool.V4Free.String(), "10.0.0.1,10.0.0.3,10.0.0.5-10.0.0.19,10.0.0.21-10.0.0.29,10.0.0.31-10.0.0.79,10.0.0.81-10.0.0.89,10.0.0.91-10.0.0.99,10.0.0.101-10.0.0.169,10.0.0.171-10.0.0.239,10.0.0.241-10.0.0.249,10.0.0.251,10.0.0.255-10.0.255.254")
+	require.Equal(t, defaultPool.V6Free.String(), "2001:db8::1,2001:db8::3,2001:db8::5-2001:db8::1f,2001:db8::21-2001:db8::2f,2001:db8::31-2001:db8::7f,2001:db8::81-2001:db8::8f,2001:db8::91-2001:db8::ff,2001:db8::101-2001:db8::16f,2001:db8::171-2001:db8::23f,2001:db8::241-2001:db8::24f,2001:db8::251,2001:db8::255-2001:db8::ffff:ffff:ffff:fffe")
+	require.Equal(t, defaultPool.V4Available.String(), "10.0.0.1,10.0.0.3,10.0.0.5-10.0.0.19,10.0.0.21-10.0.0.29,10.0.0.31-10.0.0.79,10.0.0.81-10.0.0.89,10.0.0.91-10.0.0.99,10.0.0.101-10.0.0.169,10.0.0.171-10.0.0.239,10.0.0.241-10.0.0.249,10.0.0.251,10.0.0.255-10.0.255.254")
+	require.Equal(t, defaultPool.V6Available.String(), "2001:db8::1,2001:db8::3,2001:db8::5-2001:db8::1f,2001:db8::21-2001:db8::2f,2001:db8::31-2001:db8::7f,2001:db8::81-2001:db8::8f,2001:db8::91-2001:db8::ff,2001:db8::101-2001:db8::16f,2001:db8::171-2001:db8::23f,2001:db8::241-2001:db8::24f,2001:db8::251,2001:db8::255-2001:db8::ffff:ffff:ffff:fffe")
+	require.Equal(t, defaultPool.V4Reserved.String(), "10.0.0.2,10.0.0.4,10.0.0.100,10.0.0.252-10.0.0.254")
+	require.Equal(t, defaultPool.V6Reserved.String(), "2001:db8::2,2001:db8::4,2001:db8::100,2001:db8::252-2001:db8::254")
+	require.Equal(t, defaultPool.V4Released.String(), "")
+	require.Equal(t, defaultPool.V6Released.String(), "")
+	require.Equal(t, defaultPool.V4Using.String(), "")
+	require.Equal(t, defaultPool.V6Using.String(), "")
+}
+
+func TestRemoveIPPool(t *testing.T) {
+	excludeIps := []string{
+		"10.0.0.2", "10.0.0.4", "10.0.0.100",
+		"10.0.0.252", "10.0.0.253", "10.0.0.254",
+		"2001:db8::2", "2001:db8::4", "2001:db8::100",
+		"2001:db8::252", "2001:db8::253", "2001:db8::254",
+	}
+	subnetName := "dualSubnet"
+	subnet, err := NewSubnet(subnetName, "10.0.0.0/16,2001:db8::/64", excludeIps)
+	require.NoError(t, err)
+	// check default pool
+	defaultPool := subnet.IPPools[""]
+	require.NotNil(t, defaultPool)
+	require.NotNil(t, defaultPool.V4IPs)
+	require.NotNil(t, defaultPool.V6IPs)
+	require.NotNil(t, defaultPool.V4Free)
+	require.NotNil(t, defaultPool.V6Free)
+	require.NotNil(t, defaultPool.V4Available)
+	require.NotNil(t, defaultPool.V6Available)
+	require.NotNil(t, defaultPool.V4Reserved)
+	require.NotNil(t, defaultPool.V6Reserved)
+	require.NotNil(t, defaultPool.V4IPs)
+	require.NotNil(t, defaultPool.V4IPs)
+	require.NotNil(t, defaultPool.V4Released)
+	require.NotNil(t, defaultPool.V6Released)
+	require.NotNil(t, defaultPool.V4Using)
+	require.NotNil(t, defaultPool.V6Using)
+	require.Equal(t, defaultPool.V4IPs.String(), "10.0.0.1-10.0.255.254")
+	require.Equal(t, defaultPool.V6IPs.String(), "2001:db8::1-2001:db8::ffff:ffff:ffff:fffe")
+	require.Equal(t, defaultPool.V4Free.String(), "10.0.0.1,10.0.0.3,10.0.0.5-10.0.0.99,10.0.0.101-10.0.0.251,10.0.0.255-10.0.255.254")
+	require.Equal(t, defaultPool.V6Free.String(), "2001:db8::1,2001:db8::3,2001:db8::5-2001:db8::ff,2001:db8::101-2001:db8::251,2001:db8::255-2001:db8::ffff:ffff:ffff:fffe")
+	require.Equal(t, defaultPool.V4Available.String(), "10.0.0.1,10.0.0.3,10.0.0.5-10.0.0.99,10.0.0.101-10.0.0.251,10.0.0.255-10.0.255.254")
+	require.Equal(t, defaultPool.V6Available.String(), "2001:db8::1,2001:db8::3,2001:db8::5-2001:db8::ff,2001:db8::101-2001:db8::251,2001:db8::255-2001:db8::ffff:ffff:ffff:fffe")
+	require.Equal(t, defaultPool.V4Reserved.String(), "10.0.0.2,10.0.0.4,10.0.0.100,10.0.0.252-10.0.0.254")
+	require.Equal(t, defaultPool.V6Reserved.String(), "2001:db8::2,2001:db8::4,2001:db8::100,2001:db8::252-2001:db8::254")
+	require.Equal(t, defaultPool.V4Released.String(), "")
+	require.Equal(t, defaultPool.V6Released.String(), "")
+	require.Equal(t, defaultPool.V4Using.String(), "")
+	require.Equal(t, defaultPool.V6Using.String(), "")
+	// check dualstack valid pool
+	dualValidPoolName := "dualValidPool"
+	validDualIPs := []string{"10.0.0.30", "10.0.0.80", "2001:db8::30", "2001:db8::80"}
+	err = subnet.AddOrUpdateIPPool(dualValidPoolName, validDualIPs)
+	require.NoError(t, err)
+	require.NotNil(t, subnet.IPPools[dualValidPoolName])
+	_, ok := subnet.IPPools[dualValidPoolName]
+	require.True(t, ok)
+	require.Equal(t, 2, len(subnet.IPPools))
+	// remove dualValidPool
+	subnet.RemoveIPPool(dualValidPoolName)
+	require.Nil(t, subnet.IPPools[dualValidPoolName])
+	require.Equal(t, 1, len(subnet.IPPools))
+	// recheck default pool
+	defaultPool = subnet.IPPools[""]
+	require.NotNil(t, defaultPool)
+	require.NotNil(t, defaultPool.V4IPs)
+	require.NotNil(t, defaultPool.V6IPs)
+	require.NotNil(t, defaultPool.V4Free)
+	require.NotNil(t, defaultPool.V6Free)
+	require.NotNil(t, defaultPool.V4Available)
+	require.NotNil(t, defaultPool.V6Available)
+	require.NotNil(t, defaultPool.V4Reserved)
+	require.NotNil(t, defaultPool.V6Reserved)
+	require.NotNil(t, defaultPool.V4IPs)
+	require.NotNil(t, defaultPool.V4IPs)
+	require.NotNil(t, defaultPool.V4Released)
+	require.NotNil(t, defaultPool.V6Released)
+	require.NotNil(t, defaultPool.V4Using)
+	require.NotNil(t, defaultPool.V6Using)
+	require.Equal(t, defaultPool.V4IPs.String(), "10.0.0.1-10.0.0.29,10.0.0.31-10.0.0.79,10.0.0.81-10.0.255.254")
+	require.Equal(t, defaultPool.V6IPs.String(), "2001:db8::1-2001:db8::2f,2001:db8::31-2001:db8::7f,2001:db8::81-2001:db8::ffff:ffff:ffff:fffe")
+	require.Equal(t, defaultPool.V4Free.String(), "10.0.0.1,10.0.0.3,10.0.0.5-10.0.0.99,10.0.0.101-10.0.0.251,10.0.0.255-10.0.255.254")
+	require.Equal(t, defaultPool.V6Free.String(), "2001:db8::1,2001:db8::3,2001:db8::5-2001:db8::ff,2001:db8::101-2001:db8::251,2001:db8::255-2001:db8::ffff:ffff:ffff:fffe")
+	require.Equal(t, defaultPool.V4Available.String(), "10.0.0.1,10.0.0.3,10.0.0.5-10.0.0.99,10.0.0.101-10.0.0.251,10.0.0.255-10.0.255.254")
+	require.Equal(t, defaultPool.V6Available.String(), "2001:db8::1,2001:db8::3,2001:db8::5-2001:db8::ff,2001:db8::101-2001:db8::251,2001:db8::255-2001:db8::ffff:ffff:ffff:fffe")
+	require.Equal(t, defaultPool.V4Reserved.String(), "10.0.0.2,10.0.0.4,10.0.0.100,10.0.0.252-10.0.0.254")
+	require.Equal(t, defaultPool.V6Reserved.String(), "2001:db8::2,2001:db8::4,2001:db8::100,2001:db8::252-2001:db8::254")
+	require.Equal(t, defaultPool.V4Released.String(), "")
+	require.Equal(t, defaultPool.V6Released.String(), "")
+	require.Equal(t, defaultPool.V4Using.String(), "")
+	require.Equal(t, defaultPool.V6Using.String(), "")
+
+	// remove dualValidPool
+	subnet.RemoveIPPool(dualValidPoolName)
+	require.Nil(t, subnet.IPPools[dualValidPoolName])
+	require.Equal(t, 1, len(subnet.IPPools))
+}
+
+func TestIPPoolStatistics(t *testing.T) {
+	excludeIps := []string{
+		"10.0.0.2", "10.0.0.4", "10.0.0.100",
+		"10.0.0.252", "10.0.0.253", "10.0.0.254",
+		"2001:db8::2", "2001:db8::4", "2001:db8::100",
+		"2001:db8::252", "2001:db8::253", "2001:db8::254",
+	}
+	subnetName := "dualSubnet"
+	subnet, err := NewSubnet(subnetName, "10.0.0.0/16,2001:db8::/64", excludeIps)
+	require.NoError(t, err)
+
+	// check V4 valid pool
+	v4ValidPoolName := "v4ValidPool"
+	validV4IPs := []string{"10.0.0.20", "10.0.0.90", "10.0.0.170", "10.0.0.240", "10.0.0.250"}
+	err = subnet.AddOrUpdateIPPool(v4ValidPoolName, validV4IPs)
+	require.NoError(t, err)
+	v4a, v4u, v6a, v6u, v4as, v4us, v6as, v6us := subnet.IPPoolStatistics(v4ValidPoolName)
+	require.Equal(t, v4a.String(), "5")
+	require.Empty(t, v4u)
+	require.Empty(t, v6a)
+	require.Empty(t, v6u)
+	require.Equal(t, v4as, "10.0.0.20,10.0.0.90,10.0.0.170,10.0.0.240,10.0.0.250")
+	require.Empty(t, v4us)
+	require.Empty(t, v6as)
+	require.Empty(t, v6us)
+
+	// check V6 valid pool
+	v6ValidPoolName := "v6ValidPool"
+	validV6IPs := []string{"2001:db8::20", "2001:db8::90", "2001:db8::170", "2001:db8::240", "2001:db8::250"}
+	err = subnet.AddOrUpdateIPPool(v6ValidPoolName, validV6IPs)
+	require.NoError(t, err)
+	v4a, v4u, v6a, v6u, v4as, v4us, v6as, v6us = subnet.IPPoolStatistics(v6ValidPoolName)
+	require.Empty(t, v4a)
+	require.Empty(t, v4u)
+	require.Equal(t, v6a.String(), "5")
+	require.Empty(t, v6u)
+	require.Empty(t, v4as)
+	require.Empty(t, v4us)
+	require.Equal(t, v6as, "2001:db8::20,2001:db8::90,2001:db8::170,2001:db8::240,2001:db8::250")
+	require.Empty(t, v6us)
+
+	// check dualstack valid pool
+	dualValidPoolName := "dualValidPool"
+	validDualIPs := []string{"10.0.0.30", "10.0.0.80", "2001:db8::30", "2001:db8::80"}
+	err = subnet.AddOrUpdateIPPool(dualValidPoolName, validDualIPs)
+	require.NoError(t, err)
+	v4a, v4u, v6a, v6u, v4as, v4us, v6as, v6us = subnet.IPPoolStatistics(dualValidPoolName)
+	require.Equal(t, v4a.String(), "2")
+	require.Empty(t, v4u)
+	require.Equal(t, v6a.String(), "2")
+	require.Empty(t, v6u)
+	require.Equal(t, v4as, "10.0.0.30,10.0.0.80")
+	require.Empty(t, v4us)
+	require.Equal(t, v6as, "2001:db8::30,2001:db8::80")
+	require.Empty(t, v6us)
+
+	// check not exist pool
+	notExistPoolName := "notExistPool"
+	v4a, v4u, v6a, v6u, v4as, v4us, v6as, v6us = subnet.IPPoolStatistics(notExistPoolName)
+	require.Empty(t, v4a)
+	require.Empty(t, v4u)
+	require.Empty(t, v6a)
+	require.Empty(t, v6u)
+	require.Empty(t, v4as)
+	require.Empty(t, v4us)
+	require.Empty(t, v6as)
+	require.Empty(t, v6us)
+}
