@@ -13,6 +13,7 @@ import (
 	netv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/klog/v2"
+	"sigs.k8s.io/network-policy-api/apis/v1alpha1"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
@@ -1279,4 +1280,63 @@ func (c *OVNNbClient) SGLostACL(sg *kubeovnv1.SecurityGroup) (bool, error) {
 		}
 	}
 	return false, nil
+}
+
+func newAnpACLMatch(pgName, asName, protocol, direction string, rulePorts []v1alpha1.AdminNetworkPolicyPort) []string {
+	ipSuffix := "ip4"
+	if protocol == kubeovnv1.ProtocolIPv6 {
+		ipSuffix = "ip6"
+	}
+
+	// ingress rule
+	srcOrDst, portDirection := "src", "outport"
+	if direction == ovnnb.ACLDirectionFromLport { // egress rule
+		srcOrDst = "dst"
+		portDirection = "inport"
+	}
+
+	ipKey := ipSuffix + "." + srcOrDst
+
+	// match all traffic to or from pgName
+	allIPMatch := NewAndACLMatch(
+		NewACLMatch(portDirection, "==", "@"+pgName, ""),
+		NewACLMatch("ip", "", "", ""),
+	)
+
+	selectIPMatch := NewAndACLMatch(
+		allIPMatch,
+		NewACLMatch(ipKey, "==", "$"+asName, ""),
+	)
+	if len(rulePorts) == 0 {
+		return []string{selectIPMatch.String()}
+	}
+
+	matches := make([]string, 0, 10)
+	for _, port := range rulePorts {
+		// Exactly one field must be set.
+		// Do not support NamedPort now
+		switch {
+		case port.PortNumber != nil:
+			protocol := strings.ToLower(string(port.PortNumber.Protocol))
+			protocolKey := protocol + ".dst"
+
+			oneMatch := NewAndACLMatch(
+				selectIPMatch,
+				NewACLMatch(protocolKey, "==", strconv.Itoa(int(port.PortNumber.Port)), ""),
+			)
+			matches = append(matches, oneMatch.String())
+		case port.PortRange != nil:
+			protocol := strings.ToLower(string(port.PortRange.Protocol))
+			protocolKey := protocol + ".dst"
+
+			severalMatch := NewAndACLMatch(
+				selectIPMatch,
+				NewACLMatch(protocolKey, "<=", strconv.Itoa(int(port.PortRange.Start)), strconv.Itoa(int(port.PortRange.End))),
+			)
+			matches = append(matches, severalMatch.String())
+		default:
+			klog.Errorf("failed to check port for anp ingress rule, pg %s, as %s", pgName, asName)
+		}
+	}
+	return matches
 }
