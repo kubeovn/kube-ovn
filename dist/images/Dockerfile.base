@@ -116,6 +116,11 @@ ARG BFDD_VERSION="v0.5.4"
 RUN curl -sSf -L --retry 3 -o /usr/local/bin/bfdd-control https://github.com/bobz965/bfd-binary-for-kube-ovn-cni/releases/download/${BFDD_VERSION}/bfdd-control && \
     curl -sSf -L --retry 3 -o /usr/local/bin/bfdd-beacon https://github.com/bobz965/bfd-binary-for-kube-ovn-cni/releases/download/${BFDD_VERSION}/bfdd-beacon && \
     chmod +x /usr/local/bin/bfdd-control /usr/local/bin/bfdd-beacon
+
+ARG GOBGP_VERSION="3.29.0"
+RUN curl -sSf -L --retry 5 https://github.com/osrg/gobgp/releases/download/v${GOBGP_VERSION}/gobgp_${GOBGP_VERSION}_linux_${ARCH}.tar.gz | tar -xz -C /usr/bin gobgp && \
+    chmod +x /usr/bin/gobgp
+
 ARG DEBUG=false
 
 RUN curl -sSf -L --retry 3 -O https://launchpad.net/ubuntu/+archive/primary/+files/libipset13_7.17-1ubuntu1_${ARCH}.deb && \
