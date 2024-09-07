@@ -715,7 +715,7 @@ func TestIPAMAddOrUpdateSubnet(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestAddOrUpdateIPPool(t *testing.T) {
+func TestIPAMAddOrUpdateIPPool(t *testing.T) {
 	// test v4 subnet
 	ipam := NewIPAM()
 	v4ExcludeIps := []string{
@@ -780,7 +780,7 @@ func TestAddOrUpdateIPPool(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestRemoveIPPool(t *testing.T) {
+func TestIPAMRemoveIPPool(t *testing.T) {
 	// test dual stack subnet
 	ipam := NewIPAM()
 	dualSubnetName := "dualSubnet"
@@ -813,7 +813,7 @@ func TestRemoveIPPool(t *testing.T) {
 	ipam.RemoveIPPool(dualSubnetName, nonExistPoolName)
 }
 
-func TestIPPoolStatistics(t *testing.T) {
+func TestIPAMIPPoolStatistics(t *testing.T) {
 	// test dual stack subnet
 	ipam := NewIPAM()
 	dualSubnetName := "dualSubnet"
