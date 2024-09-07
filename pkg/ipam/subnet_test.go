@@ -573,7 +573,7 @@ func TestReleaseAddrForDualSubnet(t *testing.T) {
 	require.False(t, subnet.ContainAddress(v6))
 }
 
-func TestAddOrUpdateIPPool(t *testing.T) {
+func TestSubnetAddOrUpdateIPPool(t *testing.T) {
 	excludeIps := []string{
 		"10.0.0.2", "10.0.0.4", "10.0.0.100",
 		"10.0.0.252", "10.0.0.253", "10.0.0.254",
@@ -807,7 +807,7 @@ func TestAddOrUpdateIPPool(t *testing.T) {
 	require.Equal(t, defaultPool.V6Using.String(), "")
 }
 
-func TestRemoveIPPool(t *testing.T) {
+func TestSubnetRemoveIPPool(t *testing.T) {
 	excludeIps := []string{
 		"10.0.0.2", "10.0.0.4", "10.0.0.100",
 		"10.0.0.252", "10.0.0.253", "10.0.0.254",
@@ -895,7 +895,7 @@ func TestRemoveIPPool(t *testing.T) {
 	require.Equal(t, 1, len(subnet.IPPools))
 }
 
-func TestIPPoolStatistics(t *testing.T) {
+func TestSubnetIPPoolStatistics(t *testing.T) {
 	excludeIps := []string{
 		"10.0.0.2", "10.0.0.4", "10.0.0.100",
 		"10.0.0.252", "10.0.0.253", "10.0.0.254",
