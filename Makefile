@@ -1053,6 +1053,11 @@ ut:
 	ginkgo -mod=mod --show-node-events --poll-progress-after=60s $(GINKGO_OUTPUT_OPT) -v test/unittest
 	go test ./pkg/...
 
+.PHONY: cover
+cover:
+	go test ./pkg/ovs ./pkg/util ./pkg/ipam -gcflags=all=-l -p 1 -coverprofile=cover.out -covermode=atomic
+	go tool cover -func=cover.out
+
 .PHONY: ipam-bench
 ipam-bench:
 	go test -timeout 30m -bench='^BenchmarkIPAM' -benchtime=10000x test/unittest/ipam_bench/ipam_test.go -args -logtostderr=false
