@@ -1,4 +1,4 @@
-{{- if .values.speaker.enabled }}
+{{- if .Values.speaker.enabled }}
 kind: DaemonSet
 apiVersion: apps/v1
 metadata:
