@@ -17,6 +17,11 @@ import (
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/iptables"
 )
 
+var (
+	tProxyOutputMarkMask     = fmt.Sprintf("%#x/%#x", util.TProxyOutputMark, util.TProxyOutputMask)
+	tProxyPreRoutingMarkMask = fmt.Sprintf("%#x/%#x", util.TProxyPreroutingMark, util.TProxyPreroutingMask)
+)
+
 var _ = framework.SerialDescribe("[group:pod]", func() {
 	f := framework.NewDefaultFramework("vpc-pod-probe")
 
@@ -175,7 +180,7 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 		framework.ExpectTrue(found, "Pod readiness probe is expected to fail")
 
 		pod = podClient.GetPod(podName)
-		checkTProxyRules(f, pod, port-1, false)
+		checkTProxyRules(f, pod, port-1, true)
 	})
 })
 
@@ -183,9 +188,6 @@ func checkTProxyRules(f *framework.Framework, pod *corev1.Pod, probePort int32, 
 	ginkgo.GinkgoHelper()
 
 	nodeName := pod.Spec.NodeName
-	tProxyOutputMarkMask := fmt.Sprintf("%#x/%#x", util.TProxyOutputMark, util.TProxyOutputMask)
-	tProxyPreRoutingMarkMask := fmt.Sprintf("%#x/%#x", util.TProxyPreroutingMark, util.TProxyPreroutingMask)
-
 	isZeroIP := false
 	if len(pod.Status.PodIPs) == 2 {
 		isZeroIP = true
