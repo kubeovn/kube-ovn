@@ -10,10 +10,12 @@ import (
 	"syscall"
 
 	"github.com/containernetworking/plugins/pkg/ns"
-	"github.com/scylladb/go-set/strset"
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/set"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
@@ -55,9 +57,43 @@ func (c *Controller) StartTProxyForwarding() {
 	}
 }
 
-func (c *Controller) StartTProxyTCPPortProbe() {
-	probePorts := strset.New()
+func getProbePorts(pod *corev1.Pod) set.Set[int32] {
+	ports := set.New[int32]()
+	for _, container := range pod.Spec.Containers {
+		for _, probe := range [...]*corev1.Probe{container.LivenessProbe, container.ReadinessProbe} {
+			if probe == nil {
+				continue
+			}
+			var port intstr.IntOrString
+			switch {
+			case probe.TCPSocket != nil:
+				port = probe.TCPSocket.Port
+			case probe.HTTPGet != nil:
+				port = probe.HTTPGet.Port
+			case probe.GRPC != nil:
+				port = intstr.FromInt32(probe.GRPC.Port)
+			default:
+				continue
+			}
+			if port.Type == intstr.Int {
+				ports.Insert(port.IntVal)
+				continue
+			}
+			for _, p := range container.Ports {
+				if p.Name == port.StrVal {
+					ports.Insert(p.ContainerPort)
+					break
+				}
+			}
+		}
+	}
 
+	ports.Delete(0)
+	klog.Infof("probe ports for pod %s/%s: %v", pod.Namespace, pod.Name, ports.SortedList())
+	return ports
+}
+
+func (c *Controller) StartTProxyTCPPortProbe() {
 	pods, err := c.getTProxyConditionPod(false)
 	if err != nil {
 		return
@@ -66,33 +102,19 @@ func (c *Controller) StartTProxyTCPPortProbe() {
 	for _, pod := range pods {
 		iface := ovs.PodNameToPortName(pod.Name, pod.Namespace, util.OvnProvider)
 		nsName, err := ovs.GetInterfacePodNs(iface)
-		if err != nil || nsName == "" {
-			klog.Infof("iface %s's namespace not found", iface)
+		if err != nil {
+			klog.Errorf("failed to get netns for pod %s/%s: %v", pod.Namespace, pod.Name, err)
+			continue
+		}
+		if nsName == "" {
+			klog.Infof("netns for pod %s/%s not found", pod.Namespace, pod.Name)
 			continue
 		}
 
+		ports := getProbePorts(pod)
 		for _, podIP := range pod.Status.PodIPs {
 			customVPCPodIPToNs.Store(podIP.IP, nsName)
-			for _, container := range pod.Spec.Containers {
-				if container.ReadinessProbe != nil {
-					if tcpSocket := container.ReadinessProbe.TCPSocket; tcpSocket != nil {
-						if port := tcpSocket.Port.String(); port != "" {
-							probePorts.Add(port)
-						}
-					}
-				}
-
-				if container.LivenessProbe != nil {
-					if tcpSocket := container.LivenessProbe.TCPSocket; tcpSocket != nil {
-						if port := tcpSocket.Port.String(); port != "" {
-							probePorts.Add(port)
-						}
-					}
-				}
-			}
-
-			probePortsList := probePorts.List()
-			for _, port := range probePortsList {
+			for _, port := range ports.UnsortedList() {
 				probePortInNs(podIP.IP, port, true, nil)
 			}
 		}
@@ -263,7 +285,7 @@ func delRouteIfExist(family, table int, dst *net.IPNet) error {
 }
 
 func handleRedirectFlow(conn net.Conn) {
-	klog.V(5).Infof("Accepting TCP connection from %v with destination of %v", conn.RemoteAddr().String(), conn.LocalAddr().String())
+	klog.V(5).Infof("accepting TCP connection from %s to %s", conn.RemoteAddr(), conn.LocalAddr())
 	defer func() {
 		if err := conn.Close(); err != nil {
 			klog.Errorf("conn Close err: %v ", err)
@@ -277,42 +299,44 @@ func handleRedirectFlow(conn net.Conn) {
 		return
 	}
 
-	probePortInNs(podIP, probePort, false, conn)
-}
-
-func probePortInNs(podIP, probePort string, isTProxyProbe bool, conn net.Conn) {
-	podNs, ok := customVPCPodIPToNs.Load(podIP)
-	if !ok {
+	port, err := strconv.ParseInt(probePort, 10, 32)
+	if err != nil {
+		klog.Errorf("failed to parse port number %q: %v", probePort, err)
 		return
 	}
 
-	iprobePort, err := strconv.Atoi(probePort)
-	if err != nil {
+	probePortInNs(podIP, int32(port), false, conn) // #nosec G115
+}
+
+func probePortInNs(podIP string, probePort int32, isTProxyProbe bool, conn net.Conn) {
+	podNs, ok := customVPCPodIPToNs.Load(podIP)
+	if !ok {
+		klog.V(3).Infof("failed to get netns for pod with ip %s", podIP)
 		return
 	}
 
 	podNS, err := ns.GetNS(podNs.(string))
 	if err != nil {
 		customVPCPodIPToNs.Delete(podIP)
-		klog.Infof("ns %s already deleted", podNs)
+		klog.V(3).Infof("netns %s not found", podNs)
 		return
 	}
 
 	_ = ns.WithNetNSPath(podNS.Path(), func(_ ns.NetNS) error {
 		// Packet's src and dst IP are both PodIP in netns
 		localpodTCPAddr := net.TCPAddr{IP: net.ParseIP(podIP)}
-		remotepodTCPAddr := net.TCPAddr{IP: net.ParseIP(podIP), Port: iprobePort}
+		remotepodTCPAddr := net.TCPAddr{IP: net.ParseIP(podIP), Port: int(probePort)}
 
 		remoteConn, err := goTProxy.DialTCP(&localpodTCPAddr, &remotepodTCPAddr, !isTProxyProbe)
 		if err != nil {
 			if isTProxyProbe {
-				customVPCPodTCPProbeIPPort.Store(getIPPortString(podIP, probePort), false)
+				customVPCPodTCPProbeIPPort.Store(util.JoinHostPort(podIP, probePort), false)
 			}
 			return nil
 		}
 
 		if isTProxyProbe {
-			customVPCPodTCPProbeIPPort.Store(getIPPortString(podIP, probePort), true)
+			customVPCPodTCPProbeIPPort.Store(util.JoinHostPort(podIP, probePort), true)
 			return nil
 		}
 
@@ -339,10 +363,6 @@ func probePortInNs(podIP, probePort string, isTProxyProbe bool, conn net.Conn) {
 		streamWait.Wait()
 		return nil
 	})
-}
-
-func getIPPortString(podIP, port string) string {
-	return fmt.Sprintf("%s|%s", podIP, port)
 }
 
 func getProtocols(protocol string) []string {

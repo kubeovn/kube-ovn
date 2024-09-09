@@ -260,7 +260,7 @@ func (c *Controller) getTProxyConditionPod(needSort bool) ([]*v1.Pod, error) {
 	}
 
 	for _, pod := range pods {
-		if pod.Spec.NodeName != c.config.NodeName {
+		if pod.Spec.HostNetwork || pod.Spec.NodeName != c.config.NodeName {
 			continue
 		}
 
@@ -271,8 +271,7 @@ func (c *Controller) getTProxyConditionPod(needSort bool) ([]*v1.Pod, error) {
 
 		subnet, err := c.subnetsLister.Get(subnetName)
 		if err != nil {
-			err = fmt.Errorf("failed to get subnet '%s', err: %v", subnetName, err)
-			return nil, err
+			return nil, fmt.Errorf("failed to get subnet %q: %w", subnetName, err)
 		}
 
 		if subnet.Spec.Vpc == c.config.ClusterRouter {
