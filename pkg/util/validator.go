@@ -334,6 +334,10 @@ func ValidateNetworkBroadcast(cidr, ip string) error {
 			if CheckProtocol(cidrBlock) != CheckProtocol(ipAddr) {
 				continue
 			}
+			_, network, _ := net.ParseCIDR(cidrBlock)
+			if AddressCount(network) == 1 {
+				return fmt.Errorf("subnet %s is configured with /32 netmask", cidrBlock)
+			}
 
 			ipStr := IPToString(ipAddr)
 			if SubnetBroadcast(cidrBlock) == ipStr {

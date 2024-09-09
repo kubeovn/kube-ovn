@@ -208,6 +208,38 @@ func TestGetV4StaticAddress(t *testing.T) {
 	require.Equal(t, "pod1.default", usingPod)
 }
 
+func TestGetV4StaticAddressPTP(t *testing.T) {
+	excludeIps := []string{
+		"10.0.0.0",
+	}
+	subnet, err := NewSubnet("v4Subnet", "10.0.0.0/31", excludeIps)
+	require.NoError(t, err)
+	require.NotNil(t, subnet)
+	// 1. pod1 has v4 ip but no mac, should get specified ip and mac
+	podName := "pod1.default"
+	nicName := "pod1.default"
+	var mac *string
+	v4 := "10.0.0.1"
+	v4IP, err := NewIP(v4)
+	require.NoError(t, err)
+	ip1, macStr1, err := subnet.GetStaticAddress(podName, nicName, v4IP, mac, false, true)
+	require.NoError(t, err)
+	require.Equal(t, v4, ip1.String())
+	require.NotEmpty(t, macStr1)
+	v4IP, v6IP, m, protocol := subnet.GetPodAddress(nicName)
+	require.Equal(t, v4, v4IP.String())
+	require.Nil(t, v6IP)
+	require.Equal(t, macStr1, m)
+	require.Equal(t, apiv1.ProtocolIPv4, protocol)
+
+	// 2. ip is assigned to pod1, should get error
+	podName = "pod5.default"
+	v4 = "10.0.0.1"
+	usingPod, using := subnet.isIPAssignedToOtherPod(v4, podName)
+	require.True(t, using)
+	require.Equal(t, "pod1.default", usingPod)
+}
+
 func TestGetV6StaticAddress(t *testing.T) {
 	excludeIps := []string{
 		"2001:db8::2", "2001:db8::4", "2001:db8::100",
@@ -400,6 +432,30 @@ func TestGetGetV4RandomAddress(t *testing.T) {
 	// compare
 	require.NotEqual(t, v4IP1.String(), v4IP2.String())
 	require.NotEqual(t, mac1, mac2)
+}
+
+func TestGetGetV4RandomAddressPTP(t *testing.T) {
+	excludeIps := []string{
+		"10.0.0.0",
+	}
+	subnet, err := NewSubnet("randomAddressV4Subnet1", "10.0.0.0/31", excludeIps)
+	require.NoError(t, err)
+	require.NotNil(t, subnet)
+	// 1. no mac, get v4 address for pod1
+	podName := "pod1.default"
+	nicName := "pod1.default"
+	v4IP1, v6IP1, mac1, err := subnet.GetRandomAddress("", podName, nicName, nil, nil, false)
+	require.NoError(t, err)
+	require.NotEmpty(t, v4IP1.String())
+	require.Nil(t, v6IP1)
+	require.NotEmpty(t, mac1)
+
+	// 2. ip is assigned to pod1, should get error
+	podName = "pod5.default"
+	v4 := "10.0.0.1"
+	usingPod, using := subnet.isIPAssignedToOtherPod(v4, podName)
+	require.True(t, using)
+	require.Equal(t, "pod1.default", usingPod)
 }
 
 func TestGetGetV6RandomAddress(t *testing.T) {
