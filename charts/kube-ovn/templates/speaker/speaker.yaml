@@ -1,3 +1,4 @@
+{{- if .values.speaker.enabled }}
 kind: DaemonSet
 apiVersion: apps/v1
 metadata:
@@ -66,3 +67,4 @@ spec:
       nodeSelector:
         {{- toYaml . | trim | nindent 8 }}
       {{- end }}
+{{- end }}
