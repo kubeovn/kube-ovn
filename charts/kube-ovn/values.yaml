@@ -130,6 +130,19 @@ imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""
 
+# -- Configuration for the NAT gateway
+natGw:
+  # -- Configuration the BGP sidecar for when a NAT gateway is running in BGP mode
+  bgpSpeaker:
+    # -- Image used by the NAT gateway sidecar
+    image:
+      repository: docker.io/kubeovn/kube-ovn
+      tag: v1.13.0
+      pullPolicy: IfNotPresent
+    # -- Network attachment definition used to reach the API server when running on BGP mode
+    # See https://kubeovn.github.io/docs/stable/en/advance/with-bgp/
+    apiNadProvider: ""
+
 # -- Configuration for ovs-ovn, the Open vSwitch daemon
 ovsOvn:
   # -- Annotations to be added to all top-level ovs-ovn objects (resources under templates/ovs-ovn)

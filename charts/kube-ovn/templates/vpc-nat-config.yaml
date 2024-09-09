@@ -3,11 +3,14 @@ apiVersion: v1
 metadata:
   name: ovn-vpc-nat-config
   namespace: {{ .Values.namespace }}
-  annotations:
-    kubernetes.io/description: |
-      kube-ovn vpc-nat common config
 data:
   image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.vpcRepository }}:{{ .Values.global.images.kubeovn.tag }}
+  {{- with .Values.natGw.bgpSpeaker.image }}
+  bgpSpeakerImage: {{ .repository }}:{{ .tag }}
+  {{- end }}
+  {{- with .Values.natGw.bgpSpeaker.apiNadProvider }}
+  apiNadProvider: {{ . }}
+  {{- end }}
 
 ---
 kind: ConfigMap
