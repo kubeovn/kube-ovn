@@ -188,6 +188,8 @@ ovsOvn:
 
 # -- Configuration for kube-ovn-speaker, the BGP speaker announcing routes to the external world
 speaker:
+  # -- Enable the kube-ovn-speaker
+  enabled: false
   # -- Annotations to be added to all top-level kube-ovn-speaker objects (resources under templates/speaker)
   annotations: {}
   # -- Labels to be added to all top-level kube-ovn-speaker objects (resources under templates/speaker)
@@ -342,7 +344,7 @@ agent:
     port: 10665
 
 # -- Array of extra K8s manifests to deploy
-## Note: Supports use of custom Helm templates
+## Note: Supports use of custom Helm templates (Go templating)
 extraObjects: []
 # - apiVersion: v1
 #   kind: ConfigMap
