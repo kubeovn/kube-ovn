@@ -76,6 +76,26 @@ func (suite *OvnClientTestSuite) Test_SetLBCIDR() {
 	suite.testSetLBCIDR()
 }
 
+func (suite *OvnClientTestSuite) Test_SetOVNIPSec() {
+	suite.testSetOVNIPSec()
+}
+
+func (suite *OvnClientTestSuite) Test_SetNbGlobalOptions() {
+	suite.testSetNbGlobalOptions()
+}
+
+func (suite *OvnClientTestSuite) Test_SetLsDnatModDlDst() {
+	suite.testSetLsDnatModDlDst()
+}
+
+func (suite *OvnClientTestSuite) Test_SetLsCtSkipDstLportIPs() {
+	suite.testSetLsCtSkipDstLportIPs()
+}
+
+func (suite *OvnClientTestSuite) Test_SetNodeLocalDNSIP() {
+	suite.testSetNodeLocalDNSIP()
+}
+
 /* logical_switch unit test */
 func (suite *OvnClientTestSuite) Test_CreateLogicalSwitch() {
 	suite.testCreateLogicalSwitch()

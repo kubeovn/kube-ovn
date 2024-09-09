@@ -128,6 +128,35 @@ func (suite *OvnClientTestSuite) testSetAzName() {
 		require.NoError(t, err)
 		require.Empty(t, out.Name)
 	})
+
+	t.Run("set az name when it's different", func(t *testing.T) {
+		err = ovnClient.SetAzName("new-az")
+		require.NoError(t, err)
+
+		out, err := ovnClient.GetNbGlobal()
+		require.NoError(t, err)
+		require.Equal(t, "new-az", out.Name)
+	})
+
+	t.Run("set az name when it's the same", func(t *testing.T) {
+		err = ovnClient.SetAzName("new-az")
+		require.NoError(t, err)
+
+		out, err := ovnClient.GetNbGlobal()
+		require.NoError(t, err)
+		require.Equal(t, "new-az", out.Name)
+	})
+
+	t.Run("set az name when GetNbGlobal fails", func(t *testing.T) {
+		err := ovnClient.DeleteNbGlobal()
+		require.NoError(t, err)
+
+		err = ovnClient.SetAzName("test-az")
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "failed to get nb global")
+		err = ovnClient.CreateNbGlobal(nbGlobal)
+		require.NoError(t, err)
+	})
 }
 
 func (suite *OvnClientTestSuite) testSetICAutoRoute() {
@@ -167,6 +196,68 @@ func (suite *OvnClientTestSuite) testSetICAutoRoute() {
 		require.NotContains(t, out.Options, "ic-route-adv")
 		require.NotContains(t, out.Options, "ic-route-learn")
 		require.NotContains(t, out.Options, "ic-route-blacklist")
+	})
+
+	t.Run("enable ovn-ic auto route with empty blacklist", func(t *testing.T) {
+		err = ovnClient.SetICAutoRoute(true, []string{})
+		require.NoError(t, err)
+
+		out, err := ovnClient.GetNbGlobal()
+		require.NoError(t, err)
+		require.Equal(t, "true", out.Options["ic-route-adv"])
+		require.Equal(t, "true", out.Options["ic-route-learn"])
+		require.Equal(t, "", out.Options["ic-route-blacklist"])
+	})
+
+	t.Run("enable ovn-ic auto route with multiple blacklist entries", func(t *testing.T) {
+		err = ovnClient.SetICAutoRoute(true, []string{"1.1.1.1", "2.2.2.2", "3.3.3.3"})
+		require.NoError(t, err)
+
+		out, err := ovnClient.GetNbGlobal()
+		require.NoError(t, err)
+		require.Equal(t, "true", out.Options["ic-route-adv"])
+		require.Equal(t, "true", out.Options["ic-route-learn"])
+		require.Equal(t, "1.1.1.1,2.2.2.2,3.3.3.3", out.Options["ic-route-blacklist"])
+	})
+
+	t.Run("enable ovn-ic auto route when already enabled", func(t *testing.T) {
+		err = ovnClient.SetICAutoRoute(true, []string{"1.1.1.1"})
+		require.NoError(t, err)
+
+		err = ovnClient.SetICAutoRoute(true, []string{"1.1.1.1"})
+		require.NoError(t, err)
+
+		out, err := ovnClient.GetNbGlobal()
+		require.NoError(t, err)
+		require.Equal(t, "true", out.Options["ic-route-adv"])
+		require.Equal(t, "true", out.Options["ic-route-learn"])
+		require.Equal(t, "1.1.1.1", out.Options["ic-route-blacklist"])
+	})
+
+	t.Run("disable ovn-ic auto route when already disabled", func(t *testing.T) {
+		err = ovnClient.SetICAutoRoute(false, []string{})
+		require.NoError(t, err)
+
+		err = ovnClient.SetICAutoRoute(false, []string{})
+		require.NoError(t, err)
+
+		out, err := ovnClient.GetNbGlobal()
+		require.NoError(t, err)
+		require.NotContains(t, out.Options, "ic-route-adv")
+		require.NotContains(t, out.Options, "ic-route-learn")
+		require.NotContains(t, out.Options, "ic-route-blacklist")
+	})
+
+	t.Run("set ovn-ic auto route when GetNbGlobal fails", func(t *testing.T) {
+		err := ovnClient.DeleteNbGlobal()
+		require.NoError(t, err)
+
+		err = ovnClient.SetICAutoRoute(true, []string{"1.1.1.1"})
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "failed to get nb global")
+
+		err = ovnClient.CreateNbGlobal(nbGlobal)
+		require.NoError(t, err)
 	})
 }
 
@@ -219,4 +310,305 @@ func (suite *OvnClientTestSuite) testSetLBCIDR() {
 	out, err := ovnClient.GetNbGlobal()
 	require.NoError(t, err)
 	require.Equal(t, serviceCIDR, out.Options["svc_ipv4_cidr"])
+}
+
+func (suite *OvnClientTestSuite) testSetOVNIPSec() {
+	t := suite.T()
+
+	ovnClient := suite.ovnClient
+
+	t.Cleanup(func() {
+		err := ovnClient.DeleteNbGlobal()
+		require.NoError(t, err)
+
+		_, err = ovnClient.GetNbGlobal()
+		require.ErrorContains(t, err, "not found nb_global")
+	})
+
+	nbGlobal := mockNBGlobal()
+	err := ovnClient.CreateNbGlobal(nbGlobal)
+	require.NoError(t, err)
+
+	t.Run("enable OVN IPSec", func(t *testing.T) {
+		err = ovnClient.SetOVNIPSec(true)
+		require.NoError(t, err)
+
+		out, err := ovnClient.GetNbGlobal()
+		require.NoError(t, err)
+		require.True(t, out.Ipsec)
+	})
+
+	t.Run("disable OVN IPSec", func(t *testing.T) {
+		err = ovnClient.SetOVNIPSec(false)
+		require.NoError(t, err)
+
+		out, err := ovnClient.GetNbGlobal()
+		require.NoError(t, err)
+		require.False(t, out.Ipsec)
+	})
+
+	t.Run("set OVN IPSec when it's already set", func(t *testing.T) {
+		err = ovnClient.SetOVNIPSec(true)
+		require.NoError(t, err)
+
+		err = ovnClient.SetOVNIPSec(true)
+		require.NoError(t, err)
+
+		out, err := ovnClient.GetNbGlobal()
+		require.NoError(t, err)
+		require.True(t, out.Ipsec)
+	})
+
+	t.Run("set OVN IPSec when GetNbGlobal fails", func(t *testing.T) {
+		err := ovnClient.DeleteNbGlobal()
+		require.NoError(t, err)
+
+		err = ovnClient.SetOVNIPSec(true)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "failed to get nb global")
+		err = ovnClient.CreateNbGlobal(nbGlobal)
+		require.NoError(t, err)
+	})
+}
+
+func (suite *OvnClientTestSuite) testSetNbGlobalOptions() {
+	t := suite.T()
+
+	ovnClient := suite.ovnClient
+
+	t.Cleanup(func() {
+		err := ovnClient.DeleteNbGlobal()
+		require.NoError(t, err)
+
+		_, err = ovnClient.GetNbGlobal()
+		require.ErrorContains(t, err, "not found nb_global")
+	})
+
+	nbGlobal := mockNBGlobal()
+	err := ovnClient.CreateNbGlobal(nbGlobal)
+	require.NoError(t, err)
+
+	t.Run("set new option", func(t *testing.T) {
+		err := ovnClient.SetNbGlobalOptions("new_option", "new_value")
+		require.NoError(t, err)
+
+		out, err := ovnClient.GetNbGlobal()
+		require.NoError(t, err)
+		require.Equal(t, "new_value", out.Options["new_option"])
+	})
+
+	t.Run("update existing option", func(t *testing.T) {
+		err := ovnClient.SetNbGlobalOptions("mac_prefix", "aa:bb:cc")
+		require.NoError(t, err)
+
+		out, err := ovnClient.GetNbGlobal()
+		require.NoError(t, err)
+		require.Equal(t, "aa:bb:cc", out.Options["mac_prefix"])
+	})
+
+	t.Run("set option with non-string value", func(t *testing.T) {
+		err := ovnClient.SetNbGlobalOptions("numeric_option", 42)
+		require.NoError(t, err)
+
+		out, err := ovnClient.GetNbGlobal()
+		require.NoError(t, err)
+		require.Equal(t, "42", out.Options["numeric_option"])
+	})
+
+	t.Run("set option when options map is nil", func(t *testing.T) {
+		err := ovnClient.DeleteNbGlobal()
+		require.NoError(t, err)
+
+		nbGlobal.Options = nil
+
+		err = ovnClient.CreateNbGlobal(nbGlobal)
+		require.NoError(t, err)
+
+		err = ovnClient.SetNbGlobalOptions("new_option", "new_value")
+		require.NoError(t, err)
+
+		out, err := ovnClient.GetNbGlobal()
+		require.NoError(t, err)
+		require.Equal(t, "new_value", out.Options["new_option"])
+	})
+
+	t.Run("set option with same value (no update)", func(t *testing.T) {
+		err := ovnClient.SetNbGlobalOptions("existing_option", "existing_value")
+		require.NoError(t, err)
+
+		err = ovnClient.SetNbGlobalOptions("existing_option", "existing_value")
+		require.NoError(t, err)
+
+		out, err := ovnClient.GetNbGlobal()
+		require.NoError(t, err)
+		require.Equal(t, "existing_value", out.Options["existing_option"])
+	})
+
+	t.Run("set option when GetNbGlobal fails", func(t *testing.T) {
+		err := ovnClient.DeleteNbGlobal()
+		require.NoError(t, err)
+
+		err = ovnClient.SetNbGlobalOptions("test_option", "test_value")
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "failed to get nb global")
+
+		err = ovnClient.CreateNbGlobal(nbGlobal)
+		require.NoError(t, err)
+	})
+}
+
+func (suite *OvnClientTestSuite) testSetLsDnatModDlDst() {
+	t := suite.T()
+
+	ovnClient := suite.ovnClient
+
+	t.Cleanup(func() {
+		err := ovnClient.DeleteNbGlobal()
+		require.NoError(t, err)
+
+		_, err = ovnClient.GetNbGlobal()
+		require.ErrorContains(t, err, "not found nb_global")
+	})
+
+	nbGlobal := mockNBGlobal()
+	err := ovnClient.CreateNbGlobal(nbGlobal)
+	require.NoError(t, err)
+
+	t.Run("enable ls_dnat_mod_dl_dst", func(t *testing.T) {
+		err := ovnClient.SetLsDnatModDlDst(true)
+		require.NoError(t, err)
+
+		out, err := ovnClient.GetNbGlobal()
+		require.NoError(t, err)
+		require.Equal(t, "true", out.Options["ls_dnat_mod_dl_dst"])
+	})
+
+	t.Run("disable ls_dnat_mod_dl_dst", func(t *testing.T) {
+		err := ovnClient.SetLsDnatModDlDst(false)
+		require.NoError(t, err)
+
+		out, err := ovnClient.GetNbGlobal()
+		require.NoError(t, err)
+		require.Equal(t, "false", out.Options["ls_dnat_mod_dl_dst"])
+	})
+}
+
+func (suite *OvnClientTestSuite) testSetLsCtSkipDstLportIPs() {
+	t := suite.T()
+
+	ovnClient := suite.ovnClient
+
+	t.Cleanup(func() {
+		err := ovnClient.DeleteNbGlobal()
+		require.NoError(t, err)
+
+		_, err = ovnClient.GetNbGlobal()
+		require.ErrorContains(t, err, "not found nb_global")
+	})
+
+	nbGlobal := mockNBGlobal()
+	err := ovnClient.CreateNbGlobal(nbGlobal)
+	require.NoError(t, err)
+
+	t.Run("enable ls_ct_skip_dst_lport_ips", func(t *testing.T) {
+		err := ovnClient.SetLsCtSkipDstLportIPs(true)
+		require.NoError(t, err)
+
+		out, err := ovnClient.GetNbGlobal()
+		require.NoError(t, err)
+		require.Equal(t, "true", out.Options["ls_ct_skip_dst_lport_ips"])
+	})
+
+	t.Run("disable ls_ct_skip_dst_lport_ips", func(t *testing.T) {
+		err := ovnClient.SetLsCtSkipDstLportIPs(false)
+		require.NoError(t, err)
+
+		out, err := ovnClient.GetNbGlobal()
+		require.NoError(t, err)
+		require.Equal(t, "false", out.Options["ls_ct_skip_dst_lport_ips"])
+	})
+}
+
+func (suite *OvnClientTestSuite) testSetNodeLocalDNSIP() {
+	t := suite.T()
+
+	ovnClient := suite.ovnClient
+
+	t.Cleanup(func() {
+		err := ovnClient.DeleteNbGlobal()
+		require.NoError(t, err)
+
+		_, err = ovnClient.GetNbGlobal()
+		require.ErrorContains(t, err, "not found nb_global")
+	})
+
+	nbGlobal := mockNBGlobal()
+	err := ovnClient.CreateNbGlobal(nbGlobal)
+	require.NoError(t, err)
+
+	t.Run("set node local DNS IP", func(t *testing.T) {
+		err := ovnClient.SetNodeLocalDNSIP("192.168.0.10")
+		require.NoError(t, err)
+
+		out, err := ovnClient.GetNbGlobal()
+		require.NoError(t, err)
+		require.Equal(t, "192.168.0.10", out.Options["node_local_dns_ip"])
+	})
+
+	t.Run("update existing node local DNS IP", func(t *testing.T) {
+		err := ovnClient.SetNodeLocalDNSIP("192.168.0.20")
+		require.NoError(t, err)
+
+		out, err := ovnClient.GetNbGlobal()
+		require.NoError(t, err)
+		require.Equal(t, "192.168.0.20", out.Options["node_local_dns_ip"])
+	})
+
+	t.Run("remove node local DNS IP", func(t *testing.T) {
+		err := ovnClient.SetNodeLocalDNSIP("")
+		require.NoError(t, err)
+
+		out, err := ovnClient.GetNbGlobal()
+		require.NoError(t, err)
+		_, exists := out.Options["node_local_dns_ip"]
+		require.False(t, exists)
+	})
+
+	t.Run("set node local DNS IP when options is nil", func(t *testing.T) {
+		err := ovnClient.DeleteNbGlobal()
+		require.NoError(t, err)
+
+		nbGlobal.Options = nil
+		err = ovnClient.CreateNbGlobal(nbGlobal)
+		require.NoError(t, err)
+
+		err = ovnClient.SetNodeLocalDNSIP("192.168.0.30")
+		require.NoError(t, err)
+
+		out, err := ovnClient.GetNbGlobal()
+		require.NoError(t, err)
+		require.Equal(t, "192.168.0.30", out.Options["node_local_dns_ip"])
+	})
+
+	t.Run("remove non-existent node local DNS IP", func(t *testing.T) {
+		err := ovnClient.SetNodeLocalDNSIP("")
+		require.NoError(t, err)
+
+		out, err := ovnClient.GetNbGlobal()
+		require.NoError(t, err)
+		_, exists := out.Options["node_local_dns_ip"]
+		require.False(t, exists)
+	})
+
+	t.Run("set node local DNS IP when GetNbGlobal fails", func(t *testing.T) {
+		err := ovnClient.DeleteNbGlobal()
+		require.NoError(t, err)
+
+		err = ovnClient.SetNodeLocalDNSIP("")
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "failed to get nb global")
+
+		err = ovnClient.CreateNbGlobal(nbGlobal)
+		require.NoError(t, err)
+	})
 }
