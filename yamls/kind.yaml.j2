@@ -1,8 +1,11 @@
 {%- if k8s_version is not defined -%}
-  {%- set k8s_version = "v1.30.4" -%}
+  {%- set k8s_version = "v1.31.0" -%}
 {%- endif -%}
 {%- if kube_proxy_mode is not defined -%}
   {%- set kube_proxy_mode = "ipvs" -%}
+{%- endif -%}
+{%- if auditing is not defined -%}
+  {%- set auditing = "false" -%}
 {%- endif -%}
 {%- if ip_family is not defined -%}
   {%- set ip_family = "ipv4" -%}
@@ -45,11 +48,11 @@ networking:
   podSubnet: {{ pod_cidr_v4 }}
   serviceSubnet: {{ svc_cidr_v4 }}
 {%- elif ip_family is equalto "ipv6" %}
-  podSubnet: "fd00:10:16::/64"
-  serviceSubnet: "fd00:10:96::/112"
+  podSubnet: "fd00:10:16::/112"
+  serviceSubnet: "fd00:10:96::/108"
 {%- else %}
-  podSubnet: "10.16.0.0/16,fd00:10:16::/64"
-  serviceSubnet: "10.96.0.0/12,fd00:10:96::/112"
+  podSubnet: "10.16.0.0/16,fd00:10:16::/112"
+  serviceSubnet: "10.96.0.0/12,fd00:10:96::/108"
 {%- endif %}
 kubeadmConfigPatches:
   - |
@@ -59,28 +62,64 @@ kubeadmConfigPatches:
     etcd:
       local:
         dataDir: "/tmp/lib/etcd"
-
 nodes:
   - role: control-plane
     image: kindest/node:{{ k8s_version }}
-{%- if port_mapping is defined %}
-  {%- set container_port = port_mapping.split(':')[0] %}
-  {%- set host_port = port_mapping.split(':')[1] %}
+    labels:
+      type: kind
+    kubeadmConfigPatches:
+      - |
+        kind: ClusterConfiguration
+        controllerManager:
+          extraArgs:
+{%- if ip_family != "ipv6" %}
+            node-cidr-mask-size-ipv4: "24"
+{%- endif %}
+{%- if ip_family != "ipv4" %}
+            node-cidr-mask-size-ipv6: "120"
+{%- endif %}
+{%- if auditing is equalto "true" %}
+      - |
+        kind: ClusterConfiguration
+        apiServer:
+          extraArgs:
+            audit-log-path: /var/log/kubernetes/kube-apiserver-audit.log
+            audit-policy-file: /etc/kubernetes/policies/audit-policy.yaml
+          extraVolumes:
+            - name: audit-policies
+              hostPath: /etc/kubernetes/policies
+              mountPath: /etc/kubernetes/policies
+              readOnly: true
+              pathType: DirectoryOrCreate
+            - name: audit-logs
+              hostPath: /var/log/kubernetes
+              mountPath: /var/log/kubernetes
+              readOnly: false
+              pathType: DirectoryOrCreate
+    extraMounts:
+      - hostPath: ./yamls/audit-policy.yaml
+        containerPath: /etc/kubernetes/policies/audit-policy.yaml
+        readOnly: true
+{%- endif %}
+{%- if mapped_ports is defined %}
     extraPortMappings:
-      - containerPort: {{ container_port }}
-        hostPort: {{ host_port }}
+  {%- for port in mapped_ports.split(',') %}
+      - containerPort: {{ port }}
+        hostPort: {{ port }}
         # optional: set the bind address on the host
         # 0.0.0.0 is the current default
-        listenAddress: "127.0.0.1"
+        listenAddress: "0.0.0.0"
         # optional: set the protocol to one of TCP, UDP, SCTP.
         # TCP is the default
         protocol: TCP
+  {%- endfor %}
 {%- endif %}
 {%- for i in range(n_worker | int) %}
   - role: worker
     image: kindest/node:{{ k8s_version }}
-  {%- if ha is equalto "true" %}
     labels:
+      type: kind
+  {%- if ha is equalto "true" %}
       kube-ovn/role: master
   {%- endif %}
 {%- endfor %}
