@@ -186,6 +186,36 @@ ovsOvn:
         cpu: "2"
         memory: "1000Mi"
 
+# -- Configuration for kube-ovn-speaker, the BGP speaker announcing routes to the external world
+speaker:
+  # -- Annotations to be added to all top-level kube-ovn-speaker objects (resources under templates/speaker)
+  annotations: {}
+  # -- Labels to be added to all top-level kube-ovn-speaker objects (resources under templates/speaker)
+  labels: {}
+  # -- Annotations to be added to kube-ovn-speaker pods
+  podAnnotations: {}
+  # -- Labels to be added to kube-ovn-speaker pods
+  podLabels: {}
+
+  # -- kube-ovn-speaker resource limits & requests
+  # ref: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "300Mi"
+    limits: {}
+
+  # -- Node selector to restrict the deployment of the speaker to specific nodes
+  nodeSelector: {}
+  #  kubernetes.io/os: "linux"
+  #  ovn.kubernetes.io/bgp: "true"
+
+  # Args passed to the kube-ovn-speaker pod
+  args: []
+  #  - --neighbor-address=10.32.32.1
+  #  - --neighbor-as=65030
+  #  - --cluster-as=65000
+
 # -- Configuration for kube-ovn-pinger, the agent monitoring and returning metrics for OVS/external connectivity
 pinger:
   # -- Annotations to be added to all top-level kube-ovn-pinger objects (resources under templates/pinger)
@@ -212,11 +242,11 @@ pinger:
     # -- Configure the port on which the kube-ovn-monitor service will serve metrics
     port: 8080
 
-# -- Configuration for kube-ovn-monitors, the agent monitoring and returning metrics for the northbound/southbound DBs and northd
+# -- Configuration for kube-ovn-monitor, the agent monitoring and returning metrics for the northbound/southbound DBs and northd
 monitor:
-  # -- Annotations to be added to all top-level kube-ovn-monitors objects (resources under templates/monitors)
+  # -- Annotations to be added to all top-level kube-ovn-monitor objects (resources under templates/monitor)
   annotations: {}
-  # -- Labels to be added to all top-level kube-ovn-monitors objects (resources under templates/monitors)
+  # -- Labels to be added to all top-level kube-ovn-monitor objects (resources under templates/monitor)
   labels: {}
   # -- Annotations to be added to kube-ovn-monitor pods
   podAnnotations: {}
