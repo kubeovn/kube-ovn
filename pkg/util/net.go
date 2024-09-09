@@ -69,49 +69,64 @@ func BigInt2Ip(ipInt *big.Int) string {
 
 func SubnetNumber(subnet string) string {
 	_, cidr, _ := net.ParseCIDR(subnet)
+	maskLength, length := cidr.Mask.Size()
+	if maskLength+1 == length {
+		return ""
+	}
 	return cidr.IP.String()
 }
 
 func SubnetBroadcast(subnet string) string {
 	_, cidr, _ := net.ParseCIDR(subnet)
-	var length uint
-	if CheckProtocol(subnet) == kubeovnv1.ProtocolIPv4 {
-		length = 32
-	} else {
-		length = 128
+	maskLength, length := cidr.Mask.Size()
+	if maskLength+1 == length {
+		return ""
 	}
-	maskLength, _ := cidr.Mask.Size()
 	ipInt := IP2BigInt(cidr.IP.String())
-	size := big.NewInt(0).Lsh(big.NewInt(1), length-uint(maskLength))
+	size := big.NewInt(0).Lsh(big.NewInt(1), uint(length-maskLength))
 	size = big.NewInt(0).Sub(size, big.NewInt(1))
 	return BigInt2Ip(ipInt.Add(ipInt, size))
 }
 
+// FirstIP returns first usable ip address in the subnet
 func FirstIP(subnet string) (string, error) {
 	_, cidr, err := net.ParseCIDR(subnet)
 	if err != nil {
 		return "", fmt.Errorf("%s is not a valid cidr", subnet)
 	}
+	// Handle ptp network case specially
+	if ones, bits := cidr.Mask.Size(); ones+1 == bits {
+		return cidr.IP.String(), nil
+	}
 	ipInt := IP2BigInt(cidr.IP.String())
 	return BigInt2Ip(ipInt.Add(ipInt, big.NewInt(1))), nil
 }
 
+// LastIP returns last usable ip address in the subnet
 func LastIP(subnet string) (string, error) {
 	_, cidr, err := net.ParseCIDR(subnet)
 	if err != nil {
 		return "", fmt.Errorf("%s is not a valid cidr", subnet)
 	}
-	var length uint
-	if CheckProtocol(subnet) == kubeovnv1.ProtocolIPv4 {
+	var length int
+	proto := CheckProtocol(subnet)
+	if proto == kubeovnv1.ProtocolIPv4 {
 		length = 32
 	} else {
 		length = 128
 	}
 	maskLength, _ := cidr.Mask.Size()
 	ipInt := IP2BigInt(cidr.IP.String())
-	size := big.NewInt(0).Lsh(big.NewInt(1), length-uint(maskLength))
-	size = big.NewInt(0).Sub(size, big.NewInt(2))
+	size := getCIDRSize(length, maskLength)
 	return BigInt2Ip(ipInt.Add(ipInt, size)), nil
+}
+
+func getCIDRSize(length, maskLength int) *big.Int {
+	size := big.NewInt(0).Lsh(big.NewInt(1), uint(length-maskLength))
+	if maskLength+1 == length {
+		return big.NewInt(0).Sub(size, big.NewInt(1))
+	}
+	return big.NewInt(0).Sub(size, big.NewInt(2))
 }
 
 func CIDRContainIP(cidrStr, ipStr string) bool {
@@ -188,8 +203,11 @@ func CheckProtocol(address string) string {
 
 func AddressCount(network *net.IPNet) float64 {
 	prefixLen, bits := network.Mask.Size()
-	if bits-prefixLen < 2 {
-		return 0
+	// Special case handling for /31 and /32 subnets
+	if bits-prefixLen == 1 {
+		return 2 // /31 subnet
+	} else if bits-prefixLen == 0 {
+		return 1 // /32 subnet
 	}
 	return math.Pow(2, float64(bits-prefixLen)) - 2
 }
