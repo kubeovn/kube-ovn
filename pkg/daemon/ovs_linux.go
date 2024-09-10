@@ -245,12 +245,7 @@ func (csh cniServerHandler) releaseVf(podName, podNamespace, podNetns, ifName, n
 			return fmt.Errorf("failed to bring down container interface %s %s: %w", ifName, podDesc, err)
 		}
 		// rename VF device back to its original name in the host namespace:
-		pod, err := csh.Controller.podsLister.Pods(podNamespace).Get(podName)
-		if err != nil {
-			klog.Errorf("failed to get pod %s/%s: %v", podName, podNamespace, err)
-			return err
-		}
-		vfName := pod.Annotations[fmt.Sprintf(util.VfNameTemplate, provider)]
+		vfName := link.Attrs().Alias
 		if err = netlink.LinkSetName(link, vfName); err != nil {
 			return fmt.Errorf("failed to rename container interface %s to %s %s: %w",
 				ifName, vfName, podDesc, err)
