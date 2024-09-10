@@ -511,7 +511,7 @@ func (csh cniServerHandler) handleDel(req *restful.Request, resp *restful.Respon
 	}
 
 	// Proceed to delete the NIC regardless of whether the Pod was found or not.
-	err = csh.deleteNic(podRequest.PodName, podRequest.PodNamespace, podRequest.ContainerID, podRequest.NetNs, podRequest.DeviceID, podRequest.IfName, nicType, podRequest.Provider)
+	err = csh.deleteNic(podRequest.PodName, podRequest.PodNamespace, podRequest.ContainerID, podRequest.NetNs, podRequest.DeviceID, podRequest.IfName, nicType)
 	if err != nil {
 		errMsg := fmt.Errorf("del nic failed %w", err)
 		klog.Error(errMsg)

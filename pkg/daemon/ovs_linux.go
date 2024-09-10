@@ -265,7 +265,7 @@ func (csh cniServerHandler) releaseVf(podName, podNamespace, podNetns, ifName, n
 	return nil
 }
 
-func (csh cniServerHandler) deleteNic(podName, podNamespace, containerID, netns, deviceID, ifName, nicType, provider string) error {
+func (csh cniServerHandler) deleteNic(podName, podNamespace, containerID, netns, deviceID, ifName, nicType string) error {
 	if err := csh.releaseVf(podName, podNamespace, netns, ifName, nicType, deviceID); err != nil {
 		return fmt.Errorf("failed to release VF %s assigned to the Pod %s/%s back to the host network namespace: "+
 			"%w", ifName, podName, podNamespace, err)
