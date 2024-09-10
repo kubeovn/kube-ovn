@@ -141,6 +141,18 @@ func (suite *OvnClientTestSuite) Test_LogicalSwitchOp() {
 	suite.testLogicalSwitchOp()
 }
 
+func (suite *OvnClientTestSuite) Test_CreateBareLogicalSwitch() {
+	suite.testCreateBareLogicalSwitch()
+}
+
+func (suite *OvnClientTestSuite) Test_LogicalSwitchUpdateOtherConfig() {
+	suite.testLogicalSwitchUpdateOtherConfig()
+}
+
+func (suite *OvnClientTestSuite) Test_LogicalSwitchUpdateOtherConfigOp() {
+	suite.testLogicalSwitchUpdateOtherConfigOp()
+}
+
 /* logical_switch_port unit test */
 func (suite *OvnClientTestSuite) Test_CreateLogicalSwitchPort() {
 	suite.testCreateLogicalSwitchPort()
