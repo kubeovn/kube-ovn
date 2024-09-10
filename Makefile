@@ -1056,7 +1056,8 @@ ut:
 .PHONY: cover
 cover:
 	go test ./pkg/ovs ./pkg/util ./pkg/ipam -gcflags=all=-l -p 1 -coverprofile=cover.out -covermode=atomic
-	go tool cover -func=cover.out
+	go tool cover -func=cover.out | grep -v "100.0%"
+	go tool cover -html=cover.out -o cover.html
 
 .PHONY: ipam-bench
 ipam-bench:

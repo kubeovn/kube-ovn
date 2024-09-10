@@ -130,7 +130,6 @@ func TestNewSubnetDualStack(t *testing.T) {
 	require.Len(t, subnet.V6IPToPod, 0)
 	require.NotNil(t, subnet.V6Available)
 	require.True(t, subnet.V6Available.Equal(subnet.V6Free))
-	// TODO: check pool
 }
 
 func TestGetV4StaticAddress(t *testing.T) {
@@ -1018,4 +1017,85 @@ func TestSubnetIPPoolStatistics(t *testing.T) {
 	require.Empty(t, v4us)
 	require.Empty(t, v6as)
 	require.Empty(t, v6us)
+}
+
+func TestSubnetReleaseAddr(t *testing.T) {
+	v4ExcludeIps := []string{
+		"10.0.0.2", "10.0.0.4", "10.0.0.100",
+		"10.0.0.252", "10.0.0.253", "10.0.0.254",
+	}
+	subnet, err := NewSubnet("v4Subnet", "10.0.0.0/24", v4ExcludeIps)
+	require.NoError(t, err)
+	require.NotNil(t, subnet)
+	// 1.1 two different pod get the same v4 ip
+	pod41Name := "pod41.default"
+	nic41Name := "pod41.default"
+	// release not exist ip
+	subnet.releaseAddr(pod41Name, nic41Name)
+	var mac *string
+	v4 := "10.0.0.3"
+	v4IP, err := NewIP(v4)
+	require.NoError(t, err)
+	ip1, macStr1, err := subnet.GetStaticAddress(pod41Name, nic41Name, v4IP, mac, false, true)
+	require.NoError(t, err)
+	require.Equal(t, v4, ip1.String())
+	require.NotEmpty(t, macStr1)
+	pod42Name := "pod42.default"
+	nic42Name := "pod42.default"
+	ip2, macStr2, err := subnet.GetStaticAddress(pod42Name, nic42Name, v4IP, mac, false, false)
+	require.NoError(t, err)
+	require.Equal(t, v4, ip2.String())
+	require.NotEmpty(t, macStr2)
+	subnet.releaseAddr(pod41Name, nic41Name)
+	subnet.releaseAddr(pod42Name, nic42Name)
+	pod43Name := "pod43.default"
+	nic43Name := "pod43.default"
+	v43 := "10.0.0.100"
+	v43IP, err := NewIP(v43)
+	require.NoError(t, err)
+	ip3, macStr3, err := subnet.GetStaticAddress(pod43Name, nic43Name, v43IP, mac, false, false)
+	require.NoError(t, err)
+	require.Equal(t, v43, ip3.String())
+	require.NotEmpty(t, macStr3)
+	// 1.2 release from exclude ip
+	subnet.releaseAddr(pod43Name, nic43Name)
+
+	// 2. two different pod get the same v6 ip
+	v6ExcludeIps := []string{
+		"2001:db8::2", "2001:db8::4", "2001:db8::100",
+		"2001:db8::252", "2001:db8::253", "2001:db8::254",
+	}
+	subnet, err = NewSubnet("v6Subnet", "2001:db8::/64", v6ExcludeIps)
+	require.NoError(t, err)
+	require.NotNil(t, subnet)
+	pod61Name := "pod61.default"
+	nic61Name := "pod61.default"
+	// release not exist ip
+	subnet.releaseAddr(pod61Name, nic61Name)
+	v6 := "2001:db8::3"
+	v6IP, err := NewIP(v6)
+	require.NoError(t, err)
+	ip1, macStr1, err = subnet.GetStaticAddress(pod61Name, nic61Name, v6IP, nil, false, true)
+	require.NoError(t, err)
+	require.Equal(t, v6, ip1.String())
+	require.NotEmpty(t, macStr1)
+	pod62Name := "pod2.default"
+	nic62Name := "pod2.default"
+	ip2, macStr2, err = subnet.GetStaticAddress(pod62Name, nic62Name, v6IP, mac, false, false)
+	require.NoError(t, err)
+	require.Equal(t, v6, ip2.String())
+	require.NotEmpty(t, macStr2)
+	subnet.releaseAddr(pod61Name, nic61Name)
+	subnet.releaseAddr(pod62Name, nic62Name)
+	pod63Name := "pod63.default"
+	nic63Name := "pod63.default"
+	v63 := "2001:db8::100"
+	v63IP, err := NewIP(v63)
+	require.NoError(t, err)
+	ip3, macStr3, err = subnet.GetStaticAddress(pod63Name, nic63Name, v63IP, nil, false, false)
+	require.NoError(t, err)
+	require.Equal(t, v63, ip3.String())
+	require.NotEmpty(t, macStr3)
+	// 2.2 release from exclude ip
+	subnet.releaseAddr(pod63Name, nic63Name)
 }
