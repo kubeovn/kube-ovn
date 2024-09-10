@@ -216,7 +216,7 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 	return finalRoutes, nil
 }
 
-func (csh cniServerHandler) releaseVf(podName, podNamespace, podNetns, ifName, nicType, provider, deviceID string) error {
+func (csh cniServerHandler) releaseVf(podName, podNamespace, podNetns, ifName, nicType, deviceID string) error {
 	// Only for SRIOV case, we'd need to move the VF from container namespace back to the host namespace
 	if !(nicType == util.OffloadType && deviceID != "") {
 		return nil
@@ -245,12 +245,7 @@ func (csh cniServerHandler) releaseVf(podName, podNamespace, podNetns, ifName, n
 			return fmt.Errorf("failed to bring down container interface %s %s: %w", ifName, podDesc, err)
 		}
 		// rename VF device back to its original name in the host namespace:
-		pod, err := csh.Controller.podsLister.Pods(podNamespace).Get(podName)
-		if err != nil {
-			klog.Errorf("failed to get pod %s/%s: %v", podName, podNamespace, err)
-			return err
-		}
-		vfName := pod.Annotations[fmt.Sprintf(util.VfNameTemplate, provider)]
+		vfName := link.Attrs().Alias
 		if err = netlink.LinkSetName(link, vfName); err != nil {
 			return fmt.Errorf("failed to rename container interface %s to %s %s: %w",
 				ifName, vfName, podDesc, err)
@@ -270,8 +265,8 @@ func (csh cniServerHandler) releaseVf(podName, podNamespace, podNetns, ifName, n
 	return nil
 }
 
-func (csh cniServerHandler) deleteNic(podName, podNamespace, containerID, netns, deviceID, ifName, nicType, provider string) error {
-	if err := csh.releaseVf(podName, podNamespace, netns, ifName, nicType, provider, deviceID); err != nil {
+func (csh cniServerHandler) deleteNic(podName, podNamespace, containerID, netns, deviceID, ifName, nicType string) error {
+	if err := csh.releaseVf(podName, podNamespace, netns, ifName, nicType, deviceID); err != nil {
 		return fmt.Errorf("failed to release VF %s assigned to the Pod %s/%s back to the host network namespace: "+
 			"%w", ifName, podName, podNamespace, err)
 	}
