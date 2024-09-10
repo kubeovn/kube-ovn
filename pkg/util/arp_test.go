@@ -2,7 +2,11 @@ package util
 
 import (
 	"net"
+	"strings"
 	"testing"
+	"time"
+
+	"github.com/vishvananda/netlink"
 )
 
 func TestMacEqual(t *testing.T) {
@@ -45,5 +49,55 @@ func TestMacEqual(t *testing.T) {
 				t.Errorf("Expected %v, got %v", test.expected, result)
 			}
 		})
+	}
+}
+
+func TestArpResolve(t *testing.T) {
+	// get the default route gw and nic
+	routes, err := netlink.RouteList(nil, netlink.FAMILY_ALL)
+	if err != nil {
+		t.Fatalf("failed to get routes: %v", err)
+	}
+	var defaultGW string
+	var nicIndex int
+	for _, r := range routes {
+		if r.Dst != nil && r.Dst.IP.String() == "0.0.0.0" {
+			defaultGW = r.Gw.String()
+			nicIndex = r.LinkIndex
+		}
+	}
+	if defaultGW == "" {
+		t.Fatalf("failed to get default gateway")
+	}
+	if nicIndex == 0 {
+		t.Fatalf("failed to get nic")
+	}
+
+	link, err := netlink.LinkByIndex(nicIndex)
+	if err != nil {
+		t.Fatalf("failed to get link: %v", err)
+	}
+	maxRetry := 3
+	done := make(chan struct{})
+	linkName := link.Attrs().Name
+	if !strings.HasPrefix(linkName, "e") {
+		// default gw nic should be ethernet
+		t.Fatalf("invalid default gw nic link name: %s", linkName)
+	}
+	mac, count, err := ArpResolve(linkName, defaultGW, time.Second, maxRetry, done)
+	if err != nil {
+		t.Errorf("Error resolving ARP: %v, try %d", err, count)
+	}
+	if mac == nil {
+		t.Errorf("ARP resolved MAC address is nil, try %d", count)
+	}
+	// should failed
+	defaultGW = "xx.xx.xx.xx"
+	mac, count, err = ArpResolve(linkName, defaultGW, time.Second, maxRetry, done)
+	if err == nil {
+		t.Errorf("Expect error, but got nil, try %d", count)
+	}
+	if mac != nil {
+		t.Errorf("Expect nil MAC address, but got %v, try %d", mac, count)
 	}
 }

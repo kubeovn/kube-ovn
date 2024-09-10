@@ -1050,6 +1050,7 @@ func TestSubnetReleaseAddr(t *testing.T) {
 	subnet.releaseAddr(pod42Name, nic42Name)
 	pod43Name := "pod43.default"
 	nic43Name := "pod43.default"
+	// 1.2 release from exclude ip
 	v43 := "10.0.0.100"
 	v43IP, err := NewIP(v43)
 	require.NoError(t, err)
@@ -1057,7 +1058,6 @@ func TestSubnetReleaseAddr(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, v43, ip3.String())
 	require.NotEmpty(t, macStr3)
-	// 1.2 release from exclude ip
 	subnet.releaseAddr(pod43Name, nic43Name)
 
 	// 2. two different pod get the same v6 ip
@@ -1087,6 +1087,7 @@ func TestSubnetReleaseAddr(t *testing.T) {
 	require.NotEmpty(t, macStr2)
 	subnet.releaseAddr(pod61Name, nic61Name)
 	subnet.releaseAddr(pod62Name, nic62Name)
+	// 2.2 release from exclude ip
 	pod63Name := "pod63.default"
 	nic63Name := "pod63.default"
 	v63 := "2001:db8::100"
@@ -1096,6 +1097,5 @@ func TestSubnetReleaseAddr(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, v63, ip3.String())
 	require.NotEmpty(t, macStr3)
-	// 2.2 release from exclude ip
 	subnet.releaseAddr(pod63Name, nic63Name)
 }
