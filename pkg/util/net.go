@@ -78,12 +78,13 @@ func SubnetNumber(subnet string) string {
 
 func SubnetBroadcast(subnet string) string {
 	_, cidr, _ := net.ParseCIDR(subnet)
-	maskLength, length := cidr.Mask.Size()
-	if maskLength+1 == length {
+	ones, bits := cidr.Mask.Size()
+	if ones+1 == bits {
 		return ""
 	}
 	ipInt := IP2BigInt(cidr.IP.String())
-	size := big.NewInt(0).Lsh(big.NewInt(1), uint(length-maskLength))
+	zeros := uint(bits - ones) // #nosec G115
+	size := big.NewInt(0).Lsh(big.NewInt(1), zeros)
 	size = big.NewInt(0).Sub(size, big.NewInt(1))
 	return BigInt2Ip(ipInt.Add(ipInt, size))
 }
@@ -108,22 +109,17 @@ func LastIP(subnet string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("%s is not a valid cidr", subnet)
 	}
-	var length int
-	proto := CheckProtocol(subnet)
-	if proto == kubeovnv1.ProtocolIPv4 {
-		length = 32
-	} else {
-		length = 128
-	}
-	maskLength, _ := cidr.Mask.Size()
+
 	ipInt := IP2BigInt(cidr.IP.String())
-	size := getCIDRSize(length, maskLength)
+	size := getCIDRSize(cidr)
 	return BigInt2Ip(ipInt.Add(ipInt, size)), nil
 }
 
-func getCIDRSize(length, maskLength int) *big.Int {
-	size := big.NewInt(0).Lsh(big.NewInt(1), uint(length-maskLength))
-	if maskLength+1 == length {
+func getCIDRSize(cidr *net.IPNet) *big.Int {
+	ones, bits := cidr.Mask.Size()
+	zeros := uint(bits - ones) // #nosec G115
+	size := big.NewInt(0).Lsh(big.NewInt(1), zeros)
+	if ones+1 == bits {
 		return big.NewInt(0).Sub(size, big.NewInt(1))
 	}
 	return big.NewInt(0).Sub(size, big.NewInt(2))
@@ -212,31 +208,21 @@ func AddressCount(network *net.IPNet) float64 {
 	return math.Pow(2, float64(bits-prefixLen)) - 2
 }
 
-func GenerateRandomV4IP(cidr string) string {
-	return genRandomIP(cidr, false)
-}
-
-func GenerateRandomV6IP(cidr string) string {
-	return genRandomIP(cidr, true)
-}
-
-func genRandomIP(cidr string, isIPv6 bool) string {
-	if len(strings.Split(cidr, "/")) != 2 {
-		return ""
-	}
-	ip := strings.Split(cidr, "/")[0]
-	netMask, _ := strconv.Atoi(strings.Split(cidr, "/")[1])
-	hostBits := 32 - netMask
-	if isIPv6 {
-		hostBits = 128 - netMask
-	}
-	add, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), uint(hostBits)-1))
+func GenerateRandomIP(cidr string) string {
+	ip, network, err := net.ParseCIDR(cidr)
 	if err != nil {
-		klog.Errorf("failed to generate random big int with bits %d: %v", hostBits, err)
+		klog.Errorf("failed to parse cidr %q: %v", cidr, err)
 		return ""
 	}
-	t := big.NewInt(0).Add(IP2BigInt(ip), add)
-	return fmt.Sprintf("%s/%d", BigInt2Ip(t), netMask)
+	ones, bits := network.Mask.Size()
+	zeros := uint(bits - ones) // #nosec G115
+	add, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), zeros-1))
+	if err != nil {
+		klog.Errorf("failed to generate random big int with bits %d: %v", zeros, err)
+		return ""
+	}
+	t := big.NewInt(0).Add(IP2BigInt(ip.String()), add)
+	return fmt.Sprintf("%s/%d", BigInt2Ip(t), ones)
 }
 
 func IPToString(ip string) string {

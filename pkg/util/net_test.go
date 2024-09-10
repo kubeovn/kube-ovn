@@ -475,14 +475,14 @@ func TestGenerateRandomV4IP(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			_, IPNets, err := net.ParseCIDR(c.cidr)
 			if err != nil {
-				ans := GenerateRandomV4IP(c.cidr)
+				ans := GenerateRandomIP(c.cidr)
 				if c.want != ans {
 					t.Errorf("%v expected %v, but %v got",
 						c.cidr, c.want, ans)
 				}
 			} else {
-				ans := GenerateRandomV4IP(c.cidr)
-				if IPNets.Contains(net.ParseIP(GenerateRandomV4IP(c.cidr))) {
+				ans := GenerateRandomIP(c.cidr)
+				if IPNets.Contains(net.ParseIP(GenerateRandomIP(c.cidr))) {
 					t.Errorf("%v expected %v, but %v got",
 						c.cidr, c.want, ans)
 				}
@@ -514,7 +514,7 @@ func TestGenerateRandomV6IP(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ip := GenerateRandomV6IP(tt.cidr)
+			ip := GenerateRandomIP(tt.cidr)
 			if tt.wantErr {
 				if ip != "" {
 					t.Errorf("GenerateRandomV6IP(%s) = %s; want empty string", tt.cidr, ip)

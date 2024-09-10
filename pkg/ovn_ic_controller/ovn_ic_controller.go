@@ -356,10 +356,10 @@ func (c *Controller) acquireLrpAddress(ts string) (string, error) {
 		var ips []string
 		v4Cidr, v6Cidr := util.SplitStringIP(cidr)
 		if v4Cidr != "" {
-			ips = append(ips, util.GenerateRandomV4IP(v4Cidr))
+			ips = append(ips, util.GenerateRandomIP(v4Cidr))
 		}
 		if v6Cidr != "" {
-			ips = append(ips, util.GenerateRandomV6IP(v6Cidr))
+			ips = append(ips, util.GenerateRandomIP(v6Cidr))
 		}
 		random = strings.Join(ips, ",")
 		// find a free address
