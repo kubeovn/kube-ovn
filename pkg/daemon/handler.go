@@ -429,7 +429,7 @@ func (csh cniServerHandler) handleDel(req *restful.Request, resp *restful.Respon
 	// Try to get the Pod, but if it fails due to not being found, log a warning and continue.
 	pod, err := csh.Controller.podsLister.Pods(podRequest.PodNamespace).Get(podRequest.PodName)
 	if err != nil && !k8serrors.IsNotFound(err) {
-		errMsg := fmt.Errorf("failed to retrieve Pod %s/%s: %v", podRequest.PodNamespace, podRequest.PodName, err)
+		errMsg := fmt.Errorf("failed to retrieve Pod %s/%s: %w", podRequest.PodNamespace, podRequest.PodName, err)
 		klog.Error(errMsg)
 		if err := resp.WriteHeaderAndEntity(http.StatusBadRequest, request.CniResponse{Err: errMsg.Error()}); err != nil {
 			klog.Errorf("failed to write response, %v", err)
@@ -495,11 +495,12 @@ func (csh cniServerHandler) handleDel(req *restful.Request, resp *restful.Respon
 	} else {
 		// If the Pod is not found, assign a default value.
 		klog.Warningf("Pod %s not found, proceeding with NIC deletion using ContainerID and NetNs", podRequest.PodName)
-		if podRequest.DeviceID != "" {
+		switch {
+		case podRequest.DeviceID != "":
 			nicType = util.OffloadType
-		} else if podRequest.VhostUserSocketVolumeName != "" {
+		case podRequest.VhostUserSocketVolumeName != "":
 			nicType = util.DpdkType
-		} else {
+		default:
 			nicType = "veth-pair"
 		}
 	}

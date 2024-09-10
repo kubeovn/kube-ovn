@@ -216,7 +216,7 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 	return finalRoutes, nil
 }
 
-func (csh cniServerHandler) releaseVf(podName, podNamespace, podNetns, ifName, nicType, provider, deviceID string) error {
+func (csh cniServerHandler) releaseVf(podName, podNamespace, podNetns, ifName, nicType, deviceID string) error {
 	// Only for SRIOV case, we'd need to move the VF from container namespace back to the host namespace
 	if !(nicType == util.OffloadType && deviceID != "") {
 		return nil
@@ -266,7 +266,7 @@ func (csh cniServerHandler) releaseVf(podName, podNamespace, podNetns, ifName, n
 }
 
 func (csh cniServerHandler) deleteNic(podName, podNamespace, containerID, netns, deviceID, ifName, nicType, provider string) error {
-	if err := csh.releaseVf(podName, podNamespace, netns, ifName, nicType, provider, deviceID); err != nil {
+	if err := csh.releaseVf(podName, podNamespace, netns, ifName, nicType, deviceID); err != nil {
 		return fmt.Errorf("failed to release VF %s assigned to the Pod %s/%s back to the host network namespace: "+
 			"%w", ifName, podName, podNamespace, err)
 	}
