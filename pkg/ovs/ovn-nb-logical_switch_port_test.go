@@ -885,7 +885,7 @@ func (suite *OvnClientTestSuite) testEnablePortLayer2forward() {
 	lspName := "test-enable-port-l2-lsp"
 	ns := "test-enable-port-l2-ns"
 	pod := "test-enable-port-l2-pod"
-	ip := util.GenerateRandomV4IP("192.168.1.0/24")
+	ip := util.GenerateRandomIP("192.168.1.0/24")
 	mac := util.GenerateMac()
 
 	err := ovnClient.CreateBareLogicalSwitch(lsName)
