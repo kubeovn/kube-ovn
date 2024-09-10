@@ -2256,6 +2256,10 @@ spec:
                   type: string
                 u2oInterconnectionMAC:
                   type: string
+                mcastQuerierIP:
+                  type: string
+                mcastQuerierMAC:
+                  type: string
                 u2oInterconnectionVPC:
                   type: string
                 v4usingIPrange:
