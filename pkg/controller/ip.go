@@ -389,6 +389,9 @@ func (c *Controller) createOrUpdateIPCR(ipCRName, podName, ip, mac, subnetName, 
 		case strings.HasPrefix(podName, util.U2OInterconnName[0:19]):
 			key = podName // interconn IP name
 			ipName = podName
+		case strings.HasPrefix(podName, util.McastQuerierName[0:13]):
+			key = podName // mcast querier IP name
+			ipName = podName
 		}
 	}
 
