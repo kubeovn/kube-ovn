@@ -86,7 +86,7 @@ func ValidateSubnet(subnet kubeovnv1.Subnet) error {
 	allow := subnet.Spec.AllowSubnets
 	for _, cidr := range allow {
 		// v6 ip address can not use upper case
-		if ContainsUppercase(subnet.Spec.CIDRBlock) {
+		if ContainsUppercase(cidr) {
 			err := fmt.Errorf("subnet %s allow subnet %s v6 ip address can not contain upper case", subnet.Name, cidr)
 			klog.Error(err)
 			return err
@@ -205,6 +205,9 @@ func validateNatOutgoingPolicyRules(subnet kubeovnv1.Subnet) error {
 }
 
 func validateNatOutGoingPolicyRuleIPs(matchIPStr string) (string, error) {
+	if matchIPStr == "" || strings.TrimSpace(matchIPStr) == "" {
+		return "", errors.New("MatchIPStr format error")
+	}
 	ipItems := strings.Split(matchIPStr, ",")
 	if len(ipItems) == 0 {
 		return "", errors.New("MatchIPStr format error")

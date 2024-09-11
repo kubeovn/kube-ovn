@@ -71,7 +71,306 @@ func TestValidateSubnet(t *testing.T) {
 			err: "",
 		},
 		{
-			name: "gatewayErr",
+			name: "GatewayUppercaseErr",
+			asubnet: kubeovnv1.Subnet{
+				TypeMeta: metav1.TypeMeta{Kind: "Subnet", APIVersion: "kubeovn.io/v1"},
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "ut-gateway-uppercase-err",
+				},
+				Spec: kubeovnv1.SubnetSpec{
+					Default:     true,
+					Vpc:         "ovn-cluster",
+					Protocol:    kubeovnv1.ProtocolIPv6,
+					Namespaces:  nil,
+					CIDRBlock:   "2001:db8::/32",
+					Gateway:     "2001:Db8::1", // Intentionally contains an uppercase letter
+					ExcludeIps:  []string{"2001:db8::a"},
+					Provider:    "ovn",
+					GatewayType: kubeovnv1.GWDistributedType,
+				},
+				Status: kubeovnv1.SubnetStatus{},
+			},
+			err: "subnet gateway 2001:Db8::1 v6 ip address can not contain upper case",
+		},
+		{
+			name: "CICDblockFormalErr",
+			asubnet: kubeovnv1.Subnet{
+				TypeMeta: metav1.TypeMeta{Kind: "Subnet", APIVersion: "kubeovn.io/v1"},
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "ut-cicdblock-formal-err",
+				},
+				Spec: kubeovnv1.SubnetSpec{
+					Default:     true,
+					Vpc:         "ovn-cluster",
+					Protocol:    kubeovnv1.ProtocolIPv4,
+					Namespaces:  nil,
+					CIDRBlock:   "",
+					Gateway:     "",
+					ExcludeIps:  []string{"10.16.0.1"},
+					Provider:    "ovn",
+					GatewayType: kubeovnv1.GWDistributedType,
+				},
+				Status: kubeovnv1.SubnetStatus{},
+			},
+			err: "CIDRBlock:  formal error",
+		},
+		{
+			name: "ExcludeIpsUppercaseErr",
+			asubnet: kubeovnv1.Subnet{
+				TypeMeta: metav1.TypeMeta{Kind: "Subnet", APIVersion: "kubeovn.io/v1"},
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "ut-exclude-ips-uppercase-err",
+				},
+				Spec: kubeovnv1.SubnetSpec{
+					Default:     true,
+					Vpc:         "ovn-cluster",
+					Protocol:    kubeovnv1.ProtocolIPv6,
+					Namespaces:  nil,
+					CIDRBlock:   "2001:db8::/32",
+					Gateway:     "2001:db8::1",
+					ExcludeIps:  []string{"2001:db8::A"},
+					Provider:    "ovn",
+					GatewayType: kubeovnv1.GWDistributedType,
+				},
+				Status: kubeovnv1.SubnetStatus{},
+			},
+			err: "subnet exclude ip 2001:db8::A can not contain upper case",
+		},
+		{
+			name: "CIDRblockUppercaseErr",
+			asubnet: kubeovnv1.Subnet{
+				TypeMeta: metav1.TypeMeta{Kind: "Subnet", APIVersion: "kubeovn.io/v1"},
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "ut-cidrblock-uppercase-err",
+				},
+				Spec: kubeovnv1.SubnetSpec{
+					Default:     true,
+					Vpc:         "ovn-cluster",
+					Protocol:    kubeovnv1.ProtocolIPv6,
+					Namespaces:  nil,
+					CIDRBlock:   "2001:Db8::/32",
+					Gateway:     "2001:db8::1",
+					ExcludeIps:  []string{"2001:db8::a"},
+					Provider:    "ovn",
+					GatewayType: kubeovnv1.GWDistributedType,
+				},
+				Status: kubeovnv1.SubnetStatus{},
+			},
+			err: "subnet cidr block 2001:db8::1 v6 ip address can not contain upper case",
+		},
+		{
+			name: "InvalidZeroCIDRErr",
+			asubnet: kubeovnv1.Subnet{
+				TypeMeta: metav1.TypeMeta{Kind: "Subnet", APIVersion: "kubeovn.io/v1"},
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "ut-invalid-zero-cidr-err",
+				},
+				Spec: kubeovnv1.SubnetSpec{
+					Default:     true,
+					Vpc:         "ovn-cluster",
+					Protocol:    kubeovnv1.ProtocolIPv4,
+					Namespaces:  nil,
+					CIDRBlock:   "0.0.0.0",
+					Gateway:     "",
+					ExcludeIps:  []string{"10.16.0.1"},
+					Provider:    "ovn",
+					GatewayType: kubeovnv1.GWDistributedType,
+				},
+				Status: kubeovnv1.SubnetStatus{},
+			},
+			err: "invalid zero cidr \"0.0.0.0\"",
+		},
+		{
+			name: "InvalidCIDRErr",
+			asubnet: kubeovnv1.Subnet{
+				TypeMeta: metav1.TypeMeta{Kind: "Subnet", APIVersion: "kubeovn.io/v1"},
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "ut-invalid-cidr-err",
+				},
+				Spec: kubeovnv1.SubnetSpec{
+					Default:     true,
+					Vpc:         "ovn-cluster",
+					Protocol:    kubeovnv1.ProtocolIPv4,
+					Namespaces:  nil,
+					CIDRBlock:   "192.168.1.0/invalid",
+					Gateway:     "",
+					ExcludeIps:  []string{"10.16.0.1"},
+					Provider:    "ovn",
+					GatewayType: kubeovnv1.GWDistributedType,
+				},
+				Status: kubeovnv1.SubnetStatus{},
+			},
+			err: "subnet ut-invalid-cidr-err cidr 192.168.1.0/invalid is invalid",
+		},
+		{
+			name: "ProtocolInvalidErr",
+			asubnet: kubeovnv1.Subnet{
+				TypeMeta: metav1.TypeMeta{Kind: "Subnet", APIVersion: "kubeovn.io/v1"},
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "ut-protocal-invalid-err",
+				},
+				Spec: kubeovnv1.SubnetSpec{
+					Default:    true,
+					Vpc:        "ovn-cluster",
+					Protocol:   "ipv5",
+					Namespaces: nil,
+					CIDRBlock:  "10.16.0.0/16",
+					Gateway:    "10.16.0.1",
+					ExcludeIps: []string{"10.16.0.1"},
+					Provider:   "ovn",
+
+					GatewayType: kubeovnv1.GWDistributedType,
+				},
+				Status: kubeovnv1.SubnetStatus{},
+			},
+			err: "ipv5 is not a valid protocol type",
+		},
+		{
+			name: "ExternalEgressGatewayUpperCaseErr",
+			asubnet: kubeovnv1.Subnet{
+				TypeMeta: metav1.TypeMeta{Kind: "Subnet", APIVersion: "kubeovn.io/v1"},
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "ut-externalegressgateway-uppercase-err",
+				},
+				Spec: kubeovnv1.SubnetSpec{
+					Default:               true,
+					Vpc:                   "ovn-cluster",
+					Protocol:              kubeovnv1.ProtocolIPv6,
+					Namespaces:            nil,
+					CIDRBlock:             "2001:db8::/32",
+					Gateway:               "2001:db8::1",
+					ExcludeIps:            []string{"2001:db8::a"},
+					Provider:              "ovn",
+					ExternalEgressGateway: "2001:dB8::2",
+					GatewayType:           kubeovnv1.GWDistributedType,
+				},
+				Status: kubeovnv1.SubnetStatus{},
+			},
+			err: "subnet ut-externalegressgateway-uppercase-err external egress gateway 2001:dB8::2 v6 ip address can not contain upper case",
+		},
+		{
+			name: "VipsUpperCaseErr",
+			asubnet: kubeovnv1.Subnet{
+				TypeMeta: metav1.TypeMeta{Kind: "Subnet", APIVersion: "kubeovn.io/v1"},
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "ut-vips-uppercase-err",
+				},
+				Spec: kubeovnv1.SubnetSpec{
+					Default:     true,
+					Vpc:         "ovn-cluster",
+					Protocol:    kubeovnv1.ProtocolIPv6,
+					Namespaces:  nil,
+					CIDRBlock:   "2001:db8::/32",
+					Gateway:     "2001:db8::1",
+					ExcludeIps:  []string{"2001:db8::a"},
+					Provider:    "ovn",
+					Vips:        []string{"2001:dB8::2"},
+					GatewayType: kubeovnv1.GWDistributedType,
+				},
+				Status: kubeovnv1.SubnetStatus{},
+			},
+			err: "subnet ut-vips-uppercase-err vips 2001:dB8::2 v6 ip address can not contain upper case",
+		},
+		{
+			name: "LogicalGatewayU2OInterconnectionSametimeTrueErr",
+			asubnet: kubeovnv1.Subnet{
+				TypeMeta: metav1.TypeMeta{Kind: "Subnet", APIVersion: "kubeovn.io/v1"},
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "ut-logicalGateway-U2OInterconnection-sametime-true-err",
+				},
+				Spec: kubeovnv1.SubnetSpec{
+					Default:            true,
+					Vpc:                "ovn-cluster",
+					Protocol:           kubeovnv1.ProtocolIPv6,
+					Namespaces:         nil,
+					CIDRBlock:          "2001:db8::/32",
+					Gateway:            "2001:db8::1",
+					ExcludeIps:         []string{"2001:db8::a"},
+					Provider:           "ovn",
+					GatewayType:        kubeovnv1.GWDistributedType,
+					LogicalGateway:     true,
+					U2OInterconnection: true,
+				},
+				Status: kubeovnv1.SubnetStatus{},
+			},
+			err: "logicalGateway and u2oInterconnection can't be opened at the same time",
+		},
+		{
+			name: "InvalidateNatOutgoingPolicyRulesCaseErr",
+			asubnet: kubeovnv1.Subnet{
+				TypeMeta: metav1.TypeMeta{Kind: "Subnet", APIVersion: "kubeovn.io/v1"},
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "utest-invalidatenatoutgoingpolicyrulescaseerr",
+				},
+				Spec: kubeovnv1.SubnetSpec{
+					Default:     true,
+					Vpc:         "ovn-cluster",
+					Protocol:    kubeovnv1.ProtocolIPv6,
+					Namespaces:  nil,
+					CIDRBlock:   "2001:db8::/32",
+					Gateway:     "2001:db8::1",
+					ExcludeIps:  []string{"2001:db8::a"},
+					Provider:    "ovn",
+					GatewayType: kubeovnv1.GWDistributedType,
+					NatOutgoingPolicyRules: []kubeovnv1.NatOutgoingPolicyRule{
+						{
+							Match:  kubeovnv1.NatOutGoingPolicyMatch{SrcIPs: "2001:db8::/32,192.168.0.1/24", DstIPs: "2001:db8::/32"}, // 示例源和目的IP范围
+							Action: "ACCEPT",                                                                                          // 示例动作
+						},
+					},
+				},
+				Status: kubeovnv1.SubnetStatus{},
+			},
+			err: "validate nat policy rules src ips 2001:db8::/32,192.168.0.1/24 failed with err match ips 2001:db8::/32,192.168.0.1/24 protocol is not consistent",
+		},
+		{
+			name: "U2OInterconnectionIPUpperCaseErr",
+			asubnet: kubeovnv1.Subnet{
+				TypeMeta: metav1.TypeMeta{Kind: "Subnet", APIVersion: "kubeovn.io/v1"},
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "utest-u2ointerconnectionipuppercaseerr",
+				},
+				Spec: kubeovnv1.SubnetSpec{
+					Default:              true,
+					Vpc:                  "ovn-cluster",
+					Protocol:             kubeovnv1.ProtocolIPv6,
+					Namespaces:           nil,
+					CIDRBlock:            "2001:db8::/32",
+					Gateway:              "2001:db8::1",
+					ExcludeIps:           []string{"2001:db8::a"},
+					Provider:             "ovn",
+					GatewayType:          kubeovnv1.GWDistributedType,
+					U2OInterconnectionIP: "2001:dB8::2",
+				},
+				Status: kubeovnv1.SubnetStatus{},
+			},
+			err: "subnet utest-u2ointerconnectionipuppercaseerr U2O interconnection ip 2001:dB8::2 v6 ip address can not contain upper case",
+		},
+		{
+			name: "U2OInterconnectionIPNotInCIDRCaseErr",
+			asubnet: kubeovnv1.Subnet{
+				TypeMeta: metav1.TypeMeta{Kind: "Subnet", APIVersion: "kubeovn.io/v1"},
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "utest-u2ointerconnectionipnotincidrcaseerr",
+				},
+				Spec: kubeovnv1.SubnetSpec{
+					Default:              true,
+					Vpc:                  "ovn-cluster",
+					Protocol:             kubeovnv1.ProtocolIPv6,
+					Namespaces:           nil,
+					CIDRBlock:            "2001:db8::/32",
+					Gateway:              "2001:db8::1", // Intentionally contains an uppercase letter
+					ExcludeIps:           []string{"2001:db8::a"},
+					Provider:             "ovn",
+					GatewayType:          kubeovnv1.GWDistributedType,
+					U2OInterconnectionIP: "3001:db8::2",
+				},
+				Status: kubeovnv1.SubnetStatus{},
+			},
+			err: "u2oInterconnectionIP 3001:db8::2 is not in subnet utest-u2ointerconnectionipnotincidrcaseerr cidr 2001:db8::/32",
+		},
+		{
+			name: "GatewayErr",
 			asubnet: kubeovnv1.Subnet{
 				TypeMeta: metav1.TypeMeta{Kind: "Subnet", APIVersion: "kubeovn.io/v1"},
 				ObjectMeta: metav1.ObjectMeta{
@@ -269,6 +568,30 @@ func TestValidateSubnet(t *testing.T) {
 				Status: kubeovnv1.SubnetStatus{},
 			},
 			err: "10.18.0/16 in allowSubnets is not a valid address",
+		},
+		{
+			name: "AllowSubnetsUppercaseErr",
+			asubnet: kubeovnv1.Subnet{
+				TypeMeta: metav1.TypeMeta{Kind: "Subnet", APIVersion: "kubeovn.io/v1"},
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "ut-allowsubnets-uppercase-err",
+				},
+				Spec: kubeovnv1.SubnetSpec{
+					Default:      true,
+					Vpc:          "ovn-cluster",
+					Protocol:     kubeovnv1.ProtocolIPv6,
+					Namespaces:   nil,
+					CIDRBlock:    "2001:db8::/32",
+					Gateway:      "2001:db8::1",
+					ExcludeIps:   []string{"2001:db8::a"},
+					Provider:     OvnProvider,
+					GatewayType:  kubeovnv1.GWDistributedType,
+					Private:      true,
+					AllowSubnets: []string{"2001:dB8::/32"},
+				},
+				Status: kubeovnv1.SubnetStatus{},
+			},
+			err: "subnet ut-allowsubnets-uppercase-err allow subnet 2001:dB8::/32 v6 ip address can not contain upper case",
 		},
 		{
 			name: "gatewaytypeErr",
@@ -521,6 +844,7 @@ func TestValidateSubnet(t *testing.T) {
 			err: "validate gateway 10.16.0.0 for cidr 10.16.0.0/32 failed: subnet 10.16.0.0/32 is configured with /32 netmask",
 		},
 	}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ret := ValidateSubnet(tt.asubnet)
@@ -955,6 +1279,7 @@ func TestValidateVpc(t *testing.T) {
 		name    string
 		vpc     *kubeovnv1.Vpc
 		wantErr bool
+		errMsg  string
 	}{
 		{
 			name: "valid vpc",
@@ -981,6 +1306,7 @@ func TestValidateVpc(t *testing.T) {
 			},
 			wantErr: false,
 		},
+
 		{
 			name: "invalid static route policy",
 			vpc: &kubeovnv1.Vpc{
@@ -995,6 +1321,33 @@ func TestValidateVpc(t *testing.T) {
 				},
 			},
 			wantErr: true,
+		},
+		{
+			name: "invalid vpc static route CIDR",
+			vpc: &kubeovnv1.Vpc{
+				Spec: kubeovnv1.VpcSpec{
+					StaticRoutes: []*kubeovnv1.StaticRoute{
+						{
+							CIDR:      "192.168.%.0/24",
+							NextHopIP: "10.0.0.1",
+						},
+					},
+					PolicyRoutes: []*kubeovnv1.PolicyRoute{
+						{
+							Action:    kubeovnv1.PolicyRouteActionAllow,
+							NextHopIP: "10.0.0.1",
+						},
+					},
+					VpcPeerings: []*kubeovnv1.VpcPeering{
+						{
+							LocalConnectIP: "192.168.1.0/24",
+						},
+					},
+				},
+			},
+
+			wantErr: true,
+			errMsg:  "invalid cidr 192.168.%.0/24: invalid CIDR address: 192.168.%.0/24",
 		},
 		{
 			name: "invalid static route CIDR",
@@ -1072,6 +1425,111 @@ func TestValidateVpc(t *testing.T) {
 			err := ValidateVpc(tt.vpc)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("got error = %v, but wantErr %v", err, tt.wantErr)
+			}
+			if tt.errMsg != "" && err != nil && err.Error() != tt.errMsg {
+				t.Errorf("expected error message %q, but got %q", tt.errMsg, err.Error())
+			}
+		})
+	}
+}
+func TestValidateNatOutGoingPolicyRuleIPs(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     string
+		want      string
+		expectErr bool
+	}{
+		{
+			name:      "Valid IPv4",
+			input:     "192.168.1.1,10.0.0.1",
+			want:      "IPv4",
+			expectErr: false,
+		},
+		{
+			name:      "Valid IPv6",
+			input:     "2001:0db8::1,2001:0db8::2",
+			want:      "IPv6",
+			expectErr: false,
+		},
+
+		{
+			name:      "Mixed IPv4 and IPv6",
+			input:     "192.168.1.1,2001:0db8::1",
+			want:      "",
+			expectErr: true,
+		},
+		{
+			name:      "Invalid IP",
+			input:     "invalid_ip",
+			want:      "",
+			expectErr: true,
+		},
+		{
+			name:      "Empty string",
+			input:     "",
+			want:      "",
+			expectErr: true,
+		},
+		{
+			name:      "Valid CIDR",
+			input:     "192.168.1.0/24,10.0.0.0/8",
+			want:      "IPv4",
+			expectErr: false,
+		},
+		{
+			name:      "Mixed IP and CIDR",
+			input:     "192.168.1.1,10.0.0.0/8",
+			want:      "IPv4",
+			expectErr: false,
+		},
+		{
+			name:      "Invalid CIDR",
+			input:     "192.168.1.0/33",
+			want:      "",
+			expectErr: true,
+		},
+		{
+			name:      "Single IPv4",
+			input:     "10.0.0.1",
+			want:      "IPv4",
+			expectErr: false,
+		},
+		{
+			name:      "Single IPv6",
+			input:     "2001:0db8::1",
+			want:      "IPv6",
+			expectErr: false,
+		},
+		{
+			name:      "Single Invalid IP",
+			input:     "300.300.300.300",
+			want:      "",
+			expectErr: true,
+		},
+		{
+			name:      "Empty after split",
+			input:     ",",
+			want:      "",
+			expectErr: true,
+		},
+
+		{
+			name:      "Valid CIDR with IPv6",
+			input:     "192.168.1.0/24,2001:0db8::1",
+			want:      "",
+			expectErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := validateNatOutGoingPolicyRuleIPs(tt.input)
+			if (err != nil) != tt.expectErr {
+				t.Errorf("validateNatOutGoingPolicyRuleIPs() error = %v, wantErr %v", err, tt.expectErr)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("validateNatOutGoingPolicyRuleIPs() = %v, want %v", got, tt.want)
 			}
 		})
 	}
