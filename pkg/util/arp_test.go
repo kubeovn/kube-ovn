@@ -87,21 +87,21 @@ func TestArpResolve(t *testing.T) {
 	mac, count, err := ArpResolve(linkName, defaultGW, time.Second, maxRetry, done)
 	if err != nil {
 		if strings.Contains(err.Error(), "not permitted") {
-			t.Skip("ARP request operation not permitted")
+			t.Skipf("ARP request operation not permitted: try %d, link name %s, default gw %s", count, linkName, defaultGW)
 			return
 		}
-		t.Errorf("Error resolving ARP: %v, try %d", err, count)
+		t.Errorf("Error resolving ARP: %v: try %d, link name %s, default gw %s", err, count, linkName, defaultGW)
 	}
 	if mac == nil {
-		t.Errorf("ARP resolved MAC address is nil, try %d", count)
+		t.Errorf("ARP resolved MAC address is nil: try %d, link name %s, default gw %s", count, linkName, defaultGW)
 	}
 	// should failed
 	defaultGW = "xx.xx.xx.xx"
 	mac, count, err = ArpResolve(linkName, defaultGW, time.Second, maxRetry, done)
 	if err == nil {
-		t.Errorf("Expect error, but got nil, try %d", count)
+		t.Errorf("Expect error, but got nil: try %d, link name %s, default gw %s", count, linkName, defaultGW)
 	}
 	if mac != nil {
-		t.Errorf("Expect nil MAC address, but got %v, try %d", mac, count)
+		t.Errorf("Expect nil MAC address, but got %v: try %d, link name %s, default gw %s", mac, count, linkName, defaultGW)
 	}
 }
