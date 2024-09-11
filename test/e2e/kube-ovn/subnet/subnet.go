@@ -1180,9 +1180,14 @@ var _ = framework.Describe("[group:subnet]", func() {
 		modifiedSubnet.Spec.EnableMulticastSnoop = true
 		subnetClient.PatchSync(subnet, modifiedSubnet)
 
-		subnet = subnetClient.Get(subnetName)
-		framework.ExpectNotEmpty(subnet.Status.McastQuerierIP)
-		framework.ExpectNotEmpty(subnet.Status.McastQuerierMAC)
+		framework.WaitUntil(time.Second, 5*time.Second, func(_ context.Context) (bool, error) {
+			subnet = subnetClient.Get(subnetName)
+
+			if subnet.Status.McastQuerierIP != "" && subnet.Status.McastQuerierMAC != "" {
+				return true, nil
+			}
+			return false, nil
+		}, fmt.Sprintf("subnet %s failed to acquire mcast ip and mac", subnet.Name))
 
 		ginkgo.By("Checking subnet multicast snoop disable " + subnetName)
 		subnet = subnetClient.Get(subnetName)
@@ -1190,9 +1195,13 @@ var _ = framework.Describe("[group:subnet]", func() {
 		modifiedSubnet.Spec.EnableMulticastSnoop = false
 		subnetClient.PatchSync(subnet, modifiedSubnet)
 
-		subnet = subnetClient.Get(subnetName)
-		framework.ExpectEmpty(subnet.Status.McastQuerierIP)
-		framework.ExpectEmpty(subnet.Status.McastQuerierMAC)
+		framework.WaitUntil(time.Second, 5*time.Second, func(_ context.Context) (bool, error) {
+			subnet = subnetClient.Get(subnetName)
+			if subnet.Status.McastQuerierIP == "" && subnet.Status.McastQuerierMAC == "" {
+				return true, nil
+			}
+			return false, nil
+		}, fmt.Sprintf("subnet %s failed to release mcast ip and mac", subnet.Name))
 	})
 
 	framework.ConformanceIt("should support subnet add nat outgoing policy rules", func() {
