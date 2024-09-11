@@ -417,11 +417,15 @@ func ExpandExcludeIPs(excludeIPs []string, cidr string) []string {
 			}
 		} else {
 			for _, cidrBlock := range strings.Split(cidr, ",") {
-				if CIDRContainIP(cidrBlock, excludeIP) && excludeIP != SubnetNumber(cidrBlock) && excludeIP != SubnetBroadcast(cidrBlock) {
-					rv = append(rv, excludeIP)
-					break
+				// exclude ip should be the same protocol with cidr
+				if CheckProtocol(cidrBlock) == CheckProtocol(excludeIP) {
+					// exclude ip should be in the range of cidr and not cidr addr and broadcast addr
+					if CIDRContainIP(cidrBlock, excludeIP) && excludeIP != SubnetNumber(cidrBlock) && excludeIP != SubnetBroadcast(cidrBlock) {
+						rv = append(rv, excludeIP)
+						break
+					}
+					klog.Errorf("CIDR %s not contains the exclude ip %s", cidrBlock, excludeIP)
 				}
-				klog.Errorf("CIDR %s not contains the exclude ip %s", cidrBlock, excludeIP)
 			}
 		}
 	}
