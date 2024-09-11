@@ -2,6 +2,7 @@ package util
 
 import (
 	"net"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -53,8 +54,11 @@ func TestMacEqual(t *testing.T) {
 }
 
 func TestArpResolve(t *testing.T) {
+	if runtime.GOOS == "darwin" && runtime.GOARCH == "arm64" {
+		t.Skip("Skipping test on macOS ARM64")
+	}
 	// get the default route gw and nic
-	routes, err := netlink.RouteList(nil, netlink.FAMILY_ALL)
+	routes, err := netlink.RouteList(nil, 0)
 	if err != nil {
 		t.Fatalf("failed to get routes: %v", err)
 	}
