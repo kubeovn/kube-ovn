@@ -70,7 +70,7 @@ func ValidateSubnet(subnet kubeovnv1.Subnet) error {
 	for _, cidr := range strings.Split(subnet.Spec.CIDRBlock, ",") {
 		// v6 ip address can not use upper case
 		if ContainsUppercase(subnet.Spec.CIDRBlock) {
-			err := fmt.Errorf("subnet cidr block %s v6 ip address can not contain upper case", subnet.Spec.Gateway)
+			err := fmt.Errorf("subnet cidr block %s v6 ip address can not contain upper case", subnet.Spec.CIDRBlock)
 			klog.Error(err)
 			return err
 		}
@@ -205,13 +205,11 @@ func validateNatOutgoingPolicyRules(subnet kubeovnv1.Subnet) error {
 }
 
 func validateNatOutGoingPolicyRuleIPs(matchIPStr string) (string, error) {
-	if matchIPStr == "" || strings.TrimSpace(matchIPStr) == "" {
-		return "", errors.New("MatchIPStr format error")
+	if matchIPStr = strings.TrimSpace(matchIPStr); matchIPStr == "" {
+		return "", errors.New("IPStr should not be empty")
 	}
+
 	ipItems := strings.Split(matchIPStr, ",")
-	if len(ipItems) == 0 {
-		return "", errors.New("MatchIPStr format error")
-	}
 	lastProtocol := ""
 	checkProtocolConsistent := func(ipCidr string) bool {
 		currentProtocol := CheckProtocol(ipCidr)

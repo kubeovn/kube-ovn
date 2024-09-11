@@ -83,7 +83,7 @@ func TestValidateSubnet(t *testing.T) {
 					Protocol:    kubeovnv1.ProtocolIPv6,
 					Namespaces:  nil,
 					CIDRBlock:   "2001:db8::/32",
-					Gateway:     "2001:Db8::1", // Intentionally contains an uppercase letter
+					Gateway:     "2001:Db8::1",
 					ExcludeIps:  []string{"2001:db8::a"},
 					Provider:    "ovn",
 					GatewayType: kubeovnv1.GWDistributedType,
@@ -97,7 +97,7 @@ func TestValidateSubnet(t *testing.T) {
 			asubnet: kubeovnv1.Subnet{
 				TypeMeta: metav1.TypeMeta{Kind: "Subnet", APIVersion: "kubeovn.io/v1"},
 				ObjectMeta: metav1.ObjectMeta{
-					Name: "ut-cicdblock-formal-err",
+					Name: "ut-cicd-block-formal-err",
 				},
 				Spec: kubeovnv1.SubnetSpec{
 					Default:     true,
@@ -137,11 +137,11 @@ func TestValidateSubnet(t *testing.T) {
 			err: "subnet exclude ip 2001:db8::A can not contain upper case",
 		},
 		{
-			name: "CIDRblockUppercaseErr",
+			name: "CidrBlockUppercaseErr",
 			asubnet: kubeovnv1.Subnet{
 				TypeMeta: metav1.TypeMeta{Kind: "Subnet", APIVersion: "kubeovn.io/v1"},
 				ObjectMeta: metav1.ObjectMeta{
-					Name: "ut-cidrblock-uppercase-err",
+					Name: "ut-cidr-block-uppercase-err",
 				},
 				Spec: kubeovnv1.SubnetSpec{
 					Default:     true,
@@ -156,7 +156,7 @@ func TestValidateSubnet(t *testing.T) {
 				},
 				Status: kubeovnv1.SubnetStatus{},
 			},
-			err: "subnet cidr block 2001:db8::1 v6 ip address can not contain upper case",
+			err: "subnet cidr block 2001:Db8::/32 v6 ip address can not contain upper case",
 		},
 		{
 			name: "InvalidZeroCIDRErr",
@@ -207,7 +207,7 @@ func TestValidateSubnet(t *testing.T) {
 			asubnet: kubeovnv1.Subnet{
 				TypeMeta: metav1.TypeMeta{Kind: "Subnet", APIVersion: "kubeovn.io/v1"},
 				ObjectMeta: metav1.ObjectMeta{
-					Name: "ut-protocal-invalid-err",
+					Name: "ut-protocol-invalid-err",
 				},
 				Spec: kubeovnv1.SubnetSpec{
 					Default:    true,
@@ -230,7 +230,7 @@ func TestValidateSubnet(t *testing.T) {
 			asubnet: kubeovnv1.Subnet{
 				TypeMeta: metav1.TypeMeta{Kind: "Subnet", APIVersion: "kubeovn.io/v1"},
 				ObjectMeta: metav1.ObjectMeta{
-					Name: "ut-externalegressgateway-uppercase-err",
+					Name: "ut-external-egress-gateway-uppercase-err",
 				},
 				Spec: kubeovnv1.SubnetSpec{
 					Default:               true,
@@ -246,7 +246,7 @@ func TestValidateSubnet(t *testing.T) {
 				},
 				Status: kubeovnv1.SubnetStatus{},
 			},
-			err: "subnet ut-externalegressgateway-uppercase-err external egress gateway 2001:dB8::2 v6 ip address can not contain upper case",
+			err: "subnet ut-external-egress-gateway-uppercase-err external egress gateway 2001:dB8::2 v6 ip address can not contain upper case",
 		},
 		{
 			name: "VipsUpperCaseErr",
@@ -314,8 +314,8 @@ func TestValidateSubnet(t *testing.T) {
 					GatewayType: kubeovnv1.GWDistributedType,
 					NatOutgoingPolicyRules: []kubeovnv1.NatOutgoingPolicyRule{
 						{
-							Match:  kubeovnv1.NatOutGoingPolicyMatch{SrcIPs: "2001:db8::/32,192.168.0.1/24", DstIPs: "2001:db8::/32"}, // 示例源和目的IP范围
-							Action: "ACCEPT",                                                                                          // 示例动作
+							Match:  kubeovnv1.NatOutGoingPolicyMatch{SrcIPs: "2001:db8::/32,192.168.0.1/24", DstIPs: "2001:db8::/32"},
+							Action: "ACCEPT",
 						},
 					},
 				},
@@ -359,7 +359,7 @@ func TestValidateSubnet(t *testing.T) {
 					Protocol:             kubeovnv1.ProtocolIPv6,
 					Namespaces:           nil,
 					CIDRBlock:            "2001:db8::/32",
-					Gateway:              "2001:db8::1", // Intentionally contains an uppercase letter
+					Gateway:              "2001:db8::1",
 					ExcludeIps:           []string{"2001:db8::a"},
 					Provider:             "ovn",
 					GatewayType:          kubeovnv1.GWDistributedType,
@@ -1306,7 +1306,6 @@ func TestValidateVpc(t *testing.T) {
 			},
 			wantErr: false,
 		},
-
 		{
 			name: "invalid static route policy",
 			vpc: &kubeovnv1.Vpc{
@@ -1432,6 +1431,7 @@ func TestValidateVpc(t *testing.T) {
 		})
 	}
 }
+
 func TestValidateNatOutGoingPolicyRuleIPs(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -1451,7 +1451,6 @@ func TestValidateNatOutGoingPolicyRuleIPs(t *testing.T) {
 			want:      "IPv6",
 			expectErr: false,
 		},
-
 		{
 			name:      "Mixed IPv4 and IPv6",
 			input:     "192.168.1.1,2001:0db8::1",
