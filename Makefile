@@ -1059,6 +1059,13 @@ cover:
 	go tool cover -func=cover.out | grep -v "100.0%"
 	go tool cover -html=cover.out -o cover.html
 
+.PHONY: ginkgo-cover
+ginkgo-cover:
+	if [ -f test/unittest/cover.out ]; then rm test/unittest/cover.out; fi
+	cd test/unittest && ginkgo -r -cover -output-dir=. -coverprofile=cover.out -covermode=atomic -coverpkg=github.com/kubeovn/kube-ovn/pkg/ipam
+	go tool cover -func=test/unittest/cover.out | grep -v "100.0%"
+	go tool cover -html=test/unittest/cover.out -o test/unittest/cover.html
+
 .PHONY: ipam-bench
 ipam-bench:
 	go test -timeout 30m -bench='^BenchmarkIPAM' -benchtime=10000x test/unittest/ipam_bench/ipam_test.go -args -logtostderr=false

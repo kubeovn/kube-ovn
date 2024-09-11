@@ -38,7 +38,10 @@ vpc-nat-gateway.tar
 image-amd64.tar
 image-amd64-dpdk.tar
 image-arm64.tar
+*.test
 test/**/*.test
+*.out
+*.html
 cover.out
 cover.html
 kube-ovn-app-sa.yaml
