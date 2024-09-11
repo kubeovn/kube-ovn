@@ -86,6 +86,10 @@ func TestArpResolve(t *testing.T) {
 	}
 	mac, count, err := ArpResolve(linkName, defaultGW, time.Second, maxRetry, done)
 	if err != nil {
+		if strings.Contains(err.Error(), "not permitted") {
+			t.Skip("ARP request operation not permitted")
+			return
+		}
 		t.Errorf("Error resolving ARP: %v, try %d", err, count)
 	}
 	if mac == nil {
