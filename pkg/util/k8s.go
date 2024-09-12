@@ -48,10 +48,9 @@ func DialTCP(host string, timeout time.Duration, verbose bool) error {
 	return fmt.Errorf("timed out dialing host %q", host)
 }
 
-func DialAPIServer(host string) error {
-	interval := 3 * time.Second
+func DialAPIServer(host string, interval time.Duration, recount int) error {
 	timer := time.NewTimer(interval)
-	for i := 0; i < 10; i++ {
+	for i := 0; i < recount; i++ {
 		err := DialTCP(host, interval, true)
 		if err == nil {
 			return nil
