@@ -1276,3 +1276,8 @@ func Test_CIDRContainIP(t *testing.T) {
 		})
 	}
 }
+
+func TestTCPConnectivity(t *testing.T) {
+	// Start a ipv4 TCP server
+	ipv4Server, ipv4Port, err := startTCPServer("
+}
