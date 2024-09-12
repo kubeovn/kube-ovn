@@ -34,7 +34,7 @@ require (
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.9.0
 	github.com/vishvananda/netlink v1.2.1-beta.2
-	golang.org/x/exp v0.0.0-20240904232852-e7e105dedf7e
+	golang.org/x/exp v0.0.0-20240909161429-701f63a606c0
 	golang.org/x/mod v0.21.0
 	golang.org/x/sys v0.25.0
 	golang.org/x/time v0.6.0
@@ -47,7 +47,7 @@ require (
 	k8s.io/klog/v2 v2.100.1
 	k8s.io/kubernetes v1.27.16
 	k8s.io/sample-controller v0.27.16
-	k8s.io/utils v0.0.0-20240711033017-18e509b52bc8
+	k8s.io/utils v0.0.0-20240902221715-702e33fdd3c3
 	kubevirt.io/client-go v0.58.1
 	sigs.k8s.io/controller-runtime v0.15.3
 )
@@ -141,7 +141,7 @@ require (
 	golang.org/x/sync v0.8.0 // indirect
 	golang.org/x/term v0.24.0 // indirect
 	golang.org/x/text v0.18.0 // indirect
-	golang.org/x/tools v0.24.0 // indirect
+	golang.org/x/tools v0.25.0 // indirect
 	gomodules.xyz/jsonpatch/v2 v2.4.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20240903143218-8af14fe29dc1 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
