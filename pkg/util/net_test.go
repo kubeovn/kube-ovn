@@ -3,6 +3,7 @@ package util
 import (
 	"math/big"
 	"net"
+	"os"
 	"reflect"
 	"testing"
 
@@ -206,13 +207,29 @@ func TestSubnetBroadcast(t *testing.T) {
 			expect: "192.129.255.255",
 		},
 		{
+			// TODO: this is a bug, the broadcast address should be 192.128.23.1
 			name:   "v4/31",
 			subnet: "192.128.23.0/31",
 			expect: "",
 		},
 		{
+			name:   "v4/32",
+			subnet: "192.128.23.0/32",
+			expect: "192.128.23.0",
+		},
+		{
 			name:   "v6",
 			subnet: "ffff:ffff:ffff:ffff:ffff:0:ffff:ffff/96",
+			expect: "ffff:ffff:ffff:ffff:ffff:0:ffff:ffff",
+		},
+		{
+			name:   "v6/127",
+			subnet: "ffff:ffff:ffff:ffff:ffff:0:ffff:ffff/127",
+			expect: "",
+		},
+		{
+			name:   "v6/128",
+			subnet: "ffff:ffff:ffff:ffff:ffff:0:ffff:ffff/128",
 			expect: "ffff:ffff:ffff:ffff:ffff:0:ffff:ffff",
 		},
 	}
@@ -1277,7 +1294,125 @@ func Test_CIDRContainIP(t *testing.T) {
 	}
 }
 
-func TestTCPConnectivity(t *testing.T) {
+func TestTCPConnectivityListen(t *testing.T) {
 	// Start a ipv4 TCP server
-	ipv4Server, ipv4Port, err := startTCPServer("
+	validEndpoint := "127.0.0.1:65531"
+	err := TCPConnectivityListen(validEndpoint)
+	require.NoError(t, err)
+	invalidEndpoint := "127.0.0.1:65536"
+	err = TCPConnectivityListen(invalidEndpoint)
+	require.Error(t, err)
+	// Start a ipv6 TCP server
+	validEndpoint = "[::1]:65531"
+	err = TCPConnectivityListen(validEndpoint)
+	require.NoError(t, err)
+	invalidEndpoint = "[::1]:65536"
+	err = TCPConnectivityListen(invalidEndpoint)
+	require.Error(t, err)
+}
+
+func TestTCPConnectivityCheck(t *testing.T) {
+	// Start a ipv4 TCP server
+	validEndpoint := "127.0.0.1:65532"
+	err := TCPConnectivityListen(validEndpoint)
+	require.NoError(t, err)
+	err = TCPConnectivityCheck(validEndpoint)
+	require.NoError(t, err)
+	invalidEndpoint := "127.0.0.1:65536"
+	err = TCPConnectivityCheck(invalidEndpoint)
+	require.Error(t, err)
+	// Start a ipv6 TCP server
+	validEndpoint = "[::1]:65532"
+	err = TCPConnectivityListen(validEndpoint)
+	require.NoError(t, err)
+	err = TCPConnectivityCheck(validEndpoint)
+	require.NoError(t, err)
+	invalidEndpoint = "[::1]:65536"
+	err = TCPConnectivityCheck(invalidEndpoint)
+	require.Error(t, err)
+}
+
+func TestUDPConnectivityListen(t *testing.T) {
+	// Start a ipv4 UDP server
+	validEndpoint := "127.0.0.1:65533"
+	err := UDPConnectivityListen(validEndpoint)
+	require.NoError(t, err)
+	invalidEndpoint := "127.0.0.1:65536"
+	err = UDPConnectivityListen(invalidEndpoint)
+	require.Error(t, err)
+	invalidEndpoint = "127.0.0.256:65536"
+	err = UDPConnectivityListen(invalidEndpoint)
+	require.Error(t, err)
+	// Start a ipv6 UDP server
+	validEndpoint = "[::1]:65533"
+	err = UDPConnectivityListen(validEndpoint)
+	require.NoError(t, err)
+	invalidEndpoint = "[::1]:65536"
+	err = UDPConnectivityListen(invalidEndpoint)
+	require.Error(t, err)
+	invalidEndpoint = "[::g]:65536"
+	err = UDPConnectivityListen(invalidEndpoint)
+	require.Error(t, err)
+}
+
+func TestUDPConnectivityCheck(t *testing.T) {
+	// Start a ipv4 UDP server
+	validEndpoint := "127.0.0.1:65534"
+	err := UDPConnectivityListen(validEndpoint)
+	require.NoError(t, err)
+	err = UDPConnectivityCheck(validEndpoint)
+	require.NoError(t, err)
+	invalidEndpoint := "127.0.0.1:65536"
+	err = UDPConnectivityCheck(invalidEndpoint)
+	require.Error(t, err)
+	invalidEndpoint = "127.0.0.256:65536"
+	err = UDPConnectivityCheck(invalidEndpoint)
+	require.Error(t, err)
+	// Start a ipv6 UDP server
+	validEndpoint = "[::1]:65534"
+	err = UDPConnectivityListen(validEndpoint)
+	require.NoError(t, err)
+	err = UDPConnectivityCheck(validEndpoint)
+	require.NoError(t, err)
+	invalidEndpoint = "[::1]:65536"
+	err = UDPConnectivityCheck(invalidEndpoint)
+	require.Error(t, err)
+	invalidEndpoint = "[::g]:65536"
+	err = UDPConnectivityCheck(invalidEndpoint)
+	require.Error(t, err)
+}
+
+func TestGetDefaultListenAddr(t *testing.T) {
+	addr := GetDefaultListenAddr()
+	require.Equal(t, addr, "0.0.0.0")
+	err := os.Setenv("ENABLE_BIND_LOCAL_IP", "true")
+	require.NoError(t, err)
+	err = os.Setenv("POD_IPS", "10.10.10.10")
+	require.NoError(t, err)
+	addr = GetDefaultListenAddr()
+	require.Equal(t, addr, "10.10.10.10")
+}
+
+func TestContainsUppercase(t *testing.T) {
+	validIPv6 := "2001:db8::1"
+	contained := ContainsUppercase(validIPv6)
+	require.False(t, contained)
+	invalidIPv6 := "2001:DB8::1"
+	contained = ContainsUppercase(invalidIPv6)
+	require.True(t, contained)
+}
+
+func TestInvalidCIDR(t *testing.T) {
+	validCIDR := "10.10.10.0/24"
+	err := InvalidSpecialCIDR(validCIDR)
+	require.NoError(t, err)
+	validCIDR = "2001:db8::1/64"
+	err = InvalidSpecialCIDR(validCIDR)
+	require.NoError(t, err)
+	invalidCIDR := "0.0.0.0/0"
+	err = InvalidSpecialCIDR(invalidCIDR)
+	require.Error(t, err)
+	invalidCIDR = "255.255.255.255"
+	err = InvalidSpecialCIDR(invalidCIDR)
+	require.Error(t, err)
 }
