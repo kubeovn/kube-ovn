@@ -1057,8 +1057,8 @@ github.com/jung-kurt/gofpdf v1.0.0/go.mod h1:7Id9E/uU8ce6rXgefFLlgrJj/GYY22cpxn+
 github.com/jung-kurt/gofpdf v1.0.3-0.20190309125859-24315acbbda5/go.mod h1:7Id9E/uU8ce6rXgefFLlgrJj/GYY22cpxn+r32jIOes=
 github.com/k-sone/critbitgo v1.4.0 h1:l71cTyBGeh6X5ATh6Fibgw3+rtNT80BA0uNNWgkPrbE=
 github.com/k-sone/critbitgo v1.4.0/go.mod h1:7E6pyoyADnFxlUBEKcnfS49b7SUAQGMK+OAp/UQvo0s=
-github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.7.1 h1:n4FpoJ6aGDx8ULfya/C4ycrMDuPZlf7AtPyrT4+rIP4=
-github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.7.1/go.mod h1:CM7HAH5PNuIsqjMN0fGc1ydM74Uj+0VZFhob620nklw=
+github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.7.2 h1:/EI9b3Nlcv9+a3Ay324srTAWZH3r6cnCqgF6P8wr/oA=
+github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.7.2/go.mod h1:CM7HAH5PNuIsqjMN0fGc1ydM74Uj+0VZFhob620nklw=
 github.com/k8snetworkplumbingwg/sriovnet v1.2.0 h1:6ELfAxCB1dvosGUy3DVRmfH+HWTzmPD3W67HKQvMR1M=
 github.com/k8snetworkplumbingwg/sriovnet v1.2.0/go.mod h1:jyWzGe6ZtYiPq6ih6aXCOy6mZ49Y9mNyBOLBBXnli+k=
 github.com/kardianos/osext v0.0.0-20190222173326-2bc1f35cddc0 h1:iQTw/8FWTuc7uiaSepXwyf3o52HaUYcV+Tu66S3F5GA=
