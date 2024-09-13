@@ -28,7 +28,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalSwitch() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lsName := "test-create-ls-ls"
 	lrName := "test-create-ls-lr"
 	mac := util.GenerateMac()
@@ -101,7 +101,7 @@ func (suite *OvnClientTestSuite) testLogicalSwitchAddPort() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lsName := "test-add-port-ls"
 	lspName := "test-add-port-lsp"
 
@@ -137,7 +137,7 @@ func (suite *OvnClientTestSuite) testLogicalSwitchDelPort() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lsName := "test-del-port-ls"
 	lspName := "test-del-port-lsp"
 
@@ -180,7 +180,7 @@ func (suite *OvnClientTestSuite) testLogicalSwitchUpdateLoadBalancers() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lsName := "test-add-lb-to-ls"
 	prefix := "test-add-lb"
 	lbNames := make([]string, 0, 3)
@@ -257,7 +257,7 @@ func (suite *OvnClientTestSuite) testDeleteLogicalSwitch() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	name := "test-delete-ls"
 
 	t.Run("no err when delete existent logical switch", func(t *testing.T) {
@@ -283,7 +283,7 @@ func (suite *OvnClientTestSuite) testGetLogicalSwitch() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	name := "test-get-ls"
 
 	err := ovnClient.CreateBareLogicalSwitch(name)
@@ -311,7 +311,7 @@ func (suite *OvnClientTestSuite) testListLogicalSwitch() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	namePrefix := "test-list-ls-"
 
 	i := 0
@@ -382,7 +382,7 @@ func (suite *OvnClientTestSuite) testLogicalSwitchUpdatePortOp() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lsName := "test-update-port-op-ls"
 	lspName := "test-update-port-op-lsp"
 	lspUUID := ovsclient.NamedUUID()
@@ -467,7 +467,7 @@ func (suite *OvnClientTestSuite) testLogicalSwitchUpdateLoadBalancerOp() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lsName := "test-update-lb-ls"
 	lbUUIDs := []string{ovsclient.NamedUUID(), ovsclient.NamedUUID(), ovsclient.NamedUUID()}
 
@@ -535,7 +535,7 @@ func (suite *OvnClientTestSuite) testLogicalSwitchUpdateACLOp() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lsName := "test-update-acl-op-ls"
 	aclUUIDs := []string{ovsclient.NamedUUID(), ovsclient.NamedUUID()}
 
@@ -600,7 +600,7 @@ func (suite *OvnClientTestSuite) testLogicalSwitchOp() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lsName := "test-op-ls"
 
 	err := ovnClient.CreateBareLogicalSwitch(lsName)

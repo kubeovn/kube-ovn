@@ -28,7 +28,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalRouter() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	name := "test-create-lr"
 
 	err := ovnClient.CreateLogicalRouter(name)
@@ -45,7 +45,7 @@ func (suite *OvnClientTestSuite) testUpdateLogicalRouter() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lrName := "test-update-lr"
 
 	err := ovnClient.CreateLogicalRouter(lrName)
@@ -80,7 +80,7 @@ func (suite *OvnClientTestSuite) testDeleteLogicalRouter() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	name := "test-delete-lr"
 
 	t.Run("no err when delete existent logical router", func(t *testing.T) {
@@ -106,7 +106,7 @@ func (suite *OvnClientTestSuite) testGetLogicalRouter() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	name := "test-get-lr"
 
 	err := ovnClient.CreateLogicalRouter(name)
@@ -137,7 +137,7 @@ func (suite *OvnClientTestSuite) testListLogicalRouter() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	namePrefix := "test-list-lr"
 
 	i := 0
@@ -207,7 +207,7 @@ func (suite *OvnClientTestSuite) testLogicalRouterUpdateLoadBalancers() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lrName := "test-add-lb-to-lr"
 	prefix := "test-add-lr-lb"
 	lbNames := make([]string, 0, 3)
@@ -273,7 +273,7 @@ func (suite *OvnClientTestSuite) testLogicalRouterUpdatePortOp() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lrName := "test-update-port-op-lr"
 	uuid := ovsclient.NamedUUID()
 
@@ -329,7 +329,7 @@ func (suite *OvnClientTestSuite) testLogicalRouterUpdatePolicyOp() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lrName := "test-update-policy-op-lr"
 	uuid := ovsclient.NamedUUID()
 
@@ -385,7 +385,7 @@ func (suite *OvnClientTestSuite) testLogicalRouterUpdateNatOp() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lrName := "test-update-nat-op-lr"
 	uuid := ovsclient.NamedUUID()
 
@@ -441,7 +441,7 @@ func (suite *OvnClientTestSuite) testLogicalRouterUpdateStaticRouteOp() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lrName := "test-update-route-op-lr"
 	uuid := ovsclient.NamedUUID()
 
@@ -497,7 +497,7 @@ func (suite *OvnClientTestSuite) testLogicalRouterOp() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lrName := "test-op-lr"
 
 	err := ovnClient.CreateLogicalRouter(lrName)

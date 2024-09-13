@@ -18,7 +18,7 @@ func (suite *OvnClientTestSuite) testCreateLoadBalancer() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lbName := "test-create-lb"
 
 	err := ovnClient.CreateLoadBalancer(lbName, "tcp", "ip_dst")
@@ -40,7 +40,7 @@ func (suite *OvnClientTestSuite) testUpdateLoadBalancer() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lbName := "test-update-lb"
 
 	err := ovnClient.CreateLoadBalancer(lbName, "tcp", "ip_dst")
@@ -86,7 +86,7 @@ func (suite *OvnClientTestSuite) testDeleteLoadBalancers() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lbNamePrefix := "test-del-lbs"
 	lbNames := make([]string, 0, 5)
 
@@ -113,7 +113,7 @@ func (suite *OvnClientTestSuite) testDeleteLoadBalancer() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lbName := "test-del-lb"
 
 	err := ovnClient.CreateLoadBalancer(lbName, "tcp", "")
@@ -130,7 +130,7 @@ func (suite *OvnClientTestSuite) testGetLoadBalancer() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lbName := "test-get-lb"
 
 	err := ovnClient.CreateLoadBalancer(lbName, "tcp", "")
@@ -161,7 +161,7 @@ func (suite *OvnClientTestSuite) testListLoadBalancers() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lbNamePrefix := "test-list-lbs"
 	lbNames := make([]string, 0, 3)
 	protocol := []string{"tcp", "udp"}
@@ -244,7 +244,7 @@ func (suite *OvnClientTestSuite) testDeleteLoadBalancerOp() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lbName := "test-del-lb-op"
 
 	err := ovnClient.CreateLoadBalancer(lbName, "tcp", "")
@@ -289,7 +289,7 @@ func (suite *OvnClientTestSuite) testSetLoadBalancerAffinityTimeout() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lbName := "test-set-lb-affinity-timeout"
 
 	err := ovnClient.CreateLoadBalancer(lbName, "tcp", "")
@@ -331,7 +331,7 @@ func (suite *OvnClientTestSuite) testLoadBalancerAddVip() {
 	t.Parallel()
 
 	var (
-		ovnClient          = suite.ovnClient
+		ovnClient          = suite.ovnNBClient
 		lbName             = "test-lb-add-vip"
 		vips, expectedVips map[string]string
 		lb                 *ovnnb.LoadBalancer
@@ -394,7 +394,7 @@ func (suite *OvnClientTestSuite) testLoadBalancerDeleteVip() {
 	t.Parallel()
 
 	var (
-		ovnClient   = suite.ovnClient
+		ovnClient   = suite.ovnNBClient
 		lbName      = "test-lb-del-vip"
 		vips        map[string]string
 		deletedVips []string
@@ -441,7 +441,7 @@ func (suite *OvnClientTestSuite) testLoadBalancerAddIPPortMapping() {
 	t.Parallel()
 
 	var (
-		ovnClient      = suite.ovnClient
+		ovnClient      = suite.ovnNBClient
 		lbName         = "test-lb-add-ip-port-mapping"
 		vips, mappings map[string]string
 		lb             *ovnnb.LoadBalancer
@@ -539,7 +539,7 @@ func (suite *OvnClientTestSuite) testLoadBalancerDeleteIPPortMapping() {
 	t.Parallel()
 
 	var (
-		ovnClient      = suite.ovnClient
+		ovnClient      = suite.ovnNBClient
 		lbName         = "test-lb-del-ip-port-mapping"
 		vips, mappings map[string]string
 		lb             *ovnnb.LoadBalancer
@@ -658,7 +658,7 @@ func (suite *OvnClientTestSuite) testLoadBalancerWithHealthCheck() {
 	t.Parallel()
 
 	var (
-		ovnClient      = suite.ovnClient
+		ovnClient      = suite.ovnNBClient
 		lbName         = "test-lb-with-health-check"
 		vips, mappings map[string]string
 		lb             *ovnnb.LoadBalancer

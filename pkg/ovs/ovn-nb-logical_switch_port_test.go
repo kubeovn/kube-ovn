@@ -17,7 +17,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalSwitchPort() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lsName := "test-create-lsp-ls"
 	ips := "10.244.0.37,fc00::af4:25"
 	mac := "00:00:00:AB:B4:65"
@@ -204,7 +204,7 @@ func (suite *OvnClientTestSuite) testCreateLocalnetLogicalSwitchPort() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lspName := "test-create-localnet-port-lsp"
 	lsName := "test-create-localnet-port-ls"
 	provider := "external"
@@ -258,7 +258,7 @@ func (suite *OvnClientTestSuite) testCreateVirtualLogicalSwitchPorts() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lsName := "test-create-virtual-port-ls"
 	vips := []string{"192.168.33.10", "192.168.33.12"}
 
@@ -290,7 +290,7 @@ func (suite *OvnClientTestSuite) testCreateBareLogicalSwitchPort() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lsName := "test-create-bare-port-ls"
 	lspName := "test-create-bare-port-lsp"
 
@@ -314,7 +314,7 @@ func (suite *OvnClientTestSuite) testSetLogicalSwitchPortVirtualParents() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lsName := "test-update-port-virt-parents-ls"
 	ips := []string{"192.168.211.31", "192.168.211.32"}
 
@@ -351,7 +351,7 @@ func (suite *OvnClientTestSuite) testSetLogicalSwitchPortArpProxy() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lsName := "test-set-lsp-arp-proxy-ls"
 	ips := "10.244.0.37,fc00::af4:25"
 	mac := "00:00:00:AB:B4:65"
@@ -389,7 +389,7 @@ func (suite *OvnClientTestSuite) testSetLogicalSwitchPortSecurity() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lsName := "test-update-port-security-ls"
 	lspName := "test-update-port-security-lsp"
 
@@ -454,7 +454,7 @@ func (suite *OvnClientTestSuite) testSetSetLogicalSwitchPortExternalIDs() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lsName := "test-set-lsp-ext-id-ls"
 	lspName := "test-set-lsp-ext-id-lsp"
 
@@ -495,7 +495,7 @@ func (suite *OvnClientTestSuite) testSetLogicalSwitchPortSecurityGroup() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lsName := "test-set-sg-ls"
 	lspNamePrefix := "test-set-sg-lsp"
 
@@ -814,7 +814,7 @@ func (suite *OvnClientTestSuite) testSetLogicalSwitchPortsSecurityGroup() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lsName := "test-set-sgs-ls"
 	lspNamePrefix := "test-set-sgs-lsp"
 
@@ -880,7 +880,7 @@ func (suite *OvnClientTestSuite) testEnablePortLayer2forward() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lsName := "test-enable-port-l2-ls"
 	lspName := "test-enable-port-l2-lsp"
 	ns := "test-enable-port-l2-ns"
@@ -913,7 +913,7 @@ func (suite *OvnClientTestSuite) testSetLogicalSwitchPortVlanTag() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lsName := "test-set-port-vlan-tag-ls"
 	lspName := "test-set-port-vlan-tag-lsp"
 	vlanID := 100
@@ -979,7 +979,7 @@ func (suite *OvnClientTestSuite) testUpdateLogicalSwitchPort() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lsName := "test-update-lsp-ls"
 	lspName := "test-update-lsp-lsp"
 
@@ -1033,7 +1033,7 @@ func (suite *OvnClientTestSuite) testListLogicalSwitchPorts() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 
 	lsName := "test-list-lsp-ls"
 	err := ovnClient.CreateBareLogicalSwitch(lsName)
@@ -1098,7 +1098,7 @@ func (suite *OvnClientTestSuite) testDeleteLogicalSwitchPort() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lspName := "test-delete-port-lsp"
 	lsName := "test-delete-port-ls"
 
@@ -1134,7 +1134,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalSwitchPortOp() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lspName := "test-create-op-lsp"
 	lsName := "test-create-op-ls"
 
@@ -1216,7 +1216,7 @@ func (suite *OvnClientTestSuite) testDeleteLogicalSwitchPortOp() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lspName := "test-del-op-lsp"
 	lsName := "test-del-op-ls"
 

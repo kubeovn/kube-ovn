@@ -68,7 +68,7 @@ func (suite *OvnClientTestSuite) testUpdateIngressACLOps() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 
 	expect := func(row ovsdb.Row, action, direction, match, priority string) {
 		intPriority, err := strconv.Atoi(priority)
@@ -140,7 +140,7 @@ func (suite *OvnClientTestSuite) testUpdateEgressACLOps() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 
 	expect := func(row ovsdb.Row, action, direction, match, priority string) {
 		intPriority, err := strconv.Atoi(priority)
@@ -212,7 +212,7 @@ func (suite *OvnClientTestSuite) testCreateGatewayACL() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 
 	checkACL := func(parent interface{}, direction, priority, match string, options map[string]string) {
 		pg, isPg := parent.(*ovnnb.PortGroup)
@@ -359,7 +359,7 @@ func (suite *OvnClientTestSuite) testCreateNodeACL() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 
 	checkACL := func(pg *ovnnb.PortGroup, direction, priority, match string, options map[string]string) {
 		acl, err := ovnClient.GetACL(pg.Name, direction, priority, match, false)
@@ -434,7 +434,7 @@ func (suite *OvnClientTestSuite) testCreateSgDenyAllACL() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	sgName := "test_create_deny_all_acl_pg"
 	pgName := GetSgPortGroupName(sgName)
 
@@ -470,7 +470,7 @@ func (suite *OvnClientTestSuite) testCreateSgBaseACL() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 
 	expect := func(pg *ovnnb.PortGroup, match, direction string) {
 		arpACL, err := ovnClient.GetACL(pg.Name, direction, util.SecurityGroupBasePriority, match, false)
@@ -567,7 +567,7 @@ func (suite *OvnClientTestSuite) testUpdateSgACL() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	sgName := "test_update_sg_acl_pg"
 	v4AsName := GetSgV4AssociatedName(sgName)
 	v6AsName := GetSgV6AssociatedName(sgName)
@@ -680,7 +680,7 @@ func (suite *OvnClientTestSuite) testUpdateLogicalSwitchACL() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lsName := "test_update_acl_ls"
 	cidrBlock := "192.168.2.0/24,2409:8720:4a00::0/64"
 
@@ -746,7 +746,7 @@ func (suite *OvnClientTestSuite) testSetACLLog() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	pgName := GetSgPortGroupName("test_set_acl_log")
 
 	err := ovnClient.CreatePortGroup(pgName, nil)
@@ -795,7 +795,7 @@ func (suite *OvnClientTestSuite) testSetLogicalSwitchPrivate() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 
 	nodeSwitchCidrBlock := "100.64.0.0/16,fd00:100:64::/112"
 	cidrBlock := "10.244.0.0/16,fc00::af4:0/112"
@@ -953,7 +953,7 @@ func (suite *OvnClientTestSuite) testNewSgRuleACL() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	sgName := "test_create_sg_acl_pg"
 	pgName := GetSgPortGroupName(sgName)
 	highestPriority, _ := strconv.Atoi(util.SecurityGroupHighestPriority)
@@ -1097,7 +1097,7 @@ func (suite *OvnClientTestSuite) testCreateAcls() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	pgName := "test-create-acls-pg"
 	priority := "5000"
 	basePort := 12300
@@ -1172,7 +1172,7 @@ func (suite *OvnClientTestSuite) testDeleteAcls() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	pgName := "test-del-acls-pg"
 	lsName := "test-del-acls-ls"
 	matchPrefix := "outport == @ovn.sg.test_del_acl_pg && ip"
@@ -1387,7 +1387,7 @@ func (suite *OvnClientTestSuite) testDeleteACL() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	pgName := "test-del-acl-pg"
 	lsName := "test-del-acl-ls"
 	matchPrefix := "outport == @ovn.sg.test_del_acl_pg && ip"
@@ -1449,7 +1449,7 @@ func (suite *OvnClientTestSuite) testGetACL() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	pgName := "test_get_acl_pg"
 	priority := "2000"
 	match := "ip4.dst == 100.64.0.0/16"
@@ -1505,7 +1505,7 @@ func (suite *OvnClientTestSuite) testListAcls() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	pgName := "test-list-acl-pg"
 	basePort := 50000
 
@@ -1549,7 +1549,7 @@ func (suite *OvnClientTestSuite) testNewACL() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	pgName := "test-new-acl-pg"
 	priority := "1000"
 	match := "outport==@ovn.sg.test_create_acl_pg && ip"
@@ -1815,7 +1815,7 @@ func (suite *OvnClientTestSuite) testSgRuleNoACL() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	sgName := "test-sg"
 	pgName := GetSgPortGroupName(sgName)
 
@@ -1894,7 +1894,7 @@ func (suite *OvnClientTestSuite) testSGLostACL() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 
 	t.Run("no lost ACLs", func(t *testing.T) {
 		t.Parallel()
@@ -2171,7 +2171,7 @@ func (suite *OvnClientTestSuite) testCreateBareACL() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 
 	t.Run("create bare ACL successfully", func(t *testing.T) {
 		err := ovnClient.CreateBareACL("test-parent", "from-lport", "1000", "ip4.src == 10.0.0.1", "allow")
@@ -2189,7 +2189,7 @@ func (suite *OvnClientTestSuite) testUpdateAnpRuleACLOps() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 
 	expect := func(row ovsdb.Row, action, direction, match, priority string) {
 		intPriority, err := strconv.Atoi(priority)
@@ -2244,7 +2244,7 @@ func (suite *OvnClientTestSuite) testUpdateAnpRuleACLOps() {
 func (suite *OvnClientTestSuite) testUpdateACL() {
 	t := suite.T()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 
 	t.Run("update ACL with nil input", func(t *testing.T) {
 		err := ovnClient.UpdateACL(nil)
