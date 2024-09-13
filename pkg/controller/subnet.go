@@ -134,6 +134,7 @@ func (c *Controller) enqueueUpdateSubnet(oldObj, newObj interface{}) {
 		oldSubnet.Spec.NatOutgoing != newSubnet.Spec.NatOutgoing ||
 		oldSubnet.Spec.EnableMulticastSnoop != newSubnet.Spec.EnableMulticastSnoop ||
 		!reflect.DeepEqual(oldSubnet.Spec.NatOutgoingPolicyRules, newSubnet.Spec.NatOutgoingPolicyRules) ||
+		!reflect.DeepEqual(oldSubnet.Spec.NamespaceSelector, newSubnet.Spec.NamespaceSelector) ||
 		(newSubnet.Spec.U2OInterconnection && newSubnet.Spec.U2OInterconnectionIP != "" && oldSubnet.Spec.U2OInterconnectionIP != newSubnet.Spec.U2OInterconnectionIP) {
 		klog.V(3).Infof("enqueue update subnet %s", key)
 
@@ -374,23 +375,23 @@ func (c *Controller) syncSubnetFinalizer(cl client.Client) error {
 	})
 }
 
-func (c *Controller) handleSubnetFinalizer(subnet *kubeovnv1.Subnet) (bool, error) {
+func (c *Controller) handleSubnetFinalizer(subnet *kubeovnv1.Subnet) (*kubeovnv1.Subnet, bool, error) {
 	if subnet.DeletionTimestamp.IsZero() && len(subnet.GetFinalizers()) == 0 {
 		newSubnet := subnet.DeepCopy()
 		controllerutil.AddFinalizer(newSubnet, util.KubeOVNControllerFinalizer)
 		patch, err := util.GenerateMergePatchPayload(subnet, newSubnet)
 		if err != nil {
 			klog.Errorf("failed to generate patch payload for subnet '%s', %v", subnet.Name, err)
-			return false, err
+			return newSubnet, false, err
 		}
-		if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(context.Background(), subnet.Name,
-			types.MergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
+		patchSubnet, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(context.Background(), subnet.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
+		if err != nil {
 			klog.Errorf("failed to add finalizer to subnet %s, %v", subnet.Name, err)
-			return false, err
+			return patchSubnet, false, err
 		}
 		// wait local cache ready
 		time.Sleep(1 * time.Second)
-		return false, nil
+		return patchSubnet, false, nil
 	}
 
 	usingIPs := subnet.Status.V4UsingIPs
@@ -405,16 +406,16 @@ func (c *Controller) handleSubnetFinalizer(subnet *kubeovnv1.Subnet) (bool, erro
 		patch, err := util.GenerateMergePatchPayload(subnet, newSubnet)
 		if err != nil {
 			klog.Errorf("failed to generate patch payload for subnet '%s', %v", subnet.Name, err)
-			return false, err
+			return newSubnet, false, err
 		}
 		if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(context.Background(), subnet.Name,
 			types.MergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
 			klog.Errorf("failed to remove finalizer from subnet %s, %v", subnet.Name, err)
-			return false, err
+			return newSubnet, false, err
 		}
-		return true, nil
+		return newSubnet, true, nil
 	}
-	return false, nil
+	return subnet, false, nil
 }
 
 func (c Controller) patchSubnetStatus(subnet *kubeovnv1.Subnet, reason, errStr string) error {
@@ -656,7 +657,7 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		return err
 	}
 
-	deleted, err := c.handleSubnetFinalizer(subnet)
+	subnet, deleted, err := c.handleSubnetFinalizer(subnet)
 	if err != nil {
 		klog.Errorf("handle subnet finalizer failed %v", err)
 		return err
@@ -1185,14 +1186,60 @@ func (c *Controller) reconcileNamespaces(subnet *kubeovnv1.Subnet) error {
 		return err
 	}
 
+	expectNss, err := c.getNamespacesBySelector(subnet.Spec.NamespaceSelector)
+	if err != nil {
+		klog.Errorf("failed to list namespaces by selector, %v", err)
+		return err
+	}
+
 	for _, ns := range namespaces {
-		// when subnet cidr changed, the ns annotation with the subnet should be updated
 		if ns.Annotations != nil && slices.Contains(strings.Split(ns.Annotations[util.LogicalSwitchAnnotation], ","), subnet.Name) {
-			c.addNamespaceQueue.Add(ns.Name)
+			// ns deleted from subnet.Spec.Namespaces
+			if !slices.Contains(subnet.Spec.Namespaces, ns.Name) ||
+				// when subnet cidr changed, the ns annotation with the subnet should be updated
+				!slices.Contains(strings.Split(ns.Annotations[util.CidrAnnotation], ";"), subnet.Spec.CIDRBlock) ||
+				// subnet delete namespaceSelector which match the checked namespace
+				!slices.Contains(expectNss, ns.Name) {
+				c.addNamespaceQueue.Add(ns.Name)
+			}
 		}
 	}
 
+	// 3. subnet select namespaces with NamespaceSelector
+	for _, expectNs := range expectNss {
+		checkNs, err := c.namespacesLister.Get(expectNs)
+		if err != nil && !k8serrors.IsNotFound(err) {
+			klog.Error(err)
+			return err
+		}
+		if checkNs.Annotations != nil && slices.Contains(strings.Split(checkNs.Annotations[util.LogicalSwitchAnnotation], ","), subnet.Name) {
+			continue
+		}
+		c.addNamespaceQueue.Add(expectNs)
+	}
+
 	return nil
+}
+
+func (c *Controller) getNamespacesBySelector(nsSelectors []metav1.LabelSelector) ([]string, error) {
+	var expectNss []string
+	for _, nsSelector := range nsSelectors {
+		matchSelector, err := mergeSelector(nsSelector)
+		if err != nil {
+			klog.Errorf("failed to merge selector, %v", err)
+			return expectNss, err
+		}
+
+		nss, err := c.namespacesLister.List(matchSelector)
+		if err != nil {
+			klog.Errorf("failed to list namespaces by selector, %v", err)
+			return expectNss, err
+		}
+		for _, ns := range nss {
+			expectNss = append(expectNss, ns.Name)
+		}
+	}
+	return expectNss, nil
 }
 
 func (c *Controller) reconcileCustomVpcBfdStaticRoute(vpcName, subnetName string) error {

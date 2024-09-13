@@ -20,8 +20,8 @@ package v1
 
 import (
 	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/client-go/listers"
 	"k8s.io/client-go/tools/cache"
 )
 
@@ -39,10 +39,30 @@ type QoSPolicyLister interface {
 
 // qoSPolicyLister implements the QoSPolicyLister interface.
 type qoSPolicyLister struct {
-	listers.ResourceIndexer[*v1.QoSPolicy]
+	indexer cache.Indexer
 }
 
 // NewQoSPolicyLister returns a new QoSPolicyLister.
 func NewQoSPolicyLister(indexer cache.Indexer) QoSPolicyLister {
-	return &qoSPolicyLister{listers.New[*v1.QoSPolicy](indexer, v1.Resource("qospolicy"))}
+	return &qoSPolicyLister{indexer: indexer}
+}
+
+// List lists all QoSPolicies in the indexer.
+func (s *qoSPolicyLister) List(selector labels.Selector) (ret []*v1.QoSPolicy, err error) {
+	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
+		ret = append(ret, m.(*v1.QoSPolicy))
+	})
+	return ret, err
+}
+
+// Get retrieves the QoSPolicy from the index for a given name.
+func (s *qoSPolicyLister) Get(name string) (*v1.QoSPolicy, error) {
+	obj, exists, err := s.indexer.GetByKey(name)
+	if err != nil {
+		return nil, err
+	}
+	if !exists {
+		return nil, errors.NewNotFound(v1.Resource("qospolicy"), name)
+	}
+	return obj.(*v1.QoSPolicy), nil
 }

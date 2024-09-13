@@ -20,13 +20,14 @@ package v1
 
 import (
 	"context"
+	"time"
 
 	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	scheme "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/scheme"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	types "k8s.io/apimachinery/pkg/types"
 	watch "k8s.io/apimachinery/pkg/watch"
-	gentype "k8s.io/client-go/gentype"
+	rest "k8s.io/client-go/rest"
 )
 
 // QoSPoliciesGetter has a method to return a QoSPolicyInterface.
@@ -39,7 +40,6 @@ type QoSPoliciesGetter interface {
 type QoSPolicyInterface interface {
 	Create(ctx context.Context, qoSPolicy *v1.QoSPolicy, opts metav1.CreateOptions) (*v1.QoSPolicy, error)
 	Update(ctx context.Context, qoSPolicy *v1.QoSPolicy, opts metav1.UpdateOptions) (*v1.QoSPolicy, error)
-	// Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
 	UpdateStatus(ctx context.Context, qoSPolicy *v1.QoSPolicy, opts metav1.UpdateOptions) (*v1.QoSPolicy, error)
 	Delete(ctx context.Context, name string, opts metav1.DeleteOptions) error
 	DeleteCollection(ctx context.Context, opts metav1.DeleteOptions, listOpts metav1.ListOptions) error
@@ -52,18 +52,133 @@ type QoSPolicyInterface interface {
 
 // qoSPolicies implements QoSPolicyInterface
 type qoSPolicies struct {
-	*gentype.ClientWithList[*v1.QoSPolicy, *v1.QoSPolicyList]
+	client rest.Interface
 }
 
 // newQoSPolicies returns a QoSPolicies
 func newQoSPolicies(c *KubeovnV1Client) *qoSPolicies {
 	return &qoSPolicies{
-		gentype.NewClientWithList[*v1.QoSPolicy, *v1.QoSPolicyList](
-			"qos-policies",
-			c.RESTClient(),
-			scheme.ParameterCodec,
-			"",
-			func() *v1.QoSPolicy { return &v1.QoSPolicy{} },
-			func() *v1.QoSPolicyList { return &v1.QoSPolicyList{} }),
+		client: c.RESTClient(),
 	}
+}
+
+// Get takes name of the qoSPolicy, and returns the corresponding qoSPolicy object, and an error if there is any.
+func (c *qoSPolicies) Get(ctx context.Context, name string, options metav1.GetOptions) (result *v1.QoSPolicy, err error) {
+	result = &v1.QoSPolicy{}
+	err = c.client.Get().
+		Resource("qos-policies").
+		Name(name).
+		VersionedParams(&options, scheme.ParameterCodec).
+		Do(ctx).
+		Into(result)
+	return
+}
+
+// List takes label and field selectors, and returns the list of QoSPolicies that match those selectors.
+func (c *qoSPolicies) List(ctx context.Context, opts metav1.ListOptions) (result *v1.QoSPolicyList, err error) {
+	var timeout time.Duration
+	if opts.TimeoutSeconds != nil {
+		timeout = time.Duration(*opts.TimeoutSeconds) * time.Second
+	}
+	result = &v1.QoSPolicyList{}
+	err = c.client.Get().
+		Resource("qos-policies").
+		VersionedParams(&opts, scheme.ParameterCodec).
+		Timeout(timeout).
+		Do(ctx).
+		Into(result)
+	return
+}
+
+// Watch returns a watch.Interface that watches the requested qoSPolicies.
+func (c *qoSPolicies) Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error) {
+	var timeout time.Duration
+	if opts.TimeoutSeconds != nil {
+		timeout = time.Duration(*opts.TimeoutSeconds) * time.Second
+	}
+	opts.Watch = true
+	return c.client.Get().
+		Resource("qos-policies").
+		VersionedParams(&opts, scheme.ParameterCodec).
+		Timeout(timeout).
+		Watch(ctx)
+}
+
+// Create takes the representation of a qoSPolicy and creates it.  Returns the server's representation of the qoSPolicy, and an error, if there is any.
+func (c *qoSPolicies) Create(ctx context.Context, qoSPolicy *v1.QoSPolicy, opts metav1.CreateOptions) (result *v1.QoSPolicy, err error) {
+	result = &v1.QoSPolicy{}
+	err = c.client.Post().
+		Resource("qos-policies").
+		VersionedParams(&opts, scheme.ParameterCodec).
+		Body(qoSPolicy).
+		Do(ctx).
+		Into(result)
+	return
+}
+
+// Update takes the representation of a qoSPolicy and updates it. Returns the server's representation of the qoSPolicy, and an error, if there is any.
+func (c *qoSPolicies) Update(ctx context.Context, qoSPolicy *v1.QoSPolicy, opts metav1.UpdateOptions) (result *v1.QoSPolicy, err error) {
+	result = &v1.QoSPolicy{}
+	err = c.client.Put().
+		Resource("qos-policies").
+		Name(qoSPolicy.Name).
+		VersionedParams(&opts, scheme.ParameterCodec).
+		Body(qoSPolicy).
+		Do(ctx).
+		Into(result)
+	return
+}
+
+// UpdateStatus was generated because the type contains a Status member.
+// Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
+func (c *qoSPolicies) UpdateStatus(ctx context.Context, qoSPolicy *v1.QoSPolicy, opts metav1.UpdateOptions) (result *v1.QoSPolicy, err error) {
+	result = &v1.QoSPolicy{}
+	err = c.client.Put().
+		Resource("qos-policies").
+		Name(qoSPolicy.Name).
+		SubResource("status").
+		VersionedParams(&opts, scheme.ParameterCodec).
+		Body(qoSPolicy).
+		Do(ctx).
+		Into(result)
+	return
+}
+
+// Delete takes name of the qoSPolicy and deletes it. Returns an error if one occurs.
+func (c *qoSPolicies) Delete(ctx context.Context, name string, opts metav1.DeleteOptions) error {
+	return c.client.Delete().
+		Resource("qos-policies").
+		Name(name).
+		Body(&opts).
+		Do(ctx).
+		Error()
+}
+
+// DeleteCollection deletes a collection of objects.
+func (c *qoSPolicies) DeleteCollection(ctx context.Context, opts metav1.DeleteOptions, listOpts metav1.ListOptions) error {
+	var timeout time.Duration
+	if listOpts.TimeoutSeconds != nil {
+		timeout = time.Duration(*listOpts.TimeoutSeconds) * time.Second
+	}
+	return c.client.Delete().
+		Resource("qos-policies").
+		VersionedParams(&listOpts, scheme.ParameterCodec).
+		Timeout(timeout).
+		Body(&opts).
+		Do(ctx).
+		Error()
+}
+
+// Patch applies the patch and returns the patched qoSPolicy.
+func (c *qoSPolicies) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *v1.QoSPolicy, err error) {
+	result = &v1.QoSPolicy{}
+	err = c.client.Patch(pt).
+		Resource("qos-policies").
+		Name(name).
+		SubResource(subresources...).
+		VersionedParams(&opts, scheme.ParameterCodec).
+		Body(data).
+		Do(ctx).
+		Into(result)
+	return
 }

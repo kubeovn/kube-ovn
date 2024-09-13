@@ -170,7 +170,8 @@ type SubnetSpec struct {
 	EnableEcmp           bool   `json:"enableEcmp,omitempty"`
 	EnableMulticastSnoop bool   `json:"enableMulticastSnoop,omitempty"`
 
-	RouteTable string `json:"routeTable,omitempty"`
+	RouteTable        string                 `json:"routeTable,omitempty"`
+	NamespaceSelector []metav1.LabelSelector `json:"namespaceSelector,omitempty"`
 }
 
 type ACL struct {
