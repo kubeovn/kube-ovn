@@ -2,12 +2,12 @@ package util
 
 import (
 	"net"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/vishvananda/netlink"
+	"golang.org/x/sys/unix"
 )
 
 func TestMacEqual(t *testing.T) {
@@ -54,11 +54,8 @@ func TestMacEqual(t *testing.T) {
 }
 
 func TestArpResolve(t *testing.T) {
-	if runtime.GOOS == "darwin" && runtime.GOARCH == "arm64" {
-		t.Skip("Skipping test on macOS ARM64")
-	}
 	// get the default route gw and nic
-	routes, err := netlink.RouteList(nil, 0)
+	routes, err := netlink.RouteList(nil, unix.AF_UNSPEC)
 	if err != nil {
 		t.Fatalf("failed to get routes: %v", err)
 	}
