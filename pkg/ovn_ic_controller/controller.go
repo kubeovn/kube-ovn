@@ -92,6 +92,7 @@ func NewController(config *Configuration) *Controller {
 		config.OvnTimeout,
 		config.OvsDbConnectTimeout,
 		config.OvsDbInactivityTimeout,
+		60,
 	); err != nil {
 		util.LogFatalAndExit(err, "failed to create ovn nb client")
 	}
@@ -100,6 +101,7 @@ func NewController(config *Configuration) *Controller {
 		config.OvnTimeout,
 		config.OvsDbConnectTimeout,
 		config.OvsDbInactivityTimeout,
+		60,
 	); err != nil {
 		util.LogFatalAndExit(err, "failed to create ovn sb client")
 	}
