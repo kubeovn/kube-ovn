@@ -10,10 +10,13 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
+
+	"github.com/scylladb/go-set/strset"
 
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -63,15 +66,23 @@ func (c *Controller) enqueueUpdateNamespace(oldObj, newObj interface{}) {
 		if c.config.EnableANP {
 			c.updateAnpsByLabelsMatch(newObj.(*v1.Namespace).Labels, nil)
 		}
+
+		expectSubnets, err := c.getNsExpectSubnets(newNs)
+		if err != nil {
+			klog.Errorf("failed to list expected subnets for namespace %s, %v", newNs.Name, err)
+			return
+		}
+
+		expectSubnetsSet := strset.New(expectSubnets...)
+		existSubnetsSet := strset.New(strings.Split(newNs.Annotations[util.LogicalSwitchAnnotation], ",")...)
+		if !expectSubnetsSet.IsEqual(existSubnetsSet) {
+			c.addNamespaceQueue.Add(newNs.Name)
+		}
 	}
 
 	// in case annotations are removed by other controllers
 	if newNs.Annotations == nil || newNs.Annotations[util.LogicalSwitchAnnotation] == "" {
 		klog.Warningf("no logical switch annotation for ns %s", newNs.Name)
-		c.addNamespaceQueue.Add(newNs.Name)
-	}
-
-	if newNs.Annotations != nil && newNs.Annotations[util.LogicalSwitchAnnotation] != "" && !reflect.DeepEqual(oldNs.Annotations, newNs.Annotations) {
 		c.addNamespaceQueue.Add(newNs.Name)
 	}
 }
@@ -114,6 +125,26 @@ func (c *Controller) handleAddNamespace(key string) error {
 				break
 			}
 		}
+
+		// bind subnet with namespaceLabelSeletcor which select the namespace
+		for _, nsSelector := range s.Spec.NamespaceSelectors {
+			matchSelector, err := mergeSelector(nsSelector)
+			if err != nil {
+				klog.Errorf("failed to merge selector, %v", err)
+				return err
+			}
+
+			if matchSelector.Matches(labels.Set(namespace.Labels)) {
+				if slices.Contains(lss, s.Name) {
+					break
+				}
+				lss = append(lss, s.Name)
+				cidrs = append(cidrs, s.Spec.CIDRBlock)
+				excludeIps = append(excludeIps, strings.Join(s.Spec.ExcludeIps, ","))
+				break
+			}
+		}
+
 		// check if subnet is in custom vpc with configured defaultSubnet, then annotate the namespace with this subnet
 		if s.Spec.Vpc != "" && s.Spec.Vpc != c.config.ClusterRouter {
 			vpc, err := c.vpcsLister.Get(s.Spec.Vpc)
@@ -197,4 +228,49 @@ func (c *Controller) handleAddNamespace(key string) error {
 		klog.Errorf("patch namespace %s failed %v", key, err)
 	}
 	return err
+}
+
+func mergeSelector(nsSelector metav1.LabelSelector) (labels.Selector, error) {
+	matchSelector := labels.Set(nsSelector.MatchLabels).AsSelector()
+	for _, express := range nsSelector.MatchExpressions {
+		selectorRequirement, err := labels.NewRequirement(express.Key, selection.Operator(strings.ToLower(string(express.Operator))), express.Values)
+		if err != nil {
+			klog.Errorf("failed to get MatchExpressions selector, %v", err)
+			return matchSelector, err
+		}
+		matchSelector = matchSelector.Add(*selectorRequirement)
+	}
+	return matchSelector, nil
+}
+
+func (c *Controller) getNsExpectSubnets(newNs *v1.Namespace) ([]string, error) {
+	var expectSubnets []string
+
+	subnets, err := c.subnetsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list subnets %v", err)
+		return expectSubnets, err
+	}
+	for _, subnet := range subnets {
+		// ns labels match subnet's selector
+		for _, nsSelector := range subnet.Spec.NamespaceSelectors {
+			matchSelector, err := mergeSelector(nsSelector)
+			if err != nil {
+				klog.Errorf("failed to merge selector, %v", err)
+				return expectSubnets, err
+			}
+
+			if matchSelector.Matches(labels.Set(newNs.Labels)) {
+				expectSubnets = append(expectSubnets, subnet.Name)
+				break
+			}
+		}
+
+		// ns included in subnet's namespaces
+		if slices.Contains(subnet.Spec.Namespaces, newNs.Name) && !slices.Contains(expectSubnets, subnet.Name) {
+			expectSubnets = append(expectSubnets, subnet.Name)
+		}
+	}
+
+	return expectSubnets, nil
 }

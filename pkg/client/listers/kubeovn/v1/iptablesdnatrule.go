@@ -20,8 +20,8 @@ package v1
 
 import (
 	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/client-go/listers"
 	"k8s.io/client-go/tools/cache"
 )
 
@@ -39,10 +39,30 @@ type IptablesDnatRuleLister interface {
 
 // iptablesDnatRuleLister implements the IptablesDnatRuleLister interface.
 type iptablesDnatRuleLister struct {
-	listers.ResourceIndexer[*v1.IptablesDnatRule]
+	indexer cache.Indexer
 }
 
 // NewIptablesDnatRuleLister returns a new IptablesDnatRuleLister.
 func NewIptablesDnatRuleLister(indexer cache.Indexer) IptablesDnatRuleLister {
-	return &iptablesDnatRuleLister{listers.New[*v1.IptablesDnatRule](indexer, v1.Resource("iptablesdnatrule"))}
+	return &iptablesDnatRuleLister{indexer: indexer}
+}
+
+// List lists all IptablesDnatRules in the indexer.
+func (s *iptablesDnatRuleLister) List(selector labels.Selector) (ret []*v1.IptablesDnatRule, err error) {
+	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
+		ret = append(ret, m.(*v1.IptablesDnatRule))
+	})
+	return ret, err
+}
+
+// Get retrieves the IptablesDnatRule from the index for a given name.
+func (s *iptablesDnatRuleLister) Get(name string) (*v1.IptablesDnatRule, error) {
+	obj, exists, err := s.indexer.GetByKey(name)
+	if err != nil {
+		return nil, err
+	}
+	if !exists {
+		return nil, errors.NewNotFound(v1.Resource("iptablesdnatrule"), name)
+	}
+	return obj.(*v1.IptablesDnatRule), nil
 }
