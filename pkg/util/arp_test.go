@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/vishvananda/netlink"
+	"golang.org/x/sys/unix"
 )
 
 func TestMacEqual(t *testing.T) {
@@ -54,7 +55,7 @@ func TestMacEqual(t *testing.T) {
 
 func TestArpResolve(t *testing.T) {
 	// get the default route gw and nic
-	routes, err := netlink.RouteList(nil, netlink.FAMILY_ALL)
+	routes, err := netlink.RouteList(nil, unix.AF_UNSPEC)
 	if err != nil {
 		t.Fatalf("failed to get routes: %v", err)
 	}
