@@ -21,7 +21,7 @@ func mockNBGlobal() *ovnnb.NBGlobal {
 func (suite *OvnClientTestSuite) testGetNbGlobal() {
 	t := suite.T()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 
 	t.Cleanup(func() {
 		err := ovnClient.DeleteNbGlobal()
@@ -50,7 +50,7 @@ func (suite *OvnClientTestSuite) testGetNbGlobal() {
 func (suite *OvnClientTestSuite) testUpdateNbGlobal() {
 	t := suite.T()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 
 	t.Cleanup(func() {
 		err := ovnClient.DeleteNbGlobal()
@@ -97,7 +97,7 @@ func (suite *OvnClientTestSuite) testUpdateNbGlobal() {
 func (suite *OvnClientTestSuite) testSetAzName() {
 	t := suite.T()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 
 	t.Cleanup(func() {
 		err := ovnClient.DeleteNbGlobal()
@@ -133,7 +133,7 @@ func (suite *OvnClientTestSuite) testSetAzName() {
 func (suite *OvnClientTestSuite) testSetICAutoRoute() {
 	t := suite.T()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 
 	t.Cleanup(func() {
 		err := ovnClient.DeleteNbGlobal()
@@ -173,7 +173,7 @@ func (suite *OvnClientTestSuite) testSetICAutoRoute() {
 func (suite *OvnClientTestSuite) testSetUseCtInvMatch() {
 	t := suite.T()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 
 	t.Cleanup(func() {
 		err := ovnClient.DeleteNbGlobal()
@@ -198,7 +198,7 @@ func (suite *OvnClientTestSuite) testSetUseCtInvMatch() {
 func (suite *OvnClientTestSuite) testSetLBCIDR() {
 	t := suite.T()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	serviceCIDR := "10.96.0.0/12"
 
 	t.Cleanup(func() {

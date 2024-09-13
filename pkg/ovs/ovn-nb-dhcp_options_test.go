@@ -30,7 +30,7 @@ func (suite *OvnClientTestSuite) testUpdateDHCPOptions() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lsName := "test-update-dhcp-opt-ls"
 	subnet := mockSubnet(lsName, true)
 
@@ -68,7 +68,7 @@ func (suite *OvnClientTestSuite) testUpdateDHCPv4Options() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lsName := "test-update-v4-dhcp-opt-ls"
 	cidr := "192.168.30.0/24"
 	gateway := "192.168.30.1"
@@ -138,7 +138,7 @@ func (suite *OvnClientTestSuite) testUpdateDHCPv6Options() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lsName := "test-update-v6-dhcp-opt-ls"
 	cidr := "fd00::c0a8:6e01/120"
 	var serverID string
@@ -196,7 +196,7 @@ func (suite *OvnClientTestSuite) testDeleteDHCPOptionsByUUIDs() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lsName := "test-del-dhcp-opt-uuid-ls"
 	v4CidrBlock := []string{"192.168.30.0/24", "192.168.40.0/24", "192.168.50.0/24"}
 	uuidList := make([]string, 0)
@@ -226,7 +226,7 @@ func (suite *OvnClientTestSuite) testDeleteDHCPOptions() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lsName := "test-del-dhcp-opt-ls"
 	v4CidrBlock := []string{"192.168.30.0/24", "192.168.40.0/24", "192.168.50.0/24"}
 	v6CidrBlock := []string{"fd00::c0a8:6401/120", "fd00::c0a8:6e01/120"}
@@ -285,7 +285,7 @@ func (suite *OvnClientTestSuite) testGetDHCPOptions() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lsName := "test-get-dhcp-opt-ls"
 
 	t.Run("ipv4 dhcp options", func(t *testing.T) {
@@ -342,7 +342,7 @@ func (suite *OvnClientTestSuite) testListDHCPOptions() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lsName := "test-list-dhcp-opt-ls"
 	v4CidrBlock := []string{"192.168.30.0/24", "192.168.40.0/24", "192.168.50.0/24"}
 

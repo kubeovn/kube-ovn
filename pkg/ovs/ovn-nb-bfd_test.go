@@ -13,7 +13,7 @@ func (suite *OvnClientTestSuite) testCreateBFD() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	dstIP := "192.168.124.1"
 	minRx, minTx, detectMult := 101, 102, 19
 
@@ -59,7 +59,7 @@ func (suite *OvnClientTestSuite) testListBFD() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lrpName := "test-list-bfd"
 	dstIP1 := "192.168.124.2"
 	dstIP2 := "192.168.124.3"
@@ -102,7 +102,7 @@ func (suite *OvnClientTestSuite) testDeleteBFD() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lrpName := "test-del-bfd"
 	dstIP1 := "192.168.124.4"
 	dstIP2 := "192.168.124.5"
@@ -150,7 +150,7 @@ func (suite *OvnClientTestSuite) testListDownBFDs() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lrpName := "test-list-down-bfd"
 	dstIP1 := "192.168.124.6"
 	dstIP2 := "192.168.124.7"
@@ -232,7 +232,7 @@ func (suite *OvnClientTestSuite) testListUpBFDs() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lrpName := "test-list-up-bfd"
 	dstIP1 := "192.168.124.11"
 	dstIP2 := "192.168.124.12"
@@ -296,7 +296,7 @@ func (suite *OvnClientTestSuite) testIsLrpBfdUp() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 
 	dstIP := "192.168.124.15"
 	minRx, minTx, detectMult := 101, 102, 19
@@ -370,7 +370,7 @@ func (suite *OvnClientTestSuite) testBfdAddL3HAHandler() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 
 	t.Run("BFD status is nil", func(t *testing.T) {
 		t.Parallel()
@@ -465,7 +465,7 @@ func (suite *OvnClientTestSuite) testBfdUpdateL3HAHandler() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 
 	t.Run("BFD status change with wrong table", func(t *testing.T) {
 		t.Parallel()
@@ -610,7 +610,7 @@ func (suite *OvnClientTestSuite) testBfdDelL3HAHandler() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 
 	t.Run("BFD deletion with wrong table", func(t *testing.T) {
 		t.Parallel()

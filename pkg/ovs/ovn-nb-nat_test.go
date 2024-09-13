@@ -29,7 +29,7 @@ func (suite *OvnClientTestSuite) testCreateNats() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lrName := "test-create-nats-lr"
 	externalIPs := []string{"192.168.30.254", "192.168.30.253"}
 	logicalIPs := []string{"10.250.0.4", "10.250.0.5"}
@@ -81,7 +81,7 @@ func (suite *OvnClientTestSuite) testUpdateSnat() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lrName := "test-update-snat-lr"
 	externalIP := "192.168.30.254"
 	logicalIP := "10.250.0.4"
@@ -118,7 +118,7 @@ func (suite *OvnClientTestSuite) testUpdateDnatAndSnat() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lrName := "test-update-dnat-and-snat-lr"
 	lspName := "test-update-dnat-and-snat-lrp"
 	externalIP := "192.168.30.254"
@@ -189,7 +189,7 @@ func (suite *OvnClientTestSuite) testDeleteNat() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lrName := "test-del-nat-lr"
 	externalIP := "192.168.30.254"
 	logicalIP := "10.250.0.4"
@@ -244,7 +244,7 @@ func (suite *OvnClientTestSuite) testDeleteNats() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lrName := "test-del-nats-lr"
 	externalIPs := []string{"192.168.30.254", "192.168.30.253"}
 	logicalIPs := []string{"10.250.0.4", "10.250.0.5"}
@@ -375,7 +375,7 @@ func (suite *OvnClientTestSuite) testGetNat() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lrName := "test_get_nat_lr"
 
 	err := ovnClient.CreateLogicalRouter(lrName)
@@ -431,7 +431,7 @@ func (suite *OvnClientTestSuite) testNewNat() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lrName := "test-new-nat-lr"
 	natType := "snat"
 	externalIP := "192.168.30.254"

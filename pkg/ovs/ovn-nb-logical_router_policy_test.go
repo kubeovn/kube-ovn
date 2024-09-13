@@ -26,7 +26,7 @@ func (suite *OvnClientTestSuite) testAddLogicalRouterPolicy() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lrName := "test-add-policy-lr"
 	priority := 11011
 	match := "ip4.src == $ovn.default.lm2_ip4"
@@ -55,7 +55,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalRouterPolicies() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lrName := "test-create-policies-lr"
 	priority := 11011
 	basePort := 12300
@@ -94,7 +94,7 @@ func (suite *OvnClientTestSuite) testDeleteLogicalRouterPolicy() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lrName := "test-del-policy-lr"
 	priority := 11012
 	match := "ip4.src == $ovn.default.lm2_ip4"
@@ -132,7 +132,7 @@ func (suite *OvnClientTestSuite) testDeleteLogicalRouterPolicies() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lrName := "test-clear-policies-lr"
 	basePriority := 12100
 	match := "ip4.src == $ovn.default.lm2_ip4"
@@ -200,7 +200,7 @@ func (suite *OvnClientTestSuite) testClearLogicalRouterPolicy() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lrName := "test-clear-policy-lr"
 	basePriority := 11012
 	match := "ip4.src == $ovn.default.lm2_ip4"
@@ -244,7 +244,7 @@ func (suite *OvnClientTestSuite) testGetLogicalRouterPolicy() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lrName := "test_get_policy_lr"
 	priority := 11000
 	match := "ip4.src == $ovn.default.lm2_ip4"
@@ -294,7 +294,7 @@ func (suite *OvnClientTestSuite) testNewLogicalRouterPolicy() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lrName := "test-new-policy-lr"
 	priority := 10000
 	match := "ip4.src == $ovn.default.lm2_ip4"

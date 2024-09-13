@@ -17,7 +17,7 @@ func (suite *OvnClientTestSuite) testCreatePortGroup() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 
 	t.Run("create new port group", func(t *testing.T) {
 		pgName := "test-create-new-pg"
@@ -81,7 +81,7 @@ func (suite *OvnClientTestSuite) testPortGroupResetPorts() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lsName := "test-reset-pg-ports-ls"
 	pgName := "test-reset-pg-ports-pg"
 	prefix := "test-reset-pg-ports-lsp"
@@ -124,7 +124,7 @@ func (suite *OvnClientTestSuite) testPortGroupUpdatePorts() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	pgName := "test-add-ports-to-pg"
 	lsName := "test-add-ports-to-ls"
 	prefix := "test-add-lsp"
@@ -197,7 +197,7 @@ func (suite *OvnClientTestSuite) testDeletePortGroup() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	pgName := "test-delete-pg"
 
 	t.Run("no err when delete existent port group", func(t *testing.T) {
@@ -223,7 +223,7 @@ func (suite *OvnClientTestSuite) testGetGetPortGroup() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	pgName := "test-get-pg"
 
 	err := ovnClient.CreatePortGroup(pgName, map[string]string{
@@ -257,7 +257,7 @@ func (suite *OvnClientTestSuite) testListPortGroups() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 
 	t.Run("result should exclude pg when externalIDs's length is not equal", func(t *testing.T) {
 		pgName := "test-list-pg-mismatch-length"
@@ -339,7 +339,7 @@ func (suite *OvnClientTestSuite) testPortGroupUpdatePortOp() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	pgName := "test-update-port-op-pg"
 	lspUUIDs := []string{ovsclient.NamedUUID(), ovsclient.NamedUUID()}
 
@@ -407,7 +407,7 @@ func (suite *OvnClientTestSuite) testPortGroupUpdateACLOp() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	pgName := "test-update-acl-op-pg"
 	aclUUIDs := []string{ovsclient.NamedUUID(), ovsclient.NamedUUID()}
 
@@ -475,7 +475,7 @@ func (suite *OvnClientTestSuite) testPortGroupOp() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	pgName := "test-port-op-pg"
 
 	err := ovnClient.CreatePortGroup(pgName, map[string]string{
@@ -540,7 +540,7 @@ func (suite *OvnClientTestSuite) testPortGroupRemovePorts() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	pgName := "test-remove-ports-pg"
 	lsName := "test-remove-ports-ls"
 	prefix := "test-remove-lsp"
@@ -623,7 +623,7 @@ func (suite *OvnClientTestSuite) testUpdatePortGroup() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 
 	t.Run("update external_ids", func(t *testing.T) {
 		pgName := "test-update-external"
@@ -758,7 +758,7 @@ func (suite *OvnClientTestSuite) testPortGroupSetPorts() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	pgName := "test-set-ports-pg"
 	lsName := "test-set-ports-ls"
 	prefix := "test-set-lsp"

@@ -20,7 +20,7 @@ func (suite *OvnClientTestSuite) testCreateAddressSet() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	asName := "test_create_as"
 
 	t.Run("create address set", func(t *testing.T) {
@@ -71,7 +71,7 @@ func (suite *OvnClientTestSuite) testAddressSetUpdateAddress() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	asName := "test_update_address_as"
 	addresses := []string{"1.2.3.4", "1.2.3.6", "1.2.3.7"}
 
@@ -169,7 +169,7 @@ func (suite *OvnClientTestSuite) testDeleteAddressSet() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	asName := "test_delete_as"
 
 	t.Run("no err when delete existent address set", func(t *testing.T) {
@@ -196,7 +196,7 @@ func (suite *OvnClientTestSuite) testDeleteAddressSets() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	pgName := "test-del-ass-pg"
 	asPrefix := "test_del_ass"
 	externalIDs := map[string]string{sgKey: pgName}
@@ -233,7 +233,7 @@ func (suite *OvnClientTestSuite) testListAddressSets() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 
 	asName := "test_list_as_exist_key"
 
@@ -325,7 +325,7 @@ func (suite *OvnClientTestSuite) testUpdateAddressSet() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 
 	t.Run("update with nil address set", func(t *testing.T) {
 		err := ovnClient.UpdateAddressSet(nil)

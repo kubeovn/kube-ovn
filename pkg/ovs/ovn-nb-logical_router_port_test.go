@@ -29,7 +29,7 @@ func (suite *OvnClientTestSuite) testCreatePeerRouterPort() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	localLrName := "test-create-peer-lr-local"
 	remoteLrName := "test-create-peer-lr-remote"
 	localRouterPort := fmt.Sprintf("%s-%s", localLrName, remoteLrName)
@@ -70,7 +70,7 @@ func (suite *OvnClientTestSuite) testUpdateLogicalRouterPortRA() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lrpName := "test-update-ra-lrp"
 	lrName := "test-update-ra-lr"
 
@@ -137,7 +137,7 @@ func (suite *OvnClientTestSuite) testUpdateLogicalRouterPortOptions() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lrpName := "test-update-lrp-opt"
 	lrName := "test-update-lrp-opt-lr"
 	options := map[string]string{
@@ -192,7 +192,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalRouterPort() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lrName := "test-create-lrp-lr"
 
 	err := ovnClient.CreateLogicalRouter(lrName)
@@ -259,7 +259,7 @@ func (suite *OvnClientTestSuite) testUpdateLogicalRouterPort() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lrpName := "test-update-lrp"
 	lrName := "test-update-lrp-lr"
 
@@ -300,7 +300,7 @@ func (suite *OvnClientTestSuite) testDeleteLogicalRouterPorts() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	prefix := "test-del-ports-lrp"
 	lrName := "test-del-ports-lr"
 
@@ -338,7 +338,7 @@ func (suite *OvnClientTestSuite) testDeleteLogicalRouterPort() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lrpName := "test-delete-port-lrp"
 	lrName := "test-delete-port-lr"
 
@@ -374,7 +374,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalRouterPortOp() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lrpName := "test-create-op-lrp"
 	lrName := "test-create-op-lr"
 
@@ -455,7 +455,7 @@ func (suite *OvnClientTestSuite) testDeleteLogicalRouterPortOp() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lrpName := "test-del-op-lrp"
 	lrName := "test-del-op-lr"
 
@@ -492,7 +492,7 @@ func (suite *OvnClientTestSuite) testLogicalRouterPortOp() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lrName := "test-op-lrp-lr"
 	lrpName := "test-op-lrp-lrp"
 

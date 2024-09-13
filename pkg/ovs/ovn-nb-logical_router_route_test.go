@@ -14,7 +14,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalRouterStaticRoutes() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lrName := "test-create-routes-lr"
 	routeTable := util.MainRouteTable
 	policy := ovnnb.LogicalRouterStaticRoutePolicyDstIP
@@ -50,7 +50,7 @@ func (suite *OvnClientTestSuite) testAddLogicalRouterStaticRoute() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lrName := "test-add-route-lr"
 	routeTable := util.MainRouteTable
 	policy := ovnnb.LogicalRouterStaticRoutePolicyDstIP
@@ -136,7 +136,7 @@ func (suite *OvnClientTestSuite) testDeleteLogicalRouterStaticRoute() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lrName := "test-del-route-lr"
 	routeTable := util.MainRouteTable
 	policy := ovnnb.LogicalRouterStaticRoutePolicyDstIP
@@ -216,7 +216,7 @@ func (suite *OvnClientTestSuite) testClearLogicalRouterStaticRoute() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lrName := "test-clear-route-lr"
 	routeTable := util.MainRouteTable
 	policy := ovnnb.LogicalRouterStaticRoutePolicyDstIP
@@ -258,7 +258,7 @@ func (suite *OvnClientTestSuite) testGetLogicalRouterStaticRoute() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lrName := "test_get_route_lr"
 	routeTable := util.MainRouteTable
 
@@ -320,7 +320,7 @@ func (suite *OvnClientTestSuite) testListLogicalRouterStaticRoutes() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lrName := "test-list-routes-lr"
 	routeTable := util.MainRouteTable
 	policy := ovnnb.LogicalRouterStaticRoutePolicyDstIP
@@ -352,7 +352,7 @@ func (suite *OvnClientTestSuite) testNewLogicalRouterStaticRoute() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lrName := "test-new-route-lr"
 	routeTable := util.MainRouteTable
 	policy := ovnnb.LogicalRouterStaticRoutePolicyDstIP

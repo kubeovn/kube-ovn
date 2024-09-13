@@ -17,7 +17,7 @@ func (suite *OvnClientTestSuite) testAddLoadBalancerHealthCheck() {
 	t.Parallel()
 
 	var (
-		ovnClient        = suite.ovnClient
+		ovnClient        = suite.ovnNBClient
 		lbName           = "test-create-lb-hc"
 		vip              = "1.1.1.1:80"
 		lbhc, lbhcRepeat *ovnnb.LoadBalancerHealthCheck
@@ -52,7 +52,7 @@ func (suite *OvnClientTestSuite) testUpdateLoadBalancerHealthCheck() {
 	t.Parallel()
 
 	var (
-		ovnClient = suite.ovnClient
+		ovnClient = suite.ovnNBClient
 		lbName    = "test-update-lb-hc"
 		vip       = "2.2.2.2:80"
 		lbhc      *ovnnb.LoadBalancerHealthCheck
@@ -89,7 +89,7 @@ func (suite *OvnClientTestSuite) testDeleteLoadBalancerHealthCheck() {
 	t.Parallel()
 
 	var (
-		ovnClient = suite.ovnClient
+		ovnClient = suite.ovnNBClient
 		lbName    = "test-del-lb-hc"
 		vip       = "1.1.1.11:80"
 		err       error
@@ -113,7 +113,7 @@ func (suite *OvnClientTestSuite) testDeleteLoadBalancerHealthChecks() {
 	t.Parallel()
 
 	var (
-		ovnClient    = suite.ovnClient
+		ovnClient    = suite.ovnNBClient
 		lbNamePrefix = "test-del-lb-hcs"
 		vipFormat    = "5.5.5.%d:80"
 		lbhc         *ovnnb.LoadBalancerHealthCheck
@@ -164,7 +164,7 @@ func (suite *OvnClientTestSuite) testGetLoadBalancerHealthCheck() {
 	t.Parallel()
 
 	var (
-		ovnClient      = suite.ovnClient
+		ovnClient      = suite.ovnNBClient
 		lbName         = "test-get-lb-hc"
 		vip            = "1.1.1.22:80"
 		vipNonExistent = "1.1.1.33:80"
@@ -209,7 +209,7 @@ func (suite *OvnClientTestSuite) testListLoadBalancerHealthChecks() {
 	t.Parallel()
 
 	var (
-		ovnClient    = suite.ovnClient
+		ovnClient    = suite.ovnNBClient
 		lbNamePrefix = "test-list-lb-hcs"
 		vipFormat    = "6.6.6.%d:80"
 		vips         []string
@@ -283,7 +283,7 @@ func (suite *OvnClientTestSuite) testDeleteLoadBalancerHealthCheckOp() {
 	t.Parallel()
 
 	var (
-		ovnClient      = suite.ovnClient
+		ovnClient      = suite.ovnNBClient
 		lbName         = "test-del-lb-hc-op"
 		vip            = "1.1.1.44:80"
 		vipNonExistent = "1.1.1.55:80"
