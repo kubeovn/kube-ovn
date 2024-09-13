@@ -805,6 +805,14 @@ func (suite *OvnClientTestSuite) Test_GetEntityInfo() {
 	suite.testGetEntityInfo()
 }
 
+func (suite *OvnClientTestSuite) Test_NewOvnNbClient() {
+	suite.testNewOvnNbClient()
+}
+
+func (suite *OvnClientTestSuite) Test_NewOvnSbClient() {
+	suite.testNewOvnSbClient()
+}
+
 func Test_scratch(t *testing.T) {
 	t.SkipNow()
 	endpoint := "tcp:[172.20.149.35]:6641"
