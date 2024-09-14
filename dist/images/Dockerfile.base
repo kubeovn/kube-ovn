@@ -1,4 +1,6 @@
 # syntax = docker/dockerfile:experimental
+ARG GO_VERSION
+
 FROM ubuntu:24.04 AS ovs-builder
 
 ARG ARCH
@@ -86,6 +88,24 @@ RUN mkdir /packages/ && \
     cp /usr/src/ovn-*deb /packages && \
     cd /packages && rm -f *source* *doc* *datapath* *docker* *vtep* *test* *dev*
 
+FROM ghcr.io/aquasecurity/trivy:latest AS trivy
+
+ARG ARCH
+ENV CNI_VERSION="v1.5.1"
+ENV KUBE_VERSION="v1.31.1"
+ENV GOBGP_VERSION="3.29.0"
+
+RUN apk --no-cache add curl jq
+ADD go-deps/download-go-deps.sh /
+RUN sh -x /download-go-deps.sh
+
+FROM golang:$GO_VERSION-alpine AS go-deps
+
+RUN apk --no-cache add bash curl jq
+ADD go-deps/rebuild-go-deps.sh /
+RUN --mount=type=bind,target=/trivy,from=trivy,source=/godeps \
+    bash -x /rebuild-go-deps.sh
+
 FROM ubuntu:24.04
 
 ARG DEBIAN_FRONTEND=noninteractive
@@ -122,24 +142,15 @@ ARG DUMB_INIT_VERSION="1.2.5"
 RUN curl -sSf -L --retry 5 -o /usr/bin/dumb-init https://github.com/Yelp/dumb-init/releases/download/v${DUMB_INIT_VERSION}/dumb-init_${DUMB_INIT_VERSION}_$(arch) && \
     chmod +x /usr/bin/dumb-init
 
-ARG ARCH
-ARG CNI_VERSION=v1.5.1
-RUN curl -sSf -L --retry 5 https://github.com/containernetworking/plugins/releases/download/${CNI_VERSION}/cni-plugins-linux-${ARCH}-${CNI_VERSION}.tgz | tar -xz -C . ./loopback ./portmap ./macvlan
-
-ARG KUBE_VERSION="v1.31.1"
-
-RUN curl -L https://dl.k8s.io/${KUBE_VERSION}/kubernetes-client-linux-${ARCH}.tar.gz | tar -xz -C . && cp ./kubernetes/client/bin/kubectl /usr/bin/kubectl \
- && chmod +x /usr/bin/kubectl && rm -rf ./kubernetes
-
 ARG BFDD_VERSION="v0.5.4"
 RUN curl -sSf -L --retry 3 -o /usr/local/bin/bfdd-control https://github.com/bobz965/bfd-binary-for-kube-ovn-cni/releases/download/${BFDD_VERSION}/bfdd-control && \
     curl -sSf -L --retry 3 -o /usr/local/bin/bfdd-beacon https://github.com/bobz965/bfd-binary-for-kube-ovn-cni/releases/download/${BFDD_VERSION}/bfdd-beacon && \
     chmod +x /usr/local/bin/bfdd-control /usr/local/bin/bfdd-beacon && \
     setcap CAP_NET_BIND_SERVICE+eip $(readlink -f $(which bfdd-beacon))
 
-ARG GOBGP_VERSION="3.31.0"
-RUN curl -sSf -L --retry 5 https://github.com/bobz965/gobgp/releases/download/v${GOBGP_VERSION}/gobgp_${GOBGP_VERSION}_linux_${ARCH}.tar.gz | tar -xz -C /usr/bin gobgp && \
-    chmod +x /usr/bin/gobgp
+RUN --mount=type=bind,target=/godeps,from=go-deps,source=/godeps \
+    cp /godeps/loopback /godeps/portmap /godeps/macvlan ./ && \
+    cp /godeps/kubectl /godeps/gobgp /usr/bin/
 
 ARG DEBUG=false
 
