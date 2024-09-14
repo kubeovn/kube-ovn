@@ -62,6 +62,56 @@ func (suite *OvnClientTestSuite) testUpdateDHCPOptions() {
 		_, err = ovnClient.GetDHCPOptions(lsName, "IPv6", false)
 		require.ErrorContains(t, err, "not found")
 	})
+
+	t.Run("update gateway when enabling dhcp and u2o", func(t *testing.T) {
+		subnet.Spec.EnableDHCP = true
+		subnet.Spec.U2OInterconnection = true
+		subnet.Status.U2OInterconnectionIP = "10.244.0.2,fc00::0af4:02"
+
+		_, err := ovnClient.UpdateDHCPOptions(subnet, 1500)
+		require.NoError(t, err)
+
+		v4DHCPOpt, err := ovnClient.GetDHCPOptions(lsName, "IPv4", false)
+		require.NoError(t, err)
+		require.Equal(t, v4DHCPOpt.Options["router"], "10.244.0.2")
+
+		v6DHCPOpt, err := ovnClient.GetDHCPOptions(lsName, "IPv6", false)
+		require.NoError(t, err)
+		require.Equal(t, v6DHCPOpt.Options["router"], "")
+	})
+
+	t.Run("update ipv4 dhcp options", func(t *testing.T) {
+		subnet.Spec.U2OInterconnection = false
+		subnet.Spec.CIDRBlock = "10.244.0.0/16"
+		subnet.Spec.Gateway = "10.244.0.1"
+		subnet.Spec.Protocol = kubeovnv1.ProtocolIPv4
+
+		uuid, err := ovnClient.UpdateDHCPOptions(subnet, 1500)
+		require.NoError(t, err)
+
+		v4DHCPOpt, err := ovnClient.GetDHCPOptions(lsName, "IPv4", false)
+		require.NoError(t, err)
+		require.Equal(t, uuid.DHCPv4OptionsUUID, v4DHCPOpt.UUID)
+	})
+
+	t.Run("update ipv6 dhcp options", func(t *testing.T) {
+		subnet.Spec.CIDRBlock = "fc00::af4:0/112"
+		subnet.Spec.Gateway = "fc00::0af4:01"
+		subnet.Spec.Protocol = kubeovnv1.ProtocolIPv6
+
+		uuid, err := ovnClient.UpdateDHCPOptions(subnet, 1500)
+		require.NoError(t, err)
+
+		v6DHCPOpt, err := ovnClient.GetDHCPOptions(lsName, "IPv6", false)
+		require.NoError(t, err)
+		require.Equal(t, uuid.DHCPv6OptionsUUID, v6DHCPOpt.UUID)
+	})
+
+	t.Run("update dhcp options with nil input", func(t *testing.T) {
+		err := ovnClient.updateDHCPOptions(nil)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "dhcp_options is nil")
+	})
 }
 
 func (suite *OvnClientTestSuite) testUpdateDHCPv4Options() {
@@ -132,6 +182,39 @@ func (suite *OvnClientTestSuite) testUpdateDHCPv4Options() {
 			"mtu":        "1500",
 		}, dhcpOpt.Options)
 	})
+
+	t.Run("update dhcp options with invalid cidr", func(t *testing.T) {
+		_, err := ovnClient.updateDHCPv4Options(lsName, "", gateway, "", 1500)
+		require.ErrorContains(t, err, "must be a valid ipv4 address")
+	})
+
+	t.Run("update dhcp options with invalid lsName", func(t *testing.T) {
+		_, err := ovnClient.updateDHCPv4Options("", cidr, gateway, "", 1500)
+		require.ErrorContains(t, err, "the logical router name is required")
+	})
+
+	t.Run("append necessary options to new options", func(t *testing.T) {
+		options := "router=192.168.30.1"
+		err := ovnClient.CreateDHCPOptions(lsName+"-1", cidr, options)
+		require.NoError(t, err)
+
+		uuid, err := ovnClient.updateDHCPv4Options(lsName+"-1", cidr, gateway, "dns_server=8.8.8.8", 1500)
+		require.NoError(t, err)
+
+		dhcpOpt, err := ovnClient.GetDHCPOptions(lsName+"-1", "IPv4", false)
+		require.NoError(t, err)
+
+		require.Equal(t, uuid, dhcpOpt.UUID)
+		require.Equal(t, cidr, dhcpOpt.Cidr)
+		require.Equal(t, map[string]string{
+			"dns_server": "8.8.8.8",
+			"lease_time": "",
+			"router":     "192.168.30.1",
+			"server_id":  "",
+			"server_mac": "",
+			"mtu":        "",
+		}, dhcpOpt.Options)
+	})
 }
 
 func (suite *OvnClientTestSuite) testUpdateDHCPv6Options() {
@@ -188,6 +271,35 @@ func (suite *OvnClientTestSuite) testUpdateDHCPv6Options() {
 		require.Equal(t, cidr, dhcpOpt.Cidr)
 		require.Equal(t, map[string]string{
 			"server_id": serverID,
+		}, dhcpOpt.Options)
+	})
+
+	t.Run("update dhcp options with invalid cidr", func(t *testing.T) {
+		_, err := ovnClient.updateDHCPv6Options(lsName, "", "")
+		require.ErrorContains(t, err, "must be a valid ipv6 address")
+	})
+
+	t.Run("update dhcp options with invalid lsName", func(t *testing.T) {
+		_, err := ovnClient.updateDHCPv6Options("", cidr, "")
+		require.ErrorContains(t, err, "the logical router name is required")
+	})
+
+	t.Run("append necessary options to new options", func(t *testing.T) {
+		options := fmt.Sprintf("server_id=%s", "00:00:00:55:22:33")
+		err := ovnClient.CreateDHCPOptions(lsName+"-1", cidr, options)
+		require.NoError(t, err)
+
+		uuid, err := ovnClient.updateDHCPv6Options(lsName+"-1", cidr, "dns_server=fc00::0af4:01")
+		require.NoError(t, err)
+
+		dhcpOpt, err := ovnClient.GetDHCPOptions(lsName+"-1", "IPv6", false)
+		require.NoError(t, err)
+
+		require.Equal(t, uuid, dhcpOpt.UUID)
+		require.Equal(t, cidr, dhcpOpt.Cidr)
+		require.Equal(t, map[string]string{
+			"dns_server": "fc00::0af4:01",
+			"server_id":  "00:00:00:55:22:33",
 		}, dhcpOpt.Options)
 	})
 }
@@ -336,6 +448,23 @@ func (suite *OvnClientTestSuite) testGetDHCPOptions() {
 		_, err = ovnClient.GetDHCPOptions(lsName, protocol, false)
 		require.ErrorContains(t, err, "protocol must be IPv4 or IPv6")
 	})
+
+	t.Run("duplicate dhcp options", func(t *testing.T) {
+		cidr := "192.168.30.0/24"
+		err := ovnClient.CreateDHCPOptions(lsName, cidr, "")
+		require.NoError(t, err)
+		cidr = "fd00::c0a8:6901/120"
+		err = ovnClient.CreateDHCPOptions(lsName, cidr, "")
+		require.NoError(t, err)
+
+		protocol := kubeovnv1.ProtocolIPv4
+		_, err = ovnClient.GetDHCPOptions(lsName, protocol, false)
+		require.ErrorContains(t, err, "more than one IPv4 dhcp options in logical switch")
+
+		protocol = kubeovnv1.ProtocolIPv6
+		_, err = ovnClient.GetDHCPOptions(lsName, protocol, false)
+		require.ErrorContains(t, err, "more than one IPv6 dhcp options in logical switch")
+	})
 }
 
 func (suite *OvnClientTestSuite) testListDHCPOptions() {
@@ -463,5 +592,90 @@ func (suite *OvnClientTestSuite) testDhcpOptionsFilter() {
 		})
 
 		require.False(t, filterFunc(dhcpOpt))
+	})
+}
+
+func (suite *OvnClientTestSuite) testCreateDHCPOptions() {
+	t := suite.T()
+	t.Parallel()
+
+	ovnClient := suite.ovnClient
+	lsName := "test-create-dhcp-opt-ls"
+
+	t.Run("create valid IPv4 DHCP options", func(t *testing.T) {
+		cidr := "192.168.60.0/24"
+		options := "router=192.168.60.1,dns_server=8.8.8.8"
+		err := ovnClient.CreateDHCPOptions(lsName, cidr, options)
+		require.NoError(t, err)
+
+		dhcpOpt, err := ovnClient.GetDHCPOptions(lsName, kubeovnv1.ProtocolIPv4, false)
+		require.NoError(t, err)
+		require.Equal(t, cidr, dhcpOpt.Cidr)
+		require.Contains(t, dhcpOpt.Options, "router")
+		require.Contains(t, dhcpOpt.Options, "dns_server")
+	})
+
+	t.Run("create valid IPv6 DHCP options", func(t *testing.T) {
+		cidr := "fd00::c0a8:7001/120"
+		options := "server_id=00:00:00:00:00:01"
+		err := ovnClient.CreateDHCPOptions(lsName, cidr, options)
+		require.NoError(t, err)
+
+		dhcpOpt, err := ovnClient.GetDHCPOptions(lsName, kubeovnv1.ProtocolIPv6, false)
+		require.NoError(t, err)
+		require.Equal(t, cidr, dhcpOpt.Cidr)
+		require.Contains(t, dhcpOpt.Options, "server_id")
+	})
+
+	t.Run("create DHCP options with invalid CIDR", func(t *testing.T) {
+		cidr := "invalid-cidr"
+		err := ovnClient.CreateDHCPOptions(lsName, cidr, "")
+		require.Error(t, err)
+	})
+
+	t.Run("create DHCP options with empty logical switch name", func(t *testing.T) {
+		cidr := "192.168.70.0/24"
+		err := ovnClient.CreateDHCPOptions("", cidr, "")
+		require.Error(t, err)
+	})
+}
+
+func (suite *OvnClientTestSuite) testDHCPOptionsExists() {
+	t := suite.T()
+	t.Parallel()
+
+	ovnClient := suite.ovnClient
+	lsName := "test-dhcp-opt-exists-ls"
+
+	t.Run("DHCP options exist", func(t *testing.T) {
+		cidr := "192.168.80.0/24"
+		err := ovnClient.CreateDHCPOptions(lsName, cidr, "")
+		require.NoError(t, err)
+
+		exists, err := ovnClient.DHCPOptionsExists(lsName, "IPv4")
+		require.NoError(t, err)
+		require.True(t, exists)
+	})
+
+	t.Run("DHCP options do not exist", func(t *testing.T) {
+		exists, err := ovnClient.DHCPOptionsExists(lsName+"-1", "IPv4")
+		require.NoError(t, err)
+		require.False(t, exists)
+	})
+
+	t.Run("DHCP options exist for IPv6", func(t *testing.T) {
+		cidr := "fd00::c0a8:8001/120"
+		err := ovnClient.CreateDHCPOptions(lsName, cidr, "")
+		require.NoError(t, err)
+
+		exists, err := ovnClient.DHCPOptionsExists(lsName, "IPv6")
+		require.NoError(t, err)
+		require.True(t, exists)
+	})
+
+	t.Run("DHCP options do not exist for IPv6", func(t *testing.T) {
+		exists, err := ovnClient.DHCPOptionsExists(lsName+"-1", "IPv6")
+		require.NoError(t, err)
+		require.False(t, exists)
 	})
 }

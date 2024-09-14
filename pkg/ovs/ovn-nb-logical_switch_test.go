@@ -65,6 +65,17 @@ func (suite *OvnClientTestSuite) testCreateLogicalSwitch() {
 		require.Equal(t, mac, lrp.MAC)
 	})
 
+	t.Run("don't update networks when logical switch exist and randomAllocateGW is true", func(t *testing.T) {
+		err = ovnClient.CreateLogicalSwitch(lsName, lrName, "192.168.2.0/24,fd00::c0a8:6400/120", "192.168.2.1,fd00::c0a8:6401", mac, true, true)
+		require.NoError(t, err)
+
+		lrp, err := ovnClient.GetLogicalRouterPort(lrpName, false)
+		require.NoError(t, err)
+		require.NotNil(t, lrp)
+		require.ElementsMatch(t, []string{"192.168.2.1/24", "fd00::c0a8:9901/120"}, lrp.Networks)
+		require.Equal(t, mac, lrp.MAC)
+	})
+
 	t.Run("remove router type port when needRouter is false", func(t *testing.T) {
 		err = ovnClient.CreateLogicalSwitch(lsName, lrName, "192.168.2.0/24,fd00::c0a8:9900/120", "192.168.2.1,fd00::c0a8:9901", "", false, false)
 		require.NoError(t, err)
@@ -73,6 +84,16 @@ func (suite *OvnClientTestSuite) testCreateLogicalSwitch() {
 	t.Run("should no err when router type port doest't exist", func(t *testing.T) {
 		err = ovnClient.CreateLogicalSwitch(lsName+"-1", lrName+"-1", "192.168.2.0/24,fd00::c0a8:9900/120", "192.168.2.1,fd00::c0a8:9901", "", false, false)
 		require.NoError(t, err)
+	})
+
+	t.Run("create logical switch when logical switch does't exist and needRouter is false and randomAllocateGW is false", func(t *testing.T) {
+		err = ovnClient.CreateLogicalSwitch(lsName+"-2", lrName+"-2", "192.168.2.0/24,fd00::c0a8:9900/120", "192.168.2.1,fd00::c0a8:9901", "", false, true)
+		require.NoError(t, err)
+	})
+
+	t.Run("create logical switch using invalid gateway and cidrBlock", func(t *testing.T) {
+		err = ovnClient.CreateLogicalSwitch(lsName, lrName, "192.168.2.0/24,fd00::c0a8:6400/120", "192.168.2.1", mac, true, false)
+		require.ErrorContains(t, err, "ip 192.168.2.1 should be dualstack")
 	})
 }
 
@@ -219,6 +240,17 @@ func (suite *OvnClientTestSuite) testLogicalSwitchUpdateLoadBalancers() {
 		err = ovnClient.LogicalSwitchUpdateLoadBalancers(lsName, ovsdb.MutateOperationDelete, []string{"test-del-lb-non-existent", "test-del-lb-non-existent-1"}...)
 		require.NoError(t, err)
 	})
+
+	t.Run("update with empty load balancer list", func(t *testing.T) {
+		err := ovnClient.LogicalSwitchUpdateLoadBalancers(lsName, ovsdb.MutateOperationInsert)
+		require.NoError(t, err)
+	})
+
+	t.Run("update load balancers for non-existent logical switch", func(t *testing.T) {
+		err := ovnClient.LogicalSwitchUpdateLoadBalancers("non-existent-ls", ovsdb.MutateOperationInsert, lbNames...)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "not found logical switch")
+	})
 }
 
 func (suite *OvnClientTestSuite) testDeleteLogicalSwitch() {
@@ -353,6 +385,7 @@ func (suite *OvnClientTestSuite) testLogicalSwitchUpdatePortOp() {
 	ovnClient := suite.ovnClient
 	lsName := "test-update-port-op-ls"
 	lspName := "test-update-port-op-lsp"
+	lspUUID := ovsclient.NamedUUID()
 
 	err := ovnClient.CreateBareLogicalSwitch(lsName)
 	require.NoError(t, err)
@@ -387,6 +420,46 @@ func (suite *OvnClientTestSuite) testLogicalSwitchUpdatePortOp() {
 		t.Parallel()
 		_, err := ovnClient.LogicalSwitchUpdatePortOp("test-update-port-op-ls-non-existent", uuid.NewString(), ovsdb.MutateOperationInsert)
 		require.ErrorContains(t, err, "not found logical switch")
+	})
+
+	t.Run("update port with empty lspUUID", func(t *testing.T) {
+		ops, err := ovnClient.LogicalSwitchUpdatePortOp(lsName, "", ovsdb.MutateOperationInsert)
+		require.NoError(t, err)
+		require.Nil(t, ops)
+	})
+
+	t.Run("delete port from non-existent logical switch", func(t *testing.T) {
+		_, err := ovnClient.LogicalSwitchUpdatePortOp("", ovsclient.NamedUUID(), ovsdb.MutateOperationDelete)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "no LS found for LSP")
+	})
+
+	t.Run("delete port with multiple logical switches", func(t *testing.T) {
+		lsName2 := "test-update-port-op-ls2"
+		err := ovnClient.CreateBareLogicalSwitch(lsName2)
+		require.NoError(t, err)
+
+		lspName := "test-lsp-multiple"
+		err = ovnClient.CreateBareLogicalSwitchPort(lsName, lspName, "unknown", "")
+		require.NoError(t, err)
+
+		lsp, err := ovnClient.GetLogicalSwitchPort(lspName, false)
+		require.NoError(t, err)
+
+		err = ovnClient.LogicalSwitchAddPort(lsName2, lspName)
+		require.NoError(t, err)
+
+		_, err = ovnClient.LogicalSwitchUpdatePortOp("", lsp.UUID, ovsdb.MutateOperationDelete)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "multiple LS found for LSP")
+	})
+
+	t.Run("insert port operation", func(t *testing.T) {
+		ops, err := ovnClient.LogicalSwitchUpdatePortOp(lsName, lspUUID, ovsdb.MutateOperationInsert)
+		require.NoError(t, err)
+		require.NotNil(t, ops)
+		require.Len(t, ops, 1)
+		require.Equal(t, ovsdb.MutateOperationInsert, ops[0].Mutations[0].Mutator)
 	})
 }
 
@@ -583,4 +656,94 @@ func (suite *OvnClientTestSuite) testLogicalSwitchOp() {
 			},
 		},
 	}, ops[0].Mutations)
+}
+
+func (suite *OvnClientTestSuite) testCreateBareLogicalSwitch() {
+	t := suite.T()
+	t.Parallel()
+
+	ovnClient := suite.ovnClient
+	lsName := "test-create-bare-ls"
+
+	t.Run("create new logical switch", func(t *testing.T) {
+		err := ovnClient.CreateBareLogicalSwitch(lsName)
+		require.NoError(t, err)
+
+		ls, err := ovnClient.GetLogicalSwitch(lsName, false)
+		require.NoError(t, err)
+		require.Equal(t, lsName, ls.Name)
+		require.Equal(t, util.CniTypeName, ls.ExternalIDs["vendor"])
+	})
+
+	t.Run("create existing logical switch", func(t *testing.T) {
+		err := ovnClient.CreateBareLogicalSwitch(lsName)
+		require.NoError(t, err)
+
+		ls, err := ovnClient.GetLogicalSwitch(lsName, false)
+		require.NoError(t, err)
+		require.Equal(t, lsName, ls.Name)
+	})
+}
+
+func (suite *OvnClientTestSuite) testLogicalSwitchUpdateOtherConfig() {
+	t := suite.T()
+	t.Parallel()
+
+	ovnClient := suite.ovnClient
+	lsName := "test-update-other-config-ls"
+
+	err := ovnClient.CreateBareLogicalSwitch(lsName)
+	require.NoError(t, err)
+
+	t.Run("update other config with insert operation", func(t *testing.T) {
+		otherConfig := map[string]string{"key1": "value1", "key2": "value2"}
+		err := ovnClient.LogicalSwitchUpdateOtherConfig(lsName, ovsdb.MutateOperationInsert, otherConfig)
+		require.NoError(t, err)
+
+		ls, err := ovnClient.GetLogicalSwitch(lsName, false)
+		require.NoError(t, err)
+		require.Equal(t, otherConfig["key1"], ls.OtherConfig["key1"])
+		require.Equal(t, otherConfig["key2"], ls.OtherConfig["key2"])
+	})
+
+	t.Run("update other config with delete operation", func(t *testing.T) {
+		otherConfig := map[string]string{"key1": "value1"}
+		err := ovnClient.LogicalSwitchUpdateOtherConfig(lsName, ovsdb.MutateOperationDelete, otherConfig)
+		require.NoError(t, err)
+
+		ls, err := ovnClient.GetLogicalSwitch(lsName, false)
+		require.NoError(t, err)
+		_, exists := ls.OtherConfig["key1"]
+		require.False(t, exists)
+		require.Equal(t, "value2", ls.OtherConfig["key2"])
+	})
+
+	t.Run("update other config with empty map", func(t *testing.T) {
+		err := ovnClient.LogicalSwitchUpdateOtherConfig(lsName, ovsdb.MutateOperationInsert, map[string]string{})
+		require.NoError(t, err)
+	})
+
+	t.Run("update other config for non-existent logical switch", func(t *testing.T) {
+		otherConfig := map[string]string{"key3": "value3"}
+		err := ovnClient.LogicalSwitchUpdateOtherConfig("non-existent-ls", ovsdb.MutateOperationInsert, otherConfig)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "not found logical switch")
+	})
+}
+
+func (suite *OvnClientTestSuite) testLogicalSwitchUpdateOtherConfigOp() {
+	t := suite.T()
+	t.Parallel()
+
+	ovnClient := suite.ovnClient
+	lsName := "test-update-other-config-op-ls"
+
+	err := ovnClient.CreateBareLogicalSwitch(lsName)
+	require.NoError(t, err)
+
+	t.Run("empty other_config map", func(t *testing.T) {
+		ops, err := ovnClient.LogicalSwitchUpdateOtherConfigOp(lsName, map[string]string{}, ovsdb.MutateOperationInsert)
+		require.NoError(t, err)
+		require.Nil(t, ops)
+	})
 }
