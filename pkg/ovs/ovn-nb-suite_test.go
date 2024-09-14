@@ -76,6 +76,26 @@ func (suite *OvnClientTestSuite) Test_SetLBCIDR() {
 	suite.testSetLBCIDR()
 }
 
+func (suite *OvnClientTestSuite) Test_SetOVNIPSec() {
+	suite.testSetOVNIPSec()
+}
+
+func (suite *OvnClientTestSuite) Test_SetNbGlobalOptions() {
+	suite.testSetNbGlobalOptions()
+}
+
+func (suite *OvnClientTestSuite) Test_SetLsDnatModDlDst() {
+	suite.testSetLsDnatModDlDst()
+}
+
+func (suite *OvnClientTestSuite) Test_SetLsCtSkipDstLportIPs() {
+	suite.testSetLsCtSkipDstLportIPs()
+}
+
+func (suite *OvnClientTestSuite) Test_SetNodeLocalDNSIP() {
+	suite.testSetNodeLocalDNSIP()
+}
+
 /* logical_switch unit test */
 func (suite *OvnClientTestSuite) Test_CreateLogicalSwitch() {
 	suite.testCreateLogicalSwitch()
@@ -119,6 +139,18 @@ func (suite *OvnClientTestSuite) Test_logicalSwitchUpdateAclOp() {
 
 func (suite *OvnClientTestSuite) Test_LogicalSwitchOp() {
 	suite.testLogicalSwitchOp()
+}
+
+func (suite *OvnClientTestSuite) Test_CreateBareLogicalSwitch() {
+	suite.testCreateBareLogicalSwitch()
+}
+
+func (suite *OvnClientTestSuite) Test_LogicalSwitchUpdateOtherConfig() {
+	suite.testLogicalSwitchUpdateOtherConfig()
+}
+
+func (suite *OvnClientTestSuite) Test_LogicalSwitchUpdateOtherConfigOp() {
+	suite.testLogicalSwitchUpdateOtherConfigOp()
 }
 
 /* logical_switch_port unit test */
@@ -725,6 +757,14 @@ func (suite *OvnClientTestSuite) Test_ListDHCPOptions() {
 
 func (suite *OvnClientTestSuite) Test_dhcpOptionsFilter() {
 	suite.testDhcpOptionsFilter()
+}
+
+func (suite *OvnClientTestSuite) Test_CreateDHCPOptions() {
+	suite.testCreateDHCPOptions()
+}
+
+func (suite *OvnClientTestSuite) Test_DHCPOptionsExists() {
+	suite.testDHCPOptionsExists()
 }
 
 /* mixed operations unit test */

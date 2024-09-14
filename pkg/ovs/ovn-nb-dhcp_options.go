@@ -153,7 +153,7 @@ func (c *OVNNbClient) updateDHCPv6Options(lsName, cidr, options string) (uuid st
 
 	protocol := util.CheckProtocol(cidr)
 	if protocol != kubeovnv1.ProtocolIPv6 {
-		return "", fmt.Errorf("cidr %s must be a valid ipv4 address", cidr)
+		return "", fmt.Errorf("cidr %s must be a valid ipv6 address", cidr)
 	}
 
 	dhcpOpt, err := c.GetDHCPOptions(lsName, protocol, true)
@@ -317,8 +317,8 @@ func (c *OVNNbClient) ListDHCPOptions(needVendorFilter bool, externalIDs map[str
 	return dhcpOptList, nil
 }
 
-func (c *OVNNbClient) DHCPOptionsExists(lsName, cidr string) (bool, error) {
-	dhcpOpt, err := c.GetDHCPOptions(lsName, cidr, true)
+func (c *OVNNbClient) DHCPOptionsExists(lsName, protocol string) (bool, error) {
+	dhcpOpt, err := c.GetDHCPOptions(lsName, protocol, true)
 	return dhcpOpt != nil, err
 }
 
