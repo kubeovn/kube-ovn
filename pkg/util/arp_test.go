@@ -1,6 +1,7 @@
 package util
 
 import (
+	"errors"
 	"net"
 	"strings"
 	"testing"
@@ -56,6 +57,9 @@ func TestMacEqual(t *testing.T) {
 func TestArpResolve(t *testing.T) {
 	// get the default route gw and nic
 	routes, err := netlink.RouteList(nil, unix.AF_UNSPEC)
+	if errors.Is(err, netlink.ErrNotImplemented) {
+		return // skip if not implemented
+	}
 	if err != nil {
 		t.Fatalf("failed to get routes: %v", err)
 	}
