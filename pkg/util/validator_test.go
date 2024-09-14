@@ -276,7 +276,7 @@ func TestValidateSubnet(t *testing.T) {
 			asubnet: kubeovnv1.Subnet{
 				TypeMeta: metav1.TypeMeta{Kind: "Subnet", APIVersion: "kubeovn.io/v1"},
 				ObjectMeta: metav1.ObjectMeta{
-					Name: "ut-logicalGateway-U2OInterconnection-sametime-true-err",
+					Name: "ut-logical-gateway-u2o-interconnection-sametime-true-err",
 				},
 				Spec: kubeovnv1.SubnetSpec{
 					Default:            true,
@@ -296,11 +296,11 @@ func TestValidateSubnet(t *testing.T) {
 			err: "logicalGateway and u2oInterconnection can't be opened at the same time",
 		},
 		{
-			name: "InvalidateNatOutgoingPolicyRulesCaseErr",
+			name: "ValidateNatOutgoingPolicyRulesErr",
 			asubnet: kubeovnv1.Subnet{
 				TypeMeta: metav1.TypeMeta{Kind: "Subnet", APIVersion: "kubeovn.io/v1"},
 				ObjectMeta: metav1.ObjectMeta{
-					Name: "utest-invalidatenatoutgoingpolicyrulescaseerr",
+					Name: "ut-validate-nat-outgoing-policy-rules-err",
 				},
 				Spec: kubeovnv1.SubnetSpec{
 					Default:     true,
@@ -324,11 +324,11 @@ func TestValidateSubnet(t *testing.T) {
 			err: "validate nat policy rules src ips 2001:db8::/32,192.168.0.1/24 failed with err match ips 2001:db8::/32,192.168.0.1/24 protocol is not consistent",
 		},
 		{
-			name: "U2OInterconnectionIPUpperCaseErr",
+			name: "U2oInterconnectionIpUppercaseErr",
 			asubnet: kubeovnv1.Subnet{
 				TypeMeta: metav1.TypeMeta{Kind: "Subnet", APIVersion: "kubeovn.io/v1"},
 				ObjectMeta: metav1.ObjectMeta{
-					Name: "utest-u2ointerconnectionipuppercaseerr",
+					Name: "ut-u2o-interconnection-ip-uppercase-err",
 				},
 				Spec: kubeovnv1.SubnetSpec{
 					Default:              true,
@@ -344,14 +344,14 @@ func TestValidateSubnet(t *testing.T) {
 				},
 				Status: kubeovnv1.SubnetStatus{},
 			},
-			err: "subnet utest-u2ointerconnectionipuppercaseerr U2O interconnection ip 2001:dB8::2 v6 ip address can not contain upper case",
+			err: "subnet ut-u2o-interconnection-ip-uppercase-err U2O interconnection ip 2001:dB8::2 v6 ip address can not contain upper case",
 		},
 		{
-			name: "U2OInterconnectionIPNotInCIDRCaseErr",
+			name: "U2oInterConnectionIpNotInCidrErr",
 			asubnet: kubeovnv1.Subnet{
 				TypeMeta: metav1.TypeMeta{Kind: "Subnet", APIVersion: "kubeovn.io/v1"},
 				ObjectMeta: metav1.ObjectMeta{
-					Name: "utest-u2ointerconnectionipnotincidrcaseerr",
+					Name: "ut-u2o-interconnection-ip-not-in-cidr-err",
 				},
 				Spec: kubeovnv1.SubnetSpec{
 					Default:              true,
@@ -367,7 +367,7 @@ func TestValidateSubnet(t *testing.T) {
 				},
 				Status: kubeovnv1.SubnetStatus{},
 			},
-			err: "u2oInterconnectionIP 3001:db8::2 is not in subnet utest-u2ointerconnectionipnotincidrcaseerr cidr 2001:db8::/32",
+			err: "u2oInterconnectionIP 3001:db8::2 is not in subnet ut-u2o-interconnection-ip-not-in-cidr-err cidr 2001:db8::/32",
 		},
 		{
 			name: "GatewayErr",
@@ -574,7 +574,7 @@ func TestValidateSubnet(t *testing.T) {
 			asubnet: kubeovnv1.Subnet{
 				TypeMeta: metav1.TypeMeta{Kind: "Subnet", APIVersion: "kubeovn.io/v1"},
 				ObjectMeta: metav1.ObjectMeta{
-					Name: "ut-allowsubnets-uppercase-err",
+					Name: "ut-allow-subnets-uppercase-err",
 				},
 				Spec: kubeovnv1.SubnetSpec{
 					Default:      true,
@@ -591,7 +591,7 @@ func TestValidateSubnet(t *testing.T) {
 				},
 				Status: kubeovnv1.SubnetStatus{},
 			},
-			err: "subnet ut-allowsubnets-uppercase-err allow subnet 2001:dB8::/32 v6 ip address can not contain upper case",
+			err: "subnet ut-allow-subnets-uppercase-err allow subnet 2001:dB8::/32 v6 ip address can not contain upper case",
 		},
 		{
 			name: "gatewaytypeErr",
