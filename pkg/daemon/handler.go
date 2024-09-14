@@ -501,7 +501,7 @@ func (csh cniServerHandler) handleDel(req *restful.Request, resp *restful.Respon
 		case podRequest.VhostUserSocketVolumeName != "":
 			nicType = util.DpdkType
 		default:
-			nicType = "veth-pair"
+			nicType = util.VethType
 		}
 	}
 
