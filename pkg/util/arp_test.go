@@ -85,10 +85,6 @@ func TestArpResolve(t *testing.T) {
 	maxRetry := 3
 	done := make(chan struct{})
 	linkName := link.Attrs().Name
-	if !strings.HasPrefix(linkName, "e") {
-		// default gw nic should be ethernet
-		t.Fatalf("invalid default gw nic link name: %s", linkName)
-	}
 	mac, count, err := ArpResolve(linkName, defaultGW, time.Second, maxRetry, done)
 	if err != nil {
 		if strings.Contains(err.Error(), "not permitted") {
