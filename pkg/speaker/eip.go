@@ -47,7 +47,7 @@ func (c *Controller) announceEIPs(eips []*v1.IptablesEIP) error {
 			addExpectedPrefix(eip.Spec.V4ip, expectedPrefixes)
 		}
 
-		if eip.Spec.V4ip != "" { // If we have an IPv6, add it to prefixes we should be announcing
+		if eip.Spec.V6ip != "" { // If we have an IPv6, add it to prefixes we should be announcing
 			addExpectedPrefix(eip.Spec.V6ip, expectedPrefixes)
 		}
 	}
