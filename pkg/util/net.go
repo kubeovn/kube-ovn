@@ -395,10 +395,6 @@ func ExpandExcludeIPs(excludeIPs []string, cidr string) []string {
 					klog.Error(err)
 					continue
 				}
-				if firstIP == SubnetBroadcast(cidrBlock) {
-					klog.Errorf("no available IP address in CIDR %s", cidrBlock)
-					continue
-				}
 				lastIP, _ := LastIP(cidrBlock)
 				s1, e1 := s, e
 				if s1.Cmp(IP2BigInt(firstIP)) < 0 {
@@ -412,7 +408,7 @@ func ExpandExcludeIPs(excludeIPs []string, cidr string) []string {
 				} else if c < 0 {
 					rv = append(rv, BigInt2Ip(s1)+".."+BigInt2Ip(e1))
 				} else {
-					klog.Errorf("invalid exclude ip range %s, start ip should smaller than end", excludeIP)
+					klog.Errorf("invalid exclude ip range %s, start ip %s should smaller than end %s", excludeIP, BigInt2Ip(s1), BigInt2Ip(e1))
 				}
 			}
 		} else {
@@ -578,9 +574,10 @@ func GetNatGwExternalNetwork(externalNets []string) string {
 	return externalNets[0]
 }
 
-func TCPConnectivityCheck(address string) error {
-	conn, err := net.DialTimeout("tcp", address, 3*time.Second)
+func TCPConnectivityCheck(endpoint string) error {
+	conn, err := net.DialTimeout("tcp", endpoint, 3*time.Second)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 
@@ -589,16 +586,19 @@ func TCPConnectivityCheck(address string) error {
 	return nil
 }
 
-func TCPConnectivityListen(address string) error {
-	listener, err := net.Listen("tcp", address)
+func TCPConnectivityListen(endpoint string) error {
+	listener, err := net.Listen("tcp", endpoint)
 	if err != nil {
-		return fmt.Errorf("listen failed with err %w", err)
+		err := fmt.Errorf("failed to listen %s, %w", endpoint, err)
+		klog.Error(err)
+		return err
 	}
 
 	go func() {
 		for {
 			conn, err := listener.Accept()
 			if err != nil {
+				klog.Error(err)
 				continue
 			}
 			_ = conn.Close()
@@ -608,10 +608,12 @@ func TCPConnectivityListen(address string) error {
 	return nil
 }
 
-func UDPConnectivityCheck(address string) error {
-	udpAddr, err := net.ResolveUDPAddr("udp", address)
+func UDPConnectivityCheck(endpoint string) error {
+	udpAddr, err := net.ResolveUDPAddr("udp", endpoint)
 	if err != nil {
-		return fmt.Errorf("resolve udp addr failed with err %w", err)
+		err := fmt.Errorf("failed to resolve %s, %w", endpoint, err)
+		klog.Error(err)
+		return err
 	}
 
 	conn, err := net.DialUDP("udp", nil, udpAddr)
@@ -623,32 +625,41 @@ func UDPConnectivityCheck(address string) error {
 	defer conn.Close()
 
 	if err := conn.SetReadDeadline(time.Now().Add(3 * time.Second)); err != nil {
+		klog.Error(err)
 		return err
 	}
 
 	_, err = conn.Write([]byte("health check"))
 	if err != nil {
-		return fmt.Errorf("send udp packet failed with err %w", err)
+		err := fmt.Errorf("failed to send udp packet, %w", err)
+		klog.Error(err)
+		return err
 	}
 
 	buffer := make([]byte, 1024)
 	_, err = conn.Read(buffer)
 	if err != nil {
-		return fmt.Errorf("read udp packet from remote failed %w", err)
+		err := fmt.Errorf("failed to read udp packet from remote, %w", err)
+		klog.Error(err)
+		return err
 	}
 
 	return nil
 }
 
-func UDPConnectivityListen(address string) error {
-	listenAddr, err := net.ResolveUDPAddr("udp", address)
+func UDPConnectivityListen(endpoint string) error {
+	listenAddr, err := net.ResolveUDPAddr("udp", endpoint)
 	if err != nil {
-		return fmt.Errorf("resolve udp addr failed with err %w", err)
+		err := fmt.Errorf("failed to resolve udp addr: %w", err)
+		klog.Error(err)
+		return err
 	}
 
 	conn, err := net.ListenUDP("udp", listenAddr)
 	if err != nil {
-		return fmt.Errorf("listen udp address failed with %w", err)
+		err := fmt.Errorf("failed to listen udp address: %w", err)
+		klog.Error(err)
+		return err
 	}
 
 	buffer := make([]byte, 1024)
@@ -657,11 +668,13 @@ func UDPConnectivityListen(address string) error {
 		for {
 			_, clientAddr, err := conn.ReadFromUDP(buffer)
 			if err != nil {
+				klog.Error(err)
 				continue
 			}
 
 			_, err = conn.WriteToUDP([]byte("health check"), clientAddr)
 			if err != nil {
+				klog.Error(err)
 				continue
 			}
 		}
@@ -688,7 +701,7 @@ func ContainsUppercase(s string) bool {
 	return false
 }
 
-func InvalidCIDR(s string) error {
+func InvalidSpecialCIDR(s string) error {
 	// 0.0.0.0 and 255.255.255.255 only using in special case
 	if strings.HasPrefix(s, "0.0.0.0") {
 		err := fmt.Errorf("invalid zero cidr %q", s)
