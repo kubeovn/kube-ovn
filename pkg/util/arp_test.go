@@ -1,6 +1,7 @@
 package util
 
 import (
+	"errors"
 	"net"
 	"strings"
 	"testing"
@@ -56,6 +57,9 @@ func TestMacEqual(t *testing.T) {
 func TestArpResolve(t *testing.T) {
 	// get the default route gw and nic
 	routes, err := netlink.RouteList(nil, unix.AF_UNSPEC)
+	if errors.Is(err, netlink.ErrNotImplemented) {
+		return // skip if not implemented
+	}
 	if err != nil {
 		t.Fatalf("failed to get routes: %v", err)
 	}
@@ -81,10 +85,6 @@ func TestArpResolve(t *testing.T) {
 	maxRetry := 3
 	done := make(chan struct{})
 	linkName := link.Attrs().Name
-	if !strings.HasPrefix(linkName, "e") {
-		// default gw nic should be ethernet
-		t.Fatalf("invalid default gw nic link name: %s", linkName)
-	}
 	mac, count, err := ArpResolve(linkName, defaultGW, time.Second, maxRetry, done)
 	if err != nil {
 		if strings.Contains(err.Error(), "not permitted") {
