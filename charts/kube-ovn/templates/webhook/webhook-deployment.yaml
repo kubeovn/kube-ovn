@@ -17,11 +17,6 @@ spec:
     matchLabels:
       app.kubernetes.io/name: kube-ovn-webhook
       app.kubernetes.io/part-of: kube-ovn
-  strategy:
-    rollingUpdate:
-      maxSurge: 25%
-      maxUnavailable: 100%
-    type: RollingUpdate
   template:
     metadata:
       {{- with .Values.validatingWebhook.podAnnotations }}
