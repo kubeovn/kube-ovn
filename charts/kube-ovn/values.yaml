@@ -131,9 +131,24 @@ imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""
 
+# -- Configuration of the validating webhook used to verify custom resources before they are pushed to Kubernetes.
+# Make sure cert-manager is installed for the generation of certificates for the webhook.
+# See https://kubeovn.github.io/docs/stable/en/guide/webhook/
+validatingWebhook:
+  # -- Enable the deployment of the validating webhook
+  enabled: false
+  # -- Annotations to be added to all top-level kube-ovn-webhook objects (resources under templates/webhook)
+  annotations: {}
+  # -- Labels to be added to all top-level kube-ovn-webhook objects (resources under templates/webhook)
+  labels: {}
+  # -- Annotations to be added to kube-ovn-webhook pods
+  podAnnotations: {}
+  # -- Labels to be added to kube-ovn-webhook pods
+  podLabels: {}
+
 # -- Configuration for the NAT gateway
 natGw:
-  # -- Configuration the BGP sidecar for when a NAT gateway is running in BGP mode
+  # -- Configuration of the BGP sidecar for when a NAT gateway is running in BGP mode
   bgpSpeaker:
     # -- Image used by the NAT gateway sidecar
     image:
