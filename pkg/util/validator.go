@@ -74,7 +74,7 @@ func ValidateSubnet(subnet kubeovnv1.Subnet) error {
 			klog.Error(err)
 			return err
 		}
-		if err := InvalidCIDR(cidr); err != nil {
+		if err := InvalidSpecialCIDR(cidr); err != nil {
 			klog.Errorf("invalid subnet %s cidr %s, %s", subnet.Name, cidr, err)
 			return err
 		}
