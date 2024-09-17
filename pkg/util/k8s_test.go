@@ -1,11 +1,133 @@
 package util
 
 import (
+	"errors"
+	"net"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/klog/v2"
 )
+
+func TestDialTCP(t *testing.T) {
+	tests := []struct {
+		name     string
+		host     string
+		timeout  time.Duration
+		verbose  bool
+		expected error
+	}{
+		{"Valid HTTP Host", "http://localhost:8080", 1 * time.Second, false, nil},
+		{"Valid HTTP Host", "http://localhost:8080", 1 * time.Second, true, nil},
+		{"Valid HTTPS Host", "https://localhost:8443", 1 * time.Second, false, nil},
+		{"Valid TCP Host", "tcp://localhost:8081", 1 * time.Second, false, nil},
+		{"Invalid Host", "https://localhost%:8443", 1 * time.Second, false, errors.New(`invalid URL escape`)},
+		{"Unsupported Scheme", "ftp://localhost:8080", 1 * time.Second, false, errors.New(`unsupported scheme "ftp"`)},
+		{"Timeout", "http://localhost:8080", 1 * time.Millisecond, false, errors.New(`timed out dialing host`)},
+	}
+
+	httpServer := httptest.NewUnstartedServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {}))
+	httpServer.StartTLS()
+	defer httpServer.Close()
+
+	tcpListener, err := net.Listen("tcp", "localhost:8081")
+	if err != nil {
+		t.Fatalf("failed to start tcp server: %v", err)
+	}
+	defer tcpListener.Close()
+
+	go func() {
+		for {
+			conn, err := tcpListener.Accept()
+			if err != nil {
+				return
+			}
+			conn.Close()
+		}
+	}()
+
+	// Update tests with dynamic URLs
+	for i, tc := range tests {
+		if tc.host == "http://localhost:8080" || tc.host == "https://localhost:8443" {
+			tests[i].host = httpServer.URL
+		}
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := DialTCP(tt.host, tt.timeout, tt.verbose)
+
+			// Dynamically generate expected message for timeout
+			if tt.expected != nil && strings.Contains(tt.expected.Error(), "timed out dialing host") {
+				tt.expected = errors.New(`timed out dialing host "` + tt.host + `"`)
+			}
+
+			if (err != nil && tt.expected == nil) || (err == nil && tt.expected != nil) || (err != nil && tt.expected != nil && !strings.Contains(err.Error(), tt.expected.Error())) {
+				t.Errorf("DialTCP(%q) got %v, want %v", tt.host, err, tt.expected)
+			}
+
+			if tt.verbose {
+				klog.Flush()
+			}
+		})
+	}
+}
+
+func TestDialAPIServer(t *testing.T) {
+	tests := []struct {
+		name     string
+		setup    func() (string, func())
+		expected error
+	}{
+		{
+			name: "Successful Dial",
+			setup: func() (string, func()) {
+				server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {}))
+				return server.URL, server.Close
+			},
+			expected: nil,
+		},
+		{
+			name: "Successful TLS Dial",
+			setup: func() (string, func()) {
+				server := httptest.NewTLSServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {}))
+				return server.URL, server.Close
+			},
+			expected: nil,
+		},
+		{
+			name: "Failed Dial",
+			setup: func() (string, func()) {
+				return "http://localhost:12345", func() {}
+			},
+			expected: errors.New("timed out dialing apiserver"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			host, cleanup := tt.setup()
+			defer cleanup()
+
+			err := DialAPIServer(host, 1*time.Second, 1)
+
+			if tt.expected == nil && err != nil {
+				t.Errorf("expected no error, got %v", err)
+			} else if tt.expected != nil {
+				if err == nil {
+					t.Errorf("expected error containing %v, got nil", tt.expected)
+				} else if !strings.Contains(err.Error(), tt.expected.Error()) {
+					t.Errorf("expected error containing %v, got %v", tt.expected.Error(), err.Error())
+				}
+			}
+		})
+	}
+}
 
 func TestGetNodeInternalIP(t *testing.T) {
 	tests := []struct {

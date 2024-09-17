@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
@@ -373,7 +374,7 @@ func (config *Configuration) initKubeClient() error {
 	}
 
 	// try to connect to apiserver's tcp port
-	if err = util.DialAPIServer(cfg.Host); err != nil {
+	if err = util.DialAPIServer(cfg.Host, 3*time.Second, 10); err != nil {
 		klog.Errorf("failed to dial apiserver: %v", err)
 		return err
 	}
