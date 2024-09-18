@@ -1,5 +1,26 @@
 # Changelog
 
+## v1.12.23 (2024-09-18)
+
+ * [9f890e76](https://github.com/kubeovn/kube-ovn/commit/9f890e76474cda2690a941405bd3a705cced0c89) release v1.12.23
+ * [65312b28](https://github.com/kubeovn/kube-ovn/commit/65312b2836c721e88874d1f9e757c4792583c950) bump multus to v4.1.1 (#4532)
+ * [e98cc197](https://github.com/kubeovn/kube-ovn/commit/e98cc19744b81e273e5723b5db29fd130eb84724) bump k8s to v1.30.5 (#4513)
+ * [2e1887d9](https://github.com/kubeovn/kube-ovn/commit/2e1887d9c62029bf5c78357deb12dbd4e2559df0) bump go to 1.22.7 (#4482)
+ * [78b72798](https://github.com/kubeovn/kube-ovn/commit/78b72798070f4c624e0607a9bac5ae0ba5bb7e57) update Makefile (#4472)
+ * [82201941](https://github.com/kubeovn/kube-ovn/commit/822019410073320a07b5de48cab9ecacf7110309) tproxy: support named port (#4487)
+ * [723e8b3c](https://github.com/kubeovn/kube-ovn/commit/723e8b3cb6c02234c1cefd46a3a9e4763fc7784b) fix: arping reply may duplicate (#4477)
+ * [cbbe10ab](https://github.com/kubeovn/kube-ovn/commit/cbbe10ab3190d596423007dff9d78142832b9ca6) Enable inactivity check on ovndb connection (#4006)
+ * [0d8c1a9e](https://github.com/kubeovn/kube-ovn/commit/0d8c1a9e334b00da588fa43df70f079059fdeb3f) support vip dual stack (#3617)
+ * [2960014e](https://github.com/kubeovn/kube-ovn/commit/2960014ef504eb8ecbdbcc166d79ba680dec6830) metrics: do not export information if a subnet is not validated (#4444)
+ * [810d6dbc](https://github.com/kubeovn/kube-ovn/commit/810d6dbc5a6d8b4662a89886a1bbc9d56d0cc9b7) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * fanriming
+ * zhangzujian
+ * 张祖建
+
 ## v1.12.22 (2024-08-29)
 
  * [61870105](https://github.com/kubeovn/kube-ovn/commit/618701059e376430a280c1403aebf1628d6bfae6) release v1.12.22
