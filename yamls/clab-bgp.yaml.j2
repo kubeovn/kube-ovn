@@ -53,6 +53,24 @@ topology:
       - ip route replace default via 10.0.2.1
 
   links:
-  - endpoints: ["router:net1", "kube-ovn-control-plane::net1"]
-  - endpoints: ["router:net2", "kube-ovn-worker:net1"]
-  - endpoints: ["router:net3", "ext:net1"]
+  - type: veth
+    mtu: 1500
+    endpoints:
+    - node: router
+      interface: net1
+    - node: kube-ovn-control-plane
+      interface: net1
+  - type: veth
+    mtu: 1500
+    endpoints:
+    - node: router
+      interface: net2
+    - node: kube-ovn-worker
+      interface: net1
+  - type: veth
+    mtu: 1500
+    endpoints:
+    - node: router
+      interface: net3
+    - node: ext
+      interface: net1
