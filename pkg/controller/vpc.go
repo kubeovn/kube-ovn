@@ -118,8 +118,16 @@ func (c *Controller) handleDelVpc(vpc *kubeovnv1.Vpc) error {
 	klog.Infof("handle delete vpc %s", vpc.Name)
 
 	// should delete vpc subnets first
-	if len(vpc.Status.Subnets) != 0 {
-		err := fmt.Errorf("failed to delete vpc %s, still has subnets %v", vpc.Name, vpc.Status.Subnets)
+	var err error
+	for _, subnet := range vpc.Status.Subnets {
+		if _, err = c.subnetsLister.Get(subnet); err != nil {
+			if k8serrors.IsNotFound(err) {
+				continue
+			}
+			err = fmt.Errorf("failed to get subnet %s for vpc %s: %w", subnet, vpc.Name, err)
+		} else {
+			err = fmt.Errorf("failed to delete vpc %s, please delete subnet %s first", vpc.Name, subnet)
+		}
 		klog.Error(err)
 		return err
 	}
