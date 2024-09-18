@@ -813,6 +813,43 @@ func (suite *OvnClientTestSuite) Test_NewOvnSbClient() {
 	suite.testNewOvnSbClient()
 }
 
+/* sb chassis unit test */
+func (suite *OvnClientTestSuite) Test_GetChassis() {
+	suite.testGetChassis()
+}
+
+func (suite *OvnClientTestSuite) Test_DeleteChassis() {
+	suite.testDeleteChassis()
+}
+
+func (suite *OvnClientTestSuite) Test_UpdateChassis() {
+	suite.testUpdateChassis()
+}
+
+func (suite *OvnClientTestSuite) Test_ListChassis() {
+	suite.testListChassis()
+}
+
+func (suite *OvnClientTestSuite) Test_GetAllChassisByHost() {
+	suite.testGetAllChassisByHost()
+}
+
+func (suite *OvnClientTestSuite) Test_GetChassisByHost() {
+	suite.testGetChassisByHost()
+}
+
+func (suite *OvnClientTestSuite) Test_DeleteChassisByHost() {
+	suite.testDeleteChassisByHost()
+}
+
+func (suite *OvnClientTestSuite) Test_UpdateChassisTag() {
+	suite.testUpdateChassisTag()
+}
+
+func (suite *OvnClientTestSuite) Test_GetKubeOvnChassisses() {
+	suite.testGetKubeOvnChassisses()
+}
+
 func Test_scratch(t *testing.T) {
 	t.SkipNow()
 	endpoint := "tcp:[172.20.149.35]:6641"
