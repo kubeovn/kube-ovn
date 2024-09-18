@@ -87,10 +87,52 @@ topology:
       - ip route replace default nexthop via 10.0.2.1 weight 1 nexthop via 10.0.2.2 weight 1
 
   links:
-  - endpoints: ["switch:net1", "router-1:net1"]
-  - endpoints: ["switch:net2", "router-1:net2"]
-  - endpoints: ["switch:net3", "router-2:net1"]
-  - endpoints: ["switch:net4", "router-2:net2"]
-  - endpoints: ["switch:net5", "kube-ovn-control-plane::net1"]
-  - endpoints: ["switch:net6", "kube-ovn-worker:net1"]
-  - endpoints: ["switch:net7", "ext:net1"]
+  - type: veth
+    mtu: 1500
+    endpoints:
+    - node: switch
+      interface: net1
+    - node: router-1
+      interface: net1
+  - type: veth
+    mtu: 1500
+    endpoints:
+    - node: switch
+      interface: net2
+    - node: router-1
+      interface: net2
+  - type: veth
+    mtu: 1500
+    endpoints:
+    - node: switch
+      interface: net3
+    - node: router-2
+      interface: net1
+  - type: veth
+    mtu: 1500
+    endpoints:
+    - node: switch
+      interface: net4
+    - node: router-2
+      interface: net2
+  - type: veth
+    mtu: 1500
+    endpoints:
+    - node: switch
+      interface: net5
+    - node: kube-ovn-control-plane
+      interface: net1
+  - type: veth
+    mtu: 1500
+    endpoints:
+    - node: switch
+      interface: net6
+    - node: kube-ovn-worker
+      interface: net1
+  - type: veth
+    mtu: 1500
+    endpoints:
+    - node: switch
+      interface: net7
+    - node: ext
+      interface: net1
