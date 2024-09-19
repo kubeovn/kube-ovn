@@ -423,14 +423,10 @@ func (csh cniServerHandler) handleDel(req *restful.Request, resp *restful.Respon
 		return
 	}
 
+	// Try to get the Pod, but if it fails due to not being found, log a warning and continue.
 	pod, err := csh.Controller.podsLister.Pods(podRequest.PodNamespace).Get(podRequest.PodName)
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			resp.WriteHeader(http.StatusNoContent)
-			return
-		}
-
-		errMsg := fmt.Errorf("parse del request failed %w", err)
+	if err != nil && !k8serrors.IsNotFound(err) {
+		errMsg := fmt.Errorf("failed to retrieve Pod %s/%s: %w", podRequest.PodNamespace, podRequest.PodName, err)
 		klog.Error(errMsg)
 		if err := resp.WriteHeaderAndEntity(http.StatusBadRequest, request.CniResponse{Err: errMsg.Error()}); err != nil {
 			klog.Errorf("failed to write response, %v", err)
@@ -453,56 +449,73 @@ func (csh cniServerHandler) handleDel(req *restful.Request, resp *restful.Respon
 		return
 	}
 
-	if pod.Annotations != nil && (util.IsOvnProvider(podRequest.Provider) || podRequest.CniType == util.CniTypeName) {
-		subnet := pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, podRequest.Provider)]
-		if subnet != "" {
-			ip := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, podRequest.Provider)]
-			if err = csh.Controller.removeEgressConfig(subnet, ip); err != nil {
-				errMsg := fmt.Errorf("failed to remove egress configuration: %w", err)
-				klog.Error(errMsg)
-				if err = resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()}); err != nil {
-					klog.Errorf("failed to write response, %v", err)
+	var nicType string
+	var vmName string
+
+	// If the Pod was found, process its annotations and labels.
+	if err == nil {
+		if pod.Annotations != nil && (util.IsOvnProvider(podRequest.Provider) || podRequest.CniType == util.CniTypeName) {
+			subnet := pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, podRequest.Provider)]
+			if subnet != "" {
+				ip := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, podRequest.Provider)]
+				if err = csh.Controller.removeEgressConfig(subnet, ip); err != nil {
+					errMsg := fmt.Errorf("failed to remove egress configuration: %w", err)
+					klog.Error(errMsg)
+					if err = resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()}); err != nil {
+						klog.Errorf("failed to write response, %v", err)
+					}
+					return
 				}
-				return
+			}
+
+			switch {
+			case podRequest.DeviceID != "":
+				nicType = util.OffloadType
+			case podRequest.VhostUserSocketVolumeName != "":
+				nicType = util.DpdkType
+				if err = removeShortSharedDir(pod, podRequest.VhostUserSocketVolumeName, podRequest.VhostUserSocketConsumption); err != nil {
+					klog.Error(err.Error())
+					if err = resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: err.Error()}); err != nil {
+						klog.Errorf("failed to write response: %v", err)
+					}
+					return
+				}
+			default:
+				nicType = pod.Annotations[fmt.Sprintf(util.PodNicAnnotationTemplate, podRequest.Provider)]
+			}
+
+			vmName = pod.Annotations[fmt.Sprintf(util.VMAnnotationTemplate, podRequest.Provider)]
+			if vmName != "" {
+				podRequest.PodName = vmName
 			}
 		}
-
-		// For Support kubevirt hotplug dpdk nic, forbidden set the volume name
-		if podRequest.VhostUserSocketConsumption == util.ConsumptionKubevirt {
-			podRequest.VhostUserSocketVolumeName = util.VhostUserSocketVolumeName
-		}
-
-		var nicType string
+	} else {
+		// If the Pod is not found, assign a default value.
+		klog.Warningf("Pod %s not found, proceeding with NIC deletion using ContainerID and NetNs", podRequest.PodName)
 		switch {
 		case podRequest.DeviceID != "":
 			nicType = util.OffloadType
 		case podRequest.VhostUserSocketVolumeName != "":
 			nicType = util.DpdkType
-			if err = removeShortSharedDir(pod, podRequest.VhostUserSocketVolumeName, podRequest.VhostUserSocketConsumption); err != nil {
-				klog.Error(err.Error())
-				if err = resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: err.Error()}); err != nil {
-					klog.Errorf("failed to write response: %v", err)
-				}
-				return
-			}
 		default:
-			nicType = pod.Annotations[fmt.Sprintf(util.PodNicAnnotationTemplate, podRequest.Provider)]
-		}
-		vmName := pod.Annotations[fmt.Sprintf(util.VMAnnotationTemplate, podRequest.Provider)]
-		if vmName != "" {
-			podRequest.PodName = vmName
-		}
-
-		err = csh.deleteNic(podRequest.PodName, podRequest.PodNamespace, podRequest.ContainerID, podRequest.NetNs, podRequest.DeviceID, podRequest.IfName, nicType, podRequest.Provider)
-		if err != nil {
-			errMsg := fmt.Errorf("del nic failed %w", err)
-			klog.Error(errMsg)
-			if err := resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()}); err != nil {
-				klog.Errorf("failed to write response, %v", err)
-			}
-			return
+			nicType = util.VethType
 		}
 	}
 
+	// For Support kubevirt hotplug dpdk nic, forbidden set the volume name
+	if podRequest.VhostUserSocketConsumption == util.ConsumptionKubevirt {
+		podRequest.VhostUserSocketVolumeName = util.VhostUserSocketVolumeName
+	}
+
+	// Proceed to delete the NIC regardless of whether the Pod was found or not.
+	err = csh.deleteNic(podRequest.PodName, podRequest.PodNamespace, podRequest.ContainerID, podRequest.NetNs, podRequest.DeviceID, podRequest.IfName, nicType)
+	if err != nil {
+		errMsg := fmt.Errorf("del nic failed %w", err)
+		klog.Error(errMsg)
+		if err := resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()}); err != nil {
+			klog.Errorf("failed to write response, %v", err)
+		}
+		return
+	}
 	resp.WriteHeader(http.StatusNoContent)
 }
