@@ -860,8 +860,8 @@ func (c *Controller) initNodeChassis() error {
 	}
 	for _, node := range nodes {
 		if err := c.UpdateChassisTag(node); err != nil {
+			klog.Error(err)
 			if _, ok := err.(*ErrChassisNotFound); !ok {
-				klog.Error(err)
 				return err
 			}
 		}
