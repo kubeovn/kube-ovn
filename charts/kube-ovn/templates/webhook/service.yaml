@@ -1,3 +1,4 @@
+{{- if .Values.validatingWebhook.enabled }}
 kind: Service
 apiVersion: v1
 metadata:
@@ -22,3 +23,4 @@ spec:
     app.kubernetes.io/name: kube-ovn-webhook
     app.kubernetes.io/part-of: kube-ovn
   sessionAffinity: None
+{{- end }}

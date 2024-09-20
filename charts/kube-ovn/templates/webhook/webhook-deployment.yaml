@@ -1,3 +1,4 @@
+{{- if .Values.validatingWebhook.enabled }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -94,3 +95,4 @@ spec:
             secretName: kube-ovn-webhook-secret
       nodeSelector:
         kubernetes.io/os: "linux"
+{{- end }}

@@ -1,3 +1,4 @@
+{{- if .Values.validatingWebhook.enabled }}
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration
 metadata:
@@ -68,3 +69,4 @@ webhooks:
         name: kube-ovn-webhook
         path: /validating
         port: 443
+{{- end }}
