@@ -1,5 +1,7 @@
 # syntax = docker/dockerfile:experimental
-FROM ubuntu:22.04 as ovs-builder
+ARG GO_VERSION
+
+FROM ubuntu:22.04 AS ovs-builder
 
 ARG ARCH
 ARG NO_AVX512=false
@@ -78,6 +80,23 @@ RUN mkdir /packages/ && \
      cp /usr/src/ovn-*deb /packages && \
      cd /packages && rm -f *datapath* *docker* *vtep* *test* *dev*
 
+FROM ghcr.io/aquasecurity/trivy:latest AS trivy
+
+ARG ARCH
+ENV CNI_VERSION="v1.5.1"
+ENV KUBE_VERSION="v1.30.5"
+
+RUN apk --no-cache add curl jq
+ADD go-deps/download-go-deps.sh /
+RUN sh -x /download-go-deps.sh
+
+FROM golang:$GO_VERSION-alpine AS go-deps
+
+RUN apk --no-cache add bash curl jq
+ADD go-deps/rebuild-go-deps.sh /
+RUN --mount=type=bind,target=/trivy,from=trivy,source=/godeps \
+    bash -x /rebuild-go-deps.sh
+
 FROM ubuntu:22.04
 
 ARG DEBIAN_FRONTEND=noninteractive
@@ -94,15 +113,6 @@ RUN mkdir -p /var/run/openvswitch && \
     mkdir -p /etc/cni/net.d && \
     mkdir -p /opt/cni/bin
 
-ARG ARCH
-ENV CNI_VERSION=v1.5.1
-RUN curl -sSf -L --retry 5 https://github.com/containernetworking/plugins/releases/download/${CNI_VERSION}/cni-plugins-linux-${ARCH}-${CNI_VERSION}.tgz | tar -xz -C . ./loopback ./portmap ./macvlan
-
-ENV KUBE_VERSION="v1.30.5"
-
-RUN curl -L https://dl.k8s.io/${KUBE_VERSION}/kubernetes-client-linux-${ARCH}.tar.gz | tar -xz -C . && cp ./kubernetes/client/bin/kubectl /usr/bin/kubectl \
- && chmod +x /usr/bin/kubectl && rm -rf ./kubernetes
-
 RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages  \
     dpkg -i /packages/libopenvswitch*.deb && \
     dpkg -i /packages/python3-openvswitch*.deb && \
@@ -111,11 +121,16 @@ RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages  \
     mv /usr/lib/python3.7/dist-packages/ovs /usr/lib/python3/dist-packages/ && \
     rm -rf /var/lib/openvswitch/pki/
 
-ENV DUMB_INIT_VERSION="1.2.5"
+ARG ARCH
+ARG DUMB_INIT_VERSION="1.2.5"
 RUN dump_arch="x86_64"; \
     if [ "$ARCH" = "arm64" ]; then dump_arch="aarch64"; fi; \
     curl -sSf -L --retry 5 -o /usr/bin/dumb-init https://github.com/Yelp/dumb-init/releases/download/v${DUMB_INIT_VERSION}/dumb-init_${DUMB_INIT_VERSION}_${dump_arch} && \
     chmod +x /usr/bin/dumb-init
+
+RUN --mount=type=bind,target=/godeps,from=go-deps,source=/godeps \
+    cp /godeps/loopback /godeps/portmap /godeps/macvlan ./ && \
+    cp /godeps/kubectl /usr/bin/
 
 RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages  \
     dpkg -i /packages/openvswitch-*.deb /packages/python3-openvswitch*.deb && \

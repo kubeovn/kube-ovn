@@ -9,7 +9,16 @@ jobs:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
 
+      - uses: actions/setup-go@v5
+        id: setup-go
+        with:
+          go-version-file: go.mod
+          check-latest: true
+          cache: false
+
       - name: Build
+        env:
+          GO_VERSION: ${{ steps.setup-go.outputs.go-version }}
         run: |
           make base-amd64
           make base-tar-amd64
@@ -30,7 +39,16 @@ jobs:
         with:
           platforms: arm64
 
+      - uses: actions/setup-go@v5
+        id: setup-go
+        with:
+          go-version-file: go.mod
+          check-latest: true
+          cache: false
+
       - name: Build
+        env:
+          GO_VERSION: ${{ steps.setup-go.outputs.go-version }}
         run: |
           make base-arm64 || make base-arm64
           make base-tar-arm64
