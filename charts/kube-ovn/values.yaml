@@ -163,7 +163,7 @@ natGw:
 # This requires Multus to be installed
 apiNad:
   # -- Enable the creation of the API NAD
-  enabled: true
+  enabled: false
   # -- Name of the NAD
   name: ovn-kubernetes-api
   # -- Name of the provider, must be in the form "nadName.nadNamespace.ovn"
