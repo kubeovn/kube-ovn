@@ -912,13 +912,17 @@ func (c *Controller) UpdateChassisTag(node *v1.Node) error {
 			klog.Errorf("failed to gc chassis: %v", err)
 			return err
 		}
-		return &ErrChassisNotFound{Chassis: annoChassisName, Node: node.Name}
+		err = &ErrChassisNotFound{Chassis: annoChassisName, Node: node.Name}
+		klog.Error(err)
+		return err
 	}
 
 	if chassis.ExternalIDs == nil || chassis.ExternalIDs["vendor"] != util.CniTypeName {
 		klog.Infof("init tag %s for node %s chassis %s", util.CniTypeName, node.Name, chassis.Name)
 		if err = c.OVNSbClient.UpdateChassisTag(chassis.Name, node.Name); err != nil {
-			return fmt.Errorf("failed to init chassis tag, %w", err)
+			err := fmt.Errorf("failed to init chassis tag, %w", err)
+			klog.Error(err)
+			return err
 		}
 	}
 	return nil
