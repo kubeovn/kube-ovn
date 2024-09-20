@@ -9,7 +9,7 @@ data:
   bgpSpeakerImage: {{ .repository }}:{{ .tag }}
   {{- end }}
   {{- with .Values.natGw.bgpSpeaker.apiNadProvider }}
-  apiNadProvider: {{ . }}
+  apiNadProvider: {{ tpl . $ }}
   {{- end }}
 
 ---

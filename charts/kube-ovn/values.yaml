@@ -157,7 +157,25 @@ natGw:
       pullPolicy: IfNotPresent
     # -- Network attachment definition used to reach the API server when running on BGP mode
     # See https://kubeovn.github.io/docs/stable/en/advance/with-bgp/
-    apiNadProvider: ""
+    apiNadProvider: "{{ .Values.apiNad.name }}.{{ .Values.namespace }}.ovn"
+
+# -- API NetworkAttachmentDefinition to give some pods (CoreDNS, NAT GW) in custom VPCs access to the K8S API
+# This requires Multus to be installed
+apiNad:
+  # -- Enable the creation of the API NAD
+  enabled: true
+  # -- Name of the NAD
+  name: ovn-kubernetes-api
+  # -- Name of the provider, must be in the form "nadName.nadNamespace.ovn"
+  provider: "{{ .Values.apiNad.name }}.{{ .Values.namespace }}.ovn"
+  # -- Subnet associated with the NAD, it will have full access to the API server
+  subnet:
+    # -- Name of the subnet
+    name: ovn-kubernetes-api
+    # -- Protocol for the API subnet
+    protocol: Dual
+    # -- CIDR block used by the API subnet
+    cidrBlock: 100.100.0.0/16,fd00:100:100::/112
 
 # -- Configuration for ovs-ovn, the Open vSwitch daemon
 ovsOvn:
