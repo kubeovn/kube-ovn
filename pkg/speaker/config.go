@@ -39,7 +39,7 @@ const (
 
 type Configuration struct {
 	GrpcHost                    string
-	GrpcPort                    uint32
+	GrpcPort                    int32
 	ClusterAs                   uint32
 	RouterID                    string
 	PodIPs                      map[string]net.IP
@@ -63,7 +63,7 @@ type Configuration struct {
 	KubeClient     kubernetes.Interface
 	KubeOvnClient  clientset.Interface
 
-	PprofPort uint32
+	PprofPort int32
 }
 
 func ParseFlags() (*Configuration, error) {
@@ -73,7 +73,7 @@ func ParseFlags() (*Configuration, error) {
 		argGracefulRestart             = pflag.BoolP("graceful-restart", "", false, "Enables the BGP Graceful Restart so that routes are preserved on unexpected restarts")
 		argAnnounceClusterIP           = pflag.BoolP("announce-cluster-ip", "", false, "The Cluster IP of the service to announce to the BGP peers.")
 		argGrpcHost                    = pflag.String("grpc-host", "127.0.0.1", "The host address for grpc to listen, default: 127.0.0.1")
-		argGrpcPort                    = pflag.Uint32("grpc-port", DefaultBGPGrpcPort, "The port for grpc to listen, default:50051")
+		argGrpcPort                    = pflag.Int32("grpc-port", DefaultBGPGrpcPort, "The port for grpc to listen, default:50051")
 		argClusterAs                   = pflag.Uint32("cluster-as", DefaultBGPClusterAs, "The AS number of container network, default 65000")
 		argRouterID                    = pflag.String("router-id", "", "The address for the speaker to use as router id, default the node ip")
 		argNodeIPs                     = pflag.String("node-ips", "", "The comma-separated list of node IP addresses to use instead of the pod IP address for the next hop router IP address.")
@@ -82,7 +82,7 @@ func ParseFlags() (*Configuration, error) {
 		argNeighborAs                  = pflag.Uint32("neighbor-as", DefaultBGPNeighborAs, "The router as number, default 65001")
 		argAuthPassword                = pflag.String("auth-password", "", "bgp peer auth password")
 		argHoldTime                    = pflag.Duration("holdtime", DefaultBGPHoldtime, "ovn-speaker goes down abnormally, the local saving time of BGP route will be affected.Holdtime must be in the range 3s to 65536s. (default 90s)")
-		argPprofPort                   = pflag.Uint32("pprof-port", DefaultPprofPort, "The port to get profiling data, default: 10667")
+		argPprofPort                   = pflag.Int32("pprof-port", DefaultPprofPort, "The port to get profiling data, default: 10667")
 		argNodeName                    = pflag.String("node-name", os.Getenv(util.HostnameEnv), "Name of the node on which the speaker is running on.")
 		argKubeConfigFile              = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.")
 		argPassiveMode                 = pflag.BoolP("passivemode", "", false, "Set BGP Speaker to passive model, do not actively initiate connections to peers")
@@ -256,7 +256,7 @@ func (config *Configuration) initBgpServer() error {
 
 	grpcOpts := []grpc.ServerOption{grpc.MaxRecvMsgSize(maxSize), grpc.MaxSendMsgSize(maxSize)}
 	s := gobgp.NewBgpServer(
-		gobgp.GrpcListenAddress(fmt.Sprintf("%s:%d", config.GrpcHost, config.GrpcPort)),
+		gobgp.GrpcListenAddress(util.JoinHostPort(config.GrpcHost, config.GrpcPort)),
 		gobgp.GrpcOption(grpcOpts),
 		gobgp.LoggerOption(logger),
 	)
