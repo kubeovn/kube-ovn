@@ -11,8 +11,10 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/daemon"
 )
 
-const geneveLinkName = "genev_sys_6081"
-const vxlanLinkName = "vxlan_sys_4789"
+const (
+	geneveLinkName = "genev_sys_6081"
+	vxlanLinkName  = "vxlan_sys_4789"
+)
 
 func printCaps() {
 	currentCaps := cap.GetProc()
