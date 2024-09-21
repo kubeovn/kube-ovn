@@ -75,6 +75,7 @@ func:
   ENABLE_NAT_GW: true
   ENABLE_OVN_IPSEC: false
   ENABLE_ANP: false
+  SET_TX_OFF: false
 
 ipv4:
   POD_CIDR: "10.16.0.0/16"
