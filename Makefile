@@ -161,6 +161,11 @@ base-arm64:
 	docker buildx build --platform linux/arm64 --build-arg ARCH=arm64 --build-arg GO_VERSION=$(GO_VERSION) -t $(REGISTRY)/kube-ovn-base:$(RELEASE_TAG)-arm64 -o type=docker -f dist/images/Dockerfile.base dist/images/
 	docker buildx build --platform linux/arm64 --build-arg ARCH=arm64 --build-arg GO_VERSION=$(GO_VERSION) --build-arg DEBUG=true -t $(REGISTRY)/kube-ovn-base:$(DEBUG_TAG)-arm64 -o type=docker -f dist/images/Dockerfile.base dist/images/
 
+
+.PHONY: build-kit
+build-kit: build-go
+	DOCKER_BUILDKIT=1 docker build -t $(REGISTRY)/kube-ovn:$(RELEASE_TAG) --build-arg VERSION=$(RELEASE_TAG) -o type=docker -f dist/images/Dockerfile dist/images/
+
 .PHONY: image-kube-ovn
 image-kube-ovn: image-kube-ovn-debug build-go
 	docker buildx build --platform linux/amd64 -t $(REGISTRY)/kube-ovn:$(RELEASE_TAG) --build-arg VERSION=$(RELEASE_TAG) -o type=docker -f dist/images/Dockerfile dist/images/

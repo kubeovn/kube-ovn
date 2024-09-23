@@ -39,6 +39,12 @@ ENABLE_TPROXY=${ENABLE_TPROXY:-false}
 OVS_VSCTL_CONCURRENCY=${OVS_VSCTL_CONCURRENCY:-100}
 ENABLE_COMPACT=${ENABLE_COMPACT:-false}
 SECURE_SERVING=${SECURE_SERVING:-false}
+<<<<<<< HEAD
+=======
+ENABLE_OVN_IPSEC=${ENABLE_OVN_IPSEC:-false}
+ENABLE_ANP=${ENABLE_ANP:-false}
+SET_VXLAN_TX_OFF=${SET_VXLAN_TX_OFF:-false}
+>>>>>>> 5a70de9c (allow user to set vxlan_sys_4789 tx off (#4543))
 
 # debug
 DEBUG_WRAPPER=${DEBUG_WRAPPER:-}
@@ -4341,6 +4347,11 @@ spec:
           - --enable-tproxy=$ENABLE_TPROXY
           - --ovs-vsctl-concurrency=$OVS_VSCTL_CONCURRENCY
           - --secure-serving=${SECURE_SERVING}
+<<<<<<< HEAD
+=======
+          - --enable-ovn-ipsec=$ENABLE_OVN_IPSEC
+          - --set-vxlan-tx-off=$SET_VXLAN_TX_OFF
+>>>>>>> 5a70de9c (allow user to set vxlan_sys_4789 tx off (#4543))
         securityContext:
           runAsUser: 0
           privileged: true

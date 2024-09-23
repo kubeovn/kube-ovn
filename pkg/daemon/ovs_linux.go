@@ -1784,6 +1784,7 @@ func turnOffNicTxChecksum(nicName string) (err error) {
 	elapsed := float64((time.Since(start)) / time.Millisecond)
 	klog.V(4).Infof("command %s %s in %vms", "ethtool", strings.Join(args, " "), elapsed)
 	if err != nil {
+		klog.Error(err)
 		return fmt.Errorf("failed to turn off nic tx checksum, output %s, err %s", string(output), err.Error())
 	}
 	return nil

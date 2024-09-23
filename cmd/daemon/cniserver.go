@@ -63,6 +63,12 @@ func CmdMain() {
 		util.LogFatalAndExit(err, "failed to do the OS initialization")
 	}
 
+	if config.SetVxlanTxOff && config.NetworkType == util.NetworkTypeVxlan {
+		if err := setVxlanNicTxOff(); err != nil {
+			util.LogFatalAndExit(err, "failed to do the OS initialization for vxlan case")
+		}
+	}
+
 	ctrl.SetLogger(klog.NewKlogr())
 	ctx := signals.SetupSignalHandler()
 	stopCh := ctx.Done()
