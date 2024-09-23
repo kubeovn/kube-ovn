@@ -4508,7 +4508,7 @@ spec:
               - SYS_ADMIN
               - SYS_MODULE
               - SYS_NICE
-              - CAP_SYS_PTRACE
+              - SYS_PTRACE
         env:
           - name: ENABLE_SSL
             value: "$ENABLE_SSL"
