@@ -130,7 +130,7 @@ spec:
               - NET_BIND_SERVICE
               - NET_RAW
               - SYS_ADMIN
-              - CAP_SYS_PTRACE
+              - SYS_PTRACE
               {{- if not .Values.DISABLE_MODULES_MANAGEMENT }}
               - SYS_MODULE
               {{- end }}
