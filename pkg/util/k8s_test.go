@@ -1,6 +1,7 @@
 package util
 
 import (
+	"context"
 	"errors"
 	"net"
 	"net/http"
@@ -9,8 +10,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes/fake"
+	clientv1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/klog/v2"
 )
 
@@ -196,4 +200,275 @@ func TestGetNodeInternalIP(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestGetPodIPs(t *testing.T) {
+	tests := []struct {
+		name string
+		pod  v1.Pod
+		exp  []string
+	}{
+		{
+			name: "pod_with_one_pod_ip",
+			pod: v1.Pod{
+				TypeMeta:   metav1.TypeMeta{},
+				ObjectMeta: metav1.ObjectMeta{},
+				Spec:       v1.PodSpec{},
+				Status: v1.PodStatus{
+					PodIPs: []v1.PodIP{{IP: "192.168.1.100"}},
+					PodIP:  "192.168.1.100",
+				},
+			},
+			exp: []string{"192.168.1.100"},
+		},
+		{
+			name: "pod_with_one_pod_ip",
+			pod: v1.Pod{
+				TypeMeta:   metav1.TypeMeta{},
+				ObjectMeta: metav1.ObjectMeta{},
+				Spec:       v1.PodSpec{},
+				Status: v1.PodStatus{
+					PodIPs: []v1.PodIP{{IP: "192.168.1.100"}, {IP: "fd00:10:16::8"}},
+					PodIP:  "192.168.1.100",
+				},
+			},
+			exp: []string{"192.168.1.100", "fd00:10:16::8"},
+		},
+
+		{
+			name: "pod_with_no_pod_ip",
+			pod: v1.Pod{
+				TypeMeta:   metav1.TypeMeta{},
+				ObjectMeta: metav1.ObjectMeta{},
+				Spec:       v1.PodSpec{},
+				Status: v1.PodStatus{
+					PodIPs: []v1.PodIP{},
+					PodIP:  "",
+				},
+			},
+			exp: []string{},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if ret := PodIPs(tt.pod); len(ret) != len(tt.exp) {
+				t.Errorf("got %v, want %v", ret, tt.exp)
+			}
+		})
+	}
+}
+
+func TestServiceClusterIPs(t *testing.T) {
+	tests := []struct {
+		name string
+		svc  v1.Service
+		exp  []string
+	}{
+		{
+			name: "service_with_one_cluster_ip",
+			svc: v1.Service{
+				TypeMeta:   metav1.TypeMeta{},
+				ObjectMeta: metav1.ObjectMeta{},
+				Spec: v1.ServiceSpec{
+					ClusterIP:  "10.96.0.1",
+					ClusterIPs: []string{"10.96.0.1"},
+				},
+			},
+			exp: []string{"10.96.0.1"},
+		},
+		{
+			name: "service_with_two_cluster_ip",
+			svc: v1.Service{
+				TypeMeta:   metav1.TypeMeta{},
+				ObjectMeta: metav1.ObjectMeta{},
+				Spec: v1.ServiceSpec{
+					ClusterIP:  "10.96.0.1",
+					ClusterIPs: []string{"10.96.0.1", "fd00:10:16::1"},
+				},
+			},
+			exp: []string{"10.96.0.1", "fd00:10:16::1"},
+		},
+		{
+			name: "service_with_no_cluster_ip",
+			svc: v1.Service{
+				TypeMeta:   metav1.TypeMeta{},
+				ObjectMeta: metav1.ObjectMeta{},
+				Spec: v1.ServiceSpec{
+					ClusterIP:  "",
+					ClusterIPs: []string{},
+				},
+			},
+			exp: []string{},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if ret := ServiceClusterIPs(tt.svc); len(ret) != len(tt.exp) {
+				t.Errorf("got %v, want %v", ret, tt.exp)
+			}
+		})
+	}
+}
+
+func TestUpdateNodeLabels(t *testing.T) {
+	client := fake.NewSimpleClientset()
+	nodeClient := client.CoreV1().Nodes()
+	tests := []struct {
+		name   string
+		cs     clientv1.NodeInterface
+		node   string
+		labels map[string]any
+		exp    error
+	}{
+		{
+			name: "node_with_labels",
+			cs:   nodeClient,
+			node: "node1",
+			labels: map[string]any{
+				"key1": "value1",
+			},
+			exp: nil,
+		},
+		{
+			name:   "node_with_nil_labels",
+			cs:     nodeClient,
+			node:   "node2",
+			labels: map[string]any{},
+			exp:    nil,
+		},
+	}
+	for _, tt := range tests {
+		// create a node
+		node, err := client.CoreV1().Nodes().Create(context.Background(), &v1.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: tt.node,
+			},
+		}, metav1.CreateOptions{})
+		require.NoError(t, err)
+		require.NotNil(t, node)
+		t.Run(tt.name, func(t *testing.T) {
+			err := UpdateNodeLabels(tt.cs, tt.node, tt.labels)
+			if tt.exp == nil {
+				require.NoError(t, err)
+				return
+			}
+			if errors.Is(err, tt.exp) {
+				t.Errorf("got %v, want %v", err, tt.exp)
+			}
+		})
+	}
+}
+
+func TestUpdateNodeAnnotations(t *testing.T) {
+	client := fake.NewSimpleClientset()
+	nodeClient := client.CoreV1().Nodes()
+	tests := []struct {
+		name        string
+		cs          clientv1.NodeInterface
+		node        string
+		annotations map[string]any
+		exp         error
+	}{
+		{
+			name: "node_with_annotations",
+			cs:   nodeClient,
+			node: "node1",
+			annotations: map[string]any{
+				"key1": "value1",
+			},
+			exp: nil,
+		},
+		{
+			name:        "node_with_nil_annotations",
+			cs:          nodeClient,
+			node:        "node2",
+			annotations: map[string]any{},
+			exp:         nil,
+		},
+	}
+	for _, tt := range tests {
+		// create a node
+		node, err := client.CoreV1().Nodes().Create(context.Background(), &v1.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: tt.node,
+			},
+		}, metav1.CreateOptions{})
+		require.NoError(t, err)
+		require.NotNil(t, node)
+		t.Run(tt.name, func(t *testing.T) {
+			err := UpdateNodeAnnotations(tt.cs, tt.node, tt.annotations)
+			if tt.exp == nil {
+				require.NoError(t, err)
+				return
+			}
+			if errors.Is(err, tt.exp) {
+				t.Errorf("got %v, want %v", err, tt.exp)
+			}
+		})
+	}
+}
+
+func TestNodeMergePatch(t *testing.T) {
+	client := fake.NewSimpleClientset()
+	nodeClient := client.CoreV1().Nodes()
+	tests := []struct {
+		name  string
+		cs    clientv1.NodeInterface
+		node  string
+		patch string
+		exp   error
+	}{
+		{
+			name:  "node_with_patch",
+			cs:    nodeClient,
+			node:  "node",
+			patch: `{"metadata":{"labels":{"key1":"value1"}}}`,
+			exp:   nil,
+		},
+	}
+	for _, tt := range tests {
+		// create a node
+		node, err := client.CoreV1().Nodes().Create(context.Background(), &v1.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: tt.node,
+			},
+		}, metav1.CreateOptions{})
+		require.NoError(t, err)
+		require.NotNil(t, node)
+		t.Run(tt.name, func(t *testing.T) {
+			err := nodeMergePatch(tt.cs, tt.node, tt.patch)
+			if tt.exp == nil {
+				require.NoError(t, err)
+				return
+			}
+			if errors.Is(err, tt.exp) {
+				t.Errorf("got %v, want %v", err, tt.exp)
+			}
+		})
+	}
+}
+
+func TestLabelSelectorNotEquals(t *testing.T) {
+	selector, err := LabelSelectorNotEquals("key", "value")
+	require.NoError(t, err)
+	require.Equal(t, "key!=value", selector.String())
+	// Test error case
+	selector, err = LabelSelectorNotEquals("", "")
+	require.Error(t, err)
+	require.Nil(t, selector)
+}
+
+func TestLabelSelectorNotEmpty(t *testing.T) {
+	selector, err := LabelSelectorNotEmpty("key")
+	require.NoError(t, err)
+	require.Equal(t, "key!=", selector.String())
+	// Test error case
+	selector, err = LabelSelectorNotEmpty("")
+	require.Error(t, err)
+	require.Nil(t, selector)
+}
+
+func TestGetTruncatedUID(t *testing.T) {
+	uid := "12345678-1234-1234-1234-123456789012"
+	require.Equal(t, "123456789012", GetTruncatedUID(uid))
 }
