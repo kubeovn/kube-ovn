@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.12.25 (2024-09-23)
+
+ * [c23f44b9](https://github.com/kubeovn/kube-ovn/commit/c23f44b93c04082a91b2fdf3a1e47cb3ba591f64) release v1.12.25
+ * [3130464a](https://github.com/kubeovn/kube-ovn/commit/3130464a64adbc490fa17fa01f81c5f77848a7e0) fix (#4553)
+ * [ff0e85b7](https://github.com/kubeovn/kube-ovn/commit/ff0e85b70f772bc853c09612d63820b3015a5105) fix only ipv6 mode should add ovn0 locallink ipv6 address (#4552)
+ * [1f8b1916](https://github.com/kubeovn/kube-ovn/commit/1f8b191664e2f1d86bfdc1ff2c387ba101abd4f0) prepare for next release
+
+### Contributors
+
+ * changluyi
+
 ## v1.12.24 (2024-09-23)
 
  * [bc0a6f3c](https://github.com/kubeovn/kube-ovn/commit/bc0a6f3c162c5783f443dda6c6d47de91abcb5e0) release v1.12.24
