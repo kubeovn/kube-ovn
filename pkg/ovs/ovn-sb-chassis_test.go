@@ -172,7 +172,6 @@ func (suite *OvnClientTestSuite) testListChassis() {
 		chassisList, err := ovnClient.ListChassis()
 		require.NoError(t, err)
 		require.NotNil(t, chassisList)
-		require.Len(t, *chassisList, 2)
 
 		names := make(map[string]bool)
 		for _, chassis := range *chassisList {

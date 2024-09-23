@@ -315,7 +315,7 @@ func (suite *OvnClientTestSuite) testSetLBCIDR() {
 func (suite *OvnClientTestSuite) testSetOVNIPSec() {
 	t := suite.T()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 
 	t.Cleanup(func() {
 		err := ovnClient.DeleteNbGlobal()
@@ -374,7 +374,7 @@ func (suite *OvnClientTestSuite) testSetOVNIPSec() {
 func (suite *OvnClientTestSuite) testSetNbGlobalOptions() {
 	t := suite.T()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 
 	t.Cleanup(func() {
 		err := ovnClient.DeleteNbGlobal()
@@ -460,7 +460,7 @@ func (suite *OvnClientTestSuite) testSetNbGlobalOptions() {
 func (suite *OvnClientTestSuite) testSetLsDnatModDlDst() {
 	t := suite.T()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 
 	t.Cleanup(func() {
 		err := ovnClient.DeleteNbGlobal()
@@ -496,7 +496,7 @@ func (suite *OvnClientTestSuite) testSetLsDnatModDlDst() {
 func (suite *OvnClientTestSuite) testSetLsCtSkipDstLportIPs() {
 	t := suite.T()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 
 	t.Cleanup(func() {
 		err := ovnClient.DeleteNbGlobal()
@@ -532,7 +532,7 @@ func (suite *OvnClientTestSuite) testSetLsCtSkipDstLportIPs() {
 func (suite *OvnClientTestSuite) testSetNodeLocalDNSIP() {
 	t := suite.T()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 
 	t.Cleanup(func() {
 		err := ovnClient.DeleteNbGlobal()

@@ -599,7 +599,7 @@ func (suite *OvnClientTestSuite) testCreateDHCPOptions() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lsName := "test-create-dhcp-opt-ls"
 
 	t.Run("create valid IPv4 DHCP options", func(t *testing.T) {
@@ -644,7 +644,7 @@ func (suite *OvnClientTestSuite) testDHCPOptionsExists() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lsName := "test-dhcp-opt-exists-ls"
 
 	t.Run("DHCP options exist", func(t *testing.T) {

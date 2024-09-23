@@ -662,7 +662,7 @@ func (suite *OvnClientTestSuite) testCreateBareLogicalSwitch() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lsName := "test-create-bare-ls"
 
 	t.Run("create new logical switch", func(t *testing.T) {
@@ -689,7 +689,7 @@ func (suite *OvnClientTestSuite) testLogicalSwitchUpdateOtherConfig() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lsName := "test-update-other-config-ls"
 
 	err := ovnClient.CreateBareLogicalSwitch(lsName)
@@ -735,7 +735,7 @@ func (suite *OvnClientTestSuite) testLogicalSwitchUpdateOtherConfigOp() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnClient
+	ovnClient := suite.ovnNBClient
 	lsName := "test-update-other-config-op-ls"
 
 	err := ovnClient.CreateBareLogicalSwitch(lsName)
