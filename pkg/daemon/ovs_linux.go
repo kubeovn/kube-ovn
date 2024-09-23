@@ -426,12 +426,12 @@ func (csh cniServerHandler) configureContainerNic(podName, podNamespace, nicName
 				klog.Error(err)
 				return err
 			}
-			if err = configureNic(nicName, ipAddr, macAddr, mtu, detectIPConflict, false); err != nil {
+			if err = configureNic(nicName, ipAddr, macAddr, mtu, detectIPConflict, false, false); err != nil {
 				klog.Error(err)
 				return err
 			}
 		} else {
-			if err = configureNic(ifName, ipAddr, macAddr, mtu, detectIPConflict, true); err != nil {
+			if err = configureNic(ifName, ipAddr, macAddr, mtu, detectIPConflict, true, false); err != nil {
 				klog.Error(err)
 				return err
 			}
@@ -615,7 +615,7 @@ func configureNodeNic(portName, ip, gw, joinCIDR string, macAddr net.HardwareAdd
 		return errors.New(raw)
 	}
 
-	if err = configureNic(util.NodeNic, ip, macAddr, mtu, false, false); err != nil {
+	if err = configureNic(util.NodeNic, ip, macAddr, mtu, false, false, true); err != nil {
 		klog.Error(err)
 		return err
 	}
@@ -797,7 +797,7 @@ func configureNodeGwNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu i
 		klog.V(3).Infof("node external nic %q already in ns %s", util.NodeGwNic, util.NodeGwNsPath)
 	}
 	return ns.WithNetNSPath(gwNS.Path(), func(_ ns.NetNS) error {
-		if err = configureNic(util.NodeGwNic, ip, macAddr, mtu, true, false); err != nil {
+		if err = configureNic(util.NodeGwNic, ip, macAddr, mtu, true, false, false); err != nil {
 			klog.Errorf("failed to configure node gw nic %s, %v", util.NodeGwNic, err)
 			return err
 		}
@@ -1047,7 +1047,30 @@ func configureMirrorLink(portName string, _ int) error {
 	return nil
 }
 
-func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPConflict, setUfoOff bool) error {
+// Convert MAC address to EUI-64 and generate link-local IPv6 address
+func macToLinkLocalIPv6(mac net.HardwareAddr) (net.IP, error) {
+	if len(mac) != 6 {
+		return nil, fmt.Errorf("invalid MAC address length")
+	}
+
+	// Create EUI-64 format
+	eui64 := make([]byte, 8)
+	copy(eui64[0:3], mac[0:3]) // Copy the first 3 bytes
+	eui64[3] = 0xff            // Insert ff
+	eui64[4] = 0xfe            // Insert fe
+	copy(eui64[5:], mac[3:])   // Copy the last 3 bytes
+
+	// Flip the 7th bit of the first byte
+	eui64[0] ^= 0x02
+
+	// Prepend the link-local prefix
+	linkLocalIPv6 := net.IP{0xfe, 0x80, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
+	copy(linkLocalIPv6[8:], eui64)
+
+	return linkLocalIPv6, nil
+}
+
+func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPConflict, setUfoOff, ipv6LinkLocalOn bool) error {
 	nodeLink, err := netlink.LinkByName(link)
 	if err != nil {
 		klog.Error(err)
@@ -1084,12 +1107,30 @@ func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPCo
 		klog.Error(err)
 		return fmt.Errorf("can not get addr %s: %w", nodeLink, err)
 	}
+
+	isIPv6LinkLocalExist := false
 	for _, ipAddr := range ipAddrs {
 		if ipAddr.IP.IsLinkLocalUnicast() {
 			// skip 169.254.0.0/16 and fe80::/10
+			if util.CheckProtocol(ipAddr.IP.String()) == kubeovnv1.ProtocolIPv6 {
+				isIPv6LinkLocalExist = true
+			}
 			continue
 		}
 		ipDelMap[ipAddr.IPNet.String()] = ipAddr
+	}
+
+	if ipv6LinkLocalOn && !isIPv6LinkLocalExist {
+		linkLocal, err := macToLinkLocalIPv6(macAddr)
+		if err != nil {
+			return fmt.Errorf("failed to generate link-local address: %v", err)
+		}
+		ipAddMap[linkLocal.String()] = netlink.Addr{
+			IPNet: &net.IPNet{
+				IP:   linkLocal,
+				Mask: net.CIDRMask(64, 128),
+			},
+		}
 	}
 
 	for _, ipStr := range strings.Split(ip, ",") {
