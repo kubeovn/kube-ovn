@@ -107,6 +107,7 @@ func ServiceClusterIPs(svc v1.Service) []string {
 func LabelSelectorNotEquals(key, value string) (labels.Selector, error) {
 	requirement, err := labels.NewRequirement(key, selection.NotEquals, []string{value})
 	if err != nil {
+		klog.Errorf("failed to create label requirement: %v", err)
 		return nil, err
 	}
 	return labels.Everything().Add(*requirement), nil
