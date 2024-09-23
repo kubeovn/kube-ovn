@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.12.24 (2024-09-23)
+
+ * [bc0a6f3c](https://github.com/kubeovn/kube-ovn/commit/bc0a6f3c162c5783f443dda6c6d47de91abcb5e0) release v1.12.24
+ * [55c9e065](https://github.com/kubeovn/kube-ovn/commit/55c9e065305a5f7014c5389f89991cbdb6208a51) add ovn0 ipv6 local link address when ipv6 mode (#4545)
+ * [1fe9e7c1](https://github.com/kubeovn/kube-ovn/commit/1fe9e7c1a39037e740031b67536fe440412dcaae) base: rebuild go binary deps from source (#4524)
+ * [a6617223](https://github.com/kubeovn/kube-ovn/commit/a6617223dba7da9b1e00bcafe3f7f03d68af191c) prepare for next release
+
+### Contributors
+
+ * changluyi
+ * zhangzujian
+
 ## v1.12.23 (2024-09-18)
 
  * [9f890e76](https://github.com/kubeovn/kube-ovn/commit/9f890e76474cda2690a941405bd3a705cced0c89) release v1.12.23
