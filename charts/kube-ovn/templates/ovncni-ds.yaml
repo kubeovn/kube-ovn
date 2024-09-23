@@ -119,6 +119,7 @@ spec:
           - --ovs-vsctl-concurrency={{ .Values.performance.OVS_VSCTL_CONCURRENCY }}
           - --secure-serving={{- .Values.func.SECURE_SERVING }}
           - --enable-ovn-ipsec={{- .Values.func.ENABLE_OVN_IPSEC }}
+          - --set-vxlan-tx-off={{- .Values.func.SET_VXLAN_TX_OFF }}
         securityContext:
           runAsUser: {{ include "kubeovn.runAsUser" . }}
           runAsGroup: 0
