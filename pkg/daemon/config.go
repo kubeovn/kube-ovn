@@ -71,7 +71,7 @@ type Configuration struct {
 	UDPConnCheckPort          int32
 	EnableTProxy              bool
 	OVSVsctlConcurrency       int32
-	SetTxOff                  bool
+	SetVxlanTxOff             bool
 }
 
 // ParseFlags will parse cmd args then init kubeClient and configuration
@@ -115,7 +115,7 @@ func ParseFlags() *Configuration {
 		argEnableTProxy              = pflag.Bool("enable-tproxy", false, "enable tproxy for vpc pod liveness or readiness probe")
 		argOVSVsctlConcurrency       = pflag.Int32("ovs-vsctl-concurrency", 100, "concurrency limit of ovs-vsctl")
 		argEnableOVNIPSec            = pflag.Bool("enable-ovn-ipsec", false, "Whether to enable ovn ipsec")
-		argSetTxOff                  = pflag.Bool("set-tx-off", false, "Whether to set vxlan_sys_4789 tx off")
+		argSetVxlanTxOff             = pflag.Bool("set-vxlan-tx-off", false, "Whether to set vxlan_sys_4789 tx off")
 	)
 
 	// mute info log for ipset lib
@@ -175,7 +175,7 @@ func ParseFlags() *Configuration {
 		UDPConnCheckPort:          *argUDPConnectivityCheckPort,
 		EnableTProxy:              *argEnableTProxy,
 		OVSVsctlConcurrency:       *argOVSVsctlConcurrency,
-		SetTxOff:                  *argSetTxOff,
+		SetVxlanTxOff:             *argSetVxlanTxOff,
 	}
 	return config
 }
