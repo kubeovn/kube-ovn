@@ -1050,7 +1050,7 @@ func configureMirrorLink(portName string, _ int) error {
 // Convert MAC address to EUI-64 and generate link-local IPv6 address
 func macToLinkLocalIPv6(mac net.HardwareAddr) (net.IP, error) {
 	if len(mac) != 6 {
-		return nil, fmt.Errorf("invalid MAC address length")
+		return nil, errors.New("invalid MAC address length")
 	}
 
 	// Create EUI-64 format
@@ -1123,7 +1123,7 @@ func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPCo
 	if ipv6LinkLocalOn && !isIPv6LinkLocalExist {
 		linkLocal, err := macToLinkLocalIPv6(macAddr)
 		if err != nil {
-			return fmt.Errorf("failed to generate link-local address: %v", err)
+			return fmt.Errorf("failed to generate link-local address: %w", err)
 		}
 		ipAddMap[linkLocal.String()] = netlink.Addr{
 			IPNet: &net.IPNet{
