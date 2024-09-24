@@ -1523,7 +1523,7 @@ func (mr *MockPortGroupMockRecorder) CreatePortGroup(pgName, externalIDs any) *g
 }
 
 // DeletePortGroup mocks base method.
-func (m *MockPortGroup) DeletePortGroup(pgName string) error {
+func (m *MockPortGroup) DeletePortGroup(pgName ...string) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "DeletePortGroup", pgName)
 	ret0, _ := ret[0].(error)
@@ -1914,7 +1914,7 @@ func (mr *MockAddressSetMockRecorder) CreateAddressSet(asName, externalIDs any) 
 }
 
 // DeleteAddressSet mocks base method.
-func (m *MockAddressSet) DeleteAddressSet(asName string) error {
+func (m *MockAddressSet) DeleteAddressSet(asName ...string) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "DeleteAddressSet", asName)
 	ret0, _ := ret[0].(error)
@@ -2931,7 +2931,7 @@ func (mr *MockNbClientMockRecorder) DeleteAclsOps(parentName, parentType, direct
 }
 
 // DeleteAddressSet mocks base method.
-func (m *MockNbClient) DeleteAddressSet(asName string) error {
+func (m *MockNbClient) DeleteAddressSet(asName ...string) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "DeleteAddressSet", asName)
 	ret0, _ := ret[0].(error)
@@ -3243,7 +3243,7 @@ func (mr *MockNbClientMockRecorder) DeleteNats(lrName, natType, logicalIP any) *
 }
 
 // DeletePortGroup mocks base method.
-func (m *MockNbClient) DeletePortGroup(pgName string) error {
+func (m *MockNbClient) DeletePortGroup(pgName ...string) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "DeletePortGroup", pgName)
 	ret0, _ := ret[0].(error)
