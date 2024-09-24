@@ -43,8 +43,8 @@ func (suite *OvnClientTestSuite) testGetChassis() {
 
 	t.Run("test get chassis", func(t *testing.T) {
 		chassis, err := sbClient.GetChassis("chassis-name-1", false)
-		require.NotNil(t, chassis)
 		require.NoError(t, err)
+		require.NotNil(t, chassis)
 	})
 
 	t.Run("test get chassis with empty chassis name", func(t *testing.T) {
@@ -55,8 +55,8 @@ func (suite *OvnClientTestSuite) testGetChassis() {
 
 	t.Run("test get non-existent chassis with ignoreNotFound true", func(t *testing.T) {
 		chassis, err := sbClient.GetChassis("chassis-non-existent", true)
-		require.Nil(t, chassis)
 		require.NoError(t, err)
+		require.Nil(t, chassis)
 	})
 
 	t.Run("test get non-existent chassis with ignoreNotFound false", func(t *testing.T) {
@@ -92,8 +92,8 @@ func (suite *OvnClientTestSuite) testDeleteChassis() {
 		require.NoError(t, err)
 
 		chassis, err = sbClient.GetChassis("chassis-name-2", true)
-		require.Nil(t, chassis)
 		require.NoError(t, err)
+		require.Nil(t, chassis)
 	})
 
 	t.Run("test delete chassis with empty chassis name", func(t *testing.T) {
