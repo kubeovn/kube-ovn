@@ -336,7 +336,11 @@ func (suite *OvnClientTestSuite) testDeleteChassisByHost() {
 		require.NoError(t, err)
 		err = sbClient.DeleteChassis("chassis-node2")
 		require.NoError(t, err)
-		err = sbClient.DeleteChassis("chassis-node3")
+		chassis, err := sbClient.GetChassisByHost("node3")
+		require.NoError(t, err)
+		ops, err := sbClient.Where(chassis).Delete()
+		require.NoError(t, err)
+		err = sbClient.Transact("chassis-del", ops)
 		require.NoError(t, err)
 	})
 
