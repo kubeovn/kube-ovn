@@ -20,16 +20,16 @@ func (suite *OvnClientTestSuite) testCreateAddressSet() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnNBClient
+	nbClient := suite.ovnNBClient
 	asName := "test_create_as"
 
 	t.Run("create address set", func(t *testing.T) {
-		err := ovnClient.CreateAddressSet(asName, map[string]string{
+		err := nbClient.CreateAddressSet(asName, map[string]string{
 			sgKey: "test-sg",
 		})
 		require.NoError(t, err)
 
-		as, err := ovnClient.GetAddressSet(asName, false)
+		as, err := nbClient.GetAddressSet(asName, false)
 		require.NoError(t, err)
 		require.NotEmpty(t, as.UUID)
 		require.Equal(t, asName, as.Name)
@@ -39,7 +39,7 @@ func (suite *OvnClientTestSuite) testCreateAddressSet() {
 	})
 
 	t.Run("error occur because of invalid address set name", func(t *testing.T) {
-		err := ovnClient.CreateAddressSet("test-create-as", map[string]string{
+		err := nbClient.CreateAddressSet("test-create-as", map[string]string{
 			sgKey: "test-sg",
 		})
 		require.Error(t, err)
@@ -47,15 +47,15 @@ func (suite *OvnClientTestSuite) testCreateAddressSet() {
 
 	t.Run("create address set that already exists", func(t *testing.T) {
 		asName := "existing_address_set"
-		err := ovnClient.CreateAddressSet(asName, nil)
+		err := nbClient.CreateAddressSet(asName, nil)
 		require.NoError(t, err)
 
 		// Attempt to create the same address set again
-		err = ovnClient.CreateAddressSet(asName, nil)
+		err = nbClient.CreateAddressSet(asName, nil)
 		require.NoError(t, err)
 
 		// Verify that only one address set exists
-		ass, err := ovnClient.ListAddressSets(nil)
+		ass, err := nbClient.ListAddressSets(nil)
 		require.NoError(t, err)
 		count := 0
 		for _, as := range ass {
@@ -71,95 +71,95 @@ func (suite *OvnClientTestSuite) testAddressSetUpdateAddress() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnNBClient
+	nbClient := suite.ovnNBClient
 	asName := "test_update_address_as"
 	addresses := []string{"1.2.3.4", "1.2.3.6", "1.2.3.7"}
 
-	err := ovnClient.CreateAddressSet(asName, map[string]string{
+	err := nbClient.CreateAddressSet(asName, map[string]string{
 		sgKey: "test-sg",
 	})
 	require.NoError(t, err)
 
 	t.Run("update address set v4 addresses", func(t *testing.T) {
-		err = ovnClient.AddressSetUpdateAddress(asName, addresses...)
+		err = nbClient.AddressSetUpdateAddress(asName, addresses...)
 		require.NoError(t, err)
 
-		as, err := ovnClient.GetAddressSet(asName, false)
+		as, err := nbClient.GetAddressSet(asName, false)
 		require.NoError(t, err)
 		require.ElementsMatch(t, addresses, as.Addresses)
 	})
 
 	t.Run("update address set v6 addresses", func(t *testing.T) {
 		addresses := []string{"fe80::20c:29ff:fee4:16cc", "fe80::20c:29ff:fee4:1611"}
-		err = ovnClient.AddressSetUpdateAddress(asName, addresses...)
+		err = nbClient.AddressSetUpdateAddress(asName, addresses...)
 		require.NoError(t, err)
 
-		as, err := ovnClient.GetAddressSet(asName, false)
+		as, err := nbClient.GetAddressSet(asName, false)
 		require.NoError(t, err)
 		require.ElementsMatch(t, addresses, as.Addresses)
 	})
 
 	t.Run("clear address set addresses", func(t *testing.T) {
-		err = ovnClient.AddressSetUpdateAddress(asName)
+		err = nbClient.AddressSetUpdateAddress(asName)
 		require.NoError(t, err)
 
-		as, err := ovnClient.GetAddressSet(asName, false)
+		as, err := nbClient.GetAddressSet(asName, false)
 		require.NoError(t, err)
 		require.Empty(t, as.Addresses)
 	})
 
 	t.Run("update with mixed IPv4 and IPv6 addresses", func(t *testing.T) {
 		addresses := []string{"192.168.1.1", "2001:db8::1", "10.0.0.1", "fe80::1"}
-		err := ovnClient.AddressSetUpdateAddress(asName, addresses...)
+		err := nbClient.AddressSetUpdateAddress(asName, addresses...)
 		require.NoError(t, err)
 
-		as, err := ovnClient.GetAddressSet(asName, false)
+		as, err := nbClient.GetAddressSet(asName, false)
 		require.NoError(t, err)
 		require.ElementsMatch(t, addresses, as.Addresses)
 	})
 
 	t.Run("update with CIDR notation", func(t *testing.T) {
 		addresses := []string{"192.168.1.0/24", "2001:db8::/64"}
-		err := ovnClient.AddressSetUpdateAddress(asName, addresses...)
+		err := nbClient.AddressSetUpdateAddress(asName, addresses...)
 		require.NoError(t, err)
 
-		as, err := ovnClient.GetAddressSet(asName, false)
+		as, err := nbClient.GetAddressSet(asName, false)
 		require.NoError(t, err)
 		require.ElementsMatch(t, []string{"192.168.1.0/24", "2001:db8::/64"}, as.Addresses)
 	})
 
 	t.Run("update with duplicate addresses", func(t *testing.T) {
 		addresses := []string{"192.168.1.1", "192.168.1.1", "2001:db8::1", "2001:db8::1"}
-		err := ovnClient.AddressSetUpdateAddress(asName, addresses...)
+		err := nbClient.AddressSetUpdateAddress(asName, addresses...)
 		require.NoError(t, err)
 
-		as, err := ovnClient.GetAddressSet(asName, false)
+		as, err := nbClient.GetAddressSet(asName, false)
 		require.NoError(t, err)
 		require.ElementsMatch(t, []string{"192.168.1.1", "2001:db8::1"}, as.Addresses)
 	})
 
 	t.Run("update with invalid CIDR", func(t *testing.T) {
 		addresses := []string{"192.168.1.1", "invalid_cidr", "2001:db8::1"}
-		err := ovnClient.AddressSetUpdateAddress(asName, addresses...)
+		err := nbClient.AddressSetUpdateAddress(asName, addresses...)
 		require.NoError(t, err)
 
-		as, err := ovnClient.GetAddressSet(asName, false)
+		as, err := nbClient.GetAddressSet(asName, false)
 		require.NoError(t, err)
 		require.ElementsMatch(t, []string{"192.168.1.1", "invalid_cidr", "2001:db8::1"}, as.Addresses)
 	})
 
 	t.Run("update with empty address list", func(t *testing.T) {
-		err := ovnClient.AddressSetUpdateAddress(asName)
+		err := nbClient.AddressSetUpdateAddress(asName)
 		require.NoError(t, err)
 
-		as, err := ovnClient.GetAddressSet(asName, false)
+		as, err := nbClient.GetAddressSet(asName, false)
 		require.NoError(t, err)
 		require.Empty(t, as.Addresses)
 	})
 
 	t.Run("update non-existent address set", func(t *testing.T) {
 		nonExistentAS := "non_existent_as"
-		err := ovnClient.AddressSetUpdateAddress(nonExistentAS, "192.168.1.1")
+		err := nbClient.AddressSetUpdateAddress(nonExistentAS, "192.168.1.1")
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "get address set")
 	})
@@ -169,25 +169,25 @@ func (suite *OvnClientTestSuite) testDeleteAddressSet() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnNBClient
+	nbClient := suite.ovnNBClient
 	asName := "test_delete_as"
 
 	t.Run("no err when delete existent address set", func(t *testing.T) {
 		t.Parallel()
 
-		err := ovnClient.CreateAddressSet(asName, nil)
+		err := nbClient.CreateAddressSet(asName, nil)
 		require.NoError(t, err)
 
-		err = ovnClient.DeleteAddressSet(asName)
+		err = nbClient.DeleteAddressSet(asName)
 		require.NoError(t, err)
 
-		_, err = ovnClient.GetAddressSet(asName, false)
+		_, err = nbClient.GetAddressSet(asName, false)
 		require.ErrorContains(t, err, "object not found")
 	})
 
 	t.Run("no err when delete non-existent logical router", func(t *testing.T) {
 		t.Parallel()
-		err := ovnClient.DeleteAddressSet("test-delete-as-non-existent")
+		err := nbClient.DeleteAddressSet("test-delete-as-non-existent")
 		require.NoError(t, err)
 	})
 }
@@ -196,36 +196,36 @@ func (suite *OvnClientTestSuite) testDeleteAddressSets() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnNBClient
+	nbClient := suite.ovnNBClient
 	pgName := "test-del-ass-pg"
 	asPrefix := "test_del_ass"
 	externalIDs := map[string]string{sgKey: pgName}
 
 	for i := 0; i < 3; i++ {
 		asName := fmt.Sprintf("%s_%d", asPrefix, i)
-		err := ovnClient.CreateAddressSet(asName, externalIDs)
+		err := nbClient.CreateAddressSet(asName, externalIDs)
 		require.NoError(t, err)
 	}
 
 	// create a new address set with no sg name, it should't be deleted
 	asName := fmt.Sprintf("%s_%d", asPrefix, 3)
-	err := ovnClient.CreateAddressSet(asName, nil)
+	err := nbClient.CreateAddressSet(asName, nil)
 	require.NoError(t, err)
 
-	err = ovnClient.DeleteAddressSets(externalIDs)
+	err = nbClient.DeleteAddressSets(externalIDs)
 	require.NoError(t, err)
 
 	// it should't be deleted
-	_, err = ovnClient.GetAddressSet(asName, false)
+	_, err = nbClient.GetAddressSet(asName, false)
 	require.NoError(t, err)
 
 	// should delete
-	ass, err := ovnClient.ListAddressSets(externalIDs)
+	ass, err := nbClient.ListAddressSets(externalIDs)
 	require.NoError(t, err)
 	require.Empty(t, ass)
 
 	// delete address sets with empty externalIDs
-	err = ovnClient.DeleteAddressSets(map[string]string{})
+	err = nbClient.DeleteAddressSets(map[string]string{})
 	require.NoError(t, err)
 }
 
@@ -233,14 +233,14 @@ func (suite *OvnClientTestSuite) testListAddressSets() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnNBClient
+	nbClient := suite.ovnNBClient
 
 	asName := "test_list_as_exist_key"
 
-	err := ovnClient.CreateAddressSet(asName, map[string]string{sgKey: "sg", "direction": "to-lport", "key": "value"})
+	err := nbClient.CreateAddressSet(asName, map[string]string{sgKey: "sg", "direction": "to-lport", "key": "value"})
 	require.NoError(t, err)
 
-	ass, err := ovnClient.ListAddressSets(map[string]string{sgKey: "sg", "key": "value"})
+	ass, err := nbClient.ListAddressSets(map[string]string{sgKey: "sg", "key": "value"})
 	require.NoError(t, err)
 	require.Len(t, ass, 1)
 	require.Equal(t, asName, ass[0].Name)
@@ -325,10 +325,10 @@ func (suite *OvnClientTestSuite) testUpdateAddressSet() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnNBClient
+	nbClient := suite.ovnNBClient
 
 	t.Run("update with nil address set", func(t *testing.T) {
-		err := ovnClient.UpdateAddressSet(nil)
+		err := nbClient.UpdateAddressSet(nil)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "address_set is nil")
 	})

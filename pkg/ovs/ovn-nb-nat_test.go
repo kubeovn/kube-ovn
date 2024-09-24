@@ -29,18 +29,18 @@ func (suite *OvnClientTestSuite) testCreateNats() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnNBClient
+	nbClient := suite.ovnNBClient
 	lrName := "test-create-nats-lr"
 	externalIPs := []string{"192.168.30.254", "192.168.30.253"}
 	logicalIPs := []string{"10.250.0.4", "10.250.0.5"}
 	nats := make([]*ovnnb.NAT, 0, 5)
 
-	err := ovnClient.CreateLogicalRouter(lrName)
+	err := nbClient.CreateLogicalRouter(lrName)
 	require.NoError(t, err)
 
 	// snat
 	for _, logicalIP := range logicalIPs {
-		nat, err := ovnClient.newNat(lrName, "snat", externalIPs[0], logicalIP, "", "")
+		nat, err := nbClient.newNat(lrName, "snat", externalIPs[0], logicalIP, "", "")
 		require.NoError(t, err)
 
 		nats = append(nats, nat)
@@ -48,21 +48,21 @@ func (suite *OvnClientTestSuite) testCreateNats() {
 
 	// dnat_and_snat
 	for _, externalIP := range externalIPs {
-		nat, err := ovnClient.newNat(lrName, "dnat_and_snat", externalIP, logicalIPs[0], "", "")
+		nat, err := nbClient.newNat(lrName, "dnat_and_snat", externalIP, logicalIPs[0], "", "")
 		require.NoError(t, err)
 
 		nats = append(nats, nat)
 	}
 
-	err = ovnClient.CreateNats(lrName, append(nats, nil)...)
+	err = nbClient.CreateNats(lrName, append(nats, nil)...)
 	require.NoError(t, err)
 
-	lr, err := ovnClient.GetLogicalRouter(lrName, false)
+	lr, err := nbClient.GetLogicalRouter(lrName, false)
 	require.NoError(t, err)
 
 	// snat
 	for _, logicalIP := range logicalIPs {
-		nat, err := ovnClient.GetNat(lrName, "snat", externalIPs[0], logicalIP, false)
+		nat, err := nbClient.GetNat(lrName, "snat", externalIPs[0], logicalIP, false)
 		require.NoError(t, err)
 
 		require.Contains(t, lr.Nat, nat.UUID)
@@ -70,7 +70,7 @@ func (suite *OvnClientTestSuite) testCreateNats() {
 
 	// dnat_and_snat
 	for _, externalIP := range externalIPs {
-		nat, err := ovnClient.GetNat(lrName, "dnat_and_snat", externalIP, logicalIPs[0], false)
+		nat, err := nbClient.GetNat(lrName, "dnat_and_snat", externalIP, logicalIPs[0], false)
 		require.NoError(t, err)
 
 		require.Contains(t, lr.Nat, nat.UUID)
@@ -81,23 +81,23 @@ func (suite *OvnClientTestSuite) testUpdateSnat() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnNBClient
+	nbClient := suite.ovnNBClient
 	lrName := "test-update-snat-lr"
 	externalIP := "192.168.30.254"
 	logicalIP := "10.250.0.4"
 	natType := ovnnb.NATTypeSNAT
 
-	err := ovnClient.CreateLogicalRouter(lrName)
+	err := nbClient.CreateLogicalRouter(lrName)
 	require.NoError(t, err)
 
 	t.Run("create snat", func(t *testing.T) {
-		err = ovnClient.UpdateSnat(lrName, externalIP, logicalIP)
+		err = nbClient.UpdateSnat(lrName, externalIP, logicalIP)
 		require.NoError(t, err)
 
-		lr, err := ovnClient.GetLogicalRouter(lrName, false)
+		lr, err := nbClient.GetLogicalRouter(lrName, false)
 		require.NoError(t, err)
 
-		nat, err := ovnClient.GetNat(lrName, natType, "", logicalIP, false)
+		nat, err := nbClient.GetNat(lrName, natType, "", logicalIP, false)
 		require.NoError(t, err)
 
 		require.Contains(t, lr.Nat, nat.UUID)
@@ -105,10 +105,10 @@ func (suite *OvnClientTestSuite) testUpdateSnat() {
 
 	t.Run("update snat", func(t *testing.T) {
 		externalIP := "192.168.30.253"
-		err = ovnClient.UpdateSnat(lrName, externalIP, logicalIP)
+		err = nbClient.UpdateSnat(lrName, externalIP, logicalIP)
 		require.NoError(t, err)
 
-		nat, err := ovnClient.GetNat(lrName, natType, "", logicalIP, false)
+		nat, err := nbClient.GetNat(lrName, natType, "", logicalIP, false)
 		require.NoError(t, err)
 		require.Equal(t, externalIP, nat.ExternalIP)
 	})
@@ -118,7 +118,7 @@ func (suite *OvnClientTestSuite) testUpdateDnatAndSnat() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnNBClient
+	nbClient := suite.ovnNBClient
 	lrName := "test-update-dnat-and-snat-lr"
 	lspName := "test-update-dnat-and-snat-lrp"
 	externalIP := "192.168.30.254"
@@ -126,18 +126,18 @@ func (suite *OvnClientTestSuite) testUpdateDnatAndSnat() {
 	natType := ovnnb.NATTypeDNATAndSNAT
 	externalMac := "00:00:00:08:0a:de"
 
-	err := ovnClient.CreateLogicalRouter(lrName)
+	err := nbClient.CreateLogicalRouter(lrName)
 	require.NoError(t, err)
 
 	t.Run("create dnat_and_snat", func(t *testing.T) {
 		t.Run("distributed gw", func(t *testing.T) {
-			err = ovnClient.UpdateDnatAndSnat(lrName, externalIP, logicalIP, lspName, externalMac, kubeovnv1.GWDistributedType)
+			err = nbClient.UpdateDnatAndSnat(lrName, externalIP, logicalIP, lspName, externalMac, kubeovnv1.GWDistributedType)
 			require.NoError(t, err)
 
-			lr, err := ovnClient.GetLogicalRouter(lrName, false)
+			lr, err := nbClient.GetLogicalRouter(lrName, false)
 			require.NoError(t, err)
 
-			nat, err := ovnClient.GetNat(lrName, natType, externalIP, "", false)
+			nat, err := nbClient.GetNat(lrName, natType, externalIP, "", false)
 			require.NoError(t, err)
 			require.Equal(t, lspName, *nat.LogicalPort)
 			require.Equal(t, externalMac, *nat.ExternalMAC)
@@ -149,13 +149,13 @@ func (suite *OvnClientTestSuite) testUpdateDnatAndSnat() {
 		t.Run("centralized gw", func(t *testing.T) {
 			externalIP := "192.168.30.250"
 
-			err = ovnClient.UpdateDnatAndSnat(lrName, externalIP, logicalIP, lspName, externalMac, kubeovnv1.GWCentralizedType)
+			err = nbClient.UpdateDnatAndSnat(lrName, externalIP, logicalIP, lspName, externalMac, kubeovnv1.GWCentralizedType)
 			require.NoError(t, err)
 
-			lr, err := ovnClient.GetLogicalRouter(lrName, false)
+			lr, err := nbClient.GetLogicalRouter(lrName, false)
 			require.NoError(t, err)
 
-			nat, err := ovnClient.GetNat(lrName, natType, externalIP, "", false)
+			nat, err := nbClient.GetNat(lrName, natType, externalIP, "", false)
 			require.NoError(t, err)
 			require.Empty(t, nat.Options["stateless"])
 
@@ -168,13 +168,13 @@ func (suite *OvnClientTestSuite) testUpdateDnatAndSnat() {
 			lspName := "test-update-dnat-and-snat-lrp-1"
 			externalMac := "00:00:00:08:0a:ff"
 
-			err = ovnClient.UpdateDnatAndSnat(lrName, externalIP, logicalIP, lspName, externalMac, kubeovnv1.GWDistributedType)
+			err = nbClient.UpdateDnatAndSnat(lrName, externalIP, logicalIP, lspName, externalMac, kubeovnv1.GWDistributedType)
 			require.NoError(t, err)
 
-			lr, err := ovnClient.GetLogicalRouter(lrName, false)
+			lr, err := nbClient.GetLogicalRouter(lrName, false)
 			require.NoError(t, err)
 
-			nat, err := ovnClient.GetNat(lrName, natType, externalIP, "", false)
+			nat, err := nbClient.GetNat(lrName, natType, externalIP, "", false)
 			require.NoError(t, err)
 			require.Equal(t, lspName, *nat.LogicalPort)
 			require.Equal(t, externalMac, *nat.ExternalMAC)
@@ -189,52 +189,52 @@ func (suite *OvnClientTestSuite) testDeleteNat() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnNBClient
+	nbClient := suite.ovnNBClient
 	lrName := "test-del-nat-lr"
 	externalIP := "192.168.30.254"
 	logicalIP := "10.250.0.4"
 
-	err := ovnClient.CreateLogicalRouter(lrName)
+	err := nbClient.CreateLogicalRouter(lrName)
 	require.NoError(t, err)
 
 	prepareFunc := func() {
 		nats := make([]*ovnnb.NAT, 0)
 
 		// create snat rule
-		nat, err := ovnClient.newNat(lrName, "snat", externalIP, logicalIP, "", "")
+		nat, err := nbClient.newNat(lrName, "snat", externalIP, logicalIP, "", "")
 		require.NoError(t, err)
 		nats = append(nats, nat)
 
 		// create dnat_and_snat rule
-		nat, err = ovnClient.newNat(lrName, "dnat_and_snat", externalIP, logicalIP, "", "")
+		nat, err = nbClient.newNat(lrName, "dnat_and_snat", externalIP, logicalIP, "", "")
 		require.NoError(t, err)
 		nats = append(nats, nat)
 
-		err = ovnClient.CreateNats(lrName, nats...)
+		err = nbClient.CreateNats(lrName, nats...)
 		require.NoError(t, err)
 	}
 
 	prepareFunc()
 
 	t.Run("delete snat from logical router", func(t *testing.T) {
-		err = ovnClient.DeleteNat(lrName, "snat", externalIP, logicalIP)
+		err = nbClient.DeleteNat(lrName, "snat", externalIP, logicalIP)
 		require.NoError(t, err)
 
-		lr, err := ovnClient.GetLogicalRouter(lrName, false)
+		lr, err := nbClient.GetLogicalRouter(lrName, false)
 		require.NoError(t, err)
 		require.Len(t, lr.Nat, 1)
 
 		nat := &ovnnb.NAT{UUID: lr.Nat[0]}
-		err = ovnClient.GetEntityInfo(nat)
+		err = nbClient.GetEntityInfo(nat)
 		require.NoError(t, err)
 		require.Equal(t, "dnat_and_snat", nat.Type)
 	})
 
 	t.Run("delete dnat_and_snat from logical router", func(t *testing.T) {
-		err = ovnClient.DeleteNat(lrName, "dnat_and_snat", externalIP, logicalIP)
+		err = nbClient.DeleteNat(lrName, "dnat_and_snat", externalIP, logicalIP)
 		require.NoError(t, err)
 
-		lr, err := ovnClient.GetLogicalRouter(lrName, false)
+		lr, err := nbClient.GetLogicalRouter(lrName, false)
 		require.NoError(t, err)
 		require.Empty(t, lr.Nat)
 	})
@@ -244,45 +244,45 @@ func (suite *OvnClientTestSuite) testDeleteNats() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnNBClient
+	nbClient := suite.ovnNBClient
 	lrName := "test-del-nats-lr"
 	externalIPs := []string{"192.168.30.254", "192.168.30.253"}
 	logicalIPs := []string{"10.250.0.4", "10.250.0.5"}
 
-	err := ovnClient.CreateLogicalRouter(lrName)
+	err := nbClient.CreateLogicalRouter(lrName)
 	require.NoError(t, err)
 
 	prepareFunc := func() {
 		nats := make([]*ovnnb.NAT, 0)
 		// create two snat rule
 		for _, logicalIP := range logicalIPs {
-			nat, err := ovnClient.newNat(lrName, "snat", externalIPs[0], logicalIP, "", "")
+			nat, err := nbClient.newNat(lrName, "snat", externalIPs[0], logicalIP, "", "")
 			require.NoError(t, err)
 			nats = append(nats, nat)
 		}
 
 		// create two dnat_and_snat rule
 		for _, externalIP := range externalIPs {
-			nat, err := ovnClient.newNat(lrName, "dnat_and_snat", externalIP, logicalIPs[0], "", "")
+			nat, err := nbClient.newNat(lrName, "dnat_and_snat", externalIP, logicalIPs[0], "", "")
 			require.NoError(t, err)
 			nats = append(nats, nat)
 		}
 
-		err = ovnClient.CreateNats(lrName, nats...)
+		err = nbClient.CreateNats(lrName, nats...)
 		require.NoError(t, err)
 	}
 
 	t.Run("delete nats from logical router", func(t *testing.T) {
 		prepareFunc()
 
-		lr, err := ovnClient.GetLogicalRouter(lrName, false)
+		lr, err := nbClient.GetLogicalRouter(lrName, false)
 		require.NoError(t, err)
 		require.Len(t, lr.Nat, 4)
 
-		err = ovnClient.DeleteNats(lrName, "", "")
+		err = nbClient.DeleteNats(lrName, "", "")
 		require.NoError(t, err)
 
-		lr, err = ovnClient.GetLogicalRouter(lrName, false)
+		lr, err = nbClient.GetLogicalRouter(lrName, false)
 		require.NoError(t, err)
 		require.Empty(t, lr.Nat)
 	})
@@ -290,21 +290,21 @@ func (suite *OvnClientTestSuite) testDeleteNats() {
 	t.Run("delete snat or dnat_and_snat from logical router", func(t *testing.T) {
 		prepareFunc()
 
-		lr, err := ovnClient.GetLogicalRouter(lrName, false)
+		lr, err := nbClient.GetLogicalRouter(lrName, false)
 		require.NoError(t, err)
 		require.Len(t, lr.Nat, 4)
 
-		err = ovnClient.DeleteNats(lrName, "snat", "")
+		err = nbClient.DeleteNats(lrName, "snat", "")
 		require.NoError(t, err)
 
-		lr, err = ovnClient.GetLogicalRouter(lrName, false)
+		lr, err = nbClient.GetLogicalRouter(lrName, false)
 		require.NoError(t, err)
 		require.Len(t, lr.Nat, 2)
 
-		err = ovnClient.DeleteNats(lrName, "dnat_and_snat", "")
+		err = nbClient.DeleteNats(lrName, "dnat_and_snat", "")
 		require.NoError(t, err)
 
-		lr, err = ovnClient.GetLogicalRouter(lrName, false)
+		lr, err = nbClient.GetLogicalRouter(lrName, false)
 		require.NoError(t, err)
 		require.Empty(t, lr.Nat)
 	})
@@ -312,22 +312,22 @@ func (suite *OvnClientTestSuite) testDeleteNats() {
 	t.Run("delete nat with same logical ip from logical router", func(t *testing.T) {
 		prepareFunc()
 
-		lr, err := ovnClient.GetLogicalRouter(lrName, false)
+		lr, err := nbClient.GetLogicalRouter(lrName, false)
 		require.NoError(t, err)
 		require.Len(t, lr.Nat, 4)
 
-		err = ovnClient.DeleteNats(lrName, "", logicalIPs[0])
+		err = nbClient.DeleteNats(lrName, "", logicalIPs[0])
 		require.NoError(t, err)
 
-		lr, err = ovnClient.GetLogicalRouter(lrName, false)
+		lr, err = nbClient.GetLogicalRouter(lrName, false)
 		require.NoError(t, err)
 		require.Len(t, lr.Nat, 1)
 
 		// clear
-		err = ovnClient.DeleteNats(lrName, "", "")
+		err = nbClient.DeleteNats(lrName, "", "")
 		require.NoError(t, err)
 
-		lr, err = ovnClient.GetLogicalRouter(lrName, false)
+		lr, err = nbClient.GetLogicalRouter(lrName, false)
 		require.NoError(t, err)
 		require.Empty(t, lr.Nat)
 	})
@@ -335,22 +335,22 @@ func (suite *OvnClientTestSuite) testDeleteNats() {
 	t.Run("delete snat with same logical ip from logical router", func(t *testing.T) {
 		prepareFunc()
 
-		lr, err := ovnClient.GetLogicalRouter(lrName, false)
+		lr, err := nbClient.GetLogicalRouter(lrName, false)
 		require.NoError(t, err)
 		require.Len(t, lr.Nat, 4)
 
-		err = ovnClient.DeleteNats(lrName, "snat", logicalIPs[0])
+		err = nbClient.DeleteNats(lrName, "snat", logicalIPs[0])
 		require.NoError(t, err)
 
-		lr, err = ovnClient.GetLogicalRouter(lrName, false)
+		lr, err = nbClient.GetLogicalRouter(lrName, false)
 		require.NoError(t, err)
 		require.Len(t, lr.Nat, 3)
 
 		// clear
-		err = ovnClient.DeleteNats(lrName, "", "")
+		err = nbClient.DeleteNats(lrName, "", "")
 		require.NoError(t, err)
 
-		lr, err = ovnClient.GetLogicalRouter(lrName, false)
+		lr, err = nbClient.GetLogicalRouter(lrName, false)
 		require.NoError(t, err)
 		require.Empty(t, lr.Nat)
 	})
@@ -358,14 +358,14 @@ func (suite *OvnClientTestSuite) testDeleteNats() {
 	t.Run("delete dnat_and_snat with same logical ip from logical router", func(t *testing.T) {
 		prepareFunc()
 
-		lr, err := ovnClient.GetLogicalRouter(lrName, false)
+		lr, err := nbClient.GetLogicalRouter(lrName, false)
 		require.NoError(t, err)
 		require.Len(t, lr.Nat, 4)
 
-		err = ovnClient.DeleteNats(lrName, "dnat_and_snat", logicalIPs[0])
+		err = nbClient.DeleteNats(lrName, "dnat_and_snat", logicalIPs[0])
 		require.NoError(t, err)
 
-		lr, err = ovnClient.GetLogicalRouter(lrName, false)
+		lr, err = nbClient.GetLogicalRouter(lrName, false)
 		require.NoError(t, err)
 		require.Len(t, lr.Nat, 2)
 	})
@@ -375,10 +375,10 @@ func (suite *OvnClientTestSuite) testGetNat() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnNBClient
+	nbClient := suite.ovnNBClient
 	lrName := "test_get_nat_lr"
 
-	err := ovnClient.CreateLogicalRouter(lrName)
+	err := nbClient.CreateLogicalRouter(lrName)
 	require.NoError(t, err)
 
 	t.Run("snat", func(t *testing.T) {
@@ -387,21 +387,21 @@ func (suite *OvnClientTestSuite) testGetNat() {
 		externalIP := "192.168.30.254"
 		logicalIP := "10.250.0.4"
 
-		err := ovnClient.AddNat(lrName, natType, externalIP, logicalIP, "", "", nil)
+		err := nbClient.AddNat(lrName, natType, externalIP, logicalIP, "", "", nil)
 		require.NoError(t, err)
 
 		t.Run("found nat", func(t *testing.T) {
-			_, err := ovnClient.GetNat(lrName, natType, externalIP, logicalIP, false)
+			_, err := nbClient.GetNat(lrName, natType, externalIP, logicalIP, false)
 			require.NoError(t, err)
 		})
 
 		t.Run("logical ip is different", func(t *testing.T) {
-			_, err := ovnClient.GetNat(lrName, natType, externalIP, "10.250.0.10", false)
+			_, err := nbClient.GetNat(lrName, natType, externalIP, "10.250.0.10", false)
 			require.ErrorContains(t, err, "not found")
 		})
 
 		t.Run("logical router name is different", func(t *testing.T) {
-			_, err := ovnClient.GetNat(lrName+"x", natType, externalIP, logicalIP, false)
+			_, err := nbClient.GetNat(lrName+"x", natType, externalIP, logicalIP, false)
 			require.ErrorContains(t, err, "not found")
 		})
 	})
@@ -412,16 +412,16 @@ func (suite *OvnClientTestSuite) testGetNat() {
 		externalIP := "192.168.30.254"
 		logicalIP := "10.250.0.4"
 
-		err := ovnClient.AddNat(lrName, natType, externalIP, logicalIP, "", "", nil)
+		err := nbClient.AddNat(lrName, natType, externalIP, logicalIP, "", "", nil)
 		require.NoError(t, err)
 
 		t.Run("found nat", func(t *testing.T) {
-			_, err := ovnClient.GetNat(lrName, natType, externalIP, logicalIP, false)
+			_, err := nbClient.GetNat(lrName, natType, externalIP, logicalIP, false)
 			require.NoError(t, err)
 		})
 
 		t.Run("external ip is different", func(t *testing.T) {
-			_, err := ovnClient.GetNat(lrName, natType, "192.168.30.255", logicalIP, false)
+			_, err := nbClient.GetNat(lrName, natType, "192.168.30.255", logicalIP, false)
 			require.ErrorContains(t, err, "not found")
 		})
 	})
@@ -431,13 +431,13 @@ func (suite *OvnClientTestSuite) testNewNat() {
 	t := suite.T()
 	t.Parallel()
 
-	ovnClient := suite.ovnNBClient
+	nbClient := suite.ovnNBClient
 	lrName := "test-new-nat-lr"
 	natType := "snat"
 	externalIP := "192.168.30.254"
 	logicalIP := "10.250.0.4"
 
-	err := ovnClient.CreateLogicalRouter(lrName)
+	err := nbClient.CreateLogicalRouter(lrName)
 	require.NoError(t, err)
 
 	t.Run("new snat rule", func(t *testing.T) {
@@ -449,7 +449,7 @@ func (suite *OvnClientTestSuite) testNewNat() {
 			LogicalIP:  logicalIP,
 		}
 
-		nat, err := ovnClient.newNat(lrName, natType, externalIP, logicalIP, "", "")
+		nat, err := nbClient.newNat(lrName, natType, externalIP, logicalIP, "", "")
 		require.NoError(t, err)
 		expect.UUID = nat.UUID
 		require.Equal(t, expect, nat)
@@ -475,7 +475,7 @@ func (suite *OvnClientTestSuite) testNewNat() {
 			nat.ExternalMAC = &externalMac
 		}
 
-		nat, err := ovnClient.newNat(lrName, natType, externalIP, logicalIP, "", "", options)
+		nat, err := nbClient.newNat(lrName, natType, externalIP, logicalIP, "", "", options)
 		require.NoError(t, err)
 		expect.UUID = nat.UUID
 		require.Equal(t, expect, nat)
