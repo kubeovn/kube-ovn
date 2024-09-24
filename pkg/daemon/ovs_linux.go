@@ -1120,7 +1120,7 @@ func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPCo
 		ipDelMap[ipAddr.IPNet.String()] = ipAddr
 	}
 
-	if ipv6LinkLocalOn && !isIPv6LinkLocalExist {
+	if ipv6LinkLocalOn && !isIPv6LinkLocalExist && (util.CheckProtocol(ip) == kubeovnv1.ProtocolIPv6 || util.CheckProtocol(ip) == kubeovnv1.ProtocolDual) {
 		linkLocal, err := macToLinkLocalIPv6(macAddr)
 		if err != nil {
 			return fmt.Errorf("failed to generate link-local address: %w", err)
