@@ -2,10 +2,8 @@ package util
 
 import "fmt"
 
-var (
-	// VpcNatGwNamePrefix is appended to the name of the StatefulSet and Pods for NAT gateways
-	VpcNatGwNamePrefix = "vpc-nat-gw"
-)
+// VpcNatGwNamePrefix is appended to the name of the StatefulSet and Pods for NAT gateways
+var VpcNatGwNamePrefix = "vpc-nat-gw"
 
 // GenNatGwStsName returns the full name of a NAT gateway StatefulSet
 func GenNatGwStsName(name string) string {
