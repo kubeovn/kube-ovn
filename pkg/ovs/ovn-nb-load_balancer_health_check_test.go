@@ -17,29 +17,29 @@ func (suite *OvnClientTestSuite) testAddLoadBalancerHealthCheck() {
 	t.Parallel()
 
 	var (
-		ovnClient        = suite.ovnNBClient
+		nbClient         = suite.ovnNBClient
 		lbName           = "test-create-lb-hc"
 		vip              = "1.1.1.1:80"
 		lbhc, lbhcRepeat *ovnnb.LoadBalancerHealthCheck
 		err              error
 	)
 
-	err = ovnClient.CreateLoadBalancer(lbName, "tcp", "ip_dst")
+	err = nbClient.CreateLoadBalancer(lbName, "tcp", "ip_dst")
 	require.NoError(t, err)
 
-	err = ovnClient.AddLoadBalancerHealthCheck(lbName, vip, map[string]string{})
+	err = nbClient.AddLoadBalancerHealthCheck(lbName, vip, map[string]string{})
 	require.NoError(t, err)
 
-	_, lbhc, err = ovnClient.GetLoadBalancerHealthCheck(lbName, vip, false)
+	_, lbhc, err = nbClient.GetLoadBalancerHealthCheck(lbName, vip, false)
 	require.NoError(t, err)
 	require.Equal(t, vip, lbhc.Vip)
 	require.NotEmpty(t, lbhc.UUID)
 
 	// should no err create lbhc repeatedly
-	err = ovnClient.AddLoadBalancerHealthCheck(lbName, vip, map[string]string{})
+	err = nbClient.AddLoadBalancerHealthCheck(lbName, vip, map[string]string{})
 	require.NoError(t, err)
 
-	_, lbhcRepeat, err = ovnClient.GetLoadBalancerHealthCheck(lbName, vip, false)
+	_, lbhcRepeat, err = nbClient.GetLoadBalancerHealthCheck(lbName, vip, false)
 	require.NoError(t, err)
 	require.Equal(t, vip, lbhcRepeat.Vip)
 	require.NotEmpty(t, lbhcRepeat.UUID)
@@ -52,20 +52,20 @@ func (suite *OvnClientTestSuite) testUpdateLoadBalancerHealthCheck() {
 	t.Parallel()
 
 	var (
-		ovnClient = suite.ovnNBClient
-		lbName    = "test-update-lb-hc"
-		vip       = "2.2.2.2:80"
-		lbhc      *ovnnb.LoadBalancerHealthCheck
-		err       error
+		nbClient = suite.ovnNBClient
+		lbName   = "test-update-lb-hc"
+		vip      = "2.2.2.2:80"
+		lbhc     *ovnnb.LoadBalancerHealthCheck
+		err      error
 	)
 
-	err = ovnClient.CreateLoadBalancer(lbName, "tcp", "ip_dst")
+	err = nbClient.CreateLoadBalancer(lbName, "tcp", "ip_dst")
 	require.NoError(t, err)
 
-	err = ovnClient.AddLoadBalancerHealthCheck(lbName, vip, map[string]string{})
+	err = nbClient.AddLoadBalancerHealthCheck(lbName, vip, map[string]string{})
 	require.NoError(t, err)
 
-	_, lbhc, err = ovnClient.GetLoadBalancerHealthCheck(lbName, vip, false)
+	_, lbhc, err = nbClient.GetLoadBalancerHealthCheck(lbName, vip, false)
 	require.NoError(t, err)
 
 	vip = "3.3.3.3:80"
@@ -73,10 +73,10 @@ func (suite *OvnClientTestSuite) testUpdateLoadBalancerHealthCheck() {
 		func(t *testing.T) {
 			lbhc.Vip = vip
 
-			err = ovnClient.UpdateLoadBalancerHealthCheck(lbhc, &lbhc.Vip)
+			err = nbClient.UpdateLoadBalancerHealthCheck(lbhc, &lbhc.Vip)
 			require.NoError(t, err)
 
-			_, lbhc, err = ovnClient.GetLoadBalancerHealthCheck(lbName, vip, false)
+			_, lbhc, err = nbClient.GetLoadBalancerHealthCheck(lbName, vip, false)
 			require.NoError(t, err)
 
 			require.Equal(t, vip, lbhc.Vip)
@@ -89,22 +89,22 @@ func (suite *OvnClientTestSuite) testDeleteLoadBalancerHealthCheck() {
 	t.Parallel()
 
 	var (
-		ovnClient = suite.ovnNBClient
-		lbName    = "test-del-lb-hc"
-		vip       = "1.1.1.11:80"
-		err       error
+		nbClient = suite.ovnNBClient
+		lbName   = "test-del-lb-hc"
+		vip      = "1.1.1.11:80"
+		err      error
 	)
 
-	err = ovnClient.CreateLoadBalancer(lbName, "tcp", "ip_dst")
+	err = nbClient.CreateLoadBalancer(lbName, "tcp", "ip_dst")
 	require.NoError(t, err)
 
-	err = ovnClient.AddLoadBalancerHealthCheck(lbName, vip, map[string]string{})
+	err = nbClient.AddLoadBalancerHealthCheck(lbName, vip, map[string]string{})
 	require.NoError(t, err)
 
-	err = ovnClient.DeleteLoadBalancerHealthCheck(lbName, vip)
+	err = nbClient.DeleteLoadBalancerHealthCheck(lbName, vip)
 	require.NoError(t, err)
 
-	_, _, err = ovnClient.GetLoadBalancerHealthCheck(lbName, vip, false)
+	_, _, err = nbClient.GetLoadBalancerHealthCheck(lbName, vip, false)
 	require.Error(t, err)
 }
 
@@ -113,7 +113,7 @@ func (suite *OvnClientTestSuite) testDeleteLoadBalancerHealthChecks() {
 	t.Parallel()
 
 	var (
-		ovnClient    = suite.ovnNBClient
+		nbClient     = suite.ovnNBClient
 		lbNamePrefix = "test-del-lb-hcs"
 		vipFormat    = "5.5.5.%d:80"
 		lbhc         *ovnnb.LoadBalancerHealthCheck
@@ -126,24 +126,24 @@ func (suite *OvnClientTestSuite) testDeleteLoadBalancerHealthChecks() {
 		lbName = fmt.Sprintf("%s-%d", lbNamePrefix, i)
 		vip = fmt.Sprintf(vipFormat, i+1)
 
-		err = ovnClient.CreateLoadBalancer(lbName, "tcp", "ip_dst")
+		err = nbClient.CreateLoadBalancer(lbName, "tcp", "ip_dst")
 		require.NoError(t, err)
 
-		err = ovnClient.AddLoadBalancerHealthCheck(lbName, vip, map[string]string{})
+		err = nbClient.AddLoadBalancerHealthCheck(lbName, vip, map[string]string{})
 		require.NoError(t, err)
 
 		vips = append(vips, vip)
 
-		_, lbhc, err = ovnClient.GetLoadBalancerHealthCheck(lbName, vip, false)
+		_, lbhc, err = nbClient.GetLoadBalancerHealthCheck(lbName, vip, false)
 		require.NoError(t, err)
 		require.NotNil(t, lbhc)
 		require.Equal(t, vip, lbhc.Vip)
 
-		err = ovnClient.LoadBalancerDeleteHealthCheck(lbName, lbhc.UUID)
+		err = nbClient.LoadBalancerDeleteHealthCheck(lbName, lbhc.UUID)
 		require.NoError(t, err)
 	}
 
-	err = ovnClient.DeleteLoadBalancerHealthChecks(
+	err = nbClient.DeleteLoadBalancerHealthChecks(
 		func(lbhc *ovnnb.LoadBalancerHealthCheck) bool {
 			return slices.Contains(vips, lbhc.Vip)
 		},
@@ -151,10 +151,10 @@ func (suite *OvnClientTestSuite) testDeleteLoadBalancerHealthChecks() {
 	require.NoError(t, err)
 
 	for _, ip := range vips {
-		_, _, err = ovnClient.GetLoadBalancerHealthCheck(lbName, ip, true)
+		_, _, err = nbClient.GetLoadBalancerHealthCheck(lbName, ip, true)
 		require.NoError(t, err)
 
-		_, _, err = ovnClient.GetLoadBalancerHealthCheck(lbName, ip, false)
+		_, _, err = nbClient.GetLoadBalancerHealthCheck(lbName, ip, false)
 		require.Error(t, err)
 	}
 }
@@ -164,23 +164,23 @@ func (suite *OvnClientTestSuite) testGetLoadBalancerHealthCheck() {
 	t.Parallel()
 
 	var (
-		ovnClient      = suite.ovnNBClient
+		nbClient       = suite.ovnNBClient
 		lbName         = "test-get-lb-hc"
 		vip            = "1.1.1.22:80"
 		vipNonExistent = "1.1.1.33:80"
 		err            error
 	)
 
-	err = ovnClient.CreateLoadBalancer(lbName, "tcp", "ip_dst")
+	err = nbClient.CreateLoadBalancer(lbName, "tcp", "ip_dst")
 	require.NoError(t, err)
 
-	err = ovnClient.AddLoadBalancerHealthCheck(lbName, vip, map[string]string{})
+	err = nbClient.AddLoadBalancerHealthCheck(lbName, vip, map[string]string{})
 	require.NoError(t, err)
 
 	t.Run("should return no err when found load balancer health check",
 		func(t *testing.T) {
 			t.Parallel()
-			_, lbhc, err := ovnClient.GetLoadBalancerHealthCheck(lbName, vip, false)
+			_, lbhc, err := nbClient.GetLoadBalancerHealthCheck(lbName, vip, false)
 			require.NoError(t, err)
 			require.Equal(t, vip, lbhc.Vip)
 			require.NotEmpty(t, lbhc.UUID)
@@ -190,7 +190,7 @@ func (suite *OvnClientTestSuite) testGetLoadBalancerHealthCheck() {
 	t.Run("should return err when not found load balancer health check",
 		func(t *testing.T) {
 			t.Parallel()
-			_, _, err := ovnClient.GetLoadBalancerHealthCheck(lbName, vipNonExistent, false)
+			_, _, err := nbClient.GetLoadBalancerHealthCheck(lbName, vipNonExistent, false)
 			require.Error(t, err)
 		},
 	)
@@ -198,7 +198,7 @@ func (suite *OvnClientTestSuite) testGetLoadBalancerHealthCheck() {
 	t.Run("no err when not found load balancer health check and ignoreNotFound is true",
 		func(t *testing.T) {
 			t.Parallel()
-			_, _, err := ovnClient.GetLoadBalancerHealthCheck(lbName, vipNonExistent, true)
+			_, _, err := nbClient.GetLoadBalancerHealthCheck(lbName, vipNonExistent, true)
 			require.NoError(t, err)
 		},
 	)
@@ -209,7 +209,7 @@ func (suite *OvnClientTestSuite) testListLoadBalancerHealthChecks() {
 	t.Parallel()
 
 	var (
-		ovnClient    = suite.ovnNBClient
+		nbClient     = suite.ovnNBClient
 		lbNamePrefix = "test-list-lb-hcs"
 		vipFormat    = "6.6.6.%d:80"
 		vips         []string
@@ -222,10 +222,10 @@ func (suite *OvnClientTestSuite) testListLoadBalancerHealthChecks() {
 		lbName = fmt.Sprintf("%s-%d", lbNamePrefix, i)
 		vip = fmt.Sprintf(vipFormat, i+1)
 
-		err = ovnClient.CreateLoadBalancer(lbName, "tcp", "ip_dst")
+		err = nbClient.CreateLoadBalancer(lbName, "tcp", "ip_dst")
 		require.NoError(t, err)
 
-		err = ovnClient.AddLoadBalancerHealthCheck(lbName, vip, map[string]string{})
+		err = nbClient.AddLoadBalancerHealthCheck(lbName, vip, map[string]string{})
 		require.NoError(t, err)
 
 		vips = append(vips, vip)
@@ -235,7 +235,7 @@ func (suite *OvnClientTestSuite) testListLoadBalancerHealthChecks() {
 		func(t *testing.T) {
 			t.Parallel()
 
-			lbhcs, err := ovnClient.ListLoadBalancerHealthChecks(nil)
+			lbhcs, err := nbClient.ListLoadBalancerHealthChecks(nil)
 			require.NoError(t, err)
 			require.NotEmpty(t, lbhcs)
 
@@ -256,7 +256,7 @@ func (suite *OvnClientTestSuite) testListLoadBalancerHealthChecks() {
 				func(t *testing.T) {
 					t.Parallel()
 
-					lbhcs, err := ovnClient.ListLoadBalancerHealthChecks(
+					lbhcs, err := nbClient.ListLoadBalancerHealthChecks(
 						func(lbhc *ovnnb.LoadBalancerHealthCheck) bool {
 							return strings.Contains(lbhc.Vip, "6.6.6.")
 						},
@@ -283,7 +283,7 @@ func (suite *OvnClientTestSuite) testDeleteLoadBalancerHealthCheckOp() {
 	t.Parallel()
 
 	var (
-		ovnClient      = suite.ovnNBClient
+		nbClient       = suite.ovnNBClient
 		lbName         = "test-del-lb-hc-op"
 		vip            = "1.1.1.44:80"
 		vipNonExistent = "1.1.1.55:80"
@@ -291,24 +291,24 @@ func (suite *OvnClientTestSuite) testDeleteLoadBalancerHealthCheckOp() {
 		err            error
 	)
 
-	err = ovnClient.CreateLoadBalancer(lbName, "tcp", "ip_dst")
+	err = nbClient.CreateLoadBalancer(lbName, "tcp", "ip_dst")
 	require.NoError(t, err)
 
-	lb, err := ovnClient.GetLoadBalancer(lbName, false)
+	lb, err := nbClient.GetLoadBalancer(lbName, false)
 	require.NoError(t, err)
 	require.NotNil(t, lb)
 
-	err = ovnClient.AddLoadBalancerHealthCheck(lbName, vip, nil)
+	err = nbClient.AddLoadBalancerHealthCheck(lbName, vip, nil)
 	require.NoError(t, err)
 
-	_, lbhc, err = ovnClient.GetLoadBalancerHealthCheck(lbName, vip, false)
+	_, lbhc, err = nbClient.GetLoadBalancerHealthCheck(lbName, vip, false)
 	require.NoError(t, err)
 
 	t.Run("normal delete",
 		func(t *testing.T) {
 			t.Parallel()
 
-			ops, err := ovnClient.DeleteLoadBalancerHealthCheckOp(lbName, vip)
+			ops, err := nbClient.DeleteLoadBalancerHealthCheckOp(lbName, vip)
 			require.NoError(t, err)
 			require.Len(t, ops, 2)
 
@@ -362,7 +362,7 @@ func (suite *OvnClientTestSuite) testDeleteLoadBalancerHealthCheckOp() {
 		func(t *testing.T) {
 			t.Parallel()
 
-			ops, err := ovnClient.DeleteLoadBalancerHealthCheckOp(lbName, vipNonExistent)
+			ops, err := nbClient.DeleteLoadBalancerHealthCheckOp(lbName, vipNonExistent)
 			require.NoError(t, err)
 			require.Len(t, ops, 0)
 		},
