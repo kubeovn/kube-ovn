@@ -20,6 +20,7 @@ import (
 	"github.com/ovn-org/libovsdb/server"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
+	"k8s.io/klog/v2"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 )
@@ -853,6 +854,7 @@ func newOvnNbClient(t *testing.T, ovnNbAddr string, ovnNbTimeout int) (*OVNNbCli
 func newNbClient(addr string, timeout int) (client.Client, error) {
 	dbModel, err := ovnnb.FullDatabaseModel()
 	if err != nil {
+		klog.Error(err)
 		return nil, err
 	}
 
@@ -873,10 +875,12 @@ func newNbClient(addr string, timeout int) (client.Client, error) {
 
 	c, err := client.NewOVSDBClient(dbModel, options...)
 	if err != nil {
+		klog.Error(err)
 		return nil, err
 	}
 
 	if err = c.Connect(context.TODO()); err != nil {
+		klog.Error(err)
 		return nil, err
 	}
 
@@ -899,6 +903,7 @@ func newNbClient(addr string, timeout int) (client.Client, error) {
 		client.WithTable(&ovnnb.PortGroup{}),
 	}
 	if _, err = c.Monitor(context.TODO(), c.NewMonitor(monitorOpts...)); err != nil {
+		klog.Error(err)
 		return nil, err
 	}
 

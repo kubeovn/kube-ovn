@@ -11,6 +11,7 @@ import (
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
+	"k8s.io/klog/v2"
 )
 
 var addressSetNameRegex = regexp.MustCompile(`^[a-zA-Z_.][a-zA-Z_.0-9]*$`)
@@ -147,6 +148,7 @@ func (m AndACLMatch) Match() (string, error) {
 	for _, r := range m.matches {
 		match, err := r.Match()
 		if err != nil {
+			klog.Error(err)
 			return "", fmt.Errorf("generate match %s: %w", match, err)
 		}
 		matches = append(matches, match)
@@ -176,6 +178,7 @@ func (m OrACLMatch) Match() (string, error) {
 	for _, specification := range m.matches {
 		match, err := specification.Match()
 		if err != nil {
+			klog.Error(err)
 			return "", fmt.Errorf("generate match %s: %w", match, err)
 		}
 

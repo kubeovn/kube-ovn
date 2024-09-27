@@ -78,6 +78,7 @@ func (c *OVNNbClient) CreateNats(lrName string, nats ...*ovnnb.NAT) error {
 	ops = append(ops, natAddOp...)
 
 	if err = c.Transact("lr-nats-add", ops); err != nil {
+		klog.Error(err)
 		return fmt.Errorf("add nats to %s: %w", lrName, err)
 	}
 
@@ -201,6 +202,7 @@ func (c *OVNNbClient) DeleteNats(lrName, natType, logicalIP string) error {
 		return fmt.Errorf("generate operations for deleting nats from logical router %s: %w", lrName, err)
 	}
 	if err = c.Transact("nats-del", ops); err != nil {
+		klog.Error(err)
 		return fmt.Errorf("del nats from logical router %s: %w", lrName, err)
 	}
 
@@ -222,6 +224,7 @@ func (c *OVNNbClient) DeleteNat(lrName, natType, externalIP, logicalIP string) e
 		return fmt.Errorf("generate operations for deleting nat from logical router %s: %w", lrName, err)
 	}
 	if err = c.Transact("lr-nat-del", ops); err != nil {
+		klog.Error(err)
 		return fmt.Errorf("del nat from logical router %s: %w", lrName, err)
 	}
 
@@ -235,6 +238,7 @@ func (c *OVNNbClient) GetNATByUUID(uuid string) (*ovnnb.NAT, error) {
 
 	nat := &ovnnb.NAT{UUID: uuid}
 	if err := c.Get(ctx, nat); err != nil {
+		klog.Error(err)
 		return nil, err
 	}
 

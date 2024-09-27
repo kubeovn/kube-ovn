@@ -47,11 +47,13 @@ func (c *OVNNbClient) CreateLogicalRouterStaticRoutes(lrName string, routes ...*
 
 	createRoutesOp, err := c.ovsDbClient.Create(models...)
 	if err != nil {
+		klog.Error(err)
 		return fmt.Errorf("generate operations for creating static routes: %w", err)
 	}
 
 	routeAddOp, err := c.LogicalRouterUpdateStaticRouteOp(lrName, routeUUIDs, ovsdb.MutateOperationInsert)
 	if err != nil {
+		klog.Error(err)
 		return fmt.Errorf("generate operations for adding static routes to logical router %s: %w", lrName, err)
 	}
 
@@ -60,6 +62,7 @@ func (c *OVNNbClient) CreateLogicalRouterStaticRoutes(lrName string, routes ...*
 	ops = append(ops, routeAddOp...)
 
 	if err = c.Transact("lr-routes-add", ops); err != nil {
+		klog.Error(err)
 		return fmt.Errorf("add static routes to %s: %w", lrName, err)
 	}
 
@@ -112,6 +115,7 @@ func (c *OVNNbClient) AddLogicalRouterStaticRoute(lrName, routeTable, policy, ip
 		return fmt.Errorf("failed to delete static routes from logical router %s: %w", lrName, err)
 	}
 	if err = c.CreateLogicalRouterStaticRoutes(lrName, toAdd...); err != nil {
+		klog.Error(err)
 		return fmt.Errorf("failed to add static routes to logical router %s: %w", lrName, err)
 	}
 	return nil
@@ -130,6 +134,7 @@ func (c *OVNNbClient) UpdateLogicalRouterStaticRoute(route *ovnnb.LogicalRouterS
 	}
 
 	if err = c.Transact("net-update", op); err != nil {
+		klog.Error(err)
 		return fmt.Errorf("update logical router static route 'policy %s ip_prefix %s': %w", *route.Policy, route.IPPrefix, err)
 	}
 

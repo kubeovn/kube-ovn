@@ -19,6 +19,7 @@ import (
 func (c *OVNNbClient) CreateLogicalRouter(lrName string) error {
 	exist, err := c.LogicalRouterExists(lrName)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 
@@ -39,6 +40,7 @@ func (c *OVNNbClient) CreateLogicalRouter(lrName string) error {
 	}
 
 	if err := c.Transact("lr-add", op); err != nil {
+		klog.Error(err)
 		return fmt.Errorf("create logical router %s: %w", lrName, err)
 	}
 
@@ -54,6 +56,7 @@ func (c *OVNNbClient) UpdateLogicalRouter(lr *ovnnb.LogicalRouter, fields ...int
 	}
 
 	if err = c.Transact("lr-update", op); err != nil {
+		klog.Error(err)
 		return fmt.Errorf("update logical router %s: %w", lr.Name, err)
 	}
 
@@ -80,6 +83,7 @@ func (c *OVNNbClient) DeleteLogicalRouter(lrName string) error {
 	}
 
 	if err := c.Transact("lr-del", op); err != nil {
+		klog.Error(err)
 		return fmt.Errorf("delete logical router %s: %w", lrName, err)
 	}
 
@@ -96,6 +100,7 @@ func (c *OVNNbClient) GetLogicalRouter(lrName string, ignoreNotFound bool) (*ovn
 	if err := c.ovsDbClient.WhereCache(func(lr *ovnnb.LogicalRouter) bool {
 		return lr.Name == lrName
 	}).List(ctx, &lrList); err != nil {
+		klog.Error(err)
 		return nil, fmt.Errorf("list logical router %q: %w", lrName, err)
 	}
 
@@ -138,6 +143,7 @@ func (c *OVNNbClient) ListLogicalRouter(needVendorFilter bool, filter func(lr *o
 
 		return true
 	}).List(ctx, &lrList); err != nil {
+		klog.Error(err)
 		return nil, fmt.Errorf("list logical router: %w", err)
 	}
 
@@ -182,6 +188,7 @@ func (c *OVNNbClient) LogicalRouterUpdateLoadBalancers(lrName string, op ovsdb.M
 	}
 
 	if err := c.Transact("lr-lb-update", ops); err != nil {
+		klog.Error(err)
 		return fmt.Errorf("logical router %s update lbs %v: %w", lrName, lbNames, err)
 	}
 

@@ -8,6 +8,7 @@ import (
 	"github.com/ovn-org/libovsdb/model"
 	"github.com/ovn-org/libovsdb/ovsdb"
 	"github.com/stretchr/testify/require"
+	"k8s.io/klog/v2"
 
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
@@ -18,6 +19,7 @@ import (
 func createLogicalRouter(c *OVNNbClient, lr *ovnnb.LogicalRouter) error {
 	op, err := c.ovsDbClient.Create(lr)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 
