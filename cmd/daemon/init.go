@@ -7,22 +7,15 @@ import (
 	"fmt"
 	"os/exec"
 
+	"github.com/vishvananda/netlink"
 	"k8s.io/klog/v2"
 )
 
-<<<<<<< HEAD
-=======
 const (
 	geneveLinkName = "genev_sys_6081"
 	vxlanLinkName  = "vxlan_sys_4789"
 )
 
-func printCaps() {
-	currentCaps := cap.GetProc()
-	klog.Infof("current capabilities: %s", currentCaps.String())
-}
-
->>>>>>> 5a70de9c (allow user to set vxlan_sys_4789 tx off (#4543))
 func initForOS() error {
 	// disable checksum for genev_sys_6081 as default
 	cmd := exec.Command("sh", "-c", "ethtool -K genev_sys_6081 tx off")

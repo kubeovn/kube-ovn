@@ -26,6 +26,7 @@ type Configuration struct {
 	OvnSbAddr              string
 	OvnTimeout             int
 	OvsDbConnectTimeout    int
+	OvsDbConnectMaxRetry   int
 	OvsDbInactivityTimeout int
 	CustCrdRetryMaxDelay   int
 	CustCrdRetryMinDelay   int
@@ -114,6 +115,7 @@ func ParseFlags() (*Configuration, error) {
 		argOvnSbAddr              = pflag.String("ovn-sb-addr", "", "ovn-sb address")
 		argOvnTimeout             = pflag.Int("ovn-timeout", 60, "The seconds to wait ovn command timeout")
 		argOvsDbConTimeout        = pflag.Int("ovsdb-con-timeout", 3, "The seconds to wait ovsdb connect timeout")
+		argOvsDbConnectMaxRetry   = pflag.Int("ovsdb-con-maxretry", 60, "The maximum number of retries for connecting to ovsdb")
 		argOvsDbInactivityTimeout = pflag.Int("ovsdb-inactivity-timeout", 10, "The seconds to wait ovsdb inactivity check timeout")
 		argCustCrdRetryMinDelay   = pflag.Int("cust-crd-retry-min-delay", 1, "The min delay seconds between custom crd two retries")
 		argCustCrdRetryMaxDelay   = pflag.Int("cust-crd-retry-max-delay", 20, "The max delay seconds between custom crd two retries")
@@ -203,6 +205,7 @@ func ParseFlags() (*Configuration, error) {
 		OvnSbAddr:                      *argOvnSbAddr,
 		OvnTimeout:                     *argOvnTimeout,
 		OvsDbConnectTimeout:            *argOvsDbConTimeout,
+		OvsDbConnectMaxRetry:           *argOvsDbConnectMaxRetry,
 		OvsDbInactivityTimeout:         *argOvsDbInactivityTimeout,
 		CustCrdRetryMinDelay:           *argCustCrdRetryMinDelay,
 		CustCrdRetryMaxDelay:           *argCustCrdRetryMaxDelay,

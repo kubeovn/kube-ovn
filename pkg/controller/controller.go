@@ -477,7 +477,9 @@ func Run(ctx context.Context, config *Configuration) {
 		config.OvnNbAddr,
 		config.OvnTimeout,
 		config.OvsDbConnectTimeout,
-		config.OvsDbInactivityTimeout); err != nil {
+		config.OvsDbInactivityTimeout,
+		config.OvsDbConnectMaxRetry,
+	); err != nil {
 		util.LogFatalAndExit(err, "failed to create ovn nb client")
 	}
 	if controller.OVNSbClient, err = ovs.NewOvnSbClient(
@@ -485,6 +487,7 @@ func Run(ctx context.Context, config *Configuration) {
 		config.OvnTimeout,
 		config.OvsDbConnectTimeout,
 		config.OvsDbInactivityTimeout,
+		config.OvsDbConnectMaxRetry,
 	); err != nil {
 		util.LogFatalAndExit(err, "failed to create ovn sb client")
 	}
