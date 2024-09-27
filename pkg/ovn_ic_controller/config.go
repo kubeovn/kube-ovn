@@ -26,6 +26,7 @@ type Configuration struct {
 	OvnSbAddr              string
 	OvnTimeout             int
 	OvsDbConnectTimeout    int
+	OvsDbConnectMaxRetry   int
 	OvsDbInactivityTimeout int
 
 	NodeSwitch     string
@@ -41,6 +42,7 @@ func ParseFlags() (*Configuration, error) {
 		argOvnSbAddr              = pflag.String("ovn-sb-addr", "", "ovn-sb address")
 		argOvnTimeout             = pflag.Int("ovn-timeout", 60, "")
 		argOvsDbConTimeout        = pflag.Int("ovsdb-con-timeout", 3, "")
+		argOvsDbConnectMaxRetry   = pflag.Int("ovsdb-con-maxretry", 60, "")
 		argOvsDbInactivityTimeout = pflag.Int("ovsdb-inactivity-timeout", 10, "")
 
 		argClusterRouter  = pflag.String("cluster-router", util.DefaultVpc, "The router name for cluster router")
@@ -80,6 +82,7 @@ func ParseFlags() (*Configuration, error) {
 		OvnSbAddr:              *argOvnSbAddr,
 		OvnTimeout:             *argOvnTimeout,
 		OvsDbConnectTimeout:    *argOvsDbConTimeout,
+		OvsDbConnectMaxRetry:   *argOvsDbConnectMaxRetry,
 		OvsDbInactivityTimeout: *argOvsDbInactivityTimeout,
 
 		ClusterRouter:  *argClusterRouter,
