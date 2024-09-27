@@ -739,8 +739,8 @@ func (s *Subnet) IPPoolStatistics(ippool string) (
 	v4Available, v4Using, v6Available, v6Using internal.BigInt,
 	v4AvailableRange, v4UsingRange, v6AvailableRange, v6UsingRange string,
 ) {
-	s.Mutex.Lock()
-	defer s.Mutex.Unlock()
+	s.Mutex.RLock()
+	defer s.Mutex.RUnlock()
 
 	p := s.IPPools[ippool]
 	if p == nil {
