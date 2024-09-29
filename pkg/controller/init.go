@@ -301,6 +301,9 @@ func (c *Controller) InitIPAM() error {
 	subnetProviderMaps := make(map[string]string, len(subnets))
 	for _, subnet := range subnets {
 		subnetProviderMaps[subnet.Name] = subnet.Spec.Provider
+
+		klog.Infof("Init subnet %s", subnet.Name)
+
 		if err := c.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps); err != nil {
 			klog.Errorf("failed to init subnet %s: %v", subnet.Name, err)
 		}

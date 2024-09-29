@@ -78,8 +78,17 @@ func ValidateSubnet(subnet kubeovnv1.Subnet) error {
 			klog.Errorf("invalid subnet %s cidr %s, %s", subnet.Name, cidr, err)
 			return err
 		}
-		if _, _, err := net.ParseCIDR(cidr); err != nil {
-			return fmt.Errorf("subnet %s cidr %s is invalid", subnet.Name, cidr)
+		_, network, err := net.ParseCIDR(cidr)
+		if err != nil {
+			err = fmt.Errorf("subnet %s cidr %s is invalid, due to %w", subnet.Name, cidr, err)
+			klog.Error(err)
+			return err
+		}
+		// check network mask is 32 in ipv4 or 128 in ipv6
+		if err = InvalidNetworkMask(network); err != nil {
+			err = fmt.Errorf("subnet %s cidr %s mask is invalid, due to %w", subnet.Name, cidr, err)
+			klog.Error(err)
+			return err
 		}
 	}
 
