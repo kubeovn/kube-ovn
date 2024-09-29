@@ -232,6 +232,7 @@ func (c *ovsDbClient) GetEntityInfo(entity interface{}) error {
 
 	err := c.Get(ctx, entity)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 

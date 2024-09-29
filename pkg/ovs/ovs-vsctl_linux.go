@@ -52,6 +52,7 @@ func SetInterfaceBandwidth(podName, podNamespace, iface, ingress, egress string)
 			}
 
 			if err = SetQosQueueBinding(podName, podNamespace, ifName, iface, queueUID, qosIfaceUIDMap); err != nil {
+				klog.Error(err)
 				return err
 			}
 		} else {
@@ -71,6 +72,7 @@ func SetInterfaceBandwidth(podName, podNamespace, iface, ingress, egress string)
 				}
 
 				if _, err := Exec("remove", "queue", queueID, "other_config", "max-rate"); err != nil {
+					klog.Error(err)
 					return fmt.Errorf("failed to remove rate limit for queue in pod %v/%v, %w", podNamespace, podName, err)
 				}
 			}
@@ -122,6 +124,7 @@ func ClearHtbQosQueue(podName, podNamespace, iface string) error {
 		}
 
 		if err := ovsDestroy("queue", queueID); err != nil {
+			klog.Error(err)
 			return err
 		}
 	}
@@ -150,6 +153,7 @@ func SetHtbQosQueueRecord(podName, podNamespace, iface string, maxRateBPS int, q
 
 	if queueUID, ok := queueIfaceUIDMap[iface]; ok {
 		if err := ovsSet("queue", queueUID, queueCommandValues...); err != nil {
+			klog.Error(err)
 			return queueUID, err
 		}
 	} else {
@@ -160,6 +164,7 @@ func SetHtbQosQueueRecord(podName, podNamespace, iface string, maxRateBPS int, q
 
 		var queueID string
 		if queueID, err = ovsCreate("queue", queueCommandValues...); err != nil {
+			klog.Error(err)
 			return queueUID, err
 		}
 		queueIfaceUIDMap[iface] = queueID
@@ -212,6 +217,7 @@ func SetQosQueueBinding(podName, podNamespace, ifName, iface, queueUID string, q
 		}
 
 		if err := ovsSet("qos", qosUID, qosCommandValues...); err != nil {
+			klog.Error(err)
 			return err
 		}
 	}
@@ -284,7 +290,6 @@ func SetNetemQos(podName, podNamespace, iface, latency, limit, loss, jitter stri
 
 					latencyVal, lossVal, limitVal, jitterVal, err := getNetemQosConfig(qos)
 					if err != nil {
-						klog.Error(err)
 						klog.Errorf("failed to get other_config for qos %s: %v", qos, err)
 						return err
 					}

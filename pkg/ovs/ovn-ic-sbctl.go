@@ -101,6 +101,7 @@ func (c LegacyClient) GetRouteUUIDsInOneAZ(uuid string) ([]string, error) {
 func (c LegacyClient) GetPortBindingUUIDsInOneAZ(uuid string) ([]string, error) {
 	portBindings, err := c.FindUUIDWithAttrInTable("availability_zone", uuid, "Port_Binding")
 	if err != nil {
+		klog.Error(err)
 		return nil, fmt.Errorf("failed to get ovn-ic-sb Port_Binding with uuid %v: %w", uuid, err)
 	}
 	return portBindings, nil
@@ -109,6 +110,7 @@ func (c LegacyClient) GetPortBindingUUIDsInOneAZ(uuid string) ([]string, error) 
 func (c LegacyClient) DestroyGateways(uuids []string) error {
 	for _, uuid := range uuids {
 		if err := c.DestroyTableWithUUID(uuid, "gateway"); err != nil {
+			klog.Error(err)
 			return fmt.Errorf("failed to delete gateway %v: %w", uuid, err)
 		}
 	}
@@ -118,6 +120,7 @@ func (c LegacyClient) DestroyGateways(uuids []string) error {
 func (c LegacyClient) DestroyRoutes(uuids []string) error {
 	for _, uuid := range uuids {
 		if err := c.DestroyTableWithUUID(uuid, "route"); err != nil {
+			klog.Error(err)
 			return fmt.Errorf("failed to delete route %v: %w", uuid, err)
 		}
 	}
@@ -127,6 +130,7 @@ func (c LegacyClient) DestroyRoutes(uuids []string) error {
 func (c LegacyClient) DestroyPortBindings(uuids []string) error {
 	for _, uuid := range uuids {
 		if err := c.DestroyTableWithUUID(uuid, "Port_Binding"); err != nil {
+			klog.Error(err)
 			return fmt.Errorf("failed to delete Port_Binding %v: %w", uuid, err)
 		}
 	}
@@ -135,6 +139,7 @@ func (c LegacyClient) DestroyPortBindings(uuids []string) error {
 
 func (c LegacyClient) DestroyChassis(uuid string) error {
 	if err := c.DestroyTableWithUUID(uuid, "availability_zone"); err != nil {
+		klog.Error(err)
 		return fmt.Errorf("failed to delete chassis %v: %w", uuid, err)
 	}
 	return nil

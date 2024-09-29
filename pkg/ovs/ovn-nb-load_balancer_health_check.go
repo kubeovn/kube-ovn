@@ -117,10 +117,12 @@ func (c *OVNNbClient) UpdateLoadBalancerHealthCheck(lbhc *ovnnb.LoadBalancerHeal
 	)
 
 	if op, err = c.ovsDbClient.Where(lbhc).Update(lbhc, fields...); err != nil {
+		klog.Error(err)
 		return fmt.Errorf("generate operations for updating lb health check %s: %w", lbhc.Vip, err)
 	}
 
 	if err = c.Transact("lbhc-update", op); err != nil {
+		klog.Error(err)
 		return fmt.Errorf("update lb health check  %s: %w", lbhc.Vip, err)
 	}
 
@@ -138,10 +140,12 @@ func (c *OVNNbClient) DeleteLoadBalancerHealthChecks(filter func(lb *ovnnb.LoadB
 		},
 	).Delete()
 	if err != nil {
+		klog.Error(err)
 		return fmt.Errorf("generate operations for delete lb health checks: %w", err)
 	}
 
 	if err := c.Transact("lbhc-del", op); err != nil {
+		klog.Error(err)
 		return fmt.Errorf("delete lb health checks : %w", err)
 	}
 
@@ -162,6 +166,7 @@ func (c *OVNNbClient) DeleteLoadBalancerHealthCheck(lbName, vip string) error {
 	}
 
 	if err = c.Transact("lbhc-del", op); err != nil {
+		klog.Error(err)
 		return fmt.Errorf("delete lb %s: %w", lbName, err)
 	}
 

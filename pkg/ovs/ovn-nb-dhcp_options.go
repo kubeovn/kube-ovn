@@ -52,6 +52,7 @@ func (c *OVNNbClient) UpdateDHCPOptions(subnet *kubeovnv1.Subnet, mtu int) (*DHC
 	/* delete dhcp options */
 	if !enableDHCP {
 		if err := c.DeleteDHCPOptions(lsName, subnet.Spec.Protocol); err != nil {
+			klog.Error(err)
 			return nil, fmt.Errorf("delete dhcp options for logical switch %s: %w", lsName, err)
 		}
 		return &DHCPOptionsUUIDs{}, nil
@@ -136,6 +137,7 @@ func (c *OVNNbClient) updateDHCPv4Options(lsName, cidr, gateway, options string,
 
 	/* create */
 	if err := c.CreateDHCPOptions(lsName, cidr, options); err != nil {
+		klog.Error(err)
 		return "", fmt.Errorf("create dhcp options: %w", err)
 	}
 
@@ -189,6 +191,7 @@ func (c *OVNNbClient) updateDHCPv6Options(lsName, cidr, options string) (uuid st
 
 	/* create */
 	if err := c.CreateDHCPOptions(lsName, cidr, options); err != nil {
+		klog.Error(err)
 		return "", fmt.Errorf("create dhcp options: %w", err)
 	}
 
@@ -214,6 +217,7 @@ func (c *OVNNbClient) updateDHCPOptions(dhcpOpt *ovnnb.DHCPOptions, fields ...in
 	}
 
 	if err = c.Transact("dhcp-options-update", op); err != nil {
+		klog.Error(err)
 		return fmt.Errorf("update dhcp options %s: %w", dhcpOpt.UUID, err)
 	}
 
@@ -237,6 +241,7 @@ func (c *OVNNbClient) DeleteDHCPOptionsByUUIDs(uuidList ...string) error {
 	}
 
 	if err := c.Transact("dhcp-options-del", ops); err != nil {
+		klog.Error(err)
 		return fmt.Errorf("delete dhcp options %v: %w", uuidList, err)
 	}
 
@@ -311,6 +316,7 @@ func (c *OVNNbClient) ListDHCPOptions(needVendorFilter bool, externalIDs map[str
 	dhcpOptList := make([]ovnnb.DHCPOptions, 0)
 
 	if err := c.WhereCache(dhcpOptionsFilter(needVendorFilter, externalIDs)).List(ctx, &dhcpOptList); err != nil {
+		klog.Error(err)
 		return nil, fmt.Errorf("list dhcp options with external IDs %v: %w", externalIDs, err)
 	}
 
