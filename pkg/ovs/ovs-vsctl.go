@@ -221,6 +221,7 @@ func ClearPodBandwidth(podName, podNamespace, ifaceID string) error {
 		}
 
 		if err := ovsDestroy("qos", qosID); err != nil {
+			klog.Error(err)
 			return err
 		}
 	}
@@ -402,6 +403,7 @@ func ClearPortQosBinding(ifaceID string) error {
 
 	for _, ifName := range interfaceList {
 		if err = ovsClear("port", ifName, "qos"); err != nil {
+			klog.Error(err)
 			return err
 		}
 	}

@@ -84,6 +84,7 @@ func (c *OVNNbClient) DeleteGatewayChassises(lrpName string, chassises []string)
 	}
 
 	if err := c.Transact("gateway-chassises-delete", ops); err != nil {
+		klog.Error(err)
 		return fmt.Errorf("delete gateway chassises %v from logical router port %s: %w", chassises, lrpName, err)
 	}
 
