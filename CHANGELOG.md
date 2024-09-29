@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.12.26 (2024-09-29)
+
+ * [6b486523](https://github.com/kubeovn/kube-ovn/commit/6b486523f83eca2b49801e925b8f4bdfcda83f96) release v1.12.26
+ * [0078be3b](https://github.com/kubeovn/kube-ovn/commit/0078be3b958f492cc8ce5f1d8b563cfc8abb332a) fix para input error
+ * [f4a0c780](https://github.com/kubeovn/kube-ovn/commit/f4a0c780f745c55449065d97f6654f7f5b822ba2) add values for OVSDB_CON_TIMEOUT and OVSDB_INACTIVITY_TIMEOUT (#4567)
+ * [58bbdf50](https://github.com/kubeovn/kube-ovn/commit/58bbdf50b5e4263408a57f5cf6e2c6baf1db4dbc) prepare for next release
+
+### Contributors
+
+ * changluyi
+ * clyi
+
 ## v1.12.25 (2024-09-23)
 
  * [c23f44b9](https://github.com/kubeovn/kube-ovn/commit/c23f44b93c04082a91b2fdf3a1e47cb3ba591f64) release v1.12.25
