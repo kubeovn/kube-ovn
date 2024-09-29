@@ -4108,8 +4108,8 @@ spec:
           - --keep-vm-ip=$ENABLE_KEEP_VM_IP
           - --node-local-dns-ip=$NODE_LOCAL_DNS_IP
           - --secure-serving=${SECURE_SERVING}
-          - --ovsdb-con-timeout={{- .Values.func.OVSDB_CON_TIMEOUT }}
-          - --ovsdb-inactivity-timeout={{- .Values.func.OVSDB_INACTIVITY_TIMEOUT }}
+          - --ovsdb-con-timeout=${OVSDB_CON_TIMEOUT}
+          - --ovsdb-inactivity-timeout=${OVSDB_INACTIVITY_TIMEOUT}
           securityContext:
             runAsUser: 0
             privileged: false
