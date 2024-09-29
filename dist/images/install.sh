@@ -4304,8 +4304,8 @@ spec:
           - --enable-ovn-ipsec=$ENABLE_OVN_IPSEC
           - --secure-serving=${SECURE_SERVING}
           - --enable-anp=$ENABLE_ANP
-          - --ovsdb-con-timeout={{- .Values.func.OVSDB_CON_TIMEOUT }}
-          - --ovsdb-inactivity-timeout={{- .Values.func.OVSDB_INACTIVITY_TIMEOUT }}
+          - --ovsdb-con-timeout=$OVSDB_CON_TIMEOUT
+          - --ovsdb-inactivity-timeout=$OVSDB_INACTIVITY_TIMEOUT
           securityContext:
             runAsUser: ${RUN_AS_USER}
             privileged: false
