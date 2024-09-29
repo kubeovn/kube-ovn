@@ -72,7 +72,7 @@ func (c *OVNNbClient) UpdateIngressACLOps(pgName, asIngressName, asExceptName, p
 	ops, err := c.CreateAclsOps(pgName, portGroupKey, acls...)
 	if err != nil {
 		klog.Error(err)
-		return nil, fmt.Errorf("create ingress acl for port group %s: %w", pgName, err)
+		return nil, fmt.Errorf("failed to create ingress acl for port group %s: %w", pgName, err)
 	}
 
 	return ops, nil
