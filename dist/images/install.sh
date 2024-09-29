@@ -38,6 +38,8 @@ ENABLE_TPROXY=${ENABLE_TPROXY:-false}
 OVS_VSCTL_CONCURRENCY=${OVS_VSCTL_CONCURRENCY:-100}
 ENABLE_COMPACT=${ENABLE_COMPACT:-false}
 SECURE_SERVING=${SECURE_SERVING:-false}
+OVSDB_CON_TIMEOUT=${OVSDB_CON_TIMEOUT:-3}
+OVSDB_INACTIVITY_TIMEOUT=${OVSDB_INACTIVITY_TIMEOUT:-10}
 
 # debug
 DEBUG_WRAPPER=${DEBUG_WRAPPER:-}
@@ -4106,6 +4108,8 @@ spec:
           - --keep-vm-ip=$ENABLE_KEEP_VM_IP
           - --node-local-dns-ip=$NODE_LOCAL_DNS_IP
           - --secure-serving=${SECURE_SERVING}
+          - --ovsdb-con-timeout={{- .Values.func.OVSDB_CON_TIMEOUT }}
+          - --ovsdb-inactivity-timeout={{- .Values.func.OVSDB_INACTIVITY_TIMEOUT }}
           securityContext:
             runAsUser: 0
             privileged: false
