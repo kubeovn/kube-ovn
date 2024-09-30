@@ -5,21 +5,25 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/json"
 	"k8s.io/apimachinery/pkg/util/strategicpatch"
+	"k8s.io/klog/v2"
 )
 
 func GenerateStrategicMergePatchPayload(original, modified runtime.Object) ([]byte, error) {
 	originalJSON, err := json.Marshal(original)
 	if err != nil {
+		klog.Error(err)
 		return nil, err
 	}
 
 	modifiedJSON, err := json.Marshal(modified)
 	if err != nil {
+		klog.Error(err)
 		return nil, err
 	}
 
 	data, err := createStrategicMergePatch(originalJSON, modifiedJSON, modified)
 	if err != nil {
+		klog.Error(err)
 		return nil, err
 	}
 	return data, nil
@@ -32,16 +36,19 @@ func createStrategicMergePatch(originalJSON, modifiedJSON []byte, dataStruct int
 func GenerateMergePatchPayload(original, modified runtime.Object) ([]byte, error) {
 	originalJSON, err := json.Marshal(original)
 	if err != nil {
+		klog.Error(err)
 		return nil, err
 	}
 
 	modifiedJSON, err := json.Marshal(modified)
 	if err != nil {
+		klog.Error(err)
 		return nil, err
 	}
 
 	data, err := createMergePatch(originalJSON, modifiedJSON, modified)
 	if err != nil {
+		klog.Error(err)
 		return nil, err
 	}
 	return data, nil

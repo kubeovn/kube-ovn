@@ -18,6 +18,7 @@ import (
 func ArpResolve(nic, dstIP string, timeout time.Duration, maxRetry int, done chan struct{}) (net.HardwareAddr, int, error) {
 	target, err := netip.ParseAddr(dstIP)
 	if err != nil {
+		klog.Error(err)
 		return nil, 0, fmt.Errorf("failed to parse target address %s: %w", dstIP, err)
 	}
 
@@ -47,6 +48,7 @@ func ArpResolve(nic, dstIP string, timeout time.Duration, maxRetry int, done cha
 		}
 	}
 	if err != nil {
+		klog.Error(err)
 		return nil, count, fmt.Errorf("failed to get interface %s: %w", nic, err)
 	}
 
@@ -65,6 +67,7 @@ func ArpResolve(nic, dstIP string, timeout time.Duration, maxRetry int, done cha
 		}
 	}
 	if err != nil {
+		klog.Error(err)
 		return nil, count, fmt.Errorf("failed to set up ARP client: %w", err)
 	}
 
@@ -115,6 +118,7 @@ func ArpDetectIPConflict(nic, ip string, mac net.HardwareAddr) (net.HardwareAddr
 
 	tpa, err := netip.ParseAddr(ip)
 	if err != nil {
+		klog.Error(err)
 		return nil, fmt.Errorf("failed to parse IP address %s: %w", ip, err)
 	}
 	ip = tpa.String()
@@ -166,6 +170,7 @@ func ArpDetectIPConflict(nic, ip string, mac net.HardwareAddr) (net.HardwareAddr
 			}
 
 			if readErr = client.SetReadDeadline(deadline); readErr != nil {
+				klog.Error(readErr)
 				return
 			}
 
@@ -177,6 +182,7 @@ func ArpDetectIPConflict(nic, ip string, mac net.HardwareAddr) (net.HardwareAddr
 						return
 					}
 				}
+				klog.Error(err)
 				readErr = err
 				return
 			}
@@ -213,9 +219,11 @@ func ArpDetectIPConflict(nic, ip string, mac net.HardwareAddr) (net.HardwareAddr
 		}
 
 		if err = client.SetWriteDeadline(time.Now().Add(time.Second)); err != nil {
+			klog.Error(err)
 			return nil, err
 		}
 		if err = client.WriteTo(pkt, dstMac); err != nil {
+			klog.Error(err)
 			return nil, err
 		}
 	}
@@ -233,6 +241,7 @@ func ArpDetectIPConflict(nic, ip string, mac net.HardwareAddr) (net.HardwareAddr
 	// except that now the sender and target IP addresses are both
 	// set to the host's newly selected IPv4 address.
 	if err = AnnounceArpAddress(nic, ip, mac, announceNum, announceInterval); err != nil {
+		klog.Error(err)
 		return nil, err
 	}
 
@@ -270,9 +279,11 @@ func AnnounceArpAddress(nic, ip string, mac net.HardwareAddr, announceNum int, a
 	for i := 0; i < announceNum; i++ {
 		c := time.NewTimer(announceInterval)
 		if err = client.SetDeadline(time.Now().Add(announceInterval)); err != nil {
+			klog.Error(err)
 			return err
 		}
 		if err = client.WriteTo(pkt, dstMac); err != nil {
+			klog.Error(err)
 			return err
 		}
 		if i == announceNum-1 {
