@@ -1,5 +1,61 @@
 # Changelog
 
+## v1.12.26 (2024-09-29)
+
+ * [6b486523](https://github.com/kubeovn/kube-ovn/commit/6b486523f83eca2b49801e925b8f4bdfcda83f96) release v1.12.26
+ * [0078be3b](https://github.com/kubeovn/kube-ovn/commit/0078be3b958f492cc8ce5f1d8b563cfc8abb332a) fix para input error
+ * [f4a0c780](https://github.com/kubeovn/kube-ovn/commit/f4a0c780f745c55449065d97f6654f7f5b822ba2) add values for OVSDB_CON_TIMEOUT and OVSDB_INACTIVITY_TIMEOUT (#4567)
+ * [58bbdf50](https://github.com/kubeovn/kube-ovn/commit/58bbdf50b5e4263408a57f5cf6e2c6baf1db4dbc) prepare for next release
+
+### Contributors
+
+ * changluyi
+ * clyi
+
+## v1.12.25 (2024-09-23)
+
+ * [c23f44b9](https://github.com/kubeovn/kube-ovn/commit/c23f44b93c04082a91b2fdf3a1e47cb3ba591f64) release v1.12.25
+ * [3130464a](https://github.com/kubeovn/kube-ovn/commit/3130464a64adbc490fa17fa01f81c5f77848a7e0) fix (#4553)
+ * [ff0e85b7](https://github.com/kubeovn/kube-ovn/commit/ff0e85b70f772bc853c09612d63820b3015a5105) fix only ipv6 mode should add ovn0 locallink ipv6 address (#4552)
+ * [1f8b1916](https://github.com/kubeovn/kube-ovn/commit/1f8b191664e2f1d86bfdc1ff2c387ba101abd4f0) prepare for next release
+
+### Contributors
+
+ * changluyi
+
+## v1.12.24 (2024-09-23)
+
+ * [bc0a6f3c](https://github.com/kubeovn/kube-ovn/commit/bc0a6f3c162c5783f443dda6c6d47de91abcb5e0) release v1.12.24
+ * [55c9e065](https://github.com/kubeovn/kube-ovn/commit/55c9e065305a5f7014c5389f89991cbdb6208a51) add ovn0 ipv6 local link address when ipv6 mode (#4545)
+ * [1fe9e7c1](https://github.com/kubeovn/kube-ovn/commit/1fe9e7c1a39037e740031b67536fe440412dcaae) base: rebuild go binary deps from source (#4524)
+ * [a6617223](https://github.com/kubeovn/kube-ovn/commit/a6617223dba7da9b1e00bcafe3f7f03d68af191c) prepare for next release
+
+### Contributors
+
+ * changluyi
+ * zhangzujian
+
+## v1.12.23 (2024-09-18)
+
+ * [9f890e76](https://github.com/kubeovn/kube-ovn/commit/9f890e76474cda2690a941405bd3a705cced0c89) release v1.12.23
+ * [65312b28](https://github.com/kubeovn/kube-ovn/commit/65312b2836c721e88874d1f9e757c4792583c950) bump multus to v4.1.1 (#4532)
+ * [e98cc197](https://github.com/kubeovn/kube-ovn/commit/e98cc19744b81e273e5723b5db29fd130eb84724) bump k8s to v1.30.5 (#4513)
+ * [2e1887d9](https://github.com/kubeovn/kube-ovn/commit/2e1887d9c62029bf5c78357deb12dbd4e2559df0) bump go to 1.22.7 (#4482)
+ * [78b72798](https://github.com/kubeovn/kube-ovn/commit/78b72798070f4c624e0607a9bac5ae0ba5bb7e57) update Makefile (#4472)
+ * [82201941](https://github.com/kubeovn/kube-ovn/commit/822019410073320a07b5de48cab9ecacf7110309) tproxy: support named port (#4487)
+ * [723e8b3c](https://github.com/kubeovn/kube-ovn/commit/723e8b3cb6c02234c1cefd46a3a9e4763fc7784b) fix: arping reply may duplicate (#4477)
+ * [cbbe10ab](https://github.com/kubeovn/kube-ovn/commit/cbbe10ab3190d596423007dff9d78142832b9ca6) Enable inactivity check on ovndb connection (#4006)
+ * [0d8c1a9e](https://github.com/kubeovn/kube-ovn/commit/0d8c1a9e334b00da588fa43df70f079059fdeb3f) support vip dual stack (#3617)
+ * [2960014e](https://github.com/kubeovn/kube-ovn/commit/2960014ef504eb8ecbdbcc166d79ba680dec6830) metrics: do not export information if a subnet is not validated (#4444)
+ * [810d6dbc](https://github.com/kubeovn/kube-ovn/commit/810d6dbc5a6d8b4662a89886a1bbc9d56d0cc9b7) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * fanriming
+ * zhangzujian
+ * 张祖建
+
 ## v1.12.22 (2024-08-29)
 
  * [61870105](https://github.com/kubeovn/kube-ovn/commit/618701059e376430a280c1403aebf1628d6bfae6) release v1.12.22

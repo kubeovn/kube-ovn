@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 )
@@ -96,8 +97,8 @@ func TestArpResolve(t *testing.T) {
 	if mac == nil {
 		t.Errorf("ARP resolved MAC address is nil: try %d, link name %s, default gw %s", count, linkName, defaultGW)
 	}
-	// should failed
-	defaultGW = "xx.xx.xx.xx"
+	// invalid link name
+	linkName = "invalid"
 	mac, count, err = ArpResolve(linkName, defaultGW, time.Second, maxRetry, done)
 	if err == nil {
 		t.Errorf("Expect error, but got nil: try %d, link name %s, default gw %s", count, linkName, defaultGW)
@@ -105,4 +106,167 @@ func TestArpResolve(t *testing.T) {
 	if mac != nil {
 		t.Errorf("Expect nil MAC address, but got %v: try %d, link name %s, default gw %s", mac, count, linkName, defaultGW)
 	}
+	linkName = link.Attrs().Name
+	// invalid gw
+	defaultGW = "x.x.x.x"
+	mac, count, err = ArpResolve(linkName, defaultGW, time.Second, maxRetry, done)
+	if err == nil {
+		t.Errorf("Expect error, but got nil: try %d, link name %s, default gw %s", count, linkName, defaultGW)
+	}
+	if mac != nil {
+		t.Errorf("Expect nil MAC address, but got %v: try %d, link name %s, default gw %s", mac, count, linkName, defaultGW)
+	}
+	// unreachable gw
+	defaultGW = "123.45.67.8"
+	mac, count, err = ArpResolve(linkName, defaultGW, time.Second, maxRetry, done)
+	if err == nil {
+		t.Errorf("Expect error, but got nil: try %d, link name %s, default gw %s", count, linkName, defaultGW)
+	}
+	if mac != nil {
+		t.Errorf("Expect nil MAC address, but got %v: try %d, link name %s, default gw %s", mac, count, linkName, defaultGW)
+	}
+}
+
+func TestDetectIPConflict(t *testing.T) {
+	// get the default route gw and nic
+	routes, err := netlink.RouteList(nil, unix.AF_UNSPEC)
+	if errors.Is(err, netlink.ErrNotImplemented) {
+		return // skip if not implemented
+	}
+	if err != nil {
+		t.Fatalf("failed to get routes: %v", err)
+	}
+	var validIP, invalidIP string
+	var nicIndex int
+	var inMac, outMac net.HardwareAddr
+	for _, r := range routes {
+		if r.Dst != nil && r.Src != nil && r.Dst.IP.String() == "0.0.0.0" {
+			nicIndex = r.LinkIndex
+			validIP = r.Src.String()
+		}
+	}
+
+	// failed to get nic
+	if nicIndex == 0 {
+		return
+	}
+
+	link, err := netlink.LinkByIndex(nicIndex)
+	if err != nil {
+		t.Fatalf("failed to get link: %v", err)
+	}
+	linkName := link.Attrs().Name
+	inMac = link.Attrs().HardwareAddr
+	outMac, err = ArpDetectIPConflict(linkName, validIP, inMac)
+	if err != nil {
+		if strings.Contains(err.Error(), "not permitted") {
+			t.Skip("ARP request operation not permitted")
+			return
+		}
+		t.Errorf("Error resolving ARP: %v", err)
+	}
+	require.Nil(t, err)
+	require.Nil(t, outMac)
+	// invalid ip
+	invalidIP = "x.x.x.x"
+	outMac, err = ArpDetectIPConflict(linkName, invalidIP, inMac)
+	if err != nil {
+		if strings.Contains(err.Error(), "not permitted") {
+			t.Skip("ARP request operation not permitted")
+			return
+		}
+	}
+	require.NotNil(t, err)
+	require.Nil(t, outMac)
+	// invalid nil nic
+	linkName = ""
+	outMac, err = ArpDetectIPConflict(linkName, validIP, inMac)
+	if err != nil {
+		if strings.Contains(err.Error(), "not permitted") {
+			t.Skip("ARP request operation not permitted")
+			return
+		}
+	}
+	require.NotNil(t, err)
+	require.Nil(t, outMac)
+
+	// invalid mac
+	outMac, err = ArpDetectIPConflict(linkName, validIP, nil)
+	if err != nil {
+		if strings.Contains(err.Error(), "not permitted") {
+			t.Skip("ARP request operation not permitted")
+			return
+		}
+	}
+	require.NotNil(t, err)
+	require.Nil(t, outMac)
+}
+
+func TestAnnounceArpAddress(t *testing.T) {
+	// get the default route gw and nic
+	routes, err := netlink.RouteList(nil, unix.AF_UNSPEC)
+	if errors.Is(err, netlink.ErrNotImplemented) {
+		return // skip if not implemented
+	}
+	if err != nil {
+		t.Fatalf("failed to get routes: %v", err)
+	}
+	var validIP, invalidIP string
+	var nicIndex int
+	var inMac net.HardwareAddr
+	for _, r := range routes {
+		if r.Dst != nil && r.Dst.IP.String() == "0.0.0.0" {
+			nicIndex = r.LinkIndex
+			validIP = r.Src.String()
+		}
+	}
+	if nicIndex == 0 {
+		t.Fatalf("failed to get nic")
+	}
+
+	link, err := netlink.LinkByIndex(nicIndex)
+	if err != nil {
+		t.Fatalf("failed to get link: %v", err)
+	}
+	maxRetry := 1
+	linkName := link.Attrs().Name
+	inMac = link.Attrs().HardwareAddr
+	err = AnnounceArpAddress(linkName, validIP, inMac, maxRetry, time.Second)
+	if err != nil {
+		if strings.Contains(err.Error(), "not permitted") {
+			t.Skip("ARP announce operation not permitted")
+			return
+		}
+	}
+	require.Nil(t, err)
+	// invalid link name
+	linkName = "invalid"
+	err = AnnounceArpAddress(linkName, validIP, inMac, maxRetry, time.Second)
+	if err != nil {
+		if strings.Contains(err.Error(), "not permitted") {
+			t.Skip("ARP announce operation not permitted")
+			return
+		}
+	}
+	require.NotNil(t, err)
+	linkName = link.Attrs().Name
+	// invalid ip
+	invalidIP = "x.x.x.x"
+	err = AnnounceArpAddress(linkName, invalidIP, inMac, maxRetry, time.Second)
+	if err != nil {
+		if strings.Contains(err.Error(), "not permitted") {
+			t.Skip("ARP announce operation not permitted")
+			return
+		}
+	}
+	require.NotNil(t, err)
+	// invalid mc
+	err = AnnounceArpAddress(linkName, validIP, nil, maxRetry, time.Second)
+	if err != nil {
+		if strings.Contains(err.Error(), "not permitted") {
+			t.Skip("ARP announce operation not permitted")
+			return
+		}
+	}
+	require.NotNil(t, err)
 }

@@ -715,3 +715,12 @@ func InvalidSpecialCIDR(s string) error {
 	}
 	return nil
 }
+
+func InvalidNetworkMask(network *net.IPNet) error {
+	if ones, bits := network.Mask.Size(); ones == bits {
+		err := fmt.Errorf("invalid network mask %d", ones)
+		klog.Error(err)
+		return err
+	}
+	return nil
+}

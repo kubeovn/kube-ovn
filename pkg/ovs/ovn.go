@@ -53,7 +53,7 @@ func NewLegacyClient(timeout int) *LegacyClient {
 	}
 }
 
-func NewOvnNbClient(ovnNbAddr string, ovnNbTimeout, ovsDbConTimeout, ovsDbInactivityTimeout int) (*OVNNbClient, error) {
+func NewOvnNbClient(ovnNbAddr string, ovnNbTimeout, ovsDbConTimeout, ovsDbInactivityTimeout, maxRetry int) (*OVNNbClient, error) {
 	dbModel, err := ovnnb.FullDatabaseModel()
 	if err != nil {
 		klog.Error(err)
@@ -80,7 +80,6 @@ func NewOvnNbClient(ovnNbAddr string, ovnNbTimeout, ovsDbConTimeout, ovsDbInacti
 	}
 
 	try := 0
-	maxRetry := 60
 	var nbClient client.Client
 	for {
 		nbClient, err = ovsclient.NewOvsDbClient(
@@ -112,7 +111,7 @@ func NewOvnNbClient(ovnNbAddr string, ovnNbTimeout, ovsDbConTimeout, ovsDbInacti
 	return c, nil
 }
 
-func NewOvnSbClient(ovnSbAddr string, ovnSbTimeout, ovsDbConTimeout, ovsDbInactivityTimeout int) (*OVNSbClient, error) {
+func NewOvnSbClient(ovnSbAddr string, ovnSbTimeout, ovsDbConTimeout, ovsDbInactivityTimeout, maxRetry int) (*OVNSbClient, error) {
 	dbModel, err := ovnsb.FullDatabaseModel()
 	if err != nil {
 		klog.Error(err)
@@ -123,7 +122,6 @@ func NewOvnSbClient(ovnSbAddr string, ovnSbTimeout, ovsDbConTimeout, ovsDbInacti
 		client.WithTable(&ovnsb.Chassis{}),
 		// TODO:// monitor other necessary tables in ovsdb/ovnsb/model.go
 	}
-	maxRetry := 60
 	try := 0
 	var sbClient client.Client
 	for {
@@ -234,6 +232,7 @@ func (c *ovsDbClient) GetEntityInfo(entity interface{}) error {
 
 	err := c.Get(ctx, entity)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 

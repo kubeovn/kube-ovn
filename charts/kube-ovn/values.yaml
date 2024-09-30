@@ -75,6 +75,7 @@ func:
   ENABLE_NAT_GW: true
   ENABLE_OVN_IPSEC: false
   ENABLE_ANP: false
+  SET_VXLAN_TX_OFF: false
 
 ipv4:
   POD_CIDR: "10.16.0.0/16"
@@ -126,21 +127,21 @@ log_conf:
 OPENVSWITCH_DIR: "/etc/origin/openvswitch"
 OVN_DIR: "/etc/origin/ovn"
 DISABLE_MODULES_MANAGEMENT: false
-  
+
 imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""
 
 # hybrid dpdk
 HYBRID_DPDK: false
-HUGEPAGE_SIZE_TYPE: hugepages-2Mi # Default 
+HUGEPAGE_SIZE_TYPE: hugepages-2Mi # Default
 HUGEPAGES: 1Gi
 
 # DPDK
 DPDK: false
 DPDK_VERSION: "19.11"
-DPDK_CPU: "1000m"                        # Default CPU configuration
-DPDK_MEMORY: "2Gi"                       # Default Memory configuration
+DPDK_CPU: "1000m" # Default CPU configuration
+DPDK_MEMORY: "2Gi" # Default Memory configuration
 
 ovn-central:
   requests:

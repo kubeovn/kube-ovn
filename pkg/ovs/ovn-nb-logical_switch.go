@@ -47,16 +47,19 @@ func (c *OVNNbClient) CreateLogicalSwitch(lsName, lrName, cidrBlock, gateway, ga
 			fields = append(fields, &lrp.MAC)
 		}
 		if err := c.UpdateLogicalRouterPort(lrp, fields...); err != nil {
+			klog.Error(err)
 			return fmt.Errorf("update logical router port %s", lrpName)
 		}
 	} else {
 		if err := c.CreateBareLogicalSwitch(lsName); err != nil {
+			klog.Error(err)
 			return fmt.Errorf("create logical switch %s", lsName)
 		}
 	}
 
 	if needRouter {
 		if err := c.CreateLogicalPatchPort(lsName, lrName, lspName, lrpName, networks, gatewayMAC); err != nil {
+			klog.Error(err)
 			return err
 		}
 	} else {
@@ -65,6 +68,7 @@ func (c *OVNNbClient) CreateLogicalSwitch(lsName, lrName, cidrBlock, gateway, ga
 		}
 
 		if err := c.RemoveLogicalPatchPort(lspName, lrpName); err != nil {
+			klog.Error(err)
 			return fmt.Errorf("remove router type port %s and %s: %w", lspName, lrpName, err)
 		}
 	}
@@ -97,6 +101,7 @@ func (c *OVNNbClient) CreateBareLogicalSwitch(lsName string) error {
 	}
 
 	if err := c.Transact("ls-add", op); err != nil {
+		klog.Error(err)
 		return fmt.Errorf("create logical switch %s: %w", lsName, err)
 	}
 
@@ -144,6 +149,7 @@ func (c *OVNNbClient) LogicalSwitchDelPort(lsName, lspName string) error {
 	}
 
 	if err := c.Transact("lsp-del", ops); err != nil {
+		klog.Error(err)
 		return fmt.Errorf("del port %s from logical switch %s: %w", lspName, lsName, err)
 	}
 
@@ -178,6 +184,7 @@ func (c *OVNNbClient) LogicalSwitchUpdateLoadBalancers(lsName string, op ovsdb.M
 	}
 
 	if err := c.Transact("ls-lb-update", ops); err != nil {
+		klog.Error(err)
 		return fmt.Errorf("logical switch %s update lbs %v: %w", lsName, lbNames, err)
 	}
 
@@ -197,6 +204,7 @@ func (c *OVNNbClient) LogicalSwitchUpdateOtherConfig(lsName string, op ovsdb.Mut
 	}
 
 	if err := c.Transact("ls-other-config-update", ops); err != nil {
+		klog.Error(err)
 		return fmt.Errorf("logical switch %s update other config %v: %w", lsName, otherConfig, err)
 	}
 
@@ -212,6 +220,7 @@ func (c *OVNNbClient) DeleteLogicalSwitch(lsName string) error {
 	}
 
 	if err := c.Transact("ls-del", op); err != nil {
+		klog.Error(err)
 		return fmt.Errorf("delete logical switch %s: %w", lsName, err)
 	}
 
@@ -228,6 +237,7 @@ func (c *OVNNbClient) GetLogicalSwitch(lsName string, ignoreNotFound bool) (*ovn
 	if err := c.ovsDbClient.WhereCache(func(ls *ovnnb.LogicalSwitch) bool {
 		return ls.Name == lsName
 	}).List(ctx, &lsList); err != nil {
+		klog.Error(err)
 		return nil, fmt.Errorf("list switch switch %q: %w", lsName, err)
 	}
 
@@ -270,6 +280,7 @@ func (c *OVNNbClient) ListLogicalSwitch(needVendorFilter bool, filter func(ls *o
 
 		return true
 	}).List(ctx, &lsList); err != nil {
+		klog.Error(err)
 		return nil, fmt.Errorf("list logical switch: %w", err)
 	}
 

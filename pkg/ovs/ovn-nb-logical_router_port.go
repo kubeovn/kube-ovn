@@ -460,6 +460,7 @@ func (c *OVNNbClient) AddLogicalRouterPort(lr, name, mac, networks string) error
 	ops = append(ops, mutationOps...)
 	klog.Infof("add vpc lrp %s, networks %s", name, networks)
 	if err := c.Transact("lrp-add", ops); err != nil {
+		klog.Error(err)
 		return fmt.Errorf("failed to create logical router port %s: %w", name, err)
 	}
 	return nil

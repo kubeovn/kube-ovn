@@ -50,3 +50,8 @@ func initForOS() error {
 
 	return nil
 }
+
+func setVxlanNicTxOff() error {
+	// TODO: implement this function
+	return nil
+}

@@ -30,15 +30,18 @@ func (c *OVNNbClient) CreateGatewayLogicalSwitch(lsName, lrName, provider, ip, m
 	// delete old localnet lsp when upgrade before v1.12
 	oldLocalnetLspName := fmt.Sprintf("ln-%s", lsName)
 	if err := c.DeleteLogicalSwitchPort(oldLocalnetLspName); err != nil {
+		klog.Error(err)
 		return fmt.Errorf("failed to delete old localnet %s: %w", oldLocalnetLspName, err)
 	}
 
 	localnetLspName := GetLocalnetName(lsName)
 	if err := c.CreateBareLogicalSwitch(lsName); err != nil {
+		klog.Error(err)
 		return fmt.Errorf("create logical switch %s: %w", lsName, err)
 	}
 
 	if err := c.CreateLocalnetLogicalSwitchPort(lsName, localnetLspName, provider, "", vlanID); err != nil {
+		klog.Error(err)
 		return fmt.Errorf("create localnet logical switch port %s: %w", localnetLspName, err)
 	}
 
@@ -89,11 +92,13 @@ func (c *OVNNbClient) DeleteLogicalGatewaySwitch(lsName, lrName string) error {
 	// all corresponding logical switch port(e.g. localnet port and normal port) will be deleted when delete logical switch
 	lsDelOp, err := c.DeleteLogicalSwitchOp(lsName)
 	if err != nil {
+		klog.Error(err)
 		return fmt.Errorf("generate operations for deleting gateway switch %s: %w", lsName, err)
 	}
 
 	lrpDelOp, err := c.DeleteLogicalRouterPortOp(lrpName)
 	if err != nil {
+		klog.Error(err)
 		return fmt.Errorf("generate operations for deleting gateway router port %s: %w", lrpName, err)
 	}
 
@@ -102,6 +107,7 @@ func (c *OVNNbClient) DeleteLogicalGatewaySwitch(lsName, lrName string) error {
 	ops = append(ops, lrpDelOp...)
 
 	if err = c.Transact("gw-ls-del", ops); err != nil {
+		klog.Error(err)
 		return fmt.Errorf("delete gateway switch %s: %w", lsName, err)
 	}
 
@@ -113,16 +119,19 @@ func (c *OVNNbClient) DeleteSecurityGroup(sgName string) error {
 
 	// clear acl
 	if err := c.DeleteAcls(pgName, portGroupKey, "", nil); err != nil {
+		klog.Error(err)
 		return fmt.Errorf("delete acls from port group %s: %w", pgName, err)
 	}
 
 	// clear address_set
 	if err := c.DeleteAddressSets(map[string]string{sgKey: sgName}); err != nil {
+		klog.Error(err)
 		return err
 	}
 
 	if sgName == util.DefaultSecurityGroupName {
 		if err := c.SetLogicalSwitchPortsSecurityGroup(sgName, "remove"); err != nil {
+			klog.Error(err)
 			return fmt.Errorf("clear default security group %s from logical switch ports: %w", sgName, err)
 		}
 	}
@@ -135,6 +144,7 @@ func (c *OVNNbClient) CreateRouterPortOp(lsName, lrName, lspName, lrpName, ip, m
 	/* do nothing if logical switch port exist */
 	lspExist, err := c.LogicalSwitchPortExists(lspName)
 	if err != nil {
+		klog.Error(err)
 		return nil, err
 	}
 
@@ -156,6 +166,7 @@ func (c *OVNNbClient) CreateRouterPortOp(lsName, lrName, lspName, lrpName, ip, m
 
 	lspCreateOp, err := c.CreateLogicalSwitchPortOp(lsp, lsName)
 	if err != nil {
+		klog.Error(err)
 		return nil, err
 	}
 
@@ -169,6 +180,7 @@ func (c *OVNNbClient) CreateRouterPortOp(lsName, lrName, lspName, lrpName, ip, m
 
 	lrpCreateOp, err := c.CreateLogicalRouterPortOp(lrp, lrName)
 	if err != nil {
+		klog.Error(err)
 		return nil, err
 	}
 
@@ -184,12 +196,14 @@ func (c *OVNNbClient) RemoveLogicalPatchPort(lspName, lrpName string) error {
 	/* delete logical switch port*/
 	lspDelOp, err := c.DeleteLogicalSwitchPortOp(lspName)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 
 	/* delete logical router port*/
 	lrpDelOp, err := c.DeleteLogicalRouterPortOp(lrpName)
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 
@@ -198,6 +212,7 @@ func (c *OVNNbClient) RemoveLogicalPatchPort(lspName, lrpName string) error {
 	ops = append(ops, lrpDelOp...)
 
 	if err = c.Transact("lrp-lsp-del", ops); err != nil {
+		klog.Error(err)
 		return fmt.Errorf("delete logical switch port %s and delete logical router port %s: %w", lspName, lrpName, err)
 	}
 

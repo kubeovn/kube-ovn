@@ -45,6 +45,7 @@ func (c *OVNNbClient) CreateAddressSet(asName string, externalIDs map[string]str
 	}
 
 	if err = c.Transact("as-add", ops); err != nil {
+		klog.Error(err)
 		return fmt.Errorf("create address set %s: %w", asName, err)
 	}
 
@@ -79,6 +80,7 @@ func (c *OVNNbClient) AddressSetUpdateAddress(asName string, addresses ...string
 	as.Addresses = addresses
 
 	if err := c.UpdateAddressSet(as, &as.Addresses); err != nil {
+		klog.Error(err)
 		return fmt.Errorf("set address set %s addresses %v: %w", asName, addresses, err)
 	}
 
@@ -133,7 +135,8 @@ func (c *OVNNbClient) DeleteAddressSet(asName ...string) error {
 	}
 
 	if err := c.Transact("as-del", op); err != nil {
-		return fmt.Errorf("delete address sets %s: %w", asName, err)
+		klog.Error(err)
+		return fmt.Errorf("delete address set %s: %w", asName, err)
 	}
 
 	return nil
@@ -153,6 +156,7 @@ func (c *OVNNbClient) DeleteAddressSets(externalIDs map[string]string) error {
 	}
 
 	if err := c.Transact("ass-del", op); err != nil {
+		klog.Error(err)
 		return fmt.Errorf("delete address sets with external IDs %v: %w", externalIDs, err)
 	}
 
@@ -189,6 +193,7 @@ func (c *OVNNbClient) ListAddressSets(externalIDs map[string]string) ([]ovnnb.Ad
 	asList := make([]ovnnb.AddressSet, 0)
 
 	if err := c.WhereCache(addressSetFilter(externalIDs)).List(ctx, &asList); err != nil {
+		klog.Error(err)
 		return nil, fmt.Errorf("list address set: %w", err)
 	}
 
