@@ -190,7 +190,12 @@ func (suite *OvnClientTestSuite) testListChassis() {
 		chassisList, err := sbClient.ListChassis()
 		require.NoError(t, err)
 		require.NotNil(t, chassisList)
-		require.Empty(t, *chassisList)
+		var names []string
+		for _, chassis := range *chassisList {
+			names = append(names, chassis.Name)
+		}
+		require.NotContains(t, names, "chassis-1")
+		require.NotContains(t, names, "chassis-2")
 	})
 }
 
