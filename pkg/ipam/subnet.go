@@ -47,6 +47,7 @@ func NewSubnet(name, cidrStr string, excludeIps []string) (*Subnet, error) {
 	for _, cidrBlock := range strings.Split(cidrStr, ",") {
 		_, cidr, err := net.ParseCIDR(cidrBlock)
 		if err != nil {
+			klog.Error(err)
 			return nil, ErrInvalidCIDR
 		}
 		cidrs = append(cidrs, cidr)
@@ -57,10 +58,12 @@ func NewSubnet(name, cidrStr string, excludeIps []string) (*Subnet, error) {
 	v4ExcludeIps, v6ExcludeIps := util.SplitIpsByProtocol(excludeIps)
 	v4Reserved, err := NewIPRangeListFrom(v4ExcludeIps...)
 	if err != nil {
+		klog.Error(err)
 		return nil, err
 	}
 	v6Reserved, err := NewIPRangeListFrom(v6ExcludeIps...)
 	if err != nil {
+		klog.Error(err)
 		return nil, err
 	}
 
@@ -192,10 +195,12 @@ func (s *Subnet) GetRandomAddress(poolName, podName, nicName string, mac *string
 func (s *Subnet) getDualRandomAddress(poolName, podName, nicName string, mac *string, skippedAddrs []string, checkConflict bool) (IP, IP, string, error) {
 	v4IP, _, _, err := s.getV4RandomAddress(poolName, podName, nicName, mac, skippedAddrs, checkConflict)
 	if err != nil {
+		klog.Error(err)
 		return nil, nil, "", err
 	}
 	_, v6IP, macStr, err := s.getV6RandomAddress(poolName, podName, nicName, mac, skippedAddrs, checkConflict)
 	if err != nil {
+		klog.Error(err)
 		return nil, nil, "", err
 	}
 
@@ -639,6 +644,7 @@ func (s *Subnet) AddOrUpdateIPPool(name string, ips []string) error {
 	v4IPs, v6IPs := util.SplitIpsByProtocol(ips)
 	if s.V4CIDR != nil {
 		if pool.V4IPs, err = NewIPRangeListFrom(v4IPs...); err != nil {
+			klog.Error(err)
 			return err
 		}
 		for k, v := range s.IPPools {
@@ -659,6 +665,7 @@ func (s *Subnet) AddOrUpdateIPPool(name string, ips []string) error {
 	}
 	if s.V6CIDR != nil {
 		if pool.V6IPs, err = NewIPRangeListFrom(v6IPs...); err != nil {
+			klog.Error(err)
 			return err
 		}
 		for k, v := range s.IPPools {

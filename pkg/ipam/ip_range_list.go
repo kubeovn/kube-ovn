@@ -7,6 +7,8 @@ import (
 	"sort"
 	"strings"
 
+	"k8s.io/klog/v2"
+
 	"github.com/kubeovn/kube-ovn/pkg/internal"
 )
 
@@ -40,10 +42,12 @@ func NewIPRangeListFrom(x ...string) (*IPRangeList, error) {
 			ips := strings.Split(s, "..")
 			start, err := NewIP(ips[0])
 			if err != nil {
+				klog.Error(err)
 				return nil, err
 			}
 			end, err := NewIP(ips[1])
 			if err != nil {
+				klog.Error(err)
 				return nil, err
 			}
 			if start.GreaterThan(end) {
@@ -53,12 +57,14 @@ func NewIPRangeListFrom(x ...string) (*IPRangeList, error) {
 		case strings.ContainsRune(s, '/'):
 			_, cidr, err := net.ParseCIDR(s)
 			if err != nil {
+				klog.Error(err)
 				return nil, err
 			}
 			r = NewIPRangeFromCIDR(*cidr)
 		default:
 			start, err := NewIP(s)
 			if err != nil {
+				klog.Error(err)
 				return nil, err
 			}
 			r = NewIPRange(start, start.Clone())
