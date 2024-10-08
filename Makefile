@@ -32,7 +32,7 @@ FRR_IMAGE = quay.io/frrouting/frr:$(FRR_VERSION)
 
 CLAB_IMAGE = ghcr.io/srl-labs/clab:0.57.4
 
-MULTUS_VERSION = v4.1.1
+MULTUS_VERSION = v4.1.2
 MULTUS_IMAGE = ghcr.io/k8snetworkplumbingwg/multus-cni:$(MULTUS_VERSION)-thick
 MULTUS_YAML = https://raw.githubusercontent.com/k8snetworkplumbingwg/multus-cni/$(MULTUS_VERSION)/deployments/multus-daemonset-thick.yml
 
@@ -53,13 +53,13 @@ KUBEVIRT_CR_YAML = https://github.com/kubevirt/kubevirt/releases/download/$(KUBE
 CILIUM_VERSION = 1.16.2
 CILIUM_IMAGE_REPO = quay.io/cilium
 
-CERT_MANAGER_VERSION = v1.15.3
+CERT_MANAGER_VERSION = v1.16.0
 CERT_MANAGER_CONTROLLER = quay.io/jetstack/cert-manager-controller:$(CERT_MANAGER_VERSION)
 CERT_MANAGER_CAINJECTOR = quay.io/jetstack/cert-manager-cainjector:$(CERT_MANAGER_VERSION)
 CERT_MANAGER_WEBHOOK = quay.io/jetstack/cert-manager-webhook:$(CERT_MANAGER_VERSION)
 CERT_MANAGER_YAML = https://github.com/cert-manager/cert-manager/releases/download/$(CERT_MANAGER_VERSION)/cert-manager.yaml
 
-SUBMARINER_VERSION = $(shell echo $${SUBMARINER_VERSION:-0.18.0})
+SUBMARINER_VERSION = $(shell echo $${SUBMARINER_VERSION:-0.18.1})
 SUBMARINER_OPERATOR = quay.io/submariner/submariner-operator:$(SUBMARINER_VERSION)
 SUBMARINER_GATEWAY = quay.io/submariner/submariner-gateway:$(SUBMARINER_VERSION)
 SUBMARINER_LIGHTHOUSE_AGENT = quay.io/submariner/lighthouse-agent:$(SUBMARINER_VERSION)
