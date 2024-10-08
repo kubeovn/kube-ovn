@@ -137,6 +137,8 @@ spec:
           - --secure-serving={{- .Values.func.SECURE_SERVING }}
           - --enable-ovn-ipsec={{- .Values.func.ENABLE_OVN_IPSEC }}
           - --enable-anp={{- .Values.func.ENABLE_ANP }}
+          - --ovsdb-con-timeout={{- .Values.func.OVSDB_CON_TIMEOUT }}
+          - --ovsdb-inactivity-timeout={{- .Values.func.OVSDB_INACTIVITY_TIMEOUT }}
           securityContext:
             runAsUser: {{ include "kubeovn.runAsUser" . }}
             privileged: false

@@ -42,6 +42,8 @@ SECURE_SERVING=${SECURE_SERVING:-false}
 ENABLE_OVN_IPSEC=${ENABLE_OVN_IPSEC:-false}
 ENABLE_ANP=${ENABLE_ANP:-false}
 SET_VXLAN_TX_OFF=${SET_VXLAN_TX_OFF:-false}
+OVSDB_CON_TIMEOUT=${OVSDB_CON_TIMEOUT:-3}
+OVSDB_INACTIVITY_TIMEOUT=${OVSDB_INACTIVITY_TIMEOUT:-10}
 
 # debug
 DEBUG_WRAPPER=${DEBUG_WRAPPER:-}
@@ -4302,6 +4304,8 @@ spec:
           - --enable-ovn-ipsec=$ENABLE_OVN_IPSEC
           - --secure-serving=${SECURE_SERVING}
           - --enable-anp=$ENABLE_ANP
+          - --ovsdb-con-timeout=$OVSDB_CON_TIMEOUT
+          - --ovsdb-inactivity-timeout=$OVSDB_INACTIVITY_TIMEOUT
           securityContext:
             runAsUser: ${RUN_AS_USER}
             privileged: false
