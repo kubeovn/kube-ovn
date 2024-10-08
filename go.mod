@@ -26,7 +26,7 @@ require (
 	github.com/moby/sys/mountinfo v0.7.2
 	github.com/onsi/ginkgo/v2 v2.20.2
 	github.com/onsi/gomega v1.34.2
-	github.com/osrg/gobgp/v3 v3.29.0
+	github.com/osrg/gobgp/v3 v3.30.0
 	github.com/ovn-org/libovsdb v0.7.0
 	github.com/parnurzeal/gorequest v0.3.0
 	github.com/prometheus-community/pro-bing v0.4.1

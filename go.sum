@@ -1242,8 +1242,8 @@ github.com/openshift/client-go v0.0.1/go.mod h1:I8qTI1lgErsWc6CVukSjP1PYqpafE7fu
 github.com/openshift/custom-resource-status v1.1.2 h1:C3DL44LEbvlbItfd8mT5jWrqPfHnSOQoQf/sypqA6A4=
 github.com/openshift/custom-resource-status v1.1.2/go.mod h1:DB/Mf2oTeiAmVVX1gN+NEqweonAPY0TKUwADizj8+ZA=
 github.com/orisano/pixelmatch v0.0.0-20220722002657-fb0b55479cde/go.mod h1:nZgzbfBr3hhjoZnS66nKrHmduYNpc34ny7RK4z5/HM0=
-github.com/osrg/gobgp/v3 v3.29.0 h1:ISWjY5YQ45THcvXWdG2ykzXWxS22rgE6U9YWdaI/ki8=
-github.com/osrg/gobgp/v3 v3.29.0/go.mod h1:ZGeSti9mURR/o5hf5R6T1FM5g1yiEBZbhP+TuqYJUpI=
+github.com/osrg/gobgp/v3 v3.30.0 h1:nGCr0G4ERPeKEHw9HpaUybeZdgIdrHHIIG2VSoZR2lQ=
+github.com/osrg/gobgp/v3 v3.30.0/go.mod h1:8m+kgkdaWrByxg5EWpNUO2r/mopodrNBOUBhMnW/yGQ=
 github.com/parnurzeal/gorequest v0.3.0 h1:SoFyqCDC9COr1xuS6VA8fC8RU7XyrJZN2ona1kEX7FI=
 github.com/parnurzeal/gorequest v0.3.0/go.mod h1:3Kh2QUMJoqw3icWAecsyzkpY7UzRfDhbRdTjtNwNiUE=
 github.com/pelletier/go-toml/v2 v2.2.2 h1:aYUidT7k73Pcl9nb2gScu7NSrKCSHIDE89b3+6Wq+LM=
