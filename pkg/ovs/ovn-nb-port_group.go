@@ -152,24 +152,32 @@ func (c *OVNNbClient) PortGroupUpdatePorts(pgName string, op ovsdb.Mutator, lspN
 	return nil
 }
 
-func (c *OVNNbClient) DeletePortGroup(pgName string) error {
-	pg, err := c.GetPortGroup(pgName, true)
-	if err != nil {
-		klog.Error(err)
-		return fmt.Errorf("get port group %s when delete: %w", pgName, err)
+func (c *OVNNbClient) DeletePortGroup(pgName ...string) error {
+	delList := make([]*ovnnb.PortGroup, 0, len(pgName))
+	for _, name := range pgName {
+		// get port group
+		pg, err := c.GetPortGroup(name, true)
+		if err != nil {
+			return fmt.Errorf("get port group %s when delete: %w", name, err)
+		}
+		// not found, skip
+		if pg == nil {
+			continue
+		}
+		delList = append(delList, pg)
 	}
-
-	// not found, skip
-	if pg == nil {
+	if len(delList) == 0 {
 		return nil
 	}
 
-	op, err := c.Where(pg).Delete()
+	var modelList []model.Model = make([]model.Model, len(delList))
+	for i, pg := range delList {
+		modelList[i] = pg
+	}
+	op, err := c.Where(modelList...).Delete()
 	if err != nil {
-		klog.Error(err)
 		return err
 	}
-
 	if err := c.Transact("pg-del", op); err != nil {
 		klog.Error(err)
 		return fmt.Errorf("delete port group %s: %w", pgName, err)

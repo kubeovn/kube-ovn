@@ -128,7 +128,7 @@ type PortGroup interface {
 	PortGroupAddPorts(pgName string, lspNames ...string) error
 	PortGroupRemovePorts(pgName string, lspNames ...string) error
 	PortGroupSetPorts(pgName string, ports []string) error
-	DeletePortGroup(pgName string) error
+	DeletePortGroup(pgName ...string) error
 	ListPortGroups(externalIDs map[string]string) ([]ovnnb.PortGroup, error)
 	GetPortGroup(pgName string, ignoreNotFound bool) (*ovnnb.PortGroup, error)
 	PortGroupExists(pgName string) (bool, error)
@@ -153,7 +153,7 @@ type ACL interface {
 type AddressSet interface {
 	CreateAddressSet(asName string, externalIDs map[string]string) error
 	AddressSetUpdateAddress(asName string, addresses ...string) error
-	DeleteAddressSet(asName string) error
+	DeleteAddressSet(asName ...string) error
 	DeleteAddressSets(externalIDs map[string]string) error
 	ListAddressSets(externalIDs map[string]string) ([]ovnnb.AddressSet, error)
 }

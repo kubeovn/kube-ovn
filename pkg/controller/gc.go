@@ -31,7 +31,9 @@ func (c *Controller) gc() error {
 		c.gcCustomLogicalRouter,
 		c.gcLogicalSwitchPort,
 		c.gcLoadBalancer,
-		c.gcPortGroup,
+		c.gcNetworkPolicy,
+		c.gcSecurityGroup,
+		c.gcAddressSet,
 		c.gcRoutePolicy,
 		c.gcStaticRoute,
 		c.gcVpcNatGateway,
@@ -625,7 +627,82 @@ func (c *Controller) gcLoadBalancer() error {
 	return nil
 }
 
-func (c *Controller) gcPortGroup() error {
+func (c *Controller) gcAddressSet() error {
+	klog.Infof("start to gc address set")
+	// get all address
+	addressSets, err := c.OVNNbClient.ListAddressSets(nil)
+	if err != nil {
+		klog.Errorf("failed to list address set,%v", err)
+		return err
+	}
+
+	asList := make([]string, 0)
+	for _, as := range addressSets {
+		sg := as.ExternalIDs[sgKey]
+		if sg == "" {
+			continue
+		}
+		// if address set not found associated port group, delete it
+		if pg, err := c.OVNNbClient.GetPortGroup(ovs.GetSgPortGroupName(sg), true); err == nil && pg == nil {
+			klog.Infof("ready to gc address set %s", as.Name)
+			asList = append(asList, as.Name)
+		}
+	}
+	if len(asList) == 0 {
+		return nil
+	}
+
+	if err = c.OVNNbClient.DeleteAddressSet(asList...); err != nil {
+		klog.Errorf("failed to delete address set %v,%v", asList, err)
+		return err
+	}
+
+	return nil
+}
+
+func (c *Controller) gcSecurityGroup() error {
+	klog.Infof("start to gc security group residual port groups")
+	// get security group
+	sgs, err := c.config.KubeOvnClient.KubeovnV1().SecurityGroups().List(context.Background(), metav1.ListOptions{})
+	if err != nil {
+		klog.Errorf("failed to list security group,%v", err)
+		return err
+	}
+	sgSet := strset.NewWithSize(len(sgs.Items))
+	for _, sg := range sgs.Items {
+		sgSet.Add(sg.Name)
+	}
+
+	pgs, err := c.OVNNbClient.ListPortGroups(nil)
+	if err != nil {
+		klog.Errorf("failed to list port group,%v", err)
+		return err
+	}
+
+	needToDelPgs := make([]string, 0)
+	denyAllPg := ovs.GetSgPortGroupName(util.DenyAllSecurityGroup)
+	defaultPg := ovs.GetSgPortGroupName(util.DefaultSecurityGroupName)
+	for _, pg := range pgs {
+		if pg.Name == denyAllPg || pg.Name == defaultPg || pg.ExternalIDs[networkPolicyKey] != "" {
+			continue
+		}
+		// if port group not exist in security group, delete it
+		if !sgSet.Has(pg.ExternalIDs["sg"]) {
+			klog.Infof("ready to gc port group %s", pg.Name)
+			needToDelPgs = append(needToDelPgs, pg.Name)
+		}
+	}
+	if len(needToDelPgs) == 0 {
+		return nil
+	}
+	if err = c.OVNNbClient.DeletePortGroup(needToDelPgs...); err != nil {
+		klog.Errorf("failed to gc port group list,%v", err)
+		return err
+	}
+	return nil
+}
+
+func (c *Controller) gcNetworkPolicy() error {
 	klog.Infof("start to gc network policy")
 
 	npNames := strset.New()
