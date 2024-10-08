@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/ovn-org/libovsdb/client"
+	"github.com/ovn-org/libovsdb/model"
 	"github.com/scylladb/go-set/strset"
 	"k8s.io/klog/v2"
 
@@ -106,21 +107,30 @@ func (c *OVNNbClient) UpdateAddressSet(as *ovnnb.AddressSet, fields ...interface
 	return nil
 }
 
-func (c *OVNNbClient) DeleteAddressSet(asName string) error {
-	as, err := c.GetAddressSet(asName, true)
-	if err != nil {
-		klog.Error(err)
-		return fmt.Errorf("get address set %s: %w", asName, err)
+func (c *OVNNbClient) DeleteAddressSet(asName ...string) error {
+	delList := make([]*ovnnb.AddressSet, 0, len(asName))
+	for _, name := range asName {
+		// get address set
+		as, err := c.GetAddressSet(name, true)
+		if err != nil {
+			return fmt.Errorf("get address set %s when delete: %w", name, err)
+		}
+		// not found, skip
+		if as == nil {
+			continue
+		}
+		delList = append(delList, as)
 	}
-
-	// not found, skip
-	if as == nil {
+	if len(delList) == 0 {
 		return nil
 	}
 
-	op, err := c.Where(as).Delete()
+	var modelList []model.Model = make([]model.Model, len(delList))
+	for i, as := range delList {
+		modelList[i] = as
+	}
+	op, err := c.Where(modelList...).Delete()
 	if err != nil {
-		klog.Error(err)
 		return err
 	}
 
