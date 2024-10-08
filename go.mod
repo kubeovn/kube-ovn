@@ -38,7 +38,7 @@ require (
 	github.com/vishvananda/netlink v1.3.0
 	golang.org/x/mod v0.21.0
 	golang.org/x/sys v0.25.0
-	golang.org/x/time v0.6.0
+	golang.org/x/time v0.7.0
 	google.golang.org/grpc v1.67.1
 	google.golang.org/protobuf v1.34.2
 	gopkg.in/k8snetworkplumbingwg/multus-cni.v4 v4.1.2
