@@ -29,6 +29,7 @@ jobs:
       - name: Build
         env:
           GO_VERSION: ${{ steps.setup-go.outputs.go-version }}
+          TRIVY_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-db:2
         run: |
           make base-amd64
           make base-tar-amd64
@@ -66,6 +67,7 @@ jobs:
       - name: Build
         env:
           GO_VERSION: ${{ steps.setup-go.outputs.go-version }}
+          TRIVY_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-db:2
         run: |
           make base-arm64 || make base-arm64
           make base-tar-arm64
