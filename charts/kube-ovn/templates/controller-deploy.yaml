@@ -117,6 +117,8 @@ spec:
           - --enable-metrics={{- .Values.networking.ENABLE_METRICS }}
           - --node-local-dns-ip={{- .Values.networking.NODE_LOCAL_DNS_IP }}
           - --secure-serving={{- .Values.func.SECURE_SERVING }}
+          - --ovsdb-con-timeout={{- .Values.func.OVSDB_CON_TIMEOUT }}
+          - --ovsdb-inactivity-timeout={{- .Values.func.OVSDB_INACTIVITY_TIMEOUT }}
           securityContext:
             runAsUser: 0
             privileged: false

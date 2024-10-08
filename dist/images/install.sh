@@ -40,6 +40,8 @@ OVS_VSCTL_CONCURRENCY=${OVS_VSCTL_CONCURRENCY:-100}
 ENABLE_COMPACT=${ENABLE_COMPACT:-false}
 SECURE_SERVING=${SECURE_SERVING:-false}
 SET_VXLAN_TX_OFF=${SET_VXLAN_TX_OFF:-false}
+OVSDB_CON_TIMEOUT=${OVSDB_CON_TIMEOUT:-3}
+OVSDB_INACTIVITY_TIMEOUT=${OVSDB_INACTIVITY_TIMEOUT:-10}
 
 # debug
 DEBUG_WRAPPER=${DEBUG_WRAPPER:-}
@@ -4182,6 +4184,8 @@ spec:
           - --keep-vm-ip=$ENABLE_KEEP_VM_IP
           - --node-local-dns-ip=$NODE_LOCAL_DNS_IP
           - --secure-serving=${SECURE_SERVING}
+          - --ovsdb-con-timeout=$OVSDB_CON_TIMEOUT
+          - --ovsdb-inactivity-timeout=$OVSDB_INACTIVITY_TIMEOUT
           securityContext:
             runAsUser: 0
             privileged: false
