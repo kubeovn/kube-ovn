@@ -1,6 +1,6 @@
 module github.com/kubeovn/kube-ovn
 
-go 1.22.7
+go 1.22.8
 
 require (
 	github.com/Mellanox/sriovnet v1.1.0
