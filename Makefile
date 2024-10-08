@@ -877,7 +877,7 @@ kind-install-cilium-chaining-%:
 		--set ipv4.enabled=$(shell if echo $* | grep -q ipv6; then echo false; else echo true; fi) \
 		--set ipv6.enabled=$(shell if echo $* | grep -q ipv4; then echo false; else echo true; fi) \
 		--set routingMode=native \
-		--set devices="eth+ ovn0 genev_sys_6081" \
+		--set devices="eth+ ovn0 genev_sys_6081 vxlan_sys_4789" \
 		--set forceDeviceDetection=true \
 		--set ipam.mode=cluster-pool \
 		--set-json ipam.operator.clusterPoolIPv4PodCIDRList='["100.65.0.0/16"]' \
