@@ -1124,6 +1124,8 @@ jobs:
           docker load --input vpc-nat-gateway.tar
 
       - name: Security Scan
+        env:
+          TRIVY_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-db:2
         run: |
           sudo apt-get install wget apt-transport-https gnupg lsb-release
           wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
