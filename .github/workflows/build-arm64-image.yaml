@@ -55,6 +55,8 @@ jobs:
 
       - name: Scan base image
         uses: aquasecurity/trivy-action@0.24.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           scan-type: image
           scanners: vuln

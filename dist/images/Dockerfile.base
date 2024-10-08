@@ -91,6 +91,7 @@ RUN mkdir /packages/ && \
 FROM ghcr.io/aquasecurity/trivy:latest AS trivy
 
 ARG ARCH
+ARG GITHUB_TOKEN
 ENV CNI_VERSION="v1.5.1"
 ENV KUBE_VERSION="v1.31.1"
 ENV GOBGP_VERSION="3.29.0"

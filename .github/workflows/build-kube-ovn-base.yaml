@@ -48,6 +48,7 @@ jobs:
       - name: Build
         if:  (github.event.inputs.branch || matrix.branch) == matrix.branch
         env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GO_VERSION: ${{ steps.setup-go.outputs.go-version }}
         run: |
           make base-amd64
@@ -98,6 +99,7 @@ jobs:
       - name: Build
         if:  (github.event.inputs.branch || matrix.branch) == matrix.branch
         env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GO_VERSION: ${{ steps.setup-go.outputs.go-version }}
         run: |
           make base-arm64 || make base-arm64
