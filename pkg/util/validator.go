@@ -26,6 +26,7 @@ func ValidateSubnet(subnet kubeovnv1.Subnet) error {
 			return fmt.Errorf("gateway %s is not in cidr %s", subnet.Spec.Gateway, subnet.Spec.CIDRBlock)
 		}
 		if err := ValidateNetworkBroadcast(subnet.Spec.CIDRBlock, subnet.Spec.Gateway); err != nil {
+			klog.Error(err)
 			return fmt.Errorf("validate gateway %s for cidr %s failed: %w", subnet.Spec.Gateway, subnet.Spec.CIDRBlock, err)
 		}
 	}
@@ -101,6 +102,7 @@ func ValidateSubnet(subnet kubeovnv1.Subnet) error {
 			return err
 		}
 		if _, _, err := net.ParseCIDR(cidr); err != nil {
+			klog.Error(err)
 			return fmt.Errorf("%s in allowSubnets is not a valid address", cidr)
 		}
 	}
@@ -169,6 +171,7 @@ func ValidateSubnet(subnet kubeovnv1.Subnet) error {
 
 	if len(subnet.Spec.NatOutgoingPolicyRules) != 0 {
 		if err := validateNatOutgoingPolicyRules(subnet); err != nil {
+			klog.Error(err)
 			return err
 		}
 	}
@@ -197,11 +200,13 @@ func validateNatOutgoingPolicyRules(subnet kubeovnv1.Subnet) error {
 
 		if rule.Match.SrcIPs != "" {
 			if srcProtocol, err = validateNatOutGoingPolicyRuleIPs(rule.Match.SrcIPs); err != nil {
+				klog.Error(err)
 				return fmt.Errorf("validate nat policy rules src ips %s failed with err %w", rule.Match.SrcIPs, err)
 			}
 		}
 		if rule.Match.DstIPs != "" {
 			if dstProtocol, err = validateNatOutGoingPolicyRuleIPs(rule.Match.DstIPs); err != nil {
+				klog.Error(err)
 				return fmt.Errorf("validate nat policy rules dst ips %s failed with err %w", rule.Match.DstIPs, err)
 			}
 		}
@@ -258,6 +263,7 @@ func ValidatePodNetwork(annotations map[string]string) error {
 		for _, ip := range strings.Split(ipAddress, ",") {
 			if strings.Contains(ip, "/") {
 				if _, _, err := net.ParseCIDR(ip); err != nil {
+					klog.Error(err)
 					errors = append(errors, fmt.Errorf("%s is not a valid %s", ip, IPAddressAnnotation))
 					continue
 				}
@@ -270,6 +276,7 @@ func ValidatePodNetwork(annotations map[string]string) error {
 
 			if cidrStr := annotations[CidrAnnotation]; cidrStr != "" {
 				if err := CheckCidrs(cidrStr); err != nil {
+					klog.Error(err)
 					errors = append(errors, fmt.Errorf("invalid cidr %s", cidrStr))
 					continue
 				}
@@ -285,6 +292,7 @@ func ValidatePodNetwork(annotations map[string]string) error {
 	mac := annotations[MacAddressAnnotation]
 	if mac != "" {
 		if _, err := net.ParseMAC(mac); err != nil {
+			klog.Error(err)
 			errors = append(errors, fmt.Errorf("%s is not a valid %s", mac, MacAddressAnnotation))
 		}
 	}
@@ -324,6 +332,7 @@ func ValidatePodNetwork(annotations map[string]string) error {
 	ingress := annotations[IngressRateAnnotation]
 	if ingress != "" {
 		if _, err := strconv.Atoi(ingress); err != nil {
+			klog.Error(err)
 			errors = append(errors, fmt.Errorf("%s is not a valid %s", ingress, IngressRateAnnotation))
 		}
 	}
@@ -331,6 +340,7 @@ func ValidatePodNetwork(annotations map[string]string) error {
 	egress := annotations[EgressRateAnnotation]
 	if egress != "" {
 		if _, err := strconv.Atoi(egress); err != nil {
+			klog.Error(err)
 			errors = append(errors, fmt.Errorf("%s is not a valid %s", egress, EgressRateAnnotation))
 		}
 	}
@@ -389,6 +399,7 @@ func ValidateVpc(vpc *kubeovnv1.Vpc) error {
 
 		if strings.Contains(item.CIDR, "/") {
 			if _, _, err := net.ParseCIDR(item.CIDR); err != nil {
+				klog.Error(err)
 				return fmt.Errorf("invalid cidr %s: %w", item.CIDR, err)
 			}
 		} else if ip := net.ParseIP(item.CIDR); ip == nil {
@@ -419,6 +430,7 @@ func ValidateVpc(vpc *kubeovnv1.Vpc) error {
 
 	for _, item := range vpc.Spec.VpcPeerings {
 		if err := CheckCidrs(item.LocalConnectIP); err != nil {
+			klog.Error(err)
 			return fmt.Errorf("invalid cidr %s", item.LocalConnectIP)
 		}
 	}
