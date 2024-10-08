@@ -63,12 +63,14 @@ func bool2PsParam(v bool) string {
 func Powershell(cmd string) (string, error) {
 	shell, err := ps.New(&backend.Local{})
 	if err != nil {
+		klog.Error(err)
 		return "", err
 	}
 	defer shell.Exit()
 
 	stdout, _, err := shell.Execute(cmd)
 	if err != nil {
+		klog.Error(err)
 		return stdout, err
 	}
 	return stdout, nil
@@ -222,6 +224,7 @@ func GetInterfaceByIP(ip string) (*NetIPInterface, error) {
 
 	interfaces, err := GetNetIPInterface(ipAddr.InterfaceIndex)
 	if err != nil {
+		klog.Error(err)
 		return nil, err
 	}
 	for _, iface := range interfaces {

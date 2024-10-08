@@ -93,6 +93,7 @@ func SubnetBroadcast(subnet string) string {
 func FirstIP(subnet string) (string, error) {
 	_, cidr, err := net.ParseCIDR(subnet)
 	if err != nil {
+		klog.Error(err)
 		return "", fmt.Errorf("%s is not a valid cidr", subnet)
 	}
 	// Handle ptp network case specially
@@ -107,6 +108,7 @@ func FirstIP(subnet string) (string, error) {
 func LastIP(subnet string) (string, error) {
 	_, cidr, err := net.ParseCIDR(subnet)
 	if err != nil {
+		klog.Error(err)
 		return "", fmt.Errorf("%s is not a valid cidr", subnet)
 	}
 
@@ -244,6 +246,7 @@ func IsValidIP(ip string) bool {
 func CheckCidrs(cidr string) error {
 	for _, cidrBlock := range strings.Split(cidr, ",") {
 		if _, _, err := net.ParseCIDR(cidrBlock); err != nil {
+			klog.Error(err)
 			return errors.New("CIDRInvalid")
 		}
 	}
@@ -255,6 +258,7 @@ func GetGwByCidr(cidrStr string) (string, error) {
 	for _, cidr := range strings.Split(cidrStr, ",") {
 		gw, err := FirstIP(cidr)
 		if err != nil {
+			klog.Error(err)
 			return "", err
 		}
 		gws = append(gws, gw)
@@ -272,6 +276,7 @@ func AppendGwByCidr(gateway, cidrStr string) (string, error) {
 		}
 		gw, err := FirstIP(cidr)
 		if err != nil {
+			klog.Error(err)
 			return "", err
 		}
 		var gwArray [2]string
@@ -536,6 +541,7 @@ func CIDRGlobalUnicast(cidr string) error {
 func CheckSystemCIDR(cidrs []string) error {
 	for i, cidr := range cidrs {
 		if err := CIDRGlobalUnicast(cidr); err != nil {
+			klog.Error(err)
 			return err
 		}
 		for j, nextCidr := range cidrs {
