@@ -156,7 +156,7 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 		framework.ExpectNoError(err)
 
 		ginkgo.By("Validating pod routes")
-		actualRoutes := make([]request.Route, len(podRoutes))
+		actualRoutes := make([]request.Route, 0, len(podRoutes))
 		for _, r := range podRoutes {
 			if r.Gateway != "" || r.Dst != "" {
 				actualRoutes = append(actualRoutes, request.Route{Destination: r.Dst, Gateway: r.Gateway})
