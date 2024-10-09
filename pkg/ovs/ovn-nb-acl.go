@@ -160,24 +160,27 @@ func (c *OVNNbClient) CreateGatewayACL(lsName, pgName, gateway, u2oInterconnecti
 		gateways = gateways.Insert(strings.Split(u2oInterconnectionIP, ",")...)
 	}
 
+	v6Exists := false
+
+	options := func(acl *ovnnb.ACL) {
+		if acl.Options == nil {
+			acl.Options = make(map[string]string)
+		}
+		acl.Options["apply-after-lb"] = "true"
+	}
+
 	for gw := range gateways {
 		protocol := util.CheckProtocol(gw)
 		ipSuffix := "ip4"
 		if protocol == kubeovnv1.ProtocolIPv6 {
 			ipSuffix = "ip6"
+			v6Exists = true
 		}
 
 		allowIngressACL, err := c.newACL(parentName, ovnnb.ACLDirectionToLport, util.IngressAllowPriority, fmt.Sprintf("%s.src == %s", ipSuffix, gw), ovnnb.ACLActionAllowStateless, util.NetpolACLTier)
 		if err != nil {
 			klog.Error(err)
 			return fmt.Errorf("new allow ingress acl for %s: %w", parentName, err)
-		}
-
-		options := func(acl *ovnnb.ACL) {
-			if acl.Options == nil {
-				acl.Options = make(map[string]string)
-			}
-			acl.Options["apply-after-lb"] = "true"
 		}
 
 		allowEgressACL, err := c.newACL(parentName, ovnnb.ACLDirectionFromLport, util.EgressAllowPriority, fmt.Sprintf("%s.dst == %s", ipSuffix, gw), ovnnb.ACLActionAllowStateless, util.NetpolACLTier, options)
@@ -187,16 +190,16 @@ func (c *OVNNbClient) CreateGatewayACL(lsName, pgName, gateway, u2oInterconnecti
 		}
 
 		acls = append(acls, allowIngressACL, allowEgressACL)
+	}
 
-		if ipSuffix == "ip6" {
-			ndACL, err := c.newACL(parentName, ovnnb.ACLDirectionFromLport, util.EgressAllowPriority, "nd || nd_ra || nd_rs", ovnnb.ACLActionAllowStateless, util.NetpolACLTier, options)
-			if err != nil {
-				klog.Error(err)
-				return fmt.Errorf("new nd acl for %s: %w", parentName, err)
-			}
-
-			acls = append(acls, ndACL)
+	if v6Exists {
+		ndACL, err := c.newACL(parentName, ovnnb.ACLDirectionFromLport, util.EgressAllowPriority, "nd || nd_ra || nd_rs", ovnnb.ACLActionAllowStateless, util.NetpolACLTier, options)
+		if err != nil {
+			klog.Error(err)
+			return fmt.Errorf("new nd acl for %s: %w", parentName, err)
 		}
+
+		acls = append(acls, ndACL)
 	}
 
 	if err := c.CreateAcls(parentName, parentType, acls...); err != nil {
