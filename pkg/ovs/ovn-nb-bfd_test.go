@@ -60,6 +60,8 @@ func (suite *OvnClientTestSuite) testListBFD() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
+	failedNbClient := suite.faiedOvnNBClient
+
 	lrpName := "test-list-bfd"
 	dstIP1 := "192.168.124.2"
 	dstIP2 := "192.168.124.3"
@@ -96,6 +98,17 @@ func (suite *OvnClientTestSuite) testListBFD() {
 		}
 		require.True(t, uuids.IsEqual(strset.New(bfd1.UUID, bfd2.UUID)))
 	})
+
+	t.Run("closed server list failed BFDs", func(t *testing.T) {
+		t.Parallel()
+		failedBFD1, err := failedNbClient.CreateBFD(lrpName, dstIP1, minRx1, minTx1, detectMult1)
+		require.Error(t, err)
+		require.Nil(t, failedBFD1)
+		// cache db should be empty
+		bfdList, err := failedNbClient.ListBFDs(lrpName, dstIP1)
+		require.NoError(t, err)
+		require.Len(t, bfdList, 0)
+	})
 }
 
 func (suite *OvnClientTestSuite) testDeleteBFD() {
@@ -103,6 +116,7 @@ func (suite *OvnClientTestSuite) testDeleteBFD() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
+	failedNbClient := suite.faiedOvnNBClient
 	lrpName := "test-del-bfd"
 	dstIP1 := "192.168.124.4"
 	dstIP2 := "192.168.124.5"
@@ -144,6 +158,16 @@ func (suite *OvnClientTestSuite) testDeleteBFD() {
 		err := nbClient.DeleteBFD(lrpName, "192.168.124.17")
 		require.NoError(t, err)
 	})
+
+	t.Run("closed server delete non-existent BFD", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := failedNbClient.CreateBFD(lrpName, dstIP1, minRx1, minTx1, detectMult1)
+		require.Error(t, err)
+		err = failedNbClient.DeleteBFD(lrpName, "192.168.124.17")
+		// cache db should be empty
+		require.NoError(t, err)
+	})
 }
 
 func (suite *OvnClientTestSuite) testListDownBFDs() {
@@ -151,6 +175,7 @@ func (suite *OvnClientTestSuite) testListDownBFDs() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
+	failedNbClient := suite.faiedOvnNBClient
 	lrpName := "test-list-down-bfd"
 	dstIP1 := "192.168.124.6"
 	dstIP2 := "192.168.124.7"
@@ -163,6 +188,10 @@ func (suite *OvnClientTestSuite) testListDownBFDs() {
 		bfd1, err := nbClient.CreateBFD(lrpName, dstIP1, minRx, minTx, detectMult)
 		require.NoError(t, err)
 		require.NotNil(t, bfd1)
+		// closed server create failed BFD
+		failedBFD1, err := failedNbClient.CreateBFD(lrpName, dstIP1, minRx, minTx, detectMult)
+		require.Error(t, err)
+		require.Nil(t, failedBFD1)
 
 		bfd2, err := nbClient.CreateBFD(lrpName, dstIP2, minRx, minTx, detectMult)
 		require.NoError(t, err)
@@ -183,10 +212,16 @@ func (suite *OvnClientTestSuite) testListDownBFDs() {
 
 		err = nbClient.UpdateBFD(bfd1)
 		require.NoError(t, err)
+		// closed server update failed BFD
+		err = failedNbClient.UpdateBFD(bfd1)
+		require.NoError(t, err)
 		err = nbClient.UpdateBFD(bfd2)
 		require.NoError(t, err)
 		err = nbClient.UpdateBFD(bfd3)
 		require.NoError(t, err)
+		// update not exist bfd
+		err = nbClient.UpdateBFD(&ovnnb.BFD{UUID: "not-exist"})
+		require.Error(t, err)
 
 		// Test listing down BFDs for specific IP
 		downBFDs, err := nbClient.ListDownBFDs(dstIP1)
@@ -466,6 +501,7 @@ func (suite *OvnClientTestSuite) testBfdUpdateL3HAHandler() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
+	failedNbClient := suite.faiedOvnNBClient
 
 	t.Run("BFD status change with wrong table", func(t *testing.T) {
 		t.Parallel()
@@ -604,6 +640,28 @@ func (suite *OvnClientTestSuite) testBfdUpdateL3HAHandler() {
 
 		nbClient.bfdUpdateL3HAHandler(ovnnb.BFDTable, bfd, &newBfd)
 	})
+
+	t.Run("failed client update BFD status", func(t *testing.T) {
+		t.Parallel()
+
+		lrpName := "test-failed-client-bfd-update"
+		dstIP := "192.168.124.28"
+		minRx, minTx, detectMult := 101, 102, 19
+
+		failedBFD, err := failedNbClient.CreateBFD(lrpName, dstIP, minRx, minTx, detectMult)
+		require.Error(t, err)
+		require.Nil(t, failedBFD)
+		newBfd := &ovnnb.BFD{
+			LogicalPort: lrpName,
+			UUID:        "test-failed-client-bfd-update",
+			DstIP:       dstIP,
+			MinRx:       &minRx,
+			MinTx:       &minTx,
+			DetectMult:  &detectMult,
+		}
+		err = failedNbClient.UpdateBFD(newBfd)
+		require.NoError(t, err)
+	})
 }
 
 func (suite *OvnClientTestSuite) testBfdDelL3HAHandler() {
@@ -644,4 +702,9 @@ func (suite *OvnClientTestSuite) testBfdDelL3HAHandler() {
 
 		nbClient.bfdDelL3HAHandler(ovnnb.BFDTable, bfd)
 	})
+}
+
+func (suite *OvnClientTestSuite) testMonitorBFDs() {
+	nbClient := suite.ovnNBClient
+	nbClient.MonitorBFD()
 }
