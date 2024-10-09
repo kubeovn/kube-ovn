@@ -687,12 +687,20 @@ func (suite *OvnClientTestSuite) Test_newAcl() {
 	suite.testNewACL()
 }
 
+func (suite *OvnClientTestSuite) Test_newACLWithoutCheck() {
+	suite.testNewACLWithoutCheck()
+}
+
 func (suite *OvnClientTestSuite) Test_newNetworkPolicyAclMatch() {
 	suite.testnewNetworkPolicyACLMatch()
 }
 
 func (suite *OvnClientTestSuite) Test_aclFilter() {
 	suite.testACLFilter()
+}
+
+func (suite *OvnClientTestSuite) Test_createAclsOps() {
+	suite.testCreateAclsOps()
 }
 
 func (suite *OvnClientTestSuite) Test_sgRuleNoACL() {
