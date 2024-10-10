@@ -50,6 +50,10 @@ func cmdAdd(args *skel.CmdArgs) error {
 		netConf.Provider = util.OvnProvider
 	}
 
+	if err = sysctlEnableIPv6(args.Netns); err != nil {
+		return err
+	}
+
 	client := request.NewCniServerClient(netConf.ServerSocket)
 	response, err := client.Add(request.CniRequest{
 		CniType:                    netConf.Type,
