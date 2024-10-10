@@ -32,6 +32,7 @@ type OvnClientTestSuite struct {
 	ovnSBClient *OVNSbClient
 
 	faiedOvnNBClient *OVNNbClient
+	ovnLegacyClient  *LegacyClient
 }
 
 func emptyNbDatabaseModel() (model.ClientDBModel, error) {
@@ -79,6 +80,9 @@ func (suite *OvnClientTestSuite) SetupSuite() {
 	ovnSBClient, err := newOvnSbClient(suite.T(), sbEndpoint, 10)
 	require.NoError(suite.T(), err)
 	suite.ovnSBClient = ovnSBClient
+
+	// setup ovn legacy client
+	suite.ovnLegacyClient = newLegacyClient(10)
 }
 
 // In order for 'go test' to run this suite, we need to create
@@ -877,6 +881,63 @@ func (suite *OvnClientTestSuite) Test_GetKubeOvnChassisses() {
 	suite.testGetKubeOvnChassisses()
 }
 
+// ovn ic
+func (suite *OvnClientTestSuite) Test_OvnIcNbCommand() {
+	suite.testOvnIcNbCommand()
+}
+
+func (suite *OvnClientTestSuite) Test_OvnIcSbCommand() {
+	suite.testOvnIcSbCommand()
+}
+
+func (suite *OvnClientTestSuite) Test_GetTsSubnet() {
+	suite.testGetTsSubnet()
+}
+
+func (suite *OvnClientTestSuite) Test_GetTs() {
+	suite.testGetTs()
+}
+
+func (suite *OvnClientTestSuite) Test_FindUUIDWithAttrInTable() {
+	suite.testFindUUIDWithAttrInTable()
+}
+
+func (suite *OvnClientTestSuite) Test_DestroyTableWithUUID() {
+	suite.testDestroyTableWithUUID()
+}
+
+func (suite *OvnClientTestSuite) Test_GetAzUUID() {
+	suite.testGetAzUUID()
+}
+
+func (suite *OvnClientTestSuite) Test_GetGatewayUUIDsInOneAZ() {
+	suite.testGetGatewayUUIDsInOneAZ()
+}
+
+func (suite *OvnClientTestSuite) Test_GetRouteUUIDsInOneAZ() {
+	suite.testGetRouteUUIDsInOneAZ()
+}
+
+func (suite *OvnClientTestSuite) Test_GetPortBindingUUIDsInOneAZ() {
+	suite.testGetPortBindingUUIDsInOneAZ()
+}
+
+func (suite *OvnClientTestSuite) Test_DestroyGateways() {
+	suite.testDestroyGateways()
+}
+
+func (suite *OvnClientTestSuite) Test_DestroyRoutes() {
+	suite.testDestroyRoutes()
+}
+
+func (suite *OvnClientTestSuite) Test_DestroyPortBindings() {
+	suite.testDestroyPortBindings()
+}
+
+func (suite *OvnClientTestSuite) Test_DestroyChassis() {
+	suite.testDestroyChassis()
+}
+
 func Test_scratch(t *testing.T) {
 	t.SkipNow()
 	endpoint := "tcp:[172.20.149.35]:6641"
@@ -933,6 +994,13 @@ func newOvnNbClient(t *testing.T, ovnNbAddr string, ovnNbTimeout int) (*OVNNbCli
 			Timeout: time.Duration(ovnNbTimeout) * time.Second,
 		},
 	}, nil
+}
+
+// newLegacyClient init a legacy ovn client
+func newLegacyClient(timeout int) *LegacyClient {
+	return &LegacyClient{
+		OvnTimeout: timeout,
+	}
 }
 
 func newNbClient(addr string, timeout int) (client.Client, error) {
