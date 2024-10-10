@@ -20,13 +20,14 @@ package v1
 
 import (
 	"context"
+	"time"
 
 	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	scheme "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/scheme"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	types "k8s.io/apimachinery/pkg/types"
 	watch "k8s.io/apimachinery/pkg/watch"
-	gentype "k8s.io/client-go/gentype"
+	rest "k8s.io/client-go/rest"
 )
 
 // VpcsGetter has a method to return a VpcInterface.
@@ -39,7 +40,6 @@ type VpcsGetter interface {
 type VpcInterface interface {
 	Create(ctx context.Context, vpc *v1.Vpc, opts metav1.CreateOptions) (*v1.Vpc, error)
 	Update(ctx context.Context, vpc *v1.Vpc, opts metav1.UpdateOptions) (*v1.Vpc, error)
-	// Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
 	UpdateStatus(ctx context.Context, vpc *v1.Vpc, opts metav1.UpdateOptions) (*v1.Vpc, error)
 	Delete(ctx context.Context, name string, opts metav1.DeleteOptions) error
 	DeleteCollection(ctx context.Context, opts metav1.DeleteOptions, listOpts metav1.ListOptions) error
@@ -52,18 +52,133 @@ type VpcInterface interface {
 
 // vpcs implements VpcInterface
 type vpcs struct {
-	*gentype.ClientWithList[*v1.Vpc, *v1.VpcList]
+	client rest.Interface
 }
 
 // newVpcs returns a Vpcs
 func newVpcs(c *KubeovnV1Client) *vpcs {
 	return &vpcs{
-		gentype.NewClientWithList[*v1.Vpc, *v1.VpcList](
-			"vpcs",
-			c.RESTClient(),
-			scheme.ParameterCodec,
-			"",
-			func() *v1.Vpc { return &v1.Vpc{} },
-			func() *v1.VpcList { return &v1.VpcList{} }),
+		client: c.RESTClient(),
 	}
+}
+
+// Get takes name of the vpc, and returns the corresponding vpc object, and an error if there is any.
+func (c *vpcs) Get(ctx context.Context, name string, options metav1.GetOptions) (result *v1.Vpc, err error) {
+	result = &v1.Vpc{}
+	err = c.client.Get().
+		Resource("vpcs").
+		Name(name).
+		VersionedParams(&options, scheme.ParameterCodec).
+		Do(ctx).
+		Into(result)
+	return
+}
+
+// List takes label and field selectors, and returns the list of Vpcs that match those selectors.
+func (c *vpcs) List(ctx context.Context, opts metav1.ListOptions) (result *v1.VpcList, err error) {
+	var timeout time.Duration
+	if opts.TimeoutSeconds != nil {
+		timeout = time.Duration(*opts.TimeoutSeconds) * time.Second
+	}
+	result = &v1.VpcList{}
+	err = c.client.Get().
+		Resource("vpcs").
+		VersionedParams(&opts, scheme.ParameterCodec).
+		Timeout(timeout).
+		Do(ctx).
+		Into(result)
+	return
+}
+
+// Watch returns a watch.Interface that watches the requested vpcs.
+func (c *vpcs) Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error) {
+	var timeout time.Duration
+	if opts.TimeoutSeconds != nil {
+		timeout = time.Duration(*opts.TimeoutSeconds) * time.Second
+	}
+	opts.Watch = true
+	return c.client.Get().
+		Resource("vpcs").
+		VersionedParams(&opts, scheme.ParameterCodec).
+		Timeout(timeout).
+		Watch(ctx)
+}
+
+// Create takes the representation of a vpc and creates it.  Returns the server's representation of the vpc, and an error, if there is any.
+func (c *vpcs) Create(ctx context.Context, vpc *v1.Vpc, opts metav1.CreateOptions) (result *v1.Vpc, err error) {
+	result = &v1.Vpc{}
+	err = c.client.Post().
+		Resource("vpcs").
+		VersionedParams(&opts, scheme.ParameterCodec).
+		Body(vpc).
+		Do(ctx).
+		Into(result)
+	return
+}
+
+// Update takes the representation of a vpc and updates it. Returns the server's representation of the vpc, and an error, if there is any.
+func (c *vpcs) Update(ctx context.Context, vpc *v1.Vpc, opts metav1.UpdateOptions) (result *v1.Vpc, err error) {
+	result = &v1.Vpc{}
+	err = c.client.Put().
+		Resource("vpcs").
+		Name(vpc.Name).
+		VersionedParams(&opts, scheme.ParameterCodec).
+		Body(vpc).
+		Do(ctx).
+		Into(result)
+	return
+}
+
+// UpdateStatus was generated because the type contains a Status member.
+// Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
+func (c *vpcs) UpdateStatus(ctx context.Context, vpc *v1.Vpc, opts metav1.UpdateOptions) (result *v1.Vpc, err error) {
+	result = &v1.Vpc{}
+	err = c.client.Put().
+		Resource("vpcs").
+		Name(vpc.Name).
+		SubResource("status").
+		VersionedParams(&opts, scheme.ParameterCodec).
+		Body(vpc).
+		Do(ctx).
+		Into(result)
+	return
+}
+
+// Delete takes name of the vpc and deletes it. Returns an error if one occurs.
+func (c *vpcs) Delete(ctx context.Context, name string, opts metav1.DeleteOptions) error {
+	return c.client.Delete().
+		Resource("vpcs").
+		Name(name).
+		Body(&opts).
+		Do(ctx).
+		Error()
+}
+
+// DeleteCollection deletes a collection of objects.
+func (c *vpcs) DeleteCollection(ctx context.Context, opts metav1.DeleteOptions, listOpts metav1.ListOptions) error {
+	var timeout time.Duration
+	if listOpts.TimeoutSeconds != nil {
+		timeout = time.Duration(*listOpts.TimeoutSeconds) * time.Second
+	}
+	return c.client.Delete().
+		Resource("vpcs").
+		VersionedParams(&listOpts, scheme.ParameterCodec).
+		Timeout(timeout).
+		Body(&opts).
+		Do(ctx).
+		Error()
+}
+
+// Patch applies the patch and returns the patched vpc.
+func (c *vpcs) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *v1.Vpc, err error) {
+	result = &v1.Vpc{}
+	err = c.client.Patch(pt).
+		Resource("vpcs").
+		Name(name).
+		SubResource(subresources...).
+		VersionedParams(&opts, scheme.ParameterCodec).
+		Body(data).
+		Do(ctx).
+		Into(result)
+	return
 }
