@@ -30,31 +30,53 @@ type OvnClientTestSuite struct {
 	suite.Suite
 	ovnNBClient *OVNNbClient
 	ovnSBClient *OVNSbClient
+
+	faiedOvnNBClient *OVNNbClient
+}
+
+func emptyNbDatabaseModel() (model.ClientDBModel, error) {
+	return model.NewClientDBModel("OVN_Northbound", map[string]model.Model{})
 }
 
 func (suite *OvnClientTestSuite) SetupSuite() {
-	fmt.Println("set up OvnClient test suite")
-	clientSchema := ovnnb.Schema()
-	clientDBModel, err := ovnnb.FullDatabaseModel()
+	fmt.Println("set up ovn client test suite")
+	// setup ovn nb client
+	nbClientSchema := ovnnb.Schema()
+	nbClientDBModel, err := ovnnb.FullDatabaseModel()
 	require.NoError(suite.T(), err)
 
-	_, sock := newOVSDBServer(suite.T(), clientDBModel, clientSchema)
-	endpoint := fmt.Sprintf("unix:%s", sock)
-	require.FileExists(suite.T(), sock)
+	_, nbSock := newOVSDBServer(suite.T(), nbClientDBModel, nbClientSchema)
+	nbEndpoint := fmt.Sprintf("unix:%s", nbSock)
+	require.FileExists(suite.T(), nbSock)
 
-	ovnNBClient, err := newOvnNbClient(suite.T(), endpoint, 10)
+	ovnNBClient, err := newOvnNbClient(suite.T(), nbEndpoint, 10)
 	require.NoError(suite.T(), err)
 	suite.ovnNBClient = ovnNBClient
 
-	clientSchema = ovnsb.Schema()
-	clientDBModel, err = ovnsb.FullDatabaseModel()
+	// setup failed case ovn nb client
+	emptyNbDBModel, err := emptyNbDatabaseModel()
 	require.NoError(suite.T(), err)
 
-	_, sock = newOVSDBServer(suite.T(), clientDBModel, clientSchema)
-	endpoint = fmt.Sprintf("unix:%s", sock)
-	require.FileExists(suite.T(), sock)
+	server1, nbSock1 := newOVSDBServer(suite.T(), emptyNbDBModel, nbClientSchema)
+	nbEndpoint1 := fmt.Sprintf("unix:%s", nbSock1)
+	require.FileExists(suite.T(), nbSock1)
+	faiedOvnNBClient, err := newOvnNbClient(suite.T(), nbEndpoint1, 10)
+	require.NoError(suite.T(), err)
+	suite.faiedOvnNBClient = faiedOvnNBClient
+	// close the server to simulate the failed case
+	server1.Close()
+	require.NoFileExists(suite.T(), nbSock1)
 
-	ovnSBClient, err := newOvnSbClient(suite.T(), endpoint, 10)
+	// setup ovn sb client
+	sbClientSchema := ovnsb.Schema()
+	sbClientDBModel, err := ovnsb.FullDatabaseModel()
+	require.NoError(suite.T(), err)
+
+	_, sbSock := newOVSDBServer(suite.T(), sbClientDBModel, sbClientSchema)
+	sbEndpoint := fmt.Sprintf("unix:%s", sbSock)
+	require.FileExists(suite.T(), sbSock)
+
+	ovnSBClient, err := newOvnSbClient(suite.T(), sbEndpoint, 10)
 	require.NoError(suite.T(), err)
 	suite.ovnSBClient = ovnSBClient
 }
@@ -365,6 +387,10 @@ func (suite *OvnClientTestSuite) Test_BfdUpdateL3HAHandler() {
 
 func (suite *OvnClientTestSuite) Test_BfdDelL3HAHandler() {
 	suite.testBfdDelL3HAHandler()
+}
+
+func (suite *OvnClientTestSuite) Test_MonitorBFDs() {
+	suite.testMonitorBFDs()
 }
 
 /* gateway_chassis unit test */
