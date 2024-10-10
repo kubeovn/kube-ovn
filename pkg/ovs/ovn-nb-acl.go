@@ -160,15 +160,13 @@ func (c *OVNNbClient) CreateGatewayACL(lsName, pgName, gateway, u2oInterconnecti
 		gateways = gateways.Insert(strings.Split(u2oInterconnectionIP, ",")...)
 	}
 
-	v6Exists := false
-
 	options := func(acl *ovnnb.ACL) {
 		if acl.Options == nil {
 			acl.Options = make(map[string]string)
 		}
 		acl.Options["apply-after-lb"] = "true"
 	}
-
+	v6Exists := false
 	for gw := range gateways {
 		protocol := util.CheckProtocol(gw)
 		ipSuffix := "ip4"
