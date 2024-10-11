@@ -58,7 +58,6 @@ networking:
 func:
   ENABLE_LB: true
   ENABLE_NP: true
-  ENABLE_EIP_SNAT: true
   ENABLE_EXTERNAL_VPC: true
   HW_OFFLOAD: false
   ENABLE_LB_SVC: false
@@ -130,7 +129,6 @@ OPENVSWITCH_DIR: "/etc/origin/openvswitch"
 OVN_DIR: "/etc/origin/ovn"
 DISABLE_MODULES_MANAGEMENT: false
 
-imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""
 
