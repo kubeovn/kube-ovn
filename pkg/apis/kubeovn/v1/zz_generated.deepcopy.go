@@ -23,6 +23,7 @@ package v1
 
 import (
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 )
 
@@ -1919,6 +1920,13 @@ func (in *SubnetSpec) DeepCopyInto(out *SubnetSpec) {
 		in, out := &in.EnableLb, &out.EnableLb
 		*out = new(bool)
 		**out = **in
+	}
+	if in.NamespaceSelectors != nil {
+		in, out := &in.NamespaceSelectors, &out.NamespaceSelectors
+		*out = make([]metav1.LabelSelector, len(*in))
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
 	}
 	return
 }

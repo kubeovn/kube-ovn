@@ -20,8 +20,8 @@ package v1
 
 import (
 	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/client-go/listers"
 	"k8s.io/client-go/tools/cache"
 )
 
@@ -39,10 +39,30 @@ type VipLister interface {
 
 // vipLister implements the VipLister interface.
 type vipLister struct {
-	listers.ResourceIndexer[*v1.Vip]
+	indexer cache.Indexer
 }
 
 // NewVipLister returns a new VipLister.
 func NewVipLister(indexer cache.Indexer) VipLister {
-	return &vipLister{listers.New[*v1.Vip](indexer, v1.Resource("vip"))}
+	return &vipLister{indexer: indexer}
+}
+
+// List lists all Vips in the indexer.
+func (s *vipLister) List(selector labels.Selector) (ret []*v1.Vip, err error) {
+	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
+		ret = append(ret, m.(*v1.Vip))
+	})
+	return ret, err
+}
+
+// Get retrieves the Vip from the index for a given name.
+func (s *vipLister) Get(name string) (*v1.Vip, error) {
+	obj, exists, err := s.indexer.GetByKey(name)
+	if err != nil {
+		return nil, err
+	}
+	if !exists {
+		return nil, errors.NewNotFound(v1.Resource("vip"), name)
+	}
+	return obj.(*v1.Vip), nil
 }

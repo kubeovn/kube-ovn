@@ -2445,6 +2445,28 @@ spec:
                   type: boolean
                 routeTable:
                   type: string
+                namespaceSelectors:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      matchLabels:
+                        type: object
+                        additionalProperties:
+                          type: string
+                      matchExpressions:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            key:
+                              type: string
+                            operator:
+                              type: string
+                            values:
+                              type: array
+                              items:
+                                type: string
   scope: Cluster
   names:
     plural: subnets

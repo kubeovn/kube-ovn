@@ -40,22 +40,20 @@ var vipsKind = v1.SchemeGroupVersion.WithKind("Vip")
 
 // Get takes name of the vip, and returns the corresponding vip object, and an error if there is any.
 func (c *FakeVips) Get(ctx context.Context, name string, options metav1.GetOptions) (result *v1.Vip, err error) {
-	emptyResult := &v1.Vip{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootGetActionWithOptions(vipsResource, name, options), emptyResult)
+		Invokes(testing.NewRootGetAction(vipsResource, name), &v1.Vip{})
 	if obj == nil {
-		return emptyResult, err
+		return nil, err
 	}
 	return obj.(*v1.Vip), err
 }
 
 // List takes label and field selectors, and returns the list of Vips that match those selectors.
 func (c *FakeVips) List(ctx context.Context, opts metav1.ListOptions) (result *v1.VipList, err error) {
-	emptyResult := &v1.VipList{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootListActionWithOptions(vipsResource, vipsKind, opts), emptyResult)
+		Invokes(testing.NewRootListAction(vipsResource, vipsKind, opts), &v1.VipList{})
 	if obj == nil {
-		return emptyResult, err
+		return nil, err
 	}
 
 	label, _, _ := testing.ExtractFromListOptions(opts)
@@ -74,39 +72,36 @@ func (c *FakeVips) List(ctx context.Context, opts metav1.ListOptions) (result *v
 // Watch returns a watch.Interface that watches the requested vips.
 func (c *FakeVips) Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error) {
 	return c.Fake.
-		InvokesWatch(testing.NewRootWatchActionWithOptions(vipsResource, opts))
+		InvokesWatch(testing.NewRootWatchAction(vipsResource, opts))
 }
 
 // Create takes the representation of a vip and creates it.  Returns the server's representation of the vip, and an error, if there is any.
 func (c *FakeVips) Create(ctx context.Context, vip *v1.Vip, opts metav1.CreateOptions) (result *v1.Vip, err error) {
-	emptyResult := &v1.Vip{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootCreateActionWithOptions(vipsResource, vip, opts), emptyResult)
+		Invokes(testing.NewRootCreateAction(vipsResource, vip), &v1.Vip{})
 	if obj == nil {
-		return emptyResult, err
+		return nil, err
 	}
 	return obj.(*v1.Vip), err
 }
 
 // Update takes the representation of a vip and updates it. Returns the server's representation of the vip, and an error, if there is any.
 func (c *FakeVips) Update(ctx context.Context, vip *v1.Vip, opts metav1.UpdateOptions) (result *v1.Vip, err error) {
-	emptyResult := &v1.Vip{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootUpdateActionWithOptions(vipsResource, vip, opts), emptyResult)
+		Invokes(testing.NewRootUpdateAction(vipsResource, vip), &v1.Vip{})
 	if obj == nil {
-		return emptyResult, err
+		return nil, err
 	}
 	return obj.(*v1.Vip), err
 }
 
 // UpdateStatus was generated because the type contains a Status member.
 // Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-func (c *FakeVips) UpdateStatus(ctx context.Context, vip *v1.Vip, opts metav1.UpdateOptions) (result *v1.Vip, err error) {
-	emptyResult := &v1.Vip{}
+func (c *FakeVips) UpdateStatus(ctx context.Context, vip *v1.Vip, opts metav1.UpdateOptions) (*v1.Vip, error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootUpdateSubresourceActionWithOptions(vipsResource, "status", vip, opts), emptyResult)
+		Invokes(testing.NewRootUpdateSubresourceAction(vipsResource, "status", vip), &v1.Vip{})
 	if obj == nil {
-		return emptyResult, err
+		return nil, err
 	}
 	return obj.(*v1.Vip), err
 }
@@ -120,7 +115,7 @@ func (c *FakeVips) Delete(ctx context.Context, name string, opts metav1.DeleteOp
 
 // DeleteCollection deletes a collection of objects.
 func (c *FakeVips) DeleteCollection(ctx context.Context, opts metav1.DeleteOptions, listOpts metav1.ListOptions) error {
-	action := testing.NewRootDeleteCollectionActionWithOptions(vipsResource, opts, listOpts)
+	action := testing.NewRootDeleteCollectionAction(vipsResource, listOpts)
 
 	_, err := c.Fake.Invokes(action, &v1.VipList{})
 	return err
@@ -128,11 +123,10 @@ func (c *FakeVips) DeleteCollection(ctx context.Context, opts metav1.DeleteOptio
 
 // Patch applies the patch and returns the patched vip.
 func (c *FakeVips) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *v1.Vip, err error) {
-	emptyResult := &v1.Vip{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootPatchSubresourceActionWithOptions(vipsResource, name, pt, data, opts, subresources...), emptyResult)
+		Invokes(testing.NewRootPatchSubresourceAction(vipsResource, name, pt, data, subresources...), &v1.Vip{})
 	if obj == nil {
-		return emptyResult, err
+		return nil, err
 	}
 	return obj.(*v1.Vip), err
 }

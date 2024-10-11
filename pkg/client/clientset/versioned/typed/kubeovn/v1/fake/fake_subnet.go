@@ -40,22 +40,20 @@ var subnetsKind = v1.SchemeGroupVersion.WithKind("Subnet")
 
 // Get takes name of the subnet, and returns the corresponding subnet object, and an error if there is any.
 func (c *FakeSubnets) Get(ctx context.Context, name string, options metav1.GetOptions) (result *v1.Subnet, err error) {
-	emptyResult := &v1.Subnet{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootGetActionWithOptions(subnetsResource, name, options), emptyResult)
+		Invokes(testing.NewRootGetAction(subnetsResource, name), &v1.Subnet{})
 	if obj == nil {
-		return emptyResult, err
+		return nil, err
 	}
 	return obj.(*v1.Subnet), err
 }
 
 // List takes label and field selectors, and returns the list of Subnets that match those selectors.
 func (c *FakeSubnets) List(ctx context.Context, opts metav1.ListOptions) (result *v1.SubnetList, err error) {
-	emptyResult := &v1.SubnetList{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootListActionWithOptions(subnetsResource, subnetsKind, opts), emptyResult)
+		Invokes(testing.NewRootListAction(subnetsResource, subnetsKind, opts), &v1.SubnetList{})
 	if obj == nil {
-		return emptyResult, err
+		return nil, err
 	}
 
 	label, _, _ := testing.ExtractFromListOptions(opts)
@@ -74,39 +72,36 @@ func (c *FakeSubnets) List(ctx context.Context, opts metav1.ListOptions) (result
 // Watch returns a watch.Interface that watches the requested subnets.
 func (c *FakeSubnets) Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error) {
 	return c.Fake.
-		InvokesWatch(testing.NewRootWatchActionWithOptions(subnetsResource, opts))
+		InvokesWatch(testing.NewRootWatchAction(subnetsResource, opts))
 }
 
 // Create takes the representation of a subnet and creates it.  Returns the server's representation of the subnet, and an error, if there is any.
 func (c *FakeSubnets) Create(ctx context.Context, subnet *v1.Subnet, opts metav1.CreateOptions) (result *v1.Subnet, err error) {
-	emptyResult := &v1.Subnet{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootCreateActionWithOptions(subnetsResource, subnet, opts), emptyResult)
+		Invokes(testing.NewRootCreateAction(subnetsResource, subnet), &v1.Subnet{})
 	if obj == nil {
-		return emptyResult, err
+		return nil, err
 	}
 	return obj.(*v1.Subnet), err
 }
 
 // Update takes the representation of a subnet and updates it. Returns the server's representation of the subnet, and an error, if there is any.
 func (c *FakeSubnets) Update(ctx context.Context, subnet *v1.Subnet, opts metav1.UpdateOptions) (result *v1.Subnet, err error) {
-	emptyResult := &v1.Subnet{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootUpdateActionWithOptions(subnetsResource, subnet, opts), emptyResult)
+		Invokes(testing.NewRootUpdateAction(subnetsResource, subnet), &v1.Subnet{})
 	if obj == nil {
-		return emptyResult, err
+		return nil, err
 	}
 	return obj.(*v1.Subnet), err
 }
 
 // UpdateStatus was generated because the type contains a Status member.
 // Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-func (c *FakeSubnets) UpdateStatus(ctx context.Context, subnet *v1.Subnet, opts metav1.UpdateOptions) (result *v1.Subnet, err error) {
-	emptyResult := &v1.Subnet{}
+func (c *FakeSubnets) UpdateStatus(ctx context.Context, subnet *v1.Subnet, opts metav1.UpdateOptions) (*v1.Subnet, error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootUpdateSubresourceActionWithOptions(subnetsResource, "status", subnet, opts), emptyResult)
+		Invokes(testing.NewRootUpdateSubresourceAction(subnetsResource, "status", subnet), &v1.Subnet{})
 	if obj == nil {
-		return emptyResult, err
+		return nil, err
 	}
 	return obj.(*v1.Subnet), err
 }
@@ -120,7 +115,7 @@ func (c *FakeSubnets) Delete(ctx context.Context, name string, opts metav1.Delet
 
 // DeleteCollection deletes a collection of objects.
 func (c *FakeSubnets) DeleteCollection(ctx context.Context, opts metav1.DeleteOptions, listOpts metav1.ListOptions) error {
-	action := testing.NewRootDeleteCollectionActionWithOptions(subnetsResource, opts, listOpts)
+	action := testing.NewRootDeleteCollectionAction(subnetsResource, listOpts)
 
 	_, err := c.Fake.Invokes(action, &v1.SubnetList{})
 	return err
@@ -128,11 +123,10 @@ func (c *FakeSubnets) DeleteCollection(ctx context.Context, opts metav1.DeleteOp
 
 // Patch applies the patch and returns the patched subnet.
 func (c *FakeSubnets) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *v1.Subnet, err error) {
-	emptyResult := &v1.Subnet{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootPatchSubresourceActionWithOptions(subnetsResource, name, pt, data, opts, subresources...), emptyResult)
+		Invokes(testing.NewRootPatchSubresourceAction(subnetsResource, name, pt, data, subresources...), &v1.Subnet{})
 	if obj == nil {
-		return emptyResult, err
+		return nil, err
 	}
 	return obj.(*v1.Subnet), err
 }
