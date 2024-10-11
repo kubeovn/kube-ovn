@@ -508,3 +508,30 @@ func TestLogicalSwitchPortName(t *testing.T) {
 		})
 	}
 }
+
+func TestFormatDHCPOptions(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name     string
+		options  map[string]string
+		expected string
+	}{
+		{
+			name: "DNS server with commas",
+			options: map[string]string{
+				"dns_server": "{8.8.8.8,1.1.1.1}",
+			},
+			expected: "dns_server={8.8.8.8;1.1.1.1}",
+		},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			result := formatDHCPOptions(tc.options)
+			require.Equal(t, tc.expected, result)
+		})
+	}
+}
