@@ -206,12 +206,20 @@ func (suite *OvnClientTestSuite) Test_CreateVirtualLogicalSwitchPorts() {
 	suite.testCreateVirtualLogicalSwitchPorts()
 }
 
+func (suite *OvnClientTestSuite) Test_CreateVirtualLogicalSwitchPort() {
+	suite.testCreateVirtualLogicalSwitchPort()
+}
+
 func (suite *OvnClientTestSuite) Test_CreateBareLogicalSwitchPort() {
 	suite.testCreateBareLogicalSwitchPort()
 }
 
 func (suite *OvnClientTestSuite) Test_SetLogicalSwitchPortVirtualParents() {
 	suite.testSetLogicalSwitchPortVirtualParents()
+}
+
+func (suite *OvnClientTestSuite) Test_SetVirtualLogicalSwitchPortVirtualParents() {
+	suite.testSetVirtualLogicalSwitchPortVirtualParents()
 }
 
 func (suite *OvnClientTestSuite) Test_SetLogicalSwitchPortArpProxy() {
@@ -248,6 +256,10 @@ func (suite *OvnClientTestSuite) Test_UpdateLogicalSwitchPort() {
 
 func (suite *OvnClientTestSuite) Test_getLogicalSwitchPortSgs() {
 	suite.testgetLogicalSwitchPortSgs()
+}
+
+func (suite *OvnClientTestSuite) Test_GetLogicalSwitchPort() {
+	suite.testgetLogicalSwitchPort()
 }
 
 func (suite *OvnClientTestSuite) Test_DeleteLogicalSwitchPort() {
