@@ -7,12 +7,12 @@ import (
 	"maps"
 	"slices"
 
-	"github.com/ovn-org/libovsdb/client"
 	"github.com/ovn-org/libovsdb/model"
 	"github.com/ovn-org/libovsdb/ovsdb"
 	"github.com/scylladb/go-set/strset"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
+	"k8s.io/utils/set"
 
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
@@ -341,26 +341,25 @@ func (c *OVNNbClient) DeleteRouterPolicy(lr *ovnnb.LogicalRouter, uuid string) e
 	return nil
 }
 
-func (c *OVNNbClient) listLogicalRouterPoliciesByFilter(lrName string, filter func(route *ovnnb.LogicalRouterPolicy) bool) ([]*ovnnb.LogicalRouterPolicy, error) {
+func (c *OVNNbClient) listLogicalRouterPoliciesByFilter(lrName string, filter func(policy *ovnnb.LogicalRouterPolicy) bool) ([]*ovnnb.LogicalRouterPolicy, error) {
 	lr, err := c.GetLogicalRouter(lrName, false)
 	if err != nil {
 		klog.Error(err)
 		return nil, err
 	}
 
+	uuidSet := set.New(lr.Policies...)
+	predicate := func(policy *ovnnb.LogicalRouterPolicy) bool {
+		if !uuidSet.Has(policy.UUID) {
+			return false
+		}
+		return filter == nil || filter(policy)
+	}
+
 	policyList := make([]*ovnnb.LogicalRouterPolicy, 0, len(lr.Policies))
-	for _, uuid := range lr.Policies {
-		policy, err := c.GetLogicalRouterPolicyByUUID(uuid)
-		if err != nil {
-			if errors.Is(err, client.ErrNotFound) {
-				continue
-			}
-			klog.Error(err)
-			return nil, err
-		}
-		if filter == nil || filter(policy) {
-			policyList = append(policyList, policy)
-		}
+	if err = c.WhereCache(predicate).List(context.Background(), &policyList); err != nil {
+		klog.Error(err)
+		return nil, err
 	}
 
 	return policyList, nil
