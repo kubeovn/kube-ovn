@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -94,6 +95,75 @@ func getIpv6Prefix(networks []string) []string {
 	}
 
 	return ipv6Prefix
+}
+
+// buildDHCPv4Options constructs the DHCP options string for ipv4
+func buildDHCPv4Options(options, gateway, mac string, mtu int, necessaryOptions []string) map[string]string {
+	if len(options) == 0 {
+		return map[string]string{
+			"lease_time": "3600",
+			"router":     gateway,
+			"server_id":  "169.254.0.254",
+			"server_mac": mac,
+			"mtu":        strconv.Itoa(mtu),
+		}
+	}
+
+	parsedOptions := parseDHCPOptions(options)
+	for _, opt := range necessaryOptions {
+		if _, ok := parsedOptions[opt]; !ok {
+			switch opt {
+			case "lease_time":
+				parsedOptions[opt] = "3600"
+			case "router":
+				parsedOptions[opt] = gateway
+			case "server_id":
+				parsedOptions[opt] = "169.254.0.254"
+			case "server_mac":
+				parsedOptions[opt] = mac
+			case "mtu":
+				parsedOptions[opt] = strconv.Itoa(mtu)
+			}
+		}
+	}
+
+	return parsedOptions
+}
+
+// buildDHCPv6Options constructs the DHCP options string for ipv6
+func buildDHCPv6Options(options, mac string, necessaryOptions []string) map[string]string {
+	if len(options) == 0 {
+		return map[string]string{
+			"server_id": mac,
+		}
+	}
+
+	parsedOptions := parseDHCPOptions(options)
+	for _, opt := range necessaryOptions {
+		if _, ok := parsedOptions[opt]; !ok {
+			if opt == "server_id" {
+				parsedOptions[opt] = mac
+			}
+		}
+	}
+
+	return parsedOptions
+}
+
+// formatDHCPOptions converts the parsed options map into a string format
+// e.g. dns_server="{8.8.8.8,8.8.4.4}", lease_time="3600", mtu="1500", router="192.168.80.1", server_id="169.254.0.254", server_mac="5e:4e:e7:48:3d:7d"
+func formatDHCPOptions(options map[string]string) string {
+	var sb strings.Builder
+	for k, v := range options {
+		if sb.Len() > 0 {
+			sb.WriteString(",")
+		}
+		if k == "dns_server" {
+			v = strings.ReplaceAll(v, ",", ";")
+		}
+		sb.WriteString(fmt.Sprintf("%s=%s", k, v))
+	}
+	return sb.String()
 }
 
 // parseDHCPOptions parses dhcp options,
