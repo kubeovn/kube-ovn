@@ -86,8 +86,7 @@ func (suite *OvnClientTestSuite) testDeleteNetemQosByID() {
 	t := suite.T()
 	t.Parallel()
 	err := deleteNetemQosByID("qosID", "eth0", "podName", "podNS")
-	// no ovs-vsctl command
-	require.Error(t, err)
+	require.Nil(t, err)
 }
 
 func (suite *OvnClientTestSuite) testIsUserspaceDataPath() {
@@ -104,8 +103,7 @@ func (suite *OvnClientTestSuite) testCheckAndUpdateHtbQos() {
 	t.Parallel()
 	// get a new id
 	err := CheckAndUpdateHtbQos("podName", "podNS", "eth0", nil)
-	// no ovs-vsctl command
-	require.Error(t, err)
+	require.Nil(t, err)
 
 	// get a exist id
 	queueIfaceUIDMap := make(map[string]string)
