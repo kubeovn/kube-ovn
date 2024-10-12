@@ -110,32 +110,17 @@ func (c *OVNNbClient) updateDHCPv4Options(lsName, cidr, gateway, options string,
 		return
 	}
 
-	if len(options) == 0 {
-		mac := util.GenerateMac()
-		if dhcpOpt != nil && len(dhcpOpt.Options) != 0 {
-			mac = dhcpOpt.Options["server_mac"]
-		}
-
-		options = fmt.Sprintf("lease_time=%d,router=%s,server_id=%s,server_mac=%s,mtu=%d", 3600, gateway, "169.254.0.254", mac, mtu)
-	}
-
 	/* update */
 	if dhcpOpt != nil {
+		mac := dhcpOpt.Options["server_mac"]
 		dhcpOpt.Cidr = cidr
-		newOptions := parseDHCPOptions(options)
-		// append necessary options to new options
-		if dhcpOpt.Options != nil {
-			for _, option := range necessaryV4DHCPOptions {
-				if _, ok := newOptions[option]; !ok {
-					newOptions[option] = dhcpOpt.Options[option]
-				}
-			}
-		}
-		dhcpOpt.Options = newOptions
+		dhcpOpt.Options = buildDHCPv4Options(options, gateway, mac, mtu, necessaryV4DHCPOptions)
 		return dhcpOpt.UUID, c.updateDHCPOptions(dhcpOpt, &dhcpOpt.Cidr, &dhcpOpt.Options)
 	}
 
 	/* create */
+	mac := util.GenerateMac()
+	options = formatDHCPOptions(buildDHCPv4Options(options, gateway, mac, mtu, necessaryV4DHCPOptions))
 	if err := c.CreateDHCPOptions(lsName, cidr, options); err != nil {
 		klog.Error(err)
 		return "", fmt.Errorf("create dhcp options: %w", err)
@@ -164,32 +149,17 @@ func (c *OVNNbClient) updateDHCPv6Options(lsName, cidr, options string) (uuid st
 		return
 	}
 
-	if len(options) == 0 {
-		mac := util.GenerateMac()
-		if dhcpOpt != nil && len(dhcpOpt.Options) != 0 {
-			mac = dhcpOpt.Options["server_id"]
-		}
-
-		options = fmt.Sprintf("server_id=%s", mac)
-	}
-
 	/* update */
 	if dhcpOpt != nil {
+		mac := dhcpOpt.Options["server_id"]
 		dhcpOpt.Cidr = cidr
-		newOptions := parseDHCPOptions(options)
-		// append necessary options to new options
-		if dhcpOpt.Options != nil {
-			for _, option := range necessaryV6DHCPOptions {
-				if _, ok := newOptions[option]; !ok {
-					newOptions[option] = dhcpOpt.Options[option]
-				}
-			}
-		}
-		dhcpOpt.Options = newOptions
+		dhcpOpt.Options = buildDHCPv6Options(options, mac, necessaryV6DHCPOptions)
 		return dhcpOpt.UUID, c.updateDHCPOptions(dhcpOpt, &dhcpOpt.Cidr, &dhcpOpt.Options)
 	}
 
 	/* create */
+	mac := util.GenerateMac()
+	options = formatDHCPOptions(buildDHCPv6Options(options, mac, necessaryV6DHCPOptions))
 	if err := c.CreateDHCPOptions(lsName, cidr, options); err != nil {
 		klog.Error(err)
 		return "", fmt.Errorf("create dhcp options: %w", err)

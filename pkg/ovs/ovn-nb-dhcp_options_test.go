@@ -158,6 +158,7 @@ func (suite *OvnClientTestSuite) testUpdateDHCPv4Options() {
 			require.Equal(t, cidr, dhcpOpt.Cidr)
 			require.Equal(t, map[string]string{
 				"lease_time": "7200",
+				"mtu":        "1500",
 				"router":     "192.168.30.1",
 				"server_id":  "169.254.0.1",
 				"server_mac": "00:00:00:11:22:33",
@@ -198,7 +199,7 @@ func (suite *OvnClientTestSuite) testUpdateDHCPv4Options() {
 		err := nbClient.CreateDHCPOptions(lsName+"-1", cidr, options)
 		require.NoError(t, err)
 
-		uuid, err := nbClient.updateDHCPv4Options(lsName+"-1", cidr, gateway, "dns_server=8.8.8.8", 1500)
+		uuid, err := nbClient.updateDHCPv4Options(lsName+"-1", cidr, gateway, "dns_server={8.8.8.8;8.8.4.4}", 1500)
 		require.NoError(t, err)
 
 		dhcpOpt, err := nbClient.GetDHCPOptions(lsName+"-1", "IPv4", false)
@@ -207,12 +208,12 @@ func (suite *OvnClientTestSuite) testUpdateDHCPv4Options() {
 		require.Equal(t, uuid, dhcpOpt.UUID)
 		require.Equal(t, cidr, dhcpOpt.Cidr)
 		require.Equal(t, map[string]string{
-			"dns_server": "8.8.8.8",
-			"lease_time": "",
+			"dns_server": "{8.8.8.8,8.8.4.4}",
+			"lease_time": "3600",
+			"mtu":        "1500",
 			"router":     "192.168.30.1",
-			"server_id":  "",
+			"server_id":  "169.254.0.254",
 			"server_mac": "",
-			"mtu":        "",
 		}, dhcpOpt.Options)
 	})
 }
@@ -289,7 +290,7 @@ func (suite *OvnClientTestSuite) testUpdateDHCPv6Options() {
 		err := nbClient.CreateDHCPOptions(lsName+"-1", cidr, options)
 		require.NoError(t, err)
 
-		uuid, err := nbClient.updateDHCPv6Options(lsName+"-1", cidr, "dns_server=fc00::0af4:01")
+		uuid, err := nbClient.updateDHCPv6Options(lsName+"-1", cidr, "dns_server={fc00::0af4:01}")
 		require.NoError(t, err)
 
 		dhcpOpt, err := nbClient.GetDHCPOptions(lsName+"-1", "IPv6", false)
@@ -298,7 +299,7 @@ func (suite *OvnClientTestSuite) testUpdateDHCPv6Options() {
 		require.Equal(t, uuid, dhcpOpt.UUID)
 		require.Equal(t, cidr, dhcpOpt.Cidr)
 		require.Equal(t, map[string]string{
-			"dns_server": "fc00::0af4:01",
+			"dns_server": "{fc00::0af4:01}",
 			"server_id":  "00:00:00:55:22:33",
 		}, dhcpOpt.Options)
 	})
@@ -604,7 +605,7 @@ func (suite *OvnClientTestSuite) testCreateDHCPOptions() {
 
 	t.Run("create valid IPv4 DHCP options", func(t *testing.T) {
 		cidr := "192.168.60.0/24"
-		options := "router=192.168.60.1,dns_server=8.8.8.8"
+		options := "router=192.168.60.1,dns_server={8.8.8.8}"
 		err := nbClient.CreateDHCPOptions(lsName, cidr, options)
 		require.NoError(t, err)
 
