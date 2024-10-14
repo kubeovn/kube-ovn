@@ -211,7 +211,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalSwitchPort() {
 		require.NoError(t, err)
 	})
 
-	t.Run("create existingLsp logical switch port in other logical switch", func(t *testing.T) {
+	t.Run("create existing logical switch port in other logical switch", func(t *testing.T) {
 		lsName2 := "test-create-lsp-ls2"
 		err := nbClient.CreateBareLogicalSwitch(lsName2)
 		require.NoError(t, err)
@@ -329,7 +329,7 @@ func (suite *OvnClientTestSuite) testCreateVirtualLogicalSwitchPorts() {
 		require.NoError(t, err)
 	})
 
-	t.Run("should print err log when create logical switch port op", func(t *testing.T) {
+	t.Run("should print err log when virtual logical switch ports with empty logical switch name", func(t *testing.T) {
 		err = nbClient.CreateVirtualLogicalSwitchPorts("", vips...)
 		require.Error(t, err)
 	})
@@ -408,7 +408,7 @@ func (suite *OvnClientTestSuite) testCreateBareLogicalSwitchPort() {
 		require.NoError(t, err)
 	})
 
-	t.Run("should print err log when create logical switch port op", func(t *testing.T) {
+	t.Run("should print err log when create bare logical switch port with empty logical switch name", func(t *testing.T) {
 		err = nbClient.CreateBareLogicalSwitchPort("", "", "100.64.0.4,fd00:100:64::4", "00:00:00:C9:4E:EE")
 		require.Error(t, err)
 	})
