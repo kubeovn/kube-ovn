@@ -491,7 +491,7 @@ func (suite *OvnClientTestSuite) testGetKubeOvnChassisses() {
 
 	kubeOvnChassis1 := newChassis(0, "host-1", "kube-ovn-chassis-1", nil, nil, nil, map[string]string{"vendor": util.CniTypeName}, nil)
 	kubeOvnChassis2 := newChassis(0, "host-2", "kube-ovn-chassis-2", nil, nil, nil, map[string]string{"vendor": util.CniTypeName}, nil)
-	nonKubeOvnChassis := newChassis(0, "host-3", "non-kube-ovn-chassis", nil, nil, nil, map[string]string{"vendor": "other"}, nil)
+	nonKubeOvnChassis := newChassis(0, "host-none", "non-kube-ovn-chassis", nil, nil, nil, map[string]string{"vendor": "other"}, nil)
 
 	ops1, err := sbClient.ovsDbClient.Create(kubeOvnChassis1)
 	require.NoError(t, err)
