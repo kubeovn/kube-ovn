@@ -154,7 +154,7 @@ func SetHtbQosQueueRecord(podName, podNamespace, iface string, maxRateBPS int, q
 	if queueUID, ok := queueIfaceUIDMap[iface]; ok {
 		if err := ovsSet("queue", queueUID, queueCommandValues...); err != nil {
 			klog.Error(err)
-			return queueUID, err
+			return "", err
 		}
 	} else {
 		queueCommandValues = append(queueCommandValues, fmt.Sprintf("external-ids:iface-id=%s", iface))
@@ -165,7 +165,7 @@ func SetHtbQosQueueRecord(podName, podNamespace, iface string, maxRateBPS int, q
 		var queueID string
 		if queueID, err = ovsCreate("queue", queueCommandValues...); err != nil {
 			klog.Error(err)
-			return queueUID, err
+			return "", err
 		}
 		queueIfaceUIDMap[iface] = queueID
 	}

@@ -938,6 +938,47 @@ func (suite *OvnClientTestSuite) Test_DestroyChassis() {
 	suite.testDestroyChassis()
 }
 
+// ovs
+func (suite *OvnClientTestSuite) Test_SetInterfaceBandwidth() {
+	suite.testSetInterfaceBandwidth()
+}
+
+func (suite *OvnClientTestSuite) Test_ClearHtbQosQueue() {
+	suite.testClearHtbQosQueue()
+}
+
+func (suite *OvnClientTestSuite) Test_IsHtbQos() {
+	suite.testIsHtbQos()
+}
+
+func (suite *OvnClientTestSuite) Test_SetHtbQosQueueRecord() {
+	suite.testSetHtbQosQueueRecord()
+}
+
+func (suite *OvnClientTestSuite) Test_SetQosQueueBinding() {
+	suite.testSetQosQueueBinding()
+}
+
+func (suite *OvnClientTestSuite) Test_SetNetemQos() {
+	suite.testSetNetemQos()
+}
+
+func (suite *OvnClientTestSuite) Test_GetNetemQosConfig() {
+	suite.testGetNetemQosConfig()
+}
+
+func (suite *OvnClientTestSuite) Test_DeleteNetemQosByID() {
+	suite.testDeleteNetemQosByID()
+}
+
+func (suite *OvnClientTestSuite) Test_IsUserspaceDataPath() {
+	suite.testIsUserspaceDataPath()
+}
+
+func (suite *OvnClientTestSuite) Test_CheckAndUpdateHtbQos() {
+	suite.testCheckAndUpdateHtbQos()
+}
+
 func Test_scratch(t *testing.T) {
 	t.SkipNow()
 	endpoint := "tcp:[172.20.149.35]:6641"
