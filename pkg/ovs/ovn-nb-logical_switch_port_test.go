@@ -365,6 +365,7 @@ func (suite *OvnClientTestSuite) testCreateVirtualLogicalSwitchPort() {
 
 	t.Run("should no err when create logical switch port repeatedly", func(t *testing.T) {
 		err = nbClient.CreateVirtualLogicalSwitchPort(lspName, lsName, vip)
+		require.NoError(t, err)
 		err = nbClient.CreateVirtualLogicalSwitchPort(lspName, "test-create-virtual-port-ls2", vip)
 		require.NoError(t, err)
 	})
@@ -1396,7 +1397,7 @@ func (suite *OvnClientTestSuite) testDeleteLogicalSwitchPortOp() {
 	}, ops[0].Mutations)
 }
 
-func (suite *OvnClientTestSuite) testlogicalSwitchPortFilter() {
+func (suite *OvnClientTestSuite) testLogicalSwitchPortFilter() {
 	t := suite.T()
 	t.Parallel()
 
@@ -1628,7 +1629,7 @@ func (suite *OvnClientTestSuite) testlogicalSwitchPortFilter() {
 	})
 }
 
-func (suite *OvnClientTestSuite) testgetLogicalSwitchPortSgs() {
+func (suite *OvnClientTestSuite) testGetLogicalSwitchPortSgs() {
 	t := suite.T()
 	t.Parallel()
 
@@ -1667,7 +1668,7 @@ func (suite *OvnClientTestSuite) testgetLogicalSwitchPortSgs() {
 	})
 }
 
-func (suite *OvnClientTestSuite) testgetLogicalSwitchPort() {
+func (suite *OvnClientTestSuite) testGetLogicalSwitchPort() {
 	t := suite.T()
 	t.Parallel()
 

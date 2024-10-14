@@ -173,7 +173,7 @@ func (suite *OvnClientTestSuite) Test_LogicalSwitchUpdateLoadBalancerOp() {
 	suite.testLogicalSwitchUpdateLoadBalancerOp()
 }
 
-func (suite *OvnClientTestSuite) Test_logicalSwitchUpdateAclOp() {
+func (suite *OvnClientTestSuite) Test_LogicalSwitchUpdateAclOp() {
 	suite.testLogicalSwitchUpdateACLOp()
 }
 
@@ -254,12 +254,12 @@ func (suite *OvnClientTestSuite) Test_UpdateLogicalSwitchPort() {
 	suite.testUpdateLogicalSwitchPort()
 }
 
-func (suite *OvnClientTestSuite) Test_getLogicalSwitchPortSgs() {
-	suite.testgetLogicalSwitchPortSgs()
+func (suite *OvnClientTestSuite) Test_GetLogicalSwitchPortSgs() {
+	suite.testGetLogicalSwitchPortSgs()
 }
 
 func (suite *OvnClientTestSuite) Test_GetLogicalSwitchPort() {
-	suite.testgetLogicalSwitchPort()
+	suite.testGetLogicalSwitchPort()
 }
 
 func (suite *OvnClientTestSuite) Test_DeleteLogicalSwitchPort() {
@@ -278,8 +278,8 @@ func (suite *OvnClientTestSuite) Test_DeleteLogicalSwitchPortOp() {
 	suite.testDeleteLogicalSwitchPortOp()
 }
 
-func (suite *OvnClientTestSuite) Test_logicalSwitchPortFilter() {
-	suite.testlogicalSwitchPortFilter()
+func (suite *OvnClientTestSuite) Test_LogicalSwitchPortFilter() {
+	suite.testLogicalSwitchPortFilter()
 }
 
 /* logical_router unit test */
@@ -303,7 +303,7 @@ func (suite *OvnClientTestSuite) Test_ListLogicalRouter() {
 	suite.testListLogicalRouter()
 }
 
-func (suite *OvnClientTestSuite) Test_testLogicalRouterUpdateLoadBalancers() {
+func (suite *OvnClientTestSuite) Test_LogicalRouterUpdateLoadBalancers() {
 	suite.testLogicalRouterUpdateLoadBalancers()
 }
 
@@ -368,7 +368,7 @@ func (suite *OvnClientTestSuite) Test_LogicalRouterPortOp() {
 	suite.testLogicalRouterPortOp()
 }
 
-func (suite *OvnClientTestSuite) Test_logicalRouterPortFilter() {
+func (suite *OvnClientTestSuite) Test_LogicalRouterPortFilter() {
 	suite.testlogicalRouterPortFilter()
 }
 
