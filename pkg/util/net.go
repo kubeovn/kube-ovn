@@ -128,13 +128,16 @@ func getCIDRSize(cidr *net.IPNet) *big.Int {
 }
 
 func CIDRContainIP(cidrStr, ipStr string) bool {
+	if cidrStr == "" {
+		return false
+	}
+
 	cidrs := strings.Split(cidrStr, ",")
 	ips := strings.Split(ipStr, ",")
 
 	if len(cidrs) == 1 {
 		for _, ip := range ips {
 			if CheckProtocol(cidrStr) != CheckProtocol(ip) {
-				klog.Warningf("ip %q and cidr %q should be the same protocol", ip, cidrStr)
 				return false
 			}
 		}
@@ -143,7 +146,7 @@ func CIDRContainIP(cidrStr, ipStr string) bool {
 	for _, cidr := range cidrs {
 		_, cidrNet, err := net.ParseCIDR(cidr)
 		if err != nil {
-			klog.Error(err)
+			klog.Errorf("failed to parse CIDR %q: %v", cidr, err)
 			return false
 		}
 
