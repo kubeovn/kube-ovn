@@ -206,7 +206,25 @@ func (c *Controller) initNodeSwitch() error {
 
 // InitClusterRouter init cluster router to connect different logical switches
 func (c *Controller) initClusterRouter() error {
-	return c.OVNNbClient.CreateLogicalRouter(c.config.ClusterRouter)
+	if err := c.OVNNbClient.CreateLogicalRouter(c.config.ClusterRouter); err != nil {
+		klog.Errorf("create logical router %s failed: %v", c.config.ClusterRouter, err)
+		return err
+	}
+
+	lr, err := c.OVNNbClient.GetLogicalRouter(c.config.ClusterRouter, false)
+	if err != nil {
+		klog.Errorf("get logical router %s failed: %v", c.config.ClusterRouter, err)
+		return err
+	}
+
+	lr.Options = map[string]string{"always_learn_from_arp_request": "false", "dynamic_neigh_routers": "true", "mac_binding_age_threshold": "300"}
+	err = c.OVNNbClient.UpdateLogicalRouter(lr, &lr.Options)
+	if err != nil {
+		klog.Errorf("update logical router %s failed: %v", c.config.ClusterRouter, err)
+		return err
+	}
+
+	return nil
 }
 
 func (c *Controller) initLB(name, protocol string, sessionAffinity bool) error {
