@@ -418,6 +418,10 @@ func (suite *OvnClientTestSuite) Test_CreateGatewayChassises() {
 	suite.testCreateGatewayChassises()
 }
 
+func (suite *OvnClientTestSuite) Test_UpdateGatewayChassis() {
+	suite.testUpdateGatewayChassis()
+}
+
 func (suite *OvnClientTestSuite) Test_DeleteGatewayChassises() {
 	suite.testDeleteGatewayChassises()
 }
@@ -433,6 +437,10 @@ func (suite *OvnClientTestSuite) Test_CreateLoadBalancer() {
 
 func (suite *OvnClientTestSuite) Test_UpdateLoadBalancer() {
 	suite.testUpdateLoadBalancer()
+}
+
+func (suite *OvnClientTestSuite) Test_LoadBalancerAddHealthCheck() {
+	suite.testLoadBalancerAddHealthCheck()
 }
 
 func (suite *OvnClientTestSuite) Test_DeleteLoadBalancers() {

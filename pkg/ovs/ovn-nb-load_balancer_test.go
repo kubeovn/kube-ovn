@@ -389,6 +389,46 @@ func (suite *OvnClientTestSuite) testLoadBalancerAddVip() {
 	)
 }
 
+func (suite *OvnClientTestSuite) testLoadBalancerAddHealthCheck() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+	lbName := "test-add-hc-lb"
+	vips := map[string]string{
+		"10.96.0.5:443":           "192.168.20.3:6443",
+		"10.107.43.241:8080":      "10.244.0.15:8080,10.244.0.16:8080,10.244.0.17:8080",
+		"[fd00:10:96::e86f]:8080": "[fc00::af4:a]:8080,[fc00::af4:b]:8080,[fc00::af4:c]:8080",
+	}
+	t.Run("add health check to load balancer",
+		func(t *testing.T) {
+			// create load balancer
+			err := nbClient.CreateLoadBalancer(lbName, "tcp", "")
+			require.NoError(t, err)
+			for vip, backends := range vips {
+				backends := strings.Split(backends, ",")
+				mappings := make(map[string]string)
+				for _, backend := range backends {
+					host, _, err := net.SplitHostPort(backend)
+					require.NoError(t, err)
+					mappings[host] = host
+				}
+
+				err := nbClient.LoadBalancerAddVip(lbName, vip, backends...)
+				require.NoError(t, err)
+
+				ignoreHealthCheck := false
+				err = nbClient.LoadBalancerAddHealthCheck(lbName, vip, ignoreHealthCheck, mappings, nil)
+				require.NoError(t, err)
+
+				lb, err := nbClient.GetLoadBalancer(lbName, false)
+				require.NoError(t, err)
+				require.NotNil(t, lb.HealthCheck)
+			}
+		},
+	)
+}
+
 func (suite *OvnClientTestSuite) testLoadBalancerDeleteVip() {
 	t := suite.T()
 	t.Parallel()
