@@ -218,7 +218,7 @@ func (c *Controller) initClusterRouter() error {
 	}
 
 	lr.Options = map[string]string{"always_learn_from_arp_request": "false", "dynamic_neigh_routers": "true", "mac_binding_age_threshold": "300"}
-	err = c.OVNNbClient.UpdateLogicalRouter(lr)
+	err = c.OVNNbClient.UpdateLogicalRouter(lr, &lr.Options)
 	if err != nil {
 		klog.Errorf("update logical router %s failed: %v", c.config.ClusterRouter, err)
 		return err

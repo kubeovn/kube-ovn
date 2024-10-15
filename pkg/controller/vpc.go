@@ -989,7 +989,7 @@ func (c *Controller) createVpcRouter(lr string) error {
 	}
 
 	vpcRouter.Options = map[string]string{"always_learn_from_arp_request": "false", "dynamic_neigh_routers": "true", "mac_binding_age_threshold": "300"}
-	err = c.OVNNbClient.UpdateLogicalRouter(vpcRouter)
+	err = c.OVNNbClient.UpdateLogicalRouter(vpcRouter, &vpcRouter.Options)
 	if err != nil {
 		klog.Errorf("update logical router %s failed: %v", lr, err)
 		return err
