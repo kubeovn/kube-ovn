@@ -1,6 +1,7 @@
 module github.com/kubeovn/kube-ovn
 
 go 1.22.8
+toolchain go1.23.2
 
 require (
 	github.com/Microsoft/go-winio v0.6.2
@@ -10,7 +11,7 @@ require (
 	github.com/cnf/structhash v0.0.0-20201127153200-e1b16c1ebc08
 	github.com/containerd/containerd v1.7.22
 	github.com/containernetworking/cni v1.2.3
-	github.com/containernetworking/plugins v1.5.1
+	github.com/containernetworking/plugins v1.6.0
 	github.com/docker/docker v27.3.1+incompatible
 	github.com/emicklei/go-restful/v3 v3.12.1
 	github.com/evanphx/json-patch/v5 v5.9.0
