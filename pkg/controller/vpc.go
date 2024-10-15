@@ -1050,7 +1050,24 @@ func (c *Controller) getVpcSubnets(vpc *kubeovnv1.Vpc) (subnets []string, defaul
 
 // createVpcRouter create router to connect logical switches in vpc
 func (c *Controller) createVpcRouter(lr string) error {
-	return c.OVNNbClient.CreateLogicalRouter(lr)
+	if err := c.OVNNbClient.CreateLogicalRouter(lr); err != nil {
+		klog.Errorf("create logical router %s failed: %v", lr, err)
+		return err
+	}
+
+	vpcRouter, err := c.OVNNbClient.GetLogicalRouter(lr, false)
+	if err != nil {
+		klog.Errorf("get logical router %s failed: %v", lr, err)
+		return err
+	}
+
+	vpcRouter.Options = map[string]string{"always_learn_from_arp_request": "false", "dynamic_neigh_routers": "true", "mac_binding_age_threshold": "300"}
+	err = c.OVNNbClient.UpdateLogicalRouter(vpcRouter, &vpcRouter.Options)
+	if err != nil {
+		klog.Errorf("update logical router %s failed: %v", lr, err)
+		return err
+	}
+	return nil
 }
 
 // deleteVpcRouter delete router to connect logical switches in vpc
