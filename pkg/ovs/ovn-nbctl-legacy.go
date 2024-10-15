@@ -727,6 +727,16 @@ func (c LegacyClient) CreateLogicalRouter(lr string) error {
 	return err
 }
 
+// UpdateLogicalRouter update logical router in ovn
+func (c LegacyClient) UpdateLogicalRouter(lr string, options map[string]string) error {
+	args := []string{"set", "Logical_Router", lr}
+	for key, value := range options {
+		args = append(args, fmt.Sprintf("options:%s=%s", key, value))
+	}
+	_, err := c.ovnNbCommand(args...)
+	return err
+}
+
 // DeleteLogicalRouter create logical router in ovn
 func (c LegacyClient) DeleteLogicalRouter(lr string) error {
 	_, err := c.ovnNbCommand(IfExists, "lr-del", lr)
