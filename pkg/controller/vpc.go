@@ -727,6 +727,15 @@ func (c *Controller) createVpcRouter(lr string) error {
 	klog.Infof("exists routers %v", lrs)
 	for _, r := range lrs {
 		if lr == r {
+			options := map[string]string{
+				"always_learn_from_arp_request": "false",
+				"dynamic_neigh_routers":         "true",
+			}
+			err := c.ovnLegacyClient.UpdateLogicalRouter(lr, options)
+			if err != nil {
+				klog.Errorf("failed to update router %s: %v", lr, err)
+				return err
+			}
 			return nil
 		}
 	}
