@@ -24,6 +24,7 @@ type NBGlobal interface {
 
 type LogicalRouter interface {
 	CreateLogicalRouter(lrName string) error
+	UpdateLogicalRouter(lr *ovnnb.LogicalRouter, fields ...interface{}) error
 	DeleteLogicalRouter(lrName string) error
 	LogicalRouterUpdateLoadBalancers(lrName string, op ovsdb.Mutator, lbNames ...string) error
 	GetLogicalRouter(lrName string, ignoreNotFound bool) (*ovnnb.LogicalRouter, error)

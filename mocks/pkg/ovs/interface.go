@@ -195,6 +195,25 @@ func (mr *MockLogicalRouterMockRecorder) CreateLogicalRouter(lrName interface{})
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateLogicalRouter", reflect.TypeOf((*MockLogicalRouter)(nil).CreateLogicalRouter), lrName)
 }
 
+// UpdateLogicalRouter mocks base method.
+func (m *MockLogicalRouter) UpdateLogicalRouter(lr *ovnnb.LogicalRouter, fields ...interface{}) error {
+	m.ctrl.T.Helper()
+	varargs := []any{lr}
+	for _, a := range fields {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "UpdateLogicalRouter", varargs...)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateLogicalRouter indicates an expected call of UpdateLogicalRouter.
+func (mr *MockLogicalRouterMockRecorder) UpdateLogicalRouter(lr *ovnnb.LogicalRouter, fields ...interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{lr}, fields...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateLogicalRouter", reflect.TypeOf((*MockLogicalRouter)(nil).UpdateLogicalRouter), varargs...)
+}
+
 // DeleteLogicalRouter mocks base method.
 func (m *MockLogicalRouter) DeleteLogicalRouter(lrName string) error {
 	m.ctrl.T.Helper()
@@ -2691,6 +2710,25 @@ func (m *MockNbClient) CreateLogicalRouter(lrName string) error {
 func (mr *MockNbClientMockRecorder) CreateLogicalRouter(lrName interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateLogicalRouter", reflect.TypeOf((*MockNbClient)(nil).CreateLogicalRouter), lrName)
+}
+
+// UpdateLogicalRouter mocks base method.
+func (m *MockNbClient) UpdateLogicalRouter(lr *ovnnb.LogicalRouter, fields ...interface{}) error {
+	m.ctrl.T.Helper()
+	varargs := []any{lr}
+	for _, a := range fields {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "UpdateLogicalRouter", varargs...)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateLogicalRouter indicates an expected call of UpdateLogicalRouter.
+func (mr *MockNbClientMockRecorder) UpdateLogicalRouter(lr *ovnnb.LogicalRouter, fields ...interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{lr}, fields...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateLogicalRouter", reflect.TypeOf((*MockLogicalRouter)(nil).UpdateLogicalRouter), varargs...)
 }
 
 // CreateLogicalRouterPort mocks base method.
