@@ -18,6 +18,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalSwitchPort() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
+	failedNbClient := suite.faiedOvnNBClient
 	lsName := "test-create-lsp-ls"
 	ips := "10.244.0.37,fc00::af4:25"
 	mac := "00:00:00:AB:B4:65"
@@ -198,6 +199,41 @@ func (suite *OvnClientTestSuite) testCreateLogicalSwitchPort() {
 		require.Empty(t, lsp.Dhcpv4Options)
 		require.Empty(t, lsp.Dhcpv6Options)
 	})
+
+	t.Run("create existing logical switch port in one logical switch", func(t *testing.T) {
+		lspName := "test-create-lsp-lsp-exist"
+		sgs := "sg,sg1,default-securitygroup"
+		vpcName := "test-vpc"
+
+		err = nbClient.CreateLogicalSwitchPort(lsName, lspName, ips, mac, podName, podNamespace, true, sgs, vips, true, dhcpUUIDs, vpcName)
+		require.NoError(t, err)
+		err = nbClient.CreateLogicalSwitchPort(lsName, lspName, ips, mac, podName, podNamespace, true, sgs, vips, true, dhcpUUIDs, vpcName)
+		require.NoError(t, err)
+	})
+
+	t.Run("create existing logical switch port in other logical switch", func(t *testing.T) {
+		lsName2 := "test-create-lsp-ls2"
+		err := nbClient.CreateBareLogicalSwitch(lsName2)
+		require.NoError(t, err)
+
+		lspName := "test-create-lsp-lsp-default-sg"
+		sgs := "sg,sg1,default-securitygroup"
+		vpcName := "test-vpc"
+
+		err = nbClient.CreateLogicalSwitchPort(lsName, lspName, ips, mac, podName, podNamespace, true, sgs, vips, true, dhcpUUIDs, vpcName)
+		require.NoError(t, err)
+		err = nbClient.CreateLogicalSwitchPort(lsName2, lspName, ips, mac, podName, podNamespace, true, sgs, vips, true, dhcpUUIDs, vpcName)
+		require.NoError(t, err)
+	})
+
+	t.Run("create logical switch port op error", func(t *testing.T) {
+		lspName := "create logical switch port op"
+		sgs := "sg,sg1"
+		vpcName := "test-vpc"
+
+		err = failedNbClient.CreateLogicalSwitchPort(lsName, lspName, ips, mac, podName, podNamespace, true, sgs, vips, true, nil, vpcName)
+		require.Error(t, err)
+	})
 }
 
 func (suite *OvnClientTestSuite) testCreateLocalnetLogicalSwitchPort() {
@@ -252,6 +288,11 @@ func (suite *OvnClientTestSuite) testCreateLocalnetLogicalSwitchPort() {
 		err = nbClient.CreateLocalnetLogicalSwitchPort(lsName, lspName, "external", "192.168.2.0/24,fd02::/120", 0)
 		require.NoError(t, err)
 	})
+
+	t.Run("should print err log when logical switch does not exist", func(t *testing.T) {
+		err = nbClient.CreateLocalnetLogicalSwitchPort("", "", "", "", 0)
+		require.Error(t, err)
+	})
 }
 
 func (suite *OvnClientTestSuite) testCreateVirtualLogicalSwitchPorts() {
@@ -264,6 +305,7 @@ func (suite *OvnClientTestSuite) testCreateVirtualLogicalSwitchPorts() {
 
 	err := nbClient.CreateBareLogicalSwitch(lsName)
 	require.NoError(t, err)
+
 	t.Run("create virtual logical switch port", func(t *testing.T) {
 		err = nbClient.CreateVirtualLogicalSwitchPorts(lsName, vips...)
 		require.NoError(t, err)
@@ -283,6 +325,54 @@ func (suite *OvnClientTestSuite) testCreateVirtualLogicalSwitchPorts() {
 	t.Run("should no err when create logical switch port repeatedly", func(t *testing.T) {
 		err = nbClient.CreateVirtualLogicalSwitchPorts(lsName, vips...)
 		require.NoError(t, err)
+		err = nbClient.CreateVirtualLogicalSwitchPorts(lsName, vips...)
+		require.NoError(t, err)
+	})
+
+	t.Run("should print err log when logical switch does not exist", func(t *testing.T) {
+		err = nbClient.CreateVirtualLogicalSwitchPorts("", vips...)
+		require.Error(t, err)
+	})
+}
+
+func (suite *OvnClientTestSuite) testCreateVirtualLogicalSwitchPort() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+	lspName := "test-create-one-virtual-port-lsp"
+	lsName := "test-create-one-virtual-port-ls"
+	lsName2 := "test-create-one-virtual-port-ls2"
+	vip := "192.168.33.10"
+
+	err := nbClient.CreateBareLogicalSwitch(lsName)
+	require.NoError(t, err)
+	err = nbClient.CreateBareLogicalSwitch(lsName2)
+	require.NoError(t, err)
+
+	t.Run("create virtual logical switch port", func(t *testing.T) {
+		err = nbClient.CreateVirtualLogicalSwitchPort(lspName, lsName, vip)
+		require.NoError(t, err)
+
+		lsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
+		require.NoError(t, err)
+		require.Equal(t, lspName, lsp.Name)
+		require.Equal(t, "virtual", lsp.Type)
+		require.Equal(t, map[string]string{
+			"virtual-ip": vip,
+		}, lsp.Options)
+	})
+
+	t.Run("should no err when create logical switch port repeatedly", func(t *testing.T) {
+		err = nbClient.CreateVirtualLogicalSwitchPort(lspName, lsName, vip)
+		require.NoError(t, err)
+		err = nbClient.CreateVirtualLogicalSwitchPort(lspName, "test-create-virtual-port-ls2", vip)
+		require.NoError(t, err)
+	})
+
+	t.Run("should print err log when logical switch port does not exit", func(t *testing.T) {
+		err = nbClient.CreateVirtualLogicalSwitchPort("", "", "")
+		require.Error(t, err)
 	})
 }
 
@@ -297,17 +387,31 @@ func (suite *OvnClientTestSuite) testCreateBareLogicalSwitchPort() {
 	err := nbClient.CreateBareLogicalSwitch(lsName)
 	require.NoError(t, err)
 
-	err = nbClient.CreateBareLogicalSwitchPort(lsName, lspName, "100.64.0.4,fd00:100:64::4", "00:00:00:C9:4E:EE")
-	require.NoError(t, err)
+	t.Run("create bare logic switch port", func(t *testing.T) {
+		err = nbClient.CreateBareLogicalSwitchPort(lsName, lspName, "100.64.0.4,fd00:100:64::4", "00:00:00:C9:4E:EE")
+		require.NoError(t, err)
 
-	lsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
-	require.NoError(t, err)
-	require.ElementsMatch(t, []string{"00:00:00:C9:4E:EE 100.64.0.4 fd00:100:64::4"}, lsp.Addresses)
+		lsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
+		require.NoError(t, err)
+		require.ElementsMatch(t, []string{"00:00:00:C9:4E:EE 100.64.0.4 fd00:100:64::4"}, lsp.Addresses)
 
-	ls, err := nbClient.GetLogicalSwitch(lsName, false)
-	require.NoError(t, err)
+		ls, err := nbClient.GetLogicalSwitch(lsName, false)
+		require.NoError(t, err)
 
-	require.Contains(t, ls.Ports, lsp.UUID)
+		require.Contains(t, ls.Ports, lsp.UUID)
+	})
+
+	t.Run("create bare logic switch port repeatedly", func(t *testing.T) {
+		err = nbClient.CreateBareLogicalSwitchPort(lsName, lspName, "100.64.0.4,fd00:100:64::4", "00:00:00:C9:4E:EE")
+		require.NoError(t, err)
+		err = nbClient.CreateBareLogicalSwitchPort(lsName, lspName, "100.64.0.4,fd00:100:64::4", "00:00:00:C9:4E:EE")
+		require.NoError(t, err)
+	})
+
+	t.Run("should print err log when logical switch does not exist", func(t *testing.T) {
+		err = nbClient.CreateBareLogicalSwitchPort("", "", "100.64.0.4,fd00:100:64::4", "00:00:00:C9:4E:EE")
+		require.Error(t, err)
+	})
 }
 
 func (suite *OvnClientTestSuite) testSetLogicalSwitchPortVirtualParents() {
@@ -344,6 +448,44 @@ func (suite *OvnClientTestSuite) testSetLogicalSwitchPortVirtualParents() {
 			require.NoError(t, err)
 			require.Empty(t, lsp.Options["virtual-parents"])
 		}
+	})
+}
+
+func (suite *OvnClientTestSuite) testSetVirtualLogicalSwitchPortVirtualParents() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+	lsName := "test-update-virtual-port-virt-parents-ls"
+	ip := "192.168.211.31"
+
+	err := nbClient.CreateBareLogicalSwitch(lsName)
+	require.NoError(t, err)
+
+	err = nbClient.CreateVirtualLogicalSwitchPorts(lsName, ip)
+	require.NoError(t, err)
+
+	lspName := fmt.Sprintf("%s-vip-%s", lsName, ip)
+
+	t.Run("set virtual-parents option", func(t *testing.T) {
+		parents := "virt-parents-ls-1,virt-parents-ls-2"
+		err = nbClient.SetVirtualLogicalSwitchPortVirtualParents(lspName, parents)
+		require.NoError(t, err)
+
+		lsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
+		require.NoError(t, err)
+		require.Equal(t, parents, lsp.Options["virtual-parents"])
+	})
+
+	t.Run("clear virtual-parents option", func(t *testing.T) {
+		parents := ""
+		err = nbClient.SetVirtualLogicalSwitchPortVirtualParents(lspName, parents)
+		require.NoError(t, err)
+
+		lsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
+		require.NoError(t, err)
+		_, exists := lsp.Options["virtual-parents"]
+		require.False(t, exists)
 	})
 }
 
@@ -1027,6 +1169,13 @@ func (suite *OvnClientTestSuite) testUpdateLogicalSwitchPort() {
 		require.NotContains(t, lsp.ExternalIDs, "liveMigration")
 		require.Empty(t, lsp.Options)
 	})
+
+	t.Run("update nil logical switch port", func(t *testing.T) {
+		err := nbClient.UpdateLogicalSwitchPort(nil, &map[string]string{}, &map[string]string{})
+
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "logical switch port is nil")
+	})
 }
 
 func (suite *OvnClientTestSuite) testListLogicalSwitchPorts() {
@@ -1248,7 +1397,7 @@ func (suite *OvnClientTestSuite) testDeleteLogicalSwitchPortOp() {
 	}, ops[0].Mutations)
 }
 
-func (suite *OvnClientTestSuite) testlogicalSwitchPortFilter() {
+func (suite *OvnClientTestSuite) testLogicalSwitchPortFilter() {
 	t := suite.T()
 	t.Parallel()
 
@@ -1480,7 +1629,7 @@ func (suite *OvnClientTestSuite) testlogicalSwitchPortFilter() {
 	})
 }
 
-func (suite *OvnClientTestSuite) testgetLogicalSwitchPortSgs() {
+func (suite *OvnClientTestSuite) testGetLogicalSwitchPortSgs() {
 	t := suite.T()
 	t.Parallel()
 
@@ -1516,5 +1665,25 @@ func (suite *OvnClientTestSuite) testgetLogicalSwitchPortSgs() {
 
 		sgs := getLogicalSwitchPortSgs(lsp).List()
 		require.Empty(t, sgs)
+	})
+}
+
+func (suite *OvnClientTestSuite) testGetLogicalSwitchPort() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+	lsName := "test-get-lsp"
+
+	err := nbClient.CreateBareLogicalSwitch(lsName)
+	require.NoError(t, err)
+
+	t.Run("get non-existent logical switch port", func(t *testing.T) {
+		t.Parallel()
+
+		lspName := "non-existent-lsp"
+		_, err := nbClient.GetLogicalSwitchPort(lspName, false)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "not found")
 	})
 }
