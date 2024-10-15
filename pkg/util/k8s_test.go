@@ -32,7 +32,7 @@ func TestDialTCP(t *testing.T) {
 		{"Valid TCP Host", "tcp://localhost:8081", 1 * time.Second, false, nil},
 		{"Invalid Host", "https://localhost%:8443", 1 * time.Second, false, errors.New(`invalid URL escape`)},
 		{"Unsupported Scheme", "ftp://localhost:8080", 1 * time.Second, false, errors.New(`unsupported scheme "ftp"`)},
-		{"Timeout", "http://localhost:8080", 1 * time.Millisecond, false, errors.New(`timed out dialing host`)},
+		{"Timeout", "http://localhost:23456", 1 * time.Second, false, errors.New(`timed out dialing host`)},
 	}
 
 	httpServer := httptest.NewUnstartedServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {}))
