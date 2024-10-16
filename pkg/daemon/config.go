@@ -414,18 +414,9 @@ func setEncapIP(ip string) error {
 
 func setChecksum(encapChecksum bool) error {
 	// #nosec G204
-	if encapChecksum {
-		raw, err := exec.Command(
-			"ovs-vsctl", "remove", "open", ".", "external-ids", "ovn-encap-csum").CombinedOutput()
-		if err != nil {
-			return fmt.Errorf("failed to remove ovn-encap-csum, %s", string(raw))
-		}
-	} else {
-		raw, err := exec.Command(
-			"ovs-vsctl", "set", "open", ".", "external-ids:ovn-encap-csum=false").CombinedOutput()
-		if err != nil {
-			return fmt.Errorf("failed to set ovn-encap-csum false, %s", string(raw))
-		}
+	raw, err := exec.Command("ovs-vsctl", "set", "open", ".", fmt.Sprintf("external-ids:ovn-encap-csum=%v", encapChecksum)).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to set ovn-encap-csum to %v: %s", encapChecksum, string(raw))
 	}
 	return nil
 }
