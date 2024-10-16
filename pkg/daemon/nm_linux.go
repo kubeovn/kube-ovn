@@ -264,10 +264,20 @@ func (n *networkManagerSyncer) SetManaged(name string, managed bool) error {
 		}
 	}
 
-	klog.Infof(`setting device %s NetworkManager property "managed" to %v`, name, managed)
-	if err = device.SetPropertyManaged(managed); err != nil {
-		klog.Errorf("failed to set device property managed to %v: %v", managed, err)
-		return err
+	deviceType, err := device.GetPropertyDeviceType()
+	if err != nil {
+		klog.Errorf("get device %s property device-type failed: %v", name, err)
+		return nil
+	}
+
+	if deviceType != gonetworkmanager.NmDeviceTypeTeam {
+		klog.Infof(`setting device %s NetworkManager property "managed" to %v`, name, managed)
+		if err = device.SetPropertyManaged(managed); err != nil {
+			klog.Errorf("failed to set device property managed to %v: %v", managed, err)
+			return err
+		}
+	} else {
+		klog.Infof("device %s is a team interface, not setting NetworkManager property \"unmanaged\"", name)
 	}
 
 	return nil
