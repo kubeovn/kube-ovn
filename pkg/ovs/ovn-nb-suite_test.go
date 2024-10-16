@@ -182,8 +182,16 @@ func (suite *OvnClientTestSuite) Test_DeleteLogicalSwitchPort() {
 	suite.testDeleteLogicalSwitchPort()
 }
 
+func (suite *OvnClientTestSuite) Test_DeleteLogicalSwitchPorts() {
+	suite.testDeleteLogicalSwitchPorts()
+}
+
 func (suite *OvnClientTestSuite) Test_ListLogicalSwitchPorts() {
 	suite.testListLogicalSwitchPorts()
+}
+
+func (suite *OvnClientTestSuite) Test_ListLogicalSwitchPortsWithLegacyExternalIDs() {
+	suite.testListLogicalSwitchPortsWithLegacyExternalIDs()
 }
 
 func (suite *OvnClientTestSuite) Test_CreateLogicalSwitchPortOp() {
@@ -194,8 +202,32 @@ func (suite *OvnClientTestSuite) Test_DeleteLogicalSwitchPortOp() {
 	suite.testDeleteLogicalSwitchPortOp()
 }
 
+func (suite *OvnClientTestSuite) Test_UpdateLogicalSwitchPortOp() {
+	suite.testUpdateLogicalSwitchPortOp()
+}
+
 func (suite *OvnClientTestSuite) Test_logicalSwitchPortFilter() {
 	suite.testlogicalSwitchPortFilter()
+}
+
+func (suite *OvnClientTestSuite) Test_SetLogicalSwitchPortActivationStrategy() {
+	suite.testSetLogicalSwitchPortActivationStrategy()
+}
+
+func (suite *OvnClientTestSuite) Test_SetLogicalSwitchPortMigrateOptions() {
+	suite.testSetLogicalSwitchPortMigrateOptions()
+}
+
+func (suite *OvnClientTestSuite) Test_GetLogicalSwitchPortMigrateOptions() {
+	suite.testGetLogicalSwitchPortMigrateOptions()
+}
+
+func (suite *OvnClientTestSuite) Test_ResetLogicalSwitchPortMigrateOptions() {
+	suite.testResetLogicalSwitchPortMigrateOptions()
+}
+
+func (suite *OvnClientTestSuite) Test_testCleanLogicalSwitchPortMigrateOptions() {
+	suite.testCleanLogicalSwitchPortMigrateOptions()
 }
 
 /* logical_router unit test */
