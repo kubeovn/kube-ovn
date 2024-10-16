@@ -416,6 +416,7 @@ func setChecksum(encapChecksum bool) error {
 	// #nosec G204
 	raw, err := exec.Command("ovs-vsctl", "set", "open", ".", fmt.Sprintf("external-ids:ovn-encap-csum=%v", encapChecksum)).CombinedOutput()
 	if err != nil {
+		klog.Error(err)
 		return fmt.Errorf("failed to set ovn-encap-csum to %v: %s", encapChecksum, string(raw))
 	}
 	return nil
