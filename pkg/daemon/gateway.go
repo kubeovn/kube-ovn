@@ -2,7 +2,6 @@ package daemon
 
 import (
 	"fmt"
-	"os/exec"
 	"sort"
 	"strings"
 
@@ -69,10 +68,6 @@ func (c *Controller) setICGateway() error {
 		if strings.Trim(icEnabled, "\"") != "true" {
 			if _, err := ovs.Exec("set", "open", ".", "external_ids:ovn-is-interconn=true"); err != nil {
 				return fmt.Errorf("failed to enable ic gateway, %w", err)
-			}
-			output, err := exec.Command("/usr/share/ovn/scripts/ovn-ctl", "restart_controller").CombinedOutput()
-			if err != nil {
-				return fmt.Errorf("failed to restart ovn-controller, %w, %q", err, output)
 			}
 		}
 	} else {
