@@ -1,5 +1,21 @@
 # Changelog
 
+## v1.12.27 (2024-10-16)
+
+ * [748f8189](https://github.com/kubeovn/kube-ovn/commit/748f8189c996f58126a0002e23631effa89124b3) release v1.12.27
+ * [6da2b51c](https://github.com/kubeovn/kube-ovn/commit/6da2b51c835ca7e94cdae752f2cd4592aaf5a383) fix memory overflow, add mac_binding related options to router (#4603) (#4608)
+ * [207fcfbc](https://github.com/kubeovn/kube-ovn/commit/207fcfbc8b13e0cd94cb2e22d9f70f250e69cfa9) chart: add missing sa imagePullSecrets (#4594)
+ * [e782ba08](https://github.com/kubeovn/kube-ovn/commit/e782ba08108639f7ec093a7f45c78ab8ec26e8ee) bump go to 1.22.8 (#4584)
+ * [cbae706c](https://github.com/kubeovn/kube-ovn/commit/cbae706c3ab1fc632edc854ea685f73472042ee8) Add genev_sys_6081 and vxlan_sys_4789 to cilium devices (#4575)
+ * [1f7ca9d8](https://github.com/kubeovn/kube-ovn/commit/1f7ca9d8feee3c402378a6b0022210c42387cf61) ci: set trivy db repository to public.ecr.aws/aquasecurity/trivy-db:2 (#4570)
+ * [6ba85efb](https://github.com/kubeovn/kube-ovn/commit/6ba85efb680a066bffb6a13c74018f058340a7f3) prepare for next release
+
+### Contributors
+
+ * Andrei Kvapil
+ * changluyi
+ * 张祖建
+
 ## v1.12.26 (2024-09-29)
 
  * [6b486523](https://github.com/kubeovn/kube-ovn/commit/6b486523f83eca2b49801e925b8f4bdfcda83f96) release v1.12.26
