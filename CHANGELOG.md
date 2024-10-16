@@ -1319,6 +1319,48 @@
  * 张祖建
  * 袁又袁
 
+## v1.11.20 (2024-10-16)
+
+ * [0a1194ad](https://github.com/kubeovn/kube-ovn/commit/0a1194ad43d34e96f35ca874fcc01a6a3b68803f) release v1.11.20
+ * [4e7fb345](https://github.com/kubeovn/kube-ovn/commit/4e7fb345ef3d59004a50b2292c3c1428a0bfa7e9) fix memory overflow, add mac_binding related options to router (#4610)
+ * [2c84c60f](https://github.com/kubeovn/kube-ovn/commit/2c84c60f09186ca126e3084224493713163f461a) bump go to 1.22.8 (#4584)
+ * [1cbbf8b8](https://github.com/kubeovn/kube-ovn/commit/1cbbf8b8772f3b1d527a8b84561d58d10fae2444) ci: set trivy db repository to public.ecr.aws/aquasecurity/trivy-db:2 (#4570)
+ * [c5a08fa9](https://github.com/kubeovn/kube-ovn/commit/c5a08fa9cfc4fc3eda7238140febdd121efa9b43) base: rebuild go binary deps from source (#4524)
+ * [77857846](https://github.com/kubeovn/kube-ovn/commit/778578460499a2bb63106cc7984c58ece9eaedb9) bump kubectl to v1.30.5
+ * [9ce2a3e3](https://github.com/kubeovn/kube-ovn/commit/9ce2a3e3574db880d5a1b34f5934e211cdf80ab7) bump go to 1.22.7 (#4482)
+ * [8ae11f5a](https://github.com/kubeovn/kube-ovn/commit/8ae11f5a0836cdfb9aac96120bfda8e0518fba85) netpol: add allow acl rules for u2o logical gateway (#4420)
+ * [27d4fc3f](https://github.com/kubeovn/kube-ovn/commit/27d4fc3fda750f93f8d91b17c77f03917d2f6f16) Makefile: simplify underlay u2o installation (#4419)
+ * [305b2e88](https://github.com/kubeovn/kube-ovn/commit/305b2e88c26c62a6eb55ae1e3db3c26047ec693f) bump go to 1.22.6
+ * [a4041c31](https://github.com/kubeovn/kube-ovn/commit/a4041c31a5da5e20a26211ebf50c172d9b6ac4db) replace protocol check in netpol update (#4358)
+ * [9e5b64da](https://github.com/kubeovn/kube-ovn/commit/9e5b64dac42dccdf915babf70f8f8c875955c4ad) fix: empty /var/run/netns (#4360)
+ * [9056aa03](https://github.com/kubeovn/kube-ovn/commit/9056aa03a428a0b4ac53fca3718d6004018c1db5) cni-server: disable udp-fragmentation-offload (#4342)
+ * [a012bb24](https://github.com/kubeovn/kube-ovn/commit/a012bb2490b8e1ac7f0f4fc59a633eb6725b3ccb) bump k8s to v1.27.16 (#4307)
+ * [4aa87ead](https://github.com/kubeovn/kube-ovn/commit/4aa87ead49afcfd3ca416130efac13a13ed8e8a1) underlay: set trunks of host nic port (#4282)
+ * [677aaf6f](https://github.com/kubeovn/kube-ovn/commit/677aaf6f7dc8c26ed443dc9841f315adb9a8d0ff) fix ovn lb not updated due to service update failure (#4280)
+ * [3d435339](https://github.com/kubeovn/kube-ovn/commit/3d43533970096aaaeb28af41ec5e49c5286811ec) build(deps): bump aquasecurity/trivy-action from 0.23.0 to 0.24.0 (#4275)
+ * [99d88472](https://github.com/kubeovn/kube-ovn/commit/99d884724721666fcde3f3c275504770455c922e) bump k8s to v1.27.15
+ * [b3a52a0b](https://github.com/kubeovn/kube-ovn/commit/b3a52a0bfb0cc6045a35ed70a86885d97c64f71a) ci: run go mod tidy before building kubectl (#4274)
+ * [271a79ef](https://github.com/kubeovn/kube-ovn/commit/271a79efaf0eedf4ac52095a6b58dffe0e46c88a) ci: disable cgo when building kubelet and cni plugins (#4268)
+ * [57c45893](https://github.com/kubeovn/kube-ovn/commit/57c4589350ccfd9de17e4f0e82ca3e71c857f199) build kubectl and cni plugins from source if vuln found in the base image (#4253)
+ * [49d053d6](https://github.com/kubeovn/kube-ovn/commit/49d053d6fda7642587f176abaae8f60306e89685) klog: set log file max size to 200MB (#4272)
+ * [aea0ad24](https://github.com/kubeovn/kube-ovn/commit/aea0ad24f37b82ee553854059c3a21c61107f131) logrotate: set file size limit to 100M (#4271)
+ * [bfe6fb84](https://github.com/kubeovn/kube-ovn/commit/bfe6fb8415d839457300f729cd9955bd6ccbcdc6) remove unused environment variable LOG_ROTATE (#4270)
+ * [2d0591c0](https://github.com/kubeovn/kube-ovn/commit/2d0591c0099fb9587b975c057741993f11550e12) fix invalid subnet not sync route (#4263)
+ * [5da304ba](https://github.com/kubeovn/kube-ovn/commit/5da304bac006c97e74afa58e560c07b1d860fdea) fix missing env variable in lb svc e2e
+ * [8af31b4f](https://github.com/kubeovn/kube-ovn/commit/8af31b4f7e9c16c79e0ea24cf59582b1163393d5) lb svc: update svc status after configuring nat rules (#4235)
+ * [e0926b01](https://github.com/kubeovn/kube-ovn/commit/e0926b018e09728575c6b6c9097645b9fe5a5168) vpc-nat-gateway: print messgae to stderr (#4237)
+ * [d9f5f668](https://github.com/kubeovn/kube-ovn/commit/d9f5f668c28eba53db64a2ca516c71ee9b54b564) ci: do not compile fastpath kernel module for centos (#4247)
+ * [c327632e](https://github.com/kubeovn/kube-ovn/commit/c327632e02a9acb724e6a86265b9a16d4d02efc7) prepare for next release
+
+### Contributors
+
+ * bobz965
+ * changluyi
+ * dependabot[bot]
+ * hzma
+ * zhangzujian
+ * 张祖建
+
 ## v1.11.19 (2024-06-28)
 
  * [a53ad663](https://github.com/kubeovn/kube-ovn/commit/a53ad663383bfff1a48f115cc11ea19a1b92014d) prepare for next release
