@@ -525,6 +525,12 @@ func (suite *OvnClientTestSuite) testSetLogicalSwitchPortArpProxy() {
 		require.NoError(t, err)
 		require.Empty(t, lsp.Options["arp_proxy"])
 	})
+
+	t.Run("should print err log when logical switch port does no exit", func(t *testing.T) {
+		enableArpProxy := true
+		err = nbClient.SetLogicalSwitchPortArpProxy("test-nonexistent-lsp", enableArpProxy)
+		require.Error(t, err)
+	})
 }
 
 func (suite *OvnClientTestSuite) testSetLogicalSwitchPortSecurity() {
@@ -590,6 +596,27 @@ func (suite *OvnClientTestSuite) testSetLogicalSwitchPortSecurity() {
 			"attach-vips":    "true",
 		}, lsp.ExternalIDs)
 	})
+
+	t.Run("should print err log when logical switch port does no exit", func(t *testing.T) {
+		err = nbClient.SetLogicalSwitchPortSecurity(true, "test-nonexistent-lsp", "00:00:00:AB:B4:65", "10.244.0.37,fc00::af4:25", "10.244.100.10,10.244.100.11")
+		require.Error(t, err)
+	})
+
+	t.Run("set logical switch port arp proxy when external ids is nil", func(t *testing.T) {
+		err = nbClient.CreateBareLogicalSwitchPort(lsName, "test-lsp-nil-external-ids", "unknown", "")
+		require.NoError(t, err)
+
+		lsp, err := nbClient.GetLogicalSwitchPort("test-lsp-nil-external-ids", false)
+		require.NoError(t, err)
+		require.NotNil(t, lsp)
+
+		lsp.ExternalIDs = nil
+		err = nbClient.UpdateLogicalSwitchPort(lsp, &lsp.ExternalIDs)
+		require.NoError(t, err)
+
+		err = nbClient.SetLogicalSwitchPortSecurity(true, "test-lsp-nil-external-ids", "00:00:00:AB:B4:65", "10.244.0.37,fc00::af4:25", "10.244.100.10,10.244.100.11")
+		require.NoError(t, err)
+	})
 }
 
 func (suite *OvnClientTestSuite) testSetSetLogicalSwitchPortExternalIDs() {
@@ -612,25 +639,54 @@ func (suite *OvnClientTestSuite) testSetSetLogicalSwitchPortExternalIDs() {
 	require.NotEmpty(t, lsp.ExternalIDs)
 	require.Equal(t, util.CniTypeName, lsp.ExternalIDs["vendor"])
 
-	err = nbClient.SetLogicalSwitchPortExternalIDs(lspName, map[string]string{"k1": "v1"})
-	require.NoError(t, err)
+	t.Run("set and update logical swtch port external ids", func(t *testing.T) {
+		err = nbClient.SetLogicalSwitchPortExternalIDs(lspName, map[string]string{"k1": "v1"})
+		require.NoError(t, err)
 
-	lsp, err = nbClient.GetLogicalSwitchPort(lspName, false)
-	require.NoError(t, err)
-	require.NotNil(t, lsp)
-	require.NotEmpty(t, lsp.ExternalIDs)
-	require.Equal(t, util.CniTypeName, lsp.ExternalIDs["vendor"])
-	require.Equal(t, "v1", lsp.ExternalIDs["k1"])
+		lsp, err = nbClient.GetLogicalSwitchPort(lspName, false)
+		require.NoError(t, err)
+		require.NotNil(t, lsp)
+		require.NotEmpty(t, lsp.ExternalIDs)
+		require.Equal(t, util.CniTypeName, lsp.ExternalIDs["vendor"])
+		require.Equal(t, "v1", lsp.ExternalIDs["k1"])
 
-	err = nbClient.SetLogicalSwitchPortExternalIDs(lspName, map[string]string{"k1": "v2"})
-	require.NoError(t, err)
+		err = nbClient.SetLogicalSwitchPortExternalIDs(lspName, map[string]string{"k1": "v2"})
+		require.NoError(t, err)
 
-	lsp, err = nbClient.GetLogicalSwitchPort(lspName, false)
-	require.NoError(t, err)
-	require.NotNil(t, lsp)
-	require.NotEmpty(t, lsp.ExternalIDs)
-	require.Equal(t, util.CniTypeName, lsp.ExternalIDs["vendor"])
-	require.Equal(t, "v2", lsp.ExternalIDs["k1"])
+		lsp, err = nbClient.GetLogicalSwitchPort(lspName, false)
+		require.NoError(t, err)
+		require.NotNil(t, lsp)
+		require.NotEmpty(t, lsp.ExternalIDs)
+		require.Equal(t, util.CniTypeName, lsp.ExternalIDs["vendor"])
+		require.Equal(t, "v2", lsp.ExternalIDs["k1"])
+	})
+
+	t.Run("should print err log when logical switch port does no exit", func(t *testing.T) {
+		err = nbClient.SetLogicalSwitchPortExternalIDs("test-nonexistent-lsp", map[string]string{"k1": "v2"})
+		require.Error(t, err)
+	})
+
+	t.Run("set external ids when external ids is nil", func(t *testing.T) {
+		err = nbClient.CreateBareLogicalSwitchPort(lsName, "test-lsp-nil-external-ids", "unknown", "")
+		require.NoError(t, err)
+
+		lsp, err := nbClient.GetLogicalSwitchPort("test-lsp-nil-external-ids", false)
+		require.NoError(t, err)
+		require.NotNil(t, lsp)
+
+		lsp.ExternalIDs = nil
+		err = nbClient.UpdateLogicalSwitchPort(lsp, &lsp.ExternalIDs)
+		require.NoError(t, err)
+
+		err = nbClient.SetLogicalSwitchPortExternalIDs("test-lsp-nil-external-ids", map[string]string{"k1": "v1"})
+		require.NoError(t, err)
+
+		lsp, err = nbClient.GetLogicalSwitchPort("test-lsp-nil-external-ids", false)
+		require.NoError(t, err)
+		require.NotNil(t, lsp)
+		require.NotNil(t, lsp.ExternalIDs)
+		require.Equal(t, "v1", lsp.ExternalIDs["k1"])
+	})
 }
 
 func (suite *OvnClientTestSuite) testSetLogicalSwitchPortSecurityGroup() {
@@ -950,6 +1006,20 @@ func (suite *OvnClientTestSuite) testSetLogicalSwitchPortSecurityGroup() {
 			require.Empty(t, diffSgs)
 		})
 	})
+
+	t.Run("should print err log when op is not 'add' or 'remove'", func(t *testing.T) {
+		lspName := lspNamePrefix + "-illegal-op"
+		op := "illegal op"
+
+		err := nbClient.CreateBareLogicalSwitchPort(lsName, lspName, "unknown", "")
+		require.NoError(t, err)
+
+		lsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
+		require.NoError(t, err)
+
+		_, err = nbClient.SetLogicalSwitchPortSecurityGroup(lsp, op, "sg2", "sg1")
+		require.Error(t, err)
+	})
 }
 
 func (suite *OvnClientTestSuite) testSetLogicalSwitchPortsSecurityGroup() {
@@ -1036,19 +1106,51 @@ func (suite *OvnClientTestSuite) testEnablePortLayer2forward() {
 	err = nbClient.CreateLogicalSwitchPort(lsName, lspName, ip, mac, pod, ns, false, "", "", false, nil, "")
 	require.NoError(t, err)
 
-	lsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
-	require.NoError(t, err)
-	require.NotNil(t, lsp)
-	require.NotEmpty(t, lsp.ExternalIDs)
-	require.Equal(t, util.CniTypeName, lsp.ExternalIDs["vendor"])
+	t.Run("enable port layer2 forward", func(t *testing.T) {
+		lsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
+		require.NoError(t, err)
+		require.NotNil(t, lsp)
+		require.NotEmpty(t, lsp.ExternalIDs)
+		require.Equal(t, util.CniTypeName, lsp.ExternalIDs["vendor"])
 
-	err = nbClient.EnablePortLayer2forward(lspName)
-	require.NoError(t, err)
+		err = nbClient.EnablePortLayer2forward(lspName)
+		require.NoError(t, err)
 
-	lsp, err = nbClient.GetLogicalSwitchPort(lspName, false)
-	require.NoError(t, err)
-	require.NotNil(t, lsp)
-	require.Contains(t, lsp.Addresses, "unknown")
+		lsp, err = nbClient.GetLogicalSwitchPort(lspName, false)
+		require.NoError(t, err)
+		require.NotNil(t, lsp)
+		require.Contains(t, lsp.Addresses, "unknown")
+	})
+
+	t.Run("should print err log when logical switch port does no exit", func(t *testing.T) {
+		err = nbClient.EnablePortLayer2forward("test-nonexistent-lsp")
+		require.Error(t, err)
+	})
+
+	t.Run("should not add 'unknown' again if already present", func(t *testing.T) {
+		lsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
+		require.NoError(t, err)
+		require.NotNil(t, lsp)
+
+		lsp.Addresses = append(lsp.Addresses, "unknown")
+		err = nbClient.UpdateLogicalSwitchPort(lsp, &lsp.Addresses)
+		require.NoError(t, err)
+
+		err = nbClient.EnablePortLayer2forward(lspName)
+		require.NoError(t, err)
+
+		lsp, err = nbClient.GetLogicalSwitchPort(lspName, false)
+		require.NoError(t, err)
+		require.NotNil(t, lsp)
+
+		addressCount := 0
+		for _, addr := range lsp.Addresses {
+			if addr == "unknown" {
+				addressCount++
+			}
+		}
+		require.Equal(t, 1, addressCount)
+	})
 }
 
 func (suite *OvnClientTestSuite) testSetLogicalSwitchPortVlanTag() {
@@ -1115,6 +1217,11 @@ func (suite *OvnClientTestSuite) testSetLogicalSwitchPortVlanTag() {
 		err = nbClient.SetLogicalSwitchPortVlanTag(lspName, 4096)
 		require.ErrorContains(t, err, "invalid vlan id")
 	})
+
+	t.Run("should print err log when logical switch port does no exit", func(t *testing.T) {
+		err = nbClient.SetLogicalSwitchPortVlanTag("test-nonexistent-lsp", 10)
+		require.Error(t, err)
+	})
 }
 
 func (suite *OvnClientTestSuite) testUpdateLogicalSwitchPort() {
@@ -1170,11 +1277,138 @@ func (suite *OvnClientTestSuite) testUpdateLogicalSwitchPort() {
 		require.Empty(t, lsp.Options)
 	})
 
-	t.Run("update nil logical switch port", func(t *testing.T) {
-		err := nbClient.UpdateLogicalSwitchPort(nil, &map[string]string{}, &map[string]string{})
-
+	t.Run("should print err log when logical switch port is nil", func(t *testing.T) {
+		err = nbClient.UpdateLogicalSwitchPort(nil, &lsp.ExternalIDs)
 		require.Error(t, err)
-		require.Contains(t, err.Error(), "logical switch port is nil")
+		require.Equal(t, "logical switch port is nil", err.Error())
+	})
+}
+
+func (suite *OvnClientTestSuite) testDeleteLogicalSwitchPort() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+	lspName := "test-delete-port-lsp"
+	lsName := "test-delete-port-ls"
+
+	err := nbClient.CreateBareLogicalSwitch(lsName)
+	require.NoError(t, err)
+
+	err = nbClient.CreateBareLogicalSwitchPort(lsName, lspName, "unknown", "")
+	require.NoError(t, err)
+
+	t.Run("no err when delete existent logical switch port", func(t *testing.T) {
+		ls, err := nbClient.GetLogicalSwitch(lsName, false)
+		require.NoError(t, err)
+
+		lsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
+		require.NoError(t, err)
+		require.Contains(t, ls.Ports, lsp.UUID)
+
+		err = nbClient.DeleteLogicalSwitchPort(lspName)
+		require.NoError(t, err)
+
+		ls, err = nbClient.GetLogicalSwitch(lsName, false)
+		require.NoError(t, err)
+		require.NotContains(t, ls.Ports, lsp.UUID)
+	})
+
+	t.Run("no err when delete non-existent logical switch port", func(t *testing.T) {
+		err := nbClient.DeleteLogicalSwitchPort("test-nonexistent-lsp")
+		require.NoError(t, err)
+	})
+}
+
+func (suite *OvnClientTestSuite) testDeleteLogicalSwitchPorts() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+	lsName := "test-delete-ports-ls"
+	lspName1 := "test-delete-port-lsp1"
+	lspName2 := "test-delete-port-lsp2"
+	externalIDs := map[string]string{"key": "value"}
+
+	err := nbClient.CreateBareLogicalSwitch(lsName)
+	require.NoError(t, err)
+
+	err = nbClient.CreateBareLogicalSwitchPort(lsName, lspName1, "unknown", "")
+	require.NoError(t, err)
+	err = nbClient.CreateBareLogicalSwitchPort(lsName, lspName2, "unknown", "")
+	require.NoError(t, err)
+
+	lsp1, err := nbClient.GetLogicalSwitchPort(lspName1, false)
+	require.NoError(t, err)
+	lsp2, err := nbClient.GetLogicalSwitchPort(lspName2, false)
+	require.NoError(t, err)
+
+	lsp1.ExternalIDs["key"] = "value"
+	lsp2.ExternalIDs["key"] = "value"
+	err = nbClient.UpdateLogicalSwitchPort(lsp1, &lsp1.ExternalIDs)
+	require.NoError(t, err)
+	err = nbClient.UpdateLogicalSwitchPort(lsp2, &lsp2.ExternalIDs)
+	require.NoError(t, err)
+
+	t.Run("no err when delete non-existent logical switch port", func(t *testing.T) {
+		err = nbClient.DeleteLogicalSwitchPorts(externalIDs, nil)
+		require.NoError(t, err)
+
+		lspList, err := nbClient.ListLogicalSwitchPorts(false, externalIDs, nil)
+		require.NoError(t, err)
+		require.Empty(t, lspList)
+	})
+}
+
+func (suite *OvnClientTestSuite) testListLogicalSwitchPortsWithLegacyExternalIDs() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+	lsName := "test-ls-legacy-external-ids"
+	lspName1 := "test-lsp-legacy-external-ids-1"
+	lspName2 := "test-lsp-legacy-external-ids-2"
+
+	err := nbClient.CreateBareLogicalSwitch(lsName)
+	require.NoError(t, err)
+
+	err = nbClient.CreateBareLogicalSwitchPort(lsName, lspName1, "unknown", "")
+	require.NoError(t, err)
+
+	err = nbClient.CreateBareLogicalSwitchPort(lsName, lspName2, "unknown", "")
+	require.NoError(t, err)
+
+	err = nbClient.SetLogicalSwitchPortExternalIDs(lspName1, map[string]string{
+		logicalSwitchKey: "",
+		"vendor":         "some-vendor",
+	})
+	require.NoError(t, err)
+
+	err = nbClient.SetLogicalSwitchPortExternalIDs(lspName2, map[string]string{
+		logicalSwitchKey: "some-value",
+		"vendor":         "",
+	})
+	require.NoError(t, err)
+
+	t.Run("list logical switch ports with legacy external IDs", func(t *testing.T) {
+		lspList, err := nbClient.ListLogicalSwitchPortsWithLegacyExternalIDs()
+		require.NoError(t, err)
+
+		foundLsp1 := false
+		foundLsp2 := false
+		for _, lsp := range lspList {
+			if lsp.Name == lspName1 {
+				foundLsp1 = true
+				require.Equal(t, "", lsp.ExternalIDs[logicalSwitchKey])
+				require.Equal(t, "some-vendor", lsp.ExternalIDs["vendor"])
+			} else if lsp.Name == lspName2 {
+				foundLsp2 = true
+				require.Equal(t, "some-value", lsp.ExternalIDs[logicalSwitchKey])
+				require.Equal(t, "", lsp.ExternalIDs["vendor"])
+			}
+		}
+		require.True(t, foundLsp1)
+		require.True(t, foundLsp2)
 	})
 }
 
@@ -1240,42 +1474,6 @@ func (suite *OvnClientTestSuite) testListLogicalSwitchPorts() {
 		require.NoError(t, err)
 		require.Len(t, out, 1)
 		require.Equal(t, lspName, out[0].Name)
-	})
-}
-
-func (suite *OvnClientTestSuite) testDeleteLogicalSwitchPort() {
-	t := suite.T()
-	t.Parallel()
-
-	nbClient := suite.ovnNBClient
-	lspName := "test-delete-port-lsp"
-	lsName := "test-delete-port-ls"
-
-	err := nbClient.CreateBareLogicalSwitch(lsName)
-	require.NoError(t, err)
-
-	err = nbClient.CreateBareLogicalSwitchPort(lsName, lspName, "unknown", "")
-	require.NoError(t, err)
-
-	t.Run("no err when delete existent logical switch port", func(t *testing.T) {
-		ls, err := nbClient.GetLogicalSwitch(lsName, false)
-		require.NoError(t, err)
-
-		lsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
-		require.NoError(t, err)
-		require.Contains(t, ls.Ports, lsp.UUID)
-
-		err = nbClient.DeleteLogicalSwitchPort(lspName)
-		require.NoError(t, err)
-
-		ls, err = nbClient.GetLogicalSwitch(lsName, false)
-		require.NoError(t, err)
-		require.NotContains(t, ls.Ports, lsp.UUID)
-	})
-
-	t.Run("no err when delete non-existent logical switch port", func(t *testing.T) {
-		err := nbClient.DeleteLogicalSwitchPort("test-delete-lrp-non-existent")
-		require.NoError(t, err)
 	})
 }
 
@@ -1359,6 +1557,24 @@ func (suite *OvnClientTestSuite) testCreateLogicalSwitchPortOp() {
 			},
 		}, ops[1].Mutations)
 	})
+
+	t.Run("should print err log when logical switch port is nil", func(t *testing.T) {
+		_, err := nbClient.CreateLogicalSwitchPortOp(nil, lsName)
+		require.Error(t, err)
+	})
+
+	t.Run("should print err log when logical switch port does not exist ", func(t *testing.T) {
+		lsp := &ovnnb.LogicalSwitchPort{
+			UUID: ovsclient.NamedUUID(),
+			Name: lspName,
+			ExternalIDs: map[string]string{
+				"pod": lspName,
+			},
+		}
+
+		_, err := nbClient.CreateLogicalSwitchPortOp(lsp, "test-nonexistent-ls")
+		require.Error(t, err)
+	})
 }
 
 func (suite *OvnClientTestSuite) testDeleteLogicalSwitchPortOp() {
@@ -1378,23 +1594,74 @@ func (suite *OvnClientTestSuite) testDeleteLogicalSwitchPortOp() {
 	lsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
 	require.NoError(t, err)
 
-	ops, err := nbClient.DeleteLogicalSwitchPortOp(lspName)
-	require.NoError(t, err)
-	require.Len(t, ops, 1)
+	t.Run("normal delete logical switch port", func(t *testing.T) {
+		ops, err := nbClient.DeleteLogicalSwitchPortOp(lspName)
+		require.NoError(t, err)
+		require.Len(t, ops, 1)
 
-	require.Equal(t, []ovsdb.Mutation{
-		{
-			Column:  "ports",
-			Mutator: ovsdb.MutateOperationDelete,
-			Value: ovsdb.OvsSet{
-				GoSet: []interface{}{
-					ovsdb.UUID{
-						GoUUID: lsp.UUID,
+		require.Equal(t, []ovsdb.Mutation{
+			{
+				Column:  "ports",
+				Mutator: ovsdb.MutateOperationDelete,
+				Value: ovsdb.OvsSet{
+					GoSet: []interface{}{
+						ovsdb.UUID{
+							GoUUID: lsp.UUID,
+						},
 					},
 				},
 			},
-		},
-	}, ops[0].Mutations)
+		}, ops[0].Mutations)
+	})
+
+	t.Run("delete non-existent logical switch port", func(t *testing.T) {
+		ops, err := nbClient.DeleteLogicalSwitchPortOp("test-nonexistent-lsp")
+		require.NoError(t, err)
+		require.Nil(t, ops)
+	})
+
+	t.Run("delete logical switch port with non-existent logical switch", func(t *testing.T) {
+		err := nbClient.DeleteLogicalSwitch(lsName)
+		require.NoError(t, err)
+
+		ops, err := nbClient.DeleteLogicalSwitchPortOp(lspName)
+		require.NoError(t, err)
+		require.Nil(t, ops)
+	})
+}
+
+func (suite *OvnClientTestSuite) testUpdateLogicalSwitchPortOp() {
+	t := suite.T()
+	t.Parallel()
+	nbClient := suite.ovnNBClient
+	lspName := "test-update-op-lsp"
+	lsName := "test-update-op-ls"
+
+	err := nbClient.CreateBareLogicalSwitch(lsName)
+	require.NoError(t, err)
+
+	err = nbClient.CreateBareLogicalSwitchPort(lsName, lspName, "unknown", "")
+	require.NoError(t, err)
+
+	lsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
+	require.NoError(t, err)
+
+	if lsp.Options == nil {
+		lsp.Options = make(map[string]string)
+	}
+	lsp.Options["virtual-parents"] = "test-parents"
+
+	t.Run("normal update logical switch port", func(t *testing.T) {
+		ops, err := nbClient.UpdateLogicalSwitchPortOp(lsp, &lsp.Options)
+		require.NoError(t, err)
+		require.Len(t, ops, 1)
+	})
+
+	t.Run("update nil logical switch port", func(t *testing.T) {
+		ops, err := nbClient.UpdateLogicalSwitchPortOp(nil, &lsp.Options)
+		require.NoError(t, err)
+		require.Nil(t, ops)
+	})
 }
 
 func (suite *OvnClientTestSuite) testLogicalSwitchPortFilter() {
@@ -1627,6 +1894,53 @@ func (suite *OvnClientTestSuite) testLogicalSwitchPortFilter() {
 		}
 		require.Equal(t, count, 3)
 	})
+
+	t.Run("external ids number less than required", func(t *testing.T) {
+		externalIDs := map[string]string{
+			logicalSwitchKey: lsName,
+			"vendor":         util.CniTypeName,
+			"extra-key":      "extra-value",
+		}
+		filterFunc := logicalSwitchPortFilter(false, externalIDs, nil)
+		count := 0
+		for _, lsp := range lsps {
+			if filterFunc(lsp) {
+				count++
+			}
+		}
+		require.Equal(t, count, 0)
+	})
+
+	t.Run("empty value in external ids", func(t *testing.T) {
+		externalIDs := map[string]string{
+			logicalSwitchKey: lsName,
+			"vendor":         "",
+		}
+		filterFunc := logicalSwitchPortFilter(false, externalIDs, nil)
+		count := 0
+		for _, lsp := range lsps {
+			if filterFunc(lsp) {
+				count++
+			}
+		}
+		require.Equal(t, count, 6)
+	})
+
+	t.Run("empty value in external ids and lsp external ids", func(t *testing.T) {
+		externalIDs := map[string]string{
+			logicalSwitchKey: lsName,
+			"vendor":         "",
+		}
+		lsps[0].ExternalIDs["vendor"] = ""
+		filterFunc := logicalSwitchPortFilter(false, externalIDs, nil)
+		count := 0
+		for _, lsp := range lsps {
+			if filterFunc(lsp) {
+				count++
+			}
+		}
+		require.Equal(t, count, 5)
+	})
 }
 
 func (suite *OvnClientTestSuite) testGetLogicalSwitchPortSgs() {
@@ -1685,5 +1999,417 @@ func (suite *OvnClientTestSuite) testGetLogicalSwitchPort() {
 		_, err := nbClient.GetLogicalSwitchPort(lspName, false)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "not found")
+	})
+}
+
+func (suite *OvnClientTestSuite) testSetLogicalSwitchPortActivationStrategy() {
+	t := suite.T()
+	t.Parallel()
+	nbClient := suite.ovnNBClient
+	lspName := "test-update-op-lsp"
+	lsName := "test-update-op-ls"
+
+	err := nbClient.CreateBareLogicalSwitch(lsName)
+	require.NoError(t, err)
+
+	err = nbClient.CreateBareLogicalSwitchPort(lsName, lspName, "unknown", "")
+	require.NoError(t, err)
+
+	lsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
+	require.NoError(t, err)
+
+	t.Run("normal set logical switch port activation strategy", func(t *testing.T) {
+		if lsp.Options == nil {
+			lsp.Options = make(map[string]string)
+		}
+		lsp.Options["requested-chassis"] = "test-chassis"
+		lsp.Options["activation-strategy"] = "test-strategy"
+		chassis := "test-chassis"
+
+		err = nbClient.SetLogicalSwitchPortActivationStrategy(lspName, chassis)
+		require.NoError(t, err)
+
+		updatedLsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
+		require.NoError(t, err)
+
+		expectedOptions := map[string]string{
+			"requested-chassis":   fmt.Sprintf("%s,%s", chassis, chassis),
+			"activation-strategy": "rarp",
+		}
+		require.Equal(t, expectedOptions, updatedLsp.Options)
+	})
+
+	t.Run("set logical switch port activation strategy with nil lsp", func(t *testing.T) {
+		lsp.Options = nil
+		chassis := "test-chassis"
+
+		err = nbClient.SetLogicalSwitchPortActivationStrategy(lspName, chassis)
+		require.NoError(t, err)
+
+		updatedLsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
+		require.NoError(t, err)
+
+		expectedOptions := map[string]string{
+			"requested-chassis":   fmt.Sprintf("%s,%s", chassis, chassis),
+			"activation-strategy": "rarp",
+		}
+		require.Equal(t, expectedOptions, updatedLsp.Options)
+	})
+
+	t.Run("should print err log when logical switch port does not exist", func(t *testing.T) {
+		nonExistentLspName := "test-nonexistent-lsp"
+		chassis := "test-chassis"
+
+		err = nbClient.SetLogicalSwitchPortActivationStrategy(nonExistentLspName, chassis)
+		require.Error(t, err)
+	})
+}
+
+func (suite *OvnClientTestSuite) testSetLogicalSwitchPortMigrateOptions() {
+	t := suite.T()
+	t.Parallel()
+	nbClient := suite.ovnNBClient
+	lspName := "test-migrate-lsp"
+	lsName := "test-migrate-ls"
+	srcNodeName := "src-node"
+	targetNodeName := "target-node"
+
+	err := nbClient.CreateBareLogicalSwitch(lsName)
+	require.NoError(t, err)
+
+	err = nbClient.CreateBareLogicalSwitchPort(lsName, lspName, "unknown", "")
+	require.NoError(t, err)
+
+	lsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
+	require.NoError(t, err)
+
+	t.Run("normal set logical switch port migrate options", func(t *testing.T) {
+		if lsp.Options == nil {
+			lsp.Options = make(map[string]string)
+		}
+		lsp.Options["requested-chassis"] = "test-chassis"
+		lsp.Options["activation-strategy"] = "test-strategy"
+
+		err = nbClient.SetLogicalSwitchPortMigrateOptions(lspName, srcNodeName, targetNodeName)
+		require.NoError(t, err)
+
+		updatedLsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
+		require.NoError(t, err)
+
+		expectedOptions := map[string]string{
+			"requested-chassis":   fmt.Sprintf("%s,%s", srcNodeName, targetNodeName),
+			"activation-strategy": "rarp",
+		}
+		require.Equal(t, expectedOptions, updatedLsp.Options)
+	})
+
+	t.Run("should print err log when source node is empty", func(t *testing.T) {
+		err = nbClient.SetLogicalSwitchPortMigrateOptions(lspName, "", targetNodeName)
+		require.Error(t, err)
+	})
+
+	t.Run("should print err log when target node is empty", func(t *testing.T) {
+		err = nbClient.SetLogicalSwitchPortMigrateOptions(lspName, srcNodeName, "")
+		require.Error(t, err)
+	})
+
+	t.Run("should print err log when migrate options with same source and target node", func(t *testing.T) {
+		err = nbClient.SetLogicalSwitchPortMigrateOptions(lspName, srcNodeName, srcNodeName)
+		require.Error(t, err)
+	})
+
+	t.Run("should print err log when logical switch port does not exist", func(t *testing.T) {
+		nonExistentLspName := "nonexistent-lsp"
+		err = nbClient.SetLogicalSwitchPortMigrateOptions(nonExistentLspName, srcNodeName, targetNodeName)
+		require.Error(t, err)
+	})
+
+	t.Run("set logical switch port migrate options with already set options", func(t *testing.T) {
+		err = nbClient.SetLogicalSwitchPortMigrateOptions(lspName, srcNodeName, targetNodeName)
+		require.NoError(t, err)
+
+		err = nbClient.SetLogicalSwitchPortMigrateOptions(lspName, srcNodeName, targetNodeName)
+		require.NoError(t, err)
+
+		updatedLsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
+		require.NoError(t, err)
+
+		expectedOptions := map[string]string{
+			"requested-chassis":   fmt.Sprintf("%s,%s", srcNodeName, targetNodeName),
+			"activation-strategy": "rarp",
+		}
+		require.Equal(t, expectedOptions, updatedLsp.Options)
+	})
+
+	t.Run("set logical switch port migrate options with nil options", func(t *testing.T) {
+		lsp.Options = nil
+
+		err = nbClient.SetLogicalSwitchPortMigrateOptions(lspName, srcNodeName, targetNodeName)
+		require.NoError(t, err)
+
+		updatedLsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
+		require.NoError(t, err)
+
+		expectedOptions := map[string]string{
+			"requested-chassis":   fmt.Sprintf("%s,%s", srcNodeName, targetNodeName),
+			"activation-strategy": "rarp",
+		}
+		require.Equal(t, expectedOptions, updatedLsp.Options)
+	})
+}
+
+func (suite *OvnClientTestSuite) testGetLogicalSwitchPortMigrateOptions() {
+	t := suite.T()
+	t.Parallel()
+	nbClient := suite.ovnNBClient
+	lspName := "test-migrate-lsp"
+	lsName := "test-migrate-ls"
+
+	err := nbClient.CreateBareLogicalSwitch(lsName)
+	require.NoError(t, err)
+
+	err = nbClient.CreateBareLogicalSwitchPort(lsName, lspName, "unknown", "")
+	require.NoError(t, err)
+
+	lsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
+	require.NoError(t, err)
+
+	t.Run("normal get logical switch port migrate options", func(t *testing.T) {
+		if lsp.Options == nil {
+			lsp.Options = make(map[string]string)
+		}
+		srcNodeName := "src-node"
+		targetNodeName := "target-node"
+		lsp.Options["requested-chassis"] = fmt.Sprintf("%s,%s", srcNodeName, targetNodeName)
+		err = nbClient.UpdateLogicalSwitchPort(lsp, &lsp.Options)
+		require.NoError(t, err)
+
+		_, src, target, err := nbClient.GetLogicalSwitchPortMigrateOptions(lspName)
+		require.NoError(t, err)
+		require.Equal(t, srcNodeName, src)
+		require.Equal(t, targetNodeName, target)
+	})
+
+	t.Run("should print err log when logical switch port does not exist", func(t *testing.T) {
+		nonExistentLspName := "nonexistent-lsp"
+		_, _, _, err := nbClient.GetLogicalSwitchPortMigrateOptions(nonExistentLspName)
+		require.Error(t, err)
+	})
+
+	t.Run("get logical switch port migrate options with nil options", func(t *testing.T) {
+		lsp.Options = nil
+		err = nbClient.UpdateLogicalSwitchPort(lsp, &lsp.Options)
+		require.NoError(t, err)
+
+		_, src, target, err := nbClient.GetLogicalSwitchPortMigrateOptions(lspName)
+		require.NoError(t, err)
+		require.Equal(t, "", src)
+		require.Equal(t, "", target)
+	})
+
+	t.Run("get logical switch port migrate options with missing requested-chassis option", func(t *testing.T) {
+		if lsp.Options == nil {
+			lsp.Options = make(map[string]string)
+		}
+		delete(lsp.Options, "requested-chassis")
+		err = nbClient.UpdateLogicalSwitchPort(lsp, &lsp.Options)
+		require.NoError(t, err)
+
+		_, src, target, err := nbClient.GetLogicalSwitchPortMigrateOptions(lspName)
+		require.NoError(t, err)
+		require.Equal(t, "", src)
+		require.Equal(t, "", target)
+	})
+
+	t.Run("get logical switch port migrate options with malformed requested-chassis option", func(t *testing.T) {
+		if lsp.Options == nil {
+			lsp.Options = make(map[string]string)
+		}
+		lsp.Options["requested-chassis"] = "malformed-option"
+		err = nbClient.UpdateLogicalSwitchPort(lsp, &lsp.Options)
+		require.NoError(t, err)
+
+		_, src, target, err := nbClient.GetLogicalSwitchPortMigrateOptions(lspName)
+		require.NoError(t, err)
+		require.Equal(t, "", src)
+		require.Equal(t, "", target)
+	})
+}
+
+func (suite *OvnClientTestSuite) testResetLogicalSwitchPortMigrateOptions() {
+	t := suite.T()
+	t.Parallel()
+	nbClient := suite.ovnNBClient
+	lspName := "test-reset-lsp"
+	lsName := "test-reset-ls"
+	srcNodeName := "src-node"
+	targetNodeName := "target-node"
+
+	err := nbClient.CreateBareLogicalSwitch(lsName)
+	require.NoError(t, err)
+
+	err = nbClient.CreateBareLogicalSwitchPort(lsName, lspName, "unknown", "")
+	require.NoError(t, err)
+
+	lsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
+	require.NoError(t, err)
+
+	t.Run("normal reset logical switch port migrate options with successful migration", func(t *testing.T) {
+		if lsp.Options == nil {
+			lsp.Options = make(map[string]string)
+		}
+		lsp.Options["requested-chassis"] = fmt.Sprintf("%s,%s", srcNodeName, targetNodeName)
+		lsp.Options["activation-strategy"] = "rarp"
+		err = nbClient.UpdateLogicalSwitchPort(lsp, &lsp.Options)
+		require.NoError(t, err)
+
+		err = nbClient.ResetLogicalSwitchPortMigrateOptions(lspName, srcNodeName, targetNodeName, false)
+		require.NoError(t, err)
+
+		updatedLsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
+		require.NoError(t, err)
+
+		expectedOptions := map[string]string{
+			"requested-chassis": targetNodeName,
+		}
+		require.Equal(t, expectedOptions, updatedLsp.Options)
+	})
+
+	t.Run("normal reset logical switch port migrate options with failed migration", func(t *testing.T) {
+		if lsp.Options == nil {
+			lsp.Options = make(map[string]string)
+		}
+		lsp.Options["requested-chassis"] = fmt.Sprintf("%s,%s", srcNodeName, targetNodeName)
+		lsp.Options["activation-strategy"] = "rarp"
+		err = nbClient.UpdateLogicalSwitchPort(lsp, &lsp.Options)
+		require.NoError(t, err)
+
+		err = nbClient.ResetLogicalSwitchPortMigrateOptions(lspName, srcNodeName, targetNodeName, true)
+		require.NoError(t, err)
+
+		updatedLsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
+		require.NoError(t, err)
+
+		expectedOptions := map[string]string{
+			"requested-chassis": srcNodeName,
+		}
+		require.Equal(t, expectedOptions, updatedLsp.Options)
+	})
+
+	t.Run("should print err log when logical switch port does not exist", func(t *testing.T) {
+		nonExistentLspName := "nonexistent-lsp"
+		err = nbClient.ResetLogicalSwitchPortMigrateOptions(nonExistentLspName, srcNodeName, targetNodeName, false)
+		require.Error(t, err)
+	})
+
+	t.Run("reset logical switch port migrate options with nil options", func(t *testing.T) {
+		lsp.Options = nil
+		err = nbClient.UpdateLogicalSwitchPort(lsp, &lsp.Options)
+		require.NoError(t, err)
+
+		err = nbClient.ResetLogicalSwitchPortMigrateOptions(lspName, srcNodeName, targetNodeName, false)
+		require.NoError(t, err)
+	})
+
+	t.Run("reset logical switch port migrate options with missing requested-chassis option", func(t *testing.T) {
+		if lsp.Options == nil {
+			lsp.Options = make(map[string]string)
+		}
+		delete(lsp.Options, "requested-chassis")
+		err = nbClient.UpdateLogicalSwitchPort(lsp, &lsp.Options)
+		require.NoError(t, err)
+
+		err = nbClient.ResetLogicalSwitchPortMigrateOptions(lspName, srcNodeName, targetNodeName, false)
+		require.NoError(t, err)
+	})
+
+	t.Run("reset logical switch port migrate options with no requested-chassis option", func(t *testing.T) {
+		lsp.Options = make(map[string]string)
+		lsp.Options["some-other-option"] = "value"
+		err = nbClient.UpdateLogicalSwitchPort(lsp, &lsp.Options)
+		require.NoError(t, err)
+
+		err = nbClient.ResetLogicalSwitchPortMigrateOptions(lspName, srcNodeName, targetNodeName, false)
+		require.NoError(t, err)
+
+		updatedLsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
+		require.NoError(t, err)
+
+		expectedOptions := map[string]string{
+			"some-other-option": "value",
+		}
+		require.Equal(t, expectedOptions, updatedLsp.Options)
+	})
+}
+
+func (suite *OvnClientTestSuite) testCleanLogicalSwitchPortMigrateOptions() {
+	t := suite.T()
+	t.Parallel()
+	nbClient := suite.ovnNBClient
+	lspName := "test-clean-lsp"
+	lsName := "test-clean-ls"
+
+	err := nbClient.CreateBareLogicalSwitch(lsName)
+	require.NoError(t, err)
+
+	err = nbClient.CreateBareLogicalSwitchPort(lsName, lspName, "unknown", "")
+	require.NoError(t, err)
+
+	lsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
+	require.NoError(t, err)
+
+	t.Run("normal clean logical switch port migrate options", func(t *testing.T) {
+		if lsp.Options == nil {
+			lsp.Options = make(map[string]string)
+		}
+		lsp.Options["requested-chassis"] = "src-node,target-node"
+		err = nbClient.UpdateLogicalSwitchPort(lsp, &lsp.Options)
+		require.NoError(t, err)
+
+		err = nbClient.CleanLogicalSwitchPortMigrateOptions(lspName)
+		require.NoError(t, err)
+
+		updatedLsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
+		require.NoError(t, err)
+
+		_, exists := updatedLsp.Options["requested-chassis"]
+		require.False(t, exists)
+	})
+
+	t.Run("clean logical switch port migrate options with non-existent logical switch port", func(t *testing.T) {
+		nonExistentLspName := "nonexistent-lsp"
+		err = nbClient.CleanLogicalSwitchPortMigrateOptions(nonExistentLspName)
+		require.NoError(t, err)
+	})
+
+	t.Run("clean logical switch port migrate options with nil options", func(t *testing.T) {
+		lsp.Options = nil
+		err = nbClient.UpdateLogicalSwitchPort(lsp, &lsp.Options)
+		require.NoError(t, err)
+
+		err = nbClient.CleanLogicalSwitchPortMigrateOptions(lspName)
+		require.NoError(t, err)
+	})
+
+	t.Run("clean logical switch port migrate options with missing requested-chassis option", func(t *testing.T) {
+		if lsp.Options == nil {
+			lsp.Options = make(map[string]string)
+		}
+		delete(lsp.Options, "requested-chassis")
+		err = nbClient.UpdateLogicalSwitchPort(lsp, &lsp.Options)
+		require.NoError(t, err)
+
+		err = nbClient.CleanLogicalSwitchPortMigrateOptions(lspName)
+		require.NoError(t, err)
+	})
+
+	t.Run("clean logical switch port migrate options with no requested-chassis option", func(t *testing.T) {
+		lsp.Options = make(map[string]string)
+		lsp.Options["some-other-option"] = "value"
+		err = nbClient.UpdateLogicalSwitchPort(lsp, &lsp.Options)
+		require.NoError(t, err)
+
+		err = nbClient.CleanLogicalSwitchPortMigrateOptions(lspName)
+		require.NoError(t, err)
 	})
 }
