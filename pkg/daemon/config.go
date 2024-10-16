@@ -309,7 +309,11 @@ func (config *Configuration) initNicConfig(nicBridgeMappings map[string]string) 
 	config.MSS = config.MTU - util.TCPIPHeaderLength
 	if !config.EncapChecksum {
 		if err := disableChecksum(); err != nil {
-			klog.Errorf("failed to set checksum offload, %v", err)
+			klog.Errorf("failed to dsiable checksum offload, %v", err)
+		}
+	} else {
+		if err := enableChecksum(); err != nil {
+			klog.Errorf("failed to enable checksum offload, %v", err)
 		}
 	}
 
@@ -419,6 +423,16 @@ func disableChecksum() error {
 		"ovs-vsctl", "set", "open", ".", "external-ids:ovn-encap-csum=false").CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("failed to set ovn-encap-csum, %s", string(raw))
+	}
+	return nil
+}
+
+func enableChecksum() error {
+	// #nosec G204
+	raw, err := exec.Command(
+		"ovs-vsctl", "remove", "open", ".", "external-ids", "ovn-encap-csum").CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to remove ovn-encap-csum, %s", string(raw))
 	}
 	return nil
 }
