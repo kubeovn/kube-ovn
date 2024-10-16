@@ -35,12 +35,10 @@ spec:
         command:
           - sh
           - -xec
-          - |
-            chown -R nobody: /var/log/kube-ovn
-            chmod g+r /run/xtables.lock
-            chmod g+w /var/run/netns
-            {{- if not .Values.DISABLE_MODULES_MANAGEMENT }}
+          - {{ if not .Values.DISABLE_MODULES_MANAGEMENT -}}
             iptables -V
+            {{- else -}}
+            echo "nothing to do"
             {{- end }}
         securityContext:
           allowPrivilegeEscalation: true
@@ -121,8 +119,7 @@ spec:
           - --enable-ovn-ipsec={{- .Values.func.ENABLE_OVN_IPSEC }}
           - --set-vxlan-tx-off={{- .Values.func.SET_VXLAN_TX_OFF }}
         securityContext:
-          runAsUser: {{ include "kubeovn.runAsUser" . }}
-          runAsGroup: 0
+          runAsUser: 0
           privileged: false
           capabilities:
             add:
