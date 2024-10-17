@@ -22,6 +22,13 @@ func (c *Controller) resyncVpcNatConfig() {
 		return
 	}
 
+	// Prefix used to generate the name of the StatefulSet/Pods for a NAT gateway
+	// By default it is equal to the value contained in 'util.VpcNatGwNamePrefix'
+	vpcNatGwNamePrefix := cm.Data["natGwNamePrefix"]
+	if vpcNatGwNamePrefix != "" {
+		util.VpcNatGwNamePrefix = vpcNatGwNamePrefix
+	}
+
 	// Image we're using to provision the NAT gateways
 	image, exist := cm.Data["image"]
 	if !exist {
