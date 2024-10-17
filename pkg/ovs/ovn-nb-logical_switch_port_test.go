@@ -526,7 +526,7 @@ func (suite *OvnClientTestSuite) testSetLogicalSwitchPortArpProxy() {
 		require.Empty(t, lsp.Options["arp_proxy"])
 	})
 
-	t.Run("should print err log when logical switch port does no exit", func(t *testing.T) {
+	t.Run("should print err log when logical switch port does not exit", func(t *testing.T) {
 		enableArpProxy := true
 		err = nbClient.SetLogicalSwitchPortArpProxy("test-nonexistent-lsp", enableArpProxy)
 		require.Error(t, err)
@@ -597,7 +597,7 @@ func (suite *OvnClientTestSuite) testSetLogicalSwitchPortSecurity() {
 		}, lsp.ExternalIDs)
 	})
 
-	t.Run("should print err log when logical switch port does no exit", func(t *testing.T) {
+	t.Run("should print err log when logical switch port does not exit", func(t *testing.T) {
 		err = nbClient.SetLogicalSwitchPortSecurity(true, "test-nonexistent-lsp", "00:00:00:AB:B4:65", "10.244.0.37,fc00::af4:25", "10.244.100.10,10.244.100.11")
 		require.Error(t, err)
 	})
@@ -661,7 +661,7 @@ func (suite *OvnClientTestSuite) testSetSetLogicalSwitchPortExternalIDs() {
 		require.Equal(t, "v2", lsp.ExternalIDs["k1"])
 	})
 
-	t.Run("should print err log when logical switch port does no exit", func(t *testing.T) {
+	t.Run("should print err log when logical switch port does not exit", func(t *testing.T) {
 		err = nbClient.SetLogicalSwitchPortExternalIDs("test-nonexistent-lsp", map[string]string{"k1": "v2"})
 		require.Error(t, err)
 	})
@@ -1122,7 +1122,7 @@ func (suite *OvnClientTestSuite) testEnablePortLayer2forward() {
 		require.Contains(t, lsp.Addresses, "unknown")
 	})
 
-	t.Run("should print err log when logical switch port does no exit", func(t *testing.T) {
+	t.Run("should print err log when logical switch port does not exit", func(t *testing.T) {
 		err = nbClient.EnablePortLayer2forward("test-nonexistent-lsp")
 		require.Error(t, err)
 	})
@@ -1218,7 +1218,7 @@ func (suite *OvnClientTestSuite) testSetLogicalSwitchPortVlanTag() {
 		require.ErrorContains(t, err, "invalid vlan id")
 	})
 
-	t.Run("should print err log when logical switch port does no exit", func(t *testing.T) {
+	t.Run("should print err log when logical switch port does not exit", func(t *testing.T) {
 		err = nbClient.SetLogicalSwitchPortVlanTag("test-nonexistent-lsp", 10)
 		require.Error(t, err)
 	})
@@ -1314,7 +1314,7 @@ func (suite *OvnClientTestSuite) testDeleteLogicalSwitchPort() {
 		require.NotContains(t, ls.Ports, lsp.UUID)
 	})
 
-	t.Run("no err when delete non-existent logical switch port", func(t *testing.T) {
+	t.Run("no err when delete nonexistent logical switch port", func(t *testing.T) {
 		err := nbClient.DeleteLogicalSwitchPort("test-nonexistent-lsp")
 		require.NoError(t, err)
 	})
@@ -1350,7 +1350,7 @@ func (suite *OvnClientTestSuite) testDeleteLogicalSwitchPorts() {
 	err = nbClient.UpdateLogicalSwitchPort(lsp2, &lsp2.ExternalIDs)
 	require.NoError(t, err)
 
-	t.Run("no err when delete non-existent logical switch port", func(t *testing.T) {
+	t.Run("no err when delete nonexistent logical switch port", func(t *testing.T) {
 		err = nbClient.DeleteLogicalSwitchPorts(externalIDs, nil)
 		require.NoError(t, err)
 
@@ -1614,13 +1614,13 @@ func (suite *OvnClientTestSuite) testDeleteLogicalSwitchPortOp() {
 		}, ops[0].Mutations)
 	})
 
-	t.Run("delete non-existent logical switch port", func(t *testing.T) {
+	t.Run("delete nonexistent logical switch port", func(t *testing.T) {
 		ops, err := nbClient.DeleteLogicalSwitchPortOp("test-nonexistent-lsp")
 		require.NoError(t, err)
 		require.Nil(t, ops)
 	})
 
-	t.Run("delete logical switch port with non-existent logical switch", func(t *testing.T) {
+	t.Run("delete logical switch port with nonexistent logical switch", func(t *testing.T) {
 		err := nbClient.DeleteLogicalSwitch(lsName)
 		require.NoError(t, err)
 
@@ -1992,10 +1992,10 @@ func (suite *OvnClientTestSuite) testGetLogicalSwitchPort() {
 	err := nbClient.CreateBareLogicalSwitch(lsName)
 	require.NoError(t, err)
 
-	t.Run("get non-existent logical switch port", func(t *testing.T) {
+	t.Run("get nonexistent logical switch port", func(t *testing.T) {
 		t.Parallel()
 
-		lspName := "non-existent-lsp"
+		lspName := "test-nonexistent-lsp"
 		_, err := nbClient.GetLogicalSwitchPort(lspName, false)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "not found")
@@ -2376,8 +2376,8 @@ func (suite *OvnClientTestSuite) testCleanLogicalSwitchPortMigrateOptions() {
 		require.False(t, exists)
 	})
 
-	t.Run("clean logical switch port migrate options with non-existent logical switch port", func(t *testing.T) {
-		nonExistentLspName := "nonexistent-lsp"
+	t.Run("clean logical switch port migrate options with nonexistent logical switch port", func(t *testing.T) {
+		nonExistentLspName := "test-nonexistent-lsp"
 		err = nbClient.CleanLogicalSwitchPortMigrateOptions(nonExistentLspName)
 		require.NoError(t, err)
 	})
