@@ -42,6 +42,39 @@ func (suite *OvnClientTestSuite) testCreateGatewayChassises() {
 	}
 }
 
+func (suite *OvnClientTestSuite) testUpdateGatewayChassis() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+	lrName := "test-gateway-chassis-update-lr"
+	lrpName := "test-gateway-chassis-update-lrp"
+	chassis := "6c322ce8-02b7-42b3-925b-ae24020272a9"
+	gwChassisName := lrpName + "-" + chassis
+
+	err := nbClient.CreateLogicalRouter(lrName)
+	require.NoError(t, err)
+
+	err = nbClient.CreateLogicalRouterPort(lrName, lrpName, "00:11:22:37:af:62", []string{"fd00::c0a8:1001/120"})
+	require.NoError(t, err)
+
+	err = nbClient.CreateGatewayChassises(lrpName, chassis)
+	require.NoError(t, err)
+
+	gwChassis, err := nbClient.GetGatewayChassis(gwChassisName, false)
+	require.NoError(t, err)
+	require.NotNil(t, gwChassis)
+
+	gwChassis.Priority = 100
+	err = nbClient.UpdateGatewayChassis(gwChassis, &gwChassis.Priority)
+	require.NoError(t, err)
+
+	gwChassis, err = nbClient.GetGatewayChassis(gwChassisName, false)
+	require.NoError(t, err)
+	require.NotNil(t, gwChassis)
+	require.Equal(t, 100, gwChassis.Priority)
+}
+
 func (suite *OvnClientTestSuite) testDeleteGatewayChassises() {
 	t := suite.T()
 	t.Parallel()
