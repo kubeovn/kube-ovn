@@ -3,6 +3,7 @@ package controller
 import (
 	"fmt"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode"
@@ -854,7 +855,8 @@ func (c *Controller) podMatchNetworkPolicies(pod *corev1.Pod) []string {
 
 func (c *Controller) svcMatchNetworkPolicies(svc *corev1.Service) ([]string, error) {
 	// find all match pod
-	pods, err := c.podsLister.Pods(svc.Namespace).List(labels.Everything())
+	sel := labels.Set(svc.Spec.Selector).AsSelector()
+	pods, err := c.podsLister.Pods(svc.Namespace).List(sel)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list pods, %v", err)
 	}
@@ -865,11 +867,12 @@ func (c *Controller) svcMatchNetworkPolicies(svc *corev1.Service) ([]string, err
 		return nil, fmt.Errorf("failed to list netpols, %v", err)
 	}
 	match := []string{}
+	ns, _ := c.namespacesLister.Get(svc.Namespace)
 	for _, pod := range pods {
-		podNs, _ := c.namespacesLister.Get(pod.Namespace)
 		for _, np := range nps {
-			if isPodMatchNetworkPolicy(pod, *podNs, np, np.Namespace) {
-				match = append(match, fmt.Sprintf("%s/%s", np.Namespace, np.Name))
+			event := fmt.Sprintf("%s/%s", np.Namespace, np.Name)
+			if isPodMatchNetworkPolicy(pod, *ns, np, np.Namespace) && !slices.Contains(match, event) {
+				match = append(match, event)
 				klog.V(3).Infof("svc %s/%s match np %s/%s", svc.Namespace, svc.Name, np.Namespace, np.Name)
 			}
 		}
