@@ -1190,7 +1190,10 @@ func (c *Controller) reconcileNamespaces(subnet *kubeovnv1.Subnet) error {
 	// 2. update namespaces
 	for _, expectNs := range expectNss {
 		checkNs, err := c.namespacesLister.Get(expectNs)
-		if err != nil && !k8serrors.IsNotFound(err) {
+		if err != nil {
+			if k8serrors.IsNotFound(err) {
+				continue
+			}
 			klog.Error(err)
 			return err
 		}
