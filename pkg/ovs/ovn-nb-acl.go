@@ -785,7 +785,7 @@ func (c *OVNNbClient) DeleteACL(parentName, parentType, direction, priority, mat
 func (c *OVNNbClient) GetACL(parent, direction, priority, match string, ignoreNotFound bool) (*ovnnb.ACL, error) {
 	// this is necessary because may exist same direction, priority and match acl in different port group or logical switch
 	if len(parent) == 0 {
-		return nil, errors.New("the parent name is required")
+		return nil, errors.New("the port group name or logical switch name is required")
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
@@ -844,7 +844,7 @@ func (c *OVNNbClient) ACLExists(parent, direction, priority, match string) (bool
 // newACL return acl with basic information
 func (c *OVNNbClient) newACL(parent, direction, priority, match, action string, tier int, options ...func(acl *ovnnb.ACL)) (*ovnnb.ACL, error) {
 	if len(parent) == 0 {
-		return nil, errors.New("the parent name is required")
+		return nil, errors.New("the port group name or logical switch name is required")
 	}
 
 	if len(direction) == 0 || len(priority) == 0 || len(match) == 0 || len(action) == 0 {
@@ -888,7 +888,7 @@ func (c *OVNNbClient) newACL(parent, direction, priority, match, action string, 
 // but maybe used for updating network policy acl
 func (c *OVNNbClient) newACLWithoutCheck(parent, direction, priority, match, action string, tier int, options ...func(acl *ovnnb.ACL)) (*ovnnb.ACL, error) {
 	if len(parent) == 0 {
-		return nil, errors.New("the parent name is required")
+		return nil, errors.New("the port group name or logical switch name is required")
 	}
 
 	if len(direction) == 0 || len(priority) == 0 || len(match) == 0 || len(action) == 0 {

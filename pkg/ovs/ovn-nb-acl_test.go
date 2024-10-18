@@ -145,7 +145,7 @@ func (suite *OvnClientTestSuite) testUpdateIngressACLOps() {
 		aclName := "test_create_v4_ingress_acl_pg"
 
 		_, err := nbClient.UpdateIngressACLOps(pgName, asIngressName, asExceptName, protocol, aclName, nil, true, nil, nil)
-		require.ErrorContains(t, err, "the parent name is required")
+		require.ErrorContains(t, err, "the port group name or logical switch name is required")
 	})
 
 	t.Run("test empty pgName without suffix", func(t *testing.T) {
@@ -158,7 +158,7 @@ func (suite *OvnClientTestSuite) testUpdateIngressACLOps() {
 		aclName := "test_create_v4_ingress_acl_pg"
 
 		_, err := nbClient.UpdateIngressACLOps(pgName, asIngressName, asExceptName, protocol, aclName, nil, true, nil, nil)
-		require.ErrorContains(t, err, "the parent name is required")
+		require.ErrorContains(t, err, "the port group name or logical switch name is required")
 	})
 }
 
@@ -243,7 +243,7 @@ func (suite *OvnClientTestSuite) testUpdateEgressACLOps() {
 		aclName := "test_create_v4_egress_acl_pg"
 
 		_, err := nbClient.UpdateEgressACLOps(pgName, asEgressName, asExceptName, protocol, aclName, nil, true, nil, nil)
-		require.ErrorContains(t, err, "the parent name is required")
+		require.ErrorContains(t, err, "the port group name or logical switch name is required")
 	})
 
 	t.Run("test empty pgName without suffix", func(t *testing.T) {
@@ -256,7 +256,7 @@ func (suite *OvnClientTestSuite) testUpdateEgressACLOps() {
 		aclName := "test_create_v4_egress_acl_pg"
 
 		_, err := nbClient.UpdateEgressACLOps(pgName, asEgressName, asExceptName, protocol, aclName, nil, true, nil, nil)
-		require.ErrorContains(t, err, "the parent name is required")
+		require.ErrorContains(t, err, "the port group name or logical switch name is required")
 	})
 }
 
@@ -568,7 +568,7 @@ func (suite *OvnClientTestSuite) testCreateNodeACL() {
 		joinIP := "100.64.0.3,fd00:100:64::3"
 
 		err := nbClient.CreateNodeACL(pgName, nodeIP, joinIP)
-		require.ErrorContains(t, err, "the parent name is required")
+		require.ErrorContains(t, err, "the port group name or logical switch name is required")
 	})
 }
 
@@ -848,10 +848,10 @@ func (suite *OvnClientTestSuite) testUpdateLogicalSwitchACL() {
 	require.NoError(t, err)
 
 	err = nbClient.UpdateLogicalSwitchACL("", cidrBlock, subnetAcls, true)
-	require.ErrorContains(t, err, "the parent name is required")
+	require.ErrorContains(t, err, "the port group name or logical switch name is required")
 
 	err = nbClient.UpdateLogicalSwitchACL("", cidrBlock, subnetAcls, false)
-	require.ErrorContains(t, err, "the parent name is required")
+	require.ErrorContains(t, err, "the port group name or logical switch name is required")
 
 	err = nbClient.UpdateLogicalSwitchACL(lsName, cidrBlock, subnetAcls, true)
 	require.NoError(t, err)
@@ -947,14 +947,14 @@ func (suite *OvnClientTestSuite) testSetACLLog() {
 		require.NoError(t, err)
 	})
 
-	t.Run("set log with none acls", func(t *testing.T) {
+	t.Run("set log for non-exist pgName", func(t *testing.T) {
 		err := nbClient.SetACLLog("non-exist-pgName", true, false)
 		require.NoError(t, err)
 	})
 
 	t.Run("test empty pgName", func(t *testing.T) {
 		err := nbClient.SetACLLog("", true, false)
-		require.ErrorContains(t, err, "the parent name is required")
+		require.ErrorContains(t, err, "the port group name or logical switch name is required")
 	})
 }
 
@@ -1617,7 +1617,7 @@ func (suite *OvnClientTestSuite) testDeleteACL() {
 		match := fmt.Sprintf("%s && tcp.dst == %d", matchPrefix, basePort)
 
 		err = nbClient.DeleteACL("", portGroupKey, ovnnb.ACLDirectionToLport, priority, match)
-		require.ErrorContains(t, err, "the parent name is required")
+		require.ErrorContains(t, err, "the port group name or logical switch name is required")
 	})
 }
 
