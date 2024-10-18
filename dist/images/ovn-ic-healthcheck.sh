@@ -2,8 +2,6 @@
 set -euo pipefail
 shopt -s expand_aliases
 
-alias ovn-ctl='/usr/share/ovn/scripts/ovn-ctl'
-
 ic_nb_status=$(ovn-appctl -t /var/run/ovn/ovn_ic_nb_db.ctl cluster/status OVN_IC_Northbound | grep Status)
 ic_sb_status=$(ovn-appctl -t /var/run/ovn/ovn_ic_sb_db.ctl cluster/status OVN_IC_Southbound | grep Status)
 ic_nb_role=$(ovn-appctl -t /var/run/ovn/ovn_ic_nb_db.ctl cluster/status OVN_IC_Northbound | grep Role)

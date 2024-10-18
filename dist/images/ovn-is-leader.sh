@@ -26,7 +26,7 @@ else
 fi
 
 # Store ovn-northd leader to svc kube-system/ovn-northd
-northd_status=$(ovs-appctl -t /var/run/ovn/ovn-northd.$(cat /var/run/ovn/ovn-northd.pid).ctl status)
+northd_status=$(ovn-appctl -t /var/run/ovn/ovn-northd.$(cat /var/run/ovn/ovn-northd.pid).ctl status)
 if [[ $northd_status =~ "active" ]]
 then
    kubectl label --overwrite pod "$POD_NAME" -n "$POD_NAMESPACE" ovn-northd-leader=true

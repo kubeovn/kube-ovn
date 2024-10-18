@@ -77,15 +77,15 @@ CENTRAL_PODS=$(kubectl get pod -n $KUBE_OVN_NS | grep ovn-central | awk '{print 
 for POD in $CENTRAL_PODS
 do
   echo "pod db status for $POD"
-  kubectl exec "$POD" -n $KUBE_OVN_NS -c ovn-central -- ovs-appctl -t /var/run/ovn/ovnnb_db.ctl cluster/status OVN_Northbound
-  kubectl exec "$POD" -n $KUBE_OVN_NS -c ovn-central -- ovs-appctl -t /var/run/ovn/ovnnb_db.ctl ovsdb-server/get-db-storage-status OVN_Northbound
+  kubectl exec "$POD" -n $KUBE_OVN_NS -c ovn-central -- ovn-appctl -t /var/run/ovn/ovnnb_db.ctl cluster/status OVN_Northbound
+  kubectl exec "$POD" -n $KUBE_OVN_NS -c ovn-central -- ovn-appctl -t /var/run/ovn/ovnnb_db.ctl ovsdb-server/get-db-storage-status OVN_Northbound
   echo ""
 done
 COMMENT
 
 for POD in $CENTRAL_PODS
 do
-  DBSTATUS=$(kubectl exec "$POD" -n $KUBE_OVN_NS -c ovn-central -- ovs-appctl -t /var/run/ovn/ovnnb_db.ctl ovsdb-server/get-db-storage-status OVN_Northbound)
+  DBSTATUS=$(kubectl exec "$POD" -n $KUBE_OVN_NS -c ovn-central -- ovn-appctl -t /var/run/ovn/ovnnb_db.ctl ovsdb-server/get-db-storage-status OVN_Northbound)
   if ! [[ $DBSTATUS =~ "ok" ]]; then
     echo "$POD nb db status abnormal"
     DBabnormal
@@ -95,7 +95,7 @@ echo "nb db status check pass"
 
 for POD in $CENTRAL_PODS
 do
-  DBSTATUS=$(kubectl exec "$POD" -n $KUBE_OVN_NS -c ovn-central -- ovs-appctl -t /var/run/ovn/ovnsb_db.ctl ovsdb-server/get-db-storage-status OVN_Southbound)
+  DBSTATUS=$(kubectl exec "$POD" -n $KUBE_OVN_NS -c ovn-central -- ovn-appctl -t /var/run/ovn/ovnsb_db.ctl ovsdb-server/get-db-storage-status OVN_Southbound)
   if ! [[ $DBSTATUS =~ "ok" ]]; then
     echo "$POD sb db status abnormal"
     DBabnormal

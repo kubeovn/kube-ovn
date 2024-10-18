@@ -44,7 +44,7 @@ then
   then
     echo "check write to ovn sb db, clustered database server has stale data, run sb-cluster-state-reset command to restore"
     pid=$(cat /var/run/ovn/ovn-controller.pid)
-    ovs-appctl -t /var/run/ovn/ovn-controller.$pid.ctl sb-cluster-state-reset
+    ovn-appctl -t /var/run/ovn/ovn-controller.$pid.ctl sb-cluster-state-reset
     echo "finish exec cmd sb-cluster-state-reset"
   else
     echo "check write to ovn sb db success"
