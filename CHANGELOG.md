@@ -1331,6 +1331,16 @@
  * 张祖建
  * 袁又袁
 
+## v1.11.21 (2024-10-18)
+
+ * [e6a8501d](https://github.com/kubeovn/kube-ovn/commit/e6a8501d5c12f5c6a101bc7f223af5bb52c68b54) release v1.11.21
+ * [633fbbeb](https://github.com/kubeovn/kube-ovn/commit/633fbbeb0772cf62aaf8cc6c0b84092ef60e50cb) team device not set unmanage
+ * [dca168d8](https://github.com/kubeovn/kube-ovn/commit/dca168d802e0fb197312f1e6bfba86c50c069b2d) prepare for next release
+
+### Contributors
+
+ * clyi
+
 ## v1.11.20 (2024-10-16)
 
  * [0a1194ad](https://github.com/kubeovn/kube-ovn/commit/0a1194ad43d34e96f35ca874fcc01a6a3b68803f) release v1.11.20
