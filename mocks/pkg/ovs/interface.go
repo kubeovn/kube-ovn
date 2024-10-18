@@ -27,6 +27,7 @@ import (
 type MockNBGlobal struct {
 	ctrl     *gomock.Controller
 	recorder *MockNBGlobalMockRecorder
+	isgomock struct{}
 }
 
 // MockNBGlobalMockRecorder is the mock recorder for MockNBGlobal.
@@ -182,6 +183,7 @@ func (mr *MockNBGlobalMockRecorder) UpdateNbGlobal(nbGlobal any, fields ...any) 
 type MockLogicalRouter struct {
 	ctrl     *gomock.Controller
 	recorder *MockLogicalRouterMockRecorder
+	isgomock struct{}
 }
 
 // MockLogicalRouterMockRecorder is the mock recorder for MockLogicalRouter.
@@ -213,25 +215,6 @@ func (m *MockLogicalRouter) CreateLogicalRouter(lrName string) error {
 func (mr *MockLogicalRouterMockRecorder) CreateLogicalRouter(lrName any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateLogicalRouter", reflect.TypeOf((*MockLogicalRouter)(nil).CreateLogicalRouter), lrName)
-}
-
-// UpdateLogicalRouter mocks base method.
-func (m *MockLogicalRouter) UpdateLogicalRouter(lr *ovnnb.LogicalRouter, fields ...interface{}) error {
-	m.ctrl.T.Helper()
-	varargs := []any{lr}
-	for _, a := range fields {
-		varargs = append(varargs, a)
-	}
-	ret := m.ctrl.Call(m, "UpdateLogicalRouter", varargs...)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// UpdateLogicalRouter indicates an expected call of UpdateLogicalRouter.
-func (mr *MockLogicalRouterMockRecorder) UpdateLogicalRouter(lr *ovnnb.LogicalRouter, fields ...interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	varargs := append([]any{lr}, fields...)
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateLogicalRouter", reflect.TypeOf((*MockLogicalRouter)(nil).UpdateLogicalRouter), varargs...)
 }
 
 // DeleteLogicalRouter mocks base method.
@@ -312,10 +295,30 @@ func (mr *MockLogicalRouterMockRecorder) LogicalRouterUpdateLoadBalancers(lrName
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LogicalRouterUpdateLoadBalancers", reflect.TypeOf((*MockLogicalRouter)(nil).LogicalRouterUpdateLoadBalancers), varargs...)
 }
 
+// UpdateLogicalRouter mocks base method.
+func (m *MockLogicalRouter) UpdateLogicalRouter(lr *ovnnb.LogicalRouter, fields ...any) error {
+	m.ctrl.T.Helper()
+	varargs := []any{lr}
+	for _, a := range fields {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "UpdateLogicalRouter", varargs...)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateLogicalRouter indicates an expected call of UpdateLogicalRouter.
+func (mr *MockLogicalRouterMockRecorder) UpdateLogicalRouter(lr any, fields ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{lr}, fields...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateLogicalRouter", reflect.TypeOf((*MockLogicalRouter)(nil).UpdateLogicalRouter), varargs...)
+}
+
 // MockLogicalRouterPort is a mock of LogicalRouterPort interface.
 type MockLogicalRouterPort struct {
 	ctrl     *gomock.Controller
 	recorder *MockLogicalRouterPortMockRecorder
+	isgomock struct{}
 }
 
 // MockLogicalRouterPortMockRecorder is the mock recorder for MockLogicalRouterPort.
@@ -498,6 +501,7 @@ func (mr *MockLogicalRouterPortMockRecorder) UpdateLogicalRouterPortRA(lrpName, 
 type MockGatewayChassis struct {
 	ctrl     *gomock.Controller
 	recorder *MockGatewayChassisMockRecorder
+	isgomock struct{}
 }
 
 // MockGatewayChassisMockRecorder is the mock recorder for MockGatewayChassis.
@@ -540,6 +544,7 @@ func (mr *MockGatewayChassisMockRecorder) UpdateGatewayChassis(gwChassis any, fi
 type MockBFD struct {
 	ctrl     *gomock.Controller
 	recorder *MockBFDMockRecorder
+	isgomock struct{}
 }
 
 // MockBFDMockRecorder is the mock recorder for MockBFD.
@@ -668,6 +673,7 @@ func (mr *MockBFDMockRecorder) UpdateBFD(bfd any, fields ...any) *gomock.Call {
 type MockLogicalSwitch struct {
 	ctrl     *gomock.Controller
 	recorder *MockLogicalSwitchMockRecorder
+	isgomock struct{}
 }
 
 // MockLogicalSwitchMockRecorder is the mock recorder for MockLogicalSwitch.
@@ -796,6 +802,7 @@ func (mr *MockLogicalSwitchMockRecorder) LogicalSwitchUpdateOtherConfig(lsName, 
 type MockLogicalSwitchPort struct {
 	ctrl     *gomock.Controller
 	recorder *MockLogicalSwitchPortMockRecorder
+	isgomock struct{}
 }
 
 // MockLogicalSwitchPortMockRecorder is the mock recorder for MockLogicalSwitchPort.
@@ -1170,6 +1177,7 @@ func (mr *MockLogicalSwitchPortMockRecorder) SetVirtualLogicalSwitchPortVirtualP
 type MockLoadBalancer struct {
 	ctrl     *gomock.Controller
 	recorder *MockLoadBalancerMockRecorder
+	isgomock struct{}
 }
 
 // MockLoadBalancerMockRecorder is the mock recorder for MockLoadBalancer.
@@ -1383,6 +1391,7 @@ func (mr *MockLoadBalancerMockRecorder) SetLoadBalancerAffinityTimeout(lbName, t
 type MockLoadBalancerHealthCheck struct {
 	ctrl     *gomock.Controller
 	recorder *MockLoadBalancerHealthCheckMockRecorder
+	isgomock struct{}
 }
 
 // MockLoadBalancerHealthCheckMockRecorder is the mock recorder for MockLoadBalancerHealthCheck.
@@ -1508,6 +1517,7 @@ func (mr *MockLoadBalancerHealthCheckMockRecorder) LoadBalancerHealthCheckExists
 type MockPortGroup struct {
 	ctrl     *gomock.Controller
 	recorder *MockPortGroupMockRecorder
+	isgomock struct{}
 }
 
 // MockPortGroupMockRecorder is the mock recorder for MockPortGroup.
@@ -1544,15 +1554,19 @@ func (mr *MockPortGroupMockRecorder) CreatePortGroup(pgName, externalIDs any) *g
 // DeletePortGroup mocks base method.
 func (m *MockPortGroup) DeletePortGroup(pgName ...string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeletePortGroup", pgName)
+	varargs := []any{}
+	for _, a := range pgName {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "DeletePortGroup", varargs...)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // DeletePortGroup indicates an expected call of DeletePortGroup.
-func (mr *MockPortGroupMockRecorder) DeletePortGroup(pgName any) *gomock.Call {
+func (mr *MockPortGroupMockRecorder) DeletePortGroup(pgName ...any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeletePortGroup", reflect.TypeOf((*MockPortGroup)(nil).DeletePortGroup), pgName)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeletePortGroup", reflect.TypeOf((*MockPortGroup)(nil).DeletePortGroup), pgName...)
 }
 
 // GetPortGroup mocks base method.
@@ -1656,6 +1670,7 @@ func (mr *MockPortGroupMockRecorder) PortGroupSetPorts(pgName, ports any) *gomoc
 type MockACL struct {
 	ctrl     *gomock.Controller
 	recorder *MockACLMockRecorder
+	isgomock struct{}
 }
 
 // MockACLMockRecorder is the mock recorder for MockACL.
@@ -1880,6 +1895,7 @@ func (mr *MockACLMockRecorder) UpdateSgACL(sg, direction any) *gomock.Call {
 type MockAddressSet struct {
 	ctrl     *gomock.Controller
 	recorder *MockAddressSetMockRecorder
+	isgomock struct{}
 }
 
 // MockAddressSetMockRecorder is the mock recorder for MockAddressSet.
@@ -1935,15 +1951,19 @@ func (mr *MockAddressSetMockRecorder) CreateAddressSet(asName, externalIDs any) 
 // DeleteAddressSet mocks base method.
 func (m *MockAddressSet) DeleteAddressSet(asName ...string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteAddressSet", asName)
+	varargs := []any{}
+	for _, a := range asName {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "DeleteAddressSet", varargs...)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // DeleteAddressSet indicates an expected call of DeleteAddressSet.
-func (mr *MockAddressSetMockRecorder) DeleteAddressSet(asName any) *gomock.Call {
+func (mr *MockAddressSetMockRecorder) DeleteAddressSet(asName ...any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteAddressSet", reflect.TypeOf((*MockAddressSet)(nil).DeleteAddressSet), asName)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteAddressSet", reflect.TypeOf((*MockAddressSet)(nil).DeleteAddressSet), asName...)
 }
 
 // DeleteAddressSets mocks base method.
@@ -1979,6 +1999,7 @@ func (mr *MockAddressSetMockRecorder) ListAddressSets(externalIDs any) *gomock.C
 type MockLogicalRouterStaticRoute struct {
 	ctrl     *gomock.Controller
 	recorder *MockLogicalRouterStaticRouteMockRecorder
+	isgomock struct{}
 }
 
 // MockLogicalRouterStaticRouteMockRecorder is the mock recorder for MockLogicalRouterStaticRoute.
@@ -2094,6 +2115,7 @@ func (mr *MockLogicalRouterStaticRouteMockRecorder) LogicalRouterStaticRouteExis
 type MockLogicalRouterPolicy struct {
 	ctrl     *gomock.Controller
 	recorder *MockLogicalRouterPolicyMockRecorder
+	isgomock struct{}
 }
 
 // MockLogicalRouterPolicyMockRecorder is the mock recorder for MockLogicalRouterPolicy.
@@ -2246,6 +2268,7 @@ func (mr *MockLogicalRouterPolicyMockRecorder) ListLogicalRouterPolicies(lrName,
 type MockNAT struct {
 	ctrl     *gomock.Controller
 	recorder *MockNATMockRecorder
+	isgomock struct{}
 }
 
 // MockNATMockRecorder is the mock recorder for MockNAT.
@@ -2384,6 +2407,7 @@ func (mr *MockNATMockRecorder) UpdateSnat(lrName, externalIP, logicalIP any) *go
 type MockDHCPOptions struct {
 	ctrl     *gomock.Controller
 	recorder *MockDHCPOptionsMockRecorder
+	isgomock struct{}
 }
 
 // MockDHCPOptionsMockRecorder is the mock recorder for MockDHCPOptions.
@@ -2469,6 +2493,7 @@ func (mr *MockDHCPOptionsMockRecorder) UpdateDHCPOptions(subnet, mtu any) *gomoc
 type MockNbClient struct {
 	ctrl     *gomock.Controller
 	recorder *MockNbClientMockRecorder
+	isgomock struct{}
 }
 
 // MockNbClientMockRecorder is the mock recorder for MockNbClient.
@@ -2775,25 +2800,6 @@ func (mr *MockNbClientMockRecorder) CreateLogicalRouter(lrName any) *gomock.Call
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateLogicalRouter", reflect.TypeOf((*MockNbClient)(nil).CreateLogicalRouter), lrName)
 }
 
-// UpdateLogicalRouter mocks base method.
-func (m *MockNbClient) UpdateLogicalRouter(lr *ovnnb.LogicalRouter, fields ...interface{}) error {
-	m.ctrl.T.Helper()
-	varargs := []any{lr}
-	for _, a := range fields {
-		varargs = append(varargs, a)
-	}
-	ret := m.ctrl.Call(m, "UpdateLogicalRouter", varargs...)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// UpdateLogicalRouter indicates an expected call of UpdateLogicalRouter.
-func (mr *MockNbClientMockRecorder) UpdateLogicalRouter(lr *ovnnb.LogicalRouter, fields ...interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	varargs := append([]any{lr}, fields...)
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateLogicalRouter", reflect.TypeOf((*MockLogicalRouter)(nil).UpdateLogicalRouter), varargs...)
-}
-
 // CreateLogicalRouterPort mocks base method.
 func (m *MockNbClient) CreateLogicalRouterPort(lrName, lrpName, mac string, networks []string) error {
 	m.ctrl.T.Helper()
@@ -2971,15 +2977,19 @@ func (mr *MockNbClientMockRecorder) DeleteAclsOps(parentName, parentType, direct
 // DeleteAddressSet mocks base method.
 func (m *MockNbClient) DeleteAddressSet(asName ...string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteAddressSet", asName)
+	varargs := []any{}
+	for _, a := range asName {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "DeleteAddressSet", varargs...)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // DeleteAddressSet indicates an expected call of DeleteAddressSet.
-func (mr *MockNbClientMockRecorder) DeleteAddressSet(asName any) *gomock.Call {
+func (mr *MockNbClientMockRecorder) DeleteAddressSet(asName ...any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteAddressSet", reflect.TypeOf((*MockNbClient)(nil).DeleteAddressSet), asName)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteAddressSet", reflect.TypeOf((*MockNbClient)(nil).DeleteAddressSet), asName...)
 }
 
 // DeleteAddressSets mocks base method.
@@ -3283,15 +3293,19 @@ func (mr *MockNbClientMockRecorder) DeleteNats(lrName, natType, logicalIP any) *
 // DeletePortGroup mocks base method.
 func (m *MockNbClient) DeletePortGroup(pgName ...string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeletePortGroup", pgName)
+	varargs := []any{}
+	for _, a := range pgName {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "DeletePortGroup", varargs...)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // DeletePortGroup indicates an expected call of DeletePortGroup.
-func (mr *MockNbClientMockRecorder) DeletePortGroup(pgName any) *gomock.Call {
+func (mr *MockNbClientMockRecorder) DeletePortGroup(pgName ...any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeletePortGroup", reflect.TypeOf((*MockNbClient)(nil).DeletePortGroup), pgName)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeletePortGroup", reflect.TypeOf((*MockNbClient)(nil).DeletePortGroup), pgName...)
 }
 
 // DeleteSecurityGroup mocks base method.
@@ -4581,6 +4595,25 @@ func (mr *MockNbClientMockRecorder) UpdateIngressACLOps(pgName, asIngressName, a
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateIngressACLOps", reflect.TypeOf((*MockNbClient)(nil).UpdateIngressACLOps), pgName, asIngressName, asExceptName, protocol, aclName, npp, logEnable, logACLActions, namedPortMap)
 }
 
+// UpdateLogicalRouter mocks base method.
+func (m *MockNbClient) UpdateLogicalRouter(lr *ovnnb.LogicalRouter, fields ...any) error {
+	m.ctrl.T.Helper()
+	varargs := []any{lr}
+	for _, a := range fields {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "UpdateLogicalRouter", varargs...)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateLogicalRouter indicates an expected call of UpdateLogicalRouter.
+func (mr *MockNbClientMockRecorder) UpdateLogicalRouter(lr any, fields ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{lr}, fields...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateLogicalRouter", reflect.TypeOf((*MockNbClient)(nil).UpdateLogicalRouter), varargs...)
+}
+
 // UpdateLogicalRouterPortOptions mocks base method.
 func (m *MockNbClient) UpdateLogicalRouterPortOptions(lrpName string, options map[string]string) error {
 	m.ctrl.T.Helper()
@@ -4674,6 +4707,7 @@ func (mr *MockNbClientMockRecorder) UpdateSnat(lrName, externalIP, logicalIP any
 type MockSbClient struct {
 	ctrl     *gomock.Controller
 	recorder *MockSbClientMockRecorder
+	isgomock struct{}
 }
 
 // MockSbClientMockRecorder is the mock recorder for MockSbClient.
@@ -4861,6 +4895,7 @@ func (mr *MockSbClientMockRecorder) UpdateChassisTag(chassisName, nodeName any) 
 type MockCommon struct {
 	ctrl     *gomock.Controller
 	recorder *MockCommonMockRecorder
+	isgomock struct{}
 }
 
 // MockCommonMockRecorder is the mock recorder for MockCommon.
@@ -4912,6 +4947,7 @@ func (mr *MockCommonMockRecorder) Transact(method, operations any) *gomock.Call 
 type MockChassis struct {
 	ctrl     *gomock.Controller
 	recorder *MockChassisMockRecorder
+	isgomock struct{}
 }
 
 // MockChassisMockRecorder is the mock recorder for MockChassis.
