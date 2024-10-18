@@ -160,24 +160,25 @@ func (c *OVNNbClient) CreateGatewayACL(lsName, pgName, gateway, u2oInterconnecti
 		gateways = gateways.Insert(strings.Split(u2oInterconnectionIP, ",")...)
 	}
 
+	options := func(acl *ovnnb.ACL) {
+		if acl.Options == nil {
+			acl.Options = make(map[string]string)
+		}
+		acl.Options["apply-after-lb"] = "true"
+	}
+	v6Exists := false
 	for gw := range gateways {
 		protocol := util.CheckProtocol(gw)
 		ipSuffix := "ip4"
 		if protocol == kubeovnv1.ProtocolIPv6 {
 			ipSuffix = "ip6"
+			v6Exists = true
 		}
 
 		allowIngressACL, err := c.newACL(parentName, ovnnb.ACLDirectionToLport, util.IngressAllowPriority, fmt.Sprintf("%s.src == %s", ipSuffix, gw), ovnnb.ACLActionAllowStateless, util.NetpolACLTier)
 		if err != nil {
 			klog.Error(err)
 			return fmt.Errorf("new allow ingress acl for %s: %w", parentName, err)
-		}
-
-		options := func(acl *ovnnb.ACL) {
-			if acl.Options == nil {
-				acl.Options = make(map[string]string)
-			}
-			acl.Options["apply-after-lb"] = "true"
 		}
 
 		allowEgressACL, err := c.newACL(parentName, ovnnb.ACLDirectionFromLport, util.EgressAllowPriority, fmt.Sprintf("%s.dst == %s", ipSuffix, gw), ovnnb.ACLActionAllowStateless, util.NetpolACLTier, options)
@@ -187,16 +188,16 @@ func (c *OVNNbClient) CreateGatewayACL(lsName, pgName, gateway, u2oInterconnecti
 		}
 
 		acls = append(acls, allowIngressACL, allowEgressACL)
+	}
 
-		if ipSuffix == "ip6" {
-			ndACL, err := c.newACL(parentName, ovnnb.ACLDirectionFromLport, util.EgressAllowPriority, "nd || nd_ra || nd_rs", ovnnb.ACLActionAllowStateless, util.NetpolACLTier, options)
-			if err != nil {
-				klog.Error(err)
-				return fmt.Errorf("new nd acl for %s: %w", parentName, err)
-			}
-
-			acls = append(acls, ndACL)
+	if v6Exists {
+		ndACL, err := c.newACL(parentName, ovnnb.ACLDirectionFromLport, util.EgressAllowPriority, "nd || nd_ra || nd_rs", ovnnb.ACLActionAllowStateless, util.NetpolACLTier, options)
+		if err != nil {
+			klog.Error(err)
+			return fmt.Errorf("new nd acl for %s: %w", parentName, err)
 		}
+
+		acls = append(acls, ndACL)
 	}
 
 	if err := c.CreateAcls(parentName, parentType, acls...); err != nil {
@@ -784,7 +785,7 @@ func (c *OVNNbClient) DeleteACL(parentName, parentType, direction, priority, mat
 func (c *OVNNbClient) GetACL(parent, direction, priority, match string, ignoreNotFound bool) (*ovnnb.ACL, error) {
 	// this is necessary because may exist same direction, priority and match acl in different port group or logical switch
 	if len(parent) == 0 {
-		return nil, errors.New("the parent name is required")
+		return nil, errors.New("the port group name or logical switch name is required")
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
@@ -843,7 +844,7 @@ func (c *OVNNbClient) ACLExists(parent, direction, priority, match string) (bool
 // newACL return acl with basic information
 func (c *OVNNbClient) newACL(parent, direction, priority, match, action string, tier int, options ...func(acl *ovnnb.ACL)) (*ovnnb.ACL, error) {
 	if len(parent) == 0 {
-		return nil, errors.New("the parent name is required")
+		return nil, errors.New("the port group name or logical switch name is required")
 	}
 
 	if len(direction) == 0 || len(priority) == 0 || len(match) == 0 || len(action) == 0 {
@@ -887,7 +888,7 @@ func (c *OVNNbClient) newACL(parent, direction, priority, match, action string, 
 // but maybe used for updating network policy acl
 func (c *OVNNbClient) newACLWithoutCheck(parent, direction, priority, match, action string, tier int, options ...func(acl *ovnnb.ACL)) (*ovnnb.ACL, error) {
 	if len(parent) == 0 {
-		return nil, errors.New("the parent name is required")
+		return nil, errors.New("the port group name or logical switch name is required")
 	}
 
 	if len(direction) == 0 || len(priority) == 0 || len(match) == 0 || len(action) == 0 {
