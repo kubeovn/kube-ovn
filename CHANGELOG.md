@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.12.28 (2024-10-18)
+
+ * [368e6eff](https://github.com/kubeovn/kube-ovn/commit/368e6effb26839fb25cbef724e9704ff92f44226) release v1.12.28
+ * [aa7f680d](https://github.com/kubeovn/kube-ovn/commit/aa7f680d803c0c609881ae68c8a218413654e48d) Refactor network policy matching logic (#4626)
+ * [603be721](https://github.com/kubeovn/kube-ovn/commit/603be72104f076d9c3cd79879dce677b5b00164c) team device not set unmanage (#4627)
+ * [cd741a73](https://github.com/kubeovn/kube-ovn/commit/cd741a73be66a4699fb2fd8b8180dfb1d6a1f404) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * changluyi
+
 ## v1.12.27 (2024-10-16)
 
  * [748f8189](https://github.com/kubeovn/kube-ovn/commit/748f8189c996f58126a0002e23631effa89124b3) release v1.12.27
@@ -2902,6 +2914,27 @@
  * 张祖建
  * 罗云鹤
  * 范日明
+
+## v1.9.36 (2024-10-16)
+
+ * [67d448fe](https://github.com/kubeovn/kube-ovn/commit/67d448fe622f750696c2b84b26a871eb30d9474d) release v1.9.36
+ * [751c90ec](https://github.com/kubeovn/kube-ovn/commit/751c90ecc5692afa53c4763309db609efcd9cb69) fix memory overflow, add mac_binding related options to router (#4612)
+ * [b2e3dec0](https://github.com/kubeovn/kube-ovn/commit/b2e3dec0deac8a619c147cf50980dcd0480e7a40) bump go to 1.22.8 (#4584)
+ * [2d7e0ed1](https://github.com/kubeovn/kube-ovn/commit/2d7e0ed13418975c514a28416cd1fdc1edf6e5ee) ci: set trivy db repository to public.ecr.aws/aquasecurity/trivy-db:2 (#4570)
+ * [8d0d6806](https://github.com/kubeovn/kube-ovn/commit/8d0d6806f3c9dbf1522163d8c745f05a23a02992) base: rebuild go binary deps from source (#4524)
+ * [a3f0dbdc](https://github.com/kubeovn/kube-ovn/commit/a3f0dbdcf0dc4dc8015cecfa878af1fce0797806) bump kubectl to v1.30.5
+ * [b0d83671](https://github.com/kubeovn/kube-ovn/commit/b0d836713094e7f3571bd154450c6c8051a25b51) netpol: add allow acl rules for u2o logical gateway (#4420)
+ * [b27912fd](https://github.com/kubeovn/kube-ovn/commit/b27912fd89e466ab5a8fdaa0b75e5e70ed305f7f) Makefile: simplify underlay u2o installation (#4419)
+ * [85aa53ab](https://github.com/kubeovn/kube-ovn/commit/85aa53ab0a47026d53f9372e17c8379ac9c9748a) bump go to 1.22.6
+ * [72d03ac9](https://github.com/kubeovn/kube-ovn/commit/72d03ac910ab90b572f9a31416926d84615fee6f) cni-server: disable udp-fragmentation-offload (#4342)
+ * [8a63e44a](https://github.com/kubeovn/kube-ovn/commit/8a63e44a9fa6e103822db89712966cf1a36e3dba) bump base image
+ * [b62f84fd](https://github.com/kubeovn/kube-ovn/commit/b62f84fd4842d5b6fcc92d99bf7039ed7c52eca5) prepare for next release
+
+### Contributors
+
+ * changluyi
+ * zhangzujian
+ * 张祖建
 
 ## v1.9.35 (2024-07-19)
 
