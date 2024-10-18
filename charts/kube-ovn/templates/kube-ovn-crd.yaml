@@ -2014,6 +2014,10 @@ spec:
                   type: string
                 u2oInterconnectionVPC:
                   type: string
+                mcastQuerierIP:
+                  type: string
+                mcastQuerierMAC:
+                  type: string
                 v4usingIPrange:
                   type: string
                 v4availableIPrange:
