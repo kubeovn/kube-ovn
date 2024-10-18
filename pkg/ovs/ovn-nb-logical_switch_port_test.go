@@ -2069,8 +2069,8 @@ func (suite *OvnClientTestSuite) testSetLogicalSwitchPortMigrateOptions() {
 	t := suite.T()
 	t.Parallel()
 	nbClient := suite.ovnNBClient
-	lspName := "test-migrate-lsp"
-	lsName := "test-migrate-ls"
+	lspName := "test-set-migrate-options-lsp"
+	lsName := "test-set-migrate-options-ls"
 	srcNodeName := "src-node"
 	targetNodeName := "target-node"
 
@@ -2162,8 +2162,8 @@ func (suite *OvnClientTestSuite) testGetLogicalSwitchPortMigrateOptions() {
 	t := suite.T()
 	t.Parallel()
 	nbClient := suite.ovnNBClient
-	lspName := "test-migrate-lsp"
-	lsName := "test-migrate-ls"
+	lspName := "test-get-migrate-options-lsp"
+	lsName := "test-get-migrate-options-ls"
 
 	err := nbClient.CreateBareLogicalSwitch(lsName)
 	require.NoError(t, err)
@@ -2240,8 +2240,8 @@ func (suite *OvnClientTestSuite) testResetLogicalSwitchPortMigrateOptions() {
 	t := suite.T()
 	t.Parallel()
 	nbClient := suite.ovnNBClient
-	lspName := "test-reset-lsp"
-	lsName := "test-reset-ls"
+	lspName := "test-reset-migrate-options-lsp"
+	lsName := "test-reset-migrate-options-ls"
 	srcNodeName := "src-node"
 	targetNodeName := "target-node"
 
@@ -2346,8 +2346,8 @@ func (suite *OvnClientTestSuite) testCleanLogicalSwitchPortMigrateOptions() {
 	t := suite.T()
 	t.Parallel()
 	nbClient := suite.ovnNBClient
-	lspName := "test-clean-lsp"
-	lsName := "test-clean-ls"
+	lspName := "test-clean-migrate-options-lsp"
+	lsName := "test-clean-migrate-options-ls"
 
 	err := nbClient.CreateBareLogicalSwitch(lsName)
 	require.NoError(t, err)
