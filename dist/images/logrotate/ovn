@@ -15,7 +15,7 @@
         # Tell OVN daemons to reopen their log files
         if [ -d /var/run/ovn ]; then
             for ctl in /var/run/ovn/*.ctl; do
-                ovs-appctl -t "$ctl" vlog/reopen 2>/dev/null || :
+                ovn-appctl -t "$ctl" vlog/reopen 2>/dev/null || :
             done
         fi
     endscript
