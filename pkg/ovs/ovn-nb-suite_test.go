@@ -452,6 +452,10 @@ func (suite *OvnClientTestSuite) Test_CreateGatewayChassises() {
 	suite.testCreateGatewayChassises()
 }
 
+func (suite *OvnClientTestSuite) Test_UpdateGatewayChassis() {
+	suite.testUpdateGatewayChassis()
+}
+
 func (suite *OvnClientTestSuite) Test_DeleteGatewayChassises() {
 	suite.testDeleteGatewayChassises()
 }
@@ -467,6 +471,10 @@ func (suite *OvnClientTestSuite) Test_CreateLoadBalancer() {
 
 func (suite *OvnClientTestSuite) Test_UpdateLoadBalancer() {
 	suite.testUpdateLoadBalancer()
+}
+
+func (suite *OvnClientTestSuite) Test_LoadBalancerAddHealthCheck() {
+	suite.testLoadBalancerAddHealthCheck()
 }
 
 func (suite *OvnClientTestSuite) Test_DeleteLoadBalancers() {
@@ -1031,6 +1039,102 @@ func (suite *OvnClientTestSuite) Test_IsUserspaceDataPath() {
 
 func (suite *OvnClientTestSuite) Test_CheckAndUpdateHtbQos() {
 	suite.testCheckAndUpdateHtbQos()
+}
+
+func (suite *OvnClientTestSuite) Test_UpdateOVSVsctlLimiter() {
+	suite.testUpdateOVSVsctlLimiter()
+}
+
+func (suite *OvnClientTestSuite) Test_OvsExec() {
+	suite.testOvsExec()
+}
+
+func (suite *OvnClientTestSuite) Test_OvsCreate() {
+	suite.testOvsCreate()
+}
+
+func (suite *OvnClientTestSuite) Test_OvsDestroy() {
+	suite.testOvsDestroy()
+}
+
+func (suite *OvnClientTestSuite) Test_OvsSet() {
+	suite.testOvsSet()
+}
+
+func (suite *OvnClientTestSuite) Test_OvsAdd() {
+	suite.testOvsAdd()
+}
+
+func (suite *OvnClientTestSuite) Test_OvsFind() {
+	suite.testOvsFind()
+}
+
+func (suite *OvnClientTestSuite) Test_OvsClear() {
+	suite.testOvsClear()
+}
+
+func (suite *OvnClientTestSuite) Test_OvsGet() {
+	suite.testOvsGet()
+}
+
+func (suite *OvnClientTestSuite) Test_OvsFindBridges() {
+	suite.testOvsFindBridges()
+}
+
+func (suite *OvnClientTestSuite) Test_OvsBridgeExists() {
+	suite.testOvsBridgeExists()
+}
+
+func (suite *OvnClientTestSuite) Test_OvsPortExists() {
+	suite.testOvsPortExists()
+}
+
+func (suite *OvnClientTestSuite) Test_GetOvsQosList() {
+	suite.testGetOvsQosList()
+}
+
+func (suite *OvnClientTestSuite) Test_OvsClearPodBandwidth() {
+	suite.testOvsClearPodBandwidth()
+}
+
+func (suite *OvnClientTestSuite) Test_OvsCleanLostInterface() {
+	suite.testOvsCleanLostInterface()
+}
+
+func (suite *OvnClientTestSuite) Test_OvsCleanDuplicatePort() {
+	suite.testOvsCleanDuplicatePort()
+}
+
+func (suite *OvnClientTestSuite) Test_OvsSetPortTag() {
+	suite.testOvsSetPortTag()
+}
+
+func (suite *OvnClientTestSuite) Test_ValidatePortVendor() {
+	suite.testValidatePortVendor()
+}
+
+func (suite *OvnClientTestSuite) Test_GetInterfacePodNs() {
+	suite.testGetInterfacePodNs()
+}
+
+func (suite *OvnClientTestSuite) Test_ConfigInterfaceMirror() {
+	suite.testConfigInterfaceMirror()
+}
+
+func (suite *OvnClientTestSuite) Test_GetResidualInternalPorts() {
+	suite.testGetResidualInternalPorts()
+}
+
+func (suite *OvnClientTestSuite) Test_ClearPortQosBinding() {
+	suite.testClearPortQosBinding()
+}
+
+func (suite *OvnClientTestSuite) Test_OvsListExternalIDs() {
+	suite.testOvsListExternalIDs()
+}
+
+func (suite *OvnClientTestSuite) Test_ListQosQueueIDs() {
+	suite.testListQosQueueIDs()
 }
 
 func Test_scratch(t *testing.T) {
