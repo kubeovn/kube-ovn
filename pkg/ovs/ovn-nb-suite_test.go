@@ -40,18 +40,8 @@ func emptyNbDatabaseModel() (model.ClientDBModel, error) {
 
 func (suite *OvnClientTestSuite) SetupSuite() {
 	fmt.Println("set up ovn client test suite")
-	// setup ovn nb client
+	// setup ovn nb client schema
 	nbClientSchema := ovnnb.Schema()
-	nbClientDBModel, err := ovnnb.FullDatabaseModel()
-	require.NoError(suite.T(), err)
-
-	_, nbSock := newOVSDBServer(suite.T(), nbClientDBModel, nbClientSchema)
-	nbEndpoint := fmt.Sprintf("unix:%s", nbSock)
-	require.FileExists(suite.T(), nbSock)
-
-	ovnNBClient, err := newOvnNbClient(suite.T(), nbEndpoint, 10)
-	require.NoError(suite.T(), err)
-	suite.ovnNBClient = ovnNBClient
 
 	// setup failed case ovn nb client
 	emptyNbDBModel, err := emptyNbDatabaseModel()
@@ -66,6 +56,18 @@ func (suite *OvnClientTestSuite) SetupSuite() {
 	// close the server to simulate the failed case
 	server1.Close()
 	require.NoFileExists(suite.T(), nbSock1)
+
+	// setup ovn nb client
+	nbClientDBModel, err := ovnnb.FullDatabaseModel()
+	require.NoError(suite.T(), err)
+
+	_, nbSock := newOVSDBServer(suite.T(), nbClientDBModel, nbClientSchema)
+	nbEndpoint := fmt.Sprintf("unix:%s", nbSock)
+	require.FileExists(suite.T(), nbSock)
+
+	ovnNBClient, err := newOvnNbClient(suite.T(), nbEndpoint, 10)
+	require.NoError(suite.T(), err)
+	suite.ovnNBClient = ovnNBClient
 
 	// setup ovn sb client
 	sbClientSchema := ovnsb.Schema()
