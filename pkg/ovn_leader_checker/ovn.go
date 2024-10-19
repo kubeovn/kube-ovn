@@ -194,7 +194,7 @@ func checkNorthdActive() bool {
 		fmt.Sprintf("/var/run/ovn/ovn-northd.%s.ctl", strings.TrimSpace(string(pid))),
 		"status",
 	}
-	output, err := exec.Command("ovs-appctl", command...).CombinedOutput() // #nosec G204
+	output, err := exec.Command("ovn-appctl", command...).CombinedOutput() // #nosec G204
 	if err != nil {
 		klog.Errorf("checkNorthdActive execute err %v error msg %v", err, string(output))
 		return false
