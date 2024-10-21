@@ -5,6 +5,8 @@ import (
 	"net"
 	"net/http"
 	"net/rpc"
+
+	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 )
 
 type Server struct {
@@ -30,7 +32,11 @@ func NewServer(addr string, rcvr any) (*Server, error) {
 		return nil, fmt.Errorf("failed to listen on %q: %w", addr, err)
 	}
 
-	go http.Serve(listener, nil)
+	go func() {
+		if err := http.Serve(listener, nil); err != nil {
+			framework.Failf("failed to serve rpc: %v", err)
+		}
+	}()
 
 	return &Server{listener: listener}, nil
 }
