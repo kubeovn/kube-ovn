@@ -11,6 +11,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
+	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/kubernetes/test/e2e/framework"
 
@@ -22,13 +23,17 @@ import (
 
 // NamespaceClient is a struct for namespace  client.
 type NamespaceClient struct {
-	f *Framework
 	v1core.NamespaceInterface
+}
+
+func NewNamespaceClient(cs clientset.Interface) *NamespaceClient {
+	return &NamespaceClient{
+		NamespaceInterface: cs.CoreV1().Namespaces(),
+	}
 }
 
 func (f *Framework) NamespaceClient() *NamespaceClient {
 	return &NamespaceClient{
-		f:                  f,
 		NamespaceInterface: f.ClientSet.CoreV1().Namespaces(),
 	}
 }
