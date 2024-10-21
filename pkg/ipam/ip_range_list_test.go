@@ -26,7 +26,11 @@ func TestNewIPRangeList(t *testing.T) {
 	v4RangeEnd2, err := NewIP("10.0.0.18")
 	require.NoError(t, err)
 
-	v4, err := NewIPRangeList(v4RangeStart1, v4RangeEnd1, v4RangeStart2, v4RangeEnd2)
+	v4, err := NewIPRangeList(v4RangeStart1)
+	require.ErrorContains(t, err, "length of ips must be an even number")
+	require.Nil(t, v4)
+
+	v4, err = NewIPRangeList(v4RangeStart1, v4RangeEnd1, v4RangeStart2, v4RangeEnd2)
 	require.NoError(t, err)
 
 	fakeV4RangeItem1, err := NewIP("10.0.0.4")
@@ -837,6 +841,22 @@ func TestNewIPRangeListFrom(t *testing.T) {
 			require.True(t, ipList.Contains(end.Sub(1)))
 		}
 	}
+
+	ipList, err = NewIPRangeListFrom("192.168.1.2..192.168.1.1")
+	require.ErrorContains(t, err, "invalid ip range \"192.168.1.2..192.168.1.1\": 192.168.1.2 is greater than 192.168.1.1")
+	require.Nil(t, ipList)
+
+	ipList, err = NewIPRangeListFrom("invalidIP..192.168.1.1")
+	require.ErrorContains(t, err, "invalid IP address")
+	require.Nil(t, ipList)
+
+	ipList, err = NewIPRangeListFrom("192.168.1.2..invalidIP")
+	require.ErrorContains(t, err, "invalid IP address")
+	require.Nil(t, ipList)
+
+	ipList, err = NewIPRangeListFrom("invalidCIDR/24")
+	require.ErrorContains(t, err, "invalid CIDR address: invalidCIDR/24")
+	require.Nil(t, ipList)
 }
 
 func TestRemove(t *testing.T) {
@@ -1139,4 +1159,67 @@ func TestEqual(t *testing.T) {
 
 	v6RL5 := NewEmptyIPRangeList()
 	require.False(t, v6RangeList1.Equal(v6RL5))
+}
+
+func TestAllocate(t *testing.T) {
+	v4RangeStart, err := NewIP("10.0.0.1")
+	require.NoError(t, err)
+	v4RangeEnd, err := NewIP("10.0.0.4")
+	require.NoError(t, err)
+	v4Range := NewIPRange(v4RangeStart, v4RangeEnd)
+	v4RangeList := NewEmptyIPRangeList().MergeRange(v4Range)
+
+	t.Run("Allocate from empty range", func(t *testing.T) {
+		emptyRange := NewEmptyIPRangeList()
+		allocated := emptyRange.Allocate(nil)
+		require.Nil(t, allocated)
+	})
+
+	t.Run("Allocate without skipped IPs", func(t *testing.T) {
+		allocated := v4RangeList.Allocate(nil)
+		require.Equal(t, "10.0.0.1", allocated.String())
+		require.False(t, v4RangeList.Contains(allocated))
+	})
+
+	t.Run("Allocate with skipped IPs", func(t *testing.T) {
+		skipped1, err := NewIP("10.0.0.2")
+		require.NoError(t, err)
+		skipped2, err := NewIP("10.0.0.3")
+		require.NoError(t, err)
+		allocated := v4RangeList.Allocate([]IP{skipped1, skipped2})
+		require.Equal(t, "10.0.0.4", allocated.String())
+		require.False(t, v4RangeList.Contains(allocated))
+	})
+
+	t.Run("Allocate all IPs", func(t *testing.T) {
+		skipped1, err := NewIP("10.0.0.1")
+		require.NoError(t, err)
+		skipped2, err := NewIP("10.0.0.2")
+		require.NoError(t, err)
+		skipped3, err := NewIP("10.0.0.3")
+		require.NoError(t, err)
+		skipped4, err := NewIP("10.0.0.4")
+		require.NoError(t, err)
+		allocated := v4RangeList.Allocate([]IP{skipped1, skipped2, skipped3, skipped4})
+		require.Nil(t, allocated)
+	})
+
+	t.Run("Allocate from IPv6 range", func(t *testing.T) {
+		v6RangeStart, err := NewIP("2001:db8::1")
+		require.NoError(t, err)
+		v6RangeEnd, err := NewIP("2001:db8::10")
+		require.NoError(t, err)
+		v6Range := NewIPRange(v6RangeStart, v6RangeEnd)
+		v6RangeList := NewEmptyIPRangeList().MergeRange(v6Range)
+
+		allocated := v6RangeList.Allocate(nil)
+		require.Equal(t, "2001:db8::1", allocated.String())
+		require.False(t, v6RangeList.Contains(allocated))
+
+		skipped, err := NewIP("2001:db8::2")
+		require.NoError(t, err)
+		allocated = v6RangeList.Allocate([]IP{skipped})
+		require.Equal(t, "2001:db8::3", allocated.String())
+		require.False(t, v6RangeList.Contains(allocated))
+	})
 }
