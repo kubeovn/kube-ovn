@@ -666,6 +666,11 @@ func (c *OVNNbClient) DeleteLogicalSwitchPorts(externalIDs map[string]string, fi
 
 // GetLogicalSwitchPort get logical switch port by name
 func (c *OVNNbClient) GetLogicalSwitchPort(lspName string, ignoreNotFound bool) (*ovnnb.LogicalSwitchPort, error) {
+	if lspName == "" {
+		err := errors.New("logical switch port name is empty")
+		klog.Error(err)
+		return nil, err
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
 	defer cancel()
 	lsp := &ovnnb.LogicalSwitchPort{Name: lspName}

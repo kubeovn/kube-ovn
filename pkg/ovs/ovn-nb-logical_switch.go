@@ -2,6 +2,7 @@ package ovs
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -230,6 +231,11 @@ func (c *OVNNbClient) DeleteLogicalSwitch(lsName string) error {
 // GetLogicalSwitch get logical switch by name,
 // it is because of lack name index that does't use OVNNbClient.Get
 func (c *OVNNbClient) GetLogicalSwitch(lsName string, ignoreNotFound bool) (*ovnnb.LogicalSwitch, error) {
+	if lsName == "" {
+		err := errors.New("empty logical switch name")
+		klog.Error(err)
+		return nil, err
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
 	defer cancel()
 
