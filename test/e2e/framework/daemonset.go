@@ -15,6 +15,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
+	clientset "k8s.io/client-go/kubernetes"
 	v1apps "k8s.io/client-go/kubernetes/typed/apps/v1"
 	"k8s.io/kubectl/pkg/polymorphichelpers"
 
@@ -22,9 +23,17 @@ import (
 )
 
 type DaemonSetClient struct {
-	f *Framework
+	clientSet clientset.Interface
 	v1apps.DaemonSetInterface
 	namespace string
+}
+
+func NewDaemonSetClient(cs clientset.Interface, namespace string) *DaemonSetClient {
+	return &DaemonSetClient{
+		clientSet:          cs,
+		DaemonSetInterface: cs.AppsV1().DaemonSets(namespace),
+		namespace:          namespace,
+	}
 }
 
 func (f *Framework) DaemonSetClient() *DaemonSetClient {
@@ -33,7 +42,7 @@ func (f *Framework) DaemonSetClient() *DaemonSetClient {
 
 func (f *Framework) DaemonSetClientNS(namespace string) *DaemonSetClient {
 	return &DaemonSetClient{
-		f:                  f,
+		clientSet:          f.ClientSet,
 		DaemonSetInterface: f.ClientSet.AppsV1().DaemonSets(namespace),
 		namespace:          namespace,
 	}
@@ -52,7 +61,7 @@ func (c *DaemonSetClient) GetPods(ds *appsv1.DaemonSet) (*corev1.PodList, error)
 		return nil, err
 	}
 	podListOptions := metav1.ListOptions{LabelSelector: podSelector.String()}
-	allPods, err := c.f.ClientSet.CoreV1().Pods(ds.Namespace).List(context.TODO(), podListOptions)
+	allPods, err := c.clientSet.CoreV1().Pods(ds.Namespace).List(context.TODO(), podListOptions)
 	if err != nil {
 		return nil, err
 	}
