@@ -521,9 +521,21 @@ func (suite *OvnClientTestSuite) Test_LoadBalancerWithHealthCheck() {
 	suite.testLoadBalancerWithHealthCheck()
 }
 
+func (suite *OvnClientTestSuite) Test_LoadBalancerOp() {
+	suite.testLoadBalancerOp()
+}
+
+func (suite *OvnClientTestSuite) Test_LoadBalancerUpdateHealthCheckOp() {
+	suite.testLoadBalancerUpdateHealthCheckOp()
+}
+
 /* load_balancer health check unit test */
 func (suite *OvnClientTestSuite) Test_CreateLoadBalancerHealthCheck() {
 	suite.testAddLoadBalancerHealthCheck()
+}
+
+func (suite *OvnClientTestSuite) Test_NewLoadBalancerHealthCheck() {
+	suite.testNewLoadBalancerHealthCheck()
 }
 
 func (suite *OvnClientTestSuite) Test_UpdateLoadBalancerHealthCheck() {

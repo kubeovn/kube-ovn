@@ -9,6 +9,7 @@ import (
 	"github.com/ovn-org/libovsdb/ovsdb"
 	"github.com/stretchr/testify/require"
 
+	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 )
 
@@ -45,6 +46,14 @@ func (suite *OvnClientTestSuite) testAddLoadBalancerHealthCheck() {
 	require.NotEmpty(t, lbhcRepeat.UUID)
 
 	require.Equal(t, lbhc.UUID, lbhcRepeat.UUID)
+
+	// create lbhc with empty lbName
+	err = nbClient.AddLoadBalancerHealthCheck("", vip, map[string]string{})
+	require.ErrorContains(t, err, "the lb name is required")
+
+	// create lbhc with empty vip
+	err = nbClient.AddLoadBalancerHealthCheck(lbName, "", map[string]string{})
+	require.ErrorContains(t, err, "the vip endpoint is required")
 }
 
 func (suite *OvnClientTestSuite) testUpdateLoadBalancerHealthCheck() {
@@ -94,6 +103,10 @@ func (suite *OvnClientTestSuite) testDeleteLoadBalancerHealthCheck() {
 		vip      = "1.1.1.11:80"
 		err      error
 	)
+
+	// delete lbhc for non-exist lb
+	err = nbClient.DeleteLoadBalancerHealthCheck(lbName, vip)
+	require.ErrorContains(t, err, "not found load balancer")
 
 	err = nbClient.CreateLoadBalancer(lbName, "tcp", "ip_dst")
 	require.NoError(t, err)
@@ -200,6 +213,43 @@ func (suite *OvnClientTestSuite) testGetLoadBalancerHealthCheck() {
 			t.Parallel()
 			_, _, err := nbClient.GetLoadBalancerHealthCheck(lbName, vipNonExistent, true)
 			require.NoError(t, err)
+		},
+	)
+
+	t.Run("should return err when health checks have the same vipEndpoint",
+		func(t *testing.T) {
+			t.Parallel()
+			err = nbClient.CreateLoadBalancer(lbName+"1", "tcp", "")
+			require.NoError(t, err)
+			lbhc1 := &ovnnb.LoadBalancerHealthCheck{
+				UUID:        ovsclient.NamedUUID(),
+				ExternalIDs: nil,
+				Options: map[string]string{
+					"timeout":       "20",
+					"interval":      "5",
+					"success_count": "3",
+					"failure_count": "3",
+				},
+				Vip: vip,
+			}
+			lbhc2 := &ovnnb.LoadBalancerHealthCheck{
+				UUID:        ovsclient.NamedUUID(),
+				ExternalIDs: nil,
+				Options: map[string]string{
+					"timeout":       "20",
+					"interval":      "5",
+					"success_count": "3",
+					"failure_count": "3",
+				},
+				Vip: vip,
+			}
+			err = nbClient.CreateLoadBalancerHealthCheck(lbName+"1", vip, lbhc1)
+			require.NoError(t, err)
+			err = nbClient.CreateLoadBalancerHealthCheck(lbName+"1", vip, lbhc2)
+			require.NoError(t, err)
+
+			_, _, err := nbClient.GetLoadBalancerHealthCheck(lbName+"1", vip, true)
+			require.ErrorContains(t, err, "lb test-get-lb-hc1 has more than one health check with the same vip 1.1.1.22:80")
 		},
 	)
 }
@@ -367,4 +417,60 @@ func (suite *OvnClientTestSuite) testDeleteLoadBalancerHealthCheckOp() {
 			require.Len(t, ops, 0)
 		},
 	)
+}
+
+func (suite *OvnClientTestSuite) testNewLoadBalancerHealthCheck() {
+	t := suite.T()
+	t.Parallel()
+
+	var (
+		nbClient = suite.ovnNBClient
+		lbName   = "test-new-lb-hc"
+		vip      = "4.4.4.4:80"
+	)
+
+	t.Run("create new load balancer health check", func(t *testing.T) {
+		externals := map[string]string{"key1": "value1", "key2": "value2"}
+		lbhc, err := nbClient.newLoadBalancerHealthCheck(lbName, vip, externals)
+		require.ErrorContains(t, err, "not found load balancer")
+
+		err = nbClient.CreateLoadBalancer(lbName, "tcp", "")
+		require.NoError(t, err)
+
+		lbhc, err = nbClient.newLoadBalancerHealthCheck(lbName, vip, externals)
+		require.NoError(t, err)
+		require.NotNil(t, lbhc)
+		require.Equal(t, vip, lbhc.Vip)
+		require.Equal(t, externals, lbhc.ExternalIDs)
+		require.Equal(t, "20", lbhc.Options["timeout"])
+		require.Equal(t, "5", lbhc.Options["interval"])
+		require.Equal(t, "3", lbhc.Options["success_count"])
+		require.Equal(t, "3", lbhc.Options["failure_count"])
+	})
+
+	t.Run("create with empty lb name", func(t *testing.T) {
+		lbhc, err := nbClient.newLoadBalancerHealthCheck("", vip, nil)
+		require.Error(t, err)
+		require.Nil(t, lbhc)
+		require.Contains(t, err.Error(), "the lb name is required")
+	})
+
+	t.Run("create with empty vip", func(t *testing.T) {
+		lbhc, err := nbClient.newLoadBalancerHealthCheck(lbName, "", nil)
+		require.Error(t, err)
+		require.Nil(t, lbhc)
+		require.Contains(t, err.Error(), "the vip endpoint is required")
+	})
+
+	t.Run("create existing health check", func(t *testing.T) {
+		err := nbClient.CreateLoadBalancer(lbName, "tcp", "ip_dst")
+		require.NoError(t, err)
+
+		err = nbClient.AddLoadBalancerHealthCheck(lbName, vip, nil)
+		require.NoError(t, err)
+
+		lbhc, err := nbClient.newLoadBalancerHealthCheck(lbName, vip, nil)
+		require.NoError(t, err)
+		require.Nil(t, lbhc)
+	})
 }

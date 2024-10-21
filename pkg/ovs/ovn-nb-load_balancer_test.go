@@ -8,9 +8,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ovn-org/libovsdb/model"
 	"github.com/ovn-org/libovsdb/ovsdb"
 	"github.com/stretchr/testify/require"
 
+	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 )
 
@@ -283,6 +285,38 @@ func (suite *OvnClientTestSuite) testDeleteLoadBalancerOp() {
 		require.NoError(t, err)
 		require.Len(t, ops, 0)
 	})
+
+	t.Run("Create load balancer when multiple load balancer exist", func(t *testing.T) {
+		t.Parallel()
+
+		lbName := "test-delete-lb-op-duplicate"
+		// create load balancer
+		lb1 := &ovnnb.LoadBalancer{
+			UUID:     ovsclient.NamedUUID(),
+			Name:     lbName,
+			Protocol: &ovnnb.LoadBalancerProtocolTCP,
+		}
+		ops, err := nbClient.ovsDbClient.Create(lb1)
+		require.NoError(t, err)
+		require.NotNil(t, ops)
+		err = nbClient.Transact("lb-add", ops)
+		require.NoError(t, err)
+
+		lb2 := &ovnnb.LoadBalancer{
+			UUID:     ovsclient.NamedUUID(),
+			Name:     lbName,
+			Protocol: &ovnnb.LoadBalancerProtocolTCP,
+		}
+		ops, err = nbClient.ovsDbClient.Create(lb2)
+		require.NoError(t, err)
+		require.NotNil(t, ops)
+		err = nbClient.Transact("lb-add", ops)
+		require.NoError(t, err)
+
+		ops, err = nbClient.DeleteLoadBalancerOp(lbName)
+		require.ErrorContains(t, err, "more than one load balancer with same name")
+		require.Nil(t, ops)
+	})
 }
 
 func (suite *OvnClientTestSuite) testSetLoadBalancerAffinityTimeout() {
@@ -324,6 +358,37 @@ func (suite *OvnClientTestSuite) testSetLoadBalancerAffinityTimeout() {
 
 		require.Equal(t, lb.Options["affinity_timeout"], strconv.Itoa(expectedTimeout))
 	})
+
+	t.Run("set loadbalancer affinity timeout when multiple load balancer exist",
+		func(t *testing.T) {
+			lbName := "test-set-lb-affinity"
+			// create load balancer
+			lb1 := &ovnnb.LoadBalancer{
+				UUID:     ovsclient.NamedUUID(),
+				Name:     lbName,
+				Protocol: &ovnnb.LoadBalancerProtocolTCP,
+			}
+			ops, err := nbClient.ovsDbClient.Create(lb1)
+			require.NoError(t, err)
+			require.NotNil(t, ops)
+			err = nbClient.Transact("lb-add", ops)
+			require.NoError(t, err)
+
+			lb2 := &ovnnb.LoadBalancer{
+				UUID:     ovsclient.NamedUUID(),
+				Name:     lbName,
+				Protocol: &ovnnb.LoadBalancerProtocolTCP,
+			}
+			ops, err = nbClient.ovsDbClient.Create(lb2)
+			require.NoError(t, err)
+			require.NotNil(t, ops)
+			err = nbClient.Transact("lb-add", ops)
+			require.NoError(t, err)
+
+			err = nbClient.SetLoadBalancerAffinityTimeout(lbName, expectedTimeout)
+			require.ErrorContains(t, err, "more than one load balancer with same name")
+		},
+	)
 }
 
 func (suite *OvnClientTestSuite) testLoadBalancerAddVip() {
@@ -387,6 +452,13 @@ func (suite *OvnClientTestSuite) testLoadBalancerAddVip() {
 			require.Equal(t, lb.Vips, expectedVips)
 		},
 	)
+
+	t.Run("add new vips to non-exist load balancer",
+		func(t *testing.T) {
+			err := nbClient.LoadBalancerAddVip("non-exist-lb", "10.96.0.2:443", "192.168.20.3:6443")
+			require.ErrorContains(t, err, "not found load balancer")
+		},
+	)
 }
 
 func (suite *OvnClientTestSuite) testLoadBalancerAddHealthCheck() {
@@ -394,14 +466,15 @@ func (suite *OvnClientTestSuite) testLoadBalancerAddHealthCheck() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
-	lbName := "test-add-hc-lb"
-	vips := map[string]string{
-		"10.96.0.5:443":           "192.168.20.3:6443",
-		"10.107.43.241:8080":      "10.244.0.15:8080,10.244.0.16:8080,10.244.0.17:8080",
-		"[fd00:10:96::e86f]:8080": "[fc00::af4:a]:8080,[fc00::af4:b]:8080,[fc00::af4:c]:8080",
-	}
+
 	t.Run("add health check to load balancer",
 		func(t *testing.T) {
+			lbName := "test-add-hc-lb"
+			vips := map[string]string{
+				"10.96.0.5:443":           "192.168.20.3:6443",
+				"10.107.43.241:8080":      "10.244.0.15:8080,10.244.0.16:8080,10.244.0.17:8080",
+				"[fd00:10:96::e86f]:8080": "[fc00::af4:a]:8080,[fc00::af4:b]:8080,[fc00::af4:c]:8080",
+			}
 			// create load balancer
 			err := nbClient.CreateLoadBalancer(lbName, "tcp", "")
 			require.NoError(t, err)
@@ -425,6 +498,37 @@ func (suite *OvnClientTestSuite) testLoadBalancerAddHealthCheck() {
 				require.NoError(t, err)
 				require.NotNil(t, lb.HealthCheck)
 			}
+		},
+	)
+
+	t.Run("create load balancer when multiple load balancer exist",
+		func(t *testing.T) {
+			lbName := "test-create-lb"
+			// create load balancer
+			lb1 := &ovnnb.LoadBalancer{
+				UUID:     ovsclient.NamedUUID(),
+				Name:     lbName,
+				Protocol: &ovnnb.LoadBalancerProtocolTCP,
+			}
+			ops, err := nbClient.ovsDbClient.Create(lb1)
+			require.NoError(t, err)
+			require.NotNil(t, ops)
+			err = nbClient.Transact("lb-add", ops)
+			require.NoError(t, err)
+
+			lb2 := &ovnnb.LoadBalancer{
+				UUID:     ovsclient.NamedUUID(),
+				Name:     lbName,
+				Protocol: &ovnnb.LoadBalancerProtocolTCP,
+			}
+			ops, err = nbClient.ovsDbClient.Create(lb2)
+			require.NoError(t, err)
+			require.NotNil(t, ops)
+			err = nbClient.Transact("lb-add", ops)
+			require.NoError(t, err)
+
+			err = nbClient.CreateLoadBalancer(lbName, "tcp", "")
+			require.ErrorContains(t, err, "more than one load balancer with same name")
 		},
 	)
 }
@@ -474,6 +578,43 @@ func (suite *OvnClientTestSuite) testLoadBalancerDeleteVip() {
 	lb, err = nbClient.GetLoadBalancer(lbName, false)
 	require.NoError(t, err)
 	require.Equal(t, vips, lb.Vips)
+
+	err = nbClient.LoadBalancerAddHealthCheck(lbName, "10.107.43.239:8080", false, nil, nil)
+	require.NoError(t, err)
+
+	err = nbClient.LoadBalancerDeleteVip(lbName, "10.107.43.239:8080", false)
+	require.NoError(t, err)
+
+	// delete vip when lb.Vips is empty
+	err = nbClient.LoadBalancerDeleteVip(lbName, "10.107.43.239:8080", false)
+	require.NoError(t, err)
+
+	// delete vip when multiple load balancer exist
+	lbName = "test-delete-lb-vip"
+	lb1 := &ovnnb.LoadBalancer{
+		UUID:     ovsclient.NamedUUID(),
+		Name:     lbName,
+		Protocol: &ovnnb.LoadBalancerProtocolTCP,
+	}
+	ops, err := nbClient.ovsDbClient.Create(lb1)
+	require.NoError(t, err)
+	require.NotNil(t, ops)
+	err = nbClient.Transact("lb-add", ops)
+	require.NoError(t, err)
+
+	lb2 := &ovnnb.LoadBalancer{
+		UUID:     ovsclient.NamedUUID(),
+		Name:     lbName,
+		Protocol: &ovnnb.LoadBalancerProtocolTCP,
+	}
+	ops, err = nbClient.ovsDbClient.Create(lb2)
+	require.NoError(t, err)
+	require.NotNil(t, ops)
+	err = nbClient.Transact("lb-add", ops)
+	require.NoError(t, err)
+
+	err = nbClient.LoadBalancerDeleteVip(lbName, "10.107.43.239:8080", ignoreHealthCheck)
+	require.ErrorContains(t, err, "more than one load balancer with same name")
 }
 
 func (suite *OvnClientTestSuite) testLoadBalancerAddIPPortMapping() {
@@ -570,6 +711,13 @@ func (suite *OvnClientTestSuite) testLoadBalancerAddIPPortMapping() {
 					require.Contains(t, lb.IPPortMappings, backend)
 				}
 			}
+		},
+	)
+
+	t.Run("add nil port mappings to load balancer",
+		func(t *testing.T) {
+			err = nbClient.LoadBalancerAddIPPortMapping(lbName, "", nil)
+			require.NoError(t, err)
 		},
 	)
 }
@@ -837,4 +985,115 @@ func (suite *OvnClientTestSuite) testLoadBalancerWithHealthCheck() {
 			require.NotContains(t, lb.HealthCheck, lbhcID)
 		},
 	)
+
+	t.Run("delete health check from non-exist load balancer",
+		func(t *testing.T) {
+			err = nbClient.LoadBalancerDeleteHealthCheck("non-exist-lbName", lbhcID)
+			require.ErrorContains(t, err, "not found load balancer")
+		},
+	)
+}
+
+func (suite *OvnClientTestSuite) testLoadBalancerOp() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+	lbName := "test-lb-op"
+
+	err := nbClient.CreateLoadBalancer(lbName, "tcp", "")
+	require.NoError(t, err)
+
+	t.Run("no mutations", func(t *testing.T) {
+		ops, err := nbClient.LoadBalancerOp(lbName)
+		require.NoError(t, err)
+		require.Empty(t, ops)
+	})
+
+	t.Run("single mutation", func(t *testing.T) {
+		mutationFunc := func(lb *ovnnb.LoadBalancer) []model.Mutation {
+			return []model.Mutation{
+				{
+					Field:   &lb.HealthCheck,
+					Value:   []string{},
+					Mutator: ovsdb.MutateOperationDelete,
+				},
+			}
+		}
+
+		ops, err := nbClient.LoadBalancerOp(lbName, mutationFunc)
+		require.NoError(t, err)
+		require.Len(t, ops, 1)
+		require.Equal(t, ovsdb.OperationMutate, ops[0].Op)
+	})
+
+	t.Run("multiple mutations", func(t *testing.T) {
+		mutationFunc1 := func(lb *ovnnb.LoadBalancer) []model.Mutation {
+			return []model.Mutation{
+				{
+					Field:   &lb.HealthCheck,
+					Value:   []string{},
+					Mutator: ovsdb.MutateOperationDelete,
+				},
+			}
+		}
+		mutationFunc2 := func(lb *ovnnb.LoadBalancer) []model.Mutation {
+			return []model.Mutation{
+				{
+					Field:   &lb.Options,
+					Value:   map[string]string{"skip_snat": "true"},
+					Mutator: ovsdb.MutateOperationInsert,
+				},
+			}
+		}
+
+		ops, err := nbClient.LoadBalancerOp(lbName, mutationFunc1, mutationFunc2)
+		require.NoError(t, err)
+		require.Len(t, ops, 1)
+		require.Equal(t, ovsdb.OperationMutate, ops[0].Op)
+		require.Len(t, ops[0].Mutations, 2)
+	})
+
+	t.Run("empty mutation", func(t *testing.T) {
+		mutationFunc := func(lb *ovnnb.LoadBalancer) []model.Mutation {
+			return []model.Mutation{}
+		}
+
+		ops, err := nbClient.LoadBalancerOp(lbName, mutationFunc)
+		require.NoError(t, err)
+		require.Empty(t, ops)
+	})
+
+	t.Run("non-existent load balancer", func(t *testing.T) {
+		mutationFunc := func(lb *ovnnb.LoadBalancer) []model.Mutation {
+			return []model.Mutation{
+				{
+					Field:   &lb.HealthCheck,
+					Value:   []string{},
+					Mutator: ovsdb.MutateOperationDelete,
+				},
+			}
+		}
+
+		ops, err := nbClient.LoadBalancerOp("non-existent-lb", mutationFunc)
+		require.Error(t, err)
+		require.Nil(t, ops)
+	})
+}
+
+func (suite *OvnClientTestSuite) testLoadBalancerUpdateHealthCheckOp() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+	lbName := "test-lb-update-hc-op"
+
+	err := nbClient.CreateLoadBalancer(lbName, "tcp", "")
+	require.NoError(t, err)
+
+	t.Run("empty lbhcUUIDs", func(t *testing.T) {
+		ops, err := nbClient.LoadBalancerUpdateHealthCheckOp(lbName, []string{}, ovsdb.MutateOperationInsert)
+		require.NoError(t, err)
+		require.Nil(t, ops)
+	})
 }
