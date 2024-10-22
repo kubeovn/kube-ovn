@@ -32,9 +32,9 @@ const (
 
 func getOVSSystemID() (string, error) {
 	cmd := exec.Command("ovs-vsctl", "--retry", "-t", "60", "get", "Open_vSwitch", ".", "external-ids:system-id")
-	output, err := cmd.Output()
+	output, err := cmd.CombinedOutput()
 	if err != nil {
-		klog.Errorf("failed to get ovs system id: %v", err)
+		klog.Errorf("failed to get ovs system id: %v, output: %s", err, string(output))
 		return "", err
 	}
 	systemID := strings.ReplaceAll(string(output), "\"", "")
@@ -79,9 +79,9 @@ func generateCSRCode() ([]byte, error) {
 
 	klog.Infof("ovs system id: %s", cn)
 	cmd := exec.Command("openssl", "genrsa", "-out", ipsecPrivKeyPath, "2048")
-	err = cmd.Run()
+	output, err := cmd.CombinedOutput()
 	if err != nil {
-		klog.Errorf("failed to generate private key: %v", err)
+		klog.Errorf("failed to generate private key: %v, output: %s", err, string(output))
 		return nil, err
 	}
 
@@ -99,9 +99,9 @@ func generateCSRCode() ([]byte, error) {
 		"-subj", fmt.Sprintf("/C=CN/O=kubeovn/OU=kind/CN=%s", cn),
 		"-key", ipsecPrivKeyPath,
 		"-out", ipsecReqPath) // #nosec
-	err = cmd.Run()
+	output, err = cmd.CombinedOutput()
 	if err != nil {
-		klog.Errorf("failed to generate csr: %v", err)
+		klog.Errorf("failed to generate csr: %v, output: %s", err, string(output))
 		return nil, err
 	}
 
@@ -171,9 +171,9 @@ func (c *Controller) createCSR(csrBytes []byte) error {
 	}
 	cmd.Stdin = &stdinBuf
 
-	_, err := cmd.CombinedOutput()
+	output, err := cmd.CombinedOutput()
 	if err != nil {
-		klog.Errorf("failed to generate cert: %v", err)
+		klog.Errorf("failed to generate cert: %v, output: %s", err, string(output))
 		return err
 	}
 
@@ -184,8 +184,8 @@ func (c *Controller) createCSR(csrBytes []byte) error {
 		return err
 	}
 
-	output := secret.Data["cacert"]
-	if err := os.WriteFile(ipsecCACertPath, output, 0o600); err != nil {
+	output = secret.Data["cacert"]
+	if err = os.WriteFile(ipsecCACertPath, output, 0o600); err != nil {
 		klog.Errorf("failed to write file: %v", err)
 		return err
 	}
@@ -212,18 +212,18 @@ func configureOVSWithIPSecKeys() error {
 
 func unconfigureOVSWithIPSecKeys() error {
 	cmd := exec.Command("ovs-vsctl", "--retry", "-t", "60", "remove", "Open_vSwitch", ".", "other_config", "certificate")
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to unset OVS certificate: %w", err)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to unset OVS certificate: %s: %w", string(output), err)
 	}
 
 	cmd = exec.Command("ovs-vsctl", "--retry", "-t", "60", "remove", "Open_vSwitch", ".", "other_config", "private_key")
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to unset OVS private key: %w", err)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to unset OVS private key: %s: %w", string(output), err)
 	}
 
 	cmd = exec.Command("ovs-vsctl", "--retry", "-t", "60", "remove", "Open_vSwitch", ".", "other_config", "ca_cert")
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to unset OVS CA certificate: %w", err)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to unset OVS CA certificate: %s: %w", string(output), err)
 	}
 	return nil
 }
@@ -240,8 +240,9 @@ func linkCACertToIPSecDir() error {
 	}
 
 	cmd := exec.Command("ln", "-s", ipsecCACertPath, targetPath)
-	if err := cmd.Run(); err != nil {
-		klog.Errorf("failed to link cacert: %v", err)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		klog.Errorf("failed to link cacert: %v, output: %s", err, string(output))
 		return err
 	}
 
@@ -370,15 +371,15 @@ func (c *Controller) RemoveIPSecKeys() error {
 }
 
 func (c *Controller) FlushIPxfrmRule() error {
-	cmd := exec.Command("ip", "xfrm", "policy", "flush")
-	if err := cmd.Run(); err != nil {
-		klog.Errorf("flush ip xfrm policy rule error: %v", err)
+	output, err := exec.Command("ip", "xfrm", "policy", "flush").CombinedOutput()
+	if err != nil {
+		klog.Errorf("flush ip xfrm policy rule error: %v, output: %s", err, string(output))
 		return err
 	}
 
-	cmd = exec.Command("ip", "xfrm", "state", "flush")
-	if err := cmd.Run(); err != nil {
-		klog.Errorf("flush ip xfrm state rule error: %v", err)
+	output, err = exec.Command("ip", "xfrm", "state", "flush").CombinedOutput()
+	if err != nil {
+		klog.Errorf("flush ip xfrm state rule error: %v, output: %s", err, string(output))
 		return err
 	}
 
@@ -403,12 +404,14 @@ func (c *Controller) StopAndClearIPSecResouce() error {
 
 func isServiceActive(serviceName string) (bool, error) {
 	cmd := exec.Command("service", serviceName, "status")
-	if err := cmd.Run(); err != nil {
+	output, err := cmd.CombinedOutput()
+	if err != nil {
 		if exitError, ok := err.(*exec.ExitError); ok {
 			if exitError.ExitCode() != 0 {
 				return false, nil
 			}
 		}
+		klog.Errorf("failed to check service status: %v, output: %s", err, string(output))
 		return false, err
 	}
 	return true, nil
@@ -423,8 +426,9 @@ func restartService(serviceName string) error {
 
 	if !active {
 		cmd := exec.Command("service", serviceName, "restart")
-		if err := cmd.Run(); err != nil {
-			klog.Errorf("restart %s service error: %v", serviceName, err)
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			klog.Errorf("restart %s service error: %v, output: %s", serviceName, err, string(output))
 			return err
 		}
 		klog.Infof("%s service restarted successfully", serviceName)
@@ -456,14 +460,14 @@ func (c *Controller) StartIPSecService() error {
 
 func (c *Controller) StopIPSecService() error {
 	cmd := exec.Command("service", "openvswitch-ipsec", "stop")
-	if err := cmd.Run(); err != nil {
-		klog.Errorf("stop ipsec service error: %v", err)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		klog.Errorf("stop openvswitch-ipsec service error: %v, output: %s", err, string(output))
 		return err
 	}
 
 	cmd = exec.Command("service", "ipsec", "stop")
-	if err := cmd.Run(); err != nil {
-		klog.Errorf("stop ipsec service error: %v", err)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		klog.Errorf("stop ipsec service error: %v, output: %s", err, string(output))
 		return err
 	}
 
