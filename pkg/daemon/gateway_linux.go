@@ -591,6 +591,7 @@ func (c *Controller) setIptables() error {
 			{Table: "filter", Chain: "FORWARD", Rule: strings.Fields(`-m set --match-set ovn40services dst -j ACCEPT`)},
 			// Output unmark to bypass kernel nat checksum issue https://github.com/flannel-io/flannel/issues/1279
 			{Table: "filter", Chain: "OUTPUT", Rule: strings.Fields(`-p udp -m udp --dport 6081 -j MARK --set-xmark 0x0`)},
+			{Table: "filter", Chain: "OUTPUT", Rule: strings.Fields(`-p udp -m udp --dport 4789 -j MARK --set-xmark 0x0`)},
 			// Drop invalid rst
 			{Table: MANGLE, Chain: OvnPostrouting, Rule: strings.Fields(`-p tcp -m set --match-set ovn40subnets src -m tcp --tcp-flags RST RST -m state --state INVALID -j DROP`)},
 		}
@@ -630,6 +631,7 @@ func (c *Controller) setIptables() error {
 			{Table: "filter", Chain: "FORWARD", Rule: strings.Fields(`-m set --match-set ovn60services dst -j ACCEPT`)},
 			// Output unmark to bypass kernel nat checksum issue https://github.com/flannel-io/flannel/issues/1279
 			{Table: "filter", Chain: "OUTPUT", Rule: strings.Fields(`-p udp -m udp --dport 6081 -j MARK --set-xmark 0x0`)},
+			{Table: "filter", Chain: "OUTPUT", Rule: strings.Fields(`-p udp -m udp --dport 4789 -j MARK --set-xmark 0x0`)},
 			// Drop invalid rst
 			{Table: MANGLE, Chain: OvnPostrouting, Rule: strings.Fields(`-p tcp -m set --match-set ovn60subnets src -m tcp --tcp-flags RST RST -m state --state INVALID -j DROP`)},
 		}
@@ -1135,6 +1137,7 @@ func (c *Controller) cleanObsoleteIptablesRules(protocol string, rules []util.IP
 			{Table: "filter", Chain: "FORWARD", Rule: strings.Fields(`-m set --match-set ovn40services dst -j ACCEPT`)},
 			// Output unmark to bypass kernel nat checksum issue https://github.com/flannel-io/flannel/issues/1279
 			{Table: "filter", Chain: "OUTPUT", Rule: strings.Fields(`-p udp -m udp --dport 6081 -j MARK --set-xmark 0x0`)},
+			{Table: "filter", Chain: "OUTPUT", Rule: strings.Fields(`-p udp -m udp --dport 4789 -j MARK --set-xmark 0x0`)},
 		}
 		v6ObsoleteRules = []util.IPTableRule{
 			{Table: NAT, Chain: Postrouting, Rule: strings.Fields(`-m mark --mark 0x40000/0x40000 -j MASQUERADE`)},
@@ -1168,6 +1171,7 @@ func (c *Controller) cleanObsoleteIptablesRules(protocol string, rules []util.IP
 			{Table: "filter", Chain: "FORWARD", Rule: strings.Fields(`-m set --match-set ovn60services dst -j ACCEPT`)},
 			// Output unmark to bypass kernel nat checksum issue https://github.com/flannel-io/flannel/issues/1279
 			{Table: "filter", Chain: "OUTPUT", Rule: strings.Fields(`-p udp -m udp --dport 6081 -j MARK --set-xmark 0x0`)},
+			{Table: "filter", Chain: "OUTPUT", Rule: strings.Fields(`-p udp -m udp --dport 4789 -j MARK --set-xmark 0x0`)},
 		}
 	)
 
