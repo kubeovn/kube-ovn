@@ -193,6 +193,10 @@ spec:
           - mountPath: /etc/localtime
             name: localtime
             readOnly: true
+        {{- if .Values.func.ENABLE_OVN_IPSEC }}
+          - mountPath: /etc/ovs_ipsec_keys
+            name: ovs-ipsec-keys
+        {{- end }}
         readinessProbe:
           failureThreshold: 3
           periodSeconds: 7
@@ -273,4 +277,9 @@ spec:
         - name: local-bin
           hostPath:
             path: {{ .Values.cni_conf.MOUNT_LOCAL_BIN_DIR }}
+        {{- end }}
+        {{- if .Values.func.ENABLE_OVN_IPSEC }}
+        - name: ovs-ipsec-keys
+          hostPath:
+            path: /etc/origin/ovs_ipsec_keys
         {{- end }}
