@@ -318,6 +318,12 @@ func (c *OVNNbClient) SetLogicalSwitchPortVirtualParents(lsName, parents string,
 			return fmt.Errorf("get logical switch port %s: %w", lspName, err)
 		}
 
+		if lsp == nil {
+			err = fmt.Errorf("logical switch port %s not found", lspName)
+			klog.Error(err)
+			return err
+		}
+
 		lsp.Options["virtual-parents"] = parents
 		if len(parents) == 0 {
 			delete(lsp.Options, "virtual-parents")
@@ -347,6 +353,12 @@ func (c *OVNNbClient) SetVirtualLogicalSwitchPortVirtualParents(lspName, parents
 		return fmt.Errorf("get logical switch port %s: %w", lspName, err)
 	}
 
+	if lsp == nil {
+		err := fmt.Errorf("logical switch port %s not found", lspName)
+		klog.Error(err)
+		return err
+	}
+
 	lsp.Options["virtual-parents"] = parents
 	if len(parents) == 0 {
 		delete(lsp.Options, "virtual-parents")
@@ -370,6 +382,11 @@ func (c *OVNNbClient) SetLogicalSwitchPortArpProxy(lspName string, enableArpProx
 	if err != nil {
 		klog.Error(err)
 		return fmt.Errorf("get logical switch port %s: %w", lspName, err)
+	}
+	if lsp == nil {
+		err = fmt.Errorf("logical switch port %s not found", lspName)
+		klog.Error(err)
+		return err
 	}
 	if lsp.Options == nil {
 		lsp.Options = make(map[string]string)
@@ -397,6 +414,11 @@ func (c *OVNNbClient) SetLogicalSwitchPortSecurity(portSecurity bool, lspName, m
 	if err != nil {
 		klog.Error(err)
 		return fmt.Errorf("get logical switch port %s: %w", lspName, err)
+	}
+	if lsp == nil {
+		err = fmt.Errorf("logical switch port %s not found", lspName)
+		klog.Error(err)
+		return err
 	}
 
 	lsp.PortSecurity = nil
@@ -444,7 +466,11 @@ func (c *OVNNbClient) SetLogicalSwitchPortExternalIDs(lspName string, externalID
 		klog.Error(err)
 		return fmt.Errorf("get logical switch port %s: %w", lspName, err)
 	}
-
+	if lsp == nil {
+		err = fmt.Errorf("logical switch port %s not found", lspName)
+		klog.Error(err)
+		return err
+	}
 	if lsp.ExternalIDs == nil {
 		lsp.ExternalIDs = make(map[string]string)
 	}
@@ -547,7 +573,11 @@ func (c *OVNNbClient) EnablePortLayer2forward(lspName string) error {
 		klog.Error(err)
 		return fmt.Errorf("get logical switch port %s: %w", lspName, err)
 	}
-
+	if lsp == nil {
+		err = fmt.Errorf("logical switch port %s not found", lspName)
+		klog.Error(err)
+		return err
+	}
 	if slices.Contains(lsp.Addresses, "unknown") {
 		return nil
 	}
@@ -571,6 +601,12 @@ func (c *OVNNbClient) SetLogicalSwitchPortVlanTag(lspName string, vlanID int) er
 	if err != nil {
 		klog.Error(err)
 		return fmt.Errorf("get logical switch port %s: %w", lspName, err)
+	}
+
+	if lsp == nil {
+		err = fmt.Errorf("logical switch port %s not found", lspName)
+		klog.Error(err)
+		return err
 	}
 
 	// no need update vlan id when vlan id is the same
@@ -877,6 +913,12 @@ func (c *OVNNbClient) SetLogicalSwitchPortActivationStrategy(lspName, chassis st
 		return err
 	}
 
+	if lsp == nil {
+		err = fmt.Errorf("logical switch port %s not found", lspName)
+		klog.Error(err)
+		return err
+	}
+
 	if lsp.Options != nil && lsp.Options["requested-chassis"] != "" {
 		delete(lsp.Options, "requested-chassis")
 		delete(lsp.Options, "activation-strategy")
@@ -954,6 +996,11 @@ func (c *OVNNbClient) GetLogicalSwitchPortMigrateOptions(lspName string) (*ovnnb
 		klog.Error(err)
 		return nil, "", "", err
 	}
+	if lsp == nil {
+		err = fmt.Errorf("logical switch port %s not found", lspName)
+		klog.Error(err)
+		return nil, "", "", err
+	}
 	if lsp.Options == nil {
 		return lsp, "", "", nil
 	}
@@ -975,6 +1022,12 @@ func (c *OVNNbClient) ResetLogicalSwitchPortMigrateOptions(lspName, srcNodeName,
 		klog.Error(err)
 		return err
 	}
+	if lsp == nil {
+		err = fmt.Errorf("logical switch port %s not found", lspName)
+		klog.Error(err)
+		return err
+	}
+
 	if lsp.Options == nil {
 		klog.Infof("logical switch port %s has no options", lspName)
 		return nil

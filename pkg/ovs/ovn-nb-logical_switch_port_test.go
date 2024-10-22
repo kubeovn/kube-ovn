@@ -226,12 +226,20 @@ func (suite *OvnClientTestSuite) testCreateLogicalSwitchPort() {
 		require.NoError(t, err)
 	})
 
-	t.Run("create logical switch port op error", func(t *testing.T) {
+	t.Run("failed client create logical switch port op error", func(t *testing.T) {
 		lspName := "create logical switch port op"
 		sgs := "sg,sg1"
 		vpcName := "test-vpc"
 
 		err = failedNbClient.CreateLogicalSwitchPort(lsName, lspName, ips, mac, podName, podNamespace, true, sgs, vips, true, nil, vpcName)
+		require.Error(t, err)
+	})
+
+	t.Run("failed client create empty logical switch port op error", func(t *testing.T) {
+		sgs := "sg,sg1"
+		vpcName := "test-vpc"
+
+		err = failedNbClient.CreateLogicalSwitchPort(lsName, "", ips, mac, podName, podNamespace, true, sgs, vips, true, nil, vpcName)
 		require.Error(t, err)
 	})
 }
@@ -419,6 +427,8 @@ func (suite *OvnClientTestSuite) testSetLogicalSwitchPortVirtualParents() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
+	failedNbClient := suite.faiedOvnNBClient
+
 	lsName := "test-update-port-virt-parents-ls"
 	ips := []string{"192.168.211.31", "192.168.211.32"}
 
@@ -439,6 +449,20 @@ func (suite *OvnClientTestSuite) testSetLogicalSwitchPortVirtualParents() {
 		}
 	})
 
+	t.Run("failed client set virtual-parents option", func(t *testing.T) {
+		err := failedNbClient.CreateBareLogicalSwitch(lsName)
+		require.Error(t, err)
+
+		err = failedNbClient.CreateVirtualLogicalSwitchPorts(lsName, ips...)
+		require.Error(t, err)
+
+		err = failedNbClient.SetLogicalSwitchPortVirtualParents(lsName, "virt-parents-ls-1,virt-parents-ls-2", ips...)
+		require.Error(t, err)
+
+		err = failedNbClient.SetLogicalSwitchPortVirtualParents(lsName, "", ips...)
+		require.Error(t, err)
+	})
+
 	t.Run("clear virtual-parents option", func(t *testing.T) {
 		err = nbClient.SetLogicalSwitchPortVirtualParents(lsName, "", ips...)
 		require.NoError(t, err)
@@ -456,6 +480,8 @@ func (suite *OvnClientTestSuite) testSetVirtualLogicalSwitchPortVirtualParents()
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
+	failedNbClient := suite.faiedOvnNBClient
+
 	lsName := "test-update-virtual-port-virt-parents-ls"
 	ip := "192.168.211.31"
 
@@ -470,20 +496,43 @@ func (suite *OvnClientTestSuite) testSetVirtualLogicalSwitchPortVirtualParents()
 	t.Run("set virtual-parents option", func(t *testing.T) {
 		parents := "virt-parents-ls-1,virt-parents-ls-2"
 		err = nbClient.SetVirtualLogicalSwitchPortVirtualParents(lspName, parents)
-		require.NoError(t, err)
+		require.Nil(t, err)
 
 		lsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
-		require.NoError(t, err)
+		require.Nil(t, err)
 		require.Equal(t, parents, lsp.Options["virtual-parents"])
+	})
+
+	t.Run("failed client set virtual-parents option", func(t *testing.T) {
+		err := failedNbClient.CreateBareLogicalSwitch(lsName)
+		require.Error(t, err)
+
+		err = failedNbClient.CreateVirtualLogicalSwitchPorts(lsName, ip)
+		require.Error(t, err)
+
+		err = failedNbClient.SetVirtualLogicalSwitchPortVirtualParents("", "")
+		require.Error(t, err)
+
+		lspName := "test-update-virtual-port-virt-parents-lsp"
+		parents := "virt-parents-ls-1,virt-parents-ls-2"
+		err = failedNbClient.SetVirtualLogicalSwitchPortVirtualParents(lspName, parents)
+		require.Error(t, err)
+
+		_, err = failedNbClient.GetLogicalSwitchPort(lspName, false)
+		require.Error(t, err)
+
+		parents = ""
+		err = failedNbClient.SetVirtualLogicalSwitchPortVirtualParents(lspName, parents)
+		require.Error(t, err)
 	})
 
 	t.Run("clear virtual-parents option", func(t *testing.T) {
 		parents := ""
 		err = nbClient.SetVirtualLogicalSwitchPortVirtualParents(lspName, parents)
-		require.NoError(t, err)
+		require.Nil(t, err)
 
 		lsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
-		require.NoError(t, err)
+		require.Nil(t, err)
 		_, exists := lsp.Options["virtual-parents"]
 		require.False(t, exists)
 	})
@@ -1229,6 +1278,8 @@ func (suite *OvnClientTestSuite) testUpdateLogicalSwitchPort() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
+	failedNbClient := suite.faiedOvnNBClient
+
 	lsName := "test-update-lsp-ls"
 	lspName := "test-update-lsp-lsp"
 
@@ -1282,6 +1333,23 @@ func (suite *OvnClientTestSuite) testUpdateLogicalSwitchPort() {
 		require.Error(t, err)
 		require.Equal(t, "logical switch port is nil", err.Error())
 	})
+
+	t.Run("failed client update external-ids & options", func(t *testing.T) {
+		failedLsName := "failed-ls"
+		failedLspName := "failed-lsp"
+		err := failedNbClient.CreateBareLogicalSwitch(failedLsName)
+		require.Error(t, err)
+
+		err = failedNbClient.CreateBareLogicalSwitchPort(failedLsName, failedLspName, "unknown", "")
+		require.Error(t, err)
+
+		failedLsp, err := failedNbClient.GetLogicalSwitchPort(lspName, false)
+		require.Error(t, err)
+		require.Nil(t, failedLsp)
+
+		err = failedNbClient.UpdateLogicalSwitchPort(nil, nil, nil)
+		require.Error(t, err)
+	})
 }
 
 func (suite *OvnClientTestSuite) testDeleteLogicalSwitchPort() {
@@ -1289,6 +1357,8 @@ func (suite *OvnClientTestSuite) testDeleteLogicalSwitchPort() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
+	failedNbClient := suite.faiedOvnNBClient
+
 	lspName := "test-delete-port-lsp"
 	lsName := "test-delete-port-ls"
 
@@ -1318,6 +1388,14 @@ func (suite *OvnClientTestSuite) testDeleteLogicalSwitchPort() {
 		err := nbClient.DeleteLogicalSwitchPort("test-nonexistent-lsp")
 		require.NoError(t, err)
 	})
+
+	t.Run("failed client delete logical switch port", func(t *testing.T) {
+		err := failedNbClient.DeleteLogicalSwitchPort("")
+		require.Error(t, err)
+
+		err = failedNbClient.DeleteLogicalSwitchPort("test-nonexistent-lsp")
+		require.NoError(t, err)
+	})
 }
 
 func (suite *OvnClientTestSuite) testDeleteLogicalSwitchPorts() {
@@ -1325,6 +1403,8 @@ func (suite *OvnClientTestSuite) testDeleteLogicalSwitchPorts() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
+	failedNbClient := suite.faiedOvnNBClient
+
 	lsName := "test-delete-ports-ls"
 	lspName1 := "test-delete-port-lsp1"
 	lspName2 := "test-delete-port-lsp2"
@@ -1356,6 +1436,58 @@ func (suite *OvnClientTestSuite) testDeleteLogicalSwitchPorts() {
 
 		lspList, err := nbClient.ListLogicalSwitchPorts(false, externalIDs, nil)
 		require.NoError(t, err)
+		require.Empty(t, lspList)
+	})
+
+	t.Run("failed client delete nonexistent logical switch port", func(t *testing.T) {
+		err = failedNbClient.DeleteLogicalSwitchPorts(externalIDs, nil)
+		require.NoError(t, err)
+
+		lspList, err := failedNbClient.ListLogicalSwitchPorts(false, externalIDs, nil)
+		require.NoError(t, err)
+		require.Empty(t, lspList)
+	})
+}
+
+func (suite *OvnClientTestSuite) testListNormalLogicalSwitchPorts() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+	failedNbClient := suite.faiedOvnNBClient
+
+	lsName := "a-normal-ls"
+	lspName := "a-lsp-listed"
+
+	err := nbClient.CreateBareLogicalSwitch(lsName)
+	require.NoError(t, err)
+
+	err = nbClient.CreateBareLogicalSwitchPort(lsName, lspName, "unknown", "")
+	require.NoError(t, err)
+
+	t.Run("list normal logical switch ports", func(t *testing.T) {
+		needVendorFilter := true
+		externalIDs := map[string]string{"vendor": util.CniTypeName}
+		lspList, err := nbClient.ListNormalLogicalSwitchPorts(needVendorFilter, externalIDs)
+		require.NoError(t, err)
+		require.NotNil(t, lspList)
+		require.NotContains(t, lspList, lspName)
+	})
+
+	t.Run("vendor filter false", func(t *testing.T) {
+		needVendorFilter := false
+		externalIDs := map[string]string{}
+		lspList, err := nbClient.ListNormalLogicalSwitchPorts(needVendorFilter, externalIDs)
+		require.NoError(t, err)
+		require.NotNil(t, lspList)
+		require.NotContains(t, lspList, lspName)
+	})
+
+	t.Run("failed client list normal logical switch ports", func(t *testing.T) {
+		needVendorFilter := true
+		externalIDs := map[string]string{"vendor": util.CniTypeName}
+		lspList, err := failedNbClient.ListNormalLogicalSwitchPorts(needVendorFilter, externalIDs)
+		require.Nil(t, err)
 		require.Empty(t, lspList)
 	})
 }
@@ -1582,6 +1714,8 @@ func (suite *OvnClientTestSuite) testDeleteLogicalSwitchPortOp() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
+	failedNbClient := suite.faiedOvnNBClient
+
 	lspName := "test-del-op-lsp"
 	lsName := "test-del-op-ls"
 
@@ -1617,6 +1751,15 @@ func (suite *OvnClientTestSuite) testDeleteLogicalSwitchPortOp() {
 	t.Run("delete nonexistent logical switch port", func(t *testing.T) {
 		ops, err := nbClient.DeleteLogicalSwitchPortOp("test-nonexistent-lsp")
 		require.NoError(t, err)
+		require.Nil(t, ops)
+	})
+
+	t.Run("failed client delete nonexistent logical switch port", func(t *testing.T) {
+		ops, err := failedNbClient.DeleteLogicalSwitchPortOp("")
+		require.Error(t, err)
+		require.Nil(t, ops)
+		ops, err = failedNbClient.DeleteLogicalSwitchPortOp("test-nonexistent-lsp")
+		require.Nil(t, err)
 		require.Nil(t, ops)
 	})
 
