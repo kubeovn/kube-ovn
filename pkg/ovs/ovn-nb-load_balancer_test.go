@@ -503,7 +503,7 @@ func (suite *OvnClientTestSuite) testLoadBalancerAddHealthCheck() {
 
 	t.Run("create load balancer when multiple load balancer exist",
 		func(t *testing.T) {
-			lbName := "test-create-lb"
+			lbName := "test-create-lb-duplicate"
 			// create load balancer
 			lb1 := &ovnnb.LoadBalancer{
 				UUID:     ovsclient.NamedUUID(),
