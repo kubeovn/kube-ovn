@@ -433,6 +433,7 @@ func (suite *OvnClientTestSuite) testNewLoadBalancerHealthCheck() {
 		externals := map[string]string{"key1": "value1", "key2": "value2"}
 		lbhc, err := nbClient.newLoadBalancerHealthCheck(lbName, vip, externals)
 		require.ErrorContains(t, err, "not found load balancer")
+		require.Nil(t, lbhc)
 
 		err = nbClient.CreateLoadBalancer(lbName, "tcp", "")
 		require.NoError(t, err)

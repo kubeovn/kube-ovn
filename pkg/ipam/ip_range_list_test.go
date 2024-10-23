@@ -1164,8 +1164,10 @@ func TestEqual(t *testing.T) {
 func TestAllocate(t *testing.T) {
 	v4RangeStart, err := NewIP("10.0.0.1")
 	require.NoError(t, err)
+	require.NotNil(t, v4RangeStart)
 	v4RangeEnd, err := NewIP("10.0.0.4")
 	require.NoError(t, err)
+	require.NotNil(t, v4RangeEnd)
 	v4Range := NewIPRange(v4RangeStart, v4RangeEnd)
 	v4RangeList := NewEmptyIPRangeList().MergeRange(v4Range)
 

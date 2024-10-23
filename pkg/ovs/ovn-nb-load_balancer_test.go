@@ -1055,7 +1055,7 @@ func (suite *OvnClientTestSuite) testLoadBalancerOp() {
 	})
 
 	t.Run("empty mutation", func(t *testing.T) {
-		mutationFunc := func(lb *ovnnb.LoadBalancer) []model.Mutation {
+		mutationFunc := func(_ *ovnnb.LoadBalancer) []model.Mutation {
 			return []model.Mutation{}
 		}
 
