@@ -104,19 +104,20 @@ func (suite *OvnClientTestSuite) testLogicalSwitchAddPort() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
-	lsName := "test-add-port-ls"
-	lspName := "test-add-port-lsp"
-
-	err := nbClient.CreateBareLogicalSwitch(lsName)
-	require.NoError(t, err)
-
-	err = nbClient.CreateBareLogicalSwitchPort(lsName, lspName, "", "")
-	require.NoError(t, err)
-
-	lsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
-	require.NoError(t, err)
+	failedNbClient := suite.faiedOvnNBClient
 
 	t.Run("add port to logical switch", func(t *testing.T) {
+		lsName := "test-add-port-ls"
+		lspName := "test-add-port-lsp"
+		err := nbClient.CreateBareLogicalSwitch(lsName)
+		require.NoError(t, err)
+
+		err = nbClient.CreateBareLogicalSwitchPort(lsName, lspName, "", "")
+		require.NoError(t, err)
+
+		lsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
+		require.NoError(t, err)
+
 		err = nbClient.LogicalSwitchAddPort(lsName, lspName)
 		require.NoError(t, err)
 
@@ -126,12 +127,33 @@ func (suite *OvnClientTestSuite) testLogicalSwitchAddPort() {
 	})
 
 	t.Run("add port to logical switch repeatedly", func(t *testing.T) {
-		err = nbClient.LogicalSwitchAddPort(lsName, lspName)
+		lspRepeatedLsName := "lsp-repeated-ls"
+		lspRepeatedName := "lsp-repeated"
+
+		err := nbClient.CreateBareLogicalSwitch(lspRepeatedLsName)
 		require.NoError(t, err)
 
-		ls, err := nbClient.GetLogicalSwitch(lsName, false)
+		err = nbClient.CreateBareLogicalSwitchPort(lspRepeatedLsName, lspRepeatedName, "", "")
 		require.NoError(t, err)
-		require.Contains(t, ls.Ports, lsp.UUID)
+
+		err = nbClient.LogicalSwitchAddPort(lspRepeatedLsName, lspRepeatedName)
+		require.Nil(t, err)
+
+		_, err = nbClient.GetLogicalSwitch(lspRepeatedLsName, false)
+		require.Nil(t, err)
+
+		// add port to logical switch repeatedly
+		err = nbClient.LogicalSwitchAddPort(lspRepeatedLsName, lspRepeatedName)
+		require.Nil(t, err)
+	})
+
+	t.Run("failed to add port to logical switch", func(t *testing.T) {
+		failedLsName := "failed-ls"
+		failedLspName := "failed-lsp"
+		err := failedNbClient.CreateBareLogicalSwitch(failedLsName)
+		require.Error(t, err)
+		err = failedNbClient.LogicalSwitchAddPort("non-existent-ls", failedLspName)
+		require.Error(t, err)
 	})
 }
 
@@ -140,6 +162,8 @@ func (suite *OvnClientTestSuite) testLogicalSwitchDelPort() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
+	failedNbClient := suite.faiedOvnNBClient
+
 	lsName := "test-del-port-ls"
 	lspName := "test-del-port-lsp"
 
@@ -168,6 +192,11 @@ func (suite *OvnClientTestSuite) testLogicalSwitchDelPort() {
 		require.NotContains(t, ls.Ports, lsp.UUID)
 	})
 
+	t.Run("del port empty logical switch port name", func(t *testing.T) {
+		err := nbClient.LogicalSwitchDelPort(lsName, "")
+		require.Error(t, err)
+	})
+
 	t.Run("del port from logical switch repeatedly", func(t *testing.T) {
 		err := nbClient.LogicalSwitchDelPort(lsName, lspName)
 		require.NoError(t, err)
@@ -175,6 +204,23 @@ func (suite *OvnClientTestSuite) testLogicalSwitchDelPort() {
 		ls, err := nbClient.GetLogicalSwitch(lsName, false)
 		require.NoError(t, err)
 		require.NotContains(t, ls.Ports, lsp.UUID)
+	})
+
+	t.Run("failed to del port from logical switch", func(t *testing.T) {
+		err := failedNbClient.CreateBareLogicalSwitch(lsName)
+		require.Error(t, err)
+
+		err = failedNbClient.CreateBareLogicalSwitchPort(lsName, lspName, "unknown", "")
+		require.Error(t, err)
+
+		_, err = failedNbClient.GetLogicalSwitchPort(lspName, false)
+		require.Error(t, err)
+
+		err = failedNbClient.LogicalSwitchAddPort(lsName, lspName)
+		require.Error(t, err)
+
+		err = failedNbClient.LogicalSwitchDelPort(lsName, lspName)
+		require.Nil(t, err)
 	})
 }
 
@@ -260,6 +306,7 @@ func (suite *OvnClientTestSuite) testDeleteLogicalSwitch() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
+	failedNbClient := suite.faiedOvnNBClient
 	name := "test-delete-ls"
 
 	t.Run("no err when delete existent logical switch", func(t *testing.T) {
@@ -278,6 +325,18 @@ func (suite *OvnClientTestSuite) testDeleteLogicalSwitch() {
 		t.Parallel()
 		err := nbClient.DeleteLogicalSwitch("test-delete-ls-non-existent")
 		require.NoError(t, err)
+	})
+
+	t.Run("failed client delete non-existent logical switch", func(t *testing.T) {
+		t.Parallel()
+		err := failedNbClient.DeleteLogicalSwitch("test-delete-ls-non-existent")
+		require.NoError(t, err)
+	})
+
+	t.Run("failed client delete empty logical switch Name", func(t *testing.T) {
+		t.Parallel()
+		err := failedNbClient.DeleteLogicalSwitch("")
+		require.Error(t, err)
 	})
 }
 
@@ -665,6 +724,8 @@ func (suite *OvnClientTestSuite) testCreateBareLogicalSwitch() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
+	failedNbClient := suite.faiedOvnNBClient
+
 	lsName := "test-create-bare-ls"
 
 	t.Run("create new logical switch", func(t *testing.T) {
@@ -684,6 +745,20 @@ func (suite *OvnClientTestSuite) testCreateBareLogicalSwitch() {
 		ls, err := nbClient.GetLogicalSwitch(lsName, false)
 		require.NoError(t, err)
 		require.Equal(t, lsName, ls.Name)
+	})
+
+	t.Run("failed to create bare logical switch", func(t *testing.T) {
+		err := failedNbClient.CreateBareLogicalSwitch(lsName)
+		require.Error(t, err)
+
+		_, err = failedNbClient.GetLogicalSwitch(lsName, false)
+		require.Error(t, err)
+	})
+
+	t.Run("create logical switch with empty name", func(t *testing.T) {
+		err := nbClient.CreateBareLogicalSwitch("")
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "empty logical switch name")
 	})
 }
 

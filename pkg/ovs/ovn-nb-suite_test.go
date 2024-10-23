@@ -264,6 +264,10 @@ func (suite *OvnClientTestSuite) Test_DeleteLogicalSwitchPorts() {
 	suite.testDeleteLogicalSwitchPorts()
 }
 
+func (suite *OvnClientTestSuite) Test_ListNormalLogicalSwitchPorts() {
+	suite.testListNormalLogicalSwitchPorts()
+}
+
 func (suite *OvnClientTestSuite) Test_ListLogicalSwitchPorts() {
 	suite.testListLogicalSwitchPorts()
 }
