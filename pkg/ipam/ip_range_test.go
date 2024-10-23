@@ -207,6 +207,12 @@ func TestIPRangeRemove(t *testing.T) {
 			wantRanges: []*IPRange{NewIPRange(start, IP(net.ParseIP("192.168.1.9").To4()))},
 			wantOk:     true,
 		},
+		{
+			name:       "Remove IP that is not included",
+			ip:         IP(net.ParseIP("192.168.1.254").To4()),
+			wantRanges: nil,
+			wantOk:     false,
+		},
 	}
 
 	for _, tt := range tests {
