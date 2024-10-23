@@ -75,6 +75,16 @@ func (suite *OvnClientTestSuite) testCreateNats() {
 
 		require.Contains(t, lr.Nat, nat.UUID)
 	}
+
+	// invalid nat
+	nilNats := make([]*ovnnb.NAT, 0)
+	err = nbClient.CreateNats(lrName, nilNats...)
+	require.Error(t, err)
+
+	// failed client to create nats
+	failedNbClient := suite.faiedOvnNBClient
+	err = failedNbClient.CreateNats(lrName, nats...)
+	require.Error(t, err)
 }
 
 func (suite *OvnClientTestSuite) testUpdateSnat() {
@@ -82,6 +92,7 @@ func (suite *OvnClientTestSuite) testUpdateSnat() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
+	failedNbClient := suite.faiedOvnNBClient
 	lrName := "test-update-snat-lr"
 	externalIP := "192.168.30.254"
 	logicalIP := "10.250.0.4"
@@ -112,6 +123,21 @@ func (suite *OvnClientTestSuite) testUpdateSnat() {
 		require.NoError(t, err)
 		require.Equal(t, externalIP, nat.ExternalIP)
 	})
+
+	t.Run("failed client update snat", func(t *testing.T) {
+		err = failedNbClient.UpdateSnat(lrName, externalIP, logicalIP)
+		require.Error(t, err)
+	})
+
+	t.Run("update invalid dnat with empty external ip", func(t *testing.T) {
+		err = nbClient.UpdateSnat(lrName, "", logicalIP)
+		require.Error(t, err)
+	})
+
+	t.Run("update invalid dnat with empty logical ip", func(t *testing.T) {
+		err = nbClient.UpdateSnat(lrName, externalIP, "")
+		require.Error(t, err)
+	})
 }
 
 func (suite *OvnClientTestSuite) testUpdateDnatAndSnat() {
@@ -119,10 +145,11 @@ func (suite *OvnClientTestSuite) testUpdateDnatAndSnat() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
+	failedNbClient := suite.faiedOvnNBClient
 	lrName := "test-update-dnat-and-snat-lr"
 	lspName := "test-update-dnat-and-snat-lrp"
-	externalIP := "192.168.30.254"
-	logicalIP := "10.250.0.4"
+	externalIP := "192.168.30.214"
+	logicalIP := "10.250.0.14"
 	natType := ovnnb.NATTypeDNATAndSNAT
 	externalMac := "00:00:00:08:0a:de"
 
@@ -163,25 +190,81 @@ func (suite *OvnClientTestSuite) testUpdateDnatAndSnat() {
 		})
 	})
 
-	t.Run("update dnat_and_snat", func(t *testing.T) {
-		t.Run("distributed gw", func(t *testing.T) {
-			lspName := "test-update-dnat-and-snat-lrp-1"
-			externalMac := "00:00:00:08:0a:ff"
+	t.Run("update dnat_and_snat in distributed gw case", func(t *testing.T) {
+		lspName := "test-update-dnat-and-snat-lrp-1"
+		externalMac := "00:00:00:08:0a:ff"
 
-			err = nbClient.UpdateDnatAndSnat(lrName, externalIP, logicalIP, lspName, externalMac, kubeovnv1.GWDistributedType)
-			require.NoError(t, err)
+		err = nbClient.UpdateDnatAndSnat(lrName, externalIP, logicalIP, lspName, externalMac, kubeovnv1.GWDistributedType)
+		require.NoError(t, err)
 
-			lr, err := nbClient.GetLogicalRouter(lrName, false)
-			require.NoError(t, err)
+		lr, err := nbClient.GetLogicalRouter(lrName, false)
+		require.NoError(t, err)
 
-			nat, err := nbClient.GetNat(lrName, natType, externalIP, "", false)
-			require.NoError(t, err)
-			require.Equal(t, lspName, *nat.LogicalPort)
-			require.Equal(t, externalMac, *nat.ExternalMAC)
-			require.Equal(t, "true", nat.Options["stateless"])
+		nat, err := nbClient.GetNat(lrName, natType, externalIP, "", false)
+		require.NoError(t, err)
+		require.Equal(t, lspName, *nat.LogicalPort)
+		require.Equal(t, externalMac, *nat.ExternalMAC)
+		require.Equal(t, "true", nat.Options["stateless"])
 
-			require.Contains(t, lr.Nat, nat.UUID)
-		})
+		require.Contains(t, lr.Nat, nat.UUID)
+	})
+
+	t.Run("fail dnat_and_snat", func(t *testing.T) {
+		lspName := "test-update-dnat-and-snat-lrp-1"
+		externalMac := "00:00:00:08:0a:ff"
+		err = failedNbClient.UpdateDnatAndSnat(lrName, externalIP, logicalIP, lspName, externalMac, kubeovnv1.GWDistributedType)
+		require.Error(t, err)
+
+		err = nbClient.UpdateDnatAndSnat(lrName, "", logicalIP, lspName, externalMac, kubeovnv1.GWDistributedType)
+		require.Error(t, err)
+
+		err = nbClient.UpdateDnatAndSnat(lrName, externalIP, "", lspName, externalMac, kubeovnv1.GWDistributedType)
+		require.Error(t, err)
+	})
+}
+
+func (suite *OvnClientTestSuite) testUpdateNat() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+	failedNbClient := suite.faiedOvnNBClient
+
+	lrName := "test-update-nat-lr"
+	externalIP := "192.168.30.254"
+	logicalIP := "10.250.0.4"
+	natType := "snat"
+
+	err := nbClient.CreateLogicalRouter(lrName)
+	require.NoError(t, err)
+	err = nbClient.UpdateSnat(lrName, externalIP, logicalIP)
+	require.NoError(t, err)
+	nat, err := nbClient.GetNat(lrName, natType, "", logicalIP, false)
+	require.NoError(t, err)
+
+	t.Run("update nat", func(t *testing.T) {
+		externalMac := "00:00:00:08:0a:de"
+		// filed update
+		nat.ExternalMAC = &externalMac
+		err = nbClient.UpdateNat(nat, &nat.ExternalMAC)
+		require.Nil(t, err)
+		// not support
+		err = nbClient.UpdateNat(nat, &externalMac)
+		require.Error(t, err)
+	})
+
+	t.Run("failed to update nil nat", func(t *testing.T) {
+		lspName := "test-update-nat-lsp"
+		externalMac := "00:00:00:08:0a:de"
+		err = failedNbClient.UpdateNat(nil, &lspName, &externalMac)
+		require.Error(t, err)
+	})
+
+	t.Run("failed to update nat", func(t *testing.T) {
+		lspName := "test-update-nat-lsp"
+		externalMac := "00:00:00:08:0a:de"
+		err = failedNbClient.UpdateNat(nat, &lspName, &externalMac)
+		require.Error(t, err)
 	})
 }
 
@@ -190,6 +273,7 @@ func (suite *OvnClientTestSuite) testDeleteNat() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
+	failedNbClient := suite.faiedOvnNBClient
 	lrName := "test-del-nat-lr"
 	externalIP := "192.168.30.254"
 	logicalIP := "10.250.0.4"
@@ -238,6 +322,24 @@ func (suite *OvnClientTestSuite) testDeleteNat() {
 		require.NoError(t, err)
 		require.Empty(t, lr.Nat)
 	})
+
+	t.Run("failed client delete dnat_and_snat from logical router", func(t *testing.T) {
+		err = failedNbClient.DeleteNat(lrName, "dnat_and_snat", externalIP, logicalIP)
+		require.Error(t, err)
+	})
+
+	t.Run("failed client delete invalid nat from logical router", func(t *testing.T) {
+		// invalid dnat
+		err = failedNbClient.DeleteNat(lrName, "dnat", externalIP, logicalIP)
+		require.Error(t, err)
+		// empty
+		err = failedNbClient.DeleteNat(lrName, "dnat_and_snat", "", logicalIP)
+		require.Error(t, err)
+		err = failedNbClient.DeleteNat(lrName, "dnat_and_snat", externalIP, "")
+		require.Error(t, err)
+		err = failedNbClient.DeleteNat("", "dnat_and_snat", externalIP, logicalIP)
+		require.Error(t, err)
+	})
 }
 
 func (suite *OvnClientTestSuite) testDeleteNats() {
@@ -245,6 +347,7 @@ func (suite *OvnClientTestSuite) testDeleteNats() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
+	failedNbClient := suite.faiedOvnNBClient
 	lrName := "test-del-nats-lr"
 	externalIPs := []string{"192.168.30.254", "192.168.30.253"}
 	logicalIPs := []string{"10.250.0.4", "10.250.0.5"}
@@ -369,6 +472,16 @@ func (suite *OvnClientTestSuite) testDeleteNats() {
 		require.NoError(t, err)
 		require.Len(t, lr.Nat, 2)
 	})
+
+	t.Run("failed client delete snat or dnat_and_snat from logical router", func(t *testing.T) {
+		err = failedNbClient.DeleteNats(lrName, "snat", "")
+		require.Error(t, err)
+	})
+
+	t.Run("failed client delete invalid dnat from logical router", func(t *testing.T) {
+		err = failedNbClient.DeleteNats(lrName, "dnat", "")
+		require.Error(t, err)
+	})
 }
 
 func (suite *OvnClientTestSuite) testGetNat() {
@@ -376,6 +489,8 @@ func (suite *OvnClientTestSuite) testGetNat() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
+	failedNbClient := suite.faiedOvnNBClient
+
 	lrName := "test_get_nat_lr"
 
 	err := nbClient.CreateLogicalRouter(lrName)
@@ -425,6 +540,38 @@ func (suite *OvnClientTestSuite) testGetNat() {
 			require.ErrorContains(t, err, "not found")
 		})
 	})
+
+	t.Run("failed to add invalid dnat", func(t *testing.T) {
+		t.Parallel()
+		natType := "dnat"
+		externalIP := "192.168.30.254"
+		logicalIP := "10.250.0.4"
+		err := nbClient.AddNat(lrName, natType, externalIP, logicalIP, "", "", nil)
+		require.Error(t, err)
+	})
+
+	t.Run("add snat with options", func(t *testing.T) {
+		t.Parallel()
+		natType := "snat"
+		externalIP := "192.168.30.250"
+		logicalIP := "10.250.0.10"
+		options := map[string]string{"k1": "v1"}
+		err := nbClient.AddNat(lrName, natType, externalIP, logicalIP, "", "", options)
+		require.Nil(t, err)
+	})
+
+	t.Run("failed client get snat", func(t *testing.T) {
+		t.Parallel()
+		natType := "snat"
+		externalIP := "192.168.30.254"
+		logicalIP := "10.250.0.4"
+
+		err := failedNbClient.AddNat(lrName, natType, externalIP, logicalIP, "", "", nil)
+		require.Error(t, err)
+
+		_, err = failedNbClient.GetNat(lrName, natType, externalIP, logicalIP, false)
+		require.Error(t, err)
+	})
 }
 
 func (suite *OvnClientTestSuite) testNewNat() {
@@ -432,6 +579,8 @@ func (suite *OvnClientTestSuite) testNewNat() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
+	failedNbClient := suite.faiedOvnNBClient
+
 	lrName := "test-new-nat-lr"
 	natType := "snat"
 	externalIP := "192.168.30.254"
@@ -453,6 +602,27 @@ func (suite *OvnClientTestSuite) testNewNat() {
 		require.NoError(t, err)
 		expect.UUID = nat.UUID
 		require.Equal(t, expect, nat)
+	})
+
+	t.Run("fail to new snat rule", func(t *testing.T) {
+		t.Parallel()
+
+		// failed client new nat
+		_, err := failedNbClient.newNat(lrName, natType, externalIP, logicalIP, "", "")
+		require.Error(t, err)
+		// invalid nat type
+		natType = "dnat"
+		_, err = failedNbClient.newNat(lrName, natType, externalIP, logicalIP, "", "")
+		require.Error(t, err)
+		// empty
+		_, err = failedNbClient.newNat("", natType, externalIP, logicalIP, "", "")
+		require.Error(t, err)
+		_, err = failedNbClient.newNat(lrName, "", externalIP, logicalIP, "", "")
+		require.Error(t, err)
+		_, err = failedNbClient.newNat(lrName, natType, "", logicalIP, "", "")
+		require.Error(t, err)
+		_, err = failedNbClient.newNat(lrName, natType, externalIP, "", "", "")
+		require.Error(t, err)
 	})
 
 	t.Run("new stateless dnat_and_snat rule", func(t *testing.T) {
