@@ -151,6 +151,11 @@ func (suite *OvnClientTestSuite) testUpdateLogicalRouterPortOptions() {
 	err = nbClient.CreateLogicalRouterPort(lrName, lrpName, "00:11:22:37:af:62", []string{"fd00::c0a8:1001/120"})
 	require.NoError(t, err)
 
+	t.Run("add logical router port options with nil", func(t *testing.T) {
+		err := nbClient.UpdateLogicalRouterPortOptions(lrpName, map[string]string{})
+		require.NoError(t, err)
+	})
+
 	t.Run("add logical router port options", func(t *testing.T) {
 		err := nbClient.UpdateLogicalRouterPortOptions(lrpName, options)
 		require.NoError(t, err)
@@ -215,6 +220,9 @@ func (suite *OvnClientTestSuite) testCreateLogicalRouterPort() {
 		lr, err := nbClient.GetLogicalRouter(lrName, false)
 		require.NoError(t, err)
 		require.Contains(t, lr.Ports, lrp.UUID)
+
+		err = nbClient.CreateLogicalRouterPort(lrName, lrpName, "00:11:22:37:af:62", []string{"192.168.123.1/24"})
+		require.NoError(t, err)
 	})
 
 	t.Run("create new logical router port with ipv6", func(t *testing.T) {
@@ -294,6 +302,11 @@ func (suite *OvnClientTestSuite) testUpdateLogicalRouterPort() {
 		require.NoError(t, err)
 		require.Empty(t, lrp.Networks)
 	})
+
+	t.Run("update nil lsp", func(t *testing.T) {
+		err = nbClient.UpdateLogicalRouterPort(nil)
+		require.Error(t, err, "logical_router_port is nil")
+	})
 }
 
 func (suite *OvnClientTestSuite) testDeleteLogicalRouterPorts() {
@@ -370,6 +383,78 @@ func (suite *OvnClientTestSuite) testDeleteLogicalRouterPort() {
 	})
 }
 
+func (suite *OvnClientTestSuite) testGetLogicalRouterPort() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+	lrpName := "test-get-port-lrp"
+	lrName := "test-get-port-lr"
+
+	err := nbClient.CreateLogicalRouter(lrName)
+	require.NoError(t, err)
+
+	err = nbClient.CreateLogicalRouterPort(lrName, lrpName, "00:11:22:37:af:62", []string{"192.168.123.1/24"})
+	require.NoError(t, err)
+
+	t.Run("no err when get existent logical router port", func(t *testing.T) {
+		lr, err := nbClient.GetLogicalRouter(lrName, false)
+		require.NoError(t, err)
+
+		lrp, err := nbClient.GetLogicalRouterPort(lrpName, false)
+		require.NoError(t, err)
+		require.Contains(t, lr.Ports, lrp.UUID)
+	})
+
+	t.Run("no err when get non-existent logical router port", func(t *testing.T) {
+		lrp, err := nbClient.GetLogicalRouterPort("test-get-lrp-non-exist", true)
+		require.NoError(t, err)
+		require.Nil(t, lrp)
+	})
+}
+
+func (suite *OvnClientTestSuite) testGetLogicalRouterPortByUUID() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+	lrpName := "test-get-port-by-uuid-lrp"
+	lrName := "test-get-port-by-uuid-lr"
+	lrpuuid := "de097cfb-5f7c-46b8-add6-36254ce8f4f1"
+
+	err := nbClient.CreateLogicalRouter(lrName)
+	require.NoError(t, err)
+
+	// err = nbClient.CreateLogicalRouterPort(lrName, lrpName, "00:11:22:37:af:62", []string{"192.168.123.1/24"})
+	lrp := &ovnnb.LogicalRouterPort{
+		UUID: lrpuuid,
+		Name: lrpName,
+		ExternalIDs: map[string]string{
+			"pod": lrpName,
+		},
+	}
+
+	ops, err := nbClient.CreateLogicalRouterPortOp(lrp, lrName)
+	require.NoError(t, err)
+	err = nbClient.Transact("lrp-add", ops)
+	require.NoError(t, err)
+
+	t.Run("no err when get existent logical router port by uuid", func(t *testing.T) {
+		lr, err := nbClient.GetLogicalRouter(lrName, false)
+		require.NoError(t, err)
+
+		lrpc, err := nbClient.GetLogicalRouterPortByUUID(lrpuuid)
+		require.NoError(t, err)
+		require.Contains(t, lr.Ports, lrpc.UUID)
+	})
+
+	t.Run("no err when get non-existent logical router port by uuid", func(t *testing.T) {
+		lrp, err := nbClient.GetLogicalRouterPortByUUID("test-get-lrp-non-existent")
+		require.Error(t, err)
+		require.Nil(t, lrp)
+	})
+}
+
 func (suite *OvnClientTestSuite) testCreateLogicalRouterPortOp() {
 	t := suite.T()
 	t.Parallel()
@@ -380,6 +465,12 @@ func (suite *OvnClientTestSuite) testCreateLogicalRouterPortOp() {
 
 	err := nbClient.CreateLogicalRouter(lrName)
 	require.NoError(t, err)
+
+	t.Run("create without lrp", func(t *testing.T) {
+		ops, err := nbClient.CreateLogicalRouterPortOp(nil, lrName)
+		require.Error(t, err, "logical_router_port is nil")
+		require.Nil(t, ops)
+	})
 
 	t.Run("merge ExternalIDs when exist ExternalIDs", func(t *testing.T) {
 		lrp := &ovnnb.LogicalRouterPort{
@@ -506,7 +597,6 @@ func (suite *OvnClientTestSuite) testLogicalRouterPortOp() {
 	require.NoError(t, err)
 	require.NotNil(t, lrp)
 	require.ElementsMatch(t, lrp.Networks, []string{"172.177.19.1/24"})
-
 	mutation := func(lrp *ovnnb.LogicalRouterPort) *model.Mutation {
 		return &model.Mutation{
 			Field:   &lrp.Networks,
@@ -531,9 +621,13 @@ func (suite *OvnClientTestSuite) testLogicalRouterPortOp() {
 			},
 		},
 	}, ops[0].Mutations)
+
+	ops, err = nbClient.LogicalRouterPortOp(lrpName)
+	require.NoError(t, err)
+	require.Nil(t, ops)
 }
 
-func (suite *OvnClientTestSuite) testlogicalRouterPortFilter() {
+func (suite *OvnClientTestSuite) testLogicalRouterPortFilter() {
 	t := suite.T()
 	t.Parallel()
 
@@ -624,4 +718,135 @@ func (suite *OvnClientTestSuite) testlogicalRouterPortFilter() {
 
 		require.False(t, filterFunc(lrp))
 	})
+}
+
+func (suite *OvnClientTestSuite) testAddLogicalRouterPort() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+	lrName := "test-add-lrp-lr"
+
+	err := nbClient.CreateLogicalRouter(lrName)
+	require.NoError(t, err)
+
+	t.Run("add new logical router port with wrong lr", func(t *testing.T) {
+		t.Parallel()
+
+		lrpName := "test-add-lrp-with-wrong-lr"
+
+		err := nbClient.AddLogicalRouterPort("test-add-lrp-wrong-lr", lrpName, "", "192.168.124.1/24")
+		require.NotNil(t, err)
+	})
+
+	t.Run("add new logical router port without mac", func(t *testing.T) {
+		t.Parallel()
+
+		lrpName := "test-add-lrp-without-mac"
+
+		err := nbClient.AddLogicalRouterPort(lrName, lrpName, "", "192.168.124.1/24")
+		require.NoError(t, err)
+
+		lrp, err := nbClient.GetLogicalRouterPort(lrpName, false)
+		require.NoError(t, err)
+		require.NotEmpty(t, lrp.UUID)
+		require.NotEmpty(t, lrp.MAC)
+		require.ElementsMatch(t, []string{"192.168.124.1/24"}, lrp.Networks)
+
+		lr, err := nbClient.GetLogicalRouter(lrName, false)
+		require.NoError(t, err)
+		require.Contains(t, lr.Ports, lrp.UUID)
+	})
+
+	t.Run("add new logical router port with ipv4", func(t *testing.T) {
+		t.Parallel()
+
+		lrpName := "test-add-lrp-ipv4"
+
+		err := nbClient.AddLogicalRouterPort(lrName, lrpName, "00:11:22:37:af:62", "192.168.123.1/24")
+		require.NoError(t, err)
+
+		lrp, err := nbClient.GetLogicalRouterPort(lrpName, false)
+		require.NoError(t, err)
+		require.NotEmpty(t, lrp.UUID)
+		require.Equal(t, "00:11:22:37:af:62", lrp.MAC)
+		require.ElementsMatch(t, []string{"192.168.123.1/24"}, lrp.Networks)
+
+		lr, err := nbClient.GetLogicalRouter(lrName, false)
+		require.NoError(t, err)
+		require.Contains(t, lr.Ports, lrp.UUID)
+	})
+
+	t.Run("add new logical router port with ipv6", func(t *testing.T) {
+		t.Parallel()
+
+		lrpName := "test-add-lrp-ipv6"
+
+		err := nbClient.AddLogicalRouterPort(lrName, lrpName, "00:11:22:37:af:62", "fd00::c0a8:7b01/120")
+		require.NoError(t, err)
+
+		lrp, err := nbClient.GetLogicalRouterPort(lrpName, false)
+		require.NoError(t, err)
+		require.NotEmpty(t, lrp.UUID)
+		require.Equal(t, "00:11:22:37:af:62", lrp.MAC)
+		require.ElementsMatch(t, []string{"fd00::c0a8:7b01/120"}, lrp.Networks)
+
+		lr, err := nbClient.GetLogicalRouter(lrName, false)
+		require.NoError(t, err)
+		require.Contains(t, lr.Ports, lrp.UUID)
+	})
+
+	t.Run("create new logical router port with dual", func(t *testing.T) {
+		t.Parallel()
+
+		lrpName := "test-add-lrp-dual"
+		err := nbClient.AddLogicalRouterPort(lrName, lrpName, "00:11:22:37:af:62", "192.168.123.1/24,fd00::c0a8:7b01/120")
+		require.NoError(t, err)
+
+		lrp, err := nbClient.GetLogicalRouterPort(lrpName, false)
+		require.NoError(t, err)
+		require.NotEmpty(t, lrp.UUID)
+		require.Equal(t, "00:11:22:37:af:62", lrp.MAC)
+		require.ElementsMatch(t, []string{"192.168.123.1/24", "fd00::c0a8:7b01/120"}, lrp.Networks)
+
+		lr, err := nbClient.GetLogicalRouter(lrName, false)
+		require.NoError(t, err)
+		require.Contains(t, lr.Ports, lrp.UUID)
+	})
+}
+
+func (suite *OvnClientTestSuite) testListLogicalRouterPorts() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+	prefix := "test-list-ports-lrp"
+	lrName := "test-list-ports-lr"
+
+	err := nbClient.CreateLogicalRouter(lrName)
+	require.NoError(t, err)
+
+	for i := 0; i < 3; i++ {
+		lrpName := fmt.Sprintf("%s-%d", prefix, i)
+		err = nbClient.CreateLogicalRouterPort(lrName, lrpName, "00:11:22:37:af:62", []string{"192.168.123.1/24"})
+		require.NoError(t, err)
+	}
+
+	lrps, err := nbClient.ListLogicalRouterPorts(nil, func(lrp *ovnnb.LogicalRouterPort) bool {
+		return len(lrp.ExternalIDs) != 0 && lrp.ExternalIDs[logicalRouterKey] == lrName
+	})
+	require.NoError(t, err)
+	require.Len(t, lrps, 3)
+
+	err = nbClient.DeleteLogicalRouterPorts(nil, func(lrp *ovnnb.LogicalRouterPort) bool {
+		return len(lrp.ExternalIDs) != 0 && lrp.ExternalIDs[logicalRouterKey] == lrName
+	})
+
+	require.NoError(t, err)
+
+	lrps, err = nbClient.ListLogicalRouterPorts(nil, func(lrp *ovnnb.LogicalRouterPort) bool {
+		return len(lrp.ExternalIDs) != 0 && lrp.ExternalIDs[logicalRouterKey] == lrName
+	})
+	require.NoError(t, err)
+	require.Len(t, lrps, 0)
 }

@@ -108,6 +108,11 @@ func (c *OVNSbClient) GetAllChassisByHost(nodeName string) (*[]ovnsb.Chassis, er
 }
 
 func (c *OVNSbClient) GetChassisByHost(nodeName string) (*ovnsb.Chassis, error) {
+	if nodeName == "" {
+		err := errors.New("failed to get Chassis with empty hostname")
+		klog.Error(err)
+		return nil, err
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
 	defer cancel()
 
@@ -119,12 +124,12 @@ func (c *OVNSbClient) GetChassisByHost(nodeName string) (*ovnsb.Chassis, error) 
 		return nil, fmt.Errorf("failed to list Chassis with host name=%s: %w", nodeName, err)
 	}
 	if len(chassisList) == 0 {
-		err := fmt.Errorf("failed to get Chassis with with host name=%s", nodeName)
+		err := fmt.Errorf("failed to get Chassis with host name=%s", nodeName)
 		klog.Error(err)
 		return nil, err
 	}
 	if len(chassisList) != 1 {
-		err := fmt.Errorf("found more than one Chassis with with host name=%s", nodeName)
+		err := fmt.Errorf("found more than one Chassis with host name=%s", nodeName)
 		klog.Error(err)
 		return nil, err
 	}
