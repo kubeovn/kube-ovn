@@ -202,14 +202,14 @@ func TestGetNodeInternalIP(t *testing.T) {
 	}
 }
 
-func TestGetPodIPs(t *testing.T) {
+func TestPodIPs(t *testing.T) {
 	tests := []struct {
 		name string
 		pod  v1.Pod
 		exp  []string
 	}{
 		{
-			name: "pod_with_one_pod_ip",
+			name: "pod_with_one_pod_ipv4_ip",
 			pod: v1.Pod{
 				TypeMeta:   metav1.TypeMeta{},
 				ObjectMeta: metav1.ObjectMeta{},
@@ -222,7 +222,7 @@ func TestGetPodIPs(t *testing.T) {
 			exp: []string{"192.168.1.100"},
 		},
 		{
-			name: "pod_with_one_pod_ip",
+			name: "pod_with_one_pod_dual_ip",
 			pod: v1.Pod{
 				TypeMeta:   metav1.TypeMeta{},
 				ObjectMeta: metav1.ObjectMeta{},
@@ -234,7 +234,6 @@ func TestGetPodIPs(t *testing.T) {
 			},
 			exp: []string{"192.168.1.100", "fd00:10:16::8"},
 		},
-
 		{
 			name: "pod_with_no_pod_ip",
 			pod: v1.Pod{
@@ -247,6 +246,19 @@ func TestGetPodIPs(t *testing.T) {
 				},
 			},
 			exp: []string{},
+		},
+		{
+			name: "pod_with_podip",
+			pod: v1.Pod{
+				TypeMeta:   metav1.TypeMeta{},
+				ObjectMeta: metav1.ObjectMeta{},
+				Spec:       v1.PodSpec{},
+				Status: v1.PodStatus{
+					PodIPs: []v1.PodIP{},
+					PodIP:  "192.168.1.100",
+				},
+			},
+			exp: []string{"192.168.1.100"},
 		},
 	}
 	for _, tt := range tests {
@@ -299,6 +311,30 @@ func TestServiceClusterIPs(t *testing.T) {
 				},
 			},
 			exp: []string{},
+		},
+		{
+			name: "service_with_no_clusterips",
+			svc: v1.Service{
+				TypeMeta:   metav1.TypeMeta{},
+				ObjectMeta: metav1.ObjectMeta{},
+				Spec: v1.ServiceSpec{
+					ClusterIP:  "10.96.0.1",
+					ClusterIPs: []string{},
+				},
+			},
+			exp: []string{"10.96.0.1"},
+		},
+		{
+			name: "service_with_invalid_cluster_ip",
+			svc: v1.Service{
+				TypeMeta:   metav1.TypeMeta{},
+				ObjectMeta: metav1.ObjectMeta{},
+				Spec: v1.ServiceSpec{
+					ClusterIP:  "",
+					ClusterIPs: []string{"10.96.0.1", "invalid ip"},
+				},
+			},
+			exp: []string{"10.96.0.1"},
 		},
 	}
 	for _, tt := range tests {
