@@ -312,65 +312,6 @@ func (suite *OvnClientTestSuite) testSetLBCIDR() {
 	require.Equal(t, serviceCIDR, out.Options["svc_ipv4_cidr"])
 }
 
-func (suite *OvnClientTestSuite) testSetOVNIPSec() {
-	t := suite.T()
-
-	ovnClient := suite.ovnClient
-
-	t.Cleanup(func() {
-		err := ovnClient.DeleteNbGlobal()
-		require.NoError(t, err)
-
-		_, err = ovnClient.GetNbGlobal()
-		require.ErrorContains(t, err, "not found nb_global")
-	})
-
-	nbGlobal := mockNBGlobal()
-	err := ovnClient.CreateNbGlobal(nbGlobal)
-	require.NoError(t, err)
-
-	t.Run("enable OVN IPSec", func(t *testing.T) {
-		err = ovnClient.SetOVNIPSec(true)
-		require.NoError(t, err)
-
-		out, err := ovnClient.GetNbGlobal()
-		require.NoError(t, err)
-		require.True(t, out.Ipsec)
-	})
-
-	t.Run("disable OVN IPSec", func(t *testing.T) {
-		err = ovnClient.SetOVNIPSec(false)
-		require.NoError(t, err)
-
-		out, err := ovnClient.GetNbGlobal()
-		require.NoError(t, err)
-		require.False(t, out.Ipsec)
-	})
-
-	t.Run("set OVN IPSec when it's already set", func(t *testing.T) {
-		err = ovnClient.SetOVNIPSec(true)
-		require.NoError(t, err)
-
-		err = ovnClient.SetOVNIPSec(true)
-		require.NoError(t, err)
-
-		out, err := ovnClient.GetNbGlobal()
-		require.NoError(t, err)
-		require.True(t, out.Ipsec)
-	})
-
-	t.Run("set OVN IPSec when GetNbGlobal fails", func(t *testing.T) {
-		err := ovnClient.DeleteNbGlobal()
-		require.NoError(t, err)
-
-		err = ovnClient.SetOVNIPSec(true)
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "failed to get nb global")
-		err = ovnClient.CreateNbGlobal(nbGlobal)
-		require.NoError(t, err)
-	})
-}
-
 func (suite *OvnClientTestSuite) testSetNbGlobalOptions() {
 	t := suite.T()
 

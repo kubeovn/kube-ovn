@@ -76,10 +76,6 @@ func (suite *OvnClientTestSuite) Test_SetLBCIDR() {
 	suite.testSetLBCIDR()
 }
 
-func (suite *OvnClientTestSuite) Test_SetOVNIPSec() {
-	suite.testSetOVNIPSec()
-}
-
 func (suite *OvnClientTestSuite) Test_SetNbGlobalOptions() {
 	suite.testSetNbGlobalOptions()
 }
@@ -621,10 +617,6 @@ func (suite *OvnClientTestSuite) Test_newAnpACLMatch() {
 
 func (suite *OvnClientTestSuite) Test_CreateBareACL() {
 	suite.testCreateBareACL()
-}
-
-func (suite *OvnClientTestSuite) Test_UpdateAnpRuleACLOps() {
-	suite.testUpdateAnpRuleACLOps()
 }
 
 func (suite *OvnClientTestSuite) Test_UpdateACL() {

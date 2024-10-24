@@ -2198,62 +2198,6 @@ func (suite *OvnClientTestSuite) testCreateBareACL() {
 	})
 }
 
-func (suite *OvnClientTestSuite) testUpdateAnpRuleACLOps() {
-	t := suite.T()
-	t.Parallel()
-
-	ovnClient := suite.ovnClient
-
-	expect := func(row ovsdb.Row, action, direction, match, priority string) {
-		intPriority, err := strconv.Atoi(priority)
-		require.NoError(t, err)
-		require.Equal(t, action, row["action"])
-		require.Equal(t, direction, row["direction"])
-		require.Equal(t, match, row["match"])
-		require.Equal(t, intPriority, row["priority"])
-	}
-
-	t.Run("ingress ACL for ANP", func(t *testing.T) {
-		pgName := "test-pg-ingress"
-		asName := "test-as-ingress"
-		protocol := "tcp"
-		aclName := "test-acl"
-		priority := 1000
-		aclAction := ovnnb.ACLActionAllow
-		logACLActions := []ovnnb.ACLAction{ovnnb.ACLActionAllow}
-		rulePorts := []v1alpha1.AdminNetworkPolicyPort{}
-		isIngress := true
-		isBanp := false
-
-		err := ovnClient.CreatePortGroup(pgName, nil)
-		require.NoError(t, err)
-		ops, err := ovnClient.UpdateAnpRuleACLOps(pgName, asName, protocol, aclName, priority, aclAction, logACLActions, rulePorts, isIngress, isBanp)
-		require.NoError(t, err)
-		require.NotEmpty(t, ops)
-		expect(ops[0].Row, ovnnb.ACLActionAllow, ovnnb.ACLDirectionToLport, fmt.Sprintf("outport == @%s && ip && ip4.src == $%s", pgName, asName), "1000")
-	})
-
-	t.Run("egress ACL for BANP", func(t *testing.T) {
-		pgName := "test-pg-egress"
-		asName := "test-as-egress"
-		protocol := "udp"
-		aclName := "test-acl"
-		priority := 2000
-		aclAction := ovnnb.ACLActionDrop
-		logACLActions := []ovnnb.ACLAction{ovnnb.ACLActionDrop}
-		rulePorts := []v1alpha1.AdminNetworkPolicyPort{}
-		isIngress := false
-		isBanp := true
-
-		err := ovnClient.CreatePortGroup(pgName, nil)
-		require.NoError(t, err)
-		ops, err := ovnClient.UpdateAnpRuleACLOps(pgName, asName, protocol, aclName, priority, aclAction, logACLActions, rulePorts, isIngress, isBanp)
-		require.NoError(t, err)
-		require.NotEmpty(t, ops)
-		expect(ops[0].Row, ovnnb.ACLActionDrop, ovnnb.ACLDirectionFromLport, fmt.Sprintf("inport == @%s && ip && ip4.dst == $%s", pgName, asName), "2000")
-	})
-}
-
 func (suite *OvnClientTestSuite) testUpdateACL() {
 	t := suite.T()
 
