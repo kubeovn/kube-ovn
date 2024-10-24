@@ -40,20 +40,22 @@ var ipsKind = v1.SchemeGroupVersion.WithKind("IP")
 
 // Get takes name of the iP, and returns the corresponding iP object, and an error if there is any.
 func (c *FakeIPs) Get(ctx context.Context, name string, options metav1.GetOptions) (result *v1.IP, err error) {
+	emptyResult := &v1.IP{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootGetAction(ipsResource, name), &v1.IP{})
+		Invokes(testing.NewRootGetActionWithOptions(ipsResource, name, options), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v1.IP), err
 }
 
 // List takes label and field selectors, and returns the list of IPs that match those selectors.
 func (c *FakeIPs) List(ctx context.Context, opts metav1.ListOptions) (result *v1.IPList, err error) {
+	emptyResult := &v1.IPList{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootListAction(ipsResource, ipsKind, opts), &v1.IPList{})
+		Invokes(testing.NewRootListActionWithOptions(ipsResource, ipsKind, opts), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 
 	label, _, _ := testing.ExtractFromListOptions(opts)
@@ -72,25 +74,27 @@ func (c *FakeIPs) List(ctx context.Context, opts metav1.ListOptions) (result *v1
 // Watch returns a watch.Interface that watches the requested iPs.
 func (c *FakeIPs) Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error) {
 	return c.Fake.
-		InvokesWatch(testing.NewRootWatchAction(ipsResource, opts))
+		InvokesWatch(testing.NewRootWatchActionWithOptions(ipsResource, opts))
 }
 
 // Create takes the representation of a iP and creates it.  Returns the server's representation of the iP, and an error, if there is any.
 func (c *FakeIPs) Create(ctx context.Context, iP *v1.IP, opts metav1.CreateOptions) (result *v1.IP, err error) {
+	emptyResult := &v1.IP{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootCreateAction(ipsResource, iP), &v1.IP{})
+		Invokes(testing.NewRootCreateActionWithOptions(ipsResource, iP, opts), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v1.IP), err
 }
 
 // Update takes the representation of a iP and updates it. Returns the server's representation of the iP, and an error, if there is any.
 func (c *FakeIPs) Update(ctx context.Context, iP *v1.IP, opts metav1.UpdateOptions) (result *v1.IP, err error) {
+	emptyResult := &v1.IP{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootUpdateAction(ipsResource, iP), &v1.IP{})
+		Invokes(testing.NewRootUpdateActionWithOptions(ipsResource, iP, opts), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v1.IP), err
 }
@@ -104,7 +108,7 @@ func (c *FakeIPs) Delete(ctx context.Context, name string, opts metav1.DeleteOpt
 
 // DeleteCollection deletes a collection of objects.
 func (c *FakeIPs) DeleteCollection(ctx context.Context, opts metav1.DeleteOptions, listOpts metav1.ListOptions) error {
-	action := testing.NewRootDeleteCollectionAction(ipsResource, listOpts)
+	action := testing.NewRootDeleteCollectionActionWithOptions(ipsResource, opts, listOpts)
 
 	_, err := c.Fake.Invokes(action, &v1.IPList{})
 	return err
@@ -112,10 +116,11 @@ func (c *FakeIPs) DeleteCollection(ctx context.Context, opts metav1.DeleteOption
 
 // Patch applies the patch and returns the patched iP.
 func (c *FakeIPs) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *v1.IP, err error) {
+	emptyResult := &v1.IP{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootPatchSubresourceAction(ipsResource, name, pt, data, subresources...), &v1.IP{})
+		Invokes(testing.NewRootPatchSubresourceActionWithOptions(ipsResource, name, pt, data, opts, subresources...), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v1.IP), err
 }

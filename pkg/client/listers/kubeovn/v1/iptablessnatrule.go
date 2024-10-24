@@ -20,8 +20,8 @@ package v1
 
 import (
 	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/client-go/listers"
 	"k8s.io/client-go/tools/cache"
 )
 
@@ -39,30 +39,10 @@ type IptablesSnatRuleLister interface {
 
 // iptablesSnatRuleLister implements the IptablesSnatRuleLister interface.
 type iptablesSnatRuleLister struct {
-	indexer cache.Indexer
+	listers.ResourceIndexer[*v1.IptablesSnatRule]
 }
 
 // NewIptablesSnatRuleLister returns a new IptablesSnatRuleLister.
 func NewIptablesSnatRuleLister(indexer cache.Indexer) IptablesSnatRuleLister {
-	return &iptablesSnatRuleLister{indexer: indexer}
-}
-
-// List lists all IptablesSnatRules in the indexer.
-func (s *iptablesSnatRuleLister) List(selector labels.Selector) (ret []*v1.IptablesSnatRule, err error) {
-	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
-		ret = append(ret, m.(*v1.IptablesSnatRule))
-	})
-	return ret, err
-}
-
-// Get retrieves the IptablesSnatRule from the index for a given name.
-func (s *iptablesSnatRuleLister) Get(name string) (*v1.IptablesSnatRule, error) {
-	obj, exists, err := s.indexer.GetByKey(name)
-	if err != nil {
-		return nil, err
-	}
-	if !exists {
-		return nil, errors.NewNotFound(v1.Resource("iptablessnatrule"), name)
-	}
-	return obj.(*v1.IptablesSnatRule), nil
+	return &iptablesSnatRuleLister{listers.New[*v1.IptablesSnatRule](indexer, v1.Resource("iptablessnatrule"))}
 }

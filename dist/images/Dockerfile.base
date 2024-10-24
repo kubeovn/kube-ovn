@@ -91,8 +91,8 @@ RUN mkdir /packages/ && \
 FROM ghcr.io/aquasecurity/trivy:latest AS trivy
 
 ARG ARCH
-ENV CNI_VERSION="v1.5.1"
-ENV KUBE_VERSION="v1.31.1"
+ENV CNI_VERSION="v1.6.0"
+ENV KUBE_VERSION="v1.31.2"
 ENV GOBGP_VERSION="3.30.0"
 ENV TRIVY_DB_REPOSITORY="public.ecr.aws/aquasecurity/trivy-db:2"
 

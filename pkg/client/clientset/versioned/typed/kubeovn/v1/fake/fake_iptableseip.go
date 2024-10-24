@@ -40,20 +40,22 @@ var iptableseipsKind = v1.SchemeGroupVersion.WithKind("IptablesEIP")
 
 // Get takes name of the iptablesEIP, and returns the corresponding iptablesEIP object, and an error if there is any.
 func (c *FakeIptablesEIPs) Get(ctx context.Context, name string, options metav1.GetOptions) (result *v1.IptablesEIP, err error) {
+	emptyResult := &v1.IptablesEIP{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootGetAction(iptableseipsResource, name), &v1.IptablesEIP{})
+		Invokes(testing.NewRootGetActionWithOptions(iptableseipsResource, name, options), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v1.IptablesEIP), err
 }
 
 // List takes label and field selectors, and returns the list of IptablesEIPs that match those selectors.
 func (c *FakeIptablesEIPs) List(ctx context.Context, opts metav1.ListOptions) (result *v1.IptablesEIPList, err error) {
+	emptyResult := &v1.IptablesEIPList{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootListAction(iptableseipsResource, iptableseipsKind, opts), &v1.IptablesEIPList{})
+		Invokes(testing.NewRootListActionWithOptions(iptableseipsResource, iptableseipsKind, opts), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 
 	label, _, _ := testing.ExtractFromListOptions(opts)
@@ -72,36 +74,39 @@ func (c *FakeIptablesEIPs) List(ctx context.Context, opts metav1.ListOptions) (r
 // Watch returns a watch.Interface that watches the requested iptablesEIPs.
 func (c *FakeIptablesEIPs) Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error) {
 	return c.Fake.
-		InvokesWatch(testing.NewRootWatchAction(iptableseipsResource, opts))
+		InvokesWatch(testing.NewRootWatchActionWithOptions(iptableseipsResource, opts))
 }
 
 // Create takes the representation of a iptablesEIP and creates it.  Returns the server's representation of the iptablesEIP, and an error, if there is any.
 func (c *FakeIptablesEIPs) Create(ctx context.Context, iptablesEIP *v1.IptablesEIP, opts metav1.CreateOptions) (result *v1.IptablesEIP, err error) {
+	emptyResult := &v1.IptablesEIP{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootCreateAction(iptableseipsResource, iptablesEIP), &v1.IptablesEIP{})
+		Invokes(testing.NewRootCreateActionWithOptions(iptableseipsResource, iptablesEIP, opts), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v1.IptablesEIP), err
 }
 
 // Update takes the representation of a iptablesEIP and updates it. Returns the server's representation of the iptablesEIP, and an error, if there is any.
 func (c *FakeIptablesEIPs) Update(ctx context.Context, iptablesEIP *v1.IptablesEIP, opts metav1.UpdateOptions) (result *v1.IptablesEIP, err error) {
+	emptyResult := &v1.IptablesEIP{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootUpdateAction(iptableseipsResource, iptablesEIP), &v1.IptablesEIP{})
+		Invokes(testing.NewRootUpdateActionWithOptions(iptableseipsResource, iptablesEIP, opts), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v1.IptablesEIP), err
 }
 
 // UpdateStatus was generated because the type contains a Status member.
 // Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-func (c *FakeIptablesEIPs) UpdateStatus(ctx context.Context, iptablesEIP *v1.IptablesEIP, opts metav1.UpdateOptions) (*v1.IptablesEIP, error) {
+func (c *FakeIptablesEIPs) UpdateStatus(ctx context.Context, iptablesEIP *v1.IptablesEIP, opts metav1.UpdateOptions) (result *v1.IptablesEIP, err error) {
+	emptyResult := &v1.IptablesEIP{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootUpdateSubresourceAction(iptableseipsResource, "status", iptablesEIP), &v1.IptablesEIP{})
+		Invokes(testing.NewRootUpdateSubresourceActionWithOptions(iptableseipsResource, "status", iptablesEIP, opts), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v1.IptablesEIP), err
 }
@@ -115,7 +120,7 @@ func (c *FakeIptablesEIPs) Delete(ctx context.Context, name string, opts metav1.
 
 // DeleteCollection deletes a collection of objects.
 func (c *FakeIptablesEIPs) DeleteCollection(ctx context.Context, opts metav1.DeleteOptions, listOpts metav1.ListOptions) error {
-	action := testing.NewRootDeleteCollectionAction(iptableseipsResource, listOpts)
+	action := testing.NewRootDeleteCollectionActionWithOptions(iptableseipsResource, opts, listOpts)
 
 	_, err := c.Fake.Invokes(action, &v1.IptablesEIPList{})
 	return err
@@ -123,10 +128,11 @@ func (c *FakeIptablesEIPs) DeleteCollection(ctx context.Context, opts metav1.Del
 
 // Patch applies the patch and returns the patched iptablesEIP.
 func (c *FakeIptablesEIPs) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *v1.IptablesEIP, err error) {
+	emptyResult := &v1.IptablesEIP{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootPatchSubresourceAction(iptableseipsResource, name, pt, data, subresources...), &v1.IptablesEIP{})
+		Invokes(testing.NewRootPatchSubresourceActionWithOptions(iptableseipsResource, name, pt, data, opts, subresources...), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v1.IptablesEIP), err
 }

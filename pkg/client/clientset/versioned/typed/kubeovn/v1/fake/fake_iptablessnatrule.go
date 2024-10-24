@@ -40,20 +40,22 @@ var iptablessnatrulesKind = v1.SchemeGroupVersion.WithKind("IptablesSnatRule")
 
 // Get takes name of the iptablesSnatRule, and returns the corresponding iptablesSnatRule object, and an error if there is any.
 func (c *FakeIptablesSnatRules) Get(ctx context.Context, name string, options metav1.GetOptions) (result *v1.IptablesSnatRule, err error) {
+	emptyResult := &v1.IptablesSnatRule{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootGetAction(iptablessnatrulesResource, name), &v1.IptablesSnatRule{})
+		Invokes(testing.NewRootGetActionWithOptions(iptablessnatrulesResource, name, options), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v1.IptablesSnatRule), err
 }
 
 // List takes label and field selectors, and returns the list of IptablesSnatRules that match those selectors.
 func (c *FakeIptablesSnatRules) List(ctx context.Context, opts metav1.ListOptions) (result *v1.IptablesSnatRuleList, err error) {
+	emptyResult := &v1.IptablesSnatRuleList{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootListAction(iptablessnatrulesResource, iptablessnatrulesKind, opts), &v1.IptablesSnatRuleList{})
+		Invokes(testing.NewRootListActionWithOptions(iptablessnatrulesResource, iptablessnatrulesKind, opts), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 
 	label, _, _ := testing.ExtractFromListOptions(opts)
@@ -72,36 +74,39 @@ func (c *FakeIptablesSnatRules) List(ctx context.Context, opts metav1.ListOption
 // Watch returns a watch.Interface that watches the requested iptablesSnatRules.
 func (c *FakeIptablesSnatRules) Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error) {
 	return c.Fake.
-		InvokesWatch(testing.NewRootWatchAction(iptablessnatrulesResource, opts))
+		InvokesWatch(testing.NewRootWatchActionWithOptions(iptablessnatrulesResource, opts))
 }
 
 // Create takes the representation of a iptablesSnatRule and creates it.  Returns the server's representation of the iptablesSnatRule, and an error, if there is any.
 func (c *FakeIptablesSnatRules) Create(ctx context.Context, iptablesSnatRule *v1.IptablesSnatRule, opts metav1.CreateOptions) (result *v1.IptablesSnatRule, err error) {
+	emptyResult := &v1.IptablesSnatRule{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootCreateAction(iptablessnatrulesResource, iptablesSnatRule), &v1.IptablesSnatRule{})
+		Invokes(testing.NewRootCreateActionWithOptions(iptablessnatrulesResource, iptablesSnatRule, opts), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v1.IptablesSnatRule), err
 }
 
 // Update takes the representation of a iptablesSnatRule and updates it. Returns the server's representation of the iptablesSnatRule, and an error, if there is any.
 func (c *FakeIptablesSnatRules) Update(ctx context.Context, iptablesSnatRule *v1.IptablesSnatRule, opts metav1.UpdateOptions) (result *v1.IptablesSnatRule, err error) {
+	emptyResult := &v1.IptablesSnatRule{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootUpdateAction(iptablessnatrulesResource, iptablesSnatRule), &v1.IptablesSnatRule{})
+		Invokes(testing.NewRootUpdateActionWithOptions(iptablessnatrulesResource, iptablesSnatRule, opts), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v1.IptablesSnatRule), err
 }
 
 // UpdateStatus was generated because the type contains a Status member.
 // Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-func (c *FakeIptablesSnatRules) UpdateStatus(ctx context.Context, iptablesSnatRule *v1.IptablesSnatRule, opts metav1.UpdateOptions) (*v1.IptablesSnatRule, error) {
+func (c *FakeIptablesSnatRules) UpdateStatus(ctx context.Context, iptablesSnatRule *v1.IptablesSnatRule, opts metav1.UpdateOptions) (result *v1.IptablesSnatRule, err error) {
+	emptyResult := &v1.IptablesSnatRule{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootUpdateSubresourceAction(iptablessnatrulesResource, "status", iptablesSnatRule), &v1.IptablesSnatRule{})
+		Invokes(testing.NewRootUpdateSubresourceActionWithOptions(iptablessnatrulesResource, "status", iptablesSnatRule, opts), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v1.IptablesSnatRule), err
 }
@@ -115,7 +120,7 @@ func (c *FakeIptablesSnatRules) Delete(ctx context.Context, name string, opts me
 
 // DeleteCollection deletes a collection of objects.
 func (c *FakeIptablesSnatRules) DeleteCollection(ctx context.Context, opts metav1.DeleteOptions, listOpts metav1.ListOptions) error {
-	action := testing.NewRootDeleteCollectionAction(iptablessnatrulesResource, listOpts)
+	action := testing.NewRootDeleteCollectionActionWithOptions(iptablessnatrulesResource, opts, listOpts)
 
 	_, err := c.Fake.Invokes(action, &v1.IptablesSnatRuleList{})
 	return err
@@ -123,10 +128,11 @@ func (c *FakeIptablesSnatRules) DeleteCollection(ctx context.Context, opts metav
 
 // Patch applies the patch and returns the patched iptablesSnatRule.
 func (c *FakeIptablesSnatRules) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *v1.IptablesSnatRule, err error) {
+	emptyResult := &v1.IptablesSnatRule{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootPatchSubresourceAction(iptablessnatrulesResource, name, pt, data, subresources...), &v1.IptablesSnatRule{})
+		Invokes(testing.NewRootPatchSubresourceActionWithOptions(iptablessnatrulesResource, name, pt, data, opts, subresources...), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v1.IptablesSnatRule), err
 }
