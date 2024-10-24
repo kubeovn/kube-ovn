@@ -23,6 +23,7 @@ const (
 	initRouteTable = "init"
 	podEIPAdd      = "eip-add"
 	podDNATAdd     = "dnat-add"
+	podDNATDel     = "dnat-del"
 	attachmentName = "lb-svc-attachment"
 	attachmentNs   = "kube-system"
 )
@@ -326,7 +327,11 @@ func (c *Controller) updatePodAttachNets(pod *corev1.Pod, svc *corev1.Service) e
 		}
 
 		var rules []string
-		rules = append(rules, fmt.Sprintf("%s,%d,%s,%s,%d,%s", loadBalancerIP, port.Port, protocol, svc.Spec.ClusterIP, port.Port, defaultGateway))
+		targetPort := port.TargetPort.IntValue()
+		if targetPort == 0 {
+			targetPort = int(port.Port)
+		}
+		rules = append(rules, fmt.Sprintf("%s,%d,%s,%s,%d,%s", loadBalancerIP, port.Port, protocol, svc.Spec.ClusterIP, targetPort, defaultGateway))
 		klog.Infof("add dnat rules for lb svc pod, %v", rules)
 		if err := c.execNatRules(pod, podDNATAdd, rules); err != nil {
 			klog.Errorf("failed to add dnat for pod, err: %v", err)
@@ -394,4 +399,18 @@ func (c *Controller) checkAndReInitLbSvcPod(pod *corev1.Pod) error {
 	}
 
 	return nil
+}
+
+func (c *Controller) checkLbSvcDeployAnnotationChanged(svc *corev1.Service) (bool, error) {
+	deployName := genLbSvcDpName(svc.Name)
+	deploy, err := c.config.KubeClient.AppsV1().Deployments(svc.Namespace).Get(context.Background(), deployName, metav1.GetOptions{})
+	if err != nil {
+		return false, err
+	}
+
+	if newDeploy := c.updateLbSvcDeployment(svc, deploy); newDeploy == nil {
+		klog.V(3).Infof("no need to update deployment %s/%s", deploy.Namespace, deploy.Name)
+		return false, nil
+	}
+	return true, nil
 }

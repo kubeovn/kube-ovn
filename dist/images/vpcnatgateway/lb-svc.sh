@@ -66,19 +66,23 @@ function add_dnat() {
 rules=${@:2:${#}}
 opt=$1
 case $opt in
- init)
+    init)
         echo "init $rules"
         init $rules
         ;;
- eip-add)
+    eip-add)
         echo "eip-add $rules"
         add_eip $rules
         ;;
- dnat-add)
+    dnat-add)
         echo "dnat-add $rules"
         add_dnat $rules
         ;;
- *)
+    dnat-del)
+        echo "dnat-del rules"
+        iptables -F PREROUTING -t nat
+        ;;
+    *)
         echo "Usage: $0 [init|eip-add|dnat-add] ..."
         exit 1
         ;;

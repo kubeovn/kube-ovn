@@ -330,6 +330,35 @@ func (c *Controller) handleUpdateService(key string) error {
 	if needUpdateEndpointQueue {
 		c.addOrUpdateEndpointQueue.Add(key)
 	}
+
+	if c.config.EnableLbSvc && svc.Spec.Type == v1.ServiceTypeLoadBalancer {
+		changed, err := c.checkLbSvcDeployAnnotationChanged(svc)
+		if err != nil {
+			klog.Errorf("failed to check annotation change for lb svc %s: %v", key, err)
+			return err
+		}
+
+		// only process svc.spec.ports update
+		if !changed {
+			klog.Infof("update loadbalancer service %s", key)
+			pod, err := c.getLbSvcPod(name, namespace)
+			if err != nil {
+				klog.Errorf("failed to get pod for lb svc %s: %v", key, err)
+				return err
+			}
+
+			klog.Infof("flush dnat rules for lb svc %s in pod %s", key, pod.Name)
+			if err := c.execNatRules(pod, podDNATDel, []string{}); err != nil {
+				klog.Errorf("failed to delete dnat rules, err: %v", err)
+				return err
+			}
+			if err = c.updatePodAttachNets(pod, svc); err != nil {
+				klog.Errorf("failed to update pod attachment network for lb svc %s: %v", key, err)
+				return err
+			}
+		}
+	}
+
 	return nil
 }
 
