@@ -1,8 +1,8 @@
 package rpc
 
 import (
+	"errors"
 	"fmt"
-	"net"
 	"net/http"
 	"net/rpc"
 
@@ -10,15 +10,7 @@ import (
 )
 
 type Server struct {
-	listener net.Listener
-}
-
-func (s *Server) Addr() string {
-	return s.listener.Addr().String()
-}
-
-func (s *Server) Close() error {
-	return s.listener.Close()
+	*http.Server
 }
 
 func NewServer(addr string, rcvr any) (*Server, error) {
@@ -27,16 +19,12 @@ func NewServer(addr string, rcvr any) (*Server, error) {
 	}
 
 	rpc.HandleHTTP()
-	listener, err := net.Listen("tcp", addr)
-	if err != nil {
-		return nil, fmt.Errorf("failed to listen on %q: %w", addr, err)
-	}
-
+	svr := &http.Server{Addr: addr}
 	go func() {
-		if err := http.Serve(listener, nil); err != nil {
-			framework.Failf("failed to serve rpc: %v", err)
+		if err := svr.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			framework.Failf("failed to listen and serve rpc on %q: %v", addr, err)
 		}
 	}()
 
-	return &Server{listener: listener}, nil
+	return &Server{Server: svr}, nil
 }
