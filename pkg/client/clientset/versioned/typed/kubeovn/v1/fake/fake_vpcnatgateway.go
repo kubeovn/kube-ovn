@@ -40,20 +40,22 @@ var vpcnatgatewaysKind = v1.SchemeGroupVersion.WithKind("VpcNatGateway")
 
 // Get takes name of the vpcNatGateway, and returns the corresponding vpcNatGateway object, and an error if there is any.
 func (c *FakeVpcNatGateways) Get(ctx context.Context, name string, options metav1.GetOptions) (result *v1.VpcNatGateway, err error) {
+	emptyResult := &v1.VpcNatGateway{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootGetAction(vpcnatgatewaysResource, name), &v1.VpcNatGateway{})
+		Invokes(testing.NewRootGetActionWithOptions(vpcnatgatewaysResource, name, options), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v1.VpcNatGateway), err
 }
 
 // List takes label and field selectors, and returns the list of VpcNatGateways that match those selectors.
 func (c *FakeVpcNatGateways) List(ctx context.Context, opts metav1.ListOptions) (result *v1.VpcNatGatewayList, err error) {
+	emptyResult := &v1.VpcNatGatewayList{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootListAction(vpcnatgatewaysResource, vpcnatgatewaysKind, opts), &v1.VpcNatGatewayList{})
+		Invokes(testing.NewRootListActionWithOptions(vpcnatgatewaysResource, vpcnatgatewaysKind, opts), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 
 	label, _, _ := testing.ExtractFromListOptions(opts)
@@ -72,36 +74,39 @@ func (c *FakeVpcNatGateways) List(ctx context.Context, opts metav1.ListOptions) 
 // Watch returns a watch.Interface that watches the requested vpcNatGateways.
 func (c *FakeVpcNatGateways) Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error) {
 	return c.Fake.
-		InvokesWatch(testing.NewRootWatchAction(vpcnatgatewaysResource, opts))
+		InvokesWatch(testing.NewRootWatchActionWithOptions(vpcnatgatewaysResource, opts))
 }
 
 // Create takes the representation of a vpcNatGateway and creates it.  Returns the server's representation of the vpcNatGateway, and an error, if there is any.
 func (c *FakeVpcNatGateways) Create(ctx context.Context, vpcNatGateway *v1.VpcNatGateway, opts metav1.CreateOptions) (result *v1.VpcNatGateway, err error) {
+	emptyResult := &v1.VpcNatGateway{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootCreateAction(vpcnatgatewaysResource, vpcNatGateway), &v1.VpcNatGateway{})
+		Invokes(testing.NewRootCreateActionWithOptions(vpcnatgatewaysResource, vpcNatGateway, opts), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v1.VpcNatGateway), err
 }
 
 // Update takes the representation of a vpcNatGateway and updates it. Returns the server's representation of the vpcNatGateway, and an error, if there is any.
 func (c *FakeVpcNatGateways) Update(ctx context.Context, vpcNatGateway *v1.VpcNatGateway, opts metav1.UpdateOptions) (result *v1.VpcNatGateway, err error) {
+	emptyResult := &v1.VpcNatGateway{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootUpdateAction(vpcnatgatewaysResource, vpcNatGateway), &v1.VpcNatGateway{})
+		Invokes(testing.NewRootUpdateActionWithOptions(vpcnatgatewaysResource, vpcNatGateway, opts), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v1.VpcNatGateway), err
 }
 
 // UpdateStatus was generated because the type contains a Status member.
 // Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-func (c *FakeVpcNatGateways) UpdateStatus(ctx context.Context, vpcNatGateway *v1.VpcNatGateway, opts metav1.UpdateOptions) (*v1.VpcNatGateway, error) {
+func (c *FakeVpcNatGateways) UpdateStatus(ctx context.Context, vpcNatGateway *v1.VpcNatGateway, opts metav1.UpdateOptions) (result *v1.VpcNatGateway, err error) {
+	emptyResult := &v1.VpcNatGateway{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootUpdateSubresourceAction(vpcnatgatewaysResource, "status", vpcNatGateway), &v1.VpcNatGateway{})
+		Invokes(testing.NewRootUpdateSubresourceActionWithOptions(vpcnatgatewaysResource, "status", vpcNatGateway, opts), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v1.VpcNatGateway), err
 }
@@ -115,7 +120,7 @@ func (c *FakeVpcNatGateways) Delete(ctx context.Context, name string, opts metav
 
 // DeleteCollection deletes a collection of objects.
 func (c *FakeVpcNatGateways) DeleteCollection(ctx context.Context, opts metav1.DeleteOptions, listOpts metav1.ListOptions) error {
-	action := testing.NewRootDeleteCollectionAction(vpcnatgatewaysResource, listOpts)
+	action := testing.NewRootDeleteCollectionActionWithOptions(vpcnatgatewaysResource, opts, listOpts)
 
 	_, err := c.Fake.Invokes(action, &v1.VpcNatGatewayList{})
 	return err
@@ -123,10 +128,11 @@ func (c *FakeVpcNatGateways) DeleteCollection(ctx context.Context, opts metav1.D
 
 // Patch applies the patch and returns the patched vpcNatGateway.
 func (c *FakeVpcNatGateways) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *v1.VpcNatGateway, err error) {
+	emptyResult := &v1.VpcNatGateway{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootPatchSubresourceAction(vpcnatgatewaysResource, name, pt, data, subresources...), &v1.VpcNatGateway{})
+		Invokes(testing.NewRootPatchSubresourceActionWithOptions(vpcnatgatewaysResource, name, pt, data, opts, subresources...), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v1.VpcNatGateway), err
 }

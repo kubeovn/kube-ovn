@@ -40,20 +40,22 @@ var ovnsnatrulesKind = v1.SchemeGroupVersion.WithKind("OvnSnatRule")
 
 // Get takes name of the ovnSnatRule, and returns the corresponding ovnSnatRule object, and an error if there is any.
 func (c *FakeOvnSnatRules) Get(ctx context.Context, name string, options metav1.GetOptions) (result *v1.OvnSnatRule, err error) {
+	emptyResult := &v1.OvnSnatRule{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootGetAction(ovnsnatrulesResource, name), &v1.OvnSnatRule{})
+		Invokes(testing.NewRootGetActionWithOptions(ovnsnatrulesResource, name, options), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v1.OvnSnatRule), err
 }
 
 // List takes label and field selectors, and returns the list of OvnSnatRules that match those selectors.
 func (c *FakeOvnSnatRules) List(ctx context.Context, opts metav1.ListOptions) (result *v1.OvnSnatRuleList, err error) {
+	emptyResult := &v1.OvnSnatRuleList{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootListAction(ovnsnatrulesResource, ovnsnatrulesKind, opts), &v1.OvnSnatRuleList{})
+		Invokes(testing.NewRootListActionWithOptions(ovnsnatrulesResource, ovnsnatrulesKind, opts), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 
 	label, _, _ := testing.ExtractFromListOptions(opts)
@@ -72,36 +74,39 @@ func (c *FakeOvnSnatRules) List(ctx context.Context, opts metav1.ListOptions) (r
 // Watch returns a watch.Interface that watches the requested ovnSnatRules.
 func (c *FakeOvnSnatRules) Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error) {
 	return c.Fake.
-		InvokesWatch(testing.NewRootWatchAction(ovnsnatrulesResource, opts))
+		InvokesWatch(testing.NewRootWatchActionWithOptions(ovnsnatrulesResource, opts))
 }
 
 // Create takes the representation of a ovnSnatRule and creates it.  Returns the server's representation of the ovnSnatRule, and an error, if there is any.
 func (c *FakeOvnSnatRules) Create(ctx context.Context, ovnSnatRule *v1.OvnSnatRule, opts metav1.CreateOptions) (result *v1.OvnSnatRule, err error) {
+	emptyResult := &v1.OvnSnatRule{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootCreateAction(ovnsnatrulesResource, ovnSnatRule), &v1.OvnSnatRule{})
+		Invokes(testing.NewRootCreateActionWithOptions(ovnsnatrulesResource, ovnSnatRule, opts), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v1.OvnSnatRule), err
 }
 
 // Update takes the representation of a ovnSnatRule and updates it. Returns the server's representation of the ovnSnatRule, and an error, if there is any.
 func (c *FakeOvnSnatRules) Update(ctx context.Context, ovnSnatRule *v1.OvnSnatRule, opts metav1.UpdateOptions) (result *v1.OvnSnatRule, err error) {
+	emptyResult := &v1.OvnSnatRule{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootUpdateAction(ovnsnatrulesResource, ovnSnatRule), &v1.OvnSnatRule{})
+		Invokes(testing.NewRootUpdateActionWithOptions(ovnsnatrulesResource, ovnSnatRule, opts), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v1.OvnSnatRule), err
 }
 
 // UpdateStatus was generated because the type contains a Status member.
 // Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-func (c *FakeOvnSnatRules) UpdateStatus(ctx context.Context, ovnSnatRule *v1.OvnSnatRule, opts metav1.UpdateOptions) (*v1.OvnSnatRule, error) {
+func (c *FakeOvnSnatRules) UpdateStatus(ctx context.Context, ovnSnatRule *v1.OvnSnatRule, opts metav1.UpdateOptions) (result *v1.OvnSnatRule, err error) {
+	emptyResult := &v1.OvnSnatRule{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootUpdateSubresourceAction(ovnsnatrulesResource, "status", ovnSnatRule), &v1.OvnSnatRule{})
+		Invokes(testing.NewRootUpdateSubresourceActionWithOptions(ovnsnatrulesResource, "status", ovnSnatRule, opts), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v1.OvnSnatRule), err
 }
@@ -115,7 +120,7 @@ func (c *FakeOvnSnatRules) Delete(ctx context.Context, name string, opts metav1.
 
 // DeleteCollection deletes a collection of objects.
 func (c *FakeOvnSnatRules) DeleteCollection(ctx context.Context, opts metav1.DeleteOptions, listOpts metav1.ListOptions) error {
-	action := testing.NewRootDeleteCollectionAction(ovnsnatrulesResource, listOpts)
+	action := testing.NewRootDeleteCollectionActionWithOptions(ovnsnatrulesResource, opts, listOpts)
 
 	_, err := c.Fake.Invokes(action, &v1.OvnSnatRuleList{})
 	return err
@@ -123,10 +128,11 @@ func (c *FakeOvnSnatRules) DeleteCollection(ctx context.Context, opts metav1.Del
 
 // Patch applies the patch and returns the patched ovnSnatRule.
 func (c *FakeOvnSnatRules) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *v1.OvnSnatRule, err error) {
+	emptyResult := &v1.OvnSnatRule{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootPatchSubresourceAction(ovnsnatrulesResource, name, pt, data, subresources...), &v1.OvnSnatRule{})
+		Invokes(testing.NewRootPatchSubresourceActionWithOptions(ovnsnatrulesResource, name, pt, data, opts, subresources...), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v1.OvnSnatRule), err
 }

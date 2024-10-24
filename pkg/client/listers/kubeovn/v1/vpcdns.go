@@ -20,8 +20,8 @@ package v1
 
 import (
 	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/client-go/listers"
 	"k8s.io/client-go/tools/cache"
 )
 
@@ -39,30 +39,10 @@ type VpcDnsLister interface {
 
 // vpcDnsLister implements the VpcDnsLister interface.
 type vpcDnsLister struct {
-	indexer cache.Indexer
+	listers.ResourceIndexer[*v1.VpcDns]
 }
 
 // NewVpcDnsLister returns a new VpcDnsLister.
 func NewVpcDnsLister(indexer cache.Indexer) VpcDnsLister {
-	return &vpcDnsLister{indexer: indexer}
-}
-
-// List lists all VpcDnses in the indexer.
-func (s *vpcDnsLister) List(selector labels.Selector) (ret []*v1.VpcDns, err error) {
-	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
-		ret = append(ret, m.(*v1.VpcDns))
-	})
-	return ret, err
-}
-
-// Get retrieves the VpcDns from the index for a given name.
-func (s *vpcDnsLister) Get(name string) (*v1.VpcDns, error) {
-	obj, exists, err := s.indexer.GetByKey(name)
-	if err != nil {
-		return nil, err
-	}
-	if !exists {
-		return nil, errors.NewNotFound(v1.Resource("vpcdns"), name)
-	}
-	return obj.(*v1.VpcDns), nil
+	return &vpcDnsLister{listers.New[*v1.VpcDns](indexer, v1.Resource("vpcdns"))}
 }

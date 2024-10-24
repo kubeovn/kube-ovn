@@ -40,20 +40,22 @@ var switchlbrulesKind = v1.SchemeGroupVersion.WithKind("SwitchLBRule")
 
 // Get takes name of the switchLBRule, and returns the corresponding switchLBRule object, and an error if there is any.
 func (c *FakeSwitchLBRules) Get(ctx context.Context, name string, options metav1.GetOptions) (result *v1.SwitchLBRule, err error) {
+	emptyResult := &v1.SwitchLBRule{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootGetAction(switchlbrulesResource, name), &v1.SwitchLBRule{})
+		Invokes(testing.NewRootGetActionWithOptions(switchlbrulesResource, name, options), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v1.SwitchLBRule), err
 }
 
 // List takes label and field selectors, and returns the list of SwitchLBRules that match those selectors.
 func (c *FakeSwitchLBRules) List(ctx context.Context, opts metav1.ListOptions) (result *v1.SwitchLBRuleList, err error) {
+	emptyResult := &v1.SwitchLBRuleList{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootListAction(switchlbrulesResource, switchlbrulesKind, opts), &v1.SwitchLBRuleList{})
+		Invokes(testing.NewRootListActionWithOptions(switchlbrulesResource, switchlbrulesKind, opts), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 
 	label, _, _ := testing.ExtractFromListOptions(opts)
@@ -72,36 +74,39 @@ func (c *FakeSwitchLBRules) List(ctx context.Context, opts metav1.ListOptions) (
 // Watch returns a watch.Interface that watches the requested switchLBRules.
 func (c *FakeSwitchLBRules) Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error) {
 	return c.Fake.
-		InvokesWatch(testing.NewRootWatchAction(switchlbrulesResource, opts))
+		InvokesWatch(testing.NewRootWatchActionWithOptions(switchlbrulesResource, opts))
 }
 
 // Create takes the representation of a switchLBRule and creates it.  Returns the server's representation of the switchLBRule, and an error, if there is any.
 func (c *FakeSwitchLBRules) Create(ctx context.Context, switchLBRule *v1.SwitchLBRule, opts metav1.CreateOptions) (result *v1.SwitchLBRule, err error) {
+	emptyResult := &v1.SwitchLBRule{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootCreateAction(switchlbrulesResource, switchLBRule), &v1.SwitchLBRule{})
+		Invokes(testing.NewRootCreateActionWithOptions(switchlbrulesResource, switchLBRule, opts), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v1.SwitchLBRule), err
 }
 
 // Update takes the representation of a switchLBRule and updates it. Returns the server's representation of the switchLBRule, and an error, if there is any.
 func (c *FakeSwitchLBRules) Update(ctx context.Context, switchLBRule *v1.SwitchLBRule, opts metav1.UpdateOptions) (result *v1.SwitchLBRule, err error) {
+	emptyResult := &v1.SwitchLBRule{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootUpdateAction(switchlbrulesResource, switchLBRule), &v1.SwitchLBRule{})
+		Invokes(testing.NewRootUpdateActionWithOptions(switchlbrulesResource, switchLBRule, opts), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v1.SwitchLBRule), err
 }
 
 // UpdateStatus was generated because the type contains a Status member.
 // Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-func (c *FakeSwitchLBRules) UpdateStatus(ctx context.Context, switchLBRule *v1.SwitchLBRule, opts metav1.UpdateOptions) (*v1.SwitchLBRule, error) {
+func (c *FakeSwitchLBRules) UpdateStatus(ctx context.Context, switchLBRule *v1.SwitchLBRule, opts metav1.UpdateOptions) (result *v1.SwitchLBRule, err error) {
+	emptyResult := &v1.SwitchLBRule{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootUpdateSubresourceAction(switchlbrulesResource, "status", switchLBRule), &v1.SwitchLBRule{})
+		Invokes(testing.NewRootUpdateSubresourceActionWithOptions(switchlbrulesResource, "status", switchLBRule, opts), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v1.SwitchLBRule), err
 }
@@ -115,7 +120,7 @@ func (c *FakeSwitchLBRules) Delete(ctx context.Context, name string, opts metav1
 
 // DeleteCollection deletes a collection of objects.
 func (c *FakeSwitchLBRules) DeleteCollection(ctx context.Context, opts metav1.DeleteOptions, listOpts metav1.ListOptions) error {
-	action := testing.NewRootDeleteCollectionAction(switchlbrulesResource, listOpts)
+	action := testing.NewRootDeleteCollectionActionWithOptions(switchlbrulesResource, opts, listOpts)
 
 	_, err := c.Fake.Invokes(action, &v1.SwitchLBRuleList{})
 	return err
@@ -123,10 +128,11 @@ func (c *FakeSwitchLBRules) DeleteCollection(ctx context.Context, opts metav1.De
 
 // Patch applies the patch and returns the patched switchLBRule.
 func (c *FakeSwitchLBRules) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *v1.SwitchLBRule, err error) {
+	emptyResult := &v1.SwitchLBRule{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootPatchSubresourceAction(switchlbrulesResource, name, pt, data, subresources...), &v1.SwitchLBRule{})
+		Invokes(testing.NewRootPatchSubresourceActionWithOptions(switchlbrulesResource, name, pt, data, opts, subresources...), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v1.SwitchLBRule), err
 }
