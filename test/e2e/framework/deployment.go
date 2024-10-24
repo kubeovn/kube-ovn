@@ -16,6 +16,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
+	clientset "k8s.io/client-go/kubernetes"
 	v1apps "k8s.io/client-go/kubernetes/typed/apps/v1"
 	"k8s.io/kubectl/pkg/polymorphichelpers"
 	"k8s.io/kubernetes/test/e2e/framework"
@@ -29,9 +30,17 @@ import (
 )
 
 type DeploymentClient struct {
-	f *Framework
+	clientSet clientset.Interface
 	v1apps.DeploymentInterface
 	namespace string
+}
+
+func NewDeploymentClient(cs clientset.Interface, namespace string) *DeploymentClient {
+	return &DeploymentClient{
+		clientSet:           cs,
+		DeploymentInterface: cs.AppsV1().Deployments(namespace),
+		namespace:           namespace,
+	}
 }
 
 func (f *Framework) DeploymentClient() *DeploymentClient {
@@ -40,7 +49,7 @@ func (f *Framework) DeploymentClient() *DeploymentClient {
 
 func (f *Framework) DeploymentClientNS(namespace string) *DeploymentClient {
 	return &DeploymentClient{
-		f:                   f,
+		clientSet:           f.ClientSet,
 		DeploymentInterface: f.ClientSet.AppsV1().Deployments(namespace),
 		namespace:           namespace,
 	}
@@ -54,7 +63,7 @@ func (c *DeploymentClient) Get(name string) *appsv1.Deployment {
 }
 
 func (c *DeploymentClient) GetPods(deploy *appsv1.Deployment) (*corev1.PodList, error) {
-	return deployment.GetPodsForDeployment(context.Background(), c.f.ClientSet, deploy)
+	return deployment.GetPodsForDeployment(context.Background(), c.clientSet, deploy)
 }
 
 func (c *DeploymentClient) GetAllPods(deploy *appsv1.Deployment) (*corev1.PodList, error) {
@@ -63,7 +72,7 @@ func (c *DeploymentClient) GetAllPods(deploy *appsv1.Deployment) (*corev1.PodLis
 		return nil, err
 	}
 	podListOptions := metav1.ListOptions{LabelSelector: podSelector.String()}
-	return c.f.ClientSet.CoreV1().Pods(deploy.Namespace).List(context.TODO(), podListOptions)
+	return c.clientSet.CoreV1().Pods(deploy.Namespace).List(context.TODO(), podListOptions)
 }
 
 // Create creates a new deployment according to the framework specifications
@@ -207,7 +216,7 @@ func (c *DeploymentClient) DeleteSync(name string) {
 }
 
 func (c *DeploymentClient) WaitToComplete(deploy *appsv1.Deployment) error {
-	return testutils.WaitForDeploymentComplete(c.f.ClientSet, deploy, Logf, 2*time.Second, 2*time.Minute)
+	return testutils.WaitForDeploymentComplete(c.clientSet, deploy, Logf, 2*time.Second, 2*time.Minute)
 }
 
 // WaitToDisappear waits the given timeout duration for the specified deployment to disappear.

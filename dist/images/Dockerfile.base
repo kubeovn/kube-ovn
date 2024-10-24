@@ -1,5 +1,5 @@
 # syntax = docker/dockerfile:experimental
-ARG GO_VERSION=1.22.8
+ARG GO_VERSION=1.23.2
 
 FROM ubuntu:24.04 AS ovs-builder
 
@@ -143,9 +143,9 @@ ARG DUMB_INIT_VERSION="1.2.5"
 RUN curl -sSf -L --retry 5 -o /usr/bin/dumb-init https://github.com/Yelp/dumb-init/releases/download/v${DUMB_INIT_VERSION}/dumb-init_${DUMB_INIT_VERSION}_$(arch) && \
     chmod +x /usr/bin/dumb-init
 
-ARG BFDD_VERSION="v0.5.4"
-RUN curl -sSf -L --retry 3 -o /usr/local/bin/bfdd-control https://github.com/bobz965/bfd-binary-for-kube-ovn-cni/releases/download/${BFDD_VERSION}/bfdd-control && \
-    curl -sSf -L --retry 3 -o /usr/local/bin/bfdd-beacon https://github.com/bobz965/bfd-binary-for-kube-ovn-cni/releases/download/${BFDD_VERSION}/bfdd-beacon && \
+ARG BFDD_VERSION="v0.5.5"
+RUN curl -sSf -L --retry 3 -o /usr/local/bin/bfdd-control https://github.com/bobz965/bfd-binary-for-kube-ovn-cni/releases/download/${BFDD_VERSION}/bfdd-control-linux-$(arch) && \
+    curl -sSf -L --retry 3 -o /usr/local/bin/bfdd-beacon https://github.com/bobz965/bfd-binary-for-kube-ovn-cni/releases/download/${BFDD_VERSION}/bfdd-beacon-linux-$(arch) && \
     chmod +x /usr/local/bin/bfdd-control /usr/local/bin/bfdd-beacon && \
     setcap CAP_NET_BIND_SERVICE+eip $(readlink -f $(which bfdd-beacon))
 

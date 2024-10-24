@@ -11,6 +11,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
+	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/utils/ptr"
@@ -23,9 +24,15 @@ import (
 
 // ServiceClient is a struct for service client.
 type ServiceClient struct {
-	f *Framework
 	v1core.ServiceInterface
 	namespace string
+}
+
+func NewServiceClient(cs clientset.Interface, namespace string) *ServiceClient {
+	return &ServiceClient{
+		ServiceInterface: cs.CoreV1().Services(namespace),
+		namespace:        namespace,
+	}
 }
 
 func (f *Framework) ServiceClient() *ServiceClient {
@@ -34,7 +41,6 @@ func (f *Framework) ServiceClient() *ServiceClient {
 
 func (f *Framework) ServiceClientNS(namespace string) *ServiceClient {
 	return &ServiceClient{
-		f:                f,
 		ServiceInterface: f.ClientSet.CoreV1().Services(namespace),
 		namespace:        namespace,
 	}

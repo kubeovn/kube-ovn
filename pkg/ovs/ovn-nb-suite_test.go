@@ -41,18 +41,8 @@ func emptyNbDatabaseModel() (model.ClientDBModel, error) {
 
 func (suite *OvnClientTestSuite) SetupSuite() {
 	fmt.Println("set up ovn client test suite")
-	// setup ovn nb client
+	// setup ovn nb client schema
 	nbClientSchema := ovnnb.Schema()
-	nbClientDBModel, err := ovnnb.FullDatabaseModel()
-	require.NoError(suite.T(), err)
-
-	_, nbSock := newOVSDBServer(suite.T(), nbClientDBModel, nbClientSchema)
-	nbEndpoint := fmt.Sprintf("unix:%s", nbSock)
-	require.FileExists(suite.T(), nbSock)
-
-	ovnNBClient, err := newOvnNbClient(suite.T(), nbEndpoint, 10)
-	require.NoError(suite.T(), err)
-	suite.ovnNBClient = ovnNBClient
 
 	// setup failed case ovn nb client
 	emptyNbDBModel, err := emptyNbDatabaseModel()
@@ -67,6 +57,18 @@ func (suite *OvnClientTestSuite) SetupSuite() {
 	// close the server to simulate the failed case
 	server1.Close()
 	require.NoFileExists(suite.T(), nbSock1)
+
+	// setup ovn nb client
+	nbClientDBModel, err := ovnnb.FullDatabaseModel()
+	require.NoError(suite.T(), err)
+
+	_, nbSock := newOVSDBServer(suite.T(), nbClientDBModel, nbClientSchema)
+	nbEndpoint := fmt.Sprintf("unix:%s", nbSock)
+	require.FileExists(suite.T(), nbSock)
+
+	ovnNBClient, err := newOvnNbClient(suite.T(), nbEndpoint, 10)
+	require.NoError(suite.T(), err)
+	suite.ovnNBClient = ovnNBClient
 
 	// setup ovn sb client
 	sbClientSchema := ovnsb.Schema()
@@ -173,7 +175,7 @@ func (suite *OvnClientTestSuite) Test_LogicalSwitchUpdateLoadBalancerOp() {
 	suite.testLogicalSwitchUpdateLoadBalancerOp()
 }
 
-func (suite *OvnClientTestSuite) Test_logicalSwitchUpdateAclOp() {
+func (suite *OvnClientTestSuite) Test_LogicalSwitchUpdateAclOp() {
 	suite.testLogicalSwitchUpdateACLOp()
 }
 
@@ -206,12 +208,20 @@ func (suite *OvnClientTestSuite) Test_CreateVirtualLogicalSwitchPorts() {
 	suite.testCreateVirtualLogicalSwitchPorts()
 }
 
+func (suite *OvnClientTestSuite) Test_CreateVirtualLogicalSwitchPort() {
+	suite.testCreateVirtualLogicalSwitchPort()
+}
+
 func (suite *OvnClientTestSuite) Test_CreateBareLogicalSwitchPort() {
 	suite.testCreateBareLogicalSwitchPort()
 }
 
 func (suite *OvnClientTestSuite) Test_SetLogicalSwitchPortVirtualParents() {
 	suite.testSetLogicalSwitchPortVirtualParents()
+}
+
+func (suite *OvnClientTestSuite) Test_SetVirtualLogicalSwitchPortVirtualParents() {
+	suite.testSetVirtualLogicalSwitchPortVirtualParents()
 }
 
 func (suite *OvnClientTestSuite) Test_SetLogicalSwitchPortArpProxy() {
@@ -246,16 +256,32 @@ func (suite *OvnClientTestSuite) Test_UpdateLogicalSwitchPort() {
 	suite.testUpdateLogicalSwitchPort()
 }
 
-func (suite *OvnClientTestSuite) Test_getLogicalSwitchPortSgs() {
-	suite.testgetLogicalSwitchPortSgs()
+func (suite *OvnClientTestSuite) Test_GetLogicalSwitchPortSgs() {
+	suite.testGetLogicalSwitchPortSgs()
+}
+
+func (suite *OvnClientTestSuite) Test_GetLogicalSwitchPort() {
+	suite.testGetLogicalSwitchPort()
 }
 
 func (suite *OvnClientTestSuite) Test_DeleteLogicalSwitchPort() {
 	suite.testDeleteLogicalSwitchPort()
 }
 
+func (suite *OvnClientTestSuite) Test_DeleteLogicalSwitchPorts() {
+	suite.testDeleteLogicalSwitchPorts()
+}
+
+func (suite *OvnClientTestSuite) Test_ListNormalLogicalSwitchPorts() {
+	suite.testListNormalLogicalSwitchPorts()
+}
+
 func (suite *OvnClientTestSuite) Test_ListLogicalSwitchPorts() {
 	suite.testListLogicalSwitchPorts()
+}
+
+func (suite *OvnClientTestSuite) Test_ListLogicalSwitchPortsWithLegacyExternalIDs() {
+	suite.testListLogicalSwitchPortsWithLegacyExternalIDs()
 }
 
 func (suite *OvnClientTestSuite) Test_CreateLogicalSwitchPortOp() {
@@ -266,8 +292,32 @@ func (suite *OvnClientTestSuite) Test_DeleteLogicalSwitchPortOp() {
 	suite.testDeleteLogicalSwitchPortOp()
 }
 
-func (suite *OvnClientTestSuite) Test_logicalSwitchPortFilter() {
-	suite.testlogicalSwitchPortFilter()
+func (suite *OvnClientTestSuite) Test_UpdateLogicalSwitchPortOp() {
+	suite.testUpdateLogicalSwitchPortOp()
+}
+
+func (suite *OvnClientTestSuite) Test_LogicalSwitchPortFilter() {
+	suite.testLogicalSwitchPortFilter()
+}
+
+func (suite *OvnClientTestSuite) Test_SetLogicalSwitchPortActivationStrategy() {
+	suite.testSetLogicalSwitchPortActivationStrategy()
+}
+
+func (suite *OvnClientTestSuite) Test_SetLogicalSwitchPortMigrateOptions() {
+	suite.testSetLogicalSwitchPortMigrateOptions()
+}
+
+func (suite *OvnClientTestSuite) Test_GetLogicalSwitchPortMigrateOptions() {
+	suite.testGetLogicalSwitchPortMigrateOptions()
+}
+
+func (suite *OvnClientTestSuite) Test_ResetLogicalSwitchPortMigrateOptions() {
+	suite.testResetLogicalSwitchPortMigrateOptions()
+}
+
+func (suite *OvnClientTestSuite) Test_testCleanLogicalSwitchPortMigrateOptions() {
+	suite.testCleanLogicalSwitchPortMigrateOptions()
 }
 
 /* logical_router unit test */
@@ -291,7 +341,7 @@ func (suite *OvnClientTestSuite) Test_ListLogicalRouter() {
 	suite.testListLogicalRouter()
 }
 
-func (suite *OvnClientTestSuite) Test_testLogicalRouterUpdateLoadBalancers() {
+func (suite *OvnClientTestSuite) Test_LogicalRouterUpdateLoadBalancers() {
 	suite.testLogicalRouterUpdateLoadBalancers()
 }
 
@@ -422,6 +472,10 @@ func (suite *OvnClientTestSuite) Test_CreateGatewayChassises() {
 	suite.testCreateGatewayChassises()
 }
 
+func (suite *OvnClientTestSuite) Test_UpdateGatewayChassis() {
+	suite.testUpdateGatewayChassis()
+}
+
 func (suite *OvnClientTestSuite) Test_DeleteGatewayChassises() {
 	suite.testDeleteGatewayChassises()
 }
@@ -437,6 +491,10 @@ func (suite *OvnClientTestSuite) Test_CreateLoadBalancer() {
 
 func (suite *OvnClientTestSuite) Test_UpdateLoadBalancer() {
 	suite.testUpdateLoadBalancer()
+}
+
+func (suite *OvnClientTestSuite) Test_LoadBalancerAddHealthCheck() {
+	suite.testLoadBalancerAddHealthCheck()
 }
 
 func (suite *OvnClientTestSuite) Test_DeleteLoadBalancers() {
@@ -483,9 +541,21 @@ func (suite *OvnClientTestSuite) Test_LoadBalancerWithHealthCheck() {
 	suite.testLoadBalancerWithHealthCheck()
 }
 
+func (suite *OvnClientTestSuite) Test_LoadBalancerOp() {
+	suite.testLoadBalancerOp()
+}
+
+func (suite *OvnClientTestSuite) Test_LoadBalancerUpdateHealthCheckOp() {
+	suite.testLoadBalancerUpdateHealthCheckOp()
+}
+
 /* load_balancer health check unit test */
 func (suite *OvnClientTestSuite) Test_CreateLoadBalancerHealthCheck() {
 	suite.testAddLoadBalancerHealthCheck()
+}
+
+func (suite *OvnClientTestSuite) Test_NewLoadBalancerHealthCheck() {
+	suite.testNewLoadBalancerHealthCheck()
 }
 
 func (suite *OvnClientTestSuite) Test_UpdateLoadBalancerHealthCheck() {
@@ -659,12 +729,20 @@ func (suite *OvnClientTestSuite) Test_newAcl() {
 	suite.testNewACL()
 }
 
+func (suite *OvnClientTestSuite) Test_newACLWithoutCheck() {
+	suite.testNewACLWithoutCheck()
+}
+
 func (suite *OvnClientTestSuite) Test_newNetworkPolicyAclMatch() {
 	suite.testnewNetworkPolicyACLMatch()
 }
 
 func (suite *OvnClientTestSuite) Test_aclFilter() {
 	suite.testACLFilter()
+}
+
+func (suite *OvnClientTestSuite) Test_createAclsOps() {
+	suite.testCreateAclsOps()
 }
 
 func (suite *OvnClientTestSuite) Test_sgRuleNoACL() {
@@ -993,6 +1071,102 @@ func (suite *OvnClientTestSuite) Test_IsUserspaceDataPath() {
 
 func (suite *OvnClientTestSuite) Test_CheckAndUpdateHtbQos() {
 	suite.testCheckAndUpdateHtbQos()
+}
+
+func (suite *OvnClientTestSuite) Test_UpdateOVSVsctlLimiter() {
+	suite.testUpdateOVSVsctlLimiter()
+}
+
+func (suite *OvnClientTestSuite) Test_OvsExec() {
+	suite.testOvsExec()
+}
+
+func (suite *OvnClientTestSuite) Test_OvsCreate() {
+	suite.testOvsCreate()
+}
+
+func (suite *OvnClientTestSuite) Test_OvsDestroy() {
+	suite.testOvsDestroy()
+}
+
+func (suite *OvnClientTestSuite) Test_OvsSet() {
+	suite.testOvsSet()
+}
+
+func (suite *OvnClientTestSuite) Test_OvsAdd() {
+	suite.testOvsAdd()
+}
+
+func (suite *OvnClientTestSuite) Test_OvsFind() {
+	suite.testOvsFind()
+}
+
+func (suite *OvnClientTestSuite) Test_OvsClear() {
+	suite.testOvsClear()
+}
+
+func (suite *OvnClientTestSuite) Test_OvsGet() {
+	suite.testOvsGet()
+}
+
+func (suite *OvnClientTestSuite) Test_OvsFindBridges() {
+	suite.testOvsFindBridges()
+}
+
+func (suite *OvnClientTestSuite) Test_OvsBridgeExists() {
+	suite.testOvsBridgeExists()
+}
+
+func (suite *OvnClientTestSuite) Test_OvsPortExists() {
+	suite.testOvsPortExists()
+}
+
+func (suite *OvnClientTestSuite) Test_GetOvsQosList() {
+	suite.testGetOvsQosList()
+}
+
+func (suite *OvnClientTestSuite) Test_OvsClearPodBandwidth() {
+	suite.testOvsClearPodBandwidth()
+}
+
+func (suite *OvnClientTestSuite) Test_OvsCleanLostInterface() {
+	suite.testOvsCleanLostInterface()
+}
+
+func (suite *OvnClientTestSuite) Test_OvsCleanDuplicatePort() {
+	suite.testOvsCleanDuplicatePort()
+}
+
+func (suite *OvnClientTestSuite) Test_OvsSetPortTag() {
+	suite.testOvsSetPortTag()
+}
+
+func (suite *OvnClientTestSuite) Test_ValidatePortVendor() {
+	suite.testValidatePortVendor()
+}
+
+func (suite *OvnClientTestSuite) Test_GetInterfacePodNs() {
+	suite.testGetInterfacePodNs()
+}
+
+func (suite *OvnClientTestSuite) Test_ConfigInterfaceMirror() {
+	suite.testConfigInterfaceMirror()
+}
+
+func (suite *OvnClientTestSuite) Test_GetResidualInternalPorts() {
+	suite.testGetResidualInternalPorts()
+}
+
+func (suite *OvnClientTestSuite) Test_ClearPortQosBinding() {
+	suite.testClearPortQosBinding()
+}
+
+func (suite *OvnClientTestSuite) Test_OvsListExternalIDs() {
+	suite.testOvsListExternalIDs()
+}
+
+func (suite *OvnClientTestSuite) Test_ListQosQueueIDs() {
+	suite.testListQosQueueIDs()
 }
 
 func Test_scratch(t *testing.T) {

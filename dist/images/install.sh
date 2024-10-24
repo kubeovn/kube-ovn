@@ -2259,11 +2259,11 @@ spec:
                   type: string
                 u2oInterconnectionMAC:
                   type: string
+                u2oInterconnectionVPC:
+                  type: string
                 mcastQuerierIP:
                   type: string
                 mcastQuerierMAC:
-                  type: string
-                u2oInterconnectionVPC:
                   type: string
                 v4usingIPrange:
                   type: string
@@ -4456,11 +4456,7 @@ spec:
         command:
           - sh
           - -xec
-          - |
-            chown -R nobody: /var/log/kube-ovn
-            chmod g+r /run/xtables.lock
-            chmod g+w /var/run/netns
-            iptables -V
+          - iptables -V
         securityContext:
           allowPrivilegeEscalation: true
           capabilities:
@@ -4468,7 +4464,6 @@ spec:
               - ALL
           privileged: true
           runAsUser: 0
-          runAsGroup: 0
         volumeMounts:
           - name: usr-local-sbin
             mountPath: /usr/local/sbin
@@ -4523,8 +4518,7 @@ spec:
           - --enable-ovn-ipsec=$ENABLE_OVN_IPSEC
           - --set-vxlan-tx-off=$SET_VXLAN_TX_OFF
         securityContext:
-          runAsUser: ${RUN_AS_USER}
-          runAsGroup: 0
+          runAsUser: 0
           privileged: false
           capabilities:
             add:

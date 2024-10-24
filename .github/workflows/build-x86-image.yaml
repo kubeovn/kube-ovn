@@ -23,7 +23,7 @@ concurrency:
 env:
   KIND_VERSION: v0.24.0
   GOLANGCI_LINT_VERSION: 'v1.61.0'
-  HELM_VERSION: v3.16.1
+  HELM_VERSION: v3.16.2
   SUBMARINER_VERSION: '0.18.1'
 
 jobs:
@@ -206,7 +206,7 @@ jobs:
           docker tag kubeovn/kube-ovn-base:$TAG-amd64-dpdk kubeovn/kube-ovn-base:$TAG-dpdk
 
       - name: Scan base image
-        uses: aquasecurity/trivy-action@0.27.0
+        uses: aquasecurity/trivy-action@0.28.0
         env:
           TRIVY_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-db:2
         with:
@@ -2846,7 +2846,7 @@ jobs:
       - kube-ovn-ic-conformance-e2e
       - kube-ovn-ipsec-e2e
       - multus-conformance-e2e
-      - ovn-vpc-nat-gw-conformance-e2e
+      # - ovn-vpc-nat-gw-conformance-e2e
       - iptables-vpc-nat-gw-conformance-e2e
       - webhook-e2e
       - lb-svc-e2e

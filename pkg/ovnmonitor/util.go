@@ -23,7 +23,7 @@ func (e *Exporter) getOvnStatus() map[string]int {
 	result := make(map[string]int)
 
 	// get ovn-northbound status
-	cmdstr := "ovs-appctl -t /var/run/ovn/ovnnb_db.ctl cluster/status OVN_Northbound"
+	cmdstr := "ovn-appctl -t /var/run/ovn/ovnnb_db.ctl cluster/status OVN_Northbound"
 	cmd := exec.Command("sh", "-c", cmdstr)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -33,7 +33,7 @@ func (e *Exporter) getOvnStatus() map[string]int {
 	result["ovsdb-server-northbound"] = parseDbStatus(string(output))
 
 	// get ovn-southbound status
-	cmdstr = "ovs-appctl -t /var/run/ovn/ovnsb_db.ctl cluster/status OVN_Southbound"
+	cmdstr = "ovn-appctl -t /var/run/ovn/ovnsb_db.ctl cluster/status OVN_Southbound"
 	cmd = exec.Command("sh", "-c", cmdstr)
 	output, err = cmd.CombinedOutput()
 	if err != nil {
@@ -48,7 +48,7 @@ func (e *Exporter) getOvnStatus() map[string]int {
 		klog.Errorf("read ovn-northd pid failed, err %v", err)
 		result["ovn-northd"] = 0
 	} else {
-		cmdstr := fmt.Sprintf("ovs-appctl -t /var/run/ovn/ovn-northd.%s.ctl status", strings.Trim(string(pid), "\n"))
+		cmdstr := fmt.Sprintf("ovn-appctl -t /var/run/ovn/ovn-northd.%s.ctl status", strings.Trim(string(pid), "\n"))
 		klog.V(3).Infof("cmd is %v", cmdstr)
 		cmd := exec.Command("sh", "-c", cmdstr) // #nosec G204
 		output, err := cmd.CombinedOutput()
@@ -75,7 +75,7 @@ func (e *Exporter) getOvnStatusContent() map[string]string {
 	result := map[string]string{"ovsdb-server-northbound": "", "ovsdb-server-southbound": ""}
 
 	// get ovn-northbound status
-	cmdstr := "ovs-appctl -t /var/run/ovn/ovnnb_db.ctl cluster/status OVN_Northbound"
+	cmdstr := "ovn-appctl -t /var/run/ovn/ovnnb_db.ctl cluster/status OVN_Northbound"
 	cmd := exec.Command("sh", "-c", cmdstr)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -87,7 +87,7 @@ func (e *Exporter) getOvnStatusContent() map[string]string {
 	}
 
 	// get ovn-southbound status
-	cmdstr = "ovs-appctl -t /var/run/ovn/ovnsb_db.ctl cluster/status OVN_Southbound"
+	cmdstr = "ovn-appctl -t /var/run/ovn/ovnsb_db.ctl cluster/status OVN_Southbound"
 	cmd = exec.Command("sh", "-c", cmdstr)
 	output, err = cmd.CombinedOutput()
 	if err != nil {
@@ -180,7 +180,7 @@ func getClusterInfo(direction, dbName string) (*OVNDBClusterStatus, error) {
 	clusterStatus := &OVNDBClusterStatus{}
 	var err error
 
-	cmdstr := fmt.Sprintf("ovs-appctl -t /var/run/ovn/ovn%s_db.ctl cluster/status %s", direction, dbName)
+	cmdstr := fmt.Sprintf("ovn-appctl -t /var/run/ovn/ovn%s_db.ctl cluster/status %s", direction, dbName)
 	cmd := exec.Command("sh", "-c", cmdstr) // #nosec G204
 	output, err := cmd.CombinedOutput()
 	if err != nil {
