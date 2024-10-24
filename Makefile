@@ -559,6 +559,9 @@ kind-install-ipv6:
 kind-install-dual:
 	@DUAL_STACK=true $(MAKE) kind-install
 
+.PHONY: kind-install-overlay
+kind-install-overlay: kind-install-overlay-ipv4
+
 .PHONY: kind-install-overlay-%
 kind-install-overlay-%:
 	@$(MAKE) kind-install-$*
