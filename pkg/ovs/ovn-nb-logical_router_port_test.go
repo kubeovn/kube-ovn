@@ -439,7 +439,7 @@ func (suite *OvnClientTestSuite) testGetLogicalRouterPortByUUID() {
 	err = nbClient.Transact("lrp-add", ops)
 	require.NoError(t, err)
 
-	t.Run("no err when get existent logical router port by_uuid", func(t *testing.T) {
+	t.Run("no err when get existent logical router port by uuid", func(t *testing.T) {
 		lr, err := nbClient.GetLogicalRouter(lrName, false)
 		require.NoError(t, err)
 
