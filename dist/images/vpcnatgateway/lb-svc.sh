@@ -63,22 +63,43 @@ function add_dnat() {
     done
 }
 
+function del_dnat() {
+    for rule in $@
+    do
+        arr=(${rule//,/ })
+        eip=(${arr[0]//\// })
+        dport=${arr[1]}
+        protocol=${arr[2]}
+        internalIp=${arr[3]}
+        internalPort=${arr[4]}
+
+        checkRule="-d $eip -p $protocol --dport $dport -j DNAT --to-destination $internalIp:$internalPort"
+        if iptables -t nat -C PREROUTING $checkRule > /dev/null 2>&1; then
+            exec_cmd "iptables -t nat -D PREROUTING -d $eip -p $protocol --dport $dport -j DNAT --to-destination $internalIp:$internalPort"
+        fi
+    done
+}
+
 rules=${@:2:${#}}
 opt=$1
 case $opt in
- init)
+    init)
         echo "init $rules"
         init $rules
         ;;
- eip-add)
+    eip-add)
         echo "eip-add $rules"
         add_eip $rules
         ;;
- dnat-add)
+    dnat-add)
         echo "dnat-add $rules"
         add_dnat $rules
         ;;
- *)
+    dnat-del)
+        echo "dnat-del rules"
+        del_dnat $rules
+        ;;
+    *)
         echo "Usage: $0 [init|eip-add|dnat-add] ..."
         exit 1
         ;;
