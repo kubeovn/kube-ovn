@@ -210,7 +210,7 @@ type Controller struct {
 	serviceSynced      cache.InformerSynced
 	addServiceQueue    workqueue.TypedRateLimitingInterface[string]
 	deleteServiceQueue workqueue.TypedRateLimitingInterface[*vpcService]
-	updateServiceQueue workqueue.TypedRateLimitingInterface[string]
+	updateServiceQueue workqueue.TypedRateLimitingInterface[*updateSvcObject]
 	svcKeyMutex        keymutex.KeyMutex
 
 	endpointsLister          v1.EndpointsLister
@@ -454,7 +454,7 @@ func Run(ctx context.Context, config *Configuration) {
 		serviceSynced:      serviceInformer.Informer().HasSynced,
 		addServiceQueue:    newTypedRateLimitingQueue[string]("AddService", nil),
 		deleteServiceQueue: newTypedRateLimitingQueue[*vpcService]("DeleteService", nil),
-		updateServiceQueue: newTypedRateLimitingQueue[string]("UpdateService", nil),
+		updateServiceQueue: newTypedRateLimitingQueue[*updateSvcObject]("UpdateService", nil),
 		svcKeyMutex:        keymutex.NewHashed(numKeyLocks),
 
 		endpointsLister:          endpointInformer.Lister(),
