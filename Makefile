@@ -570,16 +570,12 @@ kind-install-dev: kind-install-dev-ipv4
 kind-install-dev-%:
 	@VERSION=$(DEV_TAG) $(MAKE) kind-install-$*
 
-.PHONY: kind-install-debug
-kind-install-debug: kind-install-debug-ipv4
-
 .PHONY: kind-install-debug-%
 kind-install-debug-%:
 	@VERSION=$(DEBUG_TAG) $(MAKE) kind-install-$*
 
 .PHONY: kind-install-debug-valgrind
 kind-install-debug-valgrind: kind-install-debug-valgrind-ipv4
-	@DEBUG_WRAPPER=valgrind $(MAKE) kind-install-debug
 
 .PHONY: kind-install-debug-valgrind-%
 kind-install-debug-valgrind-%:
