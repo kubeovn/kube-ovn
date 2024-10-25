@@ -67,21 +67,24 @@ func TestArpResolve(t *testing.T) {
 	var defaultGW string
 	var nicIndex int
 	for _, r := range routes {
-		if r.Dst != nil && r.Dst.IP.String() == "0.0.0.0" {
+		if r.Dst == nil || r.Dst.IP.String() == "0.0.0.0" {
 			defaultGW = r.Gw.String()
 			nicIndex = r.LinkIndex
 		}
 	}
 	if defaultGW == "" {
 		t.Fatalf("failed to get default gateway")
+		return
 	}
 	if nicIndex == 0 {
 		t.Fatalf("failed to get nic")
+		return
 	}
 
 	link, err := netlink.LinkByIndex(nicIndex)
 	if err != nil {
 		t.Fatalf("failed to get link: %v", err)
+		return
 	}
 	maxRetry := 3
 	done := make(chan struct{})
@@ -140,9 +143,8 @@ func TestDetectIPConflict(t *testing.T) {
 	var nicIndex int
 	var inMac, outMac net.HardwareAddr
 	for _, r := range routes {
-		if r.Dst != nil && r.Src != nil && r.Dst.IP.String() == "0.0.0.0" {
+		if r.Dst == nil || r.Dst.IP.String() == "0.0.0.0" {
 			nicIndex = r.LinkIndex
-			validIP = r.Src.String()
 		}
 	}
 
@@ -154,7 +156,21 @@ func TestDetectIPConflict(t *testing.T) {
 	link, err := netlink.LinkByIndex(nicIndex)
 	if err != nil {
 		t.Fatalf("failed to get link: %v", err)
+		return
 	}
+
+	addrs, err := netlink.AddrList(link, unix.AF_INET)
+	if err != nil {
+		t.Fatalf("Failed to get addresses: %v", err)
+		return
+	}
+
+	if len(addrs) > 0 {
+		validIP = addrs[0].IP.String()
+	} else {
+		return
+	}
+
 	linkName := link.Attrs().Name
 	inMac = link.Attrs().HardwareAddr
 	outMac, err = ArpDetectIPConflict(linkName, validIP, inMac)
@@ -215,19 +231,33 @@ func TestAnnounceArpAddress(t *testing.T) {
 	var nicIndex int
 	var inMac net.HardwareAddr
 	for _, r := range routes {
-		if r.Dst != nil && r.Dst.IP.String() == "0.0.0.0" {
+		if r.Dst == nil || r.Dst.IP.String() == "0.0.0.0" {
 			nicIndex = r.LinkIndex
-			validIP = r.Src.String()
 		}
 	}
 	if nicIndex == 0 {
 		t.Fatalf("failed to get nic")
+		return
 	}
 
 	link, err := netlink.LinkByIndex(nicIndex)
 	if err != nil {
 		t.Fatalf("failed to get link: %v", err)
+		return
 	}
+
+	addrs, err := netlink.AddrList(link, unix.AF_INET)
+	if err != nil {
+		t.Fatalf("Failed to get addresses: %v", err)
+		return
+	}
+
+	if len(addrs) > 0 {
+		validIP = addrs[0].IP.String()
+	} else {
+		return
+	}
+
 	maxRetry := 1
 	linkName := link.Attrs().Name
 	inMac = link.Attrs().HardwareAddr

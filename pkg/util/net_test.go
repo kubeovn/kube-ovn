@@ -390,6 +390,12 @@ func TestCIDRContainIP(t *testing.T) {
 			ipStr:   "ffff:ffff:ffff:ffff:ffff:0:ffff:4,ffff:ffff:ffff:ffff:ffff:0:ffff:5",
 			want:    true,
 		},
+		{
+			name:    "empty cidr",
+			cidrStr: "",
+			ipStr:   "192.168.0.1",
+			want:    false,
+		},
 	}
 	for _, c := range tests {
 		t.Run(c.name, func(t *testing.T) {
