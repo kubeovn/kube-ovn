@@ -374,6 +374,18 @@ func (suite *OvnClientTestSuite) Test_UpdateLogicalRouterPort() {
 	suite.testUpdateLogicalRouterPort()
 }
 
+func (suite *OvnClientTestSuite) Test_getLogicalRouterPort() {
+	suite.testGetLogicalRouterPort()
+}
+
+func (suite *OvnClientTestSuite) Test_getLogicalRouterPortByUUID() {
+	suite.testGetLogicalRouterPortByUUID()
+}
+
+func (suite *OvnClientTestSuite) Test_addLogicalRouterPort() {
+	suite.testAddLogicalRouterPort()
+}
+
 func (suite *OvnClientTestSuite) Test_DeleteLogicalRouterPorts() {
 	suite.testDeleteLogicalRouterPorts()
 }
@@ -395,7 +407,11 @@ func (suite *OvnClientTestSuite) Test_LogicalRouterPortOp() {
 }
 
 func (suite *OvnClientTestSuite) Test_LogicalRouterPortFilter() {
-	suite.testlogicalRouterPortFilter()
+	suite.testLogicalRouterPortFilter()
+}
+
+func (suite *OvnClientTestSuite) Test_ListLogicalRouterPorts() {
+	suite.testListLogicalRouterPorts()
 }
 
 /* bfd unit test */
