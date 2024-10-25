@@ -728,7 +728,7 @@ func (suite *OvnClientTestSuite) testAddNat() {
 
 		nat, err := nbClient.GetNat(lrName+"1", natType, externalIP, logicalIP, false)
 		require.NoError(t, err)
-		require.Equal(t, options, *&nat.Options)
+		require.Equal(t, options, nat.Options)
 	})
 
 	t.Run("add nat with empty lrName", func(t *testing.T) {
