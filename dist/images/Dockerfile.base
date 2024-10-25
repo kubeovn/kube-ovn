@@ -53,11 +53,11 @@ RUN cd /usr/src/ && git clone -b branch-24.03 --depth=1 https://github.com/ovn-o
     # lflow: do not send direct traffic between lports to conntrack
     curl -s https://github.com/kubeovn/ovn/commit/5687a692ef4c10c6ec9bfeca7b920e7736a4016c.patch | git apply && \
     # set ether dst addr for dnat on logical switch
-    curl -s https://github.com/kubeovn/ovn/commit/759803ccf2f5823029ed5909ab2cd99b20c6d557.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/08cfd7a4c56c610d6bf7dcf8be016f5ac7928f28.patch | git apply && \
     # fix lr-lb dnat with multiple distributed gateway ports
-    curl -s https://github.com/kubeovn/ovn/commit/3eb25ce85393e97814c6a2b70101afdc66c6626c.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/d326dd12b2ecc3b65f7360aac8e7c35c4bed2026.patch | git apply && \
     # northd: skip arp/nd request for lrp addresses from localnet ports
-    curl -s https://github.com/kubeovn/ovn/commit/1aa952f2f1b348739d2585618a6f2afff2ed4501.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/cf6ba220851ae13de76473b6569097bb70ec76d8.patch | git apply && \
     # ovn-controller: make activation strategy work for single chassis
     curl -s https://github.com/kubeovn/ovn/commit/487cd1c6c0cc9def7cedaaaf3dd4bc99c23974c4.patch | git apply
 
