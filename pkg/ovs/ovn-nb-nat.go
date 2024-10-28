@@ -49,7 +49,9 @@ func (c *OVNNbClient) AddNat(lrName, natType, externalIP, logicalIP, logicalMac,
 // CreateNats create several logical router nat rule once
 func (c *OVNNbClient) CreateNats(lrName string, nats ...*ovnnb.NAT) error {
 	if len(nats) == 0 {
-		return nil
+		err := errors.New("nats is empty")
+		klog.Error(err)
+		return err
 	}
 
 	models := make([]model.Model, 0, len(nats))
@@ -87,8 +89,18 @@ func (c *OVNNbClient) CreateNats(lrName string, nats ...*ovnnb.NAT) error {
 
 // UpdateSnat update snat rule
 func (c *OVNNbClient) UpdateSnat(lrName, externalIP, logicalIP string) error {
-	natType := ovnnb.NATTypeSNAT
+	if externalIP == "" {
+		err := errors.New("snat external ip is required")
+		klog.Error(err)
+		return err
+	}
+	if logicalIP == "" {
+		err := errors.New("snat logical ip is required")
+		klog.Error(err)
+		return err
+	}
 
+	natType := ovnnb.NATTypeSNAT
 	nat, err := c.GetNat(lrName, natType, "", logicalIP, true)
 	if err != nil {
 		klog.Error(err)
@@ -117,6 +129,16 @@ func (c *OVNNbClient) UpdateSnat(lrName, externalIP, logicalIP string) error {
 
 // UpdateDnatAndSnat update dnat_and_snat rule
 func (c *OVNNbClient) UpdateDnatAndSnat(lrName, externalIP, logicalIP, lspName, externalMac, gatewayType string) error {
+	if externalIP == "" {
+		err := errors.New("nat external ip is required")
+		klog.Error(err)
+		return err
+	}
+	if logicalIP == "" {
+		err := errors.New("nat logical ip is required")
+		klog.Error(err)
+		return err
+	}
 	natType := ovnnb.NATTypeDNATAndSNAT
 
 	nat, err := c.GetNat(lrName, natType, externalIP, "", true)

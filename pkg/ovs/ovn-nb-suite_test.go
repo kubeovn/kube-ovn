@@ -815,6 +815,10 @@ func (suite *OvnClientTestSuite) Test_UpdateDnatAndSnat() {
 	suite.testUpdateDnatAndSnat()
 }
 
+func (suite *OvnClientTestSuite) Test_UpdateNat() {
+	suite.testUpdateNat()
+}
+
 func (suite *OvnClientTestSuite) Test_DeleteNats() {
 	suite.testDeleteNats()
 }
