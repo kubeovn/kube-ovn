@@ -286,10 +286,6 @@ func (suite *OvnClientTestSuite) Test_LogicalSwitchPortFilter() {
 	suite.testLogicalSwitchPortFilter()
 }
 
-func (suite *OvnClientTestSuite) Test_SetLogicalSwitchPortActivationStrategy() {
-	suite.testSetLogicalSwitchPortActivationStrategy()
-}
-
 func (suite *OvnClientTestSuite) Test_SetLogicalSwitchPortMigrateOptions() {
 	suite.testSetLogicalSwitchPortMigrateOptions()
 }

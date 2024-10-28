@@ -143,10 +143,6 @@ func (c *OVNNbClient) CreateGatewayACL(lsName, pgName, gateway string) error {
 	}
 
 	gateways := set.New(strings.Split(gateway, ",")...)
-	if u2oInterconnectionIP != "" {
-		gateways = gateways.Insert(strings.Split(u2oInterconnectionIP, ",")...)
-	}
-
 	options := func(acl *ovnnb.ACL) {
 		if acl.Options == nil {
 			acl.Options = make(map[string]string)
@@ -168,7 +164,7 @@ func (c *OVNNbClient) CreateGatewayACL(lsName, pgName, gateway string) error {
 			return fmt.Errorf("new allow ingress acl for %s: %w", parentName, err)
 		}
 
-		allowEgressACL, err := c.newACL(parentName, ovnnb.ACLDirectionFromLport, util.EgressAllowPriority, fmt.Sprintf("%s.dst == %s", ipSuffix, gw), ovnnb.ACLActionAllowStateless, util.NetpolACLTier, options)
+		allowEgressACL, err := c.newACL(parentName, ovnnb.ACLDirectionFromLport, util.EgressAllowPriority, fmt.Sprintf("%s.dst == %s", ipSuffix, gw), ovnnb.ACLActionAllowStateless, options)
 		if err != nil {
 			klog.Error(err)
 			return fmt.Errorf("new allow egress acl for %s: %w", parentName, err)
@@ -178,7 +174,7 @@ func (c *OVNNbClient) CreateGatewayACL(lsName, pgName, gateway string) error {
 	}
 
 	if v6Exists {
-		ndACL, err := c.newACL(parentName, ovnnb.ACLDirectionFromLport, util.EgressAllowPriority, "nd || nd_ra || nd_rs", ovnnb.ACLActionAllowStateless, util.NetpolACLTier, options)
+		ndACL, err := c.newACL(parentName, ovnnb.ACLDirectionFromLport, util.EgressAllowPriority, "nd || nd_ra || nd_rs", ovnnb.ACLActionAllowStateless, options)
 		if err != nil {
 			klog.Error(err)
 			return fmt.Errorf("new nd acl for %s: %w", parentName, err)

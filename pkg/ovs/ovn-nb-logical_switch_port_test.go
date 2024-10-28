@@ -2002,69 +2002,6 @@ func (suite *OvnClientTestSuite) testGetLogicalSwitchPort() {
 	})
 }
 
-func (suite *OvnClientTestSuite) testSetLogicalSwitchPortActivationStrategy() {
-	t := suite.T()
-	t.Parallel()
-	nbClient := suite.ovnNBClient
-	lspName := "test-update-op-lsp"
-	lsName := "test-update-op-ls"
-
-	err := nbClient.CreateBareLogicalSwitch(lsName)
-	require.NoError(t, err)
-
-	err = nbClient.CreateBareLogicalSwitchPort(lsName, lspName, "unknown", "")
-	require.NoError(t, err)
-
-	lsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
-	require.NoError(t, err)
-
-	t.Run("normal set logical switch port activation strategy", func(t *testing.T) {
-		if lsp.Options == nil {
-			lsp.Options = make(map[string]string)
-		}
-		lsp.Options["requested-chassis"] = "test-chassis"
-		lsp.Options["activation-strategy"] = "test-strategy"
-		chassis := "test-chassis"
-
-		err = nbClient.SetLogicalSwitchPortActivationStrategy(lspName, chassis)
-		require.NoError(t, err)
-
-		updatedLsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
-		require.NoError(t, err)
-
-		expectedOptions := map[string]string{
-			"requested-chassis":   fmt.Sprintf("%s,%s", chassis, chassis),
-			"activation-strategy": "rarp",
-		}
-		require.Equal(t, expectedOptions, updatedLsp.Options)
-	})
-
-	t.Run("set logical switch port activation strategy with nil lsp", func(t *testing.T) {
-		lsp.Options = nil
-		chassis := "test-chassis"
-
-		err = nbClient.SetLogicalSwitchPortActivationStrategy(lspName, chassis)
-		require.NoError(t, err)
-
-		updatedLsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
-		require.NoError(t, err)
-
-		expectedOptions := map[string]string{
-			"requested-chassis":   fmt.Sprintf("%s,%s", chassis, chassis),
-			"activation-strategy": "rarp",
-		}
-		require.Equal(t, expectedOptions, updatedLsp.Options)
-	})
-
-	t.Run("should print err log when logical switch port does not exist", func(t *testing.T) {
-		nonExistentLspName := "test-nonexistent-lsp"
-		chassis := "test-chassis"
-
-		err = nbClient.SetLogicalSwitchPortActivationStrategy(nonExistentLspName, chassis)
-		require.Error(t, err)
-	})
-}
-
 func (suite *OvnClientTestSuite) testSetLogicalSwitchPortMigrateOptions() {
 	t := suite.T()
 	t.Parallel()
