@@ -1140,10 +1140,10 @@ k8s.io/sample-apiserver v0.31.2/go.mod h1:dVsU5iVfjCEulddMjsiUnPHoL7e7bB2e+RLuy4
 k8s.io/utils v0.0.0-20240711033017-18e509b52bc8/go.mod h1:OLgZIPagt7ERELqWJFomSt595RzquPNLL48iOWgYOg0=
 k8s.io/utils v0.0.0-20240921022957-49e7df575cb6 h1:MDF6h2H/h4tbzmtIKTuctcwZmY0tY9mD9fNT47QO6HI=
 k8s.io/utils v0.0.0-20240921022957-49e7df575cb6/go.mod h1:OLgZIPagt7ERELqWJFomSt595RzquPNLL48iOWgYOg0=
-kernel.org/pub/linux/libs/security/libcap/cap v1.2.70 h1:QnLPkuDWWbD5C+3DUA2IUXai5TK6w2zff+MAGccqdsw=
-kernel.org/pub/linux/libs/security/libcap/cap v1.2.70/go.mod h1:/iBwcj9nbLejQitYvUm9caurITQ6WyNHibJk6Q9fiS4=
-kernel.org/pub/linux/libs/security/libcap/psx v1.2.70 h1:HsB2G/rEQiYyo1bGoQqHZ/Bvd6x1rERQTNdPr1FyWjI=
-kernel.org/pub/linux/libs/security/libcap/psx v1.2.70/go.mod h1:+l6Ee2F59XiJ2I6WR5ObpC1utCQJZ/VLsEbQCD8RG24=
+kernel.org/pub/linux/libs/security/libcap/cap v1.2.71 h1:M/uExTYLPOeX6EGZ3PGeCD4pbbvpdF8TyU1X8/b51oU=
+kernel.org/pub/linux/libs/security/libcap/cap v1.2.71/go.mod h1:p6YwxVCVAgpn8NL1FiZOnoSuwqaGBDdWeb3suWEDUxM=
+kernel.org/pub/linux/libs/security/libcap/psx v1.2.71 h1:i19+O6oaKRqgflRO4o7WKdU8LJ7vKNSFLDDqHB6CvQ8=
+kernel.org/pub/linux/libs/security/libcap/psx v1.2.71/go.mod h1:+l6Ee2F59XiJ2I6WR5ObpC1utCQJZ/VLsEbQCD8RG24=
 kubevirt.io/api v1.3.1 h1:MoTNo/zvDlZ44c2ocXLPln8XTaQOeUodiYbEKrTCqv4=
 kubevirt.io/api v1.3.1/go.mod h1:tCn7VAZktEvymk490iPSMPCmKM9UjbbfH2OsFR/IOLU=
 kubevirt.io/containerized-data-importer-api v1.58.1 h1:Zbf0pCvxb4fBvtMR6uI2OIJZ4UfwFxripzOLMO4HPbI=
