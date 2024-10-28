@@ -778,11 +778,11 @@ func (suite *OvnClientTestSuite) Test_GetLogicalRouterPolicy() {
 	suite.testGetLogicalRouterPolicy()
 }
 
-func (suite *OvnClientTestSuite) Test_newLogicalRouterPolicy() {
+func (suite *OvnClientTestSuite) Test_NewLogicalRouterPolicy() {
 	suite.testNewLogicalRouterPolicy()
 }
 
-func (suite *OvnClientTestSuite) Test_policyFilter() {
+func (suite *OvnClientTestSuite) Test_PolicyFilter() {
 	suite.testPolicyFilter()
 }
 
@@ -815,12 +815,24 @@ func (suite *OvnClientTestSuite) Test_GetNat() {
 	suite.testGetNat()
 }
 
-func (suite *OvnClientTestSuite) Test_newNat() {
+func (suite *OvnClientTestSuite) Test_NewNat() {
 	suite.testNewNat()
 }
 
-func (suite *OvnClientTestSuite) Test_natFilter() {
+func (suite *OvnClientTestSuite) Test_NatFilter() {
 	suite.testNatFilter()
+}
+
+func (suite *OvnClientTestSuite) Test_AddNat() {
+	suite.testAddNat()
+}
+
+func (suite *OvnClientTestSuite) Test_GetNATByUUID() {
+	suite.testGetNATByUUID()
+}
+
+func (suite *OvnClientTestSuite) Test_GetNatValidations() {
+	suite.testGetNatValidations()
 }
 
 /* logical_router_static_route unit test */
