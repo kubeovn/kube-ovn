@@ -1571,7 +1571,7 @@ func (suite *OvnClientTestSuite) testListLogicalSwitchPorts() {
 		require.Equal(t, lspName, out[0].Name)
 	})
 
-	t.Run("create patch lsp", func(t *testing.T) {
+	t.Run("failed client create patch lsp", func(t *testing.T) {
 		t.Parallel()
 
 		// patch lsp
