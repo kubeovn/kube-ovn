@@ -6,6 +6,7 @@ REGISTRY = kubeovn
 DEV_TAG = dev
 RELEASE_TAG = $(shell cat VERSION)
 DEBUG_TAG = $(shell cat VERSION)-debug
+LEGACY_TAG = $(shell cat VERSION)-amd64-legacy
 VERSION = $(shell echo $${VERSION:-$(RELEASE_TAG)})
 COMMIT = git-$(shell git rev-parse --short HEAD)
 DATE = $(shell date +"%Y-%m-%d_%H:%M:%S")
