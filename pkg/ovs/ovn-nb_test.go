@@ -15,6 +15,7 @@ func (suite *OvnClientTestSuite) testCreateGatewayLogicalSwitch() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
+	failedNbClient := suite.faiedOvnNBClient
 	lsName := "test-create-gw-ls"
 	lrName := "test-create-gw-lr"
 	lspName := fmt.Sprintf("%s-%s", lsName, lrName)
@@ -25,6 +26,11 @@ func (suite *OvnClientTestSuite) testCreateGatewayLogicalSwitch() {
 	err := nbClient.CreateLogicalRouter(lrName)
 	require.NoError(t, err)
 
+	// create with failed client
+	err = failedNbClient.CreateGatewayLogicalSwitch(lsName, lrName, "test-external", "192.168.230.1/24,fc00::0af4:01/112", util.GenerateMac(), 210, chassises...)
+	require.Error(t, err)
+
+	// create with normal client
 	err = nbClient.CreateGatewayLogicalSwitch(lsName, lrName, "test-external", "192.168.230.1/24,fc00::0af4:01/112", util.GenerateMac(), 210, chassises...)
 	require.NoError(t, err)
 
@@ -52,6 +58,8 @@ func (suite *OvnClientTestSuite) testCreateLogicalPatchPort() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
+	failedNbClient := suite.faiedOvnNBClient
+
 	lsName := "test-create-router-ls"
 	lrName := "test-create-router-lr"
 	lspName := fmt.Sprintf("%s-%s", lsName, lrName)
@@ -101,6 +109,33 @@ func (suite *OvnClientTestSuite) testCreateLogicalPatchPort() {
 		require.NoError(t, err)
 		require.Empty(t, lrp.GatewayChassis)
 	})
+
+	t.Run("failed to create router port with chassises", func(t *testing.T) {
+		t.Parallel()
+		// failed to create with failed client
+		err := failedNbClient.CreateLogicalPatchPort(lsName, lrName, lspName, lrpName, "192.168.230.1/24,fc00::0af4:01/112", util.GenerateMac(), chassises...)
+		require.Error(t, err)
+
+		// failed to create with invalid cidr
+		err = failedNbClient.CreateLogicalPatchPort(lsName, lrName, lspName, lrpName, "192.168.230.1/33,fc00::0af4:01/129", util.GenerateMac(), chassises...)
+		require.Error(t, err)
+
+		err = failedNbClient.CreateLogicalPatchPort(lsName, lrName, lspName, lrpName, "0.0.0.0/0,fc00::0af4:01/112", util.GenerateMac(), chassises...)
+		require.Error(t, err)
+
+		err = failedNbClient.CreateLogicalPatchPort(lsName, lrName, lspName, lrpName, "192.168.230.1/24,00::00:00/0", util.GenerateMac(), chassises...)
+		require.Error(t, err)
+
+		err = failedNbClient.CreateLogicalPatchPort(lsName, lrName, lspName, lrpName, "192.168.230.1/31,fc00::0af4:01/127", util.GenerateMac(), chassises...)
+		require.Error(t, err)
+
+		err = failedNbClient.CreateLogicalPatchPort(lsName, lrName, lspName, lrpName, "192.168.230.1/32fc00::0af4:01/128", util.GenerateMac(), chassises...)
+		require.Error(t, err)
+
+		lrp, err := nbClient.GetLogicalRouterPort(lrpName, false)
+		require.Error(t, err)
+		require.Nil(t, lrp)
+	})
 }
 
 func (suite *OvnClientTestSuite) testRemoveRouterPort() {
@@ -108,6 +143,8 @@ func (suite *OvnClientTestSuite) testRemoveRouterPort() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
+	failedNbClient := suite.faiedOvnNBClient
+
 	lsName := "test-remove-router-type-ls"
 	lrName := "test-remove-router-type-lr"
 	lspName := fmt.Sprintf("%s-%s", lsName, lrName)
@@ -131,6 +168,15 @@ func (suite *OvnClientTestSuite) testRemoveRouterPort() {
 		err = nbClient.RemoveLogicalPatchPort(lspName, lrpName)
 		require.NoError(t, err)
 	})
+
+	t.Run("failed client del router type port", func(t *testing.T) {
+		err = failedNbClient.RemoveLogicalPatchPort(lspName, lrpName)
+		require.Nil(t, err)
+		err = failedNbClient.RemoveLogicalPatchPort("", lrpName)
+		require.Error(t, err)
+		err = failedNbClient.RemoveLogicalPatchPort(lspName, "")
+		require.Nil(t, err)
+	})
 }
 
 func (suite *OvnClientTestSuite) testDeleteLogicalGatewaySwitch() {
@@ -138,6 +184,8 @@ func (suite *OvnClientTestSuite) testDeleteLogicalGatewaySwitch() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
+	failedNbClient := suite.faiedOvnNBClient
+
 	lsName := "test-del-gw-ls"
 	lrName := "test-del-gw-lr"
 
@@ -146,6 +194,15 @@ func (suite *OvnClientTestSuite) testDeleteLogicalGatewaySwitch() {
 
 	err = nbClient.CreateGatewayLogicalSwitch(lsName, lrName, "test-external", "192.168.230.1/24,fc00::0af4:01/112", util.GenerateMac(), 210)
 	require.NoError(t, err)
+
+	err = failedNbClient.DeleteLogicalGatewaySwitch("", lrName)
+	require.Error(t, err)
+
+	err = failedNbClient.DeleteLogicalGatewaySwitch(lsName, "")
+	require.Nil(t, err)
+
+	err = failedNbClient.DeleteLogicalGatewaySwitch(lsName, lrName)
+	require.Nil(t, err)
 
 	// localnet port and lsp will be deleted when delete logical switch in real ovsdb,
 	// it's different from the mock memory ovsdb,
@@ -162,14 +219,27 @@ func (suite *OvnClientTestSuite) testDeleteSecurityGroup() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
+	failedNbClient := suite.faiedOvnNBClient
 	sgName := "test_del_sg"
 	asName := "test_del_sg_as"
 	pgName := GetSgPortGroupName(sgName)
 	priority := "5111"
 	match := "outport == @ovn.sg.test_del_sg && ip"
 
-	/* prepate test */
-	err := nbClient.CreatePortGroup(pgName, map[string]string{
+	// create with empty pg
+	err := nbClient.CreatePortGroup("", map[string]string{
+		"type": "security_group",
+		sgKey:  sgName,
+	})
+	require.Error(t, err)
+	// create with failed client
+	err = failedNbClient.CreatePortGroup(pgName, map[string]string{
+		"type": "security_group",
+		sgKey:  sgName,
+	})
+	require.Error(t, err)
+	//  create with normal pg
+	err = nbClient.CreatePortGroup(pgName, map[string]string{
 		"type": "security_group",
 		sgKey:  sgName,
 	})
@@ -186,7 +256,14 @@ func (suite *OvnClientTestSuite) testDeleteSecurityGroup() {
 	})
 	require.NoError(t, err)
 
-	/* run test */
+	// failed client delete sg
+	err = failedNbClient.DeleteSecurityGroup("")
+	require.Error(t, err)
+
+	err = failedNbClient.DeleteSecurityGroup(sgName)
+	require.Nil(t, err)
+
+	// normal delete sg
 	err = nbClient.DeleteSecurityGroup(sgName)
 	require.NoError(t, err)
 

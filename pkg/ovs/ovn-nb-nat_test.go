@@ -569,7 +569,7 @@ func (suite *OvnClientTestSuite) testGetNat() {
 		})
 
 		t.Run("logical ip is different", func(t *testing.T) {
-			_, err := nbClient.GetNat(lrName, natType, externalIP, "10.250.0.10", false)
+			_, err := nbClient.GetNat(lrName, natType, externalIP, "10.250.0.171", false)
 			require.ErrorContains(t, err, "not found")
 		})
 

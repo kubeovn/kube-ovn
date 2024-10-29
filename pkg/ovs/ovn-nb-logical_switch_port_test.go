@@ -1549,6 +1549,7 @@ func (suite *OvnClientTestSuite) testListLogicalSwitchPorts() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
+	failedNbClient := suite.faiedOvnNBClient
 
 	lsName := "test-list-lsp-ls"
 	err := nbClient.CreateBareLogicalSwitch(lsName)
@@ -1570,7 +1571,19 @@ func (suite *OvnClientTestSuite) testListLogicalSwitchPorts() {
 		require.Equal(t, lspName, out[0].Name)
 	})
 
-	t.Run("patch lsp", func(t *testing.T) {
+	t.Run("create patch lsp", func(t *testing.T) {
+		t.Parallel()
+
+		// patch lsp
+		lrName := "test-list-patch-lsp-lr"
+		lspName := "test-list-patch-lsp-lsp"
+		lrpName := "test-list-patch-lsp-lrp"
+
+		err = failedNbClient.CreateLogicalPatchPort(lsName, lrName, lspName, lrpName, "10.19.100.1/24", "")
+		require.Error(t, err)
+	})
+
+	t.Run("failed client create patch lsp", func(t *testing.T) {
 		t.Parallel()
 
 		// patch lsp

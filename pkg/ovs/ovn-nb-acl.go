@@ -1173,6 +1173,10 @@ func (c *OVNNbClient) CreateAclsOps(parentName, parentType string, acls ...*ovnn
 // delete to-lport and from-lport direction acl when direction is empty, otherwise one-way
 // parentType is 'ls' or 'pg'
 func (c *OVNNbClient) DeleteAclsOps(parentName, parentType, direction string, externalIDs map[string]string) ([]ovsdb.Operation, error) {
+	if parentName == "" {
+		return nil, errors.New("the port group name or logical switch name is required")
+	}
+
 	if externalIDs == nil {
 		externalIDs = make(map[string]string)
 	}
