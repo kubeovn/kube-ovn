@@ -864,6 +864,18 @@ func (suite *OvnClientTestSuite) Test_newLogicalRouterStaticRoute() {
 	suite.testNewLogicalRouterStaticRoute()
 }
 
+func (suite *OvnClientTestSuite) Test_ListLogicalRouterStaticRoutesByOption() {
+	suite.testListLogicalRouterStaticRoutesByOption()
+}
+
+func (suite *OvnClientTestSuite) Test_UpdateLogicalRouterStaticRoute() {
+	suite.testUpdateLogicalRouterStaticRoute()
+}
+
+func (suite *OvnClientTestSuite) Test_GetLogicalRouterStaticRouteEdgeCases() {
+	suite.testGetLogicalRouterStaticRouteEdgeCases()
+}
+
 /* dhcp options unit test */
 func (suite *OvnClientTestSuite) Test_UpdateDHCPOptions() {
 	suite.testUpdateDHCPOptions()
