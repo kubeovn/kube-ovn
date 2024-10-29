@@ -31,9 +31,6 @@ func (c *Controller) runGateway() {
 	if err := c.setICGateway(); err != nil {
 		klog.Errorf("failed to set ic gateway, %v", err)
 	}
-	if err := c.setExGateway(); err != nil {
-		klog.Errorf("failed to set ex gateway, %v", err)
-	}
 	c.gcIPSet()
 }
 

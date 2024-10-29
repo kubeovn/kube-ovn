@@ -556,7 +556,6 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 			"enable-external-gw": "true",
 			"external-gw-nodes":  externalGwNodes,
 			"type":               kubeovnv1.GWCentralizedType,
-			"external-gw-nic":    "eth1",
 			"external-gw-addr":   strings.Join(cidr, ","),
 		}
 		configMap := &corev1.ConfigMap{
@@ -944,7 +943,6 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 			"enable-external-gw": "true",
 			"external-gw-nodes":  externalGwNodes,
 			"type":               kubeovnv1.GWDistributedType,
-			"external-gw-nic":    "eth1",
 			"external-gw-addr":   strings.Join(cidr, ","),
 		}
 		// TODO:// external-gw-nodes could be auto managed by recognizing gw chassis node which has the external-gw-nic
