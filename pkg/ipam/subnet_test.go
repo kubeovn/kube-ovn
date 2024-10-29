@@ -1099,3 +1099,40 @@ func TestSubnetReleaseAddr(t *testing.T) {
 	require.NotEmpty(t, macStr3)
 	subnet.releaseAddr(pod63Name, nic63Name)
 }
+
+func TestPopPodNic(t *testing.T) {
+	subnet, err := NewSubnet("v4Subnet", "10.0.0.0/24", nil)
+	require.NoError(t, err)
+	require.NotNil(t, subnet)
+
+	// 1. Existing pod and nic
+	podName := "pod1.default"
+	nicName := "nic1"
+	subnet.PodToNicList[podName] = []string{nicName}
+	subnet.popPodNic(podName, nicName)
+	require.Equal(t, 0, len(subnet.PodToNicList[podName]))
+
+	// 2. Non-existent nic
+	subnet.PodToNicList[podName] = []string{nicName}
+	subnet.popPodNic(podName, "nonexistentNic")
+	require.Equal(t, []string{nicName}, subnet.PodToNicList[podName])
+
+	// 3. List empty after removal
+	subnet.popPodNic(podName, nicName)
+	require.Equal(t, 0, len(subnet.PodToNicList[podName]))
+
+	// 4. Non-existent pod
+	subnet.popPodNic("nonexistentPod", nicName)
+	// Ensure no panic occurs and no changes in the map
+	require.Equal(t, 0, len(subnet.PodToNicList[podName]))
+
+	// 5. Multiple nics in the list
+	subnet.PodToNicList[podName] = []string{"nic1", "nic2", "nic3"}
+	subnet.popPodNic(podName, "nic2")
+	require.Equal(t, []string{"nic1", "nic3"}, subnet.PodToNicList[podName])
+
+	// 1. Existing pod and nic
+	subnet.PodToNicList[podName] = nil
+	subnet.popPodNic(podName, nicName)
+	require.Equal(t, 0, len(subnet.PodToNicList[podName]))
+}
