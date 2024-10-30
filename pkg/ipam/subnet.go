@@ -170,7 +170,7 @@ func (s *Subnet) pushPodNic(podName, nicName string) {
 
 func (s *Subnet) popPodNic(podName, nicName string) {
 	s.PodToNicList[podName] = util.RemoveString(s.PodToNicList[podName], nicName)
-	if s.PodToNicList[podName] == nil {
+	if len(s.PodToNicList[podName]) == 0 {
 		delete(s.PodToNicList, podName)
 	}
 }
