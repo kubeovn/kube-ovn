@@ -1131,7 +1131,7 @@ func TestPopPodNic(t *testing.T) {
 	subnet.popPodNic(podName, "nic2")
 	require.Equal(t, []string{"nic1", "nic3"}, subnet.PodToNicList[podName])
 
-	// 1. Existing pod and nic
+	// 6. Existing pod and nil nic
 	subnet.PodToNicList[podName] = nil
 	subnet.popPodNic(podName, nicName)
 	require.Equal(t, 0, len(subnet.PodToNicList[podName]))
