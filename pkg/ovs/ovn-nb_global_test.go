@@ -22,9 +22,13 @@ func (suite *OvnClientTestSuite) testGetNbGlobal() {
 	t := suite.T()
 
 	nbClient := suite.ovnNBClient
+	failedNbClient := suite.faiedOvnNBClient
 
 	t.Cleanup(func() {
-		err := nbClient.DeleteNbGlobal()
+		err := failedNbClient.DeleteNbGlobal()
+		require.Error(t, err)
+
+		err = nbClient.DeleteNbGlobal()
 		require.NoError(t, err)
 
 		_, err = nbClient.GetNbGlobal()
@@ -45,12 +49,18 @@ func (suite *OvnClientTestSuite) testGetNbGlobal() {
 		require.NoError(t, err)
 		require.NotEmpty(t, out.UUID)
 	})
+
+	t.Run("failed client create nb_global", func(t *testing.T) {
+		err := failedNbClient.CreateNbGlobal(nil)
+		require.Error(t, err)
+	})
 }
 
 func (suite *OvnClientTestSuite) testUpdateNbGlobal() {
 	t := suite.T()
 
 	nbClient := suite.ovnNBClient
+	failedNbClient := suite.faiedOvnNBClient
 
 	t.Cleanup(func() {
 		err := nbClient.DeleteNbGlobal()
@@ -77,6 +87,11 @@ func (suite *OvnClientTestSuite) testUpdateNbGlobal() {
 		require.NoError(t, err)
 		require.Equal(t, "11:22:aa", out.Options["mac_prefix"])
 		require.Equal(t, "16711680", out.Options["max_tunid"])
+	})
+
+	t.Run("failed client update", func(t *testing.T) {
+		err = failedNbClient.UpdateNbGlobal(nil)
+		require.Error(t, err)
 	})
 
 	t.Run("create options", func(t *testing.T) {

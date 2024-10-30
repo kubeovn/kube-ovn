@@ -1422,3 +1422,52 @@ func TestInvalidCIDR(t *testing.T) {
 	err = InvalidSpecialCIDR(invalidCIDR)
 	require.Error(t, err)
 }
+
+func TestInvalidNetworkMask(t *testing.T) {
+	validNet := net.IPNet{
+		IP:   net.ParseIP("10.10.10.0"),
+		Mask: net.CIDRMask(0, 32),
+	}
+	err := InvalidNetworkMask(&validNet)
+	require.Nil(t, err)
+
+	validNet = net.IPNet{
+		IP:   net.ParseIP("10.10.10.0"),
+		Mask: net.CIDRMask(0, 33),
+	}
+	err = InvalidNetworkMask(&validNet)
+	require.Error(t, err)
+
+	validNet = net.IPNet{
+		IP:   net.ParseIP("0.0.0.0"),
+		Mask: net.CIDRMask(0, 0),
+	}
+	err = InvalidNetworkMask(&validNet)
+	require.Error(t, err)
+
+	// Test for IPv6
+	validNet = net.IPNet{
+		IP:   net.ParseIP("2001:db8::1"),
+		Mask: net.CIDRMask(0, 128),
+	}
+	err = InvalidNetworkMask(&validNet)
+	require.Nil(t, err)
+	validNet = net.IPNet{
+		IP:   net.ParseIP("2001:db8::1"),
+		Mask: net.CIDRMask(0, 129),
+	}
+	err = InvalidNetworkMask(&validNet)
+	require.Error(t, err)
+	validNet = net.IPNet{
+		IP:   net.ParseIP("2001:db8::1"),
+		Mask: net.CIDRMask(0, 0),
+	}
+	err = InvalidNetworkMask(&validNet)
+	require.Error(t, err)
+	validNet = net.IPNet{
+		IP:   net.ParseIP("0:0::0"),
+		Mask: net.CIDRMask(0, 0),
+	}
+	err = InvalidNetworkMask(&validNet)
+	require.Error(t, err)
+}

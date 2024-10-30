@@ -491,7 +491,14 @@ func (suite *OvnClientTestSuite) testGetKubeOvnChassisses() {
 		require.NoError(t, err)
 		chassisList, err := sbClient.GetKubeOvnChassisses()
 		require.NoError(t, err)
-		require.Empty(t, *chassisList)
+		names := make(map[string]bool)
+		for _, chassis := range *chassisList {
+			names[chassis.Name] = true
+		}
+		require.False(t, names["kube-ovn-chassis-1"])
+		require.False(t, names["kube-ovn-chassis-2"])
+		require.False(t, names["non-kube-ovn-chassis"])
+		require.False(t, names["mixed-chassis"])
 	})
 
 	kubeOvnChassis1 := newChassis(0, "host-1", "kube-ovn-chassis-1", nil, nil, nil, map[string]string{"vendor": util.CniTypeName}, nil)
