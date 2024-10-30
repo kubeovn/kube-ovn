@@ -13,6 +13,12 @@ import (
 )
 
 func (c *OVNNbClient) CreateNbGlobal(nbGlobal *ovnnb.NBGlobal) error {
+	if nbGlobal == nil {
+		err := errors.New("nb global is nil")
+		klog.Error(err)
+		return err
+	}
+
 	op, err := c.ovsDbClient.Create(nbGlobal)
 	if err != nil {
 		klog.Error(err)
@@ -61,6 +67,12 @@ func (c *OVNNbClient) GetNbGlobal() (*ovnnb.NBGlobal, error) {
 }
 
 func (c *OVNNbClient) UpdateNbGlobal(nbGlobal *ovnnb.NBGlobal, fields ...interface{}) error {
+	if nbGlobal == nil {
+		err := errors.New("nb global is nil")
+		klog.Error(err)
+		return err
+	}
+
 	op, err := c.Where(nbGlobal).Update(nbGlobal, fields...)
 	if err != nil {
 		klog.Error(err)

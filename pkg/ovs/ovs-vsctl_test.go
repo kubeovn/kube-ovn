@@ -75,6 +75,17 @@ func (suite *OvnClientTestSuite) testOvsFind() {
 	require.Empty(t, ret)
 }
 
+func (suite *OvnClientTestSuite) testParseOvsFindOutput() {
+	t := suite.T()
+	t.Parallel()
+	input := `br-int
+
+br-businessnet
+`
+	ret := parseOvsFindOutput(input)
+	require.Len(t, ret, 2)
+}
+
 func (suite *OvnClientTestSuite) testOvsClear() {
 	t := suite.T()
 	t.Parallel()

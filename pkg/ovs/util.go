@@ -43,6 +43,9 @@ func LogicalSwitchPortName(lr, ls string) string {
 }
 
 func GetSgPortGroupName(sgName string) string {
+	if sgName == "" {
+		return ""
+	}
 	return strings.ReplaceAll(fmt.Sprintf("ovn.sg.%s", sgName), "-", ".")
 }
 

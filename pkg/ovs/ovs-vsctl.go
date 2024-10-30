@@ -112,6 +112,11 @@ func ovsFind(table, column string, conditions ...string) ([]string, error) {
 		klog.Error(err)
 		return nil, err
 	}
+	ret := parseOvsFindOutput(output)
+	return ret, nil
+}
+
+func parseOvsFindOutput(output string) []string {
 	values := strings.Split(output, "\n\n")
 	// We want "bare" values for strings, but we can't pass --bare to ovs-vsctl because
 	// it breaks more complicated types. So try passing each value through Unquote();
@@ -127,7 +132,7 @@ func ovsFind(table, column string, conditions ...string) ([]string, error) {
 			ret = append(ret, strings.Trim(strings.TrimSpace(val), "\""))
 		}
 	}
-	return ret, nil
+	return ret
 }
 
 func ovsClear(table, record string, columns ...string) error {

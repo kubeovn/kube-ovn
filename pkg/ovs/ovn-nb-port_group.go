@@ -188,6 +188,9 @@ func (c *OVNNbClient) DeletePortGroup(pgName ...string) error {
 
 // GetPortGroup get port group by name
 func (c *OVNNbClient) GetPortGroup(pgName string, ignoreNotFound bool) (*ovnnb.PortGroup, error) {
+	if pgName == "" {
+		return nil, errors.New("port group name is empty")
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
 	defer cancel()
 

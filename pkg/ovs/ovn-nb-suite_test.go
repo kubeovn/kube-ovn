@@ -1056,6 +1056,10 @@ func (suite *OvnClientTestSuite) Test_OvsFind() {
 	suite.testOvsFind()
 }
 
+func (suite *OvnClientTestSuite) Test_ParseOvsFindOutput() {
+	suite.testParseOvsFindOutput()
+}
+
 func (suite *OvnClientTestSuite) Test_OvsClear() {
 	suite.testOvsClear()
 }
