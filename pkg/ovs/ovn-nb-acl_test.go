@@ -611,13 +611,13 @@ func (suite *OvnClientTestSuite) testCreateSgDenyAllACL() {
 		require.Contains(t, pg.ACLs, egressACL.UUID)
 	})
 
-	t.Run("should print log err when sgname does not exist", func(t *testing.T) {
+	t.Run("should print log err when sg name does not exist", func(t *testing.T) {
 		sgName := "test_nonexist_pg"
 		err := nbClient.CreateSgDenyAllACL(sgName)
 		require.Error(t, err)
 	})
 
-	t.Run("should print log err when nbclient fails", func(t *testing.T) {
+	t.Run("fail nbclient should print log err", func(t *testing.T) {
 		sgName := "test_failed_client"
 		err := failedNbClient.CreateSgDenyAllACL(sgName)
 		require.Error(t, err)
@@ -1571,7 +1571,7 @@ func (suite *OvnClientTestSuite) testDeleteAcls() {
 		require.NoError(t, err)
 	})
 
-	t.Run("should print err when nbclient fails", func(t *testing.T) {
+	t.Run("fail nbclient should print log err", func(t *testing.T) {
 		priority := "5805"
 		basePort := 5805
 		acls := make([]*ovnnb.ACL, 0, 5)
@@ -2463,7 +2463,7 @@ func (suite *OvnClientTestSuite) testCreateBareACL() {
 		require.Contains(t, err.Error(), "new acl direction from-lport priority 1000 match")
 	})
 
-	t.Run("should print log err when nbclient fails", func(t *testing.T) {
+	t.Run("fail nbclient should print log err", func(t *testing.T) {
 		err := failedNbClient.CreateBareACL("test-parent", "from-lport", "1000", "ip4.src == 10.0.0.1", "allow")
 		require.Error(t, err)
 	})
@@ -2564,7 +2564,7 @@ func (suite *OvnClientTestSuite) testUpdateACL() {
 		fmt.Println(newACL.Priority)
 	})
 
-	t.Run("should print log err when nbclient fails", func(t *testing.T) {
+	t.Run("fail nbclient should print log err", func(t *testing.T) {
 		failACL, err := failedNbClient.newACL(pgName, ovnnb.ACLDirectionToLport, priority, match, ovnnb.ACLActionAllowRelated, util.NetpolACLTier)
 		require.NoError(t, err)
 
