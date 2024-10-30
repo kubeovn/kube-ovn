@@ -286,3 +286,9 @@ func MakeSubnet(name, vlan, cidr, gateway, vpc, provider string, excludeIPs, gat
 	}
 	return subnet
 }
+
+func MakeSubnetWithNamespaceSelectors(name, vlan, cidr, gateway, vpc, provider string, excludeIPs, gatewayNodes, namespaces []string, namespaceSelectors []metav1.LabelSelector) *apiv1.Subnet {
+	subnet := MakeSubnet(name, vlan, cidr, gateway, vpc, provider, excludeIPs, gatewayNodes, namespaces)
+	subnet.Spec.NamespaceSelectors = namespaceSelectors
+	return subnet
+}
