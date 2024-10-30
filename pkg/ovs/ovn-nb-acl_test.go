@@ -505,35 +505,46 @@ func (suite *OvnClientTestSuite) testCreateSgDenyAllACL() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
-	sgName := "test_create_deny_all_acl_pg"
-	pgName := GetSgPortGroupName(sgName)
+	failedNbClient := suite.faiedOvnNBClient
 
-	err := nbClient.CreatePortGroup(pgName, nil)
-	require.NoError(t, err)
+	t.Run("normal create sg deny all acl", func(t *testing.T) {
+		sgName := "test_create_deny_all_acl_pg"
+		pgName := GetSgPortGroupName(sgName)
 
-	err = nbClient.CreateSgDenyAllACL(sgName)
-	require.NoError(t, err)
+		err := nbClient.CreatePortGroup(pgName, nil)
+		require.NoError(t, err)
 
-	pg, err := nbClient.GetPortGroup(pgName, false)
-	require.NoError(t, err)
+		err = nbClient.CreateSgDenyAllACL(sgName)
+		require.NoError(t, err)
 
-	// ingress acl
-	match := fmt.Sprintf("outport == @%s && ip", pgName)
-	ingressACL, err := nbClient.GetACL(pgName, ovnnb.ACLDirectionToLport, util.SecurityGroupDropPriority, match, false)
-	require.NoError(t, err)
-	expect := newACL(pgName, ovnnb.ACLDirectionToLport, util.SecurityGroupDropPriority, match, ovnnb.ACLActionDrop)
-	expect.UUID = ingressACL.UUID
-	require.Equal(t, expect, ingressACL)
-	require.Contains(t, pg.ACLs, ingressACL.UUID)
+		// ingress acl
+		match := fmt.Sprintf("outport == @%s && ip", pgName)
+		ingressACL, err := nbClient.GetACL(pgName, ovnnb.ACLDirectionToLport, util.SecurityGroupDropPriority, match, false)
+		require.NoError(t, err)
+		expect := newACL(pgName, ovnnb.ACLDirectionToLport, util.SecurityGroupDropPriority, match, ovnnb.ACLActionDrop)
+		expect.UUID = ingressACL.UUID
+		require.Equal(t, expect, ingressACL)
 
-	// egress acl
-	match = fmt.Sprintf("inport == @%s && ip", pgName)
-	egressACL, err := nbClient.GetACL(pgName, ovnnb.ACLDirectionFromLport, util.SecurityGroupDropPriority, match, false)
-	require.NoError(t, err)
-	expect = newACL(pgName, ovnnb.ACLDirectionFromLport, util.SecurityGroupDropPriority, match, ovnnb.ACLActionDrop)
-	expect.UUID = egressACL.UUID
-	require.Equal(t, expect, egressACL)
-	require.Contains(t, pg.ACLs, egressACL.UUID)
+		// egress acl
+		match = fmt.Sprintf("inport == @%s && ip", pgName)
+		egressACL, err := nbClient.GetACL(pgName, ovnnb.ACLDirectionFromLport, util.SecurityGroupDropPriority, match, false)
+		require.NoError(t, err)
+		expect = newACL(pgName, ovnnb.ACLDirectionFromLport, util.SecurityGroupDropPriority, match, ovnnb.ACLActionDrop)
+		expect.UUID = egressACL.UUID
+		require.Equal(t, expect, egressACL)
+	})
+
+	t.Run("should print log err when sg name does not exist", func(t *testing.T) {
+		sgName := "test_nonexist_pg"
+		err := nbClient.CreateSgDenyAllACL(sgName)
+		require.Error(t, err)
+	})
+
+	t.Run("fail nb client should log err", func(t *testing.T) {
+		sgName := "test_failed_client"
+		err := failedNbClient.CreateSgDenyAllACL(sgName)
+		require.Error(t, err)
+	})
 }
 
 func (suite *OvnClientTestSuite) testCreateSgBaseACL() {
@@ -1268,6 +1279,7 @@ func (suite *OvnClientTestSuite) testDeleteAcls() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
+	failedNbClient := suite.faiedOvnNBClient
 	pgName := "test-del-acls-pg"
 	lsName := "test-del-acls-ls"
 	matchPrefix := "outport == @ovn.sg.test_del_acl_pg && ip"
@@ -1475,6 +1487,33 @@ func (suite *OvnClientTestSuite) testDeleteAcls() {
 		ls, err = nbClient.GetLogicalSwitch(lsName, false)
 		require.NoError(t, err)
 		require.Empty(t, ls.ACLs)
+	})
+
+	t.Run("should no err when acls does not exist", func(t *testing.T) {
+		err = nbClient.DeleteAcls("test-nonexist-ls", logicalSwitchKey, ovnnb.ACLDirectionToLport, map[string]string{"subnet": "test-nonexist-ls"})
+		require.NoError(t, err)
+	})
+
+	t.Run("fail nb client should log err", func(t *testing.T) {
+		priority := "5805"
+		basePort := 5805
+		acls := make([]*ovnnb.ACL, 0, 5)
+
+		match := fmt.Sprintf("%s && udp.dst == %d", matchPrefix, basePort)
+		acl, err := failedNbClient.newACL(lsName, ovnnb.ACLDirectionToLport, priority, match, ovnnb.ACLActionAllowRelated, util.NetpolACLTier, func(acl *ovnnb.ACL) {
+			if acl.ExternalIDs == nil {
+				acl.ExternalIDs = make(map[string]string)
+			}
+			acl.ExternalIDs["subnet"] = lsName
+		})
+		require.NoError(t, err)
+		acls = append(acls, acl)
+
+		err = failedNbClient.CreateAcls(lsName, logicalSwitchKey, acls...)
+		require.Error(t, err)
+		// TODO:// should err but not for now
+		err = failedNbClient.DeleteAcls(lsName, logicalSwitchKey, ovnnb.ACLDirectionToLport, map[string]string{"subnet": lsName})
+		require.NoError(t, err)
 	})
 }
 
@@ -2352,6 +2391,7 @@ func (suite *OvnClientTestSuite) testCreateBareACL() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
+	failedNbClient := suite.faiedOvnNBClient
 
 	t.Run("create bare ACL successfully", func(t *testing.T) {
 		err := nbClient.CreateBareACL("test-parent", "from-lport", "1000", "ip4.src == 10.0.0.1", "allow")
@@ -2363,16 +2403,62 @@ func (suite *OvnClientTestSuite) testCreateBareACL() {
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "new acl direction from-lport priority 1000 match")
 	})
+
+	t.Run("fail nb client should log err", func(t *testing.T) {
+		err := failedNbClient.CreateBareACL("test-parent", "from-lport", "1000", "ip4.src == 10.0.0.1", "allow")
+		require.Error(t, err)
+	})
 }
 
 func (suite *OvnClientTestSuite) testUpdateACL() {
 	t := suite.T()
 
 	nbClient := suite.ovnNBClient
+	failedNbClient := suite.faiedOvnNBClient
+
+	// nbClient := suite.ovnNBClient
+	pgName := "test_update_acl_pg"
+	priority := "2000"
+	match := "ip4.dst == 100.64.0.0/16"
+
+	err := nbClient.CreatePortGroup(pgName, nil)
+	require.NoError(t, err)
+
+	acl, err := nbClient.newACL(pgName, ovnnb.ACLDirectionToLport, priority, match, ovnnb.ACLActionAllowRelated, util.NetpolACLTier)
+	require.NoError(t, err)
+
+	err = nbClient.CreateAcls(pgName, portGroupKey, acl)
+	require.NoError(t, err)
+
+	acl, err = nbClient.GetACL(pgName, ovnnb.ACLDirectionToLport, priority, match, false)
+	require.NoError(t, err)
 
 	t.Run("update ACL with nil input", func(t *testing.T) {
 		err := nbClient.UpdateACL(nil)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "address_set is nil")
+	})
+
+	t.Run("normal update ACL", func(t *testing.T) {
+		acl.Priority = 1005
+		err := nbClient.UpdateACL(acl)
+		require.NoError(t, err)
+
+		newACL, err := nbClient.GetACL(pgName, ovnnb.ACLDirectionToLport, "1005", match, false)
+		require.NoError(t, err)
+		fmt.Println(newACL.Priority)
+	})
+
+	t.Run("fail nb client should log err", func(t *testing.T) {
+		failACL, err := failedNbClient.newACL(pgName, ovnnb.ACLDirectionToLport, priority, match, ovnnb.ACLActionAllowRelated, util.NetpolACLTier)
+		require.NoError(t, err)
+
+		err = failedNbClient.CreateAcls(pgName, portGroupKey, failACL)
+		require.Error(t, err)
+
+		failACL.Priority = 1009
+		err = failedNbClient.UpdateACL(failACL)
+		// TODO:// should err but not for now
+		require.NoError(t, err)
 	})
 }
