@@ -308,7 +308,7 @@ func (suite *OvnClientTestSuite) testCreateVirtualLogicalSwitchPorts() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
-	failnbclient := suite.faiedOvnNBClient
+	failedNbClient := suite.faiedOvnNBClient
 	lsName := "test-create-virtual-port-ls"
 	vips := []string{"192.168.33.10", "192.168.33.12"}
 
@@ -344,7 +344,7 @@ func (suite *OvnClientTestSuite) testCreateVirtualLogicalSwitchPorts() {
 	})
 
 	t.Run("fail nb client should log err", func(t *testing.T) {
-		err = failnbclient.CreateVirtualLogicalSwitchPorts(lsName, vips...)
+		err = failedNbClient.CreateVirtualLogicalSwitchPorts(lsName, vips...)
 		require.Error(t, err)
 	})
 }
@@ -354,7 +354,7 @@ func (suite *OvnClientTestSuite) testCreateVirtualLogicalSwitchPort() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
-	failnbclient := suite.faiedOvnNBClient
+	failedNbClient := suite.faiedOvnNBClient
 	lspName := "test-create-one-virtual-port-lsp"
 	lsName := "test-create-one-virtual-port-ls"
 	lsName2 := "test-create-one-virtual-port-ls2"
@@ -391,7 +391,7 @@ func (suite *OvnClientTestSuite) testCreateVirtualLogicalSwitchPort() {
 	})
 
 	t.Run("fail nb client should log err", func(t *testing.T) {
-		err = failnbclient.CreateVirtualLogicalSwitchPort(lspName, lsName, vip)
+		err = failedNbClient.CreateVirtualLogicalSwitchPort(lspName, lsName, vip)
 		require.Error(t, err)
 	})
 }
