@@ -82,7 +82,22 @@ RUN cd /usr/src/ovn && \
     if [ "$ARCH" = "amd64" ] && [ "$LEGACY" != "true" ]; then CONFIGURE_OPTS="--with-ovs-build=/usr/src/ovs/_debian CFLAGS='-O2 -g -msse4.2 -mpopcnt -fPIC'"; fi && \
     OVSDIR=/usr/src/ovs EXTRA_CONFIGURE_OPTS=$CONFIGURE_OPTS DEB_BUILD_OPTIONS='parallel=8 nocheck' fakeroot debian/rules binary
 
+RUN mkdir -p /usr/src/openbfdd && \
+    curl -sSf -L --retry 5 https://github.com/dyninc/OpenBFDD/archive/e35f43ad8d2b3f084e96a84c392528a90d05a287.tar.gz | \
+    tar -xz -C /usr/src/openbfdd --strip-components=1
+
+ADD OpenBFDD-compile.patch /usr/src/
+
+RUN cd /usr/src/openbfdd && \
+    rm -vf missing && \
+    git apply --no-apply /usr/src/OpenBFDD-compile.patch && \
+    autoupdate && \
+    ./autogen.sh && \
+    ./configure --enable-silent-rules && \
+    make
+
 RUN mkdir /packages/ && \
+    mv /usr/src/openbfdd/bfdd-beacon /usr/src/openbfdd/bfdd-control /packages/ && \
     cp /usr/src/openvswitch-*deb /packages && \
     cp /usr/src/python3-openvswitch*deb /packages && \
     cp /usr/src/ovn-*deb /packages && \
@@ -143,12 +158,6 @@ ARG DUMB_INIT_VERSION="1.2.5"
 RUN curl -sSf -L --retry 5 -o /usr/bin/dumb-init https://github.com/Yelp/dumb-init/releases/download/v${DUMB_INIT_VERSION}/dumb-init_${DUMB_INIT_VERSION}_$(arch) && \
     chmod +x /usr/bin/dumb-init
 
-ARG BFDD_VERSION="v0.5.5"
-RUN curl -sSf -L --retry 3 -o /usr/local/bin/bfdd-control https://github.com/bobz965/bfd-binary-for-kube-ovn-cni/releases/download/${BFDD_VERSION}/bfdd-control-linux-$(arch) && \
-    curl -sSf -L --retry 3 -o /usr/local/bin/bfdd-beacon https://github.com/bobz965/bfd-binary-for-kube-ovn-cni/releases/download/${BFDD_VERSION}/bfdd-beacon-linux-$(arch) && \
-    chmod +x /usr/local/bin/bfdd-control /usr/local/bin/bfdd-beacon && \
-    setcap CAP_NET_BIND_SERVICE+eip $(readlink -f $(which bfdd-beacon))
-
 RUN --mount=type=bind,target=/godeps,from=go-deps,source=/godeps \
     cp /godeps/loopback /godeps/portmap /godeps/macvlan ./ && \
     cp /godeps/kubectl /godeps/gobgp /usr/bin/
@@ -156,6 +165,8 @@ RUN --mount=type=bind,target=/godeps,from=go-deps,source=/godeps \
 ARG DEBUG=false
 
 RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages  \
+    cp /packages/bfdd-beacon /packages/bfdd-control /usr/bin/ && \
+    setcap CAP_NET_BIND_SERVICE+eip /usr/bin/bfdd-beacon && \
     dpkg -i /packages/openvswitch-*.deb /packages/python3-openvswitch*.deb && \
     dpkg -i --ignore-depends=openvswitch-switch,openvswitch-common /packages/ovn-*.deb && \
     rm -rf /var/lib/openvswitch/pki/ && \
