@@ -257,14 +257,15 @@ func (c *Controller) handleAddOvnEip(key string) error {
 			return err
 		}
 	}
+	var natType string
 	if cachedEip.Spec.Type == "" {
 		// the eip only used by nat: fip, dnat, snat
-		cachedEip.Spec.Type = util.OvnEipTypeNAT
+		natType = util.OvnEipTypeNAT
 	} else if cachedEip.Spec.Type != util.OvnEipTypeLRP && cachedEip.Spec.Type != util.OvnEipTypeLSP {
-		cachedEip.Spec.Type = util.OvnEipTypeNAT
+		natType = util.OvnEipTypeNAT
 	}
 
-	if err = c.createOrUpdateOvnEipCR(key, subnet.Name, v4ip, v6ip, mac, cachedEip.Spec.Type); err != nil {
+	if err = c.createOrUpdateOvnEipCR(key, subnet.Name, v4ip, v6ip, mac, natType); err != nil {
 		klog.Errorf("failed to create or update ovn eip '%s', %v", cachedEip.Name, err)
 		return err
 	}
