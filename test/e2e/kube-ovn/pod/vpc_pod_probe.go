@@ -7,9 +7,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/onsi/ginkgo/v2"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
+
+	"github.com/onsi/ginkgo/v2"
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -32,17 +33,16 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 	var namespaceName, subnetName, podName, vpcName string
 	var subnet *apiv1.Subnet
 	var cidr string
-	var extraSubnetNames []string
 
 	ginkgo.BeforeEach(func() {
 		podClient = f.PodClient()
 		eventClient = f.EventClient()
 		subnetClient = f.SubnetClient()
+		vpcClient = f.VpcClient()
 		namespaceName = f.Namespace.Name
 		subnetName = "subnet-" + framework.RandomSuffix()
 		podName = "pod-" + framework.RandomSuffix()
 		cidr = framework.RandomCIDR(f.ClusterIPFamily)
-		vpcClient = f.VpcClient()
 
 		ginkgo.By("Creating subnet " + subnetName)
 		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, []string{namespaceName})
@@ -55,21 +55,20 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 		ginkgo.By("Deleting subnet " + subnetName)
 		subnetClient.DeleteSync(subnetName)
 
-		ginkgo.By("Deleting custom vpc " + vpcName)
+		ginkgo.By("Deleting VPC " + vpcName)
 		vpcClient.DeleteSync(vpcName)
-
-		for _, subnetName := range extraSubnetNames {
-			subnetClient.DeleteSync(subnetName)
-		}
 	})
 
 	framework.ConformanceIt("should support http and tcp readiness probe in custom vpc pod", func() {
 		f.SkipVersionPriorTo(1, 12, "This feature was introduced in v1.12")
+
+		ginkgo.By("Getting kube-ovn-cni daemonset")
 		daemonSetClient := f.DaemonSetClientNS(framework.KubeOvnNamespace)
 		originDs := daemonSetClient.Get("kube-ovn-cni")
-		modifyDs := originDs.DeepCopy()
 
-		newArgs := originDs.Spec.Template.Spec.Containers[0].Args
+		ginkgo.By("Enabling tproxy in kube-ovn-cni daemonset")
+		modifyDs := originDs.DeepCopy()
+		newArgs := modifyDs.Spec.Template.Spec.Containers[0].Args
 		for index, arg := range newArgs {
 			if arg == "--enable-tproxy=false" {
 				newArgs = append(newArgs[:index], newArgs[index+1:]...)
@@ -77,13 +76,15 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 		}
 		newArgs = append(newArgs, "--enable-tproxy=true")
 		modifyDs.Spec.Template.Spec.Containers[0].Args = newArgs
-
 		daemonSetClient.PatchSync(modifyDs)
 
 		custVPCSubnetName := "subnet-" + framework.RandomSuffix()
-		extraSubnetNames = append(extraSubnetNames, custVPCSubnetName)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Deleting subnet " + custVPCSubnetName)
+			subnetClient.DeleteSync(custVPCSubnetName)
+		})
 
-		ginkgo.By("Create Custom Vpc subnet Pod")
+		ginkgo.By("Creating VPC " + vpcName)
 		vpcName = "vpc-" + framework.RandomSuffix()
 		customVPC := framework.MakeVpc(vpcName, "", false, false, nil)
 		vpcClient.CreateSync(customVPC)
