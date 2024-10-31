@@ -1,0 +1,39 @@
+diff --git a/Logger.cpp b/Logger.cpp
+index f375b20..e72afba 100755
+--- a/Logger.cpp
++++ b/Logger.cpp
+@@ -11,6 +11,8 @@
+ #include <errno.h>
+ #include <string.h>
+ #include <unistd.h>
++#include <time.h>
++#include <pthread.h>
+ 
+ const size_t Logger::MaxMessageLen;
+ 
+diff --git a/SchedulerBase.cpp b/SchedulerBase.cpp
+index 3eab298..c1dffc4 100755
+--- a/SchedulerBase.cpp
++++ b/SchedulerBase.cpp
+@@ -11,6 +11,8 @@
+ #include <fcntl.h>
+ #include <string.h>
+ #include <unistd.h>
++#include <time.h>
++#include <pthread.h>
+ 
+ using namespace std;
+ 
+diff --git a/utils.cpp b/utils.cpp
+index 79c7b68..f846459 100755
+--- a/utils.cpp
++++ b/utils.cpp
+@@ -13,6 +13,8 @@
+ #include <sys/stat.h>
+ #include <sys/param.h>
+ #include <sys/socket.h>
++#include <time.h>
++#include <pthread.h>
+ 
+ using namespace std;
+ 
