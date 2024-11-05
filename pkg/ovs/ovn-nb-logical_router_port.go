@@ -363,11 +363,8 @@ func (c *OVNNbClient) LogicalRouterPortOp(lrpName string, mutationsFunc ...func(
 	}
 
 	mutations := make([]model.Mutation, 0, len(mutationsFunc))
-
 	for _, f := range mutationsFunc {
-		mutation := f(lrp)
-
-		if mutation != nil {
+		if mutation := f(lrp); mutation != nil {
 			mutations = append(mutations, *mutation)
 		}
 	}

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"math/rand/v2"
 	"os"
 	"strings"
 	"testing"
@@ -47,21 +46,21 @@ func (suite *OvnClientTestSuite) SetupSuite() {
 	emptyNbDBModel, err := emptyNbDatabaseModel()
 	require.NoError(suite.T(), err)
 
-	server1, nbSock1 := newOVSDBServer(suite.T(), emptyNbDBModel, nbClientSchema)
+	fakeNBServer, nbSock1 := newOVSDBServer(suite.T(), "fake-nb", emptyNbDBModel, nbClientSchema)
 	nbEndpoint1 := fmt.Sprintf("unix:%s", nbSock1)
 	require.FileExists(suite.T(), nbSock1)
 	faiedOvnNBClient, err := newOvnNbClient(suite.T(), nbEndpoint1, 10)
 	require.NoError(suite.T(), err)
 	suite.faiedOvnNBClient = faiedOvnNBClient
 	// close the server to simulate the failed case
-	server1.Close()
+	fakeNBServer.Close()
 	require.NoFileExists(suite.T(), nbSock1)
 
 	// setup ovn nb client
 	nbClientDBModel, err := ovnnb.FullDatabaseModel()
 	require.NoError(suite.T(), err)
 
-	_, nbSock := newOVSDBServer(suite.T(), nbClientDBModel, nbClientSchema)
+	_, nbSock := newOVSDBServer(suite.T(), "nb", nbClientDBModel, nbClientSchema)
 	nbEndpoint := fmt.Sprintf("unix:%s", nbSock)
 	require.FileExists(suite.T(), nbSock)
 
@@ -74,7 +73,7 @@ func (suite *OvnClientTestSuite) SetupSuite() {
 	sbClientDBModel, err := ovnsb.FullDatabaseModel()
 	require.NoError(suite.T(), err)
 
-	_, sbSock := newOVSDBServer(suite.T(), sbClientDBModel, sbClientSchema)
+	_, sbSock := newOVSDBServer(suite.T(), "sb", sbClientDBModel, sbClientSchema)
 	sbEndpoint := fmt.Sprintf("unix:%s", sbSock)
 	require.FileExists(suite.T(), sbSock)
 
@@ -1158,7 +1157,7 @@ func Test_scratch(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func newOVSDBServer(t *testing.T, dbModel model.ClientDBModel, schema ovsdb.DatabaseSchema) (*server.OvsdbServer, string) {
+func newOVSDBServer(t *testing.T, name string, dbModel model.ClientDBModel, schema ovsdb.DatabaseSchema) (*server.OvsdbServer, string) {
 	serverDBModel, err := serverdb.FullDatabaseModel()
 	require.NoError(t, err)
 	serverSchema := serverdb.Schema()
@@ -1177,7 +1176,7 @@ func newOVSDBServer(t *testing.T, dbModel model.ClientDBModel, schema ovsdb.Data
 	server, err := server.NewOvsdbServer(db, dbMod, svrMod)
 	require.NoError(t, err)
 
-	tmpfile := fmt.Sprintf("/tmp/ovsdb-%d.sock", rand.IntN(10000))
+	tmpfile := fmt.Sprintf("/tmp/ovsdb-%s.sock", name)
 	t.Cleanup(func() {
 		os.Remove(tmpfile)
 	})
@@ -1186,7 +1185,11 @@ func newOVSDBServer(t *testing.T, dbModel model.ClientDBModel, schema ovsdb.Data
 			t.Error(err)
 		}
 	}()
-	t.Cleanup(server.Close)
+	t.Cleanup(func() {
+		if server.Ready() {
+			server.Close()
+		}
+	})
 	require.Eventually(t, func() bool {
 		return server.Ready()
 	}, 1*time.Second, 10*time.Millisecond)
