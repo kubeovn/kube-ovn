@@ -31,16 +31,47 @@ func (suite *OvnClientTestSuite) testCreateLogicalRouter() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
-	name := "test-create-lr"
 
-	err := nbClient.CreateLogicalRouter(name)
-	require.NoError(t, err)
+	t.Run("test create logical router", func(t *testing.T) {
+		t.Parallel()
+		name := "test-create-lr"
+		err := nbClient.CreateLogicalRouter(name)
+		require.NoError(t, err)
 
-	lr, err := nbClient.GetLogicalRouter(name, false)
-	require.NoError(t, err)
-	require.Equal(t, name, lr.Name)
-	require.NotEmpty(t, lr.UUID)
-	require.Equal(t, util.CniTypeName, lr.ExternalIDs["vendor"])
+		lr, err := nbClient.GetLogicalRouter(name, false)
+		require.NoError(t, err)
+		require.Equal(t, name, lr.Name)
+		require.NotEmpty(t, lr.UUID)
+		require.Equal(t, util.CniTypeName, lr.ExternalIDs["vendor"])
+	})
+
+	t.Run("test create existing logical router", func(t *testing.T) {
+		t.Parallel()
+		name := "test-create-existing-lr"
+		err := nbClient.CreateLogicalRouter(name)
+		require.NoError(t, err)
+
+		err = nbClient.CreateLogicalRouter(name)
+		require.NoError(t, err)
+	})
+
+	t.Run("test create logical router with more than one existing logical router", func(t *testing.T) {
+		t.Parallel()
+		name := "test-create-lr-more-than-one"
+
+		lr := &ovnnb.LogicalRouter{
+			Name:        name,
+			ExternalIDs: map[string]string{"vendor": "test-vendor"},
+		}
+
+		err := createLogicalRouter(nbClient, lr)
+		require.NoError(t, err)
+		err = createLogicalRouter(nbClient, lr)
+		require.NoError(t, err)
+
+		err = nbClient.CreateLogicalRouter(name)
+		require.ErrorContains(t, err, "more than one logical router with same name \"test-create-lr-more-than-one\"")
+	})
 }
 
 func (suite *OvnClientTestSuite) testUpdateLogicalRouter() {
@@ -58,7 +89,7 @@ func (suite *OvnClientTestSuite) testUpdateLogicalRouter() {
 
 	t.Run("update external-ids", func(t *testing.T) {
 		lr.ExternalIDs = map[string]string{"foo": "bar"}
-		err = nbClient.UpdateLogicalRouter(lr)
+		err := nbClient.UpdateLogicalRouter(lr)
 		require.NoError(t, err)
 
 		lr, err := nbClient.GetLogicalRouter(lrName, false)
@@ -69,12 +100,17 @@ func (suite *OvnClientTestSuite) testUpdateLogicalRouter() {
 	t.Run("clear external-ids", func(t *testing.T) {
 		lr.ExternalIDs = nil
 
-		err = nbClient.UpdateLogicalRouter(lr, &lr.ExternalIDs)
+		err := nbClient.UpdateLogicalRouter(lr, &lr.ExternalIDs)
 		require.NoError(t, err)
 
 		lr, err := nbClient.GetLogicalRouter(lrName, false)
 		require.NoError(t, err)
 		require.Empty(t, lr.ExternalIDs)
+	})
+
+	t.Run("update nil logical router", func(t *testing.T) {
+		err := nbClient.UpdateLogicalRouter(nil, nil)
+		require.ErrorContains(t, err, "logical_router is nil")
 	})
 }
 
@@ -101,6 +137,24 @@ func (suite *OvnClientTestSuite) testDeleteLogicalRouter() {
 		t.Parallel()
 		err := nbClient.DeleteLogicalRouter("test-delete-lr-non-existent")
 		require.NoError(t, err)
+	})
+
+	t.Run("test delete logical router with more than one existing logical router", func(t *testing.T) {
+		t.Parallel()
+		name := "test-delete-lr-more-than-one"
+
+		lr := &ovnnb.LogicalRouter{
+			Name:        name,
+			ExternalIDs: map[string]string{"vendor": "test-vendor"},
+		}
+
+		err := createLogicalRouter(nbClient, lr)
+		require.NoError(t, err)
+		err = createLogicalRouter(nbClient, lr)
+		require.NoError(t, err)
+
+		err = nbClient.DeleteLogicalRouter(name)
+		require.ErrorContains(t, err, "more than one logical router with same name \"test-delete-lr-more-than-one\"")
 	})
 }
 
@@ -265,9 +319,35 @@ func (suite *OvnClientTestSuite) testLogicalRouterUpdateLoadBalancers() {
 		}
 	})
 
-	t.Run("del non-existent lbs from logical router", func(t *testing.T) {
-		err = nbClient.LogicalRouterUpdateLoadBalancers(lrName, ovsdb.MutateOperationDelete, []string{"test-del-lb-non-existent", "test-del-lb-non-existent-1"}...)
+	t.Run("del non-existent or empty lbs from logical router", func(t *testing.T) {
+		err := nbClient.LogicalRouterUpdateLoadBalancers(lrName, ovsdb.MutateOperationDelete, []string{"test-del-lb-non-existent", "test-del-lb-non-existent-1"}...)
 		require.NoError(t, err)
+		err = nbClient.LogicalRouterUpdateLoadBalancers(lrName, ovsdb.MutateOperationDelete)
+		require.NoError(t, err)
+	})
+
+	t.Run("del lbs from logical router with more than one existing lb", func(t *testing.T) {
+		protocol := "tcp"
+		lb := &ovnnb.LoadBalancer{
+			UUID:     ovsclient.NamedUUID(),
+			Name:     "test-del-lb-with-more-than-one-lb",
+			Protocol: &protocol,
+		}
+		ops, err := nbClient.ovsDbClient.Create(lb)
+		require.NoError(t, err)
+		require.NotNil(t, ops)
+		err = nbClient.Transact("lb-add", ops)
+		require.NoError(t, err)
+		err = nbClient.Transact("lb-add", ops)
+		require.NoError(t, err)
+
+		err = nbClient.LogicalRouterUpdateLoadBalancers(lrName, ovsdb.MutateOperationDelete, []string{"test-del-lb-with-more-than-one-lb"}...)
+		require.ErrorContains(t, err, "more than one load balancer with same name \"test-del-lb-with-more-than-one-lb\"")
+	})
+
+	t.Run("del lbs from non-exist logical router", func(t *testing.T) {
+		err = nbClient.LogicalRouterUpdateLoadBalancers("non-existing-logical-router", ovsdb.MutateOperationDelete, []string{"test-del-lb"}...)
+		require.ErrorContains(t, err, "not found logical router")
 	})
 }
 
@@ -325,6 +405,19 @@ func (suite *OvnClientTestSuite) testLogicalRouterUpdatePortOp() {
 		_, err := nbClient.LogicalRouterUpdatePortOp("test-update-port-op-lr-non-existent", uuid, ovsdb.MutateOperationInsert)
 		require.ErrorContains(t, err, "not found logical router")
 	})
+
+	t.Run("update logical router port with empty lrpUUID", func(t *testing.T) {
+		t.Parallel()
+		ops, err := nbClient.LogicalRouterUpdatePortOp("", "", ovsdb.MutateOperationInsert)
+		require.NoError(t, err)
+		require.Nil(t, ops)
+	})
+
+	t.Run("del port from empty lrName", func(t *testing.T) {
+		t.Parallel()
+		_, err := nbClient.LogicalRouterUpdatePortOp("", uuid, ovsdb.MutateOperationDelete)
+		require.ErrorContains(t, err, "no LR found for LRP")
+	})
 }
 
 func (suite *OvnClientTestSuite) testLogicalRouterUpdatePolicyOp() {
@@ -380,6 +473,13 @@ func (suite *OvnClientTestSuite) testLogicalRouterUpdatePolicyOp() {
 		t.Parallel()
 		_, err := nbClient.LogicalRouterUpdatePolicyOp("test-update-policy-op-lr-non-existent", []string{uuid}, ovsdb.MutateOperationInsert)
 		require.ErrorContains(t, err, "not found logical router")
+	})
+
+	t.Run("update logical router policy with empty policyUUIDs", func(t *testing.T) {
+		t.Parallel()
+		ops, err := nbClient.LogicalRouterUpdatePolicyOp("", nil, ovsdb.MutateOperationInsert)
+		require.NoError(t, err)
+		require.Nil(t, ops)
 	})
 }
 
@@ -527,7 +627,11 @@ func (suite *OvnClientTestSuite) testLogicalRouterOp() {
 		return mutation
 	}
 
-	ops, err := nbClient.LogicalRouterOp(lrName, lrpMutation, policyMutation)
+	ops, err := nbClient.LogicalRouterOp(lrName)
+	require.NoError(t, err)
+	require.Nil(t, ops)
+
+	ops, err = nbClient.LogicalRouterOp(lrName, lrpMutation, policyMutation)
 	require.NoError(t, err)
 
 	require.Len(t, ops[0].Mutations, 2)
