@@ -5,11 +5,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
-
 	"github.com/ovn-org/libovsdb/ovsdb"
 	"github.com/stretchr/testify/require"
+
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
 )
 
 func TestNewLegacyClient(t *testing.T) {
@@ -59,7 +59,7 @@ func (suite *OvnClientTestSuite) testNewOvnNbClient() {
 	clientDBModel, err := ovnnb.FullDatabaseModel()
 	require.NoError(suite.T(), err)
 
-	_, sock := newOVSDBServer(suite.T(), clientDBModel, clientSchema)
+	_, sock := newOVSDBServer(suite.T(), "test-nb-client", clientDBModel, clientSchema)
 	endpoint := fmt.Sprintf("unix:%s", sock)
 	require.FileExists(suite.T(), sock)
 
@@ -88,7 +88,7 @@ func (suite *OvnClientTestSuite) testNewOvnSbClient() {
 	clientDBModel, err := ovnsb.FullDatabaseModel()
 	require.NoError(suite.T(), err)
 
-	_, sock := newOVSDBServer(suite.T(), clientDBModel, clientSchema)
+	_, sock := newOVSDBServer(suite.T(), "test-sb-client", clientDBModel, clientSchema)
 	endpoint := fmt.Sprintf("unix:%s", sock)
 	require.FileExists(suite.T(), sock)
 

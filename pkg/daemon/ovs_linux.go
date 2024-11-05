@@ -735,7 +735,7 @@ func (c *Controller) checkNodeGwNicInNs(nodeExtIP, ip, gw string, gwNS ns.NetNS)
 		return ns.WithNetNSPath(gwNS.Path(), func(_ ns.NetNS) error {
 			err = waitNetworkReady(util.NodeGwNic, ip, gw, true, true, 3, nil)
 			if err == nil {
-				if output, err := exec.Command("sh", "-c", "bfdd-control status").CombinedOutput(); err != nil {
+				if output, err := exec.Command("bfdd-control", "status").CombinedOutput(); err != nil {
 					err := fmt.Errorf("failed to get bfdd status, %w, %s", err, output)
 					klog.Error(err)
 					return err
@@ -743,7 +743,7 @@ func (c *Controller) checkNodeGwNicInNs(nodeExtIP, ip, gw string, gwNS ns.NetNS)
 				for _, eip := range ovnEips {
 					if eip.Status.Ready {
 						// #nosec G204
-						cmd := exec.Command("sh", "-c", fmt.Sprintf("bfdd-control status remote %s local %s", eip.Spec.V4Ip, nodeExtIP))
+						cmd := exec.Command("bfdd-control", "status", "remote", eip.Spec.V4Ip, "local", nodeExtIP)
 						var outb bytes.Buffer
 						cmd.Stdout = &outb
 						if err := cmd.Run(); err == nil {
@@ -751,7 +751,7 @@ func (c *Controller) checkNodeGwNicInNs(nodeExtIP, ip, gw string, gwNS ns.NetNS)
 							klog.V(3).Info(out)
 							if strings.Contains(out, "No session") {
 								// not exist
-								cmd = exec.Command("sh", "-c", fmt.Sprintf("bfdd-control allow %s", eip.Spec.V4Ip)) // #nosec G204
+								cmd = exec.Command("bfdd-control", "allow", eip.Spec.V4Ip) // #nosec G204
 								if err := cmd.Run(); err != nil {
 									err := fmt.Errorf("failed to add lrp %s ip %s into bfd listening list, %w", eip.Name, eip.Status.V4Ip, err)
 									klog.Error(err)
@@ -852,7 +852,7 @@ func configureNodeGwNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu i
 		if err != nil {
 			return fmt.Errorf("failed to configure gateway: %w", err)
 		}
-		cmd := exec.Command("sh", "-c", "bfdd-beacon --listen=0.0.0.0")
+		cmd := exec.Command("bfdd-beacon", "--listen=0.0.0.0")
 		if err := cmd.Run(); err != nil {
 			err := fmt.Errorf("failed to get start bfd listen, %w", err)
 			klog.Error(err)
