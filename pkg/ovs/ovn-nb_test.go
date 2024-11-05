@@ -112,7 +112,11 @@ func (suite *OvnClientTestSuite) testCreateLogicalPatchPort() {
 
 	t.Run("failed client to create router port with chassises", func(t *testing.T) {
 		t.Parallel()
+		lsName := "test-create-ls-failed-client"
 		lrName := "test-create-lr-failed-client"
+		lspName := "test-create-lsp-failed-client"
+		lrpName := "test-create-lrp-failed-client"
+
 		// failed to create with failed client
 		err := failedNbClient.CreateLogicalPatchPort(lsName, lrName, lspName, lrpName, "192.168.230.1/24,fc00::0af4:01/112", util.GenerateMac(), chassises...)
 		require.Error(t, err)
