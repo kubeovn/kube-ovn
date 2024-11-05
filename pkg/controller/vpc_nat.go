@@ -27,6 +27,8 @@ func (c *Controller) resyncVpcNatConfig() {
 	vpcNatGwNamePrefix := cm.Data["natGwNamePrefix"]
 	if vpcNatGwNamePrefix != "" {
 		util.VpcNatGwNamePrefix = vpcNatGwNamePrefix
+	} else {
+		util.VpcNatGwNamePrefix = util.VpcNatGwNameDefaultPrefix
 	}
 
 	// Image we're using to provision the NAT gateways
