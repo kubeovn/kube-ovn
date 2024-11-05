@@ -11,6 +11,9 @@ data:
   {{- with .Values.natGw.bgpSpeaker.apiNadProvider }}
   apiNadProvider: {{ tpl . $ }}
   {{- end }}
+  {{- with .Values.natGw.namePrefix }}
+  natGwNamePrefix: {{ . | quote }}
+  {{- end }}
 
 ---
 kind: ConfigMap
