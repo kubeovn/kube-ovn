@@ -414,6 +414,10 @@ func (suite *OvnClientTestSuite) Test_ListLogicalRouterPorts() {
 	suite.testListLogicalRouterPorts()
 }
 
+func (suite *OvnClientTestSuite) Test_LogicalRouterPortUpdateGatewayChassisOp() {
+	suite.testLogicalRouterPortUpdateGatewayChassisOp()
+}
+
 /* bfd unit test */
 func (suite *OvnClientTestSuite) Test_CreateBFD() {
 	suite.testCreateBFD()
