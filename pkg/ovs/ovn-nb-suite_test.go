@@ -770,12 +770,28 @@ func (suite *OvnClientTestSuite) Test_DeleteLogicalRouterPolicies() {
 	suite.testDeleteLogicalRouterPolicies()
 }
 
+func (suite *OvnClientTestSuite) Test_DeleteLogicalRouterPoliciesByNexthop() {
+	suite.testDeleteLogicalRouterPolicyByNexthop()
+}
+
+func (suite *OvnClientTestSuite) Test_DeleteRouterPolicy() {
+	suite.testDeleteRouterPolicy()
+}
+
 func (suite *OvnClientTestSuite) Test_ClearLogicalRouterPolicy() {
 	suite.testClearLogicalRouterPolicy()
 }
 
 func (suite *OvnClientTestSuite) Test_GetLogicalRouterPolicy() {
 	suite.testGetLogicalRouterPolicy()
+}
+
+func (suite *OvnClientTestSuite) Test_GetLogicalRouterPolicyByUUID() {
+	suite.testGetLogicalRouterPolicyByUUID()
+}
+
+func (suite *OvnClientTestSuite) Test_GetLogicalRouterPolicyByExtID() {
+	suite.testGetLogicalRouterPolicyByExtID()
 }
 
 func (suite *OvnClientTestSuite) Test_NewLogicalRouterPolicy() {
