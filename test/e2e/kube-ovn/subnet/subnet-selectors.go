@@ -90,7 +90,13 @@ var _ = framework.Describe("[group:subnet]", func() {
 		subnet = subnetClient.PatchSync(subnet, modifiedSubnet)
 
 		checkNs2 := nsClient.Get(ns2Name)
-		framework.ExpectHaveKeyWithValue(checkNs2.Annotations, util.LogicalSwitchAnnotation, subnet.Name)
+		framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+			checkNs2 = nsClient.Get(ns2Name)
+			if checkNs2.Annotations[util.LogicalSwitchAnnotation] == subnet.Name {
+				return true, nil
+			}
+			return false, nil
+		}, fmt.Sprintf("failed to update annotation for ns %s", checkNs2.Name))
 
 		// 3. delete namespaceSelector
 		ginkgo.By("Delete subnet namespaceSelector matched with namespace " + ns2Name + ", should delete annotation with subnet " + subnet.Name)
@@ -99,8 +105,13 @@ var _ = framework.Describe("[group:subnet]", func() {
 		subnet = subnetClient.PatchSync(subnet, modifiedSubnet)
 
 		checkNs2 = nsClient.Get(ns2Name)
-		lsAnnotation := checkNs2.Annotations[util.LogicalSwitchAnnotation]
-		framework.ExpectNotEqual(lsAnnotation, subnet.Name)
+		framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+			checkNs2 = nsClient.Get(ns2Name)
+			if checkNs2.Annotations[util.LogicalSwitchAnnotation] != subnet.Name {
+				return true, nil
+			}
+			return false, nil
+		}, fmt.Sprintf("failed to update annotation for ns %s", checkNs2.Name))
 	})
 
 	framework.ConformanceIt("create subnet with namespaceSelector, update namespaces to match with selector", func() {
@@ -127,7 +138,6 @@ var _ = framework.Describe("[group:subnet]", func() {
 			}
 			return false, nil
 		}, fmt.Sprintf("failed to update annotation for ns %s", checkNs3.Name))
-		framework.ExpectHaveKeyWithValue(checkNs3.Annotations, util.LogicalSwitchAnnotation, subnet.Name)
 
 		// 3. delete labels matched witch subnet namespaceSelector
 		ginkgo.By("Delete labels for namespace " + ns3Name + ", should not annotate with subnet " + subnet.Name)
@@ -142,8 +152,6 @@ var _ = framework.Describe("[group:subnet]", func() {
 			}
 			return false, nil
 		}, fmt.Sprintf("failed to update annotation for ns %s", checkNs3.Name))
-		lsAnnotation = checkNs3.Annotations[util.LogicalSwitchAnnotation]
-		framework.ExpectNotEqual(lsAnnotation, subnet.Name)
 	})
 
 	framework.ConformanceIt("update namespace with labelSelector, and set subnet spec namespaces with selected namespace", func() {
@@ -153,7 +161,13 @@ var _ = framework.Describe("[group:subnet]", func() {
 		modifiedSubnet.Spec.Namespaces = append(modifiedSubnet.Spec.Namespaces, ns2Name)
 		subnet = subnetClient.PatchSync(subnet, modifiedSubnet)
 		checkNs2 := nsClient.Get(ns2Name)
-		framework.ExpectHaveKeyWithValue(checkNs2.Annotations, util.LogicalSwitchAnnotation, subnet.Name)
+		framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+			checkNs2 = nsClient.Get(ns2Name)
+			if checkNs2.Annotations[util.LogicalSwitchAnnotation] == subnet.Name {
+				return true, nil
+			}
+			return false, nil
+		}, fmt.Sprintf("failed to update annotation for ns %s", checkNs2.Name))
 
 		// 2. add namespaceSelector for subnet, which select with ns2
 		ginkgo.By("Add subnet namespaceSelector matched with " + ns2Name + ", should update annotation with subnet " + subnet.Name)
@@ -176,6 +190,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		modifiedSubnet.Spec.NamespaceSelectors = []metav1.LabelSelector{ns1Selector}
 		subnet = subnetClient.PatchSync(subnet, modifiedSubnet)
 
+		ginkgo.By("Check namespace " + ns2Name + " to annotate with subnet " + subnet.Name)
 		checkNs2 = nsClient.Get(ns2Name)
 		framework.ExpectHaveKeyWithValue(checkNs2.Annotations, util.LogicalSwitchAnnotation, subnet.Name)
 
@@ -194,6 +209,8 @@ var _ = framework.Describe("[group:subnet]", func() {
 		modifiedSubnet = subnet.DeepCopy()
 		modifiedSubnet.Spec.Namespaces = []string{}
 		subnet = subnetClient.PatchSync(subnet, modifiedSubnet)
+
+		ginkgo.By("Check namespace " + ns2Name + " to annotate with subnet " + subnet.Name)
 		checkNs2 = nsClient.Get(ns2Name)
 		framework.ExpectHaveKeyWithValue(checkNs2.Annotations, util.LogicalSwitchAnnotation, subnet.Name)
 
@@ -204,7 +221,12 @@ var _ = framework.Describe("[group:subnet]", func() {
 		subnet = subnetClient.PatchSync(subnet, modifiedSubnet)
 
 		checkNs2 = nsClient.Get(ns2Name)
-		lsAnnotation := checkNs2.Annotations[util.LogicalSwitchAnnotation]
-		framework.ExpectNotEqual(lsAnnotation, subnet.Name)
+		framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+			checkNs2 = nsClient.Get(ns2Name)
+			if checkNs2.Annotations[util.LogicalSwitchAnnotation] != subnet.Name {
+				return true, nil
+			}
+			return false, nil
+		}, fmt.Sprintf("failed to update annotation for ns %s", checkNs2.Name))
 	})
 })
