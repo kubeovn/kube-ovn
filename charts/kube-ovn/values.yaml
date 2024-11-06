@@ -148,6 +148,10 @@ validatingWebhook:
 
 # -- Configuration for the NAT gateway
 natGw:
+  # -- Prefix appended to the name of the NAT gateways when generating the Pods
+  # If this value is changed after NAT GWs have been provisioned, every NAT gateway will need to be
+  # manually destroyed and recreated.
+  namePrefix: "vpc-nat-gw"
   # -- Configuration of the BGP sidecar for when a NAT gateway is running in BGP mode
   bgpSpeaker:
     # -- Image used by the NAT gateway sidecar
@@ -158,10 +162,6 @@ natGw:
     # -- Network attachment definition used to reach the API server when running on BGP mode
     # See https://kubeovn.github.io/docs/stable/en/advance/with-bgp/
     apiNadProvider: "{{ .Values.apiNad.name }}.{{ .Values.namespace }}.ovn"
-    # -- Prefix appended to the name of the NAT gateways when generating the Pods
-    # If this value is changed after NAT GWs have been provisioned, every NAT gateway will need to be
-    # manually destroyed and recreated.
-    namePrefix: "vpc-nat-gw"
 
 # -- API NetworkAttachmentDefinition to give some pods (CoreDNS, NAT GW) in custom VPCs access to the K8S API
 # This requires Multus to be installed
