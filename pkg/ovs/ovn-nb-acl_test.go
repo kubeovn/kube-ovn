@@ -577,7 +577,7 @@ func (suite *OvnClientTestSuite) testCreateSgDenyAllACL() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
-	failedNbClient := suite.faiedOvnNBClient
+	failedNbClient := suite.failedOvnNBClient
 
 	t.Run("normal create sg deny all acl", func(t *testing.T) {
 		sgName := "test_create_deny_all_acl_pg"
@@ -1381,7 +1381,7 @@ func (suite *OvnClientTestSuite) testDeleteAcls() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
-	failedNbClient := suite.faiedOvnNBClient
+	failedNbClient := suite.failedOvnNBClient
 	pgName := "test-del-acls-pg"
 	lsName := "test-del-acls-ls"
 	matchPrefix := "outport == @ovn.sg.test_del_acl_pg && ip"
@@ -2475,7 +2475,7 @@ func (suite *OvnClientTestSuite) testCreateBareACL() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
-	failedNbClient := suite.faiedOvnNBClient
+	failedNbClient := suite.failedOvnNBClient
 
 	t.Run("create bare ACL successfully", func(t *testing.T) {
 		err := nbClient.CreateBareACL("test-parent", "from-lport", "1000", "ip4.src == 10.0.0.1", "allow")
@@ -2554,7 +2554,7 @@ func (suite *OvnClientTestSuite) testUpdateACL() {
 	t := suite.T()
 
 	nbClient := suite.ovnNBClient
-	failedNbClient := suite.faiedOvnNBClient
+	failedNbClient := suite.failedOvnNBClient
 
 	// nbClient := suite.ovnNBClient
 	pgName := "test_update_acl_pg"

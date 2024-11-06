@@ -22,7 +22,7 @@ func (suite *OvnClientTestSuite) testGetNbGlobal() {
 	t := suite.T()
 
 	nbClient := suite.ovnNBClient
-	failedNbClient := suite.faiedOvnNBClient
+	failedNbClient := suite.failedOvnNBClient
 
 	t.Cleanup(func() {
 		err := failedNbClient.DeleteNbGlobal()
@@ -60,7 +60,7 @@ func (suite *OvnClientTestSuite) testUpdateNbGlobal() {
 	t := suite.T()
 
 	nbClient := suite.ovnNBClient
-	failedNbClient := suite.faiedOvnNBClient
+	failedNbClient := suite.failedOvnNBClient
 
 	t.Cleanup(func() {
 		err := nbClient.DeleteNbGlobal()
