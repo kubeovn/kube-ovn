@@ -163,6 +163,11 @@ func (suite *OvnClientTestSuite) testAddressSetUpdateAddress() {
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "get address set")
 	})
+
+	t.Run("update address set with invalid address", func(t *testing.T) {
+		err := nbClient.AddressSetUpdateAddress(asName, "192.168.1.1/xx")
+		require.NoError(t, err)
+	})
 }
 
 func (suite *OvnClientTestSuite) testDeleteAddressSet() {
@@ -326,6 +331,15 @@ func (suite *OvnClientTestSuite) testUpdateAddressSet() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
+
+	as := newAddressSet("test_update_as", map[string]string{
+		sgKey: "test-sg",
+	})
+
+	t.Run("update with nil address set", func(t *testing.T) {
+		err := nbClient.UpdateAddressSet(as, nil)
+		require.Error(t, err)
+	})
 
 	t.Run("update with nil address set", func(t *testing.T) {
 		err := nbClient.UpdateAddressSet(nil)
