@@ -30,7 +30,8 @@ type OvnClientTestSuite struct {
 	ovnNBClient *OVNNbClient
 	ovnSBClient *OVNSbClient
 
-	faiedOvnNBClient *OVNNbClient
+	failedOvnNBClient *OVNNbClient
+	ovnLegacyClient   *LegacyClient
 }
 
 func emptyNbDatabaseModel() (model.ClientDBModel, error) {
@@ -49,9 +50,9 @@ func (suite *OvnClientTestSuite) SetupSuite() {
 	fakeNBServer, nbSock1 := newOVSDBServer(suite.T(), "fake-nb", emptyNbDBModel, nbClientSchema)
 	nbEndpoint1 := fmt.Sprintf("unix:%s", nbSock1)
 	require.FileExists(suite.T(), nbSock1)
-	faiedOvnNBClient, err := newOvnNbClient(suite.T(), nbEndpoint1, 10)
+	failedOvnNBClient, err := newOvnNbClient(suite.T(), nbEndpoint1, 10)
 	require.NoError(suite.T(), err)
-	suite.faiedOvnNBClient = faiedOvnNBClient
+	suite.failedOvnNBClient = failedOvnNBClient
 	// close the server to simulate the failed case
 	fakeNBServer.Close()
 	require.NoFileExists(suite.T(), nbSock1)

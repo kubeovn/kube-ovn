@@ -104,7 +104,7 @@ func (suite *OvnClientTestSuite) testLogicalSwitchAddPort() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
-	failedNbClient := suite.faiedOvnNBClient
+	failedNbClient := suite.failedOvnNBClient
 
 	t.Run("add port to logical switch", func(t *testing.T) {
 		lsName := "test-add-port-ls"
@@ -162,7 +162,7 @@ func (suite *OvnClientTestSuite) testLogicalSwitchDelPort() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
-	failedNbClient := suite.faiedOvnNBClient
+	failedNbClient := suite.failedOvnNBClient
 
 	lsName := "test-del-port-ls"
 	lspName := "test-del-port-lsp"
@@ -306,7 +306,7 @@ func (suite *OvnClientTestSuite) testDeleteLogicalSwitch() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
-	failedNbClient := suite.faiedOvnNBClient
+	failedNbClient := suite.failedOvnNBClient
 	name := "test-delete-ls"
 
 	t.Run("no err when delete existent logical switch", func(t *testing.T) {
@@ -724,7 +724,7 @@ func (suite *OvnClientTestSuite) testCreateBareLogicalSwitch() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
-	failedNbClient := suite.faiedOvnNBClient
+	failedNbClient := suite.failedOvnNBClient
 
 	lsName := "test-create-bare-ls"
 

@@ -505,7 +505,7 @@ func (suite *OvnClientTestSuite) testCreateSgDenyAllACL() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
-	failedNbClient := suite.faiedOvnNBClient
+	failedNbClient := suite.failedOvnNBClient
 
 	t.Run("normal create sg deny all acl", func(t *testing.T) {
 		sgName := "test_create_deny_all_acl_pg"
@@ -538,6 +538,11 @@ func (suite *OvnClientTestSuite) testCreateSgDenyAllACL() {
 		sgName := "test_nonexist_pg"
 		err := nbClient.CreateSgDenyAllACL(sgName)
 		require.Error(t, err)
+	})
+
+	t.Run("should print log err when sg name is empty", func(t *testing.T) {
+		err := nbClient.CreateSgDenyAllACL("")
+		require.ErrorContains(t, err, "the port group name or logical switch name is required")
 	})
 
 	t.Run("fail nb client should log err", func(t *testing.T) {
@@ -641,6 +646,11 @@ func (suite *OvnClientTestSuite) testCreateSgBaseACL() {
 		// vrrp
 		match = fmt.Sprintf("%s == @%s && ip.proto == 112", portDirection, pgName)
 		expect(pg, match, ovnnb.ACLDirectionFromLport)
+	})
+
+	t.Run("should return no err when sg name is empty", func(t *testing.T) {
+		err := nbClient.CreateSgBaseACL("", ovnnb.ACLDirectionFromLport)
+		require.NoError(t, err)
 	})
 }
 
@@ -754,6 +764,16 @@ func (suite *OvnClientTestSuite) testUpdateSgACL() {
 		expect.UUID = rulACL.UUID
 		require.Equal(t, expect, rulACL)
 		require.Contains(t, pg.ACLs, rulACL.UUID)
+	})
+
+	t.Run("should print log err when sg name is empty", func(t *testing.T) {
+		sg := &kubeovnv1.SecurityGroup{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "",
+			},
+		}
+		err = nbClient.UpdateSgACL(sg, ovnnb.ACLDirectionToLport)
+		require.ErrorContains(t, err, "the port group name or logical switch name is required")
 	})
 }
 
@@ -1053,6 +1073,11 @@ func (suite *OvnClientTestSuite) testSetLogicalSwitchPrivate() {
 			}
 		}
 	})
+
+	t.Run("should print log err when ls name is empty", func(t *testing.T) {
+		err := nbClient.SetLogicalSwitchPrivate("", cidrBlock, nodeSwitchCidrBlock, allowSubnets)
+		require.ErrorContains(t, err, "the port group name or logical switch name is required")
+	})
 }
 
 func (suite *OvnClientTestSuite) testNewSgRuleACL() {
@@ -1279,7 +1304,7 @@ func (suite *OvnClientTestSuite) testDeleteAcls() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
-	failedNbClient := suite.faiedOvnNBClient
+	failedNbClient := suite.failedOvnNBClient
 	pgName := "test-del-acls-pg"
 	lsName := "test-del-acls-ls"
 	matchPrefix := "outport == @ovn.sg.test_del_acl_pg && ip"
@@ -2391,7 +2416,7 @@ func (suite *OvnClientTestSuite) testCreateBareACL() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
-	failedNbClient := suite.faiedOvnNBClient
+	failedNbClient := suite.failedOvnNBClient
 
 	t.Run("create bare ACL successfully", func(t *testing.T) {
 		err := nbClient.CreateBareACL("test-parent", "from-lport", "1000", "ip4.src == 10.0.0.1", "allow")
@@ -2414,7 +2439,7 @@ func (suite *OvnClientTestSuite) testUpdateACL() {
 	t := suite.T()
 
 	nbClient := suite.ovnNBClient
-	failedNbClient := suite.faiedOvnNBClient
+	failedNbClient := suite.failedOvnNBClient
 
 	// nbClient := suite.ovnNBClient
 	pgName := "test_update_acl_pg"
