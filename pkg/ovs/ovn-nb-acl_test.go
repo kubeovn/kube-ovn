@@ -617,6 +617,11 @@ func (suite *OvnClientTestSuite) testCreateSgDenyAllACL() {
 		require.Error(t, err)
 	})
 
+	t.Run("should print log err when sg name is empty", func(t *testing.T) {
+		err := nbClient.CreateSgDenyAllACL("")
+		require.ErrorContains(t, err, "the port group name or logical switch name is required")
+	})
+
 	t.Run("fail nb client should log err", func(t *testing.T) {
 		sgName := "test_failed_client"
 		err := failedNbClient.CreateSgDenyAllACL(sgName)
@@ -718,6 +723,11 @@ func (suite *OvnClientTestSuite) testCreateSgBaseACL() {
 		// vrrp
 		match = fmt.Sprintf("%s == @%s && ip.proto == 112", portDirection, pgName)
 		expect(pg, match, ovnnb.ACLDirectionFromLport)
+	})
+
+	t.Run("should return no err when sg name is empty", func(t *testing.T) {
+		err := nbClient.CreateSgBaseACL("", ovnnb.ACLDirectionFromLport)
+		require.NoError(t, err)
 	})
 }
 
@@ -831,6 +841,16 @@ func (suite *OvnClientTestSuite) testUpdateSgACL() {
 		expect.UUID = rulACL.UUID
 		require.Equal(t, expect, rulACL)
 		require.Contains(t, pg.ACLs, rulACL.UUID)
+	})
+
+	t.Run("should print log err when sg name is empty", func(t *testing.T) {
+		sg := &kubeovnv1.SecurityGroup{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "",
+			},
+		}
+		err = nbClient.UpdateSgACL(sg, ovnnb.ACLDirectionToLport)
+		require.ErrorContains(t, err, "the port group name or logical switch name is required")
 	})
 }
 
@@ -1129,6 +1149,11 @@ func (suite *OvnClientTestSuite) testSetLogicalSwitchPrivate() {
 				require.ErrorContains(t, err, "not found acl")
 			}
 		}
+	})
+
+	t.Run("should print log err when ls name is empty", func(t *testing.T) {
+		err := nbClient.SetLogicalSwitchPrivate("", cidrBlock, nodeSwitchCidrBlock, allowSubnets)
+		require.ErrorContains(t, err, "the port group name or logical switch name is required")
 	})
 }
 
