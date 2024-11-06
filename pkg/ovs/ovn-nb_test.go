@@ -15,7 +15,7 @@ func (suite *OvnClientTestSuite) testCreateGatewayLogicalSwitch() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
-	failedNbClient := suite.faiedOvnNBClient
+	failedNbClient := suite.failedOvnNBClient
 	lsName := "test-create-gw-ls"
 	lrName := "test-create-gw-lr"
 	lspName := fmt.Sprintf("%s-%s", lsName, lrName)
@@ -58,7 +58,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalPatchPort() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
-	failedNbClient := suite.faiedOvnNBClient
+	failedNbClient := suite.failedOvnNBClient
 
 	lsName := "test-create-router-ls"
 	lrName := "test-create-router-lr"
@@ -148,7 +148,7 @@ func (suite *OvnClientTestSuite) testRemoveRouterPort() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
-	failedNbClient := suite.faiedOvnNBClient
+	failedNbClient := suite.failedOvnNBClient
 
 	lsName := "test-remove-router-type-ls"
 	lrName := "test-remove-router-type-lr"
@@ -189,7 +189,7 @@ func (suite *OvnClientTestSuite) testDeleteLogicalGatewaySwitch() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
-	failedNbClient := suite.faiedOvnNBClient
+	failedNbClient := suite.failedOvnNBClient
 
 	lsName := "test-del-gw-ls"
 	lrName := "test-del-gw-lr"
@@ -224,7 +224,7 @@ func (suite *OvnClientTestSuite) testDeleteSecurityGroup() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
-	failedNbClient := suite.faiedOvnNBClient
+	failedNbClient := suite.failedOvnNBClient
 	sgName := "test_del_sg"
 	asName := "test_del_sg_as"
 	pgName := GetSgPortGroupName(sgName)

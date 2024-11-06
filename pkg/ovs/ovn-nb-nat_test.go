@@ -86,7 +86,7 @@ func (suite *OvnClientTestSuite) testCreateNats() {
 	require.ErrorContains(t, err, "nats is empty")
 
 	// failed client to create nats
-	failedNbClient := suite.faiedOvnNBClient
+	failedNbClient := suite.failedOvnNBClient
 	err = failedNbClient.CreateNats(lrName, nats...)
 	require.Error(t, err)
 }
@@ -96,7 +96,7 @@ func (suite *OvnClientTestSuite) testUpdateSnat() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
-	failedNbClient := suite.faiedOvnNBClient
+	failedNbClient := suite.failedOvnNBClient
 	lrName := "test-update-snat-lr"
 	externalIP := "192.168.30.254"
 	logicalIP := "10.250.0.4"
@@ -155,7 +155,7 @@ func (suite *OvnClientTestSuite) testUpdateDnatAndSnat() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
-	failedNbClient := suite.faiedOvnNBClient
+	failedNbClient := suite.failedOvnNBClient
 	lrName := "test-update-dnat-and-snat-lr"
 	lspName := "test-update-dnat-and-snat-lrp"
 	externalIP := "192.168.30.214"
@@ -245,7 +245,7 @@ func (suite *OvnClientTestSuite) testUpdateNat() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
-	failedNbClient := suite.faiedOvnNBClient
+	failedNbClient := suite.failedOvnNBClient
 
 	lrName := "test-update-nat-lr"
 	externalIP := "192.168.30.254"
@@ -321,7 +321,7 @@ func (suite *OvnClientTestSuite) testDeleteNat() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
-	failedNbClient := suite.faiedOvnNBClient
+	failedNbClient := suite.failedOvnNBClient
 	lrName := "test-del-nat-lr"
 	externalIP := "192.168.30.254"
 	logicalIP := "10.250.0.4"
@@ -400,7 +400,7 @@ func (suite *OvnClientTestSuite) testDeleteNats() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
-	failedNbClient := suite.faiedOvnNBClient
+	failedNbClient := suite.failedOvnNBClient
 	lrName := "test-del-nats-lr"
 	externalIPs := []string{"192.168.30.254", "192.168.30.253"}
 	logicalIPs := []string{"10.250.0.4", "10.250.0.5"}
@@ -547,7 +547,7 @@ func (suite *OvnClientTestSuite) testGetNat() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
-	failedNbClient := suite.faiedOvnNBClient
+	failedNbClient := suite.failedOvnNBClient
 
 	lrName := "test_get_nat_lr"
 
@@ -637,7 +637,7 @@ func (suite *OvnClientTestSuite) testNewNat() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
-	failedNbClient := suite.faiedOvnNBClient
+	failedNbClient := suite.failedOvnNBClient
 
 	lrName := "test-new-nat-lr"
 	natType := "snat"

@@ -30,7 +30,7 @@ func (suite *OvnClientTestSuite) testCreatePeerRouterPort() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
-	failedNbClient := suite.faiedOvnNBClient
+	failedNbClient := suite.failedOvnNBClient
 	localLrName := "test-create-peer-lr-local"
 	remoteLrName := "test-create-peer-lr-remote"
 	localRouterPort := fmt.Sprintf("%s-%s", localLrName, remoteLrName)
@@ -82,7 +82,7 @@ func (suite *OvnClientTestSuite) testUpdateLogicalRouterPortRA() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
-	failedNbClient := suite.faiedOvnNBClient
+	failedNbClient := suite.failedOvnNBClient
 	lrpName := "test-update-ra-lrp"
 	lrName := "test-update-ra-lr"
 
@@ -225,7 +225,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalRouterPort() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
-	failedNbClient := suite.faiedOvnNBClient
+	failedNbClient := suite.failedOvnNBClient
 	lrName := "test-create-lrp-lr"
 
 	err := nbClient.CreateLogicalRouter(lrName)
@@ -498,7 +498,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalRouterPortOp() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
-	failedNbClient := suite.faiedOvnNBClient
+	failedNbClient := suite.failedOvnNBClient
 	lrpName := "test-create-op-lrp"
 	lrName := "test-create-op-lr"
 
@@ -795,7 +795,7 @@ func (suite *OvnClientTestSuite) testAddLogicalRouterPort() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
-	failedNbClient := suite.faiedOvnNBClient
+	failedNbClient := suite.failedOvnNBClient
 	lrName := "test-add-lrp-lr"
 
 	err := nbClient.CreateLogicalRouter(lrName)

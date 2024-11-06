@@ -18,7 +18,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalSwitchPort() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
-	failedNbClient := suite.faiedOvnNBClient
+	failedNbClient := suite.failedOvnNBClient
 	lsName := "test-create-lsp-ls"
 	ips := "10.244.0.37,fc00::af4:25"
 	mac := "00:00:00:AB:B4:65"
@@ -308,7 +308,7 @@ func (suite *OvnClientTestSuite) testCreateVirtualLogicalSwitchPorts() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
-	failedNbClient := suite.faiedOvnNBClient
+	failedNbClient := suite.failedOvnNBClient
 	lsName := "test-create-virtual-port-ls"
 	vips := []string{"192.168.33.10", "192.168.33.12"}
 
@@ -354,7 +354,7 @@ func (suite *OvnClientTestSuite) testCreateVirtualLogicalSwitchPort() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
-	failedNbClient := suite.faiedOvnNBClient
+	failedNbClient := suite.failedOvnNBClient
 	lspName := "test-create-one-virtual-port-lsp"
 	lsName := "test-create-one-virtual-port-ls"
 	lsName2 := "test-create-one-virtual-port-ls2"
@@ -439,7 +439,7 @@ func (suite *OvnClientTestSuite) testSetLogicalSwitchPortVirtualParents() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
-	failedNbClient := suite.faiedOvnNBClient
+	failedNbClient := suite.failedOvnNBClient
 
 	lsName := "test-update-port-virt-parents-ls"
 	ips := []string{"192.168.211.31", "192.168.211.32"}
@@ -497,7 +497,7 @@ func (suite *OvnClientTestSuite) testSetVirtualLogicalSwitchPortVirtualParents()
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
-	failedNbClient := suite.faiedOvnNBClient
+	failedNbClient := suite.failedOvnNBClient
 
 	lsName := "test-update-virtual-port-virt-parents-ls"
 	ip := "192.168.211.31"
@@ -565,7 +565,7 @@ func (suite *OvnClientTestSuite) testSetLogicalSwitchPortArpProxy() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
-	failedNbClient := suite.faiedOvnNBClient
+	failedNbClient := suite.failedOvnNBClient
 	lsName := "test-set-lsp-arp-proxy-ls"
 	ips := "10.244.0.37,fc00::af4:25"
 	mac := "00:00:00:AB:B4:65"
@@ -1171,7 +1171,7 @@ func (suite *OvnClientTestSuite) testEnablePortLayer2forward() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
-	failedNbClient := suite.faiedOvnNBClient
+	failedNbClient := suite.failedOvnNBClient
 	lsName := "test-enable-port-l2-ls"
 	lspName := "test-enable-port-l2-lsp"
 	ns := "test-enable-port-l2-ns"
@@ -1313,7 +1313,7 @@ func (suite *OvnClientTestSuite) testUpdateLogicalSwitchPort() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
-	failedNbClient := suite.faiedOvnNBClient
+	failedNbClient := suite.failedOvnNBClient
 
 	lsName := "test-update-lsp-ls"
 	lspName := "test-update-lsp-lsp"
@@ -1392,7 +1392,7 @@ func (suite *OvnClientTestSuite) testDeleteLogicalSwitchPort() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
-	failedNbClient := suite.faiedOvnNBClient
+	failedNbClient := suite.failedOvnNBClient
 
 	lspName := "test-delete-port-lsp"
 	lsName := "test-delete-port-ls"
@@ -1438,7 +1438,7 @@ func (suite *OvnClientTestSuite) testDeleteLogicalSwitchPorts() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
-	failedNbClient := suite.faiedOvnNBClient
+	failedNbClient := suite.failedOvnNBClient
 
 	lsName := "test-delete-ports-ls"
 	lspName1 := "test-delete-port-lsp1"
@@ -1489,7 +1489,7 @@ func (suite *OvnClientTestSuite) testListNormalLogicalSwitchPorts() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
-	failedNbClient := suite.faiedOvnNBClient
+	failedNbClient := suite.failedOvnNBClient
 
 	lsName := "a-normal-ls"
 	lspName := "a-lsp-listed"
@@ -1584,7 +1584,7 @@ func (suite *OvnClientTestSuite) testListLogicalSwitchPorts() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
-	failedNbClient := suite.faiedOvnNBClient
+	failedNbClient := suite.failedOvnNBClient
 
 	lsName := "test-list-lsp-ls"
 	err := nbClient.CreateBareLogicalSwitch(lsName)
@@ -1762,7 +1762,7 @@ func (suite *OvnClientTestSuite) testDeleteLogicalSwitchPortOp() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
-	failedNbClient := suite.faiedOvnNBClient
+	failedNbClient := suite.failedOvnNBClient
 
 	lspName := "test-del-op-lsp"
 	lsName := "test-del-op-ls"
