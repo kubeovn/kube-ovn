@@ -1136,3 +1136,13 @@ func TestPopPodNic(t *testing.T) {
 	subnet.popPodNic(podName, nicName)
 	require.Equal(t, 0, len(subnet.PodToNicList[podName]))
 }
+
+func TestGetStaticMac(t *testing.T) {
+	subnet, err := NewSubnet("v4Subnet", "10.0.0.0/24", nil)
+	require.NoError(t, err)
+	require.NotNil(t, subnet)
+	podName := "pod1.default"
+	nicName := "nic1"
+	err = subnet.GetStaticMac(podName, nicName, "", false)
+	require.NoError(t, err)
+}
