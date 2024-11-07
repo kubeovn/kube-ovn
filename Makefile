@@ -1057,6 +1057,25 @@ ut:
 	ginkgo -mod=mod --show-node-events --poll-progress-after=60s $(GINKGO_OUTPUT_OPT) -v test/unittest
 	go test ./pkg/...
 
+.PHONY: ovs-sandbox
+ovs-sandbox: clean-ovs-sandbox
+	rm -fr /tmp/sandbox && mkdir /tmp/sandbox
+	docker run -itd --name ut-ovs-sandbox \
+		--privileged \
+		-v /tmp:/tmp \
+		$(REGISTRY)/kube-ovn:$(RELEASE_TAG) bash ovs-sandbox -i
+
+.PHONY: clean-ovs-sandbox
+clean-ovs-sandbox:
+	container_id=$(docker ps -a --filter "name=ut-ovs-sandbox" -q)
+	test -z "${container_id}" && exit 0
+	docker rm -f ut-ovs-sandbox
+
+.PHONY: cp-ovs-ctl
+cp-ovs-ctl:
+	docker cp ut-ovs-sandbox:/usr/bin/ovs-vsctl /usr/bin/ovs-vsctl
+	/usr/bin/ovs-vsctl --db=unix:/tmp/sandbox/db.sock show
+
 .PHONY: cover
 cover:
 	go test ./pkg/ovs ./pkg/util ./pkg/ipam -gcflags=all=-l -coverprofile=cover.out -covermode=atomic
