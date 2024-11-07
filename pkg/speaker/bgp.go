@@ -22,14 +22,14 @@ var maskMap = map[string]int{kubeovnv1.ProtocolIPv4: 32, kubeovnv1.ProtocolIPv6:
 // reconcileRoutes configures the BGP speaker to announce only the routes we are expected to announce
 // and to withdraw the ones that should not be announced anymore
 func (c *Controller) reconcileRoutes(expectedPrefixes prefixMap) error {
-	if len(c.config.NeighborAddresses) != 0 {
+	if c.config.ExtendedNexthop || len(c.config.NeighborAddresses) != 0 {
 		err := c.reconcileIPFamily(kubeovnv1.ProtocolIPv4, expectedPrefixes)
 		if err != nil {
 			return fmt.Errorf("failed to reconcile IPv4 routes: %w", err)
 		}
 	}
 
-	if len(c.config.NeighborIPv6Addresses) != 0 {
+	if c.config.ExtendedNexthop || len(c.config.NeighborIPv6Addresses) != 0 {
 		err := c.reconcileIPFamily(kubeovnv1.ProtocolIPv6, expectedPrefixes)
 		if err != nil {
 			return fmt.Errorf("failed to reconcile IPv6 routes: %w", err)
@@ -140,7 +140,7 @@ func (c *Controller) delRoute(route string) error {
 		routeAfi = bgpapi.Family_AFI_IP6
 	}
 
-	// Get NLRI and attributes to announce all the next hops possible
+	// Get NLRI and attributes to withdraw all the next hops possible
 	nlri, attrs, err := c.getNlriAndAttrs(route)
 	if err != nil {
 		return fmt.Errorf("failed to get NLRI and attributes: %w", err)
@@ -165,10 +165,11 @@ func (c *Controller) delRoute(route string) error {
 // getNlriAndAttrs returns the Network Layer Reachability Information (NLRI) and the BGP attributes for a particular route
 func (c *Controller) getNlriAndAttrs(route string) (*anypb.Any, [][]*anypb.Any, error) {
 	// Should this route be advertised to IPv4 or IPv6 peers
-	// GoBGP supports extended-nexthop, we should be able to advertise IPv4 NLRI to IPv6 peer and the opposite to
-	// Is this check really necessary?
+	// If extended-nexthop is enabled, we advertise IPv4 NLRIs to IPv6 peers and IPv6 NRLIs to IPv4 peers
 	neighborAddresses := c.config.NeighborAddresses
-	if util.CheckProtocol(route) == kubeovnv1.ProtocolIPv6 {
+	if c.config.ExtendedNexthop {
+		neighborAddresses = append(neighborAddresses, c.config.NeighborIPv6Addresses...)
+	} else if util.CheckProtocol(route) == kubeovnv1.ProtocolIPv6 {
 		neighborAddresses = c.config.NeighborIPv6Addresses
 	}
 

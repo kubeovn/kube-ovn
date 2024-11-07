@@ -56,6 +56,7 @@ type Configuration struct {
 	GracefulRestartTime         time.Duration
 	PassiveMode                 bool
 	EbgpMultihopTTL             uint8
+	ExtendedNexthop             bool
 	NatGwMode                   bool
 
 	NodeName       string
@@ -87,6 +88,7 @@ func ParseFlags() (*Configuration, error) {
 		argKubeConfigFile              = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.")
 		argPassiveMode                 = pflag.BoolP("passivemode", "", false, "Set BGP Speaker to passive model, do not actively initiate connections to peers")
 		argEbgpMultihopTTL             = pflag.Uint8("ebgp-multihop", DefaultEbgpMultiHop, "The TTL value of EBGP peer, default: 1")
+		argExtendedNexthop             = pflag.BoolP("extended-nexthop", "", false, "Announce IPv4/IPv6 prefixes to every neighbor, no matter their AFI")
 		argNatGwMode                   = pflag.BoolP("nat-gw-mode", "", false, "Make the BGP speaker announce EIPs from inside a NAT gateway, Pod IP/Service/Subnet announcements will be disabled")
 	)
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
@@ -151,6 +153,7 @@ func ParseFlags() (*Configuration, error) {
 		GracefulRestartTime:         *argDefaultGracefulTime,
 		PassiveMode:                 *argPassiveMode,
 		EbgpMultihopTTL:             *argEbgpMultihopTTL,
+		ExtendedNexthop:             *argExtendedNexthop,
 		NatGwMode:                   *argNatGwMode,
 	}
 
@@ -330,6 +333,19 @@ func (config *Configuration) initBgpServer() error {
 						},
 					},
 				}
+			}
+
+			// If extended nexthop is enabled, advertise the IPv4 unicast AFI/SAFI even if
+			// we have no IPv4 neighbor
+			if config.ExtendedNexthop {
+				peer.AfiSafis = append(peer.AfiSafis, &api.AfiSafi{
+					Config: &api.AfiSafiConfig{
+						Family: &api.Family{
+							Afi:  api.Family_AFI_IP,
+							Safi: api.Family_SAFI_UNICAST,
+						},
+					},
+				})
 			}
 
 			if err := s.AddPeer(context.Background(), &api.AddPeerRequest{
