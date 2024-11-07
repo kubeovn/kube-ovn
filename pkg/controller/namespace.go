@@ -6,17 +6,15 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/scylladb/go-set/strset"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
-
-	"github.com/scylladb/go-set/strset"
 
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -128,9 +126,9 @@ func (c *Controller) handleAddNamespace(key string) error {
 
 		// bind subnet with namespaceLabelSeletcor which select the namespace
 		for _, nsSelector := range s.Spec.NamespaceSelectors {
-			matchSelector, err := mergeSelector(nsSelector)
+			matchSelector, err := metav1.LabelSelectorAsSelector(&nsSelector)
 			if err != nil {
-				klog.Errorf("failed to merge selector, %v", err)
+				klog.Errorf("failed to convert label selector, %v", err)
 				return err
 			}
 
@@ -230,19 +228,6 @@ func (c *Controller) handleAddNamespace(key string) error {
 	return err
 }
 
-func mergeSelector(nsSelector metav1.LabelSelector) (labels.Selector, error) {
-	matchSelector := labels.Set(nsSelector.MatchLabels).AsSelector()
-	for _, express := range nsSelector.MatchExpressions {
-		selectorRequirement, err := labels.NewRequirement(express.Key, selection.Operator(strings.ToLower(string(express.Operator))), express.Values)
-		if err != nil {
-			klog.Errorf("failed to get MatchExpressions selector, %v", err)
-			return matchSelector, err
-		}
-		matchSelector = matchSelector.Add(*selectorRequirement)
-	}
-	return matchSelector, nil
-}
-
 func (c *Controller) getNsExpectSubnets(newNs *v1.Namespace) ([]string, error) {
 	var expectSubnets []string
 
@@ -254,9 +239,9 @@ func (c *Controller) getNsExpectSubnets(newNs *v1.Namespace) ([]string, error) {
 	for _, subnet := range subnets {
 		// ns labels match subnet's selector
 		for _, nsSelector := range subnet.Spec.NamespaceSelectors {
-			matchSelector, err := mergeSelector(nsSelector)
+			matchSelector, err := metav1.LabelSelectorAsSelector(&nsSelector)
 			if err != nil {
-				klog.Errorf("failed to merge selector, %v", err)
+				klog.Errorf("failed to convert label selector, %v", err)
 				return expectSubnets, err
 			}
 
