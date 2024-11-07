@@ -194,7 +194,7 @@ func (suite *OvnClientTestSuite) testDeleteLogicalRouterPolicy() {
 	})
 
 	t.Run("should log err when logical router does not exist", func(t *testing.T) {
-		err := nbClient.DeleteLogicalRouterPolicy("test-nonexis-lr", priority, match)
+		err := nbClient.DeleteLogicalRouterPolicy("test-nonexist-lr", priority, match)
 		require.Error(t, err)
 	})
 }
@@ -275,7 +275,7 @@ func (suite *OvnClientTestSuite) testDeleteLogicalRouterPolicies() {
 	})
 
 	t.Run("should log err when logical router does not exist", func(t *testing.T) {
-		err := nbClient.DeleteLogicalRouterPolicies("test-nonexis-lr", basePriority, externalIDs)
+		err := nbClient.DeleteLogicalRouterPolicies("test-nonexist-lr", basePriority, externalIDs)
 		require.Error(t, err)
 	})
 }
@@ -324,7 +324,7 @@ func (suite *OvnClientTestSuite) testClearLogicalRouterPolicy() {
 	require.Empty(t, lr.Policies)
 
 	t.Run("should log err when logical router does not exist", func(t *testing.T) {
-		err := nbClient.ClearLogicalRouterPolicy("test-nonexis-lr")
+		err := nbClient.ClearLogicalRouterPolicy("test-nonexist-lr")
 		require.Error(t, err)
 	})
 }
@@ -669,7 +669,7 @@ func (suite *OvnClientTestSuite) testDeleteLogicalRouterPolicyByNexthop() {
 	require.NoError(t, err)
 
 	t.Run("should log err when logical router does not exist", func(t *testing.T) {
-		err = nbClient.DeleteLogicalRouterPolicyByNexthop("test-noneexist-lr", priority, nextHops[0])
+		err = nbClient.DeleteLogicalRouterPolicyByNexthop("test-nonexist-lr", priority, nextHops[0])
 		require.Error(t, err)
 	})
 }
