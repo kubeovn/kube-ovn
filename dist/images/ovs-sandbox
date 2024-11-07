@@ -1,0 +1,322 @@
+#! /bin/sh
+#
+# Copyright (c) 2013, 2015, 2016 Nicira, Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at:
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+set -e
+
+run() {
+    echo "$@"
+    (cd "$sandbox" && "$@") || exit 1
+}
+
+run_xterm() {
+    title=$1;
+    shift
+    run xterm -T "$title" -e "$@"  &
+}
+
+rungdb() {
+    under_gdb=$1
+    gdb_run=$2
+    shift
+    shift
+
+    # Remove the --detach and to put the process under gdb control.
+    # Also remove --vconsole:off to allow error message to show up
+    # on the console.
+    # Use "DISPLAY" variable to determine out if X is supported
+    if $under_gdb && [ "$DISPLAY" ]; then
+        args=`echo $@ |sed s/--detach//g | sed s/--vconsole:off//g`
+        xterm_title=$1
+
+        gdb_cmd=""
+        if $gdb_run; then
+            gdb_cmd="-ex run"
+        fi
+
+        run_xterm $xterm_title gdb $gdb_cmd --args $args
+    else
+        run $@
+    fi
+}
+
+gdb_vswitchd=false
+gdb_ovsdb=false
+gdb_vswitchd_ex=false
+gdb_ovsdb_ex=false
+builddir=
+srcdir=
+schema=
+installed=false
+built=false
+dummy=override
+
+for option; do
+    # This option-parsing mechanism borrowed from a Autoconf-generated
+    # configure script under the following license:
+
+    # Copyright (C) 1992, 1993, 1994, 1995, 1996, 1998, 1999, 2000, 2001,
+    # 2002, 2003, 2004, 2005, 2006, 2009, 2013 Free Software Foundation, Inc.
+    # This configure script is free software; the Free Software Foundation
+    # gives unlimited permission to copy, distribute and modify it.
+
+    # If the previous option needs an argument, assign it.
+    if test -n "$prev"; then
+        eval $prev=\$option
+        prev=
+        continue
+    fi
+    case $option in
+        *=*) optarg=`expr "X$option" : '[^=]*=\(.*\)'` ;;
+        *) optarg=yes ;;
+    esac
+
+    case $dashdash$option in
+        --)
+            dashdash=yes ;;
+        -h|--help)
+            cat <<EOF
+ovs-sandbox, for starting a sandboxed dummy Open vSwitch environment
+usage: $0 [OPTION...]
+
+If you run ovs-sandbox from an OVS build directory, it uses the OVS that
+you built.  Otherwise, if you have an installed Open vSwitch, it uses
+the installed version.
+
+These options force ovs-sandbox to use a particular OVS build:
+  -b, --builddir=DIR   specify Open vSwitch build directory
+  -s, --srcdir=DIR     specify Open vSwitch source directory
+These options force ovs-sandbox to use an installed Open vSwitch:
+  -i, --installed      use installed Open vSwitch
+
+General options:
+  -g, --gdb-vswitchd   run ovs-vswitchd under gdb
+  -d, --gdb-ovsdb      run ovsdb-server under gdb
+  --dummy=ARG          pass --enable-dummy=ARG to vswitchd (default: override)
+  -R, --gdb-run        automatically start running the daemon in gdb
+                       for any daemon set to run under gdb
+  -S, --schema=FILE    use FILE as vswitch.ovsschema
+
+Other options:
+  -h, --help           Print this usage message.
+EOF
+            exit 0
+            ;;
+
+        --b*=*)
+            builddir=$optarg
+            built=:
+            ;;
+        -b|--b*)
+            prev=builddir
+            built=:
+            ;;
+        --sr*=*)
+            srcdir=$optarg
+            built=false
+            ;;
+        --dummy)
+            prev=dummy
+            ;;
+        --dummy=*)
+            dummy=$optarg
+            ;;
+        -s|--sr*)
+            prev=srcdir
+            built=false
+            ;;
+        -i|--installed)
+            installed=:
+            ;;
+        --sc*=*)
+            schema=$optarg
+            installed=:
+            ;;
+        -S|--sc*)
+            prev=schema
+            installed=:
+            ;;
+        -g|--gdb-v*)
+            gdb_vswitchd=true
+            gdb_vswitchd_ex=false
+            ;;
+        -e|--gdb-ex-v*)
+            gdb_vswitchd=true
+            gdb_vswitchd_ex=true
+            ;;
+        -d|--gdb-ovsdb)
+            gdb_ovsdb=true
+            gdb_ovsdb_ex=false
+            ;;
+        -r|--gdb-ex-o*)
+            gdb_ovsdb=true
+            gdb_ovsdb_ex=true
+            ;;
+        -R|--gdb-run)
+            gdb_vswitchd_ex=true
+            gdb_ovsdb_ex=true
+            ;;
+        -*)
+            echo "unrecognized option $option (use --help for help)" >&2
+            exit 1
+            ;;
+        *)
+            echo "$option: non-option arguments not supported (use --help for help)" >&2
+            exit 1
+            ;;
+    esac
+    shift
+done
+
+if $installed && $built; then
+    echo "sorry, conflicting options (use --help for help)" >&2
+    exit 1
+elif $installed || $built; then
+    :
+elif test -e vswitchd/ovs-vswitchd; then
+    built=:
+    builddir=.
+elif (ovs-vswitchd --version) >/dev/null 2>&1; then
+    installed=:
+else
+    echo "can't find an OVS build or install (use --help for help)" >&2
+    exit 1
+fi
+
+if $built; then
+    if test ! -e "$builddir"/vswitchd/ovs-vswitchd; then
+        echo "$builddir does not appear to be an OVS build directory" >&2
+        exit 1
+    fi
+    builddir=`cd $builddir && pwd`
+
+    # Find srcdir.
+    case $srcdir in
+        '')
+            srcdir=$builddir
+            if test ! -e "$srcdir"/README.rst; then
+                srcdir=`cd $builddir/.. && pwd`
+            fi
+            ;;
+        /*) ;;
+        *) srcdir=`pwd`/$srcdir ;;
+    esac
+    schema=$srcdir/vswitchd/vswitch.ovsschema
+    if test ! -e "$schema"; then
+        echo >&2 'source directory not found, please use --srcdir'
+        exit 1
+    fi
+
+    # Put built tools early in $PATH.
+    if test ! -e $builddir/vswitchd/ovs-vswitchd; then
+        echo >&2 'build not found, please change set $builddir or change directory'
+        exit 1
+    fi
+    PATH=$builddir/ovsdb:$builddir/vswitchd:$builddir/utilities:$builddir/vtep:$PATH
+    export PATH
+else
+    case $schema in
+        '')
+            for schema in \
+                /usr/local/share/openvswitch/vswitch.ovsschema \
+                /usr/share/openvswitch/vswitch.ovsschema \
+                none; do
+                if test -r $schema; then
+                    break
+                fi
+            done
+            ;;
+        /*) ;;
+        *) schema=`pwd`/$schema ;;
+    esac
+    if test ! -r "$schema"; then
+        echo "can't find vswitch.ovsschema, please specify --schema" >&2
+        exit 1
+    fi
+fi
+
+# Create sandbox.
+rm -rf sandbox
+mkdir sandbox
+sandbox=`cd sandbox && pwd`
+
+# Set up environment for OVS programs to sandbox themselves.
+OVS_RUNDIR=$sandbox; export OVS_RUNDIR
+OVS_LOGDIR=$sandbox; export OVS_LOGDIR
+OVS_DBDIR=$sandbox; export OVS_DBDIR
+OVS_SYSCONFDIR=$sandbox; export OVS_SYSCONFDIR
+
+if $built; then
+    # Easy access to OVS manpages.
+    (cd "$builddir" && ${MAKE-make} install-man install-man-rst mandir="$sandbox"/man)
+    MANPATH=$sandbox/man:; export MANPATH
+fi
+
+# Ensure cleanup.
+trap 'kill `cat "$sandbox"/*.pid`' 0 1 2 3 13 14 15
+
+# Create database and start ovsdb-server.
+touch "$sandbox"/.conf.db.~lock~
+run ovsdb-tool create conf.db "$schema"
+ovsdb_server_args=
+rungdb $gdb_ovsdb $gdb_ovsdb_ex ovsdb-server --detach --no-chdir --pidfile -vconsole:off --log-file -vsyslog:off \
+       --remote=punix:"$sandbox"/db.sock \
+       --remote=db:Open_vSwitch,Open_vSwitch,manager_options \
+       $ovsdb_server_args
+
+#Add a small delay to allow ovsdb-server to launch.
+sleep 0.1
+
+#Wait for ovsdb-server to finish launching.
+if test ! -e "$sandbox"/db.sock; then
+    printf "Waiting for ovsdb-server to start..."
+    while test ! -e "$sandbox"/db.sock; do
+        sleep 1;
+    done
+    echo "  Done"
+fi
+
+# Initialize database.
+run ovs-vsctl --no-wait -- init
+
+# Start ovs-vswitchd.
+rungdb $gdb_vswitchd $gdb_vswitchd_ex ovs-vswitchd --no-chdir --pidfile -vconsole:off --log-file -vsyslog:off \
+    --enable-dummy=$dummy -vvconn -vnetdev_dummy
+
+cat <<EOF
+
+
+
+----------------------------------------------------------------------
+You are running in a dummy Open vSwitch environment.  You can use
+ovs-vsctl, ovs-ofctl, ovs-appctl, and other tools to work with the
+dummy switch.
+
+Log files, pidfiles, and the configuration database are in the
+"sandbox" subdirectory.
+
+Exit the shell to kill the running daemons.
+EOF
+
+status=0; $SHELL || status=$?
+
+cat <<EOF
+----------------------------------------------------------------------
+
+
+
+EOF
+
+exit $status
