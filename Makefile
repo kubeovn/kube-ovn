@@ -1059,7 +1059,6 @@ ut:
 
 .PHONY: ovs-sandbox
 ovs-sandbox: clean-ovs-sandbox
-	rm -fr /tmp/sandbox && mkdir /tmp/sandbox
 	docker run -itd --name ut-ovs-sandbox \
 		--privileged \
 		-v /tmp:/tmp \
@@ -1070,6 +1069,7 @@ clean-ovs-sandbox:
 	container_id=$(docker ps -a --filter "name=ut-ovs-sandbox" -q)
 	test -z "${container_id}" && exit 0
 	docker rm -f ut-ovs-sandbox
+	rm -fr /tmp/sandbox && mkdir /tmp/sandbox
 
 .PHONY: cp-ovs-ctl
 cp-ovs-ctl:
