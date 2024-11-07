@@ -105,7 +105,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalRouterPolicies() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
-	failedNbClient := suite.faiedOvnNBClient
+	failedNbClient := suite.failedOvnNBClient
 	lrName := "test-create-policies-lr"
 	priority := 11011
 	basePort := 12300
