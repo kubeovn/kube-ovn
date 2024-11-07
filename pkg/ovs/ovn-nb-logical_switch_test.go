@@ -31,6 +31,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalSwitch() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
+	failedNbClient := suite.failedOvnNBClient
 	lsName := "test-create-ls-ls"
 	lrName := "test-create-ls-lr"
 	mac := util.GenerateMac()
@@ -96,6 +97,11 @@ func (suite *OvnClientTestSuite) testCreateLogicalSwitch() {
 	t.Run("create logical switch using invalid gateway and cidrBlock", func(t *testing.T) {
 		err = nbClient.CreateLogicalSwitch(lsName, lrName, "192.168.2.0/24,fd00::c0a8:6400/120", "192.168.2.1", mac, true, false)
 		require.ErrorContains(t, err, "ip 192.168.2.1 should be dualstack")
+	})
+
+	t.Run("fail nb client should log err", func(t *testing.T) {
+		err = failedNbClient.CreateLogicalSwitch(lsName, lrName, "192.168.2.0/24,fd00::c0a8:9900/120", "192.168.2.1,fd00::c0a8:9901", mac, true, false)
+		require.Error(t, err)
 	})
 }
 
@@ -444,6 +450,7 @@ func (suite *OvnClientTestSuite) testLogicalSwitchUpdatePortOp() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
+	failedNbClient := suite.failedOvnNBClient
 	lsName := "test-update-port-op-ls"
 	lspName := "test-update-port-op-lsp"
 	lspUUID := ovsclient.NamedUUID()
@@ -521,6 +528,11 @@ func (suite *OvnClientTestSuite) testLogicalSwitchUpdatePortOp() {
 		require.NotNil(t, ops)
 		require.Len(t, ops, 1)
 		require.Equal(t, ovsdb.MutateOperationInsert, ops[0].Mutations[0].Mutator)
+	})
+
+	t.Run("fail nb client should log err", func(t *testing.T) {
+		_, err := failedNbClient.LogicalSwitchUpdatePortOp(lsName, lspUUID, ovsdb.MutateOperationInsert)
+		require.Error(t, err)
 	})
 }
 
@@ -717,6 +729,10 @@ func (suite *OvnClientTestSuite) testLogicalSwitchOp() {
 			},
 		},
 	}, ops[0].Mutations)
+
+	ops, err = nbClient.LogicalSwitchOp(lsName)
+	require.NoError(t, err)
+	require.Nil(t, ops)
 }
 
 func (suite *OvnClientTestSuite) testCreateBareLogicalSwitch() {

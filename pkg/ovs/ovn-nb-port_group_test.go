@@ -534,6 +534,10 @@ func (suite *OvnClientTestSuite) testPortGroupOp() {
 			},
 		},
 	}, ops[0].Mutations)
+
+	ops, err = nbClient.portGroupOp(pgName)
+	require.NoError(t, err)
+	require.Nil(t, ops)
 }
 
 func (suite *OvnClientTestSuite) testPortGroupRemovePorts() {
