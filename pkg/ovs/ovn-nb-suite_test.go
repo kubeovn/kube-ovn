@@ -487,6 +487,10 @@ func (suite *OvnClientTestSuite) Test_DeleteGatewayChassisOp() {
 	suite.testDeleteGatewayChassisOp()
 }
 
+func (suite *OvnClientTestSuite) Test_NewGatewayChassis() {
+	suite.testNewGatewayChassis()
+}
+
 /* load_balancer unit test */
 func (suite *OvnClientTestSuite) Test_CreateLoadBalancer() {
 	suite.testCreateLoadBalancer()
