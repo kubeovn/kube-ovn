@@ -358,9 +358,13 @@ func (c *Controller) createOrUpdateOvnEipCR(key, subnet, v4ip, v6ip, mac, usageT
 		if ovnEip.Labels[util.SubnetNameLabel] != subnet {
 			op = "replace"
 			ovnEip.Labels[util.SubnetNameLabel] = subnet
-			ovnEip.Labels[util.OvnEipTypeLabel] = usageType
 			ovnEip.Labels[util.EipV4IpLabel] = v4ip
 			ovnEip.Labels[util.EipV6IpLabel] = v6ip
+			needUpdateLabel = true
+		}
+		if ovnEip.Labels[util.OvnEipTypeLabel] != usageType {
+			op = "replace"
+			ovnEip.Labels[util.OvnEipTypeLabel] = usageType
 			needUpdateLabel = true
 		}
 		if needUpdateLabel {
