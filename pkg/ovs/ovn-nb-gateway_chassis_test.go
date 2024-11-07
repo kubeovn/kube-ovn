@@ -1,6 +1,8 @@
 package ovs
 
 import (
+	"testing"
+
 	"github.com/ovn-org/libovsdb/ovsdb"
 	"github.com/stretchr/testify/require"
 
@@ -16,11 +18,16 @@ func (suite *OvnClientTestSuite) testCreateGatewayChassises() {
 	lrpName := "test-create-gateway-chassises-lrp"
 	chassises := []string{"c7efec70-9519-4b03-8b67-057f2a95e5c7", "4a0891b6-fe81-4986-a367-aad0ea7ca9f3", "dcc2eda3-b3ea-4d53-afe0-7b6eaf7917ba"}
 
+	failedOvnNBClient := suite.failedOvnNBClient
+
 	err := nbClient.CreateLogicalRouter(lrName)
 	require.NoError(t, err)
 
 	err = nbClient.CreateLogicalRouterPort(lrName, lrpName, "00:11:22:37:af:62", []string{"fd00::c0a8:1001/120"})
 	require.NoError(t, err)
+
+	err = failedOvnNBClient.CreateGatewayChassises(lrpName, chassises...)
+	require.ErrorContains(t, err, "generate operations for creating gateway chassis")
 
 	err = nbClient.CreateGatewayChassises(lrpName, chassises...)
 	require.NoError(t, err)
@@ -73,6 +80,9 @@ func (suite *OvnClientTestSuite) testUpdateGatewayChassis() {
 	require.NoError(t, err)
 	require.NotNil(t, gwChassis)
 	require.Equal(t, 100, gwChassis.Priority)
+
+	err = nbClient.UpdateGatewayChassis(gwChassis, nil)
+	require.ErrorContains(t, err, "failed to generate operations for gateway chassis")
 }
 
 func (suite *OvnClientTestSuite) testDeleteGatewayChassises() {
@@ -87,6 +97,10 @@ func (suite *OvnClientTestSuite) testDeleteGatewayChassises() {
 	err := nbClient.CreateLogicalRouter(lrName)
 	require.NoError(t, err)
 
+	// delete gateway chassis for non-existent logical router port
+	err = nbClient.DeleteGatewayChassises(lrpName, append(chassises, "73bbe5d4-2b9b-47d0-aba8-94e86941881a"))
+	require.ErrorContains(t, err, "get logical router port test-gateway-chassis-del-lrp: object not found")
+
 	err = nbClient.CreateLogicalRouterPort(lrName, lrpName, "00:11:22:37:af:62", []string{"fd00::c0a8:1001/120"})
 	require.NoError(t, err)
 
@@ -94,6 +108,10 @@ func (suite *OvnClientTestSuite) testDeleteGatewayChassises() {
 	require.NoError(t, err)
 
 	err = nbClient.DeleteGatewayChassises(lrpName, append(chassises, "73bbe5d4-2b9b-47d0-aba8-94e86941881a"))
+	require.NoError(t, err)
+
+	// delete gateway chassis with nil chassises
+	err = nbClient.DeleteGatewayChassises(lrpName, nil)
 	require.NoError(t, err)
 
 	lrp, err := nbClient.GetLogicalRouterPort(lrpName, false)
@@ -149,4 +167,43 @@ func (suite *OvnClientTestSuite) testDeleteGatewayChassisOp() {
 				},
 			},
 		}, ops[0])
+}
+
+func (suite *OvnClientTestSuite) testNewGatewayChassis() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+	lrpName := "test-new-gateway-chassis-lrp"
+	chassisName := "test-chassis-uuid"
+	priority := 50
+
+	t.Run("gateway chassis already exists", func(t *testing.T) {
+		err := nbClient.CreateLogicalRouter("test-new-gw-chassis-lr")
+		require.NoError(t, err)
+
+		err = nbClient.CreateLogicalRouterPort("test-new-gw-chassis-lr", lrpName, "00:11:22:37:af:62", []string{"fd00::c0a8:1001/120"})
+		require.NoError(t, err)
+
+		err = nbClient.CreateGatewayChassises(lrpName, chassisName)
+		require.NoError(t, err)
+
+		gwChassis, err := nbClient.newGatewayChassis(lrpName, chassisName, priority)
+		require.NoError(t, err)
+		require.Nil(t, gwChassis)
+	})
+
+	t.Run("create new gateway chassis", func(t *testing.T) {
+		newLrpName := "test-new-gw-chassis-lrp2"
+		newChassisName := "new-test-chassis-uuid"
+		newGwChassisName := newLrpName + "-" + newChassisName
+
+		gwChassis, err := nbClient.newGatewayChassis(newLrpName, newChassisName, priority)
+		require.NoError(t, err)
+		require.NotNil(t, gwChassis)
+		require.Equal(t, newGwChassisName, gwChassis.Name)
+		require.Equal(t, newChassisName, gwChassis.ChassisName)
+		require.Equal(t, priority, gwChassis.Priority)
+		require.Equal(t, newLrpName, gwChassis.ExternalIDs["lrp"])
+	})
 }
