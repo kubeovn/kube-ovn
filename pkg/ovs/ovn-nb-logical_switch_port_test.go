@@ -681,10 +681,11 @@ func (suite *OvnClientTestSuite) testSetLogicalSwitchPortSecurity() {
 	})
 
 	t.Run("set logical switch port arp proxy when external ids is nil", func(t *testing.T) {
-		err = nbClient.CreateBareLogicalSwitchPort(lsName, "test-lsp-nil-external-ids", "unknown", "")
+		name := "test-lsp-set-arp-proxy-when-external-ids-is-nil"
+		err = nbClient.CreateBareLogicalSwitchPort(lsName, name, "unknown", "")
 		require.NoError(t, err)
 
-		lsp, err := nbClient.GetLogicalSwitchPort("test-lsp-nil-external-ids", false)
+		lsp, err := nbClient.GetLogicalSwitchPort(name, false)
 		require.NoError(t, err)
 		require.NotNil(t, lsp)
 
@@ -692,7 +693,7 @@ func (suite *OvnClientTestSuite) testSetLogicalSwitchPortSecurity() {
 		err = nbClient.UpdateLogicalSwitchPort(lsp, &lsp.ExternalIDs)
 		require.NoError(t, err)
 
-		err = nbClient.SetLogicalSwitchPortSecurity(true, "test-lsp-nil-external-ids", "00:00:00:AB:B4:65", "10.244.0.37,fc00::af4:25", "10.244.100.10,10.244.100.11")
+		err = nbClient.SetLogicalSwitchPortSecurity(true, name, "00:00:00:AB:B4:65", "10.244.0.37,fc00::af4:25", "10.244.100.10,10.244.100.11")
 		require.NoError(t, err)
 	})
 }
@@ -745,10 +746,11 @@ func (suite *OvnClientTestSuite) testSetSetLogicalSwitchPortExternalIDs() {
 	})
 
 	t.Run("set external ids when external ids is nil", func(t *testing.T) {
-		err = nbClient.CreateBareLogicalSwitchPort(lsName, "test-lsp-nil-external-ids", "unknown", "")
+		name := "test-lsp-set-external-ids-when-nil"
+		err = nbClient.CreateBareLogicalSwitchPort(lsName, name, "unknown", "")
 		require.NoError(t, err)
 
-		lsp, err := nbClient.GetLogicalSwitchPort("test-lsp-nil-external-ids", false)
+		lsp, err := nbClient.GetLogicalSwitchPort(name, false)
 		require.NoError(t, err)
 		require.NotNil(t, lsp)
 
@@ -756,10 +758,10 @@ func (suite *OvnClientTestSuite) testSetSetLogicalSwitchPortExternalIDs() {
 		err = nbClient.UpdateLogicalSwitchPort(lsp, &lsp.ExternalIDs)
 		require.NoError(t, err)
 
-		err = nbClient.SetLogicalSwitchPortExternalIDs("test-lsp-nil-external-ids", map[string]string{"k1": "v1"})
+		err = nbClient.SetLogicalSwitchPortExternalIDs(name, map[string]string{"k1": "v1"})
 		require.NoError(t, err)
 
-		lsp, err = nbClient.GetLogicalSwitchPort("test-lsp-nil-external-ids", false)
+		lsp, err = nbClient.GetLogicalSwitchPort(name, false)
 		require.NoError(t, err)
 		require.NotNil(t, lsp)
 		require.NotNil(t, lsp.ExternalIDs)
