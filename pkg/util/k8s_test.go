@@ -372,6 +372,15 @@ func TestUpdateNodeLabels(t *testing.T) {
 			labels: map[string]any{},
 			exp:    nil,
 		},
+		{
+			name: "node_with_unsupported_type",
+			cs:   nodeClient,
+			node: "node3",
+			labels: map[string]any{
+				"callback": func() {},
+			},
+			exp: errors.New("unsupported type"),
+		},
 	}
 	for _, tt := range tests {
 		// create a node
@@ -420,6 +429,15 @@ func TestUpdateNodeAnnotations(t *testing.T) {
 			node:        "node2",
 			annotations: map[string]any{},
 			exp:         nil,
+		},
+		{
+			name: "node_with_unsupported_type",
+			cs:   nodeClient,
+			node: "node3",
+			annotations: map[string]any{
+				"callback": func() {},
+			},
+			exp: errors.New("unsupported type"),
 		},
 	}
 	for _, tt := range tests {
