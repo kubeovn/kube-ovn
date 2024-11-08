@@ -169,7 +169,7 @@ ARG DEBUG=false
 
 RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages  \
     cp /packages/bfdd-beacon /packages/bfdd-control /usr/bin/ && \
-    cp /packages/ovs-sandbox /usr/bin/ && \
+    cp /packages/ovs-sandbox /usr/bin/ && chmod +x /usr/bin/ovs-sandbox && \
     setcap CAP_NET_BIND_SERVICE+eip /usr/bin/bfdd-beacon && \
     dpkg -i /packages/openvswitch-*.deb /packages/python3-openvswitch*.deb && \
     dpkg -i --ignore-depends=openvswitch-switch,openvswitch-common /packages/ovn-*.deb && \
