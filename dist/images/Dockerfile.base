@@ -32,7 +32,9 @@ RUN cd /usr/src/ && \
     # ovs-router: skip getting source address for kube-ipvs0
     curl -s https://github.com/kubeovn/ovs/commit/b7129150cb763d1fd081ee3c6f669da90d46b965.patch | git apply && \
     # increase the default probe interval for large cluster
-    curl -s https://github.com/kubeovn/ovs/commit/7e894a0bda966e746f81b2ebe262a62cd91bf269.patch | git apply
+    curl -s https://github.com/kubeovn/ovs/commit/7e894a0bda966e746f81b2ebe262a62cd91bf269.patch | git apply && \
+    # update ovs-sandbox for docker run
+    curl -s https://github.com/kubeovn/ovs/commit/54b767822916606dbb78335a3197983f435b5b8a.patch | git apply
 
 RUN cd /usr/src/ && git clone -b branch-24.03 --depth=1 https://github.com/ovn-org/ovn.git && \
     cd ovn && \
@@ -101,6 +103,7 @@ RUN mkdir /packages/ && \
     cp /usr/src/openvswitch-*deb /packages && \
     cp /usr/src/python3-openvswitch*deb /packages && \
     cp /usr/src/ovn-*deb /packages && \
+    cp /usr/src/ovs/tutorial/ovs-sandbox /packages && \
     cd /packages && rm -f *source* *doc* *datapath* *docker* *vtep* *test* *dev*
 
 FROM ghcr.io/aquasecurity/trivy:latest AS trivy
@@ -166,6 +169,7 @@ ARG DEBUG=false
 
 RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages  \
     cp /packages/bfdd-beacon /packages/bfdd-control /usr/bin/ && \
+    cp /packages/ovs-sandbox /usr/bin/ && \
     setcap CAP_NET_BIND_SERVICE+eip /usr/bin/bfdd-beacon && \
     dpkg -i /packages/openvswitch-*.deb /packages/python3-openvswitch*.deb && \
     dpkg -i --ignore-depends=openvswitch-switch,openvswitch-common /packages/ovn-*.deb && \
