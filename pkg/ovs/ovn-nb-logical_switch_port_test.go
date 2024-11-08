@@ -490,6 +490,11 @@ func (suite *OvnClientTestSuite) testSetLogicalSwitchPortVirtualParents() {
 		err = failedNbClient.SetLogicalSwitchPortVirtualParents(lsName, "virt-parents-ls-2,virt-parents-ls-3", ips...)
 		require.Error(t, err)
 	})
+
+	t.Run("fail nb client should log err", func(t *testing.T) {
+		err = nbClient.SetLogicalSwitchPortVirtualParents("test-nonexist-lr", "virt-parents-ls-2,virt-parents-ls-3", ips...)
+		require.Error(t, err)
+	})
 }
 
 func (suite *OvnClientTestSuite) testSetVirtualLogicalSwitchPortVirtualParents() {

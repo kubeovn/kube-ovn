@@ -51,6 +51,10 @@ func (suite *OvnClientTestSuite) testCreateGatewayLogicalSwitch() {
 	lsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
 	require.NoError(t, err)
 	require.Contains(t, ls.Ports, lsp.UUID)
+
+	// create with nonexist object
+	err = nbClient.CreateGatewayLogicalSwitch("test-nonexist-ls", "test-nonexist-ls", "test-external", "192.168.230.1/24,fc00::0af4:01/112", util.GenerateMac(), 210, chassises...)
+	require.Error(t, err)
 }
 
 func (suite *OvnClientTestSuite) testCreateLogicalPatchPort() {
