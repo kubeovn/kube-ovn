@@ -1,6 +1,6 @@
 module github.com/kubeovn/kube-ovn/test/anp
 
-go 1.23.2
+go 1.23.3
 
 require (
 	gopkg.in/yaml.v3 v3.0.1
