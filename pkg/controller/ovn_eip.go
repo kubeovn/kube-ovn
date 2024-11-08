@@ -118,8 +118,8 @@ func (c *Controller) handleAddOvnEip(key string) error {
 		return err
 	}
 
-	var natType string
-	natType = cachedEip.Spec.Type
+	var usageType string
+	usageType = cachedEip.Spec.Type
 	if cachedEip.Spec.Type == util.OvnEipTypeLSP {
 		klog.Infof("create lsp type ovn eip %s", key)
 		mergedIP := util.GetStringIP(v4ip, v6ip)
@@ -130,10 +130,10 @@ func (c *Controller) handleAddOvnEip(key string) error {
 	}
 	if cachedEip.Spec.Type == "" {
 		// the eip only used by nat: fip, dnat, snat
-		natType = util.OvnEipTypeNAT
+		usageType = util.OvnEipTypeNAT
 	}
 
-	if err = c.createOrUpdateOvnEipCR(key, subnet.Name, v4ip, v6ip, mac, natType); err != nil {
+	if err = c.createOrUpdateOvnEipCR(key, subnet.Name, v4ip, v6ip, mac, usageType); err != nil {
 		klog.Errorf("failed to create or update ovn eip '%s', %v", cachedEip.Name, err)
 		return err
 	}
