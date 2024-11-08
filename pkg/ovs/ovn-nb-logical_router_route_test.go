@@ -55,6 +55,7 @@ func (suite *OvnClientTestSuite) testAddLogicalRouterStaticRoute() {
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
+	failedNbClient := suite.failedOvnNBClient
 	lrName := "test-add-route-lr"
 	routeTable := util.MainRouteTable
 	policy := ovnnb.LogicalRouterStaticRoutePolicyDstIP
@@ -140,6 +141,38 @@ func (suite *OvnClientTestSuite) testAddLogicalRouterStaticRoute() {
 			err = nbClient.AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nil, nexthops...)
 			require.NoError(t, err)
 		})
+	})
+
+	t.Run("fail nb client should log err", func(t *testing.T) {
+		t.Parallel()
+
+		ipPrefix := "192.168.40.0/24"
+		nexthops := []string{"192.168.50.1", "192.168.60.1"}
+		err = failedNbClient.AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nil, nexthops...)
+		require.Error(t, err)
+	})
+
+	t.Run("bfd id mismatch", func(t *testing.T) {
+		t.Parallel()
+
+		ipPrefix := "192.168.70.0/24"
+		nexthops := []string{"192.168.80.1"}
+		existingBFDID := "test-existing-bfd-id"
+		newBFDID := "test-new-bfd-id"
+
+		err = nbClient.AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, &existingBFDID, nexthops...)
+		require.NoError(t, err)
+
+		initialRoutes, err := nbClient.ListLogicalRouterStaticRoutes(lrName, &routeTable, &policy, ipPrefix, nil)
+		require.NoError(t, err)
+		require.Len(t, initialRoutes, 1)
+
+		err = nbClient.AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, &newBFDID, nexthops...)
+		require.NoError(t, err)
+
+		finalRoutes, err := nbClient.ListLogicalRouterStaticRoutes(lrName, &routeTable, &policy, ipPrefix, nil)
+		require.NoError(t, err)
+		require.Len(t, finalRoutes, 1)
 	})
 }
 

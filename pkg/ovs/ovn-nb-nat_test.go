@@ -905,6 +905,17 @@ func (suite *OvnClientTestSuite) testNatFilter() {
 
 		require.False(t, filterFunc(nat))
 	})
+
+	t.Run("exclude nat with empty external id value", func(t *testing.T) {
+		filterFunc := natFilter("", "", map[string]string{"k1": ""})
+		count := 0
+		for _, nat := range nats {
+			if filterFunc(nat) {
+				count++
+			}
+		}
+		require.Equal(t, count, 7)
+	})
 }
 
 func (suite *OvnClientTestSuite) testAddNat() {
