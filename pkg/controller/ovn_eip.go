@@ -250,22 +250,21 @@ func (c *Controller) handleAddOvnEip(key string) error {
 		return err
 	}
 
+	usageType := cachedEip.Spec.Type
 	if cachedEip.Spec.Type == util.OvnEipTypeLSP {
+		klog.Infof("create lsp type ovn eip %s", key)
 		mergedIP := util.GetStringIP(v4ip, v6ip)
 		if err := c.OVNNbClient.CreateBareLogicalSwitchPort(subnet.Name, portName, mergedIP, mac); err != nil {
 			klog.Errorf("failed to create lsp for ovn eip %s, %v", key, err)
 			return err
 		}
 	}
-	var natType string
 	if cachedEip.Spec.Type == "" {
 		// the eip only used by nat: fip, dnat, snat
-		natType = util.OvnEipTypeNAT
-	} else if cachedEip.Spec.Type != util.OvnEipTypeLRP && cachedEip.Spec.Type != util.OvnEipTypeLSP {
-		natType = util.OvnEipTypeNAT
+		usageType = util.OvnEipTypeNAT
 	}
 
-	if err = c.createOrUpdateOvnEipCR(key, subnet.Name, v4ip, v6ip, mac, natType); err != nil {
+	if err = c.createOrUpdateOvnEipCR(key, subnet.Name, v4ip, v6ip, mac, usageType); err != nil {
 		klog.Errorf("failed to create or update ovn eip '%s', %v", cachedEip.Name, err)
 		return err
 	}
@@ -382,7 +381,7 @@ func (c *Controller) handleDelOvnEip(key string) error {
 	return nil
 }
 
-func (c *Controller) createOrUpdateOvnEipCR(key, subnet, v4ip, v6ip, mac, usage string) error {
+func (c *Controller) createOrUpdateOvnEipCR(key, subnet, v4ip, v6ip, mac, usageType string) error {
 	cachedEip, err := c.ovnEipsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -391,7 +390,7 @@ func (c *Controller) createOrUpdateOvnEipCR(key, subnet, v4ip, v6ip, mac, usage 
 					Name: key,
 					Labels: map[string]string{
 						util.SubnetNameLabel: subnet,
-						util.OvnEipTypeLabel: usage,
+						util.OvnEipTypeLabel: usageType,
 						util.EipV4IpLabel:    v4ip,
 					},
 				},
@@ -400,7 +399,7 @@ func (c *Controller) createOrUpdateOvnEipCR(key, subnet, v4ip, v6ip, mac, usage 
 					V4Ip:           v4ip,
 					V6Ip:           v6ip,
 					MacAddress:     mac,
-					Type:           usage,
+					Type:           usageType,
 				},
 			}, metav1.CreateOptions{})
 			if err != nil {
@@ -430,8 +429,8 @@ func (c *Controller) createOrUpdateOvnEipCR(key, subnet, v4ip, v6ip, mac, usage 
 			ovnEip.Spec.V6Ip = v6ip
 			needUpdate = true
 		}
-		if usage != "" && ovnEip.Spec.Type != usage {
-			ovnEip.Spec.Type = usage
+		if usageType != "" && ovnEip.Spec.Type != usageType {
+			ovnEip.Spec.Type = usageType
 			needUpdate = true
 		}
 		if needUpdate {
@@ -454,8 +453,8 @@ func (c *Controller) createOrUpdateOvnEipCR(key, subnet, v4ip, v6ip, mac, usage 
 			ovnEip.Status.MacAddress = mac
 			needPatch = true
 		}
-		if ovnEip.Status.Type == "" && ovnEip.Status.Type != usage {
-			ovnEip.Status.Type = usage
+		if ovnEip.Status.Type == "" && ovnEip.Status.Type != usageType {
+			ovnEip.Status.Type = usageType
 			needPatch = true
 		}
 		if needPatch {
@@ -480,7 +479,7 @@ func (c *Controller) createOrUpdateOvnEipCR(key, subnet, v4ip, v6ip, mac, usage 
 			op = "add"
 			ovnEip.Labels = map[string]string{
 				util.SubnetNameLabel: subnet,
-				util.OvnEipTypeLabel: usage,
+				util.OvnEipTypeLabel: usageType,
 				util.EipV4IpLabel:    v4ip,
 			}
 			needUpdateLabel = true
@@ -488,6 +487,13 @@ func (c *Controller) createOrUpdateOvnEipCR(key, subnet, v4ip, v6ip, mac, usage 
 		if ovnEip.Labels[util.SubnetNameLabel] != subnet {
 			op = "replace"
 			ovnEip.Labels[util.SubnetNameLabel] = subnet
+			ovnEip.Labels[util.EipV4IpLabel] = v4ip
+			ovnEip.Labels[util.EipV6IpLabel] = v6ip
+			needUpdateLabel = true
+		}
+		if ovnEip.Labels[util.OvnEipTypeLabel] != usageType {
+			op = "replace"
+			ovnEip.Labels[util.OvnEipTypeLabel] = usageType
 			needUpdateLabel = true
 		}
 		if needUpdateLabel {
