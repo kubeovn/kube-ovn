@@ -233,7 +233,7 @@ func (c *Controller) gcNode() error {
 		if strings.HasPrefix(ip.Name, util.NodeLspPrefix) && !strings.Contains(ip.Name, ".") {
 			if node := ip.Name[len(util.NodeLspPrefix):]; !nodeNames.Has(node) {
 				klog.Infof("gc node %s", node)
-				if err := c.handleDeleteNode(node); err != nil {
+				if err := c.deleteNode(node); err != nil {
 					klog.Errorf("failed to gc node %s: %v", node, err)
 					return err
 				}
@@ -246,11 +246,18 @@ func (c *Controller) gcNode() error {
 		klog.Errorf("failed to list logical router policies on lr %s: %v", c.config.ClusterRouter, err)
 		return err
 	}
+	// Ensure that router policy can be deleted
+	gatewatyRouterPolicies, err := c.OVNNbClient.ListLogicalRouterPolicies(c.config.ClusterRouter, util.GatewayRouterPolicyPriority, map[string]string{"vendor": util.CniTypeName}, false)
+	if err != nil {
+		klog.Errorf("failed to list logical router policies priority %d on lr %s: %v", util.GatewayRouterPolicyPriority, c.config.ClusterRouter, err)
+		return err
+	}
+	policies = append(policies, gatewatyRouterPolicies...)
 	for _, policy := range policies {
 		if nodeNames.Has(policy.ExternalIDs["node"]) {
 			continue
 		}
-		klog.Infof("gc logical router policy %q on lr %s", policy.Match, c.config.ClusterRouter)
+		klog.Infof("gc logical router policy %q priority %d on lr %s", policy.Match, policy.Priority, c.config.ClusterRouter)
 		if err = c.OVNNbClient.DeleteLogicalRouterPolicy(c.config.ClusterRouter, policy.Priority, policy.Match); err != nil {
 			klog.Errorf("failed to delete logical router policy %q on lr %s", policy.Match, c.config.ClusterRouter)
 			return err
