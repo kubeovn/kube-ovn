@@ -347,7 +347,6 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 	ginkgo.AfterEach(func() {
 		ginkgo.By("Deleting ovn fip " + fipName)
 		ovnFipClient.DeleteSync(fipName)
-		time.Sleep(100000 * time.Second)
 		// clean up share eip case resource
 		ginkgo.By("Deleting share ovn dnat " + sharedEipDnatName)
 		ovnDnatRuleClient.DeleteSync(sharedEipDnatName)
