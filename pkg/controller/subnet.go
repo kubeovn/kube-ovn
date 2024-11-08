@@ -1229,9 +1229,9 @@ func (c *Controller) reconcileNamespaces(subnet *kubeovnv1.Subnet) error {
 func (c *Controller) getNamespacesBySelector(nsSelectors []metav1.LabelSelector) ([]string, error) {
 	var expectNss []string
 	for _, nsSelector := range nsSelectors {
-		matchSelector, err := mergeSelector(nsSelector)
+		matchSelector, err := metav1.LabelSelectorAsSelector(&nsSelector)
 		if err != nil {
-			klog.Errorf("failed to merge selector, %v", err)
+			klog.Errorf("failed to convert label selector, %v", err)
 			return expectNss, err
 		}
 
