@@ -118,8 +118,7 @@ func (c *Controller) handleAddOvnEip(key string) error {
 		return err
 	}
 
-	var usageType string
-	usageType = cachedEip.Spec.Type
+	usageType := cachedEip.Spec.Type
 	if cachedEip.Spec.Type == util.OvnEipTypeLSP {
 		klog.Infof("create lsp type ovn eip %s", key)
 		mergedIP := util.GetStringIP(v4ip, v6ip)
