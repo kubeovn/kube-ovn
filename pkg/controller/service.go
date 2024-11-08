@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"reflect"
 	"strings"
 	"time"
 
@@ -23,6 +24,12 @@ type vpcService struct {
 	Vpc      string
 	Protocol v1.Protocol
 	Svc      *v1.Service
+}
+
+type updateSvcObject struct {
+	key      string
+	oldPorts []v1.ServicePort
+	newPorts []v1.ServicePort
 }
 
 func (c *Controller) enqueueAddService(obj interface{}) {
@@ -122,7 +129,12 @@ func (c *Controller) enqueueUpdateService(oldObj, newObj interface{}) {
 		key = strings.Join([]string{key, ipsToDelStr}, "#")
 	}
 
-	c.updateServiceQueue.Add(key)
+	updateSvc := &updateSvcObject{
+		key:      key,
+		oldPorts: oldSvc.Spec.Ports,
+		newPorts: newSvc.Spec.Ports,
+	}
+	c.updateServiceQueue.Add(updateSvc)
 }
 
 func (c *Controller) runAddServiceWorker() {
@@ -208,16 +220,16 @@ func (c *Controller) processNextUpdateServiceWorkItem() bool {
 
 	err := func(obj interface{}) error {
 		defer c.updateServiceQueue.Done(obj)
-		var key string
+		var svcObject *updateSvcObject
 		var ok bool
-		if key, ok = obj.(string); !ok {
+		if svcObject, ok = obj.(*updateSvcObject); !ok {
 			c.updateServiceQueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
+			utilruntime.HandleError(fmt.Errorf("expected updateSvcObject in workqueue but got %#v", obj))
 			return nil
 		}
-		if err := c.handleUpdateService(key); err != nil {
-			c.updateServiceQueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
+		if err := c.handleUpdateService(svcObject); err != nil {
+			c.updateServiceQueue.AddRateLimited(svcObject)
+			return fmt.Errorf("error syncing '%s': %s, requeuing", svcObject.key, err.Error())
 		}
 		c.updateServiceQueue.Forget(obj)
 		return nil
@@ -297,7 +309,8 @@ func (c *Controller) handleDeleteService(service *vpcService) error {
 	return nil
 }
 
-func (c *Controller) handleUpdateService(key string) error {
+func (c *Controller) handleUpdateService(svcObject *updateSvcObject) error {
+	key := svcObject.key
 	keys := strings.Split(key, "#")
 	key = keys[0]
 	var ipsToDel []string
@@ -431,6 +444,34 @@ func (c *Controller) handleUpdateService(key string) error {
 	if needUpdateEndpointQueue {
 		c.updateEndpointQueue.Add(key)
 	}
+
+	if c.config.EnableLbSvc && svc.Spec.Type == v1.ServiceTypeLoadBalancer {
+		changed, err := c.checkLbSvcDeployAnnotationChanged(svc)
+		if err != nil {
+			klog.Errorf("failed to check annotation change for lb svc %s: %v", key, err)
+			return err
+		}
+
+		// only process svc.spec.ports update
+		if !changed {
+			pod, err := c.getLbSvcPod(name, namespace)
+			if err != nil {
+				klog.Errorf("failed to get pod for lb svc %s: %v", key, err)
+				return err
+			}
+
+			toDel := diffSvcPorts(svcObject.oldPorts, svcObject.newPorts)
+			if err := c.delDnatRules(pod, toDel, svc); err != nil {
+				klog.Errorf("failed to delete dnat rules, err: %v", err)
+				return err
+			}
+			if err = c.updatePodAttachNets(pod, svc); err != nil {
+				klog.Errorf("failed to update pod attachment network for lb svc %s: %v", key, err)
+				return err
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -548,4 +589,21 @@ func getVipIps(svc *v1.Service) []string {
 		ips = util.ServiceClusterIPs(*svc)
 	}
 	return ips
+}
+
+func diffSvcPorts(oldPorts, newPorts []v1.ServicePort) (toDel []v1.ServicePort) {
+	for _, oldPort := range oldPorts {
+		found := false
+		for _, newPort := range newPorts {
+			if reflect.DeepEqual(oldPort, newPort) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			toDel = append(toDel, oldPort)
+		}
+	}
+
+	return toDel
 }
