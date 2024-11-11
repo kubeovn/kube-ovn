@@ -72,7 +72,7 @@ func TestE2E(t *testing.T) {
 
 type suiteContext struct {
 	Node     string
-	HostIP   string
+	NodeIP   string
 	NodePort int32
 }
 
@@ -108,8 +108,27 @@ var _ = ginkgo.SynchronizedBeforeSuite(func() []byte {
 	framework.ExpectNoError(err)
 	framework.ExpectNotNil(pods)
 	framework.ExpectNotEmpty(pods.Items, "no pod found in deployment "+deploymentName)
-	suiteCtx.HostIP = pods.Items[0].Status.HostIP
+	suiteCtx.NodeIP = pods.Items[0].Status.HostIP
 	suiteCtx.Node = pods.Items[0].Spec.NodeName
+
+	ginkgo.By("Getting all nodes")
+	nodes, err := cs.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
+	framework.ExpectNoError(err)
+	framework.ExpectNotNil(nodes)
+	framework.ExpectNotEmpty(nodes.Items)
+
+	// use the internal IP of the node that is not the same as the pod node
+	for _, node := range nodes.Items {
+		if node.Name != suiteCtx.Node {
+			ipv4, ipv6 := util.GetNodeInternalIP(node)
+			if ipv4 != "" {
+				suiteCtx.NodeIP = ipv4
+			} else {
+				suiteCtx.NodeIP = ipv6
+			}
+			break
+		}
+	}
 
 	ginkgo.By("Creating service " + serviceName)
 	ports := []corev1.ServicePort{{
@@ -157,13 +176,13 @@ var _ = framework.Describe("[group:connectivity]", func() {
 	})
 	ginkgo.AfterEach(ginkgo.OncePerOrdered, func() {
 		ginkgo.By("Closing RPC server")
-		framework.ExpectNoError(server.Close())
+		framework.ExpectNoError(server.Shutdown(context.Background()))
 	})
 
 	ginkgo.It("Continuous NodePort HTTP testing", func() {
 		u := url.URL{
 			Scheme: "http",
-			Host:   util.JoinHostPort(suiteCtx.HostIP, suiteCtx.NodePort),
+			Host:   util.JoinHostPort(suiteCtx.NodeIP, suiteCtx.NodePort),
 			Path:   "/clientip",
 		}
 		ginkgo.By("GET " + u.String())
@@ -263,7 +282,7 @@ var _ = framework.OrderedDescribe("[group:disaster]", func() {
 		framework.ExpectNotEmpty(pods.Items, "no pod found in deployment ovn-central")
 
 		for _, pod := range pods.Items {
-			framework.Logf("pod %s is running on %s", pod.Name, pod.Spec.NodeName)
+			ginkgo.By("Deleting pod " + pod.Name + " running on " + pod.Spec.NodeName)
 			err = cs.CoreV1().Pods(pod.Namespace).Delete(context.TODO(), pod.Name, metav1.DeleteOptions{})
 			framework.ExpectNoError(err, "failed to delete pod "+pod.Name)
 		}
@@ -279,6 +298,90 @@ var _ = framework.OrderedDescribe("[group:disaster]", func() {
 			pod.ObjectMeta.ManagedFields = nil
 			framework.Logf("new created pod %s running on node %s:\n%s", pod.Name, pod.Spec.NodeName, format.Object(pod, 2))
 		}
+	})
+
+	framework.DisruptiveIt("Stop ovn sb process", func() {
+		ginkgo.By("Getting deployment ovn-central")
+		deploymentClient := framework.NewDeploymentClient(cs, framework.KubeOvnNamespace)
+		deploy := deploymentClient.Get("ovn-central")
+
+		ginkgo.By("Getting pods of deployment ovn-central")
+		pods, err := deploymentClient.GetPods(deploy)
+		framework.ExpectNoError(err)
+		framework.ExpectNotEmpty(pods.Items, "no pod found in deployment ovn-central")
+
+		for _, pod := range pods.Items {
+			ginkgo.By("Getting ovn sb pid of pod " + pod.Name + " running on " + pod.Spec.NodeName)
+			cmd := []string{"cat", "/run/ovn/ovnsb_db.pid"}
+			stdout, stderr, err := framework.KubectlExec(pod.Namespace, pod.Name, cmd...)
+			framework.ExpectNoError(err, "failed to get ovn sb pid: %v, %s", err, string(stderr))
+			pid := string(bytes.TrimSpace(stdout))
+			framework.Logf("ovn sb pid: %s", pid)
+
+			ginkgo.By("Stopping ovn sb process by sending a STOP signal")
+			cmd = []string{"sh", "-c", fmt.Sprintf(`"kill -STOP %s"`, pid)}
+			_, stderr, err = framework.KubectlExec(pod.Namespace, pod.Name, cmd...)
+			framework.ExpectNoError(err, "failed to send STOP signal to ovn sb process: %v, %s", err, string(stderr))
+		}
+
+		ginkgo.By("Waiting 60s")
+		time.Sleep(60 * time.Second)
+
+		for _, pod := range pods.Items {
+			ginkgo.By("Getting ovn sb pid of pod " + pod.Name + " running on " + pod.Spec.NodeName)
+			cmd := []string{"cat", "/run/ovn/ovnsb_db.pid"}
+			stdout, stderr, err := framework.KubectlExec(pod.Namespace, pod.Name, cmd...)
+			framework.ExpectNoError(err, "failed to get ovn sb pid: %v, %s", err, string(stderr))
+			pid := string(bytes.TrimSpace(stdout))
+			framework.Logf("ovn sb pid: %s", pid)
+
+			ginkgo.By("Stopping ovn sb process by sending a CONT signal")
+			cmd = []string{"sh", "-c", fmt.Sprintf(`"kill -CONT %s"`, pid)}
+			_, stderr, err = framework.KubectlExec(pod.Namespace, pod.Name, cmd...)
+			framework.ExpectNoError(err, "failed to send CONT signal to ovn sb process: %v, %s", err, string(stderr))
+		}
+	})
+
+	framework.DisruptiveIt("Stop ovn-controller process", func() {
+		ginkgo.By("Getting DaemonSet ovs-ovn")
+		dsClient := framework.NewDaemonSetClient(cs, framework.KubeOvnNamespace)
+		ds := dsClient.Get("ovs-ovn")
+
+		ginkgo.By("Getting pods of DaemonSet ovs-ovn")
+		pods, err := dsClient.GetPods(ds)
+		framework.ExpectNoError(err)
+		framework.ExpectNotEmpty(pods.Items, "no pod found in DaemonSet ovs-ovn")
+
+		ginkgo.By("Getting ovs-ovn pod running on node " + suiteCtx.Node)
+		var pod *corev1.Pod
+		for i := range pods.Items {
+			framework.Logf("pod %s is running on %s", pods.Items[i].Name, pods.Items[i].Spec.NodeName)
+			if pods.Items[i].Spec.NodeName == suiteCtx.Node {
+				pod = &pods.Items[i]
+				break
+			}
+		}
+		framework.ExpectNotNil(pod, "no ovs-ovn pod running on node "+suiteCtx.Node)
+
+		ginkgo.By("Getting ovn-controller pid")
+		cmd := []string{"sh", "-c", `"pidof -s ovn-controller"`}
+		stdout, stderr, err := framework.KubectlExec(pod.Namespace, pod.Name, cmd...)
+		framework.ExpectNoError(err, "failed to get ovn-controller pid: %v, %s", err, string(stderr))
+		pid := string(bytes.TrimSpace(stdout))
+		framework.Logf("ovn-controller pid: %s", pid)
+
+		ginkgo.By("Stopping ovn-controller process by sending a STOP signal")
+		cmd = []string{"sh", "-c", fmt.Sprintf(`"kill -STOP %s"`, pid)}
+		_, stderr, err = framework.KubectlExec(pod.Namespace, pod.Name, cmd...)
+		framework.ExpectNoError(err, "failed to send STOP signal to ovn-controller process: %v, %s", err, string(stderr))
+
+		ginkgo.By("Waiting 60s")
+		time.Sleep(60 * time.Second)
+
+		ginkgo.By("Continuing the stopped ovn-controller process by sending a CONT signal")
+		cmd = []string{"sh", "-c", fmt.Sprintf(`"kill -CONT %s"`, pid)}
+		_, stderr, err = framework.KubectlExec(pod.Namespace, pod.Name, cmd...)
+		framework.ExpectNoError(err, "failed to send CONT signal to ovn-controller process: %v, %s", err, string(stderr))
 	})
 
 	framework.DisruptiveIt("Stop ovs-vswitchd process", func() {
