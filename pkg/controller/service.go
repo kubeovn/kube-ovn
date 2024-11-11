@@ -10,6 +10,7 @@ import (
 	"time"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -412,19 +413,27 @@ func (c *Controller) handleAddService(key string) error {
 	if svc.Spec.Type != v1.ServiceTypeLoadBalancer {
 		return nil
 	}
+	// Skip non kube-ovn lb-svc.
+	if _, ok := svc.Annotations[util.AttachmentProvider]; !ok {
+		return nil
+	}
+
 	klog.Infof("handle add loadbalancer service %s", key)
 
 	if err = c.validateSvc(svc); err != nil {
+		c.recorder.Event(svc, v1.EventTypeWarning, "ValidateSvcFailed", err.Error())
 		klog.Errorf("failed to validate lb svc %s: %v", key, err)
 		return err
 	}
 
-	if err = c.checkAttachNetwork(svc); err != nil {
+	nad, err := c.getAttachNetwork(svc)
+	if err != nil {
+		c.recorder.Event(svc, v1.EventTypeWarning, "GetNADFailed", err.Error())
 		klog.Errorf("failed to check attachment network of lb svc %s: %v", key, err)
 		return err
 	}
 
-	if err = c.createLbSvcPod(svc); err != nil {
+	if err = c.createLbSvcPod(svc, nad); err != nil {
 		klog.Errorf("failed to create lb svc pod for %s: %v", key, err)
 		return err
 	}
@@ -465,17 +474,26 @@ func (c *Controller) handleAddService(key string) error {
 		klog.Error(err)
 		return err
 	}
-
-	if err = c.updatePodAttachNets(pod, svc); err != nil {
+	targetSvc := svc.DeepCopy()
+	if err = c.updatePodAttachNets(pod, targetSvc); err != nil {
 		klog.Errorf("failed to update pod attachment network for service %s/%s: %v", namespace, name, err)
 		return err
 	}
 
-	svc = svc.DeepCopy()
-	svc.Status.LoadBalancer.Ingress = []v1.LoadBalancerIngress{{IP: loadBalancerIP}}
-	if _, err = c.config.KubeClient.CoreV1().Services(namespace).UpdateStatus(context.Background(), svc, metav1.UpdateOptions{}); err != nil {
-		klog.Errorf("failed to update status of service %s/%s: %v", namespace, name, err)
-		return err
+	// compatible with IPv4 and IPv6 dual stack subnet.
+	var ingress []v1.LoadBalancerIngress
+	for _, ip := range strings.Split(loadBalancerIP, ",") {
+		if ip != "" && net.ParseIP(ip) != nil {
+			ingress = append(ingress, v1.LoadBalancerIngress{IP: ip})
+		}
+	}
+	targetSvc.Status.LoadBalancer.Ingress = ingress
+	if !equality.Semantic.DeepEqual(svc.Status, targetSvc.Status) {
+		if _, err = c.config.KubeClient.CoreV1().Services(namespace).
+			UpdateStatus(context.Background(), targetSvc, metav1.UpdateOptions{}); err != nil {
+			klog.Errorf("failed to update status of service %s/%s: %v", namespace, name, err)
+			return err
+		}
 	}
 
 	return nil
