@@ -256,6 +256,10 @@ func (c *Controller) gcNode() error {
 	}
 	policies = append(policies, gatewatyRouterPolicies...)
 	for _, policy := range policies {
+		// skip the policy for centralized subnet
+		if _, ok := policy.ExternalIDs["node"]; !ok {
+			continue
+		}
 		if nodeNames.Has(policy.ExternalIDs["node"]) {
 			continue
 		}
