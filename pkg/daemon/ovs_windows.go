@@ -339,6 +339,10 @@ func (c *Controller) loopOvn0Check() {
 	// no need to check ovn0 on Windows
 }
 
+func (c *Controller) loopVxlanCheck() {
+	// no need to check vxlan on Windows
+}
+
 func (c *Controller) loopOvnExt0Check() {
 	// no need to check ovnext0 on Windows
 }

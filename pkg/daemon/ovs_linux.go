@@ -714,6 +714,25 @@ func (c *Controller) loopOvn0Check() {
 	}
 }
 
+// This method checks the status of the VXLAN interface named "vxlan_sys_4789".
+// If the interface is found to be down, it attempts to bring it up.
+func (c *Controller) loopVxlanCheck() {
+	link, err := netlink.LinkByName(util.VxlanNic)
+	if err != nil {
+		util.LogFatalAndExit(err, "failed to get vxlan nic")
+	}
+
+	if link.Attrs().OperState == netlink.OperDown {
+		klog.Warningf("vxlan nic is down, attempting to bring it up")
+		if err := netlink.LinkSetUp(link); err != nil {
+			util.LogFatalAndExit(err, "failed to bring up vxlan nic")
+		}
+		klog.Infof("vxlan nic %s is now up", util.VxlanNic)
+	} else {
+		klog.Infof("vxlan nic %s is already up", util.VxlanNic)
+	}
+}
+
 func (c *Controller) checkNodeGwNicInNs(nodeExtIP, ip, gw string, gwNS ns.NetNS) error {
 	exists, err := ovs.PortExists(util.NodeGwNic)
 	if err != nil {
