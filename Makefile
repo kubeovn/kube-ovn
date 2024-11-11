@@ -1066,10 +1066,7 @@ ovs-sandbox: clean-ovs-sandbox
 
 .PHONY: clean-ovs-sandbox
 clean-ovs-sandbox:
-	container_id=$(docker ps -a --filter "name=ut-ovs-sandbox" -q)
-	test -z "${container_id}" && exit 0
-	docker rm -f ut-ovs-sandbox
-	rm -fr /tmp/sandbox
+	file /tmp/sandbox && docker rm -f ut-ovs-sandbox && rm -fr /tmp/sandbox
 
 .PHONY: cp-ovs-ctl
 cp-ovs-ctl:
