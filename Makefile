@@ -1062,7 +1062,7 @@ ovs-sandbox: clean-ovs-sandbox
 	docker run -itd --name ut-ovs-sandbox \
 		--privileged \
 		-v /tmp:/tmp \
-		$(REGISTRY)/kube-ovn:$(RELEASE_TAG) bash ovs-sandbox -i
+		$(REGISTRY)/kube-ovn-base:$(RELEASE_TAG) ovs-sandbox -i
 
 .PHONY: clean-ovs-sandbox
 clean-ovs-sandbox:
