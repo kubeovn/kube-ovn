@@ -249,12 +249,12 @@ func (c *Controller) gcNode() error {
 		klog.Errorf("failed to list logical router policies on lr %s: %v", c.config.ClusterRouter, err)
 		return err
 	}
-	gatewatyRouterPolicies, err := c.OVNNbClient.ListLogicalRouterPolicies(c.config.ClusterRouter, util.GatewayRouterPolicyPriority, map[string]string{"vendor": util.CniTypeName}, false)
+	gatewayRouterPolicies, err := c.OVNNbClient.ListLogicalRouterPolicies(c.config.ClusterRouter, util.GatewayRouterPolicyPriority, map[string]string{"vendor": util.CniTypeName}, false)
 	if err != nil {
 		klog.Errorf("failed to list logical router policies priority %d on lr %s: %v", util.GatewayRouterPolicyPriority, c.config.ClusterRouter, err)
 		return err
 	}
-	policies = append(policies, gatewatyRouterPolicies...)
+	policies = append(policies, gatewayRouterPolicies...)
 	for _, policy := range policies {
 		// skip the policy for centralized subnet
 		if _, ok := policy.ExternalIDs["node"]; !ok {
