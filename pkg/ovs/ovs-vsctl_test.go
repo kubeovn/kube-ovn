@@ -17,7 +17,7 @@ func (suite *OvnClientTestSuite) testOvsExec() {
 	t := suite.T()
 	t.Parallel()
 
-	ret, err := Exec("list", "port")
+	ret, err := Exec(suite.ovsSocket, "show")
 	// ovs-vsctl cmd is not available in the test environment
 	require.Error(t, err)
 	require.Empty(t, ret)
