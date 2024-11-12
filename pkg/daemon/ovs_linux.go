@@ -720,16 +720,12 @@ func (c *Controller) loopTunnelCheck() {
 	tunnelType := c.config.NetworkType
 	var tunnelNic string
 	
-	klog.Infof("ttttttttttttt")
-	klog.Infof("tunnelType: %s", tunnelType)
-	
 	switch tunnelType {
 	case "vxlan":
 		tunnelNic = util.VxlanNic
 	case "geneve":
 		tunnelNic = util.GeneveNic
 	default:
-		klog.Infof("Unsupported tunnel type: %s", tunnelType)
 		return
 	}
 
