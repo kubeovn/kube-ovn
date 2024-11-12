@@ -344,7 +344,13 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 	if !cachedEip.DeletionTimestamp.IsZero() {
 		klog.Infof("clean eip %q in pod", key)
 		if vpcNatEnabled == "true" {
-			if err = c.deleteEipInPod(cachedEip.Spec.NatGwDp, v4Cidr); err != nil {
+			v4ipCidr, err := util.GetIPAddrWithMask(cachedEip.Status.IP, v4Cidr)
+			if err != nil {
+				err = fmt.Errorf("failed to get eip %s with mask by cidr %s: %w", cachedEip.Status.IP, v4Cidr, err)
+				klog.Error(err)
+				return err
+			}
+			if err = c.deleteEipInPod(cachedEip.Spec.NatGwDp, v4ipCidr); err != nil {
 				klog.Errorf("failed to clean eip '%s' in pod, %v", key, err)
 				return err
 			}
