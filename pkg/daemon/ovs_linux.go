@@ -717,8 +717,9 @@ func (c *Controller) loopOvn0Check() {
 // This method checks the status of the VXLAN interface named "vxlan_sys_4789".
 // If the interface is found to be down, it attempts to bring it up.
 func (c *Controller) loopTunnelCheck() {
-	tunnelType := os.Getenv("TUNNEL_TYPE")
+	tunnelType := c.config.NetworkType
 	var tunnelNic string
+	
 	klog.Infof("ttttttttttttt")
 	klog.Infof("tunnelType: %s", tunnelType)
 	
