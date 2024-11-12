@@ -716,27 +716,30 @@ func (c *Controller) loopOvn0Check() {
 
 // This method checks the status of the VXLAN interface named "vxlan_sys_4789".
 // If the interface is found to be down, it attempts to bring it up.
-func (c *Controller) loopVxlanCheck() {
-	link, err := netlink.LinkByName(util.VxlanNic)
-	if err != nil {
-		klog.Infof("failed to get vxlan nic")
-	}
+func (c *Controller) loopTunnelCheck() {
+	tunnelNic := c.config.tunnelIface
 	
-	if link == nil {
-		klog.Infof("link is nil for vxlan nic")
+	if tunnelNic == "" {
+		return
+	}
+
+	klog.Infof("ttttttttttttttttttt")
+	klog.Infof("ttttttttt tunnelIface: %s ", c.config.tunnelIface)
+	klog.Infof("ttttttttt Iface: %s ", c.config.Iface)
+	klog.Infof("ttttttttt DPDKTunnelIface: %s ", c.config.DPDKTunnelIface)
+	
+	link, err := netlink.LinkByName(tunnelNic)
+	if err != nil {
+		klog.Infof("failed to get %s nic", tunnelNic)
 		return
 	}
 
 	if link.Attrs().OperState == netlink.OperDown {
-		klog.Warningf("vxlan nic is down, attempting to bring it up")
+		klog.Errorf("%s nic is down, attempting to bring it up", tunnelNic)
 		if err := netlink.LinkSetUp(link); err != nil {
-			klog.Warningf("failed to bring up vxlan nic")
-			return
+			klog.Errorf("failed to bring up %s nic", tunnelNic)
 		}
-		klog.Infof("vxlan nic %s is now up", util.VxlanNic)
-	} else {
-		klog.Infof("vxlan nic %s is already up", util.VxlanNic)
-	}
+	} 
 }
 
 func (c *Controller) checkNodeGwNicInNs(nodeExtIP, ip, gw string, gwNS ns.NetNS) error {
