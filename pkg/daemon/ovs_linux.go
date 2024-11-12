@@ -719,13 +719,13 @@ func (c *Controller) loopOvn0Check() {
 func (c *Controller) loopVxlanCheck() {
 	link, err := netlink.LinkByName(util.VxlanNic)
 	if err != nil {
-		util.LogFatalAndExit(err, "failed to get vxlan nic")
+		klog.Infof("failed to get vxlan nic")
 	}
 
 	if link.Attrs().OperState == netlink.OperDown {
 		klog.Warningf("vxlan nic is down, attempting to bring it up")
 		if err := netlink.LinkSetUp(link); err != nil {
-			util.LogFatalAndExit(err, "failed to bring up vxlan nic")
+			klog.Infof("failed to bring up vxlan nic")
 		}
 		klog.Infof("vxlan nic %s is now up", util.VxlanNic)
 	} else {
