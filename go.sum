@@ -1145,8 +1145,8 @@ kernel.org/pub/linux/libs/security/libcap/cap v1.2.72 h1:SqLZbTqwcNxctcdM5yb6OcO
 kernel.org/pub/linux/libs/security/libcap/cap v1.2.72/go.mod h1:DqOj+O+b5nV0YW49IVU6WlhVw0oHpC1LmerDRHvcbjE=
 kernel.org/pub/linux/libs/security/libcap/psx v1.2.72 h1:Lnu8woGlvNdwCbBa5urxGO+L5gp647lIZMg0vP+upuU=
 kernel.org/pub/linux/libs/security/libcap/psx v1.2.72/go.mod h1:+l6Ee2F59XiJ2I6WR5ObpC1utCQJZ/VLsEbQCD8RG24=
-kubevirt.io/api v1.3.1 h1:MoTNo/zvDlZ44c2ocXLPln8XTaQOeUodiYbEKrTCqv4=
-kubevirt.io/api v1.3.1/go.mod h1:tCn7VAZktEvymk490iPSMPCmKM9UjbbfH2OsFR/IOLU=
+kubevirt.io/api v1.4.0 h1:dDLyQLSp9obzsDrv3cyL1olIc/66IWVaGiR3gfPfgT0=
+kubevirt.io/api v1.4.0/go.mod h1:qcnumjJeOCo+qdYXf0OjpHGMhad0SAn4i0h6IAP+6Eg=
 kubevirt.io/containerized-data-importer-api v1.58.1 h1:Zbf0pCvxb4fBvtMR6uI2OIJZ4UfwFxripzOLMO4HPbI=
 kubevirt.io/containerized-data-importer-api v1.58.1/go.mod h1:Y/8ETgHS1GjO89bl682DPtQOYEU/1ctPFBz6Sjxm4DM=
 kubevirt.io/controller-lifecycle-operator-sdk/api v0.0.0-20220329064328-f3cc58c6ed90 h1:QMrd0nKP0BGbnxTqakhDZAUhGKxPiPiN5gSDqKUmGGc=

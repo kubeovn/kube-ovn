@@ -56,7 +56,7 @@ require (
 	k8s.io/pod-security-admission v0.31.2
 	k8s.io/utils v0.0.0-20241104163129-6fe5fd82f078
 	kernel.org/pub/linux/libs/security/libcap/cap v1.2.72
-	kubevirt.io/api v1.3.1
+	kubevirt.io/api v1.4.0
 	kubevirt.io/client-go v1.3.1
 	sigs.k8s.io/controller-runtime v0.19.1
 	sigs.k8s.io/network-policy-api v0.1.5
