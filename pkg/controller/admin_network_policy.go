@@ -3,6 +3,7 @@ package controller
 import (
 	"errors"
 	"fmt"
+	"net"
 	"reflect"
 	"strings"
 	"unicode"
@@ -487,12 +488,6 @@ func (c *Controller) validateAnpConfig(anp *v1alpha1.AdminNetworkPolicy) error {
 		return err
 	}
 
-	if len(anp.Spec.Ingress) == 0 && len(anp.Spec.Egress) == 0 {
-		err := fmt.Errorf("one of ingress/egress rules must be set, both ingress/egress are empty for anp %s", anp.Name)
-		klog.Error(err)
-		return err
-	}
-
 	return nil
 }
 
@@ -510,7 +505,7 @@ func (c *Controller) fetchSelectedPods(anpSubject *v1alpha1.AdminNetworkPolicySu
 		if err != nil {
 			return nil, fmt.Errorf("failed to fetch pods, %w", err)
 		}
-	} else {
+	} else if anpSubject.Pods != nil {
 		nsSelector, err := metav1.LabelSelectorAsSelector(&anpSubject.Pods.NamespaceSelector)
 		if err != nil {
 			return nil, fmt.Errorf("error creating ns label selector, %w", err)
@@ -621,7 +616,6 @@ func (c *Controller) fetchEgressSelectedAddresses(egressPeer *v1alpha1.AdminNetw
 	var v4Addresses, v6Addresses []string
 
 	// Exactly one of the selector pointers must be set for a given peer.
-	// Do not support Nodes and Networks filter now
 	switch {
 	case egressPeer.Namespaces != nil:
 		nsSelector, err := metav1.LabelSelectorAsSelector(egressPeer.Namespaces)
@@ -647,8 +641,19 @@ func (c *Controller) fetchEgressSelectedAddresses(egressPeer *v1alpha1.AdminNetw
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to fetch egress peer addresses, %w", err)
 		}
+	case egressPeer.Nodes != nil:
+		nodesSelector, err := metav1.LabelSelectorAsSelector(egressPeer.Nodes)
+		if err != nil {
+			return nil, nil, fmt.Errorf("error creating nodes label selector, %w", err)
+		}
+		v4Addresses, v6Addresses, err = c.fetchNodesAddrs(nodesSelector)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to fetch egress peer addresses, %w", err)
+		}
+	case len(egressPeer.Networks) != 0:
+		v4Addresses, v6Addresses = fetchCIDRAddrs(egressPeer.Networks)
 	default:
-		return nil, nil, errors.New("either Namespaces or Pods must be specified in egressPeer")
+		return nil, nil, errors.New("at least one egressPeer must be specified")
 	}
 
 	return v4Addresses, v6Addresses, nil
@@ -851,7 +856,7 @@ func isLabelsMatch(namespaces *metav1.LabelSelector, pods *v1alpha1.NamespacedPo
 		if nsSelector.Matches(labels.Set(nsLabels)) {
 			return true
 		}
-	} else {
+	} else if pods != nil {
 		nsSelector, _ := metav1.LabelSelectorAsSelector(&pods.NamespaceSelector)
 		podSelector, _ := metav1.LabelSelectorAsSelector(&pods.PodSelector)
 		klog.V(3).Infof("pods is not nil, nsSelector %s, podSelector %s", nsSelector.String(), podSelector.String())
@@ -971,4 +976,47 @@ func isRulesArrayEmpty(ruleNames [util.AnpMaxRules]ChangedName) bool {
 		}
 	}
 	return isEmpty
+}
+
+func (c *Controller) fetchNodesAddrs(nodeSelector labels.Selector) ([]string, []string, error) {
+	nodes, err := c.nodesLister.List(nodeSelector)
+	if err != nil {
+		klog.Errorf("failed to list nodes: %v", err)
+		return nil, nil, err
+	}
+	v4Addresses := make([]string, 0, len(nodes))
+	v6Addresses := make([]string, 0, len(nodes))
+
+	klog.V(3).Infof("fetch nodes addresses, selector is %s", nodeSelector.String())
+	for _, node := range nodes {
+		nodeIPv4, nodeIPv6 := util.GetNodeInternalIP(*node)
+		if nodeIPv4 != "" {
+			v4Addresses = append(v4Addresses, nodeIPv4)
+		}
+		if nodeIPv6 != "" {
+			v6Addresses = append(v6Addresses, nodeIPv6)
+		}
+	}
+
+	return v4Addresses, v6Addresses, nil
+}
+
+func fetchCIDRAddrs(networks []v1alpha1.CIDR) ([]string, []string) {
+	v4Addresses := make([]string, 0, len(networks))
+	v6Addresses := make([]string, 0, len(networks))
+
+	for _, network := range networks {
+		if _, _, err := net.ParseCIDR(string(network)); err != nil {
+			klog.Errorf("invalid cidr %s", string(network))
+			continue
+		}
+		switch util.CheckProtocol(string(network)) {
+		case kubeovnv1.ProtocolIPv4:
+			v4Addresses = append(v4Addresses, string(network))
+		case kubeovnv1.ProtocolIPv6:
+			v6Addresses = append(v6Addresses, string(network))
+		}
+	}
+
+	return v4Addresses, v6Addresses
 }
