@@ -730,19 +730,14 @@ func (c *Controller) loopTunnelCheck() {
 	}
 
 	link, err := netlink.LinkByName(tunnelNic)
-	if err != nil {
-		klog.Infof("failed to get %s nic", tunnelNic)
+	if err != nil || link == nil{
 		return
-	}
-	
-	if link == nil {
-		klog.Infof("link is nil for %s nic", tunnelNic)
-		return
-	}
+	} 
 
 	if link.Attrs().OperState == netlink.OperDown {
-		klog.Errorf("%s nic is down, attempting to bring it up", tunnelNic)
+		klog.Errorf("nic: %s is down, attempting to bring it up", tunnelNic)
 		if err := netlink.LinkSetUp(link); err != nil {
+			klog.Errorf("fail to bring up nic: %s, %v", tunnelNic, err)
 			return
 		}
 	} 
