@@ -100,8 +100,10 @@ func (c *Controller) getSubnetsNeedNAT(protocol string) ([]string, error) {
 
 	for _, subnet := range subnets {
 		if c.isSubnetNeedNat(subnet, protocol) {
-			cidrBlock := getCidrByProtocol(subnet.Spec.CIDRBlock, protocol)
-			subnetsNeedNat = append(subnetsNeedNat, cidrBlock)
+			cidrBlock, err := getCidrByProtocol(subnet.Spec.CIDRBlock, protocol)
+			if err == nil {
+				subnetsNeedNat = append(subnetsNeedNat, cidrBlock)
+			}
 		}
 	}
 	return subnetsNeedNat, nil
@@ -138,8 +140,10 @@ func (c *Controller) getSubnetsDistributedGateway(protocol string) ([]string, er
 			subnet.Spec.CIDRBlock != "" &&
 			subnet.Spec.GatewayType == kubeovnv1.GWDistributedType &&
 			(subnet.Spec.Protocol == kubeovnv1.ProtocolDual || subnet.Spec.Protocol == protocol) {
-			cidrBlock := getCidrByProtocol(subnet.Spec.CIDRBlock, protocol)
-			result = append(result, cidrBlock)
+			cidrBlock, err := getCidrByProtocol(subnet.Spec.CIDRBlock, protocol)
+			if err == nil {
+				result = append(result, cidrBlock)
+			}
 		}
 	}
 	return result, nil
@@ -167,9 +171,11 @@ func (c *Controller) getDefaultVpcSubnetsCIDR(protocol string) ([]string, map[st
 
 	for _, subnet := range subnets {
 		if subnet.Spec.Vpc == c.config.ClusterRouter && (subnet.Spec.Vlan == "" || subnet.Spec.LogicalGateway) && subnet.Spec.CIDRBlock != "" {
-			cidrBlock := getCidrByProtocol(subnet.Spec.CIDRBlock, protocol)
-			ret = append(ret, cidrBlock)
-			subnetMap[subnet.Name] = cidrBlock
+			cidrBlock, err := getCidrByProtocol(subnet.Spec.CIDRBlock, protocol)
+			if err == nil {
+				ret = append(ret, cidrBlock)
+				subnetMap[subnet.Name] = cidrBlock
+			}
 		}
 	}
 	return ret, subnetMap, nil
@@ -197,8 +203,12 @@ func (c *Controller) getOtherNodes(protocol string) ([]string, error) {
 	return ret, nil
 }
 
-func getCidrByProtocol(cidr, protocol string) string {
+func getCidrByProtocol(cidr, protocol string) (string, error) {
 	var cidrStr string
+	if err := util.CheckCidrs(cidr); err != nil {
+		return "", err
+	}
+
 	if util.CheckProtocol(cidr) == kubeovnv1.ProtocolDual {
 		cidrBlocks := strings.Split(cidr, ",")
 		if protocol == kubeovnv1.ProtocolIPv4 {
@@ -209,7 +219,7 @@ func getCidrByProtocol(cidr, protocol string) string {
 	} else {
 		cidrStr = cidr
 	}
-	return cidrStr
+	return cidrStr, nil
 }
 
 func (c *Controller) getEgressNatIPByNode(nodeName string) (map[string]string, error) {
