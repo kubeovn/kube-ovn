@@ -485,7 +485,10 @@ func (c *Controller) handleDeleteNode(key string) error {
 		klog.Warningf("Node %s is adding, skip the node delete handler, but it may leave some gc resources behind", key)
 		return nil
 	}
+	return c.deleteNode(key)
+}
 
+func (c *Controller) deleteNode(key string) error {
 	portName := util.NodeLspName(key)
 	klog.Infof("delete logical switch port %s", portName)
 	if err := c.OVNNbClient.DeleteLogicalSwitchPort(portName); err != nil {
