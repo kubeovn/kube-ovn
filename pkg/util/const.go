@@ -154,9 +154,10 @@ const (
 	SttHeaderLength    = 72
 	TCPIPHeaderLength  = 40
 
-	OvnProvider                 = "ovn"
-	AttachmentNetworkAnnotation = "k8s.v1.cni.cncf.io/networks"
-	DefaultNetworkAnnotation    = "v1.multus-cni.io/default-network"
+	OvnProvider                         = "ovn"
+	AttachmentNetworkAnnotation         = "k8s.v1.cni.cncf.io/networks"
+	DefaultNetworkAnnotation            = "v1.multus-cni.io/default-network"
+	AttachNetworkResourceNameAnnotation = "k8s.v1.cni.cncf.io/resourceName"
 
 	SRIOVResourceName = "mellanox.com/cx5_sriov_switchdev"
 

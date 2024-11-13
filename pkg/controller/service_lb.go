@@ -9,9 +9,11 @@ import (
 	"strings"
 	"time"
 
+	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	v1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
@@ -54,21 +56,20 @@ func parseAttachNetworkProvider(svc *corev1.Service) (string, string) {
 	return attachmentName, attachmentNs
 }
 
-func (c *Controller) checkAttachNetwork(svc *corev1.Service) error {
+func (c *Controller) getAttachNetwork(svc *corev1.Service) (*nadv1.NetworkAttachmentDefinition, error) {
 	attachmentName, attachmentNs := parseAttachNetworkProvider(svc)
 	if attachmentName == "" && attachmentNs == "" {
-		return errors.New("the provider name should be consisted of name and namespace")
+		return nil, errors.New("the provider name should be consisted of name and namespace")
 	}
 
-	_, err := c.config.AttachNetClient.K8sCniCncfIoV1().NetworkAttachmentDefinitions(attachmentNs).Get(context.Background(), attachmentName, metav1.GetOptions{})
+	nad, err := c.config.AttachNetClient.K8sCniCncfIoV1().NetworkAttachmentDefinitions(attachmentNs).Get(context.Background(), attachmentName, metav1.GetOptions{})
 	if err != nil {
 		klog.Errorf("failed to get network attachment definition %s in namespace %s, err: %v", attachmentName, attachmentNs, err)
-		return err
 	}
-	return nil
+	return nad, err
 }
 
-func (c *Controller) genLbSvcDeployment(svc *corev1.Service) (dp *v1.Deployment) {
+func (c *Controller) genLbSvcDeployment(svc *corev1.Service, nad *nadv1.NetworkAttachmentDefinition) (dp *v1.Deployment) {
 	name := genLbSvcDpName(svc.Name)
 	labels := map[string]string{
 		"app":       name,
@@ -89,6 +90,14 @@ func (c *Controller) genLbSvcDeployment(svc *corev1.Service) (dp *v1.Deployment)
 	}
 	if v, ok := svc.Annotations[util.LogicalSwitchAnnotation]; ok {
 		podAnnotations[util.LogicalSwitchAnnotation] = v
+	}
+	resources := corev1.ResourceRequirements{
+		Limits:   corev1.ResourceList{},
+		Requests: corev1.ResourceList{},
+	}
+	if v, ok := nad.Annotations[util.AttachNetworkResourceNameAnnotation]; ok {
+		resources.Limits[corev1.ResourceName(v)] = resource.MustParse("1")
+		resources.Requests[corev1.ResourceName(v)] = resource.MustParse("1")
 	}
 
 	dp = &v1.Deployment{
@@ -116,6 +125,7 @@ func (c *Controller) genLbSvcDeployment(svc *corev1.Service) (dp *v1.Deployment)
 								Privileged:               ptr.To(true),
 								AllowPrivilegeEscalation: ptr.To(true),
 							},
+							Resources: resources,
 						},
 					},
 					TerminationGracePeriodSeconds: ptr.To(int64(0)),
@@ -149,7 +159,7 @@ func (c *Controller) updateLbSvcDeployment(svc *corev1.Service, dp *v1.Deploymen
 	return dp
 }
 
-func (c *Controller) createLbSvcPod(svc *corev1.Service) error {
+func (c *Controller) createLbSvcPod(svc *corev1.Service, nad *nadv1.NetworkAttachmentDefinition) error {
 	deployName := genLbSvcDpName(svc.Name)
 	deploy, err := c.config.KubeClient.AppsV1().Deployments(svc.Namespace).Get(context.Background(), deployName, metav1.GetOptions{})
 	if err != nil {
@@ -161,7 +171,7 @@ func (c *Controller) createLbSvcPod(svc *corev1.Service) error {
 	}
 
 	if deploy == nil {
-		deploy = c.genLbSvcDeployment(svc)
+		deploy = c.genLbSvcDeployment(svc, nad)
 		klog.Infof("creating deployment %s/%s", deploy.Namespace, deploy.Name)
 		if _, err := c.config.KubeClient.AppsV1().Deployments(svc.Namespace).Create(context.Background(), deploy, metav1.CreateOptions{}); err != nil {
 			klog.Errorf("failed to create deployment %s/%s: err: %v", deploy.Namespace, deploy.Name, err)
