@@ -1140,7 +1140,11 @@ func (c *Controller) handleAddVpcExternalSubnet(key, subnet string) error {
 		return err
 	}
 
-	v4ipCidr := util.GetIPAddrWithMask(v4ip, cachedSubnet.Spec.CIDRBlock)
+	v4ipCidr, err := util.GetIPAddrWithMask(v4ip, cachedSubnet.Spec.CIDRBlock)
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
 	lspName := fmt.Sprintf("%s-%s", subnet, key)
 	lrpName := fmt.Sprintf("%s-%s", key, subnet)
 
