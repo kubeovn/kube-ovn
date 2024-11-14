@@ -605,7 +605,6 @@ func (c *Controller) gcPortGroup() error {
 	klog.Info("start to gc network policy")
 
 	npNames := strset.New()
-	delPgNames := strset.New()
 
 	if c.config.EnableNP {
 		nps, err := c.npsLister.List(labels.Everything())
@@ -623,66 +622,53 @@ func (c *Controller) gcPortGroup() error {
 
 			npNames.Add(fmt.Sprintf("%s/%s", np.Namespace, npName))
 		}
-	}
 
-	// append node port group to npNames to avoid gc node port group
-	nodes, err := c.nodesLister.List(labels.Everything())
-	if err != nil {
-		klog.Errorf("failed to list nodes, %v", err)
-		return err
-	}
-
-	for _, node := range nodes {
-		npNames.Add(fmt.Sprintf("%s/%s", "node", node.Name))
-	}
-
-	// append overlay subnets port group to npNames to avoid gc distributed subnets port group
-	subnets, err := c.subnetsLister.List(labels.Everything())
-	if err != nil {
-		klog.Errorf("failed to list subnets %v", err)
-		return err
-	}
-	for _, subnet := range subnets {
-		if subnet.Spec.Vpc != c.config.ClusterRouter || (subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway) || subnet.Name == c.config.NodeSwitch || subnet.Spec.GatewayType != kubeovnv1.GWDistributedType {
-			continue
+		// append node port group to npNames to avoid gc node port group
+		nodes, err := c.nodesLister.List(labels.Everything())
+		if err != nil {
+			klog.Errorf("failed to list nodes, %v", err)
+			return err
 		}
 
 		for _, node := range nodes {
-			npNames.Add(fmt.Sprintf("%s/%s", subnet.Name, node.Name))
+			npNames.Add(fmt.Sprintf("%s/%s", "node", node.Name))
 		}
-	}
 
-	// list all np port groups which externalIDs[np]!=""
-	pgs, err := c.OVNNbClient.ListPortGroups(map[string]string{networkPolicyKey: ""})
-	if err != nil {
-		klog.Errorf("list np port group: %v", err)
-		return err
-	}
-
-	for _, pg := range pgs {
-		np := strings.Split(pg.ExternalIDs[networkPolicyKey], "/")
-		if len(np) != 2 {
-			// not np port group
-			continue
+		// append overlay subnets port group to npNames to avoid gc distributed subnets port group
+		subnets, err := c.subnetsLister.List(labels.Everything())
+		if err != nil {
+			klog.Errorf("failed to list subnets %v", err)
+			return err
 		}
-		if !npNames.Has(pg.ExternalIDs[networkPolicyKey]) {
-			klog.Infof("gc port group '%s' network policy '%s'", pg.Name, pg.ExternalIDs[networkPolicyKey])
-			delPgNames.Add(pg.Name)
-			if c.config.EnableNP {
+		for _, subnet := range subnets {
+			if subnet.Spec.Vpc != c.config.ClusterRouter || (subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway) || subnet.Name == c.config.NodeSwitch || subnet.Spec.GatewayType != kubeovnv1.GWDistributedType {
+				continue
+			}
+
+			for _, node := range nodes {
+				npNames.Add(fmt.Sprintf("%s/%s", subnet.Name, node.Name))
+			}
+		}
+
+		// list all np port groups which externalIDs[np]!=""
+		pgs, err := c.OVNNbClient.ListPortGroups(map[string]string{networkPolicyKey: ""})
+		if err != nil {
+			klog.Errorf("list np port group: %v", err)
+			return err
+		}
+
+		for _, pg := range pgs {
+			np := strings.Split(pg.ExternalIDs[networkPolicyKey], "/")
+			if len(np) != 2 {
+				// not np port group
+				continue
+			}
+			if !npNames.Has(pg.ExternalIDs[networkPolicyKey]) {
+				klog.Infof("gc port group '%s' network policy '%s'", pg.Name, pg.ExternalIDs[networkPolicyKey])
 				c.deleteNpQueue.Add(pg.ExternalIDs[networkPolicyKey])
 			}
 		}
 	}
-	// gc port group
-	// the pgName in the network policy is generated differently from the node/subnet pgName
-	// so processes port group gc separately
-	// ensure that the port group can be correctly gc
-	delPgNames.Each(func(item string) bool {
-		if err := c.OVNNbClient.DeletePortGroup(item); err != nil {
-			klog.Errorf("failed to gc port group %s: %v", item, err)
-		}
-		return true
-	})
 
 	return nil
 }
