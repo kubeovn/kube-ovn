@@ -207,7 +207,11 @@ func (c *Controller) reconcileNatOutGoingPolicyIPset(protocol string) {
 	subnetCidrs := make([]string, 0)
 	natPolicyRuleIDs := strset.New()
 	for _, subnet := range subnets {
-		cidrBlock := getCidrByProtocol(subnet.Spec.CIDRBlock, protocol)
+		cidrBlock, err := getCidrByProtocol(subnet.Spec.CIDRBlock, protocol)
+		if err != nil {
+			klog.Errorf("failed to get subnet %s CIDR block by protocol: %v", subnet.Name, err)
+			continue
+		}
 		subnetCidrs = append(subnetCidrs, cidrBlock)
 		for _, rule := range subnet.Status.NatOutgoingPolicyRules {
 			if rule.RuleID == "" {
@@ -956,7 +960,11 @@ func (c *Controller) generateNatOutgoingPolicyChainRules(protocol string) ([]uti
 		subnet := subnetMap[subnetName]
 		var natPolicyRuleIptables []util.IPTableRule
 		natPolicySubnetUIDs.Add(util.GetTruncatedUID(string(subnet.GetUID())))
-		cidrBlock := getCidrByProtocol(subnet.Spec.CIDRBlock, protocol)
+		cidrBlock, err := getCidrByProtocol(subnet.Spec.CIDRBlock, protocol)
+		if err != nil {
+			klog.Errorf("failed to get subnet %s cidr block with protocol: %v", subnet.Name, err)
+			continue
+		}
 
 		ovnNatPolicySubnetChainName := OvnNatOutGoingPolicySubnet + util.GetTruncatedUID(string(subnet.GetUID()))
 		natPolicySubnetIptables = append(natPolicySubnetIptables, util.IPTableRule{Table: NAT, Chain: OvnNatOutGoingPolicy, Rule: strings.Fields(fmt.Sprintf(`-s %s -m comment --comment natPolicySubnet-%s -j %s`, cidrBlock, subnet.Name, ovnNatPolicySubnetChainName))})
@@ -1544,8 +1552,10 @@ func (c *Controller) getSubnetsNeedPR(protocol string) (map[policyRouteMeta]stri
 				meta.gateway = egw[0]
 			}
 			if meta.gateway != "" {
-				cidrBlock := getCidrByProtocol(subnet.Spec.CIDRBlock, protocol)
-				subnetsNeedPR[meta] = cidrBlock
+				cidrBlock, err := getCidrByProtocol(subnet.Spec.CIDRBlock, protocol)
+				if err == nil {
+					subnetsNeedPR[meta] = cidrBlock
+				}
 			}
 		}
 	}
