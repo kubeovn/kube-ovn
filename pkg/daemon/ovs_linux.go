@@ -714,6 +714,37 @@ func (c *Controller) loopOvn0Check() {
 	}
 }
 
+// This method checks the status of the tunnel interface 
+// If the interface is found to be down, it attempts to bring it up.
+func (c *Controller) loopTunnelCheck() {
+	tunnelType := c.config.NetworkType
+	var tunnelNic string
+	
+	switch tunnelType {
+	case "vxlan":
+		tunnelNic = util.VxlanNic
+	case "geneve":
+		tunnelNic = util.GeneveNic
+	case "stt":
+		//TODO: tunnelNic = "stt tunnel nic name"
+		return
+	default:
+		return
+	}
+
+	link, err := netlink.LinkByName(tunnelNic)
+	if err != nil || link == nil{
+		return
+	} 
+
+	if link.Attrs().OperState == netlink.OperDown {
+		klog.Errorf("nic: %s is down, attempting to bring it up", tunnelNic)
+		if err := netlink.LinkSetUp(link); err != nil {
+			klog.Errorf("fail to bring up nic: %s, %v", tunnelNic, err)
+		}
+	} 
+}
+
 func (c *Controller) checkNodeGwNicInNs(nodeExtIP, ip, gw string, gwNS ns.NetNS) error {
 	exists, err := ovs.PortExists(util.NodeGwNic)
 	if err != nil {
