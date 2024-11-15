@@ -1271,6 +1271,7 @@ func isStatefulSetPodToDel(c kubernetes.Interface, pod *v1.Pod, statefulSetName 
 	if err != nil {
 		// statefulset is deleted
 		if k8serrors.IsNotFound(err) {
+			klog.Infof("statefulset %s is deleted", statefulSetName)
 			return true
 		}
 		klog.Errorf("failed to get statefulset %v", err)
@@ -1279,6 +1280,7 @@ func isStatefulSetPodToDel(c kubernetes.Interface, pod *v1.Pod, statefulSetName 
 
 	// statefulset is being deleted, or it's a newly created one
 	if !sts.DeletionTimestamp.IsZero() || sts.UID != statefulSetUID {
+		klog.Infof("statefulset %s is being deleted", statefulSetName)
 		return true
 	}
 
@@ -1291,7 +1293,11 @@ func isStatefulSetPodToDel(c kubernetes.Interface, pod *v1.Pod, statefulSetName 
 		return false
 	}
 	// down scaled
-	return index >= int64(*sts.Spec.Replicas)
+	if index >= int64(*sts.Spec.Replicas) {
+		klog.Infof("statefulset %s is down scaled", statefulSetName)
+		return true
+	}
+	return false
 }
 
 func getNodeTunlIP(node *v1.Node) ([]net.IP, error) {
@@ -1867,15 +1873,32 @@ func appendCheckPodToDel(c *Controller, pod *v1.Pod, ownerRefName, ownerRefKind 
 	// subnet cidr has been changed, and statefulset pod's ip is not in the range of subnet's cidr anymore
 	podSubnet, err := c.subnetsLister.Get(podSwitch)
 	if err != nil {
-		klog.Errorf("failed to get subnet %s, %v", podSwitch, err)
+		klog.Errorf("failed to get subnet %s, %v, not auto clean ip", podSwitch, err)
 		return false, err
 	}
-	if podSubnet != nil && !util.CIDRContainIP(podSubnet.Spec.CIDRBlock, pod.Annotations[util.IPAddressAnnotation]) {
+	if podSubnet == nil {
+		// TODO: remove: CRD get interface will retrun a nil subnet ?
+		klog.Errorf("pod %s/%s subnet %s is nil, not auto clean ip", pod.Namespace, pod.Name, podSwitch)
+		return false, nil
+	}
+	podIP := pod.Annotations[util.IPAddressAnnotation]
+	if podIP == "" {
+		// delete pod just after it created < 1ms
+		klog.Infof("pod %s/%s annotaions has no ip address, not auto clean ip", pod.Namespace, pod.Name)
+		return false, nil
+	}
+	podSubnetCidr := podSubnet.Spec.CIDRBlock
+	if podSubnetCidr != "" {
+		// subnet spec cidr changed by user
+		klog.Errorf("invalid pod subnet %s empty cidr %s, not auto clean ip", podSwitch, podSubnetCidr)
+		return false, nil
+	}
+	if !util.CIDRContainIP(podSubnetCidr, podIP) {
 		klog.Infof("pod's ip %s is not in the range of subnet %s, delete pod", pod.Annotations[util.IPAddressAnnotation], podSubnet.Name)
 		return true, nil
 	}
 	// subnet of ownerReference(sts/vm) has been changed, it needs to handle delete pod and create port on the new logical switch
-	if podSubnet != nil && ownerRefSubnet != "" && podSubnet.Name != ownerRefSubnet {
+	if ownerRefSubnet != "" && podSubnet.Name != ownerRefSubnet {
 		klog.Infof("Subnet of owner %s has been changed from %s to %s, delete pod %s/%s", ownerRefName, podSubnet.Name, ownerRefSubnet, pod.Namespace, pod.Name)
 		return true, nil
 	}
@@ -1914,7 +1937,7 @@ func (c *Controller) isVMToDel(pod *v1.Pod, vmiName string) bool {
 			vmiAlive = false
 			// The name of vmi is consistent with vm's name.
 			vmName = vmiName
-			klog.V(4).ErrorS(err, "failed to get vmi, will try to get the vm directly", "name", vmiName)
+			klog.ErrorS(err, "failed to get vmi, will try to get the vm directly", "name", vmiName)
 		} else {
 			klog.ErrorS(err, "failed to get vmi", "name", vmiName)
 			return false
@@ -1923,7 +1946,7 @@ func (c *Controller) isVMToDel(pod *v1.Pod, vmiName string) bool {
 		var ownsByVM bool
 		ownsByVM, vmName = isOwnsByTheVM(vmi)
 		if !ownsByVM && !vmi.DeletionTimestamp.IsZero() {
-			// deleting ephemeral vmi
+			klog.Infof("ephemeral vmi %s is deleting", vmiName)
 			return true
 		}
 		vmiAlive = vmi.DeletionTimestamp.IsZero()
@@ -1937,14 +1960,18 @@ func (c *Controller) isVMToDel(pod *v1.Pod, vmiName string) bool {
 	if err != nil {
 		// the vm has gone
 		if k8serrors.IsNotFound(err) {
-			klog.V(4).ErrorS(err, "failed to get vm", "name", vmName)
+			klog.ErrorS(err, "failed to get vm", "name", vmName)
 			return true
 		}
 		klog.ErrorS(err, "failed to get vm", "name", vmName)
 		return false
 	}
 
-	return !vm.DeletionTimestamp.IsZero()
+	if !vm.DeletionTimestamp.IsZero() {
+		klog.Infof("vm %s is deleting", vmName)
+		return true
+	}
+	return false
 }
 
 func (c *Controller) getNameByPod(pod *v1.Pod) string {
