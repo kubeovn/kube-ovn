@@ -84,8 +84,8 @@ KWOK_IMAGE = registry.k8s.io/kwok/kwok:$(KWOK_VERSION)
 VPC_NAT_GW_IMG = $(REGISTRY)/vpc-nat-gateway:$(VERSION)
 
 ANP_TEST_IMAGE = registry.k8s.io/e2e-test-images/agnhost:2.45
-ANP_CR_YAML = https://raw.githubusercontent.com/kubernetes-sigs/network-policy-api/main/config/crd/standard/policy.networking.k8s.io_adminnetworkpolicies.yaml
-BANP_CR_YAML = https://raw.githubusercontent.com/kubernetes-sigs/network-policy-api/main/config/crd/standard/policy.networking.k8s.io_baselineadminnetworkpolicies.yaml
+ANP_CR_YAML = https://raw.githubusercontent.com/kubernetes-sigs/network-policy-api/refs/heads/main/config/crd/experimental/policy.networking.k8s.io_adminnetworkpolicies.yaml
+BANP_CR_YAML = https://raw.githubusercontent.com/kubernetes-sigs/network-policy-api/refs/heads/main/config/crd/experimental/policy.networking.k8s.io_baselineadminnetworkpolicies.yaml
 
 E2E_NETWORK = kube-ovn-vlan
 
