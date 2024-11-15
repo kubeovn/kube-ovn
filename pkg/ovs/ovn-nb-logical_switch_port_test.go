@@ -1833,7 +1833,7 @@ func (suite *OvnClientTestSuite) testUpdateLogicalSwitchPortOp() {
 	t.Parallel()
 	nbClient := suite.ovnNBClient
 	lspName := "test-update-op-lsp"
-	lsName := "test-update-op-ls"
+	lsName := "test-update-op-lsp-ls"
 
 	err := nbClient.CreateBareLogicalSwitch(lsName)
 	require.NoError(t, err)
@@ -2204,8 +2204,8 @@ func (suite *OvnClientTestSuite) testSetLogicalSwitchPortActivationStrategy() {
 	t := suite.T()
 	t.Parallel()
 	nbClient := suite.ovnNBClient
-	lspName := "test-update-op-lsp"
-	lsName := "test-update-op-ls"
+	lspName := "test-update-op-lsp-activation-strategy"
+	lsName := "test-update-op-lsp-activation-strategy-ls"
 
 	err := nbClient.CreateBareLogicalSwitch(lsName)
 	require.NoError(t, err)
