@@ -469,6 +469,34 @@ func (mr *MockLogicalRouterPortMockRecorder) LogicalRouterPortExists(lrpName any
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LogicalRouterPortExists", reflect.TypeOf((*MockLogicalRouterPort)(nil).LogicalRouterPortExists), lrpName)
 }
 
+// SetLogicalRouterPortHAChassisGroup mocks base method.
+func (m *MockLogicalRouterPort) SetLogicalRouterPortHAChassisGroup(lrpName, haChassisGroupName string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetLogicalRouterPortHAChassisGroup", lrpName, haChassisGroupName)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetLogicalRouterPortHAChassisGroup indicates an expected call of SetLogicalRouterPortHAChassisGroup.
+func (mr *MockLogicalRouterPortMockRecorder) SetLogicalRouterPortHAChassisGroup(lrpName, haChassisGroupName any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLogicalRouterPortHAChassisGroup", reflect.TypeOf((*MockLogicalRouterPort)(nil).SetLogicalRouterPortHAChassisGroup), lrpName, haChassisGroupName)
+}
+
+// UpdateLogicalRouterPortNetworks mocks base method.
+func (m *MockLogicalRouterPort) UpdateLogicalRouterPortNetworks(lrpName string, networks []string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateLogicalRouterPortNetworks", lrpName, networks)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateLogicalRouterPortNetworks indicates an expected call of UpdateLogicalRouterPortNetworks.
+func (mr *MockLogicalRouterPortMockRecorder) UpdateLogicalRouterPortNetworks(lrpName, networks any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateLogicalRouterPortNetworks", reflect.TypeOf((*MockLogicalRouterPort)(nil).UpdateLogicalRouterPortNetworks), lrpName, networks)
+}
+
 // UpdateLogicalRouterPortOptions mocks base method.
 func (m *MockLogicalRouterPort) UpdateLogicalRouterPortOptions(lrpName string, options map[string]string) error {
 	m.ctrl.T.Helper()
@@ -495,6 +523,73 @@ func (m *MockLogicalRouterPort) UpdateLogicalRouterPortRA(lrpName, ipv6RAConfigs
 func (mr *MockLogicalRouterPortMockRecorder) UpdateLogicalRouterPortRA(lrpName, ipv6RAConfigsStr, enableIPv6RA any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateLogicalRouterPortRA", reflect.TypeOf((*MockLogicalRouterPort)(nil).UpdateLogicalRouterPortRA), lrpName, ipv6RAConfigsStr, enableIPv6RA)
+}
+
+// MockHAChassisGroup is a mock of HAChassisGroup interface.
+type MockHAChassisGroup struct {
+	ctrl     *gomock.Controller
+	recorder *MockHAChassisGroupMockRecorder
+	isgomock struct{}
+}
+
+// MockHAChassisGroupMockRecorder is the mock recorder for MockHAChassisGroup.
+type MockHAChassisGroupMockRecorder struct {
+	mock *MockHAChassisGroup
+}
+
+// NewMockHAChassisGroup creates a new mock instance.
+func NewMockHAChassisGroup(ctrl *gomock.Controller) *MockHAChassisGroup {
+	mock := &MockHAChassisGroup{ctrl: ctrl}
+	mock.recorder = &MockHAChassisGroupMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockHAChassisGroup) EXPECT() *MockHAChassisGroupMockRecorder {
+	return m.recorder
+}
+
+// CreateHAChassisGroup mocks base method.
+func (m *MockHAChassisGroup) CreateHAChassisGroup(name string, chassises []string, externalIDs map[string]string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateHAChassisGroup", name, chassises, externalIDs)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// CreateHAChassisGroup indicates an expected call of CreateHAChassisGroup.
+func (mr *MockHAChassisGroupMockRecorder) CreateHAChassisGroup(name, chassises, externalIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateHAChassisGroup", reflect.TypeOf((*MockHAChassisGroup)(nil).CreateHAChassisGroup), name, chassises, externalIDs)
+}
+
+// DeleteHAChassisGroup mocks base method.
+func (m *MockHAChassisGroup) DeleteHAChassisGroup(name string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteHAChassisGroup", name)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteHAChassisGroup indicates an expected call of DeleteHAChassisGroup.
+func (mr *MockHAChassisGroupMockRecorder) DeleteHAChassisGroup(name any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteHAChassisGroup", reflect.TypeOf((*MockHAChassisGroup)(nil).DeleteHAChassisGroup), name)
+}
+
+// GetHAChassisGroup mocks base method.
+func (m *MockHAChassisGroup) GetHAChassisGroup(name string, ignoreNotFound bool) (*ovnnb.HAChassisGroup, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetHAChassisGroup", name, ignoreNotFound)
+	ret0, _ := ret[0].(*ovnnb.HAChassisGroup)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetHAChassisGroup indicates an expected call of GetHAChassisGroup.
+func (mr *MockHAChassisGroupMockRecorder) GetHAChassisGroup(name, ignoreNotFound any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetHAChassisGroup", reflect.TypeOf((*MockHAChassisGroup)(nil).GetHAChassisGroup), name, ignoreNotFound)
 }
 
 // MockGatewayChassis is a mock of GatewayChassis interface.
@@ -2725,6 +2820,20 @@ func (mr *MockNbClientMockRecorder) CreateGatewayLogicalSwitch(lsName, lrName, p
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateGatewayLogicalSwitch", reflect.TypeOf((*MockNbClient)(nil).CreateGatewayLogicalSwitch), varargs...)
 }
 
+// CreateHAChassisGroup mocks base method.
+func (m *MockNbClient) CreateHAChassisGroup(name string, chassises []string, externalIDs map[string]string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateHAChassisGroup", name, chassises, externalIDs)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// CreateHAChassisGroup indicates an expected call of CreateHAChassisGroup.
+func (mr *MockNbClientMockRecorder) CreateHAChassisGroup(name, chassises, externalIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateHAChassisGroup", reflect.TypeOf((*MockNbClient)(nil).CreateHAChassisGroup), name, chassises, externalIDs)
+}
+
 // CreateLoadBalancer mocks base method.
 func (m *MockNbClient) CreateLoadBalancer(lbName, protocol, selectFields string) error {
 	m.ctrl.T.Helper()
@@ -3052,6 +3161,20 @@ func (mr *MockNbClientMockRecorder) DeleteDHCPOptionsByUUIDs(uuidList ...any) *g
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteDHCPOptionsByUUIDs", reflect.TypeOf((*MockNbClient)(nil).DeleteDHCPOptionsByUUIDs), uuidList...)
 }
 
+// DeleteHAChassisGroup mocks base method.
+func (m *MockNbClient) DeleteHAChassisGroup(name string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteHAChassisGroup", name)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteHAChassisGroup indicates an expected call of DeleteHAChassisGroup.
+func (mr *MockNbClientMockRecorder) DeleteHAChassisGroup(name any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteHAChassisGroup", reflect.TypeOf((*MockNbClient)(nil).DeleteHAChassisGroup), name)
+}
+
 // DeleteLoadBalancerHealthCheck mocks base method.
 func (m *MockNbClient) DeleteLoadBalancerHealthCheck(lbName, vip string) error {
 	m.ctrl.T.Helper()
@@ -3348,6 +3471,21 @@ func (m *MockNbClient) GetEntityInfo(entity any) error {
 func (mr *MockNbClientMockRecorder) GetEntityInfo(entity any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetEntityInfo", reflect.TypeOf((*MockNbClient)(nil).GetEntityInfo), entity)
+}
+
+// GetHAChassisGroup mocks base method.
+func (m *MockNbClient) GetHAChassisGroup(name string, ignoreNotFound bool) (*ovnnb.HAChassisGroup, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetHAChassisGroup", name, ignoreNotFound)
+	ret0, _ := ret[0].(*ovnnb.HAChassisGroup)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetHAChassisGroup indicates an expected call of GetHAChassisGroup.
+func (mr *MockNbClientMockRecorder) GetHAChassisGroup(name, ignoreNotFound any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetHAChassisGroup", reflect.TypeOf((*MockNbClient)(nil).GetHAChassisGroup), name, ignoreNotFound)
 }
 
 // GetLoadBalancer mocks base method.
@@ -4254,6 +4392,20 @@ func (mr *MockNbClientMockRecorder) SetLoadBalancerAffinityTimeout(lbName, timeo
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLoadBalancerAffinityTimeout", reflect.TypeOf((*MockNbClient)(nil).SetLoadBalancerAffinityTimeout), lbName, timeout)
 }
 
+// SetLogicalRouterPortHAChassisGroup mocks base method.
+func (m *MockNbClient) SetLogicalRouterPortHAChassisGroup(lrpName, haChassisGroupName string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetLogicalRouterPortHAChassisGroup", lrpName, haChassisGroupName)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetLogicalRouterPortHAChassisGroup indicates an expected call of SetLogicalRouterPortHAChassisGroup.
+func (mr *MockNbClientMockRecorder) SetLogicalRouterPortHAChassisGroup(lrpName, haChassisGroupName any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLogicalRouterPortHAChassisGroup", reflect.TypeOf((*MockNbClient)(nil).SetLogicalRouterPortHAChassisGroup), lrpName, haChassisGroupName)
+}
+
 // SetLogicalSwitchPortActivationStrategy mocks base method.
 func (m *MockNbClient) SetLogicalSwitchPortActivationStrategy(lspName, chassis string) error {
 	m.ctrl.T.Helper()
@@ -4612,6 +4764,20 @@ func (mr *MockNbClientMockRecorder) UpdateLogicalRouter(lr any, fields ...any) *
 	mr.mock.ctrl.T.Helper()
 	varargs := append([]any{lr}, fields...)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateLogicalRouter", reflect.TypeOf((*MockNbClient)(nil).UpdateLogicalRouter), varargs...)
+}
+
+// UpdateLogicalRouterPortNetworks mocks base method.
+func (m *MockNbClient) UpdateLogicalRouterPortNetworks(lrpName string, networks []string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateLogicalRouterPortNetworks", lrpName, networks)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateLogicalRouterPortNetworks indicates an expected call of UpdateLogicalRouterPortNetworks.
+func (mr *MockNbClientMockRecorder) UpdateLogicalRouterPortNetworks(lrpName, networks any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateLogicalRouterPortNetworks", reflect.TypeOf((*MockNbClient)(nil).UpdateLogicalRouterPortNetworks), lrpName, networks)
 }
 
 // UpdateLogicalRouterPortOptions mocks base method.

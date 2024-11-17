@@ -82,7 +82,7 @@ func TestAdminNetworkPolicyConformance(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error marshalling conformance profile report: %v", err)
 	}
-	err = os.WriteFile("../../"+reportFileName, rawReport, 0600)
+	err = os.WriteFile("../../"+reportFileName, rawReport, 0o600)
 	if err != nil {
 		t.Fatalf("error writing conformance profile report: %v", err)
 	}

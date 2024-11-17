@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net"
 	"reflect"
 	"slices"
@@ -43,6 +44,16 @@ func (c *Controller) enqueueAddVpc(obj interface{}) {
 	}
 }
 
+func vpcBFDPortChanged(oldObj, newObj *kubeovnv1.BFDPort) bool {
+	if oldObj == nil && newObj == nil {
+		return false
+	}
+	if oldObj == nil || newObj == nil {
+		return true
+	}
+	return oldObj.Enabled != newObj.Enabled || oldObj.IP != newObj.IP || !reflect.DeepEqual(oldObj.NodeSelector, newObj.NodeSelector)
+}
+
 func (c *Controller) enqueueUpdateVpc(oldObj, newObj interface{}) {
 	oldVpc := oldObj.(*kubeovnv1.Vpc)
 	newVpc := newObj.(*kubeovnv1.Vpc)
@@ -56,14 +67,11 @@ func (c *Controller) enqueueUpdateVpc(oldObj, newObj interface{}) {
 		!reflect.DeepEqual(oldVpc.Spec.ExtraExternalSubnets, newVpc.Spec.ExtraExternalSubnets) ||
 		oldVpc.Spec.EnableExternal != newVpc.Spec.EnableExternal ||
 		oldVpc.Spec.EnableBfd != newVpc.Spec.EnableBfd ||
+		vpcBFDPortChanged(oldVpc.Spec.BFDPort, newVpc.Spec.BFDPort) ||
 		oldVpc.Labels[util.VpcExternalLabel] != newVpc.Labels[util.VpcExternalLabel] {
 		// TODO:// label VpcExternalLabel replace with spec enable external
-		var (
-			key string
-			err error
-		)
-
-		if key, err = cache.MetaNamespaceKeyFunc(newObj); err != nil {
+		key, err := cache.MetaNamespaceKeyFunc(newObj)
+		if err != nil {
 			utilruntime.HandleError(err)
 			return
 		}
@@ -249,13 +257,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 	defer func() { _ = c.vpcKeyMutex.UnlockKey(key) }()
 	klog.Infof("handle add/update vpc %s", key)
 
-	// get latest vpc info
-	var (
-		vpc, cachedVpc *kubeovnv1.Vpc
-		err            error
-	)
-
-	cachedVpc, err = c.vpcsLister.Get(key)
+	cachedVpc, err := c.vpcsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
@@ -263,9 +265,9 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		klog.Error(err)
 		return err
 	}
-	vpc = cachedVpc.DeepCopy()
 
-	if vpc, err = c.formatVpc(vpc); err != nil {
+	vpc, err := c.formatVpc(cachedVpc.DeepCopy())
+	if err != nil {
 		klog.Errorf("failed to format vpc %s: %v", key, err)
 		return err
 	}
@@ -651,7 +653,106 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		}
 	}
 
+	bfdPortNodes, err := c.reconcileVpcBfdLRP(vpc)
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
+	if vpc.Spec.BFDPort == nil || !vpc.Spec.BFDPort.Enabled {
+		vpc.Status.BFDPort = kubeovnv1.BFDPortStatus{Enabled: false}
+	} else {
+		vpc.Status.BFDPort = kubeovnv1.BFDPortStatus{
+			Enabled: true,
+			IP:      vpc.Spec.BFDPort.IP,
+			Nodes:   bfdPortNodes,
+		}
+	}
+	if _, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().
+		UpdateStatus(context.Background(), vpc, metav1.UpdateOptions{}); err != nil {
+		klog.Error(err)
+		return err
+	}
+
 	return nil
+}
+
+func (c *Controller) reconcileVpcBfdLRP(vpc *kubeovnv1.Vpc) ([]string, error) {
+	portName := "bfd@" + vpc.Name
+	if vpc.Spec.BFDPort == nil || !vpc.Spec.BFDPort.Enabled {
+		if err := c.OVNNbClient.DeleteLogicalRouterPort(portName); err != nil {
+			err = fmt.Errorf("failed to delete BFD LRP %s: %w", portName, err)
+			klog.Error(err)
+			return nil, err
+		}
+		if err := c.OVNNbClient.DeleteHAChassisGroup(portName); err != nil {
+			err = fmt.Errorf("failed to delete HA chassis group %s: %w", portName, err)
+			klog.Error(err)
+			return nil, err
+		}
+		return nil, nil
+	}
+
+	var err error
+	chassisCount := 3
+	selector := labels.Everything()
+	if vpc.Spec.BFDPort.NodeSelector != nil {
+		chassisCount = math.MaxInt
+		if selector, err = metav1.LabelSelectorAsSelector(vpc.Spec.BFDPort.NodeSelector); err != nil {
+			err = fmt.Errorf("failed to parse node selector %q: %w", vpc.Spec.BFDPort.NodeSelector.String(), err)
+			klog.Error(err)
+			return nil, err
+		}
+	}
+
+	nodes, err := c.nodesLister.List(selector)
+	if err != nil {
+		err = fmt.Errorf("failed to list nodes with selector %q: %w", vpc.Spec.BFDPort.NodeSelector, err)
+		klog.Error(err)
+		return nil, err
+	}
+	if len(nodes) == 0 {
+		err = fmt.Errorf("no nodes found by selector %q", selector.String())
+		klog.Error(err)
+		return nil, err
+	}
+
+	nodeNames := make([]string, 0, len(nodes))
+	chassisCount = min(chassisCount, len(nodes))
+	chassisNames := make([]string, 0, chassisCount)
+	for _, nodes := range nodes[:chassisCount] {
+		chassis, err := c.OVNSbClient.GetChassisByHost(nodes.Name)
+		if err != nil {
+			err = fmt.Errorf("failed to get chassis of node %s: %w", nodes.Name, err)
+			klog.Error(err)
+			return nil, err
+		}
+		chassisNames = append(chassisNames, chassis.Name)
+		nodeNames = append(nodeNames, nodes.Name)
+	}
+
+	networks := strings.Split(vpc.Spec.BFDPort.IP, ",")
+	if err = c.OVNNbClient.CreateLogicalRouterPort(vpc.Name, portName, "", networks); err != nil {
+		klog.Error(err)
+		return nil, err
+	}
+	if err = c.OVNNbClient.UpdateLogicalRouterPortNetworks(portName, networks); err != nil {
+		klog.Error(err)
+		return nil, err
+	}
+	if err = c.OVNNbClient.UpdateLogicalRouterPortOptions(portName, map[string]string{"bfd-only": "true"}); err != nil {
+		klog.Error(err)
+		return nil, err
+	}
+	if err = c.OVNNbClient.CreateHAChassisGroup(portName, chassisNames, map[string]string{"lrp": portName}); err != nil {
+		klog.Error(err)
+		return nil, err
+	}
+	if err = c.OVNNbClient.SetLogicalRouterPortHAChassisGroup(portName, portName); err != nil {
+		klog.Error(err)
+		return nil, err
+	}
+
+	return nodeNames, nil
 }
 
 func (c *Controller) addPolicyRouteToVpc(vpcName string, policy *kubeovnv1.PolicyRoute, externalIDs map[string]string) error {
@@ -856,19 +957,19 @@ func (c *Controller) formatVpc(vpc *kubeovnv1.Vpc) (*kubeovnv1.Vpc, error) {
 			changed = true
 		}
 		if item.Policy != kubeovnv1.PolicyDst && item.Policy != kubeovnv1.PolicySrc {
-			return nil, fmt.Errorf("unknown policy type: %s", item.Policy)
+			return nil, fmt.Errorf("unknown policy type: %q", item.Policy)
 		}
 		// check cidr
 		if strings.Contains(item.CIDR, "/") {
 			if _, _, err := net.ParseCIDR(item.CIDR); err != nil {
-				return nil, fmt.Errorf("invalid cidr %s: %w", item.CIDR, err)
+				return nil, fmt.Errorf("invalid cidr %q: %w", item.CIDR, err)
 			}
 		} else if ip := net.ParseIP(item.CIDR); ip == nil {
-			return nil, fmt.Errorf("invalid ip %s", item.CIDR)
+			return nil, fmt.Errorf("invalid ip %q", item.CIDR)
 		}
 		// check next hop ip
 		if ip := net.ParseIP(item.NextHopIP); ip == nil {
-			return nil, fmt.Errorf("invalid next hop ip %s", item.NextHopIP)
+			return nil, fmt.Errorf("invalid next hop ip %q", item.NextHopIP)
 		}
 	}
 
@@ -896,7 +997,7 @@ func (c *Controller) formatVpc(vpc *kubeovnv1.Vpc) (*kubeovnv1.Vpc, error) {
 			klog.Errorf("failed to update vpc %s: %v", vpc.Name, err)
 			return nil, err
 		}
-		return newVpc, err
+		return newVpc, nil
 	}
 
 	return vpc, nil

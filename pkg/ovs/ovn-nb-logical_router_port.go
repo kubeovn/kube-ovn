@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 
 	"github.com/ovn-org/libovsdb/client"
@@ -83,6 +85,20 @@ func (c *OVNNbClient) UpdateLogicalRouterPortRA(lrpName, ipv6RAConfigsStr string
 	return c.UpdateLogicalRouterPort(lrp, &lrp.Ipv6Prefix, &lrp.Ipv6RaConfigs)
 }
 
+func (c *OVNNbClient) UpdateLogicalRouterPortNetworks(lrpName string, networks []string) error {
+	lrp, err := c.GetLogicalRouterPort(lrpName, false)
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
+	if slices.Equal(networks, lrp.Networks) {
+		return nil
+	}
+
+	lrp.Networks = slices.Clone(networks)
+	return c.UpdateLogicalRouterPort(lrp, &lrp.Networks)
+}
+
 func (c *OVNNbClient) UpdateLogicalRouterPortOptions(lrpName string, options map[string]string) error {
 	if len(options) == 0 {
 		return nil
@@ -94,18 +110,39 @@ func (c *OVNNbClient) UpdateLogicalRouterPortOptions(lrpName string, options map
 		return err
 	}
 
+	newOptions := maps.Clone(lrp.Options)
 	for k, v := range options {
 		if len(v) == 0 {
-			delete(lrp.Options, k)
+			delete(newOptions, k)
 		} else {
-			if len(lrp.Options) == 0 {
-				lrp.Options = make(map[string]string)
+			if len(newOptions) == 0 {
+				newOptions = make(map[string]string)
 			}
-			lrp.Options[k] = v
+			newOptions[k] = v
 		}
 	}
+	if maps.Equal(newOptions, lrp.Options) {
+		return nil
+	}
 
+	lrp.Options = newOptions
 	return c.UpdateLogicalRouterPort(lrp, &lrp.Options)
+}
+
+func (c *OVNNbClient) SetLogicalRouterPortHAChassisGroup(lrpName, haChassisGroupName string) error {
+	lrp, err := c.GetLogicalRouterPort(lrpName, false)
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
+	group, err := c.GetHAChassisGroup(haChassisGroupName, false)
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
+
+	lrp.HaChassisGroup = &group.UUID
+	return c.UpdateLogicalRouterPort(lrp, &lrp.HaChassisGroup)
 }
 
 // UpdateLogicalRouterPort update logical router port

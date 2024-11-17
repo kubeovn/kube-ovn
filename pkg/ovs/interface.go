@@ -39,7 +39,9 @@ type LogicalRouterPort interface {
 	CreatePeerRouterPort(localRouter, remoteRouter, localRouterPortIP string) error
 	CreateLogicalRouterPort(lrName, lrpName, mac string, networks []string) error
 	UpdateLogicalRouterPortRA(lrpName, ipv6RAConfigsStr string, enableIPv6RA bool) error
+	UpdateLogicalRouterPortNetworks(lrpName string, networks []string) error
 	UpdateLogicalRouterPortOptions(lrpName string, options map[string]string) error
+	SetLogicalRouterPortHAChassisGroup(lrpName, haChassisGroupName string) error
 	DeleteLogicalRouterPort(lrpName string) error
 	DeleteLogicalRouterPorts(externalIDs map[string]string, filter func(lrp *ovnnb.LogicalRouterPort) bool) error
 	GetLogicalRouterPort(lrpName string, ignoreNotFound bool) (*ovnnb.LogicalRouterPort, error)
@@ -47,6 +49,12 @@ type LogicalRouterPort interface {
 	ListLogicalRouterPorts(externalIDs map[string]string, filter func(lrp *ovnnb.LogicalRouterPort) bool) ([]ovnnb.LogicalRouterPort, error)
 	ListGatewayChassisByLogicalRouterPort(lrpName string, ignoreNotFound bool) ([]ovnnb.GatewayChassis, error)
 	LogicalRouterPortExists(lrpName string) (bool, error)
+}
+
+type HAChassisGroup interface {
+	CreateHAChassisGroup(name string, chassises []string, externalIDs map[string]string) error
+	GetHAChassisGroup(name string, ignoreNotFound bool) (*ovnnb.HAChassisGroup, error)
+	DeleteHAChassisGroup(name string) error
 }
 
 type GatewayChassis interface {
@@ -210,6 +218,7 @@ type NbClient interface {
 	BFD
 	DHCPOptions
 	GatewayChassis
+	HAChassisGroup
 	LoadBalancer
 	LoadBalancerHealthCheck
 	LogicalRouterPolicy

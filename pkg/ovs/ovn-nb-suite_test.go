@@ -496,6 +496,19 @@ func (suite *OvnClientTestSuite) Test_NewGatewayChassis() {
 	suite.testNewGatewayChassis()
 }
 
+/* ha_chassis_group unit test */
+func (suite *OvnClientTestSuite) Test_CreateHAChassisGroup() {
+	suite.testCreateHAChassisGroup()
+}
+
+func (suite *OvnClientTestSuite) Test_GetHAChassisGroup() {
+	suite.testGetHAChassisGroup()
+}
+
+func (suite *OvnClientTestSuite) Test_DeleteHAChassisGroup() {
+	suite.testDeleteHAChassisGroup()
+}
+
 /* load_balancer unit test */
 func (suite *OvnClientTestSuite) Test_CreateLoadBalancer() {
 	suite.testCreateLoadBalancer()
@@ -1337,6 +1350,8 @@ func newNbClient(addr string, timeout int) (client.Client, error) {
 		client.WithTable(&ovnnb.BFD{}),
 		client.WithTable(&ovnnb.DHCPOptions{}),
 		client.WithTable(&ovnnb.GatewayChassis{}),
+		client.WithTable(&ovnnb.HAChassis{}),
+		client.WithTable(&ovnnb.HAChassisGroup{}),
 		client.WithTable(&ovnnb.LoadBalancer{}),
 		client.WithTable(&ovnnb.LoadBalancerHealthCheck{}),
 		client.WithTable(&ovnnb.LogicalRouterPolicy{}),

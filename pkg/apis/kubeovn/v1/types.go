@@ -429,6 +429,14 @@ type VpcSpec struct {
 	EnableExternal       bool           `json:"enableExternal,omitempty"`
 	ExtraExternalSubnets []string       `json:"extraExternalSubnets,omitempty"`
 	EnableBfd            bool           `json:"enableBfd,omitempty"`
+	BFDPort              *BFDPort       `json:"bfdPort"`
+}
+
+type BFDPort struct {
+	Enabled bool   `json:"enabled"`
+	IP      string `json:"ip,omitempty"`
+
+	NodeSelector *metav1.LabelSelector `json:"nodeSelector,omitempty"`
 }
 
 type VpcPeering struct {
@@ -491,6 +499,14 @@ type VpcStatus struct {
 	EnableExternal          bool     `json:"enableExternal"`
 	ExtraExternalSubnets    []string `json:"extraExternalSubnets"`
 	EnableBfd               bool     `json:"enableBfd"`
+
+	BFDPort BFDPortStatus `json:"bfdPort"`
+}
+
+type BFDPortStatus struct {
+	Enabled bool     `json:"enabled"`
+	IP      string   `json:"ip,omitempty"`
+	Nodes   []string `json:"nodes,omitempty"`
 }
 
 // VpcCondition describes the state of an object at a certain point.
