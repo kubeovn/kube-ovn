@@ -343,6 +343,10 @@ func (c *Controller) loopOvnExt0Check() {
 	// no need to check ovnext0 on Windows
 }
 
+func (c *Controller) loopTunnelCheck() {
+	// no need to check tunnel on Windows
+}
+
 func configureMirrorLink(portName string, mtu int) error {
 	adapter, err := util.GetNetAdapter(portName, false)
 	if err != nil {

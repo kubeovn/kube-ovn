@@ -133,6 +133,9 @@ const (
 	NodeLspPrefix     = "node-"
 	NodeAllowPriority = "3000"
 
+	VxlanNic  = "vxlan_sys_4789"
+	GeneveNic = "genev_sys_6081"
+
 	SecurityGroupHighestPriority = "2300"
 	SecurityGroupBasePriority    = "2005"
 	SecurityGroupAllowPriority   = "2004"
