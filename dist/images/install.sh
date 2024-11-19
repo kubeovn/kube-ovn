@@ -1916,6 +1916,7 @@ spec:
                   properties:
                     enabled:
                       type: boolean
+                      default: false
                     ip:
                       type: string
                       anyOf:
@@ -2017,7 +2018,10 @@ spec:
                   properties:
                     enabled:
                       type: boolean
+                      default: false
                     ip:
+                      type: string
+                    name:
                       type: string
                     nodes:
                       type: array

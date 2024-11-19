@@ -653,7 +653,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		}
 	}
 
-	bfdPortNodes, err := c.reconcileVpcBfdLRP(vpc)
+	bfdPortName, bfdPortNodes, err := c.reconcileVpcBfdLRP(vpc)
 	if err != nil {
 		klog.Error(err)
 		return err
@@ -663,6 +663,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 	} else {
 		vpc.Status.BFDPort = kubeovnv1.BFDPortStatus{
 			Enabled: true,
+			Name:    bfdPortName,
 			IP:      vpc.Spec.BFDPort.IP,
 			Nodes:   bfdPortNodes,
 		}
@@ -676,20 +677,20 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 	return nil
 }
 
-func (c *Controller) reconcileVpcBfdLRP(vpc *kubeovnv1.Vpc) ([]string, error) {
+func (c *Controller) reconcileVpcBfdLRP(vpc *kubeovnv1.Vpc) (string, []string, error) {
 	portName := "bfd@" + vpc.Name
 	if vpc.Spec.BFDPort == nil || !vpc.Spec.BFDPort.Enabled {
 		if err := c.OVNNbClient.DeleteLogicalRouterPort(portName); err != nil {
 			err = fmt.Errorf("failed to delete BFD LRP %s: %w", portName, err)
 			klog.Error(err)
-			return nil, err
+			return portName, nil, err
 		}
 		if err := c.OVNNbClient.DeleteHAChassisGroup(portName); err != nil {
 			err = fmt.Errorf("failed to delete HA chassis group %s: %w", portName, err)
 			klog.Error(err)
-			return nil, err
+			return portName, nil, err
 		}
-		return nil, nil
+		return portName, nil, nil
 	}
 
 	var err error
@@ -700,7 +701,7 @@ func (c *Controller) reconcileVpcBfdLRP(vpc *kubeovnv1.Vpc) ([]string, error) {
 		if selector, err = metav1.LabelSelectorAsSelector(vpc.Spec.BFDPort.NodeSelector); err != nil {
 			err = fmt.Errorf("failed to parse node selector %q: %w", vpc.Spec.BFDPort.NodeSelector.String(), err)
 			klog.Error(err)
-			return nil, err
+			return portName, nil, err
 		}
 	}
 
@@ -708,12 +709,12 @@ func (c *Controller) reconcileVpcBfdLRP(vpc *kubeovnv1.Vpc) ([]string, error) {
 	if err != nil {
 		err = fmt.Errorf("failed to list nodes with selector %q: %w", vpc.Spec.BFDPort.NodeSelector, err)
 		klog.Error(err)
-		return nil, err
+		return portName, nil, err
 	}
 	if len(nodes) == 0 {
 		err = fmt.Errorf("no nodes found by selector %q", selector.String())
 		klog.Error(err)
-		return nil, err
+		return portName, nil, err
 	}
 
 	nodeNames := make([]string, 0, len(nodes))
@@ -724,7 +725,7 @@ func (c *Controller) reconcileVpcBfdLRP(vpc *kubeovnv1.Vpc) ([]string, error) {
 		if err != nil {
 			err = fmt.Errorf("failed to get chassis of node %s: %w", nodes.Name, err)
 			klog.Error(err)
-			return nil, err
+			return portName, nil, err
 		}
 		chassisNames = append(chassisNames, chassis.Name)
 		nodeNames = append(nodeNames, nodes.Name)
@@ -733,26 +734,26 @@ func (c *Controller) reconcileVpcBfdLRP(vpc *kubeovnv1.Vpc) ([]string, error) {
 	networks := strings.Split(vpc.Spec.BFDPort.IP, ",")
 	if err = c.OVNNbClient.CreateLogicalRouterPort(vpc.Name, portName, "", networks); err != nil {
 		klog.Error(err)
-		return nil, err
+		return portName, nil, err
 	}
 	if err = c.OVNNbClient.UpdateLogicalRouterPortNetworks(portName, networks); err != nil {
 		klog.Error(err)
-		return nil, err
+		return portName, nil, err
 	}
 	if err = c.OVNNbClient.UpdateLogicalRouterPortOptions(portName, map[string]string{"bfd-only": "true"}); err != nil {
 		klog.Error(err)
-		return nil, err
+		return portName, nil, err
 	}
 	if err = c.OVNNbClient.CreateHAChassisGroup(portName, chassisNames, map[string]string{"lrp": portName}); err != nil {
 		klog.Error(err)
-		return nil, err
+		return portName, nil, err
 	}
 	if err = c.OVNNbClient.SetLogicalRouterPortHAChassisGroup(portName, portName); err != nil {
 		klog.Error(err)
-		return nil, err
+		return portName, nil, err
 	}
 
-	return nodeNames, nil
+	return portName, nodeNames, nil
 }
 
 func (c *Controller) addPolicyRouteToVpc(vpcName string, policy *kubeovnv1.PolicyRoute, externalIDs map[string]string) error {
