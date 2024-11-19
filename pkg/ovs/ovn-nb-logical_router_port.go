@@ -95,7 +95,7 @@ func (c *OVNNbClient) UpdateLogicalRouterPortNetworks(lrpName string, networks [
 		return nil
 	}
 
-	lrp.Networks = slices.Clone(networks)
+	lrp.Networks = networks
 	return c.UpdateLogicalRouterPort(lrp, &lrp.Networks)
 }
 
