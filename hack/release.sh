@@ -128,11 +128,17 @@ else
   sed -i 's/tag:\ .*/tag:\ '"${NEXT_VERSION}"'/' charts/kube-ovn/values.yaml
   sed -i 's/version:\ .*/version:\ '"${NEXT_VERSION}"'/' charts/kube-ovn/Chart.yaml
   sed -i 's/appVersion:\ .*/appVersion:\ "'"${NEXT_VERSION#v}"'"/' charts/kube-ovn/Chart.yaml
+  sed -ri 's#(\s+)(- master)#\1\2\n\1- '$RELEASE_BRANCH'#' .github/workflows/build-kube-ovn-base.yaml
+  sed -ri 's#(\s+)(- master)#\1\2\n\1- '$RELEASE_BRANCH'#' .github/workflows/build-kube-ovn-base-dpdk.yaml
+  sed -ri 's#(\s+)(- master)#\1\2\n\1- '$RELEASE_BRANCH'#' .github/workflows/scheduled-e2e.yaml
 
   git add dist/images/install.sh
   git add charts/kube-ovn/values.yaml
   git add charts/kube-ovn/Chart.yaml
   git add VERSION
+  git add .github/workflows/build-kube-ovn-base.yaml
+  git add .github/workflows/build-kube-ovn-base-dpdk.yaml
+  git add .github/workflows/scheduled-e2e.yaml
   git commit -m "prepare for next release"
   git push
 
