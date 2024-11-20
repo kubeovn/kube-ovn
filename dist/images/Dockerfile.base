@@ -137,18 +137,19 @@ RUN apt update && apt upgrade -y && apt install ca-certificates python3 hostname
         tcpdump ipvsadm ipset curl uuid-runtime openssl inetutils-ping arping ndisc6 conntrack traceroute iputils-tracepath \
         logrotate dnsutils net-tools strongswan strongswan-pki libcharon-extra-plugins libmnl0 \
         libcharon-extauth-plugins libstrongswan-extra-plugins libstrongswan-standard-plugins -y --no-install-recommends && \
-        setcap CAP_SYS_NICE+eip $(readlink -f $(which nice)) && \
+        setcap CAP_NET_ADMIN+eip $(readlink -f $(which conntrack)) && \
+        setcap CAP_NET_ADMIN+eip $(readlink -f $(which ethtool)) && \
+        setcap CAP_NET_ADMIN+eip $(readlink -f $(which ip)) && \
+        setcap CAP_NET_ADMIN+eip $(readlink -f $(which ipset)) && \
+        setcap CAP_NET_ADMIN,CAP_NET_RAW+eip $(readlink -f $(which xtables-legacy-multi)) && \
+        setcap CAP_NET_ADMIN,CAP_NET_RAW+eip $(readlink -f $(which xtables-nft-multi)) && \
         setcap CAP_NET_RAW+eip $(readlink -f $(which arping)) && \
         setcap CAP_NET_RAW+eip $(readlink -f $(which ndisc6)) && \
         setcap CAP_NET_RAW+eip $(readlink -f $(which tcpdump)) && \
-        setcap CAP_NET_ADMIN+eip $(readlink -f $(which ethtool)) && \
         setcap CAP_SYS_ADMIN+eip $(readlink -f $(which nsenter)) && \
+        setcap CAP_SYS_ADMIN+eip $(readlink -f $(which sysctl)) && \
         setcap CAP_SYS_MODULE+eip $(readlink -f $(which modprobe)) && \
-        setcap CAP_NET_ADMIN+eip $(readlink -f $(which conntrack)) && \
-        setcap CAP_NET_RAW,CAP_NET_ADMIN,CAP_SYS_MODULE+eip $(readlink -f $(which ipset)) && \
-        setcap CAP_NET_RAW,CAP_NET_ADMIN,CAP_SYS_MODULE+eip $(readlink -f $(which xtables-legacy-multi)) && \
-        setcap CAP_NET_RAW,CAP_NET_ADMIN,CAP_SYS_MODULE+eip $(readlink -f $(which xtables-nft-multi)) && \
-        setcap CAP_NET_RAW,CAP_NET_ADMIN,CAP_SYS_MODULE,CAP_SYS_ADMIN+eip $(readlink -f $(which ip)) && \
+        setcap CAP_SYS_NICE+eip $(readlink -f $(which nice)) && \
         rm -rf /var/lib/apt/lists/* && \
         rm -rf /etc/localtime && \
         rm -f /usr/bin/nc && \
@@ -182,7 +183,7 @@ RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages  \
     setcap CAP_NET_ADMIN+eip $(readlink -f $(which ovs-dpctl)) && \
     if [ "${DEBUG}" != "true" ]; then \
         setcap CAP_NET_BIND_SERVICE+eip $(readlink -f $(which ovsdb-server)) && \
-        setcap CAP_NET_ADMIN,CAP_NET_BIND_SERVICE,CAP_SYS_MODULE,CAP_SYS_ADMIN+eip $(readlink -f $(which ovs-vswitchd)); \
+        setcap CAP_NET_ADMIN,CAP_NET_BIND_SERVICE,CAP_SYS_ADMIN+eip $(readlink -f $(which ovs-vswitchd)); \
     else \
         apt update && apt install -y --no-install-recommends gdb valgrind && \
         rm -rf /var/lib/apt/lists/* && \
