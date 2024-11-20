@@ -358,6 +358,9 @@ func (c *Controller) handleUpdateService(svcObject *updateSvcObject) error {
 			pod, err := c.getLbSvcPod(name, namespace)
 			if err != nil {
 				klog.Errorf("failed to get pod for lb svc %s: %v", key, err)
+				if strings.Contains(err.Error(), "not found") {
+					return nil
+				}
 				return err
 			}
 
