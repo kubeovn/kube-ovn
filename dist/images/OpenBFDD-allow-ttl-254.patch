@@ -1,0 +1,26 @@
+From edc60ecd05185acf317ac3ca67c54eb50f9e99a8 Mon Sep 17 00:00:00 2001
+From: zhangzujian <zhangzujian.7@gmail.com>
+Date: Thu, 31 Oct 2024 02:56:09 +0000
+Subject: [PATCH] allow ttl 254
+
+Signed-off-by: zhangzujian <zhangzujian.7@gmail.com>
+---
+ Beacon.cpp | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/Beacon.cpp b/Beacon.cpp
+index d1b0658..1d4c3da 100755
+--- a/Beacon.cpp
++++ b/Beacon.cpp
+@@ -481,7 +481,7 @@ void Beacon::handleListenSocket(Socket &socket)
+   }
+ 
+   // TTL assumes that all control packets are from neighbors.
+-  if (ttl != 255)
++  if (ttl < 254)
+   {
+     gLog.Optional(Log::Discard, "Discard packet: bad ttl/hops %hhu", ttl);
+     return;
+-- 
+2.43.0
+

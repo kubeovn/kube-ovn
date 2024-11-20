@@ -61,7 +61,9 @@ RUN cd /usr/src/ && git clone -b branch-24.03 --depth=1 https://github.com/ovn-o
     # northd: skip arp/nd request for lrp addresses from localnet ports
     curl -s https://github.com/kubeovn/ovn/commit/283930b627ffa843ebf0e7c3fa0cc70edacfdd12.patch | git apply && \
     # ovn-controller: make activation strategy work for single chassis
-    curl -s https://github.com/kubeovn/ovn/commit/1160d956e49e8f3f1b19535dbf1b9a624a090717.patch | git apply
+    curl -s https://github.com/kubeovn/ovn/commit/1160d956e49e8f3f1b19535dbf1b9a624a090717.patch | git apply && \
+    # support dedicated BFD LRP
+    curl -s https://github.com/kubeovn/ovn/commit/40345aa35d03c93cde877ccfa8111346291ebc7c.patch | git apply
 
 RUN apt install -y build-essential fakeroot \
     autoconf automake bzip2 debhelper-compat dh-exec dh-python dh-sequence-python3 dh-sequence-sphinxdoc \
@@ -89,10 +91,12 @@ RUN mkdir -p /usr/src/openbfdd && \
     tar -xz -C /usr/src/openbfdd --strip-components=1
 
 ADD OpenBFDD-compile.patch /usr/src/
+ADD OpenBFDD-allow-ttl-254.patch /usr/src/
 
 RUN cd /usr/src/openbfdd && \
     rm -vf missing && \
     git apply --no-apply /usr/src/OpenBFDD-compile.patch && \
+    git apply --no-apply /usr/src/OpenBFDD-allow-ttl-254.patch && \
     autoupdate && \
     ./autogen.sh && \
     ./configure --enable-silent-rules && \
