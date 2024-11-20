@@ -1188,7 +1188,7 @@ func (c *Controller) execNatGwQoS(gw *kubeovnv1.VpcNatGateway, qos, operation st
 func (c *Controller) execNatGwBandtithLimitRules(gw *kubeovnv1.VpcNatGateway, rules kubeovnv1.QoSPolicyBandwidthLimitRules, operation string) error {
 	var err error
 	for _, rule := range rules {
-		if err = c.execNatGwQoSInPod(gw.Name, rule, operation); err != nil {
+		if err = c.execNatGwQoSInPod(gw.Name, &rule, operation); err != nil {
 			klog.Errorf("failed to %s ingress gw '%s' qos in pod, %v", operation, gw.Name, err)
 			return err
 		}

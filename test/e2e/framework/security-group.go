@@ -132,7 +132,7 @@ func (c *SecurityGroupClient) WaitToDisappear(name string, _, timeout time.Durat
 	return nil
 }
 
-func MakeSecurityGroup(name string, allowSameGroupTraffic bool, ingressRules, egressRules []*apiv1.SgRule) *apiv1.SecurityGroup {
+func MakeSecurityGroup(name string, allowSameGroupTraffic bool, ingressRules, egressRules []apiv1.SecurityGroupRule) *apiv1.SecurityGroup {
 	sg := &apiv1.SecurityGroup{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,

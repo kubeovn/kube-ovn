@@ -187,11 +187,11 @@ var _ = framework.Describe("[group:slr]", func() {
 		var (
 			selRule           *kubeovnv1.SwitchLBRule
 			slrSlector        []string
-			slrPorts, epPorts []kubeovnv1.SlrPort
+			slrPorts, epPorts []kubeovnv1.SwitchLBRulePort
 			sessionAffinity   corev1.ServiceAffinity
 		)
 		sessionAffinity = corev1.ServiceAffinityNone
-		slrPorts = []kubeovnv1.SlrPort{
+		slrPorts = []kubeovnv1.SwitchLBRulePort{
 			{
 				Name:       "http",
 				Port:       selSlrFrontPort,
@@ -274,7 +274,7 @@ var _ = framework.Describe("[group:slr]", func() {
 		ginkgo.By("3. Creating switch-lb-rule with endpoints with lb front vip " + vip)
 		ginkgo.By("Creating endpoint SwitchLBRule " + epSlrName)
 		sessionAffinity = corev1.ServiceAffinityClientIP
-		epPorts = []kubeovnv1.SlrPort{
+		epPorts = []kubeovnv1.SwitchLBRulePort{
 			{
 				Name:       "http",
 				Port:       epSlrFrontPort,
