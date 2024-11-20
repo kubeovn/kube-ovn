@@ -351,6 +351,9 @@ func (c *Controller) checkLbSvcDeployAnnotationChanged(svc *corev1.Service) (boo
 	deployName := genLbSvcDpName(svc.Name)
 	deploy, err := c.config.KubeClient.AppsV1().Deployments(svc.Namespace).Get(context.Background(), deployName, metav1.GetOptions{})
 	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return false, nil
+		}
 		return false, err
 	}
 
