@@ -18,6 +18,7 @@ echo "tag and push image"
 VERSION=$(cat VERSION)
 set +e
 docker manifest rm kubeovn/kube-ovn:${VERSION}
+docker manifest rm kubeovn/kube-ovn:${VERSION}-debug
 docker manifest rm kubeovn/vpc-nat-gateway:${VERSION}
 set -e
 
@@ -36,6 +37,27 @@ docker manifest push kubeovn/kube-ovn:${VERSION}
 docker manifest push kubeovn/vpc-nat-gateway:${VERSION}
 docker manifest push kubeovn/kube-ovn:${VERSION}-debug
 
+NEXT_VERSION=$(cat VERSION | awk -F '.' '{print $1"."$2"."$3+1}')
+echo "create and push base images for the next version ${NEXT_VERSION}"
+set +e
+docker manifest rm kubeovn/kube-ovn-base:${NEXT_VERSION}
+docker manifest rm kubeovn/kube-ovn-base:${NEXT_VERSION}-debug
+set -e
+docker pull kubeovn/kube-ovn-base:${VERSION}-amd64
+docker pull kubeovn/kube-ovn-base:${VERSION}-arm64
+docker pull kubeovn/kube-ovn-base:${VERSION}-amd64-legacy
+docker pull kubeovn/kube-ovn-base:${VERSION}-dpdk
+docker pull kubeovn/kube-ovn-base:${VERSION}-debug-amd64
+docker pull kubeovn/kube-ovn-base:${VERSION}-debug-arm64
+docker manifest create kubeovn/kube-ovn-base:${NEXT_VERSION} kubeovn/kube-ovn-base:${VERSION}-amd64 kubeovn/kube-ovn-base:${VERSION}-arm64
+docker manifest create kubeovn/kube-ovn-base:${NEXT_VERSION}-debug kubeovn/kube-ovn-base:${VERSION}-debug-amd64 kubeovn/kube-ovn-base:${VERSION}-debug-arm64
+docker tag kubeovn/kube-ovn-base:${VERSION}-amd64-legacy kubeovn/kube-ovn-base:${NEXT_VERSION}-amd64-legacy
+docker tag kubeovn/kube-ovn-base:${VERSION}-dpdk kubeovn/kube-ovn-base:${NEXT_VERSION}-dpdk
+docker manifest push kubeovn/kube-ovn-base:${NEXT_VERSION}
+docker manifest push kubeovn/kube-ovn-base:${NEXT_VERSION}-debug
+docker push kubeovn/kube-ovn-base:${NEXT_VERSION}-amd64-legacy
+docker push kubeovn/kube-ovn-base:${NEXT_VERSION}-dpdk
+
 current_branch=$(git rev-parse --abbrev-ref HEAD)
 if [ "$current_branch" != "master" ]; then
   echo "current branch is not master, release a patch version"
@@ -46,7 +68,7 @@ if [ "$current_branch" != "master" ]; then
   sed -i 's/appVersion:\ .*/appVersion:\ "'"${VERSION#v}"'"/' charts/kube-ovn/Chart.yaml
 
   echo "commit, tag and push"
-  git add dist/images/install.sh   
+  git add dist/images/install.sh
   git add charts/kube-ovn/values.yaml
   git add charts/kube-ovn/Chart.yaml
   git commit -m "release ${VERSION}"
@@ -55,14 +77,11 @@ if [ "$current_branch" != "master" ]; then
   git push origin --tags
 
   echo "modify version to next patch number"
-  NEXT_VERSION=$(cat VERSION | awk -F '.' '{print $1"."$2"."$3+1}') 
+  NEXT_VERSION=$(cat VERSION | awk -F '.' '{print $1"."$2"."$3+1}')
   echo ${NEXT_VERSION} > VERSION
   git add VERSION
   git commit -m "prepare for next release"
   git push
-
-  echo "trigger action to build new base"
-  gh workflow run build-kube-ovn-base.yaml -f branch=$current_branch
 
   echo "Modify the doc version number"
   cd ${DOCS_DIR}
@@ -86,26 +105,46 @@ else
   git checkout -b $RELEASE_BRANCH
   git push origin $RELEASE_BRANCH
 
-  echo "prepare next release in master branch"
+  echo "create and push base images for the master branch"
   git checkout master
   git pull
-  NEXT_VERSION=$(cat VERSION | awk -F '.' '{print $1"."$2+1"."$3}') 
+  NEXT_VERSION=$(cat VERSION | awk -F '.' '{print $1"."$2+1"."$3}')
+  set +e
+  docker manifest rm kubeovn/kube-ovn-base:${NEXT_VERSION}
+  docker manifest rm kubeovn/kube-ovn-base:${NEXT_VERSION}-debug
+  set -e
+  docker manifest create kubeovn/kube-ovn-base:${NEXT_VERSION} kubeovn/kube-ovn-base:${VERSION}-amd64 kubeovn/kube-ovn-base:${VERSION}-arm64
+  docker manifest create kubeovn/kube-ovn-base:${NEXT_VERSION}-debug kubeovn/kube-ovn-base:${VERSION}-debug-amd64 kubeovn/kube-ovn-base:${VERSION}-debug-arm64
+  docker tag kubeovn/kube-ovn-base:${VERSION}-amd64-legacy kubeovn/kube-ovn-base:${NEXT_VERSION}-amd64-legacy
+  docker tag kubeovn/kube-ovn-base:${VERSION}-dpdk kubeovn/kube-ovn-base:${NEXT_VERSION}-dpdk
+  docker manifest push kubeovn/kube-ovn-base:${NEXT_VERSION}
+  docker manifest push kubeovn/kube-ovn-base:${NEXT_VERSION}-debug
+  docker push kubeovn/kube-ovn-base:${NEXT_VERSION}-amd64-legacy
+  docker push kubeovn/kube-ovn-base:${NEXT_VERSION}-dpdk
+
+  echo "prepare next release in master branch"
   echo ${NEXT_VERSION} > VERSION
   sed -i '/^VERSION=/c\VERSION="'"${NEXT_VERSION}"'"' dist/images/install.sh
   sed -i 's/tag:\ .*/tag:\ '"${NEXT_VERSION}"'/' charts/kube-ovn/values.yaml
   sed -i 's/version:\ .*/version:\ '"${NEXT_VERSION}"'/' charts/kube-ovn/Chart.yaml
   sed -i 's/appVersion:\ .*/appVersion:\ "'"${NEXT_VERSION#v}"'"/' charts/kube-ovn/Chart.yaml
+  sed -ri 's#(\s+)(- master)#\1\2\n\1- '$RELEASE_BRANCH'#' .github/workflows/build-kube-ovn-base.yaml
+  sed -ri 's#(\s+)(- master)#\1\2\n\1- '$RELEASE_BRANCH'#' .github/workflows/build-kube-ovn-base-dpdk.yaml
+  sed -ri 's#(\s+)(- master)#\1\2\n\1- '$RELEASE_BRANCH'#' .github/workflows/scheduled-e2e.yaml
 
-  git add dist/images/install.sh   
+  git add dist/images/install.sh
   git add charts/kube-ovn/values.yaml
   git add charts/kube-ovn/Chart.yaml
   git add VERSION
+  git add .github/workflows/build-kube-ovn-base.yaml
+  git add .github/workflows/build-kube-ovn-base-dpdk.yaml
+  git add .github/workflows/scheduled-e2e.yaml
   git commit -m "prepare for next release"
   git push
 
   echo "prepare next release in release branch"
   git checkout $RELEASE_BRANCH
-  NEXT_VERSION=$(cat VERSION | awk -F '.' '{print $1"."$2"."$3+1}') 
+  NEXT_VERSION=$(cat VERSION | awk -F '.' '{print $1"."$2"."$3+1}')
   echo ${NEXT_VERSION} > VERSION
   git add VERSION
   git commit -m "prepare for next release"
