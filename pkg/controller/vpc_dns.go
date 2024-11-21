@@ -343,7 +343,7 @@ func (c *Controller) genVpcDNSSlr(vpcName, namespace string) (*kubeovnv1.SwitchL
 	name := genVpcDNSDpName(vpcName)
 	label := fmt.Sprintf("%s:%s", CorednsLabelKey, name)
 
-	ports := []kubeovnv1.SlrPort{
+	ports := []kubeovnv1.SwitchLBRulePort{
 		{Name: "dns", Port: 53, Protocol: "UDP"},
 		{Name: "dns-tcp", Port: 53, Protocol: "TCP"},
 		{Name: "metrics", Port: 9153, Protocol: "TCP"},

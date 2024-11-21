@@ -189,7 +189,7 @@ func MakeIptablesEIP(name, v4ip, v6ip, mac, natGwDp, externalSubnet, qosPolicyNa
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
 		},
-		Spec: apiv1.IptablesEipSpec{
+		Spec: apiv1.IptablesEIPSpec{
 			V4ip:       v4ip,
 			V6ip:       v6ip,
 			MacAddress: mac,

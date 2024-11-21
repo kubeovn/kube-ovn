@@ -210,7 +210,7 @@ func MakeVpcNatGateway(name, vpc, subnet, lanIP, externalSubnet, qosPolicyName s
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
 		},
-		Spec: apiv1.VpcNatSpec{
+		Spec: apiv1.VpcNatGatewaySpec{
 			Vpc:    vpc,
 			Subnet: subnet,
 			LanIP:  lanIP,

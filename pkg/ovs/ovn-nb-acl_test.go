@@ -12,6 +12,7 @@ import (
 	netv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/utils/ptr"
 	v1alpha1 "sigs.k8s.io/network-policy-api/apis/v1alpha1"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -747,7 +748,7 @@ func (suite *OvnClientTestSuite) testUpdateSgACL() {
 		},
 		Spec: kubeovnv1.SecurityGroupSpec{
 			AllowSameGroupTraffic: true,
-			IngressRules: []*kubeovnv1.SgRule{
+			IngressRules: []kubeovnv1.SecurityGroupRule{
 				{
 					IPVersion:     "ipv4",
 					RemoteType:    kubeovnv1.SgRemoteTypeAddress,
@@ -757,7 +758,7 @@ func (suite *OvnClientTestSuite) testUpdateSgACL() {
 					Policy:        "allow",
 				},
 			},
-			EgressRules: []*kubeovnv1.SgRule{
+			EgressRules: []kubeovnv1.SecurityGroupRule{
 				{
 					IPVersion:     "ipv4",
 					RemoteType:    kubeovnv1.SgRemoteTypeAddress,
@@ -944,7 +945,7 @@ func (suite *OvnClientTestSuite) testSetACLLog() {
 		acl := newACL(pgName, ovnnb.ACLDirectionToLport, util.IngressDefaultDrop, match, ovnnb.ACLActionDrop, util.NetpolACLTier, func(acl *ovnnb.ACL) {
 			acl.Name = &pgName
 			acl.Log = true
-			acl.Severity = &ovnnb.ACLSeverityWarning
+			acl.Severity = ptr.To(ovnnb.ACLSeverityWarning)
 		})
 
 		err = nbClient.CreateAcls(pgName, portGroupKey, acl)
@@ -966,7 +967,7 @@ func (suite *OvnClientTestSuite) testSetACLLog() {
 		acl := newACL(pgName, ovnnb.ACLDirectionFromLport, util.IngressDefaultDrop, match, ovnnb.ACLActionDrop, util.NetpolACLTier, func(acl *ovnnb.ACL) {
 			acl.Name = &pgName
 			acl.Log = false
-			acl.Severity = &ovnnb.ACLSeverityWarning
+			acl.Severity = ptr.To(ovnnb.ACLSeverityWarning)
 		})
 
 		err = nbClient.CreateAcls(pgName, portGroupKey, acl)
@@ -1169,7 +1170,7 @@ func (suite *OvnClientTestSuite) testNewSgRuleACL() {
 	t.Run("create securityGroup type sg acl", func(t *testing.T) {
 		t.Parallel()
 
-		sgRule := &kubeovnv1.SgRule{
+		sgRule := kubeovnv1.SecurityGroupRule{
 			IPVersion:           "ipv4",
 			RemoteType:          kubeovnv1.SgRemoteTypeSg,
 			RemoteSecurityGroup: "ovn.sg.test_sg",
@@ -1191,7 +1192,7 @@ func (suite *OvnClientTestSuite) testNewSgRuleACL() {
 	t.Run("create address type sg acl", func(t *testing.T) {
 		t.Parallel()
 
-		sgRule := &kubeovnv1.SgRule{
+		sgRule := kubeovnv1.SecurityGroupRule{
 			IPVersion:     "ipv4",
 			RemoteType:    kubeovnv1.SgRemoteTypeAddress,
 			RemoteAddress: "10.10.10.12/24",
@@ -1213,7 +1214,7 @@ func (suite *OvnClientTestSuite) testNewSgRuleACL() {
 	t.Run("create ipv6 acl", func(t *testing.T) {
 		t.Parallel()
 
-		sgRule := &kubeovnv1.SgRule{
+		sgRule := kubeovnv1.SecurityGroupRule{
 			IPVersion:     "ipv6",
 			RemoteType:    kubeovnv1.SgRemoteTypeAddress,
 			RemoteAddress: "fe80::200:ff:fe04:2611/64",
@@ -1235,7 +1236,7 @@ func (suite *OvnClientTestSuite) testNewSgRuleACL() {
 	t.Run("create egress sg acl", func(t *testing.T) {
 		t.Parallel()
 
-		sgRule := &kubeovnv1.SgRule{
+		sgRule := kubeovnv1.SecurityGroupRule{
 			IPVersion:     "ipv4",
 			RemoteType:    kubeovnv1.SgRemoteTypeAddress,
 			RemoteAddress: "10.10.10.12/24",
@@ -1257,7 +1258,7 @@ func (suite *OvnClientTestSuite) testNewSgRuleACL() {
 	t.Run("create drop sg acl", func(t *testing.T) {
 		t.Parallel()
 
-		sgRule := &kubeovnv1.SgRule{
+		sgRule := kubeovnv1.SecurityGroupRule{
 			IPVersion:     "ipv4",
 			RemoteType:    kubeovnv1.SgRemoteTypeAddress,
 			RemoteAddress: "10.10.10.12/24",
@@ -1279,7 +1280,7 @@ func (suite *OvnClientTestSuite) testNewSgRuleACL() {
 	t.Run("create tcp sg acl", func(t *testing.T) {
 		t.Parallel()
 
-		sgRule := &kubeovnv1.SgRule{
+		sgRule := kubeovnv1.SecurityGroupRule{
 			IPVersion:     "ipv4",
 			RemoteType:    kubeovnv1.SgRemoteTypeAddress,
 			RemoteAddress: "10.10.10.12/24",
@@ -1819,7 +1820,7 @@ func (suite *OvnClientTestSuite) testNewACL() {
 	match := "outport==@ovn.sg.test_create_acl_pg && ip"
 	options := func(acl *ovnnb.ACL) {
 		acl.Log = true
-		acl.Severity = &ovnnb.ACLSeverityWarning
+		acl.Severity = ptr.To(ovnnb.ACLSeverityWarning)
 		acl.Name = &pgName
 	}
 
@@ -1833,7 +1834,7 @@ func (suite *OvnClientTestSuite) testNewACL() {
 			aclParentKey: pgName,
 		},
 		Log:      true,
-		Severity: &ovnnb.ACLSeverityWarning,
+		Severity: ptr.To(ovnnb.ACLSeverityWarning),
 		Tier:     util.NetpolACLTier,
 	}
 
@@ -2126,9 +2127,9 @@ func (suite *OvnClientTestSuite) testSgRuleNoACL() {
 	require.NoError(t, err)
 
 	t.Run("ipv4 ingress rule", func(t *testing.T) {
-		rule := &kubeovnv1.SgRule{
+		rule := kubeovnv1.SecurityGroupRule{
 			IPVersion:     "ipv4",
-			Protocol:      kubeovnv1.ProtocolTCP,
+			Protocol:      kubeovnv1.SgProtocolTCP,
 			RemoteType:    kubeovnv1.SgRemoteTypeAddress,
 			RemoteAddress: "192.168.1.0/24",
 			PortRangeMin:  80,
@@ -2141,9 +2142,9 @@ func (suite *OvnClientTestSuite) testSgRuleNoACL() {
 	})
 
 	t.Run("ipv6 egress rule", func(t *testing.T) {
-		rule := &kubeovnv1.SgRule{
+		rule := kubeovnv1.SecurityGroupRule{
 			IPVersion:           "ipv6",
-			Protocol:            kubeovnv1.ProtocolUDP,
+			Protocol:            kubeovnv1.SgProtocolUDP,
 			RemoteType:          kubeovnv1.SgRemoteTypeSg,
 			RemoteSecurityGroup: "remote-sg",
 			PortRangeMin:        53,
@@ -2156,9 +2157,9 @@ func (suite *OvnClientTestSuite) testSgRuleNoACL() {
 	})
 
 	t.Run("icmp rule", func(t *testing.T) {
-		rule := &kubeovnv1.SgRule{
+		rule := kubeovnv1.SecurityGroupRule{
 			IPVersion:     "ipv4",
-			Protocol:      kubeovnv1.ProtocolICMP,
+			Protocol:      kubeovnv1.SgProtocolICMP,
 			RemoteType:    kubeovnv1.SgRemoteTypeAddress,
 			RemoteAddress: "10.0.0.0/8",
 			Priority:      198,
@@ -2169,9 +2170,9 @@ func (suite *OvnClientTestSuite) testSgRuleNoACL() {
 	})
 
 	t.Run("existing ACL", func(t *testing.T) {
-		rule := &kubeovnv1.SgRule{
+		rule := kubeovnv1.SecurityGroupRule{
 			IPVersion:     "ipv4",
-			Protocol:      kubeovnv1.ProtocolTCP,
+			Protocol:      kubeovnv1.SgProtocolTCP,
 			RemoteType:    kubeovnv1.SgRemoteTypeAddress,
 			RemoteAddress: "172.16.0.0/16",
 			PortRangeMin:  443,
@@ -2206,7 +2207,7 @@ func (suite *OvnClientTestSuite) testSGLostACL() {
 				Name: "test-sg-no-lost-acl",
 			},
 			Spec: kubeovnv1.SecurityGroupSpec{
-				IngressRules: []*kubeovnv1.SgRule{
+				IngressRules: []kubeovnv1.SecurityGroupRule{
 					{
 						IPVersion:     "ipv4",
 						Protocol:      "tcp",
@@ -2218,7 +2219,7 @@ func (suite *OvnClientTestSuite) testSGLostACL() {
 						Policy:        "allow",
 					},
 				},
-				EgressRules: []*kubeovnv1.SgRule{
+				EgressRules: []kubeovnv1.SecurityGroupRule{
 					{
 						IPVersion:     "ipv6",
 						Protocol:      "udp",
@@ -2259,7 +2260,7 @@ func (suite *OvnClientTestSuite) testSGLostACL() {
 				Name: "test-sg-lost-ingress-acl",
 			},
 			Spec: kubeovnv1.SecurityGroupSpec{
-				IngressRules: []*kubeovnv1.SgRule{
+				IngressRules: []kubeovnv1.SecurityGroupRule{
 					{
 						IPVersion:     "ipv4",
 						Protocol:      "tcp",
@@ -2271,7 +2272,7 @@ func (suite *OvnClientTestSuite) testSGLostACL() {
 						Policy:        "allow",
 					},
 				},
-				EgressRules: []*kubeovnv1.SgRule{
+				EgressRules: []kubeovnv1.SecurityGroupRule{
 					{
 						IPVersion:     "ipv6",
 						Protocol:      "udp",
@@ -2307,7 +2308,7 @@ func (suite *OvnClientTestSuite) testSGLostACL() {
 				Name: "test-sg-lost-egress-acl",
 			},
 			Spec: kubeovnv1.SecurityGroupSpec{
-				IngressRules: []*kubeovnv1.SgRule{
+				IngressRules: []kubeovnv1.SecurityGroupRule{
 					{
 						IPVersion:     "ipv4",
 						Protocol:      "tcp",
@@ -2319,7 +2320,7 @@ func (suite *OvnClientTestSuite) testSGLostACL() {
 						Policy:        "allow",
 					},
 				},
-				EgressRules: []*kubeovnv1.SgRule{
+				EgressRules: []kubeovnv1.SecurityGroupRule{
 					{
 						IPVersion:     "ipv6",
 						Protocol:      "udp",
@@ -2353,10 +2354,6 @@ func (suite *OvnClientTestSuite) testSGLostACL() {
 		sg := &kubeovnv1.SecurityGroup{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: "test-sg-empty",
-			},
-			Spec: kubeovnv1.SecurityGroupSpec{
-				IngressRules: []*kubeovnv1.SgRule{},
-				EgressRules:  []*kubeovnv1.SgRule{},
 			},
 		}
 

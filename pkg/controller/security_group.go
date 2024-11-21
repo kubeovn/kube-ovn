@@ -295,7 +295,7 @@ func (c *Controller) validateSgRule(sg *kubeovnv1.SecurityGroup) error {
 			return fmt.Errorf("not support sgRemoteType '%s'", rule.RemoteType)
 		}
 
-		if rule.Protocol == kubeovnv1.ProtocolTCP || rule.Protocol == kubeovnv1.ProtocolUDP {
+		if rule.Protocol == kubeovnv1.SgProtocolTCP || rule.Protocol == kubeovnv1.SgProtocolUDP {
 			if rule.PortRangeMin < 1 || rule.PortRangeMin > 65535 || rule.PortRangeMax < 1 || rule.PortRangeMax > 65535 {
 				return errors.New("portRange is out of range")
 			}

@@ -25,7 +25,7 @@ func makeOvnVip(namespaceName, name, subnet, v4ip, v6ip, vipType string) *apiv1.
 	return framework.MakeVip(namespaceName, name, subnet, v4ip, v6ip, vipType)
 }
 
-func makeSecurityGroup(name string, allowSameGroupTraffic bool, ingressRules, egressRules []*apiv1.SgRule) *apiv1.SecurityGroup {
+func makeSecurityGroup(name string, allowSameGroupTraffic bool, ingressRules, egressRules []apiv1.SecurityGroupRule) *apiv1.SecurityGroup {
 	return framework.MakeSecurityGroup(name, allowSameGroupTraffic, ingressRules, egressRules)
 }
 
@@ -306,45 +306,45 @@ var _ = framework.Describe("[group:vip]", func() {
 		ginkgo.By("Creating security group " + securityGroupName)
 		gatewayV4, gatewayV6 := util.SplitStringIP(aapPod1.Annotations[util.GatewayAnnotation])
 		allowAddressV4, allowAddressV6 := util.SplitStringIP(aapPod1.Annotations[util.IPAddressAnnotation])
-		rules := make([]*apiv1.SgRule, 0)
+		rules := make([]apiv1.SecurityGroupRule, 0, 4)
 		if f.HasIPv4() {
 			// gateway should be added for pinger
-			rules = append(rules, &apiv1.SgRule{
+			rules = append(rules, apiv1.SecurityGroupRule{
 				IPVersion:     "ipv4",
-				Protocol:      apiv1.ProtocolALL,
+				Protocol:      apiv1.SgProtocolALL,
 				Priority:      1,
 				RemoteType:    apiv1.SgRemoteTypeAddress,
 				RemoteAddress: gatewayV4,
-				Policy:        apiv1.PolicyAllow,
+				Policy:        apiv1.SgPolicyAllow,
 			})
 			// aapPod1 should be allowed by aapPod3 for security group allow address pair test
-			rules = append(rules, &apiv1.SgRule{
+			rules = append(rules, apiv1.SecurityGroupRule{
 				IPVersion:     "ipv4",
-				Protocol:      apiv1.ProtocolALL,
+				Protocol:      apiv1.SgProtocolALL,
 				Priority:      1,
 				RemoteType:    apiv1.SgRemoteTypeAddress,
 				RemoteAddress: allowAddressV4,
-				Policy:        apiv1.PolicyAllow,
+				Policy:        apiv1.SgPolicyAllow,
 			})
 		}
 		if f.HasIPv6() {
 			// gateway should be added for pinger
-			rules = append(rules, &apiv1.SgRule{
+			rules = append(rules, apiv1.SecurityGroupRule{
 				IPVersion:     "ipv6",
-				Protocol:      apiv1.ProtocolALL,
+				Protocol:      apiv1.SgProtocolALL,
 				Priority:      1,
 				RemoteType:    apiv1.SgRemoteTypeAddress,
 				RemoteAddress: gatewayV6,
-				Policy:        apiv1.PolicyAllow,
+				Policy:        apiv1.SgPolicyAllow,
 			})
 			// aapPod1 should be allowed by aapPod3 for security group allow address pair test
-			rules = append(rules, &apiv1.SgRule{
+			rules = append(rules, apiv1.SecurityGroupRule{
 				IPVersion:     "ipv6",
-				Protocol:      apiv1.ProtocolALL,
+				Protocol:      apiv1.SgProtocolALL,
 				Priority:      1,
 				RemoteType:    apiv1.SgRemoteTypeAddress,
 				RemoteAddress: allowAddressV6,
-				Policy:        apiv1.PolicyAllow,
+				Policy:        apiv1.SgPolicyAllow,
 			})
 		}
 		sg := makeSecurityGroup(securityGroupName, true, rules, rules)

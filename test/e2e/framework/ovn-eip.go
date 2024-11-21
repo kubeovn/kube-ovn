@@ -89,7 +89,7 @@ func (c *OvnEipClient) Patch(original, modified *apiv1.OvnEip) *apiv1.OvnEip {
 
 // PatchSync patches the ovn eip and waits for the ovn eip to be ready for `timeout`.
 // If the ovn eip doesn't become ready before the timeout, it will fail the test.
-func (c *OvnEipClient) PatchSync(original, modified *apiv1.OvnEip, _ []string, timeout time.Duration) *apiv1.OvnEip {
+func (c *OvnEipClient) PatchSync(original, modified *apiv1.OvnEip, timeout time.Duration) *apiv1.OvnEip {
 	ginkgo.GinkgoHelper()
 
 	eip := c.Patch(original, modified)
