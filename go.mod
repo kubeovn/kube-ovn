@@ -30,7 +30,7 @@ require (
 	github.com/osrg/gobgp/v3 v3.31.0
 	github.com/ovn-org/libovsdb v0.7.0
 	github.com/parnurzeal/gorequest v0.3.0
-	github.com/prometheus-community/pro-bing v0.4.1
+	github.com/prometheus-community/pro-bing v0.5.0
 	github.com/prometheus/client_golang v1.20.5
 	github.com/puzpuzpuz/xsync/v3 v3.4.0
 	github.com/rs/zerolog v1.33.0
@@ -254,7 +254,7 @@ require (
 	gocv.io/x/gocv v0.32.1 // indirect
 	golang.org/x/crypto v0.29.0 // indirect
 	golang.org/x/exp v0.0.0-20241009180824-f66d83c29e7c // indirect
-	golang.org/x/net v0.30.0 // indirect
+	golang.org/x/net v0.31.0 // indirect
 	golang.org/x/oauth2 v0.24.0 // indirect
 	golang.org/x/sync v0.9.0 // indirect
 	golang.org/x/term v0.26.0 // indirect
