@@ -3936,6 +3936,7 @@ spec:
             - |
               chown -R nobody: /var/run/ovn /var/log/ovn /etc/openvswitch /var/run/openvswitch /var/log/openvswitch
               iptables -V
+              /usr/share/openvswitch/scripts/ovs-ctl load-kmod
           securityContext:
             allowPrivilegeEscalation: true
             capabilities:
@@ -3944,6 +3945,9 @@ spec:
             privileged: true
             runAsUser: 0
           volumeMounts:
+            - mountPath: /lib/modules
+              name: host-modules
+              readOnly: true
             - mountPath: /usr/local/sbin
               name: usr-local-sbin
             - mountPath: /var/log/ovn
@@ -3969,7 +3973,7 @@ spec:
               add:
                 - NET_ADMIN
                 - NET_BIND_SERVICE
-                - SYS_MODULE
+                - NET_RAW
                 - SYS_NICE
                 - SYS_ADMIN
           env:
@@ -4585,7 +4589,6 @@ spec:
               - NET_BIND_SERVICE
               - NET_RAW
               - SYS_ADMIN
-              - SYS_MODULE
               - SYS_NICE
               - SYS_PTRACE
         env:

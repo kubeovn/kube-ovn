@@ -49,8 +49,9 @@ spec:
             - -xec
             - |
               chown -R nobody: /var/run/ovn /var/log/ovn /etc/openvswitch /var/run/openvswitch /var/log/openvswitch
-              {{- if not .Values.DISABLE_MODULES_MANAGEMENT }}
               iptables -V
+              {{- if not .Values.DISABLE_MODULES_MANAGEMENT }}
+              /usr/share/openvswitch/scripts/ovs-ctl load-kmod
               {{- else }}
               ln -sf /bin/true /usr/local/sbin/modprobe
               ln -sf /bin/true /usr/local/sbin/modinfo
@@ -64,6 +65,9 @@ spec:
             privileged: true
             runAsUser: 0
           volumeMounts:
+            - mountPath: /lib/modules
+              name: host-modules
+              readOnly: true
             - mountPath: /usr/local/sbin
               name: usr-local-sbin
             - mountPath: /var/log/ovn
@@ -96,9 +100,7 @@ spec:
               add:
                 - NET_ADMIN
                 - NET_BIND_SERVICE
-                {{- if not .Values.DISABLE_MODULES_MANAGEMENT }}
-                - SYS_MODULE
-                {{- end }}
+                - NET_RAW
                 - SYS_NICE
                 - SYS_ADMIN
           env:
