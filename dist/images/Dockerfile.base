@@ -50,7 +50,9 @@ RUN cd /usr/src/ && git clone -b branch-22.12 --depth=1 https://github.com/ovn-o
     # lflow: do not send direct traffic between lports to conntrack
     curl -s https://github.com/kubeovn/ovn/commit/54cbe0d1ba2051e640dd3e53498f373362547691.patch | git apply && \
     # northd: add nb option version_compatibility
-    curl -s https://github.com/kubeovn/ovn/commit/06f5a7c684a6030036e2663eecf934b37c3e666e.patch | git apply
+    curl -s https://github.com/kubeovn/ovn/commit/06f5a7c684a6030036e2663eecf934b37c3e666e.patch | git apply && \
+    # northd: skip conntrack when access node local dns ip
+    curl -s https://github.com/kubeovn/ovn/commit/1ea964886da774506962d6bf23f8f894d93a10eb.patch | git apply
 
 RUN apt install -y build-essential fakeroot \
     autoconf automake bzip2 debhelper-compat dh-exec dh-python dh-sequence-python3 dh-sequence-sphinxdoc \
