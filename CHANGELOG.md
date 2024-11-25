@@ -1034,6 +1034,34 @@
  * 张祖建
  * 袁又袁
 
+## v1.12.29 (2024-11-25)
+
+ * [803bceeb](https://github.com/kubeovn/kube-ovn/commit/803bceeb43434012225be4de8f7bccf8516c5208) release v1.12.29
+ * [e1c59860](https://github.com/kubeovn/kube-ovn/commit/e1c59860fb9663300c4897073ab0699c41b395c6) skip conntrack when access node dns ip (#3894) (#4762)
+ * [576dfd42](https://github.com/kubeovn/kube-ovn/commit/576dfd427a9d4ce052b61732c3739be704887b4d) add not found err check for lb-svc (#4748)
+ * [b23c8da4](https://github.com/kubeovn/kube-ovn/commit/b23c8da43aff75d3cce8aa7c703d8d6bb5a2e488) [bugfix] Optimize gc method at  port group and node (#4722)
+ * [b929a11d](https://github.com/kubeovn/kube-ovn/commit/b929a11d09fa920a7c792e1e8393b06692d28f56) Revert "[bugfix] Unable to correctly gc port group (#4694)"
+ * [714afd4d](https://github.com/kubeovn/kube-ovn/commit/714afd4d959179f7cfcfd5d4aeb7bbbc28e7a2a8) kube-ovn-cni will panic if cidr is invalid (#4729)
+ * [e12731dd](https://github.com/kubeovn/kube-ovn/commit/e12731ddb33a2b69456779c76149246ea0d1cf84) fix build errors
+ * [c3e8fb47](https://github.com/kubeovn/kube-ovn/commit/c3e8fb477067f272516da1ef585b03b60121862d) The eip is not cleaned after eip is deleted (#4718) (#4719)
+ * [c328da4b](https://github.com/kubeovn/kube-ovn/commit/c328da4b67a258ea846c3ee6ad22a64d9a1ef749) [bugfix] Unable to correctly gc port group (#4694)
+ * [ee560e8d](https://github.com/kubeovn/kube-ovn/commit/ee560e8d41fbb61c7b24f61262729818f0e39fab) VM live migrate (#3767)
+ * [42f99a71](https://github.com/kubeovn/kube-ovn/commit/42f99a71787d572e84bfa97f8cac4699dd43cd4e) add process for lb-svc ports update (#4676)
+ * [57c82396](https://github.com/kubeovn/kube-ovn/commit/57c823967f6549694432cfa356bbe20fcfbbb4f7) [bugfix] When add_eip, send a GARP for eip from net1 (#4701)
+ * [4ee107a8](https://github.com/kubeovn/kube-ovn/commit/4ee107a85449e22051feb1c23999bff816294130) fix: udp bad checksum on VXLAN interface (#4639)
+ * [4ba576c3](https://github.com/kubeovn/kube-ovn/commit/4ba576c31aff3cbc0bc6583705d8b1937b9a2e21) prepare for next release
+
+### Contributors
+
+ * Congqi Zhao
+ * Guangyu Suo
+ * Mengxin Liu
+ * bobz965
+ * changluyi
+ * cmdy
+ * hzma
+ * xiaoyie
+
 ## v1.12.28 (2024-10-18)
 
  * [368e6eff](https://github.com/kubeovn/kube-ovn/commit/368e6effb26839fb25cbef724e9704ff92f44226) release v1.12.28
