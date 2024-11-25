@@ -110,7 +110,7 @@ FROM ghcr.io/aquasecurity/trivy:latest AS trivy
 
 ARG ARCH
 ENV CNI_VERSION="v1.6.0"
-ENV KUBE_VERSION="v1.31.2"
+ENV KUBE_VERSION="v1.31.3"
 ENV GOBGP_VERSION="3.30.0"
 ENV TRIVY_DB_REPOSITORY="public.ecr.aws/aquasecurity/trivy-db:2"
 
