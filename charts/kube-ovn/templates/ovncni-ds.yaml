@@ -35,11 +35,7 @@ spec:
         command:
           - sh
           - -xec
-          - {{ if not .Values.DISABLE_MODULES_MANAGEMENT -}}
-            iptables -V
-            {{- else -}}
-            echo "nothing to do"
-            {{- end }}
+          - iptables -V
         securityContext:
           allowPrivilegeEscalation: true
           capabilities:
@@ -128,9 +124,6 @@ spec:
               - NET_RAW
               - SYS_ADMIN
               - SYS_PTRACE
-              {{- if not .Values.DISABLE_MODULES_MANAGEMENT }}
-              - SYS_MODULE
-              {{- end }}
               - SYS_NICE
         env:
           - name: ENABLE_SSL
