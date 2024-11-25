@@ -35,6 +35,7 @@ import (
 	ovnipam "github.com/kubeovn/kube-ovn/pkg/ipam"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/util"
+	kubevirtinformer "kubevirt.io/client-go/generated/kubevirt/clientset/versioned/typed/core/v1"
 )
 
 const controllerAgentName = "kube-ovn-controller"
@@ -258,6 +259,13 @@ type Controller struct {
 	csrSynced           cache.InformerSynced
 	addOrUpdateCsrQueue workqueue.TypedRateLimitingInterface[string]
 
+	vmiMigrationLister      kubevirtinformer.VirtualMachineInstanceMigrationLister
+	vmiMigrationSynced      cache.InformerSynced
+	addVmiMigrationQueue    workqueue.TypedRateLimitingInterface[string]
+	updateVmiMigrationQueue workqueue.TypedRateLimitingInterface[string]
+	delVmiMigrationQueue    workqueue.TypedRateLimitingInterface[string]
+	vmiMigrationKeyMutex    keymutex.KeyMutex
+
 	recorder               record.EventRecorder
 	informerFactory        kubeinformers.SharedInformerFactory
 	cmInformerFactory      kubeinformers.SharedInformerFactory
@@ -300,6 +308,10 @@ func Run(ctx context.Context, config *Configuration) {
 		anpinformer.WithTweakListOptions(func(listOption *metav1.ListOptions) {
 			listOption.AllowWatchBookmarks = true
 		}))
+	kubevirtInformerFactory := kubevirtinformer.NewSharedInformerFactoryWithOptions(config.KubevirtClient, 0,
+		kubevirtinformer.WithTweakListOptions(func(listOption *metav1.ListOptions) {
+			listOption.AllowWatchBookmarks = true
+		}))
 
 	vpcInformer := kubeovnInformerFactory.Kubeovn().V1().Vpcs()
 	vpcNatGatewayInformer := kubeovnInformerFactory.Kubeovn().V1().VpcNatGateways()
@@ -331,6 +343,7 @@ func Run(ctx context.Context, config *Configuration) {
 	anpInformer := anpInformerFactory.Policy().V1alpha1().AdminNetworkPolicies()
 	banpInformer := anpInformerFactory.Policy().V1alpha1().BaselineAdminNetworkPolicies()
 	csrInformer := informerFactory.Certificates().V1().CertificateSigningRequests()
+	vmiMigrationInformer := config.KubevirtFactory.Kubevirt().V1().VirtualMachineInstanceMigrations()
 
 	numKeyLocks := runtime.NumCPU() * 2
 	if numKeyLocks < config.WorkerNum*2 {
