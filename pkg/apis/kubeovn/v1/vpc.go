@@ -87,10 +87,9 @@ type PolicyRoute struct {
 }
 
 type BFDPortStatus struct {
-	Enabled bool     `json:"enabled"`
-	Name    string   `json:"name,omitempty"`
-	IP      string   `json:"ip,omitempty"`
-	Nodes   []string `json:"nodes,omitempty"`
+	Name  string   `json:"name,omitempty"`
+	IP    string   `json:"ip,omitempty"`
+	Nodes []string `json:"nodes,omitempty"`
 }
 
 type VpcStatus struct {

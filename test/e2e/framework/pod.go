@@ -3,6 +3,9 @@ package framework
 import (
 	"context"
 	"errors"
+	"fmt"
+	"slices"
+	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -10,6 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	e2epod "k8s.io/kubernetes/test/e2e/framework/pod"
+	e2epodoutput "k8s.io/kubernetes/test/e2e/framework/pod/output"
 	psaapi "k8s.io/pod-security-admission/api"
 	"k8s.io/utils/ptr"
 
@@ -141,4 +145,36 @@ func MakeRestrictedPod(ns, name string, labels, annotations map[string]string, i
 
 func MakePrivilegedPod(ns, name string, labels, annotations map[string]string, image string, command, args []string) *corev1.Pod {
 	return makePod(ns, name, labels, annotations, image, command, args, psaapi.LevelPrivileged)
+}
+
+func CheckPodEgressRoutes(ns, pod string, ipv4, ipv6 bool, ttl int, expectedHops []string) {
+	ginkgo.GinkgoHelper()
+
+	afs := make([]int, 0, 2)
+	dst := make([]string, 0, 2)
+	if ipv4 {
+		afs = append(afs, 4)
+		dst = append(dst, "1.1.1.1")
+	}
+	if ipv6 {
+		afs = append(afs, 6)
+		dst = append(dst, "2606:4700:4700::1111")
+	}
+
+	for i, af := range afs {
+		ginkgo.By(fmt.Sprintf("Checking IPv%d egress routes for pod %s/%s", af, ns, pod))
+		cmd := fmt.Sprintf("traceroute -%d -n -f%d -m%d %s", af, ttl, ttl, dst[i])
+		WaitUntil(3*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+			// traceroute to 1.1.1.1 (1.1.1.1), 2 hops max, 60 byte packets
+			// 2  172.19.0.2  0.663 ms  0.613 ms  0.605 ms
+			output, err := e2epodoutput.RunHostCmd(ns, pod, cmd)
+			if err != nil {
+				return false, nil
+			}
+
+			lines := strings.Split(strings.TrimSpace(output), "\n")
+			fields := strings.Fields(lines[len(lines)-1])
+			return len(fields) > 2 && slices.Contains(expectedHops, fields[1]), nil
+		}, "")
+	}
 }

@@ -5,13 +5,12 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ovn-org/libovsdb/cache"
+	"github.com/ovn-org/libovsdb/model"
 	"k8s.io/klog/v2"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
-
-	"github.com/ovn-org/libovsdb/cache"
-	"github.com/ovn-org/libovsdb/model"
 )
 
 func (c *OVNNbClient) ListBFDs(lrpName, dstIP string) ([]ovnnb.BFD, error) {
@@ -68,7 +67,7 @@ func (c *OVNNbClient) ListUpBFDs(dstIP string) ([]ovnnb.BFD, error) {
 	return bfdList, nil
 }
 
-func (c *OVNNbClient) CreateBFD(lrpName, dstIP string, minRx, minTx, detectMult int) (*ovnnb.BFD, error) {
+func (c *OVNNbClient) CreateBFD(lrpName, dstIP string, minRx, minTx, detectMult int, externalIDs map[string]string) (*ovnnb.BFD, error) {
 	bfdList, err := c.ListBFDs(lrpName, dstIP)
 	if err != nil {
 		klog.Error(err)
@@ -84,6 +83,7 @@ func (c *OVNNbClient) CreateBFD(lrpName, dstIP string, minRx, minTx, detectMult 
 		MinRx:       &minRx,
 		MinTx:       &minTx,
 		DetectMult:  &detectMult,
+		ExternalIDs: externalIDs,
 	}
 	ops, err := c.Create(bfd)
 	if err != nil {
@@ -124,7 +124,22 @@ func (c *OVNNbClient) UpdateBFD(bfd *ovnnb.BFD, fields ...interface{}) error {
 	return nil
 }
 
-func (c *OVNNbClient) DeleteBFD(lrpName, dstIP string) error {
+func (c *OVNNbClient) DeleteBFD(uuid string) error {
+	ops, err := c.Where(&ovnnb.BFD{UUID: uuid}).Delete()
+	if err != nil {
+		err := fmt.Errorf("failed to generate operations for BFD deletion with UUID %s: %w", uuid, err)
+		klog.Error(err)
+		return err
+	}
+	if err = c.Transact("bfd-del", ops); err != nil {
+		err = fmt.Errorf("failed to delete BFD with with UUID %s: %w", uuid, err)
+		klog.Error(err)
+		return err
+	}
+	return nil
+}
+
+func (c *OVNNbClient) DeleteBFDByDstIP(lrpName, dstIP string) error {
 	bfdList, err := c.ListBFDs(lrpName, dstIP)
 	if err != nil {
 		klog.Error(err)
@@ -199,6 +214,10 @@ func (c *OVNNbClient) bfdAddL3HAHandler(table string, model model.Model) {
 	}
 
 	bfd := model.(*ovnnb.BFD)
+	if bfd.ExternalIDs[ExternalIDVpcEgressGateway] != "" {
+		return
+	}
+
 	klog.Infof("lrp %s add BFD to dst ip %s", bfd.LogicalPort, bfd.DstIP)
 	needRecheck := false
 	if bfd.Status == nil {
@@ -230,6 +249,9 @@ func (c *OVNNbClient) bfdUpdateL3HAHandler(table string, oldModel, newModel mode
 	oldBfd := oldModel.(*ovnnb.BFD)
 	newBfd := newModel.(*ovnnb.BFD)
 
+	if newBfd.ExternalIDs[ExternalIDVpcEgressGateway] != "" {
+		return
+	}
 	if oldBfd.Status == nil || newBfd.Status == nil {
 		return
 	}
@@ -343,5 +365,32 @@ func (c *OVNNbClient) bfdDelL3HAHandler(table string, model model.Model) {
 		return
 	}
 	bfd := model.(*ovnnb.BFD)
+	if bfd.ExternalIDs[ExternalIDVpcEgressGateway] != "" {
+		return
+	}
 	klog.Infof("lrp %s del BFD to dst ip %s", bfd.LogicalPort, bfd.DstIP)
+}
+
+func (c *OVNNbClient) FindBFD(externalIDs map[string]string) ([]ovnnb.BFD, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+
+	bfdList := make([]ovnnb.BFD, 0)
+	if err := c.ovsDbClient.WhereCache(func(bfd *ovnnb.BFD) bool {
+		if len(bfd.ExternalIDs) == 0 && len(externalIDs) != 0 {
+			return false
+		}
+		for k, v := range externalIDs {
+			if bfd.ExternalIDs[k] != v {
+				return false
+			}
+		}
+		return true
+	}).List(ctx, &bfdList); err != nil {
+		err := fmt.Errorf("failed to find ovn BFD: %w", err)
+		klog.Error(err)
+		return nil, err
+	}
+
+	return bfdList, nil
 }

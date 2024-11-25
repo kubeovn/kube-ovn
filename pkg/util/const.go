@@ -48,6 +48,9 @@ const (
 	LogicalRouterAnnotation = "ovn.kubernetes.io/logical_router"
 	VpcAnnotation           = "ovn.kubernetes.io/vpc"
 
+	VpcEgressGatewayAnnotation = "ovn.kubernetes.io/vpc_egress_gateway"
+	GenerateHashAnnotation     = "ovn.kubernetes.io/generate-hash"
+
 	Layer2ForwardAnnotationTemplate = "%s.kubernetes.io/layer2_forward"
 	PortSecurityAnnotationTemplate  = "%s.kubernetes.io/port_security"
 	PortVipAnnotationTemplate       = "%s.kubernetes.io/port_vips"
@@ -210,6 +213,7 @@ const (
 
 	U2OSubnetPolicyPriority         = 29400
 	GatewayRouterPolicyPriority     = 29000
+	EgressGatewayPolicyPriority     = 29100
 	NorthGatewayRoutePolicyPriority = 29250
 	OvnICPolicyPriority             = 29500
 	NodeRouterPolicyPriority        = 30000

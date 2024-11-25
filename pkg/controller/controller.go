@@ -17,6 +17,7 @@ import (
 	kubeinformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/scheme"
 	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
+	appsv1 "k8s.io/client-go/listers/apps/v1"
 	certListerv1 "k8s.io/client-go/listers/certificates/v1"
 	v1 "k8s.io/client-go/listers/core/v1"
 	netv1 "k8s.io/client-go/listers/networking/v1"
@@ -94,6 +95,12 @@ type Controller struct {
 	updateVpcSnatQueue            workqueue.TypedRateLimitingInterface[string]
 	updateVpcSubnetQueue          workqueue.TypedRateLimitingInterface[string]
 	vpcNatGwKeyMutex              keymutex.KeyMutex
+
+	vpcEgressGatewayLister           kubeovnlister.VpcEgressGatewayLister
+	vpcEgressGatewaySynced           cache.InformerSynced
+	addOrUpdateVpcEgressGatewayQueue workqueue.TypedRateLimitingInterface[string]
+	delVpcEgressGatewayQueue         workqueue.TypedRateLimitingInterface[string]
+	vpcEgressGatewayKeyMutex         keymutex.KeyMutex
 
 	switchLBRuleLister      kubeovnlister.SwitchLBRuleLister
 	switchLBRuleSynced      cache.InformerSynced
@@ -218,6 +225,9 @@ type Controller struct {
 	addOrUpdateEndpointQueue workqueue.TypedRateLimitingInterface[string]
 	epKeyMutex               keymutex.KeyMutex
 
+	deploymentsLister appsv1.DeploymentLister
+	deploymentsSynced cache.InformerSynced
+
 	npsLister     netv1.NetworkPolicyLister
 	npsSynced     cache.InformerSynced
 	updateNpQueue workqueue.TypedRateLimitingInterface[string]
@@ -303,6 +313,7 @@ func Run(ctx context.Context, config *Configuration) {
 
 	vpcInformer := kubeovnInformerFactory.Kubeovn().V1().Vpcs()
 	vpcNatGatewayInformer := kubeovnInformerFactory.Kubeovn().V1().VpcNatGateways()
+	vpcEgressGatewayInformer := kubeovnInformerFactory.Kubeovn().V1().VpcEgressGateways()
 	subnetInformer := kubeovnInformerFactory.Kubeovn().V1().Subnets()
 	ippoolInformer := kubeovnInformerFactory.Kubeovn().V1().IPPools()
 	ipInformer := kubeovnInformerFactory.Kubeovn().V1().IPs()
@@ -319,6 +330,7 @@ func Run(ctx context.Context, config *Configuration) {
 	nodeInformer := informerFactory.Core().V1().Nodes()
 	serviceInformer := informerFactory.Core().V1().Services()
 	endpointInformer := informerFactory.Core().V1().Endpoints()
+	deploymentInformer := informerFactory.Apps().V1().Deployments()
 	qosPolicyInformer := kubeovnInformerFactory.Kubeovn().V1().QoSPolicies()
 	configMapInformer := cmInformerFactory.Core().V1().ConfigMaps()
 	npInformer := informerFactory.Networking().V1().NetworkPolicies()
@@ -361,6 +373,12 @@ func Run(ctx context.Context, config *Configuration) {
 		updateVpcSnatQueue:            newTypedRateLimitingQueue("UpdateVpcSnat", custCrdRateLimiter),
 		updateVpcSubnetQueue:          newTypedRateLimitingQueue("UpdateVpcSubnet", custCrdRateLimiter),
 		vpcNatGwKeyMutex:              keymutex.NewHashed(numKeyLocks),
+
+		vpcEgressGatewayLister:           vpcEgressGatewayInformer.Lister(),
+		vpcEgressGatewaySynced:           vpcEgressGatewayInformer.Informer().HasSynced,
+		addOrUpdateVpcEgressGatewayQueue: newTypedRateLimitingQueue("AddOrUpdateVpcEgressGateway", custCrdRateLimiter),
+		delVpcEgressGatewayQueue:         newTypedRateLimitingQueue("DeleteVpcEgressGateway", custCrdRateLimiter),
+		vpcEgressGatewayKeyMutex:         keymutex.NewHashed(numKeyLocks),
 
 		subnetsLister:           subnetInformer.Lister(),
 		subnetSynced:            subnetInformer.Informer().HasSynced,
@@ -461,6 +479,9 @@ func Run(ctx context.Context, config *Configuration) {
 		endpointsSynced:          endpointInformer.Informer().HasSynced,
 		addOrUpdateEndpointQueue: newTypedRateLimitingQueue[string]("UpdateEndpoint", nil),
 		epKeyMutex:               keymutex.NewHashed(numKeyLocks),
+
+		deploymentsLister: deploymentInformer.Lister(),
+		deploymentsSynced: deploymentInformer.Informer().HasSynced,
 
 		qosPoliciesLister:    qosPolicyInformer.Lister(),
 		qosPolicySynced:      qosPolicyInformer.Informer().HasSynced,
@@ -593,11 +614,12 @@ func Run(ctx context.Context, config *Configuration) {
 
 	klog.Info("Waiting for informer caches to sync")
 	cacheSyncs := []cache.InformerSynced{
-		controller.vpcNatGatewaySynced, controller.vpcSynced, controller.subnetSynced,
+		controller.vpcNatGatewaySynced, controller.vpcEgressGatewaySynced,
+		controller.vpcSynced, controller.subnetSynced,
 		controller.ipSynced, controller.virtualIpsSynced, controller.iptablesEipSynced,
 		controller.iptablesFipSynced, controller.iptablesDnatRuleSynced, controller.iptablesSnatRuleSynced,
 		controller.vlanSynced, controller.podsSynced, controller.namespacesSynced, controller.nodesSynced,
-		controller.serviceSynced, controller.endpointsSynced, controller.configMapsSynced,
+		controller.serviceSynced, controller.endpointsSynced, controller.deploymentsSynced, controller.configMapsSynced,
 		controller.ovnEipSynced, controller.ovnFipSynced, controller.ovnSnatRuleSynced,
 		controller.ovnDnatRuleSynced,
 	}
@@ -653,6 +675,13 @@ func Run(ctx context.Context, config *Configuration) {
 		util.LogFatalAndExit(err, "failed to add endpoint event handler")
 	}
 
+	if _, err = deploymentInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    controller.enqueueAddDeployment,
+		UpdateFunc: controller.enqueueUpdateDeployment,
+	}); err != nil {
+		util.LogFatalAndExit(err, "failed to add deployment event handler")
+	}
+
 	if _, err = vpcInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    controller.enqueueAddVpc,
 		UpdateFunc: controller.enqueueUpdateVpc,
@@ -667,6 +696,14 @@ func Run(ctx context.Context, config *Configuration) {
 		DeleteFunc: controller.enqueueDeleteVpcNatGw,
 	}); err != nil {
 		util.LogFatalAndExit(err, "failed to add vpc nat gateway event handler")
+	}
+
+	if _, err = vpcEgressGatewayInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    controller.enqueueAddVpcEgressGateway,
+		UpdateFunc: controller.enqueueUpdateVpcEgressGateway,
+		DeleteFunc: controller.enqueueDeleteVpcEgressGateway,
+	}); err != nil {
+		util.LogFatalAndExit(err, "failed to add vpc egress gateway event handler")
 	}
 
 	if _, err = subnetInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -964,6 +1001,9 @@ func (c *Controller) shutdown() {
 	c.updateVpcSnatQueue.ShutDown()
 	c.updateVpcSubnetQueue.ShutDown()
 
+	c.addOrUpdateVpcEgressGatewayQueue.ShutDown()
+	c.delVpcEgressGatewayQueue.ShutDown()
+
 	if c.config.EnableLb {
 		c.addSwitchLBRuleQueue.ShutDown()
 		c.delSwitchLBRuleQueue.ShutDown()
@@ -1045,10 +1085,14 @@ func (c *Controller) startWorkers(ctx context.Context) {
 	klog.Info("Starting workers")
 
 	go wait.Until(runWorker("add/update vpc", c.addOrUpdateVpcQueue, c.handleAddOrUpdateVpc), time.Second, ctx.Done())
+	go wait.Until(runWorker("delete vpc", c.delVpcQueue, c.handleDelVpc), time.Second, ctx.Done())
+	go wait.Until(runWorker("update status of vpc", c.updateVpcStatusQueue, c.handleUpdateVpcStatus), time.Second, ctx.Done())
 
 	go wait.Until(runWorker("add/update vpc nat gateway", c.addOrUpdateVpcNatGatewayQueue, c.handleAddOrUpdateVpcNatGw), time.Second, ctx.Done())
 	go wait.Until(runWorker("init vpc nat gateway", c.initVpcNatGatewayQueue, c.handleInitVpcNatGw), time.Second, ctx.Done())
 	go wait.Until(runWorker("delete vpc nat gateway", c.delVpcNatGatewayQueue, c.handleDelVpcNatGw), time.Second, ctx.Done())
+	go wait.Until(runWorker("add/update vpc egress gateway", c.addOrUpdateVpcEgressGatewayQueue, c.handleAddOrUpdateVpcEgressGateway), time.Second, ctx.Done())
+	go wait.Until(runWorker("delete vpc egress gateway", c.delVpcEgressGatewayQueue, c.handleDelVpcEgressGateway), time.Second, ctx.Done())
 	go wait.Until(runWorker("update fip for vpc nat gateway", c.updateVpcFloatingIPQueue, c.handleUpdateVpcFloatingIP), time.Second, ctx.Done())
 	go wait.Until(runWorker("update eip for vpc nat gateway", c.updateVpcEipQueue, c.handleUpdateVpcEip), time.Second, ctx.Done())
 	go wait.Until(runWorker("update dnat for vpc nat gateway", c.updateVpcDnatQueue, c.handleUpdateVpcDnat), time.Second, ctx.Done())
@@ -1099,9 +1143,6 @@ func (c *Controller) startWorkers(ctx context.Context) {
 			break
 		}
 	}
-
-	go wait.Until(runWorker("delete vpc", c.delVpcQueue, c.handleDelVpc), time.Second, ctx.Done())
-	go wait.Until(runWorker("update status of vpc", c.updateVpcStatusQueue, c.handleUpdateVpcStatus), time.Second, ctx.Done())
 
 	if c.config.EnableLb {
 		go wait.Until(runWorker("add service", c.addServiceQueue, c.handleAddService), time.Second, ctx.Done())

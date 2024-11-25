@@ -62,11 +62,13 @@ type GatewayChassis interface {
 }
 
 type BFD interface {
-	CreateBFD(lrpName, dstIP string, minRx, minTx, detectMult int) (*ovnnb.BFD, error)
-	DeleteBFD(lrpName, dstIP string) error
+	CreateBFD(lrpName, dstIP string, minRx, minTx, detectMult int, externalIDs map[string]string) (*ovnnb.BFD, error)
+	DeleteBFD(uuid string) error
+	DeleteBFDByDstIP(lrpName, dstIP string) error
 	ListBFDs(lrpName, dstIP string) ([]ovnnb.BFD, error)
 	ListDownBFDs(dstIP string) ([]ovnnb.BFD, error)
 	ListUpBFDs(dstIP string) ([]ovnnb.BFD, error)
+	FindBFD(externalIDs map[string]string) ([]ovnnb.BFD, error)
 	UpdateBFD(bfd *ovnnb.BFD, fields ...interface{}) error
 	MonitorBFD()
 }
@@ -175,15 +177,18 @@ type AddressSet interface {
 
 type LogicalRouterStaticRoute interface {
 	AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix string, bfdID *string, nexthops ...string) error
+	UpdateLogicalRouterStaticRoute(route *ovnnb.LogicalRouterStaticRoute, fields ...interface{}) error
 	ClearLogicalRouterStaticRoute(lrName string) error
 	DeleteLogicalRouterStaticRoute(lrName string, routeTable, policy *string, ipPrefix, nextHop string) error
+	DeleteLogicalRouterStaticRouteByUUID(lrName, uuid string) error
+	DeleteLogicalRouterStaticRouteByExternalIDs(lrName string, externalIDs map[string]string) error
 	ListLogicalRouterStaticRoutesByOption(lrName, routeTable, key, value string) ([]*ovnnb.LogicalRouterStaticRoute, error)
 	ListLogicalRouterStaticRoutes(lrName string, routeTable, policy *string, ipPrefix string, externalIDs map[string]string) ([]*ovnnb.LogicalRouterStaticRoute, error)
 	LogicalRouterStaticRouteExists(lrName, routeTable, policy, ipPrefix, nexthop string) (bool, error)
 }
 
 type LogicalRouterPolicy interface {
-	AddLogicalRouterPolicy(lrName string, priority int, match, action string, nextHops []string, externalIDs map[string]string) error
+	AddLogicalRouterPolicy(lrName string, priority int, match, action string, nextHops, bfdSessions []string, externalIDs map[string]string) error
 	DeleteLogicalRouterPolicy(lrName string, priority int, match string) error
 	DeleteLogicalRouterPolicies(lrName string, priority int, externalIDs map[string]string) error
 	DeleteLogicalRouterPolicyByUUID(lrName, uuid string) error
@@ -192,6 +197,7 @@ type LogicalRouterPolicy interface {
 	ListLogicalRouterPolicies(lrName string, priority int, externalIDs map[string]string, ignoreExtIDEmptyValue bool) ([]*ovnnb.LogicalRouterPolicy, error)
 	GetLogicalRouterPolicy(lrName string, priority int, match string, ignoreNotFound bool) ([]*ovnnb.LogicalRouterPolicy, error)
 	GetLogicalRouterPoliciesByExtID(lrName, key, value string) ([]*ovnnb.LogicalRouterPolicy, error)
+	UpdateLogicalRouterPolicy(policy *ovnnb.LogicalRouterPolicy, fields ...interface{}) error
 }
 
 type NAT interface {
