@@ -1500,7 +1500,7 @@ func (suite *OvnClientTestSuite) testDeleteAcls() {
 		acls := make([]*ovnnb.ACL, 0, 5)
 
 		match := fmt.Sprintf("%s && udp.dst == %d", matchPrefix, basePort)
-		acl, err := failedNbClient.newACL(lsName, ovnnb.ACLDirectionToLport, priority, match, ovnnb.ACLActionAllowRelated, util.NetpolACLTier, func(acl *ovnnb.ACL) {
+		acl, err := failedNbClient.newACL(lsName, ovnnb.ACLDirectionToLport, priority, match, ovnnb.ACLActionAllowRelated, func(acl *ovnnb.ACL) {
 			if acl.ExternalIDs == nil {
 				acl.ExternalIDs = make(map[string]string)
 			}
@@ -2424,7 +2424,7 @@ func (suite *OvnClientTestSuite) testUpdateACL() {
 	err := nbClient.CreatePortGroup(pgName, nil)
 	require.NoError(t, err)
 
-	acl, err := nbClient.newACL(pgName, ovnnb.ACLDirectionToLport, priority, match, ovnnb.ACLActionAllowRelated, util.NetpolACLTier)
+	acl, err := nbClient.newACL(pgName, ovnnb.ACLDirectionToLport, priority, match, ovnnb.ACLActionAllowRelated)
 	require.NoError(t, err)
 
 	err = nbClient.CreateAcls(pgName, portGroupKey, acl)
@@ -2450,7 +2450,7 @@ func (suite *OvnClientTestSuite) testUpdateACL() {
 	})
 
 	t.Run("fail nb client should log err", func(t *testing.T) {
-		failACL, err := failedNbClient.newACL(pgName, ovnnb.ACLDirectionToLport, priority, match, ovnnb.ACLActionAllowRelated, util.NetpolACLTier)
+		failACL, err := failedNbClient.newACL(pgName, ovnnb.ACLDirectionToLport, priority, match, ovnnb.ACLActionAllowRelated)
 		require.NoError(t, err)
 
 		err = failedNbClient.CreateAcls(pgName, portGroupKey, failACL)
