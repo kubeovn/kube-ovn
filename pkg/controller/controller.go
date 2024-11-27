@@ -25,6 +25,7 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/keymutex"
+	kubevirtController "kubevirt.io/kubevirt/pkg/controller"
 	v1alpha1 "sigs.k8s.io/network-policy-api/apis/v1alpha1"
 	anpinformer "sigs.k8s.io/network-policy-api/pkg/client/informers/externalversions"
 	anplister "sigs.k8s.io/network-policy-api/pkg/client/listers/apis/v1alpha1"
@@ -35,7 +36,6 @@ import (
 	ovnipam "github.com/kubeovn/kube-ovn/pkg/ipam"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/util"
-	kubevirtinformer "kubevirt.io/client-go/generated/kubevirt/clientset/versioned/typed/core/v1"
 )
 
 const controllerAgentName = "kube-ovn-controller"
@@ -259,12 +259,9 @@ type Controller struct {
 	csrSynced           cache.InformerSynced
 	addOrUpdateCsrQueue workqueue.TypedRateLimitingInterface[string]
 
-	vmiMigrationLister      kubevirtinformer.VirtualMachineInstanceMigrationLister
-	vmiMigrationSynced      cache.InformerSynced
-	addVmiMigrationQueue    workqueue.TypedRateLimitingInterface[string]
-	updateVmiMigrationQueue workqueue.TypedRateLimitingInterface[string]
-	delVmiMigrationQueue    workqueue.TypedRateLimitingInterface[string]
-	vmiMigrationKeyMutex    keymutex.KeyMutex
+	vmiMigrationSynced           cache.InformerSynced
+	addOrUpdateVmiMigrationQueue workqueue.TypedRateLimitingInterface[string]
+	vmiMigrationKeyMutex         keymutex.KeyMutex
 
 	recorder               record.EventRecorder
 	informerFactory        kubeinformers.SharedInformerFactory
@@ -308,10 +305,8 @@ func Run(ctx context.Context, config *Configuration) {
 		anpinformer.WithTweakListOptions(func(listOption *metav1.ListOptions) {
 			listOption.AllowWatchBookmarks = true
 		}))
-	kubevirtInformerFactory := kubevirtinformer.NewSharedInformerFactoryWithOptions(config.KubevirtClient, 0,
-		kubevirtinformer.WithTweakListOptions(func(listOption *metav1.ListOptions) {
-			listOption.AllowWatchBookmarks = true
-		}))
+
+	kubevirtInformerFactory := kubevirtController.NewKubeInformerFactory(config.KubevirtClient.RestClient(), config.KubevirtClient, nil, "kubevirt")
 
 	vpcInformer := kubeovnInformerFactory.Kubeovn().V1().Vpcs()
 	vpcNatGatewayInformer := kubeovnInformerFactory.Kubeovn().V1().VpcNatGateways()
@@ -343,7 +338,7 @@ func Run(ctx context.Context, config *Configuration) {
 	anpInformer := anpInformerFactory.Policy().V1alpha1().AdminNetworkPolicies()
 	banpInformer := anpInformerFactory.Policy().V1alpha1().BaselineAdminNetworkPolicies()
 	csrInformer := informerFactory.Certificates().V1().CertificateSigningRequests()
-	vmiMigrationInformer := config.KubevirtFactory.Kubevirt().V1().VirtualMachineInstanceMigrations()
+	vmiMigrationInformer := kubevirtInformerFactory.VirtualMachineInstanceMigration()
 
 	numKeyLocks := runtime.NumCPU() * 2
 	if numKeyLocks < config.WorkerNum*2 {
@@ -520,6 +515,10 @@ func Run(ctx context.Context, config *Configuration) {
 		csrSynced:           csrInformer.Informer().HasSynced,
 		addOrUpdateCsrQueue: newTypedRateLimitingQueue[string]("AddOrUpdateCSR", nil),
 
+		vmiMigrationSynced:           vmiMigrationInformer.HasSynced,
+		addOrUpdateVmiMigrationQueue: newTypedRateLimitingQueue[string]("AddOrUpdateVmiMigration", nil),
+		vmiMigrationKeyMutex:         keymutex.NewHashed(numKeyLocks),
+
 		recorder:               recorder,
 		informerFactory:        informerFactory,
 		cmInformerFactory:      cmInformerFactory,
@@ -603,6 +602,7 @@ func Run(ctx context.Context, config *Configuration) {
 	controller.cmInformerFactory.Start(ctx.Done())
 	controller.kubeovnInformerFactory.Start(ctx.Done())
 	controller.anpInformerFactory.Start(ctx.Done())
+	kubevirtInformerFactory.Start(ctx.Done())
 
 	klog.Info("Waiting for informer caches to sync")
 	cacheSyncs := []cache.InformerSynced{
@@ -612,7 +612,7 @@ func Run(ctx context.Context, config *Configuration) {
 		controller.vlanSynced, controller.podsSynced, controller.namespacesSynced, controller.nodesSynced,
 		controller.serviceSynced, controller.endpointsSynced, controller.configMapsSynced,
 		controller.ovnEipSynced, controller.ovnFipSynced, controller.ovnSnatRuleSynced,
-		controller.ovnDnatRuleSynced,
+		controller.ovnDnatRuleSynced, controller.vmiMigrationSynced,
 	}
 	if controller.config.EnableLb {
 		cacheSyncs = append(cacheSyncs, controller.switchLBRuleSynced, controller.vpcDNSSynced)
@@ -860,6 +860,11 @@ func Run(ctx context.Context, config *Configuration) {
 			util.LogFatalAndExit(err, "failed to add csr event handler")
 		}
 	}
+
+	vmiMigrationInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    controller.enqueueAddVmiMigration,
+		UpdateFunc: controller.enqueueUpdateVmiMigration,
+	})
 	controller.Run(ctx)
 }
 
@@ -1052,6 +1057,7 @@ func (c *Controller) shutdown() {
 	c.syncSgPortsQueue.ShutDown()
 
 	c.addOrUpdateCsrQueue.ShutDown()
+	c.addOrUpdateVmiMigrationQueue.ShutDown()
 }
 
 func (c *Controller) startWorkers(ctx context.Context) {
@@ -1068,7 +1074,7 @@ func (c *Controller) startWorkers(ctx context.Context) {
 	go wait.Until(runWorker("update snat for vpc nat gateway", c.updateVpcSnatQueue, c.handleUpdateVpcSnat), time.Second, ctx.Done())
 	go wait.Until(runWorker("update subnet route for vpc nat gateway", c.updateVpcSubnetQueue, c.handleUpdateNatGwSubnetRoute), time.Second, ctx.Done())
 	go wait.Until(runWorker("add/update csr", c.addOrUpdateCsrQueue, c.handleAddOrUpdateCsr), time.Second, ctx.Done())
-
+	go wait.Until(runWorker("add/update vmiMigration ", c.addOrUpdateVmiMigrationQueue, c.handleAddOrUpdateVmiMigration), 0, ctx.Done())
 	// add default and join subnet and wait them ready
 	go wait.Until(runWorker("add/update subnet", c.addOrUpdateSubnetQueue, c.handleAddOrUpdateSubnet), time.Second, ctx.Done())
 	go wait.Until(runWorker("add/update ippool", c.addOrUpdateIPPoolQueue, c.handleAddOrUpdateIPPool), time.Second, ctx.Done())
