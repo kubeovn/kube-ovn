@@ -31,7 +31,6 @@ type OvnClientTestSuite struct {
 	ovnSBClient *OVNSbClient
 
 	failedOvnNBClient *OVNNbClient
-	ovnLegacyClient   *LegacyClient
 }
 
 func emptyNbDatabaseModel() (model.ClientDBModel, error) {
