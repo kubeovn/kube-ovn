@@ -178,6 +178,36 @@ var _ = framework.Describe("[group:ipam]", func() {
 			framework.ExpectConsistOf(util.PodIPs(pod), strings.Split(pod.Annotations[util.IPAddressAnnotation], ","))
 		}
 	})
+	framework.ConformanceIt("should allocate IPs from namespace IPPool annotation for deployment without IPPool annotation", func() {
+		namespaceName := "test-namespace"
+		deployName := "test-deployment"
+		replicas := 3
+
+		ginkgo.By("Creating namespace " + namespaceName)
+		nsAnnotations := map[string]string{
+			util.IPPoolAnnotation: "192.168.1.10,192.168.1.11,192.168.1.12",
+		}
+		ns := framework.MakeNamespace(namespaceName, nil, nsAnnotations)
+		ns = nsClient.Create(ns)
+
+		ginkgo.By("Creating deployment " + deployName + " without IPPool")
+		labels := map[string]string{"app": deployName}
+		deploy := framework.MakeDeployment(deployName, int32(replicas), labels, nil, "pause", framework.PauseImage, "")
+		deploy.Namespace = namespaceName
+		deploy = deployClient.CreateSync(deploy)
+
+		ginkgo.By("Getting pods for deployment " + deployName)
+		pods, err := deployClient.GetPods(deploy)
+		framework.ExpectNoError(err, "failed to get pods for deployment "+deployName)
+		framework.ExpectHaveLen(pods.Items, replicas)
+
+		expectedIPs := []string{"192.168.1.10", "192.168.1.11", "192.168.1.12"}
+		for i, pod := range pods.Items {
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.IPPoolAnnotation, ns.Annotations[util.IPPoolAnnotation])
+			framework.ExpectEqual(pod.Status.PodIP, expectedIPs[i])
+		}
+	})
 
 	framework.ConformanceIt("should allocate static ip for statefulset", func() {
 		replicas := 3
