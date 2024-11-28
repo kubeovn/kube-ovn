@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"reflect"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 )
 
 func (c *Controller) enqueueAddVMIMigration(obj interface{}) {
@@ -54,7 +54,7 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 
 	vmiMigration, err := c.config.KubevirtClient.VirtualMachineInstanceMigration(namespace).Get(context.TODO(), name, metav1.GetOptions{})
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("failed to get VMI migration by key %s: %v", key, err))
+		utilruntime.HandleError(fmt.Errorf("failed to get VMI migration by key %s: %w", key, err))
 		return err
 	}
 	if vmiMigration.Status.MigrationState == nil {
@@ -64,7 +64,7 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 
 	vmi, err := c.config.KubevirtClient.VirtualMachineInstance(namespace).Get(context.TODO(), vmiMigration.Spec.VMIName, metav1.GetOptions{})
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("failed to get VMI by name %s: %v", vmiMigration.Spec.VMIName, err))
+		utilruntime.HandleError(fmt.Errorf("failed to get VMI by name %s: %w", vmiMigration.Spec.VMIName, err))
 		return err
 	}
 
@@ -88,9 +88,14 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 
 	sourcePodName := vmi.Status.MigrationState.SourcePod
 	sourcePod, err := c.config.KubeClient.CoreV1().Pods(namespace).Get(context.TODO(), sourcePodName, metav1.GetOptions{})
+	if err != nil {
+		klog.Errorf("failed to get source pod %s, %w", sourcePodName, err)
+		return err
+	}
+
 	podNets, err := c.getPodKubeovnNets(sourcePod)
 	if err != nil {
-		klog.Errorf("failed to get pod nets %v", err)
+		klog.Errorf("failed to get pod nets %w", err)
 		return err
 	}
 
