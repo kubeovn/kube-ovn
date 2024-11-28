@@ -360,7 +360,7 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 	initEnv = append(initEnv, ipv6Env...)
 
 	// generate workload
-	labels := map[string]string{util.VpcEgressGatewayAnnotation: gw.Name}
+	labels := map[string]string{util.VpcEgressGatewayLabel: gw.Name}
 	deploy := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      gw.Spec.Prefix + gw.Name,

@@ -48,9 +48,6 @@ const (
 	LogicalRouterAnnotation = "ovn.kubernetes.io/logical_router"
 	VpcAnnotation           = "ovn.kubernetes.io/vpc"
 
-	VpcEgressGatewayAnnotation = "ovn.kubernetes.io/vpc_egress_gateway"
-	GenerateHashAnnotation     = "ovn.kubernetes.io/generate-hash"
-
 	Layer2ForwardAnnotationTemplate = "%s.kubernetes.io/layer2_forward"
 	PortSecurityAnnotationTemplate  = "%s.kubernetes.io/port_security"
 	PortVipAnnotationTemplate       = "%s.kubernetes.io/port_vips"
@@ -113,6 +110,9 @@ const (
 	NodeNameLabel              = "ovn.kubernetes.io/node-name"
 	NetworkPolicyLogAnnotation = "ovn.kubernetes.io/enable_log"
 	ACLActionsLogAnnotation    = "ovn.kubernetes.io/log_acl_actions"
+
+	VpcEgressGatewayLabel  = "ovn.kubernetes.io/vpc-egress-gateway"
+	GenerateHashAnnotation = "ovn.kubernetes.io/generate-hash"
 
 	VpcLastName     = "ovn.kubernetes.io/last_vpc_name"
 	VpcLastPolicies = "ovn.kubernetes.io/last_policies"

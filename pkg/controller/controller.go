@@ -271,6 +271,7 @@ type Controller struct {
 	recorder               record.EventRecorder
 	informerFactory        kubeinformers.SharedInformerFactory
 	cmInformerFactory      kubeinformers.SharedInformerFactory
+	deployInformerFactory  kubeinformers.SharedInformerFactory
 	kubeovnInformerFactory kubeovninformer.SharedInformerFactory
 	anpInformerFactory     anpinformer.SharedInformerFactory
 }
@@ -294,6 +295,11 @@ func Run(ctx context.Context, config *Configuration) {
 		&workqueue.TypedBucketRateLimiter[string]{Limiter: rate.NewLimiter(rate.Limit(10), 100)},
 	)
 
+	selector, err := labels.Parse(util.VpcEgressGatewayLabel)
+	if err != nil {
+		util.LogFatalAndExit(err, "failed to create label selector for vpc egress gateway workload")
+	}
+
 	informerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(config.KubeFactoryClient, 0,
 		kubeinformers.WithTweakListOptions(func(listOption *metav1.ListOptions) {
 			listOption.AllowWatchBookmarks = true
@@ -302,6 +308,11 @@ func Run(ctx context.Context, config *Configuration) {
 		kubeinformers.WithTweakListOptions(func(listOption *metav1.ListOptions) {
 			listOption.AllowWatchBookmarks = true
 		}), kubeinformers.WithNamespace(config.PodNamespace))
+	deployInformerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(config.KubeFactoryClient, 0,
+		kubeinformers.WithTweakListOptions(func(listOption *metav1.ListOptions) {
+			listOption.AllowWatchBookmarks = true
+			listOption.LabelSelector = selector.String()
+		}))
 	kubeovnInformerFactory := kubeovninformer.NewSharedInformerFactoryWithOptions(config.KubeOvnFactoryClient, 0,
 		kubeovninformer.WithTweakListOptions(func(listOption *metav1.ListOptions) {
 			listOption.AllowWatchBookmarks = true
@@ -330,7 +341,7 @@ func Run(ctx context.Context, config *Configuration) {
 	nodeInformer := informerFactory.Core().V1().Nodes()
 	serviceInformer := informerFactory.Core().V1().Services()
 	endpointInformer := informerFactory.Core().V1().Endpoints()
-	deploymentInformer := informerFactory.Apps().V1().Deployments()
+	deploymentInformer := deployInformerFactory.Apps().V1().Deployments()
 	qosPolicyInformer := kubeovnInformerFactory.Kubeovn().V1().QoSPolicies()
 	configMapInformer := cmInformerFactory.Core().V1().ConfigMaps()
 	npInformer := informerFactory.Networking().V1().NetworkPolicies()
@@ -531,11 +542,11 @@ func Run(ctx context.Context, config *Configuration) {
 		recorder:               recorder,
 		informerFactory:        informerFactory,
 		cmInformerFactory:      cmInformerFactory,
+		deployInformerFactory:  deployInformerFactory,
 		kubeovnInformerFactory: kubeovnInformerFactory,
 		anpInformerFactory:     anpInformerFactory,
 	}
 
-	var err error
 	if controller.OVNNbClient, err = ovs.NewOvnNbClient(
 		config.OvnNbAddr,
 		config.OvnTimeout,
@@ -609,6 +620,7 @@ func Run(ctx context.Context, config *Configuration) {
 	// Wait for the caches to be synced before starting workers
 	controller.informerFactory.Start(ctx.Done())
 	controller.cmInformerFactory.Start(ctx.Done())
+	controller.deployInformerFactory.Start(ctx.Done())
 	controller.kubeovnInformerFactory.Start(ctx.Done())
 	controller.anpInformerFactory.Start(ctx.Done())
 
