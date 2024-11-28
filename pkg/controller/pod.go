@@ -513,14 +513,15 @@ func (c *Controller) reconcileAllocateSubnets(cachedPod, pod *v1.Pod, needAlloca
 	// todo: isVmPod, getPodType, getNameByPod has duplicated logic
 
 	var err error
-	var isMigrate, migrated, migratedFail bool
-	var vmKey, srcNodeName, targetNodeName string
+	var vmKey string
+	// var isMigrate, migrated, migratedFail bool
+	// var vmKey, srcNodeName, targetNodeName string
 	if isVMPod && c.config.EnableKeepVMIP {
 		vmKey = fmt.Sprintf("%s/%s", namespace, vmName)
-		if isMigrate, migrated, migratedFail, srcNodeName, targetNodeName, err = c.migrateVM(pod, vmKey); err != nil {
-			klog.Error(err)
-			return nil, err
-		}
+		// if isMigrate, migrated, migratedFail, srcNodeName, targetNodeName, err = c.migrateVM(pod, vmKey); err != nil {
+		// 	klog.Error(err)
+		// 	return nil, err
+		// }
 	}
 	// Avoid create lsp for already running pod in ovn-nb when controller restart
 	for _, podNet := range needAllocatePodNets {
@@ -604,23 +605,23 @@ func (c *Controller) reconcileAllocateSubnets(cachedPod, pod *v1.Pod, needAlloca
 				return nil, err
 			}
 
-			if isMigrate {
-				if migrated {
-					klog.Infof("migrate end reset options for lsp %s from %s to %s, migrated fail: %t", portName, srcNodeName, targetNodeName, migratedFail)
-					if err := c.OVNNbClient.ResetLogicalSwitchPortMigrateOptions(portName, srcNodeName, targetNodeName, migratedFail); err != nil {
-						err = fmt.Errorf("failed to clean migrate options for lsp %s, %w", portName, err)
-						klog.Error(err)
-						return nil, err
-					}
-				} else {
-					klog.Infof("migrate start set options for lsp %s from %s to %s", portName, srcNodeName, targetNodeName)
-					if err := c.OVNNbClient.SetLogicalSwitchPortMigrateOptions(portName, srcNodeName, targetNodeName); err != nil {
-						err = fmt.Errorf("failed to set migrate options for lsp %s, %w", portName, err)
-						klog.Error(err)
-						return nil, err
-					}
-				}
-			}
+			// if isMigrate {
+			// 	if migrated {
+			// 		klog.Infof("migrate end reset options for lsp %s from %s to %s, migrated fail: %t", portName, srcNodeName, targetNodeName, migratedFail)
+			// 		if err := c.OVNNbClient.ResetLogicalSwitchPortMigrateOptions(portName, srcNodeName, targetNodeName, migratedFail); err != nil {
+			// 			err = fmt.Errorf("failed to clean migrate options for lsp %s, %w", portName, err)
+			// 			klog.Error(err)
+			// 			return nil, err
+			// 		}
+			// 	} else {
+			// 		klog.Infof("migrate start set options for lsp %s from %s to %s", portName, srcNodeName, targetNodeName)
+			// 		if err := c.OVNNbClient.SetLogicalSwitchPortMigrateOptions(portName, srcNodeName, targetNodeName); err != nil {
+			// 			err = fmt.Errorf("failed to set migrate options for lsp %s, %w", portName, err)
+			// 			klog.Error(err)
+			// 			return nil, err
+			// 		}
+			// 	}
+			// }
 
 			if pod.Annotations[fmt.Sprintf(util.Layer2ForwardAnnotationTemplate, podNet.ProviderName)] == "true" {
 				if err := c.OVNNbClient.EnablePortLayer2forward(portName); err != nil {

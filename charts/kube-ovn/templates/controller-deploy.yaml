@@ -139,6 +139,7 @@ spec:
           - --enable-anp={{- .Values.func.ENABLE_ANP }}
           - --ovsdb-con-timeout={{- .Values.func.OVSDB_CON_TIMEOUT }}
           - --ovsdb-inactivity-timeout={{- .Values.func.OVSDB_INACTIVITY_TIMEOUT }}
+          - --kubevirt-live-migration-optimize={{- .Values.func.KUBEVIRT_LIVE_MIGRATION_OPTIMIZE }}
           securityContext:
             runAsUser: {{ include "kubeovn.runAsUser" . }}
             privileged: false

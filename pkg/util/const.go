@@ -319,6 +319,7 @@ const (
 	MigrationPhaseStarted         = "started"
 	MigrationPhaseSucceeded       = "succeeded"
 	MigrationPhaseFailed          = "failed"
+	KubevirtNamespace             = "kubevirt"
 
 	DefaultOVNIPSecCA       = "ovn-ipsec-ca"
 	DefaultOVSCACertPath    = "/var/lib/openvswitch/pki/switchca/cacert.pem"
