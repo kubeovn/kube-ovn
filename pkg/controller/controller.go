@@ -600,7 +600,10 @@ func Run(ctx context.Context, config *Configuration) {
 	controller.cmInformerFactory.Start(ctx.Done())
 	controller.kubeovnInformerFactory.Start(ctx.Done())
 	controller.anpInformerFactory.Start(ctx.Done())
-	kubevirtInformerFactory.Start(ctx.Done())
+
+	if controller.config.KubevirtLiveMigrationOptimize {
+		kubevirtInformerFactory.Start(ctx.Done())
+	}
 
 	klog.Info("Waiting for informer caches to sync")
 	cacheSyncs := []cache.InformerSynced{
@@ -1065,7 +1068,10 @@ func (c *Controller) shutdown() {
 	c.syncSgPortsQueue.ShutDown()
 
 	c.addOrUpdateCsrQueue.ShutDown()
-	c.addOrUpdateVmiMigrationQueue.ShutDown()
+
+	if c.config.KubevirtLiveMigrationOptimize {
+		c.addOrUpdateVmiMigrationQueue.ShutDown()
+	}
 }
 
 func (c *Controller) startWorkers(ctx context.Context) {
@@ -1082,7 +1088,6 @@ func (c *Controller) startWorkers(ctx context.Context) {
 	go wait.Until(runWorker("update snat for vpc nat gateway", c.updateVpcSnatQueue, c.handleUpdateVpcSnat), time.Second, ctx.Done())
 	go wait.Until(runWorker("update subnet route for vpc nat gateway", c.updateVpcSubnetQueue, c.handleUpdateNatGwSubnetRoute), time.Second, ctx.Done())
 	go wait.Until(runWorker("add/update csr", c.addOrUpdateCsrQueue, c.handleAddOrUpdateCsr), time.Second, ctx.Done())
-	go wait.Until(runWorker("add/update vmiMigration ", c.addOrUpdateVmiMigrationQueue, c.handleAddOrUpdateVMIMigration), 0, ctx.Done())
 	// add default and join subnet and wait them ready
 	go wait.Until(runWorker("add/update subnet", c.addOrUpdateSubnetQueue, c.handleAddOrUpdateSubnet), time.Second, ctx.Done())
 	go wait.Until(runWorker("add/update ippool", c.addOrUpdateIPPoolQueue, c.handleAddOrUpdateIPPool), time.Second, ctx.Done())
@@ -1270,6 +1275,10 @@ func (c *Controller) startWorkers(ctx context.Context) {
 		go wait.Until(runWorker("add base admin network policy", c.addBanpQueue, c.handleAddBanp), time.Second, ctx.Done())
 		go wait.Until(runWorker("update base admin network policy", c.updateBanpQueue, c.handleUpdateBanp), time.Second, ctx.Done())
 		go wait.Until(runWorker("delete base admin network policy", c.deleteBanpQueue, c.handleDeleteBanp), time.Second, ctx.Done())
+	}
+
+	if c.config.KubevirtLiveMigrationOptimize {
+		go wait.Until(runWorker("add/update vmiMigration ", c.addOrUpdateVmiMigrationQueue, c.handleAddOrUpdateVMIMigration), 50*time.Millisecond, ctx.Done())
 	}
 }
 
