@@ -42,9 +42,16 @@ jobs:
           if [ ${{ github.event_name }} != 'pull_request' ]; then
             exit
           fi
-          if git diff --name-only HEAD^ HEAD | grep -q ^dist/images/Dockerfile.base$; then
+          tmp_dir=`mktemp -d`
+          cat > "$tmp_dir/on_changes.txt" <<EOF
+          dist/images/Dockerfile.base
+          dist/images/go-deps/download-go-deps.sh
+          dist/images/go-deps/rebuild-go-deps.sh
+          EOF
+          if git diff --name-only HEAD^ HEAD | grep -Ff "$tmp_dir/on_changes.txt"; then
             echo build-base=1 >> "$GITHUB_OUTPUT"
           fi
+          rm -frv "$tmp_dir"
 
       - uses: jlumbroso/free-disk-space@v1.3.1
         if: steps.check.outputs.build-base == 1
