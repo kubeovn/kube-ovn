@@ -317,7 +317,7 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 		annotations[fmt.Sprintf(util.IPPoolAnnotationTemplate, extSubnet.Spec.Provider)] = strings.Join(gw.Spec.ExternalIPs, ";")
 	}
 
-	// collect egress polcies
+	// collect egress policies
 	ipv4ForwardSrc, ipv6ForwardSrc := set.New[string](), set.New[string]()
 	ipv4SNATSrc, ipv6SNATSrc := set.New[string](), set.New[string]()
 	for _, policy := range gw.Spec.Policies {
