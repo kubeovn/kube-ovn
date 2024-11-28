@@ -89,13 +89,15 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 	sourcePodName := vmi.Status.MigrationState.SourcePod
 	sourcePod, err := c.config.KubeClient.CoreV1().Pods(namespace).Get(context.TODO(), sourcePodName, metav1.GetOptions{})
 	if err != nil {
-		klog.Errorf("failed to get source pod %s, %w", sourcePodName, err)
+		err = fmt.Errorf("failed to get source pod %s, %w", sourcePodName, err)
+		klog.Error(err)
 		return err
 	}
 
 	podNets, err := c.getPodKubeovnNets(sourcePod)
 	if err != nil {
-		klog.Errorf("failed to get pod nets %w", err)
+		err = fmt.Errorf("failed to get pod nets %w", err)
+		klog.Error(err)
 		return err
 	}
 
