@@ -31,18 +31,13 @@ func init() {
 
 func (c *Controller) enqueueAddDeployment(obj interface{}) {
 	deploy := obj.(*appsv1.Deployment)
-	var vegName string
 	for _, ref := range deploy.OwnerReferences {
 		if ref.APIVersion == vpcEgressGatewayGroupVersion && ref.Kind == vpcEgressGatewayKind {
-			vegName = ref.Name
-			break
+			key := fmt.Sprintf("%s/%s", deploy.Namespace, ref.Name)
+			klog.V(3).Infof("enqueue update vpc-egress-gateway %s", key)
+			c.addOrUpdateVpcEgressGatewayQueue.Add(key)
+			return
 		}
-	}
-
-	if vegName != "" {
-		key := fmt.Sprintf("%s/%s", deploy.Namespace, vegName)
-		klog.V(3).Infof("enqueue update vpc-egress-gateway %s", key)
-		c.addOrUpdateVpcEgressGatewayQueue.Add(key)
 	}
 }
 

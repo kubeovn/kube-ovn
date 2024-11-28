@@ -308,6 +308,7 @@ func Run(ctx context.Context, config *Configuration) {
 		kubeinformers.WithTweakListOptions(func(listOption *metav1.ListOptions) {
 			listOption.AllowWatchBookmarks = true
 		}), kubeinformers.WithNamespace(config.PodNamespace))
+	// deployment informer used to list/watch vpc egress gateway workloads
 	deployInformerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(config.KubeFactoryClient, 0,
 		kubeinformers.WithTweakListOptions(func(listOption *metav1.ListOptions) {
 			listOption.AllowWatchBookmarks = true

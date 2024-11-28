@@ -122,6 +122,7 @@ func (c *Controller) handleAddOrUpdateVpcEgressGateway(key string) error {
 		bfdIPv4, bfdIPv6 = util.SplitStringIP(bfdIP)
 	}
 
+	// reconcile the vpc egress gateway workload and get the route sources for later OVN resources reconciliation
 	attachmentNetworkName, ipv4Src, ipv6Src, deploy, err := c.reconcileVpcEgressGatewayWorkload(gw, vpc, bfdIP, bfdIPv4, bfdIPv6)
 	if err != nil {
 		klog.Error(err)
@@ -142,6 +143,7 @@ func (c *Controller) handleAddOrUpdateVpcEgressGateway(key string) error {
 		msg := fmt.Sprintf("Waiting for %s %s to be ready", deploy.Kind, deploy.Name)
 		gw.Status.Conditions.SetCondition(kubeovnv1.Ready, corev1.ConditionFalse, "Processing", msg, gw.Generation)
 	} else {
+		// get the pods of the deployment to collect the pod IPs
 		podSelector, err := metav1.LabelSelectorAsSelector(deploy.Spec.Selector)
 		if err != nil {
 			err = fmt.Errorf("failed to get pod selector of deployment %s/%s: %w", deploy.Namespace, deploy.Name, err)
@@ -156,6 +158,7 @@ func (c *Controller) handleAddOrUpdateVpcEgressGateway(key string) error {
 			return err
 		}
 
+		// update gateway status including the internal/external IPs and the nodes where the pods are running
 		gw.Status.Workload.Nodes = make([]string, 0, len(pods))
 		for _, pod := range pods {
 			gw.Status.Workload.Nodes = append(gw.Status.Workload.Nodes, pod.Spec.NodeName)
@@ -176,9 +179,11 @@ func (c *Controller) handleAddOrUpdateVpcEgressGateway(key string) error {
 		return err
 	}
 	if len(gw.Status.Workload.Nodes) == 0 {
+		// the workload is not ready yet
 		return nil
 	}
 
+	// reconcile OVN routes
 	nextHopsIPv4, hextHopsIPv6 := util.SplitIpsByProtocol(podIPs)
 	if err = c.reconcileVpcEgressGatewayOVNRoutes(gw, 4, vpc.Status.Router, vpc.Status.BFDPort.Name, bfdIPv4, set.New(nextHopsIPv4...), ipv4Src); err != nil {
 		klog.Error(err)
@@ -227,6 +232,7 @@ func (c *Controller) updateVpcEgressGatewayStatus(gw *kubeovnv1.VpcEgressGateway
 	return updateGateway, nil
 }
 
+// create or update vpc egress gateway workload
 func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGateway, vpc *kubeovnv1.Vpc, bfdIP, bfdIPv4, bfdIPv6 string) (string, set.Set[string], set.Set[string], *appsv1.Deployment, error) {
 	image := c.config.Image
 	if gw.Spec.Image != "" {
@@ -282,15 +288,19 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 	}
 	attachmentNetworkName := fmt.Sprintf("%s/%s", nadNamespace, nadName)
 
+	// generate route annotations used to configure routes in the pod
 	routes := util.NewPodRoutes()
 	intCIDRIPv4, intCIDRIPv6 := util.SplitStringIP(intSubnet.Spec.CIDRBlock)
 	intGatewayIPv4, intGatewayIPv6 := util.SplitStringIP(intSubnet.Spec.Gateway)
 	extGatewayIPv4, extGatewayIPv6 := util.SplitStringIP(extSubnet.Spec.Gateway)
+	// add routes for the VPC BFD Port so that the egress gateway can establish BFD session(s) with it
 	routes.Add(util.OvnProvider, bfdIPv4, intGatewayIPv4)
 	routes.Add(util.OvnProvider, bfdIPv6, intGatewayIPv6)
+	// add default routes to forward traffic to the external network
 	routes.Add(extSubnet.Spec.Provider, "0.0.0.0/0", extGatewayIPv4)
 	routes.Add(extSubnet.Spec.Provider, "::/0", extGatewayIPv6)
 
+	// generate pod annotations
 	annotations, err := routes.ToAnnotations()
 	if err != nil {
 		klog.Error(err)
@@ -299,12 +309,15 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 	annotations[util.AttachmentNetworkAnnotation] = attachmentNetworkName
 	annotations[util.LogicalSwitchAnnotation] = intSubnet.Name
 	if len(gw.Spec.InternalIPs) != 0 {
+		// set internal IPs
 		annotations[util.IPPoolAnnotation] = strings.Join(gw.Spec.InternalIPs, ";")
 	}
 	if len(gw.Spec.ExternalIPs) != 0 {
+		// set external IPs
 		annotations[fmt.Sprintf(util.IPPoolAnnotationTemplate, extSubnet.Spec.Provider)] = strings.Join(gw.Spec.ExternalIPs, ";")
 	}
 
+	// collect egress polcies
 	ipv4ForwardSrc, ipv6ForwardSrc := set.New[string](), set.New[string]()
 	ipv4SNATSrc, ipv6SNATSrc := set.New[string](), set.New[string]()
 	for _, policy := range gw.Spec.Policies {
@@ -339,6 +352,7 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 		}
 	}
 
+	// calculate internal route destinations and SNAT source CIDR blocks
 	intRouteDstIPv4, intRouteDstIPv6 := ipv4ForwardSrc.Union(ipv4SNATSrc), ipv6ForwardSrc.Union(ipv6SNATSrc)
 	intRouteDstIPv4.Insert(bfdIPv4)
 	intRouteDstIPv6.Insert(bfdIPv6)
@@ -347,6 +361,8 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 	ipv4SNATSrc.Delete("")
 	ipv6SNATSrc.Delete("")
 
+	// generate init container environment variables
+	// the init container is responsible for adding routes and SNAT rules to the pod network namespace
 	initEnv, err := vpcEgressGatewayInitContainerEnv(4, intGatewayIPv4, intCIDRIPv4, intRouteDstIPv4, ipv4SNATSrc)
 	if err != nil {
 		klog.Error(err)
@@ -440,16 +456,19 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 			},
 		},
 	}
+	// set owner reference so that the workload will be deleted automatically when the vpc egress gateway is deleted
 	if err = util.SetOwnerReference(gw, deploy); err != nil {
 		klog.Error(err)
 		return attachmentNetworkName, nil, nil, nil, err
 	}
 
 	if bfdIP != "" {
+		// run BFD in the gateway container	to establish BFD session(s) with the VPC BFD LRP
 		container := vpcEgressGatewayContainerBFDD(image, bfdIP, gw.Spec.BFD.MinTX, gw.Spec.BFD.MinRX, gw.Spec.BFD.Multiplier)
 		deploy.Spec.Template.Spec.Containers[0] = container
 	}
 
+	// generate hash for the workload to determine whether to update the existing workload or not
 	hash, err := util.Sha256HashObject(deploy)
 	if err != nil {
 		err = fmt.Errorf("failed to hash generated deployment %s/%s: %w", deploy.Namespace, deploy.Name, err)
@@ -458,6 +477,7 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 	}
 
 	hash = hash[:12]
+	// replicas and the hash annotation should be excluded from hash calculation
 	deploy.Spec.Replicas = ptr.To(gw.Spec.Replicas)
 	deploy.Annotations = map[string]string{util.GenerateHashAnnotation: hash}
 	if currentDeploy, err := c.deploymentsLister.Deployments(gw.Namespace).Get(deploy.Name); err != nil {
@@ -474,6 +494,7 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 		}
 	} else if !reflect.DeepEqual(currentDeploy.Spec.Replicas, deploy.Spec.Replicas) ||
 		currentDeploy.Annotations[util.GenerateHashAnnotation] != hash {
+		// update the deployment if replicas or hash annotation is changed
 		if deploy, err = c.config.KubeClient.AppsV1().Deployments(gw.Namespace).
 			Update(context.Background(), deploy, metav1.UpdateOptions{}); err != nil {
 			err = fmt.Errorf("failed to update deployment %s/%s: %w", deploy.Namespace, deploy.Name, err)
@@ -481,9 +502,11 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 			return attachmentNetworkName, nil, nil, nil, err
 		}
 	} else {
+		// no need to create or update the deployment
 		deploy = currentDeploy
 	}
 
+	// return the source CIDR blocks excluding BFD LRP IPs for later OVN resources reconciliation
 	intRouteDstIPv4.Delete(bfdIPv4)
 	intRouteDstIPv6.Delete(bfdIPv6)
 	deploy.APIVersion, deploy.Kind = deploymentGroupVersion, deploymentKind
@@ -503,6 +526,7 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 		return err
 	}
 
+	// reconcile OVN BFD entries
 	bfdIDs := set.New[string]()
 	bfdDstIPs := nextHops.Clone()
 	bfdMap := make(map[string]*string, nextHops.Len())
@@ -715,6 +739,7 @@ func vpcEgressGatewayContainerBFDD(image, bfdIP string, minTX, minRX, multiplier
 			Name:  "BFD_MULTI",
 			Value: strconv.Itoa(int(multiplier)),
 		}},
+		// wait for the BFD process to be running and initialize the BFD configuration
 		StartupProbe: &corev1.Probe{
 			ProbeHandler: corev1.ProbeHandler{
 				Exec: &corev1.ExecAction{

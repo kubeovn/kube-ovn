@@ -53,13 +53,19 @@ type VpcSpec struct {
 	EnableExternal       bool           `json:"enableExternal,omitempty"`
 	ExtraExternalSubnets []string       `json:"extraExternalSubnets,omitempty"`
 	EnableBfd            bool           `json:"enableBfd,omitempty"`
-	BFDPort              *BFDPort       `json:"bfdPort"`
+
+	// optional BFD LRP configuration
+	// currently the LRP is used for vpc external gateway only
+	BFDPort *BFDPort `json:"bfdPort"`
 }
 
 type BFDPort struct {
-	Enabled bool   `json:"enabled"`
-	IP      string `json:"ip,omitempty"`
+	Enabled bool `json:"enabled"`
+	// ip address(es) of the BFD port
+	IP string `json:"ip,omitempty"`
 
+	// optional node selector used to select the nodes where the BFD LRP will be hosted
+	// if not specified, at most 3 nodes will be selected
 	NodeSelector *metav1.LabelSelector `json:"nodeSelector,omitempty"`
 }
 

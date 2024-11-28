@@ -13,6 +13,7 @@ import (
 type PodProviderRoutes map[string][]string // gateway -> destinations
 
 // PodRoutes represents configured routes for all providers/interfaces
+// This type is used to generate annotations needed by kube-ovn-cni to configure routes in the pod
 type PodRoutes map[string]PodProviderRoutes // provider -> PodProviderRoutes
 
 func NewPodRoutes() PodRoutes {
