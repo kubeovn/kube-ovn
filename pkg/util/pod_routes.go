@@ -9,7 +9,11 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/request"
 )
 
-type PodRoutes map[string]map[string][]string
+// PodProviderRoutes represents configured routes for a provider/interface
+type PodProviderRoutes map[string][]string // gateway -> destinations
+
+// PodRoutes represents configured routes for all providers/interfaces
+type PodRoutes map[string]PodProviderRoutes // provider -> PodProviderRoutes
 
 func NewPodRoutes() PodRoutes {
 	return make(PodRoutes)
@@ -20,8 +24,8 @@ func (r PodRoutes) Add(provider, destination, gateway string) {
 		return
 	}
 
-	if _, ok := r[provider]; !ok {
-		r[provider] = make(map[string][]string)
+	if r[provider] == nil {
+		r[provider] = make(PodProviderRoutes)
 	}
 	r[provider][gateway] = append(r[provider][gateway], destination)
 }
