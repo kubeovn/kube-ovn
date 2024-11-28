@@ -338,5 +338,5 @@ replace (
 	k8s.io/mount-utils => k8s.io/mount-utils v0.31.3
 	k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.31.3
 	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.31.3
-// kubevirt.io/client-go => github.com/kubeovn/kubevirt-client-go v0.0.0-20240823060554-65405ba5499d
+	kubevirt.io/client-go => github.com/kubeovn/kubevirt-client-go v0.0.0-20241128091559-882afb5db2f6
 )

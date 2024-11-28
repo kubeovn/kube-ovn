@@ -382,6 +382,8 @@ github.com/kubeovn/go-iptables v0.0.0-20230322103850-8619a8ab3dca h1:fTMjoho2et9
 github.com/kubeovn/go-iptables v0.0.0-20230322103850-8619a8ab3dca/go.mod h1:jY1XeGzkx8ASNJ+SqQSxTESNXARkjvt+I6IJOTnzIjw=
 github.com/kubeovn/gonetworkmanager/v2 v2.0.0-20230905082151-e28c4d73a589 h1:y9exo1hjCsq7jsGUzt11kxhTiEGrGSQ0ZqibAiZk2PQ=
 github.com/kubeovn/gonetworkmanager/v2 v2.0.0-20230905082151-e28c4d73a589/go.mod h1:49upX+/hUyppWIqu58cumojyIwXdkA8k6reA/mQlKuI=
+github.com/kubeovn/kubevirt-client-go v0.0.0-20241128091559-882afb5db2f6 h1:IRNIUu06jdpvv+XunRszHH53YaVWgv1zcLyCGj1K4qk=
+github.com/kubeovn/kubevirt-client-go v0.0.0-20241128091559-882afb5db2f6/go.mod h1:bMA7q9MnyN7DExWPH8uJhpqwcv+XqiaURV+xeap9TIg=
 github.com/kubeovn/libovsdb v0.0.0-20240814054845-978196448fb2 h1:jH4yKIJLu2ZBy6fLMrlVa27ccgjzc53rsGDzNvddh0E=
 github.com/kubeovn/libovsdb v0.0.0-20240814054845-978196448fb2/go.mod h1:od3agzU0e50RPBxap7mMvBWZ+u37kqX0W849BYufdHI=
 github.com/kubeovn/ovsdb v0.0.0-20240410091831-5dd26006c475 h1:KZba2Kj9TXCUdUSqOR3eiy4VvkkIyhDVImYmYs6GQWU=
@@ -1154,8 +1156,6 @@ kernel.org/pub/linux/libs/security/libcap/psx v1.2.72 h1:Lnu8woGlvNdwCbBa5urxGO+
 kernel.org/pub/linux/libs/security/libcap/psx v1.2.72/go.mod h1:+l6Ee2F59XiJ2I6WR5ObpC1utCQJZ/VLsEbQCD8RG24=
 kubevirt.io/api v1.4.0 h1:dDLyQLSp9obzsDrv3cyL1olIc/66IWVaGiR3gfPfgT0=
 kubevirt.io/api v1.4.0/go.mod h1:qcnumjJeOCo+qdYXf0OjpHGMhad0SAn4i0h6IAP+6Eg=
-kubevirt.io/client-go v1.4.0 h1:0BaHoIaZwHSKGJctVft/kwE49V7/sEgq4y9c+nll6AY=
-kubevirt.io/client-go v1.4.0/go.mod h1:GnQNJ0+9PBS7BCVgnTetdzAbUOCRTEXc8KNViECD6bE=
 kubevirt.io/containerized-data-importer-api v1.58.1 h1:Zbf0pCvxb4fBvtMR6uI2OIJZ4UfwFxripzOLMO4HPbI=
 kubevirt.io/containerized-data-importer-api v1.58.1/go.mod h1:Y/8ETgHS1GjO89bl682DPtQOYEU/1ctPFBz6Sjxm4DM=
 kubevirt.io/controller-lifecycle-operator-sdk/api v0.0.0-20220329064328-f3cc58c6ed90 h1:QMrd0nKP0BGbnxTqakhDZAUhGKxPiPiN5gSDqKUmGGc=
