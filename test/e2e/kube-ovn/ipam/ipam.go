@@ -179,7 +179,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 		}
 	})
 	framework.ConformanceIt("should allocate IPs from namespace IPPool annotation for deployment without IPPool annotation", func() {
-		namespaceName := "test-namespace"
+		newNamespaceName := "test-namespace"
 		deployName := "test-deployment"
 		replicas := 3
 
@@ -187,14 +187,14 @@ var _ = framework.Describe("[group:ipam]", func() {
 		nsAnnotations := map[string]string{
 			util.IPPoolAnnotation: "192.168.1.10,192.168.1.11,192.168.1.12",
 		}
-		ns := framework.MakeNamespace(namespaceName, nil, nsAnnotations)
+		ns := framework.MakeNamespace(newNamespaceName, nil, nsAnnotations)
 		ns = nsClient.Create(ns)
 
 		ginkgo.By("Creating deployment " + deployName + " without IPPool")
 		labels := map[string]string{"app": deployName}
 		deploy := framework.MakeDeployment(deployName, int32(replicas), labels, nil, "pause", framework.PauseImage, "")
-		deploy.ObjectMeta.Namespace = namespaceName
-		deploy = deployClient.CreateSync(deploy)
+		deploy.ObjectMeta.Namespace = newNamespaceName
+		deploy = deployClient.Create(deploy)
 
 		ginkgo.By("Getting pods for deployment " + deployName)
 		pods, err := deployClient.GetPods(deploy)
