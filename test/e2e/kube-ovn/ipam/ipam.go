@@ -182,6 +182,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 		newNamespaceName := "test-namespace"
 		deployName := "test-deployment"
 		replicas := 3
+		newDc := framework.NewDeploymentClient(cs, newNamespaceName)
 
 		ginkgo.By("Creating namespace " + namespaceName)
 		nsAnnotations := map[string]string{
@@ -194,7 +195,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 		labels := map[string]string{"app": deployName}
 		deploy := framework.MakeDeployment(deployName, int32(replicas), labels, nil, "pause", framework.PauseImage, "")
 		deploy.ObjectMeta.Namespace = newNamespaceName
-		deploy = deployClient.Create(deploy)
+		deploy = newDc.CreateSync(deploy)
 
 		ginkgo.By("Getting pods for deployment " + deployName)
 		pods, err := deployClient.GetPods(deploy)
