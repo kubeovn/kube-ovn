@@ -26,7 +26,7 @@ func (c *Controller) enqueueAddVMIMigration(obj interface{}) {
 	}
 
 	klog.Infof("enqueue add VMI migration %s ", key)
-	c.addOrUpdateVmiMigrationQueue.Add(key)
+	c.addOrUpdateVMIMigrationQueue.Add(key)
 }
 
 func (c *Controller) enqueueUpdateVMIMigration(oldObj, newObj interface{}) {
@@ -41,7 +41,7 @@ func (c *Controller) enqueueUpdateVMIMigration(oldObj, newObj interface{}) {
 			return
 		}
 		klog.Infof("enqueue update VMI migration %s", key)
-		c.addOrUpdateVmiMigrationQueue.Add(key)
+		c.addOrUpdateVMIMigrationQueue.Add(key)
 	}
 }
 
@@ -79,7 +79,7 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 	}
 
 	// use VirtualMachineInsance's MigrationState because VirtualMachineInsanceMigration's MigrationState is not updated util migration finished
-	klog.Infof("Current vmiMigration %s status %s, targetNode %s, sourceNode %s, targetPod %s, sourcePod %s", key,
+	klog.Infof("current vmiMigration %s status %s, target Node %s, source Node %s, target Pod %s, source Pod %s", key,
 		vmiMigration.Status.Phase,
 		vmi.Status.MigrationState.TargetNode,
 		vmi.Status.MigrationState.SourceNode,
@@ -107,8 +107,7 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 		srcNodeName := vmi.Status.MigrationState.SourceNode
 		targetNodeName := vmi.Status.MigrationState.TargetNode
 		switch vmiMigration.Status.Phase {
-		// when migration is targetready or running, set migrate options for lsp, sometimes migration phase skip targetready
-		case kubevirtv1.MigrationTargetReady, kubevirtv1.MigrationRunning:
+		case kubevirtv1.MigrationRunning:
 			klog.Infof("migrate start set options for lsp %s from %s to %s", portName, srcNodeName, targetNodeName)
 			if err := c.OVNNbClient.SetLogicalSwitchPortMigrateOptions(portName, srcNodeName, targetNodeName); err != nil {
 				err = fmt.Errorf("failed to set migrate options for lsp %s, %w", portName, err)
@@ -116,14 +115,14 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 				return err
 			}
 		case kubevirtv1.MigrationSucceeded:
-			klog.Infof("migrate end reset options for lsp %s from %s to %s, migrated fail: %t", portName, srcNodeName, targetNodeName, false)
+			klog.Infof("migrate end reset options for lsp %s from %s to %s, migrated succeed", portName, srcNodeName, targetNodeName)
 			if err := c.OVNNbClient.ResetLogicalSwitchPortMigrateOptions(portName, srcNodeName, targetNodeName, false); err != nil {
 				err = fmt.Errorf("failed to clean migrate options for lsp %s, %w", portName, err)
 				klog.Error(err)
 				return err
 			}
 		case kubevirtv1.MigrationFailed:
-			klog.Infof("migrate end reset options for lsp %s from %s to %s, migrated fail: %t", portName, srcNodeName, targetNodeName, true)
+			klog.Infof("migrate end reset options for lsp %s from %s to %s, migrated fail", portName, srcNodeName, targetNodeName)
 			if err := c.OVNNbClient.ResetLogicalSwitchPortMigrateOptions(portName, srcNodeName, targetNodeName, true); err != nil {
 				err = fmt.Errorf("failed to clean migrate options for lsp %s, %w", portName, err)
 				klog.Error(err)
@@ -132,4 +131,13 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 		}
 	}
 	return nil
+}
+
+func (c *Controller) isVMIMigrationCRDInstalled() bool {
+	_, err := c.config.ExtClient.ApiextensionsV1().CustomResourceDefinitions().Get(context.TODO(), "virtualmachineinstancemigrations.kubevirt.io", metav1.GetOptions{})
+	if err != nil {
+		return false
+	}
+	klog.Info("Detect VMI Migration CRD")
+	return true
 }

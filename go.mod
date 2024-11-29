@@ -47,6 +47,7 @@ require (
 	google.golang.org/protobuf v1.35.2
 	gopkg.in/k8snetworkplumbingwg/multus-cni.v4 v4.1.3
 	k8s.io/api v0.31.3
+	k8s.io/apiextensions-apiserver v0.31.3
 	k8s.io/apimachinery v0.31.3
 	k8s.io/client-go v12.0.0+incompatible
 	k8s.io/component-base v0.31.3
@@ -275,7 +276,6 @@ require (
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	howett.net/plist v1.0.1 // indirect
-	k8s.io/apiextensions-apiserver v0.31.3 // indirect
 	k8s.io/apiserver v0.31.3 // indirect
 	k8s.io/cli-runtime v0.31.3 // indirect
 	k8s.io/cloud-provider v0.31.3 // indirect
@@ -307,7 +307,6 @@ replace (
 	github.com/mdlayher/arp => github.com/kubeovn/arp v0.0.0-20240218024213-d9612a263f68
 	github.com/openshift/api => github.com/openshift/api v0.0.0-20191219222812-2987a591a72c
 	github.com/openshift/client-go => github.com/openshift/client-go v0.0.0-20210112165513-ebc401615f47
-	// github.com/openshift/client-go => github.com/openshift/client-go v0.0.1
 	github.com/ovn-org/libovsdb => github.com/kubeovn/libovsdb v0.0.0-20240814054845-978196448fb2
 	k8s.io/api => k8s.io/api v0.31.3
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.31.3

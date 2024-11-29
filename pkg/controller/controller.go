@@ -260,7 +260,9 @@ type Controller struct {
 	addOrUpdateCsrQueue workqueue.TypedRateLimitingInterface[string]
 
 	vmiMigrationSynced           cache.InformerSynced
-	addOrUpdateVmiMigrationQueue workqueue.TypedRateLimitingInterface[string]
+	addOrUpdateVMIMigrationQueue workqueue.TypedRateLimitingInterface[string]
+	kubevirtInformerFactory      kubevirtController.KubeInformerFactory
+	hasKubevirtVMIMigration      bool
 
 	recorder               record.EventRecorder
 	informerFactory        kubeinformers.SharedInformerFactory
@@ -515,7 +517,8 @@ func Run(ctx context.Context, config *Configuration) {
 		addOrUpdateCsrQueue: newTypedRateLimitingQueue[string]("AddOrUpdateCSR", custCrdRateLimiter),
 
 		vmiMigrationSynced:           vmiMigrationInformer.HasSynced,
-		addOrUpdateVmiMigrationQueue: newTypedRateLimitingQueue[string]("AddOrUpdateVmiMigration", nil),
+		addOrUpdateVMIMigrationQueue: newTypedRateLimitingQueue[string]("AddOrUpdateVMIMigration", nil),
+		kubevirtInformerFactory:      kubevirtInformerFactory,
 
 		recorder:               recorder,
 		informerFactory:        informerFactory,
@@ -601,7 +604,8 @@ func Run(ctx context.Context, config *Configuration) {
 	controller.kubeovnInformerFactory.Start(ctx.Done())
 	controller.anpInformerFactory.Start(ctx.Done())
 
-	if controller.config.KubevirtLiveMigrationOptimize {
+	controller.hasKubevirtVMIMigration = controller.isVMIMigrationCRDInstalled()
+	if controller.config.EnableLiveMigrationOptimize && controller.hasKubevirtVMIMigration {
 		kubevirtInformerFactory.Start(ctx.Done())
 	}
 
@@ -625,7 +629,7 @@ func Run(ctx context.Context, config *Configuration) {
 		cacheSyncs = append(cacheSyncs, controller.anpsSynced, controller.banpsSynced)
 	}
 
-	if controller.config.KubevirtLiveMigrationOptimize {
+	if controller.config.EnableLiveMigrationOptimize && controller.hasKubevirtVMIMigration {
 		cacheSyncs = append(cacheSyncs, controller.vmiMigrationSynced)
 	}
 
@@ -867,7 +871,7 @@ func Run(ctx context.Context, config *Configuration) {
 		}
 	}
 
-	if config.KubevirtLiveMigrationOptimize {
+	if config.EnableLiveMigrationOptimize && controller.hasKubevirtVMIMigration {
 		if _, err = vmiMigrationInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc:    controller.enqueueAddVMIMigration,
 			UpdateFunc: controller.enqueueUpdateVMIMigration,
@@ -1069,8 +1073,8 @@ func (c *Controller) shutdown() {
 
 	c.addOrUpdateCsrQueue.ShutDown()
 
-	if c.config.KubevirtLiveMigrationOptimize {
-		c.addOrUpdateVmiMigrationQueue.ShutDown()
+	if c.config.EnableLiveMigrationOptimize {
+		c.addOrUpdateVMIMigrationQueue.ShutDown()
 	}
 }
 
@@ -1277,8 +1281,8 @@ func (c *Controller) startWorkers(ctx context.Context) {
 		go wait.Until(runWorker("delete base admin network policy", c.deleteBanpQueue, c.handleDeleteBanp), time.Second, ctx.Done())
 	}
 
-	if c.config.KubevirtLiveMigrationOptimize {
-		go wait.Until(runWorker("add/update vmiMigration ", c.addOrUpdateVmiMigrationQueue, c.handleAddOrUpdateVMIMigration), 50*time.Millisecond, ctx.Done())
+	if c.config.EnableLiveMigrationOptimize && c.hasKubevirtVMIMigration {
+		go wait.Until(runWorker("add/update vmiMigration ", c.addOrUpdateVMIMigrationQueue, c.handleAddOrUpdateVMIMigration), 50*time.Millisecond, ctx.Done())
 	}
 }
 

@@ -10,6 +10,7 @@ import (
 
 	attachnetclientset "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/client/clientset/versioned"
 	"github.com/spf13/pflag"
+	extClientSet "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -39,6 +40,7 @@ type Configuration struct {
 	AnpClient       anpclientset.Interface
 	AttachNetClient attachnetclientset.Interface
 	KubevirtClient  kubecli.KubevirtClient
+	ExtClient       extClientSet.Interface
 
 	KubeFactoryClient    kubernetes.Interface
 	KubeOvnFactoryClient clientset.Interface
@@ -84,17 +86,17 @@ type Configuration struct {
 	LsDnatModDlDst          bool
 	LsCtSkipDstLportIPs     bool
 
-	EnableLb                      bool
-	EnableNP                      bool
-	EnableEipSnat                 bool
-	EnableExternalVpc             bool
-	EnableEcmp                    bool
-	EnableKeepVMIP                bool
-	EnableLbSvc                   bool
-	EnableMetrics                 bool
-	EnableANP                     bool
-	EnableOVNIPSec                bool
-	KubevirtLiveMigrationOptimize bool
+	EnableLb                    bool
+	EnableNP                    bool
+	EnableEipSnat               bool
+	EnableExternalVpc           bool
+	EnableEcmp                  bool
+	EnableKeepVMIP              bool
+	EnableLbSvc                 bool
+	EnableMetrics               bool
+	EnableANP                   bool
+	EnableOVNIPSec              bool
+	EnableLiveMigrationOptimize bool
 
 	ExternalGatewaySwitch   string
 	ExternalGatewayConfigNS string
@@ -154,26 +156,26 @@ func ParseFlags() (*Configuration, error) {
 		argSecureServing   = pflag.Bool("secure-serving", false, "Enable secure serving")
 		argNodePgProbeTime = pflag.Int("nodepg-probe-time", 1, "The probe interval for node port-group, the unit is minute")
 
-		argNetworkType                   = pflag.String("network-type", util.NetworkTypeGeneve, "The ovn network type")
-		argDefaultProviderName           = pflag.String("default-provider-name", "provider", "The vlan or vxlan type default provider interface name")
-		argDefaultInterfaceName          = pflag.String("default-interface-name", "", "The default host interface name in the vlan/vxlan type")
-		argDefaultExchangeLinkName       = pflag.Bool("default-exchange-link-name", false, "exchange link names of OVS bridge and the provider nic in the default provider-network")
-		argDefaultVlanName               = pflag.String("default-vlan-name", "ovn-vlan", "The default vlan name")
-		argDefaultVlanID                 = pflag.Int("default-vlan-id", 1, "The default vlan id")
-		argLsDnatModDlDst                = pflag.Bool("ls-dnat-mod-dl-dst", true, "Set ethernet destination address for DNAT on logical switch")
-		argLsCtSkipDstLportIPs           = pflag.Bool("ls-ct-skip-dst-lport-ips", true, "Skip conntrack for direct traffic between lports")
-		argPodNicType                    = pflag.String("pod-nic-type", "veth-pair", "The default pod network nic implementation type")
-		argEnableLb                      = pflag.Bool("enable-lb", true, "Enable load balancer")
-		argEnableNP                      = pflag.Bool("enable-np", true, "Enable network policy support")
-		argEnableEipSnat                 = pflag.Bool("enable-eip-snat", true, "Enable EIP and SNAT")
-		argEnableExternalVpc             = pflag.Bool("enable-external-vpc", true, "Enable external vpc support")
-		argEnableEcmp                    = pflag.Bool("enable-ecmp", false, "Enable ecmp route for centralized subnet")
-		argKeepVMIP                      = pflag.Bool("keep-vm-ip", true, "Whether to keep ip for kubevirt pod when pod is rebuild")
-		argEnableLbSvc                   = pflag.Bool("enable-lb-svc", false, "Whether to support loadbalancer service")
-		argEnableMetrics                 = pflag.Bool("enable-metrics", true, "Whether to support metrics query")
-		argEnableANP                     = pflag.Bool("enable-anp", false, "Enable support for admin network policy and baseline admin network policy")
-		argEnableOVNIPSec                = pflag.Bool("enable-ovn-ipsec", false, "Whether to enable ovn ipsec")
-		argKubevirtLiveMigrationOptimize = pflag.Bool("kubevirt-live-migration-optimize", false, "Whether to enable kubevirt live migration optimize")
+		argNetworkType                 = pflag.String("network-type", util.NetworkTypeGeneve, "The ovn network type")
+		argDefaultProviderName         = pflag.String("default-provider-name", "provider", "The vlan or vxlan type default provider interface name")
+		argDefaultInterfaceName        = pflag.String("default-interface-name", "", "The default host interface name in the vlan/vxlan type")
+		argDefaultExchangeLinkName     = pflag.Bool("default-exchange-link-name", false, "exchange link names of OVS bridge and the provider nic in the default provider-network")
+		argDefaultVlanName             = pflag.String("default-vlan-name", "ovn-vlan", "The default vlan name")
+		argDefaultVlanID               = pflag.Int("default-vlan-id", 1, "The default vlan id")
+		argLsDnatModDlDst              = pflag.Bool("ls-dnat-mod-dl-dst", true, "Set ethernet destination address for DNAT on logical switch")
+		argLsCtSkipDstLportIPs         = pflag.Bool("ls-ct-skip-dst-lport-ips", true, "Skip conntrack for direct traffic between lports")
+		argPodNicType                  = pflag.String("pod-nic-type", "veth-pair", "The default pod network nic implementation type")
+		argEnableLb                    = pflag.Bool("enable-lb", true, "Enable load balancer")
+		argEnableNP                    = pflag.Bool("enable-np", true, "Enable network policy support")
+		argEnableEipSnat               = pflag.Bool("enable-eip-snat", true, "Enable EIP and SNAT")
+		argEnableExternalVpc           = pflag.Bool("enable-external-vpc", true, "Enable external vpc support")
+		argEnableEcmp                  = pflag.Bool("enable-ecmp", false, "Enable ecmp route for centralized subnet")
+		argKeepVMIP                    = pflag.Bool("keep-vm-ip", true, "Whether to keep ip for kubevirt pod when pod is rebuild")
+		argEnableLbSvc                 = pflag.Bool("enable-lb-svc", false, "Whether to support loadbalancer service")
+		argEnableMetrics               = pflag.Bool("enable-metrics", true, "Whether to support metrics query")
+		argEnableANP                   = pflag.Bool("enable-anp", false, "Enable support for admin network policy and baseline admin network policy")
+		argEnableOVNIPSec              = pflag.Bool("enable-ovn-ipsec", false, "Whether to enable ovn ipsec")
+		argEnableLiveMigrationOptimize = pflag.Bool("enable-live-migration-optimize", true, "Whether to enable kubevirt live migration optimize")
 
 		argExternalGatewayConfigNS = pflag.String("external-gateway-config-ns", "kube-system", "The namespace of configmap external-gateway-config, default: kube-system")
 		argExternalGatewaySwitch   = pflag.String("external-gateway-switch", "external", "The name of the external gateway switch which is a ovs bridge to provide external network, default: external")
@@ -266,7 +268,7 @@ func ParseFlags() (*Configuration, error) {
 		EnableLbSvc:                    *argEnableLbSvc,
 		EnableMetrics:                  *argEnableMetrics,
 		EnableOVNIPSec:                 *argEnableOVNIPSec,
-		KubevirtLiveMigrationOptimize:  *argKubevirtLiveMigrationOptimize,
+		EnableLiveMigrationOptimize:    *argEnableLiveMigrationOptimize,
 		BfdMinTx:                       *argBfdMinTx,
 		BfdMinRx:                       *argBfdMinRx,
 		BfdDetectMult:                  *argBfdDetectMult,
@@ -379,6 +381,13 @@ func (config *Configuration) initKubeClient() error {
 		return err
 	}
 	config.KubeOvnClient = kubeOvnClient
+
+	ExtClient, err := extClientSet.NewForConfig(cfg)
+	if err != nil {
+		klog.Errorf("init extentsion client failed %v", err)
+		return err
+	}
+	config.ExtClient = ExtClient
 
 	cfg.ContentType = "application/vnd.kubernetes.protobuf"
 	cfg.AcceptContentTypes = "application/vnd.kubernetes.protobuf,application/json"
