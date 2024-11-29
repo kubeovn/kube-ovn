@@ -193,7 +193,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 		ginkgo.By("Creating deployment " + deployName + " without IPPool")
 		labels := map[string]string{"app": deployName}
 		deploy := framework.MakeDeployment(deployName, int32(replicas), labels, nil, "pause", framework.PauseImage, "")
-		deploy.Namespace = namespaceName
+		deploy.ObjectMeta.Namespace = namespaceName
 		deploy = deployClient.CreateSync(deploy)
 
 		ginkgo.By("Getting pods for deployment " + deployName)

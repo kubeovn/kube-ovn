@@ -112,7 +112,7 @@ func (c *NamespaceClient) WaitToDisappear(name string, _, timeout time.Duration)
 	return nil
 }
 
-func MakeNamespace(name string, labels map[string]string, annotations map[string]string) *corev1.Namespace {
+func MakeNamespace(name string, labels, annotations map[string]string) *corev1.Namespace {
 	namespace := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        name,
