@@ -507,14 +507,11 @@ func (c *Controller) reconcileAllocateSubnets(pod *v1.Pod, needAllocatePodNets [
 	// todo: isVmPod, getPodType, getNameByPod has duplicated logic
 
 	var err error
-	var isMigrate, migrated, migratedFail bool
-	var vmKey, srcNodeName, targetNodeName string
+	var vmKey string
+	// var isMigrate, migrated, migratedFail bool
+	// var vmKey, srcNodeName, targetNodeName string
 	if isVMPod && c.config.EnableKeepVMIP {
 		vmKey = fmt.Sprintf("%s/%s", namespace, vmName)
-		if isMigrate, migrated, migratedFail, srcNodeName, targetNodeName, err = c.migrateVM(pod, vmKey); err != nil {
-			klog.Error(err)
-			return nil, err
-		}
 	}
 	// Avoid create lsp for already running pod in ovn-nb when controller restart
 	patch := util.KVPatch{}
@@ -597,24 +594,6 @@ func (c *Controller) reconcileAllocateSubnets(pod *v1.Pod, needAllocatePodNets [
 				c.recorder.Eventf(pod, v1.EventTypeWarning, "CreateOVNPortFailed", err.Error())
 				klog.Errorf("%v", err)
 				return nil, err
-			}
-
-			if isMigrate {
-				if migrated {
-					klog.Infof("migrate end reset options for lsp %s from %s to %s, migrated fail: %t", portName, srcNodeName, targetNodeName, migratedFail)
-					if err := c.OVNNbClient.ResetLogicalSwitchPortMigrateOptions(portName, srcNodeName, targetNodeName, migratedFail); err != nil {
-						err = fmt.Errorf("failed to clean migrate options for lsp %s, %w", portName, err)
-						klog.Error(err)
-						return nil, err
-					}
-				} else {
-					klog.Infof("migrate start set options for lsp %s from %s to %s", portName, srcNodeName, targetNodeName)
-					if err := c.OVNNbClient.SetLogicalSwitchPortMigrateOptions(portName, srcNodeName, targetNodeName); err != nil {
-						err = fmt.Errorf("failed to set migrate options for lsp %s, %w", portName, err)
-						klog.Error(err)
-						return nil, err
-					}
-				}
 			}
 
 			if pod.Annotations[fmt.Sprintf(util.Layer2ForwardAnnotationTemplate, podNet.ProviderName)] == "true" {
@@ -2091,63 +2070,6 @@ func (c *Controller) getVirtualIPs(pod *v1.Pod, podNets []*kubeovnNet) map[strin
 		vipsMap[key] = strings.Join(vipsList, ",")
 	}
 	return vipsMap
-}
-
-// migrate vm return migrate, migrated, fail, src node, target node, err
-func (c *Controller) migrateVM(pod *v1.Pod, vmKey string) (bool, bool, bool, string, string, error) {
-	// try optimize vm migration, no need return error
-	// migrate true means need ovn set migrate options
-	// migrated ok means need set migrate options to target node
-	// migrated failed means need set migrate options to source node
-	if _, ok := pod.Annotations[util.MigrationJobAnnotation]; !ok {
-		return false, false, false, "", "", nil
-	}
-	if _, ok := pod.Annotations[util.MigrationSourceAnnotation]; ok {
-		klog.Infof("will migrate out vm %s pod %s from source node %s", vmKey, pod.Name, pod.Spec.NodeName)
-		return false, false, false, "", "", nil
-	}
-	// ovn set migrator only in the process of target vm pod
-	if _, ok := pod.Annotations[util.MigrationTargetAnnotation]; !ok {
-		return false, false, false, "", "", nil
-	}
-	srcNode, ok := pod.Annotations[util.MigrationSourceNodeAnnotation]
-	if !ok || srcNode == "" {
-		err := fmt.Errorf("vm %s migration source node is not set", vmKey)
-		klog.Warning(err)
-		return false, false, false, "", "", nil
-	}
-	targetNode := pod.Spec.NodeName
-	if targetNode == "" {
-		err := fmt.Errorf("vm %s migration target node is not set", vmKey)
-		klog.Warning(err)
-		return false, false, false, "", "", nil
-	}
-	migratePhase, ok := pod.Annotations[util.MigrationPhaseAnnotation]
-	if !ok {
-		err := fmt.Errorf("vm %s migration phase is not set", vmKey)
-		klog.Warning(err)
-		return false, false, false, "", "", nil
-	}
-	// check migrate phase
-	if migratePhase == "" {
-		err := fmt.Errorf("vm %s migration phase is empty", vmKey)
-		klog.Warning(err)
-		return false, false, false, "", "", nil
-	}
-	if migratePhase == util.MigrationPhaseStarted {
-		klog.Infof("start to migrate src vm %s from %s to %s", vmKey, srcNode, targetNode)
-		return true, false, false, srcNode, targetNode, nil
-	}
-	if migratePhase == util.MigrationPhaseSucceeded {
-		klog.Infof("succeed to migrate src vm %s from %s to %s", vmKey, srcNode, targetNode)
-		return true, true, false, srcNode, targetNode, nil
-	}
-	if migratePhase == util.MigrationPhaseFailed {
-		klog.Infof("failed to migrate src vm %s from %s to %s", vmKey, srcNode, targetNode)
-		return true, true, true, srcNode, targetNode, nil
-	}
-
-	return false, false, false, "", "", nil
 }
 
 func setPodRoutesAnnotation(annotations map[string]string, provider string, routes []request.Route) error {

@@ -44,6 +44,7 @@ ENABLE_ANP=${ENABLE_ANP:-false}
 SET_VXLAN_TX_OFF=${SET_VXLAN_TX_OFF:-false}
 OVSDB_CON_TIMEOUT=${OVSDB_CON_TIMEOUT:-3}
 OVSDB_INACTIVITY_TIMEOUT=${OVSDB_INACTIVITY_TIMEOUT:-10}
+ENABLE_LIVE_MIGRATION_OPTIMIZE=${ENABLE_LIVE_MIGRATION_OPTIMIZE:-true}
 
 # debug
 DEBUG_WRAPPER=${DEBUG_WRAPPER:-}
@@ -3211,6 +3212,20 @@ rules:
     verbs:
     - approve
     - sign
+  - apiGroups:
+      - kubevirt.io
+    resources:
+      - virtualmachineinstancemigrations
+    verbs:
+      - "list"
+      - "watch"
+      - "get"
+  - apiGroups:
+      - apiextensions.k8s.io
+    resources:
+      - customresourcedefinitions
+    verbs:
+      - get
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -4329,6 +4344,7 @@ spec:
           - --enable-anp=$ENABLE_ANP
           - --ovsdb-con-timeout=$OVSDB_CON_TIMEOUT
           - --ovsdb-inactivity-timeout=$OVSDB_INACTIVITY_TIMEOUT
+          - --enable-live-migration-optimize=$ENABLE_LIVE_MIGRATION_OPTIMIZE
           securityContext:
             runAsUser: ${RUN_AS_USER}
             privileged: false
