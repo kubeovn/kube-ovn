@@ -315,14 +315,8 @@ const (
 	ConsumptionKubevirt       = "kubevirt"
 	VhostUserSocketVolumeName = "vhostuser-sockets"
 
-	MigrationJobAnnotation        = "kubevirt.io/migrationJobName"      // migration job name
-	MigrationSourceNodeAnnotation = "kubevirt.io/migration-source-node" // target pod has source node name
-	MigrationSourceAnnotation     = "kubevirt.io/migration-source"      // migration source vm: true or false
-	MigrationTargetAnnotation     = "kubevirt.io/migration-target"      // migration target vm: true or false
-	MigrationPhaseAnnotation      = "kubevirt.io/migration-phase"       // migration vm phase: started/succeeded/failed
-	MigrationPhaseStarted         = "started"
-	MigrationPhaseSucceeded       = "succeeded"
-	MigrationPhaseFailed          = "failed"
+	MigrationJobAnnotation = "kubevirt.io/migrationJobName" // migration job name
+	KubevirtNamespace      = "kubevirt"
 
 	DefaultOVNIPSecCA       = "ovn-ipsec-ca"
 	DefaultOVSCACertPath    = "/var/lib/openvswitch/pki/switchca/cacert.pem"
