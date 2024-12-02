@@ -13,6 +13,8 @@ GO_INSTALL="$GO install -v -trimpath"
 
 export GOBIN="$DEPS_DIR"
 
+mkdir -p "$DEPS_DIR"
+
 for t in $(cat "$TRIVY_DIR/trivy-targets.txt"); do
     echo "Building $t from source..."
     name=${t%@*}
@@ -67,3 +69,5 @@ for f in $(ls "$TRIVY_DIR"); do
         cp "$TRIVY_DIR/$f" "$DEPS_DIR"
     fi
 done
+
+ls -lh "$DEPS_DIR"

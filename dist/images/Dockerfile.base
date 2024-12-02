@@ -1,6 +1,27 @@
 # syntax = docker/dockerfile:experimental
 ARG GO_VERSION=1.22.8
 
+
+FROM ghcr.io/aquasecurity/trivy:latest AS trivy
+
+ARG ARCH
+ENV CNI_VERSION="v1.5.1"
+ENV KUBE_VERSION="v1.31.1"
+ENV GOBGP_VERSION="3.30.0"
+ENV TRIVY_DB_REPOSITORY="public.ecr.aws/aquasecurity/trivy-db:2"
+
+RUN apk --no-cache add curl jq
+ADD go-deps/download-go-deps.sh /
+RUN sh -x /download-go-deps.sh
+
+FROM golang:$GO_VERSION-alpine AS go-deps
+
+RUN apk --no-cache add bash curl jq
+ADD go-deps/rebuild-go-deps.sh /
+RUN --mount=type=bind,target=/trivy,from=trivy,source=/godeps \
+    bash -x /rebuild-go-deps.sh
+
+
 FROM ubuntu:22.04 AS ovs-builder
 
 ARG ARCH
@@ -96,24 +117,6 @@ RUN mkdir /packages/ && \
     cp /usr/src/ovn-*deb /packages && \
     cd /packages && rm -f *source* *doc* *datapath* *docker* *vtep* *test* *dev*
 
-FROM ghcr.io/aquasecurity/trivy:latest AS trivy
-
-ARG ARCH
-ENV CNI_VERSION="v1.5.1"
-ENV KUBE_VERSION="v1.31.1"
-ENV GOBGP_VERSION="3.30.0"
-ENV TRIVY_DB_REPOSITORY="public.ecr.aws/aquasecurity/trivy-db:2"
-
-RUN apk --no-cache add curl jq
-ADD go-deps/download-go-deps.sh /
-RUN sh -x /download-go-deps.sh
-
-FROM golang:$GO_VERSION-alpine AS go-deps
-
-RUN apk --no-cache add bash curl jq
-ADD go-deps/rebuild-go-deps.sh /
-RUN --mount=type=bind,target=/trivy,from=trivy,source=/godeps \
-    bash -x /rebuild-go-deps.sh
 
 FROM ubuntu:22.04
 ARG ARCH

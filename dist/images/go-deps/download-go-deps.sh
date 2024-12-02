@@ -4,7 +4,7 @@ set -e
 
 ARCH=${ARCH:-amd64}
 CNI_PLUGINS_VERSION=${CNI_PLUGINS_VERSION:-v1.6.0}
-KUBECTL_VERSION=${KUBECTL_VERSION:-v1.31.2}
+KUBECTL_VERSION=${KUBECTL_VERSION:-v1.31.3}
 GOBGP_VERSION=${GOBGP_VERSION:-3.31.0}
 
 
@@ -15,7 +15,7 @@ mkdir -p "$DEPS_DIR"
 curl -sSf -L --retry 5 https://github.com/containernetworking/plugins/releases/download/${CNI_PLUGINS_VERSION}/cni-plugins-linux-${ARCH}-${CNI_PLUGINS_VERSION}.tgz | \
     tar -xz -C "$DEPS_DIR" ./loopback ./portmap ./macvlan
 
-curl -L https://dl.k8s.io/${KUBECTL_VERSION}/kubernetes-client-linux-${ARCH}.tar.gz | \
+curl -sSf -L --retry 5 https://dl.k8s.io/${KUBECTL_VERSION}/kubernetes-client-linux-${ARCH}.tar.gz | \
     tar -xz -C "$DEPS_DIR" --strip-components=3 kubernetes/client/bin/kubectl
 
 curl -sSf -L --retry 5 https://github.com/osrg/gobgp/releases/download/v${GOBGP_VERSION}/gobgp_${GOBGP_VERSION}_linux_${ARCH}.tar.gz | \
