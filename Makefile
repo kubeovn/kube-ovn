@@ -1055,7 +1055,7 @@ scan:
 .PHONY: ut
 ut:
 	ginkgo -mod=mod --show-node-events --poll-progress-after=60s $(GINKGO_OUTPUT_OPT) -v test/unittest
-	go test -coverprofile=profile.cov ./pkg/...
+	go test -coverprofile=profile.cov $$(go list ./pkg/... | grep -vw '^github.com/kubeovn/kube-ovn/pkg/client')
 
 .PHONY: ovs-sandbox
 ovs-sandbox: clean-ovs-sandbox
