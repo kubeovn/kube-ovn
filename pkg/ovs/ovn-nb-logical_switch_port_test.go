@@ -223,7 +223,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalSwitchPort() {
 		err = nbClient.CreateLogicalSwitchPort(lsName, lspName, ips, mac, podName, podNamespace, true, sgs, vips, true, dhcpUUIDs, vpcName)
 		require.NoError(t, err)
 		err = nbClient.CreateLogicalSwitchPort(lsName2, lspName, ips, mac, podName, podNamespace, true, sgs, vips, true, dhcpUUIDs, vpcName)
-		require.NoError(t, err)
+		require.Error(t, err)
 	})
 
 	t.Run("failed client create logical switch port op error", func(t *testing.T) {

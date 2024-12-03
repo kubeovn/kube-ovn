@@ -106,10 +106,15 @@ func (c *OVNNbClient) CreateLogicalSwitchPort(lsName, lspName, ip, mac, podName,
 			}
 			return nil
 		}
-		if ops, err = c.LogicalSwitchUpdatePortOp(existingLsp.ExternalIDs[logicalSwitchKey], existingLsp.UUID, ovsdb.MutateOperationDelete); err != nil {
+		// delete lsp from the old logical switch
+		err := fmt.Errorf("logical switch port %s already exists in old logical switch %s, delete it", lspName, existingLsp.ExternalIDs[logicalSwitchKey])
+		klog.Error(err)
+		if err := c.DeleteLogicalSwitchPort(lspName); err != nil {
 			klog.Error(err)
 			return err
 		}
+		// enqueue to re-create lsp in the new logical switch
+		return err
 	}
 
 	createLspOps, err := c.CreateLogicalSwitchPortOp(lsp, lsName)

@@ -299,7 +299,8 @@ func (c *OVNNbClient) LogicalSwitchUpdatePortOp(lsName, lspUUID string, op ovsdb
 		return nil, nil
 	}
 
-	if lsName == "" && op == ovsdb.MutateOperationDelete {
+	if op == ovsdb.MutateOperationDelete {
+		// given ls for deleting lsp is not always real
 		lsList, err := c.ListLogicalSwitch(false, func(ls *ovnnb.LogicalSwitch) bool {
 			return slices.Contains(ls.Ports, lspUUID)
 		})
