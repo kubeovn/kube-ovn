@@ -104,6 +104,10 @@ func (c *FakeKubeovnV1) VpcDnses() v1.VpcDnsInterface {
 	return &FakeVpcDnses{c}
 }
 
+func (c *FakeKubeovnV1) VpcEgressGateways(namespace string) v1.VpcEgressGatewayInterface {
+	return &FakeVpcEgressGateways{c, namespace}
+}
+
 func (c *FakeKubeovnV1) VpcNatGateways() v1.VpcNatGatewayInterface {
 	return &FakeVpcNatGateways{c}
 }

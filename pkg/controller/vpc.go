@@ -489,7 +489,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 	// add new policies
 	for _, item := range policyRouteNeedAdd {
 		klog.Infof("add policy route for router: %s, match %s, action %s, nexthop %s, externalID %v", c.config.ClusterRouter, item.Match, string(item.Action), item.NextHopIP, externalIDs)
-		if err = c.OVNNbClient.AddLogicalRouterPolicy(vpc.Name, item.Priority, item.Match, string(item.Action), []string{item.NextHopIP}, externalIDs); err != nil {
+		if err = c.OVNNbClient.AddLogicalRouterPolicy(vpc.Name, item.Priority, item.Match, string(item.Action), []string{item.NextHopIP}, nil, externalIDs); err != nil {
 			klog.Errorf("add policy route to vpc %s failed, %v", vpc.Name, err)
 			return err
 		}
@@ -573,7 +573,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 				lrpEipName := fmt.Sprintf("%s-%s", key, c.config.ExternalGatewaySwitch)
 				v4ExtGw, _ := util.SplitStringIP(externalSubnet.Spec.Gateway)
 				// TODO: dualstack
-				if _, err := c.OVNNbClient.CreateBFD(lrpEipName, v4ExtGw, c.config.BfdMinRx, c.config.BfdMinTx, c.config.BfdDetectMult); err != nil {
+				if _, err := c.OVNNbClient.CreateBFD(lrpEipName, v4ExtGw, c.config.BfdMinRx, c.config.BfdMinTx, c.config.BfdDetectMult, nil); err != nil {
 					klog.Error(err)
 					return err
 				}
@@ -619,7 +619,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 
 		if !cachedVpc.Spec.EnableBfd && cachedVpc.Status.EnableBfd {
 			lrpEipName := fmt.Sprintf("%s-%s", key, c.config.ExternalGatewaySwitch)
-			if err := c.OVNNbClient.DeleteBFD(lrpEipName, ""); err != nil {
+			if err := c.OVNNbClient.DeleteBFDByDstIP(lrpEipName, ""); err != nil {
 				klog.Error(err)
 				return err
 			}
@@ -659,13 +659,12 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		return err
 	}
 	if vpc.Spec.BFDPort == nil || !vpc.Spec.BFDPort.Enabled {
-		vpc.Status.BFDPort = kubeovnv1.BFDPortStatus{Enabled: false}
+		vpc.Status.BFDPort = kubeovnv1.BFDPortStatus{}
 	} else {
 		vpc.Status.BFDPort = kubeovnv1.BFDPortStatus{
-			Enabled: true,
-			Name:    bfdPortName,
-			IP:      vpc.Spec.BFDPort.IP,
-			Nodes:   bfdPortNodes,
+			Name:  bfdPortName,
+			IP:    vpc.Spec.BFDPort.IP,
+			Nodes: bfdPortNodes,
 		}
 	}
 	if _, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().
@@ -766,7 +765,7 @@ func (c *Controller) addPolicyRouteToVpc(vpcName string, policy *kubeovnv1.Polic
 		nextHops = strings.Split(policy.NextHopIP, ",")
 	}
 
-	if err = c.OVNNbClient.AddLogicalRouterPolicy(vpcName, policy.Priority, policy.Match, string(policy.Action), nextHops, externalIDs); err != nil {
+	if err = c.OVNNbClient.AddLogicalRouterPolicy(vpcName, policy.Priority, policy.Match, string(policy.Action), nextHops, nil, externalIDs); err != nil {
 		klog.Errorf("add policy route to vpc %s failed, %v", vpcName, err)
 		return err
 	}
@@ -1261,7 +1260,7 @@ func (c *Controller) handleDelVpcExternalSubnet(key, subnet string) error {
 			return err
 		}
 	}
-	if err := c.OVNNbClient.DeleteBFD(lrpName, ""); err != nil {
+	if err := c.OVNNbClient.DeleteBFDByDstIP(lrpName, ""); err != nil {
 		klog.Error(err)
 		return err
 	}

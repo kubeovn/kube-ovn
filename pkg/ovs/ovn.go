@@ -44,6 +44,9 @@ const (
 	IfExists   = "--if-exists"
 
 	OVSDBWaitTimeout = 0
+
+	ExternalIDVendor           = "vendor"
+	ExternalIDVpcEgressGateway = "vpc-egress-gateway"
 )
 
 // NewLegacyClient init a legacy ovn client

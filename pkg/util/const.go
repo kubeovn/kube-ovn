@@ -111,6 +111,9 @@ const (
 	NetworkPolicyLogAnnotation = "ovn.kubernetes.io/enable_log"
 	ACLActionsLogAnnotation    = "ovn.kubernetes.io/log_acl_actions"
 
+	VpcEgressGatewayLabel  = "ovn.kubernetes.io/vpc-egress-gateway"
+	GenerateHashAnnotation = "ovn.kubernetes.io/generate-hash"
+
 	VpcLastName     = "ovn.kubernetes.io/last_vpc_name"
 	VpcLastPolicies = "ovn.kubernetes.io/last_policies"
 
@@ -210,6 +213,7 @@ const (
 
 	U2OSubnetPolicyPriority         = 29400
 	GatewayRouterPolicyPriority     = 29000
+	EgressGatewayPolicyPriority     = 29100
 	NorthGatewayRoutePolicyPriority = 29250
 	OvnICPolicyPriority             = 29500
 	NodeRouterPolicyPriority        = 30000

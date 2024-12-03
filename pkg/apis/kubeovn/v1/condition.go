@@ -11,6 +11,8 @@ const (
 	Ready = "Ready"
 	// Validated => Spec passed validating
 	Validated = "Validated"
+	// Init => controller is initializing this resource
+	Init = "Init"
 	// Error => last recorded error
 	Error = "Error"
 

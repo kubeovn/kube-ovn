@@ -39,38 +39,6 @@ func getOvsPodOnNode(f *framework.Framework, node string) *corev1.Pod {
 	return pod
 }
 
-func checkNatOutgoingRoutes(f *framework.Framework, ns, pod string, gateways []string) {
-	ginkgo.GinkgoHelper()
-
-	afs := make([]int, 0, 2)
-	dst := make([]string, 0, 2)
-	if f.HasIPv4() {
-		afs = append(afs, 4)
-		dst = append(dst, "1.1.1.1")
-	}
-	if f.HasIPv6() {
-		afs = append(afs, 6)
-		dst = append(dst, "2606:4700:4700::1111")
-	}
-
-	for i, af := range afs {
-		ginkgo.By(fmt.Sprintf("Checking IPv%d NAT outgoing routes of %s/%s", af, ns, pod))
-		cmd := fmt.Sprintf("traceroute -%d -n -f2 -m2 %s", af, dst[i])
-		framework.WaitUntil(3*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
-			// traceroute to 1.1.1.1 (1.1.1.1), 2 hops max, 60 byte packets
-			// 2  172.19.0.2  0.663 ms  0.613 ms  0.605 ms
-			output, err := e2epodoutput.RunHostCmd(ns, pod, cmd)
-			if err != nil {
-				return false, nil
-			}
-
-			lines := strings.Split(strings.TrimSpace(output), "\n")
-			fields := strings.Fields(lines[len(lines)-1])
-			return len(fields) > 2 && slices.Contains(gateways, fields[1]), nil
-		}, "")
-	}
-}
-
 func checkSubnetNatOutgoingPolicyRuleStatus(subnetClient *framework.SubnetClient, subnetName string, rules []apiv1.NatOutgoingPolicyRule) *apiv1.Subnet {
 	ginkgo.GinkgoHelper()
 
@@ -382,7 +350,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		pod := framework.MakePod(namespaceName, podName, nil, nil, f.KubeOVNImage, cmd, nil)
 		_ = podClient.CreateSync(pod)
 
-		checkNatOutgoingRoutes(f, namespaceName, podName, nodeIPs)
+		framework.CheckPodEgressRoutes(namespaceName, podName, f.HasIPv4(), f.HasIPv6(), 2, nodeIPs)
 	})
 
 	framework.ConformanceIt("should be able to switch gateway mode to centralized", func() {
@@ -489,7 +457,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		pod := framework.MakePod(namespaceName, podName, nil, nil, f.KubeOVNImage, cmd, nil)
 		_ = podClient.CreateSync(pod)
 
-		checkNatOutgoingRoutes(f, namespaceName, podName, nodeIPs)
+		framework.CheckPodEgressRoutes(namespaceName, podName, f.HasIPv4(), f.HasIPv6(), 2, nodeIPs)
 	})
 
 	framework.ConformanceIt("create centralized subnet without enableEcmp", func() {
@@ -533,7 +501,8 @@ var _ = framework.Describe("[group:subnet]", func() {
 		} else {
 			gwIPv4, gwIPv6 = util.GetNodeInternalIP(nodes.Items[0])
 		}
-		checkNatOutgoingRoutes(f, namespaceName, podName, strings.Split(strings.Trim(gwIPv4+","+gwIPv6, ","), ","))
+		hops := strings.Split(strings.Trim(gwIPv4+","+gwIPv6, ","), ",")
+		framework.CheckPodEgressRoutes(namespaceName, podName, f.HasIPv4(), f.HasIPv6(), 2, hops)
 
 		ginkgo.By("Change subnet spec field enableEcmp to true")
 		modifiedSubnet := subnet.DeepCopy()

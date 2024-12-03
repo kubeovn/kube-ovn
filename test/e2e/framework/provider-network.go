@@ -18,6 +18,7 @@ import (
 	"github.com/onsi/gomega"
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	clientset "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
 	v1 "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/typed/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -26,6 +27,12 @@ import (
 type ProviderNetworkClient struct {
 	f *Framework
 	v1.ProviderNetworkInterface
+}
+
+func NewProviderNetworkClient(cs clientset.Interface) *ProviderNetworkClient {
+	return &ProviderNetworkClient{
+		ProviderNetworkInterface: cs.KubeovnV1().ProviderNetworks(),
+	}
 }
 
 func (f *Framework) ProviderNetworkClient() *ProviderNetworkClient {

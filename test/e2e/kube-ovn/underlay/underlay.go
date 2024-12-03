@@ -12,7 +12,6 @@ import (
 
 	dockernetwork "github.com/docker/docker/api/types/network"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
 	e2epodoutput "k8s.io/kubernetes/test/e2e/framework/pod/output"
@@ -208,7 +207,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 					routeMap[node.ID] = append(routeMap[node.ID], r)
 				}
 			}
-			framework.ExpectHaveKey(linkMap, node.ID)
+			framework.ExpectHaveKey(routeMap, node.ID)
 
 			linkMap[node.Name()] = linkMap[node.ID]
 			routeMap[node.Name()] = routeMap[node.ID]
@@ -350,7 +349,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		vpcClient.DeleteSync(vpcName)
 
 		ginkgo.By("Deleting vlan " + vlanName)
-		vlanClient.Delete(vlanName, metav1.DeleteOptions{})
+		vlanClient.Delete(vlanName)
 
 		ginkgo.By("Deleting provider network " + providerNetworkName)
 		providerNetworkClient.DeleteSync(providerNetworkName)

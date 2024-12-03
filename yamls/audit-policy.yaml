@@ -39,6 +39,8 @@ rules:
           - vpcs/status
           - vpc-nat-gateways
           - vpc-nat-gateways/status
+          - vpc-egress-gateways
+          - vpc-egress-gateways/status
           - vpc-dnses
           - vpc-dnses/status
           - subnets

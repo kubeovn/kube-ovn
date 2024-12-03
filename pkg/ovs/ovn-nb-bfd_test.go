@@ -22,7 +22,7 @@ func (suite *OvnClientTestSuite) testCreateBFD() {
 
 		lrpName := "test-create-bfd"
 
-		bfd, err := nbClient.CreateBFD(lrpName, dstIP, minRx, minTx, detectMult)
+		bfd, err := nbClient.CreateBFD(lrpName, dstIP, minRx, minTx, detectMult, nil)
 		require.NoError(t, err)
 		require.NotNil(t, bfd)
 		require.Equal(t, lrpName, bfd.LogicalPort)
@@ -40,11 +40,11 @@ func (suite *OvnClientTestSuite) testCreateBFD() {
 
 		lrpName := "test-create-existing-bfd"
 
-		bfd1, err := nbClient.CreateBFD(lrpName, dstIP, minRx, minTx, detectMult)
+		bfd1, err := nbClient.CreateBFD(lrpName, dstIP, minRx, minTx, detectMult, nil)
 		require.NoError(t, err)
 		require.NotNil(t, bfd1)
 
-		bfd2, err := nbClient.CreateBFD(lrpName, dstIP, minRx+1, minTx+1, detectMult+1)
+		bfd2, err := nbClient.CreateBFD(lrpName, dstIP, minRx+1, minTx+1, detectMult+1, nil)
 		require.NoError(t, err)
 		require.NotNil(t, bfd2)
 		require.Equal(t, bfd1, bfd2)
@@ -71,11 +71,11 @@ func (suite *OvnClientTestSuite) testListBFD() {
 	t.Run("list BFDs", func(t *testing.T) {
 		t.Parallel()
 
-		bfd1, err := nbClient.CreateBFD(lrpName, dstIP1, minRx1, minTx1, detectMult1)
+		bfd1, err := nbClient.CreateBFD(lrpName, dstIP1, minRx1, minTx1, detectMult1, nil)
 		require.NoError(t, err)
 		require.NotNil(t, bfd1)
 
-		bfd2, err := nbClient.CreateBFD(lrpName, dstIP2, minRx2, minTx2, detectMult2)
+		bfd2, err := nbClient.CreateBFD(lrpName, dstIP2, minRx2, minTx2, detectMult2, nil)
 		require.NoError(t, err)
 		require.NotNil(t, bfd2)
 
@@ -101,7 +101,7 @@ func (suite *OvnClientTestSuite) testListBFD() {
 
 	t.Run("closed server list failed BFDs", func(t *testing.T) {
 		t.Parallel()
-		failedBFD1, err := failedNbClient.CreateBFD(lrpName, dstIP1, minRx1, minTx1, detectMult1)
+		failedBFD1, err := failedNbClient.CreateBFD(lrpName, dstIP1, minRx1, minTx1, detectMult1, nil)
 		require.Error(t, err)
 		require.Nil(t, failedBFD1)
 		// cache db should be empty
@@ -123,14 +123,14 @@ func (suite *OvnClientTestSuite) testDeleteBFD() {
 	minRx1, minTx1, detectMult1 := 101, 102, 19
 	minRx2, minTx2, detectMult2 := 201, 202, 29
 
-	_, err := nbClient.CreateBFD(lrpName, dstIP1, minRx1, minTx1, detectMult1)
+	_, err := nbClient.CreateBFD(lrpName, dstIP1, minRx1, minTx1, detectMult1, nil)
 	require.NoError(t, err)
 
-	bfd2, err := nbClient.CreateBFD(lrpName, dstIP2, minRx2, minTx2, detectMult2)
+	bfd2, err := nbClient.CreateBFD(lrpName, dstIP2, minRx2, minTx2, detectMult2, nil)
 	require.NoError(t, err)
 
 	t.Run("delete BFD", func(t *testing.T) {
-		err = nbClient.DeleteBFD(lrpName, dstIP1)
+		err = nbClient.DeleteBFDByDstIP(lrpName, dstIP1)
 		require.NoError(t, err)
 
 		bfdList, err := nbClient.ListBFDs(lrpName, dstIP1)
@@ -144,7 +144,7 @@ func (suite *OvnClientTestSuite) testDeleteBFD() {
 	})
 
 	t.Run("delete multiple BFDs", func(t *testing.T) {
-		err = nbClient.DeleteBFD(lrpName, "")
+		err = nbClient.DeleteBFDByDstIP(lrpName, "")
 		require.NoError(t, err)
 
 		bfdList, err := nbClient.ListBFDs(lrpName, "")
@@ -155,16 +155,16 @@ func (suite *OvnClientTestSuite) testDeleteBFD() {
 	t.Run("delete non-existent BFD", func(t *testing.T) {
 		t.Parallel()
 
-		err := nbClient.DeleteBFD(lrpName, "192.168.124.17")
+		err := nbClient.DeleteBFDByDstIP(lrpName, "192.168.124.17")
 		require.NoError(t, err)
 	})
 
 	t.Run("closed server delete non-existent BFD", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := failedNbClient.CreateBFD(lrpName, dstIP1, minRx1, minTx1, detectMult1)
+		_, err := failedNbClient.CreateBFD(lrpName, dstIP1, minRx1, minTx1, detectMult1, nil)
 		require.Error(t, err)
-		err = failedNbClient.DeleteBFD(lrpName, "192.168.124.17")
+		err = failedNbClient.DeleteBFDByDstIP(lrpName, "192.168.124.17")
 		// cache db should be empty
 		require.NoError(t, err)
 	})
@@ -185,19 +185,19 @@ func (suite *OvnClientTestSuite) testListDownBFDs() {
 	t.Run("list down BFDs", func(t *testing.T) {
 		t.Parallel()
 
-		bfd1, err := nbClient.CreateBFD(lrpName, dstIP1, minRx, minTx, detectMult)
+		bfd1, err := nbClient.CreateBFD(lrpName, dstIP1, minRx, minTx, detectMult, nil)
 		require.NoError(t, err)
 		require.NotNil(t, bfd1)
 		// closed server create failed BFD
-		failedBFD1, err := failedNbClient.CreateBFD(lrpName, dstIP1, minRx, minTx, detectMult)
+		failedBFD1, err := failedNbClient.CreateBFD(lrpName, dstIP1, minRx, minTx, detectMult, nil)
 		require.Error(t, err)
 		require.Nil(t, failedBFD1)
 
-		bfd2, err := nbClient.CreateBFD(lrpName, dstIP2, minRx, minTx, detectMult)
+		bfd2, err := nbClient.CreateBFD(lrpName, dstIP2, minRx, minTx, detectMult, nil)
 		require.NoError(t, err)
 		require.NotNil(t, bfd2)
 
-		bfd3, err := nbClient.CreateBFD(lrpName, dstIP3, minRx, minTx, detectMult)
+		bfd3, err := nbClient.CreateBFD(lrpName, dstIP3, minRx, minTx, detectMult, nil)
 		require.NoError(t, err)
 		require.NotNil(t, bfd3)
 
@@ -247,7 +247,7 @@ func (suite *OvnClientTestSuite) testListDownBFDs() {
 		t.Parallel()
 
 		// Create a BFD with UP status
-		bfd, err := nbClient.CreateBFD(lrpName, "192.168.124.10", minRx, minTx, detectMult)
+		bfd, err := nbClient.CreateBFD(lrpName, "192.168.124.10", minRx, minTx, detectMult, nil)
 		require.NoError(t, err)
 		require.NotNil(t, bfd)
 
@@ -277,15 +277,15 @@ func (suite *OvnClientTestSuite) testListUpBFDs() {
 	t.Run("list up BFDs", func(t *testing.T) {
 		t.Parallel()
 
-		bfd1, err := nbClient.CreateBFD(lrpName, dstIP1, minRx, minTx, detectMult)
+		bfd1, err := nbClient.CreateBFD(lrpName, dstIP1, minRx, minTx, detectMult, nil)
 		require.NoError(t, err)
 		require.NotNil(t, bfd1)
 
-		bfd2, err := nbClient.CreateBFD(lrpName, dstIP2, minRx, minTx, detectMult)
+		bfd2, err := nbClient.CreateBFD(lrpName, dstIP2, minRx, minTx, detectMult, nil)
 		require.NoError(t, err)
 		require.NotNil(t, bfd2)
 
-		bfd3, err := nbClient.CreateBFD(lrpName, dstIP3, minRx, minTx, detectMult)
+		bfd3, err := nbClient.CreateBFD(lrpName, dstIP3, minRx, minTx, detectMult, nil)
 		require.NoError(t, err)
 		require.NotNil(t, bfd3)
 
@@ -340,7 +340,7 @@ func (suite *OvnClientTestSuite) testIsLrpBfdUp() {
 		t.Parallel()
 
 		lrpName := "test-is-lrp-bfd-up"
-		bfd, err := nbClient.CreateBFD(lrpName, dstIP, minRx, minTx, detectMult)
+		bfd, err := nbClient.CreateBFD(lrpName, dstIP, minRx, minTx, detectMult, nil)
 		require.NoError(t, err)
 		require.NotNil(t, bfd)
 
@@ -358,7 +358,7 @@ func (suite *OvnClientTestSuite) testIsLrpBfdUp() {
 		t.Parallel()
 
 		lrpName := "test-is-lrp-bfd-down"
-		bfd, err := nbClient.CreateBFD(lrpName, dstIP, minRx, minTx, detectMult)
+		bfd, err := nbClient.CreateBFD(lrpName, dstIP, minRx, minTx, detectMult, nil)
 		require.NoError(t, err)
 		require.NotNil(t, bfd)
 
@@ -377,7 +377,7 @@ func (suite *OvnClientTestSuite) testIsLrpBfdUp() {
 		t.Parallel()
 
 		lrpName := "test-is-lrp-bfd-status-nil"
-		bfd, err := nbClient.CreateBFD(lrpName, dstIP, minRx, minTx, detectMult)
+		bfd, err := nbClient.CreateBFD(lrpName, dstIP, minRx, minTx, detectMult, nil)
 		require.NoError(t, err)
 		require.NotNil(t, bfd)
 
@@ -414,7 +414,7 @@ func (suite *OvnClientTestSuite) testBfdAddL3HAHandler() {
 		dstIP := "192.168.124.19"
 		minRx, minTx, detectMult := 101, 102, 19
 
-		bfd, err := nbClient.CreateBFD(lrpName, dstIP, minRx, minTx, detectMult)
+		bfd, err := nbClient.CreateBFD(lrpName, dstIP, minRx, minTx, detectMult, nil)
 		require.NoError(t, err)
 		require.NotNil(t, bfd)
 
@@ -436,7 +436,7 @@ func (suite *OvnClientTestSuite) testBfdAddL3HAHandler() {
 		dstIP := "192.168.124.20"
 		minRx, minTx, detectMult := 101, 102, 19
 
-		bfd, err := nbClient.CreateBFD(lrpName, dstIP, minRx, minTx, detectMult)
+		bfd, err := nbClient.CreateBFD(lrpName, dstIP, minRx, minTx, detectMult, nil)
 		require.NoError(t, err)
 		require.NotNil(t, bfd)
 
@@ -460,7 +460,7 @@ func (suite *OvnClientTestSuite) testBfdAddL3HAHandler() {
 		dstIP := "192.168.124.21"
 		minRx, minTx, detectMult := 101, 102, 19
 
-		bfd, err := nbClient.CreateBFD(lrpName, dstIP, minRx, minTx, detectMult)
+		bfd, err := nbClient.CreateBFD(lrpName, dstIP, minRx, minTx, detectMult, nil)
 		require.NoError(t, err)
 		require.NotNil(t, bfd)
 
@@ -484,7 +484,7 @@ func (suite *OvnClientTestSuite) testBfdAddL3HAHandler() {
 		dstIP := "192.168.124.22"
 		minRx, minTx, detectMult := 101, 102, 19
 
-		bfd, err := nbClient.CreateBFD(lrpName, dstIP, minRx, minTx, detectMult)
+		bfd, err := nbClient.CreateBFD(lrpName, dstIP, minRx, minTx, detectMult, nil)
 		require.NoError(t, err)
 		require.NotNil(t, bfd)
 
@@ -510,7 +510,7 @@ func (suite *OvnClientTestSuite) testBfdUpdateL3HAHandler() {
 		dstIP := "192.168.124.26"
 		minRx, minTx, detectMult := 101, 102, 19
 
-		bfd, err := nbClient.CreateBFD(lrpName, dstIP, minRx, minTx, detectMult)
+		bfd, err := nbClient.CreateBFD(lrpName, dstIP, minRx, minTx, detectMult, nil)
 		require.NoError(t, err)
 		require.NotNil(t, bfd)
 
@@ -533,7 +533,7 @@ func (suite *OvnClientTestSuite) testBfdUpdateL3HAHandler() {
 		dstIP := "192.168.124.27"
 		minRx, minTx, detectMult := 101, 102, 19
 
-		bfd, err := nbClient.CreateBFD(lrpName, dstIP, minRx, minTx, detectMult)
+		bfd, err := nbClient.CreateBFD(lrpName, dstIP, minRx, minTx, detectMult, nil)
 		require.NoError(t, err)
 		require.NotNil(t, bfd)
 		bfd.Status = nil
@@ -558,7 +558,7 @@ func (suite *OvnClientTestSuite) testBfdUpdateL3HAHandler() {
 		dstIP := "192.168.124.28"
 		minRx, minTx, detectMult := 101, 102, 19
 
-		bfd, err := nbClient.CreateBFD(lrpName, dstIP, minRx, minTx, detectMult)
+		bfd, err := nbClient.CreateBFD(lrpName, dstIP, minRx, minTx, detectMult, nil)
 		require.NoError(t, err)
 		require.NotNil(t, bfd)
 		upStatus := ovnnb.BFDStatusUp
@@ -579,7 +579,7 @@ func (suite *OvnClientTestSuite) testBfdUpdateL3HAHandler() {
 		dstIP := "192.168.124.23"
 		minRx, minTx, detectMult := 101, 102, 19
 
-		bfd, err := nbClient.CreateBFD(lrpName, dstIP, minRx, minTx, detectMult)
+		bfd, err := nbClient.CreateBFD(lrpName, dstIP, minRx, minTx, detectMult, nil)
 		require.NoError(t, err)
 		require.NotNil(t, bfd)
 
@@ -602,7 +602,7 @@ func (suite *OvnClientTestSuite) testBfdUpdateL3HAHandler() {
 		dstIP := "192.168.124.24"
 		minRx, minTx, detectMult := 101, 102, 19
 
-		bfd, err := nbClient.CreateBFD(lrpName, dstIP, minRx, minTx, detectMult)
+		bfd, err := nbClient.CreateBFD(lrpName, dstIP, minRx, minTx, detectMult, nil)
 		require.NoError(t, err)
 		require.NotNil(t, bfd)
 
@@ -625,7 +625,7 @@ func (suite *OvnClientTestSuite) testBfdUpdateL3HAHandler() {
 		dstIP := "192.168.124.25"
 		minRx, minTx, detectMult := 101, 102, 19
 
-		bfd, err := nbClient.CreateBFD(lrpName, dstIP, minRx, minTx, detectMult)
+		bfd, err := nbClient.CreateBFD(lrpName, dstIP, minRx, minTx, detectMult, nil)
 		require.NoError(t, err)
 		require.NotNil(t, bfd)
 
@@ -648,7 +648,7 @@ func (suite *OvnClientTestSuite) testBfdUpdateL3HAHandler() {
 		dstIP := "192.168.124.28"
 		minRx, minTx, detectMult := 101, 102, 19
 
-		failedBFD, err := failedNbClient.CreateBFD(lrpName, dstIP, minRx, minTx, detectMult)
+		failedBFD, err := failedNbClient.CreateBFD(lrpName, dstIP, minRx, minTx, detectMult, nil)
 		require.Error(t, err)
 		require.Nil(t, failedBFD)
 		newBfd := &ovnnb.BFD{
@@ -677,7 +677,7 @@ func (suite *OvnClientTestSuite) testBfdDelL3HAHandler() {
 		dstIP := "192.168.124.30"
 		minRx, minTx, detectMult := 101, 102, 19
 
-		bfd, err := nbClient.CreateBFD(lrpName, dstIP, minRx, minTx, detectMult)
+		bfd, err := nbClient.CreateBFD(lrpName, dstIP, minRx, minTx, detectMult, nil)
 		require.NoError(t, err)
 		require.NotNil(t, bfd)
 
@@ -696,7 +696,7 @@ func (suite *OvnClientTestSuite) testBfdDelL3HAHandler() {
 		dstIP := "192.168.124.31"
 		minRx, minTx, detectMult := 101, 102, 19
 
-		bfd, err := nbClient.CreateBFD(lrpName, dstIP, minRx, minTx, detectMult)
+		bfd, err := nbClient.CreateBFD(lrpName, dstIP, minRx, minTx, detectMult, nil)
 		require.NoError(t, err)
 		require.NotNil(t, bfd)
 

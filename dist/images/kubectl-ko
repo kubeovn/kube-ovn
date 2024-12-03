@@ -625,6 +625,7 @@ diagnose(){
   gcCommands=()
   kubectl get crd vpcs.kubeovn.io
   kubectl get crd vpc-nat-gateways.kubeovn.io
+  kubectl get crd vpc-egress-gateways.kubeovn.io
   kubectl get crd subnets.kubeovn.io
   kubectl get crd ips.kubeovn.io
   kubectl get crd vlans.kubeovn.io

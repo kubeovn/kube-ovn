@@ -184,6 +184,67 @@ func (c *OVNNbClient) DeleteLogicalRouterStaticRoute(lrName string, routeTable, 
 	return nil
 }
 
+// DeleteLogicalRouterStaticRoute delete a logical router static route
+func (c *OVNNbClient) DeleteLogicalRouterStaticRouteByUUID(lrName, uuid string) error {
+	lr, err := c.GetLogicalRouter(lrName, true)
+	if err != nil {
+		return err
+	}
+	if lr == nil {
+		return nil
+	}
+
+	// remove static route from logical router
+	ops, err := c.LogicalRouterUpdateStaticRouteOp(lrName, []string{uuid}, ovsdb.MutateOperationDelete)
+	if err != nil {
+		klog.Error(err)
+		return fmt.Errorf("generate operations for removing static route %s from logical router %s: %w", uuid, lrName, err)
+	}
+	if err = c.Transact("lr-route-del", ops); err != nil {
+		klog.Error(err)
+		return fmt.Errorf("delete static route %s from logical router %s: %w", uuid, lrName, err)
+	}
+
+	return nil
+}
+
+func (c *OVNNbClient) DeleteLogicalRouterStaticRouteByExternalIDs(lrName string, externalIDs map[string]string) error {
+	lr, err := c.GetLogicalRouter(lrName, true)
+	if err != nil {
+		return err
+	}
+	if lr == nil {
+		return nil
+	}
+
+	routes, err := c.ListLogicalRouterStaticRoutes(lrName, nil, nil, "", externalIDs)
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
+	if len(routes) == 0 {
+		return nil
+	}
+
+	uuids := make([]string, 0, len(routes))
+	for _, route := range routes {
+		uuids = append(uuids, route.UUID)
+	}
+
+	// remove static route from logical router
+	ops, err := c.LogicalRouterUpdateStaticRouteOp(lrName, uuids, ovsdb.MutateOperationDelete)
+	if err != nil {
+		klog.Error(err)
+		return fmt.Errorf("generate operations for removing static routes %v from logical router %s: %w", uuids, lrName, err)
+	}
+	if err = c.Transact("lr-route-del", ops); err != nil {
+		klog.Error(err)
+		return fmt.Errorf("delete static routes %v from logical router %s: %w", uuids, lrName, err)
+	}
+
+	return nil
+}
+
 // ClearLogicalRouterStaticRoute clear static route from logical router once
 func (c *OVNNbClient) ClearLogicalRouterStaticRoute(lrName string) error {
 	lr, err := c.GetLogicalRouter(lrName, false)

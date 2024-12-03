@@ -69,6 +69,8 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&VpcList{},
 		&VpcDns{},
 		&VpcDnsList{},
+		&VpcEgressGateway{},
+		&VpcEgressGatewayList{},
 		&VpcNatGateway{},
 		&VpcNatGatewayList{},
 	)

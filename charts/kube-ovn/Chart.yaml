@@ -23,4 +23,4 @@ version: v1.14.0
 # It is recommended to use it with quotes.
 appVersion: "1.14.0"
 
-kubeVersion: ">= 1.23.0-0"
+kubeVersion: ">= 1.29.0-0"

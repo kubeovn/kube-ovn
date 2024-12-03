@@ -427,9 +427,9 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		subnetClient.DeleteSync(underlayExtraSubnetName)
 
 		ginkgo.By("Deleting vlan " + vlanName)
-		vlanClient.Delete(vlanName, metav1.DeleteOptions{})
+		vlanClient.Delete(vlanName)
 		ginkgo.By("Deleting extra vlan " + vlanExtraName)
-		vlanClient.Delete(vlanExtraName, metav1.DeleteOptions{})
+		vlanClient.Delete(vlanExtraName)
 
 		ginkgo.By("Deleting provider network " + providerNetworkName)
 		providerNetworkClient.DeleteSync(providerNetworkName)

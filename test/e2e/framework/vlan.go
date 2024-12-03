@@ -13,6 +13,7 @@ import (
 	"github.com/onsi/ginkgo/v2"
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	clientset "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
 	v1 "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/typed/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -21,6 +22,12 @@ import (
 type VlanClient struct {
 	f *Framework
 	v1.VlanInterface
+}
+
+func NewVlanClient(cs clientset.Interface) *VlanClient {
+	return &VlanClient{
+		VlanInterface: cs.KubeovnV1().Vlans(),
+	}
 }
 
 func (f *Framework) VlanClient() *VlanClient {
@@ -74,9 +81,9 @@ func (c *VlanClient) Patch(original, modified *apiv1.Vlan, timeout time.Duration
 }
 
 // Delete deletes a vlan if the vlan exists
-func (c *VlanClient) Delete(name string, options metav1.DeleteOptions) {
+func (c *VlanClient) Delete(name string) {
 	ginkgo.GinkgoHelper()
-	err := c.VlanInterface.Delete(context.TODO(), name, options)
+	err := c.VlanInterface.Delete(context.TODO(), name, metav1.DeleteOptions{})
 	if err != nil && !apierrors.IsNotFound(err) {
 		Failf("Failed to delete vlan %q: %v", name, err)
 	}
