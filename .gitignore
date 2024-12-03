@@ -44,6 +44,7 @@ test/**/*.test
 *.html
 cover.out
 cover.html
+profile.cov
 kube-ovn-app-sa.yaml
 kube-ovn-cni-sa.yaml
 kube-ovn-sa.yaml
