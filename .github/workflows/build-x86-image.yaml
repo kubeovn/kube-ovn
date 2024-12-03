@@ -22,9 +22,9 @@ concurrency:
 
 env:
   KIND_VERSION: v0.25.0
-  GOLANGCI_LINT_VERSION: 'v1.62.0'
-  HELM_VERSION: v3.16.2
-  SUBMARINER_VERSION: '0.18.2'
+  GOLANGCI_LINT_VERSION: 'v1.62.2'
+  HELM_VERSION: v3.16.3
+  SUBMARINER_VERSION: '0.19.1'
 
 jobs:
   build-kube-ovn-base:
