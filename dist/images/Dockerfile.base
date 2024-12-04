@@ -1,5 +1,5 @@
 # syntax = docker/dockerfile:experimental
-ARG GO_VERSION=1.23.3
+ARG GO_VERSION=1.23.4
 
 FROM ubuntu:24.04 AS ovs-builder
 
@@ -113,9 +113,9 @@ RUN mkdir /packages/ && \
 FROM ghcr.io/aquasecurity/trivy:latest AS trivy
 
 ARG ARCH
-ENV CNI_VERSION="v1.6.0"
+ENV CNI_VERSION="v1.6.1"
 ENV KUBE_VERSION="v1.31.3"
-ENV GOBGP_VERSION="3.30.0"
+ENV GOBGP_VERSION="3.32.0"
 ENV TRIVY_DB_REPOSITORY="public.ecr.aws/aquasecurity/trivy-db:2"
 
 RUN apk --no-cache add curl jq
