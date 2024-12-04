@@ -178,37 +178,6 @@ var _ = framework.Describe("[group:ipam]", func() {
 			framework.ExpectConsistOf(util.PodIPs(pod), strings.Split(pod.Annotations[util.IPAddressAnnotation], ","))
 		}
 	})
-	framework.ConformanceIt("should allocate IPs from namespace IPPool annotation for deployment without IPPool annotation", func() {
-		newNamespaceName := "test-namespace"
-		deployName := "test-deployment"
-		replicas := 3
-		newDc := framework.NewDeploymentClient(cs, newNamespaceName)
-
-		ginkgo.By("Creating namespace " + namespaceName)
-		nsAnnotations := map[string]string{
-			util.IPPoolAnnotation: "192.168.1.10,192.168.1.11,192.168.1.12",
-		}
-		ns := framework.MakeNamespace(newNamespaceName, nil, nsAnnotations)
-		ns = nsClient.Create(ns)
-
-		ginkgo.By("Creating deployment " + deployName + " without IPPool")
-		labels := map[string]string{"app": deployName}
-		deploy := framework.MakeDeployment(deployName, int32(replicas), labels, nil, "pause", framework.PauseImage, "")
-		deploy.ObjectMeta.Namespace = newNamespaceName
-		deploy = newDc.CreateSync(deploy)
-
-		ginkgo.By("Getting pods for deployment " + deployName)
-		pods, err := deployClient.GetPods(deploy)
-		framework.ExpectNoError(err, "failed to get pods for deployment "+deployName)
-		framework.ExpectHaveLen(pods.Items, replicas)
-
-		expectedIPs := []string{"192.168.1.10", "192.168.1.11", "192.168.1.12"}
-		for i, pod := range pods.Items {
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.IPPoolAnnotation, ns.Annotations[util.IPPoolAnnotation])
-			framework.ExpectEqual(pod.Status.PodIP, expectedIPs[i])
-		}
-	})
 
 	framework.ConformanceIt("should allocate static ip for statefulset", func() {
 		replicas := 3
@@ -539,5 +508,63 @@ var _ = framework.Describe("[group:ipam]", func() {
 		patchedDeploy.Spec.Template.Annotations = nil
 		deploy = deployClient.PatchSync(deploy, patchedDeploy)
 		checkFn()
+	})
+
+	framework.ConformanceIt("should allocate IPs from namespace IPPool annotation for deployment without IPPool annotation", func() {
+		replicas := 3
+		ipsCount := 12
+		ips1 := framework.RandomIPPool(cidr, ipsCount)
+		ips2 := framework.RandomIPPool(cidr, ipsCount)
+		newNamespaceName := "test-namespace"
+		deployName := "test-deployment"
+		subnetName1 := "ip-pool-subnet1"
+		subnetName2 := "ip-pool-subnet2"
+
+		newDc := framework.NewDeploymentClient(cs, newNamespaceName)
+
+		ginkgo.By("Creating namespace " + namespaceName)
+		ns := framework.MakeNamespace(newNamespaceName, nil, nil)
+		nsClient.Create(ns)
+
+		ginkgo.By("Creating subnet " + subnetName)
+		cidr1 := framework.RandomCIDR(f.ClusterIPFamily)
+		cidr2 := framework.RandomCIDR(f.ClusterIPFamily)
+
+		subnet1 := framework.MakeSubnet(subnetName1, "", cidr1, "", "", "", nil, nil, []string{newNamespaceName})
+		subnet2 := framework.MakeSubnet(subnetName2, "", cidr2, "", "", "", nil, nil, []string{newNamespaceName})
+		subnetClient.CreateSync(subnet1)
+		subnetClient.CreateSync(subnet2)
+
+		ginkgo.By("Creating IPPool resources ")
+		ippool1 := framework.MakeIPPool("ippool1", subnetName1, ips1, []string{newNamespaceName})
+		ippool2 := framework.MakeIPPool("ippool2", subnetName2, ips2, []string{newNamespaceName})
+		ippoolClient.CreateSync(ippool1)
+		ippoolClient.CreateSync(ippool2)
+
+		ginkgo.By("Creating deployment " + deployName + " without IPPool")
+		labels := map[string]string{"app": deployName}
+		annotations := map[string]string{util.LogicalSwitchAnnotation: subnetName1}
+		deploy := framework.MakeDeployment(deployName, int32(replicas), labels, annotations, "pause", framework.PauseImage, "")
+		deploy.ObjectMeta.Namespace = newNamespaceName
+		newDc.CreateSync(deploy)
+
+		ginkgo.By("Getting pods for deployment " + deployName)
+		pods, err := deployClient.GetPods(deploy)
+		framework.ExpectNoError(err, "failed to get pods for deployment "+deployName)
+		framework.ExpectHaveLen(pods.Items, replicas)
+
+		for _, pod := range pods.Items {
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.CidrAnnotation, subnet1.Spec.CIDRBlock)
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.GatewayAnnotation, subnet1.Spec.Gateway)
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.IPPoolAnnotation, ippool1)
+			framework.ExpectContainElement(ips1, pod.Annotations[util.IPAddressAnnotation])
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.LogicalSwitchAnnotation, subnet1.Name)
+			framework.ExpectMAC(pod.Annotations[util.MacAddressAnnotation])
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
+
+			framework.ExpectConsistOf(util.PodIPs(pod), strings.Split(pod.Annotations[util.IPAddressAnnotation], ","))
+		}
+
 	})
 })

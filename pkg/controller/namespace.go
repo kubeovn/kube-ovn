@@ -195,7 +195,7 @@ func (c *Controller) handleAddNamespace(key string) error {
 	if namespace.Annotations[util.LogicalSwitchAnnotation] == strings.Join(lss, ",") &&
 		namespace.Annotations[util.CidrAnnotation] == strings.Join(cidrs, ";") &&
 		namespace.Annotations[util.ExcludeIpsAnnotation] == strings.Join(excludeIps, ";") &&
-		namespace.Annotations[util.IPPoolAnnotation] == strings.Join(ipPools, ";") {
+		namespace.Annotations[util.IPPoolAnnotation] == strings.Join(ipPools, ",") {
 		return nil
 	}
 
