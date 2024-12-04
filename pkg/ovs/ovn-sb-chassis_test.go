@@ -480,27 +480,6 @@ func (suite *OvnClientTestSuite) testGetKubeOvnChassisses() {
 
 	sbClient := suite.ovnSBClient
 
-	t.Cleanup(func() {
-		err := sbClient.DeleteChassis("kube-ovn-chassis-1")
-		require.NoError(t, err)
-		err = sbClient.DeleteChassis("kube-ovn-chassis-2")
-		require.NoError(t, err)
-		err = sbClient.DeleteChassis("non-kube-ovn-chassis")
-		require.NoError(t, err)
-		err = sbClient.DeleteChassis("mixed-chassis")
-		require.NoError(t, err)
-		chassisList, err := sbClient.GetKubeOvnChassisses()
-		require.NoError(t, err)
-		names := make(map[string]bool)
-		for _, chassis := range *chassisList {
-			names[chassis.Name] = true
-		}
-		require.False(t, names["kube-ovn-chassis-1"])
-		require.False(t, names["kube-ovn-chassis-2"])
-		require.False(t, names["non-kube-ovn-chassis"])
-		require.False(t, names["mixed-chassis"])
-	})
-
 	kubeOvnChassis1 := newChassis(0, "host-1", "kube-ovn-chassis-1", nil, nil, nil, map[string]string{"vendor": util.CniTypeName}, nil)
 	kubeOvnChassis2 := newChassis(0, "host-2", "kube-ovn-chassis-2", nil, nil, nil, map[string]string{"vendor": util.CniTypeName}, nil)
 	nonKubeOvnChassis := newChassis(0, "host-none", "non-kube-ovn-chassis", nil, nil, nil, map[string]string{"vendor": "other"}, nil)
@@ -540,4 +519,23 @@ func (suite *OvnClientTestSuite) testGetKubeOvnChassisses() {
 	require.True(t, names["kube-ovn-chassis-2"])
 	require.False(t, names["non-kube-ovn-chassis"])
 	require.True(t, names["mixed-chassis"])
+
+	err = sbClient.DeleteChassis("kube-ovn-chassis-1")
+	require.NoError(t, err)
+	err = sbClient.DeleteChassis("kube-ovn-chassis-2")
+	require.NoError(t, err)
+	err = sbClient.DeleteChassis("non-kube-ovn-chassis")
+	require.NoError(t, err)
+	err = sbClient.DeleteChassis("mixed-chassis")
+	require.NoError(t, err)
+	chassisList, err = sbClient.GetKubeOvnChassisses()
+	require.NoError(t, err)
+	names = make(map[string]bool)
+	for _, chassis := range *chassisList {
+		names[chassis.Name] = true
+	}
+	require.False(t, names["kube-ovn-chassis-1"])
+	require.False(t, names["kube-ovn-chassis-2"])
+	require.False(t, names["non-kube-ovn-chassis"])
+	require.False(t, names["mixed-chassis"])
 }
