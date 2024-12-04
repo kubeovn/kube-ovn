@@ -41,7 +41,7 @@ require (
 	github.com/vishvananda/netlink v1.3.0
 	go.uber.org/mock v0.5.0
 	golang.org/x/mod v0.22.0
-	golang.org/x/sys v0.27.0
+	golang.org/x/sys v0.28.0
 	golang.org/x/time v0.8.0
 	google.golang.org/grpc v1.68.0
 	google.golang.org/protobuf v1.35.2
