@@ -5,9 +5,12 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func mockLsp() *ovnnb.LogicalSwitchPort {
@@ -37,6 +40,29 @@ func Test_getPortSg(t *testing.T) {
 		require.NoError(t, err)
 		require.ElementsMatch(t, []string{"sg", "default-securitygroup"}, out)
 	})
+}
+
+func Test_upgradeSecurityGroups(t *testing.T) {
+	t.Parallel()
+
+	fakeController := newFakeController(t)
+	ctrl := fakeController.fakeController
+	fakeinformers := fakeController.fakeInformers
+	mockOvnClient := fakeController.mockOvnClient
+
+	sg := &kubeovnv1.SecurityGroup{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "sg",
+		},
+	}
+
+	err := fakeinformers.sgInformer.Informer().GetStore().Add(sg)
+	require.NoError(t, err)
+
+	mockOvnClient.EXPECT().DeleteAcls(gomock.Any(), portGroupKey, "", nil, util.DefaultACLTier).Return(nil).Times(2)
+
+	err = ctrl.upgradeSecurityGroups()
+	require.NoError(t, err)
 }
 
 func Test_securityGroupALLNotExist(t *testing.T) {

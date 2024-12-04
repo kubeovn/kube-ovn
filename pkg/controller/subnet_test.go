@@ -12,7 +12,32 @@ import (
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
+
+func Test_upgradeSubnets(t *testing.T) {
+	t.Parallel()
+
+	fakeController := newFakeController(t)
+	ctrl := fakeController.fakeController
+	fakeinformers := fakeController.fakeInformers
+	mockOvnClient := fakeController.mockOvnClient
+
+	subnet := &kubeovnv1.Subnet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "ovn-test",
+		},
+		Spec: kubeovnv1.SubnetSpec{},
+	}
+
+	err := fakeinformers.subnetInformer.Informer().GetStore().Add(subnet)
+	require.NoError(t, err)
+
+	mockOvnClient.EXPECT().DeleteAcls(gomock.Any(), logicalSwitchKey, "", nil, util.DefaultACLTier).Return(nil)
+
+	err = ctrl.upgradeSubnets()
+	require.NoError(t, err)
+}
 
 func Test_reconcileVips(t *testing.T) {
 	t.Parallel()
