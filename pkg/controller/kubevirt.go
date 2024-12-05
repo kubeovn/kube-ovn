@@ -161,6 +161,7 @@ func (c *Controller) StartMigrationInformerFactory(ctx context.Context, kubevirt
 						util.LogFatalAndExit(nil, "failed to wait for vmi migration caches to sync")
 					}
 					isTaskRunning = true
+					return
 				}
 			case <-ctx.Done():
 				close(taskStopCh)
