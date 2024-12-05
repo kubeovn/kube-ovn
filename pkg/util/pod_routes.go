@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"k8s.io/klog/v2"
-
 	"github.com/kubeovn/kube-ovn/pkg/request"
 )
 
@@ -50,11 +48,8 @@ func (r PodRoutes) ToAnnotations() (map[string]string, error) {
 			continue
 		}
 
-		buf, err := json.Marshal(routes)
-		if err != nil {
-			klog.Error(err)
-			return nil, err
-		}
+		// no error will be returned here
+		buf, _ := json.Marshal(routes)
 		annotations[fmt.Sprintf(RoutesAnnotationTemplate, provider)] = string(buf)
 	}
 	return annotations, nil
