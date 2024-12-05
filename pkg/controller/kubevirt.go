@@ -146,20 +146,18 @@ func (c *Controller) isVMIMigrationCRDInstalled() bool {
 }
 
 func (c *Controller) StartMigrationInformerFactory(ctx context.Context, kubevirtInformerFactory kubevirtController.KubeInformerFactory) {
-	isTaskRunning := false
 	ticker := time.NewTicker(10 * time.Second)
 	go func() {
 		defer ticker.Stop()
 		for {
 			select {
 			case <-ticker.C:
-				if !isTaskRunning && c.isVMIMigrationCRDInstalled() {
+				if c.isVMIMigrationCRDInstalled() {
 					klog.Info("Start VMI migration informer")
 					kubevirtInformerFactory.Start(ctx.Done())
 					if !cache.WaitForCacheSync(ctx.Done(), c.vmiMigrationSynced) {
 						util.LogFatalAndExit(nil, "failed to wait for vmi migration caches to sync")
 					}
-					isTaskRunning = true
 					return
 				}
 			case <-ctx.Done():
