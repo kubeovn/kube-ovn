@@ -147,15 +147,13 @@ func (s *Subnet) GetRandomMac(podName, nicName string) string {
 	}
 }
 
-func (s *Subnet) GetStaticMac(podName, nicName, mac string, checkConflict bool) error {
+func (s *Subnet) GetStaticMac(podName, nicName, mac string) error {
 	if mac == "" {
 		return nil
 	}
-	if checkConflict {
-		if p, ok := s.MacToPod[mac]; ok && p != podName {
-			klog.Errorf("mac %s has been allocated to pod %s", mac, p)
-			return ErrConflict
-		}
+	if p, ok := s.MacToPod[mac]; ok && p != podName {
+		klog.Errorf("mac %s has been allocated to pod %s", mac, p)
+		return ErrConflict
 	}
 	s.MacToPod[mac] = podName
 	s.NicToMac[nicName] = mac
@@ -175,7 +173,7 @@ func (s *Subnet) popPodNic(podName, nicName string) {
 	}
 }
 
-func (s *Subnet) GetRandomAddress(poolName, podName, nicName string, mac *string, skippedAddrs []string, checkConflict bool) (IP, IP, string, error) {
+func (s *Subnet) GetRandomAddress(poolName, podName, nicName string, mac *string, skippedAddrs []string) (IP, IP, string, error) {
 	s.Mutex.Lock()
 	defer func() {
 		s.pushPodNic(podName, nicName)
@@ -184,21 +182,21 @@ func (s *Subnet) GetRandomAddress(poolName, podName, nicName string, mac *string
 
 	switch s.Protocol {
 	case kubeovnv1.ProtocolDual:
-		return s.getDualRandomAddress(poolName, podName, nicName, mac, skippedAddrs, checkConflict)
+		return s.getDualRandomAddress(poolName, podName, nicName, mac, skippedAddrs)
 	case kubeovnv1.ProtocolIPv4:
-		return s.getV4RandomAddress(poolName, podName, nicName, mac, skippedAddrs, checkConflict)
+		return s.getV4RandomAddress(poolName, podName, nicName, mac, skippedAddrs)
 	default:
-		return s.getV6RandomAddress(poolName, podName, nicName, mac, skippedAddrs, checkConflict)
+		return s.getV6RandomAddress(poolName, podName, nicName, mac, skippedAddrs)
 	}
 }
 
-func (s *Subnet) getDualRandomAddress(poolName, podName, nicName string, mac *string, skippedAddrs []string, checkConflict bool) (IP, IP, string, error) {
-	v4IP, _, _, err := s.getV4RandomAddress(poolName, podName, nicName, mac, skippedAddrs, checkConflict)
+func (s *Subnet) getDualRandomAddress(poolName, podName, nicName string, mac *string, skippedAddrs []string) (IP, IP, string, error) {
+	v4IP, _, _, err := s.getV4RandomAddress(poolName, podName, nicName, mac, skippedAddrs)
 	if err != nil {
 		klog.Error(err)
 		return nil, nil, "", err
 	}
-	_, v6IP, macStr, err := s.getV6RandomAddress(poolName, podName, nicName, mac, skippedAddrs, checkConflict)
+	_, v6IP, macStr, err := s.getV6RandomAddress(poolName, podName, nicName, mac, skippedAddrs)
 	if err != nil {
 		klog.Error(err)
 		return nil, nil, "", err
@@ -206,13 +204,13 @@ func (s *Subnet) getDualRandomAddress(poolName, podName, nicName string, mac *st
 
 	// allocated IPv4 address may be released in getV6RandomAddress()
 	if !s.V4NicToIP[nicName].Equal(v4IP) {
-		v4IP, _, _, _ = s.getV4RandomAddress(poolName, podName, nicName, mac, skippedAddrs, checkConflict)
+		v4IP, _, _, _ = s.getV4RandomAddress(poolName, podName, nicName, mac, skippedAddrs)
 	}
 
 	return v4IP, v6IP, macStr, nil
 }
 
-func (s *Subnet) getV4RandomAddress(ippoolName, podName, nicName string, mac *string, skippedAddrs []string, checkConflict bool) (IP, IP, string, error) {
+func (s *Subnet) getV4RandomAddress(ippoolName, podName, nicName string, mac *string, skippedAddrs []string) (IP, IP, string, error) {
 	// After 'macAdd' introduced to support only static mac address, pod restart will run into error mac AddressConflict
 	// controller will re-enqueue the new pod then wait for old pod deleted and address released.
 	// here will return only if both ip and mac exist, otherwise only ip without mac returned will trigger CreatePort error.
@@ -262,14 +260,14 @@ func (s *Subnet) getV4RandomAddress(ippoolName, podName, nicName string, mac *st
 	if mac == nil {
 		return ip, nil, s.GetRandomMac(podName, nicName), nil
 	}
-	if err := s.GetStaticMac(podName, nicName, *mac, checkConflict); err != nil {
+	if err := s.GetStaticMac(podName, nicName, *mac); err != nil {
 		klog.Error(err)
 		return nil, nil, "", err
 	}
 	return ip, nil, *mac, nil
 }
 
-func (s *Subnet) getV6RandomAddress(ippoolName, podName, nicName string, mac *string, skippedAddrs []string, checkConflict bool) (IP, IP, string, error) {
+func (s *Subnet) getV6RandomAddress(ippoolName, podName, nicName string, mac *string, skippedAddrs []string) (IP, IP, string, error) {
 	// After 'macAdd' introduced to support only static mac address, pod restart will run into error mac AddressConflict
 	// controller will re-enqueue the new pod then wait for old pod deleted and address released.
 	// here will return only if both ip and mac exist, otherwise only ip without mac returned will trigger CreatePort error.
@@ -319,14 +317,14 @@ func (s *Subnet) getV6RandomAddress(ippoolName, podName, nicName string, mac *st
 	if mac == nil {
 		return nil, ip, s.GetRandomMac(podName, nicName), nil
 	}
-	if err := s.GetStaticMac(podName, nicName, *mac, checkConflict); err != nil {
+	if err := s.GetStaticMac(podName, nicName, *mac); err != nil {
 		klog.Error(err)
 		return nil, nil, "", err
 	}
 	return nil, ip, *mac, nil
 }
 
-func (s *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac *string, force, checkConflict bool) (IP, string, error) {
+func (s *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac *string, force bool) (IP, string, error) {
 	var v4, v6 bool
 	isAllocated := false
 	s.Mutex.Lock()
@@ -389,7 +387,7 @@ func (s *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac *string, f
 			macStr = s.GetRandomMac(podName, nicName)
 		}
 	} else {
-		if err := s.GetStaticMac(podName, nicName, *mac, checkConflict); err != nil {
+		if err := s.GetStaticMac(podName, nicName, *mac); err != nil {
 			klog.Error(err)
 			return nil, "", err
 		}
@@ -400,11 +398,6 @@ func (s *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac *string, f
 		if existPod, ok := s.V4IPToPod[ip.String()]; ok {
 			pods := strings.Split(existPod, ",")
 			if !slices.Contains(pods, podName) {
-				if !checkConflict {
-					s.V4NicToIP[nicName] = ip
-					s.V4IPToPod[ip.String()] = fmt.Sprintf("%s,%s", s.V4IPToPod[ip.String()], podName)
-					return ip, macStr, nil
-				}
 				klog.Errorf("ip %s has been allocated to %v", ip.String(), pods)
 				return nil, "", ErrConflict
 			}
@@ -437,11 +430,6 @@ func (s *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac *string, f
 		if existPod, ok := s.V6IPToPod[ip.String()]; ok {
 			pods := strings.Split(existPod, ",")
 			if !slices.Contains(pods, podName) {
-				if !checkConflict {
-					s.V6NicToIP[nicName] = ip
-					s.V6IPToPod[ip.String()] = fmt.Sprintf("%s,%s", s.V6IPToPod[ip.String()], podName)
-					return ip, macStr, nil
-				}
 				klog.Errorf("ip %s has been allocated to %v", ip.String(), pods)
 				return nil, "", ErrConflict
 			}

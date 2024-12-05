@@ -328,10 +328,9 @@ func (c *Controller) handleDelIPFinalizer(cachedIP *kubeovnv1.IP) error {
 func (c *Controller) acquireIPAddress(subnetName, name, nicName string) (string, string, string, error) {
 	var skippedAddrs []string
 	var v4ip, v6ip, mac string
-	checkConflict := true
 	var err error
 	for {
-		v4ip, v6ip, mac, err = c.ipam.GetRandomAddress(name, nicName, nil, subnetName, "", skippedAddrs, checkConflict)
+		v4ip, v6ip, mac, err = c.ipam.GetRandomAddress(name, nicName, nil, subnetName, "", skippedAddrs)
 		if err != nil {
 			klog.Error(err)
 			return "", "", "", err
@@ -357,7 +356,6 @@ func (c *Controller) acquireIPAddress(subnetName, name, nicName string) (string,
 }
 
 func (c *Controller) acquireStaticIPAddress(subnetName, name, nicName, ip string) (string, string, string, error) {
-	checkConflict := true
 	var v4ip, v6ip, mac string
 	var err error
 	for _, ipStr := range strings.Split(ip, ",") {
@@ -366,7 +364,7 @@ func (c *Controller) acquireStaticIPAddress(subnetName, name, nicName, ip string
 		}
 	}
 
-	if v4ip, v6ip, mac, err = c.ipam.GetStaticAddress(name, nicName, ip, nil, subnetName, checkConflict); err != nil {
+	if v4ip, v6ip, mac, err = c.ipam.GetStaticAddress(name, nicName, ip, nil, subnetName); err != nil {
 		klog.Errorf("failed to get static virtual ip '%s', mac '%s', subnet '%s', %v", ip, mac, subnetName, err)
 		return "", "", "", err
 	}
@@ -507,7 +505,7 @@ func (c *Controller) ipAcquireAddress(ip *kubeovnv1.IP, subnet *kubeovnv1.Subnet
 		err = fmt.Errorf("failed to get random address for ip %s, %w", ip.Name, err)
 	} else {
 		// static address
-		v4IP, v6IP, mac, err = c.acquireStaticAddress(key, portName, ipStr, macPtr, subnet.Name, true)
+		v4IP, v6IP, mac, err = c.acquireStaticAddress(key, portName, ipStr, macPtr, subnet.Name)
 		if err == nil {
 			return v4IP, v6IP, mac, nil
 		}

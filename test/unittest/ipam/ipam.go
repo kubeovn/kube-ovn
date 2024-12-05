@@ -64,11 +64,11 @@ var _ = ginkgo.Describe("[IPAM]", func() {
 				pod1 := "pod1.ns"
 				pod1Nic1 := "pod1nic1.ns"
 				freeIP1 := im.Subnets[subnetName].V4Free.At(0).Start().String()
-				ip, _, _, err := im.GetStaticAddress(pod1, pod1Nic1, freeIP1, nil, subnetName, true)
+				ip, _, _, err := im.GetStaticAddress(pod1, pod1Nic1, freeIP1, nil, subnetName)
 				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 				gomega.Expect(ip).To(gomega.Equal(freeIP1))
 
-				ip, _, _, err = im.GetRandomAddress(pod1, pod1Nic1, nil, subnetName, "", nil, true)
+				ip, _, _, err = im.GetRandomAddress(pod1, pod1Nic1, nil, subnetName, "", nil)
 				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 				gomega.Expect(ip).To(gomega.Equal(freeIP1))
 
@@ -78,12 +78,12 @@ var _ = ginkgo.Describe("[IPAM]", func() {
 				pod2Nic2 := "pod2Nic2.ns"
 
 				freeIP2 := im.Subnets[subnetName].V4Free.At(0).Start().String()
-				ip, _, _, err = im.GetRandomAddress(pod2, pod2Nic1, nil, subnetName, "", nil, true)
+				ip, _, _, err = im.GetRandomAddress(pod2, pod2Nic1, nil, subnetName, "", nil)
 				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 				gomega.Expect(ip).To(gomega.Equal(freeIP2))
 
 				freeIP3 := im.Subnets[subnetName].V4Free.At(0).Start().String()
-				ip, _, _, err = im.GetRandomAddress(pod2, pod2Nic2, nil, subnetName, "", nil, true)
+				ip, _, _, err = im.GetRandomAddress(pod2, pod2Nic2, nil, subnetName, "", nil)
 
 				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 				gomega.Expect(ip).To(gomega.Equal(freeIP3))
@@ -107,7 +107,7 @@ var _ = ginkgo.Describe("[IPAM]", func() {
 				ginkgo.By("get static ip conflict with ip in use")
 				pod3 := "pod3.ns"
 				pod3Nic1 := "pod3Nic1.ns"
-				_, _, _, err = im.GetStaticAddress(pod3, pod3Nic1, freeIP3, nil, subnetName, true)
+				_, _, _, err = im.GetStaticAddress(pod3, pod3Nic1, freeIP3, nil, subnetName)
 				gomega.Expect(err).Should(gomega.MatchError(ipam.ErrConflict))
 
 				ginkgo.By("release pod with multiple nics")
@@ -129,14 +129,14 @@ var _ = ginkgo.Describe("[IPAM]", func() {
 				pod4 := "pod4.ns"
 				pod4Nic1 := "pod4Nic1.ns"
 
-				_, _, _, err = im.GetStaticAddress(pod4, pod4Nic1, freeIP1, nil, subnetName, true)
+				_, _, _, err = im.GetStaticAddress(pod4, pod4Nic1, freeIP1, nil, subnetName)
 				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 
 				ginkgo.By("create pod with no initialized subnet")
 				pod5 := "pod5.ns"
 				pod5Nic1 := "pod5Nic1.ns"
 
-				_, _, _, err = im.GetRandomAddress(pod5, pod5Nic1, nil, "invalid_subnet", "", nil, true)
+				_, _, _, err = im.GetRandomAddress(pod5, pod5Nic1, nil, "invalid_subnet", "", nil)
 				gomega.Expect(err).Should(gomega.MatchError(ipam.ErrNoSubnet))
 			})
 
@@ -147,7 +147,7 @@ var _ = ginkgo.Describe("[IPAM]", func() {
 
 				err = im.AddOrUpdateSubnet(subnetName, "10.17.0.0/16", v4Gw, []string{"10.17.0.1"})
 				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
-				ip, _, _, err := im.GetRandomAddress("pod5.ns", "pod5.ns", nil, subnetName, "", nil, true)
+				ip, _, _, err := im.GetRandomAddress("pod5.ns", "pod5.ns", nil, subnetName, "", nil)
 				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 				gomega.Expect(ip).To(gomega.Equal("10.17.0.2"))
 
@@ -162,17 +162,17 @@ var _ = ginkgo.Describe("[IPAM]", func() {
 				err := im.AddOrUpdateSubnet(subnetName, "10.16.0.0/30", v4Gw, nil)
 				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 
-				ip, _, _, err := im.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil, true)
+				ip, _, _, err := im.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil)
 				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 				gomega.Expect(ip).To(gomega.Equal("10.16.0.1"))
 
 				im.ReleaseAddressByPod("pod1.ns", "")
-				ip, _, _, err = im.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil, true)
+				ip, _, _, err = im.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil)
 				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 				gomega.Expect(ip).To(gomega.Equal("10.16.0.2"))
 
 				im.ReleaseAddressByPod("pod1.ns", "")
-				ip, _, _, err = im.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil, true)
+				ip, _, _, err = im.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil)
 				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 				gomega.Expect(ip).To(gomega.Equal("10.16.0.1"))
 			})
@@ -182,7 +182,7 @@ var _ = ginkgo.Describe("[IPAM]", func() {
 				err := im.AddOrUpdateSubnet(subnetName, "10.16.0.0/30", v4Gw, nil)
 				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 
-				ip, _, _, err := im.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil, true)
+				ip, _, _, err := im.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil)
 				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 				gomega.Expect(ip).To(gomega.Equal("10.16.0.1"))
 
@@ -190,7 +190,7 @@ var _ = ginkgo.Describe("[IPAM]", func() {
 				err = im.AddOrUpdateSubnet(subnetName, "10.16.0.0/30", v4Gw, []string{"10.16.0.1..10.16.0.2"})
 				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 
-				_, _, _, err = im.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil, true)
+				_, _, _, err = im.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil)
 				gomega.Expect(err).Should(gomega.MatchError(ipam.ErrNoAvailable))
 			})
 
@@ -199,7 +199,7 @@ var _ = ginkgo.Describe("[IPAM]", func() {
 				err := im.AddOrUpdateSubnet(subnetName, "10.16.10.0/28", "10.16.10.1", []string{"10.16.10.1", "10.16.10.10"})
 				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 
-				ip, _, _, err := im.GetStaticAddress("pod1.ns", "pod1.ns", "10.16.10.10", nil, subnetName, true)
+				ip, _, _, err := im.GetStaticAddress("pod1.ns", "pod1.ns", "10.16.10.10", nil, subnetName)
 				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 				gomega.Expect(ip).To(gomega.Equal("10.16.10.10"))
 
@@ -239,12 +239,12 @@ var _ = ginkgo.Describe("[IPAM]", func() {
 				pod1 := "pod1.ns"
 				pod1Nic1 := "pod1nic1.ns"
 				freeIP1 := im.Subnets[subnetName].V6Free.At(0).Start().String()
-				_, ip, _, err := im.GetStaticAddress(pod1, pod1Nic1, freeIP1, nil, subnetName, true)
+				_, ip, _, err := im.GetStaticAddress(pod1, pod1Nic1, freeIP1, nil, subnetName)
 
 				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 				gomega.Expect(ip).To(gomega.Equal(freeIP1))
 
-				_, ip, _, err = im.GetRandomAddress(pod1, pod1Nic1, nil, subnetName, "", nil, true)
+				_, ip, _, err = im.GetRandomAddress(pod1, pod1Nic1, nil, subnetName, "", nil)
 				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 				gomega.Expect(ip).To(gomega.Equal(freeIP1))
 
@@ -254,12 +254,12 @@ var _ = ginkgo.Describe("[IPAM]", func() {
 				pod2Nic2 := "pod2Nic2.ns"
 
 				freeIP2 := im.Subnets[subnetName].V6Free.At(0).Start().String()
-				_, ip, _, err = im.GetRandomAddress(pod2, pod2Nic1, nil, subnetName, "", nil, true)
+				_, ip, _, err = im.GetRandomAddress(pod2, pod2Nic1, nil, subnetName, "", nil)
 				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 				gomega.Expect(ip).To(gomega.Equal(freeIP2))
 
 				freeIP3 := im.Subnets[subnetName].V6Free.At(0).Start().String()
-				_, ip, _, err = im.GetRandomAddress(pod2, pod2Nic2, nil, subnetName, "", nil, true)
+				_, ip, _, err = im.GetRandomAddress(pod2, pod2Nic2, nil, subnetName, "", nil)
 				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 				gomega.Expect(ip).To(gomega.Equal(freeIP3))
 
@@ -282,7 +282,7 @@ var _ = ginkgo.Describe("[IPAM]", func() {
 				ginkgo.By("get static ip conflict with ip in use")
 				pod3 := "pod3.ns"
 				pod3Nic1 := "pod3Nic1.ns"
-				_, _, _, err = im.GetStaticAddress(pod3, pod3Nic1, freeIP3, nil, subnetName, true)
+				_, _, _, err = im.GetStaticAddress(pod3, pod3Nic1, freeIP3, nil, subnetName)
 				gomega.Expect(err).Should(gomega.MatchError(ipam.ErrConflict))
 
 				ginkgo.By("release pod with multiple nics")
@@ -304,14 +304,14 @@ var _ = ginkgo.Describe("[IPAM]", func() {
 				pod4 := "pod4.ns"
 				pod4Nic1 := "pod4Nic1.ns"
 
-				_, _, _, err = im.GetStaticAddress(pod4, pod4Nic1, freeIP1, nil, subnetName, true)
+				_, _, _, err = im.GetStaticAddress(pod4, pod4Nic1, freeIP1, nil, subnetName)
 				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 
 				ginkgo.By("create pod with no initialized subnet")
 				pod5 := "pod5.ns"
 				pod5Nic1 := "pod5Nic1.ns"
 
-				_, _, _, err = im.GetRandomAddress(pod5, pod5Nic1, nil, "invalid_subnet", "", nil, true)
+				_, _, _, err = im.GetRandomAddress(pod5, pod5Nic1, nil, "invalid_subnet", "", nil)
 				gomega.Expect(err).Should(gomega.MatchError(ipam.ErrNoSubnet))
 			})
 
@@ -322,7 +322,7 @@ var _ = ginkgo.Describe("[IPAM]", func() {
 
 				err = im.AddOrUpdateSubnet(subnetName, "fe00::/112", v6Gw, []string{"fe00::1"})
 				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
-				_, ip, _, err := im.GetRandomAddress("pod5.ns", "pod5.ns", nil, subnetName, "", nil, true)
+				_, ip, _, err := im.GetRandomAddress("pod5.ns", "pod5.ns", nil, subnetName, "", nil)
 				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 				gomega.Expect(ip).To(gomega.Equal("fe00::2"))
 
@@ -337,17 +337,17 @@ var _ = ginkgo.Describe("[IPAM]", func() {
 				err := im.AddOrUpdateSubnet(subnetName, "fd00::/126", v6Gw, nil)
 				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 
-				_, ip, _, err := im.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil, true)
+				_, ip, _, err := im.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil)
 				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 				gomega.Expect(ip).To(gomega.Equal("fd00::1"))
 
 				im.ReleaseAddressByPod("pod1.ns", "")
-				_, ip, _, err = im.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil, true)
+				_, ip, _, err = im.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil)
 				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 				gomega.Expect(ip).To(gomega.Equal("fd00::2"))
 
 				im.ReleaseAddressByPod("pod1.ns", "")
-				_, ip, _, err = im.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil, true)
+				_, ip, _, err = im.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil)
 				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 				gomega.Expect(ip).To(gomega.Equal("fd00::1"))
 			})
@@ -357,7 +357,7 @@ var _ = ginkgo.Describe("[IPAM]", func() {
 				err := im.AddOrUpdateSubnet(subnetName, "fd00::/126", v6Gw, nil)
 				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 
-				_, ip, _, err := im.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil, true)
+				_, ip, _, err := im.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil)
 				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 				gomega.Expect(ip).To(gomega.Equal("fd00::1"))
 
@@ -365,7 +365,7 @@ var _ = ginkgo.Describe("[IPAM]", func() {
 				err = im.AddOrUpdateSubnet(subnetName, "fd00::/126", v6Gw, []string{"fd00::1..fd00::2"})
 				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 
-				_, _, _, err = im.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil, true)
+				_, _, _, err = im.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil)
 				gomega.Expect(err).Should(gomega.MatchError(ipam.ErrNoAvailable))
 			})
 		})
@@ -396,12 +396,12 @@ var _ = ginkgo.Describe("[IPAM]", func() {
 				freeIP41 := im.Subnets[subnetName].V4Free.At(0).Start().String()
 				freeIP61 := im.Subnets[subnetName].V6Free.At(0).Start().String()
 				dualIP := fmt.Sprintf("%s,%s", freeIP41, freeIP61)
-				ip4, ip6, _, err := im.GetStaticAddress(pod1, pod1Nic1, dualIP, nil, subnetName, true)
+				ip4, ip6, _, err := im.GetStaticAddress(pod1, pod1Nic1, dualIP, nil, subnetName)
 				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 				gomega.Expect(ip4).To(gomega.Equal(freeIP41))
 				gomega.Expect(ip6).To(gomega.Equal(freeIP61))
 
-				ip4, ip6, _, err = im.GetRandomAddress(pod1, pod1Nic1, nil, subnetName, "", nil, true)
+				ip4, ip6, _, err = im.GetRandomAddress(pod1, pod1Nic1, nil, subnetName, "", nil)
 				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 				gomega.Expect(ip4).To(gomega.Equal(freeIP41))
 				gomega.Expect(ip6).To(gomega.Equal(freeIP61))
@@ -413,14 +413,14 @@ var _ = ginkgo.Describe("[IPAM]", func() {
 
 				freeIP42 := im.Subnets[subnetName].V4Free.At(0).Start().String()
 				freeIP62 := im.Subnets[subnetName].V6Free.At(0).Start().String()
-				ip4, ip6, _, err = im.GetRandomAddress(pod2, pod2Nic1, nil, subnetName, "", nil, true)
+				ip4, ip6, _, err = im.GetRandomAddress(pod2, pod2Nic1, nil, subnetName, "", nil)
 				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 				gomega.Expect(ip4).To(gomega.Equal(freeIP42))
 				gomega.Expect(ip6).To(gomega.Equal(freeIP62))
 
 				freeIP43 := im.Subnets[subnetName].V4Free.At(0).Start().String()
 				freeIP63 := im.Subnets[subnetName].V6Free.At(0).Start().String()
-				ip4, ip6, _, err = im.GetRandomAddress(pod2, pod2Nic2, nil, subnetName, "", nil, true)
+				ip4, ip6, _, err = im.GetRandomAddress(pod2, pod2Nic2, nil, subnetName, "", nil)
 				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 				gomega.Expect(ip4).To(gomega.Equal(freeIP43))
 				gomega.Expect(ip6).To(gomega.Equal(freeIP63))
@@ -453,10 +453,10 @@ var _ = ginkgo.Describe("[IPAM]", func() {
 				ginkgo.By("get static ip conflict with ip in use")
 				pod3 := "pod3.ns"
 				pod3Nic1 := "pod3Nic1.ns"
-				_, _, _, err = im.GetStaticAddress(pod3, pod3Nic1, freeIP43, nil, subnetName, true)
+				_, _, _, err = im.GetStaticAddress(pod3, pod3Nic1, freeIP43, nil, subnetName)
 				gomega.Expect(err).Should(gomega.MatchError(ipam.ErrConflict))
 
-				_, _, _, err = im.GetStaticAddress(pod3, pod3Nic1, freeIP63, nil, subnetName, true)
+				_, _, _, err = im.GetStaticAddress(pod3, pod3Nic1, freeIP63, nil, subnetName)
 				gomega.Expect(err).Should(gomega.MatchError(ipam.ErrConflict))
 
 				ginkgo.By("release pod with multiple nics")
@@ -487,17 +487,17 @@ var _ = ginkgo.Describe("[IPAM]", func() {
 				pod4 := "pod4.ns"
 				pod4Nic1 := "pod4Nic1.ns"
 
-				_, _, _, err = im.GetStaticAddress(pod4, pod4Nic1, freeIP41, nil, subnetName, true)
+				_, _, _, err = im.GetStaticAddress(pod4, pod4Nic1, freeIP41, nil, subnetName)
 				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 
-				_, _, _, err = im.GetStaticAddress(pod4, pod4Nic1, freeIP61, nil, subnetName, true)
+				_, _, _, err = im.GetStaticAddress(pod4, pod4Nic1, freeIP61, nil, subnetName)
 				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 
 				ginkgo.By("create pod with no initialized subnet")
 				pod5 := "pod5.ns"
 				pod5Nic1 := "pod5Nic1.ns"
 
-				_, _, _, err = im.GetRandomAddress(pod5, pod5Nic1, nil, "invalid_subnet", "", nil, true)
+				_, _, _, err = im.GetRandomAddress(pod5, pod5Nic1, nil, "invalid_subnet", "", nil)
 				gomega.Expect(err).Should(gomega.MatchError(ipam.ErrNoSubnet))
 			})
 
@@ -508,7 +508,7 @@ var _ = ginkgo.Describe("[IPAM]", func() {
 
 				err = im.AddOrUpdateSubnet(subnetName, "10.17.0.2/16,fe00::/112", dualGw, []string{"10.17.0.1", "fe00::1"})
 				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
-				ipv4, ipv6, _, err := im.GetRandomAddress("pod5.ns", "pod5.ns", nil, subnetName, "", nil, true)
+				ipv4, ipv6, _, err := im.GetRandomAddress("pod5.ns", "pod5.ns", nil, subnetName, "", nil)
 				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 				gomega.Expect(ipv4).To(gomega.Equal("10.17.0.2"))
 				gomega.Expect(ipv6).To(gomega.Equal("fe00::2"))
@@ -519,19 +519,19 @@ var _ = ginkgo.Describe("[IPAM]", func() {
 				err := im.AddOrUpdateSubnet(subnetName, "10.16.0.2/30,fd00::/126", dualGw, nil)
 				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 
-				ipv4, ipv6, _, err := im.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil, true)
+				ipv4, ipv6, _, err := im.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil)
 				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 				gomega.Expect(ipv4).To(gomega.Equal("10.16.0.1"))
 				gomega.Expect(ipv6).To(gomega.Equal("fd00::1"))
 
 				im.ReleaseAddressByPod("pod1.ns", "")
-				ipv4, ipv6, _, err = im.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil, true)
+				ipv4, ipv6, _, err = im.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil)
 				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 				gomega.Expect(ipv4).To(gomega.Equal("10.16.0.2"))
 				gomega.Expect(ipv6).To(gomega.Equal("fd00::2"))
 
 				im.ReleaseAddressByPod("pod1.ns", "")
-				ipv4, ipv6, _, err = im.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil, true)
+				ipv4, ipv6, _, err = im.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil)
 				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 				gomega.Expect(ipv4).To(gomega.Equal("10.16.0.1"))
 				gomega.Expect(ipv6).To(gomega.Equal("fd00::1"))
@@ -542,7 +542,7 @@ var _ = ginkgo.Describe("[IPAM]", func() {
 				err := im.AddOrUpdateSubnet(subnetName, "10.16.0.2/30,fd00::/126", dualGw, nil)
 				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 
-				ipv4, ipv6, _, err := im.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil, true)
+				ipv4, ipv6, _, err := im.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil)
 				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 				gomega.Expect(ipv4).To(gomega.Equal("10.16.0.1"))
 				gomega.Expect(ipv6).To(gomega.Equal("fd00::1"))
@@ -551,7 +551,7 @@ var _ = ginkgo.Describe("[IPAM]", func() {
 				err = im.AddOrUpdateSubnet(subnetName, "10.16.0.2/30,fd00::/126", dualGw, []string{"10.16.0.1..10.16.0.2", "fd00::1..fd00::2"})
 				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 
-				_, _, _, err = im.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil, true)
+				_, _, _, err = im.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil)
 				gomega.Expect(err).Should(gomega.MatchError(ipam.ErrNoAvailable))
 			})
 		})

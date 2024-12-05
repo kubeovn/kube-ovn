@@ -146,13 +146,13 @@ func (c *Controller) handleAddNode(key string) error {
 	if node.Annotations[util.AllocatedAnnotation] == "true" && node.Annotations[util.IPAddressAnnotation] != "" && node.Annotations[util.MacAddressAnnotation] != "" {
 		macStr := node.Annotations[util.MacAddressAnnotation]
 		v4IP, v6IP, mac, err = c.ipam.GetStaticAddress(portName, portName, node.Annotations[util.IPAddressAnnotation],
-			&macStr, node.Annotations[util.LogicalSwitchAnnotation], true)
+			&macStr, node.Annotations[util.LogicalSwitchAnnotation])
 		if err != nil {
 			klog.Errorf("failed to alloc static ip addrs for node %v: %v", node.Name, err)
 			return err
 		}
 	} else {
-		v4IP, v6IP, mac, err = c.ipam.GetRandomAddress(portName, portName, nil, c.config.NodeSwitch, "", nil, true)
+		v4IP, v6IP, mac, err = c.ipam.GetRandomAddress(portName, portName, nil, c.config.NodeSwitch, "", nil)
 		if err != nil {
 			klog.Errorf("failed to alloc random ip addrs for node %v: %v", node.Name, err)
 			return err
