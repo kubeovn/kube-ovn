@@ -17,9 +17,10 @@ import (
 	"github.com/ovn-org/libovsdb/ovsdb"
 	"github.com/ovn-org/libovsdb/ovsdb/serverdb"
 	"github.com/ovn-org/libovsdb/server"
+	"k8s.io/klog/v2"
+
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
-	"k8s.io/klog/v2"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
@@ -443,8 +444,16 @@ func (suite *OvnClientTestSuite) Test_ListBFD() {
 	suite.testListBFD()
 }
 
+func (suite *OvnClientTestSuite) Test_FindBFD() {
+	suite.testFindBFD()
+}
+
 func (suite *OvnClientTestSuite) Test_DeleteBFD() {
 	suite.testDeleteBFD()
+}
+
+func (suite *OvnClientTestSuite) Test_DeleteBFDByDstIP() {
+	suite.testDeleteBFDByDstIP()
 }
 
 func (suite *OvnClientTestSuite) Test_ListDownBFDs() {

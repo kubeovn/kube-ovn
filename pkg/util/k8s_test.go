@@ -3,6 +3,8 @@ package util
 import (
 	"context"
 	"errors"
+	"fmt"
+	"math/rand/v2"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -10,12 +12,19 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	"github.com/stretchr/testify/require"
+	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/fake"
 	clientv1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/ptr"
+
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 )
 
 func TestDialTCP(t *testing.T) {
@@ -525,4 +534,337 @@ func TestLabelSelectorNotEmpty(t *testing.T) {
 func TestGetTruncatedUID(t *testing.T) {
 	uid := "12345678-1234-1234-1234-123456789012"
 	require.Equal(t, "123456789012", GetTruncatedUID(uid))
+}
+
+func TestSetOwnerReference(t *testing.T) {
+	tests := []struct {
+		name    string
+		owner   metav1.Object
+		object  metav1.Object
+		wantErr bool
+	}{
+		{
+			name: "base",
+			owner: &kubeovnv1.VpcEgressGateway{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf("veg-%05d", rand.IntN(10000)),
+					UID:  types.UID(uuid.New().String()),
+				},
+			},
+			object: &v1.Pod{},
+		},
+		{
+			name: "not registered",
+			owner: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf("veg-%05d", rand.IntN(10000)),
+					UID:  types.UID(uuid.New().String()),
+				},
+			},
+			object:  &v1.Pod{},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := SetOwnerReference(tt.owner, tt.object)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("SetOwnerReference() error = %#v, wantErr = %v", err, tt.wantErr)
+			}
+			if err != nil {
+				return
+			}
+
+			refer := tt.object.GetOwnerReferences()
+			require.Len(t, refer, 1)
+			require.Equal(t, tt.owner.GetName(), refer[0].Name)
+			require.Equal(t, tt.owner.GetUID(), refer[0].UID)
+		})
+	}
+}
+
+func TestPodAttachmentIPs(t *testing.T) {
+	tests := []struct {
+		name    string
+		pod     *v1.Pod
+		network string
+		wantErr bool
+		ips     []string
+	}{
+		{
+			name: "ipv4",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{
+						nadv1.NetworkStatusAnnot: `[{"name": "default/ipv4", "ips": ["1.1.1.1"]}]`,
+					},
+				},
+			},
+			network: "default/ipv4",
+			ips:     []string{"1.1.1.1"},
+		},
+		{
+			name: "ipv6",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{
+						nadv1.NetworkStatusAnnot: `[{"name": "default/ipv6", "ips": ["fd00::1"]}]`,
+					},
+				},
+			},
+			network: "default/ipv6",
+			ips:     []string{"fd00::1"},
+		},
+		{
+			name: "dual-stack",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{
+						nadv1.NetworkStatusAnnot: `[{"name": "default/dual", "ips": ["1.1.1.1", "fd00::1"]}]`,
+					},
+				},
+			},
+			network: "default/dual",
+			ips:     []string{"1.1.1.1", "fd00::1"},
+		},
+		{
+			name:    "nil pod",
+			pod:     nil,
+			wantErr: true,
+		},
+		{
+			name:    "no network status annotation",
+			pod:     &v1.Pod{},
+			wantErr: true,
+		},
+		{
+			name: "unexpected network status annotation",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{
+						nadv1.NetworkStatusAnnot: `foo_bar`,
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "empty network name",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{
+						nadv1.NetworkStatusAnnot: `[{"name": "default/xxx", "ips": ["1.1.1.1", "fd00::1"]}]`,
+					},
+				},
+			},
+			network: "",
+			wantErr: true,
+		},
+		{
+			name: "network status not found",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{
+						nadv1.NetworkStatusAnnot: `[{"name": "default/xyz", "ips": ["1.1.1.1", "fd00::1"]}]`,
+					},
+				},
+			},
+			network: "default/abc",
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ips, err := PodAttachmentIPs(tt.pod, tt.network)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("PodAttachmentIPs() error = %#v, wantErr = %v", err, tt.wantErr)
+			}
+			if err != nil {
+				return
+			}
+
+			require.ElementsMatch(t, tt.ips, ips)
+		})
+	}
+}
+
+func TestDeploymentIsReady(t *testing.T) {
+	tests := []struct {
+		name   string
+		deploy *appsv1.Deployment
+		ready  bool
+	}{
+		{
+			name: "ready",
+			deploy: &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{
+					Generation: 2,
+				},
+				Spec: appsv1.DeploymentSpec{
+					Replicas: ptr.To[int32](1),
+				},
+				Status: appsv1.DeploymentStatus{
+					ObservedGeneration: 2,
+					Replicas:           1,
+					UpdatedReplicas:    1,
+					AvailableReplicas:  1,
+				},
+			},
+			ready: true,
+		},
+		{
+			name: "generation mismatch",
+			deploy: &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{
+					Generation: 2,
+				},
+				Status: appsv1.DeploymentStatus{
+					ObservedGeneration: 1,
+				},
+			},
+			ready: false,
+		},
+		{
+			name: "condition Processing",
+			deploy: &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{
+					Generation: 2,
+				},
+				Spec: appsv1.DeploymentSpec{
+					Replicas: ptr.To[int32](1),
+				},
+				Status: appsv1.DeploymentStatus{
+					ObservedGeneration: 2,
+					Replicas:           1,
+					UpdatedReplicas:    1,
+					AvailableReplicas:  1,
+					Conditions: []appsv1.DeploymentCondition{
+						{
+							Type: appsv1.DeploymentProgressing,
+						},
+					},
+				},
+			},
+			ready: true,
+		},
+		{
+			name: "ProgressDeadlineExceeded",
+			deploy: &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{
+					Generation: 2,
+				},
+				Status: appsv1.DeploymentStatus{
+					ObservedGeneration: 2,
+					Conditions: []appsv1.DeploymentCondition{
+						{
+							Type:   appsv1.DeploymentProgressing,
+							Reason: "ProgressDeadlineExceeded",
+						},
+					},
+				},
+			},
+			ready: false,
+		},
+		{
+			name: "updated replicas less than desired replicas",
+			deploy: &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{
+					Generation: 2,
+				},
+				Spec: appsv1.DeploymentSpec{
+					Replicas: ptr.To[int32](2),
+				},
+				Status: appsv1.DeploymentStatus{
+					ObservedGeneration: 2,
+					Replicas:           2,
+					UpdatedReplicas:    1,
+					AvailableReplicas:  1,
+				},
+			},
+			ready: false,
+		},
+		{
+			name: "updated replicas less than current replicas",
+			deploy: &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{
+					Generation: 2,
+				},
+				Spec: appsv1.DeploymentSpec{
+					Replicas: ptr.To[int32](1),
+				},
+				Status: appsv1.DeploymentStatus{
+					ObservedGeneration: 2,
+					Replicas:           2,
+					UpdatedReplicas:    1,
+					AvailableReplicas:  1,
+				},
+			},
+			ready: false,
+		},
+		{
+			name: "available replicas less than updated replicas",
+			deploy: &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{
+					Generation: 2,
+				},
+				Spec: appsv1.DeploymentSpec{
+					Replicas: ptr.To[int32](2),
+				},
+				Status: appsv1.DeploymentStatus{
+					ObservedGeneration: 2,
+					Replicas:           2,
+					UpdatedReplicas:    2,
+					AvailableReplicas:  1,
+				},
+			},
+			ready: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ready := DeploymentIsReady(tt.deploy)
+			require.Equal(t, tt.ready, ready)
+		})
+	}
+}
+
+func Test_nodeMergePatch(t *testing.T) {
+	tests := []struct {
+		name    string
+		patch   string
+		wantErr bool
+	}{
+		{
+			name:    "valid_merge_patch",
+			patch:   `{"metadata":{"labels":{"key1":"value1"}}}`,
+			wantErr: false,
+		},
+		{
+			name:    "invalid_merge_patch",
+			patch:   "invalid_merge_patch",
+			wantErr: true,
+		},
+	}
+
+	client := fake.NewClientset(&v1.Node{}).CoreV1().Nodes()
+	_, err := client.Create(context.TODO(), &v1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "node1",
+		},
+	}, metav1.CreateOptions{})
+	require.NoError(t, err)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err = nodeMergePatch(client, "node1", tt.patch)
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
 }
