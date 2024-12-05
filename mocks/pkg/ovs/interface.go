@@ -5111,21 +5111,6 @@ func (mr *MockSbClientMockRecorder) DeleteChassisByHost(node any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteChassisByHost", reflect.TypeOf((*MockSbClient)(nil).DeleteChassisByHost), node)
 }
 
-// GetAllChassisByHost mocks base method.
-func (m *MockSbClient) GetAllChassisByHost(nodeName string) (*[]ovnsb.Chassis, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetAllChassisByHost", nodeName)
-	ret0, _ := ret[0].(*[]ovnsb.Chassis)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetAllChassisByHost indicates an expected call of GetAllChassisByHost.
-func (mr *MockSbClientMockRecorder) GetAllChassisByHost(nodeName any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAllChassisByHost", reflect.TypeOf((*MockSbClient)(nil).GetAllChassisByHost), nodeName)
-}
-
 // GetChassis mocks base method.
 func (m *MockSbClient) GetChassis(chassisName string, ignoreNotFound bool) (*ovnsb.Chassis, error) {
 	m.ctrl.T.Helper()
@@ -5349,21 +5334,6 @@ func (m *MockChassis) DeleteChassisByHost(node string) error {
 func (mr *MockChassisMockRecorder) DeleteChassisByHost(node any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteChassisByHost", reflect.TypeOf((*MockChassis)(nil).DeleteChassisByHost), node)
-}
-
-// GetAllChassisByHost mocks base method.
-func (m *MockChassis) GetAllChassisByHost(nodeName string) (*[]ovnsb.Chassis, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetAllChassisByHost", nodeName)
-	ret0, _ := ret[0].(*[]ovnsb.Chassis)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetAllChassisByHost indicates an expected call of GetAllChassisByHost.
-func (mr *MockChassisMockRecorder) GetAllChassisByHost(nodeName any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAllChassisByHost", reflect.TypeOf((*MockChassis)(nil).GetAllChassisByHost), nodeName)
 }
 
 // GetChassis mocks base method.

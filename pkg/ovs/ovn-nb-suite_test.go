@@ -1024,10 +1024,6 @@ func (suite *OvnClientTestSuite) Test_ListChassis() {
 	suite.testListChassis()
 }
 
-func (suite *OvnClientTestSuite) Test_GetAllChassisByHost() {
-	suite.testGetAllChassisByHost()
-}
-
 func (suite *OvnClientTestSuite) Test_GetChassisByHost() {
 	suite.testGetChassisByHost()
 }
