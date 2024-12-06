@@ -4,14 +4,17 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 	kubevirtv1 "kubevirt.io/api/core/v1"
+	kubevirtController "kubevirt.io/kubevirt/pkg/controller"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func (c *Controller) enqueueAddVMIMigration(obj interface{}) {
@@ -138,6 +141,28 @@ func (c *Controller) isVMIMigrationCRDInstalled() bool {
 	if err != nil {
 		return false
 	}
-	klog.Info("Detect VMI Migration CRD")
+	klog.Info("Found KubeVirt VMI Migration CRD")
 	return true
+}
+
+func (c *Controller) StartMigrationInformerFactory(ctx context.Context, kubevirtInformerFactory kubevirtController.KubeInformerFactory) {
+	ticker := time.NewTicker(10 * time.Second)
+	go func() {
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				if c.isVMIMigrationCRDInstalled() {
+					klog.Info("Start VMI migration informer")
+					kubevirtInformerFactory.Start(ctx.Done())
+					if !cache.WaitForCacheSync(ctx.Done(), c.vmiMigrationSynced) {
+						util.LogFatalAndExit(nil, "failed to wait for vmi migration caches to sync")
+					}
+					return
+				}
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
 }
