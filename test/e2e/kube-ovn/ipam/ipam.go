@@ -565,6 +565,5 @@ var _ = framework.Describe("[group:ipam]", func() {
 
 			framework.ExpectConsistOf(util.PodIPs(pod), strings.Split(pod.Annotations[util.IPAddressAnnotation], ","))
 		}
-
 	})
 })
