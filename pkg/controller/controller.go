@@ -918,9 +918,6 @@ func Run(ctx context.Context, config *Configuration) {
 		}); err != nil {
 			util.LogFatalAndExit(err, "failed to add VMI Migration event handler")
 		}
-	}
-
-	if controller.config.EnableLiveMigrationOptimize {
 		controller.StartMigrationInformerFactory(ctx, kubevirtInformerFactory)
 	}
 
