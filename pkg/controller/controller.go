@@ -272,7 +272,6 @@ type Controller struct {
 	vmiMigrationSynced           cache.InformerSynced
 	addOrUpdateVMIMigrationQueue workqueue.TypedRateLimitingInterface[string]
 	kubevirtInformerFactory      kubevirtController.KubeInformerFactory
-	hasKubevirtVMIMigration      bool
 
 	recorder               record.EventRecorder
 	informerFactory        kubeinformers.SharedInformerFactory
@@ -638,11 +637,6 @@ func Run(ctx context.Context, config *Configuration) {
 	controller.kubeovnInformerFactory.Start(ctx.Done())
 	controller.anpInformerFactory.Start(ctx.Done())
 
-	controller.hasKubevirtVMIMigration = controller.isVMIMigrationCRDInstalled()
-	if controller.config.EnableLiveMigrationOptimize && controller.hasKubevirtVMIMigration {
-		kubevirtInformerFactory.Start(ctx.Done())
-	}
-
 	klog.Info("Waiting for informer caches to sync")
 	cacheSyncs := []cache.InformerSynced{
 		controller.vpcNatGatewaySynced, controller.vpcEgressGatewaySynced,
@@ -662,10 +656,6 @@ func Run(ctx context.Context, config *Configuration) {
 	}
 	if controller.config.EnableANP {
 		cacheSyncs = append(cacheSyncs, controller.anpsSynced, controller.banpsSynced)
-	}
-
-	if controller.config.EnableLiveMigrationOptimize && controller.hasKubevirtVMIMigration {
-		cacheSyncs = append(cacheSyncs, controller.vmiMigrationSynced)
 	}
 
 	if !cache.WaitForCacheSync(ctx.Done(), cacheSyncs...) {
@@ -921,13 +911,14 @@ func Run(ctx context.Context, config *Configuration) {
 		}
 	}
 
-	if config.EnableLiveMigrationOptimize && controller.hasKubevirtVMIMigration {
+	if config.EnableLiveMigrationOptimize {
 		if _, err = vmiMigrationInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc:    controller.enqueueAddVMIMigration,
 			UpdateFunc: controller.enqueueUpdateVMIMigration,
 		}); err != nil {
 			util.LogFatalAndExit(err, "failed to add VMI Migration event handler")
 		}
+		controller.StartMigrationInformerFactory(ctx, kubevirtInformerFactory)
 	}
 
 	controller.Run(ctx)
@@ -1335,7 +1326,7 @@ func (c *Controller) startWorkers(ctx context.Context) {
 		go wait.Until(runWorker("delete base admin network policy", c.deleteBanpQueue, c.handleDeleteBanp), time.Second, ctx.Done())
 	}
 
-	if c.config.EnableLiveMigrationOptimize && c.hasKubevirtVMIMigration {
+	if c.config.EnableLiveMigrationOptimize {
 		go wait.Until(runWorker("add/update vmiMigration ", c.addOrUpdateVMIMigrationQueue, c.handleAddOrUpdateVMIMigration), 50*time.Millisecond, ctx.Done())
 	}
 }
