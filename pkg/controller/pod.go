@@ -508,8 +508,6 @@ func (c *Controller) reconcileAllocateSubnets(pod *v1.Pod, needAllocatePodNets [
 
 	var err error
 	var vmKey string
-	// var isMigrate, migrated, migratedFail bool
-	// var vmKey, srcNodeName, targetNodeName string
 	if isVMPod && c.config.EnableKeepVMIP {
 		vmKey = fmt.Sprintf("%s/%s", namespace, vmName)
 	}
