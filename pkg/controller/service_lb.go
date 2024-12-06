@@ -100,6 +100,10 @@ func (c *Controller) genLbSvcDeployment(svc *corev1.Service, nad *nadv1.NetworkA
 		resources.Limits[corev1.ResourceName(v)] = resource.MustParse("1")
 		resources.Requests[corev1.ResourceName(v)] = resource.MustParse("1")
 	}
+	nodeSelector := c.getNodeSelectorFromCm()
+	if nodeSelector != nil {
+		klog.Infof("node selector for lb-svc deploy %s: %v", name, nodeSelector)
+	}
 
 	dp = &v1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
@@ -129,6 +133,7 @@ func (c *Controller) genLbSvcDeployment(svc *corev1.Service, nad *nadv1.NetworkA
 							Resources: resources,
 						},
 					},
+					NodeSelector:                  nodeSelector,
 					TerminationGracePeriodSeconds: ptr.To(int64(0)),
 				},
 			},
@@ -457,4 +462,30 @@ func (c *Controller) delDnatRules(pod *corev1.Pod, toDel []corev1.ServicePort, s
 		}
 	}
 	return nil
+}
+
+func (c *Controller) getNodeSelectorFromCm() map[string]string {
+	cm, err := c.configMapsLister.ConfigMaps(c.config.PodNamespace).Get(util.VpcNatConfig)
+	if err != nil {
+		err = fmt.Errorf("failed to get ovn-vpc-nat-config, %w", err)
+		klog.Error(err)
+		return nil
+	}
+
+	if cm.Data["nodeSelector"] == "" {
+		klog.Error(errors.New("there's no nodeSelector field in ovn-vpc-nat-config"))
+		return nil
+	}
+	// nodeSelector used for lb-svc deployment
+	lines := strings.Split(cm.Data["nodeSelector"], "\n")
+
+	selectors := make(map[string]string, len(lines))
+	for _, line := range lines {
+		parts := strings.Split(strings.TrimSpace(line), ":")
+		if len(parts) != 2 {
+			continue
+		}
+		selectors[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
+	}
+	return selectors
 }
