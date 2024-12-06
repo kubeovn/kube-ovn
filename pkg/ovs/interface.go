@@ -257,7 +257,6 @@ type Common interface {
 type Chassis interface {
 	DeleteChassis(chassisName string) error
 	DeleteChassisByHost(node string) error
-	GetAllChassisByHost(nodeName string) (*[]ovnsb.Chassis, error)
 	GetChassisByHost(nodeName string) (*ovnsb.Chassis, error)
 	GetChassis(chassisName string, ignoreNotFound bool) (*ovnsb.Chassis, error)
 	GetKubeOvnChassisses() (*[]ovnsb.Chassis, error)
