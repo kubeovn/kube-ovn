@@ -2532,41 +2532,41 @@ jobs:
       - name: Collect k8s events
         if: failure() && steps.e2e.conclusion == 'failure'
         run: |
-          kubectl get events -A -o yaml > kube-ovn-conformance-e2e-${{ matrix.ip-family }}-events.yaml
-          tar zcf kube-ovn-conformance-e2e-${{ matrix.ip-family }}-events.tar.gz kube-ovn-conformance-e2e-${{ matrix.ip-family }}-events.yaml
+          kubectl get events -A -o yaml > vpc-egress-gateway-e2e-${{ matrix.ip-family }}-events.yaml
+          tar zcf vpc-egress-gateway-e2e-${{ matrix.ip-family }}-events.tar.gz vpc-egress-gateway-e2e-${{ matrix.ip-family }}-events.yaml
 
       - name: Upload k8s events
         uses: actions/upload-artifact@v4
         if: failure() && steps.e2e.conclusion == 'failure'
         with:
-          name: kube-ovn-conformance-e2e-${{ matrix.ip-family }}-events
-          path: kube-ovn-conformance-e2e-${{ matrix.ip-family }}-events.tar.gz
+          name: vpc-egress-gateway-e2e-${{ matrix.ip-family }}-events
+          path: vpc-egress-gateway-e2e-${{ matrix.ip-family }}-events.tar.gz
 
       - name: Collect apiserver audit logs
         if: failure() && steps.e2e.conclusion == 'failure'
         run: |
           docker cp kube-ovn-control-plane:/var/log/kubernetes/kube-apiserver-audit.log .
-          tar zcf kube-ovn-conformance-e2e-${{ matrix.ip-family }}-audit-log.tar.gz kube-apiserver-audit.log
+          tar zcf vpc-egress-gateway-e2e-${{ matrix.ip-family }}-audit-log.tar.gz kube-apiserver-audit.log
 
       - name: Upload apiserver audit logs
         uses: actions/upload-artifact@v4
         if: failure() && steps.e2e.conclusion == 'failure'
         with:
-          name: kube-ovn-conformance-e2e-${{ matrix.ip-family }}-audit-log
-          path: kube-ovn-conformance-e2e-${{ matrix.ip-family }}-audit-log.tar.gz
+          name: vpc-egress-gateway-e2e-${{ matrix.ip-family }}-audit-log
+          path: vpc-egress-gateway-e2e-${{ matrix.ip-family }}-audit-log.tar.gz
 
       - name: kubectl ko log
         if: failure() && steps.e2e.conclusion == 'failure'
         run: |
           make kubectl-ko-log
-          mv kubectl-ko-log.tar.gz kube-ovn-conformance-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
+          mv kubectl-ko-log.tar.gz vpc-egress-gateway-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
         uses: actions/upload-artifact@v4
         if: failure() && steps.e2e.conclusion == 'failure'
         with:
-          name: kube-ovn-conformance-e2e-${{ matrix.ip-family }}-ko-log
-          path: kube-ovn-conformance-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
+          name: vpc-egress-gateway-e2e-${{ matrix.ip-family }}-ko-log
+          path: vpc-egress-gateway-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: Check kube ovn pod restarts
         if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
