@@ -516,20 +516,17 @@ var _ = framework.Describe("[group:ipam]", func() {
 		ips1 := framework.RandomIPPool(cidr, ipsCount)
 		ips2 := framework.RandomIPPool(cidr, ipsCount)
 		newNamespaceName := "test-namespace"
-		deployName := "test-deployment"
+		testDeployName := "test-deployment"
 		subnetName1 := "ip-pool-subnet1"
 		subnetName2 := "ip-pool-subnet2"
-
-		newDc := framework.NewDeploymentClient(cs, newNamespaceName)
 
 		ginkgo.By("Creating namespace " + namespaceName)
 		ns := framework.MakeNamespace(newNamespaceName, nil, nil)
 		nsClient.Create(ns)
 
-		ginkgo.By("Creating subnet " + subnetName)
+		ginkgo.By("Creating subnet " + subnetName1 + " and " + subnetName2)
 		cidr1 := framework.RandomCIDR(f.ClusterIPFamily)
 		cidr2 := framework.RandomCIDR(f.ClusterIPFamily)
-
 		subnet1 := framework.MakeSubnet(subnetName1, "", cidr1, "", "", "", nil, nil, []string{newNamespaceName})
 		subnet2 := framework.MakeSubnet(subnetName2, "", cidr2, "", "", "", nil, nil, []string{newNamespaceName})
 		subnetClient.CreateSync(subnet1)
@@ -541,16 +538,17 @@ var _ = framework.Describe("[group:ipam]", func() {
 		ippoolClient.CreateSync(ippool1)
 		ippoolClient.CreateSync(ippool2)
 
-		ginkgo.By("Creating deployment " + deployName + " without IPPool")
-		labels := map[string]string{"app": deployName}
+		ginkgo.By("Creating deployment " + testDeployName + " without IPPool annotation")
+		newDc := framework.NewDeploymentClient(cs, newNamespaceName)
+		labels := map[string]string{"app": testDeployName}
 		annotations := map[string]string{util.LogicalSwitchAnnotation: subnetName1}
-		deploy := framework.MakeDeployment(deployName, int32(replicas), labels, annotations, "pause", framework.PauseImage, "")
+		deploy := framework.MakeDeployment(testDeployName, int32(replicas), labels, annotations, "pause", framework.PauseImage, "")
 		deploy.ObjectMeta.Namespace = newNamespaceName
 		newDc.CreateSync(deploy)
 
-		ginkgo.By("Getting pods for deployment " + deployName)
+		ginkgo.By("Getting pods for deployment " + testDeployName)
 		pods, err := deployClient.GetPods(deploy)
-		framework.ExpectNoError(err, "failed to get pods for deployment "+deployName)
+		framework.ExpectNoError(err, "failed to get pods for deployment "+testDeployName)
 		framework.ExpectHaveLen(pods.Items, replicas)
 
 		for _, pod := range pods.Items {
