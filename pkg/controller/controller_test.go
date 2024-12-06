@@ -7,6 +7,7 @@ import (
 	"go.uber.org/mock/gomock"
 	"k8s.io/client-go/informers"
 	coreinformers "k8s.io/client-go/informers/core/v1"
+	networkinformers "k8s.io/client-go/informers/networking/v1"
 	"k8s.io/client-go/kubernetes/fake"
 
 	mockovs "github.com/kubeovn/kube-ovn/mocks/pkg/ovs"
@@ -18,7 +19,10 @@ import (
 type fakeControllerInformers struct {
 	vpcInformer     kubeovninformer.VpcInformer
 	subnetInformer  kubeovninformer.SubnetInformer
+	sgInformer      kubeovninformer.SecurityGroupInformer
 	serviceInformer coreinformers.ServiceInformer
+	npInformer      networkinformers.NetworkPolicyInformer
+	nodeInformer    coreinformers.NodeInformer
 }
 
 type fakeController struct {
@@ -34,17 +38,23 @@ func newFakeController(t *testing.T) *fakeController {
 	kubeClient := fake.NewSimpleClientset()
 	kubeInformerFactory := informers.NewSharedInformerFactory(kubeClient, 0)
 	serviceInformer := kubeInformerFactory.Core().V1().Services()
+	npInformer := kubeInformerFactory.Networking().V1().NetworkPolicies()
+	nodeInformer := kubeInformerFactory.Core().V1().Nodes()
 
 	/* fake kube ovn client */
 	kubeovnClient := kubeovnfake.NewSimpleClientset()
 	kubeovnInformerFactory := kubeovninformerfactory.NewSharedInformerFactory(kubeovnClient, 0)
 	vpcInformer := kubeovnInformerFactory.Kubeovn().V1().Vpcs()
 	subnetInformer := kubeovnInformerFactory.Kubeovn().V1().Subnets()
+	sgInformer := kubeovnInformerFactory.Kubeovn().V1().SecurityGroups()
 
 	fakeInformers := &fakeControllerInformers{
 		vpcInformer:     vpcInformer,
 		subnetInformer:  subnetInformer,
+		sgInformer:      sgInformer,
 		serviceInformer: serviceInformer,
+		npInformer:      npInformer,
+		nodeInformer:    nodeInformer,
 	}
 
 	/* ovn fake client */
@@ -52,7 +62,10 @@ func newFakeController(t *testing.T) *fakeController {
 
 	ctrl := &Controller{
 		servicesLister:        serviceInformer.Lister(),
+		npsLister:             npInformer.Lister(),
+		nodesLister:           nodeInformer.Lister(),
 		vpcsLister:            vpcInformer.Lister(),
+		sgsLister:             sgInformer.Lister(),
 		vpcSynced:             alwaysReady,
 		subnetsLister:         subnetInformer.Lister(),
 		subnetSynced:          alwaysReady,

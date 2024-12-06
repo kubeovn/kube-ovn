@@ -94,6 +94,37 @@ func nodeUnderlayAddressSetName(node string, af int) string {
 	return fmt.Sprintf("node_%s_underlay_v%d", strings.ReplaceAll(node, "-", "_"), af)
 }
 
+// for upgrading from v1.12.x to v1.13.x
+func (c *Controller) upgradeNodesToV1_13() error {
+	// clear legacy acls in tier 0 for node port group
+	nodes, err := c.nodesLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list nodes: %v", err)
+		return err
+	}
+
+	for _, node := range nodes {
+		pgName := strings.ReplaceAll(node.Annotations[util.PortNameAnnotation], "-", ".")
+		if pgName == "" {
+			continue
+		}
+		if err = c.OVNNbClient.DeleteAcls(pgName, portGroupKey, "", nil, util.DefaultACLTier); err != nil {
+			klog.Errorf("delete legacy node acl for node pg %s: %v", pgName, err)
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (c *Controller) upgradeNodes() error {
+	if err := c.upgradeNodesToV1_13(); err != nil {
+		klog.Errorf("failed to upgrade nodes to v1.13.x, err: %v", err)
+		return err
+	}
+	return nil
+}
+
 func (c *Controller) handleAddNode(key string) error {
 	c.nodeKeyMutex.LockKey(key)
 	defer func() { _ = c.nodeKeyMutex.UnlockKey(key) }()
@@ -786,7 +817,7 @@ func (c *Controller) checkAndUpdateNodePortGroup() error {
 			}
 		} else {
 			// clear all acl
-			if err = c.OVNNbClient.DeleteAcls(pgName, portGroupKey, "", nil); err != nil {
+			if err = c.OVNNbClient.DeleteAcls(pgName, portGroupKey, "", nil, util.NilACLTier); err != nil {
 				klog.Errorf("delete node acl for node pg %s: %v", pgName, err)
 			}
 		}

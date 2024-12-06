@@ -62,6 +62,40 @@ func (c *Controller) enqueueUpdateNp(oldObj, newObj interface{}) {
 	}
 }
 
+// for upgrading from v1.12.x to v1.13.x
+func (c *Controller) upgradeNetworkPoliciesToV1_13() error {
+	// clear legacy acls in tier 0 for all network policies
+	// including ingress, egress and subnet gateway acls
+	nps, err := c.npsLister.NetworkPolicies(corev1.NamespaceAll).List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list network policies %v", err)
+		return err
+	}
+
+	for _, np := range nps {
+		npName := np.Name
+		nameArray := []rune(np.Name)
+		if !unicode.IsLetter(nameArray[0]) {
+			npName = "np" + np.Name
+		}
+		pgName := strings.ReplaceAll(fmt.Sprintf("%s.%s", npName, np.Namespace), "-", ".")
+		if err = c.OVNNbClient.DeleteAcls(pgName, portGroupKey, "", nil, util.DefaultACLTier); err != nil {
+			klog.Errorf("clear legacy network policy %s acls: %v", pgName, err)
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (c *Controller) upgradeNetworkPolicies() error {
+	if err := c.upgradeNetworkPoliciesToV1_13(); err != nil {
+		klog.Errorf("failed to upgrade network policies to v1.13.x, err: %v", err)
+		return err
+	}
+	return nil
+}
+
 func (c *Controller) createAsForNetpol(ns, name, direction, asName string, addresses []string) error {
 	if err := c.OVNNbClient.CreateAddressSet(asName, map[string]string{
 		networkPolicyKey: fmt.Sprintf("%s/%s/%s", ns, name, direction),
@@ -165,7 +199,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 		return err
 	}
 
-	ingressACLOps, err := c.OVNNbClient.DeleteAclsOps(pgName, portGroupKey, "to-lport", nil)
+	ingressACLOps, err := c.OVNNbClient.DeleteAclsOps(pgName, portGroupKey, "to-lport", nil, util.NilACLTier)
 	if err != nil {
 		klog.Errorf("generate operations that clear np %s ingress acls: %v", key, err)
 		return err
@@ -281,7 +315,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 			}
 		}
 	} else {
-		if err = c.OVNNbClient.DeleteAcls(pgName, portGroupKey, "to-lport", nil); err != nil {
+		if err = c.OVNNbClient.DeleteAcls(pgName, portGroupKey, "to-lport", nil, util.NilACLTier); err != nil {
 			klog.Errorf("delete np %s ingress acls: %v", key, err)
 			return err
 		}
@@ -294,7 +328,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 		}
 	}
 
-	egressACLOps, err := c.OVNNbClient.DeleteAclsOps(pgName, portGroupKey, "from-lport", nil)
+	egressACLOps, err := c.OVNNbClient.DeleteAclsOps(pgName, portGroupKey, "from-lport", nil, util.NilACLTier)
 	if err != nil {
 		klog.Errorf("generate operations that clear np %s egress acls: %v", key, err)
 		return err
@@ -408,7 +442,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 			}
 		}
 	} else {
-		if err = c.OVNNbClient.DeleteAcls(pgName, portGroupKey, "from-lport", nil); err != nil {
+		if err = c.OVNNbClient.DeleteAcls(pgName, portGroupKey, "from-lport", nil, util.NilACLTier); err != nil {
 			klog.Errorf("delete np %s egress acls: %v", key, err)
 			return err
 		}
