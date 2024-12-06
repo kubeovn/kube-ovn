@@ -541,7 +541,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 		ginkgo.By("Creating deployment " + testDeployName + " without IPPool annotation")
 		newDc := framework.NewDeploymentClient(cs, newNamespaceName)
 		labels := map[string]string{"app": testDeployName}
-		annotations := map[string]string{util.LogicalSwitchAnnotation: subnetName1}
+		//annotations := map[string]string{util.LogicalSwitchAnnotation: subnetName1}
 		deploy := framework.MakeDeployment(testDeployName, int32(replicas), labels, annotations, "pause", framework.PauseImage, "")
 		deploy.ObjectMeta.Namespace = newNamespaceName
 		newDc.CreateSync(deploy)
