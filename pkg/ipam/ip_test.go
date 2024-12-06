@@ -463,11 +463,11 @@ func TestAddOrUpdateSubnet(t *testing.T) {
 	pod1 := "pod1.ns"
 	pod1Nic1 := "pod1nic1.ns"
 	freeIP1 := ipam.Subnets[subnetName].V4Free.At(0).Start().String()
-	ip, _, _, err := ipam.GetStaticAddress(pod1, pod1Nic1, freeIP1, nil, subnetName, true)
+	ip, _, _, err := ipam.GetStaticAddress(pod1, pod1Nic1, freeIP1, nil, subnetName)
 	require.NoError(t, err)
 	require.Equal(t, freeIP1, ip)
 
-	ip, _, _, err = ipam.GetRandomAddress(pod1, pod1Nic1, nil, subnetName, "", nil, true)
+	ip, _, _, err = ipam.GetRandomAddress(pod1, pod1Nic1, nil, subnetName, "", nil)
 	require.NoError(t, err)
 	require.Equal(t, freeIP1, ip)
 
@@ -477,12 +477,12 @@ func TestAddOrUpdateSubnet(t *testing.T) {
 	pod2Nic2 := "pod2Nic2.ns"
 
 	freeIP2 := ipam.Subnets[subnetName].V4Free.At(0).Start().String()
-	ip, _, _, err = ipam.GetRandomAddress(pod2, pod2Nic1, nil, subnetName, "", nil, true)
+	ip, _, _, err = ipam.GetRandomAddress(pod2, pod2Nic1, nil, subnetName, "", nil)
 	require.NoError(t, err)
 	require.Equal(t, freeIP2, ip)
 
 	freeIP3 := ipam.Subnets[subnetName].V4Free.At(0).Start().String()
-	ip, _, _, err = ipam.GetRandomAddress(pod2, pod2Nic2, nil, subnetName, "", nil, true)
+	ip, _, _, err = ipam.GetRandomAddress(pod2, pod2Nic2, nil, subnetName, "", nil)
 	require.NoError(t, err)
 	require.Equal(t, freeIP3, ip)
 
@@ -505,7 +505,7 @@ func TestAddOrUpdateSubnet(t *testing.T) {
 	// get static ip conflict with ip in use
 	pod3 := "pod3.ns"
 	pod3Nic1 := "pod3Nic1.ns"
-	_, _, _, err = ipam.GetStaticAddress(pod3, pod3Nic1, freeIP3, nil, subnetName, true)
+	_, _, _, err = ipam.GetStaticAddress(pod3, pod3Nic1, freeIP3, nil, subnetName)
 	require.EqualError(t, err, ErrConflict.Error())
 
 	// release pod with multiple nics
@@ -526,14 +526,14 @@ func TestAddOrUpdateSubnet(t *testing.T) {
 	// create new pod with released ips
 	pod4 := "pod4.ns"
 	pod4Nic1 := "pod4Nic1.ns"
-	_, _, _, err = ipam.GetStaticAddress(pod4, pod4Nic1, freeIP1, nil, subnetName, true)
+	_, _, _, err = ipam.GetStaticAddress(pod4, pod4Nic1, freeIP1, nil, subnetName)
 	require.NoError(t, err)
 
 	// create pod with no initialized subnet
 	pod5 := "pod5.ns"
 	pod5Nic1 := "pod5Nic1.ns"
 
-	_, _, _, err = ipam.GetRandomAddress(pod5, pod5Nic1, nil, "invalid_subnet", "", nil, true)
+	_, _, _, err = ipam.GetRandomAddress(pod5, pod5Nic1, nil, "invalid_subnet", "", nil)
 	require.EqualError(t, err, ErrNoSubnet.Error())
 
 	// change cidr
@@ -547,7 +547,7 @@ func TestAddOrUpdateSubnet(t *testing.T) {
 	v4Gw = "10.17.0.1"
 	err = ipam.AddOrUpdateSubnet(subnetName, ipv4CIDR, v4Gw, []string{"10.17.0.1"})
 	require.NoError(t, err)
-	ip, _, _, err = ipam.GetRandomAddress("pod5.ns", "pod5.ns", nil, subnetName, "", nil, true)
+	ip, _, _, err = ipam.GetRandomAddress("pod5.ns", "pod5.ns", nil, subnetName, "", nil)
 	require.NoError(t, err)
 	require.Equal(t, ip, "10.17.0.2")
 
@@ -563,17 +563,17 @@ func TestAddOrUpdateSubnet(t *testing.T) {
 	err = ipam.AddOrUpdateSubnet(subnetName, ipv4CIDR, v4Gw, nil)
 	require.NoError(t, err)
 
-	ip, _, _, err = ipam.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil, true)
+	ip, _, _, err = ipam.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil)
 	require.NoError(t, err)
 	require.Equal(t, ip, "10.16.0.1")
 
 	ipam.ReleaseAddressByPod("pod1.ns", "")
-	ip, _, _, err = ipam.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil, true)
+	ip, _, _, err = ipam.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil)
 	require.NoError(t, err)
 	require.Equal(t, ip, "10.16.0.2")
 
 	ipam.ReleaseAddressByPod("pod1.ns", "")
-	ip, _, _, err = ipam.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil, true)
+	ip, _, _, err = ipam.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil)
 	require.NoError(t, err)
 	require.Equal(t, ip, "10.16.0.1")
 
@@ -584,7 +584,7 @@ func TestAddOrUpdateSubnet(t *testing.T) {
 	err = ipam.AddOrUpdateSubnet(subnetName, ipv4CIDR, v4Gw, nil)
 	require.NoError(t, err)
 
-	ip, _, _, err = ipam.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil, true)
+	ip, _, _, err = ipam.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil)
 	require.NoError(t, err)
 	require.Equal(t, ip, "10.16.0.1")
 
@@ -592,7 +592,7 @@ func TestAddOrUpdateSubnet(t *testing.T) {
 	err = ipam.AddOrUpdateSubnet(subnetName, ipv4CIDR, v4Gw, []string{"10.16.0.1..10.16.0.2"})
 	require.NoError(t, err)
 
-	_, _, _, err = ipam.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil, true)
+	_, _, _, err = ipam.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil)
 	require.EqualError(t, err, ErrNoAvailable.Error())
 
 	//  do not count excludedIps as subnet's v4availableIPs and v4usingIPs
@@ -602,7 +602,7 @@ func TestAddOrUpdateSubnet(t *testing.T) {
 	err = ipam.AddOrUpdateSubnet(subnetName, ipv4CIDR, v4Gw, []string{"10.16.10.1", "10.16.10.10"})
 	require.NoError(t, err)
 
-	ip, _, _, err = ipam.GetStaticAddress("pod1.ns", "pod1.ns", "10.16.10.10", nil, subnetName, true)
+	ip, _, _, err = ipam.GetStaticAddress("pod1.ns", "pod1.ns", "10.16.10.10", nil, subnetName)
 	require.NoError(t, err)
 	require.Equal(t, ip, "10.16.10.10")
 
@@ -651,11 +651,11 @@ func TestAddOrUpdateSubnet(t *testing.T) {
 	pod1 = "pod1.ns"
 	pod1Nic1 = "pod1nic1.ns"
 	freeIP1 = ipam.Subnets[subnetName].V6Free.At(0).Start().String()
-	_, ip, _, err = ipam.GetStaticAddress(pod1, pod1Nic1, freeIP1, nil, subnetName, true)
+	_, ip, _, err = ipam.GetStaticAddress(pod1, pod1Nic1, freeIP1, nil, subnetName)
 	require.NoError(t, err)
 	require.Equal(t, freeIP1, ip)
 
-	_, ip, _, err = ipam.GetRandomAddress(pod1, pod1Nic1, nil, subnetName, "", nil, true)
+	_, ip, _, err = ipam.GetRandomAddress(pod1, pod1Nic1, nil, subnetName, "", nil)
 	require.NoError(t, err)
 	require.Equal(t, freeIP1, ip)
 
@@ -665,12 +665,12 @@ func TestAddOrUpdateSubnet(t *testing.T) {
 	pod2Nic2 = "pod2Nic2.ns"
 
 	freeIP2 = ipam.Subnets[subnetName].V6Free.At(0).Start().String()
-	_, ip, _, err = ipam.GetRandomAddress(pod2, pod2Nic1, nil, subnetName, "", nil, true)
+	_, ip, _, err = ipam.GetRandomAddress(pod2, pod2Nic1, nil, subnetName, "", nil)
 	require.NoError(t, err)
 	require.Equal(t, freeIP2, ip)
 
 	freeIP3 = ipam.Subnets[subnetName].V6Free.At(0).Start().String()
-	_, ip, _, err = ipam.GetRandomAddress(pod2, pod2Nic2, nil, subnetName, "", nil, true)
+	_, ip, _, err = ipam.GetRandomAddress(pod2, pod2Nic2, nil, subnetName, "", nil)
 	require.NoError(t, err)
 	require.Equal(t, freeIP3, ip)
 
@@ -693,7 +693,7 @@ func TestAddOrUpdateSubnet(t *testing.T) {
 	// get static ip conflict with ip in use
 	pod3 = "pod3.ns"
 	pod3Nic1 = "pod3Nic1.ns"
-	_, _, _, err = ipam.GetStaticAddress(pod3, pod3Nic1, freeIP3, nil, subnetName, true)
+	_, _, _, err = ipam.GetStaticAddress(pod3, pod3Nic1, freeIP3, nil, subnetName)
 	require.EqualError(t, err, ErrConflict.Error())
 
 	// release pod with multiple nics
@@ -714,14 +714,14 @@ func TestAddOrUpdateSubnet(t *testing.T) {
 	// create new pod with released ips
 	pod4 = "pod4.ns"
 	pod4Nic1 = "pod4Nic1.ns"
-	_, _, _, err = ipam.GetStaticAddress(pod4, pod4Nic1, freeIP1, nil, subnetName, true)
+	_, _, _, err = ipam.GetStaticAddress(pod4, pod4Nic1, freeIP1, nil, subnetName)
 	require.NoError(t, err)
 
 	// create pod with no initialized subnet
 	pod5 = "pod5.ns"
 	pod5Nic1 = "pod5Nic1.ns"
 
-	_, _, _, err = ipam.GetRandomAddress(pod5, pod5Nic1, nil, "invalid_subnet", "", nil, true)
+	_, _, _, err = ipam.GetRandomAddress(pod5, pod5Nic1, nil, "invalid_subnet", "", nil)
 	require.EqualError(t, err, ErrNoSubnet.Error())
 
 	// change cidr
@@ -732,7 +732,7 @@ func TestAddOrUpdateSubnet(t *testing.T) {
 
 	err = ipam.AddOrUpdateSubnet(subnetName, ipv6CIDR, v6Gw, []string{"fe00::1"})
 	require.NoError(t, err)
-	_, ip, _, err = ipam.GetRandomAddress("pod5.ns", "pod5.ns", nil, subnetName, "", nil, true)
+	_, ip, _, err = ipam.GetRandomAddress("pod5.ns", "pod5.ns", nil, subnetName, "", nil)
 	require.NoError(t, err)
 	require.Equal(t, ip, "fe00::2")
 
@@ -748,17 +748,17 @@ func TestAddOrUpdateSubnet(t *testing.T) {
 	err = ipam.AddOrUpdateSubnet(subnetName, ipv6CIDR, v6Gw, nil)
 	require.NoError(t, err)
 
-	_, ip, _, err = ipam.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil, true)
+	_, ip, _, err = ipam.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil)
 	require.NoError(t, err)
 	require.Equal(t, ip, "fd00::1")
 
 	ipam.ReleaseAddressByPod("pod1.ns", "")
-	_, ip, _, err = ipam.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil, true)
+	_, ip, _, err = ipam.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil)
 	require.NoError(t, err)
 	require.Equal(t, ip, "fd00::2")
 
 	ipam.ReleaseAddressByPod("pod1.ns", "")
-	_, ip, _, err = ipam.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil, true)
+	_, ip, _, err = ipam.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil)
 	require.NoError(t, err)
 	require.Equal(t, ip, "fd00::1")
 
@@ -769,7 +769,7 @@ func TestAddOrUpdateSubnet(t *testing.T) {
 	err = ipam.AddOrUpdateSubnet(subnetName, ipv6CIDR, v6Gw, nil)
 	require.NoError(t, err)
 
-	_, ip, _, err = ipam.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil, true)
+	_, ip, _, err = ipam.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil)
 	require.NoError(t, err)
 	require.Equal(t, ip, "fd00::1")
 
@@ -777,7 +777,7 @@ func TestAddOrUpdateSubnet(t *testing.T) {
 	err = ipam.AddOrUpdateSubnet(subnetName, ipv6CIDR, v6Gw, []string{"fd00::1..fd00::2"})
 	require.NoError(t, err)
 
-	_, _, _, err = ipam.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil, true)
+	_, _, _, err = ipam.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil)
 	require.EqualError(t, err, ErrNoAvailable.Error())
 
 	// DualStack
@@ -812,12 +812,12 @@ func TestAddOrUpdateSubnet(t *testing.T) {
 	freeIP41 := ipam.Subnets[subnetName].V4Free.At(0).Start().String()
 	freeIP61 := ipam.Subnets[subnetName].V6Free.At(0).Start().String()
 	dualIP := fmt.Sprintf("%s,%s", freeIP41, freeIP61)
-	ip4, ip6, _, err := ipam.GetStaticAddress(pod1, pod1Nic1, dualIP, nil, subnetName, true)
+	ip4, ip6, _, err := ipam.GetStaticAddress(pod1, pod1Nic1, dualIP, nil, subnetName)
 	require.NoError(t, err)
 	require.Equal(t, freeIP41, ip4)
 	require.Equal(t, freeIP61, ip6)
 
-	ip4, ip6, _, err = ipam.GetRandomAddress(pod1, pod1Nic1, nil, subnetName, "", nil, true)
+	ip4, ip6, _, err = ipam.GetRandomAddress(pod1, pod1Nic1, nil, subnetName, "", nil)
 	require.NoError(t, err)
 	require.Equal(t, freeIP41, ip4)
 	require.Equal(t, freeIP61, ip6)
@@ -829,14 +829,14 @@ func TestAddOrUpdateSubnet(t *testing.T) {
 
 	freeIP42 := ipam.Subnets[subnetName].V4Free.At(0).Start().String()
 	freeIP62 := ipam.Subnets[subnetName].V6Free.At(0).Start().String()
-	ip4, ip6, _, err = ipam.GetRandomAddress(pod2, pod2Nic1, nil, subnetName, "", nil, true)
+	ip4, ip6, _, err = ipam.GetRandomAddress(pod2, pod2Nic1, nil, subnetName, "", nil)
 	require.NoError(t, err)
 	require.Equal(t, freeIP42, ip4)
 	require.Equal(t, freeIP62, ip6)
 
 	freeIP43 := ipam.Subnets[subnetName].V4Free.At(0).Start().String()
 	freeIP63 := ipam.Subnets[subnetName].V6Free.At(0).Start().String()
-	ip4, ip6, _, err = ipam.GetRandomAddress(pod2, pod2Nic2, nil, subnetName, "", nil, true)
+	ip4, ip6, _, err = ipam.GetRandomAddress(pod2, pod2Nic2, nil, subnetName, "", nil)
 	require.NoError(t, err)
 	require.Equal(t, freeIP43, ip4)
 	require.Equal(t, freeIP63, ip6)
@@ -868,10 +868,10 @@ func TestAddOrUpdateSubnet(t *testing.T) {
 	// get static ip conflict with ip in use
 	pod3 = "pod3.ns"
 	pod3Nic1 = "pod3Nic1.ns"
-	_, _, _, err = ipam.GetStaticAddress(pod3, pod3Nic1, freeIP43, nil, subnetName, true)
+	_, _, _, err = ipam.GetStaticAddress(pod3, pod3Nic1, freeIP43, nil, subnetName)
 	require.EqualError(t, err, ErrConflict.Error())
 
-	_, _, _, err = ipam.GetStaticAddress(pod3, pod3Nic1, freeIP63, nil, subnetName, true)
+	_, _, _, err = ipam.GetStaticAddress(pod3, pod3Nic1, freeIP63, nil, subnetName)
 	require.EqualError(t, err, ErrConflict.Error())
 
 	// release pod with multiple nics
@@ -902,17 +902,17 @@ func TestAddOrUpdateSubnet(t *testing.T) {
 	pod4 = "pod4.ns"
 	pod4Nic1 = "pod4Nic1.ns"
 
-	_, _, _, err = ipam.GetStaticAddress(pod4, pod4Nic1, freeIP41, nil, subnetName, true)
+	_, _, _, err = ipam.GetStaticAddress(pod4, pod4Nic1, freeIP41, nil, subnetName)
 	require.NoError(t, err)
 
-	_, _, _, err = ipam.GetStaticAddress(pod4, pod4Nic1, freeIP61, nil, subnetName, true)
+	_, _, _, err = ipam.GetStaticAddress(pod4, pod4Nic1, freeIP61, nil, subnetName)
 	require.NoError(t, err)
 
 	// create pod with no initialized subnet
 	pod5 = "pod5.ns"
 	pod5Nic1 = "pod5Nic1.ns"
 
-	_, _, _, err = ipam.GetRandomAddress(pod5, pod5Nic1, nil, "invalid_subnet", "", nil, true)
+	_, _, _, err = ipam.GetRandomAddress(pod5, pod5Nic1, nil, "invalid_subnet", "", nil)
 	require.EqualError(t, err, ErrNoSubnet.Error())
 
 	// dual stack subnet change cidr
@@ -926,7 +926,7 @@ func TestAddOrUpdateSubnet(t *testing.T) {
 	err = ipam.AddOrUpdateSubnet(subnetName, "10.17.0.2/16,fe00::/112", dualGw, []string{"10.17.0.1", "fe00::1"})
 	require.NoError(t, err)
 
-	ipv4, ipv6, _, err := ipam.GetRandomAddress("pod5.ns", "pod5.ns", nil, subnetName, "", nil, true)
+	ipv4, ipv6, _, err := ipam.GetRandomAddress("pod5.ns", "pod5.ns", nil, subnetName, "", nil)
 	require.NoError(t, err)
 	require.Equal(t, ipv4, "10.17.0.2")
 	require.Equal(t, ipv6, "fe00::2")
@@ -935,19 +935,19 @@ func TestAddOrUpdateSubnet(t *testing.T) {
 	err = ipam.AddOrUpdateSubnet(subnetName, "10.16.0.2/30,fd00::/126", dualGw, nil)
 	require.NoError(t, err)
 
-	ipv4, ipv6, _, err = ipam.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil, true)
+	ipv4, ipv6, _, err = ipam.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil)
 	require.NoError(t, err)
 	require.Equal(t, ipv4, "10.16.0.1")
 	require.Equal(t, ipv6, "fd00::1")
 
 	ipam.ReleaseAddressByPod("pod1.ns", "")
-	ipv4, ipv6, _, err = ipam.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil, true)
+	ipv4, ipv6, _, err = ipam.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil)
 	require.NoError(t, err)
 	require.Equal(t, ipv4, "10.16.0.2")
 	require.Equal(t, ipv6, "fd00::2")
 
 	ipam.ReleaseAddressByPod("pod1.ns", "")
-	ipv4, ipv6, _, err = ipam.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil, true)
+	ipv4, ipv6, _, err = ipam.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil)
 	require.NoError(t, err)
 	require.Equal(t, ipv4, "10.16.0.1")
 	require.Equal(t, ipv6, "fd00::1")
@@ -956,7 +956,7 @@ func TestAddOrUpdateSubnet(t *testing.T) {
 	err = ipam.AddOrUpdateSubnet(subnetName, "10.16.0.2/30,fd00::/126", dualGw, nil)
 	require.NoError(t, err)
 
-	ipv4, ipv6, _, err = ipam.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil, true)
+	ipv4, ipv6, _, err = ipam.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil)
 	require.NoError(t, err)
 	require.Equal(t, ipv4, "10.16.0.1")
 	require.Equal(t, ipv6, "fd00::1")
@@ -965,6 +965,6 @@ func TestAddOrUpdateSubnet(t *testing.T) {
 	err = ipam.AddOrUpdateSubnet(subnetName, "10.16.0.2/30,fd00::/126", dualGw, []string{"10.16.0.1..10.16.0.2", "fd00::1..fd00::2"})
 	require.NoError(t, err)
 
-	_, _, _, err = ipam.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil, true)
+	_, _, _, err = ipam.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil)
 	require.EqualError(t, err, ErrNoAvailable.Error())
 }
