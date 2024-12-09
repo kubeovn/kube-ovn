@@ -195,7 +195,9 @@ func (v *ValidatingHook) checkIPConflict(ipAddress, annoSubnet, name string, ipL
 				return err
 			}
 			if ipAddr.String() == v4IP || ipAddr.String() == v6IP {
-				if name == ipCR.Spec.PodName {
+				// The IP's spec podName does not equal the Pod name in the request;
+				// The two names have a containment relationship.
+				if strings.Contains(ipCR.Spec.PodName, name) {
 					klog.Infof("get same ip crd for %s", name)
 				} else {
 					err := fmt.Errorf("annotation static-ip %s is conflict with ip crd %s, ip %s", ipAddr.String(), ipCR.Name, ipCR.Spec.IPAddress)
