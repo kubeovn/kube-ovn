@@ -47,19 +47,19 @@ RUN cd /usr/src/ && git clone -b branch-24.03 --depth=1 https://github.com/ovn-o
     # ovn-controller: do not send GARP on localnet for Kube-OVN ports
     curl -s https://github.com/kubeovn/ovn/commit/8236ec78aedd114b3ce22158a9e0282337787259.patch | git apply && \
     # northd: add nb option version_compatibility
-    curl -s https://github.com/kubeovn/ovn/commit/19bdf15ec5542005e3a1ef073dfe688c023d144c.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/6fbe060936bb1f843c7997f5e66075ce75c62772.patch | git apply && \
     # add support for conditionally skipping conntrack
     curl -s https://github.com/kubeovn/ovn/commit/c6ea5e214a4a20eccdf8cd18c232284edc5ce951.patch | git apply && \
     # northd: skip conntrack when access node local dns ip
     curl -s https://github.com/kubeovn/ovn/commit/d8ce6dc8e512b703903c53e344b1dce1a0c61d2e.patch | git apply && \
     # lflow: do not send direct traffic between lports to conntrack
     curl -s https://github.com/kubeovn/ovn/commit/baf2d74f0f2d746c01c22002ea72426d75cfc79a.patch | git apply && \
-    # set ether dst addr for dnat on logical switch
-    curl -s https://github.com/kubeovn/ovn/commit/63762db7a4c37185f4c87962c50b414d925b5d33.patch | git apply && \
+    # direct output to lsp for dnat packets in logical switch ingress pipelines
+    curl -s https://github.com/kubeovn/ovn/commit/51fdeada788d7249df00c140e9496f4b753e7178.patch | git apply && \
     # fix lr-lb dnat with multiple distributed gateway ports
     curl -s https://github.com/kubeovn/ovn/commit/ca5ccf3c8ac67bcc005110c8c62214d2684e7e41.patch | git apply && \
     # northd: skip arp/nd request for lrp addresses from localnet ports
-    curl -s https://github.com/kubeovn/ovn/commit/283930b627ffa843ebf0e7c3fa0cc70edacfdd12.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/1ba3263940c1e2e87e61cb011dcf942a0456224d.patch | git apply && \
     # ovn-controller: make activation strategy work for single chassis
     curl -s https://github.com/kubeovn/ovn/commit/1160d956e49e8f3f1b19535dbf1b9a624a090717.patch | git apply && \
     # support dedicated BFD LRP
