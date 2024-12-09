@@ -160,6 +160,8 @@ const (
 	AnpMaxPriority       = 99
 	AnpACLMaxPriority    = 30000
 	BanpACLMaxPriority   = 1800
+	NilACLTier           = -1
+	DefaultACLTier       = 0
 	AnpACLTier           = 1
 	NetpolACLTier        = 2
 	BanpACLTier          = 3

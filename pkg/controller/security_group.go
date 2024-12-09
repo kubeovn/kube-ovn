@@ -62,6 +62,40 @@ func (c *Controller) enqueueDeleteSg(obj interface{}) {
 	c.delSgQueue.Add(key)
 }
 
+// for upgrading from v1.12.x to v1.13.x
+func (c *Controller) upgradeSecurityGroupsToV1_13() error {
+	// clear legacy acls in tier 0 for deny all sg
+	pgName := ovs.GetSgPortGroupName(util.DenyAllSecurityGroup)
+	if err := c.OVNNbClient.DeleteAcls(pgName, portGroupKey, "", nil, util.DefaultACLTier); err != nil {
+		klog.Error(err)
+		return fmt.Errorf("delete legacy acls from port group %s: %w", pgName, err)
+	}
+
+	// clear legacy acls in tier 0 for all sg port groups
+	sgs, err := c.sgsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list security groups: %v", err)
+		return err
+	}
+	for _, sg := range sgs {
+		pgName := ovs.GetSgPortGroupName(sg.Name)
+		if err := c.OVNNbClient.DeleteAcls(pgName, portGroupKey, "", nil, util.DefaultACLTier); err != nil {
+			klog.Error(err)
+			return fmt.Errorf("delete legacy acls from port group %s: %w", pgName, err)
+		}
+	}
+
+	return nil
+}
+
+func (c *Controller) upgradeSecurityGroups() error {
+	if err := c.upgradeSecurityGroupsToV1_13(); err != nil {
+		klog.Errorf("failed to upgrade security groups to v1.13.x, err: %v", err)
+		return err
+	}
+	return nil
+}
+
 func (c *Controller) initDefaultDenyAllSecurityGroup() error {
 	pgName := ovs.GetSgPortGroupName(util.DenyAllSecurityGroup)
 	if err := c.OVNNbClient.CreatePortGroup(pgName, map[string]string{

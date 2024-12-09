@@ -152,6 +152,32 @@ func (c *Controller) enqueueUpdateSubnet(oldObj, newObj interface{}) {
 	}
 }
 
+// for upgrading from v1.12.x to v1.13.x
+func (c *Controller) upgradeSubnetsToV1_13() error {
+	// clear legacy acls in tier 0 for all subnets
+	subnets, err := c.subnetsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list subnets %v", err)
+		return err
+	}
+
+	for _, subnet := range subnets {
+		if err = c.OVNNbClient.DeleteAcls(subnet.Name, logicalSwitchKey, "", nil, util.DefaultACLTier); err != nil {
+			klog.Errorf("clear legacy logical switch %s acls: %v", subnet.Name, err)
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *Controller) upgradeSubnets() error {
+	if err := c.upgradeSubnetsToV1_13(); err != nil {
+		klog.Errorf("failed to upgrade subnets to v1.13.x, err: %v", err)
+		return err
+	}
+	return nil
+}
+
 func (c *Controller) formatSubnet(subnet *kubeovnv1.Subnet) (*kubeovnv1.Subnet, error) {
 	var (
 		changed bool
@@ -790,7 +816,7 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		}
 	} else {
 		// clear acl when direction is ""
-		if err = c.OVNNbClient.DeleteAcls(subnet.Name, logicalSwitchKey, "", nil); err != nil {
+		if err = c.OVNNbClient.DeleteAcls(subnet.Name, logicalSwitchKey, "", nil, util.NilACLTier); err != nil {
 			if err = c.patchSubnetStatus(subnet, "ResetLogicalSwitchAclFailed", err.Error()); err != nil {
 				klog.Error(err)
 				return err
@@ -890,7 +916,7 @@ func (c *Controller) handleDeleteLogicalSwitch(key string) (err error) {
 	}
 
 	// clear acl when direction is ""
-	if err = c.OVNNbClient.DeleteAcls(key, logicalSwitchKey, "", nil); err != nil {
+	if err = c.OVNNbClient.DeleteAcls(key, logicalSwitchKey, "", nil, util.NilACLTier); err != nil {
 		klog.Errorf("clear logical switch %s acls: %v", key, err)
 		return err
 	}
