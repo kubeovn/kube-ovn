@@ -4370,8 +4370,8 @@ spec:
               cpu: 200m
               memory: 200Mi
             limits:
-              cpu: "2"
-              memory: 1000Mi
+              cpu: "4"
+              memory: 2000Mi
       nodeSelector:
         kubernetes.io/os: "linux"
       volumes:
