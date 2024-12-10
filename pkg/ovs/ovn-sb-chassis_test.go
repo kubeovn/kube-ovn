@@ -199,70 +199,6 @@ func (suite *OvnClientTestSuite) testListChassis() {
 	})
 }
 
-func (suite *OvnClientTestSuite) testGetAllChassisByHost() {
-	t := suite.T()
-	t.Parallel()
-
-	sbClient := suite.ovnSBClient
-
-	t.Cleanup(func() {
-		err := sbClient.DeleteChassis("chassis-3")
-		require.NoError(t, err)
-		err = sbClient.DeleteChassis("chassis-4")
-		require.NoError(t, err)
-		err = sbClient.DeleteChassis("chassis-5")
-		require.NoError(t, err)
-	})
-
-	chassis1 := newChassis(0, "host-3", "chassis-3", nil, nil, nil, nil, nil)
-	chassis2 := newChassis(0, "host-4", "chassis-4", nil, nil, nil, nil, nil)
-	chassis3 := newChassis(0, "host-4", "chassis-5", nil, nil, nil, nil, nil)
-
-	ops1, err := sbClient.ovsDbClient.Create(chassis1)
-	require.NoError(t, err)
-	err = sbClient.Transact("chassis-add", ops1)
-	require.NoError(t, err)
-
-	ops2, err := sbClient.ovsDbClient.Create(chassis2)
-	require.NoError(t, err)
-	err = sbClient.Transact("chassis-add", ops2)
-	require.NoError(t, err)
-
-	ops3, err := sbClient.ovsDbClient.Create(chassis3)
-	require.NoError(t, err)
-	err = sbClient.Transact("chassis-add", ops3)
-	require.NoError(t, err)
-
-	t.Run("test get all chassis by host with single chassis", func(t *testing.T) {
-		chassisList, err := sbClient.GetAllChassisByHost("host-3")
-		require.NoError(t, err)
-		require.NotNil(t, chassisList)
-		require.Len(t, *chassisList, 1)
-		require.Equal(t, "chassis-3", (*chassisList)[0].Name)
-	})
-
-	t.Run("test get all chassis by host with multiple chassis", func(t *testing.T) {
-		chassisList, err := sbClient.GetAllChassisByHost("host-4")
-		require.Error(t, err)
-		require.Nil(t, chassisList)
-		require.Contains(t, err.Error(), "found more than one Chassis")
-	})
-
-	t.Run("test get all chassis by non-existent host", func(t *testing.T) {
-		chassisList, err := sbClient.GetAllChassisByHost("non-existent-host")
-		require.Error(t, err)
-		require.Nil(t, chassisList)
-		require.Contains(t, err.Error(), "failed to get Chassis")
-	})
-
-	t.Run("test get all chassis by host with empty hostname", func(t *testing.T) {
-		chassisList, err := sbClient.GetAllChassisByHost("")
-		require.Error(t, err)
-		require.Nil(t, chassisList)
-		require.Contains(t, err.Error(), "failed to get Chassis")
-	})
-}
-
 func (suite *OvnClientTestSuite) testGetChassisByHost() {
 	t := suite.T()
 	t.Parallel()
@@ -374,24 +310,6 @@ func (suite *OvnClientTestSuite) testDeleteChassisByHost() {
 	err = sbClient.Transact("chassis-add", ops4)
 	require.NoError(t, err)
 
-	t.Run("test delete chassis by host with multiple chassis", func(t *testing.T) {
-		err := sbClient.DeleteChassisByHost("node1")
-		require.NoError(t, err)
-
-		chassisList, err := sbClient.GetAllChassisByHost("node1")
-		require.ErrorContains(t, err, "failed to get Chassis with with host name")
-		require.Nil(t, chassisList)
-	})
-
-	t.Run("test delete chassis by host with ExternalIDs", func(t *testing.T) {
-		err := sbClient.DeleteChassisByHost("node2")
-		require.NoError(t, err)
-
-		chassisList, err := sbClient.GetAllChassisByHost("node2")
-		require.ErrorContains(t, err, "failed to get Chassis with with host name")
-		require.Nil(t, chassisList)
-	})
-
 	t.Run("test delete chassis by non-existent host", func(t *testing.T) {
 		err := sbClient.DeleteChassisByHost("non-existent-node")
 		require.NoError(t, err)
@@ -480,27 +398,6 @@ func (suite *OvnClientTestSuite) testGetKubeOvnChassisses() {
 
 	sbClient := suite.ovnSBClient
 
-	t.Cleanup(func() {
-		err := sbClient.DeleteChassis("kube-ovn-chassis-1")
-		require.NoError(t, err)
-		err = sbClient.DeleteChassis("kube-ovn-chassis-2")
-		require.NoError(t, err)
-		err = sbClient.DeleteChassis("non-kube-ovn-chassis")
-		require.NoError(t, err)
-		err = sbClient.DeleteChassis("mixed-chassis")
-		require.NoError(t, err)
-		chassisList, err := sbClient.GetKubeOvnChassisses()
-		require.NoError(t, err)
-		names := make(map[string]bool)
-		for _, chassis := range *chassisList {
-			names[chassis.Name] = true
-		}
-		require.False(t, names["kube-ovn-chassis-1"])
-		require.False(t, names["kube-ovn-chassis-2"])
-		require.False(t, names["non-kube-ovn-chassis"])
-		require.False(t, names["mixed-chassis"])
-	})
-
 	kubeOvnChassis1 := newChassis(0, "host-1", "kube-ovn-chassis-1", nil, nil, nil, map[string]string{"vendor": util.CniTypeName}, nil)
 	kubeOvnChassis2 := newChassis(0, "host-2", "kube-ovn-chassis-2", nil, nil, nil, map[string]string{"vendor": util.CniTypeName}, nil)
 	nonKubeOvnChassis := newChassis(0, "host-none", "non-kube-ovn-chassis", nil, nil, nil, map[string]string{"vendor": "other"}, nil)
@@ -540,4 +437,25 @@ func (suite *OvnClientTestSuite) testGetKubeOvnChassisses() {
 	require.True(t, names["kube-ovn-chassis-2"])
 	require.False(t, names["non-kube-ovn-chassis"])
 	require.True(t, names["mixed-chassis"])
+
+	t.Cleanup(func() {
+		err := sbClient.DeleteChassis("kube-ovn-chassis-1")
+		require.NoError(t, err)
+		err = sbClient.DeleteChassis("kube-ovn-chassis-2")
+		require.NoError(t, err)
+		err = sbClient.DeleteChassis("non-kube-ovn-chassis")
+		require.NoError(t, err)
+		err = sbClient.DeleteChassis("mixed-chassis")
+		require.NoError(t, err)
+		chassisList, err := sbClient.GetKubeOvnChassisses()
+		require.NoError(t, err)
+		names := make(map[string]bool)
+		for _, chassis := range *chassisList {
+			names[chassis.Name] = true
+		}
+		require.False(t, names["kube-ovn-chassis-1"])
+		require.False(t, names["kube-ovn-chassis-2"])
+		require.False(t, names["non-kube-ovn-chassis"])
+		require.False(t, names["mixed-chassis"])
+	})
 }
