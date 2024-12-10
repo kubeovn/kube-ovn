@@ -627,7 +627,7 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 		}
 		for nextHop, sources := range expected {
 			for _, src := range sources.UnsortedList() {
-				if err = c.OVNNbClient.AddLogicalRouterStaticRoute(lrName, util.MainRouteTable, ovnnb.LogicalRouterStaticRoutePolicySrcIP, src, bfdMap[nextHop], nextHop); err != nil {
+				if err = c.OVNNbClient.AddLogicalRouterStaticRoute(lrName, util.MainRouteTable, ovnnb.LogicalRouterStaticRoutePolicySrcIP, src, bfdMap[nextHop], externalIDs, nextHop); err != nil {
 					klog.Error(err)
 					return err
 				}
