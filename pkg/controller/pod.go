@@ -1156,11 +1156,19 @@ func (c *Controller) syncKubeOvnNet(cachedPod, pod *v1.Pod, podNets []*kubeovnNe
 	targetPortNameList := strset.NewWithSize(len(podNets))
 	portsNeedToDel := []string{}
 	annotationsNeedToDel := []string{}
+	annotationsNeedToAdd := make(map[string]string)
 	subnetUsedByPort := make(map[string]string)
 
 	for _, podNet := range podNets {
 		portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
 		targetPortNameList.Add(portName)
+		if podNet.IPRequest != "" {
+			annotationsNeedToAdd[fmt.Sprintf(util.IPAddressAnnotationTemplate, podNet.ProviderName)] = podNet.IPRequest
+		}
+
+		if podNet.MacRequest != "" {
+			annotationsNeedToAdd[fmt.Sprintf(util.MacAddressAnnotationTemplate, podNet.ProviderName)] = podNet.MacRequest
+		}
 	}
 
 	ports, err := c.OVNNbClient.ListNormalLogicalSwitchPorts(true, map[string]string{"pod": key})
@@ -1182,34 +1190,43 @@ func (c *Controller) syncKubeOvnNet(cachedPod, pod *v1.Pod, podNets []*kubeovnNe
 		}
 	}
 
-	if len(portsNeedToDel) == 0 {
+	if len(portsNeedToDel) == 0 && len(annotationsNeedToAdd) == 0 {
 		return pod, nil
 	}
 
-	for _, portNeedDel := range portsNeedToDel {
-		klog.Infof("release port %s for pod %s", portNeedDel, podName)
-		if subnet, ok := c.ipam.Subnets[subnetUsedByPort[portNeedDel]]; ok {
-			subnet.ReleaseAddressWithNicName(podName, portNeedDel)
-		}
-		if err := c.OVNNbClient.DeleteLogicalSwitchPort(portNeedDel); err != nil {
-			klog.Errorf("failed to delete lsp %s, %v", portNeedDel, err)
-			return nil, err
-		}
-		if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), portNeedDel, metav1.DeleteOptions{}); err != nil {
-			if !k8serrors.IsNotFound(err) {
-				klog.Errorf("failed to delete ip %s, %v", portNeedDel, err)
+	if len(portsNeedToDel) > 0 {
+		for _, portNeedDel := range portsNeedToDel {
+			klog.Infof("release port %s for pod %s", portNeedDel, podName)
+			if subnet, ok := c.ipam.Subnets[subnetUsedByPort[portNeedDel]]; ok {
+				subnet.ReleaseAddressWithNicName(podName, portNeedDel)
+			}
+			if err := c.OVNNbClient.DeleteLogicalSwitchPort(portNeedDel); err != nil {
+				klog.Errorf("failed to delete lsp %s, %v", portNeedDel, err)
 				return nil, err
+			}
+			if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), portNeedDel, metav1.DeleteOptions{}); err != nil {
+				if !k8serrors.IsNotFound(err) {
+					klog.Errorf("failed to delete ip %s, %v", portNeedDel, err)
+					return nil, err
+				}
+			}
+		}
+
+		for _, providerName := range annotationsNeedToDel {
+			for annotationKey := range pod.Annotations {
+				if strings.HasPrefix(annotationKey, providerName) {
+					delete(pod.Annotations, annotationKey)
+				}
 			}
 		}
 	}
 
-	for _, providerName := range annotationsNeedToDel {
-		for annotationKey := range pod.Annotations {
-			if strings.HasPrefix(annotationKey, providerName) {
-				delete(pod.Annotations, annotationKey)
-			}
+	if len(annotationsNeedToAdd) > 0 {
+		for annotationKey, annotationValue := range annotationsNeedToAdd {
+			pod.Annotations[annotationKey] = annotationValue
 		}
 	}
+
 	if len(cachedPod.Annotations) == len(pod.Annotations) {
 		return pod, nil
 	}
@@ -1463,6 +1480,8 @@ type kubeovnNet struct {
 	Subnet             *kubeovnv1.Subnet
 	IsDefault          bool
 	AllowLiveMigration bool
+	IPRequest          string
+	MacRequest         string
 }
 
 func (c *Controller) getPodAttachmentNet(pod *v1.Pod) ([]*kubeovnNet, error) {
@@ -1540,13 +1559,24 @@ func (c *Controller) getPodAttachmentNet(pod *v1.Pod) ([]*kubeovnNet, error) {
 					return nil, err
 				}
 			}
-			result = append(result, &kubeovnNet{
+
+			ret := &kubeovnNet{
 				Type:               providerTypeOriginal,
 				ProviderName:       providerName,
 				Subnet:             subnet,
 				IsDefault:          isDefault,
 				AllowLiveMigration: allowLiveMigration,
-			})
+			}
+
+			if len(attach.IPRequest) != 0 {
+				ret.IPRequest = attach.IPRequest[0]
+			}
+
+			if attach.MacRequest != "" {
+				ret.MacRequest = attach.MacRequest
+			}
+
+			result = append(result, ret)
 		} else {
 			providerName = fmt.Sprintf("%s.%s", attach.Name, attach.Namespace)
 			for _, subnet := range subnets {
