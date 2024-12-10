@@ -434,7 +434,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		if item.BfdID != "" {
 			klog.Infof("vpc %s add static ecmp route: %+v", vpc.Name, item)
 			if err = c.OVNNbClient.AddLogicalRouterStaticRoute(
-				vpc.Name, item.RouteTable, convertPolicy(item.Policy), item.CIDR, &item.BfdID, item.NextHopIP,
+				vpc.Name, item.RouteTable, convertPolicy(item.Policy), item.CIDR, &item.BfdID, nil, item.NextHopIP,
 			); err != nil {
 				klog.Errorf("failed to add bfd static route to vpc %s , %v", vpc.Name, err)
 				return err
@@ -442,7 +442,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		} else {
 			klog.Infof("vpc %s add static route: %+v", vpc.Name, item)
 			if err = c.OVNNbClient.AddLogicalRouterStaticRoute(
-				vpc.Name, item.RouteTable, convertPolicy(item.Policy), item.CIDR, nil, item.NextHopIP,
+				vpc.Name, item.RouteTable, convertPolicy(item.Policy), item.CIDR, nil, nil, item.NextHopIP,
 			); err != nil {
 				klog.Errorf("failed to add normal static route to vpc %s , %v", vpc.Name, err)
 				return err
@@ -805,7 +805,7 @@ func (c *Controller) addStaticRouteToVpc(name string, route *kubeovnv1.StaticRou
 	if route.BfdID != "" {
 		klog.Infof("vpc %s add static ecmp route: %+v", name, route)
 		if err := c.OVNNbClient.AddLogicalRouterStaticRoute(
-			name, route.RouteTable, convertPolicy(route.Policy), route.CIDR, &route.BfdID, route.NextHopIP,
+			name, route.RouteTable, convertPolicy(route.Policy), route.CIDR, &route.BfdID, nil, route.NextHopIP,
 		); err != nil {
 			klog.Errorf("failed to add bfd static route to vpc %s , %v", name, err)
 			return err
@@ -813,7 +813,7 @@ func (c *Controller) addStaticRouteToVpc(name string, route *kubeovnv1.StaticRou
 	} else {
 		klog.Infof("vpc %s add static route: %+v", name, route)
 		if err := c.OVNNbClient.AddLogicalRouterStaticRoute(
-			name, route.RouteTable, convertPolicy(route.Policy), route.CIDR, nil, route.NextHopIP,
+			name, route.RouteTable, convertPolicy(route.Policy), route.CIDR, nil, nil, route.NextHopIP,
 		); err != nil {
 			klog.Errorf("failed to add normal static route to vpc %s , %v", name, err)
 			return err

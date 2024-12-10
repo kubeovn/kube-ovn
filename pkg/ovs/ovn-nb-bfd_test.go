@@ -3,10 +3,12 @@ package ovs
 import (
 	"testing"
 
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
-
+	"github.com/google/uuid"
 	"github.com/scylladb/go-set/strset"
+
 	"github.com/stretchr/testify/require"
+
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 )
 
 func (suite *OvnClientTestSuite) testCreateBFD() {
@@ -111,6 +113,55 @@ func (suite *OvnClientTestSuite) testListBFD() {
 	})
 }
 
+func (suite *OvnClientTestSuite) testFindBFD() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+	failedNbClient := suite.failedOvnNBClient
+	lrpName := "test-find-bfd"
+	dstIP1 := "192.168.124.101"
+	dstIP2 := "192.168.124.102"
+	minRx1, minTx1, detectMult1 := 101, 102, 19
+	minRx2, minTx2, detectMult2 := 201, 202, 29
+
+	bfd1, err := nbClient.CreateBFD(lrpName, dstIP1, minRx1, minTx1, detectMult1, map[string]string{"k1": "v1", "k2": "v2"})
+	require.NoError(t, err)
+
+	bfd2, err := nbClient.CreateBFD(lrpName, dstIP2, minRx2, minTx2, detectMult2, map[string]string{"k2": "v2"})
+	require.NoError(t, err)
+
+	t.Run("find BFD", func(t *testing.T) {
+		bfds, err := nbClient.FindBFD(map[string]string{"k1": "v1"})
+		require.NoError(t, err)
+		require.Len(t, bfds, 1)
+		require.Equal(t, bfd1.UUID, bfds[0].UUID)
+	})
+
+	t.Run("find multiple BFDs", func(t *testing.T) {
+		bfds, err := nbClient.FindBFD(map[string]string{"k2": "v2"})
+		require.NoError(t, err)
+		require.Len(t, bfds, 2)
+		require.ElementsMatch(t, []string{bfds[0].UUID, bfds[1].UUID}, []string{bfd1.UUID, bfd2.UUID})
+	})
+
+	t.Run("find non-existent BFD", func(t *testing.T) {
+		t.Parallel()
+
+		bfds, err := nbClient.FindBFD(map[string]string{"k3": "v3"})
+		require.NoError(t, err)
+		require.Empty(t, bfds)
+	})
+
+	t.Run("closed server find non-existent BFD", func(t *testing.T) {
+		t.Parallel()
+
+		bfds, err := failedNbClient.FindBFD(map[string]string{"k1": "v1"})
+		require.NoError(t, err)
+		require.Empty(t, bfds)
+	})
+}
+
 func (suite *OvnClientTestSuite) testDeleteBFD() {
 	t := suite.T()
 	t.Parallel()
@@ -118,6 +169,56 @@ func (suite *OvnClientTestSuite) testDeleteBFD() {
 	nbClient := suite.ovnNBClient
 	failedNbClient := suite.failedOvnNBClient
 	lrpName := "test-del-bfd"
+	dstIP1 := "192.168.124.103"
+	dstIP2 := "192.168.124.104"
+	minRx1, minTx1, detectMult1 := 101, 102, 19
+	minRx2, minTx2, detectMult2 := 201, 202, 29
+
+	bfd1, err := nbClient.CreateBFD(lrpName, dstIP1, minRx1, minTx1, detectMult1, nil)
+	require.NoError(t, err)
+
+	bfd2, err := nbClient.CreateBFD(lrpName, dstIP2, minRx2, minTx2, detectMult2, nil)
+	require.NoError(t, err)
+
+	t.Run("delete BFD", func(t *testing.T) {
+		err = nbClient.DeleteBFD(bfd1.UUID)
+		require.NoError(t, err)
+
+		bfdList, err := nbClient.ListBFDs(lrpName, dstIP1)
+		require.NoError(t, err)
+		require.Len(t, bfdList, 0)
+
+		bfdList, err = nbClient.ListBFDs(lrpName, dstIP2)
+		require.NoError(t, err)
+		require.Len(t, bfdList, 1)
+		require.Equal(t, bfd2.UUID, bfdList[0].UUID)
+	})
+
+	t.Run("delete non-existent BFD", func(t *testing.T) {
+		t.Parallel()
+
+		err := nbClient.DeleteBFD(uuid.New().String())
+		require.NoError(t, err)
+	})
+
+	t.Run("closed server delete non-existent BFD", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := failedNbClient.CreateBFD(lrpName, dstIP1, minRx1, minTx1, detectMult1, nil)
+		require.Error(t, err)
+		err = failedNbClient.DeleteBFD(uuid.New().String())
+		// cache db should be empty
+		require.NoError(t, err)
+	})
+}
+
+func (suite *OvnClientTestSuite) testDeleteBFDByDstIP() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+	failedNbClient := suite.failedOvnNBClient
+	lrpName := "test-del-bfd-by-dst-ip"
 	dstIP1 := "192.168.124.4"
 	dstIP2 := "192.168.124.5"
 	minRx1, minTx1, detectMult1 := 101, 102, 19
@@ -129,7 +230,7 @@ func (suite *OvnClientTestSuite) testDeleteBFD() {
 	bfd2, err := nbClient.CreateBFD(lrpName, dstIP2, minRx2, minTx2, detectMult2, nil)
 	require.NoError(t, err)
 
-	t.Run("delete BFD", func(t *testing.T) {
+	t.Run("delete BFD by dst ip", func(t *testing.T) {
 		err = nbClient.DeleteBFDByDstIP(lrpName, dstIP1)
 		require.NoError(t, err)
 
@@ -143,7 +244,7 @@ func (suite *OvnClientTestSuite) testDeleteBFD() {
 		require.Equal(t, bfd2.UUID, bfdList[0].UUID)
 	})
 
-	t.Run("delete multiple BFDs", func(t *testing.T) {
+	t.Run("delete multiple BFDs by dst ip", func(t *testing.T) {
 		err = nbClient.DeleteBFDByDstIP(lrpName, "")
 		require.NoError(t, err)
 
@@ -152,14 +253,14 @@ func (suite *OvnClientTestSuite) testDeleteBFD() {
 		require.Len(t, bfdList, 0)
 	})
 
-	t.Run("delete non-existent BFD", func(t *testing.T) {
+	t.Run("delete non-existent BFD by dst ip", func(t *testing.T) {
 		t.Parallel()
 
 		err := nbClient.DeleteBFDByDstIP(lrpName, "192.168.124.17")
 		require.NoError(t, err)
 	})
 
-	t.Run("closed server delete non-existent BFD", func(t *testing.T) {
+	t.Run("closed server delete non-existent BFD by dst ip", func(t *testing.T) {
 		t.Parallel()
 
 		_, err := failedNbClient.CreateBFD(lrpName, dstIP1, minRx1, minTx1, detectMult1, nil)

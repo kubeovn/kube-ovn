@@ -13,6 +13,12 @@ import (
 )
 
 func TestGenerateStrategicMergePatchPayload(t *testing.T) {
+	type C chan struct{}
+	type unsupportedType struct {
+		C
+		*v1.Pod
+	}
+
 	type args struct {
 		// original stands for the original object we seen before we handle
 		original runtime.Object
@@ -24,7 +30,7 @@ func TestGenerateStrategicMergePatchPayload(t *testing.T) {
 	tests := []struct {
 		name    string
 		args    args
-		want    v1.Pod
+		want    runtime.Object
 		wantErr bool
 	}{
 		{
@@ -34,7 +40,7 @@ func TestGenerateStrategicMergePatchPayload(t *testing.T) {
 				modified: &v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{"ovn1": "1", "ovn2": "2"}}},
 				remote:   &v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{}}},
 			},
-			want:    v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{"ovn1": "1", "ovn2": "2"}}},
+			want:    &v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{"ovn1": "1", "ovn2": "2"}}},
 			wantErr: false,
 		},
 		{
@@ -44,7 +50,7 @@ func TestGenerateStrategicMergePatchPayload(t *testing.T) {
 				modified: &v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{"ovn1": "1", "ovn2": "2"}}},
 				remote:   &v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{"calico1": "1"}}},
 			},
-			want:    v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{"calico1": "1", "ovn1": "1", "ovn2": "2"}}},
+			want:    &v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{"calico1": "1", "ovn1": "1", "ovn2": "2"}}},
 			wantErr: false,
 		},
 		{
@@ -54,7 +60,7 @@ func TestGenerateStrategicMergePatchPayload(t *testing.T) {
 				modified: &v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{}}},
 				remote:   &v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{}}},
 			},
-			want:    v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: nil}},
+			want:    &v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: nil}},
 			wantErr: false,
 		},
 		{
@@ -64,8 +70,24 @@ func TestGenerateStrategicMergePatchPayload(t *testing.T) {
 				modified: &v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{}}},
 				remote:   &v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{"calico1": "1"}}},
 			},
-			want:    v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: nil}},
+			want:    &v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: nil}},
 			wantErr: false,
+		},
+		{
+			name: "argument original is of unsupported type",
+			args: args{
+				original: &unsupportedType{},
+				modified: &v1.Pod{},
+			},
+			wantErr: true,
+		},
+		{
+			name: "argument modified is of unsupported type",
+			args: args{
+				original: &v1.Pod{},
+				modified: &unsupportedType{},
+			},
+			wantErr: true,
 		},
 	}
 	for _, tt := range tests {
@@ -75,12 +97,16 @@ func TestGenerateStrategicMergePatchPayload(t *testing.T) {
 				t.Errorf("GenerateStrategicMergePatchPayload() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
+			if err != nil {
+				return
+			}
+
 			b, _ := json.Marshal(tt.args.remote)
 			// apply patch for remote obj
 			newB, _ := strategicpatch.StrategicMergePatch(b, got, v1.Pod{})
 			patchedPod := v1.Pod{}
 			_ = json.Unmarshal(newB, &patchedPod)
-			if !assert.Equal(t, tt.want, patchedPod, "patch: %s", got) {
+			if !assert.Equal(t, tt.want, runtime.Object(&patchedPod), "patch: %s", got) {
 				t.Errorf("patch not correct, got = %+v, want= %+v", patchedPod, tt.want)
 			}
 		})
@@ -88,6 +114,12 @@ func TestGenerateStrategicMergePatchPayload(t *testing.T) {
 }
 
 func TestGenerateMergePatchPayload(t *testing.T) {
+	type C chan struct{}
+	type unsupportedType struct {
+		C
+		*v1.Pod
+	}
+
 	type args struct {
 		// original stands for the original object we seen before we handle
 		original runtime.Object
@@ -99,7 +131,7 @@ func TestGenerateMergePatchPayload(t *testing.T) {
 	tests := []struct {
 		name    string
 		args    args
-		want    v1.Pod
+		want    runtime.Object
 		wantErr bool
 	}{
 		{
@@ -109,7 +141,7 @@ func TestGenerateMergePatchPayload(t *testing.T) {
 				modified: &v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{"ovn1": "1", "ovn2": "2"}}},
 				remote:   &v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{}}},
 			},
-			want:    v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{"ovn1": "1", "ovn2": "2"}}},
+			want:    &v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{"ovn1": "1", "ovn2": "2"}}},
 			wantErr: false,
 		},
 		{
@@ -119,7 +151,7 @@ func TestGenerateMergePatchPayload(t *testing.T) {
 				modified: &v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{"ovn1": "1", "ovn2": "2"}}},
 				remote:   &v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{"calico1": "1"}}},
 			},
-			want:    v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{"calico1": "1", "ovn1": "1", "ovn2": "2"}}},
+			want:    &v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{"calico1": "1", "ovn1": "1", "ovn2": "2"}}},
 			wantErr: false,
 		},
 		{
@@ -129,7 +161,7 @@ func TestGenerateMergePatchPayload(t *testing.T) {
 				modified: &v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{}}},
 				remote:   &v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{}}},
 			},
-			want:    v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: nil}},
+			want:    &v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: nil}},
 			wantErr: false,
 		},
 		{
@@ -139,8 +171,24 @@ func TestGenerateMergePatchPayload(t *testing.T) {
 				modified: &v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{}}},
 				remote:   &v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{"calico1": "1"}}},
 			},
-			want:    v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: nil}},
+			want:    &v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: nil}},
 			wantErr: false,
+		},
+		{
+			name: "argument original is of unsupported type",
+			args: args{
+				original: &unsupportedType{},
+				modified: &v1.Pod{},
+			},
+			wantErr: true,
+		},
+		{
+			name: "argument modified is of unsupported type",
+			args: args{
+				original: &v1.Pod{},
+				modified: &unsupportedType{},
+			},
+			wantErr: true,
 		},
 	}
 	for _, tt := range tests {
@@ -150,12 +198,16 @@ func TestGenerateMergePatchPayload(t *testing.T) {
 				t.Errorf("GenerateMergePatchPayload() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
+			if err != nil {
+				return
+			}
+
 			b, _ := json.Marshal(tt.args.remote)
 			// apply patch for remote obj
 			newB, _ := strategicpatch.StrategicMergePatch(b, got, v1.Pod{})
 			patchedPod := v1.Pod{}
 			_ = json.Unmarshal(newB, &patchedPod)
-			if !assert.Equal(t, tt.want, patchedPod, "patch: %s", got) {
+			if !assert.Equal(t, tt.want, runtime.Object(&patchedPod), "patch: %s", got) {
 				t.Errorf("patch not correct, got = %+v, want= %+v", patchedPod, tt.want)
 			}
 		})
