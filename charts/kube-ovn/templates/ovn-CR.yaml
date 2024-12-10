@@ -13,6 +13,8 @@ rules:
       - vpcs/status
       - vpc-nat-gateways
       - vpc-nat-gateways/status
+      - vpc-egress-gateways
+      - vpc-egress-gateways/status
       - subnets
       - subnets/status
       - ippools
@@ -99,6 +101,18 @@ rules:
     verbs:
       - get
   - apiGroups:
+      - apps
+    resources:
+      - deployments
+      - deployments/scale
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - delete
+  - apiGroups:
       - ""
     resources:
       - services
@@ -124,8 +138,6 @@ rules:
       - apps
     resources:
       - statefulsets
-      - deployments
-      - deployments/scale
     verbs:
       - get
       - list
@@ -175,37 +187,45 @@ rules:
       - subjectaccessreviews
     verbs:
       - create
-  - apiGroups: 
+  - apiGroups:
       - "certificates.k8s.io"
-    resources: 
+    resources:
       - "certificatesigningrequests"
-    verbs: 
+    verbs:
       - "get"
       - "list"
       - "watch"
   - apiGroups:
-    - certificates.k8s.io
+      - certificates.k8s.io
     resources:
-    - certificatesigningrequests/status
-    - certificatesigningrequests/approval
+      - certificatesigningrequests/status
+      - certificatesigningrequests/approval
     verbs:
-    - update
+      - update
   - apiGroups:
-    - ""
+      - ""
     resources:
-    - secrets
+      - secrets
     verbs:
-    - get
-    - create
+      - get
+      - create
   - apiGroups:
-    - certificates.k8s.io
+      - certificates.k8s.io
     resourceNames:
-    - kubeovn.io/signer
+      - kubeovn.io/signer
     resources:
-    - signers
+      - signers
     verbs:
-    - approve
-    - sign
+      - approve
+      - sign
+  - apiGroups:
+      - kubevirt.io
+    resources:
+      - virtualmachineinstancemigrations
+    verbs:
+      - "list"
+      - "watch"
+      - "get"
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -236,6 +256,88 @@ rules:
       - get
       - list
 
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  annotations:
+    rbac.authorization.k8s.io/system-only: "true"
+  name: system:kube-ovn-cni
+rules:
+  - apiGroups:
+      - "kubeovn.io"
+    resources:
+      - subnets
+      - vlans
+      - provider-networks
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - ""
+      - "kubeovn.io"
+    resources:
+      - ovn-eips
+      - ovn-eips/status
+      - nodes
+      - pods
+    verbs:
+      - get
+      - list
+      - patch
+      - watch
+  - apiGroups:
+      - "kubeovn.io"
+    resources:
+      - ips
+    verbs:
+      - get
+      - update
+  - apiGroups:
+      - ""
+    resources:
+      - events
+    verbs:
+      - create
+      - patch
+      - update
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - authentication.k8s.io
+    resources:
+      - tokenreviews
+    verbs:
+      - create
+  - apiGroups:
+      - authorization.k8s.io
+    resources:
+      - subjectaccessreviews
+    verbs:
+      - create
+  - apiGroups:
+      - "certificates.k8s.io"
+    resources:
+      - "certificatesigningrequests"
+    verbs:
+      - "create"
+      - "get"
+      - "list"
+      - "watch"
+      - "delete"
+  - apiGroups:
+      - ""
+    resources:
+      - "secrets"
+    verbs:
+      - "get"
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
