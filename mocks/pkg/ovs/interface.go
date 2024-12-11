@@ -2144,9 +2144,9 @@ func (m *MockLogicalRouterStaticRoute) EXPECT() *MockLogicalRouterStaticRouteMoc
 }
 
 // AddLogicalRouterStaticRoute mocks base method.
-func (m *MockLogicalRouterStaticRoute) AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix string, bfdID *string, nexthops ...string) error {
+func (m *MockLogicalRouterStaticRoute) AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix string, bfdID *string, externalIDs map[string]string, nexthops ...string) error {
 	m.ctrl.T.Helper()
-	varargs := []any{lrName, routeTable, policy, ipPrefix, bfdID}
+	varargs := []any{lrName, routeTable, policy, ipPrefix, bfdID, externalIDs}
 	for _, a := range nexthops {
 		varargs = append(varargs, a)
 	}
@@ -2156,9 +2156,9 @@ func (m *MockLogicalRouterStaticRoute) AddLogicalRouterStaticRoute(lrName, route
 }
 
 // AddLogicalRouterStaticRoute indicates an expected call of AddLogicalRouterStaticRoute.
-func (mr *MockLogicalRouterStaticRouteMockRecorder) AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, bfdID any, nexthops ...any) *gomock.Call {
+func (mr *MockLogicalRouterStaticRouteMockRecorder) AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, bfdID, externalIDs any, nexthops ...any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	varargs := append([]any{lrName, routeTable, policy, ipPrefix, bfdID}, nexthops...)
+	varargs := append([]any{lrName, routeTable, policy, ipPrefix, bfdID, externalIDs}, nexthops...)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddLogicalRouterStaticRoute", reflect.TypeOf((*MockLogicalRouterStaticRoute)(nil).AddLogicalRouterStaticRoute), varargs...)
 }
 
@@ -2732,9 +2732,9 @@ func (mr *MockNbClientMockRecorder) AddLogicalRouterPolicy(lrName, priority, mat
 }
 
 // AddLogicalRouterStaticRoute mocks base method.
-func (m *MockNbClient) AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix string, bfdID *string, nexthops ...string) error {
+func (m *MockNbClient) AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix string, bfdID *string, externalIDs map[string]string, nexthops ...string) error {
 	m.ctrl.T.Helper()
-	varargs := []any{lrName, routeTable, policy, ipPrefix, bfdID}
+	varargs := []any{lrName, routeTable, policy, ipPrefix, bfdID, externalIDs}
 	for _, a := range nexthops {
 		varargs = append(varargs, a)
 	}
@@ -2744,9 +2744,9 @@ func (m *MockNbClient) AddLogicalRouterStaticRoute(lrName, routeTable, policy, i
 }
 
 // AddLogicalRouterStaticRoute indicates an expected call of AddLogicalRouterStaticRoute.
-func (mr *MockNbClientMockRecorder) AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, bfdID any, nexthops ...any) *gomock.Call {
+func (mr *MockNbClientMockRecorder) AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, bfdID, externalIDs any, nexthops ...any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	varargs := append([]any{lrName, routeTable, policy, ipPrefix, bfdID}, nexthops...)
+	varargs := append([]any{lrName, routeTable, policy, ipPrefix, bfdID, externalIDs}, nexthops...)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddLogicalRouterStaticRoute", reflect.TypeOf((*MockNbClient)(nil).AddLogicalRouterStaticRoute), varargs...)
 }
 

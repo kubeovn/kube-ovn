@@ -528,6 +528,41 @@ func (suite *OvnClientTestSuite) testNewLogicalRouterPolicy() {
 	require.Equal(t, expect, policy)
 }
 
+func (suite *OvnClientTestSuite) testUpdateLogicalRouterPolicy() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+	lrName := "test-update-lr-policy-lr"
+	priority := 10000
+	match := "ip4.dst == 1.1.1.1"
+	action := ovnnb.LogicalRouterPolicyActionAllow
+
+	err := nbClient.CreateLogicalRouter(lrName)
+	require.NoError(t, err)
+
+	err = nbClient.AddLogicalRouterPolicy(lrName, priority, match, action, nil, nil, nil)
+	require.NoError(t, err)
+
+	policies, err := nbClient.GetLogicalRouterPolicy(lrName, priority, match, true)
+	require.NoError(t, err)
+	require.Len(t, policies, 1)
+	require.NotNil(t, policies[0])
+
+	policy := policies[0]
+	policy.Action = ovnnb.LogicalRouterPolicyActionDrop
+	err = nbClient.UpdateLogicalRouterPolicy(policy, &policy.Action)
+	require.NoError(t, err)
+
+	policies, err = nbClient.GetLogicalRouterPolicy(lrName, priority, match, true)
+	require.NoError(t, err)
+	require.Len(t, policies, 1)
+	require.NotNil(t, policies[0])
+	require.Equal(t, policy.UUID, policies[0].UUID)
+	require.Equal(t, ovnnb.LogicalRouterPolicyActionDrop, policies[0].Action)
+	require.Equal(t, policy, policies[0])
+}
+
 func (suite *OvnClientTestSuite) testPolicyFilter() {
 	t := suite.T()
 	t.Parallel()
