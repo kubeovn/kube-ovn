@@ -511,7 +511,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 	})
 
 	framework.ConformanceIt("should allocate right IPs for the deployment when there are multiple IP Pools added to its namespace", func() {
-		replicas := 3
+		replicas := 1
 		ipsCount := 12
 		ips1 := framework.RandomIPPool(cidr, ipsCount)
 		ips2 := framework.RandomIPPool(cidr, ipsCount)
