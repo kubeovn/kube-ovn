@@ -510,41 +510,30 @@ var _ = framework.Describe("[group:ipam]", func() {
 		checkFn()
 	})
 
-	framework.ConformanceIt("should allocate IPs from namespace IPPool annotation for deployment without IPPool annotation", func() {
+	framework.ConformanceIt("should allocate right IPs for the deployment when there are multiple IP Pools added to its namespace", func() {
 		replicas := 3
 		ipsCount := 12
 		ips1 := framework.RandomIPPool(cidr, ipsCount)
 		ips2 := framework.RandomIPPool(cidr, ipsCount)
-		newNamespaceName := "test-namespace"
 		testDeployName := "test-deployment"
-		subnetName1 := "ip-pool-subnet1"
 		subnetName2 := "ip-pool-subnet2"
 
-		ginkgo.By("Creating namespace " + namespaceName)
-		ns := framework.MakeNamespace(newNamespaceName, nil, nil)
-		nsClient.Create(ns)
-
-		ginkgo.By("Creating subnet " + subnetName1 + " and " + subnetName2)
-		cidr1 := framework.RandomCIDR(f.ClusterIPFamily)
+		ginkgo.By("Creating a new subnet " + subnetName2)
 		cidr2 := framework.RandomCIDR(f.ClusterIPFamily)
-		subnet1 := framework.MakeSubnet(subnetName1, "", cidr1, "", "", "", nil, nil, []string{newNamespaceName})
-		subnet2 := framework.MakeSubnet(subnetName2, "", cidr2, "", "", "", nil, nil, []string{newNamespaceName})
-		subnetClient.CreateSync(subnet1)
+		subnet2 := framework.MakeSubnet(subnetName2, "", cidr2, "", "", "", nil, nil, []string{namespaceName})
 		subnetClient.CreateSync(subnet2)
 
 		ginkgo.By("Creating IPPool resources ")
-		ippool1 := framework.MakeIPPool("ippool1", subnetName1, ips1, []string{newNamespaceName})
-		ippool2 := framework.MakeIPPool("ippool2", subnetName2, ips2, []string{newNamespaceName})
+		ippool1 := framework.MakeIPPool("ippool1", subnetName, ips1, []string{namespaceName})
+		ippool2 := framework.MakeIPPool("ippool2", subnetName2, ips2, []string{namespaceName})
 		ippoolClient.CreateSync(ippool1)
 		ippoolClient.CreateSync(ippool2)
 
 		ginkgo.By("Creating deployment " + testDeployName + " without IPPool annotation")
-		newDc := framework.NewDeploymentClient(cs, newNamespaceName)
 		labels := map[string]string{"app": testDeployName}
-		//annotations := map[string]string{util.LogicalSwitchAnnotation: subnetName1}
+		annotations := map[string]string{util.LogicalSwitchAnnotation: subnetName}
 		deploy := framework.MakeDeployment(testDeployName, int32(replicas), labels, annotations, "pause", framework.PauseImage, "")
-		deploy.ObjectMeta.Namespace = newNamespaceName
-		newDc.CreateSync(deploy)
+		deployClient.CreateSync(deploy)
 
 		ginkgo.By("Getting pods for deployment " + testDeployName)
 		pods, err := deployClient.GetPods(deploy)
@@ -553,11 +542,11 @@ var _ = framework.Describe("[group:ipam]", func() {
 
 		for _, pod := range pods.Items {
 			framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.CidrAnnotation, subnet1.Spec.CIDRBlock)
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.GatewayAnnotation, subnet1.Spec.Gateway)
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.CidrAnnotation, subnet.Spec.CIDRBlock)
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.GatewayAnnotation, subnet.Spec.Gateway)
 			framework.ExpectHaveKeyWithValue(pod.Annotations, util.IPPoolAnnotation, ippool1)
 			framework.ExpectContainElement(ips1, pod.Annotations[util.IPAddressAnnotation])
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.LogicalSwitchAnnotation, subnet1.Name)
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.LogicalSwitchAnnotation, subnet.Name)
 			framework.ExpectMAC(pod.Annotations[util.MacAddressAnnotation])
 			framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
 
