@@ -1,5 +1,25 @@
 # Changelog
 
+## v1.13.1 (2024-12-11)
+
+ * [75dc01ae](https://github.com/kubeovn/kube-ovn/commit/75dc01ae133d9eb92d0101aed50a7eb72b31d114) release v1.13.1
+ * [a0f5d490](https://github.com/kubeovn/kube-ovn/commit/a0f5d4903c0a5e7f3f56f1afee3383d5630768c1) build(deps): bump github.com/docker/docker (#4812)
+ * [67f5a1eb](https://github.com/kubeovn/kube-ovn/commit/67f5a1ebc96b4e9422299b42995b126be5ffe36e) fix issue 4803: The two names should have a containment relationship (#4807)
+ * [ad46a78d](https://github.com/kubeovn/kube-ovn/commit/ad46a78d908d3fbce5a1c134c6b93539983f37e8) build(deps): bump gopkg.in/k8snetworkplumbingwg/multus-cni.v4 (#4806)
+ * [cfecb7a2](https://github.com/kubeovn/kube-ovn/commit/cfecb7a2d17df4464d793c4904e5a4090014c070) base: fix underlay network break during upgrade from v1.12 (#4797)
+ * [3620365b](https://github.com/kubeovn/kube-ovn/commit/3620365b637c557169db76dbb54bca61e9eb218f) build(deps): bump k8s from 1.31.2 to 1.31.3 (#4754)
+ * [7488e0b9](https://github.com/kubeovn/kube-ovn/commit/7488e0b97f3740d7e427fb2f1260325a57c645d1) remove e2e test cases (#4745)
+ * [cfb7186b](https://github.com/kubeovn/kube-ovn/commit/cfb7186bcf87970e4c362fff384856037eaa633f) update release script (#4749)
+ * [6139c51c](https://github.com/kubeovn/kube-ovn/commit/6139c51c915f0801fb10153ce81e920a4141c0a7) add not found err check for lb-svc (#4748)
+ * [c8dd1aeb](https://github.com/kubeovn/kube-ovn/commit/c8dd1aeb60745e3af76c6a178f6515e04e3df078) prepare for next release
+
+### Contributors
+
+ * QEDQCD
+ * dependabot[bot]
+ * hzma
+ * 张祖建
+
 ## v1.13.0 (2024-11-18)
 
  * [ae4ce377](https://github.com/kubeovn/kube-ovn/commit/ae4ce3770c71de6c2c9ba456d11bf30b651f83ab) add loop check for tunnel nic (#4736)
