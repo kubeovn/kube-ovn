@@ -1639,26 +1639,24 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 	}
 
 	ippoolStr := pod.Annotations[fmt.Sprintf(util.IPPoolAnnotationTemplate, podNet.ProviderName)]
-	var ipPoolList string
 	if ippoolStr == "" {
 		ns, err := c.namespacesLister.Get(pod.Namespace)
 		if err != nil {
 			klog.Errorf("failed to get namespace %s: %v", pod.Namespace, err)
 			return "", "", "", podNet.Subnet, err
 		}
+
 		if len(ns.Annotations) != 0 {
-			ipPoolList = ns.Annotations[util.IPPoolAnnotation]
-			for _, ipPoolName := range strings.Split(ipPoolList, ",") {
-				if ipPoolName == "" {
-					continue
-				}
-				ippool, err := c.ippoolLister.Get(ipPoolName)
-				if err != nil {
-					klog.Errorf("failed to get ippool %s: %v", ipPoolName, err)
-					return "", "", "", podNet.Subnet, err
-				}
-				if ippool.Spec.Subnet == podNet.Subnet.Name {
-					ippoolStr = ippool.Name
+			if ipPoolList, ok := ns.Annotations[util.IPPoolAnnotation]; ok {
+				for _, ipPoolName := range strings.Split(ipPoolList, ",") {
+					ippool, err := c.ippoolLister.Get(ipPoolName)
+					if err != nil {
+						klog.Errorf("failed to get ippool %s: %v", ipPoolName, err)
+						return "", "", "", podNet.Subnet, err
+					}
+					if ippool.Spec.Subnet == podNet.Subnet.Name {
+						ippoolStr = ippool.Name
+					}
 				}
 			}
 		}
