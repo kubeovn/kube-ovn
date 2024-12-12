@@ -532,7 +532,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 		ginkgo.By("Creating statefulset " + testStsName + " with logical switch annotation and no ippool annotation")
 		labels := map[string]string{"app": testStsName}
 		sts := framework.MakeStatefulSet(testStsName, testStsName, int32(replicas), labels, framework.PauseImage)
-		sts.Spec.Template.Annotations = map[string]string{util.LogicalSwitchAnnotation: testSubnetName}
+		sts.Spec.Template.Annotations = map[string]string{util.LogicalSwitchAnnotation: subnetName}
 		sts = stsClient.CreateSync(sts)
 
 		ginkgo.By("Getting pods for statefulset " + testStsName)
@@ -544,7 +544,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 			framework.ExpectHaveKeyWithValue(pod.Annotations, util.CidrAnnotation, subnet.Spec.CIDRBlock)
 			framework.ExpectHaveKeyWithValue(pod.Annotations, util.GatewayAnnotation, subnet.Spec.Gateway)
 			framework.ExpectContainElement(ipsRange1, pod.Annotations[util.IPAddressAnnotation])
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.LogicalSwitchAnnotation, subnet.Name)
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.LogicalSwitchAnnotation, subnetName)
 			framework.ExpectMAC(pod.Annotations[util.MacAddressAnnotation])
 			framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
 			framework.ExpectConsistOf(util.PodIPs(pod), strings.Split(pod.Annotations[util.IPAddressAnnotation], ","))
