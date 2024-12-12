@@ -52,7 +52,10 @@ RUN cd /usr/src/ && git clone -b branch-22.12 --depth=1 https://github.com/ovn-o
     # northd: add nb option version_compatibility
     curl -s https://github.com/kubeovn/ovn/commit/06f5a7c684a6030036e2663eecf934b37c3e666e.patch | git apply && \
     # northd: skip conntrack when access node local dns ip
-    curl -s https://github.com/kubeovn/ovn/commit/1ea964886da774506962d6bf23f8f894d93a10eb.patch | git apply
+    curl -s https://github.com/kubeovn/ovn/commit/1ea964886da774506962d6bf23f8f894d93a10eb.patch | git apply && \
+    # skip node local dns ip for conntrack when ACL is set
+    curl -s https://github.com/kubeovn/ovn/commit/3605f81a3b9dc4408d4eb82606a926d54666c6a7.patch | git apply 
+
 
 RUN apt install -y build-essential fakeroot \
     autoconf automake bzip2 debhelper-compat dh-exec dh-python dh-sequence-python3 dh-sequence-sphinxdoc \
