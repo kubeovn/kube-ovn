@@ -57,10 +57,12 @@ func TestFetchCIDRAddrs(t *testing.T) {
 	}{
 		{
 			name: "nil",
-		}, {
+		},
+		{
 			name:     "empty",
 			networks: []v1alpha1.CIDR{},
-		}, {
+		},
+		{
 			name:     "ipv4 only",
 			networks: []v1alpha1.CIDR{"1.1.1.0/24"},
 			v4Addrs:  []string{"1.1.1.0/24"},
