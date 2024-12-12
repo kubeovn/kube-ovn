@@ -524,8 +524,8 @@ var _ = framework.Describe("[group:ipam]", func() {
 		subnetClient.CreateSync(testSubnet)
 
 		ginkgo.By("Creating IPPool resources ")
-		ippool1 := framework.MakeIPPool("ippool1", testSubnetName, ipsRange1, []string{namespaceName})
-		ippool2 := framework.MakeIPPool("ippool2", subnetName, ipsRange2, []string{namespaceName})
+		ippool1 := framework.MakeIPPool("ippool1", subnetName, ipsRange1, []string{namespaceName})
+		ippool2 := framework.MakeIPPool("ippool2", testSubnetName, ipsRange2, []string{namespaceName})
 		ippoolClient.CreateSync(ippool1)
 		ippoolClient.CreateSync(ippool2)
 
@@ -541,10 +541,10 @@ var _ = framework.Describe("[group:ipam]", func() {
 
 		for _, pod := range pods.Items {
 			framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.CidrAnnotation, testSubnet.Spec.CIDRBlock)
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.GatewayAnnotation, testSubnet.Spec.Gateway)
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.CidrAnnotation, subnet.Spec.CIDRBlock)
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.GatewayAnnotation, subnet.Spec.Gateway)
 			framework.ExpectContainElement(ipsRange1, pod.Annotations[util.IPAddressAnnotation])
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.LogicalSwitchAnnotation, testSubnet.Name)
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.LogicalSwitchAnnotation, subnet.Name)
 			framework.ExpectMAC(pod.Annotations[util.MacAddressAnnotation])
 			framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
 			framework.ExpectConsistOf(util.PodIPs(pod), strings.Split(pod.Annotations[util.IPAddressAnnotation], ","))
