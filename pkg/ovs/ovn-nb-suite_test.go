@@ -1231,10 +1231,6 @@ func (suite *OvnClientTestSuite) Test_OvsCleanDuplicatePort() {
 	suite.testOvsCleanDuplicatePort()
 }
 
-func (suite *OvnClientTestSuite) Test_OvsSetPortTag() {
-	suite.testOvsSetPortTag()
-}
-
 func (suite *OvnClientTestSuite) Test_ValidatePortVendor() {
 	suite.testValidatePortVendor()
 }
