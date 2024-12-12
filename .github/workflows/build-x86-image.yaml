@@ -22,9 +22,9 @@ concurrency:
 
 env:
   KIND_VERSION: v0.25.0
-  GOLANGCI_LINT_VERSION: 'v1.62.0'
-  HELM_VERSION: v3.16.2
-  SUBMARINER_VERSION: '0.18.2'
+  GOLANGCI_LINT_VERSION: 'v1.62.2'
+  HELM_VERSION: v3.16.3
+  SUBMARINER_VERSION: '0.19.1'
 
 jobs:
   build-kube-ovn-base:
@@ -184,6 +184,10 @@ jobs:
           go install -mod=mod github.com/onsi/ginkgo/v2/ginkgo
           make ut
 
+      - uses: shogo82148/actions-goveralls@v1
+        with:
+          path-to-profile: profile.cov
+
       - name: Install golangci-lint
         run: |
           curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin $GOLANGCI_LINT_VERSION
@@ -214,7 +218,7 @@ jobs:
           docker tag kubeovn/kube-ovn-base:$TAG-amd64-dpdk kubeovn/kube-ovn-base:$TAG-dpdk
 
       - name: Scan base image
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@0.29.0
         env:
           TRIVY_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-db:2
         with:
@@ -2002,7 +2006,7 @@ jobs:
 
       - name: Create kind cluster
         env:
-          k8s_version: v1.23.17
+          k8s_version: v1.29.10
         run: |
           pipx install jinjanator
           make kind-init
@@ -2417,6 +2421,186 @@ jobs:
       - name: Check kube ovn pod restarts
         if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
         run: make check-kube-ovn-pod-restarts
+
+      - name: Cleanup
+        run: timeout -k 10 180 sh -x dist/images/cleanup.sh
+
+  vpc-egress-gateway-e2e:
+    name: VPC Egress Gateway E2E
+    needs:
+      - build-kube-ovn
+      - build-e2e-binaries
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        ip-family:
+          - ipv4
+          - ipv6
+          - dual
+    steps:
+      - uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          docker-images: false
+          large-packages: false
+          tool-cache: false
+          swap-storage: false
+
+      - uses: actions/checkout@v4
+
+      - name: Create the default branch directory
+        if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
+        run: mkdir -p test/e2e/source
+
+      - name: Check out the default branch
+        if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 1
+          path: test/e2e/source
+
+      - name: Export E2E directory
+        run: |
+          if [ '${{ github.base_ref || github.ref_name }}' = '${{ github.event.repository.default_branch }}' ]; then
+            echo "E2E_DIR=." >> "$GITHUB_ENV"
+          else
+            echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
+          fi
+
+      - uses: actions/setup-go@v5
+        id: setup-go
+        with:
+          go-version-file: ${{ env.E2E_DIR }}/go.mod
+          check-latest: true
+          cache: false
+
+      - name: Export Go full version
+        run: echo "GO_VERSION=${{ steps.setup-go.outputs.go-version }}" >> "$GITHUB_ENV"
+
+      - name: Go cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
+
+      - name: Install kind
+        uses: helm/kind-action@v1.10.0
+        with:
+          version: ${{ env.KIND_VERSION }}
+          install_only: true
+
+      - name: Install ginkgo
+        working-directory: ${{ env.E2E_DIR }}
+        run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
+
+      - name: Download image
+        uses: actions/download-artifact@v4
+        with:
+          name: kube-ovn
+
+      - name: Load image
+        run: docker load --input kube-ovn.tar
+
+      - name: Create kind cluster
+        run: |
+          pipx install jinjanator
+          make kind-init-${{ matrix.ip-family }}
+
+      - name: Install Kube-OVN
+        id: install
+        run: make kind-install-debug-valgrind-${{ matrix.ip-family }}
+
+      - name: Install Multus
+        run: make kind-install-multus
+
+      - name: Run E2E
+        id: e2e
+        working-directory: ${{ env.E2E_DIR }}
+        env:
+          E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
+          E2E_IP_FAMILY: ${{ matrix.ip-family }}
+        run: make vpc-egress-gateway-e2e
+
+      - name: Collect k8s events
+        if: failure() && steps.e2e.conclusion == 'failure'
+        run: |
+          kubectl get events -A -o yaml > vpc-egress-gateway-e2e-${{ matrix.ip-family }}-events.yaml
+          tar zcf vpc-egress-gateway-e2e-${{ matrix.ip-family }}-events.tar.gz vpc-egress-gateway-e2e-${{ matrix.ip-family }}-events.yaml
+
+      - name: Upload k8s events
+        uses: actions/upload-artifact@v4
+        if: failure() && steps.e2e.conclusion == 'failure'
+        with:
+          name: vpc-egress-gateway-e2e-${{ matrix.ip-family }}-events
+          path: vpc-egress-gateway-e2e-${{ matrix.ip-family }}-events.tar.gz
+
+      - name: Collect apiserver audit logs
+        if: failure() && steps.e2e.conclusion == 'failure'
+        run: |
+          docker cp kube-ovn-control-plane:/var/log/kubernetes/kube-apiserver-audit.log .
+          tar zcf vpc-egress-gateway-e2e-${{ matrix.ip-family }}-audit-log.tar.gz kube-apiserver-audit.log
+
+      - name: Upload apiserver audit logs
+        uses: actions/upload-artifact@v4
+        if: failure() && steps.e2e.conclusion == 'failure'
+        with:
+          name: vpc-egress-gateway-e2e-${{ matrix.ip-family }}-audit-log
+          path: vpc-egress-gateway-e2e-${{ matrix.ip-family }}-audit-log.tar.gz
+
+      - name: kubectl ko log
+        if: failure() && steps.e2e.conclusion == 'failure'
+        run: |
+          make kubectl-ko-log
+          mv kubectl-ko-log.tar.gz vpc-egress-gateway-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
+
+      - name: upload kubectl ko log
+        uses: actions/upload-artifact@v4
+        if: failure() && steps.e2e.conclusion == 'failure'
+        with:
+          name: vpc-egress-gateway-e2e-${{ matrix.ip-family }}-ko-log
+          path: vpc-egress-gateway-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
+
+      - name: Check kube ovn pod restarts
+        if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
+        run: make check-kube-ovn-pod-restarts
+
+      - name: Check valgrind result
+        run: |
+          kubectl -n kube-system rollout restart ds ovs-ovn
+          kubectl -n kube-system rollout status ds ovs-ovn
+          sleep 10
+          kubectl -n kube-system rollout restart deploy ovn-central
+          kubectl -n kube-system rollout status deploy ovn-central
+          while true; do
+            if [ $(kubectl -n kube-system get pod -l app=ovs -o name | wc -l) -eq $(kubectl get node -o name | wc -l) ]; then
+              break
+            fi
+            sleep 1
+          done
+          kubectl ko log ovn
+          kubectl ko log ovs
+
+          for daemon in ovsdb-nb ovsdb-sb ovn-northd ovn-controller ovsdb-server ovs-vswitchd; do
+            echo "Checking if valgrind log file for $daemon exists..."
+            find kubectl-ko-log -type f -name "$daemon.valgrind.log.[[:digit:]]*" -exec false {} + && exit 1
+          done
+
+          find kubectl-ko-log -type f -name '*.valgrind.log.*' | while read f; do
+            if grep -qw 'definitely lost' "$f"; then
+              echo "Memory leak detected in $(basename $f | awk -F. '{print $1}')."
+              echo $f
+              cat "$f"
+              exit 1
+            fi;
+          done
 
       - name: Cleanup
         run: timeout -k 10 180 sh -x dist/images/cleanup.sh
@@ -2966,6 +3150,7 @@ jobs:
       - kube-ovn-ic-conformance-e2e
       - kube-ovn-ipsec-e2e
       - multus-conformance-e2e
+      - vpc-egress-gateway-e2e
       - ovn-vpc-nat-gw-conformance-e2e
       - iptables-vpc-nat-gw-conformance-e2e
       - webhook-e2e

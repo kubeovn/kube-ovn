@@ -513,14 +513,9 @@ func (c *Controller) reconcileAllocateSubnets(cachedPod, pod *v1.Pod, needAlloca
 	// todo: isVmPod, getPodType, getNameByPod has duplicated logic
 
 	var err error
-	var isMigrate, migrated, migratedFail bool
-	var vmKey, srcNodeName, targetNodeName string
+	var vmKey string
 	if isVMPod && c.config.EnableKeepVMIP {
 		vmKey = fmt.Sprintf("%s/%s", namespace, vmName)
-		if isMigrate, migrated, migratedFail, srcNodeName, targetNodeName, err = c.migrateVM(pod, vmKey); err != nil {
-			klog.Error(err)
-			return nil, err
-		}
 	}
 	// Avoid create lsp for already running pod in ovn-nb when controller restart
 	for _, podNet := range needAllocatePodNets {
@@ -602,24 +597,6 @@ func (c *Controller) reconcileAllocateSubnets(cachedPod, pod *v1.Pod, needAlloca
 				c.recorder.Eventf(pod, v1.EventTypeWarning, "CreateOVNPortFailed", err.Error())
 				klog.Errorf("%v", err)
 				return nil, err
-			}
-
-			if isMigrate {
-				if migrated {
-					klog.Infof("migrate end reset options for lsp %s from %s to %s, migrated fail: %t", portName, srcNodeName, targetNodeName, migratedFail)
-					if err := c.OVNNbClient.ResetLogicalSwitchPortMigrateOptions(portName, srcNodeName, targetNodeName, migratedFail); err != nil {
-						err = fmt.Errorf("failed to clean migrate options for lsp %s, %w", portName, err)
-						klog.Error(err)
-						return nil, err
-					}
-				} else {
-					klog.Infof("migrate start set options for lsp %s from %s to %s", portName, srcNodeName, targetNodeName)
-					if err := c.OVNNbClient.SetLogicalSwitchPortMigrateOptions(portName, srcNodeName, targetNodeName); err != nil {
-						err = fmt.Errorf("failed to set migrate options for lsp %s, %w", portName, err)
-						klog.Error(err)
-						return nil, err
-					}
-				}
 			}
 
 			if pod.Annotations[fmt.Sprintf(util.Layer2ForwardAnnotationTemplate, podNet.ProviderName)] == "true" {
@@ -1271,6 +1248,7 @@ func isStatefulSetPodToDel(c kubernetes.Interface, pod *v1.Pod, statefulSetName 
 	if err != nil {
 		// statefulset is deleted
 		if k8serrors.IsNotFound(err) {
+			klog.Infof("statefulset %s is deleted", statefulSetName)
 			return true
 		}
 		klog.Errorf("failed to get statefulset %v", err)
@@ -1279,6 +1257,7 @@ func isStatefulSetPodToDel(c kubernetes.Interface, pod *v1.Pod, statefulSetName 
 
 	// statefulset is being deleted, or it's a newly created one
 	if !sts.DeletionTimestamp.IsZero() || sts.UID != statefulSetUID {
+		klog.Infof("statefulset %s is being deleted", statefulSetName)
 		return true
 	}
 
@@ -1291,7 +1270,11 @@ func isStatefulSetPodToDel(c kubernetes.Interface, pod *v1.Pod, statefulSetName 
 		return false
 	}
 	// down scaled
-	return index >= int64(*sts.Spec.Replicas)
+	if index >= int64(*sts.Spec.Replicas) {
+		klog.Infof("statefulset %s is down scaled", statefulSetName)
+		return true
+	}
+	return false
 }
 
 func getNodeTunlIP(node *v1.Node) ([]net.IP, error) {
@@ -1867,15 +1850,32 @@ func appendCheckPodToDel(c *Controller, pod *v1.Pod, ownerRefName, ownerRefKind 
 	// subnet cidr has been changed, and statefulset pod's ip is not in the range of subnet's cidr anymore
 	podSubnet, err := c.subnetsLister.Get(podSwitch)
 	if err != nil {
-		klog.Errorf("failed to get subnet %s, %v", podSwitch, err)
+		klog.Errorf("failed to get subnet %s, %v, not auto clean ip", podSwitch, err)
 		return false, err
 	}
-	if podSubnet != nil && !util.CIDRContainIP(podSubnet.Spec.CIDRBlock, pod.Annotations[util.IPAddressAnnotation]) {
+	if podSubnet == nil {
+		// TODO: remove: CRD get interface will retrun a nil subnet ?
+		klog.Errorf("pod %s/%s subnet %s is nil, not auto clean ip", pod.Namespace, pod.Name, podSwitch)
+		return false, nil
+	}
+	podIP := pod.Annotations[util.IPAddressAnnotation]
+	if podIP == "" {
+		// delete pod just after it created < 1ms
+		klog.Infof("pod %s/%s annotaions has no ip address, not auto clean ip", pod.Namespace, pod.Name)
+		return false, nil
+	}
+	podSubnetCidr := podSubnet.Spec.CIDRBlock
+	if podSubnetCidr != "" {
+		// subnet spec cidr changed by user
+		klog.Errorf("invalid pod subnet %s empty cidr %s, not auto clean ip", podSwitch, podSubnetCidr)
+		return false, nil
+	}
+	if !util.CIDRContainIP(podSubnetCidr, podIP) {
 		klog.Infof("pod's ip %s is not in the range of subnet %s, delete pod", pod.Annotations[util.IPAddressAnnotation], podSubnet.Name)
 		return true, nil
 	}
 	// subnet of ownerReference(sts/vm) has been changed, it needs to handle delete pod and create port on the new logical switch
-	if podSubnet != nil && ownerRefSubnet != "" && podSubnet.Name != ownerRefSubnet {
+	if ownerRefSubnet != "" && podSubnet.Name != ownerRefSubnet {
 		klog.Infof("Subnet of owner %s has been changed from %s to %s, delete pod %s/%s", ownerRefName, podSubnet.Name, ownerRefSubnet, pod.Namespace, pod.Name)
 		return true, nil
 	}
@@ -1914,7 +1914,7 @@ func (c *Controller) isVMToDel(pod *v1.Pod, vmiName string) bool {
 			vmiAlive = false
 			// The name of vmi is consistent with vm's name.
 			vmName = vmiName
-			klog.V(4).ErrorS(err, "failed to get vmi, will try to get the vm directly", "name", vmiName)
+			klog.ErrorS(err, "failed to get vmi, will try to get the vm directly", "name", vmiName)
 		} else {
 			klog.ErrorS(err, "failed to get vmi", "name", vmiName)
 			return false
@@ -1923,7 +1923,7 @@ func (c *Controller) isVMToDel(pod *v1.Pod, vmiName string) bool {
 		var ownsByVM bool
 		ownsByVM, vmName = isOwnsByTheVM(vmi)
 		if !ownsByVM && !vmi.DeletionTimestamp.IsZero() {
-			// deleting ephemeral vmi
+			klog.Infof("ephemeral vmi %s is deleting", vmiName)
 			return true
 		}
 		vmiAlive = vmi.DeletionTimestamp.IsZero()
@@ -1937,14 +1937,18 @@ func (c *Controller) isVMToDel(pod *v1.Pod, vmiName string) bool {
 	if err != nil {
 		// the vm has gone
 		if k8serrors.IsNotFound(err) {
-			klog.V(4).ErrorS(err, "failed to get vm", "name", vmName)
+			klog.ErrorS(err, "failed to get vm", "name", vmName)
 			return true
 		}
 		klog.ErrorS(err, "failed to get vm", "name", vmName)
 		return false
 	}
 
-	return !vm.DeletionTimestamp.IsZero()
+	if !vm.DeletionTimestamp.IsZero() {
+		klog.Infof("vm %s is deleting", vmName)
+		return true
+	}
+	return false
 }
 
 func (c *Controller) getNameByPod(pod *v1.Pod) string {
@@ -2068,63 +2072,6 @@ func (c *Controller) getVirtualIPs(pod *v1.Pod, podNets []*kubeovnNet) map[strin
 		vipsMap[key] = strings.Join(vipsList, ",")
 	}
 	return vipsMap
-}
-
-// migrate vm return migrate, migrated, fail, src node, target node, err
-func (c *Controller) migrateVM(pod *v1.Pod, vmKey string) (bool, bool, bool, string, string, error) {
-	// try optimize vm migration, no need return error
-	// migrate true means need ovn set migrate options
-	// migrated ok means need set migrate options to target node
-	// migrated failed means need set migrate options to source node
-	if _, ok := pod.Annotations[util.MigrationJobAnnotation]; !ok {
-		return false, false, false, "", "", nil
-	}
-	if _, ok := pod.Annotations[util.MigrationSourceAnnotation]; ok {
-		klog.Infof("will migrate out vm %s pod %s from source node %s", vmKey, pod.Name, pod.Spec.NodeName)
-		return false, false, false, "", "", nil
-	}
-	// ovn set migrator only in the process of target vm pod
-	if _, ok := pod.Annotations[util.MigrationTargetAnnotation]; !ok {
-		return false, false, false, "", "", nil
-	}
-	srcNode, ok := pod.Annotations[util.MigrationSourceNodeAnnotation]
-	if !ok || srcNode == "" {
-		err := fmt.Errorf("vm %s migration source node is not set", vmKey)
-		klog.Warning(err)
-		return false, false, false, "", "", nil
-	}
-	targetNode := pod.Spec.NodeName
-	if targetNode == "" {
-		err := fmt.Errorf("vm %s migration target node is not set", vmKey)
-		klog.Warning(err)
-		return false, false, false, "", "", nil
-	}
-	migratePhase, ok := pod.Annotations[util.MigrationPhaseAnnotation]
-	if !ok {
-		err := fmt.Errorf("vm %s migration phase is not set", vmKey)
-		klog.Warning(err)
-		return false, false, false, "", "", nil
-	}
-	// check migrate phase
-	if migratePhase == "" {
-		err := fmt.Errorf("vm %s migration phase is empty", vmKey)
-		klog.Warning(err)
-		return false, false, false, "", "", nil
-	}
-	if migratePhase == util.MigrationPhaseStarted {
-		klog.Infof("start to migrate src vm %s from %s to %s", vmKey, srcNode, targetNode)
-		return true, false, false, srcNode, targetNode, nil
-	}
-	if migratePhase == util.MigrationPhaseSucceeded {
-		klog.Infof("succeed to migrate src vm %s from %s to %s", vmKey, srcNode, targetNode)
-		return true, true, false, srcNode, targetNode, nil
-	}
-	if migratePhase == util.MigrationPhaseFailed {
-		klog.Infof("failed to migrate src vm %s from %s to %s", vmKey, srcNode, targetNode)
-		return true, true, true, srcNode, targetNode, nil
-	}
-
-	return false, false, false, "", "", nil
 }
 
 func setPodRoutesAnnotation(annotations map[string]string, provider string, routes []request.Route) error {

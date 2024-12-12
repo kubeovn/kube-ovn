@@ -4,12 +4,15 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/url"
 	"strings"
 	"time"
 
+	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
+	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -17,6 +20,9 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	clientv1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/klog/v2"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+
+	"github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/scheme"
 )
 
 func DialTCP(host string, timeout time.Duration, verbose bool) error {
@@ -87,6 +93,27 @@ func PodIPs(pod v1.Pod) []string {
 	return ips
 }
 
+func PodAttachmentIPs(pod *v1.Pod, networkName string) ([]string, error) {
+	if pod == nil {
+		return nil, errors.New("programmatic error: pod is nil")
+	}
+
+	if pod.Annotations[nadv1.NetworkStatusAnnot] == "" {
+		return nil, fmt.Errorf("pod %s/%s has no network status annotation", pod.Namespace, pod.Name)
+	}
+	var status []nadv1.NetworkStatus
+	if err := json.Unmarshal([]byte(pod.Annotations[nadv1.NetworkStatusAnnot]), &status); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal network status annotation of pod %s/%s: %w", pod.Namespace, pod.Name, err)
+	}
+	for _, s := range status {
+		if s.Name == networkName {
+			return s.IPs, nil
+		}
+	}
+
+	return nil, fmt.Errorf("pod %s/%s has no network status for network %s", pod.Namespace, pod.Name, networkName)
+}
+
 func ServiceClusterIPs(svc v1.Service) []string {
 	if len(svc.Spec.ClusterIPs) == 0 && svc.Spec.ClusterIP != v1.ClusterIPNone && svc.Spec.ClusterIP != "" {
 		return []string{svc.Spec.ClusterIP}
@@ -151,4 +178,30 @@ func nodeMergePatch(cs clientv1.NodeInterface, node, patch string) error {
 		return err
 	}
 	return nil
+}
+
+func SetOwnerReference(owner, object metav1.Object) error {
+	return controllerutil.SetOwnerReference(owner, object, scheme.Scheme)
+}
+
+func DeploymentIsReady(deployment *appsv1.Deployment) bool {
+	if deployment.Generation > deployment.Status.ObservedGeneration {
+		return false
+	}
+
+	for _, condition := range deployment.Status.Conditions {
+		if condition.Type == appsv1.DeploymentProgressing {
+			// deployment exceeded its progress deadline
+			if condition.Reason == "ProgressDeadlineExceeded" {
+				return false
+			}
+			break
+		}
+	}
+	if (deployment.Spec.Replicas != nil && deployment.Status.UpdatedReplicas < *deployment.Spec.Replicas) ||
+		deployment.Status.Replicas > deployment.Status.UpdatedReplicas ||
+		deployment.Status.AvailableReplicas < deployment.Status.UpdatedReplicas {
+		return false
+	}
+	return true
 }

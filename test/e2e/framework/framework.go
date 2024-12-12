@@ -34,6 +34,17 @@ const (
 	timeout = 2 * time.Minute
 )
 
+func LoadKubeOVNClientSet() (*kubeovncs.Clientset, error) {
+	config, err := framework.LoadConfig()
+	if err != nil {
+		return nil, err
+	}
+
+	config.QPS = 20
+	config.Burst = 50
+	return kubeovncs.NewForConfig(config)
+}
+
 type Framework struct {
 	KubeContext string
 	*framework.Framework

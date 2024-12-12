@@ -1,5 +1,5 @@
 # syntax = docker/dockerfile:experimental
-ARG GO_VERSION=1.23.3
+ARG GO_VERSION=1.23.4
 
 FROM ubuntu:24.04 AS ovs-builder
 
@@ -47,21 +47,23 @@ RUN cd /usr/src/ && git clone -b branch-24.03 --depth=1 https://github.com/ovn-o
     # ovn-controller: do not send GARP on localnet for Kube-OVN ports
     curl -s https://github.com/kubeovn/ovn/commit/8236ec78aedd114b3ce22158a9e0282337787259.patch | git apply && \
     # northd: add nb option version_compatibility
-    curl -s https://github.com/kubeovn/ovn/commit/19bdf15ec5542005e3a1ef073dfe688c023d144c.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/6fbe060936bb1f843c7997f5e66075ce75c62772.patch | git apply && \
     # add support for conditionally skipping conntrack
     curl -s https://github.com/kubeovn/ovn/commit/c6ea5e214a4a20eccdf8cd18c232284edc5ce951.patch | git apply && \
     # northd: skip conntrack when access node local dns ip
     curl -s https://github.com/kubeovn/ovn/commit/d8ce6dc8e512b703903c53e344b1dce1a0c61d2e.patch | git apply && \
     # lflow: do not send direct traffic between lports to conntrack
     curl -s https://github.com/kubeovn/ovn/commit/baf2d74f0f2d746c01c22002ea72426d75cfc79a.patch | git apply && \
-    # set ether dst addr for dnat on logical switch
-    curl -s https://github.com/kubeovn/ovn/commit/63762db7a4c37185f4c87962c50b414d925b5d33.patch | git apply && \
+    # direct output to lsp for dnat packets in logical switch ingress pipelines
+    curl -s https://github.com/kubeovn/ovn/commit/51fdeada788d7249df00c140e9496f4b753e7178.patch | git apply && \
     # fix lr-lb dnat with multiple distributed gateway ports
     curl -s https://github.com/kubeovn/ovn/commit/ca5ccf3c8ac67bcc005110c8c62214d2684e7e41.patch | git apply && \
     # northd: skip arp/nd request for lrp addresses from localnet ports
-    curl -s https://github.com/kubeovn/ovn/commit/283930b627ffa843ebf0e7c3fa0cc70edacfdd12.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/1ba3263940c1e2e87e61cb011dcf942a0456224d.patch | git apply && \
     # ovn-controller: make activation strategy work for single chassis
-    curl -s https://github.com/kubeovn/ovn/commit/1160d956e49e8f3f1b19535dbf1b9a624a090717.patch | git apply
+    curl -s https://github.com/kubeovn/ovn/commit/1160d956e49e8f3f1b19535dbf1b9a624a090717.patch | git apply && \
+    # support dedicated BFD LRP
+    curl -s https://github.com/kubeovn/ovn/commit/40345aa35d03c93cde877ccfa8111346291ebc7c.patch | git apply
 
 RUN apt install -y build-essential fakeroot \
     autoconf automake bzip2 debhelper-compat dh-exec dh-python dh-sequence-python3 dh-sequence-sphinxdoc \
@@ -89,10 +91,12 @@ RUN mkdir -p /usr/src/openbfdd && \
     tar -xz -C /usr/src/openbfdd --strip-components=1
 
 ADD OpenBFDD-compile.patch /usr/src/
+ADD OpenBFDD-allow-ttl-254.patch /usr/src/
 
 RUN cd /usr/src/openbfdd && \
     rm -vf missing && \
     git apply --no-apply /usr/src/OpenBFDD-compile.patch && \
+    git apply --no-apply /usr/src/OpenBFDD-allow-ttl-254.patch && \
     autoupdate && \
     ./autogen.sh && \
     ./configure --enable-silent-rules && \
@@ -109,9 +113,9 @@ RUN mkdir /packages/ && \
 FROM ghcr.io/aquasecurity/trivy:latest AS trivy
 
 ARG ARCH
-ENV CNI_VERSION="v1.6.0"
-ENV KUBE_VERSION="v1.31.2"
-ENV GOBGP_VERSION="3.30.0"
+ENV CNI_VERSION="v1.6.1"
+ENV KUBE_VERSION="v1.31.4"
+ENV GOBGP_VERSION="3.32.0"
 ENV TRIVY_DB_REPOSITORY="public.ecr.aws/aquasecurity/trivy-db:2"
 
 RUN apk --no-cache add curl jq
@@ -133,18 +137,19 @@ RUN apt update && apt upgrade -y && apt install ca-certificates python3 hostname
         tcpdump ipvsadm ipset curl uuid-runtime openssl inetutils-ping arping ndisc6 conntrack traceroute iputils-tracepath \
         logrotate dnsutils net-tools strongswan strongswan-pki libcharon-extra-plugins libmnl0 \
         libcharon-extauth-plugins libstrongswan-extra-plugins libstrongswan-standard-plugins -y --no-install-recommends && \
-        setcap CAP_SYS_NICE+eip $(readlink -f $(which nice)) && \
+        setcap CAP_NET_ADMIN+eip $(readlink -f $(which conntrack)) && \
+        setcap CAP_NET_ADMIN+eip $(readlink -f $(which ethtool)) && \
+        setcap CAP_NET_ADMIN+eip $(readlink -f $(which ip)) && \
+        setcap CAP_NET_ADMIN+eip $(readlink -f $(which ipset)) && \
+        setcap CAP_NET_ADMIN,CAP_NET_RAW+eip $(readlink -f $(which xtables-legacy-multi)) && \
+        setcap CAP_NET_ADMIN,CAP_NET_RAW+eip $(readlink -f $(which xtables-nft-multi)) && \
         setcap CAP_NET_RAW+eip $(readlink -f $(which arping)) && \
         setcap CAP_NET_RAW+eip $(readlink -f $(which ndisc6)) && \
         setcap CAP_NET_RAW+eip $(readlink -f $(which tcpdump)) && \
-        setcap CAP_NET_ADMIN+eip $(readlink -f $(which ethtool)) && \
         setcap CAP_SYS_ADMIN+eip $(readlink -f $(which nsenter)) && \
+        setcap CAP_SYS_ADMIN+eip $(readlink -f $(which sysctl)) && \
         setcap CAP_SYS_MODULE+eip $(readlink -f $(which modprobe)) && \
-        setcap CAP_NET_ADMIN+eip $(readlink -f $(which conntrack)) && \
-        setcap CAP_NET_RAW,CAP_NET_ADMIN,CAP_SYS_MODULE+eip $(readlink -f $(which ipset)) && \
-        setcap CAP_NET_RAW,CAP_NET_ADMIN,CAP_SYS_MODULE+eip $(readlink -f $(which xtables-legacy-multi)) && \
-        setcap CAP_NET_RAW,CAP_NET_ADMIN,CAP_SYS_MODULE+eip $(readlink -f $(which xtables-nft-multi)) && \
-        setcap CAP_NET_RAW,CAP_NET_ADMIN,CAP_SYS_MODULE,CAP_SYS_ADMIN+eip $(readlink -f $(which ip)) && \
+        setcap CAP_SYS_NICE+eip $(readlink -f $(which nice)) && \
         rm -rf /var/lib/apt/lists/* && \
         rm -rf /etc/localtime && \
         rm -f /usr/bin/nc && \
@@ -178,7 +183,7 @@ RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages  \
     setcap CAP_NET_ADMIN+eip $(readlink -f $(which ovs-dpctl)) && \
     if [ "${DEBUG}" != "true" ]; then \
         setcap CAP_NET_BIND_SERVICE+eip $(readlink -f $(which ovsdb-server)) && \
-        setcap CAP_NET_ADMIN,CAP_NET_BIND_SERVICE,CAP_SYS_MODULE,CAP_SYS_ADMIN+eip $(readlink -f $(which ovs-vswitchd)); \
+        setcap CAP_NET_ADMIN,CAP_NET_BIND_SERVICE,CAP_SYS_ADMIN+eip $(readlink -f $(which ovs-vswitchd)); \
     else \
         apt update && apt install -y --no-install-recommends gdb valgrind && \
         rm -rf /var/lib/apt/lists/* && \

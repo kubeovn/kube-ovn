@@ -26,7 +26,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalRouterStaticRoutes() {
 	require.NoError(t, err)
 
 	for i, ipPrefix := range ipPrefixes {
-		route, err := nbClient.newLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nexthops[i], nil)
+		route, err := nbClient.newLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nexthops[i], nil, nil)
 		require.NoError(t, err)
 
 		routes = append(routes, route)
@@ -75,7 +75,7 @@ func (suite *OvnClientTestSuite) testAddLogicalRouterStaticRoute() {
 
 		t.Run("create route", func(t *testing.T) {
 			for i := range ipPrefixes {
-				err = nbClient.AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefixes[i], nil, nexthops[i])
+				err = nbClient.AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefixes[i], nil, nil, nexthops[i])
 				require.NoError(t, err)
 			}
 
@@ -92,7 +92,7 @@ func (suite *OvnClientTestSuite) testAddLogicalRouterStaticRoute() {
 
 		t.Run("create route for non-exist logical router", func(t *testing.T) {
 			for i := range ipPrefixes {
-				err = nbClient.AddLogicalRouterStaticRoute("non-exist-lrName", routeTable, "", ipPrefixes[i], nil, nexthops[i])
+				err = nbClient.AddLogicalRouterStaticRoute("non-exist-lrName", routeTable, "", ipPrefixes[i], nil, nil, nexthops[i])
 				require.ErrorContains(t, err, "not found logical router")
 			}
 		})
@@ -100,7 +100,7 @@ func (suite *OvnClientTestSuite) testAddLogicalRouterStaticRoute() {
 		t.Run("update route", func(t *testing.T) {
 			updatedNexthops := [...]string{"192.168.30.254", "fd00:100:64::fe"}
 			for i := range ipPrefixes {
-				err = nbClient.AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefixes[i], nil, updatedNexthops[i])
+				err = nbClient.AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefixes[i], nil, nil, updatedNexthops[i])
 				require.NoError(t, err)
 			}
 
@@ -124,7 +124,7 @@ func (suite *OvnClientTestSuite) testAddLogicalRouterStaticRoute() {
 		nexthops := []string{"192.168.50.1", "192.168.60.1"}
 
 		t.Run("create route", func(t *testing.T) {
-			err = nbClient.AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nil, nexthops...)
+			err = nbClient.AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nil, nil, nexthops...)
 			require.NoError(t, err)
 
 			lr, err := nbClient.GetLogicalRouter(lrName, false)
@@ -138,7 +138,7 @@ func (suite *OvnClientTestSuite) testAddLogicalRouterStaticRoute() {
 		})
 
 		t.Run("update route", func(t *testing.T) {
-			err = nbClient.AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nil, nexthops...)
+			err = nbClient.AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nil, nil, nexthops...)
 			require.NoError(t, err)
 		})
 	})
@@ -148,7 +148,7 @@ func (suite *OvnClientTestSuite) testAddLogicalRouterStaticRoute() {
 
 		ipPrefix := "192.168.40.0/24"
 		nexthops := []string{"192.168.50.1", "192.168.60.1"}
-		err = failedNbClient.AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nil, nexthops...)
+		err = failedNbClient.AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nil, nil, nexthops...)
 		require.Error(t, err)
 	})
 
@@ -160,20 +160,129 @@ func (suite *OvnClientTestSuite) testAddLogicalRouterStaticRoute() {
 		existingBFDID := "test-existing-bfd-id"
 		newBFDID := "test-new-bfd-id"
 
-		err = nbClient.AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, &existingBFDID, nexthops...)
+		err = nbClient.AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, &existingBFDID, nil, nexthops...)
 		require.NoError(t, err)
 
 		initialRoutes, err := nbClient.ListLogicalRouterStaticRoutes(lrName, &routeTable, &policy, ipPrefix, nil)
 		require.NoError(t, err)
 		require.Len(t, initialRoutes, 1)
 
-		err = nbClient.AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, &newBFDID, nexthops...)
+		err = nbClient.AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, &newBFDID, nil, nexthops...)
 		require.NoError(t, err)
 
 		finalRoutes, err := nbClient.ListLogicalRouterStaticRoutes(lrName, &routeTable, &policy, ipPrefix, nil)
 		require.NoError(t, err)
 		require.Len(t, finalRoutes, 1)
 	})
+}
+
+func (suite *OvnClientTestSuite) testDeleteLogicalRouterStaticRouteByUUID() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+	lrName := "test-del-lr-route-by-uuid"
+	routeTable := util.MainRouteTable
+	policy := ovnnb.LogicalRouterStaticRoutePolicyDstIP
+	ipPrefix := "1.1.1.0/24"
+	nexthop := "192.168.0.1"
+
+	err := nbClient.CreateLogicalRouter(lrName)
+	require.NoError(t, err)
+
+	err = nbClient.AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nil, nil, nexthop)
+	require.NoError(t, err)
+
+	route, err := nbClient.GetLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nexthop, true)
+	require.NoError(t, err)
+	require.NotNil(t, route)
+
+	err = nbClient.DeleteLogicalRouterStaticRouteByUUID(lrName, route.UUID)
+	require.NoError(t, err)
+
+	route, err = nbClient.GetLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nexthop, true)
+	require.NoError(t, err)
+	require.Nil(t, route)
+}
+
+func (suite *OvnClientTestSuite) testDeleteLogicalRouterStaticRouteByExternalIDs() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+	lrName := "test-del-lr-route-by-ext-ids"
+	routeTable := util.MainRouteTable
+	policy := ovnnb.LogicalRouterStaticRoutePolicyDstIP
+	nexthop := "192.168.0.1"
+
+	err := nbClient.CreateLogicalRouter(lrName)
+	require.NoError(t, err)
+
+	err = nbClient.AddLogicalRouterStaticRoute(lrName, routeTable, policy, "1.1.0.0/24", nil, map[string]string{"k1": "v1"}, nexthop)
+	require.NoError(t, err)
+
+	err = nbClient.AddLogicalRouterStaticRoute(lrName, routeTable, policy, "1.1.1.0/24", nil, map[string]string{"k1": "v1", "k2": "v2"}, nexthop)
+	require.NoError(t, err)
+
+	err = nbClient.AddLogicalRouterStaticRoute(lrName, routeTable, policy, "1.1.2.0/24", nil, map[string]string{"k1": "v1", "k3": "v3"}, nexthop)
+	require.NoError(t, err)
+
+	routes, err := nbClient.ListLogicalRouterStaticRoutes(lrName, nil, nil, "", map[string]string{"k1": "v1"})
+	require.NoError(t, err)
+	require.Len(t, routes, 3)
+
+	routes, err = nbClient.ListLogicalRouterStaticRoutes(lrName, nil, nil, "", map[string]string{"k2": "v2"})
+	require.NoError(t, err)
+	require.Len(t, routes, 1)
+
+	routes, err = nbClient.ListLogicalRouterStaticRoutes(lrName, nil, nil, "", map[string]string{"k3": "v3"})
+	require.NoError(t, err)
+	require.Len(t, routes, 1)
+
+	err = nbClient.DeleteLogicalRouterStaticRouteByExternalIDs(lrName, map[string]string{"foo": "bar"})
+	require.NoError(t, err)
+
+	routes, err = nbClient.ListLogicalRouterStaticRoutes(lrName, nil, nil, "", map[string]string{"k1": "v1"})
+	require.NoError(t, err)
+	require.Len(t, routes, 3)
+
+	routes, err = nbClient.ListLogicalRouterStaticRoutes(lrName, nil, nil, "", map[string]string{"k2": "v2"})
+	require.NoError(t, err)
+	require.Len(t, routes, 1)
+
+	routes, err = nbClient.ListLogicalRouterStaticRoutes(lrName, nil, nil, "", map[string]string{"k3": "v3"})
+	require.NoError(t, err)
+	require.Len(t, routes, 1)
+
+	err = nbClient.DeleteLogicalRouterStaticRouteByExternalIDs(lrName, map[string]string{"k2": "v2"})
+	require.NoError(t, err)
+
+	routes, err = nbClient.ListLogicalRouterStaticRoutes(lrName, nil, nil, "", map[string]string{"k1": "v1"})
+	require.NoError(t, err)
+	require.Len(t, routes, 2)
+
+	routes, err = nbClient.ListLogicalRouterStaticRoutes(lrName, nil, nil, "", map[string]string{"k2": "v2"})
+	require.NoError(t, err)
+	require.Len(t, routes, 0)
+
+	routes, err = nbClient.ListLogicalRouterStaticRoutes(lrName, nil, nil, "", map[string]string{"k3": "v3"})
+	require.NoError(t, err)
+	require.Len(t, routes, 1)
+
+	err = nbClient.DeleteLogicalRouterStaticRouteByExternalIDs(lrName, map[string]string{"k1": "v1"})
+	require.NoError(t, err)
+
+	routes, err = nbClient.ListLogicalRouterStaticRoutes(lrName, nil, nil, "", map[string]string{"k1": "v1"})
+	require.NoError(t, err)
+	require.Len(t, routes, 0)
+
+	routes, err = nbClient.ListLogicalRouterStaticRoutes(lrName, nil, nil, "", map[string]string{"k2": "v2"})
+	require.NoError(t, err)
+	require.Len(t, routes, 0)
+
+	routes, err = nbClient.ListLogicalRouterStaticRoutes(lrName, nil, nil, "", map[string]string{"k3": "v3"})
+	require.NoError(t, err)
+	require.Len(t, routes, 0)
 }
 
 func (suite *OvnClientTestSuite) testDeleteLogicalRouterStaticRoute() {
@@ -192,7 +301,7 @@ func (suite *OvnClientTestSuite) testDeleteLogicalRouterStaticRoute() {
 		ipPrefix := "192.168.30.0/24"
 		nexthop := "192.168.30.1"
 
-		err = nbClient.AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nil, nexthop)
+		err = nbClient.AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nil, nil, nexthop)
 		require.NoError(t, err)
 
 		lr, err := nbClient.GetLogicalRouter(lrName, false)
@@ -231,7 +340,7 @@ func (suite *OvnClientTestSuite) testDeleteLogicalRouterStaticRoute() {
 		ipPrefix := "192.168.40.0/24"
 		nexthops := []string{"192.168.50.1", "192.168.60.1"}
 
-		err = nbClient.AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nil, nexthops...)
+		err = nbClient.AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nil, nil, nexthops...)
 		require.NoError(t, err)
 
 		lr, err := nbClient.GetLogicalRouter(lrName, false)
@@ -286,7 +395,7 @@ func (suite *OvnClientTestSuite) testClearLogicalRouterStaticRoute() {
 	require.NoError(t, err)
 
 	for i, ipPrefix := range ipPrefixes {
-		route, err := nbClient.newLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nexthops[i], nil)
+		route, err := nbClient.newLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nexthops[i], nil, nil)
 		require.NoError(t, err)
 
 		routes = append(routes, route)
@@ -333,7 +442,7 @@ func (suite *OvnClientTestSuite) testGetLogicalRouterStaticRoute() {
 		ipPrefix := "192.168.30.0/24"
 		nexthop := "192.168.30.1"
 
-		err := nbClient.AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nil, nexthop)
+		err := nbClient.AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nil, nil, nexthop)
 		require.NoError(t, err)
 
 		t.Run("found route", func(t *testing.T) {
@@ -363,7 +472,7 @@ func (suite *OvnClientTestSuite) testGetLogicalRouterStaticRoute() {
 		ipPrefix := "192.168.40.0/24"
 		nexthop := "192.168.40.1"
 
-		err := nbClient.AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nil, nexthop)
+		err := nbClient.AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nil, nil, nexthop)
 		require.NoError(t, err)
 
 		t.Run("found route", func(t *testing.T) {
@@ -404,7 +513,7 @@ func (suite *OvnClientTestSuite) testListLogicalRouterStaticRoutes() {
 	}
 
 	for _, data := range testData {
-		route, err := nbClient.newLogicalRouterStaticRoute(lrName, routeTable, policy, data.ipPrefix, data.nexthop, nil)
+		route, err := nbClient.newLogicalRouterStaticRoute(lrName, routeTable, policy, data.ipPrefix, data.nexthop, nil, nil)
 		require.NoError(t, err)
 		route.ExternalIDs = data.externalIDs
 		routes = append(routes, route)
@@ -475,7 +584,7 @@ func (suite *OvnClientTestSuite) testNewLogicalRouterStaticRoute() {
 		BFD:      nil,
 	}
 
-	route, err := nbClient.newLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nexthop, nil)
+	route, err := nbClient.newLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nexthop, nil, nil)
 	require.NoError(t, err)
 	expect.UUID = route.UUID
 	require.Equal(t, expect, route)
@@ -492,7 +601,7 @@ func (suite *OvnClientTestSuite) testNewLogicalRouterStaticRoute() {
 			}
 		}
 
-		route, err := nbClient.newLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nexthop, nil, customOption)
+		route, err := nbClient.newLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nexthop, nil, nil, customOption)
 		require.NoError(t, err)
 		require.Equal(t, "true", route.Options["ecmp_symmetric_reply"])
 		require.Equal(t, "redirect", route.Options["method"])
@@ -514,7 +623,7 @@ func (suite *OvnClientTestSuite) testNewLogicalRouterStaticRoute() {
 			route.Options["test"] = "value"
 		}
 
-		route, err := nbClient.newLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nexthop, &bfdID, option1, option2)
+		route, err := nbClient.newLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nexthop, &bfdID, nil, option1, option2)
 		require.NoError(t, err)
 		require.Equal(t, "value1", route.ExternalIDs["key1"])
 		require.Equal(t, "value", route.Options["test"])
@@ -526,12 +635,12 @@ func (suite *OvnClientTestSuite) testNewLogicalRouterStaticRoute() {
 		ipPrefix := "192.168.120.0/24"
 		nexthop := "192.168.120.1"
 
-		route1, err := nbClient.newLogicalRouterStaticRoute(lrName, routeTable, "", ipPrefix, nexthop, nil)
+		route1, err := nbClient.newLogicalRouterStaticRoute(lrName, routeTable, "", ipPrefix, nexthop, nil, nil)
 		require.NoError(t, err)
 		err = nbClient.CreateLogicalRouterStaticRoutes(lrName, route1)
 		require.NoError(t, err)
 
-		route2, err := nbClient.newLogicalRouterStaticRoute(lrName, routeTable, "", ipPrefix, nexthop, nil)
+		route2, err := nbClient.newLogicalRouterStaticRoute(lrName, routeTable, "", ipPrefix, nexthop, nil, nil)
 		require.Nil(t, route2)
 		require.NoError(t, err)
 	})
@@ -542,7 +651,7 @@ func (suite *OvnClientTestSuite) testNewLogicalRouterStaticRoute() {
 		nexthop := "192.168.130.1"
 		bfdID := "test-bfd-2"
 
-		route, err := nbClient.newLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nexthop, &bfdID)
+		route, err := nbClient.newLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nexthop, &bfdID, nil)
 		require.NoError(t, err)
 		require.Equal(t, "true", route.Options[util.StaticRouteBfdEcmp])
 		require.Equal(t, &bfdID, route.BFD)
@@ -554,7 +663,7 @@ func (suite *OvnClientTestSuite) testNewLogicalRouterStaticRoute() {
 		nexthop := "192.168.130.1"
 		bfdID := "test-bfd-2"
 
-		route, err := nbClient.newLogicalRouterStaticRoute("", routeTable, policy, ipPrefix, nexthop, &bfdID)
+		route, err := nbClient.newLogicalRouterStaticRoute("", routeTable, policy, ipPrefix, nexthop, &bfdID, nil)
 		require.ErrorContains(t, err, "the logical router name is required")
 		require.Nil(t, route)
 	})
@@ -581,7 +690,7 @@ func (suite *OvnClientTestSuite) testListLogicalRouterStaticRoutesByOption() {
 			bfdIDValue := "bfd-id"
 			bfdID = &bfdIDValue
 		}
-		route, err := nbClient.newLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nexthops[i], bfdID)
+		route, err := nbClient.newLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nexthops[i], bfdID, nil)
 		require.NoError(t, err)
 
 		routes = append(routes, route)
@@ -619,7 +728,7 @@ func (suite *OvnClientTestSuite) testUpdateLogicalRouterStaticRoute() {
 	})
 
 	t.Run("update route fields", func(t *testing.T) {
-		err := nbClient.AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nil, nexthop)
+		err := nbClient.AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nil, nil, nexthop)
 		require.NoError(t, err)
 
 		route, err := nbClient.GetLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nexthop, false)
@@ -662,9 +771,9 @@ func (suite *OvnClientTestSuite) testGetLogicalRouterStaticRouteEdgeCases() {
 		ipPrefix := "192.168.2.0/24"
 		nexthop := "192.168.2.1"
 
-		route1, err := nbClient.newLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nexthop, nil)
+		route1, err := nbClient.newLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nexthop, nil, nil)
 		require.NoError(t, err)
-		route2, err := nbClient.newLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nexthop, nil)
+		route2, err := nbClient.newLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nexthop, nil, nil)
 		require.NoError(t, err)
 
 		err = nbClient.CreateLogicalRouterStaticRoutes(lrName, route1, route2)
@@ -685,7 +794,7 @@ func (suite *OvnClientTestSuite) testGetLogicalRouterStaticRouteEdgeCases() {
 		ipPrefix := "192.168.4.0/24"
 		nexthop := "192.168.4.1"
 
-		err := nbClient.AddLogicalRouterStaticRoute(lrName, "", policy, ipPrefix, nil, nexthop)
+		err := nbClient.AddLogicalRouterStaticRoute(lrName, "", policy, ipPrefix, nil, nil, nexthop)
 		require.NoError(t, err)
 
 		route, err := nbClient.GetLogicalRouterStaticRoute(lrName, "", policy, ipPrefix, nexthop, false)

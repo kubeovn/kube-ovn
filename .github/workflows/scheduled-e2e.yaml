@@ -25,6 +25,7 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.13
           - release-1.12
           - release-1.11
         ip-family:
@@ -116,6 +117,7 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.13
           - release-1.12
           - release-1.11
         ip-family:
@@ -200,6 +202,7 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.13
           - release-1.12
           - release-1.11
         ip-family:
@@ -261,6 +264,7 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.13
           - release-1.12
           - release-1.11
           - release-1.12-mc
@@ -347,6 +351,7 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.13
           - release-1.12
           - release-1.11
     steps:
@@ -423,6 +428,7 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.13
           - release-1.12
           - release-1.11
     steps:
@@ -476,6 +482,7 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.13
           - release-1.12
           - release-1.11
     steps:
@@ -531,6 +538,7 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.13
           - release-1.12
           - release-1.11
     steps:
@@ -586,6 +594,7 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.13
           - release-1.12
           - release-1.11
           - release-1.12-mc
@@ -662,6 +671,7 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.13
           - release-1.12
           - release-1.12-mc
 
@@ -738,6 +748,7 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.13
           - release-1.12
     steps:
       - uses: actions/checkout@v4
@@ -812,6 +823,7 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.13
           - release-1.12
           - release-1.11
     steps:
@@ -863,6 +875,7 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.13
           - release-1.12
           - release-1.11
     steps:
@@ -953,6 +966,7 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.13
           - release-1.12
           - release-1.11
           - release-1.12-mc
@@ -1048,8 +1062,11 @@ jobs:
       matrix:
         case:
           - release-1.11 => release-1.12
+          - release-1.11 => release-1.13
+          - release-1.12 => release-1.13
           - release-1.11 => master
           - release-1.12 => master
+          - release-1.13 => master
     steps:
       - uses: actions/checkout@v4
       - uses: azure/setup-helm@v4.2.0
@@ -1150,6 +1167,7 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.13
           - release-1.12
     steps:
       - uses: actions/checkout@v4
@@ -1211,6 +1229,7 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.13
           - release-1.12
     steps:
       - uses: actions/checkout@v4
@@ -1284,6 +1303,7 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.13
           - release-1.12
           - release-1.12-mc
     steps:

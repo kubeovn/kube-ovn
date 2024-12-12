@@ -24,7 +24,7 @@ func CheckIptablesRulesOnNode(f *framework.Framework, node, table, chain, protoc
 		iptBin = "ip6tables"
 	}
 
-	cmd := fmt.Sprintf(`%s -t %s -S `, iptBin, table)
+	cmd := fmt.Sprintf(`%s -t %s -S`, iptBin, table)
 	if chain != "" {
 		cmd += chain
 	}

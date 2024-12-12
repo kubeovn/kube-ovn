@@ -8,6 +8,7 @@ on:
         type: choice
         options:
           - master
+          - release-1.13
           - release-1.12
           - release-1.12-mc
   schedule:
@@ -20,6 +21,7 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.13
           - release-1.12
           - release-1.12-mc
     name: Build AMD64
@@ -53,6 +55,7 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.13
           - release-1.12
           - release-1.12-mc
     needs:

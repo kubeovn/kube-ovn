@@ -17,9 +17,10 @@ import (
 	"github.com/ovn-org/libovsdb/ovsdb"
 	"github.com/ovn-org/libovsdb/ovsdb/serverdb"
 	"github.com/ovn-org/libovsdb/server"
+	"k8s.io/klog/v2"
+
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
-	"k8s.io/klog/v2"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
@@ -443,8 +444,16 @@ func (suite *OvnClientTestSuite) Test_ListBFD() {
 	suite.testListBFD()
 }
 
+func (suite *OvnClientTestSuite) Test_FindBFD() {
+	suite.testFindBFD()
+}
+
 func (suite *OvnClientTestSuite) Test_DeleteBFD() {
 	suite.testDeleteBFD()
+}
+
+func (suite *OvnClientTestSuite) Test_DeleteBFDByDstIP() {
+	suite.testDeleteBFDByDstIP()
 }
 
 func (suite *OvnClientTestSuite) Test_ListDownBFDs() {
@@ -494,6 +503,19 @@ func (suite *OvnClientTestSuite) Test_DeleteGatewayChassisOp() {
 
 func (suite *OvnClientTestSuite) Test_NewGatewayChassis() {
 	suite.testNewGatewayChassis()
+}
+
+/* ha_chassis_group unit test */
+func (suite *OvnClientTestSuite) Test_CreateHAChassisGroup() {
+	suite.testCreateHAChassisGroup()
+}
+
+func (suite *OvnClientTestSuite) Test_GetHAChassisGroup() {
+	suite.testGetHAChassisGroup()
+}
+
+func (suite *OvnClientTestSuite) Test_DeleteHAChassisGroup() {
+	suite.testDeleteHAChassisGroup()
 }
 
 /* load_balancer unit test */
@@ -826,6 +848,10 @@ func (suite *OvnClientTestSuite) Test_NewLogicalRouterPolicy() {
 	suite.testNewLogicalRouterPolicy()
 }
 
+func (suite *OvnClientTestSuite) Test_UpdateLogicalRouterPolicy() {
+	suite.testUpdateLogicalRouterPolicy()
+}
+
 func (suite *OvnClientTestSuite) Test_PolicyFilter() {
 	suite.testPolicyFilter()
 }
@@ -886,6 +912,14 @@ func (suite *OvnClientTestSuite) Test_CreateLogicalRouterStaticRoutes() {
 
 func (suite *OvnClientTestSuite) Test_AddLogicalRouterStaticRoute() {
 	suite.testAddLogicalRouterStaticRoute()
+}
+
+func (suite *OvnClientTestSuite) TestDeleteLogicalRouterStaticRouteByUUID() {
+	suite.testDeleteLogicalRouterStaticRouteByUUID()
+}
+
+func (suite *OvnClientTestSuite) TestDeleteLogicalRouterStaticRouteByExternalIDs() {
+	suite.testDeleteLogicalRouterStaticRouteByExternalIDs()
 }
 
 func (suite *OvnClientTestSuite) Test_DeleteLogicalRouterStaticRoute() {
@@ -1337,6 +1371,8 @@ func newNbClient(addr string, timeout int) (client.Client, error) {
 		client.WithTable(&ovnnb.BFD{}),
 		client.WithTable(&ovnnb.DHCPOptions{}),
 		client.WithTable(&ovnnb.GatewayChassis{}),
+		client.WithTable(&ovnnb.HAChassis{}),
+		client.WithTable(&ovnnb.HAChassisGroup{}),
 		client.WithTable(&ovnnb.LoadBalancer{}),
 		client.WithTable(&ovnnb.LoadBalancerHealthCheck{}),
 		client.WithTable(&ovnnb.LogicalRouterPolicy{}),

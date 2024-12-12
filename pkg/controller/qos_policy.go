@@ -199,7 +199,7 @@ func diffQoSPolicyBandwidthLimitRules(oldList, newList kubeovnv1.QoSPolicyBandwi
 	// Create a map of old rules indexed by name for efficient lookup
 	oldMap := make(map[string]*kubeovnv1.QoSPolicyBandwidthLimitRule)
 	for _, s := range oldList {
-		oldMap[s.Name] = s
+		oldMap[s.Name] = s.DeepCopy()
 	}
 
 	// Loop through new rules and compare with old rules
@@ -217,7 +217,7 @@ func diffQoSPolicyBandwidthLimitRules(oldList, newList kubeovnv1.QoSPolicyBandwi
 
 	// Remaining rules in oldMap are deleted
 	for _, s := range oldMap {
-		deleted = append(deleted, s)
+		deleted = append(deleted, *s)
 	}
 
 	return added, deleted, updated

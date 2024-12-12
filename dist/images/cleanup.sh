@@ -125,6 +125,7 @@ kubectl delete --ignore-not-found crd \
   security-groups.kubeovn.io \
   ippools.kubeovn.io \
   vpc-nat-gateways.kubeovn.io \
+  vpc-egress-gateways.kubeovn.io \
   vpcs.kubeovn.io \
   vlans.kubeovn.io \
   provider-networks.kubeovn.io \

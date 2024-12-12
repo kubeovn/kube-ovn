@@ -455,9 +455,9 @@ func (c *Controller) addEipQoSInPod(
 	addRules = append(addRules, rule)
 
 	switch direction {
-	case kubeovnv1.DirectionIngress:
+	case kubeovnv1.QoSDirectionIngress:
 		operation = natGwEipIngressQoSAdd
-	case kubeovnv1.DirectionEgress:
+	case kubeovnv1.QoSDirectionEgress:
 		operation = natGwEipEgressQoSAdd
 	}
 
@@ -475,9 +475,9 @@ func (c *Controller) delEipQoSInPod(dp, v4ip string, direction kubeovnv1.QoSPoli
 	delRules = append(delRules, v4ip)
 
 	switch direction {
-	case kubeovnv1.DirectionIngress:
+	case kubeovnv1.QoSDirectionIngress:
 		operation = natGwEipIngressQoSDel
-	case kubeovnv1.DirectionEgress:
+	case kubeovnv1.QoSDirectionEgress:
 		operation = natGwEipEgressQoSDel
 	}
 
@@ -572,7 +572,7 @@ func (c *Controller) createOrUpdateEipCR(key, v4ip, v6ip, mac, natGwDp, qos, ext
 					util.VpcNatGatewayNameLabel: natGwDp,
 				},
 			},
-			Spec: kubeovnv1.IptablesEipSpec{
+			Spec: kubeovnv1.IptablesEIPSpec{
 				V4ip:       v4ip,
 				V6ip:       v6ip,
 				MacAddress: mac,

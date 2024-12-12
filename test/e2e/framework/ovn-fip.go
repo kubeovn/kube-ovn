@@ -113,7 +113,7 @@ func (c *OvnFipClient) Delete(name string) {
 func (c *OvnFipClient) DeleteSync(name string) {
 	ginkgo.GinkgoHelper()
 	c.Delete(name)
-	gomega.Expect(c.WaitToDisappear(name, 2*time.Second, timeout)).To(gomega.Succeed(), "wait for ovn fip %q to disappear", name)
+	gomega.Expect(c.WaitToDisappear(name, timeout)).To(gomega.Succeed(), "wait for ovn fip %q to disappear", name)
 }
 
 // WaitToBeReady returns whether the ovn fip is ready within timeout.
@@ -145,7 +145,7 @@ func (c *OvnFipClient) WaitToBeUpdated(fip *apiv1.OvnFip, timeout time.Duration)
 }
 
 // WaitToDisappear waits the given timeout duration for the specified ovn fip to disappear.
-func (c *OvnFipClient) WaitToDisappear(name string, _, timeout time.Duration) error {
+func (c *OvnFipClient) WaitToDisappear(name string, timeout time.Duration) error {
 	err := framework.Gomega().Eventually(context.Background(), framework.HandleRetry(func(ctx context.Context) (*apiv1.OvnFip, error) {
 		fip, err := c.OvnFipInterface.Get(ctx, name, metav1.GetOptions{})
 		if apierrors.IsNotFound(err) {

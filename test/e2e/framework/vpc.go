@@ -89,7 +89,7 @@ func (c *VpcClient) Patch(original, modified *kubeovnv1.Vpc) *kubeovnv1.Vpc {
 
 // PatchSync patches the vpc and waits for the vpc to be ready for `timeout`.
 // If the vpc doesn't become ready before the timeout, it will fail the test.
-func (c *VpcClient) PatchSync(original, modified *kubeovnv1.Vpc, _ []string, timeout time.Duration) *kubeovnv1.Vpc {
+func (c *VpcClient) PatchSync(original, modified *kubeovnv1.Vpc, timeout time.Duration) *kubeovnv1.Vpc {
 	ginkgo.GinkgoHelper()
 
 	vpc := c.Patch(original, modified)

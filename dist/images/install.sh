@@ -44,6 +44,7 @@ ENABLE_ANP=${ENABLE_ANP:-false}
 SET_VXLAN_TX_OFF=${SET_VXLAN_TX_OFF:-false}
 OVSDB_CON_TIMEOUT=${OVSDB_CON_TIMEOUT:-3}
 OVSDB_INACTIVITY_TIMEOUT=${OVSDB_INACTIVITY_TIMEOUT:-10}
+ENABLE_LIVE_MIGRATION_OPTIMIZE=${ENABLE_LIVE_MIGRATION_OPTIMIZE:-true}
 
 # debug
 DEBUG_WRAPPER=${DEBUG_WRAPPER:-}
@@ -60,7 +61,7 @@ CNI_BIN_DIR="/opt/cni/bin"
 
 REGISTRY="docker.io/kubeovn"
 VPC_NAT_IMAGE="vpc-nat-gateway"
-VERSION="v1.13.0"
+VERSION="v1.14.0"
 IMAGE_PULL_POLICY="IfNotPresent"
 POD_CIDR="10.16.0.0/16"                     # Do NOT overlap with NODE/SVC/JOIN CIDR
 POD_GATEWAY="10.16.0.1"
@@ -1071,6 +1072,299 @@ spec:
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
+  name: vpc-egress-gateways.kubeovn.io
+spec:
+  group: kubeovn.io
+  names:
+    plural: vpc-egress-gateways
+    singular: vpc-egress-gateway
+    shortNames:
+      - vpc-egress-gw
+      - veg
+    kind: VpcEgressGateway
+    listKind: VpcEgressGatewayList
+  scope: Namespaced
+  versions:
+    - additionalPrinterColumns:
+        - jsonPath: .spec.vpc
+          name: VPC
+          type: string
+        - jsonPath: .spec.replicas
+          name: REPLICAS
+          type: integer
+        - jsonPath: .spec.bfd.enabled
+          name: BFD ENABLED
+          type: boolean
+        - jsonPath: .spec.externalSubnet
+          name: EXTERNAL SUBNET
+          type: string
+        - jsonPath: .status.phase
+          name: PHASE
+          type: string
+        - jsonPath: .status.ready
+          name: READY
+          type: boolean
+        - jsonPath: .status.internalIPs
+          name: INTERNAL IPS
+          priority: 1
+          type: string
+        - jsonPath: .status.externalIPs
+          name: EXTERNAL IPS
+          priority: 1
+          type: string
+        - jsonPath: .status.workload.nodes
+          name: WORKING NODES
+          priority: 1
+          type: string
+        - jsonPath: .metadata.creationTimestamp
+          name: AGE
+          type: date
+      name: v1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            status:
+              properties:
+                conditions:
+                  items:
+                    properties:
+                      lastTransitionTime:
+                        format: date-time
+                        type: string
+                      lastUpdateTime:
+                        format: date-time
+                        type: string
+                      message:
+                        maxLength: 32768
+                        type: string
+                      observedGeneration:
+                        format: int64
+                        minimum: 0
+                        type: integer
+                      reason:
+                        maxLength: 1024
+                        minLength: 1
+                        pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                        type: string
+                      status:
+                        enum:
+                          - "True"
+                          - "False"
+                          - Unknown
+                        type: string
+                      type:
+                        maxLength: 316
+                        pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                        type: string
+                    required:
+                      - lastTransitionTime
+                      - lastUpdateTime
+                      - observedGeneration
+                      - reason
+                      - status
+                      - type
+                    type: object
+                  type: array
+                  x-kubernetes-list-map-keys:
+                    - type
+                  x-kubernetes-list-type: map
+                internalIPs:
+                  items:
+                    type: string
+                  type: array
+                externalIPs:
+                  items:
+                    type: string
+                  type: array
+                phase:
+                  type: string
+                  default: Pending
+                  enum:
+                    - Pending
+                    - Processing
+                    - Completed
+                ready:
+                  type: boolean
+                  default: false
+                workload:
+                  type: object
+                  properties:
+                    apiVersion:
+                      type: string
+                    kind:
+                      type: string
+                    name:
+                      type: string
+                    nodes:
+                      type: array
+                      items:
+                        type: string
+              required:
+                - conditions
+                - phase
+              type: object
+            spec:
+              type: object
+              required:
+                - externalSubnet
+                - policies
+              x-kubernetes-validations:
+                - rule: "!has(self.internalIPs) || size(self.internalIPs) == 0 || size(self.internalIPs) >= self.replicas"
+                  message: 'Size of Internal IPs MUST be equal to or greater than Replicas'
+                  fieldPath: ".internalIPs"
+                - rule: "!has(self.externalIPs) || size(self.externalIPs) == 0 || size(self.externalIPs) >= self.replicas"
+                  message: 'Size of External IPs MUST be equal to or greater than Replicas'
+                  fieldPath: ".externalIPs"
+              properties:
+                replicas:
+                  type: integer
+                  default: 1
+                  minimum: 1
+                  maximum: 10
+                prefix:
+                  type: string
+                  anyOf:
+                    - pattern: ^$
+                    - pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*[-\.]?$
+                  x-kubernetes-validations:
+                    - rule: "self == oldSelf"
+                      message: "This field is immutable."
+                vpc:
+                  type: string
+                internalSubnet:
+                  type: string
+                externalSubnet:
+                  type: string
+                internalIPs:
+                  items:
+                    type: string
+                    oneOf:
+                      - format: ipv4
+                      - format: ipv6
+                      - pattern: ^(?:(?:[01]?\d{1,2}|2[0-4]\d|25[0-5])\.){3}(?:[01]?\d{1,2}|2[0-4]\d|25[0-5]),((([0-9A-Fa-f]{1,4}:){7}([0-9A-Fa-f]{1,4}|:))|(([0-9A-Fa-f]{1,4}:){6}(:[0-9A-Fa-f]{1,4}|:))|(([0-9A-Fa-f]{1,4}:){5}(((:[0-9A-Fa-f]{1,4}){1,2})|:))|(([0-9A-Fa-f]{1,4}:){4}(((:[0-9A-Fa-f]{1,4}){1,3})|:))|(([0-9A-Fa-f]{1,4}:){3}(((:[0-9A-Fa-f]{1,4}){1,4})|:))|(([0-9A-Fa-f]{1,4}:){2}(((:[0-9A-Fa-f]{1,4}){1,5})|:))|(([0-9A-Fa-f]{1,4}:){1}(((:[0-9A-Fa-f]{1,4}){1,6})|:))|(:(((:[0-9A-Fa-f]{1,4}){1,7})|:)))$
+                      - pattern: ^((([0-9A-Fa-f]{1,4}:){7}([0-9A-Fa-f]{1,4}|:))|(([0-9A-Fa-f]{1,4}:){6}(:[0-9A-Fa-f]{1,4}|:))|(([0-9A-Fa-f]{1,4}:){5}(((:[0-9A-Fa-f]{1,4}){1,2})|:))|(([0-9A-Fa-f]{1,4}:){4}(((:[0-9A-Fa-f]{1,4}){1,3})|:))|(([0-9A-Fa-f]{1,4}:){3}(((:[0-9A-Fa-f]{1,4}){1,4})|:))|(([0-9A-Fa-f]{1,4}:){2}(((:[0-9A-Fa-f]{1,4}){1,5})|:))|(([0-9A-Fa-f]{1,4}:){1}(((:[0-9A-Fa-f]{1,4}){1,6})|:))|(:(((:[0-9A-Fa-f]{1,4}){1,7})|:))),(?:(?:[01]?\d{1,2}|2[0-4]\d|25[0-5])\.){3}(?:[01]?\d{1,2}|2[0-4]\d|25[0-5])$
+                  type: array
+                  x-kubernetes-list-type: set
+                externalIPs:
+                  items:
+                    type: string
+                    oneOf:
+                      - format: ipv4
+                      - format: ipv6
+                      - pattern: ^(?:(?:[01]?\d{1,2}|2[0-4]\d|25[0-5])\.){3}(?:[01]?\d{1,2}|2[0-4]\d|25[0-5]),((([0-9A-Fa-f]{1,4}:){7}([0-9A-Fa-f]{1,4}|:))|(([0-9A-Fa-f]{1,4}:){6}(:[0-9A-Fa-f]{1,4}|:))|(([0-9A-Fa-f]{1,4}:){5}(((:[0-9A-Fa-f]{1,4}){1,2})|:))|(([0-9A-Fa-f]{1,4}:){4}(((:[0-9A-Fa-f]{1,4}){1,3})|:))|(([0-9A-Fa-f]{1,4}:){3}(((:[0-9A-Fa-f]{1,4}){1,4})|:))|(([0-9A-Fa-f]{1,4}:){2}(((:[0-9A-Fa-f]{1,4}){1,5})|:))|(([0-9A-Fa-f]{1,4}:){1}(((:[0-9A-Fa-f]{1,4}){1,6})|:))|(:(((:[0-9A-Fa-f]{1,4}){1,7})|:)))$
+                      - pattern: ^((([0-9A-Fa-f]{1,4}:){7}([0-9A-Fa-f]{1,4}|:))|(([0-9A-Fa-f]{1,4}:){6}(:[0-9A-Fa-f]{1,4}|:))|(([0-9A-Fa-f]{1,4}:){5}(((:[0-9A-Fa-f]{1,4}){1,2})|:))|(([0-9A-Fa-f]{1,4}:){4}(((:[0-9A-Fa-f]{1,4}){1,3})|:))|(([0-9A-Fa-f]{1,4}:){3}(((:[0-9A-Fa-f]{1,4}){1,4})|:))|(([0-9A-Fa-f]{1,4}:){2}(((:[0-9A-Fa-f]{1,4}){1,5})|:))|(([0-9A-Fa-f]{1,4}:){1}(((:[0-9A-Fa-f]{1,4}){1,6})|:))|(:(((:[0-9A-Fa-f]{1,4}){1,7})|:))),(?:(?:[01]?\d{1,2}|2[0-4]\d|25[0-5])\.){3}(?:[01]?\d{1,2}|2[0-4]\d|25[0-5])$
+                  type: array
+                  x-kubernetes-list-type: set
+                image:
+                  type: string
+                bfd:
+                  type: object
+                  properties:
+                    enabled:
+                      type: boolean
+                      default: false
+                    minRX:
+                      type: integer
+                      default: 1000
+                    minTX:
+                      type: integer
+                      default: 1000
+                    multiplier:
+                      type: integer
+                      default: 3
+                policies:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: object
+                    properties:
+                      snat:
+                        type: boolean
+                        default: false
+                      ipBlocks:
+                        type: array
+                        x-kubernetes-list-type: set
+                        items:
+                          type: string
+                          anyOf:
+                            - format: ipv4
+                            - format: ipv6
+                            - format: cidr
+                      subnets:
+                        type: array
+                        x-kubernetes-list-type: set
+                        items:
+                          type: string
+                          minLength: 1
+                    x-kubernetes-validations:
+                      - rule: "size(self.ipBlocks) != 0 || size(self.subnets) != 0"
+                        message: 'Each policy MUST have at least one ipBlock or subnet'
+                nodeSelector:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      matchLabels:
+                        additionalProperties:
+                          type: string
+                        type: object
+                      matchExpressions:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            key:
+                              type: string
+                            operator:
+                              type: string
+                              enum:
+                                - In
+                                - NotIn
+                                - Exists
+                                - DoesNotExist
+                                - Gt
+                                - Lt
+                            values:
+                              type: array
+                              x-kubernetes-list-type: set
+                              items:
+                                type: string
+                          required:
+                            - key
+                            - operator
+                      matchFields:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            key:
+                              type: string
+                            operator:
+                              type: string
+                              enum:
+                                - In
+                                - NotIn
+                                - Exists
+                                - DoesNotExist
+                                - Gt
+                                - Lt
+                            values:
+                              type: array
+                              x-kubernetes-list-type: set
+                              items:
+                                type: string
+                          required:
+                            - key
+                            - operator
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
   name: iptables-eips.kubeovn.io
 spec:
   group: kubeovn.io
@@ -1912,6 +2206,51 @@ spec:
                         type: string
                     type: object
                   type: array
+                bfdPort:
+                  properties:
+                    enabled:
+                      type: boolean
+                      default: false
+                    ip:
+                      type: string
+                      anyOf:
+                        - pattern: ^$
+                        - pattern: ^(?:(?:[01]?\d{1,2}|2[0-4]\d|25[0-5])\.){3}(?:[01]?\d{1,2}|2[0-4]\d|25[0-5])$
+                        - pattern: ^((([0-9A-Fa-f]{1,4}:){7}([0-9A-Fa-f]{1,4}|:))|(([0-9A-Fa-f]{1,4}:){6}(:[0-9A-Fa-f]{1,4}|:))|(([0-9A-Fa-f]{1,4}:){5}(((:[0-9A-Fa-f]{1,4}){1,2})|:))|(([0-9A-Fa-f]{1,4}:){4}(((:[0-9A-Fa-f]{1,4}){1,3})|:))|(([0-9A-Fa-f]{1,4}:){3}(((:[0-9A-Fa-f]{1,4}){1,4})|:))|(([0-9A-Fa-f]{1,4}:){2}(((:[0-9A-Fa-f]{1,4}){1,5})|:))|(([0-9A-Fa-f]{1,4}:){1}(((:[0-9A-Fa-f]{1,4}){1,6})|:))|(:(((:[0-9A-Fa-f]{1,4}){1,7})|:)))$
+                        - pattern: ^(?:(?:[01]?\d{1,2}|2[0-4]\d|25[0-5])\.){3}(?:[01]?\d{1,2}|2[0-4]\d|25[0-5]),((([0-9A-Fa-f]{1,4}:){7}([0-9A-Fa-f]{1,4}|:))|(([0-9A-Fa-f]{1,4}:){6}(:[0-9A-Fa-f]{1,4}|:))|(([0-9A-Fa-f]{1,4}:){5}(((:[0-9A-Fa-f]{1,4}){1,2})|:))|(([0-9A-Fa-f]{1,4}:){4}(((:[0-9A-Fa-f]{1,4}){1,3})|:))|(([0-9A-Fa-f]{1,4}:){3}(((:[0-9A-Fa-f]{1,4}){1,4})|:))|(([0-9A-Fa-f]{1,4}:){2}(((:[0-9A-Fa-f]{1,4}){1,5})|:))|(([0-9A-Fa-f]{1,4}:){1}(((:[0-9A-Fa-f]{1,4}){1,6})|:))|(:(((:[0-9A-Fa-f]{1,4}){1,7})|:)))$
+                        - pattern: ^((([0-9A-Fa-f]{1,4}:){7}([0-9A-Fa-f]{1,4}|:))|(([0-9A-Fa-f]{1,4}:){6}(:[0-9A-Fa-f]{1,4}|:))|(([0-9A-Fa-f]{1,4}:){5}(((:[0-9A-Fa-f]{1,4}){1,2})|:))|(([0-9A-Fa-f]{1,4}:){4}(((:[0-9A-Fa-f]{1,4}){1,3})|:))|(([0-9A-Fa-f]{1,4}:){3}(((:[0-9A-Fa-f]{1,4}){1,4})|:))|(([0-9A-Fa-f]{1,4}:){2}(((:[0-9A-Fa-f]{1,4}){1,5})|:))|(([0-9A-Fa-f]{1,4}:){1}(((:[0-9A-Fa-f]{1,4}){1,6})|:))|(:(((:[0-9A-Fa-f]{1,4}){1,7})|:))),(?:(?:[01]?\d{1,2}|2[0-4]\d|25[0-5])\.){3}(?:[01]?\d{1,2}|2[0-4]\d|25[0-5])$
+                    nodeSelector:
+                      properties:
+                        matchExpressions:
+                          items:
+                            properties:
+                              key:
+                                type: string
+                              operator:
+                                type: string
+                                enum:
+                                  - In
+                                  - NotIn
+                                  - Exists
+                                  - DoesNotExist
+                              values:
+                                items:
+                                  type: string
+                                type: array
+                            required:
+                              - key
+                              - operator
+                            type: object
+                          type: array
+                        matchLabels:
+                          additionalProperties:
+                            type: string
+                          type: object
+                      type: object
+                  type: object
+                  x-kubernetes-validations:
+                    - rule: "self.enabled == false || self.ip != ''"
+                      message: 'Port IP must be set when BFD Port is enabled'
               type: object
             status:
               properties:
@@ -1968,6 +2307,17 @@ spec:
                   type: string
                 sctpSessionLoadBalancer:
                   type: string
+                bfdPort:
+                  type: object
+                  properties:
+                    ip:
+                      type: string
+                    name:
+                      type: string
+                    nodes:
+                      type: array
+                      items:
+                        type: string
               type: object
           type: object
       served: true
@@ -3017,6 +3367,8 @@ rules:
       - vpcs/status
       - vpc-nat-gateways
       - vpc-nat-gateways/status
+      - vpc-egress-gateways
+      - vpc-egress-gateways/status
       - subnets
       - subnets/status
       - ippools
@@ -3103,6 +3455,18 @@ rules:
     verbs:
       - get
   - apiGroups:
+      - apps
+    resources:
+      - deployments
+      - deployments/scale
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - delete
+  - apiGroups:
       - ""
     resources:
       - services
@@ -3128,8 +3492,6 @@ rules:
       - apps
     resources:
       - statefulsets
-      - deployments
-      - deployments/scale
     verbs:
       - get
       - list
@@ -3210,6 +3572,20 @@ rules:
     verbs:
     - approve
     - sign
+  - apiGroups:
+      - kubevirt.io
+    resources:
+      - virtualmachineinstancemigrations
+    verbs:
+      - "list"
+      - "watch"
+      - "get"
+  - apiGroups:
+      - apiextensions.k8s.io
+    resources:
+      - customresourcedefinitions
+    verbs:
+      - get
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -3877,6 +4253,7 @@ spec:
             - |
               chown -R nobody: /var/run/ovn /var/log/ovn /etc/openvswitch /var/run/openvswitch /var/log/openvswitch
               iptables -V
+              /usr/share/openvswitch/scripts/ovs-ctl load-kmod
           securityContext:
             allowPrivilegeEscalation: true
             capabilities:
@@ -3885,6 +4262,9 @@ spec:
             privileged: true
             runAsUser: 0
           volumeMounts:
+            - mountPath: /lib/modules
+              name: host-modules
+              readOnly: true
             - mountPath: /usr/local/sbin
               name: usr-local-sbin
             - mountPath: /var/log/ovn
@@ -3910,7 +4290,7 @@ spec:
               add:
                 - NET_ADMIN
                 - NET_BIND_SERVICE
-                - SYS_MODULE
+                - NET_RAW
                 - SYS_NICE
                 - SYS_ADMIN
           env:
@@ -4328,6 +4708,8 @@ spec:
           - --enable-anp=$ENABLE_ANP
           - --ovsdb-con-timeout=$OVSDB_CON_TIMEOUT
           - --ovsdb-inactivity-timeout=$OVSDB_INACTIVITY_TIMEOUT
+          - --enable-live-migration-optimize=$ENABLE_LIVE_MIGRATION_OPTIMIZE
+          - --image=$REGISTRY/kube-ovn:$VERSION
           securityContext:
             runAsUser: ${RUN_AS_USER}
             privileged: false
@@ -4526,7 +4908,6 @@ spec:
               - NET_BIND_SERVICE
               - NET_RAW
               - SYS_ADMIN
-              - SYS_MODULE
               - SYS_NICE
               - SYS_PTRACE
         env:
