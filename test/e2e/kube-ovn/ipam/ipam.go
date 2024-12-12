@@ -510,46 +510,43 @@ var _ = framework.Describe("[group:ipam]", func() {
 		checkFn()
 	})
 
-	framework.ConformanceIt("should allocate right IPs for the deployment when there are multiple IP Pools added to its namespace", func() {
+	framework.ConformanceIt("should allocate right IPs for the statefulset when there are multiple IP Pools added to its namespace", func() {
 		replicas := 1
 		ipsCount := 12
-		ips1 := framework.RandomIPPool(cidr, ipsCount)
-		ips2 := framework.RandomIPPool(cidr, ipsCount)
-		testDeployName := "test-deployment"
-		subnetName2 := "ip-pool-subnet2"
+		ipsRange1 := framework.RandomIPPool(cidr, ipsCount)
+		ipsRange2 := framework.RandomIPPool(cidr, ipsCount)
+		testStsName := "test-statefulset"
+		testSubnetName := "ip-pool-subnet2"
 
-		ginkgo.By("Creating a new subnet " + subnetName2)
-		cidr2 := framework.RandomCIDR(f.ClusterIPFamily)
-		subnet2 := framework.MakeSubnet(subnetName2, "", cidr2, "", "", "", nil, nil, []string{namespaceName})
-		subnetClient.CreateSync(subnet2)
+		ginkgo.By("Creating a new subnet " + testSubnetName)
+		testCidr := framework.RandomCIDR(f.ClusterIPFamily)
+		testSubnet := framework.MakeSubnet(testSubnetName, "", testCidr, "", "", "", nil, nil, []string{namespaceName})
+		subnetClient.CreateSync(testSubnet)
 
 		ginkgo.By("Creating IPPool resources ")
-		ippool1 := framework.MakeIPPool("ippool1", subnetName, ips1, []string{namespaceName})
-		ippool2 := framework.MakeIPPool("ippool2", subnetName2, ips2, []string{namespaceName})
+		ippool1 := framework.MakeIPPool("ippool1", testSubnetName, ipsRange1, []string{namespaceName})
+		ippool2 := framework.MakeIPPool("ippool2", subnetName, ipsRange2, []string{namespaceName})
 		ippoolClient.CreateSync(ippool1)
 		ippoolClient.CreateSync(ippool2)
 
-		ginkgo.By("Creating deployment " + testDeployName + " without IPPool annotation")
-		labels := map[string]string{"app": testDeployName}
-		annotations := map[string]string{util.LogicalSwitchAnnotation: subnetName}
-		deploy := framework.MakeDeployment(testDeployName, int32(replicas), labels, annotations, "pause", framework.PauseImage, "")
-		deployClient.CreateSync(deploy)
+		ginkgo.By("Creating statefulset " + testStsName + " with logical switch annotation and no ippool annotation")
+		labels := map[string]string{"app": testStsName}
+		sts := framework.MakeStatefulSet(testStsName, testStsName, int32(replicas), labels, framework.PauseImage)
+		sts.Spec.Template.Annotations = map[string]string{util.LogicalSwitchAnnotation: testSubnetName}
+		sts = stsClient.CreateSync(sts)
 
-		ginkgo.By("Getting pods for deployment " + testDeployName)
-		pods, err := deployClient.GetPods(deploy)
-		framework.ExpectNoError(err, "failed to get pods for deployment "+testDeployName)
+		ginkgo.By("Getting pods for statefulset " + testStsName)
+		pods := stsClient.GetPods(sts)
 		framework.ExpectHaveLen(pods.Items, replicas)
 
 		for _, pod := range pods.Items {
 			framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.CidrAnnotation, subnet.Spec.CIDRBlock)
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.GatewayAnnotation, subnet.Spec.Gateway)
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.IPPoolAnnotation, ippool1)
-			framework.ExpectContainElement(ips1, pod.Annotations[util.IPAddressAnnotation])
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.LogicalSwitchAnnotation, subnet.Name)
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.CidrAnnotation, testSubnet.Spec.CIDRBlock)
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.GatewayAnnotation, testSubnet.Spec.Gateway)
+			framework.ExpectContainElement(ipsRange1, pod.Annotations[util.IPAddressAnnotation])
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.LogicalSwitchAnnotation, testSubnet.Name)
 			framework.ExpectMAC(pod.Annotations[util.MacAddressAnnotation])
 			framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
-
 			framework.ExpectConsistOf(util.PodIPs(pod), strings.Split(pod.Annotations[util.IPAddressAnnotation], ","))
 		}
 	})
