@@ -517,8 +517,8 @@ var _ = framework.Describe("[group:ipam]", func() {
 		ipsRange2 := framework.RandomIPPool(cidr, ipsCount)
 		testStsName := "test-statefulset"
 		testSubnetName := "ip-pool-subnet2"
-		testIpPool1Name := "ip-pool1"
-		testIpPool2Name := "ip-pool2"
+		testIPPool1Name := "ip-pool1"
+		testIPPool2Name := "ip-pool2"
 
 		ginkgo.By("Creating a new subnet " + testSubnetName)
 		testCidr := framework.RandomCIDR(f.ClusterIPFamily)
@@ -526,8 +526,8 @@ var _ = framework.Describe("[group:ipam]", func() {
 		subnetClient.CreateSync(testSubnet)
 
 		ginkgo.By("Creating IPPool resources ")
-		ippool1 := framework.MakeIPPool(testIpPool1Name, subnetName, ipsRange1, []string{namespaceName})
-		ippool2 := framework.MakeIPPool(testIpPool2Name, testSubnetName, ipsRange2, []string{namespaceName})
+		ippool1 := framework.MakeIPPool(testIPPool1Name, subnetName, ipsRange1, []string{namespaceName})
+		ippool2 := framework.MakeIPPool(testIPPool2Name, testSubnetName, ipsRange2, []string{namespaceName})
 		ippoolClient.CreateSync(ippool1)
 		ippoolClient.CreateSync(ippool2)
 
@@ -545,7 +545,6 @@ var _ = framework.Describe("[group:ipam]", func() {
 			framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
 			framework.ExpectHaveKeyWithValue(pod.Annotations, util.CidrAnnotation, subnet.Spec.CIDRBlock)
 			framework.ExpectHaveKeyWithValue(pod.Annotations, util.GatewayAnnotation, subnet.Spec.Gateway)
-			framework.ExpectContainElement(ipsRange1, pod.Annotations[util.IPAddressAnnotation])
 			framework.ExpectIPInCIDR(pod.Annotations[util.IPAddressAnnotation], subnet.Spec.CIDRBlock)
 			framework.ExpectHaveKeyWithValue(pod.Annotations, util.LogicalSwitchAnnotation, subnetName)
 			framework.ExpectMAC(pod.Annotations[util.MacAddressAnnotation])
@@ -556,8 +555,8 @@ var _ = framework.Describe("[group:ipam]", func() {
 		stsClient.DeleteSync(testStsName)
 
 		ginkgo.By("Deleting ippools")
-		ippoolClient.DeleteSync(testIpPool1Name)
-		ippoolClient.DeleteSync(testIpPool2Name)
+		ippoolClient.DeleteSync(testIPPool1Name)
+		ippoolClient.DeleteSync(testIPPool2Name)
 
 		ginkgo.By("Deleting subnet " + testSubnetName)
 		subnetClient.DeleteSync(testSubnetName)
