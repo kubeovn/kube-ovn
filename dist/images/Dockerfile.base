@@ -61,7 +61,9 @@ RUN cd /usr/src/ && git clone -b branch-24.03 --depth=1 https://github.com/ovn-o
     # northd: skip arp/nd request for lrp addresses from localnet ports
     curl -s https://github.com/kubeovn/ovn/commit/1ba3263940c1e2e87e61cb011dcf942a0456224d.patch | git apply && \
     # ovn-controller: make activation strategy work for single chassis
-    curl -s https://github.com/kubeovn/ovn/commit/1160d956e49e8f3f1b19535dbf1b9a624a090717.patch | git apply
+    curl -s https://github.com/kubeovn/ovn/commit/1160d956e49e8f3f1b19535dbf1b9a624a090717.patch | git apply && \
+    # skip node local dns ip conntrack when set acl
+    curl -s https://github.com/kubeovn/ovn/commit/e7d3ba53cdcbc524bb29c54ddb07b83cc4258ed7.patch | git apply
 
 RUN apt install -y build-essential fakeroot \
     autoconf automake bzip2 debhelper-compat dh-exec dh-python dh-sequence-python3 dh-sequence-sphinxdoc \
