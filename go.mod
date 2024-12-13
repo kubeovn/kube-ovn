@@ -39,7 +39,7 @@ require (
 	github.com/sirupsen/logrus v1.9.3
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.10.0
-	github.com/vishvananda/netlink v1.3.0
+	github.com/vishvananda/netlink v1.3.1-0.20240905180732-b1ce50cfa9be
 	go.uber.org/mock v0.5.0
 	golang.org/x/mod v0.22.0
 	golang.org/x/sys v0.28.0
@@ -55,7 +55,7 @@ require (
 	k8s.io/component-base v0.31.4
 	k8s.io/klog/v2 v2.130.1
 	k8s.io/kubectl v0.31.4
-	k8s.io/kubernetes v1.31.4
+	k8s.io/kubernetes v1.32.0
 	k8s.io/pod-security-admission v0.31.4
 	k8s.io/utils v0.0.0-20241210054802-24370beab758
 	kernel.org/pub/linux/libs/security/libcap/cap v1.2.73
@@ -72,6 +72,7 @@ require (
 	github.com/Azure/go-ansiterm v0.0.0-20230124172434-306776ec8161 // indirect
 	github.com/JeffAshton/win_pdh v0.0.0-20161109143554-76bb4ee9f0ab // indirect
 	github.com/MakeNowJust/heredoc v1.0.0 // indirect
+	github.com/Microsoft/hnslib v0.0.8 // indirect
 	github.com/NYTimes/gziphandler v1.1.1 // indirect
 	github.com/andybalholm/brotli v1.0.4 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.0 // indirect
@@ -85,7 +86,6 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/chai2010/gettext-go v1.0.2 // indirect
 	github.com/container-storage-interface/spec v1.9.0 // indirect
-	github.com/containerd/cgroups v1.1.0 // indirect
 	github.com/containerd/cgroups/v3 v3.0.3 // indirect
 	github.com/containerd/containerd/api v1.7.19 // indirect
 	github.com/containerd/continuity v0.4.3 // indirect
