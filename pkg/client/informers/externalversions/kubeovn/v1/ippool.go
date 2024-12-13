@@ -19,13 +19,13 @@ limitations under the License.
 package v1
 
 import (
-	"context"
+	context "context"
 	time "time"
 
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	apiskubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	versioned "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
 	internalinterfaces "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions/internalinterfaces"
-	v1 "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	watch "k8s.io/apimachinery/pkg/watch"
@@ -36,7 +36,7 @@ import (
 // IPPools.
 type IPPoolInformer interface {
 	Informer() cache.SharedIndexInformer
-	Lister() v1.IPPoolLister
+	Lister() kubeovnv1.IPPoolLister
 }
 
 type iPPoolInformer struct {
@@ -70,7 +70,7 @@ func NewFilteredIPPoolInformer(client versioned.Interface, resyncPeriod time.Dur
 				return client.KubeovnV1().IPPools().Watch(context.TODO(), options)
 			},
 		},
-		&kubeovnv1.IPPool{},
+		&apiskubeovnv1.IPPool{},
 		resyncPeriod,
 		indexers,
 	)
@@ -81,9 +81,9 @@ func (f *iPPoolInformer) defaultInformer(client versioned.Interface, resyncPerio
 }
 
 func (f *iPPoolInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&kubeovnv1.IPPool{}, f.defaultInformer)
+	return f.factory.InformerFor(&apiskubeovnv1.IPPool{}, f.defaultInformer)
 }
 
-func (f *iPPoolInformer) Lister() v1.IPPoolLister {
-	return v1.NewIPPoolLister(f.Informer().GetIndexer())
+func (f *iPPoolInformer) Lister() kubeovnv1.IPPoolLister {
+	return kubeovnv1.NewIPPoolLister(f.Informer().GetIndexer())
 }

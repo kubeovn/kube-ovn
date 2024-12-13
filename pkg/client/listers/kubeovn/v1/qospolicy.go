@@ -19,10 +19,10 @@ limitations under the License.
 package v1
 
 import (
-	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/client-go/listers"
-	"k8s.io/client-go/tools/cache"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	labels "k8s.io/apimachinery/pkg/labels"
+	listers "k8s.io/client-go/listers"
+	cache "k8s.io/client-go/tools/cache"
 )
 
 // QoSPolicyLister helps list QoSPolicies.
@@ -30,19 +30,19 @@ import (
 type QoSPolicyLister interface {
 	// List lists all QoSPolicies in the indexer.
 	// Objects returned here must be treated as read-only.
-	List(selector labels.Selector) (ret []*v1.QoSPolicy, err error)
+	List(selector labels.Selector) (ret []*kubeovnv1.QoSPolicy, err error)
 	// Get retrieves the QoSPolicy from the index for a given name.
 	// Objects returned here must be treated as read-only.
-	Get(name string) (*v1.QoSPolicy, error)
+	Get(name string) (*kubeovnv1.QoSPolicy, error)
 	QoSPolicyListerExpansion
 }
 
 // qoSPolicyLister implements the QoSPolicyLister interface.
 type qoSPolicyLister struct {
-	listers.ResourceIndexer[*v1.QoSPolicy]
+	listers.ResourceIndexer[*kubeovnv1.QoSPolicy]
 }
 
 // NewQoSPolicyLister returns a new QoSPolicyLister.
 func NewQoSPolicyLister(indexer cache.Indexer) QoSPolicyLister {
-	return &qoSPolicyLister{listers.New[*v1.QoSPolicy](indexer, v1.Resource("qospolicy"))}
+	return &qoSPolicyLister{listers.New[*kubeovnv1.QoSPolicy](indexer, kubeovnv1.Resource("qospolicy"))}
 }

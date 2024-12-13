@@ -14,6 +14,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
@@ -56,6 +57,10 @@ func (c *Controller) enqueueDeleteVpcEgressGateway(obj interface{}) {
 	}
 	klog.V(3).Infof("enqueue delete vpc-egress-gateway %s", key)
 	c.delVpcEgressGatewayQueue.Add(key)
+}
+
+func vegWorkloadLabels(vegName string) map[string]string {
+	return map[string]string{"app": "vpc-egress-gateway", util.VpcEgressGatewayLabel: vegName}
 }
 
 func (c *Controller) handleAddOrUpdateVpcEgressGateway(key string) error {
@@ -124,8 +129,11 @@ func (c *Controller) handleAddOrUpdateVpcEgressGateway(key string) error {
 
 	// reconcile the vpc egress gateway workload and get the route sources for later OVN resources reconciliation
 	attachmentNetworkName, ipv4Src, ipv6Src, deploy, err := c.reconcileVpcEgressGatewayWorkload(gw, vpc, bfdIP, bfdIPv4, bfdIPv6)
+	gw.Status.Replicas = gw.Spec.Replicas
+	gw.Status.LabelSelector = labels.FormatLabels(vegWorkloadLabels(gw.Name))
 	if err != nil {
 		klog.Error(err)
+		gw.Status.Replicas = 0
 		gw.Status.Conditions.SetCondition(kubeovnv1.Ready, corev1.ConditionFalse, "ReconcileWorkloadFailed", err.Error(), gw.Generation)
 		_, _ = c.updateVpcEgressGatewayStatus(gw)
 		return err
@@ -376,7 +384,7 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 	initEnv = append(initEnv, ipv6Env...)
 
 	// generate workload
-	labels := map[string]string{util.VpcEgressGatewayLabel: gw.Name}
+	labels := vegWorkloadLabels(gw.Name)
 	deploy := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      gw.Spec.Prefix + gw.Name,

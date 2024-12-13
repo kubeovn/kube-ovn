@@ -19,13 +19,13 @@ limitations under the License.
 package v1
 
 import (
-	"context"
+	context "context"
 	time "time"
 
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	apiskubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	versioned "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
 	internalinterfaces "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions/internalinterfaces"
-	v1 "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	watch "k8s.io/apimachinery/pkg/watch"
@@ -36,7 +36,7 @@ import (
 // IptablesEIPs.
 type IptablesEIPInformer interface {
 	Informer() cache.SharedIndexInformer
-	Lister() v1.IptablesEIPLister
+	Lister() kubeovnv1.IptablesEIPLister
 }
 
 type iptablesEIPInformer struct {
@@ -70,7 +70,7 @@ func NewFilteredIptablesEIPInformer(client versioned.Interface, resyncPeriod tim
 				return client.KubeovnV1().IptablesEIPs().Watch(context.TODO(), options)
 			},
 		},
-		&kubeovnv1.IptablesEIP{},
+		&apiskubeovnv1.IptablesEIP{},
 		resyncPeriod,
 		indexers,
 	)
@@ -81,9 +81,9 @@ func (f *iptablesEIPInformer) defaultInformer(client versioned.Interface, resync
 }
 
 func (f *iptablesEIPInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&kubeovnv1.IptablesEIP{}, f.defaultInformer)
+	return f.factory.InformerFor(&apiskubeovnv1.IptablesEIP{}, f.defaultInformer)
 }
 
-func (f *iptablesEIPInformer) Lister() v1.IptablesEIPLister {
-	return v1.NewIptablesEIPLister(f.Informer().GetIndexer())
+func (f *iptablesEIPInformer) Lister() kubeovnv1.IptablesEIPLister {
+	return kubeovnv1.NewIptablesEIPLister(f.Informer().GetIndexer())
 }

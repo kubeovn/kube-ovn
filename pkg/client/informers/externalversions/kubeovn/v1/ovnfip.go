@@ -19,13 +19,13 @@ limitations under the License.
 package v1
 
 import (
-	"context"
+	context "context"
 	time "time"
 
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	apiskubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	versioned "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
 	internalinterfaces "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions/internalinterfaces"
-	v1 "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	watch "k8s.io/apimachinery/pkg/watch"
@@ -36,7 +36,7 @@ import (
 // OvnFips.
 type OvnFipInformer interface {
 	Informer() cache.SharedIndexInformer
-	Lister() v1.OvnFipLister
+	Lister() kubeovnv1.OvnFipLister
 }
 
 type ovnFipInformer struct {
@@ -70,7 +70,7 @@ func NewFilteredOvnFipInformer(client versioned.Interface, resyncPeriod time.Dur
 				return client.KubeovnV1().OvnFips().Watch(context.TODO(), options)
 			},
 		},
-		&kubeovnv1.OvnFip{},
+		&apiskubeovnv1.OvnFip{},
 		resyncPeriod,
 		indexers,
 	)
@@ -81,9 +81,9 @@ func (f *ovnFipInformer) defaultInformer(client versioned.Interface, resyncPerio
 }
 
 func (f *ovnFipInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&kubeovnv1.OvnFip{}, f.defaultInformer)
+	return f.factory.InformerFor(&apiskubeovnv1.OvnFip{}, f.defaultInformer)
 }
 
-func (f *ovnFipInformer) Lister() v1.OvnFipLister {
-	return v1.NewOvnFipLister(f.Informer().GetIndexer())
+func (f *ovnFipInformer) Lister() kubeovnv1.OvnFipLister {
+	return kubeovnv1.NewOvnFipLister(f.Informer().GetIndexer())
 }

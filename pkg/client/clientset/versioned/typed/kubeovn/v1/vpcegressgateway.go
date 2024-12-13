@@ -19,10 +19,11 @@ limitations under the License.
 package v1
 
 import (
-	"context"
+	context "context"
 
-	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	scheme "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/scheme"
+	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	types "k8s.io/apimachinery/pkg/types"
 	watch "k8s.io/apimachinery/pkg/watch"
@@ -37,33 +38,66 @@ type VpcEgressGatewaysGetter interface {
 
 // VpcEgressGatewayInterface has methods to work with VpcEgressGateway resources.
 type VpcEgressGatewayInterface interface {
-	Create(ctx context.Context, vpcEgressGateway *v1.VpcEgressGateway, opts metav1.CreateOptions) (*v1.VpcEgressGateway, error)
-	Update(ctx context.Context, vpcEgressGateway *v1.VpcEgressGateway, opts metav1.UpdateOptions) (*v1.VpcEgressGateway, error)
+	Create(ctx context.Context, vpcEgressGateway *kubeovnv1.VpcEgressGateway, opts metav1.CreateOptions) (*kubeovnv1.VpcEgressGateway, error)
+	Update(ctx context.Context, vpcEgressGateway *kubeovnv1.VpcEgressGateway, opts metav1.UpdateOptions) (*kubeovnv1.VpcEgressGateway, error)
 	// Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-	UpdateStatus(ctx context.Context, vpcEgressGateway *v1.VpcEgressGateway, opts metav1.UpdateOptions) (*v1.VpcEgressGateway, error)
+	UpdateStatus(ctx context.Context, vpcEgressGateway *kubeovnv1.VpcEgressGateway, opts metav1.UpdateOptions) (*kubeovnv1.VpcEgressGateway, error)
 	Delete(ctx context.Context, name string, opts metav1.DeleteOptions) error
 	DeleteCollection(ctx context.Context, opts metav1.DeleteOptions, listOpts metav1.ListOptions) error
-	Get(ctx context.Context, name string, opts metav1.GetOptions) (*v1.VpcEgressGateway, error)
-	List(ctx context.Context, opts metav1.ListOptions) (*v1.VpcEgressGatewayList, error)
+	Get(ctx context.Context, name string, opts metav1.GetOptions) (*kubeovnv1.VpcEgressGateway, error)
+	List(ctx context.Context, opts metav1.ListOptions) (*kubeovnv1.VpcEgressGatewayList, error)
 	Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error)
-	Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *v1.VpcEgressGateway, err error)
+	Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *kubeovnv1.VpcEgressGateway, err error)
+	GetScale(ctx context.Context, vpcEgressGatewayName string, options metav1.GetOptions) (*autoscalingv1.Scale, error)
+	UpdateScale(ctx context.Context, vpcEgressGatewayName string, scale *autoscalingv1.Scale, opts metav1.UpdateOptions) (*autoscalingv1.Scale, error)
+
 	VpcEgressGatewayExpansion
 }
 
 // vpcEgressGateways implements VpcEgressGatewayInterface
 type vpcEgressGateways struct {
-	*gentype.ClientWithList[*v1.VpcEgressGateway, *v1.VpcEgressGatewayList]
+	*gentype.ClientWithList[*kubeovnv1.VpcEgressGateway, *kubeovnv1.VpcEgressGatewayList]
 }
 
 // newVpcEgressGateways returns a VpcEgressGateways
 func newVpcEgressGateways(c *KubeovnV1Client, namespace string) *vpcEgressGateways {
 	return &vpcEgressGateways{
-		gentype.NewClientWithList[*v1.VpcEgressGateway, *v1.VpcEgressGatewayList](
+		gentype.NewClientWithList[*kubeovnv1.VpcEgressGateway, *kubeovnv1.VpcEgressGatewayList](
 			"vpc-egress-gateways",
 			c.RESTClient(),
 			scheme.ParameterCodec,
 			namespace,
-			func() *v1.VpcEgressGateway { return &v1.VpcEgressGateway{} },
-			func() *v1.VpcEgressGatewayList { return &v1.VpcEgressGatewayList{} }),
+			func() *kubeovnv1.VpcEgressGateway { return &kubeovnv1.VpcEgressGateway{} },
+			func() *kubeovnv1.VpcEgressGatewayList { return &kubeovnv1.VpcEgressGatewayList{} },
+		),
 	}
+}
+
+// GetScale takes name of the vpcEgressGateway, and returns the corresponding autoscalingv1.Scale object, and an error if there is any.
+func (c *vpcEgressGateways) GetScale(ctx context.Context, vpcEgressGatewayName string, options metav1.GetOptions) (result *autoscalingv1.Scale, err error) {
+	result = &autoscalingv1.Scale{}
+	err = c.GetClient().Get().
+		Namespace(c.GetNamespace()).
+		Resource("vpc-egress-gateways").
+		Name(vpcEgressGatewayName).
+		SubResource("scale").
+		VersionedParams(&options, scheme.ParameterCodec).
+		Do(ctx).
+		Into(result)
+	return
+}
+
+// UpdateScale takes the top resource name and the representation of a scale and updates it. Returns the server's representation of the scale, and an error, if there is any.
+func (c *vpcEgressGateways) UpdateScale(ctx context.Context, vpcEgressGatewayName string, scale *autoscalingv1.Scale, opts metav1.UpdateOptions) (result *autoscalingv1.Scale, err error) {
+	result = &autoscalingv1.Scale{}
+	err = c.GetClient().Put().
+		Namespace(c.GetNamespace()).
+		Resource("vpc-egress-gateways").
+		Name(vpcEgressGatewayName).
+		SubResource("scale").
+		VersionedParams(&opts, scheme.ParameterCodec).
+		Body(scale).
+		Do(ctx).
+		Into(result)
+	return
 }

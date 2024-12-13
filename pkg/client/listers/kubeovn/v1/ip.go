@@ -19,10 +19,10 @@ limitations under the License.
 package v1
 
 import (
-	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/client-go/listers"
-	"k8s.io/client-go/tools/cache"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	labels "k8s.io/apimachinery/pkg/labels"
+	listers "k8s.io/client-go/listers"
+	cache "k8s.io/client-go/tools/cache"
 )
 
 // IPLister helps list IPs.
@@ -30,19 +30,19 @@ import (
 type IPLister interface {
 	// List lists all IPs in the indexer.
 	// Objects returned here must be treated as read-only.
-	List(selector labels.Selector) (ret []*v1.IP, err error)
+	List(selector labels.Selector) (ret []*kubeovnv1.IP, err error)
 	// Get retrieves the IP from the index for a given name.
 	// Objects returned here must be treated as read-only.
-	Get(name string) (*v1.IP, error)
+	Get(name string) (*kubeovnv1.IP, error)
 	IPListerExpansion
 }
 
 // iPLister implements the IPLister interface.
 type iPLister struct {
-	listers.ResourceIndexer[*v1.IP]
+	listers.ResourceIndexer[*kubeovnv1.IP]
 }
 
 // NewIPLister returns a new IPLister.
 func NewIPLister(indexer cache.Indexer) IPLister {
-	return &iPLister{listers.New[*v1.IP](indexer, v1.Resource("ip"))}
+	return &iPLister{listers.New[*kubeovnv1.IP](indexer, kubeovnv1.Resource("ip"))}
 }

@@ -19,13 +19,13 @@ limitations under the License.
 package v1
 
 import (
-	"context"
+	context "context"
 	time "time"
 
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	apiskubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	versioned "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
 	internalinterfaces "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions/internalinterfaces"
-	v1 "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	watch "k8s.io/apimachinery/pkg/watch"
@@ -36,7 +36,7 @@ import (
 // VpcEgressGateways.
 type VpcEgressGatewayInformer interface {
 	Informer() cache.SharedIndexInformer
-	Lister() v1.VpcEgressGatewayLister
+	Lister() kubeovnv1.VpcEgressGatewayLister
 }
 
 type vpcEgressGatewayInformer struct {
@@ -71,7 +71,7 @@ func NewFilteredVpcEgressGatewayInformer(client versioned.Interface, namespace s
 				return client.KubeovnV1().VpcEgressGateways(namespace).Watch(context.TODO(), options)
 			},
 		},
-		&kubeovnv1.VpcEgressGateway{},
+		&apiskubeovnv1.VpcEgressGateway{},
 		resyncPeriod,
 		indexers,
 	)
@@ -82,9 +82,9 @@ func (f *vpcEgressGatewayInformer) defaultInformer(client versioned.Interface, r
 }
 
 func (f *vpcEgressGatewayInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&kubeovnv1.VpcEgressGateway{}, f.defaultInformer)
+	return f.factory.InformerFor(&apiskubeovnv1.VpcEgressGateway{}, f.defaultInformer)
 }
 
-func (f *vpcEgressGatewayInformer) Lister() v1.VpcEgressGatewayLister {
-	return v1.NewVpcEgressGatewayLister(f.Informer().GetIndexer())
+func (f *vpcEgressGatewayInformer) Lister() kubeovnv1.VpcEgressGatewayLister {
+	return kubeovnv1.NewVpcEgressGatewayLister(f.Informer().GetIndexer())
 }

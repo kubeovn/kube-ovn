@@ -19,10 +19,10 @@ limitations under the License.
 package v1
 
 import (
-	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/client-go/listers"
-	"k8s.io/client-go/tools/cache"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	labels "k8s.io/apimachinery/pkg/labels"
+	listers "k8s.io/client-go/listers"
+	cache "k8s.io/client-go/tools/cache"
 )
 
 // VlanLister helps list Vlans.
@@ -30,19 +30,19 @@ import (
 type VlanLister interface {
 	// List lists all Vlans in the indexer.
 	// Objects returned here must be treated as read-only.
-	List(selector labels.Selector) (ret []*v1.Vlan, err error)
+	List(selector labels.Selector) (ret []*kubeovnv1.Vlan, err error)
 	// Get retrieves the Vlan from the index for a given name.
 	// Objects returned here must be treated as read-only.
-	Get(name string) (*v1.Vlan, error)
+	Get(name string) (*kubeovnv1.Vlan, error)
 	VlanListerExpansion
 }
 
 // vlanLister implements the VlanLister interface.
 type vlanLister struct {
-	listers.ResourceIndexer[*v1.Vlan]
+	listers.ResourceIndexer[*kubeovnv1.Vlan]
 }
 
 // NewVlanLister returns a new VlanLister.
 func NewVlanLister(indexer cache.Indexer) VlanLister {
-	return &vlanLister{listers.New[*v1.Vlan](indexer, v1.Resource("vlan"))}
+	return &vlanLister{listers.New[*kubeovnv1.Vlan](indexer, kubeovnv1.Resource("vlan"))}
 }
