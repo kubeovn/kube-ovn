@@ -470,7 +470,7 @@ func Run(ctx context.Context, config *Configuration) {
 			workqueue.DefaultTypedControllerRateLimiter[string](),
 			workqueue.TypedRateLimitingQueueConfig[string]{
 				Name:          "DeletePod",
-				DelayingQueue: workqueue.TypedNewDelayingQueue[string](),
+				DelayingQueue: workqueue.NewTypedDelayingQueue[string](),
 			},
 		),
 		updatePodSecurityQueue: newTypedRateLimitingQueue[string]("UpdatePodSecurity", nil),
