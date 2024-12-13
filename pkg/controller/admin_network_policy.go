@@ -232,7 +232,7 @@ func (c *Controller) handleAddAnp(key string) (err error) {
 		}
 
 		aclPriority := util.AnpACLMaxPriority - int(anp.Spec.Priority*100) - index
-		aclAction := convertAction(anpr.Action, "")
+		aclAction := anpACLAction(anpr.Action)
 		rulePorts := []v1alpha1.AdminNetworkPolicyPort{}
 		if anpr.Ports != nil {
 			rulePorts = *anpr.Ports
@@ -299,7 +299,7 @@ func (c *Controller) handleAddAnp(key string) (err error) {
 		}
 
 		aclPriority := util.AnpACLMaxPriority - int(anp.Spec.Priority*100) - index
-		aclAction := convertAction(anpr.Action, "")
+		aclAction := anpACLAction(anpr.Action)
 		rulePorts := []v1alpha1.AdminNetworkPolicyPort{}
 		if anpr.Ports != nil {
 			rulePorts = *anpr.Ports
@@ -947,35 +947,26 @@ func getAnpAddressSetName(pgName, ruleName string, index int, isIngress bool) (s
 	return asV4Name, asV6Name
 }
 
-func convertAction(anpRuleAction v1alpha1.AdminNetworkPolicyRuleAction, banpRuleAction v1alpha1.BaselineAdminNetworkPolicyRuleAction) (aclAction ovnnb.ACLAction) {
-	switch anpRuleAction {
+func anpACLAction(action v1alpha1.AdminNetworkPolicyRuleAction) ovnnb.ACLAction {
+	switch action {
 	case v1alpha1.AdminNetworkPolicyRuleActionAllow:
-		aclAction = ovnnb.ACLActionAllowRelated
+		return ovnnb.ACLActionAllowRelated
 	case v1alpha1.AdminNetworkPolicyRuleActionDeny:
-		aclAction = ovnnb.ACLActionDrop
+		return ovnnb.ACLActionDrop
 	case v1alpha1.AdminNetworkPolicyRuleActionPass:
-		aclAction = ovnnb.ACLActionPass
+		return ovnnb.ACLActionPass
 	}
-
-	switch banpRuleAction {
-	case v1alpha1.BaselineAdminNetworkPolicyRuleActionAllow:
-		aclAction = ovnnb.ACLActionAllowRelated
-	case v1alpha1.BaselineAdminNetworkPolicyRuleActionDeny:
-		aclAction = ovnnb.ACLActionDrop
-	}
-	return
+	return ovnnb.ACLActionDrop
 }
 
 func isRulesArrayEmpty(ruleNames [util.AnpMaxRules]ChangedName) bool {
-	isEmpty := true
 	for _, ruleName := range ruleNames {
 		// The ruleName can be omitted default
 		if ruleName.curRuleName != "" || ruleName.isMatch {
-			isEmpty = false
-			break
+			return false
 		}
 	}
-	return isEmpty
+	return true
 }
 
 func (c *Controller) fetchNodesAddrs(nodeSelector labels.Selector) ([]string, []string, error) {
@@ -1002,8 +993,7 @@ func (c *Controller) fetchNodesAddrs(nodeSelector labels.Selector) ([]string, []
 }
 
 func fetchCIDRAddrs(networks []v1alpha1.CIDR) ([]string, []string) {
-	v4Addresses := make([]string, 0, len(networks))
-	v6Addresses := make([]string, 0, len(networks))
+	var v4Addresses, v6Addresses []string
 
 	for _, network := range networks {
 		if _, _, err := net.ParseCIDR(string(network)); err != nil {

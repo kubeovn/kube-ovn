@@ -13,6 +13,7 @@ import (
 	v1alpha1 "sigs.k8s.io/network-policy-api/apis/v1alpha1"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -108,6 +109,16 @@ func (c *Controller) enqueueUpdateBanp(oldObj, newObj interface{}) {
 	}
 }
 
+func banpACLAction(action v1alpha1.BaselineAdminNetworkPolicyRuleAction) ovnnb.ACLAction {
+	switch action {
+	case v1alpha1.BaselineAdminNetworkPolicyRuleActionAllow:
+		return ovnnb.ACLActionAllowRelated
+	case v1alpha1.BaselineAdminNetworkPolicyRuleActionDeny:
+		return ovnnb.ACLActionDrop
+	}
+	return ovnnb.ACLActionDrop
+}
+
 func (c *Controller) handleAddBanp(key string) (err error) {
 	// Only one banp with default name can be created in cluster, no need to check
 	c.banpKeyMutex.LockKey(key)
@@ -191,7 +202,7 @@ func (c *Controller) handleAddBanp(key string) (err error) {
 
 		// use 1700-1800 for banp acl priority
 		aclPriority := util.BanpACLMaxPriority - index
-		aclAction := convertAction("", banpr.Action)
+		aclAction := banpACLAction(banpr.Action)
 		rulePorts := []v1alpha1.AdminNetworkPolicyPort{}
 		if banpr.Ports != nil {
 			rulePorts = *banpr.Ports
@@ -258,7 +269,7 @@ func (c *Controller) handleAddBanp(key string) (err error) {
 		}
 
 		aclPriority := util.BanpACLMaxPriority - index
-		aclAction := convertAction("", banpr.Action)
+		aclAction := banpACLAction(banpr.Action)
 		rulePorts := []v1alpha1.AdminNetworkPolicyPort{}
 		if banpr.Ports != nil {
 			rulePorts = *banpr.Ports
