@@ -1,5 +1,5 @@
 {%- if k8s_version is not defined -%}
-  {%- set k8s_version = "v1.31.2" -%}
+  {%- set k8s_version = "v1.32.0" -%}
 {%- endif -%}
 {%- if kube_proxy_mode is not defined -%}
   {%- set kube_proxy_mode = "ipvs" -%}
@@ -64,7 +64,7 @@ kubeadmConfigPatches:
         dataDir: "/tmp/lib/etcd"
 nodes:
   - role: control-plane
-    image: kindest/node:{{ k8s_version }}
+    image: ghcr.io/zhangzujian/node:{{ k8s_version }}
     labels:
       type: kind
     kubeadmConfigPatches:
@@ -116,7 +116,7 @@ nodes:
 {%- endif %}
 {%- for i in range(n_worker | int) %}
   - role: worker
-    image: kindest/node:{{ k8s_version }}
+    image: ghcr.io/zhangzujian/node:{{ k8s_version }}
     labels:
       type: kind
   {%- if ha is equalto "true" %}
