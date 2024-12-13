@@ -19,10 +19,10 @@ limitations under the License.
 package v1
 
 import (
-	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/client-go/listers"
-	"k8s.io/client-go/tools/cache"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	labels "k8s.io/apimachinery/pkg/labels"
+	listers "k8s.io/client-go/listers"
+	cache "k8s.io/client-go/tools/cache"
 )
 
 // IptablesSnatRuleLister helps list IptablesSnatRules.
@@ -30,19 +30,19 @@ import (
 type IptablesSnatRuleLister interface {
 	// List lists all IptablesSnatRules in the indexer.
 	// Objects returned here must be treated as read-only.
-	List(selector labels.Selector) (ret []*v1.IptablesSnatRule, err error)
+	List(selector labels.Selector) (ret []*kubeovnv1.IptablesSnatRule, err error)
 	// Get retrieves the IptablesSnatRule from the index for a given name.
 	// Objects returned here must be treated as read-only.
-	Get(name string) (*v1.IptablesSnatRule, error)
+	Get(name string) (*kubeovnv1.IptablesSnatRule, error)
 	IptablesSnatRuleListerExpansion
 }
 
 // iptablesSnatRuleLister implements the IptablesSnatRuleLister interface.
 type iptablesSnatRuleLister struct {
-	listers.ResourceIndexer[*v1.IptablesSnatRule]
+	listers.ResourceIndexer[*kubeovnv1.IptablesSnatRule]
 }
 
 // NewIptablesSnatRuleLister returns a new IptablesSnatRuleLister.
 func NewIptablesSnatRuleLister(indexer cache.Indexer) IptablesSnatRuleLister {
-	return &iptablesSnatRuleLister{listers.New[*v1.IptablesSnatRule](indexer, v1.Resource("iptablessnatrule"))}
+	return &iptablesSnatRuleLister{listers.New[*kubeovnv1.IptablesSnatRule](indexer, kubeovnv1.Resource("iptablessnatrule"))}
 }

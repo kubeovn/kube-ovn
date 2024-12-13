@@ -19,13 +19,13 @@ limitations under the License.
 package v1
 
 import (
-	"context"
+	context "context"
 	time "time"
 
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	apiskubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	versioned "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
 	internalinterfaces "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions/internalinterfaces"
-	v1 "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	watch "k8s.io/apimachinery/pkg/watch"
@@ -36,7 +36,7 @@ import (
 // IptablesFIPRules.
 type IptablesFIPRuleInformer interface {
 	Informer() cache.SharedIndexInformer
-	Lister() v1.IptablesFIPRuleLister
+	Lister() kubeovnv1.IptablesFIPRuleLister
 }
 
 type iptablesFIPRuleInformer struct {
@@ -70,7 +70,7 @@ func NewFilteredIptablesFIPRuleInformer(client versioned.Interface, resyncPeriod
 				return client.KubeovnV1().IptablesFIPRules().Watch(context.TODO(), options)
 			},
 		},
-		&kubeovnv1.IptablesFIPRule{},
+		&apiskubeovnv1.IptablesFIPRule{},
 		resyncPeriod,
 		indexers,
 	)
@@ -81,9 +81,9 @@ func (f *iptablesFIPRuleInformer) defaultInformer(client versioned.Interface, re
 }
 
 func (f *iptablesFIPRuleInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&kubeovnv1.IptablesFIPRule{}, f.defaultInformer)
+	return f.factory.InformerFor(&apiskubeovnv1.IptablesFIPRule{}, f.defaultInformer)
 }
 
-func (f *iptablesFIPRuleInformer) Lister() v1.IptablesFIPRuleLister {
-	return v1.NewIptablesFIPRuleLister(f.Informer().GetIndexer())
+func (f *iptablesFIPRuleInformer) Lister() kubeovnv1.IptablesFIPRuleLister {
+	return kubeovnv1.NewIptablesFIPRuleLister(f.Informer().GetIndexer())
 }

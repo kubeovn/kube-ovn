@@ -19,10 +19,10 @@ limitations under the License.
 package v1
 
 import (
-	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/client-go/listers"
-	"k8s.io/client-go/tools/cache"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	labels "k8s.io/apimachinery/pkg/labels"
+	listers "k8s.io/client-go/listers"
+	cache "k8s.io/client-go/tools/cache"
 )
 
 // OvnDnatRuleLister helps list OvnDnatRules.
@@ -30,19 +30,19 @@ import (
 type OvnDnatRuleLister interface {
 	// List lists all OvnDnatRules in the indexer.
 	// Objects returned here must be treated as read-only.
-	List(selector labels.Selector) (ret []*v1.OvnDnatRule, err error)
+	List(selector labels.Selector) (ret []*kubeovnv1.OvnDnatRule, err error)
 	// Get retrieves the OvnDnatRule from the index for a given name.
 	// Objects returned here must be treated as read-only.
-	Get(name string) (*v1.OvnDnatRule, error)
+	Get(name string) (*kubeovnv1.OvnDnatRule, error)
 	OvnDnatRuleListerExpansion
 }
 
 // ovnDnatRuleLister implements the OvnDnatRuleLister interface.
 type ovnDnatRuleLister struct {
-	listers.ResourceIndexer[*v1.OvnDnatRule]
+	listers.ResourceIndexer[*kubeovnv1.OvnDnatRule]
 }
 
 // NewOvnDnatRuleLister returns a new OvnDnatRuleLister.
 func NewOvnDnatRuleLister(indexer cache.Indexer) OvnDnatRuleLister {
-	return &ovnDnatRuleLister{listers.New[*v1.OvnDnatRule](indexer, v1.Resource("ovndnatrule"))}
+	return &ovnDnatRuleLister{listers.New[*kubeovnv1.OvnDnatRule](indexer, kubeovnv1.Resource("ovndnatrule"))}
 }

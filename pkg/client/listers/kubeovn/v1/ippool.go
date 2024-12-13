@@ -19,10 +19,10 @@ limitations under the License.
 package v1
 
 import (
-	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/client-go/listers"
-	"k8s.io/client-go/tools/cache"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	labels "k8s.io/apimachinery/pkg/labels"
+	listers "k8s.io/client-go/listers"
+	cache "k8s.io/client-go/tools/cache"
 )
 
 // IPPoolLister helps list IPPools.
@@ -30,19 +30,19 @@ import (
 type IPPoolLister interface {
 	// List lists all IPPools in the indexer.
 	// Objects returned here must be treated as read-only.
-	List(selector labels.Selector) (ret []*v1.IPPool, err error)
+	List(selector labels.Selector) (ret []*kubeovnv1.IPPool, err error)
 	// Get retrieves the IPPool from the index for a given name.
 	// Objects returned here must be treated as read-only.
-	Get(name string) (*v1.IPPool, error)
+	Get(name string) (*kubeovnv1.IPPool, error)
 	IPPoolListerExpansion
 }
 
 // iPPoolLister implements the IPPoolLister interface.
 type iPPoolLister struct {
-	listers.ResourceIndexer[*v1.IPPool]
+	listers.ResourceIndexer[*kubeovnv1.IPPool]
 }
 
 // NewIPPoolLister returns a new IPPoolLister.
 func NewIPPoolLister(indexer cache.Indexer) IPPoolLister {
-	return &iPPoolLister{listers.New[*v1.IPPool](indexer, v1.Resource("ippool"))}
+	return &iPPoolLister{listers.New[*kubeovnv1.IPPool](indexer, kubeovnv1.Resource("ippool"))}
 }

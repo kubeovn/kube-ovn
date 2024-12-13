@@ -19,10 +19,10 @@ limitations under the License.
 package v1
 
 import (
-	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/client-go/listers"
-	"k8s.io/client-go/tools/cache"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	labels "k8s.io/apimachinery/pkg/labels"
+	listers "k8s.io/client-go/listers"
+	cache "k8s.io/client-go/tools/cache"
 )
 
 // SecurityGroupLister helps list SecurityGroups.
@@ -30,19 +30,19 @@ import (
 type SecurityGroupLister interface {
 	// List lists all SecurityGroups in the indexer.
 	// Objects returned here must be treated as read-only.
-	List(selector labels.Selector) (ret []*v1.SecurityGroup, err error)
+	List(selector labels.Selector) (ret []*kubeovnv1.SecurityGroup, err error)
 	// Get retrieves the SecurityGroup from the index for a given name.
 	// Objects returned here must be treated as read-only.
-	Get(name string) (*v1.SecurityGroup, error)
+	Get(name string) (*kubeovnv1.SecurityGroup, error)
 	SecurityGroupListerExpansion
 }
 
 // securityGroupLister implements the SecurityGroupLister interface.
 type securityGroupLister struct {
-	listers.ResourceIndexer[*v1.SecurityGroup]
+	listers.ResourceIndexer[*kubeovnv1.SecurityGroup]
 }
 
 // NewSecurityGroupLister returns a new SecurityGroupLister.
 func NewSecurityGroupLister(indexer cache.Indexer) SecurityGroupLister {
-	return &securityGroupLister{listers.New[*v1.SecurityGroup](indexer, v1.Resource("securitygroup"))}
+	return &securityGroupLister{listers.New[*kubeovnv1.SecurityGroup](indexer, kubeovnv1.Resource("securitygroup"))}
 }

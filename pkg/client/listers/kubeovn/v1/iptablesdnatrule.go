@@ -19,10 +19,10 @@ limitations under the License.
 package v1
 
 import (
-	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/client-go/listers"
-	"k8s.io/client-go/tools/cache"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	labels "k8s.io/apimachinery/pkg/labels"
+	listers "k8s.io/client-go/listers"
+	cache "k8s.io/client-go/tools/cache"
 )
 
 // IptablesDnatRuleLister helps list IptablesDnatRules.
@@ -30,19 +30,19 @@ import (
 type IptablesDnatRuleLister interface {
 	// List lists all IptablesDnatRules in the indexer.
 	// Objects returned here must be treated as read-only.
-	List(selector labels.Selector) (ret []*v1.IptablesDnatRule, err error)
+	List(selector labels.Selector) (ret []*kubeovnv1.IptablesDnatRule, err error)
 	// Get retrieves the IptablesDnatRule from the index for a given name.
 	// Objects returned here must be treated as read-only.
-	Get(name string) (*v1.IptablesDnatRule, error)
+	Get(name string) (*kubeovnv1.IptablesDnatRule, error)
 	IptablesDnatRuleListerExpansion
 }
 
 // iptablesDnatRuleLister implements the IptablesDnatRuleLister interface.
 type iptablesDnatRuleLister struct {
-	listers.ResourceIndexer[*v1.IptablesDnatRule]
+	listers.ResourceIndexer[*kubeovnv1.IptablesDnatRule]
 }
 
 // NewIptablesDnatRuleLister returns a new IptablesDnatRuleLister.
 func NewIptablesDnatRuleLister(indexer cache.Indexer) IptablesDnatRuleLister {
-	return &iptablesDnatRuleLister{listers.New[*v1.IptablesDnatRule](indexer, v1.Resource("iptablesdnatrule"))}
+	return &iptablesDnatRuleLister{listers.New[*kubeovnv1.IptablesDnatRule](indexer, kubeovnv1.Resource("iptablesdnatrule"))}
 }
