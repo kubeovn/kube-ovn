@@ -45,7 +45,7 @@ require (
 	golang.org/x/sys v0.28.0
 	golang.org/x/time v0.8.0
 	golang.org/x/tools v0.28.0
-	google.golang.org/grpc v1.68.1
+	google.golang.org/grpc v1.69.0
 	google.golang.org/protobuf v1.35.2
 	gopkg.in/k8snetworkplumbingwg/multus-cni.v4 v4.1.4
 	k8s.io/api v0.32.0
@@ -68,7 +68,7 @@ require (
 
 require (
 	cel.dev/expr v0.18.0 // indirect
-	cloud.google.com/go/compute/metadata v0.5.0 // indirect
+	cloud.google.com/go/compute/metadata v0.5.2 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20230124172434-306776ec8161 // indirect
 	github.com/JeffAshton/win_pdh v0.0.0-20161109143554-76bb4ee9f0ab // indirect
 	github.com/MakeNowJust/heredoc v1.0.0 // indirect
