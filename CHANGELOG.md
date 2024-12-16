@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.13.2 (2024-12-16)
+
+ * [229b0b74](https://github.com/kubeovn/kube-ovn/commit/229b0b74e0039c34c2e61942ce3ad76bd2b00e37) release v1.13.2
+ * [221b1a3c](https://github.com/kubeovn/kube-ovn/commit/221b1a3c7a817f3a184aebcf77b9ce8c7b4970e5) cni: do not exit if the sysctl variable does not exist or can not be set (#4828)
+ * [e4654105](https://github.com/kubeovn/kube-ovn/commit/e4654105efad75d4ea03932626cd3f42cf45700a) skip node local dns ip conntrack when set acl (#4824)
+ * [fe75a849](https://github.com/kubeovn/kube-ovn/commit/fe75a849730904cedb59d12cce9f179b146aab3d) prepare for next release
+
+### Contributors
+
+ * changluyi
+ * 张祖建
+
 ## v1.13.1 (2024-12-11)
 
  * [75dc01ae](https://github.com/kubeovn/kube-ovn/commit/75dc01ae133d9eb92d0101aed50a7eb72b31d114) release v1.13.1
