@@ -1054,6 +1054,19 @@
  * 张祖建
  * 袁又袁
 
+## v1.12.30 (2024-12-16)
+
+ * [4344a467](https://github.com/kubeovn/kube-ovn/commit/4344a46714a1e21a879d1842eb09afb300edddb8) release v1.12.30
+ * [f2c7937a](https://github.com/kubeovn/kube-ovn/commit/f2c7937a7b4227bbaa72aa77c5036c3d6aa1517b) skip node local dns ip conntrack when acl is set: (#4810)
+ * [249b3edc](https://github.com/kubeovn/kube-ovn/commit/249b3edc00a9b9cfbaf1d4192611cf8f1abe0106) bump k8s to v1.30.7 (#4771)
+ * [86794c28](https://github.com/kubeovn/kube-ovn/commit/86794c287c5141762e6ff4dbfe2e6e337ca06abd) bump dpdk base image to ubuntu 24.04 (#4770)
+ * [9dc2ab28](https://github.com/kubeovn/kube-ovn/commit/9dc2ab28f0642a981078cad7cd9e2e0c155ff972) prepare for next release
+
+### Contributors
+
+ * changluyi
+ * 张祖建
+
 ## v1.12.29 (2024-11-25)
 
  * [803bceeb](https://github.com/kubeovn/kube-ovn/commit/803bceeb43434012225be4de8f7bccf8516c5208) release v1.12.29
