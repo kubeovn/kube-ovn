@@ -29,6 +29,7 @@ func (c *OVNNbClient) AddLogicalRouterPolicy(lrName string, priority int, match,
 		return fmt.Errorf("get policy priority %d match %s in logical router %s: %w", priority, match, lrName, err)
 	}
 
+	// Same priority, same match, only retain the first policy
 	duplicate := make([]string, 0, len(policyList))
 	var policyFound *ovnnb.LogicalRouterPolicy
 	for _, policy := range policyList {
