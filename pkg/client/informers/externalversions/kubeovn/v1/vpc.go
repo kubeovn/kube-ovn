@@ -19,13 +19,13 @@ limitations under the License.
 package v1
 
 import (
-	"context"
+	context "context"
 	time "time"
 
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	apiskubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	versioned "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
 	internalinterfaces "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions/internalinterfaces"
-	v1 "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	watch "k8s.io/apimachinery/pkg/watch"
@@ -36,7 +36,7 @@ import (
 // Vpcs.
 type VpcInformer interface {
 	Informer() cache.SharedIndexInformer
-	Lister() v1.VpcLister
+	Lister() kubeovnv1.VpcLister
 }
 
 type vpcInformer struct {
@@ -70,7 +70,7 @@ func NewFilteredVpcInformer(client versioned.Interface, resyncPeriod time.Durati
 				return client.KubeovnV1().Vpcs().Watch(context.TODO(), options)
 			},
 		},
-		&kubeovnv1.Vpc{},
+		&apiskubeovnv1.Vpc{},
 		resyncPeriod,
 		indexers,
 	)
@@ -81,9 +81,9 @@ func (f *vpcInformer) defaultInformer(client versioned.Interface, resyncPeriod t
 }
 
 func (f *vpcInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&kubeovnv1.Vpc{}, f.defaultInformer)
+	return f.factory.InformerFor(&apiskubeovnv1.Vpc{}, f.defaultInformer)
 }
 
-func (f *vpcInformer) Lister() v1.VpcLister {
-	return v1.NewVpcLister(f.Informer().GetIndexer())
+func (f *vpcInformer) Lister() kubeovnv1.VpcLister {
+	return kubeovnv1.NewVpcLister(f.Informer().GetIndexer())
 }

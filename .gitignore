@@ -16,6 +16,7 @@ kubectl-ko-log.tar.gz
 kube-apiserver-audit.log
 kube-apiserver-audit.json
 kube-ovn.yaml
+!/charts/kube-ovn/templates/kube-ovn-crd.yaml
 kube-ovn-crd.yaml
 ovn.yaml
 ovn-ic-controller.yaml

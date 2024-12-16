@@ -19,13 +19,13 @@ limitations under the License.
 package v1
 
 import (
-	"context"
+	context "context"
 	time "time"
 
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	apiskubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	versioned "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
 	internalinterfaces "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions/internalinterfaces"
-	v1 "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	watch "k8s.io/apimachinery/pkg/watch"
@@ -36,7 +36,7 @@ import (
 // VpcDnses.
 type VpcDnsInformer interface {
 	Informer() cache.SharedIndexInformer
-	Lister() v1.VpcDnsLister
+	Lister() kubeovnv1.VpcDnsLister
 }
 
 type vpcDnsInformer struct {
@@ -70,7 +70,7 @@ func NewFilteredVpcDnsInformer(client versioned.Interface, resyncPeriod time.Dur
 				return client.KubeovnV1().VpcDnses().Watch(context.TODO(), options)
 			},
 		},
-		&kubeovnv1.VpcDns{},
+		&apiskubeovnv1.VpcDns{},
 		resyncPeriod,
 		indexers,
 	)
@@ -81,9 +81,9 @@ func (f *vpcDnsInformer) defaultInformer(client versioned.Interface, resyncPerio
 }
 
 func (f *vpcDnsInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&kubeovnv1.VpcDns{}, f.defaultInformer)
+	return f.factory.InformerFor(&apiskubeovnv1.VpcDns{}, f.defaultInformer)
 }
 
-func (f *vpcDnsInformer) Lister() v1.VpcDnsLister {
-	return v1.NewVpcDnsLister(f.Informer().GetIndexer())
+func (f *vpcDnsInformer) Lister() kubeovnv1.VpcDnsLister {
+	return kubeovnv1.NewVpcDnsLister(f.Informer().GetIndexer())
 }

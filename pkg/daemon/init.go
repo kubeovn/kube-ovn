@@ -52,7 +52,7 @@ func InitOVSBridges() (map[string]string, error) {
 
 // InitNodeGateway init ovn0
 func InitNodeGateway(config *Configuration) error {
-	var portName, ip, cidr, macAddr, gw, ipAddr string
+	var portName, ip, joinCIDR, macAddr, gw, ipAddr string
 	for {
 		nodeName := config.NodeName
 		node, err := config.KubeClient.CoreV1().Nodes().Get(context.Background(), nodeName, metav1.GetOptions{})
@@ -72,7 +72,7 @@ func InitNodeGateway(config *Configuration) error {
 		}
 		macAddr = node.Annotations[util.MacAddressAnnotation]
 		ip = node.Annotations[util.IPAddressAnnotation]
-		cidr = node.Annotations[util.CidrAnnotation]
+		joinCIDR = node.Annotations[util.CidrAnnotation]
 		portName = node.Annotations[util.PortNameAnnotation]
 		gw = node.Annotations[util.GatewayAnnotation]
 		break
@@ -82,12 +82,12 @@ func InitNodeGateway(config *Configuration) error {
 		return fmt.Errorf("failed to parse mac %s %w", mac, err)
 	}
 
-	ipAddr, err = util.GetIPAddrWithMask(ip, cidr)
+	ipAddr, err = util.GetIPAddrWithMask(ip, joinCIDR)
 	if err != nil {
-		klog.Errorf("failed to get ip %s with mask %s, %v", ip, cidr, err)
+		klog.Errorf("failed to get ip %s with mask %s, %v", ip, joinCIDR, err)
 		return err
 	}
-	return configureNodeNic(portName, ipAddr, gw, cidr, mac, config.MTU)
+	return configureNodeNic(portName, ipAddr, gw, joinCIDR, mac, config.MTU)
 }
 
 func InitMirror(config *Configuration) error {

@@ -19,10 +19,10 @@ limitations under the License.
 package v1
 
 import (
-	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/client-go/listers"
-	"k8s.io/client-go/tools/cache"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	labels "k8s.io/apimachinery/pkg/labels"
+	listers "k8s.io/client-go/listers"
+	cache "k8s.io/client-go/tools/cache"
 )
 
 // SwitchLBRuleLister helps list SwitchLBRules.
@@ -30,19 +30,19 @@ import (
 type SwitchLBRuleLister interface {
 	// List lists all SwitchLBRules in the indexer.
 	// Objects returned here must be treated as read-only.
-	List(selector labels.Selector) (ret []*v1.SwitchLBRule, err error)
+	List(selector labels.Selector) (ret []*kubeovnv1.SwitchLBRule, err error)
 	// Get retrieves the SwitchLBRule from the index for a given name.
 	// Objects returned here must be treated as read-only.
-	Get(name string) (*v1.SwitchLBRule, error)
+	Get(name string) (*kubeovnv1.SwitchLBRule, error)
 	SwitchLBRuleListerExpansion
 }
 
 // switchLBRuleLister implements the SwitchLBRuleLister interface.
 type switchLBRuleLister struct {
-	listers.ResourceIndexer[*v1.SwitchLBRule]
+	listers.ResourceIndexer[*kubeovnv1.SwitchLBRule]
 }
 
 // NewSwitchLBRuleLister returns a new SwitchLBRuleLister.
 func NewSwitchLBRuleLister(indexer cache.Indexer) SwitchLBRuleLister {
-	return &switchLBRuleLister{listers.New[*v1.SwitchLBRule](indexer, v1.Resource("switchlbrule"))}
+	return &switchLBRuleLister{listers.New[*kubeovnv1.SwitchLBRule](indexer, kubeovnv1.Resource("switchlbrule"))}
 }

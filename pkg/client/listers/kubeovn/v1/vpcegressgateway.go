@@ -19,10 +19,10 @@ limitations under the License.
 package v1
 
 import (
-	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/client-go/listers"
-	"k8s.io/client-go/tools/cache"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	labels "k8s.io/apimachinery/pkg/labels"
+	listers "k8s.io/client-go/listers"
+	cache "k8s.io/client-go/tools/cache"
 )
 
 // VpcEgressGatewayLister helps list VpcEgressGateways.
@@ -30,7 +30,7 @@ import (
 type VpcEgressGatewayLister interface {
 	// List lists all VpcEgressGateways in the indexer.
 	// Objects returned here must be treated as read-only.
-	List(selector labels.Selector) (ret []*v1.VpcEgressGateway, err error)
+	List(selector labels.Selector) (ret []*kubeovnv1.VpcEgressGateway, err error)
 	// VpcEgressGateways returns an object that can list and get VpcEgressGateways.
 	VpcEgressGateways(namespace string) VpcEgressGatewayNamespaceLister
 	VpcEgressGatewayListerExpansion
@@ -38,17 +38,17 @@ type VpcEgressGatewayLister interface {
 
 // vpcEgressGatewayLister implements the VpcEgressGatewayLister interface.
 type vpcEgressGatewayLister struct {
-	listers.ResourceIndexer[*v1.VpcEgressGateway]
+	listers.ResourceIndexer[*kubeovnv1.VpcEgressGateway]
 }
 
 // NewVpcEgressGatewayLister returns a new VpcEgressGatewayLister.
 func NewVpcEgressGatewayLister(indexer cache.Indexer) VpcEgressGatewayLister {
-	return &vpcEgressGatewayLister{listers.New[*v1.VpcEgressGateway](indexer, v1.Resource("vpcegressgateway"))}
+	return &vpcEgressGatewayLister{listers.New[*kubeovnv1.VpcEgressGateway](indexer, kubeovnv1.Resource("vpcegressgateway"))}
 }
 
 // VpcEgressGateways returns an object that can list and get VpcEgressGateways.
 func (s *vpcEgressGatewayLister) VpcEgressGateways(namespace string) VpcEgressGatewayNamespaceLister {
-	return vpcEgressGatewayNamespaceLister{listers.NewNamespaced[*v1.VpcEgressGateway](s.ResourceIndexer, namespace)}
+	return vpcEgressGatewayNamespaceLister{listers.NewNamespaced[*kubeovnv1.VpcEgressGateway](s.ResourceIndexer, namespace)}
 }
 
 // VpcEgressGatewayNamespaceLister helps list and get VpcEgressGateways.
@@ -56,15 +56,15 @@ func (s *vpcEgressGatewayLister) VpcEgressGateways(namespace string) VpcEgressGa
 type VpcEgressGatewayNamespaceLister interface {
 	// List lists all VpcEgressGateways in the indexer for a given namespace.
 	// Objects returned here must be treated as read-only.
-	List(selector labels.Selector) (ret []*v1.VpcEgressGateway, err error)
+	List(selector labels.Selector) (ret []*kubeovnv1.VpcEgressGateway, err error)
 	// Get retrieves the VpcEgressGateway from the indexer for a given namespace and name.
 	// Objects returned here must be treated as read-only.
-	Get(name string) (*v1.VpcEgressGateway, error)
+	Get(name string) (*kubeovnv1.VpcEgressGateway, error)
 	VpcEgressGatewayNamespaceListerExpansion
 }
 
 // vpcEgressGatewayNamespaceLister implements the VpcEgressGatewayNamespaceLister
 // interface.
 type vpcEgressGatewayNamespaceLister struct {
-	listers.ResourceIndexer[*v1.VpcEgressGateway]
+	listers.ResourceIndexer[*kubeovnv1.VpcEgressGateway]
 }

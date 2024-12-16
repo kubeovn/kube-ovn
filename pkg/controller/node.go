@@ -1044,12 +1044,6 @@ func (c *Controller) addPolicyRouteForLocalDNSCacheOnNode(dnsIPs []string, nodeP
 		return c.deletePolicyRouteForLocalDNSCacheOnNode(nodeName, af)
 	}
 
-	policies, err := c.OVNNbClient.GetLogicalRouterPoliciesByExtID(c.config.ClusterRouter, "node", nodeName)
-	if err != nil {
-		klog.Errorf("failed to list logical router policies with external-ids:node = %q: %v", nodeName, err)
-		return err
-	}
-
 	var (
 		externalIDs = map[string]string{
 			"vendor":          util.CniTypeName,
@@ -1064,6 +1058,12 @@ func (c *Controller) addPolicyRouteForLocalDNSCacheOnNode(dnsIPs []string, nodeP
 	matches := strset.NewWithSize(len(dnsIPs))
 	for _, ip := range dnsIPs {
 		matches.Add(fmt.Sprintf("ip%d.src == $%s && ip%d.dst == %s", af, pgAs, af, ip))
+	}
+
+	policies, err := c.OVNNbClient.GetLogicalRouterPoliciesByExtID(c.config.ClusterRouter, "node", nodeName)
+	if err != nil {
+		klog.Errorf("failed to list logical router policies with external-ids:node = %q: %v", nodeName, err)
+		return err
 	}
 
 	for _, policy := range policies {

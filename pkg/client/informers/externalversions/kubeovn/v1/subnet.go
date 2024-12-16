@@ -19,13 +19,13 @@ limitations under the License.
 package v1
 
 import (
-	"context"
+	context "context"
 	time "time"
 
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	apiskubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	versioned "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
 	internalinterfaces "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions/internalinterfaces"
-	v1 "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	watch "k8s.io/apimachinery/pkg/watch"
@@ -36,7 +36,7 @@ import (
 // Subnets.
 type SubnetInformer interface {
 	Informer() cache.SharedIndexInformer
-	Lister() v1.SubnetLister
+	Lister() kubeovnv1.SubnetLister
 }
 
 type subnetInformer struct {
@@ -70,7 +70,7 @@ func NewFilteredSubnetInformer(client versioned.Interface, resyncPeriod time.Dur
 				return client.KubeovnV1().Subnets().Watch(context.TODO(), options)
 			},
 		},
-		&kubeovnv1.Subnet{},
+		&apiskubeovnv1.Subnet{},
 		resyncPeriod,
 		indexers,
 	)
@@ -81,9 +81,9 @@ func (f *subnetInformer) defaultInformer(client versioned.Interface, resyncPerio
 }
 
 func (f *subnetInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&kubeovnv1.Subnet{}, f.defaultInformer)
+	return f.factory.InformerFor(&apiskubeovnv1.Subnet{}, f.defaultInformer)
 }
 
-func (f *subnetInformer) Lister() v1.SubnetLister {
-	return v1.NewSubnetLister(f.Informer().GetIndexer())
+func (f *subnetInformer) Lister() kubeovnv1.SubnetLister {
+	return kubeovnv1.NewSubnetLister(f.Informer().GetIndexer())
 }

@@ -19,13 +19,13 @@ limitations under the License.
 package v1
 
 import (
-	"context"
+	context "context"
 	time "time"
 
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	apiskubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	versioned "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
 	internalinterfaces "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions/internalinterfaces"
-	v1 "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	watch "k8s.io/apimachinery/pkg/watch"
@@ -36,7 +36,7 @@ import (
 // OvnDnatRules.
 type OvnDnatRuleInformer interface {
 	Informer() cache.SharedIndexInformer
-	Lister() v1.OvnDnatRuleLister
+	Lister() kubeovnv1.OvnDnatRuleLister
 }
 
 type ovnDnatRuleInformer struct {
@@ -70,7 +70,7 @@ func NewFilteredOvnDnatRuleInformer(client versioned.Interface, resyncPeriod tim
 				return client.KubeovnV1().OvnDnatRules().Watch(context.TODO(), options)
 			},
 		},
-		&kubeovnv1.OvnDnatRule{},
+		&apiskubeovnv1.OvnDnatRule{},
 		resyncPeriod,
 		indexers,
 	)
@@ -81,9 +81,9 @@ func (f *ovnDnatRuleInformer) defaultInformer(client versioned.Interface, resync
 }
 
 func (f *ovnDnatRuleInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&kubeovnv1.OvnDnatRule{}, f.defaultInformer)
+	return f.factory.InformerFor(&apiskubeovnv1.OvnDnatRule{}, f.defaultInformer)
 }
 
-func (f *ovnDnatRuleInformer) Lister() v1.OvnDnatRuleLister {
-	return v1.NewOvnDnatRuleLister(f.Informer().GetIndexer())
+func (f *ovnDnatRuleInformer) Lister() kubeovnv1.OvnDnatRuleLister {
+	return kubeovnv1.NewOvnDnatRuleLister(f.Informer().GetIndexer())
 }

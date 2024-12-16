@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.13.2 (2024-12-16)
+
+ * [229b0b74](https://github.com/kubeovn/kube-ovn/commit/229b0b74e0039c34c2e61942ce3ad76bd2b00e37) release v1.13.2
+ * [221b1a3c](https://github.com/kubeovn/kube-ovn/commit/221b1a3c7a817f3a184aebcf77b9ce8c7b4970e5) cni: do not exit if the sysctl variable does not exist or can not be set (#4828)
+ * [e4654105](https://github.com/kubeovn/kube-ovn/commit/e4654105efad75d4ea03932626cd3f42cf45700a) skip node local dns ip conntrack when set acl (#4824)
+ * [fe75a849](https://github.com/kubeovn/kube-ovn/commit/fe75a849730904cedb59d12cce9f179b146aab3d) prepare for next release
+
+### Contributors
+
+ * changluyi
+ * 张祖建
+
 ## v1.13.1 (2024-12-11)
 
  * [75dc01ae](https://github.com/kubeovn/kube-ovn/commit/75dc01ae133d9eb92d0101aed50a7eb72b31d114) release v1.13.1
@@ -1053,6 +1065,19 @@
  * 夜微澜
  * 张祖建
  * 袁又袁
+
+## v1.12.30 (2024-12-16)
+
+ * [4344a467](https://github.com/kubeovn/kube-ovn/commit/4344a46714a1e21a879d1842eb09afb300edddb8) release v1.12.30
+ * [f2c7937a](https://github.com/kubeovn/kube-ovn/commit/f2c7937a7b4227bbaa72aa77c5036c3d6aa1517b) skip node local dns ip conntrack when acl is set: (#4810)
+ * [249b3edc](https://github.com/kubeovn/kube-ovn/commit/249b3edc00a9b9cfbaf1d4192611cf8f1abe0106) bump k8s to v1.30.7 (#4771)
+ * [86794c28](https://github.com/kubeovn/kube-ovn/commit/86794c287c5141762e6ff4dbfe2e6e337ca06abd) bump dpdk base image to ubuntu 24.04 (#4770)
+ * [9dc2ab28](https://github.com/kubeovn/kube-ovn/commit/9dc2ab28f0642a981078cad7cd9e2e0c155ff972) prepare for next release
+
+### Contributors
+
+ * changluyi
+ * 张祖建
 
 ## v1.12.29 (2024-11-25)
 
