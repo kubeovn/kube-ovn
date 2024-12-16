@@ -523,10 +523,6 @@ var _ = framework.Describe("[group:ipam]", func() {
 		testCidr := framework.RandomCIDR(f.ClusterIPFamily)
 		testSubnet := framework.MakeSubnet(testSubnetName, "", testCidr, "", "", "", nil, nil, []string{namespaceName})
 		subnetClient.CreateSync(testSubnet)
-		ginkgo.DeferCleanup(func() {
-			ginkgo.By("Deleting subnet " + testSubnetName)
-			subnetClient.DeleteSync(testSubnetName)
-		})
 
 		ginkgo.By("Creating IPPool resources ")
 		ipsRange1 := framework.RandomIPPool(cidr, ipsCount)
@@ -535,21 +531,12 @@ var _ = framework.Describe("[group:ipam]", func() {
 		ippool2 := framework.MakeIPPool(testIPPool2Name, testSubnetName, ipsRange2, []string{namespaceName})
 		ippoolClient.CreateSync(ippool1)
 		ippoolClient.CreateSync(ippool2)
-		ginkgo.DeferCleanup(func() {
-			ginkgo.By("Deleting ippools")
-			ippoolClient.DeleteSync(testIPPool1Name)
-			ippoolClient.DeleteSync(testIPPool2Name)
-		})
 
 		ginkgo.By("Creating statefulset " + testStsName + " with logical switch annotation and no ippool annotation")
 		labels := map[string]string{"app": testStsName}
 		sts := framework.MakeStatefulSet(testStsName, testStsName, int32(replicas), labels, framework.PauseImage)
 		sts.Spec.Template.Annotations = map[string]string{util.LogicalSwitchAnnotation: subnetName}
 		sts = stsClient.CreateSync(sts)
-		ginkgo.DeferCleanup(func() {
-			ginkgo.By("Deleting statefulset " + testStsName)
-			stsClient.DeleteSync(testStsName)
-		})
 
 		ginkgo.By("Getting pods for statefulset " + testStsName)
 		pods := stsClient.GetPods(sts)
@@ -564,5 +551,20 @@ var _ = framework.Describe("[group:ipam]", func() {
 			framework.ExpectMAC(pod.Annotations[util.MacAddressAnnotation])
 			framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
 		}
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Deleting statefulset " + testStsName)
+			stsClient.DeleteSync(testStsName)
+		})
+
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Deleting ippools")
+			ippoolClient.DeleteSync(testIPPool1Name)
+			ippoolClient.DeleteSync(testIPPool2Name)
+		})
+
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Deleting subnet " + testSubnetName)
+			subnetClient.DeleteSync(testSubnetName)
+		})
 	})
 })
