@@ -551,18 +551,15 @@ var _ = framework.Describe("[group:ipam]", func() {
 			framework.ExpectMAC(pod.Annotations[util.MacAddressAnnotation])
 			framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
 		}
+
 		ginkgo.DeferCleanup(func() {
 			ginkgo.By("Deleting statefulset " + testStsName)
 			stsClient.DeleteSync(testStsName)
-		})
 
-		ginkgo.DeferCleanup(func() {
 			ginkgo.By("Deleting ippools")
 			ippoolClient.DeleteSync(testIPPool1Name)
 			ippoolClient.DeleteSync(testIPPool2Name)
-		})
 
-		ginkgo.DeferCleanup(func() {
 			ginkgo.By("Deleting subnet " + testSubnetName)
 			subnetClient.DeleteSync(testSubnetName)
 		})
