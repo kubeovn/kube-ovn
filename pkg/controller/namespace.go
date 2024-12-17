@@ -94,7 +94,7 @@ func (c *Controller) handleAddNamespace(key string) error {
 	namespace := cachedNs.DeepCopy()
 
 	var ls string
-	var lss, cidrs, excludeIps, ipPools []string
+	var lss, cidrs, excludeIps, ipPoolsAnnotation []string
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list subnets %v", err)
@@ -153,7 +153,7 @@ func (c *Controller) handleAddNamespace(key string) error {
 
 	for _, ipPool := range ipPoolList {
 		if slices.Contains(ipPool.Spec.Namespaces, key) {
-			ipPools = append(ipPools, ipPool.Name)
+			ipPoolsAnnotation = append(ipPoolsAnnotation, ipPool.Name)
 			break
 		}
 	}
@@ -195,7 +195,7 @@ func (c *Controller) handleAddNamespace(key string) error {
 	if namespace.Annotations[util.LogicalSwitchAnnotation] == strings.Join(lss, ",") &&
 		namespace.Annotations[util.CidrAnnotation] == strings.Join(cidrs, ";") &&
 		namespace.Annotations[util.ExcludeIpsAnnotation] == strings.Join(excludeIps, ";") &&
-		namespace.Annotations[util.IPPoolAnnotation] == strings.Join(ipPools, ",") {
+		namespace.Annotations[util.IPPoolAnnotation] == strings.Join(ipPoolsAnnotation, ",") {
 		return nil
 	}
 
