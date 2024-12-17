@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
+	nadutils "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/utils"
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -98,16 +98,15 @@ func PodAttachmentIPs(pod *v1.Pod, networkName string) ([]string, error) {
 		return nil, errors.New("programmatic error: pod is nil")
 	}
 
-	if pod.Annotations[nadv1.NetworkStatusAnnot] == "" {
-		return nil, fmt.Errorf("pod %s/%s has no network status annotation", pod.Namespace, pod.Name)
+	statuses, err := nadutils.GetNetworkStatus(pod)
+	if err != nil {
+		klog.Error(err)
+		return nil, fmt.Errorf("failed to get network status for pod %s/%s: %w", pod.Namespace, pod.Name, err)
 	}
-	var status []nadv1.NetworkStatus
-	if err := json.Unmarshal([]byte(pod.Annotations[nadv1.NetworkStatusAnnot]), &status); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal network status annotation of pod %s/%s: %w", pod.Namespace, pod.Name, err)
-	}
-	for _, s := range status {
-		if s.Name == networkName {
-			return s.IPs, nil
+
+	for _, status := range statuses {
+		if status.Name == networkName {
+			return status.IPs, nil
 		}
 	}
 

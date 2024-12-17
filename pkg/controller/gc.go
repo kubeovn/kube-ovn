@@ -7,6 +7,8 @@ import (
 	"strings"
 	"unicode"
 
+	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
+	nadutils "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/utils"
 	"github.com/ovn-org/libovsdb/ovsdb"
 	"github.com/scylladb/go-set/strset"
 	corev1 "k8s.io/api/core/v1"
@@ -963,7 +965,7 @@ func (c *Controller) getVMLsps() []string {
 			vmLsp := ovs.PodNameToPortName(vm.Name, ns.Name, util.OvnProvider)
 			vmLsps = append(vmLsps, vmLsp)
 
-			attachNets, err := util.ParsePodNetworkAnnotation(vm.Spec.Template.ObjectMeta.Annotations[util.AttachmentNetworkAnnotation], vm.Namespace)
+			attachNets, err := nadutils.ParseNetworkAnnotation(vm.Spec.Template.ObjectMeta.Annotations[nadv1.NetworkAttachmentAnnot], vm.Namespace)
 			if err != nil {
 				klog.Errorf("failed to get attachment subnet of vm %s, %v", vm.Name, err)
 				continue

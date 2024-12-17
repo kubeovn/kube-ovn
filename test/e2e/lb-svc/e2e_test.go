@@ -217,7 +217,7 @@ var _ = framework.SerialDescribe("[group:lb-svc]", func() {
 
 		ginkgo.By("Creating client pod " + clientPodName)
 		annotations = map[string]string{nadv1.NetworkAttachmentAnnot: fmt.Sprintf("%s/%s", namespaceName, nadName)}
-		cmd := []string{"sh", "-c", "sleep infinity"}
+		cmd := []string{"sleep", "infinity"}
 		clientPod := framework.MakePod(namespaceName, clientPodName, nil, annotations, f.KubeOVNImage, cmd, nil)
 		clientPod = podClient.CreateSync(clientPod)
 
@@ -324,7 +324,7 @@ var _ = framework.SerialDescribe("[group:lb-svc]", func() {
 
 		ginkgo.By("Creating client pod " + clientPodName)
 		annotations = map[string]string{nadv1.NetworkAttachmentAnnot: fmt.Sprintf("%s/%s", namespaceName, nadName)}
-		cmd := []string{"sh", "-c", "sleep infinity"}
+		cmd := []string{"sleep", "infinity"}
 		clientPod := framework.MakePod(namespaceName, clientPodName, nil, annotations, f.KubeOVNImage, cmd, nil)
 		clientPod = podClient.CreateSync(clientPod)
 

@@ -83,8 +83,8 @@ func (c *Controller) genLbSvcDeployment(svc *corev1.Service, nad *nadv1.NetworkA
 	attachSubnetAnnotation := fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, providerName)
 	attachIPAnnotation := fmt.Sprintf(util.IPAddressAnnotationTemplate, providerName)
 	podAnnotations := map[string]string{
-		util.AttachmentNetworkAnnotation: fmt.Sprintf("%s/%s", attachmentNs, attachmentName),
-		attachSubnetAnnotation:           svc.Annotations[attachSubnetAnnotation],
+		nadv1.NetworkAttachmentAnnot: fmt.Sprintf("%s/%s", attachmentNs, attachmentName),
+		attachSubnetAnnotation:       svc.Annotations[attachSubnetAnnotation],
 	}
 	if svc.Spec.LoadBalancerIP != "" {
 		podAnnotations[attachIPAnnotation] = svc.Spec.LoadBalancerIP
@@ -146,8 +146,8 @@ func (c *Controller) updateLbSvcDeployment(svc *corev1.Service, dp *v1.Deploymen
 	attachSubnetAnnotation := fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, providerName)
 	attachIPAnnotation := fmt.Sprintf(util.IPAddressAnnotationTemplate, providerName)
 	podAnnotations := map[string]string{
-		util.AttachmentNetworkAnnotation: fmt.Sprintf("%s/%s", attachmentNs, attachmentName),
-		attachSubnetAnnotation:           svc.Annotations[attachSubnetAnnotation],
+		nadv1.NetworkAttachmentAnnot: fmt.Sprintf("%s/%s", attachmentNs, attachmentName),
+		attachSubnetAnnotation:       svc.Annotations[attachSubnetAnnotation],
 	}
 	if svc.Spec.LoadBalancerIP != "" {
 		podAnnotations[attachIPAnnotation] = svc.Spec.LoadBalancerIP

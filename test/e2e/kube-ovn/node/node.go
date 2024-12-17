@@ -80,7 +80,7 @@ var _ = framework.OrderedDescribe("[group:node]", func() {
 
 			podName = "pod-" + framework.RandomSuffix()
 			ginkgo.By("Creating pod " + podName + " with host network on node " + node.Name)
-			cmd := []string{"sh", "-c", "sleep infinity"}
+			cmd := []string{"sleep", "infinity"}
 			pod := framework.MakePrivilegedPod(namespaceName, podName, nil, nil, f.KubeOVNImage, cmd, nil)
 			pod.Spec.NodeName = node.Name
 			pod.Spec.HostNetwork = true
@@ -120,7 +120,7 @@ var _ = framework.OrderedDescribe("[group:node]", func() {
 		pod = podClient.CreateSync(pod)
 
 		ginkgo.By("Creating pod " + hostPodName + " with host network")
-		cmd := []string{"sh", "-c", "sleep infinity"}
+		cmd := []string{"sleep", "infinity"}
 		hostPod := framework.MakePod(namespaceName, hostPodName, nil, nil, f.KubeOVNImage, cmd, nil)
 		hostPod.Spec.HostNetwork = true
 		hostPod = podClient.CreateSync(hostPod)
@@ -171,7 +171,7 @@ var _ = framework.OrderedDescribe("[group:node]", func() {
 		}, "cluster ips are not empty")
 
 		ginkgo.By("Creating pod " + hostPodName + " with host network")
-		cmd := []string{"sh", "-c", "sleep infinity"}
+		cmd := []string{"sleep", "infinity"}
 		hostPod := framework.MakePod(namespaceName, hostPodName, nil, nil, f.KubeOVNImage, cmd, nil)
 		hostPod.Spec.HostNetwork = true
 		hostPod = podClient.CreateSync(hostPod)
@@ -230,7 +230,7 @@ var _ = framework.SerialDescribe("[group:node]", func() {
 
 		podName = "pod-" + framework.RandomSuffix()
 		ginkgo.By("Creating pod " + podName + " with host network")
-		cmd := []string{"sh", "-c", "sleep infinity"}
+		cmd := []string{"sleep", "infinity"}
 		pod := framework.MakePrivilegedPod(namespaceName, podName, nil, nil, f.KubeOVNImage, cmd, nil)
 		pod.Spec.NodeName = node.Name
 		pod.Spec.HostNetwork = true

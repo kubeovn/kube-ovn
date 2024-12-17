@@ -13,6 +13,8 @@ import (
 	"sync"
 	"time"
 
+	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
+	nadutils "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/utils"
 	"github.com/scylladb/go-set/strset"
 	"gopkg.in/k8snetworkplumbingwg/multus-cni.v4/pkg/logging"
 	multustypes "gopkg.in/k8snetworkplumbingwg/multus-cni.v4/pkg/types"
@@ -1466,10 +1468,10 @@ type kubeovnNet struct {
 }
 
 func (c *Controller) getPodAttachmentNet(pod *v1.Pod) ([]*kubeovnNet, error) {
-	var multusNets []*multustypes.NetworkSelectionElement
+	var multusNets []*nadv1.NetworkSelectionElement
 	defaultAttachNetworks := pod.Annotations[util.DefaultNetworkAnnotation]
 	if defaultAttachNetworks != "" {
-		attachments, err := util.ParsePodNetworkAnnotation(defaultAttachNetworks, pod.Namespace)
+		attachments, err := nadutils.ParseNetworkAnnotation(defaultAttachNetworks, pod.Namespace)
 		if err != nil {
 			klog.Errorf("failed to parse default attach net for pod '%s', %v", pod.Name, err)
 			return nil, err
@@ -1477,9 +1479,9 @@ func (c *Controller) getPodAttachmentNet(pod *v1.Pod) ([]*kubeovnNet, error) {
 		multusNets = attachments
 	}
 
-	attachNetworks := pod.Annotations[util.AttachmentNetworkAnnotation]
+	attachNetworks := pod.Annotations[nadv1.NetworkAttachmentAnnot]
 	if attachNetworks != "" {
-		attachments, err := util.ParsePodNetworkAnnotation(attachNetworks, pod.Namespace)
+		attachments, err := nadutils.ParseNetworkAnnotation(attachNetworks, pod.Namespace)
 		if err != nil {
 			klog.Errorf("failed to parse attach net for pod '%s', %v", pod.Name, err)
 			return nil, err

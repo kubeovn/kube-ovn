@@ -36,8 +36,9 @@ func MakeMacvlanNetworkAttachmentDefinition(name, namespace, master, mode, provi
 	config := &MacvlanNetConf{
 		NetConf: netconf.NetConf{
 			NetConf: types.NetConf{
-				CNIVersion: CNIVersion,
-				Type:       "macvlan",
+				CNIVersion:   CNIVersion,
+				Type:         "macvlan",
+				Capabilities: map[string]bool{"mac": true},
 			},
 			IPAM: &netconf.IPAMConf{
 				Type:         util.CniTypeName,

@@ -1247,7 +1247,7 @@ spec:
     - name: $podName
       image: $imageID
       imagePullPolicy: IfNotPresent
-      command: ["sh", "-c", "sleep infinity"]
+      command: ["sleep", "infinity"]
   nodeSelector:
     kubernetes.io/hostname: $nodeID
 EOF
@@ -1271,7 +1271,7 @@ spec:
     - name: $podName
       image: $imageID
       imagePullPolicy: IfNotPresent
-      command: ["sh", "-c", "sleep infinity"]
+      command: ["sleep", "infinity"]
   nodeSelector:
     kubernetes.io/hostname: $nodeID
 EOF

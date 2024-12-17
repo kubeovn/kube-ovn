@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -314,7 +315,7 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 		klog.Error(err)
 		return attachmentNetworkName, nil, nil, nil, err
 	}
-	annotations[util.AttachmentNetworkAnnotation] = attachmentNetworkName
+	annotations[nadv1.NetworkAttachmentAnnot] = attachmentNetworkName
 	annotations[util.LogicalSwitchAnnotation] = intSubnet.Name
 	if len(gw.Spec.InternalIPs) != 0 {
 		// set internal IPs
