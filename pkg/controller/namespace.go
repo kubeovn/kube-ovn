@@ -154,7 +154,6 @@ func (c *Controller) handleAddNamespace(key string) error {
 	for _, ipPool := range ipPoolList {
 		if slices.Contains(ipPool.Spec.Namespaces, key) {
 			ipPoolsAnnotation = append(ipPoolsAnnotation, ipPool.Name)
-			break
 		}
 	}
 
