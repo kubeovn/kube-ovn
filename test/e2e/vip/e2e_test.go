@@ -264,7 +264,7 @@ var _ = framework.Describe("[group:vip]", func() {
 		framework.ExpectNotEqual(vip1.Status.Mac, vip2.Status.Mac)
 
 		annotations := map[string]string{util.AAPsAnnotation: vip1Name}
-		cmd := []string{"sh", "-c", "sleep infinity"}
+		cmd := []string{"sleep", "infinity"}
 		ginkgo.By("Creating pod1 support allowed address pair using " + vip1Name)
 		aapPod1 := framework.MakePrivilegedPod(namespaceName, aapPodName1, nil, annotations, f.KubeOVNImage, cmd, nil)
 		aapPod1 = podClient.CreateSync(aapPod1)

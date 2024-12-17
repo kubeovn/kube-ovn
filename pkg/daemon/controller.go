@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 
+	nadutils "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/utils"
 	"github.com/scylladb/go-set/strset"
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -497,7 +498,7 @@ func (c *Controller) enqueuePod(oldObj, newObj interface{}) {
 		c.podQueue.Add(key)
 	}
 
-	attachNets, err := util.ParsePodNetworkAnnotation(newPod.Annotations[util.AttachmentNetworkAnnotation], newPod.Namespace)
+	attachNets, err := nadutils.ParsePodNetworkAnnotation(newPod)
 	if err != nil {
 		return
 	}

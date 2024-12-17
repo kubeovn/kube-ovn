@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	v1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -103,9 +104,9 @@ func (c *Controller) genVpcLbDeployment(vpc *kubeovnv1.Vpc) (*v1.Deployment, err
 	}
 
 	podAnnotations := map[string]string{
-		util.VpcAnnotation:               vpc.Name,
-		util.LogicalSwitchAnnotation:     defaultSubnet.Name,
-		util.AttachmentNetworkAnnotation: fmt.Sprintf(`[{"name": "%s", "default-route": ["%s"]}]`, util.VpcLbNetworkAttachment, strings.ReplaceAll(gateway, ",", `" ,"`)),
+		util.VpcAnnotation:           vpc.Name,
+		util.LogicalSwitchAnnotation: defaultSubnet.Name,
+		nadv1.NetworkAttachmentAnnot: fmt.Sprintf(`[{"name": "%s", "default-route": ["%s"]}]`, util.VpcLbNetworkAttachment, strings.ReplaceAll(gateway, ",", `" ,"`)),
 	}
 
 	deployment := &v1.Deployment{

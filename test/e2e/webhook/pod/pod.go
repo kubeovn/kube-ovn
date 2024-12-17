@@ -56,7 +56,7 @@ var _ = framework.Describe("[group:webhook-pod]", func() {
 
 	framework.ConformanceIt("validate static ip by pod annotation", func() {
 		ginkgo.By("Creating pod " + podName)
-		cmd := []string{"sh", "-c", "sleep infinity"}
+		cmd := []string{"sleep", "infinity"}
 
 		ginkgo.By("validate ip validation")
 		annotations := map[string]string{

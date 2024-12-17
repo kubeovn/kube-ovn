@@ -13,6 +13,7 @@ import (
 	"strings"
 	"text/template"
 
+	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	v1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -371,7 +372,7 @@ func (c *Controller) genVpcDNSSlr(vpcName, namespace string) (*kubeovnv1.SwitchL
 func setVpcDNSInterface(dp *v1.Deployment, subnetName string, defaultSubnet *kubeovnv1.Subnet) {
 	annotations := dp.Spec.Template.Annotations
 	annotations[util.LogicalSwitchAnnotation] = subnetName
-	annotations[util.AttachmentNetworkAnnotation] = fmt.Sprintf("%s/%s", corev1.NamespaceDefault, nadName)
+	annotations[nadv1.NetworkAttachmentAnnot] = fmt.Sprintf("%s/%s", corev1.NamespaceDefault, nadName)
 	annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, nadProvider)] = util.DefaultSubnet
 
 	setVpcDNSRoute(dp, defaultSubnet.Spec.Gateway)

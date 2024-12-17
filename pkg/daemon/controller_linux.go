@@ -12,6 +12,7 @@ import (
 	"strings"
 	"syscall"
 
+	nadutils "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/utils"
 	"github.com/kubeovn/felix/ipsets"
 	"github.com/kubeovn/go-iptables/iptables"
 	"github.com/vishvananda/netlink"
@@ -574,7 +575,7 @@ func (c *Controller) handlePod(key string) error {
 	}
 
 	// set multus-nic bandwidth
-	attachNets, err := util.ParsePodNetworkAnnotation(pod.Annotations[util.AttachmentNetworkAnnotation], pod.Namespace)
+	attachNets, err := nadutils.ParsePodNetworkAnnotation(pod)
 	if err != nil {
 		klog.Error(err)
 		return err

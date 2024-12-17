@@ -584,7 +584,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 			podOnNodeName := fmt.Sprintf("no-bfd-%s", node)
 			ginkgo.By("Creating no bfd pod " + podOnNodeName + " with subnet " + noBfdSubnetName)
 			annotations := map[string]string{util.LogicalSwitchAnnotation: noBfdSubnetName}
-			cmd := []string{"sh", "-c", "sleep infinity"}
+			cmd := []string{"sleep", "infinity"}
 			pod := framework.MakePod(namespaceName, podOnNodeName, nil, annotations, f.KubeOVNImage, cmd, nil)
 			pod.Spec.NodeName = node
 			_ = podClient.CreateSync(pod)
@@ -592,7 +592,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 
 		ginkgo.By("Creating pod with fip")
 		annotations := map[string]string{util.LogicalSwitchAnnotation: noBfdSubnetName}
-		cmd := []string{"sh", "-c", "sleep infinity"}
+		cmd := []string{"sleep", "infinity"}
 		fipPod := framework.MakePod(namespaceName, fipPodName, nil, annotations, f.KubeOVNImage, cmd, nil)
 		fipPod = podClient.CreateSync(fipPod)
 		podEip := framework.MakeOvnEip(podEipName, underlaySubnetName, "", "", "", "")
@@ -768,7 +768,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 			podOnNodeName := fmt.Sprintf("no-bfd-extra-%s", node)
 			ginkgo.By("Creating no bfd extra pod " + podOnNodeName + " with subnet " + noBfdExtraSubnetName)
 			annotations := map[string]string{util.LogicalSwitchAnnotation: noBfdExtraSubnetName}
-			cmd := []string{"sh", "-c", "sleep infinity"}
+			cmd := []string{"sleep", "infinity"}
 			pod := framework.MakePod(namespaceName, podOnNodeName, nil, annotations, f.KubeOVNImage, cmd, nil)
 			pod.Spec.NodeName = node
 			_ = podClient.CreateSync(pod)
@@ -933,7 +933,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 			podOnNodeName := fmt.Sprintf("bfd-%s", node)
 			ginkgo.By("Creating bfd pod " + podOnNodeName + " with subnet " + bfdSubnetName)
 			annotations := map[string]string{util.LogicalSwitchAnnotation: bfdSubnetName}
-			cmd := []string{"sh", "-c", "sleep infinity"}
+			cmd := []string{"sleep", "infinity"}
 			pod := framework.MakePod(namespaceName, podOnNodeName, nil, annotations, f.KubeOVNImage, cmd, nil)
 			pod.Spec.NodeName = node
 			_ = podClient.CreateSync(pod)

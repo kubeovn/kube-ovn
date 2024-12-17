@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	v1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -696,7 +697,7 @@ func (c *Controller) setNatGwAPIAccess(annotations map[string]string, externalNe
 
 	// Attach the NADs to the Pod by adding them to the special annotation
 	attachmentAnnotation := fmt.Sprintf("%s, %s", externalNetworkAttachment, apiNetworkAttachment)
-	annotations[util.AttachmentNetworkAnnotation] = attachmentAnnotation
+	annotations[nadv1.NetworkAttachmentAnnot] = attachmentAnnotation
 
 	// Set the network route to the API, so we can reach it
 	return c.setNatGwAPIRoute(annotations, namespace, name)
@@ -752,10 +753,10 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 
 	externalNetworkNad := util.GetNatGwExternalNetwork(gw.Spec.ExternalSubnets)
 	podAnnotations := map[string]string{
-		util.VpcNatGatewayAnnotation:     gw.Name,
-		util.AttachmentNetworkAnnotation: fmt.Sprintf("%s/%s", c.config.PodNamespace, externalNetworkNad),
-		util.LogicalSwitchAnnotation:     gw.Spec.Subnet,
-		util.IPAddressAnnotation:         gw.Spec.LanIP,
+		util.VpcNatGatewayAnnotation: gw.Name,
+		nadv1.NetworkAttachmentAnnot: fmt.Sprintf("%s/%s", c.config.PodNamespace, externalNetworkNad),
+		util.LogicalSwitchAnnotation: gw.Spec.Subnet,
+		util.IPAddressAnnotation:     gw.Spec.LanIP,
 	}
 
 	// Add an interface that can reach the API server, we need access to it to probe Kube-OVN resources
