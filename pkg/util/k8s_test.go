@@ -1,7 +1,6 @@
 package util
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"math/rand/v2"
@@ -14,15 +13,14 @@ import (
 
 	"github.com/google/uuid"
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
-	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/kubernetes/fake"
-	clientv1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
+
+	"github.com/stretchr/testify/require"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 )
@@ -355,162 +353,6 @@ func TestServiceClusterIPs(t *testing.T) {
 	}
 }
 
-func TestUpdateNodeLabels(t *testing.T) {
-	client := fake.NewSimpleClientset()
-	nodeClient := client.CoreV1().Nodes()
-	tests := []struct {
-		name   string
-		cs     clientv1.NodeInterface
-		node   string
-		labels map[string]any
-		exp    error
-	}{
-		{
-			name: "node_with_labels",
-			cs:   nodeClient,
-			node: "node1",
-			labels: map[string]any{
-				"key1": "value1",
-			},
-			exp: nil,
-		},
-		{
-			name:   "node_with_nil_labels",
-			cs:     nodeClient,
-			node:   "node2",
-			labels: map[string]any{},
-			exp:    nil,
-		},
-		{
-			name: "node_with_unsupported_type",
-			cs:   nodeClient,
-			node: "node3",
-			labels: map[string]any{
-				"callback": func() {},
-			},
-			exp: errors.New("unsupported type"),
-		},
-	}
-	for _, tt := range tests {
-		// create a node
-		node, err := client.CoreV1().Nodes().Create(context.Background(), &v1.Node{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: tt.node,
-			},
-		}, metav1.CreateOptions{})
-		require.NoError(t, err)
-		require.NotNil(t, node)
-		t.Run(tt.name, func(t *testing.T) {
-			err := UpdateNodeLabels(tt.cs, tt.node, tt.labels)
-			if tt.exp == nil {
-				require.NoError(t, err)
-				return
-			}
-			if errors.Is(err, tt.exp) {
-				t.Errorf("got %v, want %v", err, tt.exp)
-			}
-		})
-	}
-}
-
-func TestUpdateNodeAnnotations(t *testing.T) {
-	client := fake.NewSimpleClientset()
-	nodeClient := client.CoreV1().Nodes()
-	tests := []struct {
-		name        string
-		cs          clientv1.NodeInterface
-		node        string
-		annotations map[string]any
-		exp         error
-	}{
-		{
-			name: "node_with_annotations",
-			cs:   nodeClient,
-			node: "node1",
-			annotations: map[string]any{
-				"key1": "value1",
-			},
-			exp: nil,
-		},
-		{
-			name:        "node_with_nil_annotations",
-			cs:          nodeClient,
-			node:        "node2",
-			annotations: map[string]any{},
-			exp:         nil,
-		},
-		{
-			name: "node_with_unsupported_type",
-			cs:   nodeClient,
-			node: "node3",
-			annotations: map[string]any{
-				"callback": func() {},
-			},
-			exp: errors.New("unsupported type"),
-		},
-	}
-	for _, tt := range tests {
-		// create a node
-		node, err := client.CoreV1().Nodes().Create(context.Background(), &v1.Node{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: tt.node,
-			},
-		}, metav1.CreateOptions{})
-		require.NoError(t, err)
-		require.NotNil(t, node)
-		t.Run(tt.name, func(t *testing.T) {
-			err := UpdateNodeAnnotations(tt.cs, tt.node, tt.annotations)
-			if tt.exp == nil {
-				require.NoError(t, err)
-				return
-			}
-			if errors.Is(err, tt.exp) {
-				t.Errorf("got %v, want %v", err, tt.exp)
-			}
-		})
-	}
-}
-
-func TestNodeMergePatch(t *testing.T) {
-	client := fake.NewSimpleClientset()
-	nodeClient := client.CoreV1().Nodes()
-	tests := []struct {
-		name  string
-		cs    clientv1.NodeInterface
-		node  string
-		patch string
-		exp   error
-	}{
-		{
-			name:  "node_with_patch",
-			cs:    nodeClient,
-			node:  "node",
-			patch: `{"metadata":{"labels":{"key1":"value1"}}}`,
-			exp:   nil,
-		},
-	}
-	for _, tt := range tests {
-		// create a node
-		node, err := client.CoreV1().Nodes().Create(context.Background(), &v1.Node{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: tt.node,
-			},
-		}, metav1.CreateOptions{})
-		require.NoError(t, err)
-		require.NotNil(t, node)
-		t.Run(tt.name, func(t *testing.T) {
-			err := nodeMergePatch(tt.cs, tt.node, tt.patch)
-			if tt.exp == nil {
-				require.NoError(t, err)
-				return
-			}
-			if errors.Is(err, tt.exp) {
-				t.Errorf("got %v, want %v", err, tt.exp)
-			}
-		})
-	}
-}
-
 func TestLabelSelectorNotEquals(t *testing.T) {
 	selector, err := LabelSelectorNotEquals("key", "value")
 	require.NoError(t, err)
@@ -827,44 +669,6 @@ func TestDeploymentIsReady(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			ready := DeploymentIsReady(tt.deploy)
 			require.Equal(t, tt.ready, ready)
-		})
-	}
-}
-
-func Test_nodeMergePatch(t *testing.T) {
-	tests := []struct {
-		name    string
-		patch   string
-		wantErr bool
-	}{
-		{
-			name:    "valid_merge_patch",
-			patch:   `{"metadata":{"labels":{"key1":"value1"}}}`,
-			wantErr: false,
-		},
-		{
-			name:    "invalid_merge_patch",
-			patch:   "invalid_merge_patch",
-			wantErr: true,
-		},
-	}
-
-	client := fake.NewClientset(&v1.Node{}).CoreV1().Nodes()
-	_, err := client.Create(context.TODO(), &v1.Node{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "node1",
-		},
-	}, metav1.CreateOptions{})
-	require.NoError(t, err)
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err = nodeMergePatch(client, "node1", tt.patch)
-			if tt.wantErr {
-				require.Error(t, err)
-				return
-			}
-			require.NoError(t, err)
 		})
 	}
 }

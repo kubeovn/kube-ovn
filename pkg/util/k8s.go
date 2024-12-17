@@ -1,9 +1,7 @@
 package util
 
 import (
-	"context"
 	"crypto/tls"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -17,8 +15,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
-	"k8s.io/apimachinery/pkg/types"
-	clientv1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
@@ -146,37 +142,6 @@ func LabelSelectorNotEmpty(key string) (labels.Selector, error) {
 
 func GetTruncatedUID(uid string) string {
 	return uid[len(uid)-12:]
-}
-
-func UpdateNodeLabels(cs clientv1.NodeInterface, node string, labels map[string]any) error {
-	buf, err := json.Marshal(labels)
-	if err != nil {
-		klog.Errorf("failed to marshal labels: %v", err)
-		return err
-	}
-	patch := fmt.Sprintf(`{"metadata":{"labels":%s}}`, string(buf))
-	return nodeMergePatch(cs, node, patch)
-}
-
-func UpdateNodeAnnotations(cs clientv1.NodeInterface, node string, annotations map[string]any) error {
-	buf, err := json.Marshal(annotations)
-	if err != nil {
-		klog.Errorf("failed to marshal annotations: %v", err)
-		return err
-	}
-	patch := fmt.Sprintf(`{"metadata":{"annotations":%s}}`, string(buf))
-	return nodeMergePatch(cs, node, patch)
-}
-
-// we do not use GenerateMergePatchPayload/GenerateStrategicMergePatchPayload,
-// because we use a `null` value to delete a label/annotation
-func nodeMergePatch(cs clientv1.NodeInterface, node, patch string) error {
-	_, err := cs.Patch(context.Background(), node, types.MergePatchType, []byte(patch), metav1.PatchOptions{})
-	if err != nil {
-		klog.Errorf("failed to patch node %s with json merge patch %q: %v", node, patch, err)
-		return err
-	}
-	return nil
 }
 
 func SetOwnerReference(owner, object metav1.Object) error {
