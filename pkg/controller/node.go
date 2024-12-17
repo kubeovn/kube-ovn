@@ -246,10 +246,6 @@ func (c *Controller) handleAddNode(key string) error {
 			klog.Errorf("failed to create port group for node %s and subnet %s: %v", node.Name, subnet.Name, err)
 			return err
 		}
-		if err = c.addPolicyRouteForDistributedSubnet(subnet, node.Name, v4IP, v6IP); err != nil {
-			klog.Errorf("failed to add policy router for node %s and subnet %s: %v", node.Name, subnet.Name, err)
-			return err
-		}
 		// policy route for overlay distributed subnet should be reconciled when node ip changed
 		c.addOrUpdateSubnetQueue.Add(subnet.Name)
 	}
