@@ -567,7 +567,6 @@ var _ = framework.Describe("[group:ipam]", func() {
 		replicas := 1
 		ipsCount := 12
 		testStsName := "test-statefulset" + framework.RandomSuffix()
-		testSubnetName := "ip-pool-subnet2" + framework.RandomSuffix()
 		testIPPool1Name := "ip-pool1" + framework.RandomSuffix()
 		testIPPool2Name := "ip-pool2" + framework.RandomSuffix()
 
@@ -604,8 +603,5 @@ var _ = framework.Describe("[group:ipam]", func() {
 		ginkgo.By("Deleting ippools")
 		ippoolClient.DeleteSync(testIPPool1Name)
 		ippoolClient.DeleteSync(testIPPool2Name)
-
-		ginkgo.By("Deleting subnet " + testSubnetName)
-		subnetClient.DeleteSync(testSubnetName)
 	})
 })
