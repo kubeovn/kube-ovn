@@ -1,7 +1,6 @@
 package util
 
 import (
-	"context"
 	"errors"
 	"net"
 	"net/http"
@@ -10,12 +9,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes/fake"
-	clientv1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/klog/v2"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestDialTCP(t *testing.T) {
@@ -341,162 +339,6 @@ func TestServiceClusterIPs(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if ret := ServiceClusterIPs(tt.svc); len(ret) != len(tt.exp) {
 				t.Errorf("got %v, want %v", ret, tt.exp)
-			}
-		})
-	}
-}
-
-func TestUpdateNodeLabels(t *testing.T) {
-	client := fake.NewSimpleClientset()
-	nodeClient := client.CoreV1().Nodes()
-	tests := []struct {
-		name   string
-		cs     clientv1.NodeInterface
-		node   string
-		labels map[string]any
-		exp    error
-	}{
-		{
-			name: "node_with_labels",
-			cs:   nodeClient,
-			node: "node1",
-			labels: map[string]any{
-				"key1": "value1",
-			},
-			exp: nil,
-		},
-		{
-			name:   "node_with_nil_labels",
-			cs:     nodeClient,
-			node:   "node2",
-			labels: map[string]any{},
-			exp:    nil,
-		},
-		{
-			name: "node_with_unsupported_type",
-			cs:   nodeClient,
-			node: "node3",
-			labels: map[string]any{
-				"callback": func() {},
-			},
-			exp: errors.New("unsupported type"),
-		},
-	}
-	for _, tt := range tests {
-		// create a node
-		node, err := client.CoreV1().Nodes().Create(context.Background(), &v1.Node{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: tt.node,
-			},
-		}, metav1.CreateOptions{})
-		require.NoError(t, err)
-		require.NotNil(t, node)
-		t.Run(tt.name, func(t *testing.T) {
-			err := UpdateNodeLabels(tt.cs, tt.node, tt.labels)
-			if tt.exp == nil {
-				require.NoError(t, err)
-				return
-			}
-			if errors.Is(err, tt.exp) {
-				t.Errorf("got %v, want %v", err, tt.exp)
-			}
-		})
-	}
-}
-
-func TestUpdateNodeAnnotations(t *testing.T) {
-	client := fake.NewSimpleClientset()
-	nodeClient := client.CoreV1().Nodes()
-	tests := []struct {
-		name        string
-		cs          clientv1.NodeInterface
-		node        string
-		annotations map[string]any
-		exp         error
-	}{
-		{
-			name: "node_with_annotations",
-			cs:   nodeClient,
-			node: "node1",
-			annotations: map[string]any{
-				"key1": "value1",
-			},
-			exp: nil,
-		},
-		{
-			name:        "node_with_nil_annotations",
-			cs:          nodeClient,
-			node:        "node2",
-			annotations: map[string]any{},
-			exp:         nil,
-		},
-		{
-			name: "node_with_unsupported_type",
-			cs:   nodeClient,
-			node: "node3",
-			annotations: map[string]any{
-				"callback": func() {},
-			},
-			exp: errors.New("unsupported type"),
-		},
-	}
-	for _, tt := range tests {
-		// create a node
-		node, err := client.CoreV1().Nodes().Create(context.Background(), &v1.Node{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: tt.node,
-			},
-		}, metav1.CreateOptions{})
-		require.NoError(t, err)
-		require.NotNil(t, node)
-		t.Run(tt.name, func(t *testing.T) {
-			err := UpdateNodeAnnotations(tt.cs, tt.node, tt.annotations)
-			if tt.exp == nil {
-				require.NoError(t, err)
-				return
-			}
-			if errors.Is(err, tt.exp) {
-				t.Errorf("got %v, want %v", err, tt.exp)
-			}
-		})
-	}
-}
-
-func TestNodeMergePatch(t *testing.T) {
-	client := fake.NewSimpleClientset()
-	nodeClient := client.CoreV1().Nodes()
-	tests := []struct {
-		name  string
-		cs    clientv1.NodeInterface
-		node  string
-		patch string
-		exp   error
-	}{
-		{
-			name:  "node_with_patch",
-			cs:    nodeClient,
-			node:  "node",
-			patch: `{"metadata":{"labels":{"key1":"value1"}}}`,
-			exp:   nil,
-		},
-	}
-	for _, tt := range tests {
-		// create a node
-		node, err := client.CoreV1().Nodes().Create(context.Background(), &v1.Node{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: tt.node,
-			},
-		}, metav1.CreateOptions{})
-		require.NoError(t, err)
-		require.NotNil(t, node)
-		t.Run(tt.name, func(t *testing.T) {
-			err := nodeMergePatch(tt.cs, tt.node, tt.patch)
-			if tt.exp == nil {
-				require.NoError(t, err)
-				return
-			}
-			if errors.Is(err, tt.exp) {
-				t.Errorf("got %v, want %v", err, tt.exp)
 			}
 		})
 	}

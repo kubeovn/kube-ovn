@@ -12,7 +12,6 @@ import (
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
@@ -80,7 +79,7 @@ func newTypedRateLimitingQueue[T comparable](name string, rateLimiter workqueue.
 func NewController(config *Configuration, stopCh <-chan struct{}, podInformerFactory, nodeInformerFactory informers.SharedInformerFactory, kubeovnInformerFactory kubeovninformer.SharedInformerFactory) (*Controller, error) {
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(klog.Infof)
-	eventBroadcaster.StartRecordingToSink(&typedcorev1.EventSinkImpl{Interface: config.KubeClient.CoreV1().Events("")})
+	eventBroadcaster.StartRecordingToSink(&typedcorev1.EventSinkImpl{Interface: config.KubeClient.CoreV1().Events(v1.NamespaceAll)})
 	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: config.NodeName})
 
 	providerNetworkInformer := kubeovnInformerFactory.Kubeovn().V1().ProviderNetworks()
@@ -281,7 +280,7 @@ func (c *Controller) initProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v1
 		}
 	}
 
-	labels := map[string]any{
+	patch := util.KVPatch{
 		fmt.Sprintf(util.ProviderNetworkReadyTemplate, pn.Name):     nil,
 		fmt.Sprintf(util.ProviderNetworkInterfaceTemplate, pn.Name): nil,
 		fmt.Sprintf(util.ProviderNetworkMtuTemplate, pn.Name):       nil,
@@ -308,19 +307,19 @@ func (c *Controller) initProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v1
 	var err error
 	klog.V(3).Infof("ovs init provider network %s", pn.Name)
 	if mtu, err = c.ovsInitProviderNetwork(pn.Name, nic, vlans.List(), pn.Spec.ExchangeLinkName, c.config.MacLearningFallback); err != nil {
-		delete(labels, fmt.Sprintf(util.ProviderNetworkExcludeTemplate, pn.Name))
-		if err1 := util.UpdateNodeLabels(c.config.KubeClient.CoreV1().Nodes(), node.Name, labels); err1 != nil {
-			klog.Errorf("failed to update annotations of node %s: %v", node.Name, err1)
+		delete(patch, fmt.Sprintf(util.ProviderNetworkExcludeTemplate, pn.Name))
+		if err1 := util.PatchLabels(c.config.KubeClient.CoreV1().Nodes(), node.Name, patch); err1 != nil {
+			klog.Errorf("failed to patch annotations of node %s: %v", node.Name, err1)
 		}
 		c.recordProviderNetworkErr(pn.Name, err.Error())
 		return err
 	}
 
-	labels[fmt.Sprintf(util.ProviderNetworkReadyTemplate, pn.Name)] = "true"
-	labels[fmt.Sprintf(util.ProviderNetworkInterfaceTemplate, pn.Name)] = nic
-	labels[fmt.Sprintf(util.ProviderNetworkMtuTemplate, pn.Name)] = strconv.Itoa(mtu)
-	if err = util.UpdateNodeLabels(c.config.KubeClient.CoreV1().Nodes(), node.Name, labels); err != nil {
-		klog.Errorf("failed to update labels of node %s: %v", node.Name, err)
+	patch[fmt.Sprintf(util.ProviderNetworkReadyTemplate, pn.Name)] = "true"
+	patch[fmt.Sprintf(util.ProviderNetworkInterfaceTemplate, pn.Name)] = nic
+	patch[fmt.Sprintf(util.ProviderNetworkMtuTemplate, pn.Name)] = strconv.Itoa(mtu)
+	if err = util.PatchLabels(c.config.KubeClient.CoreV1().Nodes(), node.Name, patch); err != nil {
+		klog.Errorf("failed to patch labels of node %s: %v", node.Name, err)
 		return err
 	}
 	c.recordProviderNetworkErr(pn.Name, "")
@@ -331,7 +330,7 @@ func (c *Controller) recordProviderNetworkErr(providerNetwork, errMsg string) {
 	var currentPod *v1.Pod
 	var err error
 	if c.localPodName == "" {
-		pods, err := c.config.KubeClient.CoreV1().Pods("").List(context.Background(), metav1.ListOptions{
+		pods, err := c.config.KubeClient.CoreV1().Pods(v1.NamespaceAll).List(context.Background(), metav1.ListOptions{
 			LabelSelector: "app=kube-ovn-cni",
 			FieldSelector: fmt.Sprintf("spec.nodeName=%s", c.config.NodeName),
 		})
@@ -358,23 +357,14 @@ func (c *Controller) recordProviderNetworkErr(providerNetwork, errMsg string) {
 		}
 	}
 
-	newPod := currentPod.DeepCopy()
-	if newPod.Annotations == nil {
-		newPod.Annotations = make(map[string]string)
-	}
-	if newPod.Annotations[fmt.Sprintf(util.ProviderNetworkErrMessageTemplate, providerNetwork)] != errMsg {
+	patch := util.KVPatch{}
+	if currentPod.Annotations[fmt.Sprintf(util.ProviderNetworkErrMessageTemplate, providerNetwork)] != errMsg {
 		if errMsg == "" {
-			delete(newPod.Annotations, fmt.Sprintf(util.ProviderNetworkErrMessageTemplate, providerNetwork))
+			patch[fmt.Sprintf(util.ProviderNetworkErrMessageTemplate, providerNetwork)] = nil
 		} else {
-			newPod.Annotations[fmt.Sprintf(util.ProviderNetworkErrMessageTemplate, providerNetwork)] = errMsg
+			patch[fmt.Sprintf(util.ProviderNetworkErrMessageTemplate, providerNetwork)] = errMsg
 		}
-		patch, err := util.GenerateStrategicMergePatchPayload(currentPod, newPod)
-		if err != nil {
-			klog.Errorf("failed to gen patch payload pod %s: %v", c.localPodName, err)
-			return
-		}
-		if _, err = c.config.KubeClient.CoreV1().Pods(c.localNamespace).Patch(context.Background(), c.localPodName,
-			types.StrategicMergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
+		if err = util.PatchAnnotations(c.config.KubeClient.CoreV1().Pods(c.localNamespace), c.localPodName, patch); err != nil {
 			klog.Errorf("failed to patch pod %s: %v", c.localPodName, err)
 			return
 		}
@@ -382,14 +372,14 @@ func (c *Controller) recordProviderNetworkErr(providerNetwork, errMsg string) {
 }
 
 func (c *Controller) cleanProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v1.Node) error {
-	labels := map[string]any{
+	patch := util.KVPatch{
 		fmt.Sprintf(util.ProviderNetworkReadyTemplate, pn.Name):     nil,
 		fmt.Sprintf(util.ProviderNetworkInterfaceTemplate, pn.Name): nil,
 		fmt.Sprintf(util.ProviderNetworkMtuTemplate, pn.Name):       nil,
 		fmt.Sprintf(util.ProviderNetworkExcludeTemplate, pn.Name):   "true",
 	}
-	if err := util.UpdateNodeLabels(c.config.KubeClient.CoreV1().Nodes(), node.Name, labels); err != nil {
-		klog.Errorf("failed to update labels of node %s: %v", node.Name, err)
+	if err := util.PatchLabels(c.config.KubeClient.CoreV1().Nodes(), node.Name, patch); err != nil {
+		klog.Errorf("failed to patch labels of node %s: %v", node.Name, err)
 		return err
 	}
 
@@ -411,14 +401,14 @@ func (c *Controller) handleDeleteProviderNetwork(pn *kubeovnv1.ProviderNetwork) 
 		return nil
 	}
 
-	labels := map[string]any{
+	patch := util.KVPatch{
 		fmt.Sprintf(util.ProviderNetworkReadyTemplate, pn.Name):     nil,
 		fmt.Sprintf(util.ProviderNetworkInterfaceTemplate, pn.Name): nil,
 		fmt.Sprintf(util.ProviderNetworkMtuTemplate, pn.Name):       nil,
 		fmt.Sprintf(util.ProviderNetworkExcludeTemplate, pn.Name):   nil,
 	}
-	if err = util.UpdateNodeLabels(c.config.KubeClient.CoreV1().Nodes(), node.Name, labels); err != nil {
-		klog.Errorf("failed to update labels of node %s: %v", node.Name, err)
+	if err = util.PatchLabels(c.config.KubeClient.CoreV1().Nodes(), node.Name, patch); err != nil {
+		klog.Errorf("failed to patch labels of node %s: %v", node.Name, err)
 		return err
 	}
 

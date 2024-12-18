@@ -242,8 +242,8 @@ func (c *Controller) removeInterConnection(azName string) error {
 		return err
 	}
 	for _, node := range nodes {
-		labels := map[string]any{util.ICGatewayLabel: "false"}
-		if err = util.UpdateNodeLabels(c.config.KubeClient.CoreV1().Nodes(), node.Name, labels); err != nil {
+		patch := util.KVPatch{util.ICGatewayLabel: "false"}
+		if err = util.PatchLabels(c.config.KubeClient.CoreV1().Nodes(), node.Name, patch); err != nil {
 			klog.Errorf("failed to patch ic gw node %s: %v", node.Name, err)
 			return err
 		}
@@ -305,8 +305,8 @@ func (c *Controller) establishInterConnection(config map[string]string) error {
 				klog.Errorf("failed to get gw node %q: %v", gw, err)
 				return err
 			}
-			labels := map[string]any{util.ICGatewayLabel: "true"}
-			if err = util.UpdateNodeLabels(c.config.KubeClient.CoreV1().Nodes(), node.Name, labels); err != nil {
+			patch := util.KVPatch{util.ICGatewayLabel: "true"}
+			if err = util.PatchLabels(c.config.KubeClient.CoreV1().Nodes(), node.Name, patch); err != nil {
 				klog.Errorf("failed to patch ic gw node %s: %v", node.Name, err)
 				return err
 			}

@@ -1,13 +1,10 @@
 package controller
 
 import (
-	"context"
 	"fmt"
 
 	v1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
@@ -48,15 +45,11 @@ func (c *Controller) inspectPod() error {
 				}
 
 				if !exists { // pod exists but not lsp
-					delete(pod.Annotations, fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName))
-					delete(pod.Annotations, fmt.Sprintf(util.RoutedAnnotationTemplate, podNet.ProviderName))
-					patch, err := util.GenerateStrategicMergePatchPayload(oriPod, pod)
-					if err != nil {
-						klog.Errorf("failed to generate patch payload, %v", err)
-						return err
+					patch := util.KVPatch{
+						fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName): nil,
+						fmt.Sprintf(util.RoutedAnnotationTemplate, podNet.ProviderName):    nil,
 					}
-					if _, err := c.config.KubeClient.CoreV1().Pods(pod.Namespace).Patch(context.Background(), pod.Name,
-						types.StrategicMergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
+					if err = util.PatchAnnotations(c.config.KubeClient.CoreV1().Pods(pod.Namespace), pod.Name, patch); err != nil {
 						klog.Errorf("patch pod %s/%s failed %v during inspection", pod.Name, pod.Namespace, err)
 						return err
 					}

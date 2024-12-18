@@ -22,7 +22,6 @@ import (
 	sriovutilfs "github.com/k8snetworkplumbingwg/sriovnet/pkg/utils/filesystem"
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
-	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -142,25 +141,13 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 		} else {
 			podNameNew = podName
 		}
-		var pod *v1.Pod
-		pod, err = csh.Controller.podsLister.Pods(podNamespace).Get(podNameNew)
-		if err != nil {
-			klog.Errorf("failed to generate patch for pod %s/%s: %v", podNameNew, podNamespace, err)
-			return nil, err
+		patch := util.KVPatch{
+			fmt.Sprintf(util.VfRepresentorNameTemplate, provider): hostNicName,
+			fmt.Sprintf(util.VfNameTemplate, provider):            containerNicName,
+			fmt.Sprintf(util.PodNicAnnotationTemplate, provider):  util.SriovNicType,
 		}
-		oriPod := pod.DeepCopy()
-		pod.Annotations[fmt.Sprintf(util.VfRepresentorNameTemplate, provider)] = hostNicName
-		pod.Annotations[fmt.Sprintf(util.VfNameTemplate, provider)] = containerNicName
-		pod.Annotations[fmt.Sprintf(util.PodNicAnnotationTemplate, provider)] = util.SriovNicType
-		var patch []byte
-		patch, err = util.GenerateMergePatchPayload(oriPod, pod)
-		if err != nil {
-			klog.Errorf("failed to generate patch for pod %s/%s: %v", podNameNew, podNamespace, err)
-			return nil, err
-		}
-		if _, err = csh.Config.KubeClient.CoreV1().Pods(podNamespace).Patch(context.Background(), podNameNew,
-			types.MergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
-			klog.Errorf("patch pod %s/%s failed: %v", podNameNew, podNamespace, err)
+		if err = util.PatchAnnotations(csh.Config.KubeClient.CoreV1().Pods(podNamespace), podNameNew, patch); err != nil {
+			klog.Errorf("failed to patch pod %s/%s: %v", podNamespace, podNameNew, err)
 			return nil, err
 		}
 	}
@@ -1051,9 +1038,9 @@ func (c *Controller) patchNodeExternalGwLabel(enabled bool) error {
 		return err
 	}
 
-	labels := map[string]any{util.NodeExtGwLabel: strconv.FormatBool(enabled)}
-	if err = util.UpdateNodeLabels(c.config.KubeClient.CoreV1().Nodes(), node.Name, labels); err != nil {
-		klog.Errorf("failed to update labels of node %s: %v", node.Name, err)
+	patch := util.KVPatch{util.NodeExtGwLabel: strconv.FormatBool(enabled)}
+	if err = util.PatchLabels(c.config.KubeClient.CoreV1().Nodes(), node.Name, patch); err != nil {
+		klog.Errorf("failed to patch labels of node %s: %v", node.Name, err)
 		return err
 	}
 
