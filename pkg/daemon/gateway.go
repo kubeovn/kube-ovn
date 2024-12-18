@@ -106,7 +106,7 @@ func (c *Controller) getSubnetsNeedNAT(protocol string) ([]string, error) {
 	for _, subnet := range subnets {
 		if c.isSubnetNeedNat(subnet, protocol) {
 			cidrBlock, err := getCidrByProtocol(subnet.Spec.CIDRBlock, protocol)
-			if err == nil {
+			if err == nil && cidrBlock != "" {
 				subnetsNeedNat = append(subnetsNeedNat, cidrBlock)
 			}
 		}
@@ -146,7 +146,7 @@ func (c *Controller) getSubnetsDistributedGateway(protocol string) ([]string, er
 			subnet.Spec.GatewayType == kubeovnv1.GWDistributedType &&
 			(subnet.Spec.Protocol == kubeovnv1.ProtocolDual || subnet.Spec.Protocol == protocol) {
 			cidrBlock, err := getCidrByProtocol(subnet.Spec.CIDRBlock, protocol)
-			if err == nil {
+			if err == nil && cidrBlock != "" {
 				result = append(result, cidrBlock)
 			}
 		}
@@ -177,7 +177,7 @@ func (c *Controller) getDefaultVpcSubnetsCIDR(protocol string) ([]string, map[st
 	for _, subnet := range subnets {
 		if subnet.Spec.Vpc == c.config.ClusterRouter && (subnet.Spec.Vlan == "" || subnet.Spec.LogicalGateway) && subnet.Spec.CIDRBlock != "" {
 			cidrBlock, err := getCidrByProtocol(subnet.Spec.CIDRBlock, protocol)
-			if err == nil {
+			if err == nil && cidrBlock != "" {
 				ret = append(ret, cidrBlock)
 				subnetMap[subnet.Name] = cidrBlock
 			}
@@ -209,22 +209,17 @@ func (c *Controller) getOtherNodes(protocol string) ([]string, error) {
 }
 
 func getCidrByProtocol(cidr, protocol string) (string, error) {
-	var cidrStr string
 	if err := util.CheckCidrs(cidr); err != nil {
 		return "", err
 	}
 
-	if util.CheckProtocol(cidr) == kubeovnv1.ProtocolDual {
-		cidrBlocks := strings.Split(cidr, ",")
-		if protocol == kubeovnv1.ProtocolIPv4 {
-			cidrStr = cidrBlocks[0]
-		} else if protocol == kubeovnv1.ProtocolIPv6 {
-			cidrStr = cidrBlocks[1]
+	for _, cidr := range strings.Split(cidr, ",") {
+		if util.CheckProtocol(cidr) == protocol {
+			return cidr, nil
 		}
-	} else {
-		cidrStr = cidr
 	}
-	return cidrStr, nil
+
+	return "", nil
 }
 
 func (c *Controller) getEgressNatIPByNode(nodeName string) (map[string]string, error) {
