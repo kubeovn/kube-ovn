@@ -181,9 +181,9 @@ func initChassisAnno(cfg *daemon.Configuration) error {
 		klog.Error(err)
 		return err
 	}
-	annotations := map[string]any{util.ChassisAnnotation: chassesName}
-	if err = util.UpdateNodeAnnotations(cfg.KubeClient.CoreV1().Nodes(), cfg.NodeName, annotations); err != nil {
-		klog.Errorf("failed to update chassis annotation of node %s: %v", cfg.NodeName, err)
+	patch := util.KVPatch{util.ChassisAnnotation: chassesName}
+	if err = util.PatchAnnotations(cfg.KubeClient.CoreV1().Nodes(), cfg.NodeName, patch); err != nil {
+		klog.Errorf("failed to patch chassis annotation of node %s: %v", cfg.NodeName, err)
 		return err
 	}
 

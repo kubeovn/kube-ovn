@@ -322,7 +322,7 @@ func (c *Controller) handleAddNode(key string) error {
 		return err
 	}
 
-	annotations := map[string]any{
+	patch := util.KVPatch{
 		util.IPAddressAnnotation:     ipStr,
 		util.MacAddressAnnotation:    mac,
 		util.CidrAnnotation:          subnet.Spec.CIDRBlock,
@@ -331,7 +331,7 @@ func (c *Controller) handleAddNode(key string) error {
 		util.AllocatedAnnotation:     "true",
 		util.PortNameAnnotation:      portName,
 	}
-	if err = util.UpdateNodeAnnotations(c.config.KubeClient.CoreV1().Nodes(), node.Name, annotations); err != nil {
+	if err = util.PatchAnnotations(c.config.KubeClient.CoreV1().Nodes(), node.Name, patch); err != nil {
 		klog.Errorf("failed to update annotations of node %s: %v", node.Name, err)
 		return err
 	}
@@ -432,14 +432,10 @@ func (c *Controller) handleNodeAnnotationsForProviderNetworks(node *v1.Node) err
 		}
 
 		if len(node.Annotations) != 0 {
-			newNode := node.DeepCopy()
-			delete(newNode.Annotations, excludeAnno)
-			delete(newNode.Annotations, interfaceAnno)
-			if len(newNode.Annotations) != len(node.Annotations) {
-				if _, err = c.config.KubeClient.CoreV1().Nodes().Update(context.Background(), newNode, metav1.UpdateOptions{}); err != nil {
-					klog.Errorf("failed to update node %s: %v", node.Name, err)
-					return err
-				}
+			patch := util.KVPatch{excludeAnno: nil, interfaceAnno: nil}
+			if err = util.PatchAnnotations(c.config.KubeClient.CoreV1().Nodes(), node.Name, patch); err != nil {
+				klog.Errorf("failed to patch node %s: %v", node.Name, err)
+				return err
 			}
 		}
 

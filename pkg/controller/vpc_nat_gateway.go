@@ -349,13 +349,12 @@ func (c *Controller) handleInitVpcNatGw(key string) error {
 	}
 	// subnet for vpc-nat-gw has been checked when create vpc-nat-gw
 
-	oriPod, err := c.getNatGwPod(key)
+	pod, err := c.getNatGwPod(key)
 	if err != nil {
 		err := fmt.Errorf("failed to get nat gw %s pod: %v", gw.Name, err)
 		klog.Error(err)
 		return err
 	}
-	pod := oriPod.DeepCopy()
 
 	if pod.Status.Phase != corev1.PodRunning {
 		time.Sleep(10 * time.Second)
@@ -398,15 +397,10 @@ func (c *Controller) handleInitVpcNatGw(key string) error {
 	c.updateVpcSnatQueue.Add(key)
 	c.updateVpcSubnetQueue.Add(key)
 	c.updateVpcEipQueue.Add(key)
-	pod.Annotations[util.VpcNatGatewayInitAnnotation] = "true"
-	patch, err := util.GenerateStrategicMergePatchPayload(oriPod, pod)
-	if err != nil {
-		klog.Error(err)
-		return err
-	}
-	if _, err := c.config.KubeClient.CoreV1().Pods(pod.Namespace).Patch(context.Background(), pod.Name,
-		types.StrategicMergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
-		err := fmt.Errorf("patch pod %s/%s failed %v", pod.Name, pod.Namespace, err)
+
+	patch := util.KVPatch{util.VpcNatGatewayInitAnnotation: "true"}
+	if err = util.PatchAnnotations(c.config.KubeClient.CoreV1().Pods(pod.Namespace), pod.Name, patch); err != nil {
+		err := fmt.Errorf("failed to patch pod %s/%s: %w", pod.Namespace, pod.Name, err)
 		klog.Error(err)
 		return err
 	}
@@ -598,13 +592,12 @@ func (c *Controller) handleUpdateNatGwSubnetRoute(natGwKey string) error {
 		return err
 	}
 
-	oriPod, err := c.getNatGwPod(natGwKey)
+	pod, err := c.getNatGwPod(natGwKey)
 	if err != nil {
 		err = fmt.Errorf("failed to get nat gw '%s' pod, %v", natGwKey, err)
 		klog.Error(err)
 		return err
 	}
-	pod := oriPod.DeepCopy()
 	var extRules []string
 	var v4ExternalGw, v4InternalGw, v4ExternalCidr string
 	externalNetwork := util.GetNatGwExternalNetwork(gw.Spec.ExternalSubnets)
@@ -699,15 +692,10 @@ func (c *Controller) handleUpdateNatGwSubnetRoute(natGwKey string) error {
 		klog.Errorf("marshal eip annotation failed %v", err)
 		return err
 	}
-	pod.Annotations[util.VpcCIDRsAnnotation] = string(cidrBytes)
-	patch, err := util.GenerateStrategicMergePatchPayload(oriPod, pod)
-	if err != nil {
-		klog.Error(err)
-		return err
-	}
-	if _, err := c.config.KubeClient.CoreV1().Pods(pod.Namespace).Patch(context.Background(), pod.Name,
-		types.StrategicMergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
-		err = fmt.Errorf("patch pod %s/%s failed %v", pod.Name, pod.Namespace, err)
+
+	patch := util.KVPatch{util.VpcCIDRsAnnotation: string(cidrBytes)}
+	if err = util.PatchAnnotations(c.config.KubeClient.CoreV1().Pods(pod.Namespace), pod.Name, patch); err != nil {
+		err = fmt.Errorf("failed to patch pod %s/%s: %w", pod.Namespace, pod.Name, err)
 		klog.Error(err)
 		return err
 	}

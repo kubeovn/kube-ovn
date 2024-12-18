@@ -815,9 +815,9 @@ func (c *Controller) patchNodeExternalGwLabel(enabled bool) error {
 		return err
 	}
 
-	labels := map[string]any{util.NodeExtGwLabel: strconv.FormatBool(enabled)}
-	if err = util.UpdateNodeLabels(c.config.KubeClient.CoreV1().Nodes(), node.Name, labels); err != nil {
-		klog.Errorf("failed to update labels of node %s: %v", node.Name, err)
+	patch := util.KVPatch{util.NodeExtGwLabel: strconv.FormatBool(enabled)}
+	if err = util.PatchLabels(c.config.KubeClient.CoreV1().Nodes(), node.Name, patch); err != nil {
+		klog.Errorf("failed to patch labels of node %s: %v", node.Name, err)
 		return err
 	}
 

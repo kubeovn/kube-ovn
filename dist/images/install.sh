@@ -2985,6 +2985,7 @@ rules:
       - get
       - list
       - update
+      - patch
       - create
       - delete
       - watch

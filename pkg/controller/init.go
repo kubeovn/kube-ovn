@@ -485,16 +485,15 @@ func (c *Controller) initDefaultProviderNetwork() error {
 
 	excludeAnno := fmt.Sprintf(util.ProviderNetworkExcludeTemplate, c.config.DefaultProviderName)
 	interfaceAnno := fmt.Sprintf(util.ProviderNetworkInterfaceTemplate, c.config.DefaultProviderName)
-	newNodes := make([]*v1.Node, 0, len(nodes))
+	patchNodes := make([]string, 0, len(nodes))
 	for _, node := range nodes {
 		if len(node.Annotations) == 0 {
 			continue
 		}
 
-		var newNode *v1.Node
 		if node.Annotations[excludeAnno] == "true" {
 			pn.Spec.ExcludeNodes = append(pn.Spec.ExcludeNodes, node.Name)
-			newNode = node.DeepCopy()
+			patchNodes = append(patchNodes, node.Name)
 		} else if s := node.Annotations[interfaceAnno]; s != "" {
 			var index *int
 			for i := range pn.Spec.CustomInterfaces {
@@ -509,12 +508,7 @@ func (c *Controller) initDefaultProviderNetwork() error {
 				ci := kubeovnv1.CustomInterface{Interface: s, Nodes: []string{node.Name}}
 				pn.Spec.CustomInterfaces = append(pn.Spec.CustomInterfaces, ci)
 			}
-			newNode = node.DeepCopy()
-		}
-		if newNode != nil {
-			delete(newNode.Annotations, excludeAnno)
-			delete(newNode.Annotations, interfaceAnno)
-			newNodes = append(newNodes, newNode)
+			patchNodes = append(patchNodes, node.Name)
 		}
 	}
 
@@ -524,9 +518,10 @@ func (c *Controller) initDefaultProviderNetwork() error {
 		}
 
 		// update nodes only when provider network has been created successfully
-		for _, node := range newNodes {
-			if _, err := c.config.KubeClient.CoreV1().Nodes().Update(context.Background(), node, metav1.UpdateOptions{}); err != nil {
-				klog.Errorf("failed to update node %s: %v", node.Name, err)
+		patch := util.KVPatch{excludeAnno: nil, interfaceAnno: nil}
+		for _, node := range patchNodes {
+			if err := util.PatchAnnotations(c.config.KubeClient.CoreV1().Nodes(), node, patch); err != nil {
+				klog.Errorf("failed to patch node %s: %v", node, err)
 			}
 		}
 	}()
