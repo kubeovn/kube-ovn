@@ -1408,7 +1408,7 @@ func getWorkItemKey(obj any) string {
 	case string:
 		return v
 	case *vpcService:
-		return fmt.Sprintf("%s/%s", v.Svc.Namespace, v.Svc.Name)
+		return cache.MetaObjectToName(obj.(*vpcService).Svc).String()
 	case *AdminNetworkPolicyChangedDelta:
 		return v.key
 	case *SlrInfo:

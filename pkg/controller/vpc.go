@@ -17,7 +17,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 
@@ -27,19 +26,10 @@ import (
 )
 
 func (c *Controller) enqueueAddVpc(obj interface{}) {
-	var (
-		key string
-		err error
-	)
-
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
-	klog.V(3).Infof("enqueue add vpc %s", key)
-
 	vpc := obj.(*kubeovnv1.Vpc)
+	key := cache.MetaObjectToName(vpc).String()
 	if _, ok := vpc.Labels[util.VpcExternalLabel]; !ok {
+		klog.V(3).Infof("enqueue add vpc %s", key)
 		c.addOrUpdateVpcQueue.Add(key)
 	}
 }
@@ -70,18 +60,14 @@ func (c *Controller) enqueueUpdateVpc(oldObj, newObj interface{}) {
 		vpcBFDPortChanged(oldVpc.Spec.BFDPort, newVpc.Spec.BFDPort) ||
 		oldVpc.Labels[util.VpcExternalLabel] != newVpc.Labels[util.VpcExternalLabel] {
 		// TODO:// label VpcExternalLabel replace with spec enable external
-		key, err := cache.MetaNamespaceKeyFunc(newObj)
-		if err != nil {
-			utilruntime.HandleError(err)
-			return
-		}
-		klog.Infof("enqueue update vpc %s", key)
 
 		if newVpc.Annotations == nil {
 			newVpc.Annotations = make(map[string]string)
 		}
 		newVpc.Annotations[util.VpcLastPolicies] = convertPolicies(oldVpc.Spec.PolicyRoutes)
 
+		key := cache.MetaObjectToName(newVpc).String()
+		klog.Infof("enqueue update vpc %s", key)
 		c.addOrUpdateVpcQueue.Add(key)
 	}
 }

@@ -168,30 +168,21 @@ func NewController(config *Configuration, stopCh <-chan struct{}, podInformerFac
 }
 
 func (c *Controller) enqueueAddProviderNetwork(obj interface{}) {
-	key, err := cache.MetaNamespaceKeyFunc(obj)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
-
+	key := cache.MetaObjectToName(obj.(*kubeovnv1.ProviderNetwork)).String()
 	klog.V(3).Infof("enqueue add provider network %s", key)
 	c.addOrUpdateProviderNetworkQueue.Add(key)
 }
 
 func (c *Controller) enqueueUpdateProviderNetwork(_, newObj interface{}) {
-	key, err := cache.MetaNamespaceKeyFunc(newObj)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
-
+	key := cache.MetaObjectToName(newObj.(*kubeovnv1.ProviderNetwork)).String()
 	klog.V(3).Infof("enqueue update provider network %s", key)
 	c.addOrUpdateProviderNetworkQueue.Add(key)
 }
 
 func (c *Controller) enqueueDeleteProviderNetwork(obj interface{}) {
 	pn := obj.(*kubeovnv1.ProviderNetwork)
-	klog.V(3).Infof("enqueue delete provider network %s", pn.Name)
+	key := cache.MetaObjectToName(pn).String()
+	klog.V(3).Infof("enqueue delete provider network %s", key)
 	c.deleteProviderNetworkQueue.Add(pn)
 }
 
@@ -471,6 +462,7 @@ func (c *Controller) processNextSubnetWorkItem() bool {
 func (c *Controller) enqueuePod(oldObj, newObj interface{}) {
 	oldPod := oldObj.(*v1.Pod)
 	newPod := newObj.(*v1.Pod)
+	key := cache.MetaObjectToName(newPod).String()
 
 	if oldPod.Annotations[util.IngressRateAnnotation] != newPod.Annotations[util.IngressRateAnnotation] ||
 		oldPod.Annotations[util.EgressRateAnnotation] != newPod.Annotations[util.EgressRateAnnotation] ||
@@ -479,13 +471,8 @@ func (c *Controller) enqueuePod(oldObj, newObj interface{}) {
 		oldPod.Annotations[util.NetemQosLimitAnnotation] != newPod.Annotations[util.NetemQosLimitAnnotation] ||
 		oldPod.Annotations[util.NetemQosLossAnnotation] != newPod.Annotations[util.NetemQosLossAnnotation] ||
 		oldPod.Annotations[util.MirrorControlAnnotation] != newPod.Annotations[util.MirrorControlAnnotation] {
-		var key string
-		var err error
-		if key, err = cache.MetaNamespaceKeyFunc(newObj); err != nil {
-			utilruntime.HandleError(err)
-			return
-		}
 		c.podQueue.Add(key)
+		return
 	}
 
 	attachNets, err := nadutils.ParsePodNetworkAnnotation(newPod)
@@ -502,12 +489,6 @@ func (c *Controller) enqueuePod(oldObj, newObj interface{}) {
 				oldPod.Annotations[fmt.Sprintf(util.NetemQosLimitAnnotationTemplate, provider)] != newPod.Annotations[fmt.Sprintf(util.NetemQosLimitAnnotationTemplate, provider)] ||
 				oldPod.Annotations[fmt.Sprintf(util.NetemQosLossAnnotationTemplate, provider)] != newPod.Annotations[fmt.Sprintf(util.NetemQosLossAnnotationTemplate, provider)] ||
 				oldPod.Annotations[fmt.Sprintf(util.MirrorControlAnnotationTemplate, provider)] != newPod.Annotations[fmt.Sprintf(util.MirrorControlAnnotationTemplate, provider)] {
-				var key string
-				var err error
-				if key, err = cache.MetaNamespaceKeyFunc(newObj); err != nil {
-					utilruntime.HandleError(err)
-					return
-				}
 				c.podQueue.Add(key)
 			}
 		}

@@ -31,31 +31,19 @@ import (
 )
 
 func (c *Controller) enqueueAddVpcEgressGateway(obj interface{}) {
-	key, err := cache.MetaNamespaceKeyFunc(obj)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
+	key := cache.MetaObjectToName(obj.(*kubeovnv1.VpcEgressGateway)).String()
 	klog.V(3).Infof("enqueue add vpc-egress-gateway %s", key)
 	c.addOrUpdateVpcEgressGatewayQueue.Add(key)
 }
 
 func (c *Controller) enqueueUpdateVpcEgressGateway(_, newObj interface{}) {
-	key, err := cache.MetaNamespaceKeyFunc(newObj)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
+	key := cache.MetaObjectToName(newObj.(*kubeovnv1.VpcEgressGateway)).String()
 	klog.V(3).Infof("enqueue update vpc-egress-gateway %s", key)
 	c.addOrUpdateVpcEgressGatewayQueue.Add(key)
 }
 
 func (c *Controller) enqueueDeleteVpcEgressGateway(obj interface{}) {
-	key, err := cache.MetaNamespaceKeyFunc(obj)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
+	key := cache.MetaObjectToName(obj.(*kubeovnv1.VpcEgressGateway)).String()
 	klog.V(3).Infof("enqueue delete vpc-egress-gateway %s", key)
 	c.delVpcEgressGatewayQueue.Add(key)
 }

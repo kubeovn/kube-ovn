@@ -35,18 +35,14 @@ type updateSvcObject struct {
 }
 
 func (c *Controller) enqueueAddService(obj interface{}) {
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
-	c.addOrUpdateEndpointQueue.Add(key)
 	svc := obj.(*v1.Service)
+	key := cache.MetaObjectToName(svc).String()
+	klog.V(3).Infof("enqueue add endpoint %s", key)
+	c.addOrUpdateEndpointQueue.Add(key)
 
 	if c.config.EnableNP {
-		var netpols []string
-		if netpols, err = c.svcMatchNetworkPolicies(svc); err != nil {
+		netpols, err := c.svcMatchNetworkPolicies(svc)
+		if err != nil {
 			utilruntime.HandleError(err)
 			return
 		}
@@ -69,9 +65,8 @@ func (c *Controller) enqueueDeleteService(obj interface{}) {
 	vip, ok := svc.Annotations[util.SwitchLBRuleVipsAnnotation]
 	if ok || svc.Spec.ClusterIP != v1.ClusterIPNone && svc.Spec.ClusterIP != "" {
 		if c.config.EnableNP {
-			var netpols []string
-			var err error
-			if netpols, err = c.svcMatchNetworkPolicies(svc); err != nil {
+			netpols, err := c.svcMatchNetworkPolicies(svc)
+			if err != nil {
 				utilruntime.HandleError(err)
 				return
 			}
@@ -108,13 +103,6 @@ func (c *Controller) enqueueUpdateService(oldObj, newObj interface{}) {
 		return
 	}
 
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(newObj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
-
 	oldClusterIps := getVipIps(oldSvc)
 	newClusterIps := getVipIps(newSvc)
 	var ipsToDel []string
@@ -124,6 +112,7 @@ func (c *Controller) enqueueUpdateService(oldObj, newObj interface{}) {
 		}
 	}
 
+	key := cache.MetaObjectToName(newSvc).String()
 	klog.V(3).Infof("enqueue update service %s", key)
 	if len(ipsToDel) != 0 {
 		ipsToDelStr := strings.Join(ipsToDel, ",")
@@ -139,12 +128,7 @@ func (c *Controller) enqueueUpdateService(oldObj, newObj interface{}) {
 }
 
 func (c *Controller) handleDeleteService(service *vpcService) error {
-	key, err := cache.MetaNamespaceKeyFunc(service.Svc)
-	if err != nil {
-		klog.Error(err)
-		utilruntime.HandleError(fmt.Errorf("failed to get meta namespace key of %#v: %w", service.Svc, err))
-		return nil
-	}
+	key := cache.MetaObjectToName(service.Svc).String()
 
 	c.svcKeyMutex.LockKey(key)
 	defer func() { _ = c.svcKeyMutex.UnlockKey(key) }()

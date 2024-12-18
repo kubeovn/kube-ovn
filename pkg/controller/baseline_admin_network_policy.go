@@ -7,7 +7,6 @@ import (
 
 	"github.com/scylladb/go-set/strset"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 	v1alpha1 "sigs.k8s.io/network-policy-api/apis/v1alpha1"
@@ -18,19 +17,14 @@ import (
 )
 
 func (c *Controller) enqueueAddBanp(obj interface{}) {
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
+	key := cache.MetaObjectToName(obj.(*v1alpha1.BaselineAdminNetworkPolicy)).String()
 	klog.V(3).Infof("enqueue add banp %s", key)
 	c.addBanpQueue.Add(key)
 }
 
 func (c *Controller) enqueueDeleteBanp(obj interface{}) {
 	banp := obj.(*v1alpha1.BaselineAdminNetworkPolicy)
-	klog.V(3).Infof("enqueue delete banp %s", banp.Name)
+	klog.V(3).Infof("enqueue delete banp %s", cache.MetaObjectToName(banp).String())
 	c.deleteBanpQueue.Add(banp)
 }
 

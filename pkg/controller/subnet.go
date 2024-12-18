@@ -19,7 +19,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -33,15 +32,7 @@ import (
 )
 
 func (c *Controller) enqueueAddSubnet(obj interface{}) {
-	var (
-		key string
-		err error
-	)
-
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
+	key := cache.MetaObjectToName(obj.(*kubeovnv1.Subnet)).String()
 	klog.V(3).Infof("enqueue add subnet %s", key)
 	c.addOrUpdateSubnetQueue.Add(key)
 }
@@ -53,19 +44,11 @@ func (c *Controller) enqueueDeleteSubnet(obj interface{}) {
 }
 
 func (c *Controller) enqueueUpdateSubnet(oldObj, newObj interface{}) {
+	var usingIPs float64
+	var u2oInterconnIP string
 	oldSubnet := oldObj.(*kubeovnv1.Subnet)
 	newSubnet := newObj.(*kubeovnv1.Subnet)
-
-	var (
-		usingIPs            float64
-		key, u2oInterconnIP string
-		err                 error
-	)
-
-	if key, err = cache.MetaNamespaceKeyFunc(newObj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
+	key := cache.MetaObjectToName(newSubnet).String()
 
 	if newSubnet.Spec.Gateway != oldSubnet.Spec.Gateway ||
 		newSubnet.Status.U2OInterconnectionIP != oldSubnet.Status.U2OInterconnectionIP {

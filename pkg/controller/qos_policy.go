@@ -12,7 +12,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -23,12 +22,7 @@ import (
 )
 
 func (c *Controller) enqueueAddQoSPolicy(obj interface{}) {
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
+	key := cache.MetaObjectToName(obj.(*kubeovnv1.QoSPolicy)).String()
 	klog.V(3).Infof("enqueue add qos policy %s", key)
 	c.addQoSPolicyQueue.Add(key)
 }
@@ -45,14 +39,9 @@ func compareQoSPolicyBandwidthLimitRules(oldObj, newObj kubeovnv1.QoSPolicyBandw
 }
 
 func (c *Controller) enqueueUpdateQoSPolicy(oldObj, newObj interface{}) {
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(newObj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
 	oldQos := oldObj.(*kubeovnv1.QoSPolicy)
 	newQos := newObj.(*kubeovnv1.QoSPolicy)
+	key := cache.MetaObjectToName(newQos).String()
 	if !newQos.DeletionTimestamp.IsZero() {
 		klog.V(3).Infof("enqueue update to clean qos %s", key)
 		c.updateQoSPolicyQueue.Add(key)
@@ -69,12 +58,8 @@ func (c *Controller) enqueueUpdateQoSPolicy(oldObj, newObj interface{}) {
 }
 
 func (c *Controller) enqueueDelQoSPolicy(obj interface{}) {
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
+	key := cache.MetaObjectToName(obj.(*kubeovnv1.QoSPolicy)).String()
+	klog.V(3).Infof("enqueue delete qos policy %s", key)
 	c.delQoSPolicyQueue.Add(key)
 }
 

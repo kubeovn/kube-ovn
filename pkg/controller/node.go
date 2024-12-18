@@ -17,7 +17,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 
@@ -36,12 +35,7 @@ func (e *ErrChassisNotFound) Error() string {
 }
 
 func (c *Controller) enqueueAddNode(obj interface{}) {
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
+	key := cache.MetaObjectToName(obj.(*v1.Node)).String()
 	klog.V(3).Infof("enqueue add node %s", key)
 	c.addNodeQueue.Add(key)
 }
@@ -61,12 +55,7 @@ func (c *Controller) enqueueUpdateNode(oldObj, newObj interface{}) {
 
 	if nodeReady(oldNode) != nodeReady(newNode) ||
 		!reflect.DeepEqual(oldNode.Annotations, newNode.Annotations) {
-		var key string
-		var err error
-		if key, err = cache.MetaNamespaceKeyFunc(newObj); err != nil {
-			utilruntime.HandleError(err)
-			return
-		}
+		key := cache.MetaObjectToName(newNode).String()
 		if len(newNode.Annotations) == 0 || newNode.Annotations[util.AllocatedAnnotation] != "true" {
 			klog.V(3).Infof("enqueue add node %s", key)
 			c.addNodeQueue.Add(key)
@@ -78,15 +67,10 @@ func (c *Controller) enqueueUpdateNode(oldObj, newObj interface{}) {
 }
 
 func (c *Controller) enqueueDeleteNode(obj interface{}) {
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
+	node := obj.(*v1.Node)
+	key := cache.MetaObjectToName(node).String()
 	klog.V(3).Infof("enqueue delete node %s", key)
-
-	c.deletingNodeObjMap.Store(key, obj.(*v1.Node))
+	c.deletingNodeObjMap.Store(key, node)
 	c.deleteNodeQueue.Add(key)
 }
 

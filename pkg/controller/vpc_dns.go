@@ -19,7 +19,6 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/yaml"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
@@ -54,40 +53,24 @@ func genVpcDNSDpName(name string) string {
 }
 
 func (c *Controller) enqueueAddVpcDNS(obj interface{}) {
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
+	key := cache.MetaObjectToName(obj.(*kubeovnv1.VpcDns)).String()
 	klog.V(3).Infof("enqueue add vpc-dns %s", key)
 	c.addOrUpdateVpcDNSQueue.Add(key)
 }
 
 func (c *Controller) enqueueUpdateVpcDNS(oldObj, newObj interface{}) {
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(newObj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
-
 	oldVPCDNS := oldObj.(*kubeovnv1.VpcDns)
 	newVPCDNS := newObj.(*kubeovnv1.VpcDns)
 	if oldVPCDNS.ResourceVersion != newVPCDNS.ResourceVersion &&
 		!reflect.DeepEqual(oldVPCDNS.Spec, newVPCDNS.Spec) {
+		key := cache.MetaObjectToName(newVPCDNS).String()
 		klog.V(3).Infof("enqueue update vpc-dns %s", key)
 		c.addOrUpdateVpcDNSQueue.Add(key)
 	}
 }
 
 func (c *Controller) enqueueDeleteVPCDNS(obj interface{}) {
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
+	key := cache.MetaObjectToName(obj.(*kubeovnv1.VpcDns)).String()
 	klog.V(3).Infof("enqueue delete vpc-dns %s", key)
 	c.delVpcDNSQueue.Add(key)
 }

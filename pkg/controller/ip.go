@@ -12,7 +12,6 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
@@ -35,23 +34,13 @@ func (c *Controller) enqueueAddIP(obj interface{}) {
 		klog.V(3).Infof("enqueue update attach status for subnet %s", as)
 		c.updateSubnetStatusQueue.Add(as)
 	}
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
+
+	key := cache.MetaObjectToName(ipObj).String()
 	klog.V(3).Infof("enqueue add ip %s", key)
 	c.addIPQueue.Add(key)
 }
 
 func (c *Controller) enqueueUpdateIP(oldObj, newObj interface{}) {
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(newObj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
 	oldIP := oldObj.(*kubeovnv1.IP)
 	newIP := newObj.(*kubeovnv1.IP)
 	// ip can not change these specs below
@@ -84,6 +73,7 @@ func (c *Controller) enqueueUpdateIP(oldObj, newObj interface{}) {
 		}
 	}
 	if !newIP.DeletionTimestamp.IsZero() {
+		key := cache.MetaObjectToName(newIP).String()
 		klog.V(3).Infof("enqueue update ip %s", key)
 		c.updateIPQueue.Add(key)
 		return
@@ -98,16 +88,12 @@ func (c *Controller) enqueueUpdateIP(oldObj, newObj interface{}) {
 }
 
 func (c *Controller) enqueueDelIP(obj interface{}) {
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
 	ipObj := obj.(*kubeovnv1.IP)
 	if strings.HasPrefix(ipObj.Name, util.U2OInterconnName[0:19]) {
 		return
 	}
+
+	key := cache.MetaObjectToName(ipObj).String()
 	klog.V(3).Infof("enqueue del ip %s", key)
 	c.delIPQueue.Add(ipObj)
 }
