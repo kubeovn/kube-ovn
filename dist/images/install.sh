@@ -4733,6 +4733,7 @@ spec:
             capabilities:
               add:
                 - NET_BIND_SERVICE
+                - NET_RAW
           env:
             - name: ENABLE_SSL
               value: "$ENABLE_SSL"

@@ -11,22 +11,13 @@ import (
 
 	"k8s.io/klog/v2"
 
-	"github.com/kubeovn/kube-ovn/cmd/health_check"
-	"github.com/kubeovn/kube-ovn/cmd/ovn_ic_controller"
-	"github.com/kubeovn/kube-ovn/cmd/ovn_leader_checker"
-	"github.com/kubeovn/kube-ovn/cmd/ovn_monitor"
-	"github.com/kubeovn/kube-ovn/cmd/speaker"
-	"github.com/kubeovn/kube-ovn/cmd/webhook"
+	"github.com/kubeovn/kube-ovn/cmd/pinger"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 const (
-	CmdMonitor          = "kube-ovn-monitor"
-	CmdSpeaker          = "kube-ovn-speaker"
-	CmdWebhook          = "kube-ovn-webhook"
-	CmdHealthCheck      = "kube-ovn-healthcheck"
-	CmdOvnLeaderChecker = "kube-ovn-leader-checker"
-	CmdOvnICController  = "kube-ovn-ic-controller"
+	CmdController = "kube-ovn-controller"
+	CmdPinger     = "kube-ovn-pinger"
 )
 
 const timeFormat = "2006-01-02_15:04:05"
@@ -89,20 +80,12 @@ func dumpProfile() {
 func main() {
 	cmd := filepath.Base(os.Args[0])
 	switch cmd {
-	case CmdMonitor:
+	case CmdController:
 		dumpProfile()
-		ovn_monitor.CmdMain()
-	case CmdSpeaker:
+		CmdMain()
+	case CmdPinger:
 		dumpProfile()
-		speaker.CmdMain()
-	case CmdWebhook:
-		webhook.CmdMain()
-	case CmdHealthCheck:
-		health_check.CmdMain()
-	case CmdOvnLeaderChecker:
-		ovn_leader_checker.CmdMain()
-	case CmdOvnICController:
-		ovn_ic_controller.CmdMain()
+		pinger.CmdMain()
 	default:
 		util.LogFatalAndExit(nil, "%s is an unknown command", cmd)
 	}
