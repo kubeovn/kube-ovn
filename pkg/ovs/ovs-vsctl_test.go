@@ -177,15 +177,6 @@ func (suite *OvnClientTestSuite) testOvsCleanDuplicatePort() {
 	CleanDuplicatePort("iface-id", "port-name")
 }
 
-func (suite *OvnClientTestSuite) testOvsSetPortTag() {
-	t := suite.T()
-	t.Parallel()
-
-	err := SetPortTag("port-name", "tag")
-	// ovs-vsctl cmd is not available in the test environment
-	require.Error(t, err)
-}
-
 func (suite *OvnClientTestSuite) testValidatePortVendor() {
 	t := suite.T()
 	t.Parallel()
