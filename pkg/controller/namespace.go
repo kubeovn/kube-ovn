@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"context"
 	"reflect"
 	"slices"
 	"strings"
@@ -11,7 +10,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
@@ -197,32 +195,25 @@ func (c *Controller) handleAddNamespace(key string) error {
 		excludeIps = append(excludeIps, strings.Join(subnet.Spec.ExcludeIps, ","))
 	}
 
-	if len(namespace.Annotations) == 0 {
-		namespace.Annotations = map[string]string{}
-	} else if namespace.Annotations[util.LogicalSwitchAnnotation] == strings.Join(lss, ",") &&
+	if namespace.Annotations[util.LogicalSwitchAnnotation] == strings.Join(lss, ",") &&
 		namespace.Annotations[util.CidrAnnotation] == strings.Join(cidrs, ";") &&
 		namespace.Annotations[util.ExcludeIpsAnnotation] == strings.Join(excludeIps, ";") &&
 		namespace.Annotations[util.IPPoolAnnotation] == ippool {
 		return nil
 	}
 
-	namespace.Annotations[util.LogicalSwitchAnnotation] = strings.Join(lss, ",")
-	namespace.Annotations[util.CidrAnnotation] = strings.Join(cidrs, ";")
-	namespace.Annotations[util.ExcludeIpsAnnotation] = strings.Join(excludeIps, ";")
-
+	patch := util.KVPatch{
+		util.LogicalSwitchAnnotation: strings.Join(lss, ","),
+		util.CidrAnnotation:          strings.Join(cidrs, ";"),
+		util.ExcludeIpsAnnotation:    strings.Join(excludeIps, ";"),
+	}
 	if ippool == "" {
-		delete(namespace.Annotations, util.IPPoolAnnotation)
+		patch[util.IPPoolAnnotation] = nil
 	} else {
-		namespace.Annotations[util.IPPoolAnnotation] = ippool
+		patch[util.IPPoolAnnotation] = ippool
 	}
 
-	patch, err := util.GenerateStrategicMergePatchPayload(cachedNs, namespace)
-	if err != nil {
-		klog.Error(err)
-		return err
-	}
-	if _, err = c.config.KubeClient.CoreV1().Namespaces().Patch(context.Background(), key,
-		types.StrategicMergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
+	if err = util.PatchAnnotations(c.config.KubeClient.CoreV1().Namespaces(), key, patch); err != nil {
 		klog.Errorf("patch namespace %s failed %v", key, err)
 	}
 	return err
