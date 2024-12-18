@@ -327,13 +327,17 @@ define kind_load_kwok_image
 	$(call kind_load_image,$(1),$(KWOK_IMAGE),1)
 endef
 
-define kubectl_wait_exist_and_ready
-	@echo "Waiting for $(2) $(1)/$(3) to exist..."
-	@n=0; while ! kubectl -n $(1) get $(2) -o name | awk -F / '{print $$2}' | grep -q ^$(3)$$; do \
+define kubectl_wait_exist
+	@echo "Waiting for $(2) $(1)/$(3) to be created..."
+	@n=0; while ! kubectl -n "$(1)" get "$(2)" -o name | awk -F / '{print $$2}' | grep -q ^$(3)$$; do \
 		test $$n -eq 60 && exit 1; \
 		sleep 1; \
 		n=$$(($$n+1)); \
 	done
+endef
+
+define kubectl_wait_exist_and_ready
+	$(call kubectl_wait_exist,$(1),$(2),$(3))
 	kubectl -n $(1) rollout status --timeout=60s $(2) $(3)
 endef
 
@@ -808,11 +812,13 @@ kind-install-kubevirt:
 	$(call kind_load_image,kube-ovn,$(KUBEVIRT_LAUNCHER_IMAGE),1)
 
 	kubectl apply -f "$(KUBEVIRT_OPERATOR_YAML)"
-	kubectl apply -f "$(KUBEVIRT_CR_YAML)"
 	kubectl -n kubevirt scale deploy virt-operator --replicas=1
+	$(call kubectl_wait_exist_and_ready,kubevirt,deployment,virt-operator)
+	$(call kubectl_wait_exist,,crd,kubevirts.kubevirt.io)
+
+	kubectl apply -f "$(KUBEVIRT_CR_YAML)"
 	kubectl -n kubevirt patch kubevirt kubevirt --type=merge --patch \
 		'{"spec":{"configuration":{"developerConfiguration":{"useEmulation":true}},"infra":{"replicas":1}}}'
-	$(call kubectl_wait_exist_and_ready,kubevirt,deployment,virt-operator)
 	$(call kubectl_wait_exist_and_ready,kubevirt,deployment,virt-api)
 	$(call kubectl_wait_exist_and_ready,kubevirt,deployment,virt-controller)
 	$(call kubectl_wait_exist_and_ready,kubevirt,daemonset,virt-handler)
