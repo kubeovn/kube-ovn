@@ -524,27 +524,27 @@ func (c *Controller) handleUpdateNode(key string) error {
 	return nil
 }
 
-func (c *Controller) CheckGatewayReady() {
-	if err := c.checkGatewayReady(); err != nil {
-		klog.Errorf("failed to check gateway ready %v", err)
+func (c *Controller) checkSubnetGateway() {
+	if err := c.checkSubnetGatewayNode(); err != nil {
+		klog.Errorf("failed to check subnet gateway node: %v", err)
 	}
 }
 
-func (c *Controller) checkGatewayReady() error {
-	klog.V(3).Infoln("start to check gateway status")
+func (c *Controller) checkSubnetGatewayNode() error {
+	klog.V(3).Infoln("start to check subnet gateway node")
 	subnetList, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
-		klog.Errorf("failed to list subnets %v", err)
+		klog.Errorf("failed to list subnets: %v", err)
 		return err
 	}
 	nodes, err := c.nodesLister.List(labels.Everything())
 	if err != nil {
-		klog.Errorf("failed to list nodes, %v", err)
+		klog.Errorf("failed to list nodes: %v", err)
 		return err
 	}
 
 	for _, subnet := range subnetList {
-		if (subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway) ||
+		if (subnet.Spec.Vlan != "" && (subnet.Spec.U2OInterconnection || !subnet.Spec.LogicalGateway)) ||
 			subnet.Spec.GatewayNode == "" ||
 			subnet.Spec.GatewayType != kubeovnv1.GWCentralizedType ||
 			!subnet.Spec.EnableEcmp {
@@ -582,10 +582,9 @@ func (c *Controller) checkGatewayReady() error {
 						pinger.Timeout = time.Duration(count) * time.Second
 						pinger.Interval = 1 * time.Second
 
-						success := false
-
+						var pingSucceeded bool
 						pinger.OnRecv = func(_ *goping.Packet) {
-							success = true
+							pingSucceeded = true
 							pinger.Stop()
 						}
 						if err = pinger.Run(); err != nil {
@@ -593,13 +592,16 @@ func (c *Controller) checkGatewayReady() error {
 							return err
 						}
 
-						if !nodeReady(node) {
-							success = false
-						}
-
-						if !success {
+						nodeIsReady := nodeReady(node)
+						if !pingSucceeded || !nodeIsReady {
 							if exist {
-								klog.Warningf("failed to ping ovn0 %s or node %s is not ready, delete ecmp policy route for node", ip, node.Name)
+								if !pingSucceeded {
+									klog.Warningf("failed to ping ovn0 ip %s on node %s", ip, node.Name)
+								}
+								if !nodeIsReady {
+									klog.Warningf("node %s is not ready", node.Name)
+								}
+								klog.Warningf("delete ecmp policy route for node %s ip %s", node.Name, ip)
 								nextHops.Remove(ip)
 								delete(nameIPMap, node.Name)
 								klog.Infof("update policy route for centralized subnet %s, nextHops %s", subnet.Name, nextHops)
@@ -609,7 +611,7 @@ func (c *Controller) checkGatewayReady() error {
 								}
 							}
 						} else {
-							klog.V(3).Infof("succeed to ping gw %s", ip)
+							klog.V(3).Infof("succeeded to ping ovn0 ip %s on node %s", ip, node.Name)
 							if !exist {
 								nextHops.Add(ip)
 								if nameIPMap == nil {
@@ -624,7 +626,7 @@ func (c *Controller) checkGatewayReady() error {
 							}
 						}
 					} else if exist {
-						klog.Infof("subnet %s gatewayNode does not contains node %v, delete policy route for node ip %s", subnet.Name, node.Name, ip)
+						klog.Infof("subnet %s gateway nodes does not contain node %s, delete policy route for node ip %s", subnet.Name, node.Name, ip)
 						nextHops.Remove(ip)
 						delete(nameIPMap, node.Name)
 						klog.Infof("update policy route for centralized subnet %s, nextHops %s", subnet.Name, nextHops)

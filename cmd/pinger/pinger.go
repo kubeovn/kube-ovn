@@ -1,4 +1,4 @@
-package main
+package pinger
 
 import (
 	_ "net/http/pprof" // #nosec
@@ -14,7 +14,7 @@ import (
 	"github.com/kubeovn/kube-ovn/versions"
 )
 
-func main() {
+func CmdMain() {
 	defer klog.Flush()
 
 	klog.Info(versions.String())
