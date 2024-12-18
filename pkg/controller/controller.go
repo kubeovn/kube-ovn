@@ -1182,7 +1182,7 @@ func (c *Controller) startWorkers(ctx context.Context) {
 
 	go wait.Until(c.resyncProviderNetworkStatus, 30*time.Second, ctx.Done())
 	go wait.Until(c.exportSubnetMetrics, 30*time.Second, ctx.Done())
-	go wait.Until(c.CheckGatewayReady, 5*time.Second, ctx.Done())
+	go wait.Until(c.checkSubnetGateway, 5*time.Second, ctx.Done())
 
 	go wait.Until(runWorker("add ovn eip", c.addOvnEipQueue, c.handleAddOvnEip), time.Second, ctx.Done())
 	go wait.Until(runWorker("update ovn eip", c.updateOvnEipQueue, c.handleUpdateOvnEip), time.Second, ctx.Done())
