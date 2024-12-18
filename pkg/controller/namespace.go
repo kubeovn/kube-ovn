@@ -203,10 +203,11 @@ func (c *Controller) handleAddNamespace(key string) error {
 		util.CidrAnnotation:          strings.Join(cidrs, ";"),
 		util.ExcludeIpsAnnotation:    strings.Join(excludeIps, ";"),
 	}
-	if len(ipPools) == 0 {
+
+	if len(ipPoolsAnnotation) == 0 {
 		patch[util.IPPoolAnnotation] = nil
 	} else {
-		patch[util.IPPoolAnnotation] = strings.Join(ipPools, ";")
+		patch[util.IPPoolAnnotation] = strings.Join(ipPoolsAnnotation, ",")
 	}
 
 	if err = util.PatchAnnotations(c.config.KubeClient.CoreV1().Namespaces(), key, patch); err != nil {
