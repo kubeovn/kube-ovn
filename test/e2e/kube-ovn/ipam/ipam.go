@@ -562,4 +562,50 @@ var _ = framework.Describe("[group:ipam]", func() {
 		ginkgo.By("Deleting subnet " + testSubnetName)
 		subnetClient.DeleteSync(testSubnetName)
 	})
+	framework.ConformanceIt("should allocate right IPs for the statefulset when there are multiple ippools added in the namespace and there are no available ips in the first ippool", func() {
+		f.SkipVersionPriorTo(1, 14, "Multiple IP Pools per namespace support was introduced in v1.14")
+		replicas := 1
+		ipsCount := 12
+		testStsName := "test-statefulset" + framework.RandomSuffix()
+		testSubnetName := "ip-pool-subnet2" + framework.RandomSuffix()
+		testIPPool1Name := "ip-pool1" + framework.RandomSuffix()
+		testIPPool2Name := "ip-pool2" + framework.RandomSuffix()
+
+		ginkgo.By("Creating IPPool resources ")
+		ipsRange2 := framework.RandomIPPool(cidr, ipsCount)
+		ippool1 := framework.MakeIPPool(testIPPool1Name, subnetName, nil, []string{namespaceName})
+		ippool2 := framework.MakeIPPool(testIPPool2Name, subnetName, ipsRange2, []string{namespaceName})
+		ippoolClient.CreateSync(ippool1)
+		ippoolClient.CreateSync(ippool2)
+
+		ginkgo.By("Creating statefulset " + testStsName + " with logical switch annotation and no ippool annotation")
+		labels := map[string]string{"app": testStsName}
+		sts := framework.MakeStatefulSet(testStsName, testStsName, int32(replicas), labels, framework.PauseImage)
+		sts.Spec.Template.Annotations = map[string]string{util.LogicalSwitchAnnotation: subnetName}
+		sts = stsClient.CreateSync(sts)
+
+		ginkgo.By("Getting pods for statefulset " + testStsName)
+		pods := stsClient.GetPods(sts)
+		framework.ExpectHaveLen(pods.Items, replicas)
+
+		for _, pod := range pods.Items {
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.CidrAnnotation, subnet.Spec.CIDRBlock)
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.GatewayAnnotation, subnet.Spec.Gateway)
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.LogicalSwitchAnnotation, subnetName)
+			framework.ExpectIPInCIDR(pod.Annotations[util.IPAddressAnnotation], subnet.Spec.CIDRBlock)
+			framework.ExpectMAC(pod.Annotations[util.MacAddressAnnotation])
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
+		}
+
+		ginkgo.By("Deleting statefulset " + testStsName)
+		stsClient.DeleteSync(testStsName)
+
+		ginkgo.By("Deleting ippools")
+		ippoolClient.DeleteSync(testIPPool1Name)
+		ippoolClient.DeleteSync(testIPPool2Name)
+
+		ginkgo.By("Deleting subnet " + testSubnetName)
+		subnetClient.DeleteSync(testSubnetName)
+	})
 })
