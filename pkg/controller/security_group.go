@@ -15,7 +15,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 
@@ -26,12 +25,7 @@ import (
 )
 
 func (c *Controller) enqueueAddSg(obj interface{}) {
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
+	key := cache.MetaObjectToName(obj.(*kubeovnv1.SecurityGroup)).String()
 	klog.V(3).Infof("enqueue add securityGroup %s", key)
 	c.addOrUpdateSgQueue.Add(key)
 }
@@ -40,24 +34,14 @@ func (c *Controller) enqueueUpdateSg(oldObj, newObj interface{}) {
 	oldSg := oldObj.(*kubeovnv1.SecurityGroup)
 	newSg := newObj.(*kubeovnv1.SecurityGroup)
 	if !reflect.DeepEqual(oldSg.Spec, newSg.Spec) {
-		var key string
-		var err error
-		if key, err = cache.MetaNamespaceKeyFunc(newObj); err != nil {
-			utilruntime.HandleError(err)
-			return
-		}
+		key := cache.MetaObjectToName(newSg).String()
 		klog.V(3).Infof("enqueue update securityGroup %s", key)
 		c.addOrUpdateSgQueue.Add(key)
 	}
 }
 
 func (c *Controller) enqueueDeleteSg(obj interface{}) {
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
+	key := cache.MetaObjectToName(obj.(*kubeovnv1.SecurityGroup)).String()
 	klog.V(3).Infof("enqueue delete securityGroup %s", key)
 	c.delSgQueue.Add(key)
 }

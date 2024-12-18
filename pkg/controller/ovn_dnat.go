@@ -11,7 +11,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -22,30 +21,14 @@ import (
 )
 
 func (c *Controller) enqueueAddOvnDnatRule(obj interface{}) {
-	var (
-		key string
-		err error
-	)
-
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
+	key := cache.MetaObjectToName(obj.(*kubeovnv1.OvnDnatRule)).String()
 	klog.Infof("enqueue add ovn dnat %s", key)
 	c.addOvnDnatRuleQueue.Add(key)
 }
 
 func (c *Controller) enqueueUpdateOvnDnatRule(oldObj, newObj interface{}) {
-	var (
-		key string
-		err error
-	)
-
-	if key, err = cache.MetaNamespaceKeyFunc(newObj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
 	newDnat := newObj.(*kubeovnv1.OvnDnatRule)
+	key := cache.MetaObjectToName(newDnat).String()
 	if !newDnat.DeletionTimestamp.IsZero() {
 		if len(newDnat.GetFinalizers()) == 0 {
 			// avoid delete twice
@@ -71,15 +54,7 @@ func (c *Controller) enqueueUpdateOvnDnatRule(oldObj, newObj interface{}) {
 }
 
 func (c *Controller) enqueueDelOvnDnatRule(obj interface{}) {
-	var (
-		key string
-		err error
-	)
-
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
+	key := cache.MetaObjectToName(obj.(*kubeovnv1.OvnDnatRule)).String()
 	klog.Infof("enqueue delete ovn dnat %s", key)
 	c.delOvnDnatRuleQueue.Add(key)
 }

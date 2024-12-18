@@ -10,7 +10,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 
@@ -23,12 +22,8 @@ func (c *Controller) enqueueAddNamespace(obj interface{}) {
 			c.updateNpQueue.Add(np)
 		}
 	}
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
+
+	key := cache.MetaObjectToName(obj.(*v1.Namespace)).String()
 	c.addNamespaceQueue.Add(key)
 }
 

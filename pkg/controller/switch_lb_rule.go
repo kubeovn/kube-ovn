@@ -11,7 +11,6 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 
@@ -50,16 +49,7 @@ func NewSlrInfo(slr *kubeovnv1.SwitchLBRule) *SlrInfo {
 }
 
 func (c *Controller) enqueueAddSwitchLBRule(obj interface{}) {
-	var (
-		key string
-		err error
-	)
-
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
-
+	key := cache.MetaObjectToName(obj.(*kubeovnv1.SwitchLBRule)).String()
 	klog.Infof("enqueue add SwitchLBRule %s", key)
 	c.addSwitchLBRuleQueue.Add(key)
 }
@@ -85,16 +75,7 @@ func (c *Controller) enqueueUpdateSwitchLBRule(oldObj, newObj interface{}) {
 }
 
 func (c *Controller) enqueueDeleteSwitchLBRule(obj interface{}) {
-	var (
-		key string
-		err error
-	)
-
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
-
+	key := cache.MetaObjectToName(obj.(*kubeovnv1.SwitchLBRule)).String()
 	klog.Infof("enqueue del SwitchLBRule %s", key)
 	c.delSwitchLBRuleQueue.Add(NewSlrInfo(obj.(*kubeovnv1.SwitchLBRule)))
 }

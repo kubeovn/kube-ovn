@@ -11,7 +11,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -22,25 +21,15 @@ import (
 )
 
 func (c *Controller) enqueueAddIptablesFip(obj interface{}) {
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
+	key := cache.MetaObjectToName(obj.(*kubeovnv1.IptablesFIPRule)).String()
 	klog.V(3).Infof("enqueue add iptables fip %s", key)
 	c.addIptablesFipQueue.Add(key)
 }
 
 func (c *Controller) enqueueUpdateIptablesFip(oldObj, newObj interface{}) {
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(newObj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
 	oldFip := oldObj.(*kubeovnv1.IptablesFIPRule)
 	newFip := newObj.(*kubeovnv1.IptablesFIPRule)
+	key := cache.MetaObjectToName(newFip).String()
 	if !newFip.DeletionTimestamp.IsZero() {
 		klog.V(3).Infof("enqueue update to clean fip %s", key)
 		c.updateIptablesFipQueue.Add(key)
@@ -61,35 +50,21 @@ func (c *Controller) enqueueUpdateIptablesFip(oldObj, newObj interface{}) {
 }
 
 func (c *Controller) enqueueDelIptablesFip(obj interface{}) {
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
+	key := cache.MetaObjectToName(obj.(*kubeovnv1.IptablesFIPRule)).String()
+	klog.V(3).Infof("enqueue delete iptables fip %s", key)
 	c.delIptablesFipQueue.Add(key)
 }
 
 func (c *Controller) enqueueAddIptablesDnatRule(obj interface{}) {
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
+	key := cache.MetaObjectToName(obj.(*kubeovnv1.IptablesDnatRule)).String()
 	klog.V(3).Infof("enqueue add iptables dnat %s", key)
 	c.addIptablesDnatRuleQueue.Add(key)
 }
 
 func (c *Controller) enqueueUpdateIptablesDnatRule(oldObj, newObj interface{}) {
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(newObj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
 	oldDnat := oldObj.(*kubeovnv1.IptablesDnatRule)
 	newDnat := newObj.(*kubeovnv1.IptablesDnatRule)
+	key := cache.MetaObjectToName(newDnat).String()
 	if !newDnat.DeletionTimestamp.IsZero() {
 		klog.V(3).Infof("enqueue update to clean dnat %s", key)
 		c.updateIptablesDnatRuleQueue.Add(key)
@@ -115,34 +90,21 @@ func (c *Controller) enqueueUpdateIptablesDnatRule(oldObj, newObj interface{}) {
 }
 
 func (c *Controller) enqueueDelIptablesDnatRule(obj interface{}) {
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
+	key := cache.MetaObjectToName(obj.(*kubeovnv1.IptablesDnatRule)).String()
+	klog.V(3).Infof("enqueue delete iptables dnat %s", key)
 	c.delIptablesDnatRuleQueue.Add(key)
 }
 
 func (c *Controller) enqueueAddIptablesSnatRule(obj interface{}) {
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
+	key := cache.MetaObjectToName(obj.(*kubeovnv1.IptablesSnatRule)).String()
+	klog.V(3).Infof("enqueue add iptables snat %s", key)
 	c.addIptablesSnatRuleQueue.Add(key)
 }
 
 func (c *Controller) enqueueUpdateIptablesSnatRule(oldObj, newObj interface{}) {
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(newObj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
 	oldSnat := oldObj.(*kubeovnv1.IptablesSnatRule)
 	newSnat := newObj.(*kubeovnv1.IptablesSnatRule)
+	key := cache.MetaObjectToName(newSnat).String()
 	if !newSnat.DeletionTimestamp.IsZero() {
 		klog.V(3).Infof("enqueue update to clean snat %s", key)
 		c.updateIptablesSnatRuleQueue.Add(key)
@@ -163,12 +125,8 @@ func (c *Controller) enqueueUpdateIptablesSnatRule(oldObj, newObj interface{}) {
 }
 
 func (c *Controller) enqueueDelIptablesSnatRule(obj interface{}) {
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
+	key := cache.MetaObjectToName(obj.(*kubeovnv1.IptablesSnatRule)).String()
+	klog.V(3).Infof("enqueue delete iptables snat %s", key)
 	c.delIptablesSnatRuleQueue.Add(key)
 }
 

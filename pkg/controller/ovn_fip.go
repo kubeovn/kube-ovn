@@ -11,7 +11,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -23,24 +22,14 @@ import (
 )
 
 func (c *Controller) enqueueAddOvnFip(obj interface{}) {
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
+	key := cache.MetaObjectToName(obj.(*kubeovnv1.OvnFip)).String()
 	klog.Infof("enqueue add ovn fip %s", key)
 	c.addOvnFipQueue.Add(key)
 }
 
 func (c *Controller) enqueueUpdateOvnFip(oldObj, newObj interface{}) {
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(newObj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
 	newFip := newObj.(*kubeovnv1.OvnFip)
+	key := cache.MetaObjectToName(newFip).String()
 	if !newFip.DeletionTimestamp.IsZero() {
 		if len(newFip.GetFinalizers()) == 0 {
 			// avoid delete twice
@@ -65,12 +54,7 @@ func (c *Controller) enqueueUpdateOvnFip(oldObj, newObj interface{}) {
 }
 
 func (c *Controller) enqueueDelOvnFip(obj interface{}) {
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
+	key := cache.MetaObjectToName(obj.(*kubeovnv1.OvnFip)).String()
 	klog.Infof("enqueue del ovn fip %s", key)
 	c.delOvnFipQueue.Add(key)
 }

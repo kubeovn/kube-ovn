@@ -18,17 +18,8 @@ import (
 )
 
 func (c *Controller) enqueueAddVMIMigration(obj interface{}) {
-	var (
-		key string
-		err error
-	)
-
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
-
-	klog.Infof("enqueue add VMI migration %s ", key)
+	key := cache.MetaObjectToName(obj.(*kubevirtv1.VirtualMachineInstanceMigration)).String()
+	klog.Infof("enqueue add VMI migration %s", key)
 	c.addOrUpdateVMIMigrationQueue.Add(key)
 }
 
@@ -38,11 +29,7 @@ func (c *Controller) enqueueUpdateVMIMigration(oldObj, newObj interface{}) {
 
 	if !newVmi.DeletionTimestamp.IsZero() ||
 		!reflect.DeepEqual(oldVmi.Status.Phase, newVmi.Status.Phase) {
-		key, err := cache.MetaNamespaceKeyFunc(newObj)
-		if err != nil {
-			utilruntime.HandleError(err)
-			return
-		}
+		key := cache.MetaObjectToName(newVmi).String()
 		klog.Infof("enqueue update VMI migration %s", key)
 		c.addOrUpdateVMIMigrationQueue.Add(key)
 	}

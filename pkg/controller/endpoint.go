@@ -18,15 +18,7 @@ import (
 )
 
 func (c *Controller) enqueueAddEndpoint(obj interface{}) {
-	var (
-		key string
-		err error
-	)
-
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
+	key := cache.MetaObjectToName(obj.(*v1.Endpoints)).String()
 	klog.V(3).Infof("enqueue add endpoint %s", key)
 	c.addOrUpdateEndpointQueue.Add(key)
 }
@@ -42,15 +34,7 @@ func (c *Controller) enqueueUpdateEndpoint(oldObj, newObj interface{}) {
 		return
 	}
 
-	var (
-		key string
-		err error
-	)
-
-	if key, err = cache.MetaNamespaceKeyFunc(newObj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
+	key := cache.MetaObjectToName(newEp).String()
 	klog.V(3).Infof("enqueue update endpoint %s", key)
 	c.addOrUpdateEndpointQueue.Add(key)
 }

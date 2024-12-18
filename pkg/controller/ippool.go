@@ -9,7 +9,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 
@@ -18,32 +17,23 @@ import (
 )
 
 func (c *Controller) enqueueAddIPPool(obj interface{}) {
-	key, err := cache.MetaNamespaceKeyFunc(obj)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
+	key := cache.MetaObjectToName(obj.(*kubeovnv1.IPPool)).String()
 	klog.V(3).Infof("enqueue add ippool %s", key)
 	c.addOrUpdateIPPoolQueue.Add(key)
 }
 
 func (c *Controller) enqueueDeleteIPPool(obj interface{}) {
 	ippool := obj.(*kubeovnv1.IPPool)
-	klog.V(3).Infof("enqueue delete ippool %s", ippool.Name)
+	klog.V(3).Infof("enqueue delete ippool %s", cache.MetaObjectToName(ippool).String())
 	c.deleteIPPoolQueue.Add(ippool)
 }
 
 func (c *Controller) enqueueUpdateIPPool(oldObj, newObj interface{}) {
 	oldIPPool := oldObj.(*kubeovnv1.IPPool)
 	newIPPool := newObj.(*kubeovnv1.IPPool)
-	key, err := cache.MetaNamespaceKeyFunc(newObj)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
-
 	if !reflect.DeepEqual(oldIPPool.Spec.Namespaces, newIPPool.Spec.Namespaces) ||
 		!reflect.DeepEqual(oldIPPool.Spec.IPs, newIPPool.Spec.IPs) {
+		key := cache.MetaObjectToName(newIPPool).String()
 		klog.V(3).Infof("enqueue update ippool %s", key)
 		c.addOrUpdateIPPoolQueue.Add(key)
 	}

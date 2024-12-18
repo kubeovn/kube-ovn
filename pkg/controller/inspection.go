@@ -5,6 +5,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
@@ -30,6 +31,7 @@ func (c *Controller) inspectPod() error {
 		}
 
 		podName := c.getNameByPod(pod)
+		key := cache.MetaObjectToName(pod).String()
 		podNets, err := c.getPodKubeovnNets(pod)
 		if err != nil {
 			klog.Errorf("failed to list pod subnets, %v", err)
@@ -54,12 +56,13 @@ func (c *Controller) inspectPod() error {
 						return err
 					}
 					klog.V(5).Infof("finish remove annotation for %s", portName)
-					c.addOrUpdatePodQueue.Add(fmt.Sprintf("%s/%s", pod.Namespace, pod.Name))
+					klog.V(5).Infof("enqueue update pod %s", key)
+					c.addOrUpdatePodQueue.Add(key)
 					break
 				} else if pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)] == "true" && pod.Spec.NodeName != "" &&
 					pod.Annotations[fmt.Sprintf(util.RoutedAnnotationTemplate, podNet.ProviderName)] != "true" {
-					klog.V(5).Infof("enqueue update pod %s/%s", pod.Namespace, pod.Name)
-					c.addOrUpdatePodQueue.Add(fmt.Sprintf("%s/%s", pod.Namespace, pod.Name))
+					klog.V(5).Infof("enqueue update pod %s", key)
+					c.addOrUpdatePodQueue.Add(key)
 					break
 				}
 			}

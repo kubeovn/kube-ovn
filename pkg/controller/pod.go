@@ -176,13 +176,6 @@ func isPodStatusPhaseAlive(p *v1.Pod) bool {
 }
 
 func (c *Controller) enqueueAddPod(obj interface{}) {
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
-
 	p := obj.(*v1.Pod)
 	if p.Spec.HostNetwork {
 		return
@@ -193,11 +186,13 @@ func (c *Controller) enqueueAddPod(obj interface{}) {
 		c.namedPort.AddNamedPortByPod(p)
 		if p.Status.PodIP != "" {
 			for _, np := range c.podMatchNetworkPolicies(p) {
+				klog.V(3).Infof("enqueue update network policy %s", np)
 				c.updateNpQueue.Add(np)
 			}
 		}
 	}
 
+	key := cache.MetaObjectToName(p).String()
 	if !isPodAlive(p) {
 		isStateful, statefulSetName, statefulSetUID := isStatefulSetPod(p)
 		isVMPod, vmName := isVMPod(p)
@@ -232,13 +227,6 @@ func (c *Controller) enqueueAddPod(obj interface{}) {
 }
 
 func (c *Controller) enqueueDeletePod(obj interface{}) {
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
-
 	p := obj.(*v1.Pod)
 	if p.Spec.HostNetwork {
 		return
@@ -256,6 +244,7 @@ func (c *Controller) enqueueDeletePod(obj interface{}) {
 		c.updateAnpsByLabelsMatch(podNs.Labels, obj.(*v1.Pod).Labels)
 	}
 
+	key := cache.MetaObjectToName(p).String()
 	klog.Infof("enqueue delete pod %s", key)
 	c.deletingPodObjMap.Store(key, p)
 	c.deletePodQueue.Add(key)
@@ -296,18 +285,13 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 		return
 	}
 
-	key, err := cache.MetaNamespaceKeyFunc(newObj)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
-
 	podNets, err := c.getPodKubeovnNets(newPod)
 	if err != nil {
 		klog.Errorf("failed to get newPod nets %v", err)
 		return
 	}
 
+	key := cache.MetaObjectToName(newPod).String()
 	if c.config.EnableNP {
 		c.namedPort.AddNamedPortByPod(newPod)
 		newNp := c.podMatchNetworkPolicies(newPod)

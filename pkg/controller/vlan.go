@@ -7,7 +7,6 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 
@@ -17,35 +16,19 @@ import (
 )
 
 func (c *Controller) enqueueAddVlan(obj interface{}) {
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
+	key := cache.MetaObjectToName(obj.(*kubeovnv1.Vlan)).String()
 	klog.V(3).Infof("enqueue add vlan %s", key)
 	c.addVlanQueue.Add(key)
 }
 
 func (c *Controller) enqueueUpdateVlan(_, newObj interface{}) {
-	key, err := cache.MetaNamespaceKeyFunc(newObj)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
-
+	key := cache.MetaObjectToName(newObj.(*kubeovnv1.Vlan)).String()
 	klog.V(3).Infof("enqueue update vlan %s", key)
 	c.updateVlanQueue.Add(key)
 }
 
 func (c *Controller) enqueueDelVlan(obj interface{}) {
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
-
+	key := cache.MetaObjectToName(obj.(*kubeovnv1.Vlan)).String()
 	klog.V(3).Infof("enqueue delete vlan %s", key)
 	c.delVlanQueue.Add(key)
 }

@@ -12,7 +12,6 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -24,25 +23,15 @@ import (
 )
 
 func (c *Controller) enqueueAddVirtualIP(obj interface{}) {
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
+	key := cache.MetaObjectToName(obj.(*kubeovnv1.Vip)).String()
 	klog.Infof("enqueue add vip %s", key)
 	c.addVirtualIPQueue.Add(key)
 }
 
 func (c *Controller) enqueueUpdateVirtualIP(oldObj, newObj interface{}) {
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(newObj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
 	oldVip := oldObj.(*kubeovnv1.Vip)
 	newVip := newObj.(*kubeovnv1.Vip)
+	key := cache.MetaObjectToName(newVip).String()
 	if !newVip.DeletionTimestamp.IsZero() ||
 		oldVip.Spec.MacAddress != newVip.Spec.MacAddress ||
 		oldVip.Spec.ParentMac != newVip.Spec.ParentMac ||
@@ -59,14 +48,9 @@ func (c *Controller) enqueueUpdateVirtualIP(oldObj, newObj interface{}) {
 }
 
 func (c *Controller) enqueueDelVirtualIP(obj interface{}) {
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
-	klog.Infof("enqueue del vip %s", key)
 	vip := obj.(*kubeovnv1.Vip)
+	key := cache.MetaObjectToName(vip).String()
+	klog.Infof("enqueue del vip %s", key)
 	c.delVirtualIPQueue.Add(vip)
 }
 
@@ -316,7 +300,7 @@ func (c *Controller) handleUpdateVirtualParents(key string) error {
 			if podNet.Subnet.Name == cachedVip.Spec.Subnet {
 				portName := ovs.PodNameToPortName(pod.Name, pod.Namespace, podNet.ProviderName)
 				virtualParents = append(virtualParents, portName)
-				key := fmt.Sprintf("%s/%s", pod.Namespace, pod.Name)
+				key := cache.MetaObjectToName(pod).String()
 				klog.Infof("enqueue update pod security for %s", key)
 				c.updatePodSecurityQueue.Add(key)
 				break

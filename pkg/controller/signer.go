@@ -16,7 +16,6 @@ import (
 	csrv1 "k8s.io/api/certificates/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 
@@ -24,13 +23,7 @@ import (
 )
 
 func (c *Controller) enqueueAddCsr(obj interface{}) {
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
-
+	key := cache.MetaObjectToName(obj.(*csrv1.CertificateSigningRequest)).String()
 	klog.V(3).Infof("enqueue add csr %s", key)
 	c.addOrUpdateCsrQueue.Add(key)
 }
@@ -42,14 +35,8 @@ func (c *Controller) enqueueUpdateCsr(oldObj, newObj interface{}) {
 		return
 	}
 
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(newObj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
-
-	klog.V(3).Infof("update csr %s", key)
+	key := cache.MetaObjectToName(newCsr).String()
+	klog.V(3).Infof("enqueue update csr %s", key)
 	c.addOrUpdateCsrQueue.Add(key)
 }
 
