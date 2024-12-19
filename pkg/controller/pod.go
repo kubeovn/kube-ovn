@@ -1654,6 +1654,23 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 						klog.Errorf("failed to get ippool %s: %v", ipPoolName, err)
 						return "", "", "", podNet.Subnet, err
 					}
+
+					switch podNet.Subnet.Spec.Protocol {
+					case kubeovnv1.ProtocolDual:
+						if ippool.Status.V4AvailableIPs.Int64() == 0 && ippool.Status.V6AvailableIPs.Int64() == 0 {
+							continue
+						}
+					case kubeovnv1.ProtocolIPv4:
+						if ippool.Status.V4AvailableIPs.Int64() == 0 {
+							continue
+						}
+
+					default:
+						if ippool.Status.V6AvailableIPs.Int64() == 0 {
+							continue
+						}
+					}
+
 					if ippool.Spec.Subnet == podNet.Subnet.Name {
 						ippoolStr = ippool.Name
 					}
