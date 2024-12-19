@@ -12,7 +12,7 @@ require (
 	github.com/containerd/containerd v1.7.22
 	github.com/containernetworking/cni v1.2.3
 	github.com/containernetworking/plugins v1.6.0
-	github.com/docker/docker v27.4.0+incompatible
+	github.com/docker/docker v27.4.1+incompatible
 	github.com/emicklei/go-restful/v3 v3.12.1
 	github.com/evanphx/json-patch/v5 v5.9.0
 	github.com/go-logr/stdr v1.2.2
