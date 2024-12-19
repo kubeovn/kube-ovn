@@ -658,7 +658,7 @@ func (c *Controller) gcAddressSet() error {
 	}
 
 	if err = c.OVNNbClient.DeleteAddressSet(asList...); err != nil {
-		klog.Errorf("failed to delete address set %v,%v", asList, err)
+		klog.Errorf("failed to delete address set %v: %v", asList, err)
 		return err
 	}
 
