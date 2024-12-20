@@ -456,7 +456,7 @@ func (csh cniServerHandler) handleDel(req *restful.Request, resp *restful.Respon
 	var vmName string
 
 	// If the Pod was found, process its annotations and labels.
-	if err == nil {
+	if pod != nil {
 		if pod.Annotations != nil && (util.IsOvnProvider(podRequest.Provider) || podRequest.CniType == util.CniTypeName) {
 			subnet := pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, podRequest.Provider)]
 			if subnet != "" {
