@@ -731,46 +731,7 @@ func (c *Controller) setIptables() error {
 				)
 			}
 		}
-		_, subnetCidrs, err := c.getDefaultVpcSubnetsCIDR(protocol)
-		if err != nil {
-			klog.Errorf("get subnets failed, %+v", err)
-			return err
-		}
 
-		for name, subnetCidr := range subnetCidrs {
-			iptablesRules = append(iptablesRules,
-				util.IPTableRule{Table: "filter", Chain: "FORWARD", Rule: strings.Fields(fmt.Sprintf(`-m comment --comment %s,%s -s %s`, util.OvnSubnetGatewayIptables, name, subnetCidr))},
-				util.IPTableRule{Table: "filter", Chain: "FORWARD", Rule: strings.Fields(fmt.Sprintf(`-m comment --comment %s,%s -d %s`, util.OvnSubnetGatewayIptables, name, subnetCidr))},
-			)
-		}
-
-		rules, err := ipt.List("filter", "FORWARD")
-		if err != nil {
-			klog.Errorf(`failed to list iptables rule table "filter" chain "FORWARD" with err %v `, err)
-			return err
-		}
-
-		for _, rule := range rules {
-			if !strings.Contains(rule, util.OvnSubnetGatewayIptables) {
-				continue
-			}
-
-			var inUse bool
-			for name := range subnetCidrs {
-				if slices.Contains(util.DoubleQuotedFields(rule), fmt.Sprintf("%s,%s", util.OvnSubnetGatewayIptables, name)) {
-					inUse = true
-					break
-				}
-			}
-
-			if !inUse {
-				// rule[11:] skip "-A FORWARD "
-				if err = deleteIptablesRule(ipt, util.IPTableRule{Table: "filter", Chain: "FORWARD", Rule: util.DoubleQuotedFields(rule[11:])}); err != nil {
-					klog.Error(err)
-					return err
-				}
-			}
-		}
 		var natPreroutingRules, natPostroutingRules, ovnMasqueradeRules, manglePostroutingRules []util.IPTableRule
 		for _, rule := range iptablesRules {
 			if rule.Table == NAT {
