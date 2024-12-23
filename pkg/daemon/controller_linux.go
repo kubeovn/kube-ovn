@@ -528,12 +528,12 @@ func (c *Controller) getPolicyRouting(subnet *kubeovnv1.Subnet) ([]netlink.Rule,
 }
 
 func (c *Controller) handlePod(key string) error {
+	klog.V(3).Infof("v3 log start success")
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
 		return nil
 	}
-	klog.Infof("handle qos update for pod %s/%s", namespace, name)
 
 	pod, err := c.podsLister.Pods(namespace).Get(name)
 	if err != nil {
@@ -557,7 +557,7 @@ func (c *Controller) handlePod(key string) error {
 
 	// set default nic bandwidth
 	ifaceID := ovs.PodNameToPortName(podName, pod.Namespace, util.OvnProvider)
-	err = ovs.SetInterfaceBandwidth(podName, pod.Namespace, ifaceID, pod.Annotations[util.EgressRateAnnotation], pod.Annotations[util.IngressRateAnnotation])
+	err = ovs.SetInterfaceBandwidth(podName, pod.Namespace, ifaceID, pod.Annotations[util.IngressRateAnnotation], pod.Annotations[util.EgressRateAnnotation])
 	if err != nil {
 		klog.Error(err)
 		return err
@@ -573,6 +573,8 @@ func (c *Controller) handlePod(key string) error {
 		klog.Error(err)
 		return err
 	}
+
+	klog.V(3).Infof("handle qos update for pod %s/%s", namespace, name)
 
 	// set multus-nic bandwidth
 	attachNets, err := nadutils.ParsePodNetworkAnnotation(pod)

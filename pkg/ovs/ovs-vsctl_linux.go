@@ -15,6 +15,8 @@ import (
 func SetInterfaceBandwidth(podName, podNamespace, iface, ingress, egress string) error {
 	ingressMPS, _ := strconv.Atoi(ingress)
 	ingressKPS := ingressMPS * 1000
+	ingressBurst := ingressKPS * 8 / 10
+
 	interfaceList, err := ovsFind("interface", "name", fmt.Sprintf("external-ids:iface-id=%s", iface))
 	if err != nil {
 		klog.Error(err)
@@ -33,35 +35,42 @@ func SetInterfaceBandwidth(podName, podNamespace, iface, ingress, egress string)
 		return err
 	}
 
+	egressMPS, _ := strconv.Atoi(egress)
+	egressBPS := egressMPS * 1000 * 1000
+
 	for _, ifName := range interfaceList {
 		// ingress_policing_rate is in Kbps
-		err := ovsSet("interface", ifName, fmt.Sprintf("ingress_policing_rate=%d", ingressKPS), fmt.Sprintf("ingress_policing_burst=%d", ingressKPS*8/10))
+		err := ovsSet("interface", ifName, fmt.Sprintf("ingress_policing_rate=%d", ingressKPS), fmt.Sprintf("ingress_policing_burst=%d", ingressBurst))
 		if err != nil {
 			klog.Error(err)
 			return err
-		}
-
-		egressMPS, _ := strconv.Atoi(egress)
-		egressBPS := egressMPS * 1000 * 1000
+		} else {
+            klog.V(3).Infof("Successfully set ingress policing rate to %d Kbps on interface %s", ingressKPS, ifName)
+        }
 
 		if egressBPS > 0 {
 			queueUID, err := SetHtbQosQueueRecord(podName, podNamespace, iface, egressBPS, queueIfaceUIDMap)
 			if err != nil {
 				klog.Error(err)
 				return err
-			}
+			} else {
+                klog.V(3).Infof("Successfully set HTB QoS queue record for interface %s with egress %d Bps", iface, egressBPS)
+            }
 
 			if err = SetQosQueueBinding(podName, podNamespace, ifName, iface, queueUID, qosIfaceUIDMap); err != nil {
 				klog.Error(err)
 				return err
-			}
+			} else {
+                klog.V(3).Infof("Successfully bound QoS queue for interface %s", ifName)
+            }
 		} else {
 			if qosUID, ok := qosIfaceUIDMap[iface]; ok {
 				qosType, err := ovsGet("qos", qosUID, "type", "")
 				if err != nil {
 					klog.Error(err)
 					return err
-				}
+				} 
+
 				if qosType != util.HtbQos {
 					continue
 				}
@@ -74,7 +83,9 @@ func SetInterfaceBandwidth(podName, podNamespace, iface, ingress, egress string)
 				if _, err := Exec("remove", "queue", queueID, "other_config", "max-rate"); err != nil {
 					klog.Error(err)
 					return fmt.Errorf("failed to remove rate limit for queue in pod %v/%v, %w", podNamespace, podName, err)
-				}
+				} else {
+                    klog.V(3).Infof("Successfully removed rate limit for queue ID %s in pod %v/%v", queueID, podNamespace, podName)
+                }
 			}
 		}
 
