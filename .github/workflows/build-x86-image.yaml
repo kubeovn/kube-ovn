@@ -280,6 +280,10 @@ jobs:
                 $GO_INSTALL -ldflags="${goldflags}" k8s.io/kubernetes/cmd/kubectl
                 echo "COPY $bin /$f" >> "$dockerfile"
                 ;;
+              gobgp)
+                $GO_INSTALL github.com/osrg/gobgp/v3/cmd/$bin
+                echo "COPY $bin /$f" >> "$dockerfile"
+                ;;
               *)
                 ;;
             esac
