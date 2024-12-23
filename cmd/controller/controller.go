@@ -84,9 +84,6 @@ func CmdMain() {
 			}()
 		}
 
-		if !config.EnableMetrics {
-			return
-		}
 		metrics.InitKlogMetrics()
 		metrics.InitClientGoMetrics()
 		addr := util.JoinHostPort(metricsAddr, config.PprofPort)
