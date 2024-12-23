@@ -27,7 +27,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 	var stsClient *framework.StatefulSetClient
 	var subnetClient *framework.SubnetClient
 	var ippoolClient *framework.IPPoolClient
-	var namespaceName, subnetName, ippoolName, podName, deployName, stsName string
+	var namespaceName, subnetName, subnetName2, ippoolName, ippoolName2, podName, deployName, stsName, stsName2 string
 	var subnet *apiv1.Subnet
 	var cidr string
 
@@ -41,10 +41,14 @@ var _ = framework.Describe("[group:ipam]", func() {
 		ippoolClient = f.IPPoolClient()
 		namespaceName = f.Namespace.Name
 		subnetName = "subnet-" + framework.RandomSuffix()
+		subnetName2 = "subnet2-" + framework.RandomSuffix()
 		ippoolName = "ippool-" + framework.RandomSuffix()
+		ippoolName2 = "ippool2-" + framework.RandomSuffix()
 		podName = "pod-" + framework.RandomSuffix()
 		deployName = "deploy-" + framework.RandomSuffix()
 		stsName = "sts-" + framework.RandomSuffix()
+		stsName2 = "sts2-" + framework.RandomSuffix()
+
 		cidr = framework.RandomCIDR(f.ClusterIPFamily)
 
 		ginkgo.By("Creating subnet " + subnetName)
@@ -58,14 +62,17 @@ var _ = framework.Describe("[group:ipam]", func() {
 		ginkgo.By("Deleting deployment " + deployName)
 		deployClient.DeleteSync(deployName)
 
-		ginkgo.By("Deleting statefulset " + stsName)
+		ginkgo.By("Deleting statefulset " + stsName + " and " + stsName2)
 		stsClient.DeleteSync(stsName)
+		stsClient.DeleteSync(stsName2)
 
-		ginkgo.By("Deleting ippool " + ippoolName)
+		ginkgo.By("Deleting ippool " + ippoolName + " and " + ippoolName2)
 		ippoolClient.DeleteSync(ippoolName)
+		ippoolClient.DeleteSync(ippoolName2)
 
-		ginkgo.By("Deleting subnet " + subnetName)
+		ginkgo.By("Deleting subnet " + subnetName + " and " + subnetName2)
 		subnetClient.DeleteSync(subnetName)
+		subnetClient.DeleteSync(subnetName2)
 	})
 
 	framework.ConformanceIt("should allocate static ipv4 and mac for pod", func() {
@@ -514,31 +521,27 @@ var _ = framework.Describe("[group:ipam]", func() {
 		f.SkipVersionPriorTo(1, 14, "Multiple IP Pools per namespace support was introduced in v1.14")
 		replicas := 1
 		ipsCount := 12
-		testStsName := "test-statefulset" + framework.RandomSuffix()
-		testSubnetName := "ip-pool-subnet2" + framework.RandomSuffix()
-		testIPPool1Name := "ip-pool1" + framework.RandomSuffix()
-		testIPPool2Name := "ip-pool2" + framework.RandomSuffix()
 
-		ginkgo.By("Creating a new subnet " + testSubnetName)
+		ginkgo.By("Creating a new subnet " + subnetName2)
 		testCidr := framework.RandomCIDR(f.ClusterIPFamily)
-		testSubnet := framework.MakeSubnet(testSubnetName, "", testCidr, "", "", "", nil, nil, []string{namespaceName})
+		testSubnet := framework.MakeSubnet(subnetName2, "", testCidr, "", "", "", nil, nil, []string{namespaceName})
 		subnetClient.CreateSync(testSubnet)
 
 		ginkgo.By("Creating IPPool resources ")
 		ipsRange1 := framework.RandomIPPool(cidr, ipsCount)
 		ipsRange2 := framework.RandomIPPool(testCidr, ipsCount)
-		ippool1 := framework.MakeIPPool(testIPPool1Name, subnetName, ipsRange1, []string{namespaceName})
-		ippool2 := framework.MakeIPPool(testIPPool2Name, testSubnetName, ipsRange2, []string{namespaceName})
+		ippool1 := framework.MakeIPPool(ippoolName, subnetName, ipsRange1, []string{namespaceName})
+		ippool2 := framework.MakeIPPool(ippoolName2, subnetName2, ipsRange2, []string{namespaceName})
 		ippoolClient.CreateSync(ippool1)
 		ippoolClient.CreateSync(ippool2)
 
-		ginkgo.By("Creating statefulset " + testStsName + " with logical switch annotation and no ippool annotation")
-		labels := map[string]string{"app": testStsName}
-		sts := framework.MakeStatefulSet(testStsName, testStsName, int32(replicas), labels, framework.PauseImage)
+		ginkgo.By("Creating statefulset " + stsName + " with logical switch annotation and no ippool annotation")
+		labels := map[string]string{"app": stsName}
+		sts := framework.MakeStatefulSet(stsName, stsName, int32(replicas), labels, framework.PauseImage)
 		sts.Spec.Template.Annotations = map[string]string{util.LogicalSwitchAnnotation: subnetName}
 		sts = stsClient.CreateSync(sts)
 
-		ginkgo.By("Getting pods for statefulset " + testStsName)
+		ginkgo.By("Getting pods for statefulset " + stsName)
 		pods := stsClient.GetPods(sts)
 		framework.ExpectHaveLen(pods.Items, replicas)
 
@@ -551,41 +554,27 @@ var _ = framework.Describe("[group:ipam]", func() {
 			framework.ExpectMAC(pod.Annotations[util.MacAddressAnnotation])
 			framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
 		}
-
-		ginkgo.By("Deleting statefulset " + testStsName)
-		stsClient.DeleteSync(testStsName)
-
-		ginkgo.By("Deleting ippools")
-		ippoolClient.DeleteSync(testIPPool1Name)
-		ippoolClient.DeleteSync(testIPPool2Name)
-
-		ginkgo.By("Deleting subnet " + testSubnetName)
-		subnetClient.DeleteSync(testSubnetName)
 	})
 
 	framework.ConformanceIt("should allocate right IPs for the statefulset when there are multiple ippools added in the namespace and there are no available ips in the first ippool", func() {
 		f.SkipVersionPriorTo(1, 14, "Multiple IP Pools per namespace support was introduced in v1.14")
 		replicas := 1
 		ipsCount := 1
-		testStsName := "test-statefulset" + framework.RandomSuffix()
-		testStsName2 := "test-statefulset2" + framework.RandomSuffix()
-		testIPPool1Name := "ip-pool1" + framework.RandomSuffix()
-		testIPPool2Name := "ip-pool2" + framework.RandomSuffix()
 
 		ginkgo.By("Creating IPPool resources ")
 		ipsRange1 := framework.RandomIPPool(cidr, ipsCount)
 		ipsRange2 := framework.RandomIPPool(cidr, ipsCount)
-		ippool1 := framework.MakeIPPool(testIPPool1Name, subnetName, ipsRange1, []string{namespaceName})
-		ippool2 := framework.MakeIPPool(testIPPool2Name, subnetName, ipsRange2, []string{namespaceName})
+		ippool1 := framework.MakeIPPool(ippoolName, subnetName, ipsRange1, []string{namespaceName})
+		ippool2 := framework.MakeIPPool(ippoolName2, subnetName, ipsRange2, []string{namespaceName})
 		ippoolClient.CreateSync(ippool1)
 		ippoolClient.CreateSync(ippool2)
 
-		ginkgo.By("Creating first statefulset " + testStsName + " with logical switch annotation and no ippool annotation")
-		sts := framework.MakeStatefulSet(testStsName, testStsName, int32(replicas), map[string]string{"app": testStsName}, framework.PauseImage)
+		ginkgo.By("Creating first statefulset " + stsName + " with logical switch annotation and no ippool annotation")
+		sts := framework.MakeStatefulSet(stsName, stsName, int32(replicas), map[string]string{"app": stsName}, framework.PauseImage)
 		sts.Spec.Template.Annotations = map[string]string{util.LogicalSwitchAnnotation: subnetName}
 		sts = stsClient.CreateSync(sts)
 
-		ginkgo.By("Getting pods for the first statefulset " + testStsName)
+		ginkgo.By("Getting pods for the first statefulset " + stsName)
 		pods := stsClient.GetPods(sts)
 		framework.ExpectHaveLen(pods.Items, replicas)
 
@@ -599,12 +588,12 @@ var _ = framework.Describe("[group:ipam]", func() {
 			framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
 		}
 
-		ginkgo.By("Creating second statefulset " + testStsName2 + " with logical switch annotation and no ippool annotation")
-		sts2 := framework.MakeStatefulSet(testStsName2, testStsName2, int32(replicas), map[string]string{"app": testStsName2}, framework.PauseImage)
+		ginkgo.By("Creating second statefulset " + stsName2 + " with logical switch annotation and no ippool annotation")
+		sts2 := framework.MakeStatefulSet(stsName2, stsName2, int32(replicas), map[string]string{"app": stsName2}, framework.PauseImage)
 		sts2.Spec.Template.Annotations = map[string]string{util.LogicalSwitchAnnotation: subnetName}
 		sts2 = stsClient.CreateSync(sts2)
 
-		ginkgo.By("Getting pods for the second statefulset " + testStsName2)
+		ginkgo.By("Getting pods for the second statefulset " + stsName2)
 		pods2 := stsClient.GetPods(sts2)
 		framework.ExpectHaveLen(pods2.Items, replicas)
 
@@ -617,13 +606,5 @@ var _ = framework.Describe("[group:ipam]", func() {
 			framework.ExpectMAC(pod.Annotations[util.MacAddressAnnotation])
 			framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
 		}
-
-		ginkgo.By("Deleting statefulset " + testStsName)
-		stsClient.DeleteSync(testStsName)
-		stsClient.DeleteSync(testStsName2)
-
-		ginkgo.By("Deleting ippools")
-		ippoolClient.DeleteSync(testIPPool1Name)
-		ippoolClient.DeleteSync(testIPPool2Name)
 	})
 })
