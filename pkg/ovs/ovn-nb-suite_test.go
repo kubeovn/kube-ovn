@@ -31,6 +31,7 @@ type OvnClientTestSuite struct {
 	ovnSBClient *OVNSbClient
 
 	failedOvnNBClient *OVNNbClient
+	failedOvnSBClient *OVNSbClient
 	ovnLegacyClient   *LegacyClient
 
 	ovsSocket string
@@ -38,6 +39,10 @@ type OvnClientTestSuite struct {
 
 func emptyNbDatabaseModel() (model.ClientDBModel, error) {
 	return model.NewClientDBModel("OVN_Northbound", map[string]model.Model{})
+}
+
+func emptySbDatabaseModel() (model.ClientDBModel, error) {
+	return model.NewClientDBModel("OVN_Southbound", map[string]model.Model{})
 }
 
 func (suite *OvnClientTestSuite) SetupSuite() {
@@ -73,6 +78,21 @@ func (suite *OvnClientTestSuite) SetupSuite() {
 
 	// setup ovn sb client
 	sbClientSchema := ovnsb.Schema()
+
+	// setup failed case ovn sb client
+	emptySbDBModel, err := emptySbDatabaseModel()
+	require.NoError(suite.T(), err)
+
+	fakeSBServer, sbSock1 := newOVSDBServer(suite.T(), "fake-sb", emptySbDBModel, sbClientSchema)
+	sbEndpoint1 := fmt.Sprintf("unix:%s", sbSock1)
+	require.FileExists(suite.T(), sbSock1)
+	failedOvnSBClient, err := newOvnSbClient(suite.T(), sbEndpoint1, 10)
+	require.NoError(suite.T(), err)
+	suite.failedOvnSBClient = failedOvnSBClient
+	// close the server to simulate the failed case
+	fakeSBServer.Close()
+	require.NoFileExists(suite.T(), sbSock1)
+
 	sbClientDBModel, err := ovnsb.FullDatabaseModel()
 	require.NoError(suite.T(), err)
 

@@ -112,6 +112,7 @@ func (suite *OvnClientTestSuite) testUpdateChassis() {
 	t.Parallel()
 
 	sbClient := suite.ovnSBClient
+	failSBClient := suite.failedOvnSBClient
 
 	t.Cleanup(func() {
 		err := sbClient.DeleteChassis("chassis-name-3")
@@ -140,6 +141,13 @@ func (suite *OvnClientTestSuite) testUpdateChassis() {
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "failed to generate update operations for chassis")
 	})
+
+	t.Run("test failed client update chassis with valid fields", func(t *testing.T) {
+		updatedHostname := "updated-host-name"
+		chassis.Hostname = updatedHostname
+		err := failSBClient.UpdateChassis(chassis, &chassis.Hostname)
+		require.NoError(t, err)
+	})
 }
 
 func (suite *OvnClientTestSuite) testListChassis() {
@@ -147,6 +155,7 @@ func (suite *OvnClientTestSuite) testListChassis() {
 	t.Parallel()
 
 	sbClient := suite.ovnSBClient
+	failSBClient := suite.failedOvnSBClient
 
 	t.Cleanup(func() {
 		err := sbClient.DeleteChassis("chassis-1")
@@ -197,6 +206,11 @@ func (suite *OvnClientTestSuite) testListChassis() {
 		require.NotContains(t, names, "chassis-1")
 		require.NotContains(t, names, "chassis-2")
 	})
+
+	t.Run("test failed client list chassis with no entries", func(t *testing.T) {
+		_, err := failSBClient.ListChassis()
+		require.NoError(t, err)
+	})
 }
 
 func (suite *OvnClientTestSuite) testGetChassisByHost() {
@@ -204,6 +218,7 @@ func (suite *OvnClientTestSuite) testGetChassisByHost() {
 	t.Parallel()
 
 	sbClient := suite.ovnSBClient
+	failSBClient := suite.failedOvnSBClient
 
 	t.Cleanup(func() {
 		err := sbClient.DeleteChassis("chassis-3x")
@@ -293,6 +308,11 @@ func (suite *OvnClientTestSuite) testGetChassisByHost() {
 		err = sbClient.DeleteChassis("chassis-6x-fake")
 		require.NoError(t, err)
 	})
+
+	t.Run("test failed client get chassis by host with non-existent hostname", func(t *testing.T) {
+		_, err := failSBClient.GetChassisByHost("non-existent-host")
+		require.Error(t, err)
+	})
 }
 
 func (suite *OvnClientTestSuite) testDeleteChassisByHost() {
@@ -300,6 +320,7 @@ func (suite *OvnClientTestSuite) testDeleteChassisByHost() {
 	t.Parallel()
 
 	sbClient := suite.ovnSBClient
+	failSBClient := suite.failedOvnSBClient
 
 	t.Cleanup(func() {
 		err := sbClient.DeleteChassis("chassis-node1-1")
@@ -355,6 +376,16 @@ func (suite *OvnClientTestSuite) testDeleteChassisByHost() {
 		err := sbClient.DeleteChassisByHost("node3")
 		require.ErrorContains(t, err, "chassis name is empty")
 	})
+
+	t.Run("test failed client delete chassis by non-existent host", func(t *testing.T) {
+		err := failSBClient.DeleteChassisByHost("non-existent-node")
+		require.NoError(t, err)
+	})
+
+	t.Run("test failed client delete chassis by empty chassis name with ExternalIDs", func(t *testing.T) {
+		err := failSBClient.DeleteChassisByHost("node3")
+		require.NoError(t, err)
+	})
 }
 
 func (suite *OvnClientTestSuite) testUpdateChassisTag() {
@@ -362,6 +393,7 @@ func (suite *OvnClientTestSuite) testUpdateChassisTag() {
 	t.Parallel()
 
 	sbClient := suite.ovnSBClient
+	failSBClient := suite.failedOvnSBClient
 
 	t.Cleanup(func() {
 		err := sbClient.DeleteChassis("chassis-update-tag")
@@ -421,6 +453,40 @@ func (suite *OvnClientTestSuite) testUpdateChassisTag() {
 		require.Equal(t, "", updatedChassis.ExternalIDs["node"])
 		require.Equal(t, util.CniTypeName, updatedChassis.ExternalIDs["vendor"])
 	})
+
+	t.Run("test failed client update chassis tag with empty node name", func(t *testing.T) {
+		err := failSBClient.UpdateChassisTag("chassis-update-tag", "")
+		require.Error(t, err)
+	})
+
+	t.Run("test failed client update chassis tag with new node name", func(t *testing.T) {
+		err := failSBClient.UpdateChassisTag("chassis-update-tag", "new-node-name")
+		require.Error(t, err)
+	})
+
+	t.Run("test failed client update chassis tag with existing ExternalIDs", func(t *testing.T) {
+		chassis.ExternalIDs = map[string]string{"existing": "value"}
+		err := failSBClient.UpdateChassis(chassis, &chassis.ExternalIDs)
+		require.NoError(t, err)
+
+		err = failSBClient.UpdateChassisTag("chassis-update-tag", "another-node-name")
+		require.Error(t, err)
+	})
+
+	t.Run("test failed client update chassis tag with non-existent chassis", func(t *testing.T) {
+		err := failSBClient.UpdateChassisTag("non-existent-chassis", "node-name")
+		require.Error(t, err)
+	})
+
+	t.Run("test failed client update chassis tag with empty chassis name", func(t *testing.T) {
+		err := failSBClient.UpdateChassisTag("", "node-name")
+		require.Error(t, err)
+	})
+
+	t.Run("test failed client update chassis tag with empty node name", func(t *testing.T) {
+		err := failSBClient.UpdateChassisTag("chassis-update-tag", "")
+		require.Error(t, err)
+	})
 }
 
 func (suite *OvnClientTestSuite) testGetKubeOvnChassisses() {
@@ -428,6 +494,7 @@ func (suite *OvnClientTestSuite) testGetKubeOvnChassisses() {
 	t.Parallel()
 
 	sbClient := suite.ovnSBClient
+	failSBClient := suite.failedOvnSBClient
 
 	kubeOvnChassis1 := newChassis(0, "host-1", "kube-ovn-chassis-1", nil, nil, nil, map[string]string{"vendor": util.CniTypeName}, nil)
 	kubeOvnChassis2 := newChassis(0, "host-2", "kube-ovn-chassis-2", nil, nil, nil, map[string]string{"vendor": util.CniTypeName}, nil)
@@ -468,6 +535,10 @@ func (suite *OvnClientTestSuite) testGetKubeOvnChassisses() {
 	require.True(t, names["kube-ovn-chassis-2"])
 	require.False(t, names["non-kube-ovn-chassis"])
 	require.True(t, names["mixed-chassis"])
+
+	// failed client test
+	_, err = failSBClient.GetKubeOvnChassisses()
+	require.NoError(t, err)
 
 	t.Cleanup(func() {
 		err := sbClient.DeleteChassis("kube-ovn-chassis-1")
