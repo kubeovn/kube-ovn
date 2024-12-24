@@ -144,7 +144,9 @@ func (c *Controller) handleAddNamespace(key string) error {
 				return err
 			}
 			if s.Name == vpc.Spec.DefaultSubnet {
-				lss = []string{s.Name}
+				if slices.Contains(vpc.Spec.Namespaces, key) && key != metav1.NamespaceSystem {
+					lss = append([]string{s.Name}, lss...)
+				}
 			}
 		}
 	}
