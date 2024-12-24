@@ -30,6 +30,11 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
+const (
+	kernelModuleIPTables  = "ip_tables"
+	kernelModuleIP6Tables = "ip6_tables"
+)
+
 // ControllerRuntime represents runtime specific controller members
 type ControllerRuntime struct {
 	iptables         map[string]*iptables.IPTables
@@ -92,11 +97,17 @@ func (c *Controller) initRuntime() error {
 		}
 		c.iptables[kubeovnv1.ProtocolIPv4] = ipt
 		if c.iptablesObsolete != nil {
-			if ipt, err = iptables.NewWithProtocolAndMode(iptables.ProtocolIPv4, "legacy"); err != nil {
-				klog.Error(err)
-				return err
+			ok, err := kernelModuleLoaded(kernelModuleIPTables)
+			if err != nil {
+				klog.Errorf("failed to check kernel module %s: %v", kernelModuleIPTables, err)
 			}
-			c.iptablesObsolete[kubeovnv1.ProtocolIPv4] = ipt
+			if ok {
+				if ipt, err = iptables.NewWithProtocolAndMode(iptables.ProtocolIPv4, "legacy"); err != nil {
+					klog.Error(err)
+					return err
+				}
+				c.iptablesObsolete[kubeovnv1.ProtocolIPv4] = ipt
+			}
 		}
 		c.ipsets[kubeovnv1.ProtocolIPv4] = ipsets.NewIPSets(ipsets.NewIPVersionConfig(ipsets.IPFamilyV4, IPSetPrefix, nil, nil))
 		c.k8siptables[kubeovnv1.ProtocolIPv4] = k8siptables.New(c.k8sExec, k8siptables.ProtocolIPv4)
@@ -109,11 +120,17 @@ func (c *Controller) initRuntime() error {
 		}
 		c.iptables[kubeovnv1.ProtocolIPv6] = ipt
 		if c.iptablesObsolete != nil {
-			if ipt, err = iptables.NewWithProtocolAndMode(iptables.ProtocolIPv6, "legacy"); err != nil {
-				klog.Error(err)
-				return err
+			ok, err := kernelModuleLoaded(kernelModuleIP6Tables)
+			if err != nil {
+				klog.Errorf("failed to check kernel module %s: %v", kernelModuleIP6Tables, err)
 			}
-			c.iptablesObsolete[kubeovnv1.ProtocolIPv6] = ipt
+			if ok {
+				if ipt, err = iptables.NewWithProtocolAndMode(iptables.ProtocolIPv6, "legacy"); err != nil {
+					klog.Error(err)
+					return err
+				}
+				c.iptablesObsolete[kubeovnv1.ProtocolIPv6] = ipt
+			}
 		}
 		c.ipsets[kubeovnv1.ProtocolIPv6] = ipsets.NewIPSets(ipsets.NewIPVersionConfig(ipsets.IPFamilyV6, IPSetPrefix, nil, nil))
 		c.k8siptables[kubeovnv1.ProtocolIPv6] = k8siptables.New(c.k8sExec, k8siptables.ProtocolIPv6)
@@ -694,4 +711,20 @@ func rotateLog() {
 	if err != nil {
 		klog.Errorf("failed to rotate kube-ovn log %q", output)
 	}
+}
+
+func kernelModuleLoaded(module string) (bool, error) {
+	data, err := os.ReadFile("/proc/modules")
+	if err != nil {
+		klog.Errorf("failed to read /proc/modules: %v", err)
+		return false, err
+	}
+
+	for _, line := range strings.Split(string(data), "\n") {
+		if fields := strings.Fields(line); len(fields) != 0 && fields[0] == module {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
