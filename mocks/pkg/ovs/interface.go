@@ -1871,32 +1871,32 @@ func (mr *MockACLMockRecorder) CreateSgDenyAllACL(sgName any) *gomock.Call {
 }
 
 // DeleteAcls mocks base method.
-func (m *MockACL) DeleteAcls(parentName, parentType, direction string, externalIDs map[string]string) error {
+func (m *MockACL) DeleteAcls(parentName, parentType, direction string, externalIDs map[string]string, tier int) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteAcls", parentName, parentType, direction, externalIDs)
+	ret := m.ctrl.Call(m, "DeleteAcls", parentName, parentType, direction, externalIDs, tier)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // DeleteAcls indicates an expected call of DeleteAcls.
-func (mr *MockACLMockRecorder) DeleteAcls(parentName, parentType, direction, externalIDs any) *gomock.Call {
+func (mr *MockACLMockRecorder) DeleteAcls(parentName, parentType, direction, externalIDs, tier any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteAcls", reflect.TypeOf((*MockACL)(nil).DeleteAcls), parentName, parentType, direction, externalIDs)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteAcls", reflect.TypeOf((*MockACL)(nil).DeleteAcls), parentName, parentType, direction, externalIDs, tier)
 }
 
 // DeleteAclsOps mocks base method.
-func (m *MockACL) DeleteAclsOps(parentName, parentType, direction string, externalIDs map[string]string) ([]ovsdb.Operation, error) {
+func (m *MockACL) DeleteAclsOps(parentName, parentType, direction string, externalIDs map[string]string, tier int) ([]ovsdb.Operation, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteAclsOps", parentName, parentType, direction, externalIDs)
+	ret := m.ctrl.Call(m, "DeleteAclsOps", parentName, parentType, direction, externalIDs, tier)
 	ret0, _ := ret[0].([]ovsdb.Operation)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // DeleteAclsOps indicates an expected call of DeleteAclsOps.
-func (mr *MockACLMockRecorder) DeleteAclsOps(parentName, parentType, direction, externalIDs any) *gomock.Call {
+func (mr *MockACLMockRecorder) DeleteAclsOps(parentName, parentType, direction, externalIDs, tier any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteAclsOps", reflect.TypeOf((*MockACL)(nil).DeleteAclsOps), parentName, parentType, direction, externalIDs)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteAclsOps", reflect.TypeOf((*MockACL)(nil).DeleteAclsOps), parentName, parentType, direction, externalIDs, tier)
 }
 
 // SGLostACL mocks base method.
@@ -3150,32 +3150,32 @@ func (mr *MockNbClientMockRecorder) CreateVirtualLogicalSwitchPorts(lsName any, 
 }
 
 // DeleteAcls mocks base method.
-func (m *MockNbClient) DeleteAcls(parentName, parentType, direction string, externalIDs map[string]string) error {
+func (m *MockNbClient) DeleteAcls(parentName, parentType, direction string, externalIDs map[string]string, tier int) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteAcls", parentName, parentType, direction, externalIDs)
+	ret := m.ctrl.Call(m, "DeleteAcls", parentName, parentType, direction, externalIDs, tier)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // DeleteAcls indicates an expected call of DeleteAcls.
-func (mr *MockNbClientMockRecorder) DeleteAcls(parentName, parentType, direction, externalIDs any) *gomock.Call {
+func (mr *MockNbClientMockRecorder) DeleteAcls(parentName, parentType, direction, externalIDs, tier any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteAcls", reflect.TypeOf((*MockNbClient)(nil).DeleteAcls), parentName, parentType, direction, externalIDs)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteAcls", reflect.TypeOf((*MockNbClient)(nil).DeleteAcls), parentName, parentType, direction, externalIDs, tier)
 }
 
 // DeleteAclsOps mocks base method.
-func (m *MockNbClient) DeleteAclsOps(parentName, parentType, direction string, externalIDs map[string]string) ([]ovsdb.Operation, error) {
+func (m *MockNbClient) DeleteAclsOps(parentName, parentType, direction string, externalIDs map[string]string, tier int) ([]ovsdb.Operation, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteAclsOps", parentName, parentType, direction, externalIDs)
+	ret := m.ctrl.Call(m, "DeleteAclsOps", parentName, parentType, direction, externalIDs, tier)
 	ret0, _ := ret[0].([]ovsdb.Operation)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // DeleteAclsOps indicates an expected call of DeleteAclsOps.
-func (mr *MockNbClientMockRecorder) DeleteAclsOps(parentName, parentType, direction, externalIDs any) *gomock.Call {
+func (mr *MockNbClientMockRecorder) DeleteAclsOps(parentName, parentType, direction, externalIDs, tier any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteAclsOps", reflect.TypeOf((*MockNbClient)(nil).DeleteAclsOps), parentName, parentType, direction, externalIDs)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteAclsOps", reflect.TypeOf((*MockNbClient)(nil).DeleteAclsOps), parentName, parentType, direction, externalIDs, tier)
 }
 
 // DeleteAddressSet mocks base method.
