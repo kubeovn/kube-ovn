@@ -1201,12 +1201,8 @@ func (c *Controller) syncKubeOvnNet(pod *v1.Pod, podNets []*kubeovnNet) (*v1.Pod
 		}
 	}
 
-	for _, providerName := range annotationsNeedToAdd {
-		for key, value := range pod.Annotations {
-			if strings.HasPrefix(key, providerName) {
-				patch[key] = value
-			}
-		}
+	for key, value := range annotationsNeedToAdd {
+		patch[key] = value
 	}
 
 	if len(patch) == 0 {
