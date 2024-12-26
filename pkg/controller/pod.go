@@ -1549,7 +1549,7 @@ func (c *Controller) getPodAttachmentNet(pod *v1.Pod) ([]*kubeovnNet, error) {
 			}
 
 			if len(attach.IPRequest) != 0 {
-				ret.IPRequest = attach.IPRequest[0]
+				ret.IPRequest = strings.Join(attach.IPRequest, ",")
 			}
 
 			ret.MacRequest = attach.MacRequest

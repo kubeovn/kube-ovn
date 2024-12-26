@@ -514,9 +514,19 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 		ginkgo.By("Creating pod " + podName)
 		mac := "00:00:00:11:22:33"
 		randomIP := framework.RandomIPs(subnet.Spec.CIDRBlock, "", 1)
-		requestIP := strings.Split(randomIP, ",")[0]
 
-		annotations := map[string]string{nadv1.NetworkAttachmentAnnot: fmt.Sprintf(`[{"name": "%s", "namespace": "%s", "mac": "%s", "ips": ["%s"]}]`, nad.Name, nad.Namespace, mac, requestIP)}
+		randomIPArray := strings.Split(randomIP, ",")
+		var requestIPString string
+		for i, ip := range randomIPArray {
+			if i == len(randomIPArray)-1 {
+				requestIPString += fmt.Sprintf(`"%s"`, ip)
+			} else {
+				requestIPString += fmt.Sprintf(`"%s",`, ip)
+			}
+		}
+
+		framework.Logf("requestIPString: %s", requestIPString)
+		annotations := map[string]string{nadv1.NetworkAttachmentAnnot: fmt.Sprintf(`[{"name": "%s", "namespace": "%s", "mac": "%s", "ips": [%s]}]`, nad.Name, nad.Namespace, mac, requestIPString)}
 		annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, provider)] = subnetName
 
 		cmd := []string{"sh", "-c", "sleep infinity"}
@@ -530,6 +540,6 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 		retIP := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, provider)]
 
 		framework.ExpectEqual(mac, retMac)
-		framework.ExpectEqual(requestIP, retIP)
+		framework.ExpectEqual(strings.Join(randomIPArray, ","), retIP)
 	})
 })
