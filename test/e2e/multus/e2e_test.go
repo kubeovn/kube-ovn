@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"strings"
 	"testing"
 
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
@@ -513,8 +514,9 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 		ginkgo.By("Creating pod " + podName)
 		mac := "00:00:00:11:22:33"
 		randomIP := framework.RandomIPs(subnet.Spec.CIDRBlock, "", 1)
+		requestIP := strings.Split(randomIP, ",")[0]
 
-		annotations := map[string]string{nadv1.NetworkAttachmentAnnot: fmt.Sprintf(`[{"name": "%s", "namespace": "%s", "mac": "%s", "ips": ["%s"]}]`, nad.Name, nad.Namespace, mac, randomIP)}
+		annotations := map[string]string{nadv1.NetworkAttachmentAnnot: fmt.Sprintf(`[{"name": "%s", "namespace": "%s", "mac": "%s", "ips": ["%s"]}]`, nad.Name, nad.Namespace, mac, requestIP)}
 		annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, provider)] = subnetName
 
 		cmd := []string{"sh", "-c", "sleep infinity"}
@@ -528,6 +530,6 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 		retIP := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, provider)]
 
 		framework.ExpectEqual(mac, retMac)
-		framework.ExpectEqual(randomIP, retIP)
+		framework.ExpectEqual(requestIP, retIP)
 	})
 })
