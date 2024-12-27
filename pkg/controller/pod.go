@@ -1135,11 +1135,21 @@ func (c *Controller) syncKubeOvnNet(pod *v1.Pod, podNets []*kubeovnNet) (*v1.Pod
 	targetPortNameList := strset.NewWithSize(len(podNets))
 	portsNeedToDel := []string{}
 	annotationsNeedToDel := []string{}
+	annotationsNeedToAdd := make(map[string]string)
 	subnetUsedByPort := make(map[string]string)
 
 	for _, podNet := range podNets {
 		portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
 		targetPortNameList.Add(portName)
+		if podNet.IPRequest != "" {
+			klog.Infof("pod %s/%s use custom IP %s for provider %s", pod.Namespace, pod.Name, podNet.IPRequest, podNet.ProviderName)
+			annotationsNeedToAdd[fmt.Sprintf(util.IPAddressAnnotationTemplate, podNet.ProviderName)] = podNet.IPRequest
+		}
+
+		if podNet.MacRequest != "" {
+			klog.Infof("pod %s/%s use custom MAC %s for provider %s", pod.Namespace, pod.Name, podNet.MacRequest, podNet.ProviderName)
+			annotationsNeedToAdd[fmt.Sprintf(util.MacAddressAnnotationTemplate, podNet.ProviderName)] = podNet.MacRequest
+		}
 	}
 
 	ports, err := c.OVNNbClient.ListNormalLogicalSwitchPorts(true, map[string]string{"pod": key})
@@ -1161,7 +1171,7 @@ func (c *Controller) syncKubeOvnNet(pod *v1.Pod, podNets []*kubeovnNet) (*v1.Pod
 		}
 	}
 
-	if len(portsNeedToDel) == 0 {
+	if len(portsNeedToDel) == 0 && len(annotationsNeedToAdd) == 0 {
 		return pod, nil
 	}
 
@@ -1190,6 +1200,11 @@ func (c *Controller) syncKubeOvnNet(pod *v1.Pod, podNets []*kubeovnNet) (*v1.Pod
 			}
 		}
 	}
+
+	for key, value := range annotationsNeedToAdd {
+		patch[key] = value
+	}
+
 	if len(patch) == 0 {
 		return pod, nil
 	}
@@ -1445,6 +1460,8 @@ type kubeovnNet struct {
 	Subnet             *kubeovnv1.Subnet
 	IsDefault          bool
 	AllowLiveMigration bool
+	IPRequest          string
+	MacRequest         string
 }
 
 func (c *Controller) getPodAttachmentNet(pod *v1.Pod) ([]*kubeovnNet, error) {
@@ -1522,13 +1539,21 @@ func (c *Controller) getPodAttachmentNet(pod *v1.Pod) ([]*kubeovnNet, error) {
 					return nil, err
 				}
 			}
-			result = append(result, &kubeovnNet{
+
+			ret := &kubeovnNet{
 				Type:               providerTypeOriginal,
 				ProviderName:       providerName,
 				Subnet:             subnet,
 				IsDefault:          isDefault,
 				AllowLiveMigration: allowLiveMigration,
-			})
+			}
+
+			if len(attach.IPRequest) != 0 {
+				ret.IPRequest = strings.Join(attach.IPRequest, ",")
+			}
+
+			ret.MacRequest = attach.MacRequest
+			result = append(result, ret)
 		} else {
 			providerName = fmt.Sprintf("%s.%s", attach.Name, attach.Namespace)
 			for _, subnet := range subnets {

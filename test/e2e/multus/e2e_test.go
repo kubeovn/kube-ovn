@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"strings"
 	"testing"
 
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
@@ -497,5 +498,48 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 			framework.ExpectContainElement(actualRoutes, request.Route{Destination: "default", Gateway: nadIPv6Gateway})
 			framework.ExpectContainElement(actualRoutes, request.Route{Destination: ipv6RouteDst, Gateway: ipv6RouteGw})
 		}
+	})
+
+	framework.ConformanceIt("should be able to use mac and ip provided by k8s.v1.cni.cncf.io/networks annotation", func() {
+		provider := fmt.Sprintf("%s.%s.%s", nadName, namespaceName, util.OvnProvider)
+		ginkgo.By("Creating network attachment definition " + nadName)
+		nad := framework.MakeOVNNetworkAttachmentDefinition(nadName, namespaceName, provider, nil)
+		nad = nadClient.Create(nad)
+		framework.Logf("created network attachment definition config:\n%s", nad.Spec.Config)
+
+		ginkgo.By("Creating subnet " + subnetName)
+		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", provider, nil, nil, nil)
+		subnet = subnetClient.CreateSync(subnet)
+
+		ginkgo.By("Creating pod " + podName)
+		mac := "00:00:00:11:22:33"
+		randomIP := framework.RandomIPs(subnet.Spec.CIDRBlock, "", 1)
+
+		randomIPArray := strings.Split(randomIP, ",")
+		var requestIPString string
+		for i, ip := range randomIPArray {
+			if i == len(randomIPArray)-1 {
+				requestIPString += fmt.Sprintf(`"%s"`, ip)
+			} else {
+				requestIPString += fmt.Sprintf(`"%s",`, ip)
+			}
+		}
+
+		framework.Logf("requestIPString: %s", requestIPString)
+		annotations := map[string]string{nadv1.NetworkAttachmentAnnot: fmt.Sprintf(`[{"name": "%s", "namespace": "%s", "mac": "%s", "ips": [%s]}]`, nad.Name, nad.Namespace, mac, requestIPString)}
+		annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, provider)] = subnetName
+
+		cmd := []string{"sh", "-c", "sleep infinity"}
+		pod := framework.MakePrivilegedPod(namespaceName, podName, nil, annotations, f.KubeOVNImage, cmd, nil)
+		pod = podClient.CreateSync(pod)
+
+		ginkgo.By("Validating pod annotations")
+		framework.ExpectHaveKey(pod.Annotations, nadv1.NetworkStatusAnnot)
+		framework.Logf("pod network status:\n%s", pod.Annotations[nadv1.NetworkStatusAnnot])
+		retMac := pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, provider)]
+		retIP := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, provider)]
+
+		framework.ExpectEqual(mac, retMac)
+		framework.ExpectEqual(strings.Join(randomIPArray, ","), retIP)
 	})
 })
