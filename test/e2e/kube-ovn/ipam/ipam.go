@@ -586,6 +586,9 @@ var _ = framework.Describe("[group:ipam]", func() {
 			framework.ExpectIPInCIDR(pod.Annotations[util.IPAddressAnnotation], subnet.Spec.CIDRBlock)
 			framework.ExpectMAC(pod.Annotations[util.MacAddressAnnotation])
 			framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
+			for _, ip := range util.PodIPs(pod) {
+				framework.ExpectContainElement(append(ipsRange1, ipsRange2...), ip)
+			}
 		}
 
 		ginkgo.By("Creating second statefulset " + stsName2 + " with logical switch annotation and no ippool annotation")
@@ -605,6 +608,9 @@ var _ = framework.Describe("[group:ipam]", func() {
 			framework.ExpectIPInCIDR(pod.Annotations[util.IPAddressAnnotation], subnet.Spec.CIDRBlock)
 			framework.ExpectMAC(pod.Annotations[util.MacAddressAnnotation])
 			framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
+			for _, ip := range util.PodIPs(pod) {
+				framework.ExpectContainElement(append(ipsRange1, ipsRange2...), ip)
+			}
 		}
 	})
 })

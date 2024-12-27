@@ -1657,7 +1657,7 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 
 					switch podNet.Subnet.Spec.Protocol {
 					case kubeovnv1.ProtocolDual:
-						if ippool.Status.V4AvailableIPs.Int64() == 0 && ippool.Status.V6AvailableIPs.Int64() == 0 {
+						if ippool.Status.V4AvailableIPs.Int64() == 0 || ippool.Status.V6AvailableIPs.Int64() == 0 {
 							continue
 						}
 					case kubeovnv1.ProtocolIPv4:
@@ -1673,6 +1673,7 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 
 					if ippool.Spec.Subnet == podNet.Subnet.Name {
 						ippoolStr = ippool.Name
+						break
 					}
 				}
 			}
