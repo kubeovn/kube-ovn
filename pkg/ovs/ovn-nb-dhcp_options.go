@@ -293,11 +293,6 @@ func (c *OVNNbClient) ListDHCPOptions(needVendorFilter bool, externalIDs map[str
 	return dhcpOptList, nil
 }
 
-func (c *OVNNbClient) DHCPOptionsExists(lsName, protocol string) (bool, error) {
-	dhcpOpt, err := c.GetDHCPOptions(lsName, protocol, true)
-	return dhcpOpt != nil, err
-}
-
 // newDHCPOptions return dhcp options with basic information
 func newDHCPOptions(lsName, cidr, options string) (*ovnnb.DHCPOptions, error) {
 	if len(cidr) == 0 || len(lsName) == 0 {

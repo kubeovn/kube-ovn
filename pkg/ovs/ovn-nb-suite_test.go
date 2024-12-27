@@ -991,10 +991,6 @@ func (suite *OvnClientTestSuite) Test_CreateDHCPOptions() {
 	suite.testCreateDHCPOptions()
 }
 
-func (suite *OvnClientTestSuite) Test_DHCPOptionsExists() {
-	suite.testDHCPOptionsExists()
-}
-
 /* mixed operations unit test */
 func (suite *OvnClientTestSuite) Test_CreateGatewayLogicalSwitch() {
 	suite.testCreateGatewayLogicalSwitch()
