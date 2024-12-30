@@ -61,6 +61,16 @@ func (l *Link) NonLinkLocalAddresses() []string {
 	return result
 }
 
+func (l *Link) NonLinkLocalIPs() []string {
+	var result []string
+	for _, addr := range l.AddrInfo {
+		if !net.ParseIP(addr.Local).IsLinkLocalUnicast() {
+			result = append(result, addr.Local)
+		}
+	}
+	return result
+}
+
 type Route struct {
 	Type     string        `json:"type"`
 	Dst      string        `json:"dst"`
