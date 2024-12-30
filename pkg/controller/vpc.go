@@ -9,6 +9,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
 
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -650,6 +651,38 @@ func (c *Controller) addPolicyRouteToVpc(name string, policy *kubeovnv1.PolicyRo
 	return nil
 }
 
+func buildExternalIDsMapKey(match, action string, priority int) string {
+	return fmt.Sprintf("%s-%s-%d", match, action, priority)
+}
+
+func (c *Controller) batchAddPolicyRouteToVpc(name string, policies []*kubeovnv1.PolicyRoute, externalIDs map[string]map[string]string) error {
+	if len(policies) == 0 {
+		return nil
+	}
+	start := time.Now()
+	lrps := make([]*ovnnb.LogicalRouterPolicy, 0, len(policies))
+	for _, policy := range policies {
+		var nextHops []string
+		if policy.NextHopIP != "" {
+			nextHops = strings.Split(policy.NextHopIP, ",")
+		}
+		lrps = append(lrps, &ovnnb.LogicalRouterPolicy{
+			Priority:    policy.Priority,
+			Nexthops:    nextHops,
+			Action:      string(policy.Action),
+			Match:       policy.Match,
+			ExternalIDs: externalIDs[buildExternalIDsMapKey(policy.Match, string(policy.Action), policy.Priority)],
+		})
+	}
+
+	if err := c.OVNNbClient.BatchAddLogicalRouterPolicy(name, lrps...); err != nil {
+		klog.Errorf("batch add policy route to vpc %s failed, %v", name, err)
+		return err
+	}
+	klog.Infof("take to %v batch add policy route to vpc %s policies %d", time.Since(start), name, len(policies))
+	return nil
+}
+
 func (c *Controller) deletePolicyRouteFromVpc(name string, priority int, match string) error {
 	var (
 		vpc, cachedVpc *kubeovnv1.Vpc
@@ -659,6 +692,48 @@ func (c *Controller) deletePolicyRouteFromVpc(name string, priority int, match s
 	if err = c.OVNNbClient.DeleteLogicalRouterPolicy(name, priority, match); err != nil {
 		return err
 	}
+
+	cachedVpc, err = c.vpcsLister.Get(name)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		klog.Error(err)
+		return err
+	}
+	vpc = cachedVpc.DeepCopy()
+	// make sure custom policies not be deleted
+	_, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Update(context.Background(), vpc, metav1.UpdateOptions{})
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
+	return nil
+}
+
+func (c *Controller) batchDeleteStaticRouteFromVpc(name string, staticRoutes []*kubeovnv1.StaticRoute) error {
+	var (
+		vpc, cachedVpc *kubeovnv1.Vpc
+		err            error
+	)
+	start := time.Now()
+	routeCount := len(staticRoutes)
+	delRoutes := make([]*ovnnb.LogicalRouterStaticRoute, 0, routeCount)
+	for _, sr := range staticRoutes {
+		policyStr := convertPolicy(sr.Policy)
+		newRoute := &ovnnb.LogicalRouterStaticRoute{
+			RouteTable: sr.RouteTable,
+			Nexthop:    sr.NextHopIP,
+			Policy:     &policyStr,
+			IPPrefix:   sr.CIDR,
+		}
+		delRoutes = append(delRoutes, newRoute)
+	}
+	if err = c.OVNNbClient.BatchDeleteLogicalRouterStaticRoute(name, delRoutes); err != nil {
+		klog.Errorf("batch del vpc %s static route %d failed, %v", name, routeCount, err)
+		return err
+	}
+	klog.V(3).Infof("take to %v batch delete static route from vpc %s static routes %d", time.Since(start), name, len(delRoutes))
 
 	cachedVpc, err = c.vpcsLister.Get(name)
 	if err != nil {
@@ -711,6 +786,44 @@ func (c *Controller) deleteStaticRouteFromVpc(name, table, cidr, nextHop string,
 		klog.Errorf("del vpc %s static route failed, %v", name, err)
 		return err
 	}
+
+	cachedVpc, err = c.vpcsLister.Get(name)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		klog.Error(err)
+		return err
+	}
+	vpc = cachedVpc.DeepCopy()
+	// make sure custom policies not be deleted
+	_, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Update(context.Background(), vpc, metav1.UpdateOptions{})
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
+	return nil
+}
+
+func (c *Controller) batchDeletePolicyRouteFromVpc(name string, policies []*kubeovnv1.PolicyRoute) error {
+	var (
+		vpc, cachedVpc *kubeovnv1.Vpc
+		err            error
+	)
+
+	start := time.Now()
+	lrps := make([]*ovnnb.LogicalRouterPolicy, 0, len(policies))
+	for _, policy := range policies {
+		lrps = append(lrps, &ovnnb.LogicalRouterPolicy{
+			Priority: policy.Priority,
+			Match:    policy.Match,
+		})
+	}
+
+	if err = c.OVNNbClient.BatchDeleteLogicalRouterPolicy(name, lrps); err != nil {
+		return err
+	}
+	klog.V(3).Infof("take to %v batch delete policy route from vpc %s policies %d", time.Since(start), name, len(policies))
 
 	cachedVpc, err = c.vpcsLister.Get(name)
 	if err != nil {
