@@ -1546,13 +1546,9 @@ func (c *Controller) getPodAttachmentNet(pod *v1.Pod) ([]*kubeovnNet, error) {
 				Subnet:             subnet,
 				IsDefault:          isDefault,
 				AllowLiveMigration: allowLiveMigration,
+				MacRequest:         attach.MacRequest,
+				IPRequest:          strings.Join(attach.IPRequest, ","),
 			}
-
-			if len(attach.IPRequest) != 0 {
-				ret.IPRequest = strings.Join(attach.IPRequest, ",")
-			}
-
-			ret.MacRequest = attach.MacRequest
 			result = append(result, ret)
 		} else {
 			providerName = fmt.Sprintf("%s.%s", attach.Name, attach.Namespace)
@@ -1562,6 +1558,8 @@ func (c *Controller) getPodAttachmentNet(pod *v1.Pod) ([]*kubeovnNet, error) {
 						Type:         providerTypeIPAM,
 						ProviderName: providerName,
 						Subnet:       subnet,
+						MacRequest:   attach.MacRequest,
+						IPRequest:    strings.Join(attach.IPRequest, ","),
 					})
 					break
 				}
