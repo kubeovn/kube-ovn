@@ -145,6 +145,7 @@ type AddressSet interface {
 	DeleteAddressSet(asName string) error
 	DeleteAddressSets(externalIDs map[string]string) error
 	ListAddressSets(externalIDs map[string]string) ([]ovnnb.AddressSet, error)
+	BatchDeleteAddressSetByNames(asNames []string) error
 }
 
 type LogicalRouterStaticRoute interface {
@@ -154,6 +155,7 @@ type LogicalRouterStaticRoute interface {
 	ListLogicalRouterStaticRoutesByOption(lrName, routeTable, key, value string) ([]*ovnnb.LogicalRouterStaticRoute, error)
 	ListLogicalRouterStaticRoutes(lrName string, routeTable, policy *string, ipPrefix string, externalIDs map[string]string) ([]*ovnnb.LogicalRouterStaticRoute, error)
 	LogicalRouterStaticRouteExists(lrName, routeTable, policy, ipPrefix, nexthop string) (bool, error)
+	BatchDeleteLogicalRouterStaticRoute(lrName string, staticRoutes []*ovnnb.LogicalRouterStaticRoute) error
 }
 
 type LogicalRouterPolicy interface {
@@ -166,6 +168,9 @@ type LogicalRouterPolicy interface {
 	ListLogicalRouterPolicies(lrName string, priority int, externalIDs map[string]string, ignoreExtIDEmptyValue bool) ([]*ovnnb.LogicalRouterPolicy, error)
 	GetLogicalRouterPolicy(lrName string, priority int, match string, ignoreNotFound bool) ([]*ovnnb.LogicalRouterPolicy, error)
 	GetLogicalRouterPoliciesByExtID(lrName, key, value string) ([]*ovnnb.LogicalRouterPolicy, error)
+	BatchAddLogicalRouterPolicy(lrName string, policies ...*ovnnb.LogicalRouterPolicy) error
+	BatchDeleteLogicalRouterPolicyByUUID(lrName string, uuidList ...string) error
+	BatchDeleteLogicalRouterPolicy(lrName string, logicalRouteRolicies []*ovnnb.LogicalRouterPolicy) error
 }
 
 type NAT interface {
