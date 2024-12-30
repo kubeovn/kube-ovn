@@ -501,7 +501,6 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 	})
 
 	framework.ConformanceIt("should be able to use mac and ip provided by k8s.v1.cni.cncf.io/networks annotation", func() {
-
 		if f.VersionPriorTo(1, 13) {
 			ginkgo.Skip("this feature is supported from version 1.13")
 		}
