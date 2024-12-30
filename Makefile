@@ -1,6 +1,6 @@
 SHELL = /bin/bash
 
-include Makefile.e2e
+include e2e.mk
 
 REGISTRY = kubeovn
 DEV_TAG = dev
