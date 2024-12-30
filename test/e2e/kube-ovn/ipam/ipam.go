@@ -27,7 +27,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 	var stsClient *framework.StatefulSetClient
 	var subnetClient *framework.SubnetClient
 	var ippoolClient *framework.IPPoolClient
-	var namespaceName, subnetName, ippoolName, podName, deployName, stsName string
+	var namespaceName, subnetName, subnetName2, ippoolName, ippoolName2, podName, deployName, stsName, stsName2 string
 	var subnet *apiv1.Subnet
 	var cidr string
 
@@ -41,10 +41,14 @@ var _ = framework.Describe("[group:ipam]", func() {
 		ippoolClient = f.IPPoolClient()
 		namespaceName = f.Namespace.Name
 		subnetName = "subnet-" + framework.RandomSuffix()
+		subnetName2 = "subnet2-" + framework.RandomSuffix()
 		ippoolName = "ippool-" + framework.RandomSuffix()
+		ippoolName2 = "ippool2-" + framework.RandomSuffix()
 		podName = "pod-" + framework.RandomSuffix()
 		deployName = "deploy-" + framework.RandomSuffix()
 		stsName = "sts-" + framework.RandomSuffix()
+		stsName2 = "sts2-" + framework.RandomSuffix()
+
 		cidr = framework.RandomCIDR(f.ClusterIPFamily)
 
 		ginkgo.By("Creating subnet " + subnetName)
@@ -58,14 +62,17 @@ var _ = framework.Describe("[group:ipam]", func() {
 		ginkgo.By("Deleting deployment " + deployName)
 		deployClient.DeleteSync(deployName)
 
-		ginkgo.By("Deleting statefulset " + stsName)
+		ginkgo.By("Deleting statefulset " + stsName + " and " + stsName2)
 		stsClient.DeleteSync(stsName)
+		stsClient.DeleteSync(stsName2)
 
-		ginkgo.By("Deleting ippool " + ippoolName)
+		ginkgo.By("Deleting ippool " + ippoolName + " and " + ippoolName2)
 		ippoolClient.DeleteSync(ippoolName)
+		ippoolClient.DeleteSync(ippoolName2)
 
-		ginkgo.By("Deleting subnet " + subnetName)
+		ginkgo.By("Deleting subnet " + subnetName + " and " + subnetName2)
 		subnetClient.DeleteSync(subnetName)
+		subnetClient.DeleteSync(subnetName2)
 	})
 
 	framework.ConformanceIt("should allocate static ipv4 and mac for pod", func() {
@@ -508,5 +515,102 @@ var _ = framework.Describe("[group:ipam]", func() {
 		patchedDeploy.Spec.Template.Annotations = nil
 		deploy = deployClient.PatchSync(deploy, patchedDeploy)
 		checkFn()
+	})
+
+	framework.ConformanceIt("should allocate right IPs for the statefulset when there are multiple IP Pools added to its namespace", func() {
+		f.SkipVersionPriorTo(1, 14, "Multiple IP Pools per namespace support was introduced in v1.14")
+		replicas := 1
+		ipsCount := 12
+
+		ginkgo.By("Creating a new subnet " + subnetName2)
+		testCidr := framework.RandomCIDR(f.ClusterIPFamily)
+		testSubnet := framework.MakeSubnet(subnetName2, "", testCidr, "", "", "", nil, nil, []string{namespaceName})
+		subnetClient.CreateSync(testSubnet)
+
+		ginkgo.By("Creating IPPool resources ")
+		ipsRange1 := framework.RandomIPPool(cidr, ipsCount)
+		ipsRange2 := framework.RandomIPPool(testCidr, ipsCount)
+		ippool1 := framework.MakeIPPool(ippoolName, subnetName, ipsRange1, []string{namespaceName})
+		ippool2 := framework.MakeIPPool(ippoolName2, subnetName2, ipsRange2, []string{namespaceName})
+		ippoolClient.CreateSync(ippool1)
+		ippoolClient.CreateSync(ippool2)
+
+		ginkgo.By("Creating statefulset " + stsName + " with logical switch annotation and no ippool annotation")
+		labels := map[string]string{"app": stsName}
+		sts := framework.MakeStatefulSet(stsName, stsName, int32(replicas), labels, framework.PauseImage)
+		sts.Spec.Template.Annotations = map[string]string{util.LogicalSwitchAnnotation: subnetName}
+		sts = stsClient.CreateSync(sts)
+
+		ginkgo.By("Getting pods for statefulset " + stsName)
+		pods := stsClient.GetPods(sts)
+		framework.ExpectHaveLen(pods.Items, replicas)
+
+		for _, pod := range pods.Items {
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.CidrAnnotation, subnet.Spec.CIDRBlock)
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.GatewayAnnotation, subnet.Spec.Gateway)
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.LogicalSwitchAnnotation, subnetName)
+			framework.ExpectIPInCIDR(pod.Annotations[util.IPAddressAnnotation], subnet.Spec.CIDRBlock)
+			framework.ExpectMAC(pod.Annotations[util.MacAddressAnnotation])
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
+		}
+	})
+
+	framework.ConformanceIt("should allocate right IPs for the statefulset when there are multiple ippools added in the namespace and there are no available ips in the first ippool", func() {
+		f.SkipVersionPriorTo(1, 14, "Multiple IP Pools per namespace support was introduced in v1.14")
+		replicas := 1
+		ipsCount := 1
+
+		ginkgo.By("Creating IPPool resources ")
+		ipsRange1 := framework.RandomIPPool(cidr, ipsCount)
+		ipsRange2 := framework.RandomIPPool(cidr, ipsCount)
+		ippool1 := framework.MakeIPPool(ippoolName, subnetName, ipsRange1, []string{namespaceName})
+		ippool2 := framework.MakeIPPool(ippoolName2, subnetName, ipsRange2, []string{namespaceName})
+		ippoolClient.CreateSync(ippool1)
+		ippoolClient.CreateSync(ippool2)
+
+		ginkgo.By("Creating first statefulset " + stsName + " with logical switch annotation and no ippool annotation")
+		sts := framework.MakeStatefulSet(stsName, stsName, int32(replicas), map[string]string{"app": stsName}, framework.PauseImage)
+		sts.Spec.Template.Annotations = map[string]string{util.LogicalSwitchAnnotation: subnetName}
+		sts = stsClient.CreateSync(sts)
+
+		ginkgo.By("Getting pods for the first statefulset " + stsName)
+		pods := stsClient.GetPods(sts)
+		framework.ExpectHaveLen(pods.Items, replicas)
+
+		for _, pod := range pods.Items {
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.CidrAnnotation, subnet.Spec.CIDRBlock)
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.GatewayAnnotation, subnet.Spec.Gateway)
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.LogicalSwitchAnnotation, subnetName)
+			framework.ExpectIPInCIDR(pod.Annotations[util.IPAddressAnnotation], subnet.Spec.CIDRBlock)
+			framework.ExpectMAC(pod.Annotations[util.MacAddressAnnotation])
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
+			for _, ip := range util.PodIPs(pod) {
+				framework.ExpectContainElement(append(ipsRange1, ipsRange2...), ip)
+			}
+		}
+
+		ginkgo.By("Creating second statefulset " + stsName2 + " with logical switch annotation and no ippool annotation")
+		sts2 := framework.MakeStatefulSet(stsName2, stsName2, int32(replicas), map[string]string{"app": stsName2}, framework.PauseImage)
+		sts2.Spec.Template.Annotations = map[string]string{util.LogicalSwitchAnnotation: subnetName}
+		sts2 = stsClient.CreateSync(sts2)
+
+		ginkgo.By("Getting pods for the second statefulset " + stsName2)
+		pods2 := stsClient.GetPods(sts2)
+		framework.ExpectHaveLen(pods2.Items, replicas)
+
+		for _, pod := range pods2.Items {
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.CidrAnnotation, subnet.Spec.CIDRBlock)
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.GatewayAnnotation, subnet.Spec.Gateway)
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.LogicalSwitchAnnotation, subnetName)
+			framework.ExpectIPInCIDR(pod.Annotations[util.IPAddressAnnotation], subnet.Spec.CIDRBlock)
+			framework.ExpectMAC(pod.Annotations[util.MacAddressAnnotation])
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
+			for _, ip := range util.PodIPs(pod) {
+				framework.ExpectContainElement(append(ipsRange1, ipsRange2...), ip)
+			}
+		}
 	})
 })

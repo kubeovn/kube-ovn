@@ -41,15 +41,15 @@ var _ = framework.Describe("[group:subnet]", func() {
 		cidr = framework.RandomCIDR(f.ClusterIPFamily)
 
 		ginkgo.By("Creating namespace " + ns1Name)
-		ns1 = framework.MakeNamespace(ns1Name, map[string]string{projectKey: ns1Name})
+		ns1 = framework.MakeNamespace(ns1Name, map[string]string{projectKey: ns1Name}, nil)
 		ns1 = nsClient.Create(ns1)
 
 		ginkgo.By("Creating namespace " + ns2Name)
-		ns2 = framework.MakeNamespace(ns2Name, map[string]string{projectKey: ns2Name})
+		ns2 = framework.MakeNamespace(ns2Name, map[string]string{projectKey: ns2Name}, nil)
 		ns2 = nsClient.Create(ns2)
 
 		ginkgo.By("Creating namespace " + ns3Name)
-		ns3 = framework.MakeNamespace(ns3Name, nil)
+		ns3 = framework.MakeNamespace(ns3Name, nil, nil)
 		ns3 = nsClient.Create(ns3)
 
 		ns1MatchLabels := map[string]string{projectKey: ns1Name}
