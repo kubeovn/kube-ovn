@@ -1724,8 +1724,38 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 			klog.Errorf("failed to get namespace %s: %v", pod.Namespace, err)
 			return "", "", "", podNet.Subnet, err
 		}
+
 		if len(ns.Annotations) != 0 {
-			ippoolStr = ns.Annotations[util.IPPoolAnnotation]
+			if ipPoolList, ok := ns.Annotations[util.IPPoolAnnotation]; ok {
+				for _, ipPoolName := range strings.Split(ipPoolList, ",") {
+					ippool, err := c.ippoolLister.Get(ipPoolName)
+					if err != nil {
+						klog.Errorf("failed to get ippool %s: %v", ipPoolName, err)
+						return "", "", "", podNet.Subnet, err
+					}
+
+					switch podNet.Subnet.Spec.Protocol {
+					case kubeovnv1.ProtocolDual:
+						if ippool.Status.V4AvailableIPs.Int64() == 0 || ippool.Status.V6AvailableIPs.Int64() == 0 {
+							continue
+						}
+					case kubeovnv1.ProtocolIPv4:
+						if ippool.Status.V4AvailableIPs.Int64() == 0 {
+							continue
+						}
+
+					default:
+						if ippool.Status.V6AvailableIPs.Int64() == 0 {
+							continue
+						}
+					}
+
+					if ippool.Spec.Subnet == podNet.Subnet.Name {
+						ippoolStr = ippool.Name
+						break
+					}
+				}
+			}
 		}
 	}
 
