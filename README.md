@@ -8,18 +8,17 @@
 
 [中文文档](https://kubeovn.github.io/docs/)
 
-If you miss the good old days of SDN, then Kube-OVN is your choice in Cloud Native era.
+If you are looking for a powerful networking solution that excels in both container and VM scenarios, or if you need robust multi-tenant networking capabilities, Kube-OVN is your ideal choice in the Cloud Native era.
 
-Kube-OVN, a [CNCF Sandbox Level Project](https://www.cncf.io/sandbox-projects/), integrates the OVN-based Network Virtualization with Kubernetes. 
-It offers an advanced Container Network Fabric for Enterprises with the most functions, extreme performance and the easiest operation.
+Kube-OVN, a [CNCF Sandbox Level Project](https://www.cncf.io/sandbox-projects/), integrates OVN-based Network Virtualization with Kubernetes. It provides enhanced support for KubeVirt workloads and unique multi-tenant capabilities, offering enterprise-grade network features with superior performance and simplified operations.
 
 ## Community
 The Kube-OVN community is waiting for your participation!
 
-- Join the [Online Meeting](https://docs.google.com/document/d/1OPFC3s0rVxGkLR5GaUayNC6Nx9lwvjapg_hQl4MWt3E/edit#heading=h.1e73t98gdg9l)
-- Follow us at [Twitter](https://twitter.com/KubeOvn)
-- Chat with us at [Slack](https://communityinviter.com/apps/kube-ovn/kube-ovn)
-- 微信用户请[填写表单](https://jinshuju.net/f/lyrEow)加入交流群！
+- 💭 Chat with us at [Slack](https://communityinviter.com/apps/kube-ovn/kube-ovn)
+- 📅 Join the [Online Meeting](https://docs.google.com/document/d/1OPFC3s0rVxGkLR5GaUayNC6Nx9lwvjapg_hQl4MWt3E/edit#heading=h.1e73t98gdg9l)
+- 🐦 Follow us at [Twitter](https://twitter.com/KubeOvn)
+- 💬 微信用户请[填写表单](https://jinshuju.net/f/lyrEow)加入交流群！
 
 ## Features
 - **Namespaced Subnets**: Each Namespace can have a unique Subnet (backed by a Logical Switch). Pods within the Namespace will have IP addresses allocated from the Subnet. It's also possible for multiple Namespaces to share a Subnet.
