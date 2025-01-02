@@ -69,6 +69,10 @@ type BFDPort struct {
 	NodeSelector *metav1.LabelSelector `json:"nodeSelector,omitempty"`
 }
 
+func (p *BFDPort) IsEnabled() bool {
+	return p != nil && p.Enabled
+}
+
 type VpcPeering struct {
 	RemoteVpc      string `json:"remoteVpc,omitempty"`
 	LocalConnectIP string `json:"localConnectIP,omitempty"`
@@ -96,6 +100,14 @@ type BFDPortStatus struct {
 	Name  string   `json:"name,omitempty"`
 	IP    string   `json:"ip,omitempty"`
 	Nodes []string `json:"nodes,omitempty"`
+}
+
+func (s BFDPortStatus) IsEmpty() bool {
+	return s.Name == "" && s.IP == "" && len(s.Nodes) == 0
+}
+
+func (s *BFDPortStatus) Clear() {
+	s.Name, s.IP, s.Nodes = "", "", nil
 }
 
 type VpcStatus struct {

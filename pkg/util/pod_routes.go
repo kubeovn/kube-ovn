@@ -1,8 +1,10 @@
 package util
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
+	"slices"
 
 	"github.com/kubeovn/kube-ovn/pkg/request"
 )
@@ -47,6 +49,14 @@ func (r PodRoutes) ToAnnotations() (map[string]string, error) {
 		if len(routes) == 0 {
 			continue
 		}
+
+		// sort routes to ensure the result is stable
+		slices.SortFunc(routes, func(a, b request.Route) int {
+			if n := cmp.Compare(a.Destination, b.Destination); n != 0 {
+				return n
+			}
+			return cmp.Compare(a.Gateway, b.Gateway)
+		})
 
 		// no error will be returned here
 		buf, _ := json.Marshal(routes)
