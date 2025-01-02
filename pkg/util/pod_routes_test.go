@@ -1,6 +1,7 @@
 package util
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -24,6 +25,10 @@ func TestPodRoutes(t *testing.T) {
 	annotations, err = routes.ToAnnotations()
 	require.NoError(t, err)
 	require.Len(t, annotations, 1)
+	require.Equal(t,
+		annotations[fmt.Sprintf(RoutesAnnotationTemplate, "foo")],
+		`[{"dst":"0.0.0.1","gw":"1.1.1.1"},{"dst":"0.0.1.0/24","gw":"1.1.1.1"},{"dst":"0.1.0.0/16","gw":"1.1.1.2"}]`,
+	)
 
 	routes.Add("foo", "0.0.0.1", "")
 	routes.Add("foo", "", "1.1.1.3")

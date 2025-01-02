@@ -357,6 +357,8 @@ func generateSubnetFromDockerNetwork(subnetName string, network *dockernetwork.I
 }
 
 func checkEgressAccess(f *framework.Framework, namespaceName, svrPodName, image, svrPort string, svrIPs, intIPs, extIPs []string, subnetName string, snat bool) {
+	ginkgo.GinkgoHelper()
+
 	podName := "pod-" + framework.RandomSuffix()
 	ginkgo.By("Creating client pod " + podName + " within subnet " + subnetName)
 	annotations := map[string]string{util.LogicalSwitchAnnotation: subnetName}
