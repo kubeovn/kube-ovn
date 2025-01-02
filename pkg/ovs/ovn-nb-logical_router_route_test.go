@@ -843,7 +843,6 @@ func (suite *OvnClientTestSuite) testBatchDeleteLogicalRouterStaticRoute() {
 
 		_, err = nbClient.GetLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nexthop, false)
 		require.ErrorContains(t, err, "not found")
-
 	})
 
 	t.Run("delete non-exist static route", func(t *testing.T) {
