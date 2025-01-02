@@ -4344,7 +4344,6 @@ spec:
           - --enable-anp=$ENABLE_ANP
           - --ovsdb-con-timeout=$OVSDB_CON_TIMEOUT
           - --ovsdb-inactivity-timeout=$OVSDB_INACTIVITY_TIMEOUT
-          - --enable-live-migration-optimize=$ENABLE_LIVE_MIGRATION_OPTIMIZE
           securityContext:
             runAsUser: ${RUN_AS_USER}
             privileged: false
