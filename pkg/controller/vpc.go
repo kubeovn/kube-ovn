@@ -154,6 +154,9 @@ func (c *Controller) handleUpdateVpcStatus(key string) error {
 
 	vpc.Status.DefaultLogicalSwitch = defaultSubnet
 	vpc.Status.Subnets = subnets
+	if !vpc.Spec.BFDPort.IsEnabled() && !vpc.Status.BFDPort.IsEmpty() {
+		vpc.Status.BFDPort.Clear()
+	}
 	bytes, err := vpc.Status.Bytes()
 	if err != nil {
 		klog.Error(err)
