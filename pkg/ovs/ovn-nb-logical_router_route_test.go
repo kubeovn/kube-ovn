@@ -802,3 +802,104 @@ func (suite *OvnClientTestSuite) testGetLogicalRouterStaticRouteEdgeCases() {
 		require.Equal(t, "", route.RouteTable)
 	})
 }
+
+func (suite *OvnClientTestSuite) testBatchDeleteLogicalRouterStaticRoute() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+	lrName := "test-batch-del-route-lr"
+	routeTable := util.MainRouteTable
+	policy := ovnnb.LogicalRouterStaticRoutePolicyDstIP
+	ipPrefix := "192.168.30.0/24"
+	nexthop := "192.168.30.1"
+	staticRouter := &ovnnb.LogicalRouterStaticRoute{
+		Policy:     &policy,
+		IPPrefix:   ipPrefix,
+		Nexthop:    nexthop,
+		RouteTable: routeTable,
+	}
+
+	err := nbClient.CreateLogicalRouter(lrName)
+	require.NoError(t, err)
+
+	t.Run("normal static route", func(t *testing.T) {
+		err = nbClient.AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nil, nil, nexthop)
+		require.NoError(t, err)
+
+		lr, err := nbClient.GetLogicalRouter(lrName, false)
+		require.NoError(t, err)
+
+		route, err := nbClient.GetLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nexthop, false)
+		require.NoError(t, err)
+		require.Contains(t, lr.StaticRoutes, route.UUID)
+
+		err = nbClient.BatchDeleteLogicalRouterStaticRoute(lrName, []*ovnnb.LogicalRouterStaticRoute{staticRouter})
+		require.NoError(t, err)
+
+		lr, err = nbClient.GetLogicalRouter(lrName, false)
+		require.NoError(t, err)
+		require.Empty(t, lr.StaticRoutes)
+
+		_, err = nbClient.GetLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nexthop, false)
+		require.ErrorContains(t, err, "not found")
+
+	})
+
+	t.Run("delete non-exist static route", func(t *testing.T) {
+		staticRouter.IPPrefix = "192.168.40.0/24"
+		staticRouter.Nexthop = "192.168.40.1"
+		err = nbClient.BatchDeleteLogicalRouterStaticRoute(lrName, []*ovnnb.LogicalRouterStaticRoute{staticRouter})
+		require.NoError(t, err)
+	})
+
+	t.Run("delete ecmp policy route", func(t *testing.T) {
+		ipPrefix := "192.168.40.0/24"
+		nexthops := []string{"192.168.50.1", "192.168.60.1"}
+		staticRouter.IPPrefix = ipPrefix
+
+		err = nbClient.AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nil, nil, nexthops...)
+		require.NoError(t, err)
+
+		lr, err := nbClient.GetLogicalRouter(lrName, false)
+		require.NoError(t, err)
+
+		for _, nexthop := range nexthops {
+			route, err := nbClient.GetLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nexthop, false)
+			require.NoError(t, err)
+			require.Contains(t, lr.StaticRoutes, route.UUID)
+		}
+
+		/* delete first route */
+		staticRouter.Nexthop = nexthops[0]
+		err = nbClient.BatchDeleteLogicalRouterStaticRoute(lrName, []*ovnnb.LogicalRouterStaticRoute{staticRouter})
+		require.NoError(t, err)
+
+		lr, err = nbClient.GetLogicalRouter(lrName, false)
+		require.NoError(t, err)
+
+		_, err = nbClient.GetLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nexthops[0], false)
+		require.ErrorContains(t, err, `not found logical router test-batch-del-route-lr static route 'policy dst-ip ip_prefix 192.168.40.0/24 nexthop 192.168.50.1'`)
+
+		route, err := nbClient.GetLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nexthops[1], false)
+		require.NoError(t, err)
+		require.ElementsMatch(t, []string{route.UUID}, lr.StaticRoutes)
+
+		/* delete second route */
+		staticRouter.Nexthop = nexthops[1]
+		err = nbClient.DeleteLogicalRouterStaticRoute(lrName, &routeTable, &policy, ipPrefix, nexthops[1])
+		require.NoError(t, err)
+
+		lr, err = nbClient.GetLogicalRouter(lrName, false)
+		require.NoError(t, err)
+		require.Empty(t, lr.StaticRoutes)
+
+		_, err = nbClient.GetLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nexthops[1], false)
+		require.ErrorContains(t, err, `not found logical router test-batch-del-route-lr static route 'policy dst-ip ip_prefix 192.168.40.0/24 nexthop 192.168.60.1'`)
+	})
+
+	t.Run("delete static route for non-exist logical router", func(t *testing.T) {
+		err := nbClient.BatchDeleteLogicalRouterStaticRoute("non-exist-lrName", []*ovnnb.LogicalRouterStaticRoute{staticRouter})
+		require.NoError(t, err)
+	})
+}

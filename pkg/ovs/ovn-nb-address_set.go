@@ -142,6 +142,46 @@ func (c *OVNNbClient) DeleteAddressSet(asName ...string) error {
 	return nil
 }
 
+// BatchDeleteAddressSetByAsName batch delete address set by names
+func (c *OVNNbClient) BatchDeleteAddressSetByNames(asNames []string) error {
+	asNameMap := make(map[string]struct{}, len(asNames))
+	for _, name := range asNames {
+		asNameMap[name] = struct{}{}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+
+	asList := make([]ovnnb.AddressSet, 0)
+	if err := c.ovsDbClient.WhereCache(func(as *ovnnb.AddressSet) bool {
+		_, exist := asNameMap[as.Name]
+		return exist
+	}).List(ctx, &asList); err != nil {
+		klog.Error(err)
+		return fmt.Errorf("batch delete address set %d list failed: %v", len(asNames), err)
+	}
+
+	// not found, skip
+	if len(asList) == 0 {
+		return nil
+	}
+
+	var modelList []model.Model = make([]model.Model, 0, len(asList))
+	for _, as := range asList {
+		modelList = append(modelList, &as)
+	}
+	op, err := c.Where(modelList...).Delete()
+	if err != nil {
+		klog.Error(err)
+		return fmt.Errorf("batch delete address set %d op failed: %v", len(asList), err)
+	}
+
+	if err := c.Transact("as-del", op); err != nil {
+		return fmt.Errorf("batch delete address set %d failed: %v", len(asList), err)
+	}
+
+	return nil
+}
+
 // DeleteAddressSets delete several address set once
 func (c *OVNNbClient) DeleteAddressSets(externalIDs map[string]string) error {
 	// it's dangerous when externalIDs is empty, it will delete all address set

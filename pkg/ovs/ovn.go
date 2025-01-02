@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ovn-org/libovsdb/client"
+	"github.com/ovn-org/libovsdb/model"
 	"github.com/ovn-org/libovsdb/ovsdb"
 	"k8s.io/klog/v2"
 
@@ -62,6 +63,12 @@ func NewOvnNbClient(ovnNbAddr string, ovnNbTimeout, ovsDbConTimeout, ovsDbInacti
 		klog.Error(err)
 		return nil, err
 	}
+
+	dbModel.SetIndexes(map[string][]model.ClientIndex{
+		"Logical_Router_Policy": {{Columns: []model.ColumnKey{{Column: "match"},
+			{Column: "priority"}}}, {Columns: []model.ColumnKey{{Column: "priority"}}}, {Columns: []model.ColumnKey{{Column: "match"}}}},
+	})
+	klog.Infof("ovn nb table %s client index %v", "Logical_Router_Policy", dbModel.Indexes("Logical_Router_Policy"))
 
 	monitors := []client.MonitorOption{
 		client.WithTable(&ovnnb.ACL{}),

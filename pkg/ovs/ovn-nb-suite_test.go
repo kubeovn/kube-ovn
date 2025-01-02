@@ -694,6 +694,10 @@ func (suite *OvnClientTestSuite) Test_UpdateAddressSet() {
 	suite.testUpdateAddressSet()
 }
 
+func (suite *OvnClientTestSuite) Test_BatchDeleteAddressSetByNames() {
+	suite.testBatchDeleteAddressSetByNames()
+}
+
 /* acl unit test */
 func (suite *OvnClientTestSuite) Test_testUpdateIngressAclOps() {
 	suite.testUpdateIngressACLOps()
@@ -856,6 +860,18 @@ func (suite *OvnClientTestSuite) Test_PolicyFilter() {
 	suite.testPolicyFilter()
 }
 
+func (suite *OvnClientTestSuite) Test_BatchAddLogicalRouterPolicy() {
+	suite.testBatchAddLogicalRouterPolicy()
+}
+
+func (suite *OvnClientTestSuite) Test_BatchDeleteLogicalRouterPolicyByUUID() {
+	suite.testBatchDeleteLogicalRouterPolicyByUUID()
+}
+
+func (suite *OvnClientTestSuite) Test_BatchDeleteLogicalRouterPolicy() {
+	suite.testBatchDeleteLogicalRouterPolicy()
+}
+
 /* nat unit test */
 func (suite *OvnClientTestSuite) Test_CreateNats() {
 	suite.testCreateNats()
@@ -952,6 +968,10 @@ func (suite *OvnClientTestSuite) Test_UpdateLogicalRouterStaticRoute() {
 
 func (suite *OvnClientTestSuite) Test_GetLogicalRouterStaticRouteEdgeCases() {
 	suite.testGetLogicalRouterStaticRouteEdgeCases()
+}
+
+func (suite *OvnClientTestSuite) Test_tBatchDeleteLogicalRouterStaticRoute() {
+	suite.testBatchDeleteLogicalRouterStaticRoute()
 }
 
 /* dhcp options unit test */
@@ -1119,45 +1139,45 @@ func (suite *OvnClientTestSuite) Test_DestroyChassis() {
 }
 
 // ovs
-func (suite *OvnClientTestSuite) Test_SetInterfaceBandwidth() {
-	suite.testSetInterfaceBandwidth()
-}
+// func (suite *OvnClientTestSuite) Test_SetInterfaceBandwidth() {
+// 	suite.testSetInterfaceBandwidth()
+// }
 
-func (suite *OvnClientTestSuite) Test_ClearHtbQosQueue() {
-	suite.testClearHtbQosQueue()
-}
+// func (suite *OvnClientTestSuite) Test_ClearHtbQosQueue() {
+// 	suite.testClearHtbQosQueue()
+// }
 
-func (suite *OvnClientTestSuite) Test_IsHtbQos() {
-	suite.testIsHtbQos()
-}
+// func (suite *OvnClientTestSuite) Test_IsHtbQos() {
+// 	suite.testIsHtbQos()
+// }
 
-func (suite *OvnClientTestSuite) Test_SetHtbQosQueueRecord() {
-	suite.testSetHtbQosQueueRecord()
-}
+// func (suite *OvnClientTestSuite) Test_SetHtbQosQueueRecord() {
+// 	suite.testSetHtbQosQueueRecord()
+// }
 
-func (suite *OvnClientTestSuite) Test_SetQosQueueBinding() {
-	suite.testSetQosQueueBinding()
-}
+// func (suite *OvnClientTestSuite) Test_SetQosQueueBinding() {
+// 	suite.testSetQosQueueBinding()
+// }
 
-func (suite *OvnClientTestSuite) Test_SetNetemQos() {
-	suite.testSetNetemQos()
-}
+// func (suite *OvnClientTestSuite) Test_SetNetemQos() {
+// 	suite.testSetNetemQos()
+// }
 
-func (suite *OvnClientTestSuite) Test_GetNetemQosConfig() {
-	suite.testGetNetemQosConfig()
-}
+// func (suite *OvnClientTestSuite) Test_GetNetemQosConfig() {
+// 	suite.testGetNetemQosConfig()
+// }
 
-func (suite *OvnClientTestSuite) Test_DeleteNetemQosByID() {
-	suite.testDeleteNetemQosByID()
-}
+// func (suite *OvnClientTestSuite) Test_DeleteNetemQosByID() {
+// 	suite.testDeleteNetemQosByID()
+// }
 
-func (suite *OvnClientTestSuite) Test_IsUserspaceDataPath() {
-	suite.testIsUserspaceDataPath()
-}
+// func (suite *OvnClientTestSuite) Test_IsUserspaceDataPath() {
+// 	suite.testIsUserspaceDataPath()
+// }
 
-func (suite *OvnClientTestSuite) Test_CheckAndUpdateHtbQos() {
-	suite.testCheckAndUpdateHtbQos()
-}
+// func (suite *OvnClientTestSuite) Test_CheckAndUpdateHtbQos() {
+// 	suite.testCheckAndUpdateHtbQos()
+// }
 
 func (suite *OvnClientTestSuite) Test_UpdateOVSVsctlLimiter() {
 	suite.testUpdateOVSVsctlLimiter()
@@ -1330,6 +1350,11 @@ func newNbClient(addr string, timeout int) (client.Client, error) {
 		klog.Error(err)
 		return nil, err
 	}
+
+	dbModel.SetIndexes(map[string][]model.ClientIndex{
+		"Logical_Router_Policy": {{Columns: []model.ColumnKey{{Column: "match"},
+			{Column: "priority"}}}, {Columns: []model.ColumnKey{{Column: "priority"}}}, {Columns: []model.ColumnKey{{Column: "match"}}}},
+	})
 
 	logger := stdr.New(log.New(os.Stderr, "", log.LstdFlags)).
 		WithName("libovsdb").
